@@ -4,18 +4,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
+// ponytail: no @Testcontainers/@Container — singleton start keeps the container alive
+//           across all test classes in one JVM run; Ryuk cleans it at JVM exit.
+//           Per-class @Container would stop MYSQL after WebLayerIT, breaking AuthIT.
 @SpringBootTest
-@Testcontainers
 public abstract class AbstractMysqlIT {
-    @Container
     // ponytail: 600s timeout for Docker Desktop/WSL2 Windows where MySQL 8.0
     //           first-run init can take 4-5 min; reduce if environment is faster
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("park_demo3")
             .withStartupTimeoutSeconds(600);
+
+    static {
+        MYSQL.start();
+    }
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
