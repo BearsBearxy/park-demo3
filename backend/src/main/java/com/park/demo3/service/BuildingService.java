@@ -13,7 +13,6 @@ public class BuildingService {
 
     static final Map<Integer,String> PHASE = Map.of(1,"一期",2,"二期",3,"三期",4,"宿舍");
     static String kind(int phase) { return phase == 4 ? "宿舍" : "厂房"; }
-    static final Set<String> CURRENT = Set.of("active","expiring","draft"); // 占用相关
     static final Set<String> RENT = Set.of("active","expiring");            // 计租相关
 
     /** 单元派生状态: 取该单元 status∈current 的合同,active→occupied/expiring→expiring/draft→reserved,无→vacant */
@@ -71,8 +70,8 @@ public class BuildingService {
         BigDecimal rentable = all.stream().map(BuildingDTO::rentableArea).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal leased = all.stream().map(BuildingDTO::leasedArea).reduce(BigDecimal.ZERO, BigDecimal::add);
         double occ = rentable.signum()==0 ? 0.0
-            : leased.divide(rentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
-                .setScale(0,RoundingMode.HALF_UP).doubleValue()/10.0;
+            : Math.min(100.0, leased.divide(rentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
+                .setScale(0,RoundingMode.HALF_UP).doubleValue()/10.0);
         int vacant = all.stream().mapToInt(BuildingDTO::vacantCount).sum();
         return new BuildingSummaryDTO(all.size(), stopped, rentable, occ, vacant);
     }

@@ -52,5 +52,7 @@ class BuildingServiceTest {
         assertThat(s.buildingCount()).isEqualTo(1);
         assertThat(s.occRate()).isEqualTo(50.0);
         assertThat(s.vacantCount()).isEqualTo(1);
+        assertThat(s.stoppedCount()).isEqualTo(0);
+        assertThat(s.rentableArea()).isEqualByComparingTo("1000");
     }
 }
