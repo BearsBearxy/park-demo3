@@ -42,7 +42,7 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0))
                 .andReturn().getResponse().getContentAsString();
 
-        List<Integer> data = JsonPath.read(body, "$.data");
+        List<Object> data = JsonPath.read(body, "$.data");
         assertThat(data.size()).isGreaterThanOrEqualTo(6);
 
         // 停用楼栋 (status=0) occRate 必须为 0

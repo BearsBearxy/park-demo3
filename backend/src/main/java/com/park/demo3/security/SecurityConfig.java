@@ -16,7 +16,7 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtFilter;
     public SecurityConfig(JwtAuthFilter jwtFilter) { this.jwtFilter = jwtFilter; }
 
-    @Bean SecurityFilterChain chain(HttpSecurity http) throws Exception {
+    @Bean SecurityFilterChain chain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
             .cors(c -> {})
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -29,7 +29,7 @@ public class SecurityConfig {
             .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
                 res.setStatus(401);
                 res.setContentType("application/json;charset=UTF-8");
-                new ObjectMapper().writeValue(res.getWriter(),
+                objectMapper.writeValue(res.getWriter(),
                     Result.error(ResultCode.UNAUTHORIZED.code, ResultCode.UNAUTHORIZED.message));
             }));
         return http.build();

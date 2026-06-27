@@ -37,4 +37,12 @@ class AuthIT extends AbstractMysqlIT {
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.data.hello").value("demo3"));
     }
+
+    @Test
+    void loginRejectsBlankCredentials() throws Exception {
+        mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"\",\"password\":\"\"}"))
+           .andExpect(status().isBadRequest())
+           .andExpect(jsonPath("$.code").value(400));
+    }
 }
