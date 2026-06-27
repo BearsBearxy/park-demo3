@@ -11,7 +11,7 @@ import java.util.UUID;
 public class TraceIdFilter implements Filter {
     @Override public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
         String tid = ((HttpServletRequest) req).getHeader("X-Trace-Id");
-        if (tid == null || tid.isBlank()) tid = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        if (tid == null || !tid.matches("[A-Za-z0-9-]{1,64}")) tid = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         MDC.put("traceId", tid);
         ((HttpServletResponse) res).setHeader("X-Trace-Id", tid);
         try { chain.doFilter(req, res); } finally { MDC.remove("traceId"); }

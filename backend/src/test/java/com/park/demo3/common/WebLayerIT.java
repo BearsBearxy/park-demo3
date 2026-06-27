@@ -28,6 +28,7 @@ class WebLayerIT extends AbstractMysqlIT {
         mvc.perform(get("/api/probe/boom"))
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.code").value(404))
-           .andExpect(jsonPath("$.message").value("probe not found"));
+           .andExpect(jsonPath("$.message").value("probe not found"))
+           .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 }
