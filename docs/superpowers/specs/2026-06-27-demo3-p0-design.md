@@ -47,7 +47,7 @@
 
 **前端**：Vue 3 `<script setup>` · TypeScript · Vite · Vue Router（三层导航）· Pinia（公司/期间/筛选/会话共享态）· axios（JWT 拦截 + 统一返回解包）· **手搭 Factory Park DS 组件** · Reka UI（headless）· 纯 SVG 图表（P1 起，不引 ECharts）· SheetJS + Web Worker（Excel 导入，P1 起）· lucide-vue-next · 自托管 Inter + Roboto Mono · Vitest + Vue Test Utils + Playwright · ESLint + Prettier。
 
-**后端**：Java 21 · Spring Boot 3 · Spring MVC REST · MyBatis-Plus · Flyway · Spring Security + JWT · Jakarta Validation · MapStruct · springdoc-openapi · Actuator + Micrometer · logback-JSON + TraceId(MDC) · JUnit5 + Mockito + Testcontainers · Maven。
+**后端**：Java 17 · Spring Boot 3 · Spring MVC REST · MyBatis-Plus · Flyway · Spring Security + JWT · Jakarta Validation · MapStruct · springdoc-openapi · Actuator + Micrometer · logback-JSON + TraceId(MDC) · JUnit5 + Mockito + Testcontainers · Maven。
 
 **工程化/部署**：Docker Compose（nginx 前端 + 后端 + MySQL）· GitHub Actions CI · 分环境配置 + 密钥外置 · CLAUDE.md · spec 规范 · ponytail 代码优化。
 

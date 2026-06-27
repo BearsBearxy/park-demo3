@@ -22,3 +22,6 @@ Thumbs.db
 
 # MySQL data volume (compose)
 mysql-data/
+
+# SDD progress ledger (git-ignored scratch)
+.superpowers/
