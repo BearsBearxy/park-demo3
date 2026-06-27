@@ -65,14 +65,14 @@
       </plugin>
       <!-- ponytail: api.version=1.44 required on Docker Desktop 29.x + Windows
            (docker-java shaded in Testcontainers defaults to 1.32, rejected with 400).
-           forkedProcessTimeoutInSeconds=0 disables Surefire's JVM kill so
-           Testcontainers' own 10-min MySQL startup timeout is respected -->
+           forkedProcessTimeoutInSeconds=900 allows Testcontainers' ~3.5 min MySQL startup
+           on slow Windows/Docker cold-start while restoring CI kill ceiling -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <argLine>-Dapi.version=1.44</argLine>
-          <forkedProcessTimeoutInSeconds>0</forkedProcessTimeoutInSeconds>
+          <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
         </configuration>
       </plugin>
     </plugins>
