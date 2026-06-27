@@ -73,6 +73,11 @@
         <configuration>
           <argLine>-Dapi.version=1.44</argLine>
           <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+            <include>**/*IT.java</include>
+          </includes>
         </configuration>
       </plugin>
     </plugins>
