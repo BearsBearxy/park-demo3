@@ -1,0 +1,24 @@
+# Java / Maven
+target/
+*.class
+backend/logs/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+*.local
+
+# Env / secrets
+.env
+*.env
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# MySQL data volume (compose)
+mysql-data/
