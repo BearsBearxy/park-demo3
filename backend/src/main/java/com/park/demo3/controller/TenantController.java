@@ -15,4 +15,6 @@ public class TenantController {
     public List<TenantDTO> list() { return svc.list(); }
     @Operation(summary = "租户 KPI 汇总") @GetMapping("/summary")
     public TenantSummaryDTO summary() { return svc.summary(); }
+    @Operation(summary = "租户详情（含合同历史）") @GetMapping("/{id}")
+    public TenantDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }
 }

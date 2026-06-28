@@ -101,6 +101,32 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
     }
 
     @Test
+    void tenantDetail_returnsTenantsAndContracts() throws Exception {
+        // get a valid tenant id from the list
+        String listBody = mvc.perform(get("/api/tenants")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        int id = ((Integer) ((java.util.List<?>) JsonPath.read(listBody, "$.data[*].id")).get(0));
+
+        String body = mvc.perform(get("/api/tenants/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.tenant.id").value(id))
+                .andExpect(jsonPath("$.data.contracts").isArray())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Object> contracts = JsonPath.read(body, "$.data.contracts");
+        assertThat(contracts).isNotEmpty();
+        // every contract has buildingName and status
+        List<String> statuses = JsonPath.read(body, "$.data.contracts[*].status");
+        assertThat(statuses).isNotEmpty();
+        List<String> buildingNames = JsonPath.read(body, "$.data.contracts[*].buildingName");
+        assertThat(buildingNames).allMatch(n -> n != null && !n.isEmpty());
+    }
+
+    @Test
     void buildingDetail_returnsUnitsWithStatus() throws Exception {
         // first get list to find a valid id
         String listBody = mvc.perform(get("/api/buildings")

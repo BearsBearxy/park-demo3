@@ -10,6 +10,7 @@ import {
   Search, ChevronDown, X, Clock, Calendar, Plus, Filter,
   Check, ArrowLeft, Pencil,
   BedDouble, DoorOpen, Ruler, LayoutGrid, StickyNote,
+  Building, User, Phone, Briefcase, MapPin,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -69,6 +70,11 @@ const MAP: Record<string, Component> = {
   'ruler': Ruler,
   'layout-grid': LayoutGrid,
   'sticky-note': StickyNote,
+  'building': Building,
+  'user': User,
+  'phone': Phone,
+  'briefcase': Briefcase,
+  'map-pin': MapPin,
 }
 
 export function iconFor(name: string): Component {
