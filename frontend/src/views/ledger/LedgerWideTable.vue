@@ -70,8 +70,12 @@ function onCellEdit(p: { tenantId: number; key: ColumnKey; value: string }) {
   }
 }
 
-function onExport() {
-  exportLedgerMonth(props.month, props.companyName, props.year, props.monthNo)
+async function onExport() {
+  try {
+    await exportLedgerMonth(props.month, props.companyName, props.year, props.monthNo)
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导出失败')
+  }
 }
 
 // 从上月复制:先 confirm()(覆盖本月已有行,spec §4.2)
