@@ -30,3 +30,55 @@ const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
     </button>
   </div>
 </template>
+
+<style scoped>
+/* ponytail: 1:1 copy of FPPhaseTabs scoped styles (those are scoped, not global —
+   this separate component must carry its own pill styling) */
+.fp-phasetabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+}
+
+.fp-phasetab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 16px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+
+.fp-phasetab:hover {
+  color: var(--text-secondary);
+}
+
+.fp-phasetab.on {
+  background: var(--surface-white);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(28, 28, 28, 0.12);
+}
+
+.fp-phasetab .ct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-disabled);
+}
+
+.fp-phasetab.on .ct {
+  color: var(--hue-blue);
+}
+</style>
