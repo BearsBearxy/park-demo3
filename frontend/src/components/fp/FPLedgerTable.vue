@@ -1,0 +1,190 @@
+<script setup lang="ts">
+// Ported 1:1 from screen-ledger.jsx (table structure 620-664, sticky offsets 413-416/525-530,
+// body cell 532-558, footer 646-661). Pure presentation; all CSS in this file's scoped block.
+import { computed } from 'vue'
+import { iconFor } from '@/components/ds/icon'
+import type { ColumnModel, LeafColumn, ColumnKey } from '@/utils/ledgerColumns'
+import type { LedgerRowDTO } from '@/types/ledger'
+
+const props = defineProps<{
+  columns: ColumnModel
+  rows: LedgerRowDTO[]
+  edit: boolean
+}>()
+
+const emit = defineEmits<{
+  'cell-edit': [payload: { tenantId: number; key: ColumnKey; value: string }]
+  'tenant-click': [tenantId: number]
+}>()
+
+const ChevronRight = iconFor('chevron-right')
+
+const leaves = computed(() => props.columns.groups.flatMap(g => g.cols))
+const allCols = computed(() => [...props.columns.fixedLeft, ...leaves.value, ...props.columns.fixedRight])
+
+// sticky offsets (jsx 413-416): left accumulates L→R, right accumulates R→L over fixedRight reversed.
+const leftOff = computed<Record<string, number>>(() => {
+  const m: Record<string, number> = {}; let lo = 0
+  props.columns.fixedLeft.forEach(c => { m[c.key] = lo; lo += c.w })
+  return m
+})
+const rightOff = computed<Record<string, number>>(() => {
+  const m: Record<string, number> = {}; let ro = 0
+  ;[...props.columns.fixedRight].reverse().forEach(c => { m[c.key] = ro; ro += c.w })
+  return m
+})
+const isFixed = (c: LeafColumn) => c.key in leftOff.value || c.key in rightOff.value
+
+// jsx 525-530: sticky left/right + edge boxShadow on inner-most fixed col.
+function fixStyle(c: LeafColumn): Record<string, string> {
+  const fl = props.columns.fixedLeft
+  const fr = props.columns.fixedRight
+  if (c.key in leftOff.value) {
+    return {
+      position: 'sticky',
+      left: leftOff.value[c.key] + 'px',
+      ...(c.key === fl[fl.length - 1].key ? { boxShadow: '1px 0 0 var(--border-subtle)' } : {}),
+    }
+  }
+  if (c.key in rightOff.value) {
+    return {
+      position: 'sticky',
+      right: rightOff.value[c.key] + 'px',
+      ...(c.key === fr[0].key ? { boxShadow: '-1px 0 0 var(--border-subtle)' } : {}),
+    }
+  }
+  return {}
+}
+
+function widthStyle(c: LeafColumn): Record<string, string> {
+  return { width: c.w + 'px', minWidth: c.w + 'px', maxWidth: c.w + 'px' }
+}
+function cellStyle(c: LeafColumn): Record<string, string> {
+  return { ...widthStyle(c), ...fixStyle(c) }
+}
+
+// number format (jsx lgFmt): 0/empty → "", else 2dp grouped.
+function lgFmt(v: number | null | undefined): string {
+  if (v == null || v === 0) return ''
+  return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const view = computed(() => props.rows)
+function sum(k: ColumnKey): number {
+  return view.value.reduce((s, r) => s + (Number((r as any)[k]) || 0), 0)
+}
+const sumEnd = computed(() => sum('balanceEnd'))
+
+function onInput(tenantId: number, key: ColumnKey, e: Event) {
+  emit('cell-edit', { tenantId, key, value: (e.target as HTMLInputElement).value })
+}
+</script>
+
+<template>
+  <div class="lg-wrap">
+    <table class="lg-table">
+      <thead>
+        <tr>
+          <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
+              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyle(c)">{{ c.label }}</th>
+          <th v-for="g in columns.groups" :key="g.name" :colspan="g.cols.length"
+              class="lg-grp-th">{{ g.name }}</th>
+          <th v-for="c in columns.fixedRight" :key="c.key" rowspan="2"
+              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyle(c)">{{ c.label }}</th>
+        </tr>
+        <tr>
+          <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="widthStyle(c)">{{ c.label }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in view" :key="row.tenantId">
+          <td v-for="c in allCols" :key="c.key"
+              :class="isFixed(c) ? 'lg-fix' : undefined" :style="cellStyle(c)">
+            <!-- 租户名 (text) -->
+            <span v-if="c.kind === 'text'" class="lg-tname" @click="emit('tenant-click', row.tenantId)">
+              {{ row.tenantName }}<component :is="ChevronRight" :size="13" class="ch" />
+            </span>
+            <!-- 应收合计 (sum, 派生只读) -->
+            <span v-else-if="c.kind === 'sum'" class="lg-sumc">{{ lgFmt(row.totalReceivable) }}</span>
+            <!-- 本月结余 (bal, 派生只读, 正橙负红) -->
+            <span v-else-if="c.kind === 'bal'"
+                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }">{{ lgFmt(row.balanceEnd) }}</span>
+            <!-- 备注 (note) -->
+            <template v-else-if="c.kind === 'note'">
+              <input v-if="edit" class="lg-ni l" type="text" :value="row.note ?? ''" placeholder="—"
+                     @input="onInput(row.tenantId, 'note', $event)" />
+              <span v-else class="lg-note">{{ row.note || '' }}</span>
+            </template>
+            <!-- balancePrev (num, 只读) -->
+            <span v-else-if="c.key === 'balancePrev'" class="lg-nv" :class="{ empty: !row.balancePrev }">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            <!-- totalCollected + 21 费用列 (number, 编辑态可输入) -->
+            <template v-else>
+              <input v-if="edit" class="lg-ni" type="number"
+                     :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
+                     @input="onInput(row.tenantId, c.key, $event)" />
+              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
+            </template>
+          </td>
+        </tr>
+        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length"></td></tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <th v-for="(c, i) in columns.fixedLeft" :key="c.key" class="lg-fix" :style="cellStyle(c)">
+            <span v-if="i === 0" class="lg-foot-lbl">合　计</span>
+            <span v-else class="lg-foot-v">{{ lgFmt(sum(c.key)) }}</span>
+          </th>
+          <th v-for="c in leaves" :key="c.key" :style="widthStyle(c)">
+            <span class="lg-foot-v">{{ lgFmt(sum(c.key)) }}</span>
+          </th>
+          <th v-for="c in columns.fixedRight" :key="c.key" class="lg-fix" :style="cellStyle(c)">
+            <span v-if="c.kind === 'note'"></span>
+            <span v-else class="lg-foot-v"
+                  :style="c.key === 'totalReceivable' ? { color: 'var(--brand-deep)' }
+                        : c.key === 'balanceEnd' ? { color: sumEnd < 0 ? 'var(--hue-red)' : 'var(--hue-orange)' }
+                        : undefined">{{ lgFmt(sum(c.key)) }}</span>
+          </th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</template>
+
+<style scoped>
+/* ── 宽表(两级分组表头 + 左右固定列 + 合计页脚)── 1:1 from screen-ledger.jsx LgStyles 180-215 */
+.lg-wrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
+.lg-table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; height:100%; font-family:var(--font-sans); }
+.lg-table tbody tr.lg-filler td { height:0; padding:0; line-height:0; font-size:0; border:none; background:var(--surface-white); }
+.lg-filler { height:100%; }
+.lg-table th, .lg-table td { border-bottom:1px solid var(--divider); box-sizing:border-box; padding:0; }
+.lg-table thead th { position:sticky; background:var(--surface-card); color:var(--text-muted); font-size:11.5px; font-weight:var(--fw-semibold); text-align:center; padding:0 8px; z-index:4; }
+.lg-grp-th { top:0; height:34px; }
+.lg-leaf-th { top:34px; height:38px; line-height:1.25; white-space:normal; }
+.lg-fix-th { top:0; z-index:6; vertical-align:middle; }
+/* 固定表头单元格须盖过横向滚动的分组/子列表头(否则 .lg-fix 的低 z-index 会让其被遮住) */
+.lg-table thead th.lg-fix-th { z-index:8; }
+.lg-table tbody td { height:34px; background:var(--surface-white); vertical-align:middle; }
+.lg-table tbody tr:hover td { background:var(--surface-card); }
+.lg-fix { position:sticky; z-index:3; background:var(--surface-white); }
+.lg-table tbody tr:hover .lg-fix { background:var(--surface-card); }
+.lg-tname { display:inline-flex; align-items:center; gap:5px; padding:0 10px; font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; max-width:100%; }
+.lg-tname:hover { color:var(--hue-blue); }
+.lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
+.lg-table tbody tr:hover .lg-tname .ch { opacity:1; }
+.lg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lg-nv.empty { color:var(--text-disabled); }
+.lg-note { display:block; text-align:left; font-size:12px; padding:0 10px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lg-sumc { display:block; text-align:right; font-weight:var(--fw-semibold); color:var(--hue-blue); font-size:12px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lg-sumc.neg { color:var(--hue-red); }
+.lg-sumc.pos { color:var(--hue-orange); }
+.lg-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 6px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
+.lg-ni.l { text-align:left; }
+.lg-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
+.lg-ni::-webkit-outer-spin-button, .lg-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+
+/* 合计页脚(纯色,无渐变) */
+.lg-table tfoot th { position:sticky; bottom:0; z-index:5; height:40px; font-weight:var(--fw-semibold); background:var(--surface-white); border-top:2px solid var(--border-strong); font-family:var(--font-mono); color:var(--text-primary); }
+.lg-table tfoot th.lg-fix { z-index:7; }
+.lg-foot-lbl { display:block; padding:0 10px; text-align:left; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); }
+.lg-foot-v { display:block; text-align:right; padding:0 8px; font-size:12px; font-variant-numeric:tabular-nums; color:var(--brand-deep); }
+</style>

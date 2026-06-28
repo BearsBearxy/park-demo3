@@ -12,6 +12,7 @@ import {
   BedDouble, DoorOpen, Ruler, LayoutGrid, StickyNote,
   Building, User, Phone, Briefcase, MapPin,
   FileCheck2, FilePen, GitCommitHorizontal, Archive, RotateCcw, XCircle, List,
+  Repeat, CalendarCheck, CornerDownRight, Download, Copy, Info, ArrowRight, ChevronLeft, ChevronRight,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -83,6 +84,15 @@ const MAP: Record<string, Component> = {
   'rotate-ccw': RotateCcw,
   'x-circle': XCircle,
   'list': List,
+  'repeat': Repeat,
+  'calendar-check': CalendarCheck,
+  'corner-down-right': CornerDownRight,
+  'download': Download,
+  'copy': Copy,
+  'info': Info,
+  'arrow-right': ArrowRight,
+  'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
 }
 
 export function iconFor(name: string): Component {

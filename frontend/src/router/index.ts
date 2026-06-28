@@ -9,6 +9,7 @@ const LoginView = () => import('@/views/LoginView.vue')
 const BuildingsView = () => import('@/views/buildings/BuildingsView.vue')
 const TenantsView = () => import('@/views/tenants/TenantsView.vue')
 const ContractsView = () => import('@/views/contracts/ContractsView.vue')
+const LedgerView = () => import('@/views/ledger/LedgerView.vue')
 
 const navRoutes = fpBuildRoutes()
 
@@ -20,7 +21,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map(meta => ({
       path: `/${meta.value}`,
-      component: meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : PlaceholderView,
+      component: meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : PlaceholderView,
       meta,
     })),
   ],
