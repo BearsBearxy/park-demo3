@@ -1,0 +1,21 @@
+package com.park.demo3.dto;
+import java.math.BigDecimal;
+public record ContractDTO(
+    Integer id,
+    String  contractNo,
+    Integer tenantId,
+    String  tenantName,
+    Integer buildingId,
+    String  buildingName,
+    String  floorInfo,
+    BigDecimal rentArea,
+    BigDecimal monthlyRent,
+    BigDecimal deposit,
+    String  startDate,
+    String  endDate,
+    String  signDate,
+    String  status,
+    int     termMonths,
+    Integer daysToEnd,
+    String  remark
+) {}

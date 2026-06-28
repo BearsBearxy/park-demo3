@@ -11,6 +11,7 @@ import {
   Check, ArrowLeft, Pencil,
   BedDouble, DoorOpen, Ruler, LayoutGrid, StickyNote,
   Building, User, Phone, Briefcase, MapPin,
+  FileCheck2, FilePen, GitCommitHorizontal, Archive, RotateCcw, XCircle, List,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -75,6 +76,13 @@ const MAP: Record<string, Component> = {
   'phone': Phone,
   'briefcase': Briefcase,
   'map-pin': MapPin,
+  'file-check-2': FileCheck2,
+  'file-pen': FilePen,
+  'git-commit-horizontal': GitCommitHorizontal,
+  'archive': Archive,
+  'rotate-ccw': RotateCcw,
+  'x-circle': XCircle,
+  'list': List,
 }
 
 export function iconFor(name: string): Component {
