@@ -163,8 +163,8 @@ export default defineComponent({
         }, [
           // active accent bar
           on ? h("span", { style: { position: "absolute", left: "0", top: "8px", bottom: "8px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,
-          // chevron or spacer
-          isDir ? Chevron(isOpen) : h("span", { style: { width: "14px", flex: "0 0 auto" } }),
+          // chevron (directories only) — leaf items go icon-first, no spacer (matches offline HTML)
+          isDir ? Chevron(isOpen) : null,
           // icon
           it.icon ? renderIcon(it.icon, { color: on ? "var(--text-primary)" : "var(--text-secondary)" }) : null,
           // label

@@ -81,6 +81,14 @@
 | background（未激活） | `transparent` |
 | gap（图标→标签） | `8px` |
 | width | `100%` |
+
+#### 2.4.1 导航项内部结构（关键 — 决定左对齐）
+
+**叶子项（无 `children`）= 图标打头，无任何前导占位。** 子元素顺序：
+`[激活时 3px accent bar (absolute, left:0)]` → `[图标 span 16×16]` → `[标签 span flex:1]`。
+
+⚠️ **不要在叶子项图标前渲染"展开箭头占位"**（例如 14px 空 `<span>`）—— 那会把图标+标签整体右推约 22px（14 占位 + 8 gap），看起来"居中"而非左对齐。**只有存在 `children` 的目录项才渲染 chevron**；本系统 FP_NAV 无目录项，故 nav-item 一律图标打头。
+自验：图标 `left-offset = 12px`（= padding-left），标签 `left-offset = 36px`（12 + 16 + 8）。
 | transition | `background var(--dur-fast) var(--ease-standard)` |
 
 ### 2.5 导航项 — 激活态（Active）
