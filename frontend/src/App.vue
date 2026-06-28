@@ -1,11 +1,23 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import AppShell from './components/shell/AppShell.vue'
+
+const route = useRoute()
+const isLogin = computed(() => route.path === '/login')
+</script>
+
 <template>
-  <router-view />
+  <!-- /login gets its own full-screen layout (LoginView owns it, Task 7) -->
+  <router-view v-if="isLogin" />
+  <!-- all other routes render inside the two-card shell -->
+  <AppShell v-else>
+    <router-view />
+  </AppShell>
 </template>
 
 <style>
 #app {
-  display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100%;
 }
