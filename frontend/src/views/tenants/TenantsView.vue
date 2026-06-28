@@ -118,7 +118,7 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">租户管理</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          在租租户档案 · 主数据 · 共 {{ tenants.length }} 户
+          在租租户档案 · 主数据 · 共 {{ summary ? tenants.length : '…' }} 户
         </p>
       </div>
       <div style="display:flex;gap:8px">
@@ -137,8 +137,10 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       </div>
     </div>
 
+    <!-- data body: gated on first load so we never flash empty KPIs / 共0户 / 没有匹配 -->
+    <template v-if="summary">
     <!-- 2. KPI bar -->
-    <div v-if="summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
       <KpiCard label="在租租户" :value="String(summary.tenantActive)" delta="+4" tint="slate">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
@@ -200,6 +202,8 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       :total="filtered.length"
       @page="page = $event"
     />
+    </template>
+    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 6. Drawer -->
     <TenantDrawer

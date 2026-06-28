@@ -167,7 +167,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">合同管理</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          租赁合同与续签 · 主数据 · 共 {{ contracts.length }} 份
+          租赁合同与续签 · 主数据 · 共 {{ summary ? contracts.length : '…' }} 份
         </p>
       </div>
       <div style="display:flex;gap:8px">
@@ -182,8 +182,10 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       </div>
     </div>
 
+    <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
+    <template v-if="summary">
     <!-- 2. KPI grid -->
-    <div v-if="summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
       <KpiCard label="执行中" :value="String(summary.contractActive)" delta="+2" tint="slate">
         <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
       </KpiCard>
@@ -246,6 +248,8 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       :total="filtered.length"
       @page="page = $event"
     />
+    </template>
+    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 7. Drawer -->
     <ContractDrawer

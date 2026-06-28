@@ -27,6 +27,7 @@ const dataMonth = ref(new Date().getMonth() + 1)
 
 // ── 数据 ─────────────────────────────────────────────────
 const companies = ref<CompanyDTO[]>([])
+const companiesLoaded = ref(false)  // ⓪ 首次加载完成前显示转圈,不闪空网格
 // ⓪ 每家公司的派生统计:记账租户 + 当前月应收
 const statsById = ref<Record<number, { tenants: number; recv: number }>>({})
 const overview = ref<LedgerOverviewDTO | null>(null)  // ① 年度概览
@@ -51,6 +52,7 @@ async function loadCompanies() {
   // 标签月份从数据的当前月派生(种子各公司一致),与卡片 recv 取值同月;无数据则保留当月回退值
   const dm = results.find(r => r.month != null)?.month
   if (dm != null) dataMonth.value = dm
+  companiesLoaded.value = true
 }
 
 // ── ① 载入概览 ───────────────────────────────────────────
@@ -154,12 +156,14 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
   <!-- ⓪ 选择记账公司 -->
   <template v-if="companyId === null">
     <LedgerCompanyPicker
+      v-if="companiesLoaded"
       :companies="companies"
       :stats-by-id="statsById"
       :cur-month="dataMonth"
       @pick="pickCompany"
       @new-company="newDlg = true"
     />
+    <div v-else class="page-loading"><span class="page-spin" /></div>
     <LedgerNewCompanyDialog
       v-if="newDlg"
       :existing-names="companies.map(c => c.name)"
@@ -209,4 +213,7 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
       @close="drawerTenantId = null"
     />
   </template>
+
+  <!-- 过渡中(切公司/月,数据加载)兜底转圈,不闪空白 -->
+  <div v-else class="page-loading"><span class="page-spin" /></div>
 </template>

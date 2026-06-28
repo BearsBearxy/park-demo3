@@ -37,3 +37,22 @@ img, svg {
   display: block;
   max-width: 100%;
 }
+
+/* 列表/数据屏首次加载占位:数据就绪前显示居中转圈,避免先闪「空表/共0份/没有匹配」假空态 */
+.page-loading {
+  flex: 1 1 auto;
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+}
+.page-spin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--border-subtle);
+  border-top-color: var(--hue-blue);
+  animation: page-spin 0.7s linear infinite;
+}
+@keyframes page-spin {
+  to { transform: rotate(360deg); }
+}

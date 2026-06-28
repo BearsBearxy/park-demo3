@@ -136,7 +136,7 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">楼栋管理</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          园区楼栋资产与空间台账 · 主数据 · 共 {{ buildings.length }} 栋 / {{ summary?.unitCount ?? '—' }} 单元
+          园区楼栋资产与空间台账 · 主数据 · 共 {{ summary ? buildings.length : '…' }} 栋 / {{ summary?.unitCount ?? '—' }} 单元
         </p>
       </div>
       <div style="display:flex;gap:8px">
@@ -151,8 +151,10 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       </div>
     </div>
 
+    <!-- data body: gated on first load so we never flash empty KPIs / 共0栋 / 没有匹配 -->
+    <template v-if="summary">
     <!-- 2. KPI bar -->
-    <div v-if="summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
       <KpiCard label="楼栋总数" :value="String(summary.buildingCount)" :delta="`${stoppedCount} 栋停用`" tint="slate">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
@@ -226,6 +228,8 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       :total="filtered.length"
       @page="page = $event"
     />
+    </template>
+    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 7. Drawer -->
     <BuildingDrawer
