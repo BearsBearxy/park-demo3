@@ -30,6 +30,8 @@ const sectionStyle = computed(() => ({
   padding: props.padding + "px",
   boxSizing: "border-box" as const,
   boxShadow: props.surface === "white" ? "var(--shadow-sm)" : "none",
+  border: props.surface === "white" ? "1px solid var(--border-subtle)" : "none",
+  overflow: props.surface === "white" ? "hidden" : undefined,
 }));
 </script>
 

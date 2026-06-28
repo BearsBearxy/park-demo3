@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import FitText from "./FitText.vue";
 
 export interface KpiCardProps {
   label?: unknown;
@@ -59,18 +58,9 @@ const rootStyle = computed(() => ({
     <!-- value row: big metric + delta -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">
       <span style="flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:flex-end">
-        <FitText
-          :max="28"
-          :min="16"
-          :style="{
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 'var(--fw-semibold)',
-            color: 'var(--text-primary)',
-            letterSpacing: 'var(--ls-tight)',
-          }"
-        >
+        <span style="font-family:var(--font-sans);font-size:var(--fs-display);font-weight:var(--fw-semibold);line-height:1.1;color:var(--text-primary);letter-spacing:var(--ls-tight)">
           <slot>{{ value }}</slot>
-        </FitText>
+        </span>
       </span>
 
       <span
