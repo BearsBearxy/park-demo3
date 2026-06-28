@@ -1,14 +1,35 @@
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
+import CommandPalette from '@/components/shell/CommandPalette.vue'
 
 const ui = useUiStore()
 
-// open-command events are forwarded up for Task 6 (CommandPalette) to wire
-const emit = defineEmits<{ 'open-command': [mode: string] }>()
+const paletteOpen = ref(false)
+const paletteMode = ref<'jump' | 'new'>('jump')
+
+function openPalette(mode: 'jump' | 'new' = 'jump') {
+  paletteMode.value = mode
+  paletteOpen.value = true
+}
+
+function onGlobalKey(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    if (paletteOpen.value) {
+      paletteOpen.value = false
+    } else {
+      openPalette('jump')
+    }
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKey))
+onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
 </script>
 
 <template>
@@ -16,7 +37,7 @@ const emit = defineEmits<{ 'open-command': [mode: string] }>()
   <div class="fp-stage">
     <!-- nav card: IconRail + optional vertical divider + optional SidebarPanel -->
     <div class="fp-nav-card">
-      <IconRail @open-command="emit('open-command', 'jump')" />
+      <IconRail @open-command="openPalette('jump')" />
       <!-- vertical divider: only shown when sidebar is open -->
       <div v-if="ui.sbOpen" class="fp-vdiv" />
       <!-- SidebarPanel: only shown when sidebar is open -->
@@ -25,14 +46,20 @@ const emit = defineEmits<{ 'open-command': [mode: string] }>()
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
-      <TabStrip @open-command="emit('open-command', $event)" />
-      <Toolbar @open-command="emit('open-command', $event)" />
+      <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
+      <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
       <!-- content area -->
       <main class="fp-content">
         <slot />
       </main>
     </div>
   </div>
+
+  <CommandPalette
+    :open="paletteOpen"
+    :mode="paletteMode"
+    @close="paletteOpen = false"
+  />
 </template>
 
 <style scoped>
