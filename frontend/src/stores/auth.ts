@@ -9,12 +9,11 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthed = computed(() => !!token.value)
 
   async function login({ username, password }: { username: string; password: string }) {
-    const data = await api.post<{ token: string; displayName: string }>('/auth/login', { username, password })
-    const result = data as unknown as { token: string; displayName: string }
-    token.value = result.token
-    displayName.value = result.displayName
-    localStorage.setItem('token', result.token)
-    localStorage.setItem('displayName', result.displayName)
+    const { token: t, displayName: dn } = await api.post<{ token: string; displayName: string }>('/auth/login', { username, password })
+    token.value = t
+    displayName.value = dn
+    localStorage.setItem('token', t)
+    localStorage.setItem('displayName', dn)
   }
 
   function logout() {

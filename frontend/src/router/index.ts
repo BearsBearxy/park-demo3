@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
+import { useTabsStore } from '@/stores/tabs'
 
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
@@ -30,6 +31,14 @@ router.beforeEach((to) => {
   }
   if (auth.isAuthed && to.path === '/login') {
     return { path: '/data-home' }
+  }
+})
+
+router.afterEach((to) => {
+  const v = (to.meta as Record<string, unknown>).value as string | undefined
+  if (v) {
+    // ponytail: useTabsStore() called lazily — pinia is active by afterEach time
+    useTabsStore().open(v)
   }
 })
 

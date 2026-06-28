@@ -8,8 +8,6 @@ const props = withDefaults(defineProps<{
   label?: string
   hint?: string
   error?: string
-  leadingIcon?: boolean
-  trailingIcon?: boolean
   size?: InputSize
   disabled?: boolean
   type?: string

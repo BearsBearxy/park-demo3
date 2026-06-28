@@ -19,8 +19,8 @@ async function submit() {
   loading.value = true
   try {
     await auth.login({ username: username.value, password: password.value })
-    const redirect = (route.query.redirect as string) || 'data-home'
-    router.push('/' + redirect)
+    const redirect = (route.query.redirect as string) || '/data-home'
+    router.push(redirect)
   } catch (e: any) {
     errorMsg.value = e?.msg || e?.message || '登录失败，请检查用户名和密码'
   } finally {
@@ -48,7 +48,7 @@ async function submit() {
       gap:24px;
     ">
       <div style="text-align:center">
-        <span style="font:var(--type-title-lg);color:var(--text-primary);font-weight:var(--fw-semibold)">
+        <span style="font:var(--type-h2);color:var(--text-primary);font-weight:var(--fw-semibold)">
           Factory Park
         </span>
         <p style="margin:4px 0 0;font:var(--type-body);color:var(--text-secondary)">财务管理平台</p>
