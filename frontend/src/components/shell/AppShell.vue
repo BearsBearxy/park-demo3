@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import IconRail from '@/components/shell/IconRail.vue'
+import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 </script>
 
 <template>
@@ -9,10 +10,10 @@ import IconRail from '@/components/shell/IconRail.vue'
     <div class="fp-nav-card">
       <!-- IconRail: Task 3 -->
       <IconRail @open-command="() => {/* Task 6 will wire this */}" />
-      <!-- vertical divider placeholder: 1px border-subtle -->
+      <!-- vertical divider: 1px border-subtle -->
       <div class="fp-vdiv-placeholder" />
-      <!-- SidebarPanel placeholder: width 234 -->
-      <div class="fp-sidebar-placeholder" />
+      <!-- SidebarPanel: Task 4 -->
+      <SidebarPanel />
     </div>
 
     <!-- main card: flex 1, flex-column, radius 24 -->
@@ -61,13 +62,6 @@ import IconRail from '@/components/shell/IconRail.vue'
   background: var(--border-subtle);
 }
 
-/* SidebarPanel placeholder: width 234 */
-.fp-sidebar-placeholder {
-  flex: 0 0 234px;
-  width: 234px;
-  height: 100%;
-  background: var(--surface-white);
-}
 
 /* ── main card ── */
 .fp-main-card {
