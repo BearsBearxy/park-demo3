@@ -24,3 +24,29 @@ describe('Pagination (uncontrolled)', () => {
     expect(style).toContain('var(--fw-semibold)')
   })
 })
+
+describe('Pagination windowing', () => {
+  const pillNums = (w: ReturnType<typeof mount>) =>
+    w.findAll('button').map(b => b.text()).filter(t => /^\d+$/.test(t))
+  const ellipses = (w: ReturnType<typeof mount>) =>
+    w.findAll('span').filter(s => s.text() === '…')
+
+  it('caps pills with … ellipsis when pageCount > maxPills', () => {
+    const w = mount(Pagination, { props: { pageCount: 20, modelValue: 10, maxPills: 7, showMeta: false } })
+    // first + window(9,10,11) + last, with two ellipses for the gaps
+    expect(pillNums(w)).toEqual(['1', '9', '10', '11', '20'])
+    expect(ellipses(w).length).toBe(2)
+  })
+
+  it('windows near the start (only a trailing ellipsis)', () => {
+    const w = mount(Pagination, { props: { pageCount: 20, modelValue: 2, maxPills: 7, showMeta: false } })
+    expect(pillNums(w)).toEqual(['1', '2', '3', '20'])
+    expect(ellipses(w).length).toBe(1)
+  })
+
+  it('shows all pages when pageCount <= maxPills (no ellipsis)', () => {
+    const w = mount(Pagination, { props: { pageCount: 5, modelValue: 1, maxPills: 7, showMeta: false } })
+    expect(pillNums(w)).toEqual(['1', '2', '3', '4', '5'])
+    expect(ellipses(w).length).toBe(0)
+  })
+})

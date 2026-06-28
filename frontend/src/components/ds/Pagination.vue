@@ -9,6 +9,8 @@ export interface PaginationProps {
   onPage?: (page: number) => void;
   onPageSize?: (size: number) => void;
   showMeta?: boolean;
+  /** max page pills shown before windowing with … ellipsis */
+  maxPills?: number;
   // v-model support (mirrors onPage for controlled usage)
   modelValue?: number;
 }
@@ -18,6 +20,7 @@ const props = withDefaults(defineProps<PaginationProps>(), {
   pageCount: 5,
   pageSize: 20,
   showMeta: true,
+  maxPills: 7,
 });
 
 const emit = defineEmits<{
@@ -36,9 +39,23 @@ const currentPage = computed(() =>
 // keep internalPage in sync when parent drives :page
 watch(() => props.page, v => { internalPage.value = v });
 
-const pages = computed(() =>
-  Array.from({ length: props.pageCount }, (_, i) => i + 1)
-);
+// windowed page list: first + last + a window around current, with … for gaps.
+// keeps the pill count <= ~maxPills no matter how many pages there are.
+const pages = computed<(number | "…")[]>(() => {
+  const count = props.pageCount;
+  if (count <= props.maxPills) {
+    return Array.from({ length: count }, (_, i) => i + 1);
+  }
+  const cur = currentPage.value;
+  const left = Math.max(2, cur - 1);
+  const right = Math.min(count - 1, cur + 1);
+  const out: (number | "…")[] = [1];
+  if (left > 2) out.push("…");
+  for (let i = left; i <= right; i++) out.push(i);
+  if (right < count - 1) out.push("…");
+  out.push(count);
+  return out;
+});
 
 function goToPage(p: number) {
   internalPage.value = p;
@@ -76,6 +93,18 @@ function pillStyle(on: boolean, dis: boolean) {
     cursor: dis ? "not-allowed" : "pointer",
   };
 }
+
+const ellipsisStyle = {
+  minWidth: "20px",
+  height: "32px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "var(--text-disabled)",
+  fontFamily: "var(--font-sans)",
+  fontSize: "var(--fs-body)",
+  userSelect: "none" as const,
+};
 </script>
 
 <template>
@@ -116,13 +145,15 @@ function pillStyle(on: boolean, dis: boolean) {
       @click="goToPage(currentPage - 1)"
     >‹</button>
 
-    <!-- Page pills -->
-    <button
-      v-for="p in pages"
-      :key="p"
-      :style="pillStyle(p === currentPage, false)"
-      @click="goToPage(p)"
-    >{{ p }}</button>
+    <!-- Page pills (windowed: caps at maxPills with … ellipsis) -->
+    <template v-for="(p, i) in pages" :key="i">
+      <span v-if="p === '…'" :style="ellipsisStyle">…</span>
+      <button
+        v-else
+        :style="pillStyle(p === currentPage, false)"
+        @click="goToPage(p as number)"
+      >{{ p }}</button>
+    </template>
 
     <!-- Next -->
     <button

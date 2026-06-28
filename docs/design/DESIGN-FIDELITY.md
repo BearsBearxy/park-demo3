@@ -204,3 +204,21 @@
 | 3 | `Card.vue`（surface=white） | border | `1px solid var(--border-subtle)` | 在 `sectionStyle` 中添加 border |
 | 4 | `Card.vue`（surface=white） | overflow | `hidden` | 在 `sectionStyle` 中添加 `overflow: hidden` |
 | 5 | 表格卡片调用方 | padding | `0px` | 调用时显式传 `:padding="0"` |
+
+> ✅ 上述 5 项 + KpiCard line-height 已全部修复（P0-B/P0-D，运行期实测达标）。本表保留作历史记录；§3.3/3.6/3.7 的 ⚠️ 标记同为历史。
+
+---
+
+## 五、分页器（Pager）放置与窗口化
+
+### 5.1 放置：固定卡片底部（不跟列表尾）
+
+分页器（`FPPager` = 选择页面 JumpSelect popover + `Pagination` 页码药丸）**固定在内容卡片的底部**，不随列表内容流动。**列表行数不足以铺满一页时，分页器仍停在卡片底部，不得浮在页面中间。**
+
+实现：屏幕根容器加 `min-height:100%`（撑满 `<main>` 内容区）+ 在列表卡片与分页器之间插一个 `flex:1 1 auto; min-height:0` 的撑高占位 `div`，把分页器顶到底部。`BuildingsView` / `TenantsView` 均按此；**新建列表屏沿用此模式**。
+
+### 5.2 页码窗口化（显示上限 maxPills）
+
+`Pagination` 的页码药丸**有显示上限 `maxPills`（默认 7）**：页数 ≤ 7 全显；> 7 时窗口化为 `首页 … (当前±1) … 末页`，用 `…`（`--text-disabled`，不可点）代替隐藏的中间页，**不在底部把所有页码全部列出**。跳到任意页仍可经 JumpSelect popover（可滚动列出全部页）或 上/下页 按钮。
+- 算法：`[1]` + `(left>2 ? '…')` + `[max(2,cur-1) .. min(count-1,cur+1)]` + `(right<count-1 ? '…')` + `[count]`。
+- 测试：`Pagination.spec.ts` windowing 用例（20 页/当前 10 → `1 … 9 10 11 … 20`；首端 → `1 2 3 … 20`；≤7 页无省略）。

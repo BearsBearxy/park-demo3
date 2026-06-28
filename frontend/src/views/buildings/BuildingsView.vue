@@ -130,7 +130,7 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1200px;margin:0 auto;width:100%">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:1200px;margin:0 auto;width:100%;min-height:100%">
     <!-- 1. Title row -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -214,6 +214,9 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
         />
       </div>
     </Card>
+
+    <!-- spacer: pin the pager to the card bottom (规范: 分页器固定卡片底, 不跟列表尾浮在中间) -->
+    <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
 
     <!-- 6. Pager -->
     <FPPager
