@@ -1,0 +1,77 @@
+/* ============================================================
+   Factory Park — Thin auto-hiding scrollbar
+   Copied verbatim from Factory Park Design System/tokens/scrollbar.css
+   ============================================================ */
+
+.fp-scroll,
+.fp-scroll-y,
+.fp-scroll-x {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-idle) transparent;
+  overscroll-behavior: contain;
+}
+.fp-scroll   { overflow: auto; }
+.fp-scroll-y { overflow-x: hidden; overflow-y: auto; }
+.fp-scroll-x { overflow-x: auto;  overflow-y: hidden; }
+
+.fp-scroll:hover,
+.fp-scroll-y:hover,
+.fp-scroll-x:hover,
+.fp-scroll.is-scrolling,
+.fp-scroll-y.is-scrolling,
+.fp-scroll-x.is-scrolling {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.fp-scroll::-webkit-scrollbar,
+.fp-scroll-y::-webkit-scrollbar,
+.fp-scroll-x::-webkit-scrollbar {
+  width:  var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+.fp-scroll-x::-webkit-scrollbar { height: var(--scrollbar-size-thin); }
+
+.fp-scroll::-webkit-scrollbar-track,
+.fp-scroll-y::-webkit-scrollbar-track,
+.fp-scroll-x::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.fp-scroll::-webkit-scrollbar-thumb,
+.fp-scroll-y::-webkit-scrollbar-thumb,
+.fp-scroll-x::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-idle);
+  border-radius: var(--scrollbar-radius);
+  border: var(--scrollbar-pad) solid transparent;
+  background-clip: padding-box;
+  transition: background-color var(--dur-fast, 120ms) var(--ease-standard, ease);
+}
+
+.fp-scroll:hover::-webkit-scrollbar-thumb,
+.fp-scroll-y:hover::-webkit-scrollbar-thumb,
+.fp-scroll-x:hover::-webkit-scrollbar-thumb,
+.fp-scroll.is-scrolling::-webkit-scrollbar-thumb,
+.fp-scroll-y.is-scrolling::-webkit-scrollbar-thumb,
+.fp-scroll-x.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+}
+
+.fp-scroll::-webkit-scrollbar-thumb:hover,
+.fp-scroll-y::-webkit-scrollbar-thumb:hover,
+.fp-scroll-x::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.fp-scroll::-webkit-scrollbar-corner,
+.fp-scroll-y::-webkit-scrollbar-corner,
+.fp-scroll-x::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-scroll::-webkit-scrollbar-thumb,
+  .fp-scroll-y::-webkit-scrollbar-thumb,
+  .fp-scroll-x::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
