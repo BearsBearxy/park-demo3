@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
 export interface PaginationProps {
   page?: number;
@@ -22,16 +22,19 @@ const props = withDefaults(defineProps<PaginationProps>(), {
 
 const emit = defineEmits<{
   (e: "change", value: number): void;
+  (e: "page", value: number): void;
   (e: "update:modelValue", value: number): void;
   (e: "pageSizeChange", size: number): void;
 }>();
 
-// Controlled/uncontrolled duality: if modelValue is provided, use it; else use page prop; else internal ref
+// Controlled/uncontrolled duality
 const internalPage = ref(props.page);
-
+// ponytail: prefer modelValue > page prop > internalPage (uncontrolled local state)
 const currentPage = computed(() =>
-  props.modelValue !== undefined ? props.modelValue : props.page
+  props.modelValue !== undefined ? props.modelValue : internalPage.value
 );
+// keep internalPage in sync when parent drives :page
+watch(() => props.page, v => { internalPage.value = v });
 
 const pages = computed(() =>
   Array.from({ length: props.pageCount }, (_, i) => i + 1)
@@ -40,6 +43,7 @@ const pages = computed(() =>
 function goToPage(p: number) {
   internalPage.value = p;
   emit("change", p);
+  emit("page", p);
   emit("update:modelValue", p);
   props.onPage?.(p);
 }

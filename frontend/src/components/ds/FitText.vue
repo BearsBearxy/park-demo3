@@ -2,11 +2,11 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, useAttrs } from "vue";
 
 export interface FitTextProps {
-  /** Content to fit on one line — pass as slot, this is just for typing. */
-  max?: number;
   /** Largest font size in px. @default 28 */
-  min?: number;
+  max?: number;
   /** Smallest font size in px before clipping. @default 14 */
+  min?: number;
+  /** Tooltip text shown on hover. */
   title?: string;
 }
 

@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, defineComponent, h, type VNode } from "vue";
 import Checkbox from "./Checkbox.vue";
+
+// ponytail: minimal render shim — returns whatever node it's given (VNode or string)
+const Cell = defineComponent({
+  props: { node: { default: null } },
+  render() { return this.node },
+})
 
 export interface DataColumn<Row = any> {
   key: string;
@@ -10,7 +16,7 @@ export interface DataColumn<Row = any> {
   mono?: boolean;
   wrap?: boolean;
   sortable?: boolean;
-  render?: (row: Row) => any;
+  render?: (row: Row) => VNode | string;
 }
 
 export interface DataTableProps<Row = any> {
@@ -156,8 +162,7 @@ function onMouseLeave(e: MouseEvent, isSel: boolean) {
               fontFamily: c.mono ? 'var(--font-mono)' : 'var(--font-sans)',
             }"
           >
-            <!-- ponytail: render() returns any; v-html unsafe so use component slot trick is overkill — caller passes VNodes via render, rendered as-is -->
-            <component :is="() => c.render ? c.render(r) : (r as any)[c.key]" />
+            <Cell :node="c.render ? c.render(r) : (r as any)[c.key]" />
           </td>
         </tr>
       </tbody>
