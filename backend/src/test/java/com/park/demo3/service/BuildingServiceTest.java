@@ -11,7 +11,8 @@ class BuildingServiceTest {
     BuildingMapper bm = Mockito.mock(BuildingMapper.class);
     UnitMapper um = Mockito.mock(UnitMapper.class);
     ContractMapper cm = Mockito.mock(ContractMapper.class);
-    BuildingService svc = new BuildingService(bm, um, cm);
+    com.park.demo3.mapper.TenantMapper tm = Mockito.mock(com.park.demo3.mapper.TenantMapper.class);
+    BuildingService svc = new BuildingService(bm, um, cm, tm);
 
     Building b(int id,int phase,int status,double rentable){ Building x=new Building();
         x.setId(id);x.setName("B"+id);x.setPhase(phase);x.setFloorCount(1);
@@ -54,5 +55,6 @@ class BuildingServiceTest {
         assertThat(s.vacantCount()).isEqualTo(1);
         assertThat(s.stoppedCount()).isEqualTo(0);
         assertThat(s.rentableArea()).isEqualByComparingTo("1000");
+        assertThat(s.unitCount()).isEqualTo(2);
     }
 }

@@ -99,4 +99,28 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
         mvc.perform(get("/api/buildings"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void buildingDetail_returnsUnitsWithStatus() throws Exception {
+        // first get list to find a valid id
+        String listBody = mvc.perform(get("/api/buildings")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        int id = ((Integer) ((java.util.List<?>) JsonPath.read(listBody, "$.data[*].id")).get(0));
+
+        String body = mvc.perform(get("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.building.id").value(id))
+                .andExpect(jsonPath("$.data.units").isArray())
+                .andReturn().getResponse().getContentAsString();
+
+        List<Object> units = JsonPath.read(body, "$.data.units");
+        assertThat(units).isNotEmpty();
+        // every unit has a status field with a valid value
+        List<String> statuses = JsonPath.read(body, "$.data.units[*].status");
+        assertThat(statuses).allMatch(s -> List.of("occupied","expiring","reserved","vacant").contains(s));
+    }
 }

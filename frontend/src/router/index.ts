@@ -6,6 +6,7 @@ import { useTabsStore } from '@/stores/tabs'
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
 const LoginView = () => import('@/views/LoginView.vue')
+const BuildingsView = () => import('@/views/buildings/BuildingsView.vue')
 
 const navRoutes = fpBuildRoutes()
 
@@ -17,7 +18,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map(meta => ({
       path: `/${meta.value}`,
-      component: PlaceholderView,
+      component: meta.value === 'buildings' ? BuildingsView : PlaceholderView,
       meta,
     })),
   ],

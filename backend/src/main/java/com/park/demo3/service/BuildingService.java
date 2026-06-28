@@ -9,7 +9,8 @@ import java.util.*; import java.util.stream.Collectors;
 @Service
 public class BuildingService {
     private final BuildingMapper buildings; private final UnitMapper units; private final ContractMapper contracts;
-    public BuildingService(BuildingMapper b, UnitMapper u, ContractMapper c) { buildings=b; units=u; contracts=c; }
+    private final TenantMapper tenantMapper;
+    public BuildingService(BuildingMapper b, UnitMapper u, ContractMapper c, TenantMapper t) { buildings=b; units=u; contracts=c; tenantMapper=t; }
 
     static final Map<Integer,String> PHASE = Map.of(1,"一期",2,"二期",3,"三期",4,"宿舍");
     static String kind(int phase) { return phase == 4 ? "宿舍" : "厂房"; }
@@ -64,6 +65,34 @@ public class BuildingService {
             uByB.getOrDefault(b.getId(), List.of()), cByB.getOrDefault(b.getId(), List.of()))).toList();
     }
 
+    public BuildingDetailDTO detail(Integer id) {
+        Building b = buildings.selectById(id);
+        if (b == null) throw new com.park.demo3.common.BizException(com.park.demo3.common.ResultCode.NOT_FOUND);
+        List<Unit> us = units.selectByBuildingId(id);
+        List<Contract> cs = contracts.selectByBuildingId(id);
+        BuildingDTO dto = toDTO(b, us, cs);
+        List<UnitDTO> unitDTOs = us.stream().map(u -> {
+            String st = unitStatus(u.getId(), cs);
+            Contract c = cs.stream()
+                .filter(x -> Objects.equals(x.getUnitId(), u.getId()))
+                .filter(x -> Set.of("active","expiring","draft").contains(x.getStatus()))
+                .min(Comparator.comparing(x -> switch (x.getStatus()) {
+                    case "active" -> 0; case "expiring" -> 1; default -> 2;
+                })).orElse(null);
+            Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;
+            return new UnitDTO(
+                u.getId(), u.getFloor(), u.getUnitNo(), u.getArea(), st,
+                t != null ? t.getId() : null,
+                t != null ? t.getCompanyName() : null,
+                t != null ? t.getCompanyName() : null,
+                t != null ? t.getBusinessType() : null,
+                c != null ? c.getContractNo() : null,
+                c != null ? c.getMonthlyRent() : null
+            );
+        }).toList();
+        return new BuildingDetailDTO(dto, unitDTOs);
+    }
+
     public BuildingSummaryDTO summary() {
         List<BuildingDTO> all = list();
         int stopped = (int) all.stream().filter(d -> d.status()==0).count();
@@ -73,6 +102,7 @@ public class BuildingService {
             : Math.min(100.0, leased.divide(rentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
                 .setScale(0,RoundingMode.HALF_UP).doubleValue()/10.0);
         int vacant = all.stream().mapToInt(BuildingDTO::vacantCount).sum();
-        return new BuildingSummaryDTO(all.size(), stopped, rentable, occ, vacant);
+        int unitCount = all.stream().mapToInt(BuildingDTO::unitCount).sum();
+        return new BuildingSummaryDTO(all.size(), stopped, rentable, occ, vacant, unitCount);
     }
 }

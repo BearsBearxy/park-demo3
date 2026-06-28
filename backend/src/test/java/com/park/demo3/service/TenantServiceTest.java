@@ -38,7 +38,7 @@ class TenantServiceTest {
         Mockito.when(tm.selectList(null)).thenReturn(List.of(t(1,1), t(2,1), t(3,2)));
         Mockito.when(cm.selectList(null)).thenReturn(List.of(
             c(1,7,"active",8000,260), c(2,7,"expiring",5000,200)));
-        Mockito.when(bs.summary()).thenReturn(new BuildingSummaryDTO(0,0,BigDecimal.ZERO,42.0,0));
+        Mockito.when(bs.summary()).thenReturn(new BuildingSummaryDTO(0,0,BigDecimal.ZERO,42.0,0,0));
         TenantSummaryDTO s = svc.summary();
         assertThat(s.tenantActive()).isEqualTo(2);        // status==1
         assertThat(s.monthlyRent()).isEqualByComparingTo("13000");

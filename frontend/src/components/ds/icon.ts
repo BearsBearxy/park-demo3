@@ -9,6 +9,7 @@ import {
   Scale3d, Layers, BellRing, PanelLeft, Star, History, Bell,
   Search, ChevronDown, X, Clock, Calendar, Plus, Filter,
   Check, ArrowLeft, Pencil,
+  BedDouble, DoorOpen, Ruler, LayoutGrid, StickyNote,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -63,6 +64,11 @@ const MAP: Record<string, Component> = {
   'check': Check,
   'arrow-left': ArrowLeft,
   'pencil': Pencil,
+  'bed-double': BedDouble,
+  'door-open': DoorOpen,
+  'ruler': Ruler,
+  'layout-grid': LayoutGrid,
+  'sticky-note': StickyNote,
 }
 
 export function iconFor(name: string): Component {
