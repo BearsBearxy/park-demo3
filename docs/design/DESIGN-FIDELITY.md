@@ -222,3 +222,35 @@
 `Pagination` 的页码药丸**有显示上限 `maxPills`（默认 7）**：页数 ≤ 7 全显；> 7 时窗口化为 `首页 … (当前±1) … 末页`，用 `…`（`--text-disabled`，不可点）代替隐藏的中间页，**不在底部把所有页码全部列出**。跳到任意页仍可经 JumpSelect popover（可滚动列出全部页）或 上/下页 按钮。
 - 算法：`[1]` + `(left>2 ? '…')` + `[max(2,cur-1) .. min(count-1,cur+1)]` + `(right<count-1 ? '…')` + `[count]`。
 - 测试：`Pagination.spec.ts` windowing 用例（20 页/当前 10 → `1 … 9 10 11 … 20`；首端 → `1 2 3 … 20`；≤7 页无省略）。
+
+---
+
+## 六、加载态与首屏防闪烁（Loading & Anti-Flash）
+
+> 来源：`fix 87e5503`（用户反馈每次切页 / 登录前先闪一下空白）。根因都是「状态未就绪就渲染」。**新建屏一律遵循本节。**
+
+### 6.1 首屏不得先闪主壳（auth gate）
+
+| 规则 | 说明 |
+|---|---|
+| 挂载时机 | `main.ts` 必须 `router.isReady().then(() => app.mount('#app'))`，**不得**裸 `app.mount()` |
+| 原因 | 裸挂载时首帧落在未解析的起始路由 `/`，`App.vue` 按 `route.path === '/login'` 判断会误判为「非登录」→ 先渲染 `AppShell` 主壳，异步守卫随后才重定向到 `/login`，产生「闪主页 → 回登录」 |
+| 禁止 | mount 前同步依赖「当前路由」做 login/shell 之类的布局分支判断（此时路由未解析） |
+
+### 6.2 数据屏不得先闪假空态（loading gate）
+
+凡 `onMounted` 里异步取数的列表 / 数据屏，**取数完成前不得渲染依赖数据的「空态 / 零值」内容**——`共 0 份`、`没有匹配`、空 KPI、`全部 0 / 草稿 0` 之类的 0 计数 tab 都会被读成「已加载但无数据」，造成卡顿错觉。
+
+| 规则 | 实现 |
+|---|---|
+| 包裹数据体 | 把 KPI / tabs / 工具栏 / 表格 / 空态 / 分页器整块用 `<template v-if="<loaded 信号>">…</template>` 包住 |
+| 未就绪占位 | `v-else` 渲染 `<div class="page-loading"><span class="page-spin" /></div>`（居中转圈，样式在 `base.css`，全局可用） |
+| loaded 信号 | 列表屏复用与列表同批到达的 `summary`（非空即已加载，省一个 ref）；无 summary 的屏（如 ledger ⓪ 选公司）用独立 `xxxLoaded` ref |
+| 标题/工具栏计数 | 未就绪显占位「…」：`共 {{ summary ? list.length : '…' }} 份` |
+| 多级屏 | 每级各自 gated（`v-else-if="该级数据 && …"`），级间过渡加 `v-else` 兜底转圈，避免切换瞬间空白（参照 `LedgerView.vue` 的 ⓪/①/② + 末尾 `v-else`） |
+
+参照实现：`BuildingsView` / `TenantsView` / `ContractsView` / `LedgerView`；占位样式 `.page-loading` / `.page-spin`（`styles/base.css`）。
+
+### 6.3 已知局限（性能，非本节约束）
+
+本节只保证「**不闪假空态 / 不闪主壳**」，不解决「切页非无缝」——当前仍是 CSR + `onMounted` 取数的瀑布（先渲转圈 → 取数 → 渲内容；localhost 快到近乎无感，网络慢时可见转圈）。无缝化手段（路由级预取 loader、SWR 缓存、hover 预取、骨架屏、keep-alive、后端 gzip/ETag 等）属性能优化范畴，另行评估，不在保真规范内。
