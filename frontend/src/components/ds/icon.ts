@@ -1,0 +1,75 @@
+// src/components/ds/icon.ts — iconFor(kebab-case) → lucide-vue-next component.
+// Shared by IconRail / SidebarPanel / TabStrip / Toolbar / CommandPalette.
+import {
+  Database, BookMarked, PieChart, Command, LayoutDashboard,
+  Building2, Users, FileText, BookOpen, Receipt, Landmark,
+  Sun, Car, Bike, Coins, Zap, Wallet, Plug, Upload,
+  TrendingUp, Scale, Table2, Home, Droplets, Wrench, Banknote,
+  GitCompare, Gauge, Activity, BarChart3, Siren, CalendarClock,
+  Scale3d, Layers, BellRing, PanelLeft, Star, History, Bell,
+  Search, ChevronDown, X, Clock, Calendar, Plus, Filter,
+  Check, ArrowLeft, Pencil,
+  HelpCircle, // fallback
+} from 'lucide-vue-next'
+import type { Component } from 'vue'
+
+const MAP: Record<string, Component> = {
+  'database': Database,
+  'book-marked': BookMarked,
+  'pie-chart': PieChart,
+  'command': Command,
+  'layout-dashboard': LayoutDashboard,
+  'building-2': Building2,
+  'users': Users,
+  'file-text': FileText,
+  'book-open': BookOpen,
+  'receipt': Receipt,
+  'landmark': Landmark,
+  'sun': Sun,
+  'car': Car,
+  'bike': Bike,
+  'coins': Coins,
+  'zap': Zap,
+  'wallet': Wallet,
+  'plug': Plug,
+  'upload': Upload,
+  'trending-up': TrendingUp,
+  'scale': Scale,
+  'table-2': Table2,
+  'home': Home,
+  'droplets': Droplets,
+  'wrench': Wrench,
+  'banknote': Banknote,
+  'git-compare': GitCompare,
+  'gauge': Gauge,
+  'activity': Activity,
+  'bar-chart-3': BarChart3,
+  'siren': Siren,
+  'calendar-clock': CalendarClock,
+  'scale-3d': Scale3d,
+  'layers': Layers,
+  'bell-ring': BellRing,
+  'panel-left': PanelLeft,
+  'star': Star,
+  'history': History,
+  'bell': Bell,
+  'search': Search,
+  'chevron-down': ChevronDown,
+  'x': X,
+  'clock': Clock,
+  'calendar': Calendar,
+  'plus': Plus,
+  'filter': Filter,
+  'check': Check,
+  'arrow-left': ArrowLeft,
+  'pencil': Pencil,
+}
+
+export function iconFor(name: string): Component {
+  const icon = MAP[name]
+  if (!icon) {
+    console.warn(`[iconFor] unknown icon name: "${name}" — using HelpCircle fallback`)
+    return HelpCircle
+  }
+  return icon
+}

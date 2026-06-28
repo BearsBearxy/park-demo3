@@ -1,10 +1,14 @@
+<script setup lang="ts">
+import IconRail from '@/components/shell/IconRail.vue'
+</script>
+
 <template>
   <!-- root stage: flex row, padding 12px, gap 12px -->
   <div class="fp-stage">
     <!-- nav card: flex:0 0 auto, height 100%, radius 24 -->
     <div class="fp-nav-card">
-      <!-- IconRail placeholder: width 66, sunken bg -->
-      <div class="fp-rail-placeholder" />
+      <!-- IconRail: Task 3 -->
+      <IconRail @open-command="() => {/* Task 6 will wire this */}" />
       <!-- vertical divider placeholder: 1px border-subtle -->
       <div class="fp-vdiv-placeholder" />
       <!-- SidebarPanel placeholder: width 234 -->
@@ -47,14 +51,6 @@
   overflow: hidden;
   display: flex;
   flex-direction: row;
-}
-
-/* IconRail placeholder: width 66 */
-.fp-rail-placeholder {
-  flex: 0 0 66px;
-  width: 66px;
-  height: 100%;
-  background: var(--surface-sunken);
 }
 
 /* vertical divider: 1px */
