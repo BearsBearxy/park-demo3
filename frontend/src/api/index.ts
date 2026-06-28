@@ -22,7 +22,8 @@ http.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
-      // ponytail: stub — redirect to /login when auth view exists
+      localStorage.removeItem('displayName')
+      window.location.href = '/login'
     }
     return Promise.reject(error)
   },
