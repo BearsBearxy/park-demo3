@@ -25,7 +25,11 @@ const order = computed(() => {
   return list
 })
 
-const canClose = computed(() => order.value.length > 1)
+// ponytail: per-chip close visibility — preview always closable; pinned only when >1 pinned tab
+function canClose(value: string): boolean {
+  if (tabs.preview?.value === value && !tabs.tabs.some(t => t.value === value)) return true
+  return tabs.tabs.length > 1
+}
 
 // current active tab = route value
 const activeValue = computed(() => (route.meta as Record<string, string>).value ?? '')
@@ -134,7 +138,7 @@ function onNewTab() {
           <button
             class="fp-tab-btn"
             aria-label="关闭标签页"
-            :style="{ visibility: canClose ? 'visible' : 'hidden' }"
+            :style="{ visibility: canClose(value) ? 'visible' : 'hidden' }"
             @click.stop="closeTab(value)"
           >
             <X :size="14" />
@@ -181,7 +185,7 @@ function onNewTab() {
           :class="{ it: value === tabs.preview?.value && !tabs.tabs.some(t => t.value === value) }"
         >{{ ROUTES[value]?.page }}</span>
         <button
-          v-if="canClose"
+          v-if="canClose(value)"
           class="x"
           aria-label="关闭"
           @click.stop="closeTab(value)"

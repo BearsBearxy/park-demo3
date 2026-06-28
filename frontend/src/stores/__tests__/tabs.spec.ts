@@ -75,6 +75,17 @@ describe('tabs store', () => {
     expect(total).toBeGreaterThanOrEqual(1)
   })
 
+  it('close(base-home) with preview present does NOT remove base pinned tab (invariant)', () => {
+    const store = useTabsStore()
+    // default state: tabs=[{value:'data-home'}], preview=null
+    expect(store.tabs.map(t => t.value)).toContain('data-home')
+    store.open('tenants') // sets preview → total views = 2
+    expect(store.preview?.value).toBe('tenants')
+    store.close('data-home') // must be refused — data-home is the sole pinned tab
+    expect(store.tabs.some(t => t.value === 'data-home')).toBe(true)
+    expect(store.tabs.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('recent deduplicates and caps at 8', () => {
     const store = useTabsStore()
     const values = ['buildings', 'tenants', 'contracts', 'ledger', 'bills',

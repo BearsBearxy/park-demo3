@@ -85,6 +85,10 @@ export const useTabsStore = defineStore('tabs', () => {
     ]
     if (order.length <= 1) return null // refuse: last view
 
+    // ponytail: guard the invariant — never remove the last pinned base tab
+    const isPinned = tabs.value.some(t => t.value === value)
+    if (isPinned && tabs.value.length <= 1) return null
+
     const i = order.indexOf(value)
     const neighbor = i >= 0 ? (order[i + 1] ?? order[i - 1] ?? null) : null
 
