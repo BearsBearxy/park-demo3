@@ -68,9 +68,14 @@ onMounted(async () => {
   month.value = overview.value.currentMonth || 1
 })
 
+// 竞态守卫:快速切月/期时只接受最新一次请求的结果(防乱序落表)
+let monthSeq = 0
 async function loadMonth() {
   if (year.value == null) return
-  monthData.value = await s10Api.getMonth(phase.value, year.value, month.value)
+  const seq = ++monthSeq
+  const data = await s10Api.getMonth(phase.value, year.value, month.value)
+  if (seq !== monthSeq) return
+  monthData.value = data
   dirty.clear()
 }
 async function reloadOverview() {
@@ -93,15 +98,13 @@ function goGate() {
 async function switchMonth(m: number) {
   if (m === month.value) return
   month.value = m
-  monthData.value = null
-  await loadMonth()
+  await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
 }
 async function switchPhase(v: string) {
   const p = parseInt(v, 10)
   if (p === phase.value) return
   phase.value = p
-  monthData.value = null
-  await loadMonth()
+  await loadMonth()   // 同上:不清空,避免整屏闪烁
 }
 
 // ── 编辑态:单元格 / 备注 / 名称 即时写回本地行（触发表内重算）+ 标脏 ──
