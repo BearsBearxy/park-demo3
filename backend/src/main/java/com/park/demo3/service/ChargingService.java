@@ -77,8 +77,9 @@ public class ChargingService {
         return new ChargingYearDTO(year, cats(scheduleNo), dtos, total(rows));
     }
 
-    // ── create(source=manual;路径附表与 body 不一致 → 409;cat 不存在 → 409) ──
+    // ── create(source=manual;附表号非法 → 404;路径附表与 body 不一致 → 409;cat 不存在 → 409) ──
     public ChargingRecordDTO create(int no, ChargingRecordReq req) {
+        if (no != 7 && no != 8) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
         if (req.scheduleNo() == null || req.scheduleNo() != no)
             throw new BizException(ResultCode.CONFLICT, "路径与记账附表不一致");
         ChargingCat cat = cats.selectBySchedule(req.scheduleNo()).stream()

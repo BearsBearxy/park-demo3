@@ -14,6 +14,7 @@ const PvView = () => import('@/views/pv/PvView.vue')
 const ChargingView = () => import('@/views/charging/ChargingView.vue')
 const SalaryView = () => import('@/views/salary/SalaryView.vue')
 const ElecView = () => import('@/views/elec/ElecView.vue')
+const UtilitiesView = () => import('@/views/utilities/UtilitiesView.vue')
 
 const navRoutes = fpBuildRoutes()
 
@@ -25,7 +26,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map(meta => ({
       path: `/${meta.value}`,
-      component: meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : PlaceholderView,
+      component: meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : PlaceholderView,
       meta,
     })),
   ],
