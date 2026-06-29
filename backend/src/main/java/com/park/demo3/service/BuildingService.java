@@ -97,9 +97,12 @@ public class BuildingService {
         List<BuildingDTO> all = list();
         int stopped = (int) all.stream().filter(d -> d.status()==0).count();
         BigDecimal rentable = all.stream().map(BuildingDTO::rentableArea).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal leased = all.stream().map(BuildingDTO::leasedArea).reduce(BigDecimal.ZERO, BigDecimal::add);
-        double occ = rentable.signum()==0 ? 0.0
-            : Math.min(100.0, leased.divide(rentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
+        // 占用率仅按启用楼栋(status!=0)计：与单楼栋 toDTO「停用即 occRate=0」口径一致，
+        // 否则停用楼栋的已租面积会进入全局分子分母，造成全局与单楼栋口径不一致
+        BigDecimal occRentable = all.stream().filter(d -> d.status()!=0).map(BuildingDTO::rentableArea).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal occLeased = all.stream().filter(d -> d.status()!=0).map(BuildingDTO::leasedArea).reduce(BigDecimal.ZERO, BigDecimal::add);
+        double occ = occRentable.signum()==0 ? 0.0
+            : Math.min(100.0, occLeased.divide(occRentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
                 .setScale(0,RoundingMode.HALF_UP).doubleValue()/10.0);
         int vacant = all.stream().mapToInt(BuildingDTO::vacantCount).sum();
         int unitCount = all.stream().mapToInt(BuildingDTO::unitCount).sum();

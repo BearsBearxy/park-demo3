@@ -4,10 +4,14 @@ import com.park.demo3.service.SalaryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "附表12 工资明细")
 @RestController
+@Validated
 @RequestMapping("/api/salary")
 public class SalaryController {
     private final SalaryService svc;
@@ -17,7 +21,8 @@ public class SalaryController {
     public SalaryOverviewDTO overview() { return svc.overview(); }
 
     @Operation(summary = "某年某月工资明细") @GetMapping("/records")
-    public SalaryYearMonthDTO records(@RequestParam int year, @RequestParam int month) {
+    public SalaryYearMonthDTO records(@RequestParam @Min(2000) @Max(2100) int year,
+                                      @RequestParam @Min(1) @Max(12) int month) {
         return svc.records(year, month);
     }
 

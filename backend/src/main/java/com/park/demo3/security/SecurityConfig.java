@@ -21,9 +21,10 @@ public class SecurityConfig {
             .cors(c -> {})
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
-                .requestMatchers("/api/auth/login", "/actuator/**",
+                // 仅放行存活/就绪探针；/actuator/metrics、/prometheus、health 详情不再匿名可见
+                .requestMatchers("/api/auth/login", "/actuator/health", "/actuator/health/**",
                                  "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                .requestMatchers("/api/**").authenticated()
+                .requestMatchers("/api/**", "/actuator/**").authenticated()
                 .anyRequest().permitAll())
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {

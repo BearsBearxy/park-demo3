@@ -70,6 +70,7 @@
   --hue-orange: oklch(0.70 0.105 62);
   --hue-red:    oklch(0.56 0.150 27);
   --hue-yellow: oklch(0.80 0.100 86);
+  --hue-green:  oklch(0.58 0.130 150);   /* 正向/已完成：区别于品牌蓝，涨跌走红绿直觉 */
 
   /* ---- Chart fill series ---- */
   --fill-slate: rgb(120, 140, 176);
@@ -85,7 +86,7 @@
   /* ---- Semantic aliases ---- */
   --text-primary:   var(--ink-900);
   --text-secondary: var(--ink-700);
-  --text-muted:     var(--ink-500);
+  --text-muted:     rgba(28, 28, 28, 0.62);  /* a11y: 提至 ~4.8:1 达 WCAG AA（原 ink-500=0.4 仅 2.5:1，用于12px表头/提示） */
   --text-disabled:  var(--ink-300);
   --text-on-solid:  rgb(255, 255, 255);
   --text-link:      var(--brand-accent);
@@ -103,14 +104,14 @@
   --control-solid-text: rgb(255, 255, 255);
   --control-soft:       var(--ink-040);
 
-  --status-success: var(--hue-blue);
+  --status-success: var(--hue-green);   /* 区别于 info(蓝)：已缴清/生效中/已完成 */
   --status-info:    var(--hue-blue);
   --status-pending: var(--hue-cyan);
   --status-warning: var(--hue-orange);
   --status-danger:  var(--hue-red);
   --status-neutral: var(--ink-500);
 
-  --delta-up:   var(--hue-blue);
+  --delta-up:   var(--hue-green);        /* 涨跌走红绿直觉，而非红蓝 */
   --delta-down: var(--hue-red);
 
   /* ---- Spacing scale ---- */

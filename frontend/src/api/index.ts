@@ -23,7 +23,11 @@ http.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('displayName')
-      window.location.href = '/login'
+      // 整页跳转让 Pinia auth store 从（已清空的）localStorage 重新初始化为 null；
+      // 带 redirect 以便登录后回到原页，且避免在登录页自身重复跳转
+      if (!location.pathname.startsWith('/login')) {
+        location.href = '/login?redirect=' + encodeURIComponent(location.pathname + location.search)
+      }
     }
     return Promise.reject(error)
   },

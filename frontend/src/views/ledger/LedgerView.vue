@@ -56,15 +56,22 @@ async function loadCompanies() {
 }
 
 // ── ① 载入概览 ───────────────────────────────────────────
+// requestId 守卫：快速切年/月/公司时，丢弃先发出但后到达的过期响应，避免覆盖当前选择
+let ovReq = 0
 async function loadOverview() {
   if (companyId.value == null) return
-  overview.value = await ledgerApi.overview(companyId.value, year.value)
+  const reqId = ++ovReq
+  const data = await ledgerApi.overview(companyId.value, year.value)
+  if (reqId === ovReq) overview.value = data
 }
 
 // ── ② 载入月度宽表 ───────────────────────────────────────
+let monthReq = 0
 async function loadMonth() {
   if (companyId.value == null || month.value == null) return
-  monthDto.value = await ledgerApi.month(companyId.value, year.value, month.value)
+  const reqId = ++monthReq
+  const data = await ledgerApi.month(companyId.value, year.value, month.value)
+  if (reqId === monthReq) monthDto.value = data
 }
 
 // ── 状态迁移 ─────────────────────────────────────────────

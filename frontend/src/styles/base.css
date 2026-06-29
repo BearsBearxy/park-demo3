@@ -38,6 +38,14 @@ img, svg {
   max-width: 100%;
 }
 
+/* 全局键盘焦点环：DS 控件统一只有鼠标 hover 反馈、缺 focus-visible，键盘用户看不到焦点。
+   :where() 零特异性，组件需要时可轻松覆盖。仅键盘聚焦时显示（鼠标点击不出现）。 */
+:where(button, a, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--hue-blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
 /* 列表/数据屏首次加载占位:数据就绪前显示居中转圈,避免先闪「空表/共0份/没有匹配」假空态 */
 .page-loading {
   flex: 1 1 auto;

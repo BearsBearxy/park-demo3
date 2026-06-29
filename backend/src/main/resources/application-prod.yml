@@ -1,3 +1,27 @@
+spring:
+  datasource:
+    password: ${DB_PASSWORD}     # prod 必须由环境提供，去除 root 默认回退
+
 app:
   jwt:
-    secret: ${JWT_SECRET}   # prod 必须由环境提供，缺失即 fail-fast（JwtUtil 校验）
+    secret: ${JWT_SECRET}        # prod 必须由环境提供，缺失即 fail-fast（JwtUtil 校验）
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}   # prod 必须给前端域名白名单，缺失即 fail-fast
+  admin:
+    password: ${ADMIN_PASSWORD}  # prod 必须由环境提供，启动时重置 admin 口令（消除 admin/admin123 默认）
+
+# 生产收紧可观测面与 API 文档暴露
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health        # 仅健康探针，移除 metrics/prometheus/info 的匿名暴露
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    enabled: false             # 关闭 OpenAPI/Swagger，避免公网暴露完整接口地图
+  swagger-ui:
+    enabled: false

@@ -41,6 +41,12 @@ describe('lgRecalc', () => {
     expect(row.balanceEnd).toBe(-200) // −100 + 500 − 600
   })
 
+  it('negative half-cent rounds away from zero (matches backend HALF_UP)', () => {
+    const row = blankRow({ totalCollected: 0.015 }) // balanceEnd = −0.015
+    lgRecalc(row)
+    expect(row.balanceEnd).toBe(-0.02) // HALF_UP 远离零，而非朴素 Math.round 的 −0.01
+  })
+
   it('all-empty row stays zero', () => {
     const row = blankRow()
     lgRecalc(row)

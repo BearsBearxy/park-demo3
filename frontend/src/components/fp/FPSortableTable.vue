@@ -1,14 +1,20 @@
 <script setup lang="ts">
-// ponytail: builds its own <table> matching DataTable's exact styles because DataTable
-// renders c.header via {{ }} text-interpolation (no VNode slot). Avoids touching DS.
-import { computed, h, defineComponent } from 'vue'
+// ponytail: 自建 <table>，表头用 Popover 排序触发器（需 VNode 表头，故不走纯文本插值的通用表格）
+import { computed, h, defineComponent, type VNode } from 'vue'
 import Popover from '@/components/ds/Popover.vue'
 import PopoverItem from '@/components/ds/PopoverItem.vue'
 import { fpSortRows } from './fpSort'
 import type { SortState, SortValue } from './fpSort'
-import type { DataColumn } from '@/components/ds/DataTable.vue'
 
-export interface SortableColumn extends Omit<DataColumn, 'sortable'> {
+// 列定义（原从已删除的 ds/DataTable.vue 导入；FPSortableTable 是唯一使用方，内联于此）
+export interface SortableColumn<Row = any> {
+  key: string
+  header: string
+  width?: number | string
+  align?: 'left' | 'center' | 'right'
+  mono?: boolean
+  wrap?: boolean
+  render?: (row: Row) => VNode | string
   sortValue?: SortValue
 }
 

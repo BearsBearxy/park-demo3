@@ -147,6 +147,27 @@ class PvApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(404));
     }
 
+    // ── validation: 非法 acctMonth 格式 → 400（验证 @Valid + @Pattern） ──
+    @Test
+    void create_invalidAcctMonthFormat_returns400() throws Exception {
+        String reqBody = "{\"phase\":\"p1\",\"acctMonth\":\"2027-13\",\"occurMonth\":\"2027-02\","
+                + "\"selfKwh\":1000,\"selfAmt\":900,\"gridKwh\":200,\"gridAmt\":90}";
+        mvc.perform(post("/api/pv/records").header("Authorization", auth())
+                .contentType("application/json").content(reqBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    // ── validation: 缺必填字段 → 400（验证 @NotBlank 触发与异常映射） ──
+    @Test
+    void create_missingAcctMonth_returns400() throws Exception {
+        String reqBody = "{\"phase\":\"p1\",\"occurMonth\":\"2027-02\",\"selfKwh\":1000}";
+        mvc.perform(post("/api/pv/records").header("Authorization", auth())
+                .contentType("application/json").content(reqBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
     // ── auth ──────────────────────────────────────────────────
     @Test
     void records_withoutToken_returns401() throws Exception {

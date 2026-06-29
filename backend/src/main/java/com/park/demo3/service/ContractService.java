@@ -5,6 +5,7 @@ import com.park.demo3.mapper.*;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -82,7 +83,7 @@ public class ContractService {
         int termMonths = (c.getStartDate() != null && c.getEndDate() != null)
             ? (int) ChronoUnit.MONTHS.between(c.getStartDate(), c.getEndDate()) : 0;
         Integer daysToEnd = c.getEndDate() != null
-            ? (int) ChronoUnit.DAYS.between(LocalDate.now(), c.getEndDate()) : null;
+            ? (int) ChronoUnit.DAYS.between(LocalDate.now(ZoneId.of("Asia/Shanghai")), c.getEndDate()) : null;
         String floorInfo = c.getUnitId() != null ? uFloor.getOrDefault(c.getUnitId(), "") : "";
         return new ContractDTO(
             c.getId(), c.getContractNo(),

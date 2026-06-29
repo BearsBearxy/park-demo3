@@ -138,6 +138,15 @@ class SalaryApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409));
     }
 
+    // ── validation: 越界 month → 400（验证 @Validated 参数校验 + 异常映射，否则会 500） ──
+    @Test
+    void records_invalidMonth_returns400() throws Exception {
+        mvc.perform(get("/api/salary/records").param("year", "2026").param("month", "13")
+                .header("Authorization", auth()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
     // ── auth ──
     @Test
     void records_withoutToken_returns401() throws Exception {

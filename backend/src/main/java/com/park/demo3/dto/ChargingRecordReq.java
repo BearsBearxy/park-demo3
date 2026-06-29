@@ -1,11 +1,12 @@
 package com.park.demo3.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
 public record ChargingRecordReq(
     @NotNull Integer scheduleNo,
     @NotBlank String cat,
-    @NotBlank String acctMonth,
+    @NotBlank @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])", message = "格式应为 YYYY-MM") String acctMonth,
     BigDecimal kwh,
     BigDecimal fee,
     BigDecimal cost,
