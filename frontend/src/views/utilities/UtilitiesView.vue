@@ -59,8 +59,13 @@ onMounted(async () => {
   overview.value = await utilitiesApi.overview()
 })
 
+// 竞态守卫:快速切子表时只接受最新一次请求的结果(防乱序落表)
+let yearSeq = 0
 async function loadYear(y: number) {
-  yearData.value = await utilitiesApi.records(no.value, y)
+  const seq = ++yearSeq
+  const data = await utilitiesApi.records(no.value, y)
+  if (seq !== yearSeq) return
+  yearData.value = data
 }
 async function reloadOverview() {
   overview.value = await utilitiesApi.overview()
@@ -90,8 +95,7 @@ async function switchTab(t: Tab) {
   if (t === tab.value) return
   tab.value = t
   if (year.value != null) {
-    yearData.value = null
-    await loadYear(year.value)
+    await loadYear(year.value)   // 不清空 yearData:避免整屏闪烁
   }
 }
 

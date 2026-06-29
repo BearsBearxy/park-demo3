@@ -41,8 +41,13 @@ onMounted(async () => {
   overview.value = await elecApi.overview()
 })
 
+// 竞态守卫:快速切类型时只接受最新一次请求的结果(防乱序落表)
+let yearSeq = 0
 async function loadYear(y: number) {
-  yearData.value = await elecApi.records(y, type.value)
+  const seq = ++yearSeq
+  const data = await elecApi.records(y, type.value)
+  if (seq !== yearSeq) return
+  yearData.value = data
 }
 async function reloadOverview() {
   overview.value = await elecApi.overview()
@@ -66,8 +71,7 @@ function goGate() {
 async function switchType(t: string) {
   if (t === type.value || year.value == null) return
   type.value = t as 'energy' | 'basic'
-  yearData.value = null
-  await loadYear(year.value)
+  await loadYear(year.value)   // 不清空 yearData:避免整屏闪烁
 }
 
 // 新增 / 删除 / 改备注后重载该年 + overview(jsx saveRecord/delRecord)

@@ -47,9 +47,14 @@ onMounted(async () => {
   overview.value = await salaryApi.overview()
 })
 
+// 竞态守卫:快速切月时只接受最新一次请求的结果(防乱序落表)
+let monthSeq = 0
 async function loadMonth() {
   if (year.value == null) return
-  monthData.value = await salaryApi.records(year.value, month.value)
+  const seq = ++monthSeq
+  const data = await salaryApi.records(year.value, month.value)
+  if (seq !== monthSeq) return
+  monthData.value = data
 }
 async function reloadOverview() {
   overview.value = await salaryApi.overview()
@@ -72,8 +77,7 @@ function goGate() {
 }
 async function pickMonth(m: number) {
   month.value = m
-  monthData.value = null
-  await loadMonth()
+  await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
 }
 
 // 新增 / 删除 / 改备注后重载该月 + overview(jsx saveRecord/delRecord)
