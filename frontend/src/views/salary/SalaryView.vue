@@ -136,6 +136,7 @@ async function onExport() {
       sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 先选择年份,再进入对应年度的逐月明细表"
       :years="yearCards"
       :current="overview.currentYear"
+      store-key="salary"
       footer="每个年份是一份独立的逐月工资台账;进入后在编辑模式下新增或导入。"
       @pick="pickYear"
     />

@@ -136,6 +136,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       :sub="sub + ' · 先选择年份,再进入对应年度的逐月台账'"
       :years="yearCards"
       :current="overview.currentYear"
+      :store-key="'charging-' + no"
       footer="每个年份是一份独立的逐月台账;进入后在编辑模式下新增或导入。"
       @pick="pickYear"
     />

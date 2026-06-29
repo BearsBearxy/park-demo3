@@ -121,6 +121,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       sub="逐月发电台账 · 自发自用、余电上网 · 先选择年份,再进入对应年度的逐月明细表"
       :years="yearCards"
       :current="overview.currentYear"
+      store-key="pv"
       footer="每个年份是一份独立的逐月发电台账;进入后在编辑模式下新增或导入。"
       @pick="pickYear"
     />

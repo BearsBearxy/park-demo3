@@ -53,7 +53,8 @@ public class SalaryService {
         int currentYear = maxDataYear == 0 ? upper - 1 : maxDataYear;     // 无数据 → 上界-1
 
         List<YearMeta> years = new ArrayList<>();
-        for (int y = BASE_YEAR; y <= upper; y++) {
+        int lo = Math.min(BASE_YEAR, byYear.keySet().stream().mapToInt(Integer::intValue).min().orElse(BASE_YEAR));
+        for (int y = lo; y <= upper; y++) {
             List<SalaryRecord> rows = byYear.get(y);
             if (rows == null || rows.isEmpty()) {
                 years.add(new YearMeta(y, false, 0, BigDecimal.ZERO.setScale(2), List.of()));

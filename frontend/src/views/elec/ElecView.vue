@@ -131,6 +131,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       sub="对外电费进项 · 电量电费(分时)+ 基本电费 · 先选择年份,再进入对应年度的逐月明细表"
       :years="yearCards"
       :current="overview.currentYear"
+      store-key="elec"
       footer="每个年份是一份独立的逐月电费台账;进入后在编辑模式下新增或导入。"
       @pick="pickYear"
     />
