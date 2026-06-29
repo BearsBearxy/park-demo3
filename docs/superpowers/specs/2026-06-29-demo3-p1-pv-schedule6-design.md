@@ -126,8 +126,8 @@ fee(电费总额) = self_amt + grid_amt
 
 ## 7. 种子(迁移 V6,确定性,源 `schedule6-data.js`)
 - **pv_phase 3 期**:`p1` 一期 B-G 座(简称 一期,online 2024-09,cost 6518271.85,capacity 2.055,capNote「1.725 + 0.33」,sort 1);`p2` 二期(二期,2025-06,6495227.93,3.04673,null,2);`p3` 三期(3、4 车间)(三期,2025-12,1773384.21,0.781685,null,3)。
-- **pv_record 26 条**(全量照搬 `schedule6-data.js` records,source=seed):一期 17 条(2024-09…2026-01)、二期 8 条(2025-06…2026-01)、三期 2 条(2025-12、2026-01),字段 phase/acctMonth/occurMonth/selfKwh/selfAmt/gridKwh/gridAmt 一一对应,note 空。
-- maxDataYear = 2026 → 年份范围 2024–2027,最新年 2026。
+- **pv_record 27 条**(全量照搬 `schedule6-data.js` records,source=seed):一期 17 条(2024-09…2026-01)、二期 8 条(2025-06…2026-01)、三期 2 条(2025-12、2026-01),字段 phase/acctMonth/occurMonth/selfKwh/selfAmt/gridKwh/gridAmt 一一对应,note 空。
+- maxDataYear = 2026 → 年份范围 2024–2027,最新年 2026;按记账年分布:2024=4 条、2025=20 条、2026=3 条。
 
 ---
 
