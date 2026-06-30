@@ -7,6 +7,7 @@ import { ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { cell, parsePaste, parseCSV } from '@/utils/importParse'
+import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
 
@@ -14,7 +15,10 @@ const props = withDefaults(defineProps<{
   title: string
   sub?: string
   templateCols: string[]
-  parseRow: (cells: string[], i: number) => ImportRec | null
+  // 给了 columnMap 即走「按表头名字匹配」(扛多行表头/前置分类列/合计备注列/顺序无关);否则走位置 parseRow
+  parseRow?: (cells: string[], i: number) => ImportRec | null
+  columnMap?: ColumnMapEntry[]
+  nameLabels?: string[]
   skipHeader?: boolean
 }>(), { skipHeader: true })
 
@@ -34,10 +38,18 @@ const inputRef = ref<HTMLInputElement | null>(null)
 // 二维单元格数组 → 业务记录
 function mapMatrix(matrix: string[][]) {
   if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; return }
+  // columnMap 模式:按表头名字匹配(自动定位表头行 / 忽略前置分类列与合计备注列 / 顺序无关)
+  if (props.columnMap) {
+    const { records: recs, error } = matchByHeader(matrix, props.columnMap, props.nameLabels ?? ['租户', '租户名称'])
+    if (error) { err.value = error; records.value = null; return }
+    if (!recs.length) { err.value = '已读取数据,但没识别到租户行。请确认含「租户」列且粘到了对应期的版面。'; records.value = null; return }
+    err.value = ''; records.value = recs; return
+  }
+  // 位置映射模式(parseRow):台账等用
   const body = props.skipHeader && matrix.length > 1 ? matrix.slice(1) : matrix
   const out: ImportRec[] = []
   body.forEach((cells, i) => {
-    try { const rec = props.parseRow(cells.map(cell), i); if (rec) out.push(rec) } catch { /* 跳过坏行 */ }
+    try { const rec = props.parseRow?.(cells.map(cell), i); if (rec) out.push(rec) } catch { /* 跳过坏行 */ }
   })
   if (!out.length) { err.value = '已读取数据,但没有一行能匹配模板列。请检查列顺序是否与下方模板一致。'; records.value = null; return }
   err.value = ''; records.value = out
@@ -115,13 +127,13 @@ function confirm() {
              @drop="onDrop">
           <span class="fpimp-drop-ic"><component :is="iconFor('upload-cloud')" :size="24" /></span>
           <span class="fpimp-drop-t">{{ fileName || '拖拽 Excel 到此,或点击选择' }}</span>
-          <span class="fpimp-drop-d">支持 .xlsx / .xls / .csv · 读取第一个工作表,首行视为表头</span>
+          <span class="fpimp-drop-d">{{ columnMap ? '支持 .xlsx/.xls/.csv · 自动识别表头行,前置分类列与合计·备注列自动忽略' : '支持 .xlsx / .xls / .csv · 读取第一个工作表,首行视为表头' }}</span>
           <input ref="inputRef" type="file" accept=".xlsx,.xls,.csv" style="display:none"
                  @change="handleFile(($event.target as HTMLInputElement).files?.[0])" />
         </div>
         <div v-else>
           <textarea class="fpimp-ta" v-model="paste"
-                    placeholder="在 Excel 中选中含数据的单元格 → 复制 → 粘贴到这里(每行一条,列以制表符分隔)。&#10;首行如为表头会自动跳过。" />
+                    :placeholder="columnMap ? '在 Excel 中选中(含表头的整块,可带车间分类列/合计·备注列)→ 复制 → 粘贴到这里。系统按表头名字自动识别列,多余列忽略。' : '在 Excel 中选中含数据的单元格 → 复制 → 粘贴到这里(每行一条,列以制表符分隔)。\n首行如为表头会自动跳过。'" />
           <div style="display:flex; justify-content:flex-end; margin-top:8px">
             <Button variant="gray" size="sm" @click="doPaste">
               <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>

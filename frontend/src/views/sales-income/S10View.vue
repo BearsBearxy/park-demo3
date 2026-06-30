@@ -194,24 +194,18 @@ async function onExport() {
 }
 
 // ── 导入 Excel ──────────────────────────────────────────
-// 数字清洗(同原型 s10Num):剥 ¥/,/%/空格,非数字 → 0。
-const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
-// 模板列:租户名称 + 当前版面叶子 label(office/factory 随 phase)
+// 模板列:租户名称 + 当前版面叶子 label(office/factory 随 phase) — 供 modal 显示模板列/预览表头
 const importCols = computed(() => ['租户名称', ...leaves.value.map(l => l.label)])
-// parseRow:cells[0]=租户名(空跳过);其余→当前版面叶子 colId;profile 默认 'factory'。
-function importParseRow(c: string[]): ImportRec | null {
-  const name = (c[0] || '').trim(); if (!name) return null
-  const fees: Record<string, number> = {}
-  leaves.value.forEach((l, i) => { fees[l.colId] = cleanNum(c[i + 1]) })
-  return { tenantName: name, profile: 'factory', ...fees, __preview: [name, ...leaves.value.map((_l, i) => cleanNum(c[i + 1]) || '')] }
-}
+// 列名映射:按表头叶子名字匹配(label→colId),扛多行表头/前置车间列/尾部合计备注列/列乱序
+const importColMap = computed(() => leaves.value.map(l => ({ label: l.label, key: l.colId })))
 async function onImport(recs: ImportRec[]) {
   if (year.value == null) return
   importing.value = false
   try {
-    const rows = recs as unknown as S10ImportRow[]
+    // columnMap 模式产出 {tenantName, ...fee};补 profile 默认 'factory'
+    const rows = recs.map(r => ({ profile: 'factory', ...r })) as unknown as S10ImportRow[]
     importResult.value = await s10Api.importRows({
       phase: phase.value,
       acctMonth: `${year.value}-${String(month.value).padStart(2, '0')}`,
@@ -341,9 +335,10 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
       <FpImportModal
         v-if="importing"
         :title="'导入 附表10 · ' + meta.name"
-        :sub="'列顺序 = 租户名称 + 本期各收款项目(共 ' + importCols.length + ' 列),导入到 ' + year + ' 年 ' + month + ' 月'"
+        :sub="'按表头列名自动匹配,导入到 ' + year + ' 年 ' + month + ' 月 · ' + meta.name + ' · 可整块复制(含车间列/合计·备注会自动忽略)'"
         :template-cols="importCols"
-        :parse-row="importParseRow"
+        :column-map="importColMap"
+        :name-labels="['租户名称', '租户']"
         @close="importing = false"
         @import="onImport"
       />
