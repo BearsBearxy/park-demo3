@@ -7,11 +7,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { utilitiesApi } from '@/api/utilities'
 import { exportUtilitiesYear } from '@/utils/utilitiesExcel'
-import type { OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq } from '@/types/utilities'
+import type { OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq, OfficeImportRow } from '@/types/utilities'
+import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
+import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import UtilitiesTable from './UtilitiesTable.vue'
 import UtilitiesRecordDrawer from './UtilitiesRecordDrawer.vue'
 
@@ -77,23 +80,94 @@ async function refresh() {
   await reloadOverview()
 }
 
+// ── 导入 Excel(按表头名字匹配,行身份=月份字符串) ──────────
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+// columnMap:UtilitiesTable 子列标签 → OfficeRecord 字段 key(月份走行身份自动识别;派生金额不入)。
+// 两处「基准单价」按单位后缀消歧(normalizeHeader 去括号/斜杠后仍区分 元千瓦 / 元吨)。
+const UTILITIES_COLUMN_MAP = [
+  { label: '用电量', key: 'elecQty' },
+  { label: '基准单价(元/千瓦)', key: 'elecPrice' },
+  { label: '用水量', key: 'waterQty' },
+  { label: '基准单价(元/吨)', key: 'waterPrice' },
+]
+const importCols = computed(() => ['月份', ...UTILITIES_COLUMN_MAP.map(c => c.label)])
+
+async function onImport(recs: ImportRec[]) {
+  importing.value = false
+  if (year.value == null) return
+  try {
+    const rows = recs as unknown as OfficeImportRow[]
+    const res = await utilitiesApi.importRows(no.value, year.value, { rows })
+    importResult.value = res
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 清空本期导入(本附表本年) ──────────────────────────────
+const importedCount = computed(() =>
+  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
+  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
+  try {
+    await utilitiesApi.clearImported(no.value, year.value)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
+  }
+}
+
+// ── 批量删除 ─────────────────────────────────────────────
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: OfficeRecordDTO) {
+  if (row.source === 'seed') return
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!yearData.value) return
+  const selectable = yearData.value.rows.filter(r => r.source !== 'seed')
+  selectedIds.value = checked ? new Set(selectable.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await utilitiesApi.batchDelete(ids)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
+}
+
 // ── 状态迁移 ─────────────────────────────────────────────
 async function pickYear(y: number) {
   year.value = y
   edit.value = false
   yearData.value = null
+  selectedIds.value = new Set()
   await loadYear(y)
 }
 function goGate() {
   year.value = null
   edit.value = false
   yearData.value = null
+  selectedIds.value = new Set()
 }
 
 // 切子表 → 用对应 no 重载当前年 records
 async function switchTab(t: Tab) {
   if (t === tab.value) return
   tab.value = t
+  selectedIds.value = new Set()
   if (year.value != null) {
     await loadYear(year.value)   // 不清空 yearData:避免整屏闪烁
   }
@@ -169,16 +243,21 @@ async function onExport() {
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <!-- 导入:禁用占位(导入即将上线) -->
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" :disabled="true">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增记账
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -214,9 +293,12 @@ async function onExport() {
           :rows="yearData.rows"
           :total="yearData.total"
           :edit="edit"
+          :selected-ids="selectedIds"
           @add="drawer = true"
           @delete="onDelete"
           @note="onNote"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -230,10 +312,23 @@ async function onExport() {
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="`导入 附表${no} · ${year}年${meta.name}`"
+        sub="上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入本年"
+        :template-cols="importCols"
+        :column-map="UTILITIES_COLUMN_MAP"
+        :name-labels="['月份', '所属月', '月']"
+        @close="importing = false"
+        @import="onImport"
+      />
     </template>
 
     <!-- 切年 / 切子表过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

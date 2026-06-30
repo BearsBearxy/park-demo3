@@ -6,12 +6,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { salaryApi } from '@/api/salary'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
-import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq } from '@/types/salary'
+import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq, SalaryImportRow } from '@/types/salary'
+import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
+import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SalaryTable from './SalaryTable.vue'
 import SalaryRecordDrawer from './SalaryRecordDrawer.vue'
 
@@ -65,6 +68,7 @@ async function pickYear(y: number) {
   year.value = y
   edit.value = false
   monthData.value = null
+  selectedIds.value = new Set()
   // 默认落到该年有数据的最大月,无则 1 月(零系统时钟)
   const ms = overview.value?.years.find(yr => yr.year === y)?.months ?? []
   month.value = ms.length ? ms[ms.length - 1] : 1
@@ -74,9 +78,11 @@ function goGate() {
   year.value = null
   edit.value = false
   monthData.value = null
+  selectedIds.value = new Set()
 }
 async function pickMonth(m: number) {
   month.value = m
+  selectedIds.value = new Set()
   await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
 }
 
@@ -84,6 +90,85 @@ async function pickMonth(m: number) {
 async function refresh() {
   await loadMonth()
   await reloadOverview()
+}
+
+// ── 导入 Excel(按表头名字匹配,行身份=姓名) ──────────────
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+// columnMap:SalaryTable 两级表头叶子标签 → SalaryRecord 字段 key(姓名走 nameLabels;派生列不入)
+// 注:role 是文本列,matchByHeader 对映射列一律 cleanNum 数字化 → 文本会变 0,故 role 不入 columnMap(导入默认 null)。
+const SALARY_COLUMN_MAP = [
+  { label: '基本', key: 'base' },
+  { label: '岗位', key: 'post' },
+  { label: '绩效奖金', key: 'perf' },
+  { label: '全勤奖', key: 'attend' },
+  { label: '技能津贴', key: 'skill' },
+  { label: '学历津贴', key: 'edu' },
+  { label: '其它津贴', key: 'other' },
+  { label: '午餐补助', key: 'lunch' },
+  { label: '高温及其他', key: 'heat' },
+  { label: '招商提成', key: 'commission' },
+  { label: '应出勤', key: 'shouldDays' },
+  { label: '请假', key: 'leaveDays' },
+  { label: '社保', key: 'social' },
+  { label: '上月个税', key: 'tax' },
+  { label: '其他', key: 'otherDeduct' },
+]
+const importCols = computed(() => ['姓名', ...SALARY_COLUMN_MAP.map(c => c.label)])
+
+async function onImport(recs: ImportRec[]) {
+  importing.value = false
+  if (year.value == null) return
+  try {
+    const rows = recs as unknown as SalaryImportRow[]
+    const res = await salaryApi.importRows(year.value, month.value, { rows })
+    importResult.value = res
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 清空本期导入 ─────────────────────────────────────────
+const importedCount = computed(() =>
+  (monthData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (importedCount.value === 0) { alert('本月没有导入的行。'); return }
+  if (!confirm(`确认清空本月 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
+  try {
+    await salaryApi.clearImported(year.value, month.value)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
+  }
+}
+
+// ── 批量删除 ─────────────────────────────────────────────
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: SalaryRecordDTO) {
+  if (row.source === 'seed') return
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!monthData.value) return
+  const selectable = monthData.value.rows.filter(r => r.source !== 'seed')
+  selectedIds.value = checked ? new Set(selectable.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await salaryApi.batchDelete(ids)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
 }
 
 async function onCreate(req: SalaryRecordReq) {
@@ -158,16 +243,21 @@ async function onExport() {
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <!-- 导入:禁用占位(导入即将上线) -->
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" :disabled="true">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增工资
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -194,9 +284,12 @@ async function onExport() {
           :rows="monthData.rows"
           :total="monthData.total"
           :edit="edit"
+          :selected-ids="selectedIds"
           @add="drawer = true"
           @delete="onDelete"
           @note="onNote"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -208,10 +301,23 @@ async function onExport() {
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="`导入 附表12 · ${year}年${month}月工资`"
+        sub="上传/粘贴工资表,系统按表头名字识别列、按姓名识别行,核对后导入本月"
+        :template-cols="importCols"
+        :column-map="SALARY_COLUMN_MAP"
+        :name-labels="['姓名']"
+        @close="importing = false"
+        @import="onImport"
+      />
     </template>
 
     <!-- 切年/切月过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

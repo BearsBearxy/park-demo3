@@ -1,6 +1,10 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.DeleteResultDTO;
+import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.OfficeImportRequest;
 import com.park.demo3.dto.OfficeOverviewDTO;
 import com.park.demo3.dto.OfficeOverviewDTO.YearMeta;
 import com.park.demo3.dto.OfficeRecordDTO;
@@ -15,6 +19,8 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,6 +91,74 @@ public class OfficeService {
         r.setSource("manual");
         records.insert(r);
         return toRecordDTO(records.selectById(r.getId()));
+    }
+
+    // ── import:重导=替换本(scheduleNo,year)导入行 —— 先删该附表该年 source='import' 行,再逐行 insert(source='import')。
+    //          行身份=月份字符串(tenantName):取其中 1-12 月号;无效/越界 → errors 跳过。
+    //          acctMonth=belongMonth=${year}-${MM}(月号补零);手动/种子行不动;scheduleNo 白名单 13/14。 ──
+    private static final Pattern NUM = Pattern.compile("\\d+");
+
+    @org.springframework.transaction.annotation.Transactional
+    public ImportResultDTO importRows(int scheduleNo, int year, OfficeImportRequest req) {
+        if (scheduleNo != 13 && scheduleNo != 14) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        records.deleteImported(scheduleNo, year);
+        int imported = 0;
+        List<ImportError> errors = new ArrayList<>();
+        List<OfficeImportRequest.Row> rows = req.rows();
+        for (int i = 0; i < rows.size(); i++) {
+            OfficeImportRequest.Row row = rows.get(i);
+            Integer mon = parseMonth(row.tenantName());
+            if (mon == null) {
+                errors.add(new ImportError(i, row.tenantName(), "无法识别月份(应为 1-12 月)"));
+                continue;
+            }
+            String belong = String.format("%04d-%02d", year, mon);
+            OfficeRecord r = new OfficeRecord();
+            r.setScheduleNo(scheduleNo);
+            r.setAcctMonth(belong);
+            r.setBelongMonth(belong);
+            r.setElecQty(r2(row.elecQty()));
+            r.setElecPrice(nz(row.elecPrice()).setScale(6, RoundingMode.HALF_UP));
+            r.setWaterQty(r2(row.waterQty()));
+            r.setWaterPrice(nz(row.waterPrice()).setScale(6, RoundingMode.HALF_UP));
+            r.setSource("import");
+            records.insert(r);
+            imported++;
+        }
+        return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    // 取月份字符串里第一个 1-12 的数字(如 "1月"→1、"01"→1、"2025-01"→1、"2025-1"→1);无则 null
+    private static Integer parseMonth(String s) {
+        if (s == null) return null;
+        Matcher m = NUM.matcher(s);
+        while (m.find()) {
+            int v = Integer.parseInt(m.group());
+            if (v >= 1 && v <= 12) return v;
+        }
+        return null;
+    }
+
+    // ── clearImported(scheduleNo,year):删本附表本年 source='import' 行,返回删除计数 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO clearImported(int scheduleNo, int year) {
+        if (scheduleNo != 13 && scheduleNo != 14) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        int deleted = records.deleteImported(scheduleNo, year);
+        return new DeleteResultDTO(deleted, 0);
+    }
+
+    // ── batchDelete(ids):按 id 删,source='seed' 跳过(skipped=种子数);不存在的 id 静默忽略 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO batchDelete(List<Long> ids) {
+        int deleted = 0, skipped = 0;
+        for (Long id : ids) {
+            OfficeRecord r = records.selectById(id);
+            if (r == null) continue;
+            if ("seed".equals(r.getSource())) { skipped++; continue; }
+            records.deleteById(id);
+            deleted++;
+        }
+        return new DeleteResultDTO(deleted, skipped);
     }
 
     // ── updateNote(no,id,note;不存在 / 不属本附表 → 404) ──

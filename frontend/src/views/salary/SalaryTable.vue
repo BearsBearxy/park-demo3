@@ -2,6 +2,7 @@
 // 附表12 逐月工资宽表 — 1:1 from screen-schedule12.jsx 表体段(385-505)。
 // 两级分组表头(月工资大类8 / 补贴2 / 招商提成 / 考勤4 / 应发 / 代缴代扣3 / 实发 / 签收 / 备注),
 // 序号+姓名 sticky 左列,组色带,全部派生列(后端下发,不重算),签收态,tfoot 合计,seed锁,手动角标。
+import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
@@ -13,15 +14,26 @@ const props = defineProps<{
   rows: SalaryRecordDTO[]
   total: SalaryTotal
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   'add': []
   'delete': [row: SalaryRecordDTO]
   'note': [row: SalaryRecordDTO, text: string]
+  // 批量删除选择(种子行不可选)
+  'toggleSelect': [row: SalaryRecordDTO]
+  'selectAll': [checked: boolean]
 }>()
 
 // 数字格式(1:1 from jsx wNum):空值显「—」
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// 可选(非种子)行 → 全选状态
+const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
+const allSelected = computed(() =>
+  selectableRows.value.length > 0 &&
+  selectableRows.value.every(r => props.selectedIds?.has(r.id)),
+)
 </script>
 
 <template>
@@ -41,7 +53,20 @@ const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
       <thead>
         <!-- 第一级:分组带(jsx 401-415) -->
         <tr class="g">
-          <th class="s12-sticky1" rowspan="2"><span style="font-size:11px">序号</span></th>
+          <th class="s12-sticky1" rowspan="2">
+            <span class="s12-idx-head">
+              <input
+                v-if="edit"
+                type="checkbox"
+                class="s12-cb"
+                :checked="allSelected"
+                :disabled="selectableRows.length === 0"
+                title="全选可删行"
+                @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+              />
+              <span style="font-size:11px">序号</span>
+            </span>
+          </th>
           <th class="s12-sticky2 l" rowspan="2"><span style="font-size:11px">姓名</span></th>
           <th class="l" rowspan="2"><span style="font-size:11px">职种/职务</span></th>
           <th class="s12-grp-wage" colspan="8">月工资大类</th>
@@ -78,7 +103,20 @@ const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
       </thead>
       <tbody>
         <tr v-for="(r, i) in rows" :key="r.id" class="s12-row">
-          <td class="s12-sticky1 c s12-c-idx">{{ i + 1 }}</td>
+          <td class="s12-sticky1 c s12-c-idx">
+            <span class="s12-idx-cell">
+              <input
+                v-if="edit"
+                type="checkbox"
+                class="s12-cb"
+                :checked="selectedIds?.has(r.id) ?? false"
+                :disabled="r.source === 'seed'"
+                title="选中以批量删除"
+                @change="emit('toggleSelect', r)"
+              />
+              <span>{{ i + 1 }}</span>
+            </span>
+          </td>
           <td class="s12-sticky2 l s12-c-name">
             {{ r.name }}<span v-if="r.source === 'manual'" class="s12-userbadge">手动</span>
           </td>
@@ -199,6 +237,9 @@ const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 .s12-table tbody td { border-bottom:1px solid var(--divider); }
 .s12-c-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .s12-c-idx { color:var(--text-muted); font-family:var(--font-mono); }
+.s12-idx-head, .s12-idx-cell { display:inline-flex; align-items:center; gap:6px; }
+.s12-cb { width:14px; height:14px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.s12-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s12-c-name { font-weight:var(--fw-medium); color:var(--text-primary); }
 .s12-c-role { color:var(--text-muted); font-size:12px; }
 .s12-c-muted { color:var(--text-muted); }

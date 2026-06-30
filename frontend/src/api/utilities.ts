@@ -1,7 +1,8 @@
 import http from './index'
 import type {
-  OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq,
+  OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq, OfficeImportRequest,
 } from '../types/utilities'
+import type { ImportResultDTO, DeleteResultDTO } from '../types/import'
 
 // paths per backend OfficeController:/api/utilities/...。http unwraps Result envelope.
 // overview 合并 13+14 两子表;records/create/updateNote/remove 带 no = schedule_no(13 办公 / 14 三期)。
@@ -14,4 +15,12 @@ export const utilitiesApi = {
   updateNote: (no: number, id: number, note: string | null): Promise<OfficeRecordDTO> =>
     http.patch(`/utilities/${no}/records/${id}/note`, { note }),
   remove: (no: number, id: number): Promise<void> => http.delete(`/utilities/${no}/records/${id}`),
+  // 导入:重导=替换本附表本年 source=import 行(行身份=月份字符串)。year 走 query。
+  importRows: (no: number, year: number, req: OfficeImportRequest): Promise<ImportResultDTO> =>
+    http.post(`/utilities/${no}/import`, req, { params: { year } }),
+  // 清空本附表本年导入:删本附表本年 source=import。
+  clearImported: (no: number, year: number): Promise<DeleteResultDTO> =>
+    http.delete(`/utilities/${no}/imported`, { params: { year } }),
+  // 批量删除:按 id 删,种子行跳过。
+  batchDelete: (ids: number[]): Promise<DeleteResultDTO> => http.delete('/utilities/batch', { data: { ids } }),
 }

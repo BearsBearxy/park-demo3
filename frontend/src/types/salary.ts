@@ -76,6 +76,31 @@ export interface SalaryYearMonthDTO {
   total: SalaryTotal
 }
 
+// POST /import body 行 — 行身份=姓名(tenantName);应发/实发/全勤派生不传。对齐后端 SalaryImportRequest.Row。
+export interface SalaryImportRow {
+  tenantName: string   // 姓名
+  role?: string | null
+  base?: number
+  post?: number
+  perf?: number
+  attend?: number
+  skill?: number
+  edu?: number
+  other?: number
+  lunch?: number
+  heat?: number
+  commission?: number
+  shouldDays?: number
+  leaveDays?: number
+  social?: number
+  tax?: number
+  otherDeduct?: number
+}
+
+export interface SalaryImportRequest {
+  rows: SalaryImportRow[]
+}
+
 // POST /records body — 新增工资(source=manual,派生列后端算)
 export interface SalaryRecordReq {
   acctMonth: string

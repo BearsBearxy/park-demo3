@@ -46,6 +46,20 @@ export interface OfficeYearDTO {
   total: OfficeTotal
 }
 
+// POST /{no}/import body 行 — 行身份=月份字符串(tenantName,如 "1月"/"01"/"2025-01");派生不传。
+// 对齐后端 OfficeImportRequest.Row。
+export interface OfficeImportRow {
+  tenantName: string   // 月份字符串
+  elecQty?: number
+  elecPrice?: number
+  waterQty?: number
+  waterPrice?: number
+}
+
+export interface OfficeImportRequest {
+  rows: OfficeImportRow[]
+}
+
 // POST /records body — 新增记账(source=manual,派生列后端算)
 export interface OfficeRecordReq {
   scheduleNo: number

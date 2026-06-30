@@ -4,10 +4,14 @@ import com.park.demo3.service.OfficeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "附表13/14 办公·三期水电")
 @RestController
+@Validated
 @RequestMapping("/api/utilities")
 public class OfficeController {
     private final OfficeService svc;
@@ -29,4 +33,22 @@ public class OfficeController {
 
     @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/{no}/records/{id}")
     public void delete(@PathVariable int no, @PathVariable Integer id) { svc.delete(no, id); }
+
+    @Operation(summary = "批量导入（按月份;重导=替换本附表本年 source=import 行；附表号非法 404）") @PostMapping("/{no}/import")
+    public ImportResultDTO importRows(@PathVariable int no,
+                                      @RequestParam @Min(2000) @Max(2100) int year,
+                                      @Valid @RequestBody OfficeImportRequest req) {
+        return svc.importRows(no, year, req);
+    }
+
+    @Operation(summary = "清空本期导入行（删本附表本年 source=import）") @DeleteMapping("/{no}/imported")
+    public DeleteResultDTO clearImported(@PathVariable int no,
+                                         @RequestParam @Min(2000) @Max(2100) int year) {
+        return svc.clearImported(no, year);
+    }
+
+    @Operation(summary = "批量删除（按 id；seed 种子跳过计入 skipped）") @DeleteMapping("/batch")
+    public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
+        return svc.batchDelete(req.ids());
+    }
 }

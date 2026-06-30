@@ -15,4 +15,11 @@ public interface OfficeRecordMapper extends BaseMapper<OfficeRecord> {
             .likeRight("acct_month", year + "-")
             .orderByAsc("acct_month").orderByAsc("id"));
     }
+    // 删某附表某年(acct_month 前缀 year-)的 source='import' 行(重导替换 / 清空本期导入);返回删除行数
+    default int deleteImported(int scheduleNo, int year) {
+        return delete(new QueryWrapper<OfficeRecord>()
+            .eq("schedule_no", scheduleNo)
+            .likeRight("acct_month", year + "-")
+            .eq("source", "import"));
+    }
 }

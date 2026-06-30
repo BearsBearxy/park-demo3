@@ -2,6 +2,7 @@
 // 附表13/14 逐月水电台账表 — 1:1 from screen-utilities.jsx 表体(363-434)。flat 逐月,无分组。
 // 两行表头:大类(电费/水费)跨3列 + 子列(用电量·基准单价·电费金额 / 用水量·基准单价·水费金额)。
 // 列:记账月·所属月·用电量·基准电价·电费金额〔派生〕·用水量·基准水价·水费金额〔派生〕·水电费合计〔派生〕·备注·[编辑态]删除。
+import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
 import Button from '@/components/ds/Button.vue'
@@ -15,12 +16,23 @@ const props = defineProps<{
   rows: OfficeRecordDTO[]
   total: OfficeTotal
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   add: []
   delete: [row: OfficeRecordDTO]
   note: [row: OfficeRecordDTO, text: string]
+  // 批量删除选择(种子行不可选)
+  toggleSelect: [row: OfficeRecordDTO]
+  selectAll: [checked: boolean]
 }>()
+
+// 可选(非种子)行 → 全选状态
+const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
+const allSelected = computed(() =>
+  selectableRows.value.length > 0 &&
+  selectableRows.value.every(r => props.selectedIds?.has(r.id)),
+)
 
 // 工具 1:1 from jsx utMLabel/utNum
 function mLabel(s: string): string {
@@ -49,7 +61,22 @@ const num = (n: number, d = 2) =>
     <table v-else class="ut-table">
       <thead>
         <tr class="g">
-          <th class="l" rowspan="2"><span class="ut-th l"><span class="ut-th-name">记账月</span></span></th>
+          <th class="l" rowspan="2">
+            <span class="ut-th l">
+              <span class="ut-acct-head">
+                <input
+                  v-if="edit"
+                  type="checkbox"
+                  class="ut-cb"
+                  :checked="allSelected"
+                  :disabled="selectableRows.length === 0"
+                  title="全选可删行"
+                  @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="ut-th-name">记账月</span>
+              </span>
+            </span>
+          </th>
           <th class="l" rowspan="2"><span class="ut-th l"><span class="ut-th-name">所属月</span></span></th>
           <th class="ut-grp-elec ut-cap" colspan="3">电费</th>
           <th class="ut-grp-water ut-cap" colspan="3">水费</th>
@@ -69,8 +96,19 @@ const num = (n: number, d = 2) =>
       <tbody>
         <tr v-for="r in props.rows" :key="r.id" class="ut-row">
           <td class="l ut-c-acct">
-            {{ mLabel(r.acctMonth) }}
-            <span v-if="r.source === 'manual'" class="ut-userbadge">手动</span>
+            <span class="ut-acct-cell">
+              <input
+                v-if="edit"
+                type="checkbox"
+                class="ut-cb"
+                :checked="selectedIds?.has(r.id) ?? false"
+                :disabled="r.source === 'seed'"
+                title="选中以批量删除"
+                @change="emit('toggleSelect', r)"
+              />
+              <span>{{ mLabel(r.acctMonth) }}</span>
+              <span v-if="r.source === 'manual'" class="ut-userbadge">手动</span>
+            </span>
           </td>
           <td class="l ut-c-belong">{{ mLabel(r.belongMonth) }}</td>
           <td class="ut-c-num ut-c-qty ut-cap-cell">{{ num(r.elecQty, 0) }}</td>
@@ -150,6 +188,9 @@ const num = (n: number, d = 2) =>
 
 .ut-row td { background:var(--surface-white); }
 .ut-row:hover td { background:var(--surface-card); }
+.ut-acct-head, .ut-acct-cell { display:inline-flex; align-items:center; gap:7px; }
+.ut-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.ut-cb:disabled { cursor:not-allowed; opacity:.4; }
 .ut-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); }
 .ut-acts { display:inline-flex; justify-content:flex-end; opacity:0; }
 .ut-row:hover .ut-acts { opacity:1; }

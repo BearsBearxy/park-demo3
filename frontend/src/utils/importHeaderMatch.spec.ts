@@ -77,4 +77,22 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
     expect(normalizeHeader('土地使用税、房产税')).toBe('土地使用税房产税')
     expect(normalizeHeader(' 厂房 租金 ')).toBe('厂房租金')
   })
+
+  // 关键列为纯数字(如办公水电的月份"1"/"2") → 数据内容法找不到,须按 nameLabels 表头定位
+  it('纯数字关键列按 nameLabels 表头定位(办公水电月份)', () => {
+    const COLS2: ColumnMapEntry[] = [
+      { label: '用电量', key: 'elecQty' },
+      { label: '用水量', key: 'waterQty' },
+    ]
+    const m: string[][] = [
+      cols(['月份', '用电量', '用水量']),
+      cols(['1', '3000', '50']),
+      cols(['2', '3200', '55']),
+      cols(['合计', '6200', '105']),
+    ]
+    const { records, error } = matchByHeader(m, COLS2, ['月份', '所属月'])
+    expect(error).toBeUndefined()
+    expect(records.map(r => r.tenantName)).toEqual(['1', '2']) // 月份列(纯数字)被正确识别,合计行跳过
+    expect(records[0].elecQty).toBe(3000)
+  })
 })

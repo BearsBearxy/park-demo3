@@ -36,4 +36,22 @@ public class SalaryController {
 
     @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/records/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
+
+    @Operation(summary = "批量导入（重导=替换本月 source=import 行；行身份=姓名）") @PostMapping("/import")
+    public ImportResultDTO importRows(@RequestParam @Min(2000) @Max(2100) int year,
+                                      @RequestParam @Min(1) @Max(12) int month,
+                                      @Valid @RequestBody SalaryImportRequest req) {
+        return svc.importRows(year, month, req);
+    }
+
+    @Operation(summary = "清空本期导入行（删 acct_month·source=import）") @DeleteMapping("/imported")
+    public DeleteResultDTO clearImported(@RequestParam @Min(2000) @Max(2100) int year,
+                                         @RequestParam @Min(1) @Max(12) int month) {
+        return svc.clearImported(year, month);
+    }
+
+    @Operation(summary = "批量删除（按 id；seed 种子跳过计入 skipped）") @DeleteMapping("/batch")
+    public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
+        return svc.batchDelete(req.ids());
+    }
 }

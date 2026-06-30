@@ -10,4 +10,10 @@ public interface SalaryRecordMapper extends BaseMapper<SalaryRecord> {
             .eq("acct_month", acctMonth)
             .last("ORDER BY (emp_idx = 0), emp_idx, name"));
     }
+    // 删某 acct_month 的 source='import' 行(重导替换 / 清空本期导入用);返回删除行数
+    default int deleteImported(String acctMonth) {
+        return delete(new QueryWrapper<SalaryRecord>()
+            .eq("acct_month", acctMonth)
+            .eq("source", "import"));
+    }
 }

@@ -64,21 +64,36 @@ export function matchByHeader(
     return { records: [], error: '无法识别表头:列名与本期版面不匹配。请确认粘到了对应期的版面。' }
   }
 
-  // 3) 租户列 = 非费用列里、数据行"文本(非数字/非空/非小计)"最多的列
+  // 3) 关键列(行身份:租户/姓名/月份…) 定位:
+  //    ① 先按 nameLabels 表头匹配,且该列数据多为非空 → 用它(让"月份"等可能为纯数字的关键列也能定位);
+  //    ② 否则按"非费用列里数据行文本(非数字/非空/非小计)最多"兜底(扛"租户表头在别行、数据租户不在表头列"如附表10二期)。
   const dataRows = matrix.slice(headerEnd + 1)
+  const nameSet = new Set(nameLabels.map(normalizeHeader))
   let nameCol = -1
-  let bestText = 0
-  for (let c = 0; c < width; c++) {
-    if (colKey.has(c)) continue
-    let t = 0
-    for (const row of dataRows) {
-      const v = String(row[c] ?? '').trim()
-      if (v && !isNumericOrBlank(v) && !isSubtotal(v)) t++
+  if (nameSet.size) {
+    for (let c = 0; c < width; c++) {
+      if (colKey.has(c)) continue
+      let headerHit = false
+      for (let r = 0; r <= headerEnd; r++) { if (nameSet.has(normalizeHeader(matrix[r]?.[c]))) { headerHit = true; break } }
+      if (!headerHit) continue
+      const nonEmpty = dataRows.filter(row => { const v = String(row[c] ?? '').trim(); return v !== '' && !isSubtotal(v) }).length
+      if (nonEmpty >= Math.max(1, Math.ceil(dataRows.length * 0.5))) { nameCol = c; break }
     }
-    if (t > bestText) { bestText = t; nameCol = c }
   }
-  if (nameCol < 0 || bestText === 0) {
-    return { records: [], error: '未找到租户列:未能在数据中识别出租户名称列。请确认粘贴内容含一列租户名。' }
+  if (nameCol < 0) {
+    let bestText = 0
+    for (let c = 0; c < width; c++) {
+      if (colKey.has(c)) continue
+      let t = 0
+      for (const row of dataRows) {
+        const v = String(row[c] ?? '').trim()
+        if (v && !isNumericOrBlank(v) && !isSubtotal(v)) t++
+      }
+      if (t > bestText) { bestText = t; nameCol = c }
+    }
+  }
+  if (nameCol < 0) {
+    return { records: [], error: '未找到关键列(租户/姓名/月份):请确认表头含该列、且其下有数据。' }
   }
 
   // 4) 数据行 → 记录(跳过租户列空/小计行;未命中列忽略)
