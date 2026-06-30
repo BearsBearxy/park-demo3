@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.S10ImportRequest;
@@ -140,9 +141,11 @@ public class S10Service {
         return toRecordDTO(records.selectById(r.getId()));
     }
 
-    // ── import:逐行按 (phase,acctMonth,tenantName) upsert;新行 source='import'、tenant_id=null(软引用) ──
+    // ── import:重导=替换本槽导入行 —— 先删该 (phase,acctMonth) 的 source='import' 行,再把 rows 全部 insert ──
+    //          (source='manual'/'seed' 手动行不动;新行 source='import'、tenant_id=null 软引用) ──
     @org.springframework.transaction.annotation.Transactional
     public ImportResultDTO importRows(S10ImportRequest req) {
+        records.deleteImported(req.phase(), req.acctMonth());
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
         List<S10ImportRequest.Row> rows = req.rows();
@@ -153,22 +156,39 @@ public class S10Service {
                 errors.add(new ImportError(i, row.tenantName(), "租户名称为空"));
                 continue;
             }
-            S10Record r = records.selectBySlotTenant(req.phase(), req.acctMonth(), name);
-            boolean isNew = r == null;
-            if (isNew) {
-                r = new S10Record();
-                r.setPhase(req.phase());
-                r.setAcctMonth(req.acctMonth());
-                r.setTenantName(name);
-                r.setTenantId(null);          // 软引用:导入不解析 FK
-                r.setSource("import");
-            }
+            S10Record r = new S10Record();
+            r.setPhase(req.phase());
+            r.setAcctMonth(req.acctMonth());
+            r.setTenantName(name);
+            r.setTenantId(null);          // 软引用:导入不解析 FK
+            r.setSource("import");
             r.setProfile(row.profile());
             for (Col c : COLS) c.set().accept(r, r2(c.imp().apply(row)));
-            if (isNew) records.insert(r); else records.updateById(r);
+            records.insert(r);
             imported++;
         }
         return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    // ── clearImported(phase,acctMonth):删本槽 source='import' 行,返回删除计数 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO clearImported(int phase, String acctMonth) {
+        int deleted = records.deleteImported(phase, acctMonth);
+        return new DeleteResultDTO(deleted, 0);
+    }
+
+    // ── batchDelete(ids):按 id 删,source='seed' 跳过(skipped=种子数);不存在的 id 静默忽略 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO batchDelete(List<Long> ids) {
+        int deleted = 0, skipped = 0;
+        for (Long id : ids) {
+            S10Record r = records.selectById(id);
+            if (r == null) continue;
+            if ("seed".equals(r.getSource())) { skipped++; continue; }
+            records.deleteById(id);
+            deleted++;
+        }
+        return new DeleteResultDTO(deleted, skipped);
     }
 
     // ── updateNote(id,note;不存在 → 404) ──

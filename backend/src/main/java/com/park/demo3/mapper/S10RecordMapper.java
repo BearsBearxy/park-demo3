@@ -18,4 +18,11 @@ public interface S10RecordMapper extends BaseMapper<S10Record> {
             .eq("acct_month", acctMonth)
             .eq("tenant_name", tenantName));
     }
+    // 删某 (phase, acct_month) 的 source='import' 行(重导替换 / 清空本期导入用);返回删除行数
+    default int deleteImported(int phase, String acctMonth) {
+        return delete(new QueryWrapper<S10Record>()
+            .eq("phase", phase)
+            .eq("acct_month", acctMonth)
+            .eq("source", "import"));
+    }
 }

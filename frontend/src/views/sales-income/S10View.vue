@@ -18,6 +18,7 @@ import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import S10Table from './S10Table.vue'
 import S10RecordDrawer from './S10RecordDrawer.vue'
 
@@ -101,12 +102,14 @@ function goGate() {
 async function switchMonth(m: number) {
   if (m === month.value) return
   month.value = m
+  selectedIds.value = new Set()
   await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
 }
 async function switchPhase(v: string) {
   const p = parseInt(v, 10)
   if (p === phase.value) return
   phase.value = p
+  selectedIds.value = new Set()
   await loadMonth()   // 同上:不清空,避免整屏闪烁
 }
 
@@ -138,10 +141,19 @@ function toReq(row: S10RecordDTO): S10RecordReq {
   return req
 }
 
-// 完成编辑:把脏行 upsert 回后端,然后重载
-async function finishEdit() {
+// 退出编辑:有脏行先弹保存确认;无改动直接退出
+const saveConfirm = ref(false)
+function finishEdit() {
   if (!edit.value) { edit.value = true; return }
+  if (dirty.size > 0) { saveConfirm.value = true; return }
   edit.value = false
+}
+
+// 保存修改:脏行逐个 upsert + 退出
+async function onSaveChanges() {
+  saveConfirm.value = false
+  edit.value = false
+  selectedIds.value = new Set()
   if (dirty.size === 0 || !monthData.value) return
   try {
     const rows = monthData.value.rows.filter(r => dirty.has(r.id))
@@ -151,6 +163,14 @@ async function finishEdit() {
   } catch (e) {
     alert((e as { message?: string })?.message ?? '保存失败')
   }
+}
+
+// 放弃修改:重载丢弃本地改动 + 退出
+async function onDiscardChanges() {
+  saveConfirm.value = false
+  edit.value = false
+  selectedIds.value = new Set()
+  await loadMonth()
 }
 
 // 新增租户:POST（tenantId 空、source 后端定 manual）
@@ -193,28 +213,95 @@ async function onExport() {
   }
 }
 
-// ── 导入 Excel ──────────────────────────────────────────
+// ── 智能整表导入 Excel ──────────────────────────────────
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
-// 模板列:租户名称 + 当前版面叶子 label(office/factory 随 phase) — 供 modal 显示模板列/预览表头
+const importSummary = ref('')   // 各段年月期·导入/跳过/错误 文本
+// 模板列(仅展示用,智能模式由 ImportSummary 替代):租户名称 + 当前版面叶子 label
 const importCols = computed(() => ['租户名称', ...leaves.value.map(l => l.label)])
-// 列名映射:按表头叶子名字匹配(label→colId),扛多行表头/前置车间列/尾部合计备注列/列乱序
-const importColMap = computed(() => leaves.value.map(l => ({ label: l.label, key: l.colId })))
-async function onImport(recs: ImportRec[]) {
-  if (year.value == null) return
+// 两套版面 columnMap(office/factory)— 供 splitSections 按版面取列
+const phaseLayoutsCol = computed(() => ({
+  office: leavesOf('office').map(l => ({ label: l.label, key: l.colId })),
+  factory: leavesOf('factory').map(l => ({ label: l.label, key: l.colId })),
+}))
+
+const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
+
+// 逐段 importRows,聚合结果,跳转第一段成功槽
+async function onSmartImport(
+  picks: { year: number; month: number; phase: number; records: ImportRec[] }[],
+) {
   importing.value = false
+  let imported = 0, skipped = 0
+  const errors: ImportResultDTO['errors'] = []
+  const lines: string[] = []
+  let first: { year: number; month: number; phase: number } | null = null
   try {
-    // columnMap 模式产出 {tenantName, ...fee};补 profile 默认 'factory'
-    const rows = recs.map(r => ({ profile: 'factory', ...r })) as unknown as S10ImportRow[]
-    importResult.value = await s10Api.importRows({
-      phase: phase.value,
-      acctMonth: `${year.value}-${String(month.value).padStart(2, '0')}`,
-      rows,
-    })
+    for (const p of picks) {
+      const acctMonth = `${p.year}-${String(p.month).padStart(2, '0')}`
+      // profile 按本段 phase 的版面派生(office/factory),比恒 'factory' 准;profile 仅列门控占位,真实显示由 phase 决定
+      const rows = p.records.map(r => ({ profile: PHASE_LAYOUT[p.phase], ...r })) as unknown as S10ImportRow[]
+      const res = await s10Api.importRows({ phase: p.phase, acctMonth, rows })
+      imported += res.imported; skipped += res.skipped; errors.push(...res.errors)
+      lines.push(`${p.year}年${p.month}月·${ZH_PHASE[p.phase]}:导入 ${res.imported} / 跳过 ${res.skipped}${res.errors.length ? ' / 错误 ' + res.errors.length : ''}`)
+      if (!first) first = { year: p.year, month: p.month, phase: p.phase }
+    }
+    importResult.value = { imported, skipped, errors }
+    importSummary.value = lines.join('\n')
+    // 跳转第一段成功槽
+    if (first) {
+      year.value = first.year
+      month.value = first.month
+      phase.value = first.phase
+      await reloadOverview()
+      await loadMonth()
+    }
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 批量删除 ────────────────────────────────────────────
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: S10RecordDTO) {
+  if (row.source === 'seed') return
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!monthData.value) return
+  const selectable = monthData.value.rows.filter(r => r.source !== 'seed')
+  selectedIds.value = checked ? new Set(selectable.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await s10Api.batchDelete(ids)
+    selectedIds.value = new Set()
     await loadMonth()
     await reloadOverview()
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
+}
+
+// 本期导入行数(source='import')
+const importedCount = computed(() =>
+  (monthData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (importedCount.value === 0) { alert('本期没有导入的行。'); return }
+  if (!confirm(`确认清空本期 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
+  try {
+    await s10Api.clearImported(phase.value, `${year.value}-${String(month.value).padStart(2, '0')}`)
+    selectedIds.value = new Set()
+    await loadMonth()
+    await reloadOverview()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
   }
 }
 
@@ -264,6 +351,14 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增租户
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -315,12 +410,15 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
           :month="month"
           :rows="monthData.rows"
           :edit="edit"
+          :selected-ids="selectedIds"
           @add="drawer = true"
           @edit="edit = true"
           @delete="onDelete"
           @cell="onCell"
           @note="onNoteEdit"
           @name="onNameEdit"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -334,20 +432,31 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
 
       <FpImportModal
         v-if="importing"
-        :title="'导入 附表10 · ' + meta.name"
-        :sub="'按表头列名自动匹配,导入到 ' + year + ' 年 ' + month + ' 月 · ' + meta.name + ' · 可整块复制(含车间列/合计·备注会自动忽略)'"
+        :title="'导入 附表10 · 智能整表'"
+        :sub="'上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入'"
         :template-cols="importCols"
-        :column-map="importColMap"
+        :phase-layouts="phaseLayoutsCol"
         :name-labels="['租户名称', '租户']"
+        :default-year="year"
+        :default-month="month"
+        :default-phase="phase"
         @close="importing = false"
-        @import="onImport"
+        @import-sections="onSmartImport"
+      />
+
+      <SaveConfirmDialog
+        v-if="saveConfirm"
+        :count="dirty.size"
+        @save="onSaveChanges"
+        @discard="onDiscardChanges"
+        @close="saveConfirm = false"
       />
     </template>
 
     <!-- 切年/月/期过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
-    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <ImportResultToast v-if="importResult" :result="importResult" :summary="importSummary" @close="importResult = null; importSummary = ''" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

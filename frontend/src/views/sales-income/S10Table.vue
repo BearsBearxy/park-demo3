@@ -15,6 +15,7 @@ const props = defineProps<{
   month: number
   rows: S10RecordDTO[]
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   add: []
@@ -24,7 +25,17 @@ const emit = defineEmits<{
   cell: [row: S10RecordDTO, colId: S10ColId, value: number]
   note: [row: S10RecordDTO, value: string]
   name: [row: S10RecordDTO, value: string]
+  // 批量删除选择(种子行不可选)
+  toggleSelect: [row: S10RecordDTO]
+  selectAll: [checked: boolean]
 }>()
+
+// 可选(非种子)行 → 全选状态
+const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
+const allSelected = computed(() =>
+  selectableRows.value.length > 0 &&
+  selectableRows.value.every(r => props.selectedIds?.has(r.id)),
+)
 
 // 组（带 MON→月份替换）+ 展平叶子（顺序 = 列序）
 const groups = computed(() => LAYOUTS[props.layout])
@@ -65,7 +76,20 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
       <thead>
         <!-- 第一行:租户 + 组（leaf 组跨两行）+ 备注 + 合计 -->
         <tr>
-          <th class="s10-h-name" rowspan="2">租户</th>
+          <th class="s10-h-name" rowspan="2">
+            <span class="s10-name-inner">
+              <input
+                v-if="edit"
+                type="checkbox"
+                class="s10-cb"
+                :checked="allSelected"
+                :disabled="selectableRows.length === 0"
+                title="全选可删行"
+                @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+              />
+              <span>租户</span>
+            </span>
+          </th>
           <template v-for="(g, gi) in groups" :key="gi">
             <th
               v-if="g.label === undefined"
@@ -95,6 +119,15 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
         <tr v-for="r in props.rows" :key="r.id" class="s10-row">
           <td class="s10-c-name">
             <span class="s10-name-inner">
+              <input
+                v-if="edit"
+                type="checkbox"
+                class="s10-cb"
+                :checked="selectedIds?.has(r.id) ?? false"
+                :disabled="r.source === 'seed'"
+                title="选中以批量删除"
+                @change="emit('toggleSelect', r)"
+              />
               <input
                 v-if="edit && r.source !== 'seed'"
                 class="s10-input name"
@@ -199,6 +232,8 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-row:hover .s10-c-name, .s10-row:hover .s10-c-total { background:var(--surface-card); }
 
 .s10-name-inner { display:flex; align-items:center; gap:8px; }
+.s10-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.s10-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; }
 .s10-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); flex:0 0 auto; }
 .s10-del { width:24px; height:24px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; flex:0 0 auto; margin-left:auto; opacity:0; }

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,4 +41,16 @@ public class S10Controller {
 
     @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) { svc.delete(id); }
+
+    @Operation(summary = "清空本期导入行（删 phase·记账月·source=import）") @DeleteMapping("/imported")
+    public DeleteResultDTO clearImported(
+            @RequestParam @Min(1) @Max(4) int phase,
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])", message = "格式应为 YYYY-MM") String acctMonth) {
+        return svc.clearImported(phase, acctMonth);
+    }
+
+    @Operation(summary = "批量删除（按 id；seed 种子跳过计入 skipped）") @DeleteMapping("/batch")
+    public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
+        return svc.batchDelete(req.ids());
+    }
 }

@@ -5,7 +5,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import type { ImportResultDTO } from '@/types/import'
 
-defineProps<{ result: ImportResultDTO }>()
+// summary: 智能整表多段导入时,各段「年月期·导入/跳过/错误」一行一段
+defineProps<{ result: ImportResultDTO; summary?: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const showErrors = ref(false)
@@ -23,6 +24,9 @@ const showErrors = ref(false)
       <div class="ir-stats">
         <div class="ir-stat ok"><b>{{ result.imported }}</b><span>成功写入</span></div>
         <div class="ir-stat" :class="{ warn: result.skipped > 0 }"><b>{{ result.skipped }}</b><span>跳过</span></div>
+      </div>
+      <div v-if="summary" class="ir-summary">
+        <div v-for="(ln, i) in summary.split('\n')" :key="i" class="ir-summary-line">{{ ln }}</div>
       </div>
       <div v-if="result.errors.length" class="ir-errs">
         <button class="ir-errs-toggle" @click="showErrors = !showErrors">
@@ -60,6 +64,9 @@ const showErrors = ref(false)
 .ir-stat span { font-size:11.5px; color:var(--text-muted); }
 .ir-stat.ok b { color:var(--hue-blue); }
 .ir-stat.warn b { color:var(--hue-orange); }
+
+.ir-summary { margin:12px 20px 0; padding:8px 12px; background:var(--surface-card); border-radius:var(--radius-md); display:flex; flex-direction:column; gap:3px; }
+.ir-summary-line { font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); }
 
 .ir-errs { padding:12px 20px 0; }
 .ir-errs-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:6px 0; }

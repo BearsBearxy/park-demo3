@@ -8,6 +8,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { cell, parsePaste, parseCSV } from '@/utils/importParse'
 import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
+import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSections'
+import ImportSummary from './ImportSummary.vue'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
 
@@ -20,12 +22,21 @@ const props = withDefaults(defineProps<{
   columnMap?: ColumnMapEntry[]
   nameLabels?: string[]
   skipHeader?: boolean
+  // 给了 phaseLayouts 即走「智能整表导入」:解析后 splitSections → ImportSummary → emit importSections
+  phaseLayouts?: PhaseLayouts
+  defaultYear?: number
+  defaultMonth?: number
+  defaultPhase?: number
 }>(), { skipHeader: true })
 
 const emit = defineEmits<{
   close: []
   import: [recs: ImportRec[]]
+  importSections: [picks: { year: number; month: number; phase: number; records: ImportRec[] }[]]
 }>()
+
+// 智能整表模式状态
+const sections = ref<Section[] | null>(null)
 
 const mode = ref<'file' | 'paste'>('file')
 const paste = ref('')
@@ -37,7 +48,14 @@ const inputRef = ref<HTMLInputElement | null>(null)
 
 // 二维单元格数组 → 业务记录
 function mapMatrix(matrix: string[][]) {
-  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; return }
+  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; sections.value = null; return }
+  // 智能整表模式:拆段 + 识别年月期 + 版面 → 汇总确认屏
+  if (props.phaseLayouts) {
+    const secs = splitSections(matrix, props.phaseLayouts, props.nameLabels ?? ['租户名称', '租户'])
+    const hasData = secs.some(s => s.records.length > 0)
+    if (!hasData) { err.value = '已读取数据,但没识别到任何租户行。请确认含表头与租户名列。'; sections.value = null; return }
+    err.value = ''; sections.value = secs; records.value = null; return
+  }
   // columnMap 模式:按表头名字匹配(自动定位表头行 / 忽略前置分类列与合计备注列 / 顺序无关)
   if (props.columnMap) {
     const { records: recs, error } = matchByHeader(matrix, props.columnMap, props.nameLabels ?? ['租户', '租户名称'])
@@ -96,6 +114,14 @@ function confirm() {
   if (!records.value) return
   emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }))
 }
+
+// 智能整表确认:剥 __preview 后逐段上抛
+function onSectionsConfirm(picks: { year: number; month: number; phase: number; records: ImportRec[] }[]) {
+  emit('importSections', picks.map(p => ({
+    ...p,
+    records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
+  })))
+}
 </script>
 
 <template>
@@ -142,7 +168,7 @@ function confirm() {
           </div>
         </div>
 
-        <div class="fpimp-tpl">
+        <div v-if="!phaseLayouts" class="fpimp-tpl">
           <div class="fpimp-tpl-t"><component :is="iconFor('table-2')" :size="14" />模板列顺序（共 {{ templateCols.length }} 列）</div>
           <div class="fpimp-cols">
             <span v-for="(c, i) in templateCols" :key="i" class="fpimp-col"><b>{{ i + 1 }}</b>{{ c }}</span>
@@ -150,7 +176,18 @@ function confirm() {
         </div>
 
         <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
-        <template v-if="records">
+
+        <!-- 智能整表:汇总确认屏(替代模板列/预览区) -->
+        <ImportSummary
+          v-if="phaseLayouts && sections"
+          :sections="sections"
+          :default-year="defaultYear ?? new Date().getFullYear()"
+          :default-month="defaultMonth ?? 1"
+          :default-phase="defaultPhase ?? 1"
+          @confirm="onSectionsConfirm"
+        />
+
+        <template v-if="!phaseLayouts && records">
           <div class="fpimp-msg ok">
             <component :is="iconFor('check-circle-2')" :size="15" />
             已识别 <b>{{ records.length }}</b> 条有效记录,确认后写入。
@@ -175,8 +212,8 @@ function confirm() {
       </div>
 
       <div class="fpimp-f">
-        <Button variant="gray" @click="emit('close')">取消</Button>
-        <Button variant="filled" :disabled="!records" @click="confirm">
+        <Button variant="gray" full-width @click="emit('close')">{{ phaseLayouts ? '关闭' : '取消' }}</Button>
+        <Button v-if="!phaseLayouts" variant="filled" :disabled="!records" @click="confirm">
           <template #leading><component :is="iconFor('download')" :size="16" /></template>
           导入 {{ records ? records.length + ' 条' : '' }}
         </Button>

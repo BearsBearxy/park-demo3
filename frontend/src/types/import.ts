@@ -10,3 +10,9 @@ export interface ImportResultDTO {
   skipped: number
   errors: ImportError[]
 }
+
+// 删除返回体 — 对齐后端 DeleteResultDTO(record)。skipped=跳过的种子行数。
+export interface DeleteResultDTO {
+  deleted: number
+  skipped: number
+}
