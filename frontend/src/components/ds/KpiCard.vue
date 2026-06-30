@@ -5,6 +5,8 @@ export interface KpiCardProps {
   label?: unknown;
   value?: unknown;
   delta?: unknown;
+  /** Muted subtitle under the value. No trend arrow (use when there's no historical baseline). */
+  sub?: unknown;
   trend?: "up" | "down";
   tint?: "slate" | "sky" | "blue" | "cyan" | "plain";
   icon?: unknown;
@@ -70,6 +72,14 @@ const rootStyle = computed(() => ({
         <slot name="delta">{{ delta }}</slot>
         <span aria-hidden="true" style="font-size:14px;line-height:1">{{ up ? "↗" : "↘" }}</span>
       </span>
+    </div>
+
+    <!-- muted subtitle (no trend arrow) -->
+    <div
+      v-if="$slots.sub || sub != null"
+      style="font-family:var(--font-sans);font-size:var(--fs-label);font-weight:var(--fw-medium);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+    >
+      <slot name="sub">{{ sub }}</slot>
     </div>
   </div>
 </template>

@@ -15,6 +15,7 @@ import {
   Repeat, CalendarCheck, CornerDownRight, Download, Copy, Info, ArrowRight, ChevronLeft, ChevronRight,
   Trash2, Lock, FilePlus,
   Minus, CheckCircle2, Circle,
+  ClipboardCheck, ListTodo, Files,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -101,6 +102,9 @@ const MAP: Record<string, Component> = {
   'minus': Minus,
   'check-circle-2': CheckCircle2,
   'circle': Circle,
+  'clipboard-check': ClipboardCheck,
+  'list-todo': ListTodo,
+  'files': Files,
 }
 
 export function iconFor(name: string): Component {
