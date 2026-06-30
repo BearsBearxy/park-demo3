@@ -15,9 +15,9 @@ export const utilitiesApi = {
   updateNote: (no: number, id: number, note: string | null): Promise<OfficeRecordDTO> =>
     http.patch(`/utilities/${no}/records/${id}/note`, { note }),
   remove: (no: number, id: number): Promise<void> => http.delete(`/utilities/${no}/records/${id}`),
-  // 导入:重导=替换本附表本年 source=import 行(行身份=月份字符串)。year 走 query。
-  importRows: (no: number, year: number, req: OfficeImportRequest): Promise<ImportResultDTO> =>
-    http.post(`/utilities/${no}/import`, req, { params: { year } }),
+  // 导入:行自带 acctMonth(跨年各落各年);重导=替换涉及年 source=import 行。无 ?year,全由行驱动。
+  importRows: (no: number, req: OfficeImportRequest): Promise<ImportResultDTO> =>
+    http.post(`/utilities/${no}/import`, req),
   // 清空本附表本年导入:删本附表本年 source=import。
   clearImported: (no: number, year: number): Promise<DeleteResultDTO> =>
     http.delete(`/utilities/${no}/imported`, { params: { year } }),

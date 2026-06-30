@@ -18,8 +18,8 @@ public record SalaryImportRequest(@NotNull List<Row> rows) {
         BigDecimal lunch,
         BigDecimal heat,
         BigDecimal commission,
-        Integer shouldDays,
-        Integer leaveDays,
+        BigDecimal shouldDays,   // 真实「应出勤（天）」;导入四舍五入取整(实体为 int)
+        BigDecimal leaveDays,    // 真实「请假（天）」含小数(2.125/0.5);导入四舍五入取整
         BigDecimal social,
         BigDecimal tax,
         BigDecimal otherDeduct

@@ -95,4 +95,54 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
     expect(records.map(r => r.tenantName)).toEqual(['1', '2']) // 月份列(纯数字)被正确识别,合计行跳过
     expect(records[0].elecQty).toBe(3000)
   })
+
+  // 前缀匹配:真实列头带单位后缀(用电量(千瓦)/应出勤（天)),标签是裸前缀
+  it('单位后缀列头前缀命中裸标签', () => {
+    const COLS3: ColumnMapEntry[] = [
+      { label: '用电量', key: 'elecQty' },
+      { label: '基准用电单价', key: 'elecPrice' },
+    ]
+    const m: string[][] = [
+      cols(['月份', '用电量(千瓦）', '基准用电单价（千瓦/元）', '电费金额（元）']),
+      cols(['1', '1284.8', '0.79', '1020']),
+    ]
+    const { records, error } = matchByHeader(m, COLS3, ['月份'])
+    expect(error).toBeUndefined()
+    expect(records[0].elecQty).toBe(1284.8)
+    expect(records[0].elecPrice).toBe(0.79)
+  })
+
+  // 最长匹配优先:基本 不得吞掉 基本工资/基本用电费(短标签若存在也只在精确/更长前缀让位)
+  it('多标签前缀命中同列头时取最长标签', () => {
+    const COLS4: ColumnMapEntry[] = [
+      { label: '应出勤', key: 'shouldDays' },
+      { label: '请假', key: 'leaveDays' },
+    ]
+    const m: string[][] = [
+      cols(['姓名', '应出勤（天）', '请假（天）']),
+      cols(['冯谨', '18', '0.5']),
+    ]
+    const { records, error } = matchByHeader(m, COLS4, ['姓名'])
+    expect(error).toBeUndefined()
+    expect(records[0].shouldDays).toBe(18)
+    expect(records[0].leaveDays).toBe(0.5)
+  })
+
+  // 文本列:职种/职务 存原始字符串,不被 cleanNum 变 0
+  it('text 列存原始字符串(职种/职务)', () => {
+    const COLS5: ColumnMapEntry[] = [
+      { label: '职种/职务', key: 'role', text: true },
+      { label: '基本工资', key: 'base' },
+    ]
+    const m: string[][] = [
+      cols(['姓名', '职种/职务', '基本工资']),
+      cols(['冯谨', '总经理', '33000']),
+      cols(['黄琦', '见习经理（03）', '1900']),
+    ]
+    const { records, error } = matchByHeader(m, COLS5, ['姓名'])
+    expect(error).toBeUndefined()
+    expect(records[0].role).toBe('总经理')        // 非 0
+    expect(records[1].role).toBe('见习经理（03）') // 含括号数字也整串保留
+    expect(records[0].base).toBe(33000)
+  })
 })

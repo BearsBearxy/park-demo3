@@ -31,14 +31,12 @@ public class OfficeController {
         return svc.updateNote(no, id, req.note());
     }
 
-    @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/{no}/records/{id}")
+    @Operation(summary = "删除（seed 同等可删，不存在 404）") @DeleteMapping("/{no}/records/{id}")
     public void delete(@PathVariable int no, @PathVariable Integer id) { svc.delete(no, id); }
 
-    @Operation(summary = "批量导入（按月份;重导=替换本附表本年 source=import 行；附表号非法 404）") @PostMapping("/{no}/import")
-    public ImportResultDTO importRows(@PathVariable int no,
-                                      @RequestParam @Min(2000) @Max(2100) int year,
-                                      @Valid @RequestBody OfficeImportRequest req) {
-        return svc.importRows(no, year, req);
+    @Operation(summary = "批量导入（行自带 acctMonth,跨年各落各年;重导=替换涉及年 source=import 行；附表号非法 404）") @PostMapping("/{no}/import")
+    public ImportResultDTO importRows(@PathVariable int no, @Valid @RequestBody OfficeImportRequest req) {
+        return svc.importRows(no, req);
     }
 
     @Operation(summary = "清空本期导入行（删本附表本年 source=import）") @DeleteMapping("/{no}/imported")
@@ -47,7 +45,7 @@ public class OfficeController {
         return svc.clearImported(no, year);
     }
 
-    @Operation(summary = "批量删除（按 id；seed 种子跳过计入 skipped）") @DeleteMapping("/batch")
+    @Operation(summary = "批量删除（按 id；seed 同等可删，skipped 恒 0）") @DeleteMapping("/batch")
     public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
         return svc.batchDelete(req.ids());
     }

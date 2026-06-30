@@ -8,12 +8,13 @@ import { iconFor } from '@/components/ds/icon'
 import type { Section } from '@/utils/importSections'
 import type { ImportRec } from '@/utils/importHeaderMatch'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   sections: Section[]
   defaultYear: number
   defaultMonth: number
   defaultPhase: number
-}>()
+  hidePhase?: boolean   // 工资分段:无期 → 隐期列与期选择,仅校验 年/月/N人
+}>(), { hidePhase: false })
 
 const emit = defineEmits<{
   confirm: [picks: { year: number; month: number; phase: number; records: ImportRec[] }[]]
@@ -49,7 +50,9 @@ function validYear(y: number | null): boolean { return y != null && y >= 2000 &&
 function validMonth(m: number | null): boolean { return m != null && m >= 1 && m <= 12 }
 function validPhase(p: number | null): boolean { return p != null && p >= 1 && p <= 4 }
 function rowValid(r: Row): boolean {
-  return validYear(r.year) && validMonth(r.month) && validPhase(r.phase) && r.records.length > 0
+  // 隐期模式不校验期(工资无期);否则期须合法
+  const phaseOk = props.hidePhase || validPhase(r.phase)
+  return validYear(r.year) && validMonth(r.month) && phaseOk && r.records.length > 0
 }
 
 const anyPick = computed(() => rows.some(r => r.checked && rowValid(r)))
@@ -71,19 +74,19 @@ function confirm() {
   <div class="isum">
     <div class="isum-head">
       <component :is="iconFor('layers')" :size="15" />
-      <span>识别到 <b>{{ sections.length }}</b> 段，请核对年/月/期后勾选导入</span>
+      <span>识别到 <b>{{ sections.length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</span>
     </div>
 
     <div class="isum-table">
-      <div class="isum-hr">
+      <div class="isum-hr" :class="{ 'no-phase': hidePhase }">
         <span class="isum-col-pick"></span>
         <span class="isum-col-y">年</span>
         <span class="isum-col-m">月</span>
-        <span class="isum-col-p">期</span>
+        <span v-if="!hidePhase" class="isum-col-p">期</span>
         <span class="isum-col-n">识别</span>
       </div>
 
-      <div v-for="(r, i) in rows" :key="i" class="isum-row" :class="{ off: !r.checked }">
+      <div v-for="(r, i) in rows" :key="i" class="isum-row" :class="{ off: !r.checked, 'no-phase': hidePhase }">
         <span class="isum-col-pick">
           <input
             type="checkbox"
@@ -111,7 +114,7 @@ function confirm() {
             placeholder="月"
           />
         </span>
-        <span class="isum-col-p">
+        <span v-if="!hidePhase" class="isum-col-p">
           <select class="isum-sel" :class="{ bad: !validPhase(r.phase) }" v-model.number="r.phase">
             <option v-for="o in PHASE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
@@ -138,6 +141,7 @@ function confirm() {
 
 .isum-table { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .isum-hr, .isum-row { display:grid; grid-template-columns:44px 1fr 72px 96px 88px; align-items:center; gap:8px; padding:8px 12px; }
+.isum-hr.no-phase, .isum-row.no-phase { grid-template-columns:44px 1fr 72px 88px; }  /* 工资分段:无期列 */
 .isum-hr { background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:11px; font-weight:var(--fw-semibold); color:var(--text-muted); }
 .isum-row { border-bottom:1px solid var(--divider); }
 .isum-row:last-child { border-bottom:none; }

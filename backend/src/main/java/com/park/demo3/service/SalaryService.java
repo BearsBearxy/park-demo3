@@ -140,8 +140,10 @@ public class SalaryService {
             r.setLunch(r2(row.lunch()));
             r.setHeat(r2(row.heat()));
             r.setCommission(r2(row.commission()));
-            r.setShouldDays(row.shouldDays() == null ? 0 : row.shouldDays());
-            r.setLeaveDays(row.leaveDays() == null ? 0 : row.leaveDays());
+            // ponytail: 考勤天数实体为 int,真实文件含小数(请假 2.125/0.5)→ 四舍五入取整。
+            //           上限:如需精确小数,后续改 BigDecimal(实体+迁移+DTO+合计+导出,独立一刀)。
+            r.setShouldDays(roundDays(row.shouldDays()));
+            r.setLeaveDays(roundDays(row.leaveDays()));
             r.setSocial(r2(row.social()));
             r.setTax(r2(row.tax()));
             r.setOtherDeduct(r2(row.otherDeduct()));
@@ -160,18 +162,17 @@ public class SalaryService {
         return new DeleteResultDTO(deleted, 0);
     }
 
-    // ── batchDelete(ids):按 id 删,source='seed' 跳过(skipped=种子数);不存在的 id 静默忽略 ──
+    // ── batchDelete(ids):按 id 删(seed/manual/import 同等可删);不存在的 id 静默忽略,skipped 恒 0 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO batchDelete(List<Long> ids) {
-        int deleted = 0, skipped = 0;
+        int deleted = 0;
         for (Long id : ids) {
             SalaryRecord r = records.selectById(id);
             if (r == null) continue;
-            if ("seed".equals(r.getSource())) { skipped++; continue; }
             records.deleteById(id);
             deleted++;
         }
-        return new DeleteResultDTO(deleted, skipped);
+        return new DeleteResultDTO(deleted, 0);
     }
 
     // ── updateNote(id,note;不存在 → 404) ──
@@ -183,16 +184,17 @@ public class SalaryService {
         return toDTO(records.selectById(id));
     }
 
-    // ── delete(id;source=='seed' → 409;不存在 → 404) ──
+    // ── delete(id;不存在 → 404;seed 同等可删) ──
     public void delete(Integer id) {
         SalaryRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
-        if ("seed".equals(r.getSource())) throw new BizException(ResultCode.CONFLICT, "官方台账,不可删除");
         records.deleteById(id);
     }
 
     // ── helpers ──
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
+    // 考勤天数 BigDecimal → int(四舍五入,空→0)
+    private static int roundDays(BigDecimal v) { return v == null ? 0 : v.setScale(0, RoundingMode.HALF_UP).intValueExact(); }
 
     private static Total total(List<SalaryRecord> rows) {
         BigDecimal base = BigDecimal.ZERO, post = BigDecimal.ZERO, perf = BigDecimal.ZERO, attend = BigDecimal.ZERO,

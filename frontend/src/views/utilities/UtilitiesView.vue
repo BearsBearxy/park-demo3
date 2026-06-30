@@ -7,6 +7,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { utilitiesApi } from '@/api/utilities'
 import { exportUtilitiesYear } from '@/utils/utilitiesExcel'
+import { parseYearMonth } from '@/utils/parseYearMonth'
 import type { OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq, OfficeImportRow } from '@/types/utilities'
 import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
@@ -83,23 +84,48 @@ async function refresh() {
 // ── 导入 Excel(按表头名字匹配,行身份=月份字符串) ──────────
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
-// columnMap:UtilitiesTable 子列标签 → OfficeRecord 字段 key(月份走行身份自动识别;派生金额不入)。
-// 两处「基准单价」按单位后缀消歧(normalizeHeader 去括号/斜杠后仍区分 元千瓦 / 元吨)。
+// columnMap:真实办公水电表头 → OfficeRecord 字段 key(前缀匹配扛单位后缀,见 importHeaderMatch)。
+// 月份=记账月(行身份,nameLabels);所属月份=text 列存原串再解析;派生电费金额不入。
+// 办公文件无水列 → waterQty/waterPrice 缺省 0(无碍)。
 const UTILITIES_COLUMN_MAP = [
   { label: '用电量', key: 'elecQty' },
-  { label: '基准单价(元/千瓦)', key: 'elecPrice' },
+  { label: '基准用电单价', key: 'elecPrice' },
   { label: '用水量', key: 'waterQty' },
-  { label: '基准单价(元/吨)', key: 'waterPrice' },
+  { label: '基准用水单价', key: 'waterPrice' },
+  { label: '所属月份', key: 'belongMonth', text: true },
 ]
 const importCols = computed(() => ['月份', ...UTILITIES_COLUMN_MAP.map(c => c.label)])
 
+// 跨年路由:每行 parseYearMonth(月份=tenantName)→acctMonth YYYY-MM;
+// parseYearMonth(所属月份文本,回退=acct 年)→belongMonth。解析失败收 errors。
+// 按 acct 年分组,逐年 importRows(全由行驱动,无 ?year)。
 async function onImport(recs: ImportRec[]) {
   importing.value = false
   if (year.value == null) return
+  const byYear = new Map<number, OfficeImportRow[]>()
+  const errors: ImportResultDTO['errors'] = []
+  let frontSkipped = 0
+  recs.forEach((r, i) => {
+    const ym = parseYearMonth(r.tenantName)
+    if (!ym) { errors.push({ rowIndex: i, label: String(r.tenantName ?? ''), reason: '无法识别月份' }); frontSkipped++; return }
+    const acctMonth = `${ym.year}-${String(ym.month).padStart(2, '0')}`
+    const bm = parseYearMonth(r.belongMonth, ym.year)
+    const belongMonth = bm ? `${bm.year}-${String(bm.month).padStart(2, '0')}` : acctMonth
+    const row: OfficeImportRow = {
+      acctMonth, belongMonth,
+      elecQty: r.elecQty as number, elecPrice: r.elecPrice as number,
+      waterQty: r.waterQty as number, waterPrice: r.waterPrice as number,
+    }
+    const arr = byYear.get(ym.year) ?? []
+    arr.push(row); byYear.set(ym.year, arr)
+  })
   try {
-    const rows = recs as unknown as OfficeImportRow[]
-    const res = await utilitiesApi.importRows(no.value, year.value, { rows })
-    importResult.value = res
+    let imported = 0, skipped = frontSkipped
+    for (const rows of byYear.values()) {
+      const res = await utilitiesApi.importRows(no.value, { rows })
+      imported += res.imported; skipped += res.skipped; errors.push(...res.errors)
+    }
+    importResult.value = { imported, skipped, errors }
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -126,15 +152,13 @@ async function onClearImported() {
 // ── 批量删除 ─────────────────────────────────────────────
 const selectedIds = ref<Set<number>>(new Set())
 function toggleSelect(row: OfficeRecordDTO) {
-  if (row.source === 'seed') return
   const next = new Set(selectedIds.value)
   if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
   selectedIds.value = next
 }
 function selectAll(checked: boolean) {
   if (!yearData.value) return
-  const selectable = yearData.value.rows.filter(r => r.source !== 'seed')
-  selectedIds.value = checked ? new Set(selectable.map(r => r.id)) : new Set()
+  selectedIds.value = checked ? new Set(yearData.value.rows.map(r => r.id)) : new Set()
 }
 async function onBatchDelete() {
   const ids = [...selectedIds.value]
@@ -190,7 +214,6 @@ async function onDelete(row: OfficeRecordDTO) {
     await utilitiesApi.remove(no.value, row.id)
     await refresh()
   } catch (e) {
-    // seed 行 → 409
     alert((e as { message?: string })?.message ?? '删除失败')
   }
 }
@@ -319,7 +342,7 @@ async function onExport() {
         sub="上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入本年"
         :template-cols="importCols"
         :column-map="UTILITIES_COLUMN_MAP"
-        :name-labels="['月份', '所属月', '月']"
+        :name-labels="['月份']"
         @close="importing = false"
         @import="onImport"
       />

@@ -96,11 +96,12 @@ class OfficeServiceTest {
             .containsExactly(2024, 2025);
     }
 
-    @Test void delete_seedRow_conflicts() {
+    // seed 不再锁删:种子行与手动行同等可删(WI-4 去保护)。
+    @Test void delete_seedRow_succeeds() {
         Mockito.when(records.selectById(7)).thenReturn(
             rec(7, 13, "2025-01", "2024-12", 1, 1, 1, 1, "seed"));
-        assertThatThrownBy(() -> svc.delete(13, 7)).isInstanceOf(BizException.class);
-        Mockito.verify(records, Mockito.never()).deleteById(Mockito.anyInt());
+        svc.delete(13, 7);
+        Mockito.verify(records).deleteById(7);
     }
 
     @Test void delete_manualRow_ok() {

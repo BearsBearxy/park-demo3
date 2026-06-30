@@ -28,7 +28,7 @@ export interface OfficeRecordDTO {
   waterAmt: number    // 派生:waterQty × waterPrice
   total: number       // 派生:elecAmt + waterAmt
   note: string | null
-  source: 'seed' | 'manual'
+  source: 'seed' | 'manual' | 'import'
 }
 
 export interface OfficeTotal {
@@ -46,10 +46,11 @@ export interface OfficeYearDTO {
   total: OfficeTotal
 }
 
-// POST /{no}/import body 行 — 行身份=月份字符串(tenantName,如 "1月"/"01"/"2025-01");派生不传。
-// 对齐后端 OfficeImportRequest.Row。
+// POST /{no}/import body 行 — 行自带 acctMonth(必填 YYYY-MM)+belongMonth(选填,缺省=acct);派生不传。
+// 跨年由前端 parseYearMonth 解析后填 YYYY-MM,后端按行内年集合 clear+insert。对齐后端 OfficeImportRequest.Row。
 export interface OfficeImportRow {
-  tenantName: string   // 月份字符串
+  acctMonth: string    // YYYY-MM 记账月
+  belongMonth?: string // YYYY-MM 所属月(缺省=acctMonth)
   elecQty?: number
   elecPrice?: number
   waterQty?: number

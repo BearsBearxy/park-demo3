@@ -3,12 +3,13 @@
 // 两入口:① 上传 .xlsx/.xls/.csv(csv 用 FileReader+内置解析;xlsx 懒加载 SheetJS)
 //        ② 从 Excel 粘贴(textarea,TSV/CSV)。两者都先解析成二维数组,再交各屏 parseRow 映射。
 // 解析结果进预览表(前 6 行)+ 条数 + 错误/成功提示,确认后 onImport(剥 __preview)。
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { cell, parsePaste, parseCSV } from '@/utils/importParse'
 import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSections'
+import { splitSalarySections } from '@/utils/importSalarySections'
 import ImportSummary from './ImportSummary.vue'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
@@ -22,8 +23,10 @@ const props = withDefaults(defineProps<{
   columnMap?: ColumnMapEntry[]
   nameLabels?: string[]
   skipHeader?: boolean
-  // 给了 phaseLayouts 即走「智能整表导入」:解析后 splitSections → ImportSummary → emit importSections
+  // 给了 phaseLayouts 即走「智能整表导入」(多期×多月):解析后 splitSections → ImportSummary → emit importSections
   phaseLayouts?: PhaseLayouts
+  // 给了 sectionTitleRe(且有 columnMap、无 phaseLayouts)即走「工资多月分段」:按标题切月 → ImportSummary(隐期) → emit importSections
+  sectionTitleRe?: RegExp
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -32,8 +35,13 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: []
   import: [recs: ImportRec[]]
-  importSections: [picks: { year: number; month: number; phase: number; records: ImportRec[] }[]]
+  importSections: [picks: { year: number; month: number; phase?: number; records: ImportRec[] }[]]
 }>()
+
+// 工资分段(无期)模式开关:sectionTitleRe + columnMap 且无 phaseLayouts
+const salaryMode = computed(() => !!props.sectionTitleRe && !!props.columnMap && !props.phaseLayouts)
+// 汇总确认屏模式(多段):智能整表 或 工资分段 → 用 ImportSummary 替代模板列/预览/底部导入按钮
+const summaryMode = computed(() => !!props.phaseLayouts || salaryMode.value)
 
 // 智能整表模式状态
 const sections = ref<Section[] | null>(null)
@@ -55,6 +63,13 @@ function mapMatrix(matrix: string[][]) {
     const hasData = secs.some(s => s.records.length > 0)
     if (!hasData) { err.value = '已读取数据,但没识别到任何租户行。请确认含表头与租户名列。'; sections.value = null; return }
     err.value = ''; sections.value = secs; records.value = null; return
+  }
+  // 工资多月分段模式:按标题切月 → 每段 matchByHeader → 汇总确认屏(隐期),复用 sections 状态
+  if (salaryMode.value) {
+    const secs = splitSalarySections(matrix, props.columnMap!, props.nameLabels ?? ['姓名'])
+    const hasData = secs.some(s => s.records.length > 0)
+    if (!hasData) { err.value = '已读取数据,但没识别到任何员工行。请确认含表头与姓名列。'; sections.value = null; return }
+    err.value = ''; sections.value = secs as unknown as Section[]; records.value = null; return
   }
   // columnMap 模式:按表头名字匹配(自动定位表头行 / 忽略前置分类列与合计备注列 / 顺序无关)
   if (props.columnMap) {
@@ -88,9 +103,11 @@ function handleFile(file: File | undefined) {
     fr.onload = async () => {
       try {
         const XLSX = await import('xlsx')   // 懒加载 ~200KB,仅上传 xlsx 才拉
-        const wb = XLSX.read(new Uint8Array(fr.result as ArrayBuffer), { type: 'array' })
+        // cellDates+raw:false+dateNF → 日期单元格出 'yyyy-mm-dd' 字符串(办公水电月份列需要),
+        // 数字也变字符串但下游 cleanNum/String 容错(台账/附表10/工资分段不受影响)。
+        const wb = XLSX.read(new Uint8Array(fr.result as ArrayBuffer), { type: 'array', cellDates: true })
         const ws = wb.Sheets[wb.SheetNames[0]]
-        const matrix = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, blankrows: false, defval: '' })
+        const matrix = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' })
         mapMatrix(matrix as string[][])
       } catch (e) { err.value = '文件解析失败:' + (e as Error).message }
     }
@@ -115,8 +132,8 @@ function confirm() {
   emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }))
 }
 
-// 智能整表确认:剥 __preview 后逐段上抛
-function onSectionsConfirm(picks: { year: number; month: number; phase: number; records: ImportRec[] }[]) {
+// 智能整表/工资分段确认:剥 __preview 后逐段上抛(工资模式 phase 缺省)
+function onSectionsConfirm(picks: { year: number; month: number; phase?: number; records: ImportRec[] }[]) {
   emit('importSections', picks.map(p => ({
     ...p,
     records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
@@ -168,7 +185,7 @@ function onSectionsConfirm(picks: { year: number; month: number; phase: number; 
           </div>
         </div>
 
-        <div v-if="!phaseLayouts" class="fpimp-tpl">
+        <div v-if="!summaryMode" class="fpimp-tpl">
           <div class="fpimp-tpl-t"><component :is="iconFor('table-2')" :size="14" />模板列顺序（共 {{ templateCols.length }} 列）</div>
           <div class="fpimp-cols">
             <span v-for="(c, i) in templateCols" :key="i" class="fpimp-col"><b>{{ i + 1 }}</b>{{ c }}</span>
@@ -177,17 +194,18 @@ function onSectionsConfirm(picks: { year: number; month: number; phase: number; 
 
         <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
 
-        <!-- 智能整表:汇总确认屏(替代模板列/预览区) -->
+        <!-- 智能整表/工资分段:汇总确认屏(替代模板列/预览区);工资模式隐期列与期选择 -->
         <ImportSummary
-          v-if="phaseLayouts && sections"
+          v-if="summaryMode && sections"
           :sections="sections"
           :default-year="defaultYear ?? new Date().getFullYear()"
           :default-month="defaultMonth ?? 1"
           :default-phase="defaultPhase ?? 1"
+          :hide-phase="salaryMode"
           @confirm="onSectionsConfirm"
         />
 
-        <template v-if="!phaseLayouts && records">
+        <template v-if="!summaryMode && records">
           <div class="fpimp-msg ok">
             <component :is="iconFor('check-circle-2')" :size="15" />
             已识别 <b>{{ records.length }}</b> 条有效记录,确认后写入。
@@ -212,8 +230,8 @@ function onSectionsConfirm(picks: { year: number; month: number; phase: number; 
       </div>
 
       <div class="fpimp-f">
-        <Button variant="gray" full-width @click="emit('close')">{{ phaseLayouts ? '关闭' : '取消' }}</Button>
-        <Button v-if="!phaseLayouts" variant="filled" :disabled="!records" @click="confirm">
+        <Button variant="gray" full-width @click="emit('close')">{{ summaryMode ? '关闭' : '取消' }}</Button>
+        <Button v-if="!summaryMode" variant="filled" :disabled="!records" @click="confirm">
           <template #leading><component :is="iconFor('download')" :size="16" /></template>
           导入 {{ records ? records.length + ' 条' : '' }}
         </Button>

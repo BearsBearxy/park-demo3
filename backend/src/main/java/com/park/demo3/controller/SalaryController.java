@@ -34,7 +34,7 @@ public class SalaryController {
         return svc.updateNote(id, req.note());
     }
 
-    @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/records/{id}")
+    @Operation(summary = "删除（seed 同等可删，不存在 404）") @DeleteMapping("/records/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
 
     @Operation(summary = "批量导入（重导=替换本月 source=import 行；行身份=姓名）") @PostMapping("/import")
@@ -50,7 +50,7 @@ public class SalaryController {
         return svc.clearImported(year, month);
     }
 
-    @Operation(summary = "批量删除（按 id；seed 种子跳过计入 skipped）") @DeleteMapping("/batch")
+    @Operation(summary = "批量删除（按 id；seed 同等可删，skipped 恒 0）") @DeleteMapping("/batch")
     public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
         return svc.batchDelete(req.ids());
     }

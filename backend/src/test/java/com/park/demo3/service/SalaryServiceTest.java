@@ -1,11 +1,14 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
+import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.SalaryImportRequest;
 import com.park.demo3.dto.SalaryOverviewDTO;
 import com.park.demo3.dto.SalaryRecordDTO;
 import com.park.demo3.dto.SalaryYearMonthDTO;
 import com.park.demo3.entity.SalaryRecord;
 import com.park.demo3.mapper.SalaryRecordMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import java.math.BigDecimal;
 import java.util.List;
@@ -127,10 +130,11 @@ class SalaryServiceTest {
         return r;
     }
 
-    @Test void delete_seedRow_conflicts() {
+    // seed 不再锁删:种子行与手动行同等可删(WI-4 去保护)。
+    @Test void delete_seedRow_succeeds() {
         Mockito.when(records.selectById(7)).thenReturn(zhouming(7)); // source=seed
-        assertThatThrownBy(() -> svc.delete(7)).isInstanceOf(BizException.class);
-        Mockito.verify(records, Mockito.never()).deleteById(Mockito.anyInt());
+        svc.delete(7);
+        Mockito.verify(records).deleteById(7);
     }
 
     @Test void delete_manualRow_ok() {
@@ -138,5 +142,45 @@ class SalaryServiceTest {
         Mockito.when(records.selectById(8)).thenReturn(m);
         svc.delete(8);
         Mockito.verify(records).deleteById(8);
+    }
+
+    // 导入:role 文本透传入库;考勤含小数 → 四舍五入取整(请假 2.125→2、0.5→1);姓名空 → errors 跳过。
+    @Test void importRows_passesRoleText_andRoundsDays() {
+        SalaryImportRequest.Row huangqi = new SalaryImportRequest.Row(
+            "黄琦", "见习经理（03）",
+            bd(1900), bd(3000), bd(1600), bd(200), bd(300), null, null,
+            bd(180), null, null,
+            bd(18), bd(2.125),                 // 应出勤18、请假2.125
+            bd(487.05), bd(78.61), null);
+        SalaryImportRequest.Row fu = new SalaryImportRequest.Row(
+            "符俊熙", "见习经理（03）",
+            bd(2080), bd(3000), bd(1120), bd(200), bd(300), bd(300), null,
+            bd(168), null, null,
+            bd(20), bd(0.5),                   // 请假0.5 → 1
+            bd(487.05), bd(46.96), null);
+        SalaryImportRequest.Row blank = new SalaryImportRequest.Row(
+            "  ", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        Mockito.when(records.deleteImported("2025-01")).thenReturn(0);
+        ImportResultDTO res = svc.importRows(2025, 1, new SalaryImportRequest(List.of(huangqi, fu, blank)));
+
+        assertThat(res.imported()).isEqualTo(2);
+        assertThat(res.skipped()).isEqualTo(1);  // 姓名空跳过
+
+        ArgumentCaptor<SalaryRecord> cap = ArgumentCaptor.forClass(SalaryRecord.class);
+        Mockito.verify(records, Mockito.times(2)).insert(cap.capture());
+        List<SalaryRecord> ins = cap.getAllValues();
+
+        SalaryRecord r0 = ins.get(0);
+        assertThat(r0.getName()).isEqualTo("黄琦");
+        assertThat(r0.getRole()).isEqualTo("见习经理（03）");  // role 文本入库,非 null/非数字化
+        assertThat(r0.getSource()).isEqualTo("import");
+        assertThat(r0.getShouldDays()).isEqualTo(18);
+        assertThat(r0.getLeaveDays()).isEqualTo(2);            // 2.125 → 2(HALF_UP)
+
+        SalaryRecord r1 = ins.get(1);
+        assertThat(r1.getName()).isEqualTo("符俊熙");
+        assertThat(r1.getRole()).isEqualTo("见习经理（03）");
+        assertThat(r1.getLeaveDays()).isEqualTo(1);            // 0.5 → 1(HALF_UP)
     }
 }

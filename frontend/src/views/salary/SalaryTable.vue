@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 附表12 逐月工资宽表 — 1:1 from screen-schedule12.jsx 表体段(385-505)。
 // 两级分组表头(月工资大类8 / 补贴2 / 招商提成 / 考勤4 / 应发 / 代缴代扣3 / 实发 / 签收 / 备注),
-// 序号+姓名 sticky 左列,组色带,全部派生列(后端下发,不重算),签收态,tfoot 合计,seed锁,手动角标。
+// 序号+姓名 sticky 左列,组色带,全部派生列(后端下发,不重算),签收态,tfoot 合计,种子/手动/导入角标(均可删)。
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -20,7 +20,7 @@ const emit = defineEmits<{
   'add': []
   'delete': [row: SalaryRecordDTO]
   'note': [row: SalaryRecordDTO, text: string]
-  // 批量删除选择(种子行不可选)
+  // 批量删除选择(seed/manual/import 同等可选)
   'toggleSelect': [row: SalaryRecordDTO]
   'selectAll': [checked: boolean]
 }>()
@@ -28,11 +28,10 @@ const emit = defineEmits<{
 // 数字格式(1:1 from jsx wNum):空值显「—」
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// 可选(非种子)行 → 全选状态
-const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
+// 全选状态(全部行可选)
 const allSelected = computed(() =>
-  selectableRows.value.length > 0 &&
-  selectableRows.value.every(r => props.selectedIds?.has(r.id)),
+  props.rows.length > 0 &&
+  props.rows.every(r => props.selectedIds?.has(r.id)),
 )
 </script>
 
@@ -60,8 +59,8 @@ const allSelected = computed(() =>
                 type="checkbox"
                 class="s12-cb"
                 :checked="allSelected"
-                :disabled="selectableRows.length === 0"
-                title="全选可删行"
+                :disabled="rows.length === 0"
+                title="全选"
                 @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
               />
               <span style="font-size:11px">序号</span>
@@ -110,7 +109,6 @@ const allSelected = computed(() =>
                 type="checkbox"
                 class="s12-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
-                :disabled="r.source === 'seed'"
                 title="选中以批量删除"
                 @change="emit('toggleSelect', r)"
               />
@@ -162,13 +160,10 @@ const allSelected = computed(() =>
           <td class="l s12-c-note">
             <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
           </td>
-          <!-- 编辑态删除(seed 锁) -->
+          <!-- 编辑态删除(seed/manual/import 同等可删) -->
           <td v-if="edit">
             <span class="s12-acts">
-              <button v-if="r.source === 'seed'" class="s12-actbtn" disabled title="官方台账,不可删除">
-                <component :is="iconFor('lock')" :size="15" />
-              </button>
-              <button v-else class="s12-actbtn del" title="删除" @click="emit('delete', r)">
+              <button class="s12-actbtn del" title="删除" @click="emit('delete', r)">
                 <component :is="iconFor('trash-2')" :size="15" />
               </button>
             </span>

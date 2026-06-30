@@ -22,16 +22,15 @@ const emit = defineEmits<{
   add: []
   delete: [row: OfficeRecordDTO]
   note: [row: OfficeRecordDTO, text: string]
-  // 批量删除选择(种子行不可选)
+  // 批量删除选择(seed/manual/import 同等可选)
   toggleSelect: [row: OfficeRecordDTO]
   selectAll: [checked: boolean]
 }>()
 
-// 可选(非种子)行 → 全选状态
-const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
+// 全选状态(全部行可选)
 const allSelected = computed(() =>
-  selectableRows.value.length > 0 &&
-  selectableRows.value.every(r => props.selectedIds?.has(r.id)),
+  props.rows.length > 0 &&
+  props.rows.every(r => props.selectedIds?.has(r.id)),
 )
 
 // 工具 1:1 from jsx utMLabel/utNum
@@ -69,8 +68,8 @@ const num = (n: number, d = 2) =>
                   type="checkbox"
                   class="ut-cb"
                   :checked="allSelected"
-                  :disabled="selectableRows.length === 0"
-                  title="全选可删行"
+                  :disabled="props.rows.length === 0"
+                  title="全选"
                   @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="ut-th-name">记账月</span>
@@ -102,7 +101,6 @@ const num = (n: number, d = 2) =>
                 type="checkbox"
                 class="ut-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
-                :disabled="r.source === 'seed'"
                 title="选中以批量删除"
                 @change="emit('toggleSelect', r)"
               />
@@ -123,10 +121,7 @@ const num = (n: number, d = 2) =>
           </td>
           <td v-if="edit">
             <span class="ut-acts">
-              <button v-if="r.source === 'seed'" class="ut-actbtn" disabled title="官方台账,不可删除">
-                <component :is="iconFor('lock')" :size="15" />
-              </button>
-              <button v-else class="ut-actbtn del" title="删除" @click="emit('delete', r)">
+              <button class="ut-actbtn del" title="删除" @click="emit('delete', r)">
                 <component :is="iconFor('trash-2')" :size="15" />
               </button>
             </span>

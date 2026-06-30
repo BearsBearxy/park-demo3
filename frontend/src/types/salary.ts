@@ -31,7 +31,7 @@ export interface SalaryRecordDTO {
   actualDays: number  // 派生 = shouldDays-leaveDays
   fullAttend: boolean // 派生 = leaveDays==0
   note: string | null
-  source: 'seed' | 'manual'
+  source: 'seed' | 'manual' | 'import'
 }
 
 // 年份卡元数据(overview.years 元素,对齐 SalaryOverviewDTO.YearMeta)

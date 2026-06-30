@@ -93,29 +93,38 @@ public class OfficeService {
         return toRecordDTO(records.selectById(r.getId()));
     }
 
-    // ── import:重导=替换本(scheduleNo,year)导入行 —— 先删该附表该年 source='import' 行,再逐行 insert(source='import')。
-    //          行身份=月份字符串(tenantName):取其中 1-12 月号;无效/越界 → errors 跳过。
-    //          acctMonth=belongMonth=${year}-${MM}(月号补零);手动/种子行不动;scheduleNo 白名单 13/14。 ──
-    private static final Pattern NUM = Pattern.compile("\\d+");
+    // ── import:全由行驱动(跨年同次导入各落各年)。行自带 acctMonth(YYYY-MM,必填)+belongMonth(缺省=acct)。
+    //          按「每月一行」upsert(uk_office 唯一):先删本附表「被导入月份」的行(任意来源:种子/手动/导入),再逐行 insert。
+    //          即「导入即覆盖这些月」——自动取代假种子,不波及未导入的月。校验 acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12;
+    //          非法 → errors 跳过。scheduleNo 白名单 13/14。 ──
+    private static final Pattern YM = Pattern.compile("(\\d{4})-(\\d{2})");
 
     @org.springframework.transaction.annotation.Transactional
-    public ImportResultDTO importRows(int scheduleNo, int year, OfficeImportRequest req) {
+    public ImportResultDTO importRows(int scheduleNo, OfficeImportRequest req) {
         if (scheduleNo != 13 && scheduleNo != 14) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
-        records.deleteImported(scheduleNo, year);
-        int imported = 0;
-        List<ImportError> errors = new ArrayList<>();
+        // 先校验出合法行 + 收集被导入的月份(清空按这些月,不波及未导入的月)
         List<OfficeImportRequest.Row> rows = req.rows();
+        List<OfficeImportRequest.Row> valid = new ArrayList<>();
+        List<ImportError> errors = new ArrayList<>();
+        java.util.Set<String> months = new java.util.LinkedHashSet<>();
         for (int i = 0; i < rows.size(); i++) {
             OfficeImportRequest.Row row = rows.get(i);
-            Integer mon = parseMonth(row.tenantName());
-            if (mon == null) {
-                errors.add(new ImportError(i, row.tenantName(), "无法识别月份(应为 1-12 月)"));
+            Integer year = parseYear(row.acctMonth());
+            if (year == null) {
+                errors.add(new ImportError(i, row.acctMonth(), "记账月格式非法(应为 YYYY-MM,年 2000-2100、月 1-12)"));
                 continue;
             }
-            String belong = String.format("%04d-%02d", year, mon);
+            valid.add(row);
+            months.add(row.acctMonth());
+        }
+        records.deleteByScheduleAndMonths(scheduleNo, new ArrayList<>(months));
+        int imported = 0;
+        for (OfficeImportRequest.Row row : valid) {
+            String acct = row.acctMonth();
+            String belong = (row.belongMonth() == null || row.belongMonth().isBlank()) ? acct : row.belongMonth();
             OfficeRecord r = new OfficeRecord();
             r.setScheduleNo(scheduleNo);
-            r.setAcctMonth(belong);
+            r.setAcctMonth(acct);
             r.setBelongMonth(belong);
             r.setElecQty(r2(row.elecQty()));
             r.setElecPrice(nz(row.elecPrice()).setScale(6, RoundingMode.HALF_UP));
@@ -128,15 +137,14 @@ public class OfficeService {
         return new ImportResultDTO(imported, errors.size(), errors);
     }
 
-    // 取月份字符串里第一个 1-12 的数字(如 "1月"→1、"01"→1、"2025-01"→1、"2025-1"→1);无则 null
-    private static Integer parseMonth(String s) {
+    // 校验 acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12;返回年,否则 null
+    private static Integer parseYear(String s) {
         if (s == null) return null;
-        Matcher m = NUM.matcher(s);
-        while (m.find()) {
-            int v = Integer.parseInt(m.group());
-            if (v >= 1 && v <= 12) return v;
-        }
-        return null;
+        Matcher m = YM.matcher(s);
+        if (!m.matches()) return null;
+        int y = Integer.parseInt(m.group(1)), mon = Integer.parseInt(m.group(2));
+        if (y < 2000 || y > 2100 || mon < 1 || mon > 12) return null;
+        return y;
     }
 
     // ── clearImported(scheduleNo,year):删本附表本年 source='import' 行,返回删除计数 ──
@@ -147,18 +155,17 @@ public class OfficeService {
         return new DeleteResultDTO(deleted, 0);
     }
 
-    // ── batchDelete(ids):按 id 删,source='seed' 跳过(skipped=种子数);不存在的 id 静默忽略 ──
+    // ── batchDelete(ids):按 id 删(seed/manual/import 同等可删);不存在的 id 静默忽略,skipped 恒 0 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO batchDelete(List<Long> ids) {
-        int deleted = 0, skipped = 0;
+        int deleted = 0;
         for (Long id : ids) {
             OfficeRecord r = records.selectById(id);
             if (r == null) continue;
-            if ("seed".equals(r.getSource())) { skipped++; continue; }
             records.deleteById(id);
             deleted++;
         }
-        return new DeleteResultDTO(deleted, skipped);
+        return new DeleteResultDTO(deleted, 0);
     }
 
     // ── updateNote(no,id,note;不存在 / 不属本附表 → 404) ──
@@ -170,11 +177,10 @@ public class OfficeService {
         return toRecordDTO(records.selectById(id));
     }
 
-    // ── delete(no,id;不存在 / 不属本附表 → 404;source=='seed' → 409) ──
+    // ── delete(no,id;不存在 / 不属本附表 → 404;seed 同等可删) ──
     public void delete(int no, Integer id) {
         OfficeRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
-        if ("seed".equals(r.getSource())) throw new BizException(ResultCode.CONFLICT, "官方台账,不可删除");
         records.deleteById(id);
     }
 

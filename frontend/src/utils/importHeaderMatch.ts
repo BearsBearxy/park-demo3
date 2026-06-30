@@ -7,7 +7,7 @@
 //  4) 数据行 = 表头块之后、租户列非空且非小计的行;未命中的列(车间/合计/备注/分组)一律忽略。
 // 仅供 columnMap 模式;位置映射仍走各屏 parseRow。
 
-export interface ColumnMapEntry { label: string; key: string }
+export interface ColumnMapEntry { label: string; key: string; text?: boolean }
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
 export interface MatchResult { records: ImportRec[]; error?: string }
 
@@ -36,14 +36,23 @@ export function matchByHeader(
   columnMap: ColumnMapEntry[],
   nameLabels: string[],
 ): MatchResult {
-  const labelToKey = new Map<string, string>()
-  for (const c of columnMap) labelToKey.set(normalizeHeader(c.label), c.key)
+  // 标签按 normalize 后长度降序:前缀命中时「最长匹配标签优先」,防短标签(如 基本)吞掉长列头。
+  const labels = columnMap
+    .map(c => ({ nl: normalizeHeader(c.label), key: c.key, text: !!c.text }))
+    .sort((a, b) => b.nl.length - a.nl.length)
+  // 列头 → 命中的列定义:normalize 相等 或 列头以标签为前缀(扛 用电量(千瓦)→用电量 等单位后缀)。
+  const matchLabel = (cell: unknown) => {
+    const nh = normalizeHeader(cell)
+    if (!nh) return undefined
+    for (const l of labels) if (nh === l.nl || nh.startsWith(l.nl)) return l
+    return undefined
+  }
 
   // 1) 表头块末行 = 最后一个含 ≥2 个费用列标签命中的行(叶子表头行;数据行单元格是数字/租户名/车间,不命中标签)
   let headerEnd = -1
   matrix.forEach((row, ri) => {
     let n = 0
-    for (const c of row) if (labelToKey.has(normalizeHeader(c))) n++
+    for (const c of row) if (matchLabel(c)) n++
     if (n >= 2) headerEnd = ri
   })
   if (headerEnd < 0) {
@@ -54,10 +63,11 @@ export function matchByHeader(
 
   // 2) 逐列扫表头块定费用列(跨行,捕获落在分组行的标签)
   const colKey = new Map<number, string>()
+  const textCols = new Set<number>() // 标记为 text 的列:存原始字符串,不 cleanNum
   for (let c = 0; c < width; c++) {
     for (let r = 0; r <= headerEnd; r++) {
-      const k = labelToKey.get(normalizeHeader(matrix[r]?.[c]))
-      if (k && !colKey.has(c)) { colKey.set(c, k); break }
+      const l = matchLabel(matrix[r]?.[c])
+      if (l && !colKey.has(c)) { colKey.set(c, l.key); if (l.text) textCols.add(c); break }
     }
   }
   if (colKey.size < 2) {
@@ -102,8 +112,8 @@ export function matchByHeader(
     const name = String(row[nameCol] ?? '').trim()
     if (!name || isSubtotal(name)) continue
     const rec: ImportRec = { tenantName: name }
-    colKey.forEach((key, ci) => { rec[key] = cleanNum(row[ci]) })
-    rec.__preview = [name, ...columnMap.map(c => (rec[c.key] as number) || '')]
+    colKey.forEach((key, ci) => { rec[key] = textCols.has(ci) ? String(row[ci] ?? '').trim() : cleanNum(row[ci]) })
+    rec.__preview = [name, ...columnMap.map(c => (c.text ? rec[c.key] : (rec[c.key] as number)) || '')]
     records.push(rec)
   }
   if (!records.length) {

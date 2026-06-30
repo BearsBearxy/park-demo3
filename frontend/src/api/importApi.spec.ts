@@ -39,12 +39,11 @@ describe('salaryApi import/delete shapes', () => {
 })
 
 describe('utilitiesApi import/delete shapes', () => {
-  it('importRows POSTs /utilities/{no}/import with year query and {rows} body', () => {
-    utilitiesApi.importRows(13, 2025, { rows: [{ tenantName: '1月', elecQty: 1000 }] })
+  it('importRows POSTs /utilities/{no}/import with {rows} body (行驱动,无 ?year)', () => {
+    utilitiesApi.importRows(13, { rows: [{ acctMonth: '2025-01', belongMonth: '2024-12', elecQty: 1000 }] })
     expect(mock.post).toHaveBeenCalledWith(
       '/utilities/13/import',
-      { rows: [{ tenantName: '1月', elecQty: 1000 }] },
-      { params: { year: 2025 } },
+      { rows: [{ acctMonth: '2025-01', belongMonth: '2024-12', elecQty: 1000 }] },
     )
   })
 

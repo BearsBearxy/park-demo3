@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 
@@ -15,7 +16,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// @Transactional:批删用例真删共享种子行、清空用例留 manual 行,事务回滚还原,避免污染同库其它读/导入测试。
 @AutoConfigureMockMvc
+@Transactional
 class OfficeDeleteApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
@@ -47,11 +50,10 @@ class OfficeDeleteApiIT extends AbstractMysqlIT {
                         + "\"elecQty\":100,\"elecPrice\":0.8,\"waterQty\":10,\"waterPrice\":4}"))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/utilities/13/import").header("Authorization", auth())
-                .param("year", "2098")
                 .contentType("application/json")
                 .content("{\"rows\":["
-                        + "{\"tenantName\":\"1月\",\"elecQty\":200,\"elecPrice\":0.8,\"waterQty\":5,\"waterPrice\":4},"
-                        + "{\"tenantName\":\"2月\",\"elecQty\":300,\"elecPrice\":0.8,\"waterQty\":6,\"waterPrice\":4}]}"))
+                        + "{\"acctMonth\":\"2098-01\",\"elecQty\":200,\"elecPrice\":0.8,\"waterQty\":5,\"waterPrice\":4},"
+                        + "{\"acctMonth\":\"2098-02\",\"elecQty\":300,\"elecPrice\":0.8,\"waterQty\":6,\"waterPrice\":4}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.imported").value(2));
         mvc.perform(get("/api/utilities/13/records").param("year", "2098").header("Authorization", auth()))
@@ -78,9 +80,9 @@ class OfficeDeleteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.deleted").value(0));
     }
 
-    // ── 批删:删 manual,跳过 seed(skipped=种子数);不存在 id 静默忽略 ──
+    // ── 批删:seed 与 manual 同等可删(deleted 含种子,skipped=0);不存在 id 静默忽略 ──
     @Test
-    void batchDelete_deletesManual_skipsSeed() throws Exception {
+    void batchDelete_deletesManualAndSeed() throws Exception {
         // 干净 slot 13/2097:1 manual
         String created = utf8(mvc.perform(post("/api/utilities/13/records").header("Authorization", auth())
                 .contentType("application/json")
@@ -97,21 +99,21 @@ class OfficeDeleteApiIT extends AbstractMysqlIT {
                 .andReturn());
         long seedId = ((Number) JsonPath.read(seedYear, "$.data.rows[0].id")).longValue();
 
-        // 批删 [manualId, seedId, 99999999(不存在)] → deleted=1, skipped=1(种子)
+        // 批删 [manualId, seedId, 99999999(不存在)] → deleted=2(种子也删), skipped=0
         mvc.perform(delete("/api/utilities/batch").header("Authorization", auth())
                 .contentType("application/json")
                 .content("{\"ids\":[" + manualId + "," + seedId + ",99999999]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.deleted").value(1))
-                .andExpect(jsonPath("$.data.skipped").value(1));
+                .andExpect(jsonPath("$.data.deleted").value(2))
+                .andExpect(jsonPath("$.data.skipped").value(0));
 
         // 手动行已删
         mvc.perform(get("/api/utilities/13/records").param("year", "2097").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.rows.length()").value(0));
-        // 种子行仍在(过滤器返数组,用 isNotEmpty)
+        // 种子行也已删(过滤器返数组,用 isEmpty)
         mvc.perform(get("/api/utilities/13/records").param("year", "2025").header("Authorization", auth()))
-                .andExpect(jsonPath("$.data.rows[?(@.id==" + seedId + ")]").isNotEmpty());
+                .andExpect(jsonPath("$.data.rows[?(@.id==" + seedId + ")]").isEmpty());
     }
 
     // ── clearImported scheduleNo 非白名单 → 404(code in body) ──
