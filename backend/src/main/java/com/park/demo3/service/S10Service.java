@@ -1,6 +1,9 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.S10ImportRequest;
 import com.park.demo3.dto.S10MonthDTO;
 import com.park.demo3.dto.S10OverviewDTO;
 import com.park.demo3.dto.S10RecordDTO;
@@ -33,33 +36,33 @@ public class S10Service {
 
     // ── 25 费用列定义(顺序即列展示顺序;getter/setter 一处定义,派生/落库/DTO 复用) ──
     private record Col(String name, Function<S10Record, BigDecimal> get, BiConsumer<S10Record, BigDecimal> set,
-                       Function<S10RecordReq, BigDecimal> req) {}
+                       Function<S10RecordReq, BigDecimal> req, Function<S10ImportRequest.Row, BigDecimal> imp) {}
     private static final List<Col> COLS = List.of(
-        new Col("officeRent",       S10Record::getOfficeRent,       S10Record::setOfficeRent,       S10RecordReq::officeRent),
-        new Col("officeMgmtFee",    S10Record::getOfficeMgmtFee,    S10Record::setOfficeMgmtFee,    S10RecordReq::officeMgmtFee),
-        new Col("factoryRent",      S10Record::getFactoryRent,      S10Record::setFactoryRent,      S10RecordReq::factoryRent),
-        new Col("factoryMgmtFee",   S10Record::getFactoryMgmtFee,   S10Record::setFactoryMgmtFee,   S10RecordReq::factoryMgmtFee),
-        new Col("landRent",         S10Record::getLandRent,         S10Record::setLandRent,         S10RecordReq::landRent),
-        new Col("shopRent",         S10Record::getShopRent,         S10Record::setShopRent,         S10RecordReq::shopRent),
-        new Col("shopMgmtFee",      S10Record::getShopMgmtFee,      S10Record::setShopMgmtFee,      S10RecordReq::shopMgmtFee),
-        new Col("dormRent",         S10Record::getDormRent,         S10Record::setDormRent,         S10RecordReq::dormRent),
-        new Col("dormFacilityFee",  S10Record::getDormFacilityFee,  S10Record::setDormFacilityFee,  S10RecordReq::dormFacilityFee),
-        new Col("infraOffice",      S10Record::getInfraOffice,      S10Record::setInfraOffice,      S10RecordReq::infraOffice),
-        new Col("infraFactory",     S10Record::getInfraFactory,     S10Record::setInfraFactory,     S10RecordReq::infraFactory),
-        new Col("infraShop",        S10Record::getInfraShop,        S10Record::setInfraShop,        S10RecordReq::infraShop),
-        new Col("infraDorm",        S10Record::getInfraDorm,        S10Record::setInfraDorm,        S10RecordReq::infraDorm),
-        new Col("elevatorMaint",    S10Record::getElevatorMaint,    S10Record::setElevatorMaint,    S10RecordReq::elevatorMaint),
-        new Col("transformerMaint", S10Record::getTransformerMaint, S10Record::setTransformerMaint, S10RecordReq::transformerMaint),
-        new Col("landUseTax",       S10Record::getLandUseTax,       S10Record::setLandUseTax,       S10RecordReq::landUseTax),
-        new Col("networkFee",       S10Record::getNetworkFee,       S10Record::setNetworkFee,       S10RecordReq::networkFee),
-        new Col("accessMaint",      S10Record::getAccessMaint,      S10Record::setAccessMaint,      S10RecordReq::accessMaint),
-        new Col("otherFee",         S10Record::getOtherFee,         S10Record::setOtherFee,         S10RecordReq::otherFee),
-        new Col("elecBasic",        S10Record::getElecBasic,        S10Record::setElecBasic,        S10RecordReq::elecBasic),
-        new Col("elecStd",          S10Record::getElecStd,          S10Record::setElecStd,          S10RecordReq::elecStd),
-        new Col("elecMaint",        S10Record::getElecMaint,        S10Record::setElecMaint,        S10RecordReq::elecMaint),
-        new Col("waterStd",         S10Record::getWaterStd,         S10Record::setWaterStd,         S10RecordReq::waterStd),
-        new Col("waterMaint",       S10Record::getWaterMaint,       S10Record::setWaterMaint,       S10RecordReq::waterMaint),
-        new Col("guaranteeRent",    S10Record::getGuaranteeRent,    S10Record::setGuaranteeRent,    S10RecordReq::guaranteeRent));
+        new Col("officeRent",       S10Record::getOfficeRent,       S10Record::setOfficeRent,       S10RecordReq::officeRent,       S10ImportRequest.Row::officeRent),
+        new Col("officeMgmtFee",    S10Record::getOfficeMgmtFee,    S10Record::setOfficeMgmtFee,    S10RecordReq::officeMgmtFee,    S10ImportRequest.Row::officeMgmtFee),
+        new Col("factoryRent",      S10Record::getFactoryRent,      S10Record::setFactoryRent,      S10RecordReq::factoryRent,      S10ImportRequest.Row::factoryRent),
+        new Col("factoryMgmtFee",   S10Record::getFactoryMgmtFee,   S10Record::setFactoryMgmtFee,   S10RecordReq::factoryMgmtFee,   S10ImportRequest.Row::factoryMgmtFee),
+        new Col("landRent",         S10Record::getLandRent,         S10Record::setLandRent,         S10RecordReq::landRent,         S10ImportRequest.Row::landRent),
+        new Col("shopRent",         S10Record::getShopRent,         S10Record::setShopRent,         S10RecordReq::shopRent,         S10ImportRequest.Row::shopRent),
+        new Col("shopMgmtFee",      S10Record::getShopMgmtFee,      S10Record::setShopMgmtFee,      S10RecordReq::shopMgmtFee,      S10ImportRequest.Row::shopMgmtFee),
+        new Col("dormRent",         S10Record::getDormRent,         S10Record::setDormRent,         S10RecordReq::dormRent,         S10ImportRequest.Row::dormRent),
+        new Col("dormFacilityFee",  S10Record::getDormFacilityFee,  S10Record::setDormFacilityFee,  S10RecordReq::dormFacilityFee,  S10ImportRequest.Row::dormFacilityFee),
+        new Col("infraOffice",      S10Record::getInfraOffice,      S10Record::setInfraOffice,      S10RecordReq::infraOffice,      S10ImportRequest.Row::infraOffice),
+        new Col("infraFactory",     S10Record::getInfraFactory,     S10Record::setInfraFactory,     S10RecordReq::infraFactory,     S10ImportRequest.Row::infraFactory),
+        new Col("infraShop",        S10Record::getInfraShop,        S10Record::setInfraShop,        S10RecordReq::infraShop,        S10ImportRequest.Row::infraShop),
+        new Col("infraDorm",        S10Record::getInfraDorm,        S10Record::setInfraDorm,        S10RecordReq::infraDorm,        S10ImportRequest.Row::infraDorm),
+        new Col("elevatorMaint",    S10Record::getElevatorMaint,    S10Record::setElevatorMaint,    S10RecordReq::elevatorMaint,    S10ImportRequest.Row::elevatorMaint),
+        new Col("transformerMaint", S10Record::getTransformerMaint, S10Record::setTransformerMaint, S10RecordReq::transformerMaint, S10ImportRequest.Row::transformerMaint),
+        new Col("landUseTax",       S10Record::getLandUseTax,       S10Record::setLandUseTax,       S10RecordReq::landUseTax,       S10ImportRequest.Row::landUseTax),
+        new Col("networkFee",       S10Record::getNetworkFee,       S10Record::setNetworkFee,       S10RecordReq::networkFee,       S10ImportRequest.Row::networkFee),
+        new Col("accessMaint",      S10Record::getAccessMaint,      S10Record::setAccessMaint,      S10RecordReq::accessMaint,      S10ImportRequest.Row::accessMaint),
+        new Col("otherFee",         S10Record::getOtherFee,         S10Record::setOtherFee,         S10RecordReq::otherFee,         S10ImportRequest.Row::otherFee),
+        new Col("elecBasic",        S10Record::getElecBasic,        S10Record::setElecBasic,        S10RecordReq::elecBasic,        S10ImportRequest.Row::elecBasic),
+        new Col("elecStd",          S10Record::getElecStd,          S10Record::setElecStd,          S10RecordReq::elecStd,          S10ImportRequest.Row::elecStd),
+        new Col("elecMaint",        S10Record::getElecMaint,        S10Record::setElecMaint,        S10RecordReq::elecMaint,        S10ImportRequest.Row::elecMaint),
+        new Col("waterStd",         S10Record::getWaterStd,         S10Record::setWaterStd,         S10RecordReq::waterStd,         S10ImportRequest.Row::waterStd),
+        new Col("waterMaint",       S10Record::getWaterMaint,       S10Record::setWaterMaint,       S10RecordReq::waterMaint,       S10ImportRequest.Row::waterMaint),
+        new Col("guaranteeRent",    S10Record::getGuaranteeRent,    S10Record::setGuaranteeRent,    S10RecordReq::guaranteeRent,    S10ImportRequest.Row::guaranteeRent));
 
     // 行合计 = 该行 25 列之和(派生,不落库)
     private static BigDecimal rowTotal(S10Record r) {
@@ -135,6 +138,37 @@ public class S10Service {
         for (Col c : COLS) c.set().accept(r, r2(c.req().apply(req)));
         if (isNew) records.insert(r); else records.updateById(r);
         return toRecordDTO(records.selectById(r.getId()));
+    }
+
+    // ── import:逐行按 (phase,acctMonth,tenantName) upsert;新行 source='import'、tenant_id=null(软引用) ──
+    @org.springframework.transaction.annotation.Transactional
+    public ImportResultDTO importRows(S10ImportRequest req) {
+        int imported = 0;
+        List<ImportError> errors = new ArrayList<>();
+        List<S10ImportRequest.Row> rows = req.rows();
+        for (int i = 0; i < rows.size(); i++) {
+            S10ImportRequest.Row row = rows.get(i);
+            String name = row.tenantName() == null ? null : row.tenantName().trim();
+            if (name == null || name.isEmpty()) {
+                errors.add(new ImportError(i, row.tenantName(), "租户名称为空"));
+                continue;
+            }
+            S10Record r = records.selectBySlotTenant(req.phase(), req.acctMonth(), name);
+            boolean isNew = r == null;
+            if (isNew) {
+                r = new S10Record();
+                r.setPhase(req.phase());
+                r.setAcctMonth(req.acctMonth());
+                r.setTenantName(name);
+                r.setTenantId(null);          // 软引用:导入不解析 FK
+                r.setSource("import");
+            }
+            r.setProfile(row.profile());
+            for (Col c : COLS) c.set().accept(r, r2(c.imp().apply(row)));
+            if (isNew) records.insert(r); else records.updateById(r);
+            imported++;
+        }
+        return new ImportResultDTO(imported, errors.size(), errors);
     }
 
     // ── updateNote(id,note;不存在 → 404) ──

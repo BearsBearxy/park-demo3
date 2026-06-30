@@ -6,7 +6,8 @@
 import { ref, computed, onMounted, reactive } from 'vue'
 import { s10Api } from '@/api/s10'
 import { exportS10Month } from '@/utils/s10Excel'
-import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
+import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq, S10ImportRow } from '@/types/s10'
+import type { ImportResultDTO } from '@/types/import'
 import { PHASES, PHASE_LAYOUT, leavesOf } from './layout'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -15,6 +16,8 @@ import Segmented from '@/components/ds/Segmented.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
+import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import S10Table from './S10Table.vue'
 import S10RecordDrawer from './S10RecordDrawer.vue'
 
@@ -190,8 +193,35 @@ async function onExport() {
   }
 }
 
-function onImport() {
-  alert('导入 Excel 即将上线:将按本期版面列序（租户名称 + 各收款项目）导入整张表。')
+// ── 导入 Excel ──────────────────────────────────────────
+// 数字清洗(同原型 s10Num):剥 ¥/,/%/空格,非数字 → 0。
+const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+// 模板列:租户名称 + 当前版面叶子 label(office/factory 随 phase)
+const importCols = computed(() => ['租户名称', ...leaves.value.map(l => l.label)])
+// parseRow:cells[0]=租户名(空跳过);其余→当前版面叶子 colId;profile 默认 'factory'。
+function importParseRow(c: string[]): ImportRec | null {
+  const name = (c[0] || '').trim(); if (!name) return null
+  const fees: Record<string, number> = {}
+  leaves.value.forEach((l, i) => { fees[l.colId] = cleanNum(c[i + 1]) })
+  return { tenantName: name, profile: 'factory', ...fees, __preview: [name, ...leaves.value.map((_l, i) => cleanNum(c[i + 1]) || '')] }
+}
+async function onImport(recs: ImportRec[]) {
+  if (year.value == null) return
+  importing.value = false
+  try {
+    const rows = recs as unknown as S10ImportRow[]
+    importResult.value = await s10Api.importRows({
+      phase: phase.value,
+      acctMonth: `${year.value}-${String(month.value).padStart(2, '0')}`,
+      rows,
+    })
+    await loadMonth()
+    await reloadOverview()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
 }
 
 // ── KPI（本月总收款 / 户数 / 户均 / 已修改处）— 编辑态从本地行即时算 ──
@@ -233,12 +263,10 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
           @toggle-edit="finishEdit"
         >
           <template #edit-actions>
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" @click="onImport">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增租户
@@ -309,10 +337,22 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="'导入 附表10 · ' + meta.name"
+        :sub="'列顺序 = 租户名称 + 本期各收款项目(共 ' + importCols.length + ' 列),导入到 ' + year + ' 年 ' + month + ' 月'"
+        :template-cols="importCols"
+        :parse-row="importParseRow"
+        @close="importing = false"
+        @import="onImport"
+      />
     </template>
 
     <!-- 切年/月/期过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

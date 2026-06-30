@@ -81,3 +81,15 @@ export interface S10RecordReq extends Partial<S10Fees> {
 export interface S10NoteReq {
   note: string | null
 }
+
+// 导入 body(spec §4.2):phase + acctMonth(YYYY-MM)+ 每行 tenantName/profile + 25 费用 camelCase。
+export interface S10ImportRow extends Partial<S10Fees> {
+  tenantName: string
+  profile: string
+}
+
+export interface S10ImportRequest {
+  phase: number
+  acctMonth: string   // YYYY-MM
+  rows: S10ImportRow[]
+}

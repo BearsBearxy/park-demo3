@@ -3,13 +3,16 @@
 // 动线 1:1 from screen-ledger.jsx LedgerScreen (386-718): ⓪选公司 → ①年/月历 → ②宽表 → ③抽屉。
 import { ref, computed, onMounted } from 'vue'
 import { companyApi, ledgerApi } from '@/api/ledger'
-import type { CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow } from '@/types/ledger'
-import { FEE_KEYS } from '@/utils/ledgerColumns'
+import type { CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
+import type { ImportResultDTO } from '@/types/import'
+import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
 import LedgerCompanyPicker from './LedgerCompanyPicker.vue'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
 import LedgerMonthGrid from './LedgerMonthGrid.vue'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
+import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 
 // ── 状态机 ───────────────────────────────────────────────
 const companyId = ref<number | null>(null)   // null → ⓪ 选公司
@@ -157,6 +160,36 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
   const rows = edit.value ? draft.value : monthDto.value?.rows ?? []
   return rows.find(r => r.tenantId === drawerTenantId.value) ?? null
 })
+
+// ── 导入 Excel(scope = 当前公司 + 年 + 月,在②宽表入口) ──────────
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+// 数字清洗:剥 ¥/,/%/空格,非数字 → 0。
+const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
+// 模板列:租户 + 21 费用 label(取自 lgColumns 叶子,FEE_KEYS 同序),复用列定义不另造。
+const importCols = computed(() => {
+  const labelByKey: Record<string, string> = {}
+  for (const g of lgColumns(0).groups) for (const c of g.cols) labelByKey[c.key] = c.label
+  return ['租户', ...FEE_KEYS.map(k => labelByKey[k])]
+})
+// parseRow:cells[0]=租户名(空跳过);cells[1..21]→21 费用(FEE_KEYS 序)。
+function importParseRow(c: string[]): ImportRec | null {
+  const name = (c[0] || '').trim(); if (!name) return null
+  const fees: Record<string, number> = {}
+  FEE_KEYS.forEach((k, i) => { fees[k] = cleanNum(c[i + 1]) })
+  return { tenantName: name, ...fees, __preview: [name, ...FEE_KEYS.map((_k, i) => cleanNum(c[i + 1]) || '')] }
+}
+async function onImport(recs: ImportRec[]) {
+  if (companyId.value == null || month.value == null) return
+  importing.value = false
+  try {
+    const rows = recs as unknown as LedgerImportRow[]
+    importResult.value = await ledgerApi.import(companyId.value, year.value, month.value, { rows })
+    await loadMonth()   // 重载本月,反映 upsert 后的费用
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
 </script>
 
 <template>
@@ -210,6 +243,7 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
       @save="save"
       @copy-from-prev="copyFromPrev"
       @tenant-click="drawerTenantId = $event"
+      @import="importing = true"
     />
     <LedgerTenantDrawer
       :row="drawerRow"
@@ -219,7 +253,18 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
       :prev-month="monthDto.prevMonth"
       @close="drawerTenantId = null"
     />
+    <FpImportModal
+      v-if="importing"
+      :title="'导入 月度台账 · ' + company.name"
+      :sub="'列顺序 = 租户 + 各费用项(共 ' + importCols.length + ' 列),按租户名匹配在租租户后导入到 ' + year + ' 年 ' + month + ' 月'"
+      :template-cols="importCols"
+      :parse-row="importParseRow"
+      @close="importing = false"
+      @import="onImport"
+    />
   </template>
+
+  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
   <!-- 过渡中(切公司/月,数据加载)兜底转圈,不闪空白 -->
   <div v-else class="page-loading"><span class="page-spin" /></div>

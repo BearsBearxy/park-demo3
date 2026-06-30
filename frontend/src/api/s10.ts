@@ -1,5 +1,6 @@
 import http from './index'
-import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10RecordReq } from '../types/s10'
+import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10RecordReq, S10ImportRequest } from '../types/s10'
+import type { ImportResultDTO } from '../types/import'
 
 // paths per 契约 S10Controller:/api/s10/...。http unwraps Result envelope。
 // overview 确定性范围;getMonth 按 phase(1-4)×year×month 取稀疏宽表;save upsert(phase,acctMonth,tenantName)。
@@ -11,4 +12,6 @@ export const s10Api = {
   updateNote: (id: number, note: string | null): Promise<void> =>
     http.put(`/s10/${id}/note`, { note }),
   deleteRecord: (id: number): Promise<void> => http.delete(`/s10/${id}`),
+  // 软引用 upsert(source='import'、tenant_id=null)。契约路径 §4.2。
+  importRows: (req: S10ImportRequest): Promise<ImportResultDTO> => http.post('/s10/import', req),
 }

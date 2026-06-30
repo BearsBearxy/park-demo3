@@ -1,0 +1,74 @@
+<script setup lang="ts">
+// 导入结果提示 — 居中小弹层:imported N 条 / skipped M / errors 可展开。复用 DS Button。
+import { ref } from 'vue'
+import { iconFor } from '@/components/ds/icon'
+import Button from '@/components/ds/Button.vue'
+import type { ImportResultDTO } from '@/types/import'
+
+defineProps<{ result: ImportResultDTO }>()
+const emit = defineEmits<{ close: [] }>()
+
+const showErrors = ref(false)
+</script>
+
+<template>
+  <div class="ir-scrim" @mousedown="emit('close')">
+    <div class="ir-card" @mousedown.stop>
+      <div class="ir-h">
+        <component :is="iconFor(result.errors.length ? 'alert-triangle' : 'check-circle-2')"
+                   :size="20" :class="result.errors.length ? 'ir-warn' : 'ir-ok'" />
+        <h3>导入完成</h3>
+        <button class="ir-x" @click="emit('close')"><component :is="iconFor('x')" :size="16" /></button>
+      </div>
+      <div class="ir-stats">
+        <div class="ir-stat ok"><b>{{ result.imported }}</b><span>成功写入</span></div>
+        <div class="ir-stat" :class="{ warn: result.skipped > 0 }"><b>{{ result.skipped }}</b><span>跳过</span></div>
+      </div>
+      <div v-if="result.errors.length" class="ir-errs">
+        <button class="ir-errs-toggle" @click="showErrors = !showErrors">
+          <component :is="iconFor(showErrors ? 'chevron-down' : 'chevron-right')" :size="14" />
+          {{ result.errors.length }} 行未导入
+        </button>
+        <ul v-if="showErrors" class="ir-errs-list">
+          <li v-for="(e, i) in result.errors" :key="i">
+            <span class="ir-errs-row">第 {{ e.rowIndex + 1 }} 行</span>
+            <span class="ir-errs-label">{{ e.label }}</span>
+            <span class="ir-errs-reason">{{ e.reason }}</span>
+          </li>
+        </ul>
+      </div>
+      <div class="ir-f">
+        <Button variant="filled" full-width @click="emit('close')">知道了</Button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.ir-scrim { position:fixed; inset:0; z-index:340; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; }
+.ir-card { width:min(420px,94vw); background:var(--surface-white); border-radius:var(--radius-lg); box-shadow:0 24px 60px rgba(28,28,28,.22); display:flex; flex-direction:column; overflow:hidden; }
+.ir-h { display:flex; align-items:center; gap:10px; padding:18px 20px 12px; }
+.ir-h h3 { margin:0; flex:1; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.ir-ok { color:var(--hue-blue); }
+.ir-warn { color:var(--hue-orange); }
+.ir-x { width:28px; height:28px; border:none; background:transparent; border-radius:8px; color:var(--text-muted); cursor:pointer; display:grid; place-items:center; }
+.ir-x:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+.ir-stats { display:flex; gap:10px; padding:0 20px; }
+.ir-stat { flex:1; display:flex; flex-direction:column; gap:2px; padding:12px 14px; border-radius:var(--radius-md); background:var(--surface-card); }
+.ir-stat b { font-size:22px; font-family:var(--font-mono); font-weight:var(--fw-semibold); color:var(--text-primary); }
+.ir-stat span { font-size:11.5px; color:var(--text-muted); }
+.ir-stat.ok b { color:var(--hue-blue); }
+.ir-stat.warn b { color:var(--hue-orange); }
+
+.ir-errs { padding:12px 20px 0; }
+.ir-errs-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:6px 0; }
+.ir-errs-list { list-style:none; margin:6px 0 0; padding:8px 10px; max-height:180px; overflow:auto; background:var(--surface-card); border-radius:var(--radius-md); }
+.ir-errs-list li { display:flex; align-items:baseline; gap:8px; font-size:11.5px; padding:4px 0; border-bottom:1px solid var(--divider); }
+.ir-errs-list li:last-child { border-bottom:none; }
+.ir-errs-row { font-family:var(--font-mono); color:var(--text-muted); flex:0 0 auto; }
+.ir-errs-label { color:var(--text-primary); flex:0 0 auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ir-errs-reason { color:var(--hue-red); flex:1; }
+
+.ir-f { padding:16px 20px; }
+</style>

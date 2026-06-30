@@ -31,6 +31,7 @@ const emit = defineEmits<{
   save: []
   'copy-from-prev': []
   'tenant-click': [tenantId: number]
+  import: []
 }>()
 
 const q = ref('')
@@ -100,6 +101,10 @@ function onCopyPrev() {
         <LedgerCompanyBadge v-if="!edit" :name="companyName" :short="companyShort" @switch="emit('switch-company')" />
         <template v-if="!edit">
           <span class="lg-tag">{{ activeTenants }} 户记账</span>
+          <Button variant="outline" size="sm" @click="emit('import')">
+            <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+            导入 Excel
+          </Button>
           <Button variant="outline" size="sm" @click="onExport">
             <template #leading><component :is="iconFor('download')" :size="14" /></template>
             导出 Excel

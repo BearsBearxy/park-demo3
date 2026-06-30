@@ -1,7 +1,8 @@
 import http from './index'
 import type {
-  CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerSaveRequest,
+  CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerSaveRequest, LedgerImportRequest,
 } from '../types/ledger'
+import type { ImportResultDTO } from '../types/import'
 
 // paths per spec §4. http unwraps Result envelope.
 export const companyApi = {
@@ -20,4 +21,7 @@ export const ledgerApi = {
     http.put(`/ledger/companies/${companyId}/months/${year}/${month}`, body),
   copyFromPrev: (companyId: number, year: number, month: number): Promise<LedgerMonthDTO> =>
     http.post(`/ledger/companies/${companyId}/months/${year}/${month}/copy-from-prev`),
+  // 逐行定向 upsert(tenant_id 按名解析),不走整月 save 的删空。契约路径见 §4.1。
+  import: (companyId: number, year: number, month: number, body: LedgerImportRequest): Promise<ImportResultDTO> =>
+    http.post(`/ledger/companies/${companyId}/import`, body, { params: { year, month } }),
 }

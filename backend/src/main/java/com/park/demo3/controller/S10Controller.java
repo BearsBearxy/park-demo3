@@ -30,6 +30,9 @@ public class S10Controller {
     @Operation(summary = "新增/upsert 一行（按 期·记账月·租户名）") @PostMapping
     public S10RecordDTO save(@Valid @RequestBody S10RecordReq req) { return svc.save(req); }
 
+    @Operation(summary = "批量导入（按 期·记账月·租户名 upsert，新行 source=import/tenant_id=null）") @PostMapping("/import")
+    public ImportResultDTO importRows(@Valid @RequestBody S10ImportRequest req) { return svc.importRows(req); }
+
     @Operation(summary = "改逐行备注") @PutMapping("/{id}/note")
     public S10RecordDTO updateNote(@PathVariable Long id, @RequestBody S10NoteReq req) {
         return svc.updateNote(id, req.note());

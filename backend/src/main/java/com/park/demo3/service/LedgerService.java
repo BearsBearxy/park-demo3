@@ -7,6 +7,9 @@ import com.park.demo3.dto.LedgerMonthDTO.LedgerRowDTO;
 import com.park.demo3.dto.LedgerOverviewDTO;
 import com.park.demo3.dto.LedgerOverviewDTO.MonthMeta;
 import com.park.demo3.dto.LedgerSaveRequest;
+import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.LedgerImportRequest;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.entity.MonthlyLedger;
 import com.park.demo3.entity.Tenant;
@@ -75,6 +78,21 @@ public class LedgerService {
         LedgerSaveRequest.Row::basicElectricity, LedgerSaveRequest.Row::standardElectricity,
         LedgerSaveRequest.Row::electricityMaint,
         LedgerSaveRequest.Row::standardWater, LedgerSaveRequest.Row::waterMaint);
+
+    // import 行的 21 费用读取器(同序),用于逐行定向 upsert(走 FEE_SET)
+    private static final List<Function<LedgerImportRequest.Row, BigDecimal>> IMP_GET = List.of(
+        LedgerImportRequest.Row::factoryRent, LedgerImportRequest.Row::factoryMgmtFee,
+        LedgerImportRequest.Row::shopRent, LedgerImportRequest.Row::dormRent,
+        LedgerImportRequest.Row::dormFacilitiesFee, LedgerImportRequest.Row::shopMgmtFee,
+        LedgerImportRequest.Row::factoryInfraMaint, LedgerImportRequest.Row::shopInfraMaint,
+        LedgerImportRequest.Row::dormInfraMaint,
+        LedgerImportRequest.Row::elevatorMaint, LedgerImportRequest.Row::transformerMaint,
+        LedgerImportRequest.Row::landUseTax, LedgerImportRequest.Row::networkFee,
+        LedgerImportRequest.Row::accessCtrlMaint, LedgerImportRequest.Row::officeOtherFee,
+        LedgerImportRequest.Row::dormOtherFee,
+        LedgerImportRequest.Row::basicElectricity, LedgerImportRequest.Row::standardElectricity,
+        LedgerImportRequest.Row::electricityMaint,
+        LedgerImportRequest.Row::standardWater, LedgerImportRequest.Row::waterMaint);
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
     private static BigDecimal r2(BigDecimal v) { return nz(v).setScale(2, RoundingMode.HALF_UP); }
@@ -167,6 +185,39 @@ public class LedgerService {
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
         }
         return month(companyId, year, month);
+    }
+
+    // ── import(逐行按 tenantName 解析在租租户 → 定向 upsert 21 费用;绝不删未导入租户) ──
+    @Transactional
+    public ImportResultDTO importRows(Integer companyId, int year, int month, LedgerImportRequest req) {
+        ManagementCompany company = companies.selectById(companyId);
+        if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+
+        // 在租租户(status=1)按 company_name 精确匹配
+        Map<String, Integer> byName = activeTenants().stream()
+            .collect(Collectors.toMap(Tenant::getCompanyName, Tenant::getId, (a, b) -> a));
+        Map<Integer, MonthlyLedger> stored = ledger.selectMonth(companyId, year, month).stream()
+            .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
+
+        int imported = 0;
+        List<ImportError> errors = new ArrayList<>();
+        List<LedgerImportRequest.Row> rows = req.rows();
+        for (int i = 0; i < rows.size(); i++) {
+            LedgerImportRequest.Row row = rows.get(i);
+            String name = row.tenantName() == null ? null : row.tenantName().trim();
+            Integer tenantId = name == null ? null : byName.get(name);
+            if (tenantId == null) {
+                errors.add(new ImportError(i, row.tenantName(), "未找到匹配在租租户"));
+                continue;
+            }
+            // 定向 upsert:既有行 update,否则 insert(不触碰未导入的其他租户行)
+            MonthlyLedger existing = stored.get(tenantId);
+            MonthlyLedger l = existing != null ? existing : zeroRow(companyId, tenantId, year, month);
+            for (int f = 0; f < FEE_SET.size(); f++) FEE_SET.get(f).accept(l, r2(IMP_GET.get(f).apply(row)));
+            if (existing != null) ledger.updateById(l); else ledger.insert(l);
+            imported++;
+        }
+        return new ImportResultDTO(imported, errors.size(), errors);
     }
 
     // ── copy-from-prev(以上月各行为模板,结余结转,事务) ──

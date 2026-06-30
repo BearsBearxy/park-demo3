@@ -88,3 +88,12 @@ export interface LedgerSaveRow extends LedgerFees {
 export interface LedgerSaveRequest {
   rows: LedgerSaveRow[]
 }
+
+// 导入 body(spec §4.1):每行 tenantName(按名解析 FK)+ 21 费用 camelCase。
+export interface LedgerImportRow extends LedgerFees {
+  tenantName: string
+}
+
+export interface LedgerImportRequest {
+  rows: LedgerImportRow[]
+}

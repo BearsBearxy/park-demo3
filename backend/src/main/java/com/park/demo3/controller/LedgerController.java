@@ -40,4 +40,11 @@ public class LedgerController {
                                       @PathVariable @Min(1) @Max(12) int month) {
         return svc.copyFromPrev(id, year, month);
     }
+
+    @Operation(summary = "批量导入（按租户名解析 + 逐行定向 upsert，不删未导入租户）") @PostMapping("/import")
+    public ImportResultDTO importRows(@PathVariable Integer id, @RequestParam @Min(2000) @Max(2100) int year,
+                                      @RequestParam @Min(1) @Max(12) int month,
+                                      @Valid @RequestBody LedgerImportRequest req) {
+        return svc.importRows(id, year, month, req);
+    }
 }

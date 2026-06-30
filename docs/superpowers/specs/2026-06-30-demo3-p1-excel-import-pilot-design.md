@@ -35,7 +35,7 @@
 共享返回体 `ImportResultDTO { imported:int, skipped:int, errors: List<ImportError> }`，`ImportError { rowIndex:int, label:String, reason:String }`。
 
 ### 4.1 台账导入（tenant_id FK 解析）
-`POST /api/companies/{id}/ledger/import?year=&month=`，body `LedgerImportRequest { rows: List<Row{ tenantName:String, <21 费用 BigDecimal> }> }`。
+`POST /api/ledger/companies/{id}/import?year=&month=`（沿用既有 LedgerController 基址 `/api/ledger/companies/{id}`），body `LedgerImportRequest { rows: List<Row{ tenantName:String, <21 费用 BigDecimal> }> }`。
 - 逐行：`tenantName` → 在租租户（`status=1`）按 `company_name` 精确匹配 → 命中得 `tenantId`；未命中 → `errors += {rowIndex, tenantName, "未找到匹配在租租户"}`，跳过。
 - 命中行：定向 upsert `monthly_ledger`（company_id+year+month+tenant_id 存在则 update 21 费用，否则 insert），复用 `LedgerService` 的 `FEE_SET`。**不触碰未导入的其他租户行**。
 - `@PathVariable id`、`@RequestParam year/month` 校验（沿用既有 `@Min/@Max`）。

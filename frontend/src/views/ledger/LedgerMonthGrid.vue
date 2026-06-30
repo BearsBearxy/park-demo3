@@ -2,7 +2,6 @@
 // ① 年/月选择 — 1:1 from screen-ledger.jsx month-selection branch (462-521).
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
-import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import LedgerCompanyBadge from './LedgerCompanyBadge.vue'
 import type { LedgerOverviewDTO, MonthMeta } from '@/types/ledger'
@@ -50,13 +49,7 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
           <span class="v">{{ year }}</span>
           <button @click="emit('year', Math.min(year + 1, maxYear))" title="下一年" :disabled="year >= maxYear"><component :is="iconFor('chevron-right')" :size="15" /></button>
         </span>
-        <!-- 导入 Excel:禁用占位,即将上线 -->
-        <span title="导入即将上线" style="display:inline-flex">
-          <Button variant="filled" size="sm" :disabled="true">
-            <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-            导入 Excel
-          </Button>
-        </span>
+        <!-- 导入 Excel 改到月度宽表(LedgerWideTable):彼处公司+年+月皆已选,可定向 upsert -->
       </div>
     </div>
 
