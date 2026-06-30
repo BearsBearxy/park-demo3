@@ -13,13 +13,15 @@
 `FpImportModal` 增加 **`columnMap` 模式**（与既有 `parseRow` 二选一；台账继续用 parseRow）：
 
 - **Props 新增**：`columnMap?: { label: string; key: string }[]`（列标签→字段 key）、`nameLabels?: string[]`（租户列候选表头名，默认 `['租户','租户名称']`）。给了 `columnMap` 即走名字匹配，忽略 `parseRow`。
-- **解析工具** `utils/importHeaderMatch.ts`：`matchByHeader(matrix, columnMap, nameLabels) => Rec[]`：
+- **解析工具** `utils/importHeaderMatch.ts`：`matchByHeader(matrix, columnMap, nameLabels) => {records, error}`。**真实结构(实测 .xlsx)**：`租户`表头在 r0c0、费用叶子在 r2、`其他费用`等单列组标签落在 r1分组行、数据租户名在 c1(c0=车间分类列)、尾部 c22/c23=合计/备注、并有「X车间合计：/二期园区总计：」小计行。故算法：
   1. `normalize(s)`：去空格 + 去 `、，·（）()／/。.` 等标点（不改字符）。
-  2. **定位表头行**：逐行统计「normalize 后命中 columnMap 标签」的单元格数，取最多的一行为表头行（命中 < 2 → 抛「无法识别表头，请确认列与本期版面一致」）。
-  3. **列→key 映射**：表头行里每个命中标签的列 → 对应 key；**租户列** = 表头里 normalize 命中 `nameLabels` 的列（无则取「第一个非数字、非命中-fee 的文本列」兜底）。
-  4. **数据行** = 表头行之后所有行；逐行：`tenantName = row[租户列].trim()`，空则跳过；命中列 → `cleanNum(值)`；**未命中列（车间/合计/备注/纯分组行）一律忽略**。
-  5. 产出 `{ tenantName, ...fields, __preview }`（`__preview` 按 `templateCols` 顺序对齐：租户名 + 各叶子值或空）。
+  2. **表头块末行** = 最后一个「含 ≥2 个费用标签命中」的行（叶子表头行；数据行单元格是数字/租户名/车间→不命中）。无则抛「无法识别表头」。
+  3. **费用列→key**：逐列扫表头块(行 0..末行,**跨行**)，命中费用标签即记 key（捕获落在分组行的标签如「其他费用」）。命中 < 2 列 → 抛错。
+  4. **租户列(按数据内容,非按表头名)** = 非费用列里、数据行「文本(非数字/非空/非小计)」最多的列。**这样租户表头在别行、数据租户不在首列(前有车间列)都能正确定位**——这正是修掉「未找到租户列」的关键。
+  5. **数据行** = 表头块之后、租户列非空且非小计(不含 合计/小计/总计)的行；命中列 → `cleanNum`；**未命中列（车间/合计/备注/分组）一律忽略**。
+  6. 产出 `{ tenantName, ...fields, __preview }`（`__preview` 按 `templateCols` 顺序对齐）。
 - **顺序无关**：列顺序变了也按名字对；多出/缺少的列自动忽略/留空。
+- **分段粘贴**：一/二期版面不同(office/factory)且各自一套表头，**一次粘一个期的明细块到对应版面 tab**（多段一起粘=多个表头块,只解析最后一段，故不支持；属正确工作流，非缺陷）。
 
 ## 3. 附表10 接线（S10View）
 

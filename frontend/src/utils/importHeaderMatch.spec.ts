@@ -1,66 +1,75 @@
 import { describe, it, expect } from 'vitest'
 import { matchByHeader, normalizeHeader, type ColumnMapEntry } from './importHeaderMatch'
 
-// 模拟用户真实二期表的 factory 子集列
+// 真实二期表 factory 子集列
 const COLS: ColumnMapEntry[] = [
   { label: '厂房租金', key: 'factoryRent' },
   { label: '企业管理服务费', key: 'factoryMgmtFee' },
-  { label: '商铺租金', key: 'shopRent' },
+  { label: '其他费用', key: 'otherFee' },
   { label: '基本用电费', key: 'elecBasic' },
-  { label: '基准水费', key: 'waterStd' },
+  { label: '水维护费', key: 'waterMaint' },
 ]
 const NAME = ['租户', '租户名称']
 
-describe('matchByHeader — 真实 Excel 容错', () => {
-  // 多行表头(标题/分组/叶子)+ 前置车间分类列 + 尾部合计/备注列
+describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
+  // 真实结构:租户表头在 r0col0、数据租户在 col1(col0=车间分类列)、叶子在 r2、其他费用在 r1分组行、尾部合计/备注、小计行
+  const cols = (a: (string | number)[]) => a.map(String)
   const matrix: string[][] = [
-    ['2025年1月二期园区费用明细表', '', '', '', '', '', '', '', ''],
-    ['', '', '租金', '', '', '12月电费', '12月水费', '', ''],                 // 分组行(命中少)
-    ['', '租户', '厂房租金', '企业管理服务费', '商铺租金', '基本用电费', '基准水费', '合计', '备注'], // 叶子表头行(命中5)
-    ['一至四车间', '火炬创新创业园', '1000', '200', '0', '50', '10', '1260', ''],
-    ['', '理朋', '0', '0', '0', '30', '5', '35', '备注X'],
-    ['5，6车间', '驰鸿印业', '500', '100', '0', '20', '8', '628', ''],
+    cols(['租户', '', '项目', '', '', '', '', '合计', '备注']),                               // r0:租户表头在col0
+    cols(['', '', '租金', '', '其他费用', '1月电费', '1月水费', '', '']),                       // r1:分组行,其他费用在 col4
+    cols(['', '', '厂房租金', '企业管理服务费', '', '基本用电费', '水维护费', '', '']),           // r2:叶子表头行
+    cols(['一至四车间', '火炬创新创业园', '1808871', '100', '5', '50', '7', '1809033', '']),     // data:车间col0+租户col1
+    cols(['', '锂朋', '0', '0', '3', '30', '2', '35', '']),
+    cols(['五、六车间', '力灏', '200017', '200', '9', '90', '8', '200324', '']),
+    cols(['一至四车间合计：', '', '2008888', '300', '17', '170', '17', '2009422', '']),          // 小计行(col1空)
+    cols(['二期园区总计：', '', '2008888', '300', '17', '170', '17', '2009422', '']),
   ]
 
-  it('定位叶子表头行、忽略前置车间列与尾部合计/备注', () => {
+  it('租户表头在别行/数据租户在col1 也能找到租户列', () => {
     const { records, error } = matchByHeader(matrix, COLS, NAME)
     expect(error).toBeUndefined()
-    expect(records.map(r => r.tenantName)).toEqual(['火炬创新创业园', '理朋', '驰鸿印业'])
-    expect(records[0].factoryRent).toBe(1000)
-    expect(records[0].factoryMgmtFee).toBe(200)
-    expect(records[0].elecBasic).toBe(50)
-    expect(records[0].waterStd).toBe(10)
+    expect(records.map(r => r.tenantName)).toEqual(['火炬创新创业园', '锂朋', '力灏'])
   })
 
-  it('合计列不落到任何字段(防误落末叶子)', () => {
-    const { records } = matchByHeader(matrix, COLS, NAME)
-    // 1260 是合计列值,不应出现在任何映射字段里
-    const vals = Object.entries(records[0]).filter(([k]) => k !== '__preview' && k !== 'tenantName').map(([, v]) => v)
-    expect(vals).not.toContain(1260)
-  })
-
-  it('车间分类标签不被当成租户名(首租户不丢)', () => {
+  it('前置车间列被忽略,首租户不丢', () => {
     const { records } = matchByHeader(matrix, COLS, NAME)
     expect(records.map(r => r.tenantName)).not.toContain('一至四车间')
-    expect(records[0].tenantName).toBe('火炬创新创业园') // 首个租户在
+    expect(records[0].tenantName).toBe('火炬创新创业园')
+  })
+
+  it('落在分组行的「其他费用」标签也被捕获', () => {
+    const { records } = matchByHeader(matrix, COLS, NAME)
+    expect(records[0].otherFee).toBe(5)
+    expect(records[0].factoryRent).toBe(1808871)
+    expect(records[0].factoryMgmtFee).toBe(100)
+  })
+
+  it('合计列不落到任何字段', () => {
+    const { records } = matchByHeader(matrix, COLS, NAME)
+    const vals = Object.entries(records[0]).filter(([k]) => k !== '__preview' && k !== 'tenantName').map(([, v]) => v)
+    expect(vals).not.toContain(1809033)
+  })
+
+  it('小计/总计行被跳过', () => {
+    const { records } = matchByHeader(matrix, COLS, NAME)
+    expect(records.length).toBe(3) // 火炬/锂朋/力灏,不含两条小计
+    expect(records.some(r => /合计|总计/.test(r.tenantName as string))).toBe(false)
   })
 
   it('列乱序仍按名字匹配', () => {
     const reordered: string[][] = [
-      ['基准水费', '租户', '基本用电费', '商铺租金', '厂房租金', '企业管理服务费'],
-      ['8', '甲租户', '50', '0', '999', '111'],
+      cols(['', '租户', '基本用电费', '厂房租金', '企业管理服务费']),
+      cols(['', '甲租户', '50', '999', '111']),
     ]
     const { records } = matchByHeader(reordered, COLS, NAME)
     expect(records[0].tenantName).toBe('甲租户')
-    expect(records[0].factoryRent).toBe(999) // col4 厂房租金
-    expect(records[0].elecBasic).toBe(50)    // col2 基本用电费
-    expect(records[0].waterStd).toBe(8)      // col0 基准水费
+    expect(records[0].factoryRent).toBe(999)
+    expect(records[0].elecBasic).toBe(50)
   })
 
   it('表头命中过少 → 报错', () => {
     const junk: string[][] = [['a', 'b', 'c'], ['1', '2', '3']]
-    const { records, error } = matchByHeader(junk, COLS, NAME)
-    expect(records.length).toBe(0)
+    const { error } = matchByHeader(junk, COLS, NAME)
     expect(error).toContain('无法识别表头')
   })
 
