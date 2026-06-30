@@ -4,11 +4,15 @@ import com.park.demo3.service.ChargingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @Tag(name = "附表7/8 充电桩")
 @RestController
+@Validated
 @RequestMapping("/api/charging/{no}")
 public class ChargingController {
     private final ChargingService svc;
@@ -31,6 +35,22 @@ public class ChargingController {
         return svc.updateNote(no, id, req.note());
     }
 
-    @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/records/{id}")
+    @Operation(summary = "删除（seed 同等可删，不存在 404）") @DeleteMapping("/records/{id}")
     public void delete(@PathVariable int no, @PathVariable Integer id) { svc.delete(no, id); }
+
+    @Operation(summary = "批量导入（行自带 cat+acctMonth，按(附表,cat,月)upsert；非法行进 errors 跳过；附表号非法 404）") @PostMapping("/import")
+    public ImportResultDTO importRows(@PathVariable int no, @Valid @RequestBody ChargingImportRequest req) {
+        return svc.importRows(no, req);
+    }
+
+    @Operation(summary = "清空本期导入行（删本附表本年 source=import）") @DeleteMapping("/imported")
+    public DeleteResultDTO clearImported(@PathVariable int no,
+                                         @RequestParam @Min(2000) @Max(2100) int year) {
+        return svc.clearImported(no, year);
+    }
+
+    @Operation(summary = "批量删除（按 id；seed 同等可删，skipped 恒 0）") @DeleteMapping("/batch")
+    public DeleteResultDTO batchDelete(@PathVariable int no, @Valid @RequestBody S10BatchDeleteReq req) {
+        return svc.batchDelete(req.ids());
+    }
 }

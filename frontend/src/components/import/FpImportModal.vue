@@ -27,6 +27,10 @@ const props = withDefaults(defineProps<{
   phaseLayouts?: PhaseLayouts
   // 给了 sectionTitleRe(且有 columnMap、无 phaseLayouts)即走「工资多月分段」:按标题切月 → ImportSummary(隐期) → emit importSections
   sectionTitleRe?: RegExp
+  // 给了 customParse 即走自定义解析(优先级最高,与上述各通路互斥):
+  //   返回 records → 复用现有预览表 + 「导入 N 条」按钮,emit import
+  //   返回 sections → 复用 ImportSummary 纯标签段模式(每段 label+N条+勾选),emit importSections({label,records}[])
+  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -35,16 +39,21 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: []
   import: [recs: ImportRec[]]
-  importSections: [picks: { year: number; month: number; phase?: number; records: ImportRec[] }[]]
+  // 期×月段(S10/工资)用 year/month/phase;自定义纯标签段用 label。放宽为可选并集。
+  importSections: [picks: { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }[]]
 }>()
 
 // 工资分段(无期)模式开关:sectionTitleRe + columnMap 且无 phaseLayouts
 const salaryMode = computed(() => !!props.sectionTitleRe && !!props.columnMap && !props.phaseLayouts)
-// 汇总确认屏模式(多段):智能整表 或 工资分段 → 用 ImportSummary 替代模板列/预览/底部导入按钮
-const summaryMode = computed(() => !!props.phaseLayouts || salaryMode.value)
+// 自定义纯标签段模式:customParse 返回了 sections(非 records)
+const labelMode = computed(() => labelSections.value != null)
+// 汇总确认屏模式(多段):智能整表 / 工资分段 / 自定义标签段 → 用 ImportSummary 替代模板列/预览/底部导入按钮
+const summaryMode = computed(() => !!props.phaseLayouts || salaryMode.value || labelMode.value)
 
 // 智能整表模式状态
 const sections = ref<Section[] | null>(null)
+// 自定义纯标签段状态(customParse → sections)
+const labelSections = ref<{ label: string; records: ImportRec[] }[] | null>(null)
 
 const mode = ref<'file' | 'paste'>('file')
 const paste = ref('')
@@ -56,7 +65,22 @@ const inputRef = ref<HTMLInputElement | null>(null)
 
 // 二维单元格数组 → 业务记录
 function mapMatrix(matrix: string[][]) {
-  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; sections.value = null; return }
+  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; sections.value = null; labelSections.value = null; return }
+  // 自定义解析模式(优先级最高,与其它通路互斥):各屏自带解析器
+  if (props.customParse) {
+    const { records: recs, sections: secs, error } = props.customParse(matrix)
+    records.value = null; sections.value = null; labelSections.value = null
+    if (error) { err.value = error; return }
+    if (secs) {
+      if (!secs.some(s => s.records.length > 0)) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
+      err.value = ''; labelSections.value = secs; return
+    }
+    if (recs) {
+      if (!recs.length) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
+      err.value = ''; records.value = recs; return
+    }
+    err.value = '没识别到任何有效记录。'; return
+  }
   // 智能整表模式:拆段 + 识别年月期 + 版面 → 汇总确认屏
   if (props.phaseLayouts) {
     const secs = splitSections(matrix, props.phaseLayouts, props.nameLabels ?? ['租户名称', '租户'])
@@ -139,6 +163,14 @@ function onSectionsConfirm(picks: { year: number; month: number; phase?: number;
     records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
   })))
 }
+
+// 自定义纯标签段确认:剥 __preview 后按 label 上抛
+function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
+  emit('importSections', picks.map(p => ({
+    label: p.label,
+    records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
+  })))
+}
 </script>
 
 <template>
@@ -203,6 +235,14 @@ function onSectionsConfirm(picks: { year: number; month: number; phase?: number;
           :default-phase="defaultPhase ?? 1"
           :hide-phase="salaryMode"
           @confirm="onSectionsConfirm"
+        />
+
+        <!-- 自定义纯标签段:汇总确认屏(只显示 段标签 + N条 + 勾选,无年/月/期) -->
+        <ImportSummary
+          v-if="labelMode && labelSections"
+          :label-sections="labelSections"
+          label-only
+          @label-confirm="onLabelConfirm"
         />
 
         <template v-if="!summaryMode && records">

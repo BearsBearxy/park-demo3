@@ -40,7 +40,7 @@ export interface ElecRecordDTO {
   tax: number         // 派生:amount×rate
   total: number       // 派生:amount+tax
   note: string | null
-  source: 'seed' | 'manual'
+  source: 'seed' | 'manual' | 'import'
 }
 
 export interface ElecTotal {
@@ -66,6 +66,22 @@ export interface ElecRecordReq {
   acctMonth: string
   invDate?: string | null
   period?: string | null   // 仅 energy
+  cat?: string | null      // 仅 energy
+  unit?: string | null     // 仅 energy
+  qty?: number | null      // 仅 energy
+  demand?: number | null   // 仅 basic
+  price: number
+  rate: number
+  note?: string | null
+}
+
+// POST /import body 行 — 对齐后端 ElecImportRequest.Row。按(phaseId,acctMonth)整月整期 upsert;派生列不导。
+export interface ElecImportRow {
+  type: 'energy' | 'basic'
+  phaseId: string      // p1 / p2 / p3
+  acctMonth: string    // YYYY-MM
+  invDate?: string | null
+  period?: string | null   // 仅 energy(真实模板空)
   cat?: string | null      // 仅 energy
   unit?: string | null     // 仅 energy
   qty?: number | null      // 仅 energy

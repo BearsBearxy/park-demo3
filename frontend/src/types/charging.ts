@@ -33,7 +33,7 @@ export interface ChargingRecordDTO {
   cost: number        // 充电成本金额
   profit: number      // 派生:fee - cost
   note: string | null
-  source: 'seed' | 'manual'
+  source: 'seed' | 'manual' | 'import'
 }
 
 export interface ChargingTotal {
@@ -59,4 +59,19 @@ export interface ChargingRecordReq {
   fee: number
   cost: number
   note?: string | null
+}
+
+// POST /{no}/import body 行 — 行自带 cat(cat_id)+acctMonth(YYYY-MM);fee 已按附表口径算好下发。
+// 对齐后端 ChargingImportRequest.Row。聚合/未知运营商行前端跳过不入此 rows。
+export interface ChargingImportRow {
+  cat: string
+  acctMonth: string
+  kwh: number
+  fee: number
+  cost: number
+  note?: string | null
+}
+
+export interface ChargingImportRequest {
+  rows: ChargingImportRow[]
 }

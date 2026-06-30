@@ -98,10 +98,16 @@ class ChargingServiceTest {
             .containsExactly(2024, 2025);
     }
 
-    @Test void delete_seedRow_conflicts() {
+    @Test void delete_seedRow_nowDeletable() {
+        // 去 seed 保护后,seed 与 manual 同等可删(对齐 office/pv)
         Mockito.when(records.selectById(7)).thenReturn(rec(7, "dc", "2025-01", 1, 1, 0, "seed"));
-        assertThatThrownBy(() -> svc.delete(7, 7)).isInstanceOf(BizException.class);
-        Mockito.verify(records, Mockito.never()).deleteById(Mockito.anyInt());
+        svc.delete(7, 7);
+        Mockito.verify(records).deleteById(7);
+    }
+
+    @Test void delete_missingRow_404() {
+        Mockito.when(records.selectById(99)).thenReturn(null);
+        assertThatThrownBy(() -> svc.delete(7, 99)).isInstanceOf(BizException.class);
     }
 
     @Test void delete_manualRow_ok() {

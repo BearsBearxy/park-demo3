@@ -2,12 +2,16 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ChargingCatDTO;
+import com.park.demo3.dto.ChargingImportRequest;
 import com.park.demo3.dto.ChargingOverviewDTO;
 import com.park.demo3.dto.ChargingOverviewDTO.YearMeta;
 import com.park.demo3.dto.ChargingRecordDTO;
 import com.park.demo3.dto.ChargingRecordReq;
 import com.park.demo3.dto.ChargingYearDTO;
 import com.park.demo3.dto.ChargingYearDTO.ChargingTotal;
+import com.park.demo3.dto.DeleteResultDTO;
+import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.entity.ChargingCat;
 import com.park.demo3.entity.ChargingRecord;
 import com.park.demo3.mapper.ChargingCatMapper;
@@ -16,8 +20,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -109,12 +117,89 @@ public class ChargingService {
         return toRecordDTO(saved, catNameOf(saved.getScheduleNo(), saved.getCat()));
     }
 
-    // ── delete(no,id;不存在 / 不属本附表 → 404;source=='seed' → 409) ──
+    // ── delete(no,id;不存在 / 不属本附表 → 404;seed 同等可删) ──
     public void delete(int no, Integer id) {
         ChargingRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
-        if ("seed".equals(r.getSource())) throw new BizException(ResultCode.CONFLICT, "官方台账,不可删除");
         records.deleteById(id);
+    }
+
+    // ── import:每行自带 cat(运营商 cat_id)+acctMonth(YYYY-MM,必填)+kwh/fee/cost。
+    //          fee 已由前端按附表口径算好(电动车 no=8 直取/汽车 no=7 减手续费)——后端只入不再算。
+    //          按(scheduleNo,cat,acctMonth)upsert:先删被导入(cat,月)的行(任意来源:种子/手动/导入),再逐行 insert(source=import)。
+    //          即「导入即覆盖这些(cat,月)」——自动取代假种子,不波及未导入的(cat,月)。
+    //          校验 cat 在本附表 charging_cat 白名单、acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12;非法 → errors 跳过。 ──
+    private static final Pattern YM = Pattern.compile("(\\d{4})-(\\d{2})");
+
+    @org.springframework.transaction.annotation.Transactional
+    public ImportResultDTO importRows(int scheduleNo, ChargingImportRequest req) {
+        if (scheduleNo != 7 && scheduleNo != 8) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        Set<String> whitelist = cats.selectBySchedule(scheduleNo).stream()
+            .map(ChargingCat::getCatId).collect(Collectors.toSet());
+
+        List<ChargingImportRequest.Row> rows = req.rows();
+        List<ChargingImportRequest.Row> valid = new ArrayList<>();
+        List<ImportError> errors = new ArrayList<>();
+        // 被导入的(cat,月)去重(清空按这些 tuple,不波及未导入的)
+        Map<String, String[]> tuples = new LinkedHashMap<>();
+        for (int i = 0; i < rows.size(); i++) {
+            ChargingImportRequest.Row row = rows.get(i);
+            if (row.cat() == null || !whitelist.contains(row.cat())) {
+                errors.add(new ImportError(i, String.valueOf(row.cat()), "充电桩类别不在白名单(运营商未建,请先在字典补)"));
+                continue;
+            }
+            if (!validMonth(row.acctMonth())) {
+                errors.add(new ImportError(i, String.valueOf(row.acctMonth()), "记账月格式非法(应为 YYYY-MM,年 2000-2100、月 1-12)"));
+                continue;
+            }
+            valid.add(row);
+            tuples.putIfAbsent(row.cat() + "|" + row.acctMonth(), new String[]{row.cat(), row.acctMonth()});
+        }
+        records.deleteByScheduleCatMonths(scheduleNo, new ArrayList<>(tuples.values()));
+        int imported = 0;
+        for (ChargingImportRequest.Row row : valid) {
+            ChargingRecord r = new ChargingRecord();
+            r.setScheduleNo(scheduleNo);
+            r.setCat(row.cat());
+            r.setAcctMonth(row.acctMonth());
+            r.setKwh(r2(row.kwh()));
+            r.setFee(r2(row.fee()));
+            r.setCost(r2(row.cost()));
+            r.setNote(row.note() == null || row.note().isBlank() ? null : row.note());
+            r.setSource("import");
+            records.insert(r);
+            imported++;
+        }
+        return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    // 校验 acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12
+    private static boolean validMonth(String s) {
+        if (s == null) return false;
+        Matcher m = YM.matcher(s);
+        if (!m.matches()) return false;
+        int y = Integer.parseInt(m.group(1)), mon = Integer.parseInt(m.group(2));
+        return y >= 2000 && y <= 2100 && mon >= 1 && mon <= 12;
+    }
+
+    // ── clearImported(scheduleNo,year):删本附表本年 source='import' 行,返回删除计数 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO clearImported(int scheduleNo, int year) {
+        if (scheduleNo != 7 && scheduleNo != 8) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        return new DeleteResultDTO(records.deleteImported(scheduleNo, year), 0);
+    }
+
+    // ── batchDelete(ids):按 id 删(seed/manual/import 同等可删);不存在的 id 静默忽略,skipped 恒 0 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO batchDelete(List<Long> ids) {
+        int deleted = 0;
+        for (Long id : ids) {
+            ChargingRecord r = records.selectById(id);
+            if (r == null) continue;
+            records.deleteById(id);
+            deleted++;
+        }
+        return new DeleteResultDTO(deleted, 0);
     }
 
     // ── helpers ──

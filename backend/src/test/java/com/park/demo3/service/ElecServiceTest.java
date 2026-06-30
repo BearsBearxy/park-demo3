@@ -119,10 +119,10 @@ class ElecServiceTest {
             .containsExactly(2024, 2025);
     }
 
-    @Test void delete_seedRow_conflicts() {
+    @Test void delete_seedRow_ok() {   // 假数据可删:seed 与 manual 同等可删(去 seed 保护)
         Mockito.when(records.selectById(7)).thenReturn(energy(7, "p1", "2025-01", 1, 1, 0.13, "seed"));
-        assertThatThrownBy(() -> svc.delete(7)).isInstanceOf(BizException.class);
-        Mockito.verify(records, Mockito.never()).deleteById(Mockito.anyInt());
+        svc.delete(7);
+        Mockito.verify(records).deleteById(7);
     }
 
     @Test void delete_manualRow_ok() {

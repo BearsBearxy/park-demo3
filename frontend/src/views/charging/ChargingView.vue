@@ -8,13 +8,18 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { chargingApi } from '@/api/charging'
 import { exportChargingYear } from '@/utils/chargingExcel'
+import { importChargingRows, type ChargingError } from '@/utils/importChargingRows'
 import type {
   ChargingCatDTO, ChargingOverviewDTO, ChargingYearDTO, ChargingRecordDTO, ChargingRecordReq,
+  ChargingImportRow,
 } from '@/types/charging'
+import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
+import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ChargingTable from './ChargingTable.vue'
 import ChargingRecordDrawer from './ChargingRecordDrawer.vue'
 
@@ -68,18 +73,100 @@ async function pickYear(y: number) {
   edit.value = false
   cat.value = 'all'
   yearData.value = null
+  selectedIds.value = new Set()
   await loadYear(y)
 }
 function goGate() {
   year.value = null
   edit.value = false
   yearData.value = null
+  selectedIds.value = new Set()
 }
 
 // 新增 / 删除 / 改备注后重载该年 + overview
 async function refresh() {
   if (year.value != null) await loadYear(year.value)
   await reloadOverview()
+}
+
+// ── 导入 Excel(自定义解析:单表逐行,运营商下填,fee 按附表口径算好) ──
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+const parseErrors = ref<ChargingError[]>([])   // 解析期跳过(聚合/未知运营商)→ 合入结果提示
+
+// FpImportModal customParse:matrix → records(已带 cat_id/acctMonth/kwh/fee/cost);
+// 聚合行/未知运营商收 parseErrors(导入后合入 toast)。
+function customParse(matrix: string[][]) {
+  const { records, errors } = importChargingRows(matrix, no.value, cats.value)
+  parseErrors.value = errors.filter(e => e.rowIndex >= 0)   // matchByHeader 级 error(rowIndex<0)走 error 通路
+  const headerErr = errors.find(e => e.rowIndex < 0)
+  if (headerErr) return { error: headerErr.reason }
+  return { records }
+}
+
+// 确认导入 → importRows(后端按(附表,cat,月)upsert);合入解析期跳过的报告。
+async function onImport(recs: ImportRec[]) {
+  importing.value = false
+  const rows = recs as unknown as ChargingImportRow[]
+  const skipErrors = parseErrors.value.map(e => ({ rowIndex: e.rowIndex, label: e.label, reason: e.reason }))
+  if (!rows.length) {
+    importResult.value = { imported: 0, skipped: skipErrors.length, errors: skipErrors }
+    parseErrors.value = []
+    return
+  }
+  try {
+    const res = await chargingApi.importRows(no.value, { rows })
+    importResult.value = {
+      imported: res.imported,
+      skipped: res.skipped + skipErrors.length,
+      errors: [...skipErrors, ...res.errors],
+    }
+    parseErrors.value = []
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 清空本期导入(本附表本年) ──
+const importedCount = computed(() =>
+  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
+  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
+  try {
+    await chargingApi.clearImported(no.value, year.value)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
+  }
+}
+
+// ── 批量删除(编辑态复选框) ──
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: ChargingRecordDTO) {
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!yearData.value) return
+  const visible = yearData.value.rows.filter(r => cat.value === 'all' || r.cat === cat.value)
+  selectedIds.value = checked ? new Set(visible.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await chargingApi.batchDelete(no.value, ids)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
 }
 
 async function onCreate(req: ChargingRecordReq) {
@@ -154,16 +241,21 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <!-- 导入:禁用占位(导入即将上线) -->
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" :disabled="true">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增记账
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -182,10 +274,13 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :total="yearData.total"
           :cat="cat"
           :edit="edit"
+          :selected-ids="selectedIds"
           @update:cat="cat = $event"
           @add="drawer = true"
           @delete="onDelete"
           @note="onNote"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -199,10 +294,24 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="`导入 ${title} · ${year}年`"
+        :sub="no === 8
+          ? '上传/粘贴电动车充电桩损益明细,系统按运营商、按月份识别行(充电金额收入已扣手续费直取),核对后导入'
+          : '上传/粘贴汽车充电桩收益汇总,系统按运营商、按月份识别行(fee=充电收入−手续费,聚合年/范围行跳过),核对后导入'"
+        :template-cols="['充电桩类别', '记账月', '充电电量', '手续费及服务费', '充电成本']"
+        :custom-parse="customParse"
+        @close="importing = false"
+        @import="onImport"
+      />
     </template>
 
     <!-- 切年过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

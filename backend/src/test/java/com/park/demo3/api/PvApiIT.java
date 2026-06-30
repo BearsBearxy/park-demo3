@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -125,9 +126,11 @@ class PvApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
-    // ── delete seed → 409 in body ─────────────────────────────
+    // ── delete seed → 成功(seed 同等可删,不再 409) ───────────
+    // @Transactional:此用例真删共享种子行,事务回滚还原,避免污染同库其它读测试(IT 单例容器无 per-test 重置)。
     @Test
-    void delete_seedRow_returns409InBody() throws Exception {
+    @Transactional
+    void delete_seedRow_succeeds() throws Exception {
         // grab a seed record id from 2025
         String body = utf8(mvc.perform(get("/api/pv/records").param("year", "2025")
                 .header("Authorization", auth()))
@@ -135,8 +138,12 @@ class PvApiIT extends AbstractMysqlIT {
         int seedId = JsonPath.read(body, "$.data.rows[0].id");
 
         mvc.perform(delete("/api/pv/records/" + seedId).header("Authorization", auth()))
-                .andExpect(status().isOk())          // BizException → HTTP 200, code in body
-                .andExpect(jsonPath("$.code").value(409));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 该种子行已删
+        mvc.perform(get("/api/pv/records").param("year", "2025").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.rows[?(@.id==" + seedId + ")]").isEmpty());
     }
 
     // ── delete non-existent → 404 in body ─────────────────────

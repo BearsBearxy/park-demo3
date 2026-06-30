@@ -7,11 +7,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { elecApi } from '@/api/elec'
 import { exportElecYear } from '@/utils/elecExcel'
-import type { ElecPhaseDTO, ElecOverviewDTO, ElecYearDTO, ElecRecordDTO, ElecRecordReq } from '@/types/elec'
+import { importElecRows } from '@/utils/importElecRows'
+import type { ElecPhaseDTO, ElecOverviewDTO, ElecYearDTO, ElecRecordDTO, ElecRecordReq, ElecImportRow } from '@/types/elec'
+import type { ImportResultDTO } from '@/types/import'
+import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ElecTable from './ElecTable.vue'
 import ElecRecordDrawer from './ElecRecordDrawer.vue'
 
@@ -59,19 +64,82 @@ async function pickYear(y: number) {
   edit.value = false
   type.value = 'energy'
   yearData.value = null
+  selectedIds.value = new Set()
   await loadYear(y)
 }
 function goGate() {
   year.value = null
   edit.value = false
   yearData.value = null
+  selectedIds.value = new Set()
 }
 
 // 右上 type 切换:重新取该年该类台账(后端按 type 过滤)
 async function switchType(t: string) {
   if (t === type.value || year.value == null) return
   type.value = t as 'energy' | 'basic'
+  selectedIds.value = new Set()   // 选择不跨类沿用
   await loadYear(year.value)   // 不清空 yearData:避免整屏闪烁
+}
+
+// ── 导入 Excel(自定义解析:一(记账期,期)→ 多 energy + 大工业附 1 basic,扁平 records) ──
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+
+function customParse(matrix: string[][]) {
+  return importElecRows(matrix)
+}
+
+// 确认后扁平 records 一次性 importRows(后端按(期,月)整月整期 upsert,跨年自落各年)。
+async function onImport(recs: ImportRec[]) {
+  importing.value = false
+  const rows = recs as unknown as ElecImportRow[]
+  if (!rows.length) return
+  try {
+    importResult.value = await elecApi.importRows(rows)
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 清空本期导入(本年,跨 energy+basic) ──
+const importedCount = computed(() =>
+  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (!confirm('确认清空本年全部导入数据(电量电费 + 基本电费)?手动/种子行不受影响。')) return
+  try {
+    await elecApi.clearImported(year.value)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
+  }
+}
+
+// ── 批量删除(编辑态复选框;按当前 type 视图行) ──
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: ElecRecordDTO) {
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!yearData.value) return
+  selectedIds.value = checked ? new Set(yearData.value.rows.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await elecApi.batchDelete(ids)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
 }
 
 // 新增 / 删除 / 改备注后重载该年 + overview(jsx saveRecord/delRecord)
@@ -153,16 +221,21 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <!-- 导入:禁用占位(导入即将上线) -->
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" :disabled="true">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增记账
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -180,11 +253,14 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :rows="yearData.rows"
           :total="yearData.total"
           :edit="edit"
+          :selected-ids="selectedIds"
           @switch-type="switchType"
           @add="drawer = true"
           @edit="edit = true"
           @delete="onDelete"
           @note="onNote"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -197,10 +273,22 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="`导入 附表11 · ${year}年电费成本`"
+        sub="上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入"
+        :template-cols="['类型', '期', '记账月份', '用电类别/计费需量', '电量', '单价', '税率']"
+        :custom-parse="customParse"
+        @close="importing = false"
+        @import="onImport"
+      />
     </template>
 
     <!-- 切年/切类过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

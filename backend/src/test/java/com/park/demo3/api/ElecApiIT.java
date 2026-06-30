@@ -148,19 +148,7 @@ class ElecApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
-    // ── delete seed → 409 in body ─────────────────────────────
-    @Test
-    void delete_seedRow_returns409InBody() throws Exception {
-        String body = utf8(mvc.perform(get("/api/elec/records")
-                .param("year", "2025").param("type", "energy")
-                .header("Authorization", auth()))
-                .andExpect(status().isOk()).andReturn());
-        int seedId = JsonPath.read(body, "$.data.rows[0].id");
-
-        mvc.perform(delete("/api/elec/records/" + seedId).header("Authorization", auth()))
-                .andExpect(status().isOk())          // BizException → HTTP 200, code in body
-                .andExpect(jsonPath("$.code").value(409));
-    }
+    // 注:seed 删除现已放开(假数据可删),seed 删/批删/清空导入由 @Transactional 的 ElecDeleteApiIT 覆盖(回滚还原种子)。
 
     // ── delete non-existent → 404 in body ─────────────────────
     @Test

@@ -35,7 +35,7 @@ export interface PvRecordDTO {
   gen: number         // 派生:selfKwh + gridKwh
   fee: number         // 派生:selfAmt + gridAmt
   note: string | null
-  source: 'seed' | 'manual'
+  source: 'seed' | 'manual' | 'import'
 }
 
 export interface PvTotal {
@@ -64,4 +64,16 @@ export interface PvRecordReq {
   gridKwh: number
   gridAmt: number
   note?: string | null
+}
+
+// POST /import body 行 — 对齐后端 PvImportRequest.Row。按(phaseId,acctMonth)upsert;派生列不导。
+export interface PvImportRow {
+  phaseId: string      // p1 / p2 / p3
+  acctMonth: string    // YYYY-MM
+  occurMonth?: string  // 缺省=acct
+  selfKwh: number
+  selfAmt: number
+  gridKwh: number
+  gridAmt: number
+  note?: string
 }

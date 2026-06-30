@@ -17,12 +17,16 @@ const props = defineProps<{
   total: ChargingTotal
   cat: string            // 'all' | cat id
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   'update:cat': [value: string]
   'add': []
   'delete': [row: ChargingRecordDTO]
   'note': [row: ChargingRecordDTO, text: string]
+  // 批量删除选择(seed/manual/import 同等可选)
+  'toggleSelect': [row: ChargingRecordDTO]
+  'selectAll': [checked: boolean]
 }>()
 
 // cat.tint 是名(slate/blue/cyan)→ CSS var,对齐 jsx CH_TINT(19)
@@ -51,6 +55,12 @@ const segOptions = computed(() => [
 // 当前类别视图行(平铺顺序 = 后端给的 rows 顺序,已按 acctMonth)
 const period = computed(() =>
   props.rows.filter(r => props.cat === 'all' || r.cat === props.cat),
+)
+
+// 全选状态(当前类别视图行可选,seed/manual/import 同等)
+const allSelected = computed(() =>
+  period.value.length > 0 &&
+  period.value.every(r => props.selectedIds?.has(r.id)),
 )
 
 const grouped = computed(() => props.cat === 'all')
@@ -113,7 +123,20 @@ const k = computed(() => {
       <table v-else class="ch-table">
         <thead>
           <tr>
-            <th class="l"><span class="ch-th-name">记账月份</span></th>
+            <th class="l">
+              <span class="ch-acct-head">
+                <input
+                  v-if="edit"
+                  type="checkbox"
+                  class="ch-cb"
+                  :checked="allSelected"
+                  :disabled="period.length === 0"
+                  title="全选"
+                  @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="ch-th-name">记账月份</span>
+              </span>
+            </th>
             <th><span class="ch-th"><span class="ch-th-name">充电电量</span><span class="ch-th-unit">千瓦时</span></span></th>
             <th><span class="ch-th"><span class="ch-th-name">手续费及服务费</span><span class="ch-th-unit">元</span></span></th>
             <th><span class="ch-th"><span class="ch-th-name">充电成本</span><span class="ch-th-unit">元</span></span></th>
@@ -142,8 +165,19 @@ const k = computed(() => {
             <!-- 明细行(jsx 392-408) -->
             <tr v-for="r in g.rows" :key="r.id" class="ch-row">
               <td class="l ch-c-acct">
-                {{ mLabel(r.acctMonth) }}
-                <span v-if="r.source === 'manual'" class="ch-userbadge">手动</span>
+                <span class="ch-acct-cell">
+                  <input
+                    v-if="edit"
+                    type="checkbox"
+                    class="ch-cb"
+                    :checked="selectedIds?.has(r.id) ?? false"
+                    title="选中以批量删除"
+                    @change="emit('toggleSelect', r)"
+                  />
+                  <span>{{ mLabel(r.acctMonth) }}</span>
+                  <span v-if="r.source === 'manual'" class="ch-userbadge">手动</span>
+                  <span v-else-if="r.source === 'import'" class="ch-importbadge">导入</span>
+                </span>
               </td>
               <td class="ch-c-num ch-c-kwh">{{ kwh(r.kwh) }}</td>
               <td class="ch-c-num ch-c-yuan">{{ yuan(r.fee) }}</td>
@@ -154,10 +188,7 @@ const k = computed(() => {
               </td>
               <td v-if="edit">
                 <span class="ch-acts">
-                  <button v-if="r.source === 'seed'" class="ch-actbtn" disabled title="官方台账,不可删除">
-                    <component :is="iconFor('lock')" :size="15" />
-                  </button>
-                  <button v-else class="ch-actbtn del" title="删除" @click="emit('delete', r)">
+                  <button class="ch-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -216,7 +247,11 @@ const k = computed(() => {
 
 .ch-row td { background:var(--surface-white); }
 .ch-row:hover td { background:var(--surface-card); }
+.ch-acct-head, .ch-acct-cell { display:inline-flex; align-items:center; gap:7px; }
+.ch-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.ch-cb:disabled { cursor:not-allowed; opacity:.4; }
 .ch-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); }
+.ch-importbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-muted); font-size:10px; font-weight:var(--fw-semibold); }
 .ch-acts { display:inline-flex; justify-content:flex-end; opacity:0; }
 .ch-row:hover .ch-acts { opacity:1; }
 .ch-actbtn { width:26px; height:26px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; }

@@ -1,6 +1,7 @@
 // 月份单元格 → {year,month} — 扛办公水电真实文件的多种形态:
-//   Excel 序列号(45292)、Date、'YYYY-MM-DD'、'YYYY/M/D'、'YYYY年M月'、'YYYY-MM'、裸 'M月'/'M'。
-// 裸月无年 → 用回退年(卡片年)。无法识别 → null(调用方收 errors 跳过)。
+//   Excel 序列号(45292)、Date、'YYYY-MM-DD'、'YYYY/M/D'、'YYYY年M月'、'YYYY-MM'、'YYYYMM'(202501)、裸 'M月'/'M'。
+// 裸月无年 → 用回退年(卡片年)。聚合/汇总串(2024年/2025年1-9月/小计/合计/总计)→ null(汽车跳过用)。
+// 无法识别 → null(调用方收 errors 跳过)。
 // 序列号按 Excel epoch 1899-12-30 起算天数换算(吃掉 1900 非闰年 bug:1899-12-30 起算即已对齐)。
 
 export interface YearMonth { year: number; month: number }
@@ -19,14 +20,31 @@ function ok(year: number, month: number): YearMonth | null {
   return { year, month }
 }
 
+// YYYYMM(6 位纯数字,如 202501→2025-01)。仅当 6 位且解析年∈2000-2099、月 1-12 才认;
+// 否则非 YYYYMM(交序列号/裸月)。序列号上限 ~73415(2100 年)永不到 6 位,故与序列号无歧义。
+function fromYYYYMM(n: number): YearMonth | null {
+  if (!Number.isInteger(n) || n < 200001 || n > 209912) return null
+  const year = Math.floor(n / 100), month = n % 100
+  return ok(year, month)
+}
+
+// 聚合/汇总串:含「年」但无「月」或带范围「-月」(2024年/2025年1-9月)、小计/合计/总计 → 非单月,返 null。
+function isAggregate(s: string): boolean {
+  if (/小计|合计|总计/.test(s)) return true
+  if (/年/.test(s) && !/年\s*\d{1,2}\s*月\s*$/.test(s)) return true   // 「2024年」「2025年1-9月」(无单月收尾)
+  return false
+}
+
 export function parseYearMonth(cell: unknown, fallbackYear?: number): YearMonth | null {
   if (cell == null || cell === '') return null
 
   if (cell instanceof Date && !isNaN(cell.getTime()))
     return ok(cell.getFullYear(), cell.getMonth() + 1)
 
-  // 纯数字:大值=Excel 序列号;小值(1-12)=裸月号(配回退年)
+  // 纯数字:6 位 YYYYMM;大值=Excel 序列号;小值(1-12)=裸月号(配回退年)
   if (typeof cell === 'number') {
+    const ym = fromYYYYMM(cell)
+    if (ym) return ym
     const s = fromSerial(cell)
     if (s) return s
     if (fallbackYear != null && cell >= 1 && cell <= 12) return ok(fallbackYear, cell)
@@ -34,6 +52,9 @@ export function parseYearMonth(cell: unknown, fallbackYear?: number): YearMonth 
   }
 
   const s = String(cell).trim()
+
+  // 聚合/汇总串(年/年范围/小计/合计/总计)→ null,调用方跳过并报告
+  if (isAggregate(s)) return null
 
   // YYYY-MM-DD / YYYY/M/D / YYYY.M.D / YYYY年M月[D日] / YYYY-MM
   let m = s.match(/^(\d{4})\s*[-/年.]\s*(\d{1,2})/)
@@ -49,9 +70,11 @@ export function parseYearMonth(cell: unknown, fallbackYear?: number): YearMonth 
     return ok(yr, mon)
   }
 
-  // 纯数字串:同 number 分支(序列号 或 裸月)
+  // 纯数字串:同 number 分支(YYYYMM 或 序列号 或 裸月)
   if (/^\d+(\.\d+)?$/.test(s)) {
     const n = Number(s)
+    const ym = fromYYYYMM(n)
+    if (ym) return ym
     const ser = fromSerial(n)
     if (ser) return ser
     if (fallbackYear != null && n >= 1 && n <= 12) return ok(fallbackYear, n)
@@ -89,6 +112,11 @@ export function __selfTest() {
     [null, undefined, null],
     ['13月', 2025, null],                                 // 越界月
     ['1999-01', undefined, null],                         // 越界年
+    [202501, undefined, { year: 2025, month: 1 }],        // YYYYMM
+    ['202501', undefined, { year: 2025, month: 1 }],
+    ['2024年', undefined, null],                          // 聚合串
+    ['2025年1-9月', undefined, null],                     // 年范围聚合
+    ['小计', undefined, null],
   ]
   for (const [cell, fb, want] of cases) {
     const got = parseYearMonth(cell, fb)

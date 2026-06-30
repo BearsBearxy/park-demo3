@@ -8,7 +8,7 @@
 // 仅供 columnMap 模式;位置映射仍走各屏 parseRow。
 
 export interface ColumnMapEntry { label: string; key: string; text?: boolean }
-export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
+export interface ImportRec { __preview?: unknown[]; __groups?: Record<string, string>; [k: string]: unknown }
 export interface MatchResult { records: ImportRec[]; error?: string }
 
 // 去空格 + 常见分隔/括号标点(不改字符本体),便于宽松匹配。
@@ -35,6 +35,7 @@ export function matchByHeader(
   matrix: string[][],
   columnMap: ColumnMapEntry[],
   nameLabels: string[],
+  groupLabels?: string[],   // 「填充型分组列」(合并/稀疏):按表头名定位,值向下填充,附 rec.__groups[原标签]
 ): MatchResult {
   // 标签按 normalize 后长度降序:前缀命中时「最长匹配标签优先」,防短标签(如 基本)吞掉长列头。
   const labels = columnMap
@@ -74,6 +75,20 @@ export function matchByHeader(
     return { records: [], error: '无法识别表头:列名与本期版面不匹配。请确认粘到了对应期的版面。' }
   }
 
+  // 2b) 分组列(充电桩类别等合并/稀疏列):按表头名(normalize 相等)在表头块内定位 列→原标签。
+  //     不占费用列;值向下填充在数据行循环里做。
+  const groupCol = new Map<number, string>()   // 列 → 原始 groupLabel
+  if (groupLabels?.length) {
+    const gset = new Map(groupLabels.map(g => [normalizeHeader(g), g]))
+    for (let c = 0; c < width; c++) {
+      if (colKey.has(c)) continue
+      for (let r = 0; r <= headerEnd; r++) {
+        const orig = gset.get(normalizeHeader(matrix[r]?.[c]))
+        if (orig && !groupCol.has(c)) { groupCol.set(c, orig); break }
+      }
+    }
+  }
+
   // 3) 关键列(行身份:租户/姓名/月份…) 定位:
   //    ① 先按 nameLabels 表头匹配,且该列数据多为非空 → 用它(让"月份"等可能为纯数字的关键列也能定位);
   //    ② 否则按"非费用列里数据行文本(非数字/非空/非小计)最多"兜底(扛"租户表头在别行、数据租户不在表头列"如附表10二期)。
@@ -82,7 +97,7 @@ export function matchByHeader(
   let nameCol = -1
   if (nameSet.size) {
     for (let c = 0; c < width; c++) {
-      if (colKey.has(c)) continue
+      if (colKey.has(c) || groupCol.has(c)) continue
       let headerHit = false
       for (let r = 0; r <= headerEnd; r++) { if (nameSet.has(normalizeHeader(matrix[r]?.[c]))) { headerHit = true; break } }
       if (!headerHit) continue
@@ -93,7 +108,7 @@ export function matchByHeader(
   if (nameCol < 0) {
     let bestText = 0
     for (let c = 0; c < width; c++) {
-      if (colKey.has(c)) continue
+      if (colKey.has(c) || groupCol.has(c)) continue
       let t = 0
       for (const row of dataRows) {
         const v = String(row[c] ?? '').trim()
@@ -107,12 +122,23 @@ export function matchByHeader(
   }
 
   // 4) 数据行 → 记录(跳过租户列空/小计行;未命中列忽略)
+  //    分组列向下填充:遍历全部数据行(含小计行也吃其组值更新载体),组首有值则更新,空则沿用上一值。
   const records: ImportRec[] = []
+  const carry = new Map<number, string>()   // groupCol → 上一非空组值
   for (const row of dataRows) {
+    for (const ci of groupCol.keys()) {
+      const gv = String(row[ci] ?? '').trim()
+      if (gv && !isSubtotal(gv)) carry.set(ci, gv)
+    }
     const name = String(row[nameCol] ?? '').trim()
     if (!name || isSubtotal(name)) continue
     const rec: ImportRec = { tenantName: name }
     colKey.forEach((key, ci) => { rec[key] = textCols.has(ci) ? String(row[ci] ?? '').trim() : cleanNum(row[ci]) })
+    if (groupCol.size) {
+      const groups: Record<string, string> = {}
+      groupCol.forEach((label, ci) => { groups[label] = carry.get(ci) ?? '' })
+      rec.__groups = groups
+    }
     rec.__preview = [name, ...columnMap.map(c => (c.text ? rec[c.key] : (rec[c.key] as number)) || '')]
     records.push(rec)
   }

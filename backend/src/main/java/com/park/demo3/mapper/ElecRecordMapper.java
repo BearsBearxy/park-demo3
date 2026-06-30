@@ -11,4 +11,18 @@ public interface ElecRecordMapper extends BaseMapper<ElecRecord> {
             .likeRight("acct_month", year + "-").eq("type", type)
             .orderByAsc("acct_month").orderByAsc("id"));
     }
+    // 删某期指定记账月集合的行(任意来源、energy+basic 都删)——导入按(期,月)整月整期 upsert:
+    // 先清该期该月(种子/手动/导入)再插。不波及未导入的(期,月)。返回删除行数。
+    default int deleteByPhaseAndMonths(String phaseId, java.util.List<String> acctMonths) {
+        if (acctMonths == null || acctMonths.isEmpty()) return 0;
+        return delete(new QueryWrapper<ElecRecord>()
+            .eq("phase_id", phaseId)
+            .in("acct_month", acctMonths));
+    }
+    // 删某年(acct_month 前缀 year-)的 source='import' 行(清空本期导入);返回删除行数
+    default int deleteImported(int year) {
+        return delete(new QueryWrapper<ElecRecord>()
+            .likeRight("acct_month", year + "-")
+            .eq("source", "import"));
+    }
 }

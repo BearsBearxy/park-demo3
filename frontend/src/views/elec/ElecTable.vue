@@ -18,6 +18,7 @@ const props = defineProps<{
   rows: ElecRecordDTO[]
   total: ElecTotal
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   'switch-type': [value: string]
@@ -25,7 +26,15 @@ const emit = defineEmits<{
   'edit': []
   'delete': [row: ElecRecordDTO]
   'note': [row: ElecRecordDTO, text: string]
+  // 批量删除选择(seed/manual/import 同等可选)
+  'toggleSelect': [row: ElecRecordDTO]
+  'selectAll': [checked: boolean]
 }>()
+
+// 全选状态(本类全部行可选,seed/manual/import 同等)
+const allSelected = computed(() =>
+  props.rows.length > 0 && props.rows.every(r => props.selectedIds?.has(r.id)),
+)
 
 // ── 工具(1:1 from jsx eNum/eMLabel)──
 const num = (n: number, d = 2) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -98,7 +107,20 @@ const groups = computed(() =>
       <table v-else-if="energy" class="e11-table">
         <thead>
           <tr>
-            <th class="l"><span class="e11-th-name">记账月份</span></th>
+            <th class="l">
+              <span class="e11-acct-head">
+                <input
+                  v-if="edit"
+                  type="checkbox"
+                  class="e11-cb"
+                  :checked="allSelected"
+                  :disabled="rows.length === 0"
+                  title="全选"
+                  @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="e11-th-name">记账月份</span>
+              </span>
+            </th>
             <th class="l"><span class="e11-th-name">开票日期</span></th>
             <th class="c"><span class="e11-th-name">时段</span></th>
             <th class="l"><span class="e11-th-name">用电类别</span></th>
@@ -135,8 +157,19 @@ const groups = computed(() =>
             <!-- 明细行(jsx 481-498) -->
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
               <td class="l e11-c-acct">
-                {{ mLabel(r.acctMonth) }}
-                <span v-if="r.source === 'manual'" class="e11-userbadge">手动</span>
+                <span class="e11-acct-cell">
+                  <input
+                    v-if="edit"
+                    type="checkbox"
+                    class="e11-cb"
+                    :checked="selectedIds?.has(r.id) ?? false"
+                    title="选中以批量删除"
+                    @change="emit('toggleSelect', r)"
+                  />
+                  <span>{{ mLabel(r.acctMonth) }}</span>
+                  <span v-if="r.source === 'manual'" class="e11-userbadge">手动</span>
+                  <span v-else-if="r.source === 'import'" class="e11-importbadge">导入</span>
+                </span>
               </td>
               <td class="l e11-c-inv">{{ r.invDate }}</td>
               <td class="c"><span class="e11-pchip"><span class="e11-pdot" :style="{ background: periodTint(r.period) }"></span>{{ r.period }}</span></td>
@@ -152,10 +185,7 @@ const groups = computed(() =>
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <button v-if="r.source === 'seed'" class="e11-actbtn" disabled title="官方台账,不可删除">
-                    <component :is="iconFor('lock')" :size="15" />
-                  </button>
-                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <button class="e11-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -183,7 +213,20 @@ const groups = computed(() =>
       <table v-else class="e11-table">
         <thead>
           <tr>
-            <th class="l"><span class="e11-th-name">记账月份</span></th>
+            <th class="l">
+              <span class="e11-acct-head">
+                <input
+                  v-if="edit"
+                  type="checkbox"
+                  class="e11-cb"
+                  :checked="allSelected"
+                  :disabled="rows.length === 0"
+                  title="全选"
+                  @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="e11-th-name">记账月份</span>
+              </span>
+            </th>
             <th class="l"><span class="e11-th-name">开票日期</span></th>
             <th><span class="e11-th"><span class="e11-th-name">计费需量</span><span class="e11-th-unit">kVA</span></span></th>
             <th><span class="e11-th"><span class="e11-th-name">单价</span><span class="e11-th-unit">元/kVA·月</span></span></th>
@@ -216,8 +259,19 @@ const groups = computed(() =>
             </tr>
             <tr v-for="r in g.rows" :key="r.id" class="e11-row">
               <td class="l e11-c-acct">
-                {{ mLabel(r.acctMonth) }}
-                <span v-if="r.source === 'manual'" class="e11-userbadge">手动</span>
+                <span class="e11-acct-cell">
+                  <input
+                    v-if="edit"
+                    type="checkbox"
+                    class="e11-cb"
+                    :checked="selectedIds?.has(r.id) ?? false"
+                    title="选中以批量删除"
+                    @change="emit('toggleSelect', r)"
+                  />
+                  <span>{{ mLabel(r.acctMonth) }}</span>
+                  <span v-if="r.source === 'manual'" class="e11-userbadge">手动</span>
+                  <span v-else-if="r.source === 'import'" class="e11-importbadge">导入</span>
+                </span>
               </td>
               <td class="l e11-c-inv">{{ r.invDate }}</td>
               <td class="e11-c-num e11-c-qty">{{ num(r.demand ?? 0, 0) }}</td>
@@ -231,10 +285,7 @@ const groups = computed(() =>
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <button v-if="r.source === 'seed'" class="e11-actbtn" disabled title="官方台账,不可删除">
-                    <component :is="iconFor('lock')" :size="15" />
-                  </button>
-                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <button class="e11-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -301,7 +352,11 @@ const groups = computed(() =>
 
 .e11-row td { background:var(--surface-white); }
 .e11-row:hover td { background:var(--surface-card); }
+.e11-acct-head, .e11-acct-cell { display:inline-flex; align-items:center; gap:7px; }
+.e11-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.e11-cb:disabled { cursor:not-allowed; opacity:.4; }
 .e11-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); }
+.e11-importbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-muted); font-size:10px; font-weight:var(--fw-semibold); }
 .e11-acts { display:inline-flex; justify-content:flex-end; opacity:0; }
 .e11-row:hover .e11-acts { opacity:1; }
 .e11-actbtn { width:26px; height:26px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; }

@@ -4,11 +4,15 @@ import com.park.demo3.service.PvService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @Tag(name = "附表6 光伏发电")
 @RestController
+@Validated
 @RequestMapping("/api/pv")
 public class PvController {
     private final PvService svc;
@@ -31,6 +35,19 @@ public class PvController {
         return svc.updateNote(id, req.note());
     }
 
-    @Operation(summary = "删除（seed 锁定 409，不存在 404）") @DeleteMapping("/records/{id}")
+    @Operation(summary = "删除（seed 同等可删，不存在 404）") @DeleteMapping("/records/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
+
+    @Operation(summary = "批量导入（行自带 phaseId+acctMonth，按(期,月)upsert；非法行进 errors 跳过）") @PostMapping("/import")
+    public ImportResultDTO importRows(@Valid @RequestBody PvImportRequest req) { return svc.importRows(req); }
+
+    @Operation(summary = "清空本期导入行（删本年 source=import）") @DeleteMapping("/imported")
+    public DeleteResultDTO clearImported(@RequestParam @Min(2000) @Max(2100) int year) {
+        return svc.clearImported(year);
+    }
+
+    @Operation(summary = "批量删除（按 id；seed 同等可删，skipped 恒 0）") @DeleteMapping("/batch")
+    public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
+        return svc.batchDelete(req.ids());
+    }
 }

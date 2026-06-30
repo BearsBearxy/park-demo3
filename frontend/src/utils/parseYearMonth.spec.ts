@@ -33,6 +33,21 @@ describe('parseYearMonth', () => {
     expect(parseYearMonth('3月')).toBeNull()
     expect(parseYearMonth(5)).toBeNull()
   })
+  it('YYYYMM 6 位纯数字', () => {
+    expect(parseYearMonth(202501)).toEqual({ year: 2025, month: 1 })
+    expect(parseYearMonth('202501')).toEqual({ year: 2025, month: 1 })
+    expect(parseYearMonth('202512')).toEqual({ year: 2025, month: 12 })
+    expect(parseYearMonth(202513)).toBeNull()  // 月越界 → 非 YYYYMM,且非合理序列号
+  })
+  it('聚合/汇总串 → null(汽车跳过用)', () => {
+    expect(parseYearMonth('2024年')).toBeNull()
+    expect(parseYearMonth('2025年1-9月')).toBeNull()
+    expect(parseYearMonth('小计')).toBeNull()
+    expect(parseYearMonth('合计')).toBeNull()
+    expect(parseYearMonth('总计')).toBeNull()
+    // 单月「YYYY年M月」不受聚合判定影响
+    expect(parseYearMonth('2024年3月')).toEqual({ year: 2024, month: 3 })
+  })
   it('无法识别 / 越界 → null', () => {
     expect(parseYearMonth('乱码', 2025)).toBeNull()
     expect(parseYearMonth('')).toBeNull()

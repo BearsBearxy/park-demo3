@@ -62,4 +62,28 @@ describe('FpImportModal', () => {
     await w.find('.fpimp-ta + div button').trigger('click')
     expect(w.find('.fpimp-msg.err').exists()).toBe(true)
   })
+
+  it('customParse 返回 records → 复用预览 + import emit', async () => {
+    const customParse = () => ({ records: [{ a: 1, __preview: ['x'] }] as ImportRec[] })
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], customParse } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A\n1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(w.find('.fpimp-pvtable tbody tr').exists()).toBe(true)
+    await w.findAll('.fpimp-f button')[1].trigger('click')   // 底部「导入」
+    expect((w.emitted('import')![0][0] as ImportRec[])[0]).toEqual({ a: 1 })
+  })
+
+  it('customParse 返回 sections → labelOnly 汇总,importSections emit 带 label', async () => {
+    const customParse = () => ({ sections: [{ label: '一期', records: [{ a: 1, __preview: ['x'] }] as ImportRec[] }] })
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], customParse } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A\n1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(w.find('.isum-row.label-only').exists()).toBe(true)
+    await w.find('.isum-foot button').trigger('click')
+    const picks = w.emitted('importSections')![0][0] as { label: string; records: ImportRec[] }[]
+    expect(picks[0].label).toBe('一期')
+    expect(picks[0].records[0]).toEqual({ a: 1 })   // __preview 已剥
+  })
 })

@@ -17,12 +17,16 @@ const props = defineProps<{
   total: PvTotal
   phase: string          // 'all' | phase id
   edit: boolean
+  selectedIds?: Set<number>
 }>()
 const emit = defineEmits<{
   'update:phase': [value: string]
   'add': []
   'delete': [row: PvRecordDTO]
   'note': [row: PvRecordDTO, text: string]
+  // 批量删除选择(seed/manual/import 同等可选)
+  'toggleSelect': [row: PvRecordDTO]
+  'selectAll': [checked: boolean]
 }>()
 
 // ── 工具(1:1 from jsx s6kwh/s6yuan/s6kwan/s6mLabel) ──
@@ -45,6 +49,12 @@ const segOptions = computed(() => [
 // 当前期视图行(平铺顺序 = 后端给的 rows 顺序,已按 acctMonth)
 const period = computed(() =>
   props.rows.filter(r => props.phase === 'all' || r.phase === props.phase),
+)
+
+// 全选状态(当前期视图行可选,seed/manual/import 同等)
+const allSelected = computed(() =>
+  period.value.length > 0 &&
+  period.value.every(r => props.selectedIds?.has(r.id)),
 )
 
 const grouped = computed(() => props.phase === 'all')
@@ -111,7 +121,20 @@ const k = computed(() => {
       <table v-else class="s6-table">
         <thead>
           <tr>
-            <th class="l"><span class="s6-th-name">记账月份</span></th>
+            <th class="l">
+              <span class="s6-acct-head">
+                <input
+                  v-if="edit"
+                  type="checkbox"
+                  class="s6-cb"
+                  :checked="allSelected"
+                  :disabled="period.length === 0"
+                  title="全选"
+                  @change="emit('selectAll', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="s6-th-name">记账月份</span>
+              </span>
+            </th>
             <th class="l"><span class="s6-th-name">发生月份</span></th>
             <th><span class="s6-th"><span class="s6-th-name">发电总量</span><span class="s6-th-unit">kWh</span></span></th>
             <th><span class="s6-th"><span class="s6-th-name">电费总额</span><span class="s6-th-unit">元</span></span></th>
@@ -144,8 +167,19 @@ const k = computed(() => {
             <!-- 明细行(jsx 394-409) -->
             <tr v-for="r in g.rows" :key="r.id" class="s6-row">
               <td class="l s6-c-acct">
-                {{ mLabel(r.acctMonth) }}
-                <span v-if="r.source === 'manual'" class="s6-userbadge">手动</span>
+                <span class="s6-acct-cell">
+                  <input
+                    v-if="edit"
+                    type="checkbox"
+                    class="s6-cb"
+                    :checked="selectedIds?.has(r.id) ?? false"
+                    title="选中以批量删除"
+                    @change="emit('toggleSelect', r)"
+                  />
+                  <span>{{ mLabel(r.acctMonth) }}</span>
+                  <span v-if="r.source === 'manual'" class="s6-userbadge">手动</span>
+                  <span v-else-if="r.source === 'import'" class="s6-importbadge">导入</span>
+                </span>
               </td>
               <td class="l s6-c-occur">{{ mLabel(r.occurMonth) }}</td>
               <td class="s6-c-num s6-c-kwh">{{ kwh(r.gen) }}</td>
@@ -159,10 +193,7 @@ const k = computed(() => {
               </td>
               <td v-if="edit">
                 <span class="s6-acts">
-                  <button v-if="r.source === 'seed'" class="s6-actbtn" disabled title="官方台账,不可删除">
-                    <component :is="iconFor('lock')" :size="15" />
-                  </button>
-                  <button v-else class="s6-actbtn del" title="删除" @click="emit('delete', r)">
+                  <button class="s6-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -222,7 +253,11 @@ const k = computed(() => {
 
 .s6-row td { background:var(--surface-white); }
 .s6-row:hover td { background:var(--surface-card); }
+.s6-acct-head, .s6-acct-cell { display:inline-flex; align-items:center; gap:7px; }
+.s6-cb { width:15px; height:15px; flex:0 0 auto; cursor:pointer; accent-color:var(--ink-900); }
+.s6-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s6-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); }
+.s6-importbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; margin-left:7px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-muted); font-size:10px; font-weight:var(--fw-semibold); }
 .s6-acts { display:inline-flex; justify-content:flex-end; opacity:0; }
 .s6-row:hover .s6-acts { opacity:1; }
 .s6-actbtn { width:26px; height:26px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; }

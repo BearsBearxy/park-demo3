@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -17,6 +18,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// V19 把充电桩字典改运营商口径(no=7 万城万/小桔;no=8 叮叮充/电信)且清空全部记录种子 → 屏空 by design。
+// 写入用例标 @Transactional 回滚还原(避免污染 overview 确定性范围与同库读测试)。
 @AutoConfigureMockMvc
 class ChargingApiIT extends AbstractMysqlIT {
 
@@ -39,79 +42,67 @@ class ChargingApiIT extends AbstractMysqlIT {
         return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
 
-    // ── cats (附表7 seeded two, with `short` wire name) ────────
+    // ── cats:V19 运营商字典(no=7 万城万/小桔;短名 = 中文)──
     @Test
-    void cats_listSeededTwo_withShortWireName() throws Exception {
+    void cats_listOperators_withShortWireName() throws Exception {
         String body = utf8(mvc.perform(get("/api/charging/7/cats").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andReturn());
         List<String> ids    = JsonPath.read(body, "$.data[*].catId");
+        List<String> names  = JsonPath.read(body, "$.data[*].name");
         List<String> shorts = JsonPath.read(body, "$.data[*].short");   // JSON wire name is "short"
-        assertThat(ids).containsExactly("dc", "ac");
-        assertThat(shorts).containsExactly("直流快充", "交流慢充");
+        assertThat(ids).containsExactly("wancheng", "xiaoju");
+        assertThat(names).containsExactly("万城万", "小桔");
+        assertThat(shorts).containsExactly("万城万", "小桔");
+
+        // no=8 电动车桩字典:叮叮充/电信
+        List<String> ids8 = JsonPath.read(
+                utf8(mvc.perform(get("/api/charging/8/cats").header("Authorization", auth()))
+                        .andExpect(status().isOk()).andReturn()),
+                "$.data[*].catId");
+        assertThat(ids8).containsExactly("dingding", "dianxin");
     }
 
-    // ── overview (deterministic range, schedule 7) ────────────
+    // ── overview:无种子记录 → 范围 [2024..2025],currentYear=2024(对齐无数据口径) ──
     @Test
-    void overview_shapeAndDeterministicYearRange() throws Exception {
+    void overview_noSeedData_deterministicEmptyRange() throws Exception {
         String body = utf8(mvc.perform(get("/api/charging/7/overview").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                // seed maxData = 2026 → range [2024..2027], currentYear = 2026
-                .andExpect(jsonPath("$.data.currentYear").value(2026))
-                .andExpect(jsonPath("$.data.years.length()").value(4))
+                .andExpect(jsonPath("$.data.currentYear").value(2024))
+                .andExpect(jsonPath("$.data.years.length()").value(2))
                 .andReturn());
         List<Integer> years = JsonPath.read(body, "$.data.years[*].year");
-        assertThat(years).containsExactly(2024, 2025, 2026, 2027);
-        // 2024 has no data, 2025 does
+        assertThat(years).containsExactly(2024, 2025);
         assertThat((Boolean) JsonPath.read(body, "$.data.years[0].hasData")).isFalse();
-        assertThat((Boolean) JsonPath.read(body, "$.data.years[1].hasData")).isTrue();
-        // 2025 profit = fee - cost across 24 rows = 141006.60
-        assertThat(((Number) JsonPath.read(body, "$.data.years[1].totalProfit")).doubleValue())
-                .isEqualTo(141006.60);
-        assertThat(((Number) JsonPath.read(body, "$.data.years[1].count")).intValue()).isEqualTo(24);
     }
 
-    // ── records(7, 2025): row count + derived profit + totals ──
+    // ── records(7, 2025):无种子 → 0 行,cats=2,合计皆 0 ──
     @Test
-    void records2025_rowCountAndDerivedProfitAndTotals() throws Exception {
-        String body = utf8(mvc.perform(get("/api/charging/7/records").param("year", "2025")
-                .header("Authorization", auth()))
+    void records_emptyYear_zeroRowsAndTotals() throws Exception {
+        mvc.perform(get("/api/charging/7/records").param("year", "2025").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.year").value(2025))
                 .andExpect(jsonPath("$.data.cats.length()").value(2))
-                .andExpect(jsonPath("$.data.rows.length()").value(24)) // dc:12 + ac:12
-                .andReturn());
-
-        // first row ascending by acct_month = 2025-01; source seed, profit derived = fee - cost
-        assertThat((String) JsonPath.read(body, "$.data.rows[0].acctMonth")).isEqualTo("2025-01");
-        assertThat((String) JsonPath.read(body, "$.data.rows[0].source")).isEqualTo("seed");
-        double r0fee  = ((Number) JsonPath.read(body, "$.data.rows[0].fee")).doubleValue();
-        double r0cost = ((Number) JsonPath.read(body, "$.data.rows[0].cost")).doubleValue();
-        double r0prof = ((Number) JsonPath.read(body, "$.data.rows[0].profit")).doubleValue();
-        assertThat(r0prof).isEqualTo(Math.round((r0fee - r0cost) * 100) / 100.0);
-
-        // year totals (24 rows, dc + ac)
-        assertThat(((Number) JsonPath.read(body, "$.data.total.kwh")).doubleValue()).isEqualTo(653790.00);
-        assertThat(((Number) JsonPath.read(body, "$.data.total.fee")).doubleValue()).isEqualTo(543175.80);
-        assertThat(((Number) JsonPath.read(body, "$.data.total.cost")).doubleValue()).isEqualTo(402169.20);
-        assertThat(((Number) JsonPath.read(body, "$.data.total.profit")).doubleValue()).isEqualTo(141006.60);
+                .andExpect(jsonPath("$.data.rows.length()").value(0))
+                .andExpect(jsonPath("$.data.total.profit").value(0.0));
     }
 
-    // ── create round-trip (manual) → patch note → delete ok ───
+    // ── create round-trip(manual,运营商 cat)→ patch note → delete ok ───
     @Test
+    @Transactional
     void create_manualRecord_roundTrip_thenDeleteOk() throws Exception {
-        String reqBody = "{\"scheduleNo\":7,\"cat\":\"dc\",\"acctMonth\":\"2027-03\","
+        String reqBody = "{\"scheduleNo\":7,\"cat\":\"wancheng\",\"acctMonth\":\"2027-03\","
                 + "\"kwh\":1000,\"fee\":900,\"cost\":600}";
         String created = utf8(mvc.perform(post("/api/charging/7/records").header("Authorization", auth())
                 .contentType("application/json").content(reqBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.source").value("manual"))
-                .andExpect(jsonPath("$.data.catName").value("直流快充桩"))
+                .andExpect(jsonPath("$.data.catName").value("万城万"))
                 .andExpect(jsonPath("$.data.profit").value(300.0))  // 900 - 600
                 .andReturn());
         int id = JsonPath.read(created, "$.data.id");
@@ -129,16 +120,13 @@ class ChargingApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
-    // ── delete seed → 409 in body ─────────────────────────────
+    // ── create 未知 cat → 409 ──
     @Test
-    void delete_seedRow_returns409InBody() throws Exception {
-        String body = utf8(mvc.perform(get("/api/charging/7/records").param("year", "2025")
-                .header("Authorization", auth()))
-                .andExpect(status().isOk()).andReturn());
-        int seedId = JsonPath.read(body, "$.data.rows[0].id");
-
-        mvc.perform(delete("/api/charging/7/records/" + seedId).header("Authorization", auth()))
-                .andExpect(status().isOk())          // BizException → HTTP 200, code in body
+    void create_unknownCat_returns409InBody() throws Exception {
+        mvc.perform(post("/api/charging/7/records").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"scheduleNo\":7,\"cat\":\"nope\",\"acctMonth\":\"2027-03\",\"kwh\":1,\"fee\":1,\"cost\":0}"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(409));
     }
 

@@ -128,6 +128,34 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
     expect(records[0].leaveDays).toBe(0.5)
   })
 
+  // 填充型分组列(充电桩类别合并列):仅组首行有值,组内其余空,各行 __groups 都拿到组值;小计/总计跳过且不污染填充
+  it('分组列向下填充,组内空行继承组值', () => {
+    const COLS_C: ColumnMapEntry[] = [
+      { label: '充电电量', key: 'kwh' },
+      { label: '充电成本', key: 'cost' },
+    ]
+    const m: string[][] = [
+      cols(['充电桩类别', '月份', '充电电量（千瓦时）', '充电成本（元）']),
+      cols(['叮叮充', '2025-01-01', '1205.49', '895.01']),   // 组首:类别有值
+      cols(['', '2025-02-01', '1404.15', '1013.49']),        // 组内:类别空,继承叮叮充
+      cols(['', '小计', '2609.64', '1908.5']),               // 小计行跳过,不重置填充
+      cols(['电信', '2025-01-01', '839.63', '699.41']),      // 新组首
+      cols(['', '2025-02-01', '572.87', '481.17']),          // 继承电信
+      cols(['总计', '', '5026.13', '3989.08']),              // 总计行跳过
+    ]
+    const { records, error } = matchByHeader(m, COLS_C, ['月份'], ['充电桩类别'])
+    expect(error).toBeUndefined()
+    expect(records.map(r => r.tenantName)).toEqual(['2025-01-01', '2025-02-01', '2025-01-01', '2025-02-01'])
+    expect(records.map(r => r.__groups?.['充电桩类别'])).toEqual(['叮叮充', '叮叮充', '电信', '电信'])
+    expect(records[0].kwh).toBe(1205.49)
+    expect(records[3].cost).toBe(481.17)
+  })
+
+  it('无 groupLabels 时不附 __groups(默认不影响现有调用)', () => {
+    const { records } = matchByHeader(matrix, COLS, NAME)
+    expect(records[0].__groups).toBeUndefined()
+  })
+
   // 文本列:职种/职务 存原始字符串,不被 cleanNum 变 0
   it('text 列存原始字符串(职种/职务)', () => {
     const COLS5: ColumnMapEntry[] = [

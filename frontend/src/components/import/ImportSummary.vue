@@ -9,15 +9,19 @@ import type { Section } from '@/utils/importSections'
 import type { ImportRec } from '@/utils/importHeaderMatch'
 
 const props = withDefaults(defineProps<{
-  sections: Section[]
-  defaultYear: number
-  defaultMonth: number
-  defaultPhase: number
+  sections?: Section[]
+  defaultYear?: number
+  defaultMonth?: number
+  defaultPhase?: number
   hidePhase?: boolean   // 工资分段:无期 → 隐期列与期选择,仅校验 年/月/N人
-}>(), { hidePhase: false })
+  // 纯标签段模式:无年/月/期,每段只显示 label + N条 + 勾选(光伏/充电桩/电费自定义解析用)
+  labelOnly?: boolean
+  labelSections?: { label: string; records: ImportRec[] }[]
+}>(), { hidePhase: false, labelOnly: false })
 
 const emit = defineEmits<{
   confirm: [picks: { year: number; month: number; phase: number; records: ImportRec[] }[]]
+  labelConfirm: [picks: { label: string; records: ImportRec[] }[]]
 }>()
 
 const PHASE_OPTS = [
@@ -37,14 +41,30 @@ interface Row {
 
 // 识别到的预填;缺的用当前槽默认填(契约:0 标题段供汇总屏用当前槽默认填)
 const rows = reactive<Row[]>(
-  props.sections.map(s => ({
-    year: s.year ?? props.defaultYear,
-    month: s.month ?? props.defaultMonth,
-    phase: s.phase ?? props.defaultPhase,
+  (props.sections ?? []).map(s => ({
+    year: s.year ?? props.defaultYear ?? null,
+    month: s.month ?? props.defaultMonth ?? null,
+    phase: s.phase ?? props.defaultPhase ?? null,
     records: s.records,
     checked: s.records.length > 0,
   })),
 )
+
+// 纯标签段:每段 label + records + 勾选(默认非空即勾)
+const labelRows = reactive(
+  (props.labelSections ?? []).map(s => ({ label: s.label, records: s.records, checked: s.records.length > 0 })),
+)
+const anyLabelPick = computed(() => labelRows.some(r => r.checked && r.records.length > 0))
+
+function toggleLabel(r: { records: ImportRec[]; checked: boolean }) {
+  if (!r.records.length) { r.checked = false; return }
+  r.checked = !r.checked
+}
+
+function confirmLabel() {
+  const picks = labelRows.filter(r => r.checked && r.records.length > 0).map(r => ({ label: r.label, records: r.records }))
+  if (picks.length) emit('labelConfirm', picks)
+}
 
 function validYear(y: number | null): boolean { return y != null && y >= 2000 && y <= 2100 }
 function validMonth(m: number | null): boolean { return m != null && m >= 1 && m <= 12 }
@@ -71,10 +91,40 @@ function confirm() {
 </script>
 
 <template>
-  <div class="isum">
+  <!-- 纯标签段模式:只显示 段标签 + N条 + 勾选 -->
+  <div v-if="labelOnly" class="isum">
     <div class="isum-head">
       <component :is="iconFor('layers')" :size="15" />
-      <span>识别到 <b>{{ sections.length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</span>
+      <span>识别到 <b>{{ labelRows.length }}</b> 段，请勾选导入</span>
+    </div>
+
+    <div class="isum-table">
+      <div class="isum-hr label-only">
+        <span class="isum-col-pick"></span>
+        <span class="isum-col-label">分段</span>
+        <span class="isum-col-n">识别</span>
+      </div>
+      <div v-for="(r, i) in labelRows" :key="i" class="isum-row label-only" :class="{ off: !r.checked }">
+        <span class="isum-col-pick">
+          <input type="checkbox" class="isum-cb" :checked="r.checked" :disabled="!r.records.length" @change="toggleLabel(r)" />
+        </span>
+        <span class="isum-col-label">{{ r.label }}</span>
+        <span class="isum-col-n"><b :class="{ empty: r.records.length === 0 }">{{ r.records.length }}</b> 条</span>
+      </div>
+    </div>
+
+    <div class="isum-foot">
+      <Button variant="filled" :disabled="!anyLabelPick" @click="confirmLabel">
+        <template #leading><component :is="iconFor('download')" :size="16" /></template>
+        全部导入
+      </Button>
+    </div>
+  </div>
+
+  <div v-else class="isum">
+    <div class="isum-head">
+      <component :is="iconFor('layers')" :size="15" />
+      <span>识别到 <b>{{ (sections ?? []).length }}</b> 段，请核对{{ hidePhase ? '年/月' : '年/月/期' }}后勾选导入</span>
     </div>
 
     <div class="isum-table">
@@ -142,6 +192,8 @@ function confirm() {
 .isum-table { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .isum-hr, .isum-row { display:grid; grid-template-columns:44px 1fr 72px 96px 88px; align-items:center; gap:8px; padding:8px 12px; }
 .isum-hr.no-phase, .isum-row.no-phase { grid-template-columns:44px 1fr 72px 88px; }  /* 工资分段:无期列 */
+.isum-hr.label-only, .isum-row.label-only { grid-template-columns:44px 1fr 88px; }  /* 纯标签段:只 段标签 + N条 */
+.isum-col-label { font-size:12.5px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .isum-hr { background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:11px; font-weight:var(--fw-semibold); color:var(--text-muted); }
 .isum-row { border-bottom:1px solid var(--divider); }
 .isum-row:last-child { border-bottom:none; }

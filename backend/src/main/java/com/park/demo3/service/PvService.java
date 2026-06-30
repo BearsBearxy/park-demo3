@@ -1,6 +1,10 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.DeleteResultDTO;
+import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.PvImportRequest;
 import com.park.demo3.dto.PvOverviewDTO;
 import com.park.demo3.dto.PvOverviewDTO.YearMeta;
 import com.park.demo3.dto.PvPhaseDTO;
@@ -16,8 +20,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -107,12 +115,87 @@ public class PvService {
         return toRecordDTO(records.selectById(id), phase == null ? null : phase.getName());
     }
 
-    // ── delete(id;source=='seed' → 409;不存在 → 404) ──
+    // ── delete(id;seed 同等可删;不存在 → 404) ──
     public void delete(Integer id) {
         PvRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
-        if ("seed".equals(r.getSource())) throw new BizException(ResultCode.CONFLICT, "官方台账,不可删除");
         records.deleteById(id);
+    }
+
+    // ── import:每行自带 phaseId(p1/p2/p3)+acctMonth(YYYY-MM,必填)+occurMonth(缺省=acct)。
+    //          按(phaseId,acctMonth)upsert:先删被导入(期,月)的行(任意来源:种子/手动/导入),再逐行 insert(source=import)。
+    //          即「导入即覆盖这些(期,月)」——自动取代假种子,不波及未导入的(期,月)。
+    //          校验 phaseId∈{p1,p2,p3}、acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12;非法 → errors 跳过。 ──
+    private static final Pattern YM = Pattern.compile("(\\d{4})-(\\d{2})");
+    private static final Set<String> PHASES = Set.of("p1", "p2", "p3");
+
+    @org.springframework.transaction.annotation.Transactional
+    public ImportResultDTO importRows(PvImportRequest req) {
+        List<PvImportRequest.Row> rows = req.rows();
+        List<PvImportRequest.Row> valid = new ArrayList<>();
+        List<ImportError> errors = new ArrayList<>();
+        // 被导入的(期,月):按期收集月份集合,逐期删
+        Map<String, Set<String>> monthsByPhase = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < rows.size(); i++) {
+            PvImportRequest.Row row = rows.get(i);
+            if (!PHASES.contains(row.phaseId())) {
+                errors.add(new ImportError(i, String.valueOf(row.phaseId()), "期别非法(应为 p1/p2/p3)"));
+                continue;
+            }
+            if (!validMonth(row.acctMonth())) {
+                errors.add(new ImportError(i, String.valueOf(row.acctMonth()), "记账月格式非法(应为 YYYY-MM,年 2000-2100、月 1-12)"));
+                continue;
+            }
+            valid.add(row);
+            monthsByPhase.computeIfAbsent(row.phaseId(), k -> new LinkedHashSet<>()).add(row.acctMonth());
+        }
+        monthsByPhase.forEach((phaseId, months) -> records.deleteByPhaseAndMonths(phaseId, new ArrayList<>(months)));
+        int imported = 0;
+        for (PvImportRequest.Row row : valid) {
+            String acct = row.acctMonth();
+            String occur = (row.occurMonth() == null || row.occurMonth().isBlank()) ? acct : row.occurMonth();
+            PvRecord r = new PvRecord();
+            r.setPhaseId(row.phaseId());
+            r.setAcctMonth(acct);
+            r.setOccurMonth(occur);
+            r.setSelfKwh(r2(row.selfKwh()));
+            r.setSelfAmt(r2(row.selfAmt()));
+            r.setGridKwh(r2(row.gridKwh()));
+            r.setGridAmt(r2(row.gridAmt()));
+            r.setNote(row.note() == null || row.note().isBlank() ? null : row.note());
+            r.setSource("import");
+            records.insert(r);
+            imported++;
+        }
+        return new ImportResultDTO(imported, errors.size(), errors);
+    }
+
+    // 校验 acctMonth 形如 YYYY-MM 且年 2000-2100、月 1-12
+    private static boolean validMonth(String s) {
+        if (s == null) return false;
+        Matcher m = YM.matcher(s);
+        if (!m.matches()) return false;
+        int y = Integer.parseInt(m.group(1)), mon = Integer.parseInt(m.group(2));
+        return y >= 2000 && y <= 2100 && mon >= 1 && mon <= 12;
+    }
+
+    // ── clearImported(year):删本年 source='import' 行,返回删除计数 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO clearImported(int year) {
+        return new DeleteResultDTO(records.deleteImported(year), 0);
+    }
+
+    // ── batchDelete(ids):按 id 删(seed/manual/import 同等可删);不存在的 id 静默忽略,skipped 恒 0 ──
+    @org.springframework.transaction.annotation.Transactional
+    public DeleteResultDTO batchDelete(List<Long> ids) {
+        int deleted = 0;
+        for (Long id : ids) {
+            PvRecord r = records.selectById(id);
+            if (r == null) continue;
+            records.deleteById(id);
+            deleted++;
+        }
+        return new DeleteResultDTO(deleted, 0);
     }
 
     // ── helpers ──

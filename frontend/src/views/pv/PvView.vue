@@ -6,11 +6,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { pvApi } from '@/api/pv'
 import { exportPvYear } from '@/utils/pvExcel'
-import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq } from '@/types/pv'
+import { importPvSections } from '@/utils/importPvSections'
+import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq, PvImportRow } from '@/types/pv'
+import type { ImportResultDTO } from '@/types/import'
+import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import PvTable from './PvTable.vue'
 import PvRecordDrawer from './PvRecordDrawer.vue'
 
@@ -53,18 +58,84 @@ async function pickYear(y: number) {
   edit.value = false
   phase.value = 'all'
   yearData.value = null
+  selectedIds.value = new Set()
   await loadYear(y)
 }
 function goGate() {
   year.value = null
   edit.value = false
   yearData.value = null
+  selectedIds.value = new Set()
 }
 
 // 新增 / 删除 / 改备注后重载该年 + overview(jsx saveRecord/delRecord)
 async function refresh() {
   if (year.value != null) await loadYear(year.value)
   await reloadOverview()
+}
+
+// ── 导入 Excel(自定义解析:多段堆叠按期切段,行自带 phaseId+acctMonth) ──
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+
+// FpImportModal customParse:matrix → 段(label+records),记录已带 phaseId/acctMonth/occurMonth/四值。
+function customParse(matrix: string[][]) {
+  return importPvSections(matrix)
+}
+
+// 各段确认后逐段上抛 → 汇总所有行一次性 importRows(后端按(期,月)upsert,跨年自落各年)。
+async function onImportSections(picks: { label?: string; records: ImportRec[] }[]) {
+  importing.value = false
+  const rows = picks.flatMap(p => p.records as unknown as PvImportRow[])
+  if (!rows.length) return
+  try {
+    importResult.value = await pvApi.importRows(rows)
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// ── 清空本期导入(本年) ──
+const importedCount = computed(() =>
+  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
+)
+async function onClearImported() {
+  if (year.value == null) return
+  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
+  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动/种子行不受影响。`)) return
+  try {
+    await pvApi.clearImported(year.value)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '清空失败')
+  }
+}
+
+// ── 批量删除(编辑态复选框) ──
+const selectedIds = ref<Set<number>>(new Set())
+function toggleSelect(row: PvRecordDTO) {
+  const next = new Set(selectedIds.value)
+  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
+  selectedIds.value = next
+}
+function selectAll(checked: boolean) {
+  if (!yearData.value) return
+  // 全选当前期视图行(与表内 allSelected 口径一致:按 phase 过滤)
+  const visible = yearData.value.rows.filter(r => phase.value === 'all' || r.phase === phase.value)
+  selectedIds.value = checked ? new Set(visible.map(r => r.id)) : new Set()
+}
+async function onBatchDelete() {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+  try {
+    await pvApi.batchDelete(ids)
+    selectedIds.value = new Set()
+    await refresh()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除失败')
+  }
 }
 
 async function onCreate(req: PvRecordReq) {
@@ -139,16 +210,21 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <!-- 导入:禁用占位(导入即将上线) -->
-            <span title="导入即将上线" style="display:inline-flex">
-              <Button variant="outline" size="sm" :disabled="true">
-                <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-                导入 Excel
-              </Button>
-            </span>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
+            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增记账
+            </Button>
+            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+              清空本期导入 ({{ importedCount }})
+            </Button>
+            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
           <template #static-actions>
@@ -166,10 +242,13 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :total="yearData.total"
           :phase="phase"
           :edit="edit"
+          :selected-ids="selectedIds"
           @update:phase="phase = $event"
           @add="drawer = true"
           @delete="onDelete"
           @note="onNote"
+          @toggle-select="toggleSelect"
+          @select-all="selectAll"
         />
       </div>
 
@@ -182,10 +261,22 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         @close="drawer = false"
         @save="onCreate"
       />
+
+      <FpImportModal
+        v-if="importing"
+        :title="`导入 附表6 · ${year}年光伏发电`"
+        sub="上传/粘贴多段堆叠的光伏发电明细(一期/二期/三期),系统按段切期、按表头识别列,逐段核对后导入"
+        :template-cols="['记账月份', '发生月份', '消纳电量', '消纳电费金额', '上网电量', '上网收益']"
+        :custom-parse="customParse"
+        @close="importing = false"
+        @import-sections="onImportSections"
+      />
     </template>
 
     <!-- 切年过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
+
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>

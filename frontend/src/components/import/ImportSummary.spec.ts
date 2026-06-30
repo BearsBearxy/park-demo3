@@ -69,4 +69,25 @@ describe('ImportSummary', () => {
     expect(picks.length).toBe(1)
     expect(picks[0].year).toBe(2026)
   })
+
+  it('labelOnly:按段标签显示,空段禁勾,labelConfirm 只载非空勾选段', async () => {
+    const w = mount(ImportSummary, {
+      props: {
+        labelOnly: true,
+        labelSections: [
+          { label: '一期光伏', records: [rec('1月'), rec('2月')] },
+          { label: '二期光伏', records: [] },
+        ],
+      },
+    })
+    const rows = w.findAll('.isum-row.label-only')
+    expect(rows.length).toBe(2)
+    expect(rows[0].find('.isum-col-label').text()).toBe('一期光伏')
+    expect(rows[0].find('.isum-col-n').text()).toContain('2')
+    await w.find('.isum-foot button').trigger('click')
+    const picks = w.emitted('labelConfirm')![0][0] as { label: string; records: unknown[] }[]
+    expect(picks.length).toBe(1)
+    expect(picks[0].label).toBe('一期光伏')
+    expect(picks[0].records.length).toBe(2)
+  })
 })
