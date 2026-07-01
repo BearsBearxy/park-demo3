@@ -6,6 +6,7 @@ import { companyApi, ledgerApi } from '@/api/ledger'
 import type { CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
 import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import LedgerCompanyPicker from './LedgerCompanyPicker.vue'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
 import LedgerMonthGrid from './LedgerMonthGrid.vue'
@@ -167,24 +168,13 @@ const importResult = ref<ImportResultDTO | null>(null)
 // 数字清洗:剥 ¥/,/%/空格,非数字 → 0。
 const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
 // 模板列:租户 + 21 费用 label(取自 lgColumns 叶子,FEE_KEYS 同序),复用列定义不另造。
-const importCols = computed(() => {
-  const labelByKey: Record<string, string> = {}
-  for (const g of lgColumns(0).groups) for (const c of g.cols) labelByKey[c.key] = c.label
-  return ['租户', ...FEE_KEYS.map(k => labelByKey[k])]
-})
-// parseRow:cells[0]=租户名(空跳过);cells[1..21]→21 费用(FEE_KEYS 序)。
-function importParseRow(c: string[]): ImportRec | null {
-  const name = (c[0] || '').trim(); if (!name) return null
-  const fees: Record<string, number> = {}
-  FEE_KEYS.forEach((k, i) => { fees[k] = cleanNum(c[i + 1]) })
-  return { tenantName: name, ...fees, __preview: [name, ...FEE_KEYS.map((_k, i) => cleanNum(c[i + 1]) || '')] }
-}
-async function onImport(recs: ImportRec[]) {
+async function onImport(recs: ImportRec[], fileName: string) {
   if (companyId.value == null || month.value == null) return
   importing.value = false
   try {
-    const rows = recs as unknown as LedgerImportRow[]
-    importResult.value = await ledgerApi.import(companyId.value, year.value, month.value, { rows })
+    const cname = companies.value.find(c => c.id === companyId.value)?.name
+    importResult.value = await runImport('ledger', recs,
+      { companyId: companyId.value, companyName: cname, year: year.value, month: month.value }, fileName)
     await loadMonth()   // 重载本月,反映 upsert 后的费用
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -256,9 +246,8 @@ async function onImport(recs: ImportRec[]) {
     <FpImportModal
       v-if="importing"
       :title="'导入 月度台账 · ' + company.name"
-      :sub="'列顺序 = 租户 + 各费用项(共 ' + importCols.length + ' 列),按租户名匹配在租租户后导入到 ' + year + ' 年 ' + month + ' 月'"
-      :template-cols="importCols"
-      :parse-row="importParseRow"
+      :sub="'列顺序 = 租户 + 各费用项(共 ' + (FEE_KEYS.length + 1) + ' 列),按租户名匹配在租租户后导入到 ' + year + ' 年 ' + month + ' 月'"
+      v-bind="parserProps('ledger')"
       @close="importing = false"
       @import="onImport"
     />

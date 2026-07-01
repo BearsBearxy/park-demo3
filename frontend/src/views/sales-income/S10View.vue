@@ -9,6 +9,7 @@ import { exportS10Month } from '@/utils/s10Excel'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq, S10ImportRow } from '@/types/s10'
 import type { ImportResultDTO } from '@/types/import'
 import { PHASES, PHASE_LAYOUT, leavesOf } from './layout'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
@@ -227,28 +228,18 @@ const phaseLayoutsCol = computed(() => ({
 
 const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
 
-// 逐段 importRows,聚合结果,跳转第一段成功槽
+// 经 runImport(共享 registry 逐段 upsert + 记录 import_log),重建每段摘要,跳转第一段槽
 async function onSmartImport(
   picks: { year: number; month: number; phase: number; records: ImportRec[] }[],
+  fileName: string,
 ) {
   importing.value = false
-  let imported = 0, skipped = 0
-  const errors: ImportResultDTO['errors'] = []
-  const lines: string[] = []
-  let first: { year: number; month: number; phase: number } | null = null
   try {
-    for (const p of picks) {
-      const acctMonth = `${p.year}-${String(p.month).padStart(2, '0')}`
-      // profile 按本段 phase 的版面派生(office/factory),比恒 'factory' 准;profile 仅列门控占位,真实显示由 phase 决定
-      const rows = p.records.map(r => ({ profile: PHASE_LAYOUT[p.phase], ...r })) as unknown as S10ImportRow[]
-      const res = await s10Api.importRows({ phase: p.phase, acctMonth, rows })
-      imported += res.imported; skipped += res.skipped; errors.push(...res.errors)
-      lines.push(`${p.year}年${p.month}月·${ZH_PHASE[p.phase]}:导入 ${res.imported} / 跳过 ${res.skipped}${res.errors.length ? ' / 错误 ' + res.errors.length : ''}`)
-      if (!first) first = { year: p.year, month: p.month, phase: p.phase }
-    }
-    importResult.value = { imported, skipped, errors }
-    importSummary.value = lines.join('\n')
-    // 跳转第一段成功槽
+    importResult.value = await runImport('s10', picks, {}, fileName)
+    importSummary.value = picks
+      .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase]}:${p.records.length} 条`)
+      .join('\n')
+    const first = picks[0]
     if (first) {
       year.value = first.year
       month.value = first.month
@@ -434,9 +425,7 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
         v-if="importing"
         :title="'导入 附表10 · 智能整表'"
         :sub="'上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入'"
-        :template-cols="importCols"
-        :phase-layouts="phaseLayoutsCol"
-        :name-labels="['租户名称', '租户']"
+        v-bind="parserProps('s10')"
         :default-year="year"
         :default-month="month"
         :default-phase="phase"

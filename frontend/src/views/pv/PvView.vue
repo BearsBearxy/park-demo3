@@ -6,7 +6,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { pvApi } from '@/api/pv'
 import { exportPvYear } from '@/utils/pvExcel'
-import { importPvSections } from '@/utils/importPvSections'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq, PvImportRow } from '@/types/pv'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
@@ -78,18 +78,11 @@ async function refresh() {
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
 
-// FpImportModal customParse:matrix → 段(label+records),记录已带 phaseId/acctMonth/occurMonth/四值。
-function customParse(matrix: string[][]) {
-  return importPvSections(matrix)
-}
-
-// 各段确认后逐段上抛 → 汇总所有行一次性 importRows(后端按(期,月)upsert,跨年自落各年)。
-async function onImportSections(picks: { label?: string; records: ImportRec[] }[]) {
+// 各段确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
+async function onImportSections(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
   importing.value = false
-  const rows = picks.flatMap(p => p.records as unknown as PvImportRow[])
-  if (!rows.length) return
   try {
-    importResult.value = await pvApi.importRows(rows)
+    importResult.value = await runImport('pv', picks, {}, fileName)
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -266,8 +259,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         v-if="importing"
         :title="`导入 附表6 · ${year}年光伏发电`"
         sub="上传/粘贴多段堆叠的光伏发电明细(一期/二期/三期),系统按段切期、按表头识别列,逐段核对后导入"
-        :template-cols="['记账月份', '发生月份', '消纳电量', '消纳电费金额', '上网电量', '上网收益']"
-        :custom-parse="customParse"
+        v-bind="parserProps('pv')"
         @close="importing = false"
         @import-sections="onImportSections"
       />

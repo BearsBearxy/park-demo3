@@ -8,7 +8,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { chargingApi } from '@/api/charging'
 import { exportChargingYear } from '@/utils/chargingExcel'
-import { importChargingRows, type ChargingError } from '@/utils/importChargingRows'
+import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import type {
   ChargingCatDTO, ChargingOverviewDTO, ChargingYearDTO, ChargingRecordDTO, ChargingRecordReq,
   ChargingImportRow,
@@ -54,9 +54,13 @@ const yearCards = computed<YearCard[]>(() =>
   })),
 )
 
+// 导入上下文(稳定对象):cats 供 registry 的 charging customParse;其 _parseErrors 由 customParse 暂存、runImport 合并。
+const importCtx: ImportCtx = {}
+
 // ── 进入屏:cats + overview(§6 取数前不渲染) ──────────
 onMounted(async () => {
   cats.value = await chargingApi.cats(no.value)
+  importCtx.cats = cats.value
   overview.value = await chargingApi.overview(no.value)
 })
 
@@ -92,36 +96,11 @@ async function refresh() {
 // ── 导入 Excel(自定义解析:单表逐行,运营商下填,fee 按附表口径算好) ──
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
-const parseErrors = ref<ChargingError[]>([])   // 解析期跳过(聚合/未知运营商)→ 合入结果提示
-
-// FpImportModal customParse:matrix → records(已带 cat_id/acctMonth/kwh/fee/cost);
-// 聚合行/未知运营商收 parseErrors(导入后合入 toast)。
-function customParse(matrix: string[][]) {
-  const { records, errors } = importChargingRows(matrix, no.value, cats.value)
-  parseErrors.value = errors.filter(e => e.rowIndex >= 0)   // matchByHeader 级 error(rowIndex<0)走 error 通路
-  const headerErr = errors.find(e => e.rowIndex < 0)
-  if (headerErr) return { error: headerErr.reason }
-  return { records }
-}
-
-// 确认导入 → importRows(后端按(附表,cat,月)upsert);合入解析期跳过的报告。
-async function onImport(recs: ImportRec[]) {
+// 确认导入 → runImport(共享 registry:customParse 已把解析期跳过暂存到 importCtx._parseErrors,run 合并 + 记录 import_log)。
+async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
-  const rows = recs as unknown as ChargingImportRow[]
-  const skipErrors = parseErrors.value.map(e => ({ rowIndex: e.rowIndex, label: e.label, reason: e.reason }))
-  if (!rows.length) {
-    importResult.value = { imported: 0, skipped: skipErrors.length, errors: skipErrors }
-    parseErrors.value = []
-    return
-  }
   try {
-    const res = await chargingApi.importRows(no.value, { rows })
-    importResult.value = {
-      imported: res.imported,
-      skipped: res.skipped + skipErrors.length,
-      errors: [...skipErrors, ...res.errors],
-    }
-    parseErrors.value = []
+    importResult.value = await runImport('charging_' + no.value, recs, importCtx, fileName)
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -301,8 +280,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         :sub="no === 8
           ? '上传/粘贴电动车充电桩损益明细,系统按运营商、按月份识别行(充电金额收入已扣手续费直取),核对后导入'
           : '上传/粘贴汽车充电桩收益汇总,系统按运营商、按月份识别行(fee=充电收入−手续费,聚合年/范围行跳过),核对后导入'"
-        :template-cols="['充电桩类别', '记账月', '充电电量', '手续费及服务费', '充电成本']"
-        :custom-parse="customParse"
+        v-bind="parserProps('charging_' + no, importCtx)"
         @close="importing = false"
         @import="onImport"
       />

@@ -16,6 +16,7 @@ import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.v
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import UtilitiesTable from './UtilitiesTable.vue'
 import UtilitiesRecordDrawer from './UtilitiesRecordDrawer.vue'
 
@@ -84,48 +85,12 @@ async function refresh() {
 // ── 导入 Excel(按表头名字匹配,行身份=月份字符串) ──────────
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
-// columnMap:真实办公水电表头 → OfficeRecord 字段 key(前缀匹配扛单位后缀,见 importHeaderMatch)。
-// 月份=记账月(行身份,nameLabels);所属月份=text 列存原串再解析;派生电费金额不入。
-// 办公文件无水列 → waterQty/waterPrice 缺省 0(无碍)。
-const UTILITIES_COLUMN_MAP = [
-  { label: '用电量', key: 'elecQty' },
-  { label: '基准用电单价', key: 'elecPrice' },
-  { label: '用水量', key: 'waterQty' },
-  { label: '基准用水单价', key: 'waterPrice' },
-  { label: '所属月份', key: 'belongMonth', text: true },
-]
-const importCols = computed(() => ['月份', ...UTILITIES_COLUMN_MAP.map(c => c.label)])
-
-// 跨年路由:每行 parseYearMonth(月份=tenantName)→acctMonth YYYY-MM;
-// parseYearMonth(所属月份文本,回退=acct 年)→belongMonth。解析失败收 errors。
-// 按 acct 年分组,逐年 importRows(全由行驱动,无 ?year)。
-async function onImport(recs: ImportRec[]) {
+// 经 runImport(共享 registry:逐行 parseYearMonth 分年 + importRows + 记录 import_log)→ 刷新。
+async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
   if (year.value == null) return
-  const byYear = new Map<number, OfficeImportRow[]>()
-  const errors: ImportResultDTO['errors'] = []
-  let frontSkipped = 0
-  recs.forEach((r, i) => {
-    const ym = parseYearMonth(r.tenantName)
-    if (!ym) { errors.push({ rowIndex: i, label: String(r.tenantName ?? ''), reason: '无法识别月份' }); frontSkipped++; return }
-    const acctMonth = `${ym.year}-${String(ym.month).padStart(2, '0')}`
-    const bm = parseYearMonth(r.belongMonth, ym.year)
-    const belongMonth = bm ? `${bm.year}-${String(bm.month).padStart(2, '0')}` : acctMonth
-    const row: OfficeImportRow = {
-      acctMonth, belongMonth,
-      elecQty: r.elecQty as number, elecPrice: r.elecPrice as number,
-      waterQty: r.waterQty as number, waterPrice: r.waterPrice as number,
-    }
-    const arr = byYear.get(ym.year) ?? []
-    arr.push(row); byYear.set(ym.year, arr)
-  })
   try {
-    let imported = 0, skipped = frontSkipped
-    for (const rows of byYear.values()) {
-      const res = await utilitiesApi.importRows(no.value, { rows })
-      imported += res.imported; skipped += res.skipped; errors.push(...res.errors)
-    }
-    importResult.value = { imported, skipped, errors }
+    importResult.value = await runImport('office_' + no.value, recs, {}, fileName)
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -340,9 +305,7 @@ async function onExport() {
         v-if="importing"
         :title="`导入 附表${no} · ${year}年${meta.name}`"
         sub="上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入本年"
-        :template-cols="importCols"
-        :column-map="UTILITIES_COLUMN_MAP"
-        :name-labels="['月份']"
+        v-bind="parserProps('office_' + no)"
         @close="importing = false"
         @import="onImport"
       />

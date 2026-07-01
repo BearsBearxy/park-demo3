@@ -7,7 +7,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { elecApi } from '@/api/elec'
 import { exportElecYear } from '@/utils/elecExcel'
-import { importElecRows } from '@/utils/importElecRows'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import type { ElecPhaseDTO, ElecOverviewDTO, ElecYearDTO, ElecRecordDTO, ElecRecordReq, ElecImportRow } from '@/types/elec'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
@@ -86,17 +86,11 @@ async function switchType(t: string) {
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
 
-function customParse(matrix: string[][]) {
-  return importElecRows(matrix)
-}
-
-// 确认后扁平 records 一次性 importRows(后端按(期,月)整月整期 upsert,跨年自落各年)。
-async function onImport(recs: ImportRec[]) {
+// 确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
+async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
-  const rows = recs as unknown as ElecImportRow[]
-  if (!rows.length) return
   try {
-    importResult.value = await elecApi.importRows(rows)
+    importResult.value = await runImport('elec', recs, {}, fileName)
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -278,8 +272,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         v-if="importing"
         :title="`导入 附表11 · ${year}年电费成本`"
         sub="上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入"
-        :template-cols="['类型', '期', '记账月份', '用电类别/计费需量', '电量', '单价', '税率']"
-        :custom-parse="customParse"
+        v-bind="parserProps('elec')"
         @close="importing = false"
         @import="onImport"
       />

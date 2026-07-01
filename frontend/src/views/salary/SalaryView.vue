@@ -15,6 +15,7 @@ import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import { parserProps, runImport } from '@/utils/importRegistry'
 import SalaryTable from './SalaryTable.vue'
 import SalaryRecordDrawer from './SalaryRecordDrawer.vue'
 
@@ -98,48 +99,17 @@ const importResult = ref<ImportResultDTO | null>(null)
 // columnMap:真实工资表叶子标签 → SalaryRecord 字段 key(姓名走 nameLabels;派生/未建模列不入)。
 // role=文本列(text:true,存原串不 cleanNum)。前缀匹配扛单位后缀(应出勤（天）/请假（天）)。
 // 「其它津贴」(other,津贴项) 与 「其他」(otherDeduct,扣项) 靠完整标签+前缀消歧;不导 合计工资/实出勤/全勤考核/应发/实发/代缴代扣。
-const SALARY_COLUMN_MAP = [
-  { label: '职种/职务', key: 'role', text: true },
-  { label: '基本工资', key: 'base' },
-  { label: '岗位工资', key: 'post' },
-  { label: '绩效奖金', key: 'perf' },
-  { label: '全勤奖', key: 'attend' },
-  { label: '岗位技能津贴', key: 'skill' },
-  { label: '学历津贴', key: 'edu' },
-  { label: '其它津贴', key: 'other' },
-  { label: '午餐补助', key: 'lunch' },
-  { label: '高温及其他补贴', key: 'heat' },
-  { label: '招商提成', key: 'commission' },
-  { label: '应出勤', key: 'shouldDays' },
-  { label: '请假', key: 'leaveDays' },
-  { label: '社保', key: 'social' },
-  { label: '上月个税', key: 'tax' },
-  { label: '其他', key: 'otherDeduct' },
-]
-// 工资多月分段标题正则(每月一张表,标题如「2025年1月工资表(总表）」)
-const SALARY_SECTION_RE = /(\d{4})\s*年\s*(\d{1,2})\s*月.*工资表/
-const importCols = computed(() => ['姓名', ...SALARY_COLUMN_MAP.map(c => c.label)])
-
-// 工资多月分段导入:逐段 importRows(段年月,缺则用当前槽兜底),聚合结果,跳到首段年月 + reload。
+// 工资多月分段导入:经 runImport(共享 registry 逐段执行 + 记录 import_log),跳到首段年月 + reload。
 async function onImportSections(
   picks: { year?: number; month?: number; phase?: number; records: ImportRec[] }[],
+  fileName: string,
 ) {
   importing.value = false
   if (year.value == null) return
-  let imported = 0, skipped = 0
-  const errors: ImportResultDTO['errors'] = []
-  let first: { year: number; month: number } | null = null
   try {
-    for (const p of picks) {
-      const y = p.year ?? year.value
-      const m = p.month ?? month.value
-      const rows = p.records as unknown as SalaryImportRow[]
-      const res = await salaryApi.importRows(y, m, { rows })
-      imported += res.imported; skipped += res.skipped; errors.push(...res.errors)
-      if (!first) first = { year: y, month: m }
-    }
-    importResult.value = { imported, skipped, errors }
-    if (first) { year.value = first.year; month.value = first.month }
+    importResult.value = await runImport('salary', picks, { year: year.value, month: month.value }, fileName)
+    const first = picks[0]
+    if (first) { year.value = first.year ?? year.value; month.value = first.month ?? month.value }
     await refresh()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -320,10 +290,7 @@ async function onExport() {
         v-if="importing"
         :title="'导入 附表12 · 工资明细'"
         sub="上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入"
-        :template-cols="importCols"
-        :column-map="SALARY_COLUMN_MAP"
-        :name-labels="['姓名']"
-        :section-title-re="SALARY_SECTION_RE"
+        v-bind="parserProps('salary')"
         :default-year="year"
         :default-month="month"
         @close="importing = false"
