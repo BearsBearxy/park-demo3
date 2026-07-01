@@ -253,8 +253,10 @@ async function onImport(recs: ImportRec[], fileName: string) {
     />
   </template>
 
-  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
-
-  <!-- 过渡中(切公司/月,数据加载)兜底转圈,不闪空白 -->
+  <!-- 过渡中(切公司/月,数据加载)兜底转圈,不闪空白。
+       ⚠️ v-else 必须紧邻上方 ⓪/①/② 状态链;不可被 <ImportResultToast>(自带 v-if) 隔在中间,
+       否则 v-else 会绑到 toast 的 v-if(importResult 恒 null)→ 永久转圈(见 DESIGN-FIDELITY §6)。 -->
   <div v-else class="page-loading"><span class="page-spin" /></div>
+
+  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 </template>

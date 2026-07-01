@@ -93,7 +93,8 @@ function submit() {
           title="移除该年(无数据)"
           @click.stop="removeYear(y.year)"
         ><component :is="iconFor('trash-2')" :size="14" /></button>
-        <span v-else class="sm-yc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <!-- hover 进入箭头:仅非当前年显示;当前年右上角是「最新」角标,不再叠箭头(避免重叠冲突) -->
+        <span v-else-if="y.year !== current" class="sm-yc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
         <div class="sm-yc-head">
           <div class="sm-yc-year">{{ y.year }}<span class="u">年</span></div>
           <span v-if="y.year === current" class="sm-yc-tag">最新</span>

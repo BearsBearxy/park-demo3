@@ -23,9 +23,9 @@ watch(() => props.open, () => {})
 </script>
 
 <template>
-  <template v-if="open">
-    <div class="fp-dwr-backdrop" @click="emit('close')" />
-    <aside class="fp-dwr" :style="{ width: `min(${width}px, 94vw)` }" role="dialog" aria-modal="true">
+  <Teleport to="body">
+    <div v-if="open" class="fp-dwr-backdrop" @mousedown="emit('close')">
+    <div class="fp-dwr" :style="{ width: `min(${width}px, 94vw)` }" role="dialog" aria-modal="true" @mousedown.stop>
       <div class="fp-dwr-hd">
         <span v-if="icon" class="fp-dwr-icon">
           <component :is="iconFor(icon)" :size="20" />
@@ -47,37 +47,44 @@ watch(() => props.open, () => {})
       <div v-if="$slots.footer" class="fp-dwr-ft">
         <slot name="footer" />
       </div>
-    </aside>
-  </template>
+    </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+/* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 DESIGN-FIDELITY §7。 */
 .fp-dwr-backdrop {
   position: fixed;
   inset: 0;
   z-index: 300;
   background: rgba(28, 28, 28, .34);
   backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
   opacity: 0;
   animation: fpDwrFade .18s var(--ease-standard, ease) forwards;
 }
 @keyframes fpDwrFade { to { opacity: 1; } }
 
 .fp-dwr {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
   z-index: 301;
   display: flex;
   flex-direction: column;
+  max-height: min(85vh, 760px);
   background: var(--surface-white);
-  box-shadow: -12px 0 40px rgba(28, 28, 28, .18);
-  transform: translateX(24px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(28, 28, 28, .28);
+  overflow: hidden;
+  transform: translateY(8px) scale(.985);
   opacity: 0;
-  animation: fpDwrIn .22s var(--ease-standard, ease) forwards;
+  animation: fpDwrIn .2s var(--ease-standard, ease) forwards;
 }
-@keyframes fpDwrIn { to { transform: translateX(0); opacity: 1; } }
+@keyframes fpDwrIn { to { transform: none; opacity: 1; } }
 
 .fp-dwr-hd {
   flex: 0 0 auto;

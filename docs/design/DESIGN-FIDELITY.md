@@ -251,6 +251,38 @@
 
 参照实现：`BuildingsView` / `TenantsView` / `ContractsView` / `LedgerView`；占位样式 `.page-loading` / `.page-spin`（`styles/base.css`）。
 
+> **⚠️ 铁律：兜底 `v-else` 必须紧邻状态链，不可被带自身 `v-if` 的兄弟节点隔开。**
+> Vue 的 `v-else` / `v-else-if` 只绑「上一个相邻」的 `v-if` 兄弟。若把 `<ImportResultToast v-if="importResult">`（或任何自带 `v-if` 的 overlay）插在 ⓪/①/② 状态链和末尾 `<div v-else class="page-loading">` **之间**，兜底 `v-else` 会改绑到那个 overlay 的 `v-if` 上——`importResult` 恒为 null → **兜底转圈永久显示**（曾致「月度台账一直转圈」，2026-07-02 修复）。**overlay / toast 一律放在兜底 `v-else` 之后**，作为独立的尾部 `v-if` 节点。正确顺序：`…② v-else-if` → `<div v-else class="page-loading">` → `<ImportResultToast v-if="…">`。
+
 ### 6.3 已知局限（性能，非本节约束）
 
 本节只保证「**不闪假空态 / 不闪主壳**」，不解决「切页非无缝」——当前仍是 CSR + `onMounted` 取数的瀑布（先渲转圈 → 取数 → 渲内容；localhost 快到近乎无感，网络慢时可见转圈）。无缝化手段（路由级预取 loader、SWR 缓存、hover 预取、骨架屏、keep-alive、后端 gzip/ETag 等）属性能优化范畴，另行评估，不在保真规范内。
+
+---
+
+## 七、弹窗 / 覆盖层（Modal / Overlay）— 居中卡，**取代原型右侧抽屉**
+
+**用户决策（2026-07-02）**：所有原「从右侧滑出的抽屉」一律改为**屏幕居中弹窗**，视觉基准 = 命令面板 `CommandPalette`（Ctrl-K 弹卡）。**此为对设计原型（`screen-*.jsx` 右抽屉）的有意偏离，以本规范为准。**
+
+### 7.1 承载方式（改共享件，全局生效）
+
+| 场景 | 组件 | 消费方 |
+|---|---|---|
+| 明细 / 记录 / 录入抽屉 | `components/fp/FPDrawer.vue` | 楼栋/租户/合同明细 + 各附表 record 抽屉 + 台账租户抽屉（10 处） |
+| Excel 导入 | `components/import/FpImportModal.vue` | 导入中心 + 7 录入屏（8 处） |
+
+**新增任何覆盖层一律复用 `FPDrawer` / `FpImportModal`，不得自建右滑面板。** 两者已从右抽屉改为居中卡，故所有消费方自动生效。
+
+### 7.2 居中弹窗基准（`.fp-dwr` / `.fpimp` / `.fp-pal` 同构）
+
+| 部位 | 值 |
+|---|---|
+| 背板 backdrop | `position:fixed; inset:0; background:rgba(28,28,28,.32~.34); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px`（`FPDrawer`/`FpImportModal` 用垂直居中；`CommandPalette` 用 `align-items:flex-start; padding-top:11vh`——顶部居中，二者皆可） |
+| 卡片 card | `border-radius:16px; border:1px solid var(--border-subtle); box-shadow:0 24px 64px rgba(28,28,28,.28); overflow:hidden; display:flex; flex-direction:column` |
+| 宽度 | `width:min(<W>px, 92~96vw)`（FPDrawer 由 `width` prop 定，默认 640） |
+| 高度 | `max-height:85~88vh`；**头/脚 `flex:0`、体 `flex:1; overflow-y:auto`**（内容超高时体内滚动，不撑破视口） |
+| 进入动画 | 淡入 + 轻微 `translateY(8px) scale(.985)→none`（不再是 `translateX` 右滑） |
+| 关闭 | 背板 `@mousedown="close"` + 卡片 `@mousedown.stop`（拖选不误关）；`Esc` 关闭 |
+| 挂载 | `<Teleport to="body">`（避免被祖先 transform/overflow 裁剪的层叠上下文问题） |
+
+参照实现：`CommandPalette.vue`（基准）、`FPDrawer.vue`、`FpImportModal.vue`。已知：Vite dev 对「组件根结构改动（新增 Teleport）」的热更新会 `Failed to reload` 并回退整页重载，**非语法错**（`npm run build` 通过即证）。
