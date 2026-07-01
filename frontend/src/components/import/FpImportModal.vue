@@ -38,9 +38,10 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: []
-  import: [recs: ImportRec[]]
+  // 第二实参 fileName 供导入中心记录 import_log(粘贴导入为 '（粘贴）')
+  import: [recs: ImportRec[], fileName: string]
   // 期×月段(S10/工资)用 year/month/phase;自定义纯标签段用 label。放宽为可选并集。
-  importSections: [picks: { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }[]]
+  importSections: [picks: { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }[], fileName: string]
 }>()
 
 // 工资分段(无期)模式开关:sectionTitleRe + columnMap 且无 phaseLayouts
@@ -153,7 +154,7 @@ function onDrop(e: DragEvent) {
 
 function confirm() {
   if (!records.value) return
-  emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }))
+  emit('import', records.value.map(r => { const { __preview, ...rest } = r; void __preview; return rest }), fileName.value || '（粘贴）')
 }
 
 // 智能整表/工资分段确认:剥 __preview 后逐段上抛(工资模式 phase 缺省)
@@ -161,7 +162,7 @@ function onSectionsConfirm(picks: { year: number; month: number; phase?: number;
   emit('importSections', picks.map(p => ({
     ...p,
     records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
-  })))
+  })), fileName.value || '（粘贴）')
 }
 
 // 自定义纯标签段确认:剥 __preview 后按 label 上抛
@@ -169,7 +170,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
   emit('importSections', picks.map(p => ({
     label: p.label,
     records: p.records.map(r => { const { __preview, ...rest } = r; void __preview; return rest }),
-  })))
+  })), fileName.value || '（粘贴）')
 }
 </script>
 

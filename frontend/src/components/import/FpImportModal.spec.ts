@@ -52,6 +52,8 @@ describe('FpImportModal', () => {
     const payload = ev![0][0] as ImportRec[]
     expect(payload).toEqual([{ tenantName: 'A', factoryRent: 100, shopRent: 5 }])
     expect('__preview' in payload[0]).toBe(false)
+    // 第二实参 = fileName;粘贴导入无文件名 → '（粘贴）'
+    expect(ev![0][1]).toBe('（粘贴）')
   })
 
   it('shows error when no row matches template', async () => {
