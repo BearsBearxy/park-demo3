@@ -12,6 +12,10 @@ import { chargingApi } from '@/api/charging'
 import { elecApi } from '@/api/elec'
 import { salaryApi } from '@/api/salary'
 import { utilitiesApi } from '@/api/utilities'
+import { companyApi } from '@/api/ledger'
+import { reportApi } from '@/api/report'
+import type { ReportCompanySection, ReportCell } from '@/types/report'
+import { importIncomeStatement } from '@/utils/importIncomeStatement'
 import { importPvSections } from '@/utils/importPvSections'
 import { importChargingRows } from '@/utils/importChargingRows'
 import { importElecRows } from '@/utils/importElecRows'
@@ -234,6 +238,40 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     },
     target: () => null,
   })),
+  {
+    key: 'report_is', label: '利润表', tag: '报表', icon: 'trending-up', context: 'ledger',
+    modalProps: (ctx) => ({
+      title: '导入 利润表',
+      sub: `上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
+      templateCols: ['行次', '本月金额', '本年累计金额'],
+      customParse: (matrix: string[][]) => importIncomeStatement(matrix),
+    }),
+    // 逐公司段:公司名匹配 management_company、未匹配自动新建 → 聚合成 sections → reportApi.import。
+    run: async (payload, ctx) => {
+      const picks = payload as Pick[]
+      if (!picks.length) return zero()
+      const companies = await companyApi.list()
+      const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
+      const sections: ReportCompanySection[] = []
+      for (const p of picks) {
+        const name = (p.label ?? '').trim()
+        if (!name) continue
+        if (!byName.has(name)) {
+          const created = await companyApi.create(name)   // 未匹配自动新建
+          byName.set(name, created.id)
+        }
+        const cells: ReportCell[] = []
+        for (const r of p.records) {
+          const rowKey = String(r.rowKey)
+          cells.push({ rowKey, field: 'cur', amount: Number(r.cur) || 0 })
+          cells.push({ rowKey, field: 'ytd', amount: Number(r.ytd) || 0 })
+        }
+        sections.push({ companyName: name, cells })
+      }
+      return reportApi.import('is', ctx.year!, ctx.month!, { sections })
+    },
+    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)}`,
+  },
 ]
 
 // 各屏用:取该类型的解析配置(= modalProps 去掉 title/sub/defaults),屏自己给 :title/:sub/:default-*。
