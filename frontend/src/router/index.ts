@@ -18,6 +18,7 @@ const UtilitiesView = () => import('@/views/utilities/UtilitiesView.vue')
 const S10View = () => import('@/views/sales-income/S10View.vue')
 const IncomeStatementView = () => import('@/views/reports/income-statement/IncomeStatementView.vue')
 const BalanceSheetView = () => import('@/views/reports/balance-sheet/BalanceSheetView.vue')
+const TrialBalanceView = () => import('@/views/reports/trial-balance/TrialBalanceView.vue')
 const DataHomeView = () => import('@/views/data-home/DataHomeView.vue')
 const ImportCenterView = () => import('@/views/import-center/ImportCenterView.vue')
 
@@ -31,7 +32,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map(meta => ({
       path: `/${meta.value}`,
-      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'import' ? ImportCenterView : PlaceholderView,
+      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : meta.value === 'import' ? ImportCenterView : PlaceholderView,
       meta,
     })),
   ],

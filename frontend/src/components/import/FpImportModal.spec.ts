@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
-import FpImportModal, { type ImportRec } from './FpImportModal.vue'
+import FpImportModal, { pickSheet, type ImportRec } from './FpImportModal.vue'
 
 // 模板列 + parseRow:租户 + 2 费用列;cells[0]=名(空跳过),cells[1..2]=数字。
 const templateCols = ['租户', '厂房租金', '商铺租金']
@@ -74,6 +74,26 @@ describe('FpImportModal', () => {
     expect(w.find('.fpimp-pvtable tbody tr').exists()).toBe(true)
     await w.findAll('.fpimp-f button')[1].trigger('click')   // 底部「导入」
     expect((w.emitted('import')![0][0] as ImportRec[])[0]).toEqual({ a: 1 })
+  })
+
+  it('pickSheet: 正则命中取该 sheet,未命中/未给回退第一个', () => {
+    expect(pickSheet(['Sheet1', '利润表', '资产负债表'], /利润表|损益表/)).toBe('利润表')
+    expect(pickSheet(['Sheet1', 'Sheet2'], /利润表/)).toBe('Sheet1')
+    expect(pickSheet(['Sheet1', 'Sheet2'])).toBe('Sheet1')
+  })
+
+  it('parseWorkbook 粘贴路径包装 [{name:"",matrix}],sections 走 labelMode', async () => {
+    const parseWorkbook = vi.fn(() => ({ sections: [{ label: '一泽', records: [{ a: 1, __preview: ['x'] }] as ImportRec[] }] }))
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], parseWorkbook } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A\t1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(parseWorkbook).toHaveBeenCalledWith([{ name: '', matrix: [['A', '1']] }])
+    expect(w.find('.isum-row.label-only').exists()).toBe(true)
+    await w.find('.isum-foot button').trigger('click')
+    const picks = w.emitted('importSections')![0][0] as { label: string; records: ImportRec[] }[]
+    expect(picks[0].label).toBe('一泽')
+    expect(picks[0].records[0]).toEqual({ a: 1 })
   })
 
   it('customParse 返回 sections → labelOnly 汇总,importSections emit 带 label', async () => {

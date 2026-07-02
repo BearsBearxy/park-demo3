@@ -1,3 +1,10 @@
+<script lang="ts">
+// sheetMatch 选表:正则命中的第一个 sheet 名,未命中/未给回退第一个。抽出小函数便测。
+export function pickSheet(names: string[], re?: RegExp): string {
+  return (re ? names.find(n => re.test(n)) : undefined) ?? names[0]
+}
+</script>
+
 <script setup lang="ts">
 // 通用「导入 Excel」右滑抽屉(共享引擎)— 1:1 移植 import-excel.jsx FPImportModal。
 // 两入口:① 上传 .xlsx/.xls/.csv(csv 用 FileReader+内置解析;xlsx 懒加载 SheetJS)
@@ -27,10 +34,15 @@ const props = withDefaults(defineProps<{
   phaseLayouts?: PhaseLayouts
   // 给了 sectionTitleRe(且有 columnMap、无 phaseLayouts)即走「工资多月分段」:按标题切月 → ImportSummary(隐期) → emit importSections
   sectionTitleRe?: RegExp
-  // 给了 customParse 即走自定义解析(优先级最高,与上述各通路互斥):
+  // 给了 customParse 即走自定义解析(优先级次于 parseWorkbook,与其余通路互斥):
   //   返回 records → 复用现有预览表 + 「导入 N 条」按钮,emit import
   //   返回 sections → 复用 ImportSummary 纯标签段模式(每段 label+N条+勾选),emit importSections({label,records}[])
   customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
+  // 文件上传按 sheet 名挑表(命中即取,未命中回退第一个);粘贴路径不受影响
+  sheetMatch?: RegExp
+  // 给了 parseWorkbook 即走多 sheet 解析(优先级最高,先于 customParse):
+  //   文件路径解析全部 sheet 传入;粘贴路径包装 [{name:'', matrix}]。返回值语义同 customParse。
+  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -64,24 +76,29 @@ const err = ref('')
 const fileName = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
+// customParse / parseWorkbook 共用的结果落地:records → 既有预览;sections → labelMode 汇总屏
+function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }) {
+  const { records: recs, sections: secs, error } = res
+  records.value = null; sections.value = null; labelSections.value = null
+  if (error) { err.value = error; return }
+  if (secs) {
+    if (!secs.some(s => s.records.length > 0)) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
+    err.value = ''; labelSections.value = secs; return
+  }
+  if (recs) {
+    if (!recs.length) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
+    err.value = ''; records.value = recs; return
+  }
+  err.value = '没识别到任何有效记录。'
+}
+
 // 二维单元格数组 → 业务记录
 function mapMatrix(matrix: string[][]) {
   if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; sections.value = null; labelSections.value = null; return }
-  // 自定义解析模式(优先级最高,与其它通路互斥):各屏自带解析器
-  if (props.customParse) {
-    const { records: recs, sections: secs, error } = props.customParse(matrix)
-    records.value = null; sections.value = null; labelSections.value = null
-    if (error) { err.value = error; return }
-    if (secs) {
-      if (!secs.some(s => s.records.length > 0)) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
-      err.value = ''; labelSections.value = secs; return
-    }
-    if (recs) {
-      if (!recs.length) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
-      err.value = ''; records.value = recs; return
-    }
-    err.value = '没识别到任何有效记录。'; return
-  }
+  // 多 sheet 解析模式(优先级最高):粘贴路径包装为单 sheet;文件路径在 handleFile 已直走 parseWorkbook
+  if (props.parseWorkbook) { applyResult(props.parseWorkbook([{ name: '', matrix }])); return }
+  // 自定义解析模式:各屏自带解析器
+  if (props.customParse) { applyResult(props.customParse(matrix)); return }
   // 智能整表模式:拆段 + 识别年月期 + 版面 → 汇总确认屏
   if (props.phaseLayouts) {
     const secs = splitSections(matrix, props.phaseLayouts, props.nameLabels ?? ['租户名称', '租户'])
@@ -131,9 +148,10 @@ function handleFile(file: File | undefined) {
         // cellDates+raw:false+dateNF → 日期单元格出 'yyyy-mm-dd' 字符串(办公水电月份列需要),
         // 数字也变字符串但下游 cleanNum/String 容错(台账/附表10/工资分段不受影响)。
         const wb = XLSX.read(new Uint8Array(fr.result as ArrayBuffer), { type: 'array', cellDates: true })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const matrix = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' })
-        mapMatrix(matrix as string[][])
+        const toMatrix = (name: string) => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' }) as string[][]
+        // parseWorkbook:全部 sheet 一并传入(多 sheet 分段);否则 sheetMatch 按名挑单表(未命中回退第一个)
+        if (props.parseWorkbook) { applyResult(props.parseWorkbook(wb.SheetNames.map(n => ({ name: n, matrix: toMatrix(n) })))); return }
+        mapMatrix(toMatrix(pickSheet(wb.SheetNames, props.sheetMatch)))
       } catch (e) { err.value = '文件解析失败:' + (e as Error).message }
     }
     fr.readAsArrayBuffer(file)
