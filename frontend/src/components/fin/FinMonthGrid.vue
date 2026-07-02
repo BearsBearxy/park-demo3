@@ -58,13 +58,14 @@ function meta(m: number): FinMonthMeta {
       </div>
     </div>
 
-    <div class="fin-mlabel">{{ year }} 年 <span class="hint">· 点击已录入的月份查看报表</span></div>
+    <div class="fin-mlabel">{{ year }} 年 <span class="hint">· 点击月份查看报表;空月点击即可开始录入或导入</span></div>
 
     <div class="fin-mgrid">
       <template v-for="m in 12" :key="m">
-        <div v-if="!meta(m).hasData" class="fin-mcard empty">
+        <!-- 空月也可点击(报表=手录+导入,空月是新建入口;有意偏离原型的不可点) -->
+        <div v-if="!meta(m).hasData" class="fin-mcard empty" @click="emit('pick', m)">
           <div class="fin-mc-head"><div class="fin-mc-month">{{ m }}<span class="u">月</span></div></div>
-          <div class="fin-mc-empty">暂无数据</div>
+          <div class="fin-mc-empty"><component :is="iconFor('file-plus')" :size="13" />待录入 · 点击开始</div>
         </div>
         <div v-else class="fin-mcard" :class="{ cur: meta(m).current }" @click="emit('pick', m)">
           <div class="fin-mc-head">
@@ -78,7 +79,7 @@ function meta(m: number): FinMonthMeta {
       </template>
     </div>
 
-    <p class="fin-foot"><component :is="iconFor('info')" :size="13" />尚未录入数据的月份留空显示「暂无数据」;切换年份查看历史期间。</p>
+    <p class="fin-foot"><component :is="iconFor('info')" :size="13" />空月点击进入后可直接录入或导入该月数据;切换年份查看历史期间。</p>
   </div>
 </template>
 
@@ -114,8 +115,9 @@ function meta(m: number): FinMonthMeta {
 .fin-mcard:hover { border-color:var(--border-strong); box-shadow:0 4px 16px rgba(28,28,28,.07); }
 .fin-mcard.cur { background:var(--accent-blue); border-color:transparent; }
 .fin-mcard.cur:hover { box-shadow:0 8px 22px rgba(28,28,28,.12); }
-.fin-mcard.empty { background:transparent; border-style:dashed; cursor:not-allowed; }
-.fin-mcard.empty:hover { border-color:var(--border-subtle); box-shadow:none; }
+.fin-mcard.empty { background:transparent; border-style:dashed; }
+.fin-mcard.empty:hover { border-color:var(--hue-blue); background:var(--accent-blue); box-shadow:none; }
+.fin-mcard.empty:hover .fin-mc-empty { color:var(--hue-blue); }
 .fin-mc-head { display:flex; align-items:flex-start; justify-content:space-between; }
 .fin-mc-month { font-size:23px; font-weight:var(--fw-semibold); letter-spacing:-0.02em; line-height:1; color:var(--text-primary); }
 .fin-mc-month .u { font-size:13px; font-weight:var(--fw-medium); color:var(--text-muted); margin-left:3px; }
@@ -123,7 +125,7 @@ function meta(m: number): FinMonthMeta {
 .fin-mc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; }
 .fin-mc-amt { margin-top:auto; font-size:16px; font-weight:var(--fw-semibold); letter-spacing:-0.01em; font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .fin-mc-sub { font-size:11.5px; color:var(--text-muted); margin-top:5px; }
-.fin-mc-empty { margin-top:auto; font-size:12.5px; color:var(--text-disabled); }
+.fin-mc-empty { margin-top:auto; font-size:12.5px; color:var(--text-disabled); display:inline-flex; align-items:center; gap:6px; transition:color var(--dur-fast) var(--ease-standard); }
 
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 </style>
