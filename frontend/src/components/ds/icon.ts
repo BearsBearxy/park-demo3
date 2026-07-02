@@ -17,6 +17,7 @@ import {
   Minus, CheckCircle2, Circle,
   ClipboardCheck, ListTodo, Files,
   FileSpreadsheet, ClipboardPaste, UploadCloud, AlertTriangle, Wand2,
+  ArrowUpRight, CircleDashed, Printer,
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -111,6 +112,9 @@ const MAP: Record<string, Component> = {
   'upload-cloud': UploadCloud,
   'alert-triangle': AlertTriangle,
   'wand-2': Wand2,
+  'arrow-up-right': ArrowUpRight,
+  'circle-dashed': CircleDashed,
+  'printer': Printer,
 }
 
 export function iconFor(name: string): Component {
