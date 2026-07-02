@@ -1,5 +1,5 @@
 import http from './index'
-import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10RecordReq, S10ImportRequest } from '../types/s10'
+import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10RecordReq, S10ImportRequest, S10YearSummaryDTO } from '../types/s10'
 import type { ImportResultDTO, DeleteResultDTO } from '../types/import'
 
 // paths per 契约 S10Controller:/api/s10/...。http unwraps Result envelope。
@@ -8,6 +8,9 @@ export const s10Api = {
   getOverview: (): Promise<S10OverviewDTO> => http.get('/s10/overview'),
   getMonth: (phase: number, year: number, month: number): Promise<S10MonthDTO> =>
     http.get(`/s10/${phase}/${year}/${month}`),
+  // 年聚合(phase→colId→12月Σ;供损益附表派生,P2-G)
+  yearSummary: (year: number): Promise<S10YearSummaryDTO> =>
+    http.get('/s10/year-summary', { params: { year } }),
   saveRecord: (req: S10RecordReq): Promise<S10RecordDTO> => http.post('/s10', req),
   updateNote: (id: number, note: string | null): Promise<void> =>
     http.put(`/s10/${id}/note`, { note }),

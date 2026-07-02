@@ -68,6 +68,13 @@ export interface S10MonthDTO {
   grandTotal: number
 }
 
+// 年聚合（镜像后端 S10YearSummaryDTO,供损益附表派生）:phase(1-4) → colId → 长度 12 月Σ
+//（该月无行=null;全零列不输出;无数据年 phases 空）。
+export interface S10YearSummaryDTO {
+  year: number
+  phases: Record<number, Record<string, (number | null)[]>>
+}
+
 // POST /api/s10 body — 新增/upsert 一行（source 由后端定:manual）。25 费用列可空。
 export interface S10RecordReq extends Partial<S10Fees> {
   tenantId?: number | null

@@ -6,10 +6,13 @@
 // 保存 = PUT 整年 clear+insert(rows 重建 rowKey r<n> + sortOrder);退出有改动走 SaveConfirmDialog。
 // §6:overview 加载门;切年不清 data(旧表保留到新数据落位,模板按 data.year===year 把关) + seq 竞态守卫。
 // 导入:registry pnl_s1..s5(sheetMatch 挑表 + 年自动识,识别年 ≠ 当前年时自动切年)。
+// 派生对照(P2-G):进年明细懒加载 loadDeriveData(缓存 per year,失败静默不阻塞 G6);
+// 每行 compareRow+derived 传 PnlTable;填入只填空格进 draft,保存走现有 PUT(G3)。
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { pnlApi } from '@/api/pnl'
 import { PNL_SCHEDULES, detectKind, rowYearTotal } from '@/reports/pnlSchedules'
+import { loadDeriveData, deriveRow, compareRow, fillRow, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import type { PnlOverviewDTO, PnlYearDTO, PnlRowDTO, PnlKind } from '@/types/pnl'
 import type { ImportResultDTO } from '@/types/import'
@@ -70,10 +73,50 @@ async function loadYear(y: number) {
   data.value = d
 }
 
+// ── 派生对照(P2-G):按年懒加载缓存,切年重拉,失败静默不阻塞(G6) ──
+const deriveCache = new Map<number, DeriveData>()
+const deriveData = ref<DeriveData | null>(null)
+async function loadDerive(y: number) {
+  deriveData.value = deriveCache.get(y) ?? null   // 同步切换,不串年
+  if (deriveCache.has(y)) return
+  try {
+    const d = await loadDeriveData(y)
+    deriveCache.set(y, d)
+    if (year.value === y) deriveData.value = d    // 迟到结果不覆盖已切走的年
+  } catch { /* 失败静默:该年不显派生(G6) */ }
+}
+
+// 命中行 rowKey → 对照结果+派生序列(displayRows 已套 draft,编辑中实时重比)
+const rowDerive = computed<Record<string, CompareResult & { derived: (number | null)[] }>>(() => {
+  const d = deriveData.value
+  if (!d) return {}
+  const out: Record<string, CompareResult & { derived: (number | null)[] }> = {}
+  for (const r of displayRows.value) {
+    const derived = deriveRow(config.schedule, r.label, d)
+    if (derived) out[r.rowKey] = { ...compareRow(r.m, derived), derived }
+  }
+  return out
+})
+
+// 填入(G3):fillRow 只填空格,变化格写 draft(不整行覆写,dirty 只计实际填入格)
+function onFill(rowKey: string) {
+  const rd = rowDerive.value[rowKey]
+  const row = displayRows.value.find(r => r.rowKey === rowKey)
+  if (!rd || !row) return
+  const filled = fillRow(row.m, rd.derived)
+  const m = { ...draftM.value }
+  for (let i = 0; i < 12; i++) if (filled[i] !== row.m[i]) m[`${rowKey}|${i}`] = filled[i]
+  draftM.value = m
+}
+function fillAllDerived() {
+  for (const key of Object.keys(rowDerive.value)) onFill(key)
+}
+
 // ── 状态迁移(切年不清 data:旧表保留到新数据落位,防闪) ────
 async function pickYear(y: number) {
   year.value = y
   resetEdit()
+  void loadDerive(y)   // 不 await:派生失败/慢不阻塞进表
   await loadYear(y)
 }
 function goGate() {
@@ -209,6 +252,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
       ?? (recs[0]?.__yearDetected as number | null) ?? year.value
     resetEdit()
     if (used !== year.value) year.value = used
+    void loadDerive(used)   // 导入可能切年,派生跟随(缓存命中则瞬时)
     await loadYear(used)
     await reloadOverview()
   } catch (e) {
@@ -264,6 +308,13 @@ async function onExport() {
           @toggle-edit="toggleEdit"
         >
           <template #edit-actions>
+            <Button
+              v-if="Object.keys(rowDerive).length"
+              variant="outline" size="sm" :disabled="saving" @click="fillAllDerived"
+            >
+              <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
+              全部填入派生值
+            </Button>
             <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
               <template #leading><component :is="iconFor('upload')" :size="14" /></template>
               导入 Excel
@@ -286,10 +337,12 @@ async function onExport() {
           :rows="displayRows"
           :group-col="config.groupCol"
           :edit="edit"
+          :derive="rowDerive"
           @input="onInput"
           @note="onNote"
           @remove="onRemove"
           @add="openAdd"
+          @fill="onFill"
         />
 
         <p class="pnl-foot">
