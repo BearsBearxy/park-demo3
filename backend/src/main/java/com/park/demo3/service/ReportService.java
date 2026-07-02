@@ -6,7 +6,6 @@ import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ReportCustomRowDTO;
 import com.park.demo3.dto.ReportImportRequest;
-import com.park.demo3.dto.ReportMonthCellDTO;
 import com.park.demo3.dto.ReportPeriodDTO;
 import com.park.demo3.dto.ReportSaveReq;
 import com.park.demo3.dto.ReportYearDTO;
@@ -26,7 +25,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class ReportService {
-    private static final Set<String> STATEMENTS = Set.of("is");   // 本刀仅利润表;B/C 增 bs/tb
+    private static final Set<String> STATEMENTS = Set.of("is", "bs");   // 利润表+资产负债表;C 增 tb
     private static final String PREVIEW_ROW = "1";                 // 月历预览 = 营业收入(行次1) cur
     private static final String PREVIEW_FIELD = "cur";
 
@@ -55,7 +54,7 @@ public class ReportService {
     public ReportPeriodDTO period(String statement, int companyId, int year, int month) {
         checkStatement(statement);
         requireCompany(companyId);
-        Map<String, ReportMonthCellDTO> map = toCellMap(amounts.period(companyId, statement, year, month));
+        Map<String, Map<String, BigDecimal>> map = toCellMap(amounts.period(companyId, statement, year, month));
         List<ReportCustomRowDTO> rows = customRows.forCompany(companyId, statement).stream()
             .map(ReportService::toCustomDTO).toList();
         return new ReportPeriodDTO(map, rows);
@@ -64,15 +63,8 @@ public class ReportService {
     // ── 全部汇总:跨公司同 (rowKey,field) 求和;customRows 各公司并集按 rowKey 去重(只读) ──
     public ReportPeriodDTO allPeriod(String statement, int year, int month) {
         checkStatement(statement);
-        // (rowKey -> (cur, ytd)) 累加
-        Map<String, BigDecimal[]> acc = new LinkedHashMap<>();
-        for (ReportAmount a : amounts.allPeriod(statement, year, month)) {
-            BigDecimal[] cell = acc.computeIfAbsent(a.getRowKey(), k -> new BigDecimal[]{ BigDecimal.ZERO, BigDecimal.ZERO });
-            int i = "ytd".equals(a.getField()) ? 1 : 0;
-            cell[i] = cell[i].add(nz(a.getAmount()));
-        }
-        Map<String, ReportMonthCellDTO> map = new LinkedHashMap<>();
-        acc.forEach((k, v) -> map.put(k, new ReportMonthCellDTO(r2(v[0]), r2(v[1]))));
+        // 跨公司同 (rowKey,field) 求和(toCellMap 本就累加)
+        Map<String, Map<String, BigDecimal>> map = toCellMap(amounts.allPeriod(statement, year, month));
 
         Map<String, ReportCustomRowDTO> byKey = new LinkedHashMap<>();
         for (ReportCustomRow r : customRows.selectList(new QueryWrapper<ReportCustomRow>()
@@ -224,15 +216,14 @@ public class ReportService {
         return "isc-" + (max + 1);
     }
 
-    private static Map<String, ReportMonthCellDTO> toCellMap(List<ReportAmount> rows) {
-        Map<String, BigDecimal[]> acc = new LinkedHashMap<>();
+    // rowKey -> (field -> amount) 按实际 field 键化(is=cur/ytd,bs=end),同键累加(供 allPeriod 跨公司求和)
+    private static Map<String, Map<String, BigDecimal>> toCellMap(List<ReportAmount> rows) {
+        Map<String, Map<String, BigDecimal>> map = new LinkedHashMap<>();
         for (ReportAmount a : rows) {
-            BigDecimal[] cell = acc.computeIfAbsent(a.getRowKey(), k -> new BigDecimal[]{ BigDecimal.ZERO, BigDecimal.ZERO });
-            int i = "ytd".equals(a.getField()) ? 1 : 0;
-            cell[i] = cell[i].add(nz(a.getAmount()));
+            map.computeIfAbsent(a.getRowKey(), k -> new LinkedHashMap<>())
+               .merge(a.getField(), nz(a.getAmount()), BigDecimal::add);
         }
-        Map<String, ReportMonthCellDTO> map = new LinkedHashMap<>();
-        acc.forEach((k, v) -> map.put(k, new ReportMonthCellDTO(r2(v[0]), r2(v[1]))));
+        map.values().forEach(cell -> cell.replaceAll((f, v) -> r2(v)));
         return map;
     }
 

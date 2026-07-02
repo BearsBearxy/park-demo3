@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -132,12 +133,41 @@ class ReportApiIT extends AbstractMysqlIT {
         assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.ytd")).doubleValue()).isEqualTo(7000.0);
     }
 
-    // ── 非法 statement 'bs' → 体内 code 400(HTTP 200) ──
+    // ── 非法 statement 'tb' → 体内 code 400(HTTP 200);'bs' 已合法(见 bs_* 用例) ──
     @Test
     void illegalStatement_returns400InBody() throws Exception {
-        mvc.perform(get("/api/reports/bs/1/2025/10").header("Authorization", auth()))
+        mvc.perform(get("/api/reports/tb/1/2025/10").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
+    }
+
+    // ── bs: PUT 保存 field='end' → GET 读回 → 重存覆盖(clear+insert) ──
+    @Test
+    void bs_saveAndRead_endField() throws Exception {
+        mvc.perform(put("/api/reports/bs/1/2025/10").header("Authorization", auth())
+                .contentType("application/json").content("{\"cells\":[{\"rowKey\":\"1\",\"field\":\"end\",\"amount\":1000}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        String res = utf8(mvc.perform(get("/api/reports/bs/1/2025/10").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1.end")).doubleValue()).isEqualTo(1000.0);
+
+        // 重存(clear+insert) 覆盖:只剩 row 31
+        mvc.perform(put("/api/reports/bs/1/2025/10").header("Authorization", auth())
+                .contentType("application/json").content("{\"cells\":[{\"rowKey\":\"31\",\"field\":\"end\",\"amount\":42}]}"))
+                .andExpect(status().isOk());
+        String res2 = utf8(mvc.perform(get("/api/reports/bs/1/2025/10").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(((Number) JsonPath.read(res2, "$.data.amounts.31.end")).doubleValue()).isEqualTo(42.0);
+        assertThat(JsonPath.<Map<String, ?>>read(res2, "$.data.amounts")).doesNotContainKey("1");
+    }
+
+    // ── bs: V23 种子可读(公司1 2025-09 期末余额) ──
+    @Test
+    void bs_seed_readable() throws Exception {
+        String res = utf8(mvc.perform(get("/api/reports/bs/1/2025/9").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1.end")).doubleValue()).isEqualTo(292259.39);
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.48.end")).doubleValue()).isEqualTo(20000000.00);
     }
 
     // ── 无 token → 401 ──

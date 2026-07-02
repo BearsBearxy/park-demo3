@@ -11,7 +11,7 @@ import java.util.*;
 @Service
 public class ImportLogService {
     private static final Set<String> KNOWN_TYPES = Set.of(
-        "ledger","s10","pv","charging_7","charging_8","elec","salary","office_13","office_14","report_is");
+        "ledger","s10","pv","charging_7","charging_8","elec","salary","office_13","office_14","report_is","report_bs");
     private final ImportLogMapper mapper; private final AuthUserMapper users;
     public ImportLogService(ImportLogMapper mapper, AuthUserMapper users) { this.mapper = mapper; this.users = users; }
 
