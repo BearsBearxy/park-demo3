@@ -20,6 +20,9 @@ import { importBalanceSheet } from '@/utils/importBalanceSheet'
 import { importTrialBalance } from '@/utils/importTrialBalance'
 import { TB_FIELDS } from '@/reports/trialBalance'
 import { importPvSections } from '@/utils/importPvSections'
+import { importPnlSchedule } from '@/utils/importPnlSchedule'
+import { PNL_SCHEDULES } from '@/reports/pnlSchedules'
+import { pnlApi } from '@/api/pnl'
 import { importChargingRows } from '@/utils/importChargingRows'
 import { importElecRows } from '@/utils/importElecRows'
 import { parseYearMonth } from '@/utils/parseYearMonth'
@@ -347,6 +350,37 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 科目余额表`,
   },
+  // ── 损益附表 1–5(P2-D):5 条同构由 PNL_SCHEDULES 生成;年从标题自动识,识别失败回退屏当前年槽(ctx.year) ──
+  ...PNL_SCHEDULES.map((config, i) => ({
+    key: `pnl_${config.schedule}`, label: config.title, tag: '报表',
+    icon: ['trending-up', 'zap', 'droplets', 'wrench', 'banknote'][i], context: 'none' as const,
+    modalProps: () => ({
+      title: '导入 ' + config.title,
+      sub: '从年度统计母册导入该附表(整年替换);上传含该 sheet 的工作簿或粘贴该表,年份从标题自动识别',
+      templateCols: [config.groupCol, '科目细分', ...Array.from({ length: 12 }, (_, m) => `${m + 1}月`), '备注'],
+      sheetMatch: config.sheetRe,
+      customParse: (matrix: string[][]) => {
+        const r = importPnlSchedule(matrix)
+        if (r.error) return { error: r.error }
+        // __yearDetected 随行携带识别年(run 取首行);__preview 供预览表(emit 前被剥)
+        return {
+          records: r.rows.map(row => ({
+            ...row, __yearDetected: r.year,
+            __preview: [row.groupLabel, row.label, ...row.m.map(v => v ?? ''), row.note ?? ''],
+          })),
+        }
+      },
+    }),
+    // __usedYear 回传实际落库年,屏据此在识别年 ≠ 当前年时切年
+    run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
+      const rows = payload as ImportRec[]
+      const y = (rows[0]?.__yearDetected as number | null) ?? ctx.year!
+      const clean = rows.map(r => { const { __yearDetected, ...rest } = r; void __yearDetected; return rest })
+      const res = await pnlApi.import(config.schedule, y, { rows: clean as never })
+      return Object.assign(res, { __usedYear: y })
+    },
+    target: (ctx: ImportCtx) => `${ctx.year ?? ''} · ${config.title}`,
+  })),
 ]
 
 // 各屏用:取该类型的解析配置(= modalProps 去掉 title/sub/defaults),屏自己给 :title/:sub/:default-*。
