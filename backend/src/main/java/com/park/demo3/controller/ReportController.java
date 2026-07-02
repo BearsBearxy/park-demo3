@@ -49,11 +49,14 @@ public class ReportController {
         return svc.save(statement, companyId, year, month, req);
     }
 
+    // 契约对齐前端 api/report.ts:JSON body {parentKey,label,level},level 可空缺省 1
+    public record CustomRowReq(String parentKey, String label, Integer level) {}
+
     @Operation(summary = "加自定义子类") @PostMapping("/{companyId}/custom-row")
     public ReportCustomRowDTO addCustomRow(@PathVariable String statement, @PathVariable int companyId,
-                                           @RequestParam String parentKey, @RequestParam String label,
-                                           @RequestParam(defaultValue = "1") int level) {
-        return svc.addCustomRow(statement, companyId, parentKey, label, level);
+                                           @RequestBody CustomRowReq req) {
+        return svc.addCustomRow(statement, companyId, req.parentKey(), req.label(),
+                req.level() == null ? 1 : req.level());
     }
 
     @Operation(summary = "删自定义子类(级联删后代+金额)") @DeleteMapping("/custom-row/{id}")

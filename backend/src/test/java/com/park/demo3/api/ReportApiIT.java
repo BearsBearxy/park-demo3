@@ -80,14 +80,16 @@ class ReportApiIT extends AbstractMysqlIT {
     @Test
     void customRow_add_seen_thenDeleteCascades() throws Exception {
         String parentRes = utf8(mvc.perform(post("/api/reports/is/1/custom-row").header("Authorization", auth())
-                .param("parentKey", "3").param("label", "自定义税A").param("level", "1"))
+                .contentType("application/json")
+                .content("{\"parentKey\":\"3\",\"label\":\"自定义税A\",\"level\":1}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andReturn());
         String parentKey = JsonPath.read(parentRes, "$.data.rowKey");
         Number parentId = JsonPath.read(parentRes, "$.data.id");
 
         // 子行挂到父自定义行下
         mvc.perform(post("/api/reports/is/1/custom-row").header("Authorization", auth())
-                .param("parentKey", parentKey).param("label", "自定义税A-子").param("level", "2"))
+                .contentType("application/json")
+                .content("{\"parentKey\":\"" + parentKey + "\",\"label\":\"自定义税A-子\",\"level\":2}"))
                 .andExpect(status().isOk());
 
         // GET period 见这两行
@@ -103,6 +105,15 @@ class ReportApiIT extends AbstractMysqlIT {
                 .andExpect(status().isOk()).andReturn());
         assertThat(JsonPath.<List<?>>read(after, "$.data.customRows[?(@.label=='自定义税A')]")).isEmpty();
         assertThat(JsonPath.<List<?>>read(after, "$.data.customRows[?(@.label=='自定义税A-子')]")).isEmpty();
+    }
+
+    // ── POST custom-row body 缺 parentKey → 体内 code 400(HTTP 200) ──
+    @Test
+    void customRow_missingParentKey_returns400InBody() throws Exception {
+        mvc.perform(post("/api/reports/is/1/custom-row").header("Authorization", auth())
+                .contentType("application/json").content("{\"label\":\"无父行\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
     }
 
     // ── POST import 两公司(一个新公司名) → 新公司自动建 + 本期落值 ──
