@@ -128,7 +128,7 @@ async function setYear(y: number) {
   await loadYear()
 }
 async function pickMonth(m: number) {
-  month.value = m; edit.value = false; draft.value = {}; structEdits.value = 0
+  month.value = m; edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
   expanded.value = new Set(); query.value = ''
   period.value = null
   await loadPeriod()
@@ -186,10 +186,10 @@ const balanced = computed(() => Math.abs(kpiDiff.value) < 0.005)
 // ── 编辑流 ───────────────────────────────────────────────
 const dirty = computed(() => Object.keys(draft.value).length + structEdits.value)
 function enterEdit() {
-  draft.value = {}; structEdits.value = 0; edit.value = true
+  draft.value = {}; structEdits.value = 0; selected.value = new Set(); edit.value = true
 }
 function cancelEdit() {
-  edit.value = false; draft.value = {}; structEdits.value = 0
+  edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
   // 放弃本地科目增删:回滚到服务端快照
   accounts.value = (period.value?.accounts ?? []).map(a => ({ ...a }))
 }
@@ -218,7 +218,7 @@ async function save() {
     const body = { cells, accounts: accounts.value.map((a, i) => ({ ...a, sortOrder: i })) }
     period.value = await reportApi.save(STMT, companyId.value as number, year.value, month.value, body)
     accounts.value = (period.value.accounts ?? []).map(a => ({ ...a }))
-    edit.value = false; draft.value = {}; structEdits.value = 0
+    edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
     await loadYear()  // 刷新月历(hasData/预览)
   } catch (e) {
     alert((e as { message?: string })?.message ?? '保存失败')
@@ -284,9 +284,9 @@ function subtreeEnd(list: TbAccount[], rootKey: string): number {
   return end
 }
 
-// ── 删科目(级联收集子树,spec C8) ─────────────────────────
-function removeAccount(rowKey: string) {
-  const doomed = new Set([rowKey])
+// ── 删科目(级联收集子树,spec C8;单删/批量共用同一语义) ─────
+function collectDoomed(rootKeys: Iterable<string>): Set<string> {
+  const doomed = new Set(rootKeys)
   let grew = true
   while (grew) {   // 级联:反复吸收 parentKey 在删除集内的行
     grew = false
@@ -294,13 +294,37 @@ function removeAccount(rowKey: string) {
       if (!doomed.has(a.rowKey) && a.parentKey != null && doomed.has(a.parentKey)) { doomed.add(a.rowKey); grew = true }
     }
   }
-  // 保存前可随时「取消/放弃修改」回滚,故不弹确认(同 BS 屏删子类)
+  return doomed
+}
+function removeKeys(doomed: Set<string>) {
   accounts.value = accounts.value.filter(a => !doomed.has(a.rowKey))
   // 丢弃被删行的金额草稿
   const nd = { ...draft.value }
   for (const dk of Object.keys(nd)) if (doomed.has(dk.split('|')[0])) delete nd[dk]
   draft.value = nd
+  // 剔除已随级联消失的选中项
+  selected.value = new Set([...selected.value].filter(k => !doomed.has(k)))
   structEdits.value++
+}
+function removeAccount(rowKey: string) {
+  // 保存前可随时「取消/放弃修改」回滚,故不弹确认(同 BS 屏删子类)
+  removeKeys(collectDoomed([rowKey]))
+}
+
+// ── 批量删除(编辑态复选 → §7 居中确认 → 沿单删语义连子树移除,随保存落库) ──
+const selected = ref(new Set<string>())
+const bulkConfirm = ref(false)
+const bulkDoomed = computed(() => collectDoomed(selected.value))  // 含级联子树的实际移除行数(确认弹窗展示)
+function toggleSelect(rowKey: string) {
+  const next = new Set(selected.value)
+  if (next.has(rowKey)) next.delete(rowKey)
+  else next.add(rowKey)
+  selected.value = next
+}
+function bulkRemove() {
+  bulkConfirm.value = false
+  removeKeys(collectDoomed(selected.value))
+  selected.value = new Set()
 }
 
 // ── 公司增删改(同 BS 屏) ─────────────────────────────────
@@ -348,6 +372,7 @@ async function onImport(picks: { label?: string; records: ImportRec[] }[], fileN
   try {
     importResult.value = await runImport('report_tb', picks, { year: year.value, month: month.value }, fileName)
     importSummary.value = picks.map(p => `${p.label ?? ''}:${p.records.length} 行`).join('\n')
+    if (edit.value) cancelEdit()                 // 编辑态导入成功=整期替换:未保存草稿作废,退出编辑再重拉(spec J3)
     companies.value = await companyApi.list()   // 可能自动新建了公司
     await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新树+新值)
     await loadYear()
@@ -435,6 +460,10 @@ async function onExport() {
           </template>
           <template v-else>
             <span class="fin-tag edit">编辑中 · {{ company?.name }}</span>
+            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入
+            </Button>
             <Button variant="outline" size="sm" :disabled="saving" @click="openAdd">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增科目
@@ -462,6 +491,10 @@ async function onExport() {
         <div class="tb-tools">
           <SearchField v-model="query" placeholder="搜索科目代码 / 名称" :width="240" shortcut="" />
           <span class="fin-tag">{{ rows.length }} / {{ accounts.length }} 项</span>
+          <Button v-if="edit && !isAll && selected.size" variant="danger" size="sm" :disabled="saving" @click="bulkConfirm = true">
+            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+            删除所选 ({{ selected.size }})
+          </Button>
         </div>
         <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,仅按一级科目(代码优先)合并平铺,明细不合并' : edit ? '点击单元格录入金额;悬停行可 × 删除科目(级联下级);「新增科目」可挂任意父级,保存时整期覆盖' : '只读 · 默认折叠到一级科目,点击 ▸ 展开下级;搜索命中自动展开到命中行' }}</span>
       </div>
@@ -474,9 +507,11 @@ async function onExport() {
         :value-of="valueOf"
         :editable="edit && !isAll"
         :live-of="liveOf"
+        :selected="selected"
         @toggle="toggle"
         @input="onInput"
         @remove="removeAccount"
+        @select="toggleSelect"
       />
 
       <p class="fin-foot"><component :is="iconFor('info')" :size="13" />单位:元 · 合计行 = 一级科目逐列求和(下级明细已含在一级科目内);期末借方合计应等于期末贷方合计(试算平衡)。</p>
@@ -541,6 +576,25 @@ async function onExport() {
           <Button variant="filled" size="sm" @click="submitAdd">
             <template #leading><component :is="iconFor('check')" /></template>
             添加
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- 批量删除确认(遵 DESIGN-FIDELITY §7 居中弹窗,同上 .fin-mask/.fin-dlg),放最后 -->
+  <Teleport to="body">
+    <div v-if="bulkConfirm" class="fin-mask" @mousedown="bulkConfirm = false">
+      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="fin-dlg-h">
+          <h3>删除所选科目</h3>
+          <p>将删除所选 {{ selected.size }} 个科目,并连同其全部子科目(合计 {{ bulkDoomed.size }} 行)及这些行的本期金额一并移除;点「保存」后整期生效,「取消」编辑可放弃。</p>
+        </div>
+        <div class="fin-dlg-f">
+          <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
+          <Button variant="danger" size="sm" @click="bulkRemove">
+            <template #leading><component :is="iconFor('trash-2')" /></template>
+            删除 {{ bulkDoomed.size }} 行
           </Button>
         </div>
       </div>

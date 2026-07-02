@@ -16,12 +16,14 @@ const props = defineProps<{
   editable: boolean
   // 编辑中的原始输入值(空串或 number),供 <input> 显示
   liveOf?: (rowKey: string, field: TbFieldKey) => number | string
+  selected?: Set<string>                     // 编辑态批量删除选中集(合计尾行无复选)
 }>()
 
 const emit = defineEmits<{
   toggle: [rowKey: string]
   input: [rowKey: string, field: TbFieldKey, value: string]
   remove: [rowKey: string]                   // 编辑态删科目(父级级联收集子树)
+  select: [rowKey: string]                   // 编辑态复选切换(批量删除)
 }>()
 
 // 分组表头(期初余额/本期发生额/本年累计发生额/期末余额,各 colspan=2)
@@ -55,7 +57,12 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.rowKey">
-          <td><span class="tb-code">{{ r.code ?? '' }}</span></td>
+          <td>
+            <span class="tb-codebox">
+              <input v-if="editable" class="tb-ck" type="checkbox" title="选择科目(批量删除)" :checked="selected?.has(r.rowKey)" @change="emit('select', r.rowKey)" />
+              <span class="tb-code">{{ r.code ?? '' }}</span>
+            </span>
+          </td>
           <td>
             <span class="tb-label" :class="{ lv0: r.level === 0 }" :style="{ paddingLeft: 12 + r.level * 14 + 'px' }">
               <button
@@ -103,6 +110,9 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 /* 合计尾行 sticky 吸底,底色同 subtotal(.sub) */
 .fin-table tfoot td { position:sticky; bottom:0; z-index:2; height:36px; background:var(--accent-slate); border-top:1px solid var(--border-subtle); border-bottom:none; vertical-align:middle; }
 .tb-code { display:block; padding:0 12px; font-size:11.5px; color:var(--text-muted); font-family:var(--font-mono); white-space:nowrap; }
+.tb-codebox { display:flex; align-items:center; }
+.tb-ck { flex:0 0 auto; margin:0 0 0 12px; accent-color:var(--hue-blue); cursor:pointer; }
+.tb-ck + .tb-code { padding-left:8px; }
 .tb-label { display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tb-label.lv0 { font-weight:var(--fw-semibold); color:var(--text-primary); }
 .tb-name { overflow:hidden; text-overflow:ellipsis; }
