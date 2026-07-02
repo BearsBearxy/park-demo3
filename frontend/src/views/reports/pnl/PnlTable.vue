@@ -20,6 +20,7 @@ const props = defineProps<{
   groupCol: string
   edit: boolean
   derive?: Record<string /*rowKey*/, CompareResult & { derived: (number | null)[] }>
+  mappedKeys?: Set<string>   // 派生映射行(P2-G3 J1):编辑态月格只读+无删除钮;「填入」/备注照旧
 }>()
 const emit = defineEmits<{
   input: [rowKey: string, monthIdx: number, v: number | null]
@@ -112,7 +113,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
           </td>
           <td v-for="(v, mi) in r.m" :key="mi" class="pt-c-num" :class="{ 'pt-cell-diff': isDiffCell(r.rowKey, mi) }">
             <input
-              v-if="edit"
+              v-if="edit && !mappedKeys?.has(r.rowKey)"
               class="pt-in"
               inputmode="decimal"
               :value="v ?? ''"
@@ -138,7 +139,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
             >填入</button>
           </td>
           <td v-if="edit" class="pt-c-del">
-            <button class="pt-delbtn" title="删除该行" @click="emit('remove', r.rowKey)">
+            <button v-if="!mappedKeys?.has(r.rowKey)" class="pt-delbtn" title="删除该行" @click="emit('remove', r.rowKey)">
               <component :is="iconFor('trash-2')" :size="15" />
             </button>
           </td>

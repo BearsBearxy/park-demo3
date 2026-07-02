@@ -169,6 +169,13 @@ export const DERIVE_MAP: DeriveMapEntry[] = [
   M('s5', '管理费用', '餐补费', 'sal|lunch'),                                          // 证2月
 ]
 
+// 派生映射行判定(P2-G3 J1):静态 (schedule, group, label) ∈ DERIVE_MAP,双 normalize,不依赖派生数据加载
+export function isMappedRow(schedule: string, groupLabel: string, label: string): boolean {
+  const ng = normalizeHeader(groupLabel)
+  const nl = normalizeHeader(label)
+  return DERIVE_MAP.some(e => e.schedule === schedule && e.group === ng && e.label === nl)
+}
+
 // 行 → 派生序列;未映射 / 序列缺失(源失败或无数据)→ null(该行不显派生)
 export function deriveRow(schedule: string, label: string, data: DeriveData): (number | null)[] | null {
   const nl = normalizeHeader(label)

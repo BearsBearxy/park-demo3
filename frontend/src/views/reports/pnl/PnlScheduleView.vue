@@ -14,7 +14,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { pnlApi } from '@/api/pnl'
 import { PNL_SCHEDULES, detectKind, rowYearTotal } from '@/reports/pnlSchedules'
-import { loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
+import { loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, isMappedRow, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import type { PnlOverviewDTO, PnlYearDTO, PnlRowDTO, PnlKind } from '@/types/pnl'
 import type { ImportResultDTO } from '@/types/import'
@@ -116,6 +116,14 @@ const rowDerive = computed<Record<string, CompareResult & { derived: (number | n
     if (derived) out[r.rowKey] = { ...compareRow(r.m, derived), derived }
   }
   return out
+})
+
+// 映射行 rowKey 集(P2-G3 J1):静态判定,编辑态月格只读+不可删(值仅来自数据层)
+const mappedKeys = computed<Set<string>>(() => {
+  const s = new Set<string>()
+  for (const r of displayRows.value)
+    if (isMappedRow(config.schedule, r.groupLabel, r.label)) s.add(r.rowKey)
+  return s
 })
 
 // 填入(G3):fillRow 只填空格,变化格写 draft(不整行覆写,dirty 只计实际填入格)
@@ -359,6 +367,7 @@ async function onExport() {
           :group-col="config.groupCol"
           :edit="edit"
           :derive="rowDerive"
+          :mapped-keys="mappedKeys"
           @input="onInput"
           @note="onNote"
           @remove="onRemove"

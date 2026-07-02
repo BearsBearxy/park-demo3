@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { DERIVE_MAP, loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows } from './pnlDerive'
+import { DERIVE_MAP, loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, isMappedRow } from './pnlDerive'
 import { normalizeHeader } from '@/utils/importHeaderMatch'
 import type { PnlRowDTO } from '@/types/pnl'
 import { s10Api } from '@/api/s10'
@@ -133,6 +133,26 @@ describe('deriveRow — normalize 命中(分组无关)', () => {
     vi.mocked(s10Api.yearSummary).mockRejectedValue(new Error('boom'))
     const data = await loadDeriveData(2025)
     expect(deriveRow('s1', '一期商铺租金收入', data)).toBeNull()
+  })
+})
+
+describe('isMappedRow — 派生映射行静态判定(P2-G3 J1:schedule+group+label 双 normalize)', () => {
+  it('命中:三元组匹配 → true', () => {
+    expect(isMappedRow('s1', '二期', '二期租金收入')).toBe(true)
+  })
+  it('未命中:错分组/错标签/错 schedule → false', () => {
+    expect(isMappedRow('s1', '一期、宿舍', '二期租金收入')).toBe(false)
+    expect(isMappedRow('s1', '二期', '不存在的行')).toBe(false)
+    expect(isMappedRow('s2', '二期', '二期租金收入')).toBe(false)
+  })
+  it('双分组同标签:两组各自命中,第三组不命中', () => {
+    expect(isMappedRow('s2', '基准电费（供电）', '一期光伏发电消纳')).toBe(true)
+    expect(isMappedRow('s2', '光伏发电', '一期光伏发电消纳')).toBe(true)
+    expect(isMappedRow('s2', '基本用电（供电）', '一期光伏发电消纳')).toBe(false)
+  })
+  it('normalize 剥标点/空格:半角括号+首尾空格照样命中', () => {
+    expect(isMappedRow('s2', '基准电费(供电)', ' 减：办公室电费 ')).toBe(true)
+    expect(isMappedRow('s1', ' 一期、宿舍 ', '一期商铺 租金收入')).toBe(true)
   })
 })
 
