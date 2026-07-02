@@ -11,12 +11,12 @@ describe('deriveStatus', () => {
 })
 
 describe('IMPORT_TYPES catalog', () => {
-  it('has the 10 expected keys', () => {
+  it('has the 11 expected keys', () => {
     expect(IMPORT_TYPES.map(t => t.key).sort()).toEqual(
-      ['charging_7', 'charging_8', 'elec', 'ledger', 'office_13', 'office_14', 'pv', 'report_is', 's10', 'salary'].sort())
+      ['charging_7', 'charging_8', 'elec', 'ledger', 'office_13', 'office_14', 'pv', 'report_bs', 'report_is', 's10', 'salary'].sort())
   })
-  it('ledger + report_is need context (year/month)', () => {
-    expect(IMPORT_TYPES.filter(t => t.context === 'ledger').map(t => t.key).sort()).toEqual(['ledger', 'report_is'])
+  it('ledger + report_bs + report_is need context (year/month)', () => {
+    expect(IMPORT_TYPES.filter(t => t.context === 'ledger').map(t => t.key).sort()).toEqual(['ledger', 'report_bs', 'report_is'])
   })
 })
 

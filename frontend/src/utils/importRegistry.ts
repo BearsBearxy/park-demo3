@@ -16,6 +16,7 @@ import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import type { ReportCompanySection, ReportCell } from '@/types/report'
 import { importIncomeStatement } from '@/utils/importIncomeStatement'
+import { importBalanceSheet } from '@/utils/importBalanceSheet'
 import { importPvSections } from '@/utils/importPvSections'
 import { importChargingRows } from '@/utils/importChargingRows'
 import { importElecRows } from '@/utils/importElecRows'
@@ -271,6 +272,37 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       return reportApi.import('is', ctx.year!, ctx.month!, { sections })
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)}`,
+  },
+  {
+    key: 'report_bs', label: '资产负债表', tag: '报表', icon: 'scale', context: 'ledger',
+    modalProps: (ctx) => ({
+      title: '导入 资产负债表',
+      sub: `上传/粘贴两栏合并多公司的资产负债表(资产‖负债和所有者权益,每公司一列期末余额),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
+      templateCols: ['行次', '期末余额'],
+      customParse: (matrix: string[][]) => importBalanceSheet(matrix),
+    }),
+    // 逐公司段:同 report_is,cells 为单列 field='end';文件合计行已被解析器丢弃(客端重算)。
+    run: async (payload, ctx) => {
+      const picks = payload as Pick[]
+      if (!picks.length) return zero()
+      const companies = await companyApi.list()
+      const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
+      const sections: ReportCompanySection[] = []
+      for (const p of picks) {
+        const name = (p.label ?? '').trim()
+        if (!name) continue
+        if (!byName.has(name)) {
+          const created = await companyApi.create(name)   // 未匹配自动新建
+          byName.set(name, created.id)
+        }
+        const cells: ReportCell[] = p.records.map(r => ({
+          rowKey: String(r.rowKey), field: 'end', amount: Number(r.end) || 0,
+        }))
+        sections.push({ companyName: name, cells })
+      }
+      return reportApi.import('bs', ctx.year!, ctx.month!, { sections })
+    },
+    target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 资产负债表`,
   },
 ]
 
