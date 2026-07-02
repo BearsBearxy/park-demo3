@@ -10,7 +10,9 @@ import com.park.demo3.dto.S10OverviewDTO;
 import com.park.demo3.dto.S10RecordDTO;
 import com.park.demo3.dto.S10RecordReq;
 import com.park.demo3.dto.S10YearDTO;
+import com.park.demo3.dto.S10YearSummaryDTO;
 import com.park.demo3.entity.S10Record;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.mapper.S10RecordMapper;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
@@ -98,6 +100,43 @@ public class S10Service {
         }
         int[] years = yearList.stream().mapToInt(Integer::intValue).toArray();
         return new S10OverviewDTO(years, currentYear, currentMonth, summaries);
+    }
+
+    // ── yearSummary(year):该年全部行按 (phase,colId,month) 聚合;月无行=null;全零列不输出 ──
+    public S10YearSummaryDTO yearSummary(int year) {
+        List<S10Record> all = records.selectList(
+            new QueryWrapper<S10Record>().likeRight("acct_month", year + "-"));
+        Map<Integer, Map<String, List<BigDecimal>>> phases = new LinkedHashMap<>();
+        for (int phase = 1; phase <= 4; phase++) {
+            final int p = phase;
+            List<S10Record> rows = all.stream().filter(r -> r.getPhase() == p).toList();
+            if (rows.isEmpty()) continue;
+            boolean[] recorded = new boolean[12];
+            Map<String, BigDecimal[]> sums = new LinkedHashMap<>();
+            for (Col c : COLS) sums.put(c.name(), new BigDecimal[12]);
+            for (S10Record r : rows) {
+                int m = monthOf(r.getAcctMonth()) - 1;
+                recorded[m] = true;
+                for (Col c : COLS) {
+                    BigDecimal[] arr = sums.get(c.name());
+                    arr[m] = nz(arr[m]).add(nz(c.get().apply(r)));
+                }
+            }
+            Map<String, List<BigDecimal>> cols = new LinkedHashMap<>();
+            for (Col c : COLS) {
+                BigDecimal[] arr = sums.get(c.name());
+                boolean nonZero = false;
+                List<BigDecimal> months = new ArrayList<>(12);
+                for (int m = 0; m < 12; m++) {
+                    BigDecimal v = recorded[m] ? r2(arr[m]) : null;
+                    if (v != null && v.signum() != 0) nonZero = true;
+                    months.add(v);
+                }
+                if (nonZero) cols.put(c.name(), months);
+            }
+            if (!cols.isEmpty()) phases.put(phase, cols);
+        }
+        return new S10YearSummaryDTO(year, phases);
     }
 
     // 去重租户键:优先 tenant_id,缺失软引用时退回 tenant_name

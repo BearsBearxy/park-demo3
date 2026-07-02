@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -88,6 +89,37 @@ class S10ApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.rows.length()").value(0))
                 .andReturn());
         assertThat(((Number) JsonPath.read(body, "$.data.grandTotal")).doubleValue()).isEqualTo(0.0);
+    }
+
+    // ── year-summary:种子年 2025 聚合(phase1 factoryRent 1月 = V18 五租户之和);全零列不输出 ──
+    @Test
+    void yearSummary_seedYear_aggregatesKnownColumn() throws Exception {
+        String body = utf8(mvc.perform(get("/api/s10/year-summary").param("year", "2025")
+                .header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.year").value(2025))
+                .andReturn());
+        Map<String, Object> p1 = JsonPath.read(body, "$.data.phases['1']");
+        assertThat(p1).isNotEmpty().containsKey("factoryRent")
+                .doesNotContainKey("officeRent");   // factory profile 全零列不输出
+        List<Object> factoryRent = JsonPath.read(body, "$.data.phases['1'].factoryRent");
+        assertThat(factoryRent).hasSize(12);
+        // V18 种子 phase1 五租户 2025-01 factory_rent Σ = 103284+129552+93176+109507+130229
+        assertThat(((Number) factoryRent.get(0)).doubleValue()).isEqualTo(565748.00);
+    }
+
+    // ── year-summary:无数据年(2023)→ phases 空 ──
+    @Test
+    void yearSummary_emptyYear_returnsEmptyPhases() throws Exception {
+        String body = utf8(mvc.perform(get("/api/s10/year-summary").param("year", "2023")
+                .header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.year").value(2023))
+                .andReturn());
+        Map<String, Object> phases = JsonPath.read(body, "$.data.phases");
+        assertThat(phases).isEmpty();
     }
 
     // ── POST upsert round-trip → 读回 → PUT note → DELETE manual ok ──

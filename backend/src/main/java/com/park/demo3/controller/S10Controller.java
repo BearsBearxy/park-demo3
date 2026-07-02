@@ -21,6 +21,11 @@ public class S10Controller {
     @Operation(summary = "年份概览（确定性范围；每年已录月数/户数）") @GetMapping("/overview")
     public S10OverviewDTO overview() { return svc.overview(); }
 
+    @Operation(summary = "年聚合（phase→colId→12月Σ；该月无行null；全零列不输出）") @GetMapping("/year-summary")
+    public S10YearSummaryDTO yearSummary(@RequestParam @Min(2000) @Max(2100) int year) {
+        return svc.yearSummary(year);
+    }
+
     @Operation(summary = "某期某年某月逐租户宽表（稀疏读，含列合计/总计）") @GetMapping("/{phase}/{year}/{month}")
     public S10MonthDTO month(@PathVariable @Min(1) @Max(4) int phase,
                              @PathVariable @Min(2000) @Max(2100) int year,
