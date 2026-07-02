@@ -119,6 +119,7 @@ async function setYear(y: number) {
 }
 async function pickMonth(m: number) {
   month.value = m; edit.value = false; draft.value = {}; dirty.value = 0
+  selected.value = new Set()
   period.value = null
   await loadPeriod()
 }
@@ -193,10 +194,10 @@ const flatRows = computed<FinTableRow[]>(() => {
 
 // ── 编辑流 ───────────────────────────────────────────────
 function enterEdit() {
-  draft.value = {}; dirty.value = 0; edit.value = true
+  draft.value = {}; dirty.value = 0; selected.value = new Set(); edit.value = true
 }
 function cancelEdit() {
-  edit.value = false; draft.value = {}; dirty.value = 0
+  edit.value = false; draft.value = {}; dirty.value = 0; selected.value = new Set()
 }
 function onInput(rowKey: string | number, field: string, value: string) {
   const dk = `${String(rowKey)}|${field}`
@@ -222,7 +223,7 @@ async function save() {
       cells.push({ rowKey, field, amount })
     }
     period.value = await reportApi.save(STMT, companyId.value as number, year.value, month.value, { cells })
-    edit.value = false; draft.value = {}; dirty.value = 0
+    edit.value = false; draft.value = {}; dirty.value = 0; selected.value = new Set()
     await loadYear()  // 刷新月历(hasData/预览)
   } catch (e) {
     alert((e as { message?: string })?.message ?? '保存失败')
@@ -284,9 +285,57 @@ async function removeCustom(row: FinTableRow) {
   if (!target) return
   try {
     await reportApi.deleteCustomRow(STMT, target.id)
+    selected.value.delete(row.key)
     await loadPeriod()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '删除子类失败')
+  }
+}
+
+// ── 批量删除(P2-G3):编辑态多选 → 自定义行立即级联删、固定行清空本期值进 draft ──
+const selected = ref(new Set<string | number>())
+const bulkConfirm = ref(false)
+function onToggleSelect(row: FinTableRow) {
+  if (selected.value.has(row.key)) selected.value.delete(row.key)
+  else selected.value.add(row.key)
+}
+// 选集拆分:自定义行(有 customRow 记录) / 固定行(其余普通叶子行)
+const selSplit = computed(() => {
+  const custom: ReportCustomRowDTO[] = []
+  const fixed: string[] = []
+  for (const k of selected.value) {
+    const c = customRows.value.find(r => r.rowKey === String(k))
+    if (c) custom.push(c)
+    else fixed.push(String(k))
+  }
+  return { custom, fixed }
+})
+async function bulkDelete() {
+  const { custom, fixed } = selSplit.value
+  bulkConfirm.value = false
+  try {
+    // 自定义行:祖先也在选中集内的跳过(父删即级联),其余循环既有级联端点立即删除
+    const chosen = new Set(custom.map(c => c.rowKey))
+    const ancestorChosen = (c: ReportCustomRowDTO): boolean => {
+      let p: string | undefined = c.parentKey
+      while (p) {
+        if (chosen.has(p)) return true
+        p = customRows.value.find(x => x.rowKey === p)?.parentKey
+      }
+      return false
+    }
+    for (const c of custom) {
+      if (!ancestorChosen(c)) await reportApi.deleteCustomRow(STMT, c.id)
+    }
+    // 固定行:cur/ytd 写 0 进 draft(=留空,随「保存」clear+insert 落库删除)
+    const d = { ...draft.value }
+    for (const k of fixed) for (const f of ['cur', 'ytd']) d[`${k}|${f}`] = 0
+    draft.value = d
+    dirty.value = Object.keys(d).length
+    selected.value = new Set()
+    if (custom.length) await loadPeriod()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除所选失败')
   }
 }
 
@@ -345,6 +394,7 @@ async function onImport(picks: { label?: string; records: ImportRec[] }[], fileN
   try {
     importResult.value = await runImport('report_is', picks, { year: year.value, month: month.value }, fileName)
     importSummary.value = picks.map(p => `${p.label ?? ''}:${p.records.length} 行`).join('\n')
+    if (edit.value) cancelEdit()                 // 导入=整期替换:先退出编辑(未保存草稿作废)再重拉
     companies.value = await companyApi.list()   // 可能自动新建了公司
     await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新值)
     await loadYear()
@@ -426,6 +476,10 @@ async function onExport() {
           </template>
           <template v-else>
             <span class="fin-tag edit">编辑中 · {{ company?.name }}</span>
+            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入
+            </Button>
             <Button variant="gray" size="sm" :disabled="saving" @click="cancelEdit">取消</Button>
             <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
               <template #leading><component :is="iconFor('check')" :size="14" /></template>
@@ -443,7 +497,13 @@ async function onExport() {
       </div>
 
       <div class="fin-toolbar">
-        <span class="fin-tag">{{ itemCount }} 项</span>
+        <div class="fin-toolbar-l">
+          <span class="fin-tag">{{ itemCount }} 项</span>
+          <Button v-if="edit && selected.size" variant="danger" size="sm" @click="bulkConfirm = true">
+            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+            删除所选 ({{ selected.size }})
+          </Button>
+        </div>
         <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入金额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : '只读 · 点击「编辑」录入 · 深色行为公式自动计算' }}</span>
       </div>
 
@@ -452,9 +512,12 @@ async function onExport() {
         :value-of="valueOf"
         :editable="edit && !isAll"
         :live-of="liveOf"
+        :selectable="edit && !isAll"
+        :selected="selected"
         @input="onInput"
         @add-child="onAddChild"
         @remove-child="removeCustom"
+        @toggle-select="onToggleSelect"
       />
 
       <p class="fin-foot"><component :is="iconFor('info')" :size="13" />单位:元 · 营业利润 = 营业收入 − 营业成本 − 税金及附加 − 销售/管理/财务费用 + 投资收益;利润总额 = 营业利润 + 营业外收入 − 营业外支出;净利润 = 利润总额 − 所得税费用。</p>
@@ -499,6 +562,28 @@ async function onExport() {
     :summary="importSummary"
     @close="importResult = null; importSummary = ''"
   />
+
+  <!-- 批量删除确认(遵 DESIGN-FIDELITY §7:Teleport + backdrop 居中;样式 1:1 FinDialogs .fin-mask/.fin-dlg),放最后 -->
+  <Teleport to="body">
+    <div v-if="bulkConfirm" class="fin-mask" @mousedown="bulkConfirm = false">
+      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="fin-dlg-h">
+          <h3>删除所选行</h3>
+          <p>
+            <template v-if="selSplit.custom.length">自定义行 {{ selSplit.custom.length }} 行将删除(含其下子类,立即生效);</template>
+            <template v-if="selSplit.fixed.length">固定行 {{ selSplit.fixed.length }} 行将清空本期数值(点「保存」后生效)。</template>
+          </p>
+        </div>
+        <div class="fin-dlg-f" style="padding-top:20px">
+          <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
+          <Button variant="danger" size="sm" @click="bulkDelete">
+            <template #leading><component :is="iconFor('trash-2')" /></template>
+            确认删除
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -519,6 +604,16 @@ async function onExport() {
 .fin-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
 .fin-kpis .fin-kval { white-space:nowrap; font-size:clamp(14px, 1.5vw, 22px); }
 .fin-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.fin-toolbar-l { display:flex; align-items:center; gap:8px; }
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+/* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 §7) */
+.fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:isfade .16s forwards; }
+@keyframes isfade { to { opacity:1; } }
+.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:isrise .2s var(--ease-standard) both; }
+@keyframes isrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+.fin-dlg-h { padding:20px 22px 0; }
+.fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

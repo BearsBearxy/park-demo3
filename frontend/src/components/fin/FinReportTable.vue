@@ -29,13 +29,20 @@ const props = defineProps<{
   editable: boolean
   // 编辑中的原始输入值(空串或 number),供 <input> 显示;normal 叶子行才用
   liveOf?: (rowKey: string | number, field: string) => number | string
+  // 批量删除多选(P2-G3):编辑态行首复选列。仅普通叶子行(固定+自定义)可选;公式/小计/父项/信息行不渲复选框。
+  selectable?: boolean
+  selected?: Set<string | number>
 }>()
 
 const emit = defineEmits<{
   input: [rowKey: string | number, field: string, value: string]
   addChild: [row: FinTableRow]
   removeChild: [row: FinTableRow]
+  toggleSelect: [row: FinTableRow]
 }>()
+
+// 可勾选 = 普通叶子行(常驻固定 or 自定义);subtotal/label/parentAuto 均不可选
+const canSelect = (r: FinTableRow) => r.type === 'normal' && !r.parentAuto
 
 // ponytail: alias — `valueOf` 是 Object.prototype 成员,模板里裸调会被渲染代理拦截解析失败,故本地重命名。
 const cellVal = (k: string | number, f: string) => props.valueOf(k, f)
@@ -59,12 +66,14 @@ function inputVal(r: FinTableRow, field: string): string {
   <div class="fin-wrap">
     <table class="fin-table">
       <colgroup>
+        <col v-if="selectable" style="width:34px" />
         <col style="width:auto" />
         <col style="width:48px" />
         <col v-for="c in columns" :key="c.key" style="width:168px" />
       </colgroup>
       <thead>
         <tr>
+          <th v-if="selectable"></th>
           <th style="text-align:left;padding-left:12px">项　目</th>
           <th>行次</th>
           <th v-for="c in columns" :key="c.key">{{ c.label }}</th>
@@ -72,6 +81,9 @@ function inputVal(r: FinTableRow, field: string): string {
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.key" :class="trClass(r)">
+          <td v-if="selectable" class="fin-ckcell">
+            <input v-if="canSelect(r)" class="fin-ck" type="checkbox" :checked="selected?.has(r.key)" @change="emit('toggleSelect', r)" />
+          </td>
           <td>
             <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]">
               {{ r.label }}
@@ -120,6 +132,8 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-rowlabel .addchild:hover { background:var(--accent-blue); color:var(--hue-blue); }
 .fin-rowlabel .chip { flex:0 0 auto; font-size:10px; font-weight:var(--fw-medium); color:var(--hue-blue); background:var(--accent-blue); border-radius:var(--radius-full); padding:1px 7px; }
 .fin-no { display:block; text-align:center; font-size:11px; color:var(--text-disabled); font-family:var(--font-mono); }
+.fin-ckcell { text-align:center; }
+.fin-ck { display:block; margin:0 auto; width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; }
 .fin-nv { display:block; text-align:right; font-size:12px; padding:0 12px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .fin-nv.empty { color:var(--text-disabled); }
 .fin-nv.calc { font-weight:var(--fw-semibold); color:var(--text-primary); }

@@ -8,12 +8,15 @@ defineProps<{
   valueOf: (rowKey: string | number, field: string) => number
   editable: boolean
   liveOf?: (rowKey: string | number, field: string) => number | string
+  selectable?: boolean
+  selected?: Set<string | number>
 }>()
 
 const emit = defineEmits<{
   input: [rowKey: string | number, field: string, value: string]
   addChild: [row: FinTableRow]
   removeChild: [row: FinTableRow]
+  toggleSelect: [row: FinTableRow]
 }>()
 
 // 利润表列口径(spec R3):本月金额 cur + 本年累计金额 ytd。
@@ -30,8 +33,11 @@ const IS_COLUMNS: FinTableColumn[] = [
     :value-of="valueOf"
     :editable="editable"
     :live-of="liveOf"
+    :selectable="selectable"
+    :selected="selected"
     @input="(k, f, v) => emit('input', k, f, v)"
     @add-child="r => emit('addChild', r)"
     @remove-child="r => emit('removeChild', r)"
+    @toggle-select="r => emit('toggleSelect', r)"
   />
 </template>
