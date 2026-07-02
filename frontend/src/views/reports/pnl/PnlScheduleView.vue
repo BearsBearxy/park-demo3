@@ -2,7 +2,7 @@
 // 损益附表 1–5 — 一个参数化 View 服务 5 条路由(P2-D spec D4,charging 7/8 先例)。
 // 路由 meta.value → PNL_SCHEDULES config(App.vue router-view :key=fullPath,切路由重建不串台)。
 // 动线:⓪ SchedYearGate(年份门,P1 惯例) → 年度矩阵(SchedHeader + PnlTable)。
-// 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 §7,kind 自动识)/删行,
+// 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 §7,kind 自动识)/多选批量删行(J7,§7 确认,沿单删 draft 语义),
 // 保存 = PUT 整年 clear+insert(rows 重建 rowKey r<n> + sortOrder);退出有改动走 SaveConfirmDialog。
 // §6:overview 加载门;切年不清 data(旧表保留到新数据落位,模板按 data.year===year 把关) + seq 竞态守卫。
 // 导入:registry pnl_s1..s5(sheetMatch 挑表 + 年自动识,识别年 ≠ 当前年时自动切年)。
@@ -202,12 +202,30 @@ function onRemove(rowKey: string) {
   } else {
     const s = new Set(removed.value); s.add(rowKey); removed.value = s
   }
+  // 已删行同步剔出选集(防幽灵计数)
+  if (selected.value.has(rowKey)) {
+    const s = new Set(selected.value); s.delete(rowKey); selected.value = s
+  }
 }
 function resetEdit() {
   edit.value = false
   draftM.value = {}; draftNote.value = {}
   added.value = []; removed.value = new Set()
+  selected.value = new Set(); delConfirm.value = false
   saveConfirm.value = false
+}
+
+// ── 批量删除(P2-G3 J7):行首复选多选 → §7 确认 → 循环既有单删(draft 移除,随保存落库) ──
+const selected = ref<Set<string>>(new Set())
+const delConfirm = ref(false)
+function onToggleSelect(rowKey: string) {
+  const s = new Set(selected.value)
+  if (s.has(rowKey)) s.delete(rowKey); else s.add(rowKey)
+  selected.value = s
+}
+function removeSelected() {
+  delConfirm.value = false
+  for (const key of [...selected.value]) onRemove(key)
 }
 
 // ── 新增行(居中弹窗 §7:分组 datalist 自填 + 科目细分,kind=detectKind 自动) ──
@@ -245,7 +263,7 @@ const saveConfirm = ref(false)
 function toggleEdit() {
   if (!edit.value) { edit.value = true; return }
   if (dirty.value > 0) { saveConfirm.value = true; return }
-  edit.value = false
+  resetEdit()   // 无改动退出也走 reset:清选集(J7)
 }
 async function save() {
   if (year.value == null) return
@@ -337,6 +355,10 @@ async function onExport() {
           @toggle-edit="toggleEdit"
         >
           <template #edit-actions>
+            <Button v-if="selected.size" variant="danger" size="sm" :disabled="saving" @click="delConfirm = true">
+              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+              删除所选 ({{ selected.size }})
+            </Button>
             <Button
               v-if="Object.keys(rowDerive).length"
               variant="outline" size="sm" :disabled="saving" @click="fillAllDerived"
@@ -368,9 +390,10 @@ async function onExport() {
           :edit="edit"
           :derive="rowDerive"
           :mapped-keys="mappedKeys"
+          :selected="selected"
           @input="onInput"
           @note="onNote"
-          @remove="onRemove"
+          @toggle-select="onToggleSelect"
           @add="openAdd"
           @fill="onFill"
         />
@@ -416,6 +439,20 @@ async function onExport() {
       <div class="pnl-dlg-f">
         <button class="pnl-btn gray" @click="addDlg = false">取消</button>
         <button class="pnl-btn filled" @click="submitAdd"><component :is="iconFor('check')" :size="14" />新增</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量删除确认(§7 居中,基准本屏 .pnl-mask/.pnl-dlg) -->
+  <div v-if="delConfirm" class="pnl-mask" @mousedown="delConfirm = false">
+    <div class="pnl-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+      <div class="pnl-dlg-h">
+        <h3>删除所选行</h3>
+        <p>已勾选的 {{ selected.size }} 行将从 {{ year }} 年矩阵中删除,点击「保存」后落库,「取消」编辑可放弃。注意:本表小计/损益/合计行也是存值行,若在所选中会一并删除,不会自动重算。</p>
+      </div>
+      <div class="pnl-dlg-f">
+        <button class="pnl-btn gray" @click="delConfirm = false">取消</button>
+        <button class="pnl-btn red" @click="removeSelected"><component :is="iconFor('trash-2')" :size="14" />删除 {{ selected.size }} 行</button>
       </div>
     </div>
   </div>
@@ -466,4 +503,6 @@ async function onExport() {
 .pnl-btn.gray:hover { background:var(--ink-100); }
 .pnl-btn.filled { background:var(--ink-900); color:#fff; }
 .pnl-btn.filled:hover { background:rgb(58,58,58); }
+.pnl-btn.red { background:var(--hue-red); color:#fff; }   /* 同 ds/Button danger */
+.pnl-btn.red:hover { background:rgb(224,49,39); }
 </style>

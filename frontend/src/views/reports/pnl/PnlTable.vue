@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 损益附表年度矩阵表 — 版式 1:1 参照原型 screen-schedule2.jsx 表体 + SalaryTable sticky 双左列范式。
-// 列:分组(sticky,同值向下省略显示) | 科目细分(sticky) | 1月..12月 | 本年合计(sticky 尾,rowYearTotal 客端派生) | 编辑态:备注 + 删行。
+// 列:编辑态行首复选(sticky,批量删除 P2-G3 J7,映射行不渲) | 分组(sticky,同值向下省略显示) | 科目细分(sticky) | 1月..12月 | 本年合计(sticky 尾,rowYearTotal 客端派生) | 编辑态:备注。
 // kind 分带(spec D2,仅渲染):subtotal 底 accent-slate、pnl 底 accent-blue 加粗、total 加粗上边框。
 // 月值 null=未录(显 –,区分真 0);编辑态单元格 input(空↔null),值由父 draft 合并后下发,本组件无状态。
 // 派生对照(P2-G G2/G3):行首徽标 已证√蓝/差异N月橙(hover 逐月差额)/编辑态灰「可填入」,无映射不显;
@@ -20,12 +20,13 @@ const props = defineProps<{
   groupCol: string
   edit: boolean
   derive?: Record<string /*rowKey*/, CompareResult & { derived: (number | null)[] }>
-  mappedKeys?: Set<string>   // 派生映射行(P2-G3 J1):编辑态月格只读+无删除钮;「填入」/备注照旧
+  mappedKeys?: Set<string>   // 派生映射行(P2-G3 J1):编辑态月格只读+不可选删;「填入」/备注照旧
+  selected?: Set<string>     // 批量删除选集(P2-G3 J7):编辑态行首复选,父组件持有
 }>()
 const emit = defineEmits<{
   input: [rowKey: string, monthIdx: number, v: number | null]
   note: [rowKey: string, text: string]
-  remove: [rowKey: string]
+  toggleSelect: [rowKey: string]
   add: []
   fill: [rowKey: string]
 }>()
@@ -90,17 +91,27 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
     <table v-else class="pt-table" :class="{ 'pt-editmode': edit, 'pt-hasfill': showFill }">
       <thead>
         <tr>
+          <th v-if="edit" class="pt-c-sel"></th>
           <th class="pt-c-grp l">{{ groupCol }}</th>
           <th class="pt-c-sub l">科目细分</th>
           <th v-for="m in 12" :key="m" class="pt-h-num">{{ m }}月</th>
           <th class="pt-c-ann pt-h-ann">本年合计</th>
           <th v-if="edit" class="pt-c-note l">备注</th>
           <th v-if="showFill" class="pt-c-fill">填入</th>
-          <th v-if="edit" class="pt-c-del"></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="(r, i) in rows" :key="r.rowKey" :class="KIND_CLASS[r.kind]">
+          <td v-if="edit" class="pt-c-sel">
+            <input
+              v-if="!mappedKeys?.has(r.rowKey)"
+              class="pt-ck"
+              type="checkbox"
+              title="选择该行(批量删除)"
+              :checked="selected?.has(r.rowKey)"
+              @change="emit('toggleSelect', r.rowKey)"
+            />
+          </td>
           <td class="pt-c-grp l" :title="r.groupLabel">{{ showGroup(i) ? r.groupLabel : '' }}</td>
           <td class="pt-c-sub l">
             {{ r.label }}
@@ -138,11 +149,6 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
               @click="emit('fill', r.rowKey)"
             >填入</button>
           </td>
-          <td v-if="edit" class="pt-c-del">
-            <button v-if="!mappedKeys?.has(r.rowKey)" class="pt-delbtn" title="删除该行" @click="emit('remove', r.rowKey)">
-              <component :is="iconFor('trash-2')" :size="15" />
-            </button>
-          </td>
         </tr>
       </tbody>
     </table>
@@ -160,22 +166,24 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-table thead th { position:sticky; top:0; z-index:3; background:var(--surface-white); border-bottom:1px solid var(--border-subtle); font-size:12px; font-weight:var(--fw-semibold); color:var(--text-muted); }
 .pt-h-num { min-width:104px; }
 .pt-h-ann { background:var(--surface-card); color:var(--text-secondary); }
-.pt-table thead th.pt-c-grp, .pt-table thead th.pt-c-sub,
+.pt-table thead th.pt-c-sel, .pt-table thead th.pt-c-grp, .pt-table thead th.pt-c-sub,
 .pt-table thead th.pt-c-ann, .pt-table thead th.pt-c-note,
-.pt-table thead th.pt-c-fill, .pt-table thead th.pt-c-del { z-index:5; }
+.pt-table thead th.pt-c-fill { z-index:5; }
 
-/* sticky 左双列:分组(定宽,同值省略) + 科目细分 */
+/* sticky 左列:编辑态行首复选(36) + 分组(定宽,同值省略) + 科目细分(编辑态左移 36 让位复选列) */
+.pt-c-sel { position:sticky; left:0; z-index:2; width:36px; min-width:36px; max-width:36px; padding:0 6px; text-align:center; }
 .pt-c-grp { position:sticky; left:0; z-index:2; width:118px; min-width:118px; max-width:118px; overflow:hidden; text-overflow:ellipsis; font-weight:var(--fw-medium); }
 .pt-c-sub { position:sticky; left:118px; z-index:2; min-width:216px; box-shadow:1px 0 0 var(--border-subtle); }
+.pt-editmode .pt-c-grp { left:36px; }
+.pt-editmode .pt-c-sub { left:154px; }
 
-/* sticky 尾列:本年合计(编辑态让位备注+删行;有填入列再让 56) */
+/* sticky 尾列:本年合计(编辑态让位备注;有填入列再让 56) */
 .pt-c-ann { position:sticky; right:0; z-index:2; font-weight:var(--fw-semibold); box-shadow:-1px 0 0 var(--border-subtle); min-width:120px; }
-.pt-editmode .pt-c-ann { right:190px; }   /* 编辑态让位 备注(150)+删行(40) */
-.pt-editmode.pt-hasfill .pt-c-ann { right:246px; }
-.pt-c-note { position:sticky; right:40px; z-index:2; width:150px; min-width:150px; max-width:150px; box-shadow:-1px 0 0 var(--border-subtle); }
-.pt-hasfill .pt-c-note { right:96px; }
-.pt-c-fill { position:sticky; right:40px; z-index:2; width:56px; min-width:56px; padding:0 6px; text-align:center; }
-.pt-c-del { position:sticky; right:0; z-index:2; width:40px; min-width:40px; padding:0 6px; text-align:center; }
+.pt-editmode .pt-c-ann { right:150px; }   /* 编辑态让位 备注(150) */
+.pt-editmode.pt-hasfill .pt-c-ann { right:206px; }
+.pt-c-note { position:sticky; right:0; z-index:2; width:150px; min-width:150px; max-width:150px; box-shadow:-1px 0 0 var(--border-subtle); }
+.pt-hasfill .pt-c-note { right:56px; }
+.pt-c-fill { position:sticky; right:0; z-index:2; width:56px; min-width:56px; padding:0 6px; text-align:center; }
 
 /* 数值 */
 .pt-c-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; }
@@ -196,8 +204,7 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-in:focus { border-color:var(--hue-blue); box-shadow:0 0 0 3px var(--accent-blue); }
 .pt-in::placeholder { color:var(--text-disabled); }
 
-.pt-delbtn { width:26px; height:26px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:inline-grid; place-items:center; }
-.pt-delbtn:hover { background:rgba(255,59,48,.1); color:var(--hue-red); }
+.pt-ck { display:block; margin:0 auto; width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; }   /* 同 FinReportTable .fin-ck */
 
 /* 派生对照(P2-G):徽标三态 + diff 月橙底 + 填入按钮 */
 .pt-badge { display:inline-flex; align-items:center; margin-left:8px; height:18px; padding:0 7px; border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11px; font-weight:var(--fw-medium); white-space:nowrap; vertical-align:1px; }
