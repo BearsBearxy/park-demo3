@@ -4,6 +4,7 @@ import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.ImportError;
+import com.park.demo3.dto.ReportAccountDTO;
 import com.park.demo3.dto.ReportCustomRowDTO;
 import com.park.demo3.dto.ReportImportRequest;
 import com.park.demo3.dto.ReportPeriodDTO;
@@ -11,9 +12,11 @@ import com.park.demo3.dto.ReportSaveReq;
 import com.park.demo3.dto.ReportYearDTO;
 import com.park.demo3.dto.ReportYearDTO.MonthMeta;
 import com.park.demo3.entity.ManagementCompany;
+import com.park.demo3.entity.ReportAccount;
 import com.park.demo3.entity.ReportAmount;
 import com.park.demo3.entity.ReportCustomRow;
 import com.park.demo3.mapper.ManagementCompanyMapper;
+import com.park.demo3.mapper.ReportAccountMapper;
 import com.park.demo3.mapper.ReportAmountMapper;
 import com.park.demo3.mapper.ReportCustomRowMapper;
 import org.springframework.stereotype.Service;
@@ -25,17 +28,18 @@ import java.util.stream.Collectors;
 
 @Service
 public class ReportService {
-    private static final Set<String> STATEMENTS = Set.of("is", "bs");   // 利润表+资产负债表;C 增 tb
+    private static final Set<String> STATEMENTS = Set.of("is", "bs", "tb");   // 利润表+资产负债表+科目余额表
     private static final String PREVIEW_ROW = "1";                 // 月历预览 = 营业收入(行次1) cur
     private static final String PREVIEW_FIELD = "cur";
 
     private final ReportAmountMapper amounts;
     private final ReportCustomRowMapper customRows;
     private final ManagementCompanyMapper companies;
+    private final ReportAccountMapper accounts;
 
     public ReportService(ReportAmountMapper amounts, ReportCustomRowMapper customRows,
-                         ManagementCompanyMapper companies) {
-        this.amounts = amounts; this.customRows = customRows; this.companies = companies;
+                         ManagementCompanyMapper companies, ReportAccountMapper accounts) {
+        this.amounts = amounts; this.customRows = customRows; this.companies = companies; this.accounts = accounts;
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -57,12 +61,16 @@ public class ReportService {
         Map<String, Map<String, BigDecimal>> map = toCellMap(amounts.period(companyId, statement, year, month));
         List<ReportCustomRowDTO> rows = customRows.forCompany(companyId, statement).stream()
             .map(ReportService::toCustomDTO).toList();
-        return new ReportPeriodDTO(map, rows);
+        List<ReportAccountDTO> tree = "tb".equals(statement)
+            ? accounts.period(companyId, statement, year, month).stream().map(ReportService::toAccountDTO).toList()
+            : List.of();
+        return new ReportPeriodDTO(map, rows, tree);
     }
 
     // ── 全部汇总:跨公司同 (rowKey,field) 求和;customRows 各公司并集按 rowKey 去重(只读) ──
     public ReportPeriodDTO allPeriod(String statement, int year, int month) {
         checkStatement(statement);
+        if ("tb".equals(statement)) return tbAllPeriod(year, month);
         // 跨公司同 (rowKey,field) 求和(toCellMap 本就累加)
         Map<String, Map<String, BigDecimal>> map = toCellMap(amounts.allPeriod(statement, year, month));
 
@@ -71,7 +79,35 @@ public class ReportService {
                 .eq("statement", statement).orderByAsc("id"))) {
             byKey.putIfAbsent(r.getRowKey(), toCustomDTO(r));
         }
-        return new ReportPeriodDTO(map, new ArrayList<>(byKey.values()));
+        return new ReportPeriodDTO(map, new ArrayList<>(byKey.values()), List.of());
+    }
+
+    // ── tb 全部汇总:只合并一级科目(code 优先/无 code 按 label 对齐),金额按各公司该科目 rowKey 求和,平铺只读 ──
+    private ReportPeriodDTO tbAllPeriod(int year, int month) {
+        Map<Integer, Map<String, Map<String, BigDecimal>>> amtByCo = new HashMap<>();
+        for (ReportAmount a : amounts.allPeriod("tb", year, month)) {
+            amtByCo.computeIfAbsent(a.getCompanyId(), k -> new HashMap<>())
+                .computeIfAbsent(a.getRowKey(), k -> new LinkedHashMap<>())
+                .merge(a.getField(), nz(a.getAmount()), BigDecimal::add);
+        }
+        Map<String, ReportAccountDTO> merged = new LinkedHashMap<>();   // 对齐键 -> 合并科目(首见定名/rowKey)
+        Map<String, Map<String, BigDecimal>> map = new LinkedHashMap<>();
+        for (ReportAccount a : accounts.allPeriod("tb", year, month)) {
+            if (a.getLevel() == null || a.getLevel() != 0) continue;
+            String key = a.getCode() != null && !a.getCode().isBlank() ? "c:" + a.getCode() : "l:" + a.getLabel();
+            ReportAccountDTO dto = merged.get(key);
+            if (dto == null) {
+                dto = new ReportAccountDTO(a.getRowKey(), null, a.getCode(), a.getLabel(), 0, merged.size());
+                merged.put(key, dto);
+            }
+            Map<String, BigDecimal> cell = amtByCo.getOrDefault(a.getCompanyId(), Map.of()).get(a.getRowKey());
+            if (cell != null) {
+                Map<String, BigDecimal> target = map.computeIfAbsent(dto.rowKey(), k -> new LinkedHashMap<>());
+                cell.forEach((f, v) -> target.merge(f, v, BigDecimal::add));
+            }
+        }
+        map.values().forEach(cell -> cell.replaceAll((f, v) -> r2(v)));
+        return new ReportPeriodDTO(map, List.of(), new ArrayList<>(merged.values()));
     }
 
     // ── L2 月历:12 月 hasData + netPreview(行次1 cur) ──
@@ -82,13 +118,19 @@ public class ReportService {
             .eq("company_id", companyId).eq("statement", statement).eq("year", year));
         Map<Integer, List<ReportAmount>> byMonth = all.stream()
             .collect(Collectors.groupingBy(ReportAmount::getMonth));
+        // tb 的 hasData 以 report_account 存在为准(is/bs 逻辑不变)
+        Set<Integer> acctMonths = !"tb".equals(statement) ? null
+            : accounts.selectList(new QueryWrapper<ReportAccount>()
+                .eq("company_id", companyId).eq("statement", statement).eq("year", year))
+                .stream().map(ReportAccount::getMonth).collect(Collectors.toSet());
         List<MonthMeta> months = new ArrayList<>(12);
         for (int m = 1; m <= 12; m++) {
             List<ReportAmount> rows = byMonth.getOrDefault(m, List.of());
             BigDecimal preview = rows.stream()
                 .filter(a -> PREVIEW_ROW.equals(a.getRowKey()) && PREVIEW_FIELD.equals(a.getField()))
                 .map(a -> nz(a.getAmount())).findFirst().orElse(BigDecimal.ZERO);
-            months.add(new MonthMeta(m, !rows.isEmpty(), r2(preview)));
+            boolean hasData = acctMonths != null ? acctMonths.contains(m) : !rows.isEmpty();
+            months.add(new MonthMeta(m, hasData, r2(preview)));
         }
         return new ReportYearDTO(year, months);
     }
@@ -101,6 +143,13 @@ public class ReportService {
         clearPeriod(companyId, statement, year, month);
         if (req != null && req.cells() != null) {
             for (ReportSaveReq.Cell c : req.cells()) insertCell(companyId, statement, year, month, c.rowKey(), c.field(), c.amount());
+        }
+        // tb 科目树整期 clear+insert(与金额同事务;accounts==null 不动树,is/bs 忽略)
+        if ("tb".equals(statement) && req != null && req.accounts() != null) {
+            clearAccounts(companyId, statement, year, month);
+            for (ReportSaveReq.AccountReq a : req.accounts())
+                insertAccount(companyId, statement, year, month,
+                    a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
         }
         return period(statement, companyId, year, month);
     }
@@ -175,6 +224,13 @@ public class ReportService {
                 insertCell(companyId, statement, year, month, c.rowKey(), c.field(), c.amount());
                 imported++;
             }
+            // tb 科目树整期 clear+insert(与金额同事务;accounts==null 不动树)
+            if ("tb".equals(statement) && sec.accounts() != null) {
+                clearAccounts(companyId, statement, year, month);
+                for (ReportImportRequest.AccountReq a : sec.accounts())
+                    insertAccount(companyId, statement, year, month,
+                        a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
+            }
         }
         return new ImportResultDTO(imported, errors.size(), errors);
     }
@@ -192,6 +248,24 @@ public class ReportService {
         a.setYear(year); a.setMonth(month);
         a.setRowKey(rowKey); a.setField(field); a.setAmount(r2(amount));
         amounts.insert(a);
+    }
+
+    private void clearAccounts(int companyId, String statement, int year, int month) {
+        accounts.delete(new QueryWrapper<ReportAccount>()
+            .eq("company_id", companyId).eq("statement", statement)
+            .eq("year", year).eq("month", month));
+    }
+
+    private void insertAccount(int companyId, String statement, int year, int month,
+                               String rowKey, String parentKey, String code, String label,
+                               Integer level, Integer sortOrder) {
+        ReportAccount a = new ReportAccount();
+        a.setCompanyId(companyId); a.setStatement(statement);
+        a.setYear(year); a.setMonth(month);
+        a.setRowKey(rowKey); a.setParentKey(parentKey); a.setCode(code); a.setLabel(label);
+        a.setLevel(level == null ? 0 : level);
+        a.setSortOrder(sortOrder == null ? 0 : sortOrder);
+        accounts.insert(a);
     }
 
     // 自动新建公司(short 派生复用 CompanyService.deriveShort 规则)
@@ -230,5 +304,10 @@ public class ReportService {
     private static ReportCustomRowDTO toCustomDTO(ReportCustomRow r) {
         return new ReportCustomRowDTO(r.getId(), r.getRowKey(), r.getParentKey(), r.getLabel(),
             r.getLevel() == null ? 1 : r.getLevel());
+    }
+
+    private static ReportAccountDTO toAccountDTO(ReportAccount a) {
+        return new ReportAccountDTO(a.getRowKey(), a.getParentKey(), a.getCode(), a.getLabel(),
+            a.getLevel() == null ? 0 : a.getLevel(), a.getSortOrder() == null ? 0 : a.getSortOrder());
     }
 }

@@ -133,10 +133,10 @@ class ReportApiIT extends AbstractMysqlIT {
         assertThat(((Number) JsonPath.read(p, "$.data.amounts.1.ytd")).doubleValue()).isEqualTo(7000.0);
     }
 
-    // ── 非法 statement 'tb' → 体内 code 400(HTTP 200);'bs' 已合法(见 bs_* 用例) ──
+    // ── 非法 statement 'xx' → 体内 code 400(HTTP 200);'bs'/'tb' 已合法(见 bs_*/tb_* 用例) ──
     @Test
     void illegalStatement_returns400InBody() throws Exception {
-        mvc.perform(get("/api/reports/tb/1/2025/10").header("Authorization", auth()))
+        mvc.perform(get("/api/reports/xx/1/2025/10").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
     }
@@ -168,6 +168,121 @@ class ReportApiIT extends AbstractMysqlIT {
                 .andExpect(status().isOk()).andReturn());
         assertThat(((Number) JsonPath.read(res, "$.data.amounts.1.end")).doubleValue()).isEqualTo(292259.39);
         assertThat(((Number) JsonPath.read(res, "$.data.amounts.48.end")).doubleValue()).isEqualTo(20000000.00);
+    }
+
+    // ── tb: PUT 科目树+8字段金额 → GET 读回树序+amounts → 重存覆盖(树与金额同期 clear+insert) ──
+    @Test
+    void tb_saveTreeAndAmounts_readBack() throws Exception {
+        String saveBody = "{\"accounts\":["
+                + "{\"rowKey\":\"1001\",\"parentKey\":null,\"code\":\"1001\",\"label\":\"库存现金\",\"level\":0,\"sortOrder\":0},"
+                + "{\"rowKey\":\"1002\",\"parentKey\":null,\"code\":\"1002\",\"label\":\"银行存款\",\"level\":0,\"sortOrder\":1},"
+                + "{\"rowKey\":\"r3\",\"parentKey\":\"1002\",\"code\":null,\"label\":\"农商行\",\"level\":1,\"sortOrder\":2}"
+                + "],\"cells\":["
+                + "{\"rowKey\":\"1001\",\"field\":\"openDr\",\"amount\":1},"
+                + "{\"rowKey\":\"1001\",\"field\":\"openCr\",\"amount\":2},"
+                + "{\"rowKey\":\"1001\",\"field\":\"periodDr\",\"amount\":3},"
+                + "{\"rowKey\":\"1001\",\"field\":\"periodCr\",\"amount\":4},"
+                + "{\"rowKey\":\"1001\",\"field\":\"ytdDr\",\"amount\":5},"
+                + "{\"rowKey\":\"1001\",\"field\":\"ytdCr\",\"amount\":6},"
+                + "{\"rowKey\":\"1001\",\"field\":\"endDr\",\"amount\":7},"
+                + "{\"rowKey\":\"1001\",\"field\":\"endCr\",\"amount\":8}"
+                + "]}";
+        mvc.perform(put("/api/reports/tb/1/2025/10").header("Authorization", auth())
+                .contentType("application/json").content(saveBody))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+
+        String res = utf8(mvc.perform(get("/api/reports/tb/1/2025/10").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        // 树按 sort_order 读回
+        assertThat(JsonPath.<List<String>>read(res, "$.data.accounts[*].rowKey"))
+                .containsExactly("1001", "1002", "r3");
+        assertThat((String) JsonPath.read(res, "$.data.accounts[2].parentKey")).isEqualTo("1002");
+        assertThat(((Number) JsonPath.read(res, "$.data.accounts[2].level")).intValue()).isEqualTo(1);
+        // 8 金额字段读回
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1001.openDr")).doubleValue()).isEqualTo(1.0);
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1001.periodCr")).doubleValue()).isEqualTo(4.0);
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1001.endCr")).doubleValue()).isEqualTo(8.0);
+
+        // 重存(整期 clear+insert):树与金额都只剩新内容
+        mvc.perform(put("/api/reports/tb/1/2025/10").header("Authorization", auth())
+                .contentType("application/json").content("{\"accounts\":["
+                        + "{\"rowKey\":\"2001\",\"parentKey\":null,\"code\":\"2001\",\"label\":\"短期借款\",\"level\":0,\"sortOrder\":0}"
+                        + "],\"cells\":[{\"rowKey\":\"2001\",\"field\":\"endCr\",\"amount\":42}]}"))
+                .andExpect(status().isOk());
+        String res2 = utf8(mvc.perform(get("/api/reports/tb/1/2025/10").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(JsonPath.<List<String>>read(res2, "$.data.accounts[*].rowKey")).containsExactly("2001");
+        assertThat(((Number) JsonPath.read(res2, "$.data.amounts.2001.endCr")).doubleValue()).isEqualTo(42.0);
+        assertThat(JsonPath.<Map<String, ?>>read(res2, "$.data.amounts")).doesNotContainKey("1001");
+    }
+
+    // ── tb: POST import 段带 accounts+cells → 自动建公司 + 科目树与金额双写 ──
+    @Test
+    void tb_import_writesAccountsAndAmounts_autoCreatesCompany() throws Exception {
+        String importBody = "{\"sections\":[{\"companyName\":\"某全新TB公司IT\",\"accounts\":["
+                + "{\"rowKey\":\"1002\",\"parentKey\":null,\"code\":\"1002\",\"label\":\"银行存款\",\"level\":0,\"sortOrder\":0},"
+                + "{\"rowKey\":\"100201\",\"parentKey\":\"1002\",\"code\":\"100201\",\"label\":\"农商行\",\"level\":1,\"sortOrder\":1}"
+                + "],\"cells\":["
+                + "{\"rowKey\":\"1002\",\"field\":\"endDr\",\"amount\":123.45},"
+                + "{\"rowKey\":\"100201\",\"field\":\"endDr\",\"amount\":123.45}"
+                + "]}]}";
+        mvc.perform(post("/api/reports/tb/import").param("year", "2025").param("month", "12")
+                .header("Authorization", auth()).contentType("application/json").content(importBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(2));
+
+        String companies = utf8(mvc.perform(get("/api/companies").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(JsonPath.<List<?>>read(companies, "$.data[?(@.name=='某全新TB公司IT')]")).isNotEmpty();
+        int newId = ((Number) JsonPath.<List<Object>>read(companies, "$.data[?(@.name=='某全新TB公司IT')].id").get(0)).intValue();
+
+        String p = utf8(mvc.perform(get("/api/reports/tb/" + newId + "/2025/12").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(JsonPath.<List<String>>read(p, "$.data.accounts[*].rowKey")).containsExactly("1002", "100201");
+        assertThat(((Number) JsonPath.read(p, "$.data.amounts.1002.endDr")).doubleValue()).isEqualTo(123.45);
+        assertThat(((Number) JsonPath.read(p, "$.data.amounts.100201.endDr")).doubleValue()).isEqualTo(123.45);
+    }
+
+    // ── tb: GET all 只合并一级科目(同 code 求和,明细不出现) ──
+    @Test
+    void tb_allPeriod_levelZeroMerge() throws Exception {
+        mvc.perform(put("/api/reports/tb/1/2025/11").header("Authorization", auth())
+                .contentType("application/json").content("{\"accounts\":["
+                        + "{\"rowKey\":\"1001\",\"parentKey\":null,\"code\":\"1001\",\"label\":\"库存现金\",\"level\":0,\"sortOrder\":0},"
+                        + "{\"rowKey\":\"r2\",\"parentKey\":\"1001\",\"code\":null,\"label\":\"备用金\",\"level\":1,\"sortOrder\":1}"
+                        + "],\"cells\":["
+                        + "{\"rowKey\":\"1001\",\"field\":\"endDr\",\"amount\":100},"
+                        + "{\"rowKey\":\"r2\",\"field\":\"endDr\",\"amount\":100}]}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/reports/tb/2/2025/11").header("Authorization", auth())
+                .contentType("application/json").content("{\"accounts\":["
+                        + "{\"rowKey\":\"1001\",\"parentKey\":null,\"code\":\"1001\",\"label\":\"库存现金\",\"level\":0,\"sortOrder\":0}"
+                        + "],\"cells\":[{\"rowKey\":\"1001\",\"field\":\"endDr\",\"amount\":250}]}"))
+                .andExpect(status().isOk());
+
+        String res = utf8(mvc.perform(get("/api/reports/tb/all/2025/11").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        // 同 code 一级科目跨公司求和;明细行(r2)不参与也不出现
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1001.endDr")).doubleValue()).isEqualTo(350.0);
+        assertThat(JsonPath.<List<?>>read(res, "$.data.accounts[?(@.rowKey=='1001')]")).isNotEmpty();
+        assertThat(JsonPath.<List<?>>read(res, "$.data.accounts[?(@.level!=0)]")).isEmpty();
+        assertThat(JsonPath.<Map<String, ?>>read(res, "$.data.amounts")).doesNotContainKey("r2");
+    }
+
+    // ── tb: V25 种子可读(公司1 2025-09 五科目树 + 已平金额) ──
+    @Test
+    void tb_seed_readable() throws Exception {
+        String res = utf8(mvc.perform(get("/api/reports/tb/1/2025/9").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(JsonPath.<List<String>>read(res, "$.data.accounts[*].rowKey"))
+                .containsExactly("1001", "1002", "100201", "1122", "r5");
+        assertThat((String) JsonPath.read(res, "$.data.accounts[2].parentKey")).isEqualTo("1002");
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1001.endDr")).doubleValue()).isEqualTo(20000.0);
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1122.endCr")).doubleValue()).isEqualTo(100000.0);
+        // 一级科目 endDr 合计 = endCr 合计 = 100000(演示已平)
+        assertThat(((Number) JsonPath.read(res, "$.data.amounts.1002.endDr")).doubleValue()
+                + ((Number) JsonPath.read(res, "$.data.amounts.1001.endDr")).doubleValue()).isEqualTo(100000.0);
     }
 
     // ── 无 token → 401 ──
