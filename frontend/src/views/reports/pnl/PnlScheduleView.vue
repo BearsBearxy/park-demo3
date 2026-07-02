@@ -8,11 +8,13 @@
 // 导入:registry pnl_s1..s5(sheetMatch 挑表 + 年自动识,识别年 ≠ 当前年时自动切年)。
 // 派生对照(P2-G):进年明细懒加载 loadDeriveData(缓存 per year,失败静默不阻塞 G6);
 // 每行 compareRow+derived 传 PnlTable;填入只填空格进 draft,保存走现有 PUT(G3)。
+// 派生生成(P2-G2):进年两侧就绪(loadYear+loadDerive)后 tryGenerate 补缺失映射行并 PUT 落库;
+// 每年会话内只试一次(generatedYears,成败都记);导入路径不触发(H6:下次进年补回)。
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { pnlApi } from '@/api/pnl'
 import { PNL_SCHEDULES, detectKind, rowYearTotal } from '@/reports/pnlSchedules'
-import { loadDeriveData, deriveRow, compareRow, fillRow, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
+import { loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows, type DeriveData, type CompareResult } from '@/reports/pnlDerive'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import type { PnlOverviewDTO, PnlYearDTO, PnlRowDTO, PnlKind } from '@/types/pnl'
 import type { ImportResultDTO } from '@/types/import'
@@ -86,6 +88,24 @@ async function loadDerive(y: number) {
   } catch { /* 失败静默:该年不显派生(G6) */ }
 }
 
+// ── 派生生成(P2-G2):缺失映射行自动生成落库(H1) ──────────
+const generatedYears = new Set<number>()   // 每年会话内只试一次,成败都记(防循环)
+async function tryGenerate(y: number) {
+  if (year.value !== y || edit.value || generatedYears.has(y)) return   // 竞态/编辑态守卫
+  const d = data.value
+  const dv = deriveData.value
+  if (!d || d.year !== y || !dv) return   // 两侧就绪才生成(派生失败 dv=null 不消耗尝试)
+  generatedYears.add(y)
+  const gen = generateMissingRows(config.schedule, d.rows, dv)
+  if (!gen) return
+  try {
+    await pnlApi.save(config.schedule, y, { rows: gen.rows })   // 走现有整年 PUT(H5 零后端)
+    if (year.value !== y || edit.value) return   // PUT 期间切年/进编辑 → 不覆写当前视图
+    await loadYear(y)         // 重拉:生成行获正式 rowKey,overlay 徽标照常渲染(初始已证√)
+    await reloadOverview()    // 年份门行数立即同步(H1)
+  } catch { /* PUT/重拉失败静默:表照常显示(H1) */ }
+}
+
 // 命中行 rowKey → 对照结果+派生序列(displayRows 已套 draft,编辑中实时重比)
 const rowDerive = computed<Record<string, CompareResult & { derived: (number | null)[] }>>(() => {
   const d = deriveData.value
@@ -116,8 +136,9 @@ function fillAllDerived() {
 async function pickYear(y: number) {
   year.value = y
   resetEdit()
-  void loadDerive(y)   // 不 await:派生失败/慢不阻塞进表
+  const derive = loadDerive(y)   // 不 await:派生失败/慢不阻塞进表
   await loadYear(y)
+  void derive.then(() => tryGenerate(y))   // 两侧就绪才检查;缓存命中 promise 已解同样触发
 }
 function goGate() {
   // 有未保存改动先走保存确认,不静默丢
