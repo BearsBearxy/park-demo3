@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { DERIVE_MAP, loadDeriveData, deriveRow, compareRow, fillRow } from './pnlDerive'
+import { DERIVE_MAP, loadDeriveData, deriveRow, compareRow, fillRow, generateMissingRows } from './pnlDerive'
 import { normalizeHeader } from '@/utils/importHeaderMatch'
+import type { PnlRowDTO } from '@/types/pnl'
 import { s10Api } from '@/api/s10'
 import { pvApi } from '@/api/pv'
 import { chargingApi } from '@/api/charging'
@@ -61,10 +62,12 @@ function primeAll() {
 
 beforeEach(() => { vi.clearAllMocks(); primeAll() })
 
-describe('DERIVE_MAP — 36 条实证映射(spec §2)', () => {
-  it('恰 36 条;label 已 normalize;schedule 合法', () => {
-    expect(DERIVE_MAP).toHaveLength(36)
+describe('DERIVE_MAP — 35 个 (schedule,group,label) 唯一行位(spec §2 分组全表)', () => {
+  it('恰 35 条且组合唯一;label/group 已 normalize;schedule 合法', () => {
+    expect(DERIVE_MAP).toHaveLength(35)
+    expect(new Set(DERIVE_MAP.map(e => `${e.schedule}|${e.group}|${e.label}`)).size).toBe(35)
     expect(DERIVE_MAP.every(e => e.label === normalizeHeader(e.label))).toBe(true)
+    expect(DERIVE_MAP.every(e => e.group === normalizeHeader(e.group))).toBe(true)
     expect(DERIVE_MAP.every(e => /^s[1-5]$/.test(e.schedule))).toBe(true)
   })
 })
@@ -154,5 +157,94 @@ describe('fillRow — 只填空格', () => {
     const rowM = [null, 3, 0, null]
     const derived = [1, 9, 9, null]
     expect(fillRow(rowM, derived).slice(0, 4)).toEqual([1, 3, 0, null])
+  })
+})
+
+// ── generateMissingRows(P2-G2)— 纯函数,DeriveData 手工构造不走 api mock ──
+const seed = (
+  groupLabel: string, label: string,
+  kind: PnlRowDTO['kind'] = 'detail', m: (number | null)[] = Array(12).fill(null),
+): PnlRowDTO => ({ rowKey: 'x', groupLabel, label, kind, note: null, m, sortOrder: 0 })
+
+describe('generateMissingRows — 缺失映射行生成(H1–H4)', () => {
+  const s4Data = {
+    's10|p1|infraOffice+infraFactory': months({ 1: 5 }),
+    's10|p2|infraFactory': months({ 1: 6 }),
+    'chg8|fee': months({ 2: 30 }),
+    'chg8|cost': months({ 2: 10 }),
+    'chg8|profit': months({ 2: 20 }),
+    'chg7|cost': months({ 1: 40 }),
+    's10|p1|landUseTax': months({ 3: 9 }),
+  }
+
+  it('空表全量生成:s4 7 行、组序=MAP 序、损益行 kind=pnl、m=派生原值、rowKey/sortOrder 重建', () => {
+    const res = generateMissingRows('s4', [], s4Data)
+    expect(res?.added).toBe(7)
+    expect(res?.rows.map(r => r.label)).toEqual([
+      '其中：一期', '二期', '电动车冲电桩收入', '电动车充电桩电费成本',
+      '电动车充电桩损益', '汽车充电桩电费成本', '开票税费及其他税费收入',
+    ])
+    expect(res?.rows.map(r => r.groupLabel)).toEqual([
+      '基础设施维护费', '基础设施维护费', '电动车充电桩', '电动车充电桩',
+      '电动车充电桩', '汽车充电桩', '其他费用收入',
+    ])
+    expect(res!.rows[4].kind).toBe('pnl')          // 电动车充电桩损益
+    expect(res!.rows[4].m[1]).toBe(20)             // 派生原值直写(H3)
+    expect(res!.rows[0].m[0]).toBe(5)
+    expect(res!.rows.every(r => r.note === null)).toBe(true)
+    expect(res!.rows.map(r => r.rowKey)).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7'])
+    expect(res!.rows.map(r => r.sortOrder)).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('部分补齐:s1 4 行种子 → 一期 2 行插在「一期企业服务费收入」detail 后、二期 4 行成新组块追加表尾', () => {
+    const rows = [
+      seed('一期、宿舍', '一期租金收入'),
+      seed('一期、宿舍', '一期企业服务费收入', 'detail', months({ 1: 150 })),
+      seed('一期、宿舍', '一期收入小计', 'subtotal'),
+      seed('一期、宿舍', '租金损益', 'pnl'),
+    ]
+    const data = {
+      's10|p1|officeMgmtFee+factoryMgmtFee': months({ 1: 150 }),
+      's10|p1|shopRent': months({ 1: 888 }),
+      's10|p1|shopMgmtFee': months({ 1: 9 }),
+      's10|p2|factoryRent': months({ 1: 2841683.37 }),
+      's10|p2|factoryMgmtFee': months({ 1: 2 }),
+      's10|p2|shopRent': months({ 1: 3 }),
+      's10|p2|shopMgmtFee': months({ 1: 4 }),
+    }
+    const res = generateMissingRows('s1', rows, data)
+    expect(res?.added).toBe(6)
+    expect(res?.rows.map(r => r.label)).toEqual([
+      '一期租金收入', '一期企业服务费收入', '一期商铺租金收入', '一期商铺企业服务费收入',
+      '一期收入小计', '租金损益',
+      '二期租金收入', '二期企业服务收入', '二期商铺收入', '二期商铺企业服务收入',
+    ])
+    expect(res!.rows.slice(6).every(r => r.groupLabel === '二期')).toBe(true)
+    expect(res!.rows[6].m[0]).toBeCloseTo(2841683.37, 2)
+    expect(res!.rows[1].m[0]).toBe(150)   // 既有行不重复生成,原值保留
+  })
+
+  it('同标签双分组独立判定:光伏发电组已有 → 只生成基准电费组同标签行;normalize 级判重(半角括号不重复)', () => {
+    const rows = [
+      seed('光伏发电', '一期光伏发电消纳', 'detail', months({ 1: 12 })),
+      seed('基准电费(供电)', '减：办公室电费', 'detail', months({ 1: 500 })),
+    ]
+    const data = { 'pv|p1|selfAmt': months({ 1: 12 }), 'office|elecAmt': months({ 1: 500 }) }
+    const res = generateMissingRows('s2', rows, data)
+    expect(res?.added).toBe(1)
+    const g = res!.rows.find(r => r.groupLabel === '基准电费（供电）')
+    expect(g?.label).toBe('一期光伏发电消纳')
+    expect(g?.m[0]).toBe(12)
+    expect(res!.rows.filter(r => r.label === '一期光伏发电消纳')).toHaveLength(2)
+  })
+
+  it('全空序列/无序列 → 不生成', () => {
+    expect(generateMissingRows('s4', [], { 'chg8|fee': Array(12).fill(null) })).toBeNull()
+    expect(generateMissingRows('s4', [], {})).toBeNull()
+  })
+
+  it('已齐全 → null', () => {
+    const rows = [seed('汽车充电桩', '汽车充电桩电费成本', 'detail', months({ 1: 40 }))]
+    expect(generateMissingRows('s4', rows, { 'chg7|cost': months({ 1: 40 }) })).toBeNull()
   })
 })
