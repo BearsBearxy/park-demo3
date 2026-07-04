@@ -154,8 +154,8 @@ class S10ApiIT extends AbstractMysqlIT {
         assertThat(((Number) JsonPath.read(month, "$.data.columnTotals.factoryRent")).doubleValue())
                 .isEqualTo(1500.00);
 
-        // PUT note
-        mvc.perform(put("/api/s10/" + id + "/note").header("Authorization", auth())
+        // PATCH note
+        mvc.perform(patch("/api/s10/" + id + "/note").header("Authorization", auth())
                 .contentType("application/json").content("{\"note\":\"集成备注\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))

@@ -13,7 +13,7 @@ export const s10Api = {
     http.get('/s10/year-summary', { params: { year } }),
   saveRecord: (req: S10RecordReq): Promise<S10RecordDTO> => http.post('/s10', req),
   updateNote: (id: number, note: string | null): Promise<void> =>
-    http.put(`/s10/${id}/note`, { note }),
+    http.patch(`/s10/${id}/note`, { note }),
   deleteRecord: (id: number): Promise<void> => http.delete(`/s10/${id}`),
   // 软引用 upsert(source='import'、tenant_id=null)。契约路径 §4.2。重导=替换本槽导入行。
   importRows: (req: S10ImportRequest): Promise<ImportResultDTO> => http.post('/s10/import', req),
