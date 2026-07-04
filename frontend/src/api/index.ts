@@ -30,7 +30,7 @@ http.interceptors.response.use(
     }
     return response.data
   },
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('displayName')
@@ -39,8 +39,20 @@ http.interceptors.response.use(
       if (!location.pathname.startsWith('/login')) {
         location.href = '/login?redirect=' + encodeURIComponent(location.pathname + location.search)
       }
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+    // 非 2xx 也解包 Result 信封：校验错误(HTTP 400)的后端中文 message 直达视图 alert，
+    // 不再退化成英文 AxiosError 文案（HTTP 状态口径见后端 GlobalExceptionHandler 头注释）
+    const body = error.response?.data
+    const enveloped = body && typeof body === 'object' && 'code' in body
+    // 5xx / 断网：读路径普遍无 catch，全局 toast 兜底提示（动态 import 避免 pinia 未装载时的循环依赖）
+    if (!error.response || error.response.status >= 500) {
+      try {
+        const { useUiStore } = await import('@/stores/ui')
+        useUiStore().reportNetError(enveloped ? (body as { message?: string }).message ?? '服务异常' : '网络异常或服务不可用，请稍后重试')
+      } catch { /* pinia 未就绪(极早期请求)时静默 */ }
+    }
+    return Promise.reject(enveloped ? body : error)
   },
 )
 

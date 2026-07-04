@@ -8,6 +8,7 @@ import Toolbar from '@/components/shell/Toolbar.vue'
 import CommandPalette from '@/components/shell/CommandPalette.vue'
 
 const ui = useUiStore()
+const reloadPage = () => window.location.reload()
 
 const paletteOpen = ref(false)
 const paletteMode = ref<'jump' | 'new'>('jump')
@@ -60,6 +61,15 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
     :mode="paletteMode"
     @close="paletteOpen = false"
   />
+
+  <!-- 全局网络错误 toast(读路径加载失败的兜底提示,8s 自动消失) -->
+  <Teleport to="body">
+    <div v-if="ui.netError" class="fp-net-toast" role="alert">
+      <span class="msg">{{ ui.netError }}</span>
+      <button class="act" @click="reloadPage">刷新</button>
+      <button class="act ghost" @click="ui.dismissNetError()">×</button>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -71,6 +81,16 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
   gap: 12px;
   box-sizing: border-box;
 }
+
+/* ── 全局网络错误 toast ── */
+.fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
+  display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
+  background:var(--ink-900); color:#fff; border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.32); font-size:13px; }
+.fp-net-toast .msg { min-width:0; }
+.fp-net-toast .act { flex:0 0 auto; height:26px; padding:0 10px; border:1px solid rgba(255,255,255,.35); border-radius:var(--radius-sm);
+  background:transparent; color:#fff; font-size:12px; cursor:pointer; }
+.fp-net-toast .act:hover { background:rgba(255,255,255,.14); }
+.fp-net-toast .act.ghost { border-color:transparent; padding:0 6px; }
 
 /* ── nav card ── */
 .fp-nav-card {

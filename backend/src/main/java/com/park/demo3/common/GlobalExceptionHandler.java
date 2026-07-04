@@ -9,6 +9,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import java.util.NoSuchElementException;
 
+// HTTP 状态口径(项目约定,勿混用):
+//   业务错误(BizException/重复/查无) → HTTP 200 + body.code(404/409/…),前端按 code 分支展示中文;
+//   入参校验失败(@Valid/@Validated)  → HTTP 400 + body.code=400,保留 4xx 供监控统计;
+//   未认证 → 401(SecurityConfig);未捕获异常 → 500。
+// 前端拦截器对非 2xx 也解包 Result 信封,故两轨的用户提示一致(api/index.ts)。
 @Slf4j
 @RestControllerAdvice(basePackages = "com.park.demo3.controller")
 public class GlobalExceptionHandler {

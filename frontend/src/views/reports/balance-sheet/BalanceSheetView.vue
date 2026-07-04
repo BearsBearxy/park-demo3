@@ -77,16 +77,17 @@ async function loadYear() {
       let hasData = false, preview = 0
       for (const y of all) {
         const mm = y.months.find(x => x.month === m)
-        if (mm?.hasData) { hasData = true; preview += mm.netPreview }
+        if (mm?.hasData) { hasData = true; preview += mm.netPreview }   // bs 无 'cur' 预览字段,netPreview 恒 0
       }
-      return { month: m, hasData, preview: hasData ? finMoney(preview) : undefined }
+      // 零值预览抑制:bs 只存 field='end',后端 netPreview(行1 cur)恒 0,显 ¥0.00 是误导 → 月卡只标「已录入」
+      return { month: m, hasData, preview: hasData && preview ? finMoney(preview) : undefined }
     })
   } else {
     const y = await reportApi.year(STMT, companyId.value as number, year.value)
     metas = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1
       const mm = y.months.find(x => x.month === m)
-      return { month: m, hasData: !!mm?.hasData, preview: mm?.hasData ? finMoney(mm.netPreview) : undefined }
+      return { month: m, hasData: !!mm?.hasData, preview: mm?.hasData && mm.netPreview ? finMoney(mm.netPreview) : undefined }
     })
   }
   if (reqId === yearReq) yearMonths.value = metas

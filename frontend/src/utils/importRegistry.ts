@@ -1,7 +1,6 @@
 // 导入类型单一事实源(registry)+ runImport 记录链。
-// 各屏与导入中心 hub 都从这里取「解析配置(modalProps) + 执行(run)」,导入后统一上报 import_log。
-// 注:本轮(P-Import-3 hub-first)hub 消费本文件;7 个原屏本轮暂未改造(仍用各自屏内配置),
-//     故工资/办公列映射在此临时复制,下一轮 T5 dedup 时各屏改为从此取、消除重复。
+// 各屏与导入中心 hub 都从这里取「解析配置(modalProps/parserProps) + 执行(runImport)」,导入后统一上报 import_log。
+// T5 已完成(45cf8bf):全部原屏均经 parserProps()/runImport() 消费本 registry,屏内不再有重复列映射。
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { importLogApi } from '@/api/importLog'

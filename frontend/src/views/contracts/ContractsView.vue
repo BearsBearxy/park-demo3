@@ -170,12 +170,13 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
           租赁合同与续签 · 主数据 · 共 {{ summary ? contracts.length : '…' }} 份
         </p>
       </div>
-      <div style="display:flex;gap:8px">
-        <Button variant="outline" size="sm">
+      <!-- ponytail: 合同写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
+      <div style="display:flex;gap:8px" title="开发中 · 合同暂为只读,写接口尚未提供">
+        <Button variant="outline" size="sm" disabled>
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button variant="filled" size="sm">
+        <Button variant="filled" size="sm" disabled>
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增合同
         </Button>
@@ -186,7 +187,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
     <template v-if="summary">
     <!-- 2. KPI grid -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
-      <KpiCard label="执行中" :value="String(summary.contractActive)" delta="+2" tint="slate">
+      <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate">
         <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
       </KpiCard>
       <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan">
@@ -195,7 +196,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky">
         <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" delta="+3.4%" tint="blue">
+      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue">
         <template #icon><component :is="iconFor('coins')" :size="16" /></template>
       </KpiCard>
     </div>

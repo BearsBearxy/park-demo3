@@ -121,14 +121,15 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
           在租租户档案 · 主数据 · 共 {{ summary ? tenants.length : '…' }} 户
         </p>
       </div>
-      <div style="display:flex;gap:8px">
-        <Button variant="outline" size="sm">
+      <!-- ponytail: 租户写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
+      <div style="display:flex;gap:8px" title="开发中 · 租户暂为只读,写接口尚未提供">
+        <Button variant="outline" size="sm" disabled>
           <template #leading>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </template>
           导入
         </Button>
-        <Button variant="filled" size="sm">
+        <Button variant="filled" size="sm" disabled>
           <template #leading>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </template>
@@ -141,13 +142,13 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
     <template v-if="summary">
     <!-- 2. KPI bar -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
-      <KpiCard label="在租租户" :value="String(summary.tenantActive)" delta="+4" tint="slate">
+      <KpiCard label="在租租户" :value="String(summary.tenantActive)" tint="slate">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" delta="+1.2%" tint="sky">
+      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="sky">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" delta="+3.4%" tint="blue">
+      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue">
         <template #icon><component :is="iconFor('coins')" :size="16" /></template>
       </KpiCard>
       <KpiCard label="合同将到期" :value="String(summary.expiringTenants)" delta="户需续签" trend="down" tint="cyan">

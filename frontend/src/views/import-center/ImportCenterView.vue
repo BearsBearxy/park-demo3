@@ -27,7 +27,9 @@ const sort = ref<SortState | null>({ key: 'createdAt', dir: 'desc' })
 // ledger 上下文表单
 const ledgerForm = ref(false)
 const companies = ref<CompanyDTO[]>([])
-const lf = ref<{ companyId: number | null; year: number; month: number }>({ companyId: null, year: 2026, month: 1 })
+// 默认会计期 = 当前年月(不硬编码,跨年自适应)
+const now = new Date()
+const lf = ref<{ companyId: number | null; year: number; month: number }>({ companyId: null, year: now.getFullYear(), month: now.getMonth() + 1 })
 
 onMounted(reload)
 async function reload() { overview.value = await importLogApi.overview() }
@@ -65,7 +67,7 @@ async function openImport(entry: ImportTypeEntry) {
   ctx.value = {}
   if (entry.context === 'ledger') {
     if (!companies.value.length) companies.value = await companyApi.list()
-    lf.value = { companyId: companies.value[0]?.id ?? null, year: 2026, month: 1 }
+    lf.value = { companyId: companies.value[0]?.id ?? null, year: now.getFullYear(), month: now.getMonth() + 1 }
     ledgerForm.value = true
     return
   }

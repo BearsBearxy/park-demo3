@@ -139,12 +139,13 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
           园区楼栋资产与空间台账 · 主数据 · 共 {{ summary ? buildings.length : '…' }} 栋 / {{ summary?.unitCount ?? '—' }} 单元
         </p>
       </div>
-      <div style="display:flex;gap:8px">
-        <Button variant="outline" size="sm">
+      <!-- ponytail: 楼栋写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
+      <div style="display:flex;gap:8px" title="开发中 · 楼栋暂为只读,写接口尚未提供">
+        <Button variant="outline" size="sm" disabled>
           <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></template>
           导入
         </Button>
-        <Button variant="filled" size="sm">
+        <Button variant="filled" size="sm" disabled>
           <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
           新增楼栋
         </Button>
@@ -158,10 +159,10 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       <KpiCard label="楼栋总数" :value="String(summary.buildingCount)" :delta="`${stoppedCount} 栋停用`" tint="slate">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" delta="+0.0%" tint="sky">
+      <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" tint="sky">
         <template #icon><component :is="iconFor('ruler')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" delta="+1.2%" tint="blue">
+      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="blue">
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
       <KpiCard label="空置单元" :value="String(summary.vacantCount)" delta="待招商" trend="down" tint="cyan">
