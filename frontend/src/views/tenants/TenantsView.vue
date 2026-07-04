@@ -16,6 +16,7 @@ import FPSortableTable from '@/components/fp/FPSortableTable.vue'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
 import TenantDrawer from './TenantDrawer.vue'
+import TenantNewDialog from './TenantNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 
 // ponytail: industryTone config — 1:1 from screen-tenants.jsx comments
@@ -37,10 +38,17 @@ const page = ref(1)
 const pageSize = 8
 
 const openTenant = ref<TenantDTO | null>(null)
+const newDlg = ref(false)
 
 onMounted(async () => {
   ;[tenants.value, summary.value] = await Promise.all([tenantApi.list(), tenantApi.summary()])
 })
+
+// 新增成功 → 关弹窗并重拉 list+summary
+async function onTenantCreated() {
+  newDlg.value = false
+  ;[tenants.value, summary.value] = await Promise.all([tenantApi.list(), tenantApi.summary()])
+}
 
 // ─── computed ─────────────────────────────────────────────
 const phaseCounts = computed(() => {
@@ -55,7 +63,8 @@ const filtered = computed(() =>
   tenants.value
     .filter(t => phase.value === 'all' || t.phase === phase.value)
     .filter(t => statusFilter.value === '全部状态' || t.status === STATUS_MAP[statusFilter.value])
-    .filter(t => !q.value.trim() || t.companyName.includes(q.value.trim()) || t.contactName.includes(q.value.trim()) || t.contactPhone.includes(q.value.trim()))
+    // 联系人/电话可空(新增租户选填),?? 兜底防 null.includes 炸
+    .filter(t => !q.value.trim() || t.companyName.includes(q.value.trim()) || (t.contactName ?? '').includes(q.value.trim()) || (t.contactPhone ?? '').includes(q.value.trim()))
 )
 
 const TABLE_COLUMNS = computed(() => [
@@ -121,15 +130,17 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
           在租租户档案 · 主数据 · 共 {{ summary ? tenants.length : '…' }} 户
         </p>
       </div>
-      <!-- ponytail: 租户写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
-      <div style="display:flex;gap:8px" title="开发中 · 租户暂为只读,写接口尚未提供">
-        <Button variant="outline" size="sm" disabled>
-          <template #leading>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          </template>
-          导入
-        </Button>
-        <Button variant="filled" size="sm" disabled>
+      <div style="display:flex;gap:8px">
+        <!-- ponytail: 租户导入未实现,按钮显式 disabled(诚实),避免可点无响应 -->
+        <span title="导入开发中">
+          <Button variant="outline" size="sm" disabled>
+            <template #leading>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </template>
+            导入
+          </Button>
+        </span>
+        <Button variant="filled" size="sm" @click="newDlg = true">
           <template #leading>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </template>
@@ -212,5 +223,8 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       :tenant="openTenant"
       @close="openTenant = null"
     />
+
+    <!-- 7. 新增租户弹窗 -->
+    <TenantNewDialog v-if="newDlg" @close="newDlg = false" @created="onTenantCreated" />
   </div>
 </template>

@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, h } from 'vue'
 import { buildingApi } from '@/api/building'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
-import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO } from '@/types/building'
+import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq } from '@/types/building'
 import { fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
@@ -17,6 +17,7 @@ import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import BuildingCard from './BuildingCard.vue'
 import BuildingDrawer from './BuildingDrawer.vue'
+import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 
 // ─── state ───────────────────────────────────────────────
@@ -34,9 +35,22 @@ const pageSize = 8
 const openBuilding = ref<BuildingDTO | null>(null)
 const drawerDetail = ref<BuildingDetailDTO | null>(null)
 
-onMounted(async () => {
+async function load() {
   ;[buildings.value, summary.value] = await Promise.all([buildingApi.list(), buildingApi.summary()])
-})
+}
+onMounted(load)
+
+// 新增楼栋
+const newDlg = ref(false)
+async function createBuilding(req: BuildingCreateReq) {
+  try {
+    await buildingApi.create(req)
+    newDlg.value = false
+    await load()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '新建楼栋失败')
+  }
+}
 
 watch(layout, (v) => localStorage.setItem('fp-bd-layout', v))
 
@@ -139,13 +153,15 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
           园区楼栋资产与空间台账 · 主数据 · 共 {{ summary ? buildings.length : '…' }} 栋 / {{ summary?.unitCount ?? '—' }} 单元
         </p>
       </div>
-      <!-- ponytail: 楼栋写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
-      <div style="display:flex;gap:8px" title="开发中 · 楼栋暂为只读,写接口尚未提供">
-        <Button variant="outline" size="sm" disabled>
-          <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></template>
-          导入
-        </Button>
-        <Button variant="filled" size="sm" disabled>
+      <div style="display:flex;gap:8px">
+        <!-- ponytail: 楼栋导入未实现,按钮显式 disabled(诚实),避免可点无响应 -->
+        <span title="导入开发中">
+          <Button variant="outline" size="sm" disabled>
+            <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></template>
+            导入
+          </Button>
+        </span>
+        <Button variant="filled" size="sm" @click="newDlg = true">
           <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
           新增楼栋
         </Button>
@@ -238,6 +254,14 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       :building="openBuilding"
       :detail="drawerDetail"
       @close="onCloseDrawer"
+    />
+
+    <!-- 8. 新增楼栋弹窗 -->
+    <BuildingNewDialog
+      v-if="newDlg"
+      :existing-names="buildings.map(b => b.name)"
+      @close="newDlg = false"
+      @create="createBuilding"
     />
   </div>
 </template>

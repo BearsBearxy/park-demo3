@@ -9,6 +9,21 @@ export interface ContractDTO {
   remark: string | null
 }
 
+export interface ContractCreateReq {
+  contractNo: string
+  tenantId: number
+  buildingId: number
+  unitId?: number | null
+  rentArea?: number
+  monthlyRent?: number
+  deposit?: number
+  startDate?: string | null
+  endDate?: string | null
+  signDate?: string | null
+  status: string
+  remark?: string | null
+}
+
 export interface ContractSummaryDTO {
   total: number; contractActive: number; contractExpiring: number
   contractDraft: number; monthlyRent: number

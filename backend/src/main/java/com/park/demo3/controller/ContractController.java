@@ -3,6 +3,7 @@ import com.park.demo3.dto.*;
 import com.park.demo3.service.ContractService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -18,6 +19,9 @@ public class ContractController {
 
     @Operation(summary = "合同 KPI 汇总") @GetMapping("/summary")
     public ContractSummaryDTO summary() { return svc.summary(); }
+
+    @Operation(summary = "新增合同") @PostMapping
+    public ContractDTO create(@Valid @RequestBody ContractCreateReq req) { return svc.create(req); }
 
     @Operation(summary = "合同详情（含租户快照）") @GetMapping("/{id}")
     public ContractDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }

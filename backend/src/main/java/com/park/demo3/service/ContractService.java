@@ -1,4 +1,7 @@
 package com.park.demo3.service;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.park.demo3.common.BizException;
+import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
@@ -75,6 +78,43 @@ public class ContractService {
             t.getBusinessType(), t.getStatus()
         );
         return new ContractDetailDTO(dto, snap);
+    }
+
+    public ContractDTO create(ContractCreateReq req) {
+        if (contracts.selectCount(new QueryWrapper<Contract>().eq("contract_no", req.contractNo())) > 0)
+            throw new BizException(ResultCode.CONFLICT, "合同号已存在");
+        Tenant t = tenants.selectById(req.tenantId());
+        if (t == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        Building b = buildings.selectById(req.buildingId());
+        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
+        Unit u = null;
+        if (req.unitId() != null) {
+            u = units.selectById(req.unitId());
+            if (u == null || !Objects.equals(u.getBuildingId(), req.buildingId()))
+                throw new BizException(ResultCode.CONFLICT, "单元不存在或不属于所选楼栋");
+        }
+        if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
+            throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
+
+        Contract c = new Contract();
+        c.setContractNo(req.contractNo());
+        c.setTenantId(req.tenantId());
+        c.setBuildingId(req.buildingId());
+        c.setUnitId(req.unitId());
+        c.setRentArea(req.rentArea() != null ? req.rentArea() : BigDecimal.ZERO);
+        c.setMonthlyRent(req.monthlyRent() != null ? req.monthlyRent() : BigDecimal.ZERO);
+        c.setDeposit(req.deposit() != null ? req.deposit() : BigDecimal.ZERO);
+        c.setStartDate(req.startDate());
+        c.setEndDate(req.endDate());
+        c.setSignDate(req.signDate());
+        c.setStatus(req.status());
+        c.setRemark(req.remark());
+        contracts.insert(c);
+
+        Contract saved = contracts.selectById(c.getId());
+        Map<Integer,String> uFloor = (u != null && u.getFloor() != null && u.getUnitNo() != null)
+            ? Map.of(u.getId(), u.getFloor() + "F-" + u.getUnitNo()) : Map.of();
+        return toDTO(saved, Map.of(t.getId(), t.getCompanyName()), Map.of(b.getId(), b.getName()), uFloor);
     }
 
     // ponytail: shared derivation — list() and detail() both call this

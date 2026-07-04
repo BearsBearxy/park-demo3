@@ -7,6 +7,12 @@ export interface BuildingDTO {
   remark?: string | null
 }
 
+export interface BuildingCreateReq {
+  name: string; phase: number; floorCount: number
+  totalArea: number; rentableArea: number
+  perFloor: number; remark?: string
+}
+
 export interface BuildingSummaryDTO {
   buildingCount: number; stoppedCount: number; rentableArea: number
   occRate: number; vacantCount: number; unitCount: number

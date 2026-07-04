@@ -15,6 +15,7 @@ import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import ContractLifecycleTabs from './ContractLifecycleTabs.vue'
 import ContractDrawer from './ContractDrawer.vue'
+import ContractNewDialog from './ContractNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
 
 // ─── state ───────────────────────────────────────────────
@@ -27,10 +28,17 @@ const sort = ref<SortState | null>({ key: 'daysToEnd', dir: 'asc' })
 const page = ref(1)
 const pageSize = 8
 const openContract = ref<ContractDTO | null>(null)
+const showNew = ref(false)
 
-onMounted(async () => {
+async function reload() {
   ;[contracts.value, summary.value] = await Promise.all([contractApi.list(), contractApi.summary()])
-})
+}
+onMounted(reload)
+
+async function onCreated() {
+  showNew.value = false
+  await reload()
+}
 
 // ─── phase filter ─────────────────────────────────────────
 // ponytail: phaseName not in ContractDTO; we derive it inline from buildingName suffix heuristic
@@ -170,13 +178,15 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
           租赁合同与续签 · 主数据 · 共 {{ summary ? contracts.length : '…' }} 份
         </p>
       </div>
-      <!-- ponytail: 合同写接口未实现,按钮显式 disabled(诚实),避免可点无响应 -->
-      <div style="display:flex;gap:8px" title="开发中 · 合同暂为只读,写接口尚未提供">
-        <Button variant="outline" size="sm" disabled>
-          <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-          导入
-        </Button>
-        <Button variant="filled" size="sm" disabled>
+      <!-- ponytail: 导入尚未提供,保持显式 disabled;新增已接写接口 -->
+      <div style="display:flex;gap:8px">
+        <span title="导入开发中">
+          <Button variant="outline" size="sm" disabled>
+            <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+            导入
+          </Button>
+        </span>
+        <Button variant="filled" size="sm" @click="showNew = true">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增合同
         </Button>
@@ -258,5 +268,8 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       :contract="openContract"
       @close="openContract = null"
     />
+
+    <!-- 8. 新增合同弹窗 -->
+    <ContractNewDialog v-if="showNew" @close="showNew = false" @created="onCreated" />
   </div>
 </template>

@@ -1,8 +1,12 @@
 package com.park.demo3.service;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.park.demo3.common.BizException;
+import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal; import java.math.RoundingMode;
 import java.util.*; import java.util.stream.Collectors;
 
@@ -91,6 +95,36 @@ public class BuildingService {
             );
         }).toList();
         return new BuildingDetailDTO(dto, unitDTOs);
+    }
+
+    @Transactional
+    public BuildingDTO create(BuildingCreateReq req) {
+        if (buildings.selectCount(new QueryWrapper<Building>().eq("name", req.name())) > 0)
+            throw new BizException(ResultCode.CONFLICT, "楼栋名称已存在");
+        int perFloor = req.perFloor() == null ? 0 : req.perFloor();
+        Building b = new Building();
+        b.setName(req.name()); b.setPhase(req.phase()); b.setFloorCount(req.floorCount());
+        b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
+        b.setStatus(1); b.setPerFloor(perFloor); b.setRemark(req.remark());
+        buildings.insert(b);
+        if (perFloor > 0) {
+            // unit_no 沿用 V2__seed 惯例: floor*100+seq(101/102…);面积=可租面积均摊 2 位小数,末个单元补差额使合计精确
+            int total = req.floorCount() * perFloor;
+            BigDecimal each = req.rentableArea().divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
+            BigDecimal last = req.rentableArea().subtract(each.multiply(BigDecimal.valueOf(total - 1)));
+            int n = 0;
+            for (int f = 1; f <= req.floorCount(); f++) {
+                for (int s = 1; s <= perFloor; s++) {
+                    n++;
+                    Unit u = new Unit();
+                    u.setBuildingId(b.getId()); u.setFloor(f);
+                    u.setUnitNo(String.valueOf(f * 100 + s));
+                    u.setArea(n == total ? last : each);
+                    units.insert(u);
+                }
+            }
+        }
+        return toDTO(buildings.selectById(b.getId()), units.selectByBuildingId(b.getId()), List.of());
     }
 
     public BuildingSummaryDTO summary() {

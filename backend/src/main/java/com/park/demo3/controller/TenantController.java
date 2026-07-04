@@ -3,6 +3,7 @@ import com.park.demo3.dto.*;
 import com.park.demo3.service.TenantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 @Tag(name = "租户")
@@ -15,6 +16,8 @@ public class TenantController {
     public List<TenantDTO> list() { return svc.list(); }
     @Operation(summary = "租户 KPI 汇总") @GetMapping("/summary")
     public TenantSummaryDTO summary() { return svc.summary(); }
+    @Operation(summary = "新增租户") @PostMapping
+    public TenantDTO create(@Valid @RequestBody TenantCreateReq req) { return svc.create(req); }
     @Operation(summary = "租户详情（含合同历史）") @GetMapping("/{id}")
     public TenantDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }
 }

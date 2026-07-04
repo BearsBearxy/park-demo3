@@ -1,5 +1,6 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.park.demo3.common.BizException; import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
@@ -36,6 +37,22 @@ public class TenantService {
             .map(Contract::getTenantId).distinct().count();
         double occRate = buildingService.summary().occRate();
         return new TenantSummaryDTO(active, occRate, monthly, expiringTenants);
+    }
+
+    // tenant 表无 company_name 唯一键(仅普通索引 idx_tenant_name),应用层 selectCount 查重
+    public TenantDTO create(TenantCreateReq req) {
+        if (tenants.selectCount(new QueryWrapper<Tenant>().eq("company_name", req.companyName())) > 0)
+            throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
+        if (req.categoryId() != null && categories.selectById(req.categoryId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户分类不存在");
+        Tenant t = new Tenant();
+        t.setCompanyName(req.companyName()); t.setBusinessType(req.businessType());
+        t.setContactName(req.contactName()); t.setContactPhone(req.contactPhone());
+        t.setCategoryId(req.categoryId()); t.setPhase(req.phase()); t.setSince(req.since());
+        t.setRemark(req.remark()); t.setStatus(1);
+        tenants.insert(t);
+        // 新租户无合同:buildTenantDto 对空合同列表返回 月租/面积=0、楼栋"—"、合同数 0,不炸
+        return buildTenantDto(tenants.selectById(t.getId()), List.of(), Map.of());
     }
 
     public List<TenantCategoryDTO> categoriesList() {
