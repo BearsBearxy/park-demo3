@@ -1,14 +1,17 @@
 <script setup lang="ts">
-// 月度台账四级状态机 — companyId(null=⓪) / year / month(null=①) / drawerTenantId / edit.
-// 动线 1:1 from screen-ledger.jsx LedgerScreen (386-718): ⓪选公司 → ①年/月历 → ②宽表 → ③抽屉。
+// 月度台账状态机 — companyId(null=⓪) / yearGated(false=①年份门) / month(null=②月历) / drawerTenantId / edit.
+// 动线: ⓪选公司 → ①年份门(SchedYearGate,同附表) → ②月历 → ③宽表 → ④抽屉。
 import { ref, computed, onMounted } from 'vue'
 import { companyApi, ledgerApi } from '@/api/ledger'
-import type { CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
+import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
 import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import LedgerCompanyPicker from './LedgerCompanyPicker.vue'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
+import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
+import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
+import { yearCardsOf, gateCurrentOf } from '@/utils/yearGate'
 import LedgerMonthGrid from './LedgerMonthGrid.vue'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
@@ -17,8 +20,10 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 
 // ── 状态机 ───────────────────────────────────────────────
 const companyId = ref<number | null>(null)   // null → ⓪ 选公司
+const yearGated = ref(false)                   // false → ① 年份门
+const gateYears = ref<YearMonthsDTO[] | null>(null)  // ① 有数据年份(§6 加载门)
 const year = ref(new Date().getFullYear())
-const month = ref<number | null>(null)         // null → ① 年/月历
+const month = ref<number | null>(null)         // null → ② 月历
 const drawerTenantId = ref<number | null>(null)
 const edit = ref(false)
 const newDlg = ref(false)
@@ -80,23 +85,55 @@ async function loadMonth() {
 
 // ── 状态迁移 ─────────────────────────────────────────────
 async function pickCompany(id: number) {
-  companyId.value = id; month.value = null; edit.value = false; drawerTenantId.value = null
+  companyId.value = id; yearGated.value = false; gateYears.value = null
+  month.value = null; edit.value = false; drawerTenantId.value = null
+  // 旧 overview/monthDto 一并清:否则 gateYears 加载期间 v-if 链穿透到旧数据,宽表闪现
+  overview.value = null; monthDto.value = null
+  gateYears.value = await ledgerApi.years(id)
+}
+async function pickYear(y: number) {
+  year.value = y; yearGated.value = true; overview.value = null; monthDto.value = null
   await loadOverview()
 }
+function backToYears() {
+  yearGated.value = false; month.value = null; edit.value = false; drawerTenantId.value = null
+  if (companyId.value != null) ledgerApi.years(companyId.value).then(v => { gateYears.value = v })
+}
 function goGate() {
-  companyId.value = null; month.value = null; edit.value = false; drawerTenantId.value = null
+  companyId.value = null; yearGated.value = false; gateYears.value = null
+  month.value = null; edit.value = false; drawerTenantId.value = null
   loadCompanies()
 }
 async function setYear(y: number) {
   year.value = y
   await loadOverview()
 }
+// ① 年份门卡片(数据年∪当前年连续区间;区间外年份走门内「新增年份」)
+const yearCards = computed<YearCard[]>(() => yearCardsOf(gateYears.value, '已录入台账月份'))
+const gateCurrent = computed(() => gateCurrentOf(yearCards.value))
 async function pickMonth(m: number) {
   month.value = m; edit.value = false; drawerTenantId.value = null
   await loadMonth()
 }
 function backToMonths() {
   month.value = null; edit.value = false; drawerTenantId.value = null
+}
+
+// 删除公司(确认弹窗复用 FinDialogs delco;后端级联删除其台账+报表数据)
+const dlg = ref<FinDialog | null>(null)
+function onDeleteCompany(c: CompanyDTO) {
+  dlg.value = { type: 'delco', company: { id: c.id, name: c.name, short: c.short } }
+}
+async function confirmDeleteCompany() {
+  const d = dlg.value
+  if (d?.type !== 'delco') return
+  try {
+    await companyApi.remove(Number(d.company.id))
+    dlg.value = null
+    await loadCompanies()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '删除公司失败')
+  }
 }
 
 // 新建公司 → 进入①
@@ -192,6 +229,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
       :cur-month="dataMonth"
       @pick="pickCompany"
       @new-company="newDlg = true"
+      @delete-company="onDeleteCompany"
     />
     <div v-else class="page-loading"><span class="page-spin" /></div>
     <LedgerNewCompanyDialog
@@ -202,15 +240,31 @@ async function onImport(recs: ImportRec[], fileName: string) {
     />
   </template>
 
-  <!-- ① 年/月历 -->
+  <!-- ① 年份门(同附表 SchedYearGate) -->
+  <SchedYearGate
+    v-else-if="!yearGated && gateYears && company"
+    icon="calendar"
+    :title="'月度台账 · ' + company.name"
+    sub="先选择年份,再进入该年的月历与月度宽表 · 每个年份是一份独立的逐月台账"
+    :years="yearCards"
+    :current="gateCurrent"
+    :store-key="'ledger-' + companyId"
+    back-label="返回公司选择"
+    footer="进入年份后按月录入或导入;可新增更早 / 未来年份。"
+    @pick="pickYear"
+    @back="goGate"
+  />
+
+  <!-- ② 年/月历 -->
   <LedgerMonthGrid
-    v-else-if="month === null && overview && company"
+    v-else-if="yearGated && month === null && overview && company"
     :overview="overview"
     :company-name="company.name"
     :company-short="company.short"
     :year="year"
     :max-year="maxYear"
     @switch-company="goGate"
+    @back="backToYears"
     @year="setYear"
     @pick-month="pickMonth"
   />
@@ -259,4 +313,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
   <div v-else class="page-loading"><span class="page-spin" /></div>
 
   <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+
+  <!-- 删除公司确认(自管显隐,放最后不打断上方状态链) -->
+  <FinDialogs :dlg="dlg" :companies="[]" @close="dlg = null" @confirm-delete="confirmDeleteCompany" />
 </template>

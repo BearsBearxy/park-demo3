@@ -17,6 +17,9 @@ public class LedgerController {
     private final LedgerService svc;
     public LedgerController(LedgerService svc) { this.svc = svc; }
 
+    @Operation(summary = "有数据的年份+各年月份数(年份门)") @GetMapping("/years")
+    public java.util.List<YearMonthsDTO> years(@PathVariable Integer id) { return svc.years(id); }
+
     @Operation(summary = "年度概览") @GetMapping("/overview")
     public LedgerOverviewDTO overview(@PathVariable Integer id, @RequestParam @Min(2000) @Max(2100) int year) {
         return svc.overview(id, year);

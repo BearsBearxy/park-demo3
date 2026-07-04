@@ -8,6 +8,12 @@ export interface CompanyDTO {
   sortNo: number
 }
 
+// 年份门:有数据的年份 + 该年已录入月份数(台账/三大报表共用,镜像后端 YearMonthsDTO)
+export interface YearMonthsDTO {
+  year: number
+  months: number
+}
+
 export interface MonthMeta {
   month: number
   recv: number

@@ -4,6 +4,9 @@ import com.park.demo3.dto.CompanyDTO;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
+import com.park.demo3.mapper.ReportAccountMapper;
+import com.park.demo3.mapper.ReportAmountMapper;
+import com.park.demo3.mapper.ReportCustomRowMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
@@ -13,7 +16,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CompanyServiceTest {
     ManagementCompanyMapper cm = Mockito.mock(ManagementCompanyMapper.class);
     MonthlyLedgerMapper lm = Mockito.mock(MonthlyLedgerMapper.class);
-    CompanyService svc = new CompanyService(cm, lm);
+    ReportAmountMapper ram = Mockito.mock(ReportAmountMapper.class);
+    ReportCustomRowMapper rcm = Mockito.mock(ReportCustomRowMapper.class);
+    ReportAccountMapper racm = Mockito.mock(ReportAccountMapper.class);
+    CompanyService svc = new CompanyService(cm, lm, ram, rcm, racm);
 
     ManagementCompany co(int id, String name) {
         ManagementCompany c = new ManagementCompany();
@@ -60,19 +66,21 @@ class CompanyServiceTest {
             .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(404));
     }
 
-    @Test void delete_guard_409_whenLedgerRowsExist() {
+    @Test void delete_cascadesLedgerAndReportDataThenCompany() {
         Mockito.when(cm.selectById(1)).thenReturn(co(1, "园区租赁管理公司"));
-        Mockito.when(lm.selectCount(ArgumentMatchers.any())).thenReturn(5L);
-        assertThatThrownBy(() -> svc.delete(1))
-            .isInstanceOf(BizException.class)
-            .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(409));
-        Mockito.verify(cm, Mockito.never()).deleteById(ArgumentMatchers.anyInt());
+        svc.delete(1);
+        Mockito.verify(lm).delete(ArgumentMatchers.any());
+        Mockito.verify(ram).delete(ArgumentMatchers.any());
+        Mockito.verify(rcm).delete(ArgumentMatchers.any());
+        Mockito.verify(racm).delete(ArgumentMatchers.any());
+        Mockito.verify(cm).deleteById(1);
     }
 
-    @Test void delete_ok_whenNoLedgerRows() {
-        Mockito.when(cm.selectById(1)).thenReturn(co(1, "园区租赁管理公司"));
-        Mockito.when(lm.selectCount(ArgumentMatchers.any())).thenReturn(0L);
-        svc.delete(1);
-        Mockito.verify(cm).deleteById(1);
+    @Test void delete_missing_404() {
+        Mockito.when(cm.selectById(99)).thenReturn(null);
+        assertThatThrownBy(() -> svc.delete(99))
+            .isInstanceOf(BizException.class)
+            .satisfies(e -> assertThat(((BizException) e).getCode()).isEqualTo(404));
+        Mockito.verify(cm, Mockito.never()).deleteById(ArgumentMatchers.anyInt());
     }
 }

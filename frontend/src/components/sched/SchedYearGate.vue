@@ -21,8 +21,9 @@ const props = defineProps<{
   current: number          // 最新年(蓝高亮 + 「最新」角标)
   footer?: string
   storeKey: string         // localStorage 受管年份键(每附表/实例唯一,如 'pv' / 'charging-7')
+  backLabel?: string       // 传入即显示返回按钮(台账/报表把门放在公司之后,需回上一层;附表不传,原样)
 }>()
-const emit = defineEmits<{ pick: [year: number] }>()
+const emit = defineEmits<{ pick: [year: number]; back: [] }>()
 
 // ── 受管额外年份(localStorage,允许 overview 范围外的年) ──
 const lsKey = computed(() => `fp-sched-years-${props.storeKey}`)
@@ -67,11 +68,16 @@ function submit() {
 <template>
   <div class="sm-gate">
     <div class="sm-gate-head">
-      <div>
-        <h2 class="sm-gate-title">
-          <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ title }}
-        </h2>
-        <p class="sm-gate-sub">{{ sub }}</p>
+      <div class="sm-gate-headl">
+        <button v-if="backLabel" class="sm-gate-back" :title="backLabel" @click="emit('back')">
+          <component :is="iconFor('arrow-left')" :size="16" />
+        </button>
+        <div>
+          <h2 class="sm-gate-title">
+            <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ title }}
+          </h2>
+          <p class="sm-gate-sub">{{ sub }}</p>
+        </div>
       </div>
     </div>
     <div class="sm-gate-labelrow">
@@ -143,6 +149,9 @@ function submit() {
 /* 1:1 from sched-common.jsx SchedStyles (.sm-gate / .sm-ycard / .sm-ynew / .sm-ydlg 段) */
 .sm-gate { display:flex; flex-direction:column; gap:18px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .sm-gate-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.sm-gate-headl { display:flex; align-items:center; gap:12px; min-width:0; }
+.sm-gate-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.sm-gate-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .sm-gate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .sm-gate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
 .sm-gate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }

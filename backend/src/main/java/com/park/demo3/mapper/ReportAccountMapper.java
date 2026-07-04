@@ -17,4 +17,11 @@ public interface ReportAccountMapper extends BaseMapper<ReportAccount> {
             .eq("statement", statement).eq("year", year).eq("month", month)
             .orderByAsc("company_id", "sort_order"));
     }
+    // 有数据的年份 + 各年月份数(年份门;tb 的 hasData 以科目树为准,同 ReportService.year 口径)
+    default List<java.util.Map<String, Object>> yearsWithMonths(int companyId, String statement) {
+        return selectMaps(new QueryWrapper<ReportAccount>()
+            .select("`year`", "count(distinct `month`) as months")
+            .eq("company_id", companyId).eq("statement", statement)
+            .groupBy("`year`").orderByAsc("`year`"));
+    }
 }

@@ -4,18 +4,33 @@ import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.CompanyDTO;
 import com.park.demo3.entity.ManagementCompany;
+import com.park.demo3.entity.MonthlyLedger;
+import com.park.demo3.entity.ReportAccount;
+import com.park.demo3.entity.ReportAmount;
+import com.park.demo3.entity.ReportCustomRow;
 import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
+import com.park.demo3.mapper.ReportAccountMapper;
+import com.park.demo3.mapper.ReportAmountMapper;
+import com.park.demo3.mapper.ReportCustomRowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
 public class CompanyService {
     private final ManagementCompanyMapper companies;
     private final MonthlyLedgerMapper ledger;
+    private final ReportAmountMapper reportAmounts;
+    private final ReportCustomRowMapper reportCustomRows;
+    private final ReportAccountMapper reportAccounts;
 
-    public CompanyService(ManagementCompanyMapper companies, MonthlyLedgerMapper ledger) {
+    public CompanyService(ManagementCompanyMapper companies, MonthlyLedgerMapper ledger,
+                          ReportAmountMapper reportAmounts, ReportCustomRowMapper reportCustomRows,
+                          ReportAccountMapper reportAccounts) {
         this.companies = companies; this.ledger = ledger;
+        this.reportAmounts = reportAmounts; this.reportCustomRows = reportCustomRows;
+        this.reportAccounts = reportAccounts;
     }
 
     public List<CompanyDTO> list() {
@@ -44,12 +59,16 @@ public class CompanyService {
         return toDTO(companies.selectById(id));
     }
 
+    // 级联删除:公司连同其全部台账与报表数据一并删除(前端删除确认弹窗已明示不可恢复);
+    // 不级联则 report_* 的 FK 会让 deleteById 直接 500
+    @Transactional
     public void delete(Integer id) {
         ManagementCompany c = companies.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
-        long rows = ledger.selectCount(new QueryWrapper<com.park.demo3.entity.MonthlyLedger>()
-            .eq("company_id", id));
-        if (rows > 0) throw new BizException(ResultCode.CONFLICT, "该公司已有台账数据,不可删除");
+        ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
+        reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
+        reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));
+        reportAccounts.delete(new QueryWrapper<ReportAccount>().eq("company_id", id));
         companies.deleteById(id);
     }
 

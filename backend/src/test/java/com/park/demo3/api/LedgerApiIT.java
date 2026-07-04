@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -89,12 +90,34 @@ class LedgerApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409));
     }
 
+    // 删共享种子(公司1 含台账+报表数据),@Transactional 回滚隔离,不污染其他用例
     @Test
-    void company_deleteWithLedgerData_returns409InBody() throws Exception {
-        // company 1 (园区租赁管理公司) has seeded ledger rows → delete guarded
+    @Transactional
+    void company_deleteWithData_cascadesLedgerAndReports() throws Exception {
         mvc.perform(delete("/api/companies/1").header("Authorization", auth()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(409));
+                .andExpect(jsonPath("$.code").value(0));
+        // 公司消失,其台账/报表读接口回 404(数据已级联清除)
+        String body = utf8(mvc.perform(get("/api/companies").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        List<Integer> ids = JsonPath.read(body, "$.data[*].id");
+        assertThat(ids).doesNotContain(1);
+        mvc.perform(get("/api/ledger/companies/1/overview").param("year", "2026")
+                .header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(404));
+    }
+
+    // ── 年份门 ────────────────────────────────────────────────
+    @Test
+    void years_returnsSeededYearWithMonthCounts() throws Exception {
+        String body = mvc.perform(get("/api/ledger/companies/1/years").header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        List<Integer> years = JsonPath.read(body, "$.data[*].year");
+        List<Integer> months = JsonPath.read(body, "$.data[*].months");
+        assertThat(years).isNotEmpty();
+        assertThat(months).allMatch(m -> m >= 1 && m <= 12);
     }
 
     // ── ledger overview / month ───────────────────────────────

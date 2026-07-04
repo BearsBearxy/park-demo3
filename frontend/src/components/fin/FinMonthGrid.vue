@@ -16,7 +16,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   pick: [m: number]
-  back: []
+  back: []      // 返回上一层(年份门)
+  switch: []    // 切换管理公司(回公司选择)
   year: [y: number]
 }>()
 
@@ -35,14 +36,14 @@ function meta(m: number): FinMonthMeta {
   <div class="fin-page">
     <div class="fin-head">
       <div class="fin-head-l">
-        <button class="fin-back" @click="emit('back')" title="返回公司选择"><component :is="iconFor('arrow-left')" :size="16" /></button>
+        <button class="fin-back" @click="emit('back')" title="返回年份选择"><component :is="iconFor('arrow-left')" :size="16" /></button>
         <div>
           <h2 class="fin-title">{{ title }}</h2>
-          <p class="fin-sub">选择年 / 月,进入对应期间报表</p>
+          <p class="fin-sub"><span class="mono">{{ year }} 年</span> · 选择月份,进入对应期间报表</p>
         </div>
       </div>
       <div class="fin-actions">
-        <button class="fin-cobadge" @click="emit('back')" title="切换管理公司">
+        <button class="fin-cobadge" @click="emit('switch')" title="切换管理公司">
           <span class="av" :class="{ all: companyName === null }">
             <component v-if="companyName === null" :is="iconFor('layers')" :size="13" />
             <template v-else>{{ companyName.slice(0, 2) }}</template>
@@ -91,6 +92,7 @@ function meta(m: number): FinMonthMeta {
 .fin-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .fin-title { margin:0; font:var(--type-h2); font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
+.fin-sub .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .fin-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
 /* 当前公司徽标 */

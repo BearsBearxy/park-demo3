@@ -89,7 +89,7 @@ function submitRow() {
       <div v-else-if="dlg.type === 'delco'" class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
           <h3>删除管理公司</h3>
-          <p>确认删除「{{ dlg.company.name }}」及其全部报表数据?此操作不可撤销。</p>
+          <p>确认删除「{{ dlg.company.name }}」及其全部台账与报表数据?此操作不可撤销。</p>
         </div>
         <div class="fin-dlg-f" style="padding-top:20px">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>

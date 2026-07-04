@@ -15,4 +15,11 @@ public interface ReportAmountMapper extends BaseMapper<ReportAmount> {
         return selectList(new QueryWrapper<ReportAmount>()
             .eq("statement", statement).eq("year", year).eq("month", month));
     }
+    // 有数据的年份 + 各年月份数(年份门;is/bs 用,tb 以 report_account 为准)
+    default List<java.util.Map<String, Object>> yearsWithMonths(int companyId, String statement) {
+        return selectMaps(new QueryWrapper<ReportAmount>()
+            .select("`year`", "count(distinct `month`) as months")
+            .eq("company_id", companyId).eq("statement", statement)
+            .groupBy("`year`").orderByAsc("`year`"));
+    }
 }

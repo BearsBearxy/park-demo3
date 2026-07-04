@@ -15,6 +15,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'switch-company': []
+  'back': []                    // 返回年份门
   'year': [year: number]
   'pick-month': [month: number]
 }>()
@@ -37,9 +38,10 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
   <div class="lg-page">
     <div class="lg-head">
       <div class="lg-head-l">
+        <button class="lg-back" title="返回年份选择" @click="emit('back')"><component :is="iconFor('arrow-left')" :size="16" /></button>
         <div>
           <h2 class="lg-title">月度台账</h2>
-          <p class="lg-sub">{{ companyName }} · 按月归集一行一租户的应收与收款明细</p>
+          <p class="lg-sub">{{ companyName }} · <span class="mono">{{ year }} 年</span> · 按月归集一行一租户的应收与收款明细</p>
         </div>
       </div>
       <div class="lg-head-actions">
@@ -105,6 +107,9 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
 .lg-head-l { display:flex; align-items:center; gap:12px; min-width:0; }
 .lg-title { margin:0; font:var(--type-h2); color:var(--text-primary); }
 .lg-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
+.lg-sub .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+.lg-back { width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-md); cursor:pointer; display:grid; place-items:center; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.lg-back:hover { background:var(--bg-hover); color:var(--text-primary); }
 .lg-head-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
 /* 年份切换胶囊 */

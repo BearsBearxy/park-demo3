@@ -21,6 +21,13 @@ public class ReportController {
     private final ReportService svc;
     public ReportController(ReportService svc) { this.svc = svc; }
 
+    // 字面量段 /years 比 /{companyId}/{year} 更特异,Spring PathPattern 优先匹配,不冲突
+    @Operation(summary = "有数据的年份+各年月份数(年份门)") @GetMapping("/{companyId}/years")
+    public java.util.List<com.park.demo3.dto.YearMonthsDTO> years(@PathVariable String statement,
+                                                                  @PathVariable int companyId) {
+        return svc.years(statement, companyId);
+    }
+
     @Operation(summary = "年历(各月 hasData + 营业收入预览)") @GetMapping("/{companyId}/{year}")
     public ReportYearDTO year(@PathVariable String statement, @PathVariable int companyId,
                               @PathVariable @Min(2000) @Max(2100) int year) {

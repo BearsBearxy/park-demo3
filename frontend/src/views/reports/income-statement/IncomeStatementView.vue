@@ -17,6 +17,8 @@ import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import FinCompanyPicker, { type FinCompany } from '@/components/fin/FinCompanyPicker.vue'
 import FinMonthGrid, { type FinMonthMeta } from '@/components/fin/FinMonthGrid.vue'
+import SchedYearGate from '@/components/sched/SchedYearGate.vue'
+import { useReportYearGate } from '@/components/fin/useReportYearGate'
 import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
 import type { FinTableRow } from '@/components/fin/FinReportTable.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
@@ -97,24 +99,35 @@ async function loadPeriod() {
   if (reqId === periodReq) period.value = data
 }
 
+// ── 年份门(公司→年份→月历,同附表) ────────────────────────
+const { yearGated, gateYears, yearCards, gateCurrent, loadGateYears, resetGate, pickYear, backToYearGate } =
+  useReportYearGate({
+    stmt: STMT, companyId, companies, year,
+    // period 一并清:否则 yearMonths 加载期间 v-if 链穿透到旧 period,数据表闪现
+    onEnterYear: async () => { yearMonths.value = null; period.value = null; await loadYear() },
+  })
+
 // ── 状态迁移 ─────────────────────────────────────────────
 async function pickCompany(id: number | string) {
   companyId.value = id as number
-  month.value = null; edit.value = false; yearMonths.value = null
-  await loadYear()
+  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
+  resetGate()
+  await loadGateYears()
 }
 function pickAll() {
   companyId.value = 'all'
-  month.value = null; edit.value = false; yearMonths.value = null
-  loadYear()
+  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
+  resetGate()
+  loadGateYears()
 }
 function goGate() {
   companyId.value = null; month.value = null; edit.value = false
+  resetGate()
   loadCompanies()
 }
 async function setYear(y: number) {
   year.value = y
-  yearMonths.value = null
+  yearMonths.value = null; period.value = null
   await loadYear()
 }
 async function pickMonth(m: number) {
@@ -435,15 +448,31 @@ async function onExport() {
     <div v-else class="page-loading"><span class="page-spin" /></div>
   </template>
 
+  <!-- L1.5 年份门(同附表 SchedYearGate) -->
+  <SchedYearGate
+    v-else-if="!yearGated && gateYears"
+    icon="bar-chart-3"
+    :title="'利润表 · ' + (companyName ?? '全部汇总')"
+    sub="先选择年份,再进入该年的月历与利润表 · 每个年月是一期独立报表"
+    :years="yearCards"
+    :current="gateCurrent"
+    :store-key="'report-is-' + companyId"
+    back-label="返回公司选择"
+    footer="进入年份后按月查看或录入;可新增更早 / 未来年份。"
+    @pick="pickYear"
+    @back="goGate"
+  />
+
   <!-- L2 月历 -->
   <FinMonthGrid
-    v-else-if="month === null && yearMonths"
+    v-else-if="yearGated && month === null && yearMonths"
     :company-name="companyName"
     :year="year"
     :months="yearMonths"
     :max-year="maxYear"
     @pick="pickMonth"
-    @back="goGate"
+    @back="backToYearGate"
+    @switch="goGate"
     @year="setYear"
   />
 

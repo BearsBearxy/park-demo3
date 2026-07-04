@@ -10,7 +10,7 @@ defineProps<{
   statsById: Record<number, { tenants: number; recv: number }>
   curMonth: number
 }>()
-const emit = defineEmits<{ pick: [id: number]; 'new-company': [] }>()
+const emit = defineEmits<{ pick: [id: number]; 'new-company': []; 'delete-company': [c: CompanyDTO] }>()
 
 // jsx lgWan: ¥X.X 万
 function lgWan(v: number): string {
@@ -52,6 +52,9 @@ function lgWan(v: number): string {
             <div class="l">{{ curMonth }} 月应收</div>
             <div class="v muted">{{ lgWan(statsById[c.id]?.recv ?? 0) }}</div>
           </div>
+          <button class="lg-pc-del" title="删除公司" @click.stop="emit('delete-company', c)">
+            <component :is="iconFor('trash-2')" :size="14" />
+          </button>
         </div>
       </div>
       <div class="lg-picknew" @click="emit('new-company')">
@@ -94,6 +97,11 @@ function lgWan(v: number): string {
 .lg-pc-stat .v { font-size:18px; font-weight:var(--fw-semibold); color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .lg-pc-stat .v.muted { color:var(--text-secondary); }
 .lg-pc-stat .v .u { font-size:12px; font-weight:400; color:var(--text-muted); }
+.lg-pc-del { margin-left:auto; align-self:flex-end; width:30px; height:30px; border-radius:var(--radius-sm); border:1px solid var(--border-subtle);
+  background:var(--surface-white); color:var(--text-muted); display:grid; place-items:center; cursor:pointer; opacity:0;
+  transition:opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
+.lg-pickcard:hover .lg-pc-del { opacity:1; }
+.lg-pc-del:hover { background:rgb(255,238,237); color:var(--hue-red); border-color:rgba(255,59,48,.3); }
 .lg-picknew { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:168px; cursor:pointer;
   background:transparent; border:1px dashed var(--border-strong); border-radius:var(--radius-lg); color:var(--text-secondary);
   transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }

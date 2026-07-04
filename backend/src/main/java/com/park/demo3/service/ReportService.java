@@ -11,6 +11,7 @@ import com.park.demo3.dto.ReportPeriodDTO;
 import com.park.demo3.dto.ReportSaveReq;
 import com.park.demo3.dto.ReportYearDTO;
 import com.park.demo3.dto.ReportYearDTO.MonthMeta;
+import com.park.demo3.dto.YearMonthsDTO;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.entity.ReportAccount;
 import com.park.demo3.entity.ReportAmount;
@@ -108,6 +109,18 @@ public class ReportService {
         }
         map.values().forEach(cell -> cell.replaceAll((f, v) -> r2(v)));
         return new ReportPeriodDTO(map, List.of(), new ArrayList<>(merged.values()));
+    }
+
+    // ── 年份门:有数据的年份 + 各年已录入月份数(tb 以科目树为准,同 year() 口径) ──
+    public List<YearMonthsDTO> years(String statement, int companyId) {
+        checkStatement(statement);
+        requireCompany(companyId);
+        List<Map<String, Object>> rows = "tb".equals(statement)
+            ? accounts.yearsWithMonths(companyId, statement)
+            : amounts.yearsWithMonths(companyId, statement);
+        return rows.stream()
+            .map(m -> new YearMonthsDTO(((Number) m.get("year")).intValue(), ((Number) m.get("months")).intValue()))
+            .toList();
     }
 
     // ── L2 月历:12 月 hasData + netPreview(行次1 cur) ──

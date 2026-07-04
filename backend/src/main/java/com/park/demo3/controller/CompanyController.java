@@ -25,6 +25,6 @@ public class CompanyController {
         return svc.rename(id, req.name());
     }
 
-    @Operation(summary = "删除公司（有台账数据则 409）") @DeleteMapping("/{id}")
+    @Operation(summary = "删除公司（级联删除其全部台账与报表数据）") @DeleteMapping("/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
 }

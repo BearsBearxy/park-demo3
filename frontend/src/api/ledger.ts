@@ -1,6 +1,6 @@
 import http from './index'
 import type {
-  CompanyDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerSaveRequest, LedgerImportRequest,
+  CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerSaveRequest, LedgerImportRequest,
 } from '../types/ledger'
 import type { ImportResultDTO } from '../types/import'
 
@@ -13,6 +13,8 @@ export const companyApi = {
 }
 
 export const ledgerApi = {
+  years: (companyId: number): Promise<YearMonthsDTO[]> =>
+    http.get(`/ledger/companies/${companyId}/years`),
   overview: (companyId: number, year: number): Promise<LedgerOverviewDTO> =>
     http.get(`/ledger/companies/${companyId}/overview`, { params: { year } }),
   month: (companyId: number, year: number, month: number): Promise<LedgerMonthDTO> =>

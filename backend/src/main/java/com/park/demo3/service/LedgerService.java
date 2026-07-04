@@ -10,6 +10,7 @@ import com.park.demo3.dto.LedgerSaveRequest;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.LedgerImportRequest;
+import com.park.demo3.dto.YearMonthsDTO;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.entity.MonthlyLedger;
 import com.park.demo3.entity.Tenant;
@@ -103,6 +104,14 @@ public class LedgerService {
         for (var g : FEE_GET) recv = recv.add(nz(g.apply(l)));
         BigDecimal end = nz(l.getBalancePrev()).add(recv).subtract(nz(l.getTotalCollected()));
         return new BigDecimal[]{ recv.setScale(2, RoundingMode.HALF_UP), end.setScale(2, RoundingMode.HALF_UP) };
+    }
+
+    // ── 年份门:有数据的年份 + 各年已录入月份数 ──
+    public List<YearMonthsDTO> years(Integer companyId) {
+        if (companies.selectById(companyId) == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        return ledger.yearsWithMonths(companyId).stream()
+            .map(m -> new YearMonthsDTO(((Number) m.get("year")).intValue(), ((Number) m.get("months")).intValue()))
+            .toList();
     }
 
     // ── overview ──

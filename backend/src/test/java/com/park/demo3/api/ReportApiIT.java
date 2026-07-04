@@ -35,6 +35,23 @@ class ReportApiIT extends AbstractMysqlIT {
         return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
 
+    // ── 年份门:种子 is/1 有 2025 数据;months 计数在 1..12 内 ──
+    @Test
+    void years_returnsSeededYears() throws Exception {
+        String body = mvc.perform(get("/api/reports/is/1/years").header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> years = JsonPath.read(body, "$.data[*].year");
+        java.util.List<Integer> months = JsonPath.read(body, "$.data[*].months");
+        assertThat(years).contains(2025);
+        assertThat(months).allMatch(m -> m >= 1 && m <= 12);
+        // 路由特异性:/{companyId}/years 不吞 /{companyId}/{year}(2025 仍走年历端点)
+        mvc.perform(get("/api/reports/is/1/2025").header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.months.length()").value(12));
+    }
+
     // ── PUT 保存三行 → GET 读回 amounts 对(含小计不落库=只回叶子) ──
     @Test
     void save_thenReadBack_amountsMatch() throws Exception {

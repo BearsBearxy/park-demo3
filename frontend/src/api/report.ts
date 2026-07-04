@@ -4,9 +4,12 @@ import type {
   ReportSaveRequest, ReportImportRequest,
 } from '@/types/report'
 import type { ImportResultDTO } from '@/types/import'
+import type { YearMonthsDTO } from '@/types/ledger'
 
 // paths per spec §4 (/api/reports/{statement}/...). http unwraps Result envelope.
 export const reportApi = {
+  years: (stmt: string, companyId: number): Promise<YearMonthsDTO[]> =>
+    http.get(`/reports/${stmt}/${companyId}/years`),
   year: (stmt: string, companyId: number, year: number): Promise<ReportYearDTO> =>
     http.get(`/reports/${stmt}/${companyId}/${year}`),
   period: (stmt: string, companyId: number, year: number, month: number): Promise<ReportPeriodDTO> =>
