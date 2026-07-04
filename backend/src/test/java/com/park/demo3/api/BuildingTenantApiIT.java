@@ -127,6 +127,15 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
     }
 
     @Test
+    void tenantDetail_missingId_returnsNotFoundEnvelope() throws Exception {
+        // 查无此租户 → 码在体内 404（HTTP 200），非 500 兜底
+        mvc.perform(get("/api/tenants/99999999")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(404));
+    }
+
+    @Test
     void buildingDetail_returnsUnitsWithStatus() throws Exception {
         // first get list to find a valid id
         String listBody = mvc.perform(get("/api/buildings")

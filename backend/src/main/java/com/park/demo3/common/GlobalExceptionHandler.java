@@ -7,6 +7,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import java.util.NoSuchElementException;
 
 @Slf4j
 @RestControllerAdvice(basePackages = "com.park.demo3.controller")
@@ -41,6 +42,15 @@ public class GlobalExceptionHandler {
     public Result<Void> duplicate(DuplicateKeyException e) {
         log.warn("duplicate key: {}", e.getMessage());
         return Result.error(ResultCode.CONFLICT.code, "记录已存在（同期同项不可重复）");
+    }
+
+    // 单资源查无（TenantService/ContractService.detail 抛 NoSuchElementException）→ 404，
+    // 与其余 service 的 BizException(NOT_FOUND) 对齐，避免落到 fallback 误报 500
+    @ExceptionHandler(NoSuchElementException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> notFound(NoSuchElementException e) {
+        log.warn("not found: {}", e.getMessage());
+        return Result.error(ResultCode.NOT_FOUND.code, ResultCode.NOT_FOUND.message);
     }
 
     @ExceptionHandler(Exception.class)

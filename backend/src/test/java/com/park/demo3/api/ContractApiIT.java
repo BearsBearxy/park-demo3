@@ -97,4 +97,13 @@ class ContractApiIT extends AbstractMysqlIT {
         mvc.perform(get("/api/contracts"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void contractDetail_missingId_returnsNotFoundEnvelope() throws Exception {
+        // 查无此合同 → 码在体内 404（HTTP 200），非 500 兜底
+        mvc.perform(get("/api/contracts/99999999")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(404));
+    }
 }
