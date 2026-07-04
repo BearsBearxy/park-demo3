@@ -86,7 +86,7 @@ function pick(p: number) {
       <span v-if="total != null" class="fp-pager-total">共 {{ total }} 条</span>
     </div>
 
-    <Pagination :page="page" :pageCount="pageCount" :showMeta="false" @page="emit('page', $event)" />
+    <Pagination :page="page" :pageCount="pageCount" :showMeta="false" @page="(p: number) => emit('page', p)" />
   </div>
 </template>
 

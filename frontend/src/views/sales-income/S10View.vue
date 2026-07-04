@@ -116,7 +116,7 @@ async function switchPhase(v: string) {
 
 // ── 编辑态:单元格 / 备注 / 名称 即时写回本地行（触发表内重算）+ 标脏 ──
 function onCell(row: S10RecordDTO, colId: S10ColId, value: number) {
-  ;(row as Record<string, unknown>)[colId] = value
+  ;(row as unknown as Record<string, unknown>)[colId] = value
   dirty.add(row.id)
 }
 function onNameEdit(row: S10RecordDTO, value: string) {
@@ -229,21 +229,22 @@ const phaseLayoutsCol = computed(() => ({
 const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
 
 // 经 runImport(共享 registry 逐段 upsert + 记录 import_log),重建每段摘要,跳转第一段槽
+// emit 签名的 year/month/phase 为可选并集(兼容纯标签段);s10 走 phaseLayouts 智能整表,段必带年/月/期
 async function onSmartImport(
-  picks: { year: number; month: number; phase: number; records: ImportRec[] }[],
+  picks: { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }[],
   fileName: string,
 ) {
   importing.value = false
   try {
     importResult.value = await runImport('s10', picks, {}, fileName)
     importSummary.value = picks
-      .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase]}:${p.records.length} 条`)
+      .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase!]}:${p.records.length} 条`)
       .join('\n')
     const first = picks[0]
     if (first) {
-      year.value = first.year
-      month.value = first.month
-      phase.value = first.phase
+      year.value = first.year!
+      month.value = first.month!
+      phase.value = first.phase!
       await reloadOverview()
       await loadMonth()
     }

@@ -5,7 +5,8 @@ import { ref, onMounted, computed, h } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
-import FPSortableTable, { type SortableColumn, type SortState } from '@/components/fp/FPSortableTable.vue'
+import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortableTable.vue'
+import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
@@ -33,7 +34,8 @@ async function reload() { overview.value = await importLogApi.overview() }
 
 const activeEntry = computed<ImportTypeEntry | null>(() =>
   activeKey.value ? IMPORT_TYPES.find(t => t.key === activeKey.value) ?? null : null)
-const modalProps = computed(() => activeEntry.value ? activeEntry.value.modalProps(ctx.value) : {})
+// 空对象兜底仅为类型占位:模板 v-if="importing && activeEntry" 保证渲染时必有 activeEntry
+const modalProps = computed(() => activeEntry.value ? activeEntry.value.modalProps(ctx.value) : ({} as ReturnType<ImportTypeEntry['modalProps']>))
 
 // ── 每类状态(由 latestByType 派生) ─────────────────────────
 const IM_ST: Record<string, { label: string; c: string; bg: string }> = {
@@ -88,9 +90,9 @@ async function handleImport(recs: ImportRec[], fileName: string) {
 }
 async function handleSections(picks: unknown[], fileName: string) {
   importing.value = false
-  await doRun(picks as never, fileName)
+  await doRun(picks as Parameters<typeof runImport>[1], fileName)
 }
-async function doRun(payload: never, fileName: string) {
+async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
   if (!activeKey.value) return
   try {
     importResult.value = await runImport(activeKey.value, payload, ctx.value, fileName)

@@ -88,7 +88,8 @@ export interface ImportCtx {
 export interface ImportTypeEntry {
   key: string; label: string; tag: string; icon: string
   context: 'none' | 'ledger'
-  modalProps: (ctx: ImportCtx) => Record<string, unknown>
+  // title/templateCols 为 FpImportModal 必填项,收紧类型让 v-bind 展开处可静态校验
+  modalProps: (ctx: ImportCtx) => { title: string; templateCols: string[] } & Record<string, unknown>
   run: (payload: ImportRec[] | Pick[], ctx: ImportCtx) => Promise<ImportResultDTO>
   target: (ctx: ImportCtx) => string | null
 }
@@ -385,12 +386,12 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
 
 // 各屏用:取该类型的解析配置(= modalProps 去掉 title/sub/defaults),屏自己给 :title/:sub/:default-*。
 // 单一事实源:columnMap/customParse/phaseLayouts/nameLabels/templateCols 都出自这里,屏不再本地重复。
-export function parserProps(key: string, ctx: ImportCtx = {}): Record<string, unknown> {
+export function parserProps(key: string, ctx: ImportCtx = {}): { templateCols: string[] } & Record<string, unknown> {
   const entry = IMPORT_TYPES.find(t => t.key === key)
   if (!entry) throw new Error('unknown import type: ' + key)
   const { title, sub, defaultYear, defaultMonth, defaultPhase, ...parser } = entry.modalProps(ctx)
   void title; void sub; void defaultYear; void defaultMonth; void defaultPhase
-  return parser
+  return parser as { templateCols: string[] } & Record<string, unknown>
 }
 
 // 唯一导入入口:执行 entry.run → 上报 import_log(best-effort,失败不阻断) → 返回 result。

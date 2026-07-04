@@ -23,7 +23,7 @@ const emit = defineEmits<{
 
 const dims = computed(() => ({ sm: 24, md: 28, lg: 32 }[props.size] ?? 28));
 
-const baseStyle = computed<Record<string, string>>(() => {
+const baseStyle = computed<Record<string, string | undefined>>(() => {
   if (props.variant === "soft") return { background: "var(--control-soft)" };
   if (props.variant === "outline")
     return { background: "transparent", border: "1px solid var(--border-subtle)" };

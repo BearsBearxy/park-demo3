@@ -9,6 +9,7 @@ import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import { fpMoney, fpWan } from '@/utils/money'
 import type { BuildingDTO, BuildingDetailDTO, UnitDTO } from '@/types/building'
+import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
 
 const props = defineProps<{
   open: boolean
@@ -21,7 +22,8 @@ const emit = defineEmits<{ close: [] }>()
 const selUnit = ref<UnitDTO | null>(null)
 
 // reset selection when drawer opens new building
-function onPick(u: UnitDTO) { selUnit.value = u }
+// FPUnitMap 回传的就是本组件经 :building 传入的完整 UnitDTO,仅事件签名较窄,cast 回来
+function onPick(u: MapUnit) { selUnit.value = u as UnitDTO }
 
 // ponytail: derive tenant list from units — no extra API call
 const tenants = computed(() => {

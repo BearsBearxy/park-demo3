@@ -11,7 +11,7 @@
 //  5) 年 = 表头行之前 /(\d{4})年/(识别失败 year=null,调用方回退当前年槽);rowKey 合成 r<n>。
 import { normalizeHeader } from './importHeaderMatch'
 import { detectKind } from '@/reports/pnlSchedules'
-import type { PnlRowDTO } from '@/types/pnl'
+import type { PnlKind, PnlRowDTO } from '@/types/pnl'
 
 const MONTH_RE = /^(\d{1,2})月$/
 
@@ -61,7 +61,7 @@ export function importPnlSchedule(matrix: string[][]): { year: number | null; ro
   // 4) 数据行(分组向下填充;总计类行/纯分组头 见文件头规则 4)
   const rows: PnlRowDTO[] = []
   let group = ''
-  const push = (label: string, groupLabel: string, row: string[], note: string, kindOverride?: string) => {
+  const push = (label: string, groupLabel: string, row: string[], note: string, kindOverride?: PnlKind) => {
     rows.push({
       rowKey: `r${rows.length + 1}`,
       groupLabel,

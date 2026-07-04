@@ -156,7 +156,7 @@ function buildCandidates(): Map<string, Series> {
   }
 
   // 办公水电(13):表头匹配 → slot=月 去重 → elecAmt/waterAmt/elec+water
-  const OFF = parserProps('office_13') as { columnMap: ColumnMapEntry[]; nameLabels: string[] }
+  const OFF = parserProps('office_13') as unknown as { columnMap: ColumnMapEntry[]; nameLabels: string[] }
   const offRecs = matchByHeader(readSheet(FILES.office), OFF.columnMap, OFF.nameLabels).records
   const offSlot = new Map<number, ImportRec>()
   for (const r of offRecs) {
@@ -174,7 +174,7 @@ function buildCandidates(): Map<string, Series> {
   cand.set('office|elec+water', sumSeries([offE, offW]))
 
   // 工资:多月拆段 → slot=(年,月) 去重 → 各数值字段月Σ
-  const SAL = parserProps('salary') as { columnMap: ColumnMapEntry[]; nameLabels: string[] }
+  const SAL = parserProps('salary') as unknown as { columnMap: ColumnMapEntry[]; nameLabels: string[] }
   const salSecs = splitSalarySections(readSheet(FILES.salary), SAL.columnMap, SAL.nameLabels)
   const salBySlot = new Map(salSecs.filter(s => s.year === YEAR).map(s => [s.month, s]))
   const salFields = SAL.columnMap.filter(c => !c.text).map(c => c.key)

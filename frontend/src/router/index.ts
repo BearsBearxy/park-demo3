@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
@@ -35,10 +35,11 @@ const router = createRouter({
     { path: '/', redirect: '/data-home' },
     { path: '/login', component: LoginView },
     { path: '/_gallery', component: Gallery },
-    ...Object.values(navRoutes).map(meta => ({
+    ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({
       path: `/${meta.value}`,
       component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : PNL_ROUTES.includes(meta.value) ? PnlScheduleView : meta.value === 'reconciliation' ? ReconView : meta.value === 'reports-home' ? ReportsHomeView : meta.value === 'import' ? ImportCenterView : PlaceholderView,
-      meta,
+      // 展开成新鲜字面量:fpNav.RouteMeta 是具名接口,无隐式索引签名,直接赋给 vue-router 的 meta 会报 TS2322
+      meta: { ...meta },
     })),
   ],
 })

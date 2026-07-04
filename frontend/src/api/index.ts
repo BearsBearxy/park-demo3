@@ -1,4 +1,15 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
+
+// 下方响应拦截器已把 Result 信封解包为业务数据,方法返回类型同步声明为 Promise<T>(而非 AxiosResponse<T>)
+declare module 'axios' {
+  export interface AxiosInstance {
+    get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+    post<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+    put<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+    patch<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  }
+}
 
 const http = axios.create({ baseURL: '/api' })
 

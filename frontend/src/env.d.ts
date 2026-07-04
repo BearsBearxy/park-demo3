@@ -5,7 +5,3 @@ declare module '*.vue' {
   const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
   export default component
 }
-
-interface ImportMeta {
-  readonly glob: (pattern: string, options?: { eager?: boolean }) => Record<string, unknown>
-}
