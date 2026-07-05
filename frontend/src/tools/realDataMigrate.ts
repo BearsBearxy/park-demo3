@@ -331,6 +331,86 @@ async function importLedger() {
   }
 }
 
+// ── reports:三大报表(2025年10月文件（拼）.xls,按公司拆段分别入各公司) ──
+// 文件里同一公司在各表标签不同(① / ③物业（火炬园） / ③期末余额（帮管好）),按编号①-⑥统一映射;
+// 编号↔公司依据:台账文件 6 段顺序(①创显…⑥创燊高) 与 bs 表头括号(③帮管好④一泽⑤积前⑥创燊高)双重印证。
+const REPORT_FILE = 'C:/financial_dashboard/2025全年发生额、预算对比/2025年10月文件/2025年10月文件（拼）.xls'
+const NUM_MAP: Record<string, string> = { '①': '创显', '②': 'B2', '③': '帮管好', '④': '一泽', '⑤': '积前', '⑥': '创燊高' }
+const KNOWN = Object.values(NUM_MAP)
+function mapCompany(label: string): string {
+  const num = label.match(/[①②③④⑤⑥]/)?.[0]
+  if (num) return NUM_MAP[num]
+  return KNOWN.find(k => label.includes(k)) ?? label
+}
+async function importReports() {
+  await login()
+  const wb = XLSX.read(readFileSync(REPORT_FILE), { type: 'buffer', cellDates: true })
+  const sheetOf = (name: string) => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], {
+    header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd',
+  }) as string[][]
+  const Y = 2025, M = 10
+  const { importIncomeStatement } = await import('@/utils/importIncomeStatement')
+  const { importBalanceSheet } = await import('@/utils/importBalanceSheet')
+  const { importTrialBalance } = await import('@/utils/importTrialBalance')
+  const { TB_FIELDS } = await import('@/reports/trialBalance')
+
+  // is:每段 {rowKey,cur,ytd} → cells cur/ytd(照抄 registry report_is.run)
+  {
+    const r = importIncomeStatement(sheetOf('利润表'))
+    if (r.error) throw new Error('利润表: ' + r.error)
+    const sections = r.sections.map(s => ({
+      companyName: mapCompany(s.label),
+      cells: s.records.flatMap(rec => [
+        { rowKey: String(rec.rowKey), field: 'cur', amount: Number(rec.cur) || 0 },
+        { rowKey: String(rec.rowKey), field: 'ytd', amount: Number(rec.ytd) || 0 },
+      ]),
+    }))
+    sections.forEach(s => console.log(`  is 段 → ${s.companyName}(${s.cells.length / 2} 行)`))
+    console.log('利润表:', fmt(await call<ImportResult>('POST', `/reports/is/import?year=${Y}&month=${M}`, { sections })))
+  }
+  // bs:每段 {rowKey,end} → cells field='end'(照抄 registry report_bs.run)
+  {
+    const r = importBalanceSheet(sheetOf('资产负债表'))
+    if (r.error) throw new Error('资产负债表: ' + r.error)
+    const sections = r.sections.map(s => ({
+      companyName: mapCompany(s.label),
+      cells: s.records.map(rec => ({ rowKey: String(rec.rowKey), field: 'end', amount: Number(rec.end) || 0 })),
+    }))
+    sections.forEach(s => console.log(`  bs 段 → ${s.companyName}(${s.cells.length} 行)`))
+    console.log('资产负债表:', fmt(await call<ImportResult>('POST', `/reports/bs/import?year=${Y}&month=${M}`, { sections })))
+  }
+  // tb:每张「余额表」sheet=一公司段,accounts+cells 8 字段展开、0 不落库(照抄 registry report_tb.run)
+  {
+    const sheets = wb.SheetNames.map(name => ({ name, matrix: sheetOf(name) }))
+    const r = importTrialBalance(sheets)
+    if (r.error) throw new Error('科目余额表: ' + r.error)
+    const sections = r.sections.map(s => {
+      const accounts: unknown[] = []
+      const cells: { rowKey: string; field: string; amount: number }[] = []
+      for (const rec of s.records as { account: { rowKey: string }; amounts: Record<string, number> }[]) {
+        accounts.push(rec.account)
+        for (const f of TB_FIELDS) {
+          const v = Number(rec.amounts?.[f.key]) || 0
+          if (v !== 0) cells.push({ rowKey: rec.account.rowKey, field: f.key, amount: v })
+        }
+      }
+      return { companyName: mapCompany(s.label), accounts, cells }
+    })
+    sections.forEach(s => console.log(`  tb 段 → ${s.companyName}(科目 ${s.accounts.length}, 非零格 ${s.cells.length})`))
+    console.log('科目余额表:', fmt(await call<ImportResult>('POST', `/reports/tb/import?year=${Y}&month=${M}`, { sections })))
+  }
+  // 抽查:各公司三表 2025 年份
+  const companies = await call<{ id: number; name: string }[]>('GET', '/companies')
+  for (const c of companies) {
+    const parts: string[] = []
+    for (const stmt of ['is', 'bs', 'tb']) {
+      const ys = await call<{ year: number; months: number }[]>('GET', `/reports/${stmt}/${c.id}/years`)
+      parts.push(`${stmt}:${ys.map(y => `${y.year}×${y.months}月`).join(',') || '空'}`)
+    }
+    console.log(`  ${c.name} → ${parts.join('  ')}`)
+  }
+}
+
 // ── verify:抽查 ─────────────────────────────────────────
 async function verify() {
   await login()
@@ -352,6 +432,6 @@ async function verify() {
   }
 }
 
-const main = { dry, masters, import: importAll, ledger: async () => { await login(); await importLedger() }, verify }[MODE]
+const main = { dry, masters, import: importAll, ledger: async () => { await login(); await importLedger() }, reports: importReports, verify }[MODE]
 if (!main) { console.error('用法: vite-node src/tools/realDataMigrate.ts -- <dry|masters|import|verify>'); process.exit(1) }
 main().then(() => console.log('DONE ' + MODE)).catch(e => { console.error('FAILED:', e); process.exit(1) })
