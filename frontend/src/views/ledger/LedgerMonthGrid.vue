@@ -70,13 +70,14 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
       </KpiCard>
     </div>
 
-    <div class="lg-mlabel">{{ year }} 年 <span class="hint">· {{ companyName }} · 点击已录入的月份查看台账明细</span></div>
+    <div class="lg-mlabel">{{ year }} 年 <span class="hint">· {{ companyName }} · 点击月份进入台账;空月进入后可录入 / 导入 / 从上月复制</span></div>
     <div class="lg-mgrid">
       <template v-for="m in 12" :key="m">
-        <!-- 空月:虚线卡,不可点 -->
-        <div v-if="!metaByMonth[m] || metaByMonth[m].status === 'empty'" class="lg-mcard empty">
+        <!-- 空月:虚线卡,点击进入开始记账(宽表空表,经 编辑·添加租户行/导入/从上月复制 录入) -->
+        <div v-if="!metaByMonth[m] || metaByMonth[m].status === 'empty'" class="lg-mcard empty"
+             @click="emit('pick-month', m)">
           <div class="lg-mc-head"><div class="lg-mc-month">{{ m }}<span class="u">月</span></div></div>
-          <div class="lg-mc-empty">暂无数据</div>
+          <div class="lg-mc-empty">暂无数据 · 点击开始记账</div>
         </div>
         <!-- 已录/当前月:可点 -->
         <div v-else
@@ -133,8 +134,9 @@ const metaByMonth = computed<Record<number, MonthMeta>>(() => {
 .lg-mcard:hover { border-color:var(--border-strong); box-shadow:0 4px 16px rgba(28,28,28,.07); }
 .lg-mcard.cur { background:var(--accent-blue); border-color:transparent; }
 .lg-mcard.cur:hover { box-shadow:0 8px 22px rgba(28,28,28,.12); }
-.lg-mcard.empty { background:transparent; border-style:dashed; cursor:not-allowed; }
-.lg-mcard.empty:hover { border-color:var(--border-subtle); box-shadow:none; }
+.lg-mcard.empty { background:transparent; border-style:dashed; }
+.lg-mcard.empty:hover { border-color:var(--hue-blue); box-shadow:none; }
+.lg-mcard.empty:hover .lg-mc-empty { color:var(--hue-blue); }
 .lg-mc-head { display:flex; align-items:flex-start; justify-content:space-between; }
 .lg-mc-month { font-size:23px; font-weight:var(--fw-semibold); letter-spacing:-0.02em; line-height:1; color:var(--text-primary); }
 .lg-mc-month .u { font-size:13px; font-weight:var(--fw-medium); color:var(--text-muted); margin-left:3px; }
