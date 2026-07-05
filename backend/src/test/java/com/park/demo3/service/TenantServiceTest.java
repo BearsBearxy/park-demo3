@@ -16,7 +16,10 @@ class TenantServiceTest {
     TenantCategoryMapper catm = Mockito.mock(TenantCategoryMapper.class);
     BuildingService bs = Mockito.mock(BuildingService.class);
     com.park.demo3.mapper.UnitMapper um = Mockito.mock(com.park.demo3.mapper.UnitMapper.class);
-    TenantService svc = new TenantService(tm, cm, bm, catm, bs, um);
+    MonthlyLedgerMapper mlm = Mockito.mock(MonthlyLedgerMapper.class);
+    S10RecordMapper s10m = Mockito.mock(S10RecordMapper.class);
+    ReconMarkMapper rmm = Mockito.mock(ReconMarkMapper.class);
+    TenantService svc = new TenantService(tm, cm, bm, catm, bs, um, mlm, s10m, rmm);
 
     Tenant t(int id,int status){ Tenant x=new Tenant(); x.setId(id);x.setCompanyName("T"+id);
         x.setBusinessType("精密机械");x.setStatus(status);x.setPhase(1);return x; }

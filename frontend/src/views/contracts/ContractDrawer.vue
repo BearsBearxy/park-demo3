@@ -16,12 +16,51 @@ const props = defineProps<{
   open: boolean
   contract: ContractDTO | null
 }>()
-const emit = defineEmits<{ close: [] }>()
+// edit/renew:父级打开对应弹窗;terminated:携最新 DTO 由父级刷新 list+summary+drawer;deleted:父级关抽屉+刷新
+const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: [] }>()
 
 const detail = ref<ContractDetailDTO | null>(null)
 
+// ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
+const askTerminate = ref(false)
+const askDelete = ref(false)
+const busy = ref(false)
+
+const canTerminate = computed(() =>
+  ['active', 'expiring', 'draft'].includes(props.contract?.status ?? ''))
+
+async function doTerminate() {
+  if (!props.contract || busy.value) return
+  busy.value = true
+  try {
+    const dto = await contractApi.terminate(props.contract.id)
+    askTerminate.value = false
+    emit('terminated', dto)
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '操作失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function doDelete() {
+  if (!props.contract || busy.value) return
+  busy.value = true
+  try {
+    await contractApi.remove(props.contract.id)
+    askDelete.value = false
+    emit('deleted')
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '操作失败')
+  } finally {
+    busy.value = false
+  }
+}
+
 watch(() => props.contract, async (c) => {
   detail.value = null
+  askTerminate.value = false
+  askDelete.value = false
   if (c) detail.value = await contractApi.detail(c.id)
 })
 
@@ -82,43 +121,22 @@ const totalValue = computed(() => {
     </template>
 
     <template #footer>
-      <!-- draft -->
-      <template v-if="contract?.status === 'draft'">
-        <Button variant="gray" size="sm">
-          <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-          编辑
-        </Button>
-        <Button variant="filled" size="sm">
-          <template #leading><component :is="iconFor('check')" :size="14" /></template>
-          确认生效
-        </Button>
-      </template>
-      <!-- expired / terminated -->
-      <template v-else-if="contract?.status === 'expired' || contract?.status === 'terminated'">
-        <Button variant="gray" size="sm">
-          <template #leading><component :is="iconFor('archive')" :size="14" /></template>
-          归档
-        </Button>
-        <Button variant="filled" size="sm">
-          <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
-          续签新约
-        </Button>
-      </template>
-      <!-- active / expiring -->
-      <template v-else>
-        <Button variant="borderless" size="sm">
-          <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
-          终止
-        </Button>
-        <Button variant="gray" size="sm">
-          <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-          编辑
-        </Button>
-        <Button variant="filled" size="sm">
-          <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
-          续签
-        </Button>
-      </template>
+      <Button variant="borderless" size="sm" :disabled="!canTerminate" @click="askTerminate = true">
+        <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
+        终止
+      </Button>
+      <Button variant="borderless" size="sm" @click="askDelete = true">
+        <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+        删除
+      </Button>
+      <Button variant="gray" size="sm" @click="contract && emit('edit', contract)">
+        <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
+        编辑
+      </Button>
+      <Button variant="filled" size="sm" :disabled="contract?.status === 'terminated'" @click="contract && emit('renew', contract)">
+        <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+        续签
+      </Button>
     </template>
 
     <template v-if="contract">
@@ -180,6 +198,44 @@ const totalValue = computed(() => {
       </div>
     </template>
   </FPDrawer>
+
+  <!-- 终止确认(1:1 FinDialogs delco .fin-mask/.fin-dlg 结构;z-index 高于抽屉) -->
+  <Teleport to="body">
+    <div v-if="askTerminate && contract" class="cd-mask" @mousedown="askTerminate = false">
+      <div class="cd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="cd-dlg-h">
+          <h3>终止合同</h3>
+          <p>确认终止合同「{{ contract.contractNo }}」?其占用的单元将变为空置。</p>
+        </div>
+        <div class="cd-dlg-f">
+          <Button variant="gray" size="sm" @click="askTerminate = false">取消</Button>
+          <Button variant="danger" size="sm" :disabled="busy" @click="doTerminate">
+            <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
+            确认终止
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- 删除确认 -->
+  <Teleport to="body">
+    <div v-if="askDelete && contract" class="cd-mask" @mousedown="askDelete = false">
+      <div class="cd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="cd-dlg-h">
+          <h3>删除合同</h3>
+          <p>删除合同为不可逆操作,一般仅用于误录。确认删除合同「{{ contract.contractNo }}」?</p>
+        </div>
+        <div class="cd-dlg-f">
+          <Button variant="gray" size="sm" @click="askDelete = false">取消</Button>
+          <Button variant="danger" size="sm" :disabled="busy" @click="doDelete">
+            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+            确认删除
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -204,4 +260,14 @@ const totalValue = computed(() => {
 .fp-tl-step:last-child .fp-tl-body { padding-bottom:0; }
 .fp-tl-t { font-size:var(--fs-body); font-weight:var(--fw-medium); color:var(--text-primary); }
 .fp-tl-m { font-size:var(--fs-label); color:var(--text-muted); margin-top:2px; }
+
+/* 确认弹窗:1:1 FinDialogs .fin-mask/.fin-dlg(scoped 须自带);z-index 320 压过 FPDrawer(300/301) */
+.cd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:cdfade .16s forwards; }
+@keyframes cdfade { to { opacity:1; } }
+.cd-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:cdrise .2s var(--ease-standard) both; }
+@keyframes cdrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+.cd-dlg-h { padding:20px 22px 0; }
+.cd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.cd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.cd-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:20px 22px 20px; }
 </style>

@@ -6,6 +6,7 @@ import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -81,22 +82,92 @@ public class ContractService {
     }
 
     public ContractDTO create(ContractCreateReq req) {
-        if (contracts.selectCount(new QueryWrapper<Contract>().eq("contract_no", req.contractNo())) > 0)
-            throw new BizException(ResultCode.CONFLICT, "合同号已存在");
-        Tenant t = tenants.selectById(req.tenantId());
-        if (t == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
-        Building b = buildings.selectById(req.buildingId());
-        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
-        Unit u = null;
+        validateReq(req, null);
+        Contract c = new Contract();
+        applyReq(c, req);
+        contracts.insert(c);
+        return dtoOf(contracts.selectById(c.getId()));
+    }
+
+    /** PUT 语义:全字段编辑,校验同创建(合同号查重排除自身)。 */
+    public ContractDTO update(Integer id, ContractCreateReq req) {
+        Contract c = contracts.selectById(id);
+        if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        validateReq(req, id);
+        applyReq(c, req);
+        contracts.updateById(c);
+        return dtoOf(contracts.selectById(id));
+    }
+
+    /** 终止合同;单元状态读时派生,终止后自动回 vacant。 */
+    public ContractDTO terminate(Integer id) {
+        Contract c = contracts.selectById(id);
+        if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        if ("terminated".equals(c.getStatus()))
+            throw new BizException(ResultCode.CONFLICT, "合同已终止");
+        c.setStatus("terminated");
+        contracts.updateById(c);
+        return dtoOf(contracts.selectById(id));
+    }
+
+    /** 续签:旧合同终止,新合同继承租户/楼栋/单元,可覆盖字段空则继承旧值。 */
+    @Transactional
+    public ContractDTO renew(Integer id, ContractRenewReq req) {
+        Contract old = contracts.selectById(id);
+        if (old == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        requireUniqueNo(req.contractNo(), null);
+        if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
+            throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
+
+        old.setStatus("terminated");
+        contracts.updateById(old);
+
+        Contract c = new Contract();
+        c.setContractNo(req.contractNo());
+        c.setTenantId(old.getTenantId());
+        c.setBuildingId(old.getBuildingId());
+        c.setUnitId(old.getUnitId());
+        c.setRentArea(req.rentArea() != null ? req.rentArea() : old.getRentArea());
+        c.setMonthlyRent(req.monthlyRent() != null ? req.monthlyRent() : old.getMonthlyRent());
+        c.setDeposit(req.deposit() != null ? req.deposit() : old.getDeposit());
+        c.setStartDate(req.startDate());
+        c.setEndDate(req.endDate());
+        c.setSignDate(req.signDate());
+        c.setStatus("active");
+        contracts.insert(c);
+        return dtoOf(contracts.selectById(c.getId()));
+    }
+
+    // ponytail: 无表引用合同,直接 deleteById
+    public void delete(Integer id) {
+        if (contracts.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
+        contracts.deleteById(id);
+    }
+
+    // ─── 私有校验/组装(create/update 共用) ───────────────────
+
+    private void requireUniqueNo(String contractNo, Integer excludeId) {
+        QueryWrapper<Contract> q = new QueryWrapper<Contract>().eq("contract_no", contractNo);
+        if (excludeId != null) q.ne("id", excludeId);
+        if (contracts.selectCount(q) > 0) throw new BizException(ResultCode.CONFLICT, "合同号已存在");
+    }
+
+    private void validateReq(ContractCreateReq req, Integer excludeId) {
+        requireUniqueNo(req.contractNo(), excludeId);
+        if (tenants.selectById(req.tenantId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        if (buildings.selectById(req.buildingId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
         if (req.unitId() != null) {
-            u = units.selectById(req.unitId());
+            Unit u = units.selectById(req.unitId());
             if (u == null || !Objects.equals(u.getBuildingId(), req.buildingId()))
                 throw new BizException(ResultCode.CONFLICT, "单元不存在或不属于所选楼栋");
         }
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
             throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
+    }
 
-        Contract c = new Contract();
+    private void applyReq(Contract c, ContractCreateReq req) {
         c.setContractNo(req.contractNo());
         c.setTenantId(req.tenantId());
         c.setBuildingId(req.buildingId());
@@ -109,12 +180,19 @@ public class ContractService {
         c.setSignDate(req.signDate());
         c.setStatus(req.status());
         c.setRemark(req.remark());
-        contracts.insert(c);
+    }
 
-        Contract saved = contracts.selectById(c.getId());
+    /** 单条回显:按 id 点查租户/楼栋/单元拼 DTO(写路径共用)。 */
+    private ContractDTO dtoOf(Contract c) {
+        Tenant t = tenants.selectById(c.getTenantId());
+        Building b = buildings.selectById(c.getBuildingId());
+        Unit u = c.getUnitId() != null ? units.selectById(c.getUnitId()) : null;
         Map<Integer,String> uFloor = (u != null && u.getFloor() != null && u.getUnitNo() != null)
             ? Map.of(u.getId(), u.getFloor() + "F-" + u.getUnitNo()) : Map.of();
-        return toDTO(saved, Map.of(t.getId(), t.getCompanyName()), Map.of(b.getId(), b.getName()), uFloor);
+        return toDTO(c,
+            t != null ? Map.of(t.getId(), t.getCompanyName()) : Map.of(),
+            b != null ? Map.of(b.getId(), b.getName()) : Map.of(),
+            uFloor);
     }
 
     // ponytail: shared derivation — list() and detail() both call this
@@ -129,7 +207,7 @@ public class ContractService {
             c.getId(), c.getContractNo(),
             c.getTenantId(), tName.getOrDefault(c.getTenantId(), ""),
             c.getBuildingId(), bName.getOrDefault(c.getBuildingId(), ""),
-            floorInfo,
+            c.getUnitId(), floorInfo,
             c.getRentArea(), c.getMonthlyRent(), c.getDeposit(),
             c.getStartDate() != null ? c.getStartDate().toString() : null,
             c.getEndDate()   != null ? c.getEndDate().toString()   : null,

@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, h } from 'vue'
 import { buildingApi } from '@/api/building'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
-import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq } from '@/types/building'
+import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
 import { fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
@@ -49,6 +49,33 @@ async function createBuilding(req: BuildingCreateReq) {
     await load()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '新建楼栋失败')
+  }
+}
+
+// 编辑楼栋(抽屉「编辑楼栋」按钮打开泛化弹窗)
+const editDlg = ref(false)
+async function updateBuilding(req: BuildingUpdateReq) {
+  if (!openBuilding.value) return
+  try {
+    const updated = await buildingApi.update(openBuilding.value.id, req)
+    editDlg.value = false
+    openBuilding.value = updated
+    drawerDetail.value = await buildingApi.detail(updated.id)
+    await load()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '操作失败')
+  }
+}
+
+// 删除楼栋(抽屉内确认后上抛)
+async function deleteBuilding() {
+  if (!openBuilding.value) return
+  try {
+    await buildingApi.remove(openBuilding.value.id)
+    onCloseDrawer()
+    await load()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '操作失败')
   }
 }
 
@@ -254,6 +281,8 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       :building="openBuilding"
       :detail="drawerDetail"
       @close="onCloseDrawer"
+      @edit="editDlg = true"
+      @delete="deleteBuilding"
     />
 
     <!-- 8. 新增楼栋弹窗 -->
@@ -262,6 +291,15 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       :existing-names="buildings.map(b => b.name)"
       @close="newDlg = false"
       @create="createBuilding"
+    />
+
+    <!-- 9. 编辑楼栋弹窗(复用新增弹窗的编辑态) -->
+    <BuildingNewDialog
+      v-if="editDlg && openBuilding"
+      :existing-names="buildings.map(b => b.name)"
+      :initial="openBuilding"
+      @close="editDlg = false"
+      @update="updateBuilding"
     />
   </div>
 </template>

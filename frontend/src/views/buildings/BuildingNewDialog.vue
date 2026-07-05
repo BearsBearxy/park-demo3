@@ -1,20 +1,25 @@
 <script setup lang="ts">
-// 新建楼栋弹窗 — 样式 1:1 参考 ledger/LedgerNewCompanyDialog.vue
+// 新建/编辑楼栋弹窗 — 样式 1:1 参考 ledger/LedgerNewCompanyDialog.vue
+// 传 initial=编辑态(隐藏每层单元数、加状态下拉、提交走 update);不传=新增态(原流程不变)
 import { ref, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import type { BuildingCreateReq } from '@/types/building'
+import Select from '@/components/ds/Select.vue'
+import type { BuildingDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
 
-const props = defineProps<{ existingNames: string[] }>()
-const emit = defineEmits<{ close: []; create: [req: BuildingCreateReq] }>()
+const props = defineProps<{ existingNames: string[]; initial?: BuildingDTO }>()
+const emit = defineEmits<{ close: []; create: [req: BuildingCreateReq]; update: [req: BuildingUpdateReq] }>()
 
-const name = ref('')
-const phase = ref<number | null>(1)
-const floorCount = ref<number | null>(null)
+const isEdit = !!props.initial
+const name = ref(props.initial?.name ?? '')
+const phase = ref<number | null>(props.initial?.phase ?? 1)
+const floorCount = ref<number | null>(props.initial?.floorCount ?? null)
 const perFloor = ref<number | null>(0)
-const totalArea = ref<number | null>(null)
-const rentableArea = ref<number | null>(null)
+const totalArea = ref<number | null>(props.initial?.totalArea ?? null)
+const rentableArea = ref<number | null>(props.initial?.rentableArea ?? null)
+// BuildingDTO 不含 remark,编辑态初值留空(留空提交即清空原备注)
 const remark = ref('')
+const statusLabel = ref(props.initial?.status === 0 ? '停用' : '启用')
 const err = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 onMounted(() => inputRef.value?.focus())
@@ -22,28 +27,32 @@ onMounted(() => inputRef.value?.focus())
 function submit() {
   const v = name.value.trim()
   if (!v) { err.value = '请输入楼栋名称'; return }
-  if (props.existingNames.includes(v)) { err.value = '已存在同名楼栋'; return }
+  if (props.existingNames.includes(v) && v !== props.initial?.name) { err.value = '已存在同名楼栋'; return }
   if (!phase.value || phase.value <= 0) { err.value = '期数需为大于 0 的数字'; return }
   if (!floorCount.value || floorCount.value <= 0) { err.value = '层数需为大于 0 的数字'; return }
-  if (typeof perFloor.value !== 'number' || perFloor.value < 0) { err.value = '每层单元数需为不小于 0 的数字(0=不生成)'; return }
+  if (!isEdit && (typeof perFloor.value !== 'number' || perFloor.value < 0)) { err.value = '每层单元数需为不小于 0 的数字(0=不生成)'; return }
   if (!totalArea.value || totalArea.value <= 0) { err.value = '总面积需为大于 0 的数字'; return }
   if (!rentableArea.value || rentableArea.value <= 0) { err.value = '可租面积需为大于 0 的数字'; return }
   if (rentableArea.value > totalArea.value) { err.value = '可租面积不能大于总面积'; return }
-  emit('create', {
+  const base = {
     name: v, phase: phase.value, floorCount: floorCount.value,
     totalArea: totalArea.value, rentableArea: rentableArea.value,
-    perFloor: perFloor.value, remark: remark.value.trim() || undefined,
-  })
+    remark: remark.value.trim() || undefined,
+  }
+  if (isEdit) emit('update', { ...base, status: statusLabel.value === '停用' ? 0 : 1 })
+  else emit('create', { ...base, perFloor: perFloor.value! })
 }
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="lg-dlg-mask" @click="emit('close')">
+    <!-- 编辑态从抽屉(z 300/301)上层打开,mask 需压过抽屉;新增态保持原 z 80 -->
+    <div class="lg-dlg-mask" :style="isEdit ? 'z-index:340' : ''" @click="emit('close')">
       <div class="lg-dlg" @click.stop>
         <div class="lg-dlg-h">
-          <h3>新建楼栋</h3>
-          <p>录入楼栋基础资产信息。填写「每层单元数」后将按 层数 × 每层单元数 自动生成单元,面积按可租面积均摊。</p>
+          <h3>{{ isEdit ? '编辑楼栋' : '新建楼栋' }}</h3>
+          <p v-if="isEdit">修改楼栋基础信息与状态。单元仅在创建时生成,编辑不会增删单元。</p>
+          <p v-else>录入楼栋基础资产信息。填写「每层单元数」后将按 层数 × 每层单元数 自动生成单元,面积按可租面积均摊。</p>
         </div>
         <div class="lg-dlg-b">
           <div class="lg-dlg-lab">楼栋名称</div>
@@ -61,10 +70,14 @@ function submit() {
               <input class="lg-dlg-in" type="number" min="1" v-model.number="floorCount"
                      placeholder="如:5" @input="err = ''" @keydown.enter="submit" />
             </div>
-            <div>
+            <div v-if="!isEdit">
               <div class="lg-dlg-lab">每层单元数</div>
               <input class="lg-dlg-in" type="number" min="0" v-model.number="perFloor"
                      placeholder="0=不生成" @input="err = ''" @keydown.enter="submit" />
+            </div>
+            <div v-else>
+              <div class="lg-dlg-lab">状态</div>
+              <Select :options="['启用', '停用']" v-model="statusLabel" />
             </div>
             <div>
               <div class="lg-dlg-lab">总面积 ㎡</div>
@@ -78,7 +91,7 @@ function submit() {
             </div>
             <div>
               <div class="lg-dlg-lab">备注(可选)</div>
-              <input class="lg-dlg-in" v-model="remark" placeholder="选填"
+              <input class="lg-dlg-in" v-model="remark" :placeholder="isEdit ? '选填,留空将清空原备注' : '选填'"
                      @input="err = ''" @keydown.enter="submit" />
             </div>
           </div>
@@ -88,7 +101,7 @@ function submit() {
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
-            创建
+            {{ isEdit ? '保存' : '创建' }}
           </Button>
         </div>
       </div>

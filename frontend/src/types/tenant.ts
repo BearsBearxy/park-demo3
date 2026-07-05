@@ -21,6 +21,11 @@ export interface TenantCreateReq {
   since?: string | null; remark?: string
 }
 
+/** PUT /api/tenants/{id} 入参 = CreateReq 全量字段 + status(1在租/2已退租/0黑名单) */
+export interface TenantUpdateReq extends TenantCreateReq {
+  status: number
+}
+
 export interface ContractHistoryDTO {
   contractNo: string; buildingName: string; floorInfo: string
   startDate: string; endDate: string; signDate: string

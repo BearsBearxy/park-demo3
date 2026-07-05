@@ -17,9 +17,13 @@ const props = defineProps<{
   detail: BuildingDetailDTO | null
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: []; delete: [] }>()
 
 const selUnit = ref<UnitDTO | null>(null)
+
+// 删除确认弹窗(样式自带,结构参考 FinDialogs delco 的 .fin-mask/.fin-dlg)
+const delConfirm = ref(false)
+function confirmDelete() { delConfirm.value = false; emit('delete') }
 
 // reset selection when drawer opens new building
 // FPUnitMap 回传的就是本组件经 :building 传入的完整 UnitDTO,仅事件签名较窄,cast 回来
@@ -72,7 +76,11 @@ function resetSel() { selUnit.value = null }
     </template>
 
     <template #footer>
-      <Button variant="gray" size="sm">
+      <Button variant="gray" size="sm" @click="delConfirm = true">
+        <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></template>
+        删除
+      </Button>
+      <Button variant="gray" size="sm" @click="emit('edit')">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></template>
         编辑楼栋
       </Button>
@@ -174,4 +182,32 @@ function resetSel() { selUnit.value = null }
       <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6">{{ b.remark }}</p>
     </div>
   </FPDrawer>
+
+  <!-- 删除确认弹窗 -->
+  <Teleport to="body">
+    <div v-if="delConfirm && b" class="bd-mask" @mousedown="delConfirm = false">
+      <div class="bd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="bd-dlg-h">
+          <h3>删除楼栋</h3>
+          <p>确认删除“{{ b.name }}”?其全部单元将一并删除,此操作不可撤销。有合同的楼栋不可删除。</p>
+        </div>
+        <div class="bd-dlg-f">
+          <Button variant="gray" size="sm" @click="delConfirm = false">取消</Button>
+          <Button variant="danger" size="sm" @click="confirmDelete">确认删除</Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
+
+<style scoped>
+/* 1:1 参考 FinDialogs .fin-mask/.fin-dlg;z-index 高于 FPDrawer(300/301) */
+.bd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:bdfade .16s forwards; }
+@keyframes bdfade { to { opacity:1; } }
+.bd-dlg { width:min(440px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:bdrise .2s var(--ease-standard) both; }
+@keyframes bdrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+.bd-dlg-h { padding:20px 22px 0; }
+.bd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.bd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.bd-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:20px 22px 20px; }
+</style>

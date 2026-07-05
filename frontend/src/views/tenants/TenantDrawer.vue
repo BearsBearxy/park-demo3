@@ -16,13 +16,31 @@ const props = defineProps<{
   open: boolean
   tenant: TenantDTO | null
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: []; deleted: [] }>()
 
 const detail = ref<TenantDetailDTO | null>(null)
 const categoryMap = ref<Record<number, string>>({})
 
+// ── 删除确认(样式 1:1 FinDialogs .fin-mask/.fin-dlg) ──
+const delOpen = ref(false)
+const delBusy = ref(false)
+async function confirmDelete() {
+  if (!props.tenant || delBusy.value) return
+  delBusy.value = true
+  try {
+    await tenantApi.remove(props.tenant.id)
+    delOpen.value = false
+    emit('deleted')
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '操作失败')
+  } finally {
+    delBusy.value = false
+  }
+}
+
 watch(() => props.tenant, async (t) => {
   detail.value = null
+  delOpen.value = false
   if (!t) return
   if (Object.keys(categoryMap.value).length === 0) {
     const cats: TenantCategoryDTO[] = await tenantApi.categories()
@@ -80,11 +98,17 @@ const subtitle = computed(() => {
     </template>
 
     <template #footer>
-      <Button variant="gray" size="sm">
+      <Button variant="danger" size="sm" @click="delOpen = true">
+        <template #leading>
+          <component :is="iconFor('trash-2')" :size="14" />
+        </template>
+        删除
+      </Button>
+      <Button variant="gray" size="sm" @click="emit('edit')">
         <template #leading>
           <component :is="iconFor('pencil')" :size="14" />
         </template>
-        编辑档案
+        编辑
       </Button>
       <Button variant="filled" size="sm">
         <template #leading>
@@ -166,4 +190,35 @@ const subtitle = computed(() => {
     <!-- ponytail: 账单概览(近4月) deferred to P2 — no bill data source until 账单/ledger subsystem is built -->
 
   </FPDrawer>
+
+  <!-- 删除确认弹窗(独立 Teleport,盖在 drawer 之上) -->
+  <Teleport to="body">
+    <div v-if="delOpen && tenant" class="fin-mask" @mousedown="delOpen = false">
+      <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+        <div class="fin-dlg-h">
+          <h3>删除租户</h3>
+          <p>确认删除「{{ tenant.companyName }}」?此操作不可撤销。若该租户存在合同或台账记录,将无法删除,请先处理相关数据。</p>
+        </div>
+        <div class="fin-dlg-f" style="padding-top:20px">
+          <Button variant="gray" size="sm" @click="delOpen = false">取消</Button>
+          <Button variant="danger" size="sm" :disabled="delBusy" @click="confirmDelete">
+            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+            确认删除
+          </Button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
+
+<style scoped>
+/* 1:1 FinDialogs.vue .fin-mask/.fin-dlg;z-index 高于 FPDrawer(300/301) 以盖在抽屉上 */
+.fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:tdfade .16s forwards; }
+@keyframes tdfade { to { opacity:1; } }
+.fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:tdrise .2s var(--ease-standard) both; }
+@keyframes tdrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+.fin-dlg-h { padding:20px 22px 0; }
+.fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
+</style>

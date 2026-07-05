@@ -25,4 +25,12 @@ public class BuildingController {
 
     @Operation(summary = "楼栋详情（含单元列表）") @GetMapping("/{id}")
     public BuildingDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }
+
+    @Operation(summary = "编辑楼栋（名称/期数/层数/面积/状态/备注；编辑不重算单元）") @PutMapping("/{id}")
+    public BuildingDTO update(@PathVariable Integer id, @Valid @RequestBody BuildingUpdateReq req) {
+        return svc.update(id, req);
+    }
+
+    @Operation(summary = "删除楼栋（有合同 409；单元随 FK 级联删除）") @DeleteMapping("/{id}")
+    public void delete(@PathVariable Integer id) { svc.delete(id); }
 }

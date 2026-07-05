@@ -1,10 +1,12 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.park.demo3.common.BizException; import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.*; import java.util.stream.Collectors;
 
@@ -13,9 +15,13 @@ public class TenantService {
     private final TenantMapper tenants; private final ContractMapper contracts;
     private final BuildingMapper buildings; private final TenantCategoryMapper categories;
     private final BuildingService buildingService; private final UnitMapper units;
+    private final MonthlyLedgerMapper ledger; private final S10RecordMapper s10Records;
+    private final ReconMarkMapper reconMarks;
     public TenantService(TenantMapper t, ContractMapper c, BuildingMapper b,
-                         TenantCategoryMapper cat, BuildingService bs, UnitMapper u) {
+                         TenantCategoryMapper cat, BuildingService bs, UnitMapper u,
+                         MonthlyLedgerMapper ml, S10RecordMapper s10, ReconMarkMapper rm) {
         tenants=t; contracts=c; buildings=b; categories=cat; buildingService=bs; units=u;
+        ledger=ml; s10Records=s10; reconMarks=rm;
     }
 
     public List<TenantDTO> list() {
@@ -53,6 +59,41 @@ public class TenantService {
         tenants.insert(t);
         // 新租户无合同:buildTenantDto 对空合同列表返回 月租/面积=0、楼栋"—"、合同数 0,不炸
         return buildTenantDto(tenants.selectById(t.getId()), List.of(), Map.of());
+    }
+
+    public TenantDTO update(Integer id, TenantUpdateReq req) {
+        if (tenants.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        if (tenants.selectCount(new QueryWrapper<Tenant>()
+                .eq("company_name", req.companyName()).ne("id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
+        if (req.categoryId() != null && categories.selectById(req.categoryId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户分类不存在");
+        // PUT 全量语义:可空字段允许清空,用 UpdateWrapper 显式 set(updateById 会跳过 null 字段)
+        tenants.update(null, new UpdateWrapper<Tenant>().eq("id", id)
+            .set("company_name", req.companyName()).set("business_type", req.businessType())
+            .set("contact_name", req.contactName()).set("contact_phone", req.contactPhone())
+            .set("category_id", req.categoryId()).set("phase", req.phase())
+            .set("since", req.since()).set("remark", req.remark()).set("status", req.status()));
+        List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
+        Map<Integer,String> bName = buildings.selectList(null).stream()
+            .collect(Collectors.toMap(Building::getId, Building::getName));
+        return buildTenantDto(tenants.selectById(id), cs, bName);
+    }
+
+    @Transactional
+    public void delete(Integer id) {
+        if (tenants.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        // contract / monthly_ledger 的 tenant_id 为硬 FK:先守卫,给出可操作的中文提示
+        if (contracts.selectCount(new QueryWrapper<Contract>().eq("tenant_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "该租户存在合同,请先处理合同");
+        if (ledger.selectCount(new QueryWrapper<MonthlyLedger>().eq("tenant_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "该租户存在台账记录,不可删除");
+        // s10_record / recon_mark 的 tenant_id 为软引用(无 FK,tenant_name 兜底显示):置 NULL 再删
+        s10Records.update(null, new UpdateWrapper<S10Record>()
+            .eq("tenant_id", id).set("tenant_id", null));
+        reconMarks.update(null, new UpdateWrapper<ReconMark>()
+            .eq("tenant_id", id).set("tenant_id", null));
+        tenants.deleteById(id);
     }
 
     public List<TenantCategoryDTO> categoriesList() {

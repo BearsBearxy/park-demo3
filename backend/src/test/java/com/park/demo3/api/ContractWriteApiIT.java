@@ -12,12 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** POST /api/contracts 写接口 IT。写入类 IT 统一 @Transactional 回滚:共享单例容器,不污染种子。 */
+/** /api/contracts 写接口 IT（新增/编辑/终止/续签/删除）。写入类 IT 统一 @Transactional 回滚:共享单例容器,不污染种子。 */
 @AutoConfigureMockMvc
 @Transactional
 class ContractWriteApiIT extends AbstractMysqlIT {
@@ -163,5 +165,164 @@ class ContractWriteApiIT extends AbstractMysqlIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message").value("结束日期不能早于开始日期"));
+    }
+
+    // ─── 编辑 / 终止 / 续签 / 删除 ───────────────────────────
+
+    /** 建一份合同并返回 id */
+    private int createContract(String no, int tid, int bid, Integer uid,
+                               String start, String end, String status) throws Exception {
+        String body = mvc.perform(post("/api/contracts")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(json(no, tid, bid, uid, start, end, status)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(body, "$.data.id");
+    }
+
+    @Test
+    void updateContract_success_sameNoExcludesSelf_andReadBack() throws Exception {
+        int tid = firstTenantId(); int bid = firstBuildingId();
+        String no = uniqueNo();
+        int id = createContract(no, tid, bid, null, null, null, "draft");
+
+        // 合同号不变(证明查重排除自身),改租金/状态/日期
+        mvc.perform(put("/api/contracts/" + id)
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + no + "\",\"tenantId\":" + tid + ",\"buildingId\":" + bid
+                        + ",\"rentArea\":120,\"monthlyRent\":9999,\"deposit\":20000,"
+                        + "\"startDate\":\"2026-02-01\",\"endDate\":\"2027-01-31\","
+                        + "\"status\":\"active\",\"remark\":\"IT 编辑\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.monthlyRent").value(9999.0))
+                .andExpect(jsonPath("$.data.status").value("active"));
+
+        // 回读
+        mvc.perform(get("/api/contracts/" + id).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.monthlyRent").value(9999.0))
+                .andExpect(jsonPath("$.data.contract.status").value("active"))
+                .andExpect(jsonPath("$.data.contract.remark").value("IT 编辑"));
+    }
+
+    @Test
+    void updateContract_duplicateOtherNo_returns409InBody() throws Exception {
+        int tid = firstTenantId(); int bid = firstBuildingId();
+        String noA = uniqueNo();
+        createContract(noA, tid, bid, null, null, null, "draft");
+        int idB = createContract(uniqueNo(), tid, bid, null, null, null, "draft");
+
+        mvc.perform(put("/api/contracts/" + idB)
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(json(noA, tid, bid, null, null, null, "draft")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("合同号已存在"));
+    }
+
+    @Test
+    void updateContract_missing_returns404InBody() throws Exception {
+        mvc.perform(put("/api/contracts/99999999")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(json(uniqueNo(), firstTenantId(), firstBuildingId(), null, null, null, "draft")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("合同不存在"));
+    }
+
+    @Test
+    void terminate_success_unitBackToVacant() throws Exception {
+        int tid = firstTenantId();
+        int[] bu = findVacantUnit();
+        int id = createContract(uniqueNo(), tid, bu[0], bu[1], "2026-01-01", "2028-12-31", "active");
+
+        // active 落库后单元 occupied(create 用例已验),终止后派生应回 vacant
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.status").value("terminated"));
+
+        List<String> st = JsonPath.read(getBody("/api/buildings/" + bu[0]),
+                "$.data.units[?(@.id==" + bu[1] + ")].status");
+        assertThat(st).containsExactly("vacant");
+    }
+
+    @Test
+    void terminate_twice_returns409InBody() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(post("/api/contracts/" + id + "/terminate")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("合同已终止"));
+    }
+
+    @Test
+    void renew_success_oldTerminated_newActiveInheritsUnitAndRent() throws Exception {
+        int tid = firstTenantId();
+        int[] bu = findVacantUnit();
+        int oldId = createContract(uniqueNo(), tid, bu[0], bu[1], "2026-01-01", "2028-12-31", "active");
+        String newNo = uniqueNo();
+
+        // 租金/押金/面积不传 → 继承旧合同(8000/16000/100.5)
+        mvc.perform(post("/api/contracts/" + oldId + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + newNo + "\",\"startDate\":\"2029-01-01\",\"endDate\":\"2031-12-31\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.contractNo").value(newNo))
+                .andExpect(jsonPath("$.data.status").value("active"))
+                .andExpect(jsonPath("$.data.tenantId").value(tid))
+                .andExpect(jsonPath("$.data.buildingId").value(bu[0]))
+                .andExpect(jsonPath("$.data.unitId").value(bu[1]))
+                .andExpect(jsonPath("$.data.monthlyRent").value(8000.0));
+
+        // 旧合同回读已终止
+        mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.contract.status").value("terminated"));
+    }
+
+    @Test
+    void renew_duplicateNo_returns409InBody() throws Exception {
+        String no = uniqueNo();
+        int id = createContract(no, firstTenantId(), firstBuildingId(), null,
+                "2026-01-01", "2028-12-31", "active");
+
+        // 新合同号撞旧合同自身的号(旧合同仍存在)→ 409
+        mvc.perform(post("/api/contracts/" + id + "/renew")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + no + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("合同号已存在"));
+    }
+
+    @Test
+    void deleteContract_success_goneFromList() throws Exception {
+        int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null, null, null, "draft");
+
+        mvc.perform(delete("/api/contracts/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        List<Integer> hit = JsonPath.read(getBody("/api/contracts"), "$.data[?(@.id==" + id + ")].id");
+        assertThat(hit).isEmpty();
     }
 }

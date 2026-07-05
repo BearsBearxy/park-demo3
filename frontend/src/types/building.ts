@@ -13,6 +13,13 @@ export interface BuildingCreateReq {
   perFloor: number; remark?: string
 }
 
+// 编辑专用:比 CreateReq 多 status、无 perFloor(单元仅创建时生成,编辑不增删单元)
+export interface BuildingUpdateReq {
+  name: string; phase: number; floorCount: number
+  totalArea: number; rentableArea: number
+  status: number; remark?: string
+}
+
 export interface BuildingSummaryDTO {
   buildingCount: number; stoppedCount: number; rentableArea: number
   occRate: number; vacantCount: number; unitCount: number

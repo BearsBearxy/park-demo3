@@ -7,6 +7,7 @@ public record ContractDTO(
     String  tenantName,
     Integer buildingId,
     String  buildingName,
+    Integer unitId,
     String  floorInfo,
     BigDecimal rentArea,
     BigDecimal monthlyRent,

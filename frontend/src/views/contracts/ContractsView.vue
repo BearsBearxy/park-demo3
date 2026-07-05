@@ -29,6 +29,8 @@ const page = ref(1)
 const pageSize = 8
 const openContract = ref<ContractDTO | null>(null)
 const showNew = ref(false)
+const editFrom = ref<ContractDTO | null>(null)
+const renewFrom = ref<ContractDTO | null>(null)
 
 async function reload() {
   ;[contracts.value, summary.value] = await Promise.all([contractApi.list(), contractApi.summary()])
@@ -37,6 +39,26 @@ onMounted(reload)
 
 async function onCreated() {
   showNew.value = false
+  await reload()
+}
+
+// 编辑/续签/终止成功:抽屉切换为返回的最新 DTO(watch 重拉 detail),列表+KPI 重拉
+async function onEdited(dto: ContractDTO) {
+  editFrom.value = null
+  openContract.value = dto
+  await reload()
+}
+async function onRenewed(dto: ContractDTO) {
+  renewFrom.value = null
+  openContract.value = dto
+  await reload()
+}
+async function onTerminated(dto: ContractDTO) {
+  openContract.value = dto
+  await reload()
+}
+async function onDeleted() {
+  openContract.value = null
   await reload()
 }
 
@@ -267,9 +289,17 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       :open="!!openContract"
       :contract="openContract"
       @close="openContract = null"
+      @edit="editFrom = $event"
+      @renew="renewFrom = $event"
+      @terminated="onTerminated"
+      @deleted="onDeleted"
     />
 
     <!-- 8. 新增合同弹窗 -->
     <ContractNewDialog v-if="showNew" @close="showNew = false" @created="onCreated" />
+
+    <!-- 9. 编辑 / 续签弹窗(从抽屉操作区打开,压在抽屉之上) -->
+    <ContractNewDialog v-if="editFrom" :initial="editFrom" @close="editFrom = null" @saved="onEdited" />
+    <ContractNewDialog v-if="renewFrom" :renew-from="renewFrom" @close="renewFrom = null" @saved="onRenewed" />
   </div>
 </template>

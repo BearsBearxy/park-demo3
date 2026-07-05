@@ -1,22 +1,27 @@
 <script setup lang="ts">
-// 新增租户弹窗 — 样式 1:1 FinDialogs 的 .fin-mask/.fin-dlg(Teleport 居中弹窗,回车提交,错误行内提示)。
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+// 新增/编辑租户弹窗 — 样式 1:1 FinDialogs 的 .fin-mask/.fin-dlg(Teleport 居中弹窗,回车提交,错误行内提示)。
+// 传 initial=编辑态(回填初值+状态下拉,提交走 update);不传=新增态,原流程不变。
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { tenantApi } from '@/api/tenant'
-import type { TenantCategoryDTO } from '@/types/tenant'
+import type { TenantCategoryDTO, TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 
-const emit = defineEmits<{ close: []; created: [] }>()
+const props = defineProps<{ initial?: TenantDTO | null }>()
+const emit = defineEmits<{ close: []; created: []; updated: [] }>()
+
+const isEdit = computed(() => !!props.initial)
 
 const categories = ref<TenantCategoryDTO[]>([])
-const companyName = ref('')
-const businessType = ref('')
-const categoryId = ref<number | ''>('')
-const contactName = ref('')
-const contactPhone = ref('')
-const phase = ref<number | ''>('')
-const since = ref('')
-const remark = ref('')
+const companyName = ref(props.initial?.companyName ?? '')
+const businessType = ref(props.initial?.businessType ?? '')
+const categoryId = ref<number | ''>(props.initial?.categoryId ?? '')
+const contactName = ref(props.initial?.contactName ?? '')
+const contactPhone = ref(props.initial?.contactPhone ?? '')
+const phase = ref<number | ''>(props.initial?.phase ?? '')
+const since = ref(props.initial?.since ?? '')
+const remark = ref(props.initial?.remark ?? '')
+const status = ref(props.initial?.status ?? 1)
 const err = ref('')
 const busy = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -37,20 +42,26 @@ async function submit() {
   if (!biz) { err.value = '请输入业务类型'; return }
   if (busy.value) return
   busy.value = true
+  const req = {
+    companyName: name,
+    businessType: biz,
+    contactName: contactName.value.trim() || undefined,
+    contactPhone: contactPhone.value.trim() || undefined,
+    categoryId: categoryId.value === '' ? null : categoryId.value,
+    phase: phase.value === '' ? null : phase.value,
+    since: since.value || null,
+    remark: remark.value.trim() || undefined,
+  }
   try {
-    await tenantApi.create({
-      companyName: name,
-      businessType: biz,
-      contactName: contactName.value.trim() || undefined,
-      contactPhone: contactPhone.value.trim() || undefined,
-      categoryId: categoryId.value === '' ? null : categoryId.value,
-      phase: phase.value === '' ? null : phase.value,
-      since: since.value || null,
-      remark: remark.value.trim() || undefined,
-    })
-    emit('created')
+    if (props.initial) {
+      await tenantApi.update(props.initial.id, { ...req, status: status.value })
+      emit('updated')
+    } else {
+      await tenantApi.create(req)
+      emit('created')
+    }
   } catch (e) {
-    err.value = (e as { message?: string })?.message ?? '新增租户失败'
+    err.value = (e as { message?: string })?.message ?? (isEdit.value ? '保存失败' : '新增租户失败')
   } finally {
     busy.value = false
   }
@@ -62,8 +73,9 @@ async function submit() {
     <div class="fin-mask" @mousedown="emit('close')">
       <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="fin-dlg-h">
-          <h3>新增租户</h3>
-          <p>创建一条租户主数据档案。月租金、面积等由合同派生,新租户暂为 0,签订合同后自动汇总。</p>
+          <h3>{{ isEdit ? '编辑租户' : '新增租户' }}</h3>
+          <p>{{ isEdit ? '修改该租户的主数据档案。月租金、面积等由合同派生,不在此编辑。'
+                       : '创建一条租户主数据档案。月租金、面积等由合同派生,新租户暂为 0,签订合同后自动汇总。' }}</p>
         </div>
         <div class="fin-dlg-b">
           <div class="fin-field">
@@ -106,6 +118,17 @@ async function submit() {
               <input class="fin-in" type="month" v-model="since" @keydown.enter="submit" />
             </div>
           </div>
+          <div class="fin-row" v-if="isEdit">
+            <div class="fin-field">
+              <div class="lab">状态</div>
+              <select class="fin-in" v-model.number="status">
+                <option :value="1">在租</option>
+                <option :value="2">已退租</option>
+                <option :value="0">黑名单</option>
+              </select>
+            </div>
+            <div></div>
+          </div>
           <div class="fin-field">
             <div class="lab">备注</div>
             <input class="fin-in" v-model="remark" placeholder="选填" @keydown.enter="submit" />
@@ -116,7 +139,7 @@ async function submit() {
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" :disabled="busy" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
-            创建
+            {{ isEdit ? '保存' : '创建' }}
           </Button>
         </div>
       </div>

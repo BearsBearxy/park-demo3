@@ -1,7 +1,7 @@
 export interface ContractDTO {
   id: number; contractNo: string
   tenantId: number; tenantName: string
-  buildingId: number; buildingName: string; floorInfo: string
+  buildingId: number; buildingName: string; unitId: number | null; floorInfo: string
   rentArea: number; monthlyRent: number; deposit: number
   startDate: string | null; endDate: string | null; signDate: string | null
   status: string   // 'draft'|'active'|'expiring'|'expired'|'terminated'
@@ -22,6 +22,16 @@ export interface ContractCreateReq {
   signDate?: string | null
   status: string
   remark?: string | null
+}
+
+export interface ContractRenewReq {
+  contractNo: string
+  startDate?: string | null
+  endDate?: string | null
+  signDate?: string | null
+  monthlyRent?: number | null   // 空=继承旧合同
+  deposit?: number | null
+  rentArea?: number | null
 }
 
 export interface ContractSummaryDTO {

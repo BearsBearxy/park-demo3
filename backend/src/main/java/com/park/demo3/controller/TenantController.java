@@ -18,6 +18,12 @@ public class TenantController {
     public TenantSummaryDTO summary() { return svc.summary(); }
     @Operation(summary = "新增租户") @PostMapping
     public TenantDTO create(@Valid @RequestBody TenantCreateReq req) { return svc.create(req); }
+    @Operation(summary = "编辑租户（全量 PUT，含状态）") @PutMapping("/{id}")
+    public TenantDTO update(@PathVariable Integer id, @Valid @RequestBody TenantUpdateReq req) {
+        return svc.update(id, req);
+    }
+    @Operation(summary = "删除租户（有合同/台账记录时 409）") @DeleteMapping("/{id}")
+    public void delete(@PathVariable Integer id) { svc.delete(id); }
     @Operation(summary = "租户详情（含合同历史）") @GetMapping("/{id}")
     public TenantDetailDTO detail(@PathVariable Integer id) { return svc.detail(id); }
 }

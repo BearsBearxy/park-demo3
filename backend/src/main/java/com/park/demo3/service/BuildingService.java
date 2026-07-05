@@ -127,6 +127,25 @@ public class BuildingService {
         return toDTO(buildings.selectById(b.getId()), units.selectByBuildingId(b.getId()), List.of());
     }
 
+    public BuildingDTO update(Integer id, BuildingUpdateReq req) {
+        Building b = buildings.selectById(id);
+        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
+        if (buildings.selectCount(new QueryWrapper<Building>().eq("name", req.name()).ne("id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "楼栋名称已存在");
+        b.setName(req.name()); b.setPhase(req.phase()); b.setFloorCount(req.floorCount());
+        b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
+        b.setStatus(req.status()); b.setRemark(req.remark());
+        buildings.updateById(b);
+        return toDTO(buildings.selectById(id), units.selectByBuildingId(id), contracts.selectByBuildingId(id));
+    }
+
+    public void delete(Integer id) {
+        if (buildings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
+        if (contracts.selectCount(new QueryWrapper<Contract>().eq("building_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "该楼栋下存在合同,请先处理合同");
+        buildings.deleteById(id); // unit 表 FK ON DELETE CASCADE 自动清
+    }
+
     public BuildingSummaryDTO summary() {
         List<BuildingDTO> all = list();
         int stopped = (int) all.stream().filter(d -> d.status()==0).count();

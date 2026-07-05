@@ -39,15 +39,31 @@ const pageSize = 8
 
 const openTenant = ref<TenantDTO | null>(null)
 const newDlg = ref(false)
+const editDlg = ref(false)
 
-onMounted(async () => {
+async function reload() {
   ;[tenants.value, summary.value] = await Promise.all([tenantApi.list(), tenantApi.summary()])
-})
+}
+onMounted(reload)
 
 // 新增成功 → 关弹窗并重拉 list+summary
 async function onTenantCreated() {
   newDlg.value = false
-  ;[tenants.value, summary.value] = await Promise.all([tenantApi.list(), tenantApi.summary()])
+  await reload()
+}
+
+// 编辑成功 → 关弹窗、重拉后用新列表行刷新 drawer(drawer 展示的 DTO 来自列表行)
+async function onTenantUpdated() {
+  const id = openTenant.value?.id
+  editDlg.value = false
+  await reload()
+  if (id != null) openTenant.value = tenants.value.find(t => t.id === id) ?? null
+}
+
+// 删除成功 → 关 drawer 并重拉 list+summary
+async function onTenantDeleted() {
+  openTenant.value = null
+  await reload()
 }
 
 // ─── computed ─────────────────────────────────────────────
@@ -222,9 +238,15 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       :open="!!openTenant"
       :tenant="openTenant"
       @close="openTenant = null"
+      @edit="editDlg = true"
+      @deleted="onTenantDeleted"
     />
 
     <!-- 7. 新增租户弹窗 -->
     <TenantNewDialog v-if="newDlg" @close="newDlg = false" @created="onTenantCreated" />
+
+    <!-- 8. 编辑租户弹窗(复用新增弹窗,initial=编辑态) -->
+    <TenantNewDialog v-if="editDlg && openTenant" :initial="openTenant"
+                     @close="editDlg = false" @updated="onTenantUpdated" />
   </div>
 </template>

@@ -1,16 +1,28 @@
 <script setup lang="ts">
-// 新增合同弹窗 — 样式 1:1 LedgerNewCompanyDialog/FinDialogs(.ct-mask/.ct-dlg 居中弹窗,Teleport to body,
-// 回车提交,错误行内提示);字段多,两列排布。成功后 emit created 由父级刷新 list+summary。
-import { ref, onMounted, watch } from 'vue'
+// 合同弹窗(新增/编辑/续签三态) — 样式 1:1 LedgerNewCompanyDialog/FinDialogs(.ct-mask/.ct-dlg 居中弹窗,
+// Teleport to body,回车提交,错误行内提示);字段多,两列排布。
+// 无 prop=新增(emit created);initial=编辑(全字段回填,提交走 update);renewFrom=续签(租户/楼栋/单元锁定,
+// 提交走 renew,原合同将被终止)。编辑/续签成功 emit saved 携带最新 DTO,由父级刷新 list+summary+drawer。
+import { ref, computed, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { contractApi } from '@/api/contract'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
+import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO, UnitDTO } from '@/types/building'
 
-const emit = defineEmits<{ close: []; created: [] }>()
+const props = defineProps<{
+  /** 编辑态:待编辑合同(与 renewFrom 互斥) */
+  initial?: ContractDTO | null
+  /** 续签态:原合同(与 initial 互斥) */
+  renewFrom?: ContractDTO | null
+}>()
+const emit = defineEmits<{ close: []; created: []; saved: [ContractDTO] }>()
+
+const mode = computed<'new' | 'edit' | 'renew'>(() =>
+  props.renewFrom ? 'renew' : props.initial ? 'edit' : 'new')
 
 const STATUS_OPTS = [
   { value: 'draft', label: 'draft · 草稿' },
@@ -42,20 +54,46 @@ const inputRef = ref<HTMLInputElement | null>(null)
 
 onMounted(async () => {
   inputRef.value?.focus()
+  if (props.renewFrom) {
+    // 续签:租户/楼栋/单元锁定展示无需选项;合同号/日期留空,租金/押金/面积预填可改
+    rentArea.value = props.renewFrom.rentArea
+    monthlyRent.value = props.renewFrom.monthlyRent
+    deposit.value = props.renewFrom.deposit
+    status.value = 'active'
+    return
+  }
   ;[tenants.value, buildings.value] = await Promise.all([tenantApi.list(), buildingApi.list()])
+  const c = props.initial
+  if (c) {
+    contractNo.value = c.contractNo
+    tenantId.value = c.tenantId
+    buildingId.value = c.buildingId
+    if (c.buildingId != null) units.value = (await buildingApi.detail(c.buildingId)).units
+    unitId.value = c.unitId
+    rentArea.value = c.rentArea
+    monthlyRent.value = c.monthlyRent
+    deposit.value = c.deposit
+    startDate.value = c.startDate ?? ''
+    endDate.value = c.endDate ?? ''
+    signDate.value = c.signDate ?? ''
+    status.value = c.status
+    remark.value = c.remark ?? ''
+  }
 })
 
-// 选楼栋后载入其单元列表(可留空);切换楼栋清空已选单元
-watch(buildingId, async (id) => {
+// 选楼栋后载入其单元列表(可留空);切换楼栋清空已选单元。
+// 用 @change 而非 watch:编辑态程序化回填 buildingId/unitId 时不应触发联动清空/覆盖
+async function onBuildingChange() {
+  err.value = ''
   unitId.value = null
-  units.value = id == null ? [] : (await buildingApi.detail(id)).units
-})
+  units.value = buildingId.value == null ? [] : (await buildingApi.detail(buildingId.value)).units
+}
 
 // 选单元自动带出租赁面积(可改)
-watch(unitId, (id) => {
-  const u = units.value.find(x => x.id === id)
+function onUnitChange() {
+  const u = units.value.find(x => x.id === unitId.value)
   if (u) rentArea.value = u.area
-})
+}
 
 // v-model.number 清空输入时值退化为 ''(string),统一收敛为数字,默认 0
 const num = (v: number | null) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
@@ -63,14 +101,29 @@ const num = (v: number | null) => (typeof v === 'number' && !Number.isNaN(v) ? v
 async function submit() {
   if (submitting.value) return
   if (!contractNo.value.trim()) { err.value = '请输入合同号'; return }
-  if (tenantId.value == null) { err.value = '请选择租户'; return }
-  if (buildingId.value == null) { err.value = '请选择楼栋'; return }
+  if (mode.value !== 'renew') {
+    if (tenantId.value == null) { err.value = '请选择租户'; return }
+    if (buildingId.value == null) { err.value = '请选择楼栋'; return }
+  }
   submitting.value = true
   try {
-    await contractApi.create({
+    if (mode.value === 'renew') {
+      const dto = await contractApi.renew(props.renewFrom!.id, {
+        contractNo: contractNo.value.trim(),
+        startDate: startDate.value || null,
+        endDate: endDate.value || null,
+        signDate: signDate.value || null,
+        monthlyRent: num(monthlyRent.value),
+        deposit: num(deposit.value),
+        rentArea: num(rentArea.value),
+      })
+      emit('saved', dto)
+      return
+    }
+    const req = {
       contractNo: contractNo.value.trim(),
-      tenantId: tenantId.value,
-      buildingId: buildingId.value,
+      tenantId: tenantId.value!,
+      buildingId: buildingId.value!,
       unitId: unitId.value,
       rentArea: num(rentArea.value),
       monthlyRent: num(monthlyRent.value),
@@ -80,10 +133,15 @@ async function submit() {
       signDate: signDate.value || null,
       status: status.value,
       remark: remark.value.trim() || null,
-    })
-    emit('created')
-  } catch (e: any) {
-    err.value = e?.message ?? '创建失败，请稍后重试'
+    }
+    if (mode.value === 'edit') {
+      emit('saved', await contractApi.update(props.initial!.id, req))
+    } else {
+      await contractApi.create(req)
+      emit('created')
+    }
+  } catch (e) {
+    err.value = (e as { message?: string })?.message ?? '操作失败'
   } finally {
     submitting.value = false
   }
@@ -95,8 +153,10 @@ async function submit() {
     <div class="ct-mask" @mousedown="emit('close')">
       <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <div class="ct-dlg-h">
-          <h3>新增合同</h3>
-          <p>录入一份租赁合同。执行中/即将到期的合同将计入月租金、占用所选单元并派生楼栋出租率。</p>
+          <h3>{{ mode === 'edit' ? '编辑合同' : mode === 'renew' ? '续签合同' : '新增合同' }}</h3>
+          <p v-if="mode === 'renew'">为「{{ renewFrom?.contractNo }}」创建续签新约,租户/楼栋/单元沿用原合同。提交后原合同将标记为已终止。</p>
+          <p v-else-if="mode === 'edit'">修改该合同的字段并保存(全量提交)。</p>
+          <p v-else>录入一份租赁合同。执行中/即将到期的合同将计入月租金、占用所选单元并派生楼栋出租率。</p>
         </div>
         <div class="ct-dlg-b">
           <div class="ct-grid">
@@ -107,27 +167,30 @@ async function submit() {
             </div>
             <div class="ct-field">
               <div class="lab">状态 <i>*</i></div>
-              <select class="ct-in" v-model="status">
+              <select class="ct-in" v-model="status" :disabled="mode === 'renew'">
                 <option v-for="o in STATUS_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </div>
             <div class="ct-field">
               <div class="lab">租户 <i>*</i></div>
-              <select class="ct-in" :class="{ err: err === '请选择租户' }" v-model="tenantId" @change="err = ''">
+              <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.tenantName" disabled />
+              <select v-else class="ct-in" :class="{ err: err === '请选择租户' }" v-model="tenantId" @change="err = ''">
                 <option :value="null" disabled>请选择租户</option>
                 <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.companyName }}</option>
               </select>
             </div>
             <div class="ct-field">
               <div class="lab">楼栋 <i>*</i></div>
-              <select class="ct-in" :class="{ err: err === '请选择楼栋' }" v-model="buildingId" @change="err = ''">
+              <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingName" disabled />
+              <select v-else class="ct-in" :class="{ err: err === '请选择楼栋' }" v-model="buildingId" @change="onBuildingChange()">
                 <option :value="null" disabled>请选择楼栋</option>
                 <option v-for="b in buildings" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>
             </div>
             <div class="ct-field">
               <div class="lab">单元</div>
-              <select class="ct-in" v-model="unitId" :disabled="buildingId == null">
+              <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.floorInfo || '未指定单元'" disabled />
+              <select v-else class="ct-in" v-model="unitId" :disabled="buildingId == null" @change="onUnitChange()">
                 <option :value="null">留空 · 不指定单元</option>
                 <option v-for="u in units" :key="u.id" :value="u.id">
                   {{ u.floor }}F-{{ u.unitNo }} · {{ u.area }}㎡{{ u.status === 'vacant' ? '' : ' · 非空置' }}
@@ -173,7 +236,7 @@ async function submit() {
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
           <Button variant="filled" size="sm" :disabled="submitting" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
-            创建
+            {{ mode === 'edit' ? '保存' : mode === 'renew' ? '续签' : '创建' }}
           </Button>
         </div>
       </div>
@@ -183,7 +246,8 @@ async function submit() {
 
 <style scoped>
 /* 1:1 FinDialogs .fin-mask/.fin-dlg(居中弹窗,遵 DESIGN-FIDELITY §7);两列表单为本弹窗新增 */
-.ct-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:ctfade .16s forwards; }
+/* z-index 320:高于 FPDrawer(300/301),编辑/续签态从抽屉打开时弹窗须压在抽屉之上 */
+.ct-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:ctfade .16s forwards; }
 @keyframes ctfade { to { opacity:1; } }
 .ct-dlg { width:min(640px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:ctrise .2s var(--ease-standard) both; }
 @keyframes ctrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
