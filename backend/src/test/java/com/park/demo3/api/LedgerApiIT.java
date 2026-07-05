@@ -141,18 +141,19 @@ class LedgerApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void month_returns13RowsWithDerivedTotals() throws Exception {
+    void month_returnsStoredRowsOnly() throws Exception {
+        // 只回存储行(不再补零全部在租租户);V5 种子给公司1 每月存了 13 行(tenant 1-13)
         String body = mvc.perform(get("/api/ledger/companies/1/months/2026/5")
                 .header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.month").value(5))
                 .andExpect(jsonPath("$.data.prevMonth").value(4))
-                .andExpect(jsonPath("$.data.rows.length()").value(13)) // sparse padded to all active
+                .andExpect(jsonPath("$.data.rows.length()").value(13)) // stored rows(seed), not padding
                 .andReturn().getResponse().getContentAsString();
         List<Integer> tenantIds = JsonPath.read(body, "$.data.rows[*].tenantId");
-        assertThat(tenantIds).doesNotContain(14); // retired tenant excluded
-        // every row exposes derived totalReceivable + balanceEnd
+        assertThat(tenantIds).doesNotContain(14); // retired tenant has no stored row
+        // every stored row exposes derived totalReceivable + balanceEnd
         List<Object> recv = JsonPath.read(body, "$.data.rows[*].totalReceivable");
         List<Object> end  = JsonPath.read(body, "$.data.rows[*].balanceEnd");
         assertThat(recv).hasSize(13);
@@ -171,10 +172,9 @@ class LedgerApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content(saveBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.rows.length()").value(13));
+                .andExpect(jsonPath("$.data.rows.length()").value(1)); // stored only
 
-        // read back: tenant 1 has the saved values + derived totals
-        // tenant 1 = rows[0] (rows padded to all 13 active tenants, ordered by id)
+        // read back: tenant 1 has the saved values + derived totals (唯一存储行)
         String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/9")
                 .header("Authorization", auth()))
                 .andExpect(status().isOk())
@@ -186,14 +186,13 @@ class LedgerApiIT extends AbstractMysqlIT {
         assertThat(end.doubleValue()).isEqualTo(11000.0);           // 1000 + 50000 - 40000
         assertThat(note).isEqualTo("集成测试");
 
-        // blank that row → deleted, padded back to zero
-        String reblank = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
+        // blank that row → deleted → month has no stored rows
+        mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
                 .contentType("application/json")
                 .content("{\"rows\":[{\"tenantId\":1}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andReturn());
-        assertThat(((Number) JsonPath.read(reblank, "$.data.rows[0].totalReceivable")).doubleValue()).isEqualTo(0.0);
+                .andExpect(jsonPath("$.data.rows.length()").value(0));
     }
 
     // ── copy-from-prev ────────────────────────────────────────

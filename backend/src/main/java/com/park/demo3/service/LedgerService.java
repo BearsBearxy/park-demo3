@@ -154,20 +154,20 @@ public class LedgerService {
     }
 
     // ── month read(稀疏补零成全部在租租户) ──
+    // 只返回有存储行的租户(原「稀疏补零成全部在租租户」在真实数据 300+ 租户池下会让每家公司
+    // 的台账铺满无关零行);新租户入账走编辑态「添加租户行」或导入。历史行的退租租户名照常显示。
     public LedgerMonthDTO month(Integer companyId, int year, int month) {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
 
-        List<Tenant> active = activeTenants();
-        Map<Integer, MonthlyLedger> stored = ledger.selectMonth(companyId, year, month).stream()
-            .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
+        List<MonthlyLedger> stored = new ArrayList<>(ledger.selectMonth(companyId, year, month));
+        stored.sort(Comparator.comparing(MonthlyLedger::getTenantId));
+        Map<Integer, String> names = stored.isEmpty() ? Map.of()
+            : tenants.selectBatchIds(stored.stream().map(MonthlyLedger::getTenantId).toList()).stream()
+                .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
 
-        List<LedgerRowDTO> rows = new ArrayList<>(active.size());
-        for (Tenant t : active) {
-            MonthlyLedger l = stored.get(t.getId());
-            if (l == null) l = zeroRow(companyId, t.getId(), year, month);
-            rows.add(toRowDTO(l, t.getCompanyName()));
-        }
+        List<LedgerRowDTO> rows = new ArrayList<>(stored.size());
+        for (MonthlyLedger l : stored) rows.add(toRowDTO(l, names.getOrDefault(l.getTenantId(), "（已删除租户）")));
         return new LedgerMonthDTO(company.getName(), year, month, prevMonth(month), rows, footer(rows));
     }
 
@@ -208,7 +208,7 @@ public class LedgerService {
         Map<Integer, MonthlyLedger> stored = ledger.selectMonth(companyId, year, month).stream()
             .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
 
-        int imported = 0;
+        int imported = 0, skippedBlank = 0;
         List<ImportError> errors = new ArrayList<>();
         List<LedgerImportRequest.Row> rows = req.rows();
         for (int i = 0; i < rows.size(); i++) {
@@ -219,14 +219,19 @@ public class LedgerService {
                 errors.add(new ImportError(i, row.tenantName(), "未找到匹配在租租户"));
                 continue;
             }
-            // 定向 upsert:既有行 update,否则 insert(不触碰未导入的其他租户行)
+            // 全零行防线:21 费用列全为 0 且该租户本月无既有行 → 不落库(文件里大量「-」占位行,
+            // 落库会让台账出现整片零行;有既有行时仍允许全零更新=显式清零)
+            boolean allZero = true;
+            for (int f = 0; f < IMP_GET.size(); f++) if (r2(IMP_GET.get(f).apply(row)).signum() != 0) { allZero = false; break; }
             MonthlyLedger existing = stored.get(tenantId);
+            if (allZero && existing == null) { skippedBlank++; continue; }
+            // 定向 upsert:既有行 update,否则 insert(不触碰未导入的其他租户行)
             MonthlyLedger l = existing != null ? existing : zeroRow(companyId, tenantId, year, month);
             for (int f = 0; f < FEE_SET.size(); f++) FEE_SET.get(f).accept(l, r2(IMP_GET.get(f).apply(row)));
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
             imported++;
         }
-        return new ImportResultDTO(imported, errors.size(), errors);
+        return new ImportResultDTO(imported, errors.size() + skippedBlank, errors);
     }
 
     // ── copy-from-prev(以上月各行为模板,结余结转,事务) ──

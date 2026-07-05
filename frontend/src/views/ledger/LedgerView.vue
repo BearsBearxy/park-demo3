@@ -3,6 +3,8 @@
 // 动线: ⓪选公司 → ①年份门(SchedYearGate,同附表) → ②月历 → ③宽表 → ④抽屉。
 import { ref, computed, onMounted } from 'vue'
 import { companyApi, ledgerApi } from '@/api/ledger'
+import { tenantApi } from '@/api/tenant'
+import type { TenantDTO } from '@/types/tenant'
 import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
 import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
@@ -155,6 +157,25 @@ function snapshotDraft() {
 function enterEdit() {
   snapshotDraft()
   edit.value = true
+  ensureTenantsLoaded()
+}
+
+// ── 添加租户行(宽表只显示有数据的租户;新租户入账从候选挑一行加进 draft,保存时落库) ──
+const allTenants = ref<TenantDTO[]>([])
+function ensureTenantsLoaded() {
+  if (!allTenants.value.length) tenantApi.list().then(v => { allTenants.value = v }).catch(() => {})
+}
+const addableTenants = computed(() =>
+  allTenants.value
+    .filter(t => t.status === 1 && !draft.value.some(r => r.tenantId === t.id))
+    .map(t => ({ id: t.id, name: t.companyName })),
+)
+function onAddTenantRow(tenantId: number) {
+  const t = allTenants.value.find(x => x.id === tenantId)
+  if (!t || draft.value.some(r => r.tenantId === tenantId)) return
+  const zero = { tenantId: t.id, tenantName: t.companyName, balancePrev: 0, totalCollected: 0, note: null, totalReceivable: 0, balanceEnd: 0 } as Record<string, unknown>
+  for (const k of FEE_KEYS) zero[k] = 0
+  draft.value = [zero as unknown as LedgerRowDTO, ...draft.value]
 }
 function cancelEdit() {
   // 取消:丢弃 draft,回到服务端快照(jsx cancelEdit 433-437)
@@ -280,6 +301,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
       :month-no="month!"
       :edit="edit"
       :saving="saving"
+      :addable-tenants="addableTenants"
       @switch-company="goGate"
       @back="backToMonths"
       @enter-edit="enterEdit"
@@ -288,6 +310,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
       @copy-from-prev="copyFromPrev"
       @tenant-click="drawerTenantId = $event"
       @import="importing = true"
+      @add-tenant="onAddTenantRow"
     />
     <LedgerTenantDrawer
       :row="drawerRow"

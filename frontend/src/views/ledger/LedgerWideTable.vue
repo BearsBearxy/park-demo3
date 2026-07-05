@@ -22,6 +22,7 @@ const props = defineProps<{
   monthNo: number
   edit: boolean
   saving: boolean
+  addableTenants?: { id: number; name: string }[]   // 编辑态「添加租户行」候选(在租且本月尚无行)
 }>()
 const emit = defineEmits<{
   'switch-company': []
@@ -32,9 +33,18 @@ const emit = defineEmits<{
   'copy-from-prev': []
   'tenant-click': [tenantId: number]
   import: []
+  'add-tenant': [tenantId: number]
 }>()
 
 const q = ref('')
+
+// 添加租户行(候选由父级传入;添加后重置选择)
+const addTenantId = ref<number | ''>('')
+function onAddTenant() {
+  if (addTenantId.value === '') return
+  emit('add-tenant', Number(addTenantId.value))
+  addTenantId.value = ''
+}
 
 const cols = computed(() => lgColumns(props.month.prevMonth))
 
@@ -116,6 +126,17 @@ function onCopyPrev() {
         </template>
         <template v-else>
           <span class="lg-tag edit">编辑中 · {{ companyName }}</span>
+          <!-- 添加租户行:宽表只显示有数据的租户,新租户入账从这里挑(候选=在租且本月尚无行) -->
+          <span class="lg-addrow">
+            <select class="lg-addsel" v-model="addTenantId" :disabled="saving">
+              <option value="">添加租户行…</option>
+              <option v-for="t in addableTenants ?? []" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+            <Button variant="outline" size="sm" :disabled="saving || addTenantId === ''" @click="onAddTenant">
+              <template #leading><component :is="iconFor('plus')" :size="14" /></template>
+              添加
+            </Button>
+          </span>
           <Button variant="gray" size="sm" :disabled="saving" @click="onCopyPrev">
             <template #leading><component :is="iconFor('copy')" :size="14" /></template>
             从上月复制
@@ -179,6 +200,9 @@ function onCopyPrev() {
 
 .lg-tag { display:inline-flex; align-items:center; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); font-size:12.5px; font-weight:var(--fw-medium); }
 .lg-tag.edit { background:rgb(252,243,232); color:var(--hue-orange); }
+.lg-addrow { display:inline-flex; align-items:center; gap:6px; }
+.lg-addsel { height:32px; max-width:180px; padding:0 8px; font-size:12.5px; color:var(--text-primary); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; font-family:var(--font-sans); }
+.lg-addsel:focus { border-color:var(--hue-blue); }
 
 .lg-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
 .lg-kpis .lg-kval { white-space:nowrap; font-size:clamp(14px, 1.5vw, 23px); }

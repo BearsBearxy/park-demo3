@@ -319,9 +319,10 @@ async function importLedger() {
       if (!cid) { console.log(`ledger [${sec.companyKey}]: 公司不存在,跳过`); continue }
       const importRows = sec.rows.map(r => ({ tenantName: r.tenantName, ...r.fees }))
       const res = await call<ImportResult>('POST', `/ledger/companies/${cid}/import?year=${sec.year}&month=${sec.month}`, { rows: importRows })
-      // 补 balancePrev/totalCollected/note:按租户名回查本月行的 tenantId,仅提交文件出现的行
-      const month = await call<{ rows: { tenantId: number; tenantName: string }[] }>('GET', `/ledger/companies/${cid}/months/${sec.year}/${sec.month}`)
-      const idByName = new Map(month.rows.map(r => [r.tenantName, r.tenantId]))
+      // 补 balancePrev/totalCollected/note:tenantId 从租户表按名映射(month 端点已改为只回存储行,
+      // 全零费用但有结余的行 import 会跳过,须凭租户表映射经 save 落库)
+      const allT = await call<{ id: number; companyName: string }[]>('GET', '/tenants')
+      const idByName = new Map(allT.map(t => [t.companyName, t.id]))
       const saveRows = sec.rows
         .filter(r => idByName.has(r.tenantName))
         .map(r => ({ tenantId: idByName.get(r.tenantName), balancePrev: r.balancePrev, totalCollected: r.totalCollected, note: r.note, ...r.fees }))

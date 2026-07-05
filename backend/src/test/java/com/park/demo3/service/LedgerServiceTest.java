@@ -62,26 +62,23 @@ class LedgerServiceTest {
         assertThat(d[1]).isEqualByComparingTo("0.00");
     }
 
-    @Test void month_padsSparseStoredRowsTo13ActiveTenants() {
+    @Test void month_returnsStoredRowsOnly() {
         Mockito.when(cm.selectById(1)).thenReturn(company(1));
-        Mockito.when(tm.selectList(null)).thenReturn(allTenants());
-        // only 2 stored rows; rest must be zero-padded; retired tenant 14 excluded
+        // 只回有存储行的租户(不再补零全部在租租户,真实数据 300+ 租户池下补零不可用)
         Mockito.when(lm.selectMonth(1, 2026, 5)).thenReturn(List.of(
             row(1, 1, 2026, 5, bd(130560), bd(0), bd(130560)),
             row(1, 3, 2026, 5, bd(50000), bd(1000), bd(40000))));
+        Mockito.when(tm.selectBatchIds(ArgumentMatchers.anyCollection()))
+            .thenReturn(allTenants().stream().filter(t -> t.getId() == 1 || t.getId() == 3).toList());
 
         LedgerMonthDTO m = svc.month(1, 2026, 5);
-        assertThat(m.rows()).hasSize(13);                       // padded to all active
+        assertThat(m.rows()).hasSize(2);                        // stored only, no zero padding
         assertThat(m.prevMonth()).isEqualTo(4);
-        assertThat(m.rows()).noneMatch(r -> r.tenantId() == 14); // retired excluded
+        assertThat(m.rows()).extracting(LedgerRowDTO::tenantId).containsExactly(1, 3);
 
         LedgerRowDTO r1 = byTenant(m, 1);
         assertThat(r1.totalReceivable()).isEqualByComparingTo("130560.00");
         assertThat(r1.balanceEnd()).isEqualByComparingTo("0.00");
-        LedgerRowDTO r2 = byTenant(m, 2); // not stored → all zero
-        assertThat(r2.totalReceivable()).isEqualByComparingTo("0.00");
-        assertThat(r2.balanceEnd()).isEqualByComparingTo("0.00");
-        assertThat(r2.note()).isNull();
         LedgerRowDTO r3 = byTenant(m, 3);
         assertThat(r3.balanceEnd()).isEqualByComparingTo("11000.00"); // 1000+50000-40000
         // footer column total for factoryRent = 130560 + 50000
