@@ -75,26 +75,29 @@ public class BuildingService {
         List<Unit> us = units.selectByBuildingId(id);
         List<Contract> cs = contracts.selectByBuildingId(id);
         BuildingDTO dto = toDTO(b, us, cs);
-        List<UnitDTO> unitDTOs = us.stream().map(u -> {
-            String st = unitStatus(u.getId(), cs);
-            Contract c = cs.stream()
-                .filter(x -> Objects.equals(x.getUnitId(), u.getId()))
-                .filter(x -> Set.of("active","expiring","draft").contains(x.getStatus()))
-                .min(Comparator.comparing(x -> switch (x.getStatus()) {
-                    case "active" -> 0; case "expiring" -> 1; default -> 2;
-                })).orElse(null);
-            Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;
-            return new UnitDTO(
-                u.getId(), u.getFloor(), u.getUnitNo(), u.getArea(), st,
-                t != null ? t.getId() : null,
-                t != null ? t.getCompanyName() : null,
-                t != null ? t.getCompanyName() : null,
-                t != null ? t.getBusinessType() : null,
-                c != null ? c.getContractNo() : null,
-                c != null ? c.getMonthlyRent() : null
-            );
-        }).toList();
+        List<UnitDTO> unitDTOs = us.stream().map(u -> toUnitDTO(u, cs)).toList();
         return new BuildingDetailDTO(dto, unitDTOs);
+    }
+
+    /** detail 同款单元 DTO 组装(status/租户由该楼栋合同派生),单元 CRUD 回包复用 */
+    UnitDTO toUnitDTO(Unit u, List<Contract> cs) {
+        String st = unitStatus(u.getId(), cs);
+        Contract c = cs.stream()
+            .filter(x -> Objects.equals(x.getUnitId(), u.getId()))
+            .filter(x -> Set.of("active","expiring","draft").contains(x.getStatus()))
+            .min(Comparator.comparing(x -> switch (x.getStatus()) {
+                case "active" -> 0; case "expiring" -> 1; default -> 2;
+            })).orElse(null);
+        Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;
+        return new UnitDTO(
+            u.getId(), u.getFloor(), u.getUnitNo(), u.getArea(), st,
+            t != null ? t.getId() : null,
+            t != null ? t.getCompanyName() : null,
+            t != null ? t.getCompanyName() : null,
+            t != null ? t.getBusinessType() : null,
+            c != null ? c.getContractNo() : null,
+            c != null ? c.getMonthlyRent() : null
+        );
     }
 
     @Transactional
@@ -132,6 +135,9 @@ public class BuildingService {
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
         if (buildings.selectCount(new QueryWrapper<Building>().eq("name", req.name()).ne("id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "楼栋名称已存在");
+        int maxFloor = units.selectByBuildingId(id).stream().mapToInt(Unit::getFloor).max().orElse(0);
+        if (req.floorCount() < maxFloor)
+            throw new BizException(ResultCode.CONFLICT, "层数不能小于现有单元的最高楼层");
         b.setName(req.name()); b.setPhase(req.phase()); b.setFloorCount(req.floorCount());
         b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
         b.setStatus(req.status()); b.setRemark(req.remark());
@@ -144,6 +150,62 @@ public class BuildingService {
         if (contracts.selectCount(new QueryWrapper<Contract>().eq("building_id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "该楼栋下存在合同,请先处理合同");
         buildings.deleteById(id); // unit 表 FK ON DELETE CASCADE 自动清
+    }
+
+    // ─── 单元 CRUD ───────────────────────────────────────────
+
+    /** unitNo 自动编号:该层现有 unitNo 数字惯例取 max+1,无数字则 floor*100+该层现有数+1 */
+    private String nextUnitNo(Integer buildingId, int floor) {
+        List<Unit> floorUnits = units.selectList(new QueryWrapper<Unit>()
+            .eq("building_id", buildingId).eq("floor", floor));
+        int max = 0;
+        for (Unit u : floorUnits) {
+            try { max = Math.max(max, Integer.parseInt(u.getUnitNo())); } catch (NumberFormatException ignored) {}
+        }
+        return String.valueOf(max > 0 ? max + 1 : floor * 100 + floorUnits.size() + 1);
+    }
+
+    private void requireUniqueUnitNo(Integer buildingId, String unitNo, Integer excludeId) {
+        QueryWrapper<Unit> q = new QueryWrapper<Unit>().eq("building_id", buildingId).eq("unit_no", unitNo);
+        if (excludeId != null) q.ne("id", excludeId);
+        if (units.selectCount(q) > 0) throw new BizException(ResultCode.CONFLICT, "单元号已存在");
+    }
+
+    private static void requireFloorInRange(int floor, Building b) {
+        if (floor > b.getFloorCount())
+            throw new BizException(ResultCode.CONFLICT, "楼层超出楼栋层数,请先在编辑楼栋中增加层数");
+    }
+
+    @Transactional
+    public UnitDTO createUnit(Integer buildingId, UnitCreateReq req) {
+        Building b = buildings.selectById(buildingId);
+        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
+        requireFloorInRange(req.floor(), b);
+        String unitNo = req.unitNo() == null || req.unitNo().isBlank()
+            ? nextUnitNo(buildingId, req.floor()) : req.unitNo();
+        requireUniqueUnitNo(buildingId, unitNo, null);
+        Unit u = new Unit();
+        u.setBuildingId(buildingId); u.setFloor(req.floor()); u.setUnitNo(unitNo);
+        u.setArea(req.area() == null ? BigDecimal.ZERO : req.area());
+        units.insert(u);
+        return toUnitDTO(units.selectById(u.getId()), List.of()); // 新单元无合同,必 vacant
+    }
+
+    public UnitDTO updateUnit(Integer id, UnitUpdateReq req) {
+        Unit u = units.selectById(id);
+        if (u == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
+        requireFloorInRange(req.floor(), buildings.selectById(u.getBuildingId()));
+        requireUniqueUnitNo(u.getBuildingId(), req.unitNo(), id);
+        u.setFloor(req.floor()); u.setUnitNo(req.unitNo()); u.setArea(req.area());
+        units.updateById(u);
+        return toUnitDTO(u, contracts.selectByBuildingId(u.getBuildingId()));
+    }
+
+    public void deleteUnit(Integer id) {
+        if (units.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
+        if (contracts.selectCount(new QueryWrapper<Contract>().eq("unit_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "单元存在合同记录,请先处理相关合同");
+        units.deleteById(id);
     }
 
     public BuildingSummaryDTO summary() {

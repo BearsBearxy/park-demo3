@@ -25,6 +25,16 @@ export interface BuildingSummaryDTO {
   occRate: number; vacantCount: number; unitCount: number
 }
 
+// 单元新增:unitNo 缺省后端自动生成(floor*100+序号);area 缺省 0
+export interface UnitCreateReq {
+  floor: number; unitNo?: string; area?: number
+}
+
+// 单元编辑(全量 PUT)
+export interface UnitUpdateReq {
+  floor: number; unitNo: string; area: number
+}
+
 export interface UnitDTO {
   id: number; floor: number; unitNo: string; area: number
   status: 'occupied' | 'expiring' | 'reserved' | 'vacant'

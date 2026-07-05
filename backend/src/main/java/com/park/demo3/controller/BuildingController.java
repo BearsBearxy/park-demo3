@@ -33,4 +33,9 @@ public class BuildingController {
 
     @Operation(summary = "删除楼栋（有合同 409；单元随 FK 级联删除）") @DeleteMapping("/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
+
+    @Operation(summary = "新增单元（unitNo 缺省自动编号；同栋重号 409；超层数 409）") @PostMapping("/{id}/units")
+    public UnitDTO createUnit(@PathVariable Integer id, @Valid @RequestBody UnitCreateReq req) {
+        return svc.createUnit(id, req);
+    }
 }

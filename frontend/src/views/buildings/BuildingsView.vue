@@ -163,6 +163,13 @@ function onCloseDrawer() {
   drawerDetail.value = null
 }
 
+// 抽屉内楼层/单元/合同操作成功:抽屉已重拉 detail 并携带上抛,这里同步 detail+楼栋行并重拉 list+summary
+function onDrawerRefreshed(d: BuildingDetailDTO) {
+  drawerDetail.value = d
+  openBuilding.value = d.building
+  load()
+}
+
 // table row click
 function onTableRowClick(b: BuildingDTO) { onOpenBuilding(b) }
 
@@ -283,6 +290,7 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       @close="onCloseDrawer"
       @edit="editDlg = true"
       @delete="deleteBuilding"
+      @refreshed="onDrawerRefreshed"
     />
 
     <!-- 8. 新增楼栋弹窗 -->

@@ -18,6 +18,8 @@ const props = defineProps<{
   initial?: ContractDTO | null
   /** 续签态:原合同(与 initial 互斥) */
   renewFrom?: ContractDTO | null
+  /** 新增态可选:预设并锁定楼栋(楼栋抽屉「新增合同」入口) */
+  presetBuildingId?: number | null
 }>()
 const emit = defineEmits<{ close: []; created: []; saved: [ContractDTO] }>()
 
@@ -78,6 +80,10 @@ onMounted(async () => {
     signDate.value = c.signDate ?? ''
     status.value = c.status
     remark.value = c.remark ?? ''
+  } else if (props.presetBuildingId != null) {
+    // 新增态预设楼栋:回填并载入其单元(下拉锁定)
+    buildingId.value = props.presetBuildingId
+    units.value = (await buildingApi.detail(props.presetBuildingId)).units
   }
 })
 
@@ -182,7 +188,8 @@ async function submit() {
             <div class="ct-field">
               <div class="lab">楼栋 <i>*</i></div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingName" disabled />
-              <select v-else class="ct-in" :class="{ err: err === '请选择楼栋' }" v-model="buildingId" @change="onBuildingChange()">
+              <select v-else class="ct-in" :class="{ err: err === '请选择楼栋' }" v-model="buildingId"
+                      :disabled="mode === 'new' && presetBuildingId != null" @change="onBuildingChange()">
                 <option :value="null" disabled>请选择楼栋</option>
                 <option v-for="b in buildings" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>

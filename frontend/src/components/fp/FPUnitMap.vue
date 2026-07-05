@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Clock } from 'lucide-vue-next'
+import { Clock, Plus } from 'lucide-vue-next'
 import { UNIT_STATUS } from './unitStatus'
 
 export interface UnitDTO {
@@ -14,12 +14,12 @@ export interface UnitDTO {
 }
 
 interface Props {
-  building: { units: UnitDTO[] }
+  building: { units: UnitDTO[]; floorCount: number }
   selectedNo?: string | null
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits<{ pick: [unit: UnitDTO] }>()
+const emit = defineEmits<{ pick: [unit: UnitDTO]; 'add-unit': [floor: number] }>()
 
 const byFloor = computed(() => {
   const map: Record<number, UnitDTO[]> = {}
@@ -29,9 +29,11 @@ const byFloor = computed(() => {
   return map
 })
 
-const floors = computed(() =>
-  Object.keys(byFloor.value).map(Number).sort((a, b) => b - a)
-)
+// 渲染层集合 = 1..floorCount(空层也渲染),高层在上;防御:有单元的楼层即使超出 floorCount 也不隐藏
+const floors = computed(() => {
+  const top = Math.max(props.building.floorCount, ...props.building.units.map(u => u.floor), 1)
+  return Array.from({ length: top }, (_, i) => top - i)
+})
 </script>
 
 <template>
@@ -58,7 +60,7 @@ const floors = computed(() =>
         <div class="fp-stack-flr">{{ f }}F</div>
         <div class="fp-stack-units">
           <div
-            v-for="u in byFloor[f]"
+            v-for="u in byFloor[f] ?? []"
             :key="u.id"
             class="fp-unit"
             :class="[u.status, { sel: selectedNo === u.unitNo }]"
@@ -72,9 +74,13 @@ const floors = computed(() =>
               {{ u.companyName ?? UNIT_STATUS[u.status]?.label }}
             </span>
             <span class="u-ar">
-              {{ u.area != null ? Number(u.area).toLocaleString('zh-CN') + ' ㎡' : '' }}
+              {{ u.area != null ? Number(u.area).toLocaleString('zh-CN') + ' ㎡' : '' }}
             </span>
           </div>
+          <div v-if="!byFloor[f]?.length" class="fp-flr-empty">本层暂无单元</div>
+          <button class="fp-add" type="button" :title="`在 ${f}F 添加单元`" @click="emit('add-unit', f)">
+            <Plus :size="14" />
+          </button>
         </div>
       </div>
     </div>
@@ -95,10 +101,11 @@ const floors = computed(() =>
   font-family:var(--font-mono); font-size:12px; font-weight:var(--fw-semibold);
   color:var(--text-muted); background:var(--surface-card); border-radius:var(--radius-sm);
 }
-.fp-stack-units { flex:1 1 auto; min-width:0; display:flex; gap:8px; }
+/* wrap:单元多时自动换行,不再单行无限拉长 */
+.fp-stack-units { flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; gap:8px; }
 
 .fp-unit {
-  flex:1 1 0; min-width:88px; border-radius:10px; padding:8px 10px;
+  flex:1 1 0; min-width:88px; max-width:200px; border-radius:10px; padding:8px 10px;
   cursor:pointer; display:flex; flex-direction:column; gap:3px;
   border:1px solid transparent;
   transition:transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast);
@@ -119,4 +126,22 @@ const floors = computed(() =>
 }
 .fp-unit .u-nm { font-size:11.5px; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fp-unit .u-ar { font-size:10.5px; font-family:var(--font-mono); opacity:.7; }
+
+/* 空层占位 */
+.fp-flr-empty {
+  flex:1 1 auto; min-height:44px;
+  display:flex; align-items:center; justify-content:center;
+  border:1px dashed var(--border-strong); border-radius:10px;
+  font-size:12px; color:var(--text-disabled);
+}
+
+/* 行尾「+」添加单元 */
+.fp-add {
+  flex:0 0 auto; align-self:stretch; min-height:44px; width:32px;
+  display:grid; place-items:center; padding:0;
+  border:1px dashed var(--border-strong); border-radius:10px;
+  background:transparent; color:var(--text-disabled); cursor:pointer;
+  transition:color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast);
+}
+.fp-add:hover { color:var(--text-secondary); border-color:var(--text-muted); }
 </style>
