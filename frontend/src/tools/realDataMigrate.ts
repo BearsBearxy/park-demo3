@@ -411,6 +411,129 @@ async function importReports() {
   }
 }
 
+// ── link:附表10 租户↔楼栋归属(单元+合同派生) ─────────────
+// 归属信号:一期=office 版式 4 组租金列(A座/B-G座/空地/宿舍区);二期=第0列分组(一至四车间/五、六车间);
+// 三期/散租宿舍=整期一栋(三期文件内仅「三车间」一个分组,不再细分)。
+// 落地机制:每栋按归属租户数重建单元(楼栋此时无合同可删重建),每归属生成一份 active 合同
+// (合同号 S10-xxxx,remark 标明派生来源,月租=该租户该栋最新非零月租金,面积/日期留空)。
+const PHASE1_GROUPS: { building: string; cols: string[]; rentCols: string[] }[] = [
+  { building: '一期 A座', cols: ['officeRent', 'officeMgmtFee'], rentCols: ['officeRent'] },
+  { building: '一期 B-G座', cols: ['factoryRent', 'factoryMgmtFee'], rentCols: ['factoryRent'] },
+  { building: '一期 空地', cols: ['landRent'], rentCols: ['landRent'] },
+  { building: '一期 宿舍区', cols: ['shopRent', 'dormRent', 'dormFacilityFee', 'shopMgmtFee'], rentCols: ['shopRent', 'dormRent'] },
+]
+const RENT_SUM_COLS = ['officeRent', 'factoryRent', 'landRent', 'shopRent', 'dormRent']
+function scanPhase2Groups(): Map<string, string> {
+  // 二期段第0列分组向下延续,第1列=租户名
+  const m = readSheet('附表10测试.xlsx')
+  const T = /(\d{4})\s*年\s*(\d{1,2})\s*月.*?(一期|二期|三期|散租宿舍)/
+  const map = new Map<string, string>()
+  let inP2 = true   // 文件前导段=1月二期
+  let group = ''
+  for (const r of m) {
+    const t = r.join('').match(T)
+    if (t) { inP2 = t[3] === '二期'; group = ''; continue }
+    if (!inP2) continue
+    const c0 = String(r[0] ?? '').trim()
+    if (/车间/.test(c0) && !/合计|总计/.test(c0)) group = c0
+    const name = String(r[1] ?? '').trim()
+    if (name && group && !/租户|项目|合计|总计/.test(name)) map.set(name, group)
+  }
+  return map
+}
+async function link() {
+  await login()
+  // 每租户每期各租金列的「最新非零值」(来自已导入的 s10 记录,逐月宽表端点聚合)
+  type Rec = Record<string, unknown> & { tenantName: string; acctMonth: string }
+  const byPhase = new Map<number, Map<string, Rec[]>>()
+  for (const phase of [1, 2, 3, 4]) {
+    const m = new Map<string, Rec[]>()
+    for (let month = 1; month <= 12; month++) {
+      const dto = await call<{ recorded: boolean; rows: (Record<string, unknown> & { tenantName: string })[] }>(
+        'GET', `/s10/${phase}/2025/${month}`)
+      if (!dto.recorded) continue
+      for (const r of dto.rows) {
+        if (/^\d/.test(r.tenantName)) continue   // 段标题残行(202506三期)/纯数字垃圾
+        const arr = m.get(r.tenantName) ?? []
+        arr.push({ ...r, acctMonth: `2025-${pad2(month)}` } as Rec); m.set(r.tenantName, arr)
+      }
+    }
+    byPhase.set(phase, m)
+  }
+  const latestVal = (rows: Rec[], cols: string[]) => {
+    const sorted = [...rows].sort((a, b) => b.acctMonth.localeCompare(a.acctMonth))
+    for (const r of sorted) {
+      const v = cols.reduce((s, c) => s + (Number(r[c]) || 0), 0)
+      if (v > 0) return Math.round(v * 100) / 100
+    }
+    return 0
+  }
+  // 归属派生
+  const p2group = scanPhase2Groups()
+  const assoc: { tenantName: string; building: string; rent: number }[] = []
+  let p1NoSignal = 0
+  for (const [name, rows] of byPhase.get(1) ?? []) {
+    let hit = false
+    for (const g of PHASE1_GROUPS) {
+      if (latestVal(rows, g.cols) > 0) { assoc.push({ tenantName: name, building: g.building, rent: latestVal(rows, g.rentCols) }); hit = true }
+    }
+    if (!hit) p1NoSignal++
+  }
+  for (const [name, rows] of byPhase.get(2) ?? []) {
+    const g = p2group.get(name)
+    const building = g === '五、六车间' ? '二期 五、六车间' : '二期 一至四车间'
+    assoc.push({ tenantName: name, building, rent: latestVal(rows, RENT_SUM_COLS) })
+  }
+  for (const [name, rows] of byPhase.get(3) ?? []) assoc.push({ tenantName: name, building: '三期', rent: latestVal(rows, RENT_SUM_COLS) })
+  for (const [name, rows] of byPhase.get(4) ?? []) assoc.push({ tenantName: name, building: '散租宿舍', rent: latestVal(rows, RENT_SUM_COLS) })
+  const perBuilding = new Map<string, typeof assoc>()
+  for (const a of assoc) { const arr = perBuilding.get(a.building) ?? []; arr.push(a); perBuilding.set(a.building, arr) }
+  for (const [b, list] of perBuilding) console.log(`  ${b}: ${list.length} 户(有租金 ${list.filter(x => x.rent > 0).length})`)
+  console.log(`  一期无列信号跳过 ${p1NoSignal} 户;归属合计 ${assoc.length}`)
+  if (process.env.DRY) return
+
+  // 清垃圾租户(202xxx 段标题残行,无合同/台账可直删)
+  const tenants = await call<{ id: number; companyName: string }[]>('GET', '/tenants')
+  for (const t of tenants) {
+    if (/^\d/.test(t.companyName)) {
+      await call('DELETE', `/tenants/${t.id}`).catch(e => console.log('垃圾租户删除失败', t.companyName, (e as Error).message))
+      console.log('  垃圾租户 ✓ 删', t.companyName)
+    }
+  }
+  const tenantId = new Map((await call<{ id: number; companyName: string }[]>('GET', '/tenants')).map(t => [t.companyName, t.id]))
+  // 重建楼栋(带 N 个单元,unit_no=101..;N>99 分层),再逐归属建合同
+  const buildings = await call<{ id: number; name: string; phase: number }[]>('GET', '/buildings')
+  let seq = 0
+  for (const [bname, list] of perBuilding) {
+    const old = buildings.find(b => b.name === bname)
+    if (!old) { console.log(`  楼栋缺失跳过: ${bname}`); continue }
+    const n = list.length
+    await call('DELETE', `/buildings/${old.id}`)
+    const created = await call<{ id: number }>('POST', '/buildings', {
+      name: bname, phase: old.phase, floorCount: Math.max(1, Math.ceil(n / 99)), perFloor: Math.min(n, 99),
+      totalArea: 0, rentableArea: 0, remark: '由附表10分类自动创建;单元=归属租户数,面积待补',
+    })
+    const detail = await call<{ units: { id: number }[] }>('GET', `/buildings/${created.id}`)
+    let ok = 0, fail = 0
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i]
+      const tid = tenantId.get(a.tenantName)
+      const uid = detail.units[i]?.id
+      if (!tid) { fail++; console.log('  合同 ✗ 无租户', a.tenantName); continue }
+      seq++
+      try {
+        await call('POST', '/contracts', {
+          contractNo: `S10-${String(seq).padStart(4, '0')}`, tenantId: tid, buildingId: created.id,
+          unitId: uid, rentArea: 0, monthlyRent: a.rent, deposit: 0, status: 'active',
+          remark: '由附表10归属派生(月租=最新非零月值)',
+        })
+        ok++
+      } catch (e) { fail++; console.log('  合同 ✗', a.tenantName, (e as Error).message) }
+    }
+    console.log(`  ${bname}: 楼栋重建+${detail.units.length} 单元, 合同 ✓${ok} ✗${fail}`)
+  }
+}
+
 // ── verify:抽查 ─────────────────────────────────────────
 async function verify() {
   await login()
@@ -432,6 +555,6 @@ async function verify() {
   }
 }
 
-const main = { dry, masters, import: importAll, ledger: async () => { await login(); await importLedger() }, reports: importReports, verify }[MODE]
+const main = { dry, masters, import: importAll, ledger: async () => { await login(); await importLedger() }, reports: importReports, link, verify }[MODE]
 if (!main) { console.error('用法: vite-node src/tools/realDataMigrate.ts -- <dry|masters|import|verify>'); process.exit(1) }
 main().then(() => console.log('DONE ' + MODE)).catch(e => { console.error('FAILED:', e); process.exit(1) })
