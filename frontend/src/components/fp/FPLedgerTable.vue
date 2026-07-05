@@ -10,12 +10,19 @@ const props = defineProps<{
   columns: ColumnModel
   rows: LedgerRowDTO[]
   edit: boolean
+  selected?: Set<number>   // 传入即启用编辑态选择列(勾选 tenantId,批量删除用)
 }>()
 
 const emit = defineEmits<{
   'cell-edit': [payload: { tenantId: number; key: ColumnKey; value: string }]
   'tenant-click': [tenantId: number]
+  'toggle-select': [tenantId: number]
+  'toggle-select-all': []
 }>()
+
+const selectable = computed(() => props.edit && !!props.selected)
+const allChecked = computed(() =>
+  props.rows.length > 0 && props.rows.every(r => props.selected?.has(r.tenantId)))
 
 const ChevronRight = iconFor('chevron-right')
 
@@ -23,8 +30,10 @@ const leaves = computed(() => props.columns.groups.flatMap(g => g.cols))
 const allCols = computed(() => [...props.columns.fixedLeft, ...leaves.value, ...props.columns.fixedRight])
 
 // sticky offsets (jsx 413-416): left accumulates L→R, right accumulates R→L over fixedRight reversed.
+// 选择列启用时占最左 32px,fixedLeft 整体右移。
+const SEL_W = 32
 const leftOff = computed<Record<string, number>>(() => {
-  const m: Record<string, number> = {}; let lo = 0
+  const m: Record<string, number> = {}; let lo = selectable.value ? SEL_W : 0
   props.columns.fixedLeft.forEach(c => { m[c.key] = lo; lo += c.w })
   return m
 })
@@ -85,6 +94,9 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
     <table class="lg-table">
       <thead>
         <tr>
+          <th v-if="selectable" rowspan="2" class="lg-grp-th lg-fix-th lg-fix lg-selc" :style="{ left: '0px' }">
+            <input type="checkbox" class="lg-cb" :checked="allChecked" title="全选/清空" @change="emit('toggle-select-all')" />
+          </th>
           <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
               class="lg-grp-th lg-fix-th lg-fix" :style="cellStyle(c)">{{ c.label }}</th>
           <th v-for="g in columns.groups" :key="g.name" :colspan="g.cols.length"
@@ -98,6 +110,10 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
       </thead>
       <tbody>
         <tr v-for="row in view" :key="row.tenantId">
+          <td v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }">
+            <input type="checkbox" class="lg-cb" :checked="selected!.has(row.tenantId)"
+                   @change="emit('toggle-select', row.tenantId)" />
+          </td>
           <td v-for="c in allCols" :key="c.key"
               :class="isFixed(c) ? 'lg-fix' : undefined" :style="cellStyle(c)">
             <!-- 租户名 (text) -->
@@ -126,10 +142,11 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
             </template>
           </td>
         </tr>
-        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length"></td></tr>
+        <tr class="lg-filler" aria-hidden="true"><td :colspan="allCols.length + (selectable ? 1 : 0)"></td></tr>
       </tbody>
       <tfoot>
         <tr>
+          <th v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }"></th>
           <th v-for="(c, i) in columns.fixedLeft" :key="c.key" class="lg-fix" :style="cellStyle(c)">
             <span v-if="i === 0" class="lg-foot-lbl">合　计</span>
             <span v-else class="lg-foot-v">{{ lgFmt(sum(c.key)) }}</span>
@@ -168,6 +185,9 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
 .lg-fix { position:sticky; z-index:3; background:var(--surface-white); }
 .lg-table tbody tr:hover .lg-fix { background:var(--surface-card); }
 .lg-tname { display:inline-flex; align-items:center; gap:5px; padding:0 10px; font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; max-width:100%; }
+/* 编辑态批量删除选择列(sticky 最左 32px) */
+.lg-selc { width:32px; min-width:32px; max-width:32px; text-align:center; padding:0 !important; }
+.lg-cb { width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; vertical-align:middle; }
 .lg-tname:hover { color:var(--hue-blue); }
 .lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .lg-table tbody tr:hover .lg-tname .ch { opacity:1; }

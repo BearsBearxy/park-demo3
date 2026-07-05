@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ② 月度宽表(读/编辑双态)— 1:1 from screen-ledger.jsx wide-table branch (524-666).
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
@@ -34,6 +34,7 @@ const emit = defineEmits<{
   'tenant-click': [tenantId: number]
   import: []
   'add-tenant': [tenantId: number]
+  'bulk-remove': [tenantIds: number[]]
 }>()
 
 const q = ref('')
@@ -44,6 +45,26 @@ function onAddTenant() {
   if (addTenantId.value === '') return
   emit('add-tenant', Number(addTenantId.value))
   addTenantId.value = ''
+}
+
+// ── 编辑态批量删除(勾选 → 确认 → 从 draft 移除,保存时以空行落库删除) ──
+const selected = ref(new Set<number>())
+const bulkConfirm = ref(false)
+watch(() => props.edit, (e) => { if (!e) { selected.value = new Set(); bulkConfirm.value = false } })
+function toggleSelect(tenantId: number) {
+  const next = new Set(selected.value)
+  if (next.has(tenantId)) next.delete(tenantId)
+  else next.add(tenantId)
+  selected.value = next
+}
+function toggleSelectAll() {
+  const all = rows.value.map(r => r.tenantId)
+  selected.value = all.every(id => selected.value.has(id)) ? new Set() : new Set(all)
+}
+function bulkRemove() {
+  bulkConfirm.value = false
+  emit('bulk-remove', [...selected.value])
+  selected.value = new Set()
 }
 
 const cols = computed(() => lgColumns(props.month.prevMonth))
@@ -168,17 +189,43 @@ function onCopyPrev() {
     <div class="lg-toolbar">
       <div class="lg-toolbar-l">
         <SearchField placeholder="搜索租户" shortcut="" :value="q" :width="180" @change="q = $event" />
+        <Button v-if="edit && selected.size" variant="danger" size="sm" :disabled="saving" @click="bulkConfirm = true">
+          <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+          删除所选 ({{ selected.size }})
+        </Button>
       </div>
-      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算' : '只读 · 点击「编辑」录入 · 点击租户名查看明细' }}</span>
+      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : '只读 · 点击「编辑」录入 · 点击租户名查看明细' }}</span>
     </div>
 
     <FPLedgerTable
       :columns="cols"
       :rows="view"
       :edit="edit"
+      :selected="edit ? selected : undefined"
       @cell-edit="onCellEdit"
       @tenant-click="emit('tenant-click', $event)"
+      @toggle-select="toggleSelect"
+      @toggle-select-all="toggleSelectAll"
     />
+
+    <!-- 批量删除确认(居中弹窗,项目 §7 惯例;点「保存」后生效,取消编辑可放弃) -->
+    <Teleport to="body">
+      <div v-if="bulkConfirm" class="lg-bulk-mask" @mousedown="bulkConfirm = false">
+        <div class="lg-bulk-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+          <div class="h">
+            <h3>删除所选台账行</h3>
+            <p>将从本月台账移除所选 {{ selected.size }} 行(含其费用/结余/备注);点「保存」后生效,「取消」编辑可放弃。</p>
+          </div>
+          <div class="f">
+            <Button variant="gray" size="sm" @click="bulkConfirm = false">取消</Button>
+            <Button variant="danger" size="sm" @click="bulkRemove">
+              <template #leading><component :is="iconFor('trash-2')" /></template>
+              删除 {{ selected.size }} 行
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <p class="lg-foot">
       <component :is="iconFor('info')" :size="13" />
@@ -203,6 +250,13 @@ function onCopyPrev() {
 .lg-addrow { display:inline-flex; align-items:center; gap:6px; }
 .lg-addsel { height:32px; max-width:180px; padding:0 8px; font-size:12.5px; color:var(--text-primary); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; font-family:var(--font-sans); }
 .lg-addsel:focus { border-color:var(--hue-blue); }
+/* 批量删除确认弹窗(1:1 LedgerNewCompanyDialog .lg-dlg 风格) */
+.lg-bulk-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); }
+.lg-bulk-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); }
+.lg-bulk-dlg .h { padding:20px 22px 4px; }
+.lg-bulk-dlg .h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.lg-bulk-dlg .h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.lg-bulk-dlg .f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 
 .lg-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
 .lg-kpis .lg-kval { white-space:nowrap; font-size:clamp(14px, 1.5vw, 23px); }

@@ -156,8 +156,19 @@ function snapshotDraft() {
 }
 function enterEdit() {
   snapshotDraft()
+  deletedIds.value = new Set()
   edit.value = true
   ensureTenantsLoaded()
+}
+
+// ── 批量删除(编辑态勾选;从 draft 移除并记入 deletedIds,保存时以空行提交=后端删空落库) ──
+const deletedIds = ref<Set<number>>(new Set())
+function onBulkRemove(tenantIds: number[]) {
+  const storedIds = new Set((monthDto.value?.rows ?? []).map(r => r.tenantId))
+  const next = new Set(deletedIds.value)
+  for (const id of tenantIds) if (storedIds.has(id)) next.add(id)   // 未保存的新增行只需移出 draft
+  deletedIds.value = next
+  draft.value = draft.value.filter(r => !tenantIds.includes(r.tenantId))
 }
 
 // ── 添加租户行(宽表只显示有数据的租户;新租户入账从候选挑一行加进 draft,保存时落库) ──
@@ -181,6 +192,7 @@ function cancelEdit() {
   // 取消:丢弃 draft,回到服务端快照(jsx cancelEdit 433-437)
   edit.value = false
   draft.value = []
+  deletedIds.value = new Set()
 }
 async function save() {
   if (companyId.value == null || month.value == null) return
@@ -191,9 +203,16 @@ async function save() {
       const fees = Object.fromEntries(FEE_KEYS.map(k => [k, r[k]]))
       return { tenantId: r.tenantId, balancePrev: r.balancePrev, totalCollected: r.totalCollected, note: r.note, ...fees } as LedgerSaveRow
     })
+    // 批量删除的行以全零空行提交,后端「删空」语义将其落库删除
+    for (const id of deletedIds.value) {
+      if (rows.some(r => r.tenantId === id)) continue
+      const zeros = Object.fromEntries(FEE_KEYS.map(k => [k, 0]))
+      rows.push({ tenantId: id, balancePrev: 0, totalCollected: 0, note: null, ...zeros } as LedgerSaveRow)
+    }
     monthDto.value = await ledgerApi.save(companyId.value, year.value, month.value, { rows })
     edit.value = false
     draft.value = []
+    deletedIds.value = new Set()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '保存失败')
   } finally {
@@ -311,6 +330,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
       @tenant-click="drawerTenantId = $event"
       @import="importing = true"
       @add-tenant="onAddTenantRow"
+      @bulk-remove="onBulkRemove"
     />
     <LedgerTenantDrawer
       :row="drawerRow"
