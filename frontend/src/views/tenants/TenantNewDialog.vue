@@ -13,6 +13,7 @@ const emit = defineEmits<{ close: []; created: []; updated: [] }>()
 const isEdit = computed(() => !!props.initial)
 
 const categories = ref<TenantCategoryDTO[]>([])
+const allTenants = ref<TenantDTO[]>([])
 const companyName = ref(props.initial?.companyName ?? '')
 const businessType = ref(props.initial?.businessType ?? '')
 const categoryId = ref<number | ''>(props.initial?.categoryId ?? '')
@@ -22,6 +23,7 @@ const phase = ref<number | ''>(props.initial?.phase ?? '')
 const since = ref(props.initial?.since ?? '')
 const remark = ref(props.initial?.remark ?? '')
 const status = ref(props.initial?.status ?? 1)
+const parentId = ref<number | ''>(props.initial?.parentId ?? '')
 const err = ref('')
 const busy = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -29,7 +31,13 @@ const inputRef = ref<HTMLInputElement | null>(null)
 onMounted(async () => {
   inputRef.value?.focus()
   try { categories.value = await tenantApi.categories() } catch { /* 下拉仅剩「未分类」,不阻断新增 */ }
+  try { allTenants.value = await tenantApi.list() } catch { /* 关联下拉仅剩「不关联」,不阻断新增 */ }
 })
+
+// 关联主租户候选:在租且自身无 parent(仅一级关联)且 ≠ 正在编辑的租户
+const parentOptions = computed(() =>
+  allTenants.value.filter(t => t.status === 1 && t.parentId == null && t.id !== props.initial?.id),
+)
 
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
 onMounted(() => window.addEventListener('keydown', onKey))
@@ -51,6 +59,7 @@ async function submit() {
     phase: phase.value === '' ? null : phase.value,
     since: since.value || null,
     remark: remark.value.trim() || undefined,
+    parentId: parentId.value === '' ? null : parentId.value,
   }
   try {
     if (props.initial) {
@@ -128,6 +137,13 @@ async function submit() {
               </select>
             </div>
             <div></div>
+          </div>
+          <div class="fin-field">
+            <div class="lab">关联主租户</div>
+            <select class="fin-in" v-model="parentId">
+              <option value="">不关联</option>
+              <option v-for="t in parentOptions" :key="t.id" :value="t.id">{{ t.companyName }}</option>
+            </select>
           </div>
           <div class="fin-field">
             <div class="lab">备注</div>

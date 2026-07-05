@@ -3,6 +3,7 @@ export interface TenantDTO {
   businessType: string; status: number; categoryId: number | null; phase: number
   since: string | null; monthlyRent: number; leasedArea: number
   primaryBuilding: string | null; contractCount: number; remark?: string
+  parentId: number | null; parentName: string | null
 }
 
 export interface TenantSummaryDTO {
@@ -19,6 +20,7 @@ export interface TenantCreateReq {
   contactName?: string; contactPhone?: string
   categoryId?: number | null; phase?: number | null
   since?: string | null; remark?: string
+  parentId?: number | null   // 一级子租户关联的主租户(如「王柱宿舍」→「王柱」)
 }
 
 /** PUT /api/tenants/{id} 入参 = CreateReq 全量字段 + status(1在租/2已退租/0黑名单) */

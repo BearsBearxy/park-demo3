@@ -148,6 +148,13 @@ const subtitle = computed(() => {
           <div style="font-size:13px;font-weight:var(--fw-medium)">{{ tenant.primaryBuilding ?? '—' }}</div>
         </div>
       </div>
+      <div v-if="tenant.parentName" style="display:flex;align-items:center;gap:9px;grid-column:1/-1">
+        <component :is="iconFor('corner-down-right')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
+        <div>
+          <div style="font-size:10.5px;color:var(--text-disabled)">关联主租户</div>
+          <div style="font-size:13px;font-weight:var(--fw-medium)">{{ tenant.parentName }}</div>
+        </div>
+      </div>
     </div>
 
     <!-- 3 FPStat -->

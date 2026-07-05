@@ -9,8 +9,10 @@ import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, Ledg
 import type { ImportResultDTO } from '@/types/import'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
 import { parserProps, runImport } from '@/utils/importRegistry'
+import { suggestParent } from '@/utils/tenantSuggest'
 import LedgerCompanyPicker from './LedgerCompanyPicker.vue'
 import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
+import LedgerImportResolveDialog, { type ResolveItem, type ResolveDecision } from './LedgerImportResolveDialog.vue'
 import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import { yearCardsOf, gateCurrentOf } from '@/utils/yearGate'
@@ -242,16 +244,61 @@ const drawerRow = computed<LedgerRowDTO | null>(() => {
 // ── 导入 Excel(scope = 当前公司 + 年 + 月,在②宽表入口) ──────────
 const importing = ref(false)
 const importResult = ref<ImportResultDTO | null>(null)
+const importSummary = ref<string | null>(null)   // 预检跳过行数提示,随结果 toast 展示
 // 数字清洗:剥 ¥/,/%/空格,非数字 → 0。
 const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
 // 模板列:租户 + 21 费用 label(取自 lgColumns 叶子,FEE_KEYS 同序),复用列定义不另造。
+
+// ── 导入预检:表内出现租户表没有的名字 → 先弹 ResolveDialog 决策(关联/新建/跳过)再导入 ──
+const pendingImport = ref<{ recs: ImportRec[]; fileName: string } | null>(null)
+const resolveItems = ref<ResolveItem[]>([])
+
 async function onImport(recs: ImportRec[], fileName: string) {
   if (companyId.value == null || month.value == null) return
   importing.value = false
+  importSummary.value = null
+  try {
+    allTenants.value = await tenantApi.list()   // 刷新缓存,精确匹配 companyName
+  } catch { /* 拉不到租户表则不预检,直接导入,由后端逐行报「租户不存在」 */ }
+  const known = new Set(allTenants.value.map(t => t.companyName))
+  const unknown = [...new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
+  if (!unknown.length) { await runLedgerImport(recs, fileName); return }
+  resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, allTenants.value) }))
+  pendingImport.value = { recs, fileName }
+}
+
+async function onResolveConfirm(decisions: ResolveDecision[]) {
+  const pending = pendingImport.value
+  if (!pending) return
+  pendingImport.value = null
+  // link/create 逐个建档(失败 alert 后端 message 并中止本次导入)
+  for (const d of decisions) {
+    if (d.action === 'skip') continue
+    try {
+      const created = await tenantApi.create({
+        companyName: d.name, businessType: '未分类',
+        parentId: d.action === 'link' ? d.parentId : undefined,
+        remark: '台账导入时自动创建',
+      })
+      allTenants.value = [...allTenants.value, created]
+    } catch (e) {
+      alert((e as { message?: string })?.message ?? '创建租户失败')
+      return
+    }
+  }
+  // skip 的名字过滤掉对应台账行,行数记入结果 toast summary
+  const skipNames = new Set(decisions.filter(d => d.action === 'skip').map(d => d.name))
+  const recs = pending.recs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
+  const skippedRows = pending.recs.length - recs.length
+  if (skippedRows > 0) importSummary.value = `跳过未登记租户 ${skippedRows} 行`
+  await runLedgerImport(recs, pending.fileName)
+}
+
+async function runLedgerImport(recs: ImportRec[], fileName: string) {
   try {
     const cname = companies.value.find(c => c.id === companyId.value)?.name
     importResult.value = await runImport('ledger', recs,
-      { companyId: companyId.value, companyName: cname, year: year.value, month: month.value }, fileName)
+      { companyId: companyId.value!, companyName: cname, year: year.value, month: month.value! }, fileName)
     await loadMonth()   // 重载本月,反映 upsert 后的费用
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -348,6 +395,12 @@ async function onImport(recs: ImportRec[], fileName: string) {
       @close="importing = false"
       @import="onImport"
     />
+    <LedgerImportResolveDialog
+      v-if="pendingImport"
+      :items="resolveItems"
+      @confirm="onResolveConfirm"
+      @close="pendingImport = null"
+    />
   </template>
 
   <!-- 过渡中(切公司/月,数据加载)兜底转圈,不闪空白。
@@ -355,7 +408,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
        否则 v-else 会绑到 toast 的 v-if(importResult 恒 null)→ 永久转圈(见 DESIGN-FIDELITY §6)。 -->
   <div v-else class="page-loading"><span class="page-spin" /></div>
 
-  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+  <ImportResultToast v-if="importResult" :result="importResult" :summary="importSummary ?? undefined" @close="importResult = null" />
 
   <!-- 删除公司确认(自管显隐,放最后不打断上方状态链) -->
   <FinDialogs :dlg="dlg" :companies="[]" @close="dlg = null" @confirm-delete="confirmDeleteCompany" />

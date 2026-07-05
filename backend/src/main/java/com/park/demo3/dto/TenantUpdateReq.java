@@ -7,6 +7,7 @@ public record TenantUpdateReq(
     @Size(max = 32) String contactName,
     @Size(max = 32) String contactPhone,
     Integer categoryId,
+    Integer parentId,
     @Min(1) @Max(9) Integer phase,
     @Pattern(regexp = "\\d{4}-\\d{2}") String since,
     @Size(max = 255) String remark,

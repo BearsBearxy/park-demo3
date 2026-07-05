@@ -10,6 +10,9 @@ import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
+import { tenantApi } from '@/api/tenant'
+import { suggestParent } from '@/utils/tenantSuggest'
+import LedgerImportResolveDialog, { type ResolveItem, type ResolveDecision } from '@/views/ledger/LedgerImportResolveDialog.vue'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { chargingApi } from '@/api/charging'
@@ -88,8 +91,44 @@ function confirmLedger() {
 // ── 导入回调 → runImport(执行+记录) → 刷新 + toast ──────────
 async function handleImport(recs: ImportRec[], fileName: string) {
   importing.value = false
+  // 台账走未登记租户预检(与 LedgerView.onImport 同款编排,复用 ResolveDialog/suggestParent)
+  if (activeKey.value === 'ledger') { await ledgerPrecheck(recs, fileName); return }
   await doRun(recs, fileName)
 }
+
+// ── 台账未登记租户预检(hub 版;确认建档/跳过后继续 doRun) ─────
+const resolveItems = ref<ResolveItem[] | null>(null)
+const pendingLedger = ref<{ recs: ImportRec[]; fileName: string } | null>(null)
+let tenantCache: { id: number; companyName: string; parentId?: number | null }[] = []
+async function ledgerPrecheck(recs: ImportRec[], fileName: string) {
+  try { tenantCache = await tenantApi.list() }
+  catch { await doRun(recs, fileName); return }   // 拉不到租户表则直接导入,由后端逐行报错
+  const known = new Set(tenantCache.map(t => t.companyName))
+  const unknown = [...new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
+  if (!unknown.length) { await doRun(recs, fileName); return }
+  resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, tenantCache) }))
+  pendingLedger.value = { recs, fileName }
+}
+async function onResolveConfirm(decisions: ResolveDecision[]) {
+  const pending = pendingLedger.value
+  resolveItems.value = null
+  pendingLedger.value = null
+  if (!pending) return
+  for (const d of decisions) {
+    if (d.action === 'skip') continue
+    try {
+      await tenantApi.create({
+        companyName: d.name, businessType: '未分类',
+        parentId: d.action === 'link' ? d.parentId : undefined,
+        remark: '台账导入时自动创建',
+      })
+    } catch (e) { alert((e as { message?: string })?.message ?? '创建租户失败'); return }
+  }
+  const skipNames = new Set(decisions.filter(d => d.action === 'skip').map(d => d.name))
+  const recs = pending.recs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
+  await doRun(recs, pending.fileName)
+}
+function onResolveCancel() { resolveItems.value = null; pendingLedger.value = null }
 async function handleSections(picks: unknown[], fileName: string) {
   importing.value = false
   await doRun(picks as Parameters<typeof runImport>[1], fileName)
@@ -215,6 +254,13 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     @close="importing = false"
     @import="handleImport"
     @import-sections="handleSections"
+  />
+  <!-- 台账未登记租户预检(自管显隐,放最后不打断状态链) -->
+  <LedgerImportResolveDialog
+    v-if="resolveItems"
+    :items="resolveItems"
+    @confirm="onResolveConfirm"
+    @close="onResolveCancel"
   />
   <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 </template>

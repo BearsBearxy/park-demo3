@@ -8,6 +8,7 @@ public class Tenant {
     private String companyName; private String contactName; private String contactPhone;
     private String businessType; private Integer status; private Integer categoryId;
     private Integer phase; private String since; private String remark;
+    private Integer parentId;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;
 }

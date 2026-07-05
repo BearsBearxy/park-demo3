@@ -91,7 +91,10 @@ const TABLE_COLUMNS = computed(() => [
       h(Avatar, { name: r.companyName, size: 30 }),
       h('span', { style: { display: 'flex', flexDirection: 'column', minWidth: 0 } }, [
         h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap' } }, r.companyName),
-        h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' } }, `FP-T-${1000 + r.id}`),
+        // 次行:子租户显示关联的主租户,否则显示编号
+        r.parentName
+          ? h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', whiteSpace: 'nowrap' } }, `关联 · ${r.parentName}`)
+          : h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' } }, `FP-T-${1000 + r.id}`),
       ]),
     ]),
   },

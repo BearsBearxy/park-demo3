@@ -164,4 +164,84 @@ class TenantWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message").value("该租户存在合同,请先处理合同"));
     }
+
+    // ─── 子租户一级关联 ─────────────────────────────────────
+
+    @Test
+    void createChildTenant_readsBackParentIdAndName() throws Exception {
+        int pid = createAndGetId("IT子租户主王柱");
+        create("{\"companyName\":\"IT子租户王柱宿舍\",\"businessType\":\"电子信息\",\"parentId\":" + pid + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.parentId").value(pid))
+                .andExpect(jsonPath("$.data.parentName").value("IT子租户主王柱"));
+    }
+
+    @Test
+    void createTenant_unknownParent_returns404Envelope() throws Exception {
+        create("{\"companyName\":\"IT子租户孤儿\",\"businessType\":\"电子信息\",\"parentId\":999999}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("主租户不存在"));
+    }
+
+    @Test
+    void updateTenant_selfParent_returns409Envelope() throws Exception {
+        int id = createAndGetId("IT子租户自恋");
+        update(id, "{\"companyName\":\"IT子租户自恋\",\"businessType\":\"电子信息\",\"status\":1,\"parentId\":" + id + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("不能关联自己"));
+    }
+
+    @Test
+    void createTenant_parentIsAlreadyChild_returns409Envelope() throws Exception {
+        // B 为主,A 为 B 的子租户;再建 C 关联 A → 二级链,拒绝
+        int bId = createAndGetId("IT二级链主B");
+        String body = create("{\"companyName\":\"IT二级链子A\",\"businessType\":\"电子信息\",\"parentId\":" + bId + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int aId = JsonPath.read(body, "$.data.id");
+        create("{\"companyName\":\"IT二级链孙C\",\"businessType\":\"电子信息\",\"parentId\":" + aId + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("仅支持一级关联,所选租户已是子租户"));
+    }
+
+    @Test
+    void updateTenant_clearParent_readsBackNull() throws Exception {
+        int pid = createAndGetId("IT解绑主租户");
+        String body = create("{\"companyName\":\"IT解绑子租户\",\"businessType\":\"电子信息\",\"parentId\":" + pid + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int childId = JsonPath.read(body, "$.data.id");
+        update(childId, "{\"companyName\":\"IT解绑子租户\",\"businessType\":\"电子信息\",\"status\":1,\"parentId\":null}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.parentId").isEmpty())
+                .andExpect(jsonPath("$.data.parentName").isEmpty());
+    }
+
+    @Test
+    void deleteTenant_withChildren_409_thenReleaseAndDelete() throws Exception {
+        int pid = createAndGetId("IT待删主租户");
+        String body = create("{\"companyName\":\"IT待删子租户\",\"businessType\":\"电子信息\",\"parentId\":" + pid + "}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int childId = JsonPath.read(body, "$.data.id");
+        mvc.perform(delete("/api/tenants/" + pid).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("该租户存在关联子租户,请先解除关联"));
+        // 解除关联后可删
+        update(childId, "{\"companyName\":\"IT待删子租户\",\"businessType\":\"电子信息\",\"status\":1}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(delete("/api/tenants/" + pid).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+    }
 }

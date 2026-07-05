@@ -30,7 +30,11 @@ public class TenantService {
         Map<Integer,String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
         Map<Integer,List<Contract>> cByT = allCt.stream().collect(Collectors.groupingBy(Contract::getTenantId));
-        return ts.stream().map(t -> buildTenantDto(t, cByT.getOrDefault(t.getId(), List.of()), bName)).toList();
+        // 全表已在手:内存 map 补主租户名,避免逐行 selectById 的 N+1
+        Map<Integer,String> tName = ts.stream()
+            .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
+        return ts.stream().map(t -> buildTenantDto(t, cByT.getOrDefault(t.getId(), List.of()), bName,
+            t.getParentId() == null ? null : tName.get(t.getParentId()))).toList();
     }
 
     public TenantSummaryDTO summary() {
@@ -51,14 +55,16 @@ public class TenantService {
             throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
         if (req.categoryId() != null && categories.selectById(req.categoryId()) == null)
             throw new BizException(ResultCode.NOT_FOUND, "租户分类不存在");
+        validateParent(req.parentId(), null);
         Tenant t = new Tenant();
         t.setCompanyName(req.companyName()); t.setBusinessType(req.businessType());
         t.setContactName(req.contactName()); t.setContactPhone(req.contactPhone());
         t.setCategoryId(req.categoryId()); t.setPhase(req.phase()); t.setSince(req.since());
-        t.setRemark(req.remark()); t.setStatus(1);
+        t.setRemark(req.remark()); t.setStatus(1); t.setParentId(req.parentId());
         tenants.insert(t);
+        Tenant saved = tenants.selectById(t.getId());
         // 新租户无合同:buildTenantDto 对空合同列表返回 月租/面积=0、楼栋"—"、合同数 0,不炸
-        return buildTenantDto(tenants.selectById(t.getId()), List.of(), Map.of());
+        return buildTenantDto(saved, List.of(), Map.of(), parentName(saved));
     }
 
     public TenantDTO update(Integer id, TenantUpdateReq req) {
@@ -68,16 +74,34 @@ public class TenantService {
             throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
         if (req.categoryId() != null && categories.selectById(req.categoryId()) == null)
             throw new BizException(ResultCode.NOT_FOUND, "租户分类不存在");
+        validateParent(req.parentId(), id);
         // PUT 全量语义:可空字段允许清空,用 UpdateWrapper 显式 set(updateById 会跳过 null 字段)
         tenants.update(null, new UpdateWrapper<Tenant>().eq("id", id)
             .set("company_name", req.companyName()).set("business_type", req.businessType())
             .set("contact_name", req.contactName()).set("contact_phone", req.contactPhone())
             .set("category_id", req.categoryId()).set("phase", req.phase())
-            .set("since", req.since()).set("remark", req.remark()).set("status", req.status()));
+            .set("since", req.since()).set("remark", req.remark()).set("status", req.status())
+            .set("parent_id", req.parentId()));
         List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
         Map<Integer,String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
-        return buildTenantDto(tenants.selectById(id), cs, bName);
+        Tenant saved = tenants.selectById(id);
+        return buildTenantDto(saved, cs, bName, parentName(saved));
+    }
+
+    // 一级关联三重校验:查无→404;关联自己→409;所选主租户已是子租户→409(禁止二级链)
+    private void validateParent(Integer parentId, Integer selfId) {
+        if (parentId == null) return;
+        if (parentId.equals(selfId)) throw new BizException(ResultCode.CONFLICT, "不能关联自己");
+        Tenant p = tenants.selectById(parentId);
+        if (p == null) throw new BizException(ResultCode.NOT_FOUND, "主租户不存在");
+        if (p.getParentId() != null)
+            throw new BizException(ResultCode.CONFLICT, "仅支持一级关联,所选租户已是子租户");
+    }
+
+    private String parentName(Tenant t) {
+        // FK 保证 parent_id 非空即存在(ON DELETE SET NULL),selectById 不会落空
+        return t.getParentId() == null ? null : tenants.selectById(t.getParentId()).getCompanyName();
     }
 
     @Transactional
@@ -88,6 +112,8 @@ public class TenantService {
             throw new BizException(ResultCode.CONFLICT, "该租户存在合同,请先处理合同");
         if (ledger.selectCount(new QueryWrapper<MonthlyLedger>().eq("tenant_id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "该租户存在台账记录,不可删除");
+        if (tenants.selectCount(new QueryWrapper<Tenant>().eq("parent_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "该租户存在关联子租户,请先解除关联");
         // s10_record / recon_mark 的 tenant_id 为软引用(无 FK,tenant_name 兜底显示):置 NULL 再删
         s10Records.update(null, new UpdateWrapper<S10Record>()
             .eq("tenant_id", id).set("tenant_id", null));
@@ -111,7 +137,7 @@ public class TenantService {
             .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
             .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
 
-        TenantDTO tenantDto = buildTenantDto(t, cs, bName);
+        TenantDTO tenantDto = buildTenantDto(t, cs, bName, parentName(t));
         List<ContractHistoryDTO> history = cs.stream().map(c -> new ContractHistoryDTO(
             c.getContractNo(),
             bName.getOrDefault(c.getBuildingId(), ""),
@@ -123,7 +149,7 @@ public class TenantService {
     }
 
     // ponytail: extracted so list() and detail() share derivation without re-querying all tenants
-    private TenantDTO buildTenantDto(Tenant t, List<Contract> cs, Map<Integer,String> bName) {
+    private TenantDTO buildTenantDto(Tenant t, List<Contract> cs, Map<Integer,String> bName, String parentName) {
         List<Contract> current = cs.stream().filter(c -> BuildingService.RENT.contains(c.getStatus()))
             .sorted(Comparator.comparing(Contract::getId,
                 Comparator.nullsFirst(Comparator.naturalOrder()))).toList();
@@ -132,6 +158,6 @@ public class TenantService {
         String primary = current.isEmpty() ? "—" : bName.getOrDefault(current.get(0).getBuildingId(), "—");
         return new TenantDTO(t.getId(), t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus(), t.getCategoryId(), t.getPhase(), t.getSince(),
-            monthly, area, primary, cs.size(), t.getRemark());
+            monthly, area, primary, cs.size(), t.getRemark(), t.getParentId(), parentName);
     }
 }
