@@ -1,6 +1,10 @@
 import { mount, flushPromises } from '@vue/test-utils'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import type { DataHomeOverviewDTO } from '@/types/dataHome'
+
+// go() 现走 tabs.openFresh(全新语义)→ 组件依赖 Pinia
+beforeEach(() => setActivePinia(createPinia()))
 
 // 路由 stub:DataHomeView 用 useRouter().push;断点点击直达。
 const push = vi.fn()

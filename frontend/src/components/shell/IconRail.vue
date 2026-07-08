@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { FP_NAV, fpFindLayer } from '@/nav/fpNav'
+import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
 
@@ -15,7 +16,10 @@ const activeLayer = computed(() =>
   fpFindLayer((route.meta as Record<string, string>).value ?? '')
 )
 
+// 层切换=侧边栏级显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
+const tabsStore = useTabsStore()
 function goLayer(home: string) {
+  tabsStore.openFresh(home)
   router.push('/' + home)
 }
 </script>

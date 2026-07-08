@@ -88,13 +88,13 @@ function pinTab(value: string) {
   tabs.pin(value)
 }
 
-function closeTab(value: string) {
+async function closeTab(value: string) {
   const current = activeValue.value
   const neighbor = tabs.close(value)
-  // if we closed the active tab, navigate to neighbor
-  if (value === current && neighbor) {
-    router.push('/' + neighbor)
-  }
+  if (!neighbor) return   // 被拒:最后一个视图
+  // 先导航离开、再弃状态:epoch++ 若先于导航,被关视图会以新 key 瞬时重挂载(复审实测)
+  if (value === current) await router.push('/' + neighbor)
+  tabs.dropState(value)
 }
 
 function onNewTab() {

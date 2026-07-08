@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { fpFindLayer } from '@/nav/fpNav'
 import { iconFor } from '@/components/ds/icon'
 import SidebarNav from '@/components/ds/SidebarNav.vue'
 
 const route = useRoute()
 const router = useRouter()
+const tabs = useTabsStore()
 
 // ponytail: route-derived, same pattern as IconRail — no store needed
 const activeLayer = computed(() =>
@@ -30,6 +32,8 @@ const sections = computed(() =>
 )
 
 function onSelect(value: string) {
+  // 侧边栏点击 = 全新状态:openFresh 递增 epoch,即使该页有 KeepAlive 缓存也重置(spec 2026-07-07 §二)
+  tabs.openFresh(value)
   router.push('/' + value)
 }
 </script>

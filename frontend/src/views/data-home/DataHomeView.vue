@@ -4,6 +4,7 @@
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不假空态。
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { dataHomeApi } from '@/api/dataHome'
 import type { DataHomeOverviewDTO } from '@/types/dataHome'
 import { iconFor } from '@/components/ds/icon'
@@ -18,8 +19,10 @@ onMounted(async () => {
   overview.value = await dataHomeApi.getOverview()
 })
 
-// 行点击 → router.push('/'+go);router.afterEach 已自动 tabs.open,勿手动。
+// 行点击 = 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义);afterEach 的 tabs.open 不再重复处理。
+const tabsStore = useTabsStore()
 function go(v: string) {
+  tabsStore.openFresh(v)
   router.push('/' + v)
 }
 

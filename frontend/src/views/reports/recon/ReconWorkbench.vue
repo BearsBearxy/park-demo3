@@ -5,6 +5,7 @@
 // 标记/取消核实走 reconApi 后 emit patch,由父级局部更新 entities(不整页刷)。
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { reconApi } from '@/api/recon'
 import type { FeeLine, ReconEntity } from '@/types/recon'
 import { filterEntities, segCounts, statusColor, type ReconSeg } from '@/reports/recon'
@@ -23,6 +24,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const tabs = useTabsStore()
 
 // ── 左清单状态 ──
 const seg = ref<ReconSeg>('all')
@@ -108,9 +110,27 @@ const dlgVals = computed(() => {
   }
 })
 
-function jump(path: string) {
+// 跳转深链(spec 2026-07-07 §一):目标页固定为钉住 tab + 全新实例(openFresh)+ query 自动钻取定位租户行。
+// 多公司记户取第一张卡(弹窗里本就按卡展示);query 由 LedgerView/S10View onMounted 消费。
+function jumpLedger() {
+  const e = selected.value
+  if (!e) return
   dlg.value = null
-  router.push(path)
+  tabs.openFresh('ledger', { pin: true })
+  router.push({ path: '/ledger', query: {
+    y: props.year, m: props.month,
+    company: e.ledgerCards[0]?.companyName ?? '', tenant: e.tenantName,
+  } })
+}
+function jumpS10() {
+  const e = selected.value
+  if (!e) return
+  dlg.value = null
+  tabs.openFresh('sales-income', { pin: true })
+  router.push({ path: '/sales-income', query: {
+    y: props.year, m: props.month,
+    phase: e.s10Cards[0]?.phase ?? 1, tenant: e.tenantName,
+  } })
 }
 // 标记已核实(upsert 备注)/已核实则取消核实;成功后 emit patch 局部更新
 async function confirmMark() {
@@ -316,8 +336,8 @@ async function confirmMark() {
             <div class="rc-pop-amt"><span class="k">差额</span><span class="v" :style="{ color: dlgVals.state === 'miss' ? 'var(--hue-red)' : dlgVals.state === 'diff' ? 'var(--hue-orange)' : 'var(--hue-blue)' }">{{ signed(dlgVals.d) }}</span></div>
           </div>
           <div class="rc-pop-jumps">
-            <button class="rc-pop-btn" @click="jump('/ledger')"><component :is="iconFor('arrow-right')" :size="12" />去改台账</button>
-            <button class="rc-pop-btn" @click="jump('/sales-income')"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
+            <button class="rc-pop-btn" @click="jumpLedger"><component :is="iconFor('arrow-right')" :size="12" />去改台账</button>
+            <button class="rc-pop-btn" @click="jumpS10"><component :is="iconFor('arrow-right')" :size="12" />去改附表10</button>
           </div>
           <textarea v-model="note" :disabled="selected.marked" placeholder="核对备注(可选):说明差异原因与处理方式…"></textarea>
           <button class="rc-pop-confirm" :class="{ undo: selected.marked }" :disabled="busy" @click="confirmMark">

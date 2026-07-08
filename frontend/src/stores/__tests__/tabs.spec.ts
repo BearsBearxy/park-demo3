@@ -107,3 +107,57 @@ describe('tabs store', () => {
     expect(store.recent[0]).toBe('buildings')
   })
 })
+
+// ── v4:epoch(KeepAlive 新鲜度纪元,spec 2026-07-07 §二)──
+describe('tabs store epoch / openFresh', () => {
+  it('epochOf 缺省 0', () => {
+    const store = useTabsStore()
+    expect(store.epochOf('ledger')).toBe(0)
+  })
+
+  it('openFresh 递增 epoch 并照常 open(preview / pin 两态)', () => {
+    const store = useTabsStore()
+    store.openFresh('ledger')
+    expect(store.epochOf('ledger')).toBe(1)
+    expect(store.preview?.value).toBe('ledger')
+    store.openFresh('ledger', { pin: true })
+    expect(store.epochOf('ledger')).toBe(2)
+    expect(store.tabs.some(t => t.value === 'ledger')).toBe(true)
+  })
+
+  it('open / pin 不动 epoch(TabStrip 点击=恢复缓存语义)', () => {
+    const store = useTabsStore()
+    store.open('ledger')
+    store.pin('ledger')
+    store.open('ledger', { pin: true })
+    expect(store.epochOf('ledger')).toBe(0)
+  })
+
+  it('close 本身不动 epoch(弃状态由调用方导航后 dropState,防瞬时重挂载竞态)', () => {
+    const store = useTabsStore()
+    store.open('ledger', { pin: true })
+    store.close('ledger')
+    expect(store.epochOf('ledger')).toBe(0)
+  })
+
+  it('dropState 递增 epoch(关闭 tab 导航完成后调用 → 再开=全新)', () => {
+    const store = useTabsStore()
+    store.dropState('ledger')
+    expect(store.epochOf('ledger')).toBe(1)
+    store.dropState('ledger')
+    expect(store.epochOf('ledger')).toBe(2)
+  })
+
+  it('close 被拒(最后一个视图)不动 epoch', () => {
+    const store = useTabsStore()
+    const only = store.tabs[0].value
+    store.close(only)
+    expect(store.epochOf(only)).toBe(0)
+  })
+
+  it('未知 value openFresh 不计 epoch', () => {
+    const store = useTabsStore()
+    store.openFresh('not-a-route')
+    expect(store.epochOf('not-a-route')).toBe(0)
+  })
+})

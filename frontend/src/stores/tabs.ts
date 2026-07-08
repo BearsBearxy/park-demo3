@@ -39,6 +39,9 @@ export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref<Tab[]>(initTabs)
   const preview = ref<Tab | null>(initPreview)
   const recent = ref<string[]>(rawRecent)
+  // v4:每 value 的「新鲜度」纪元 — App.vue KeepAlive key = value:epoch。
+  // 内存态不持久化:刷新后全新是合理默认(spec 2026-07-07 §二)。
+  const epoch = ref<Record<string, number>>({})
 
   // ── persistence ──
   watch(tabs, t => localStorage.setItem('fp-app-tabs', JSON.stringify(t.map(x => x.value))), { deep: true })
@@ -68,6 +71,19 @@ export const useTabsStore = defineStore('tabs', () => {
     }
   }
 
+  /** 当前纪元(缺省 0)。 */
+  function epochOf(value: string): number {
+    return epoch.value[value] ?? 0
+  }
+
+  /** 全新打开:epoch++ 使 KeepAlive 丢弃缓存实例,再走 open。
+   *  侧边栏点击 / 收入核对跳转语义;TabStrip 点击仍走 open(恢复缓存)。 */
+  function openFresh(value: string, opts: { pin?: boolean } = {}) {
+    if (!ROUTES[value]) return
+    epoch.value[value] = epochOf(value) + 1
+    open(value, opts)
+  }
+
   /** Promote preview → pinned tab (double-click or pin button). */
   function pin(value: string) {
     if (!ROUTES[value]) return
@@ -94,9 +110,16 @@ export const useTabsStore = defineStore('tabs', () => {
 
     if (preview.value?.value === value) preview.value = null
     tabs.value = tabs.value.filter(t => t.value !== value)
+    // 弃状态不在此处做:关闭激活 tab 时 epoch++ 若先于导航生效,当前路由 key 立变 →
+    // 被关视图以新 key 瞬时重挂载(onMounted 重跑+快照污染缓存,复审实测)。由调用方导航完成后 dropState。
 
     return neighbor
   }
 
-  return { tabs, preview, recent, open, pin, close }
+  /** 弃置某页缓存状态(epoch++):关闭 tab 后由调用方在路由离开后调,或任意需要强制全新的场合。 */
+  function dropState(value: string) {
+    epoch.value[value] = epochOf(value) + 1
+  }
+
+  return { tabs, preview, recent, epoch, open, pin, close, epochOf, openFresh, dropState }
 })

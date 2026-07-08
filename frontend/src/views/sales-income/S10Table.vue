@@ -3,7 +3,7 @@
 // 双版面两级表头（组/叶子，按当前 phase 的 layout 渲染）;左『租户』sticky + 右『合计』sticky;
 // tfoot 列合计 + 总计;编辑态单元格 input 即时重算（行合计/列合计/总计纯前端从 props.rows 算）;
 // 撑高 filler 行把合计顶到卡底。CSS 全在本组件 <style scoped>，不复用别组件 scoped class。
-import { computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { LAYOUTS, leavesOf, type LayoutId } from './layout'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
@@ -16,6 +16,7 @@ const props = defineProps<{
   rows: S10RecordDTO[]
   edit: boolean
   selectedIds?: Set<number>
+  focusTenant?: string   // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focusDone 由父层清空)
 }>()
 const emit = defineEmits<{
   add: []
@@ -28,7 +29,25 @@ const emit = defineEmits<{
   // 批量删除选择(种子行不可选)
   toggleSelect: [row: S10RecordDTO]
   selectAll: [checked: boolean]
+  focusDone: []
 }>()
+
+// ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐 ──
+const wrapEl = ref<HTMLElement | null>(null)
+watch(() => props.focusTenant, flashFocusRow, { immediate: true })
+async function flashFocusRow() {
+  const name = props.focusTenant?.trim()
+  if (!name) return
+  await nextTick()
+  for (const tr of wrapEl.value?.querySelectorAll<HTMLTableRowElement>('tbody tr.s10-row') ?? []) {
+    if ((tr.querySelector('.s10-tname')?.textContent ?? '').trim() !== name) continue
+    tr.scrollIntoView({ block: 'center' })
+    tr.classList.add('row-flash')
+    tr.addEventListener('animationend', () => tr.classList.remove('row-flash'), { once: true })
+    break
+  }
+  emit('focusDone')  // 找不到该租户行也视为完成:静默停在本层(spec 取静默)
+}
 
 // 可选(非种子)行 → 全选状态
 const selectableRows = computed(() => props.rows.filter(r => r.source !== 'seed'))
@@ -58,7 +77,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 </script>
 
 <template>
-  <div class="s10-wrap">
+  <div class="s10-wrap" ref="wrapEl">
     <!-- 空态（jsx 364-375） -->
     <div v-if="props.rows.length === 0" class="s10-empty">
       <div class="s10-empty-ic"><component :is="iconFor('receipt')" :size="24" /></div>
@@ -263,4 +282,8 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-empty-s { font-size:13px; color:var(--text-muted); max-width:420px; line-height:1.5; }
 .s10-emptybtn { display:inline-flex; align-items:center; gap:7px; height:38px; padding:0 18px; border:none; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; cursor:pointer; font-family:var(--font-sans); font-size:13.5px; font-weight:var(--fw-medium); }
 .s10-emptybtn:hover { background:rgb(58,58,58); }
+
+/* 深链定位行:2s 高亮渐隐(结束后还原表格自身背景) */
+tr.row-flash td { animation: s10-row-flash 2s var(--ease-standard); }
+@keyframes s10-row-flash { from { background: var(--accent-blue); } to { background: var(--surface-white); } }
 </style>

@@ -4,7 +4,9 @@
 // ⓪ SchedYearGate(store-key 's10') → ① 月份 SchedMonthPills(已录月高亮) → ② 期 Segmented(一期/二期/三期/宿舍) → ③ 宽表。
 // §6 加载门:overview 未就绪显 .page-loading,不假空态。编辑态单元格即时重算,完成时把改动 upsert 回后端。
 import { ref, computed, onMounted, reactive } from 'vue'
+import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
+import { parseS10DeepLink } from '@/utils/deepLink'
 import { exportS10Month } from '@/utils/s10Excel'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq, S10ImportRow } from '@/types/s10'
 import type { ImportResultDTO } from '@/types/import'
@@ -67,10 +69,20 @@ const recordedMonth = (m: number) => {
   return false
 }
 
-// ── 进入屏:overview（§6 取数前不渲染） ──────────
+// ── 进入屏:overview（§6 取数前不渲染）;核对跳转深链则直接进明细并定位租户行 ──
+// 深链(spec 2026-07-07 §一):query y/m/phase/tenant → 设 refs → 加载月表 → S10Table 定位高亮。
+const route = useRoute()
+const focusTenant = ref('')   // 一次性:S10Table 定位完成后清空
 onMounted(async () => {
   overview.value = await s10Api.getOverview()
   month.value = overview.value.currentMonth || 1
+  const dl = parseS10DeepLink(route.query)
+  if (!dl) return
+  year.value = dl.y
+  month.value = dl.m
+  phase.value = dl.phase
+  await loadMonth()
+  focusTenant.value = dl.tenant
 })
 
 // 竞态守卫:快速切月/期时只接受最新一次请求的结果(防乱序落表)
@@ -403,6 +415,8 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
           :rows="monthData.rows"
           :edit="edit"
           :selected-ids="selectedIds"
+          :focus-tenant="focusTenant"
+          @focus-done="focusTenant = ''"
           @add="drawer = true"
           @edit="edit = true"
           @delete="onDelete"

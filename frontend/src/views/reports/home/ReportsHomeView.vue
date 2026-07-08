@@ -4,6 +4,7 @@
 // 切年/月不清 data(不闪加载门)+ seq 竞态守卫;卡/行点击 push 直达(F8);打印/导出禁用占位(F7)。
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { loadHomeData, defaultPeriod, type HomeData } from '@/reports/reportsHome'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -33,7 +34,9 @@ onMounted(async () => {
 
 function setYear(y: number) { year.value = y; load() }
 function onMonth(e: Event) { month.value = Number((e.target as HTMLSelectElement).value); load() }
-function go(v: string) { router.push('/' + v) }
+// 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
+const tabsStore = useTabsStore()
+function go(v: string) { tabsStore.openFresh(v); router.push('/' + v) }
 
 // 目录视图三区:三大报表 / 损益附表 / 收入核对(按卡 key 分组,顺序=HOME_CARDS)
 const SECTIONS = [
