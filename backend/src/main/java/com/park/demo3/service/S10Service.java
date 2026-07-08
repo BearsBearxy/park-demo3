@@ -67,8 +67,8 @@ public class S10Service {
         new Col("waterMaint",       S10Record::getWaterMaint,       S10Record::setWaterMaint,       S10RecordReq::waterMaint,       S10ImportRequest.Row::waterMaint),
         new Col("guaranteeRent",    S10Record::getGuaranteeRent,    S10Record::setGuaranteeRent,    S10RecordReq::guaranteeRent,    S10ImportRequest.Row::guaranteeRent));
 
-    // 行合计 = 该行 25 列之和(派生,不落库)
-    private static BigDecimal rowTotal(S10Record r) {
+    // 行合计 = 该行 25 列之和(派生,不落库;包内可见供 AnalysisService 复用)
+    static BigDecimal rowTotal(S10Record r) {
         BigDecimal t = BigDecimal.ZERO;
         for (Col c : COLS) t = t.add(nz(c.get().apply(r)));
         return r2(t);

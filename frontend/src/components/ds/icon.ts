@@ -18,6 +18,8 @@ import {
   ClipboardCheck, ListTodo, Files,
   FileSpreadsheet, ClipboardPaste, UploadCloud, AlertTriangle, Wand2,
   ArrowUpRight, CircleDashed, Printer,
+  ArrowDownRight, ShieldCheck, AlertOctagon, FlaskConical, SlidersHorizontal, // P3 分析层
+  Target, // P3-P1 预算对比
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -116,6 +118,12 @@ const MAP: Record<string, Component> = {
   'arrow-up-right': ArrowUpRight,
   'circle-dashed': CircleDashed,
   'printer': Printer,
+  'arrow-down-right': ArrowDownRight,
+  'shield-check': ShieldCheck,
+  'alert-octagon': AlertOctagon,
+  'flask-conical': FlaskConical,
+  'sliders-horizontal': SlidersHorizontal,
+  'target': Target,
 }
 
 export function iconFor(name: string): Component {

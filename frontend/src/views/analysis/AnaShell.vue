@@ -1,0 +1,185 @@
+<script setup lang="ts">
+// P3 分析层外壳(视觉 1:1 app/screen-analysis.jsx anx-* 工具条):
+// 期间控制(按月/按年/年月下拉/步进,可用范围由真数据派生)+「目标与阈值」设置弹层(localStorage)。
+// 期间/阈值均为模块级单例 —— 屏组件直接 import usePeriod()/anaSettings 消费,切屏不丢。
+// v2(2026-07-08):工具条右侧对比开关(仅当屏传 compare 支持集才显示;useCompare 单例,屏自行
+// 同支持集调 useCompare 读 mode)+ 可选 #kpis 槽(紧贴工具条下,.av2-kpis 容器)。均可选 → 现屏零改动。
+// §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
+// 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
+// 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
+import { computed, onMounted, ref } from 'vue'
+import { iconFor } from '@/components/ds/icon'
+import { fetchAvailableMonths } from '@/analysis/anaData'
+import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
+import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
+import { useCompare, type CompareMode } from '@/analysis/useCompare'
+import AnaPill from '@/components/ana/AnaPill.vue'
+import '@/components/ana/ana.css'
+
+const props = defineProps<{
+  compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
+  periodMode?: 'full' | 'year' | 'none'   // 期间语义(不传 = 'full' 零变化)
+  scopeChip?: string                      // periodMode='none' 时的口径徽章文案
+}>()
+
+const pmode = computed(() => props.periodMode ?? 'full')
+
+// 对比开关(支持集为屏静态声明,挂载时定死)
+const CMP_MODES: CompareMode[] = ['none', 'mom', 'yoy', 'budget']
+const CMP_LABEL: Record<CompareMode, string> = { none: '无', mom: '环比', yoy: '同比', budget: '预算' }
+const CMP_TIP: Record<CompareMode, string> = { none: '', mom: '本屏不支持环比', yoy: '本屏不支持同比(2024 无月度数据)', budget: '本屏不支持预算对比(无预算基准)' }
+const cmp = props.compare ? useCompare(props.compare) : null
+
+const period = usePeriod()
+const loaded = ref(false)
+const asof = computed(() => period.months.value[period.months.value.length - 1] ?? '—')
+
+onMounted(async () => {
+  try {
+    const dto = await fetchAvailableMonths()
+    providePeriodMonths(dto.months)
+  } finally {
+    loaded.value = true
+  }
+})
+
+// 'year' 屏年步进(本地,不动 gran 单例;屏只读 sel.year,与粒度无关)
+const yearIdx = computed(() => period.years.value.indexOf(period.sel.value.year))
+const yAtStart = computed(() => yearIdx.value <= 0)
+const yAtEnd = computed(() => yearIdx.value < 0 || yearIdx.value >= period.years.value.length - 1)
+function stepYear(dir: 1 | -1) {
+  const ys = period.years.value
+  if (!ys.length) return
+  const ni = Math.min(ys.length - 1, Math.max(0, (yearIdx.value < 0 ? ys.length - 1 : yearIdx.value) + dir))
+  period.setYear(ys[ni])
+}
+
+// ── 设置弹层 ──
+const pop = ref(false)
+function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedRatio' | 'pvInvestment' | 'spikeTh', e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  saveAnaSettings({ [key]: Number.isFinite(v) ? v : 0 })
+}
+</script>
+
+<template>
+  <div class="anx-shell">
+    <div class="anx-tools">
+      <!-- 期间控制('none' 整体隐藏,改显 scopeChip 口径徽章;'year' 隐藏粒度切换与月下拉) -->
+      <div v-if="pmode !== 'none'" style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap">
+        <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />期间</span>
+        <div v-if="pmode === 'full'" class="anx-seg">
+          <button :class="{ on: period.sel.value.gran === 'month' }" @click="period.setGran('month')">按月</button>
+          <button :class="{ on: period.sel.value.gran === 'year' }" @click="period.setGran('year')">按年</button>
+        </div>
+        <div class="anx-sel">
+          <select :value="period.sel.value.year" :disabled="!period.years.value.length" @change="period.setYear(+($event.target as HTMLSelectElement).value)">
+            <option v-for="y in period.years.value" :key="y" :value="y">{{ y }}年</option>
+          </select>
+          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        </div>
+        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-sel">
+          <select :value="period.sel.value.month" :disabled="!period.years.value.length" @change="period.setMonth(+($event.target as HTMLSelectElement).value)">
+            <option v-for="m in period.monthNumsOf(period.sel.value.year)" :key="m" :value="m">{{ m }}月</option>
+          </select>
+          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        </div>
+        <div class="anx-nav">
+          <button :disabled="pmode === 'year' ? yAtStart : period.atStart.value"
+            @click="pmode === 'year' ? stepYear(-1) : period.step(-1)"><component :is="iconFor('chevron-left')" :size="15" /></button>
+          <button :disabled="pmode === 'year' ? yAtEnd : period.atEnd.value"
+            @click="pmode === 'year' ? stepYear(1) : period.step(1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
+        </div>
+      </div>
+      <div v-else-if="scopeChip" style="display: inline-flex; align-items: center; gap: 8px">
+        <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />口径</span>
+        <AnaPill>{{ scopeChip }}</AnaPill>
+      </div>
+
+      <!-- 屏自定工具扩展位 -->
+      <slot name="tools" />
+
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+        <!-- v2 对比开关(仅屏声明支持集时显示;不支持项禁用+title 说明) -->
+        <div v-if="cmp" style="display: inline-flex; align-items: center; gap: 8px">
+          <span class="anx-lbl">对比</span>
+          <div class="anx-seg" role="group" aria-label="对比开关">
+            <button
+              v-for="m in CMP_MODES" :key="m"
+              :class="{ on: cmp.mode.value === m }"
+              :disabled="m !== 'none' && !cmp.supported.includes(m)"
+              :title="m !== 'none' && !cmp.supported.includes(m) ? CMP_TIP[m] : undefined"
+              @click="cmp.set(m)"
+            >{{ CMP_LABEL[m] }}</button>
+          </div>
+        </div>
+        <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" />数据截至 {{ asof }}</span>
+        <div style="position: relative">
+          <button class="anx-icobtn" :class="{ on: pop }" title="目标与阈值" @click.stop="pop = !pop">
+            <component :is="iconFor('sliders-horizontal')" :size="16" />
+          </button>
+          <div v-if="pop" class="anx-pop" @click.stop>
+            <h4>目标与阈值</h4>
+            <div class="anx-fld"><label>出租率目标 (%)</label>
+              <input type="number" min="50" max="100" :value="anaSettings.occTarget" @change="onNum('occTarget', $event)" /></div>
+            <div class="anx-fld"><label>收缴率目标 (%)</label>
+              <input type="number" min="50" max="100" :value="anaSettings.collectTarget" @change="onNum('collectTarget', $event)" /></div>
+            <div class="anx-fld"><label>风险线/流失预警 (分)</label>
+              <input type="number" min="30" max="90" :value="anaSettings.churnTh" @change="onNum('churnTh', $event)" /></div>
+            <div class="anx-fld"><label>能耗突变阈值 (%)</label>
+              <input type="number" min="10" max="200" :value="anaSettings.spikeTh" @change="onNum('spikeTh', $event)" /></div>
+            <div class="anx-fld"><label>固定成本占比</label>
+              <input type="number" min="0" max="1" step="0.01" :value="anaSettings.breakevenFixedRatio" @change="onNum('breakevenFixedRatio', $event)" /></div>
+            <div class="anx-fld"><label>光伏投资 (万)</label>
+              <input type="number" min="0" :value="anaSettings.pvInvestment" @change="onNum('pvInvestment', $event)" /></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px">
+              <button class="anx-link" @click="resetAnaSettings()">恢复默认</button>
+              <button class="anx-link" style="color: var(--text-primary); font-weight: 600" @click="pop = false">完成</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- v2 可选 KPI 条(紧贴工具条下,.av2-kpis 栅格容器;不传槽 = 零渲染) -->
+    <div v-if="loaded && $slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
+
+    <div class="anx-body">
+      <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+      <slot v-else />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/* anx-* 移植 app/screen-analysis.jsx AnaBarStyles(仅本层用,DS 令牌) */
+.anx-shell { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100%; }
+.anx-tools { position: sticky; top: 0; z-index: 20; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 9px 18px; border-bottom: 1px solid var(--divider); flex-wrap: wrap; background: var(--surface-overlay); backdrop-filter: blur(8px); }
+.anx-body { flex: 1; min-height: 0; padding: 24px; box-sizing: border-box; }
+.anx-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.anx-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 3px; }
+.anx-icobtn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-fast), color var(--dur-fast); position: relative; }
+.anx-icobtn:hover, .anx-icobtn.on { background: var(--bg-hover); color: var(--text-primary); }
+
+.anx-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 3px; gap: 2px; }
+.anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
+.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+.anx-seg button:disabled { opacity: .4; cursor: default; }
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; }
+.anx-sel { position: relative; }
+.anx-sel select { appearance: none; -webkit-appearance: none; font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 6px 28px 6px 13px; cursor: pointer; outline: none; }
+.anx-sel select:hover:not(:disabled) { background: var(--bg-hover); }
+.anx-sel select:disabled { opacity: .5; cursor: default; }
+.anx-sel .cv { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); display: inline-flex; }
+.anx-nav { display: inline-flex; gap: 2px; }
+.anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
+.anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.anx-nav button:disabled { opacity: .4; cursor: default; }
+.anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px; }
+.anx-pop h4 { margin: 0 0 12px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.anx-fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.anx-fld label { font-size: 12px; color: var(--text-secondary); }
+.anx-fld input { width: 74px; font-family: var(--font-mono); font-size: 12.5px; text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
+.anx-fld input:focus { border-color: var(--border-strong); }
+@media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
+</style>

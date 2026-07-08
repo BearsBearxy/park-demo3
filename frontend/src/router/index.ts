@@ -26,6 +26,24 @@ const ReconView = () => import('@/views/reports/recon/ReconView.vue')
 const ReportsHomeView = () => import('@/views/reports/home/ReportsHomeView.vue')
 const DataHomeView = () => import('@/views/data-home/DataHomeView.vue')
 const ImportCenterView = () => import('@/views/import-center/ImportCenterView.vue')
+// P3 经营分析 14 屏(value → view;骨架见 views/analysis/,屏组 agent 各自填充主体)
+const ANA_VIEWS: Record<string, RouteRecordRaw['component']> = {
+  'cockpit': () => import('@/views/analysis/CockpitView.vue'),
+  'park': () => import('@/views/analysis/ParkView.vue'),
+  'park-energy': () => import('@/views/analysis/ParkEnergyView.vue'),
+  'tenant-energy': () => import('@/views/analysis/TenantEnergyView.vue'),
+  'tenant-portfolio': () => import('@/views/analysis/TenantPortfolioView.vue'),
+  'fin-pnl': () => import('@/views/analysis/FinPnlView.vue'),
+  'fin-balance': () => import('@/views/analysis/FinBalanceView.vue'),
+  'fin-cashflow': () => import('@/views/analysis/FinCashflowView.vue'),
+  'churn': () => import('@/views/analysis/ChurnView.vue'),
+  'expiry': () => import('@/views/analysis/ExpiryView.vue'),
+  'breakeven': () => import('@/views/analysis/BreakevenView.vue'),
+  'pnl-analysis': () => import('@/views/analysis/PnlAnalysisView.vue'),
+  'budget': () => import('@/views/analysis/BudgetView.vue'),
+  'pv-roi': () => import('@/views/analysis/PvRoiView.vue'),
+  'anomaly': () => import('@/views/analysis/AnomalyView.vue'),
+}
 
 const navRoutes = fpBuildRoutes()
 
@@ -37,7 +55,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({
       path: `/${meta.value}`,
-      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : PNL_ROUTES.includes(meta.value) ? PnlScheduleView : meta.value === 'reconciliation' ? ReconView : meta.value === 'reports-home' ? ReportsHomeView : meta.value === 'import' ? ImportCenterView : PlaceholderView,
+      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'ledger' ? LedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : PNL_ROUTES.includes(meta.value) ? PnlScheduleView : meta.value === 'reconciliation' ? ReconView : meta.value === 'reports-home' ? ReportsHomeView : meta.value === 'import' ? ImportCenterView : ANA_VIEWS[meta.value] ?? PlaceholderView,
       // 展开成新鲜字面量:fpNav.RouteMeta 是具名接口,无隐式索引签名,直接赋给 vue-router 的 meta 会报 TS2322
       meta: { ...meta },
     })),

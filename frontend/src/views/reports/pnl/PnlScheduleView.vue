@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 损益附表 1–5 — 一个参数化 View 服务 5 条路由(P2-D spec D4,charging 7/8 先例)。
-// 路由 meta.value → PNL_SCHEDULES config(App.vue router-view :key=fullPath,切路由重建不串台)。
+// 路由 meta.value → PNL_SCHEDULES config(App.vue KeepAlive key=value:epoch,5 条路由 value 不同不串台)。
 // 动线:⓪ SchedYearGate(年份门,P1 惯例) → 年度矩阵(SchedHeader + PnlTable)。
 // 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 §7,kind 自动识)/多选批量删行(J7,§7 确认,沿单删 draft 语义),
 // 保存 = PUT 整年 clear+insert(rows 重建 rowKey r<n> + sortOrder);退出有改动走 SaveConfirmDialog。
@@ -58,9 +58,11 @@ const currentYear = computed(() => {
   return (withData.length ? withData[withData.length - 1] : ys[ys.length - 1])?.year ?? 0
 })
 
-// ── 进入屏:overview(§6 取数前不渲染) ─────────────────────
+// ── 进入屏:overview(§6 取数前不渲染);分析层深链 ?y= 直落该年(复审:budget/pnl-analysis 跳转带年) ──
 onMounted(async () => {
   overview.value = await pnlApi.overview(config.schedule)
+  const y = Number(route.query.y)
+  if (Number.isInteger(y) && y >= 2000 && y <= 2100) await pickYear(y)
 })
 async function reloadOverview() {
   overview.value = await pnlApi.overview(config.schedule)

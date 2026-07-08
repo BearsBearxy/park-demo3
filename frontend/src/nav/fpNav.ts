@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(39屏×3层)。源: app/shell.jsx FP_NAV。
+// src/nav/fpNav.ts — 导航单一事实源(40屏×3层)。源: app/shell.jsx FP_NAV(+P3-P1 预算对比)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
 export interface NavLayer { id: string; label: string; short: string; icon: string; caption: string; home: string; sections: NavSection[] }
@@ -55,6 +55,7 @@ export const FP_NAV: NavLayer[] = [
       { value: 'expiry', label: '到期墙与续约', icon: 'calendar-clock', kind: 'ana' },
       { value: 'breakeven', label: '盈亏平衡与敏感性', icon: 'scale-3d', kind: 'ana' },
       { value: 'pnl-analysis', label: '损益附表分析', icon: 'layers', kind: 'pnlAnalysis' },
+      { value: 'budget', label: '预算对比', icon: 'target', kind: 'ana' },
       { value: 'pv-roi', label: '光伏投资回收', icon: 'sun', kind: 'pvRoi' } ] },
     { title: '监控', items: [{ value: 'anomaly', label: '异常提醒中心', icon: 'bell-ring', kind: 'ana' }] },
   ] },
