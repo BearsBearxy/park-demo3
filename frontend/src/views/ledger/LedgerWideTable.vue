@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ② 月度宽表(读/编辑双态)— 1:1 from screen-ledger.jsx wide-table branch (524-666).
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
@@ -23,6 +23,7 @@ const props = defineProps<{
   edit: boolean
   saving: boolean
   addableTenants?: { id: number; name: string }[]   // 编辑态「添加租户行」候选(在租且本月尚无行)
+  focusTenant?: string             // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focus-done 由父层清空)
 }>()
 const emit = defineEmits<{
   'switch-company': []
@@ -35,7 +36,25 @@ const emit = defineEmits<{
   import: []
   'add-tenant': [tenantId: number]
   'bulk-remove': [tenantIds: number[]]
+  'focus-done': []
 }>()
+
+// ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐(行在 FPLedgerTable 内,DOM 查找按租户名) ──
+const pageEl = ref<HTMLElement | null>(null)
+watch(() => props.focusTenant, flashFocusRow, { immediate: true })
+async function flashFocusRow() {
+  const name = props.focusTenant?.trim()
+  if (!name) return
+  await nextTick()
+  for (const tr of pageEl.value?.querySelectorAll<HTMLTableRowElement>('tbody tr') ?? []) {
+    if ((tr.querySelector('.lg-tname')?.textContent ?? '').trim() !== name) continue
+    tr.scrollIntoView({ block: 'center' })
+    tr.classList.add('row-flash')
+    tr.addEventListener('animationend', () => tr.classList.remove('row-flash'), { once: true })
+    break
+  }
+  emit('focus-done')  // 找不到该租户行也视为完成:静默停在本层(spec 取静默)
+}
 
 const q = ref('')
 
@@ -119,7 +138,7 @@ function onCopyPrev() {
 </script>
 
 <template>
-  <div class="lg-page">
+  <div class="lg-page" ref="pageEl">
     <div class="lg-head">
       <div class="lg-head-l">
         <button class="lg-back" @click="emit('back')" title="返回月份选择"><component :is="iconFor('arrow-left')" :size="16" /></button>
@@ -266,4 +285,8 @@ function onCopyPrev() {
 .lg-toolbar-note { font-size:12px; color:var(--text-muted); }
 
 .lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* 深链定位行:2s 高亮渐隐(行在子组件 FPLedgerTable 内,须 :deep;结束后还原表格自身背景) */
+:deep(tr.row-flash > td) { animation: lg-row-flash 2s var(--ease-standard); }
+@keyframes lg-row-flash { from { background: var(--accent-blue); } to { background: var(--surface-white); } }
 </style>

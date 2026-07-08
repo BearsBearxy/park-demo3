@@ -95,9 +95,13 @@ export interface LedgerSaveRequest {
   rows: LedgerSaveRow[]
 }
 
-// 导入 body(spec §4.1):每行 tenantName(按名解析 FK)+ 21 费用 camelCase。
-export interface LedgerImportRow extends LedgerFees {
+// 导入 body:tenantName(按名解析 FK)+ 文件里出现的列。列级定向 upsert:
+// 字段缺省(文件没这列)= 不动既有值;为 0(文件里是 '-')= 显式清零。
+export interface LedgerImportRow extends Partial<LedgerFees> {
   tenantName: string
+  balancePrev?: number
+  totalCollected?: number
+  note?: string
 }
 
 export interface LedgerImportRequest {

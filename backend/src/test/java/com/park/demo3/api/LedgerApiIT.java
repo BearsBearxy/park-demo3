@@ -230,6 +230,150 @@ class LedgerApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409));
     }
 
+    // ── import:列级定向 upsert(balancePrev/totalCollected/note + null不覆盖/0清零) ──
+    @Test
+    void import_balancePrevCollectedNote_roundTripWithDerived() throws Exception {
+        // 创显样例「成吉」行:9 个费用 + 上月结余/本月收款/备注,导入干净未来月 2026/7
+        String importBody = "{\"rows\":[{\"tenantName\":\"中誉机械重工\","
+                + "\"factoryRent\":12588.80,\"factoryInfraMaint\":892.80,"
+                + "\"elevatorMaint\":159,\"transformerMaint\":159,\"officeOtherFee\":0,"
+                + "\"standardElectricity\":464.98,\"electricityMaint\":305.73,"
+                + "\"standardWater\":48.80,\"waterMaint\":8.87,"
+                + "\"balancePrev\":102.94,\"totalCollected\":14627.98,\"note\":\"电梯费用未支付\"}]}";
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "7")
+                .header("Authorization", auth())
+                .contentType("application/json").content(importBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.skipped").value(0));
+
+        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/7")
+                .header("Authorization", auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows.length()").value(1))
+                .andReturn());
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].balancePrev")).doubleValue()).isEqualTo(102.94);
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].totalCollected")).doubleValue()).isEqualTo(14627.98);
+        assertThat((String) JsonPath.read(body, "$.data.rows[0].note")).isEqualTo("电梯费用未支付");
+        // totalReceivable = 21 费用和;balanceEnd = balancePrev + 应收 - 收款
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].totalReceivable")).doubleValue()).isEqualTo(14627.98);
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].balanceEnd")).doubleValue()).isEqualTo(102.94);
+
+        // 清理:blank 该行让重跑确定性
+        mvc.perform(put("/api/ledger/companies/1/months/2026/7").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"tenantId\":1}]}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void import_allBlankRow_skippedWithNamedError() throws Exception {
+        // 全空行(费用/结余/收款/备注全无)且该租户本月无既有行 → 记名跳过
+        String res = utf8(mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "7")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"锐通电子\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andExpect(jsonPath("$.data.skipped").value(1))
+                .andReturn());
+        assertThat((String) JsonPath.read(res, "$.data.errors[0].label")).isEqualTo("锐通电子");
+        assertThat((String) JsonPath.read(res, "$.data.errors[0].reason")).contains("跳过");
+    }
+
+    @Test
+    void import_balancePrevOnly_notSkipped() throws Exception {
+        // 创显样例「戎合」行:只有上月结余(如 249 万挂账),绝不能被全零防线跳过
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "7")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"康泽生物\",\"balancePrev\":2499022.41}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.skipped").value(0));
+
+        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/7")
+                .header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        List<Integer> ids = JsonPath.read(body, "$.data.rows[*].tenantId");
+        int idx = ids.indexOf(3);
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[" + idx + "].balancePrev")).doubleValue())
+                .isEqualTo(2499022.41);
+
+        mvc.perform(put("/api/ledger/companies/1/months/2026/7").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"tenantId\":3}]}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void import_duplicateTenantRows_lastWinsSingleRow() throws Exception {
+        // 同一文件同租户名两行:第二行走 update(不再重复 insert 撞 uk_ledger 整笔 500 回滚)
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "7")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":["
+                        + "{\"tenantName\":\"新元材料\",\"factoryRent\":100},"
+                        + "{\"tenantName\":\"新元材料\",\"factoryRent\":200}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(2));
+
+        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/7")
+                .header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        List<Integer> ids = JsonPath.read(body, "$.data.rows[*].tenantId");
+        assertThat(ids).containsOnlyOnce(4); // 库里该租户本月仅一行
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[" + ids.indexOf(4) + "].factoryRent")).doubleValue())
+                .isEqualTo(200.0); // 值 = 第二行
+
+        mvc.perform(put("/api/ledger/companies/1/months/2026/7").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"tenantId\":4}]}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void import_nullKeepsExisting_zeroClears() throws Exception {
+        // 既有行 factoryRent=5(干净未来月 2026/8)
+        mvc.perform(put("/api/ledger/companies/1/months/2026/8").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantId\":1,\"factoryRent\":5}]}"))
+                .andExpect(status().isOk());
+
+        // 导入行 factoryRent 缺省(null=文件没这列)、shopRent=3 → factoryRent 不被覆盖
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "8")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"中誉机械重工\",\"shopRent\":3}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1));
+        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/8")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].factoryRent")).doubleValue()).isEqualTo(5.0);
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].shopRent")).doubleValue()).isEqualTo(3.0);
+
+        // 再导 factoryRent=0(文件里是「-」)→ 显式清零
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "8")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"中誉机械重工\",\"factoryRent\":0}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1));
+        String body2 = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/8")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        assertThat(((Number) JsonPath.read(body2, "$.data.rows[0].factoryRent")).doubleValue()).isEqualTo(0.0);
+
+        mvc.perform(put("/api/ledger/companies/1/months/2026/8").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"tenantId\":1}]}"))
+                .andExpect(status().isOk());
+    }
+
     // ── auth ──────────────────────────────────────────────────
     @Test
     void overview_withoutToken_returns401() throws Exception {

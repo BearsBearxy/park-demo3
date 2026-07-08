@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchByHeader, normalizeHeader, type ColumnMapEntry } from './importHeaderMatch'
+import { matchByHeader, normalizeHeader, isGarbageTenantName, type ColumnMapEntry } from './importHeaderMatch'
 
 // 真实二期表 factory 子集列
 const COLS: ColumnMapEntry[] = [
@@ -154,6 +154,70 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
   it('无 groupLabels 时不附 __groups(默认不影响现有调用)', () => {
     const { records } = matchByHeader(matrix, COLS, NAME)
     expect(records[0].__groups).toBeUndefined()
+  })
+
+  // meta:成功时回传 关键列/表头块末行 位置(台账拆段公司识别用);纯增量
+  it('meta 返回 nameCol/headerEnd', () => {
+    const { meta } = matchByHeader(matrix, COLS, NAME)
+    expect(meta).toEqual({ nameCol: 1, headerEnd: 2 })
+  })
+
+  // ── 列名别名(aliases):主 label + 别名全体参与匹配,模板/预览列不受影响 ──
+  const COLS_AL: ColumnMapEntry[] = [
+    { label: '商铺、宿舍租金', key: 'shopRent', aliases: ['商铺租金'] },
+    { label: '宿舍配套费', key: 'dormFacilitiesFee', aliases: ['宿舍配套设施费'] },
+    { label: '宿舍租金', key: 'dormRent' },
+  ]
+  it('别名命中(10月表变体列名)', () => {
+    const m = [cols(['租户', '商铺租金', '宿舍配套设施费', '宿舍租金']), cols(['甲', '100', '20', '30'])]
+    const { records, error } = matchByHeader(m, COLS_AL, ['租户'])
+    expect(error).toBeUndefined()
+    expect(records[0].shopRent).toBe(100)
+    expect(records[0].dormFacilitiesFee).toBe(20)
+    expect(records[0].dormRent).toBe(30)
+  })
+  it('主 label 仍命中(1月表回归,别名不干扰)', () => {
+    const m = [cols(['租户', '商铺、宿舍租金', '宿舍配套费']), cols(['甲', '11', '22'])]
+    const { records, error } = matchByHeader(m, COLS_AL, ['租户'])
+    expect(error).toBeUndefined()
+    expect(records[0].shopRent).toBe(11)
+    expect(records[0].dormFacilitiesFee).toBe(22)
+  })
+  it('长标签优先:别名比他键短主 label 长时先命中', () => {
+    const C: ColumnMapEntry[] = [
+      { label: '宿舍配套', key: 'shortKey' },
+      { label: '宿舍配套费', key: 'dormFee', aliases: ['宿舍配套设施费'] },
+      { label: '水维护费', key: 'waterMaint' },
+    ]
+    const m = [cols(['租户', '宿舍配套设施费', '水维护费']), cols(['甲', '9', '1'])]
+    const { records } = matchByHeader(m, C, ['租户'])
+    expect(records[0].dormFee).toBe(9)
+    expect(records[0]).not.toHaveProperty('shortKey')
+  })
+
+  // ── skipName 收行过滤(规范§九 v4):第5参可选,缺省零行为变化 ──
+  it('isGarbageTenantName:纯数字/6位数字开头命中,正常租户名不命中', () => {
+    expect(isGarbageTenantName('0')).toBe(true)
+    expect(isGarbageTenantName('123.45')).toBe(true)
+    expect(isGarbageTenantName('202510二期')).toBe(true)
+    expect(isGarbageTenantName('万众宿舍')).toBe(false)
+    expect(isGarbageTenantName('3号厂房')).toBe(false)   // 数字开头但不足 6 位且非纯数字
+  })
+
+  const skipMatrix: string[][] = [
+    cols(['租户', '厂房租金', '企业管理服务费']),
+    cols(['甲', '100', '10']),
+    cols(['202510二期', '100', '10']),   // 未标「合计」的段合计行
+    cols(['0', '0', '0']),               // 伪租户行
+  ]
+  it('skipName 生效:命中的数据行被跳过', () => {
+    const { records, error } = matchByHeader(skipMatrix, COLS, NAME, undefined, { skipName: isGarbageTenantName })
+    expect(error).toBeUndefined()
+    expect(records.map(r => r.tenantName)).toEqual(['甲'])
+  })
+  it('缺省不传 skipName → 不过滤(零行为变化,办公水电纯数字月份保命线)', () => {
+    const { records } = matchByHeader(skipMatrix, COLS, NAME)
+    expect(records.map(r => r.tenantName)).toEqual(['甲', '202510二期', '0'])
   })
 
   // 文本列:职种/职务 存原始字符串,不被 cleanNum 变 0

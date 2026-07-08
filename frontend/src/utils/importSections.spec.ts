@@ -77,6 +77,21 @@ describe('splitSections — 智能整表拆段', () => {
     expect(secs[0].records[0].tenantName).toBe('甲')
   })
 
+  it('垃圾行过滤(v4):段尾未标合计的合计行「202510二期」与「0」全零行被跳,段合计不翻倍', () => {
+    const withGarbage: string[][] = [
+      c(['2025年10月二期园区费用明细表']),
+      c(['租户', '厂房租金', '企业管理服务费', '其他费用']),
+      c(['火炬', '1000', '100', '5']),
+      c(['锂朋', '2000', '200', '6']),
+      c(['202510二期', '3000', '300', '11']),   // 各列 = 该段各列总和
+      c(['0', '0', '0', '0']),
+    ]
+    const secs = splitSections(withGarbage, LAYOUTS, NAME)
+    expect(secs.length).toBe(1)
+    expect(secs[0].records.map(r => r.tenantName)).toEqual(['火炬', '锂朋'])
+    expect(secs[0].records.reduce((n, r) => n + (r.factoryRent as number), 0)).toBe(3000)   // 不含合计行,不翻倍
+  })
+
   it('无标题前导段(标题前有数据)→ 单独一段,年月期 undefined', () => {
     const withLead: string[][] = [
       c(['租户', '办公室租金', '厂房租金', '其他费用']),

@@ -1,6 +1,6 @@
 // 智能整表拆段 — 一张 sheet 多段(多月×多期),按标题行切段、识别 年/月/期、识别版面(office/factory),
 // 逐段用对应版面 columnMap 走 matchByHeader 解析。复用 importHeaderMatch(勿改它)。
-import { matchByHeader, normalizeHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
+import { matchByHeader, normalizeHeader, isGarbageTenantName, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 
 export interface PhaseLayouts { office: ColumnMapEntry[]; factory: ColumnMapEntry[] }
 
@@ -52,7 +52,8 @@ function parseBlock(
 ): { layout: 'office' | 'factory'; records: ImportRec[]; error?: string } {
   const layout = detectLayout(block)
   if (!block.length) return { layout, records: [] }
-  const { records, error } = matchByHeader(block, phaseLayouts[layout], nameLabels)
+  // 垃圾行过滤(规范§九 v4):段尾未标「合计」的合计行(如「202510二期」)与「0」伪租户行,入库会使段金额翻倍
+  const { records, error } = matchByHeader(block, phaseLayouts[layout], nameLabels, undefined, { skipName: isGarbageTenantName })
   return { layout, records, error }
 }
 

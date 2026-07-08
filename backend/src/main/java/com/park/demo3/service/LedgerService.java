@@ -196,7 +196,7 @@ public class LedgerService {
         return month(companyId, year, month);
     }
 
-    // ── import(逐行按 tenantName 解析在租租户 → 定向 upsert 21 费用;绝不删未导入租户) ──
+    // ── import(逐行按 tenantName 解析在租租户 → 列级定向 upsert 21 费用+结余/收款/备注;绝不删未导入租户) ──
     @Transactional
     public ImportResultDTO importRows(Integer companyId, int year, int month, LedgerImportRequest req) {
         ManagementCompany company = companies.selectById(companyId);
@@ -208,7 +208,7 @@ public class LedgerService {
         Map<Integer, MonthlyLedger> stored = ledger.selectMonth(companyId, year, month).stream()
             .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
 
-        int imported = 0, skippedBlank = 0;
+        int imported = 0;
         List<ImportError> errors = new ArrayList<>();
         List<LedgerImportRequest.Row> rows = req.rows();
         for (int i = 0; i < rows.size(); i++) {
@@ -219,19 +219,35 @@ public class LedgerService {
                 errors.add(new ImportError(i, row.tenantName(), "未找到匹配在租租户"));
                 continue;
             }
-            // 全零行防线:21 费用列全为 0 且该租户本月无既有行 → 不落库(文件里大量「-」占位行,
-            // 落库会让台账出现整片零行;有既有行时仍允许全零更新=显式清零)
-            boolean allZero = true;
-            for (int f = 0; f < IMP_GET.size(); f++) if (r2(IMP_GET.get(f).apply(row)).signum() != 0) { allZero = false; break; }
             MonthlyLedger existing = stored.get(tenantId);
-            if (allZero && existing == null) { skippedBlank++; continue; }
-            // 定向 upsert:既有行 update,否则 insert(不触碰未导入的其他租户行)
+            // 全零行防线:21 费用 + balancePrev/totalCollected 无任何非 null 非 0 值、note 为空,
+            // 且该租户本月无既有行 → 记名跳过(文件里大量「-」占位行,落库会让台账出现整片零行;
+            // 有既有行时仍允许落库=显式清零)
+            boolean hasValue = row.note() != null && !row.note().isBlank();
+            if (!hasValue) for (var g : IMP_GET) {
+                BigDecimal v = g.apply(row);
+                if (v != null && v.signum() != 0) { hasValue = true; break; }
+            }
+            if (!hasValue && row.balancePrev() != null && row.balancePrev().signum() != 0) hasValue = true;
+            if (!hasValue && row.totalCollected() != null && row.totalCollected().signum() != 0) hasValue = true;
+            if (!hasValue && existing == null) {
+                errors.add(new ImportError(i, name, "全零行(无费用/结余/收款/备注),已跳过"));
+                continue;
+            }
+            // 列级定向 upsert:字段为 null=文件没这列=不动既有值;为 0=显式清零(新行走 zeroRow 默认 0)
             MonthlyLedger l = existing != null ? existing : zeroRow(companyId, tenantId, year, month);
-            for (int f = 0; f < FEE_SET.size(); f++) FEE_SET.get(f).accept(l, r2(IMP_GET.get(f).apply(row)));
+            for (int f = 0; f < FEE_SET.size(); f++) {
+                BigDecimal v = IMP_GET.get(f).apply(row);
+                if (v != null) FEE_SET.get(f).accept(l, r2(v));
+            }
+            if (row.balancePrev() != null) l.setBalancePrev(r2(row.balancePrev()));
+            if (row.totalCollected() != null) l.setTotalCollected(r2(row.totalCollected()));
+            if (row.note() != null && !row.note().isBlank()) l.setNote(row.note().trim());
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
+            stored.put(tenantId, l); // 同名第二行走 update,不再重复 insert 撞 uk_ledger
             imported++;
         }
-        return new ImportResultDTO(imported, errors.size() + skippedBlank, errors);
+        return new ImportResultDTO(imported, errors.size(), errors);
     }
 
     // ── copy-from-prev(以上月各行为模板,结余结转,事务) ──

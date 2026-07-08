@@ -7,9 +7,10 @@
 //  4) 数据行 = 表头块之后、租户列非空且非小计的行;未命中的列(车间/合计/备注/分组)一律忽略。
 // 仅供 columnMap 模式;位置映射仍走各屏 parseRow。
 
-export interface ColumnMapEntry { label: string; key: string; text?: boolean }
+export interface ColumnMapEntry { label: string; key: string; text?: boolean; aliases?: string[] }
 export interface ImportRec { __preview?: unknown[]; __groups?: Record<string, string>; [k: string]: unknown }
-export interface MatchResult { records: ImportRec[]; error?: string }
+// meta:成功时回传 关键列/表头块末行 位置,供调用方(台账拆段公司识别)定位数据行;纯增量,现有调用方不受影响
+export interface MatchResult { records: ImportRec[]; error?: string; meta?: { nameCol: number; headerEnd: number } }
 
 // 去空格 + 常见分隔/括号标点(不改字符本体),便于宽松匹配。
 export function normalizeHeader(s: unknown): string {
@@ -31,15 +32,21 @@ function isSubtotal(v: string): boolean {
   return /合计|小计|总计/.test(v)
 }
 
+// 垃圾租户名(规范§九 v4):纯数字(如「0」伪租户)或以 6 位数字开头(如「202510二期」= 未标「合计」的段合计行)。
+// 只供台账/附表10 通路作 opts.skipName 传入;绝不能全局套用——办公水电的关键列是「月份」,纯数字合法。
+export const isGarbageTenantName = (n: string): boolean => /^\d+(\.\d+)?$/.test(n) || /^\d{6}/.test(n)
+
 export function matchByHeader(
   matrix: string[][],
   columnMap: ColumnMapEntry[],
   nameLabels: string[],
   groupLabels?: string[],   // 「填充型分组列」(合并/稀疏):按表头名定位,值向下填充,附 rec.__groups[原标签]
+  opts?: { skipName?: (name: string) => boolean },   // 收行过滤:数据行 name 命中即跳;缺省 = 零行为变化
 ): MatchResult {
   // 标签按 normalize 后长度降序:前缀命中时「最长匹配标签优先」,防短标签(如 基本)吞掉长列头。
+  // aliases(列名别名,如 商铺租金)与主 label 全体参与匹配;模板/预览列仍只用主 label(一条目一列)。
   const labels = columnMap
-    .map(c => ({ nl: normalizeHeader(c.label), key: c.key, text: !!c.text }))
+    .flatMap(c => [c.label, ...(c.aliases ?? [])].map(l => ({ nl: normalizeHeader(l), key: c.key, text: !!c.text })))
     .sort((a, b) => b.nl.length - a.nl.length)
   // 列头 → 命中的列定义:normalize 相等 或 列头以标签为前缀(扛 用电量(千瓦)→用电量 等单位后缀)。
   const matchLabel = (cell: unknown) => {
@@ -132,6 +139,7 @@ export function matchByHeader(
     }
     const name = String(row[nameCol] ?? '').trim()
     if (!name || isSubtotal(name)) continue
+    if (opts?.skipName?.(name)) continue
     const rec: ImportRec = { tenantName: name }
     colKey.forEach((key, ci) => { rec[key] = textCols.has(ci) ? String(row[ci] ?? '').trim() : cleanNum(row[ci]) })
     if (groupCol.size) {
@@ -145,5 +153,5 @@ export function matchByHeader(
   if (!records.length) {
     return { records: [], error: '已读取数据,但没识别到租户行。请确认含租户名一列。' }
   }
-  return { records }
+  return { records, meta: { nameCol, headerEnd } }
 }

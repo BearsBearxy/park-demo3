@@ -83,7 +83,8 @@ async function openImport(entry: ImportTypeEntry) {
 function confirmLedger() {
   const c = companies.value.find(x => x.id === lf.value.companyId)
   if (!c) return
-  ctx.value = { companyId: c.id, companyName: c.name, year: lf.value.year, month: lf.value.month }
+  ctx.value = { companyId: c.id, companyName: c.name, year: lf.value.year, month: lf.value.month,
+    companyNames: companies.value.map(x => x.name) }   // 整册拆段的 sheet 名识别用
   ledgerForm.value = false
   importing.value = true
 }
@@ -91,14 +92,22 @@ function confirmLedger() {
 // ── 导入回调 → runImport(执行+记录) → 刷新 + toast ──────────
 async function handleImport(recs: ImportRec[], fileName: string) {
   importing.value = false
-  // 台账走未登记租户预检(与 LedgerView.onImport 同款编排,复用 ResolveDialog/suggestParent)
-  if (activeKey.value === 'ledger') { await ledgerPrecheck(recs, fileName); return }
+  // 台账两道核对与预检(与 LedgerView.onImport 同款编排):①文件标题年月≠目标年月先确认
+  if (activeKey.value === 'ledger') {
+    const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
+    if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month)
+      && !window.confirm(`文件标题识别为 ${ym.year}年${ym.month}月,当前导入目标是 ${ctx.value.year}年${ctx.value.month}月,仍导入到当前目标吗?`)) return
+    await ledgerPrecheck(recs, fileName)
+    return
+  }
   await doRun(recs, fileName)
 }
 
 // ── 台账未登记租户预检(hub 版;确认建档/跳过后继续 doRun) ─────
+// recs=平铺单表;picks=整册拆段,二者互斥
+type SectionPick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
 const resolveItems = ref<ResolveItem[] | null>(null)
-const pendingLedger = ref<{ recs: ImportRec[]; fileName: string } | null>(null)
+const pendingLedger = ref<{ recs?: ImportRec[]; picks?: SectionPick[]; fileName: string } | null>(null)
 let tenantCache: { id: number; companyName: string; parentId?: number | null }[] = []
 async function ledgerPrecheck(recs: ImportRec[], fileName: string) {
   try { tenantCache = await tenantApi.list() }
@@ -125,16 +134,51 @@ async function onResolveConfirm(decisions: ResolveDecision[]) {
     } catch (e) { alert((e as { message?: string })?.message ?? '创建租户失败'); return }
   }
   const skipNames = new Set(decisions.filter(d => d.action === 'skip').map(d => d.name))
-  const recs = pending.recs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
+  const drop = (rs: ImportRec[]) => rs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
+  if (pending.picks) {
+    // 段模式:skip 名字从各段过滤,清空的段丢弃
+    const picks = pending.picks.map(p => ({ ...p, records: drop(p.records) })).filter(p => p.records.length)
+    if (!picks.length) { alert('全部行都被跳过,未执行导入。'); return }
+    await doRun(picks, pending.fileName)
+    return
+  }
+  const recs = drop(pending.recs!)
+  // 全部行都被跳过 → 不发空请求、不落误导性 rejected 日志(复审:空 payload 边界)
+  if (!recs.length) { alert('全部行都被跳过,未执行导入。'); return }
   await doRun(recs, pending.fileName)
 }
 function onResolveCancel() { resolveItems.value = null; pendingLedger.value = null }
 async function handleSections(picks: unknown[], fileName: string) {
   importing.value = false
+  // 台账整册拆段:平铺各段收集未登记租户 → 复用 ResolveDialog;段流程不做覆盖/年月 confirm(规范 v1 边界)
+  if (activeKey.value === 'ledger') {
+    const lp = picks as SectionPick[]
+    try { tenantCache = await tenantApi.list() }
+    catch { await doRun(lp, fileName); return }
+    const known = new Set(tenantCache.map(t => t.companyName))
+    const unknown = [...new Set(lp.flatMap(p => p.records).map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
+    if (!unknown.length) { await doRun(lp, fileName); return }
+    resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, tenantCache) }))
+    pendingLedger.value = { picks: lp, fileName }
+    return
+  }
   await doRun(picks as Parameters<typeof runImport>[1], fileName)
+}
+// 台账②覆盖预检:目标月已有 N 家重叠租户行 → 确认后才导(拉不到本月数据则不拦,同租户表预检策略)
+async function confirmLedgerOverwrite(recs: ImportRec[]): Promise<boolean> {
+  try {
+    const dto = await ledgerApi.month(ctx.value.companyId!, ctx.value.year!, ctx.value.month!)
+    const existing = new Set(dto.rows.map(r => r.tenantName))
+    // 按去重租户家数计(同名多行文件下与 LedgerView 同口径,复审:计数口径)
+    const n = new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(nm => existing.has(nm))).size
+    return n === 0 || window.confirm(`${ctx.value.year} 年 ${ctx.value.month} 月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)
+  } catch { return true }
 }
 async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
   if (!activeKey.value) return
+  // 覆盖预检仅平铺台账做;段模式(元素带 .records)不做覆盖 confirm(规范 v1 边界)
+  const isSections = !!(payload as { records?: unknown }[])[0]?.records
+  if (activeKey.value === 'ledger' && !isSections && !(await confirmLedgerOverwrite(payload as ImportRec[]))) return
   try {
     importResult.value = await runImport(activeKey.value, payload, ctx.value, fileName)
     await reload()

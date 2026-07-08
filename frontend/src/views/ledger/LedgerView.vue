@@ -2,7 +2,9 @@
 // 月度台账状态机 — companyId(null=⓪) / yearGated(false=①年份门) / month(null=②月历) / drawerTenantId / edit.
 // 动线: ⓪选公司 → ①年份门(SchedYearGate,同附表) → ②月历 → ③宽表 → ④抽屉。
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { companyApi, ledgerApi } from '@/api/ledger'
+import { parseLedgerDeepLink } from '@/utils/deepLink'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow, LedgerImportRow } from '@/types/ledger'
@@ -49,8 +51,22 @@ const draft = ref<LedgerRowDTO[]>([])                 // ② 编辑态工作副�
 
 const company = computed(() => companies.value.find(c => c.id === companyId.value) ?? null)
 
-// ── ⓪ 进入屏:载入公司 + 各公司概览统计 ──────────────────
-onMounted(loadCompanies)
+// ── ⓪ 进入屏:载入公司 + 各公司概览统计;核对跳转深链则继续自动钻取 ──
+// 深链(spec 2026-07-07 §一):query y/m/company/tenant → ⓪按公司名精确匹配 → ①年 → ②月 → 宽表定位租户行。
+// 公司名解析不到 → 静默停在⓪层;focusTenant 一次性,定位完成后清空。
+const route = useRoute()
+const focusTenant = ref('')
+onMounted(async () => {
+  await loadCompanies()
+  const dl = parseLedgerDeepLink(route.query)
+  if (!dl) return
+  const c = companies.value.find(x => x.name === dl.company)
+  if (!c) return
+  await pickCompany(c.id)
+  await pickYear(dl.y)
+  await pickMonth(dl.m)
+  focusTenant.value = dl.tenant
+})
 
 async function loadCompanies() {
   companies.value = await companyApi.list()
@@ -121,6 +137,8 @@ async function pickMonth(m: number) {
 }
 function backToMonths() {
   month.value = null; edit.value = false; drawerTenantId.value = null
+  // 宽表内导入/删行保存后返回月历,月卡实时刷新(规范§六;不 await:requestId 守卫已有,旧值先显后替不闪空)
+  loadOverview().catch(() => { /* 拉失败保持旧值即可,不抛 unhandledrejection(复审) */ })
 }
 
 // 删除公司(确认弹窗复用 FinDialogs delco;后端级联删除其台账+报表数据)
@@ -250,11 +268,18 @@ const cleanNum = (x: unknown): number => { const v = parseFloat(String(x).replac
 // 模板列:租户 + 21 费用 label(取自 lgColumns 叶子,FEE_KEYS 同序),复用列定义不另造。
 
 // ── 导入预检:表内出现租户表没有的名字 → 先弹 ResolveDialog 决策(关联/新建/跳过)再导入 ──
-const pendingImport = ref<{ recs: ImportRec[]; fileName: string } | null>(null)
+// recs=平铺单表;picks=整册拆段(多 sheet),二者互斥
+type SectionPick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
+const pendingImport = ref<{ recs?: ImportRec[]; picks?: SectionPick[]; fileName: string } | null>(null)
 const resolveItems = ref<ResolveItem[]>([])
 
 async function onImport(recs: ImportRec[], fileName: string) {
   if (companyId.value == null || month.value == null) return
+  // 文件标题识别的年月 ≠ 当前屏年月 → 先确认,防导错月
+  const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
+  if (ym && (ym.year !== year.value || ym.month !== month.value)) {
+    if (!window.confirm(`文件标题识别为 ${ym.year}年${ym.month}月,当前导入目标是 ${year.value}年${month.value}月,仍导入到当前月吗?`)) return
+  }
   importing.value = false
   importSummary.value = null
   try {
@@ -265,6 +290,21 @@ async function onImport(recs: ImportRec[], fileName: string) {
   if (!unknown.length) { await runLedgerImport(recs, fileName); return }
   resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, allTenants.value) }))
   pendingImport.value = { recs, fileName }
+}
+
+// 整册拆段确认后:平铺各段收集未登记租户 → 复用 ResolveDialog;段流程不做覆盖/年月 confirm(规范 v1 边界)
+async function onImportSections(picks: SectionPick[], fileName: string) {
+  if (companyId.value == null || month.value == null) return
+  importing.value = false
+  importSummary.value = null
+  try {
+    allTenants.value = await tenantApi.list()
+  } catch { /* 拉不到租户表则不预检,直接导入,由后端逐行报「租户不存在」 */ }
+  const known = new Set(allTenants.value.map(t => t.companyName))
+  const unknown = [...new Set(picks.flatMap(p => p.records).map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
+  if (!unknown.length) { await runSectionsImport(picks, fileName); return }
+  resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, allTenants.value) }))
+  pendingImport.value = { picks, fileName }
 }
 
 async function onResolveConfirm(decisions: ResolveDecision[]) {
@@ -286,20 +326,47 @@ async function onResolveConfirm(decisions: ResolveDecision[]) {
       return
     }
   }
-  // skip 的名字过滤掉对应台账行,行数记入结果 toast summary
+  // skip 的名字过滤掉对应台账行,行数记入结果 toast summary;段模式逐段过滤,清空的段丢弃
   const skipNames = new Set(decisions.filter(d => d.action === 'skip').map(d => d.name))
-  const recs = pending.recs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
-  const skippedRows = pending.recs.length - recs.length
+  const drop = (rs: ImportRec[]) => rs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
+  if (pending.picks) {
+    const picks = pending.picks.map(p => ({ ...p, records: drop(p.records) })).filter(p => p.records.length)
+    const skippedRows = pending.picks.reduce((s, p) => s + p.records.length, 0) - picks.reduce((s, p) => s + p.records.length, 0)
+    if (skippedRows > 0) importSummary.value = `跳过未登记租户 ${skippedRows} 行`
+    // 全部行都被跳过 → 不发空请求、不落误导性 rejected 日志(复审:空 payload 边界)
+    if (!picks.length) { alert('全部行都被跳过,未执行导入。'); return }
+    await runSectionsImport(picks, pending.fileName)
+    return
+  }
+  const recs = drop(pending.recs!)
+  const skippedRows = pending.recs!.length - recs.length
   if (skippedRows > 0) importSummary.value = `跳过未登记租户 ${skippedRows} 行`
+  if (!recs.length) { alert('全部行都被跳过,未执行导入。'); return }
   await runLedgerImport(recs, pending.fileName)
 }
 
 async function runLedgerImport(recs: ImportRec[], fileName: string) {
+  // 覆盖预检:本月已有数据的租户与文件重叠 → 确认后才覆盖(只覆盖文件中提供的列)
+  const existing = new Set((monthDto.value?.rows ?? []).map(r => r.tenantName))
+  const n = new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(name => existing.has(name))).size
+  if (n > 0 && !window.confirm(`本月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)) return
   try {
     const cname = companies.value.find(c => c.id === companyId.value)?.name
     importResult.value = await runImport('ledger', recs,
       { companyId: companyId.value!, companyName: cname, year: year.value, month: month.value! }, fileName)
     await loadMonth()   // 重载本月,反映 upsert 后的费用
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+}
+
+// 段模式执行:registry run 逐段解析公司/年月并聚合(不做覆盖预检,后端列级 upsert + 结果 toast 兜底)
+async function runSectionsImport(picks: SectionPick[], fileName: string) {
+  try {
+    const cname = companies.value.find(c => c.id === companyId.value)?.name
+    importResult.value = await runImport('ledger', picks,
+      { companyId: companyId.value!, companyName: cname, year: year.value, month: month.value! }, fileName)
+    await loadMonth()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
   }
@@ -368,6 +435,8 @@ async function runLedgerImport(recs: ImportRec[], fileName: string) {
       :edit="edit"
       :saving="saving"
       :addable-tenants="addableTenants"
+      :focus-tenant="focusTenant"
+      @focus-done="focusTenant = ''"
       @switch-company="goGate"
       @back="backToMonths"
       @enter-edit="enterEdit"
@@ -390,10 +459,11 @@ async function runLedgerImport(recs: ImportRec[], fileName: string) {
     <FpImportModal
       v-if="importing"
       :title="'导入 月度台账 · ' + company.name"
-      :sub="'列顺序 = 租户 + 各费用项(共 ' + (FEE_KEYS.length + 1) + ' 列),按租户名匹配在租租户后导入到 ' + year + ' 年 ' + month + ' 月'"
-      v-bind="parserProps('ledger')"
+      :sub="'按表头名字自动识别列,需包含表头;可整表粘贴(前置公司列/合计行/应收结余列自动忽略),导入到 ' + year + ' 年 ' + month + ' 月'"
+      v-bind="parserProps('ledger', { year, month: month!, companyName: company.name, companyNames: companies.map(c => c.name) })"
       @close="importing = false"
       @import="onImport"
+      @import-sections="onImportSections"
     />
     <LedgerImportResolveDialog
       v-if="pendingImport"

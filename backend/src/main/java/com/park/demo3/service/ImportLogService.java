@@ -10,14 +10,13 @@ import java.util.*;
 
 @Service
 public class ImportLogService {
-    private static final Set<String> KNOWN_TYPES = Set.of(
-        "ledger","s10","pv","charging_7","charging_8","elec","salary","office_13","office_14","report_is","report_bs","report_tb",
-        "pnl_s1","pnl_s2","pnl_s3","pnl_s4","pnl_s5");
+    // 不再维护类型白名单:与前端 registry 双份清单必然烂(budget 类型上线即因不在名单被 400,
+    // 且前端日志失败静默 → 磁贴永远「未导入」——2026-07-09 事故)。dataType 是审计元数据,
+    // @NotBlank + 鉴权 已够;新增导入类型零后端改动。
     private final ImportLogMapper mapper; private final AuthUserMapper users;
     public ImportLogService(ImportLogMapper mapper, AuthUserMapper users) { this.mapper = mapper; this.users = users; }
 
     public ImportLogDTO record(ImportLogReq req) {
-        if (!KNOWN_TYPES.contains(req.dataType())) throw new BizException(ResultCode.BAD_REQUEST, "未知数据类型");
         ImportLog l = new ImportLog();
         l.setDataType(req.dataType()); l.setTypeLabel(req.typeLabel()); l.setFileName(req.fileName());
         l.setTarget(req.target()); l.setRows(req.rows()); l.setOk(req.ok()); l.setWarn(req.warn());

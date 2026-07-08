@@ -37,12 +37,13 @@ const props = withDefaults(defineProps<{
   // 给了 customParse 即走自定义解析(优先级次于 parseWorkbook,与其余通路互斥):
   //   返回 records → 复用现有预览表 + 「导入 N 条」按钮,emit import
   //   返回 sections → 复用 ImportSummary 纯标签段模式(每段 label+N条+勾选),emit importSections({label,records}[])
-  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
+  //   可选 warning:非阻断提示(如预算导入的发生额与系统推算差异),与结果并排显示
+  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }
   // 文件上传按 sheet 名挑表(命中即取,未命中回退第一个);粘贴路径不受影响
   sheetMatch?: RegExp
   // 给了 parseWorkbook 即走多 sheet 解析(优先级最高,先于 customParse):
   //   文件路径解析全部 sheet 传入;粘贴路径包装 [{name:'', matrix}]。返回值语义同 customParse。
-  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }
+  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -73,13 +74,15 @@ const paste = ref('')
 const over = ref(false)
 const records = ref<ImportRec[] | null>(null)
 const err = ref('')
+const warn = ref('')   // 非阻断提示(customParse/parseWorkbook 的 warning)
 const fileName = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
 // customParse / parseWorkbook 共用的结果落地:records → 既有预览;sections → labelMode 汇总屏
-function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string }) {
+function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }) {
   const { records: recs, sections: secs, error } = res
   records.value = null; sections.value = null; labelSections.value = null
+  warn.value = res.warning ?? ''
   if (error) { err.value = error; return }
   if (secs) {
     if (!secs.some(s => s.records.length > 0)) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
@@ -94,7 +97,7 @@ function applyResult(res: { records?: ImportRec[]; sections?: { label: string; r
 
 // 二维单元格数组 → 业务记录
 function mapMatrix(matrix: string[][]) {
-  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; records.value = null; sections.value = null; labelSections.value = null; return }
+  if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; warn.value = ''; records.value = null; sections.value = null; labelSections.value = null; return }
   // 多 sheet 解析模式(优先级最高):粘贴路径包装为单 sheet;文件路径在 handleFile 已直走 parseWorkbook
   if (props.parseWorkbook) { applyResult(props.parseWorkbook([{ name: '', matrix }])); return }
   // 自定义解析模式:各屏自带解析器
@@ -221,13 +224,13 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
              @drop="onDrop">
           <span class="fpimp-drop-ic"><component :is="iconFor('upload-cloud')" :size="24" /></span>
           <span class="fpimp-drop-t">{{ fileName || '拖拽 Excel 到此,或点击选择' }}</span>
-          <span class="fpimp-drop-d">{{ columnMap ? '支持 .xlsx/.xls/.csv · 自动识别表头行,前置分类列与合计·备注列自动忽略' : '支持 .xlsx / .xls / .csv · 读取第一个工作表,首行视为表头' }}</span>
+          <span class="fpimp-drop-d">{{ columnMap || parseWorkbook ? '支持 .xlsx/.xls/.csv · 自动识别表头行,前置分类列与合计·备注列自动忽略' + (parseWorkbook ? ';工作簿多表自动逐表解析' : '') : '支持 .xlsx / .xls / .csv · 读取第一个工作表,首行视为表头' }}</span>
           <input ref="inputRef" type="file" accept=".xlsx,.xls,.csv" style="display:none"
                  @change="handleFile(($event.target as HTMLInputElement).files?.[0])" />
         </div>
         <div v-else>
           <textarea class="fpimp-ta" v-model="paste"
-                    :placeholder="columnMap ? '在 Excel 中选中(含表头的整块,可带车间分类列/合计·备注列)→ 复制 → 粘贴到这里。系统按表头名字自动识别列,多余列忽略。' : '在 Excel 中选中含数据的单元格 → 复制 → 粘贴到这里(每行一条,列以制表符分隔)。\n首行如为表头会自动跳过。'" />
+                    :placeholder="columnMap || parseWorkbook ? '在 Excel 中选中(含表头的整块,可带车间分类列/合计·备注列)→ 复制 → 粘贴到这里。系统按表头名字自动识别列,多余列忽略。' : '在 Excel 中选中含数据的单元格 → 复制 → 粘贴到这里(每行一条,列以制表符分隔)。\n首行如为表头会自动跳过。'" />
           <div style="display:flex; justify-content:flex-end; margin-top:8px">
             <Button variant="gray" size="sm" @click="doPaste">
               <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
@@ -244,6 +247,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
         </div>
 
         <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
+        <div v-if="warn" class="fpimp-msg warn"><component :is="iconFor('alert-triangle')" :size="15" />{{ warn }}</div>
 
         <!-- 智能整表/工资分段:汇总确认屏(替代模板列/预览区);工资模式隐期列与期选择 -->
         <ImportSummary
@@ -337,6 +341,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-msg.ok { background:var(--accent-sky); color:var(--hue-blue); }
 .fpimp-msg.ok b { margin:0 3px; font-family:var(--font-mono); }
 .fpimp-msg.err { background:rgb(252,235,233); color:var(--hue-red); }
+.fpimp-msg.warn { background:rgb(255,243,230); color:var(--hue-orange); }
 
 .fpimp-preview { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .fpimp-preview-h { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:12px; color:var(--text-muted); }

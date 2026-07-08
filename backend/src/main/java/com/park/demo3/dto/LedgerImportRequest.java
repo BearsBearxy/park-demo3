@@ -19,6 +19,8 @@ public record LedgerImportRequest(
         BigDecimal dormOtherFee,
         BigDecimal basicElectricity, BigDecimal standardElectricity,
         BigDecimal electricityMaint,
-        BigDecimal standardWater, BigDecimal waterMaint
+        BigDecimal standardWater, BigDecimal waterMaint,
+        // 可导入的非费用列:上月结余 / 本月收款 / 备注(null=文件没这列)
+        BigDecimal balancePrev, BigDecimal totalCollected, String note
     ) {}
 }
