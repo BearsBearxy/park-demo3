@@ -10,7 +10,7 @@ const OFFICE: ColumnMapEntry[] = [
 ]
 const FACTORY: ColumnMapEntry[] = [
   { label: '厂房租金', key: 'factoryRent' },
-  { label: '企业管理服务费', key: 'factoryMgmtFee' },
+  { label: '企业管理服务费', key: 'factoryMgmtFee', aliases: ['厂房企业管理服务费'] },
   { label: '其他费用', key: 'otherFee' },
 ]
 const LAYOUTS: PhaseLayouts = { office: OFFICE, factory: FACTORY }
@@ -90,6 +90,29 @@ describe('splitSections — 智能整表拆段', () => {
     expect(secs.length).toBe(1)
     expect(secs[0].records.map(r => r.tenantName)).toEqual(['火炬', '锂朋'])
     expect(secs[0].records.reduce((n, r) => n + (r.factoryRent as number), 0)).toBe(3000)   // 不含合计行,不翻倍
+  })
+
+  // s10 修复:三期块表头用「厂房企业管理服务费」(与二期「企业管理服务费」不一致),别名须命中不丢列。
+  it('三期表头「厂房企业管理服务费」→ factoryMgmtFee 取到值(别名命中,非0)', () => {
+    const phase3: string[][] = [
+      c(['2025年10月三期园区费用明细表']),
+      c(['租户', '厂房租金', '厂房企业管理服务费', '其他费用']),
+      c(['中科华贸', '350000', '5805', '9']),
+    ]
+    const secs = splitSections(phase3, LAYOUTS, NAME)
+    expect(secs.length).toBe(1)
+    expect(secs[0]).toMatchObject({ phase: 3, layout: 'factory' })
+    expect(secs[0].records[0].factoryMgmtFee).toBe(5805)
+  })
+
+  it('二期表头「企业管理服务费」→ factoryMgmtFee 仍命中(回归)', () => {
+    const phase2: string[][] = [
+      c(['2025年10月二期园区费用明细表']),
+      c(['租户', '厂房租金', '企业管理服务费', '其他费用']),
+      c(['火炬', '1000', '100', '5']),
+    ]
+    const secs = splitSections(phase2, LAYOUTS, NAME)
+    expect(secs[0].records[0].factoryMgmtFee).toBe(100)
   })
 
   it('无标题前导段(标题前有数据)→ 单独一段,年月期 undefined', () => {

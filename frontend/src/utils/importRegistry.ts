@@ -180,8 +180,8 @@ function prefetchBudgetPnlRevenue(): void {
 }
 
 const phaseLayoutsCol = {
-  office: leavesOf('office').map(l => ({ label: l.label, key: l.colId })),
-  factory: leavesOf('factory').map(l => ({ label: l.label, key: l.colId })),
+  office: leavesOf('office').map(l => ({ label: l.label, key: l.colId, aliases: l.aliases })),
+  factory: leavesOf('factory').map(l => ({ label: l.label, key: l.colId, aliases: l.aliases })),
 }
 
 // ── 类型 ────────────────────────────────────────────────

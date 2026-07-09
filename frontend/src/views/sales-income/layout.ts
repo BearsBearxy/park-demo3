@@ -4,7 +4,7 @@
 // 纯 TS 常量,不引重型库。表头/单元格列序 = 各组叶子展平顺序。
 import type { S10ColId } from '@/types/s10'
 
-export interface Leaf { colId: S10ColId; label: string }
+export interface Leaf { colId: S10ColId; label: string; aliases?: string[] }
 // 组:有 label 即两级表头分组（leaves 多叶子）；无 label（leaf 单列）= 跨两行的独立叶子列。
 export interface Group { label?: string; elec?: boolean; water?: boolean; leaves: Leaf[] }
 
@@ -62,7 +62,9 @@ const OFFICE: Group[] = [
 const FACTORY: Group[] = [
   { label: '租金', leaves: [
     { colId: 'factoryRent', label: '厂房租金' },
-    { colId: 'factoryMgmtFee', label: '企业管理服务费' },
+    // 三期块表头措辞与二期不一致(源:厂房企业管理服务费 vs 二期 企业管理服务费),别名统一命中,主 label 不变兼容二期。
+    // 新增别名须重做前缀碰撞核查:normalize 后「厂房企业管理服务费」不误命中厂房租金/厂房基础设施维护费/商铺企业管理服务费。
+    { colId: 'factoryMgmtFee', label: '企业管理服务费', aliases: ['厂房企业管理服务费'] },
     { colId: 'shopRent', label: '商铺租金' },
     { colId: 'shopMgmtFee', label: '商铺企业管理服务费' },
     { colId: 'dormRent', label: '宿舍租金' },
