@@ -6,7 +6,7 @@
 //   <0(真实库即此:售电按转供加价计费,收入>成本)→ 流入侧「转供毛差」。
 // 中枢节点「园区电力」使每条边都是真实 SQL 可验数字(不做两源×四汇的比例假分摊)。
 
-import { fnum } from '@/components/ana/anaFmt'
+import { CMP_BASELINE, CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
 
 // ── 结构化最小输入类型(真实 DTO 为其超集,单测夹具可极小) ──
 export interface ElecRowsLike { rows: { acctMonth: string; total: number }[] }
@@ -128,6 +128,29 @@ export function boardOfSankeyClick(params: { dataType?: string; name?: string; d
     return end ? NODE_BOARD[end] ?? null : null
   }
   return params.name ? NODE_BOARD[params.name] ?? null : null
+}
+
+// ── 购售电月度组合(T4,spec 2026-07-12 图表清晰化) ──
+/** 组合图系列:售电=深蓝柱与购电浅蓝柱并排分组(稀疏月自然缺柱,不再用断裂折线冒充连续);
+ *  环比灰虚线只叠购电成本(密集序列;售电稀疏叠环比线只会再造乱线);
+ *  预算紫虚线只留「购电预算·月均」(售电预算·月均已移除:与柱不同域,基准仍在 KPI/预算屏可查)。
+ *  图例恒 ≤4 项:购电成本/售电收入/购电成本·上月/购电预算·月均。
+ *  @param buy,sell 万元逐月(缺月 null) @param budgetCost 购电年预算(元;null=无,不画线) */
+export function comboSeries(
+  buy: (number | null)[],
+  sell: (number | null)[],
+  mode: 'none' | 'mom' | 'yoy' | 'budget',
+  budgetCost: number | null,
+): object[] {
+  const series: object[] = [
+    { type: 'bar', name: '购电成本', data: buy, barMaxWidth: 20, itemStyle: { color: '#85B7EB', borderRadius: [3, 3, 0, 0] } },
+    { type: 'bar', name: '售电收入', data: sell, barMaxWidth: 20, itemStyle: { color: '#185FA5', borderRadius: [3, 3, 0, 0] } },
+  ]
+  if (mode === 'mom')
+    series.push({ type: 'line', name: '购电成本·上月', data: [null, ...buy.slice(0, -1)], symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE } })
+  if (mode === 'budget' && budgetCost != null)
+    series.push({ type: 'line', name: '购电预算·月均', data: buy.map(() => +(budgetCost / 12 / 10000).toFixed(2)), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET } })
+  return series
 }
 
 /** 板块月度序列(元):各自有数据月;residual = s10 覆盖月轧差(与桑基同口径)。 */

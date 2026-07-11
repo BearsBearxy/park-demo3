@@ -10,15 +10,15 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
-import { CMP_BASELINE, CMP_BUDGET, fnum, mean, sgn } from '@/components/ana/anaFmt'
+import { fnum, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
   type EnergyMonth,
 } from '@/analysis/anaData'
 import type { BudgetRowDTO } from '@/api/budget'
 import {
-  anchorS10Ym, BOARD_ZH, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, HUB,
-  type AmtMonth, type BoardKey,
+  anchorS10Ym, BOARD_ZH, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, comboSeries,
+  HUB, type AmtMonth, type BoardKey,
 } from './parkEnergy.logic'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
@@ -29,12 +29,12 @@ import { iconFor } from '@/components/ds/icon'
 const CMP: CompareMode[] = ['mom', 'budget']
 const cmp = useCompare(CMP)
 const budgetRows = ref<BudgetRowDTO[]>([])
-// 当年电费预算(收入/支出),取「其中:」子行 label 含 电费收入/电费支出
+// 当年购电预算(支出),取「其中:」子行 label 含 电费支出
+// T4 图表清晰化:售电预算·月均线已移除(售电稀疏与柱不同域),电费收入预算不再取
 const budgetElec = computed(() => {
   const y = period.sel.value.year
   const rows = budgetRows.value.filter(r => r.year === y && r.budget != null)
   return {
-    rev: rows.find(r => r.label.includes('电费收入'))?.budget ?? null,
     cost: rows.find(r => r.label.includes('电费支出'))?.budget ?? null,
   }
 })
@@ -182,37 +182,19 @@ const trendOption = computed(() => ({
   }],
 }))
 
-// ── 购售电月度组合(购电成本柱 + 售电收入线;环比开 → 上月虚线叠加) ──
-const shift = (a: (number | null)[]): (number | null)[] => [null, ...a.slice(0, -1)]
+// ── 购售电月度组合(T4 图表清晰化:双柱分组;环比灰虚线只叠购电;预算紫虚线只留购电预算·月均) ──
+// 系列构建抽纯函数 comboSeries(parkEnergy.logic,单测覆盖);数据源与口径零变化,只换呈现。
 const comboOption = computed(() => {
   const labels = months.value.map((m) => +m.ym.slice(5, 7) + '月')
   const buy = months.value.map((m) => (m.buyCost != null ? +(m.buyCost / 10000).toFixed(2) : null))
   const sell = months.value.map((m) => (m.s10Elec != null ? +(m.s10Elec / 10000).toFixed(2) : null))
-  const series: object[] = [
-    { type: 'bar', name: '购电成本', data: buy, barMaxWidth: 20, itemStyle: { color: '#85B7EB', borderRadius: [3, 3, 0, 0] } },
-    { type: 'line', name: '售电收入', data: sell, connectNulls: false, symbol: 'circle', symbolSize: 6, itemStyle: { color: '#185FA5' }, lineStyle: { width: 2, color: '#185FA5' } },
-  ]
-  if (cmp.mode.value === 'mom') {
-    series.push(
-      { type: 'line', name: '购电成本·上月', data: shift(buy), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE } },
-      { type: 'line', name: '售电收入·上月', data: shift(sell), connectNulls: false, symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE } },
-    )
-  }
-  // 预算=月均虚线(复审①:budget_row 电费收入/支出子行,年额/12)
-  if (cmp.mode.value === 'budget') {
-    const flat = (v: number | null) => labels.map(() => (v != null ? +(v / 12 / 10000).toFixed(2) : null))
-    if (budgetElec.value.cost != null)
-      series.push({ type: 'line', name: '购电预算·月均', data: flat(budgetElec.value.cost), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET } })
-    if (budgetElec.value.rev != null)
-      series.push({ type: 'line', name: '售电预算·月均', data: flat(budgetElec.value.rev), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET } })
-  }
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v != null ? '¥' + fnum(v, 1) + '万' : '—') },
     legend: { top: 0 },
     grid: { left: 46, right: 14, top: 30, bottom: 26 },
     xAxis: { type: 'category', data: labels },
     yAxis: { type: 'value' },
-    series,
+    series: comboSeries(buy, sell, cmp.mode.value, budgetElec.value.cost),
   }
 })
 
@@ -310,7 +292,7 @@ const segsOption = computed(() => ({
         </div>
 
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">购售电月度组合</span><span class="hint">万元 · 环比=上月虚线 · 预算=月均虚线</span></div>
+          <div class="av2-card-h"><span class="t">购售电月度组合</span><span class="hint">万元 · 售电仅 s10 覆盖月有数 · 环比线仅购电(售电稀疏不适用)</span></div>
           <AnaEChart :option="comboOption" :height="224" />
         </div>
 

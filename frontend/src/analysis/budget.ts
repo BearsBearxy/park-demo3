@@ -1,6 +1,7 @@
 // 预算对比纯函数(BudgetView / Cockpit 预算达成卡 / 导入解析共用;单测 budget.spec.ts)。
 import type { PnlSummary } from './anaData'
 import type { PnlYearDTO } from '@/types/pnl'
+import { CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
 
 // 2025 起「发生额」以 pnl 实时推算为单一事实源(spec:文件 2025 发生额列跳过不导)
 export const PNL_SOT_FROM_YEAR = 2025
@@ -65,5 +66,65 @@ export function pnlKeyTotals(p: PnlSummary, s5Groups?: S5GroupTotals): Record<Bu
     sales: s5Groups?.sales ?? null,
     fin: s5Groups?.fin ?? null,
     repair: s5Groups?.repair ?? null,
+  }
+}
+
+// ── 五年子弹图(图表清晰化 spec §T3):一 option 三 grid 横排,实际=柱、预算=紫杠刻度 ──
+
+/** 单指标输入:bars=comboBarData 输出、budget=comboBudgetData 输出(均万元,结构化匹配不引 views 类型)。 */
+export interface BulletMetric {
+  name: string
+  color: string
+  bars: { value: number | null; isForecast: boolean }[]
+  budget: (number | null)[]
+}
+
+// axis tooltip 参数(只取用到的字段);null 数据项 value 可能为 null/'-' → 统一收敛
+interface BulletTipParam { seriesIndex: number; name: string; value: unknown }
+const tipNum = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) ? v : null)
+
+/** 子弹图 option:每 grid 一指标(x=年份,title 数组作 grid 标题),前瞻年(isForecast)无柱只留紫杠;
+ *  bar/scatter 均单系列同 category 天然居中对齐;tooltip 缺项省略,不显「—」。 */
+export function bulletOption(years: string[], metrics: BulletMetric[]): Record<string, unknown> {
+  const slot = 100 / metrics.length
+  const series: object[] = []
+  metrics.forEach((m, i) => {
+    series.push({
+      name: '实际', type: 'bar', xAxisIndex: i, yAxisIndex: i, barMaxWidth: 22,
+      itemStyle: { color: m.color },
+      data: m.bars.map(b => (b.isForecast ? null : b.value)),   // 前瞻年无柱
+    })
+    series.push({
+      name: '预算目标', type: 'scatter', xAxisIndex: i, yAxisIndex: i,
+      symbol: 'rect', symbolSize: [26, 3], itemStyle: { color: CMP_BUDGET },
+      data: m.budget,
+    })
+  })
+  return {
+    // 同名系列共用图例项 → 图例恒两项「实际/预算目标」
+    legend: { top: 0, data: ['实际', '预算目标'] },
+    title: metrics.map((m, i) => ({
+      text: m.name, left: slot * i + slot / 2 + '%', top: 22, textAlign: 'center',
+      textStyle: { fontSize: 12, fontWeight: 600 },
+    })),
+    grid: metrics.map((_, i) => ({ left: slot * i + 3 + '%', width: slot - 6 + '%', top: 48, bottom: 2, containLabel: true })),
+    xAxis: metrics.map((_, i) => ({ type: 'category', gridIndex: i, data: years })),
+    yAxis: metrics.map((_, i) => ({ type: 'value', gridIndex: i, axisLabel: { formatter: '{value} 万' } })),
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: (ps: BulletTipParam[] | BulletTipParam): string => {
+        const arr = Array.isArray(ps) ? ps : [ps]
+        if (!arr.length) return ''
+        // 系列成对入队(bar/scatter 交替):seriesIndex 偶=实际柱,奇=预算杠;÷2=指标下标
+        const a = tipNum(arr.find(p => p.seriesIndex % 2 === 0)?.value)
+        const b = tipNum(arr.find(p => p.seriesIndex % 2 === 1)?.value)
+        const parts: string[] = []
+        if (a != null) parts.push(`实际 ${fnum(a, 1)}万`)
+        if (b != null) parts.push(`预算 ${fnum(b, 1)}万`)      // 缺预算省略,不显「—」
+        if (a != null && b != null && b !== 0) parts.push(`达成 ${(a / b * 100).toFixed(1)}%`)
+        return `${arr[0].name} · ${metrics[Math.floor(arr[0].seriesIndex / 2)].name}<br/>${parts.join(' · ')}`
+      },
+    },
+    series,
   }
 }

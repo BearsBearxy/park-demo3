@@ -107,7 +107,8 @@ const mainOption = computed<object | null>(() => {
       name: '收入', type: 'bar', data: d.rev, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
-        label: { formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: CMP_BUDGET },
+        // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
+        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: CMP_BUDGET },
         data: [{ yAxis: d.budgetAvgWan }],
       } : undefined,
     },
@@ -213,7 +214,7 @@ const collectOption = computed<object | null>(() => {
       name: '收缴率', type: 'bar', barMaxWidth: 20,
       data: collects.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
       label: { show: true, position: 'right', fontSize: 10, formatter: '{c}%' },
-      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { formatter: `目标 ${target}%`, fontSize: 10 }, data: [{ xAxis: target }] },
+      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 10 }, data: [{ xAxis: target }] },
     }],
   }
 })
@@ -295,7 +296,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s8">
         <div class="av2-card-h">
           <span class="t">收入与利润 · {{ year }}年</span>
-          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)· 点击月柱切换期间 · 拖选缩放</span>
+          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)· 点击月柱切换期间 · 拖选缩放 · 紫虚线=预算月均</span>
         </div>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="304" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />

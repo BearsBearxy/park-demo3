@@ -163,7 +163,7 @@ export function churnScatterOption(list: ChurnRow[], overallRate: number): objec
   const xMean = pts.length ? +(pts.reduce((s, t) => s + t.revMom!, 0) / pts.length).toFixed(1) : 0
   const rMax = Math.max(1, ...pts.map((t) => t.recv))
   return {
-    grid: { left: 52, right: 18, top: 20, bottom: 42 },
+    grid: { left: 52, right: 30, top: 30, bottom: 42 },   // right/top 留白:markLine 标签画在图内不裁切
     tooltip: {
       formatter: (p: { data: ScatterDatum }) =>
         `${p.data.name}<br/>s10收入环比 ${p.data.rawMom >= 0 ? '+' : ''}${p.data.rawMom}%` +
@@ -185,7 +185,11 @@ export function churnScatterOption(list: ChurnRow[], overallRate: number): objec
         silent: true, symbol: 'none',
         lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)', width: 1.2 },
         label: { fontSize: 10, color: 'rgba(28,28,28,.62)' },
-        data: [{ xAxis: xMean, label: { formatter: `均值 ${xMean >= 0 ? '+' : ''}${xMean}%` } }, { yAxis: overallRate, label: { formatter: `均值 ${overallRate}%` } }],
+        // 标签画在图内防裁切:x 均值线(竖)insideStartTop 避开顶部轴名;y 均值线(横)insideEndTop 不贴右缘
+        data: [
+          { xAxis: xMean, label: { position: 'insideStartTop', formatter: `均值 ${xMean >= 0 ? '+' : ''}${xMean}%` } },
+          { yAxis: overallRate, label: { position: 'insideEndTop', formatter: `均值 ${overallRate}%` } },
+        ],
       },
     }],
   }

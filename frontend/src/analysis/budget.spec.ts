@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractS5GroupTotals, matchBudgetKey, pnlKeyTotals } from './budget'
+import { bulletOption, extractS5GroupTotals, matchBudgetKey, pnlKeyTotals, type BulletMetric } from './budget'
 import type { PnlSummary } from './anaData'
 import type { PnlYearDTO } from '@/types/pnl'
 
@@ -76,5 +76,50 @@ describe('pnlKeyTotals — pnl 年Σ → 关键值', () => {
       revenue: null, cost: null, s5: null, profit: null,
       mgmt: null, sales: null, fin: null, repair: null,
     })
+  })
+})
+
+describe('bulletOption — 五年子弹图(图表清晰化 §T3)', () => {
+  // 2024 实际+预算;2025 实际无预算;2026 前瞻(仅预算)
+  const years = ['2024', '2025', '2026']
+  const bars = (a: number | null, b: number | null): BulletMetric['bars'] => [
+    { value: a, isForecast: false }, { value: b, isForecast: false }, { value: 130, isForecast: true }]
+  const metrics: BulletMetric[] = [
+    { name: '收入', color: '#378ADD', bars: bars(100, 120), budget: [110, null, 130] },
+    { name: '成本费用', color: '#85B7EB', bars: bars(80, 90), budget: [85, null, 95] },
+    { name: '利润', color: '#185FA5', bars: bars(20, 30), budget: [25, null, 35] },
+  ]
+  const opt = bulletOption(years, metrics) as Record<string, any>
+
+  it('三 grid 结构:grid/xAxis/yAxis 各 3,title 数组作 grid 标题,图例恒两项,系列 bar/scatter 成对', () => {
+    expect(opt.grid).toHaveLength(3)
+    expect(opt.xAxis).toHaveLength(3)
+    expect(opt.yAxis).toHaveLength(3)
+    expect(opt.title.map((t: any) => t.text)).toEqual(['收入', '成本费用', '利润'])
+    expect(opt.legend.data).toEqual(['实际', '预算目标'])
+    expect(opt.series).toHaveLength(6)
+    expect(opt.series.map((s: any) => s.type)).toEqual(['bar', 'scatter', 'bar', 'scatter', 'bar', 'scatter'])
+    // 每对绑到各自 grid 的轴
+    expect(opt.series.map((s: any) => s.xAxisIndex)).toEqual([0, 0, 1, 1, 2, 2])
+  })
+
+  it('前瞻年无柱:isForecast → 柱 null,紫杠保留', () => {
+    expect(opt.series[0].data).toEqual([100, 120, null])
+    expect(opt.series[1].data).toEqual([110, null, 130])
+  })
+
+  it('tooltip:全量=实际·预算·达成;缺预算省略,无「—」', () => {
+    const fmt = opt.tooltip.formatter as (ps: unknown) => string
+    // 2024 收入:实际 100 / 预算 110
+    expect(fmt([
+      { seriesIndex: 0, name: '2024', value: 100 },
+      { seriesIndex: 1, name: '2024', value: 110 },
+    ])).toBe('2024 · 收入<br/>实际 100.0万 · 预算 110.0万 · 达成 90.9%')
+    // 2025 收入缺预算 → 只有实际,无「—」
+    const noBudget = fmt([{ seriesIndex: 0, name: '2025', value: 120 }])
+    expect(noBudget).toBe('2025 · 收入<br/>实际 120.0万')
+    expect(noBudget).not.toContain('—')
+    // 2026 前瞻(仅预算杠;第三 grid seriesIndex 5 → 指标=利润)
+    expect(fmt([{ seriesIndex: 5, name: '2026', value: 35 }])).toBe('2026 · 利润<br/>预算 35.0万')
   })
 })

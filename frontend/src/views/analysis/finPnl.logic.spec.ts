@@ -94,12 +94,16 @@ describe('budgetMonthlyWan(budget_row 当年值/12)', () => {
 })
 
 describe('subjectTrendOption(环比虚线/预算 markLine)', () => {
-  interface TrendOpt { series: { name?: string; lineStyle?: { type: string; color?: string }; markLine?: { lineStyle: { color: string }; data: { yAxis: number }[] } }[] }
+  interface TrendOpt { series: { name?: string; lineStyle?: { type: string; color?: string }; markLine?: { lineStyle: { color: string }; label: { position: string; formatter: string; color: string }; data: { yAxis: number }[] } }[] }
   it('budget → 主系列 markLine yAxis=预算/月;mom → 追加虚线系列;对比线取语义色(§E)', () => {
     const o = subjectTrendOption(['1月', '3月'], [1, 3], '营业收入', { mom: [null, 1], budget: 772.5 }) as TrendOpt
     expect(o.series).toHaveLength(2)
     expect(o.series[0].markLine!.data[0].yAxis).toBe(772.5)
     expect(o.series[0].markLine!.lineStyle.color).toBe(CMP_BUDGET)
+    // 图表清晰化 §1:标签画图内(insideEndTop)+「预算月均 X万」+ 预算语义色
+    expect(o.series[0].markLine!.label.position).toBe('insideEndTop')
+    expect(o.series[0].markLine!.label.formatter).toBe('预算月均 773万')
+    expect(o.series[0].markLine!.label.color).toBe(CMP_BUDGET)
     expect(o.series[1].name).toBe('上期')
     expect(o.series[1].lineStyle!.type).toBe('dashed')
     expect(o.series[1].lineStyle!.color).toBe(CMP_BASELINE)

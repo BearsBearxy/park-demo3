@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 预算对比(budget)v2 — spec §二.15:五年组合(实际柱+预算标记线,2026 前瞻虚线柱,ECharts)
+// 预算对比(budget)v2 — spec §二.15 + 图表清晰化 §T3:五年子弹图小倍数(一 option 三 grid 横排,
+// 实际=柱/预算=紫杠刻度,前瞻年只有紫杠,ECharts)
 // + 达成 bullets(SVG 保留)+ 总表明细(关键行点击→深链对应 /rent-pnl 等附表路由)+ 前瞻卡。
 // 数据与口径与 v1 完全一致:budget_row 全量 + PNL_SOT_FROM_YEAR 起实际=损益附表实时推算;
 // 成本费用 = 收入 − 利润。图数据纯函数抽于 budgetView.logic.ts(单测)。
@@ -15,10 +16,10 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
 import { fetchBudgetAll, fetchPnlSummary, fetchPnlYear } from '@/analysis/anaData'
-import { extractS5GroupTotals, matchBudgetKey, pnlKeyTotals, PNL_SOT_FROM_YEAR, type BudgetKey } from '@/analysis/budget'
+import { bulletOption, extractS5GroupTotals, matchBudgetKey, pnlKeyTotals, PNL_SOT_FROM_YEAR, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
 import { finMoney, finFmt, finWan } from '@/utils/finFmt'
-import { fnum, sgn, NEG, POS } from '@/components/ana/anaFmt'
+import { sgn, NEG, POS } from '@/components/ana/anaFmt'
 import { comboBarData, comboBudgetData, keyRoute } from './budgetView.logic'
 
 const router = useRouter()
@@ -71,7 +72,8 @@ function costOf(y: number, side: 'budget' | 'actual'): number | null {
   return r != null && p != null ? r - p : null
 }
 
-// ── 卡1 五年组合(ECharts):收入/成本费用/利润 × 实际柱 + 预算标记线;仅预算年=前瞻虚柱 ──
+// ── 卡1 五年子弹图(ECharts,§T3):三 grid 横排(收入/成本费用/利润),实际=柱+预算=紫杠;
+//    前瞻年(仅预算)无柱只有紫杠;取数仍走 comboBarData/comboBudgetData,只换呈现 ──
 interface BandCol { year: number; actual: number | null; budget: number | null }
 const bandGroups = computed(() => {
   const mk = (actual: (y: number) => number | null, budget: (y: number) => number | null): BandCol[] =>
@@ -82,32 +84,14 @@ const bandGroups = computed(() => {
     { name: '利润', cols: mk(y => keyActual(y, 'profit'), y => keyBudget(y, 'profit')) },
   ]
 })
-const COMBO_COLOR: Record<string, string> = { 收入: '#378ADD', 成本费用: '#B5D4F4', 利润: '#185FA5' }
-const comboOpt = computed<object>(() => {
-  const series: object[] = []
-  for (const g of bandGroups.value) {
-    const c = COMBO_COLOR[g.name]
-    series.push({
-      name: g.name + '(实际)', type: 'bar', barMaxWidth: 18, itemStyle: { color: c },
-      data: comboBarData(g.cols).map(b => (b.isForecast
-        ? { value: b.value, itemStyle: { color: 'rgba(55,138,221,.08)', borderColor: c, borderWidth: 1.5, borderType: 'dashed' } }
-        : b.value)),
-    })
-    series.push({
-      name: g.name + '(预算)', type: 'line', data: comboBudgetData(g.cols),
-      symbol: 'diamond', symbolSize: 7, connectNulls: false,
-      lineStyle: { type: 'dashed', width: 1.5, color: c }, itemStyle: { color: c },
-    })
-  }
-  return {
-    tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
-    legend: { top: 0 },
-    grid: { left: 62, right: 14, top: 32, bottom: 26 },
-    xAxis: { type: 'category', data: years.value.map(String) },
-    yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
-    series,
-  }
-})
+const COMBO_COLOR: Record<string, string> = { 收入: '#378ADD', 成本费用: '#85B7EB', 利润: '#185FA5' }
+const comboOpt = computed<object>(() => bulletOption(
+  years.value.map(String),
+  bandGroups.value.map(g => ({
+    name: g.name, color: COMBO_COLOR[g.name],
+    bars: comboBarData(g.cols), budget: comboBudgetData(g.cols),
+  })),
+))
 
 // ── 卡2 当年达成率 bullets(成本超预算红 invert;SVG 保留) ──
 const bulletItems = computed(() => {
@@ -204,11 +188,11 @@ const kpiOutlook = computed(() => {
       </div>
 
       <div class="av2-grid">
-        <!-- 主图 span8:五年组合 -->
+        <!-- 主图 span8:五年子弹图小倍数(§T3) -->
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
-            <span class="t">五年组合 · 实际柱 + 预算标记线</span>
-            <span class="hint">仅预算年=前瞻虚柱 · 万元</span>
+            <span class="t">五年对比 · 实际 vs 预算目标</span>
+            <span class="hint">柱=实际 · 紫杠=预算目标 · 悬停看达成率</span>
           </div>
           <AnaEChart :option="comboOpt" :height="300" />
         </div>

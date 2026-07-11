@@ -4,7 +4,7 @@
 //   售电 Σ(elec_basic+elec_std+elec_maint)=6,510,495.38(剔期别汇总行)、办公 Σelec_qty*elec_price=6,265.23、
 //   充电 Σcost=27,067.23 → 轧差 = 5,597,568.82 − 6,543,827.84 = −946,259.02(毛差记流入侧)。
 import { describe, expect, it } from 'vitest'
-import { anchorS10Ym, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, HUB, type AmtMonth } from './parkEnergy.logic'
+import { anchorS10Ym, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, comboSeries, HUB, type AmtMonth } from './parkEnergy.logic'
 
 // dev 库 SQL 月度真值(见头注释)
 const SQL_MONTHS: AmtMonth[] = [
@@ -96,6 +96,32 @@ describe('anchorS10Ym(§五策略2 桑基月锚)', () => {
     expect(anchorS10Ym(COVERED, '2025-12')).toBe('2025-10')       // 尾部回退
     expect(anchorS10Ym(['2025-06'], '2025-01')).toBe('2025-06')   // 更早无 → 最早覆盖月
     expect(anchorS10Ym([], '2025-01')).toBeNull()                 // 年内无 s10 → 空态
+  })
+})
+
+describe('comboSeries(T4 购售电组合:双柱分组/环比只叠购电/预算只留购电月均)', () => {
+  const buy = [10, 20, null, 30]
+  const sell = [5, null, null, 15]   // 稀疏售电(仅 s10 覆盖月)
+  const names = (s: object[]) => s.map((x) => (x as { name: string }).name)
+
+  it('基础:购电/售电均为柱(稀疏月自然缺柱),数据原样', () => {
+    const s = comboSeries(buy, sell, 'none', null)
+    expect(names(s)).toEqual(['购电成本', '售电收入'])
+    expect(s.map((x) => (x as { type: string }).type)).toEqual(['bar', 'bar'])
+    expect((s[1] as { data: (number | null)[] }).data).toEqual(sell)
+  })
+
+  it('环比:只叠「购电成本·上月」(无售电·上月线),数据 = 购电右移一位', () => {
+    const s = comboSeries(buy, sell, 'mom', null)
+    expect(names(s)).toEqual(['购电成本', '售电收入', '购电成本·上月'])
+    expect((s[2] as { data: (number | null)[] }).data).toEqual([null, 10, 20, null])
+  })
+
+  it('预算:只留「购电预算·月均」(售电预算线移除),月均 = 年额/12 万元;无预算不画线', () => {
+    const s = comboSeries(buy, sell, 'budget', 1_200_000)
+    expect(names(s)).toEqual(['购电成本', '售电收入', '购电预算·月均'])
+    expect((s[2] as { data: (number | null)[] }).data).toEqual([10, 10, 10, 10])
+    expect(names(comboSeries(buy, sell, 'budget', null))).toEqual(['购电成本', '售电收入'])
   })
 })
 

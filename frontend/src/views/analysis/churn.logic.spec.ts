@@ -111,14 +111,18 @@ describe('ECharts option 构建', () => {
   ]
   const m = buildChurnModel(ledger, s10Rows, TH)!
 
-  it('散点仅含 revMom+payRate 双非空租户;markLine 十字=x均值/整体收款率', () => {
+  it('散点仅含 revMom+payRate 双非空租户;markLine 十字=x均值/整体收款率;标签画图内防裁切', () => {
     const opt = churnScatterOption(m.list, m.overallRate) as {
-      series: { data: { name: string; value: [number, number] }[]; markLine: { data: { xAxis?: number; yAxis?: number }[] } }[]
+      series: { data: { name: string; value: [number, number] }[]; markLine: { data: { xAxis?: number; yAxis?: number; label: { position: string } }[]; label: { fontSize: number } } }[]
     }
     expect(opt.series[0].data.map((d) => d.name)).toEqual(['A'])   // C 无 revMom/payRate
     expect(opt.series[0].data[0].value).toEqual([-20, 50])
     expect(opt.series[0].markLine.data[0].xAxis).toBe(-20)         // 均值(单点)
     expect(opt.series[0].markLine.data[1].yAxis).toBe(m.overallRate)
+    // 防裁切:x 均值线标签 insideStartTop(避顶部轴名)、y 均值线标签 insideEndTop(不贴右缘),字号 10
+    expect(opt.series[0].markLine.data[0].label.position).toBe('insideStartTop')
+    expect(opt.series[0].markLine.data[1].label.position).toBe('insideEndTop')
+    expect(opt.series[0].markLine.label.fontSize).toBe(10)
   })
 
   it('超界点钉边:value 用钉边值、rawMom 存真值、symbol 换三角', () => {

@@ -130,7 +130,8 @@ export function subjectTrendOption(
       ? {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: CMP_BUDGET, width: 1.5 },
-          label: { formatter: '预算/月 ' + fnum(cmp.budget, 0), fontSize: 10, color: 'rgba(28,28,28,.62)' },
+          // 图表清晰化 §1:insideEndTop 画图内防裁切;文案/色与驾驶舱主图同规则
+          label: { position: 'insideEndTop', formatter: '预算月均 ' + fnum(cmp.budget, 0) + '万', fontSize: 10, color: CMP_BUDGET },
           data: [{ yAxis: cmp.budget }],
         }
       : undefined,
