@@ -15,7 +15,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
+import { CMP_BASELINE, CMP_BUDGET, STATUS, fint, fnum } from '@/components/ana/anaFmt'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useCompare } from '@/analysis/useCompare'
@@ -25,7 +25,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
+  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -106,18 +106,18 @@ const mainOption = computed<object | null>(() => {
     {
       name: '收入', type: 'bar', data: d.rev, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
       markLine: d.budgetAvgWan != null ? {
-        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: '#185FA5' },
-        label: { formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: '#185FA5' },
+        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
+        label: { formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: CMP_BUDGET },
         data: [{ yAxis: d.budgetAvgWan }],
       } : undefined,
     },
     { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
   ]
   if (cmp.mode.value === 'mom') {
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: '#85B7EB' }, symbol: 'none', connectNulls: true })
+    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
   }
   if (cmp.mode.value === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: '#185FA5' }, itemStyle: { color: '#185FA5' }, symbol: 'none' })
+    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
   }
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 42 },
@@ -140,15 +140,25 @@ function onMainClick(p: unknown): void {
 // ── 收入构成环(点扇区 → 该板块 12 月趋势弹层;月锚随 usedMi,与 KPI 同口径) ──
 const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value))
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
-const donutOption = computed<object>(() => ({
-  tooltip: { trigger: 'item', valueFormatter: (v: number) => fnum(v) + '万' },
-  legend: { bottom: 0 },
-  series: [{
-    type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
-    label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 },
-    data: compo.value.map((d) => ({ name: d.label, value: +(d.value / 10000).toFixed(2) })),
-  }],
-}))
+// 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
+// 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
+const COMPO_COLORS = ['#378ADD', '#5DCAA5', '#EF9F27', '#F0997B']
+const donutOption = computed<object>(() => {
+  const total = compoTotal.value
+  const pct = (v: number): string => (total > 0 ? ((v / total) * 100).toFixed(1) : '0.0')
+  const byLabel = new Map(compo.value.map((d) => [d.label, d.value]))
+  return {
+    color: COMPO_COLORS,
+    tooltip: { trigger: 'item', valueFormatter: (v: number) => fnum(v) + '万' },
+    // 图例带占比:静态也能读出各板块比重,不必悬停(扇区上不加标签,避免细扇区如「用水」标签重叠)
+    legend: { bottom: 0, formatter: (name: string) => `${name} ${pct(byLabel.get(name) ?? 0)}%` },
+    series: [{
+      type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
+      label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 },
+      data: compo.value.map((d) => ({ name: d.label, value: +(d.value / 10000).toFixed(2) })),
+    }],
+  }
+})
 const segModal = ref<{ key: string; label: string } | null>(null)
 function onDonutClick(p: unknown): void {
   const e = p as EcClick
@@ -224,6 +234,13 @@ const anomalies = computed<AnaAnomaly[]>(() =>
   anomInputs.value ? buildAnomalies(anomInputs.value, { collectTarget: anaSettings.collectTarget }) : [])
 const anomTop = computed(() => anomalies.value.slice(0, 4))
 const go = (link: string): void => { void router.push(link) }
+
+// ── 经营结论条(spec 2026-07-11 §A:分句数据模板,取数全复用上方 computed 同源函数) ──
+const conclusion = computed(() => buildConclusion(
+  pnl.value, collects.value, budgetRows.value, ledgerRows.value, anomalies.value.length,
+  { collectTarget: anaSettings.collectTarget },
+  { isMonth: isMonth.value, year: year.value, usedMi: usedMi.value, ym: period.ym.value },
+))
 </script>
 
 <template>
@@ -236,14 +253,14 @@ const go = (link: string): void => { void router.push(link) }
     <!-- KPI 条(spec:营收/成本/利润率/收缴率 vs 目标/预算达成/在租租户) -->
     <template #kpis>
       <AnaKpiTile :label="isMonth ? '营业收入' : '营收合计'" :value="money(rev)"
-        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" />
-      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert />
+        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" />
+      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" />
       <AnaKpiTile label="园区利润" :value="money(prof)"
-        :note="margin != null ? '利润率 ' + margin.toFixed(1) + '%' : '当期无损益数据'" />
+        :note="margin != null ? '利润率 ' + margin.toFixed(1) + '%' : '当期无损益数据'" :trend="pnl?.profit" />
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
         :kind="cp ? `vs 目标${anaSettings.collectTarget}% · 取 ${cp.ym}` : ''" unit="pt"
-        :note="cp ? undefined : '台账未录入'" />
+        :note="cp ? undefined : '台账未录入'" :trend="collects.map((c) => c.rate)" />
       <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
         :note="ach ? `${year}年预算 ${money(ach.budget)}` : `${year}年未导入预算`" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
@@ -262,6 +279,17 @@ const go = (link: string): void => { void router.push(link) }
       <!-- 收缴率取期回退同样横幅显式(复审:原仅 KPI 小字披露,与其他屏不一致) -->
       <AnaPeriodBanner v-if="cp && period.ym.value && cp.ym !== period.ym.value" :selected="period.ym.value" :used="cp.ym"
         source="台账" style="margin-bottom: 12px" />
+      <!-- §A 经营结论条(spec 2026-07-11):数据模板分句,缺数据省句;句前圆点按 tone,异常句可点击深链 -->
+      <div v-if="conclusion.length" class="av2-card cv2-concl">
+        <template v-for="(c, i) in conclusion" :key="i">
+          <button v-if="c.link" class="cv2-cs lk" @click="go(c.link)">
+            <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}
+          </button>
+          <span v-else class="cv2-cs">
+            <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}
+          </span>
+        </template>
+      </div>
       <div class="av2-grid">
       <!-- 主图 s8:收入柱+利润线 -->
       <div class="av2-card av2-s8">
@@ -371,6 +399,12 @@ const go = (link: string): void => { void router.push(link) }
 <style scoped>
 /* 工具条屏名(order:-1 置于期间控件前,不改 AnaShell) */
 .cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+/* §A 经营结论条(av2-card 观感,单行 flex wrap;位于回退横幅后、grid 前) */
+.cv2-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
+.cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.cv2-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.cv2-cs.lk { cursor: pointer; }
+.cv2-cs.lk:hover { text-decoration: underline; }
 /* 异常速览紧凑行 */
 .cv2-anoms { display: flex; flex-direction: column; gap: 6px; }
 .cv2-anom { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: var(--surface-card); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-family: var(--font-sans); text-align: left; }

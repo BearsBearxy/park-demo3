@@ -16,6 +16,12 @@ export const POS = 'var(--hue-blue)'
 export const NEG = 'var(--hue-red)'
 export const WARN = 'var(--hue-orange)'
 
+// ── 对比开关叠加线语义色(spec 2026-07-11 §E) ──
+// 曾用 #185FA5 画预算线(与利润线同色不可分)、#85B7EB 画上月线(与数据柱同蓝族难辨)。
+// ECharts option 为纯 JSON 不能引用 CSS 变量 → 字面值。仅用于「对比参照线」,数据系列不用。
+export const CMP_BUDGET = '#A78BFA'     // 预算基准(紫)
+export const CMP_BASELINE = '#94A3B8'   // 环比上月/同期基线(灰)
+
 // ── 动态标签(峰值/趋势,由序列算出) ──
 export type AnaTone = 'good' | 'risk' | 'warn' | 'neutral'
 export interface AnaTagData { text: string; tone: AnaTone }
@@ -99,3 +105,19 @@ export function smoothSegs(c: Pt[]): string {
 }
 export const smoothPath = (c: Pt[]): string =>
   c.length ? `M ${c[0].x.toFixed(2)} ${c[0].y.toFixed(2)}` + smoothSegs(c) : ''
+
+/** KPI 瓦片迷你趋势线路径(spec 2026-07-11 §B):x 等距占满宽,y 按非 null 极值归一(上下留 1px,
+ *  全等序列画中线);null 为断点分段(缺月诚实断开,不 connectNulls);可画段(连续 ≥2 点)全无 → ''。 */
+export function trendPath(values: (number | null)[], w: number, h: number): string {
+  const vs = values.filter((v): v is number => v != null)
+  if (vs.length < 2) return ''
+  const mn = Math.min(...vs), mx = Math.max(...vs)
+  const sx = w / (values.length - 1)
+  const y = (v: number): number => (mx === mn ? h / 2 : 1 + (1 - (v - mn) / (mx - mn)) * (h - 2))
+  let d = ''
+  let seg: Pt[] = []
+  const flush = (): void => { if (seg.length >= 2) d += (d ? ' ' : '') + smoothPath(seg); seg = [] }
+  values.forEach((v, i) => { if (v == null) flush(); else seg.push({ x: i * sx, y: y(v) }) })
+  flush()
+  return d
+}

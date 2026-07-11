@@ -4,7 +4,7 @@
 import type { PnlSummary } from '@/analysis/anaData'
 import { matchBudgetKey, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
-import { fnum } from '@/components/ana/anaFmt'
+import { CMP_BASELINE, CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
 
 export interface WfItem { name: string; value: number; type: 'start' | 'end' | 'inc' | 'dec' }
 
@@ -69,6 +69,25 @@ export function waterfallOption(items: WfItem[], height?: { barWidth?: string })
   }
 }
 
+// ── 迷你利润表链条(spec 2026-07-11 §C:收入−成本=毛利−费用=营业利润→净利润) ──
+// 期间费用=毛利−营业利润 差额口径(税金及附加/三费均在其中);value=元,负值由渲染层标红。
+export interface PnlChainNode { label: string; value: number; pct: number | null; kind: 'pos' | 'neg' | 'sub' }
+
+/** is 快照 → 链条节点(pct=占营业收入%;rev=0 → 全部 null,数值仍成链)。 */
+export function pnlChain(snap: { rev: number; cost: number; op: number; net: number }): PnlChainNode[] {
+  const { rev, cost, op, net } = snap
+  const gross = rev - cost
+  const pct = (x: number): number | null => (rev ? +((x / rev) * 100).toFixed(1) : null)
+  return [
+    { label: '营业收入', value: rev, pct: pct(rev), kind: 'pos' },
+    { label: '营业成本', value: cost, pct: pct(cost), kind: 'neg' },
+    { label: '毛利', value: gross, pct: pct(gross), kind: 'sub' },
+    { label: '期间费用', value: gross - op, pct: pct(gross - op), kind: 'neg' },
+    { label: '营业利润', value: op, pct: pct(op), kind: 'sub' },
+    { label: '净利润', value: net, pct: pct(net), kind: 'sub' },
+  ]
+}
+
 // ── 科目 12 月序列(瀑布点级 → 趋势卡切换;成本类取正值显示) ──
 export function subjectMonthly(ps: PnlSummary, subject: string): number[] {
   const pick: Record<string, (number | null)[]> = {
@@ -110,7 +129,7 @@ export function subjectTrendOption(
     markLine: cmp.budget != null
       ? {
           silent: true, symbol: 'none',
-          lineStyle: { type: 'dashed', color: C_END, width: 1.5 },
+          lineStyle: { type: 'dashed', color: CMP_BUDGET, width: 1.5 },
           label: { formatter: '预算/月 ' + fnum(cmp.budget, 0), fontSize: 10, color: 'rgba(28,28,28,.62)' },
           data: [{ yAxis: cmp.budget }],
         }
@@ -119,8 +138,8 @@ export function subjectTrendOption(
   if (cmp.mom) {
     series.push({
       name: '上期', type: 'line', data: cmp.mom,
-      lineStyle: { type: 'dashed', color: '#85B7EB', width: 1.5 },
-      itemStyle: { color: '#85B7EB' }, symbol: 'circle', symbolSize: 4,
+      lineStyle: { type: 'dashed', color: CMP_BASELINE, width: 1.5 },
+      itemStyle: { color: CMP_BASELINE }, symbol: 'circle', symbolSize: 4,
     })
   }
   return {

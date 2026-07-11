@@ -1,12 +1,11 @@
 <script setup lang="ts">
 // 利润表分析(fin-pnl)v2 — spec §二.7:公司选择器保留;全年损益瀑布(ECharts 透明垫底柱,
 // 点级→该科目 12 月趋势卡切换);12 月趋势(对比 环比/预算,预算=budget_row 当年值/12 虚线);
-// 收入结构堆叠;is 快照表保留。排版=AnaShell v2(#kpis=AnaKpiTile 条)+ av2-grid(主图 s8/次图 s4)。
+// 收入结构堆叠;is 快照表保留。排版=AnaShell v2(#kpis=迷你利润表链条,spec 2026-07-11 §C)+ av2-grid(主图 s8/次图 s4)。
 // 数值口径与 v1 完全一致(snap/wf/结构序列计算未动);数据变换纯函数见 finPnl.logic.ts。
 import { computed, ref, watch } from 'vue'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
-import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
@@ -22,7 +21,7 @@ import {
 import { computeRow, IS_ROWS } from '@/reports/incomeStatement'
 import { FILL, fint, fnum } from '@/components/ana/anaFmt'
 import {
-  budgetMonthlyWan, momOverlay, structOption, subjectMonthly, subjectTrendOption, waterfallOption,
+  budgetMonthlyWan, momOverlay, pnlChain, structOption, subjectMonthly, subjectTrendOption, waterfallOption,
   type WfItem,
 } from './finPnl.logic'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -113,29 +112,18 @@ const snap = computed(() => {
   const rev = v(1, 'ytd'), cost = v(2, 'ytd')
   const op = v(21, 'ytd'), tot = v(30, 'ytd'), net = v(32, 'ytd')
   const nonOp = v(22, 'ytd') - v(24, 'ytd')
-  const pct = (x: number): number => (rev ? +((x / rev) * 100).toFixed(1) : 0)
-  return {
-    rev, cost, op, tot, net, nonOp,
-    gross: pct(rev - cost), opM: pct(op), netM: pct(net),
-    curRev: v(1, 'cur'), curNet: v(32, 'cur'),
-  }
+  return { rev, cost, op, tot, net, nonOp }
 })
 
-// KPI 条(is 仅单期快照 → 同比/环比 delta 一律不出,note 承载副信息;数值同 v1 statItems)
-const kpis = computed(() => {
+// KPI 条 → 迷你利润表链条(spec 2026-07-11 §C:替换普通瓦片;数值口径=snap,同 v1)
+const chain = computed(() => (snap.value ? pnlChain(snap.value) : []))
+const chainAmt = (v: number): string => (v < 0 ? '−' : '') + '¥' + fint(Math.abs(v) / 1e4) + '万'
+// 链条尾注(口径同原「营业外占利润总额」瓦片:占比=nonOp/tot,tot=0 → —)
+const nonOpNote = computed(() => {
   const s = snap.value
-  if (!s) return []
-  return [
-    { label: '营业收入(累计)', value: '¥' + fint(s.rev / 1e4) + '万', note: '本月 ¥' + fint(s.curRev / 1e4) + '万' },
-    { label: '毛利率', value: s.gross + '%', note: '毛利 ¥' + fint((s.rev - s.cost) / 1e4) + '万' },
-    { label: '营业利润率', value: s.opM + '%' },
-    { label: '净利率', value: s.netM + '%' },
-    { label: '净利润(累计)', value: '¥' + fint(s.net / 1e4) + '万', note: '本月 ¥' + fint(s.curNet / 1e4) + '万' },
-    {
-      label: '营业外占利润总额', value: s.tot ? Math.round((s.nonOp / s.tot) * 100) + '%' : '—',
-      note: '营业外净额 ¥' + fnum(s.nonOp / 1e4, 1) + '万',
-    },
-  ]
+  if (!s) return ''
+  const share = s.tot ? Math.round((s.nonOp / s.tot) * 100) + '%' : '—'
+  return '营业外占利润总额 ' + share + ' · 营业外净额 ¥' + fnum(s.nonOp / 1e4, 1) + '万'
 })
 
 // ── pnl 园区口径:瀑布(全年累计,计算同 v1) ──
@@ -223,8 +211,19 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
         @update:model-value="cid = $event" />
     </template>
 
+    <!-- §C 迷你利润表链条:收入−成本=毛利−费用=营业利润→净利润(连接符由 kind 派生);!snap 不渲 -->
     <template #kpis>
-      <AnaKpiTile v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
+      <div v-if="chain.length" class="fin-chain">
+        <template v-for="(n, i) in chain" :key="n.label">
+          <span v-if="i" class="op">{{ n.kind === 'neg' ? '−' : chain[i - 1].kind === 'neg' ? '=' : '→' }}</span>
+          <span class="node">
+            <span class="nl">{{ n.label }}</span>
+            <span class="nv" :style="n.value < 0 ? { color: 'var(--hue-red)' } : undefined">{{ chainAmt(n.value) }}</span>
+            <span class="np">{{ n.pct == null ? '—' : n.pct + '%' }}</span>
+          </span>
+        </template>
+        <span class="tail">{{ nonOpNote }}</span>
+      </div>
     </template>
 
     <div class="fin-page">
@@ -318,4 +317,13 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 .fin-page { display: flex; flex-direction: column; gap: 10px; max-width: 1640px; margin: 0 auto; }
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
+
+/* §C 迷你利润表链条(贴 av2-kpi 观感:白底细边圆角卡;.av2-kpis 单子项自然占满整行) */
+.fin-chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-white); border: 0.5px solid var(--border-subtle); border-radius: 8px; padding: 9px 14px; }
+.fin-chain .node { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fin-chain .nl { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.fin-chain .nv { font-size: 16px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }
+.fin-chain .np { font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); }
+.fin-chain .op { font-size: 15px; color: var(--text-muted); padding: 0 2px; user-select: none; }
+.fin-chain .tail { margin-left: auto; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
 </style>

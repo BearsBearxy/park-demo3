@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // v2 KPI 瓦片(spec §一 KPI 条,置于 AnaShell #kpis 槽 .av2-kpis 容器):
 // label + 值(mono) + delta 副行(方向取色,成本/欠费类 invert 反转;无 delta 可给灰色 note)。
-import { deltaColor, sgn } from './anaFmt'
+// 可选 trend 迷你趋势线(spec 2026-07-11 §B:值行右侧 56×20 inline SVG,null 断点分段,可画段不足不渲染)。
+import { computed } from 'vue'
+import { deltaColor, sgn, trendPath } from './anaFmt'
 import './ana.css'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   label: string
   value: string
   delta?: number | null   // 副行数值(null/undefined 不渲染)
@@ -13,13 +15,21 @@ withDefaults(defineProps<{
   invert?: boolean        // 越低越好(成本/逾期类)
   note?: string           // 无 delta 时的灰色副行(如覆盖期数,诚实原则)
   noteTone?: 'warn'       // note 警示色(期间回退等半显式披露升级,复审)
+  trend?: (number | null)[]   // 12 月序列(形状展示,量纲无关;无月度序列的瓦片不传)
 }>(), { unit: '%' })
+
+const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : ''))
 </script>
 
 <template>
   <div class="av2-kpi">
     <span class="l">{{ label }}</span>
-    <span class="v">{{ value }}</span>
+    <span class="vr">
+      <span class="v">{{ value }}</span>
+      <svg v-if="spark" class="spk" viewBox="0 0 56 20" aria-hidden="true">
+        <path :d="spark" fill="none" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round" />
+      </svg>
+    </span>
     <span v-if="delta != null" class="d" :style="{ color: deltaColor(delta, invert) }">{{ sgn(delta, 1, unit) }} {{ kind || '' }}</span>
     <span v-else-if="note" class="d" :style="{ color: noteTone === 'warn' ? '#854F0B' : 'var(--text-muted)' }">{{ note }}</span>
   </div>
@@ -28,6 +38,9 @@ withDefaults(defineProps<{
 <style scoped>
 .av2-kpi { background: var(--surface-white); border: 0.5px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .av2-kpi .l { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av2-kpi .vr { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .av2-kpi .v { font-size: 17px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }
-.av2-kpi .d { font-size: 10.5px; font-family: var(--font-mono); white-space: nowrap; }
+.av2-kpi .spk { width: 56px; height: 20px; flex: 0 0 auto; opacity: 0.75; }
+/* 副行允许换行:nowrap 会把「−14.7pt vs 目标96% · 取 2025-10」在瓦片边界切成「取 202…」 */
+.av2-kpi .d { font-size: 10.5px; font-family: var(--font-mono); line-height: 1.35; overflow-wrap: anywhere; }
 </style>

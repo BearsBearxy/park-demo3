@@ -5,6 +5,7 @@ import type { CollectRate, PnlSummary, S10PhaseMonthly } from '@/analysis/anaDat
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
+import { fint } from '@/components/ana/anaFmt'
 
 const wan = (v: number | null): number | null => (v == null ? null : +(v / 10000).toFixed(2))
 
@@ -128,6 +129,59 @@ export function arrearsOf(ledger: AnalysisLedgerRow[], ym: string): { rows: Arre
 /** 当年收入预算(总表「收入总计」行;主图 markLine=该值/12)。 */
 export function budgetRevenueOf(budgetRows: BudgetRowDTO[], year: number): number | null {
   return budgetRows.find((r) => r.year === year && matchBudgetKey(r.label, r.sub) === 'revenue')?.budget ?? null
+}
+
+// ── 经营结论条(spec 2026-07-11 §A:数据模板生成分句,无写死结论;缺哪块数据省哪句) ──
+// 取数全复用本屏既有取值函数(atPeriod/colPick/budgetAch),不另立聚合口径。
+export interface ConclusionItem { text: string; tone: 'good' | 'watch' | 'risk' | 'neutral'; link?: string }
+export function buildConclusion(
+  pnl: PnlSummary | null,
+  collects: CollectRate[],
+  budgetRows: BudgetRowDTO[],
+  ledgerRows: AnalysisLedgerRow[],
+  anomalyCount: number,
+  settings: { collectTarget: number },
+  period: { isMonth: boolean; year: number; usedMi: number; ym: string | null },
+): ConclusionItem[] {
+  const { isMonth, year, usedMi, ym } = period
+  const out: ConclusionItem[] = []
+  const fw = (v: number): string => (v < 0 ? '−¥' : '¥') + fint(Math.abs(v) / 10000) + '万'
+
+  // 收入利润句:取期同 KPI;预算达成为年度口径,仅年粒度并入(月收入配年达成会混期)
+  const rev = atPeriod(pnl?.revenue, isMonth, usedMi)
+  const prof = atPeriod(pnl?.profit, isMonth, usedMi)
+  const ach = isMonth ? null : budgetAch(budgetRows, pnl, year)
+  if (rev != null) {
+    let text = `${isMonth ? `${year}年${usedMi + 1}月` : `${year}年`}收入 ${fw(rev)}`
+      + (ach ? `(预算达成 ${ach.rate.toFixed(1)}%)` : '')
+    if (prof != null) text += `,园区利润 ${fw(prof)}` + (rev ? `(利润率 ${((prof / rev) * 100).toFixed(1)}%)` : '')
+    const tone: ConclusionItem['tone'] =
+      prof != null && prof < 0 ? 'risk' : ach && ach.rate < 100 ? 'watch' : prof != null || ach ? 'good' : 'neutral'
+    out.push({ text, tone })
+  }
+
+  // 收缴句:取期与 KPI 完全同参(所选月 ym,非 pnl 月锚——两者回退语义不同,复审①);
+  // 期末欠费 = 最新台账月 Σ balanceEnd>0(与 fin-cashflow KPI 同口径),台账缺则省略该分句
+  const cp = colPick(collects, isMonth, year, ym)
+  if (cp) {
+    const below = cp.rate < settings.collectTarget
+    let text = `收缴率 ${cp.rate.toFixed(1)}% ${below ? '低于' : '达到'}目标 ${settings.collectTarget}%`
+    const latest = ledgerRows.reduce<string>((mx, r) => {
+      const k = `${r.year}-${String(r.month).padStart(2, '0')}`
+      return k > mx ? k : mx
+    }, '')
+    const arrears = ledgerRows.reduce((s, r) =>
+      s + (`${r.year}-${String(r.month).padStart(2, '0')}` === latest && r.balanceEnd > 0 ? r.balanceEnd : 0), 0)
+    if (arrears > 0) text += `,期末欠费 ${fw(arrears)}`
+    out.push({ text, tone: below ? 'watch' : 'good' })
+  }
+
+  // 异常句:0 条也报(规则引擎无异常=good);经营数据全缺时结论条整体无意义 → []
+  if (!out.length) return []
+  out.push(anomalyCount > 0
+    ? { text: `${anomalyCount} 条异常待处理`, tone: 'watch', link: '/anomaly' }
+    : { text: '规则引擎无异常', tone: 'good' })
+  return out
 }
 
 // ── 预算达成(v1 budgetAch 原样抽出:预算行=当年收入总计,实际=pnl 收入年Σ) ──

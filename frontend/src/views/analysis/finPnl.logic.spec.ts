@@ -2,8 +2,9 @@
 import { describe, expect, it } from 'vitest'
 import type { PnlSummary } from '@/analysis/anaData'
 import type { BudgetRowDTO } from '@/api/budget'
+import { CMP_BASELINE, CMP_BUDGET } from '@/components/ana/anaFmt'
 import {
-  budgetMonthlyWan, momOverlay, subjectMonthly, subjectTrendOption, waterfallOption, waterfallParts,
+  budgetMonthlyWan, momOverlay, pnlChain, subjectMonthly, subjectTrendOption, waterfallOption, waterfallParts,
   type WfItem,
 } from './finPnl.logic'
 
@@ -93,17 +94,43 @@ describe('budgetMonthlyWan(budget_row 当年值/12)', () => {
 })
 
 describe('subjectTrendOption(环比虚线/预算 markLine)', () => {
-  interface TrendOpt { series: { name?: string; lineStyle?: { type: string }; markLine?: { data: { yAxis: number }[] } }[] }
-  it('budget → 主系列 markLine yAxis=预算/月;mom → 追加虚线系列', () => {
+  interface TrendOpt { series: { name?: string; lineStyle?: { type: string; color?: string }; markLine?: { lineStyle: { color: string }; data: { yAxis: number }[] } }[] }
+  it('budget → 主系列 markLine yAxis=预算/月;mom → 追加虚线系列;对比线取语义色(§E)', () => {
     const o = subjectTrendOption(['1月', '3月'], [1, 3], '营业收入', { mom: [null, 1], budget: 772.5 }) as TrendOpt
     expect(o.series).toHaveLength(2)
     expect(o.series[0].markLine!.data[0].yAxis).toBe(772.5)
+    expect(o.series[0].markLine!.lineStyle.color).toBe(CMP_BUDGET)
     expect(o.series[1].name).toBe('上期')
     expect(o.series[1].lineStyle!.type).toBe('dashed')
+    expect(o.series[1].lineStyle!.color).toBe(CMP_BASELINE)
   })
   it('无对比 → 单系列无 markLine', () => {
     const o = subjectTrendOption(['1月'], [1], '营业收入', {}) as TrendOpt
     expect(o.series).toHaveLength(1)
     expect(o.series[0].markLine).toBeUndefined()
+  })
+})
+
+describe('pnlChain(迷你利润表链条)', () => {
+  it('正常链:毛利=rev−cost,期间费用=毛利−营业利润,pct=占收入%', () => {
+    const c = pnlChain({ rev: 1000, cost: 600, op: 250, net: 200 })
+    expect(c.map((n) => n.label)).toEqual(['营业收入', '营业成本', '毛利', '期间费用', '营业利润', '净利润'])
+    expect(c.map((n) => n.value)).toEqual([1000, 600, 400, 150, 250, 200])
+    expect(c.map((n) => n.pct)).toEqual([100, 60, 40, 15, 25, 20])
+    expect(c.map((n) => n.kind)).toEqual(['pos', 'neg', 'sub', 'neg', 'sub', 'sub'])
+  })
+  it('净亏损:利润节点负值原样透出,pct 为负', () => {
+    const c = pnlChain({ rev: 1000, cost: 900, op: -50, net: -80 })
+    expect(c[2].value).toBe(100)     // 毛利仍正
+    expect(c[3].value).toBe(150)     // 费用=100−(−50)
+    expect(c[4].value).toBe(-50)
+    expect(c[5].value).toBe(-80)
+    expect(c[5].pct).toBe(-8)
+  })
+  it('rev=0:全部 pct=null,数值仍成链', () => {
+    const c = pnlChain({ rev: 0, cost: 100, op: -120, net: -120 })
+    expect(c.every((n) => n.pct === null)).toBe(true)
+    expect(c[2].value).toBe(-100)
+    expect(c[3].value).toBe(20)      // 费用=−100−(−120)
   })
 })

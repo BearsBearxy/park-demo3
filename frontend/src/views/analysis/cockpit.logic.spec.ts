@@ -2,7 +2,7 @@
 // 折万与聚合口径必须与 v1 一致(锚点:2025-10 营收 9,301,531 元 → 930.15 万)。
 import { describe, expect, it } from 'vitest'
 import {
-  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
+  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
 } from './cockpit.logic'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
 import type { AnalysisLedgerRow } from '@/api/analysis'
@@ -158,5 +158,63 @@ describe('budgetAch / budgetRevenueOf(年度口径;锚点 94.6%)', () => {
   it('无预算或无实际 → null', () => {
     expect(budgetAch([], pnl({}), 2025)).toBeNull()
     expect(budgetAch(rows, pnl({}), 2025)).toBeNull()
+  })
+})
+
+describe('buildConclusion(经营结论条 spec §A:数据模板分句,缺数据省句)', () => {
+  const rows: BudgetRowDTO[] = [budgetRow({ budget: 92705202.87 })]
+  const cs: CollectRate[] = [{ ym: '2025-10', receivable: 39568105, collected: 32166000, rate: 81.3 }]
+  // 期末欠费锚点:最新台账月(2025-10)Σ balanceEnd>0 = 3,185万;负余额(预收)不计;旧月不计
+  const lr: AnalysisLedgerRow[] = [
+    ledger({ year: 2025, month: 10, tenantName: 'A', balanceEnd: 20000000 }),
+    ledger({ year: 2025, month: 10, tenantName: 'B', balanceEnd: 11850000 }),
+    ledger({ year: 2025, month: 10, tenantName: 'C', balanceEnd: -500 }),
+    ledger({ year: 2025, month: 9, tenantName: 'A', balanceEnd: 99999999 }),
+  ]
+  const fullPnl = (): PnlSummary => {
+    const revenue = N12(); revenue[0] = 87722076   // 2025 年营收合计锚点(SQL 回验)
+    const profit = N12(); profit[0] = 22900000
+    return pnl({ months: [1], revenue, profit })
+  }
+  const yr = { isMonth: false, year: 2025, usedMi: 0, ym: null }
+  const tgt = { collectTarget: 96 }
+
+  it('三句齐(年粒度):收入利润句含预算达成,收缴句 vs 目标+期末欠费,异常句带 link', () => {
+    const r = buildConclusion(fullPnl(), cs, rows, lr, 4, tgt, yr)
+    expect(r).toHaveLength(3)
+    expect(r[0].text).toBe('2025年收入 ¥8,772万(预算达成 94.6%),园区利润 ¥2,290万(利润率 26.1%)')
+    expect(r[0].tone).toBe('watch')   // 达成 94.6% < 100
+    expect(r[1]).toEqual({ text: '收缴率 81.3% 低于目标 96%,期末欠费 ¥3,185万', tone: 'watch' })
+    expect(r[2]).toEqual({ text: '4 条异常待处理', tone: 'watch', link: '/anomaly' })
+  })
+  it('缺预算:句1 省预算达成括注;利润为正 → good', () => {
+    const r = buildConclusion(fullPnl(), cs, [], lr, 4, tgt, yr)
+    expect(r[0].text).toBe('2025年收入 ¥8,772万,园区利润 ¥2,290万(利润率 26.1%)')
+    expect(r[0].tone).toBe('good')
+  })
+  it('缺台账(collects 空):省收缴句,余两句;ledger 空:收缴句省欠费分句', () => {
+    const r = buildConclusion(fullPnl(), [], rows, lr, 4, tgt, yr)
+    expect(r).toHaveLength(2)
+    expect(r[1].text).toBe('4 条异常待处理')
+    const r2 = buildConclusion(fullPnl(), cs, rows, [], 4, tgt, yr)
+    expect(r2[1].text).toBe('收缴率 81.3% 低于目标 96%')
+  })
+  it('零异常 → 规则引擎无异常(good,无 link)', () => {
+    const r = buildConclusion(fullPnl(), cs, rows, lr, 0, tgt, yr)
+    expect(r[2]).toEqual({ text: '规则引擎无异常', tone: 'good' })
+  })
+  it('pnl 为 null:省收入利润句;台账也缺(全缺)→ []', () => {
+    const r = buildConclusion(null, cs, rows, lr, 4, tgt, yr)
+    expect(r.map((x) => x.text)).toEqual(['收缴率 81.3% 低于目标 96%,期末欠费 ¥3,185万', '4 条异常待处理'])
+    expect(buildConclusion(null, [], rows, [], 4, tgt, yr)).toEqual([])
+  })
+  it('月粒度:句1 前缀带月且不并入年度预算达成;收缴取参 = KPI 的所选月 ym(非 pnl 月锚)', () => {
+    const revenue = N12(); revenue[9] = 9301531   // 2025-10 锚点
+    const profit = N12(); profit[9] = 3158720
+    // 所选 2025-11(台账无)但 pnl 锚定 10 月:收缴句必须按 ym='2025-11' 走 colPick 回退,与 KPI 同参
+    const r = buildConclusion(pnl({ months: [10], revenue, profit }), cs, rows, [], 0, tgt,
+      { isMonth: true, year: 2025, usedMi: 9, ym: '2025-11' })
+    expect(r[0].text).toBe('2025年10月收入 ¥930万,园区利润 ¥316万(利润率 34.0%)')
+    expect(r[1].text).toBe('收缴率 81.3% 低于目标 96%')
   })
 })
