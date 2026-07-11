@@ -9,7 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; }
+      html { width: 100%; height: 100%; overflow: hidden; }
+      /* 横向放开:视口 < 960px 地板(fp-stage min-width)时 body 出横滚保内容不被切;≥960 无溢出自然无滚条。纵向仍由外壳内部卡片滚动。 */
+      body { width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden; }
     </style>
   </head>
   <body>

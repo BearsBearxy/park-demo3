@@ -80,6 +80,10 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
   padding: 12px;
   gap: 12px;
   box-sizing: border-box;
+  /* T3 全局地板(spec 2026-07-12):<960px 视口不再挤压,由文档视口出横向滚动。
+     stage 是块级 flex 容器,宽度恒=父(#app)100%,子项 fp-main-card min-width:0
+     不会把地板顶穿;≥960 视口时 min-width 不生效 → 无常驻横滚 */
+  min-width: 960px;
 }
 
 /* ── 全局网络错误 toast ── */
