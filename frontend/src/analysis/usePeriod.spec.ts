@@ -22,6 +22,36 @@ describe('providePeriodMonths', () => {
     expect(p.atStart.value).toBe(false)
   })
 
+  // 真实数据:全局最新月 2026-01 只有办公水电、无损益 → 默认期须落最近有损益的月,否则驾驶舱首屏空态
+  it('给定 financeMonths → 默认落其最新月(而非全局最新的空月)', () => {
+    providePeriodMonths([...MONTHS, '2026-01'], MONTHS)
+    expect(usePeriod().sel.value).toEqual({ gran: 'month', year: 2025, month: 10 })
+  })
+
+  it('financeMonths 缺省/为空 → 回退全局最新月(向后兼容)', () => {
+    providePeriodMonths([...MONTHS, '2026-01'])
+    expect(usePeriod().sel.value).toEqual({ gran: 'month', year: 2026, month: 1 })
+    __resetPeriodForTest()
+    providePeriodMonths([...MONTHS, '2026-01'], [])
+    expect(usePeriod().sel.value).toEqual({ gran: 'month', year: 2026, month: 1 })
+  })
+
+  it('financeMonths 含不在并集里的月 → 被过滤,不产生非法选择', () => {
+    providePeriodMonths(MONTHS, ['2099-12', '2025-07'])
+    expect(usePeriod().sel.value).toEqual({ gran: 'month', year: 2025, month: 7 })
+  })
+
+  it('gran=year 且选择失效 → 年落默认月所在年(不再固定取最新年)', () => {
+    providePeriodMonths(MONTHS)
+    const p = usePeriod()
+    p.setGran('year')
+    expect(p.sel.value.year).toBe(2025)
+    // 换一批只含 2026 的月份,其中仅 2026-01 有损益 → 年应落 2026
+    providePeriodMonths(['2026-01', '2026-02'], ['2026-01'])
+    expect(p.sel.value.gran).toBe('year')
+    expect(p.sel.value.year).toBe(2026)
+  })
+
   it('持久化的过期选择被夹到最新月', () => {
     localStorage.setItem('fp-ana-period', JSON.stringify({ gran: 'month', year: 2023, month: 5 }))
     __resetPeriodForTest()   // 重置模块态(会清 key)→ 重新写入再模拟加载

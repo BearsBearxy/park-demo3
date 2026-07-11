@@ -6,8 +6,13 @@
 //  3) 分组列 = 科目细分左侧首个非月、非空表头列,数据行值向下填充(合并单元格);
 //  4) 数据行:科目细分有字=普通行;科目细分空而分组列有字时——该行**有月值**=总计类行(label 取分组列字,
 //     groupLabel 留空,不污染后续 carry 且清 carry;如附表1「园区总租金收入/总成本/总损益」)、
-//     **无月值**=纯分组头(carry,附表1 尾部「三期项目已发生成本汇总表」附块因此拿到自己的分组);
+//     **无月值**=纯分组头(carry);
 //     金额 " - "/空 → null(未录),真 0 保留;kind=detectKind(存文件值不重算,D2);
+//  4b) **整空行(该行全部单元格皆空)= 真实表尾,立即停止**。母册同一 sheet 在空行下方堆叠了
+//     无关附块(附表1「三期项目已发生成本汇总表」、附表2「光伏工程成本」、附表3 注释行),其数值列恰好
+//     压在「1月」列上。曾因此把附块的 `已发生成本金额合计：`(82,187,725.02)当成园区总租金成本、
+//     `截止2025年12月三期租金收入合计`(2,784,838.22)当成园区总租金收入,全部计入 2025-01,
+//     使园区利润由 +2,290万 翻成 −5,650万(spec 2026-07-10 §1)。
 //  5) 年 = 表头行之前 /(\d{4})年/(识别失败 year=null,调用方回退当前年槽);rowKey 合成 r<n>。
 import { normalizeHeader } from './importHeaderMatch'
 import { detectKind } from '@/reports/pnlSchedules'
@@ -77,6 +82,10 @@ export function importPnlSchedule(matrix: string[][]): { year: number | null; ro
     const gv = groupCol >= 0 ? String(row[groupCol] ?? '').trim() : ''
     const label = String(row[subCol] ?? '').trim()
     const note = noteCol >= 0 ? String(row[noteCol] ?? '').trim() : ''
+    // 规则 4b:整空行(**全部单元格**皆空)= 表尾,停止解析。
+    // 必须查全行而非只查 分组/科目细分/月列:附表5 把二级分组放在表头为空的未映射列(如「其他管理费用支出」),
+    // 该行月值又全是 " - "(→null),只查映射列会误判为空行,把「运营费用总计」整块切掉。
+    if (rows.length && row.every(cell => String(cell ?? '').trim() === '')) break
     if (!label) {
       if (!gv) continue
       const hasValue = monthCol.some(c => c >= 0 && cleanNum(row[c]) != null)

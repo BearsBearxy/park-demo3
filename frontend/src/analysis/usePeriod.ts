@@ -36,15 +36,19 @@ function isValid(s: PeriodSel): boolean {
   return months.value.includes(ymOf(s.year, s.month))
 }
 
-/** 注入可用月份(升序去重),并把非法/过期选择夹到最新期。 */
-export function providePeriodMonths(list: string[]): void {
+/**
+ * 注入可用月份(升序去重),并把非法/过期选择夹到默认期。
+ * financeMonths = 有损益覆盖的月份(AnalysisMonthsDTO.sources.pnl)。默认期优先落其最新月:
+ * 真实数据的全局最新月是 2026-01(仅办公水电有数、无损益),落在那里会让驾驶舱首屏营收/成本/利润
+ * 全 `—` + 主区空态,像「系统没数据」。不传则回退全局最新月(向后兼容)。
+ */
+export function providePeriodMonths(list: string[], financeMonths?: string[]): void {
   months.value = [...new Set(list)].sort()
   if (!months.value.length || isValid(sel.value)) return
-  const last = months.value[months.value.length - 1]
+  const pool = (financeMonths ?? []).filter((m) => months.value.includes(m)).sort()
+  const last = (pool.length ? pool : months.value).slice(-1)[0]
   const y = +last.slice(0, 4), m = +last.slice(5, 7)
-  sel.value = sel.value.gran === 'year'
-    ? { gran: 'year', year: years.value[years.value.length - 1], month: m }
-    : { gran: 'month', year: y, month: m }
+  sel.value = sel.value.gran === 'year' ? { gran: 'year', year: y, month: m } : { gran: 'month', year: y, month: m }
   persist()
 }
 

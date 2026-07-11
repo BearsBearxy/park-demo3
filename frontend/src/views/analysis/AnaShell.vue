@@ -37,7 +37,7 @@ const asof = computed(() => period.months.value[period.months.value.length - 1] 
 onMounted(async () => {
   try {
     const dto = await fetchAvailableMonths()
-    providePeriodMonths(dto.months)
+    providePeriodMonths(dto.months, dto.sources?.pnl)   // 默认期落「最近有损益数据的月」,非全局最新空月
   } finally {
     loaded.value = true
   }
