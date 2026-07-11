@@ -29,6 +29,8 @@ const emit = defineEmits<{ back: []; 'toggle-edit': [] }>()
       <span class="lc-yearbadge"><component :is="iconFor('calendar')" :size="14" />{{ year }} 年</span>
       <span v-if="edit" class="lc-editbadge"><component :is="iconFor('pencil')" :size="13" />编辑模式</span>
       <slot v-if="edit" name="edit-actions" />
+      <!-- idle-actions:仅非编辑态(spec 2026-07-11 导入流程统一:导入/导出常驻非编辑态,编辑态只留行级操作) -->
+      <slot v-if="!edit" name="idle-actions" />
       <slot name="static-actions" />
       <Button variant="filled" size="sm" @click="emit('toggle-edit')">
         <template #leading><component :is="iconFor(edit ? 'check' : 'pencil')" :size="14" /></template>

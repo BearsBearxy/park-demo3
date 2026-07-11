@@ -227,10 +227,6 @@ async function onExport() {
           @toggle-edit="edit = !edit"
         >
           <template #edit-actions>
-            <Button variant="outline" size="sm" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-              导入 Excel
-            </Button>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增工资
@@ -242,6 +238,13 @@ async function onExport() {
             <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
               <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
               删除选中 ({{ selectedIds.size }})
+            </Button>
+          </template>
+          <!-- 导入常驻非编辑态(spec 2026-07-11 §1:导入独立落库,不依赖编辑草稿) -->
+          <template #idle-actions>
+            <Button variant="outline" size="sm" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
             </Button>
           </template>
           <template #static-actions>

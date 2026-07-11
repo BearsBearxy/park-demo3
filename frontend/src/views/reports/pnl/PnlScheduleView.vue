@@ -368,13 +368,16 @@ async function onExport() {
               <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
               全部填入派生值
             </Button>
-            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-              导入 Excel
-            </Button>
             <Button variant="outline" size="sm" :disabled="saving" @click="openAdd">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               新增行
+            </Button>
+          </template>
+          <!-- 导入常驻非编辑态(spec 2026-07-11 §1:导入独立落库,不依赖编辑草稿) -->
+          <template #idle-actions>
+            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
+              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+              导入 Excel
             </Button>
           </template>
           <template #static-actions>

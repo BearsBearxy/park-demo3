@@ -6,6 +6,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import { contractApi } from '@/api/contract'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
@@ -34,6 +35,9 @@ const STATUS_OPTS = [
 ]
 
 const tenants = ref<TenantDTO[]>([])
+// FPTenantPicker 候选(spec §T5):id/name=companyName/期区/关联主租户名
+const tenantOptions = computed(() =>
+  tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName })))
 const buildings = ref<BuildingDTO[]>([])
 const units = ref<UnitDTO[]>([])
 
@@ -180,10 +184,8 @@ async function submit() {
             <div class="ct-field">
               <div class="lab">租户 <i>*</i></div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.tenantName" disabled />
-              <select v-else class="ct-in" :class="{ err: err === '请选择租户' }" v-model="tenantId" @change="err = ''">
-                <option :value="null" disabled>请选择租户</option>
-                <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.companyName }}</option>
-              </select>
+              <FPTenantPicker v-else v-model="tenantId" :tenants="tenantOptions"
+                              :invalid="err === '请选择租户'" @update:model-value="err = ''" />
             </div>
             <div class="ct-field">
               <div class="lab">楼栋 <i>*</i></div>

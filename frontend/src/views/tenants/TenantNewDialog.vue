@@ -6,6 +6,7 @@ import { tenantApi } from '@/api/tenant'
 import type { TenantCategoryDTO, TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
 const props = defineProps<{ initial?: TenantDTO | null }>()
 const emit = defineEmits<{ close: []; created: []; updated: [] }>()
@@ -23,7 +24,7 @@ const phase = ref<number | ''>(props.initial?.phase ?? '')
 const since = ref(props.initial?.since ?? '')
 const remark = ref(props.initial?.remark ?? '')
 const status = ref(props.initial?.status ?? 1)
-const parentId = ref<number | ''>(props.initial?.parentId ?? '')
+const parentId = ref<number | null>(props.initial?.parentId ?? null) // null=不关联
 const err = ref('')
 const busy = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -37,6 +38,11 @@ onMounted(async () => {
 // 关联主租户候选:在租且自身无 parent(仅一级关联)且 ≠ 正在编辑的租户
 const parentOptions = computed(() =>
   allTenants.value.filter(t => t.status === 1 && t.parentId == null && t.id !== props.initial?.id),
+)
+
+// FPTenantPicker 候选形状:候选全是 root,parentName 一律 null(spec §T2)
+const parentPickerOptions = computed(() =>
+  parentOptions.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: null })),
 )
 
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
@@ -59,7 +65,7 @@ async function submit() {
     phase: phase.value === '' ? null : phase.value,
     since: since.value || null,
     remark: remark.value.trim() || undefined,
-    parentId: parentId.value === '' ? null : parentId.value,
+    parentId: parentId.value,
   }
   try {
     if (props.initial) {
@@ -140,10 +146,13 @@ async function submit() {
           </div>
           <div class="fin-field">
             <div class="lab">关联主租户</div>
-            <select class="fin-in" v-model="parentId">
-              <option value="">不关联</option>
-              <option v-for="t in parentOptions" :key="t.id" :value="t.id">{{ t.companyName }}</option>
-            </select>
+            <!-- 可搜索选择器;「不关联」=null,placeholder 即空态,选中后可用旁边 × 清除 -->
+            <div class="fin-parent-row">
+              <FPTenantPicker v-model="parentId" :tenants="parentPickerOptions" placeholder="不关联" style="flex:1;min-width:0" />
+              <button v-if="parentId != null" type="button" class="fin-clear" title="清除关联(不关联)" @click="parentId = null">
+                <component :is="iconFor('x')" :size="14" />
+              </button>
+            </div>
           </div>
           <div class="fin-field">
             <div class="lab">备注</div>
@@ -180,5 +189,9 @@ async function submit() {
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }
+/* 关联主租户:选择器 + 清除小按钮(回到「不关联」) */
+.fin-parent-row { display:flex; align-items:center; gap:8px; }
+.fin-clear { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-white); color:var(--text-muted); cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard); }
+.fin-clear:hover { border-color:var(--border-strong); color:var(--text-secondary); }
 .fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

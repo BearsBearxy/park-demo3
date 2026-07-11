@@ -82,7 +82,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
     <div v-if="props.rows.length === 0" class="s10-empty">
       <div class="s10-empty-ic"><component :is="iconFor('receipt')" :size="24" /></div>
       <div class="s10-empty-t">{{ year }} 年 {{ month }} 月 · {{ phaseName }} 暂无收款记录</div>
-      <div class="s10-empty-s">该月尚未录入。可手动新增租户后逐项填写;导入 Excel 即将上线。</div>
+      <div class="s10-empty-s">该月尚未录入。可在非编辑态导入 Excel,或进入编辑模式手动新增租户。</div>
       <div v-if="edit"><button class="s10-emptybtn" @click="emit('add')">
         <component :is="iconFor('plus')" :size="16" />新增租户
       </button></div>
@@ -153,7 +153,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
                 :value="r.tenantName"
                 @input="emit('name', r, ($event.target as HTMLInputElement).value)"
               />
-              <span v-else class="s10-tname">{{ r.tenantName }}</span>
+              <span v-else class="s10-tname" :title="r.tenantName">{{ r.tenantName }}</span>
               <span v-if="r.source !== 'seed'" class="s10-userbadge">手动</span>
               <button
                 v-if="edit && r.source !== 'seed'"

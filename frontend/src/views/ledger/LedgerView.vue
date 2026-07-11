@@ -196,10 +196,12 @@ const allTenants = ref<TenantDTO[]>([])
 function ensureTenantsLoaded() {
   if (!allTenants.value.length) tenantApi.list().then(v => { allTenants.value = v }).catch(() => {})
 }
+// 候选带 phase/parentName 供 FPTenantPicker 徽章;名称 zh 排序(与 fpTenantPicker.filterTenants 同口径)
 const addableTenants = computed(() =>
   allTenants.value
     .filter(t => t.status === 1 && !draft.value.some(r => r.tenantId === t.id))
-    .map(t => ({ id: t.id, name: t.companyName })),
+    .map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN')),
 )
 function onAddTenantRow(tenantId: number) {
   const t = allTenants.value.find(x => x.id === tenantId)

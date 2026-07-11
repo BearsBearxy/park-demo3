@@ -6,6 +6,8 @@ import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import SearchField from '@/components/ds/SearchField.vue'
 import FPLedgerTable from '@/components/fp/FPLedgerTable.vue'
+import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import LedgerCompanyBadge from './LedgerCompanyBadge.vue'
 import { lgColumns } from '@/utils/ledgerColumns'
 import type { ColumnKey } from '@/utils/ledgerColumns'
@@ -22,7 +24,7 @@ const props = defineProps<{
   monthNo: number
   edit: boolean
   saving: boolean
-  addableTenants?: { id: number; name: string }[]   // 编辑态「添加租户行」候选(在租且本月尚无行)
+  addableTenants?: FPTenantOption[]   // 编辑态「添加租户行」候选(在租且本月尚无行;含 phase/parentName 供徽章)
   focusTenant?: string             // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focus-done 由父层清空)
 }>()
 const emit = defineEmits<{
@@ -59,11 +61,11 @@ async function flashFocusRow() {
 const q = ref('')
 
 // 添加租户行(候选由父级传入;添加后重置选择)
-const addTenantId = ref<number | ''>('')
+const addTenantId = ref<number | null>(null)
 function onAddTenant() {
-  if (addTenantId.value === '') return
-  emit('add-tenant', Number(addTenantId.value))
-  addTenantId.value = ''
+  if (addTenantId.value == null) return
+  emit('add-tenant', addTenantId.value)
+  addTenantId.value = null
 }
 
 // ── 编辑态批量删除(勾选 → 确认 → 从 draft 移除,保存时以空行落库删除) ──
@@ -168,11 +170,15 @@ function onCopyPrev() {
           <span class="lg-tag edit">编辑中 · {{ companyName }}</span>
           <!-- 添加租户行:宽表只显示有数据的租户,新租户入账从这里挑(候选=在租且本月尚无行) -->
           <span class="lg-addrow">
-            <select class="lg-addsel" v-model="addTenantId" :disabled="saving">
-              <option value="">添加租户行…</option>
-              <option v-for="t in addableTenants ?? []" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-            <Button variant="outline" size="sm" :disabled="saving || addTenantId === ''" @click="onAddTenant">
+            <FPTenantPicker
+              class="lg-addpick"
+              v-model="addTenantId"
+              :tenants="addableTenants ?? []"
+              placeholder="添加租户行…"
+              :disabled="saving"
+              empty-hint="本月已有台账行的租户不在候选,请直接在表格中查找该行"
+            />
+            <Button variant="outline" size="sm" :disabled="saving || addTenantId == null" @click="onAddTenant">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               添加
             </Button>
@@ -267,8 +273,9 @@ function onCopyPrev() {
 .lg-tag { display:inline-flex; align-items:center; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--surface-sunken); color:var(--text-secondary); font-size:12.5px; font-weight:var(--fw-medium); }
 .lg-tag.edit { background:rgb(252,243,232); color:var(--hue-orange); }
 .lg-addrow { display:inline-flex; align-items:center; gap:6px; }
-.lg-addsel { height:32px; max-width:180px; padding:0 8px; font-size:12.5px; color:var(--text-primary); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; font-family:var(--font-sans); }
-.lg-addsel:focus { border-color:var(--hue-blue); }
+/* 选择器换 FPTenantPicker,尺寸对齐原 .lg-addsel(高 32 / 宽 180)保持工具条布局不变 */
+.lg-addpick { width:180px; }
+.lg-addpick :deep(.fp-tp-trigger) { height:32px; font-size:12.5px; }
 /* 批量删除确认弹窗(1:1 LedgerNewCompanyDialog .lg-dlg 风格) */
 .lg-bulk-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); }
 .lg-bulk-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); }
