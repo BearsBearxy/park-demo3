@@ -32,14 +32,22 @@ const allCols = computed(() => [...props.columns.fixedLeft, ...leaves.value, ...
 // sticky offsets (jsx 413-416): left accumulates L→R, right accumulates R→L over fixedRight reversed.
 // 选择列启用时占最左 32px,fixedLeft 整体右移。
 const SEL_W = 32
+// spec §W4 数字列宽度策略:中部费用列(无 kind,非固定)去锁死,minWidth 保底随内容撑
+// (.lg-table 已 width:max-content + .lg-wrap overflow:auto,表内横滚现成);
+// 固定数字列(kind num/sum/bal)的 sticky offset 由列宽累加(leftOff/rightOff),随内容变宽会破 sticky,
+// 降级为放宽 104→128 仍锁死(保留 ellipsis + title 兜底);offset 与 widthStyle 同用 effW 保持同步。
+const FIXED_NUM_W = 128
+function effW(c: LeafColumn): number {
+  return c.kind === 'num' || c.kind === 'sum' || c.kind === 'bal' ? Math.max(c.w, FIXED_NUM_W) : c.w
+}
 const leftOff = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {}; let lo = selectable.value ? SEL_W : 0
-  props.columns.fixedLeft.forEach(c => { m[c.key] = lo; lo += c.w })
+  props.columns.fixedLeft.forEach(c => { m[c.key] = lo; lo += effW(c) })
   return m
 })
 const rightOff = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {}; let ro = 0
-  ;[...props.columns.fixedRight].reverse().forEach(c => { m[c.key] = ro; ro += c.w })
+  ;[...props.columns.fixedRight].reverse().forEach(c => { m[c.key] = ro; ro += effW(c) })
   return m
 })
 const isFixed = (c: LeafColumn) => c.key in leftOff.value || c.key in rightOff.value
@@ -66,7 +74,9 @@ function fixStyle(c: LeafColumn): Record<string, string> {
 }
 
 function widthStyle(c: LeafColumn): Record<string, string> {
-  return { width: c.w + 'px', minWidth: c.w + 'px', maxWidth: c.w + 'px' }
+  const w = effW(c) + 'px'
+  if (!c.kind) return { minWidth: w }   // 费用数字列:仅保底,列随内容撑
+  return { width: w, minWidth: w, maxWidth: w }
 }
 function cellStyle(c: LeafColumn): Record<string, string> {
   return { ...widthStyle(c), ...fixStyle(c) }
@@ -117,28 +127,28 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
           <td v-for="c in allCols" :key="c.key"
               :class="isFixed(c) ? 'lg-fix' : undefined" :style="cellStyle(c)">
             <!-- 租户名 (text) -->
-            <span v-if="c.kind === 'text'" class="lg-tname" @click="emit('tenant-click', row.tenantId)">
+            <span v-if="c.kind === 'text'" class="lg-tname" :title="row.tenantName" @click="emit('tenant-click', row.tenantId)">
               {{ row.tenantName }}<component :is="ChevronRight" :size="13" class="ch" />
             </span>
             <!-- 应收合计 (sum, 派生只读) -->
-            <span v-else-if="c.kind === 'sum'" class="lg-sumc">{{ lgFmt(row.totalReceivable) }}</span>
+            <span v-else-if="c.kind === 'sum'" class="lg-sumc" :title="lgFmt(row.totalReceivable)">{{ lgFmt(row.totalReceivable) }}</span>
             <!-- 本月结余 (bal, 派生只读, 正橙负红) -->
             <span v-else-if="c.kind === 'bal'"
-                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }">{{ lgFmt(row.balanceEnd) }}</span>
+                  class="lg-sumc" :class="{ neg: row.balanceEnd < 0, pos: row.balanceEnd > 0 }" :title="lgFmt(row.balanceEnd)">{{ lgFmt(row.balanceEnd) }}</span>
             <!-- 备注 (note) -->
             <template v-else-if="c.kind === 'note'">
               <input v-if="edit" class="lg-ni l" type="text" :value="row.note ?? ''" placeholder="—"
                      @input="onInput(row.tenantId, 'note', $event)" />
-              <span v-else class="lg-note">{{ row.note || '' }}</span>
+              <span v-else class="lg-note" :title="row.note ?? ''">{{ row.note || '' }}</span>
             </template>
             <!-- balancePrev (num, 只读) -->
-            <span v-else-if="c.key === 'balancePrev'" class="lg-nv" :class="{ empty: !row.balancePrev }">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            <span v-else-if="c.key === 'balancePrev'" class="lg-nv" :class="{ empty: !row.balancePrev }" :title="lgFmt(row.balancePrev)">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入) -->
             <template v-else>
               <input v-if="edit" class="lg-ni" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
                      @input="onInput(row.tenantId, c.key, $event)" />
-              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
+              <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }" :title="lgFmt((row as any)[c.key])">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
             </template>
           </td>
         </tr>
@@ -191,6 +201,8 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
 .lg-tname:hover { color:var(--hue-blue); }
 .lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .lg-table tbody tr:hover .lg-tname .ch { opacity:1; }
+/* .lg-nv/.lg-sumc 保留 ellipsis(spec §W4 降级取舍):费用列已随内容撑宽,永不触发;
+   四根锁死的固定数字列(sticky offset 依赖列宽)靠它防溢出串格,title 兜底完整值 */
 .lg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .lg-nv.empty { color:var(--text-disabled); }
 .lg-note { display:block; text-align:left; font-size:12px; padding:0 10px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

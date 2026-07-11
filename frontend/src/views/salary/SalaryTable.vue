@@ -157,7 +157,7 @@ const allSelected = computed(() =>
             </span>
           </td>
           <!-- 备注 -->
-          <td class="l s12-c-note">
+          <td class="l s12-c-note" :title="r.note ?? ''">
             <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
           </td>
           <!-- 编辑态删除(seed/manual/import 同等可删) -->

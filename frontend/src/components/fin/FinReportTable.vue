@@ -85,7 +85,7 @@ function inputVal(r: FinTableRow, field: string): string {
             <input v-if="canSelect(r)" class="fin-ck" type="checkbox" :checked="selected?.has(r.key)" @change="emit('toggleSelect', r)" />
           </td>
           <td>
-            <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]">
+            <span class="fin-rowlabel" :class="['lv' + r.level, { label: r.type === 'label', subtotal: r.type === 'subtotal' }]" :title="r.label">
               {{ r.label }}
               <span v-if="r.parentAuto && r.childCount" class="chip">{{ r.childCount }} 子类</span>
               <button v-if="editable && r.custom" class="custom-x" title="删除子类" @click="emit('removeChild', r)"><component :is="iconFor('x')" :size="13" /></button>

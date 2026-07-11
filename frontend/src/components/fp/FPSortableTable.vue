@@ -172,6 +172,7 @@ function renderSortHeader(col: SortableColumn) {
           <td
             v-for="c in columns"
             :key="c.key"
+            :title="c.render ? undefined : String((r as any)[c.key] ?? '')"
             :style="{
               padding: '12px 16px',
               textAlign: c.align || 'left',
