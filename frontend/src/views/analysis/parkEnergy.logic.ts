@@ -6,6 +6,8 @@
 //   <0(真实库即此:售电按转供加价计费,收入>成本)→ 流入侧「转供毛差」。
 // 中枢节点「园区电力」使每条边都是真实 SQL 可验数字(不做两源×四汇的比例假分摊)。
 
+import { fnum } from '@/components/ana/anaFmt'
+
 // ── 结构化最小输入类型(真实 DTO 为其超集,单测夹具可极小) ──
 export interface ElecRowsLike { rows: { acctMonth: string; total: number }[] }
 export interface PvRowLike { acctMonth: string; selfAmt: number }
@@ -68,6 +70,7 @@ export interface SankeyData {
   nodes: { name: string }[]
   links: SankeyLink[]
   residual: number   // 元;<0 = 转供毛差(流入侧)
+  totals: { buy: number; pvSelf: number; s10: number; office: number; chg: number }   // 元;人话句(buildSankeyReading)取数
 }
 
 /** 选中期间(调用方给 s10 覆盖月集合)→ 桑基节点/边。s10 无覆盖 → null(空态)。 */
@@ -97,7 +100,16 @@ export function buildSankey(months: AmtMonth[], selYms: string[]): SankeyData | 
 
   const names = new Set<string>([HUB])
   for (const l of links) { names.add(l.source); names.add(l.target) }
-  return { nodes: [...names].map((name) => ({ name })), links, residual }
+  return { nodes: [...names].map((name) => ({ name })), links, residual, totals: { buy, pvSelf, s10, office, chg } }
+}
+
+/** C6 桑基卡人话句(spec 2026-07-11 定稿模板,金额全取运行时数据):
+ *  residual<0(售电>成本)→ 结尾「为转供加价收益」;residual>0 → 「为线损与未计口径」。 */
+export function buildSankeyReading(s: SankeyData): string {
+  const w = (v: number) => fnum(v / 10000, 1)
+  const t = s.totals
+  const tail = s.residual > 0 ? '为线损与未计口径' : '为转供加价收益'
+  return `本期园区买电 ¥${w(t.buy)}万,光伏自用 ¥${w(t.pvSelf)}万;向租户售电 ¥${w(t.s10)}万,办公/充电自用 ¥${w(t.office + t.chg)}万;差额 ¥${w(Math.abs(s.residual))}万 ${tail}`
 }
 
 /** §五策略2 桑基月锚:所选月有 s10 → 该月;否则 ≤所选的最近 s10 月;再无 → 最早 s10 月;全无 → null。

@@ -10,14 +10,14 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
-import { fnum, mean, sgn } from '@/components/ana/anaFmt'
+import { CMP_BASELINE, CMP_BUDGET, fnum, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
   type EnergyMonth,
 } from '@/analysis/anaData'
 import type { BudgetRowDTO } from '@/api/budget'
 import {
-  anchorS10Ym, BOARD_ZH, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, HUB,
+  anchorS10Ym, BOARD_ZH, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, HUB,
   type AmtMonth, type BoardKey,
 } from './parkEnergy.logic'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
@@ -139,6 +139,8 @@ const sankeyUsedYm = computed(() => (isMonth.value ? anchorS10Ym(s10Yms.value, c
 const sankeyYms = computed<string[]>(() =>
   isMonth.value ? (sankeyUsedYm.value ? [sankeyUsedYm.value] : []) : coveredYms.value)
 const sankey = computed(() => buildSankey(amt.value, sankeyYms.value))
+// C6 人话句(spec 2026-07-11 定稿模板):金额取运行时数据,residual 正负两分支;原守恒口径句退 AnaMethodNote 保留
+const sankeyReading = computed(() => (sankey.value ? buildSankeyReading(sankey.value) : ''))
 const sankeyOption = computed(() => {
   const s = sankey.value
   if (!s) return null
@@ -192,17 +194,17 @@ const comboOption = computed(() => {
   ]
   if (cmp.mode.value === 'mom') {
     series.push(
-      { type: 'line', name: '购电成本·上月', data: shift(buy), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#85B7EB' } },
-      { type: 'line', name: '售电收入·上月', data: shift(sell), connectNulls: false, symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#F0997B' } },
+      { type: 'line', name: '购电成本·上月', data: shift(buy), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE } },
+      { type: 'line', name: '售电收入·上月', data: shift(sell), connectNulls: false, symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BASELINE } },
     )
   }
   // 预算=月均虚线(复审①:budget_row 电费收入/支出子行,年额/12)
   if (cmp.mode.value === 'budget') {
     const flat = (v: number | null) => labels.map(() => (v != null ? +(v / 12 / 10000).toFixed(2) : null))
     if (budgetElec.value.cost != null)
-      series.push({ type: 'line', name: '购电预算·月均', data: flat(budgetElec.value.cost), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#85B7EB' } })
+      series.push({ type: 'line', name: '购电预算·月均', data: flat(budgetElec.value.cost), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET } })
     if (budgetElec.value.rev != null)
-      series.push({ type: 'line', name: '售电预算·月均', data: flat(budgetElec.value.rev), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#EF9F27' } })
+      series.push({ type: 'line', name: '售电预算·月均', data: flat(budgetElec.value.rev), symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: CMP_BUDGET } })
   }
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v != null ? '¥' + fnum(v, 1) + '万' : '—') },
@@ -290,6 +292,8 @@ const segsOption = computed(() => ({
           <AnaEChart v-if="sankeyOption" :option="sankeyOption" :height="290" @chart-click="onSankeyClick" />
           <!-- 该期间售电(附表10)未录 → 空态引导深链,不画假图 -->
           <AnaEmpty v-else label="该期间售电(附表10)未录入" hint="s10 为稀疏月度表,金额口径能量流暂不可算" to="/sales-income" to-text="去录入销售收入" />
+          <!-- C6:生成式人话句(数据模板);守恒口径原句退下方 AnaMethodNote 保留 -->
+          <p v-if="sankey" class="pe-reading">{{ sankeyReading }}</p>
           <AnaMethodNote v-if="sankey">
             守恒:购电+光伏消纳{{ sankey.residual < 0 ? '+转供毛差' : '' }} ＝ 售电+办公+充电{{ sankey.residual > 0 ? '+损耗差额' : '' }};
             轧差 {{ sankey.residual < 0 ? '−' : '' }}¥{{ fnum(Math.abs(sankey.residual) / 10000, 1) }}万{{ sankey.residual < 0 ? '(售电按转供加价计费,收入高于同期购电成本 → 毛差记流入侧)' : '' }}。仅 s10 覆盖月同口径,缺月不补 0。
@@ -331,3 +335,8 @@ const segsOption = computed(() => ({
     </div>
   </AnaShell>
 </template>
+
+<style scoped>
+/* C6 桑基人话句:比 AnaMethodNote 醒目一档(正文次级色) */
+.pe-reading { font-size: 12px; color: var(--text-secondary); margin: 10px 0 0; line-height: 1.5; }
+</style>

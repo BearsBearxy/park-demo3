@@ -22,7 +22,8 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
 import { PHASES } from '@/views/sales-income/layout'
-import { buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
+import { buildFamilyMap } from '@/analysis/anaFamily'
+import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
 
 const period = usePeriod()
 const router = useRouter()
@@ -122,11 +123,20 @@ const payDot = (name: string): string => {
   return p.status === 'normal' ? 'var(--hue-blue)' : p.status === 'partial' ? WARN : NEG
 }
 
-// ── 左列搜索列表 ──
+// ── 家族榜单开关(方案A,spec §B/W3):仅左列榜单家族化;KPI/Top20/散点计数口径不动 ──
+const byFamily = ref(false)
+const familyMap = computed(() => buildFamilyMap(tenantList.value))
+const famRows = computed(() => buildFamilyRows(rowsCur.value, familyMap.value))
+
+// ── 左列搜索列表(按户/按家族统一显示行;点家族行 → 降级选中主租户本户,hint 注明) ──
 const q = ref('')
 const listRows = computed(() => {
   const kw = q.value.trim()
-  return kw ? rowsCur.value.filter((r) => r.name.includes(kw)) : rowsCur.value
+  if (!byFamily.value)
+    return (kw ? rowsCur.value.filter((r) => r.name.includes(kw)) : rowsCur.value)
+      .map((r) => ({ key: r.name, rank: r.rank, name: r.name, phase: r.phase, cur: r.cur, selectName: r.name, members: 1 }))
+  return (kw ? famRows.value.filter((r) => r.root.includes(kw)) : famRows.value)
+    .map((r) => ({ key: r.root, rank: r.rank, name: r.root, phase: r.phase, cur: r.cur, selectName: r.mainName, members: r.memberCount }))
 })
 
 // ── 主图:选中租户趋势 vs 园区均值带 ──
@@ -144,8 +154,9 @@ const trendOption = computed<object>(() => {
     series: [
       { name: 'lo', type: 'line', data: band.lo, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
       { name: '均值±σ带', type: 'line', data: diff, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(28,28,28,.07)' }, silent: true, tooltip: { show: false } },
-      { name: '园区均值', type: 'line', data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
-      { name, type: 'line', data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
+      // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
+      { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
+      { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
     ],
   }
 })
@@ -261,7 +272,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     <template v-if="loaded && !err && s10Months.length" #kpis>
       <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />
       <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户 σ ${fint(crossStd)}`" />
-      <AnaKpiTile label="用能异常户" :value="`${anomCount} 户`" note="|z|≥1.3" />
+      <!-- spec §C/C1 人话化:主标签人话,z 分数口径退 AnaMethodNote(计算零变化) -->
+      <AnaKpiTile label="用量异常户" :value="`${anomCount} 户`" note="较自身常态明显偏离" />
       <AnaKpiTile v-if="curCollect" :label="`收缴率(${ledgerYm})`" :value="`${curCollect.rate}%`" :delta="+(curCollect.rate - anaSettings.collectTarget).toFixed(1)" :kind="`vs 目标 ${anaSettings.collectTarget}%`" />
       <AnaKpiTile v-else label="收缴率" value="—" note="台账未录入" />
       <AnaKpiTile label="期末欠费" :value="`¥${(arrearsSum / 10000).toFixed(1)}万`" :note="ledgerYm || '台账未录入'" />
@@ -296,17 +308,26 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       <!-- §五策略2:所选期无 s10 →「本期」回退最近覆盖月,全屏口径横幅(禁静默) -->
       <AnaPeriodBanner v-if="s10Fallback" :selected="selPeriodLabel" :used="curYm" source="s10" />
       <div class="av2-grid">
-        <!-- 左列:租户搜索列表(本期费额降序,点击选中) -->
+        <!-- 左列:租户搜索列表(本期费额降序,点击选中);spec §B/W3 按户|按家族开关 -->
         <div class="av2-card av2-s4 te2-left">
-          <div class="av2-card-h"><span class="t">租户列表</span><span class="hint">按本期{{ metricLabel }}降序 · 点击选中</span></div>
-          <input v-model="q" class="te2-search" type="search" :placeholder="`搜索租户(共 ${rowsCur.length} 户)`" />
+          <div class="av2-card-h">
+            <span class="t">租户列表</span>
+            <span class="te2-lh">
+              <span class="hint">{{ byFamily ? '家族合计降序 · 点击看主租户' : `按本期${metricLabel}降序 · 点击选中` }}</span>
+              <span class="te2-fam-seg" role="group" aria-label="榜单口径">
+                <button :class="{ on: !byFamily }" @click="byFamily = false">按户</button>
+                <button :class="{ on: byFamily }" @click="byFamily = true">按家族</button>
+              </span>
+            </span>
+          </div>
+          <input v-model="q" class="te2-search" type="search" :placeholder="byFamily ? `搜索家族(共 ${famRows.length} 族)` : `搜索租户(共 ${rowsCur.length} 户)`" />
           <div class="te2-list">
-            <button v-for="r in listRows" :key="r.name" class="te2-item" :class="{ on: r.name === selRow?.name }" @click="select(r.name)">
+            <button v-for="r in listRows" :key="r.key" class="te2-item" :class="{ on: r.selectName === selRow?.name }" @click="select(r.selectName)">
               <span class="rk">{{ r.rank }}</span>
-              <span class="nm">{{ r.name }}</span>
+              <span class="nm">{{ r.name }}<span v-if="r.members > 1" class="fam">含{{ r.members }}户</span></span>
               <span class="ph">{{ phaseName(r.phase) }}</span>
               <span class="amt">{{ fint(r.cur) }}</span>
-              <span class="dot" :style="{ background: payDot(r.name) }"></span>
+              <span v-if="!byFamily" class="dot" :style="{ background: payDot(r.name) }"></span>
             </button>
             <div v-if="!listRows.length" class="te2-none">无匹配租户</div>
           </div>
@@ -317,12 +338,14 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="av2-card">
             <div class="av2-card-h">
               <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
-              <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录</span>
+              <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录{{ byFamily ? ' · 趋势为主租户本户' : '' }}</span>
             </div>
             <AnaEChart :option="trendOption" :height="280" />
             <AnaMethodNote>
               口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
+              异常=该户本期用量偏离其12个月均值超1.3倍标准差(z分数)。
+              家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
             </AnaMethodNote>
           </div>
           <div class="av2-card">
@@ -371,6 +394,12 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 <style scoped>
 .te2-seg button { padding: 5px 14px; }
 .te2-left { display: flex; flex-direction: column; }
+/* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 AnomalyView 惯例) */
+.te2-lh { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.te2-fam-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }
+.te2-fam-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 10px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
+.te2-fam-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28, 28, 28, .1); }
+.te2-item .fam { margin-left: 6px; font-size: 10px; color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
 .te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: 12.5px; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }
 .te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }

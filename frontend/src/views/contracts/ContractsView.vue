@@ -217,70 +217,74 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
     <template v-if="summary">
-    <!-- 2. KPI grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
-      <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate">
-        <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan">
-        <template #icon><component :is="iconFor('clock')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky">
-        <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue">
-        <template #icon><component :is="iconFor('coins')" :size="16" /></template>
-      </KpiCard>
+    <div class="mx-body">
+      <!-- 2. KPI 左栏(spec §3:三屏统一样式) -->
+      <aside class="mx-kpirail">
+        <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate" :style="{ padding: '20px' }">
+          <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
+        </KpiCard>
+        <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
+          <template #icon><component :is="iconFor('clock')" :size="16" /></template>
+        </KpiCard>
+        <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky" :style="{ padding: '20px' }">
+          <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
+        </KpiCard>
+        <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '20px' }">
+          <template #icon><component :is="iconFor('coins')" :size="16" /></template>
+        </KpiCard>
+      </aside>
+
+      <div class="mx-main">
+      <!-- 3. Lifecycle tabs -->
+      <ContractLifecycleTabs v-model="statusFilter" :counts="lifecycleCounts" />
+
+      <!-- 4. Toolbar -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="position:relative;flex:1 1 240px;min-width:200px">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);display:inline-flex">
+            <component :is="iconFor('search')" :size="16" />
+          </span>
+          <input
+            v-model="q"
+            placeholder="搜索合同编号 / 租户 / 楼栋"
+            style="width:100%;height:36px;padding:0 12px 0 34px;border-radius:var(--radius-full);border:1px solid var(--border-subtle);background:var(--surface-card);font-family:var(--font-sans);font-size:13px;color:var(--text-primary);box-sizing:border-box;outline:none"
+          />
+        </div>
+        <div style="width:140px">
+          <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
+        </div>
+        <span style="font-size:var(--fs-label);color:var(--text-muted);margin-left:auto">共 {{ filtered.length }} 份</span>
+      </div>
+
+      <!-- 5. Table card -->
+      <Card surface="white" :padding="0" style="border:1px solid var(--border-subtle);overflow:hidden">
+        <div style="padding:14px 4px 0">
+          <FPSortableTable
+            :columns="TABLE_COLUMNS"
+            :rows="paged"
+            rowKey="id"
+            :sort="sort"
+            :rowHover="true"
+            @sortChange="sort = $event"
+            @rowClick="openContract = $event"
+          />
+        </div>
+        <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的合同</div>
+      </Card>
+
+      <!-- spacer: pin pager to card bottom (DESIGN-FIDELITY §5) -->
+      <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
+
+      <!-- 6. Pager -->
+      <FPPager
+        v-if="filtered.length > 0"
+        :page="safePage"
+        :pageCount="pageCount"
+        :total="filtered.length"
+        @page="page = $event"
+      />
+      </div>
     </div>
-
-    <!-- 3. Lifecycle tabs -->
-    <ContractLifecycleTabs v-model="statusFilter" :counts="lifecycleCounts" />
-
-    <!-- 4. Toolbar -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <div style="position:relative;flex:1 1 240px;min-width:200px">
-        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);display:inline-flex">
-          <component :is="iconFor('search')" :size="16" />
-        </span>
-        <input
-          v-model="q"
-          placeholder="搜索合同编号 / 租户 / 楼栋"
-          style="width:100%;height:36px;padding:0 12px 0 34px;border-radius:var(--radius-full);border:1px solid var(--border-subtle);background:var(--surface-card);font-family:var(--font-sans);font-size:13px;color:var(--text-primary);box-sizing:border-box;outline:none"
-        />
-      </div>
-      <div style="width:140px">
-        <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
-      </div>
-      <span style="font-size:var(--fs-label);color:var(--text-muted);margin-left:auto">共 {{ filtered.length }} 份</span>
-    </div>
-
-    <!-- 5. Table card -->
-    <Card surface="white" :padding="0" style="border:1px solid var(--border-subtle);overflow:hidden">
-      <div style="padding:14px 4px 0">
-        <FPSortableTable
-          :columns="TABLE_COLUMNS"
-          :rows="paged"
-          rowKey="id"
-          :sort="sort"
-          :rowHover="true"
-          @sortChange="sort = $event"
-          @rowClick="openContract = $event"
-        />
-      </div>
-      <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的合同</div>
-    </Card>
-
-    <!-- spacer: pin pager to card bottom (DESIGN-FIDELITY §5) -->
-    <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
-
-    <!-- 6. Pager -->
-    <FPPager
-      v-if="filtered.length > 0"
-      :page="safePage"
-      :pageCount="pageCount"
-      :total="filtered.length"
-      @page="page = $event"
-    />
     </template>
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
@@ -303,3 +307,15 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
     <ContractNewDialog v-if="renewFrom" :renew-from="renewFrom" @close="renewFrom = null" @saved="onRenewed" />
   </div>
 </template>
+
+<style scoped>
+/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
+.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
+.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
+@media (max-width:1100px) {
+  .mx-body { grid-template-columns:1fr; gap:16px; }
+  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
+  .mx-kpirail > * { flex:1 1 160px; }
+}
+</style>

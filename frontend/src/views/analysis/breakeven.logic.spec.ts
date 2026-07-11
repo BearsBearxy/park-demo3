@@ -1,7 +1,7 @@
 // breakeven.logic 纯函数单测(v2 抽出;CVP/敏感性/拆分口径=v1,含 dev 库锚点回算)
 import { describe, expect, it } from 'vitest'
 import type { AnalysisS10Row } from '@/api/analysis'
-import { calcBe, cvpOption, s10UsedOf, splitData, tornadoItems, tornadoOption } from './breakeven.logic'
+import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, tornadoItems, tornadoOption } from './breakeven.logic'
 
 describe('calcBe', () => {
   it('常规:fixed=cost×fr,beRev=fixed/cm,bePct/safety 一位小数', () => {
@@ -32,6 +32,38 @@ describe('calcBe', () => {
     expect(b.beRev).toBeCloseTo(5917279.67)
     expect(b.bePct).toBeNull()
     expect(b.safety).toBeNull()
+  })
+})
+
+describe('anchorMonth(§C4 口径月锚)', () => {
+  // 12 格收入:10 月正、11 月正、12 月负(仿 dev 库 2025-12 收入为负)
+  const rev: (number | null)[] = [null, null, null, null, null, null, null, null, null, 100, 80, -636050.65]
+  it('末月收入为负 → 退上一个收入>0 的覆盖月', () => {
+    expect(anchorMonth([10, 11, 12], rev, null)).toEqual({ month: 11, allNegative: false })
+  })
+  it('全负 → 维持最新覆盖月 + allNegative 标记(主区空态)', () => {
+    const allNeg: (number | null)[] = new Array(12).fill(null)
+    allNeg[9] = -5; allNeg[10] = 0; allNeg[11] = -10
+    expect(anchorMonth([10, 11, 12], allNeg, null)).toEqual({ month: 12, allNegative: true })
+  })
+  it('选中月本身有覆盖且为正 → 不动', () => {
+    expect(anchorMonth([10, 11, 12], rev, 10)).toEqual({ month: 10, allNegative: false })
+  })
+  it('选中月无覆盖 → 走回退;无覆盖月 → null', () => {
+    expect(anchorMonth([10, 11, 12], rev, 3)).toEqual({ month: 11, allNegative: false })
+    expect(anchorMonth([], rev, 10)).toEqual({ month: null, allNegative: false })
+  })
+})
+
+describe('conclusionText(§C4 人话结论行)', () => {
+  it('保本有解 → 数据模板句(保本线 fnum 一位小数,达成=收入/保本收入)', () => {
+    // rev 100万 / beRev 66.67万 → 达成 150%
+    expect(conclusionText(calcBe(100_0000, 80_0000, 0.5), '2025-10'))
+      .toBe('按当前成本结构,月收入 ≥ ¥66.7万 即保本;口径月(2025-10)收入 ¥100.0万,达成 150%')
+  })
+  it('收入为负保本无解(bePct=null)→ 替代句(spec 定稿)', () => {
+    expect(conclusionText(calcBe(-636050.65, 5917279.67, 0.62), '2025-12'))
+      .toBe('当前口径月收入为负,保本点不适用——见期间横幅')
   })
 })
 

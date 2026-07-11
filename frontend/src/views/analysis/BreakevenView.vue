@@ -11,12 +11,12 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import { iconFor } from '@/components/ds/icon'
-import { fnum } from '@/components/ana/anaFmt'
+import { STATUS, fnum } from '@/components/ana/anaFmt'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings, saveAnaSettings } from '@/analysis/anaSettings'
 import { fetchPnlSummary, fetchS10Rows, type PnlSummary } from '@/analysis/anaData'
 import type { AnalysisS10Row } from '@/api/analysis'
-import { calcBe, cvpOption, s10UsedOf, splitData, splitOption, tornadoItems, tornadoOption } from './breakeven.logic'
+import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, splitOption, tornadoItems, tornadoOption } from './breakeven.logic'
 import '@/components/ana/ana.css'
 
 const period = usePeriod()
@@ -40,14 +40,14 @@ watch(() => period.sel.value.year, async (y) => {
 
 const wan = (v: number) => fnum(v / 10000, 1)
 
-// ── 口径月:选中月有 pnl 覆盖用选中月,否则退最新覆盖月 ──
-const monthUsed = computed(() => {
+// ── 口径月(§C4):选中月有 pnl 覆盖用选中月,否则退最近一个收入>0 的覆盖月;全负维持最新+主区空态 ──
+const anchor = computed(() => {
   const s = summary.value
-  if (!s || !s.months.length) return null
+  if (!s) return { month: null, allNegative: false }
   const sel = period.sel.value
-  if (sel.gran === 'month' && sel.year === s.year && s.months.includes(sel.month)) return sel.month
-  return s.months[s.months.length - 1]
+  return anchorMonth(s.months, s.revenue, sel.gran === 'month' && sel.year === s.year ? sel.month : null)
 })
+const monthUsed = computed(() => anchor.value.month)
 const ymUsed = computed(() =>
   summary.value && monthUsed.value != null ? summary.value.year + '-' + String(monthUsed.value).padStart(2, '0') : null)
 
@@ -66,6 +66,9 @@ const split = computed(() =>
   summary.value && be.value ? splitData(summary.value.months, summary.value.cost, be.value.fr) : { periods: [], fixed: [], vari: [] })
 const splitOpt = computed(() => splitOption(split.value))
 
+// §C4 人话结论行(数据模板抽纯函数;全负空态下不显,空态提示已说清)
+const conclusion = computed(() => (be.value && ymUsed.value ? conclusionText(be.value, ymUsed.value) : ''))
+
 // 固定成本系数滑杆(spec §二.12:改动即时重算;与顶栏「目标与阈值」同源持久化)
 function onFr(e: Event) {
   const v = Number((e.target as HTMLInputElement).value)
@@ -81,7 +84,7 @@ function onFr(e: Event) {
           :note="be.beRev != null ? '保本 ¥' + wan(be.beRev) + '万' : '无法保本'" />
         <AnaKpiTile label="安全边际" :value="be.safety != null ? be.safety.toFixed(0) + ' pt' : '—'"
           :note="'当月收入 ¥' + wan(be.rev) + '万'" />
-        <AnaKpiTile label="边际贡献率" :value="(be.cm * 100).toFixed(0) + '%'" note="1 − 变动成本率" />
+        <AnaKpiTile label="收入留存率" :value="(be.cm * 100).toFixed(0) + '%'" note="扣除随收入变动的成本后剩余(边际贡献率)" />
         <AnaKpiTile label="月固定成本" :value="'¥' + wan(be.fixed) + '万'" :note="'系数 ' + be.fr.toFixed(2) + '(滑杆可调)'" />
         <AnaKpiTile label="月净利" :value="(be.profit >= 0 ? '¥' : '−¥') + wan(Math.abs(be.profit)) + '万'" :note="'口径月 ' + ymUsed" />
         <AnaKpiTile label="s10 开票收入" :value="s10Used ? '¥' + wan(s10Used.total) + '万' : '—'"
@@ -114,9 +117,20 @@ function onFr(e: Event) {
         <AnaPill tone="warn" icon="flask-conical">拆分系数假设 · 估算值</AnaPill>
       </div>
 
-      <div class="av2-grid">
+      <!-- §C4 人话结论行(数据模板,仿驾驶舱 cv2-concl 简化版;保本无解走替代句) -->
+      <div v-if="conclusion && !anchor.allNegative" class="av2-card bev-concl">
+        <span class="dot" :style="{ background: be.bePct != null ? STATUS.good.color : STATUS.watch.color }"></span>{{ conclusion }}
+      </div>
+
+      <!-- §C4 全负空态:各覆盖月收入均≤0,口径月维持最新覆盖月,不画倒挂 CVP -->
+      <div v-if="anchor.allNegative" class="ak-card">
+        <AnaEmpty label="当前各覆盖月收入均为负,保本测算不适用"
+          :hint="'口径月维持最新覆盖月 ' + ymUsed + ';CVP 模型需收入为正才能求保本点'" />
+      </div>
+
+      <div v-else class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">本量利 (CVP) 曲线</span><span class="hint">收入 / 总成本 随收入达成率 · 交点=保本</span></div>
+          <div class="av2-card-h"><span class="t">保本点测算</span><span class="hint">本量利 CVP · 收入/总成本交点=保本</span></div>
           <AnaEChart :option="cvpOpt" :height="300" />
           <div class="bev-slider">
             <span class="k">固定成本系数</span>
@@ -129,7 +143,7 @@ function onFr(e: Event) {
         </div>
 
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">敏感性(龙卷风)</span><span class="hint">±10% 对月净利影响</span></div>
+          <div class="av2-card-h"><span class="t">哪个因素对利润影响最大</span><span class="hint">各驱动 ±10% · 龙卷风图</span></div>
           <!-- §五策略2:口径月无 s10 数据回退最新 s10 月 → 卡顶横幅(相等不渲染) -->
           <AnaPeriodBanner v-if="s10Used && ymUsed && s10Used.ym !== ymUsed"
             :selected="ymUsed" :used="s10Used.ym" source="附表10 " style="margin-bottom: 8px" />
@@ -149,6 +163,9 @@ function onFr(e: Event) {
 </template>
 
 <style scoped>
+/* §C4 人话结论行(仿驾驶舱 cv2-concl 简化版:单句单圆点) */
+.bev-concl { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; font-size: 12.5px; color: var(--text-primary); }
+.bev-concl .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .bev-slider { display: flex; align-items: center; gap: 8px; margin: 8px 2px 2px; }
 .bev-slider .k { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
 .bev-slider .v { font-size: 12px; font-weight: 600; color: var(--text-primary); }

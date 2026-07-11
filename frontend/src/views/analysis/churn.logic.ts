@@ -145,29 +145,41 @@ export function buildChurnModel(ledgerRows: AnalysisLedgerRow[], s10Rows: Analys
 export const TIER_ECOLOR: Record<Tier, string> = { high: '#E24B4A', mid: '#EF9F27', low: '#378ADD' }
 const RED = '#E24B4A'   // 复审:统一主题语义红
 
-interface ScatterDatum { name: string; company: string; value: [number, number]; score: number; recv: number }
+/** C5 散点 x 限幅:超界点钉在边界并记 clamped(真值仍在 revMom,tooltip 显示用)。 */
+export function clampPts<T extends { revMom: number | null }>(pts: T[], lo = -100, hi = 300): (T & { x: number; clamped: boolean })[] {
+  return pts.map((t) => {
+    const raw = t.revMom ?? 0
+    const x = Math.max(lo, Math.min(hi, raw))
+    return { ...t, x, clamped: x !== raw }
+  })
+}
 
-/** 风险象限散点:x=s10收入环比%、y=收款率%、气泡=月应收;均值 markLine 十字(x=环比均值,y=整体收款率)。 */
+interface ScatterDatum { name: string; company: string; value: [number, number]; rawMom: number; score: number; recv: number }
+
+/** 风险象限散点:x=s10收入环比%(clampPts 钉边,超界点三角+描边)、y=收款率%、气泡=月应收;
+ *  均值 markLine 十字(x=环比均值,取真值口径,y=整体收款率);tooltip 显环比真值(rawMom)。 */
 export function churnScatterOption(list: ChurnRow[], overallRate: number): object {
-  const pts = list.filter((t) => t.revMom != null && t.payRate != null)
+  const pts = clampPts(list.filter((t) => t.revMom != null && t.payRate != null))
   const xMean = pts.length ? +(pts.reduce((s, t) => s + t.revMom!, 0) / pts.length).toFixed(1) : 0
   const rMax = Math.max(1, ...pts.map((t) => t.recv))
   return {
     grid: { left: 52, right: 18, top: 20, bottom: 42 },
     tooltip: {
       formatter: (p: { data: ScatterDatum }) =>
-        `${p.data.name}<br/>s10收入环比 ${p.data.value[0] >= 0 ? '+' : ''}${p.data.value[0]}%` +
+        `${p.data.name}<br/>s10收入环比 ${p.data.rawMom >= 0 ? '+' : ''}${p.data.rawMom}%` +
         `<br/>收款率 ${p.data.value[1]}%<br/>风险分 ${p.data.score} · 月应收 ¥${(p.data.recv / 10000).toFixed(1)}万`,
     },
-    xAxis: { type: 'value', name: 's10收入环比(%)', nameLocation: 'middle', nameGap: 26, axisLabel: { formatter: (v: number) => (v > 0 ? '+' : '') + v } },
+    xAxis: { type: 'value', name: '收入变化(环比%)', nameLocation: 'middle', nameGap: 26, axisLabel: { formatter: (v: number) => (v > 0 ? '+' : '') + v } },
     yAxis: { type: 'value', name: '收款率(%)', axisLabel: { formatter: '{value}%' } },
     series: [{
       type: 'scatter',
       data: pts.map((t) => ({
-        name: t.name, company: t.company, value: [t.revMom!, t.payRate!] as [number, number],
+        name: t.name, company: t.company, value: [t.x, t.payRate!] as [number, number],
+        rawMom: t.revMom!, clamped: t.clamped,
         score: t.score, recv: t.recv,
+        symbol: t.clamped ? 'triangle' : 'circle',
         symbolSize: 7 + Math.sqrt(t.recv / rMax) * 20,
-        itemStyle: { color: TIER_ECOLOR[t.tier], opacity: 0.72 },
+        itemStyle: { color: TIER_ECOLOR[t.tier], opacity: 0.72, ...(t.clamped ? { borderColor: 'rgba(28,28,28,.8)', borderWidth: 1.2 } : {}) },
       })),
       markLine: {
         silent: true, symbol: 'none',

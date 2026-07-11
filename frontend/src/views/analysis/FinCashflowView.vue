@@ -3,6 +3,7 @@
 // (点柱→该期欠费租户清单弹层,清单行可查台账深链);收缴率 vs 目标条(SVG 子弹条原语保留);
 // 下半现金流量表空态保留。排版=AnaShell v2(#kpis)+ av2-grid(主图 s8/次图 s4)。
 // 台账聚合口径与 v1 完全一致(ledgerPeriods/wf/statItems 计算未动);纯函数见 finCashflow.logic.ts。
+// spec §B/W2:欠费清单+账龄卡共用「按户|按家族」开关,开时 rows 先 mergeFamilyRows 再走现有函数。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AnaShell from './AnaShell.vue'
@@ -17,10 +18,11 @@ import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useTabsStore } from '@/stores/tabs'
-import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, type S10PhaseMonthly } from '@/analysis/anaData'
+import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, fetchTenants, type S10PhaseMonthly } from '@/analysis/anaData'
+import { buildFamilyMap } from '@/analysis/anaFamily'
 import { fint, fnum } from '@/components/ana/anaFmt'
 import { waterfallOption, type WfItem } from './finPnl.logic'
-import { arrearsOf, rcGroupOption } from './finCashflow.logic'
+import { agingBuckets, arrearsOf, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { CompanyDTO } from '@/types/ledger'
 
@@ -39,16 +41,25 @@ const companyLabel = computed(() =>
 // ── 数据(一次拉全,过滤/聚合全在客户端) ──
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const s10 = ref<S10PhaseMonthly | null>(null)
+const famMap = ref(new Map<string, string>())
 onMounted(async () => {
   try {
-    const [cos, rows, pm] = await Promise.all([fetchCompanies(), fetchLedgerRows(), fetchS10PhaseMonthly()])
+    const [cos, rows, pm, tns] = await Promise.all([
+      fetchCompanies(), fetchLedgerRows(), fetchS10PhaseMonthly(), fetchTenants()])
     companies.value = cos
     ledgerRows.value = rows
     s10.value = pm
+    famMap.value = buildFamilyMap(tns)
   } catch { /* 拉取失败 → 空态卡兜底 */ } finally {
     ready.value = true
   }
 })
+
+// ── 家族口径开关(spec §B/W2 方案A):按户|按家族,默认按户,仅作用于欠费清单+账龄卡 ──
+const famOn = ref(false)
+const famRows = computed(() => mergeFamilyRows(ledgerRows.value, famMap.value))
+// 两卡共用数据源:开时 rows 先做家族合并,再走现有 arrearsOf/agingBuckets(FIFO 天然净额)
+const famSrc = computed(() => (famOn.value ? famRows.value : ledgerRows.value))
 
 // ── 台账聚合:公司过滤 → 按期 Σ(应收=21费;结余=期初+应收−实收)(同 v1) ──
 interface LedgerPeriod { ym: string; receivable: number; collected: number; balancePrev: number; balanceEnd: number; rate: number }
@@ -126,11 +137,26 @@ const wfOpt = computed(() => waterfallOption(wf.value))
 const rcOpt = computed(() => rcGroupOption(ledgerPeriods.value))
 const drillYm = ref<string | null>(null)
 const drillRows = computed(() =>
-  drillYm.value ? arrearsOf(ledgerRows.value, cid.value, drillYm.value) : [])
+  drillYm.value ? arrearsOf(famSrc.value, cid.value, drillYm.value) : [])
+// 家族口径徽标「含 N 户」:该期(公司×家族)有流水成员数,>1 才显
+const drillMembers = computed(() => {
+  const m = new Map<string, number>()
+  if (!famOn.value || !drillYm.value) return m
+  for (const r of famRows.value) {
+    if (r.year + '-' + String(r.month).padStart(2, '0') !== drillYm.value) continue
+    m.set(r.companyName + '|' + r.tenantName, r.members)
+  }
+  return m
+})
 function onRcClick(params: unknown) {
   const name = (params as { name?: string }).name
   if (name && ledgerPeriods.value.some((p) => p.ym === name)) drillYm.value = name
 }
+
+// ── 欠费账龄(spec §D):FIFO 冲抵分桶,随公司选择器联动;月龄距全局最新台账月 ──
+const aging = computed(() => agingBuckets(famSrc.value, cid.value))
+// 4 桶固定色阶,浅→深红(≤1月 → >6月);零额段不渲
+const AGING_COLORS = ['#F5D9D8', '#EFB7B5', '#E88E8B', '#E24B4A']
 
 // 深链必须 openFresh:KeepAlive 缓存的 LedgerView 只在 onMounted 消费 query(同 ChurnView.goLedger)
 const router = useRouter()
@@ -206,6 +232,35 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <AnaMethodNote>25 费项合计,仅有数据月份;s10 无公司维度,本卡不随公司选择器过滤。</AnaMethodNote>
         </div>
 
+        <!-- 欠费账龄 s4(spec §D:FIFO 冲抵分桶;随公司过滤联动;台账空整卡不渲) -->
+        <div v-if="cur" class="av2-card av2-s4">
+          <div class="av2-card-h" style="align-items: center">
+            <span class="t">欠费账龄</span>
+            <span style="display: inline-flex; align-items: center; gap: 8px">
+              <span class="hint">FIFO 冲抵 · 距 {{ allLedgerYms[allLedgerYms.length - 1] }}</span>
+              <div class="fin-seg" role="group" aria-label="欠费口径切换">
+                <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
+                <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
+              </div>
+            </span>
+          </div>
+          <div class="fin-age-bar">
+            <template v-for="(b, i) in aging.buckets" :key="b.label">
+              <div v-if="b.amount > 0" class="seg" :style="{ flex: b.amount, background: AGING_COLORS[i] }"
+                :title="b.label + ' ¥' + fnum(b.amount / 1e4, 1) + '万'"></div>
+            </template>
+          </div>
+          <div class="fin-age-legend">
+            <div v-for="(b, i) in aging.buckets" :key="b.label" class="row">
+              <span class="dot" :style="{ background: AGING_COLORS[i] }"></span>
+              <span class="lbl">{{ b.label }}</span>
+              <span class="amt">{{ fnum(b.amount / 1e4, 1) }}万</span>
+              <span class="cnt">{{ b.tenantCount }} {{ famOn ? '族' : '户' }}</span>
+            </div>
+          </div>
+          <AnaMethodNote>净欠费(应收−实收)按月入队,实收结余 FIFO 冲抵最旧;期初旧账早于覆盖窗口,固定归 &gt;6月。<template v-if="famOn">家族=租户管理中的关联关系(parent_id);按家族汇总时,家族成员的流水合并后计算——家族内某成员的预收/多收会抵减其他成员的欠费(同一实际客户口径),故家族合计可能小于逐户合计。</template><template v-else>口径=欠费户余额合计(预收不抵他户欠费),略高于左侧「期末欠费结余」净额。</template></AnaMethodNote>
+        </div>
+
         <!-- spec 必选空态:下半屏 现金流量表引导 s12 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">现金流量表</span>
@@ -222,15 +277,23 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
       <div class="fin-modal" @click.stop>
         <div class="fin-modal-h">
           <span class="t">{{ drillYm }} 欠费租户清单 · {{ companyLabel }}</span>
-          <button class="x" aria-label="关闭" @click="drillYm = null"><component :is="iconFor('x')" :size="15" /></button>
+          <span style="display: inline-flex; align-items: center; gap: 10px">
+            <div class="fin-seg" role="group" aria-label="欠费口径切换">
+              <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
+              <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
+            </div>
+            <button class="x" aria-label="关闭" @click="drillYm = null"><component :is="iconFor('x')" :size="15" /></button>
+          </span>
         </div>
-        <div class="fin-modal-sub">期末欠费结余 &gt; 0 的租户,按欠费额降序 · 共 {{ drillRows.length }} 户 · 单位 万元</div>
+        <div class="fin-modal-sub">期末欠费结余 &gt; 0 的{{ famOn ? '家族' : '租户' }},按欠费额降序 · 共 {{ drillRows.length }} {{ famOn ? '族' : '户' }} · 单位 万元</div>
+        <div v-if="famOn" class="fin-modal-sub">家族=租户管理中的关联关系(parent_id);按家族汇总时,家族成员的流水合并后计算——家族内某成员的预收/多收会抵减其他成员的欠费(同一实际客户口径),故家族合计可能小于逐户合计。</div>
         <div class="fin-modal-body">
           <table v-if="drillRows.length" class="ak-tbl">
             <thead><tr><th>租户</th><th>公司</th><th>期初欠费</th><th>本期应收</th><th>本期实收</th><th>期末欠费</th><th>台账</th></tr></thead>
             <tbody>
               <tr v-for="r in drillRows" :key="r.companyName + r.tenantName">
-                <td>{{ r.tenantName }}</td>
+                <td>{{ r.tenantName }}<span v-if="(drillMembers.get(r.companyName + '|' + r.tenantName) ?? 0) > 1"
+                  class="fin-fam">含 {{ drillMembers.get(r.companyName + '|' + r.tenantName) }} 户</span></td>
                 <td class="mut">{{ r.companyName }}</td>
                 <td class="mono mut">{{ fnum(r.balancePrev / 1e4, 1) }}</td>
                 <td class="mono mut">{{ fnum(r.receivable / 1e4, 1) }}</td>
@@ -255,6 +318,22 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
 .fin-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 0; }
+
+/* 家族口径开关(spec §B/W2,仿 AnaShell .anx-seg 的 mini 版)+「含 N 户」徽标 */
+.fin-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; flex: none; }
+.fin-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 9px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); white-space: nowrap; }
+.fin-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+.fin-fam { display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; white-space: nowrap; }
+
+/* 账龄卡:横向单条堆叠(段宽∝金额)+ 图例行(桶色浅→深红,金额 mono) */
+.fin-age-bar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; margin-top: 10px; background: var(--surface-sunken); }
+.fin-age-bar .seg { min-width: 2px; }
+.fin-age-legend { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.fin-age-legend .row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.fin-age-legend .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.fin-age-legend .lbl { color: var(--text-muted); }
+.fin-age-legend .amt { margin-left: auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.fin-age-legend .cnt { color: var(--text-muted); width: 40px; text-align: right; }
 
 /* 欠费清单弹层(屏私有,轻量遮罩卡) */
 .fin-mask { position: fixed; inset: 0; z-index: 60; background: rgba(28,28,28,.32); display: grid; place-items: center; padding: 24px; }

@@ -1,7 +1,8 @@
 // TenantEnergy.logic 纯函数单测(铁律⑦;jsdom 无 canvas → 屏测试只测纯函数)。
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
-import { buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
+import { buildFamilyMap } from '@/analysis/anaFamily'
+import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -54,6 +55,38 @@ describe('buildParkBand / tenantSeries', () => {
     const jia = rows.find((r) => r.name === '甲') ?? null
     expect(tenantSeries(jia, ['2025-01', '2025-02', '2025-03'])).toEqual([100, null, 300])
     expect(tenantSeries(null, ['2025-01'])).toEqual([null])
+  })
+})
+
+describe('buildFamilyRows(spec §B/W3 家族榜单)', () => {
+  const months = ['2025-01', '2025-02']
+  const fam = buildFamilyMap([
+    { companyName: '广联', parentName: null },
+    { companyName: '广联（宿舍）', parentName: '广联' },
+    { companyName: '广联（饭堂）', parentName: '广联' },
+    { companyName: '安达', parentName: null },
+  ])
+  it('家族成员本期金额加总重排;根在截面 → mainName=根;单户家族原样', () => {
+    const tm = map([
+      s10('广联', '2025-02', 100), s10('广联（宿舍）', '2025-02', 300), s10('广联（饭堂）', '2025-02', 50),
+      s10('安达', '2025-02', 400),
+    ])
+    const rows = buildTenantRows(tm, '2025-02', months, 'elec', new Map())
+    expect(rows[0].name).toBe('安达')                               // 按户第一名是安达
+    const fr = buildFamilyRows(rows, fam)
+    expect(fr.map((r) => r.root)).toEqual(['广联', '安达'])          // 家族合计 450 > 400 反超
+    expect(fr[0]).toMatchObject({ cur: 450, memberCount: 3, mainName: '广联', rank: 1 })
+    expect(fr[1]).toMatchObject({ root: '安达', cur: 400, memberCount: 1, mainName: '安达', rank: 2 })
+  })
+  it('根不在本期截面 → mainName 取金额最大成员;不在主数据的名称自成一族', () => {
+    const tm = map([
+      s10('广联（宿舍）', '2025-02', 80), s10('广联（饭堂）', '2025-02', 120),
+      s10('已注销租户', '2025-02', 999),
+    ])
+    const rows = buildTenantRows(tm, '2025-02', months, 'elec', new Map())
+    const fr = buildFamilyRows(rows, fam)
+    expect(fr.find((r) => r.root === '广联')).toMatchObject({ cur: 200, memberCount: 2, mainName: '广联（饭堂）' })
+    expect(fr.find((r) => r.root === '已注销租户')).toMatchObject({ cur: 999, memberCount: 1, mainName: '已注销租户' })
   })
 })
 

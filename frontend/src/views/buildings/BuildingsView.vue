@@ -204,22 +204,24 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0栋 / 没有匹配 -->
     <template v-if="summary">
-    <!-- 2. KPI bar -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
-      <KpiCard label="楼栋总数" :value="String(summary.buildingCount)" :delta="`${stoppedCount} 栋停用`" tint="slate">
+    <div class="mx-body">
+    <!-- 2. KPI 左栏(§3 统一样式) -->
+    <aside class="mx-kpirail">
+      <KpiCard label="楼栋总数" :value="String(summary.buildingCount)" :delta="`${stoppedCount} 栋停用`" tint="slate" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" tint="sky">
+      <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" tint="sky" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('ruler')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="blue">
+      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="blue" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="空置单元" :value="String(summary.vacantCount)" delta="待招商" trend="down" tint="cyan">
+      <KpiCard label="空置单元" :value="String(summary.vacantCount)" delta="待招商" trend="down" tint="cyan" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('door-open')" :size="16" /></template>
       </KpiCard>
-    </div>
+    </aside>
 
+    <div class="mx-main">
     <!-- 3. Phase tabs + layout toggle -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <FPPhaseTabs v-model="phase" :counts="phaseCounts" />
@@ -279,6 +281,8 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       :total="filtered.length"
       @page="page = $event"
     />
+    </div>
+    </div>
     </template>
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
@@ -311,3 +315,15 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
     />
   </div>
 </template>
+
+<style scoped>
+/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
+.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
+.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
+@media (max-width:1100px) {
+  .mx-body { grid-template-columns:1fr; gap:16px; }
+  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
+  .mx-kpirail > * { flex:1 1 160px; }
+}
+</style>

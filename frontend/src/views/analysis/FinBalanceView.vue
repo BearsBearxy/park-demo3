@@ -263,7 +263,12 @@ const bsTable = computed<BsTblRow[]>(() => {
 
         <!-- 杜邦拆解 s12(保留) -->
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">杜邦分析 · ROE 拆解</span><span class="hint">ROE = 净利率 × 总资产周转率 × 权益乘数</span></div>
+          <div class="av2-card-h">
+            <span class="t">净资产收益率拆解:利润率 × 周转 × 杠杆(杜邦)</span>
+            <!-- §C3:权益基数失真就地醒目(金额取运行时权益实值) -->
+            <AnaPill v-if="R.roe != null && R.netMargin != null" tone="warn" icon="alert-triangle">权益仅 ¥{{ fint(T.equity / 1e4) }}万 · 杠杆放大,比率失真仅供参考</AnaPill>
+            <span class="hint">ROE = 净利率 × 总资产周转率 × 权益乘数</span>
+          </div>
           <div v-if="R.roe != null && R.netMargin != null" style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
             <div style="flex: 0 0 auto; text-align: center; padding: 14px 22px; background: var(--accent-blue); border-radius: 16px">
               <div style="font-size: 12px; color: var(--text-muted)">净资产收益率 ROE</div>
@@ -272,9 +277,9 @@ const bsTable = computed<BsTblRow[]>(() => {
             </div>
             <span style="font-size: 22px; color: var(--text-disabled)">=</span>
             <template v-for="(f, i) in [
-              { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '盈利能力' },
-              { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '营运效率' },
-              { k: '权益乘数', v: R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×', note: '财务杠杆' },
+              { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '赚钱能力' },
+              { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '资产效率' },
+              { k: '权益乘数', v: R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×', note: '杠杆倍数' },
             ]" :key="f.k">
               <div style="flex: 1 1 120px; min-width: 110px; text-align: center; padding: 14px 16px; background: var(--surface-card); border-radius: 14px">
                 <div style="font-size: 11.5px; color: var(--text-muted)">{{ f.k }}</div>

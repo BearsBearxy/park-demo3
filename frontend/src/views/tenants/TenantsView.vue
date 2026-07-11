@@ -15,6 +15,7 @@ import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPSortableTable from '@/components/fp/FPSortableTable.vue'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
+import { familySort } from './tenantsFamily'
 import TenantDrawer from './TenantDrawer.vue'
 import TenantNewDialog from './TenantNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -33,9 +34,10 @@ const summary = ref<TenantSummaryDTO | null>(null)
 const phase = ref<string | number>('all')
 const q = ref('')
 const statusFilter = ref('全部状态')
-const sort = ref<SortState | null>({ key: 'monthlyRent', dir: 'desc' })
+// 默认 sort=null → 家族聚合名称序视图;点列头进普通排序,列头「取消排序」回到聚合视图(spec §T2)
+const sort = ref<SortState | null>(null)
 const page = ref(1)
-const pageSize = 8
+const pageSize = 20
 
 const openTenant = ref<TenantDTO | null>(null)
 const newDlg = ref(false)
@@ -83,20 +85,38 @@ const filtered = computed(() =>
     .filter(t => !q.value.trim() || t.companyName.includes(q.value.trim()) || (t.contactName ?? '').includes(q.value.trim()) || (t.contactPhone ?? '').includes(q.value.trim()))
 )
 
+// root → 子数(全量口径,不随过滤变),供名称旁「+N」徽标
+const childCount = computed(() => {
+  const m = new Map<number, number>()
+  for (const t of tenants.value) if (t.parentId != null) m.set(t.parentId, (m.get(t.parentId) ?? 0) + 1)
+  return m
+})
+
 const TABLE_COLUMNS = computed(() => [
   {
     key: 'companyName', header: '企业名称',
     sortValue: (r: TenantDTO) => r.companyName,
-    render: (r: TenantDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px' } }, [
-      h(Avatar, { name: r.companyName, size: 30 }),
-      h('span', { style: { display: 'flex', flexDirection: 'column', minWidth: 0 } }, [
-        h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap' } }, r.companyName),
-        // 次行:子租户显示关联的主租户,否则显示编号
-        r.parentName
-          ? h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', whiteSpace: 'nowrap' } }, `关联 · ${r.parentName}`)
-          : h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' } }, `FP-T-${1000 + r.id}`),
-      ]),
-    ]),
+    render: (r: TenantDTO) => {
+      const isChild = r.parentName != null
+      const kids = childCount.value.get(r.id) ?? 0
+      // 长名防撑宽:外包 max-width:240px 容器 + title 出全文(spec 表格溢出治理 §W1)
+      return h('span', { title: r.companyName, style: { display: 'flex', alignItems: 'center', gap: '10px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: isChild ? '16px' : undefined } }, [
+        // 子租户:「└」前缀+缩进,标出从属关系(spec §T2)
+        isChild ? h('span', { style: { color: 'var(--text-disabled)', flex: '0 0 auto' } }, '└') : null,
+        h(Avatar, { name: r.companyName, size: 30 }),
+        h('span', { style: { display: 'flex', flexDirection: 'column', minWidth: 0 } }, [
+          h('span', { style: { display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 } }, [
+            h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)', whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, r.companyName),
+            // root 有子:「+N」小徽标(N=子数,全量口径)
+            kids > 0 ? h('span', { style: { flex: '0 0 auto', fontSize: 'var(--fs-micro)', color: 'var(--text-secondary)', background: 'var(--bg-sunken)', borderRadius: 'var(--radius-full)', padding: '1px 6px' } }, `+${kids}`) : null,
+          ]),
+          // 次行:子租户显示关联的主租户(同受 max-width 约束截断),否则显示编号
+          r.parentName
+            ? h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, `关联:${r.parentName}`)
+            : h('span', { style: { fontSize: 'var(--fs-micro)', color: 'var(--text-disabled)', fontFamily: 'var(--font-mono)' } }, `FP-T-${1000 + r.id}`),
+        ]),
+      ])
+    },
   },
   {
     key: 'contactName', header: '联系人', width: '84px',
@@ -131,7 +151,10 @@ const TABLE_COLUMNS = computed(() => [
   },
 ])
 
-const sortedFiltered = computed(() => fpSortRows(filtered.value, sort.value, TABLE_COLUMNS.value))
+// sort=null → 家族聚合名称序(默认视图);有 sort → 普通全表排序(聚合让位)
+const sortedFiltered = computed(() =>
+  sort.value ? fpSortRows(filtered.value, sort.value, TABLE_COLUMNS.value) : familySort(filtered.value),
+)
 const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.length / pageSize)))
 const safePage = computed(() => Math.min(page.value, pageCount.value))
 const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize, safePage.value * pageSize))
@@ -170,21 +193,23 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0户 / 没有匹配 -->
     <template v-if="summary">
-    <!-- 2. KPI bar -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(204px,1fr));gap:16px">
-      <KpiCard label="在租租户" :value="String(summary.tenantActive)" tint="slate">
+    <!-- 2. KPI 左栏 + 主内容(spec 表格溢出治理 §3,三屏统一样式) -->
+    <div class="mx-body">
+    <aside class="mx-kpirail">
+      <KpiCard label="在租租户" :value="String(summary.tenantActive)" tint="slate" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="sky">
+      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="sky" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue">
+      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('coins')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="合同将到期" :value="String(summary.expiringTenants)" delta="户需续签" trend="down" tint="cyan">
+      <KpiCard label="合同将到期" :value="String(summary.expiringTenants)" delta="户需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('clock')" :size="16" /></template>
       </KpiCard>
-    </div>
+    </aside>
+    <div class="mx-main">
 
     <!-- 3. Phase tabs + toolbar -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -233,6 +258,8 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       :total="filtered.length"
       @page="page = $event"
     />
+    </div>
+    </div>
     </template>
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
@@ -253,3 +280,15 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
                      @close="editDlg = false" @updated="onTenantUpdated" />
   </div>
 </template>
+
+<style scoped>
+/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
+.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
+.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
+@media (max-width:1100px) {
+  .mx-body { grid-template-columns:1fr; gap:16px; }
+  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
+  .mx-kpirail > * { flex:1 1 160px; }
+}
+</style>

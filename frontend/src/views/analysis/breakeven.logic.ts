@@ -2,6 +2,7 @@
 // CVP 模型(固定/变动拆分系数假设)+ ECharts option(CVP 线 markPoint 保本/markArea 盈利区、
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。
 import type { AnalysisS10Row } from '@/api/analysis'
+import { fnum } from '@/components/ana/anaFmt'
 
 export interface BeModel {
   rev: number; cost: number
@@ -24,6 +25,25 @@ export function calcBe(rev: number, cost: number, frRaw: number): BeModel {
   const beRev = cm > 0 ? fixed / cm : null
   const bePct = rev > 0 && beRev != null ? +(beRev / rev * 100).toFixed(1) : null
   return { rev, cost, fr, fixed, vari, varRate, cm, beRev, bePct, safety: bePct != null ? +(100 - bePct).toFixed(1) : null, profit: rev - cost }
+}
+
+export interface BeAnchor { month: number | null; allNegative: boolean }
+
+/** §C4 口径月锚:选中月有覆盖 → 不动;否则退最近一个收入>0 的覆盖月(原退「最新覆盖月」会落负收入月,
+ *  CVP 收入线倒挂);全负 → 维持最新覆盖月并标记 allNegative(主区空态提示)。months 为升序覆盖月号 1-12。 */
+export function anchorMonth(months: number[], revenue: (number | null)[], selected: number | null): BeAnchor {
+  if (!months.length) return { month: null, allNegative: false }
+  if (selected != null && months.includes(selected)) return { month: selected, allNegative: false }
+  for (let i = months.length - 1; i >= 0; i--) {
+    if ((revenue[months[i] - 1] ?? 0) > 0) return { month: months[i], allNegative: false }
+  }
+  return { month: months[months.length - 1], allNegative: true }
+}
+
+/** §C4 人话结论行(数据模板,spec 定稿):保本有解给保本线+口径月达成度;无解(bePct=null)给替代句。 */
+export function conclusionText(be: BeModel, ym: string): string {
+  if (be.bePct == null || be.beRev == null) return '当前口径月收入为负,保本点不适用——见期间横幅'
+  return `按当前成本结构,月收入 ≥ ¥${fnum(be.beRev / 10000)}万 即保本;口径月(${ym})收入 ¥${fnum(be.rev / 10000)}万,达成 ${(be.rev / be.beRev * 100).toFixed(0)}%`
 }
 
 export interface S10Used { ym: string; total: number; elec: number; water: number }

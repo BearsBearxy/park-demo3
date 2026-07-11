@@ -4,7 +4,7 @@
 //   售电 Σ(elec_basic+elec_std+elec_maint)=6,510,495.38(剔期别汇总行)、办公 Σelec_qty*elec_price=6,265.23、
 //   充电 Σcost=27,067.23 → 轧差 = 5,597,568.82 − 6,543,827.84 = −946,259.02(毛差记流入侧)。
 import { describe, expect, it } from 'vitest'
-import { anchorS10Ym, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, HUB, type AmtMonth } from './parkEnergy.logic'
+import { anchorS10Ym, boardOfSankeyClick, boardSeries, buildAmtMonths, buildSankey, buildSankeyReading, HUB, type AmtMonth } from './parkEnergy.logic'
 
 // dev 库 SQL 月度真值(见头注释)
 const SQL_MONTHS: AmtMonth[] = [
@@ -54,6 +54,23 @@ describe('buildSankey', () => {
   it('选中期无 s10 → null(空态,不画假图)', () => {
     expect(buildSankey(SQL_MONTHS, ['2025-03'])).toBeNull()
     expect(buildSankey(SQL_MONTHS, [])).toBeNull()
+  })
+})
+
+describe('buildSankeyReading(C6 人话句,金额取运行时数据)', () => {
+  it('residual<0(毛差)→ 结尾「为转供加价收益」', () => {
+    const s = buildSankey(SQL_MONTHS, COVERED)!
+    expect(buildSankeyReading(s)).toBe(
+      '本期园区买电 ¥447.3万,光伏自用 ¥112.4万;向租户售电 ¥651.0万,办公/充电自用 ¥3.3万;差额 ¥94.6万 为转供加价收益')
+  })
+
+  it('residual>0(损耗)→ 结尾「为线损与未计口径」', () => {
+    const s = buildSankey(
+      [{ ym: '2025-01', buyCost: 2_000_000, pvSelfAmt: 500_000, s10Elec: 1_500_000, officeAmt: 200_000, chgCost: 100_000 }],
+      ['2025-01'],
+    )!
+    expect(buildSankeyReading(s)).toBe(
+      '本期园区买电 ¥200.0万,光伏自用 ¥50.0万;向租户售电 ¥150.0万,办公/充电自用 ¥30.0万;差额 ¥70.0万 为线损与未计口径')
   })
 })
 

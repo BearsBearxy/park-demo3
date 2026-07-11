@@ -1,7 +1,7 @@
 // churn.logic 纯函数单测(v2 抽出;口径=v1:缴费40/收入30/用能30 缺项归一,gone10 记满分)
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
-import { buildChurnModel, churnFlowOption, churnScatterOption } from './churn.logic'
+import { buildChurnModel, churnFlowOption, churnScatterOption, clampPts, type ChurnRow } from './churn.logic'
 
 function led(p: Partial<AnalysisLedgerRow>): AnalysisLedgerRow {
   return {
@@ -78,6 +78,27 @@ describe('buildChurnModel', () => {
   })
 })
 
+describe('clampPts(C5 散点 x 限幅)', () => {
+  it('正超界 → 钉在 hi 且标记 clamped', () => {
+    const [p] = clampPts([{ revMom: 500 }])
+    expect(p.x).toBe(300)
+    expect(p.clamped).toBe(true)
+    expect(p.revMom).toBe(500)   // 真值不动
+  })
+
+  it('负超界 → 钉在 lo 且标记 clamped', () => {
+    const [p] = clampPts([{ revMom: -150 }])
+    expect(p.x).toBe(-100)
+    expect(p.clamped).toBe(true)
+  })
+
+  it('界内 → 原值不动、不标记', () => {
+    const [p] = clampPts([{ revMom: -20 }])
+    expect(p.x).toBe(-20)
+    expect(p.clamped).toBe(false)
+  })
+})
+
 describe('ECharts option 构建', () => {
   const ledger = [
     led({ tenantName: 'A', month: 1, receivable: 100, collected: 100 }),
@@ -98,6 +119,24 @@ describe('ECharts option 构建', () => {
     expect(opt.series[0].data[0].value).toEqual([-20, 50])
     expect(opt.series[0].markLine.data[0].xAxis).toBe(-20)         // 均值(单点)
     expect(opt.series[0].markLine.data[1].yAxis).toBe(m.overallRate)
+  })
+
+  it('超界点钉边:value 用钉边值、rawMom 存真值、symbol 换三角', () => {
+    const crow = (p: Partial<ChurnRow>): ChurnRow => ({
+      name: 'X', company: '甲公司', recv: 100, payRate: 50, payScore: 50,
+      revMom: 0, revScore: 0, elecScore: 0, gone10: false, score: 10, tier: 'low', ...p,
+    })
+    const opt = churnScatterOption([crow({ revMom: 500 }), crow({ name: 'Y', revMom: -20 })], 50) as {
+      series: { data: { value: [number, number]; rawMom: number; clamped: boolean; symbol: string }[] }[]
+    }
+    const [px, py] = opt.series[0].data
+    expect(px.value[0]).toBe(300)          // 钉边
+    expect(px.rawMom).toBe(500)            // tooltip 真值
+    expect(px.clamped).toBe(true)
+    expect(px.symbol).toBe('triangle')
+    expect(py.value[0]).toBe(-20)          // 界内不动
+    expect(py.clamped).toBe(false)
+    expect(py.symbol).toBe('circle')
   })
 
   it('正负柱:新出现为正、消失取负', () => {

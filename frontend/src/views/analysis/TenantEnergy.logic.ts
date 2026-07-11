@@ -2,6 +2,7 @@
 // 口径与 v1 完全一致:s10 费用金额(元),电=基本+标准+维护电费、水=标准+维护水费;
 // 「本期」=≤所选期间的最近 s10 月;窗口=≤本期的全部 s10 月;台账应收/实收沿 AnalysisLedgerRow。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
+import { familyRootOf } from '@/analysis/anaFamily'
 import { mean as aMean, std as aStd } from '@/components/ana/anaFmt'
 
 export interface TenantRow {
@@ -45,6 +46,32 @@ export function buildTenantRows(
       monthlyRent: rentByName.get(name) ?? null,
     })
   }
+  out.sort((a, b) => b.cur - a.cur)
+  out.forEach((r, i) => { r.rank = i + 1 })
+  return out
+}
+
+// ── 家族榜单(方案A,spec §B/W3):仅左列榜单按家族根名聚合重排;KPI/Top20/散点口径不动 ──
+export interface FamilyRow {
+  root: string; cur: number
+  /** 本期有 s10 流水的成员数(>1 才显「含N户」徽标) */
+  memberCount: number
+  /** 主租户:根自身在本期截面则取根,否则取本期金额最大的成员;点击家族行降级选中该户 */
+  mainName: string
+  phase: number; rank: number
+}
+
+/** 按家族根名把本期金额加总重排(s10 金额加总,无净额口径问题);familyMap 见 anaFamily。 */
+export function buildFamilyRows(rows: TenantRow[], familyMap: Map<string, string>): FamilyRow[] {
+  const acc = new Map<string, TenantRow[]>()
+  for (const r of rows) {
+    const root = familyRootOf(familyMap, r.name)
+    acc.set(root, [...(acc.get(root) ?? []), r])
+  }
+  const out: FamilyRow[] = [...acc.entries()].map(([root, members]) => {
+    const main = members.find((m) => m.name === root) ?? members.reduce((a, b) => (b.cur > a.cur ? b : a))
+    return { root, cur: members.reduce((s, m) => s + m.cur, 0), memberCount: members.length, mainName: main.name, phase: main.phase, rank: 0 }
+  })
   out.sort((a, b) => b.cur - a.cur)
   out.forEach((r, i) => { r.rank = i + 1 })
   return out
