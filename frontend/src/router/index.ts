@@ -36,6 +36,7 @@ const ANA_VIEWS: Record<string, RouteRecordRaw['component']> = {
   'fin-pnl': () => import('@/views/analysis/FinPnlView.vue'),
   'fin-balance': () => import('@/views/analysis/FinBalanceView.vue'),
   'fin-cashflow': () => import('@/views/analysis/FinCashflowView.vue'),
+  'fin-expense': () => import('@/views/analysis/ExpenseView.vue'),
   'churn': () => import('@/views/analysis/ChurnView.vue'),
   'expiry': () => import('@/views/analysis/ExpiryView.vue'),
   'breakeven': () => import('@/views/analysis/BreakevenView.vue'),

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
+import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -87,6 +87,20 @@ describe('buildFamilyRows(spec §B/W3 家族榜单)', () => {
     const fr = buildFamilyRows(rows, fam)
     expect(fr.find((r) => r.root === '广联')).toMatchObject({ cur: 200, memberCount: 2, mainName: '广联（饭堂）' })
     expect(fr.find((r) => r.root === '已注销租户')).toMatchObject({ cur: 999, memberCount: 1, mainName: '已注销租户' })
+  })
+})
+
+describe('splitLogPoints(spec §T2 散点对数轴数据准备)', () => {
+  const pts = [{ n: '零租金户', v: 0 }, { n: '正常户', v: 0.8 }, { n: '负值户', v: -3 }]
+  it('log:金额≤0 的点过滤,hidden 计数披露', () => {
+    const r = splitLogPoints(pts, (p) => p.v, true)
+    expect(r.shown.map((p) => p.n)).toEqual(['正常户'])
+    expect(r.hidden).toBe(2)
+  })
+  it('线性:全量不过滤,hidden=0', () => {
+    const r = splitLogPoints(pts, (p) => p.v, false)
+    expect(r.shown).toHaveLength(3)
+    expect(r.hidden).toBe(0)
   })
 })
 

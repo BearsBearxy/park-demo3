@@ -23,7 +23,7 @@ import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, tenantSeries } from './TenantEnergy.logic'
+import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const period = usePeriod()
 const router = useRouter()
@@ -207,6 +207,9 @@ function onTopClick(params: unknown) {
 
 // ── 费额 vs 月租散点(点点选中) ──
 const scatterRows = computed(() => rowsCur.value.filter((r) => r.monthlyRent != null))
+// spec §T2:x 轴(月租)默认对数(小户与大户同图可读);log 下月租≤0 无法取对数 → 过滤并在卡头 hint 披露计数
+const xLog = ref(true)
+const scatterSplit = computed(() => splitLogPoints(scatterRows.value, (r) => r.monthlyRent as number, xLog.value))
 const scatterOption = computed<object>(() => {
   const maxTotal = Math.max(...scatterRows.value.map((r) => r.winTotal), 1)
   return {
@@ -218,11 +221,11 @@ const scatterOption = computed<object>(() => {
         return `${d.name}<br/>月租 ${d.value[0]}万 · 本期${metricLabel.value} ${fint(d.value[1])} 元<br/>期区 ${phaseName(d.phase ?? 1)}`
       },
     },
-    xAxis: { type: 'value', name: '月租金(万)', nameLocation: 'middle', nameGap: 26 },
+    xAxis: { type: xLog.value ? 'log' : 'value', name: '月租金(万)', nameLocation: 'middle', nameGap: 26 },
     yAxis: { type: 'value', name: `本期${metricLabel.value}(元)`, axisLabel: { formatter: (v: number) => fint(v) } },
     series: [{
       type: 'scatter',
-      data: scatterRows.value.map((r) => ({
+      data: scatterSplit.value.shown.map((r) => ({
         name: r.name, phase: r.phase,
         value: [+((r.monthlyRent as number) / 10000).toFixed(2), +r.cur.toFixed(0)],
         symbolSize: 6 + Math.sqrt(r.winTotal / maxTotal) * 18,
@@ -379,7 +382,16 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <AnaEChart :option="topOption" :height="470" @chart-click="onTopClick" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">{{ metricLabel }} vs 月租金</span><span class="hint">点点选中 · 气泡=窗口累计 · 虚线=户均</span></div>
+          <div class="av2-card-h">
+            <span class="t">{{ metricLabel }} vs 月租金</span>
+            <span class="te2-lh">
+              <span class="hint">点点选中 · 气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template><template v-if="xLog && scatterSplit.hidden"> · 0租金户 {{ scatterSplit.hidden }} 户未显示</template></span>
+              <span class="te2-fam-seg" role="group" aria-label="横轴刻度">
+                <button :class="{ on: xLog }" @click="xLog = true">对数</button>
+                <button :class="{ on: !xLog }" @click="xLog = false">线性</button>
+              </span>
+            </span>
+          </div>
           <AnaEChart :option="scatterOption" :height="400" @chart-click="onScatterClick" />
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>

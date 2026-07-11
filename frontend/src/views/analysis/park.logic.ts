@@ -3,6 +3,9 @@
 // 分期聚合剔除无合同分期。金额单位:rentWan = 万元,avgRent = 元。
 // 结构化最小类型(BuildingDTO/ContractDTO 为其超集),便于单测小夹具。
 
+// 散点对数轴数据准备(spec §T2)与 tenant-energy 共用一套实现 → 同目录复用再导出(单测在 TenantEnergy.logic.spec.ts)
+export { splitLogPoints } from './TenantEnergy.logic'
+
 export interface BuildingLike { id: number; name: string; phase: number; phaseName: string }
 export interface ContractLike { buildingId: number; tenantId: number; monthlyRent: number; status: string }
 

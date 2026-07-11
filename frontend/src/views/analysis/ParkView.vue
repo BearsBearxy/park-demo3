@@ -12,7 +12,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { fint, fnum } from '@/components/ana/anaFmt'
 import { fetchBuildings, fetchContracts, fetchTenants } from '@/analysis/anaData'
-import { buildBuildingRows, buildPhaseRows, liveContracts } from './park.logic'
+import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import type { BuildingDTO } from '@/types/building'
 import type { ContractDTO } from '@/types/contract'
@@ -99,6 +99,9 @@ const donutOption = computed(() => ({
 }))
 
 // ── 楼栋×租户散点(x=租户数,y=月租万;气泡大小=合同数,颜色=分期) ──
+// spec §T2:y 轴(月租,万)默认对数(小栋与大栋同图可读);log 下月租≤0 无法取对数 → 过滤并在卡头 hint 披露计数
+const yLog = ref(true)
+const pkScatter = computed(() => splitLogPoints(rows.value, (r) => r.rentWan, yLog.value))
 const scatterOption = computed(() => ({
   tooltip: {
     formatter: (p: { name: string; value: [number, number] }) => {
@@ -108,10 +111,10 @@ const scatterOption = computed(() => ({
   },
   grid: { left: 48, right: 18, top: 16, bottom: 34 },
   xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 10.5 } },
-  yAxis: { type: 'value', name: '月租(万)', nameTextStyle: { fontSize: 10.5 } },
+  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 10.5 } },
   series: [{
     type: 'scatter',
-    data: rows.value.map((r) => ({
+    data: pkScatter.value.shown.map((r) => ({
       name: r.name, value: [r.tenants, +r.rentWan.toFixed(2)],
       symbolSize: 8 + Math.sqrt(r.contracts) * 2.4,
       itemStyle: { color: phaseColor(r.phase), opacity: 0.85 },
@@ -176,7 +179,16 @@ const scatterOption = computed(() => ({
         </div>
 
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">楼栋×租户散点</span><span class="hint">气泡＝合同数 · 颜色＝分期</span></div>
+          <div class="av2-card-h">
+            <span class="t">楼栋×租户散点</span>
+            <span class="pk-lh">
+              <span class="hint">气泡＝合同数 · 颜色＝分期<template v-if="yLog"> · 对数刻度:小栋与大栋同图可读</template><template v-if="yLog && pkScatter.hidden"> · 月租0楼栋 {{ pkScatter.hidden }} 栋未显示</template></span>
+              <span class="pk-log-seg" role="group" aria-label="纵轴刻度">
+                <button :class="{ on: yLog }" @click="yLog = true">对数</button>
+                <button :class="{ on: !yLog }" @click="yLog = false">线性</button>
+              </span>
+            </span>
+          </div>
           <AnaEChart :option="scatterOption" :height="252" />
         </div>
 
@@ -199,6 +211,11 @@ const scatterOption = computed(() => ({
 .pk-tbl-wrap { max-height: 296px; overflow: auto; }
 .pk-sum { margin-top: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .pk-clear { border: none; background: transparent; color: var(--text-link); font-size: 11px; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
+/* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 TenantEnergyView 惯例) */
+.pk-lh { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pk-log-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }
+.pk-log-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 10px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
+.pk-log-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28, 28, 28, .1); }
 .pk-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; justify-content: center; }
 .pk-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
 .pk-leg .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }

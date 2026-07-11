@@ -98,6 +98,13 @@ export function tenantSeries(row: TenantRow | null, months: string[]): (number |
   return months.map((m) => (row?.vals.has(m) ? +(row.vals.get(m) as number).toFixed(0) : null))
 }
 
+// ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样 ──
+export function splitLogPoints<T>(rows: T[], valueOf: (r: T) => number, log: boolean): { shown: T[]; hidden: number } {
+  if (!log) return { shown: rows, hidden: 0 }
+  const shown = rows.filter((r) => valueOf(r) > 0)
+  return { shown, hidden: rows.length - shown.length }
+}
+
 export interface PayRow { name: string; recv: number; coll: number; bal: number; rate: number; status: 'normal' | 'partial' | 'none' }
 
 /** 台账某期各户应收/实收/期末结余(v1 payRows 语义原样,按租户名跨公司聚合)。 */
