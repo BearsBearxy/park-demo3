@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { agingBuckets, arrearsOf, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
+import { agingBuckets, arrearsOf, collectionRows, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
 
 describe('rcGroupOption', () => {
   it('两系列(应收/实收)按期折万,类目=ym', () => {
@@ -148,5 +148,60 @@ describe('agingBuckets(欠费账龄 FIFO 分桶,月龄距全局最新台账月)'
     expect(c1.buckets[0].amount).toBe(0)
     expect(c1.buckets[1]).toMatchObject({ amount: 180, tenantCount: 2 })
     expect(c1.total).toBe(180)
+  })
+})
+
+describe('collectionRows(催缴清单:逐户桶明细,与 agingBuckets 同源 FIFO)', () => {
+  it('逐户展开 4 桶+合计,欠费合计降序;无余额户不入清单', () => {
+    const rows = [
+      row({ tenantName: 'A', month: 8, receivable: 100 }),                       // 月龄2 → 桶1
+      row({ tenantName: 'A', month: 10, receivable: 50 }),                       // 月龄0 → 桶0
+      row({ tenantName: 'B', month: 10, receivable: 900 }),
+      row({ tenantName: 'C', month: 9, receivable: 100 }),
+      row({ tenantName: 'C', month: 10, receivable: 0, collected: 100 }),        // 冲净 → 不入
+    ]
+    const out = collectionRows(rows, '0')
+    expect(out.map((r) => r.tenantName)).toEqual(['B', 'A'])
+    expect(out[1]).toMatchObject({ buckets: [50, 100, 0, 0], total: 150, oldestYm: '2025-08' })
+    expect(out[0]).toMatchObject({ buckets: [900, 0, 0, 0], total: 900, oldestYm: '2025-10' })
+  })
+
+  it('期初旧账落 >6月 桶且最早欠费月标「期初旧账」;公司过滤生效', () => {
+    const rows = [
+      row({ tenantName: 'A', month: 10, balancePrev: 200, receivable: 30 }),
+      row({ tenantName: 'E', companyId: 2, companyName: '乙公司', month: 10, receivable: 60 }),
+    ]
+    const out = collectionRows(rows, '1')
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ buckets: [30, 0, 0, 200], total: 230, oldestYm: '期初旧账' })
+  })
+
+  it('空输入/全额冲净均返回 [](导出按钮空态守卫依赖此契约)', () => {
+    expect(collectionRows([], '0')).toEqual([])
+    expect(collectionRows([row({ receivable: 0, collected: 100 })], '0')).toEqual([])
+  })
+
+  it('浮点冲抵残差(元含分)不产生幽灵行:≤0.005 视为结清,账龄户数同步不虚增', () => {
+    const rows = [
+      row({ tenantName: 'F', month: 9, receivable: 0.1, collected: 0 }),
+      row({ tenantName: 'F', month: 10, receivable: 0.2, collected: 0.3 }),   // 0.1+0.2−0.3 留 1e-17 级残差
+    ]
+    expect(collectionRows(rows, '0')).toEqual([])
+    const a = agingBuckets(rows, '0')
+    expect(a.total).toBe(0)
+    expect(a.buckets.every((b) => b.tenantCount === 0)).toBe(true)
+  })
+
+  it('桶合计与 agingBuckets 全等(同源口径不漂移)', () => {
+    const rows = [
+      row({ tenantName: 'A', month: 7, receivable: 100 }),
+      row({ tenantName: 'A', month: 10, receivable: 0, collected: 40 }),
+      row({ tenantName: 'B', month: 10, balancePrev: 500, receivable: 80 }),
+    ]
+    const list = collectionRows(rows, '0')
+    const { buckets, total } = agingBuckets(rows, '0')
+    for (let i = 0; i < 4; i++)
+      expect(list.reduce((s, r) => s + r.buckets[i], 0)).toBe(buckets[i].amount)
+    expect(list.reduce((s, r) => s + r.total, 0)).toBe(total)
   })
 })

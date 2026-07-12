@@ -22,9 +22,11 @@ import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, fetchTenants, ty
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { fint, fnum } from '@/components/ana/anaFmt'
 import { waterfallOption, type WfItem } from './finPnl.logic'
-import { agingBuckets, arrearsOf, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
+import { agingBuckets, arrearsOf, collectionRows, mergeFamilyRows, rcGroupOption } from './finCashflow.logic'
+import { exportCollectionList } from './collectionExcel'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { CompanyDTO } from '@/types/ledger'
+import type { TenantDTO } from '@/types/tenant'
 
 const ready = ref(false)
 
@@ -42,6 +44,7 @@ const companyLabel = computed(() =>
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const s10 = ref<S10PhaseMonthly | null>(null)
 const famMap = ref(new Map<string, string>())
+const tenants = ref<TenantDTO[]>([])   // 催缴清单导出查联系方式
 onMounted(async () => {
   try {
     const [cos, rows, pm, tns] = await Promise.all([
@@ -50,6 +53,7 @@ onMounted(async () => {
     ledgerRows.value = rows
     s10.value = pm
     famMap.value = buildFamilyMap(tns)
+    tenants.value = tns
   } catch { /* 拉取失败 → 空态卡兜底 */ } finally {
     ready.value = true
   }
@@ -158,6 +162,18 @@ const aging = computed(() => agingBuckets(famSrc.value, cid.value))
 // 4 桶固定色阶,浅→深红(≤1月 → >6月);零额段不渲
 const AGING_COLORS = ['#F5D9D8', '#EFB7B5', '#E88E8B', '#E24B4A']
 
+// 催缴清单一键导出(审计建议#1):口径与账龄卡同源(famSrc+cid 同一 FIFO),含联系方式,金额为元
+async function onExportCollection() {
+  const rows = collectionRows(famSrc.value, cid.value)
+  if (!rows.length) { alert('当前口径下无欠费,无需催缴'); return }
+  try {
+    await exportCollectionList(rows, tenants.value, {
+      latestYm: allLedgerYms.value[allLedgerYms.value.length - 1] ?? '',
+      familyMode: famOn.value, companyLabel: companyLabel.value,
+    })
+  } catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
+}
+
 // 深链必须 openFresh:KeepAlive 缓存的 LedgerView 只在 onMounted 消费 query(同 ChurnView.goLedger)
 const router = useRouter()
 const tabs = useTabsStore()
@@ -242,6 +258,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
                 <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
                 <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
               </div>
+              <button class="fin-link" title="逐户账龄明细+联系方式,金额为元" @click="onExportCollection">导出催缴清单</button>
             </span>
           </div>
           <div class="fin-age-bar">

@@ -28,32 +28,33 @@ export const AGING_LABELS = ['≤1月', '2~3月', '4~6月', '>6月'] as const
 
 export interface AgingBucket { label: string; amount: number; tenantCount: number }
 
+interface ArrearEntry { idx: number; amount: number; opening: boolean }
+interface ArrearGroup { companyName: string; tenantName: string; queue: ArrearEntry[] }
+
 /**
- * 欠费账龄(spec §D):租户×公司分组、月升序;组内最早覆盖月的 balancePrev>0 作「期初旧账」
- * 入队(视为最老);逐月 net=应收−实收,>0 入队 / <0 以 |net| FIFO 冲抵队首最旧(可跨多笔,
- * 超出队列的冲抵额忽略);余队按月龄分桶。月龄基准=全局最新台账月,不随公司过滤(与覆盖窗口
- * 徽章同口径);cid 过滤口径同 arrearsOf。tenantCount=桶内有余额的去重租户(租户×公司)数。
+ * FIFO 冲抵核心(agingBuckets/collectionRows 共用):租户×公司分组、月升序;组内最早覆盖月的
+ * balancePrev>0 作「期初旧账」入队(视为最老);逐月 net=应收−实收,>0 入队 / <0 以 |net| FIFO
+ * 冲抵队首最旧(可跨多笔,超出队列的冲抵额忽略)。返回仍有余额的组队列 + 全局最新台账月
+ * (月龄基准,不随公司过滤,与覆盖窗口徽章同口径);cid 过滤口径同 arrearsOf。
  */
-export function agingBuckets(rows: AnalysisLedgerRow[], cid: string): { buckets: AgingBucket[]; total: number } {
-  const buckets: AgingBucket[] = AGING_LABELS.map((label) => ({ label, amount: 0, tenantCount: 0 }))
+export function arrearQueues(rows: AnalysisLedgerRow[], cid: string): { groups: ArrearGroup[]; latest: number } {
   let latest = -1
   for (const r of rows) latest = Math.max(latest, r.year * 12 + r.month)
-  if (latest < 0) return { buckets, total: 0 }
+  if (latest < 0) return { groups: [], latest }
 
-  const groups = new Map<string, AnalysisLedgerRow[]>()
+  const byKey = new Map<string, AnalysisLedgerRow[]>()
   for (const r of rows) {
     if (cid !== '0' && String(r.companyId) !== cid) continue
-    const g = groups.get(r.companyId + '|' + r.tenantName)
+    const g = byKey.get(r.companyId + '|' + r.tenantName)
     if (g) g.push(r)
-    else groups.set(r.companyId + '|' + r.tenantName, [r])
+    else byKey.set(r.companyId + '|' + r.tenantName, [r])
   }
 
-  const tenantSets = buckets.map(() => new Set<string>())
-  let total = 0
-  for (const [key, list] of groups) {
+  const groups: ArrearGroup[] = []
+  for (const list of byKey.values()) {
     list.sort((a, b) => a.year * 12 + a.month - (b.year * 12 + b.month))
     // FIFO 欠费队列,队首最旧;opening=期初旧账(记账早于覆盖窗口,月龄不可知 → 固定 >6月)
-    const queue: { idx: number; amount: number; opening: boolean }[] = []
+    const queue: ArrearEntry[] = []
     const firstIdx = list[0].year * 12 + list[0].month
     const opening = list.reduce((s, r) => s + (r.year * 12 + r.month === firstIdx ? r.balancePrev : 0), 0)
     if (opening > 0) queue.push({ idx: firstIdx, amount: opening, opening: true })
@@ -70,17 +71,66 @@ export function agingBuckets(rows: AnalysisLedgerRow[], cid: string): { buckets:
         }
       }
     }
-    for (const e of queue) {
-      if (e.amount <= 0) continue
-      const age = latest - e.idx
-      const bi = e.opening ? 3 : age <= 1 ? 0 : age <= 3 ? 1 : age <= 6 ? 2 : 3
+    // >0.005(半分)过滤浮点冲抵残差:元含分金额多次 FIFO 减法可留 1e-13 级正残差,
+    // 无阈值会让已结清户以幽灵行进入催缴清单/虚增账龄户数(容差同 ReconService 0.005)
+    const remain = queue.filter((e) => e.amount > 0.005)
+    if (remain.length) groups.push({ companyName: list[0].companyName, tenantName: list[0].tenantName, queue: remain })
+  }
+  return { groups, latest }
+}
+
+/** 队列条目 → 桶号(0..3):期初旧账固定 >6月,其余按距 latest 的月龄。 */
+const bucketOf = (e: ArrearEntry, latest: number): number => {
+  if (e.opening) return 3
+  const age = latest - e.idx
+  return age <= 1 ? 0 : age <= 3 ? 1 : age <= 6 ? 2 : 3
+}
+
+/** 欠费账龄(spec §D):FIFO 余队按月龄分 4 桶。tenantCount=桶内有余额的去重租户(租户×公司)数。 */
+export function agingBuckets(rows: AnalysisLedgerRow[], cid: string): { buckets: AgingBucket[]; total: number } {
+  const buckets: AgingBucket[] = AGING_LABELS.map((label) => ({ label, amount: 0, tenantCount: 0 }))
+  const { groups, latest } = arrearQueues(rows, cid)
+  const tenantSets = buckets.map(() => new Set<string>())
+  let total = 0
+  for (const g of groups) {
+    for (const e of g.queue) {
+      const bi = bucketOf(e, latest)
       buckets[bi].amount += e.amount
-      tenantSets[bi].add(key)
+      tenantSets[bi].add(g.companyName + '|' + g.tenantName)
       total += e.amount
     }
   }
   buckets.forEach((b, i) => { b.tenantCount = tenantSets[i].size })
   return { buckets, total }
+}
+
+export interface CollectionRow {
+  tenantName: string
+  companyName: string
+  buckets: [number, number, number, number]   // 4 桶金额,序同 AGING_LABELS
+  total: number
+  oldestYm: string                            // 最早欠费月 'YYYY-MM';期初旧账 → '期初旧账'
+}
+
+/**
+ * 催缴清单(审计建议#1):逐户(或家族合并后逐族)FIFO 余额按桶展开,欠费合计降序。
+ * 口径与 agingBuckets 完全同源(共用 arrearQueues);按家族口径时 rows 先过 mergeFamilyRows。
+ */
+export function collectionRows(rows: AnalysisLedgerRow[], cid: string): CollectionRow[] {
+  const { groups, latest } = arrearQueues(rows, cid)
+  const out: CollectionRow[] = []
+  for (const g of groups) {
+    const buckets: [number, number, number, number] = [0, 0, 0, 0]
+    for (const e of g.queue) buckets[bucketOf(e, latest)] += e.amount
+    const oldest = g.queue[0]   // 队首最旧(期初旧账若存在必为队首)
+    out.push({
+      tenantName: g.tenantName, companyName: g.companyName,
+      buckets, total: buckets[0] + buckets[1] + buckets[2] + buckets[3],
+      oldestYm: oldest.opening ? '期初旧账'
+        : Math.floor((oldest.idx - 1) / 12) + '-' + String(((oldest.idx - 1) % 12) + 1).padStart(2, '0'),
+    })
+  }
+  return out.sort((a, b) => b.total - a.total)
 }
 
 // ── 家族映射器(spec §B/W2 方案A):按家族口径时先过此函数,再走现有 arrearsOf/agingBuckets ──
