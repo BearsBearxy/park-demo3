@@ -63,6 +63,15 @@ docker compose logs backend | grep -E "Migrating|viewer|Started"
 数据说明：全新库由 Flyway 自动建表并灌入**演示数据**（演示楼栋/租户/合同/台账），测试者开箱即有数据可点。
 不是你本机的真实数据——真实数据涉及 313 户租户财务明细，放公网前需单独决策（见第 7 节）。
 
+## 5.5 自动发布（CD，2026-07-13 起启用）
+
+推送到 master 且 CI 双职全绿后，GitHub Actions 自动发布到云服务器（整树替换、保留 .env、
+数据卷不动），随后从公网做健康检查，失败会把该次运行标红并通知。
+**日常更新只需：改代码 → git push → 等 Actions 页全绿**，手工的 tar/scp/up --build（下节）
+从此只作为 CD 故障时的后备手段。回滚：服务器上保留上一版于 /opt/demo3.prev，
+`cd /opt && rm -rf demo3 && mv demo3.prev demo3 && cd demo3 && docker compose up -d --build`。
+凭据在仓库 Settings → Secrets（DEPLOY_HOST/DEPLOY_SSH_KEY），换服务器时更新这两项即可。
+
 ## 6. 日常命令（都在 /opt/demo3 下）
 
 ```bash

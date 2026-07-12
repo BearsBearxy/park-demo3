@@ -39,3 +39,41 @@ jobs:
       # build 含 vue-tsc 类型门禁(tsconfig.app.json 实跑)
       - run: npm run build
       - run: npm run test
+
+  # CD:master 推送且双职全绿后自动发布到云服务器。整树替换(保留 .env,数据卷不动),
+  # 上一版留 /opt/demo3.prev 可手工回滚(mv demo3.prev demo3 && docker compose up -d --build)。
+  # 凭据:仓库 secrets DEPLOY_HOST / DEPLOY_SSH_KEY(专用部署密钥,公钥在服务器 authorized_keys)。
+  deploy:
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency: deploy          # 连续推送串行部署,避免互踩
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish to server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && echo "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          tar --exclude=./.git -czf /tmp/demo3.tgz .
+          scp -i ~/.ssh/deploy /tmp/demo3.tgz root@"$HOST":/opt/demo3.tgz
+          ssh -i ~/.ssh/deploy root@"$HOST" '
+            set -e
+            cd /opt && rm -rf demo3.staging && mkdir demo3.staging
+            tar xzf demo3.tgz -C demo3.staging && rm demo3.tgz
+            cp demo3/.env demo3.staging/.env
+            rm -rf demo3.prev && mv demo3 demo3.prev && mv demo3.staging demo3
+            cd demo3 && docker compose up -d --build
+          '
+      - name: Health check (public)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://$HOST/" || true)
+            [ "$code" = "200" ] && echo "site healthy" && exit 0
+            sleep 5
+          done
+          echo "site NOT healthy after deploy" && exit 1
