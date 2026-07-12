@@ -155,7 +155,7 @@ const donutOption = computed<object>(() => {
     legend: { bottom: 0, formatter: (name: string) => `${name} ${pct(byLabel.get(name) ?? 0)}%` },
     series: [{
       type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
-      label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 },
+      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
       data: compo.value.map((d) => ({ name: d.label, value: +(d.value / 10000).toFixed(2) })),
     }],
   }

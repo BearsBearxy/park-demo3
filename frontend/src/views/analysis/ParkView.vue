@@ -94,6 +94,7 @@ const donutOption = computed(() => ({
   series: [{
     type: 'pie', radius: ['48%', '74%'], center: ['50%', '50%'],
     label: { fontSize: 11, formatter: '{b}\n{d}%' },
+    itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
     data: phases.value.map((p) => ({ name: p.name, value: +p.rentWan.toFixed(2), itemStyle: { color: phaseColor(p.phase) } })),
   }],
 }))

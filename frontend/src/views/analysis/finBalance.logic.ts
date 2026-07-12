@@ -26,7 +26,7 @@ export function donutOption(slices: DonutSlice[], centerValue: string, centerLab
     series: [{
       type: 'pie', radius: ['60%', '84%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },
-      itemStyle: { borderColor: '#fff', borderWidth: 1.5 },
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 1.5 },
       data: slices.map((s, i) => ({ name: s.label, value: s.value, itemStyle: { color: sliceColor(i) } })),
     }],
   }

@@ -19,6 +19,22 @@ export function buildBoxRows(groups: { name: string; values: number[] }[], div =
   })
 }
 
+export interface StripPoint { x: number; y: number; tenant: string }
+
+/**
+ * 抖动散点带(strip plot):每份合同一点,x=组序±黄金分割序列抖动(±0.16,确定性无随机,
+ * 渲染与测试稳定),y=值/div。右偏分布(单份180万合同)下配对数轴替代箱线图。
+ */
+export function buildStripPoints(groups: { name: string; items: { v: number; tenant: string }[] }[], div = 1): StripPoint[][] {
+  return groups.map((g, gi) =>
+    g.items.map((it, k) => ({
+      // 序列平移半步:k=0 恰为 0(组内首点/单点组正居中于刻度),后续点黄金分割均匀铺开
+      x: +(gi + (((k * 0.618034 + 0.5) % 1) - 0.5) * 0.32).toFixed(3),
+      y: +(it.v / div).toFixed(2),
+      tenant: it.tenant,
+    })))
+}
+
 export interface ParetoData { names: string[]; shares: number[]; cums: number[] }
 
 /** 月租帕累托:Top N 各户占比 + 逐项累计曲线(v1 语义:cum 只累加已展示项)。 */

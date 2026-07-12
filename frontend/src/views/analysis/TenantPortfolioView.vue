@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 结构与续约(tenant-portfolio)v2 — spec §二.6:KPI 条 + 期区结构环(点扇区→下方租户清单过滤联动)
-// + 月租帕累托(ECharts 柱+累计%线双轴)+ 租金分布箱线(ECharts boxplot,五数纯函数单测)+ 续约空态保留。
+// + 月租帕累托(ECharts 柱+累计%线双轴)+ 租金分布散点带(对数轴,抖动/五数纯函数单测)+ 续约空态保留。
 // 口径与 v1 完全一致(数值锚点不变):月租金=各户生效合同月租之和;主数据为当前快照,不随期间切换;
 // 类目未维护 → 按期区呈现;合同起止日期未录 → 续约风险空态;rent_area 全 0 → 面积空态。
 // 数据变换纯函数见 ./TenantPortfolio.logic.ts(单测)。
@@ -15,7 +15,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { PHASES } from '@/views/sales-income/layout'
-import { buildBoxRows, buildPareto, type BoxRow } from './TenantPortfolio.logic'
+import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
 
 const loaded = ref(false)
 const err = ref('')
@@ -109,6 +109,8 @@ const donutOption = computed<object>(() => ({
   series: [{
     type: 'pie', radius: ['52%', '78%'], center: ['50%', '50%'],
     label: { show: false },
+    // 圆角只放系列级:数据项动态描边(选中期=黑框)是选中态指示器,ECharts 逐属性合并后仍生效
+    itemStyle: { borderRadius: 6 },
     emphasis: { scaleSize: 4 },
     data: donutData.value.map((d) => ({
       name: d.label, value: +d.rent.toFixed(2), share: d.share, phase: d.phase,
@@ -126,48 +128,62 @@ function onDonutClick(params: unknown) {
   phaseFilter.value = phaseFilter.value === p.data.phase ? null : p.data.phase
 }
 
-// ── 合同月租/面积分布(ECharts boxplot 按期区;面积全 0 → 空态保留) ──
+// ── 合同月租/面积分布(抖动散点带+对数轴,按期区;面积全 0 → 空态保留) ──
+// 换掉箱线图:月租极度右偏(单份~180万合同),线性轴上箱体压扁成线;散点带让每份合同
+// 可见可悬停(巨型合同成为可识别的点),对数轴让 0.1万~180万 同图可读(同 ParkView 散点惯例)。
 const boxMode = ref<'rent' | 'area'>('rent')
 const phaseByTenantId = computed(() => new Map(tenantList.value.map((t) => [t.id, Number(t.phase) || 0])))
+const tenantNameById = computed(() => new Map(tenantList.value.map((t) => [t.id, t.companyName])))
 const boxGroups = computed(() => {
-  const g = new Map<number, number[]>()
+  const g = new Map<number, { v: number; tenant: string }[]>()
   for (const c of contracts.value) {
     if (c.status !== 'active') continue
     const v = boxMode.value === 'rent' ? c.monthlyRent : c.rentArea
-    if (v <= 0) continue
+    if (v <= 0) continue   // 对数轴取不了 ≤0,与原箱线同口径过滤
     const p = phaseByTenantId.value.get(c.tenantId) ?? 0
     const list = g.get(p) ?? []
-    list.push(v)
+    list.push({ v, tenant: tenantNameById.value.get(c.tenantId) ?? '—' })
     g.set(p, list)
   }
   return [1, 2, 3, 4, 0].filter((p) => g.has(p))
-    .map((p) => ({ name: phaseName(p), values: g.get(p) as number[] }))
+    .map((p) => ({ name: phaseName(p), items: g.get(p) as { v: number; tenant: string }[] }))
 })
 const hasArea = computed(() => contracts.value.some((c) => c.rentArea > 0))
-const boxRows = computed<BoxRow[]>(() => buildBoxRows(boxGroups.value, boxMode.value === 'rent' ? 10000 : 1))
+const boxDiv = computed(() => (boxMode.value === 'rent' ? 10000 : 1))
+const boxRows = computed<BoxRow[]>(() =>
+  buildBoxRows(boxGroups.value.map((g) => ({ name: g.name, values: g.items.map((i) => i.v) })), boxDiv.value))
+const stripPts = computed(() => buildStripPoints(boxGroups.value, boxDiv.value))
 const boxUnit = computed(() => (boxMode.value === 'rent' ? '万' : '㎡'))
 const boxOption = computed<object>(() => ({
   grid: { left: 56, right: 18, top: 16, bottom: 26 },
   tooltip: {
-    formatter: (p: { seriesType?: string; dataIndex?: number }) => {
-      const r = boxRows.value[p.dataIndex ?? -1]
-      if (!r) return ''
+    formatter: (p: { seriesIndex?: number; dataIndex?: number; data?: { tenant?: string; value?: [number, number] } }) => {
       const u = boxUnit.value
-      return `${r.name}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}<br/>区间 ${r.stats[0]}~${r.stats[4]}${u}`
+      if (p.seriesIndex === 1) {   // 中位横线 → 组统计
+        const r = boxRows.value[p.dataIndex ?? -1]
+        if (!r) return ''
+        return `${r.name}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}`
+      }
+      return p.data?.tenant ? `${p.data.tenant}<br/>${p.data.value?.[1]}${u}` : ''
     },
   },
-  xAxis: { type: 'category', data: boxRows.value.map((r) => r.name) },
-  yAxis: { type: 'value', name: boxUnit.value },
+  // x 用数值轴承载抖动,整数刻度映射期区名
+  xAxis: {
+    type: 'value', min: -0.5, max: boxRows.value.length - 0.5, interval: 1,
+    axisLabel: { formatter: (v: number) => boxRows.value[Math.round(v)]?.name ?? '' },
+    splitLine: { show: false },
+  },
+  yAxis: { type: 'log', name: boxUnit.value, minorSplitLine: { show: true } },
   series: [
     {
-      type: 'boxplot', boxWidth: ['16%', '26%'],
-      itemStyle: { color: 'rgba(133,183,235,.35)', borderColor: '#378ADD', borderWidth: 1.5 },
-      data: boxRows.value.map((r) => r.stats),
+      type: 'scatter', symbolSize: 7,
+      itemStyle: { color: 'rgba(133,183,235,.55)', borderColor: '#378ADD', borderWidth: 1 },
+      data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ value: [pt.x, pt.y], tenant: pt.tenant }))),
     },
-    {
-      type: 'scatter', symbolSize: 7, silent: true,
-      itemStyle: { color: '#fff', borderColor: '#1C1C1C', borderWidth: 2 },
-      data: boxRows.value.map((r, i) => [i, r.mean]),
+    {   // 中位横线(rect 扁标记)
+      type: 'scatter', symbol: 'rect', symbolSize: [34, 3],
+      itemStyle: { color: '#1C1C1C' },
+      data: boxRows.value.map((r, i) => [i, r.stats[2]]),
     },
   ],
 }))
@@ -253,7 +269,7 @@ const listRows = computed(() => {
           <AnaMethodNote>租户类目均未维护(全部「未分类」),改按期区呈现;<RouterLink class="tp-link" to="/tenants">去租户管理补录类目</RouterLink>。</AnaMethodNote>
         </div>
 
-        <!-- 租金分布箱线(ECharts boxplot 按期区) -->
+        <!-- 租金分布散点带(对数轴,按期区;点=每份合同) -->
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
             <span class="t">合同{{ boxMode === 'rent' ? '月租' : '面积' }}分布(按期区)</span>
@@ -262,13 +278,13 @@ const listRows = computed(() => {
                 <button :class="{ on: boxMode === 'rent' }" @click="boxMode = 'rent'">月租金</button>
                 <button :class="{ on: boxMode === 'area' }" @click="boxMode = 'area'">租赁面积</button>
               </span>
-              生效合同 · 箱=IQR · 横线=中位 · 空心点=均值
+              生效合同 · 点=每份合同(悬停看租户) · 横线=中位 · 对数轴
             </span>
           </div>
           <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="240" />
           <AnaEmpty v-else
             label="合同租赁面积未录入(rent_area 全部为 0)"
-            hint="补录合同面积后,此处按期区呈现面积分布箱线图"
+            hint="补录合同面积后,此处按期区呈现面积分布散点带"
             to="/contracts" toText="去合同管理补录" />
         </div>
 

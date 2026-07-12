@@ -102,14 +102,15 @@ const structItems = computed(() => GROUP_DEFS
 const donutOpt = computed<object>(() => {
   const items = structItems.value
   const sum = items.reduce((s, d) => s + d.value, 0)
-  const byName = new Map(items.map((d) => [d.name, d.value]))
+  // 显式 Map<string,…>:d.name 是 GROUP_DEFS 字面量联合,而 legend formatter 回调入参是宽 string
+  const byName = new Map<string, number>(items.map((d) => [d.name, d.value]))
   return {
     color: items.map((d) => d.color),
     tooltip: { trigger: 'item', valueFormatter: (v: number) => '¥' + fnum(v) + '万' },
     legend: { bottom: 0, formatter: (name: string) => `${name} ${sum > 0 ? ((byName.get(name) ?? 0) / sum * 100).toFixed(1) : '0.0'}%` },
     series: [{
       type: 'pie', radius: ['50%', '74%'], center: ['50%', '42%'],
-      label: { show: false }, itemStyle: { borderColor: '#fff', borderWidth: 2 },
+      label: { show: false }, itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
       data: items.map((d) => ({ name: d.name, value: +(d.value / 10000).toFixed(2) })),
     }],
   }
