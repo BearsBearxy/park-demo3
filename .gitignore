@@ -25,3 +25,6 @@ mysql-data/
 
 # SDD progress ledger (git-ignored scratch)
 .superpowers/
+
+# 本地数据库备份(勿入库勿上传)
+backup-*.sql

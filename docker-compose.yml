@@ -4,6 +4,7 @@
 services:
   mysql:
     image: mysql:8.0
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
       MYSQL_DATABASE: park_demo3
@@ -11,14 +12,19 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      # 走 127.0.0.1(TCP)而非 localhost(socket):首次初始化的临时实例只开 socket,
+      # socket ping 会在 3306 未监听时误报 healthy(实测误报窗口约 1 分钟);
+      # mysqladmin ping 在 Access denied 时也返回 0,故用真实凭据 SELECT 1 验证
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1'"]
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 120s
     # 仅 compose 内网可达;需宿主机直连调库时自行加 ports(如 "13307:3306",避开 dev 的 13306)
 
   backend:
     build: ./backend
+    restart: unless-stopped   # 服务器重启/OOM 后自愈;重启竞速(mysql 未就绪)由重试循环兜住
     environment:
       DB_HOST: mysql
       DB_PORT: "3306"
@@ -27,6 +33,7 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me-32+chars}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);prod 留空则功能关闭
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     depends_on:
       mysql:
@@ -34,6 +41,7 @@ services:
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     ports:
       - "${WEB_PORT:-8081}:80"
     depends_on:
