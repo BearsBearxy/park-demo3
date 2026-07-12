@@ -1,5 +1,4 @@
 package com.park.demo3.service;
-import com.park.demo3.common.BizException;
 import com.park.demo3.dto.ImportLogDTO;
 import com.park.demo3.dto.ImportLogReq;
 import com.park.demo3.entity.ImportLog;
@@ -13,10 +12,20 @@ class ImportLogServiceTest {
     private final AuthUserMapper users = mock(AuthUserMapper.class);
     private final ImportLogService svc = new ImportLogService(mapper, users);
 
-    @Test void record_rejectsUnknownDataType() {
-        ImportLogReq req = new ImportLogReq("bogus", "X", "f.xlsx", null, 1, 1, 0, "complete");
-        assertThatThrownBy(() -> svc.record(req)).isInstanceOf(BizException.class);
-        verify(mapper, never()).insert(any(ImportLog.class));   // insert(T) 与 insert(Collection) 重载,需消歧
+    // 2026-07-09 起服务端不再维护类型白名单(与前端 registry 双份清单必然烂,budget 上线事故),
+    // 本测试锁定新意图:任意 dataType 一律入库,新增导入类型零后端改动
+    @Test void record_acceptsAnyDataType_noWhitelist() {
+        when(users.selectOne(any())).thenReturn(null);
+        doAnswer(inv -> { ImportLog l = inv.getArgument(0); l.setId(2L); return 1; }).when(mapper).insert(any(ImportLog.class));
+        when(mapper.selectById(2L)).thenAnswer(inv -> {
+            ImportLog l = new ImportLog();
+            l.setId(2L); l.setDataType("bogus"); l.setTypeLabel("X"); l.setFileName("f.xlsx");
+            l.setRows(1); l.setOk(1); l.setWarn(0); l.setStatus("complete");
+            return l;
+        });
+        ImportLogDTO dto = svc.record(new ImportLogReq("bogus", "X", "f.xlsx", null, 1, 1, 0, "complete"));
+        assertThat(dto.dataType()).isEqualTo("bogus");
+        verify(mapper).insert(any(ImportLog.class));
     }
 
     @Test void record_insertsWithKnownTypeAndReturnsDto() {
