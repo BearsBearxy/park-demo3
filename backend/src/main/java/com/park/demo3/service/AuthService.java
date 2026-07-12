@@ -17,6 +17,6 @@ public class AuthService {
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username()));
         if (u == null || u.getStatus() != 1 || !enc.matches(req.password(), u.getPasswordHash()))
             throw new BizException(ResultCode.UNAUTHORIZED, "用户名或密码错误");
-        return new LoginResp(jwt.generate(u.getUsername()), u.getDisplayName());
+        return new LoginResp(jwt.generate(u.getUsername(), u.getRole()), u.getDisplayName(), u.getRole());
     }
 }

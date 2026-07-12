@@ -17,12 +17,12 @@ public class JwtUtil {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expireMs = expireMinutes * 60_000L;
     }
-    public String generate(String username) {
+    public String generate(String username, String role) {
         Date now = new Date();
-        return Jwts.builder().subject(username).issuedAt(now)
+        return Jwts.builder().subject(username).claim("role", role).issuedAt(now)
                 .expiration(new Date(now.getTime() + expireMs)).signWith(key).compact();
     }
-    public String validateAndGetSubject(String token) {
-        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject();
+    public io.jsonwebtoken.Claims validateAndGetClaims(String token) {
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
     }
 }

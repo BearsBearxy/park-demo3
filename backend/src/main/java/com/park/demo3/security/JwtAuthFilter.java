@@ -18,8 +18,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String h = req.getHeader("Authorization");
         if (h != null && h.startsWith("Bearer ")) {
             try {
-                String user = jwt.validateAndGetSubject(h.substring(7));
-                var auth = new UsernamePasswordAuthenticationToken(user, null, AuthorityUtils.NO_AUTHORITIES);
+                var claims = jwt.validateAndGetClaims(h.substring(7));
+                // 缺 role claim(V32 前签发的旧 token)按最小权限 viewer 处理:admin 重新登录一次即恢复可写
+                String role = claims.get("role", String.class);
+                // Locale.ROOT:避免 tr/az 默认 locale 下 "admin"→"ADMİN" 使 hasRole("ADMIN") 永不匹配
+                var auth = new UsernamePasswordAuthenticationToken(claims.getSubject(), null,
+                        AuthorityUtils.createAuthorityList("ROLE_" + (role == null ? "viewer" : role).toUpperCase(java.util.Locale.ROOT)));
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (Exception ignored) { /* 无效令牌 → 保持匿名,后续被 401 拦截 */ }
         }

@@ -9,6 +9,7 @@ public class AuthUser {
     private String passwordHash;
     private String displayName;
     private Integer status;
+    private String role;   // admin=可写 / viewer=只读(V32,SecurityConfig GET-only 强制)
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;
 }

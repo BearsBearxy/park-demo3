@@ -26,5 +26,7 @@ public abstract class AbstractMysqlIT {
         r.add("spring.datasource.username", MYSQL::getUsername);
         r.add("spring.datasource.password", MYSQL::getPassword);
         r.add("app.jwt.secret", () -> "test-secret-test-secret-test-secret-32");
+        // 钉死只读账号口令:RoleApiIT 硬编码 viewer123,不受宿主机 VIEWER_PASSWORD 环境变量影响
+        r.add("app.viewer.password", () -> "viewer123");
     }
 }

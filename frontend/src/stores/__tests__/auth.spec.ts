@@ -31,21 +31,31 @@ describe('auth store', () => {
     expect(auth.token).toBe('existing-token')
   })
 
-  it('login stores token + displayName + isAuthed true + persists to localStorage', async () => {
-    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin' })
+  it('login stores token + displayName + role + isAuthed true + persists to localStorage', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin', role: 'admin' })
     const auth = useAuthStore()
 
     await auth.login({ username: 'admin', password: 'admin123' })
 
     expect(auth.token).toBe('jwt-abc')
     expect(auth.displayName).toBe('Admin')
+    expect(auth.role).toBe('admin')
+    expect(auth.isReadonly).toBe(false)
     expect(auth.isAuthed).toBe(true)
     expect(localStorage.getItem('token')).toBe('jwt-abc')
+    expect(localStorage.getItem('role')).toBe('admin')
     expect(api.post).toHaveBeenCalledWith('/auth/login', { username: 'admin', password: 'admin123' })
   })
 
-  it('logout clears token + displayName + removes from localStorage', async () => {
-    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin' })
+  it('viewer role → isReadonly true(只读标志;安全边界在后端 GET-only,此处仅供 UI)', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-v', displayName: '只读账号', role: 'viewer' })
+    const auth = useAuthStore()
+    await auth.login({ username: 'viewer', password: 'viewer123' })
+    expect(auth.isReadonly).toBe(true)
+  })
+
+  it('logout clears token + displayName + role + removes from localStorage', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-abc', displayName: 'Admin', role: 'admin' })
     const auth = useAuthStore()
     await auth.login({ username: 'admin', password: 'admin123' })
 
@@ -53,7 +63,9 @@ describe('auth store', () => {
 
     expect(auth.token).toBeNull()
     expect(auth.displayName).toBeNull()
+    expect(auth.role).toBeNull()
     expect(auth.isAuthed).toBe(false)
     expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('role')).toBeNull()
   })
 })

@@ -9,6 +9,8 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}   # prod 必须给前端域名白名单，缺失即 fail-fast
   admin:
     password: ${ADMIN_PASSWORD}  # prod 必须由环境提供，启动时重置 admin 口令（消除 admin/admin123 默认）
+  viewer:
+    password: ${VIEWER_PASSWORD:}  # prod 可选：非空才创建只读账号 viewer；留空=功能关闭（不引入弱口令默认）
 
 # 生产收紧可观测面与 API 文档暴露
 management:

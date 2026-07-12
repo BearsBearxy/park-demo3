@@ -34,6 +34,7 @@ http.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('displayName')
+      localStorage.removeItem('role')
       // 整页跳转让 Pinia auth store 从（已清空的）localStorage 重新初始化为 null；
       // 带 redirect 以便登录后回到原页，且避免在登录页自身重复跳转
       if (!location.pathname.startsWith('/login')) {
@@ -41,8 +42,8 @@ http.interceptors.response.use(
       }
       return Promise.reject(error)
     }
-    // 非 2xx 也解包 Result 信封：校验错误(HTTP 400)的后端中文 message 直达视图 alert，
-    // 不再退化成英文 AxiosError 文案（HTTP 状态口径见后端 GlobalExceptionHandler 头注释）
+    // 非 2xx 也解包 Result 信封：校验错误(HTTP 400)/只读角色写拦截(HTTP 403)的后端中文 message
+    // 直达视图 alert，不再退化成英文 AxiosError 文案（HTTP 状态口径见后端 GlobalExceptionHandler 头注释）
     const body = error.response?.data
     const enveloped = body && typeof body === 'object' && 'code' in body
     // 5xx / 断网：读路径普遍无 catch，全局 toast 兜底提示（动态 import 避免 pinia 未装载时的循环依赖）
