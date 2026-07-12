@@ -13,6 +13,10 @@ export interface PopoverProps {
 const props = withDefaults(defineProps<PopoverProps>(), {
   align: "start",
   width: 240,
+  // 显式 undefined:布尔 prop 缺省时 Vue 强转 false,使 `!== undefined` 受控判定恒真,
+  // 非受控模式(不传 open/modelValue)永远打不开(popoverTrigger.spec 回归锁)
+  open: undefined,
+  modelValue: undefined,
 });
 
 const emit = defineEmits<{

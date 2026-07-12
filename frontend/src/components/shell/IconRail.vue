@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { LogOut } from 'lucide-vue-next'
 import { FP_NAV, fpFindLayer } from '@/nav/fpNav'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
+import Popover from '@/components/ds/Popover.vue'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
 const route = useRoute()
 const router = useRouter()
+
+// 当前账号菜单:头像接登录态(原为写死「周明」),点开显示账号+角色,可退出登录
+const auth = useAuthStore()
+const roleLabel = computed(() => (auth.isReadonly ? '只读账号' : '管理员(可写)'))
+function onLogout() {
+  auth.logout()
+  router.push('/login')
+}
 
 // ponytail: activeLayer derived from route — no store needed in this task
 const activeLayer = computed(() =>
@@ -52,7 +63,22 @@ function goLayer(home: string) {
       <button class="fp-rail-cmd" @click="emit('open-command')">
         <component :is="iconFor('command')" :size="16" />
       </button>
-      <Avatar name="周明" :size="32" />
+      <!-- 账号菜单:向上弹(头像在屏幕左下角,默认向下会出屏) -->
+      <Popover :width="200" :style="{ top: 'auto', bottom: 'calc(100% + 8px)', left: '0' }">
+        <template #trigger>
+          <button class="fp-rail-user" :title="auth.displayName ?? '未登录'" aria-label="当前账号">
+            <Avatar :name="auth.displayName ?? '—'" :size="32" />
+          </button>
+        </template>
+        <div class="fp-user-menu">
+          <div class="fp-user-name">{{ auth.displayName ?? '未登录' }}</div>
+          <div class="fp-user-role" :class="{ ro: auth.isReadonly }">{{ roleLabel }}</div>
+          <div class="fp-user-sep" />
+          <button class="fp-user-logout" @click="onLogout">
+            <LogOut :size="14" />退出登录
+          </button>
+        </div>
+      </Popover>
     </div>
   </div>
 </template>
@@ -150,4 +176,15 @@ function goLayer(home: string) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
+/* 账号菜单(头像触发,向上弹) */
+.fp-rail-user { border: none; background: transparent; padding: 0; cursor: pointer; border-radius: 50%; display: grid; place-items: center; }
+.fp-rail-user:hover { box-shadow: 0 0 0 3px rgba(28, 28, 28, 0.08); }
+.fp-user-menu { padding: 4px 6px; }
+.fp-user-name { font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.fp-user-role { display: inline-block; margin-top: 5px; font-size: 11px; color: var(--fill-blue); background: rgba(55, 138, 221, 0.1); border-radius: var(--radius-full); padding: 2px 9px; }
+.fp-user-role.ro { color: var(--hue-orange); background: rgba(239, 159, 39, 0.12); }
+.fp-user-sep { height: 1px; background: var(--border-subtle); margin: 9px 0; }
+.fp-user-logout { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+.fp-user-logout:hover { background: var(--bg-hover); color: var(--hue-red); }
 </style>
