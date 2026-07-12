@@ -34,12 +34,13 @@ class ImportLogApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.history[?(@.fileName=='s.xlsx')]").isNotEmpty());
     }
 
-    @Test void post_unknownType_returns400InBody() throws Exception {
-        // dataType 白名单外 → BizException(BAD_REQUEST) → 码在体内 400(HTTP 200)
+    @Test void post_unknownType_accepted_noWhitelist() throws Exception {
+        // 2026-07-09 起无类型白名单(双份清单必然烂,budget 上线事故):任意 dataType 正常入库
         mvc.perform(post("/api/import-log").header("Authorization", auth()).contentType("application/json")
                 .content("{\"dataType\":\"bogus\",\"typeLabel\":\"X\",\"fileName\":\"f.xlsx\",\"rows\":1,\"ok\":1,\"warn\":0,\"status\":\"complete\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.dataType").value("bogus"));
     }
 
     @Test void post_badStatus_returns400() throws Exception {

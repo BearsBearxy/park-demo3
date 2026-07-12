@@ -120,9 +120,22 @@ class ReconApiIT extends AbstractMysqlIT {
         int miss = ((Number) JsonPath.read(res, "$.data.months[2].missCount")).intValue();
         assertThat(entityCount).isGreaterThan(0).isEqualTo(ok + diff + miss);
 
-        String def = utf8(mvc.perform(get("/api/recon/overview").header("Authorization", auth()))
+        // 缺省 year=全库最大数据年。硬编码 2026 依赖测试顺序:共享容器里 S10/Office 等 IT 用
+        // 2099 远未来槽写数据,先跑则默认年被顶到 2099(CI 实翻车)。改为自插 3000-01 记录
+        // 锁定「最大年获胜」语义,断言后删除还原,不受其他 IT 顺序影响。
+        String created = utf8(mvc.perform(post("/api/s10").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"tenantName\":\"__recon默认年探针\",\"phase\":1,\"acctMonth\":\"3000-01\",\"profile\":\"factory\"}"))
                 .andExpect(status().isOk()).andReturn());
-        assertThat(((Number) JsonPath.read(def, "$.data.year")).intValue()).isEqualTo(2026);
+        long probeId = ((Number) JsonPath.read(created, "$.data.id")).longValue();
+        try {
+            String def = utf8(mvc.perform(get("/api/recon/overview").header("Authorization", auth()))
+                    .andExpect(status().isOk()).andReturn());
+            assertThat(((Number) JsonPath.read(def, "$.data.year")).intValue()).isEqualTo(3000);
+        } finally {
+            mvc.perform(delete("/api/s10/" + probeId).header("Authorization", auth()))
+                    .andExpect(status().isOk());
+        }
     }
 
     // ── 无 token → 401 ──
