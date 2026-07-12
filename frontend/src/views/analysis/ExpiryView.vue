@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // 到期墙与续约(expiry) — v2 重构(spec 2026-07-08 §二.11):AnaShell #kpis + av2 栅格;
 // 合同金额 Pareto(ECharts 柱线,点柱→清单展开该租户)+ Top10 集中度环 + 清单(点行→行内展开该租户全部合同);
-// 到期时间轴空态保留(282 份合同起止日期全 NULL,降级口径与 v1 相同,数值不变)。
+// 到期墙实装(2026-07-12,plans/2026-07-12-demo3-expiry-wall.md):有日期数据时渲染 8 季柱图 + 临期 90 天清单,
+// 无日期时保留降级空态(判据 wall.totalCount > 0,本机数据日期全 NULL 仍走空态,口径数值不变)。
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -13,8 +15,9 @@ import { iconFor } from '@/components/ds/icon'
 import { fnum } from '@/components/ana/anaFmt'
 import { fetchContracts } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
-import { buildExpiryStats, buildPareto, concentrationOption, paretoOption } from './expiry.logic'
+import { buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, concentrationOption, paretoOption, wallOption } from './expiry.logic'
 
+const router = useRouter()
 const loading = ref(true)
 const contracts = ref<ContractDTO[]>([])
 
@@ -33,6 +36,13 @@ const stats = computed(() => buildExpiryStats(contracts.value))
 const pareto = computed(() => buildPareto(contracts.value))
 const paretoOpt = computed(() => paretoOption(pareto.value))
 const concOpt = computed(() => (stats.value ? concentrationOption(stats.value.top10Sum, stats.value.rentSum) : {}))
+
+// ── 到期墙(2026-07-12 实装:云上合同已带日期;totalCount=0 时仍走降级空态) ──
+const today = new Date()
+const wall = computed(() => buildExpiryWall(contracts.value, today))
+const wallOpt = computed(() => wallOption(wall.value))   // tooltip 闭包引用 wall,wall 变更随 computed 重建
+const wallRentSum = computed(() => wall.value.quarters.reduce((s, q) => s + q.rentSum, 0))
+const soon = computed(() => buildExpiringSoon(contracts.value, today))
 
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
@@ -82,18 +92,44 @@ function onParetoClick(p: unknown) {
         <div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('calendar-clock')" :size="20" /></span>
           <div>
             <h2 class="ak-title">到期墙与续约</h2>
-            <p class="ak-sub">合同快照口径 · 起止日期未录入,到期时间轴降级为租金结构视图</p>
+            <p class="ak-sub">{{ wall.totalCount > 0
+              ? '合同快照口径 · 按合同止日逐季聚合,未来 8 季到期时间轴'
+              : '合同快照口径 · 起止日期未录入,到期时间轴降级为租金结构视图' }}</p>
           </div>
         </div>
-        <AnaPill tone="warn" icon="flask-conical">合同日期缺失 · 降级视图</AnaPill>
+        <AnaPill v-if="wall.totalCount > 0" tone="legal" icon="calendar-clock">合同快照口径 · {{ stats.total - stats.dateMissing }} 份带日期</AnaPill>
+        <AnaPill v-else tone="warn" icon="flask-conical">合同日期缺失 · 降级视图</AnaPill>
       </div>
 
       <div class="av2-grid">
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">到期墙 · 未来 8 季</span><span class="hint">按季到期月租金 + 续约概率(需合同起止日期)</span></div>
-          <AnaEmpty :label="'到期时间轴暂不可用:' + stats.dateMissing + ' 份合同的起止/签订日期均未录入'"
+          <div class="av2-card-h"><span class="t">到期墙 · 未来 8 季</span>
+            <span class="hint">{{ wall.totalCount > 0
+              ? `未来8季到期 ${wall.totalCount} 份 · ¥${wan(wallRentSum)}万/月`
+              : '按季到期月租金 + 续约概率(需合同起止日期)' }}</span></div>
+          <AnaEChart v-if="wall.totalCount > 0" :option="wallOpt" :height="240" />
+          <AnaEmpty v-else :label="'到期时间轴暂不可用:' + stats.dateMissing + ' 份合同的起止/签订日期均未录入'"
             hint="补录合同起止日期后,此处将展示未来 8 季到期租金墙、临期清单与续约预测"
             to="/contracts" toText="去合同屏补录日期" />
+        </div>
+
+        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏) -->
+        <div v-if="soon.length > 0" class="av2-card av2-s12">
+          <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序 · 点行去合同屏</span></div>
+          <div class="exp-scroll">
+            <table class="ak-tbl">
+              <thead><tr><th>租户</th><th>合同号</th><th>月租金(万)</th><th>到期日</th><th>剩余天数</th></tr></thead>
+              <tbody>
+                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push('/contracts')">
+                  <td style="text-align: left">{{ r.tenantName }}</td>
+                  <td class="mono mut">{{ r.contractNo }}</td>
+                  <td class="mono">{{ wan(r.monthlyRent) }}</td>
+                  <td class="mono mut">{{ r.endDate }}</td>
+                  <td class="mono">{{ r.daysLeft }} 天</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div class="av2-card av2-s8">
@@ -152,7 +188,9 @@ function onParetoClick(p: unknown) {
               </tbody>
             </table>
           </div>
-          <AnaMethodNote>原型「到期墙/续约概率/预测留存」依赖合同起止日期与流失健康分,当前 {{ stats.dateMissing }} 份合同日期均未录入,
+          <AnaMethodNote v-if="wall.totalCount > 0">到期墙口径:按合同止日逐季聚合,仅计生效/临期合同(止日早于今天的不进墙);
+            续约概率/预测留存需历史续约数据,暂不展示(不画假图)。零租金合同 {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
+          <AnaMethodNote v-else>原型「到期墙/续约概率/预测留存」依赖合同起止日期与流失健康分,当前 {{ stats.dateMissing }} 份合同日期均未录入,
             已降级为租金结构视图,补录后自动恢复;rent_area 字段当前全为 0,面积分布暂不展示(不画假图)。零租金合同
             {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
         </div>

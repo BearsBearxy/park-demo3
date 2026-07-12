@@ -79,6 +79,87 @@ export function paretoOption(p: ParetoData): object {
   }
 }
 
+/* ---------- 到期墙(2026-07-12 实装:数据就绪后点亮时间轴) ---------- */
+
+/** 入围状态:草稿/已到期/已退租不进墙。 */
+const WALL_STATUS = new Set(['active', 'expiring'])
+
+/** 'YYYY-MM-DD' → [y,m,d] 数值;拆分失败返回 null(new Date 解析字符串有 UTC 时区坑,一律手拆)。 */
+function ymd(s: string): [number, number, number] | null {
+  const [y, m, d] = s.split('-').map(Number)
+  return y && m && d ? [y, m, d] : null
+}
+
+export interface ExpiryWallQuarter { label: string; rentSum: number; count: number }
+export interface ExpiryWall { quarters: ExpiryWallQuarter[]; totalCount: number }
+
+/** 到期墙:today 所在季度起未来 8 季逐季聚合到期月租与户数(endDate ≥ today 才进墙,按日期为准不信 status;8 季窗口外不计)。 */
+export function buildExpiryWall(cs: ContractDTO[], today: Date): ExpiryWall {
+  const ty = today.getFullYear(), tm = today.getMonth() + 1
+  const todayKey = ty * 10000 + tm * 100 + today.getDate()
+  const startQ = ty * 4 + Math.floor((tm - 1) / 3)   // 季度序号 = 年×4 + 季(0..3),跨年自然滚动
+  const quarters: ExpiryWallQuarter[] = [...Array(8)].map((_, i) => {
+    const qi = startQ + i
+    return { label: `${Math.floor(qi / 4)}Q${qi % 4 + 1}`, rentSum: 0, count: 0 }
+  })
+  for (const c of cs) {
+    if (!WALL_STATUS.has(c.status) || !c.endDate) continue
+    const p = ymd(c.endDate)
+    if (!p) continue
+    const [y, m, d] = p
+    if (y * 10000 + m * 100 + d < todayKey) continue   // 已过期不进墙
+    const off = y * 4 + Math.floor((m - 1) / 3) - startQ
+    if (off >= 8) continue                             // 窗口外(≥today 已保证 off≥0)
+    quarters[off].rentSum += c.monthlyRent
+    quarters[off].count++
+  }
+  return { quarters, totalCount: quarters.reduce((s, q) => s + q.count, 0) }
+}
+
+export interface ExpiringSoonRow {
+  id: number; tenantName: string; contractNo: string
+  monthlyRent: number; endDate: string; daysLeft: number
+}
+
+/** 临期清单:endDate ∈ [today, today+days] 闭区间,状态口径同到期墙,按 endDate 升序。 */
+export function buildExpiringSoon(cs: ContractDTO[], today: Date, days = 90): ExpiringSoonRow[] {
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())   // 归零到本地零点,天数才数得准
+  const limit = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + days)
+  const k0 = t0.getFullYear() * 10000 + (t0.getMonth() + 1) * 100 + t0.getDate()
+  const k1 = limit.getFullYear() * 10000 + (limit.getMonth() + 1) * 100 + limit.getDate()
+  const rows: ExpiringSoonRow[] = []
+  for (const c of cs) {
+    if (!WALL_STATUS.has(c.status) || !c.endDate) continue
+    const p = ymd(c.endDate)
+    if (!p) continue
+    const [y, m, d] = p
+    const k = y * 10000 + m * 100 + d
+    if (k < k0 || k > k1) continue
+    const daysLeft = Math.round((new Date(y, m - 1, d).getTime() - t0.getTime()) / 86400000)   // round 吸收 DST 时差
+    rows.push({ id: c.id, tenantName: c.tenantName, contractNo: c.contractNo, monthlyRent: c.monthlyRent, endDate: c.endDate, daysLeft })
+  }
+  return rows.sort((a, b) => a.endDate.localeCompare(b.endDate))
+}
+
+/** 到期墙柱图 option(柱=每季到期月租折万,tooltip 含户数;样式对齐 paretoOption)。 */
+export function wallOption(w: ExpiryWall): object {
+  return {
+    grid: { left: 48, right: 16, top: 26, bottom: 26 },
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: (ps: { name: string; value: number; dataIndex: number }[]) =>
+        `${ps[0].name}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
+    },
+    xAxis: { type: 'category', data: w.quarters.map((q) => q.label), axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
+    series: [{
+      name: '到期月租', type: 'bar', barWidth: '55%',
+      itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] },
+      data: w.quarters.map((q) => +(q.rentSum / 10000).toFixed(2)),
+    }],
+  }
+}
+
 /** Top10 集中度环(Top10 vs 其余,值=月租金元;tooltip 折万)。 */
 export function concentrationOption(top10Sum: number, rentSum: number): object {
   const rest = Math.max(0, rentSum - top10Sum)
@@ -87,6 +168,7 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
     series: [{
       type: 'pie', radius: ['58%', '80%'], center: ['50%', '50%'],
       label: { show: false }, labelLine: { show: false },
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },   // 圆角环形+白缝(数据项 color 逐片合并仍生效)
       data: [
         { name: 'Top10 合同', value: top10Sum, itemStyle: { color: '#378ADD' } },
         { name: '其余合同', value: rest, itemStyle: { color: '#B5D4F4' } },
