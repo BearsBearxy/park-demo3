@@ -316,7 +316,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 .mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
 .mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
 /* 表格视口内滚+表头吸顶:卡片高不越过视口,消除页面级滚动(短窗兜底 320px) */
-.mx-tablewrap { max-height:max(320px, calc(100vh - 330px)); overflow:auto; }
+.mx-tablewrap { max-height:max(320px, calc(100vh - 270px)); overflow:auto; }
 .mx-tablewrap :deep(thead th) { position:sticky; top:0; background:var(--surface-white); z-index:2; box-shadow:0 1px 0 var(--divider); }
 @media (max-width:1100px) {
   .mx-body { grid-template-columns:1fr; gap:16px; }
