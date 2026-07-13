@@ -191,7 +191,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1200px;margin:0 auto;width:100%;min-height:100%">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;min-height:100%">
     <!-- 1. Header -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -258,7 +258,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 
       <!-- 5. Table card -->
       <Card surface="white" :padding="0" style="border:1px solid var(--border-subtle);overflow:hidden">
-        <div style="padding:14px 4px 0">
+        <div class="mx-tablewrap" style="padding:14px 4px 0">
           <FPSortableTable
             :columns="TABLE_COLUMNS"
             :rows="paged"
@@ -313,6 +313,9 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 .mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
 .mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
 .mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
+/* 表格视口内滚+表头吸顶:卡片高不越过视口,消除页面级滚动(短窗兜底 320px) */
+.mx-tablewrap { max-height:max(320px, calc(100vh - 330px)); overflow:auto; }
+.mx-tablewrap :deep(thead th) { position:sticky; top:0; background:var(--surface-white); z-index:2; box-shadow:0 1px 0 var(--divider); }
 @media (max-width:1100px) {
   .mx-body { grid-template-columns:1fr; gap:16px; }
   .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
