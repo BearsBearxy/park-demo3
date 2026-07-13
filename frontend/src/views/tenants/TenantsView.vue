@@ -13,6 +13,7 @@ import Select from '@/components/ds/Select.vue'
 import Badge from '@/components/ds/Badge.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPSortableTable from '@/components/fp/FPSortableTable.vue'
+import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
 import { familySort } from './tenantsFamily'
@@ -37,7 +38,8 @@ const statusFilter = ref('全部状态')
 // 默认 sort=null → 家族聚合名称序视图;点列头进普通排序,列头「取消排序」回到聚合视图(spec §T2)
 const sort = ref<SortState | null>(null)
 const page = ref(1)
-const pageSize = 20
+const tableWrapEl = ref<HTMLElement | null>(null)
+const pageSize = useFitRows(tableWrapEl)   // 自适应每页行数:正好填满卡片,不滚动直接翻页
 
 const openTenant = ref<TenantDTO | null>(null)
 const newDlg = ref(false)
@@ -155,9 +157,9 @@ const TABLE_COLUMNS = computed(() => [
 const sortedFiltered = computed(() =>
   sort.value ? fpSortRows(filtered.value, sort.value, TABLE_COLUMNS.value) : familySort(filtered.value),
 )
-const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.length / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.length / pageSize.value)))
 const safePage = computed(() => Math.min(page.value, pageCount.value))
-const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize, safePage.value * pageSize))
+const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize.value, safePage.value * pageSize.value))
 
 watch([phase, q, statusFilter, sort], () => { page.value = 1 })
 </script>
@@ -233,7 +235,7 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
 
     <!-- 4. Table card -->
     <Card surface="white" :padding="0">
-      <div class="mx-tablewrap" style="padding:14px 4px 0">
+      <div ref="tableWrapEl" class="mx-tablewrap" style="padding:14px 4px 0">
         <FPSortableTable
           :columns="TABLE_COLUMNS"
           :rows="paged"

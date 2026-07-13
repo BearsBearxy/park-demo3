@@ -11,6 +11,7 @@ import Card from '@/components/ds/Card.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Select from '@/components/ds/Select.vue'
 import FPSortableTable from '@/components/fp/FPSortableTable.vue'
+import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import ContractLifecycleTabs from './ContractLifecycleTabs.vue'
@@ -26,7 +27,8 @@ const phase = ref('全部期数')
 const q = ref('')
 const sort = ref<SortState | null>({ key: 'daysToEnd', dir: 'asc' })
 const page = ref(1)
-const pageSize = 8
+const tableWrapEl = ref<HTMLElement | null>(null)
+const pageSize = useFitRows(tableWrapEl)   // 自适应每页行数:正好填满卡片,不滚动直接翻页
 const openContract = ref<ContractDTO | null>(null)
 const showNew = ref(false)
 const editFrom = ref<ContractDTO | null>(null)
@@ -183,9 +185,9 @@ const TABLE_COLUMNS = computed(() => [
 
 // ─── sort / page ──────────────────────────────────────────
 const sortedFiltered = computed(() => fpSortRows(filtered.value, sort.value, TABLE_COLUMNS.value))
-const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.length / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.length / pageSize.value)))
 const safePage = computed(() => Math.min(page.value, pageCount.value))
-const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize, safePage.value * pageSize))
+const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize.value, safePage.value * pageSize.value))
 
 watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 </script>
@@ -258,7 +260,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 
       <!-- 5. Table card -->
       <Card surface="white" :padding="0" style="border:1px solid var(--border-subtle);overflow:hidden">
-        <div class="mx-tablewrap" style="padding:14px 4px 0">
+        <div ref="tableWrapEl" class="mx-tablewrap" style="padding:14px 4px 0">
           <FPSortableTable
             :columns="TABLE_COLUMNS"
             :rows="paged"
