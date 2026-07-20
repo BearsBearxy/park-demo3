@@ -1,0 +1,72 @@
+# 列表页布局规范（LIST-PAGE-SPEC）
+
+适用范围：主数据类列表屏——楼栋管理、租户管理、合同管理，以及后续所有「工具栏 + 表格卡片 + 分页」形态的 list 页。
+基准样式：租户管理屏（2026-07 截图定稿）。三屏必须逐条一致，禁止各屏自带变体。
+
+## 1. 页面骨架（自上而下）
+
+```
+标题行        h2 + 副标题 ·· 右侧操作按钮组（导入/新增，Button size=sm）
+.mx-body      grid: 224px KPI 左栏(sticky) + minmax(0,1fr) 主列，gap 28px
+  .mx-kpirail   KPI 卡竖排 gap 16px
+  .mx-main      flex column gap 16px：
+    .mx-toolbar   工具栏（单行，见 §2）
+    .mx-listcard  列表卡片（见 §3）—— 分页器在卡片内部底部，不悬浮页面底部
+```
+
+首载 gate：summary 未返回前整块渲染 `.page-loading` spinner，不闪空 KPI/「共0条」。
+
+## 2. 工具栏 .mx-toolbar（单行，与租户管理一致）
+
+- 结构：`display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap`
+  - **左**：segment tab 组 —— 统一用 `FPPhaseTabs`（支持 `tabs` prop 自定义标签集，带计数徽标）。禁止复制其样式另建 tab 组件。
+  - **右** `.mx-toolbar-right`（`display:flex; align-items:center; gap:10px`），顺序固定：
+    1. （可选）`Segmented` 布局切换（仅楼栋卡片墙/台账列表）
+    2. 搜索框 `.mx-search`：固定宽 230px，`radius-full`，左内嵌 16px 放大镜图标，高 36px
+    3. 状态 `Select`：宽 130px，size=sm
+- 工具栏内**不放**「共 N 条/栋/份」文本——总数只出现在分页器（FPPager `total`）。
+
+## 3. 列表卡片 .mx-listcard
+
+- `Card surface=white :padding=0`，外观：`border:1px solid var(--border-subtle); overflow:hidden`。
+- 高度由**布局链**决定（不由内容撑，也不做 100vh 视口数学——壳层 main.fp-content 自带 topbar+padding，视口常量必错）：
+  页面根 `height:100%` → `.mx-body{flex:1;min-height:0}` → `.mx-main{min-height:0}` → `.mx-listcard{flex:1 1 auto;display:flex;flex-direction:column}`。
+- `min-height:440px` = fitRows 下限 6 行(6×56) + 表头~30 + wrap padding 14 + 分页条~53：短窗时退化为外层滚动，**绝不裁行**。
+- 校准标准：常规窗口高度下页面（含壳层 main）**不得出现任何滚动条**。
+- 内部两段：
+  - `.mx-tablewrap`：`flex:1 1 auto; overflow:hidden; padding:14px 4px 0` —— **禁止出现滚动条**，每页行数由 useFitRows 保证恰好放满（§6）。
+  - `.mx-pagerbar`：`flex:0 0 auto; border-top:1px solid var(--divider); padding:10px 14px`，内放 FPPager。
+- 过滤后 0 行：卡片内居中空态文案（padding 40px，text-disabled）。
+
+## 4. 表格行（等高铁律）
+
+- 行高统一固定：`--mx-row-h: 56px`。tr 定高与 td 样式由 `FPSortableTable` 组件内联承载（`height:var(--mx-row-h,56px)`），对**所有**使用方统一生效（含导入中心等非分页表）。
+- `td`：`padding: 0 16px; vertical-align: middle`（垂直留白由行高提供，不用上下 padding）。
+- **所有行必须等高**。内容不得撑高行：单元格内容一律 `white-space:nowrap` + `overflow:hidden` + `text-overflow:ellipsis`，长文本用 `title` 出全文；两行式单元格（名称+副行）总高必须 ≤ 行高。
+- 行分隔：1px `var(--divider)` 底边；hover 背景 `var(--bg-panel)`。
+- **列宽铁律**：每列显式定宽，至多一列弹性（吸收余宽，紧邻定宽列排布、不留无用空隙）；列位置不得因单元格内容长短或翻页而变化（内容超长走 ellipsis，不许撑列）。需要严格锁列时表格用 `table-layout: fixed`。
+- 表头：`position:sticky; top:0`（卡片内固定，配合无滚动实际不滚，仅作兜底）。
+
+## 5. 分页器 FPPager（停靠卡片底部）
+
+- 位置：`.mx-pagerbar` 内，永远贴卡片底边；跳页 popover 向上展开，随分页器停靠。
+- 左侧：跳页触发按钮「第 X / Y 页 ˄」+「共 N 条」。
+  - 触发按钮 `min-width:116px; width:auto`——**文本任何页数下不得溢出按钮边框**（如"第 26 / 26 页"）。
+- 右侧：`Pagination` 窗口化页码 pills：≤7 个（首尾 + 当前±1 + … 省略号），32px 圆 pill，‹ › 步进；当前页 `bg-sunken` + semibold。
+- 楼栋卡片墙布局：无列表卡片，分页器保持既有「spacer 置底」方式停靠页面底部。
+
+## 6. 每页行数 useFitRows（防抖动铁律）
+
+- **行高是常量输入**（`--mx-row-h`），**严禁测量已渲染行的实际高度**——pageSize 不得依赖页面内容，否则形成「pageSize→内容→尺寸→pageSize」反馈回路（即 2026-07-15 修复的第 23 页抽搐闪烁 bug）。
+- 仅当容器**布局**尺寸变化（改窗口高、首次挂载）时重算：`pageSize = clamp(floor((wrap.clientHeight - padding - theadH) / rowH), 6, 30)`。容器高度必须是布局驱动（§3 卡片定高 + flex），与行数无关。
+- 重算触发三通道：ResizeObserver(wrap) + ResizeObserver(documentElement) + `window resize` 事件监听（RO 对 html 盒尺寸不敏感的环境兜底）。
+- 楼栋卡片墙每页固定 8，不适用本条。
+
+## 7. 禁止事项清单
+
+- ❌ 表格卡片内出现垂直滚动条（每页行数必须自适应放满）
+- ❌ 行高随内容波动（这一条宽一点下一条窄一点）
+- ❌ 工具栏两行式布局 / 工具栏内放总数文本
+- ❌ 复制 tab/pager 样式另建组件
+- ❌ pageSize 依赖渲染内容的任何测量
+- ❌ 分页器脱离卡片悬浮在页面中部或底部（卡片墙除外）

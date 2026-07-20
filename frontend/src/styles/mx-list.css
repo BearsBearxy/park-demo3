@@ -1,0 +1,75 @@
+/* 列表页布局单一事实源(docs/design/LIST-PAGE-SPEC.md)——楼栋/租户/合同三屏共用。
+   原先三个 View 各自 scoped 一份 .mx-* 重复块,此处收编为全局;View 内禁止再自带变体。 */
+
+:root {
+  --mx-row-h: 56px;        /* §4 等高铁律:表格行统一定高 */
+}
+
+/* ── §1 页面骨架:224px KPI 左栏(sticky) + 主列 ───────────────────
+   卡片高度由布局链撑满(页面根 height:100% → .mx-body flex:1 → .mx-listcard flex:1),
+   不做 100vh 视口数学(壳层 main.fp-content 自带 topbar+padding,视口常量必错)。 */
+.mx-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 28px; flex: 1 1 auto; min-height: 0; }
+.mx-kpirail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; align-self: start; }
+.mx-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* ── §2 工具栏:单行,tabs 左 / 搜索+Select 右 ───────────────────── */
+.mx-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mx-toolbar-right { display: flex; align-items: center; gap: 10px; }
+
+/* 搜索框:固定宽 230px,radius-full,左内嵌放大镜(样式 1:1 迁自 TenantsView 内联) */
+.mx-search { position: relative; width: 230px; }
+.mx-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 34px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+  outline: none;
+}
+.mx-search .mx-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  display: inline-flex;
+}
+
+/* ── §3 列表卡片:高度由布局决定(不由内容撑),内部 表格区+分页条 两段 ── */
+.mx-listcard {
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  flex: 1 1 auto;
+  /* 下限=fitRows 最少 6 行(6×56)+表头~30+wrap padding 14+分页条~53:短窗时外层滚动兜底,绝不裁行 */
+  min-height: 440px;
+  display: flex;
+  flex-direction: column;
+}
+/* 表格区禁止滚动条——每页行数由 useFitRows 保证恰好放满(§6) */
+.mx-tablewrap { flex: 1 1 auto; overflow: hidden; padding: 14px 4px 0; }
+/* 表头吸顶(配合无滚动实际不滚,仅作兜底) */
+.mx-tablewrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-white);
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--divider);
+}
+/* 分页条:贴卡片底边 */
+.mx-pagerbar { flex: 0 0 auto; border-top: 1px solid var(--divider); padding: 10px 14px; }
+
+/* ── §4 等高铁律:行高是布局常量,严禁内容撑高 ────────────────────── */
+/* tr 定高(--mx-row-h)与 td padding:0 16px + vertical-align:middle 均由 FPSortableTable 组件内联承载,
+   对所有使用方(含导入中心)统一生效——此处不再重复声明 */
+
+/* ── 响应式:窄屏 KPI 栏转横排 ──────────────────────────────────── */
+@media (max-width: 1100px) {
+  .mx-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 16px; }
+  .mx-kpirail { flex-direction: row; flex-wrap: wrap; position: static; align-self: stretch; }
+  .mx-kpirail > * { flex: 1 1 160px; }
+}

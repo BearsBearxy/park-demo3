@@ -106,10 +106,11 @@ function pick(p: number) {
   gap: 12px;
 }
 
-/* JumpSelect */
+/* JumpSelect:宽随内容自适应,深页码(如「第 26 / 26 页」)不溢出按钮边框 */
 .fp-jump-wrap {
   position: relative;
-  width: 116px;
+  width: auto;
+  min-width: 116px;
 }
 
 .fp-jump-trigger {

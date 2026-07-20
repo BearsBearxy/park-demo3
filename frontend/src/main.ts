@@ -6,6 +6,7 @@ import App from './App.vue'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/scrollbar.css'
+import './styles/mx-list.css'
 
 const app = createApp(App)
 app.use(createPinia())

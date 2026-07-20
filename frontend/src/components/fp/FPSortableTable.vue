@@ -24,10 +24,14 @@ const props = withDefaults(defineProps<{
   rowKey?: string
   sort?: SortState | null
   rowHover?: boolean
+  // 列宽铁律(LIST-PAGE-SPEC §4):true 时 table-layout:fixed——定宽列锁死,唯一无宽列吸收余宽,
+  // 列位置不随单元格内容长短或翻页漂移。默认 false 向后兼容既有使用方。
+  fixedLayout?: boolean
 }>(), {
   rowKey: 'id',
   sort: null,
   rowHover: true,
+  fixedLayout: false,
 })
 
 const emit = defineEmits<{
@@ -136,7 +140,7 @@ function renderSortHeader(col: SortableColumn) {
 <template>
   <!-- Mirrors DataTable layout exactly; headers replaced with Popover sort triggers -->
   <div style="width:100%;overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-family:var(--font-sans)">
+    <table :style="{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sans)', tableLayout: fixedLayout ? 'fixed' : undefined }">
       <thead>
         <tr style="border-bottom:1px solid var(--divider)">
           <th
@@ -161,6 +165,7 @@ function renderSortHeader(col: SortableColumn) {
           v-for="r in sortedRows"
           :key="(r as any)[rowKey]"
           :style="{
+            height: 'var(--mx-row-h, 56px)',
             borderBottom: '1px solid var(--divider)',
             transition: 'background var(--dur-fast) var(--ease-standard)',
             cursor: 'pointer',
@@ -174,7 +179,9 @@ function renderSortHeader(col: SortableColumn) {
             :key="c.key"
             :title="c.render ? undefined : String((r as any)[c.key] ?? '')"
             :style="{
-              padding: '12px 16px',
+              /* 等高铁律(LIST-PAGE-SPEC §4):垂直留白由 tr 定高提供(--mx-row-h),td 不吃上下 padding */
+              padding: '0 16px',
+              verticalAlign: 'middle',
               textAlign: c.align || 'left',
               font: 'var(--type-body)',
               color: 'var(--text-primary)',

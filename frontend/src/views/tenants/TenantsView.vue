@@ -165,7 +165,7 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;min-height:100%">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
     <!-- 1. Title row -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -213,19 +213,15 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
     </aside>
     <div class="mx-main">
 
-    <!-- 3. Phase tabs + toolbar -->
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <!-- 3. Phase tabs + toolbar(spec §2:单行,tabs 左 / 搜索+Select 右,样式收编 mx-list.css) -->
+    <div class="mx-toolbar">
       <FPPhaseTabs v-model="phase" :counts="phaseCounts" />
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="position:relative;width:230px">
-          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);display:inline-flex">
+      <div class="mx-toolbar-right">
+        <div class="mx-search">
+          <span class="mx-search-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </span>
-          <input
-            v-model="q"
-            placeholder="搜索企业 / 联系人 / 电话"
-            style="width:100%;height:36px;padding:0 12px 0 34px;border-radius:var(--radius-full);border:1px solid var(--border-subtle);background:var(--surface-card);font-family:var(--font-sans);font-size:13px;color:var(--text-primary);box-sizing:border-box;outline:none"
-          />
+          <input v-model="q" placeholder="搜索企业 / 联系人 / 电话" />
         </div>
         <div style="width:130px">
           <Select :options="['全部状态', '在租', '已退租', '黑名单']" v-model="statusFilter" size="sm" />
@@ -233,9 +229,9 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       </div>
     </div>
 
-    <!-- 4. Table card -->
-    <Card surface="white" :padding="0">
-      <div ref="tableWrapEl" class="mx-tablewrap" style="padding:14px 4px 0">
+    <!-- 4. Table card(spec §3:卡片定高 flex column,分页器停靠卡片内底部) -->
+    <Card surface="white" :padding="0" class="mx-listcard">
+      <div ref="tableWrapEl" class="mx-tablewrap">
         <FPSortableTable
           :columns="TABLE_COLUMNS"
           :rows="paged"
@@ -247,19 +243,16 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
         />
       </div>
       <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的租户</div>
+      <!-- 5. Pager(spec §5:.mx-pagerbar 贴卡片底边;0 行时整条隐藏,不留孤立分隔线) -->
+      <div v-if="filtered.length > 0" class="mx-pagerbar">
+        <FPPager
+          :page="safePage"
+          :pageCount="pageCount"
+          :total="filtered.length"
+          @page="page = $event"
+        />
+      </div>
     </Card>
-
-    <!-- spacer: pin the pager to the card bottom (规范: 分页器固定卡片底, 不跟列表尾浮在中间) -->
-    <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
-
-    <!-- 5. Pager -->
-    <FPPager
-      v-if="filtered.length > 0"
-      :page="safePage"
-      :pageCount="pageCount"
-      :total="filtered.length"
-      @page="page = $event"
-    />
     </div>
     </div>
     </template>
@@ -282,18 +275,3 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
                      @close="editDlg = false" @updated="onTenantUpdated" />
   </div>
 </template>
-
-<style scoped>
-/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
-.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
-.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
-.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
-/* 表格视口内滚+表头吸顶:卡片高不越过视口,消除页面级滚动(短窗兜底 320px) */
-.mx-tablewrap { max-height:max(320px, calc(100vh - 270px)); overflow:auto; }
-.mx-tablewrap :deep(thead th) { position:sticky; top:0; background:var(--surface-white); z-index:2; box-shadow:0 1px 0 var(--divider); }
-@media (max-width:1100px) {
-  .mx-body { grid-template-columns:1fr; gap:16px; }
-  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
-  .mx-kpirail > * { flex:1 1 160px; }
-}
-</style>

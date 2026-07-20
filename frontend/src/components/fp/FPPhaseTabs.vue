@@ -1,7 +1,7 @@
 <template>
   <div class="fp-phasetabs">
     <button
-      v-for="t in TABS"
+      v-for="t in tabs"
       :key="t.k"
       class="fp-phasetab"
       :class="{ on: String(modelValue) === String(t.k) }"
@@ -13,8 +13,9 @@
   </div>
 </template>
 
-<script setup>
+<script>
 // ponytail: TABS hardcoded per contract §2.6 — labels never change
+// (放普通 <script> 块:defineProps 默认值不能引用 <script setup> 局部变量)
 const TABS = [
   { k: 'all', label: '全部' },
   { k: 1, label: '一期' },
@@ -22,10 +23,14 @@ const TABS = [
   { k: 3, label: '三期' },
   { k: 4, label: '宿舍' },
 ]
+</script>
 
+<script setup>
 defineProps({
   modelValue: [String, Number],
   counts: Object,
+  // 可选自定义标签集({k,label}[],如合同生命周期 tabs);不传=期区 TABS,现有使用方零改动
+  tabs: { type: Array, default: () => TABS },
 })
 
 defineEmits(['update:modelValue'])

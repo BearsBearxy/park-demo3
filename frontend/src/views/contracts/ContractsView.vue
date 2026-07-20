@@ -10,11 +10,11 @@ import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Select from '@/components/ds/Select.vue'
+import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPSortableTable from '@/components/fp/FPSortableTable.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
 import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
-import ContractLifecycleTabs from './ContractLifecycleTabs.vue'
 import ContractDrawer from './ContractDrawer.vue'
 import ContractNewDialog from './ContractNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -75,7 +75,18 @@ function phaseOf(c: ContractDTO): string {
   return ''
 }
 
-// ─── lifecycle counts ─────────────────────────────────────
+// ─── lifecycle tabs ───────────────────────────────────────
+// 合同生命周期标签集,经 FPPhaseTabs :tabs 传入(spec §2:禁止复制样式另建 tab 组件;
+// 原 ContractLifecycleTabs.vue 样式复制品已删,常量收编于此)
+const LIFECYCLE = [
+  { k: 'all',        label: '全部' },
+  { k: 'draft',      label: '草稿' },
+  { k: 'active',     label: '执行中' },
+  { k: 'expiring',   label: '即将到期' },
+  { k: 'expired',    label: '已到期' },
+  { k: 'terminated', label: '已终止' },
+]
+
 const lifecycleCounts = computed(() => {
   // seed all lifecycle keys to 0 so empty-status tabs show "0" (matches design), not blank
   const c: Record<string, number> = { all: contracts.value.length, draft: 0, active: 0, expiring: 0, expired: 0, terminated: 0 }
@@ -129,7 +140,7 @@ const TABLE_COLUMNS = computed(() => [
   },
   {
     key: 'rentArea',
-    header: '面积 ㎡',
+    header: '租赁面积 ㎡',   /* F1:既有 rent_area 语义明确为租赁面积(计租面积) */
     width: '84px',
     align: 'right' as const,
     mono: true,
@@ -193,7 +204,7 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;min-height:100%">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
     <!-- 1. Header -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -237,30 +248,25 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       </aside>
 
       <div class="mx-main">
-      <!-- 3. Lifecycle tabs -->
-      <ContractLifecycleTabs v-model="statusFilter" :counts="lifecycleCounts" />
-
-      <!-- 4. Toolbar -->
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="position:relative;flex:1 1 240px;min-width:200px">
-          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);display:inline-flex">
-            <component :is="iconFor('search')" :size="16" />
-          </span>
-          <input
-            v-model="q"
-            placeholder="搜索合同编号 / 租户 / 楼栋"
-            style="width:100%;height:36px;padding:0 12px 0 34px;border-radius:var(--radius-full);border:1px solid var(--border-subtle);background:var(--surface-card);font-family:var(--font-sans);font-size:13px;color:var(--text-primary);box-sizing:border-box;outline:none"
-          />
+      <!-- 3. Toolbar(spec §2:单行,生命周期 tabs 左 / 搜索+期数 Select 右,总数只出现在分页器) -->
+      <div class="mx-toolbar">
+        <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
+        <div class="mx-toolbar-right">
+          <div class="mx-search">
+            <span class="mx-search-icon">
+              <component :is="iconFor('search')" :size="16" />
+            </span>
+            <input v-model="q" placeholder="搜索合同编号 / 租户 / 楼栋" />
+          </div>
+          <div style="width:130px">
+            <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
+          </div>
         </div>
-        <div style="width:140px">
-          <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
-        </div>
-        <span style="font-size:var(--fs-label);color:var(--text-muted);margin-left:auto">共 {{ filtered.length }} 份</span>
       </div>
 
-      <!-- 5. Table card -->
-      <Card surface="white" :padding="0" style="border:1px solid var(--border-subtle);overflow:hidden">
-        <div ref="tableWrapEl" class="mx-tablewrap" style="padding:14px 4px 0">
+      <!-- 4. List card(spec §3:卡片定高,表格区+分页条两段,分页器贴卡底不悬浮) -->
+      <Card surface="white" :padding="0" class="mx-listcard">
+        <div ref="tableWrapEl" class="mx-tablewrap">
           <FPSortableTable
             :columns="TABLE_COLUMNS"
             :rows="paged"
@@ -270,27 +276,23 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
             @sortChange="sort = $event"
             @rowClick="openContract = $event"
           />
+          <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的合同</div>
         </div>
-        <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的合同</div>
+        <div v-if="filtered.length > 0" class="mx-pagerbar">
+          <FPPager
+            :page="safePage"
+            :pageCount="pageCount"
+            :total="filtered.length"
+            @page="page = $event"
+          />
+        </div>
       </Card>
-
-      <!-- spacer: pin pager to card bottom (DESIGN-FIDELITY §5) -->
-      <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
-
-      <!-- 6. Pager -->
-      <FPPager
-        v-if="filtered.length > 0"
-        :page="safePage"
-        :pageCount="pageCount"
-        :total="filtered.length"
-        @page="page = $event"
-      />
       </div>
     </div>
     </template>
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
-    <!-- 7. Drawer -->
+    <!-- 5. Drawer -->
     <ContractDrawer
       :open="!!openContract"
       :contract="openContract"
@@ -301,26 +303,13 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       @deleted="onDeleted"
     />
 
-    <!-- 8. 新增合同弹窗 -->
+    <!-- 6. 新增合同弹窗 -->
     <ContractNewDialog v-if="showNew" @close="showNew = false" @created="onCreated" />
 
-    <!-- 9. 编辑 / 续签弹窗(从抽屉操作区打开,压在抽屉之上) -->
+    <!-- 7. 编辑 / 续签弹窗(从抽屉操作区打开,压在抽屉之上) -->
     <ContractNewDialog v-if="editFrom" :initial="editFrom" @close="editFrom = null" @saved="onEdited" />
     <ContractNewDialog v-if="renewFrom" :renew-from="renewFrom" @close="renewFrom = null" @saved="onRenewed" />
   </div>
 </template>
 
-<style scoped>
-/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
-.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
-.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
-.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
-/* 表格视口内滚+表头吸顶:卡片高不越过视口,消除页面级滚动(短窗兜底 320px) */
-.mx-tablewrap { max-height:max(320px, calc(100vh - 270px)); overflow:auto; }
-.mx-tablewrap :deep(thead th) { position:sticky; top:0; background:var(--surface-white); z-index:2; box-shadow:0 1px 0 var(--divider); }
-@media (max-width:1100px) {
-  .mx-body { grid-template-columns:1fr; gap:16px; }
-  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
-  .mx-kpirail > * { flex:1 1 160px; }
-}
-</style>
+<!-- .mx-* 布局样式收编于全局 styles/mx-list.css(LIST-PAGE-SPEC 单一事实源),本屏不再自带变体 -->

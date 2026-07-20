@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, h } from 'vue'
 import { buildingApi } from '@/api/building'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
+import { useFitRows } from '@/components/fp/useFitRows'
 import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
 import { fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
@@ -29,7 +30,10 @@ const q = ref('')
 const statusFilter = ref('全部状态')
 const sort = ref<SortState | null>({ key: 'occRate', dir: 'desc' })
 const page = ref(1)
-const pageSize = 8
+// 台账列表:每页行数自适应放满卡片(spec §6);卡片墙固定 8(§6 例外条)
+const tableWrapEl = ref<HTMLElement | null>(null)
+const fitSize = useFitRows(tableWrapEl)
+const pageSize = computed(() => layout.value === '卡片墙' ? 8 : fitSize.value)
 
 // drawer
 const openBuilding = ref<BuildingDTO | null>(null)
@@ -146,9 +150,9 @@ const TABLE_COLUMNS = computed(() => [
 const baseRows = computed(() =>
   layout.value === '台账列表' ? fpSortRows(filtered.value, sort.value, TABLE_COLUMNS.value) : filtered.value
 )
-const pageCount = computed(() => Math.max(1, Math.ceil(baseRows.value.length / pageSize)))
+const pageCount = computed(() => Math.max(1, Math.ceil(baseRows.value.length / pageSize.value)))
 const safePage = computed(() => Math.min(page.value, pageCount.value))
-const paged = computed(() => baseRows.value.slice((safePage.value - 1) * pageSize, safePage.value * pageSize))
+const paged = computed(() => baseRows.value.slice((safePage.value - 1) * pageSize.value, safePage.value * pageSize.value))
 
 watch([phase, q, statusFilter, layout, sort], () => { page.value = 1 })
 
@@ -178,7 +182,7 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;min-height:100%">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
     <!-- 1. Title row -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -222,28 +226,21 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
     </aside>
 
     <div class="mx-main">
-    <!-- 3. Phase tabs + layout toggle -->
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <!-- 3. Toolbar(spec §2 单行:tabs 左 / 布局切换+搜索+状态 右;总数只出现在分页器) -->
+    <div class="mx-toolbar">
       <FPPhaseTabs v-model="phase" :counts="phaseCounts" />
-      <Segmented :options="['卡片墙', '台账列表']" v-model="layout" size="sm" />
-    </div>
-
-    <!-- 4. Toolbar -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <div style="position:relative;flex:1 1 240px;min-width:200px">
-        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);display:inline-flex">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        </span>
-        <input
-          v-model="q"
-          placeholder="搜索楼栋名称"
-          style="width:100%;height:36px;padding:0 12px 0 34px;border-radius:var(--radius-full);border:1px solid var(--border-subtle);background:var(--surface-card);font-family:var(--font-sans);font-size:13px;color:var(--text-primary);box-sizing:border-box;outline:none"
-        />
+      <div class="mx-toolbar-right">
+        <Segmented :options="['卡片墙', '台账列表']" v-model="layout" size="sm" />
+        <div class="mx-search">
+          <span class="mx-search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <input v-model="q" placeholder="搜索楼栋名称" />
+        </div>
+        <div style="width:130px">
+          <Select :options="['全部状态', '正常', '停用']" v-model="statusFilter" size="sm" />
+        </div>
       </div>
-      <div style="width:140px">
-        <Select :options="['全部状态', '正常', '停用']" v-model="statusFilter" size="sm" />
-      </div>
-      <span style="font-size:var(--fs-label);color:var(--text-muted);margin-left:auto">共 {{ filtered.length }} 栋</span>
     </div>
 
     <!-- 5. Content area -->
@@ -256,8 +253,8 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       />
       <div v-if="filtered.length === 0" style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-disabled)">没有匹配的楼栋</div>
     </div>
-    <Card v-else surface="white" :padding="0">
-      <div class="mx-tablewrap" style="padding:14px 4px 0">
+    <Card v-else surface="white" :padding="0" class="mx-listcard">
+      <div ref="tableWrapEl" class="mx-tablewrap">
         <FPSortableTable
           :columns="TABLE_COLUMNS"
           :rows="paged"
@@ -267,15 +264,25 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
           @sortChange="sort = $event"
           @rowClick="onTableRowClick"
         />
+        <div v-if="filtered.length === 0" style="padding:40px;text-align:center;color:var(--text-disabled)">没有匹配的楼栋</div>
+      </div>
+      <!-- 分页器停靠卡片底部(spec §5) -->
+      <div v-if="filtered.length > 0" class="mx-pagerbar">
+        <FPPager
+          :page="safePage"
+          :pageCount="pageCount"
+          :total="filtered.length"
+          @page="page = $event"
+        />
       </div>
     </Card>
 
-    <!-- spacer: pin the pager to the card bottom (规范: 分页器固定卡片底, 不跟列表尾浮在中间) -->
-    <div style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
+    <!-- spacer: 卡片墙无列表卡片,分页器维持既有置底方式(spec §5 例外条) -->
+    <div v-if="layout === '卡片墙'" style="flex:1 1 auto;min-height:0" aria-hidden="true"></div>
 
-    <!-- 6. Pager -->
+    <!-- 6. Pager(仅卡片墙:台账列表的分页器在卡内 .mx-pagerbar) -->
     <FPPager
-      v-if="filtered.length > 0"
+      v-if="layout === '卡片墙' && filtered.length > 0"
       :page="safePage"
       :pageCount="pageCount"
       :total="filtered.length"
@@ -315,18 +322,3 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
     />
   </div>
 </template>
-
-<style scoped>
-/* KPI 左栏呼吸感样式(spec §A,楼栋/租户/合同三屏一字同款) */
-.mx-body { display:grid; grid-template-columns:224px minmax(0,1fr); gap:28px; align-items:start; }
-.mx-kpirail { display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
-.mx-main { min-width:0; display:flex; flex-direction:column; gap:16px; }
-/* 表格视口内滚+表头吸顶:卡片高不越过视口,消除页面级滚动(短窗兜底 320px) */
-.mx-tablewrap { max-height:max(320px, calc(100vh - 270px)); overflow:auto; }
-.mx-tablewrap :deep(thead th) { position:sticky; top:0; background:var(--surface-white); z-index:2; box-shadow:0 1px 0 var(--divider); }
-@media (max-width:1100px) {
-  .mx-body { grid-template-columns:1fr; gap:16px; }
-  .mx-kpirail { flex-direction:row; flex-wrap:wrap; position:static; }
-  .mx-kpirail > * { flex:1 1 160px; }
-}
-</style>
