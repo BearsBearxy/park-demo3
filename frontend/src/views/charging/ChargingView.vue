@@ -22,6 +22,7 @@ import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ChargingTable from './ChargingTable.vue'
 import ChargingRecordDrawer from './ChargingRecordDrawer.vue'
+import CpMeterView from './CpMeterView.vue'
 
 // ── schedule 实例派生(meta.kind → no/icon/title) ──────────
 const route = useRoute()
@@ -33,6 +34,13 @@ const sub = computed(() =>
     ? '电动车棚及充电桩逐月手续费及服务费、充电成本与利润 · 电量 千瓦时 / 金额 元'
     : '汽车充电桩逐月手续费及服务费、充电成本与利润 · 电量 千瓦时 / 金额 元',
 )
+// 分桩明细屏文案随屏(共享桩库按类型过滤)
+const gateTitle = computed(() => (no.value === 8 ? '电动车充电桩' : '汽车充电桩'))
+const vehicleType = computed<'car' | 'ebike'>(() => (no.value === 8 ? 'ebike' : 'car'))
+
+// ── 功能门(CP-METER-SPEC §2,模式 1:1 照 PvView):进入先选「月度汇总(原附表)/分桩充电明细(新)」──
+// 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表7/8 流程零行为变化,整体包进 v-else。
+const mode = ref<'summary' | 'meter' | null>(null)
 
 // ── 状态机 ───────────────────────────────────────────────
 const year = ref<number | null>(null)   // null → ⓪ 年份选择层
@@ -192,8 +200,36 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
-  <template v-if="overview">
+  <!-- ⓪ 功能门(CP-METER-SPEC §2):两卡分叉,文案随屏;卡片风格同 SchedYearGate 年卡 -->
+  <div v-if="mode === null" class="ch-fngate">
+    <div class="ch-fngate-head">
+      <h2 class="ch-fngate-title">
+        <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ gateTitle }}
+      </h2>
+      <p class="ch-fngate-sub">选择进入方式 · 月度汇总 = 附表{{ no }} 原年度台账;分桩明细 = 逐桩逐日充电明细</p>
+    </div>
+    <div class="ch-fngate-grid">
+      <div class="ch-fncard" @click="mode = 'summary'">
+        <span class="ch-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <div class="ch-fnc-ic"><component :is="iconFor(icon)" :size="20" /></div>
+        <div class="ch-fnc-name">附表{{ no }} · 月度汇总</div>
+        <div class="ch-fnc-desc">按运营商逐月记账的手续费及服务费、充电成本与利润台账,含导入与年度合计 —— 原有流程。</div>
+      </div>
+      <div class="ch-fncard" @click="mode = 'meter'">
+        <span class="ch-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <div class="ch-fnc-ic"><component :is="iconFor('plug')" :size="20" /></div>
+        <div class="ch-fnc-name">分桩充电明细</div>
+        <div class="ch-fnc-desc">逐桩按日期记录充电量、手续费与收益,自动汇月;并按运营商核对电表用电量与损耗。</div>
+      </div>
+    </div>
+    <p class="ch-fngate-foot"><component :is="iconFor('info')" :size="13" />两种视图数据相互独立;分桩汇总与附表{{ no }} 的对账功能后续提供。</p>
+  </div>
+
+  <!-- 分桩充电明细(新屏,附表7/8 共享组件按类型过滤桩) -->
+  <CpMeterView v-else-if="mode === 'meter'" :vehicle-type="vehicleType" @back="mode = null" />
+
+  <!-- 附表7/8 · 月度汇总:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
+  <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
       v-if="year === null"
@@ -204,8 +240,10 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       :current="overview.currentYear"
       :store-key="'charging-' + no"
       footer="每个年份是一份独立的逐月台账;进入后在编辑模式下新增或导入。"
+      back-label="返回功能选择"
       @pick="pickYear"
-    />
+      @back="mode = null"
+    /><!-- back=功能门回退口(组件既有 prop);附表7/8 年内流程零改动 -->
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
@@ -301,4 +339,19 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 <style scoped>
 /* 1:1 from screen-charging.jsx ChStyles(.ch-page,24) */
 .ch-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
+
+/* ── 功能门(CP-METER-SPEC §2):样式 1:1 同 PvView pv-fngate 家族 ── */
+.ch-fngate { display:flex; flex-direction:column; gap:18px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
+.ch-fngate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
+.ch-fngate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
+.ch-fngate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
+.ch-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; max-width:720px; }
+.ch-fncard { position:relative; display:flex; flex-direction:column; gap:10px; min-height:152px; padding:21px 23px; box-sizing:border-box; cursor:pointer; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
+.ch-fncard:hover { border-color:var(--border-strong); box-shadow:0 8px 24px rgba(28,28,28,.10); transform:translateY(-2px); }
+.ch-fnc-ic { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
+.ch-fnc-name { font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.ch-fnc-desc { font-size:12.5px; line-height:1.55; color:var(--text-muted); }
+.ch-fnc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.ch-fncard:hover .ch-fnc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
+.ch-fngate-foot { margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 </style>
