@@ -258,9 +258,11 @@ class ElecCostApiIT extends AbstractMysqlIT {
     // ── metrics 缺源:空月 7 卡齐全、value=null、missing 指名缺失源;有 ops 数据的月第 6 卡可算 ──
     @Test
     void metrics_missingSources_thenOpsComputable() throws Exception {
-        // 2099-05 全空:结构 7 卡,缺源卡 value null + missing 指名
+        // 2094-05 全空:结构 7 卡,缺源卡 value null + missing 指名。
+        // 空月锚必须独占期(禁顺序依赖断言):2099-05 被 S10DeleteApiIT 写入 s10 行,
+        // CI(Linux 类序)先跑它时附表10收入侧变可算,parkElecProfit.missing 丢「附表10」条目(v0.10.0-beta.1 CI 首红)。
         String body = utf8(mvc.perform(get("/api/elec-cost/metrics")
-                .param("year", "2099").param("month", "5").header("Authorization", auth()))
+                .param("year", "2094").param("month", "5").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(7)).andReturn());
         List<String> keys = JsonPath.read(body, "$.data[*].key");

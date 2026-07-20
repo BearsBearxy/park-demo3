@@ -16,7 +16,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// @Transactional 回滚造数(2026-07-20):此前 2099-05 的 s10 行不清理泄漏共享容器,
+// 污染 ElecCostApiIT 空月锚(附表10收入侧变可算)——v0.10.0-beta.1 CI 首红根因之一。
 @AutoConfigureMockMvc
+@org.springframework.transaction.annotation.Transactional
 class S10DeleteApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
