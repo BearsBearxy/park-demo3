@@ -7,7 +7,8 @@ vi.mock('@/api/ledger', () => ({
   ledgerApi: { import: vi.fn() },
 }))
 vi.mock('@/api/budget', () => ({ budgetApi: { import: vi.fn(), all: vi.fn() } }))
-import { deriveStatus, runImport, parserProps, IMPORT_TYPES } from './importRegistry'
+import { deriveStatus, runImport, parserProps, IMPORT_TYPES, type ImportCtx } from './importRegistry'
+import http from '@/api/index'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { budgetApi } from '@/api/budget'
@@ -20,11 +21,11 @@ describe('deriveStatus', () => {
 })
 
 describe('IMPORT_TYPES catalog', () => {
-  it('has the 18 expected keys', () => {
+  it('has the 21 expected keys', () => {
     expect(IMPORT_TYPES.map(t => t.key).sort()).toEqual(
-      ['budget', 'charging_7', 'charging_8', 'elec', 'ledger', 'office_13', 'office_14',
+      ['budget', 'charging_7', 'charging_8', 'cpMeter', 'elec', 'elecCost', 'ledger', 'office_13', 'office_14',
        'pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5',
-       'pv', 'report_bs', 'report_is', 'report_tb', 's10', 'salary'].sort())
+       'pv', 'pvMeter', 'report_bs', 'report_is', 'report_tb', 's10', 'salary'].sort())
   })
   it('ledger + report_bs + report_is + report_tb need context (year/month)', () => {
     expect(IMPORT_TYPES.filter(t => t.context === 'ledger').map(t => t.key).sort()).toEqual(['ledger', 'report_bs', 'report_is', 'report_tb'])
@@ -395,6 +396,117 @@ describe('budget run — 年段平铺', () => {
     const res = await entry.run([], {})
     expect(budgetApi.import).not.toHaveBeenCalled()
     expect(res).toEqual({ imported: 0, skipped: 0, errors: [] })
+  })
+})
+
+// ── pvMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 pvMeterExcel.spec.ts) ──
+describe('pvMeter customParse + run', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'pvMeter')!
+  const header = ['期数', '楼栋', '日期', '发电总量(kWh)', '自消纳电量(kWh)', '上网电量(kWh)', '备注']
+
+  it('customParse:好行返回后端契约字段,坏行(非法日期)暂存 ctx._parseErrors 不整批拦', () => {
+    const ctx: ImportCtx = {}
+    const props = entry.modalProps(ctx)
+    const res = (props.customParse as (m: string[][]) => { records?: Rec[]; error?: string })([
+      header,
+      ['一期', 'B座', '2026-07-01', '1200', '800', '400', ''],
+      ['一期', 'C、D座', '乱码', '1', '1', '0', ''],
+    ])
+    expect(res.error).toBeUndefined()
+    expect(res.records!.length).toBe(1)
+    expect(res.records![0]).toMatchObject({ station: 'B座', readDate: '2026-07-01', genTotal: 1200, selfUse: 800, gridFeed: 400 })
+    expect(ctx._parseErrors!.length).toBe(1)
+  })
+
+  it('customParse:无表头 → 整批 error', () => {
+    const props = entry.modalProps({})
+    const res = (props.customParse as (m: string[][]) => { error?: string })([['B座', '2026-07-01', '1', '1', '0']])
+    expect(res.error).toBeTruthy()
+  })
+
+  it('run:POST /pv-meter/import {rows},解析期错误并入 skipped/errors', async () => {
+    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
+    const rows = [{ station: 'B座', readDate: '2026-07-01', genTotal: 1, selfUse: 1, gridFeed: 0 }]
+    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    expect(post).toHaveBeenCalledWith('/pv-meter/import', { rows })
+    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    post.mockRestore()
+  })
+
+  it('run:全行错误(rows 空)→ 不打 API,只返回解析错误', async () => {
+    const post = vi.spyOn(http, 'post')
+    const res = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(post).not.toHaveBeenCalled()
+    expect(res).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    post.mockRestore()
+  })
+})
+
+// ── cpMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 cpMeterExcel.spec.ts,同构 pvMeter) ──
+describe('cpMeter customParse + run', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'cpMeter')!
+
+  it('customParse:好行返回后端契约字段,坏行(非法日期)暂存 ctx._parseErrors 不整批拦;无表头 → 整批 error', () => {
+    const ctx: ImportCtx = {}
+    const props = entry.modalProps(ctx)
+    const cp = props.customParse as (m: string[][]) => { records?: Rec[]; error?: string }
+    const res = cp([
+      ['运营商', '桩名', '日期', '充电量(kWh)', '手续费(元)', '收益(元)', '备注'],
+      ['小桔', '快充1', '2026-07-01', '850.5', '42.5', '680', ''],
+      ['小桔', '慢充1', '乱码', '1', '1', '0', ''],
+    ])
+    expect(res.error).toBeUndefined()
+    expect(res.records!.length).toBe(1)
+    expect(res.records![0]).toMatchObject({ station: '快充1', readDate: '2026-07-01', chargeKwh: 850.5, fee: 42.5, revenue: 680 })
+    expect(ctx._parseErrors!.length).toBe(1)
+    expect(cp([['快充1', '2026-07-01', '1', '1', '0']]).error).toBeTruthy()
+  })
+
+  it('run:POST /cp-meter/import {rows},解析期错误并入 skipped/errors;rows 空不打 API', async () => {
+    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
+    const rows = [{ station: '快充1', readDate: '2026-07-01', chargeKwh: 1, fee: 1, revenue: 0 }]
+    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    expect(post).toHaveBeenCalledWith('/cp-meter/import', { rows })
+    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    post.mockClear()
+    const empty = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(post).not.toHaveBeenCalled()
+    expect(empty).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    post.mockRestore()
+  })
+})
+
+// ── elecCost:customParse 行级错误暂存 + run 契约(解析纯函数单测见 elecCostExcel.spec.ts,同构 pvMeter) ──
+describe('elecCost customParse + run', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'elecCost')!
+
+  it('customParse:好行返回后端契约字段,坏行(费项非法)暂存 ctx._parseErrors 不整批拦;无表头 → 整批 error', () => {
+    const ctx: ImportCtx = {}
+    const props = entry.modalProps(ctx)
+    const cp = props.customParse as (m: string[][]) => { records?: Rec[]; error?: string }
+    const res = cp([
+      ['电表', '费项', '拆分', '月份(YYYY-MM)', '金额(元)', '电量(kWh,可空)', '备注'],
+      ['一期总表', '工业分时电价', '', '2025-01', '850000', '1200000', ''],
+      ['一期总表', '不存在的费项', '', '2025-01', '1', '1', ''],
+    ])
+    expect(res.error).toBeUndefined()
+    expect(res.records!.length).toBe(1)
+    expect(res.records![0]).toMatchObject({ meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01', amount: 850000, qty: 1200000 })
+    expect(ctx._parseErrors!.length).toBe(1)
+    expect(cp([['一期总表', '工业分时电价', '2025-01', '1']]).error).toBeTruthy()
+  })
+
+  it('run:POST /elec-cost/import {rows},解析期错误并入 skipped/errors;rows 空不打 API', async () => {
+    const post = vi.spyOn(http, 'post').mockResolvedValue({ imported: 2, skipped: 0, errors: [] } as never)
+    const rows = [{ meter: '一期总表', fee: '工业分时电价', split: '', month: '2025-01', amount: 1 }]
+    const res = await entry.run(rows, { _parseErrors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    expect(post).toHaveBeenCalledWith('/elec-cost/import', { rows })
+    expect(res).toEqual({ imported: 2, skipped: 1, errors: [{ rowIndex: 1, label: 'x', reason: 'r' }] })
+    post.mockClear()
+    const empty = await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(post).not.toHaveBeenCalled()
+    expect(empty).toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    post.mockRestore()
   })
 })
 

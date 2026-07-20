@@ -27,7 +27,11 @@ import { importBudget, BUDGET_SHEET_RE } from '@/utils/importBudget'
 import { PNL_SOT_FROM_YEAR } from '@/analysis/budget'
 import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows } from '@/utils/importChargingRows'
+import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
+import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
+import http from '@/api/index'
 import { importElecRows } from '@/utils/importElecRows'
+import { parseElecCostRows, ELEC_COST_TEMPLATE_COLS } from '@/utils/elecCostExcel'
 import { parseYearMonth } from '@/utils/parseYearMonth'
 import { matchByHeader, isGarbageTenantName, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { FEE_KEYS, lgColumns } from '@/utils/ledgerColumns'
@@ -316,6 +320,58 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     },
     target: () => null,
   },
+  // ── 光伏分栋抄表(PV-METER-SPEC §3):长表一行=一站一日,(电站,日期)幂等 upsert ──
+  {
+    key: 'pvMeter', label: '光伏抄表', tag: '抄表', icon: 'gauge', context: 'none',
+    modalProps: (ctx) => ({
+      title: '导入 光伏抄表 · 分栋明细',
+      sub: '上传/粘贴分栋抄表长表(一行=一站一日),按表头识别列;(电站,日期)重复导入自动覆盖,未知站名/非法日期逐行报告不整批拦',
+      templateCols: PV_METER_TEMPLATE_COLS,
+      // 行级错误(非法日期/负电量)暂存 ctx,run 时并入结果面板(同 charging 模式);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => {
+        const { records, errors } = parsePvMeterRows(matrix)
+        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
+        const headerErr = errors.find(e => e.rowIndex < 0)
+        if (headerErr) return { error: headerErr.reason }
+        return { records }
+      },
+    }),
+    // ponytail: 直调端点不经 api/pvMeter.ts——该文件归视图域(Wave2-A)所有,双代理并行互不阻塞;A 落地后可换 pvMeterApi
+    run: async (payload, ctx) => {
+      const rows = payload as ImportRec[]
+      const pe = ctx._parseErrors ?? []
+      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
+      const res = await http.post<ImportResultDTO>('/pv-meter/import', { rows })
+      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+    },
+    target: () => null,
+  },
+  // ── 充电桩分桩明细(CP-METER-SPEC §3):长表一行=一桩一日,(桩,日)幂等 upsert;与附表7/8 月度汇总完全独立 ──
+  {
+    key: 'cpMeter', label: '充电桩明细', tag: '抄表', icon: 'plug', context: 'none',
+    modalProps: (ctx) => ({
+      title: '导入 充电桩明细 · 分桩抄表',
+      sub: '上传/粘贴分桩充电长表(一行=一桩一日),按表头识别列;(桩,日期)重复导入自动覆盖,未知桩名/非法日期逐行报告不整批拦',
+      templateCols: CP_METER_TEMPLATE_COLS,
+      // 行级错误(非法日期/负金额)暂存 ctx,run 时并入结果面板(同 pvMeter 模式);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => {
+        const { records, errors } = parseCpMeterRows(matrix)
+        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
+        const headerErr = errors.find(e => e.rowIndex < 0)
+        if (headerErr) return { error: headerErr.reason }
+        return { records }
+      },
+    }),
+    // ponytail: 直调端点不经 api/cpMeter.ts——该文件归视图域(W2-A)所有,双代理并行互不阻塞;A 落地后可换 cpMeterApi
+    run: async (payload, ctx) => {
+      const rows = payload as ImportRec[]
+      const pe = ctx._parseErrors ?? []
+      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
+      const res = await http.post<ImportResultDTO>('/cp-meter/import', { rows })
+      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+    },
+    target: () => null,
+  },
   ...([7, 8] as const).map(no => ({
     key: `charging_${no}`, label: no === 7 ? '汽车充电桩' : '电动车充电桩',
     tag: `附表${no}`, icon: no === 7 ? 'car' : 'bike', context: 'none' as const,
@@ -350,6 +406,33 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     run: async (payload) => {
       const rows = payload as ImportRec[]
       return elecApi.importRows(rows as never)
+    },
+    target: () => null,
+  },
+  // ── 园区电费成本模型(ELEC-COST-SPEC §5):长表一行=一表一费项一月,(表,月,费项,拆分)幂等 upsert;
+  //    与附表11(上一条 elec)完全独立零改动 ──
+  {
+    key: 'elecCost', label: '电费成本', tag: '录入', icon: 'zap', context: 'none',
+    modalProps: (ctx) => ({
+      title: '导入 电费成本 · 总表费项',
+      sub: '上传/粘贴电费成本长表(一行=一表一费项一月),按表头识别列;(电表,月份,费项,拆分)重复导入自动覆盖,未知电表/费项逐行报告不整批拦',
+      templateCols: ELEC_COST_TEMPLATE_COLS,
+      // 行级错误(费项/拆分/月份/金额非法)暂存 ctx,run 时并入结果面板(同 pvMeter 模式);表头识别失败才整批拦
+      customParse: (matrix: string[][]) => {
+        const { records, errors } = parseElecCostRows(matrix)
+        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
+        const headerErr = errors.find(e => e.rowIndex < 0)
+        if (headerErr) return { error: headerErr.reason }
+        return { records }
+      },
+    }),
+    // ponytail: 直调端点不经 api/elecCost.ts——该文件归视图域所有,双代理并行互不阻塞;视图域落地后可换 elecCostApi
+    run: async (payload, ctx) => {
+      const rows = payload as ImportRec[]
+      const pe = ctx._parseErrors ?? []
+      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
+      const res = await http.post<ImportResultDTO>('/elec-cost/import', { rows })
+      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
     },
     target: () => null,
   },
