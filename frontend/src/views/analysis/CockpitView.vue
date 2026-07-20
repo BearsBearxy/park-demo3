@@ -204,7 +204,8 @@ function onPhaseClick(p: unknown): void {
 
 // ── 收缴率横条 vs 目标(点击 → 该期欠费清单弹层) ──
 // 只显近 6 期(2026-07-20 用户反馈:全年 10+ 期横条在小卡里过度拥挤);全期趋势看 KPI sparkline
-const collShown = computed(() => collects.value.slice(-6))
+// 先按所选年过滤再取近6期(2026-07-21 用户反馈:此前全局切片,台账跨年时选2025却混入2024期)
+const collShown = computed(() => collects.value.filter((c) => c.ym.startsWith(year.value + '-')).slice(-6))
 const collectOption = computed<object | null>(() => {
   if (!collShown.value.length) return null
   const target = anaSettings.collectTarget
@@ -329,7 +330,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
-          <span class="hint">近 6 期(台账共 {{ collects.length }} 期,全期趋势见 KPI)· 点击看欠费清单</span>
+          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)· 点击看欠费清单</span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="248" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
