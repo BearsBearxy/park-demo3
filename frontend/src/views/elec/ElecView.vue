@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 附表11 电费成本 — 年度台账状态机。
 // 动线 1:1 from screen-schedule11.jsx Schedule11Screen(282-559):
-// ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + 右上 type 切换 + ElecTable + 抽屉)。
+// ⓪ 功能门(ELEC-COST-SPEC:月度电费(原)/成本总览(新)) → 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + 右上 type 切换 + ElecTable + 抽屉)。
 // 两类型共一表用 type 区分:energy(电量电费)/ basic(基本电费),切 type 重新取数。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted } from 'vue'
@@ -19,6 +19,11 @@ import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import ElecTable from './ElecTable.vue'
 import ElecRecordDrawer from './ElecRecordDrawer.vue'
+import ElecCostView from './ElecCostView.vue'
+
+// ── 功能门(ELEC-COST-SPEC §4,1:1 照 PvView 模式):进入先选「附表11 月度电费(原)/电费成本总览(新)」──
+// 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表11流程零行为变化,整体包进 v-else。
+const mode = ref<'summary' | 'cost' | null>(null)
 
 // ── 状态机 ───────────────────────────────────────────────
 const year = ref<number | null>(null)   // null → ⓪ 年份选择层
@@ -187,8 +192,36 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
-  <template v-if="overview">
+  <!-- ⓪ 功能门(ELEC-COST-SPEC §4):两卡分叉,卡片风格同 SchedYearGate 年卡 -->
+  <div v-if="mode === null" class="e11-fngate">
+    <div class="e11-fngate-head">
+      <h2 class="e11-fngate-title">
+        <span class="ic"><component :is="iconFor('zap')" :size="18" /></span>电费
+      </h2>
+      <p class="e11-fngate-sub">选择进入方式 · 月度电费 = 附表11 原年度台账;成本总览 = 园区电费物理模型与派生指标</p>
+    </div>
+    <div class="e11-fngate-grid">
+      <div class="e11-fncard" @click="mode = 'summary'">
+        <span class="e11-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <div class="e11-fnc-ic"><component :is="iconFor('zap')" :size="20" /></div>
+        <div class="e11-fnc-name">附表11 · 月度电费</div>
+        <div class="e11-fnc-desc">对外电费进项台账(电量电费分时 + 基本电费),按年逐月记账,含导入与年度合计 —— 原有流程。</div>
+      </div>
+      <div class="e11-fncard" @click="mode = 'cost'">
+        <span class="e11-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <div class="e11-fnc-ic"><component :is="iconFor('gauge')" :size="20" /></div>
+        <div class="e11-fnc-name">电费成本总览</div>
+        <div class="e11-fnc-desc">总表/宿舍/运营电表按费项逐月录入,派生园区电费收益等 7 项指标,含电价参数与模拟填充。</div>
+      </div>
+    </div>
+    <p class="e11-fngate-foot"><component :is="iconFor('info')" :size="13" />成本总览的模拟填充只读取附表11 等真实数据推导,不回写附表11。</p>
+  </div>
+
+  <!-- 电费成本总览(新屏) -->
+  <ElecCostView v-else-if="mode === 'cost'" @back="mode = null" />
+
+  <!-- 附表11 · 月度电费:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
+  <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
       v-if="year === null"
@@ -199,8 +232,10 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       :current="overview.currentYear"
       store-key="elec"
       footer="每个年份是一份独立的逐月电费台账;进入后在编辑模式下新增或导入。"
+      back-label="返回功能选择"
       @pick="pickYear"
-    />
+      @back="mode = null"
+    /><!-- back=功能门回退口(组件既有 prop);附表11 年内流程零改动 -->
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
@@ -293,4 +328,19 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 <style scoped>
 /* 1:1 from screen-schedule11.jsx EStyles(.e11-page,21) */
 .e11-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
+
+/* ── 功能门(ELEC-COST-SPEC §4):卡片风格同 SchedYearGate .sm-ycard 家族(1:1 照 PvView .pv-fngate) ── */
+.e11-fngate { display:flex; flex-direction:column; gap:18px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
+.e11-fngate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
+.e11-fngate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
+.e11-fngate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
+.e11-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; max-width:720px; }
+.e11-fncard { position:relative; display:flex; flex-direction:column; gap:10px; min-height:152px; padding:21px 23px; box-sizing:border-box; cursor:pointer; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
+.e11-fncard:hover { border-color:var(--border-strong); box-shadow:0 8px 24px rgba(28,28,28,.10); transform:translateY(-2px); }
+.e11-fnc-ic { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
+.e11-fnc-name { font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.e11-fnc-desc { font-size:12.5px; line-height:1.55; color:var(--text-muted); }
+.e11-fnc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.e11-fncard:hover .e11-fnc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
+.e11-fngate-foot { margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 </style>
