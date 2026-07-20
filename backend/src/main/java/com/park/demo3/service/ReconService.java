@@ -56,10 +56,11 @@ public class ReconService {
 
     // ── 科目映射常量(E2):台账 21 列 ⇄ s10 25 列,同科目配对 20 项;单侧独有科目 lGet/sGet 缺席=onlySide。
     //    key=FeeLine 键(配对/台账独有=台账字段名,s10 独有=s10 colId);s10Key=S10Card fees 键;
-    //    label=中文科目(配对/台账独有取 ledgerColumns.ts,s10 独有取 sales-income/layout.ts)。 ──
-    private record Fee(String key, String s10Key, String label,
-                       Function<MonthlyLedger, BigDecimal> lGet, Function<S10Record, BigDecimal> sGet) {}
-    private static final List<Fee> RECON_FEES = List.of(
+    //    label=中文科目(配对/台账独有取 ledgerColumns.ts,s10 独有取 sales-income/layout.ts)。
+    //    public:台账列↔附表10列 单一事实源,V35 bill_pay_company 种子与 BillsService paymap 校验复用,禁另抄映射。 ──
+    public record Fee(String key, String s10Key, String label,
+                      Function<MonthlyLedger, BigDecimal> lGet, Function<S10Record, BigDecimal> sGet) {}
+    public static final List<Fee> RECON_FEES = List.of(
         // 配对 20 + 台账独有 1(台账列序 §3.1)
         new Fee("factoryRent",         "factoryRent",      "厂房租金",               MonthlyLedger::getFactoryRent,         S10Record::getFactoryRent),
         new Fee("factoryMgmtFee",      "factoryMgmtFee",   "厂房企业管理服务费",     MonthlyLedger::getFactoryMgmtFee,      S10Record::getFactoryMgmtFee),

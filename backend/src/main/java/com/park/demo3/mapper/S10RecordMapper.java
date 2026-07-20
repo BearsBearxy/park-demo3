@@ -11,6 +11,16 @@ public interface S10RecordMapper extends BaseMapper<S10Record> {
             .eq("acct_month", acctMonth)
             .orderByAsc("tenant_id").orderByAsc("id"));
     }
+    // 某 acct_month 跨全部 phase 的行(账单页附表10口径整期取);排序同 selectBySlot
+    default List<S10Record> selectByMonth(String acctMonth) {
+        return selectList(new QueryWrapper<S10Record>()
+            .eq("acct_month", acctMonth)
+            .orderByAsc("tenant_id").orderByAsc("id"));
+    }
+    // 某年跨全部 phase 的行(acct_month 前缀 year-;电费成本 metrics-year 整年一次取数用)
+    default List<S10Record> selectByYear(int year) {
+        return selectList(new QueryWrapper<S10Record>().likeRight("acct_month", year + "-"));
+    }
     // 某 (phase, acct_month, tenant_name) 唯一行(upsert 用)
     default S10Record selectBySlotTenant(int phase, String acctMonth, String tenantName) {
         return selectOne(new QueryWrapper<S10Record>()

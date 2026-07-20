@@ -8,7 +8,10 @@ const props = withDefaults(defineProps<{
   subtitle?: string
   icon?: string
   width?: number
-}>(), { width: 640 })
+  // 恒定高度(BILLS-SPEC §4):true 时抽屉高度固定为 max-height 上限,不随内容塌缩——
+  // 内容少的记录与满表记录同尺寸。默认 false 向后兼容既有使用方(内容驱动高度)。
+  fixedHeight?: boolean
+}>(), { width: 640, fixedHeight: false })
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -25,7 +28,7 @@ watch(() => props.open, () => {})
 <template>
   <Teleport to="body">
     <div v-if="open" class="fp-dwr-backdrop" @mousedown="emit('close')">
-    <div class="fp-dwr" :style="{ width: `min(${width}px, 94vw)` }" role="dialog" aria-modal="true" @mousedown.stop>
+    <div class="fp-dwr" :class="{ 'fp-dwr--fixed': fixedHeight }" :style="{ width: `min(${width}px, 94vw)` }" role="dialog" aria-modal="true" @mousedown.stop>
       <div class="fp-dwr-hd">
         <span v-if="icon" class="fp-dwr-icon">
           <component :is="iconFor(icon)" :size="20" />
@@ -85,6 +88,8 @@ watch(() => props.open, () => {})
   animation: fpDwrIn .2s var(--ease-standard, ease) forwards;
 }
 @keyframes fpDwrIn { to { transform: none; opacity: 1; } }
+/* 恒定高度档:高度钉在 max-height 上限,内容少不塌缩(fixedHeight prop) */
+.fp-dwr--fixed { height: min(85vh, 760px); }
 
 .fp-dwr-hd {
   flex: 0 0 auto;

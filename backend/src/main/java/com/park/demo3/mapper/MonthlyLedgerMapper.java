@@ -12,6 +12,15 @@ public interface MonthlyLedgerMapper extends BaseMapper<MonthlyLedger> {
         return selectList(new QueryWrapper<MonthlyLedger>()
             .eq("company_id", companyId).eq("period_year", year));
     }
+    // 跨全部公司取一期(账单页:家族聚合必须跨公司主体)
+    default List<MonthlyLedger> selectPeriod(Integer year, Integer month) {
+        return selectList(new QueryWrapper<MonthlyLedger>()
+            .eq("period_year", year).eq("period_month", month));
+    }
+    // 跨全部公司取整年(电费成本 metrics-year 整年一次取数用)
+    default List<MonthlyLedger> selectPeriodYear(Integer year) {
+        return selectList(new QueryWrapper<MonthlyLedger>().eq("period_year", year));
+    }
     // 有数据的年份 + 各年月份数(年份门)
     default List<java.util.Map<String, Object>> yearsWithMonths(Integer companyId) {
         return selectMaps(new QueryWrapper<MonthlyLedger>()

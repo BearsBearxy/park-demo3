@@ -50,22 +50,28 @@ function onDoc(e: MouseEvent) {
   if (root.value && !root.value.contains(e.target as Node)) setOpen(false);
 }
 function onKey(e: KeyboardEvent) {
-  if (e.key === "Escape") setOpen(false);
+  // Esc 只关本浮层:阻断传播,否则宿主弹窗(FPDrawer 等 window keydown)会连宿主一起关(FPTenantPicker 同款前例)
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    setOpen(false);
+  }
 }
 
+// 监听挂 capture 阶段:宿主弹窗容器常有 @mousedown.stop(如 FPDrawer .fp-dwr),
+// 冒泡阶段监听在弹窗内永远收不到事件,「点外关闭」会整体失效;capture 先于 .stop 派发,不受影响。
 watch(isOpen, (v) => {
   if (v) {
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDoc, true);
+    document.addEventListener("keydown", onKey, true);
   } else {
-    document.removeEventListener("mousedown", onDoc);
-    document.removeEventListener("keydown", onKey);
+    document.removeEventListener("mousedown", onDoc, true);
+    document.removeEventListener("keydown", onKey, true);
   }
 });
 
 onUnmounted(() => {
-  document.removeEventListener("mousedown", onDoc);
-  document.removeEventListener("keydown", onKey);
+  document.removeEventListener("mousedown", onDoc, true);
+  document.removeEventListener("keydown", onKey, true);
 });
 
 const panelStyle = computed(() => ({

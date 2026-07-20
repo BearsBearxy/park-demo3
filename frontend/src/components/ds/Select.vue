@@ -173,14 +173,18 @@ onUnmounted(() => {
         position: 'absolute',
         top: 'calc(100% + 6px)',
         left: '0',
-        right: '0',
+        /* 面板宽度贴内容不贴触发器:窄触发器(如 92px 月份选择)下选项文本+勾不再截断 */
+        minWidth: '100%',
+        width: 'max-content',
+        maxWidth: '280px',
         zIndex: '60',
         background: 'var(--surface-white)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-md)',
         boxShadow: 'var(--shadow-pop)',
         padding: '6px',
-        maxHeight: '240px',
+        /* 12 项(年月选择)整列可见不滚动:12×36px 行高 + 上下 padding */
+        maxHeight: '456px',
         overflowY: 'auto',
         boxSizing: 'border-box',
       }"
