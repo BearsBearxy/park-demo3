@@ -59,7 +59,8 @@ jobs:
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           tar --exclude=./.git -czf /tmp/demo3.tgz .
           scp -i ~/.ssh/deploy /tmp/demo3.tgz root@"$HOST":/opt/demo3.tgz
-          ssh -i ~/.ssh/deploy root@"$HOST" '
+          # keepalive:服务器 compose build(vue-tsc)可静默 5 分钟+,无心跳会话被掐断(Broken pipe,beta.1 部署首败)
+          ssh -i ~/.ssh/deploy -o ServerAliveInterval=30 -o ServerAliveCountMax=40 root@"$HOST" '
             set -e
             cd /opt && rm -rf demo3.staging && mkdir demo3.staging
             tar xzf demo3.tgz -C demo3.staging && rm demo3.tgz
