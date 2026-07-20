@@ -117,11 +117,17 @@ describe('colPick(收缴率取期,v1 口径)', () => {
     expect(colPick(cs, true, 2025, '2025-12')).toEqual({ ym: '2025-10', rate: 50 })
     expect(colPick(cs, true, 2025, '2024-12')).toBeNull()
   })
-  it('年粒度:并该年各期(金额加权)', () => {
+  it('年粒度:并该年各期(金额加权);取期标注紧凑化(断月→N期)', () => {
     const y = colPick(cs, false, 2025, null)!
     expect(y.rate).toBe(75)
-    expect(y.ym).toBe('1月/10月')
+    expect(y.ym).toBe('2期')   // 1月+10月 断月 → 期数;冗长枚举「1月/10月」已废(2026-07-20 用户反馈)
     expect(colPick(cs, false, 2024, null)).toBeNull()
+  })
+
+  it('取期标注:连续月→区间;单月→该月', () => {
+    const mk = (ym: string): (typeof cs)[number] => ({ ym, receivable: 100, collected: 80, rate: 80 })
+    expect(colPick([mk('2025-01'), mk('2025-02'), mk('2025-03')], false, 2025, null)!.ym).toBe('1-3月')
+    expect(colPick([mk('2025-05')], false, 2025, null)!.ym).toBe('5月')
   })
 })
 

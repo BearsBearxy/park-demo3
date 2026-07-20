@@ -188,7 +188,8 @@ const phaseOption = computed<object | null>(() => {
     grid: { left: 52, right: 12, top: 30, bottom: 26 },
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
-    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 10 } },
+    /* 月标签缩短「2025-01」→「1月」防 10+ 期挤爆(tooltip/点击深链仍用完整 YM) */
+    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 10, formatter: (v: string) => `${+v.slice(5)}月` } },
     yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
     series: d.series.map((s) => ({ name: s.name, type: 'bar', stack: 'ph', data: s.data, barMaxWidth: 30 })),
   }
@@ -202,17 +203,19 @@ function onPhaseClick(p: unknown): void {
 }
 
 // ── 收缴率横条 vs 目标(点击 → 该期欠费清单弹层) ──
+// 只显近 6 期(2026-07-20 用户反馈:全年 10+ 期横条在小卡里过度拥挤);全期趋势看 KPI sparkline
+const collShown = computed(() => collects.value.slice(-6))
 const collectOption = computed<object | null>(() => {
-  if (!collects.value.length) return null
+  if (!collShown.value.length) return null
   const target = anaSettings.collectTarget
   return {
-    grid: { left: 64, right: 40, top: 12, bottom: 26 },
+    grid: { left: 48, right: 40, top: 12, bottom: 26 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => v.toFixed(1) + '%' },
     xAxis: { type: 'value', max: (v: { max: number }) => Math.max(100, Math.ceil(v.max)), axisLabel: { formatter: '{value}%' } },
-    yAxis: { type: 'category', data: collects.value.map((c) => c.ym) },
+    yAxis: { type: 'category', data: collShown.value.map((c) => `${+c.ym.slice(5)}月`) },
     series: [{
       name: '收缴率', type: 'bar', barMaxWidth: 20,
-      data: collects.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
+      data: collShown.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
       label: { show: true, position: 'right', fontSize: 10, formatter: '{c}%' },
       markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 10 }, data: [{ xAxis: target }] },
     }],
@@ -222,7 +225,7 @@ const arrModal = ref<string | null>(null)   // 欠费清单弹层:选中期 ym
 const arrears = computed(() => (arrModal.value ? arrearsOf(ledgerRows.value, arrModal.value) : null))
 function onCollectClick(p: unknown): void {
   const e = p as EcClick
-  const ym = collects.value[e.dataIndex ?? -1]?.ym
+  const ym = collShown.value[e.dataIndex ?? -1]?.ym   // 与近6期切片同数组,索引对齐
   if (ym) arrModal.value = ym
 }
 function goLedger(tenant: string, company: string, ym: string): void {
@@ -258,10 +261,11 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" />
       <AnaKpiTile label="园区利润" :value="money(prof)"
         :note="margin != null ? '利润率 ' + margin.toFixed(1) + '%' : '当期无损益数据'" :trend="pnl?.profit" />
+      <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
-        :kind="cp ? `vs 目标${anaSettings.collectTarget}% · 取 ${cp.ym}` : ''" unit="pt"
-        :note="cp ? undefined : '台账未录入'" :trend="collects.map((c) => c.rate)" />
+        :kind="cp ? `距目标${anaSettings.collectTarget}%` : ''" unit="pt"
+        :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
       <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
         :note="ach ? `${year}年预算 ${money(ach.budget)}` : `${year}年未导入预算`" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
@@ -325,7 +329,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
-          <span class="hint">台账覆盖 {{ collects.length }} 期 · 点击看欠费清单</span>
+          <span class="hint">近 6 期(台账共 {{ collects.length }} 期,全期趋势见 KPI)· 点击看欠费清单</span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="248" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />

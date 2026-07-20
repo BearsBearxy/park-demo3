@@ -101,7 +101,12 @@ export function colPick(collects: CollectRate[], isMonth: boolean, year: number,
     if (!ys.length) return null
     const recv = ys.reduce((s, c) => s + c.receivable, 0)
     const coll = ys.reduce((s, c) => s + c.collected, 0)
-    return { ym: ys.map((c) => +c.ym.slice(5) + '月').join('/'), rate: recv ? (coll / recv) * 100 : 0 }
+    // 取期标注紧凑化(2026-07-20 用户反馈:逐月枚举「1月/2月/…/10月」冗长看不懂):
+    // 连续月区间 →「1-10月」;单月 →「3月」;有断月 →「N期」
+    const mis = ys.map((c) => +c.ym.slice(5))
+    const consecutive = mis.every((m, i) => i === 0 || m === mis[i - 1] + 1)
+    const ymLabel = mis.length === 1 ? `${mis[0]}月` : consecutive ? `${mis[0]}-${mis[mis.length - 1]}月` : `${mis.length}期`
+    return { ym: ymLabel, rate: recv ? (coll / recv) * 100 : 0 }
   }
   const le = collects.filter((c) => c.ym <= (ym ?? ''))
   return le.length ? { ym: le[le.length - 1].ym, rate: le[le.length - 1].rate } : null

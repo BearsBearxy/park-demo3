@@ -6,6 +6,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -42,6 +43,15 @@ public class GlobalExceptionHandler {
     public Result<Void> paramInvalid(Exception e) {
         log.warn("param validation failed: {}", e.getMessage());
         return Result.error(ResultCode.BAD_REQUEST.code, ResultCode.BAD_REQUEST.message);
+    }
+
+    // 缺失必填 query 参数（如 metrics 缺 month/metrics-year 缺 year）→ 400，
+    // 与上方「入参校验失败 → 400」口径一致，避免落到 fallback 误报 500
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> missingParam(MissingServletRequestParameterException e) {
+        log.warn("missing request parameter: {}", e.getParameterName());
+        return Result.error(ResultCode.BAD_REQUEST.code, "缺少必填参数：" + e.getParameterName());
     }
 
     // path/query 参数类型转换失败（如 id 传 "undefined" → int 转换失败）→ 400，

@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(41屏×3层)。源: app/shell.jsx FP_NAV(+P3-P1 预算对比)。
+// src/nav/fpNav.ts — 导航单一事实源(43屏×3层)。源: app/shell.jsx FP_NAV(+P3-P1 预算对比+能源分析两屏)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
 export interface NavLayer { id: string; label: string; short: string; icon: string; caption: string; home: string; sections: NavSection[] }
@@ -12,7 +12,7 @@ export const FP_NAV: NavLayer[] = [
       { value: 'contracts', label: '合同管理', icon: 'file-text', kind: 'contracts' } ] },
     { title: '业务流水', items: [
       { value: 'ledger', label: '月度台账', icon: 'book-open', kind: 'ledger' },
-      { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'placeholder' },
+      { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'bills' },
       { value: 'bank-flow', label: '银行流水', icon: 'landmark', kind: 'placeholder' } ] },
     { title: '成本与收入录入', items: [
       { value: 'pv-income', label: '附表6 光伏发电', icon: 'sun', kind: 'schedule6' },
@@ -57,7 +57,9 @@ export const FP_NAV: NavLayer[] = [
       { value: 'breakeven', label: '盈亏平衡与敏感性', icon: 'scale-3d', kind: 'ana' },
       { value: 'pnl-analysis', label: '损益附表分析', icon: 'layers', kind: 'pnlAnalysis' },
       { value: 'budget', label: '预算对比', icon: 'target', kind: 'ana' },
-      { value: 'pv-roi', label: '光伏投资回收', icon: 'sun', kind: 'pvRoi' } ] },
+      { value: 'pv-roi', label: '光伏投资回收', icon: 'sun', kind: 'pvRoi' },
+      { value: 'elec-analysis', label: '电费成本分析', icon: 'zap', kind: 'ana' },
+      { value: 'charging-analysis', label: '充电桩分析', icon: 'plug', kind: 'ana' } ] },
     { title: '监控', items: [{ value: 'anomaly', label: '异常提醒中心', icon: 'bell-ring', kind: 'ana' }] },
   ] },
 ]
