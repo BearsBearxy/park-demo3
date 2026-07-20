@@ -167,6 +167,76 @@ class ContractWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.message").value("结束日期不能早于开始日期"));
     }
 
+    // ─── V33 面积模型 / 免租期 ────────────────────────────────
+
+    /** 带面积三字段 + 可选免租期(原始 JSON 串,内部引号自动转义)的请求体 */
+    private String jsonArea(String no, int tid, int bid, String rentFree) {
+        String rf = rentFree == null ? "" : ",\"rentFree\":\"" + rentFree.replace("\"", "\\\"") + "\"";
+        return "{\"contractNo\":\"" + no + "\",\"tenantId\":" + tid + ",\"buildingId\":" + bid
+                + ",\"buildingArea\":320.5,\"rentArea\":400.63,\"unitPrice\":32,"
+                + "\"monthlyRent\":12820.16,\"deposit\":0,\"status\":\"draft\",\"remark\":\"IT V33\"" + rf + "}";
+    }
+
+    @Test
+    void createWithAreaAndRentFree_success_fieldsEchoed() throws Exception {
+        mvc.perform(post("/api/contracts")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(jsonArea(uniqueNo(), firstTenantId(), firstBuildingId(),
+                        "[{\"start\":\"2026-01-01\",\"end\":\"2026-02-15\",\"note\":\"装修期\"}]")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.buildingArea").value(320.5))
+                .andExpect(jsonPath("$.data.rentArea").value(400.63))
+                .andExpect(jsonPath("$.data.unitPrice").value(32.0))
+                .andExpect(jsonPath("$.data.rentFree").value(
+                        "[{\"start\":\"2026-01-01\",\"end\":\"2026-02-15\",\"note\":\"装修期\"}]"));
+    }
+
+    @Test
+    void rentFree_invalidVariants_return400InBody() throws Exception {
+        // 非数组
+        mvc.perform(post("/api/contracts").header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(jsonArea(uniqueNo(), firstTenantId(), firstBuildingId(),
+                        "{\"start\":\"2026-01-01\",\"end\":\"2026-02-15\"}")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("免租期必须是合法 JSON 数组"));
+
+        // start > end
+        mvc.perform(post("/api/contracts").header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(jsonArea(uniqueNo(), firstTenantId(), firstBuildingId(),
+                        "[{\"start\":\"2026-03-01\",\"end\":\"2026-01-01\"}]")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("免租期第 1 段的开始日期不能晚于结束日期"));
+
+        // 非 ISO 日期
+        mvc.perform(post("/api/contracts").header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(jsonArea(uniqueNo(), firstTenantId(), firstBuildingId(),
+                        "[{\"start\":\"2026/01/01\",\"end\":\"2026-02-01\"}]")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("免租期第 1 段的开始日期格式须为 yyyy-MM-dd"));
+
+        // 超 24 段
+        StringBuilder many = new StringBuilder("[");
+        for (int i = 0; i < 25; i++) {
+            if (i > 0) many.append(",");
+            many.append("{\"start\":\"2026-01-01\",\"end\":\"2026-01-02\"}");
+        }
+        many.append("]");
+        mvc.perform(post("/api/contracts").header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(jsonArea(uniqueNo(), firstTenantId(), firstBuildingId(), many.toString())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("免租期最多 24 段"));
+    }
+
     // ─── 编辑 / 终止 / 续签 / 删除 ───────────────────────────
 
     /** 建一份合同并返回 id */

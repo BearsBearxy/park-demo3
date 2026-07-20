@@ -1,5 +1,8 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
@@ -10,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -130,6 +134,9 @@ public class ContractService {
         c.setRentArea(req.rentArea() != null ? req.rentArea() : old.getRentArea());
         c.setMonthlyRent(req.monthlyRent() != null ? req.monthlyRent() : old.getMonthlyRent());
         c.setDeposit(req.deposit() != null ? req.deposit() : old.getDeposit());
+        // V33:面积/单价描述同一场地,续签继承;免租期属旧租期条款,不继承(留空)
+        c.setBuildingArea(old.getBuildingArea());
+        c.setUnitPrice(old.getUnitPrice());
         c.setStartDate(req.startDate());
         c.setEndDate(req.endDate());
         c.setSignDate(req.signDate());
@@ -165,6 +172,37 @@ public class ContractService {
         }
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
             throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
+        validateRentFree(req.rentFree());
+    }
+
+    // 免租期校验(V33/F2):合法 JSON 数组、每项 {start,end,note?}、ISO 日期且 start≤end、≤24 段。
+    // 仅此,不校验是否在合同期内(前端提示不阻断)。违规 → body.code=400 中文错误。
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    private void validateRentFree(String rentFree) {
+        if (rentFree == null || rentFree.isBlank()) return;
+        JsonNode arr;
+        try { arr = JSON.readTree(rentFree); }
+        catch (JsonProcessingException e) { throw new BizException(ResultCode.BAD_REQUEST, "免租期必须是合法 JSON 数组"); }
+        if (!arr.isArray()) throw new BizException(ResultCode.BAD_REQUEST, "免租期必须是合法 JSON 数组");
+        if (arr.size() > 24) throw new BizException(ResultCode.BAD_REQUEST, "免租期最多 24 段");
+        for (int i = 0; i < arr.size(); i++) {
+            JsonNode seg = arr.get(i);
+            String label = "免租期第 " + (i + 1) + " 段";
+            if (!seg.isObject()) throw new BizException(ResultCode.BAD_REQUEST, label + "必须是 {start,end,note?} 对象");
+            LocalDate start = parseIsoDate(seg.get("start"), label + "的开始日期");
+            LocalDate end   = parseIsoDate(seg.get("end"),   label + "的结束日期");
+            if (start.isAfter(end)) throw new BizException(ResultCode.BAD_REQUEST, label + "的开始日期不能晚于结束日期");
+        }
+    }
+
+    private static LocalDate parseIsoDate(JsonNode node, String label) {
+        if (node == null || !node.isTextual())
+            throw new BizException(ResultCode.BAD_REQUEST, label + "缺失或不是字符串");
+        try { return LocalDate.parse(node.asText()); }   // 严格 ISO:yyyy-MM-dd
+        catch (DateTimeParseException e) {
+            throw new BizException(ResultCode.BAD_REQUEST, label + "格式须为 yyyy-MM-dd");
+        }
     }
 
     private void applyReq(Contract c, ContractCreateReq req) {
@@ -180,6 +218,10 @@ public class ContractService {
         c.setSignDate(req.signDate());
         c.setStatus(req.status());
         c.setRemark(req.remark());
+        // V33:建筑面积/单价可空即留空(存量不推测);免租期空白串归一为 NULL
+        c.setBuildingArea(req.buildingArea());
+        c.setUnitPrice(req.unitPrice());
+        c.setRentFree(req.rentFree() == null || req.rentFree().isBlank() ? null : req.rentFree());
     }
 
     /** 单条回显:按 id 点查租户/楼栋/单元拼 DTO(写路径共用)。 */
@@ -208,11 +250,12 @@ public class ContractService {
             c.getTenantId(), tName.getOrDefault(c.getTenantId(), ""),
             c.getBuildingId(), bName.getOrDefault(c.getBuildingId(), ""),
             c.getUnitId(), floorInfo,
-            c.getRentArea(), c.getMonthlyRent(), c.getDeposit(),
+            c.getBuildingArea(), c.getRentArea(), c.getUnitPrice(),
+            c.getMonthlyRent(), c.getDeposit(),
             c.getStartDate() != null ? c.getStartDate().toString() : null,
             c.getEndDate()   != null ? c.getEndDate().toString()   : null,
             c.getSignDate()  != null ? c.getSignDate().toString()  : null,
-            c.getStatus(), termMonths, daysToEnd, c.getRemark()
+            c.getStatus(), termMonths, daysToEnd, c.getRemark(), c.getRentFree()
         );
     }
 }

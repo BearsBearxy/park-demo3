@@ -8,6 +8,7 @@ import FPStat from '@/components/fp/FPStat.vue'
 import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
+import FPContractTimeline from './FPContractTimeline.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -105,6 +106,12 @@ const totalValue = computed(() => {
   const c = props.contract
   return c && c.monthlyRent && c.termMonths ? c.monthlyRent * c.termMonths : 0
 })
+
+// F1:实际换算系数=建筑÷租赁,保留2位;两值都有(且>0)才显示,存量留空不推测
+const areaFactor = computed(() => {
+  const c = props.contract
+  return c?.buildingArea && c.rentArea ? (c.buildingArea / c.rentArea).toFixed(2) : null
+})
 </script>
 
 <template>
@@ -182,11 +189,19 @@ const totalValue = computed(() => {
         <div class="fp-field"><span class="k">租户</span><span class="v">{{ contract.tenantName }}</span></div>
         <div class="fp-field"><span class="k">楼栋</span><span class="v">{{ contract.buildingName }}</span></div>
         <div class="fp-field"><span class="k">楼层 / 房号</span><span class="v mono">{{ contract.floorInfo || '—' }}</span></div>
+        <!-- F1 面积模型:建筑面积/租赁面积/单价,空值显示 —;换算系数两值都有才显示 -->
+        <div class="fp-field"><span class="k">建筑面积</span><span class="v mono">{{ contract.buildingArea != null ? contract.buildingArea.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
         <div class="fp-field"><span class="k">租赁面积</span><span class="v mono">{{ contract.rentArea.toLocaleString('en-US') }} ㎡</span></div>
+        <div class="fp-field"><span class="k">租金单价</span><span class="v mono">{{ contract.unitPrice != null ? fpMoney(contract.unitPrice) + ' /㎡·月' : '—' }}</span></div>
+        <div v-if="areaFactor" class="fp-field"><span class="k">实际换算系数<span style="color:var(--text-disabled)">(建筑÷租赁)</span></span><span class="v mono">{{ areaFactor }}</span></div>
         <div class="fp-field"><span class="k">月租金</span><span class="v mono">{{ fpMoney(contract.monthlyRent) }}</span></div>
         <div class="fp-field"><span class="k">押金</span><span class="v mono">{{ fpMoney(contract.deposit) }}</span></div>
         <div class="fp-field"><span class="k">签约日期</span><span class="v mono">{{ contract.signDate || '待签约' }}</span></div>
         <div class="fp-field"><span class="k">租赁期间</span><span class="v mono">{{ contract.startDate ? contract.startDate + ' → ' + contract.endDate : '待定' }}</span></div>
+        <!-- F2 合同期时间轴:蓝=计租 红=免租 竖线=今天(租赁期间下方) -->
+        <div class="cd-tlwrap">
+          <FPContractTimeline :start-date="contract.startDate" :end-date="contract.endDate" :rent-free="contract.rentFree" />
+        </div>
         <div class="fp-field"><span class="k">租期</span><span class="v mono">{{ contract.termMonths ? contract.termMonths + ' 个月' : '—' }}</span></div>
         <div v-if="totalValue" class="fp-field"><span class="k">合同总额</span><span class="v mono">{{ fpWan(totalValue) }}</span></div>
       </div>
@@ -246,6 +261,9 @@ const totalValue = computed(() => {
 .fp-field .k { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; flex:0 0 auto; }
 .fp-field .v { font-size:var(--fs-body); color:var(--text-primary); text-align:right; min-width:0; }
 .fp-field .v.mono { font-family:var(--font-mono); }
+
+/* F2 时间轴嵌于租赁期间行下方,补 dashed 分隔保持字段行节奏 */
+.cd-tlwrap { padding:10px 0 12px; border-bottom:1px dashed var(--divider); }
 
 .fp-tl { display:flex; flex-direction:column; gap:0; }
 .fp-tl-step { display:flex; gap:12px; }

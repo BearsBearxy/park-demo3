@@ -3,6 +3,7 @@
 // (点块→右侧 s4 该楼栋租户明细表联动过滤)+ 期区结构环 s4 + 楼栋×租户散点 s6 + 单元空态卡保留。
 // 数据与口径 = v1(building×contract×tenant 快照,有效合同=active/expiring,数值锚点不变);
 // spec 降级不变:库内 unit.area/contract.rent_area 全 0 → 面积口径不可算,空态卡深链 /buildings。
+// F3(2026-07-15)追加「面积转换」卡:在租合同建筑 vs 租赁面积楼栋对比 + 换算系数/分摊率,带覆盖率护栏。
 // 数据变换纯函数见 park.logic.ts(单测 park.logic.spec.ts)。
 import { computed, onMounted, ref } from 'vue'
 import AnaShell from './AnaShell.vue'
@@ -15,7 +16,7 @@ import { fetchBuildings, fetchContracts, fetchTenants } from '@/analysis/anaData
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
 import type { BuildingDTO } from '@/types/building'
-import type { ContractDTO } from '@/types/contract'
+import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 
 const loading = ref(true)
@@ -122,6 +123,52 @@ const scatterOption = computed(() => ({
     })),
   }],
 }))
+
+// ── F3 面积转换(spec 2026-07-15):在租合同建筑面积 vs 租赁面积 ──
+// 覆盖率护栏铁律:只聚合「有面积数据」(建筑>0 且租赁>0,系数分母恒不为 0)的在租合同;
+// N=0 整卡空态引导补录,绝不渲染 0% 假数据。
+// ponytail: 展示基准直接 import 合同录入侧常量,全仓唯一定义点(租赁=建筑÷0.8)
+const AREA_FACTOR_BASE = RENT_AREA_FACTOR
+const bAreaOf = (c: ContractDTO): number => Number(c.buildingArea ?? 0)
+const areaLive = computed(() => live.value.filter((c) => bAreaOf(c) > 0 && c.rentArea > 0))
+const areaStats = computed(() => {
+  const sumB = areaLive.value.reduce((s, c) => s + bAreaOf(c), 0)
+  const sumR = areaLive.value.reduce((s, c) => s + c.rentArea, 0)
+  const parkArea = buildings.value.reduce((s, b) => s + b.totalArea, 0)
+  return {
+    n: areaLive.value.length, m: live.value.length, sumB, sumR, parkArea,
+    factor: sumR > 0 ? sumB / sumR : null,                  // 全园实际换算系数 = Σ建筑÷Σ租赁
+    share: parkArea > 0 ? (sumB / parkArea) * 100 : null,   // 平均分摊率 = Σ在租建筑÷Σ楼栋建筑
+  }
+})
+// 楼栋行:仅保留有面积数据合同的楼栋,按建筑面积降序(全空楼栋不画空柱)
+const areaRows = computed(() => buildings.value.map((b) => {
+  const cs = areaLive.value.filter((c) => c.buildingId === b.id)
+  return {
+    name: b.name,
+    building: cs.reduce((s, c) => s + bAreaOf(c), 0),
+    rent: cs.reduce((s, c) => s + c.rentArea, 0),
+  }
+}).filter((r) => r.building > 0).sort((a, b) => b.building - a.building))
+const AREA_COLOR = { building: '#185FA5', rent: '#85B7EB' }   // 蓝族字面色(同 PHASE_COLOR 取法)
+const areaBarOption = computed(() => ({
+  tooltip: {
+    trigger: 'axis', axisPointer: { type: 'shadow' },
+    formatter: (ps: { seriesName: string; name: string; value: number }[]) => {
+      const name = ps[0]?.name ?? ''
+      const r = areaRows.value.find((x) => x.name === name)
+      return `${name}<br/>` + ps.map((p) => `${p.seriesName} ${fnum(p.value, 0)}㎡`).join('<br/>')
+        + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
+    },
+  },
+  grid: { left: 56, right: 18, top: 12, bottom: 26 },
+  xAxis: { type: 'category', data: areaRows.value.map((r) => r.name), axisLabel: { fontSize: 10.5 } },
+  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 10.5 } },
+  series: [
+    { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
+    { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },
+  ],
+}))
 </script>
 
 <template>
@@ -198,9 +245,40 @@ const scatterOption = computed(() => ({
           <AnaEmpty label="单元面积未录入" :hint="unitTotal + ' 个单元 area 全为 0,出租率/面积去化暂不可算'"
             to="/buildings" to-text="去补录面积" />
         </div>
+
+        <div class="av2-card av2-s12">
+          <!-- F3 面积转换:覆盖率护栏常驻卡头;N=0 → 整卡空态引导补录,不画 0% 假数据 -->
+          <div class="av2-card-h">
+            <span class="t">面积转换</span>
+            <span class="hint"><b class="pk-cov">{{ areaStats.n }}/{{ areaStats.m }}</b> 份在租合同有面积数据 · 在租=active/expiring</span>
+          </div>
+          <AnaEmpty v-if="areaStats.n === 0" label="合同面积待补录"
+            hint="请在合同管理中录入建筑面积与租赁面积" to="/contracts" to-text="去合同管理补录" />
+          <div v-else class="pk-area-body">
+            <div class="pk-area-metrics">
+              <div class="pk-am">
+                <div class="v">{{ areaStats.factor != null ? fnum(areaStats.factor, 2) : '—' }}</div>
+                <div class="l">全园实际换算系数</div>
+                <div class="s">Σ建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ租赁 {{ fnum(areaStats.sumR, 0) }}㎡ · 基准 {{ AREA_FACTOR_BASE }}</div>
+              </div>
+              <div class="pk-am">
+                <div class="v">{{ areaStats.share != null ? fnum(areaStats.share, 1) + '%' : '—' }}</div>
+                <div class="l">平均分摊率</div>
+                <div class="s">Σ在租建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ楼栋建筑 {{ fnum(areaStats.parkArea, 0) }}㎡</div>
+              </div>
+            </div>
+            <div class="pk-area-chart">
+              <AnaEChart :option="areaBarOption" :height="220" />
+              <div class="pk-legend">
+                <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.building }"></span>建筑面积</span>
+                <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.rent }"></span>租赁面积</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <AnaMethodNote>口径:库内 unit.area 与 contract.rent_area 全为 0,出租率/面积去化不可算;本屏以有效合同(active/expiring)的月租与租户分布呈现楼栋结构,楼栋租户数为去重口径。</AnaMethodNote>
+      <AnaMethodNote>口径:库内 unit.area 与 contract.rent_area 全为 0,出租率/面积去化不可算;本屏以有效合同(active/expiring)的月租与租户分布呈现楼栋结构,楼栋租户数为去重口径。面积转换卡只聚合建筑/租赁面积均已录入的在租合同(覆盖率见卡头),换算系数=Σ建筑÷Σ租赁(录入基准 0.8),平均分摊率=Σ在租建筑÷Σ楼栋建筑面积。</AnaMethodNote>
     </div>
   </AnaShell>
 </template>
@@ -220,4 +298,16 @@ const scatterOption = computed(() => ({
 .pk-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; justify-content: center; }
 .pk-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
 .pk-leg .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+/* F3 面积转换卡:左指标竖排 + 右图;窄屏降为纵排(指标改横排) */
+.pk-cov { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pk-area-body { display: flex; gap: 20px; align-items: stretch; }
+.pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
+.pk-am .v { font-size: 22px; font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pk-am .l { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.pk-am .s { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+.pk-area-chart { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 900px) {
+  .pk-area-body { flex-direction: column; }
+  .pk-area-metrics { flex: 0 0 auto; flex-direction: row; gap: 24px; }
+}
 </style>
