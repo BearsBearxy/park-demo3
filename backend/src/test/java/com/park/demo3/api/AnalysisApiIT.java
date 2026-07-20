@@ -20,7 +20,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // P3 分析层只读聚合端点 IT:经既有写 API 造数 → 断言 slim 聚合形状与派生数字。
 // 断言只锚定本类造的唯一名行,不依赖种子/其它 IT 的库状态(同容器跨类共享)。
+// @Transactional 回滚造数(2026-07-20 根治):此前建租户/s10 行不清理,泄漏进共享容器
+// 污染 LedgerApiIT.overview(activeTenants 13→14)与 S10ApiIT.yearSummary(officeRent 混入),本地全量跑必现 2 失败。
 @AutoConfigureMockMvc
+@org.springframework.transaction.annotation.Transactional
 class AnalysisApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
