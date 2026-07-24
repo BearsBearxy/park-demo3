@@ -7,11 +7,15 @@ vi.mock('@/api/ledger', () => ({
   ledgerApi: { import: vi.fn() },
 }))
 vi.mock('@/api/budget', () => ({ budgetApi: { import: vi.fn(), all: vi.fn() } }))
+vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn() } }))
+vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn() } }))
 import { deriveStatus, runImport, parserProps, IMPORT_TYPES, type ImportCtx } from './importRegistry'
 import http from '@/api/index'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { budgetApi } from '@/api/budget'
+import { tenantApi } from '@/api/tenant'
+import { buildingApi } from '@/api/building'
 
 describe('deriveStatus', () => {
   it('rejected when nothing imported', () => expect(deriveStatus({ imported: 0, skipped: 0, errors: [] })).toBe('rejected'))
@@ -21,9 +25,9 @@ describe('deriveStatus', () => {
 })
 
 describe('IMPORT_TYPES catalog', () => {
-  it('has the 21 expected keys', () => {
+  it('has the 24 expected keys', () => {
     expect(IMPORT_TYPES.map(t => t.key).sort()).toEqual(
-      ['budget', 'charging_7', 'charging_8', 'cpMeter', 'elec', 'elecCost', 'ledger', 'office_13', 'office_14',
+      ['billingTerms', 'budget', 'contractFull', 'charging_7', 'charging_8', 'cpMeter', 'elec', 'elecCost', 'ledger', 'meter', 'office_13', 'office_14',
        'pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5',
        'pv', 'pvMeter', 'report_bs', 'report_is', 'report_tb', 's10', 'salary'].sort())
   })
@@ -399,6 +403,37 @@ describe('budget run — 年段平铺', () => {
   })
 })
 
+// ── meter:v2 主数据接线(METER-SPEC §6.2/§6.3)——modalProps 预取模块缓存(带 id);视图喂的 ctx.tenantNames/buildings 作后备 ──
+// 注意用例顺序:后备用例须先跑(预取失败缓存保持空);预取成功后模块缓存在位,后续解析走缓存
+describe('meter v2 主数据接线', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const sheet = { name: '一期园区水', matrix: [
+    ['', '2025年3月一期园区水表抄表记录'],
+    ['', '区域', '', '企业名称', '表类', '水表名称', '水表编码', '水表倍率', '上月行至', '本月行至', '备注'],
+    ['力灏水', 'B座', '', '1-3楼（力灏）', '户内用水', '水表①', '', '1', '10', '20', ''],
+  ] }
+
+  it('预取失败 → 后备 ctx.tenantNames/buildings:按名拆分命中但 tenantId 空,楼栋照挂', async () => {
+    vi.mocked(tenantApi.list).mockRejectedValue(new Error('net'))
+    vi.mocked(buildingApi.list).mockRejectedValue(new Error('net'))
+    const ctx: ImportCtx = { tenantNames: ['力灏'], buildings: [{ id: 2, name: '一期 B座' }] }
+    const props = parserProps('meter', ctx)
+    expect(tenantApi.list).toHaveBeenCalledTimes(1)
+    await new Promise(r => setTimeout(r, 0))
+    const res = parseWB(props)([sheet])
+    expect(res.records![0]).toMatchObject({ tenantId: null, buildingId: 2, ownership: 'tenant', spot: '1-3楼' })
+    expect(res.records![0].__preview).toEqual(['一期', '一期 B座', '1-3楼', '力灏', '租户', 1, 10, 20])
+  })
+
+  it('预取成功 → 模块缓存(带 id)优先,拆分挂 tenantId/buildingId', async () => {
+    vi.mocked(tenantApi.list).mockResolvedValue([{ id: 11, companyName: '力灏' }] as never)
+    vi.mocked(buildingApi.list).mockResolvedValue([{ id: 2, name: '一期 B座' }] as never)
+    const props = parserProps('meter', {})
+    await new Promise(r => setTimeout(r, 0))   // flush 预取微任务
+    expect(parseWB(props)([sheet]).records![0]).toMatchObject({ tenantId: 11, buildingId: 2, ownership: 'tenant' })
+  })
+})
+
 // ── pvMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 pvMeterExcel.spec.ts) ──
 describe('pvMeter customParse + run', () => {
   const entry = IMPORT_TYPES.find(t => t.key === 'pvMeter')!
@@ -534,5 +569,44 @@ describe('runImport', () => {
 
   it('throws on unknown type', async () => {
     await expect(runImport('bogus', [], {}, 'x.xlsx')).rejects.toThrow('unknown import type')
+  })
+})
+
+// ── contractFull:整册解析 → /contracts/import-full,到户报告并入后端匹配结果落 CSV(解析纯函数单测见 importContractSummary.spec.ts) ──
+describe('contractFull run', () => {
+  const entry = IMPORT_TYPES.find(t => t.key === 'contractFull')!
+  const row = { tenantName: '金纳', tenantFullName: '佛山市金纳新材料有限公司', phase: 1, buildingHint: 'D座',
+    startDate: '2023-07-14', endDate: '2026-07-13', termText: 'x', termType: 'explicit',
+    tierPriceNote: null, remark: null, lines: [] }
+
+  it('run:POST /contracts/import-full {rows},report 并入后端 action,解析错误并入 skipped', async () => {
+    const dl = vi.fn(() => 'blob:x')   // jsdom 无 createObjectURL,直接挂桩
+    URL.createObjectURL = dl as unknown as typeof URL.createObjectURL
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const post = vi.spyOn(http, 'post').mockResolvedValue({
+      result: { imported: 1, skipped: 0, errors: [] }, matched: 1, created: 0,
+      report: [{ rowIndex: 0, contractNo: 'C2024M-001', action: 'matched', message: null }],
+    } as never)
+    const ctx: ImportCtx = {
+      _parseErrors: [{ rowIndex: 3, label: '李富全', reason: '收费项目为空,跳过' }],
+      _cfReport: [{ phase: '一期', tenantName: '金纳', tenantFullName: '佛山市金纳新材料有限公司',
+        lineCount: 5, segments: 1, term: '2023-07-14~2026-07-13', termType: 'explicit',
+        detailTotal: 55000, summaryTotal: 55000, diff: 0, issues: '' }],
+    }
+    const res = await entry.run([row], ctx)
+    expect(post).toHaveBeenCalledWith('/contracts/import-full', { rows: [row] })
+    expect(ctx._cfReport![0].issues).toBe('匹配合同 C2024M-001')
+    expect(dl).toHaveBeenCalled()
+    expect(res).toEqual({ imported: 1, skipped: 1, errors: [{ rowIndex: 3, label: '李富全', reason: '收费项目为空,跳过' }] })
+    vi.restoreAllMocks()
+  })
+
+  it('run:rows 空 → 不打 API', async () => {
+    const post = vi.spyOn(http, 'post')
+    expect(await entry.run([], { _parseErrors: [{ rowIndex: 0, label: 'x', reason: 'r' }] }))
+      .toEqual({ imported: 0, skipped: 1, errors: [{ rowIndex: 0, label: 'x', reason: 'r' }] })
+    expect(post).not.toHaveBeenCalled()
+    post.mockRestore()
   })
 })

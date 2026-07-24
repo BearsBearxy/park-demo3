@@ -20,6 +20,7 @@ import {
   ArrowUpRight, CircleDashed, Printer,
   ArrowDownRight, ShieldCheck, AlertOctagon, FlaskConical, SlidersHorizontal, // P3 分析层
   Target, // P3-P1 预算对比
+  Share2, PenLine, Play, RefreshCw, // P-B 公摊分摊
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -124,6 +125,10 @@ const MAP: Record<string, Component> = {
   'flask-conical': FlaskConical,
   'sliders-horizontal': SlidersHorizontal,
   'target': Target,
+  'share-2': Share2,
+  'pen-line': PenLine,
+  'play': Play,
+  'refresh-cw': RefreshCw,
 }
 
 export function iconFor(name: string): Component {

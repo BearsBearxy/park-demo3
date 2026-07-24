@@ -361,10 +361,10 @@ class ContractWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.unitId").value(bu[1]))
                 .andExpect(jsonPath("$.data.monthlyRent").value(8000.0));
 
-        // 旧合同回读已终止
+        // 旧合同回读已续签(V54:renew 改置 renewed,非 terminated);新合同 parentContractId 指旧
         mvc.perform(get("/api/contracts/" + oldId).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.contract.status").value("terminated"));
+                .andExpect(jsonPath("$.data.contract.status").value("renewed"));
     }
 
     @Test

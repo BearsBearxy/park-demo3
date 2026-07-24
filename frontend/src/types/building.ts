@@ -4,6 +4,7 @@ export interface BuildingDTO {
   unitCount: number; occupiedCount: number; vacantCount: number
   expiringCount: number; reservedCount: number; leasedArea: number
   occRate: number; monthlyRent: number; tenantIds: number[]
+  tenantBuildingArea: number   // 栋内在租合同建筑面积汇总(只读展示)
   remark?: string | null
 }
 

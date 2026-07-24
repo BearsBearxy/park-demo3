@@ -63,15 +63,16 @@ public class ElecCostService {
     private final CpPowerUsageMapper cpPowers;
     private final S10RecordMapper s10Records;
     private final MonthlyLedgerMapper ledgers;
+    private final AllocResultMapper allocResults;   // P-B 桥:单向读分摊结果Σ(elec-cost→P-B,spec §5)
 
     public ElecCostService(ElecMeterMapper meters, ElecCostEntryMapper entries, ElecPriceCfgMapper cfgs,
                            ElecRecordMapper elecRecords, PvRecordMapper pvRecords, OfficeRecordMapper officeRecords,
                            PvReadingMapper pvReadings, CpReadingMapper cpReadings, CpPowerUsageMapper cpPowers,
-                           S10RecordMapper s10Records, MonthlyLedgerMapper ledgers) {
+                           S10RecordMapper s10Records, MonthlyLedgerMapper ledgers, AllocResultMapper allocResults) {
         this.meters = meters; this.entries = entries; this.cfgs = cfgs;
         this.elecRecords = elecRecords; this.pvRecords = pvRecords; this.officeRecords = officeRecords;
         this.pvReadings = pvReadings; this.cpReadings = cpReadings; this.cpPowers = cpPowers;
-        this.s10Records = s10Records; this.ledgers = ledgers;
+        this.s10Records = s10Records; this.ledgers = ledgers; this.allocResults = allocResults;
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -319,21 +320,27 @@ public class ElecCostService {
             }
         }
 
-        // 规则 6:运营性电表 ← 附表13 办公水电真实数据(办公用电);其余 4 表按办公用电×假设比例;分摊额度=费用×50% 假设
+        // 规则 6:运营性电表 ← 附表13 办公水电真实数据(办公用电);其余 4 表按办公用电×假设比例。
+        // 分摊额度:当月有 P-B 分摊结果 → 读 alloc_result Σ 真值(单向 mapper 读,PB-ALLOCATION-SPEC §5 桥),
+        // 整月Σ落「办公用电」一行、其余 4 表不再写假设行;无分摊数据月回退「费用×50% 假设」不变。
         for (OfficeRecord r : officeRecords.selectByScheduleAndYear(13, year)) {
             String month = r.getAcctMonth();
             BigDecimal officeAmt = r2(nz(r.getElecQty()).multiply(nz(r.getElecPrice())));
             if (officeAmt.signum() <= 0) continue;
+            BigDecimal allocReal = allocResults.sumAmountByYm(month);
+            boolean hasAlloc = allocReal.signum() > 0;
             upsertSim(byName.get(M_OFFICE), month, "usage", officeAmt, r2(r.getElecQty()),
                 "模拟:附表13 办公用电 " + month, "ops", byRule, counters);
-            upsertSim(byName.get(M_OFFICE), month, "allocated", r2(officeAmt.multiply(new BigDecimal("0.5"))), null,
-                "模拟:费用×50%(假设)", "ops", byRule, counters);
+            upsertSim(byName.get(M_OFFICE), month, "allocated",
+                hasAlloc ? r2(allocReal) : r2(officeAmt.multiply(new BigDecimal("0.5"))), null,
+                hasAlloc ? "公摊分摊结果Σ " + month + "(P-B 真值)" : "模拟:费用×50%(假设)", "ops", byRule, counters);
             for (Map.Entry<String, BigDecimal> op : OPS_RATIO.entrySet()) {
                 BigDecimal usage = r2(officeAmt.multiply(op.getValue()));
                 upsertSim(byName.get(op.getKey()), month, "usage", usage, null,
                     "模拟:办公用电×" + op.getValue().toPlainString() + "(假设)", "ops", byRule, counters);
-                upsertSim(byName.get(op.getKey()), month, "allocated", r2(usage.multiply(new BigDecimal("0.5"))), null,
-                    "模拟:费用×50%(假设)", "ops", byRule, counters);
+                if (!hasAlloc)   // 有真值月:分摊额度已整月Σ落办公用电,不再摊假设行
+                    upsertSim(byName.get(op.getKey()), month, "allocated", r2(usage.multiply(new BigDecimal("0.5"))), null,
+                        "模拟:费用×50%(假设)", "ops", byRule, counters);
             }
         }
 

@@ -38,12 +38,12 @@ const props = withDefaults(defineProps<{
   //   返回 records → 复用现有预览表 + 「导入 N 条」按钮,emit import
   //   返回 sections → 复用 ImportSummary 纯标签段模式(每段 label+N条+勾选),emit importSections({label,records}[])
   //   可选 warning:非阻断提示(如预算导入的发生额与系统推算差异),与结果并排显示
-  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }
+  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }
   // 文件上传按 sheet 名挑表(命中即取,未命中回退第一个);粘贴路径不受影响
   sheetMatch?: RegExp
   // 给了 parseWorkbook 即走多 sheet 解析(优先级最高,先于 customParse):
   //   文件路径解析全部 sheet 传入;粘贴路径包装 [{name:'', matrix}]。返回值语义同 customParse。
-  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }
+  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -67,7 +67,7 @@ const summaryMode = computed(() => !!props.phaseLayouts || salaryMode.value || l
 // 智能整表模式状态
 const sections = ref<Section[] | null>(null)
 // 自定义纯标签段状态(customParse → sections)
-const labelSections = ref<{ label: string; records: ImportRec[] }[] | null>(null)
+const labelSections = ref<{ label: string; records: ImportRec[]; checked?: boolean }[] | null>(null)
 
 const mode = ref<'file' | 'paste'>('file')
 const paste = ref('')
@@ -79,7 +79,7 @@ const fileName = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
 // customParse / parseWorkbook 共用的结果落地:records → 既有预览;sections → labelMode 汇总屏
-function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[] }[]; error?: string; warning?: string }) {
+function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }) {
   const { records: recs, sections: secs, error } = res
   records.value = null; sections.value = null; labelSections.value = null
   warn.value = res.warning ?? ''

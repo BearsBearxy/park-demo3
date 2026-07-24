@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(43屏×3层)。源: app/shell.jsx FP_NAV(+P3-P1 预算对比+能源分析两屏)。
+// src/nav/fpNav.ts — 导航单一事实源(45屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
 export interface NavLayer { id: string; label: string; short: string; icon: string; caption: string; home: string; sections: NavSection[] }
@@ -13,6 +13,8 @@ export const FP_NAV: NavLayer[] = [
     { title: '业务流水', items: [
       { value: 'ledger', label: '月度台账', icon: 'book-open', kind: 'ledger' },
       { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'bills' },
+      { value: 'meters', label: '园区抄表', icon: 'gauge', kind: 'meters' },
+      { value: 'alloc', label: '公摊分摊', icon: 'share-2', kind: 'alloc' },
       { value: 'bank-flow', label: '银行流水', icon: 'landmark', kind: 'placeholder' } ] },
     { title: '成本与收入录入', items: [
       { value: 'pv-income', label: '附表6 光伏发电', icon: 'sun', kind: 'schedule6' },

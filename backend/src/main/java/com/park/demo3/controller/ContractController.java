@@ -14,8 +14,8 @@ public class ContractController {
     private final ContractService svc;
     public ContractController(ContractService svc) { this.svc = svc; }
 
-    @Operation(summary = "合同列表（含派生）") @GetMapping
-    public List<ContractDTO> list() { return svc.list(); }
+    @Operation(summary = "合同列表（含派生；asOfDate 非空则某日在租过滤）") @GetMapping
+    public List<ContractDTO> list(@RequestParam(required = false) String asOfDate) { return svc.list(asOfDate); }
 
     @Operation(summary = "合同 KPI 汇总") @GetMapping("/summary")
     public ContractSummaryDTO summary() { return svc.summary(); }
@@ -39,6 +39,23 @@ public class ContractController {
         return svc.renew(id, req);
     }
 
-    @Operation(summary = "删除合同（仅用于误录）") @DeleteMapping("/{id}")
+    @Operation(summary = "删除合同（仅用于误录；留档费项级联删）") @DeleteMapping("/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
+
+    // ─── 计费行批量导入(BILL-FORWARD 刀1 三次返工 §1.7,FeeRow 1:1) ──────
+    // 每行=一份合同的计费行合集;按合同整组替换 source='import' 行,manual 保留;落库后反向同步五标量缓存;行级错误跳过。
+    @Operation(summary = "批量导入合同计费行（整组替换 import 行,manual 保留;反向同步五标量缓存）")
+    @PostMapping("/billing-lines/import")
+    public ImportResultDTO importBillingLines(@Valid @RequestBody BillingLinesImportRequest req) {
+        return svc.importBillingLines(req);
+    }
+
+    // ─── 合同全量导入(V55):期限原文 + 整组计费行,一行=一户 ──────
+    // 租户按 企业全称优先/简称+期兜底 匹配;合同 单份直用/多份取最新期/无则自动新建(C2024M-序);
+    // 期限原文三字段落库;计费行整组替换 import 行(manual 保留);行级错误(类型钉死越界等)跳过。
+    @Operation(summary = "合同全量导入（期限原文+计费行；自动匹配/新建合同，行级错误跳过）")
+    @PostMapping("/import-full")
+    public ContractFullImportRequest.Result importFull(@Valid @RequestBody ContractFullImportRequest req) {
+        return svc.importFull(req);
+    }
 }

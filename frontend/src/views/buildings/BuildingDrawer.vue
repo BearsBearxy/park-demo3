@@ -221,6 +221,8 @@ async function onContractCreated() {
       <FPStat label="总面积" :value="b.totalArea.toLocaleString('en-US')" sub="㎡" />
       <FPStat label="可租面积" :value="b.rentableArea.toLocaleString('en-US')" sub="㎡" />
       <FPStat label="即将到期" :value="String(b.expiringCount)" sub="单元(90 天内)" />
+      <!-- 建筑面积=栋内在租合同建筑面积汇总(只读,BILL-FORWARD 刀1 面积链路) -->
+      <FPStat label="建筑面积" :value="b.tenantBuildingArea ? b.tenantBuildingArea.toLocaleString('en-US') : '—'" sub="㎡ · 在租合同汇总" />
     </div>
 
     <!-- B: Unit map -->

@@ -15,8 +15,9 @@ const props = withDefaults(defineProps<{
   defaultPhase?: number
   hidePhase?: boolean   // 工资分段:无期 → 隐期列与期选择,仅校验 年/月/N人
   // 纯标签段模式:无年/月/期,每段只显示 label + N条 + 勾选(光伏/充电桩/电费自定义解析用)
+  // checked=false 段默认不勾(计费字段多合同户「勾选其一」用,BILL-FORWARD 裁定⑤)
   labelOnly?: boolean
-  labelSections?: { label: string; records: ImportRec[] }[]
+  labelSections?: { label: string; records: ImportRec[]; checked?: boolean }[]
 }>(), { hidePhase: false, labelOnly: false })
 
 const emit = defineEmits<{
@@ -52,7 +53,7 @@ const rows = reactive<Row[]>(
 
 // 纯标签段:每段 label + records + 勾选(默认非空即勾)
 const labelRows = reactive(
-  (props.labelSections ?? []).map(s => ({ label: s.label, records: s.records, checked: s.records.length > 0 })),
+  (props.labelSections ?? []).map(s => ({ label: s.label, records: s.records, checked: (s.checked ?? true) && s.records.length > 0 })),
 )
 const anyLabelPick = computed(() => labelRows.some(r => r.checked && r.records.length > 0))
 

@@ -29,6 +29,13 @@ import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows } from '@/utils/importChargingRows'
 import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
 import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
+import { parseMeterWorkbook, METER_TEMPLATE_COLS } from '@/utils/meterExcel'
+import { tenantApi } from '@/api/tenant'
+import { buildingApi } from '@/api/building'
+import { contractApi } from '@/api/contract'
+import { parseBillingTermsWorkbook, billingReportCsv, BILLING_TERM_TEMPLATE_COLS, type BillingContractLite, type BillingReportRow } from '@/utils/importBillingTerms'
+import { parseContractWorkbook, contractReportCsv, CONTRACT_FULL_TEMPLATE_COLS, type ContractFullRow, type ContractReportRow } from '@/utils/importContractSummary'
+import type { BillingLinesImportRow } from '@/types/contract'
 import http from '@/api/index'
 import { importElecRows } from '@/utils/importElecRows'
 import { parseElecCostRows, ELEC_COST_TEMPLATE_COLS } from '@/utils/elecCostExcel'
@@ -183,6 +190,27 @@ function prefetchBudgetPnlRevenue(): void {
   }
 }
 
+// meter v2 主数据(METER-SPEC §6.2/§6.3):解析器是同步的,打开弹窗时预取租户库(带 id)与楼栋清单进模块缓存;
+// 每次打开都重取(会话内主数据可能新增),旧值在新值落位前顶用。
+let meterTenants: { id: number; companyName: string }[] | null = null
+let meterBuildings: { id: number; name: string }[] | null = null
+function prefetchMeterMaster(): void {
+  void tenantApi.list().then(v => { meterTenants = v.map(t => ({ id: t.id, companyName: t.companyName })) }).catch(() => {})
+  void buildingApi.list().then(v => { meterBuildings = v.map(b => ({ id: b.id, name: b.name })) }).catch(() => {})
+}
+
+// 计费条款(BILL-FORWARD 第1刀 §1.2):解析器要合同库做 租户名→生效合同 匹配;打开弹窗预取(同 meter 模式)
+let billingContracts: BillingContractLite[] | null = null
+function prefetchBillingContracts(): void {
+  void contractApi.list().then(v => {
+    billingContracts = v.map(c => ({
+      id: c.id, contractNo: c.contractNo, tenantName: c.tenantName,
+      startDate: c.startDate, endDate: c.endDate, status: c.status,
+      buildingName: c.buildingName,   // multiPick 位置路由(厂房/宿舍)
+    }))
+  }).catch(() => {})
+}
+
 const phaseLayoutsCol = {
   office: leavesOf('office').map(l => ({ label: l.label, key: l.colId, aliases: l.aliases })),
   factory: leavesOf('factory').map(l => ({ label: l.label, key: l.colId, aliases: l.aliases })),
@@ -195,7 +223,11 @@ type Pick = { label?: string; year?: number; month?: number; phase?: number; rec
 export interface ImportCtx {
   companyId?: number; companyName?: string; year?: number; month?: number
   companyNames?: string[]   // 已有管理公司名单(台账整册拆段的 sheet 名识别用)
+  tenantNames?: string[]                      // 租户库 companyName 全量(meter §6.2 拆分;视图填,同 companyNames 机制)
+  buildings?: { id: number; name: string }[]  // 楼栋清单(meter §6.3 区域→楼栋映射;视图填,BuildingDTO 结构兼容)
   cats?: unknown[]; _parseErrors?: { rowIndex: number; label: string; reason: string }[]
+  _bfReport?: BillingReportRow[]   // 计费字段导入:解析期到户报告,导入成功后落 CSV(裁定⑤)
+  _cfReport?: ContractReportRow[]  // 合同汇总册导入:解析期到户报告(与 rows 同序),导入后并入后端匹配结果落 CSV
 }
 export interface ImportTypeEntry {
   key: string; label: string; tag: string; icon: string
@@ -214,6 +246,16 @@ export function deriveStatus(res: ImportResultDTO): ImportStatus {
 
 // 空聚合器
 const zero = (): ImportResultDTO => ({ imported: 0, skipped: 0, errors: [] })
+
+// 到户报告落盘(计费行/合同汇总册共用)
+function downloadCsv(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export const IMPORT_TYPES: ImportTypeEntry[] = [
   {
@@ -369,6 +411,126 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
       const res = await http.post<ImportResultDTO>('/cp-meter/import', { rows })
       return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+    },
+    target: () => null,
+  },
+  // ── 园区抄表(METER-SPEC §4):整册多 sheet(一期/二期/宿舍×电/水),每 sheet 月份自理;
+  //    表按 (分区,类别,标识) 自动建档,读数按 (表,月) 幂等覆盖;未识别 sheet(租户缴费单等)静默跳过 ──
+  {
+    key: 'meter', label: '园区抄表', tag: '抄表', icon: 'gauge', context: 'none',
+    modalProps: (ctx) => {
+      // v2 拆分(§6.2/§6.3)要租户库(带 id 才能挂 tenantId)+楼栋清单:打开弹窗即预取进模块缓存
+      // (同 budget 预取模式,解析在用户选完文件后通常已就绪);视图喂的 ctx.tenantNames/ctx.buildings 作后备。
+      // 取不到也不拦——正则拆分照跑,租户/楼栋 id 空、档案可改。
+      prefetchMeterMaster()
+      return {
+        title: '导入 园区抄表 · 水电表读数',
+        sub: '上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」',
+        templateCols: METER_TEMPLATE_COLS,
+        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) =>
+          parseMeterWorkbook(sheets, {
+            tenants: meterTenants ?? ctx.tenantNames?.map(n => ({ companyName: n })),
+            buildings: meterBuildings ?? ctx.buildings,
+          }),
+      }
+    },
+    // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约)
+    run: async (payload) => {
+      const rows = (payload as (ImportRec | { records: ImportRec[] })[])
+        .flatMap(p => 'records' in p && Array.isArray((p as { records: ImportRec[] }).records)
+          ? (p as { records: ImportRec[] }).records : [p as ImportRec])
+      if (!rows.length) return { imported: 0, skipped: 0, errors: [] }
+      const res = await http.post<ImportResultDTO>('/meters/import', { rows })
+      return { imported: res.imported, skipped: res.skipped, errors: res.errors }
+    },
+    target: () => null,
+  },
+  // ── 合同计费行(BILL-FORWARD 刀1 三次返工 §1.2):月度租金工作簿整册提取,
+  //    sheet=租户,块探测 A1~A7 七型;停止收敛——每费项行 1:1 出一条计费行(位置+13枚举+面积/单价/系数/房数);
+  //    叠单合并/表头转置修正/列文本映射/按间房数三写法;multiPick 银纳按位置类型路由(厂房→厂房合同/宿舍→宿舍合同);
+  //    无合同户报「须先建合同」;须手录 sheet 逐条报告不整批拦;后端按 source 覆盖(manual 保留,import 覆盖);
+  //    导入成功自动落「到户报告」CSV(282 户逐户有名) ──
+  {
+    key: 'billingTerms', label: '合同计费行', tag: '合同', icon: 'file-text', context: 'none',
+    modalProps: (ctx) => {
+      prefetchBillingContracts()
+      return {
+        title: '导入 合同计费行 · 月度租金工作簿',
+        sub: '上传月度租金工作簿(每租户一 sheet,含通知单块),每费项行 1:1 提取为计费行(位置×费项×计费方式)落到生效合同;银纳类多合同按位置自动路由(厂房/宿舍),同名多合同请勾选归属;流水账/无合同 sheet 须手录/须先建合同;导入后自动下载到户报告',
+        templateCols: BILLING_TERM_TEMPLATE_COLS,
+        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
+          const { sections, errors, report } = parseBillingTermsWorkbook(sheets, { contracts: billingContracts ?? [] })
+          ctx._parseErrors = errors.map(e => ({ rowIndex: Math.max(e.rowIndex, 0), label: e.label, reason: e.reason }))
+          ctx._bfReport = report
+          if (!sections.length) {
+            return { error: errors.length
+              ? `没有可自动提取的计费行:${errors.length} 项须手录/须先建合同(如 ${errors[0].label}:${errors[0].reason})`
+              : '没识别到通知单块:sheet 需含「收费项目」表头。' }
+          }
+          return { sections }
+        },
+      }
+    },
+    // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约,同 meter)
+    run: async (payload, ctx) => {
+      const recs = (payload as (ImportRec | { records: ImportRec[] })[])
+        .flatMap(p => 'records' in p && Array.isArray((p as { records: ImportRec[] }).records)
+          ? (p as { records: ImportRec[] }).records : [p as ImportRec])
+      const pe = ctx._parseErrors ?? []
+      if (!recs.length) return { imported: 0, skipped: pe.length, errors: pe }
+      // 剥去 __preview 等 UI 字段,只上契约字段(§1.7 Row{contractId, lines})
+      const rows: BillingLinesImportRow[] = recs.map(r => ({
+        contractId: r.contractId as number, lines: (r.lines ?? []) as BillingLinesImportRow['lines'],
+      }))
+      const res = await contractApi.importBillingLines(rows)
+      // 到户报告 CSV(§1.2-8):解析期清点,注:手录(manual)行后端保留,报告以册内提取行为准
+      if (ctx._bfReport?.length) downloadCsv('计费字段到户报告', billingReportCsv(ctx._bfReport))
+      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
+    },
+    target: () => null,
+  },
+  // ── 合同汇总册(园区租户租金合同明细汇总):一户一行 = 期限四件套 + 整组计费行 → POST /contracts/import-full。
+  //    明细长表出计费行(1:1,按位置聚段)、汇总宽表出期限四件套与 AB 对账;租户匹配/合同新建在后端(全称优先,简称+期兜底);
+  //    导入后自动下载到户报告 CSV(逐户:费项数/位置段数/期限/AB 差异/问题 + 后端匹配还是新建) ──
+  {
+    key: 'contractFull', label: '合同期限+计费行', tag: '合同', icon: 'file-text', context: 'none',
+    modalProps: (ctx) => ({
+      title: '导入 合同汇总册 · 期限 + 计费行',
+      sub: '上传「园区租户租金合同明细汇总」整册(明细/汇总两表):明细表逐费项出计费行,汇总表出租赁期限起止/类型/原文/阶梯价并对账月费用合计;一户一份合同,在册的匹配、不在册的自动建档;期限缺失户标「待人工补」;导入后自动下载到户报告',
+      templateCols: CONTRACT_FULL_TEMPLATE_COLS,
+      parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
+        const { rows, report, errors, error } = parseContractWorkbook(sheets)
+        ctx._parseErrors = errors.map(e => ({ rowIndex: Math.max(e.rowIndex, 0), label: e.label, reason: e.reason }))
+        ctx._cfReport = report
+        if (error) return { error }
+        if (!rows.length) return { error: '没解析到任何租户行:请确认整册含「明细」「汇总」两表。' }
+        return {
+          records: rows.map((r, i) => ({ ...r, __preview: [
+            r.phase ? `${r.phase}期` : '', r.tenantName, r.tenantFullName, r.buildingHint,
+            r.lines.length, report[i]?.detailTotal ?? '', r.startDate ? `${r.startDate}~${r.endDate}` : '待人工补', r.termType ?? '',
+          ] })),
+        }
+      },
+    }),
+    run: async (payload, ctx) => {
+      const rows = payload as unknown as ContractFullRow[]
+      const pe = ctx._parseErrors ?? []
+      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
+      const res = await http.post<{ result: ImportResultDTO; matched: number; created: number
+        report: { rowIndex: number; contractNo: string | null; action: string; message: string | null }[] }>(
+        '/contracts/import-full', { rows })
+      // 到户报告:解析期清点 + 后端匹配结果(rowIndex 与 rows/report 同序)
+      const rep = ctx._cfReport ?? []
+      if (rep.length) {
+        for (const it of res.report) {
+          const r = rep[it.rowIndex]
+          if (!r) continue
+          r.issues = [r.issues, `${it.action === 'created' ? '新建合同' : it.action === 'matched' ? '匹配合同' : '未导入'}${it.contractNo ? ' ' + it.contractNo : ''}`, it.message].filter(Boolean).join(';')
+        }
+        downloadCsv('合同汇总册到户报告', contractReportCsv(rep))
+      }
+      const r = res.result
+      return { imported: r.imported, skipped: r.skipped + pe.length, errors: [...r.errors, ...pe] }
     },
     target: () => null,
   },

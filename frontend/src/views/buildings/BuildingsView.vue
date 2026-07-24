@@ -134,6 +134,9 @@ const TABLE_COLUMNS = computed(() => [
     render: (b: BuildingDTO) => h('span', null, b.totalArea.toLocaleString('en-US')) },
   { key: 'rentableArea', header: '可租面积 ㎡', width: '116px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.rentableArea,
     render: (b: BuildingDTO) => h('span', null, b.rentableArea.toLocaleString('en-US')) },
+  // 建筑面积=栋内在租合同建筑面积汇总(只读,BILL-FORWARD 刀1 面积链路)
+  { key: 'tenantBuildingArea', header: '建筑面积 ㎡', width: '110px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.tenantBuildingArea,
+    render: (b: BuildingDTO) => h('span', null, b.tenantBuildingArea ? b.tenantBuildingArea.toLocaleString('en-US') : '—') },
   {
     key: 'occRate', header: '出租率', width: '132px', sortValue: (b: BuildingDTO) => b.occRate,
     render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' } }, [

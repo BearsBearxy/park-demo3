@@ -2,6 +2,11 @@
 target/
 *.class
 backend/logs/
+# 本地 dev 后端 stdout/stderr 落盘
+backend/dev-run.*
+
+# 工具生成物(frontend/src/tools/buildingRestructure.ts 输出)
+restructure-plan.csv
 
 # Node / Vite
 node_modules/

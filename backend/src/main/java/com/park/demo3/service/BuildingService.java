@@ -54,9 +54,12 @@ public class BuildingService {
             .map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
         List<Integer> tenantIds = cs.stream().filter(c -> RENT.contains(c.getStatus()))
             .map(Contract::getTenantId).distinct().collect(Collectors.toList());
+        // 栋内租户建筑面积汇总=在租合同 building_area 求和(V33 字段,空按 0;只读展示)
+        BigDecimal tenantBArea = cs.stream().filter(c -> RENT.contains(c.getStatus()))
+            .map(Contract::getBuildingArea).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new BuildingDTO(b.getId(), b.getName(), b.getPhase(), PHASE.get(b.getPhase()), kind(b.getPhase()),
             b.getFloorCount(), b.getTotalArea(), b.getRentableArea(), b.getStatus(),
-            us.size(), occ, vac, exp, rsv, leased, occRate, monthly, tenantIds);
+            us.size(), occ, vac, exp, rsv, leased, occRate, monthly, tenantIds, tenantBArea);
     }
 
     public List<BuildingDTO> list() {
