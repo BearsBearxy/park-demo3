@@ -12,7 +12,9 @@ class ContractServiceTest {
     TenantMapper   tm = Mockito.mock(TenantMapper.class);
     BuildingMapper bm = Mockito.mock(BuildingMapper.class);
     UnitMapper     um = Mockito.mock(UnitMapper.class);
-    ContractService svc = new ContractService(cm, tm, bm, um);
+    ContractBillingTermMapper btm = Mockito.mock(ContractBillingTermMapper.class);
+    ContractRentTierMapper rtm = Mockito.mock(ContractRentTierMapper.class);
+    ContractService svc = new ContractService(cm, tm, bm, um, btm, rtm);
 
     // --- helpers ---
     Tenant tenant(int id) {
@@ -44,7 +46,7 @@ class ContractServiceTest {
         Mockito.when(bm.selectList(null)).thenReturn(List.of(building(7, "一期A栋")));
         Mockito.when(um.selectList(null)).thenReturn(List.of(unit(3, 3, "301")));
 
-        List<ContractDTO> result = svc.list();
+        List<ContractDTO> result = svc.list(null);
         assertThat(result).hasSize(1);
         ContractDTO d = result.get(0);
         assertThat(d.tenantName()).isEqualTo("T1");
@@ -53,7 +55,7 @@ class ContractServiceTest {
         assertThat(d.termMonths()).isEqualTo(24);
         assertThat(d.startDate()).isEqualTo("2023-01-01");
         assertThat(d.endDate()).isEqualTo("2025-01-01");
-        assertThat(d.status()).isEqualTo("active");
+        assertThat(d.status()).isEqualTo("expired");   // V54:存储 active + endDate 2025(已过)→ 派生 expired(§5.1)
         // daysToEnd: relative to today; just assert it is non-null and a meaningful past value
         assertThat(d.daysToEnd()).isNotNull();
     }
@@ -65,19 +67,21 @@ class ContractServiceTest {
         Mockito.when(bm.selectList(null)).thenReturn(List.of(building(7, "A")));
         Mockito.when(um.selectList(null)).thenReturn(List.of());
 
-        ContractDTO d = svc.list().get(0);
+        ContractDTO d = svc.list(null).get(0);
         assertThat(d.termMonths()).isEqualTo(0);
         assertThat(d.daysToEnd()).isNull();
         assertThat(d.floorInfo()).isEmpty();
     }
 
     @Test void summary_aggregatesCorrectly() {
-        LocalDate s = LocalDate.of(2024,1,1), e = LocalDate.of(2026,1,1);
+        // V54:计数改用 endDate 派生桶(§5.1)。存储态全 active,由 endDate 派生 active/expiring/expired。
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
+        LocalDate s = today.minusYears(1);
         Mockito.when(cm.selectList(null)).thenReturn(List.of(
-            contract(1,1,7,null,"active",   s,e,8000),
-            contract(2,2,7,null,"expiring", s,e,5000),
-            contract(3,3,7,null,"draft",    null,null,0),
-            contract(4,4,7,null,"expired",  s,e,9999)
+            contract(1,1,7,null,"active", s, today.plusYears(2),  8000),  // 远期 → active
+            contract(2,2,7,null,"active", s, today.plusDays(30),  5000),  // ≤90天 → expiring
+            contract(3,3,7,null,"draft",  null, null,             0),      // draft
+            contract(4,4,7,null,"active", s, today.minusDays(1),  9999)    // 已过 → expired,不计
         ));
         ContractSummaryDTO sum = svc.summary();
         assertThat(sum.total()).isEqualTo(4);
