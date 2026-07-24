@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { contractApi } from '@/api/contract'
-import type { ContractDTO, ContractDetailDTO } from '@/types/contract'
-import { fpMoney, fpWan } from '@/utils/money'
+import type { ContractDTO, ContractDetailDTO, BillingLineDTO, PropertyType } from '@/types/contract'
+import { POWER_TYPE_LABEL, lineMonthly, defaultBillMode, feeLabel, inferPropertyType, PROPERTY_TYPE_LABEL, BUILDING_RENT_KEYS } from '@/types/contract'
+import { fpMoney } from '@/utils/money'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
-import FPStat from '@/components/fp/FPStat.vue'
 import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
 import FPContractTimeline from './FPContractTimeline.vue'
+import FPContractChain from './FPContractChain.vue'
+import FPRentTierBar from './FPRentTierBar.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -16,11 +18,14 @@ import { iconFor } from '@/components/ds/icon'
 const props = defineProps<{
   open: boolean
   contract: ContractDTO | null
+  chain?: { c: ContractDTO; seq: number }[]   // 整条续签链(CONTRACT-CARD-V2-SPEC §4.1),由父级 chainOf 传入
 }>()
 // edit/renew:父级打开对应弹窗;terminated:携最新 DTO 由父级刷新 list+summary+drawer;deleted:父级关抽屉+刷新
-const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: [] }>()
+// jump:点链上其它期,父级切换 openContract(§4.1)
+const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: []; jump: [ContractDTO] }>()
 
 const detail = ref<ContractDetailDTO | null>(null)
+const today = new Date().toISOString().slice(0, 10)
 
 // ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
 const askTerminate = ref(false)
@@ -29,6 +34,8 @@ const busy = ref(false)
 
 const canTerminate = computed(() =>
   ['active', 'expiring', 'draft'].includes(props.contract?.status ?? ''))
+const canRenew = computed(() =>
+  !['terminated', 'renewed'].includes(props.contract?.status ?? ''))
 
 async function doTerminate() {
   if (!props.contract || busy.value) return
@@ -65,6 +72,32 @@ watch(() => props.contract, async (c) => {
   if (c) detail.value = await contractApi.detail(c.id)
 })
 
+// ─── 标的段(§6.1):按 propertyType+location 分组;段头=类型徽标+位置+段面积;
+//     段体=该类型钉死费用行(费项名+面积+单价+系数+间数+月单价只读),条件项(电梯/变压器)有才显。──
+const segGroups = computed(() => {
+  const groups: { propertyType: PropertyType; location: string; lines: BillingLineDTO[] }[] = []
+  for (const l of detail.value?.billingLines ?? []) {
+    const pt = (l.propertyType ?? inferPropertyType(l.feeKey)) as PropertyType
+    let g = groups.find(x => x.propertyType === pt && x.location === l.location)
+    if (!g) { g = { propertyType: pt, location: l.location, lines: [] }; groups.push(g) }
+    g.lines.push(l)
+  }
+  return groups
+})
+function segArea(lines: BillingLineDTO[]): number | null {
+  let s = 0, has = false
+  for (const l of lines) if (BUILDING_RENT_KEYS.includes(l.feeKey) && l.area != null) { s += l.area; has = true }
+  return has ? Math.round(s * 100) / 100 : null
+}
+const num = (v: number | null | undefined) => (v != null ? v.toLocaleString('en-US') : '—')
+const emode = (l: BillingLineDTO) => (l.billMode || defaultBillMode(l.feeKey))
+const isSqm = (l: BillingLineDTO) => emode(l) === 'per_sqm_month'
+const isRoom = (l: BillingLineDTO) => emode(l) === 'per_room_year' || emode(l) === 'per_room_month'
+const rowMonthly = (l: BillingLineDTO): string => {
+  const m = lineMonthly(l, props.contract?.kva)
+  return m != null ? m.toLocaleString('en-US') : '待录'
+}
+
 // ponytail: ctTimeline ported 1:1 from screen-contracts.jsx ctTimeline()
 function ctTimeline(c: ContractDTO) {
   if (c.status === 'draft') {
@@ -89,6 +122,8 @@ function ctTimeline(c: ContractDTO) {
     steps.push({ state: 'end', t: '已到期', m: c.endDate || '—' })
   } else if (c.status === 'terminated') {
     steps.push({ state: 'end', t: '已终止', m: (c.endDate || '—') + ' · 提前解约' })
+  } else if (c.status === 'renewed') {
+    steps.push({ state: 'end', t: '已续签', m: (c.endDate || '—') + ' · 被新一期取代' })
   }
   return steps
 }
@@ -102,16 +137,20 @@ const subtitle = computed(() => {
   return `${c.buildingName}${c.floorInfo ? ' ' + c.floorInfo : ''} · ${biz}`
 })
 
-const totalValue = computed(() => {
-  const c = props.contract
-  return c && c.monthlyRent && c.termMonths ? c.monthlyRent * c.termMonths : 0
-})
+// 面积口径(2026-07-24 裁定):唯一录入点=计费行 area;顶部只读汇总消除重复。
+const BUILDING_RENT: string[] = [...BUILDING_RENT_KEYS]
+function sumArea(keys: string[]): number | null {
+  let s = 0, has = false
+  for (const l of detail.value?.billingLines ?? [])
+    if (keys.includes(l.feeKey) && l.area != null) { s += l.area; has = true }
+  return has ? Math.round(s * 100) / 100 : null
+}
+const rentAreaShow = computed(() => sumArea(BUILDING_RENT) ?? props.contract?.rentArea ?? null)
+const landAreaSum = computed(() => sumArea(['rent_land']))
 
-// F1:实际换算系数=建筑÷租赁,保留2位;两值都有(且>0)才显示,存量留空不推测
-const areaFactor = computed(() => {
-  const c = props.contract
-  return c?.buildingArea && c.rentArea ? (c.buildingArea / c.rentArea).toFixed(2) : null
-})
+// 租户联系方式:联系人/电话可空,过滤后拼接;全空则整行不显(不再渲染 null · null)
+const contactLine = computed(() =>
+  [detail.value?.tenant.contactName, detail.value?.tenant.contactPhone].filter(Boolean).join(' · '))
 </script>
 
 <template>
@@ -140,7 +179,7 @@ const areaFactor = computed(() => {
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑
       </Button>
-      <Button variant="filled" size="sm" :disabled="contract?.status === 'terminated'" @click="contract && emit('renew', contract)">
+      <Button variant="filled" size="sm" :disabled="!canRenew" @click="contract && emit('renew', contract)">
         <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
         续签
       </Button>
@@ -152,18 +191,44 @@ const areaFactor = computed(() => {
         <Avatar :name="contract.tenantName" :size="40" />
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:var(--fw-semibold)">{{ contract.tenantName }}</div>
-          <div style="font-size:12px;color:var(--text-muted)">
-            {{ detail ? `${detail.tenant.contactName} · ${detail.tenant.contactPhone}` : '—' }}
-          </div>
+          <div v-if="contactLine" style="font-size:12px;color:var(--text-muted)">{{ contactLine }}</div>
         </div>
         <FPTenantStatus v-if="detail" :status="detail.tenant.status" />
       </div>
 
-      <!-- 2. 3×FPStat -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-        <FPStat label="月租金" :value="fpMoney(contract.monthlyRent)" tint="blue" />
-        <FPStat label="租赁面积" :value="contract.rentArea.toLocaleString('en-US')" sub="㎡" tint="slate" />
-        <FPStat label="押金" :value="fpMoney(contract.deposit)" :sub="contract.status === 'draft' ? '待收' : '已收'" tint="sky" />
+      <!-- 1.5 续签链 chip 条(V2-SPEC §4.1):单期合同不渲染,旧期亦可跳到现行期 -->
+      <FPContractChain
+        v-if="chain && chain.length > 1"
+        :chain="chain" :current-id="contract.id" @jump="emit('jump', $event)" />
+
+      <!-- 2. 合同信息块(一次性,不重复;§6.1) -->
+      <div>
+        <FPSectionLabel icon="info">合同信息</FPSectionLabel>
+        <div class="fp-field"><span class="k">楼栋</span><span class="v">{{ contract.buildingName }}</span></div>
+        <div class="fp-field"><span class="k">楼层 / 房号</span><span class="v mono">{{ contract.floorInfo || '—' }}</span></div>
+        <div class="fp-field"><span class="k">建筑面积</span><span class="v mono">{{ contract.buildingArea != null ? contract.buildingArea.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
+        <div class="fp-field"><span class="k">租赁面积</span><span class="v mono">{{ rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
+        <div v-if="landAreaSum != null" class="fp-field"><span class="k">空地面积</span><span class="v mono">{{ landAreaSum.toLocaleString('en-US') }} ㎡</span></div>
+        <div class="fp-field"><span class="k">押金</span><span class="v mono">{{ fpMoney(contract.deposit) }}</span></div>
+        <!-- 电费签约要素(裁定④):KVA 仅大工业行显示 -->
+        <div class="fp-field"><span class="k">用电分类</span>
+          <span class="v" :class="{ pending: !contract.powerType }">{{ contract.powerType ? POWER_TYPE_LABEL[contract.powerType] ?? contract.powerType : '待录' }}</span></div>
+        <div v-if="contract.powerType === 'industrial'" class="fp-field"><span class="k">配电容量 KVA</span>
+          <span class="v mono" :class="{ pending: contract.kva == null }">{{ contract.kva != null ? contract.kva.toLocaleString('en-US') : '待录' }}</span></div>
+        <div class="fp-field"><span class="k">签约日期</span><span class="v mono">{{ contract.signDate || '待签约' }}</span></div>
+        <div class="fp-field"><span class="k">租赁期限</span><span class="v mono">{{ contract.startDate ? contract.startDate + ' → ' + contract.endDate : '待定' }}</span></div>
+        <!-- 期限原文/分年阶梯价已降级到「原始留档」折叠块(V2-SPEC §3) -->
+        <!-- F2 合同期时间轴:蓝=计租 红=免租 竖线=今天 -->
+        <div class="cd-tlwrap">
+          <FPContractTimeline :start-date="contract.startDate" :end-date="contract.endDate" :rent-free="contract.rentFree" />
+        </div>
+        <div class="fp-field"><span class="k">租期</span><span class="v mono">{{ contract.termMonths ? contract.termMonths + ' 个月' : '—' }}</span></div>
+      </div>
+
+      <!-- 2.5 租金阶梯(V2-SPEC §5):参考排程,不参与计费;单段/无阶梯不渲染 -->
+      <div v-if="detail && detail.rentTiers.length > 1">
+        <FPSectionLabel icon="trending-up">租金阶梯</FPSectionLabel>
+        <FPRentTierBar :tiers="detail.rentTiers" :today="today" :contract-unit-price="contract.unitPrice" />
       </div>
 
       <!-- 3. 生命周期时间线 -->
@@ -183,30 +248,40 @@ const areaFactor = computed(() => {
         </div>
       </div>
 
-      <!-- 4. 合同明细 -->
+      <!-- 4. 标的段列表(§6.1:每段=类型徽标+位置+段面积 + 该类型钉死费用行只读;条件项有才显) -->
       <div>
-        <FPSectionLabel icon="list">合同明细</FPSectionLabel>
-        <div class="fp-field"><span class="k">租户</span><span class="v">{{ contract.tenantName }}</span></div>
-        <div class="fp-field"><span class="k">楼栋</span><span class="v">{{ contract.buildingName }}</span></div>
-        <div class="fp-field"><span class="k">楼层 / 房号</span><span class="v mono">{{ contract.floorInfo || '—' }}</span></div>
-        <!-- F1 面积模型:建筑面积/租赁面积/单价,空值显示 —;换算系数两值都有才显示 -->
-        <div class="fp-field"><span class="k">建筑面积</span><span class="v mono">{{ contract.buildingArea != null ? contract.buildingArea.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
-        <div class="fp-field"><span class="k">租赁面积</span><span class="v mono">{{ contract.rentArea.toLocaleString('en-US') }} ㎡</span></div>
-        <div class="fp-field"><span class="k">租金单价</span><span class="v mono">{{ contract.unitPrice != null ? fpMoney(contract.unitPrice) + ' /㎡·月' : '—' }}</span></div>
-        <div v-if="areaFactor" class="fp-field"><span class="k">实际换算系数<span style="color:var(--text-disabled)">(建筑÷租赁)</span></span><span class="v mono">{{ areaFactor }}</span></div>
-        <div class="fp-field"><span class="k">月租金</span><span class="v mono">{{ fpMoney(contract.monthlyRent) }}</span></div>
-        <div class="fp-field"><span class="k">押金</span><span class="v mono">{{ fpMoney(contract.deposit) }}</span></div>
-        <div class="fp-field"><span class="k">签约日期</span><span class="v mono">{{ contract.signDate || '待签约' }}</span></div>
-        <div class="fp-field"><span class="k">租赁期间</span><span class="v mono">{{ contract.startDate ? contract.startDate + ' → ' + contract.endDate : '待定' }}</span></div>
-        <!-- F2 合同期时间轴:蓝=计租 红=免租 竖线=今天(租赁期间下方) -->
-        <div class="cd-tlwrap">
-          <FPContractTimeline :start-date="contract.startDate" :end-date="contract.endDate" :rent-free="contract.rentFree" />
+        <FPSectionLabel icon="list">标的段与费用</FPSectionLabel>
+        <div v-if="segGroups.length" class="cd-bl">
+          <div v-for="(g, gi) in segGroups" :key="gi" class="cd-bl-grp">
+            <div class="cd-bl-loc">
+              <span class="cd-seg-badge">{{ PROPERTY_TYPE_LABEL[g.propertyType] }}</span>
+              <span class="cd-seg-name">{{ g.location }}</span>
+              <span v-if="segArea(g.lines) != null" class="cd-seg-area">{{ segArea(g.lines)!.toLocaleString('en-US') }} ㎡</span>
+            </div>
+            <div class="cd-bl-head">
+              <span class="fx">费项</span><span>面积</span><span>单价</span><span>系数</span><span>间数</span><span>月单价</span>
+            </div>
+            <div v-for="l in g.lines" :key="l.id" class="cd-bl-row">
+              <span class="fx">{{ l.feeName || feeLabel(g.propertyType, l.feeKey) }}</span>
+              <span class="mono">{{ isSqm(l) ? num(l.area) : '—' }}</span>
+              <span class="mono">{{ isSqm(l) || isRoom(l) ? num(l.unitPrice) : '—' }}</span>
+              <span class="mono">{{ isSqm(l) && l.coeff != null && l.coeff !== 1 ? l.coeff : '—' }}</span>
+              <span class="mono">{{ isRoom(l) ? num(l.roomCount) : '—' }}</span>
+              <span class="mono cd-bl-mo" :class="{ pending: rowMonthly(l) === '待录' }">{{ rowMonthly(l) }}</span>
+            </div>
+          </div>
         </div>
-        <div class="fp-field"><span class="k">租期</span><span class="v mono">{{ contract.termMonths ? contract.termMonths + ' 个月' : '—' }}</span></div>
-        <div v-if="totalValue" class="fp-field"><span class="k">合同总额</span><span class="v mono">{{ fpWan(totalValue) }}</span></div>
+        <div v-else class="fp-field"><span class="k">标的段</span><span class="v pending">待录(编辑合同添加标的段)</span></div>
       </div>
 
-      <!-- 5. 备注 -->
+      <!-- 5. 原始留档(V2-SPEC §3):结构化视图之外,合同白纸黑字原文折叠备查 -->
+      <details v-if="contract.termText || contract.tierPriceNote" class="cd-raw">
+        <summary>原始留档（合同白纸黑字原文）</summary>
+        <div v-if="contract.termText" class="fp-field"><span class="k">期限原文</span><span class="v cd-wrap">{{ contract.termText }}</span></div>
+        <div v-if="contract.tierPriceNote" class="fp-field"><span class="k">分年阶梯价</span><span class="v cd-wrap">{{ contract.tierPriceNote }}</span></div>
+      </details>
+
+      <!-- 6. 备注 -->
       <div v-if="contract.remark">
         <FPSectionLabel icon="sticky-note">备注</FPSectionLabel>
         <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6">{{ contract.remark }}</p>
@@ -214,7 +289,7 @@ const areaFactor = computed(() => {
     </template>
   </FPDrawer>
 
-  <!-- 终止确认(1:1 FinDialogs delco .fin-mask/.fin-dlg 结构;z-index 高于抽屉) -->
+  <!-- 终止确认 -->
   <Teleport to="body">
     <div v-if="askTerminate && contract" class="cd-mask" @mousedown="askTerminate = false">
       <div class="cd-dlg" role="dialog" aria-modal="true" @mousedown.stop>
@@ -254,16 +329,37 @@ const areaFactor = computed(() => {
 </template>
 
 <style scoped>
-/* fp-field / fp-tl classes come from fp-master-ui injectMasterStyles (global) — ponytail: no re-def needed */
-/* scoped fallback for fp-field in case global styles not injected */
+/* fp-field / fp-tl classes come from fp-master-ui injectMasterStyles (global) — ponytail: scoped fallback below */
 .fp-field { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed var(--divider); }
 .fp-field:last-child { border-bottom:none; }
 .fp-field .k { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; flex:0 0 auto; }
 .fp-field .v { font-size:var(--fs-body); color:var(--text-primary); text-align:right; min-width:0; }
 .fp-field .v.mono { font-family:var(--font-mono); }
+.fp-field .v.cd-wrap { white-space:pre-wrap; word-break:break-word; line-height:1.5; }   /* 期限原文可长可多段,允许换行 */
+.fp-field .v.pending { color:var(--text-disabled); font-family:var(--font-sans); }
 
-/* F2 时间轴嵌于租赁期间行下方,补 dashed 分隔保持字段行节奏 */
 .cd-tlwrap { padding:10px 0 12px; border-bottom:1px dashed var(--divider); }
+
+/* 标的段列表:段头=类型徽标+位置+段面积;段体=6 列只读费用行 */
+.cd-bl { margin:8px 0 4px; display:flex; flex-direction:column; gap:10px; }
+.cd-bl-grp { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
+.cd-bl-loc { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--surface-card); }
+.cd-seg-badge { padding:2px 9px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:11.5px; font-weight:var(--fw-semibold); }
+.cd-seg-name { font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
+.cd-seg-area { margin-left:auto; font-size:11.5px; font-family:var(--font-mono); color:var(--text-muted); }
+.cd-bl-head, .cd-bl-row { display:grid; grid-template-columns:1.5fr .8fr .9fr .55fr .55fr 1fr; gap:6px; padding:5px 10px; align-items:baseline; }
+.cd-bl-head { font-size:11px; color:var(--text-muted); border-bottom:1px dashed var(--divider); }
+.cd-bl-head span, .cd-bl-row span:not(.fx) { text-align:right; }
+.cd-bl-head .fx, .cd-bl-row .fx { text-align:left; }
+.cd-bl-row { font-size:12.5px; color:var(--text-primary); border-top:1px dashed var(--divider); }
+.cd-bl-grp .cd-bl-row:first-of-type { border-top:none; }
+.cd-bl-row .mono { font-family:var(--font-mono); }
+.cd-bl-mo { font-weight:var(--fw-semibold); }
+.cd-bl-mo.pending { color:var(--text-disabled); font-family:var(--font-sans); font-weight:var(--fw-regular); }
+
+/* 原始留档(V2-SPEC §3):默认折叠,展开看原文 */
+.cd-raw { border:1px dashed var(--divider); border-radius:var(--radius-md); padding:6px 10px; }
+.cd-raw > summary { cursor:pointer; font-size:var(--fs-label); color:var(--text-muted); }
 
 .fp-tl { display:flex; flex-direction:column; gap:0; }
 .fp-tl-step { display:flex; gap:12px; }
@@ -279,7 +375,7 @@ const areaFactor = computed(() => {
 .fp-tl-t { font-size:var(--fs-body); font-weight:var(--fw-medium); color:var(--text-primary); }
 .fp-tl-m { font-size:var(--fs-label); color:var(--text-muted); margin-top:2px; }
 
-/* 确认弹窗:1:1 FinDialogs .fin-mask/.fin-dlg(scoped 须自带);z-index 320 压过 FPDrawer(300/301) */
+/* 确认弹窗:z-index 320 压过 FPDrawer(300/301) */
 .cd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:cdfade .16s forwards; }
 @keyframes cdfade { to { opacity:1; } }
 .cd-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:cdrise .2s var(--ease-standard) both; }

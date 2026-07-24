@@ -17,6 +17,13 @@ import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import ContractDrawer from './ContractDrawer.vue'
 import ContractNewDialog from './ContractNewDialog.vue'
+import { leafIds, chainOf } from './chain'
+import FpImportModal from '@/components/import/FpImportModal.vue'
+import ImportResultToast from '@/components/import/ImportResultToast.vue'
+import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
+import type { ImportResultDTO } from '@/types/import'
+import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 
 // ─── state ───────────────────────────────────────────────
@@ -25,6 +32,8 @@ const summary = ref<ContractSummaryDTO | null>(null)
 const statusFilter = ref('all')
 const phase = ref('全部期数')
 const q = ref('')
+const activeOn = ref('')       // 某日在租筛选(§5.2):非空→后端 asOfDate 过滤
+const showHistory = ref(false) // 含历史续签(§5.3):默认只显每链最新期(叶子)
 const sort = ref<SortState | null>({ key: 'daysToEnd', dir: 'asc' })
 const page = ref(1)
 const tableWrapEl = ref<HTMLElement | null>(null)
@@ -35,9 +44,10 @@ const editFrom = ref<ContractDTO | null>(null)
 const renewFrom = ref<ContractDTO | null>(null)
 
 async function reload() {
-  ;[contracts.value, summary.value] = await Promise.all([contractApi.list(), contractApi.summary()])
+  ;[contracts.value, summary.value] = await Promise.all([contractApi.list(activeOn.value || undefined), contractApi.summary()])
 }
 onMounted(reload)
+watch(activeOn, reload)   // 某日在租=后端过滤,切换即重拉
 
 async function onCreated() {
   showNew.value = false
@@ -85,18 +95,28 @@ const LIFECYCLE = [
   { k: 'expiring',   label: '即将到期' },
   { k: 'expired',    label: '已到期' },
   { k: 'terminated', label: '已终止' },
+  { k: 'renewed',    label: '已续签' },   // 被新一期取代的旧期:非叶子,勾选"含历史续签"后才有行
 ]
+
+// ─── 续签链聚合(§5.3):默认每链只显叶子(最新一期);含历史/某日在租时显全量 ──────
+const leaves = computed(() => leafIds(contracts.value))
+// 有上一期(parentContractId 非空)的合同 id → 列表内标"续"徽标,点开抽屉看历史
+const hasHistoryIds = computed(() =>
+  new Set(contracts.value.filter(c => c.parentContractId != null).map(c => c.id)))
+// 某日在租=后端已过滤该日在执行的历史/当前期,不折叠;否则默认折叠到叶子,勾选含历史显全量
+const displayBase = computed(() =>
+  activeOn.value || showHistory.value ? contracts.value : contracts.value.filter(c => leaves.value.has(c.id)))
 
 const lifecycleCounts = computed(() => {
   // seed all lifecycle keys to 0 so empty-status tabs show "0" (matches design), not blank
-  const c: Record<string, number> = { all: contracts.value.length, draft: 0, active: 0, expiring: 0, expired: 0, terminated: 0 }
-  for (const r of contracts.value) c[r.status] = (c[r.status] ?? 0) + 1
+  const c: Record<string, number> = { all: displayBase.value.length, draft: 0, active: 0, expiring: 0, expired: 0, terminated: 0, renewed: 0 }
+  for (const r of displayBase.value) c[r.status] = (c[r.status] ?? 0) + 1
   return c
 })
 
 // ─── filtered ─────────────────────────────────────────────
 const filtered = computed(() =>
-  contracts.value
+  displayBase.value
     .filter(c => statusFilter.value === 'all' || c.status === statusFilter.value)
     .filter(c => phase.value === '全部期数' || phaseOf(c) === phase.value)
     .filter(c => !q.value.trim() ||
@@ -110,11 +130,16 @@ const TABLE_COLUMNS = computed(() => [
   {
     key: 'contractNo',
     header: '合同编号',
-    width: '142px',
+    width: '158px',
     mono: true,
     render: (r: ContractDTO) => h('span', {
-      style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)' }
-    }, r.contractNo),
+      style: { display: 'inline-flex', alignItems: 'center', gap: '6px' }
+    }, [
+      h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)' } }, r.contractNo),
+      hasHistoryIds.value.has(r.id)
+        ? h('span', { title: '有续签历史,点开查看', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(24,134,254,0.12)', color: 'var(--hue-blue)' } }, '续')
+        : null,
+    ]),
   },
   {
     key: 'tenantName',
@@ -200,7 +225,22 @@ const pageCount = computed(() => Math.max(1, Math.ceil(sortedFiltered.value.leng
 const safePage = computed(() => Math.min(page.value, pageCount.value))
 const paged = computed(() => sortedFiltered.value.slice((safePage.value - 1) * pageSize.value, safePage.value * pageSize.value))
 
-watch([statusFilter, phase, q, sort], () => { page.value = 1 })
+watch([statusFilter, phase, q, sort, activeOn, showHistory], () => { page.value = 1 })
+
+// ─── 计费字段导入(BILL-FORWARD 刀1 二次返工,registry key 'billingTerms';按钮状态机遵9屏统一规范) ──
+const auth = useAuthStore()
+const importing = ref(false)
+const importResult = ref<ImportResultDTO | null>(null)
+const importCtx: ImportCtx = {}
+async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
+  importing.value = false
+  try {
+    importResult.value = await runImport('billingTerms', payload as never, importCtx, fileName)
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '导入失败')
+  }
+  await reload()   // 条款不改列表行,但重拉保证抽屉再开时读到最新
+}
 </script>
 
 <template>
@@ -210,17 +250,15 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       <div>
         <h2 style="margin:0;font-size:var(--fs-h2);font-weight:var(--fw-semibold)">合同管理</h2>
         <p style="margin:5px 0 0;font-size:var(--fs-label);color:var(--text-muted)">
-          租赁合同与续签 · 主数据 · 共 {{ summary ? contracts.length : '…' }} 份
+          租赁合同与续签 · 主数据 · 共 {{ summary ? displayBase.length : '…' }} 份
         </p>
       </div>
-      <!-- ponytail: 导入尚未提供,保持显式 disabled;新增已接写接口 -->
+      <!-- 导入=计费字段(BILL-FORWARD 刀1 二次返工);viewer 无写入口(EDIT-MODE-SPEC) -->
       <div style="display:flex;gap:8px">
-        <span title="导入开发中">
-          <Button variant="outline" size="sm" disabled>
-            <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-            导入
-          </Button>
-        </span>
+        <Button v-if="!auth.isReadonly" variant="outline" size="sm" @click="importing = true">
+          <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+          导入计费字段
+        </Button>
         <Button variant="filled" size="sm" @click="showNew = true">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增合同
@@ -252,6 +290,19 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
       <div class="mx-toolbar">
         <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
         <div class="mx-toolbar-right">
+          <!-- 某日在租筛选(§5.2):选日期→后端 asOfDate 过滤;清空恢复全量 -->
+          <label class="mx-asof" :class="{ on: !!activeOn }" title="只看某日期仍在执行中的合同">
+            <component :is="iconFor('calendar-check')" :size="15" />
+            <input type="date" v-model="activeOn" />
+            <button v-if="activeOn" type="button" class="mx-asof-x" title="清除日期筛选" @click.prevent="activeOn = ''">
+              <component :is="iconFor('x')" :size="13" />
+            </button>
+          </label>
+          <!-- 含历史续签(§5.3):默认每链只显最新期,勾选后显全部历史期 -->
+          <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" title="显示被续签取代的历史期">
+            <input type="checkbox" v-model="showHistory" />
+            含历史续签
+          </label>
           <div class="mx-search">
             <span class="mx-search-icon">
               <component :is="iconFor('search')" :size="16" />
@@ -296,12 +347,26 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
     <ContractDrawer
       :open="!!openContract"
       :contract="openContract"
+      :chain="openContract ? chainOf(contracts, openContract.id) : []"
       @close="openContract = null"
+      @jump="openContract = $event"
       @edit="editFrom = $event"
       @renew="renewFrom = $event"
       @terminated="onTerminated"
       @deleted="onDeleted"
     />
+
+    <!-- 5.5 计费字段导入(registry key 'billingTerms':整册 parseWorkbook → 每户一段勾选;多合同户人选其一) -->
+    <FpImportModal
+      v-if="importing"
+      title="导入 合同计费字段 · 月度租金工作簿"
+      sub="上传月度租金工作簿(每租户一 sheet,含通知单块),自动提取五费项(租金/管理费/基础维护/电梯/变压器)按 sheet 名落到生效合同固定字段;多合同户请勾选归属合同;流水账等 sheet 须手录;导入后自动下载到户报告"
+      v-bind="parserProps('billingTerms', importCtx)"
+      @close="importing = false"
+      @import="onImport"
+      @import-sections="onImport"
+    />
+    <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 
     <!-- 6. 新增合同弹窗 -->
     <ContractNewDialog v-if="showNew" @close="showNew = false" @created="onCreated" />
@@ -312,4 +377,15 @@ watch([statusFilter, phase, q, sort], () => { page.value = 1 })
   </div>
 </template>
 
-<!-- .mx-* 布局样式收编于全局 styles/mx-list.css(LIST-PAGE-SPEC 单一事实源),本屏不再自带变体 -->
+<!-- .mx-* 布局样式收编于全局 styles/mx-list.css(LIST-PAGE-SPEC 单一事实源);下方仅本屏工具栏新增控件 -->
+<style scoped>
+/* 某日在租日期选择器 + 含历史续签开关(§5.2/§5.3):贴合工具栏右侧既有控件高度 */
+.mx-asof { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 8px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-white); color:var(--text-muted); cursor:pointer; }
+.mx-asof.on { border-color:var(--hue-blue); color:var(--hue-blue); }
+.mx-asof input[type="date"] { border:none; outline:none; background:none; font-size:12.5px; font-family:var(--font-mono); color:var(--text-primary); cursor:pointer; }
+.mx-asof-x { display:grid; place-items:center; width:20px; height:20px; border:none; background:none; border-radius:var(--radius-sm); color:var(--text-muted); cursor:pointer; }
+.mx-asof-x:hover { background:var(--bg-hover); color:var(--hue-red); }
+.mx-hist-toggle { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+.mx-hist-toggle.on { border-color:var(--hue-blue); color:var(--hue-blue); }
+.mx-hist-toggle input { accent-color:var(--hue-blue); }
+</style>
