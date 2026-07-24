@@ -2,17 +2,19 @@
 // 租金阶梯期可视化(CONTRACT-CARD-V2-SPEC §5)。替代原「分年阶梯价」纯文本一坨。
 // 阶梯=参考排程,不参与计费(§1);换档靠人工改合同现行单价,故有 §5.3 错档提示。
 import { computed } from 'vue'
-import type { RentTierDTO } from '@/types/contract'
+import type { RentTierDTO, FeeKey } from '@/types/contract'
+import { FEE_NAME } from '@/types/contract'
 import { groupTiers, currentTierIndex, tierMismatch } from './rentTier'
 const props = defineProps<{ tiers: RentTierDTO[]; today: string; contractUnitPrice?: number | null }>()
 
 const groups = computed(() => groupTiers(props.tiers))
 const idxOf   = (rows: RentTierDTO[]) => currentTierIndex(rows, props.today)
 const dated   = (rows: RentTierDTO[]) => rows.every(r => r.startDate && r.endDate)
-const mism    = computed(() => {
-  const g = groups.value.find(x => x.feeKey == null) ?? groups.value[0]
-  return g ? tierMismatch(g.rows, props.today, props.contractUnitPrice) : null
-})
+// 告警轨=整份合同合计口径(feeKey 空)那组;缺则退首组。告警文案的档号必须取自同一组,勿另算。
+const mismGrp = computed(() => groups.value.find(x => x.feeKey == null) ?? groups.value[0])
+const mism    = computed(() =>
+  mismGrp.value ? tierMismatch(mismGrp.value.rows, props.today, props.contractUnitPrice) : null)
+const feeName = (k: string) => FEE_NAME[k as FeeKey] ?? k
 const n = (v: number | null | undefined) => (v != null ? v.toLocaleString('en-US') : '—')
 </script>
 
@@ -20,12 +22,12 @@ const n = (v: number | null | undefined) => (v != null ? v.toLocaleString('en-US
   <div v-if="props.tiers.length > 1" class="rt">
     <!-- §5.3 换档告警:人工换档流程唯一漏点=忘了改合同 -->
     <div v-if="mism" class="rt-warn">
-      今天已进入第 {{ groups[0] ? idxOf(groups[0].rows) + 1 : '?' }} 档（{{ n(mism.expected) }} 元/㎡·月），
+      今天已进入第 {{ mismGrp ? idxOf(mismGrp.rows) + 1 : '?' }} 档（{{ n(mism.expected) }} 元/㎡·月），
       但合同现行单价为 {{ n(mism.actual) }} 元/㎡·月，请更新合同。
     </div>
 
     <div v-for="(g, gi) in groups" :key="gi" class="rt-grp">
-      <div v-if="g.feeKey" class="rt-fee">{{ g.feeKey }}</div>
+      <div v-if="g.feeKey" class="rt-fee">{{ feeName(g.feeKey) }}</div>
 
       <!-- 分段条:有完整日期才按当前段高亮;相对期限退化为等分示意 -->
       <div class="rt-bar">

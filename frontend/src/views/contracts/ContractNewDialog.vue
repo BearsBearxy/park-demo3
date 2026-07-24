@@ -508,7 +508,7 @@ async function submit() {
             <template v-if="mode !== 'renew'">
               <div class="ct-field ct-span2">
                 <div class="lab">期限原文</div>
-                <textarea class="ct-in ct-ta" rows="2" v-model="termText" maxlength="500"
+                <textarea class="ct-in ct-ta" rows="2" v-model="termText" maxlength="255"
                           placeholder="如:2023年7月14日起至2026年7月13日 / 竣工验收次日起计九年" @input="err = ''"></textarea>
               </div>
               <div class="ct-field">
