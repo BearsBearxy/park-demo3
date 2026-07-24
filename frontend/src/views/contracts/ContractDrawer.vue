@@ -25,7 +25,11 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: []; jump: [ContractDTO] }>()
 
 const detail = ref<ContractDetailDTO | null>(null)
-const today = new Date().toISOString().slice(0, 10)
+// 本地日期(非 toISOString:那是 UTC,东八区 00:00-08:00 会算成前一天,阶梯当前档边界日会判错)
+const today = (() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})()
 
 // ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
 const askTerminate = ref(false)
