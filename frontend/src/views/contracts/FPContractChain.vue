@@ -27,7 +27,10 @@ const emit = defineEmits<{ jump: [ContractDTO] }>()
 </template>
 
 <style scoped>
-.cc-wrap { display:flex; gap:8px; overflow-x:auto; padding:2px 0 6px; }
+/* flex-shrink:0 关键:本条是 .fp-dwr-body(flex column) 的子项,又因 overflow-x:auto 成为滚动容器,
+   其 flex min-height:auto 会被解析为 0 → 被父列压成只剩 padding(8px)高,chip 被裁成一条空滚动条。
+   钉死不收缩,保住内容高度;横向仍可滚(长续签链) */
+.cc-wrap { display:flex; gap:8px; overflow-x:auto; padding:2px 0 6px; flex-shrink:0; }
 .cc-chip { display:flex; align-items:center; gap:8px; flex:0 0 auto; cursor:pointer;
   padding:6px 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md);
   background:var(--surface-white); font:inherit; text-align:left; }
