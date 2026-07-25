@@ -10,7 +10,6 @@ import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
 import FPContractTimeline from './FPContractTimeline.vue'
 import FPContractChain from './FPContractChain.vue'
-import FPRentTierBar from './FPRentTierBar.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -25,11 +24,6 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: []; jump: [ContractDTO] }>()
 
 const detail = ref<ContractDetailDTO | null>(null)
-// 本地日期(非 toISOString:那是 UTC,东八区 00:00-08:00 会算成前一天,阶梯当前档边界日会判错)
-const today = (() => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-})()
 
 // ─── 操作:终止 / 删除(确认弹窗) ──────────────────────────
 const askTerminate = ref(false)
@@ -101,6 +95,15 @@ const rowMonthly = (l: BillingLineDTO): string => {
   const m = lineMonthly(l, props.contract?.kva)
   return m != null ? m.toLocaleString('en-US') : '待录'
 }
+// 合同标准月租金合计 = 各计费行月单价之和(参考,非账单实收;账单含免租/proration 属账单管理)
+const contractMonthlyTotal = computed(() => {
+  let s = 0
+  for (const l of detail.value?.billingLines ?? []) {
+    const m = lineMonthly(l, props.contract?.kva)
+    if (m != null) s += m
+  }
+  return s
+})
 
 // ponytail: ctTimeline ported 1:1 from screen-contracts.jsx ctTimeline()
 function ctTimeline(c: ContractDTO) {
@@ -229,12 +232,6 @@ const contactLine = computed(() =>
         <div class="fp-field"><span class="k">租期</span><span class="v mono">{{ contract.termMonths ? contract.termMonths + ' 个月' : '—' }}</span></div>
       </div>
 
-      <!-- 2.5 租金阶梯(V2-SPEC §5):参考排程,不参与计费;单段/无阶梯不渲染 -->
-      <div v-if="(detail?.rentTiers?.length ?? 0) > 1">
-        <FPSectionLabel icon="trending-up">租金阶梯</FPSectionLabel>
-        <FPRentTierBar :tiers="detail!.rentTiers" :today="today" :contract-unit-price="contract.unitPrice" />
-      </div>
-
       <!-- 3. 生命周期时间线 -->
       <div>
         <FPSectionLabel icon="git-commit-horizontal">合同生命周期</FPSectionLabel>
@@ -276,6 +273,11 @@ const contactLine = computed(() =>
           </div>
         </div>
         <div v-else class="fp-field"><span class="k">标的段</span><span class="v pending">待录(编辑合同添加标的段)</span></div>
+        <div v-if="detail && detail.billingLines.length" class="fp-field">
+          <span class="k">合同月租金合计（标准）</span>
+          <span class="v mono">{{ contractMonthlyTotal.toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
+            <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-sans)"> · 参考,非账单实收</span></span>
+        </div>
       </div>
 
       <!-- 5. 原始留档(V2-SPEC §3):结构化视图之外,合同白纸黑字原文折叠备查 -->

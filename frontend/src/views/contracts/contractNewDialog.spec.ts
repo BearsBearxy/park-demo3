@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import type { ContractDTO, ContractCreateReq } from '@/types/contract'
 
-// CONTRACT-CARD-V2-SPEC §6:期限原文三件套 + 租金阶梯段在编辑弹窗可录可存。
-// 阶梯=参考排程,不参与计费(§1),此处只验「回填 → 提交」链路不丢字段。
+// CONTRACT-CARD-V2-SPEC §6:期限原文三件套(termText/termType/tierPriceNote)在编辑弹窗可录可存。
+// 原文留档为参考,不参与计费(§1),此处只验「回填 → 提交」链路不丢字段。
 
 vi.mock('@/api/contract', () => ({
   contractApi: { detail: vi.fn(), update: vi.fn(), create: vi.fn() },
@@ -33,30 +33,26 @@ function mountEdit() {
   })
 }
 
-describe('合同弹窗 · 期限原文三件套 + 阶梯段(V2-SPEC §6)', () => {
+describe('合同弹窗 · 期限原文三件套(V2-SPEC §6)', () => {
   beforeEach(() => {
     vi.clearAllMocks()   // 调用记录逐用例归零(实现保留),否则 calls[0] 会串到上一用例
     vi.mocked(contractApi.detail).mockResolvedValue({
       contract: initial,
       tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
       billingLines: [],
-      rentTiers: [
-        { id: 11, contractId: 7, seq: 1, startDate: '2023-08-10', endDate: '2024-08-09', unitPrice: 12.231, monthlyAmount: 4770 },
-        { id: 12, contractId: 7, seq: 2, startDate: '2024-08-10', endDate: '2026-08-09', unitPrice: 14.282, monthlyAmount: 5570 },
-      ],
+      rentTiers: [],
     })
     vi.mocked(contractApi.update).mockResolvedValue(initial)
   })
 
-  it('编辑态回填期限原文/类型/阶梯价原文与阶梯段', async () => {
+  it('编辑态回填期限原文/类型/阶梯价原文', async () => {
     const w = mountEdit()
     await flushPromises()
     expect((w.find('textarea.ct-in').element as HTMLTextAreaElement).value)
       .toBe('自2023年8月10日起至2026年8月9日止')
-    expect(w.findAll('.ct-tier-row')).toHaveLength(2)
   })
 
-  it('提交带上四字段(termText/termType/tierPriceNote/rentTiers)', async () => {
+  it('提交带上期限原文三字段(termText/termType/tierPriceNote)', async () => {
     const w = mountEdit()
     await flushPromises()
     await w.findAll('.ct-dlg-f button')[1].trigger('click')
@@ -68,22 +64,5 @@ describe('合同弹窗 · 期限原文三件套 + 阶梯段(V2-SPEC §6)', () =>
     expect(req.termText).toBe('自2023年8月10日起至2026年8月9日止')
     expect(req.termType).toBe('explicit')
     expect(req.tierPriceNote).toBe('首年12.231,次年起14.282')
-    expect(req.rentTiers).toHaveLength(2)
-    expect(req.rentTiers![1]).toMatchObject({ seq: 2, startDate: '2024-08-10', unitPrice: 14.282 })
-  })
-
-  it('可增删阶梯段,删空后提交为空列表(整组清空)', async () => {
-    const w = mountEdit()
-    await flushPromises()
-    await w.find('.ct-tier-add').trigger('click')
-    expect(w.findAll('.ct-tier-row')).toHaveLength(3)
-    // 逐次删首档(每删一次索引重排,不能拿旧快照批量点)
-    while (w.findAll('.ct-tier-row').length) await w.find('.ct-tier-row .ct-rf-del').trigger('click')
-    expect(w.findAll('.ct-tier-row')).toHaveLength(0)
-
-    await w.findAll('.ct-dlg-f button')[1].trigger('click')
-    await flushPromises()
-    const req = vi.mocked(contractApi.update).mock.calls[0][1]
-    expect(req.rentTiers).toEqual([])
   })
 })

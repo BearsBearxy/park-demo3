@@ -17,7 +17,7 @@ import {
   PROPERTY_TYPES, PROPERTY_TYPE_LABEL, PINNED_FEES, COND_FEES, OPTIONAL_FEES,
   BUILDING_RENT_KEYS, feeLabel, inferPropertyType, pinnedDefaultUnitPrice,
 } from '@/types/contract'
-import type { ContractDTO, RentFreePeriod, FeeKey, PropertyType, BillingLineDTO, BillingLineReq, RentTierReq } from '@/types/contract'
+import type { ContractDTO, RentFreePeriod, FeeKey, PropertyType, BillingLineDTO, BillingLineReq } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO, UnitDTO } from '@/types/building'
 
@@ -64,12 +64,11 @@ const rentFreeRows = ref<{ start: string; end: string; note: string }[]>([])
 const startDate = ref('')
 const endDate = ref('')
 const signDate = ref('')
-// 期限原文三件套 + 租金阶梯段(CONTRACT-CARD-V2-SPEC §6):原文留档与阶梯皆为参考排程,不参与计费(§1)。
-// 三件套恒为 string 便于 v-model,提交时空串转 null;阶梯段随详情带出,整组随合同 PUT 替换。
+// 期限原文三件套(CONTRACT-CARD-V2-SPEC §6):原文留档为参考,不参与计费(§1)。
+// 三件套恒为 string 便于 v-model,提交时空串转 null。
 const termText = ref('')
 const termType = ref('')          // ''|explicit|multiple|relative|none
 const tierPriceNote = ref('')
-const rentTiers = ref<RentTierReq[]>([])
 const status = ref('active')
 const remark = ref('')
 
@@ -155,13 +154,6 @@ onMounted(async () => {
     // 计费行:详情端点带出(按 propertyType,location,seq 排序),分组进可编辑标的段
     const d = await contractApi.detail(c.id)
     segments.value = groupLines(d.billingLines)
-    // 阶梯段同一趟详情带出(不重复请求);feeKey/note 无输入位但原样透传,防编辑保存时静默丢失
-    // ?? []:后端旧版/部分响应可能不带 rentTiers,缺字段不该让编辑弹窗崩
-    rentTiers.value = (d.rentTiers ?? []).map(t => ({
-      id: t.id, feeKey: t.feeKey ?? null, seq: t.seq, label: t.label ?? '',
-      startDate: t.startDate ?? '', endDate: t.endDate ?? '',
-      unitPrice: t.unitPrice ?? null, monthlyAmount: t.monthlyAmount ?? null, note: t.note ?? null,
-    }))
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
     units.value = (await buildingApi.detail(props.presetBuildingId)).units
@@ -307,7 +299,6 @@ async function submit() {
       termText: termText.value.trim() || null,
       termType: termType.value || null,
       tierPriceNote: tierPriceNote.value.trim() || null,
-      rentTiers: rentTiers.value.map((r, i) => ({ ...r, seq: r.seq ?? i + 1 })),   // 整组替换;空列表=清空
       status: status.value,
       remark: remark.value.trim() || null,
       billingLines: lines,
@@ -525,31 +516,7 @@ async function submit() {
               <div class="ct-field">
                 <div class="lab">分年阶梯价(原文留档)</div>
                 <textarea class="ct-in ct-ta" rows="2" v-model="tierPriceNote" maxlength="500"
-                          placeholder="合同原文照抄,结构化分档在下方录入" @input="err = ''"></textarea>
-              </div>
-              <!-- 租金阶梯期(V2-SPEC §5/§6.2):参考排程,换档仍靠人工改上方现行单价,本表不参与计费 -->
-              <div class="ct-field ct-span2">
-                <div class="lab">租金阶梯期 · 参考排程(不参与计费;换档需另行更新标的段现行单价)</div>
-                <div class="ct-rf">
-                  <div v-for="(r, i) in rentTiers" :key="i" class="ct-rf-row ct-tier-row">
-                    <input class="ct-in ct-tier-label" v-model="r.label" maxlength="64" placeholder="档名(如:首年)" @input="err = ''" />
-                    <input class="ct-in" type="date" v-model="r.startDate" @input="err = ''" />
-                    <span class="ct-rf-arrow">→</span>
-                    <input class="ct-in" type="date" v-model="r.endDate" @input="err = ''" />
-                    <input class="ct-in ct-bl-n" type="number" min="0" step="0.0001" v-model.number="r.unitPrice" placeholder="单价" @input="err = ''" />
-                    <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="r.monthlyAmount" placeholder="月额" @input="err = ''" />
-                    <button type="button" class="ct-rf-del" title="删除该档" @click="rentTiers.splice(i, 1)">
-                      <component :is="iconFor('x')" :size="14" />
-                    </button>
-                  </div>
-                  <div>
-                    <Button class="ct-tier-add" variant="gray" size="sm" :disabled="rentTiers.length >= 24"
-                            @click="rentTiers.push({ seq: rentTiers.length + 1, label: '', startDate: '', endDate: '' })">
-                      <template #leading><component :is="iconFor('plus')" :size="13" /></template>
-                      添加阶梯档
-                    </Button>
-                  </div>
-                </div>
+                          placeholder="合同原文照抄" @input="err = ''"></textarea>
               </div>
             </template>
             <!-- F2 免租期行式编辑(续签不继承旧租期条款,不展示) -->
@@ -618,8 +585,6 @@ async function submit() {
 select.ct-in { appearance:auto; }
 /* 期限原文/阶梯价留档:多行输入,.ct-in 的固定行高在此放开 */
 .ct-ta { height:auto; padding:8px 12px; line-height:1.5; resize:vertical; }
-/* 阶梯档行沿用免租期行骨架(.ct-rf-row),仅补档名与数值列宽 */
-.ct-tier-label { flex:1 1 auto; min-width:0; }
 /* 标的段编辑(§6.2):段头=类型徽标+位置+段面积;钉死行=费用名(固定)+数值+月单价;条件/可选=checkbox+月额 */
 .ct-bl { display:flex; flex-direction:column; gap:12px; }
 .ct-bl-seg { border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:10px; display:flex; flex-direction:column; gap:8px; background:var(--surface-card); }
