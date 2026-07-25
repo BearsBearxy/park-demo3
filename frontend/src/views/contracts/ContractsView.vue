@@ -203,12 +203,17 @@ const TABLE_COLUMNS = computed(() => [
       (r.status === 'expired' || r.status === 'terminated') ? 1e8 :
       r.daysToEnd,
     render: (r: ContractDTO) => {
+      const pill = (text: string, fg: string, bg: string) => h('span', {
+        style: { display: 'inline-block', fontFamily: 'var(--font-mono)', fontSize: '11.5px', fontWeight: 'var(--fw-semibold)',
+                 padding: '2px 8px', borderRadius: '999px', color: fg, background: bg, whiteSpace: 'nowrap' },
+      }, text)
       if (r.status === 'draft')       return h('span', { style: { color: 'var(--text-disabled)', fontSize: '12px' } }, '—')
-      if (r.status === 'expired')     return h('span', { style: { color: 'var(--hue-red)',      fontSize: '12px' } }, '已到期')
+      if (r.status === 'expired')     return pill('已到期', 'var(--hue-red)', 'oklch(0.95 0.03 20)')
       if (r.status === 'terminated')  return h('span', { style: { color: 'var(--text-disabled)', fontSize: '12px' } }, '已终止')
       const d = r.daysToEnd ?? 0
-      const tone = d <= 90 ? 'rgb(168,98,0)' : 'var(--text-secondary)'
-      return h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', color: tone } }, `${d} 天`)
+      if (d <= 30)                    return pill(`${d} 天`, 'var(--hue-red)', 'oklch(0.95 0.03 20)')
+      if (d <= 90)                    return pill(`${d} 天`, 'rgb(168,98,0)', 'oklch(0.95 0.045 78)')
+      return h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' } }, `${d} 天`)
     },
   },
   {

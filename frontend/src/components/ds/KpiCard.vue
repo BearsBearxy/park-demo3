@@ -13,17 +13,20 @@ export interface KpiCardProps {
   style?: Record<string, string>;
 }
 
-const TINTS: Record<string, string> = {
-  slate: "var(--accent-slate)",
-  sky: "var(--accent-sky)",
-  blue: "var(--accent-blue)",
-  cyan: "var(--accent-cyan)",
-  plain: "var(--bg-panel)",
+// 重设计:扁平白卡 + 色点标签(不再整卡上底色);tint 现映射为标签色点色
+const DOTS: Record<string, string> = {
+  slate: "var(--fill-slate)",
+  sky: "var(--hue-cyan)",
+  blue: "var(--hue-blue)",
+  cyan: "var(--hue-cyan)",
+  plain: "var(--border-strong)",
 };
 
 const props = withDefaults(defineProps<KpiCardProps>(), {
   tint: "slate",
 });
+
+const dot = computed(() => DOTS[props.tint] ?? DOTS.slate);
 
 const up = computed(() => {
   if (props.trend === "up") return true;
@@ -33,9 +36,10 @@ const up = computed(() => {
 });
 
 const rootStyle = computed(() => ({
-  background: TINTS[props.tint] ?? TINTS.slate,
+  background: "var(--surface-white)",
+  border: "1px solid var(--border-subtle)",
   borderRadius: "var(--radius-lg)",
-  padding: "24px",
+  padding: "16px 18px",
   minWidth: 0,
   boxSizing: "border-box" as const,
   display: "flex",
@@ -47,12 +51,15 @@ const rootStyle = computed(() => ({
 
 <template>
   <div :style="rootStyle">
-    <!-- header row: label + optional icon -->
-    <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
-      <span style="font:var(--type-card-title);color:var(--text-primary);white-space:nowrap">
-        <slot name="label">{{ label }}</slot>
+    <!-- header row: 色点 + label + optional icon -->
+    <div style="display:flex;align-items:center;gap:7px;justify-content:space-between">
+      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">
+        <span aria-hidden="true" :style="{ width:'7px', height:'7px', borderRadius:'50%', background: dot, flex:'0 0 auto' }"></span>
+        <span style="font-size:var(--fs-label);color:var(--text-muted);white-space:nowrap">
+          <slot name="label">{{ label }}</slot>
+        </span>
       </span>
-      <span v-if="$slots.icon || icon" style="display:inline-flex;color:var(--text-secondary)">
+      <span v-if="$slots.icon || icon" style="display:inline-flex;color:var(--text-disabled)">
         <slot name="icon">{{ icon }}</slot>
       </span>
     </div>
@@ -60,7 +67,7 @@ const rootStyle = computed(() => ({
     <!-- value row: big metric + delta -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">
       <span style="flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:flex-end">
-        <span style="font-family:var(--font-sans);font-size:var(--fs-display);font-weight:var(--fw-semibold);line-height:1.1;color:var(--text-primary);letter-spacing:var(--ls-tight)">
+        <span style="font-family:var(--font-mono);font-size:var(--fs-h1);font-weight:var(--fw-semibold);line-height:1.1;color:var(--text-primary);letter-spacing:var(--ls-tight)">
           <slot>{{ value }}</slot>
         </span>
       </span>
