@@ -273,62 +273,56 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
     <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
     <template v-if="summary">
     <!-- KPI 顶条已去除(用户要求:让左侧列表更宽显示更多列);状态计数仍在生命周期 tabs 上 -->
-    <div class="mx-md">
-      <!-- 左:列表列 -->
-      <div class="mx-md-list">
-      <!-- 3. Toolbar(spec §2:单行,生命周期 tabs 左 / 搜索+期数 Select 右,总数只出现在分页器) -->
-      <div class="mx-toolbar">
-        <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
-        <div class="mx-toolbar-right">
-          <!-- 某日在租筛选(§5.2):选日期→后端 asOfDate 过滤;清空恢复全量 -->
-          <label class="mx-asof" :class="{ on: !!activeOn }" title="只看某日期仍在执行中的合同">
-            <component :is="iconFor('calendar-check')" :size="15" />
-            <input type="date" v-model="activeOn" />
-            <button v-if="activeOn" type="button" class="mx-asof-x" title="清除日期筛选" @click.prevent="activeOn = ''">
-              <component :is="iconFor('x')" :size="13" />
-            </button>
-          </label>
-          <!-- 含历史续签(§5.3):默认每链只显最新期,勾选后显全部历史期 -->
-          <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" title="显示被续签取代的历史期">
-            <input type="checkbox" v-model="showHistory" />
-            含历史续签
-          </label>
-          <div class="mx-search">
-            <span class="mx-search-icon">
-              <component :is="iconFor('search')" :size="16" />
-            </span>
-            <input v-model="q" placeholder="搜索合同编号 / 租户 / 楼栋" />
-          </div>
-          <div style="width:130px">
-            <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
-          </div>
+    <!-- 筛选/搜索:全宽置顶(sidebar 列表太窄放不下这排控件) -->
+    <div class="mx-toolbar mx-toolbar-top">
+      <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
+      <div class="mx-toolbar-right">
+        <label class="mx-asof" :class="{ on: !!activeOn }" title="只看某日期仍在执行中的合同">
+          <component :is="iconFor('calendar-check')" :size="15" />
+          <input type="date" v-model="activeOn" />
+          <button v-if="activeOn" type="button" class="mx-asof-x" title="清除日期筛选" @click.prevent="activeOn = ''">
+            <component :is="iconFor('x')" :size="13" />
+          </button>
+        </label>
+        <label v-if="!activeOn" class="mx-hist-toggle" :class="{ on: showHistory }" title="显示被续签取代的历史期">
+          <input type="checkbox" v-model="showHistory" />
+          含历史续签
+        </label>
+        <div class="mx-search">
+          <span class="mx-search-icon"><component :is="iconFor('search')" :size="16" /></span>
+          <input v-model="q" placeholder="搜索合同编号 / 租户 / 楼栋" />
+        </div>
+        <div style="width:130px">
+          <Select :options="['全部期数','一期','二期','三期','宿舍']" v-model="phase" size="sm" />
         </div>
       </div>
+    </div>
 
-      <!-- 4. List card(spec §3:卡片定高,表格区+分页条两段,分页器贴卡底不悬浮) -->
-      <Card surface="white" :padding="0" class="mx-listcard">
-        <div ref="tableWrapEl" class="mx-tablewrap">
-          <FPSortableTable
-            :columns="TABLE_COLUMNS"
-            :rows="paged"
-            rowKey="id"
-            :sort="sort"
-            :rowHover="true"
-            :selectedKey="openContract?.id ?? null"
-            @sortChange="sort = $event"
-            @rowClick="openContract = $event"
-          />
-          <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的合同</div>
-        </div>
-        <div v-if="filtered.length > 0" class="mx-pagerbar">
-          <FPPager
-            :page="safePage"
-            :pageCount="pageCount"
-            :total="filtered.length"
-            @page="page = $event"
-          />
-        </div>
-      </Card>
+    <div class="mx-md">
+      <!-- 左:合同列表 sidebar(紧凑列表项;详情占主区) -->
+      <div class="mx-md-list">
+        <Card surface="white" :padding="0" class="cl-card">
+          <div class="cl-scroll">
+            <button v-for="c in paged" :key="c.id" type="button" class="cl-item"
+                    :class="{ sel: openContract?.id === c.id }" @click="openContract = c">
+              <Avatar :name="c.tenantName" :size="30" />
+              <div class="cl-main">
+                <div class="cl-l1">
+                  <span class="cl-name">{{ c.tenantName }}</span>
+                  <span class="cl-money">{{ fpMoney(c.monthlyRent) }}</span>
+                </div>
+                <div class="cl-l2">
+                  <span class="cl-no">{{ c.contractNo }}</span>
+                  <FPContractStatus :status="c.status" />
+                </div>
+              </div>
+            </button>
+            <div v-if="filtered.length === 0" class="cl-empty">没有匹配的合同</div>
+          </div>
+          <div v-if="filtered.length > 0" class="mx-pagerbar">
+            <FPPager :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
+          </div>
+        </Card>
       </div>
 
       <!-- 右:详情列(内联 ContractDrawer,点行展开不弹模态;未选显占位) -->

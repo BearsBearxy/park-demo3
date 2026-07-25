@@ -357,6 +357,8 @@ const contactLine = computed(() =>
 .cd-inline-sub { font-size:12px; color:var(--text-muted); }
 .cd-inline-actions { display:flex; gap:6px; flex:0 0 auto; }
 .cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:18px; }
+/* 详情占主区很宽,内容封顶到舒适阅读宽度(左对齐),避免 label/value 拉太开、费用网格过稀 */
+.cd-inline-body > * { max-width:940px; width:100%; }
 
 /* fp-field / fp-tl classes come from fp-master-ui injectMasterStyles (global) — ponytail: scoped fallback below */
 .fp-field { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed var(--divider); }

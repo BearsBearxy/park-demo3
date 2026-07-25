@@ -77,9 +77,23 @@
 /* ── master-detail 布局(合同屏专用,REWORK-SPEC §3.1):KPI 顶条 + 左列表/右详情两栏。
    勿改上方 .mx-body/.mx-kpirail/.mx-main —— 楼栋/租户两屏仍在用。 ─────────────── */
 .mx-kpitop { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-/* 列表列占大头(用户要求:列表更宽显示更多列);详情列够放费用网格即可 */
-.mx-md { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; flex: 1 1 auto; min-height: 0; }
-.mx-md-list { display: flex; flex-direction: column; min-height: 0; gap: 16px; }
+/* 列表=窄 sidebar(用户要求:详情/合同占主区,列表像左导航栏那么窄) */
+.mx-md { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; flex: 1 1 auto; min-height: 0; }
+.mx-md-list { display: flex; flex-direction: column; min-height: 0; }
+.mx-toolbar-top { margin-bottom: 4px; }
+/* sidebar 紧凑列表项:头像 + 两行(租户/月租金 · 合同号/状态);选中软蓝底 */
+.cl-card { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.cl-scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.cl-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: none; border-bottom: 1px solid var(--divider); background: transparent; cursor: pointer; text-align: left; font: inherit; transition: background var(--dur-fast, .12s) var(--ease-standard); }
+.cl-item:hover { background: var(--surface-card); }
+.cl-item.sel { background: rgba(24,134,254,0.08); }
+.cl-main { flex: 1; min-width: 0; }
+.cl-l1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cl-name { font-size: 13.5px; font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-money { font-size: 12.5px; font-family: var(--font-mono); font-weight: var(--fw-semibold); color: var(--text-primary); flex: 0 0 auto; }
+.cl-l2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
+.cl-no { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-empty { text-align: center; padding: 40px 12px; color: var(--text-disabled); font-size: 13px; }
 .mx-md-detail { min-height: 0; display: flex; }
 .mx-md-detail > * { flex: 1 1 auto; min-height: 0; }
 .mx-md-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-disabled); border: 1px dashed var(--divider); border-radius: var(--radius-lg); }
