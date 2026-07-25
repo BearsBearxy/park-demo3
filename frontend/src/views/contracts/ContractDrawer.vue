@@ -4,7 +4,6 @@ import { contractApi } from '@/api/contract'
 import type { ContractDTO, ContractDetailDTO, BillingLineDTO, PropertyType } from '@/types/contract'
 import { POWER_TYPE_LABEL, lineMonthly, defaultBillMode, feeLabel, inferPropertyType, PROPERTY_TYPE_LABEL, BUILDING_RENT_KEYS } from '@/types/contract'
 import { fpMoney } from '@/utils/money'
-import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
@@ -15,13 +14,12 @@ import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
 
 const props = defineProps<{
-  open: boolean
   contract: ContractDTO | null
   chain?: { c: ContractDTO; seq: number }[]   // 整条续签链(CONTRACT-CARD-V2-SPEC §4.1),由父级 chainOf 传入
 }>()
-// edit/renew:父级打开对应弹窗;terminated:携最新 DTO 由父级刷新 list+summary+drawer;deleted:父级关抽屉+刷新
+// edit/renew:父级打开对应弹窗;terminated:携最新 DTO 由父级刷新 list+summary+detail;deleted:父级清选中+刷新
 // jump:点链上其它期,父级切换 openContract(§4.1)
-const emit = defineEmits<{ close: []; edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: []; jump: [ContractDTO] }>()
+const emit = defineEmits<{ edit: [ContractDTO]; renew: [ContractDTO]; terminated: [ContractDTO]; deleted: []; jump: [ContractDTO] }>()
 
 const detail = ref<ContractDetailDTO | null>(null)
 
@@ -161,38 +159,37 @@ const contactLine = computed(() =>
 </script>
 
 <template>
-  <FPDrawer
-    :open="open"
-    :title="contract?.contractNo ?? ''"
-    :subtitle="subtitle"
-    icon="file-text"
-    :width="600"
-    @close="emit('close')"
-  >
-    <template #badge>
-      <FPContractStatus v-if="contract" :status="contract.status" />
-    </template>
+  <div v-if="contract" class="cd-inline">
+    <div class="cd-inline-bar">
+      <div class="cd-inline-title">
+        <component :is="iconFor('file-text')" :size="18" aria-hidden="true" />
+        <div style="min-width:0">
+          <div class="cd-inline-no">{{ contract.contractNo }}</div>
+          <div class="cd-inline-sub">{{ subtitle }}</div>
+        </div>
+        <FPContractStatus :status="contract.status" />
+      </div>
+      <div class="cd-inline-actions">
+        <Button variant="borderless" size="sm" :disabled="!canTerminate" @click="askTerminate = true">
+          <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
+          终止
+        </Button>
+        <Button variant="borderless" size="sm" @click="askDelete = true">
+          <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+          删除
+        </Button>
+        <Button variant="gray" size="sm" @click="contract && emit('edit', contract)">
+          <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
+          编辑
+        </Button>
+        <Button variant="filled" size="sm" :disabled="!canRenew" @click="contract && emit('renew', contract)">
+          <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+          续签
+        </Button>
+      </div>
+    </div>
 
-    <template #footer>
-      <Button variant="borderless" size="sm" :disabled="!canTerminate" @click="askTerminate = true">
-        <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
-        终止
-      </Button>
-      <Button variant="borderless" size="sm" @click="askDelete = true">
-        <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-        删除
-      </Button>
-      <Button variant="gray" size="sm" @click="contract && emit('edit', contract)">
-        <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-        编辑
-      </Button>
-      <Button variant="filled" size="sm" :disabled="!canRenew" @click="contract && emit('renew', contract)">
-        <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
-        续签
-      </Button>
-    </template>
-
-    <template v-if="contract">
+    <div class="cd-inline-body">
       <!-- 1. 租户卡 -->
       <div style="display:flex;align-items:center;gap:12px;background:var(--surface-card);border-radius:var(--radius-lg);padding:13px 15px">
         <Avatar :name="contract.tenantName" :size="40" />
@@ -292,8 +289,8 @@ const contactLine = computed(() =>
         <FPSectionLabel icon="sticky-note">备注</FPSectionLabel>
         <p style="margin:0;font-size:13px;color:var(--text-secondary);line-height:1.6">{{ contract.remark }}</p>
       </div>
-    </template>
-  </FPDrawer>
+    </div>
+  </div>
 
   <!-- 终止确认 -->
   <Teleport to="body">
@@ -335,6 +332,15 @@ const contactLine = computed(() =>
 </template>
 
 <style scoped>
+/* 内联右面板外壳(去 FPDrawer 模态):bar(标题+操作) / body(可滚内容)两段,高度撑满右栏 */
+.cd-inline { display:flex; flex-direction:column; height:100%; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); overflow:hidden; }
+.cd-inline-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid var(--divider); flex:0 0 auto; }
+.cd-inline-title { display:flex; align-items:center; gap:10px; min-width:0; }
+.cd-inline-no { font-size:15px; font-weight:var(--fw-semibold); }
+.cd-inline-sub { font-size:12px; color:var(--text-muted); }
+.cd-inline-actions { display:flex; gap:6px; flex:0 0 auto; }
+.cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:18px; }
+
 /* fp-field / fp-tl classes come from fp-master-ui injectMasterStyles (global) — ponytail: scoped fallback below */
 .fp-field { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed var(--divider); }
 .fp-field:last-child { border-bottom:none; }

@@ -27,12 +27,17 @@ const props = withDefaults(defineProps<{
   // 列宽铁律(LIST-PAGE-SPEC §4):true 时 table-layout:fixed——定宽列锁死,唯一无宽列吸收余宽,
   // 列位置不随单元格内容长短或翻页漂移。默认 false 向后兼容既有使用方。
   fixedLayout?: boolean
+  // master-detail 选中高亮:命中行(rowKey===selectedKey)加背景色;null=无选中(向后兼容)。
+  selectedKey?: string | number | null
 }>(), {
   rowKey: 'id',
   sort: null,
   rowHover: true,
   fixedLayout: false,
+  selectedKey: null,
 })
+
+const isSel = (r: any) => props.selectedKey != null && r[props.rowKey] === props.selectedKey
 
 const emit = defineEmits<{
   sortChange: [sort: SortState | null]
@@ -164,15 +169,17 @@ function renderSortHeader(col: SortableColumn) {
         <tr
           v-for="r in sortedRows"
           :key="(r as any)[rowKey]"
+          :class="{ 'is-selected': isSel(r) }"
           :style="{
             height: 'var(--mx-row-h, 56px)',
             borderBottom: '1px solid var(--divider)',
             transition: 'background var(--dur-fast) var(--ease-standard)',
             cursor: 'pointer',
+            background: isSel(r) ? 'rgba(24,134,254,0.10)' : 'transparent',
           }"
           @click="$emit('rowClick', r)"
           @mouseenter="rowHover && (($event.currentTarget as HTMLElement).style.background = 'var(--bg-panel)')"
-          @mouseleave="rowHover && (($event.currentTarget as HTMLElement).style.background = 'transparent')"
+          @mouseleave="rowHover && (($event.currentTarget as HTMLElement).style.background = isSel(r) ? 'rgba(24,134,254,0.10)' : 'transparent')"
         >
           <td
             v-for="c in columns"

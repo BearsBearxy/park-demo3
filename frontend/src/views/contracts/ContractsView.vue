@@ -268,24 +268,25 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
     <template v-if="summary">
-    <div class="mx-body">
-      <!-- 2. KPI 左栏(spec §3:三屏统一样式) -->
-      <aside class="mx-kpirail">
-        <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate" :style="{ padding: '20px' }">
-          <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
-        </KpiCard>
-        <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
-          <template #icon><component :is="iconFor('clock')" :size="16" /></template>
-        </KpiCard>
-        <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky" :style="{ padding: '20px' }">
-          <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
-        </KpiCard>
-        <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '20px' }">
-          <template #icon><component :is="iconFor('coins')" :size="16" /></template>
-        </KpiCard>
-      </aside>
+    <!-- 2. KPI 顶条(横向,REWORK-SPEC §3.1) -->
+    <div class="mx-kpitop">
+      <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate" :style="{ padding: '16px 20px' }">
+        <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
+      </KpiCard>
+      <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan" :style="{ padding: '16px 20px' }">
+        <template #icon><component :is="iconFor('clock')" :size="16" /></template>
+      </KpiCard>
+      <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky" :style="{ padding: '16px 20px' }">
+        <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
+      </KpiCard>
+      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '16px 20px' }">
+        <template #icon><component :is="iconFor('coins')" :size="16" /></template>
+      </KpiCard>
+    </div>
 
-      <div class="mx-main">
+    <div class="mx-md">
+      <!-- 左:列表列 -->
+      <div class="mx-md-list">
       <!-- 3. Toolbar(spec §2:单行,生命周期 tabs 左 / 搜索+期数 Select 右,总数只出现在分页器) -->
       <div class="mx-toolbar">
         <FPPhaseTabs v-model="statusFilter" :counts="lifecycleCounts" :tabs="LIFECYCLE" />
@@ -324,6 +325,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
             rowKey="id"
             :sort="sort"
             :rowHover="true"
+            :selectedKey="openContract?.id ?? null"
             @sortChange="sort = $event"
             @rowClick="openContract = $event"
           />
@@ -339,22 +341,27 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
         </div>
       </Card>
       </div>
+
+      <!-- 右:详情列(内联 ContractDrawer,点行展开不弹模态;未选显占位) -->
+      <div class="mx-md-detail">
+        <ContractDrawer
+          v-if="openContract"
+          :contract="openContract"
+          :chain="chainOf(contracts, openContract.id)"
+          @jump="openContract = $event"
+          @edit="editFrom = $event"
+          @renew="renewFrom = $event"
+          @terminated="onTerminated"
+          @deleted="onDeleted"
+        />
+        <div v-else class="mx-md-empty">
+          <component :is="iconFor('file-text')" :size="40" />
+          <p>从左侧选择一份合同查看详情</p>
+        </div>
+      </div>
     </div>
     </template>
     <div v-else class="page-loading"><span class="page-spin" /></div>
-
-    <!-- 5. Drawer -->
-    <ContractDrawer
-      :open="!!openContract"
-      :contract="openContract"
-      :chain="openContract ? chainOf(contracts, openContract.id) : []"
-      @close="openContract = null"
-      @jump="openContract = $event"
-      @edit="editFrom = $event"
-      @renew="renewFrom = $event"
-      @terminated="onTerminated"
-      @deleted="onDeleted"
-    />
 
     <!-- 5.5 计费字段导入(registry key 'billingTerms':整册 parseWorkbook → 每户一段勾选;多合同户人选其一) -->
     <FpImportModal
