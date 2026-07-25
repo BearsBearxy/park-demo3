@@ -95,6 +95,21 @@ const rowMonthly = (l: BillingLineDTO): string => {
   const m = lineMonthly(l, props.contract?.kva)
   return m != null ? m.toLocaleString('en-US') : '待录'
 }
+// 连续费用网格(REWORK Option A):系数折进单价(×n)、间数折进面积(N间)、固定费单价列空;每段小计。
+const fmt = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+const isFixed = (l: BillingLineDTO) => !isSqm(l) && !isRoom(l)
+const areaCell = (l: BillingLineDTO) =>
+  isSqm(l) ? num(l.area) : (isRoom(l) ? (l.roomCount != null ? l.roomCount + ' 间' : '—') : '—')
+const priceCell = (l: BillingLineDTO) => {
+  if (isSqm(l)) return num(l.unitPrice) + (l.coeff != null && l.coeff !== 1 ? ' ×' + l.coeff : '')
+  if (isRoom(l)) return num(l.unitPrice)
+  return '—'
+}
+const segSubtotal = (lines: BillingLineDTO[]): number => {
+  let s = 0
+  for (const l of lines) { const m = lineMonthly(l, props.contract?.kva); if (m != null) s += m }
+  return s
+}
 // 合同标准月租金合计 = 各计费行月单价之和(参考,非账单实收;账单含免租/proration 属账单管理)
 const contractMonthlyTotal = computed(() => {
   let s = 0
@@ -251,32 +266,32 @@ const contactLine = computed(() =>
       <!-- 4. 标的段列表(§6.1:每段=类型徽标+位置+段面积 + 该类型钉死费用行只读;条件项有才显) -->
       <div>
         <FPSectionLabel icon="list">标的段与费用</FPSectionLabel>
-        <div v-if="segGroups.length" class="cd-bl">
-          <div v-for="(g, gi) in segGroups" :key="gi" class="cd-bl-grp">
-            <div class="cd-bl-loc">
-              <span class="cd-seg-badge">{{ PROPERTY_TYPE_LABEL[g.propertyType] }}</span>
-              <span class="cd-seg-name">{{ g.location }}</span>
-              <span v-if="segArea(g.lines) != null" class="cd-seg-area">{{ segArea(g.lines)!.toLocaleString('en-US') }} ㎡</span>
+        <!-- 连续费用网格:表头一次,按段分组(段带+费用行+小计),底部合同合计;字体/列沿 demo3 原生 -->
+        <div v-if="segGroups.length" class="cd-ch">
+          <div class="cd-ch-head">
+            <span class="fx">费项</span><span>面积</span><span>单价</span><span>月额</span>
+          </div>
+          <template v-for="(g, gi) in segGroups" :key="gi">
+            <div class="cd-ch-band">
+              <span class="cd-ch-dot" />
+              <span class="cd-ch-type">{{ PROPERTY_TYPE_LABEL[g.propertyType] }}</span>
+              <span class="cd-ch-loc">{{ g.location }}</span>
+              <span v-if="segArea(g.lines) != null" class="cd-ch-area">{{ segArea(g.lines)!.toLocaleString('en-US') }} ㎡</span>
             </div>
-            <div class="cd-bl-head">
-              <span class="fx">费项</span><span>面积</span><span>单价</span><span>系数</span><span>间数</span><span>月单价</span>
+            <div v-for="l in g.lines" :key="l.id" class="cd-ch-row">
+              <span class="fx">{{ l.feeName || feeLabel(g.propertyType, l.feeKey) }}<span v-if="isFixed(l)" class="cd-ch-fx">固定</span></span>
+              <span class="mono dim">{{ areaCell(l) }}</span>
+              <span class="mono dim">{{ priceCell(l) }}</span>
+              <span class="mono cd-ch-mo" :class="{ pending: rowMonthly(l) === '待录' }">{{ rowMonthly(l) }}</span>
             </div>
-            <div v-for="l in g.lines" :key="l.id" class="cd-bl-row">
-              <span class="fx">{{ l.feeName || feeLabel(g.propertyType, l.feeKey) }}</span>
-              <span class="mono">{{ isSqm(l) ? num(l.area) : '—' }}</span>
-              <span class="mono">{{ isSqm(l) || isRoom(l) ? num(l.unitPrice) : '—' }}</span>
-              <span class="mono">{{ isSqm(l) && l.coeff != null && l.coeff !== 1 ? l.coeff : '—' }}</span>
-              <span class="mono">{{ isRoom(l) ? num(l.roomCount) : '—' }}</span>
-              <span class="mono cd-bl-mo" :class="{ pending: rowMonthly(l) === '待录' }">{{ rowMonthly(l) }}</span>
-            </div>
+            <div class="cd-ch-sub"><span>小计</span><span class="mono">{{ fmt(segSubtotal(g.lines)) }}</span></div>
+          </template>
+          <div class="cd-ch-total">
+            <span>合同月租金合计（标准）<span class="cd-ch-note"> · 参考,非账单实收</span></span>
+            <span class="mono">{{ fmt(contractMonthlyTotal) }}</span>
           </div>
         </div>
         <div v-else class="fp-field"><span class="k">标的段</span><span class="v pending">待录(编辑合同添加标的段)</span></div>
-        <div v-if="detail && detail.billingLines.length" class="fp-field">
-          <span class="k">合同月租金合计（标准）</span>
-          <span class="v mono">{{ contractMonthlyTotal.toLocaleString('en-US', { maximumFractionDigits: 2 }) }}
-            <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-sans)"> · 参考,非账单实收</span></span>
-        </div>
       </div>
 
       <!-- 5. 原始留档(V2-SPEC §3):结构化视图之外,合同白纸黑字原文折叠备查 -->
@@ -354,22 +369,30 @@ const contactLine = computed(() =>
 
 .cd-tlwrap { padding:10px 0 12px; border-bottom:1px dashed var(--divider); }
 
-/* 标的段列表:段头=类型徽标+位置+段面积;段体=6 列只读费用行 */
-.cd-bl { margin:8px 0 4px; display:flex; flex-direction:column; gap:10px; }
-.cd-bl-grp { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
-.cd-bl-loc { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--surface-card); }
-.cd-seg-badge { padding:2px 9px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:11.5px; font-weight:var(--fw-semibold); }
-.cd-seg-name { font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
-.cd-seg-area { margin-left:auto; font-size:11.5px; font-family:var(--font-mono); color:var(--text-muted); }
-.cd-bl-head, .cd-bl-row { display:grid; grid-template-columns:1.5fr .8fr .9fr .55fr .55fr 1fr; gap:6px; padding:5px 10px; align-items:baseline; }
-.cd-bl-head { font-size:11px; color:var(--text-muted); border-bottom:1px dashed var(--divider); }
-.cd-bl-head span, .cd-bl-row span:not(.fx) { text-align:right; }
-.cd-bl-head .fx, .cd-bl-row .fx { text-align:left; }
-.cd-bl-row { font-size:12.5px; color:var(--text-primary); border-top:1px dashed var(--divider); }
-.cd-bl-grp .cd-bl-row:first-of-type { border-top:none; }
-.cd-bl-row .mono { font-family:var(--font-mono); }
-.cd-bl-mo { font-weight:var(--fw-semibold); }
-.cd-bl-mo.pending { color:var(--text-disabled); font-family:var(--font-sans); font-weight:var(--fw-regular); }
+/* 标的段与费用:连续费用网格(REWORK Option A)。一张对齐表,段带分组+小计,底部合同合计。列=费项/面积/单价/月额 */
+.cd-ch { margin:8px 0 4px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
+.cd-ch-head, .cd-ch-row { display:grid; grid-template-columns:1.7fr .85fr .95fr 1.15fr; gap:8px; padding:7px 13px; align-items:baseline; }
+.cd-ch-head { font-size:11px; color:var(--text-muted); background:var(--surface-card); border-bottom:1px solid var(--border-subtle); }
+.cd-ch-head span:not(.fx), .cd-ch-row span:not(.fx) { text-align:right; }
+.cd-ch-head .fx, .cd-ch-row .fx { text-align:left; }
+.cd-ch-band { display:flex; align-items:center; gap:8px; padding:7px 13px; background:rgba(28,28,28,.02); }
+.cd-ch-sub + .cd-ch-band { border-top:1px solid var(--border-subtle); }
+.cd-ch-dot { width:5px; height:5px; border-radius:50%; background:var(--hue-blue); flex:0 0 auto; }
+.cd-ch-type { font-size:12px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
+.cd-ch-loc { font-size:12px; color:var(--text-muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cd-ch-area { margin-left:auto; font-size:11px; font-family:var(--font-mono); color:var(--text-muted); flex:0 0 auto; }
+.cd-ch-row { font-size:12.5px; color:var(--text-primary); }
+.cd-ch-row + .cd-ch-row { border-top:1px dashed var(--divider); }
+.cd-ch-row .mono { font-family:var(--font-mono); }
+.cd-ch-row .dim { color:var(--text-muted); }
+.cd-ch-fx { font-size:10.5px; color:var(--text-muted); margin-left:6px; }
+.cd-ch-mo { font-weight:var(--fw-semibold); color:var(--text-primary); }
+.cd-ch-mo.pending { color:var(--text-disabled); font-family:var(--font-sans); font-weight:var(--fw-regular); }
+.cd-ch-sub { display:flex; justify-content:flex-end; gap:8px; padding:6px 13px; font-size:11.5px; color:var(--text-secondary); background:rgba(28,28,28,.02); }
+.cd-ch-sub .mono { font-family:var(--font-mono); font-weight:var(--fw-semibold); color:var(--text-primary); }
+.cd-ch-total { display:flex; align-items:baseline; justify-content:space-between; padding:11px 13px; background:var(--surface-card); border-top:1px solid var(--border-subtle); font-size:12.5px; color:var(--text-secondary); }
+.cd-ch-total .mono { font-family:var(--font-mono); font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.cd-ch-note { font-size:11px; color:var(--text-muted); }
 
 /* 原始留档(V2-SPEC §3):默认折叠,展开看原文 */
 .cd-raw { border:1px dashed var(--divider); border-radius:var(--radius-md); padding:6px 10px; }
