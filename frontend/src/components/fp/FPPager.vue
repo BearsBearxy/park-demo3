@@ -6,6 +6,8 @@ const props = defineProps<{
   page: number
   pageCount: number
   total?: number
+  // 紧凑模式(窄 sidebar):只显 上一页/下一页 + 页码跳转下拉,不显整排页码(宽度随页变→溢出窄卡)
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'page', n: number): void }>()
@@ -38,8 +40,12 @@ function pick(p: number) {
 
 <template>
   <!-- ponytail: 1:1 port of fp-pager.jsx; JumpSelect inlined, opens upward -->
-  <div class="fp-pager">
+  <div class="fp-pager" :class="{ 'fp-pager-compact': compact }">
     <div class="fp-pager-left">
+      <!-- 紧凑模式:上一页箭头(固定宽,不随页码变) -->
+      <button v-if="compact" type="button" class="fp-nav" :disabled="page <= 1" aria-label="上一页" @click="emit('page', page - 1)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+      </button>
       <!-- JumpSelect: opens upward -->
       <div ref="wrapRef" class="fp-jump-wrap">
         <button
@@ -83,10 +89,15 @@ function pick(p: number) {
         </div>
       </div>
 
+      <!-- 紧凑模式:下一页箭头 -->
+      <button v-if="compact" type="button" class="fp-nav" :disabled="page >= pageCount" aria-label="下一页" @click="emit('page', page + 1)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+      </button>
+
       <span v-if="total != null" class="fp-pager-total">共 {{ total }} 条</span>
     </div>
 
-    <Pagination :page="page" :pageCount="pageCount" :showMeta="false" @page="(p: number) => emit('page', p)" />
+    <Pagination v-if="!compact" :page="page" :pageCount="pageCount" :showMeta="false" @page="(p: number) => emit('page', p)" />
   </div>
 </template>
 
@@ -105,6 +116,19 @@ function pick(p: number) {
   align-items: center;
   gap: 12px;
 }
+
+/* 紧凑模式:居中,上一页/下一页箭头固定 32px,页码用跳转下拉;整体宽度稳定不随页变 */
+.fp-pager-compact { justify-content: center; }
+.fp-pager-compact .fp-pager-left { gap: 8px; }
+.fp-nav {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: 0 0 auto; box-sizing: border-box;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--surface-white); color: var(--text-secondary); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.fp-nav:hover:not(:disabled) { background: var(--surface-card); }
+.fp-nav:disabled { color: var(--text-disabled); cursor: default; opacity: .55; }
 
 /* JumpSelect:宽随内容自适应,深页码(如「第 26 / 26 页」)不溢出按钮边框 */
 .fp-jump-wrap {

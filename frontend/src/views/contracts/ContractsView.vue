@@ -320,7 +320,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
             <div v-if="filtered.length === 0" class="cl-empty">没有匹配的合同</div>
           </div>
           <div v-if="filtered.length > 0" class="mx-pagerbar">
-            <FPPager :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
+            <FPPager compact :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
           </div>
         </Card>
       </div>
