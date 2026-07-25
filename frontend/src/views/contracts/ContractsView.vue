@@ -4,8 +4,7 @@ import { contractApi } from '@/api/contract'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import type { ContractDTO, ContractSummaryDTO } from '@/types/contract'
-import { fpMoney, fpWan } from '@/utils/money'
-import KpiCard from '@/components/ds/KpiCard.vue'
+import { fpMoney } from '@/utils/money'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Avatar from '@/components/ds/Avatar.vue'
@@ -273,22 +272,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
     <template v-if="summary">
-    <!-- 2. KPI 顶条(横向,REWORK-SPEC §3.1) -->
-    <div class="mx-kpitop">
-      <KpiCard label="执行中" :value="String(summary.contractActive)" tint="slate" :style="{ padding: '16px 20px' }">
-        <template #icon><component :is="iconFor('file-check-2')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="即将到期" :value="String(summary.contractExpiring)" delta="90天内·需续签" trend="down" tint="cyan" :style="{ padding: '16px 20px' }">
-        <template #icon><component :is="iconFor('clock')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="草稿待签" :value="String(summary.contractDraft)" delta="待生效" tint="sky" :style="{ padding: '16px 20px' }">
-        <template #icon><component :is="iconFor('file-pen')" :size="16" /></template>
-      </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '16px 20px' }">
-        <template #icon><component :is="iconFor('coins')" :size="16" /></template>
-      </KpiCard>
-    </div>
-
+    <!-- KPI 顶条已去除(用户要求:让左侧列表更宽显示更多列);状态计数仍在生命周期 tabs 上 -->
     <div class="mx-md">
       <!-- 左:列表列 -->
       <div class="mx-md-list">

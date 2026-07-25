@@ -77,7 +77,8 @@
 /* ── master-detail 布局(合同屏专用,REWORK-SPEC §3.1):KPI 顶条 + 左列表/右详情两栏。
    勿改上方 .mx-body/.mx-kpirail/.mx-main —— 楼栋/租户两屏仍在用。 ─────────────── */
 .mx-kpitop { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.mx-md { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 16px; flex: 1 1 auto; min-height: 0; }
+/* 列表列占大头(用户要求:列表更宽显示更多列);详情列够放费用网格即可 */
+.mx-md { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; flex: 1 1 auto; min-height: 0; }
 .mx-md-list { display: flex; flex-direction: column; min-height: 0; gap: 16px; }
 .mx-md-detail { min-height: 0; display: flex; }
 .mx-md-detail > * { flex: 1 1 auto; min-height: 0; }
