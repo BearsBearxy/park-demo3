@@ -230,9 +230,9 @@ const contactLine = computed(() =>
       </div>
 
       <!-- 2.5 租金阶梯(V2-SPEC §5):参考排程,不参与计费;单段/无阶梯不渲染 -->
-      <div v-if="detail && detail.rentTiers.length > 1">
+      <div v-if="(detail?.rentTiers?.length ?? 0) > 1">
         <FPSectionLabel icon="trending-up">租金阶梯</FPSectionLabel>
-        <FPRentTierBar :tiers="detail.rentTiers" :today="today" :contract-unit-price="contract.unitPrice" />
+        <FPRentTierBar :tiers="detail!.rentTiers" :today="today" :contract-unit-price="contract.unitPrice" />
       </div>
 
       <!-- 3. 生命周期时间线 -->

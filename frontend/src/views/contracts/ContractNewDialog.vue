@@ -156,7 +156,8 @@ onMounted(async () => {
     const d = await contractApi.detail(c.id)
     segments.value = groupLines(d.billingLines)
     // 阶梯段同一趟详情带出(不重复请求);feeKey/note 无输入位但原样透传,防编辑保存时静默丢失
-    rentTiers.value = d.rentTiers.map(t => ({
+    // ?? []:后端旧版/部分响应可能不带 rentTiers,缺字段不该让编辑弹窗崩
+    rentTiers.value = (d.rentTiers ?? []).map(t => ({
       id: t.id, feeKey: t.feeKey ?? null, seq: t.seq, label: t.label ?? '',
       startDate: t.startDate ?? '', endDate: t.endDate ?? '',
       unitPrice: t.unitPrice ?? null, monthlyAmount: t.monthlyAmount ?? null, note: t.note ?? null,
