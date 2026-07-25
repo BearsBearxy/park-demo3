@@ -407,3 +407,17 @@ git commit -m "chore(contract): Phase A 执行记录(回填N份/待核对M份/�
 ```
 
 **并行安全铁律**：Task 1/2 改 `ContractDrawer.vue`/`ContractsView.vue`，绝不与其它前端任务并行。Task 3 只碰 DB，安全并行。
+
+---
+
+## 执行记录 (2026-07-25)
+
+Phase A 完成。commits: `019215c`(T1 删阶梯+月合计) `20e70a8`(T2 master-detail) `92e943d`(fix 首挂 detail)。
+
+- **T1/T2** 由 workflow 实现,typecheck + 776 测试绿。
+- **T3 回填**: 校准比例(child 月合计恰=次段合计)→ **12 份回填**,**2 份待核对**(C2024M-008 可莱恩=市场价商议NULL;C2024M-020 黎镇源=次段<首段涨幅<1 数据异常)。
+- **浏览器实测**(登 viewer):
+  - master-detail 2 栏(强制 2-col 实测 list 左 detail 右 side-by-side;headless innerWidth=0 触发 <1100 响应式故默认单列,真机宽屏为 2 栏);选中行高亮 OK。
+  - C2024M-009(采妍续签)标的段与费用完整显示(2 段办公室,含涨价后单价),**合同月租金合计(标准)=21,749.63**(=次段目标),无阶梯块,无空态。
+- **发现并修一个真 bug**: ContractDrawer 从常驻模态改 v-if 挂载后,非 immediate 的 watch(contract) 首挂不触发 → detail 恒 null(标的段/月合计不出)。加 `{immediate:true}` 修复(workflow typecheck/test 未覆盖此路径,靠人工浏览器揪出)。
+- 待核对 2 份 + Phase B(账单派生 + 拆递增段 + 删 tier 表)另行。
