@@ -61,12 +61,14 @@ async function doDelete() {
   }
 }
 
+// immediate:master-detail 下本组件是 v-if 挂载(选中才 mount),挂载时 contract 已就位;
+// 非 immediate 的 watch 不会在首挂时触发→detail 永远为 null(标的段/租户状态不出)。
 watch(() => props.contract, async (c) => {
   detail.value = null
   askTerminate.value = false
   askDelete.value = false
   if (c) detail.value = await contractApi.detail(c.id)
-})
+}, { immediate: true })
 
 // ─── 标的段(§6.1):按 propertyType+location 分组;段头=类型徽标+位置+段面积;
 //     段体=该类型钉死费用行(费项名+面积+单价+系数+间数+月单价只读),条件项(电梯/变压器)有才显。──
