@@ -222,6 +222,9 @@ const contactLine = computed(() =>
         v-if="chain && chain.length > 1"
         :chain="chain" :current-id="contract.id" @jump="emit('jump', $event)" />
 
+      <!-- 宽屏两栏:左=合同信息+生命周期,右=标的段与费用(窄屏自动单列) -->
+      <div class="cd-cols">
+      <div class="cd-col-l">
       <!-- 2. 合同信息块(一次性,不重复;§6.1) -->
       <div>
         <FPSectionLabel icon="info">合同信息</FPSectionLabel>
@@ -262,7 +265,9 @@ const contactLine = computed(() =>
           </div>
         </div>
       </div>
+      </div><!-- /cd-col-l -->
 
+      <div class="cd-col-r">
       <!-- 4. 标的段列表(§6.1:每段=类型徽标+位置+段面积 + 该类型钉死费用行只读;条件项有才显) -->
       <div>
         <FPSectionLabel icon="list">标的段与费用</FPSectionLabel>
@@ -293,6 +298,8 @@ const contactLine = computed(() =>
         </div>
         <div v-else class="fp-field"><span class="k">标的段</span><span class="v pending">待录(编辑合同添加标的段)</span></div>
       </div>
+      </div><!-- /cd-col-r -->
+      </div><!-- /cd-cols -->
 
       <!-- 5. 原始留档(V2-SPEC §3):结构化视图之外,合同白纸黑字原文折叠备查 -->
       <details v-if="contract.termText || contract.tierPriceNote" class="cd-raw">
@@ -356,9 +363,11 @@ const contactLine = computed(() =>
 .cd-inline-no { font-size:15px; font-weight:var(--fw-semibold); }
 .cd-inline-sub { font-size:12px; color:var(--text-muted); }
 .cd-inline-actions { display:flex; gap:6px; flex:0 0 auto; }
-.cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:18px; }
-/* 详情占主区很宽,内容封顶到舒适阅读宽度(左对齐),避免 label/value 拉太开、费用网格过稀 */
-.cd-inline-body > * { max-width:940px; width:100%; }
+.cd-inline-body { flex:1 1 auto; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:18px; }
+/* 宽屏两栏(lease abstract):左=合同信息+生命周期,右=标的段与费用;填满主区宽度,窄屏自动单列 */
+.cd-cols { display:grid; grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); gap:24px; align-items:start; }
+.cd-col-l, .cd-col-r { display:flex; flex-direction:column; gap:18px; min-width:0; }
+@media (max-width:880px) { .cd-cols { grid-template-columns:1fr; } }
 
 /* fp-field / fp-tl classes come from fp-master-ui injectMasterStyles (global) — ponytail: scoped fallback below */
 .fp-field { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed var(--divider); }
