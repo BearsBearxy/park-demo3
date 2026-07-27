@@ -21,6 +21,7 @@ import {
   ArrowDownRight, ShieldCheck, AlertOctagon, FlaskConical, SlidersHorizontal, // P3 分析层
   Target, // P3-P1 预算对比
   Share2, PenLine, Play, RefreshCw, // P-B 公摊分摊
+  Tags, // 价目管理
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -129,6 +130,7 @@ const MAP: Record<string, Component> = {
   'pen-line': PenLine,
   'play': Play,
   'refresh-cw': RefreshCw,
+  'tags': Tags,
 }
 
 export function iconFor(name: string): Component {

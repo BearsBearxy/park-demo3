@@ -1,4 +1,5 @@
-// src/nav/fpNav.ts — 导航单一事实源(45屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
+// src/nav/fpNav.ts — 导航单一事实源(46屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
+// 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→价目→抄表→公摊→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
 export interface NavLayer { id: string; label: string; short: string; icon: string; caption: string; home: string; sections: NavSection[] }
@@ -8,22 +9,23 @@ export const FP_NAV: NavLayer[] = [
     { items: [{ value: 'data-home', label: '数据中心首页', icon: 'layout-dashboard', kind: 'data-home' }] },
     { title: '主数据', items: [
       { value: 'buildings', label: '楼栋管理', icon: 'building-2', kind: 'buildings' },
-      { value: 'tenants', label: '租户管理', icon: 'users', kind: 'tenants' },
-      { value: 'contracts', label: '合同管理', icon: 'file-text', kind: 'contracts' } ] },
-    { title: '业务流水', items: [
+      { value: 'tenants', label: '租户管理', icon: 'users', kind: 'tenants' } ] },
+    { title: '出账链 · 应收派生', items: [
+      { value: 'contracts', label: '合同管理', icon: 'file-text', kind: 'contracts' },
+      { value: 'price-cfg', label: '价目管理', icon: 'tags', kind: 'priceCfg' },
+      { value: 'meters', label: '园区抄表', icon: 'gauge', kind: 'meters' },
+      { value: 'alloc', label: '公摊分摊', icon: 'share-2', kind: 'alloc' } ] },
+    { title: '实际数 · 事后录入', items: [
       { value: 'ledger', label: '月度台账', icon: 'book-open', kind: 'ledger' },
       { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'bills' },
-      { value: 'meters', label: '园区抄表', icon: 'gauge', kind: 'meters' },
-      { value: 'alloc', label: '公摊分摊', icon: 'share-2', kind: 'alloc' },
-      { value: 'bank-flow', label: '银行流水', icon: 'landmark', kind: 'placeholder' } ] },
-    { title: '成本与收入录入', items: [
       { value: 'pv-income', label: '附表6 光伏发电', icon: 'sun', kind: 'schedule6' },
       { value: 'car-charging', label: '附表7 汽车充电桩', icon: 'car', kind: 'schedule7' },
       { value: 'ebike-charging', label: '附表8 电动车充电桩', icon: 'bike', kind: 'schedule8' },
       { value: 'sales-income', label: '附表10 销售收入', icon: 'coins', kind: 'sales' },
       { value: 'elec-cost', label: '附表11 电费成本', icon: 'zap', kind: 'schedule11' },
       { value: 'salary', label: '附表12 工资明细', icon: 'wallet', kind: 'schedule12' },
-      { value: 'utilities', label: '办公·三期水电', icon: 'plug', kind: 'utilities' } ] },
+      { value: 'utilities', label: '办公·三期水电', icon: 'plug', kind: 'utilities' },
+      { value: 'bank-flow', label: '银行流水', icon: 'landmark', kind: 'placeholder' } ] },
     { items: [{ value: 'import', label: '导入中心', icon: 'upload', kind: 'import' }] },
   ] },
   { id: 'reports', label: '账簿与报表', short: '报表', icon: 'book-marked', caption: '核算输出 · 单一事实来源', home: 'reports-home', sections: [
