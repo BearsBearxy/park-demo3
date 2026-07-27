@@ -58,7 +58,8 @@ const deposit = ref<number | null>(null)
 // 电费签约要素(裁定④;合同级,非计费行):KVA 仅大工业可填(其余置灰,后端同校验)
 const powerType = ref<string>('')                // ''=待录
 const kva = ref<number | null>(null)
-function onPowerTypeChange() { err.value = ''; if (powerType.value !== 'industrial') kva.value = null }
+// 用电分类不锁配电容量(用户拍板 2026-07-27):非大工业也有报装 kVA,切分类不清容量
+function onPowerTypeChange() { err.value = '' }
 // 免租期行编辑(F2):note 恒为 string 便于 v-model,提交时空 note 不写入
 const rentFreeRows = ref<{ start: string; end: string; note: string }[]>([])
 const startDate = ref('')
@@ -288,7 +289,7 @@ async function submit() {
       elevatorFee: elevL ? (elevL.amountOverride ?? null) : (init?.elevatorFee ?? null),
       transformerFee: transL ? (transL.amountOverride ?? null) : (init?.transformerFee ?? null),
       powerType: powerType.value || null,
-      kva: powerType.value === 'industrial' ? numOrNull(kva.value) : null,
+      kva: numOrNull(kva.value),
       rentFree: rfRows.length
         ? rfRows.map<RentFreePeriod>(r =>
             r.note.trim() ? { start: r.start, end: r.end, note: r.note.trim() } : { start: r.start, end: r.end })
@@ -403,10 +404,9 @@ async function submit() {
                 </select>
               </div>
               <div class="ct-field">
-                <div class="lab">配电容量 KVA(仅大工业)</div>
+                <div class="lab">配电容量 KVA</div>
                 <input class="ct-in" type="number" min="0" step="0.01" v-model.number="kva"
-                       :disabled="powerType !== 'industrial'"
-                       :placeholder="powerType === 'industrial' ? '签约时租户申报' : '大工业专用'"
+                       placeholder="签约时租户申报"
                        @input="err = ''" @keydown.enter="submit" />
               </div>
             </template>

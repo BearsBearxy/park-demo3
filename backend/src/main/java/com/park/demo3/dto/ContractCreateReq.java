@@ -33,6 +33,5 @@ public record ContractCreateReq(
     // V55 期限原文三件套(可空;PUT 全字段语义,置空即清空)
     @Size(max = 255) String termText,
     @Pattern(regexp = "explicit|multiple|relative|none") String termType,
-    @Size(max = 500) String tierPriceNote,
-    @Valid List<RentTierReq> rentTiers   // 阶梯期(V2-SPEC §7):null=不动;空列表=清空(与 billingLines 同构)
+    @Size(max = 500) String tierPriceNote
 ) {}

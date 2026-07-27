@@ -33,6 +33,8 @@ export interface ContractDTO {
   tierPriceNote?: string | null  // 分年阶梯价说明(留档,不参与计费)
   status: string   // 展示态派生桶 'draft'|'active'|'expiring'|'expired'|'terminated'|'renewed'(后端 effectiveStatus,§5.1)
   parentContractId?: number | null   // 续签链上一期 id(read-only,V54;前端据此聚合链/取叶子)
+  linkType?: 'new' | 'renew' | 'escalation' | null   // V57 相对父期链接类型(ESCALATION-SPLIT-SPEC §1),递增段显徽标
+  kind?: 'normal' | 'master_lease' | null            // V59 合同性质:整体承租不计出租率/KPI,列表显「整租」徽标
   termMonths: number; daysToEnd: number | null
   remark: string | null
 }
@@ -67,7 +69,6 @@ export interface ContractCreateReq {
   termText?: string | null
   termType?: string | null         // explicit|multiple|relative|none
   tierPriceNote?: string | null
-  rentTiers?: RentTierReq[] | null // null=不动,空列表=清空(与 billingLines 同构)
 }
 
 export interface ContractRenewReq {
@@ -89,22 +90,8 @@ export interface ContractDetailDTO {
   contract: ContractDTO
   tenant: { companyName: string; contactName: string; contactPhone: string; businessType: string; status: number }
   billingLines: BillingLineDTO[]   // 计费行,后端按 location,seq 排序(BILL-FORWARD 刀1 §1.7)
-  rentTiers: RentTierDTO[]         // 按 feeKey, seq 排序(CONTRACT-CARD-V2-SPEC §7)
 }
-
-// 租金阶梯期(CONTRACT-CARD-V2-SPEC §7):参考排程,不参与计费(§1)
-export interface RentTierDTO {
-  id: number; contractId: number
-  feeKey?: FeeKey | null; seq: number; label?: string | null
-  startDate?: string | null; endDate?: string | null     // 空=相对期限,不判定当前段
-  unitPrice?: number | null; monthlyAmount?: number | null; note?: string | null
-}
-export interface RentTierReq {
-  id?: number | null
-  feeKey?: FeeKey | null; seq?: number | null; label?: string | null
-  startDate?: string | null; endDate?: string | null
-  unitPrice?: number | null; monthlyAmount?: number | null; note?: string | null
-}
+// 阶梯期类型已删(ESCALATION-SPLIT-SPEC):阶梯语义由 escalation 链表达
 
 // ─── 计费行批量导入(BILL-FORWARD 刀1 三次返工 §1.1/§1.7,契约逐字对齐后端) ─────────
 // 停止收敛:每费项行 1:1 出一条计费行(位置分组 + 受控费项枚举),不再折进五标量。

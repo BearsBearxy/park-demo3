@@ -21,6 +21,7 @@ const emit = defineEmits<{ jump: [ContractDTO] }>()
         <span class="cc-no">{{ it.c.contractNo }}</span>
         <span class="cc-range">{{ it.c.startDate ? it.c.startDate + ' → ' + it.c.endDate : '—' }}</span>
       </span>
+      <span v-if="it.c.linkType === 'escalation'" class="cc-esc">递增</span>
       <FPContractStatus :status="it.c.status" />
     </button>
   </div>
@@ -42,4 +43,7 @@ const emit = defineEmits<{ jump: [ContractDTO] }>()
 .cc-body { display:flex; flex-direction:column; min-width:0; }
 .cc-no { font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-primary); }
 .cc-range { font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }
+/* 递增段徽标(ESCALATION-SPLIT-SPEC §1):同约调价段,与续签换约区分 */
+.cc-esc { flex:0 0 auto; font-size:10.5px; padding:1px 5px; border-radius:var(--radius-sm);
+  color:var(--hue-cyan); border:1px solid currentColor; opacity:.85; }
 </style>

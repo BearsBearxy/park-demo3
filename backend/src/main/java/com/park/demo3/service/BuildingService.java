@@ -14,18 +14,31 @@ import java.util.*; import java.util.stream.Collectors;
 public class BuildingService {
     private final BuildingMapper buildings; private final UnitMapper units; private final ContractMapper contracts;
     private final TenantMapper tenantMapper;
-    public BuildingService(BuildingMapper b, UnitMapper u, ContractMapper c, TenantMapper t) { buildings=b; units=u; contracts=c; tenantMapper=t; }
+    private final ContractUnitMapper contractUnits;   // V58 附加单元关联(主单元在 contract.unit_id)
+    public BuildingService(BuildingMapper b, UnitMapper u, ContractMapper c, TenantMapper t, ContractUnitMapper cu) {
+        buildings=b; units=u; contracts=c; tenantMapper=t; contractUnits=cu;
+    }
+
+    /** unit_id → 关联合同 id 集(附加单元);占用判定=主单元 ∪ 附加关联(V58)。 */
+    private Map<Integer, Set<Integer>> linksByUnit() {
+        return contractUnits.selectList(null).stream().collect(Collectors.groupingBy(
+            ContractUnit::getUnitId, Collectors.mapping(ContractUnit::getContractId, Collectors.toSet())));
+    }
+    static boolean occupies(Contract c, Integer unitId, Map<Integer, Set<Integer>> links) {
+        return Objects.equals(c.getUnitId(), unitId)
+            || (c.getId() != null && links.getOrDefault(unitId, Set.of()).contains(c.getId()));
+    }
 
     static final Map<Integer,String> PHASE = Map.of(1,"一期",2,"二期",3,"三期",4,"宿舍");
     static String kind(int phase) { return phase == 4 ? "宿舍" : "厂房"; }
     static final Set<String> RENT = Set.of("active","expiring");            // 计租相关
 
-    /** 单元派生状态: 取该单元 status∈current 的合同,active→occupied/expiring→expiring/draft→reserved,无→vacant */
-    static String unitStatus(Integer unitId, List<Contract> cs) {
+    /** 单元派生状态: 取该单元合同的展示态(§5.1 日期派生,到期不再占用),active→occupied/expiring→expiring/draft→reserved,无→vacant */
+    static String unitStatus(Integer unitId, List<Contract> cs, Map<Integer, Set<Integer>> links) {
         String best = "vacant";
         for (Contract c : cs) {
-            if (!Objects.equals(c.getUnitId(), unitId)) continue;
-            switch (c.getStatus()) {
+            if (!occupies(c, unitId, links)) continue;
+            switch (ContractService.effectiveStatus(c.getStatus(), c.getEndDate())) {
                 case "active": return "occupied";
                 case "expiring": best = "expiring"; break;
                 case "draft": if (best.equals("vacant")) best = "reserved"; break;
@@ -35,11 +48,11 @@ public class BuildingService {
         return best;
     }
 
-    BuildingDTO toDTO(Building b, List<Unit> us, List<Contract> cs) {
+    BuildingDTO toDTO(Building b, List<Unit> us, List<Contract> cs, Map<Integer, Set<Integer>> links) {
         boolean stopped = b.getStatus() == 0;
         int occ=0, vac=0, exp=0, rsv=0; BigDecimal leased = BigDecimal.ZERO;
         for (Unit u : us) {
-            String st = unitStatus(u.getId(), cs);
+            String st = unitStatus(u.getId(), cs, links);
             switch (st) {
                 case "occupied": occ++; leased = leased.add(u.getArea()); break;
                 case "expiring": exp++; occ++; leased = leased.add(u.getArea()); break;
@@ -50,12 +63,17 @@ public class BuildingService {
         double occRate = stopped || b.getRentableArea().signum()==0 ? 0.0
             : Math.min(100.0, leased.divide(b.getRentableArea(), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(1000)).setScale(0, RoundingMode.HALF_UP).doubleValue() / 10.0);
-        BigDecimal monthly = cs.stream().filter(c -> RENT.contains(c.getStatus()))
+        // V59:整体承租(master_lease)与散户空间重叠 → 楼栋卡月租金/户数/面积汇总均排除,防双算
+        // 状态取展示态(日期派生):到期合同不再计入在租金额/户数
+        List<Contract> retail = cs.stream()
+            .filter(c -> RENT.contains(ContractService.effectiveStatus(c.getStatus(), c.getEndDate())))
+            .filter(c -> !"master_lease".equals(c.getKind())).toList();
+        BigDecimal monthly = retail.stream()
             .map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
-        List<Integer> tenantIds = cs.stream().filter(c -> RENT.contains(c.getStatus()))
+        List<Integer> tenantIds = retail.stream()
             .map(Contract::getTenantId).distinct().collect(Collectors.toList());
         // 栋内租户建筑面积汇总=在租合同 building_area 求和(V33 字段,空按 0;只读展示)
-        BigDecimal tenantBArea = cs.stream().filter(c -> RENT.contains(c.getStatus()))
+        BigDecimal tenantBArea = retail.stream()
             .map(Contract::getBuildingArea).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new BuildingDTO(b.getId(), b.getName(), b.getPhase(), PHASE.get(b.getPhase()), kind(b.getPhase()),
             b.getFloorCount(), b.getTotalArea(), b.getRentableArea(), b.getStatus(),
@@ -66,10 +84,11 @@ public class BuildingService {
         List<Building> bs = buildings.selectList(null);
         List<Unit> allUnits = units.selectList(null);
         List<Contract> allCt = contracts.selectList(null);
+        Map<Integer, Set<Integer>> links = linksByUnit();
         Map<Integer,List<Unit>> uByB = allUnits.stream().collect(Collectors.groupingBy(Unit::getBuildingId));
         Map<Integer,List<Contract>> cByB = allCt.stream().collect(Collectors.groupingBy(Contract::getBuildingId));
         return bs.stream().map(b -> toDTO(b,
-            uByB.getOrDefault(b.getId(), List.of()), cByB.getOrDefault(b.getId(), List.of()))).toList();
+            uByB.getOrDefault(b.getId(), List.of()), cByB.getOrDefault(b.getId(), List.of()), links)).toList();
     }
 
     public BuildingDetailDTO detail(Integer id) {
@@ -77,18 +96,20 @@ public class BuildingService {
         if (b == null) throw new com.park.demo3.common.BizException(com.park.demo3.common.ResultCode.NOT_FOUND);
         List<Unit> us = units.selectByBuildingId(id);
         List<Contract> cs = contracts.selectByBuildingId(id);
-        BuildingDTO dto = toDTO(b, us, cs);
-        List<UnitDTO> unitDTOs = us.stream().map(u -> toUnitDTO(u, cs)).toList();
+        Map<Integer, Set<Integer>> links = linksByUnit();
+        BuildingDTO dto = toDTO(b, us, cs, links);
+        List<UnitDTO> unitDTOs = us.stream().map(u -> toUnitDTO(u, cs, links)).toList();
         return new BuildingDetailDTO(dto, unitDTOs);
     }
 
     /** detail 同款单元 DTO 组装(status/租户由该楼栋合同派生),单元 CRUD 回包复用 */
-    UnitDTO toUnitDTO(Unit u, List<Contract> cs) {
-        String st = unitStatus(u.getId(), cs);
+    UnitDTO toUnitDTO(Unit u, List<Contract> cs, Map<Integer, Set<Integer>> links) {
+        String st = unitStatus(u.getId(), cs, links);
         Contract c = cs.stream()
-            .filter(x -> Objects.equals(x.getUnitId(), u.getId()))
-            .filter(x -> Set.of("active","expiring","draft").contains(x.getStatus()))
-            .min(Comparator.comparing(x -> switch (x.getStatus()) {
+            .filter(x -> occupies(x, u.getId(), links))
+            .filter(x -> Set.of("active","expiring","draft")
+                .contains(ContractService.effectiveStatus(x.getStatus(), x.getEndDate())))
+            .min(Comparator.comparing(x -> switch (ContractService.effectiveStatus(x.getStatus(), x.getEndDate())) {
                 case "active" -> 0; case "expiring" -> 1; default -> 2;
             })).orElse(null);
         Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;
@@ -130,7 +151,7 @@ public class BuildingService {
                 }
             }
         }
-        return toDTO(buildings.selectById(b.getId()), units.selectByBuildingId(b.getId()), List.of());
+        return toDTO(buildings.selectById(b.getId()), units.selectByBuildingId(b.getId()), List.of(), Map.of());
     }
 
     public BuildingDTO update(Integer id, BuildingUpdateReq req) {
@@ -145,7 +166,7 @@ public class BuildingService {
         b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
         b.setStatus(req.status()); b.setRemark(req.remark());
         buildings.updateById(b);
-        return toDTO(buildings.selectById(id), units.selectByBuildingId(id), contracts.selectByBuildingId(id));
+        return toDTO(buildings.selectById(id), units.selectByBuildingId(id), contracts.selectByBuildingId(id), linksByUnit());
     }
 
     public void delete(Integer id) {
@@ -191,7 +212,7 @@ public class BuildingService {
         u.setBuildingId(buildingId); u.setFloor(req.floor()); u.setUnitNo(unitNo);
         u.setArea(req.area() == null ? BigDecimal.ZERO : req.area());
         units.insert(u);
-        return toUnitDTO(units.selectById(u.getId()), List.of()); // 新单元无合同,必 vacant
+        return toUnitDTO(units.selectById(u.getId()), List.of(), Map.of()); // 新单元无合同,必 vacant
     }
 
     public UnitDTO updateUnit(Integer id, UnitUpdateReq req) {
@@ -201,12 +222,13 @@ public class BuildingService {
         requireUniqueUnitNo(u.getBuildingId(), req.unitNo(), id);
         u.setFloor(req.floor()); u.setUnitNo(req.unitNo()); u.setArea(req.area());
         units.updateById(u);
-        return toUnitDTO(u, contracts.selectByBuildingId(u.getBuildingId()));
+        return toUnitDTO(u, contracts.selectByBuildingId(u.getBuildingId()), linksByUnit());
     }
 
     public void deleteUnit(Integer id) {
         if (units.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
-        if (contracts.selectCount(new QueryWrapper<Contract>().eq("unit_id", id)) > 0)
+        if (contracts.selectCount(new QueryWrapper<Contract>().eq("unit_id", id)) > 0
+            || contractUnits.selectCount(new QueryWrapper<ContractUnit>().eq("unit_id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "单元存在合同记录,请先处理相关合同");
         units.deleteById(id);
     }

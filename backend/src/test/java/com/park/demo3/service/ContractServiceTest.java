@@ -13,8 +13,8 @@ class ContractServiceTest {
     BuildingMapper bm = Mockito.mock(BuildingMapper.class);
     UnitMapper     um = Mockito.mock(UnitMapper.class);
     ContractBillingTermMapper btm = Mockito.mock(ContractBillingTermMapper.class);
-    ContractRentTierMapper rtm = Mockito.mock(ContractRentTierMapper.class);
-    ContractService svc = new ContractService(cm, tm, bm, um, btm, rtm);
+    ContractUnitMapper cum = Mockito.mock(ContractUnitMapper.class);
+    ContractService svc = new ContractService(cm, tm, bm, um, btm, cum);
 
     // --- helpers ---
     Tenant tenant(int id) {

@@ -135,8 +135,15 @@ const TABLE_COLUMNS = computed(() => [
       style: { display: 'inline-flex', alignItems: 'center', gap: '6px' }
     }, [
       h('span', { style: { fontWeight: 'var(--fw-medium)', color: 'var(--text-primary)' } }, r.contractNo),
+      // V59 整体承租徽标:批发性质,不计出租率/KPI
+      r.kind === 'master_lease'
+        ? h('span', { title: '整体承租,不计出租率与月租金KPI', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(214,138,42,0.12)', color: 'var(--hue-orange)' } }, '整租')
+        : null,
+      // 徽标按 linkType 区分(ESCALATION-SPLIT-SPEC §1):递增段≠续签换约
       hasHistoryIds.value.has(r.id)
-        ? h('span', { title: '有续签历史,点开查看', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(24,134,254,0.12)', color: 'var(--hue-blue)' } }, '续')
+        ? (r.linkType === 'escalation'
+          ? h('span', { title: '同约递增段,点开查看各档', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(64,158,170,0.12)', color: 'var(--hue-cyan)' } }, '递增')
+          : h('span', { title: '有续签历史,点开查看', style: { fontSize: '10px', fontFamily: 'var(--font-sans)', padding: '1px 6px', borderRadius: '999px', background: 'rgba(24,134,254,0.12)', color: 'var(--hue-blue)' } }, '续'))
         : null,
     ]),
   },
@@ -313,6 +320,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
                 </div>
                 <div class="cl-l2">
                   <span class="cl-no">{{ c.contractNo }}</span>
+                  <span v-if="c.kind === 'master_lease'" class="cl-master" title="整体承租,不计出租率与月租金KPI">整租</span>
                   <FPContractStatus :status="c.status" />
                 </div>
               </div>

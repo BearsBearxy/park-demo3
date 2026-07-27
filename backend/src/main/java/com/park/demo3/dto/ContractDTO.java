@@ -28,6 +28,8 @@ public record ContractDTO(
     String  signDate,
     String  status,            // 展示态派生桶 draft|active|expiring|expired|terminated|renewed(§5.1)
     Integer parentContractId,  // 续签链上一期 id(read-only,V54)
+    String  linkType,          // V57 相对父期链接类型 new|renew|escalation(ESCALATION-SPLIT-SPEC §1)
+    String  kind,              // V59 合同性质 normal|master_lease(整体承租,不计出租率/KPI)
     int     termMonths,
     Integer daysToEnd,
     String  remark,

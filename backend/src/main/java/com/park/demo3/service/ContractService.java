@@ -27,14 +27,14 @@ public class ContractService {
     private final BuildingMapper buildings;
     private final UnitMapper     units;
     private final ContractBillingTermMapper terms;   // V51 起仅作「其他费项」留档表(§1.1 零静默丢弃)
-    private final ContractRentTierMapper tiers;      // V56 阶梯期:参考排程,不参与计费(V2-SPEC §1)
+    private final ContractUnitMapper contractUnits;  // V58 附加单元(主单元在 unit_id),floorInfo 显「等N单元」
 
     public ContractService(ContractMapper contracts, TenantMapper tenants,
                            BuildingMapper buildings, UnitMapper units,
-                           ContractBillingTermMapper terms, ContractRentTierMapper tiers) {
+                           ContractBillingTermMapper terms, ContractUnitMapper contractUnits) {
         this.contracts = contracts; this.tenants = tenants;
         this.buildings = buildings; this.units   = units;
-        this.terms = terms; this.tiers = tiers;
+        this.terms = terms; this.contractUnits = contractUnits;
     }
 
     /** 全量列表;asOfDate 非空 → 某日在租过滤(§5.2/§8⑦):非草稿且 startDate≤asOf≤endDate。 */
@@ -57,7 +57,8 @@ public class ContractService {
         Map<Integer,String> tName = tenants.selectList(null).stream()
             .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
 
-        return all.stream().map(c -> toDTO(c, tName, bName, uFloor)).toList();
+        Map<Integer,Long> extraUnits = extraUnitCounts();
+        return all.stream().map(c -> toDTO(c, tName, bName, uFloor, extraUnits)).toList();
     }
 
     /** 某日在租:非草稿且当日落在 [startDate, endDate] 闭区间(缺任一端日期视为无法确认在租,排除)。 */
@@ -78,9 +79,11 @@ public class ContractService {
         int active = 0, expiring = 0, draft = 0;
         BigDecimal monthly = BigDecimal.ZERO;
         for (Contract c : all) {
+            // V59:整体承租(master_lease)与散户空间重叠,月租金计入即双算 → KPI 金额排除,份数照计
+            boolean master = "master_lease".equals(c.getKind());
             switch (effectiveStatus(c.getStatus(), c.getEndDate())) {   // 派生桶计数(§5.1)
-                case "active":    active++;   monthly = monthly.add(c.getMonthlyRent()); break;
-                case "expiring":  expiring++; monthly = monthly.add(c.getMonthlyRent()); break;
+                case "active":    active++;   if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
+                case "expiring":  expiring++; if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
                 case "draft":     draft++;    break;
                 default: break;   // expired/terminated/renewed 不计
             }
@@ -101,12 +104,12 @@ public class ContractService {
             .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
         Map<Integer,String> tName = Map.of(t.getId(), t.getCompanyName());
 
-        ContractDTO dto = toDTO(c, tName, bName, uFloor);
+        ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts());
         ContractDetailDTO.TenantSnap snap = new ContractDetailDTO.TenantSnap(
             t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus()
         );
-        return new ContractDetailDTO(dto, snap, loadLines(id), loadTiers(id));
+        return new ContractDetailDTO(dto, snap, loadLines(id));
     }
 
     @Transactional
@@ -129,7 +132,6 @@ public class ContractService {
             syncScalarCache(c);
             contracts.updateById(c);
         }
-        if (req.rentTiers() != null) replaceTiersFromReq(c.getId(), req.rentTiers());
         return dtoOf(contracts.selectById(c.getId()));
     }
 
@@ -159,7 +161,6 @@ public class ContractService {
             replaceLinesFromReq(id, req.billingLines(), oldSrc);
             syncScalarCache(c);
         }
-        if (req.rentTiers() != null) replaceTiersFromReq(id, req.rentTiers());
         contracts.updateById(c);
         return dtoOf(contracts.selectById(id));
     }
@@ -191,6 +192,7 @@ public class ContractService {
         Contract c = new Contract();
         c.setContractNo(req.contractNo());
         c.setParentContractId(old.getId());   // V54 续签链
+        c.setLinkType("renew");               // V57 链接类型(ESCALATION-SPLIT-SPEC §1)
         c.setTenantId(old.getTenantId());
         c.setBuildingId(old.getBuildingId());
         c.setUnitId(old.getUnitId());
@@ -318,6 +320,16 @@ public class ContractService {
                 continue;
             }
 
+            // 已拆递增链防线(ESCALATION-SPLIT-SPEC §4):该户存在 escalation 段即整行跳过——
+            // 拆链后原行价与起点已按末档改写且带 parent,重导会匹配失败另建重复合同并拍回旧值。
+            if (contracts.exists(new QueryWrapper<Contract>()
+                    .eq("tenant_id", t.getId()).eq("link_type", "escalation"))) {
+                String reason = "该户已拆递增链,合同导入跳过(ESCALATION-SPLIT-SPEC §4)";
+                errors.add(new ImportError(i, label, reason));
+                report.add(new ContractFullImportRequest.Item(i, label, t.getId(), null, null, "skipped", reason));
+                continue;
+            }
+
             // 多租期 A 类:首期已被上次导入标成 renewed(不在 owned 里),故先按 tenantId+startDate 认领,保幂等
             List<ContractFullImportRequest.Term> chain =
                 r.terms() == null ? List.of() : r.terms();
@@ -393,6 +405,7 @@ public class ContractService {
                 } else matched++;
                 claimed.add(n.getId());
                 n.setParentContractId(prev.getId());
+                n.setLinkType("renew");   // V57 链接类型(ESCALATION-SPLIT-SPEC §1)
                 n.setStartDate(tm.startDate());
                 n.setEndDate(tm.endDate());
                 n.setTermType("multiple");
@@ -610,9 +623,29 @@ public class ContractService {
      *  两口径修正(2026-07-24):①面积按 (location,feeKey,area) 三元完全去重后求和,消除同一行被重复录入的翻倍;
      *  ②仅当整个合同一条建筑租金行都没有时,rentArea 回退=infra 行面积(同三元去重)——防二期只有 infra 带面积的户丢面积;
      *  有任一租金行则 infra 完全不参与(翔海式:infra 面积是整栋维护合计,绝不能加进租赁面积)。 */
+    /** 单行月额,镜像前端 lineMonthly(types/contract.ts §1.1);缺参数返回 null=待录。 */
+    static BigDecimal lineMonthly(ContractBillingTerm l, BigDecimal kva) {
+        String mode = l.getBillMode() == null ? "" : l.getBillMode();
+        BigDecimal up = l.getUnitPrice(), area = l.getArea(), coeff = l.getCoeff();
+        Integer rooms = l.getRoomCount();
+        return switch (mode) {
+            case "per_sqm_month" -> (area == null || up == null) ? null
+                : area.multiply(up).multiply(coeff == null ? BigDecimal.ONE : coeff).setScale(2, RoundingMode.HALF_UP);
+            case "per_room_year" -> (up == null || rooms == null) ? null
+                : up.multiply(BigDecimal.valueOf(rooms)).divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+            case "per_room_month" -> (up == null || rooms == null) ? null
+                : up.multiply(BigDecimal.valueOf(rooms)).setScale(2, RoundingMode.HALF_UP);
+            case "per_kva_month" -> kva == null ? null : kva.setScale(2, RoundingMode.HALF_UP);
+            default -> l.getAmountOverride();
+        };
+    }
+
     private void syncScalarCache(Contract c) {
         List<ContractBillingTerm> lines = terms.selectList(
             new QueryWrapper<ContractBillingTerm>().eq("contract_id", c.getId()).orderByAsc("seq", "id"));
+        // monthlyRent=Σ lineMonthly(V58 起单一事实源=计费行);行清空=待录=0(重导清子期孤儿行同款语义)
+        c.setMonthlyRent(lines.stream().map(l -> lineMonthly(l, c.getKva()))
+            .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add));
         boolean hasRentLine = lines.stream().anyMatch(l -> BUILDING_RENT_KEYS.contains(l.getFeeKey()));
         BigDecimal rentArea = hasRentLine
             ? dedupAreaSum(lines, BUILDING_RENT_KEYS)
@@ -657,44 +690,8 @@ public class ContractService {
             .toList();
     }
 
-    // ─── 租金阶梯期(V2-SPEC §7):参考排程,不参与计费(§1) ──────────
-
-    /** 阶梯期读出(按 fee_key, seq 排序);起止可空=相对期限,原样带出交前端不判定当前段。 */
-    private List<RentTierDTO> loadTiers(Integer contractId) {
-        return tiers.selectList(new QueryWrapper<ContractRentTier>()
-                .eq("contract_id", contractId).orderByAsc("fee_key", "seq", "id")).stream()
-            .map(t -> new RentTierDTO(t.getId(), t.getContractId(), t.getFeeKey(), t.getSeq(), t.getLabel(),
-                t.getStartDate() == null ? null : t.getStartDate().toString(),
-                t.getEndDate()   == null ? null : t.getEndDate().toString(),
-                t.getUnitPrice(), t.getMonthlyAmount(), t.getNote()))
-            .toList();
-    }
-
-    /** 阶梯期整组替换(单一编辑 PUT):删旧全组、插新组。seq 缺省按下标补(1 起)。 */
-    private void replaceTiersFromReq(Integer contractId, List<RentTierReq> list) {
-        tiers.delete(new QueryWrapper<ContractRentTier>().eq("contract_id", contractId));
-        int idx = 1;
-        for (RentTierReq r : list) {
-            ContractRentTier t = new ContractRentTier();
-            t.setContractId(contractId);
-            t.setFeeKey(blankToNull(r.feeKey()));
-            t.setSeq(r.seq() != null ? r.seq() : idx);
-            t.setLabel(blankToNull(r.label()));
-            t.setStartDate(parseDateOrNull(r.startDate()));
-            t.setEndDate(parseDateOrNull(r.endDate()));
-            t.setUnitPrice(r.unitPrice());
-            t.setMonthlyAmount(r.monthlyAmount());
-            t.setNote(blankToNull(r.note()));
-            tiers.insert(t);
-            idx++;
-        }
-    }
-
-    private static LocalDate parseDateOrNull(String s) {
-        if (blankToNull(s) == null) return null;
-        try { return LocalDate.parse(s.trim()); }
-        catch (DateTimeParseException e) { throw new BizException(ResultCode.BAD_REQUEST, "阶梯期日期格式须为 yyyy-MM-dd"); }
-    }
+    // 阶梯期读写口已删(ESCALATION-SPLIT-SPEC):阶梯语义由 escalation 链表达;
+    // contract_rent_tier 表暂留(云端跑完拆链前不 DROP,§5),代码零引用。
 
     // ─── fee_src 字段级来源映射(JSON 列) ─────────────────────
 
@@ -741,9 +738,8 @@ public class ContractService {
         }
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
             throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");
-        // 电费签约要素联动(裁定④):KVA 仅大工业可填(商业/居民前端置灰,后端拒绝)
-        if (req.kva() != null && !"industrial".equals(req.powerType()))
-            throw new BizException(ResultCode.BAD_REQUEST, "配电容量(KVA)仅大工业用电可填");
+        // 用电分类不锁配电容量(用户拍板 2026-07-27,推翻裁定④):非大工业户也有报装 kVA,
+        // 2024-02 水电册实证(A座商业户旭化成400/鑫皇118.75、宿舍商铺雷少康26 均收容量费)
         validateRentFree(req.rentFree());
     }
 
@@ -821,17 +817,27 @@ public class ContractService {
         return toDTO(c,
             t != null ? Map.of(t.getId(), t.getCompanyName()) : Map.of(),
             b != null ? Map.of(b.getId(), b.getName()) : Map.of(),
-            uFloor);
+            uFloor, extraUnitCounts());
+    }
+
+    /** 全表附加单元计数 contract_id→N(V58);list/detail/dtoOf 组装 DTO 前取一次。 */
+    private Map<Integer, Long> extraUnitCounts() {
+        return contractUnits.selectList(null).stream().collect(
+            Collectors.groupingBy(ContractUnit::getContractId, Collectors.counting()));
     }
 
     // ponytail: shared derivation — list() and detail() both call this
     private ContractDTO toDTO(Contract c, Map<Integer,String> tName,
-                              Map<Integer,String> bName, Map<Integer,String> uFloor) {
+                              Map<Integer,String> bName, Map<Integer,String> uFloor,
+                              Map<Integer,Long> extraUnits) {
         int termMonths = (c.getStartDate() != null && c.getEndDate() != null)
             ? (int) ChronoUnit.MONTHS.between(c.getStartDate(), c.getEndDate()) : 0;
         Integer daysToEnd = c.getEndDate() != null
             ? (int) ChronoUnit.DAYS.between(LocalDate.now(ZoneId.of("Asia/Shanghai")), c.getEndDate()) : null;
         String floorInfo = c.getUnitId() != null ? uFloor.getOrDefault(c.getUnitId(), "") : "";
+        // V58 附加单元:一份合同占多单元时主单元后缀「等N单元」(如 3F-301 等5单元)
+        long extra = extraUnits.getOrDefault(c.getId(), 0L);
+        if (!floorInfo.isEmpty() && extra > 0) floorInfo += " 等" + (extra + 1) + "单元";
         return new ContractDTO(
             c.getId(), c.getContractNo(),
             c.getTenantId(), tName.getOrDefault(c.getTenantId(), ""),
@@ -846,7 +852,7 @@ public class ContractService {
             c.getEndDate()   != null ? c.getEndDate().toString()   : null,
             c.getSignDate()  != null ? c.getSignDate().toString()  : null,
             effectiveStatus(c.getStatus(), c.getEndDate()),   // 展示态派生桶(§5.1)
-            c.getParentContractId(),
+            c.getParentContractId(), c.getLinkType(), c.getKind(),
             termMonths, daysToEnd, c.getRemark(), c.getRentFree(),
             c.getTermText(), c.getTermType(), c.getTierPriceNote()   // V55 期限原文必现
         );

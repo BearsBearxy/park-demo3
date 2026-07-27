@@ -237,7 +237,8 @@ const contactLine = computed(() =>
         <!-- 电费签约要素(裁定④):KVA 仅大工业行显示 -->
         <div class="fp-field"><span class="k">用电分类</span>
           <span class="v" :class="{ pending: !contract.powerType }">{{ contract.powerType ? POWER_TYPE_LABEL[contract.powerType] ?? contract.powerType : '待录' }}</span></div>
-        <div v-if="contract.powerType === 'industrial'" class="fp-field"><span class="k">配电容量 KVA</span>
+        <!-- 用电分类不锁配电容量(2026-07-27):任何分类都显示报装 kVA -->
+        <div class="fp-field"><span class="k">配电容量 KVA</span>
           <span class="v mono" :class="{ pending: contract.kva == null }">{{ contract.kva != null ? contract.kva.toLocaleString('en-US') : '待录' }}</span></div>
         <div class="fp-field"><span class="k">签约日期</span><span class="v mono">{{ contract.signDate || '待签约' }}</span></div>
         <div class="fp-field"><span class="k">租赁期限</span><span class="v mono">{{ contract.startDate ? contract.startDate + ' → ' + contract.endDate : '待定' }}</span></div>

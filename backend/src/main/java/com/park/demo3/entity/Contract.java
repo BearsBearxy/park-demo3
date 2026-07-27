@@ -22,7 +22,7 @@ public class Contract {
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal elevatorFee;     // 电梯覆盖月额
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal transformerFee;  // 变压器覆盖月额
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String powerType;           // industrial|commercial|resident
-    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal kva;             // 配电容量,仅大工业
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal kva;             // 配电容量(报装 kVA);不限用电分类(2026-07-27,商业/宿舍商铺也收容量费)
     private String feeSrc;   // 字段级来源 JSON {rent|mgmt|infra|elevator|transformer|area: import|manual}
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private LocalDate startDate;
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private LocalDate endDate;
@@ -33,6 +33,8 @@ public class Contract {
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String tierPriceNote;  // 分年阶梯价说明(AH 列原文)
     private String status;   // 存储态 draft|active|terminated|renewed(V54);展示态由 endDate 派生(§5.1)
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private Integer parentContractId;  // 续签链:被续签旧合同 id(V54)
+    private String linkType; // V57 相对父期链接类型 new|renew|escalation(ESCALATION-SPLIT-SPEC §1),仅显示与留痕
+    private String kind;     // V59 合同性质 normal|master_lease(整体承租不计KPI);无 ALWAYS 策略,PUT 不碰,标记走脚本
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String remark;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

@@ -307,16 +307,19 @@ class ContractBillingLinesApiIT extends AbstractMysqlIT {
         assertThat((Double) JsonPath.read(d, "$.data.contract.buildingArea")).isEqualTo(11299.2);   // 14124×0.8
     }
 
+    /** 用电分类不锁配电容量(用户拍板 2026-07-27,推翻裁定④):商业户带 kVA 正常落库。 */
     @Test
-    void kva_onlyIndustrial_othersRejected() throws Exception {
+    void kva_allowedForAnyPowerType() throws Exception {
+        String no = "IT-BL-" + System.nanoTime();
         mvc.perform(post("/api/contracts")
                 .header("Authorization", "Bearer " + token)
                 .contentType("application/json")
-                .content("{\"contractNo\":\"IT-BL-" + System.nanoTime() + "\",\"tenantId\":" + tid
+                .content("{\"contractNo\":\"" + no + "\",\"tenantId\":" + tid
                         + ",\"buildingId\":" + bid + ",\"rentArea\":100,\"monthlyRent\":1,\"deposit\":0,"
                         + "\"powerType\":\"commercial\",\"kva\":100,\"status\":\"active\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("配电容量(KVA)仅大工业用电可填"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.kva").value(100.0))
+                .andExpect(jsonPath("$.data.powerType").value("commercial"));
     }
 }

@@ -362,7 +362,8 @@ class ContractFullImportApiIT extends AbstractMysqlIT {
         Contract healed = contracts.selectById(child);
         assertThat(healed.getRentArea()).isEqualByComparingTo("0");
         assertThat(healed.getBuildingArea()).isNull();
-        assertThat(healed.getMonthlyRent()).isEqualByComparingTo("0");
+        // V58:monthlyRent=Σ现存计费行(幸存 manual 行 10㎡×17=170),不再恒零
+        assertThat(healed.getMonthlyRent()).isEqualByComparingTo("170.00");
     }
 
     private static ContractBillingTerm orphanLine(int cid, String feeKey, String loc, String area, String source) {

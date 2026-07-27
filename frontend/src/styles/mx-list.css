@@ -93,6 +93,8 @@
 .cl-money { font-size: 12.5px; font-family: var(--font-mono); font-weight: var(--fw-semibold); color: var(--text-primary); flex: 0 0 auto; }
 .cl-l2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
 .cl-no { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* V59 整体承租徽标(合同列表项):批发性质,不计出租率/KPI */
+.cl-master { flex: 0 0 auto; font-size: 10px; padding: 0 5px; border-radius: 999px; background: rgba(214,138,42,0.14); color: var(--hue-orange); }
 .cl-empty { text-align: center; padding: 40px 12px; color: var(--text-disabled); font-size: 13px; }
 .mx-md-detail { min-height: 0; display: flex; }
 .mx-md-detail > * { flex: 1 1 auto; min-height: 0; }

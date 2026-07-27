@@ -12,7 +12,8 @@ class BuildingServiceTest {
     UnitMapper um = Mockito.mock(UnitMapper.class);
     ContractMapper cm = Mockito.mock(ContractMapper.class);
     com.park.demo3.mapper.TenantMapper tm = Mockito.mock(com.park.demo3.mapper.TenantMapper.class);
-    BuildingService svc = new BuildingService(bm, um, cm, tm);
+    com.park.demo3.mapper.ContractUnitMapper cum = Mockito.mock(com.park.demo3.mapper.ContractUnitMapper.class);
+    BuildingService svc = new BuildingService(bm, um, cm, tm, cum);
 
     Building b(int id,int phase,int status,double rentable){ Building x=new Building();
         x.setId(id);x.setName("B"+id);x.setPhase(phase);x.setFloorCount(1);
