@@ -1,0 +1,1085 @@
+{
+ "ym": "2024-02",
+ "pools": [
+  {
+   "zone": "p2",
+   "name": "一车间消防",
+   "qtyTotal": 160.8,
+   "qtySharp": 20.1,
+   "qtyPeak": 26.7,
+   "qtyFlat": 60.3,
+   "qtyValley": 53.7,
+   "cost": 141.27,
+   "std": 20.18,
+   "base": 7.0
+  },
+  {
+   "zone": "p2",
+   "name": "一车间电梯+低压电房照明",
+   "qtyTotal": 860.0,
+   "qtySharp": 138.0,
+   "qtyPeak": 190.8,
+   "qtyFlat": 359.2,
+   "qtyValley": 172.0,
+   "cost": 843.14,
+   "std": 145.37,
+   "base": 5.8
+  },
+  {
+   "zone": "p2",
+   "name": "一车间消防水稳压泵",
+   "qtyTotal": 3.6,
+   "qtySharp": 0.6,
+   "qtyPeak": 0.45,
+   "qtyFlat": 1.5,
+   "qtyValley": 1.05,
+   "cost": 3.23,
+   "std": 0.0,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "二车间消防",
+   "qtyTotal": 253.5,
+   "qtySharp": 31.5,
+   "qtyPeak": 42.3,
+   "qtyFlat": 95.1,
+   "qtyValley": 84.6,
+   "cost": 222.75,
+   "std": 31.82,
+   "base": 7.0
+  },
+  {
+   "zone": "p2",
+   "name": "二车间电梯+低压电房照明",
+   "qtyTotal": 988.8,
+   "qtySharp": 187.2,
+   "qtyPeak": 244.0,
+   "qtyFlat": 407.2,
+   "qtyValley": 150.4,
+   "cost": 1015.55,
+   "std": 169.26,
+   "base": 6.0
+  },
+  {
+   "zone": "p2",
+   "name": "三车间消防",
+   "qtyTotal": 220.2,
+   "qtySharp": 29.4,
+   "qtyPeak": 38.1,
+   "qtyFlat": 82.8,
+   "qtyValley": 69.9,
+   "cost": 196.67,
+   "std": 28.1,
+   "base": 7.0
+  },
+  {
+   "zone": "p2",
+   "name": "三车间电梯+低压电房照明",
+   "qtyTotal": 708.0,
+   "qtySharp": 117.6,
+   "qtyPeak": 151.2,
+   "qtyFlat": 281.6,
+   "qtyValley": 157.6,
+   "cost": 686.33,
+   "std": 171.58,
+   "base": 4.0
+  },
+  {
+   "zone": "p2",
+   "name": "园区消防设施",
+   "qtyTotal": 2417.4,
+   "qtySharp": 324.3,
+   "qtyPeak": 425.7,
+   "qtyFlat": 901.2,
+   "qtyValley": 765.9,
+   "cost": 2163.85,
+   "std": 0.015,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "四车间消防",
+   "qtyTotal": 267.3,
+   "qtySharp": 30.0,
+   "qtyPeak": 41.1,
+   "qtyFlat": 102.6,
+   "qtyValley": 93.3,
+   "cost": 229.59,
+   "std": 32.8,
+   "base": 7.0
+  },
+  {
+   "zone": "p2",
+   "name": "四车间电梯+低压电房照明",
+   "qtyTotal": 1664.8,
+   "qtySharp": 305.2,
+   "qtyPeak": 418.4,
+   "qtyFlat": 713.2,
+   "qtyValley": 228.0,
+   "cost": 1719.52,
+   "std": 286.59,
+   "base": 6.0
+  },
+  {
+   "zone": "p2",
+   "name": "广联分摊",
+   "qtyTotal": null,
+   "qtySharp": null,
+   "qtyPeak": null,
+   "qtyFlat": null,
+   "qtyValley": null,
+   "cost": null,
+   "std": 482.12,
+   "base": 18.0
+  },
+  {
+   "zone": "p2",
+   "name": "四车间绿化水泵",
+   "qtyTotal": 103.8,
+   "qtySharp": 19.8,
+   "qtyPeak": 26.0,
+   "qtyFlat": 36.4,
+   "qtyValley": 21.8,
+   "cost": 104.46,
+   "std": 0.008,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "五车间消防",
+   "qtyTotal": 318.9,
+   "qtySharp": 33.6,
+   "qtyPeak": 51.02,
+   "qtyFlat": 144.88,
+   "qtyValley": 89.1,
+   "cost": 283.4,
+   "std": 43.6,
+   "base": 6.5
+  },
+  {
+   "zone": "p2",
+   "name": "五车间广告字灯（消防分表）",
+   "qtyTotal": 1065.9,
+   "qtySharp": 0.0,
+   "qtyPeak": 166.78,
+   "qtyFlat": 899.12,
+   "qtyValley": 0.0,
+   "cost": 1019.75,
+   "std": 0.007,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "五车间电梯+低压电房照明",
+   "qtyTotal": 1877.6,
+   "qtySharp": 194.4,
+   "qtyPeak": 403.2,
+   "qtyFlat": 343.14,
+   "qtyValley": 266.4,
+   "cost": 1238.78,
+   "std": 217.33,
+   "base": 5.7
+  },
+  {
+   "zone": "p2",
+   "name": "五车间广告字灯（火炬园）",
+   "qtyTotal": 670.06,
+   "qtySharp": 0.0,
+   "qtyPeak": 0.0,
+   "qtyFlat": 0.0,
+   "qtyValley": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "五车间保安亭、路灯等",
+   "qtyTotal": 777.4,
+   "qtySharp": 79.0,
+   "qtyPeak": 120.8,
+   "qtyFlat": 353.0,
+   "qtyValley": 224.4,
+   "cost": 685.09,
+   "std": 0.005,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "五车间充电桩/保安亭",
+   "qtyTotal": 2152.4,
+   "qtySharp": 165.6,
+   "qtyPeak": 250.8,
+   "qtyFlat": 849.6,
+   "qtyValley": 886.4,
+   "cost": 1717.05,
+   "std": null,
+   "base": null
+  },
+  {
+   "zone": "p2",
+   "name": "六车间消防",
+   "qtyTotal": 546.4,
+   "qtySharp": 31.5,
+   "qtyPeak": 209.7,
+   "qtyFlat": 220.6,
+   "qtyValley": 84.6,
+   "cost": 561.96,
+   "std": 80.28,
+   "base": 7.0
+  },
+  {
+   "zone": "p2",
+   "name": "六车间广告字灯（消防分表）",
+   "qtyTotal": 800.0,
+   "qtySharp": 0.0,
+   "qtyPeak": 0.0,
+   "qtyFlat": 800.0,
+   "qtyValley": 0.0,
+   "cost": 704.62,
+   "std": 0.005,
+   "base": 148918.01
+  },
+  {
+   "zone": "p2",
+   "name": "六车间电梯+低压电房照明",
+   "qtyTotal": 806.8,
+   "qtySharp": 130.0,
+   "qtyPeak": 188.8,
+   "qtyFlat": 327.6,
+   "qtyValley": 160.8,
+   "cost": 796.59,
+   "std": 132.77,
+   "base": 6.0
+  },
+  {
+   "zone": "p1",
+   "name": "招商中心净电",
+   "qtyTotal": 152.06,
+   "cost": 169.42,
+   "std": 169.42,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "园区公共电",
+   "qtyTotal": 520.82,
+   "cost": 580.28,
+   "std": null,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "园区路灯",
+   "qtyTotal": 2683.8,
+   "cost": 2990.21,
+   "std": 0.04,
+   "base": 80000.0
+  },
+  {
+   "zone": "p1",
+   "name": "旭化成1东公",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "旭化成2东公",
+   "qtyTotal": 0.01,
+   "cost": 0.01,
+   "std": 0.01,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "A2西侧公共",
+   "qtyTotal": 27.92,
+   "cost": 31.11,
+   "std": 0.02,
+   "base": 1734.73
+  },
+  {
+   "zone": "p1",
+   "name": "A3西侧公共",
+   "qtyTotal": 83.42,
+   "cost": 92.94,
+   "std": 0.04,
+   "base": 2293.34
+  },
+  {
+   "zone": "p1",
+   "name": "中大4楼公共",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "4楼空调外机电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "A4东侧公共",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": 579.13
+  },
+  {
+   "zone": "p1",
+   "name": "A4西侧走廊灯",
+   "qtyTotal": 40.76,
+   "cost": 45.41,
+   "std": 0.06,
+   "base": 734.02
+  },
+  {
+   "zone": "p1",
+   "name": "A4西侧消防灯",
+   "qtyTotal": 7.65,
+   "cost": 8.52,
+   "std": 0.01,
+   "base": 734.02
+  },
+  {
+   "zone": "p1",
+   "name": "戎合A501公共",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "鑫皇公共",
+   "qtyTotal": 106.71,
+   "cost": 118.89,
+   "std": 118.89,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "A6东侧走廊灯",
+   "qtyTotal": 45.4,
+   "cost": 50.58,
+   "std": 0.04,
+   "base": 1417.26
+  },
+  {
+   "zone": "p1",
+   "name": "A6东侧消防灯",
+   "qtyTotal": 9.57,
+   "cost": 10.66,
+   "std": 0.01,
+   "base": 1417.26
+  },
+  {
+   "zone": "p1",
+   "name": "可莱恩A602公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "A东侧货梯",
+   "qtyTotal": 907.57,
+   "cost": 1011.18,
+   "std": 0.08,
+   "base": 12487.04
+  },
+  {
+   "zone": "p1",
+   "name": "戎合B101公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "杨文正公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "可莱恩B201东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "可莱恩B201西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "欧培仪东侧公共",
+   "qtyTotal": 18.0,
+   "cost": 20.06,
+   "std": 20.06,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "欧培仪西侧公共",
+   "qtyTotal": 12.0,
+   "cost": 13.37,
+   "std": 13.37,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "碧沃丰B401东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "碧沃丰B401西侧公共电",
+   "qtyTotal": 5.0,
+   "cost": 5.57,
+   "std": 5.57,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "B东侧楼梯间",
+   "qtyTotal": 296.8,
+   "cost": 330.68,
+   "std": 82.67,
+   "base": 4.0
+  },
+  {
+   "zone": "p1",
+   "name": "B东侧货梯",
+   "qtyTotal": 644.5,
+   "cost": 718.08,
+   "std": 302.5,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "高建军C公共",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "力美C201东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "C2消防",
+   "qtyTotal": 26.48,
+   "cost": 29.5,
+   "std": 0.02,
+   "base": 1503.1
+  },
+  {
+   "zone": "p1",
+   "name": "C2走廊",
+   "qtyTotal": 6.86,
+   "cost": 7.64,
+   "std": 0.01,
+   "base": 1503.1
+  },
+  {
+   "zone": "p1",
+   "name": "力美C301东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "道磁C401东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "可莱恩C402西侧公共电",
+   "qtyTotal": 9.0,
+   "cost": 10.03,
+   "std": 10.03,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "C东侧楼梯间",
+   "qtyTotal": 35.0,
+   "cost": 38.99,
+   "std": 9.75,
+   "base": 4.0
+  },
+  {
+   "zone": "p1",
+   "name": "C东侧货梯电表1",
+   "qtyTotal": 288.92,
+   "cost": 321.91,
+   "std": 144.44,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "C西侧货梯",
+   "qtyTotal": 163.3,
+   "cost": 181.94,
+   "std": 60.65,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "邱彩云东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "D201东侧电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "D201西侧电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "金纳D301东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "金纳D301西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "飞度东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "一元兰欣西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "D东侧楼梯间",
+   "qtyTotal": 26.0,
+   "cost": 28.97,
+   "std": 7.24,
+   "base": 4.0
+  },
+  {
+   "zone": "p1",
+   "name": "D东侧货梯",
+   "qtyTotal": 363.1,
+   "cost": 404.55,
+   "std": 171.99,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "D西侧货梯",
+   "qtyTotal": 551.1,
+   "cost": 614.02,
+   "std": 241.81,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "E二楼东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "天玛E201西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "翔海E301东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "翔海E301西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "翔海E401东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "翔海E401西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "E东侧楼梯间",
+   "qtyTotal": 24.6,
+   "cost": 27.41,
+   "std": 6.85,
+   "base": 4.0
+  },
+  {
+   "zone": "p1",
+   "name": "E东侧货梯",
+   "qtyTotal": 135.0,
+   "cost": 150.41,
+   "std": 50.14,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "E西侧货梯",
+   "qtyTotal": 152.9,
+   "cost": 170.36,
+   "std": 56.79,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "思汗F101东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "优凯F201东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "优凯F201西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "优凯F301东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "优凯F301西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "F401东侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "F401西侧公共电",
+   "qtyTotal": 0.0,
+   "cost": 0.0,
+   "std": 0.0,
+   "base": null
+  },
+  {
+   "zone": "p1",
+   "name": "F东侧楼梯间",
+   "qtyTotal": 19.53,
+   "cost": 14.71,
+   "std": 5.44,
+   "base": 4.0
+  },
+  {
+   "zone": "p1",
+   "name": "F东侧货梯",
+   "qtyTotal": 169.1,
+   "cost": 188.41,
+   "std": 62.8,
+   "base": 3.0
+  },
+  {
+   "zone": "p1",
+   "name": "F西侧货梯",
+   "qtyTotal": 176.67,
+   "cost": 196.84,
+   "std": 139.89,
+   "base": 3.0
+  },
+  {
+   "zone": "dorm",
+   "name": "宿舍路灯公摊",
+   "qtyTotal": 860.93,
+   "cost": null,
+   "std": 0.06,
+   "base": 15510.0
+  },
+  {
+   "zone": "dorm",
+   "name": "宿舍绿化水公摊",
+   "qtyTotal": 84.0,
+   "cost": null,
+   "std": 0.02,
+   "base": 15510.0
+  }
+ ],
+ "totals": {
+  "p2": {
+   "qtyTotal": 31986.3,
+   "cost": 14333.6,
+   "allocated": 12398.91,
+   "gap": -1934.69,
+   "qtyHeadSum": 16663.66
+  }
+ },
+ "loss": {
+  "p1": [
+   {
+    "name": "A座",
+    "c": 38550.0,
+    "cable": null,
+    "d": 34876.5,
+    "e": -3673.5,
+    "rawRate": -0.0953,
+    "g": -1413.2,
+    "adjQty": 0,
+    "adjRate": 0.003,
+    "variant": "net",
+    "tenantRate": 0.0616
+   },
+   {
+    "name": "B座",
+    "c": 5318.4,
+    "cable": null,
+    "d": 5399.07,
+    "e": 80.67,
+    "rawRate": 0.0152,
+    "g": 86.8,
+    "adjQty": 0,
+    "adjRate": 0.005,
+    "variant": "share_only",
+    "tenantRate": 0.0213
+   },
+   {
+    "name": "C座",
+    "c": 9652.8,
+    "cable": null,
+    "d": 9959.89,
+    "e": 307.09,
+    "rawRate": 0.0318,
+    "g": 86.8,
+    "adjQty": 0,
+    "adjRate": 0.01,
+    "variant": "share_only",
+    "tenantRate": 0.019
+   },
+   {
+    "name": "D座",
+    "c": 13771.2,
+    "cable": null,
+    "d": 13728.8,
+    "e": -42.4,
+    "rawRate": -0.0031,
+    "g": 86.8,
+    "adjQty": 0,
+    "adjRate": 0.01,
+    "variant": "net",
+    "tenantRate": 0.0194
+   },
+   {
+    "name": "E座",
+    "c": 12801.6,
+    "cable": null,
+    "d": 12662.1,
+    "e": -139.5,
+    "rawRate": -0.0109,
+    "g": 86.8,
+    "adjQty": 0,
+    "adjRate": 0.005,
+    "variant": "net",
+    "tenantRate": 0.0227
+   },
+   {
+    "name": "F座",
+    "c": 21091.2,
+    "cable": null,
+    "d": 21146.9,
+    "e": 55.7,
+    "rawRate": 0.0026,
+    "g": 86.8,
+    "adjQty": 0,
+    "adjRate": 0.018,
+    "variant": "net",
+    "tenantRate": 0.0195
+   },
+   {
+    "name": "G座",
+    "c": 247.2,
+    "cable": null,
+    "d": 247.2,
+    "e": 0.0,
+    "rawRate": 0.0,
+    "g": null,
+    "adjQty": null,
+    "adjRate": null,
+    "variant": "none",
+    "tenantRate": null
+   },
+   {
+    "name": "G座自建专变",
+    "c": 172.0,
+    "cable": null,
+    "d": 172.0,
+    "e": 0.0,
+    "rawRate": 0.0,
+    "g": null,
+    "adjQty": null,
+    "adjRate": null,
+    "variant": "none",
+    "tenantRate": null
+   }
+  ],
+  "p1_supply_meter": "B-G座总电",
+  "p1_recon": {
+   "supply": 68320.0,
+   "sumC": 63054.4,
+   "sumD": 63315.96
+  },
+  "p2": [
+   {
+    "name": "一车间",
+    "head": "一车间",
+    "c": 13750.0,
+    "cable": null,
+    "d": 13704.7,
+    "e": -45.3,
+    "rawRate": -0.0033,
+    "g": null,
+    "adjQty": 300.0,
+    "adjRate": 0.002,
+    "variant": "net",
+    "tenantRate": 0.0271
+   },
+   {
+    "name": "二车间/三车间/四车间",
+    "head": "三车间",
+    "c": 85670.0,
+    "cable": 32797.2,
+    "d": 81158.44,
+    "e": -4511.56,
+    "rawRate": -0.0527,
+    "g": null,
+    "adjQty": -2500.0,
+    "adjRate": 0.002,
+    "variant": "net",
+    "tenantRate": 0.0255
+   },
+   {
+    "name": "五车间",
+    "head": "五车间",
+    "c": 36685.0,
+    "cable": 0.0,
+    "d": 36704.95,
+    "e": 19.95,
+    "rawRate": 0.0005,
+    "g": null,
+    "adjQty": 1000.0,
+    "adjRate": 0.002,
+    "variant": "net",
+    "tenantRate": 0.0287
+   },
+   {
+    "name": "六车间",
+    "head": "六车间",
+    "c": 18320.0,
+    "cable": null,
+    "d": 17958.1,
+    "e": -361.9,
+    "rawRate": -0.0198,
+    "g": null,
+    "adjQty": 300.0,
+    "adjRate": 0.002,
+    "variant": "net",
+    "tenantRate": 0.0381
+   }
+  ],
+  "p2_supply_meter": "二期总电",
+  "p2_recon": {
+   "supply": 160320.0,
+   "sumC": 154425.0,
+   "sumD": 149526.19
+  }
+ },
+ "manual_readings": [
+  {
+   "zone": "p1",
+   "meter": "C2消防",
+   "prev": 33.99,
+   "curr": 60.47,
+   "note": "外链断裂靠缓存,验证刀须先补录 2024-02 读数"
+  },
+  {
+   "zone": "p1",
+   "meter": "C2走廊",
+   "prev": 0.52,
+   "curr": 7.38,
+   "note": "外链断裂靠缓存,验证刀须先补录 2024-02 读数"
+  }
+ ],
+ "phantom_meters": [
+  {
+   "rule": "戎合B101公共电",
+   "meter": "戎合B101公共电",
+   "reason": "一期园区电无此表(VLOOKUP miss,S=0)"
+  },
+  {
+   "rule": "杨文正公共电",
+   "meter": "杨文正公共电",
+   "reason": "一期园区电无此表(VLOOKUP miss,S=0)"
+  },
+  {
+   "rule": "高建军C公共",
+   "meter": "高建军C公共",
+   "reason": "一期园区电无此表(VLOOKUP miss,S=0)"
+  }
+ ],
+ "known_diff": [
+  {
+   "pool": "F东侧楼梯间",
+   "issue": "r94 Excel 漏 AD 行,引擎 cost 会多 ROUND(6.33×1.11416875,2)=7.05",
+   "engineExtra": 7.05
+  },
+  {
+   "pool": "五车间电梯+低压电房照明",
+   "issue": "Excel 头行 L83 未剔火炬园670.06(仅平段 L87 剔);引擎平段冲减后 flat/cost/std 全等,qtyTotal 引擎净额=头值-670.06=1207.54 与册头行陈列口径差,归档不改"
+  },
+  {
+   "pool": "五车间广告字灯（火炬园）",
+   "issue": "Excel W89=0(分摊5行硬置0);引擎按表读数回退平价×总量将出非0成本,待用户拍板"
+  },
+  {
+   "pool": "二期损耗 二/三/四车间",
+   "issue": "Excel J5 把 I 放 ROUND 内(-ROUND((F-H)/C-I,4)),引擎统一外置式,锚点月同值"
+  },
+  {
+   "pool": "六车间电梯+低压电房照明",
+   "issue": "倍率册内冲突:抄表册50 vs 公共电数据40(账单按40计,少收25%);引擎按档案50,待用户拍板"
+  }
+ ],
+ "known_loss": {
+  "units": [
+   {
+    "name": "G座",
+    "issue": "引擎将 G座+G自建专变 两独立供电链合并为一组(C=419.2/D=张执盛分表Σ247.2),variant=2 仅陈列不出率;Excel 两行独立且 D=C 自引用"
+   },
+   {
+    "name": "G座自建专变",
+    "issue": "并入 G座 合并组陈列,单元行不再单独出(见 G座 known)"
+   },
+   {
+    "name": "C座",
+    "issue": "C2消防/C2走廊 双源读数:抄表册 29.89/3.16 vs 公共电分摊明细缓存 26.48/6.86,引擎单一读数源取分摊明细口径(池分摊金额锚点一致),D/E 差 +0.29"
+   }
+  ],
+  "recon": [
+   {
+    "key": "p1.sumD",
+    "issue": "G自建专变 Excel D=C 自引用计入 sumD(+172),引擎合并组按实分表Σ;另含 C座双源 +0.29 → 引擎 sumD=册值-171.71"
+   }
+  ]
+ },
+ "counts": {
+  "rules": 90,
+  "rulesByZone": {
+   "p2": 21,
+   "p1": 67,
+   "dorm": 2
+  },
+  "meterBindings": 113,
+  "links": 4,
+  "ruleCfgRows": 46
+ }
+}

@@ -22,9 +22,36 @@ public class AllocController {
     @Operation(summary = "年份(抄表年∪结果年,升序;年下拉数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 
-    @Operation(summary = "规则列表(携 meterIds+members;可选 zone 过滤)") @GetMapping("/rules")
-    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2") String zone) {
+    @Operation(summary = "规则列表(携 meterIds+members+meters(sign)+links;可选 zone 过滤)") @GetMapping("/rules")
+    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone) {
         return svc.ruleList(zone);
+    }
+
+    @Operation(summary = "池核算表(POOL-ENGINE-SPEC §4:config 左连当月快照;无快照月 generated=false)") @GetMapping("/pools")
+    public AllocPoolDTOs.Pools pools(@RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.pools(ym);
+    }
+
+    @Operation(summary = "池组成候选(V69:按 楼栋/楼层/侧向 过滤电表 + 该定位在租租户预勾;楼层空=整栋,楼栋空=园区级)")
+    @GetMapping("/pool-candidates")
+    public AllocPoolDTOs.Candidates poolCandidates(
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym,
+            @RequestParam(required = false) Integer buildingId,
+            @RequestParam(required = false) String floor,
+            @RequestParam(required = false) String side) {
+        return svc.poolCandidates(ym, buildingId, floor, side);
+    }
+
+    @Operation(summary = "受益人变动(V69:该定位本月在租租户 与 池当前受益人 的差集,页面提醒条)")
+    @GetMapping("/member-diff")
+    public List<AllocPoolDTOs.MemberDiff> memberDiff(
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.memberDiff(ym);
+    }
+
+    @Operation(summary = "楼栋损耗表(units=快照;recon=读时派生:供电侧总表 vs 单元合计)") @GetMapping("/loss")
+    public AllocPoolDTOs.Loss loss(@RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.loss(ym);
     }
 
     @Operation(summary = "新增规则(rule+绑定表+受益人整体保存)") @PostMapping("/rules")

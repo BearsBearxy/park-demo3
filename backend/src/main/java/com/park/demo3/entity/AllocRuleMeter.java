@@ -6,4 +6,5 @@ public class AllocRuleMeter {
     @TableId(type = IdType.AUTO) private Integer id;
     private Integer ruleId;
     private Integer meterId;
+    private Integer sign;         // +1计入/-1从池剔除(V64)
 }
