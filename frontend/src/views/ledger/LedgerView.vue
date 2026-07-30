@@ -17,7 +17,7 @@ import LedgerNewCompanyDialog from './LedgerNewCompanyDialog.vue'
 import LedgerImportResolveDialog, { type ResolveItem, type ResolveDecision } from './LedgerImportResolveDialog.vue'
 import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
-import { yearCardsOf, gateCurrentOf } from '@/utils/yearGate'
+import { yearCardsOf, gateCurrentOf, maxSelectableYear } from '@/utils/yearGate'
 import LedgerMonthGrid from './LedgerMonthGrid.vue'
 import LedgerWideTable from './LedgerWideTable.vue'
 import LedgerTenantDrawer from './LedgerTenantDrawer.vue'
@@ -35,7 +35,7 @@ const edit = ref(false)
 const newDlg = ref(false)
 const saving = ref(false)
 
-const maxYear = new Date().getFullYear()
+const maxYear = maxSelectableYear()   // 与年份门区间上界同源(今年+1)
 // ⓪ 公司卡「N 月应收」标签的月份:优先由数据派生(有数据的当前月,见 loadCompanies),
 // 不耦合系统时钟;仅在全系统无任何台账数据时退回当月。
 const dataMonth = ref(new Date().getMonth() + 1)

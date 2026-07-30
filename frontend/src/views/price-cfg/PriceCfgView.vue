@@ -9,6 +9,7 @@ import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { priceCfgApi, type PriceCfgDTO } from '@/api/priceCfg'
 import { allocApi } from '@/api/alloc'
 import { tenantApi } from '@/api/tenant'
+import { buildYearOptions } from '@/utils/yearGate'
 import type { TenantDTO } from '@/types/tenant'
 import {
   PRICE_KEYS, SCOPE_LABEL, buildPriceGrid, buildVersionStatus, type PriceKeyMeta,
@@ -40,8 +41,7 @@ const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
 const dataYears = ref<number[]>([])
 const yearOpts = computed(() =>
-  [...new Set([...dataYears.value, today.getFullYear()])].sort((a, b) => a - b)
-    .map(y => ({ value: String(y), label: `${y}年` })))
+  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })))
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const ym = computed(() => `${year.value}-${pad2(month.value)}`)
 const prevYm = computed(() =>

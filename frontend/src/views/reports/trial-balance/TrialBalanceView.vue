@@ -22,6 +22,7 @@ import FinCompanyPicker, { type FinCompany } from '@/components/fin/FinCompanyPi
 import FinMonthGrid, { type FinMonthMeta } from '@/components/fin/FinMonthGrid.vue'
 import SchedYearGate from '@/components/sched/SchedYearGate.vue'
 import { useReportYearGate } from '@/components/fin/useReportYearGate'
+import { maxSelectableYear } from '@/utils/yearGate'
 import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
@@ -36,7 +37,7 @@ const year = ref(new Date().getFullYear())
 const month = ref<number | null>(null)                // null → L2 月历
 const edit = ref(false)
 const saving = ref(false)
-const maxYear = new Date().getFullYear()
+const maxYear = maxSelectableYear()   // 与年份门区间上界同源(今年+1)
 
 // ── 数据 ─────────────────────────────────────────────────
 const companies = ref<CompanyDTO[]>([])

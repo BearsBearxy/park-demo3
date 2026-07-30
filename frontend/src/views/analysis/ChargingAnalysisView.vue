@@ -15,6 +15,7 @@ import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
+import { buildYearOptions } from '@/utils/yearGate'
 import { feeRate, lossSeries, operatorTotals, stationMonthly, yearSummary } from './chargingAnalysis.logic'
 
 const router = useRouter()
@@ -29,9 +30,7 @@ const today = new Date()
 const year = ref(today.getFullYear())
 const dataYears = ref<number[]>([])
 const yearOpts = computed(() =>
-  [...new Set([...dataYears.value, today.getFullYear()])]
-    .sort((a, b) => a - b)
-    .map((y) => ({ value: String(y), label: `${y}年` })),
+  buildYearOptions(dataYears.value, today).map((y) => ({ value: String(y), label: `${y}年` })),
 )
 
 // ── 取数:桩库一次 + 该年整年 readings/power-usage(month 缺省=全年,§4 新口);竞态守卫同 CpMeterView ──

@@ -23,6 +23,7 @@ import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
+import { buildYearOptions } from '@/utils/yearGate'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
@@ -42,9 +43,7 @@ const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
 const dataYears = ref<number[]>([])
 const yearOpts = computed(() =>
-  [...new Set([...dataYears.value, today.getFullYear()])]
-    .sort((a, b) => a - b)
-    .map(y => ({ value: String(y), label: `${y}年` })),
+  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
 )
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const acctMonth = computed(() => `${year.value}-${pad2(month.value)}`)

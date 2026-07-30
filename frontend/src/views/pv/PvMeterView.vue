@@ -23,6 +23,7 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // Wave2-B 并行契约:registry key 'pvMeter' + 模板/月度导出(buildPvMeterTemplate/exportPvMeterMonth)
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
+import { buildYearOptions } from '@/utils/yearGate'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
@@ -44,9 +45,7 @@ const month = ref(today.getMonth() + 1)
 // 年份数据驱动(P0 审计):选项 = 有记录年份 ∪ 当前年,升序;初值 = 最新有数据年(无数据=当前年)
 const dataYears = ref<number[]>([])
 const yearOpts = computed(() =>
-  [...new Set([...dataYears.value, today.getFullYear()])]
-    .sort((a, b) => a - b)
-    .map(y => ({ value: String(y), label: `${y}年` })),
+  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
 )
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
