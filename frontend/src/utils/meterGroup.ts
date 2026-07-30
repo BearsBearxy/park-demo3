@@ -1,9 +1,11 @@
 // 园区抄表 Excel 式分组区块(METER-SPEC §7 v3,meterGroup.spec.ts 锁定:区块归属/排序/汇总数值)。
 // 期区(zone)→区块(area,车间/楼栋座):区块头=infra 配电总表行,随后 share/ops 公共表(Excel 原序)、
 // tenant 户内表(方位楼层房号自然序);「连接X车间」馈线表按标识名随 X车间 区块。
-// 汇总口径:区块 sums = 区块内 ownership∈{tenant,share} 各表用量合计(总/尖/峰/平/谷,null 跳过,
+// 汇总口径:区块 sums = 区块内 inSubSigma(tenant/share/park) 各表用量合计(总/尖/峰/平/谷,null 跳过,
 // 结果四舍五入 2 位防浮点尾差);infra(避免与分表重复计)与 ops(园区经营,非向租户收费口径)不计入;
 // 期区 sums = Σ区块 sums。usageOf 缺省(表档案段)= 各列 null,只用分组不用汇总。
+
+import { inSubSigma } from './meterSplit'
 
 export interface GroupableMeter {
   id: number
@@ -120,7 +122,7 @@ export function groupMeterBlocks<T extends GroupableMeter>(
           .map(x => x.m)
         const sums = emptySums()
         for (const m of ms) {
-          if (m.ownership !== 'tenant' && m.ownership !== 'share') continue
+          if (!inSubSigma(m.ownership)) continue
           sums.count++
           const u = usageOf?.(m)
           if (!u) continue

@@ -1,15 +1,26 @@
 <script setup lang="ts">
 // 导入结果提示 — 居中小弹层:imported N 条 / skipped M / errors 可展开。复用 DS Button。
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import type { ImportResultDTO } from '@/types/import'
 
 // summary: 智能整表多段导入时,各段「年月期·导入/跳过/错误」一行一段
-defineProps<{ result: ImportResultDTO; summary?: string }>()
+const props = defineProps<{ result: ImportResultDTO; summary?: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const showErrors = ref(false)
+
+// 抄表导入的身份匹配分档(METER-IMPORT-SPEC §4);其余导入器无 matches 即不显示。
+// 「新建」是异常放大器:重导老文件时应≈0,暴涨=身份判错。
+const MATCH_LABEL: Record<string, string> = { code: '按编码命中', addr: '按位置命中', name: '按标识命中', new: '新建' }
+const matchStats = computed(() => {
+  const ms = props.result.matches
+  if (!ms?.length) return null
+  return Object.entries(MATCH_LABEL)
+    .map(([k, label]) => ({ label, n: ms.filter(m => m.matchBy === k).length, warn: k === 'new' }))
+    .filter(x => x.n > 0)
+})
 </script>
 
 <template>
@@ -24,6 +35,14 @@ const showErrors = ref(false)
       <div class="ir-stats">
         <div class="ir-stat ok"><b>{{ result.imported }}</b><span>成功写入</span></div>
         <div class="ir-stat" :class="{ warn: result.skipped > 0 }"><b>{{ result.skipped }}</b><span>跳过</span></div>
+      </div>
+      <div v-if="matchStats" class="ir-match">
+        <div class="ir-match-t">表身份匹配</div>
+        <div class="ir-match-row">
+          <span v-for="(s, i) in matchStats" :key="i" :class="['ir-match-chip', { warn: s.warn }]">
+            {{ s.label }} <b>{{ s.n }}</b>
+          </span>
+        </div>
       </div>
       <div v-if="summary" class="ir-summary">
         <div v-for="(ln, i) in summary.split('\n')" :key="i" class="ir-summary-line">{{ ln }}</div>
@@ -64,6 +83,14 @@ const showErrors = ref(false)
 .ir-stat span { font-size:11.5px; color:var(--text-muted); }
 .ir-stat.ok b { color:var(--hue-blue); }
 .ir-stat.warn b { color:var(--hue-orange); }
+
+.ir-match { margin:12px 20px 0; padding:8px 12px; background:var(--surface-card); border-radius:var(--radius-md); }
+.ir-match-t { font-size:11px; color:var(--text-muted); margin-bottom:6px; }
+.ir-match-row { display:flex; flex-wrap:wrap; gap:6px; }
+.ir-match-chip { font-size:11.5px; color:var(--text-secondary); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:2px 9px; white-space:nowrap; }
+.ir-match-chip b { font-family:var(--font-mono); color:var(--text-primary); margin-left:3px; }
+.ir-match-chip.warn { border-color:var(--hue-orange); color:var(--hue-orange); }
+.ir-match-chip.warn b { color:var(--hue-orange); }
 
 .ir-summary { margin:12px 20px 0; padding:8px 12px; background:var(--surface-card); border-radius:var(--radius-md); display:flex; flex-direction:column; gap:3px; }
 .ir-summary-line { font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); }

@@ -29,7 +29,7 @@ import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows } from '@/utils/importChargingRows'
 import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
 import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
-import { parseMeterWorkbook, METER_TEMPLATE_COLS } from '@/utils/meterExcel'
+import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_ZONE_LABEL, METER_KIND_LABEL } from '@/utils/meterExcel'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
 import { contractApi } from '@/api/contract'
@@ -423,15 +423,25 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       // (同 budget 预取模式,解析在用户选完文件后通常已就绪);视图喂的 ctx.tenantNames/ctx.buildings 作后备。
       // 取不到也不拦——正则拆分照跑,租户/楼栋 id 空、档案可改。
       prefetchMeterMaster()
+      const now = new Date()
+      const ym = ctx.year && ctx.month
+        ? `${ctx.year}-${String(ctx.month).padStart(2, '0')}`
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       return {
         title: '导入 园区抄表 · 水电表读数',
-        sub: '上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」',
+        sub: '上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」。直接粘数据块(没有标题行)也行——账期在弹窗里选。',
         templateCols: METER_TEMPLATE_COLS,
-        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) =>
+        // 标题缺年月/分区/类别时的补录值(默认取抄表页当前年月);弹窗只在真用上时才把这条露出来
+        fallbackPicker: {
+          ym, zone: 'p1', kind: 'elec',
+          zones: Object.entries(METER_ZONE_LABEL).map(([value, label]) => ({ value, label })),
+          kinds: Object.entries(METER_KIND_LABEL).map(([value, label]) => ({ value, label })),
+        },
+        parseWorkbook: (sheets: { name: string; matrix: string[][] }[], fb?: { ym: string; zone: string; kind: string }) =>
           parseMeterWorkbook(sheets, {
             tenants: meterTenants ?? ctx.tenantNames?.map(n => ({ companyName: n })),
             buildings: meterBuildings ?? ctx.buildings,
-          }),
+          }, fb),
       }
     },
     // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约)
@@ -441,7 +451,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
           ? (p as { records: ImportRec[] }).records : [p as ImportRec])
       if (!rows.length) return { imported: 0, skipped: 0, errors: [] }
       const res = await http.post<ImportResultDTO>('/meters/import', { rows })
-      return { imported: res.imported, skipped: res.skipped, errors: res.errors }
+      // matches 透传:结果弹层显示 按编码命中/按位置命中/按标识命中/新建 四档(METER-IMPORT-SPEC §4)
+      return { imported: res.imported, skipped: res.skipped, errors: res.errors, matches: res.matches }
     },
     target: () => null,
   },

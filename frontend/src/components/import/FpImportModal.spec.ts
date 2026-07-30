@@ -83,12 +83,12 @@ describe('FpImportModal', () => {
   })
 
   it('parseWorkbook 粘贴路径包装 [{name:"",matrix}],sections 走 labelMode', async () => {
-    const parseWorkbook = vi.fn(() => ({ sections: [{ label: '一泽', records: [{ a: 1, __preview: ['x'] }] as ImportRec[] }] }))
+    const parseWorkbook = vi.fn((_s: { name: string; matrix: string[][] }[]) => ({ sections: [{ label: '一泽', records: [{ a: 1, __preview: ['x'] }] as ImportRec[] }] }))
     const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], parseWorkbook } })
     await w.find('.fpimp-tab:nth-child(2)').trigger('click')
     await w.find('textarea').setValue('A\t1')
     await w.find('.fpimp-ta + div button').trigger('click')
-    expect(parseWorkbook).toHaveBeenCalledWith([{ name: '', matrix: [['A', '1']] }])
+    expect(parseWorkbook.mock.calls[0][0]).toEqual([{ name: '', matrix: [['A', '1']] }])
     expect(w.find('.isum-row.label-only').exists()).toBe(true)
     await w.find('.isum-foot button').trigger('click')
     const picks = w.emitted('importSections')![0][0] as { label: string; records: ImportRec[] }[]
@@ -107,5 +107,31 @@ describe('FpImportModal', () => {
     const picks = w.emitted('importSections')![0][0] as { label: string; records: ImportRec[] }[]
     expect(picks[0].label).toBe('一期')
     expect(picks[0].records[0]).toEqual({ a: 1 })   // __preview 已剥
+  })
+
+  // 补录条(仅 fallbackPicker + 结果带 notice 才露出;其余导入器不传即不渲染)
+  it('fallbackPicker:结果带 notice 才显示补录条,改账期即用新值重解析', async () => {
+    const parseWorkbook = vi.fn((_s: unknown, fb?: { ym: string }) =>
+      ({ records: [{ a: 1, __preview: ['x'] }] as ImportRec[], notice: `按 ${fb?.ym} 导入` }))
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], parseWorkbook,
+      fallbackPicker: { ym: '2099-07', zone: 'p1', kind: 'elec', zones: [{ value: 'p1', label: '一期' }], kinds: [{ value: 'elec', label: '电表' }] } } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A	1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(parseWorkbook.mock.calls[0][1]).toEqual({ ym: '2099-07', zone: 'p1', kind: 'elec' })
+    expect(w.find('.fpimp-fb').text()).toContain('按 2099-07 导入')
+    await w.find('.fpimp-fb input').setValue('2099-08')
+    expect(parseWorkbook.mock.calls[1][1]).toMatchObject({ ym: '2099-08' })
+    expect(w.find('.fpimp-fb').text()).toContain('按 2099-08 导入')
+  })
+
+  it('无 notice(标题齐全)不渲染补录条', async () => {
+    const parseWorkbook = vi.fn(() => ({ records: [{ a: 1, __preview: ['x'] }] as ImportRec[] }))
+    const w = mount(FpImportModal, { props: { title: '导入', templateCols: ['A'], parseWorkbook,
+      fallbackPicker: { ym: '2099-07', zone: 'p1', kind: 'elec', zones: [], kinds: [] } } })
+    await w.find('.fpimp-tab:nth-child(2)').trigger('click')
+    await w.find('textarea').setValue('A	1')
+    await w.find('.fpimp-ta + div button').trigger('click')
+    expect(w.find('.fpimp-fb').exists()).toBe(false)
   })
 })

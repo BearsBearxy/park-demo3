@@ -1,0 +1,63 @@
+-- meter-owner-fix-20260730.sql — 三块表归属/挂栋修正(损耗组结构)。2026-07-30。
+-- 备份:backend/scripts/fixes/backup-before-meter-owner-fix-20260730.sql(meter 表全量,UTF-8 已核中文)。
+-- 幂等:全部按 id 精确 UPDATE 定值,不做名字扫描,可重复执行。
+--
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 来龙去脉(⚠ 与任务书假设不同,以下为实证结论,勿再按「备份还原回滚」排查)
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 任务书假设:V66 §4 被「从备份还原」回滚,依据是 meter.updated_at(21:44:53)早于
+--   flyway_schema_history 里 V66 的 installed_on(22:07:25)。该假设不成立,证据三条:
+--
+-- ① V66 §4 当时确实生效过。历史备份逐份回看 id=223/224:
+--      backup-before-p1-shared-meter-fix-20260728.sql  (07-28 02:58) bld=NULL own=infra  ← V66 前
+--      backup-before-meter-retire-park-20260729.sql    (07-29 04:30) bld=13   own=share  ← V66 §4 已生效
+--      backup-before-meter-import-fix-20260729.sql     (07-29 20:28) bld=13   own=share  ← 仍生效
+--      现状(本脚本执行前)                                            bld=41   own=infra  ← 被打回
+--    07-27 21:44:53~58 这 6 秒内被改的 23 块表,恰好= V66 §4(223/224)+ §5(21 块)的目标集合,
+--    与 V66 的 SQL 一一对应 ⇒ V66 在 21:44 就跑过了(22:07:25 是同一批迁移二次运行/补记的时间戳)。
+--
+-- ② updated_at 不能当证据用。entity/Meter.java 的 updatedAt 是
+--      @TableField(fill = FieldFill.INSERT_UPDATE)
+--    配 MyBatisPlusConfig 的 strictUpdateFill —— strict* 只在字段为 null 时填充。
+--    凡「先 selectById 载入实体、改字段、再 updateById」的写法,updatedAt 已带库里旧值(非 null),
+--    strictUpdateFill 不覆盖,于是 SET 子句显式写回旧值,MySQL 的
+--    `ON UPDATE CURRENT_TIMESTAMP` 被显式值压掉 → updated_at 冻结在原值。
+--    所以 223/224 从 share/13 变成 infra/41 而 updated_at 仍是 21:44:53,并不代表「没被改过」。
+--    (这是全库通病,不止 meter 表;是否修属另一刀,见报告。)
+--
+-- ③ 真正的改动者 = 2026-07-29 22:41 的园区抄表导入(import_log id=76,「(粘贴)」84 行 80 ok 4 warn;
+--    同一批新建了 id=1422/1423/1424,这三行是 INSERT 故 updated_at=22:41:32 未被冻结)。
+--    导入把归属/挂栋按前端解析器重新推导后覆盖回库(MeterService.applyDesc:非空即覆盖):
+--      · frontend/src/utils/meterSplit.ts  classifyOwnership():表类含「总」→ 'infra'
+--        → 表类=总电表 的 223/224 被打回 infra(V65 种子与 V66 §4 都要求 share)。
+--      · 同文件 buildingIdFor() 的 AREA_BUILDING 规则 { re: /招商中心/, name: '一期 招商中心' }
+--        (注释自述 2026-07-28 新增,为解决 13 块表未挂栋)→ 223/224 被重挂到 building 41,
+--        与 V66 §4「必须挂 A座」正面冲突。
+--    ⚠ 因此本脚本修完,下次再导入一期抄表册会再被打回。根因在解析器,需另行拍板(见报告)。
+--
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 修正内容与依据
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 【1】223/224 招商中心电1/2 → building='一期 A座' + ownership='share'
+--   依据:一期册 S92 = SUM(S7:S91) − S51 − S52 − S60 − S77 − S49 − S50 + X50,
+--         其中 X50 = S49 + S50 − SUM(S44:S48),净效果 = 招商中心电1/2(1142.40 度)计入 A座分表Σ,
+--         招商中心其余表(S44:S48)净出。这也是 V65 种子(声明 share)与 V66 §4 的原意。
+--   后果(修前):building 41 挂着 2 块 infra 头表 → 自成损耗组「一期 招商中心」
+--         C=1142.40 / D=320.34 / 损耗率 72%(荒谬);同时 A座 D 少 1142.40、p1 供电侧 C 虚增 1142.40。
+--
+-- 【2】181 三车间工地 → ownership='park' + meter_type=NULL
+--   依据:Excel r7 的「表类」列为空(现状 meter_type='总电表' 是 2026-07-29 导入误填),
+--         且该表在 S92(A座分表Σ)范围内。三期项目工地借一期电 = 园区自建工程,
+--         归 V68 新增的 ownership='park'(园区自担:不向租户收、不进公摊分摊,但仍入楼栋分表Σ)。
+--   后果(修前):A座配了 loss_c_meter=179(组C只取 A座总电),其余 infra 表既不进 C 也不进 D
+--         → 181 以 infra 身份被两头落空,A座 D 少 324.80。
+--
+-- 缺口核对:324.80 + 1142.40 = 1467.20 = 34876.50 − 33409.30,一分不差。
+
+-- ── 1) 招商中心电1/2 归 A座公摊 ──
+UPDATE meter SET building_id = (SELECT id FROM building WHERE name = '一期 A座'), ownership = 'share'
+WHERE id IN (223, 224);
+
+-- ── 2) 三车间工地 归园区自担;表类回空(源册该格为空) ──
+UPDATE meter SET ownership = 'park', meter_type = NULL
+WHERE id = 181;

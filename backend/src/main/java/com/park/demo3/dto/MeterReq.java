@@ -9,7 +9,9 @@ public record MeterReq(
     @NotBlank String name,
     String area, String spot, String tenantName,
     Integer tenantId, Integer buildingId,
-    @Pattern(regexp = "tenant|share|ops|infra") String ownership,   // 空=share(§6.1)
+    @Pattern(regexp = "tenant|share|ops|infra|park") String ownership,   // 空=share(§6.1;park=园区自担 V68)
     String meterType,
-    String subName, String code, BigDecimal factor
+    @Pattern(regexp = "single|three|multi|demand|bidir") String deviceType,   // 表类型(S2);contractId 不走档案 PUT,走 /bind
+    String subName, String code, BigDecimal factor,
+    @Pattern(regexp = "|\\d{4}-\\d{2}") String retiredYm   // V68 停用账期;空串/null=在用(撤销停用)
 ) {}

@@ -2,7 +2,7 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ImportError;
-import com.park.demo3.dto.ImportResultDTO;
+import com.park.demo3.dto.MeterImportResultDTO;
 import com.park.demo3.dto.MeterDTO;
 import com.park.demo3.dto.MeterImportRequest;
 import com.park.demo3.dto.MeterReadingDTO;
@@ -19,7 +19,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -41,7 +40,13 @@ public class MeterService {
     private static boolean validKind(String s) { return "elec".equals(s) || "water".equals(s); }
     private static boolean validZone(String s) { return "p1".equals(s) || "p2".equals(s) || "dorm".equals(s); }
     private static boolean validOwnership(String s) {
-        return "tenant".equals(s) || "share".equals(s) || "ops".equals(s) || "infra".equals(s);
+        return "tenant".equals(s) || "share".equals(s) || "ops".equals(s) || "infra".equals(s)
+            || "park".equals(s);   // V68 园区自担
+    }
+    // 停用判定(V68,账期口径而非布尔):自 retired_ym 起(含当月)不计;NULL=在用。
+    // public:MeterBindingService/AllocService 复用同一判定,唯一定义点。
+    public static boolean retired(Meter m, String ym) {
+        return m != null && m.getRetiredYm() != null && ym != null && ym.compareTo(m.getRetiredYm()) >= 0;
     }
     // 用量派生:缺任一读数=null(漏抄不硬算)。public:AllocService(P-B)复用同一公式(PB-ALLOCATION-SPEC §5)
     public static BigDecimal usage(BigDecimal prev, BigDecimal curr, BigDecimal factor) {
@@ -136,20 +141,23 @@ public class MeterService {
         readings.deleteById(id);
     }
 
-    // ── 导入:表按 (kind,zone,name) 建档或刷新描述字段,读数按 (表,ym) 先删后插覆盖(同批重复行=后行覆盖)。
-    //   factor_snap = 行倍率(空则表档案倍率)。非法 kind/zone/ym、空 name=行级错误跳过,不整批拦。 ──
+    // ── 导入(METER-IMPORT-SPEC §3):表身份走分层匹配管道 编码 → 位置 → 标识 → 新建,
+    //   命中唯一才算命中,多候选=歧义不落库;读数按 (表,ym) 先删后插覆盖(同批重复行=后行覆盖)。
+    //   factor_snap = 行倍率(空则表档案倍率)。非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。 ──
     @Transactional
-    public ImportResultDTO importRows(MeterImportRequest req) {
-        // 档案键 → 实体缓存:同批多月同表只建一次档
-        Map<String, Meter> byKey = meters.selectList(null).stream()
-            .collect(Collectors.toMap(MeterService::key, Function.identity()));
+    public MeterImportResultDTO importRows(MeterImportRequest req) {
+        Index idx = new Index(meters.selectList(null));
         List<ImportError> errors = new ArrayList<>();
+        List<MeterImportResultDTO.Match> matches = new ArrayList<>();
         int imported = 0, sortNo = meters.maxSortNo();
         List<MeterImportRequest.Row> rows = req.rows();
         for (int i = 0; i < rows.size(); i++) {
             MeterImportRequest.Row row = rows.get(i);
-            String name = row.name() == null ? "" : row.name().trim();
-            if (name.isEmpty()) { errors.add(new ImportError(i, "", "表标识为空")); continue; }
+            // 标识列可缺(用户新模板没有):合成 区域-位置-表名 → 编码 作标签(§3.1)
+            String name = blankToNull(row.name()) != null ? row.name().trim() : fallbackName(row);
+            if (name.isEmpty()) {
+                errors.add(new ImportError(i, "", "无法识别表标识(标识/区域/位置/表名/编码全空)")); continue;
+            }
             if (!validKind(row.kind()) || !validZone(row.zone())) {
                 errors.add(new ImportError(i, name, "分区/类别非法(kind=elec|water,zone=p1|p2|dorm)")); continue;
             }
@@ -159,18 +167,25 @@ public class MeterService {
             if (blankToNull(row.ownership()) != null && !validOwnership(row.ownership().trim())) {
                 errors.add(new ImportError(i, name, "归属非法(tenant|share|ops|infra)")); continue;
             }
-            Meter m = byKey.get(row.kind() + "|" + row.zone() + "|" + name);
+            Match hit = idx.resolve(row, name);
+            if (hit.ambiguous != null) {   // 歧义不猜:猜错=把 A 表读数写进 B 表,不可逆无痕(§3.4)
+                errors.add(new ImportError(i, name, hit.ambiguous)); continue;
+            }
+            Meter m = hit.meter;
             if (m == null) {   // 自动建档
                 m = new Meter();
-                m.setKind(row.kind()); m.setZone(row.zone()); m.setName(name);
+                m.setKind(row.kind()); m.setZone(row.zone()); m.setName(idx.freeName(row.kind(), row.zone(), name));
                 m.setSortNo(++sortNo);
                 applyDesc(m, row);
                 meters.insert(m);
-                byKey.put(key(m), m);
-            } else {           // 刷新描述字段(导入是档案的事实源)
+                idx.add(m);
+            } else {           // 刷新描述字段(导入是档案的事实源;身份/人工资产字段不动,§3.2)
+                idx.remove(m);
                 applyDesc(m, row);
                 meters.updateById(m);
+                idx.add(m);
             }
+            matches.add(new MeterImportResultDTO.Match(i, name, hit.by, m.getId()));
             readings.delete(new QueryWrapper<MeterReading>().eq("meter_id", m.getId()).eq("ym", row.ym()));
             MeterReading r = new MeterReading();
             r.setMeterId(m.getId());
@@ -186,11 +201,98 @@ public class MeterService {
             readings.insert(r);
             imported++;
         }
-        return new ImportResultDTO(imported, errors.size(), errors);
+        return new MeterImportResultDTO(imported, errors.size(), errors, matches);
     }
 
-    // ── helpers ──
-    private static String key(Meter m) { return m.getKind() + "|" + m.getZone() + "|" + m.getName(); }
+    // ── 身份匹配管道(METER-IMPORT-SPEC §3) ──
+    // 逐层下探(不是短路):某层 0 候选就进下一层——现存 912 块无码表在新模板里第一次拿到编码,
+    // 若 L1 落空即新建,这 912 块会全部重复建档。命中后编码写回档案 → 库逐月自愈向 L1 收敛。
+    private record Match(Meter meter, String by, String ambiguous) {}
+
+    private static final class Index {
+        final Map<String, List<Meter>> byCode = new java.util.HashMap<>();
+        final Map<String, List<Meter>> byAddr = new java.util.HashMap<>();
+        final Map<String, Meter> byName = new java.util.HashMap<>();
+
+        Index(List<Meter> all) { all.forEach(this::add); }
+
+        static String codeKey(String kind, String code) { return kind + "|" + code; }
+        static String addrKey(String kind, String zone, String area, String spot, String sub) {
+            return kind + "|" + zone + "|" + area + "|" + n(spot) + "|" + n(sub);
+        }
+        static String n(String s) { return s == null ? "" : s.trim(); }
+
+        void add(Meter m) {
+            byName.put(m.getKind() + "|" + m.getZone() + "|" + m.getName(), m);
+            if (blankToNull(m.getCode()) != null)
+                byCode.computeIfAbsent(codeKey(m.getKind(), m.getCode().trim()), k -> new ArrayList<>()).add(m);
+            if (blankToNull(m.getArea()) != null)
+                byAddr.computeIfAbsent(addrKey(m.getKind(), m.getZone(), m.getArea().trim(), m.getSpot(), m.getSubName()),
+                    k -> new ArrayList<>()).add(m);
+        }
+
+        // applyDesc 会改 code/area/spot/sub_name → 改前先摘出索引,改后再 add(否则索引指向陈旧键)
+        void remove(Meter m) {
+            byName.values().remove(m);
+            byCode.values().forEach(l -> l.remove(m));
+            byAddr.values().forEach(l -> l.remove(m));
+        }
+
+        // 合成名撞了 uk_meter(kind,zone,name) 且不是同一块表 → 追加 #2/#3(§3.1)
+        String freeName(String kind, String zone, String base) {
+            String s = base.length() > 64 ? base.substring(0, 64) : base;
+            for (int i = 2; byName.containsKey(kind + "|" + zone + "|" + s); i++)
+                s = (base.length() > 60 ? base.substring(0, 60) : base) + "#" + i;
+            return s;
+        }
+
+        Match resolve(MeterImportRequest.Row row, String name) {
+            String code = blankToNull(row.code());
+            String area = blankToNull(row.area());
+            if (code != null) {
+                Match m = pick(byCode.get(codeKey(row.kind(), code)), code, "code", null);
+                if (m != null) return m;
+            }
+            if (area != null) {
+                List<Meter> cands = byAddr.get(addrKey(row.kind(), row.zone(), area, row.spot(), row.subName()));
+                Match m = pick(cands, code, "addr", name);
+                if (m != null) return m;
+            }
+            Meter byN = byName.get(row.kind() + "|" + row.zone() + "|" + name);
+            if (byN != null && !codeConflict(byN, code)) return new Match(byN, "name", null);
+            return new Match(null, "new", null);
+        }
+
+        // 唯一命中→匹配;多候选→(可用 name 再筛一次)仍多则歧义;0 候选→null 交给下一层
+        private Match pick(List<Meter> cands, String code, String by, String name) {
+            if (cands == null || cands.isEmpty()) return null;
+            List<Meter> ok = cands.stream().filter(m -> !codeConflict(m, code)).toList();
+            if (ok.isEmpty()) return null;
+            if (ok.size() == 1) return new Match(ok.get(0), by, null);
+            if (name != null) {
+                List<Meter> narrowed = ok.stream().filter(m -> name.equals(m.getName())).toList();
+                if (narrowed.size() == 1) return new Match(narrowed.get(0), by, null);
+            }
+            // 报出层级:编码歧义要去重编码,位置歧义要细化「位置」列(实测两类都真实存在)
+            return new Match(null, by, ("code".equals(by) ? "按编码" : "按位置") + "匹配到多块表(id "
+                + ok.stream().map(m -> String.valueOf(m.getId())).collect(Collectors.joining("、")) + "),"
+                + ("code".equals(by) ? "该编码在档案里重复,请先去重" : "请补表编码或细化位置后重导"));
+        }
+
+        // 换表护栏:导入行有编码、候选也有编码且不同 → 是另一块物理表,不继承历史
+        private static boolean codeConflict(Meter m, String code) {
+            return code != null && blankToNull(m.getCode()) != null && !code.trim().equals(m.getCode().trim());
+        }
+    }
+
+    // 无标识列时的标签(§3.1):区域-位置-表名 → 编码
+    private static String fallbackName(MeterImportRequest.Row row) {
+        String s = java.util.stream.Stream.of(row.area(), row.spot(), row.subName())
+            .map(MeterService::blankToNull).filter(java.util.Objects::nonNull)
+            .collect(Collectors.joining("-"));
+        if (s.isEmpty()) s = blankToNull(row.code()) == null ? "" : row.code().trim();
+        return s.length() > 64 ? s.substring(0, 64) : s;
+    }
 
     private static void requireYm(String ym) {
         if (ym == null || !YM.matcher(ym).matches())
@@ -201,10 +303,12 @@ public class MeterService {
         m.setKind(req.kind()); m.setZone(req.zone()); m.setName(name);
         m.setArea(blankToNull(req.area())); m.setSpot(blankToNull(req.spot()));
         m.setTenantName(blankToNull(req.tenantName())); m.setMeterType(blankToNull(req.meterType()));
+        m.setDeviceType(req.deviceType());   // 已 @Pattern 白名单;contract_id 不在 apply 内(专用 /bind 写)
         m.setTenantId(req.tenantId()); m.setBuildingId(req.buildingId());
         m.setOwnership(req.ownership() == null ? "share" : req.ownership());
         m.setSubName(blankToNull(req.subName())); m.setCode(blankToNull(req.code()));
         m.setFactor(one(req.factor()));
+        m.setRetiredYm(blankToNull(req.retiredYm()));   // 空=撤销停用(FieldStrategy.ALWAYS 落库)
     }
 
     // 导入行描述字段 → 档案(空值不清既有:真实文件同表在不同 sheet 详略不一)
@@ -235,7 +339,8 @@ public class MeterService {
         return new MeterDTO(m.getId(), m.getKind(), m.getZone(), m.getName(),
             m.getArea(), m.getSpot(), m.getTenantName(),
             m.getTenantId(), m.getBuildingId(), m.getOwnership(), m.getMeterType(),
-            m.getSubName(), m.getCode(), m.getFactor(), m.getSortNo(), readingCount);
+            m.getDeviceType(), m.getContractId(),
+            m.getSubName(), m.getCode(), m.getFactor(), m.getRetiredYm(), m.getSortNo(), readingCount);
     }
 
     private static MeterReadingDTO toReadingDTO(MeterReading r) {

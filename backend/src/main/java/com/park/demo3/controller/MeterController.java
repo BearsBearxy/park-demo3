@@ -60,5 +60,5 @@ public class MeterController {
 
     @Operation(summary = "批量导入(表按 kind+zone+name 建档/刷新,读数按 表+ym 幂等覆盖;行级错误跳过不整批拦)")
     @PostMapping("/import")
-    public ImportResultDTO importRows(@Valid @RequestBody MeterImportRequest req) { return svc.importRows(req); }
+    public MeterImportResultDTO importRows(@Valid @RequestBody MeterImportRequest req) { return svc.importRows(req); }
 }

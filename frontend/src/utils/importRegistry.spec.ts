@@ -422,7 +422,21 @@ describe('meter v2 主数据接线', () => {
     await new Promise(r => setTimeout(r, 0))
     const res = parseWB(props)([sheet])
     expect(res.records![0]).toMatchObject({ tenantId: null, buildingId: 2, ownership: 'tenant', spot: '1-3楼' })
-    expect(res.records![0].__preview).toEqual(['一期', '一期 B座', '1-3楼', '力灏', '租户', 1, 10, 20])
+    expect(res.records![0].__preview).toEqual(['一期', '一期 B座', '1-3楼', '力灏', '租户', 1, 10, 20, ''])
+  })
+
+  // 账期降级接线(用户 2026-07-29 报障):补录条默认账期 = 屏上下文年月;裸数据块按补录值落库
+  it('fallbackPicker 默认账期取 ctx.year/month;裸数据块按补录值解析', () => {
+    const props = parserProps('meter', { year: 2099, month: 7 })
+    expect(props.fallbackPicker).toMatchObject({ ym: '2099-07', zone: 'p1', kind: 'elec' })
+    const bare = [
+      ['区域', '', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '本月行至', '备注'],
+      ['一车间', '101室', '力灏', '户内用电', '电表①', '230220001238', '1', '100', '160', ''],
+    ]
+    const wb = props.parseWorkbook as (s: { name: string; matrix: string[][] }[], fb?: { ym: string; zone: string; kind: string }) => ParseOut
+    const res = wb([{ name: '', matrix: bare }], { ym: '2099-07', zone: 'p2', kind: 'elec' })
+    expect(res.records![0]).toMatchObject({ ym: '2099-07', zone: 'p2', kind: 'elec' })
+    expect(wb([{ name: '', matrix: bare }]).error).toContain('请在上方选择账期')
   })
 
   it('预取成功 → 模块缓存(带 id)优先,拆分挂 tenantId/buildingId', async () => {

@@ -49,7 +49,28 @@ describe('classifyOwnership — §6.3 关键词', () => {
   })
   it('表类含 户内 或租户匹配成功 → tenant', () => {
     expect(classifyOwnership('户内用电', '力灏电', false)).toBe('tenant')
-    expect(classifyOwnership('公共用电/已分摊', '某表', true)).toBe('tenant')
+    expect(classifyOwnership(undefined, '某表', true)).toBe('tenant')
+  })
+  it('公摊显式标记先于租户命中(2026-07-28 修):一期「公共用电/租户名」跟户公摊表不得挂租户', () => {
+    expect(classifyOwnership('公共用电/已分摊', '可莱恩B201东侧公共电 公共用电/可莱恩', true)).toBe('share')
+    expect(classifyOwnership(undefined, '欧培仪东侧公共电 公共用电/雷莱', true)).toBe('share')
+  })
+  // V68 园区自担(依据一期册专表「创显承担电费」):园区自己吃,不收租户也不进公摊池
+  it('创显/物业部办公室/门岗/监控室/人才港/消防中控室 → park,先于 share 与 tenant 判定', () => {
+    expect(classifyOwnership('户内用电', '创显办公室 创显办公室', false)).toBe('park')
+    expect(classifyOwnership('公共用电/未分摊', '门岗 2号门岗', false)).toBe('park')
+    expect(classifyOwnership('公共用电/未分摊', '消防中控室 消防中控室', false)).toBe('park')
+    expect(classifyOwnership('公共用电/未分摊', '监控室 监控室', false)).toBe('park')
+    expect(classifyOwnership('户内用电', '人才港电 人才港', true)).toBe('park')
+    expect(classifyOwnership('户内用电', '231 创显公司', true)).toBe('park')
+  })
+  it('同专表标注「已分摊」的表是真公摊,park 让位 share(车库照明/生活加压泵/大堂/招商中心电2)', () => {
+    expect(classifyOwnership('公共用电/已分摊', '车库照明', false)).toBe('share')
+    expect(classifyOwnership('公共用电/已分摊', '生活加压泵', false)).toBe('share')
+    expect(classifyOwnership('公共用电/已分摊', 'A座一楼大堂', false)).toBe('share')
+    expect(classifyOwnership('公共用电/已分摊', '招商中心电2', false)).toBe('share')
+    // 普通消防表不受 park 规则波及(只吃「消防中控室」全词)
+    expect(classifyOwnership('公共用电/未分摊', '一车间消防', false)).toBe('share')
   })
   it('公共关键词:消防→share,水泵→ops;其余公共默认 share', () => {
     expect(classifyOwnership('公共用电/已分摊', '一车间消防', false)).toBe('share')

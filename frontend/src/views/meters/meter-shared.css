@@ -1,0 +1,29 @@
+/* 园区抄表共用样式(METER-V5-SPEC):壳层 MeterView 引入一次,MeterLedgerGrid/详情抽屉直接用。
+   mt- 前缀全站唯一(仅抄表页家族使用)。v5.1:.mt-table 平表家族随 MeterGrid 退役删除,
+   电子表格样式在 MeterLedgerGrid.vue scoped(mlg- 前缀);此处仅留抽屉/徽标共用件。 */
+
+/* 归属徽标:租户蓝/公摊灰/经营绿/配电橙 */
+.mt-own { display: inline-block; font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 1px 8px; }
+.mt-own.own-tenant { color: var(--hue-blue); background: rgb(232, 240, 254); }
+.mt-own.own-share { color: var(--text-secondary); background: var(--bg-sunken); }
+.mt-own.own-ops { color: rgb(21, 128, 61); background: rgb(222, 244, 229); }
+.mt-own.own-infra { color: rgb(154, 88, 10); background: rgb(252, 243, 232); }
+
+/* 状态徽标:漏抄黄 / 倒走·时段不符红(只标不拦) */
+.mt-flag { display: inline-block; margin-right: 4px; font-family: var(--font-sans); font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 1px 8px; cursor: help; }
+.mt-flag.warn { color: rgb(138, 97, 0); background: rgb(255, 244, 214); }
+.mt-flag.bad { color: var(--hue-red); background: rgb(255, 238, 237); }
+
+/* 行内编辑输入:静默融入单元格,hover/聚焦显边框 */
+.mt-edit { width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
+.mt-edit::-webkit-outer-spin-button, .mt-edit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mt-edit:hover { border-color: var(--border-subtle); background: var(--surface-white); }
+.mt-edit:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
+.mt-edit.l { text-align: left; font-family: var(--font-sans); }
+.mt-edit.sel { appearance: auto; -moz-appearance: auto; cursor: pointer; }
+
+/* 行内小操作按钮(删除/保存/取消) */
+.mt-iop { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+.mt-iop:hover { background: var(--bg-hover); color: var(--text-primary); }
+.mt-iop.ok:hover { color: var(--hue-blue); }
+.mt-iop.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }

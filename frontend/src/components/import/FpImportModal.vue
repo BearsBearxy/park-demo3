@@ -10,7 +10,7 @@ export function pickSheet(names: string[], re?: RegExp): string {
 // 两入口:① 上传 .xlsx/.xls/.csv(csv 用 FileReader+内置解析;xlsx 懒加载 SheetJS)
 //        ② 从 Excel 粘贴(textarea,TSV/CSV)。两者都先解析成二维数组,再交各屏 parseRow 映射。
 // 解析结果进预览表(前 6 行)+ 条数 + 错误/成功提示,确认后 onImport(剥 __preview)。
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { cell, parsePaste, parseCSV } from '@/utils/importParse'
@@ -43,7 +43,11 @@ const props = withDefaults(defineProps<{
   sheetMatch?: RegExp
   // 给了 parseWorkbook 即走多 sheet 解析(优先级最高,先于 customParse):
   //   文件路径解析全部 sheet 传入;粘贴路径包装 [{name:'', matrix}]。返回值语义同 customParse。
-  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }
+  //   第二实参 = 下方补录条的当前值(仅 fallbackPicker 存在时有意义,其余导入器的解析器少收一个参数即可)
+  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[], fallback?: { ym: string; zone: string; kind: string }) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string; notice?: string }
+  // 给了 fallbackPicker 才渲染「补录条」(账期/分区/类别),且只在解析结果带 notice(= 真用上了补录值)时露出;
+  // 不传 = 一行 UI 都不多,其余 20 个导入器零影响。目前仅园区抄表用(账期无法从数据推断,只能问人)。
+  fallbackPicker?: { ym: string; zone: string; kind: string; zones: { value: string; label: string }[]; kinds: { value: string; label: string }[] }
   defaultYear?: number
   defaultMonth?: number
   defaultPhase?: number
@@ -75,14 +79,25 @@ const over = ref(false)
 const records = ref<ImportRec[] | null>(null)
 const err = ref('')
 const warn = ref('')   // 非阻断提示(customParse/parseWorkbook 的 warning)
+const notice = ref('')   // 补录条提示(parseWorkbook 的 notice:本次用上了下方选的账期)
 const fileName = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
+// 补录条状态 + 已解析的 sheets(改选项即用新值重解析,不用重新选文件)
+const fb = ref({ ym: props.fallbackPicker?.ym ?? '', zone: props.fallbackPicker?.zone ?? '', kind: props.fallbackPicker?.kind ?? '' })
+const lastSheets = ref<{ name: string; matrix: string[][] }[] | null>(null)
+function runWorkbook(sheets: { name: string; matrix: string[][] }[]) {
+  lastSheets.value = sheets
+  applyResult(props.parseWorkbook!(sheets, fb.value))
+}
+watch(fb, () => { if (lastSheets.value) runWorkbook(lastSheets.value) }, { deep: true })
+
 // customParse / parseWorkbook 共用的结果落地:records → 既有预览;sections → labelMode 汇总屏
-function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }) {
+function applyResult(res: { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string; notice?: string }) {
   const { records: recs, sections: secs, error } = res
   records.value = null; sections.value = null; labelSections.value = null
   warn.value = res.warning ?? ''
+  notice.value = res.notice ?? ''
   if (error) { err.value = error; return }
   if (secs) {
     if (!secs.some(s => s.records.length > 0)) { err.value = '已读取数据,但没识别到任何有效记录。'; return }
@@ -99,7 +114,7 @@ function applyResult(res: { records?: ImportRec[]; sections?: { label: string; r
 function mapMatrix(matrix: string[][]) {
   if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; warn.value = ''; records.value = null; sections.value = null; labelSections.value = null; return }
   // 多 sheet 解析模式(优先级最高):粘贴路径包装为单 sheet;文件路径在 handleFile 已直走 parseWorkbook
-  if (props.parseWorkbook) { applyResult(props.parseWorkbook([{ name: '', matrix }])); return }
+  if (props.parseWorkbook) { runWorkbook([{ name: '', matrix }]); return }
   // 自定义解析模式:各屏自带解析器
   if (props.customParse) { applyResult(props.customParse(matrix)); return }
   // 智能整表模式:拆段 + 识别年月期 + 版面 → 汇总确认屏
@@ -153,7 +168,7 @@ function handleFile(file: File | undefined) {
         const wb = XLSX.read(new Uint8Array(fr.result as ArrayBuffer), { type: 'array', cellDates: true })
         const toMatrix = (name: string) => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' }) as string[][]
         // parseWorkbook:全部 sheet 一并传入(多 sheet 分段);否则 sheetMatch 按名挑单表(未命中回退第一个)
-        if (props.parseWorkbook) { applyResult(props.parseWorkbook(wb.SheetNames.map(n => ({ name: n, matrix: toMatrix(n) })))); return }
+        if (props.parseWorkbook) { runWorkbook(wb.SheetNames.map(n => ({ name: n, matrix: toMatrix(n) }))); return }
         mapMatrix(toMatrix(pickSheet(wb.SheetNames, props.sheetMatch)))
       } catch (e) { err.value = '文件解析失败:' + (e as Error).message }
     }
@@ -243,6 +258,16 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
           <div class="fpimp-tpl-t"><component :is="iconFor('table-2')" :size="14" />模板列顺序（共 {{ templateCols.length }} 列）</div>
           <div class="fpimp-cols">
             <span v-for="(c, i) in templateCols" :key="i" class="fpimp-col"><b>{{ i + 1 }}</b>{{ c }}</span>
+          </div>
+        </div>
+
+        <!-- 补录条(仅 fallbackPicker 存在 且 本次解析真用上了补录值):改任一项即用新值重解析 -->
+        <div v-if="fallbackPicker && notice" class="fpimp-fb">
+          <div class="fpimp-fb-t"><component :is="iconFor('alert-triangle')" :size="15" />{{ notice }}</div>
+          <div class="fpimp-fb-r">
+            <label>账期<input type="month" v-model="fb.ym" /></label>
+            <label>分区<select v-model="fb.zone"><option v-for="o in fallbackPicker.zones" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
+            <label>类别<select v-model="fb.kind"><option v-for="o in fallbackPicker.kinds" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
           </div>
         </div>
 
@@ -342,6 +367,14 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-msg.ok b { margin:0 3px; font-family:var(--font-mono); }
 .fpimp-msg.err { background:rgb(252,235,233); color:var(--hue-red); }
 .fpimp-msg.warn { background:rgb(255,243,230); color:var(--hue-orange); }
+
+/* 补录条:醒目(橙)提示 + 账期/分区/类别选择器 */
+.fpimp-fb { border:1px solid var(--hue-orange); border-radius:8px; background:rgb(255,243,230); padding:10px 12px; display:flex; flex-direction:column; gap:9px; }
+.fpimp-fb-t { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--hue-orange); }
+.fpimp-fb-r { display:flex; gap:10px; }
+.fpimp-fb-r label { flex:1; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--text-secondary); }
+.fpimp-fb-r input, .fpimp-fb-r select { height:32px; border:1px solid var(--border-subtle); border-radius:7px; padding:0 8px; font-size:12.5px; font-family:var(--font-sans); color:var(--text-primary); background:var(--surface-white); outline:none; }
+.fpimp-fb-r input:focus, .fpimp-fb-r select:focus { border-color:var(--border-strong); }
 
 .fpimp-preview { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .fpimp-preview-h { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:12px; color:var(--text-muted); }

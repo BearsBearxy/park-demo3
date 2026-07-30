@@ -187,6 +187,71 @@ class MeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data[?(@.name=='ITv2公共水')].ownership").value("share"));
     }
 
+    // ── 身份分层匹配(METER-IMPORT-SPEC §3):无标识列建档 → 编码命中 → 位置命中(编码写回)→ 换表护栏 ──
+    @Test
+    void import_identityPipeline_codeThenAddr() throws Exception {
+        // ① 无标识列(name 空)但有区域/位置/表名 → 合成标签建档,matchBy=new
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"\",\"ym\":\"2099-08\","
+                        + "\"area\":\"ITA座\",\"spot\":\"负一层\",\"subName\":\"电表①\",\"code\":\"IT900001\","
+                        + "\"factor\":1,\"prevTotal\":686.24,\"currTotal\":715.75}]}"))
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.matches[0].matchBy").value("new"))
+                .andExpect(jsonPath("$.data.matches[0].label").value("ITA座-负一层-电表①"));
+        // ② 同一块表换了区域写法/换了租户 → 编码命中,不建新档
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"\",\"ym\":\"2099-09\","
+                        + "\"area\":\"ITA座\",\"spot\":\"地下一层车库\",\"subName\":\"电表①\",\"code\":\"IT900001\","
+                        + "\"prevTotal\":715.75,\"currTotal\":720}]}"))
+                .andExpect(jsonPath("$.data.matches[0].matchBy").value("code"));
+        mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p1").header("Authorization", auth()))
+                // value(单值) 在过滤结果 >1 条时会拿到数组而断言失败 → 同时证「只有一块表带这个编码」
+                .andExpect(jsonPath("$.data[?(@.code=='IT900001')].readingCount").value(2))
+                .andExpect(jsonPath("$.data[?(@.code=='IT900001')].spot").value("地下一层车库"));
+        // ③ 无码老档案在新模板里第一次拿到编码 → 位置命中(不是新建),编码写回档案
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT无码老表\",\"ym\":\"2099-08\","
+                        + "\"area\":\"ITB座\",\"spot\":\"二层\",\"subName\":\"电表②\",\"prevTotal\":1,\"currTotal\":2}]}"))
+                .andExpect(jsonPath("$.data.matches[0].matchBy").value("new"));
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"\",\"ym\":\"2099-09\","
+                        + "\"area\":\"ITB座\",\"spot\":\"二层\",\"subName\":\"电表②\",\"code\":\"IT900002\","
+                        + "\"prevTotal\":2,\"currTotal\":3}]}"))
+                .andExpect(jsonPath("$.data.matches[0].matchBy").value("addr"));
+        mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p1").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data[?(@.name=='IT无码老表')].code").value("IT900002"))
+                .andExpect(jsonPath("$.data[?(@.name=='IT无码老表')].readingCount").value(2));
+        // ④ 换表护栏:同位置但编码不同 = 另一块物理表,不继承历史
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT换新表\",\"ym\":\"2099-10\","
+                        + "\"area\":\"ITB座\",\"spot\":\"二层\",\"subName\":\"电表②\",\"code\":\"IT999999\","
+                        + "\"prevTotal\":0,\"currTotal\":9}]}"))
+                .andExpect(jsonPath("$.data.matches[0].matchBy").value("new"));
+        mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p1").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data[?(@.name=='IT无码老表')].code").value("IT900002"))
+                .andExpect(jsonPath("$.data[?(@.name=='IT换新表')].code").value("IT999999"));
+    }
+
+    // ── 歧义不猜:同址多块表且行无编码 → 该行不落库、不建档,错误清单列候选 id(§3.4) ──
+    @Test
+    void import_ambiguousAddr_notWritten() throws Exception {
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":["
+                        + "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT天面东\",\"ym\":\"2099-11\",\"area\":\"ITD座\",\"spot\":\"天面\",\"subName\":\"电表①\",\"code\":\"ITX1\",\"prevTotal\":1,\"currTotal\":2},"
+                        + "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT天面西\",\"ym\":\"2099-11\",\"area\":\"ITD座\",\"spot\":\"天面\",\"subName\":\"电表①\",\"code\":\"ITX2\",\"prevTotal\":1,\"currTotal\":3}]}"))
+                .andExpect(jsonPath("$.data.imported").value(2));
+        mvc.perform(post("/api/meters/import").header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT天面无码\",\"ym\":\"2099-12\","
+                        + "\"area\":\"ITD座\",\"spot\":\"天面\",\"subName\":\"电表①\",\"prevTotal\":5,\"currTotal\":6}]}"))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andExpect(jsonPath("$.data.skipped").value(1))
+                .andExpect(jsonPath("$.data.errors[0].reason").value(org.hamcrest.Matchers.containsString("匹配到多块表")));
+        mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p1").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data[?(@.name=='IT天面无码')]").doesNotExist());
+        mvc.perform(get("/api/meters/readings").param("ym", "2099-12").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
     // ── 鉴权门:无 token 401;viewer 读 200 写 403 ──
     @Test
     void auth_noToken401_viewerReadOnly() throws Exception {
