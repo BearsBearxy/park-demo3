@@ -16,7 +16,7 @@ import FPPager from '@/components/fp/FPPager.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import ContractDrawer from './ContractDrawer.vue'
 import ContractNewDialog from './ContractNewDialog.vue'
-import { leafIds, chainOf } from './chain'
+import { displayIds, chainOf } from './chain'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
@@ -32,7 +32,7 @@ const statusFilter = ref('all')
 const phase = ref('全部期数')
 const q = ref('')
 const activeOn = ref('')       // 某日在租筛选(§5.2):非空→后端 asOfDate 过滤
-const showHistory = ref(false) // 含历史续签(§5.3):默认只显每链最新期(叶子)
+const showHistory = ref(false) // 含历史续签(§5.3):默认只显每链当前生效段(无则退回最新期)
 const sort = ref<SortState | null>({ key: 'daysToEnd', dir: 'asc' })
 const page = ref(1)
 const tableWrapEl = ref<HTMLElement | null>(null)
@@ -97,12 +97,12 @@ const LIFECYCLE = [
   { k: 'renewed',    label: '已续签' },   // 被新一期取代的旧期:非叶子,勾选"含历史续签"后才有行
 ]
 
-// ─── 续签链聚合(§5.3):默认每链只显叶子(最新一期);含历史/某日在租时显全量 ──────
-const leaves = computed(() => leafIds(contracts.value))
+// ─── 续签链聚合(§5.3):默认每链只显当前生效段(无则退回叶子,2026-07-28);含历史/某日在租时显全量 ──────
+const leaves = computed(() => displayIds(contracts.value))
 // 有上一期(parentContractId 非空)的合同 id → 列表内标"续"徽标,点开抽屉看历史
 const hasHistoryIds = computed(() =>
   new Set(contracts.value.filter(c => c.parentContractId != null).map(c => c.id)))
-// 某日在租=后端已过滤该日在执行的历史/当前期,不折叠;否则默认折叠到叶子,勾选含历史显全量
+// 某日在租=后端已过滤该日在执行的历史/当前期,不折叠;否则默认折叠到生效段,勾选含历史显全量
 const displayBase = computed(() =>
   activeOn.value || showHistory.value ? contracts.value : contracts.value.filter(c => leaves.value.has(c.id)))
 

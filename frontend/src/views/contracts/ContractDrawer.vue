@@ -73,9 +73,10 @@ watch(() => props.contract, async (c) => {
 // ─── 标的段(§6.1):按 propertyType+location 分组;段头=类型徽标+位置+段面积;
 //     段体=该类型钉死费用行(费项名+面积+单价+系数+间数+月单价只读),条件项(电梯/变压器)有才显。──
 const segGroups = computed(() => {
-  const groups: { propertyType: PropertyType; location: string; lines: BillingLineDTO[] }[] = []
+  const groups: { propertyType: PropertyType | null; location: string; lines: BillingLineDTO[] }[] = []
   for (const l of detail.value?.billingLines ?? []) {
-    const pt = (l.propertyType ?? inferPropertyType(l.feeKey)) as PropertyType
+    // 租金行可按 fee_key 反推;杂费行(other)不属任何标的性质,留 null 不兜底成「厂房」
+    const pt = l.propertyType ?? (l.feeKey.startsWith('rent_') ? inferPropertyType(l.feeKey) : null)
     let g = groups.find(x => x.propertyType === pt && x.location === l.location)
     if (!g) { g = { propertyType: pt, location: l.location, lines: [] }; groups.push(g) }
     g.lines.push(l)
@@ -280,7 +281,7 @@ const contactLine = computed(() =>
           <template v-for="(g, gi) in segGroups" :key="gi">
             <div class="cd-ch-band">
               <span class="cd-ch-dot" />
-              <span class="cd-ch-type">{{ PROPERTY_TYPE_LABEL[g.propertyType] }}</span>
+              <span v-if="g.propertyType" class="cd-ch-type">{{ PROPERTY_TYPE_LABEL[g.propertyType] }}</span>
               <span class="cd-ch-loc">{{ g.location }}</span>
               <span v-if="segArea(g.lines) != null" class="cd-ch-area">{{ segArea(g.lines)!.toLocaleString('en-US') }} ㎡</span>
             </div>

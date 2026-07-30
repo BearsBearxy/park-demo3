@@ -4,7 +4,7 @@ import {
   feeLabel, inferPropertyType, pinnedDefaultUnitPrice,
 } from '@/types/contract'
 import type { FeeKey, PropertyType, ContractDTO } from '@/types/contract'
-import { leafIds, ancestorsOf, descendantsOf, chainOf } from './chain'
+import { leafIds, ancestorsOf, descendantsOf, chainOf, displayIds } from './chain'
 
 // CONTRACT-CARD-SPEC §1/§7.1:类型钉死费用组 + §5.3 续签链聚合。
 // 锚点=后端 ALLOWED_FEES(= PINNED ∪ COND ∪ OPTIONAL[land_tax]),前后端必须逐格一致。
@@ -113,5 +113,43 @@ describe('续签链聚合(§5.3)', () => {
     const forked = [c(1, null), c(2, 1), c(3, 1)]   // 1 被续签两次
     const ids = chainOf(forked, 1).map(x => x.c.id)
     expect(ids).toEqual([1, 3])
+  })
+})
+
+// 默认视图取「当前生效段」而非无条件取链尾(2026-07-28 拍板:旭化成 382 在租 / 383 未起租)
+describe('默认显示段 displayIds(2026-07-28)', () => {
+  const d = (id: number, parent: number | null, start: string | null, end: string | null, status = 'active') =>
+    ({ id, parentContractId: parent, contractNo: 'HT-' + id, startDate: start, endDate: end, status } as unknown as ContractDTO)
+  const TODAY = '2026-07-28'
+
+  it('链尾未起租时取覆盖今天的那一期(旭化成 382/383)', () => {
+    const list = [d(382, null, '2023-10-27', '2026-10-26'), d(383, 382, '2026-10-27', '2027-10-26')]
+    expect([...displayIds(list, TODAY)]).toEqual([382])
+  })
+
+  it('链尾已生效则仍取链尾', () => {
+    const list = [d(1, null, '2023-01-01', '2026-01-31'), d(2, 1, '2026-02-01', '2029-01-31')]
+    expect([...displayIds(list, TODAY)]).toEqual([2])
+  })
+
+  it('整链无生效段(全过期)退回链尾', () => {
+    const list = [d(1, null, '2020-01-01', '2021-12-31'), d(2, 1, '2022-01-01', '2023-12-31')]
+    expect([...displayIds(list, TODAY)]).toEqual([2])
+  })
+
+  it('已终止/草稿不算生效段', () => {
+    const list = [d(1, null, '2023-01-01', '2027-12-31', 'terminated'), d(2, 1, '2026-10-01', '2028-12-31', 'draft')]
+    expect([...displayIds(list, TODAY)]).toEqual([2])   // 无生效段 → 链尾
+  })
+
+  it('缺起止日不误判为生效段', () => {
+    const list = [d(1, null, null, null), d(2, 1, '2026-10-27', '2027-10-26')]
+    expect([...displayIds(list, TODAY)]).toEqual([2])
+  })
+
+  it('多链各自独立取段', () => {
+    const list = [d(382, null, '2023-10-27', '2026-10-26'), d(383, 382, '2026-10-27', '2027-10-26'),
+                  d(9, null, '2024-01-01', '2027-01-01')]
+    expect([...displayIds(list, TODAY)].sort((a, b) => a - b)).toEqual([9, 382])
   })
 })

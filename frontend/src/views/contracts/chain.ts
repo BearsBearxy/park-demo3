@@ -10,6 +10,22 @@ export function leafIds(list: ContractDTO[]): Set<number> {
   return new Set(list.filter(c => !parents.has(c.id)).map(c => c.id))
 }
 
+/** 列表默认显示的合同 id:每链优先取**当前生效段**(起止日覆盖今天且非草稿/已终止),
+ *  没有生效段(整链已过期或全是未来期)时退回原链尾规则(2026-07-28 拍板)。
+ *  today 传 'YYYY-MM-DD',与 DTO 的日期字符串按字典序直接比较。 */
+export function displayIds(list: ContractDTO[], today = new Date().toLocaleDateString('sv')): Set<number> {
+  const byId = new Map(list.map(c => [c.id, c]))
+  const out = new Set<number>()
+  for (const leafId of leafIds(list)) {
+    const chain = [byId.get(leafId)!, ...ancestorsOf(list, leafId)]
+    const cur = chain.find(c =>
+      c.startDate && c.endDate && c.startDate <= today && today <= c.endDate
+      && c.status !== 'draft' && c.status !== 'terminated')
+    out.add((cur ?? chain[0]).id)
+  }
+  return out
+}
+
 /** 沿 parentContractId 上溯的历史各期(近→远,不含自身);环/悬空自动止步。 */
 export function ancestorsOf(list: ContractDTO[], id: number): ContractDTO[] {
   const byId = new Map(list.map(c => [c.id, c]))

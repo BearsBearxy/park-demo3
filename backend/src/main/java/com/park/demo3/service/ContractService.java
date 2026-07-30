@@ -81,7 +81,7 @@ public class ContractService {
         for (Contract c : all) {
             // V59:整体承租(master_lease)与散户空间重叠,月租金计入即双算 → KPI 金额排除,份数照计
             boolean master = "master_lease".equals(c.getKind());
-            switch (effectiveStatus(c.getStatus(), c.getEndDate())) {   // 派生桶计数(§5.1)
+            switch (effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate())) {   // 派生桶计数(§5.1)
                 case "active":    active++;   if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
                 case "expiring":  expiring++; if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
                 case "draft":     draft++;    break;
@@ -505,10 +505,11 @@ public class ContractService {
     static final Set<String> PROPERTY_TYPES = Set.of("factory","office","dorm","shop","land");
     private static final Map<String,Set<String>> ALLOWED_FEES = Map.of(
         "factory", Set.of("rent_factory","mgmt","infra","elevator","transformer","land_tax"),
-        "office",  Set.of("rent_office","mgmt","elevator","transformer","land_tax"),
+        // office/land 补 infra:旭化成纸约实证「办公室基础设施维护费」1373.11 与消防通道(land)基础设施费 323.46
+        "office",  Set.of("rent_office","mgmt","infra","elevator","transformer","land_tax"),
         "dorm",    Set.of("rent_dorm","infra","access","network","land_tax"),
         "shop",    Set.of("rent_shop","infra","mgmt","transformer","land_tax"),
-        "land",    Set.of("rent_land","land_tax"));
+        "land",    Set.of("rent_land","infra","land_tax"));
     private static final Set<String> RENT_KEYS = Set.of(
         "rent_factory","rent_office","rent_dorm","rent_shop","rent_land");
     // 建筑类租金(计入租赁面积);rent_land=空地租金单列不入(裁定 2026-07-24)
@@ -535,11 +536,13 @@ public class ContractService {
         return FEE_NAME.getOrDefault(feeKey, feeKey);
     }
 
-    /** 展示态派生(§5.1):draft/terminated/renewed 人工态透传;active 据 endDate 与今天(Asia/Shanghai)派生。 */
-    static String effectiveStatus(String stored, LocalDate endDate) {
+    /** 展示态派生(§5.1):draft/terminated/renewed 人工态透传;active 据起止日与今天(Asia/Shanghai)派生。
+     *  status 只存人工态,时间态(future/expiring/expired)全部在此派生(裁定 2026-07-28)。 */
+    static String effectiveStatus(String stored, LocalDate startDate, LocalDate endDate) {
         if (!"active".equals(stored)) return stored;          // draft/terminated/renewed 及历史 expiring 透传
-        if (endDate == null) return "active";                 // 无到期日视为在租
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        if (startDate != null && startDate.isAfter(today)) return "future";   // 已签未起租,不算在租
+        if (endDate == null) return "active";                 // 无到期日视为在租
         if (today.isAfter(endDate)) return "expired";
         return ChronoUnit.DAYS.between(today, endDate) <= 90 ? "expiring" : "active";
     }
@@ -683,7 +686,9 @@ public class ContractService {
      *  feeName 读侧按 (propertyType, feeKey) 上下文重算,回显始终一致。 */
     private List<BillingLineDTO> loadLines(Integer contractId) {
         return terms.selectList(new QueryWrapper<ContractBillingTerm>()
-                .eq("contract_id", contractId).orderByAsc("property_type", "location", "seq", "id")).stream()
+                // 按 location 分组内 seq 排(seq 每场地各自起算)。曾以 property_type 首排:MySQL NULL 靠前,
+                // 把 property_type 为空的 infra 行顶到卡片最上并与同场地租金行拆成两个段带(2026-07-29 修)。
+                .eq("contract_id", contractId).orderByAsc("location", "seq", "id")).stream()
             .map(t -> new BillingLineDTO(t.getId(), t.getContractId(), t.getPropertyType(), t.getLocation(),
                 t.getFeeKey(), feeLabel(t.getPropertyType(), t.getFeeKey()), t.getArea(), t.getUnitPrice(), t.getCoeff(),
                 t.getRoomCount(), t.getBillMode(), t.getAmountOverride(), t.getSeq(), t.getSource()))
@@ -851,7 +856,7 @@ public class ContractService {
             c.getStartDate() != null ? c.getStartDate().toString() : null,
             c.getEndDate()   != null ? c.getEndDate().toString()   : null,
             c.getSignDate()  != null ? c.getSignDate().toString()  : null,
-            effectiveStatus(c.getStatus(), c.getEndDate()),   // 展示态派生桶(§5.1)
+            effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate()),   // 展示态派生桶(§5.1)
             c.getParentContractId(), c.getLinkType(), c.getKind(),
             termMonths, daysToEnd, c.getRemark(), c.getRentFree(),
             c.getTermText(), c.getTermType(), c.getTierPriceNote()   // V55 期限原文必现

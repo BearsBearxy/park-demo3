@@ -230,7 +230,8 @@ class ContractFullImportApiIT extends AbstractMysqlIT {
         assertThat((String) JsonPath.read(d2, "$.data.contract.termText")).isEqualTo("第二期原文");
         assertThat((String) JsonPath.read(d2, "$.data.contract.remark")).contains("13750");
         assertThat((List<?>) JsonPath.read(d2, "$.data.billingLines")).isEmpty();
-        assertThat((String) JsonPath.read(d2, "$.data.contract.status")).isEqualTo("active");
+        // 2097 起租 → 展示态 future(未生效);人工态 active(2026-07-28 新语义)
+        assertThat((String) JsonPath.read(d2, "$.data.contract.status")).isEqualTo("future");
     }
 
     @Test
@@ -253,7 +254,7 @@ class ContractFullImportApiIT extends AbstractMysqlIT {
         assertThat((int) (Integer) JsonPath.read(getBody("/api/contracts/" + c3),
                 "$.data.contract.parentContractId")).isEqualTo(c2);
         assertThat((String) JsonPath.read(getBody("/api/contracts/" + c3), "$.data.contract.status"))
-                .isEqualTo("active");
+                .isEqualTo("future");   // 2099 起租,尚未生效(2026-07-28 新语义)
     }
 
     @Test

@@ -38,7 +38,7 @@ public class BuildingService {
         String best = "vacant";
         for (Contract c : cs) {
             if (!occupies(c, unitId, links)) continue;
-            switch (ContractService.effectiveStatus(c.getStatus(), c.getEndDate())) {
+            switch (ContractService.effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate())) {
                 case "active": return "occupied";
                 case "expiring": best = "expiring"; break;
                 case "draft": if (best.equals("vacant")) best = "reserved"; break;
@@ -66,7 +66,7 @@ public class BuildingService {
         // V59:整体承租(master_lease)与散户空间重叠 → 楼栋卡月租金/户数/面积汇总均排除,防双算
         // 状态取展示态(日期派生):到期合同不再计入在租金额/户数
         List<Contract> retail = cs.stream()
-            .filter(c -> RENT.contains(ContractService.effectiveStatus(c.getStatus(), c.getEndDate())))
+            .filter(c -> RENT.contains(ContractService.effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate())))
             .filter(c -> !"master_lease".equals(c.getKind())).toList();
         BigDecimal monthly = retail.stream()
             .map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -108,8 +108,8 @@ public class BuildingService {
         Contract c = cs.stream()
             .filter(x -> occupies(x, u.getId(), links))
             .filter(x -> Set.of("active","expiring","draft")
-                .contains(ContractService.effectiveStatus(x.getStatus(), x.getEndDate())))
-            .min(Comparator.comparing(x -> switch (ContractService.effectiveStatus(x.getStatus(), x.getEndDate())) {
+                .contains(ContractService.effectiveStatus(x.getStatus(), x.getStartDate(), x.getEndDate())))
+            .min(Comparator.comparing(x -> switch (ContractService.effectiveStatus(x.getStatus(), x.getStartDate(), x.getEndDate())) {
                 case "active" -> 0; case "expiring" -> 1; default -> 2;
             })).orElse(null);
         Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;

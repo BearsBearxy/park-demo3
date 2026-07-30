@@ -127,6 +127,16 @@ class ContractCardApiIT extends AbstractMysqlIT {
         assertThat(statusOf(activeId)).isEqualTo("active");
     }
 
+    /** 2026-07-28:起租日未到 → future(未生效),不再冒充执行中。 */
+    @Test
+    void effectiveStatus_startDateInFuture_isFuture() throws Exception {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        int futureId = createOk(dates(today.plusDays(1), today.plusYears(1)));
+        assertThat(statusOf(futureId)).isEqualTo("future");
+        // 边界:今天起租 = 已生效
+        assertThat(statusOf(createOk(dates(today, today.plusYears(2))))).isEqualTo("active");
+    }
+
     @Test
     void effectiveStatus_nullEndDate_isActive() throws Exception {
         int id = createOk("\"startDate\":\"2020-01-01\"");   // 无 endDate → 在租

@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<{
 // ponytail: 1:1 from fp-master-ui.jsx CONTRACT_STATUS + renewed(后端 effectiveStatus 第6态)
 const MAP: Record<string, { tone: 'neutral' | 'blue' | 'orange' | 'red' | 'slate'; label: string }> = {
   draft:      { tone: 'neutral', label: '草稿' },
+  future:     { tone: 'neutral', label: '未生效' },   // 已签但起租日未到(后端 effectiveStatus,2026-07-28)
   active:     { tone: 'blue',   label: '执行中' },
   expiring:   { tone: 'orange', label: '即将到期' },
   expired:    { tone: 'red',    label: '已到期' },
