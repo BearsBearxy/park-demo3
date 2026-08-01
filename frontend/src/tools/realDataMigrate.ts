@@ -18,7 +18,7 @@ import { lgColumns, FEE_KEYS } from '@/utils/ledgerColumns'
 import type { ColumnMapEntry } from '@/utils/importHeaderMatch'
 
 const DIR = 'C:/financial_dashboard/2025全年发生额、预算对比'
-const API = 'http://localhost:8080/api'
+const API = 'http://localhost:8181/api'
 const MODE = process.argv[process.argv.length - 1]
 
 // ── 通用 ────────────────────────────────────────────────

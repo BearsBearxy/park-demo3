@@ -13,7 +13,7 @@
 import { writeFileSync } from 'node:fs'
 import { buildingIdFor } from '@/utils/meterSplit'
 
-const API = 'http://localhost:8080/api'
+const API = 'http://localhost:8181/api'
 const MODE = process.argv[process.argv.length - 1]
 
 // 新栋清单(name-keyed;phase 继承旧栋;from=承载合同的旧栋名)
