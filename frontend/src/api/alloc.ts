@@ -5,7 +5,11 @@ import http from './index'
 
 export type AllocZone = 'p1' | 'p2' | 'dorm'
 // none=不分摊全额挂亏;ref=纯标准行(只出std不出应分摊,不入合计)— POOL-ENGINE-SPEC §2
-export type AllocMethod = 'direct' | 'area' | 'floor' | 'loss' | 'none' | 'ref'
+// carrier(V73)=冲减载体:表已在别池以 sign=-1 冲减,本行只陈列用量不出应分摊、不入金额合计(账册 W89 为空)
+// ⚠V81 起后端还会返回 'manual'(§H4.2e 原册 r12/r47-49 四个无电表行,qty/cost 恒 null)——
+// 故意不进本联合:进了会破 allocLogic.ALLOC_METHOD_LABEL 的 Record 穷举,也会把它塞进池抽屉的
+// 方法下拉(manual 行不该由屏上新建)。消费方按字符串比(poolSemantics/poolNote 收 string)。
+export type AllocMethod = 'direct' | 'area' | 'floor' | 'loss' | 'none' | 'ref' | 'carrier'
 export type AllocFeeKey =
   | 'share_elec_fire' | 'share_elec_elevator' | 'share_elec_light'
   | 'share_elec_floor' | 'share_elec_loss' | 'share_green_water' | 'share_water' | 'park_loss_pool'
@@ -183,6 +187,43 @@ export interface AllocPoolMeterDTO {
   meterType: string | null
 }
 export interface AllocPoolLinkDTO { ruleId: number; name: string; type: AllocLinkType }
+// V73 逐表明细行(原册一表一行:A座天面四部梯各占一行),来自 alloc_pool_meter_result 快照。
+// costAmount 只在 p1/dorm「逐表 ROUND 再求和」口径下有值;p2 池级一次 ROUND、净额池/手输量池 → null,
+// 此时应分摊列由池行 rowspan 显池级合计(不把池金额按比例摊回逐表冒充逐表数)。
+export interface AllocPoolLineDTO {
+  meterId: number
+  label: string                  // 区域·位置·用途·表号(V73 补全,不再只有「天面·电表①」)
+  area: string | null
+  spot: string | null
+  // 刀I §I3 逐行身份两列的来源(原册 B/C/D 永远逐行写,从不纵向合并):
+  // floorLabel=该表的结构化楼层(「四楼」,方位另存 side);useName=原册 D 列「企业名称」
+  // (名不副实,实为用电部位/归属:走廊灯/西侧租户、东侧货梯、消防控制箱)。
+  // 可选=老快照/未重启后端时缺字段,消费方(lineFloor/lineUseName)按缺失回落池级值。
+  floorLabel?: string | null
+  useName?: string | null
+  subName: string | null
+  meterType: string | null
+  code: string | null
+  sign: number
+  factorSnap: number | null
+  prevTotal: number | null
+  currTotal: number | null
+  qtyTotal: number | null
+  qtySharp: number | null
+  qtyPeak: number | null
+  qtyFlat: number | null
+  qtyValley: number | null
+  costAmount: number | null
+}
+// 刀I §I2 净额构成项:净额池的绑定表在原册「公共电分摊明细」上**根本没有行**(招商中心那 7 块是
+// 「一期园区电」S44:S50 的中间量),故它们不出逐表行,只作主行 hover 明细。
+// qty=带 sign 的**有符号**净量(相加即得池净量);meterId=null 的一项是原册硬编码扣度(N8 `=-670`),不是电表。
+export interface AllocPoolNetPartDTO {
+  meterId: number | null
+  label: string
+  sign: number
+  qty: number | null
+}
 // 在租三态(2026-07-30):yes=在租;no=已退租;unknown=合同缺起止日期,判不了(不等于退租)
 export type AllocInForce = 'yes' | 'no' | 'unknown'
 // 受益人一行:src=month(该月覆盖)/default(默认长期行);unitNo 按池定位取,取不到=null
@@ -193,6 +234,9 @@ export interface AllocPoolMemberDTO {
   weight: number | null
   inForce: AllocInForce
   src: 'month' | 'default'
+  // 刀D:该户在本池楼栋解析出的楼层(§D.1 合同单元→户内表两级回退,读时现算不落库),
+  // 跨多层用「、」连;null=未定层(会与其他未定层户合摊 1 份)
+  floorLabel: string | null
 }
 // GET /api/alloc/pool-candidates:该定位可组成的表 + 该定位在租租户(preChecked=按合同预勾)
 export interface AllocMeterCandDTO {
@@ -211,7 +255,12 @@ export interface AllocTenantCandDTO {
   inForce: AllocInForce | null
   preChecked: boolean | null
 }
-export interface AllocCandidatesDTO { meters: AllocMeterCandDTO[]; tenants: AllocTenantCandDTO[] }
+// tenantNote:tenants 为空时的原因说明(刀D §D.4 direct 户对户池不推「该定位在租租户」);其余情况 null
+export interface AllocCandidatesDTO {
+  meters: AllocMeterCandDTO[]
+  tenants: AllocTenantCandDTO[]
+  tenantNote: string | null
+}
 // GET /api/alloc/member-diff:该定位本月在租租户 与 池当前受益人 的差集(页面提醒条)
 // 有侧向的池不产出 added(unit 无侧向字段,判不了);removed 只收确凿退租(inForce='no')
 export interface AllocMemberDiffDTO {
@@ -224,6 +273,10 @@ export interface AllocPoolRowDTO {
   ruleId: number
   zone: AllocZone
   name: string
+  // V80(§H4.2 b/d)原册锚点:bookBlock=原册 7 个合计行块名原文(屏上按它分带),
+  // bookKey=原册 A 列自然键(屏上池名称列优先显它)。二期/宿舍原册无块结构 → 两者 null。
+  bookBlock: string | null
+  bookKey: string | null
   groupLabel: string             // =楼栋名,无楼栋='园区级'
   method: AllocMethod
   stdKind: AllocStdKind | null
@@ -243,6 +296,8 @@ export interface AllocPoolRowDTO {
   members: AllocPoolMemberDTO[]
   meters: AllocPoolMeterDTO[]
   links: AllocPoolLinkDTO[]
+  lines: AllocPoolLineDTO[]      // V73 当月逐表明细快照;未生成月为空数组
+  netParts?: AllocPoolNetPartDTO[]  // §I2 净额池构成(非净额池空表);可选=与既有测试夹具兼容
   qtyTotal: number | null
   qtySharp: number | null
   qtyPeak: number | null
@@ -260,6 +315,10 @@ export interface AllocPoolRowDTO {
   allocatedAmount: number | null // 摊出:引擎按受益人配置正向试算摊到户的合计(非实收)
   gapAmount: number | null       // 差额:摊出−应分摊(名单/面积基数与账册不同批时会有差)
   warn: string | null
+  // 刀D §D.6:floor 池分桶明细串「按 3 层拆:二楼 1 户 / 三楼 1 户 / 未定层 2 户」,做「摊出」列 title
+  // ——让「为什么摊出少于应分摊」在屏上看得见。读时现算(楼层不落库),非 floor 池 null。
+  // 可选=与既有测试夹具(不含本字段)兼容,同 roundScale/stdKind 那批增量字段的写法。
+  allocNote?: string | null
 }
 export interface AllocPoolsDTO { generated: boolean; rows: AllocPoolRowDTO[] }
 
@@ -315,9 +374,11 @@ export const allocApi = {
   // S3-B1 池核算两屏(POOL-ENGINE-SPEC §4)
   pools: (ym: string): Promise<AllocPoolsDTO> => http.get('/alloc/pools', { params: { ym } }),
   // V69:池组成候选(表按定位过滤 + 该定位在租租户预勾);floor 传楼层显示名如'四楼'
-  poolCandidates: (ym: string, buildingId?: number | null, floor?: string | null, side?: string | null):
-    Promise<AllocCandidatesDTO> =>
-    http.get('/alloc/pool-candidates', { params: { ym, buildingId, floor, side } }),
+  // §E6:method 已接通 —— 'direct'(户对户)返回空 tenants + tenantNote,那唯一一户由
+  // PoolLedgerView 的全库租户选择器(FPTenantPicker)指定;表候选不受 method 影响。
+  poolCandidates: (ym: string, buildingId?: number | null, floor?: string | null, side?: string | null,
+                   method?: AllocMethod | null): Promise<AllocCandidatesDTO> =>
+    http.get('/alloc/pool-candidates', { params: { ym, buildingId, floor, side, method } }),
   memberDiff: (ym: string): Promise<AllocMemberDiffDTO[]> =>
     http.get('/alloc/member-diff', { params: { ym } }),
   loss: (ym: string): Promise<AllocLossDTO> => http.get('/alloc/loss', { params: { ym } }),

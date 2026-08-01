@@ -24,10 +24,14 @@ class PoolSeedIT extends AbstractMysqlIT {
     @Autowired JdbcTemplate jdbc;
 
     // extract_pool_expected.py 输出:规则 90(p1 67/p2 21/dorm 2)|绑定 113|links 4|rule月参 46
-    private static final int RULES_P1 = 67, RULES_P2 = 21, RULES_DORM = 2;
-    private static final int BINDINGS = 113, LINKS = 4, RULE_CFG_ROWS = 46;
+    // V81(§H4.2e)补回原册 4 个无表行(r12 联塑精铟 / r47-49 C座一楼西侧三户)→ p1 67+4=71,绑定数不变
+    // V84(刀I §I1)把原册块1 的「园区公共电」池拆成 r5/r6/r7/r9 四条独立行 → p1 71−1+4=74;
+    //   四条各绑原池的那 1 块表(绑定数 113 不变);fold_qty 招商中心→园区公共电 随池删 → links 4−1=3
+    private static final int RULES_P1 = 74, RULES_P2 = 21, RULES_DORM = 2;
+    private static final int BINDINGS = 113, LINKS = 3, RULE_CFG_ROWS = 46;
     // 合法零绑定(sort_no):90 宿舍绿化水(manual_qty 无表) + 40/41/50 一期园区电无此表的 3 条幽灵户对户行
-    private static final Set<Integer> NO_METER_OK = Set.of(90, 40, 41, 50);
+    //   + 91–94 V81 的 4 条 method=manual 无表行(原册就没有电表,零绑定是它们的定义)
+    private static final Set<Integer> NO_METER_OK = Set.of(90, 40, 41, 50, 91, 92, 93, 94);
 
     @Test
     void ruleCounts_byZone() {
@@ -48,7 +52,7 @@ class PoolSeedIT extends AbstractMysqlIT {
     }
 
     @Test
-    void links_threeFoldsPlusGuanglian() {
+    void links_threeFolds_noFoldQty() {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "select s.sort_no src, d.sort_no dst, l.link_type t from alloc_rule_link l"
                         + " join alloc_rule s on s.id=l.src_rule_id join alloc_rule d on d.id=l.dst_rule_id");
@@ -59,8 +63,43 @@ class PoolSeedIT extends AbstractMysqlIT {
         assertThat(triples).containsExactlyInAnyOrder(
                 "20->8:fold_price",     // 六车间广告字灯（消防分表）→园区消防设施:V46=0.01+V113
                 "14->12:fold_price",    // 五车间广告字灯（消防分表）→四车间绿化水泵:V65=0.001+V77
-                "10->11:fold_price",    // 四车间电梯+低压电房照明→广联分摊:V64=层价+V58 折入
-                "22->23:fold_qty");     // 招商中心净电→园区公共电:净电152.06度入园区公摊池
+                "10->11:fold_price");   // 四车间电梯+低压电房照明→广联分摊:V64=层价+V58 折入
+        // V84:全库不再有 fold_qty —— 招商中心那条是唯一的一条,它让 152.06 度在块1 合计里被计了两遍
+        assertThat(jdbc.queryForObject(
+                "select count(*) from alloc_rule_link where link_type='fold_qty'", Integer.class)).isZero();
+    }
+
+    // V84(刀I §I1/§I5):原册块1 r5–r9 五行各自独立,共用的只是 AG5:AG9 合并备注「计入园区损耗分摊」
+    @Test
+    void v84_parkLossRows_splitToFiveRows() {
+        // 五条规则 = 原册 r5/r6/r7/r8/r9,且不再有 method='loss' 的合并池
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "select book_key, book_row, method, floor_label, book_block from alloc_rule"
+                        + " where zone='p1' and fee_key='park_loss_pool' order by book_row");
+        assertThat(rows.stream().map(r -> r.get("book_row") + ":" + r.get("book_key")).toList())
+                .containsExactly("5:地下车库东侧照明", "6:地下车库西侧照明", "7:A1大堂",
+                        "8:招商中心电1", "9:生活加压泵");
+        assertThat(rows).allSatisfy(r -> assertThat(r.get("book_block")).isEqualTo("A座及园区公共表合计："));
+        assertThat(rows.stream().map(r -> r.get("method")).collect(Collectors.toSet()))
+                .containsExactly("direct");
+        // 楼层逐行取原册 C 列(r7 是一楼,不是负一层)——刀前四行都取池级「负一层」,错三行
+        assertThat(rows.stream().map(r -> r.get("floor_label")).toList())
+                .containsExactly("负一层", "负一层", "一楼", "四楼", "负一层");
+        // 拆出的 4 条各绑 1 块表(原册 G 列电表编码见 V84 注释;种子库的表无 code,故按名断言)
+        List<Map<String, Object>> binds = jdbc.queryForList(
+                "select r.book_key k, m.name n, rm.sign s from alloc_rule r"
+                        + " join alloc_rule_meter rm on rm.rule_id=r.id join meter m on m.id=rm.meter_id"
+                        + " where r.zone='p1' and r.fee_key='park_loss_pool' and r.book_key<>'招商中心电1'");
+        assertThat(binds.stream().map(b -> b.get("k") + "=" + b.get("n") + ":" + b.get("s"))
+                .collect(Collectors.toSet()))
+                .containsExactlyInAnyOrder("地下车库东侧照明=地下车库东侧照明:1", "地下车库西侧照明=地下车库西侧照明:1",
+                        "A1大堂=A1大堂:1", "生活加压泵=生活加压泵:1");
+        // §I5 临时回退:『永龙反向有功』回到 tenant,等用户在 A/B/C 三选项里拍板(选项与后果见 V84 注释)。
+        // ⚠该表只存在于真实数据库(dev/生产是导入进去的),迁移种子库里没有这一行 → 本断言在种子库上是空集
+        // 通过,真正的证据在 dev 库;它在这里的作用是:哪天有人在真实数据库上把它改回 register,这条会红。
+        assertThat(jdbc.queryForList(
+                "select ownership from meter where kind='elec' and zone='p2' and name='永龙反向有功'",
+                String.class)).doesNotContain("register");
     }
 
     @Test

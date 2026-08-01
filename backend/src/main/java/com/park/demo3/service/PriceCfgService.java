@@ -21,6 +21,12 @@ public class PriceCfgService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     // §2 cfg_key 受控白名单(V62 定格 19 键;前端 utils/priceCfgLogic.ts PRICE_KEYS 镜像)
+    // ⚠BOOK-REBUILD-SPEC §H3 的四个「2023 冻结参数」(隐藏表『公共电分摊』M99/M109/L24/L99)**刻意不进
+    // 本白名单、也不进 tenant_price_cfg**:它们不是价目输入,而是绑定在具体池上的历史事实 —— V62(用户
+    // 2026-07-27 拍板)已把五个月推单价键清出价目簿,且前端 PRICE_KEYS 是价目页渲染的唯一驱动,塞回来只会
+    // 是查不到也编辑不了的隐形行。它们由 V83__frozen_params.sql 落成 alloc_cfg 的 rule:{id} 默认行
+    // (cfg_key='frozen_2023',acct_month='' 即「不随月份变」=冻结,真实年月写 note),由公共电核算屏
+    // 「分摊标准」列 title 披露(前端 poolLedgerLogic.FROZEN_CFG_KEY)。找 2023 冻结价请去那里。
     static final Set<String> CFG_KEYS = Set.of(
         "elec_peak", "elec_sharp", "elec_flat", "elec_valley", "elec_resident", "elec_commercial",   // 电价·月变
         "mgmt_fee", "mgmt_fee_commercial", "sharp_as_peak_ratio",                                     // 附加与开关

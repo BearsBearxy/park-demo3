@@ -32,14 +32,17 @@ public class AllocController {
         return svc.pools(ym);
     }
 
-    @Operation(summary = "池组成候选(V69:按 楼栋/楼层/侧向 过滤电表 + 该定位在租租户预勾;楼层空=整栋,楼栋空=园区级)")
+    // §E6:method 透传到 5 参重载 —— direct(户对户)池返回空 tenants + tenantNote,
+    // 不再按定位推一堆在租租户(那一户由页面的全库租户选择器直接指定)。
+    @Operation(summary = "池组成候选(V69:按 楼栋/楼层/侧向 过滤电表 + 该定位在租租户预勾;楼层空=整栋,楼栋空=园区级;method=direct 不推租户)")
     @GetMapping("/pool-candidates")
     public AllocPoolDTOs.Candidates poolCandidates(
             @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym,
             @RequestParam(required = false) Integer buildingId,
             @RequestParam(required = false) String floor,
-            @RequestParam(required = false) String side) {
-        return svc.poolCandidates(ym, buildingId, floor, side);
+            @RequestParam(required = false) String side,
+            @RequestParam(required = false) String method) {
+        return svc.poolCandidates(ym, buildingId, floor, side, method);
     }
 
     @Operation(summary = "受益人变动(V69:该定位本月在租租户 与 池当前受益人 的差集,页面提醒条)")

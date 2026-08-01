@@ -7,6 +7,11 @@ public class AllocRule {
     @TableId(type = IdType.AUTO) private Integer id;
     private String zone;          // p1 / p2
     private String name;          // 池名(V69 起由定位自动生成,不手写)
+    // V80 原册锚点(§H4.2 b/d):bookBlock=原册 7 个合计行块名原文,bookKey=原册 A 列自然键,
+    // bookRow=原册行号(块内排序依据;与 sortNo 不同序,故另开一字段)。二期/宿舍无原册块 → 三者皆 NULL。
+    private String bookBlock;
+    private String bookKey;
+    private Integer bookRow;
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private Integer buildingId;
     // V69 四级定位:楼栋+楼层+侧向+费项;层级留空即上一级(楼层空=整栋,楼栋空=园区级)
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String floorLabel;

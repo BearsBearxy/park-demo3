@@ -135,6 +135,29 @@ class AllocServiceTest {
         assertEquals(0, g.add(d("-1500")).compareTo(d("-1413.2")));
     }
 
+    // ── 刀I §I1(V84):原册块1 r5–r9 是**五个独立行**,不是一个分摊池 ──
+    // 原册 AC/AD 逐行独立(32.88/20.67/113.10/169.42/244.21),五行唯一共用的是 AG5:AG9 合并的备注
+    // 「计入园区损耗分摊」——去向标记而非分摊池。`一期园区损耗!G = ROUND(SUM(公共电分摊明细!S5:S9)/6,2)`
+    // 取的就是这五行的 Σ。拆开后 Σ 与 G 必须与折成一池时逐格相同(拆池不是改数)。
+    @Test
+    void parkPool_fiveRows_sum_g() {
+        BigDecimal[] qty = {d("29.51"), d("18.55"), d("101.51"), d("152.06"), d("219.19")};
+        String[] cost = {"32.88", "20.67", "113.10", "169.42", "244.21"};
+        BigDecimal sumQty = BigDecimal.ZERO;
+        for (int i = 0; i < qty.length; i++) {
+            // 拆出的 4 条 direct 行 = 单表逐表 ROUND(度×AB);r8 招商中心是净额行,净量后一次 ROUND —— 同一算式
+            assertEquals(0, AllocService.r2(qty[i].multiply(AB)).compareTo(d(cost[i])), cost[i]);
+            sumQty = sumQty.add(qty[i]);
+        }
+        assertEquals(0, sumQty.compareTo(d("520.82")));
+        assertEquals(0, AllocService.r2(sumQty.divide(d("6"), 10, java.math.RoundingMode.HALF_UP))
+            .compareTo(d("86.80")));
+        // 块1 小计(原册 S11/AC11):六行 Σ 用量与 ROUND(Σ×AB),招商中心只算一次(刀前 fold_qty 让它进了两遍)
+        BigDecimal s11 = sumQty.add(d("2683.80"));
+        assertEquals(0, s11.compareTo(d("3204.62")));
+        assertEquals(0, AllocService.r2(s11.multiply(AB)).compareTo(d("3570.49")));
+    }
+
     // ══ 既有户级口径(PB-ALLOCATION,保留不动) ══
 
     // AC15(area 一期):分摊标准=ROUND(用量/1734.73×1.11417,2)=0.02 元/㎡;户金额=标准×户租赁面积(F8 型)
@@ -245,6 +268,262 @@ class AllocServiceTest {
         assertEquals(0, AllocService.floorAreaSplit(perFloor, d("1503.1"), d("500")).compareTo(d("100.63")));
         assertEquals(0, AllocService.r2(d("0.02").multiply(d("120"))).compareTo(d("2.40")));
         assertEquals(0, AllocService.r2(d("100").multiply(AB)).compareTo(d("111.42")));
+    }
+
+    // ══ 刀D 受益人楼层化(METER-LOC-MEMBER-SPEC §D.2/§D.3,用真实数值喂纯函数,不起服务) ══
+
+    private static AllocService.FloorMember fm(int tenantId, String area, String... floors) {
+        return new AllocService.FloorMember(tenantId, java.util.List.of(floors),
+            area == null ? null : d(area));
+    }
+
+    private static BigDecimal sum(AllocService.FloorSplit s) {
+        return s.amounts().values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // §D.3 锚点:rule 50 一期B座天面货梯——碧沃丰/可莱恩/雷莱 分居 2/3/4 层,perFloor=302.50
+    // → 三个桶各一份 → 每户 302.50,合计 907.50(=账册已分摊 AE 907.5)。
+    // 刀前实现「NULL 权重合摊一份」只摊出 302.50,18 个按层池同病(2024-02 共少摊 7992.32)。
+    @Test
+    void floorBuckets_rule50_threeFloorsThreeShares() {
+        var split = AllocService.floorBuckets(java.util.List.of(
+            fm(103, "500", "四楼"), fm(107, "500", "二楼"), fm(114, "500", "三楼")), d("302.50"));
+        assertEquals(0, split.amounts().get(103).compareTo(d("302.50")));
+        assertEquals(0, split.amounts().get(107).compareTo(d("302.50")));
+        assertEquals(0, split.amounts().get(114).compareTo(d("302.50")));
+        assertEquals(0, sum(split).compareTo(d("907.50")));
+        assertEquals(0, split.unknownCount());
+        // §D.6 明细串按楼层升序
+        assertEquals("按 3 层拆:二楼 1 户 / 三楼 1 户 / 四楼 1 户",
+            AllocService.floorNote(AllocService.floorBucketsOf(java.util.List.of(
+                fm(103, "500", "四楼"), fm(107, "500", "二楼"), fm(114, "500", "三楼")))));
+    }
+
+    private static com.park.demo3.entity.AllocRuleMember memW(int tenantId, String weight) {
+        com.park.demo3.entity.AllocRuleMember m = mem(tenantId, "");
+        m.setWeight(weight == null ? null : d(weight));
+        return m;
+    }
+
+    // §D.3 锚点:rule 49/77 显式份额 perFloor=82.67,weight 0.5/0.5/1/1/1
+    // → 41.34/41.34/82.67×3,合计 330.69(现值一字不变);混进桶会变成 82.67/5=16.53(与账册差 66.14)。
+    // **本用例只锁两侧的算术**(显式份额金额 + 桶内按面积二拆),分支划分是测试自己 filter 出来的
+    // ——§F8 复核指出这句判断抄进测试就盖不住调度:删掉 AllocService 里 `if (m.getWeight() != null) continue;`
+    // 这条照样绿。真正的分支边界由 AllocApiIT.poolFloorMixedWeight_explicitShareNotBucketed
+    // 走 memberAmounts 真实调度路径锁住(weight 与 null 混合的 floor 池,删那行三处断言同时变红)。
+    @Test
+    void floorWeight_explicitShareArithmetic() {
+        BigDecimal perFloor = d("82.67");
+        var mems = java.util.List.of(memW(103, "1"), memW(107, "1"), memW(114, "1"),
+            memW(125, "0.5"), memW(129, "0.5"), memW(200, null), memW(201, null));
+        // 显式份额户:账册口径 ROUND(perFloor×weight,2),合计 330.69
+        var explicit = new java.util.LinkedHashMap<Integer, BigDecimal>();
+        for (var m : mems)
+            if (m.getWeight() != null) explicit.put(m.getTenantId(), AllocService.r2(perFloor.multiply(m.getWeight())));
+        assertEquals(0, explicit.get(125).compareTo(d("41.34")));
+        assertEquals(0, explicit.get(103).compareTo(d("82.67")));
+        assertEquals(0, explicit.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(d("330.69")));
+        // weight 为空的两户才入桶:同在三楼 → 只出 1 份 perFloor,桶内按面积 300/100 拆
+        var byFloor = mems.stream().filter(m -> m.getWeight() == null)
+            .map(m -> fm(m.getTenantId(), m.getTenantId() == 200 ? "300" : "100", "三楼")).toList();
+        var split = AllocService.floorBuckets(byFloor, perFloor);
+        assertEquals(1, AllocService.floorBucketsOf(byFloor).size());
+        assertEquals(java.util.Set.of(200, 201), split.amounts().keySet());   // 显式户没进分桶产出
+        assertEquals(0, split.amounts().get(200).compareTo(d("62.00")));
+        assertEquals(0, split.amounts().get(201).compareTo(d("20.67")));
+        assertEquals(0, sum(split).add(d("330.69")).compareTo(d("413.36")));  // 池摊出=显式 + 分桶
+        // 反例(删掉 weight 分支会怎样):不过滤全量入桶 → 5 个显式户落「未定层」各只分 16.53
+        var noFilter = AllocService.floorBuckets(java.util.List.of(
+            fm(103, null), fm(107, null), fm(114, null), fm(125, null), fm(129, null),
+            fm(200, "300", "三楼"), fm(201, "100", "三楼")), perFloor);
+        assertEquals(5, noFilter.unknownCount());
+        assertEquals(0, noFilter.amounts().get(103).compareTo(d("16.53")));
+    }
+
+    // §D.3 第 4 个锚点 rule 22(二期 六车间·电梯+低压电房照明):11 户,perFloor=165.96,
+    // 应分摊 995.74,账册分母 coefficient=6.00。成员楼层按 §D.1 两级回退用只读 SQL 逐户核过(2024-02):
+    //   L1 合同单元(覆盖本月的非草稿合同 → unit.building_id=35):50/51/52=五楼、57=四楼、58=三楼、
+    //     59=三楼、60 邓宇峰=一楼+二楼(unit 566「天面」floor=1 与 567「2F整层」floor=2)、67=一楼、68=四楼
+    //   L2 户内表(L1 空的两户):54 罗立剑=六楼+七楼(合同 198 起止日期为空 → covers()=false,不进 L1);
+    //     55 刘彪=三楼(合同单元 221 在 17 栋,非本池楼栋被滤掉)
+    // → 实测 **7** 个楼层桶。spec §D.3 写的「全部可从户内表定层」只按 L2 估(那样是 5 桶=829.80),
+    //   实现按 §D.1 合同单元优先,故 7 桶;差异记在提交物里。
+    // → 摊出 7×165.96=1161.72,三楼桶按面积拆多出 1 分 → 1161.73,超应分摊 165.99(§E5 落 warn 不封顶)
+    @Test
+    void floorBuckets_rule22_sevenFloorBuckets() {
+        var mems = java.util.List.of(
+            fm(50, "1700.00", "五楼"), fm(51, "2060.00", "五楼"), fm(52, "1092.00", "五楼"),
+            fm(54, "7377.52", "六楼", "七楼"), fm(55, "2695.00", "三楼"), fm(57, "1100.00", "四楼"),
+            fm(58, "1989.08", "三楼"), fm(59, "1430.54", "三楼"), fm(60, "9785.78", "一楼", "二楼"),
+            fm(67, "6800.00", "一楼"), fm(68, "6413.76", "四楼"));
+        var split = AllocService.floorBuckets(mems, d("165.96"));
+        assertEquals(7, AllocService.floorBucketsOf(mems).size());
+        assertEquals(0, split.unknownCount());
+        assertEquals(0, split.amounts().get(54).compareTo(d("331.92")));   // 六楼+七楼=两整份
+        assertEquals(0, split.amounts().get(60).compareTo(d("263.88")));   // 一楼与柯建伍按面积拆 97.92 + 二楼独占 165.96
+        assertEquals(0, split.amounts().get(67).compareTo(d("68.04")));
+        assertEquals(0, sum(split).compareTo(d("1161.73")));
+        assertEquals("按 7 层拆:一楼 2 户 / 二楼 1 户 / 三楼 3 户 / 四楼 2 户 / 五楼 3 户 / 六楼 1 户 / 七楼 1 户",
+            AllocService.floorNote(AllocService.floorBucketsOf(mems)));
+        // 7 桶 > 分母 6.00 → §E5 告警(spec §E5 点名的 4 个池之外,rule 22 也超)
+        assertEquals("池「二期 六车间·电梯+低压电房照明」按 7 层拆但账册分母为 6 层,"
+                + "摊出超应分摊 165.99 元,请核对系数或成员楼层",
+            AllocService.floorCoefWarn("二期 六车间·电梯+低压电房照明",
+                AllocService.floorBucketsOf(mems).size(), d("6.00"), sum(split), d("995.74")));
+    }
+
+    // 桶内 Σ面积>0 → 按面积拆(300/100 → 0.75/0.25 份);两户同层只出 1 份 perFloor
+    @Test
+    void floorBuckets_sameFloorSplitByArea() {
+        var split = AllocService.floorBuckets(java.util.List.of(
+            fm(1, "300", "三楼"), fm(2, "100", "三楼")), d("400"));
+        assertEquals(0, split.amounts().get(1).compareTo(d("300.00")));
+        assertEquals(0, split.amounts().get(2).compareTo(d("100.00")));
+        assertEquals(0, sum(split).compareTo(d("400")));
+    }
+
+    // 桶内 Σ面积=0 → 按户数均分(旧实现返回 null 直接跳过,这户的钱静默丢掉)
+    @Test
+    void floorBuckets_zeroAreaSplitsEvenly() {
+        var split = AllocService.floorBuckets(java.util.List.of(
+            fm(1, "0", "三楼"), fm(2, null, "三楼")), d("400"));
+        assertEquals(0, split.amounts().get(1).compareTo(d("200.00")));
+        assertEquals(0, split.amounts().get(2).compareTo(d("200.00")));
+    }
+
+    // 全部定不出楼层 → 「未定层」桶照样算 1 份(不摊=白丢钱)并报数要人补主数据
+    @Test
+    void floorBuckets_unknownBucketStillOneShare() {
+        var split = AllocService.floorBuckets(java.util.List.of(
+            fm(1, "300"), fm(2, "100")), d("400"));
+        assertEquals(2, split.unknownCount());
+        assertEquals(0, sum(split).compareTo(d("400")));
+        assertEquals("按 1 层拆:未定层 2 户", AllocService.floorNote(AllocService.floorBucketsOf(
+            java.util.List.of(fm(1, "300"), fm(2, "100")))));
+    }
+
+    // 一户跨多层 → 进多个桶,每桶各摊一份(电梯/楼梯间按层收,跨层户本就多用);「未定层」桶永远垫底
+    @Test
+    void floorBuckets_multiFloorTenantTakesMultipleShares() {
+        var split = AllocService.floorBuckets(java.util.List.of(
+            fm(1, "500", "二楼", "三楼"), fm(2, "500", "二楼"), fm(3, "500")), d("100"));
+        assertEquals(0, split.amounts().get(1).compareTo(d("150.00")));   // 二楼半份 + 三楼整份
+        assertEquals(0, split.amounts().get(2).compareTo(d("50.00")));
+        assertEquals(0, split.amounts().get(3).compareTo(d("100.00")));   // 未定层独一份
+        assertEquals("按 3 层拆:二楼 2 户 / 三楼 1 户 / 未定层 1 户",
+            AllocService.floorNote(AllocService.floorBucketsOf(java.util.List.of(
+                fm(1, "500", "二楼", "三楼"), fm(2, "500", "二楼"), fm(3, "500")))));
+    }
+
+    // 分桶键归一:unit.floor=4 与户内表「4楼」「四楼」必须落同一个桶,否则同一层摊出两份
+    @Test
+    void floorLabel_normalizedToOneBucket() {
+        assertEquals("四楼", AllocService.floorLabelOf(4));
+        assertEquals("负一层", AllocService.floorLabelOf(-1));
+        assertEquals("十楼", AllocService.floorLabelOf(10));
+        assertEquals("十一楼", AllocService.floorLabelOf(11));
+        assertEquals("四楼", AllocService.normFloor("4楼"));
+        assertEquals("四楼", AllocService.normFloor("四楼"));
+        assertEquals("天面", AllocService.normFloor("天面"));   // 非数字层保留原文
+        // 归一由 memberFloor 在入桶前做(桶键即中文标准名):「4楼」「四楼」同桶,「天面」自成一桶
+        assertEquals(2, AllocService.floorBucketsOf(java.util.List.of(
+            fm(1, "1", AllocService.normFloor("4楼")), fm(2, "1", AllocService.normFloor("四楼")),
+            fm(3, "1", AllocService.normFloor("天面")))).size());
+    }
+
+    // §D.1 两级回退:合同单元优先(取全部楼层),空了才看该户在本栋的户内表,再空=未定层
+    @Test
+    void memberFloor_twoLevelFallback() {
+        var u2 = unit(20); u2.setFloor(2);
+        var u3 = unit(20); u3.setFloor(3);
+        var uOther = unit(21); uOther.setFloor(9);      // 别的楼栋不算数
+        var byTenant = java.util.Map.of(100, java.util.List.of(u2, u3, uOther));
+        var m4 = meter(114, 20, "tenant", "三楼");
+        var mOther = meter(114, 21, "tenant", "九楼");
+        var mShare = meter(115, 20, "share", "五楼");   // 公摊表不是户内表
+        var metersByTenant = java.util.Map.of(114, java.util.List.of(m4, mOther), 115, java.util.List.of(mShare));
+        // 一级:合同单元跨两层 → 两层都占
+        assertEquals(java.util.List.of("二楼", "三楼"),
+            AllocService.memberFloor(100, 20, byTenant, metersByTenant));
+        // 二级:无合同单元 → 该户在本栋的户内表楼层
+        assertEquals(java.util.List.of("三楼"),
+            AllocService.memberFloor(114, 20, java.util.Map.of(), metersByTenant));
+        // 三级:两处都无 → 空(=未定层桶)
+        assertTrue(AllocService.memberFloor(115, 20, java.util.Map.of(), metersByTenant).isEmpty());
+        assertTrue(AllocService.memberFloor(999, 20, byTenant, metersByTenant).isEmpty());
+    }
+
+    // ══ 刀E §E4/§E5 两条分摊告警(纯函数,不起服务) ══
+
+    // §E4 真实脏数据:邓宇峰在宿舍四栋 合同单元=一楼+二楼,户内表却报二楼+四楼 →
+    // 两源都非空且不相等 = 冲突,点名到户落 warn;**入桶的仍是合同单元**(优先级不反转)。
+    @Test
+    void floorConflict_warnsButKeepsUnitPriority() {
+        var u1 = unit(29); u1.setFloor(1);
+        var u2 = unit(29); u2.setFloor(2);
+        var byTenant = java.util.Map.of(60, java.util.List.of(u1, u2));
+        var metersByTenant = java.util.Map.of(60,
+            java.util.List.of(meter(60, 29, "tenant", "二楼"), meter(60, 29, "tenant", "4楼")));
+        var fs = AllocService.memberFloorSources(60, 29, byTenant, metersByTenant);
+        assertEquals(java.util.List.of("一楼", "二楼"), fs.unit());
+        assertEquals(java.util.List.of("二楼", "四楼"), fs.meter());
+        assertEquals(java.util.List.of("一楼", "二楼"), fs.chosen());   // 已按合同单元计
+        assertTrue(fs.conflict());
+        assertEquals("池「一期 宿舍四栋·电梯」租户「邓宇峰」楼层两源不一致:合同单元=一楼+二楼、户内表=二楼+四楼,"
+                + "已按合同单元计;请核对主数据",
+            AllocService.floorConflictWarn("一期 宿舍四栋·电梯", "邓宇峰", fs));
+    }
+
+    // §E4 反向:两源说的是同一组楼层(写法不同,归一后同层)/ 只有一源有话说(那是回退不是冲突) → 不落 warn
+    @Test
+    void floorConflict_noWarnWhenAligned() {
+        var u = unit(30); u.setFloor(4);
+        var byTenant = java.util.Map.of(8, java.util.List.of(u));
+        var byMeter = java.util.Map.of(8, java.util.List.of(meter(8, 30, "tenant", "4楼")));
+        var same = AllocService.memberFloorSources(8, 30, byTenant, byMeter);
+        assertFalse(same.conflict());
+        assertNull(AllocService.floorConflictWarn("二期 一车间·消防", "铂超贸易", same));
+        assertNull(AllocService.floorConflictWarn("二期 一车间·消防", "铂超贸易",
+            AllocService.memberFloorSources(8, 30, byTenant, java.util.Map.of())));       // 只有合同单元
+        assertNull(AllocService.floorConflictWarn("二期 一车间·消防", "铂超贸易",
+            AllocService.memberFloorSources(8, 30, java.util.Map.of(), byMeter)));        // 只有户内表
+    }
+
+    // §E5 锚点 rule 3(二期一车间·电梯+低压电房照明):账册分母 5.80 层,实际 9 层各有人 →
+    // 摊出 9×145.37=1308.33,超应分摊 843.14 共 465.19(与 rule 11 的 573.20 合计 1038.39
+    // =spec §E5「合计超收约 1,038 元」)。**只告警不封顶**。
+    @Test
+    void floorCoef_warnsWhenBucketsExceedDenominator() {
+        var mems = new java.util.ArrayList<AllocService.FloorMember>();
+        String[] floors = {"一楼", "二楼", "三楼", "四楼", "五楼", "六楼", "七楼", "八楼", "九楼"};
+        for (int i = 0; i < floors.length; i++) mems.add(fm(i + 1, "500", floors[i]));
+        var split = AllocService.floorBuckets(mems, d("145.37"));
+        assertEquals(9, AllocService.floorBucketsOf(mems).size());
+        assertEquals(0, sum(split).compareTo(d("1308.33")));
+        assertEquals("池「二期 一车间·电梯+低压电房照明」按 9 层拆但账册分母为 5.8 层,"
+                + "摊出超应分摊 465.19 元,请核对系数或成员楼层",
+            AllocService.floorCoefWarn("二期 一车间·电梯+低压电房照明",
+                AllocService.floorBucketsOf(mems).size(), d("5.80"), sum(split), d("843.14")));
+    }
+
+    // §E5 反向:rule 50(B座天面货梯)3 桶 vs 分母 3.00 → 不超,不落 warn。
+    // 它的超收 907.50 vs 应分摊 718.08 来自账册加度 170 度造的盈余(与 AE 907.5 吻合),不是桶数问题,
+    // 封顶会打死这个已验证锚点 —— 这条用例把「不误报、不封顶」一起锁住。
+    @Test
+    void floorCoef_noWarnForRule50Surplus() {
+        var mems = java.util.List.of(fm(103, "500", "四楼"), fm(107, "500", "二楼"), fm(114, "500", "三楼"));
+        var split = AllocService.floorBuckets(mems, d("302.50"));
+        assertEquals(0, sum(split).compareTo(d("907.50")));
+        assertTrue(sum(split).compareTo(d("718.08")) > 0);   // 确实超收,但超收源于加度不是桶数
+        assertNull(AllocService.floorCoefWarn("一期 B座·天面·货梯",
+            AllocService.floorBucketsOf(mems).size(), d("3.00"), sum(split), d("718.08")));
+    }
+
+    private static com.park.demo3.entity.Meter meter(int tenantId, int buildingId, String ownership, String floorLabel) {
+        var m = new com.park.demo3.entity.Meter();
+        m.setTenantId(tenantId); m.setBuildingId(buildingId);
+        m.setOwnership(ownership); m.setFloorLabel(floorLabel);
+        return m;
     }
 
     // ── 园区级池受益人 fallback(用户 2026-07-30 拍板:园区级池受益人=全园在租自动带出) ──
@@ -365,5 +644,78 @@ class AllocServiceTest {
         assertNull(AllocService.stdAmountOverBase(d("100"), null, 2, null, null));
         assertNull(AllocService.stdQtyPriceOverBase(d("100"), null, BigDecimal.ZERO, AB, 2, null, null));
         assertNull(AllocService.stdQtyOverBase(d("100"), null, 3, null, null));
+    }
+
+    // ── V77 §G3 电表标签位置段:缺了要说出来,不能静默少一截 ──
+    private static com.park.demo3.entity.Meter lm(String area, String spot, String floorLabel, String side) {
+        var m = new com.park.demo3.entity.Meter();
+        m.setArea(area); m.setSpot(spot); m.setFloorLabel(floorLabel); m.setSide(side);
+        m.setTenantName("已停用"); m.setSubName("电表①");
+        return m;
+    }
+
+    @Test
+    void meterLabel_locSegment() {
+        // 有区域、位置与楼层皆空(meter 219 优凯A305电 的真实形态)→ 补占位段
+        assertEquals("招商中心·(位置未录)·已停用·电表①", AllocService.meterLabel(lm("招商中心", null, null, null)));
+        assertEquals("招商中心·(位置未录)·已停用·电表①", AllocService.meterLabel(lm("招商中心", "  ", "", null)));
+        // 区域也空(园区级/跨栋表)→ 不适用,不补
+        assertEquals("已停用·电表①", AllocService.meterLabel(lm(null, null, null, null)));
+        // spot 有值但解析不出楼层 → 用 spot 原文,不补占位
+        assertEquals("园区·招商中心门口 1·已停用·电表①", AllocService.meterLabel(lm("园区", "招商中心门口 1", null, null)));
+        // spot 空但人工补了楼层/方位 → 用结构化段拼出「四楼西侧」
+        assertEquals("一期 A座·四楼西侧·已停用·电表①", AllocService.meterLabel(lm("一期 A座", null, "四楼", "西侧")));
+        assertEquals("一期 A座·四楼·已停用·电表①", AllocService.meterLabel(lm("一期 A座", null, "四楼", null)));
+        // spot 优先于结构化段(原文保留=导入身份键)
+        assertEquals("一期 A座·三楼东侧·已停用·电表①", AllocService.meterLabel(lm("一期 A座", "三楼东侧", "四楼", "西侧")));
+    }
+
+    // ── §H4.2e 无表行(method=manual,原册 r12 联塑精铟 / r47–49 C座一楼西侧三户)──
+    // computePool 对 manual 池早退返回这个常量:十二格全空。
+    // qty/cost/std 为 NULL → 屏上合计(只加非空的 costAmount)自然不含它;
+    // warn 为 NULL → 不报「缺读数」(这四行本就没有表可抄,报缺抄是假警报)。
+    @Test
+    void manualPool_allNullNoWarn() {
+        AllocService.PoolCalc p = AllocService.MANUAL_POOL;
+        assertNull(p.qtyTotal()); assertNull(p.sharp()); assertNull(p.peak());
+        assertNull(p.flat()); assertNull(p.valley()); assertNull(p.extra());
+        assertNull(p.cost(), "manual 池不出应分摊,否则会进合计");
+        assertNull(p.base()); assertNull(p.std()); assertNull(p.foldAdd()); assertNull(p.price());
+        assertNull(p.warn(), "manual 池不许报缺读数");
+    }
+
+    // ── V82 §H4.2a 一期定位归一:规则的位置是原册 C 列一格,meter 仍是两格 ──
+    // 归一后 rule.floor_label='四楼西侧'/side=NULL,而 meter 是 floor_label='四楼'+side='西侧'。
+    // 不剥方位,一期池的表候选会整片落空 —— 这里锁住剥法与「无方位不乱剥」两侧。
+    @Test
+    void sideOf_splitsMergedFloorLabel() {
+        assertEquals("西侧", AllocService.sideOf("四楼西侧"));
+        assertEquals("东侧", AllocService.sideOf("一楼东侧"));
+        // 原册 26 行「天面」全部不带方位(东西之分在 D 列电表名称),不许剥出方位来
+        assertNull(AllocService.sideOf("天面"));
+        assertNull(AllocService.sideOf("二楼"));
+        assertNull(AllocService.sideOf("负一层"));
+        assertNull(AllocService.sideOf(null));
+        assertNull(AllocService.sideOf("西侧"), "只有方位没有楼层 → 不当合成标签处理");
+    }
+
+    @Test
+    void atLocation_mergedP1LabelStillMatchesTwoFieldMeter() {
+        var west = lm("一期 A座", null, "四楼", "西侧");
+        var east = lm("一期 A座", null, "四楼", "东侧");
+        var roof = lm("一期 C座", null, "天面", null);
+        west.setBuildingId(13); east.setBuildingId(13); roof.setBuildingId(21);
+        // 一期归一后的一格写法
+        assertTrue(AllocService.atLocation(west, 13, "四楼西侧", null));
+        assertFalse(AllocService.atLocation(east, 13, "四楼西侧", null));
+        // 二期照旧两格传参,行为不变
+        assertTrue(AllocService.atLocation(west, 13, "四楼", "西侧"));
+        assertFalse(AllocService.atLocation(east, 13, "四楼", "西侧"));
+        // 天面池不再带 side:26 块天面表(side 全 NULL)这才能被选到 —— 旧的「天面+东侧」一块都选不出
+        assertTrue(AllocService.atLocation(roof, 21, "天面", null));
+        assertFalse(AllocService.atLocation(roof, 21, "天面", "东侧"));
+        // 楼栋不符 → 直接否;楼栋 null=不限(园区级池)
+        assertFalse(AllocService.atLocation(west, 21, "四楼西侧", null));
+        assertTrue(AllocService.atLocation(west, null, null, null));
     }
 }

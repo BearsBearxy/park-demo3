@@ -10,21 +10,30 @@
 // 刀3(用户 2026-07-30 报障):①分带只按楼栋(四级分带带头比数据行还多),楼层+方位与费项名各自成列;
 // ②「已分摊/盈亏」正名为「摊出/差额」——引擎按受益人正向试算的摊出额,不是账册 AE(从账单侧拉回的实收)
 // 与 AF(实收−应分摊);实收/盈亏另立两列恒'–',待 bill_notice 落地回填(POOL-ENGINE-SPEC §6.1)。
+// BOOK-REBUILD-SPEC §H4(2026-07-31):①分带改**原册块**(一期 7 块,块名逐字;按楼栋分带会把
+// A 座两个块并成一带、三行招商中心抽成自成一带);②池名称列优先显原册 A 列自然键 book_key;
+// ③「楼层·方位」列归一为一格 floor_label(side 不再拼);④带尾出块合计行(口径同原册 SUM 区间)。
+// §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
+// 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
-  type AllocMethod, type AllocPoolRowDTO,
+  type AllocMethod, type AllocPoolLineDTO, type AllocPoolRowDTO,
   type AllocPoolsDTO, type AllocCfgDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
 } from '@/api/alloc'
 import { metersApi, type MeterDTO } from '@/api/meters'
+import { tenantApi } from '@/api/tenant'
+import type { TenantDTO } from '@/types/tenant'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
-  POOL_ZONE_LABEL, buildPoolExportAoa, gapClass, groupPoolsByBuilding, poolAutoName,
-  poolFeeLabel, poolFloorSide, poolFooter, poolSemantics, stdDisplay,
+  FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
+  costPerLine, gapClass, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
+  poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
+  poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -33,6 +42,7 @@ import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
@@ -68,6 +78,7 @@ const cfgs = ref<AllocCfgDTO[]>([])
 const rules = ref<AllocRuleDTO[]>([])
 const buildings = ref<BuildingDTO[]>([])
 const meters = ref<MeterDTO[]>([])
+const tenants = ref<TenantDTO[]>([])           // §E6:direct 池的全库租户选择器候选
 const diffs = ref<AllocMemberDiffDTO[]>([])
 let seq = 0
 async function loadMonth() {
@@ -80,11 +91,19 @@ async function loadMonth() {
   if (my !== seq) return
   pools.value = ps; cfgs.value = cs; diffs.value = df
 }
-async function loadRules() { rules.value = await allocApi.rules() }
+// §E2 隐患①:rules 载入失败过去被 .catch(()=>{}) 全静默 —— openPoolDlg 从 ruleById 取
+// feeKey/coefficient/extraQty,拿不到就静默回落默认值,保存即把这三项冲掉。改为记失败标记,
+// 抽屉据此禁用保存并给重试(不改调用方的 catch:那只是别让加载失败炸掉整页)。
+const rulesFailed = ref(false)
+async function loadRules() {
+  try { rules.value = await allocApi.rules(); rulesFailed.value = false }
+  catch (e) { rulesFailed.value = true; throw e }
+}
 onMounted(async () => {
   loadRules().catch(() => {})
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => {})
   metersApi.list('elec').then(ms => { meters.value = ms }).catch(() => {})
+  tenantApi.list().then(ts => { tenants.value = ts }).catch(() => {})
   try {
     dataYears.value = await allocApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]
@@ -92,14 +111,15 @@ onMounted(async () => {
   } catch { /* 年份失败不阻断 */ }
   loadMonth()
 })
-watch([year, month], loadMonth)
+watch([year, month], () => { genWarnings.value = []; loadMonth() })   // 换账期:上次生成的告警不再适用
 
 const ruleById = computed(() => new Map(rules.value.map(r => [r.id, r])))
 const buildingOpts = computed(() => [{ value: '', label: '(园区级,不挂楼栋)' },
   ...buildings.value.map(b => ({ value: String(b.id), label: b.name }))])
 
-// ── 分带表体(刀3):只按楼栋分带(园区级在前),楼层·方位成列;tfoot 合计(ref 行不计) ──
-const bands = computed(() => groupPoolsByBuilding(pools.value?.rows ?? [], zone.value))
+// ── 分带表体(§H4.2b):按原册块分带(一期 7 块;二期/宿舍无块回落楼栋),楼层成列;
+// 带尾出块合计(口径同原册 SUM 区间),tfoot 出全期合计(均剔 ref 行) ──
+const bands = computed(() => groupPoolsByBookBlock(pools.value?.rows ?? [], zone.value))
 const foot = computed(() => poolFooter(bands.value))
 const generated = computed(() => pools.value?.generated ?? false)
 
@@ -123,27 +143,37 @@ const ALL_SEGS: SegDef[] = [
   { lab: '平', k: 'qtyFlat' }, { lab: '谷', k: 'qtyValley' },
 ]
 const segDefs = computed(() => (zone.value === 'p2' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
-// 楼层·方位+池名称+表构成(3) + 用量段 + 应分摊/语义/标准(3) + 编辑态月参(2) + 摊出/差额/实收/盈亏/备注(5)
-const colCount = computed(() => 3 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 5)
+// V73 列模型:楼层+池名称(2) + 逐表列 电表/倍率/上月/本月(4) + 用量段
+// + 应分摊/语义/标准(3) + 编辑态月参(2) + 摊出/差额/实收/盈亏/备注(5)
+const colCount = computed(() => 7 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 5)
 
 // sticky 左两列(FPLedgerTable 手法:offset=列宽累加)
+// sticky 左三列:区域(原册 B) + 楼层(原册 C) + 池名称(原册 D)。offset 由列宽累加,改宽必须同步改 left。
+const AREA_W = 76
 const FLOOR_W = 96
 const NAME_W = 150
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixFloor = { ...w(FLOOR_W), left: '0px' }
-const fixName = { ...w(NAME_W), left: FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }
+const fixArea = { ...w(AREA_W), left: '0px' }
+const fixFloor = { ...w(FLOOR_W), left: AREA_W + 'px' }
+const fixName = { ...w(NAME_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }
 const fixBand = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
 // ── 生成本月/重新生成(编辑态;POST generate 后刷新) ──
 const cfgDirty = ref(false)   // 池配置/月度参数改动后提示「配置已变,请重新生成」
 const generating = ref(false)
+// 生成告警(AllocGenerateResultDTO.warnings):引擎的「静默吞钱防线」——无受益人未摊到户 N 元/
+// 摊出超应分摊/缺起止日期户未入名册/缺参。全期别一份,不随 zone 页签过滤;换账期清空。
+const genWarnings = ref<string[]>([])
+const warnOpen = ref(false)
 async function onGenerate() {
   if (generating.value) return
   if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
   generating.value = true
   try {
-    await allocApi.generate(ym.value)
+    const res = await allocApi.generate(ym.value)
     cfgDirty.value = false
+    genWarnings.value = res.warnings ?? []
+    warnOpen.value = false
     await loadMonth()
   } catch (e) { alert(errMsg(e, '生成失败')) } finally { generating.value = false }
 }
@@ -156,6 +186,25 @@ async function onExport() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '公共电核算')
   XLSX.writeFile(wb, `公共电核算-${ym.value}-${POOL_ZONE_LABEL[zone.value]}.xlsx`)
 }
+
+// ── §H3 二期 2023 冻结参数披露:V83 落在 alloc_cfg 的 rule:{id} **默认行**(acct_month='' 即不随
+//    月份变=冻结),所以不能走只认当月行的 cfgRaw。note 原文进「分摊标准」列 title,格上加 ❄ 让它不用悬停也看得见。──
+const frozenNote = computed(() => {
+  const m = new Map<number, string>()
+  for (const c of cfgs.value)
+    if (c.cfgKey === FROZEN_CFG_KEY && c.scope.startsWith('rule:') && c.note)
+      m.set(Number(c.scope.slice(5)), c.note)
+  return m
+})
+const stdCell = (r: AllocPoolRowDTO) => stdDisplay(r, frozenNote.value.get(r.ruleId))
+
+// ── 刀I §I3 逐行身份(ROW-IDENTITY-SPEC):楼层/池名称两列逐行取自**本行电表** ──
+// 原册 B(区域)/C(楼层)/D(企业名称)永远逐行写、从不纵向合并;纵向合并的只有 AA/AC/AE/AF/AG
+// —— 屏上的 rowspan 也就只保留给 分摊语义/分摊标准/系数(月)/加度(月)/摊出/差额/实收/盈亏/备注。
+// 行值缺(净额池不出逐表行 / 无绑定表 / 后端老快照)才回落池级值。
+const rowArea = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineArea(ln, poolArea(r))
+const rowFloor = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineFloor(ln, poolFloor(r))
+const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName(ln, poolFeeLabel(r))
 
 // ── 月度参数行内编辑(编辑态两列):rule:{id} 月行 coefficient/extra_qty,commitAdj 模式 ──
 const cfgRaw = (scope: string, key: string) =>
@@ -173,6 +222,14 @@ function commitRuleCfg(ruleId: number, key: 'coefficient' | 'extra_qty', raw: st
 const poolDlg = ref(false)
 const poolErr = ref('')
 const saving = ref(false)
+// 保存/删除成功的轻提示(3s 自淡出);抽屉关了才看得见,故挂在页面提示条区
+const okMsg = ref('')
+let okTimer: ReturnType<typeof setTimeout> | undefined
+function flashOk(msg: string) {
+  okMsg.value = msg
+  clearTimeout(okTimer)
+  okTimer = setTimeout(() => { okMsg.value = '' }, 3000)
+}
 interface PoolForm {
   id: number | null; zone: AllocZone
   buildingId: number | null; floorLabel: string; side: string; feeName: string
@@ -194,12 +251,13 @@ function emptyForm(): PoolForm {
 // 分摊方式(草图四档);ref/loss 只在该池本来就是时才露出,免把存量纯标准行误改
 const METHOD_TEXT: Record<AllocMethod, string> = {
   area: '按面积', floor: '按层份', direct: '户对户', none: '园区自担',
-  loss: '并入损耗', ref: '纯标准行',
+  loss: '并入损耗', ref: '纯标准行', carrier: '冲减载体',
 }
 const METHOD_HINT: Record<AllocMethod, string> = {
   area: '按受益户租赁面积摊(基数=Σ㎡)', floor: '按层份摊(基数=层数,可小数)',
   direct: '整笔给唯一受益户', none: '不摊给租户,全额挂园区亏',
   loss: '并入损耗链', ref: '只出分摊标准供别池折入,不出应分摊',
+  carrier: '表已在别池以「−」冲减,本行只陈列用量,不出应分摊、不入金额合计',
 }
 const methodRadios = computed(() => {
   const base: AllocMethod[] = ['area', 'floor', 'direct', 'none']
@@ -248,8 +306,20 @@ const LINK_TYPE_OPTS = [
 const linkRuleOpts = computed(() =>
   rules.value.filter(r => r.id !== form.value.id).map(r => ({ value: String(r.id), label: r.name })))
 
+// 受益人楼层(§D.1 后端读时现算,不落库):has()=后端算过,值 null=未定层(会与其他未定层户合摊 1 份);
+// 新勾选的户不在表内 —— 楼层要保存后由后端解析才知道
+const floorByTenant = ref(new Map<number, string | null>())
+// §D.5 取消勾选时暂存份额,勾回时取回 —— 旧实现恒写 null,rule 49/77 的 0.5 份会被静默冲掉
+const weightStash = new Map<number, number | null>()
+// §G4 抽屉打开时定位三格是否高亮(该池被判为「待补定位」)
+const locTodo = ref(false)
+
 function openPoolDlg(r?: AllocPoolRowDTO) {
   poolErr.value = ''
+  weightStash.clear()
+  // §H4:挂栋却没录楼层的池,打开时高亮定位三格
+  locTodo.value = !!r && poolLocKind(r) === 'todo'
+  floorByTenant.value = new Map(r ? r.members.map(m => [m.tenantId, m.floorLabel] as [number, string | null]) : [])
   if (r) {
     const rule = ruleById.value.get(r.ruleId)
     form.value = {
@@ -273,25 +343,29 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
 }
 
 // ── 组成候选(/pool-candidates,按定位过滤):定位一改就重取;新增池预勾(infra 除外) ──
-const cands = ref<AllocCandidatesDTO>({ meters: [], tenants: [] })
+const cands = ref<AllocCandidatesDTO>({ meters: [], tenants: [], tenantNote: null })
 const candLoading = ref(false)
 let candSeq = 0
-async function loadCands() {
+// prefill=是否按候选重新预勾(新增池默认预勾;改分摊方式时只换候选口径,不能冲掉已勾的表和户)
+async function loadCands(prefill = form.value.id == null) {
   const my = ++candSeq
   candLoading.value = true
   try {
+    // §E6:带上 method —— direct 时后端回空 tenants + tenantNote(不推该定位在租名单)
     const c = await allocApi.poolCandidates(ym.value, form.value.buildingId,
-      form.value.floorLabel || null, form.value.side || null)
+      form.value.floorLabel || null, form.value.side || null, form.value.method)
     if (my !== candSeq) return
     cands.value = c
-    if (form.value.id == null) {          // 新增池:非 infra 表 + 该定位在租租户预勾
+    if (prefill) {                        // 新增池:非 infra 表 + 该定位在租租户预勾
       form.value.meters = c.meters.filter(m => m.ownership !== 'infra')
         .map(m => ({ meterId: m.meterId, sign: 1, label: m.label }))
-      form.value.members = c.tenants.filter(t => t.preChecked !== false)
-        .map(t => ({ tenantId: t.tenantId, tenantName: t.tenantName ?? `#${t.tenantId}`,
-          unitNo: t.unitNo, weight: null, inForce: t.inForce ?? 'yes' }))
+      // §D.4:direct=户对户只摊一户,不按定位预勾一堆在租租户(用户报障「一堆新在租」即此)
+      form.value.members = form.value.method === 'direct' ? []
+        : c.tenants.filter(t => t.preChecked !== false)
+          .map(t => ({ tenantId: t.tenantId, tenantName: t.tenantName ?? `#${t.tenantId}`,
+            unitNo: t.unitNo, weight: null, inForce: t.inForce ?? 'yes' }))
     }
-  } catch { if (my === candSeq) cands.value = { meters: [], tenants: [] } } finally {
+  } catch { if (my === candSeq) cands.value = { meters: [], tenants: [], tenantNote: null } } finally {
     if (my === candSeq) candLoading.value = false
   }
 }
@@ -321,14 +395,20 @@ function toggleSign(id: number) {
 // 「从其他位置添加表」:全库搜索(货梯/招商子表/广告字分表这类跨位置口子)
 const otherOpen = ref(false)
 const otherQ = ref('')
-const meterLabelOf = (m: MeterDTO) =>
-  (m.spot?.trim() || m.name) + (m.subName ? `·${m.subName}` : '')
+// 与后端 AllocService.meterLabel 同规则(V73):区域·位置·用途·表号。
+// 用途取 tenantName(=账册「企业名称」列原文,公摊表存的是「东侧货梯」这类用途),空则回退标识名。
+// 旧实现只取「位置·表号」,B座天面 4 块表全叫「天面·电表①」,用户挑不出谁是谁。
+const meterLabelOf = (m: Pick<MeterDTO, 'name' | 'area' | 'spot' | 'tenantName' | 'subName'>) =>
+  [m.area, m.spot, m.tenantName?.trim() || m.name, m.subName]
+    .map(x => x?.trim()).filter((x): x is string => !!x)
+    .filter((x, i, a) => a.indexOf(x) === i).join('·')
 const otherList = computed(() => {
   const kw = otherQ.value.trim()
   const inRows = new Set(meterRows.value.map(r => r.meterId))
   return meters.value.filter(m => !inRows.has(m.id)
     && (kw === '' || m.name.includes(kw) || (m.subName ?? '').includes(kw)
-      || (m.spot ?? '').includes(kw) || (m.area ?? '').includes(kw))).slice(0, 40)
+      || (m.spot ?? '').includes(kw) || (m.area ?? '').includes(kw)
+      || (m.tenantName ?? '').includes(kw) || (m.code ?? '').includes(kw))).slice(0, 40)
 })
 
 // 受益人勾选行=候选(在租) ∪ 已存受益人(退租的灰显标注,缺日期的橙标「判不了」)
@@ -345,10 +425,56 @@ const tenantRows = computed<TenantRow[]>(() => {
 const memberOf = (id: number) => form.value.members.find(m => m.tenantId === id)
 function toggleMember(t: TenantRow) {
   const i = form.value.members.findIndex(m => m.tenantId === t.tenantId)
-  if (i >= 0) form.value.members.splice(i, 1)
-  else form.value.members.push({ tenantId: t.tenantId, tenantName: t.name, unitNo: t.unitNo,
-    weight: null, inForce: t.inForce })
+  if (i >= 0) {                                  // §D.5 取消:份额先入暂存,勾回时原样取回
+    weightStash.set(t.tenantId, form.value.members[i].weight)
+    form.value.members.splice(i, 1)
+    return
+  }
+  // §D.4 direct=户对户单选:勾新的即替换旧的(整笔只能归一户)
+  if (form.value.method === 'direct') form.value.members = []
+  form.value.members.push({ tenantId: t.tenantId, tenantName: t.name, unitNo: t.unitNo,
+    weight: weightStash.get(t.tenantId) ?? null, inForce: t.inForce })
 }
+// §E6 direct=户对户:后端不推该定位在租名单(推了也没意义),那一户从全库租户里直接挑
+const tenantOpts = computed(() =>
+  tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName })))
+const directTenantId = computed(() => form.value.members[0]?.tenantId ?? null)
+function pickDirect(id: number | null) {
+  if (id == null) { form.value.members = []; return }
+  const cand = cands.value.tenants.find(t => t.tenantId === id)      // 同定位候选里有就沿用其单元/在租态
+  form.value.members = [{
+    tenantId: id, tenantName: tenantOpts.value.find(t => t.id === id)?.name ?? `#${id}`,
+    unitNo: cand?.unitNo ?? null, weight: null, inForce: cand?.inForce ?? 'yes',
+  }]
+}
+// §D.5 份额:空=按楼层自动分(该户所在层各摊 1 份,层内多户按面积拆);填值=显式份额覆盖(账册 49/77 的 0.5)
+function commitWeight(id: number, raw: string) {
+  const m = memberOf(id)
+  if (!m) return
+  const t = raw.trim()
+  if (t === '') { m.weight = null; weightStash.delete(id); return }
+  const v = Number(t)
+  if (!isFinite(v)) { alert('份额请输入数字(1=整份,0.5=半份;留空=按楼层自动分)'); return }
+  m.weight = v
+  weightStash.set(id, v)
+}
+// 改成户对户时只留第一个受益人(§D.4 整笔归一户,免存出一个 13 户的 direct 池);
+// 只在用户点分摊方式时触发,不在打开抽屉时静默改动既有名单
+function setMethod(m: AllocMethod) {
+  form.value.method = m
+  if (m === 'direct') form.value.members = form.value.members.slice(0, 1)
+  // §E6:候选口径随 method 变(direct 不推在租名单)。不用 watch:打开抽屉时 method 也在变,
+  // 会与 openPoolDlg 里那次 loadCands 抢 candSeq 把新增池的预勾吃掉。这里只走用户点击这一条路。
+  loadCands(false)
+}
+// ④ 段抬头:direct=户对户单选(§D.4)/园区级未勾人=自动全园/其余=勾选计数
+const memberSummary = computed(() => form.value.method === 'direct'
+  ? `整笔归 ${form.value.members[0]?.tenantName ?? '(未指定)'}`
+  : formAutoMembers.value ? '自动=全园在租' : `已选 ${form.value.members.length} 户`)
+const memberHint = computed(() => form.value.method === 'direct'
+  ? (cands.value.tenantNote ?? '户对户池只摊给一户,不按定位推在租名单 —— 选中一户即替换原有的')
+  : formAutoMembers.value ? '园区级池不勾人=按该期全园在租租户自动摊(勾了就以勾选为准)'
+    : '候选=该定位本月在租租户(按合同预勾;侧向勾错请手动取消)')
 function addLink() { form.value.links.push({ ruleId: '', type: 'fold_price' }) }
 
 async function submitPool() {
@@ -374,10 +500,17 @@ async function submitPool() {
     if (f.id == null) await allocApi.createRule(req)
     else await allocApi.updateRule(f.id, req)
     poolDlg.value = false
+    // §E2 隐患②:过去存完悄无声息,「存了但没变化」与「压根没存」分不清
+    flashOk(`池「${formAutoName.value}」已保存`)
     loadRules().catch(() => {})
-    // 「保存并重新生成」:本月已有快照就顺手重算,否则留提示条
+    // 「保存并重新生成」:本月已有快照就顺手重算,否则留提示条。
+    // 失败必须说话:成环 409 与缺电价 400 都从这条路来,过去被空 catch 吞掉只剩一条泛泛黄条。
     if (generated.value) {
-      try { await allocApi.generate(ym.value); cfgDirty.value = false } catch { cfgDirty.value = true }
+      try {
+        const res = await allocApi.generate(ym.value)
+        cfgDirty.value = false
+        genWarnings.value = res.warnings ?? []
+      } catch (e) { cfgDirty.value = true; alert(errMsg(e, '重新生成失败')) }
     } else cfgDirty.value = true
     await loadMonth()
   } catch (e) { poolErr.value = errMsg(e, '保存失败') } finally { saving.value = false }
@@ -389,6 +522,7 @@ async function delPool() {
   try {
     await allocApi.deleteRule(f.id)
     poolDlg.value = false
+    flashOk(`池「${f.oldName || formAutoName.value}」已删除`)
     cfgDirty.value = true
     loadRules().catch(() => {})
     await loadMonth()
@@ -432,6 +566,11 @@ async function delPool() {
       </div>
     </div>
 
+    <!-- 保存/删除成功轻提示(3s 自消) -->
+    <div v-if="okMsg" class="pl-bar ok">
+      <component :is="iconFor('check')" :size="14" />
+      <span>{{ okMsg }}</span>
+    </div>
     <!-- 提示条:本月未生成 / 配置已变请重新生成 -->
     <div v-if="!generated" class="pl-bar">
       <component :is="iconFor('info')" :size="14" />
@@ -443,6 +582,16 @@ async function delPool() {
     <div v-if="cfgDirty" class="pl-bar warn">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
+    </div>
+    <!-- 生成告警清单:引擎在 generate 时报的「未摊到户/缺读数/缺参」,过去被前端整个丢弃 -->
+    <div v-if="genWarnings.length" class="pl-bar warn">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span>本次生成有 {{ genWarnings.length }} 条告警(全期别一份,不随上方一期/二期页签过滤)
+        —— 常见为「池无受益人,应分摊 N 元未摊到户」「缺读数」「缺参数」,逐条核对后重新生成。</span>
+      <button class="pl-barlink" @click="warnOpen = !warnOpen">{{ warnOpen ? '收起' : '展开' }}</button>
+      <div v-if="warnOpen" class="pl-difflist">
+        <div v-for="(wrn, i) in genWarnings" :key="i" class="pl-warnrow">{{ wrn }}</div>
+      </div>
     </div>
     <!-- V69 受益人变动提醒条:该定位本月在租租户 vs 池受益人的差集 -->
     <div v-if="zoneDiffs.length" class="pl-bar warn">
@@ -469,13 +618,21 @@ async function delPool() {
       <table class="pl-table">
         <thead>
           <tr>
+            <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixArea"
+                title="原册 B 列:楼栋/车间(不带期数)。招商中心那几行原册写的就是「招商中心」,不是「A座」">区域</th>
             <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixFloor"
-                title="池的楼层与方位(整栋池'–';园区级池不挂楼栋,空)">楼层·方位</th>
+                title="原册 C 列那一格(楼层+方位写在一起,如「四楼西侧」);
+橙色「(未录)」=挂了楼栋却没录楼层,点开池名在抽屉里补;园区级池不挂楼栋,留空">楼层</th>
             <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixName"
-                title="费项名(楼栋/楼层已成列);悬停行内池名可看自动生成的全名">池名称</th>
-            <th rowspan="2" class="pl-grp-th" :style="w(88)">表构成</th>
+                title="原册 A 列自然键(如「A4西侧走廊灯」);无自然键的显费项名。悬停行内池名可看系统全名">池名称</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(230)"
+                title="一表一行(原册结构):区域·位置·用途·表号;「−」=以 sign=-1 从本池冲减">电表</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(62)" title="当月读数的倍率快照,非档案现值">倍率</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(96)">上月行至</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(96)">本月行至</th>
             <th :colspan="segDefs.length" class="pl-grp-th">用量(kWh)</th>
-            <th rowspan="2" class="pl-grp-th" :style="w(104)">应分摊(元)</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(104)"
+                title="逐表金额(p1/宿舍逐表ROUND口径);二期为池级一次ROUND,逐表金额不存在→按池合并显池级合计">应分摊(元)</th>
             <th rowspan="2" class="pl-grp-th" :style="w(112)">分摊语义</th>
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
             <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(92)" title="rule:{id} 月行 coefficient(层数/面积基数月变);清空=回退池默认系数">系数(月)</th>
@@ -496,71 +653,122 @@ async function delPool() {
         </thead>
         <tbody>
           <template v-for="b in bands" :key="b.label">
-            <!-- 楼栋分带(园区级/各楼栋;带头跨左两列 sticky) -->
+            <!-- 原册块分带(一期=原册 7 个合计行块名逐字;二期/宿舍无块回落楼栋名;带头跨左两列 sticky) -->
             <tr class="pl-band">
-              <td class="pl-fix" :style="fixBand" colspan="2">
+              <td class="pl-fix" :style="fixBand" colspan="3">
                 <span class="pl-band-lbl">{{ b.label }}</span>
               </td>
-              <td :colspan="colCount - 2"></td>
+              <td :colspan="colCount - 3"></td>
             </tr>
-            <tr v-for="r in b.rows" :key="r.ruleId">
+            <!-- V73 逐表行:一个池占 max(1,lines) 行。§E1:楼层/池名称两列**每行都渲染**
+                 (原册这两列是逐行写满的,合并只用在语义/标准/摊出/差额/实收/盈亏/备注上);
+                 续行淡显 + 池**首行**虚线上边框(§F10:虚线是池与池之间的分隔,池内续行不画线)。 -->
+            <template v-for="r in b.rows" :key="r.ruleId">
+            <tr v-for="(ln, li) in (r.lines.length ? r.lines : [null])"
+                :key="ln ? ln.meterId : 'p' + r.ruleId" :class="{ 'pl-ptop': li === 0 }">
+              <!-- §I3:楼层=**本行电表**的楼层,回落池级(=原册 C 列一格,含方位如「四楼西侧」);
+                   挂栋没录的显橙色「(未录)」 -->
+              <!-- 原册 B 列:区域=本行电表的 area(招商中心行就写「招商中心」),回落池的楼栋名并剥期数前缀 -->
+              <td class="pl-fix" :style="fixArea">
+                <span class="pl-txt">{{ rowArea(r, ln) }}</span>
+              </td>
               <td class="pl-fix" :style="fixFloor">
-                <span class="pl-txt" :class="{ dim: poolFloorSide(r) === '–' }">{{ poolFloorSide(r) }}</span>
+                <span class="pl-txt" :title="rowFloor(r, ln) === POOL_LOC_UNSET ? POOL_LOC_HINT.todo ?? undefined : undefined"
+                      :class="{ 'pl-loc-todo': rowFloor(r, ln) === POOL_LOC_UNSET }">{{ rowFloor(r, ln) }}</span>
               </td>
+              <!-- §I3:池名称=**本行电表**的用途(原册 D 列);池级自然键(A 列)退到首行副标题 -->
               <td class="pl-fix" :style="fixName">
-                <span class="pl-pname" :class="{ click: editMode }" :title="r.warn ?? r.autoName ?? r.name"
+                <span class="pl-pname" :class="{ click: editMode }"
+                      :title="r.warn ?? r.autoName ?? r.name"
                       @click="editMode && openPoolDlg(r)">
-                  <span class="nm">{{ poolFeeLabel(r) }}</span>
+                  <span class="nm">{{ rowName(r, ln) }}</span>
                   <span v-if="r.warn" class="pl-warn" :title="r.warn">!</span>
+                  <span v-if="r.links.length" class="pl-linkchip"
+                        :title="r.links.map(l => `折入${l.type === 'fold_price' ? '标准' : '度数'} ← ${l.name}`).join('\n')">
+                    +{{ r.links.length }}链
+                  </span>
                 </span>
+                <!-- 副标题只在首行:原册 A 列自然键(回溯锚点,与本行用途同字时不重复)+ Σ 池合计
+                     (Σ 逐行复制会被误读成每行都有这么多) -->
+                <span v-if="li === 0 && poolSubtitle(r, rowName(r, ln))" class="pl-sub-sum">
+                  {{ poolSubtitle(r, rowName(r, ln)) }}</span>
               </td>
-              <!-- 表构成:n块,hover popover 列名单(含 sign 与折入 links) -->
-              <td class="ct pl-mcell">
-                <span class="pl-mcnt">{{ r.meters.length }}块<template v-if="r.links.length">+{{ r.links.length }}链</template></span>
-                <div v-if="r.meters.length || r.links.length" class="pl-pop">
-                  <div v-for="m in r.meters" :key="m.meterId" class="pl-pop-row" :title="m.meterType ?? undefined">
-                    <span class="sgn" :class="{ neg: m.sign < 0 }">{{ m.sign < 0 ? '−' : '+' }}</span>{{ m.label || m.name }}
-                  </div>
-                  <div v-for="l in r.links" :key="l.type + '-' + l.ruleId" class="pl-pop-row link">
-                    折入{{ l.type === 'fold_price' ? '标准' : '度数' }} ← {{ l.name }}
-                  </div>
-                </div>
+              <!-- 逐表列;§I2:净额池不出逐表行(那些表在原册分摊明细上没有行),构成明细进本格 hover -->
+              <td class="pl-mname">
+                <span v-if="ln" :title="[ln.meterType, ln.code && ('编码 ' + ln.code)].filter(Boolean).join(' · ') || undefined">
+                  {{ lineLabel(ln) }}
+                </span>
+                <span v-else-if="netSummary(r)" class="pl-txt dim" :title="netSummary(r)!.title">
+                  {{ netSummary(r)!.text }}
+                </span>
+                <span v-else class="pl-txt dim">无绑定表</span>
               </td>
+              <td><span class="pl-nv" :class="{ empty: !ln?.factorSnap }">{{ fmt(ln?.factorSnap ?? null) }}</span></td>
+              <td><span class="pl-nv" :class="{ empty: ln?.prevTotal == null }">{{ fmt(ln?.prevTotal ?? null) }}</span></td>
+              <td><span class="pl-nv" :class="{ empty: ln?.currTotal == null }">{{ fmt(ln?.currTotal ?? null) }}</span></td>
               <td v-for="s in segDefs" :key="s.k">
-                <span class="pl-nv" :class="{ empty: r[s.k] == null }">{{ fmt(r[s.k]) }}</span>
+                <span class="pl-nv" :class="{ empty: (ln ? ln[s.k] : r[s.k]) == null }">{{ fmt(ln ? ln[s.k] : r[s.k]) }}</span>
               </td>
-              <td><span class="pl-sumc" :class="{ empty: r.costAmount == null }">{{ fmt2(r.costAmount) }}</span></td>
-              <td><span class="pl-txt">{{ poolSemantics(r) }}</span></td>
-              <td>
-                <span class="pl-nv" :class="{ empty: r.stdValue == null, fold: stdDisplay(r).title }"
-                      :title="stdDisplay(r).title ?? undefined">{{ stdDisplay(r).text }}</span>
+              <!-- 应分摊:逐表金额齐全→逐表显;否则(二期池级ROUND/净额池/手输量池)按池合并 -->
+              <td v-if="costPerLine(r)">
+                <span class="pl-sumc" :class="{ empty: ln?.costAmount == null }">{{ fmt2(ln?.costAmount ?? null) }}</span>
               </td>
-              <td v-if="editMode">
+              <td v-else-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-sumc" :class="{ empty: r.costAmount == null }">{{ fmt2(r.costAmount) }}</span>
+              </td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)"><span class="pl-txt">{{ poolSemantics(r) }}</span></td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-nv" :class="{ empty: r.stdValue == null, fold: stdCell(r).title }"
+                      :title="stdCell(r).title ?? undefined">{{ stdCell(r).text
+                  }}<sup v-if="frozenNote.has(r.ruleId)" class="pl-frz">❄</sup></span>
+              </td>
+              <td v-if="editMode && li === 0" :rowspan="poolSpan(r)">
                 <input class="pl-ni" type="number" step="any"
                        :value="cfgRaw(`rule:${r.ruleId}`, 'coefficient')?.value ?? ''"
                        :placeholder="ruleById.get(r.ruleId)?.coefficient != null ? String(ruleById.get(r.ruleId)!.coefficient) : '–'"
                        title="当月系数(层数/面积基数),回车/失焦保存;清空=回退默认"
                        @change="commitRuleCfg(r.ruleId, 'coefficient', ($event.target as HTMLInputElement).value)" />
               </td>
-              <td v-if="editMode">
+              <td v-if="editMode && li === 0" :rowspan="poolSpan(r)">
                 <input class="pl-ni" type="number" step="any"
                        :value="cfgRaw(`rule:${r.ruleId}`, 'extra_qty')?.value ?? ''"
                        :placeholder="ruleById.get(r.ruleId)?.extraQty ? String(ruleById.get(r.ruleId)!.extraQty) : '–'"
                        title="当月加度/扣度,回车/失焦保存;清空=回退默认"
                        @change="commitRuleCfg(r.ruleId, 'extra_qty', ($event.target as HTMLInputElement).value)" />
               </td>
-              <td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <!-- §D.6:floor 池显后端算的分桶明细(按 X 层拆:…),让「摊出为何少于应分摊」看得见;其余池回退原话术 -->
                 <span class="pl-nv" :class="{ empty: r.allocatedAmount == null }"
-                      :title="r.autoMembers ? '受益人自动=该期全园在租租户(园区级池未勾选,跟着在租名册走)'
-                        : r.members.length ? `受益人 ${r.members.length} 户` : '未勾选受益人'">
+                      :title="r.allocNote ?? (r.autoMembers ? '受益人自动=该期全园在租租户(园区级池未勾选,跟着在租名册走)'
+                        : r.members.length ? `受益人 ${r.members.length} 户` : '未勾选受益人')">
                   {{ fmt2(r.allocatedAmount) }}
                 </span>
               </td>
-              <td><span class="pl-gap" :class="gapClass(r.gapAmount)">{{ fmt2(r.gapAmount) }}</span></td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-gap" :class="gapClass(r.gapAmount)">{{ fmt2(r.gapAmount) }}</span>
+              </td>
               <!-- 实收/盈亏:账册 AE/AF 口径(从账单侧拉回),bill_notice 未落地故恒'–' -->
-              <td><span class="pl-nv empty" title="待账单模块落地后从账单侧回填">–</span></td>
-              <td><span class="pl-nv empty" title="待账单模块落地后从账单侧回填">–</span></td>
-              <td><span class="pl-txt dim" :title="r.note ?? undefined">{{ r.note ?? '–' }}</span></td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-nv empty" title="待账单模块落地后从账单侧回填">–</span>
+              </td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-nv empty" title="待账单模块落地后从账单侧回填">–</span>
+              </td>
+              <td v-if="li === 0" :rowspan="poolSpan(r)">
+                <span class="pl-txt dim" :title="poolNote(r)">{{ poolNote(r) }}</span>
+              </td>
+            </tr>
+            </template>
+            <!-- 带尾合计(原册每块一行合计行,标签就是块名);列位与 tfoot 全期合计对齐 -->
+            <tr class="pl-bfoot">
+              <td class="pl-fix" :style="fixArea"><span class="pl-foot-lbl">小　计</span></td>
+              <td class="pl-fix" :style="fixFloor"></td>
+              <td class="pl-fix" :style="fixName"><span class="pl-txt dim">{{ b.label }}</span></td>
+              <td colspan="4"></td>
+              <td><span class="pl-foot-v">{{ fmt(bandFooter(b.rows).qty) }}</span></td>
+              <td v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></td>
+              <td><span class="pl-foot-v">{{ fmt2(bandFooter(b.rows).cost) }}</span></td>
+              <td :colspan="colCount - segDefs.length - 7"></td>
             </tr>
           </template>
           <tr v-if="bands.length === 0">
@@ -572,13 +780,16 @@ async function delPool() {
         <!-- tfoot 合计:Σ度数(总列)/Σ应分摊,ref 纯标准行不计(锚 L126/W126) -->
         <tfoot>
           <tr>
-            <th class="pl-fix" :style="fixFloor"><span class="pl-foot-lbl">合　计</span></th>
+            <th class="pl-fix" :style="fixArea"><span class="pl-foot-lbl">合　计</span></th>
+            <th class="pl-fix" :style="fixFloor"></th>
             <th class="pl-fix" :style="fixName"></th>
-            <th></th>
+            <th colspan="4"></th>
             <th><span class="pl-foot-v">{{ fmt(foot.qty) }}</span></th>
             <th v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></th>
             <th><span class="pl-foot-v">{{ fmt2(foot.cost) }}</span></th>
-            <th :colspan="colCount - segDefs.length - 4"><span class="pl-foot-note">纯标准行(ref)不入合计</span></th>
+            <th :colspan="colCount - segDefs.length - 7">
+              <span class="pl-foot-note">纯标准行(ref)不入合计;冲减载体(carrier)只计度数不计金额</span>
+            </th>
           </tr>
         </tfoot>
       </table>
@@ -591,8 +802,11 @@ async function delPool() {
       <div class="pl-form">
         <!-- ① 定位四选 → 池名自动生成(只读) -->
         <div class="pl-sec">
-          <div class="pl-sectitle">① 池在哪(定位)· 层级留空即上一级:楼层空=整栋,楼栋空=园区级</div>
-          <div class="pl-formrow">
+          <div class="pl-sectitle">
+            ① 池在哪(定位)· 层级留空即上一级:楼层空=整栋,楼栋空=园区级
+            <span v-if="locTodo" class="pl-chip warn">这个池缺楼层方位 —— 请补下面三格</span>
+          </div>
+          <div class="pl-formrow" :class="{ 'pl-loc-hi': locTodo }">
             <Select v-model="form.zone" label="期区" :options="ZONE_OPTS" size="sm" />
             <Select :model-value="form.buildingId == null ? '' : String(form.buildingId)" label="楼栋"
                     :options="buildingOpts" size="sm"
@@ -654,7 +868,7 @@ async function delPool() {
                 <input type="checkbox" :checked="signOf(m.id) != null"
                        @change="toggleBind(m.id, meterLabelOf(m))" />
                 <span class="nm">{{ meterLabelOf(m) }}</span>
-                <span class="meta">{{ [m.area, m.meterType].filter(Boolean).join(' · ') }}</span>
+                <span class="meta">{{ m.meterType ?? '' }}</span>
               </label>
               <div v-if="otherList.length === 0" class="pl-bindempty">无匹配</div>
             </div>
@@ -667,7 +881,7 @@ async function delPool() {
           <div class="pl-radios">
             <label v-for="o in methodRadios" :key="o.value" class="pl-radio" :title="o.hint">
               <input type="radio" :value="o.value" :checked="form.method === o.value"
-                     @change="form.method = o.value" />
+                     @change="setMethod(o.value)" />
               <span>{{ o.label }}</span>
             </label>
           </div>
@@ -688,10 +902,8 @@ async function delPool() {
         <!-- ④ 分摊给谁(受益人勾选;退租户灰显) -->
         <div class="pl-sec">
           <div class="pl-sectitle">
-            ④ 分摊给谁 · {{ formAutoMembers ? '自动=全园在租' : `已选 ${form.members.length} 户` }}
-            <span class="dim">{{ formAutoMembers
-              ? '园区级池不勾人=按该期全园在租租户自动摊(勾了就以勾选为准)'
-              : '候选=该定位本月在租租户(按合同预勾;侧向勾错请手动取消)' }}</span>
+            ④ 分摊给谁 · {{ memberSummary }}
+            <span class="dim">{{ memberHint }}</span>
           </div>
           <div v-if="formDiff" class="pl-innerwarn">
             <component :is="iconFor('alert-triangle')" :size="13" />
@@ -704,18 +916,51 @@ async function delPool() {
             <component :is="iconFor('alert-triangle')" :size="13" />
             <span>{{ formNoDate.map(m => m.tenantName).join('、') }} 合同缺日期,判不了在租 —— 补齐合同起止日期后才能判定</span>
           </div>
+          <!-- §E6 户对户:候选名单为空(后端 tenantNote 已说明),受益户从全库租户里挑 -->
+          <div v-if="form.method === 'direct'" class="pl-directpick">
+            <span class="lbl">受益户</span>
+            <div style="flex:1;min-width:0">
+              <FPTenantPicker :tenants="tenantOpts" :model-value="directTenantId"
+                              placeholder="搜索并选中唯一受益户(全库)" @update:model-value="pickDirect" />
+            </div>
+          </div>
+          <!-- §D.5 列头:份额两种模式(空=按楼层自动分/填值=显式覆盖);楼层来自后端读时解析 -->
+          <div v-if="form.method === 'floor'" class="pl-bindhdr">
+            <span class="nm">受益人 · 楼层(自动解析)</span>
+            <span class="wt" title="留空=按楼层自动分:该户所在的每一层各摊 1 份(层内多户按面积拆),未定层户合摊 1 份;
+填数=显式份额覆盖该户(1=整份,0.5=半份)——账册已核对的池请勿改动">份额</span>
+          </div>
           <div class="pl-bindlist tall">
             <label v-for="t in tenantRows" :key="t.tenantId" class="pl-bindrow" :class="{ gone: t.inForce === 'no' }">
-              <input type="checkbox" :checked="memberOf(t.tenantId) != null" @change="toggleMember(t)" />
+              <!-- direct 池单选(整笔归一户);其余多选 -->
+              <input :type="form.method === 'direct' ? 'radio' : 'checkbox'" name="pl-member"
+                     :checked="memberOf(t.tenantId) != null" @change="toggleMember(t)" />
               <span class="nm">{{ t.name }}</span>
               <span v-if="t.unitNo" class="pl-chip">{{ t.unitNo }}</span>
+              <span v-if="floorByTenant.get(t.tenantId)" class="pl-chip floor"
+                    title="该户在本池楼栋解析出的楼层(合同单元→户内电表两级回退),按层摊时每层各占 1 份">
+                {{ floorByTenant.get(t.tenantId) }}
+              </span>
+              <span v-else-if="floorByTenant.has(t.tenantId)" class="pl-chip nofloor"
+                    title="定不出楼层:该户在本栋既无合同单元、也无户内电表楼层 —— 与其他未定层户合摊 1 份,请补合同单元或该户户内表楼层">
+                未定层
+              </span>
               <span v-if="t.inForce === 'no'" class="pl-chip gone">已退租</span>
               <span v-else-if="t.inForce === 'unknown'" class="pl-chip nodate"
                     title="补齐合同起止日期后才能判定在租">合同缺起止日期</span>
               <span v-else-if="t.other" class="pl-chip">非本定位</span>
               <span class="meta"></span>
+              <input v-if="form.method === 'floor'" class="pl-wi" type="number" step="any"
+                     :disabled="memberOf(t.tenantId) == null" :value="memberOf(t.tenantId)?.weight ?? ''"
+                     placeholder="自动"
+                     title="留空=按楼层自动分(所在层各 1 份,层内按面积拆);填数=显式份额覆盖(1/0.5)"
+                     @click.stop
+                     @change="commitWeight(t.tenantId, ($event.target as HTMLInputElement).value)" />
             </label>
-            <div v-if="tenantRows.length === 0" class="pl-bindempty">该定位本月无在租租户</div>
+            <div v-if="tenantRows.length === 0" class="pl-bindempty">
+              {{ form.method === 'direct' ? '尚未指定受益户 —— 户对户池不推候选名单,请用上方选择器挑那一户'
+                : '该定位本月无在租租户' }}
+            </div>
           </div>
           <label class="pl-chkline" title="勾上=只写本月(acct_month 月行),历史月与默认长期名单不动">
             <input type="checkbox" v-model="form.monthOnly" />
@@ -744,15 +989,22 @@ async function delPool() {
             </button>
           </div>
         </div>
-        <div class="pl-dlg-err">{{ poolErr }}</div>
       </div>
       <template #footer>
-        <Button v-if="form.id != null" variant="outline" size="sm" style="margin-right:auto" @click="delPool">
+        <Button v-if="form.id != null" variant="outline" size="sm" @click="delPool">
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           删除池
         </Button>
+        <!-- §E2:报错必须跟着「保存」按钮走 —— 原来挂在滚动表体末尾,用户在顶上改完费项点保存,
+             400 的红字落在视口外,看起来就是「保存无反应」 -->
+        <!-- §F11:两条各自成行 —— 原来是三元式,池参数加载失败时把后端 400 的原因整条盖掉 -->
+        <div class="pl-dlg-err">
+          <div v-if="rulesFailed">池参数(系数/加度/出口费项)未加载成功 —— 此时保存会冲掉这三项,请先重试</div>
+          <div v-if="poolErr">{{ poolErr }}</div>
+        </div>
+        <Button v-if="rulesFailed" variant="outline" size="sm" @click="loadRules().catch(() => {})">重试</Button>
         <Button variant="gray" size="sm" @click="poolDlg = false">取消</Button>
-        <Button variant="filled" size="sm" :disabled="saving" @click="submitPool">
+        <Button variant="filled" size="sm" :disabled="saving || rulesFailed" @click="submitPool">
           <template #leading><component :is="iconFor('check')" :size="14" /></template>
           {{ saving ? '保存中…' : '保存并重新生成' }}
         </Button>
@@ -774,8 +1026,18 @@ async function delPool() {
 /* 提示条 */
 .pl-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
+.pl-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 .pl-barlink { border: none; background: transparent; color: var(--hue-blue); font-size: var(--fs-label); cursor: pointer; text-decoration: underline; padding: 0; }
 .pl-difflist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; margin-top: 2px; }
+.pl-warnrow { font-size: 12px; line-height: 1.55; color: inherit; }
+/* V73 逐表行:表行左对齐可换行;§F10 虚线画在池**首行**上边框=池间分隔,池内续行不画(否则分组信号正好相反) */
+.pl-mname { text-align: left; font-size: 12px; color: var(--text-primary); white-space: normal; line-height: 1.35; }
+.pl-ptop > td { border-top: 1px dashed var(--border-subtle); }
+/* 分带头下面第一个池不再叠线(band 自带 2px 实线上下边框,再来一道虚线是三条线) */
+.pl-band + tr.pl-ptop > td { border-top: none; }
+/* Σ 副标题:§E1 去 rowspan 后这格只剩单行高,数字大了会折行把首行撑高 → 一行到底 + 省略号 */
+.pl-sub-sum { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-linkchip { margin-left: 4px; font-size: 11px; border-radius: var(--radius-full); padding: 0 6px; background: var(--surface-subtle); color: var(--text-secondary); cursor: help; }
 .pl-diffrow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .pl-diffrow .nm { color: var(--text-primary); font-weight: var(--fw-medium); }
 .pl-diffrow .nm.click { cursor: pointer; text-decoration: underline dotted; }
@@ -810,10 +1072,16 @@ td.ct { text-align: center; }
 .pl-nv { display: block; text-align: right; font-size: 12px; padding: 0 8px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-nv.empty { color: var(--text-disabled); }
 .pl-nv.fold { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+/* §H3 冻结参数标记:title 悬停才看得见,格上留个 ❄ 让「这不是当月价」不用悬停也能扫到 */
+.pl-frz { color: var(--hue-blue); font-size: 9px; margin-left: 2px; vertical-align: super; }
 .pl-sumc { display: block; text-align: right; font-weight: var(--fw-semibold); color: var(--hue-blue); font-size: 12px; padding: 0 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pl-sumc.empty { color: var(--text-disabled); font-weight: var(--fw-regular); }
 .pl-txt { display: block; text-align: left; font-size: 12px; padding: 0 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-txt.dim { color: var(--text-muted); }
+/* §H4 挂栋却没录楼层的池:「(未录)」橙标(园区级池留空,不催补) */
+.pl-loc-todo { color: rgb(180, 83, 9); font-weight: var(--fw-medium); cursor: help; }
+/* §I3 起「续行淡显(.pl-dup)」随之作废:楼层/池名称两列已改为逐行取本行电表的真值
+   (原册 B/C/D 逐行写),第 2 行起不再是首行的复制品,淡显反而会误导成「这行没数据」。 */
 
 /* 表构成 popover(hover 出列名单:sign±与折入链) */
 .pl-mcell { position: relative; }
@@ -825,9 +1093,11 @@ td.ct { text-align: center; }
 .pl-pop-row .sgn.neg { color: var(--hue-red); }
 .pl-pop-row.link { color: var(--hue-blue); }
 
-/* 楼栋分隔带(mlg-bsum 对标:加高+深底+上下 2px 粗边) */
+/* 原册块分隔带(mlg-bsum 对标:加高+深底+上下 2px 粗边) */
 .pl-table tbody tr.pl-band td { height: 40px; background: var(--surface-sunken); border-top: 2px solid var(--border-strong); border-bottom: 2px solid var(--border-strong); }
 .pl-band-lbl { display: block; padding: 0 10px; text-align: left; font-size: 13px; font-weight: var(--fw-semibold); letter-spacing: .02em; color: var(--text-primary); white-space: nowrap; }
+/* 带尾块合计(原册每块一行合计行):比分带头轻一档,只画上边框,不与 tfoot 抢视觉 */
+.pl-table tbody tr.pl-bfoot td { height: 34px; background: var(--surface-sunken); border-top: 1px solid var(--border-strong); font-family: var(--font-mono); }
 
 /* 盈亏色阶:0=绿(摊平)/负=红(挂亏)/正=橙(超摊) */
 .pl-gap { display: block; text-align: right; font-size: 12px; padding: 0 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -855,7 +1125,8 @@ td.ct { text-align: center; }
 .pl-form { display: flex; flex-direction: column; gap: 12px; }
 .pl-formrow { display: flex; gap: 10px; }
 .pl-formrow > * { flex: 1; min-width: 0; }
-.pl-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
+/* 抽屉页脚里的报错位:flex:1 顶开左右两组按钮(删除池靠左、取消/保存靠右) */
+.pl-dlg-err { flex: 1 1 auto; min-width: 0; font-size: 11.5px; line-height: 1.35; color: var(--hue-red); }
 .pl-sec { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
 .pl-sectitle { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pl-sectitle .dim { font-weight: var(--fw-regular); color: var(--text-muted); font-size: var(--fs-micro); }
@@ -868,11 +1139,28 @@ td.ct { text-align: center; }
 .pl-radio:hover { background: var(--bg-hover); }
 .pl-chip { flex: 0 0 auto; font-size: 11px; border-radius: var(--radius-full); padding: 0 7px; background: var(--surface-sunken); color: var(--text-muted); }
 .pl-chip.infra { background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
+.pl-chip.warn { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
+/* §G4 待补定位的池:抽屉里把楼栋/楼层/侧向三格圈出来(期区不算定位格) */
+.pl-loc-hi > :nth-child(n+2) { outline: 1px solid rgb(245, 158, 11); outline-offset: 2px; border-radius: var(--radius-sm); }
 .pl-chip.gone { background: rgb(255, 238, 237); color: var(--hue-red); }
 .pl-chip.nodate { background: rgb(255, 247, 235); color: rgb(180, 83, 9); cursor: help; }
+/* 受益人楼层:蓝=解析到层;未定层=红底醒目(它们会被合摊成 1 份,是漏摊的源头) */
+.pl-chip.floor { background: var(--accent-blue); color: var(--hue-blue); cursor: help; }
+.pl-chip.nofloor { background: rgb(255, 238, 237); color: var(--hue-red); font-weight: var(--fw-medium); cursor: help; }
+/* 受益人列头 + 行内份额输入(与月度参数 pl-ni 同款透明格) */
+.pl-bindhdr { display: flex; align-items: center; gap: 8px; padding: 0 4px 4px; border-bottom: 1px dashed var(--border-subtle); font-size: var(--fs-micro); color: var(--text-muted); }
+.pl-bindhdr .nm { flex: 1; }
+.pl-bindhdr .wt { flex: 0 0 64px; text-align: right; cursor: help; text-decoration: underline dotted; }
+.pl-wi { flex: 0 0 64px; box-sizing: border-box; border: 1px solid var(--border-subtle); background: var(--surface-white); text-align: right; font-size: 12px; padding: 2px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
+.pl-wi:focus { border-color: var(--hue-blue); }
+.pl-wi:disabled { border-color: transparent; background: transparent; }
+.pl-wi::-webkit-outer-spin-button, .pl-wi::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pl-wi::placeholder { color: var(--text-disabled); }
 .pl-innerwarn { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-sm); background: rgb(255, 250, 235); color: rgb(138, 97, 0); font-size: 11.5px; }
 .pl-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--hue-blue); font-size: 12px; cursor: pointer; padding: 0; }
 .pl-otherbox { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--border-subtle); padding-top: 8px; }
+.pl-directpick { display: flex; align-items: center; gap: 8px; }
+.pl-directpick .lbl { flex: 0 0 auto; font-size: 12px; color: var(--text-secondary); }
 .pl-chkline { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 .pl-bindhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pl-bindq { height: 28px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12px; }

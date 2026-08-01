@@ -24,6 +24,7 @@ export const ALLOC_METHOD_LABEL: Record<AllocMethod, string> = {
   loss: '并入损耗',
   none: '不分摊',
   ref: '纯标准行',
+  carrier: '冲减载体',
 }
 
 // 参数解析:月行(acctMonth=ym)优先,回退默认行('');两级都缺=null(同后端 resolveCfg 规则)

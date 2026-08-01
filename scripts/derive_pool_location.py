@@ -3,7 +3,8 @@
 
 把 90 个 alloc_rule 从「账册手写名」(28+ 个池名嵌租户名)迁成「楼栋+楼层+侧向+费项」四级定位:
   - 楼栋: 绑定表 meter.building_id 众数(与 rule.building_id 不一致要报告)
-  - 楼层/侧向: 解析 meter.spot(四楼西侧→四楼/西侧;负一层→负一层/None;天面/总电表→整栋 floor=None)
+  - 楼层/侧向: 解析 meter.spot(四楼西侧→四楼/西侧;负一层→负一层/None;总电表→整栋 floor=None;
+                              天面→floor='天面',V72 起照实写,整栋语义由 floorNum('天面')=null 兜)
     侧向兜底: spot 无侧向时看 meter.name/tenant_name 的 东侧/西侧,全体一致才取
   - 费项名: meter.tenant_name(share 表的用途字段)→meter.name→rule.name 归一成短名
   - 园区级(base_key=area_base/lamp_area_base 或 park_loss_pool 或 充电桩) → buildingId=None,
@@ -223,7 +224,9 @@ def derive(rule, meters, buildings):
     if any((m["meter_type"] or "") == "总电表" for m in pos):
         floor = None  # 总表池=整栋
     if any("天面" in (m["spot"] or "") for m in pos):
-        floor = None  # 货梯/楼梯间跨层,表在天面
+        # V72:天面是真楼层,照实写(原册每栋都有天面段)。「跨层」语义不靠 None 表达 ——
+        # AllocService.floorNum('天面')=null,受益人候选与房号解析仍走整栋分支。
+        floor = "天面"
     conf = "高" if pos else "低"
 
     fee = conf_fee = why_fee = None
@@ -438,7 +441,8 @@ def report(out, conflicts):
 def selftest():
     assert parse_spot("四楼西侧") == ("四楼", "西侧")
     assert parse_spot("负一层") == ("负一层", None)
-    assert parse_spot("天面 到-1楼") == ("1楼", None)  # 由 derive() 的天面判定改回整栋 None
+    assert parse_spot("天面") == (None, None)          # 天面无楼层 token,由 derive() 的天面判定补成 '天面'
+    assert parse_spot("天面 到-1楼") == ("1楼", None)   # 存量脏值(V72 已清);derive() 的天面判定同样覆盖成 '天面'
     assert parse_spot("二楼") == ("二楼", None)
     assert parse_spot(None) == (None, None)
     assert parse_spot("消防分表") == (None, None)

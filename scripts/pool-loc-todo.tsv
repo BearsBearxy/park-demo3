@@ -1,0 +1,23 @@
+# scripts/pool-loc-todo.tsv — 池定位待补清单(刀G §G4,只读 SQL 生成于 2026-07-31)
+# 口径:alloc_rule 挂了楼栋(building_id 非空)但 floor_label 与 side 全空 —— 共 19 个,分三类,**只有 2 个是真缺**:
+#   16 个 二期车间池(一~六车间的消防/电梯+低压电房照明/广告字灯/电梯加价档) → 屏上显「按车间」。
+#      账册「公共电数据」二期是按车间分段的,二期 51 块公共表里只有 1 块带楼层 —— 本就没有楼层维度,**不用补**。
+#   1 个 rule 23 一期 招商中心·净电 → 屏上显「整栋净额」。method=direct 且带 5 块 sign=-1 冲减表,
+#      绑定表跨三楼/四楼,没有单一楼层 —— **不用补**。
+#   2 个 下表(rule 41 / 51) → 屏上橙字「待补定位」,点开池名进抽屉时定位三格高亮。
+# 判据是前端纯函数 poolLocKind(frontend/src/utils/poolLedgerLogic.ts,poolLedgerLogic.spec.ts 锁定):
+#   无楼栋=park / 有楼层或侧向=located / zone=p2 且楼栋名含「车间」=workshop / direct 且有 sign=-1 表=net / 其余=todo。
+#   ⚠车间判定在净额之前:二期五、六车间的消防与电梯池也带 sign=-1 冲减表,先判车间才不会误标成净额池。
+# 事实:这两个池 **零绑定电表、零快照数值**(2023-10 / 2024-02 两期 qty_total 与 cost_amount 均为 NULL)、
+#   fee_name 为 NULL(V70 判低置信度未改名),各只勾了 1 户受益人 —— 它们是从账册摘出来的占位行,还没配起来。
+# 补法:公共电核算屏点开池名 → 抽屉①定位补「楼层/侧向」+「费项」,②勾选组成电表(现在一块都没有)。
+# 生成 SQL(只读,可复跑):
+#   SELECT r.id,r.zone,r.name,r.method,b.name,r.fee_name,r.sort_no,
+#          (SELECT COUNT(*) FROM alloc_rule_meter m WHERE m.rule_id=r.id),
+#          (SELECT COUNT(*) FROM alloc_rule_member t WHERE t.rule_id=r.id)
+#   FROM alloc_rule r LEFT JOIN building b ON b.id=r.building_id
+#   WHERE r.building_id IS NOT NULL AND COALESCE(r.floor_label,'')='' AND COALESCE(r.side,'')='';
+#   -- 再按 rule_id 查 alloc_rule_member→tenant.company_name、alloc_pool_result 快照、meter 上该户的楼层线索。
+池ID	期	池名	分摊方式	楼栋	费项名	行序	绑定电表数	受益人数	受益人	楼层线索	建议补法
+41	一期	戎合B101公共电	direct(户对户)	一期 B座	(空)	40	0	1	戎合(tenant 262)	池名里的 B101 → 一楼;但该户现有电表在 A座五楼501室(meter 246),楼栋与池的 B座对不上	先确认这户到底在 B 座还是 A 座:是 B101 就补「楼层=一楼」并挂 B101 的户内表;若实际在 A座,应改楼栋或废弃此池
+51	一期	高建军C公共	direct(户对户)	一期 C座	(空)	50	0	1	高建军(tenant 149)	该户在 C座一楼103室有电表(meter 288)→ 一楼;另在 A座六楼621室(meter 258/438)有表	补「楼层=一楼」+ 费项名,并把 meter 288(C座一楼103室 电表①)勾进本池
