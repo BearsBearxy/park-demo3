@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { groupMeterBlocks, blockNameOf, blockLoss, spotKey, type GroupableMeter, type MeterUsageLike } from './meterGroup'
+import {
+  groupMeterBlocks, blockNameOf, blockLoss, spotKey, sideRank, roomRank, locKey,
+  type GroupableMeter, type MeterUsageLike,
+} from './meterGroup'
 
 // METER-SPEC §7 v3 锁定:区块归属 / 排序(期区→区块→区块内) / 汇总数值(tenant+share 口径)。
 
@@ -42,6 +45,35 @@ describe('spotKey — 方位楼层房号自然序', () => {
   })
 })
 
+// §A.2:排序改走 V74 结构化字段 floorLabel/side/roomNo,逐项取不到才回退 spot 解析
+describe('locKey — 结构化位置排序键', () => {
+  it('方位:东<西<南<北<空;side 空回退 spot 原文', () => {
+    expect([{ side: '东侧' }, { side: '西侧' }, { side: '南侧' }, { side: '北侧' }].map(sideRank))
+      .toEqual([0, 1, 2, 3])
+    expect(sideRank({ side: null })).toBe(9)
+    expect(sideRank({ side: '  ', spot: '四楼西侧' })).toBe(1)     // 回退 spot
+    expect(sideRank({ side: '中庭' })).toBe(9)                      // 认不出同「空」沉底
+    // §E10:回退 spot 时只认「X侧」,厂房/路名里的裸方位字不算方位
+    expect(sideRank({ side: null, spot: '东风车间' })).toBe(9)
+    expect(sideRank({ side: null, spot: '南山路配电房' })).toBe(9)
+    expect(sideRank({ side: null, spot: '东风车间东侧' })).toBe(0)   // 真带「东侧」照样认
+  })
+  it('房号自然序 = 数字部分数值比较;roomNo 无数字回退 spot 房号', () => {
+    expect([{ roomNo: '101室' }, { roomNo: '102室' }, { roomNo: '1001室' }].map(roomRank))
+      .toEqual([101, 102, 1001])
+    expect(roomRank({ roomNo: null, spot: '一楼商铺 2103' })).toBe(2103)
+    expect(roomRank({ roomNo: null, spot: null })).toBe(999999)
+  })
+  it('楼层优先 floorLabel,空则回退 spot;天面/认不出沉底该区块末尾', () => {
+    const k = (p: Partial<GroupableMeter>) => locKey(mk({ zone: 'p1', ...p }))
+    expect(k({ floorLabel: '负一层' })[0]).toBe(-1)
+    expect(k({ floorLabel: '四楼', spot: '一楼101室' })[0]).toBe(4)  // 结构化字段压过 spot
+    expect(k({ floorLabel: null, spot: '二楼201室' })[0]).toBe(2)
+    expect(k({ floorLabel: '天面' })[0]).toBe(9999)
+    expect(k({ floorLabel: null, spot: null })).toEqual([9999, 9, 999999, expect.any(Number)])
+  })
+})
+
 describe('groupMeterBlocks — 排序', () => {
   it('期区序 p1→p2→dorm;区块序 = 区块内最小 sortNo(Excel 原序)', () => {
     const g = groupMeterBlocks([
@@ -67,6 +99,19 @@ describe('groupMeterBlocks — 排序', () => {
     const b = g[0].blocks[0]
     expect(b.head.map(m => m.name)).toEqual(['一车间总电'])
     expect(b.body.map(m => m.name)).toEqual(['一车间消防', '一车间电梯', '园区充电桩', '恩科电', '锂朋电', '飞浪电'])
+  })
+  it('tenant 序走结构化字段:楼层→方位(东先于西)→房号自然序;天面在末尾,缺字段的表回退 spot 不塌', () => {
+    const g = groupMeterBlocks([
+      mk({ zone: 'p1', area: 'A座', name: '天面基站', floorLabel: '天面', sortNo: 1 }),
+      mk({ zone: 'p1', area: 'A座', name: '四楼西', floorLabel: '四楼', side: '西侧', sortNo: 2 }),
+      mk({ zone: 'p1', area: 'A座', name: '四楼东', floorLabel: '四楼', side: '东侧', sortNo: 3 }),
+      mk({ zone: 'p1', area: 'A座', name: '一楼1001', floorLabel: '一楼', roomNo: '1001室', sortNo: 4 }),
+      mk({ zone: 'p1', area: 'A座', name: '一楼102', floorLabel: '一楼', roomNo: '102室', sortNo: 5 }),
+      mk({ zone: 'p1', area: 'A座', name: '存量二楼', spot: '二楼201室', sortNo: 6 }),  // 只有 spot
+      mk({ zone: 'p1', area: 'A座', name: '无位置', sortNo: 7 }),                        // 两者皆空
+    ])
+    expect(g[0].blocks[0].body.map(m => m.name))
+      .toEqual(['一楼102', '一楼1001', '存量二楼', '四楼东', '四楼西', '天面基站', '无位置'])
   })
 })
 

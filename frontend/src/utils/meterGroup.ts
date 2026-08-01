@@ -1,19 +1,30 @@
 // 园区抄表 Excel 式分组区块(METER-SPEC §7 v3,meterGroup.spec.ts 锁定:区块归属/排序/汇总数值)。
 // 期区(zone)→区块(area,车间/楼栋座):区块头=infra 配电总表行,随后 share/ops 公共表(Excel 原序)、
-// tenant 户内表(方位楼层房号自然序);「连接X车间」馈线表按标识名随 X车间 区块。
+// tenant 户内表(楼层→方位→房号自然序,走 V74 结构化字段、缺则回退 spot 解析);
+// 「连接X车间」馈线表按标识名随 X车间 区块。
 // 汇总口径:区块 sums = 区块内 inSubSigma(tenant/share/park) 各表用量合计(总/尖/峰/平/谷,null 跳过,
 // 结果四舍五入 2 位防浮点尾差);infra(避免与分表重复计)与 ops(园区经营,非向租户收费口径)不计入;
 // 期区 sums = Σ区块 sums。usageOf 缺省(表档案段)= 各列 null,只用分组不用汇总。
 
 import { inSubSigma } from './meterSplit'
 
-export interface GroupableMeter {
+// V74 位置结构化字段(楼栋→楼层→方位→房号)。存量约 449 块表 floorLabel 为空,
+// 排序取不到结构化字段时逐项回退 spot 原文解析,不因此塌掉。
+export interface MeterLoc {
+  spot?: string | null
+  floorLabel?: string | null    // 负一层/一楼…十楼/天面;空=跨层或未录
+  side?: string | null          // 东/西/南/北侧
+  roomNo?: string | null
+}
+
+export interface GroupableMeter extends MeterLoc {
   id: number
   zone: string
   area: string | null
   name: string                  // 标识名(内部键):仅用于「连接X车间」馈线归块判定,不再示人
   tenantName?: string | null    // 企业名称原文:真实馈线表(三至二铝缆)的「连接X车间」写在这一列
   ownership: string             // tenant/share/ops/infra
+  suspect?: string | null       // §F7:'shadow' 疑似重复建档 → 不计入汇总(与后端 inSubSigma 同口径)
   spot: string | null
   sortNo: number                // Excel 原序
 }
@@ -75,6 +86,28 @@ export function spotKey(spot: string | null | undefined, sortNo: number): [numbe
   return [floor, room, sortNo]
 }
 
+// 方位位次:东<西<南<北<空;side 空回退 spot 原文(账册的「四楼西侧」写在 spot 里),认不出同「空」沉底。
+// §E10:回退时必须匹配「X侧」而非裸方位字,否则「东风车间」「南山路」这类名称会被误判成方位。
+const SIDE_SEQ = ['东', '西', '南', '北']
+export function sideRank(m: MeterLoc): number {
+  const s = (m.side ?? '').trim()
+  const c = (s ? s.match(/[东西南北]/) : (m.spot ?? '').match(/[东西南北](?=侧)/))?.[0]
+  return c ? SIDE_SEQ.indexOf(c) : 9
+}
+
+// 房号自然序 = 数字部分数值比较(101室 < 102室 < 1001室);roomNo 无数字回退 spot 房号,再无=沉底
+export function roomRank(m: MeterLoc): number {
+  const d = (m.roomNo ?? '').match(/\d+/)
+  return d ? parseInt(d[0], 10) : spotKey(m.spot, 0)[1]
+}
+
+// 位置排序键 [楼层, 方位, 房号, 原序]:优先 V74 结构化字段,逐项取不到才回退 spot 解析。
+// 楼层沿用 spotKey 的口径与量纲(天面/认不出=9999,排该区块末尾)。
+export function locKey(m: GroupableMeter): [number, number, number, number] {
+  const f = (m.floorLabel ?? '').trim()
+  return [spotKey(f || m.spot, 0)[0], sideRank(m), roomRank(m), m.sortNo]
+}
+
 // ── 区块损耗行(PB-ALLOCATION-SPEC §3:METER-SPEC:96「总表vs分表勾稽」就地兑现) ──
 // 两操作数现成:head(infra 总表用量) 与 sums(tenant+share 用量合计);损耗=一行减法,读时派生不落库。
 // lossQty=分表Σ−总表(负=有损耗);无总表读数=null 不出损耗行。负超阈黄标(warn),不阻断。
@@ -117,12 +150,12 @@ export function groupMeterBlocks<T extends GroupableMeter>(
         const head = ms.filter(m => m.ownership === 'infra').sort(bySort)
         const pub = ms.filter(m => m.ownership !== 'infra' && m.ownership !== 'tenant').sort(bySort)
         const ten = ms.filter(m => m.ownership === 'tenant')
-          .map(m => ({ m, k: spotKey(m.spot, m.sortNo) }))
-          .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2])
+          .map(m => ({ m, k: locKey(m) }))
+          .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2] || a.k[3] - b.k[3])
           .map(x => x.m)
         const sums = emptySums()
         for (const m of ms) {
-          if (!inSubSigma(m.ownership)) continue
+          if (!inSubSigma(m)) continue
           sums.count++
           const u = usageOf?.(m)
           if (!u) continue

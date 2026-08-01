@@ -3,7 +3,9 @@
 // sticky offset 列宽累加/tfoot sticky bottom/34px 行高/mono 右对齐空值'–'/透明格内 input。
 // 行窗口化虚拟滚动(§7 6.5):组 flatten→显示列表,只渲染可视±12 行,前后 spacer tr 撑高,
 // passive scroll+rAF 节流;窗口纯函数 buildWindow/offsetOf 在 useMeterWorkbench(带单测)。
-// 列模型:fixedLeft=租户 | 中部=楼栋·房号/表号/倍率/上月行至组/本月行至组 | fixedRight=用量/状态;
+// 列模型(METER-LOC-MEMBER-SPEC §A.1,对齐原册「一期园区电」形状):
+// fixedLeft=楼层·方位/用途 | 中部=房号/租户/表号/编码/倍率/上月行至组/本月行至组 | fixedRight=用量/状态;
+// 稳定标识(楼层→方位→房号)锁在左侧固定列,易变的租户名降为普通列(仍可点开抽屉/带待核徽标)。
 // 电表两组各 5 列(总/尖/峰/平/谷)常驻,水表各 1 列(总)。无分页:wrap overflow:auto 充满卡高。
 // 表体按楼栋首现序分组,组末插「{楼栋名} · 总用电量」汇总行(§7.6,tenant+share 口径,随 draft 实时)。
 // 草稿式编辑:编辑态「本月行至」全格透明 input(上月行至只读基准),draft 归属父层 MeterView,
@@ -18,6 +20,7 @@ import {
   type RowWindow,
 } from '@/composables/useMeterWorkbench'
 import { OWNERSHIP_LABEL } from '@/utils/meterSplit'
+import type { MeterLoc } from '@/utils/meterGroup'
 
 const props = defineProps<{
   rows: WorkbenchRow[]              // 筛选后有序行集
@@ -45,16 +48,24 @@ const ALL_SEGS: SegDef[] = [
   { lab: '谷', c: 'currValley', p: 'valley' },
 ]
 const segDefs = computed(() => (props.kind === 'elec' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
-const colCount = computed(() => 6 + segDefs.value.length * 2)
+// 非分时列 9 列:楼层·方位/用途/房号/租户/表号/编码/倍率 + 用量/状态
+const colCount = computed(() => 10 + segDefs.value.length * 2)
 
-// sticky offset 列宽累加(FPLedgerTable 手法):左=租户(单列 left:0);右=状态←用量 反向累加
+// sticky offset 列宽累加(FPLedgerTable 手法):左=楼层·方位(left:0)←用途(left:FLOOR_W) 正向累加;
+// 右=状态←用量 反向累加。改列宽必须同步改 offset,否则固定列错位。
 // 分隔线用 border 而非 box-shadow(§7 6.5:去阴影绘制成本;th/td 已 border-box 不占额外宽)
-const TEN_W = 200, LOC_W = 150, SUB_W = 112, FAC_W = 64, SEG_W = 96, USAGE_W = 104, ST_W = 88
+const AREA_W = 76
+const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 130, SUB_W = 70, CODE_W = 118, FAC_W = 56
+const SEG_W = 96, USAGE_W = 104, ST_W = 88
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixTen = { ...w(TEN_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
+// 区域(原册 B 列)在最左:区块带头虽然也是楼栋名,但原册每行都写,逐行显才能跟原册一行一行对
+const fixArea = { ...w(AREA_W), left: '0px' }
+const fixFloor = { ...w(FLOOR_W), left: AREA_W + 'px' }
+// 分隔线落在最外侧固定列(用途)右缘
+const fixUse = { ...w(USE_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }
 const fixUsage = { ...w(USAGE_W), right: ST_W + 'px', borderLeft: '1px solid var(--border-subtle)' }
 const fixSt = { ...w(ST_W), right: '0px' }
-// 汇总行标签格 colspan 跨 租户~倍率 4 列:sticky left 但不锁宽(列宽由表头定)
+// 汇总行标签格 colspan 跨 区域~倍率 8 列:sticky left 但不锁宽(列宽由表头定)
 const fixGrpLbl = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
 // ── 楼栋分组(§7.6):首现序稳定分组,组末汇总行(tenant+share,随 draft 实时) ──
@@ -130,10 +141,26 @@ function inputVal(x: WorkbenchRow, s: SegDef): string {
   const v = x.r?.[s.c]
   return v == null ? '' : String(v)
 }
-function locLabel(x: WorkbenchRow): string {
-  const b = x.m.buildingId != null ? props.buildingNameById.get(x.m.buildingId) : null
-  return [b, x.m.spot].filter(Boolean).join(' · ') || '–'
+// V74 结构化位置三列后端 MeterDTO 已出,前端 MeterDTO 待 A3 刀补进;先经 MeterLoc 视图读取
+// (MeterDTO 补齐后本处无需再改)。楼栋不成列——它是区块带头/汇总行的分组维度。
+const locOf = (x: WorkbenchRow) => x.m as MeterLoc
+// 「楼层·方位」合成一列(原册那一格本身就写成「四楼西侧」),与公共电核算屏 poolFloorSide 同款话术
+// V77 §G3:缺段要说出来。结构化楼层方位 > spot 原文(解析不出楼层的照原文显示) >
+// 有区域却什么都没录 → 占位「(位置未录)」(与后端 AllocService.LOC_TODO 同话术);
+// 区域也空的园区级/跨栋表不适用,仍显 '–'。清单见 scripts/meter-loc-todo.tsv。
+const LOC_TODO = '(位置未录)'
+function floorSide(x: WorkbenchRow): string {
+  const l = locOf(x)
+  return ((l.floorLabel ?? '').trim() + (l.side ?? '').trim())
+    || x.m.spot?.trim()
+    || (x.m.area?.trim() ? LOC_TODO : '–')
 }
+const roomNo = (x: WorkbenchRow) => locOf(x).roomNo?.trim() || '–'
+// 「区域」=账册 B 列原文(A座/一车间/招商中心),已是不带期数的写法,直接取 meter.area 不做加工。
+// 区块带头虽然也是楼栋名,但原册每行都写满 —— 逐行显才对得上原册一行一行。
+const areaLabel = (x: WorkbenchRow) => x.m.area?.trim() ?? ''
+// 「用途」=账册「企业名称」列原文;公摊/基础设施表存的是用途描述,缺则回退标识名
+const useLabel = (x: WorkbenchRow) => x.m.tenantName ?? x.m.name
 function tenName(x: WorkbenchRow): string {
   if (x.m.ownership === 'tenant') return x.tenantLabel ?? '—'
   return x.m.tenantName ?? x.m.name
@@ -181,9 +208,14 @@ function onEnter(e: KeyboardEvent) {
     <table class="mlg-table">
       <thead>
         <tr>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixTen">租户</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(LOC_W)">楼栋·房号</th>
+          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixArea"
+              title="原册 B 列:楼栋/车间(不带期数)">区域</th>
+          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixFloor">楼层·方位</th>
+          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixUse">用途</th>
+          <th rowspan="2" class="mlg-grp-th" :style="w(ROOM_W)">房号</th>
+          <th rowspan="2" class="mlg-grp-th" :style="w(TEN_W)">租户</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(SUB_W)">表号</th>
+          <th rowspan="2" class="mlg-grp-th" :style="w(CODE_W)">编码</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(FAC_W)" :title="FACTOR_TITLE">倍率</th>
           <th :colspan="segDefs.length" class="mlg-grp-th">上月行至</th>
           <th :colspan="segDefs.length" class="mlg-grp-th">本月行至</th>
@@ -201,21 +233,45 @@ function onEnter(e: KeyboardEvent) {
           <td :colspan="colCount" :style="{ height: win.topPad + 'px' }"></td>
         </tr>
         <template v-for="v in visItems" :key="v.x ? v.x.m.id : 'bs-' + v.g!.key">
-        <tr v-if="v.x">
-          <!-- 租户(sticky 左):click 开抽屉;待核 coral 名+徽标(§7.1) -->
-          <td class="mlg-fix" :style="fixTen">
+        <!-- 存疑行(V75 §E3/§F1 两级):shadow=疑似重复建档,整行浅红底,不计入楼栋分表Σ;
+             incomplete=档案不全但配不到重复对手,浅黄底,**照常计入Σ** —— 只是催人补档案 -->
+        <tr v-if="v.x" :class="{ 'mlg-sus': v.x.m.suspect === 'shadow', 'mlg-inc': v.x.m.suspect === 'incomplete' }">
+          <!-- 区域 / 楼层·方位 / 用途(sticky 左):稳定标识,横滚常驻 -->
+          <td class="mlg-fix" :style="fixArea">
+            <span class="mlg-txt" :class="{ dim: !areaLabel(v.x) }">{{ areaLabel(v.x) || '–' }}</span>
+          </td>
+          <td class="mlg-fix" :style="fixFloor">
+            <span
+              class="mlg-txt" :class="{ dim: floorSide(v.x) === '–' || floorSide(v.x) === LOC_TODO }"
+              :title="floorSide(v.x) === LOC_TODO ? '这块表有区域但没录楼层方位,点开租户列的抽屉补「楼层/方位/房号」三格' : (v.x.m.spot ?? undefined)"
+            >{{ floorSide(v.x) }}</span>
+          </td>
+          <td class="mlg-fix" :style="fixUse">
+            <span class="mlg-txt" :title="useLabel(v.x)">{{ useLabel(v.x) }}</span>
+          </td>
+          <td><span class="mlg-txt" :class="{ dim: roomNo(v.x) === '–' }">{{ roomNo(v.x) }}</span></td>
+          <!-- 租户(普通列):click 开抽屉;待核 coral 名+徽标(§7.1) -->
+          <td>
             <span
               class="mlg-tname" :class="{ coral: v.x.pending, dim: v.x.placeholder }"
               :title="tenTitle(v.x)" @click="emit('open', v.x.m.id)"
             >
               <span class="nm">{{ tenName(v.x) }}</span>
               <span v-if="v.x.pending" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
+              <span
+                v-if="v.x.m.suspect === 'shadow'" class="mlg-st bad sm"
+                title="疑似重复建档:本表区域/位置/企业名称/编码全空,且与同栋同类的另一块档案完整的表同月上下期示数与倍率完全相等,很可能是同一块物理表的第二份档案。该表用量暂不计入楼栋分表Σ;认对后请补齐档案(在抽屉保存一次即解除存疑)"
+              >存疑·疑似重复</span>
+              <span
+                v-else-if="v.x.m.suspect === 'incomplete'" class="mlg-st amber sm"
+                title="档案不全:区域/位置/企业名称/编码全空,但配不到重复对手,按真表处理 —— 用量照常计入楼栋分表Σ。请补齐档案(在抽屉保存一次即解除提示)"
+              >档案不全</span>
               <span v-if="v.x.m.ownership !== 'tenant'" class="mt-own" :class="'own-' + v.x.m.ownership">{{ OWNERSHIP_LABEL[v.x.m.ownership] ?? v.x.m.ownership }}</span>
               <component :is="ChevronRight" :size="13" class="ch" />
             </span>
           </td>
-          <td><span class="mlg-txt" :title="locLabel(v.x)">{{ locLabel(v.x) }}</span></td>
           <td><span class="mlg-txt" :title="v.x.m.subName ?? undefined">{{ v.x.m.subName ?? '–' }}</span></td>
+          <td><span class="mlg-txt mono" :class="{ dim: !v.x.m.code }" :title="v.x.m.code ?? undefined">{{ v.x.m.code ?? '–' }}</span></td>
           <td><span class="mlg-nv" :title="FACTOR_TITLE">{{ v.x.factor }}</span></td>
           <!-- 上月行至(只读基准) -->
           <td v-for="s in segDefs" :key="'p' + s.c">
@@ -247,7 +303,7 @@ function onEnter(e: KeyboardEvent) {
         </tr>
         <!-- 楼栋分组汇总行(§7.6):兼作分隔;无 input,键盘流自然跳过;行至/状态列空 -->
         <tr v-else class="mlg-bsum">
-          <td colspan="4" class="mlg-fix" :style="fixGrpLbl">
+          <td colspan="8" class="mlg-fix" :style="fixGrpLbl">
             <span class="mlg-bsum-lbl" :title="grpLabel(v.g!)">{{ grpLabel(v.g!) }}</span>
           </td>
           <td :colspan="segDefs.length * 2"></td>
@@ -267,8 +323,11 @@ function onEnter(e: KeyboardEvent) {
       <!-- tfoot sticky 底(§7.1):合计|本月行至组=已抄/未抄|用量=Σ当前筛选行;行至列不做列合计 -->
       <tfoot>
         <tr>
-          <th class="mlg-fix" :style="fixTen"><span class="mlg-foot-lbl">合　计</span></th>
-          <th colspan="3"></th>
+          <th class="mlg-fix" :style="fixArea"><span class="mlg-foot-lbl">合　计</span></th>
+          <th class="mlg-fix" :style="fixFloor"></th>
+          <!-- 用途列也是 sticky:tfoot 同样要给它固定格,否则横滚时页脚露出下层内容 -->
+          <th class="mlg-fix" :style="fixUse"></th>
+          <th colspan="5"></th>
           <th :colspan="segDefs.length"></th>
           <th :colspan="segDefs.length"><span class="mlg-foot-rd">已抄 {{ foot.read }} / 未抄 {{ foot.missing }}</span></th>
           <th class="mlg-fix" :style="fixUsage"><span class="mlg-foot-v">{{ fmt(foot.usageSum) }}</span></th>
@@ -312,6 +371,8 @@ td.ct { text-align:center; }
 .mlg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mlg-nv.empty { color:var(--text-disabled); }
 .mlg-txt { display:block; text-align:left; font-size:12px; padding:0 10px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mlg-txt.dim { color:var(--text-disabled); }
+.mlg-txt.mono { font-family:var(--font-mono); font-size:11.5px; font-variant-numeric:tabular-nums; }
 
 /* 用量(派生蓝,校验红显) */
 .mlg-sumc { display:block; text-align:right; font-weight:var(--fw-semibold); color:var(--hue-blue); font-size:12px; padding:0 8px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -330,6 +391,13 @@ td.ct { text-align:center; }
 .mlg-st.bad { color:var(--hue-red); background:rgb(255, 238, 237); }
 .mlg-st.coral { color:rgb(202, 66, 41); background:rgb(255, 235, 228); }
 .mlg-st.dim { color:var(--text-muted); background:var(--bg-sunken); }
+
+/* 存疑行(V75 §E3/§F1):shadow 浅红底(已被踢出Σ)/ incomplete 浅黄底(仍在Σ内,只是档案没填全);
+   sticky 固定列同步上色(否则横滚露白) */
+.mlg-table tbody tr.mlg-sus td, .mlg-table tbody tr.mlg-sus td.mlg-fix { background:rgb(255, 244, 243); }
+.mlg-table tbody tr.mlg-sus:hover td, .mlg-table tbody tr.mlg-sus:hover td.mlg-fix { background:rgb(255, 236, 234); }
+.mlg-table tbody tr.mlg-inc td, .mlg-table tbody tr.mlg-inc td.mlg-fix { background:rgb(255, 250, 235); }
+.mlg-table tbody tr.mlg-inc:hover td, .mlg-table tbody tr.mlg-inc:hover td.mlg-fix { background:rgb(255, 246, 222); }
 
 /* 楼栋分组汇总行(§7.6,2026-07-28 加强):Excel 同款重分隔带——加高 40px+深底+上下 2px 粗边;
    sticky 格背景同步,横滚不露馅 */

@@ -7,7 +7,7 @@ import type {
   MeterDTO, MeterReadingDTO, MeterReadingReq, MeterBindingRowDTO, BindBucket, BindStatus,
 } from '@/api/meters'
 import { readingFlags, type MeterReadingFlags } from '@/utils/meterLogic'
-import { groupMeterBlocks, blockLoss, type BlockSums, type BlockLoss } from '@/utils/meterGroup'
+import { groupMeterBlocks, blockLoss, sideRank, roomRank, type BlockSums, type BlockLoss, type MeterLoc } from '@/utils/meterGroup'
 import { inSubSigma } from '@/utils/meterSplit'
 
 // ── 搜索/待核/占位口径(迁自 v4 useMeterFilters,S2-BIND-SPEC §2) ──────────────
@@ -386,7 +386,7 @@ export function groupByBuilding(
       groups.push(g)
     }
     g.rows.push(x)
-    if (!inSubSigma(x.m.ownership)) continue
+    if (!inSubSigma(x.m)) continue
     const d = draft.get(x.m.id)
     const u = g.usage
     const acc = (k: keyof BuildingGroupUsage, v: number | null) => {
@@ -424,7 +424,8 @@ export function buildingRank(label: string): number {
   return label.includes('未挂') ? 1000 : 900                              // 未收录楼栋在前,未挂楼栋恒垫底
 }
 
-// 段内:总表(infra)→ 其余;再按楼层(从位置文本解析,负一层<一楼<二楼…)→ 导入序
+// 段内:总表(infra)→ 其余;再按 楼层→方位→房号(V74 结构化字段,缺则回退位置原文解析)→ 导入序
+// floorRank(spot) 保留导出:poolLedgerLogic.floorSort 用它排池带内序。
 const FLOOR_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 export function floorRank(spot: string | null | undefined): number {
   const s = spot ?? ''
@@ -437,10 +438,20 @@ export function floorRank(spot: string | null | undefined): number {
   if (cn) return FLOOR_CN.indexOf(cn[1]) + 1
   return 50                                           // 有位置但认不出楼层(如"东侧"),排在具名楼层之后
 }
+
+// 楼层位次:优先 floorLabel(天面→99 / 负一层→−1 / N楼→N / 认不出→50),空则回退 spot 原文解析
+// (跨层表/非楼层表仍要有个稳定位次)。两者皆空=0,与总表同排段首。
+export function floorRankOf(m: MeterLoc): number {
+  const f = (m.floorLabel ?? '').trim()
+  return floorRank(f || m.spot)
+}
+
 export function compareRowInBuilding(a: WorkbenchRow, b: WorkbenchRow): number {
   const infra = (x: WorkbenchRow) => (x.m.ownership === 'infra' ? 0 : 1)
   return infra(a) - infra(b)
-    || floorRank(a.m.spot) - floorRank(b.m.spot)
+    || floorRankOf(a.m) - floorRankOf(b.m)
+    || sideRank(a.m) - sideRank(b.m)
+    || roomRank(a.m) - roomRank(b.m)
     || (a.m.sortNo ?? 0) - (b.m.sortNo ?? 0)
     || a.m.id - b.m.id
 }

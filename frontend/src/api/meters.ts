@@ -22,16 +22,36 @@ export interface MeterDTO {
   name: string                  // 首列标识名,同区同类唯一
   area: string | null
   spot: string | null
+  // V74 位置结构化(楼栋→楼层→方位→房号):稳定标识,分组/排序/池选表走这三列,spot 只留原文与导入身份键
+  floorLabel: string | null     // 负一层/一楼…十楼/天面;null=跨层或不适用
+  side: string | null           // 东/西/南/北侧
+  roomNo: string | null
+  // V76 §F6 / V78 §G5:上面三列是否人工设定,**位掩码逐列**——bit0(1)=楼层 / bit1(2)=方位 / bit2(4)=房号。
+  // 某位 0=与「位置原文」解析一致 → 导入跟着原文重解析(表挪了地方那一列自动跟上);
+  // 1=人工覆盖或显式清空 → 导入该列不动,原文变了只在导入结果里落一条提醒。后端按结果派生,不用前端上报。
+  // (可选签名同 suspect:后端恒给,写成可选只为不逼既有测试夹具逐个补)
+  locManual?: number
   tenantName: string | null     // 企业名称原文(§6.1 未匹配兜底+对账审计)
   tenantId: number | null       // §6 v2:租户 FK,户内表关联;多命中待核=null
   buildingId: number | null     // §6 v2:楼栋 FK,区域→楼栋映射
-  ownership: MeterOwnership     // §6 v2:tenant/share/ops/infra/park
+  ownership: MeterOwnership     // §6 v2:tenant/share/ops/infra/park/register(刀H §H2 计度寄存器,不进任何Σ)
+  // V77 §G2:上面两列(ownership/buildingId)是否人工设定。0=自动 → 导入按自动分类照常回写;
+  // 1=人工设定 → 导入两列一列不动,判定与人工值不同时在导入结果里落一条提醒。后端按 PUT 结果派生,不用前端上报。
+  // (可选签名同 locManual:后端恒给,写成可选只为不逼既有测试夹具逐个补)
+  ownerManual?: number
   meterType: string | null
   deviceType: MeterDeviceType | null   // S2 V63:表类型(单相/三相/多功能/需量/双向)
   subName: string | null
   code: string | null
   factor: number                // 倍率
   retiredYm: string | null      // V68:自该账期起停用(含当月不计);null=在用
+  // V75 §E3/§F1 两级存疑(判据都以「区域/位置/企业名称/编码四项全空」打底):
+  //   'shadow'     = 还配到一块档案完整、同 (kind,zone,building_id)、同月上下期示数与倍率全等的表
+  //                  → 疑似同一块物理表的第二份档案,红底徽标,后端**不**计入楼栋分表Σ;
+  //   'incomplete' = 配不上,只是档案没填全 → 黄底徽标,用量**照常**计入Σ。
+  // 在档案抽屉保存一次=认领,后端自动清标。
+  // (可选签名:后端恒给该字段,写成可选只为不逼既有测试夹具逐个补 null)
+  suspect?: 'shadow' | 'incomplete' | null
   sortNo: number
   readingCount: number
 }
@@ -43,6 +63,10 @@ export interface MeterReq {
   name: string
   area?: string | null
   spot?: string | null
+  // V74:留空/不传=后端按 spot 重解析;显式给值=人工覆盖(后端不记「是否人工改过」,靠调用方带值)
+  floorLabel?: string | null
+  side?: string | null
+  roomNo?: string | null
   tenantName?: string | null
   tenantId?: number | null      // §6 v2
   buildingId?: number | null    // §6 v2
@@ -53,6 +77,9 @@ export interface MeterReq {
   code?: string | null
   factor?: number | null
   retiredYm?: string | null     // V68 停用账期;null=在用(撤销停用)
+  // §G5 存疑标的人工入口,三态同 floorLabel:不传=保留原标;''=人工解除(「认领为独立表」,重新进Σ);
+  // 'shadow'/'incomplete'=人工打标。二态(null=解除)会让任何一个不带该字段的 PUT 顺手把标清掉。
+  suspect?: '' | 'shadow' | 'incomplete'
 }
 
 // usage* = (curr−prev)×factorSnap 后端派生(缺读数=null);漏抄/倒走/时段不符徽标由 meterLogic 派生
@@ -126,6 +153,26 @@ export interface MeterImportRow {
   note?: string
 }
 
+// 刀H §H5 按账期批量删除:预览与实删同一形状(后端同一个方法两条路径,数字必然一致)。
+// derived=该 ym 四张派生快照表的行数(整月口径,不随 kind/zone 收窄);
+// manualKept=保留的手工分摊行点名;meterDeleted=连带删掉的表档案;meterBlocked=撞池绑定 FK 跳过的表档案。
+// 级联勾选项,两端点共用;不传=后端默认全开
+export interface MeterDeleteOpt {
+  cascade?: boolean          // 该月派生快照(池核算/逐表明细/损耗/分摊 gen 行)
+  dropEmptyMeters?: boolean  // 删完零读数的表档案(池成员表撞 FK 自动跳过)
+}
+
+export interface MeterDeleteDTO {
+  ym: string
+  readings: number
+  meters: number
+  metersEmptied: number
+  derived: number
+  manualKept: string[]
+  meterDeleted: string[]
+  meterBlocked: string[]
+}
+
 // ── S2-BIND-SPEC §3:表→合同绑定(读侧派生,按账期月判定) ──
 export type BindBucket = 'date_missing' | 'ambiguous' | 'bld_mismatch' | 'no_contract'
 export type BindStatus =
@@ -192,6 +239,12 @@ export const metersApi = {
   updateReading: (id: number, req: MeterReadingReq): Promise<MeterReadingDTO> =>
     http.put(`/meters/readings/${id}`, req),
   deleteReading: (id: number): Promise<void> => http.delete(`/meters/readings/${id}`),
+  // §H5 批量删除:先预览(GET,只算不删)后执行(DELETE,不可逆,仅 admin)。
+  // 两条端点参数同形(后端同一个方法),勾选项一变预览必须重拉 —— 否则复述的数字与实删对不上。
+  deletePreview: (ym: string, opt?: MeterDeleteOpt): Promise<MeterDeleteDTO> =>
+    http.get('/meters/readings/delete-preview', { params: { ym, ...opt } }),
+  batchDelete: (ym: string, opt?: MeterDeleteOpt): Promise<MeterDeleteDTO> =>
+    http.delete('/meters/readings', { params: { ym, ...opt } }),
   // 表按 (kind,zone,name) 建档/刷新,读数按 (表,ym) 幂等覆盖;行级错误跳过不整批拦
   importRows: (rows: MeterImportRow[]): Promise<ImportResultDTO> => http.post('/meters/import', { rows }),
   // ── S2-BIND-SPEC §3 ──

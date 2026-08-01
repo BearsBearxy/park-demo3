@@ -133,6 +133,20 @@ describe('parseMeterSheet — v2 主数据拆分', () => {
   it('无括号连写:桑尼号西侧 → 剥方位后缀匹配', () => {
     expect(sec.records[1]).toMatchObject({ tenantId: 12, ownership: 'tenant', spot: '西侧' })
   })
+  // V72:位置列已给出位置时,企业名称里剥出的非方位段不再拼进 spot(否则「天面 1」把同层裂成多组)
+  const ROOF: string[][] = [
+    ['', '2024年2月一期园区电表抄表记录'],
+    ['', '区域', '', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '本月行至', '备注'],
+    ['A东侧货梯', 'A座', '天面', '东侧货梯', '公共用电/已分摊', '电表①', '', '20', '199.35', '206.14', ''],
+    ['A客梯1', 'A座', '天面', '客梯1', '公共用电/已分摊', '电表③', '', '20', '267.98', '278.09', ''],
+    ['A客梯2', 'A座', '天面', '客梯2（到-1楼）', '公共用电/已分摊', '电表④', '', '1', '5157.62', '5458.99', ''],
+    ['桑尼二楼', 'B座', '二楼', '桑尼号西侧', '户内用电', '电表①', '', '1', '5', '8', ''],
+  ]
+  it('位置列非空:非方位型尾段被丢弃(客梯1→天面,客梯2（到-1楼）→天面),方位型仍保留', () => {
+    const roof = parseMeterSheet('一期园区电', ROOF, master)!
+    expect(roof.records.map(r => r.spot)).toEqual(['天面', '天面', '天面', '二楼 西侧'])
+  })
+
   it('多命中待核:邓宇峰×2 → tenantId 空,仍归租户表,预览显原文+待核', () => {
     expect(sec.records[2]).toMatchObject({ tenantId: null, ownership: 'tenant', spot: '高区', tenantName: '邓宇峰（高区）' })
     expect(sec.records[2].__preview![3]).toBe('邓宇峰（高区）(待核)')
@@ -226,6 +240,33 @@ describe('parseMeterSheet — 用户新模板(无标识列)', () => {
     const bad = USER_TPL.map(r => [...r])
     bad[10][17] = '999'
     expect(String(parseMeterSheet('一期园区电', bad)!.records[7].__preview![8])).toContain('⚠')
+  })
+})
+
+// ── §J3/§J4:缺标识列的预检提示 + 模板/导出必须带标识列(治本) ────────────────
+// 用户重导「一期园区电」时 B座 3 块无码同键表(281/282/283)撞歧义,根因就是这份文件丢了 A 列。
+describe('缺标识列预检(§J3)与模板/导出标识列(§J4)', () => {
+  it('表头首格即「区域」→ 段标 noNameCol,整册出提示(走 warning:不阻断、不进 errors)', () => {
+    expect(parseMeterSheet('一期园区电', USER_TPL)!.noNameCol).toBe(true)
+    const w = parseMeterWorkbook([{ name: '一期园区电', matrix: USER_TPL }]).warning!
+    expect(w).toContain('本文件缺原册首列(标识名)')
+    expect(w).toContain('导出当月')
+  })
+  it('有标识列(原册版式)→ 不产出该提示', () => {
+    expect(parseMeterSheet('二期园区电', ELEC_SHEET)!.noNameCol).toBe(false)
+    expect(parseMeterWorkbook([{ name: '二期园区电', matrix: ELEC_SHEET }]).warning).toBeUndefined()
+  })
+  it('模板/导出 AOA 首列是标识列(表头无标题、数据行取 name),回读即无该提示', () => {
+    const tpl = buildMeterTemplateAoa('p1', 'elec', '2026-07')
+    expect(tpl[1][0]).toBe('')            // 表头行首格空 = 无表头的窄标识列(与原册同构)
+    expect(tpl[3][0]).toBe('示例总电')     // 数据行首格 = 标识名
+    expect(buildMeterTemplateAoa('p2', 'water', '2026-07')[2][0]).toBe('示例总水')
+    const meters = [{ id: 7, kind: 'elec', zone: 'p1', name: 'B东侧楼梯间', area: 'B座', spot: '天面', subName: '电表①' }]
+    const aoa = buildMeterExportAoa('p1', 'elec', '2024-02', meters, [{ meterId: 7, prevTotal: 1, currTotal: 2 }])
+    expect(aoa[3][0]).toBe('B东侧楼梯间')   // 导出数据行首列 = meter.name
+    const sec = parseMeterSheet('一期园区电', aoa.map(r => r.map(String)))!
+    expect(sec.noNameCol).toBe(false)
+    expect(sec.records[0].name).toBe('B东侧楼梯间')   // 回读拿到标识名 → L3 标识层可命中,不再撞位置歧义
   })
 })
 

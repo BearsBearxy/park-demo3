@@ -9,7 +9,7 @@
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
-  type MeterKind, type MeterZone,
+  type MeterDeleteDTO, type MeterKind, type MeterZone,
 } from '@/api/meters'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
@@ -48,7 +48,7 @@ const importing = ref(false)
 const openId = ref<number | null>(null)
 onDeactivated(() => {
   editMode.value = false; importing.value = false; openId.value = null
-  saveConfirm.value = false; draft.clear()
+  saveConfirm.value = false; draft.clear(); delPreview.value = null
 })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -162,7 +162,8 @@ onMounted(async () => {
   loadBinding()
 })
 // 换账期:上月基准/读数全变,草稿随之作废(ponytail: 静默丢弃,需保留请先「完成」保存)
-watch([year, month], () => { draft.clear(); loadReadings(); loadBinding() })
+// 换账期同时关掉批删弹窗:里面复述的是旧账期的数字,留着就是张过期确认单
+watch([year, month], () => { draft.clear(); delPreview.value = null; loadReadings(); loadBinding() })
 
 // 写后统一重载(读数/档案/绑定/数据年份)
 function reloadAll() {
@@ -198,7 +199,7 @@ const STATUS_OPTS = [
 const statusSel = computed(() => (STATUS_OPTS.some(o => o.value === status.value) ? status.value : 'all'))
 function resetFilters() {
   // 分区是一级页签不参与重置
-  building.value = 'all'; own.value = 'all'; status.value = 'all'; q.value = ''
+  building.value = 'all'; own.value = 'all'; status.value = 'all'; q.value = ''; suspectOnly.value = false
 }
 function cardClick(k: StatusFilter) {
   status.value = status.value === k ? 'all' : k
@@ -213,9 +214,44 @@ const kindZoneRows = computed(() =>
 const cards = computed(() => cardCounts(kindZoneRows.value))
 const progressPct = computed(() =>
   cards.value.tenant > 0 ? Math.round((cards.value.read / cards.value.tenant) * 100) : 0)
+// 「只看存疑」(V75 §E3/§F1):独立开关,叠在筛选链之后 —— 存疑是档案质量维度,与抄表状态互不排斥。
+// 两级都收:shadow(疑似重复,已被踢出Σ)与 incomplete(档案不全,仍在Σ内),都要人去补档案
+const suspectOnly = ref(false)
+const suspectCount = computed(() => kindZoneRows.value.filter(x => !!x.m.suspect).length)
+const shadowCount = computed(() => kindZoneRows.value.filter(x => x.m.suspect === 'shadow').length)
 // 表格行集:全筛选链(tfoot 已抄/未抄/Σ用量 即按此行集算)
-const gridRows = computed(() =>
-  filterRows(rowsAll.value, { kind: kind.value, zone: zone.value, building: building.value, own: own.value, status: status.value, q: q.value }))
+const gridRows = computed(() => {
+  const rs = filterRows(rowsAll.value, { kind: kind.value, zone: zone.value, building: building.value, own: own.value, status: status.value, q: q.value })
+  return suspectOnly.value ? rs.filter(x => !!x.m.suspect) : rs
+})
+
+// ── 位置字段候选(§A.3/§A.4 共用:抽屉行内编辑 + 新增表弹窗) ──
+// 楼层/方位给基准表打底,再并上库内既有值(存量文件里出现过"中间""夹层"这类基准表外的写法);
+// 区域纯数据驱动(各期区块名各不相同,没有通用基准)。
+const FLOOR_BASE = ['负一层', '一楼', '二楼', '三楼', '四楼', '五楼', '六楼', '七楼', '八楼', '九楼', '十楼', '天面']
+const SIDE_BASE = ['东侧', '西侧', '南侧', '北侧']
+const uniqVals = (base: string[], vals: (string | null | undefined)[]) => {
+  const out = [...base]
+  for (const v of vals) { const t = v?.trim(); if (t && !out.includes(t)) out.push(t) }
+  return out
+}
+const areaOpts = computed(() => uniqVals([], (meters.value ?? []).map(m => m.area)))
+const floorOpts = computed(() => uniqVals(FLOOR_BASE, (meters.value ?? []).map(m => m.floorLabel)))
+const sideOpts = computed(() => uniqVals(SIDE_BASE, (meters.value ?? []).map(m => m.side)))
+// 新增弹窗的位置三态(§F5+§F6 叠加修正 2026-07-31):后端 applyLoc 分 null/空串/有值三态,
+// 弹窗必须把前两态分开给,否则「新建时没填」会被 locDeviates 判成人工设定、导入从此不再按位置原文重解析。
+//   AUTO('') → 提交 null = 不指定,按位置原文自动解析(新建默认)
+//   NONE('-') → 提交 ''  = 显式跨层/不分侧,不许被位置原文解析回来
+const LOC_AUTO = ''      // 表单内部值:自动
+const LOC_NONE = '-'     // 表单内部值:显式无
+const dlgFloorOpts = computed(() =>
+  [{ value: LOC_AUTO, label: '(按位置原文自动)' }, { value: LOC_NONE, label: '—(跨层/不适用)' },
+    ...floorOpts.value.map(f => ({ value: f, label: f }))])
+const dlgSideOpts = computed(() =>
+  [{ value: LOC_AUTO, label: '(按位置原文自动)' }, { value: LOC_NONE, label: '—(不分侧)' },
+    ...sideOpts.value.map(s => ({ value: s, label: s }))])
+// 表单值 → 提交值:自动=null / 显式无=空串 / 有值=原值
+const locOut = (v: string) => (v === LOC_AUTO ? null : v === LOC_NONE ? '' : v.trim())
 
 // 楼栋 Select:数据驱动清单(当前 电水+分区 下出现过的楼栋)
 const buildingOpts = computed(() => {
@@ -264,6 +300,48 @@ async function autoLink() {
   } finally { linking.value = false }
 }
 
+// ── 批量删除本期(刀H §H5,编辑态;用户点名:自己测试导入的那批数据要能自己删掉) ──
+// 不可逆,故「先预览后执行」:弹窗复述预览数字,并要人手打账期串才放行(§H5.4)。
+// 口径=整月(不带 kind/zone):派生快照本就是全园区一次算出来的,只删半边月它整月都不再可信。
+// 勾选项一变,预览必须重拉 —— 复述的数字与实删对不上,这个二次确认就成了摆设。
+const delPreview = ref<MeterDeleteDTO | null>(null)
+const delCascade = ref(true)
+const delDropMeters = ref(true)
+const delTyped = ref('')
+const delBusy = ref(false)
+const delOpt = computed(() => ({ cascade: delCascade.value, dropEmptyMeters: delDropMeters.value }))
+
+async function loadDelPreview() {
+  delBusy.value = true
+  try { delPreview.value = await metersApi.deletePreview(ym.value, delOpt.value) }
+  catch (e) { delPreview.value = null; alert((e as { message?: string })?.message ?? '预览失败') }
+  finally { delBusy.value = false }
+}
+async function openDelDlg() {
+  delTyped.value = ''
+  delCascade.value = true; delDropMeters.value = true
+  await loadDelPreview()
+  if (delPreview.value && delPreview.value.readings === 0) {
+    alert(`${ym.value} 没有抄表数据可删。`); delPreview.value = null
+  }
+}
+watch([delCascade, delDropMeters], () => { if (delPreview.value) loadDelPreview() })
+
+async function confirmDelete() {
+  const p = delPreview.value
+  if (!p || delBusy.value || delTyped.value.trim() !== p.ym) return
+  delBusy.value = true
+  try {
+    const r = await metersApi.batchDelete(p.ym, delOpt.value)
+    delPreview.value = null
+    alert(`已删除 ${r.readings} 条读数、${r.meterDeleted.length} 份表档案、${r.derived} 条派生快照。`
+      + (r.meterBlocked.length > 0 ? `\n${r.meterBlocked.length} 份表档案因已被池绑定跳过未删。` : ''))
+    reloadAll()
+  } catch (e) {
+    alert((e as { message?: string })?.message ?? '批量删除失败')
+  } finally { delBusy.value = false }
+}
+
 // ── 导入(registry 'meter')/模板/导出当月(v4 原样) ──
 const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
@@ -291,9 +369,11 @@ async function onExport() {
 
 // ── 新增表弹窗(编辑态,标题行入口;v4 原样迁移) ──
 const meterDlg = ref(false)
+// §A.4:补 区域/楼层/方位/房号(表编码本就有)——手工建的表不补这些就永久缺席导入位置索引
 const mForm = ref({
   kind: 'elec', zone: 'p1', building: '', spot: '', tenantId: null as number | null,
   ownership: 'share', name: '', subName: '', code: '', factor: '',
+  area: '', floorLabel: '', side: '', roomNo: '',
 })
 const mErr = ref('')
 const DLG_ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' }]
@@ -308,6 +388,7 @@ function openMeterDlg() {
   mForm.value = {
     kind: kind.value, zone: zone.value,
     building: '', spot: '', tenantId: null, ownership: 'share', name: '', subName: '', code: '', factor: '',
+    area: '', floorLabel: '', side: '', roomNo: '',
   }
   mErr.value = ''
   meterDlg.value = true
@@ -323,6 +404,11 @@ async function submitMeter() {
       kind: mForm.value.kind as MeterKind, zone: mForm.value.zone as MeterZone, name, factor,
       subName: trimOrNull(mForm.value.subName),
       spot: trimOrNull(mForm.value.spot), code: trimOrNull(mForm.value.code),
+      area: trimOrNull(mForm.value.area),
+      // §F5:三列发空串(与抽屉 reqOf 一致)。后端三态里 ''=显式清除(跨层/不适用),null 才是「按 spot 解析」;
+      // 发 null 会让这里选的「—(跨层/不适用)」被 spot 解析盖掉,Select 上那句「可空=跨层」就成了假话。
+      floorLabel: locOut(mForm.value.floorLabel), side: locOut(mForm.value.side),
+      roomNo: mForm.value.roomNo.trim() || null,
       tenantId: mForm.value.tenantId,
       buildingId: mForm.value.building === '' ? null : Number(mForm.value.building),
       ownership: mForm.value.tenantId != null ? 'tenant' : mForm.value.ownership,
@@ -383,6 +469,15 @@ const emptyText = computed(() => {
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增表
         </Button>
+        <!-- §H5 批量删除本期(整月,不可逆):编辑态才出现;viewer 进不了编辑态,入口天然不可见 -->
+        <Button
+          v-if="editMode" variant="danger" size="sm" :disabled="delBusy"
+          title="删除本账期全部读数,并级联删除该月派生快照与删完零读数的表档案(池成员表跳过);执行前会先给出预览数字并要求手打账期确认"
+          @click="openDelDlg"
+        >
+          <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+          批量删除本期
+        </Button>
         <Button v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm" :disabled="saving" @click="onEditBtn">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
@@ -434,6 +529,15 @@ const emptyText = computed(() => {
         </span>
         <input v-model="q" placeholder="搜索租户/原文/房号/表号/编码" />
       </div>
+      <!-- 只看存疑(V75 §E3/§F1):有存疑表才出现;按下=只列两级存疑档案(疑似重复 + 档案不全) -->
+      <Button
+        v-if="suspectCount > 0" :variant="suspectOnly ? 'filled' : 'outline'" size="sm"
+        :title="`${suspectCount} 块表区域/位置/企业名称/编码全空;其中 ${shadowCount} 块另配到档案完整、同月示数与倍率全等的同栋同类表,疑似重复建档(红底,用量不计入楼栋分表Σ),其余只是档案不全(黄底,用量照常计入Σ)`"
+        @click="suspectOnly = !suspectOnly"
+      >
+        <template #leading><component :is="iconFor('alert-triangle')" :size="14" /></template>
+        只看存疑 · {{ suspectCount }}
+      </Button>
       <span style="flex:1" />
       <!-- 「按名精确匹配一键挂」:待核卡激活时工具栏侧出现(编辑态,S2 §3) -->
       <Button v-if="showAutoLink" variant="outline" size="sm" :disabled="linking || cards.pending === 0" @click="autoLink">
@@ -460,6 +564,7 @@ const emptyText = computed(() => {
     <MeterDetailDrawer
       :row="openRow" :edit-mode="editMode" :default-ym="ym"
       :tenants="tenants" :buildings="buildings" :bind-available="bindRows !== null && !bindFail"
+      :area-opts="areaOpts" :floor-opts="floorOpts" :side-opts="sideOpts"
       @close="openId = null" @reload="reloadAll"
     />
 
@@ -501,10 +606,19 @@ const emptyText = computed(() => {
           </div>
           <div class="mt-dlg-row">
             <Input v-model="mForm.factor" label="倍率(留空=1)" placeholder="如:500" size="sm" type="number" />
-            <Input v-model="mForm.spot" label="方位(可空)" placeholder="如:1-3楼 / 东侧" size="sm" />
+            <Input v-model="mForm.area" label="区域(可空,区块名)" placeholder="如:A座 / 六车间" size="sm" />
+          </div>
+          <!-- §A.4 位置四件套:楼层/方位/房号是稳定主数据(排序+公摊按层分份),位置原文另兼导入匹配键 -->
+          <div class="mt-dlg-row">
+            <Select v-model="mForm.floorLabel" label="楼层" :options="dlgFloorOpts" size="sm" />
+            <Select v-model="mForm.side" label="方位(可空)" :options="dlgSideOpts" size="sm" />
           </div>
           <div class="mt-dlg-row">
-            <Input v-model="mForm.code" label="表编码(可空)" size="sm" />
+            <Input v-model="mForm.roomNo" label="房号(可空)" placeholder="如:101室" size="sm" />
+            <Input v-model="mForm.spot" label="位置原文(可空,导入匹配键)" placeholder="如:四楼西侧101室" size="sm" />
+          </div>
+          <div class="mt-dlg-row">
+            <Input v-model="mForm.code" label="表编码(可空,导入首选身份键)" size="sm" />
           </div>
           <div class="mt-dlg-err">{{ mErr }}</div>
         </div>
@@ -513,6 +627,52 @@ const emptyText = computed(() => {
           <Button variant="filled" size="sm" @click="submitMeter">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
             新增
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- §H5 批量删除本期:复述预览数字 + 级联勾选 + 手打账期才放行(不可逆,无撤销) -->
+    <div v-if="delPreview" class="mt-mask" @mousedown="delPreview = null">
+      <div class="mt-dlg" @mousedown.stop>
+        <div class="mt-dlg-h">
+          <h3>批量删除本期 · {{ delPreview.ym }}</h3>
+          <p>不可逆操作,删除后无法撤销。请核对下列数字后输入账期确认。</p>
+        </div>
+        <div class="mt-dlg-b">
+          <ul class="mt5-del-list">
+            <li>将删除读数 <b>{{ delPreview.readings }}</b> 条,涉及 <b>{{ delPreview.meters }}</b> 块表</li>
+            <li>其中 <b>{{ delPreview.metersEmptied }}</b> 块表删完后零读数</li>
+            <li>该月已生成的派生快照 <b>{{ delPreview.derived }}</b> 条(池核算/逐表明细/损耗/分摊结果)</li>
+            <li v-if="delPreview.meterDeleted.length > 0">
+              连带删除表档案 <b>{{ delPreview.meterDeleted.length }}</b> 份:{{ delPreview.meterDeleted.join('、') }}
+            </li>
+            <li v-if="delPreview.meterBlocked.length > 0" class="warn">
+              已被池绑定、跳过不删的表档案 <b>{{ delPreview.meterBlocked.length }}</b> 份:{{ delPreview.meterBlocked.join('、') }}
+            </li>
+            <li v-if="delPreview.manualKept.length > 0" class="keep">
+              保留的手工分摊行 <b>{{ delPreview.manualKept.length }}</b> 条(不删):{{ delPreview.manualKept.join('、') }}
+            </li>
+          </ul>
+          <label class="mt5-del-ck">
+            <input v-model="delCascade" type="checkbox" >
+            <span>同时删除该月派生快照(手工分摊行始终保留)</span>
+          </label>
+          <label class="mt5-del-ck">
+            <input v-model="delDropMeters" type="checkbox" >
+            <span>同时删除「删完零读数」的表档案(池成员表自动跳过)</span>
+          </label>
+          <Input v-model="delTyped" :label="`确认请输入账期 ${delPreview.ym}`" :placeholder="delPreview.ym" size="sm" />
+        </div>
+        <div class="mt-dlg-f">
+          <Button variant="gray" size="sm" @click="delPreview = null">取消</Button>
+          <Button
+            variant="danger" size="sm"
+            :disabled="delBusy || delTyped.trim() !== delPreview.ym"
+            @click="confirmDelete"
+          >
+            <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+            确认删除
           </Button>
         </div>
       </div>
@@ -570,5 +730,12 @@ const emptyText = computed(() => {
 .mt-dlg-row > * { flex: 1; min-width: 0; }
 .mt-fld label { display: block; margin-bottom: 5px; font-size: var(--fs-label); color: var(--text-secondary); }
 .mt-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
+
+/* §H5 批量删除确认:预览数字复述 + 级联勾选 */
+.mt5-del-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--text-secondary); }
+.mt5-del-list b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.mt5-del-list .warn { color: var(--hue-orange); }
+.mt5-del-list .keep { color: var(--text-muted); }
+.mt5-del-ck { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .mt-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
 </style>

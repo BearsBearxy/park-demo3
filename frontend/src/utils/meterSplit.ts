@@ -2,20 +2,30 @@
 // splitTenantSpot 租户名/方位拆分、classifyOwnership 归属自动分类、buildingIdFor 区域→楼栋映射。
 // 租户库 = tenants api companyName 全量;多命中不自动挂(multi=true → tenant_id 置空、预览标「待核」)。
 
-export type MeterOwnership = 'tenant' | 'share' | 'ops' | 'infra' | 'park'
+export type MeterOwnership = 'tenant' | 'share' | 'ops' | 'infra' | 'park' | 'register'
 export const OWNERSHIP_LABEL: Record<MeterOwnership, string> = {
   tenant: '租户', share: '园区公摊', ops: '园区经营', infra: '配电总表', park: '园区自担',
+  register: '计度寄存器',
 }
 
 // 分表Σ成员(§8.2):租户+公摊+park 园区自担。park 不收租户不进公摊池,但物理挂在楼栋分表下,
 // 必须进「区块/楼栋用量合计」——与后端 AllocService.inSubSigma(损耗组 D)同一口径,勿分叉。
 // infra 不计(与分表重复)、ops 不计(园区经营非收费口径)。
-export function inSubSigma(ownership: string): boolean {
-  return ownership === 'tenant' || ownership === 'share' || ownership === 'park'
+// §F7:suspect='shadow'(疑似重复建档)与后端一并排除——同一块物理表两份档案各带一条读数,计两次是凭空多的用量
+// (A座 2024-02 抄表屏曾比损耗屏多 107.80)。'incomplete'(档案不全但配不到重复对手)**照算**,
+// 排掉会让 5 块挂栋的 p2 临电长期少计。参数收整块表,只为读 suspect,判定仍只看 ownership+suspect。
+// 刀H §H2(V79):ownership='register'(非计费计度寄存器)由下面这个白名单天然排除 —— 与后端同口径。
+export function inSubSigma(m: { ownership: string; suspect?: string | null }): boolean {
+  if (m.suspect === 'shadow') return false
+  const o = m.ownership
+  return o === 'tenant' || o === 'share' || o === 'park'
 }
 
 // 方位特征正则(§6.2):东西南北侧/高低区/门口/楼层室栋座/尾部房号
 export const SPOT_RE = /(东|西|南|北)侧|高区|低区|门口|负?\d+[-—–]?\d*(楼|层|室|栋|座)|\d+[A-Za-z]?\d*室?$/
+// 方位型(SPOT_RE 的子集,整串匹配):位置列已给出位置时,只有这些才允许再拼到 spot 尾部。
+// 楼层/房号型不在内 —— 位置列已经是楼层,再拼一个只会得到 '天面 1' 这种把同层裂开的键。
+export const SPOT_DIR_RE = /^((东|西|南|北)侧|高区|低区|门口)$/
 
 export interface TenantSpotSplit {
   tenant: string | null   // 唯一命中的库内全名;未命中/多命中 = null
@@ -69,8 +79,15 @@ export function splitTenantSpot(raw: string, tenantNames: string[]): TenantSpotS
 // 但「已分摊」标记优先——同专表里 车库照明/生活加压泵/A座一楼大堂/招商中心电2 标注已分摊,是真公摊。
 const PARK_SELF_RE = /创显|物业部办公室|门岗|监控室|人才港|消防中控室/
 
+// 刀H §H2(V79)计度寄存器关键词:反向有功/正向无功/反向无功/需量/最大需量 是**电表寄存器的标准叫法**,
+// 一块物理表除正向有功电量外还计这些附属量,它们不是用电量。判据窄且是行业术语,不会误伤真表
+// (全库盘查 2026-07-31:仅「永龙反向有功」一行命中)。必须最先判 —— 名字里带租户名(永龙)会先被租户匹配吃掉,
+// 曾让 15527 度「反向有功」当成三车间租户用电进 building 32 的分表Σ(占 32.4%)。
+const REGISTER_RE = /反向有功|正向无功|反向无功|需量|最大需量/
+
 export function classifyOwnership(meterType: string | undefined, name: string, tenantMatched: boolean): MeterOwnership {
   const t = meterType ?? ''
+  if (REGISTER_RE.test(name)) return 'register'
   if (/总|变压器/.test(t) || /连接|馈/.test(name)) return 'infra'
   if (!/已分摊/.test(t) && PARK_SELF_RE.test(name)) return 'park'
   if (/公共用电|已分摊|未分摊/.test(t) || /公共用电|公共电/.test(name)) return 'share'

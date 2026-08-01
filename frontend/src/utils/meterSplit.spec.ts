@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitTenantSpot, classifyOwnership, buildingIdFor } from './meterSplit'
+import { splitTenantSpot, classifyOwnership, buildingIdFor, inSubSigma } from './meterSplit'
 
 // §6.2 全部例子:1-3楼（力灏）/邓宇峰（高区）/桑尼号西侧/邓宇峰多命中待核
 const LIB = ['力灏', '邓宇峰', '桑尼号', '锂朋科技']
@@ -72,6 +72,16 @@ describe('classifyOwnership — §6.3 关键词', () => {
     // 普通消防表不受 park 规则波及(只吃「消防中控室」全词)
     expect(classifyOwnership('公共用电/未分摊', '一车间消防', false)).toBe('share')
   })
+  // 刀H §H2(V79):计度寄存器最先判 —— 名字里带租户名会先被租户匹配吃掉(永龙反向有功 15527 度曾进分表Σ)
+  it('反向有功/正向无功/反向无功/需量/最大需量 → register,先于 tenant 与 infra 判定', () => {
+    expect(classifyOwnership('户内用电', '永龙反向有功', true)).toBe('register')
+    expect(classifyOwnership(undefined, '某表正向无功', false)).toBe('register')
+    expect(classifyOwnership(undefined, '某表反向无功', false)).toBe('register')
+    expect(classifyOwnership('总电表', '二期总电最大需量', false)).toBe('register')
+    expect(classifyOwnership(undefined, '三车间需量', false)).toBe('register')
+    // 不误伤真表:关键词是电表寄存器的标准叫法,不出现在普通表名里
+    expect(classifyOwnership('户内用电', '永龙电', true)).toBe('tenant')
+  })
   it('公共关键词:消防→share,水泵→ops;其余公共默认 share', () => {
     expect(classifyOwnership('公共用电/已分摊', '一车间消防', false)).toBe('share')
     expect(classifyOwnership('公共用水', '生活水泵', false)).toBe('ops')
@@ -117,5 +127,26 @@ describe('buildingIdFor — §6.3 区域→楼栋映射(楼栋重建后逐栋细
     expect(buildingIdFor('p2', '二期园区变压器', B)).toBeNull()
     expect(buildingIdFor('p1', '招商中心', B)).toBeNull()
     expect(buildingIdFor('p2', undefined, B)).toBeNull()
+  })
+})
+
+describe('inSubSigma — §8.2 分表Σ成员 + §F7 shadow 排除', () => {
+  it('tenant/share/park 计入,infra/ops 不计', () => {
+    expect(inSubSigma({ ownership: 'tenant' })).toBe(true)
+    expect(inSubSigma({ ownership: 'share' })).toBe(true)
+    expect(inSubSigma({ ownership: 'park' })).toBe(true)
+    expect(inSubSigma({ ownership: 'infra' })).toBe(false)
+    expect(inSubSigma({ ownership: 'ops' })).toBe(false)
+    // 刀H §H2(V79):计度寄存器不是用电量,不进任何Σ
+    expect(inSubSigma({ ownership: 'register' })).toBe(false)
+  })
+  it('suspect=shadow 一律排除(疑似重复建档,与后端 AllocService.inSubSigma 同口径)', () => {
+    expect(inSubSigma({ ownership: 'tenant', suspect: 'shadow' })).toBe(false)
+    expect(inSubSigma({ ownership: 'share', suspect: 'shadow' })).toBe(false)
+    expect(inSubSigma({ ownership: 'park', suspect: 'shadow' })).toBe(false)
+  })
+  it('suspect=incomplete 照算(5 块挂栋 p2 临电在这一档,排掉会让 E=D−C 长期偏低)', () => {
+    expect(inSubSigma({ ownership: 'share', suspect: 'incomplete' })).toBe(true)
+    expect(inSubSigma({ ownership: 'tenant', suspect: null })).toBe(true)
   })
 })

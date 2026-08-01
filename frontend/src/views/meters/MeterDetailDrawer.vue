@@ -31,6 +31,9 @@ const props = defineProps<{
   tenants: TenantDTO[]
   buildings: BuildingDTO[]
   bindAvailable: boolean         // GET /binding 是否可用(后端未就绪降级)
+  areaOpts: string[]             // §A.3 位置字段候选(库内既有值 ∪ 基准表,由 MeterView 汇总)
+  floorOpts: string[]
+  sideOpts: string[]
 }>()
 const emit = defineEmits<{ close: []; reload: [] }>()
 
@@ -73,13 +76,57 @@ const drawerSub = computed(() => {
 
 // ── 【表档案】行内编辑(乐观更新失败回滚,v4 RosterPanel 口径) ──
 const OWN_OPTS = Object.entries(OWNERSHIP_LABEL).map(([value, label]) => ({ value, label }))
+// §A.3 联动规则:PUT 恒带当前 floorLabel/side/roomNo。后端 applyLoc 三态是「不传=按 spot 解析,
+// ""=显式清除,有值=人工覆盖」,不记「是否人工改过」——所以三值一律带上,且空值发 ""(不是 null),
+// 否则抽屉里选了「—(跨层/不适用)」保存后会被 spot 解析回来,即 §E8 的「改了没生效」。
 const reqOf = (mm: MeterDTO): MeterReq => ({
   kind: mm.kind, zone: mm.zone, name: mm.name, area: mm.area, spot: mm.spot,
+  floorLabel: mm.floorLabel ?? '', side: mm.side ?? '', roomNo: mm.roomNo ?? '',
   tenantName: mm.tenantName, meterType: mm.meterType, deviceType: mm.deviceType,
   subName: mm.subName, code: mm.code, factor: mm.factor,
   tenantId: mm.tenantId, buildingId: mm.buildingId, ownership: mm.ownership,
   retiredYm: mm.retiredYm,
 })
+// §A.3 身份/位置字段行内提交:一份乐观更新失败回滚(同 commitSubName 范式),各字段只差 key。
+// name 是唯一键 (kind,zone,name),后端 409 的中文消息原样弹出,不吞。
+type LocKey = 'name' | 'code' | 'area' | 'floorLabel' | 'side' | 'roomNo' | 'spot' | 'tenantName'
+function commitField(mm: MeterDTO, key: LocKey, raw: string) {
+  const t = raw.trim()
+  if (key === 'name' && t === '') { alert('标识名不能为空'); return }
+  const v = key === 'name' ? t : (t || null)      // 除标识名外留空=清除
+  const rec = mm as unknown as Record<LocKey, string | null>
+  if (v === (rec[key] ?? null)) return
+  const prev = rec[key]
+  rec[key] = v
+  metersApi.update(mm.id, reqOf(mm)).catch((e) => { rec[key] = prev; alert(failMsg(e)) })
+}
+const SPOT_TITLE = '位置原文:它是下次导入的位置匹配键,改它会改变导入的匹配行为(表编码/标识名匹配不中时按它认表);'
+  + '改它不会动上面的楼层/方位/房号——那三项是独立主数据,要改请直接改它们'
+  + '(§F6:三项与原文解析不一致时会被标为「人工设定」,之后导入不再按原文重解析它们)'
+// §F6/§G5 人工设定标志:某列与「位置原文」解析结果不一致即置该位,由后端派生,前端不上报。
+// V78 起是位掩码逐列判定(bit0 楼层/bit1 方位/bit2 房号)——只改房号不会连楼层一起冻住。
+const LOC_BIT = { floorLabel: 1, side: 2, roomNo: 4 } as const
+const locPinned = (mm: MeterDTO, key: keyof typeof LOC_BIT) => ((mm.locManual ?? 0) & LOC_BIT[key]) !== 0
+const LOC_MANUAL_TITLE = '这一项已与「位置原文」不一致,视为人工设定:下次导入不会按原文重解析它'
+  + '(其余两项不受影响,各自独立判定);若原文变了(表挪了地方),导入结果里会落一条提醒请你核对。'
+  + '改回与原文一致即恢复自动跟随'
+// §G5 存疑标(V75):shadow 会把这块表踢出楼栋分表Σ 与池分母,原先只能由「补齐识别信息」自动清 ——
+// 配不上那一条的表(识别信息本就齐全、只是被误判重复)永远解不掉。这里是显式人工入口。
+const SUSPECT_LABEL: Record<string, string> = { shadow: '存疑·疑似重复建档', incomplete: '档案不全' }
+const SUSPECT_TITLE: Record<string, string> = {
+  shadow: '疑似同一块物理表的第二份档案:本表用量不计入楼栋分表Σ、不进池分母。'
+    + '确认它是独立的一块表 → 点「认领为独立表」解除,用量立即重新计入',
+  incomplete: '档案不全(区域/位置/企业名称/编码四项全空):用量照常计入Σ,只是提醒补档案。'
+    + '补齐任一项保存即自动清标,也可在此直接解除',
+}
+function clearSuspect(mm: MeterDTO) {
+  if (!confirm(`确认「${mm.name}」是独立的一块表?解除后它的用量会立即重新计入楼栋分表Σ 与池分母。`)) return
+  const prev = mm.suspect
+  mm.suspect = null
+  metersApi.update(mm.id, { ...reqOf(mm), suspect: '' })
+    .then(() => emit('reload'))    // 进/出Σ 改变对账口径,重载刷新
+    .catch((e) => { mm.suspect = prev; alert(failMsg(e)) })
+}
 function commitSubName(mm: MeterDTO, raw: string) {
   const v = raw.trim() || null
   if (v === mm.subName) return
@@ -276,11 +323,77 @@ async function doBind(contractId: number | null) {
     <!-- ── 表档案 ── -->
     <div v-if="tab === 'profile' && m" class="md-grid">
       <div class="md-fld ro"><label>类别 / 分区</label><span>{{ METER_KIND_LABEL[m.kind] }} · {{ METER_ZONE_LABEL[m.zone] }}</span></div>
-      <div class="md-fld ro"><label>标识名(内部键)</label><span class="mono">{{ m.name }}</span></div>
-      <div class="md-fld ro"><label>表编码</label><span class="mono">{{ m.code ?? '—' }}</span></div>
-      <div class="md-fld ro"><label>方位</label><span>{{ m.spot ?? '—' }}</span></div>
-      <div class="md-fld ro"><label>企业名称原文</label><span>{{ m.tenantName ?? '—' }}<span v-if="row?.pending" class="md-warn">待核</span></span></div>
       <div class="md-fld ro"><label>读数条数</label><span class="mono">{{ history?.length ?? m.readingCount }}</span></div>
+
+      <div class="md-fld">
+        <label>标识名(内部键)</label>
+        <input v-if="editMode" class="mt-edit l md-in mono" type="text" :value="m.name"
+               title="同分区同类唯一(kind,zone,name);与已有表重名保存会被后端拒绝并回滚"
+               @change="commitField(m, 'name', ($event.target as HTMLInputElement).value)" />
+        <span v-else class="mono">{{ m.name }}</span>
+      </div>
+      <div class="md-fld">
+        <label>表编码</label>
+        <input v-if="editMode" class="mt-edit l md-in mono" type="text" :value="m.code ?? ''"
+               title="导入的首选身份键:补上它可解掉「同位置多块表歧义」的导入报错。留空=清除"
+               @change="commitField(m, 'code', ($event.target as HTMLInputElement).value)" />
+        <span v-else class="mono">{{ m.code ?? '—' }}</span>
+      </div>
+      <div class="md-fld">
+        <label>区域(楼栋/车间)</label>
+        <input v-if="editMode" class="mt-edit l md-in" type="text" list="md-area-list" :value="m.area ?? ''"
+               title="抄表屏区块带头,同时进导入位置索引;可从库内既有区域中选,也可直接输入。留空=清除"
+               @change="commitField(m, 'area', ($event.target as HTMLInputElement).value)" />
+        <span v-else>{{ m.area ?? '—' }}</span>
+        <datalist v-if="editMode" id="md-area-list"><option v-for="a in areaOpts" :key="a" :value="a" /></datalist>
+      </div>
+      <div class="md-fld">
+        <label :title="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
+          楼层{{ locPinned(m, 'floorLabel') ? ' · 人工设定(导入不覆盖)' : '' }}
+        </label>
+        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.floorLabel ?? ''"
+                title="稳定位置主数据,决定抄表屏排序与公摊按层分份;留空=跨层或不适用"
+                @change="commitField(m, 'floorLabel', ($event.target as HTMLSelectElement).value)">
+          <option value="">—(跨层/不适用)</option>
+          <option v-for="f in floorOpts" :key="f" :value="f">{{ f }}</option>
+        </select>
+        <span v-else :class="{ dim: !m.floorLabel }">{{ m.floorLabel ?? '跨层/未录' }}</span>
+      </div>
+      <div class="md-fld">
+        <label :title="locPinned(m, 'side') ? LOC_MANUAL_TITLE : undefined">
+          方位{{ locPinned(m, 'side') ? ' · 人工设定(导入不覆盖)' : '' }}
+        </label>
+        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.side ?? ''"
+                title="同层东西侧分栏的依据;留空=整层不分侧"
+                @change="commitField(m, 'side', ($event.target as HTMLSelectElement).value)">
+          <option value="">—(不分侧)</option>
+          <option v-for="s in sideOpts" :key="s" :value="s">{{ s }}</option>
+        </select>
+        <span v-else :class="{ dim: !m.side }">{{ m.side ?? '—' }}</span>
+      </div>
+      <div class="md-fld">
+        <label :title="locPinned(m, 'roomNo') ? LOC_MANUAL_TITLE : undefined">
+          房号{{ locPinned(m, 'roomNo') ? ' · 人工设定(导入不覆盖)' : '' }}
+        </label>
+        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.roomNo ?? ''"
+               title="单元/房号(如 101室);跨多间的表宁可留空。留空=清除"
+               @change="commitField(m, 'roomNo', ($event.target as HTMLInputElement).value)" />
+        <span v-else :class="{ dim: !m.roomNo }">{{ m.roomNo ?? '—' }}</span>
+      </div>
+      <div class="md-fld">
+        <label>位置原文(导入匹配键)</label>
+        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.spot ?? ''"
+               :title="SPOT_TITLE"
+               @change="commitField(m, 'spot', ($event.target as HTMLInputElement).value)" />
+        <span v-else>{{ m.spot ?? '—' }}</span>
+      </div>
+      <div class="md-fld">
+        <label>企业名称原文</label>
+        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.tenantName ?? ''"
+               title="账册「企业名称」列原文;公摊/基础设施表这里存的是用途描述。留空=清除"
+               @change="commitField(m, 'tenantName', ($event.target as HTMLInputElement).value)" />
+        <span v-else>{{ m.tenantName ?? '—' }}<span v-if="row?.pending" class="md-warn">待核</span></span>
+      </div>
 
       <div class="md-fld">
         <label>楼栋</label>
@@ -338,6 +451,15 @@ async function doBind(contractId: number | null) {
                title="自该账期起停用(含当月不计):不进抄表进度、不进公摊/损耗分母、不参与合同绑定。留空=在用"
                @change="commitRetiredYm(m, ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.retiredYm }">{{ m.retiredYm ? `${m.retiredYm} 起停用` : '在用' }}</span>
+      </div>
+      <!-- §G5 存疑标:只在有标时出现;shadow 表不进分表Σ,给一个显式的人工解除入口 -->
+      <div v-if="m.suspect" class="md-fld span2">
+        <label>档案状态</label>
+        <span class="md-susp" :class="m.suspect" :title="SUSPECT_TITLE[m.suspect ?? '']">{{ SUSPECT_LABEL[m.suspect ?? ''] }}</span>
+        <Button v-if="editMode" variant="outline" size="sm" @click="clearSuspect(m)">
+          认领为独立表(解除存疑)
+        </Button>
+        <span v-else class="md-dim susp-hint">进入编辑模式后可解除。</span>
       </div>
     </div>
 
@@ -546,6 +668,13 @@ async function doBind(contractId: number | null) {
 .md-fld.ro span { color: var(--text-secondary); }
 .md-warn { margin-left: 8px; font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 1px 7px; color: rgb(202, 66, 41); background: rgb(255, 235, 228); }
 .md-in { height: 32px; border-color: var(--border-subtle); background: var(--surface-white); }
+/* §G5 存疑标一行(整宽):徽标 + 解除按钮 */
+.md-fld.span2 { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.md-fld.span2 label { margin-bottom: 0; }
+.md-susp { font-size: var(--fs-micro); border-radius: var(--radius-full); padding: 2px 9px; }
+.md-susp.shadow { color: rgb(202, 66, 41); background: rgb(255, 235, 228); }
+.md-susp.incomplete { color: rgb(146, 100, 0); background: rgb(255, 246, 219); }
+.md-fld.span2 .susp-hint { font-size: var(--fs-label); }
 .md-fld.pick :deep(.fp-tp-trigger) { height: 32px; font-size: 12.5px; }
 .md-del { color: var(--hue-red); }
 

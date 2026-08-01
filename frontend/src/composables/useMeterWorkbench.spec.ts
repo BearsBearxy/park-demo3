@@ -5,17 +5,20 @@ import {
   segUsage, segCheck, buildingTotals, groupByBuilding,
   effCurr, draftRowDirty, draftDirtyIds, rowUsage, draftRowIssues, draftReq, gridFooter,
   bindQueueBucket, autoLinkEstimate, statusDims,
-  flattenGroups, buildWindow, offsetOf, ROW_H, BSUM_H,
+  flattenGroups, buildWindow, offsetOf, ROW_H, BSUM_H, floorRankOf,
   type WorkbenchRow, type WorkbenchFilter, type MeterDraft, type BuildingGroup, type DisplayItem,
 } from './useMeterWorkbench'
+import type { MeterLoc } from '@/utils/meterGroup'
 import type { MeterDTO, MeterReadingDTO, MeterBindingRowDTO } from '@/api/meters'
 
 // METER-V5-SPEC §5+§7 v5.1:rows 合流/状态最差优先/统计卡口径/筛选/Σ段校验/楼栋合计损耗/草稿式编辑
 
 let seq = 0
-function mkM(p: Partial<MeterDTO> = {}): MeterDTO {
+// V74 位置结构化字段(A3 刀起前端 MeterDTO 已带这三列,MeterLoc 交叉仅为兼容既有断言写法)
+function mkM(p: Partial<MeterDTO & MeterLoc> = {}): MeterDTO & MeterLoc {
   return {
     id: ++seq, kind: 'elec', zone: 'p1', name: `m${seq}`, area: null, spot: null,
+    floorLabel: null, side: null, roomNo: null,
     tenantName: null, tenantId: null, buildingId: null, ownership: 'share',
     meterType: null, deviceType: null, subName: null, code: null,
     factor: 1, retiredYm: null, sortNo: seq, readingCount: 0, ...p,
@@ -385,6 +388,55 @@ describe('groupByBuilding — 楼栋分组汇总行(§7.6)', () => {
     const f1 = mkM({ buildingId: 11, spot: '一楼101室' })
     const gs = groupByBuilding(buildRows([f2, head, b1, roof, f1], [], [], null), names, new Map())
     expect(gs[0].rows.map(x => x.m.id)).toEqual([head.id, b1.id, f1.id, f2.id, roof.id])
+  })
+
+  // §A.2:排序键改走 V74 结构化字段 floorLabel/side/roomNo,取不到才回退 spot 原文解析
+  const idsOf = (ms: (MeterDTO & MeterLoc)[]) =>
+    groupByBuilding(buildRows(ms, [], [], null), names, new Map())[0].rows.map(x => x.m.id)
+
+  it('floorRankOf:floorLabel 优先(天面99/负一层−1/N楼N/认不出50),空则回退 spot', () => {
+    expect(floorRankOf({ floorLabel: '天面', spot: '一楼101室' })).toBe(99)
+    expect(floorRankOf({ floorLabel: '负一层' })).toBe(-1)
+    expect(floorRankOf({ floorLabel: '四楼' })).toBe(4)
+    expect(floorRankOf({ floorLabel: '10楼' })).toBe(10)
+    expect(floorRankOf({ floorLabel: '夹层' })).toBe(50)          // 有楼层原文但认不出
+    expect(floorRankOf({ floorLabel: '  ', spot: '二楼201室' })).toBe(2)   // 空白视同未录 → 回退 spot
+    expect(floorRankOf({ floorLabel: null, spot: null })).toBe(0) // 两者皆空不炸
+  })
+
+  it('天面排该栋末尾(结构化字段口径)', () => {
+    const roof = mkM({ buildingId: 11, floorLabel: '天面' })
+    const f1 = mkM({ buildingId: 11, floorLabel: '一楼' })
+    const b1 = mkM({ buildingId: 11, floorLabel: '负一层' })
+    expect(idsOf([roof, f1, b1])).toEqual([b1.id, f1.id, roof.id])
+  })
+
+  it('同层按方位:东<西<南<北<空', () => {
+    const w = mkM({ buildingId: 11, floorLabel: '四楼', side: '西侧' })
+    const none = mkM({ buildingId: 11, floorLabel: '四楼' })
+    const n = mkM({ buildingId: 11, floorLabel: '四楼', side: '北侧' })
+    const e = mkM({ buildingId: 11, floorLabel: '四楼', side: '东侧' })
+    expect(idsOf([w, none, n, e])).toEqual([e.id, w.id, n.id, none.id])
+  })
+
+  it('同层同方位按房号自然序(101<102<1001,不是字符串序)', () => {
+    const r1001 = mkM({ buildingId: 11, floorLabel: '一楼', roomNo: '1001室' })
+    const r102 = mkM({ buildingId: 11, floorLabel: '一楼', roomNo: '102室' })
+    const r101 = mkM({ buildingId: 11, floorLabel: '一楼', roomNo: '101室' })
+    expect(idsOf([r1001, r102, r101])).toEqual([r101.id, r102.id, r1001.id])
+  })
+
+  it('floorLabel 空 → 回退 spot 解析,与已录结构化字段的表混排仍有序', () => {
+    const f3 = mkM({ buildingId: 11, floorLabel: '三楼' })
+    const f1Spot = mkM({ buildingId: 11, spot: '一楼101室' })      // 存量:只有 spot
+    const f2Spot = mkM({ buildingId: 11, spot: '二楼201室' })
+    expect(idsOf([f3, f2Spot, f1Spot])).toEqual([f1Spot.id, f2Spot.id, f3.id])
+  })
+
+  it('spot 与 floorLabel 都空不炸,退回导入序/id', () => {
+    const b = mkM({ buildingId: 11, sortNo: 7 })
+    const a = mkM({ buildingId: 11, sortNo: 3 })
+    expect(idsOf([b, a])).toEqual([a.id, b.id])
   })
 
   it('usage 只汇 tenant+share(infra 防重复/ops 不计);总+四段 round2,同 meterGroup §7.2 口径', () => {

@@ -7,11 +7,12 @@
 // 已知脏数据(审计实测):幽灵行列(blankrows:false 已剔空行,列按映射索引取不受游离列影响)、
 // 缺本月读数(=漏抄,照收 null 不报错——进系统标黄,而不是像手工表算出负 231 万度)。
 import type { ImportRec } from './importHeaderMatch'
-import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL } from './meterSplit'
+import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
 
 export interface MeterSheetSection {
   label: string; records: ImportRec[]; sciCodes?: number
   ym: string; ymSource: 'title' | 'fallback'   // fallback = 标题里没账期,用了调用方传的默认账期(UI 要披露)
+  noNameCol?: boolean   // 表头首格即「区域」= 缺原册标识列(§J3:同位置同表号的行只剩企业名称可区分)
 }
 
 // 标题缺失时的兜底三件套(弹窗的账期/分区/类别选择器):账期无法从数据推断,只能由用户指定。
@@ -144,7 +145,11 @@ export function parseMeterSheet(
     const ownership = classifyOwnership(meterType || undefined, `${key} ${rawTenant}`, !!split.tenant || split.multi)
     const tenantId = ownership === 'tenant' && split.tenant ? idByName.get(split.tenant) ?? null : null
     const buildingId = buildingIdFor(det.zone, area, buildings)
-    const spot = [...spotCells, split.spot].filter(Boolean).join(' ')
+    // 位置列已给出位置时,企业名称里剥出的 split.spot 只接受「方位型」(东西南北侧/高低区/门口):
+    // 原册天面行的企业名称写的是电表描述(客梯1 / 客梯2（到-1楼）),SPOT_RE 会剥出 '1'/'到-1楼',
+    // 拼成 '天面 1'/'天面 到-1楼' 把同一楼层裂成三组(存量已由 V72 清理)。位置列为空时行为不变。
+    const tailSpot = spotCells.length && !SPOT_DIR_RE.test(split.spot ?? '') ? null : split.spot
+    const spot = [...spotCells, tailSpot].filter(Boolean).join(' ')
     // 无标识列时合成标签(§3.1):区域-位置-表名 → 编码;仅作人类可读标签与 L3 兜底,身份靠后端分层匹配
     const name = key || [area, spot, subName].filter(Boolean).join('-').slice(0, 64) || code
     // 表列用量 vs 派生用量(§2.3):只对照不落库,差异超 max(1,1%) 预览打 ⚠
@@ -181,7 +186,7 @@ export function parseMeterSheet(
   const [y, mo] = det.ym.split('-')
   const label = `${METER_ZONE_LABEL[det.zone]}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
     + (det.ymSource === 'fallback' ? '(按所选账期)' : '')
-  return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource }
+  return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource, noNameCol: nameCol < 0 }
 }
 
 // ── 整册解析(parseWorkbook 契约):识别 sheet → sections 勾选段;仅 1 段平铺为 records ──
@@ -195,9 +200,12 @@ export function parseMeterWorkbook(
       ? '读到抄表表头了,但标题里没有账期(年月)——账期无法从数据推断,请在上方选择账期/分区/类别后重新解析。'
       : '没识别到抄表数据:表头行需同时含「区域」+「上月行至」+「本月行至」。标题行(YYYY年M月…抄表记录)可以没有,账期在上方选。' }
   const sci = sections.reduce((n, s) => n + (s.sciCodes ?? 0), 0)
-  const warning = sci
-    ? `${sci} 行的表编码被 Excel 按科学计数法截断(如 2.20605E+11),有效位已丢失无法还原,已按「无编码」处理(改走位置匹配)。请把编码列设为「文本」格式后重导,才能启用编码匹配。`
-    : undefined
+  // 非阻断提示走 warning(弹窗里的橙色条,与 error 分开、不阻断导入;后端 errors/notices 也不掺)
+  // §J3:缺标识列必须当场说出来 —— 位置歧义只剩企业名称可救,治本是用模板/导出当月的文件重导。
+  const warning = [
+    sci ? `${sci} 行的表编码被 Excel 按科学计数法截断(如 2.20605E+11),有效位已丢失无法还原,已按「无编码」处理(改走位置匹配)。请把编码列设为「文本」格式后重导,才能启用编码匹配。` : '',
+    sections.some(s => s.noNameCol) ? '本文件缺原册首列(标识名),同位置同表号的行将只能靠企业名称区分;建议用「下载模板」或「导出当月」的文件重导。' : '',
+  ].filter(Boolean).join(' ') || undefined
   const byFb = sections.filter(s => s.ymSource === 'fallback')
   const notice = byFb.length
     ? `${byFb.length} 段没在标题里读到账期,已按你选的 ${byFb[0].ym} 账期导入(分区/类别同理)。请核对下方段标签,不对就改上方选项。`

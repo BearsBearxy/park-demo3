@@ -10,6 +10,9 @@ const props = defineProps<{ result: ImportResultDTO; summary?: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const showErrors = ref(false)
+// 刀G:提示(归属被钉住/位置被冻结/疑似重复)与错误分开 —— 这些行已成功导入,不能算「未导入」也不该出警告三角
+const showNotices = ref(false)
+const notices = computed(() => props.result.notices ?? [])
 
 // 抄表导入的身份匹配分档(METER-IMPORT-SPEC §4);其余导入器无 matches 即不显示。
 // 「新建」是异常放大器:重导老文件时应≈0,暴涨=身份判错。
@@ -46,6 +49,20 @@ const matchStats = computed(() => {
       </div>
       <div v-if="summary" class="ir-summary">
         <div v-for="(ln, i) in summary.split('\n')" :key="i" class="ir-summary-line">{{ ln }}</div>
+      </div>
+      <!-- 刀G 提示区:已成功导入但有需知会的处置(与下方「未导入」严格分开) -->
+      <div v-if="notices.length" class="ir-errs ir-notes">
+        <button class="ir-errs-toggle" @click="showNotices = !showNotices">
+          <component :is="iconFor(showNotices ? 'chevron-down' : 'chevron-right')" :size="14" />
+          {{ notices.length }} 条提示（已导入，仅需知会）
+        </button>
+        <ul v-if="showNotices" class="ir-errs-list">
+          <li v-for="(n, i) in notices" :key="i">
+            <span class="ir-errs-row">第 {{ n.rowIndex + 1 }} 行</span>
+            <span class="ir-errs-label">{{ n.label }}</span>
+            <span class="ir-errs-reason">{{ n.reason }}</span>
+          </li>
+        </ul>
       </div>
       <div v-if="result.errors.length" class="ir-errs">
         <button class="ir-errs-toggle" @click="showErrors = !showErrors">
@@ -95,6 +112,7 @@ const matchStats = computed(() => {
 .ir-summary { margin:12px 20px 0; padding:8px 12px; background:var(--surface-card); border-radius:var(--radius-md); display:flex; flex-direction:column; gap:3px; }
 .ir-summary-line { font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); }
 
+.ir-notes .ir-errs-toggle { color: var(--text-secondary); }
 .ir-errs { padding:12px 20px 0; }
 .ir-errs-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:6px 0; }
 .ir-errs-list { list-style:none; margin:6px 0 0; padding:8px 10px; max-height:180px; overflow:auto; background:var(--surface-card); border-radius:var(--radius-md); }
