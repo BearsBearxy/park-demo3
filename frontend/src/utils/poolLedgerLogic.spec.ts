@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   FROZEN_HINT,
-  bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds, gapClass,
+  bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds,
   groupPoolsByBookBlock, lineFloor, lineLabel, lineUseName, lossFooter, netSummary, POOL_LOC_HINT,
   poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
   poolSpan, poolSubtitle, poolSubtotal, stdDisplay,
@@ -204,18 +204,6 @@ describe('manual 无电表行', () => {
   })
 })
 
-describe('gapClass 盈亏色阶', () => {
-  it('0(含浮点容差)=绿', () => {
-    expect(gapClass(0)).toBe('ok')
-    expect(gapClass(-0.001)).toBe('ok')
-  })
-  it('负=亏红 / 正=盈橙 / null=灰', () => {
-    expect(gapClass(-111.42)).toBe('bad')
-    expect(gapClass(0.5)).toBe('warn')
-    expect(gapClass(null)).toBe('empty')
-  })
-})
-
 describe('poolFooter/bandFooter 合计(ref 行剔除)', () => {
   it('Σ度数/Σ应分摊,ref 不计', () => {
     const bands = groupPoolsByBookBlock([
@@ -296,8 +284,8 @@ describe('buildPoolExportAoa 导出逐表平表(V73)', () => {
     expect(aoa[3][14]).toBe(298.82)
   })
   // §E1 行为变更(用户报障:「要跟 excel 一样一行一行分开」):楼栋/楼层·方位/池名称
-  // 三列由「只填池首行」改为**每行都填** —— 原册这三列是逐行写满的,只有语义/标准/摊出/
-  // 差额/实收/盈亏/备注才是合并单元格。故 aoa[3].slice(0,3) 的旧断言 ['','',''] 作废。
+  // 三列由「只填池首行」改为**每行都填** —— 原册这三列是逐行写满的,只有语义/标准/
+  // 实收/盈亏/备注才是合并单元格(摊出/差额两列 2026-08-02 已撤)。故 aoa[3].slice(0,3) 的旧断言 ['','',''] 作废。
   it('§E1 定位列(区域/楼层/池名/块名)每行都填;合并类列(语义/标准)仍只在池首行', () => {
     const aoa = buildPoolExportAoa(bands(), '2099-02', '二期')
     // 区域取本行电表 area(夹具 'A座'),不是块名/楼栋名 —— 与原册 B 列同源

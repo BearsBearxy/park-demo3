@@ -140,13 +140,6 @@ export function poolFloor(r: PoolLocSrc): string {
 export const poolFeeLabel = (r: Pick<AllocPoolRowDTO, 'bookKey' | 'feeName' | 'name'>) =>
   r.bookKey?.trim() || r.feeName?.trim() || r.name
 
-// ── 盈亏色阶:0(±0.005 容差)=绿/亏(负)=红/盈(正)=橙;null(未生成或 ref 池)=灰 ──
-export function gapClass(v: number | null | undefined): 'empty' | 'ok' | 'bad' | 'warn' {
-  if (v == null) return 'empty'
-  if (Math.abs(v) < 0.005) return 'ok'
-  return v < 0 ? 'bad' : 'warn'
-}
-
 // ── 刀I §I4 合计不许双计 ──
 // fold_qty 的目标池,其 qty/cost 里**已经含**源池的整段量(AllocService.poolSegQty 直接相加),
 // 而源池自己在屏上还占一行 → 无条件 Σ 会把源池计两遍(块1 合计 3356.68/3739.91 比原册多 152.06/169.42
@@ -255,7 +248,8 @@ export function netSummary(r: Pick<AllocPoolRowDTO, 'netParts' | 'qtyTotal'>): {
 
 // ── 导出 AOA:标题+表头+逐表行(平表,分带落「原册块」列)+合计行(列序=屏列序) ──
 // §E1:原册块/楼层/池名称 三列**每行都填**(= 原册结构,定位列是逐行写满的);
-// 合并类列(语义/标准/摊出/差额/实收/盈亏/备注)才只填池首行,下游 Excel 里人工合并即可。
+// 合并类列(语义/标准/实收/盈亏/备注)才只填池首行,下游 Excel 里人工合并即可。
+// 摊出/差额两列已撤(用户 2026-08-02 拍板,同屏列;allocated/gap 仍落库不再导出)。
 // §H4.2d:池名称优先导原册自然键 book_key(导出的用途就是回原册逐行对),无键才回退全名 autoName。
 // 实收/盈亏 待账单模块,恒空。
 export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: string): (string | number)[][] {
@@ -263,7 +257,7 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
     [`公共电核算 ${ym} · ${zoneLabel}`],
     ['区域', '楼层', '池名称', '原册块', '电表', '表编码', '倍率', '上月行至', '本月行至',
       '用量·总', '尖', '峰', '平', '谷', '应分摊(元)',
-      '分摊语义', '分摊标准', '摊出', '差额', '实收', '盈亏', '备注'],
+      '分摊语义', '分摊标准', '实收', '盈亏', '备注'],
   ]
   const c = (v: number | null | undefined) => (v == null ? '' : v)
   const s = (v: string | null | undefined) => v ?? ''
@@ -276,8 +270,8 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
         const head = [lineArea(l, poolArea(r)), lineFloor(l, poolFloor(r)),
           r.bookKey?.trim() || r.autoName || r.name, b.label]
         const tail = i === 0
-          ? [poolSemantics(r), c(r.stdValue), c(r.allocatedAmount), c(r.gapAmount), '', '', poolNote(r, '')]
-          : ['', '', '', '', '', '', '']
+          ? [poolSemantics(r), c(r.stdValue), '', '', poolNote(r, '')]
+          : ['', '', '', '', '']
         aoa.push([
           ...head,
           l ? lineLabel(l) : '(无绑定表)', l ? s(l.code) : '', l ? c(l.factorSnap) : '',
@@ -295,7 +289,7 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
   const foot = poolFooter(bands)
   // 列位与表头对齐:区域/楼层/池名称/原册块/电表/表编码/倍率/上月/本月 共 9 格,之后才是用量·总
   aoa.push(['合计', '', '', '', '', '', '', '', '', c(foot.qty), '', '', '', '',
-    c(foot.cost), '', '', '', '', '', '', 'ref 行不计;carrier 只计度数不计金额'])
+    c(foot.cost), '', '', '', '', 'ref 行不计;carrier 只计度数不计金额'])
   return aoa
 }
 

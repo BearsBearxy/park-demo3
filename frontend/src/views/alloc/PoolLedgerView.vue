@@ -8,8 +8,9 @@
 // 一律勾选(候选来自 /pool-candidates,标签用位置不用内部标识);
 // 顶部 /member-diff 提醒条=本月在租租户与池受益人的差集。
 // 刀3(用户 2026-07-30 报障):①分带只按楼栋(四级分带带头比数据行还多),楼层+方位与费项名各自成列;
-// ②「已分摊/盈亏」正名为「摊出/差额」——引擎按受益人正向试算的摊出额,不是账册 AE(从账单侧拉回的实收)
-// 与 AF(实收−应分摊);实收/盈亏另立两列恒'–',待 bill_notice 落地回填(POOL-ENGINE-SPEC §6.1)。
+// ②摊出/差额两列已撤(用户 2026-08-02 拍板:A座天面等池的户级收取有协议户/一楼不收等例外,
+// 屏上按面积正向试算不成立,摆着是误导);引擎仍算 allocated/gap 落库,供生成告警与未来 bill 对账,
+// 只是不再上屏。实收/盈亏两列恒'–',待 bill_notice 落地回填(POOL-ENGINE-SPEC §6.1)。
 // BOOK-REBUILD-SPEC §H4(2026-07-31):①分带改**原册块**(一期 7 块,块名逐字;按楼栋分带会把
 // A 座两个块并成一带、三行招商中心抽成自成一带);②池名称列优先显原册 A 列自然键 book_key;
 // ③「楼层·方位」列归一为一格 floor_label(side 不再拼);④带尾出块合计行(口径同原册 SUM 区间)。
@@ -31,7 +32,7 @@ import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
-  costPerLine, gapClass, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
+  costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
   poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
   poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
@@ -144,8 +145,8 @@ const ALL_SEGS: SegDef[] = [
 ]
 const segDefs = computed(() => (zone.value === 'p2' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
 // V73 列模型:楼层+池名称(2) + 逐表列 电表/倍率/上月/本月(4) + 用量段
-// + 应分摊/语义/标准(3) + 编辑态月参(2) + 摊出/差额/实收/盈亏/备注(5)
-const colCount = computed(() => 7 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 5)
+// + 应分摊/语义/标准(3) + 编辑态月参(2) + 实收/盈亏/备注(3)
+const colCount = computed(() => 7 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 3)
 
 // sticky 左两列(FPLedgerTable 手法:offset=列宽累加)
 // sticky 左三列:区域(原册 B) + 楼层(原册 C) + 池名称(原册 D)。offset 由列宽累加,改宽必须同步改 left。
@@ -200,7 +201,7 @@ const stdCell = (r: AllocPoolRowDTO) => stdDisplay(r, frozenNote.value.get(r.rul
 
 // ── 刀I §I3 逐行身份(ROW-IDENTITY-SPEC):楼层/池名称两列逐行取自**本行电表** ──
 // 原册 B(区域)/C(楼层)/D(企业名称)永远逐行写、从不纵向合并;纵向合并的只有 AA/AC/AE/AF/AG
-// —— 屏上的 rowspan 也就只保留给 分摊语义/分摊标准/系数(月)/加度(月)/摊出/差额/实收/盈亏/备注。
+// —— 屏上的 rowspan 也就只保留给 分摊语义/分摊标准/系数(月)/加度(月)/实收/盈亏/备注。
 // 行值缺(净额池不出逐表行 / 无绑定表 / 后端老快照)才回落池级值。
 const rowArea = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineArea(ln, poolArea(r))
 const rowFloor = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineFloor(ln, poolFloor(r))
@@ -637,10 +638,6 @@ async function delPool() {
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
             <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(92)" title="rule:{id} 月行 coefficient(层数/面积基数月变);清空=回退池默认系数">系数(月)</th>
             <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(92)" title="rule:{id} 月行 extra_qty(加度/扣度:+170/-670…,进标准分子不进应分摊)">加度(月)</th>
-            <th rowspan="2" class="pl-grp-th" :style="w(90)"
-                title="按受益人配置试算摊到户的合计,非实收">摊出</th>
-            <th rowspan="2" class="pl-grp-th" :style="w(90)"
-                title="摊出−应分摊;受益人名单或面积基数与账册不同批时会有差">差额</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
                 title="租户实际缴回的公摊额 —— 待账单模块(bill_notice)落地后从账单侧回填,现全为'–'">实收</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
@@ -661,7 +658,7 @@ async function delPool() {
               <td :colspan="colCount - 3"></td>
             </tr>
             <!-- V73 逐表行:一个池占 max(1,lines) 行。§E1:楼层/池名称两列**每行都渲染**
-                 (原册这两列是逐行写满的,合并只用在语义/标准/摊出/差额/实收/盈亏/备注上);
+                 (原册这两列是逐行写满的,合并只用在语义/标准/实收/盈亏/备注上);
                  续行淡显 + 池**首行**虚线上边框(§F10:虚线是池与池之间的分隔,池内续行不画线)。 -->
             <template v-for="r in b.rows" :key="r.ruleId">
             <tr v-for="(ln, li) in (r.lines.length ? r.lines : [null])"
@@ -735,17 +732,6 @@ async function delPool() {
                        :placeholder="ruleById.get(r.ruleId)?.extraQty ? String(ruleById.get(r.ruleId)!.extraQty) : '–'"
                        title="当月加度/扣度,回车/失焦保存;清空=回退默认"
                        @change="commitRuleCfg(r.ruleId, 'extra_qty', ($event.target as HTMLInputElement).value)" />
-              </td>
-              <td v-if="li === 0" :rowspan="poolSpan(r)">
-                <!-- §D.6:floor 池显后端算的分桶明细(按 X 层拆:…),让「摊出为何少于应分摊」看得见;其余池回退原话术 -->
-                <span class="pl-nv" :class="{ empty: r.allocatedAmount == null }"
-                      :title="r.allocNote ?? (r.autoMembers ? '受益人自动=该期全园在租租户(园区级池未勾选,跟着在租名册走)'
-                        : r.members.length ? `受益人 ${r.members.length} 户` : '未勾选受益人')">
-                  {{ fmt2(r.allocatedAmount) }}
-                </span>
-              </td>
-              <td v-if="li === 0" :rowspan="poolSpan(r)">
-                <span class="pl-gap" :class="gapClass(r.gapAmount)">{{ fmt2(r.gapAmount) }}</span>
               </td>
               <!-- 实收/盈亏:账册 AE/AF 口径(从账单侧拉回),bill_notice 未落地故恒'–' -->
               <td v-if="li === 0" :rowspan="poolSpan(r)">
@@ -1099,12 +1085,6 @@ td.ct { text-align: center; }
 /* 带尾块合计(原册每块一行合计行):比分带头轻一档,只画上边框,不与 tfoot 抢视觉 */
 .pl-table tbody tr.pl-bfoot td { height: 34px; background: var(--surface-sunken); border-top: 1px solid var(--border-strong); font-family: var(--font-mono); }
 
-/* 盈亏色阶:0=绿(摊平)/负=红(挂亏)/正=橙(超摊) */
-.pl-gap { display: block; text-align: right; font-size: 12px; padding: 0 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pl-gap.empty { color: var(--text-disabled); }
-.pl-gap.ok { color: rgb(21, 128, 61); }
-.pl-gap.bad { color: var(--hue-red); font-weight: var(--fw-semibold); }
-.pl-gap.warn { color: rgb(138, 97, 0); }
 
 /* 行内月度参数 input(透明格) */
 .pl-ni { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; text-align: right; font-size: 12px; padding: 3px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
