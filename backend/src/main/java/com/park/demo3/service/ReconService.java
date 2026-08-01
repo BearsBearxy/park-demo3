@@ -90,13 +90,11 @@ public class ReconService {
         new Fee("infraOffice",         "infraOffice",      "办公室基础设施维护费",   null,                                  S10Record::getInfraOffice),
         new Fee("guaranteeRent",       "guaranteeRent",    "一栋保障房租金",         null,                                  S10Record::getGuaranteeRent));
 
-    // ── 整月对照:实体并集(E1)→ 逐实体两侧 Σ 逐科目比(E2/E3)→ 分卡(E4)→ 合上 marks(E5) ──
-    public ReconMonthDTO month(int year, int month) {
-        String acctMonth = String.format("%04d-%02d", year, month);
-        List<MonthlyLedger> lRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
-            .eq("period_year", year).eq("period_month", month));
-        List<S10Record> sRows = s10.selectList(new QueryWrapper<S10Record>().eq("acct_month", acctMonth));
+    // ── 名录上下文(租户/公司 map):月度循环的循环不变量,overview 12 个月共享一份(不然全表×12) ──
+    private record Ctx(Map<Integer, String> nameById, Map<String, Integer> idByName,
+                       Map<Integer, String> coById) {}
 
+    private Ctx loadCtx() {
         Map<Integer, String> nameById = new HashMap<>();
         Map<String, Integer> idByName = new HashMap<>();
         for (Tenant t : tenants.selectList(null)) {
@@ -105,18 +103,31 @@ public class ReconService {
         }
         Map<Integer, String> coById = new HashMap<>();
         for (ManagementCompany c : companies.selectList(null)) coById.put(c.getId(), c.getName());
+        return new Ctx(nameById, idByName, coById);
+    }
+
+    // ── 整月对照:实体并集(E1)→ 逐实体两侧 Σ 逐科目比(E2/E3)→ 分卡(E4)→ 合上 marks(E5) ──
+    public ReconMonthDTO month(int year, int month) {
+        return month(year, month, loadCtx());
+    }
+
+    private ReconMonthDTO month(int year, int month, Ctx ctx) {
+        String acctMonth = String.format("%04d-%02d", year, month);
+        List<MonthlyLedger> lRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
+            .eq("period_year", year).eq("period_month", month));
+        List<S10Record> sRows = s10.selectList(new QueryWrapper<S10Record>().eq("acct_month", acctMonth));
 
         // 台账按 tenant_id → 公司名归组(FK 保证可解析)
         Map<String, List<MonthlyLedger>> lByName = new HashMap<>();
         for (MonthlyLedger l : lRows) {
-            String name = nameById.getOrDefault(l.getTenantId(), "#" + l.getTenantId());
+            String name = ctx.nameById().getOrDefault(l.getTenantId(), "#" + l.getTenantId());
             lByName.computeIfAbsent(name, k -> new ArrayList<>()).add(l);
         }
         // s10 软引用归并键(E1):tenant_id 优先 → tenant.company_name;null 用 tenant_name(同名自然归并,否则独立实体)
         Map<String, List<S10Record>> sByName = new HashMap<>();
         for (S10Record r : sRows) {
             String name = r.getTenantId() != null
-                ? nameById.getOrDefault(r.getTenantId(), r.getTenantName())
+                ? ctx.nameById().getOrDefault(r.getTenantId(), r.getTenantName())
                 : r.getTenantName();
             sByName.computeIfAbsent(name, k -> new ArrayList<>()).add(r);
         }
@@ -130,8 +141,8 @@ public class ReconService {
         List<ReconEntityDTO> entities = new ArrayList<>(names.size());
         for (String name : names) {
             entities.add(entity(name, lByName.getOrDefault(name, List.of()),
-                sByName.getOrDefault(name, List.of()), idByName.get(name),
-                coById, markByName.get(name)));
+                sByName.getOrDefault(name, List.of()), ctx.idByName().get(name),
+                ctx.coById(), markByName.get(name)));
         }
         return new ReconMonthDTO(year, month, entities);
     }
@@ -203,9 +214,10 @@ public class ReconService {
     // ── overview:逐月复用整月算法只取 counts(实体量小);year 缺省=两本账有数据的最大年(确定性,不读时钟) ──
     public ReconOverviewDTO overview(Integer year) {
         int y = year != null ? year : defaultYear();
+        Ctx ctx = loadCtx();
         List<MonthMeta> months = new ArrayList<>(12);
         for (int m = 1; m <= 12; m++) {
-            List<ReconEntityDTO> es = month(y, m).entities();
+            List<ReconEntityDTO> es = month(y, m, ctx).entities();
             int ok = 0, diff = 0, miss = 0;
             for (ReconEntityDTO e : es) {
                 switch (e.status()) { case "ok" -> ok++; case "diff" -> diff++; default -> miss++; }
@@ -217,15 +229,14 @@ public class ReconService {
 
     private int defaultYear() {
         int max = 0;
-        for (MonthlyLedger l : ledger.selectList(null)) {
-            if (l.getPeriodYear() != null) max = Math.max(max, l.getPeriodYear());
+        for (Object o : ledger.selectObjs(new QueryWrapper<MonthlyLedger>().select("MAX(period_year)"))) {
+            if (o instanceof Number n) max = Math.max(max, n.intValue());
         }
-        for (S10Record r : s10.selectList(null)) {
-            String am = r.getAcctMonth();
-            if (am != null && am.length() >= 4) {
-                try { max = Math.max(max, Integer.parseInt(am.substring(0, 4))); }
-                catch (NumberFormatException ignored) { }
-            }
+        // 年前缀数值 MAX。脏数据口径与原逐行 parseInt-忽略不严格等价(数字前缀截断计入/负号回绕),
+        // 但 acct_month CHAR(7) 全部写入路径经应用层 \d{4}-\d{2} 校验,造不出脏行;3000-01 探针 IT 锁默认年。
+        for (Object o : s10.selectObjs(new QueryWrapper<S10Record>()
+                .select("MAX(CAST(LEFT(acct_month, 4) AS UNSIGNED))"))) {
+            if (o instanceof Number n) max = Math.max(max, n.intValue());
         }
         return max == 0 ? 2024 : max;   // 无数据兜底(种子保证不会发生)
     }
