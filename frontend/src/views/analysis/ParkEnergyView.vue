@@ -45,8 +45,10 @@ const failed = ref(false)
 const months = ref<EnergyMonth[]>([])       // kWh+金额混合行(v1 同款,KPI/单位成本/损益用)
 const amt = ref<AmtMonth[]>([])             // 金额侧逐月行(桑基/趋势/组合用)
 
+let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 async function load(year: number) {
   if (!year) return
+  const t = ++token
   loading.value = true
   failed.value = false
   try {
@@ -54,13 +56,15 @@ async function load(year: number) {
       fetchElecYear(year), fetchChargingYear(7, year), fetchChargingYear(8, year),
       fetchUtilitiesYear(13, year), fetchUtilitiesYear(14, year), fetchPvAll(), fetchS10Rows(),
     ])
+    if (t !== token) return
     months.value = buildEnergyMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
     amt.value = buildAmtMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
-    budgetRows.value = await fetchBudgetAll().catch(() => [])   // 预算对比基准(无预算不阻塞)
+    const buds = await fetchBudgetAll().catch(() => [])   // 预算对比基准(无预算不阻塞)
+    if (t === token) budgetRows.value = buds
   } catch {
-    failed.value = true
+    if (t === token) failed.value = true
   } finally {
-    loading.value = false
+    if (t === token) loading.value = false
   }
 }
 watch(() => period.sel.value.year, (y) => { void load(y) }, { immediate: true })

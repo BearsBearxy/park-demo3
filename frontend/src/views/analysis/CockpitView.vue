@@ -50,13 +50,15 @@ const ready = ref(false)
 
 const year = computed(() => period.sel.value.year)
 const pnlLoading = ref(true)   // §五策略3:年切重取期间主区出加载态,避免沿用旧年图表
+let token = 0                  // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(year, (y) => {
   if (!y) return
+  const t = ++token
   pnlLoading.value = true
   fetchPnlSummary(y)
-    .then((v) => { pnl.value = v })
-    .catch(() => { pnl.value = null })
-    .finally(() => { pnlLoading.value = false })
+    .then((v) => { if (t === token) pnl.value = v })
+    .catch(() => { if (t === token) pnl.value = null })
+    .finally(() => { if (t === token) pnlLoading.value = false })
 }, { immediate: true })
 
 onMounted(async () => {

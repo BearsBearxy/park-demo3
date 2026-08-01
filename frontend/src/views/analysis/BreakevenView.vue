@@ -29,12 +29,16 @@ onMounted(async () => {
     s10.value = await fetchS10Rows()
   } finally { /* s10 缺失不阻塞(敏感性因子降级) */ }
 })
+let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(() => period.sel.value.year, async (y) => {
   if (!y) return   // usePeriod 初始化前 year=0:不发 /pnl/*/0(后端年份门必 400,复审)
+  const t = ++token
+  loading.value = true
   try {
-    summary.value = await fetchPnlSummary(y)
-  } catch { /* 拉失败保持空态,不抛 unhandledrejection */ } finally {
-    loading.value = false
+    const sum = await fetchPnlSummary(y)
+    if (t === token) summary.value = sum
+  } catch { if (t === token) summary.value = null /* 拉失败清空→空态,禁止新年份标签配旧年数值(审计4对齐) */ } finally {
+    if (t === token) loading.value = false
   }
 }, { immediate: true })
 

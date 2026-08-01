@@ -46,7 +46,9 @@ watch(() => props.tenant, async (t) => {
     const cats: TenantCategoryDTO[] = await tenantApi.categories()
     categoryMap.value = Object.fromEntries(cats.map(c => [c.id, c.name]))
   }
-  detail.value = await tenantApi.detail(t.id)
+  const d = await tenantApi.detail(t.id)
+  if (props.tenant !== t) return   // 竞态守卫:快速换行时旧详情弃写(审计4)
+  detail.value = d
 }, { immediate: true })
 
 const categoryName = computed(() =>

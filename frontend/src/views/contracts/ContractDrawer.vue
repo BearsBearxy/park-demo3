@@ -67,7 +67,10 @@ watch(() => props.contract, async (c) => {
   detail.value = null
   askTerminate.value = false
   askDelete.value = false
-  if (c) detail.value = await contractApi.detail(c.id)
+  if (!c) return
+  const d = await contractApi.detail(c.id)
+  if (props.contract !== c) return   // 竞态守卫:快速换行时旧详情弃写(审计4)
+  detail.value = d
 }, { immediate: true })
 
 // ─── 标的段(§6.1):按 propertyType+location 分组;段头=类型徽标+位置+段面积;

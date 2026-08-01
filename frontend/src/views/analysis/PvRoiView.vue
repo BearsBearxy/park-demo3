@@ -142,13 +142,20 @@ const mReadings = ref<PvReadingDTO[]>([])
 const mLoading = ref(false)
 const gridPrice = ref(0.453)   // pv_grid_price 参数价(price_cfg 解析值,onMounted 覆写)
 
+let mToken = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 async function loadMeter(): Promise<void> {
   if (mYear.value == null) return
+  const t = ++mToken
   mLoading.value = true
   try {
-    ;[mStations.value, mReadings.value] = await Promise.all([pvMeterApi.stations(), pvMeterApi.readingsYear(mYear.value)])
+    const [sts, rds] = await Promise.all([pvMeterApi.stations(), pvMeterApi.readingsYear(mYear.value)])
+    if (t !== mToken) return
+    mStations.value = sts
+    mReadings.value = rds
+  } catch {
+    if (t === mToken) { mStations.value = []; mReadings.value = [] }   // 拉失败清空→空态,禁止新年份标签配旧年数值
   } finally {
-    mLoading.value = false
+    if (t === mToken) mLoading.value = false
   }
 }
 watch(mYear, () => { void loadMeter() })   // 初始赋值与切年共用一条取数路径

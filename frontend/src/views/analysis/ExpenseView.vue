@@ -28,15 +28,18 @@ const cmp = useCompare(['mom'])
 const s5 = ref<PnlYearDTO | null>(null)
 const summary = ref<PnlSummary | null>(null)
 const loading = ref(true)
+let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(year, async (y) => {
   if (!y) return
+  const t = ++token
   loading.value = true
   try {
     const [dto, sum] = await Promise.all([fetchPnlYear('s5', y), fetchPnlSummary(y)])
+    if (t !== token) return
     s5.value = dto
     summary.value = sum
-  } catch { s5.value = null; summary.value = null }
-  finally { loading.value = false }
+  } catch { if (t === token) { s5.value = null; summary.value = null } }
+  finally { if (t === token) loading.value = false }
 }, { immediate: true })
 
 // ── 期间(§五策略2:所选月无附表5 → 锚定最近覆盖月 + 横幅显式) ──

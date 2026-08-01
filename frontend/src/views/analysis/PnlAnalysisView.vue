@@ -28,12 +28,17 @@ const cmp = useCompare(['mom'])
 
 const summary = ref<PnlSummary | null>(null)
 const loading = ref(true)
+let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(year, async (y) => {
   if (!y) return // 可用月份注入前 year=0,注入后自动触发
+  const t = ++token
   loading.value = true
-  try { summary.value = await fetchPnlSummary(y) }
-  catch { summary.value = null /* 拉失败清空→空态,禁止新年份标签配旧年数值(复审) */ }
-  finally { loading.value = false }
+  try {
+    const sum = await fetchPnlSummary(y)
+    if (t === token) summary.value = sum
+  }
+  catch { if (t === token) summary.value = null /* 拉失败清空→空态,禁止新年份标签配旧年数值(复审) */ }
+  finally { if (t === token) loading.value = false }
 }, { immediate: true })
 
 // ── 各附表「全年汇总」+ 迷你趋势(原型 PA_SCHEDS;nav → P2 附表路由) ──
