@@ -202,9 +202,10 @@ public class LedgerService {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
 
-        // 在租租户(status=1)按 company_name 精确匹配
-        Map<String, Integer> byName = activeTenants().stream()
-            .collect(Collectors.toMap(Tenant::getCompanyName, Tenant::getId, (a, b) -> a));
+        // 在租租户(status=1)按 company_name+别名(V86) 精确匹配;同名/同别名先者胜(原 toMap merge 同款)
+        Map<String, Integer> byName = new HashMap<>();
+        for (Tenant t : activeTenants())
+            for (String n : TenantService.matchNames(t)) byName.putIfAbsent(n, t.getId());
         Map<Integer, MonthlyLedger> stored = ledger.selectMonth(companyId, year, month).stream()
             .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
 

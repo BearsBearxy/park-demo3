@@ -61,6 +61,7 @@ public class TenantService {
         t.setContactName(req.contactName()); t.setContactPhone(req.contactPhone());
         t.setCategoryId(req.categoryId()); t.setPhase(req.phase()); t.setSince(req.since());
         t.setRemark(req.remark()); t.setStatus(1); t.setParentId(req.parentId());
+        t.setAliases(req.aliases());
         tenants.insert(t);
         Tenant saved = tenants.selectById(t.getId());
         // 新租户无合同:buildTenantDto 对空合同列表返回 月租/面积=0、楼栋"—"、合同数 0,不炸
@@ -81,7 +82,7 @@ public class TenantService {
             .set("contact_name", req.contactName()).set("contact_phone", req.contactPhone())
             .set("category_id", req.categoryId()).set("phase", req.phase())
             .set("since", req.since()).set("remark", req.remark()).set("status", req.status())
-            .set("parent_id", req.parentId()));
+            .set("parent_id", req.parentId()).set("aliases", req.aliases()));
         List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
         Map<Integer,String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
@@ -158,6 +159,17 @@ public class TenantService {
         String primary = current.isEmpty() ? "—" : bName.getOrDefault(current.get(0).getBuildingId(), "—");
         return new TenantDTO(t.getId(), t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus(), t.getCategoryId(), t.getPhase(), t.getSince(),
-            monthly, area, primary, cs.size(), t.getRemark(), t.getParentId(), parentName);
+            monthly, area, primary, cs.size(), t.getRemark(), t.getParentId(), parentName, t.getAliases());
+    }
+
+    /** 匹配名集合=正名+别名(逗号/中文逗号分隔,V86):导入与挂号按名匹配时与正名同权。
+     *  去重去空白;多租户共用同一别名时各匹配点的「唯一命中才挂」护栏自动落待核。 */
+    public static List<String> matchNames(Tenant t) {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        names.add(t.getCompanyName());
+        if (t.getAliases() != null)
+            for (String a : t.getAliases().split("[,，]"))
+                if (!a.isBlank()) names.add(a.trim());
+        return new ArrayList<>(names);
     }
 }

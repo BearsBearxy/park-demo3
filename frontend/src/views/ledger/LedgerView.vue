@@ -2,6 +2,7 @@
 // 月度台账状态机 — companyId(null=⓪) / yearGated(false=①年份门) / month(null=②月历) / drawerTenantId / edit.
 // 动线: ⓪选公司 → ①年份门(SchedYearGate,同附表) → ②月历 → ③宽表 → ④抽屉。
 import { ref, computed, onMounted } from 'vue'
+import { tenantMatchNames } from '@/utils/tenantAlias'
 import { useRoute } from 'vue-router'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { parseLedgerDeepLink } from '@/utils/deepLink'
@@ -288,7 +289,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
   try {
     allTenants.value = await tenantApi.list()   // 刷新缓存,精确匹配 companyName
   } catch { /* 拉不到租户表则不预检,直接导入,由后端逐行报「租户不存在」 */ }
-  const known = new Set(allTenants.value.map(t => t.companyName))
+  const known = new Set(allTenants.value.flatMap(t => tenantMatchNames(t)))
   const unknown = [...new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
   if (!unknown.length) { await runLedgerImport(recs, fileName); return }
   resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, allTenants.value) }))
@@ -303,7 +304,7 @@ async function onImportSections(picks: SectionPick[], fileName: string) {
   try {
     allTenants.value = await tenantApi.list()
   } catch { /* 拉不到租户表则不预检,直接导入,由后端逐行报「租户不存在」 */ }
-  const known = new Set(allTenants.value.map(t => t.companyName))
+  const known = new Set(allTenants.value.flatMap(t => tenantMatchNames(t)))
   const unknown = [...new Set(picks.flatMap(p => p.records).map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
   if (!unknown.length) { await runSectionsImport(picks, fileName); return }
   resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, allTenants.value) }))

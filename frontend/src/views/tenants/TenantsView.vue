@@ -88,7 +88,7 @@ const filtered = computed(() =>
     .filter(t => phase.value === 'all' || t.phase === phase.value)
     .filter(t => statusFilter.value === '全部状态' || t.status === STATUS_MAP[statusFilter.value])
     // 联系人/电话可空(新增租户选填),?? 兜底防 null.includes 炸
-    .filter(t => !q.value.trim() || t.companyName.includes(q.value.trim()) || (t.contactName ?? '').includes(q.value.trim()) || (t.contactPhone ?? '').includes(q.value.trim()))
+    .filter(t => !q.value.trim() || t.companyName.includes(q.value.trim()) || (t.aliases ?? '').includes(q.value.trim()) || (t.contactName ?? '').includes(q.value.trim()) || (t.contactPhone ?? '').includes(q.value.trim()))
 )
 
 // root → 子数(全量口径,不随过滤变),供名称旁「+N」徽标

@@ -8,6 +8,7 @@
 // 缺本月读数(=漏抄,照收 null 不报错——进系统标黄,而不是像手工表算出负 231 万度)。
 import type { ImportRec } from './importHeaderMatch'
 import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
+import { tenantMatchNames } from './tenantAlias'
 
 export interface MeterSheetSection {
   label: string; records: ImportRec[]; sciCodes?: number
@@ -21,7 +22,7 @@ export interface MeterFallback { ym?: string; zone?: string; kind?: string }
 // v2 结构化拆分(§6.2/§6.3)要的主数据;缺省=空(正则拆分照跑,租户/楼栋不挂 id、待核兜底)。
 // tenants.id 可缺:视图只喂 tenantNames 的后备路径=按名匹配但 tenantId 置空。
 export interface MeterMasterCtx {
-  tenants?: { id?: number; companyName: string }[]
+  tenants?: { id?: number; companyName: string; aliases?: string | null }[]
   buildings?: { id: number; name: string }[]
 }
 
@@ -109,8 +110,10 @@ export function parseMeterSheet(
   // v2 主数据(§6.2/§6.3):租户库名单+按名挂 id;楼栋清单按 name 映射
   const tenants = master.tenants ?? []
   const buildings = master.buildings ?? []
-  const tenantNames = tenants.map(t => t.companyName)
-  const idByName = new Map(tenants.filter(t => t.id != null).map(t => [t.companyName, t.id as number]))
+  // 正名+别名(V86)同权:名单供拆分匹配,idByName 供挂号;同别名撞车由 matchTenant 多命中护栏落待核
+  const tenantNames = tenants.flatMap(t => tenantMatchNames(t))
+  const idByName = new Map(tenants.filter(t => t.id != null)
+    .flatMap(t => tenantMatchNames(t).map(n => [n, t.id as number] as const)))
 
   const records: ImportRec[] = []
   let sciCodes = 0

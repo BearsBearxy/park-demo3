@@ -4,6 +4,7 @@ export interface TenantDTO {
   since: string | null; monthlyRent: number; leasedArea: number
   primaryBuilding: string | null; contractCount: number; remark?: string
   parentId: number | null; parentName: string | null
+  aliases?: string | null   // 别名,逗号分隔(V86):worksheet老板名/曾用名,导入与挂号匹配同权
 }
 
 export interface TenantSummaryDTO {
@@ -21,6 +22,7 @@ export interface TenantCreateReq {
   categoryId?: number | null; phase?: number | null
   since?: string | null; remark?: string
   parentId?: number | null   // 一级子租户关联的主租户(如「王柱宿舍」→「王柱」)
+  aliases?: string | null    // 别名,逗号分隔(V86)
 }
 
 /** PUT /api/tenants/{id} 入参 = CreateReq 全量字段 + status(1在租/2已退租/0黑名单) */

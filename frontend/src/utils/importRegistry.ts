@@ -192,10 +192,10 @@ function prefetchBudgetPnlRevenue(): void {
 
 // meter v2 主数据(METER-SPEC §6.2/§6.3):解析器是同步的,打开弹窗时预取租户库(带 id)与楼栋清单进模块缓存;
 // 每次打开都重取(会话内主数据可能新增),旧值在新值落位前顶用。
-let meterTenants: { id: number; companyName: string }[] | null = null
+let meterTenants: { id: number; companyName: string; aliases?: string | null }[] | null = null
 let meterBuildings: { id: number; name: string }[] | null = null
 function prefetchMeterMaster(): void {
-  void tenantApi.list().then(v => { meterTenants = v.map(t => ({ id: t.id, companyName: t.companyName })) }).catch(() => {})
+  void tenantApi.list().then(v => { meterTenants = v.map(t => ({ id: t.id, companyName: t.companyName, aliases: t.aliases })) }).catch(() => {})
   void buildingApi.list().then(v => { meterBuildings = v.map(b => ({ id: b.id, name: b.name })) }).catch(() => {})
 }
 

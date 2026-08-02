@@ -9,4 +9,5 @@ public record TenantCreateReq(
     Integer parentId,
     @Min(1) @Max(9) Integer phase,
     @Pattern(regexp = "\\d{4}-\\d{2}") String since,
-    @Size(max = 255) String remark) {}
+    @Size(max = 255) String remark,
+    @Size(max = 255) String aliases) {}   // 别名,逗号分隔(V86)

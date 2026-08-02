@@ -135,11 +135,13 @@ public class MeterBindingService {
         meters.updateById(m);
     }
 
-    // ── 按企业名称原文=租户档案名 精确唯一匹配批量挂 tenant_id;幂等(§3) ──
+    // ── 按企业名称原文=租户档案名(含别名,V86) 精确唯一匹配批量挂 tenant_id;幂等(§3) ──
     @Transactional
     public AutoLinkResultDTO autoLinkByName() {
-        Map<String, List<Tenant>> byName = tenants.selectList(null).stream()
-            .collect(Collectors.groupingBy(Tenant::getCompanyName));
+        Map<String, List<Tenant>> byName = new HashMap<>();
+        for (Tenant t : tenants.selectList(null))
+            for (String n : TenantService.matchNames(t))
+                byName.computeIfAbsent(n, k -> new ArrayList<>()).add(t);
         int linked = 0, skipped = 0;
         for (Meter m : meters.selectList(null)) {
             if (!"tenant".equals(m.getOwnership()) || m.getTenantId() != null

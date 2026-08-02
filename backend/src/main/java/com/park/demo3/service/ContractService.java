@@ -330,7 +330,7 @@ public class ContractService {
 
             String err = rowError(r);
             Tenant t = err != null ? null : matchTenant(allTenants, r);
-            if (err == null && t == null) err = "未找到匹配租户(全称/简称+期均未唯一命中)";
+            if (err == null && t == null) err = "未找到匹配租户(全称/简称/别名+期均未唯一命中)";
             if (err != null) {
                 errors.add(new ImportError(i, label, err));
                 report.add(new ContractFullImportRequest.Item(i, label, null, null, null, "skipped", err));
@@ -466,7 +466,7 @@ public class ContractService {
             .stream().findFirst().orElse(null);
     }
 
-    /** 租户匹配:企业全称精确 → 简称精确;同名多户用「期」去歧义,仍不唯一则不匹配(交由行级错误)。 */
+    /** 租户匹配:企业全称精确 → 简称精确(均含别名,V86);同名多户用「期」去歧义,仍不唯一则不匹配(交由行级错误)。 */
     private static Tenant matchTenant(List<Tenant> all, ContractFullImportRequest.Row r) {
         Tenant t = pickTenant(all, r.tenantFullName(), r.phase());
         return t != null ? t : pickTenant(all, r.tenantName(), r.phase());
@@ -475,7 +475,7 @@ public class ContractService {
     private static Tenant pickTenant(List<Tenant> all, String name, Integer phase) {
         if (blankToNull(name) == null) return null;
         String n = name.trim();
-        List<Tenant> hit = all.stream().filter(t -> n.equals(t.getCompanyName())).toList();
+        List<Tenant> hit = all.stream().filter(t -> TenantService.matchNames(t).contains(n)).toList();
         if (hit.size() > 1 && phase != null)
             hit = hit.stream().filter(t -> phase.equals(t.getPhase())).toList();
         return hit.size() == 1 ? hit.get(0) : null;

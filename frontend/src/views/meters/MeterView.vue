@@ -8,6 +8,7 @@
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
+import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
   type MeterDeleteDTO, type MeterKind, type MeterZone,
@@ -150,10 +151,11 @@ function onDiscardChanges() {
 
 // 主数据清单拉取失败不阻断:租户/楼栋列显 '—',picker 候选空
 function loadMasters() {
-  tenantApi.list().then(v => { tenants.value = v; importCtx.tenantNames = v.map(t => t.companyName) }).catch(() => {})
+  tenantApi.list().then(v => { tenants.value = v; importCtx.tenantNames = v.flatMap(t => tenantMatchNames(t)) }).catch(() => {})
   buildingApi.list().then(v => { buildings.value = v; importCtx.buildings = v }).catch(() => {})
 }
-onReactivated(loadMasters)   // 页签切回:租户改名/楼栋变更后清单回拉(浏览状态保留)
+// 页签切回:租户改名/楼栋变更后清单回拉,合同增删改后绑定候选回拉(浏览状态保留)
+onReactivated(() => { loadMasters(); loadBinding() })
 
 onMounted(async () => {
   loadMeters()
@@ -292,7 +294,7 @@ const showAutoLink = computed(() =>
   editMode.value && (status.value === 'attention' || status.value === 'pending'))
 const linking = ref(false)
 const linkEstimate = computed(() =>
-  autoLinkEstimate((meters.value ?? []).filter(isPendingMeter).map(m => m.tenantName), tenants.value.map(t => t.companyName)))
+  autoLinkEstimate((meters.value ?? []).filter(isPendingMeter).map(m => m.tenantName), tenants.value.flatMap(t => tenantMatchNames(t))))
 async function autoLink() {
   if (linking.value) return
   if (!confirm(`按企业名称原文与租户档案精确匹配,预计可挂 ${linkEstimate.value} 块待核表。继续?`)) return

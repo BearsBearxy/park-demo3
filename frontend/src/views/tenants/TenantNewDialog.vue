@@ -23,6 +23,7 @@ const contactPhone = ref(props.initial?.contactPhone ?? '')
 const phase = ref<number | ''>(props.initial?.phase ?? '')
 const since = ref(props.initial?.since ?? '')
 const remark = ref(props.initial?.remark ?? '')
+const aliases = ref(props.initial?.aliases ?? '')   // 别名,逗号分隔(V86):worksheet老板名/曾用名
 const status = ref(props.initial?.status ?? 1)
 const parentId = ref<number | null>(props.initial?.parentId ?? null) // null=不关联
 const err = ref('')
@@ -66,6 +67,7 @@ async function submit() {
     since: since.value || null,
     remark: remark.value.trim() || undefined,
     parentId: parentId.value,
+    aliases: aliases.value.trim() || null,
   }
   try {
     if (props.initial) {
@@ -153,6 +155,11 @@ async function submit() {
                 <component :is="iconFor('x')" :size="14" />
               </button>
             </div>
+          </div>
+          <div class="fin-field">
+            <div class="lab">别名 · 导入匹配用</div>
+            <input class="fin-in" v-model="aliases" placeholder="选填,逗号分隔(如财务表用的老板名:李富全)"
+                   title="园区财务 worksheet 常用老板名/曾用名;导入与一键挂租户按名匹配时,别名与正名同权" @keydown.enter="submit" />
           </div>
           <div class="fin-field">
             <div class="lab">备注</div>
