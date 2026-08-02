@@ -51,6 +51,7 @@ const contractNo = ref('')
 const tenantId = ref<number | null>(null)
 const buildingId = ref<number | null>(null)
 const unitId = ref<number | null>(null)
+const extraUnitIds = ref<number[]>([])   // 附加单元(多场地合同,主单元之外;整组替换语义同后端)
 const buildingArea = ref<number | null>(null)   // 建筑面积㎡(可清空:留空保存=租赁面积×0.8 后端重算,裁定①)
 const rentArea = ref<number | null>(null)        // 续签态可改;新增/编辑为计费行汇总只读
 const monthlyRent = ref<number | null>(null)     // 续签态可改;新增/编辑由计费行汇总,提交时算出
@@ -155,6 +156,7 @@ onMounted(async () => {
     // 计费行:详情端点带出(按 propertyType,location,seq 排序),分组进可编辑标的段
     const d = await contractApi.detail(c.id)
     segments.value = groupLines(d.billingLines)
+    extraUnitIds.value = d.extraUnitIds ?? []
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
     units.value = (await buildingApi.detail(props.presetBuildingId)).units
@@ -180,7 +182,15 @@ function groupLines(lines: BillingLineDTO[]): Segment[] {
 async function onBuildingChange() {
   err.value = ''
   unitId.value = null
+  extraUnitIds.value = []
   units.value = buildingId.value == null ? [] : (await buildingApi.detail(buildingId.value)).units
+}
+
+function toggleExtraUnit(id: number) {
+  const i = extraUnitIds.value.indexOf(id)
+  if (i >= 0) extraUnitIds.value.splice(i, 1)
+  else extraUnitIds.value.push(id)
+  err.value = ''
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -276,6 +286,7 @@ async function submit() {
       tenantId: tenantId.value!,
       buildingId: buildingId.value!,
       unitId: unitId.value,
+      extraUnitIds: extraUnitIds.value.filter(id => id !== unitId.value),
       buildingArea: numOrNull(buildingArea.value),
       rentArea: rentAreaSum.value ?? num(rentArea.value),
       unitPrice: rentL ? (rentL.unitPrice ?? null) : (init?.unitPrice ?? null),
@@ -365,6 +376,18 @@ async function submit() {
                   {{ u.floor }}F-{{ u.unitNo }} · {{ u.area }}㎡{{ u.status === 'vacant' ? '' : ' · 非空置' }}
                 </option>
               </select>
+            </div>
+            <!-- 附加单元(多场地合同):主单元之外再勾选,占用/楼栋派生按并集自动跟随 -->
+            <div v-if="mode !== 'renew'" class="ct-field ct-field-wide">
+              <div class="lab">附加单元 · 多场地可多选{{ extraUnitIds.length ? `(已选${extraUnitIds.length})` : '' }}</div>
+              <div class="ct-units" :class="{ dim: buildingId == null }">
+                <span v-if="buildingId == null" class="ct-units-empty">先选楼栋</span>
+                <span v-else-if="units.filter(u => u.id !== unitId).length === 0" class="ct-units-empty">该栋无其他单元</span>
+                <label v-else v-for="u in units.filter(u => u.id !== unitId)" :key="u.id" class="ct-unit-chk">
+                  <input type="checkbox" :checked="extraUnitIds.includes(u.id)" @change="toggleExtraUnit(u.id)" />
+                  {{ u.floor }}F-{{ u.unitNo }}
+                </label>
+              </div>
             </div>
             <!-- 建筑面积 → 租赁面积(计费行汇总只读);月租金/租金单价并入下方标的段,不双录入 -->
             <div class="ct-field">
@@ -578,6 +601,12 @@ async function submit() {
 .ct-span2 { grid-column:span 2; }
 .ct-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .ct-field .lab i { color:var(--hue-red); font-style:normal; }
+.ct-field-wide { grid-column:1 / -1; }
+.ct-units { display:flex; flex-wrap:wrap; gap:4px 10px; max-height:96px; overflow-y:auto; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-white); }
+.ct-units.dim { background:var(--surface-muted, #fafafa); }
+.ct-units-empty { font-size:12.5px; color:var(--text-disabled); }
+.ct-unit-chk { display:inline-flex; align-items:center; gap:5px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+.ct-unit-chk input { accent-color:var(--hue-blue); }
 .ct-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .ct-in:focus { border-color:var(--hue-blue); }
 .ct-in.err { border-color:var(--hue-red); }

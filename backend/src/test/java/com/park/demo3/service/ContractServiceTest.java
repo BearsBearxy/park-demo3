@@ -5,7 +5,9 @@ import com.park.demo3.mapper.*;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import java.math.BigDecimal; import java.time.LocalDate; import java.util.List;
+import com.park.demo3.common.BizException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ContractServiceTest {
     ContractMapper cm = Mockito.mock(ContractMapper.class);
@@ -106,5 +108,30 @@ class ContractServiceTest {
         assertThat(d.tenant().companyName()).isEqualTo("T1");
         assertThat(d.tenant().status()).isEqualTo(1);
         assertThat(d.tenant().businessType()).isEqualTo("精密机械");
+    }
+
+    // --- 附加单元校验(多场地合同录入通道) ---
+    ContractCreateReq reqWithExtras(Integer unitId, List<Integer> extraUnitIds) {
+        return new ContractCreateReq("C-NEW", 1, 13, unitId, extraUnitIds,
+            null, null, null, null, null, null, null, null, null, null, null, null, null,
+            null, null, null, "active", null, null, null, null, null, null);
+    }
+
+    @Test void create_rejectsExtraUnitEqualToMainUnit() {
+        Mockito.when(tm.selectById(1)).thenReturn(tenant(1));
+        Mockito.when(bm.selectById(13)).thenReturn(building(13, "一期A座"));
+        Unit u = unit(390, 2, "203"); u.setBuildingId(13);
+        Mockito.when(um.selectById(390)).thenReturn(u);
+        assertThatThrownBy(() -> svc.create(reqWithExtras(390, List.of(390))))
+            .isInstanceOf(BizException.class).hasMessageContaining("附加单元不能与主单元重复");
+    }
+
+    @Test void create_rejectsExtraUnitOfAnotherBuilding() {
+        Mockito.when(tm.selectById(1)).thenReturn(tenant(1));
+        Mockito.when(bm.selectById(13)).thenReturn(building(13, "一期A座"));
+        Unit other = unit(555, 6, "61"); other.setBuildingId(31);   // 二期栋的单元
+        Mockito.when(um.selectById(555)).thenReturn(other);
+        assertThatThrownBy(() -> svc.create(reqWithExtras(null, List.of(555))))
+            .isInstanceOf(BizException.class).hasMessageContaining("附加单元不存在或不属于所选楼栋");
     }
 }

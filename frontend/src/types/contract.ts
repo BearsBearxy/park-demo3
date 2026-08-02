@@ -65,6 +65,7 @@ export interface ContractCreateReq {
   remark?: string | null
   rentFree?: RentFreePeriod[] | null
   billingLines?: BillingLineReq[] | null   // 计费行整组替换(单一编辑随合同 PUT);null=不动,空列表=清空
+  extraUnitIds?: number[] | null           // 附加单元(V58 contract_unit,主单元在 unitId);整组替换同上
   // V55 期限原文三件套:后端早已支持,前端此前漏传(CONTRACT-CARD-V2-SPEC §6)
   termText?: string | null
   termType?: string | null         // explicit|multiple|relative|none
@@ -90,6 +91,7 @@ export interface ContractDetailDTO {
   contract: ContractDTO
   tenant: { companyName: string; contactName: string; contactPhone: string; businessType: string; status: number }
   billingLines: BillingLineDTO[]   // 计费行,后端按 location,seq 排序(BILL-FORWARD 刀1 §1.7)
+  extraUnitIds: number[]           // 附加单元(V58,主单元在 contract.unitId);编辑回带
 }
 // 阶梯期类型已删(ESCALATION-SPLIT-SPEC):阶梯语义由 escalation 链表达
 

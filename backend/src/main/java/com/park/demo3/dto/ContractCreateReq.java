@@ -9,6 +9,7 @@ public record ContractCreateReq(
     @NotNull Integer tenantId,
     @NotNull Integer buildingId,
     Integer unitId,
+    List<Integer> extraUnitIds,  // 附加单元(V58 contract_unit,主单元在 unitId):null=不动;空列表=清空;整组替换同 billingLines
     @DecimalMin("0") BigDecimal buildingArea,   // 建筑面积㎡(可空;清空=租赁面积×0.8 重算,裁定①)
     @DecimalMin("0") BigDecimal rentArea,
     @DecimalMin("0") BigDecimal unitPrice,      // 租金单价 元/㎡/月(五费项之一)

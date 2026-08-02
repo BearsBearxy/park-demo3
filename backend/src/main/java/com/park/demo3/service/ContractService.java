@@ -109,7 +109,10 @@ public class ContractService {
             t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus()
         );
-        return new ContractDetailDTO(dto, snap, loadLines(id));
+        List<Integer> extraIds = contractUnits.selectList(
+                new QueryWrapper<ContractUnit>().eq("contract_id", id).orderByAsc("id"))
+            .stream().map(ContractUnit::getUnitId).toList();
+        return new ContractDetailDTO(dto, snap, loadLines(id), extraIds);
     }
 
     @Transactional
@@ -132,6 +135,7 @@ public class ContractService {
             syncScalarCache(c);
             contracts.updateById(c);
         }
+        replaceExtraUnits(c.getId(), req.extraUnitIds());
         return dtoOf(contracts.selectById(c.getId()));
     }
 
@@ -162,7 +166,20 @@ public class ContractService {
             syncScalarCache(c);
         }
         contracts.updateById(c);
+        replaceExtraUnits(id, req.extraUnitIds());
         return dtoOf(contracts.selectById(id));
+    }
+
+    /** 附加单元整组替换(语义同 billingLines:null=不动;空列表=清空)。占用/楼栋派生读时按 主单元∪附加 并集。 */
+    private void replaceExtraUnits(Integer contractId, List<Integer> unitIds) {
+        if (unitIds == null) return;
+        contractUnits.delete(new QueryWrapper<ContractUnit>().eq("contract_id", contractId));
+        for (Integer uid : unitIds) {
+            ContractUnit cu = new ContractUnit();
+            cu.setContractId(contractId);
+            cu.setUnitId(uid);
+            contractUnits.insert(cu);
+        }
     }
 
     /** 终止合同;单元状态读时派生,终止后自动回 vacant。 */
@@ -740,6 +757,15 @@ public class ContractService {
             Unit u = units.selectById(req.unitId());
             if (u == null || !Objects.equals(u.getBuildingId(), req.buildingId()))
                 throw new BizException(ResultCode.CONFLICT, "单元不存在或不属于所选楼栋");
+        }
+        if (req.extraUnitIds() != null) {
+            for (Integer uid : req.extraUnitIds()) {
+                if (Objects.equals(uid, req.unitId()))
+                    throw new BizException(ResultCode.CONFLICT, "附加单元不能与主单元重复");
+                Unit u = uid == null ? null : units.selectById(uid);
+                if (u == null || !Objects.equals(u.getBuildingId(), req.buildingId()))
+                    throw new BizException(ResultCode.CONFLICT, "附加单元不存在或不属于所选楼栋");
+            }
         }
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
             throw new BizException(ResultCode.CONFLICT, "结束日期不能早于开始日期");

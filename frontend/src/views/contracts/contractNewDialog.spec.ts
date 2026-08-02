@@ -40,6 +40,7 @@ describe('合同弹窗 · 期限原文三件套(V2-SPEC §6)', () => {
       contract: initial,
       tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
       billingLines: [],
+      extraUnitIds: [],
     })
     vi.mocked(contractApi.update).mockResolvedValue(initial)
   })
