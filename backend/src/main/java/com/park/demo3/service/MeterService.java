@@ -276,7 +276,7 @@ public class MeterService {
                 m = new Meter();
                 m.setKind(row.kind()); m.setZone(row.zone()); m.setName(idx.freeName(row.kind(), row.zone(), name));
                 m.setSortNo(++sortNo);
-                applyDesc(m, row);
+                applyDesc(m, row, idx);
                 // §F2:自动只落 incomplete(四空=档案不全,照常入Σ,纯屏上提示)。
                 // shadow 会把表踢出Σ 与池分母,不能由导入自动打 —— 见下面 dupeOf 的「只提示不打标」。
                 m.setSuspect(archiveBlank(m) ? "incomplete" : null);
@@ -291,7 +291,7 @@ public class MeterService {
             } else {           // 刷新描述字段(导入是档案的事实源;身份/人工资产字段不动,§3.2)
                 idx.remove(m);
                 // §F6 位置人工标志 / §G2 归属人工标志:人工设定过的列导入不改,只提示
-                for (String w : applyDesc(m, row)) notices.add(new ImportError(i, name, w));
+                for (String w : applyDesc(m, row, idx)) notices.add(new ImportError(i, name, w));
                 meters.updateById(m);
                 idx.add(m);
             }
@@ -366,6 +366,12 @@ public class MeterService {
             return kind + "|" + zone + "|" + area + "|" + n(spot) + "|" + n(sub);
         }
         static String n(String s) { return s == null ? "" : s.trim(); }
+
+        // 编码是否已被(其他)表占用:applyDesc 写回护栏用。调用时 m 自身已 remove 出索引,任何命中=他表。
+        boolean codeTaken(String kind, String code) {
+            List<Meter> l = byCode.get(codeKey(kind, code));
+            return l != null && !l.isEmpty();
+        }
 
         void add(Meter m) {
             byName.put(m.getKind() + "|" + m.getZone() + "|" + m.getName(), m);
@@ -538,7 +544,7 @@ public class MeterService {
 
     // 导入行描述字段 → 档案(空值不清既有:真实文件同表在不同 sheet 详略不一)。
     // 返回 warn 文案清单(空=无提醒):§F6 位置冲突、§G2 归属冲突。
-    private static List<String> applyDesc(Meter m, MeterImportRequest.Row row) {
+    private static List<String> applyDesc(Meter m, MeterImportRequest.Row row, Index idx) {
         List<String> warns = new ArrayList<>();
         if (blankToNull(row.area()) != null) m.setArea(row.area().trim());
         // §F6 spot 照常更新(它是导入身份键),位置三列按人工标志分流 —— §E7 的「已有值一律不动」是个缺口:
@@ -581,7 +587,14 @@ public class MeterService {
         }
         if (blankToNull(row.meterType()) != null) m.setMeterType(row.meterType().trim());
         if (blankToNull(row.subName()) != null) m.setSubName(row.subName().trim());
-        if (blankToNull(row.code()) != null) m.setCode(row.code().trim());
+        // 写回护栏(2026-08-03 水表重复编码案):行编码已被他表占用时不写回,只 warn——
+        // 源册批量补码曾拖填/复制错(920620036/062/043 三对),无护栏时错码会静默污染档案再放大成对撞
+        if (blankToNull(row.code()) != null) {
+            String c = row.code().trim();
+            if (!c.equals(m.getCode()) && idx.codeTaken(row.kind(), c))
+                warns.add("表「" + m.getName() + "」行编码 " + c + " 已被其他表占用,未写回档案(源表编码疑复制/拖填错,请核对原册)");
+            else m.setCode(c);
+        }
         if (row.factor() != null) m.setFactor(row.factor());
         else if (m.getFactor() == null) m.setFactor(BigDecimal.ONE);
         return warns;
