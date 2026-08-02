@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
 import { tenantApi } from '@/api/tenant'
+import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import type { TenantDTO, TenantSummaryDTO } from '@/types/tenant'
@@ -50,9 +51,10 @@ async function reload() {
 }
 onMounted(reload)
 
-// 新增成功 → 关弹窗并重拉 list+summary
+// 新增成功 → 关弹窗并重拉 list+summary;租户 CRUD 使分析层缓存失效(派生审计病根B)
 async function onTenantCreated() {
   newDlg.value = false
+  invalidateAnaCache()
   await reload()
 }
 
@@ -60,6 +62,7 @@ async function onTenantCreated() {
 async function onTenantUpdated() {
   const id = openTenant.value?.id
   editDlg.value = false
+  invalidateAnaCache()
   await reload()
   if (id != null) openTenant.value = tenants.value.find(t => t.id === id) ?? null
 }
@@ -67,6 +70,7 @@ async function onTenantUpdated() {
 // 删除成功 → 关 drawer 并重拉 list+summary
 async function onTenantDeleted() {
   openTenant.value = null
+  invalidateAnaCache()
   await reload()
 }
 

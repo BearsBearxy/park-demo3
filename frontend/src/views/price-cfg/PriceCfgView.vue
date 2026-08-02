@@ -6,6 +6,7 @@
 // 编辑模式遵 EDIT-MODE-SPEC v2(浏览态零写入口);56px 行高遵 LIST-PAGE-SPEC(全量小表免分页,
 // 短窗外层滚动);加载门/覆盖层遵 DESIGN-FIDELITY §6/§7。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { priceCfgApi, type PriceCfgDTO } from '@/api/priceCfg'
 import { allocApi } from '@/api/alloc'
 import { tenantApi } from '@/api/tenant'
@@ -61,6 +62,7 @@ async function loadBook() {
   if (my !== seq) return
   rows.value = rs
 }
+onReactivated(() => { tenantApi.list().then(ts => { tenants.value = ts }) })   // 页签切回:户级例外picker候选回拉
 onMounted(async () => {
   tenantApi.list().then(ts => { tenants.value = ts })
   try {

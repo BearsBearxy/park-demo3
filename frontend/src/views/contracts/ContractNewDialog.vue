@@ -183,7 +183,12 @@ async function onBuildingChange() {
   err.value = ''
   unitId.value = null
   extraUnitIds.value = []
-  units.value = buildingId.value == null ? [] : (await buildingApi.detail(buildingId.value)).units
+  try {
+    units.value = buildingId.value == null ? [] : (await buildingApi.detail(buildingId.value)).units
+  } catch {
+    units.value = []   // 失败清空,不残留上一栋的单元列表(派生审计)
+    err.value = '单元列表加载失败,请重选楼栋'
+  }
 }
 
 function toggleExtraUnit(id: number) {

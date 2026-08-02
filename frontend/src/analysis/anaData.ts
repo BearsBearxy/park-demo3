@@ -40,6 +40,8 @@ import type { ElecYearDTO } from '@/types/elec'
 import type { PnlYearDTO } from '@/types/pnl'
 import type { PvRecordDTO } from '@/types/pv'
 import type { OfficeYearDTO } from '@/types/utilities'
+import { useTabsStore } from '@/stores/tabs'
+import { FP_NAV } from '@/nav/fpNav'
 
 // ── 模块级 Promise 缓存(失败即删,可重试) ──
 const cache = new Map<string, Promise<unknown>>()
@@ -50,8 +52,21 @@ function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return cache.get(key) as Promise<T>
 }
 export function __clearAnaCacheForTest(): void { cache.clear() }
-// 导入成功后由 runImport 调用:分析层全部缓存失效,空态→导入→回屏即见新数据(复审:预算导入闭环陈旧态)
-export function invalidateAnaCache(): void { cache.clear() }
+
+// 分析层全部路由 value(fpNav 单一事实源派生,勿手抄清单)
+const ANA_VALUES: string[] =
+  FP_NAV.find(l => l.id === 'analysis')?.sections.flatMap(s => s.items.map(i => i.value)) ?? []
+
+// 导入成功(runImport)与 租户/合同/楼栋 写成功后调用:分析层全部缓存失效。
+// 同时作废分析页签的 KeepAlive 缓存实例(epoch++)——只清数据缓存的话,缓存实例里的 ref
+// 仍是旧值,切回页签照旧显示(审计4「导入后旧数」遗留+派生审计病根B,一处修 18 屏)。
+export function invalidateAnaCache(): void {
+  cache.clear()
+  try {
+    const tabs = useTabsStore()
+    for (const v of ANA_VALUES) tabs.dropState(v)
+  } catch { /* 无 pinia 环境(单测):仅清数据缓存 */ }
+}
 
 // ── 期间地基 ──
 export function fetchAvailableMonths(): Promise<AnalysisMonthsDTO> {

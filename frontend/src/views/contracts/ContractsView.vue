@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { contractApi } from '@/api/contract'
+import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import type { ContractDTO, ContractSummaryDTO } from '@/types/contract'
@@ -46,29 +48,35 @@ async function reload() {
   ;[contracts.value, summary.value] = await Promise.all([contractApi.list(activeOn.value || undefined), contractApi.summary()])
 }
 onMounted(reload)
+onReactivated(reload)   // 页签切回:楼栋/单元/租户改动后列表 floorInfo/名称回拉(读时派生,重拉即新)
 watch(activeOn, reload)   // 某日在租=后端过滤,切换即重拉
 
 async function onCreated() {
+  invalidateAnaCache()   // 合同 CRUD 使分析层缓存失效(派生审计病根B)
   showNew.value = false
   await reload()
 }
 
 // 编辑/续签/终止成功:抽屉切换为返回的最新 DTO(watch 重拉 detail),列表+KPI 重拉
 async function onEdited(dto: ContractDTO) {
+  invalidateAnaCache()
   editFrom.value = null
   openContract.value = dto
   await reload()
 }
 async function onRenewed(dto: ContractDTO) {
+  invalidateAnaCache()
   renewFrom.value = null
   openContract.value = dto
   await reload()
 }
 async function onTerminated(dto: ContractDTO) {
+  invalidateAnaCache()
   openContract.value = dto
   await reload()
 }
 async function onDeleted() {
+  invalidateAnaCache()
   openContract.value = null
   await reload()
 }

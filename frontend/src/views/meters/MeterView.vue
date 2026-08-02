@@ -7,6 +7,7 @@
 // POST(无读数)/PUT(有),行级失败收集 alert 并保留 dirty;放弃=丢 draft 回浏览态。
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
   type MeterDeleteDTO, type MeterKind, type MeterZone,
@@ -147,11 +148,16 @@ function onDiscardChanges() {
   editMode.value = false
 }
 
-onMounted(async () => {
-  loadMeters()
-  // 主数据清单拉取失败不阻断:租户/楼栋列显 '—',picker 候选空
+// 主数据清单拉取失败不阻断:租户/楼栋列显 '—',picker 候选空
+function loadMasters() {
   tenantApi.list().then(v => { tenants.value = v; importCtx.tenantNames = v.map(t => t.companyName) }).catch(() => {})
   buildingApi.list().then(v => { buildings.value = v; importCtx.buildings = v }).catch(() => {})
+}
+onReactivated(loadMasters)   // 页签切回:租户改名/楼栋变更后清单回拉(浏览状态保留)
+
+onMounted(async () => {
+  loadMeters()
+  loadMasters()
   // 先拉数据年份定位初始年:最新有数据年;改年经 watch 触发装载,未改则本函数兜底首载
   try {
     dataYears.value = await metersApi.years()

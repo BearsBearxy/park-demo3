@@ -8,6 +8,7 @@
 // (EDIT-MODE-SPEC v2:浏览态与 viewer 同为只读徽标);映射进页拉一次全量缓存,与台账记账/期数完全不联动。
 // 布局遵 LIST-PAGE-SPEC(无 KPI 栏,主列全宽,卡片定高 flex 链不变)。
 import { ref, computed, watch, onMounted, onDeactivated, h } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { billsApi, type BillS10RowDTO } from '@/api/bills'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
@@ -84,6 +85,9 @@ async function loadRows() {
   const data = await billsApi.s10(year.value, month.value)
   if (my === seq) s10Rows.value = data
 }
+
+// 页签切回:家族聚合吃 parentId 关系树,租户改名/关联变更后回拉
+onReactivated(() => { tenantApi.list().then(ts => { tenants.value = ts }).catch(() => {}) })
 
 onMounted(async () => {
   // paymap 是辅助指引数据:endpoint 异常不拖垮整页(徽标退化为全「未设置」)

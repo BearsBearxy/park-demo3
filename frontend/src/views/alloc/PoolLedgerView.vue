@@ -17,6 +17,7 @@
 // §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
@@ -100,11 +101,17 @@ async function loadRules() {
   try { rules.value = await allocApi.rules(); rulesFailed.value = false }
   catch (e) { rulesFailed.value = true; throw e }
 }
-onMounted(async () => {
-  loadRules().catch(() => {})
+// 主数据清单(页签切回回拉:租户改名/楼栋单元/抄表建档后不显旧清单)
+function loadMasters() {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => {})
   metersApi.list('elec').then(ms => { meters.value = ms }).catch(() => {})
   tenantApi.list().then(ts => { tenants.value = ts }).catch(() => {})
+}
+onReactivated(loadMasters)
+
+onMounted(async () => {
+  loadRules().catch(() => {})
+  loadMasters()
   try {
     dataYears.value = await allocApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]

@@ -194,7 +194,8 @@ function onBulkRemove(tenantIds: number[]) {
 // ── 添加租户行(宽表只显示有数据的租户;新租户入账从候选挑一行加进 draft,保存时落库) ──
 const allTenants = ref<TenantDTO[]>([])
 function ensureTenantsLoaded() {
-  if (!allTenants.value.length) tenantApi.list().then(v => { allTenants.value = v }).catch(() => {})
+  // 每次进编辑重拉(原 if(!length) 守卫会让实例存活期只拉一次,租户改名/新增后候选陈旧)
+  tenantApi.list().then(v => { allTenants.value = v }).catch(() => {})
 }
 // 候选带 phase/parentName 供 FPTenantPicker 徽章;名称 zh 排序(与 fpTenantPicker.filterTenants 同口径)
 const addableTenants = computed(() =>

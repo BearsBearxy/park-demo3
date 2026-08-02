@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
 import { buildingApi } from '@/api/building'
+import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import { useFitRows } from '@/components/fp/useFitRows'
@@ -174,6 +175,7 @@ function onCloseDrawer() {
 function onDrawerRefreshed(d: BuildingDetailDTO) {
   drawerDetail.value = d
   openBuilding.value = d.building
+  invalidateAnaCache()   // 楼栋/单元写动作后分析层缓存失效(派生审计病根B)
   load()
 }
 
