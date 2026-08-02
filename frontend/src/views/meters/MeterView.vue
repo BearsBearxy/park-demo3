@@ -557,7 +557,7 @@ const emptyText = computed(() => {
 
     <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
     <MeterLedgerGrid
-      :rows="gridRows" :edit-mode="editMode" :kind="kind" :draft="draft"
+      :rows="gridRows" :edit-mode="editMode" :kind="kind" :zone="zone" :draft="draft"
       :building-name-by-id="buildingNameById" :empty-text="emptyText"
       @open="openId = $event" @cell-edit="onCellEdit"
     />

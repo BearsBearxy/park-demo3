@@ -26,6 +26,7 @@ const props = defineProps<{
   rows: WorkbenchRow[]              // 筛选后有序行集
   editMode: boolean
   kind: string
+  zone: string                      // 当前分区(p1/p2/dorm):dorm 下房号列显「宿舍单元」
   draft: Map<number, MeterDraft>    // 草稿归属 MeterView(§7.2)
   buildingNameById: Map<number, string>
   emptyText: string
@@ -155,7 +156,12 @@ function floorSide(x: WorkbenchRow): string {
     || x.m.spot?.trim()
     || (x.m.area?.trim() ? LOC_TODO : '–')
 }
-const roomNo = (x: WorkbenchRow) => locOf(x).roomNo?.trim() || '–'
+// dorm 回退:宿舍单元「1-309」(栋-房号)在导入时已随位置原文落 spot(如「三楼 1-309」),正则直读;
+// 无单元的宿舍表(总表/商铺/充电桩/分时子表)不命中,显 '–' 属预期
+const roomNo = (x: WorkbenchRow) =>
+  locOf(x).roomNo?.trim()
+  || (props.zone === 'dorm' ? x.m.spot?.match(/\d+-\d{3,4}/)?.[0] : undefined)
+  || '–'
 // 「区域」=账册 B 列原文(A座/一车间/招商中心),已是不带期数的写法,直接取 meter.area 不做加工。
 // 区块带头虽然也是楼栋名,但原册每行都写满 —— 逐行显才对得上原册一行一行。
 const areaLabel = (x: WorkbenchRow) => x.m.area?.trim() ?? ''
@@ -212,7 +218,7 @@ function onEnter(e: KeyboardEvent) {
               title="原册 B 列:楼栋/车间(不带期数)">区域</th>
           <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixFloor">楼层·方位</th>
           <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixUse">用途</th>
-          <th rowspan="2" class="mlg-grp-th" :style="w(ROOM_W)">房号</th>
+          <th rowspan="2" class="mlg-grp-th" :style="w(ROOM_W)">{{ zone === 'dorm' ? '宿舍单元' : '房号' }}</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(TEN_W)">租户</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(SUB_W)">表号</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(CODE_W)">编码</th>
