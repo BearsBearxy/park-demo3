@@ -59,6 +59,11 @@ const AREA_W = 76
 const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 130, SUB_W = 70, CODE_W = 118, FAC_W = 56
 const SEG_W = 96, USAGE_W = 104, ST_W = 88
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
+// 表总宽=全列宽之和(colgroup+table-layout:fixed 用):窗口化每帧换行,auto 布局会按可见内容
+// 逐帧重算列宽 → 快速滚动列抖动(2026-08-04 用户报障);fixed+colgroup 后列宽与内容彻底解耦
+const tableW = computed(() =>
+  AREA_W + FLOOR_W + USE_W + ROOM_W + TEN_W + SUB_W + CODE_W + FAC_W
+  + segDefs.value.length * 2 * SEG_W + USAGE_W + ST_W)
 // 区域(原册 B 列)在最左:区块带头虽然也是楼栋名,但原册每行都写,逐行显才能跟原册一行一行对
 const fixArea = { ...w(AREA_W), left: '0px' }
 const fixFloor = { ...w(FLOOR_W), left: AREA_W + 'px' }
@@ -211,7 +216,17 @@ function onEnter(e: KeyboardEvent) {
 
 <template>
   <div ref="wrapEl" class="mlg-wrap" @scroll.passive="onScroll">
-    <table class="mlg-table">
+    <table class="mlg-table" :style="{ width: tableW + 'px' }">
+      <!-- 交互稳定性(LIST-PAGE-SPEC §零布局位移):colgroup 钉死每列宽,配合 table-layout:fixed,
+           滚动换行时浏览器不再按可见单元格内容重算列宽 -->
+      <colgroup>
+        <col :style="w(AREA_W)" /><col :style="w(FLOOR_W)" /><col :style="w(USE_W)" />
+        <col :style="w(ROOM_W)" /><col :style="w(TEN_W)" /><col :style="w(SUB_W)" />
+        <col :style="w(CODE_W)" /><col :style="w(FAC_W)" />
+        <col v-for="s in segDefs" :key="'gp' + s.c" :style="w(SEG_W)" />
+        <col v-for="s in segDefs" :key="'gc' + s.c" :style="w(SEG_W)" />
+        <col :style="w(USAGE_W)" /><col :style="w(ST_W)" />
+      </colgroup>
       <thead>
         <tr>
           <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixArea"
@@ -347,7 +362,9 @@ function onEnter(e: KeyboardEvent) {
 <style scoped>
 /* ── 宽表(双级表头+左右固定列+合计页脚)—— 1:1 手法自 FPLedgerTable.vue ── */
 .mlg-wrap { flex:1 1 auto; min-height:0; overflow:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
-.mlg-table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; font-family:var(--font-sans); }
+/* table-layout:fixed(零布局位移):列宽只由 colgroup 决定,窗口化换行不触发列宽重算;
+   min-width:100% 容器更宽时按比例摊余量,与数据内容无关,同样稳定 */
+.mlg-table { border-collapse:separate; border-spacing:0; table-layout:fixed; min-width:100%; font-family:var(--font-sans); }
 /* 窗口化 spacer(§7 6.5):撑出未渲染区高度;不参与 hover/分隔线 */
 .mlg-table tbody tr.mlg-spacer td { padding:0; border:none; background:var(--surface-white); }
 .mlg-table tbody tr.mlg-spacer:hover td { background:var(--surface-white); }
