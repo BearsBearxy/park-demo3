@@ -33,7 +33,7 @@ public class MeterController {
         return svc.update(id, req);
     }
 
-    @Operation(summary = "删除表(有读数 409;不存在 404)") @DeleteMapping("/{id}")
+    @Operation(summary = "删除表(有读数或绑公摊池 409;不存在 404)") @DeleteMapping("/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
 
     @Operation(summary = "有读数的年份(升序;空表=[],年选择器数据驱动)") @GetMapping("/years")

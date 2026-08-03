@@ -80,6 +80,22 @@ class MeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409));
     }
 
+    // ── 删守卫二:零读数但绑进公摊池 → 409 点名池,不再穿 FK 报"违反完整性约束"(实测 1139 误读成"有读数") ──
+    @Test
+    void delete_zeroReadingButPoolBound_409NamesPool() throws Exception {
+        int id = createMeter("IT池绑定守卫表", "1");
+        mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_fire\","
+                        + "\"feeName\":\"IT池守卫\",\"meterIds\":[" + id + "]}"))
+                .andExpect(jsonPath("$.code").value(0));
+        String res = utf8(mvc.perform(delete("/api/meters/" + id).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(409)).andReturn());
+        String msg = JsonPath.read(res, "$.message");
+        org.junit.jupiter.api.Assertions.assertTrue(msg.contains("公摊池"), "守卫信息应点名公摊池: " + msg);
+        org.junit.jupiter.api.Assertions.assertFalse(msg.contains("读数"), "零读数的表不得误报有读数: " + msg);
+        org.junit.jupiter.api.Assertions.assertNotNull(meterMapper.selectById(id));
+    }
+
     // ── 读数:倍率快照口径——录入后改表倍率,历史用量不漂移;同表同月 409;用量派生 ──
     @Test
     void reading_factorSnapshot_usageDerived() throws Exception {

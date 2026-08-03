@@ -204,7 +204,7 @@ function commitDeviceType(mm: MeterDTO, raw: string) {
   metersApi.update(mm.id, reqOf(mm)).catch((e) => { mm.deviceType = prev; alert(failMsg(e)) })
 }
 async function delMeter(mm: MeterDTO) {
-  if (!confirm(`确认删除「${mm.name}」?有读数的表不可删除。`)) return
+  if (!confirm(`确认删除「${mm.name}」?有读数或绑在公摊池的表不可删除。`)) return
   try {
     await metersApi.remove(mm.id)
     emit('reload')
@@ -687,7 +687,7 @@ async function doBind(contractId: number | null) {
       </Button>
       <Button v-if="tab === 'profile' && m" variant="outline" size="sm" class="md-del" @click="delMeter(m)">
         <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-        删除表(有读数不可删)
+        删除表
       </Button>
     </template>
   </FPDrawer>

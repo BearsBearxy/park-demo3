@@ -11,6 +11,7 @@ import com.park.demo3.dto.MeterReadingDTO;
 import com.park.demo3.dto.MeterReadingReq;
 import com.park.demo3.dto.MeterReq;
 import com.park.demo3.entity.AllocResult;
+import com.park.demo3.entity.AllocRule;
 import com.park.demo3.entity.AllocRuleMeter;
 import com.park.demo3.entity.Meter;
 import com.park.demo3.entity.MeterReading;
@@ -18,6 +19,7 @@ import com.park.demo3.mapper.AllocLossResultMapper;
 import com.park.demo3.mapper.AllocPoolMeterResultMapper;
 import com.park.demo3.mapper.AllocPoolResultMapper;
 import com.park.demo3.mapper.AllocResultMapper;
+import com.park.demo3.mapper.AllocRuleMapper;
 import com.park.demo3.mapper.AllocRuleMeterMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
@@ -47,16 +49,17 @@ public class MeterService {
     private final AllocLossResultMapper lossResults;
     private final AllocResultMapper allocResults;
     private final AllocRuleMeterMapper ruleMeters;
+    private final AllocRuleMapper rules;
     private final ImportLogService importLogs;
 
     public MeterService(MeterMapper meters, MeterReadingMapper readings,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
                         AllocLossResultMapper lossResults, AllocResultMapper allocResults,
-                        AllocRuleMeterMapper ruleMeters, ImportLogService importLogs) {
+                        AllocRuleMeterMapper ruleMeters, AllocRuleMapper rules, ImportLogService importLogs) {
         this.meters = meters; this.readings = readings;
         this.poolResults = poolResults; this.poolMeterResults = poolMeterResults;
         this.lossResults = lossResults; this.allocResults = allocResults;
-        this.ruleMeters = ruleMeters; this.importLogs = importLogs;
+        this.ruleMeters = ruleMeters; this.rules = rules; this.importLogs = importLogs;
     }
 
     private static BigDecimal one(BigDecimal v) { return v == null ? BigDecimal.ONE : v; }
@@ -132,6 +135,16 @@ public class MeterService {
         if (meters.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "表不存在");
         if (readings.countByMeter(id) > 0)
             throw new BizException(ResultCode.CONFLICT, "该表已有读数记录,不可删除(历史账要保留);退租请在档案页填「退场账期」,该月起不再显示");
+        // 池绑定守卫:不先查直接 deleteById 会撞 fk_arm_meter,穿出来是句"违反完整性约束"——
+        // 用户对着零读数的表和"有读数不可删"的按钮文案,只能误读成"一直显示有读数"(实测 1139)。
+        List<Integer> ruleIds = ruleMeters.selectList(new QueryWrapper<AllocRuleMeter>().eq("meter_id", id))
+            .stream().map(AllocRuleMeter::getRuleId).distinct().toList();
+        if (!ruleIds.isEmpty()) {
+            String names = rules.selectBatchIds(ruleIds).stream()
+                .map(AllocRule::getName).collect(Collectors.joining("、"));
+            throw new BizException(ResultCode.CONFLICT,
+                "该表还绑定在公摊池「" + names + "」上,不可删除;请先到公共电核算把它从池成员中解绑再删");
+        }
         meters.deleteById(id);
     }
 
