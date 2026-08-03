@@ -569,7 +569,12 @@ public class MeterService {
                     + (m.getFloorLabel() == null ? "(跨层/不适用)" : m.getFloorLabel())
                     + ",请核对。仅提示 —— 人工设定过的那几项未被改动");
         }
+        // 空值不覆盖(护人工档案),但要出提示(2026-08-04 吉罗德案裁定:某月导入行企业名称为空而档案
+        // 有名=名字来自其他月份,须让用户看见并自行决定清否;静默保留会造成「当月没有的名字出现在当月」)
         if (blankToNull(row.tenantName()) != null) m.setTenantName(row.tenantName().trim());
+        else if (blankToNull(m.getTenantName()) != null)
+            warns.add("表「" + m.getName() + "」本行企业名称为空,档案现为「" + m.getTenantName()
+                + "」(来自其他月份导入),已保留;若该户当月尚未入住/已退租,请在档案页清空");
         if (row.tenantId() != null) m.setTenantId(row.tenantId());
         // §G2 归属护栏(首审 P0):owner_manual=1 → ownership/building_id 两列一列不动。
         // 无条件回写曾把 V66 恢复的「招商中心电1/2 挂A座+share」每导一次推翻一次(area=招商中心→楼栋41、
