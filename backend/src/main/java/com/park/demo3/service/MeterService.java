@@ -77,9 +77,13 @@ public class MeterService {
     public static boolean notYetActive(Meter m, String ym) {
         return m != null && m.getActiveFromYm() != null && ym != null && ym.compareTo(m.getActiveFromYm()) < 0;
     }
-    // 账期内不在服务中(停用或未启用)——MeterBindingService/AllocService 统一走这一判定。
+    // 退场判定(V88):自 removed_ym 起(含当月)不再显示——退租/拆表,历史月不受影响。
+    public static boolean removedGone(Meter m, String ym) {
+        return m != null && m.getRemovedYm() != null && ym != null && ym.compareTo(m.getRemovedYm()) >= 0;
+    }
+    // 账期内不在服务中(停用/未启用/已退场)——MeterBindingService/AllocService 统一走这一判定。
     public static boolean outOfService(Meter m, String ym) {
-        return retired(m, ym) || notYetActive(m, ym);
+        return retired(m, ym) || notYetActive(m, ym) || removedGone(m, ym);
     }
     // 用量派生:缺任一读数=null(漏抄不硬算)。public:AllocService(P-B)复用同一公式(PB-ALLOCATION-SPEC §5)
     public static BigDecimal usage(BigDecimal prev, BigDecimal curr, BigDecimal factor) {
@@ -127,7 +131,7 @@ public class MeterService {
     public void delete(Integer id) {
         if (meters.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "表不存在");
         if (readings.countByMeter(id) > 0)
-            throw new BizException(ResultCode.CONFLICT, "该表已有读数记录,不可删除");
+            throw new BizException(ResultCode.CONFLICT, "该表已有读数记录,不可删除(历史账要保留);退租请在档案页填「退场账期」,该月起不再显示");
         meters.deleteById(id);
     }
 
@@ -519,6 +523,7 @@ public class MeterService {
             m.setOwnerManual(1);
         m.setRetiredYm(blankToNull(req.retiredYm()));   // 空=撤销停用(FieldStrategy.ALWAYS 落库)
         m.setActiveFromYm(blankToNull(req.activeFromYm()));   // V87 启用账期,空=一直在册
+        m.setRemovedYm(blankToNull(req.removedYm()));   // V88 退场账期,空=未退场
         // 补齐了识别信息=认领该档案,清「存疑」标(重新计入分表Σ 与池分母);否则原样保留。
         // 导入路径走 applyDesc 不经此处,标记也不会被导入刷掉。
         if (identified) m.setSuspect(null);
@@ -671,7 +676,7 @@ public class MeterService {
             m.getFloorLabel(), m.getSide(), m.getRoomNo(), m.getLocManual(),
             m.getTenantId(), m.getBuildingId(), m.getOwnership(), m.getOwnerManual(), m.getMeterType(),
             m.getDeviceType(), m.getContractId(),
-            m.getSubName(), m.getCode(), m.getFactor(), m.getRetiredYm(), m.getActiveFromYm(), m.getSuspect(),
+            m.getSubName(), m.getCode(), m.getFactor(), m.getRetiredYm(), m.getActiveFromYm(), m.getRemovedYm(), m.getSuspect(),
             m.getSortNo(), readingCount);
     }
 

@@ -43,6 +43,10 @@ export function isRetiredMeter(m: { retiredYm: string | null }, ym?: string): bo
 export function isNotYetActive(m: { activeFromYm: string | null }, ym?: string): boolean {
   return m.activeFromYm != null && !!ym && ym < m.activeFromYm
 }
+// 已退场(V88):退租/拆表,自该月起不再显示;历史月不受影响
+export function isRemovedMeter(m: { removedYm: string | null }, ym?: string): boolean {
+  return m.removedYm != null && !!ym && ym >= m.removedYm
+}
 
 // 待核:租户表 + 未挂 tenant_id + 原文有意义
 export function isPendingMeter(m: { ownership: string; tenantId: number | null; tenantName: string | null }): boolean {
@@ -126,7 +130,8 @@ export function buildRows(
   const bByMeter = new Map((bindRows ?? []).map(b => [b.meterId, b]))
   // V87 未启用(2026-08-04 用户裁定):后面月份才出现的表在该月**完全不出现**——不是停用、
   // 不进任何筛选,行根本不产;停用(retired)则照常产行显示,只是不进各分母(见 matchStatus)
-  return meters.filter(m => !isNotYetActive(m, ym)).map(m => {
+  // 未启用/已退场(V87/V88)不产行:前者=还没出现,后者=退租拆表;停用(retired)照常产行显示
+  return meters.filter(m => !isNotYetActive(m, ym) && !isRemovedMeter(m, ym)).map(m => {
     const r = rByMeter.get(m.id) ?? null
     const prevR = pByMeter.get(m.id) ?? null
     const bind = bByMeter.get(m.id) ?? null

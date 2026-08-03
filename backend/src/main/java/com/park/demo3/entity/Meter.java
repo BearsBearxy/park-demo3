@@ -41,6 +41,7 @@ public class Meter {
     private BigDecimal factor;    // 倍率
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String retiredYm;   // 自该账期起停用(含当月不计),可撤销清空(V68)
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String activeFromYm;   // 启用账期:该月前不在服务中(V87,与retired对称);导入自愈可放宽
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private String removedYm;   // 退场账期:该月起不再显示(V88,退租/拆表);历史月不受影响
     // V75 §F1 存疑档案两级:shadow=疑似重复建档(不进楼栋分表Σ)/incomplete=档案不全但照常计入Σ/null=正常。
     // ALWAYS=人工在档案页保存即清标(认领)
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String suspect;

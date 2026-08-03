@@ -274,11 +274,12 @@ function onEnter(e: KeyboardEvent) {
           <!-- 租户(普通列):click 开抽屉;待核 coral 名+徽标(§7.1) -->
           <td>
             <span
-              class="mlg-tname" :class="{ coral: v.x.pending, dim: v.x.placeholder }"
+              class="mlg-tname" :class="{ coral: v.x.pending && !v.x.retired, dim: v.x.placeholder || v.x.retired }"
               :title="tenTitle(v.x)" @click="emit('open', v.x.m.id)"
             >
               <span class="nm">{{ tenName(v.x) }}</span>
-              <span v-if="v.x.pending" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
+              <!-- 停用行不再飘待核红:本月不在服务中,待核无意义(2026-08-05 用户报障) -->
+              <span v-if="v.x.pending && !v.x.retired" class="mlg-st coral sm" title="企业名称原文未匹配到租户档案,点击在抽屉「合同绑定」页签挂租户">待核</span>
               <span
                 v-if="v.x.m.suspect === 'shadow'" class="mlg-st bad sm"
                 title="疑似重复建档:本表区域/位置/企业名称/编码全空,且与同栋同类的另一块档案完整的表同月上下期示数与倍率完全相等,很可能是同一块物理表的第二份档案。该表用量暂不计入楼栋分表Σ;认对后请补齐档案(在抽屉保存一次即解除存疑)"

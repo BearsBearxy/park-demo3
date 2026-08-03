@@ -18,6 +18,7 @@ public record MeterReq(
     String subName, String code, BigDecimal factor,
     @Pattern(regexp = "|\\d{4}-\\d{2}") String retiredYm,   // V68 停用账期;空串/null=在用(撤销停用)
     @Pattern(regexp = "|\\d{4}-\\d{2}") String activeFromYm,   // V87 启用账期;空串/null=一直在册
+    @Pattern(regexp = "|\\d{4}-\\d{2}") String removedYm,   // V88 退场账期;空串/null=未退场
     // §G5 存疑标(V75 suspect)的人工入口,三态同 floorLabel:不传(null)=保留原标;
     // ""=人工解除(抽屉「认领为独立表」,重新计入分表Σ 与池分母);'shadow'/'incomplete'=人工打标。
     // 必须是三态:二态(null=解除)会让任何一个不带该字段的 PUT 顺手把标清掉,等于护栏形同虚设。

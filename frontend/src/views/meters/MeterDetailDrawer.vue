@@ -87,6 +87,7 @@ const reqOf = (mm: MeterDTO): MeterReq => ({
   tenantId: mm.tenantId, buildingId: mm.buildingId, ownership: mm.ownership,
   retiredYm: mm.retiredYm,
   activeFromYm: mm.activeFromYm,
+  removedYm: mm.removedYm,
 })
 // §A.3 身份/位置字段行内提交:一份乐观更新失败回滚(同 commitSubName 范式),各字段只差 key。
 // name 是唯一键 (kind,zone,name),后端 409 的中文消息原样弹出,不吞。
@@ -174,6 +175,16 @@ function commitRetiredYm(mm: MeterDTO, raw: string) {
   metersApi.update(mm.id, reqOf(mm))
     .then(() => emit('reload'))
     .catch((e) => { mm.retiredYm = prev; alert(failMsg(e)) })
+}
+// 退场账期(V88):退租/拆表,该月起不再显示;历史月不受影响(硬删被读数守卫挡,退租一律走这)
+function commitRemovedYm(mm: MeterDTO, raw: string) {
+  const v = raw.trim() || null
+  if (v === mm.removedYm) return
+  const prev = mm.removedYm
+  mm.removedYm = v
+  metersApi.update(mm.id, reqOf(mm))
+    .then(() => emit('reload'))
+    .catch((e) => { mm.removedYm = prev; alert(failMsg(e)) })
 }
 // 启用账期(V87,与停用对称):该月前不显示不计;导入更早月份源册含此表时后端自动放宽
 function commitActiveFromYm(mm: MeterDTO, raw: string) {
@@ -462,6 +473,13 @@ async function doBind(contractId: number | null) {
                title="自该账期起停用(含当月不计):不进抄表进度、不进公摊/损耗分母、不参与合同绑定。留空=在用"
                @change="commitRetiredYm(m, ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.retiredYm }">{{ m.retiredYm ? `${m.retiredYm} 起停用` : '在用' }}</span>
+      </div>
+      <div class="md-fld">
+        <label>退场账期</label>
+        <input v-if="editMode" class="mt-edit md-in" type="month" :value="m.removedYm ?? ''"
+               title="退租/拆表:自该账期起(含当月)不再显示在任何月份视图;历史月照常显示与计账。留空=未退场"
+               @change="commitRemovedYm(m, ($event.target as HTMLInputElement).value)" />
+        <span v-else :class="{ dim: !m.removedYm }">{{ m.removedYm ? `${m.removedYm} 起退场` : '未退场' }}</span>
       </div>
       <div class="md-fld">
         <label>启用账期</label>

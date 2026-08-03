@@ -12,6 +12,7 @@ public record MeterDTO(
     String subName, String code, BigDecimal factor,
     String retiredYm,   // V68:自该账期起停用(含当月不计);NULL=在用
     String activeFromYm,   // V87:启用账期,该月前不在服务中(导入自愈可放宽);NULL=一直在册
+    String removedYm,   // V88:退场账期,该月起不再显示(退租/拆表);NULL=未退场
     String suspect,     // V75 §F1:shadow=疑似重复建档(红徽标+不进分表Σ)/incomplete=档案不全(黄徽标,照常入Σ)/NULL=正常
     Integer sortNo,
     long readingCount   // 读数条数(档案列表列 + 删除守卫提示)

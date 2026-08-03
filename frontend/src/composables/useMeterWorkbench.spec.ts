@@ -21,7 +21,7 @@ function mkM(p: Partial<MeterDTO & MeterLoc> = {}): MeterDTO & MeterLoc {
     floorLabel: null, side: null, roomNo: null,
     tenantName: null, tenantId: null, buildingId: null, ownership: 'share',
     meterType: null, deviceType: null, subName: null, code: null,
-    factor: 1, retiredYm: null, activeFromYm: null, sortNo: seq, readingCount: 0, ...p,
+    factor: 1, retiredYm: null, activeFromYm: null, removedYm: null, sortNo: seq, readingCount: 0, ...p,
   }
 }
 function mkR(meterId: number, p: Partial<MeterReadingDTO> = {}): MeterReadingDTO {
@@ -205,6 +205,14 @@ describe('已停用(V68 账期口径)— 默认全维隐藏,「已停用」筛�
     const rows5 = buildRows([live, late], [], [], null, undefined, '2024-05')
     expect(rows5.map(x => x.m.id)).toEqual([live.id, late.id]) // 首现月起正常出现
     expect(rows5[1].retired).toBe(false)
+  })
+
+  it('已退场(V88):退租表自退场月起不产行,历史月照常显示(≠停用)', () => {
+    const goneAway = mkM({ ownership: 'tenant', tenantId: 4, removedYm: '2024-03' })
+    const feb = buildRows([live, goneAway], [], [], null, undefined, '2024-02')
+    expect(feb.map(x => x.m.id)).toEqual([live.id, goneAway.id])   // 历史月照常
+    const mar = buildRows([live, goneAway], [], [], null, undefined, '2024-03')
+    expect(mar.map(x => x.m.id)).toEqual([live.id])                // 退场月起消失
   })
 })
 
