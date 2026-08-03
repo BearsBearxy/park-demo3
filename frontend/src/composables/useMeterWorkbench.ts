@@ -39,6 +39,10 @@ export function isMeaningfulName(s: string | null | undefined): boolean {
 export function isRetiredMeter(m: { retiredYm: string | null }, ym?: string): boolean {
   return m.retiredYm != null && !!ym && ym >= m.retiredYm
 }
+// 未启用(V87,与停用对称):启用账期前不在服务中;导入更早月份源册含此表时后端自动放宽
+export function isNotYetActive(m: { activeFromYm: string | null }, ym?: string): boolean {
+  return m.activeFromYm != null && !!ym && ym < m.activeFromYm
+}
 
 // 待核:租户表 + 未挂 tenant_id + 原文有意义
 export function isPendingMeter(m: { ownership: string; tenantId: number | null; tenantName: string | null }): boolean {
@@ -66,7 +70,7 @@ export interface WorkbenchRow {
   flags: MeterReadingFlags            // 漏抄/倒走/时段不符(meterLogic)
   pending: boolean                    // 待核
   placeholder: boolean                // 占位槽
-  retired: boolean                    // 已停用(V68,按选定账期判)
+  retired: boolean                    // 已停用(V68,按选定账期判;照常显示,只是不进各分母)
   unbound: boolean                    // 待绑定:binding manual(各桶)+override_stale
   ready: boolean                      // 派生就绪:auto+auto_bld+override
   tou: boolean                        // 分时表:电表且 本月/上月读数带任一分时段
@@ -120,7 +124,9 @@ export function buildRows(
   const rByMeter = new Map(readings.map(r => [r.meterId, r]))
   const pByMeter = new Map(prevReadings.map(r => [r.meterId, r]))
   const bByMeter = new Map((bindRows ?? []).map(b => [b.meterId, b]))
-  return meters.map(m => {
+  // V87 未启用(2026-08-04 用户裁定):后面月份才出现的表在该月**完全不出现**——不是停用、
+  // 不进任何筛选,行根本不产;停用(retired)则照常产行显示,只是不进各分母(见 matchStatus)
+  return meters.filter(m => !isNotYetActive(m, ym)).map(m => {
     const r = rByMeter.get(m.id) ?? null
     const prevR = pByMeter.get(m.id) ?? null
     const bind = bByMeter.get(m.id) ?? null
@@ -139,7 +145,8 @@ export function buildRows(
         valley: r?.prevValley ?? prevR?.currValley ?? null,
       },
       factor: r?.factorSnap ?? m.factor,
-      flags, pending, placeholder, unbound, retired: isRetiredMeter(m, ym),
+      flags, pending, placeholder, unbound,
+      retired: isRetiredMeter(m, ym),
       ready: !!bind && READY_STATUS.has(bind.status),
       tou: m.kind === 'elec' && (hasSegs(r) || hasSegs(prevR)),
       status: 'read',
@@ -152,7 +159,7 @@ export function buildRows(
 // 状态 tooltip:列全维度(徽标只显最差一维,悬停出全部命中维度)
 export function statusDims(x: WorkbenchRow): string {
   const dims: string[] = []
-  if (x.retired) return `已停用:自 ${x.m.retiredYm} 起不计,不进抄表进度与公摊分母`
+  if (x.retired) return `已停用:自 ${x.m.retiredYm} 起不计,不进抄表进度与公摊分母(表仍显示)`
   if (x.pending) dims.push('待核:企业名称原文未匹配租户档案')
   if (x.unbound) dims.push(`待绑定:${x.bind?.status === 'override_stale' ? '人工绑定不覆盖本月' : BIND_BUCKET_LABEL[x.bind?.bucket ?? 'no_contract']}`)
   if (x.flags.touMismatch) dims.push('时段不符:尖峰平谷用量之和与总用量不符')
@@ -173,9 +180,11 @@ export type StatusFilter =
 // V68 已停用表:除「已停用」筛选项外全维排除(默认隐藏 + 统计卡分母排除,一处生效)。
 export function matchStatus(x: WorkbenchRow, s: StatusFilter): boolean {
   if (s === 'retired') return x.retired
+  // 停用行「全部」筛选照常显示(2026-08-04 用户裁定:停用=这个月还在只是不用,须在表格可见);
+  // 其余统计维度(租户表/已抄/未抄/待核…)仍排除=不进任何分母
+  if (s === 'all') return true
   if (x.retired) return false
   switch (s) {
-    case 'all': return true
     case 'tenant': return x.m.ownership === 'tenant'
     case 'read': return x.m.ownership === 'tenant' && x.r?.currTotal != null
     case 'missing': return x.m.ownership === 'tenant' && x.r?.currTotal == null

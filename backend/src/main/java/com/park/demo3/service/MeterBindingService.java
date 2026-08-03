@@ -79,7 +79,7 @@ public class MeterBindingService {
 
         for (Meter m : meters.selectFiltered(null, null)) {
             // 非租户表(含 park 园区自担)不参与绑定;已停用表本月不在服务中,不进待核/待绑定分母(V68)
-            if (!"tenant".equals(m.getOwnership()) || MeterService.retired(m, ym)) continue;
+            if (!"tenant".equals(m.getOwnership()) || MeterService.outOfService(m, ym)) continue;
             boolean hasReading = usable(readByMeter.get(m.getId()));
             if (!hasReading) missing++;
 
@@ -164,7 +164,7 @@ public class MeterBindingService {
         Map<String, Agg> byKey = new LinkedHashMap<>();
         for (Meter m : meters.selectFiltered(null, null)) {
             if (!"tenant".equals(m.getOwnership()) || m.getTenantId() == null
-                || MeterService.retired(m, ym)) continue;   // 停用表不进计费输入面(V68)
+                || MeterService.outOfService(m, ym)) continue;   // 停用/未启用表不进计费输入面(V68/V87)
             Agg a = byKey.computeIfAbsent(m.getTenantId() + "|" + m.getKind(), k -> {
                 Agg n = new Agg(); n.tenantId = m.getTenantId(); n.kind = m.getKind(); return n;
             });

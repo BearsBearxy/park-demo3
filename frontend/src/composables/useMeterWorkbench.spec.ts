@@ -21,7 +21,7 @@ function mkM(p: Partial<MeterDTO & MeterLoc> = {}): MeterDTO & MeterLoc {
     floorLabel: null, side: null, roomNo: null,
     tenantName: null, tenantId: null, buildingId: null, ownership: 'share',
     meterType: null, deviceType: null, subName: null, code: null,
-    factor: 1, retiredYm: null, sortNo: seq, readingCount: 0, ...p,
+    factor: 1, retiredYm: null, activeFromYm: null, sortNo: seq, readingCount: 0, ...p,
   }
 }
 function mkR(meterId: number, p: Partial<MeterReadingDTO> = {}): MeterReadingDTO {
@@ -192,9 +192,19 @@ describe('已停用(V68 账期口径)— 默认全维隐藏,「已停用」筛�
     const c = cardCounts(rows)
     expect(c.tenant).toBe(1)       // 停用表不进租户表分母
     expect(c.missing).toBe(1)      // 只剩在用表未抄
-    expect(filterRows(rows, F()).map(x => x.m.id)).toEqual([live.id])
+    // 2026-08-04 用户裁定:停用=这个月还在只是不用,「全部」筛选须显示(带徽标),分母仍排除
+    expect(filterRows(rows, F()).map(x => x.m.id)).toEqual([live.id, gone.id])
     expect(filterRows(rows, F({ status: 'missing' })).map(x => x.m.id)).toEqual([live.id])
     expect(filterRows(rows, F({ status: 'retired' })).map(x => x.m.id)).toEqual([gone.id])
+  })
+
+  it('未启用(V87):后面月份才出现的表在早月完全不产行(≠停用),首现月起正常出现', () => {
+    const late = mkM({ ownership: 'tenant', tenantId: 3, activeFromYm: '2024-05' })
+    const rows4 = buildRows([live, late], [], [], null, undefined, '2024-04')
+    expect(rows4.map(x => x.m.id)).toEqual([live.id])          // 2024-04 根本不存在
+    const rows5 = buildRows([live, late], [], [], null, undefined, '2024-05')
+    expect(rows5.map(x => x.m.id)).toEqual([live.id, late.id]) // 首现月起正常出现
+    expect(rows5[1].retired).toBe(false)
   })
 })
 

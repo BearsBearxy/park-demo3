@@ -73,6 +73,14 @@ public class MeterService {
     public static boolean retired(Meter m, String ym) {
         return m != null && m.getRetiredYm() != null && ym != null && ym.compareTo(m.getRetiredYm()) >= 0;
     }
+    // 未启用判定(V87,与 retired 对称):active_from_ym 非空且账期早于它=尚不在服务中。
+    public static boolean notYetActive(Meter m, String ym) {
+        return m != null && m.getActiveFromYm() != null && ym != null && ym.compareTo(m.getActiveFromYm()) < 0;
+    }
+    // 账期内不在服务中(停用或未启用)——MeterBindingService/AllocService 统一走这一判定。
+    public static boolean outOfService(Meter m, String ym) {
+        return retired(m, ym) || notYetActive(m, ym);
+    }
     // 用量派生:缺任一读数=null(漏抄不硬算)。public:AllocService(P-B)复用同一公式(PB-ALLOCATION-SPEC §5)
     public static BigDecimal usage(BigDecimal prev, BigDecimal curr, BigDecimal factor) {
         return prev == null || curr == null ? null : curr.subtract(prev).multiply(one(factor));
@@ -280,6 +288,7 @@ public class MeterService {
                 // §F2:自动只落 incomplete(四空=档案不全,照常入Σ,纯屏上提示)。
                 // shadow 会把表踢出Σ 与池分母,不能由导入自动打 —— 见下面 dupeOf 的「只提示不打标」。
                 m.setSuspect(archiveBlank(m) ? "incomplete" : null);
+                m.setActiveFromYm(row.ym());   // V87:新表自首现月起显示(某月导入才出现的表不回溯早月)
                 meters.insert(m);
                 idx.add(m);
                 Meter dup = dupeOf(m, row, readOfYm, meterById);
@@ -290,6 +299,9 @@ public class MeterService {
                 meterById.put(m.getId(), m);
             } else {           // 刷新描述字段(导入是档案的事实源;身份/人工资产字段不动,§3.2)
                 idx.remove(m);
+                // V87 自愈:更早月份的源册含此表=它更早就存在,启用账期自动放宽到该月
+                if (m.getActiveFromYm() != null && row.ym().compareTo(m.getActiveFromYm()) < 0)
+                    m.setActiveFromYm(row.ym());
                 // §F6 位置人工标志 / §G2 归属人工标志:人工设定过的列导入不改,只提示
                 for (String w : applyDesc(m, row, idx)) notices.add(new ImportError(i, name, w));
                 meters.updateById(m);
@@ -506,6 +518,7 @@ public class MeterService {
                 || !java.util.Objects.equals(bldBefore, m.getBuildingId())))
             m.setOwnerManual(1);
         m.setRetiredYm(blankToNull(req.retiredYm()));   // 空=撤销停用(FieldStrategy.ALWAYS 落库)
+        m.setActiveFromYm(blankToNull(req.activeFromYm()));   // V87 启用账期,空=一直在册
         // 补齐了识别信息=认领该档案,清「存疑」标(重新计入分表Σ 与池分母);否则原样保留。
         // 导入路径走 applyDesc 不经此处,标记也不会被导入刷掉。
         if (identified) m.setSuspect(null);
@@ -658,7 +671,7 @@ public class MeterService {
             m.getFloorLabel(), m.getSide(), m.getRoomNo(), m.getLocManual(),
             m.getTenantId(), m.getBuildingId(), m.getOwnership(), m.getOwnerManual(), m.getMeterType(),
             m.getDeviceType(), m.getContractId(),
-            m.getSubName(), m.getCode(), m.getFactor(), m.getRetiredYm(), m.getSuspect(),
+            m.getSubName(), m.getCode(), m.getFactor(), m.getRetiredYm(), m.getActiveFromYm(), m.getSuspect(),
             m.getSortNo(), readingCount);
     }
 

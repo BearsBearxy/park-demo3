@@ -45,6 +45,7 @@ export interface MeterDTO {
   code: string | null
   factor: number                // 倍率
   retiredYm: string | null      // V68:自该账期起停用(含当月不计);null=在用
+  activeFromYm: string | null   // V87:启用账期,该月前不在服务中;null=一直在册
   // V75 §E3/§F1 两级存疑(判据都以「区域/位置/企业名称/编码四项全空」打底):
   //   'shadow'     = 还配到一块档案完整、同 (kind,zone,building_id)、同月上下期示数与倍率全等的表
   //                  → 疑似同一块物理表的第二份档案,红底徽标,后端**不**计入楼栋分表Σ;
@@ -77,6 +78,7 @@ export interface MeterReq {
   code?: string | null
   factor?: number | null
   retiredYm?: string | null     // V68 停用账期;null=在用(撤销停用)
+  activeFromYm?: string | null  // V87 启用账期;null=一直在册
   // §G5 存疑标的人工入口,三态同 floorLabel:不传=保留原标;''=人工解除(「认领为独立表」,重新进Σ);
   // 'shadow'/'incomplete'=人工打标。二态(null=解除)会让任何一个不带该字段的 PUT 顺手把标清掉。
   suspect?: '' | 'shadow' | 'incomplete'

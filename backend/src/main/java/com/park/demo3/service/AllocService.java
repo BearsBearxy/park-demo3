@@ -784,7 +784,7 @@ public class AllocService {
         Map<Integer, String> zoneOfBuilding = new HashMap<>();   // 楼栋期别=该栋表的 zone(园区级池 fallback 用)
         for (Meter m : meters.selectList(null)) {
             if (m.getBuildingId() != null && m.getZone() != null) zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
-            if (!MeterService.retired(m, ym)) meterById.put(m.getId(), m);
+            if (!MeterService.outOfService(m, ym)) meterById.put(m.getId(), m);
         }
         Map<Integer, MeterReading> readingByMeter = new HashMap<>();
         for (MeterReading r : readings.selectByYm(ym)) readingByMeter.put(r.getMeterId(), r);
@@ -1552,7 +1552,7 @@ public class AllocService {
         Roster roster = loadRoster(ym);
         // 刀D:受益人楼层与分桶明细读时现算(楼层不落库),与 generate 同一组纯函数,主数据未变即口径全等
         Map<Integer, List<Meter>> metersByTenant = tenantMeters(meterById.values().stream()
-            .filter(m -> !MeterService.retired(m, ym)).toList());
+            .filter(m -> !MeterService.outOfService(m, ym)).toList());
         List<AllocPoolDTOs.PoolRow> rows = new ArrayList<>();
         for (AllocRule r : all) {
             AllocPoolResult s = snap.get(r.getId());
@@ -1789,7 +1789,7 @@ public class AllocService {
         for (MeterReading r : readings.selectByYm(ym)) byMeter.put(r.getMeterId(), r);
         List<AllocPoolDTOs.MeterCand> ms = new ArrayList<>();
         for (Meter m : meters.selectList(null)) {
-            if (!POOL_OWNERSHIP.contains(m.getOwnership()) || MeterService.retired(m, ym)) continue;
+            if (!POOL_OWNERSHIP.contains(m.getOwnership()) || MeterService.outOfService(m, ym)) continue;
             if (!atLocation(m, buildingId, floor, side)) continue;
             MeterReading r = byMeter.get(m.getId());
             ms.add(new AllocPoolDTOs.MeterCand(m.getId(), meterLabel(m), m.getSpot(), m.getSubName(),
