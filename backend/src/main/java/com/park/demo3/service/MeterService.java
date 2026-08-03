@@ -571,7 +571,15 @@ public class MeterService {
         }
         // 空值不覆盖(护人工档案),但要出提示(2026-08-04 吉罗德案裁定:某月导入行企业名称为空而档案
         // 有名=名字来自其他月份,须让用户看见并自行决定清否;静默保留会造成「当月没有的名字出现在当月」)
-        if (blankToNull(row.tenantName()) != null) m.setTenantName(row.tenantName().trim());
+        if (blankToNull(row.tenantName()) != null) {
+            m.setTenantName(row.tenantName().trim());
+            // 复合名共用表提示(2026-08-04 用户拍板:嘉荣、科文=101、102 两户共用一表,财务模板每月复现,
+            // 须持续提示修改;账单派生前不单挂任何一户,拆分口径在两户档案 remark)
+            if (row.tenantName().matches(".*[、/].*") && m.getTenantId() == null)
+                warns.add("表「" + m.getName() + "」企业名称「" + row.tenantName().trim()
+                    + "」为复合名且未能唯一挂档:若系两户共用一表(如 嘉荣、科文=101、102),请在模板按户拆分,"
+                    + "或按租户档案备注的拆分口径人工处理;账单派生前不会自动分摊");
+        }
         else if (blankToNull(m.getTenantName()) != null)
             warns.add("表「" + m.getName() + "」本行企业名称为空,档案现为「" + m.getTenantName()
                 + "」(来自其他月份导入),已保留;若该户当月尚未入住/已退租,请在档案页清空");
