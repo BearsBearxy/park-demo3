@@ -192,6 +192,7 @@ export interface BindCandidateDTO {
   buildingName: string | null
   startDate: string | null
   endDate: string | null
+  locations?: string[]             // 费项位置标签「费项名·位置(含单元)」,每 distinct location 一条
 }
 
 // rows 每块租户表;candidates 仅 manual 时给(供 UI 选定绑定)
@@ -201,6 +202,7 @@ export interface MeterBindingRowDTO {
   bucket?: BindBucket | null
   contractId?: number | null
   contractNo?: string | null
+  locations?: string[]             // 绑定合同的费项位置标签;未绑定=[]
   candidates?: BindCandidateDTO[]
   hasReading: boolean
 }

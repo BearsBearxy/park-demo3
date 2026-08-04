@@ -199,7 +199,16 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         int t6 = createTenant("IT仁恒形态户", null);
         createContract(t6, b1, "2099-08-01", "2100-12-31");
         createContract(t6, b2, "2099-08-01", "2100-12-31");
-        int c6 = createContract(t6, b3, null, null);
+        // c6 带费项行:候选/绑定要显示「费项名·位置(含单元)」(2026-08-04 用户要求)
+        String c6res = mvc.perform(post("/api/contracts").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"contractNo\":\"IT-S2-LOC1\",\"tenantId\":" + t6 + ",\"buildingId\":" + b3
+                        + ",\"rentArea\":40,\"monthlyRent\":760,\"deposit\":0,\"status\":\"active\","
+                        + "\"billingLines\":[{\"propertyType\":\"dorm\",\"location\":\"宿舍X座503室\","
+                        + "\"feeKey\":\"rent_dorm\",\"area\":40,\"unitPrice\":19}]}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        int c6 = JsonPath.read(c6res, "$.data.id");
         int m6 = createMeter("water", "IT仁恒宿舍水", t6, b3, "IT仁恒形态户");
 
         String body = binding("2099-08");
@@ -233,6 +242,10 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         List<Map<String, Object>> cands6 = (List<Map<String, Object>>) r6.get("candidates");
         assertThat(cands6).hasSize(1);   // 本栋缺日期合同浮出,错栋在租合同不再冒充候选
         assertThat(cands6.get(0).get("contractId")).isEqualTo(c6);
+        // 费项位置标签:费项名去「租金」尾·位置原文(含单元)
+        @SuppressWarnings("unchecked")
+        List<String> locs6 = (List<String>) cands6.get(0).get("locations");
+        assertThat(locs6).containsExactly("宿舍·宿舍X座503室");
 
         assertThat((int) JsonPath.read(body, "$.data.summary.autoBld")).isEqualTo(1);
         assertThat((int) JsonPath.read(body, "$.data.summary.auto")).isEqualTo(0);
@@ -244,6 +257,11 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         // date_missing 一键确认=写 override(缺日期无法断言覆盖,不标 stale)
         bind(m1, String.valueOf(c1));
         assertThat(row(binding("2099-08"), m1).get("status")).isEqualTo("override");
+        // 绑定后 Row 也带费项位置标签
+        bind(m6, String.valueOf(c6));
+        @SuppressWarnings("unchecked")
+        List<String> rowLocs6 = (List<String>) row(binding("2099-08"), m6).get("locations");
+        assertThat(rowLocs6).containsExactly("宿舍·宿舍X座503室");
     }
 
     // ── pending/placeholder 分类 + auto-link-by-name 幂等;非 tenant 表不参与 ──

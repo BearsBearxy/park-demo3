@@ -636,6 +636,7 @@ async function doBind(contractId: number | null) {
           <span class="tag" :class="{ bad: bind.status === 'override_stale' }">{{ BIND_STATUS_NOTE[bind.status] }}</span>
           <span v-if="qb" class="reason">{{ BIND_BUCKET_LABEL[qb] }} · {{ bindReason(qb, bind) }}</span>
           <span v-else class="reason ok">合同归属就绪,可参与派生 ✓</span>
+          <span v-if="bind.locations?.length" class="locs">{{ bind.locations.join('；') }}</span>
         </div>
 
         <!-- 待核:先挂租户(编辑态) -->
@@ -668,6 +669,7 @@ async function doBind(contractId: number | null) {
           >
             <span class="no">{{ c.contractNo }}</span>
             <span class="sub">{{ c.buildingName ?? '—' }} · {{ c.startDate ?? '?' }} ~ {{ c.endDate ?? '?' }}</span>
+            <span v-if="c.locations?.length" class="sub locs">{{ c.locations.join('；') }}</span>
           </button>
         </div>
         <div v-else-if="qb && qb !== 'pending'" class="md-dim" style="font-size:var(--fs-label)">该户无候选合同。</div>
@@ -750,6 +752,7 @@ async function doBind(contractId: number | null) {
 .md-bstat .tag.bad { color: var(--hue-red); background: rgb(255, 238, 237); }
 .md-bstat .reason { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bstat .reason.ok { color: rgb(21, 128, 61); }
+.md-bstat .locs { flex-basis: 100%; font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bpend { display: flex; flex-direction: column; gap: 8px; }
 .md-bpend .lab { font-size: var(--fs-label); color: var(--text-secondary); }
 .md-bpend .pick { max-width: 360px; }
@@ -762,4 +765,5 @@ async function doBind(contractId: number | null) {
 .bc-item.on { border-color: var(--hue-blue); background: rgb(240, 246, 255); }
 .bc-item .no { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-primary); }
 .bc-item .sub { font-size: var(--fs-micro); color: var(--text-muted); }
+.bc-item .sub.locs { color: var(--text-secondary); }
 </style>

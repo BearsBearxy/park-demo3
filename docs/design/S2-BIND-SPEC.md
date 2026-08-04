@@ -31,7 +31,7 @@ meter_type 列已被「表类」原文占用（户内用电/公共用电…）�
 
 ## 3. 端点（挂 /api/meters 下，权限走全局门）
 
-- `GET /api/meters/binding?ym=` → record{summary, rows[]}：summary=各状态计数（auto/auto_bld/override/override_stale/manual 按桶/pending/placeholder/漏抄数）；rows 每块租户表={meterId, status, bucket?, contractId?, contractNo?, candidates:[{contractId,contractNo,buildingName,startDate,endDate}](manual 时给候选供 UI 选), hasReading}。**这就是归属覆盖率报表**。
+- `GET /api/meters/binding?ym=` → record{summary, rows[]}：summary=各状态计数（auto/auto_bld/override/override_stale/manual 按桶/pending/placeholder/漏抄数）；rows 每块租户表={meterId, status, bucket?, contractId?, contractNo?, locations, candidates:[{contractId,contractNo,buildingName,startDate,endDate,locations}](manual 时给候选供 UI 选), hasReading}。**这就是归属覆盖率报表**。locations（2026-08-04 用户要求）=合同费项位置标签，每个 distinct 计费行 location 一条「费项名去『租金』尾·位置原文」（位置原文含栋层单元，如「办公室·A座孵化器三楼315室」）；Row 上为绑定合同的标签（未绑定=[]）。
 - `PUT /api/meters/{id}/bind` → req{contractId(null=解绑)}：写 override；校验合同存在。
 - `POST /api/meters/auto-link-by-name` → 按 tenant_name 原文=租户档案名精确唯一匹配的待核表批量挂 tenant_id（侦察实测 19 块），返回{linked, skipped}。幂等。
 - `GET /api/meters/usage-summary?ym=` → 户×月聚合（S3 输入面）：rows[]={tenantId, tenantName, kind, meterCount, missingReadings, usageTotal, usageSharp/Peak/Flat/Valley}——复用 MeterService.usage()，只聚合 ownership='tenant' 且 tenant_id 非空的表。

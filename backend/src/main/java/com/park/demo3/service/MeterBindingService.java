@@ -6,10 +6,12 @@ import com.park.demo3.dto.MeterBindingDTO;
 import com.park.demo3.dto.MeterUsageSummaryDTO;
 import com.park.demo3.entity.Building;
 import com.park.demo3.entity.Contract;
+import com.park.demo3.entity.ContractBillingTerm;
 import com.park.demo3.entity.Meter;
 import com.park.demo3.entity.MeterReading;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.BuildingMapper;
+import com.park.demo3.mapper.ContractBillingTermMapper;
 import com.park.demo3.mapper.ContractMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
@@ -44,11 +46,30 @@ public class MeterBindingService {
     private final ContractMapper contracts;
     private final TenantMapper tenants;
     private final BuildingMapper buildings;
+    private final ContractBillingTermMapper billingTerms;
 
     public MeterBindingService(MeterMapper meters, MeterReadingMapper readings,
-                               ContractMapper contracts, TenantMapper tenants, BuildingMapper buildings) {
+                               ContractMapper contracts, TenantMapper tenants, BuildingMapper buildings,
+                               ContractBillingTermMapper billingTerms) {
         this.meters = meters; this.readings = readings;
         this.contracts = contracts; this.tenants = tenants; this.buildings = buildings;
+        this.billingTerms = billingTerms;
+    }
+
+    // 费项位置标签(2026-08-04 用户要求"不单止办公室,要把单元也显示出来"):
+    // 每个 distinct location 一条「费项名去『租金』尾·位置原文」——位置原文本就含栋层单元
+    // (如 A座孵化器三楼315室);取该位置 seq 最小行的费项名(导入约定租金行居首)。位置空的行不出标签。
+    static List<String> locLabels(List<ContractBillingTerm> lines) {
+        LinkedHashMap<String, String> byLoc = new LinkedHashMap<>();
+        for (ContractBillingTerm t : lines) {
+            String loc = t.getLocation();
+            if (loc == null || loc.isBlank()) continue;
+            String fee = t.getFeeName() == null ? "" : t.getFeeName().replaceAll("租金$", "");
+            byLoc.putIfAbsent(loc.trim(), fee);
+        }
+        return byLoc.entrySet().stream()
+            .map(e -> e.getValue().isBlank() ? e.getKey() : e.getValue() + "·" + e.getKey())
+            .toList();
     }
 
     // ── 归属报表(§2 五级规则+分桶;§3 报表形状) ──
@@ -70,6 +91,13 @@ public class MeterBindingService {
         Map<Integer, MeterReading> readByMeter = readingsByMeter(ym);
         Map<Integer, String> bName = buildings.selectList(null).stream()
             .collect(Collectors.toMap(Building::getId, Building::getName));
+        // 费项位置标签(每合同一次;整表一读同 contracts.selectList 口径,行内按 seq,id 序保租金行居首)
+        Map<Integer, List<String>> locsByContract = billingTerms.selectList(null).stream()
+            .sorted(Comparator.comparing((ContractBillingTerm t) -> t.getSeq() == null ? 0 : t.getSeq())
+                .thenComparing(ContractBillingTerm::getId))
+            .collect(Collectors.groupingBy(ContractBillingTerm::getContractId, LinkedHashMap::new, Collectors.toList()))
+            .entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> locLabels(e.getValue())));
 
         List<MeterBindingDTO.Row> rows = new ArrayList<>();
         Map<String, Integer> counts = new HashMap<>();
@@ -121,11 +149,14 @@ public class MeterBindingService {
             if ("manual".equals(status)) manual.merge(bucket, 1, Integer::sum);
             else counts.merge(status, 1, Integer::sum);
             Integer cid = chosen != null ? chosen.getId() : m.getContractId();
+            boolean noBind = "pending".equals(status) || "placeholder".equals(status);
             rows.add(new MeterBindingDTO.Row(m.getId(), status, bucket,
-                "pending".equals(status) || "placeholder".equals(status) ? null : cid,
+                noBind ? null : cid,
                 chosen == null ? null : chosen.getContractNo(),
+                noBind || cid == null ? List.of() : locsByContract.getOrDefault(cid, List.of()),
                 cands.stream().map(c -> new MeterBindingDTO.Candidate(c.getId(), c.getContractNo(),
-                    bName.get(c.getBuildingId()), c.getStartDate(), c.getEndDate())).toList(),
+                    bName.get(c.getBuildingId()), c.getStartDate(), c.getEndDate(),
+                    locsByContract.getOrDefault(c.getId(), List.of()))).toList(),
                 hasReading));
         }
         MeterBindingDTO.Summary summary = new MeterBindingDTO.Summary(
