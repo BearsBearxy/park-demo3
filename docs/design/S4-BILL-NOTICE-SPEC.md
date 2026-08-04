@@ -75,7 +75,9 @@ ALTER TABLE tenant ADD COLUMN offbook      TINYINT NOT NULL DEFAULT 0 COMMENT '�
 2. **宿舍段例外**：`is_dorm_room` 表产生的行 + dorm 段公摊行，整段拆进 `notice_kind='dorm'` 的单，收款公司取该户 `dormRent` 映射（宿舍收租方=创显），无则同上兜底。
 3. 同 (ym, tenant, pay_company, notice_kind) 聚成一张单——一户一套账，物理可多张纸。
 
-⚠ 已知脏映射：p2「园区绿化水泵」池 fee_key='share_elec_fire'（V65 种子按原册费目列落的）。S4-1 数据核对时人工过一遍 6 键 92 池，错的改 alloc_rule.fee_key（含 fee_name 同步）。
+fee_key 核对结论（2026-08-05，S4-1 已做）：92 出账池 + 5 损耗侧全过，**无新错**——绿化水泵疑点早在
+`pool-fee-key-fix-20260730.sql` 修掉且 dev 已应用；p1 消防类挂 floor 是原册 I/S 合并列口径（不是错，不许改）；
+广告字 src 池经 fold_price 出账、自身 fee_key 永不触达催缴单。
 
 ## 5. 派生算法 `BillNoticeService.generate(ym)`
 
