@@ -19,7 +19,7 @@ import {
   type WorkbenchRow, type MeterDraft, type CurrField, type PrevSegs, type BuildingGroup,
   type RowWindow,
 } from '@/composables/useMeterWorkbench'
-import { OWNERSHIP_LABEL } from '@/utils/meterSplit'
+import { ownershipLabel } from '@/utils/meterSplit'
 import type { MeterLoc } from '@/utils/meterGroup'
 
 const props = defineProps<{
@@ -288,7 +288,7 @@ function onEnter(e: KeyboardEvent) {
                 v-else-if="v.x.m.suspect === 'incomplete'" class="mlg-st amber sm"
                 title="档案不全:区域/位置/企业名称/编码全空,但配不到重复对手,按真表处理 —— 用量照常计入楼栋分表Σ。请补齐档案(在抽屉保存一次即解除提示)"
               >档案不全</span>
-              <span v-if="v.x.m.ownership !== 'tenant'" class="mt-own" :class="'own-' + v.x.m.ownership">{{ OWNERSHIP_LABEL[v.x.m.ownership] ?? v.x.m.ownership }}</span>
+              <span v-if="v.x.m.ownership !== 'tenant'" class="mt-own" :class="'own-' + v.x.m.ownership">{{ ownershipLabel(v.x.m.ownership, v.x.m.kind) }}</span>
               <component :is="ChevronRight" :size="13" class="ch" />
             </span>
           </td>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitTenantSpot, classifyOwnership, buildingIdFor, inSubSigma } from './meterSplit'
+import { splitTenantSpot, classifyOwnership, buildingIdFor, inSubSigma, ownershipLabel } from './meterSplit'
 
 // §6.2 全部例子:1-3楼（力灏）/邓宇峰（高区）/桑尼号西侧/邓宇峰多命中待核
 const LIB = ['力灏', '邓宇峰', '桑尼号', '锂朋科技']
@@ -148,5 +148,15 @@ describe('inSubSigma — §8.2 分表Σ成员 + §F7 shadow 排除', () => {
   it('suspect=incomplete 照算(5 块挂栋 p2 临电在这一档,排掉会让 E=D−C 长期偏低)', () => {
     expect(inSubSigma({ ownership: 'share', suspect: 'incomplete' })).toBe(true)
     expect(inSubSigma({ ownership: 'tenant', suspect: null })).toBe(true)
+  })
+})
+
+describe('ownershipLabel — infra 展示名按表类分流(2026-08-04 报障:水表挂"配电总表"徽标)', () => {
+  it('infra:电=配电总表,水=供水总表;其余归属不受表类影响', () => {
+    expect(ownershipLabel('infra', 'elec')).toBe('配电总表')
+    expect(ownershipLabel('infra', 'water')).toBe('供水总表')
+    expect(ownershipLabel('infra')).toBe('配电总表')
+    expect(ownershipLabel('tenant', 'water')).toBe('租户')
+    expect(ownershipLabel('share', 'water')).toBe('园区公摊')
   })
 })

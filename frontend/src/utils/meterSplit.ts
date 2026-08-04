@@ -7,6 +7,10 @@ export const OWNERSHIP_LABEL: Record<MeterOwnership, string> = {
   tenant: '租户', share: '园区公摊', ops: '园区经营', infra: '配电总表', park: '园区自担',
   register: '计度寄存器',
 }
+// infra 的展示名按表类分流:电=配电总表,水=供水总表(2026-08-04 报障:水表列表挂"配电总表"徽标)
+export const ownershipLabel = (o: string, kind?: string | null): string =>
+  o === 'infra' && kind === 'water' ? '供水总表'
+    : (OWNERSHIP_LABEL[o as MeterOwnership] ?? o)
 
 // 分表Σ成员(§8.2):租户+公摊+park 园区自担。park 不收租户不进公摊池,但物理挂在楼栋分表下,
 // 必须进「区块/楼栋用量合计」——与后端 AllocService.inSubSigma(损耗组 D)同一口径,勿分叉。

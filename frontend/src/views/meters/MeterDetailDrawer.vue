@@ -13,7 +13,7 @@ import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO } from '@/types/building'
 import { readingFlags } from '@/utils/meterLogic'
 import { METER_ZONE_LABEL, METER_KIND_LABEL } from '@/utils/meterExcel'
-import { OWNERSHIP_LABEL } from '@/utils/meterSplit'
+import { ownershipLabel } from '@/utils/meterSplit'
 import {
   BIND_STATUS_NOTE, BIND_BUCKET_LABEL, bindQueueBucket, bindReason,
   type WorkbenchRow,
@@ -41,7 +41,10 @@ const m = computed(() => props.row?.m ?? null)
 
 const fq = (n: number | null | undefined) =>
   n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 })
-const numOrNull = (s: string): number | null => {
+const numOrNull = (s: string | number): number | null => {
+  // v-model 在 type="number" 输入上会自动转 number(Vue3 内建行为)——传数字时 s.trim 直接
+  // TypeError,保存在弹提示前静默死亡(2026-08-04 报障"按了没反应",实测控制台复现)
+  if (typeof s === 'number') return Number.isFinite(s) ? s : null
   const t = s.trim()
   if (t === '') return null
   const n = Number(t)
@@ -69,13 +72,15 @@ const drawerSub = computed(() => {
   if (!mm) return ''
   const parts = [`${METER_ZONE_LABEL[mm.zone]}${METER_KIND_LABEL[mm.kind]}`]
   if (props.row?.tenantLabel) parts.push(props.row.tenantLabel)
-  else if (mm.ownership !== 'tenant') parts.push(OWNERSHIP_LABEL[mm.ownership] ?? mm.ownership)
+  else if (mm.ownership !== 'tenant') parts.push(ownershipLabel(mm.ownership, mm.kind))
   parts.push(`共 ${history.value?.length ?? mm.readingCount} 条读数`)
   return parts.join(' · ')
 })
 
 // ── 【表档案】行内编辑(乐观更新失败回滚,v4 RosterPanel 口径) ──
-const OWN_OPTS = Object.entries(OWNERSHIP_LABEL).map(([value, label]) => ({ value, label }))
+const OWN_KEYS = ['tenant', 'share', 'ops', 'infra', 'park', 'register'] as const
+const OWN_OPTS = computed(() =>
+  OWN_KEYS.map(value => ({ value, label: ownershipLabel(value, m.value?.kind) })))
 // §A.3 联动规则:PUT 恒带当前 floorLabel/side/roomNo。后端 applyLoc 三态是「不传=按 spot 解析,
 // ""=显式清除,有值=人工覆盖」,不记「是否人工改过」——所以三值一律带上,且空值发 ""(不是 null),
 // 否则抽屉里选了「—(跨层/不适用)」保存后会被 spot 解析回来,即 §E8 的「改了没生效」。
@@ -214,15 +219,8 @@ async function delMeter(mm: MeterDTO) {
 
 // ── 【历史读数】装载(换表即重拉;竞态守卫=闭包表 id 对当前 meter) ──
 const history = ref<MeterReadingDTO[] | null>(null)
-watch(() => m.value?.id, async () => {
-  cancelForm()
-  tab.value = 'profile'
-  history.value = null
-  const mm = m.value
-  if (!mm) return
-  const data = await metersApi.meterReadings(mm.id)
-  if (m.value?.id === mm.id) history.value = data
-}, { immediate: true })
+// ⚠换表重置的 watch 在 editId/adding 声明之后注册(见下)——原先放这里 immediate 触发时
+// cancelForm 引用尚在 TDZ 的 editId,setup 期 ReferenceError(2026-08-04 控制台实测)
 
 const drawerRows = computed(() =>
   (history.value ?? []).slice().sort((a, b) => a.ym.localeCompare(b.ym)))
@@ -267,6 +265,15 @@ function startEdit(r: MeterReadingDTO) {
 }
 function cancelForm() { editId.value = null; adding.value = false; touOpen.value = false }
 watch(() => props.editMode, v => { if (!v) cancelForm() })
+watch(() => m.value?.id, async () => {
+  cancelForm()
+  tab.value = 'profile'
+  history.value = null
+  const mm = m.value
+  if (!mm) return
+  const data = await metersApi.meterReadings(mm.id)
+  if (m.value?.id === mm.id) history.value = data
+}, { immediate: true })
 
 // 用量预览:(本月−上月)×倍率快照(编辑=原快照;新增=当前表倍率,保存时后端快照)
 const previewUsage = computed(() => {
@@ -442,7 +449,7 @@ async function doBind(contractId: number | null) {
                 @change="commitOwnership(m, ($event.target as HTMLSelectElement).value)">
           <option v-for="o in OWN_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
-        <span v-else class="mt-own" :class="'own-' + m.ownership">{{ OWNERSHIP_LABEL[m.ownership] ?? m.ownership }}</span>
+        <span v-else class="mt-own" :class="'own-' + m.ownership">{{ ownershipLabel(m.ownership, m.kind) }}</span>
       </div>
       <div class="md-fld">
         <label>表名称</label>
@@ -458,7 +465,8 @@ async function doBind(contractId: number | null) {
                @change="commitFactor(m, ($event.target as HTMLInputElement).value)" />
         <span v-else class="mono">{{ m.factor }}</span>
       </div>
-      <div class="md-fld">
+      <!-- 表类型=电表概念(单相/三相/需量…),水表不适用不显示(2026-08-04 报障) -->
+      <div v-if="m.kind === 'elec'" class="md-fld">
         <label>表类型</label>
         <select v-if="editMode" class="mt-edit l sel md-in" :value="m.deviceType ?? ''"
                 @change="commitDeviceType(m, ($event.target as HTMLSelectElement).value)">
@@ -507,13 +515,13 @@ async function doBind(contractId: number | null) {
       </div>
       <div v-else class="md-hwrap">
         <table class="md-htable">
-          <!-- 列宽预算(抽屉内容宽~692):月份108+上月104+本月104+用量104+状态96=516,备注弹性 -->
+          <!-- 列宽预算(抽屉内容宽~692):月份128(原生月选 2024年08月+图标要够)+上月104+本月104+用量96+状态84=516,备注弹性 -->
           <colgroup>
-            <col style="width:108px" />
-            <col style="width:104px" />
+            <col style="width:128px" />
             <col style="width:104px" />
             <col style="width:104px" />
             <col style="width:96px" />
+            <col style="width:84px" />
             <col /><!-- 备注:唯一弹性列(截断走 title) -->
             <col v-if="editMode" style="width:70px" />
           </colgroup>
@@ -621,7 +629,7 @@ async function doBind(contractId: number | null) {
     <!-- ── 合同绑定 ── -->
     <template v-else-if="tab === 'bind' && m">
       <div v-if="m.ownership !== 'tenant'" class="md-empty">
-        非租户表({{ OWNERSHIP_LABEL[m.ownership] ?? m.ownership }})无合同绑定。
+        非租户表({{ ownershipLabel(m.ownership, m.kind) }})无合同绑定。
       </div>
       <div v-else-if="!bindAvailable" class="md-empty">
         绑定数据不可用 —— 需要后端 GET /api/meters/binding 端点(S2-BIND-SPEC §3)。
@@ -729,7 +737,7 @@ async function doBind(contractId: number | null) {
 .md-htable td.ro { color: var(--text-secondary); }
 .md-htable tr.editing td { background: var(--surface-card); }
 .md-htable tr.tourow td { background: var(--surface-card); padding-top: 0; }
-.md-htable td.ops { white-space: nowrap; }
+.md-htable td.ops { white-space: nowrap; padding-left: 6px; padding-right: 6px; }   /* 70px 列装下两个 26px 按钮,原 10px 边距会把取消钮裁成省略号 */
 .md-dim { color: var(--text-disabled); }
 .md-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .md-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }

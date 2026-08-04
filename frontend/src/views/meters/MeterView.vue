@@ -23,7 +23,7 @@ import {
   type StatusFilter, type MeterDraft, type CurrField,
 } from '@/composables/useMeterWorkbench'
 import { buildMeterTemplate, exportMeterMonth } from '@/utils/meterExcel'
-import { OWNERSHIP_LABEL } from '@/utils/meterSplit'
+import { OWNERSHIP_LABEL, ownershipLabel } from '@/utils/meterSplit'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
 import type { ImportResultDTO } from '@/types/import'
@@ -193,10 +193,10 @@ const KIND_OPTS = [{ value: 'elec', label: '电表' }, { value: 'water', label: 
 const ZONE_OPTS = [
   { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
 ]
-const OWN_OPTS = [
+const OWN_OPTS = computed(() => [
   { value: 'all', label: '全部归属' },
-  ...Object.entries(OWNERSHIP_LABEL).map(([value, label]) => ({ value, label })),
-]
+  ...Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, kind.value) })),
+])
 const STATUS_OPTS = [
   { value: 'all', label: '全部状态' }, { value: 'read', label: '已抄' }, { value: 'missing', label: '未抄' },
   { value: 'negative', label: '倒走' }, { value: 'touMismatch', label: '时段不符' },
@@ -385,7 +385,8 @@ const mForm = ref({
 })
 const mErr = ref('')
 const DLG_ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' }]
-const DLG_OWN_OPTS = Object.entries(OWNERSHIP_LABEL).map(([value, label]) => ({ value, label }))
+const DLG_OWN_OPTS = computed(() =>
+  Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, mForm.value.kind) })))
 const dlgBuildingOpts = computed(() => [
   { value: '', label: '—(未关联)' },
   ...buildings.value.map(b => ({ value: String(b.id), label: `${b.phaseName} · ${b.name}` })),
