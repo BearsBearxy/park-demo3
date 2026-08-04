@@ -123,6 +123,47 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data[?(@==2099)]").exists());
     }
 
+    // ── 三态挂零:绑定表本月全部停用 → 池行空、无"缺读数/缺抄"假警报(原册对停用表=挂零陈列);
+    //    停用表与在用表混绑 → 停用者静默跳过,池照常算不受污染 ──
+    @Test
+    void generate_allBoundMetersRetired_silentZeroPool() throws Exception {
+        String ym = "2091-01";   // 独占槽:全库(含种子与其它用例)无数据落该月
+        int t1 = createTenant("IT停用池户");
+        int mOff = createMeter("IT已停公共电", "p1", "share", null, null);
+        mvc.perform(put("/api/meters/" + mOff).header("Authorization", auth()).contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT已停公共电\",\"ownership\":\"share\",\"retiredYm\":\"2090-12\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        int rOff = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT全停池\",\"method\":\"direct\","
+                + "\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + mOff + "],"
+                + "\"members\":[{\"tenantId\":" + t1 + "}]}");
+        int mLive = createMeter("IT在用电梯", "p1", "share", null, null);
+        reading(mLive, ym, "0", "100");
+        int rMix = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT混绑池\",\"method\":\"direct\","
+                + "\"feeKey\":\"share_elec_elevator\",\"meterIds\":[" + mLive + "," + mOff + "],"
+                + "\"members\":[{\"tenantId\":" + t1 + "}]}");
+        price("elec_commercial", ym, "0.79416875");
+        p2Prices(ym);
+        String gen = mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<String> warns = JsonPath.read(gen, "$.data.warnings");
+        org.junit.jupiter.api.Assertions.assertTrue(warns.stream().noneMatch(w -> w.contains("IT已停公共电")),
+                "停用表不得报缺抄/缺读数假警报: " + warns);
+        // 池行:全停池 warn 空、用量金额空;混绑池照常出数(100×1.11417 种子 price_flat)且 warn 空
+        String pools = mvc.perform(get("/api/alloc/pools").param("ym", ym).header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<java.util.Map<String, Object>> rows = JsonPath.read(pools, "$.data.rows");
+        java.util.Map<String, Object> offRow = rows.stream()
+                .filter(r -> Integer.valueOf(rOff).equals(r.get("ruleId"))).findFirst().orElseThrow();
+        java.util.Map<String, Object> mixRow = rows.stream()
+                .filter(r -> Integer.valueOf(rMix).equals(r.get("ruleId"))).findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertNull(offRow.get("warn"), "全停池不许出\"!\": " + offRow.get("warn"));
+        org.junit.jupiter.api.Assertions.assertNull(offRow.get("qtyTotal"), "全停池用量应为空");
+        org.junit.jupiter.api.Assertions.assertNull(offRow.get("costAmount"), "全停池应分摊应为空");
+        org.junit.jupiter.api.Assertions.assertEquals(111.42, ((Number) mixRow.get("costAmount")).doubleValue(), 0.001);
+        org.junit.jupiter.api.Assertions.assertNull(mixRow.get("warn"), "混绑池不许被停用表污染出警告: " + mixRow.get("warn"));
+    }
+
     // ── 重生成幂等 + manual 保留 + 缺抄警告 + 快照不漂移(读数改 → 抽屉 stale) ──
     @Test
     void regen_idempotent_manualKept_staleFlag() throws Exception {

@@ -769,6 +769,9 @@ public class AllocService {
                        // 刀D §D.1 楼层两级回退的两个来源(当月覆盖合同带出的单元 / 未停用的户内表)
                        Map<Integer, List<Unit>> unitsByTenant, Map<Integer, List<Meter>> metersByTenant,
                        Map<Integer, String> nameByTenant,   // §E4 两源冲突 warn 要点名到户
+                       // 三态挂零判别:有绑定记录的规则 id(未按在册过滤)——bindsByRule 已剔除不在服务中的表,
+                       // 光看它分不清「从未绑表」和「绑了但本月全停」,后者要挂零陈列不报缺读数
+                       Set<Integer> boundRules,
                        List<String> warnings) {}
 
     private record Contribution(Integer tenantId, String feeKey, Integer ruleId, String ruleName,
@@ -798,7 +801,9 @@ public class AllocService {
         for (Contract c : contracts.selectList(new QueryWrapper<Contract>().eq("status", "active")))
             if (c.getTenantId() != null && c.getRentArea() != null)
                 areaByTenant.merge(c.getTenantId(), c.getRentArea(), BigDecimal::add);
-        Map<Integer, List<AllocRuleMeter>> bindsByRule = ruleMeters.selectList(null).stream()
+        List<AllocRuleMeter> rawBinds = ruleMeters.selectList(null);
+        Set<Integer> boundRules = rawBinds.stream().map(AllocRuleMeter::getRuleId).collect(Collectors.toSet());
+        Map<Integer, List<AllocRuleMeter>> bindsByRule = rawBinds.stream()
             .filter(b -> meterById.containsKey(b.getMeterId()))   // 停用表的绑定当月不生效(V68)
             .collect(groupingBy(AllocRuleMeter::getRuleId));
         // 受益人:月行优先回退默认行(V69),解析后进 ctx——引擎与读侧看到的是同一份当月受益人
@@ -822,7 +827,7 @@ public class AllocService {
             rules.selectByZone(null), bindsByRule, membersByRule, ruleLinks.selectList(null),
             buildingById, inForceByZone(ro.covering(), ro.unitsByContract(), zoneOfBuilding),
             areaByZoneTenant(ro.covering(), ro.unitsByContract(), zoneOfBuilding),
-            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), warnings);
+            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), boundRules, warnings);
     }
 
     private static BigDecimal cfgVal(Ctx ctx, String scope, String key) { return ctx.cfg().get(scope + "|" + key); }
@@ -1442,7 +1447,15 @@ public class AllocService {
                 }
                 unrounded = q.total().multiply(price);
             }
-        } else warns.add(0, "缺读数,本月未核算");
+        } else {
+            // 三态挂零(V68/V87/V88):池有绑定记录、但当月全部不在服务中(bindsByRule 已被 V68 过滤成空)
+            // =原册的"停用挂零"陈列(2023-10/2024-02 r124/r132 皆如此),不是缺抄——不报警不出"!"。
+            // 从未绑表、在册却漏抄、折入源缺抄仍照报。
+            boolean allOff = warns.isEmpty()
+                && ctx.boundRules().contains(rule.getId())
+                && ctx.bindsByRule().getOrDefault(rule.getId(), List.of()).isEmpty();
+            if (!allOff) warns.add(0, "缺读数,本月未核算");
+        }
 
         // 分摊标准 std(§3.3):未舍入值先除基数再ROUND;direct=cost;none=null;ref=只出std不出cost
         BigDecimal base = null, std = null;
