@@ -193,6 +193,14 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         createContract(t4, b1, "2099-08-01", "2100-12-31");
         createContract(t4, b1, "2099-08-01", "2100-12-31");
         int m5 = createMeter("elec", "IT绑多义表", t4, b1, "IT绑多义户");
+        // 规则4修订(2026-08-04 仁恒形态):别栋在租×2 → 对位落空,但本栋有缺日期合同 →
+        // date_missing+本栋候选(唯一→一键确认),不再被错栋在租合同遮蔽成 bld_mismatch
+        int b3 = bids.get(2);
+        int t6 = createTenant("IT仁恒形态户", null);
+        createContract(t6, b1, "2099-08-01", "2100-12-31");
+        createContract(t6, b2, "2099-08-01", "2100-12-31");
+        int c6 = createContract(t6, b3, null, null);
+        int m6 = createMeter("water", "IT仁恒宿舍水", t6, b3, "IT仁恒形态户");
 
         String body = binding("2099-08");
         Map<String, Object> r1 = row(body, m1);
@@ -218,9 +226,17 @@ class MeterBindingApiIT extends AbstractMysqlIT {
 
         assertThat(row(body, m5).get("bucket")).isEqualTo("ambiguous");
 
+        Map<String, Object> r6 = row(body, m6);
+        assertThat(r6.get("status")).isEqualTo("manual");
+        assertThat(r6.get("bucket")).isEqualTo("date_missing");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cands6 = (List<Map<String, Object>>) r6.get("candidates");
+        assertThat(cands6).hasSize(1);   // 本栋缺日期合同浮出,错栋在租合同不再冒充候选
+        assertThat(cands6.get(0).get("contractId")).isEqualTo(c6);
+
         assertThat((int) JsonPath.read(body, "$.data.summary.autoBld")).isEqualTo(1);
         assertThat((int) JsonPath.read(body, "$.data.summary.auto")).isEqualTo(0);
-        assertThat((int) JsonPath.read(body, "$.data.summary.manual.date_missing")).isEqualTo(1);
+        assertThat((int) JsonPath.read(body, "$.data.summary.manual.date_missing")).isEqualTo(2);
         assertThat((int) JsonPath.read(body, "$.data.summary.manual.no_contract")).isEqualTo(1);
         assertThat((int) JsonPath.read(body, "$.data.summary.manual.bld_mismatch")).isEqualTo(1);
         assertThat((int) JsonPath.read(body, "$.data.summary.manual.ambiguous")).isEqualTo(1);

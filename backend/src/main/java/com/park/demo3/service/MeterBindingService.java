@@ -98,7 +98,18 @@ public class MeterBindingService {
                     List<Contract> bld = covering.stream()
                         .filter(c -> Objects.equals(c.getBuildingId(), m.getBuildingId())).toList();
                     if (bld.size() == 1) { status = "auto_bld"; chosen = bld.get(0); }
-                    else { status = "manual"; bucket = bld.isEmpty() ? "bld_mismatch" : "ambiguous"; cands = covering; }
+                    else if (bld.isEmpty()) {
+                        // 仁恒形态(2026-08-04 报障):多楼栋合同户,别栋在租合同遮蔽本栋缺日期合同——
+                        // 规则2只收起止齐全的,规则5又只在零覆盖时轮到 date_missing,结果对位正确的
+                        // 宿舍合同(S10-0062)根本不进候选,抽屉只给错栋候选。本栋缺日期合同优先浮出
+                        // (§2"不设静默兜底"的本意:缺日期必须可见可确认),唯一时 UI 一键确认。
+                        List<Contract> bldNoDates = fam.stream()
+                            .filter(c -> c.getStartDate() == null || c.getEndDate() == null)
+                            .filter(c -> Objects.equals(c.getBuildingId(), m.getBuildingId())).toList();
+                        status = "manual";
+                        if (!bldNoDates.isEmpty()) { bucket = "date_missing"; cands = bldNoDates; }
+                        else { bucket = "bld_mismatch"; cands = covering; }
+                    } else { status = "manual"; bucket = "ambiguous"; cands = covering; }
                 } else {                                                                          // 规则5:分桶
                     List<Contract> noDates = fam.stream()
                         .filter(c -> c.getStartDate() == null || c.getEndDate() == null).toList();
