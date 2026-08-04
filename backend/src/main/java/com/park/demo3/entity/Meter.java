@@ -45,6 +45,7 @@ public class Meter {
     // V75 §F1 存疑档案两级:shadow=疑似重复建档(不进楼栋分表Σ)/incomplete=档案不全但照常计入Σ/null=正常。
     // ALWAYS=人工在档案页保存即清标(认领)
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private String suspect;
+    private Integer isDormRoom;   // V89 宿舍房间表(房号计费分间);判定树②居民价/水3.85 唯一判据,建档定死不在派生时猜
     private Integer sortNo;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

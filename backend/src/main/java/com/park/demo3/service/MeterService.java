@@ -13,6 +13,7 @@ import com.park.demo3.dto.MeterReq;
 import com.park.demo3.entity.AllocResult;
 import com.park.demo3.entity.AllocRule;
 import com.park.demo3.entity.AllocRuleMeter;
+import com.park.demo3.entity.BillNotice;
 import com.park.demo3.entity.Meter;
 import com.park.demo3.entity.MeterReading;
 import com.park.demo3.mapper.AllocLossResultMapper;
@@ -21,6 +22,7 @@ import com.park.demo3.mapper.AllocPoolResultMapper;
 import com.park.demo3.mapper.AllocResultMapper;
 import com.park.demo3.mapper.AllocRuleMapper;
 import com.park.demo3.mapper.AllocRuleMeterMapper;
+import com.park.demo3.mapper.BillNoticeMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -50,16 +52,19 @@ public class MeterService {
     private final AllocResultMapper allocResults;
     private final AllocRuleMeterMapper ruleMeters;
     private final AllocRuleMapper rules;
+    private final BillNoticeMapper billNotices;   // S4-2 守卫:该月已出催缴单 → 批量删读数 409
     private final ImportLogService importLogs;
 
     public MeterService(MeterMapper meters, MeterReadingMapper readings,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
                         AllocLossResultMapper lossResults, AllocResultMapper allocResults,
-                        AllocRuleMeterMapper ruleMeters, AllocRuleMapper rules, ImportLogService importLogs) {
+                        AllocRuleMeterMapper ruleMeters, AllocRuleMapper rules,
+                        BillNoticeMapper billNotices, ImportLogService importLogs) {
         this.meters = meters; this.readings = readings;
         this.poolResults = poolResults; this.poolMeterResults = poolMeterResults;
         this.lossResults = lossResults; this.allocResults = allocResults;
-        this.ruleMeters = ruleMeters; this.rules = rules; this.importLogs = importLogs;
+        this.ruleMeters = ruleMeters; this.rules = rules;
+        this.billNotices = billNotices; this.importLogs = importLogs;
     }
 
     private static BigDecimal one(BigDecimal v) { return v == null ? BigDecimal.ONE : v; }
@@ -231,10 +236,16 @@ public class MeterService {
             ? poolResults.selectByYm(ym).size() + poolMeterResults.selectByYm(ym).size()
                 + lossResults.selectByYm(ym).size() + (allocs.size() - manual.size())
             : 0;
+        // S4-2 守卫:该 ym 存在催缴单(任意状态)→ 读数不许批量删(防「读数删了单还在」);预览带数字,执行才 409
+        int notices = Math.toIntExact(billNotices.selectCount(new QueryWrapper<BillNotice>().eq("ym", ym)));
         MeterDeleteDTO dto = new MeterDeleteDTO(ym, hits.size(), meterIds.size(), emptied.size(), derived,
+            notices,
             manual.stream().map(r -> "租户#" + r.getTenantId() + " " + r.getFeeKey()).toList(),
             dropped, blocked);
         if (!apply) return dto;
+        if (notices > 0)
+            throw new BizException(ResultCode.CONFLICT,
+                "该月已生成催缴单 " + notices + " 张,请先作废/删除该月催缴单再删读数");
         if (!readingIds.isEmpty()) readings.delete(new QueryWrapper<MeterReading>().in("id", readingIds));
         if (cascade) {
             poolResults.deleteByYm(ym);

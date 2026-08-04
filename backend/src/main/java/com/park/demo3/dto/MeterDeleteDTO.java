@@ -4,6 +4,7 @@ import java.util.List;
 // 刀H §H5 抄表批量删除(按账期)。预览与实删**共用同一形状**:
 // 预览多一个字段、少一条清单,IT 就没法「拿两个 DTO 逐格比」,预览撒谎当场穿帮的这条线就断了。
 //   readings/meters/metersEmptied/derived —— 规范里那四个数;
+//   notices —— 该月催缴单张数(任意状态,S4-2 守卫):>0 时执行端点 409,预览先见数字;
 //   manualKept   —— alloc_result source='manual' 保留行的点名(规范:manual 保留并在预览里点名);
 //   meterDeleted —— 连带删掉的表档案(仅 dropEmptyMeters=true 时非空);
 //   meterBlocked —— 删完零读数但被 alloc_rule_meter FK 挡住、跳过的表档案(不静默失败)。
@@ -15,6 +16,7 @@ public record MeterDeleteDTO(
     int meters,
     int metersEmptied,
     int derived,
+    int notices,
     List<String> manualKept,
     List<String> meterDeleted,
     List<String> meterBlocked
