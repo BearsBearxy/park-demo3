@@ -113,6 +113,34 @@ class PriceCfgApiIT extends AbstractMysqlIT {
         assertNull(svc.resolve("elec_package", "2099-06", null, null));
     }
 
+    // ── S4-0.1 resolveHit:命中行带 scope+版本生效月(出账 price_scope/price_month 审计链);查无=null 同 resolve ──
+    @Test
+    void resolveHit_scopeAndAcctMonth() throws Exception {
+        // 常数键前滚:'' 链 2095-05 写新版本 → 2095-06 命中该版本行;2095-04 回落 '' 初始版本
+        putCfg("{\"scope\":\"\",\"cfgKey\":\"water\",\"acctMonth\":\"2095-05\",\"value\":4.2}");
+        PriceCfgService.PriceHit h = svc.resolveHit("water", "2095-06", null, null);
+        assertEquals("", h.scope());
+        assertEquals("2095-05", h.acctMonth());
+        assertEquals(0, h.value().compareTo(new BigDecimal("4.2")));
+        h = svc.resolveHit("water", "2095-04", null, null);
+        assertEquals("", h.scope());
+        assertEquals("", h.acctMonth());
+        assertEquals(0, h.value().compareTo(new BigDecimal("3.95")));
+        // zone 命中:dorm 种子初始版本 3.85,scope 级联不看全园行
+        h = svc.resolveHit("water", "2095-06", null, "dorm");
+        assertEquals("dorm", h.scope());
+        assertEquals("", h.acctMonth());
+        assertEquals(0, h.value().compareTo(new BigDecimal("3.85")));
+        // tenant:{id} 压过分区
+        putCfg("{\"scope\":\"tenant:424243\",\"cfgKey\":\"water\",\"value\":4.45}");
+        h = svc.resolveHit("water", "2095-06", 424243, "dorm");
+        assertEquals("tenant:424243", h.scope());
+        assertEquals("", h.acctMonth());
+        assertEquals(0, h.value().compareTo(new BigDecimal("4.45")));
+        // 查无 → null(与 resolve 一致)
+        assertNull(svc.resolveHit("elec_package", "2095-06", null, null));
+    }
+
     // ── copy 只复制月变键且幂等:常数键月行不被复制;二跑 copied=0 ──
     @Test
     void copy_monthlyKeysOnly_idempotent() throws Exception {

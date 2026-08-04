@@ -354,4 +354,36 @@ class MeterBindingApiIT extends AbstractMysqlIT {
         assertThat(row(bBody, e1).get("hasReading")).isEqualTo(true);
         assertThat((int) JsonPath.read(bBody, "$.data.summary.missingReadings") - missing0).isEqualTo(1);
     }
+
+    // ── suspect='shadow'(疑似重复建档)排除:binding 无行、usage-summary 只算非 shadow 表(同 AllocService 口径) ──
+    @Test
+    void shadowMeter_excludedFromBindingAndUsage() throws Exception {
+        int t = createTenant("IT绑影子户", null);
+        int real = createMeter("elec", "IT影子真表", t, null, "IT绑影子户");
+        int shadow = createMeter("elec", "IT影子重复表", t, null, "IT绑影子户");
+        createReading(real, "2093-06", "0", "100", null);
+        createReading(shadow, "2093-06", "0", "77", null);
+        // PUT 全量打标(MeterReq.suspect 三态,显式传 shadow)
+        mvc.perform(put("/api/meters/" + shadow).header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT影子重复表\",\"ownership\":\"tenant\","
+                        + "\"tenantId\":" + t + ",\"tenantName\":\"IT绑影子户\",\"suspect\":\"shadow\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // binding:shadow 表不出行,真表照常
+        String body = binding("2093-06");
+        assertThat((List<?>) JsonPath.read(body, "$.data.rows[?(@.meterId==" + shadow + ")]")).isEmpty();
+        assertThat(row(body, real).get("hasReading")).isEqualTo(true);
+
+        // usage-summary:该户电用量只算真表(100),meterCount=1
+        String uBody = mvc.perform(get("/api/meters/usage-summary").param("ym", "2093-06")
+                .header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        List<Map<String, Object>> elec = JsonPath.read(uBody,
+                "$.data[?(@.tenantId==" + t + " && @.kind=='elec')]");
+        assertThat(elec).hasSize(1);
+        assertThat(elec.get(0).get("meterCount")).isEqualTo(1);
+        assertThat(((Number) elec.get(0).get("usageTotal")).doubleValue()).isEqualTo(100.0);
+    }
 }

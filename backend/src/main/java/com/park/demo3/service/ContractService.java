@@ -62,7 +62,7 @@ public class ContractService {
     }
 
     /** 某日在租:非草稿且当日落在 [startDate, endDate] 闭区间(缺任一端日期视为无法确认在租,排除)。 */
-    private static boolean inForceOn(Contract c, LocalDate asOf) {
+    public static boolean inForceOn(Contract c, LocalDate asOf) {
         if ("draft".equals(c.getStatus())) return false;
         if (c.getStartDate() == null || c.getEndDate() == null) return false;
         return !asOf.isBefore(c.getStartDate()) && !asOf.isAfter(c.getEndDate());

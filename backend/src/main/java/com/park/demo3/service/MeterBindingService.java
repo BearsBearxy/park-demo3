@@ -106,8 +106,10 @@ public class MeterBindingService {
         int missing = 0;
 
         for (Meter m : meters.selectFiltered(null, null)) {
-            // 非租户表(含 park 园区自担)不参与绑定;已停用表本月不在服务中,不进待核/待绑定分母(V68)
-            if (!"tenant".equals(m.getOwnership()) || MeterService.outOfService(m, ym)) continue;
+            // 非租户表(含 park 园区自担)不参与绑定;已停用表本月不在服务中,不进待核/待绑定分母(V68);
+            // shadow=疑似重复建档,同 AllocService 排除口径(V75 §F1),不进绑定分母
+            if (!"tenant".equals(m.getOwnership()) || MeterService.outOfService(m, ym)
+                || "shadow".equals(m.getSuspect())) continue;
             boolean hasReading = usable(readByMeter.get(m.getId()));
             if (!hasReading) missing++;
 
@@ -206,7 +208,8 @@ public class MeterBindingService {
         Map<String, Agg> byKey = new LinkedHashMap<>();
         for (Meter m : meters.selectFiltered(null, null)) {
             if (!"tenant".equals(m.getOwnership()) || m.getTenantId() == null
-                || MeterService.outOfService(m, ym)) continue;   // 停用/未启用表不进计费输入面(V68/V87)
+                || MeterService.outOfService(m, ym)
+                || "shadow".equals(m.getSuspect())) continue;   // 停用/未启用/shadow重复建档不进计费输入面(V68/V87/V75)
             Agg a = byKey.computeIfAbsent(m.getTenantId() + "|" + m.getKind(), k -> {
                 Agg n = new Agg(); n.tenantId = m.getTenantId(); n.kind = m.getKind(); return n;
             });

@@ -17,7 +17,7 @@ public class ContractBillingTerm {
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal area;
     private BigDecimal coeff;
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private Integer roomCount;        // 门禁/网络按间计费
-    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal amountOverride;// 直填月额,优先于 bill_mode 派生
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal amountOverride;// per_month 模式的月额值;其他 bill_mode 下被 lineMonthly 忽略(S4 审计正名,勿按"全局覆盖"理解)
     private Integer seq;        // 位置内行序
     private BigDecimal taxRate;
     private String params;      // JSON 串,留档(不含税价/原文文本等)

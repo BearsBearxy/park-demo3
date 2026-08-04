@@ -10,6 +10,8 @@ import com.park.demo3.mapper.TenantPriceCfgMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -71,7 +73,7 @@ public class PriceCfgService {
             throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
         TenantPriceCfg row = cfgs.selectByKey(scope, key, month);
         if (req.value() == null) {
-            if (row != null) cfgs.deleteById(row.getId());
+            if (row != null) { cfgs.deleteById(row.getId()); evict(); }
             return;
         }
         if (row == null) {
@@ -81,6 +83,7 @@ public class PriceCfgService {
         row.setCfgValue(req.value());
         row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
         if (row.getId() == null) cfgs.insert(row); else cfgs.updateById(row);
+        evict();
     }
 
     public record CopyResult(int copied, int skipped) {}
@@ -98,33 +101,63 @@ public class PriceCfgService {
             row.setCfgValue(src.getCfgValue()); row.setNote(src.getNote());
             cfgs.insert(row); copied++;
         }
+        if (copied > 0) evict();
         return new CopyResult(copied, skipped);
     }
 
     // ── §3 取价 v2 版本链,scope 级联 tenant:{id}→zone→'' 首中即返:
     //    月变键仅命中 acct_month==ym;常数键取 acct_month<=ym 最大者(''最小,版本自动前滚)。
-    //    字符串比较即可(YYYY-MM 字典序=时间序)。public 供 S3 派生引擎复用。
-    //    ponytail: S3 落 bill_notice 需 price_snap+版本生效月时,返回值再扩成 record。 ──
+    //    字符串比较即可(YYYY-MM 字典序=时间序)。public 供派生引擎复用。 ──
     public BigDecimal resolve(String key, String ym, Integer tenantId, String zone) {
+        PriceHit hit = resolveHit(key, ym, tenantId, zone);
+        return hit == null ? null : hit.value();
+    }
+
+    // S4-0.1:命中行带 scope+版本生效月(bill_notice_line 的 price_scope/price_month 审计链);查无=null 同 resolve
+    public record PriceHit(BigDecimal value, String scope, String acctMonth) {}
+
+    public PriceHit resolveHit(String key, String ym, Integer tenantId, String zone) {
         requireYm(ym);
+        Map<String, List<TenantPriceCfg>> idx = index();
         List<String> scopes = new ArrayList<>();
         if (tenantId != null) scopes.add("tenant:" + tenantId);
         if (zone != null && !zone.isEmpty()) scopes.add(zone);
         scopes.add("");
-        List<TenantPriceCfg> rows = cfgs.selectList(new QueryWrapper<TenantPriceCfg>()
-                .in("scope", scopes).eq("cfg_key", key));
         boolean monthly = MONTHLY_KEYS.contains(key);
         for (String scope : scopes) {
             TenantPriceCfg hit = null;
-            for (TenantPriceCfg c : rows) {
-                if (!scope.equals(c.getScope())) continue;
+            for (TenantPriceCfg c : idx.getOrDefault(scope + "|" + key, List.of())) {
                 String m = c.getAcctMonth();
                 if (monthly ? !m.equals(ym) : m.compareTo(ym) > 0) continue;
                 if (hit == null || m.compareTo(hit.getAcctMonth()) > 0) hit = c;
             }
-            if (hit != null) return hit.getCfgValue();
+            if (hit != null) return new PriceHit(hit.getCfgValue(), hit.getScope(), hit.getAcctMonth());
         }
         return null;
+    }
+
+    // 整表<100行,一次载入按 scope|cfg_key 分组(派生是 户×费项 量级的 resolve,逐次单查是 N+1)。
+    // 简单 volatile 快照,本 service 写路径失效;写在事务里时提交/回滚后再失效一次,
+    // 防止事务内重建把未提交行缓过事务边界(IT 全程 @Transactional 回滚,靠这条不串档)。
+    private volatile Map<String, List<TenantPriceCfg>> index;
+
+    private Map<String, List<TenantPriceCfg>> index() {
+        Map<String, List<TenantPriceCfg>> idx = index;
+        if (idx == null) {
+            idx = new HashMap<>();
+            for (TenantPriceCfg c : cfgs.selectList(null))
+                idx.computeIfAbsent(c.getScope() + "|" + c.getCfgKey(), k -> new ArrayList<>()).add(c);
+            index = idx;
+        }
+        return idx;
+    }
+
+    private void evict() {
+        index = null;
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCompletion(int status) { index = null; }
+            });
     }
 
     private static Integer tenantIdOf(String scope) {

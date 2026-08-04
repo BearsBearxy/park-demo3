@@ -774,8 +774,9 @@ public class AllocService {
                        Set<Integer> boundRules,
                        List<String> warnings) {}
 
-    private record Contribution(Integer tenantId, String feeKey, Integer ruleId, String ruleName,
-                                BigDecimal qty, BigDecimal amount, BigDecimal rate, BigDecimal price, String note) {}
+    // (包级可见:S4 出账引擎经 poolContributions 消费公摊行)
+    record Contribution(Integer tenantId, String feeKey, Integer ruleId, String ruleName,
+                        BigDecimal qty, BigDecimal amount, BigDecimal rate, BigDecimal price, String note) {}
 
     // 规则用量(总+分时四段;缺抄表跳过并入 warnings)
     private record RuleUsage(BigDecimal qty, BigDecimal sharp, BigDecimal peak, BigDecimal flat, BigDecimal valley) {}
@@ -899,8 +900,24 @@ public class AllocService {
         return out;
     }
 
+    // S4-0.2 出账引擎读池:池级金额取当月 alloc_pool_result 快照(与公摊屏已核对口径一致,不随读数后改漂移),
+    // 户级份额解析走 memberAmounts 同一路径;含损耗链行(ruleId=null,损耗无池快照,现算)。
+    // 无池快照=当月未核算 → 空表不抛错。
+    public List<Contribution> poolContributions(String ym) {
+        requireYm(ym);
+        List<AllocPoolResult> snaps = poolResults.selectByYm(ym);
+        if (snaps.isEmpty()) return List.of();
+        Ctx ctx = loadCtx(ym);
+        Map<Integer, PoolCalc> pools = new LinkedHashMap<>();
+        for (AllocPoolResult s : snaps)
+            pools.put(s.getRuleId(), new PoolCalc(s.getQtyTotal(), s.getQtySharp(), s.getQtyPeak(),
+                s.getQtyFlat(), s.getQtyValley(), s.getExtraQtySnap(), s.getCostAmount(),
+                s.getBaseSnap(), s.getStdValue(), s.getFoldAdd(), s.getPriceSnap(), s.getWarn()));
+        return computeAll(ctx, pools);
+    }
+
     // 四类方法金额化(§2.2)——户级;cost/std 取池快照口径(area 按户租赁面积/floor 按 weight/direct 整额/none 与 ref 不摊)
-    private List<Contribution> memberAmounts(AllocRule rule, PoolCalc p, Ctx ctx) {
+    List<Contribution> memberAmounts(AllocRule rule, PoolCalc p, Ctx ctx) {
         List<AllocRuleMember> explicit = ctx.membersByRule().getOrDefault(rule.getId(), List.of());
         // 园区级池无显式受益人 → 回退该 zone 全园在租名册(显式配了的以显式为准,fallback 只在空时生效)
         boolean auto = autoMembers(rule, explicit.isEmpty());
