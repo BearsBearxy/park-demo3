@@ -15,6 +15,7 @@ const BillsView = () => import('@/views/bills/BillsView.vue')
 const MeterView = () => import('@/views/meters/MeterView.vue')
 const PoolLedgerView = () => import('@/views/alloc/PoolLedgerView.vue')
 const LossLedgerView = () => import('@/views/alloc/LossLedgerView.vue')
+const BillNoticesView = () => import('@/views/bills/BillNoticesView.vue')
 const PvView = () => import('@/views/pv/PvView.vue')
 const ChargingView = () => import('@/views/charging/ChargingView.vue')
 const SalaryView = () => import('@/views/salary/SalaryView.vue')
@@ -63,7 +64,7 @@ const router = createRouter({
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({
       path: `/${meta.value}`,
-      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'price-cfg' ? PriceCfgView : meta.value === 'ledger' ? LedgerView : meta.value === 'bills' ? BillsView : meta.value === 'meters' ? MeterView : meta.value === 'alloc' ? PoolLedgerView : meta.value === 'alloc-loss' ? LossLedgerView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : PNL_ROUTES.includes(meta.value) ? PnlScheduleView : meta.value === 'reconciliation' ? ReconView : meta.value === 'reports-home' ? ReportsHomeView : meta.value === 'import' ? ImportCenterView : ANA_VIEWS[meta.value] ?? PlaceholderView,
+      component: meta.value === 'data-home' ? DataHomeView : meta.value === 'buildings' ? BuildingsView : meta.value === 'tenants' ? TenantsView : meta.value === 'contracts' ? ContractsView : meta.value === 'price-cfg' ? PriceCfgView : meta.value === 'ledger' ? LedgerView : meta.value === 'bills' ? BillsView : meta.value === 'meters' ? MeterView : meta.value === 'alloc' ? PoolLedgerView : meta.value === 'alloc-loss' ? LossLedgerView : meta.value === 'bill-notices' ? BillNoticesView : meta.value === 'pv-income' ? PvView : (meta.value === 'car-charging' || meta.value === 'ebike-charging') ? ChargingView : meta.value === 'salary' ? SalaryView : meta.value === 'elec-cost' ? ElecView : meta.value === 'utilities' ? UtilitiesView : meta.value === 'sales-income' ? S10View : meta.value === 'income-statement' ? IncomeStatementView : meta.value === 'balance-sheet' ? BalanceSheetView : meta.value === 'trial-balance' ? TrialBalanceView : PNL_ROUTES.includes(meta.value) ? PnlScheduleView : meta.value === 'reconciliation' ? ReconView : meta.value === 'reports-home' ? ReportsHomeView : meta.value === 'import' ? ImportCenterView : ANA_VIEWS[meta.value] ?? PlaceholderView,
       // 展开成新鲜字面量:fpNav.RouteMeta 是具名接口,无隐式索引签名,直接赋给 vue-router 的 meta 会报 TS2322
       meta: { ...meta },
     })),

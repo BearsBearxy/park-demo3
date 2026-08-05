@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(47屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
+// src/nav/fpNav.ts — 导航单一事实源(48屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
 // 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→价目→园区抄表→公共电核算→楼栋损耗→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
@@ -15,7 +15,8 @@ export const FP_NAV: NavLayer[] = [
       { value: 'price-cfg', label: '价目管理', icon: 'tags', kind: 'priceCfg' },
       { value: 'meters', label: '园区抄表', icon: 'gauge', kind: 'meters' },
       { value: 'alloc', label: '公共电核算', icon: 'share-2', kind: 'alloc' },
-      { value: 'alloc-loss', label: '楼栋损耗', icon: 'trending-down', kind: 'allocLoss' } ] },
+      { value: 'alloc-loss', label: '楼栋损耗', icon: 'trending-down', kind: 'allocLoss' },
+      { value: 'bill-notices', label: '催缴单', icon: 'file-check-2', kind: 'billNotices' } ] },
     { title: '实际数 · 事后录入', items: [
       { value: 'ledger', label: '月度台账', icon: 'book-open', kind: 'ledger' },
       { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'bills' },
