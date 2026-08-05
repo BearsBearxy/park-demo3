@@ -21,7 +21,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // 催缴单派生引擎(S4-BILL-NOTICE-SPEC §4/§5 + BILL-DERIVE-SPEC §2):判定树分支/取价审计链/
 // 容量费按天折/paymap 拆单/宿舍段拆 dorm 单/幂等与 issued 跳过/offbook/负用量/未归属降级/读数批删 409 守卫。
-// @Transactional 回滚;月份槽独占 2090-01..2090-10,每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
+// @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04(月份无 13/14,租金用例 t13/t14 顺延;
+// 2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
 // 断言只圈自建数据(种子合同 2028 年前到期、种子表无 2090 读数,槽内 generated 计数=本用例数据,可精确断言)。
 // is_dorm_room/offbook 系 V89 新列,实体未必已挂字段 → 直落 JDBC(同事务同连接,引擎 mapper 读得到)。
 // 公摊行用例刻意不做:贡献一致性归 AllocPoolContributionsIT,引擎侧集成留 S4-3 真数月验收。
@@ -436,5 +437,129 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         mvc.perform(delete("/api/meters/readings").param("ym", ym)
                 .header("Authorization", auth()))
                 .andExpect(jsonPath("$.code").value(409));
+    }
+
+    // ── helpers:租金派生用(S5 刀2)——带计费行/免租期/可缺日期的合同 ──
+    private int contractLines(int tenantId, String start, String end, String rentFree, String linesJson)
+            throws Exception {
+        return postId("/api/contracts", "{\"contractNo\":\"IT-BN-" + System.nanoTime() + "\","
+                + "\"tenantId\":" + tenantId + ",\"buildingId\":" + building() + ","
+                + (start == null ? "" : "\"startDate\":\"" + start + "\",\"endDate\":\"" + end + "\",")
+                + (rentFree == null ? "" : "\"rentFree\":\"" + rentFree.replace("\"", "\\\"") + "\",")
+                + "\"deposit\":0,\"status\":\"active\",\"billingLines\":" + linesJson + "}");
+    }
+
+    private static final String FACTORY_LINES =   // rent_factory 100㎡×10=1000.00 + mgmt 100㎡×2=200.00
+            "[{\"propertyType\":\"factory\",\"location\":\"A座101\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10},"
+            + "{\"propertyType\":\"factory\",\"location\":\"A座101\",\"feeKey\":\"mgmt\",\"area\":100,\"unitPrice\":2}]";
+
+    // ── t11 整月租金:rent 行 2 条 1000.00/200.00,feeGroup='rent',premise=行 location,
+    //    拆单按 (property_type,fee_key)→colId 查 paymap(factoryRent/factoryMgmtFee 两公司两张单) ──
+    @Test
+    void t11_rentFullMonth_twoLines_paymapByRentCol() throws Exception {
+        String ym = "2090-11";
+        int t = createTenant("IT租金整月户");
+        int c = contractLines(t, "2089-01-01", "2099-12-31", null, FACTORY_LINES);
+        paymap(t, "factoryRent", 1);
+        paymap(t, "factoryMgmtFee", 2);
+
+        String gen = generate(ym);
+        assertThat((int) JsonPath.read(gen, "$.data.generated")).isEqualTo(2);
+        assertThat(notices(ym, t)).hasSize(2);
+        // 公司1 单=厂房租金 1000.00
+        List<Map<String, Object>> co1 = JsonPath.read(list(ym),
+                "$.data[?(@.tenantId==" + t + " && @.payCompanyId==1)]");
+        assertThat(d(one(co1).get("totalAmount"))).isEqualTo(1000.0);
+        String body1 = detail(((Number) co1.get(0).get("id")).intValue());
+        Map<String, Object> rent = one(feeLines(body1, "rent_factory"));
+        assertThat(d(rent.get("amount"))).isEqualTo(1000.0);
+        assertThat(rent.get("feeGroup")).isEqualTo("rent");
+        assertThat(rent.get("premise")).isEqualTo("A座101");
+        assertThat(rent.get("ruleBranch")).isEqualTo("rent");
+        assertThat(rent.get("contractId")).isEqualTo(c);
+        assertThat(d(rent.get("qty"))).isEqualTo(100.0);        // 建筑面积
+        assertThat(d(rent.get("priceSnap"))).isEqualTo(10.0);   // 单价
+        assertThat(rent.get("note")).isNull();                  // 整月不出折算式
+        // 公司2 单=厂房企业管理服务费 200.00(免租期不扣 mgmt 场景之外的基线)
+        List<Map<String, Object>> co2 = JsonPath.read(list(ym),
+                "$.data[?(@.tenantId==" + t + " && @.payCompanyId==2)]");
+        assertThat(d(one(co2).get("totalAmount"))).isEqualTo(200.0);
+        Map<String, Object> mgmt = one(feeLines(detail(((Number) co2.get(0).get("id")).intValue()), "mgmt"));
+        assertThat(d(mgmt.get("amount"))).isEqualTo(200.0);
+        assertThat(mgmt.get("feeGroup")).isEqualTo("rent");
+    }
+
+    // ── t12 按天折:2090-12-06 起租,12 月 31 天在租 26 天 → 1000×26/31=838.71,note 含「÷31×26」 ──
+    @Test
+    void t12_rentMidMonthProrate_noteFormula() throws Exception {
+        String ym = "2090-12";
+        int t = createTenant("IT租金按天折户");
+        contractLines(t, "2090-12-06", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]");
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, t));
+        Map<String, Object> rent = one(feeLines(body, "rent_factory"));
+        assertThat(d(rent.get("amount"))).isCloseTo(838.71, within(0.001));
+        assertThat((String) rent.get("note")).contains("÷31×26");
+    }
+
+    // ── t13 免租期覆盖整月:rent 行 0.00(出行不吞),mgmt 行照收 200.00(免租仅扣 rent_*) ──
+    @Test
+    void t13_rentFreeWholeMonth_rentZero_mgmtKept() throws Exception {
+        String ym = "2091-03";
+        int t = createTenant("IT租金免租户");
+        contractLines(t, "2089-01-01", "2099-12-31",
+                "[{\"start\":\"2091-03-01\",\"end\":\"2091-03-31\"}]", FACTORY_LINES);
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, t));
+        Map<String, Object> rent = one(feeLines(body, "rent_factory"));
+        assertThat(d(rent.get("amount"))).isEqualTo(0.0);
+        assertThat((String) rent.get("note")).contains("免租扣");
+        assertThat(d(one(feeLines(body, "mgmt")).get("amount"))).isEqualTo(200.0);
+    }
+
+    // ── t14 缺起止日期:整户 warn「缺起止日期」且无 rent 行;水电行照出(表绑该合同) ──
+    @Test
+    void t14_rentDateMissing_warnNoRentLines() throws Exception {
+        String ym = "2091-04";
+        monthlyPrices(ym);
+        int t = createTenant("IT租金缺日期户");
+        int c = contractLines(t, null, null, null,
+                "[{\"propertyType\":\"factory\",\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]");
+        int m = createMeter("elec", "p1", "IT租金缺日期电", t);
+        bind(m, c);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+
+        generate(ym);
+        List<Map<String, Object>> rows = notices(ym, t);
+        assertThat(rows).hasSize(1);
+        assertThat((String) rows.get(0).get("warn")).contains("缺起止日期");
+        String body = detail(((Number) rows.get(0).get("id")).intValue());
+        assertThat(feeLines(body, "rent_factory")).isEmpty();
+        assertThat(d(one(feeLines(body, "elec")).get("amount"))).isEqualTo(80.0);
+    }
+
+    // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。
+    //    读侧纯 join,无需跑池引擎:JDBC 直造 notice+行(槽 2090-11,与 t11 各自回滚不相扰) ──
+    @Test
+    void t15_detail_sharePoolName_joined() throws Exception {
+        int t = createTenant("IT池名户");
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
+                + "VALUES('p1','IT电梯池','direct','share_elec_elevator')");
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO bill_notice(ym,tenant_id,notice_kind,total_amount,prev_due,status,generated_at) "
+                + "VALUES('2090-11',?,'combined',8,0,'draft',NOW())", t);
+        Integer nid = jdbc.queryForObject("SELECT MAX(id) FROM bill_notice", Integer.class);
+        jdbc.update("INSERT INTO bill_notice_line(notice_id,line_no,fee_key,pool_rule_id,amount,fee_group) "
+                + "VALUES(?,1,'share_elec_elevator',?,5,'elec')", nid, rid);
+        jdbc.update("INSERT INTO bill_notice_line(notice_id,line_no,fee_key,amount,fee_group) "
+                + "VALUES(?,2,'elec',3,'elec')", nid);
+
+        String body = detail(nid);
+        Map<String, Object> share = one(feeLines(body, "share_elec_elevator"));
+        assertThat(share.get("poolName")).isEqualTo("IT电梯池");
+        assertThat(one(feeLines(body, "elec")).get("poolName")).isNull();
     }
 }

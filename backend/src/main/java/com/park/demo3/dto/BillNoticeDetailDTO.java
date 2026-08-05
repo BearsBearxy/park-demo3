@@ -17,5 +17,6 @@ public record BillNoticeDetailDTO(
         BigDecimal factorSnap, BigDecimal qty, BigDecimal priceSnap,
         String priceKey, String priceScope, String priceMonth, String ruleBranch,
         Integer poolRuleId, String shareSrc, BigDecimal baseSnap,
-        BigDecimal amount, String note) {}
+        BigDecimal amount, String note, String feeGroup,   // feeGroup(V90):rent/elec/water 板块分组
+        String poolName) {}                                 // 公摊行来源池名(S5 §3.2 行名=「费项·池名」);非公摊行 null
 }

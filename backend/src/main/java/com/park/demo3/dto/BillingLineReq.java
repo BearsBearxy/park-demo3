@@ -8,6 +8,7 @@ public record BillingLineReq(
     String location,
     @NotBlank String feeKey,    // ∈ FeeKey 13 枚举(服务层白名单校验)
     @DecimalMin("0") BigDecimal area,
+    @DecimalMin("0") BigDecimal areaShared, // 公摊面积(V90,选填):填了=area为建筑面积
     @DecimalMin("0") BigDecimal unitPrice,
     @DecimalMin("0") BigDecimal coeff,       // null→1
     @Min(0) Integer roomCount,

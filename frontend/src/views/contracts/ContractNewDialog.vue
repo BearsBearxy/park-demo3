@@ -79,13 +79,13 @@ const submitting = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
-type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null }
+type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null }
 type Segment = { propertyType: PropertyType; location: string; rows: SegRow[] }
 const segments = ref<Segment[]>([])
 const showTypeMenu = ref(false)
 
 function newRow(feeKey: FeeKey): SegRow {
-  return { id: null, feeKey, area: null, unitPrice: pinnedDefaultUnitPrice(feeKey), coeff: null, roomCount: null, amountOverride: null }
+  return { id: null, feeKey, area: null, areaShared: null, unitPrice: pinnedDefaultUnitPrice(feeKey), coeff: null, roomCount: null, amountOverride: null }
 }
 function buildSegment(pt: PropertyType): Segment {
   return { propertyType: pt, location: '', rows: PINNED_FEES[pt].map(newRow) }
@@ -170,7 +170,7 @@ function groupLines(lines: BillingLineDTO[]): Segment[] {
     const pt = (l.propertyType ?? inferPropertyType(l.feeKey)) as PropertyType
     let g = segs.find(s => s.propertyType === pt && s.location === l.location)
     if (!g) { g = { propertyType: pt, location: l.location, rows: [] }; segs.push(g) }
-    g.rows.push({ id: l.id, feeKey: l.feeKey, area: l.area ?? null, unitPrice: l.unitPrice ?? null, coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null })
+    g.rows.push({ id: l.id, feeKey: l.feeKey, area: l.area ?? null, areaShared: l.areaShared ?? null, unitPrice: l.unitPrice ?? null, coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null })
   }
   for (const s of segs)
     for (const k of PINNED_FEES[s.propertyType])
@@ -274,7 +274,7 @@ async function submit() {
       const loc = seg.location.trim() || '主'
       seg.rows.forEach((r, i) => lines.push({
         id: r.id, propertyType: seg.propertyType, location: loc, feeKey: r.feeKey, billMode: defaultBillMode(r.feeKey),
-        area: numOrNull(r.area), unitPrice: numOrNull(r.unitPrice), coeff: numOrNull(r.coeff),
+        area: numOrNull(r.area), areaShared: numOrNull(r.areaShared), unitPrice: numOrNull(r.unitPrice), coeff: numOrNull(r.coeff),
         roomCount: numOrNull(r.roomCount), amountOverride: numOrNull(r.amountOverride), seq: i,
       }))
     }
@@ -457,6 +457,9 @@ async function submit() {
                     <span class="ct-bl-feename">{{ feeLabel(seg.propertyType, row.feeKey) }}</span>
                     <template v-if="isSqm(row.feeKey)">
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.area" placeholder="面积" @input="err = ''" />
+                      <!-- 公摊面积(S5 §1/§4):仅租金行;填了=左侧面积为建筑面积,分摊按两者之和;留空=面积已含公摊 -->
+                      <input v-if="isRentKey(row.feeKey)" class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.areaShared"
+                             placeholder="公摊(选填)" title="填了公摊 = 面积格为建筑面积,公摊分摊按 面积+公摊 之和;留空 = 面积已含公摊" @input="err = ''" />
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.0001" v-model.number="row.unitPrice" placeholder="单价" @input="err = ''" />
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.coeff" placeholder="系数1" @input="err = ''" />
                     </template>

@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // S4-0.2 poolContributions:generate 后逐池×户级贡献行按 (tenant,feeKey) 聚合须与 alloc_result
 // 落库 gen 行金额全等(同一份额解析路径,池金额取当月快照);无池快照月=空表不抛错。
 // 落在 service 包:Contribution 包级可见,api 包够不着。@Transactional 回滚;
-// 独占槽 2095-03(2095-04 仅作无快照只读探针,全库无数据落该月)。
+// 独占槽 2095-03(2095-04 仅作无快照只读探针,全库无数据落该月)、2091-02(S5 分摊面积公式)。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
 class AllocPoolContributionsIT extends AbstractMysqlIT {
@@ -104,5 +104,36 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
 
         // 无池快照月 → 空表
         assertTrue(alloc.poolContributions("2095-04").isEmpty());
+    }
+
+    // S5 §1:area 法池贡献基数 = Σ租金计费行(area+IFNULL(area_shared,0)),不再取 contract.rent_area。
+    // 两条 rent 行(100+公摊50 / 200 无公摊)→ 基数 350;旧口径 rent_area=Σarea=300 会摊出 300.00。独占槽 2091-02。
+    @Test
+    void areaPool_baseIncludesAreaShared() throws Exception {
+        String ym = "2091-02";
+        int t = postId("/api/tenants", "{\"companyName\":\"IT公摊面积户\",\"businessType\":\"IT\"}");
+        String buildings = mvc.perform(get("/api/buildings").header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        int bid = ((java.util.List<Integer>) JsonPath.read(buildings, "$.data[*].id")).get(0);
+        // 不带起止日期:不入自动在租名册,只走显式成员 areaByTenant(active 合同)路径
+        postId("/api/contracts", "{\"contractNo\":\"IT-S5A-" + System.nanoTime() + "\",\"tenantId\":" + t
+                + ",\"buildingId\":" + bid + ",\"status\":\"active\",\"billingLines\":["
+                + "{\"propertyType\":\"factory\",\"location\":\"IT-A段\",\"feeKey\":\"rent_factory\",\"area\":100,\"areaShared\":50,\"unitPrice\":10},"
+                + "{\"propertyType\":\"factory\",\"location\":\"IT-B段\",\"feeKey\":\"rent_factory\",\"area\":200,\"unitPrice\":10}]}");
+        int m = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT公摊面积池表\",\"ownership\":\"share\"}");
+        reading(m, ym, "0", "700");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT公摊面积池\",\"method\":\"area\","
+                + "\"coefficient\":700,\"feeKey\":\"share_elec_light\",\"meterIds\":[" + m + "],"
+                + "\"members\":[{\"tenantId\":" + t + "}]}");
+        price("elec_commercial", ym, "1");
+        price("mgmt_fee_commercial", ym, "0");   // 钉死池单价=1.00,std=ROUND(700/700×1,2)=1.00 元/㎡
+        price("elec_sharp", ym, "1"); price("elec_peak", ym, "1");
+        price("elec_flat", ym, "1"); price("elec_valley", ym, "1");   // priceGate 全 zone 门禁
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        BigDecimal amt = alloc.resultByYm(ym).stream()
+                .filter(r -> r.tenantId().equals(t) && "share_elec_light".equals(r.feeKey()))
+                .map(AllocResultDTO::amount).findFirst().orElseThrow();
+        assertEquals(0, amt.compareTo(new BigDecimal("350.00")), "基数应=350(含公摊50),实摊 " + amt);
     }
 }

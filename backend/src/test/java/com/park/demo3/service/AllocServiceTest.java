@@ -573,8 +573,10 @@ class AllocServiceTest {
         var mixed = contract(3, 200, 35, null);   mixed.setRentArea(new BigDecimal("3206.88"));     // 厂房合同挂了宿舍房间
         var land = contract(4, 300, 14, null);    land.setRentArea(new BigDecimal("500.00"));       // 空地(无表→无期别)
         var byUnit = contract(5, 400, null, null); byUnit.setRentArea(new BigDecimal("100.00"));    // 只挂单元
+        // 计费行面积映射传空 → 全部走 rent_area 回退(S5 §1 回退分支即旧口径,期别切分断言不变)
         var area = AllocService.areaByZoneTenant(java.util.List.of(factory, dorm, mixed, land, byUnit),
-            java.util.Map.of(3, java.util.List.of(unit(26)), 5, java.util.List.of(unit(35))), zoneOfBuilding);
+            java.util.Map.of(3, java.util.List.of(unit(26)), 5, java.util.List.of(unit(35))), zoneOfBuilding,
+            java.util.Map.of(), new java.util.HashSet<>());
         assertEquals(new BigDecimal("4892.89"), area.get("p2").get(100));
         assertEquals(new BigDecimal("72.94"), area.get("dorm").get(100));    // 厂房面积不进宿舍池
         assertNull(area.get("dorm").get(200));                               // 附加单元不带面积过区

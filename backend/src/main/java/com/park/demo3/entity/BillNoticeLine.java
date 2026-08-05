@@ -28,4 +28,5 @@ public class BillNoticeLine {
     private BigDecimal baseSnap;       // 该户份额基数快照(层数/面积/weight)
     private BigDecimal amount;         // 允许负值
     private String note;
+    private String feeGroup;           // rent/elec/water(V90):板块分组与 paymap 首路由
 }

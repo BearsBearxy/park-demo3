@@ -184,7 +184,8 @@ class AllocApiIT extends AbstractMysqlIT {
         mvc.perform(post("/api/alloc/generate").param("ym", "2099-02").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.rows").value(1))
                 .andExpect(jsonPath("$.data.manualKept").value(1))
-                .andExpect(jsonPath("$.data.warnings[0]").value(org.hamcrest.Matchers.containsString("缺抄")));
+                // S5 后 warnings[0] 可能是「无租金计费行回退」全局警告,缺抄断言改全数组包含(禁位置依赖)
+                .andExpect(jsonPath("$.data.warnings[?(@ =~ /.*缺抄.*/)]").isNotEmpty());
         mvc.perform(get("/api/alloc/result").param("ym", "2099-02").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[?(@.feeKey=='share_elec_elevator')].amount").value(111.42))

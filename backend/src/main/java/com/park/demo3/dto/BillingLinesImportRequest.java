@@ -8,7 +8,7 @@ import java.util.List;
 public record BillingLinesImportRequest(@NotNull List<Row> rows) {
     public record Row(Integer contractId, List<Line> lines) {}
     // propertyType(V55):段类型,非空则服务层按钉死集校验 feeKey 越界(行级错误跳过);老调用方不传=不校验。
-    public record Line(String location, String propertyType, String feeKey, BigDecimal area, BigDecimal unitPrice,
+    public record Line(String location, String propertyType, String feeKey, BigDecimal area, BigDecimal areaShared, BigDecimal unitPrice,
                        BigDecimal coeff, Integer roomCount, String billMode,
                        BigDecimal amountOverride, String note) {}
 }

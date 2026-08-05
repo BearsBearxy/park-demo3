@@ -242,6 +242,7 @@ public class ContractService {
             nl.setPropertyType(ol.getPropertyType());
             nl.setLocation(ol.getLocation()); nl.setFeeKey(ol.getFeeKey()); nl.setFeeName(ol.getFeeName());
             nl.setBillMode(ol.getBillMode()); nl.setUnitPrice(ol.getUnitPrice()); nl.setArea(ol.getArea());
+            nl.setAreaShared(ol.getAreaShared());
             nl.setCoeff(ol.getCoeff()); nl.setRoomCount(ol.getRoomCount()); nl.setAmountOverride(ol.getAmountOverride());
             nl.setSeq(ol.getSeq()); nl.setTaxRate(ol.getTaxRate()); nl.setParams(ol.getParams());
             nl.setNote(ol.getNote()); nl.setSource(ol.getSource());
@@ -293,6 +294,7 @@ public class ContractService {
                 t.setFeeName(feeLabel(l.propertyType(), l.feeKey()));
                 t.setBillMode(blankToNull(l.billMode()) == null ? defaultBillMode(l.feeKey()) : l.billMode());
                 t.setArea(l.area());
+                t.setAreaShared(l.areaShared());
                 t.setUnitPrice(l.unitPrice() == null ? BigDecimal.ZERO : l.unitPrice());
                 t.setCoeff(l.coeff() == null ? BigDecimal.ONE : l.coeff());
                 t.setRoomCount(l.roomCount());
@@ -529,8 +531,8 @@ public class ContractService {
         "land",    Set.of("rent_land","infra","land_tax"));
     private static final Set<String> RENT_KEYS = Set.of(
         "rent_factory","rent_office","rent_dorm","rent_shop","rent_land");
-    // 建筑类租金(计入租赁面积);rent_land=空地租金单列不入(裁定 2026-07-24)
-    private static final Set<String> BUILDING_RENT_KEYS = Set.of(
+    // 建筑类租金(计入租赁面积);rent_land=空地租金单列不入(裁定 2026-07-24);包级开放给 AllocService 分摊面积口径(S5 §1)
+    static final Set<String> BUILDING_RENT_KEYS = Set.of(
         "rent_factory","rent_office","rent_dorm","rent_shop");
     private static final Map<String,String> FEE_NAME = Map.ofEntries(
         Map.entry("rent_factory","厂房租金"), Map.entry("rent_office","办公室租金"),
@@ -590,7 +592,7 @@ public class ContractService {
                 if (!ALLOWED_FEES.get(pt).contains(l.feeKey()))
                     return "费项 " + l.feeKey() + " 不属于「" + pt + "」段类型";
             }
-            for (BigDecimal v : new BigDecimal[]{ l.area(), l.unitPrice(), l.amountOverride() })
+            for (BigDecimal v : new BigDecimal[]{ l.area(), l.areaShared(), l.unitPrice(), l.amountOverride() })
                 if (v != null && v.signum() < 0) return "金额/面积必须 ≥ 0";
         }
         return null;
@@ -626,6 +628,7 @@ public class ContractService {
             t.setFeeName(feeLabel(l.propertyType(), l.feeKey()));
             t.setBillMode(blankToNull(l.billMode()) == null ? defaultBillMode(l.feeKey()) : l.billMode());
             t.setArea(l.area());
+            t.setAreaShared(l.areaShared());
             t.setUnitPrice(l.unitPrice() == null ? BigDecimal.ZERO : l.unitPrice());
             t.setCoeff(l.coeff() == null ? BigDecimal.ONE : l.coeff());
             t.setRoomCount(l.roomCount());
@@ -707,7 +710,7 @@ public class ContractService {
                 // 把 property_type 为空的 infra 行顶到卡片最上并与同场地租金行拆成两个段带(2026-07-29 修)。
                 .eq("contract_id", contractId).orderByAsc("location", "seq", "id")).stream()
             .map(t -> new BillingLineDTO(t.getId(), t.getContractId(), t.getPropertyType(), t.getLocation(),
-                t.getFeeKey(), feeLabel(t.getPropertyType(), t.getFeeKey()), t.getArea(), t.getUnitPrice(), t.getCoeff(),
+                t.getFeeKey(), feeLabel(t.getPropertyType(), t.getFeeKey()), t.getArea(), t.getAreaShared(), t.getUnitPrice(), t.getCoeff(),
                 t.getRoomCount(), t.getBillMode(), t.getAmountOverride(), t.getSeq(), t.getSource()))
             .toList();
     }

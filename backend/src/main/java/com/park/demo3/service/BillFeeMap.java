@@ -21,6 +21,33 @@ public final class BillFeeMap {
         Map.entry("share_elec_loss",     "elecStd"),
         Map.entry("share_green_water",   "waterStd"));
 
+    // S5 §2:rent 侧 (property_type, fee_key)→附表10 colId;mgmt/infra 按段类型分列
+    private static final Map<String, String> RENT_COL = Map.ofEntries(
+        Map.entry("rent_factory", "factoryRent"),
+        Map.entry("rent_office",  "officeRent"),
+        Map.entry("rent_dorm",    "dormRent"),
+        Map.entry("rent_shop",    "shopRent"),
+        Map.entry("rent_land",    "landRent"),
+        Map.entry("elevator",     "elevatorMaint"),
+        Map.entry("transformer",  "transformerMaint"),
+        Map.entry("access",       "accessMaint"),
+        Map.entry("network",      "networkFee"),
+        Map.entry("land_tax",     "landUseTax"),
+        Map.entry("other",        "otherFee"));
+
+    /** 租金板块拆单列(S5 §2):合同 13 枚举 → 附表10 colId;mgmt/infra 随段类型分列,未知返回 null。 */
+    public static String rentPayCol(String propertyType, String feeKey) {
+        if (feeKey == null) return null;
+        String pt = propertyType == null ? "" : propertyType;
+        if ("mgmt".equals(feeKey))
+            return switch (pt) { case "factory" -> "factoryMgmtFee"; case "office" -> "officeMgmtFee";
+                                 case "shop" -> "shopMgmtFee"; default -> null; };
+        if ("infra".equals(feeKey))
+            return switch (pt) { case "factory" -> "infraFactory"; case "office" -> "infraOffice";
+                                 case "shop" -> "infraShop"; case "dorm" -> "infraDorm"; default -> null; };
+        return RENT_COL.get(feeKey);
+    }
+
     /** 未知键返回 null。 */
     public static String payCol(String feeKey) {
         return feeKey == null ? null : PAY_COL.get(feeKey); // Map.of 的 get(null) 抛 NPE

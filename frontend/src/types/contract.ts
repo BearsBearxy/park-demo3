@@ -107,7 +107,7 @@ export interface BillingLineDTO {
   propertyType?: PropertyType | null   // 段类型 factory|office|dorm|shop|land(V54,段内每行冗余)
   location: string
   feeKey: FeeKey; feeName?: string | null   // feeName=feeLabel(propertyType,feeKey) 上下文回显
-  area?: number | null; unitPrice?: number | null; coeff?: number | null
+  area?: number | null; areaShared?: number | null; unitPrice?: number | null; coeff?: number | null   // areaShared(V90):公摊面积,非空=area为建筑面积
   roomCount?: number | null; billMode?: string | null
   amountOverride?: number | null; seq?: number | null; source?: string | null
 }
@@ -118,6 +118,7 @@ export interface BillingLineReq {
   location: string
   feeKey: FeeKey                 // ∈ FeeKey
   area?: number | null
+  areaShared?: number | null     // 公摊面积(V90,选填):填了=area为建筑面积,分摊按两者之和
   unitPrice?: number | null
   coeff?: number | null          // null→1
   roomCount?: number | null
@@ -130,6 +131,7 @@ export interface BillingLineImport {
   location: string
   feeKey: FeeKey
   area?: number | null
+  areaShared?: number | null     // 公摊面积(V90,选填;后端契约对齐)
   unitPrice?: number | null
   coeff?: number | null          // null→1
   roomCount?: number | null

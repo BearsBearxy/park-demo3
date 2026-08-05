@@ -28,6 +28,8 @@ import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.park.demo3.mapper.TenantMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -43,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -57,6 +60,9 @@ public class BillNoticeService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     private static final String[] SEGS = {"sharp", "peak", "flat", "valley"};
     private static final String CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
+    // fee_group 归组(V90):与迁移回填 CASE 同一口径
+    private static final Set<String> WATER_GROUP = Set.of("water", "water_pipe", "share_green_water");
+    private static final ObjectMapper JSON = new ObjectMapper();   // rent_free 解析(与 ContractService 同口径)
 
     private final BillNoticeMapper notices;
     private final BillNoticeLineMapper noticeLines;
@@ -92,6 +98,8 @@ public class BillNoticeService {
     private static final class L {
         Integer tenantId; boolean dorm; int seq;
         String feeKey, premise, meterLabel, seg, priceKey, priceScope, priceMonth, ruleBranch, shareSrc, note;
+        String feeGroup;                  // rent 派生行显式置 'rent';空=按 fee_key 归组(水电)
+        String payCol;                    // rent 行拆单列(rentPayCol 预算);空=走 BillFeeMap.payCol(feeKey)
         Integer meterId, contractId, poolRuleId;
         BigDecimal prevRead, currRead, factorSnap, qty, priceSnap, baseSnap, amount;
         BigDecimal rateTmp;               // 链损耗率(E2:户级收尾按链基数×率定 amount)
@@ -130,8 +138,16 @@ public class BillNoticeService {
         Map<Integer, List<String>> locsByContract = new HashMap<>();
         // 宿舍房间面积:dorm 计费行按 location 定位(430、431 多间合并行原样一间份,S4-3 拆行口径),面积取首个非空行
         Map<Integer, Map<String, BigDecimal>> dormRoomsByContract = new HashMap<>();
+        Map<Integer, BigDecimal> rentAreaByContract = new HashMap<>();   // S5 分摊面积(建筑+公摊)按合同Σ
+        // 计费行按合同归组(S5 §2 租金派生源;位置可空行也计费,故在 location 过滤之前收集)
+        Map<Integer, List<ContractBillingTerm>> termsByContract = new HashMap<>();
         for (ContractBillingTerm t : billingTerms.selectList(new QueryWrapper<ContractBillingTerm>()
                 .orderByAsc("contract_id", "seq", "id"))) {
+            termsByContract.computeIfAbsent(t.getContractId(), k -> new ArrayList<>()).add(t);
+            // S5 §1 分摊面积=Σ租金计费行(area+IFNULL(area_shared,0)),splitShare 拆分比例用(旧口径 rent_area 不含公摊)
+            if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey()) && t.getArea() != null)
+                rentAreaByContract.merge(t.getContractId(),
+                    t.getArea().add(t.getAreaShared() == null ? BigDecimal.ZERO : t.getAreaShared()), BigDecimal::add);
             if (t.getLocation() == null || t.getLocation().isBlank()) continue;
             List<String> l = locsByContract.computeIfAbsent(t.getContractId(), k -> new ArrayList<>());
             String loc = t.getLocation().trim();
@@ -212,6 +228,9 @@ public class BillNoticeService {
             if (days < total) l.note = trunc("按天折:" + days + "/" + total + " 天", 255);
         }
 
+        // ── 租金板块(S5 §2):逐 covering 合同逐计费行正式出单;按天折+免租期扣减 ──
+        rentLines(byTenant, warnByTenant, seq, allContracts, termsByContract, first, last);
+
         // ── 公摊行:poolContributions 逐行落(池快照口径);损耗链行 ruleId=null → share_elec_loss ──
         for (AllocService.Contribution c : alloc.poolContributions(ym)) {
             if (c.tenantId() == null || c.amount() == null) continue;
@@ -237,7 +256,7 @@ public class BillNoticeService {
                 // S4-3 场地拆行:share 行按该户在租合同(宿舍逐房间)等比拆,Σ各场地行与租户级全等
                 if (l.feeKey != null && l.feeKey.startsWith("share_")) {
                     for (L s : splitShare(l, rule, coveringByTenant, zoneOfBuilding,
-                            locsByContract, dormRoomsByContract, seq))
+                            locsByContract, dormRoomsByContract, rentAreaByContract, seq))
                         byTenant.computeIfAbsent(s.tenantId, k -> new ArrayList<>()).add(s);
                     continue;
                 }
@@ -318,7 +337,8 @@ public class BillNoticeService {
                 Integer cid = null;
                 if (l.dorm) cid = pm.get("dormRent");   // 宿舍收租方映射,无则走同类兜底
                 if (cid == null) {
-                    String col = BillFeeMap.payCol(l.feeKey);
+                    // rent 行(S5 §2):(property_type,fee_key)→colId 预算在 l.payCol;水电行沿 BillFeeMap.payCol
+                    String col = l.payCol != null ? l.payCol : BillFeeMap.payCol(l.feeKey);
                     cid = col == null ? null : pm.get(col);
                     if (cid == null) {
                         String fb = BillFeeMap.fallbackCol(l.feeKey);
@@ -370,6 +390,9 @@ public class BillNoticeService {
                 row.setShareSrc(l.shareSrc); row.setBaseSnap(l.baseSnap);
                 row.setAmount(l.amount == null ? BigDecimal.ZERO : r2(l.amount));
                 row.setNote(l.note);
+                // fee_group(V90):rent 派生行显式 'rent'(S5 刀2);水电引擎行按 fee_key 归组,重生成不冲掉迁移回填
+                row.setFeeGroup(l.feeGroup != null ? l.feeGroup
+                    : WATER_GROUP.contains(l.feeKey) ? "water" : "elec");
                 noticeLines.insert(row);
                 lineCount++;
             }
@@ -524,6 +547,99 @@ public class BillNoticeService {
         return l;
     }
 
+    // ── S5 §2 租金派生:逐 covering 合同(排 master_lease/draft)逐计费行一条明细 ──
+    // 缺起止日期→整户 warn「缺起止日期,租金未派生」不出行(157 户清单已交用户补日期);
+    // 金额=lineMonthly×按天折,rent_* 再减免租期扣减;premise=行 location;fee_group='rent'。
+    private void rentLines(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
+                           List<Contract> allContracts, Map<Integer, List<ContractBillingTerm>> termsByContract,
+                           LocalDate first, LocalDate last) {
+        for (Contract c : allContracts) {
+            if ("master_lease".equals(c.getKind()) || "draft".equals(c.getStatus())) continue;
+            Integer tid = c.getTenantId();
+            if (tid == null) continue;
+            if (c.getStartDate() == null || c.getEndDate() == null) {
+                warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("缺起止日期,租金未派生");
+                continue;
+            }
+            if (!MeterBindingService.covers(c, first, last)) continue;
+            BigDecimal ratio = prorate(c, first, last);
+            // 折算式素材(非整月 note 用):在租天数/当月天数
+            LocalDate rentFrom = c.getStartDate().isAfter(first) ? c.getStartDate() : first;
+            LocalDate rentTo = c.getEndDate().isBefore(last) ? c.getEndDate() : last;
+            long days = ChronoUnit.DAYS.between(rentFrom, rentTo) + 1;
+            int len = first.lengthOfMonth();
+            for (ContractBillingTerm t : termsByContract.getOrDefault(c.getId(), List.of())) {
+                BigDecimal monthly = ContractService.lineMonthly(t, c.getKva());
+                if (monthly == null) {   // 缺参数=待录,跳行并 warn
+                    warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("计费行缺参数,租金行未派生");
+                    continue;
+                }
+                BigDecimal amt = r2(monthly.multiply(ratio));
+                String note = ratio.compareTo(BigDecimal.ONE) < 0
+                    ? monthly.stripTrailingZeros().toPlainString() + "÷" + len + "×" + days : null;
+                if (t.getFeeKey() != null && t.getFeeKey().startsWith("rent_")) {
+                    // 免租期仅扣 rent_* 费项(管理费/基础设施费照收,园区惯例)
+                    BigDecimal cut = rentFreeCut(c, monthly, rentFrom, rentTo, first, warnByTenant);
+                    if (cut.signum() > 0) {
+                        amt = r2(amt.subtract(cut));
+                        note = (note == null ? "" : note + ";") + "免租扣" + cut.toPlainString();
+                    }
+                }
+                L l = new L();
+                l.tenantId = tid; l.seq = seq[0]++;
+                l.dorm = "dorm".equals(t.getPropertyType());   // 宿舍段随 dorm 单(收 dormRent 映射)
+                l.feeKey = t.getFeeKey(); l.feeGroup = "rent"; l.ruleBranch = "rent";
+                l.contractId = c.getId();
+                l.premise = t.getLocation() == null || t.getLocation().isBlank()
+                    ? null : trunc(t.getLocation().trim(), 64);
+                l.payCol = BillFeeMap.rentPayCol(t.getPropertyType(), t.getFeeKey());
+                if ("per_sqm_month".equals(t.getBillMode())) {
+                    // 面积拆解上屏(S5 §2):qty=建筑面积,base_snap=公摊面积(空=area 已含公摊),price_snap=单价
+                    l.qty = t.getArea(); l.priceSnap = t.getUnitPrice(); l.baseSnap = t.getAreaShared();
+                }
+                l.amount = amt; l.note = trunc(note, 255);
+                byTenant.computeIfAbsent(tid, k -> new ArrayList<>()).add(l);
+            }
+        }
+    }
+
+    // 在租天数/当月天数;整月=1(不出折算 note)
+    private static BigDecimal prorate(Contract c, LocalDate first, LocalDate last) {
+        LocalDate s = c.getStartDate().isAfter(first) ? c.getStartDate() : first;
+        LocalDate e = c.getEndDate().isBefore(last) ? c.getEndDate() : last;
+        long days = ChronoUnit.DAYS.between(s, e) + 1;
+        int len = first.lengthOfMonth();
+        return days >= len ? BigDecimal.ONE
+            : new BigDecimal(days).divide(new BigDecimal(len), 8, RoundingMode.HALF_UP);
+    }
+
+    // 免租期扣减(S5 §2):rent_free JSON 数组 [{start,end}] 与本月在租区间相交天数按天折,
+    // Σ相交天数/lengthOfMonth×monthly,r2;解析失败=0 并入 warn(写入口 validateRentFree 已校验,防御历史脏数据)
+    private static BigDecimal rentFreeCut(Contract c, BigDecimal monthly, LocalDate rentFrom, LocalDate rentTo,
+                                          LocalDate first, Map<Integer, Set<String>> warnByTenant) {
+        String rf = c.getRentFree();
+        if (rf == null || rf.isBlank()) return BigDecimal.ZERO;
+        long freeDays = 0;
+        try {
+            JsonNode arr = JSON.readTree(rf);
+            if (!arr.isArray()) throw new IllegalArgumentException("非数组");
+            for (JsonNode seg : arr) {
+                LocalDate s = LocalDate.parse(seg.get("start").asText());
+                LocalDate e = LocalDate.parse(seg.get("end").asText());
+                // 与本月在租区间相交(免租只能扣在租天数,天然不出负额)
+                LocalDate from = s.isAfter(rentFrom) ? s : rentFrom;
+                LocalDate to = e.isBefore(rentTo) ? e : rentTo;
+                if (!from.isAfter(to)) freeDays += ChronoUnit.DAYS.between(from, to) + 1;
+            }
+        } catch (Exception ex) {
+            warnByTenant.computeIfAbsent(c.getTenantId(), k -> new LinkedHashSet<>()).add("免租期解析失败,未扣减");
+            return BigDecimal.ZERO;
+        }
+        if (freeDays == 0) return BigDecimal.ZERO;
+        return monthly.multiply(new BigDecimal(freeDays))
+            .divide(new BigDecimal(first.lengthOfMonth()), 2, RoundingMode.HALF_UP);
+    }
+
     // D① 收取价(调查 2026-08-05 钉死;SQL 落点 scripts/fixes/share-charge-rate-20260805.sql):
     // 月推类公摊池(路灯 share_elec_light/绿化水 share_green_water)落行=收取单价×户面积,price_snap 存收取价,
     // note 保留核算率备查。分流:p1/dorm 收取价=当月池核算率(std_value,当月核算再舍入,Excel VLOOKUP 同口径);
@@ -564,23 +680,29 @@ public class BillNoticeService {
     // 候选为空/基数Σ为 0 → 原行原样保留(premise 空,如可莱恩 C402 无合同归属待拍板)。
     private List<L> splitShare(L l, AllocRule rule, Map<Integer, List<Contract>> covering,
                                Map<Integer, String> zoneOfBuilding, Map<Integer, List<String>> locs,
-                               Map<Integer, Map<String, BigDecimal>> dormRooms, int[] seq) {
+                               Map<Integer, Map<String, BigDecimal>> dormRooms,
+                               Map<Integer, BigDecimal> rentAreaByContract, int[] seq) {
         List<Object[]> parts = new ArrayList<>();   // {premise, contractId, base}
         for (Contract c : covering.getOrDefault(l.tenantId, List.of())) {
             if (l.dorm) {
                 for (Map.Entry<String, BigDecimal> room : dormRooms.getOrDefault(c.getId(), Map.of()).entrySet())
                     parts.add(new Object[]{room.getKey(), c.getId(), room.getValue()});
             } else {
-                if (rule == null || c.getBuildingId() == null
-                        || c.getRentArea() == null || c.getRentArea().signum() <= 0) continue;
+                if (rule == null || c.getBuildingId() == null) continue;
+                // S5:拆分比例=Σ租金计费行(建筑+公摊),无计费行回退 rent_area(可莱恩 79.44/162 按 1986/4050 拆)
+                BigDecimal ra = rentAreaByContract.getOrDefault(c.getId(), c.getRentArea());
+                if (ra == null || ra.signum() <= 0) continue;
                 boolean in = rule.getBuildingId() != null ? rule.getBuildingId().equals(c.getBuildingId())
                     : rule.getZone() != null && rule.getZone().equals(zoneOfBuilding.get(c.getBuildingId()));
-                if (in) parts.add(new Object[]{premiseOf(c.getId(), locs), c.getId(), c.getRentArea()});
+                if (in) parts.add(new Object[]{premiseOf(c.getId(), locs), c.getId(), ra});
             }
         }
         BigDecimal baseSum = parts.stream().map(p -> (BigDecimal) p[2]).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (parts.isEmpty() || baseSum.signum() == 0) return List.of(l);
         List<L> out = new ArrayList<>();
+        // ⚠i=0 复用 l 对象且就地覆写 amount/qty/baseSnap——比例算式必须用循环前快照的原值,
+        //   否则第 2 行起按已缩小的首行金额等比(≥3 场地时中间行全错、末行余额虚胖,宿舍六间实锚)
+        BigDecimal amt0 = l.amount, qty0 = l.qty, base0 = l.baseSnap;
         BigDecimal amtLeft = l.amount, qtyLeft = l.qty, baseLeft = l.baseSnap;
         for (int i = 0; i < parts.size(); i++) {
             L s;
@@ -596,9 +718,9 @@ public class BillNoticeService {
             s.contractId = (Integer) parts.get(i)[1];
             BigDecimal share = (BigDecimal) parts.get(i)[2];
             boolean last = i == parts.size() - 1;
-            s.amount = last ? amtLeft : prorate(l.amount, share, baseSum);
-            s.qty = last ? qtyLeft : prorate(l.qty, share, baseSum);
-            s.baseSnap = last ? baseLeft : prorate(l.baseSnap, share, baseSum);
+            s.amount = last ? amtLeft : prorate(amt0, share, baseSum);
+            s.qty = last ? qtyLeft : prorate(qty0, share, baseSum);
+            s.baseSnap = last ? baseLeft : prorate(base0, share, baseSum);
             if (!last) {
                 amtLeft = minus(amtLeft, s.amount);
                 qtyLeft = minus(qtyLeft, s.qty);
@@ -658,12 +780,19 @@ public class BillNoticeService {
         BillNotice n = notices.selectById(id);
         if (n == null) throw new BizException(ResultCode.NOT_FOUND, "催缴单不存在");
         Names names = names();
-        List<BillNoticeDetailDTO.Line> lines = noticeLines.selectByNotice(id).stream()
+        List<BillNoticeLine> raw = noticeLines.selectByNotice(id);
+        // 池名 join(S5 §3.2):share 行行名=「费项·池名」;池已删则 null 原样降级
+        Set<Integer> rids = raw.stream().map(BillNoticeLine::getPoolRuleId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Integer, String> poolNames = rids.isEmpty() ? Map.of()
+            : rules.selectBatchIds(rids).stream().collect(Collectors.toMap(AllocRule::getId, AllocRule::getName));
+        List<BillNoticeDetailDTO.Line> lines = raw.stream()
             .map(l -> new BillNoticeDetailDTO.Line(l.getLineNo(), l.getFeeKey(), l.getPremise(),
                 l.getMeterId(), l.getMeterLabel(), l.getContractId(), l.getSeg(),
                 l.getPrevRead(), l.getCurrRead(), l.getFactorSnap(), l.getQty(), l.getPriceSnap(),
                 l.getPriceKey(), l.getPriceScope(), l.getPriceMonth(), l.getRuleBranch(),
-                l.getPoolRuleId(), l.getShareSrc(), l.getBaseSnap(), l.getAmount(), l.getNote()))
+                l.getPoolRuleId(), l.getShareSrc(), l.getBaseSnap(), l.getAmount(), l.getNote(), l.getFeeGroup(),
+                l.getPoolRuleId() == null ? null : poolNames.get(l.getPoolRuleId())))
             .toList();
         return new BillNoticeDetailDTO(n.getId(), n.getYm(), n.getTenantId(),
             names.tenant().get(n.getTenantId()), n.getPayCompanyId(),

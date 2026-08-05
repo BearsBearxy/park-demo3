@@ -34,6 +34,31 @@ class BillFeeMapTest {
         assertThat(BillFeeMap.fallbackCol("mgmt_fee")).isEqualTo("elecStd");
     }
 
+    // S5 §2:rent 侧 (property_type, fee_key)→colId 全部映射值 ∈ RECON_FEES s10Key 集合
+    @Test
+    void rentMappingsPointToS10Cols() {
+        String[][] cases = {
+            {"factory", "rent_factory", "factoryRent"}, {"office", "rent_office", "officeRent"},
+            {"dorm", "rent_dorm", "dormRent"}, {"shop", "rent_shop", "shopRent"},
+            {"land", "rent_land", "landRent"},
+            {"factory", "mgmt", "factoryMgmtFee"}, {"office", "mgmt", "officeMgmtFee"},
+            {"shop", "mgmt", "shopMgmtFee"},
+            {"factory", "infra", "infraFactory"}, {"office", "infra", "infraOffice"},
+            {"shop", "infra", "infraShop"}, {"dorm", "infra", "infraDorm"},
+            {"factory", "elevator", "elevatorMaint"}, {"factory", "transformer", "transformerMaint"},
+            {"dorm", "access", "accessMaint"}, {"dorm", "network", "networkFee"},
+            {"factory", "land_tax", "landUseTax"}, {"office", "other", "otherFee"}};
+        for (String[] c : cases) {
+            assertThat(BillFeeMap.rentPayCol(c[0], c[1])).as(c[0] + "/" + c[1]).isEqualTo(c[2]);
+            assertThat(c[2]).isIn(S10_COLS);
+        }
+        // 段类型无关键不看 propertyType;dorm 无 mgmt;未知键 null
+        assertThat(BillFeeMap.rentPayCol(null, "rent_factory")).isEqualTo("factoryRent");
+        assertThat(BillFeeMap.rentPayCol("dorm", "mgmt")).isNull();
+        assertThat(BillFeeMap.rentPayCol("factory", "elec")).isNull();
+        assertThat(BillFeeMap.rentPayCol("factory", null)).isNull();
+    }
+
     @Test
     void unknownKeyReturnsNull() {
         assertThat(BillFeeMap.payCol("rent")).isNull();

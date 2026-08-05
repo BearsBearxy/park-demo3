@@ -13,6 +13,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -105,5 +106,61 @@ class ContractApiIT extends AbstractMysqlIT {
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(404));
+    }
+
+    // ─── V90 公摊面积(S5 §1):写路径 areaShared 落库回读 + 负值 400 ───────────
+
+    /** 建一份 draft 合同(租户/楼栋取种子首个),返回 [id, tenantId, buildingId] */
+    private int[] createDraft(String no) throws Exception {
+        String tenants = mvc.perform(get("/api/tenants").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse().getContentAsString();
+        int tid = ((List<Integer>) JsonPath.read(tenants, "$.data[*].id")).get(0);
+        String buildings = mvc.perform(get("/api/buildings").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse().getContentAsString();
+        int bid = ((List<Integer>) JsonPath.read(buildings, "$.data[*].id")).get(0);
+        String body = mvc.perform(post("/api/contracts")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + no + "\",\"tenantId\":" + tid + ",\"buildingId\":" + bid
+                        + ",\"status\":\"draft\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return new int[]{JsonPath.read(body, "$.data.id"), tid, bid};
+    }
+
+    private static String putBody(String no, int tid, int bid, String areaShared) {
+        return "{\"contractNo\":\"" + no + "\",\"tenantId\":" + tid + ",\"buildingId\":" + bid
+                + ",\"status\":\"draft\",\"billingLines\":[{\"propertyType\":\"factory\",\"location\":\"A座602\","
+                + "\"feeKey\":\"rent_factory\",\"area\":1528,\"areaShared\":" + areaShared + ",\"unitPrice\":10}]}";
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional  // 写用例回滚,不污染共享容器种子
+    void billingLine_areaShared_writtenAndReadBack() throws Exception {
+        String no = "IT-V90-" + System.nanoTime();
+        int[] c = createDraft(no);
+        mvc.perform(put("/api/contracts/" + c[0])
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(putBody(no, c[1], c[2], "458")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/contracts/" + c[0]).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.billingLines[0].areaShared").value(458.0))
+                .andExpect(jsonPath("$.data.billingLines[0].area").value(1528.0));
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void billingLine_areaShared_negative_returns400() throws Exception {
+        String no = "IT-V90N-" + System.nanoTime();
+        int[] c = createDraft(no);
+        mvc.perform(put("/api/contracts/" + c[0])
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content(putBody(no, c[1], c[2], "-1")))
+                .andExpect(status().isBadRequest());
     }
 }

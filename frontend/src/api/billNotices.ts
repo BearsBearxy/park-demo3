@@ -39,10 +39,12 @@ export interface BillNoticeLineDTO {
   priceMonth: string | null          // ''=初始版本
   ruleBranch: string | null          // tou/resident/commercial/tenant_override/fixed/pool
   poolRuleId: number | null
+  poolName: string | null            // 公摊池名(S5 §3.2,detail 读时 join alloc_rule.name);非公摊行 null
   shareSrc: string | null            // member/area/floor
   baseSnap: number | null            // 公摊行=该户份额基数;损耗行=链基数金额
   amount: number
   note: string | null
+  feeGroup: string | null            // rent/elec/water(V90):板块分组
 }
 
 export interface BillNoticeDetailDTO {

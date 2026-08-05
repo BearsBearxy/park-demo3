@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, groupDormExcelStyle, groupExcelStyle,
-  priceScopeLabel, rentByTenant, resolvePhase, segLabel, tenantKpis,
-  type DormLineBase, type NoticeLike,
+  aggregateByTenant, auditTitle, billFeeLabel, billFeeName, groupDormExcelStyle, groupExcelStyle,
+  groupRentByPremise, priceScopeLabel, rentAreaText, rentByTenant, rentFeeName, resolvePhase,
+  segLabel, tenantKpis, type DormLineBase, type NoticeLike, type RentLineBase,
 } from './billNoticeLogic'
 
 describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造第三套)', () => {
@@ -156,6 +156,72 @@ describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () 
     expect(d.water.extras.map(x => x.feeKey)).toEqual(['nope'])
     expect(d.total).toBe(1.5)
     expect(groupDormExcelStyle([]).total).toBe(0)
+  })
+})
+
+describe('billFeeName 行名带池名(S5 §3.2:「费项·池名」)', () => {
+  it('poolName 非空=费项·池名(同名公摊行分得清)', () =>
+    expect(billFeeName({ feeKey: 'share_elec_floor', poolName: 'B座楼梯间消防照明' }))
+      .toBe('楼层照明·B座楼梯间消防照明'))
+  it('无池名=纯费项;undefined 同 null', () => {
+    expect(billFeeName({ feeKey: 'elec', poolName: null })).toBe('电费')
+    expect(billFeeName({ feeKey: 'water' })).toBe('水费')
+  })
+})
+
+describe('groupRentByPremise 租金板块分块(S5 刀4:可莱恩缩样,一场地一块/宿舍逐间块)', () => {
+  const l = (feeKey: string, premise: string | null, amount: number): RentLineBase => ({ feeKey, premise, amount })
+  // 可莱恩缩样:A602 办公室段 2 行 + 宿舍 430室 逐间 4 行(dorm 钉死费项)
+  const lines = [
+    l('rent_office', 'A座602室', 24448), l('mgmt', 'A座602室', 3056),
+    l('rent_dorm', '430室', 800.1), l('infra', '430室', 74.52),
+    l('access', '430室', 8.33), l('network', '430室', 50),
+  ]
+  const g = groupRentByPremise(lines)
+  it('按 premise 分块,块序=首现序;块类型=rent_* 行反推', () => {
+    expect(g.groups.map(x => x.label)).toEqual(['A座602室', '430室'])
+    expect(g.groups.map(x => x.type)).toEqual(['office', 'dorm'])
+  })
+  it('块内行序=入参序,块小计/全户合计浮点无噪音', () => {
+    expect(g.groups[0].lines.map(x => x.feeKey)).toEqual(['rent_office', 'mgmt'])
+    expect(g.groups[0].subtotal).toBe(27504)
+    expect(g.groups[1].lines).toHaveLength(4)
+    expect(g.groups[1].subtotal).toBe(932.95)
+    expect(g.total).toBe(28436.95)
+    expect(groupRentByPremise([l('rent_factory', 'X', 0.1), l('mgmt', 'X', 0.2)]).total).toBe(0.3)
+  })
+  it('premise=null 落「未标场地」兜底带;无 rent_* 行块 type=null', () => {
+    const g2 = groupRentByPremise([l('mgmt', null, 10)])
+    expect(g2.groups[0].label).toBe('未标场地')
+    expect(g2.groups[0].type).toBeNull()
+  })
+  it('空行集=空结构', () => expect(groupRentByPremise([])).toEqual({ groups: [], total: 0 }))
+})
+
+describe('rentFeeName 租金行费项名(mgmt/infra 带段类型前缀)', () => {
+  it('mgmt/infra 前缀随块类型', () => {
+    expect(rentFeeName('mgmt', 'office')).toBe('办公室企业管理服务费')
+    expect(rentFeeName('infra', 'dorm')).toBe('宿舍基础设施维护费')
+  })
+  it('类型未知=不带前缀;rent_* 自带类型', () => {
+    expect(rentFeeName('mgmt', null)).toBe('企业管理服务费')
+    expect(rentFeeName('rent_factory', null)).toBe('厂房租金')
+  })
+  it('未知键原样回落(引擎加费项不炸)', () => expect(rentFeeName('nope', null)).toBe('nope'))
+})
+
+describe('rentAreaText 面积拆解(S5 §2:qty=计租面积,baseSnap=建筑+公摊分摊基数快照)', () => {
+  it('baseSnap>qty 显「建筑+公摊」拆解(可莱恩 A602 锚点)', () => {
+    expect(rentAreaText(1528, 1986)).toBe('1528+458')
+    expect(rentAreaText(2700, 4050)).toBe('2700+1350')
+  })
+  it('无基数/基数≤面积=单数(area 已含公摊的多数户)', () => {
+    expect(rentAreaText(1528, null)).toBe('1528')
+    expect(rentAreaText(74.52, 74.52)).toBe('74.52')
+  })
+  it('qty 空=null;小数差浮点无噪音', () => {
+    expect(rentAreaText(null, 1986)).toBeNull()
+    expect(rentAreaText(100.5, 150.75)).toBe('100.5+50.25')
   })
 })
 

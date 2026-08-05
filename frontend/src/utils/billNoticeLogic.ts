@@ -2,7 +2,9 @@
 // 取价审计链 title、租户聚合(一个租户一条)/期归属/月租金参考/KPI。billNoticeLogic.spec.ts 锁定。
 // fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签直接复用 ALLOC_FEE_LABEL。
 // v1 的单据类/状态字典与按单 KPI 已随「屏上不显单据类/收款主体/状态」拍板删除。
+// S5 刀4:租金板块(fee_group='rent' 落库行)按 premise 分块 groupRentByPremise;公摊行名带池名 billFeeName。
 import { ALLOC_FEE_LABEL } from '@/utils/allocLogic'
+import { FEE_NAME, feeLabel, inferPropertyType, type FeeKey, type PropertyType } from '@/types/contract'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 
@@ -17,6 +19,10 @@ export const BILL_FEE_LABEL: Record<string, string> = {
   water_pipe: '水管网维护费',
 }
 export const billFeeLabel = (k: string) => BILL_FEE_LABEL[k] ?? k
+
+// S5 §3.2:公摊行名带池名「费项·池名」(楼层照明·B座楼梯间消防照明),同名行分得清;无池名=纯费项
+export const billFeeName = (l: { feeKey: string; poolName?: string | null }): string =>
+  l.poolName ? `${billFeeLabel(l.feeKey)}·${l.poolName}` : billFeeLabel(l.feeKey)
 
 // ── 分时段 ──
 export const SEG_LABEL: Record<string, string> = { sharp: '尖', peak: '峰', flat: '平', valley: '谷' }
@@ -147,6 +153,46 @@ export function groupDormExcelStyle<T extends DormLineBase>(lines: T[]): DormGro
   elec.total = sum(elec)
   water.total = sum(water)
   return { elec, water, total: r2(elec.total + water.total) }
+}
+
+// ── S5 刀4 租金板块:fee_group='rent' 落库行按 premise 分块(厂房/办公室/宿舍逐间,块序=首现序);
+// 块类型=块内 rent_* 行反推(mgmt/infra 显「宿舍基础设施维护费」式段前缀,与后端 BillFeeMap 同判定)──
+export interface RentLineBase { feeKey: string; premise: string | null; amount: number }
+export interface RentPremiseGroup<T> {
+  premise: string | null
+  label: string               // premise ?? 未标场地
+  type: PropertyType | null   // 块内 rent_* 行反推;无租金行=null(费项名不带前缀)
+  lines: T[]
+  subtotal: number
+}
+export interface RentGroups<T> { groups: RentPremiseGroup<T>[]; total: number }
+export function groupRentByPremise<T extends RentLineBase>(lines: T[]): RentGroups<T> {
+  const groups: RentPremiseGroup<T>[] = []
+  const byKey = new Map<string, RentPremiseGroup<T>>()
+  let total = 0
+  for (const l of lines) {
+    const k = l.premise ?? ''
+    let g = byKey.get(k)
+    if (!g) {
+      g = { premise: l.premise ?? null, label: l.premise ?? '未标场地', type: null, lines: [], subtotal: 0 }
+      byKey.set(k, g)
+      groups.push(g)
+    }
+    if (g.type == null && l.feeKey.startsWith('rent_')) g.type = inferPropertyType(l.feeKey as FeeKey)
+    g.lines.push(l)
+    g.subtotal = r2(g.subtotal + l.amount)
+    total = r2(total + l.amount)
+  }
+  return { groups, total }
+}
+// 租金行费项名:合同 13 枚举走 feeLabel(mgmt/infra 带段类型前缀),未知键原样回落
+export const rentFeeName = (feeKey: string, pt: PropertyType | null): string =>
+  feeKey in FEE_NAME ? feeLabel(pt, feeKey as FeeKey) : feeKey
+// 面积展示(S5 §2):qty=计租面积/间数,baseSnap=分摊基数(建筑+公摊)快照;
+// baseSnap>qty 时拆解「1528+458」,否则显单数。ponytail: 后端若改存公摊差额,仅此一处换算。
+export function rentAreaText(qty: number | null, baseSnap: number | null): string | null {
+  if (qty == null) return null
+  return baseSnap != null && baseSnap > qty ? `${qty}+${r2(baseSnap - qty)}` : String(qty)
 }
 
 // ── 取价审计链 title(行尾 info 图标悬浮):price_key/price_scope/price_month/rule_branch ──

@@ -15,6 +15,7 @@ public class ContractBillingTerm {
     private String billMode;    // per_sqm_month | per_month | per_room_year | per_room_month | per_kva_month
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal unitPrice;
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal area;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal areaShared; // 公摊面积(V90):非空=area为建筑面积,分摊按 area+area_shared;空=area已含公摊
     private BigDecimal coeff;
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private Integer roomCount;        // 门禁/网络按间计费
     @TableField(updateStrategy = FieldStrategy.ALWAYS) private BigDecimal amountOverride;// per_month 模式的月额值;其他 bill_mode 下被 lineMonthly 忽略(S4 审计正名,勿按"全局覆盖"理解)

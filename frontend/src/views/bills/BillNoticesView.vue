@@ -2,8 +2,8 @@
 // 催缴单屏 v2(S4-BILL-NOTICE-SPEC §7 S4-4 v2 拍板):一个租户一条(该户全部单据合并,
 // 对齐 Excel 每租户一张 worksheet);一期/二期/三期分 tab(期归属=在租合同楼栋 phase→premise 前缀→兜底一期);
 // 屏上不显收款主体/单据类/状态(引擎照旧拆单落库,只是 UI 聚合);签发/作废本轮撤下(api 端点保留)。
-// 明细抽屉两 tab:场地租金(逐份在租合同计费行,lineMonthly 参考口径:整月/未含免租期按天折)在前、
-// 水电费(全单明细合并,沿用 premise 分带小计+取价审计链悬浮)在后。
+// 明细抽屉两 tab:场地租金(S5 刀4:fee_group='rent' 落库行,厂房/办公室/宿舍逐间块+面积拆解+折算式备注)在前、
+// 水电费(全单明细合并,沿用 premise 分带小计+行名带池名+取价审计链悬浮)在后。
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -11,14 +11,14 @@ import {
   billNoticesApi, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
 } from '@/api/billNotices'
 import { contractApi } from '@/api/contract'
-import { feeLabel, lineMonthly, type BillingLineDTO, type ContractDTO } from '@/types/contract'
+import { PROPERTY_TYPE_LABEL, type ContractDTO, type PropertyType } from '@/types/contract'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, groupDormExcelStyle, groupExcelStyle,
-  rentByTenant, resolvePhase, segLabel, tenantKpis, type TenantNoticeRow,
+  aggregateByTenant, auditTitle, billFeeName, groupDormExcelStyle, groupExcelStyle, groupRentByPremise,
+  rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantKpis, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -145,11 +145,6 @@ const DLG_TABS = [{ value: 'rent', label: '场地租金' }, { value: 'util', lab
 const dlgLoading = ref(false)
 const dlgRow = ref<DisplayRow | null>(null)
 const details = ref<BillNoticeDetailDTO[]>([])
-// 场地租金带:逐份在租合同;计费行抽屉打开才拉、每合同一次并缓存(lines=null 表载入失败)
-interface RentBand { contract: ContractDTO; lines: BillingLineDTO[] | null }
-const rentBands = ref<RentBand[]>([])
-const rentLoading = ref(false)
-const blCache = new Map<number, BillingLineDTO[]>()
 let dlgSeq = 0
 
 async function openDetail(r: DisplayRow) {
@@ -158,9 +153,7 @@ async function openDetail(r: DisplayRow) {
   dlgRow.value = r
   dlgLoading.value = true
   details.value = []
-  rentBands.value = []
   const my = ++dlgSeq
-  loadRentBands(r.tenantId, my)
   try {
     const ds = await Promise.all(r.noticeIds.map(id => billNoticesApi.detail(id)))
     if (my !== dlgSeq) return
@@ -170,23 +163,13 @@ async function openDetail(r: DisplayRow) {
     alert(errMsg(e, '明细加载失败')); dlgOpen.value = false
   } finally { if (my === dlgSeq) dlgLoading.value = false }
 }
-async function loadRentBands(tenantId: number, my: number) {
-  rentLoading.value = true
-  const bands = await Promise.all((contractsByTenant.value.get(tenantId) ?? []).map(async c => {
-    if (!blCache.has(c.id)) {
-      try { blCache.set(c.id, (await contractApi.detail(c.id)).billingLines) } catch { /* 该带显载入失败 */ }
-    }
-    return { contract: c, lines: blCache.get(c.id) ?? null }
-  }))
-  if (my !== dlgSeq) return
-  rentBands.value = bands
-  rentLoading.value = false
-}
 
 // 水电 tab v3(可莱恩 worksheet 版式):非宿舍单→电/水两部逐场地「费块+维护费块」;
 // dorm 单→宿舍逐间子表;末行合计=非宿舍+宿舍。行归块在 billNoticeLogic 纯函数,此处只拍平成渲染行。
-const mainLines = computed(() => details.value.filter(d => d.noticeKind !== 'dorm').flatMap(d => d.lines))
-const dormLines = computed(() => details.value.filter(d => d.noticeKind === 'dorm').flatMap(d => d.lines))
+// S5 起单内混租金行(fee_group='rent'),水电 tab 只吃非 rent 行。
+const utilLines = computed(() => details.value.map(d => ({ ...d, lines: d.lines.filter(l => l.feeGroup !== 'rent') })))
+const mainLines = computed(() => utilLines.value.filter(d => d.noticeKind !== 'dorm').flatMap(d => d.lines))
+const dormLines = computed(() => utilLines.value.filter(d => d.noticeKind === 'dorm').flatMap(d => d.lines))
 const xg = computed(() => groupExcelStyle(mainLines.value))
 const dorm = computed(() => groupDormExcelStyle(dormLines.value))
 const utilGrand = computed(() => r2(xg.value.total + dorm.value.total))
@@ -219,17 +202,17 @@ const utilRows = computed<UtilRowVM[]>(() => {
   return out
 })
 
-// 场地租金 tab:月额=lineMonthly 镜像(per_kva 取合同 kva);小计按合同、全户合计跨合同
-const lineMon = (b: RentBand, l: BillingLineDTO) => lineMonthly(l, b.contract.kva)
-const bandTotal = (b: RentBand) => r2((b.lines ?? []).reduce((s, l) => s + (lineMon(b, l) ?? 0), 0))
-const rentGrand = computed(() => r2(rentBands.value.reduce((s, b) => s + bandTotal(b), 0)))
-const rentFeeName = (l: BillingLineDTO) => l.feeName ?? feeLabel(l.propertyType ?? null, l.feeKey)
+// 场地租金 tab(S5 刀4):渲染 fee_group='rent' 落库行,按 premise 分块(厂房/办公室/宿舍逐间)
+const rentLines = computed(() => details.value.flatMap(d => d.lines).filter(l => l.feeGroup === 'rent'))
+const rentG = computed(() => groupRentByPremise(rentLines.value))
+const rentBandLabel = (g: { type: PropertyType | null; label: string }) =>
+  g.type ? `${PROPERTY_TYPE_LABEL[g.type]}(${g.label})` : g.label
 
 const drawerSub = computed(() => {
   const r = dlgRow.value
   if (!r) return ''
   const cn = (contractsByTenant.value.get(r.tenantId) ?? []).length
-  return [ym.value, `在租合同 ${cn} 份`, `水电 ${r.lineCount} 行`].join(' · ')
+  return [ym.value, `在租合同 ${cn} 份`, `明细 ${r.lineCount} 行`].join(' · ')
 })
 </script>
 
@@ -260,7 +243,7 @@ const drawerSub = computed(() => {
     <!-- KPI 条(随当前期 tab 联动) -->
     <div class="bn-kpis">
       <FPStat label="户数" :value="String(kpis.count)" tint="blue" />
-      <FPStat label="水电总额(元)" :value="fmt2(kpis.total)" tint="sky" />
+      <FPStat label="本期总额(元)" :value="fmt2(kpis.total)" tint="sky" sub="S5 起含租金板块" />
       <FPStat label="月租金合计(参考,元)" :value="fmt2(kpis.rent)" sub="整月口径,未含免租期/按天折" />
       <FPStat label="警告户数" :value="String(kpis.warned)" :sub="kpis.warned ? '悬停行尾「!」看原文' : undefined" />
     </div>
@@ -303,8 +286,8 @@ const drawerSub = computed(() => {
           <tr>
             <th class="l">租户</th>
             <th class="l" title="该户全部单据场地去重合并,明细内按场地分段小计">位置</th>
-            <th>水电行数</th>
-            <th title="该户全部单据本期合计之和(含宿舍单);账外户降淡不入应收">水电合计(元)</th>
+            <th>行数</th>
+            <th title="该户全部单据本期合计之和(租金+水电,含宿舍单);账外户降淡不入应收">本期合计(元)</th>
             <th title="该户当月在租合同月租之和;参考口径:整月,未含免租期/按天折">月租金(参考)</th>
             <th title="门禁告警:缺价/表未归属合同/费项未设收款公司/合计为负…各单去重合并,悬停「!」看原文">警告</th>
           </tr>
@@ -357,70 +340,62 @@ const drawerSub = computed(() => {
         </div>
         <div class="bn-hgrid">
           <div class="bn-hfld"><label>位置</label><span :class="{ dim: !dlgRow.premiseText }">{{ dlgRow.premiseText || '—' }}</span></div>
-          <div class="bn-hfld"><label>水电合计</label><span class="mono">{{ fmt2(dlgRow.totalAmount) }} 元</span></div>
+          <div class="bn-hfld"><label>本期合计</label><span class="mono">{{ fmt2(dlgRow.totalAmount) }} 元</span></div>
           <div class="bn-hfld"><label>月租金(参考)</label><span class="mono" :class="{ dim: dlgRow.rent == null }">{{ dlgRow.rent == null ? '–' : fmt2(dlgRow.rent) + ' 元' }}</span></div>
           <div class="bn-hfld"><label>上期欠费</label><span class="mono dim" title="催缴闭环接口点,S4 恒 0,待收款流水接入">{{ fmt2(dlgRow.prevDue) }} 元</span></div>
         </div>
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
-        <!-- 场地租金 tab:逐份在租合同一带,行=计费行,月额=lineMonthly 参考口径 -->
+        <!-- 场地租金 tab(S5 刀4):fee_group='rent' 落库行,一场地一块(厂房/办公室/宿舍逐间);
+             面积列显「建筑+公摊」拆解,备注列显按天折算式/免租期扣减 -->
         <template v-if="dlgTab === 'rent'">
-          <div class="bn-refnote">参考口径:整月,未含免租期/按天折</div>
-          <div v-if="rentLoading" class="bn-empty">计费行加载中…</div>
-          <div v-else-if="rentBands.length === 0" class="bn-empty">本月无在租合同</div>
+          <div v-if="rentG.groups.length === 0" class="bn-empty">本月无租金行 —— 重新生成后按合同条款派生</div>
           <div v-else class="bn-dwrap">
             <table class="bn-dtable">
               <colgroup>
                 <col style="width:38px" />
-                <col style="width:160px" />
-                <col /><!-- 位置:唯一弹性列 -->
+                <col style="width:200px" />
                 <col style="width:92px" />
-                <col style="width:92px" />
+                <col style="width:120px" />
                 <col style="width:110px" />
+                <col /><!-- 备注:唯一弹性列 -->
               </colgroup>
               <thead>
                 <tr>
                   <th>#</th>
                   <th class="l">费项</th>
-                  <th class="l">位置</th>
                   <th>单价</th>
-                  <th title="按㎡计费显面积,按间计费显间数">面积/间数</th>
-                  <th>月额(元)</th>
+                  <th title="行带建筑+公摊两格时显拆解(如 1528+458);按间计费显间数">面积/间数</th>
+                  <th>金额(元)</th>
+                  <th class="l" title="非整月按天折算式(如 1130÷31×26);免租期扣减">备注</th>
                 </tr>
               </thead>
               <tbody>
-                <template v-for="b in rentBands" :key="b.contract.id">
+                <template v-for="g in rentG.groups" :key="g.label">
                   <tr class="bn-band">
-                    <td :colspan="6" class="l">
-                      <span class="bn-band-lbl">{{ b.contract.contractNo }}</span>
-                      <span class="bn-band-sub">{{ b.contract.startDate ?? '–' }} ~ {{ b.contract.endDate ?? '–' }} · {{ b.contract.floorInfo }}</span>
-                    </td>
+                    <td :colspan="6" class="l"><span class="bn-band-lbl">{{ rentBandLabel(g) }}</span></td>
                   </tr>
-                  <tr v-if="b.lines === null">
-                    <td :colspan="6" class="l"><span class="bn-txt dim">计费行载入失败</span></td>
-                  </tr>
-                  <tr v-else-if="b.lines.length === 0">
-                    <td :colspan="6" class="l"><span class="bn-txt dim">未录计费行</span></td>
-                  </tr>
-                  <tr v-for="(l, i) in b.lines ?? []" :key="l.id">
+                  <tr v-for="(l, i) in g.lines" :key="i">
                     <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="l.feeKey">{{ rentFeeName(l) }}</span></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.location || undefined">{{ l.location || '–' }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: l.unitPrice == null }">{{ fmt(l.unitPrice) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: (l.area ?? l.roomCount) == null }">{{ fmt(l.area ?? l.roomCount) }}</span></td>
-                    <td><span class="bn-sumc" :class="{ neg: (lineMon(b, l) ?? 0) < 0 }">{{ fmt2(lineMon(b, l)) }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="l.feeKey">{{ rentFeeName(l.feeKey, g.type) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }">{{ fmt(l.priceSnap) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: l.qty == null }">{{ rentAreaText(l.qty, l.baseSnap) ?? '–' }}</span></td>
+                    <td><span class="bn-sumc" :class="{ neg: l.amount < 0 }">{{ fmt2(l.amount) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :title="l.note ?? undefined">{{ l.note || '' }}</span></td>
                   </tr>
                   <tr class="bn-sub">
-                    <td :colspan="5" class="l"><span class="bn-txt dim">小计 · {{ b.contract.contractNo }}</span></td>
-                    <td><span class="bn-sumc">{{ fmt2(bandTotal(b)) }}</span></td>
+                    <td :colspan="4" class="l"><span class="bn-txt dim">小计 · {{ g.label }}</span></td>
+                    <td><span class="bn-sumc">{{ fmt2(g.subtotal) }}</span></td>
+                    <td></td>
                   </tr>
                 </template>
               </tbody>
               <tfoot>
                 <tr>
-                  <th :colspan="5" class="l"><span class="bn-foot-lbl">全户合计(参考)</span></th>
-                  <th><span class="bn-foot-v">{{ fmt2(rentGrand) }}</span></th>
+                  <th :colspan="4" class="l"><span class="bn-foot-lbl">租金板块合计</span></th>
+                  <th><span class="bn-foot-v">{{ fmt2(rentG.total) }}</span></th>
+                  <th></th>
                 </tr>
               </tfoot>
             </table>
@@ -468,7 +443,7 @@ const drawerSub = computed(() => {
                   </tr>
                   <tr v-else-if="r0.t === 'line'">
                     <td><span class="bn-nv dim">{{ r0.no }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="r0.l.feeKey">{{ billFeeLabel(r0.l.feeKey) }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="r0.l.feeKey">{{ billFeeName(r0.l) }}</span></td>
                     <td class="l"><span class="bn-txt" :class="{ dim: !r0.l.meterLabel }">{{ r0.l.meterLabel ?? '–' }}</span></td>
                     <td class="l"><span class="bn-txt">{{ segLabel(r0.l.seg) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.prevRead == null }">{{ fmt(r0.l.prevRead) }}</span></td>
@@ -546,7 +521,7 @@ const drawerSub = computed(() => {
                   <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行) -->
                   <tr v-for="(l, i) in dorm.elec.extras" :key="'x' + i">
                     <td></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeLabel(l.feeKey) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
                     <td :colspan="6"></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
@@ -595,7 +570,7 @@ const drawerSub = computed(() => {
                   </tr>
                   <tr v-for="(l, i) in dorm.water.extras" :key="'x' + i">
                     <td></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeLabel(l.feeKey) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
                     <td :colspan="4"></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
@@ -694,13 +669,10 @@ const drawerSub = computed(() => {
 .bn-hfld .dim, .bn-hfld .mono.dim { color: var(--text-disabled); }
 .bn-bar.warn + .bn-hgrid { margin-top: 12px; }
 
-/* 租金参考口径灰字标注 */
-.bn-refnote { font-size: 11.5px; color: var(--text-muted); margin: -12px 0 -10px; }
-
 /* flex:0 0 auto——fp-dwr-body 是定高 flex 列,不禁 shrink 各表会被等比压扁出内部滚动条(2026-08-05 报障);
    整卡只留 body 一条滚动,overflow:auto 仅兜横向 */
 .bn-dwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: auto; flex: 0 0 auto; }
-.bn-bar, .bn-hgrid, .bn-refnote, .bn-dsec, .bn-grand { flex-shrink: 0; }
+.bn-bar, .bn-hgrid, .bn-dsec, .bn-grand { flex-shrink: 0; }
 .bn-dtable { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; white-space: nowrap; }
 .bn-dtable th, .bn-dtable td { box-sizing: border-box; padding: 0 8px; border-bottom: 1px solid var(--divider); overflow: hidden; text-overflow: ellipsis; }
 .bn-dtable thead th { position: sticky; top: 0; z-index: 2; height: 30px; text-align: right; font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); }
