@@ -345,8 +345,7 @@ const drawerSub = computed(() => {
       :title="dlgRow ? (dlgRow.tenantName ?? '#' + dlgRow.tenantId) : '催缴单明细'"
       :subtitle="drawerSub"
       icon="file-check-2"
-      :width="960"
-      :fixedHeight="true"
+      :full="true"
       @close="dlgOpen = false"
     >
       <div v-if="dlgLoading || !dlgRow" class="bn-empty">加载中…</div>
@@ -698,7 +697,10 @@ const drawerSub = computed(() => {
 /* 租金参考口径灰字标注 */
 .bn-refnote { font-size: 11.5px; color: var(--text-muted); margin: -12px 0 -10px; }
 
-.bn-dwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: auto; }
+/* flex:0 0 auto——fp-dwr-body 是定高 flex 列,不禁 shrink 各表会被等比压扁出内部滚动条(2026-08-05 报障);
+   整卡只留 body 一条滚动,overflow:auto 仅兜横向 */
+.bn-dwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: auto; flex: 0 0 auto; }
+.bn-bar, .bn-hgrid, .bn-refnote, .bn-dsec, .bn-grand { flex-shrink: 0; }
 .bn-dtable { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; white-space: nowrap; }
 .bn-dtable th, .bn-dtable td { box-sizing: border-box; padding: 0 8px; border-bottom: 1px solid var(--divider); overflow: hidden; text-overflow: ellipsis; }
 .bn-dtable thead th { position: sticky; top: 0; z-index: 2; height: 30px; text-align: right; font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); }
