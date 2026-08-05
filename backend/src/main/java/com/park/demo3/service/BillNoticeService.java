@@ -506,7 +506,10 @@ public class BillNoticeService {
     // 改取当月核算率(std 已含 fold_add,如绿化 V65=0.001+V77 水泵折入 0.007)。
     private void collectPrice(L l, AllocService.Contribution c, AllocRule rule, String ym) {
         boolean lampFee = "share_elec_light".equals(c.feeKey());
-        if (!(lampFee || "share_green_water".equals(c.feeKey())) || c.base() == null || c.rate() == null) return;
+        if (!(lampFee || "share_green_water".equals(c.feeKey()))) return;
+        // p2 池路径的 Contribution 不带面积,行上 baseSnap=金额÷标准 回推即面积(保奔路 12.80÷0.008=1600)
+        BigDecimal base = c.base() != null ? c.base() : l.baseSnap;
+        if (base == null) return;
         BigDecimal collect = c.rate();   // p1/dorm 与 live 例外:收取价=当月核算率
         if (rule != null && "p2".equals(rule.getZone())) {
             String key = lampFee ? "lamp_rate" : "green_rate";
@@ -519,11 +522,12 @@ public class BillNoticeService {
                 if (hit == null) return;   // 冻结常数未录:维持核算口径原行不硬改(SQL① 应用后自然生效)
                 collect = hit.value();
                 l.priceKey = key; l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
-                l.note = trunc("核算率 " + c.rate().stripTrailingZeros().toPlainString() + " 备查", 255);
+                l.note = trunc("核算率 " + (c.rate() == null ? "-" : c.rate().stripTrailingZeros().toPlainString()) + " 备查", 255);
             }
         }
+        if (collect == null) return;
         l.priceSnap = collect;
-        l.amount = r2(collect.multiply(c.base()));
+        l.amount = r2(collect.multiply(base));
     }
 
     private static String tenantOverride(PriceCfgService.PriceHit hit, String base) {
