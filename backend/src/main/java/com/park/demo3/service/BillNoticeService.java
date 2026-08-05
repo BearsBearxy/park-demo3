@@ -94,7 +94,9 @@ public class BillNoticeService {
         String feeKey, premise, meterLabel, seg, priceKey, priceScope, priceMonth, ruleBranch, shareSrc, note;
         Integer meterId, contractId, poolRuleId;
         BigDecimal prevRead, currRead, factorSnap, qty, priceSnap, baseSnap, amount;
-        BigDecimal rateTmp;   // 损耗率暂存,只为金额口径备查 note,不落库
+        BigDecimal rateTmp;               // 链损耗率(E2:户级收尾按链基数×率定 amount)
+        List<Integer> lossBuildings;      // 损耗链成员楼栋(E2 圈「链内行」用)
+        String chainName;                 // 链名(A栋+B栋,进 note)
     }
 
     // ══════════ generate(ym) ══════════
@@ -205,8 +207,9 @@ public class BillNoticeService {
             L l = new L();
             l.tenantId = c.tenantId(); l.seq = seq[0]++;
             l.qty = c.qty(); l.priceSnap = c.price(); l.amount = c.amount(); l.note = c.note();
-            if (c.ruleId() == null) {   // p1/p2 损耗链(dorm 不进损耗组,宿舍段另算,见下)
+            if (c.ruleId() == null) {   // p1/p2 损耗链(dorm 不进损耗组,宿舍段另算,见下);金额在户级收尾按链计(E2)
                 l.feeKey = "share_elec_loss"; l.ruleBranch = "fixed"; l.rateTmp = c.rate();
+                l.lossBuildings = c.lossBuildings(); l.chainName = c.lossChainName();
             } else {
                 AllocRule rule = ruleById.get(c.ruleId());
                 l.feeKey = c.feeKey(); l.ruleBranch = "pool"; l.poolRuleId = c.ruleId();
@@ -214,20 +217,21 @@ public class BillNoticeService {
                 l.shareSrc = rule == null ? null
                     : switch (rule.getMethod()) { case "direct" -> "member"; case "area" -> "area";
                                                   case "floor" -> "floor"; default -> null; };
-                // base_snap=该户份额基数(㎡/weight)=金额÷标准(area: std×面积 / floor: 元每层×weight)
-                if (c.rate() != null && c.rate().signum() != 0)
+                // base_snap=该户份额基数:area 池取 Contribution 携带的精确面积;其余反推=金额÷标准
+                if (c.base() != null) l.baseSnap = c.base();
+                else if (c.rate() != null && c.rate().signum() != 0)
                     l.baseSnap = c.amount().divide(c.rate(), 2, RoundingMode.HALF_UP);
                 l.dorm = rule != null && "dorm".equals(rule.getZone());
+                collectPrice(l, c, rule, ym);   // D① 月推类公摊池(路灯/绿化水)改收取价落行
             }
             byTenant.computeIfAbsent(l.tenantId, k -> new ArrayList<>()).add(l);
         }
 
-        // ── 户级收尾:宿舍段损耗 + p1/p2 损耗行金额口径备查 note ──
+        // ── 户级收尾:宿舍段损耗 + p1/p2 损耗行金额口径分链计(E2,定案 2026-08-05) ──
         for (Map.Entry<Integer, List<L>> e : byTenant.entrySet()) {
             List<L> ls = e.getValue();
-            // 宿舍段损耗:poolContributions 不覆盖 dorm(dorm 不进损耗组)。口径=resolve('loss_rate',dorm)(0.012)
-            // × 该户宿舍段电费金额(is_dorm_room 表的 elec 行Σ,不含管理费)。
-            // ⚠金额口径与 p1/p2 的度数口径不同——先按 P1/验证脚本的源册形态落,S4-3 逐户对照后定案(定案#1)。
+            // 宿舍段损耗(定案:维持不动):resolve('loss_rate',dorm)(0.012)× 该户宿舍段电费金额
+            // (is_dorm_room 表的 elec 行Σ,不含管理费)。
             BigDecimal dormElec = ls.stream()
                 .filter(l -> l.dorm && "elec".equals(l.feeKey) && l.meterId != null && l.amount != null)
                 .map(l -> l.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -240,23 +244,36 @@ public class BillNoticeService {
                     l.priceKey = "loss_rate"; l.priceSnap = rate.value();
                     l.priceScope = rate.scope(); l.priceMonth = rate.acctMonth();
                     l.baseSnap = dormElec; l.amount = r2(dormElec.multiply(rate.value()));
-                    l.note = trunc("宿舍段损耗=宿舍电费金额 " + dormElec + " ×率 " + rate.value()
-                        + "(金额口径;S4-3 对照源册后定案)", 255);
+                    l.note = trunc("宿舍段损耗=宿舍电费金额 " + dormElec + " ×率 " + rate.value(), 255);
                     ls.add(l);
                 }
             }
-            // 损耗金额口径备查(§5 末):(户电费+公摊电)×rate 写 note,不参与 amount;基数不含容量费与管理费
-            BigDecimal elecAmt = ls.stream().filter(l -> !l.dorm && "elec".equals(l.feeKey) && l.amount != null)
-                .map(l -> l.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal shareAmt = ls.stream().filter(l -> l.feeKey != null && l.amount != null
-                    && (l.feeKey.equals("share_elec_floor") || l.feeKey.equals("share_elec_elevator")
-                        || l.feeKey.equals("share_elec_fire")))
-                .map(l -> l.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            // E2 损耗行=金额口径分链计(定案 2026-08-05):amount=(链内户电费+链内公摊 floor/elevator/fire
+            // 行金额)×链损耗率;链=损耗组(head_building 分桶),多链户逐链一行(lossContributions 本就逐组产行);
+            // note 落该链基数明细。修掉旧版全户基数复用:多链户曾把别链的电费也算进每条链的基数。
+            // 基数不含容量费/管理费/宿舍段(dorm 行);链内判定=电表 building ∈ 链 / 公摊池 rule.building ∈ 链。
             for (L l : ls) {
                 if (l.rateTmp == null) continue;
-                String alt = "金额口径=(户电费" + elecAmt + "+公摊" + shareAmt + ")×" + l.rateTmp
-                    + "=" + r2(elecAmt.add(shareAmt).multiply(l.rateTmp)) + "(备查,不参与amount)";
-                l.note = trunc(l.note == null ? alt : l.note + ";" + alt, 255);
+                List<Integer> chain = l.lossBuildings == null ? List.of() : l.lossBuildings;
+                BigDecimal elecAmt = BigDecimal.ZERO, shareAmt = BigDecimal.ZERO;
+                for (L o : ls) {
+                    if (o.amount == null) continue;
+                    if (!o.dorm && "elec".equals(o.feeKey) && o.meterId != null) {
+                        Meter m = meterById.get(o.meterId);
+                        if (m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId()))
+                            elecAmt = elecAmt.add(o.amount);
+                    } else if (o.poolRuleId != null && ("share_elec_floor".equals(o.feeKey)
+                            || "share_elec_elevator".equals(o.feeKey) || "share_elec_fire".equals(o.feeKey))) {
+                        AllocRule pr = ruleById.get(o.poolRuleId);
+                        if (pr != null && pr.getBuildingId() != null && chain.contains(pr.getBuildingId()))
+                            shareAmt = shareAmt.add(o.amount);
+                    }
+                }
+                BigDecimal chainBase = elecAmt.add(shareAmt);
+                l.baseSnap = chainBase; l.priceSnap = l.rateTmp;
+                l.amount = r2(chainBase.multiply(l.rateTmp));
+                l.note = trunc("链[" + l.chainName + "]损耗=(户电费 " + elecAmt + "+公摊 " + shareAmt
+                    + ")×率 " + l.rateTmp, 255);
             }
         }
 
@@ -367,12 +384,14 @@ public class BillNoticeService {
         }
         boolean tou = r.getCurrPeak() != null || r.getCurrFlat() != null || r.getCurrValley() != null;
         String mgmtKey;
+        BigDecimal segSum = null;   // E3:分时表管理费基数=Σ段用量(源册口径,常与总示数差分位);段全缺回退总示数
         if (tou) {
             mgmtKey = "mgmt_fee";
             for (String seg : SEGS) {
                 BigDecimal prev = segPrev(r, seg), curr = segCurr(r, seg);
                 BigDecimal u = MeterService.usage(prev, curr, f);
                 if (u == null) continue;
+                segSum = segSum == null ? u : segSum.add(u);
                 PriceCfgService.PriceHit hit;
                 BigDecimal p;
                 String note = null;
@@ -405,13 +424,16 @@ public class BillNoticeService {
             singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, false,
                 "elec", "elec_commercial", zone, total, "commercial");
         }
-        // 电力管理费:该表总用量×费率;费率查无或为 0 不出行(§5 要点);逐表落行保 meter 关联
-        if (total == null) return;
+        // 电力管理费:基数×费率;分时表基数=Σ段用量(E3),否则总用量;费率查无或为 0 不出行(§5 要点);逐表落行保 meter 关联
+        BigDecimal mgmtBase = segSum != null ? segSum : total;
+        if (mgmtBase == null) return;
         PriceCfgService.PriceHit mg = price.resolveHit(mgmtKey, ym, tid, zone);
         if (mg == null || mg.value().signum() == 0) return;
         L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, "mgmt_fee", mgmtKey, null,
-            null, null, f, total, mg, tenantOverride(mg, "fixed"));
-        l.amount = r2(total.multiply(mg.value()));
+            null, null, f, mgmtBase, mg, tenantOverride(mg, "fixed"));
+        l.amount = r2(mgmtBase.multiply(mg.value()));
+        if (total != null && segSum != null && segSum.compareTo(total) != 0)
+            l.note = trunc("管理费基数=Σ段 " + segSum + "(总示数 " + total + ")", 255);
     }
 
     // ── 水表:is_dorm_room→3.85+管网0(dorm scope 天然给 0=不出行)/否则 3.95+0.5;户级例外同链 ──
@@ -474,6 +496,34 @@ public class BillNoticeService {
         l.ruleBranch = branch;
         byTenant.computeIfAbsent(tid, k -> new ArrayList<>()).add(l);
         return l;
+    }
+
+    // D① 收取价(调查 2026-08-05 钉死;SQL 落点 scripts/fixes/share-charge-rate-20260805.sql):
+    // 月推类公摊池(路灯 share_elec_light/绿化水 share_green_water)落行=收取单价×户面积,price_snap 存收取价,
+    // note 保留核算率备查。分流:p1/dorm 收取价=当月池核算率(std_value,当月核算再舍入,Excel VLOOKUP 同口径);
+    // p2 默认取冻结常数(tenant_price_cfg p2.lamp_rate=0.005/p2.green_rate=0.01,=隐藏死模板 公共电分摊!M99/M109),
+    // 户级 live 例外(tenant:{id}.lamp_rate_live/green_rate_live=1,sheet 引用 公共电数据!V95/V65 的 16 户)
+    // 改取当月核算率(std 已含 fold_add,如绿化 V65=0.001+V77 水泵折入 0.007)。
+    private void collectPrice(L l, AllocService.Contribution c, AllocRule rule, String ym) {
+        boolean lampFee = "share_elec_light".equals(c.feeKey());
+        if (!(lampFee || "share_green_water".equals(c.feeKey())) || c.base() == null || c.rate() == null) return;
+        BigDecimal collect = c.rate();   // p1/dorm 与 live 例外:收取价=当月核算率
+        if (rule != null && "p2".equals(rule.getZone())) {
+            String key = lampFee ? "lamp_rate" : "green_rate";
+            PriceCfgService.PriceHit live = price.resolveHit(key + "_live", ym, l.tenantId, "p2");
+            if (live != null && live.scope().startsWith("tenant:") && live.value().signum() != 0) {
+                l.priceKey = key + "_live"; l.priceScope = live.scope(); l.priceMonth = live.acctMonth();
+                l.note = trunc("收取价=当月核算率(live 例外)", 255);
+            } else {
+                PriceCfgService.PriceHit hit = price.resolveHit(key, ym, l.tenantId, "p2");
+                if (hit == null) return;   // 冻结常数未录:维持核算口径原行不硬改(SQL① 应用后自然生效)
+                collect = hit.value();
+                l.priceKey = key; l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
+                l.note = trunc("核算率 " + c.rate().stripTrailingZeros().toPlainString() + " 备查", 255);
+            }
+        }
+        l.priceSnap = collect;
+        l.amount = r2(collect.multiply(c.base()));
     }
 
     private static String tenantOverride(PriceCfgService.PriceHit hit, String base) {

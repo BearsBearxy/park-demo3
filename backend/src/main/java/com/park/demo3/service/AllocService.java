@@ -775,8 +775,16 @@ public class AllocService {
                        List<String> warnings) {}
 
     // (包级可见:S4 出账引擎经 poolContributions 消费公摊行)
+    // base=户份额基数(area 池=该户面积㎡,其余 null;S4-3 D① 收取价=收取单价×base 要精确面积,别用 amount/rate 反推);
+    // lossBuildings/lossChainName=损耗链成员楼栋与链名(仅 ruleId=null 损耗行;S4-3 E2 金额口径分链计要圈链内行)。
     record Contribution(Integer tenantId, String feeKey, Integer ruleId, String ruleName,
-                        BigDecimal qty, BigDecimal amount, BigDecimal rate, BigDecimal price, String note) {}
+                        BigDecimal qty, BigDecimal amount, BigDecimal rate, BigDecimal price, String note,
+                        BigDecimal base, List<Integer> lossBuildings, String lossChainName) {
+        Contribution(Integer tenantId, String feeKey, Integer ruleId, String ruleName,
+                     BigDecimal qty, BigDecimal amount, BigDecimal rate, BigDecimal price, String note) {
+            this(tenantId, feeKey, ruleId, ruleName, qty, amount, rate, price, note, null, null, null);
+        }
+    }
 
     // 规则用量(总+分时四段;缺抄表跳过并入 warnings)
     private record RuleUsage(BigDecimal qty, BigDecimal sharp, BigDecimal peak, BigDecimal flat, BigDecimal valley) {}
@@ -959,7 +967,7 @@ public class AllocService {
                     BigDecimal qtyShare = base == null || base.signum() == 0 ? null
                         : r2(qty.multiply(area).divide(base, 10, RoundingMode.HALF_UP));
                     out.add(new Contribution(m.getTenantId(), rule.getFeeKey(), rule.getId(), rule.getName(),
-                        qtyShare, r2(std.multiply(area)), std, effPrice, null));
+                        qtyShare, r2(std.multiply(area)), std, effPrice, null, area, null, null));
                 }
             }
             case "floor" -> {    // 元/层=池 std;显式份额户=元/层×weight;其余户按楼层分桶,每桶各分 1 份(§D.2)
@@ -1140,9 +1148,14 @@ public class AllocService {
                 BigDecimal u = r == null ? null : MeterService.usage(r.getPrevTotal(), r.getCurrTotal(), r.getFactorSnap());
                 if (u != null && u.signum() > 0) usageByTenant.merge(m.getTenantId(), u, BigDecimal::add);
             }
+            // S4-3 E2:携链信息(成员楼栋+链名)供出账引擎按链计金额口径;度数口径 amount 原样保留(alloc_result 契约不动)
+            String chainName = g.buildingIds().stream()
+                .map(bid -> { Building b = ctx.buildingById().get(bid); return b == null ? "#" + bid : b.getName(); })
+                .reduce((a, b) -> a + "+" + b).orElse("#" + g.headBuildingId());
             for (Map.Entry<Integer, BigDecimal> e : usageByTenant.entrySet()) {
                 out.add(new Contribution(e.getKey(), FEE_LOSS, null, null, r2(e.getValue()),
-                    lossFee(e.getValue(), rate, priceLoss), rate, priceLoss, null));
+                    lossFee(e.getValue(), rate, priceLoss), rate, priceLoss, null,
+                    null, g.buildingIds(), chainName));
             }
         }
         return out;

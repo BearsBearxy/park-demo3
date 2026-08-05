@@ -160,7 +160,9 @@ class BillNoticeApiIT extends AbstractMysqlIT {
 
     private static double d(Object o) { return ((Number) o).doubleValue(); }
 
-    // ── t1 分时表:4 段行+mgmt 行;尖段 price_snap=峰价(sharp_as_peak_ratio=0);审计链齐 ──
+    // ── t1 分时表:4 段行+mgmt 行;尖段 price_snap=峰价(sharp_as_peak_ratio=0);审计链齐。
+    //    S4-3 E3(定案 2026-08-05):分时表管理费基数=Σ段用量(源册口径,常与总示数差分位),
+    //    故意造 总示数1010≠Σ段1000,断言 mgmt 按 1000 计。 ──
     @Test
     void t1_touMeter_fourSegLines_mgmt_auditChain() throws Exception {
         String ym = "2090-01";
@@ -169,7 +171,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         int c = contract(t, "2089-01-01", "2099-12-31", null);
         int m = createMeter("elec", "p1", "IT出账分时电表", t);
         bind(m, c);
-        reading(m, ym, "\"prevTotal\":0,\"currTotal\":1000,"
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":1010,"
                 + "\"prevSharp\":0,\"currSharp\":100,\"prevPeak\":0,\"currPeak\":200,"
                 + "\"prevFlat\":0,\"currFlat\":300,\"prevValley\":0,\"currValley\":400");
 
@@ -192,9 +194,10 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(d(one(segLines(body, "flat")).get("amount"))).isEqualTo(210.0);
         assertThat(d(one(segLines(body, "valley")).get("amount"))).isEqualTo(120.0);
         Map<String, Object> mgmt = one(feeLines(body, "mgmt_fee"));
-        assertThat(d(mgmt.get("qty"))).isEqualTo(1000.0);
+        assertThat(d(mgmt.get("qty"))).isEqualTo(1000.0);   // E3:Σ段=1000,非总示数 1010
         assertThat(d(mgmt.get("priceSnap"))).isEqualTo(0.16);
         assertThat(d(mgmt.get("amount"))).isEqualTo(160.0);
+        assertThat((String) mgmt.get("note")).contains("Σ段");
         Number total = JsonPath.read(body, "$.data.totalAmount");
         assertThat(total.doubleValue()).isEqualTo(850.0);
     }
