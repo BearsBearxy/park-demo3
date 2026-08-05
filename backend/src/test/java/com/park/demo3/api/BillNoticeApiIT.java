@@ -324,7 +324,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         bind(e, c); bind(w, c); bind(dr, c);
         reading(e, ym, "\"prevTotal\":0,\"currTotal\":100");   // 商业 80 + mgmt 32 → 公司1
         reading(w, ym, "\"prevTotal\":0,\"currTotal\":10");    // 水 39.5 + 管网 5 → 公司3
-        reading(dr, ym, "\"prevTotal\":0,\"currTotal\":50");   // 居民 30 + mgmt 8 + 宿舍损耗 30×0.012=0.36(§3⑦) → dorm 单/公司2
+        reading(dr, ym, "\"prevTotal\":0,\"currTotal\":50");   // 居民 30 + mgmt 8 → dorm 单/公司2(宿舍段无损耗行,2024-02 实证)
         paymap(t, "elecStd", 1);
         paymap(t, "waterStd", 3);
         paymap(t, "dormRent", 2);
@@ -336,7 +336,7 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 "$.data[?(@.tenantId==" + t + " && @.noticeKind=='dorm')]");
         assertThat(dorm).hasSize(1);
         assertThat(((Number) dorm.get(0).get("payCompanyId")).intValue()).isEqualTo(2);
-        assertThat(d(dorm.get(0).get("totalAmount"))).isEqualTo(38.36);
+        assertThat(d(dorm.get(0).get("totalAmount"))).isEqualTo(38.0);
         List<Map<String, Object>> co1 = JsonPath.read(list(ym),
                 "$.data[?(@.tenantId==" + t + " && @.payCompanyId==1)]");
         assertThat(d(one(co1).get("totalAmount"))).isEqualTo(112.0);   // 80+32(mgmt elecMaint 查无→兜底 elecStd)

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, groupLinesByPremise,
+  aggregateByTenant, auditTitle, billFeeLabel, groupDormExcelStyle, groupExcelStyle,
   priceScopeLabel, rentByTenant, resolvePhase, segLabel, tenantKpis,
-  type NoticeLike,
+  type DormLineBase, type NoticeLike,
 } from './billNoticeLogic'
 
 describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造第三套)', () => {
@@ -34,26 +34,129 @@ describe('segLabel 分时段', () => {
   it('未知段原样', () => expect(segLabel('mid')).toBe('mid'))
 })
 
-describe('groupLinesByPremise 场地分段小计(§1.1)', () => {
-  const l = (premise: string | null, amount: number) => ({ premise, amount })
-  it('按首现序分组,组内保行序,小计=Σ金额', () => {
-    const gs = groupLinesByPremise([
-      l('A座602室', 100), l('A座602室', 16), l('B座201室', 50), l('A座602室', 4),
+describe('groupExcelStyle Excel 版式(非宿舍:电/水两部逐场地费块+维护费块,可莱恩 2024-02 范式)', () => {
+  const l = (feeKey: string, premise: string | null, amount: number) => ({ feeKey, premise, amount })
+  // 可莱恩非宿舍单缩样:A602(单一段)+B201(分时四段+容量)+现状 premise=null 的公摊行
+  const lines = [
+    l('water', 'A座602室', 181.7), l('water_pipe', 'A座602室', 23),
+    l('elec', 'A座602室', 425.36), l('mgmt_fee', 'A座602室', 171.39),
+    l('water', 'B座201室', 422.65), l('water_pipe', 'B座201室', 53.5),
+    l('elec', 'B座201室', 1056.52), l('elec', 'B座201室', 1122.61),
+    l('elec', 'B座201室', 1106.24), l('elec', 'B座201室', 29.58),
+    l('mgmt_fee', 'B座201室', 550.91), l('capacity', 'B座201室', 7187.5),
+    l('share_elec_light', null, 169.12), l('share_elec_elevator', null, 302.5),
+    l('share_elec_floor', null, 10.03), l('share_elec_loss', null, 26.88), l('share_elec_loss', null, 77.05),
+  ]
+  const g = groupExcelStyle(lines)
+  it('电部场地按首现序;容量行归电费块(挂 B201,不落维护费)', () => {
+    expect(g.elec.groups.map(x => x.label)).toEqual(['A座602室', 'B座201室', '园区/未分场地'])
+    const b201 = g.elec.groups[1]
+    expect(b201.fee.map(x => x.feeKey)).toEqual(['elec', 'elec', 'elec', 'elec', 'capacity'])
+    expect(b201.feeTotal).toBe(10502.45)   // 3314.95 电 + 7187.50 容量
+    expect(b201.maintTotal).toBe(550.91)
+  })
+  it('维护费块归置:管理费/楼层/电梯/损耗/路灯;premise=null 落「园区/未分场地」兜底带', () => {
+    expect(g.elec.groups[0].maint.map(x => x.feeKey)).toEqual(['mgmt_fee'])
+    const park = g.elec.groups[2]
+    expect(park.premise).toBeNull()
+    expect(park.fee).toEqual([])
+    expect(park.maintTotal).toBe(585.58)   // 169.12+302.5+10.03+26.88+77.05
+  })
+  it('水部:水表行/管网维护费分块,场地小计=费+维护', () => {
+    expect(g.water.groups.map(x => x.label)).toEqual(['A座602室', 'B座201室'])
+    expect(g.water.groups[0].subtotal).toBe(204.7)
+    expect(g.water.groups[1].subtotal).toBe(476.15)
+  })
+  it('两部合计与总合计=Σ全行', () => {
+    expect(g.elec.total).toBe(12235.69)
+    expect(g.water.total).toBe(680.85)
+    expect(g.total).toBe(12916.54)
+  })
+  it('未知费项落 other 兜底不丢行,计入总合计', () => {
+    const g2 = groupExcelStyle([l('elec', 'A', 0.1), l('nope', null, 0.2)])
+    expect(g2.other.map(x => x.feeKey)).toEqual(['nope'])
+    expect(g2.otherTotal).toBe(0.2)
+    expect(g2.total).toBe(0.3)   // 浮点无噪音
+  })
+  it('空行集=空结构', () => {
+    const g0 = groupExcelStyle([])
+    expect(g0.elec.groups).toEqual([])
+    expect(g0.water.groups).toEqual([])
+    expect(g0.total).toBe(0)
+  })
+})
+
+describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () => {
+  const l = (feeKey: string, premise: string | null, amount: number, over: Partial<DormLineBase> = {}): DormLineBase =>
+    ({ feeKey, premise, amount, meterId: null, meterLabel: null, baseSnap: null, ...over })
+  it('电:电表行建间,管理费同表挂靠(金额=电+管理费),路灯同房号唯一配对且面积取 baseSnap', () => {
+    const d = groupDormExcelStyle([
+      l('elec', '430室', 117.64, { meterId: 757 }),
+      l('mgmt_fee', '430室', 29.6, { meterId: 757 }),
+      l('share_elec_light', '430室', 2.86, { baseSnap: 47.66 }),
+      l('elec', '431室', 47.88, { meterId: 758 }),
+      l('mgmt_fee', '431室', 12.05, { meterId: 758 }),
     ])
-    // 后端行序=场地段连续,乱序入参也按首现归组(A 段第三行仍归 A 组)
-    expect(gs.map(g => g.premise)).toEqual(['A座602室', 'B座201室'])
-    expect(gs[0].lines).toHaveLength(3)
-    expect(gs[0].subtotal).toBe(120)
-    expect(gs[1].subtotal).toBe(50)
+    expect(d.elec.rooms).toHaveLength(2)
+    expect(d.elec.rooms[0].room).toBe('430室')
+    expect(d.elec.rooms[0].amount).toBe(147.24)
+    expect(d.elec.rooms[0].area).toBe(47.66)
+    expect(d.elec.rooms[0].share?.amount).toBe(2.86)
+    expect(d.elec.rooms[1].share).toBeNull()
+    expect(d.elec.extras).toEqual([])
+    expect(d.elec.total).toBe(210.03)   // 147.24+2.86+59.93
   })
-  it('无场地行归「未标场地」组(premise=null)', () => {
-    const gs = groupLinesByPremise([l(null, 22.6), l('A座', 1)])
-    expect(gs[0].premise).toBeNull()
-    expect(gs[0].label).toBe('未标场地')
+  it('水:水表行建间,绿化水同房号配对;宿舍总合计=电+水', () => {
+    const d = groupDormExcelStyle([
+      l('elec', '430室', 100, { meterId: 1 }),
+      l('water', '430室', 50.05, { meterId: 1057 }),
+      l('share_green_water', '430室', 0.95, { baseSnap: 47.66 }),
+    ])
+    expect(d.water.rooms).toHaveLength(1)
+    expect(d.water.rooms[0].share?.amount).toBe(0.95)
+    expect(d.water.rooms[0].area).toBe(47.66)
+    expect(d.water.total).toBe(51)
+    expect(d.total).toBe(151)
   })
-  it('小计不带浮点噪音(0.1+0.2=0.3)', () =>
-    expect(groupLinesByPremise([l('A', 0.1), l('A', 0.2)])[0].subtotal).toBe(0.3))
-  it('空行集=空组', () => expect(groupLinesByPremise([])).toEqual([]))
+  it('现状兜底:整段长串同 premise 多间/公摊行无 premise→配不唯一落 extras;损耗行恒 extras;不丢行', () => {
+    const seg = '宿舍楼四座430、431室'
+    const d = groupDormExcelStyle([
+      l('elec', seg, 117.64, { meterId: 757 }),
+      l('elec', seg, 47.88, { meterId: 758 }),
+      l('share_elec_light', null, 15.45, { baseSnap: 257.54 }),   // premise 空→extras
+      l('share_elec_loss', null, 3.23),
+      l('share_green_water', null, 5.15),
+    ])
+    expect(d.elec.rooms).toHaveLength(2)
+    expect(d.elec.rooms.every(r => r.share === null && r.area === null)).toBe(true)
+    expect(d.elec.extras.map(x => x.feeKey)).toEqual(['share_elec_light', 'share_elec_loss'])
+    expect(d.water.extras.map(x => x.feeKey)).toEqual(['share_green_water'])
+    expect(d.total).toBe(189.35)   // Σ全行
+  })
+  it('同 premise 两间时路灯配不唯一→extras(不硬挂错间)', () => {
+    const d = groupDormExcelStyle([
+      l('elec', '430室', 10, { meterId: 1 }),
+      l('elec', '430室', 20, { meterId: 2 }),
+      l('share_elec_light', '430室', 2.86, { baseSnap: 47.66 }),
+    ])
+    expect(d.elec.extras.map(x => x.feeKey)).toEqual(['share_elec_light'])
+  })
+  it('分时宿舍一表多段=一段一行,管理费挂该表首行', () => {
+    const d = groupDormExcelStyle([
+      l('elec', '501室', 10, { meterId: 9 }),
+      l('elec', '501室', 5, { meterId: 9 }),
+      l('mgmt_fee', '501室', 2.4, { meterId: 9 }),
+    ])
+    expect(d.elec.rooms).toHaveLength(2)
+    expect(d.elec.rooms[0].amount).toBe(12.4)
+    expect(d.elec.rooms[1].amount).toBe(5)
+  })
+  it('未知键落水子表尾兜底;空行集=空结构', () => {
+    const d = groupDormExcelStyle([l('nope', null, 1.5)])
+    expect(d.water.extras.map(x => x.feeKey)).toEqual(['nope'])
+    expect(d.total).toBe(1.5)
+    expect(groupDormExcelStyle([]).total).toBe(0)
+  })
 })
 
 describe('auditTitle 取价审计链悬浮', () => {

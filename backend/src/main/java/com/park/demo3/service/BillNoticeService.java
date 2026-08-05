@@ -128,13 +128,24 @@ public class BillNoticeService {
             .collect(Collectors.toMap(Tenant::getId, t -> t));
         // 合同费项位置(premise):distinct location 原文,复用 locLabels 的「每 distinct location 一条」思路
         Map<Integer, List<String>> locsByContract = new HashMap<>();
+        // 宿舍房间面积:dorm 计费行按 location 定位(430、431 多间合并行原样一间份,S4-3 拆行口径),面积取首个非空行
+        Map<Integer, Map<String, BigDecimal>> dormRoomsByContract = new HashMap<>();
         for (ContractBillingTerm t : billingTerms.selectList(new QueryWrapper<ContractBillingTerm>()
                 .orderByAsc("contract_id", "seq", "id"))) {
             if (t.getLocation() == null || t.getLocation().isBlank()) continue;
             List<String> l = locsByContract.computeIfAbsent(t.getContractId(), k -> new ArrayList<>());
             String loc = t.getLocation().trim();
             if (!l.contains(loc)) l.add(loc);
+            if ("dorm".equals(t.getPropertyType()) && t.getArea() != null && t.getArea().signum() > 0)
+                dormRoomsByContract.computeIfAbsent(t.getContractId(), k -> new LinkedHashMap<>())
+                    .putIfAbsent(loc, t.getArea());
         }
+        // 当月在租合同(share 行按合同拆场地用;与容量费同一 covers 口径)
+        List<Contract> allContracts = contracts.selectList(null);
+        Map<Integer, List<Contract>> coveringByTenant = new HashMap<>();
+        for (Contract c : allContracts)
+            if (c.getTenantId() != null && MeterBindingService.covers(c, first, last))
+                coveringByTenant.computeIfAbsent(c.getTenantId(), k -> new ArrayList<>()).add(c);
         Map<Integer, Map<String, Integer>> payByTenant = new HashMap<>();
         for (BillPayCompany p : payMap.selectList(null))
             payByTenant.computeIfAbsent(p.getTenantId(), k -> new HashMap<>()).put(p.getFeeKey(), p.getCompanyId());
@@ -178,7 +189,7 @@ public class BillNoticeService {
         }
 
         // ── 容量费:合同 kVA × capacity_fee;当月任一天在租(月区间重叠);起/止月落在 ym 内按天折;排除整租 ──
-        for (Contract c : contracts.selectList(null)) {
+        for (Contract c : allContracts) {
             if ("master_lease".equals(c.getKind())) continue;   // 火炬园整租,防与散户双算(定案#4)
             if (c.getKva() == null || c.getKva().signum() <= 0) continue;
             if (!MeterBindingService.covers(c, first, last)) continue;   // 在租=非草稿+起止齐全+月区间重叠
@@ -223,58 +234,73 @@ public class BillNoticeService {
                     l.baseSnap = c.amount().divide(c.rate(), 2, RoundingMode.HALF_UP);
                 l.dorm = rule != null && "dorm".equals(rule.getZone());
                 collectPrice(l, c, rule, ym);   // D① 月推类公摊池(路灯/绿化水)改收取价落行
+                // S4-3 场地拆行:share 行按该户在租合同(宿舍逐房间)等比拆,Σ各场地行与租户级全等
+                if (l.feeKey != null && l.feeKey.startsWith("share_")) {
+                    for (L s : splitShare(l, rule, coveringByTenant, zoneOfBuilding,
+                            locsByContract, dormRoomsByContract, seq))
+                        byTenant.computeIfAbsent(s.tenantId, k -> new ArrayList<>()).add(s);
+                    continue;
+                }
             }
             byTenant.computeIfAbsent(l.tenantId, k -> new ArrayList<>()).add(l);
         }
 
-        // ── 户级收尾:宿舍段损耗 + p1/p2 损耗行金额口径分链计(E2,定案 2026-08-05) ──
+        // ── 户级收尾:p1/p2 损耗行金额口径分链计(E2,定案 2026-08-05)+按场地落行(S4-3) ──
+        // 宿舍段损耗行已删(2024-02 通知单实证宿舍段无此行;spec §3⑦ loss_rate dorm=0.012 保留配置暂不消费)。
         for (Map.Entry<Integer, List<L>> e : byTenant.entrySet()) {
             List<L> ls = e.getValue();
-            // 宿舍段损耗(定案:维持不动):resolve('loss_rate',dorm)(0.012)× 该户宿舍段电费金额
-            // (is_dorm_room 表的 elec 行Σ,不含管理费)。
-            BigDecimal dormElec = ls.stream()
-                .filter(l -> l.dorm && "elec".equals(l.feeKey) && l.meterId != null && l.amount != null)
-                .map(l -> l.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (dormElec.signum() != 0) {
-                PriceCfgService.PriceHit rate = price.resolveHit("loss_rate", ym, e.getKey(), "dorm");
-                if (rate != null && rate.value().signum() != 0) {
-                    L l = new L();
-                    l.tenantId = e.getKey(); l.seq = seq[0]++; l.dorm = true;
-                    l.feeKey = "share_elec_loss"; l.ruleBranch = "fixed";
-                    l.priceKey = "loss_rate"; l.priceSnap = rate.value();
-                    l.priceScope = rate.scope(); l.priceMonth = rate.acctMonth();
-                    l.baseSnap = dormElec; l.amount = r2(dormElec.multiply(rate.value()));
-                    l.note = trunc("宿舍段损耗=宿舍电费金额 " + dormElec + " ×率 " + rate.value(), 255);
-                    ls.add(l);
-                }
-            }
-            // E2 损耗行=金额口径分链计(定案 2026-08-05):amount=(链内户电费+链内公摊 floor/elevator/fire
-            // 行金额)×链损耗率;链=损耗组(head_building 分桶),多链户逐链一行(lossContributions 本就逐组产行);
-            // note 落该链基数明细。修掉旧版全户基数复用:多链户曾把别链的电费也算进每条链的基数。
+            // E2 损耗行=金额口径分链计:amount=(链内户电费+链内公摊 floor/elevator/fire 行金额)×链损耗率;
+            // 链=损耗组(head_building 分桶),多链户逐链(lossContributions 本就逐组产行)。
+            // S4-3:链内行再按 premise 分组逐场地落行(链=楼栋↔场地):基数=该场地电费(不含容量)
+            // +该场地楼层公共/电梯/消防公摊行金额;qty=该场地链内电行度数Σ(分时表=Σ段,E3 同口径)。
             // 基数不含容量费/管理费/宿舍段(dorm 行);链内判定=电表 building ∈ 链 / 公摊池 rule.building ∈ 链。
+            List<L> lossSplit = new ArrayList<>();
             for (L l : ls) {
                 if (l.rateTmp == null) continue;
                 List<Integer> chain = l.lossBuildings == null ? List.of() : l.lossBuildings;
-                BigDecimal elecAmt = BigDecimal.ZERO, shareAmt = BigDecimal.ZERO;
+                Map<String, BigDecimal[]> byPremise = new LinkedHashMap<>();   // premise → {电费Σ,公摊Σ,度数Σ}
+                Map<String, Integer> cidByPremise = new HashMap<>();
                 for (L o : ls) {
                     if (o.amount == null) continue;
+                    boolean inElec = false, inShare = false;
                     if (!o.dorm && "elec".equals(o.feeKey) && o.meterId != null) {
                         Meter m = meterById.get(o.meterId);
-                        if (m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId()))
-                            elecAmt = elecAmt.add(o.amount);
+                        inElec = m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId());
                     } else if (o.poolRuleId != null && ("share_elec_floor".equals(o.feeKey)
                             || "share_elec_elevator".equals(o.feeKey) || "share_elec_fire".equals(o.feeKey))) {
                         AllocRule pr = ruleById.get(o.poolRuleId);
-                        if (pr != null && pr.getBuildingId() != null && chain.contains(pr.getBuildingId()))
-                            shareAmt = shareAmt.add(o.amount);
+                        inShare = pr != null && pr.getBuildingId() != null && chain.contains(pr.getBuildingId());
                     }
+                    if (!inElec && !inShare) continue;
+                    BigDecimal[] acc = byPremise.computeIfAbsent(o.premise,
+                        k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                    if (inElec) { acc[0] = acc[0].add(o.amount); if (o.qty != null) acc[2] = acc[2].add(o.qty); }
+                    else acc[1] = acc[1].add(o.amount);
+                    if (o.contractId != null) cidByPremise.putIfAbsent(o.premise, o.contractId);
                 }
-                BigDecimal chainBase = elecAmt.add(shareAmt);
-                l.baseSnap = chainBase; l.priceSnap = l.rateTmp;
-                l.amount = r2(chainBase.multiply(l.rateTmp));
-                l.note = trunc("链[" + l.chainName + "]损耗=(户电费 " + elecAmt + "+公摊 " + shareAmt
-                    + ")×率 " + l.rateTmp, 255);
+                if (byPremise.isEmpty())   // 链内无行:保留单行基数 0(原行为)
+                    byPremise.put(l.premise, new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                int i = 0;
+                for (Map.Entry<String, BigDecimal[]> g : byPremise.entrySet()) {
+                    L t;
+                    if (i++ == 0) t = l;
+                    else {
+                        t = new L();
+                        t.tenantId = l.tenantId; t.seq = seq[0]++;
+                        t.feeKey = l.feeKey; t.ruleBranch = l.ruleBranch;
+                        lossSplit.add(t);
+                    }
+                    BigDecimal[] a = g.getValue();
+                    BigDecimal chainBase = a[0].add(a[1]);
+                    t.premise = g.getKey(); t.contractId = cidByPremise.get(g.getKey());
+                    t.baseSnap = chainBase; t.priceSnap = l.rateTmp;
+                    t.qty = a[2].signum() == 0 ? null : a[2];
+                    t.amount = r2(chainBase.multiply(l.rateTmp));
+                    t.note = trunc("链[" + l.chainName + "]损耗=(场地电费 " + a[0] + "+公摊 " + a[1]
+                        + ")×率 " + l.rateTmp, 255);
+                }
             }
+            ls.addAll(lossSplit);
         }
 
         // ── 拆单归集(§4):行→colId→bill_pay_company;宿舍段整段进 dorm 单收 dormRent 映射;offbook 户全单 offbook ──
@@ -528,6 +554,66 @@ public class BillNoticeService {
         if (collect == null) return;
         l.priceSnap = collect;
         l.amount = r2(collect.multiply(base));
+    }
+
+    // ── S4-3 场地拆行(share_* 公摊行):租户级一行 → 按该户在租合同(宿舍逐房间)等比拆 ──
+    // premise=该合同 location 主文本(宿舍=该 dorm 计费行 location);base_snap=该合同份额基数(面积);
+    // 金额/数量/基数按份额等比、末行取余:Σ各场地行与原租户级行全等,拆分只重分布不改总额。
+    // 候选:池带楼栋(电梯/楼层公共)→ 只挂该栋合同;园区级池 → 该 zone 全部在租合同;
+    // 宿舍池 → 各合同 dorm 计费行逐 location(430、431 多间合并行原样一行,定位不到的不硬拆)。
+    // 候选为空/基数Σ为 0 → 原行原样保留(premise 空,如可莱恩 C402 无合同归属待拍板)。
+    private List<L> splitShare(L l, AllocRule rule, Map<Integer, List<Contract>> covering,
+                               Map<Integer, String> zoneOfBuilding, Map<Integer, List<String>> locs,
+                               Map<Integer, Map<String, BigDecimal>> dormRooms, int[] seq) {
+        List<Object[]> parts = new ArrayList<>();   // {premise, contractId, base}
+        for (Contract c : covering.getOrDefault(l.tenantId, List.of())) {
+            if (l.dorm) {
+                for (Map.Entry<String, BigDecimal> room : dormRooms.getOrDefault(c.getId(), Map.of()).entrySet())
+                    parts.add(new Object[]{room.getKey(), c.getId(), room.getValue()});
+            } else {
+                if (rule == null || c.getBuildingId() == null
+                        || c.getRentArea() == null || c.getRentArea().signum() <= 0) continue;
+                boolean in = rule.getBuildingId() != null ? rule.getBuildingId().equals(c.getBuildingId())
+                    : rule.getZone() != null && rule.getZone().equals(zoneOfBuilding.get(c.getBuildingId()));
+                if (in) parts.add(new Object[]{premiseOf(c.getId(), locs), c.getId(), c.getRentArea()});
+            }
+        }
+        BigDecimal baseSum = parts.stream().map(p -> (BigDecimal) p[2]).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (parts.isEmpty() || baseSum.signum() == 0) return List.of(l);
+        List<L> out = new ArrayList<>();
+        BigDecimal amtLeft = l.amount, qtyLeft = l.qty, baseLeft = l.baseSnap;
+        for (int i = 0; i < parts.size(); i++) {
+            L s;
+            if (i == 0) s = l;
+            else {
+                s = new L();
+                s.tenantId = l.tenantId; s.dorm = l.dorm; s.seq = seq[0]++;
+                s.feeKey = l.feeKey; s.priceKey = l.priceKey; s.priceScope = l.priceScope;
+                s.priceMonth = l.priceMonth; s.ruleBranch = l.ruleBranch; s.shareSrc = l.shareSrc;
+                s.poolRuleId = l.poolRuleId; s.priceSnap = l.priceSnap; s.note = l.note;
+            }
+            s.premise = trunc((String) parts.get(i)[0], 64);
+            s.contractId = (Integer) parts.get(i)[1];
+            BigDecimal share = (BigDecimal) parts.get(i)[2];
+            boolean last = i == parts.size() - 1;
+            s.amount = last ? amtLeft : prorate(l.amount, share, baseSum);
+            s.qty = last ? qtyLeft : prorate(l.qty, share, baseSum);
+            s.baseSnap = last ? baseLeft : prorate(l.baseSnap, share, baseSum);
+            if (!last) {
+                amtLeft = minus(amtLeft, s.amount);
+                qtyLeft = minus(qtyLeft, s.qty);
+                baseLeft = minus(baseLeft, s.baseSnap);
+            }
+            out.add(s);
+        }
+        return out;
+    }
+
+    private static BigDecimal prorate(BigDecimal total, BigDecimal share, BigDecimal baseSum) {
+        return total == null ? null : r2(total.multiply(share).divide(baseSum, 10, RoundingMode.HALF_UP));
+    }
+    private static BigDecimal minus(BigDecimal a, BigDecimal b) {
+        return a == null ? null : a.subtract(nz(b));
     }
 
     private static String tenantOverride(PriceCfgService.PriceHit hit, String base) {

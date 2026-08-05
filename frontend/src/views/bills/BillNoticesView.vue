@@ -8,7 +8,7 @@
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  billNoticesApi, type BillNoticeDTO, type BillNoticeDetailDTO,
+  billNoticesApi, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
 } from '@/api/billNotices'
 import { contractApi } from '@/api/contract'
 import { feeLabel, lineMonthly, type BillingLineDTO, type ContractDTO } from '@/types/contract'
@@ -17,7 +17,7 @@ import type { BuildingDTO } from '@/types/building'
 import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, groupLinesByPremise,
+  aggregateByTenant, auditTitle, billFeeLabel, groupDormExcelStyle, groupExcelStyle,
   rentByTenant, resolvePhase, segLabel, tenantKpis, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
@@ -183,13 +183,41 @@ async function loadRentBands(tenantId: number, my: number) {
   rentLoading.value = false
 }
 
-// 水电 tab:全单明细合并重编号,沿用 premise 分带;单场地不出分带(小计=合计纯噪音)
-const mergedLines = computed(() => {
-  let n = 0
-  return details.value.flatMap(d => d.lines).map(l => ({ ...l, lineNo: ++n }))
+// 水电 tab v3(可莱恩 worksheet 版式):非宿舍单→电/水两部逐场地「费块+维护费块」;
+// dorm 单→宿舍逐间子表;末行合计=非宿舍+宿舍。行归块在 billNoticeLogic 纯函数,此处只拍平成渲染行。
+const mainLines = computed(() => details.value.filter(d => d.noticeKind !== 'dorm').flatMap(d => d.lines))
+const dormLines = computed(() => details.value.filter(d => d.noticeKind === 'dorm').flatMap(d => d.lines))
+const xg = computed(() => groupExcelStyle(mainLines.value))
+const dorm = computed(() => groupDormExcelStyle(dormLines.value))
+const utilGrand = computed(() => r2(xg.value.total + dorm.value.total))
+// 非宿舍表拍平:band(块头)/line(明细行,块内重编号)/sub(块小计)/part(部合计)
+type UtilRowVM =
+  | { t: 'band'; label: string }
+  | { t: 'line'; no: number; l: BillNoticeLineDTO }
+  | { t: 'sub' | 'part'; label: string; amount: number }
+const utilRows = computed<UtilRowVM[]>(() => {
+  const out: UtilRowVM[] = []
+  const block = (label: string, ls: BillNoticeLineDTO[], subLabel: string | null, subAmount: number) => {
+    if (!ls.length) return
+    out.push({ t: 'band', label })
+    ls.forEach((l, i) => out.push({ t: 'line', no: i + 1, l }))
+    if (subLabel) out.push({ t: 'sub', label: subLabel, amount: subAmount })
+  }
+  const g = xg.value
+  for (const p of g.elec.groups) {
+    block(`电费(${p.label})`, p.fee, '场地电费合计', p.feeTotal)
+    block(`用电维护费(${p.label})`, p.maint, '场地维护费合计', p.maintTotal)
+  }
+  if (g.elec.groups.length) out.push({ t: 'part', label: '电费、用电维护费合计', amount: g.elec.total })
+  for (const p of g.water.groups) {
+    block(`水费(${p.label})`, p.fee, null, 0)
+    block(`用水维护费(${p.label})`, p.maint, null, 0)
+    out.push({ t: 'sub', label: `场地水费、维护费合计(${p.label})`, amount: p.subtotal })
+  }
+  if (g.water.groups.length) out.push({ t: 'part', label: '水费、用水维护费合计', amount: g.water.total })
+  block('其他费项', g.other, '其他费项合计', g.otherTotal)
+  return out
 })
-const groups = computed(() => groupLinesByPremise(mergedLines.value))
-const showBands = computed(() => groups.value.length > 1)
 
 // 场地租金 tab:月额=lineMonthly 镜像(per_kva 取合同 kva);小计按合同、全户合计跨合同
 const lineMon = (b: RentBand, l: BillingLineDTO) => lineMonthly(l, b.contract.kva)
@@ -400,78 +428,197 @@ const drawerSub = computed(() => {
           </div>
         </template>
 
-        <!-- 水电费 tab:全单明细合并,premise 分段(多场地才分带+小计),审计链 info 悬浮保留 -->
-        <div v-else class="bn-dwrap">
-          <table class="bn-dtable">
-            <colgroup>
-              <col style="width:38px" />
-              <col style="width:98px" />
-              <col style="width:120px" />
-              <col style="width:38px" />
-              <col style="width:84px" />
-              <col style="width:84px" />
-              <col style="width:52px" />
-              <col style="width:84px" />
-              <col style="width:82px" />
-              <col style="width:94px" />
-              <col /><!-- 备注:唯一弹性列 -->
-              <col style="width:30px" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th class="l">费项</th>
-                <th class="l">表</th>
-                <th class="l" title="分时段:尖/峰/平/谷">段</th>
-                <th>上月行至</th>
-                <th>本月行至</th>
-                <th>倍率</th>
-                <th>用量</th>
-                <th>单价</th>
-                <th>金额(元)</th>
-                <th class="l">备注</th>
-                <th title="取价审计链:price_key/作用域/价目月/判定分支"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="g in groups" :key="g.premise ?? '(none)'">
-                <tr v-if="showBands" class="bn-band">
-                  <td :colspan="12" class="l"><span class="bn-band-lbl">{{ g.label }}</span></td>
+        <!-- 水电费 tab v3(可莱恩 worksheet 版式):非宿舍 电/水两部逐场地费块+维护费块 → 宿舍逐间子表 → 末行合计 -->
+        <template v-else>
+          <div class="bn-dwrap">
+            <table class="bn-dtable">
+              <colgroup>
+                <col style="width:38px" />
+                <col style="width:98px" />
+                <col style="width:120px" />
+                <col style="width:38px" />
+                <col style="width:84px" />
+                <col style="width:84px" />
+                <col style="width:52px" />
+                <col style="width:84px" />
+                <col style="width:82px" />
+                <col style="width:94px" />
+                <col /><!-- 备注:唯一弹性列 -->
+                <col style="width:30px" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th class="l">费项</th>
+                  <th class="l">表</th>
+                  <th class="l" title="分时段:尖/峰/平/谷">段</th>
+                  <th>上月行至</th>
+                  <th>本月行至</th>
+                  <th>倍率</th>
+                  <th>用量</th>
+                  <th>单价</th>
+                  <th>金额(元)</th>
+                  <th class="l">备注</th>
+                  <th title="取价审计链:price_key/作用域/价目月/判定分支"></th>
                 </tr>
-                <tr v-for="l in g.lines" :key="l.lineNo">
-                  <td><span class="bn-nv dim">{{ l.lineNo }}</span></td>
-                  <td class="l"><span class="bn-txt" :title="l.feeKey">{{ billFeeLabel(l.feeKey) }}</span></td>
-                  <td class="l"><span class="bn-txt" :class="{ dim: !l.meterLabel }">{{ l.meterLabel ?? '–' }}</span></td>
-                  <td class="l"><span class="bn-txt">{{ segLabel(l.seg) }}</span></td>
-                  <td><span class="bn-nv" :class="{ empty: l.prevRead == null }">{{ fmt(l.prevRead) }}</span></td>
-                  <td><span class="bn-nv" :class="{ empty: l.currRead == null }">{{ fmt(l.currRead) }}</span></td>
-                  <td><span class="bn-nv" :class="{ empty: l.factorSnap == null }">{{ fmt(l.factorSnap) }}</span></td>
-                  <td><span class="bn-nv" :class="{ empty: l.qty == null }">{{ fmt(l.qty) }}</span></td>
-                  <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }" :title="l.priceSnap != null ? String(l.priceSnap) : undefined">{{ fmt(l.priceSnap) }}</span></td>
-                  <td><span class="bn-sumc" :class="{ neg: l.amount < 0 }">{{ fmt2(l.amount) }}</span></td>
-                  <td class="l"><span class="bn-txt dim" :title="l.note ?? undefined">{{ l.note || '' }}</span></td>
-                  <td class="ct">
-                    <span v-if="auditTitle(l)" class="bn-info" :title="auditTitle(l)!">
-                      <component :is="iconFor('info')" :size="13" />
-                    </span>
-                  </td>
+              </thead>
+              <tbody>
+                <template v-for="(r0, i) in utilRows" :key="i">
+                  <tr v-if="r0.t === 'band'" class="bn-band">
+                    <td :colspan="12" class="l"><span class="bn-band-lbl">{{ r0.label }}</span></td>
+                  </tr>
+                  <tr v-else-if="r0.t === 'line'">
+                    <td><span class="bn-nv dim">{{ r0.no }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="r0.l.feeKey">{{ billFeeLabel(r0.l.feeKey) }}</span></td>
+                    <td class="l"><span class="bn-txt" :class="{ dim: !r0.l.meterLabel }">{{ r0.l.meterLabel ?? '–' }}</span></td>
+                    <td class="l"><span class="bn-txt">{{ segLabel(r0.l.seg) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.prevRead == null }">{{ fmt(r0.l.prevRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.currRead == null }">{{ fmt(r0.l.currRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.factorSnap == null }">{{ fmt(r0.l.factorSnap) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.qty == null }">{{ fmt(r0.l.qty) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.priceSnap == null }" :title="r0.l.priceSnap != null ? String(r0.l.priceSnap) : undefined">{{ fmt(r0.l.priceSnap) }}</span></td>
+                    <td><span class="bn-sumc" :class="{ neg: r0.l.amount < 0 }">{{ fmt2(r0.l.amount) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :title="r0.l.note ?? undefined">{{ r0.l.note || '' }}</span></td>
+                    <td class="ct">
+                      <span v-if="auditTitle(r0.l)" class="bn-info" :title="auditTitle(r0.l)!">
+                        <component :is="iconFor('info')" :size="13" />
+                      </span>
+                    </td>
+                  </tr>
+                  <tr v-else :class="r0.t === 'part' ? 'bn-part' : 'bn-sub'">
+                    <td :colspan="9" class="l">
+                      <span :class="r0.t === 'part' ? 'bn-part-lbl' : 'bn-txt dim'">{{ r0.label }}</span>
+                    </td>
+                    <td><span class="bn-sumc">{{ fmt2(r0.amount) }}</span></td>
+                    <td :colspan="2"></td>
+                  </tr>
+                </template>
+                <tr v-if="utilRows.length === 0 && dormLines.length === 0">
+                  <td :colspan="12" class="bn-noro">本单无水电行</td>
                 </tr>
-                <tr v-if="showBands" class="bn-sub">
-                  <td :colspan="9" class="l"><span class="bn-txt dim">小计 · {{ g.label }}</span></td>
-                  <td><span class="bn-sumc">{{ fmt2(g.subtotal) }}</span></td>
-                  <td :colspan="2"></td>
-                </tr>
-              </template>
-            </tbody>
-            <tfoot>
-              <tr>
-                <th :colspan="9" class="l"><span class="bn-foot-lbl">水电合计</span></th>
-                <th><span class="bn-foot-v">{{ fmt2(dlgRow.totalAmount) }}</span></th>
-                <th :colspan="2"></th>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 宿舍子表(该户有 dorm 单才出):电=逐间宽行(电表+管理费+路灯分摊),水=水表+绿化水公摊 -->
+          <template v-if="dormLines.length">
+            <div class="bn-dsec">宿舍水电费(逐间)</div>
+            <div class="bn-dwrap">
+              <table class="bn-dtable">
+                <colgroup>
+                  <col style="width:38px" />
+                  <col /><!-- 房号:唯一弹性列 -->
+                  <col style="width:76px" />
+                  <col style="width:90px" />
+                  <col style="width:90px" />
+                  <col style="width:76px" />
+                  <col style="width:90px" />
+                  <col style="width:70px" />
+                  <col style="width:94px" />
+                  <col style="width:84px" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th class="l">房号</th>
+                    <th title="路灯/绿化水分摊行的面积基数快照">租赁面积</th>
+                    <th>上月行至</th>
+                    <th>本月行至</th>
+                    <th>用量</th>
+                    <th>基准电价</th>
+                    <th title="电力管理费单价,金额列=用量×(基准电价+管理费)">管理费</th>
+                    <th>金额(元)</th>
+                    <th title="面积×公摊单价">路灯分摊</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(r1, i) in dorm.elec.rooms" :key="i">
+                    <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}{{ r1.main.seg ? '·' + segLabel(r1.main.seg) : '' }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.area == null }">{{ fmt(r1.area) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.qty == null }">{{ fmt(r1.main.qty) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }" :title="r1.main.priceSnap != null ? String(r1.main.priceSnap) : undefined">{{ fmt(r1.main.priceSnap) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.mgmt == null }">{{ fmt(r1.mgmt?.priceSnap ?? null) }}</span></td>
+                    <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.share == null }">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                  </tr>
+                  <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行) -->
+                  <tr v-for="(l, i) in dorm.elec.extras" :key="'x' + i">
+                    <td></td>
+                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeLabel(l.feeKey) }}</span></td>
+                    <td :colspan="6"></td>
+                    <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
+                    <td></td>
+                  </tr>
+                  <tr class="bn-sub">
+                    <td :colspan="9" class="l"><span class="bn-txt dim">宿舍电费小计</span></td>
+                    <td><span class="bn-sumc">{{ fmt2(dorm.elec.total) }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="bn-dwrap">
+              <table class="bn-dtable">
+                <colgroup>
+                  <col style="width:38px" />
+                  <col /><!-- 房号:唯一弹性列 -->
+                  <col style="width:90px" />
+                  <col style="width:90px" />
+                  <col style="width:76px" />
+                  <col style="width:90px" />
+                  <col style="width:94px" />
+                  <col style="width:94px" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th class="l">房号</th>
+                    <th>上月行至</th>
+                    <th>本月行至</th>
+                    <th>用量</th>
+                    <th>单价</th>
+                    <th>金额(元)</th>
+                    <th title="面积×公摊单价">绿化水公摊</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(r1, i) in dorm.water.rooms" :key="i">
+                    <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.qty == null }">{{ fmt(r1.main.qty) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }">{{ fmt(r1.main.priceSnap) }}</span></td>
+                    <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.share == null }">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                  </tr>
+                  <tr v-for="(l, i) in dorm.water.extras" :key="'x' + i">
+                    <td></td>
+                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeLabel(l.feeKey) }}</span></td>
+                    <td :colspan="4"></td>
+                    <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
+                    <td></td>
+                  </tr>
+                  <tr class="bn-sub">
+                    <td :colspan="7" class="l"><span class="bn-txt dim">宿舍水费小计</span></td>
+                    <td><span class="bn-sumc">{{ fmt2(dorm.water.total) }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="bn-grand">
+              <span>宿舍水电费、水电维护费合计</span>
+              <span class="bn-foot-v">{{ fmt2(dorm.total) }}</span>
+            </div>
+          </template>
+
+          <div class="bn-grand strong">
+            <span>水电费、维护费合计</span>
+            <span class="bn-foot-v">{{ fmt2(utilGrand) }}</span>
+          </div>
+        </template>
       </template>
 
       <template #footer>
@@ -564,6 +711,14 @@ const drawerSub = computed(() => {
 .bn-band-lbl { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .bn-band-sub { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
 .bn-dtable tr.bn-sub td { background: var(--surface-card); }
+/* 部合计行(电费、用电维护费合计/水费、用水维护费合计)比块小计重一档 */
+.bn-dtable tr.bn-part td { background: var(--surface-sunken); border-top: 1px solid var(--border-strong); }
+.bn-part-lbl { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+/* 宿舍子表节标题 + 合计横条(宿舍段合计/末行全户合计) */
+.bn-dsec { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); margin-bottom: -6px; }
+.bn-grand { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-primary); }
+.bn-grand.strong { background: var(--surface-sunken); border-color: var(--border-strong); font-weight: var(--fw-semibold); }
+.bn-grand .bn-foot-v { font-size: 12.5px; }
 .bn-dtable tfoot th { position: sticky; bottom: 0; height: 34px; background: var(--surface-white); border-top: 2px solid var(--border-strong); text-align: right; font-family: var(--font-mono); }
 .bn-dtable tfoot th.l { text-align: left; }
 /* 审计链 info 图标 */
