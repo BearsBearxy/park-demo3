@@ -1,17 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  NOTICE_KIND_LABEL, NOTICE_STATUS_LABEL, auditTitle, billFeeLabel,
-  groupLinesByPremise, noticeKindLabel, noticeKpis, priceScopeLabel, segLabel,
+  aggregateByTenant, auditTitle, billFeeLabel, groupLinesByPremise,
+  priceScopeLabel, rentByTenant, resolvePhase, segLabel, tenantKpis,
+  type NoticeLike,
 } from './billNoticeLogic'
-
-describe('noticeKindLabel 单据类字典', () => {
-  it('五类逐字(entity BillNotice.noticeKind 词汇)', () => {
-    expect(NOTICE_KIND_LABEL).toEqual({
-      combined: '合一单', fee: '水电费单', maint: '维护费单', dorm: '宿舍单', offbook: '账外单',
-    })
-  })
-  it('未知 kind 原样回落(后端加词汇不炸屏)', () => expect(noticeKindLabel('rent')).toBe('rent'))
-})
 
 describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造第三套)', () => {
   it('直连计费键', () => {
@@ -40,14 +32,6 @@ describe('segLabel 分时段', () => {
   })
   it('非分时行 null=空串', () => expect(segLabel(null)).toBe(''))
   it('未知段原样', () => expect(segLabel('mid')).toBe('mid'))
-})
-
-describe('NOTICE_STATUS_LABEL 状态字典', () => {
-  it('draft/issued/void', () => {
-    expect(NOTICE_STATUS_LABEL.draft).toBe('草稿')
-    expect(NOTICE_STATUS_LABEL.issued).toBe('已签发')
-    expect(NOTICE_STATUS_LABEL.void).toBe('已作废')
-  })
 })
 
 describe('groupLinesByPremise 场地分段小计(§1.1)', () => {
@@ -89,11 +73,75 @@ describe('auditTitle 取价审计链悬浮', () => {
     expect(auditTitle({ priceKey: null, priceScope: null, priceMonth: null, ruleBranch: null })).toBeNull())
 })
 
-describe('noticeKpis 列表 KPI', () => {
-  const n = (lineCount: number, totalAmount: number, warn: string | null) => ({ lineCount, totalAmount, warn })
-  it('单数/行数/总额/警告单数', () => {
-    expect(noticeKpis([n(3, 100.5, null), n(2, 0.25, '缺价'), n(1, -10, '合计为负')]))
-      .toEqual({ count: 3, lineCount: 6, total: 90.75, warned: 2 })
+describe('aggregateByTenant 租户聚合(v2 拍板1:一个租户一条)', () => {
+  const n = (id: number, tenantId: number, over: Partial<NoticeLike> = {}): NoticeLike => ({
+    id, tenantId, tenantName: `户${tenantId}`, noticeKind: 'combined', premiseText: null,
+    totalAmount: 0, prevDue: 0, lineCount: 0, warn: null, ...over,
   })
-  it('空月=全 0', () => expect(noticeKpis([])).toEqual({ count: 0, lineCount: 0, total: 0, warned: 0 }))
+  it('同户多单合并(含宿舍单):行数/合计/上期欠费=Σ,noticeIds 保单据序,户序按首现', () => {
+    const rs = aggregateByTenant([
+      n(11, 1, { lineCount: 3, totalAmount: 100.1, prevDue: 1 }),
+      n(12, 2, { lineCount: 1, totalAmount: 50 }),
+      n(13, 1, { lineCount: 2, totalAmount: 0.2, prevDue: 0.5, noticeKind: 'dorm' }),
+    ])
+    expect(rs.map(r => r.tenantId)).toEqual([1, 2])
+    expect(rs[0].noticeIds).toEqual([11, 13])
+    expect(rs[0].lineCount).toBe(5)
+    expect(rs[0].totalAmount).toBe(100.3)
+    expect(rs[0].prevDue).toBe(1.5)
+  })
+  it('场地按逗号拆项去重合并;warn 按分号拆项去重、换行连接', () => {
+    const rs = aggregateByTenant([
+      n(1, 1, { premiseText: 'A座602室,B座201室', warn: '缺价;表未归属' }),
+      n(2, 1, { premiseText: 'A座602室', warn: '缺价' }),
+    ])
+    expect(rs[0].premiseText).toBe('A座602室,B座201室')
+    expect(rs[0].warn).toBe('缺价\n表未归属')
+  })
+  it('offbook=该户单据全为账外(户级标,混合不降淡)', () => {
+    expect(aggregateByTenant([n(1, 1, { noticeKind: 'offbook' })])[0].offbook).toBe(true)
+    expect(aggregateByTenant([n(1, 1, { noticeKind: 'offbook' }), n(2, 1)])[0].offbook).toBe(false)
+  })
+  it('浮点合计无噪音(0.1+0.2=0.3)', () =>
+    expect(aggregateByTenant([n(1, 1, { totalAmount: 0.1 }), n(2, 1, { totalAmount: 0.2 })])[0].totalAmount).toBe(0.3))
+  it('空月=空', () => expect(aggregateByTenant([])).toEqual([]))
+})
+
+describe('resolvePhase 期归属(v2 拍板4)', () => {
+  it('真期直取', () => expect(resolvePhase([{ phase: 2, name: 'B座' }], null)).toBe(2))
+  it('phase=4 归一期', () => expect(resolvePhase([{ phase: 4, name: 'X栋' }], null)).toBe(1))
+  it('楼栋名含宿舍/散租/保障房/饭堂归一期(即便挂真期号)', () => {
+    expect(resolvePhase([{ phase: 2, name: '二期宿舍' }], null)).toBe(1)
+    expect(resolvePhase([{ phase: 3, name: '饭堂' }], null)).toBe(1)
+  })
+  it('多真期取首个非宿舍期(合同序)', () =>
+    expect(resolvePhase([{ phase: 4, name: '宿舍楼' }, { phase: 3, name: 'C座' }, { phase: 2, name: 'B座' }], null)).toBe(3))
+  it('无楼栋回退 premise 前缀「一期/二期/三期」', () => {
+    expect(resolvePhase([], '二期B座201室')).toBe(2)
+    expect(resolvePhase([], '三期C座')).toBe(3)
+    expect(resolvePhase([], '一期A座')).toBe(1)
+  })
+  it('兜底一期', () => {
+    expect(resolvePhase([], null)).toBe(1)
+    expect(resolvePhase([], 'A座602室')).toBe(1)
+  })
+})
+
+describe('rentByTenant 月租金(参考)合计', () => {
+  it('按户求和,浮点无噪音', () => {
+    const m = rentByTenant([
+      { tenantId: 1, monthlyRent: 1000.1 }, { tenantId: 1, monthlyRent: 0.2 }, { tenantId: 2, monthlyRent: 500 },
+    ])
+    expect(m.get(1)).toBe(1000.3)
+    expect(m.get(2)).toBe(500)
+    expect(m.get(3)).toBeUndefined()
+  })
+})
+
+describe('tenantKpis KPI(v2:户数/水电总额/月租金合计(参考)/警告户数)', () => {
+  const r = (totalAmount: number, rent: number | null, warn: string | null) => ({ totalAmount, rent, warn })
+  it('四格;无在租合同户 rent=null 记 0', () =>
+    expect(tenantKpis([r(100.5, 2000, null), r(0.25, null, '缺价'), r(-10, 1.05, '负数')]))
+      .toEqual({ count: 3, total: 90.75, rent: 2001.05, warned: 2 }))
+  it('空期=全 0', () => expect(tenantKpis([])).toEqual({ count: 0, total: 0, rent: 0, warned: 0 }))
 })
