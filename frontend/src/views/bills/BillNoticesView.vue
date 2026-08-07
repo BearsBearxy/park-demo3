@@ -408,7 +408,8 @@ const drawerSub = computed(() => {
             <table class="bn-dtable">
               <colgroup>
                 <col style="width:38px" />
-                <col style="width:98px" />
+                <col style="width:272px" /><!-- 费项:公摊行显「费项·池名」,最长「电梯用电·二期 一车间·电梯+低压电房照明」21 字;
+                                                 窄了会把同栋不同表的楼层照明全截成「楼层照明·一…」,看着像重复项 -->
                 <col style="width:120px" />
                 <col style="width:38px" />
                 <col style="width:84px" />
@@ -443,7 +444,7 @@ const drawerSub = computed(() => {
                   </tr>
                   <tr v-else-if="r0.t === 'line'">
                     <td><span class="bn-nv dim">{{ r0.no }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="r0.l.feeKey">{{ billFeeName(r0.l) }}</span></td>
+                    <td class="l"><span class="bn-txt" :title="billFeeName(r0.l)">{{ billFeeName(r0.l) }}</span></td>
                     <td class="l"><span class="bn-txt" :class="{ dim: !r0.l.meterLabel }">{{ r0.l.meterLabel ?? '–' }}</span></td>
                     <td class="l"><span class="bn-txt">{{ segLabel(r0.l.seg) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.prevRead == null }">{{ fmt(r0.l.prevRead) }}</span></td>
