@@ -13,10 +13,10 @@ import { leafIds, ancestorsOf, descendantsOf, chainOf, displayIds } from './chai
 // other=兜底杂费全类型可放(2026-08-05 报障修复)
 const BACKEND_ALLOWED: Record<PropertyType, FeeKey[]> = {
   factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
-  office:  ['rent_office', 'mgmt', 'elevator', 'transformer', 'land_tax', 'other'],
+  office:  ['rent_office', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
   dorm:    ['rent_dorm', 'infra', 'access', 'network', 'land_tax', 'other'],
   shop:    ['rent_shop', 'infra', 'mgmt', 'transformer', 'land_tax', 'other'],
-  land:    ['rent_land', 'land_tax', 'other'],
+  land:    ['rent_land', 'infra', 'land_tax', 'other'],
 }
 
 describe('类型钉死费用组 · 与后端白名单一致', () => {
@@ -27,7 +27,7 @@ describe('类型钉死费用组 · 与后端白名单一致', () => {
     }
   })
 
-  it('拍板钉死项(2026-07-24):办公室不含基础维护;宿舍含门禁+网络无条件项;空地只租金', () => {
+  it('拍板钉死项(2026-07-24):办公室不钉死基础维护(条件可选,旭化成实证);宿舍含门禁+网络无条件项;空地只钉租金', () => {
     expect(PINNED_FEES.office).not.toContain('infra')
     expect(PINNED_FEES.office).toEqual(['rent_office', 'mgmt'])
     expect(PINNED_FEES.dorm).toEqual(['rent_dorm', 'infra', 'access', 'network'])

@@ -185,12 +185,14 @@ export const PINNED_FEES: Record<PropertyType, FeeKey[]> = {
   land:    ['rent_land'],
 }
 // 条件费用项(段内勾选才落行,填月额;首层无梯=不勾=不出现)
+// office/land 补 infra 条件项(2026-08-05 对齐后端:旭化成纸约实证办公室基础维护1373.11/消防通道land基础费323.46,
+// 后端早已允许而编辑器加不了;仍不钉死,维持 7-24 拍板「办公室默认不含基础维护」)
 export const COND_FEES: Record<PropertyType, FeeKey[]> = {
   factory: ['elevator', 'transformer'],
-  office:  ['elevator', 'transformer'],
+  office:  ['elevator', 'transformer', 'infra'],
   dorm:    [],
   shop:    ['transformer'],
-  land:    [],
+  land:    ['infra'],
 }
 // 全类型可选(土地使用税;other=兜底杂费,2026-08-05 报障:导入存量含 other 的合同无标的可放、一编辑就 400)
 export const OPTIONAL_FEES: readonly FeeKey[] = ['land_tax', 'other']

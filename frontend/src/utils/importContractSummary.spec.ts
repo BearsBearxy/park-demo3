@@ -202,13 +202,13 @@ describe('parseContractWorkbook 锚点', () => {
     expect(line(r, 'land_tax').note).toBe('原文「土地使用税、房产税」')
   })
 
-  it('成吉:办公室+基础设施越界 → 去段类型保数据并报告点名', () => {
+  it('成吉:办公室+基础设施 2026-08-05 起合法(对齐后端旭化成实证)→ 保段类型不再点名', () => {
     const r = row('广东成吉化工有限公司')
     expect(r.lines.length).toBe(2)
     expect(line(r, 'rent_office').propertyType).toBe('office')
-    expect(line(r, 'infra').propertyType).toBeNull()
+    expect(line(r, 'infra').propertyType).toBe('office')
     expect(line(r, 'infra').amountOverride).toBe(892.8)
-    expect(res.report.find(x => x.tenantName === '成吉')!.issues).toMatch(/不属「office」钉死集/)
+    expect(res.report.find(x => x.tenantName === '成吉')?.issues ?? '').not.toMatch(/钉死集/)
   })
 
   it('空收费项目行 → 行级错误跳过,不进计费行', () => {
@@ -331,12 +331,13 @@ describe.skipIf(!fs.existsSync(REAL_FILE))('真实汇总册回归', () => {
   })
 
   it('钉死集校验:所有带段类型的行都在允许集内', () => {
+    // 2026-08-05 对齐后端:office/land 补 infra,全类型收 other
     const allowed: Record<string, string[]> = {
-      factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax'],
-      office: ['rent_office', 'mgmt', 'elevator', 'transformer', 'land_tax'],
-      dorm: ['rent_dorm', 'infra', 'access', 'network', 'land_tax'],
-      shop: ['rent_shop', 'infra', 'mgmt', 'transformer', 'land_tax'],
-      land: ['rent_land', 'land_tax'],
+      factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
+      office: ['rent_office', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
+      dorm: ['rent_dorm', 'infra', 'access', 'network', 'land_tax', 'other'],
+      shop: ['rent_shop', 'infra', 'mgmt', 'transformer', 'land_tax', 'other'],
+      land: ['rent_land', 'infra', 'land_tax', 'other'],
     }
     for (const r of real.rows)
       for (const l of r.lines)
