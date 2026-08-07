@@ -3,8 +3,9 @@
 // Teleport to body,回车提交,错误行内提示);字段多,两列排布。
 // 无 prop=新增(emit created);initial=编辑(全字段回填,提交走 update);renewFrom=续签(租户/楼栋/单元锁定,
 // 提交走 renew,原合同将标记已续签)。编辑/续签成功 emit saved 携带最新 DTO,由父级刷新 list+summary+drawer。
-// 计费(CONTRACT-CARD-SPEC §6.2 单一编辑):选物业类型 → 钉死费用组自动出现(无自由加费用名);条件项(电梯/变压器)
-// checkbox 勾选填月额;宿舍门禁/网络只填间数;空地为附加段。月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
+// 计费(CONTRACT-CARD-SPEC §6.2 单一编辑):选物业类型 → 钉死费用组自动出现(无自由加费用名);条件项 checkbox
+// 勾选落行(电梯/变压器填月额,infra 为 per_sqm 填面积×单价);宿舍门禁/网络只填间数;空地为附加段。
+// 月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
 import { ref, computed, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -114,8 +115,14 @@ function hasFee(seg: Segment, key: FeeKey): boolean { return seg.rows.some(r => 
 function condRow(seg: Segment, key: FeeKey): SegRow { return seg.rows.find(r => r.feeKey === key) ?? newRow(key) }
 function toggleFee(seg: Segment, key: FeeKey, on: boolean) {
   err.value = ''
-  if (on) { if (!hasFee(seg, key)) seg.rows.push(newRow(key)) }
-  else seg.rows = seg.rows.filter(r => r.feeKey !== key)
+  if (on) {
+    if (!hasFee(seg, key)) {
+      const row = newRow(key)
+      // per_sqm 条件项(infra):面积预填=该段租金行面积,可改
+      if (isSqm(key)) row.area = seg.rows.find(r => isRentKey(r.feeKey))?.area ?? null
+      seg.rows.push(row)
+    }
+  } else seg.rows = seg.rows.filter(r => r.feeKey !== key)
 }
 // 遗留费项(既非钉死亦非条件/可选):保留可见+可删,防编辑保存时静默丢失
 function extraRows(seg: Segment): SegRow[] {
@@ -128,7 +135,10 @@ const isSqm = (k: FeeKey) => defaultBillMode(k) === 'per_sqm_month'
 const isRoom = (k: FeeKey) => { const m = defaultBillMode(k); return m === 'per_room_year' || m === 'per_room_month' }
 function rowMonthly(row: SegRow): string {
   const m = lineMonthly({ feeKey: row.feeKey, billMode: defaultBillMode(row.feeKey), area: row.area, unitPrice: row.unitPrice, coeff: row.coeff, roomCount: row.roomCount, amountOverride: row.amountOverride }, kva.value)
-  return m != null ? m.toLocaleString('en-US') : '待录'
+  if (m != null) return m.toLocaleString('en-US')
+  // 存坏救济:per_sqm 行月额曾被存进 override(计费忽略致0)→ 回显原值标「待定」,补面积×单价后自动替换
+  if (isSqm(row.feeKey) && isNum(row.amountOverride)) return row.amountOverride.toLocaleString('en-US') + ' 待定'
+  return '待录'
 }
 
 onMounted(async () => {
@@ -300,7 +310,10 @@ async function submit() {
       seg.rows.forEach((r, i) => lines.push({
         id: r.id, propertyType: seg.propertyType, location: loc, feeKey: r.feeKey, billMode: defaultBillMode(r.feeKey),
         area: numOrNull(r.area), areaShared: numOrNull(r.areaShared), unitPrice: numOrNull(r.unitPrice), coeff: numOrNull(r.coeff),
-        roomCount: numOrNull(r.roomCount), amountOverride: numOrNull(r.amountOverride), seq: i,
+        roomCount: numOrNull(r.roomCount),
+        // per_sqm 行 override 无效(仅 per_month 生效):面积×单价齐了即清,救回存坏的 infra 条件行
+        amountOverride: isSqm(r.feeKey) && isNum(r.area) && isNum(r.unitPrice) ? null : numOrNull(r.amountOverride),
+        seq: i,
       }))
     }
     // 其他费用独立标的:不带段类型(后端跳过钉死校验),位置=收费项目名;非金额字段透传保存量往返无损
@@ -471,7 +484,7 @@ async function submit() {
             </template>
             <!-- 标的段(§6.2):选物业类型 → 钉死费用组;条件项 checkbox;宿舍按间;空地附加段;月单价只读派生,无合计 -->
             <div v-if="mode !== 'renew'" class="ct-field ct-span2">
-              <div class="lab">标的段 · 选类型钉死费用组(费用名固定不可增删;条件项电梯/变压器勾选填月额;月单价只读派生,合计属账单管理)</div>
+              <div class="lab">标的段 · 选类型钉死费用组(费用名固定不可增删;条件项勾选落行:电梯/变压器填月额,基础维护填面积×单价;月单价只读派生,合计属账单管理)</div>
               <div class="ct-bl">
                 <div v-for="(seg, si) in segments" :key="si" class="ct-bl-seg">
                   <div class="ct-bl-seghd">
@@ -498,17 +511,21 @@ async function submit() {
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.unitPrice" placeholder="单价/间" @input="err = ''" />
                       <input class="ct-in ct-bl-n" type="number" min="0" step="1" v-model.number="row.roomCount" placeholder="间数" @input="err = ''" />
                     </template>
-                    <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(row) === '待录' }">{{ rowMonthly(row) }}</span>
+                    <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(row).includes('待') }">{{ rowMonthly(row) }}</span>
                   </div>
-                  <!-- 条件项:电梯/变压器 勾选才落行填月额(首层无梯=不勾=不出现) -->
+                  <!-- 条件项:勾选才落行(首层无梯=不勾=不出现);电梯/变压器 per_month 填月额,infra per_sqm 填面积×单价 -->
                   <div v-for="k in COND_FEES[seg.propertyType]" :key="'c' + k" class="ct-bl-cond">
                     <label class="ct-chk">
                       <input type="checkbox" :checked="hasFee(seg, k)" @change="toggleFee(seg, k, ($event.target as HTMLInputElement).checked)" />
                       {{ feeLabel(seg.propertyType, k) }}
                     </label>
                     <template v-if="hasFee(seg, k)">
-                      <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="condRow(seg, k).amountOverride" placeholder="月额" @input="err = ''" />
-                      <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(condRow(seg, k)) === '待录' }">{{ rowMonthly(condRow(seg, k)) }}</span>
+                      <template v-if="isSqm(k)">
+                        <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="condRow(seg, k).area" placeholder="面积" @input="err = ''" />
+                        <input class="ct-in ct-bl-n" type="number" min="0" step="0.0001" v-model.number="condRow(seg, k).unitPrice" placeholder="单价" @input="err = ''" />
+                      </template>
+                      <input v-else class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="condRow(seg, k).amountOverride" placeholder="月额" @input="err = ''" />
+                      <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(condRow(seg, k)).includes('待') }">{{ rowMonthly(condRow(seg, k)) }}</span>
                     </template>
                   </div>
                   <!-- 可选:土地使用税(全类型) -->
@@ -519,14 +536,14 @@ async function submit() {
                     </label>
                     <template v-if="hasFee(seg, k)">
                       <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="condRow(seg, k).amountOverride" placeholder="月额" @input="err = ''" />
-                      <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(condRow(seg, k)) === '待录' }">{{ rowMonthly(condRow(seg, k)) }}</span>
+                      <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(condRow(seg, k)).includes('待') }">{{ rowMonthly(condRow(seg, k)) }}</span>
                     </template>
                   </div>
                   <!-- 遗留费项(非该类型钉死/条件/可选;保留可见+可删,防静默丢失) -->
                   <div v-for="row in extraRows(seg)" :key="'x' + (row.id ?? row.feeKey)" class="ct-bl-row">
                     <span class="ct-bl-feename">{{ FEE_NAME[row.feeKey] }} <em>遗留</em></span>
                     <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.amountOverride" placeholder="月额" @input="err = ''" />
-                    <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(row) === '待录' }">{{ rowMonthly(row) }}</span>
+                    <span class="ct-bl-mo mono" :class="{ pending: rowMonthly(row).includes('待') }">{{ rowMonthly(row) }}</span>
                     <button type="button" class="ct-rf-del" title="删除该遗留费项" @click="removeRow(seg, row)">
                       <component :is="iconFor('x')" :size="14" />
                     </button>
