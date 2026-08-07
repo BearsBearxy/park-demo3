@@ -89,16 +89,17 @@ describe('groupExcelStyle Excel 版式(非宿舍:电/水两部逐场地费块+�
 describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () => {
   const l = (feeKey: string, premise: string | null, amount: number, over: Partial<DormLineBase> = {}): DormLineBase =>
     ({ feeKey, premise, amount, meterId: null, meterLabel: null, baseSnap: null, ...over })
+  // S6:表行 premise 与公摊行 premise 同源=计费行 location 原文,配对键按此形态
   it('电:电表行建间,管理费同表挂靠(金额=电+管理费),路灯同房号唯一配对且面积取 baseSnap', () => {
     const d = groupDormExcelStyle([
-      l('elec', '430室', 117.64, { meterId: 757 }),
-      l('mgmt_fee', '430室', 29.6, { meterId: 757 }),
-      l('share_elec_light', '430室', 2.86, { baseSnap: 47.66 }),
-      l('elec', '431室', 47.88, { meterId: 758 }),
-      l('mgmt_fee', '431室', 12.05, { meterId: 758 }),
+      l('elec', 'A座孵化器四楼430室', 117.64, { meterId: 757 }),
+      l('mgmt_fee', 'A座孵化器四楼430室', 29.6, { meterId: 757 }),
+      l('share_elec_light', 'A座孵化器四楼430室', 2.86, { baseSnap: 47.66 }),
+      l('elec', 'A座孵化器四楼431室', 47.88, { meterId: 758 }),
+      l('mgmt_fee', 'A座孵化器四楼431室', 12.05, { meterId: 758 }),
     ])
     expect(d.elec.rooms).toHaveLength(2)
-    expect(d.elec.rooms[0].room).toBe('430室')
+    expect(d.elec.rooms[0].room).toBe('A座孵化器四楼430室')
     expect(d.elec.rooms[0].amount).toBe(147.24)
     expect(d.elec.rooms[0].area).toBe(47.66)
     expect(d.elec.rooms[0].share?.amount).toBe(2.86)
@@ -108,9 +109,9 @@ describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () 
   })
   it('水:水表行建间,绿化水同房号配对;宿舍总合计=电+水', () => {
     const d = groupDormExcelStyle([
-      l('elec', '430室', 100, { meterId: 1 }),
-      l('water', '430室', 50.05, { meterId: 1057 }),
-      l('share_green_water', '430室', 0.95, { baseSnap: 47.66 }),
+      l('elec', 'A座孵化器四楼430室', 100, { meterId: 1 }),
+      l('water', 'A座孵化器四楼430室', 50.05, { meterId: 1057 }),
+      l('share_green_water', 'A座孵化器四楼430室', 0.95, { baseSnap: 47.66 }),
     ])
     expect(d.water.rooms).toHaveLength(1)
     expect(d.water.rooms[0].share?.amount).toBe(0.95)
@@ -118,14 +119,14 @@ describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () 
     expect(d.water.total).toBe(51)
     expect(d.total).toBe(151)
   })
-  it('现状兜底:整段长串同 premise 多间/公摊行无 premise→配不唯一落 extras;损耗行恒 extras;不丢行', () => {
-    const seg = '宿舍楼四座430、431室'
+  it('回退路径:表行定位不唯一回退长串,公摊行按单间原文→配不上落 extras;损耗行恒 extras;不丢行', () => {
+    const seg = '宿舍楼四座430、431室'   // premiseOf 回退串(S6 §2.2),与公摊行单间原文不同源
     const d = groupDormExcelStyle([
       l('elec', seg, 117.64, { meterId: 757 }),
       l('elec', seg, 47.88, { meterId: 758 }),
-      l('share_elec_light', null, 15.45, { baseSnap: 257.54 }),   // premise 空→extras
+      l('share_elec_light', '宿舍楼四座430室', 15.45, { baseSnap: 257.54 }),
       l('share_elec_loss', null, 3.23),
-      l('share_green_water', null, 5.15),
+      l('share_green_water', null, 5.15),   // premise 空→extras
     ])
     expect(d.elec.rooms).toHaveLength(2)
     expect(d.elec.rooms.every(r => r.share === null && r.area === null)).toBe(true)
@@ -150,6 +151,21 @@ describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () 
     expect(d.elec.rooms).toHaveLength(2)
     expect(d.elec.rooms[0].amount).toBe(12.4)
     expect(d.elec.rooms[1].amount).toBe(5)
+  })
+  it('S6:分时一间=一表四段四行同 premise→路灯按表唯一挂该表首行,只挂一次', () => {
+    const d = groupDormExcelStyle([
+      l('elec', '一期宿舍一栋501室', 10, { meterId: 9 }),
+      l('elec', '一期宿舍一栋501室', 5, { meterId: 9 }),
+      l('elec', '一期宿舍一栋501室', 3, { meterId: 9 }),
+      l('elec', '一期宿舍一栋501室', 2, { meterId: 9 }),
+      l('share_elec_light', '一期宿舍一栋501室', 2.86, { baseSnap: 47.66 }),
+    ])
+    expect(d.elec.rooms).toHaveLength(4)
+    expect(d.elec.rooms[0].share?.amount).toBe(2.86)
+    expect(d.elec.rooms[0].area).toBe(47.66)
+    expect(d.elec.rooms.slice(1).every(r => r.share === null)).toBe(true)
+    expect(d.elec.extras).toEqual([])
+    expect(d.elec.total).toBe(22.86)
   })
   it('未知键落水子表尾兜底;空行集=空结构', () => {
     const d = groupDormExcelStyle([l('nope', null, 1.5)])

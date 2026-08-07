@@ -60,6 +60,7 @@ public class BillNoticeService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     private static final String[] SEGS = {"sharp", "peak", "flat", "valley"};
     private static final String CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
+    private static final Pattern DIGITS = Pattern.compile("\\d+");   // S6 §2.1 最长连续数字段
     // fee_group 归组(V90):与迁移回填 CASE 同一口径
     private static final Set<String> WATER_GROUP = Set.of("water", "water_pipe", "share_green_water");
     private static final ObjectMapper JSON = new ObjectMapper();   // rent_free 解析(与 ContractService 同口径)
@@ -98,6 +99,9 @@ public class BillNoticeService {
     private static final class L {
         Integer tenantId; boolean dorm; int seq;
         String feeKey, premise, meterLabel, seg, priceKey, priceScope, priceMonth, ruleBranch, shareSrc, note;
+        String premiseWide;               // 合同级粗粒度场地键,仅损耗分桶用(见 wide())。
+                                          // S6 把表行 premise 细化到单间后,损耗链两侧(表行细/公摊行仍合同级,
+                                          // 规范 §4 明令不改)会裂成两个桶 → 行数与逐行金额都变,故分桶必须回到合同级。
         String feeGroup;                  // rent 派生行显式置 'rent';空=按 fee_key 归组(水电)
         String payCol;                    // rent 行拆单列(rentPayCol 预算);空=走 BillFeeMap.payCol(feeKey)
         Integer meterId, contractId, poolRuleId;
@@ -197,6 +201,11 @@ public class BillNoticeService {
                     warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("有表未归属合同");
                 MeterReading r = readingByMeter.get(m.getId());
                 if (r == null) continue;   // 缺抄不硬算(与池引擎同口径)
+                // S6 §2.4:仅「真·零命中」按表记一条短警告(D3 借表/挂错合同,催缴单屏可见);
+                // 无房号与多命中都不是「未定」,不出噪音(判据见 Pin.undecided)
+                if (pin(m, row.contractId(), locsByContract).undecided())
+                    warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>())
+                        .add("场地未定:" + m.getName());
                 if ("elec".equals(m.getKind()))
                     elecLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract);
                 else
@@ -277,7 +286,9 @@ public class BillNoticeService {
             for (L l : ls) {
                 if (l.rateTmp == null) continue;
                 List<Integer> chain = l.lossBuildings == null ? List.of() : l.lossBuildings;
-                Map<String, BigDecimal[]> byPremise = new LinkedHashMap<>();   // premise → {电费Σ,公摊Σ,度数Σ}
+                // 分桶键=wide(合同级粗粒度),不用细化后的 l.premise:两侧同桶才保住行数与逐行金额;
+                // 损耗行自身 premise=桶键,故仍是 S6 前的值。
+                Map<String, BigDecimal[]> byPremise = new LinkedHashMap<>();   // wide premise → {电费Σ,公摊Σ,度数Σ}
                 Map<String, Integer> cidByPremise = new HashMap<>();
                 for (L o : ls) {
                     if (o.amount == null) continue;
@@ -291,14 +302,14 @@ public class BillNoticeService {
                         inShare = pr != null && pr.getBuildingId() != null && chain.contains(pr.getBuildingId());
                     }
                     if (!inElec && !inShare) continue;
-                    BigDecimal[] acc = byPremise.computeIfAbsent(o.premise,
+                    BigDecimal[] acc = byPremise.computeIfAbsent(wide(o),
                         k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
                     if (inElec) { acc[0] = acc[0].add(o.amount); if (o.qty != null) acc[2] = acc[2].add(o.qty); }
                     else acc[1] = acc[1].add(o.amount);
-                    if (o.contractId != null) cidByPremise.putIfAbsent(o.premise, o.contractId);
+                    if (o.contractId != null) cidByPremise.putIfAbsent(wide(o), o.contractId);
                 }
                 if (byPremise.isEmpty())   // 链内无行:保留单行基数 0(原行为)
-                    byPremise.put(l.premise, new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                    byPremise.put(wide(l), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
                 int i = 0;
                 for (Map.Entry<String, BigDecimal[]> g : byPremise.entrySet()) {
                     L t;
@@ -370,7 +381,10 @@ public class BillNoticeService {
             BillNotice n = new BillNotice();
             n.setYm(ym); n.setTenantId(g.getKey().tenantId()); n.setPayCompanyId(g.getKey().companyId());
             n.setNoticeKind(g.getKey().kind());
-            n.setPremiseText(trunc(String.join(",", premiseOrder.keySet()), 255));
+            // S6 §2.5:premise 变细后条目暴涨,255 硬截会切出半截房号(前端按「,」拆项会当成一个场地)→ 超 5 项收敛
+            List<String> ps = new ArrayList<>(premiseOrder.keySet());
+            n.setPremiseText(trunc(ps.size() <= 5 ? String.join(",", ps)
+                : String.join(",", ps.subList(0, 5)) + ",等" + ps.size() + "处", 255));
             n.setTotalAmount(r2(total)); n.setPrevDue(BigDecimal.ZERO);   // prev_due 催缴闭环接口点,S4 留 0
             n.setStatus("draft");
             n.setWarn(warns.isEmpty() ? null : trunc(String.join(";", warns), 255));
@@ -525,7 +539,8 @@ public class BillNoticeService {
         l.feeKey = feeKey; l.seg = seg;
         l.meterId = m.getId(); l.meterLabel = label;
         l.contractId = row.contractId();
-        l.premise = premiseOf(row.contractId(), locs);
+        l.premise = resolveMeterPremise(m, row.contractId(), locs);   // S6 §2.2 表行场地跟表走,不跟合同走
+        l.premiseWide = premiseOf(row.contractId(), locs);            // 损耗分桶键=S6 前的合同级值(见 L.premiseWide)
         l.prevRead = prev; l.currRead = curr; l.factorSnap = f; l.qty = qty;
         l.priceSnap = hit.value(); l.priceKey = cfgKey;
         l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
@@ -746,10 +761,81 @@ public class BillNoticeService {
         warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("缺价 " + key + "(" + ym + ")");
     }
 
+    // 损耗分桶键:表行取 S6 前的合同级值,其余行(公摊/租金/容量)premise 本就是合同级
+    private static String wide(L l) { return l.premiseWide != null ? l.premiseWide : l.premise; }
+
     private static String premiseOf(Integer contractId, Map<Integer, List<String>> locs) {
         if (contractId == null) return null;
         List<String> l = locs.get(contractId);
         return l == null || l.isEmpty() ? null : trunc(String.join("、", l), 64);
+    }
+
+    // ══════════ S6 §2 场地标签按表定位(表行 premise 跟表走,不跟合同走) ══════════
+
+    // §2.1 房号 token=最长连续数字段中 3~4 位者。整段判长度,12 位 code 直接落选(不切子串);
+    //      「309.00」→{309}、「1-309」→{309}、「501-504」→{501,504}、「11号楼」的 11 不入。
+    static Set<String> tok(String s) {
+        if (s == null) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        var m = DIGITS.matcher(s);
+        while (m.find()) if (m.end() - m.start() >= 3 && m.end() - m.start() <= 4) out.add(m.group());
+        return out;
+    }
+
+    // §2.1 name/room_no 权威(锚:表 929 name=411.00 而 spot=五楼 1-516),抽不出才回落 spot/sub_name。
+    static Set<String> roomTokens(Meter m) {
+        Set<String> out = new LinkedHashSet<>(tok(m.getRoomNo()));
+        out.addAll(tok(m.getName()));
+        if (!out.isEmpty()) return out;
+        out.addAll(tok(m.getSpot()));
+        out.addAll(tok(m.getSubName()));
+        return out;
+    }
+
+    // §2.2 定位结果:text=命中的那条计费行 location(必要时按房号合成单间),未命中=null;
+    // tokens=表侧抽出的房号数、cands=该合同候选计费行数、hits=其中被命中的条数
+    // ——后三项是 §2.4 告警的判据(调用方必须能分开「无房号」「多命中」「真·零命中」三种 null)。
+    record Pin(String text, int tokens, int cands, int hits) {
+        // §2.4「真·零命中」=表有房号、合同有候选计费行,却一条都对不上(D3 借表/挂错合同,人工归属可消)。
+        // 无房号(开利暖通整栋表、翔海借电)无场地可定,告警永远消不掉=噪音;
+        // 多命中(桑尼号「二楼201、301室」)与 §2.2 |inter|>1「取原文=已定场地」同构,更不是未定。
+        boolean undecided() { return tokens > 0 && cands > 0 && hits == 0; }
+    }
+
+    // §2.2 定位:表房号 ∩ 合同计费行 location 房号,唯一命中才细化,否则回退 premiseOf(不猜)。
+    // 取的是合同侧原文而非表侧自描述——公摊行 premise 同源于此,前端 byPremise 才配得上。
+    static String resolveMeterPremise(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+        if (contractId == null) return null;
+        String p = pin(m, contractId, locs).text();
+        return p != null ? p : premiseOf(contractId, locs);
+    }
+
+    static Pin pin(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+        Set<String> rt = roomTokens(m);
+        List<String> ls = contractId == null ? null : locs.get(contractId);
+        int cands = ls == null ? 0 : ls.size();
+        if (rt.isEmpty() || cands == 0) return new Pin(null, rt.size(), cands, 0);
+        List<String> hits = ls.stream().filter(l -> tok(l).stream().anyMatch(rt::contains)).toList();
+        if (hits.size() != 1) return new Pin(null, rt.size(), cands, hits.size());
+        String l = hits.get(0);
+        Set<String> lt = tok(l);
+        List<String> inter = lt.stream().filter(rt::contains).toList();
+        // |inter|>1 不合成:表确实同时管几间(一楼商铺 2101、2102),原文才是对的
+        return new Pin(trunc(lt.size() > 1 && inter.size() == 1 ? synthesize(l, inter.get(0)) : l, 64),
+            rt.size(), cands, 1);
+    }
+
+    // §2.3 把 L 中「首 token 起、末 token 止」整段换成 t,前后缀原样保留
+    // (绕开 室/单元/号室 三套后缀写法,不做后缀字典)。
+    static String synthesize(String l, String t) {
+        var m = DIGITS.matcher(l);
+        int from = -1, to = -1;
+        while (m.find()) {
+            if (m.end() - m.start() < 3 || m.end() - m.start() > 4) continue;
+            if (from < 0) from = m.start();
+            to = m.end();
+        }
+        return from < 0 ? l : l.substring(0, from) + t + l.substring(to);
     }
 
     private static BigDecimal segPrev(MeterReading r, String seg) {

@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // 催缴单派生引擎(S4-BILL-NOTICE-SPEC §4/§5 + BILL-DERIVE-SPEC §2):判定树分支/取价审计链/
 // 容量费按天折/paymap 拆单/宿舍段拆 dorm 单/幂等与 issued 跳过/offbook/负用量/未归属降级/读数批删 409 守卫。
-// @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04(月份无 13/14,租金用例 t13/t14 顺延;
+// @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04/05(月份无 13/14,租金用例 t13/t14 顺延;
 // 2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
 // 断言只圈自建数据(种子合同 2028 年前到期、种子表无 2090 读数,槽内 generated 计数=本用例数据,可精确断言)。
 // is_dorm_room/offbook 系 V89 新列,实体未必已挂字段 → 直落 JDBC(同事务同连接,引擎 mapper 读得到)。
@@ -539,6 +539,63 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         String body = detail(((Number) rows.get(0).get("id")).intValue());
         assertThat(feeLines(body, "rent_factory")).isEmpty();
         assertThat(d(one(feeLines(body, "elec")).get("amount"))).isEqualTo(80.0);
+    }
+
+    private static Map<String, Object> elecOfMeter(String detailBody, int meterId) {
+        return one(JsonPath.read(detailBody,
+                "$.data.lines[?(@.meterId==" + meterId + " && @.feeKey=='elec')]"));
+    }
+
+    // ── t16 S6 场地标签按表定位(S6-PREMISE-BY-METER-SPEC §2):表行 premise 跟表走,不跟合同走。槽 2091-05。
+    //    A 户逐间计费行:表名带房号→命中取该间原文;房号不在清单(D3 借表/挂错合同)→回退合同长串+按表短 warn。
+    //    B 户 A 类合并录入(一条 location 列三间)→ §2.3 合成单间。
+    //    C 户 6 条计费行 → §2.5 premise_text 超 5 项收敛「等N处」(防 255 硬截切出半截房号)。
+    //    金额一分不动:本用例只断言标签列。 ──
+    @Test
+    void t16_premiseByMeter_pinRoom_synthesize_fallbackWarn_textCap() throws Exception {
+        String ym = "2091-05";
+        monthlyPrices(ym);
+        // A:逐间 location(B 类拼接的正解形态)
+        int ta = createTenant("IT场地逐间户");
+        int ca = contractLines(ta, "2089-01-01", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"A座309室\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1},"
+                + "{\"propertyType\":\"factory\",\"location\":\"A座310室\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1},"
+                + "{\"propertyType\":\"factory\",\"location\":\"A座311室\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int hit = createMeter("elec", "p1", "IT场地电309", ta);    // name 带房号 → 命中 A座309室
+        int miss = createMeter("elec", "p1", "IT场地电999", ta);   // 房号不在本合同清单 → 回退
+        bind(hit, ca); bind(miss, ca);
+        reading(hit, ym, "\"prevTotal\":0,\"currTotal\":100");
+        reading(miss, ym, "\"prevTotal\":0,\"currTotal\":100");
+        // B:一条 location 列三间
+        int tb = createTenant("IT场地合并户");
+        int cb = contractLines(tb, "2089-01-01", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"二期10号楼（三车间）602、603、604单元\","
+                + "\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int mb = createMeter("elec", "p1", "IT场地电603", tb);
+        bind(mb, cb);
+        reading(mb, ym, "\"prevTotal\":0,\"currTotal\":100");
+        // C:6 条计费行(无表),只验 premise_text 收敛
+        int tc = createTenant("IT场地多项户");
+        StringBuilder six = new StringBuilder("[");
+        for (int i = 101; i <= 106; i++)
+            six.append(i > 101 ? "," : "").append("{\"propertyType\":\"factory\",\"location\":\"A座")
+               .append(i).append("\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}");
+        contractLines(tc, "2089-01-01", "2099-12-31", null, six.append("]").toString());
+
+        generate(ym);
+
+        // ① 唯一命中 → 该间原文(与公摊行同源,前端 byPremise 才配得上)
+        String bodyA = detail(soleNoticeId(ym, ta));
+        assertThat(elecOfMeter(bodyA, hit).get("premise")).isEqualTo("A座309室");
+        // ② 零命中 → 回退今天的长串(不猜)+ 按表短 warn
+        assertThat(elecOfMeter(bodyA, miss).get("premise")).isEqualTo("A座309室、A座310室、A座311室");
+        assertThat((String) one(notices(ym, ta)).get("warn")).contains("场地未定:IT场地电999");
+        // ③ A 类合并串 → 合成单间
+        assertThat(elecOfMeter(detail(soleNoticeId(ym, tb)), mb).get("premise"))
+                .isEqualTo("二期10号楼（三车间）603单元");
+        // ④ premise_text 超 5 项 → 前 5 项 + 等N处
+        assertThat(one(notices(ym, tc)).get("premiseText"))
+                .isEqualTo("A座101,A座102,A座103,A座104,A座105,等6处");
     }
 
     // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。

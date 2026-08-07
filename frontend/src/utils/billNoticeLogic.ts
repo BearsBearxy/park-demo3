@@ -124,11 +124,13 @@ export function groupDormExcelStyle<T extends DormLineBase>(lines: T[]): DormGro
       water.rooms.push(mkRoom(l))
     }
   }
-  // 同房号唯一才挂(现状 premise 为整段长串/公摊行无 premise 时自然落 extras)
+  // 同房号「按表」唯一才挂该表首行(S6 §3):分时一间=一表 4 段 4 行同 premise,按行数唯一永远配不上;
+  // 两间不同房同 premise 时表不同→仍配不唯一,不硬挂错间。meterId 空的行各算一表(退化回按行唯一)。
   const byPremise = (rooms: DormRoomRow<T>[], premise: string | null): DormRoomRow<T> | null => {
     if (premise == null) return null
     const hit = rooms.filter(r => r.main.premise === premise)
-    return hit.length === 1 ? hit[0] : null
+    const meters = new Set<number | string>(hit.map((r, i) => r.main.meterId ?? `#${i}`))
+    return meters.size === 1 ? hit[0] : null
   }
   for (const l of lines) {
     if (l.feeKey === 'elec' || l.feeKey === 'water') continue
