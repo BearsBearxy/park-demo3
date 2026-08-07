@@ -522,13 +522,14 @@ public class ContractService {
 
     // ─── 类型钉死允许集(§7.1,PINNED ∪ COND ∪ OPTIONAL[land_tax]) ────────────
     static final Set<String> PROPERTY_TYPES = Set.of("factory","office","dorm","shop","land");
+    // other=兜底杂费,任何段类型都收(2026-08-05 报障:导入存量含 other 的合同一编辑就 400 保存不了)
     private static final Map<String,Set<String>> ALLOWED_FEES = Map.of(
-        "factory", Set.of("rent_factory","mgmt","infra","elevator","transformer","land_tax"),
+        "factory", Set.of("rent_factory","mgmt","infra","elevator","transformer","land_tax","other"),
         // office/land 补 infra:旭化成纸约实证「办公室基础设施维护费」1373.11 与消防通道(land)基础设施费 323.46
-        "office",  Set.of("rent_office","mgmt","infra","elevator","transformer","land_tax"),
-        "dorm",    Set.of("rent_dorm","infra","access","network","land_tax"),
-        "shop",    Set.of("rent_shop","infra","mgmt","transformer","land_tax"),
-        "land",    Set.of("rent_land","infra","land_tax"));
+        "office",  Set.of("rent_office","mgmt","infra","elevator","transformer","land_tax","other"),
+        "dorm",    Set.of("rent_dorm","infra","access","network","land_tax","other"),
+        "shop",    Set.of("rent_shop","infra","mgmt","transformer","land_tax","other"),
+        "land",    Set.of("rent_land","infra","land_tax","other"));
     private static final Set<String> RENT_KEYS = Set.of(
         "rent_factory","rent_office","rent_dorm","rent_shop","rent_land");
     // 建筑类租金(计入租赁面积);rent_land=空地租金单列不入(裁定 2026-07-24);包级开放给 AllocService 分摊面积口径(S5 §1)

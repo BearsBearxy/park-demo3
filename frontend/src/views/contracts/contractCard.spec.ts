@@ -7,15 +7,16 @@ import type { FeeKey, PropertyType, ContractDTO } from '@/types/contract'
 import { leafIds, ancestorsOf, descendantsOf, chainOf, displayIds } from './chain'
 
 // CONTRACT-CARD-SPEC §1/§7.1:类型钉死费用组 + §5.3 续签链聚合。
-// 锚点=后端 ALLOWED_FEES(= PINNED ∪ COND ∪ OPTIONAL[land_tax]),前后端必须逐格一致。
+// 锚点=后端 ALLOWED_FEES(= PINNED ∪ COND ∪ OPTIONAL[land_tax,other]),前后端必须逐格一致。
 
 // 镜像后端 ContractService.ALLOWED_FEES(§7.1),此处独立写死做交叉核对
+// other=兜底杂费全类型可放(2026-08-05 报障修复)
 const BACKEND_ALLOWED: Record<PropertyType, FeeKey[]> = {
-  factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax'],
-  office:  ['rent_office', 'mgmt', 'elevator', 'transformer', 'land_tax'],
-  dorm:    ['rent_dorm', 'infra', 'access', 'network', 'land_tax'],
-  shop:    ['rent_shop', 'infra', 'mgmt', 'transformer', 'land_tax'],
-  land:    ['rent_land', 'land_tax'],
+  factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
+  office:  ['rent_office', 'mgmt', 'elevator', 'transformer', 'land_tax', 'other'],
+  dorm:    ['rent_dorm', 'infra', 'access', 'network', 'land_tax', 'other'],
+  shop:    ['rent_shop', 'infra', 'mgmt', 'transformer', 'land_tax', 'other'],
+  land:    ['rent_land', 'land_tax', 'other'],
 }
 
 describe('类型钉死费用组 · 与后端白名单一致', () => {
