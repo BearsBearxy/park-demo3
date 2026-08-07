@@ -194,8 +194,9 @@ export const COND_FEES: Record<PropertyType, FeeKey[]> = {
   shop:    ['transformer'],
   land:    ['infra'],
 }
-// 全类型可选(土地使用税;other=兜底杂费,2026-08-05 报障:导入存量含 other 的合同无标的可放、一编辑就 400)
-export const OPTIONAL_FEES: readonly FeeKey[] = ['land_tax', 'other']
+// 全类型可选(仅土地使用税)。other=独立标的(2026-08-07 旭化成裁定:单行收费项目+金额,不进段内勾选;
+// 后端段内仍放行 other 只是对存量导入行的宽容,编辑器只从「其他费用」独立块路径出 other)
+export const OPTIONAL_FEES: readonly FeeKey[] = ['land_tax']
 // 该段类型的租金 fee_key(建筑类租金计入租赁面积;land 为空地租金单列)
 export const RENT_KEY_OF: Record<PropertyType, FeeKey> = {
   factory: 'rent_factory', office: 'rent_office', dorm: 'rent_dorm', shop: 'rent_shop', land: 'rent_land',

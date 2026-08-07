@@ -7,10 +7,10 @@ import type { FeeKey, PropertyType, ContractDTO } from '@/types/contract'
 import { leafIds, ancestorsOf, descendantsOf, chainOf, displayIds } from './chain'
 
 // CONTRACT-CARD-SPEC §1/§7.1:类型钉死费用组 + §5.3 续签链聚合。
-// 锚点=后端 ALLOWED_FEES(= PINNED ∪ COND ∪ OPTIONAL[land_tax,other]),前后端必须逐格一致。
+// 锚点=后端 ALLOWED_FEES:前端可选集 ⊆ 后端允许集(2026-08-07 起不再逐格相等——
+// 后端段内额外收 other 是给存量导入行的宽容,编辑器只从「其他费用」独立标的路径出 other)。
 
 // 镜像后端 ContractService.ALLOWED_FEES(§7.1),此处独立写死做交叉核对
-// other=兜底杂费全类型可放(2026-08-05 报障修复)
 const BACKEND_ALLOWED: Record<PropertyType, FeeKey[]> = {
   factory: ['rent_factory', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
   office:  ['rent_office', 'mgmt', 'infra', 'elevator', 'transformer', 'land_tax', 'other'],
@@ -20,10 +20,12 @@ const BACKEND_ALLOWED: Record<PropertyType, FeeKey[]> = {
 }
 
 describe('类型钉死费用组 · 与后端白名单一致', () => {
-  it('PINNED ∪ COND ∪ OPTIONAL 覆盖后端允许集(逐类型逐费项)', () => {
+  it('PINNED ∪ COND ∪ OPTIONAL ⊆ 后端允许集(逐类型逐费项);other 不进段内可选', () => {
     for (const pt of PROPERTY_TYPES) {
       const front = new Set<FeeKey>([...PINNED_FEES[pt], ...COND_FEES[pt], ...OPTIONAL_FEES])
-      expect([...front].sort()).toEqual([...BACKEND_ALLOWED[pt]].sort())
+      for (const k of front) expect(BACKEND_ALLOWED[pt]).toContain(k)
+      // other=独立标的(propertyType 空),编辑器段内不勾选;后端段内放行仅宽容存量导入行
+      expect(front.has('other')).toBe(false)
     }
   })
 

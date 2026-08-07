@@ -93,6 +93,16 @@ function buildSegment(pt: PropertyType): Segment {
 function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = '' }
 function removeSegment(i: number) { segments.value.splice(i, 1) }
 
+// 其他费用独立标的(2026-08-07 旭化成裁定):单行一笔杂费,location=收费项目名,金额直填;
+// 与物业段平级,不带段类型;非金额字段原样透传保证存量往返无损
+type OtherItem = SegRow & { location: string; billMode: string | null }
+const otherItems = ref<OtherItem[]>([])
+function addOtherItem() {
+  otherItems.value.push({ ...newRow('other'), location: '', billMode: 'per_month' })
+  showTypeMenu.value = false; err.value = ''
+}
+function removeOtherItem(i: number) { otherItems.value.splice(i, 1) }
+
 // 钉死行(按 PINNED 序渲染;编辑态遗留合同若缺行,groupLines 已补齐)
 function pinnedRows(seg: Segment): SegRow[] {
   return PINNED_FEES[seg.propertyType]
@@ -155,7 +165,14 @@ onMounted(async () => {
     remark.value = c.remark ?? ''
     // 计费行:详情端点带出(按 propertyType,location,seq 排序),分组进可编辑标的段
     const d = await contractApi.detail(c.id)
-    segments.value = groupLines(d.billingLines)
+    // 其他费用独立标的:propertyType 空的 other 行不入段;段内 other(存量导入)照旧走遗留行
+    const isIndepOther = (l: BillingLineDTO) => l.feeKey === 'other' && l.propertyType == null
+    otherItems.value = d.billingLines.filter(isIndepOther).map(l => ({
+      id: l.id, feeKey: 'other' as FeeKey, location: l.location, billMode: l.billMode ?? 'per_month',
+      area: l.area ?? null, areaShared: l.areaShared ?? null, unitPrice: l.unitPrice ?? null,
+      coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null,
+    }))
+    segments.value = groupLines(d.billingLines.filter(l => !isIndepOther(l)))
     extraUnitIds.value = d.extraUnitIds ?? []
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
@@ -224,6 +241,11 @@ function monthlyTotal(): number {
       const m = lineMonthly({ feeKey: r.feeKey, billMode: defaultBillMode(r.feeKey), area: r.area, unitPrice: r.unitPrice, coeff: r.coeff, roomCount: r.roomCount, amountOverride: r.amountOverride }, kva.value)
       if (m != null) s += m
     }
+  // 其他费用独立标的同计入(镜像抽屉合计口径)
+  for (const o of otherItems.value) {
+    const m = lineMonthly({ feeKey: 'other', billMode: o.billMode ?? 'per_month', area: o.area, unitPrice: o.unitPrice, coeff: o.coeff, roomCount: o.roomCount, amountOverride: o.amountOverride }, kva.value)
+    if (m != null) s += m
+  }
   return round2(s)
 }
 
@@ -253,6 +275,9 @@ async function submit() {
     if (!r.start || !r.end) { err.value = '免租期起止日期需填写完整'; return }
     if (r.start > r.end) { err.value = '免租期开始日期不能晚于结束日期'; return }
   }
+  // 其他费用独立标的:收费项目名即 location,空名无法分组/回读
+  for (const o of otherItems.value)
+    if (!o.location.trim()) { err.value = '其他费用需填写收费项目名'; return }
   submitting.value = true
   try {
     if (mode.value === 'renew') {
@@ -278,6 +303,12 @@ async function submit() {
         roomCount: numOrNull(r.roomCount), amountOverride: numOrNull(r.amountOverride), seq: i,
       }))
     }
+    // 其他费用独立标的:不带段类型(后端跳过钉死校验),位置=收费项目名;非金额字段透传保存量往返无损
+    otherItems.value.forEach((o, i) => lines.push({
+      id: o.id, propertyType: null, location: o.location.trim(), feeKey: 'other', billMode: o.billMode ?? 'per_month',
+      area: numOrNull(o.area), areaShared: numOrNull(o.areaShared), unitPrice: numOrNull(o.unitPrice), coeff: numOrNull(o.coeff),
+      roomCount: numOrNull(o.roomCount), amountOverride: numOrNull(o.amountOverride), seq: i,
+    }))
     // 反推五标量供 fee_src 覆盖律(镜像后端 syncScalarCache:无该类行则保留原缓存)
     const find = (p: (l: BillingLineReq) => boolean) => lines.find(p)
     const rentL = find(l => isRentKey(l.feeKey))
@@ -501,7 +532,20 @@ async function submit() {
                     </button>
                   </div>
                 </div>
-                <!-- 添加标的段:选物业类型 → 钉死组自动出现 -->
+                <!-- 其他费用独立标的(旭化成裁定):单行一笔,收费项目名+金额,可删可多条 -->
+                <div v-for="(o, oi) in otherItems" :key="'ot' + oi" class="ct-bl-seg">
+                  <div class="ct-bl-seghd">
+                    <span class="ct-seg-badge">其他费用</span>
+                    <input class="ct-in ct-bl-loc" v-model="o.location" maxlength="255"
+                           placeholder="收费项目(如:车位变更手续费)" @input="err = ''" />
+                    <input class="ct-in ct-other-amt" type="number" min="0" step="0.01" v-model.number="o.amountOverride"
+                           placeholder="金额 元/月" @input="err = ''" />
+                    <button type="button" class="ct-rf-del" title="删除该费用" @click="removeOtherItem(oi)">
+                      <component :is="iconFor('trash-2')" :size="14" />
+                    </button>
+                  </div>
+                </div>
+                <!-- 添加标的段:选物业类型 → 钉死组自动出现;其他费用=独立单行标的 -->
                 <div class="ct-seg-add">
                   <Button variant="gray" size="sm" @click="showTypeMenu = !showTypeMenu">
                     <template #leading><component :is="iconFor('plus')" :size="13" /></template>
@@ -511,6 +555,7 @@ async function submit() {
                     <button v-for="pt in PROPERTY_TYPES" :key="pt" type="button" class="ct-seg-menu-item" @click="addSegment(pt)">
                       {{ PROPERTY_TYPE_LABEL[pt] }}
                     </button>
+                    <button type="button" class="ct-seg-menu-item" @click="addOtherItem()">其他费用</button>
                   </div>
                 </div>
               </div>
@@ -629,6 +674,8 @@ select.ct-in { appearance:auto; }
 .ct-seg-badge { flex:0 0 auto; padding:3px 10px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:var(--fw-semibold); }
 .ct-bl-loc { flex:1 1 auto; height:34px; font-size:12.5px; font-weight:var(--fw-medium); }
 .ct-seg-area { flex:0 0 auto; font-size:12px; font-family:var(--font-mono); color:var(--text-muted); }
+/* 其他费用独立块:金额窄列(段头行内,高度对齐位置输入) */
+.ct-other-amt { flex:0 0 120px; height:34px; font-size:12.5px; padding:0 8px; }
 .ct-bl-row, .ct-bl-cond { display:flex; align-items:center; gap:6px; }
 .ct-bl-row .ct-in, .ct-bl-cond .ct-in { height:34px; font-size:12.5px; padding:0 8px; }
 .ct-bl-feename { flex:0 0 148px; font-size:12.5px; color:var(--text-primary); }
