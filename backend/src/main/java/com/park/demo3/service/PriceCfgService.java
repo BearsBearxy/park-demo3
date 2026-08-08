@@ -34,7 +34,10 @@ public class PriceCfgService {
         "mgmt_fee", "mgmt_fee_commercial", "sharp_as_peak_ratio",                                     // 附加与开关
         "capacity_fee", "water", "water_pipe",                                                        // 容量与水
         "lamp_area_base", "green_area_base", "area_base", "elevator_area_base",                       // 月推参数
-        "loss_rate", "elec_package", "elevator_package");                                             // 特殊轨道
+        "loss_rate", "elec_package", "share_elec_fixed", "share_water_fixed");                        // 特殊轨道
+    // ⚠ share_elec_fixed 是 elevator_package 改名(2026-08-09):后者建键时以为包干只替电梯,源册
+    // (一期2024年2月水电费.xlsx 各户缴费通知单 + 两张总表)证明它替「楼层公共、消防照明+电梯+路灯公摊」
+    // 三项;水侧同一纸单第二个包干替「绿化水公摊」=share_water_fixed。改名时 elevator_package 全库 0 行。
 
     // 月变键=电价6键(registry monthly:true):逐月变,不前滚,缺当月版本=null→派生门禁拦截
     static final Set<String> MONTHLY_KEYS = Set.of(

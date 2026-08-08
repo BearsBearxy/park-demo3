@@ -400,10 +400,13 @@ const MERGE_RANK: Record<string, number> = {
   '楼层公共、消防照明': 1, '电梯用电': 2, '线路损耗': 3, '路灯公摊': 4, '绿化水公摊': 5,
   [PACKAGE_LABEL]: 1,   // 电包干占被替掉的「楼层公共」档位;水包干那带只有它自己,同档无歧义
 }
-// 备注列沿用纸单口径(按面积摊的两项);其余合并项留空
+// 备注列沿用纸单口径(按面积摊的两项);其余合并项留空。
+// 包干行借的是 share_green_water 键但不按面积摊 → 备注留空(口径已在行名与悬浮里说清)。
 const MERGE_NOTE: Record<string, string> = {
   share_elec_light: '面积×公摊单价', share_green_water: '面积×公摊单价',
 }
+const mergeNoteOf = (l: FeeTitleLine): string | null =>
+  isPackageLine(l) ? null : MERGE_NOTE[l.feeKey] ?? null
 export interface ShareMergeRow<T> {
   label: string          // 纸单费项名
   feeKey: string         // 首个成员键(样式判定用)
@@ -452,7 +455,7 @@ export function mergeMaintRows<T extends FeeTitleLine>(lines: T[]): MaintRow<T>[
     if (!g) {
       g = {
         label, feeKey: l.feeKey, members: [], amount: 0,
-        qty: null, unit: '', price: null, note: MERGE_NOTE[l.feeKey] ?? null, title: '',
+        qty: null, unit: '', price: null, note: mergeNoteOf(l), title: '',
       }
       byLabel.set(label, g)
       out.push({ kind: 'merge', row: g })

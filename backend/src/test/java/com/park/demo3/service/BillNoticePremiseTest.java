@@ -25,7 +25,8 @@ class BillNoticePremiseTest {
     private static final Map<Integer, List<String>> LOCS = Map.of(
         1, List.of("宿舍一栋309室", "宿舍一栋310室", "宿舍一栋311室"),
         2, List.of(MERGED),
-        3, List.of("宿舍区二号楼首层2101、2102室"));
+        3, List.of("宿舍区二号楼首层2101、2102室"),
+        4, List.of("一期D座三楼整层"));   // 按整层计的合同:location 整串无房号
 
     // ── §2.1 tok:最长连续数字段,3≤len≤4 ──
     @Test
@@ -116,6 +117,20 @@ class BillNoticePremiseTest {
         // 无候选(合同无计费行 location / 无合同归属):无处可定,与 S6 前一致不告警
         assertThat(BillNoticeService.pin(meter(null, "309.00", null, null), 9, LOCS).undecided()).isFalse();
         assertThat(BillNoticeService.pin(meter(null, "309.00", null, null), null, LOCS).undecided()).isFalse();
+    }
+
+    // ── §2.4 候选侧无房号(整层/整栋计的合同)不是「未定」,有房号却对不上仍是 ──
+    @Test
+    void contractWithoutRoomNumbersIsNeverUndecided() {
+        // 锚:金纳合同 5 条计费行 location 全是「一期D座三楼整层」(整串无 3~4 位房号),
+        // 而表名/房号「金纳D301电 / 301室」抽得出 301 → 老判据误报三条「场地未定」
+        BillNoticeService.Pin whole = BillNoticeService.pin(meter("301室", "金纳D301电", null, null), 4, LOCS);
+        assertThat(whole.tokens()).isEqualTo(1);
+        assertThat(whole.cands()).isEqualTo(1);
+        assertThat(whole.hits()).isZero();
+        assertThat(whole.undecided()).isFalse();       // 候选侧无房号可对,不是数据缺口
+        // 对照:合同房间清单有房号、表也有房号、就是对不上 = D3 借表/挂错合同,必须继续报
+        assertThat(BillNoticeService.pin(meter(null, "999.00", null, null), 1, LOCS).undecided()).isTrue();
     }
 
     // ── §2.3 synthesize:规范表格逐行五例 ──

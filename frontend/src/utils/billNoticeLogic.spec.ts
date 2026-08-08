@@ -440,6 +440,8 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
     expect(billFeeTitle(pkg)).toBe(rowsOf(rs)[0].title)
     const w = l({ feeKey: 'share_green_water', priceKey: 'share_water_fixed', priceSnap: 155, amount: 155 })
     expect(billFeeTitle(w)).toBe('孵化协议固定收取 —— 按协议每月固定 155 元,已包含绿化水公摊,不再另计')
+    // 借了 share_green_water 键但不是按面积摊 → 备注列不许写「面积×公摊单价」
+    expect(rowsOf(mergeMaintRows([w]))[0].note).toBeNull()
     // 同键的普通公摊行不受影响(price_key 不是包干键)
     expect(labels(mergeMaintRows([BWF[3]]))).toEqual(['楼层公共、消防照明'])
   })

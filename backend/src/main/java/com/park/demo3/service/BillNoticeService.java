@@ -7,6 +7,7 @@ import com.park.demo3.dto.BillNoticeGenResultDTO;
 import com.park.demo3.dto.MeterBindingDTO;
 import com.park.demo3.entity.AllocPoolResult;
 import com.park.demo3.entity.AllocRule;
+import com.park.demo3.entity.AllocRuleMember;
 import com.park.demo3.entity.BillNotice;
 import com.park.demo3.entity.BillNoticeLine;
 import com.park.demo3.entity.BillPayCompany;
@@ -18,6 +19,7 @@ import com.park.demo3.entity.MeterReading;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.AllocPoolResultMapper;
 import com.park.demo3.mapper.AllocRuleMapper;
+import com.park.demo3.mapper.AllocRuleMemberMapper;
 import com.park.demo3.mapper.BillNoticeLineMapper;
 import com.park.demo3.mapper.BillNoticeMapper;
 import com.park.demo3.mapper.BillPayCompanyMapper;
@@ -41,6 +43,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -63,6 +66,10 @@ public class BillNoticeService {
     private static final Pattern DIGITS = Pattern.compile("\\d+");   // S6 §2.1 最长连续数字段
     // fee_group 归组(V90):与迁移回填 CASE 同一口径
     private static final Set<String> WATER_GROUP = Set.of("water", "water_pipe", "share_green_water");
+    // 孵化协议固定收取(包干)吞掉的公摊键:电侧四项、水侧一项(取证见 applyPackages)
+    private static final Set<String> PKG_ELEC_SWALLOW = Set.of(
+        "share_elec_floor", "share_elec_fire", "share_elec_elevator", "share_elec_light");
+    private static final Set<String> PKG_WATER_SWALLOW = Set.of("share_green_water");
     private static final ObjectMapper JSON = new ObjectMapper();   // rent_free 解析(与 ContractService 同口径)
 
     private final BillNoticeMapper notices;
@@ -75,6 +82,7 @@ public class BillNoticeService {
     private final ManagementCompanyMapper companies;
     private final BillPayCompanyMapper payMap;
     private final AllocRuleMapper rules;
+    private final AllocRuleMemberMapper ruleMembers;
     private final AllocPoolResultMapper poolResults;
     private final PriceCfgService price;
     private final AllocService alloc;
@@ -85,13 +93,15 @@ public class BillNoticeService {
                              ContractMapper contracts, ContractBillingTermMapper billingTerms,
                              TenantMapper tenants, ManagementCompanyMapper companies,
                              BillPayCompanyMapper payMap, AllocRuleMapper rules,
+                             AllocRuleMemberMapper ruleMembers,
                              AllocPoolResultMapper poolResults, PriceCfgService price,
                              AllocService alloc, MeterBindingService binding) {
         this.notices = notices; this.noticeLines = noticeLines;
         this.meters = meters; this.readings = readings;
         this.contracts = contracts; this.billingTerms = billingTerms;
         this.tenants = tenants; this.companies = companies;
-        this.payMap = payMap; this.rules = rules; this.poolResults = poolResults;
+        this.payMap = payMap; this.rules = rules; this.ruleMembers = ruleMembers;
+        this.poolResults = poolResults;
         this.price = price; this.alloc = alloc; this.binding = binding;
     }
 
@@ -202,7 +212,7 @@ public class BillNoticeService {
                 MeterReading r = readingByMeter.get(m.getId());
                 if (r == null) continue;   // 缺抄不硬算(与池引擎同口径)
                 // S6 §2.4:仅「真·零命中」按表记一条短警告(D3 借表/挂错合同,催缴单屏可见);
-                // 无房号与多命中都不是「未定」,不出噪音(判据见 Pin.undecided)
+                // 无房号、候选无房号(整层/整栋计)、多命中都不是「未定」,不出噪音(判据见 Pin.undecided)
                 if (pin(m, row.contractId(), locsByContract).undecided())
                     warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>())
                         .add("场地未定:" + m.getName());
@@ -272,6 +282,9 @@ public class BillNoticeService {
             }
             byTenant.computeIfAbsent(l.tenantId, k -> new ArrayList<>()).add(l);
         }
+
+        // ── 孵化协议固定收取(包干):须在损耗收尾之前,包干额才进得了 E2 损耗基数 ──
+        applyPackages(byTenant, warnByTenant, seq, ym, coveringByTenant, locsByContract, ruleById);
 
         // ── 户级收尾:p1/p2 损耗行金额口径分链计(E2,定案 2026-08-05)+按场地落行(S4-3) ──
         // 宿舍段损耗行已删(2024-02 通知单实证宿舍段无此行;spec §3⑦ loss_rate dorm=0.012 保留配置暂不消费)。
@@ -692,6 +705,78 @@ public class BillNoticeService {
         l.amount = r2(collect.multiply(base));
     }
 
+    // ── 孵化协议固定收取(包干):户级 share_elec_fixed / share_water_fixed 命中 → 原公摊行整户不落,
+    //    改落一条固定额行。取证=源册 一期2024年2月水电费.xlsx:
+    //    ① 纸单一项一行「公共用电分摊 xx元/月」,同户「楼层公共、消防照明 / 电梯用电 / 路灯公摊」三项全无;
+    //       「2024年2月电费总表」同步 I(消防用电)=包干额、J(电梯)=0、K(路灯)=0 —— 包干是替换不是附加。
+    //    ② 同一纸单第二个包干「公共用水分摊 xx元/月」记在「用水维护费」块;「2024年2月水费总表」
+    //       G(绿化水公摊)=包干额、F(用水维护费)=0。⚠ 水管网维护费(吨×0.5)不在吞掉之列:五户纸单上它
+    //       仍是活公式(联塑精铟 I12=I11、优唯特 H14=0.5、重瞳 J14=0.5),当月为 0 只因户内用水量为 0。
+    //    ③ 宿舍段照收(联塑精铟 K18 宿舍路灯 4.47 / K26 宿舍绿化水 1.49)→ dorm 行不吞。
+    //    fee_key 沿用 share_elec_floor / share_green_water:BillFeeMap 收款映射不动,且 E2 损耗基数
+    //    白名单(floor|elevator|fire)自动把电包干额算进去 —— 联塑精铟 (43.8+232)×0.0616=16.99 与源册 K7 全等。
+    //    池锚点:电侧=该户显式勾选的 share_elec_floor 池中 sort_no 最小者(联塑精铟挂的 rule 92 是 manual
+    //    无表池,自己不产贡献行,只有查受益人名册才找得到);水侧=被吞掉那条绿化水行的原池(园区级自动
+    //    名册池没有显式成员)。回挂后 §5.9 按 pool_rule_id 回填 allocated/gap,复刻源册 AE/AF 两列。
+    private void applyPackages(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
+                               String ym, Map<Integer, List<Contract>> covering,
+                               Map<Integer, List<String>> locs, Map<Integer, AllocRule> ruleById) {
+        Map<Integer, Integer> floorAnchor = new HashMap<>();
+        for (AllocRuleMember m : ruleMembers.selectList(null)) {
+            String am = m.getAcctMonth();
+            if (am != null && !am.isEmpty() && !am.equals(ym)) continue;   // 月行只在本月生效(V69)
+            AllocRule r = ruleById.get(m.getRuleId());
+            if (r == null || !"share_elec_floor".equals(r.getFeeKey())) continue;
+            floorAnchor.merge(m.getTenantId(), r.getId(),
+                (a, b) -> sortNo(ruleById.get(a)) <= sortNo(ruleById.get(b)) ? a : b);
+        }
+        for (Integer tid : covering.keySet()) {   // 当月无在租合同=不落包干行(跟源册走)
+            packageLine(byTenant, warnByTenant, seq, ym, tid, "share_elec_fixed", "share_elec_floor",
+                PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs);
+            packageLine(byTenant, warnByTenant, seq, ym, tid, "share_water_fixed", "share_green_water",
+                PKG_WATER_SWALLOW, null, covering, locs);
+        }
+    }
+
+    private static int sortNo(AllocRule r) {
+        return r == null || r.getSortNo() == null ? Integer.MAX_VALUE : r.getSortNo();
+    }
+
+    private void packageLine(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
+                             String ym, Integer tid, String cfgKey, String feeKey, Set<String> swallow,
+                             Integer anchor, Map<Integer, List<Contract>> covering,
+                             Map<Integer, List<String>> locs) {
+        PriceCfgService.PriceHit hit = price.resolveHit(cfgKey, ym, tid, null);
+        if (hit == null || !hit.scope().startsWith("tenant:")) return;   // 只认户级配置
+        List<L> ls = byTenant.computeIfAbsent(tid, k -> new ArrayList<>());
+        String premise = null;
+        Integer contractId = null, poolId = anchor;
+        for (Iterator<L> it = ls.iterator(); it.hasNext(); ) {
+            L o = it.next();
+            if (o.dorm || o.poolRuleId == null || !swallow.contains(o.feeKey)) continue;
+            if (premise == null && o.premise != null) { premise = o.premise; contractId = o.contractId; }
+            if (poolId == null && feeKey.equals(o.feeKey)) poolId = o.poolRuleId;
+            it.remove();
+        }
+        // 被吞的行都没落上场地(池楼栋≠合同楼栋时 splitShare 拆不出)→ 回退合同级:
+        // 与该户表行同一个损耗分桶键,否则 E2 会为包干额单开一桶多出一条损耗行。
+        if (premise == null)
+            for (Contract c : covering.getOrDefault(tid, List.of())) {
+                String p = premiseOf(c.getId(), locs);
+                if (p != null) { premise = p; contractId = c.getId(); break; }
+            }
+        L l = new L();
+        l.tenantId = tid; l.seq = seq[0]++;
+        l.feeKey = feeKey; l.premise = premise; l.contractId = contractId;
+        l.ruleBranch = "fixed"; l.poolRuleId = poolId;
+        l.priceKey = cfgKey; l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
+        l.priceSnap = hit.value(); l.amount = r2(hit.value());
+        l.note = "孵化协议固定收取";
+        ls.add(l);
+        if (poolId == null)
+            warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("包干行无公摊池锚点");
+    }
+
     // ── S4-3 场地拆行(share_* 公摊行):租户级一行 → 按该户在租合同(宿舍逐房间)等比拆 ──
     // premise=该合同 location 主文本(宿舍=该 dorm 计费行 location);base_snap=该合同份额基数(面积);
     // 金额/数量/基数按份额等比、末行取余:Σ各场地行与原租户级行全等,拆分只重分布不改总额。
@@ -798,13 +883,15 @@ public class BillNoticeService {
     }
 
     // §2.2 定位结果:text=命中的那条计费行 location(必要时按房号合成单间),未命中=null;
-    // tokens=表侧抽出的房号数、cands=该合同候选计费行数、hits=其中被命中的条数
-    // ——后三项是 §2.4 告警的判据(调用方必须能分开「无房号」「多命中」「真·零命中」三种 null)。
-    record Pin(String text, int tokens, int cands, int hits) {
-        // §2.4「真·零命中」=表有房号、合同有候选计费行,却一条都对不上(D3 借表/挂错合同,人工归属可消)。
+    // tokens=表侧抽出的房号数、cands=该合同候选计费行数、candTokens=候选侧抽出的房号数、
+    // hits=候选中被命中的条数——后四项是 §2.4 告警的判据
+    // (调用方必须能分开「无房号」「候选无房号」「多命中」「真·零命中」四种 null)。
+    record Pin(String text, int tokens, int cands, int candTokens, int hits) {
+        // §2.4「真·零命中」=表有房号、合同候选行也有房号,却一条都对不上(D3 借表/挂错合同,人工归属可消)。
         // 无房号(开利暖通整栋表、翔海借电)无场地可定,告警永远消不掉=噪音;
-        // 多命中(桑尼号「二楼201、301室」)与 §2.2 |inter|>1「取原文=已定场地」同构,更不是未定。
-        boolean undecided() { return tokens > 0 && cands > 0 && hits == 0; }
+        // 多命中(桑尼号「二楼201、301室」)与 §2.2 |inter|>1「取原文=已定场地」同构,更不是未定;
+        // 候选无房号(金纳「一期D座三楼整层」按整层/整栋计)压根没房号可对,同样不是数据缺口。
+        boolean undecided() { return tokens > 0 && cands > 0 && candTokens > 0 && hits == 0; }
     }
 
     // §2.2 定位:表房号 ∩ 合同计费行 location 房号,唯一命中才细化,否则回退 premiseOf(不猜)。
@@ -819,15 +906,16 @@ public class BillNoticeService {
         Set<String> rt = roomTokens(m);
         List<String> ls = contractId == null ? null : locs.get(contractId);
         int cands = ls == null ? 0 : ls.size();
-        if (rt.isEmpty() || cands == 0) return new Pin(null, rt.size(), cands, 0);
+        if (rt.isEmpty() || cands == 0) return new Pin(null, rt.size(), cands, 0, 0);
+        int ct = (int) ls.stream().flatMap(l -> tok(l).stream()).distinct().count();
         List<String> hits = ls.stream().filter(l -> tok(l).stream().anyMatch(rt::contains)).toList();
-        if (hits.size() != 1) return new Pin(null, rt.size(), cands, hits.size());
+        if (hits.size() != 1) return new Pin(null, rt.size(), cands, ct, hits.size());
         String l = hits.get(0);
         Set<String> lt = tok(l);
         List<String> inter = lt.stream().filter(rt::contains).toList();
         // |inter|>1 不合成:表确实同时管几间(一楼商铺 2101、2102),原文才是对的
         return new Pin(trunc(lt.size() > 1 && inter.size() == 1 ? synthesize(l, inter.get(0)) : l, 64),
-            rt.size(), cands, 1);
+            rt.size(), cands, ct, 1);
     }
 
     // §2.3 把 L 中「首 token 起、末 token 止」整段换成 t,前后缀原样保留

@@ -100,6 +100,24 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
+    private void priceScoped(String scope, String cfgKey, String value) throws Exception {
+        mvc.perform(put("/api/price-cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"" + scope + "\",\"cfgKey\":\"" + cfgKey
+                        + "\",\"acctMonth\":\"\",\"value\":" + value + "}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    // 直造池:rule(direct 法=整额归户)+ 受益人 + 当月快照;poolContributions 有快照才吐行
+    private int pool(String name, String feeKey, int buildingId, int tenantId, String ym, String cost) {
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key,building_id) VALUES('p2',?,'direct',?,?)",
+                name, feeKey, buildingId);
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO alloc_rule_member(rule_id,tenant_id,acct_month) VALUES(?,?,'')", rid, tenantId);
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
+                + "VALUES(?,?,0,?,NOW())", ym, rid, new java.math.BigDecimal(cost));
+        return rid;
+    }
+
     // 月变电价 6 键(缺当月版本 resolve=null;常数键 capacity_fee/water/mgmt_fee 等走 V60 全园种子)
     private void monthlyPrices(String ym) throws Exception {
         price("elec_sharp", ym, "1.5");
@@ -640,6 +658,70 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(loss.get("premise")).isEqualTo("IT损耗A区");
         assertThat(d(loss.get("baseSnap"))).isEqualTo(720.0);
         assertThat(d(loss.get("amount"))).isEqualTo(72.0);
+    }
+
+    // ── t18 孵化协议固定收取(包干):户级 share_elec_fixed / share_water_fixed 命中 → 楼层公共/消防照明/
+    //    电梯/路灯四类电公摊行与绿化水公摊行整户不落,各改落一条固定额行;电包干行沿用
+    //    fee_key='share_elec_floor' 并回挂该户楼层池 → E2 损耗基数白名单自动把包干额算进去。
+    //    源册锚点(一期2024年2月水电费.xlsx sheet「联塑精铟」K5/K6/K7):
+    //      户内电费 43.80 + 公共用电分摊(包干)232 = 275.80,×损耗率 0.0616 = 16.99 逐格全等。
+    //    照这三个数造链:新栋隔离损耗组,总表 10000 度、本户表 43.80 度、陪跑户表 9340.20 度
+    //    → Σ分表 9384 → 率 =(10000−9384)/10000 = 0.0616;本户电价走 elec_package 1.0 元/度。槽 2091-09。
+    @Test
+    void t18_incubatorPackage_swallowsShareLines_lossBaseIncludesPackage() throws Exception {
+        String ym = "2091-09";
+        monthlyPrices(ym);
+        int bid = postId("/api/buildings", "{\"name\":\"IT包干栋" + System.nanoTime()
+                + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":1,\"totalArea\":100,\"rentableArea\":100}");
+        int t = createTenant("IT包干户");
+        int c = contractLines(t, "2089-01-01", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT包干A区\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int filler = createTenant("IT包干陪跑户");
+        int cf = contractLines(filler, "2089-01-01", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT包干B区\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int head = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT包干总表\","
+                + "\"ownership\":\"infra\",\"buildingId\":" + bid + "}");
+        int mT = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT包干户表\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + t + ",\"buildingId\":" + bid + "}");
+        int mF = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT包干陪跑表\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + filler + ",\"buildingId\":" + bid + "}");
+        bind(mT, c); bind(mF, cf);
+        reading(head, ym, "\"prevTotal\":0,\"currTotal\":10000");
+        reading(mT, ym, "\"prevTotal\":0,\"currTotal\":43.8");
+        reading(mF, ym, "\"prevTotal\":0,\"currTotal\":9340.2");
+        // 待吞的两个池:楼层公共 50.00(电侧)、绿化水公摊 8.00(水侧),受益人=本户
+        int rFloor = pool("IT包干楼层池", "share_elec_floor", bid, t, ym, "50");
+        int rGreen = pool("IT包干绿化水池", "share_green_water", bid, t, ym, "8");
+        priceScoped("tenant:" + t, "elec_package", "1");
+        priceScoped("tenant:" + t, "share_elec_fixed", "232");
+        priceScoped("tenant:" + t, "share_water_fixed", "155");
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, t));
+        // ① 户内电费 43.80(包干电价 1.0)——损耗基数的另一半,防两侧同错
+        assertThat(d(elecOfMeter(body, mT).get("amount"))).isEqualTo(43.8);
+        // ② 电包干:原 50.00 池行不落,改落一条 232.00,沿用 share_elec_floor 键并回挂该池
+        Map<String, Object> pkg = one(feeLines(body, "share_elec_floor"));
+        assertThat(d(pkg.get("amount"))).isEqualTo(232.0);
+        assertThat(pkg.get("qty")).isNull();
+        assertThat(pkg.get("priceKey")).isEqualTo("share_elec_fixed");
+        assertThat(pkg.get("priceScope")).isEqualTo("tenant:" + t);
+        assertThat(pkg.get("ruleBranch")).isEqualTo("fixed");
+        assertThat(pkg.get("note")).isEqualTo("孵化协议固定收取");
+        assertThat(((Number) pkg.get("poolRuleId")).intValue()).isEqualTo(rFloor);
+        // ③ 水包干:原 8.00 绿化水行不落,改落 155.00 并回挂原池
+        Map<String, Object> wpkg = one(feeLines(body, "share_green_water"));
+        assertThat(d(wpkg.get("amount"))).isEqualTo(155.0);
+        assertThat(wpkg.get("priceKey")).isEqualTo("share_water_fixed");
+        assertThat(((Number) wpkg.get("poolRuleId")).intValue()).isEqualTo(rGreen);
+        // ④ 源册锚点:损耗基数=43.80+232=275.80,×0.0616=16.99(联塑精铟 K7 逐格全等),且只此一条
+        Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(275.8);
+        assertThat(d(loss.get("amount"))).isEqualTo(16.99);
+        // ⑤ §5.9 回填:被吞的池 allocated 记的是包干额(源册「公共电分摊明细」AE 列口径)
+        assertThat(jdbc.queryForObject(
+                "SELECT allocated_amount FROM alloc_pool_result WHERE ym=? AND rule_id=?",
+                java.math.BigDecimal.class, ym, rFloor)).isEqualByComparingTo("232.00");
     }
 
     // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。
