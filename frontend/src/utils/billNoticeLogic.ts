@@ -197,6 +197,86 @@ export function rentAreaText(qty: number | null, baseSnap: number | null): strin
   return baseSnap != null && baseSnap > qty ? `${qty}+${r2(baseSnap - qty)}` : String(qty)
 }
 
+// ── 刀D(2026-08-08 人工审核):抽屉逐行「用量×单价=金额」可心算 ──
+// 两类行的乘数不是用量列的度数:①按面积摊(路灯/绿化水):面积×分摊单价(元/㎡),用量列是该户分得的度/吨;
+// ②线路损耗:金额基数(场地电费+公摊)×损耗率,用量列是链内电表度数。
+// 判定不写死费项键——哪个数验得通就显哪个。S7 缺口①第三档兜底:share_src='area' 的
+// 消防/楼层照明/电梯行 price_snap 存的是电价(元/度)、base_snap 存面积,等效元/㎡ 率没有任何一列存;
+// 该率恒等于 amount÷base_snap(实测与源册『公共电分摊明细』AC 列逐格相同),按需补位显示,落库表价进悬浮不丢。
+// ⚠ 纯显示层,一个落库值不动:后端 collectPrice() 的 `l.amount = r2(collect×base)` 白名单碰不得——
+// 放宽会重算金额并破坏 splitShare 末行取余的守恒。
+// 单价固定 2 位会把 0.0271 显成 0.03、0.005 显成 0.01、1.20606875 显成 1.21,验算必错:
+// 取「能验算的最少位数」(2/3/4/5/6/8=落库 scale),都验不通回落 2 位(与改前一致),真值仍在单价列悬浮。
+// S7 缺口②:判据=「四舍五入到分」后的整数分相等。闭区间容差 |mult×price−amount|<=0.005 与 HALF_UP 不等价,
+// 会放行 0.50×1.21=0.605(→0.61≠0.60)、15.00×0.721=10.815(→10.82≠10.81)两类反例。1e-6 兜 JS 浮点。
+const cents = (v: number) => Math.round(v * 100 + (v < 0 ? -1e-6 : 1e-6))
+const verifies = (mult: number, price: number, amount: number) => cents(mult * price) === cents(amount)
+const SCALES = [2, 3, 4, 5, 6, 8]
+// 能把 mult×price 验平到 amount 的最少小数位;都验不通=null
+const fitScale = (mult: number, price: number, amount: number): number | null =>
+  SCALES.find(s => verifies(mult, +price.toFixed(s), amount)) ?? null
+const trimZeros = (s: string) => (s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s)
+const showPrice = (v: number, d: number) => trimZeros(v.toFixed(d))
+export interface QtyCell {
+  qty: number | null     // 真正的乘数(面积/金额基数/用量)
+  unit: string           // ''|'㎡'|'元' —— 非空时别当度数看
+  title: string | null   // 悬浮:摊法说明 + 原用量(度/吨不丢)
+  price: string          // 单价显示串
+}
+export function billQtyCell(l: {
+  feeKey: string
+  shareSrc?: string | null
+  qty: number | null
+  baseSnap: number | null
+  priceSnap: number | null
+  amount: number
+}): QtyCell {
+  const p = l.priceSnap
+  const raw = `${l.qty ?? '–'} ${l.feeKey.includes('water') ? '吨' : '度'}`
+  const dq = p != null && l.qty != null ? fitScale(l.qty, p, l.amount) : null
+  if (dq != null) return { qty: l.qty, unit: '', title: null, price: showPrice(p!, dq) }
+  const base = l.baseSnap
+  if (p != null && base != null && base !== 0) {
+    const area = l.shareSrc === 'area'
+    const tail = area ? `;该户分得 ${raw}` : `;链内用电 ${raw}`
+    const db = fitScale(base, p, l.amount)
+    if (db != null) {
+      return {
+        qty: base, unit: area ? '㎡' : '元', price: showPrice(p, db),
+        title: (area ? '按面积摊:面积×分摊单价' : '按金额摊:(场地电费+公摊)×损耗率') + tail,
+      }
+    }
+    const rate = l.amount / base            // 元/㎡ 率没落库时的兜底(缺口①)
+    const dr = fitScale(base, rate, l.amount)
+    if (dr != null) {
+      return {
+        qty: base, unit: area ? '㎡' : '元', price: showPrice(rate, dr),
+        title: (area ? '按面积摊:金额÷面积=分摊单价' : '按金额摊:金额÷基数=摊率')
+          + `;落库表价 ${p} 未用于本行` + tail,
+      }
+    }
+  }
+  return { qty: l.qty, unit: '', title: null, price: p == null ? '–' : showPrice(p, 2) }
+}
+
+// S7 缺口③:宿舍逐间子表两价压 2 位则 192 间行 177 条算不出金额(0.63586875→0.64)。两价各自补到
+// 「能验平自己那段的最少位数」。⚠ 间行金额=用量×基准电价 与 用量×管理费 两段**各自四舍五入到分**后相加,
+// 不是用量×(价+管理费):宿舍一栋311室 240.4 度 → 152.86+38.46=191.32,而 240.4×0.79586875=191.33 差 1 分
+// (19/192 间行踩到)。表头据此改口径,别再邀请用户把两价加起来乘。水表行 mgmt 传 null 即退化成 用量×单价。
+const fitPrice = (qty: number | null, p: number | null, amount: number): string => {
+  if (p == null) return '–'
+  return showPrice(p, (qty == null ? null : fitScale(qty, p, amount)) ?? 2)
+}
+export function dormPriceCells(
+  main: { qty: number | null; priceSnap: number | null; amount: number },
+  mgmt: { priceSnap: number | null; amount: number } | null,
+): { price: string; mgmt: string } {
+  return {
+    price: fitPrice(main.qty, main.priceSnap, main.amount),
+    mgmt: mgmt == null ? '–' : fitPrice(main.qty, mgmt.priceSnap, mgmt.amount),
+  }
+}
+
 // ── 取价审计链 title(行尾 info 图标悬浮):price_key/price_scope/price_month/rule_branch ──
 export const RULE_BRANCH_LABEL: Record<string, string> = {
   tou: '分时四段',

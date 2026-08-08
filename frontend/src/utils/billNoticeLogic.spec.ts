@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, billFeeName, groupDormExcelStyle, groupExcelStyle,
-  groupRentByPremise, priceScopeLabel, rentAreaText, rentByTenant, rentFeeName, resolvePhase,
-  segLabel, tenantKpis, type DormLineBase, type NoticeLike, type RentLineBase,
+  aggregateByTenant, auditTitle, billFeeLabel, billFeeName, billQtyCell, dormPriceCells,
+  groupDormExcelStyle, groupExcelStyle, groupRentByPremise, priceScopeLabel, rentAreaText,
+  rentByTenant, rentFeeName, resolvePhase, segLabel, tenantKpis,
+  type DormLineBase, type NoticeLike, type RentLineBase,
 } from './billNoticeLogic'
 
 describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造第三套)', () => {
@@ -182,6 +183,196 @@ describe('billFeeName 行名带池名(S5 §3.2:「费项·池名」)', () => {
   it('无池名=纯费项;undefined 同 null', () => {
     expect(billFeeName({ feeKey: 'elec', poolName: null })).toBe('电费')
     expect(billFeeName({ feeKey: 'water' })).toBe('水费')
+  })
+})
+
+describe('billQtyCell 刀D:抽屉逐行「用量×单价=金额」可心算(2026-08-08 人工审核诉求)', () => {
+  // 显示价回读成数再验算(去尾随零的纯小数串,Number 可直读);r2 加 1e-6 兜 JS 浮点(99.70×0.15=14.955 边界)
+  const r2 = (v: number) => Math.round(v * 100 + (v < 0 ? -1e-6 : 1e-6)) / 100
+  type Row = Parameters<typeof billQtyCell>[0] & { amount: number }
+  const row = (o: Partial<Row>): Row =>
+    ({ feeKey: 'elec', shareSrc: null, qty: null, baseSnap: null, priceSnap: null, amount: 0, ...o })
+
+  it('路灯(share_src=area):乘数=面积 3200㎡ 不是分得的 107.35 度;3200×0.04=128.00', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_light', shareSrc: 'area', qty: 107.35, baseSnap: 3200, priceSnap: 0.04, amount: 128,
+    }))
+    expect(c.qty).toBe(3200)
+    expect(c.unit).toBe('㎡')
+    expect(c.price).toBe('0.04')
+    expect(c.title).toContain('107.35 度')      // 原度数不丢,进悬浮
+    expect(r2(c.qty! * Number(c.price))).toBe(128)
+  })
+  it('绿化水(area):3200×0.009=28.80,价必须显 0.009 不是 0.01;度数悬浮按吨', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_green_water', shareSrc: 'area', qty: 8.9, baseSnap: 3200, priceSnap: 0.009, amount: 28.8,
+    }))
+    expect(c.qty).toBe(3200)
+    expect(c.unit).toBe('㎡')
+    expect(c.price).toBe('0.009')
+    expect(c.title).toContain('8.9 吨')
+    expect(r2(c.qty! * Number(c.price))).toBe(28.8)
+  })
+  it('线路损耗:乘数=金额基数 538.10 元 不是链内 205.6 度;538.10×0.0213=11.46', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_loss', qty: 205.6, baseSnap: 538.1, priceSnap: 0.0213, amount: 11.46,
+    }))
+    expect(c.qty).toBe(538.1)
+    expect(c.unit).toBe('元')
+    expect(c.price).toBe('0.0213')
+    expect(c.title).toContain('205.6 度')
+    expect(r2(c.qty! * Number(c.price))).toBe(11.46)
+  })
+  it('楼层照明 floor 行不受影响:乘数仍是用量 74.20', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_floor', shareSrc: 'floor', qty: 74.2, baseSnap: null, priceSnap: 1.114151, amount: 82.67,
+    }))
+    expect(c.qty).toBe(74.2)
+    expect(c.unit).toBe('')
+    expect(c.title).toBeNull()
+    expect(r2(c.qty! * Number(c.price))).toBe(82.67)
+  })
+  it('电费行不受影响;单价按需补位(落库 1.20606875,固定 2 位的 1.21 验不通)', () => {
+    const c = billQtyCell(row({ feeKey: 'elec', qty: 25.6, priceSnap: 1.20606875, amount: 30.88 }))
+    expect(c.qty).toBe(25.6)
+    expect(c.unit).toBe('')
+    expect(c.price).toBe('1.2061')
+    expect(r2(c.qty! * Number(c.price))).toBe(30.88)
+  })
+  // ── S7 缺口①:面积池兜底(消防/楼层照明/电梯 的 area 行 price_snap 存电价元/度、base_snap 存面积,
+  //    等效元/㎡ 率没有任何一列存)——率恒等于 amount÷base_snap,与源册『公共电分摊明细』AC 列逐格相同 ──
+  it('楼层照明 area(2024-02 真实行 7.18度/1.114255/446.4㎡/8.93):派生率 0.02,乘数=面积', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_floor', shareSrc: 'area', qty: 7.18, baseSnap: 446.4, priceSnap: 1.114255, amount: 8.93,
+    }))
+    expect(c.qty).toBe(446.4)
+    expect(c.unit).toBe('㎡')
+    expect(c.price).toBe('0.02')
+    expect(c.title).toContain('金额÷面积')
+    expect(c.title).toContain('1.114255')       // 落库表价留住,不假装它是本行乘数的配套价
+    expect(c.title).toContain('7.18 度')
+    expect(r2(c.qty! * Number(c.price))).toBe(8.93)
+  })
+  it('消防 area(11.6度/0.897222/714.3㎡/10.71):派生率 0.015——2 位的 0.01 验不通,须补到 3 位', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_fire', shareSrc: 'area', qty: 11.6, baseSnap: 714.3, priceSnap: 0.897222, amount: 10.71,
+    }))
+    expect(c.qty).toBe(714.3)
+    expect(c.price).toBe('0.015')
+    expect(r2(c.qty! * Number(c.price))).toBe(10.71)
+  })
+  it('电梯 area(32.44度/1.114162/446.4㎡/35.71):派生率 0.08', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_elevator', shareSrc: 'area', qty: 32.44, baseSnap: 446.4, priceSnap: 1.114162, amount: 35.71,
+    }))
+    expect(c.qty).toBe(446.4)
+    expect(c.price).toBe('0.08')
+    expect(r2(c.qty! * Number(c.price))).toBe(35.71)
+  })
+  it('消防 0 元行(0.02度/0.897222/714.3㎡/0.00):派生率 0,仍验得平', () => {
+    const c = billQtyCell(row({
+      feeKey: 'share_elec_fire', shareSrc: 'area', qty: 0.02, baseSnap: 714.3, priceSnap: 0.897222, amount: 0,
+    }))
+    expect(c.qty).toBe(714.3)
+    expect(c.price).toBe('0')
+    expect(r2(c.qty! * Number(c.price))).toBe(0)
+  })
+  // ── S7 缺口②:判据必须是「四舍五入到分」后的整数分,闭区间容差 |x−y|<=0.005 与 HALF_UP 不等价 ──
+  it('判据反例 A(2024-02 真实行 0.50度×1.20606875=0.60):不许显 1.21(0.605→HALF_UP 0.61≠0.60)', () => {
+    const c = billQtyCell(row({ feeKey: 'elec', qty: 0.5, priceSnap: 1.20606875, amount: 0.6 }))
+    expect(c.price).not.toBe('1.21')
+    expect(r2(c.qty! * Number(c.price))).toBe(0.6)
+  })
+  it('判据反例 B(15.00度×0.72076875=10.81):不许显 0.721(10.815→10.82≠10.81)', () => {
+    const c = billQtyCell(row({ feeKey: 'elec', qty: 15, priceSnap: 0.72076875, amount: 10.81 }))
+    expect(c.price).not.toBe('0.721')
+    expect(r2(c.qty! * Number(c.price))).toBe(10.81)
+  })
+  it('缺价/缺量行不炸', () => {
+    expect(billQtyCell(row({ feeKey: 'share_elec_floor', shareSrc: 'area', baseSnap: 136.86 })))
+      .toEqual({ qty: null, unit: '', title: null, price: '–' })
+    expect(billQtyCell(row({ feeKey: 'elec', qty: 0, priceSnap: 1.20606875, amount: 0 })).price).toBe('1.21')
+  })
+  it('护栏(主表):2024-02 真实混合行,每行 round(乘数×显示价,2)===金额', () => {
+    const rows = [
+      // S7 缺口①:三类面积池行(价存元/度、基数存面积)
+      row({ feeKey: 'share_elec_fire', shareSrc: 'area', qty: 11.6, baseSnap: 714.3, priceSnap: 0.897222, amount: 10.71 }),
+      row({ feeKey: 'share_elec_fire', shareSrc: 'area', qty: 50.32, baseSnap: 3100, priceSnap: 0.895115, amount: 46.5 }),
+      row({ feeKey: 'share_elec_floor', shareSrc: 'area', qty: 8.04, baseSnap: 499.25, priceSnap: 1.114255, amount: 9.99 }),
+      row({ feeKey: 'share_elec_floor', shareSrc: 'area', qty: 8, baseSnap: 249.8, priceSnap: 1.114097, amount: 9.99 }),
+      row({ feeKey: 'share_elec_elevator', shareSrc: 'area', qty: 36.29, baseSnap: 499.25, priceSnap: 1.114162, amount: 39.94 }),
+      row({ feeKey: 'share_elec_elevator', shareSrc: 'area', qty: 144.34, baseSnap: 1986, priceSnap: 1.114162, amount: 158.88 }),
+      // S7 缺口②:判据反例两条
+      row({ feeKey: 'elec', qty: 0.5, priceSnap: 1.20606875, amount: 0.6 }),
+      row({ feeKey: 'elec', qty: 15, priceSnap: 0.72076875, amount: 10.81 }),
+      // 宿舍子表 extras(路灯/绿化水配不上间,平铺后同样逐行可验:池末行取余,派生率补位吸收)
+      row({ feeKey: 'share_elec_light', shareSrc: 'area', qty: 2.5, baseSnap: 45.08, priceSnap: 0.06, amount: 2.71 }),
+      row({ feeKey: 'share_green_water', shareSrc: 'area', qty: 28.24, baseSnap: 5214.64, priceSnap: 0.02, amount: 104.3 }),
+      row({ feeKey: 'elec', qty: 25.6, priceSnap: 1.20606875, amount: 30.88 }),
+      row({ feeKey: 'elec', qty: 11486.4, priceSnap: 0.63586875, amount: 7303.84 }),   // 大额行须补到 8 位才验得通
+      row({ feeKey: 'mgmt_fee', qty: 99.7, priceSnap: 0.15, amount: 14.96 }),     // HALF_UP 边界 14.955
+      row({ feeKey: 'capacity', qty: 312.5, priceSnap: 23, amount: 7187.5 }),
+      row({ feeKey: 'water', qty: 273, priceSnap: 3.95, amount: 1078.35 }),
+      row({ feeKey: 'water_pipe', qty: 273, priceSnap: 0.5, amount: 136.5 }),
+      row({ feeKey: 'share_elec_light', shareSrc: 'area', qty: 3.73, baseSnap: 714.3, priceSnap: 0.005, amount: 3.57 }),
+      row({ feeKey: 'share_green_water', shareSrc: 'area', qty: 0.5, baseSnap: 714.3, priceSnap: 0.01, amount: 7.14 }),
+      row({ feeKey: 'share_elec_loss', qty: 2323.6, baseSnap: 1867.89, priceSnap: 0.0271, amount: 50.62 }),
+      row({ feeKey: 'share_elec_elevator', shareSrc: 'floor', qty: 39.3, baseSnap: 0.27, priceSnap: 0.980395, amount: 38.53 }),
+    ]
+    for (const l of rows) {
+      const c = billQtyCell(l)
+      expect([l.feeKey, r2(c.qty! * Number(c.price))]).toEqual([l.feeKey, l.amount])
+    }
+  })
+})
+
+// ── S7 缺口③:宿舍逐间子表两价压 2 位后 192 间行 177 条算不出金额;
+//    且间行金额=两段各自四舍五入到分后相加,不是 用量×(价+管理费)——19/192 间行差 1 分 ──
+describe('dormPriceCells 宿舍子表逐段可验算(2024-02 真实间行)', () => {
+  const r2 = (v: number) => Math.round(v * 100 + (v < 0 ? -1e-6 : 1e-6)) / 100
+  type Room = [qty: number, p: number, pAmt: number, m: number | null, mAmt: number]
+  const cells = ([qty, p, pAmt, m, mAmt]: Room) =>
+    dormPriceCells({ qty, priceSnap: p, amount: pAmt }, m == null ? null : { priceSnap: m, amount: mAmt })
+  // 逐段验:用量×基准电价=电费段、用量×管理费=管理费段,两段相加=金额列
+  const chk = (r: Room) => {
+    const c = cells(r)
+    const [qty, , pAmt, m, mAmt] = r
+    expect(r2(qty * Number(c.price))).toBe(pAmt)
+    if (m != null) expect(r2(qty * Number(c.mgmt))).toBe(mAmt)
+    return c
+  }
+  it('二期10号楼301单元 128.30度 × 0.63586875 = 81.58:2 位的 0.64 验不通,补到 5 位', () => {
+    const c = chk([128.3, 0.63586875, 81.58, 0.15, 19.25])
+    expect([c.price, c.mgmt]).toEqual(['0.63587', '0.15'])
+  })
+  it('二期8号楼502单元 78.00度:电 49.60 + 管理费 12.48 = 62.08', () => {
+    expect(chk([78, 0.63586875, 49.6, 0.16, 12.48]).price).toBe('0.6359')
+  })
+  it('302单元 99.70度 管理费段 HALF_UP 边界 14.955→14.96', () => {
+    const c = chk([99.7, 0.63586875, 63.4, 0.15, 14.96])
+    expect(c.mgmt).toBe('0.15')
+  })
+  it('宿舍一栋311室 240.40度:合并单价心算差 1 分(152.86+38.46=191.32,240.4×0.79586875→191.33),逐段仍验得平', () => {
+    const c = chk([240.4, 0.63586875, 152.86, 0.16, 38.46])
+    expect(r2(240.4 * (Number(c.price) + Number(c.mgmt)))).toBe(191.33)   // 合并口径的 1 分差:表头据此改口径
+    expect(r2(152.86 + 38.46)).toBe(191.32)
+  })
+  it('水表间行(mgmt=null 退化成 用量×单价):8.00吨 × 3.85 = 30.80', () => {
+    const c = chk([8, 3.85, 30.8, null, 0])
+    expect([c.price, c.mgmt]).toEqual(['3.85', '–'])
+  })
+  it('0 用量/缺价行不炸', () => {
+    expect(dormPriceCells({ qty: 0, priceSnap: 3.85, amount: 0 }, null)).toEqual({ price: '3.85', mgmt: '–' })
+    expect(dormPriceCells({ qty: null, priceSnap: null, amount: 0 }, null)).toEqual({ price: '–', mgmt: '–' })
+  })
+  it('护栏(宿舍子表):2024-02 真实间行,每段 round(用量×显示价,2)===该段金额', () => {
+    const rooms: Room[] = [
+      [78, 0.63586875, 49.6, 0.16, 12.48], [128.3, 0.63586875, 81.58, 0.15, 19.25],
+      [263.6, 0.63586875, 167.62, 0.15, 39.54], [99.7, 0.63586875, 63.4, 0.15, 14.96],
+      [240.4, 0.63586875, 152.86, 0.16, 38.46], [160.4, 0.63586875, 101.99, 0.16, 25.66],
+      [2, 3.85, 7.7, null, 0], [8, 3.85, 30.8, null, 0], [0, 3.85, 0, null, 0],
+    ]
+    for (const r of rooms) chk(r)
   })
 })
 

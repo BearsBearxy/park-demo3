@@ -17,8 +17,9 @@ import type { BuildingDTO } from '@/types/building'
 import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
-  aggregateByTenant, auditTitle, billFeeName, groupDormExcelStyle, groupExcelStyle, groupRentByPremise,
-  rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantKpis, type TenantNoticeRow,
+  aggregateByTenant, auditTitle, billFeeName, billQtyCell, dormPriceCells, groupDormExcelStyle,
+  groupExcelStyle, groupRentByPremise, rentAreaText, rentByTenant, rentFeeName, resolvePhase,
+  segLabel, tenantKpis, type QtyCell, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -176,14 +177,14 @@ const utilGrand = computed(() => r2(xg.value.total + dorm.value.total))
 // 非宿舍表拍平:band(块头)/line(明细行,块内重编号)/sub(块小计)/part(部合计)
 type UtilRowVM =
   | { t: 'band'; label: string }
-  | { t: 'line'; no: number; l: BillNoticeLineDTO }
+  | { t: 'line'; no: number; l: BillNoticeLineDTO; q: QtyCell }   // q=刀D 可验算的乘数/单位/显示价
   | { t: 'sub' | 'part'; label: string; amount: number }
 const utilRows = computed<UtilRowVM[]>(() => {
   const out: UtilRowVM[] = []
   const block = (label: string, ls: BillNoticeLineDTO[], subLabel: string | null, subAmount: number) => {
     if (!ls.length) return
     out.push({ t: 'band', label })
-    ls.forEach((l, i) => out.push({ t: 'line', no: i + 1, l }))
+    ls.forEach((l, i) => out.push({ t: 'line', no: i + 1, l, q: billQtyCell(l) }))
     if (subLabel) out.push({ t: 'sub', label: subLabel, amount: subAmount })
   }
   const g = xg.value
@@ -201,6 +202,18 @@ const utilRows = computed<UtilRowVM[]>(() => {
   block('其他费项', g.other, '其他费项合计', g.otherTotal)
   return out
 })
+
+// 宿舍子表(S7 缺口③):两价各补到能验平自己那段的位数;配不上间的 extras 也铺出乘数/单价,同样逐行可验
+const dormElecRows = computed(() => dorm.value.elec.rooms.map(r => ({ r, c: dormPriceCells(r.main, r.mgmt) })))
+const dormWaterRows = computed(() => dorm.value.water.rooms.map(r => ({ r, c: dormPriceCells(r.main, null) })))
+const dormElecExtras = computed(() => dorm.value.elec.extras.map(l => ({ l, q: billQtyCell(l) })))
+const dormWaterExtras = computed(() => dorm.value.water.extras.map(l => ({ l, q: billQtyCell(l) })))
+// 路灯/绿化水公摊格悬浮:面积×分摊单价=金额(与主表同一套判定,该格只有金额没法心算)
+function shareTitle(l: BillNoticeLineDTO | null): string | undefined {
+  if (!l) return undefined
+  const q = billQtyCell(l)
+  return q.qty == null ? undefined : `${q.qty} ${q.unit} × ${q.price} = ${fmt2(l.amount)}`
+}
 
 // 场地租金 tab(S5 刀4):渲染 fee_group='rent' 落库行,按 premise 分块(厂房/办公室/宿舍逐间)
 const rentLines = computed(() => details.value.flatMap(d => d.lines).filter(l => l.feeGroup === 'rent'))
@@ -415,8 +428,8 @@ const drawerSub = computed(() => {
                 <col style="width:84px" />
                 <col style="width:84px" />
                 <col style="width:52px" />
-                <col style="width:84px" />
-                <col style="width:82px" />
+                <col style="width:96px" /><!-- 用量:刀D 后带单位后缀「3,200 ㎡」「1,867.89 元」,84px 会截 -->
+                <col style="width:92px" /><!-- 单价:最少可验算位数,大额行要显到 8 位「0.63586875」 -->
                 <col style="width:94px" />
                 <col /><!-- 备注:唯一弹性列 -->
                 <col style="width:30px" />
@@ -430,8 +443,10 @@ const drawerSub = computed(() => {
                   <th>上月行至</th>
                   <th>本月行至</th>
                   <th>倍率</th>
-                  <th>用量</th>
-                  <th>单价</th>
+                  <th title="乘数列:按面积摊的行显面积(㎡)、线路损耗显金额基数(元),其余显用量;
+悬浮单元格看原度数。逐行 用量×单价=金额 可心算">用量</th>
+                  <th title="按能验算的最少位数显示(0.0271 不会被压成 0.03);悬浮看落库原值。
+消防/楼层照明/电梯的按面积摊行落库价是电价(元/度),等效元/㎡ 率没落库——此处显 金额÷面积,悬浮该格看说明">单价</th>
                   <th>金额(元)</th>
                   <th class="l">备注</th>
                   <th title="取价审计链:price_key/作用域/价目月/判定分支"></th>
@@ -450,8 +465,12 @@ const drawerSub = computed(() => {
                     <td><span class="bn-nv" :class="{ empty: r0.l.prevRead == null }">{{ fmt(r0.l.prevRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.currRead == null }">{{ fmt(r0.l.currRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.factorSnap == null }">{{ fmt(r0.l.factorSnap) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r0.l.qty == null }">{{ fmt(r0.l.qty) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r0.l.priceSnap == null }" :title="r0.l.priceSnap != null ? String(r0.l.priceSnap) : undefined">{{ fmt(r0.l.priceSnap) }}</span></td>
+                    <td>
+                      <span class="bn-nv" :class="{ empty: r0.q.qty == null }" :title="r0.q.title ?? undefined">
+                        {{ r0.q.unit === '元' ? fmt2(r0.q.qty) : fmt(r0.q.qty) }}<em v-if="r0.q.unit" class="bn-u">{{ r0.q.unit }}</em>
+                      </span>
+                    </td>
+                    <td><span class="bn-nv" :class="{ empty: r0.l.priceSnap == null }" :title="r0.l.priceSnap != null ? String(r0.l.priceSnap) : undefined">{{ r0.q.price }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r0.l.amount < 0 }">{{ fmt2(r0.l.amount) }}</span></td>
                     <td class="l"><span class="bn-txt dim" :title="r0.l.note ?? undefined">{{ r0.l.note || '' }}</span></td>
                     <td class="ct">
@@ -486,9 +505,9 @@ const drawerSub = computed(() => {
                   <col style="width:76px" />
                   <col style="width:90px" />
                   <col style="width:90px" />
-                  <col style="width:76px" />
-                  <col style="width:90px" />
-                  <col style="width:70px" />
+                  <col style="width:92px" /><!-- 用量:extras 行带单位后缀「5,214.64 ㎡」,76px 会截 -->
+                  <col style="width:102px" /><!-- 基准电价:补位到能验平,实测最长 10 字符「0.63586875」(宿舍楼四座338室/保障房2·3号楼),90px 会截 -->
+                  <col style="width:74px" />
                   <col style="width:94px" />
                   <col style="width:84px" />
                 </colgroup>
@@ -500,30 +519,38 @@ const drawerSub = computed(() => {
                     <th>上月行至</th>
                     <th>本月行至</th>
                     <th>用量</th>
-                    <th>基准电价</th>
-                    <th title="电力管理费单价,金额列=用量×(基准电价+管理费)">管理费</th>
-                    <th>金额(元)</th>
-                    <th title="面积×公摊单价">路灯分摊</th>
+                    <th title="按能验算的最少位数显示;悬浮看落库原值">基准电价</th>
+                    <th title="电力管理费单价">管理费</th>
+                    <th title="金额=用量×基准电价 + 用量×管理费,两段各自四舍五入到分后相加(引擎逐行落库口径,
+不是用量×两价之和——合并会差 1 分)">金额(元)</th>
+                    <th title="面积×公摊单价,悬浮该格看算式">路灯分摊</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(r1, i) in dorm.elec.rooms" :key="i">
+                  <tr v-for="({ r: r1, c }, i) in dormElecRows" :key="i">
                     <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
                     <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}{{ r1.main.seg ? '·' + segLabel(r1.main.seg) : '' }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.area == null }">{{ fmt(r1.area) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.qty == null }">{{ fmt(r1.main.qty) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }" :title="r1.main.priceSnap != null ? String(r1.main.priceSnap) : undefined">{{ fmt(r1.main.priceSnap) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r1.mgmt == null }">{{ fmt(r1.mgmt?.priceSnap ?? null) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }" :title="r1.main.priceSnap != null ? `落库原值 ${r1.main.priceSnap};电费段 ${fmt2(r1.main.amount)} 元` : undefined">{{ c.price }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.mgmt == null }" :title="r1.mgmt ? `落库原值 ${r1.mgmt.priceSnap};管理费段 ${fmt2(r1.mgmt.amount)} 元` : undefined">{{ c.mgmt }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r1.share == null }">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.share == null }" :title="shareTitle(r1.share)">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
                   </tr>
-                  <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行) -->
-                  <tr v-for="(l, i) in dorm.elec.extras" :key="'x' + i">
+                  <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行);乘数与单价照铺,同样逐行可验 -->
+                  <tr v-for="({ l, q }, i) in dormElecExtras" :key="'x' + i">
                     <td></td>
                     <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
-                    <td :colspan="6"></td>
+                    <td :colspan="3"></td>
+                    <td>
+                      <span class="bn-nv" :class="{ empty: q.qty == null }" :title="q.title ?? undefined">
+                        {{ q.unit === '元' ? fmt2(q.qty) : fmt(q.qty) }}<em v-if="q.unit" class="bn-u">{{ q.unit }}</em>
+                      </span>
+                    </td>
+                    <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }" :title="l.priceSnap != null ? String(l.priceSnap) : undefined">{{ q.price }}</span></td>
+                    <td></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
                   </tr>
@@ -541,7 +568,7 @@ const drawerSub = computed(() => {
                   <col /><!-- 房号:唯一弹性列 -->
                   <col style="width:90px" />
                   <col style="width:90px" />
-                  <col style="width:76px" />
+                  <col style="width:92px" /><!-- 用量:extras 行带单位后缀「5,214.64 ㎡」,76px 会截 -->
                   <col style="width:90px" />
                   <col style="width:94px" />
                   <col style="width:94px" />
@@ -553,26 +580,32 @@ const drawerSub = computed(() => {
                     <th>上月行至</th>
                     <th>本月行至</th>
                     <th>用量</th>
-                    <th>单价</th>
-                    <th>金额(元)</th>
-                    <th title="面积×公摊单价">绿化水公摊</th>
+                    <th title="按能验算的最少位数显示;悬浮看落库原值">单价</th>
+                    <th title="金额=用量×单价(四舍五入到分)">金额(元)</th>
+                    <th title="面积×公摊单价,悬浮该格看算式">绿化水公摊</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(r1, i) in dorm.water.rooms" :key="i">
+                  <tr v-for="({ r: r1, c }, i) in dormWaterRows" :key="i">
                     <td><span class="bn-nv dim">{{ i + 1 }}</span></td>
                     <td class="l"><span class="bn-txt" :title="r1.room">{{ r1.room }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.prevRead == null }">{{ fmt(r1.main.prevRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.currRead == null }">{{ fmt(r1.main.currRead) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r1.main.qty == null }">{{ fmt(r1.main.qty) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }">{{ fmt(r1.main.priceSnap) }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.main.priceSnap == null }" :title="r1.main.priceSnap != null ? String(r1.main.priceSnap) : undefined">{{ c.price }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r1.amount < 0 }">{{ fmt2(r1.amount) }}</span></td>
-                    <td><span class="bn-nv" :class="{ empty: r1.share == null }">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
+                    <td><span class="bn-nv" :class="{ empty: r1.share == null }" :title="shareTitle(r1.share)">{{ r1.share ? fmt2(r1.share.amount) : '–' }}</span></td>
                   </tr>
-                  <tr v-for="(l, i) in dorm.water.extras" :key="'x' + i">
+                  <tr v-for="({ l, q }, i) in dormWaterExtras" :key="'x' + i">
                     <td></td>
                     <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
-                    <td :colspan="4"></td>
+                    <td :colspan="2"></td>
+                    <td>
+                      <span class="bn-nv" :class="{ empty: q.qty == null }" :title="q.title ?? undefined">
+                        {{ q.unit === '元' ? fmt2(q.qty) : fmt(q.qty) }}<em v-if="q.unit" class="bn-u">{{ q.unit }}</em>
+                      </span>
+                    </td>
+                    <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }" :title="l.priceSnap != null ? String(l.priceSnap) : undefined">{{ q.price }}</span></td>
                     <td><span class="bn-sumc">{{ fmt2(l.amount) }}</span></td>
                     <td></td>
                   </tr>
@@ -654,6 +687,7 @@ const drawerSub = computed(() => {
 .bn-txt.dim { color: var(--text-muted); }
 .bn-nv { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-nv.empty, .bn-nv.dim { color: var(--text-disabled); }
+.bn-u { font-style: normal; font-size: 10px; color: var(--text-disabled); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
 .bn-sumc { display: block; text-align: right; font-weight: var(--fw-semibold); color: var(--hue-blue); font-size: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bn-sumc.neg { color: var(--hue-red); }
 
