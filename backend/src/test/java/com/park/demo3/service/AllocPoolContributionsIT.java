@@ -115,9 +115,10 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
         String buildings = mvc.perform(get("/api/buildings").header("Authorization", auth()))
                 .andReturn().getResponse().getContentAsString();
         int bid = ((java.util.List<Integer>) JsonPath.read(buildings, "$.data[*].id")).get(0);
-        // 不带起止日期:不入自动在租名册,只走显式成员 areaByTenant(active 合同)路径
+        // S8 起面积基数按账期取(covers),合同须带起止日期;显式成员 + 池无 buildingId → 走 areaByTenant 路径
         postId("/api/contracts", "{\"contractNo\":\"IT-S5A-" + System.nanoTime() + "\",\"tenantId\":" + t
-                + ",\"buildingId\":" + bid + ",\"status\":\"active\",\"billingLines\":["
+                + ",\"buildingId\":" + bid + ",\"status\":\"active\","
+                + "\"startDate\":\"2091-01-01\",\"endDate\":\"2093-12-31\",\"billingLines\":["
                 + "{\"propertyType\":\"factory\",\"location\":\"IT-A段\",\"feeKey\":\"rent_factory\",\"area\":100,\"areaShared\":50,\"unitPrice\":10},"
                 + "{\"propertyType\":\"factory\",\"location\":\"IT-B段\",\"feeKey\":\"rent_factory\",\"area\":200,\"unitPrice\":10}]}");
         int m = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT公摊面积池表\",\"ownership\":\"share\"}");
@@ -135,5 +136,51 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
                 .filter(r -> r.tenantId().equals(t) && "share_elec_light".equals(r.feeKey()))
                 .map(AllocResultDTO::amount).findFirst().orElseThrow();
         assertEquals(0, amt.compareTo(new BigDecimal("350.00")), "基数应=350(含公摊50),实摊 " + amt);
+    }
+
+    // S8:area/floor 池的户面积基数=当月覆盖合同(MeterBindingService.covers),不是 status='active' 全集。
+    // 病根:续签两段同时 active → 面积翻倍(实测宏玥 257.30→514.60、旭化成 6 段叠成 4511.60)。
+    // 三条断言:①续签双计只算一份 ②楼栋级池只吃该栋合同 ③缺起止日期合同=判不出在租→面积 0 不摊。
+    // 独占槽 2091-07。
+    @Test
+    void areaPool_baseIsCoveringNotActive() throws Exception {
+        String ym = "2091-07";
+        int t = postId("/api/tenants", "{\"companyName\":\"IT账期面积户\",\"businessType\":\"IT\"}");
+        int t2 = postId("/api/tenants", "{\"companyName\":\"IT缺日期面积户\",\"businessType\":\"IT\"}");
+        String buildings = mvc.perform(get("/api/buildings").header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        java.util.List<Integer> bids = JsonPath.read(buildings, "$.data[*].id");
+        int b0 = bids.get(0), b1 = bids.get(1);
+        // 续签两段同时 active:段① 覆盖 2091-07,段② 不覆盖 —— 旧口径两段都算 → 基数 200
+        contract(t, b0, "2091-01-01", "2091-07-31", 100);
+        contract(t, b0, "2091-08-01", "2094-07-31", 100);
+        contract(t, b1, "2091-01-01", "2094-07-31", 500);   // 外栋合同:楼栋级池不许吃
+        contract(t2, b0, null, null, 200);                  // 缺起止日期:active 但判不出在租
+        int m = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT账期面积池表\",\"ownership\":\"share\"}");
+        reading(m, ym, "0", "100");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT账期面积池\",\"method\":\"area\",\"buildingId\":" + b0
+                + ",\"coefficient\":100,\"feeKey\":\"share_elec_light\",\"meterIds\":[" + m + "],"
+                + "\"members\":[{\"tenantId\":" + t + "},{\"tenantId\":" + t2 + "}]}");
+        price("elec_commercial", ym, "1");
+        price("mgmt_fee_commercial", ym, "0");   // std=ROUND(100/100×1,2)=1.00 元/㎡
+        price("elec_sharp", ym, "1"); price("elec_peak", ym, "1");
+        price("elec_flat", ym, "1"); price("elec_valley", ym, "1");
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        Map<Integer, BigDecimal> got = new HashMap<>();
+        for (AllocResultDTO r : alloc.resultByYm(ym))
+            if ("share_elec_light".equals(r.feeKey())) got.put(r.tenantId(), r.amount());
+        assertEquals(0, got.get(t).compareTo(new BigDecimal("100.00")),
+                "应只算当月覆盖的那一段 100㎡(双计=200,跨栋=600),实摊 " + got.get(t));
+        assertNull(got.get(t2), "缺起止日期合同判不出在租,面积基数=0 不参与分摊");
+    }
+
+    private void contract(int tenantId, int buildingId, String start, String end, int area) throws Exception {
+        postId("/api/contracts", "{\"contractNo\":\"IT-S8-" + System.nanoTime() + "\",\"tenantId\":" + tenantId
+                + ",\"buildingId\":" + buildingId + ",\"status\":\"active\","
+                + (start == null ? "" : "\"startDate\":\"" + start + "\",\"endDate\":\"" + end + "\",")
+                + "\"billingLines\":[{\"propertyType\":\"factory\",\"location\":\"IT-S8段\","
+                + "\"feeKey\":\"rent_factory\",\"area\":" + area + ",\"unitPrice\":10}]}");
     }
 }

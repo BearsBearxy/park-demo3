@@ -228,8 +228,9 @@ class AllocApiIT extends AbstractMysqlIT {
                 + "\"totalArea\":10000,\"rentableArea\":9000}");
         int t1 = createTenant("IT损耗户");
         int t2 = createTenant("IT面积户");
+        // S8:面积基数按账期取(covers),合同须带起止日期覆盖 2099-05
         postId("/api/contracts", "{\"contractNo\":\"IT-PB-C1\",\"tenantId\":" + t2 + ",\"buildingId\":" + b
-                + ",\"rentArea\":120,\"status\":\"active\"}");
+                + ",\"rentArea\":120,\"status\":\"active\",\"startDate\":\"2099-01-01\",\"endDate\":\"2100-12-31\"}");
         // area 规则:用量 31.2 → 全额 34.76,/1734.73=0.02 元/㎡(AC15 锚)→ 户金额 0.02×120=2.40(F8 型)
         int mArea = createMeter("IT路灯", "p1", "share", null, null);
         reading(mArea, "2099-05", "0", "31.2");

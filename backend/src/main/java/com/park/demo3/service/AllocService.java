@@ -824,15 +824,19 @@ public class AllocService {
         List<AllocCfg> eff = cfgs.selectEffective(ym);
         for (AllocCfg c : eff) if (c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
         for (AllocCfg c : eff) if (!c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
-        // 户租赁面积=Σ active 合同分摊面积(S5 §1:Σ租金计费行 area+IFNULL(area_shared,0),无租金行回退 rent_area)
+        // 户租赁面积=Σ当月覆盖合同分摊面积(S5 §1:Σ租金计费行 area+IFNULL(area_shared,0),无租金行回退 rent_area)
         Map<Integer, BigDecimal> rentLineArea = new HashMap<>();
         for (ContractBillingTerm t : billingTerms.selectList(null))
             if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey()))
                 rentLineArea.merge(t.getContractId(), nz(t.getArea()).add(nz(t.getAreaShared())), BigDecimal::add);
         Set<Integer> areaFallback = new HashSet<>();   // 回退 rent_area 的合同(收成一条 warn)
+        Roster ro = loadRoster(ym);
         Map<Integer, BigDecimal> areaByTenant = new HashMap<>();
         Map<Integer, Map<Integer, BigDecimal>> areaByBuildingTenant = new HashMap<>();
-        for (Contract c : contracts.selectList(new QueryWrapper<Contract>().eq("status", "active"))) {
+        // S8:合同集=名册同一份 covering(当月有效),不用 status='active' —— 与 areaByZoneTenant 同口径。
+        // active 是"今天"的状态:续签两段会同时 active 把面积翻倍(宏玥 257.30→514.60、旭化成 6 段叠成 4511.60),
+        // 且历史月的有效段常标 renewed 反而被漏掉。缺起止日期的合同判不出在租 → 不计面积(与自动名册一致,dateless warn 已报)。
+        for (Contract c : ro.covering()) {
             if (c.getTenantId() == null) continue;
             BigDecimal a = allocArea(c, rentLineArea, areaFallback);
             if (a == null) continue;
@@ -852,7 +856,6 @@ public class AllocService {
             .forEach((rid, rows) -> membersByRule.put(rid, pickMembers(rows, ym)));
         Map<Integer, Building> buildingById = new HashMap<>();
         for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
-        Roster ro = loadRoster(ym);
         Map<String, Map<Integer, BigDecimal>> areaByZone =
             areaByZoneTenant(ro.covering(), ro.unitsByContract(), zoneOfBuilding, rentLineArea, areaFallback);
         // 缺日期户维持不入自动名册(塞进去会凭空多摊钱),但必须点名报数,别让缺口无声消失
@@ -1000,7 +1003,7 @@ public class AllocService {
                     BigDecimal area = areaOf.get(m.getTenantId());
                     if (area == null || area.signum() == 0) {
                         if (auto) noArea++;   // 自动名册逐户报会淹掉提醒条 → 收成一条计数
-                        else ctx.warnings().add("规则「" + rule.getName() + "」受益租户#" + m.getTenantId() + " 无租赁面积(active 合同),跳过");
+                        else ctx.warnings().add("规则「" + rule.getName() + "」受益租户#" + m.getTenantId() + " 当月无有效合同或无租赁面积,跳过");
                         continue;
                     }
                     BigDecimal qtyShare = base == null || base.signum() == 0 ? null
