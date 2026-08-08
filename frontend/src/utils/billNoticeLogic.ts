@@ -304,36 +304,125 @@ export interface FeeTitleLine {
   amount: number
   note?: string | null
 }
-function shareTip(l: FeeTitleLine): string | null {
-  if (!l.feeKey.startsWith('share_')) return null
+// 来源名(池档案名;损耗行池名为 null,链名从 note 取)与「一句话来源」拆开:
+// 合并行的 tooltip 要在两者之间插金额(池名 金额 来源),整串拼死了插不进去。
+const shareSrcName = (l: FeeTitleLine): string =>
+  l.poolName ?? l.note?.match(/链\[(.+?)\]/)?.[1] ?? '公共表'
+// 返回值含前导分隔(多数支为「 —— …」,损耗支为「 总表…」),src + why 逐字等于改前的整串
+function shareWhy(l: FeeTitleLine): string {
   const water = l.feeKey.includes('water')
   const unit = water ? '吨' : '度'
-  const src = l.poolName ?? l.note?.match(/链\[(.+?)\]/)?.[1] ?? '公共表'
   if (l.amount === 0) {
-    return `${src} —— ${l.qty ? '本月摊到你这儿不足一分钱' : '这块表本月没走字'},不收钱`
+    return ` —— ${l.qty ? '本月摊到你这儿不足一分钱' : '这块表本月没走字'},不收钱`
   }
   // 损耗只认费项键:2024-02 有 3/121 条 qty 恰好等于金额基数,乘数列会落回用量档,但话得照说
   if (l.feeKey === 'share_elec_loss' && l.baseSnap != null && l.priceSnap != null) {
-    return `${src} 总表用电和各家分表加起来对不上的那部分 —— `
+    return ` 总表用电和各家分表加起来对不上的那部分 —— `
       + `按你本月电费加楼内公摊 ${num(l.baseSnap)} 元的 ${trimZeros((l.priceSnap * 100).toFixed(4))}% 收`
   }
   const q = billQtyCell(l)
   if (q.unit === '㎡') {
-    return `${src} —— 这是大家一起用的,按各家面积摊,每平米 ${spokenPrice(+q.price)},你的面积 ${num(q.qty)} ㎡`
+    return ` —— 这是大家一起用的,按各家面积摊,每平米 ${spokenPrice(+q.price)},你的面积 ${num(q.qty)} ㎡`
   }
+  // 合并后这些行不再有自己的用量/单价列(单价不同加不到一起),逐条把单价说进话里,
+  // 否则用户看到「走了 5 度」却回推不出 5.57——这是合并唯一真正的信息损失,补话即可闭合。
+  const each = q.price === '–' ? '' : `,每${unit} ${q.price} 元`
   if (l.shareSrc === 'member') {
-    return `${src} —— 这块表只服务你一家,本月走了 ${num(l.qty)} ${unit},整块${water ? '水' : '电'}费都算你的`
+    return ` —— 这块表只服务你一家,本月走了 ${num(l.qty)} ${unit}${each},整块${water ? '水' : '电'}费都算你的`
   }
   if (l.shareSrc === 'floor' && l.baseSnap != null) {
     // 「份数」池既有整层的(某侧走廊灯)也有全楼的(天面楼梯间/货梯,B座分 4 份跨 5 户),
     // 所以只说「几家一起用」,不写死「整层楼」——写死对天面池是假话。总份数未落库到行上,不编。
-    return `${src} —— 这块公共表是几家一起用的,按份数摊,你占 ${num(l.baseSnap)} 份,分到 ${num(l.qty)} ${unit}`
+    return ` —— 这块公共表是几家一起用的,按份数摊,你占 ${num(l.baseSnap)} 份,`
+      + `分到 ${num(l.qty)} ${unit}${each}`
   }
-  return `${src} —— 本月分到你头上 ${num(l.qty)} ${unit}`
+  return ` —— 本月分到你头上 ${num(l.qty)} ${unit}`
 }
+const shareTip = (l: FeeTitleLine): string | null =>
+  l.feeKey.startsWith('share_') ? shareSrcName(l) + shareWhy(l) : null
 // 费项名悬浮:公摊行=上面的人话来源说明;其余行=落库备注(宿舍 extras 表无备注列,别把它弄丢)→ 兜底费项名
 export const billFeeTitle = (l: FeeTitleLine): string =>
   shareTip(l) ?? l.note ?? billFeeLabel(l.feeKey)
+
+// ── 改造三(2026-08-09 用户返工):维护费块按纸单合并成一行 ──
+// 上一刀只把行名从「费项·池名」换成费项名,行还是逐池一条,屏上出现好几个「楼层公共」——不是纸单的样子。
+// 纸单:一项一行,后台把多个池的钱加总。「楼层公共、消防照明」是一项不是两项(源册 zh 表 F4 表头
+// 原文就是一格文字一列钱),故 floor+fire 同组。电力管理费/电费/水费/容量费/水管网维护费不并——
+// 它们是逐表计费项,纸单也分列。合并粒度=premise 分带内(抽屉按场地分带是更早的拍板:
+// 「一个地块一个地块的给我」);单场地户合并后恰好是纸单那一行,多场地户每带各有自己一套。
+// ⚠ 一分钱不改:纯渲染层合并,groupExcelStyle 的 feeTotal/maintTotal/total 全走原始行,不经此函数。
+const MERGE_LABEL: Record<string, string> = {
+  share_elec_floor: '楼层公共、消防照明',
+  share_elec_fire: '楼层公共、消防照明',
+  share_elec_elevator: '电梯用电',
+  share_elec_loss: '线路损耗',
+  share_elec_light: '路灯公摊',
+  share_green_water: '绿化水公摊',
+}
+// 纸单行序:管理费/管网费(不并行,rank 0 保持入参序)在前,合并项照纸单排——
+// 引擎 line_no 序是「路灯(17)在楼层(18)之前」,照搬就不是纸单的样子。sort 稳定(ES2019 起规范保证)。
+const MERGE_RANK: Record<string, number> = {
+  '楼层公共、消防照明': 1, '电梯用电': 2, '线路损耗': 3, '路灯公摊': 4, '绿化水公摊': 5,
+}
+// 备注列沿用纸单口径(按面积摊的两项);其余合并项留空
+const MERGE_NOTE: Record<string, string> = {
+  share_elec_light: '面积×公摊单价', share_green_water: '面积×公摊单价',
+}
+export interface ShareMergeRow<T> {
+  label: string          // 纸单费项名
+  feeKey: string         // 首个成员键(样式判定用)
+  members: T[]           // 参与合并的原始行(构成条数守恒 == tooltip 条数)
+  amount: number         // Σ成员金额
+  qty: number | null     // 全组显示单价相同且乘数和仍验得平=求和;否则 null(构成进 tooltip)
+  unit: string
+  price: string | null
+  note: string | null
+  title: string          // 悬浮:逐条「池名 金额 一句话来源」
+}
+export type MaintRow<T> = { kind: 'line'; line: T } | { kind: 'merge'; row: ShareMergeRow<T> }
+const money = (v: number) =>
+  v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// 用量/单价:能保住可验算就保住(单成员组、同一 std 拆多场地的路灯/绿化水),保不住才留空——
+// 不许一律留空。乘数求和后必须自己验平(逐行分币各自四舍五入,和未必等于和的四舍五入)。
+function mergeCells<T extends FeeTitleLine>(g: ShareMergeRow<T>): void {
+  const cs = g.members.map(m => billQtyCell(m))
+  const c0 = cs[0]
+  if (!cs.every(c => c.price === c0.price && c.unit === c0.unit && c.qty != null)) return
+  const price = Number(c0.price)
+  const qty = r2(cs.reduce((s, c) => s + (c.qty ?? 0), 0))
+  if (!Number.isFinite(price) || !verifies(qty, price, g.amount)) return
+  g.qty = qty; g.unit = c0.unit; g.price = c0.price
+}
+export function mergeMaintRows<T extends FeeTitleLine>(lines: T[]): MaintRow<T>[] {
+  const out: MaintRow<T>[] = []
+  const byLabel = new Map<string, ShareMergeRow<T>>()
+  for (const l of lines) {
+    const label = MERGE_LABEL[l.feeKey]
+    if (!label) { out.push({ kind: 'line', line: l }); continue }
+    let g = byLabel.get(label)
+    if (!g) {
+      g = {
+        label, feeKey: l.feeKey, members: [], amount: 0,
+        qty: null, unit: '', price: null, note: MERGE_NOTE[l.feeKey] ?? null, title: '',
+      }
+      byLabel.set(label, g)
+      out.push({ kind: 'merge', row: g })
+    }
+    g.members.push(l)
+    g.amount = r2(g.amount + l.amount)
+  }
+  for (const g of byLabel.values()) {
+    // 组内费项键混合(floor+fire)时逐条前缀费项名,答「什么电表的哪一项费用」
+    const mixed = new Set(g.members.map(m => m.feeKey)).size > 1
+    g.title = g.members
+      .map(m => (mixed ? `${billFeeLabel(m.feeKey)}·` : '') + shareSrcName(m)
+        + ` ${money(m.amount)} 元` + shareWhy(m))
+      .join('\n')
+    mergeCells(g)
+  }
+  return out.sort((a, b) =>
+    (a.kind === 'merge' ? MERGE_RANK[a.row.label] ?? 9 : 0) - (b.kind === 'merge' ? MERGE_RANK[b.row.label] ?? 9 : 0))
+}
 
 // ── 取价审计链 title(行尾 info 图标悬浮):price_key/price_scope/price_month/rule_branch ──
 export const RULE_BRANCH_LABEL: Record<string, string> = {

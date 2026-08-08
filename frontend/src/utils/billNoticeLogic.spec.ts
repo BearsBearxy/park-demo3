@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { ALLOC_FEE_LABEL } from './allocLogic'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
-  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, priceScopeLabel, rentAreaText,
-  rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, mergeMaintRows, priceScopeLabel,
+  rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
   type DormLineBase, type NoticeLike, type RentLineBase,
 } from './billNoticeLogic'
 
@@ -194,13 +194,15 @@ describe('billFeeTitle 公摊来源人话悬浮(2026-08-08 用户诉求:行名�
     expect(billFeeTitle(line({
       feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 A座·五楼西侧·公共用电',
       qty: 85.13, priceSnap: 1.114141, amount: 94.85,
-    }))).toBe('一期 A座·五楼西侧·公共用电 —— 这块表只服务你一家,本月走了 85.13 度,整块电费都算你的'))
+    // 合并后本行没有自己的单价列了,单价必须说进话里:85.13 × 1.11414 = 94.85 可回推
+    }))).toBe('一期 A座·五楼西侧·公共用电 —— 这块表只服务你一家,本月走了 85.13 度,每度 1.11414 元,整块电费都算你的'))
 
   it('floor(份数):base_snap=你占的份数——二期8栋1层101室 一车间电梯', () =>
     expect(billFeeTitle(line({
       feeKey: 'share_elec_elevator', shareSrc: 'floor', poolName: '二期 一车间·电梯+低压电房照明',
       qty: 39.3, priceSnap: 0.980395, baseSnap: 0.27, amount: 38.53,
-    }))).toBe('二期 一车间·电梯+低压电房照明 —— 这块公共表是几家一起用的,按份数摊,你占 0.27 份,分到 39.3 度'))
+    // 39.3 × 0.9804 = 38.53 可回推
+    }))).toBe('二期 一车间·电梯+低压电房照明 —— 这块公共表是几家一起用的,按份数摊,你占 0.27 份,分到 39.3 度,每度 0.9804 元'))
 
   it('area(面积):元/㎡ 说成「5 厘」——二期8栋1层101室 园区路灯', () =>
     expect(billFeeTitle(line({
@@ -252,6 +254,141 @@ describe('billFeeTitle 公摊来源人话悬浮(2026-08-08 用户诉求:行名�
   it('非公摊行:悬浮回落备注(宿舍 extras 表无备注列)→ 无备注回落费项名', () => {
     expect(billFeeTitle(line({ feeKey: 'water_pipe', note: '按 15% 计', amount: 23 }))).toBe('按 15% 计')
     expect(billFeeTitle(line({ feeKey: 'water_pipe', amount: 23 }))).toBe('水管网维护费')
+  })
+})
+
+describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-09 返工)', () => {
+  type L = Parameters<typeof billFeeTitle>[0]
+  const l = (o: Partial<L>): L =>
+    ({ feeKey: 'elec', shareSrc: null, poolName: null, qty: null, baseSnap: null, priceSnap: null, amount: 0, note: null, ...o })
+  const rowsOf = (rs: ReturnType<typeof mergeMaintRows<L>>) =>
+    rs.flatMap(r => (r.kind === 'merge' ? [r.row] : []))
+  const labels = (rs: ReturnType<typeof mergeMaintRows<L>>) =>
+    rs.map(r => (r.kind === 'merge' ? r.row.label : billFeeLabel(r.line.feeKey)))
+  const sum = (ns: number[]) => Math.round(ns.reduce((a, b) => a + b, 0) * 100) / 100
+
+  // 碧沃丰 B座401室 2024-02 用电维护费块(dev 库 notice 4479 逐格真值,line_no 9/17..23)
+  const BWF = [
+    l({ feeKey: 'mgmt_fee', qty: 205.6, priceSnap: 0.16, amount: 32.9, note: '管理费基数=Σ段 205.6000(总示数 206.4000)' }),
+    l({ feeKey: 'share_elec_light', shareSrc: 'area', poolName: '一期园区·路灯', qty: 107.35, priceSnap: 0.04, baseSnap: 3200, amount: 128 }),
+    l({ feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 B座·四楼东侧·公共用电', qty: 0, amount: 0 }),
+    l({ feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 B座·四楼西侧·公共用电', qty: 5, priceSnap: 1.114, amount: 5.57 }),
+    l({ feeKey: 'share_elec_floor', shareSrc: 'floor', poolName: '一期 B座·天面·楼梯间', qty: 74.2, priceSnap: 1.114151, baseSnap: 1, amount: 82.67 }),
+    l({ feeKey: 'share_elec_elevator', shareSrc: 'floor', poolName: '一期 B座·天面·货梯', qty: 271.5, priceSnap: 1.114166, baseSnap: 1, amount: 302.5 }),
+    l({ feeKey: 'share_elec_loss', qty: 205.6, priceSnap: 0.0213, baseSnap: 538.1, amount: 11.46, note: '链[一期 B座]损耗=(场地电费 147.36+公摊 390.74)×率 0.02130000' }),
+  ]
+
+  it('五项映射:floor+fire 是一项不是两项(源册 F4 表头一格文字一列钱)', () => {
+    const rs = mergeMaintRows([
+      l({ feeKey: 'share_elec_floor', poolName: '二期 一车间·楼层照明', amount: 10 }),
+      l({ feeKey: 'share_elec_fire', poolName: '二期园区·消防设施', shareSrc: 'area', baseSnap: 100, priceSnap: 0.1, amount: 10 }),
+      l({ feeKey: 'share_elec_elevator', poolName: '二期 一车间·电梯', amount: 5 }),
+      l({ feeKey: 'share_elec_loss', amount: 3, note: '链[二期 一车间]损耗' }),
+      l({ feeKey: 'share_elec_light', poolName: '二期园区·路灯', amount: 2 }),
+      l({ feeKey: 'share_green_water', poolName: '二期园区·绿化水', amount: 1 }),
+    ])
+    expect(labels(rs)).toEqual(['楼层公共、消防照明', '电梯用电', '线路损耗', '路灯公摊', '绿化水公摊'])
+    expect(rowsOf(rs)[0].members.map(m => m.feeKey)).toEqual(['share_elec_floor', 'share_elec_fire'])
+    expect(rowsOf(rs)[0].amount).toBe(20)
+  })
+
+  it('单场地户(金纳形态):维护费块=管理费 + 四项各一行,屏上不再出现多条「楼层公共」', () => {
+    const rs = mergeMaintRows(BWF)
+    expect(labels(rs)).toEqual(['电力管理费', '楼层公共、消防照明', '电梯用电', '线路损耗', '路灯公摊'])
+    expect(rs.filter(r => r.kind === 'merge')).toHaveLength(4)
+  })
+
+  it('计费项不参与合并:电力管理费/水管网维护费原样透传(纸单也是分列的)', () => {
+    const rs = mergeMaintRows([
+      l({ feeKey: 'water_pipe', qty: 10, priceSnap: 0.5, amount: 5 }),
+      l({ feeKey: 'water_pipe', qty: 0, priceSnap: 0.5, amount: 0 }),
+      l({ feeKey: 'share_green_water', shareSrc: 'area', poolName: '一期园区·绿化水', qty: 6.12, priceSnap: 0.009, baseSnap: 3200, amount: 28.8 }),
+    ])
+    expect(labels(rs)).toEqual(['水管网维护费', '水管网维护费', '绿化水公摊'])
+    expect(rs.filter(r => r.kind === 'line')).toHaveLength(2)
+  })
+
+  it('同单价组保留「用量×单价=金额」:单成员路灯 3200㎡×0.04=128、损耗 538.10 元×0.0213=11.46', () => {
+    const [light] = rowsOf(mergeMaintRows([BWF[1]]))
+    expect([light.qty, light.unit, light.price, light.amount]).toEqual([3200, '㎡', '0.04', 128])
+    expect(light.note).toBe('面积×公摊单价')
+    const [loss] = rowsOf(mergeMaintRows([BWF[6]]))
+    expect([loss.qty, loss.unit, loss.price, loss.amount]).toEqual([538.1, '元', '0.0213', 11.46])
+    expect(loss.note).toBeNull()
+  })
+
+  it('同单价多成员:乘数求和、单价保留(同一 std 拆多场地),仍能人工验算', () => {
+    const area = (base: number, amount: number) =>
+      l({ feeKey: 'share_elec_light', shareSrc: 'area', poolName: `一期园区·路灯#${base}`, qty: 1, priceSnap: 0.04, baseSnap: base, amount })
+    const [g] = rowsOf(mergeMaintRows([area(1000, 40), area(2000, 80)]))
+    expect([g.qty, g.unit, g.price, g.amount]).toEqual([3000, '㎡', '0.04', 120])
+    expect(Math.round(g.qty! * +g.price! * 100) / 100).toBe(g.amount)
+  })
+
+  it('异单价组留空(碧沃丰楼层三池 –/1.114/1.114151),构成进悬浮', () => {
+    const [g] = rowsOf(mergeMaintRows(BWF.slice(2, 5)))
+    expect(g.amount).toBe(88.24)                       // 0.00+5.57+82.67
+    expect([g.qty, g.price, g.unit]).toEqual([null, null, ''])
+    expect(g.members).toHaveLength(3)
+  })
+
+  it('乘数求和后验不平也留空:不许显示算不通的「用量×单价」', () => {
+    const half = (i: number) =>
+      l({ feeKey: 'share_elec_light', shareSrc: 'area', poolName: `池${i}`, qty: 1, priceSnap: 0.005, baseSnap: 100.5, amount: 0.5 })
+    const [g] = rowsOf(mergeMaintRows([half(1), half(2)]))
+    expect(g.amount).toBe(1)                           // 201×0.005=1.005,逐行各自入分后=1.00
+    expect([g.qty, g.price]).toEqual([null, null])
+  })
+
+  it('tooltip 逐条列构成:池名 + 金额 + 一句话来源,条数 == 被合并行数', () => {
+    const [g] = rowsOf(mergeMaintRows(BWF.slice(2, 5)))
+    expect(g.title.split('\n')).toEqual([
+      '一期 B座·四楼东侧·公共用电 0.00 元 —— 这块表本月没走字,不收钱',
+      // 逐条自带单价 → 合并行虽无用量/单价列,构成仍可逐条回推:5×1.114=5.57、74.2×1.1142=82.67
+      '一期 B座·四楼西侧·公共用电 5.57 元 —— 这块表只服务你一家,本月走了 5 度,每度 1.114 元,整块电费都算你的',
+      '一期 B座·天面·楼梯间 82.67 元 —— 这块公共表是几家一起用的,按份数摊,你占 1 份,分到 74.2 度,每度 1.1142 元',
+    ])
+    expect(g.title.split('\n')).toHaveLength(g.members.length)
+  })
+
+  it('组内两个费项键(二期 floor+fire)时逐条前缀费项名,答「哪块表的哪一项费用」', () => {
+    const [g] = rowsOf(mergeMaintRows([
+      l({ feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '二期 一车间·楼层照明', qty: 3, priceSnap: 1.1, amount: 3.3 }),
+      l({ feeKey: 'share_elec_fire', shareSrc: 'area', poolName: '二期园区·消防设施', qty: 11.6, priceSnap: 0.895115, baseSnap: 714.3, amount: 10.71 }),
+    ]))
+    expect(g.title.split('\n')).toEqual([
+      '楼层公共·二期 一车间·楼层照明 3.30 元 —— 这块表只服务你一家,本月走了 3 度,每度 1.1 元,整块电费都算你的',
+      '消防照明·二期园区·消防设施 10.71 元 —— 这是大家一起用的,按各家面积摊,每平米 1.5 分钱,你的面积 714.3 ㎡',
+    ])
+  })
+
+  it('组内费项键单一时不加费项名前缀;损耗链名仍从 note 取', () => {
+    const [g] = rowsOf(mergeMaintRows([BWF[6]]))
+    expect(g.title).toBe(
+      '一期 B座 11.46 元 总表用电和各家分表加起来对不上的那部分 —— 按你本月电费加楼内公摊 538.1 元的 2.13% 收')
+  })
+
+  it('守恒:Σ渲染行金额 == Σ原始行金额,行数归属闭合(条数一条不丢)', () => {
+    const rs = mergeMaintRows(BWF)
+    expect(sum(rs.map(r => (r.kind === 'merge' ? r.row.amount : r.line.amount))))
+      .toBe(sum(BWF.map(x => x.amount)))              // 563.10 = 分带维护费小计
+    expect(rs.reduce((n, r) => n + (r.kind === 'merge' ? r.row.members.length : 1), 0)).toBe(BWF.length)
+  })
+
+  it('分带小计不由本函数算:groupExcelStyle 的 maintTotal 走原始行,合并前后全等', () => {
+    const lines = BWF.map(x => ({ ...x, premise: 'B座401室' }))
+    const g = groupExcelStyle(lines)
+    const band = g.elec.groups[0]
+    expect(band.maintTotal).toBe(563.1)
+    expect(sum(mergeMaintRows(band.maint).map(r => (r.kind === 'merge' ? r.row.amount : r.line.amount))))
+      .toBe(band.maintTotal)
+  })
+
+  it('空块=空数组;未知 share 键不并(纸单没这项,原样列出别丢行)', () => {
+    expect(mergeMaintRows([])).toEqual([])
+    const rs = mergeMaintRows([l({ feeKey: 'share_water', poolName: '公用水', amount: 7 })])
+    expect(rs).toHaveLength(1)
+    expect(rs[0].kind).toBe('line')
   })
 })
 

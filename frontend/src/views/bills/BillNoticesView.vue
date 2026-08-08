@@ -3,7 +3,8 @@
 // 对齐 Excel 每租户一张 worksheet);一期/二期/三期分 tab(期归属=在租合同楼栋 phase→premise 前缀→兜底一期);
 // 屏上不显收款主体/单据类/状态(引擎照旧拆单落库,只是 UI 聚合);签发/作废本轮撤下(api 端点保留)。
 // 明细抽屉两 tab:场地租金(S5 刀4:fee_group='rent' 落库行,厂房/办公室/宿舍逐间块+面积拆解+折算式备注)在前、
-// 水电费(全单明细合并,沿用 premise 分带小计+公摊行名走租户单口径「池名进悬浮」+取价审计链悬浮)在后。
+// 水电费(全单明细合并,沿用 premise 分带小计+取价审计链悬浮)在后;
+// 改造三:维护费块公摊按纸单合并成一行(五项,多池加总,构成进费项名悬浮),金额一分不改。
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -18,9 +19,9 @@ import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
-  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, rentAreaText, rentByTenant,
-  rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  type CrossMark, type QtyCell, type TenantBuildings, type TenantNoticeRow,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, mergeMaintRows, rentAreaText,
+  rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
+  type CrossMark, type QtyCell, type ShareMergeRow, type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -187,28 +188,35 @@ const dormLines = computed(() => utilLines.value.filter(d => d.noticeKind === 'd
 const xg = computed(() => groupExcelStyle(mainLines.value))
 const dorm = computed(() => groupDormExcelStyle(dormLines.value))
 const utilGrand = computed(() => r2(xg.value.total + dorm.value.total))
-// 非宿舍表拍平:band(块头)/line(明细行,块内重编号)/sub(块小计)/part(部合计)
+// 非宿舍表拍平:band(块头)/line(明细行,块内重编号)/merge(公摊合并行)/sub(块小计)/part(部合计)。
+// 改造三:维护费块过 mergeMaintRows——公摊五项各一行(纸单口径),小计仍取 groupExcelStyle 的原始行累加。
 type UtilRowVM =
   | { t: 'band'; label: string }
   | { t: 'line'; no: number; l: BillNoticeLineDTO; q: QtyCell }   // q=刀D 可验算的乘数/单位/显示价
+  | { t: 'merge'; no: number; m: ShareMergeRow<BillNoticeLineDTO> }
   | { t: 'sub' | 'part'; label: string; amount: number }
 const utilRows = computed<UtilRowVM[]>(() => {
   const out: UtilRowVM[] = []
-  const block = (label: string, ls: BillNoticeLineDTO[], subLabel: string | null, subAmount: number) => {
+  const block = (
+    label: string, ls: BillNoticeLineDTO[], subLabel: string | null, subAmount: number, merge = false,
+  ) => {
     if (!ls.length) return
     out.push({ t: 'band', label })
-    ls.forEach((l, i) => out.push({ t: 'line', no: i + 1, l, q: billQtyCell(l) }))
+    const rows = merge ? mergeMaintRows(ls) : ls.map(l => ({ kind: 'line' as const, line: l }))
+    rows.forEach((r, i) => out.push(r.kind === 'line'
+      ? { t: 'line', no: i + 1, l: r.line, q: billQtyCell(r.line) }
+      : { t: 'merge', no: i + 1, m: r.row }))
     if (subLabel) out.push({ t: 'sub', label: subLabel, amount: subAmount })
   }
   const g = xg.value
   for (const p of g.elec.groups) {
     block(`电费(${p.label})`, p.fee, '场地电费合计', p.feeTotal)
-    block(`用电维护费(${p.label})`, p.maint, '场地维护费合计', p.maintTotal)
+    block(`用电维护费(${p.label})`, p.maint, '场地维护费合计', p.maintTotal, true)
   }
   if (g.elec.groups.length) out.push({ t: 'part', label: '电费、用电维护费合计', amount: g.elec.total })
   for (const p of g.water.groups) {
     block(`水费(${p.label})`, p.fee, null, 0)
-    block(`用水维护费(${p.label})`, p.maint, null, 0)
+    block(`用水维护费(${p.label})`, p.maint, null, 0, true)
     out.push({ t: 'sub', label: `场地水费、维护费合计(${p.label})`, amount: p.subtotal })
   }
   if (g.water.groups.length) out.push({ t: 'part', label: '水费、用水维护费合计', amount: g.water.total })
@@ -501,6 +509,24 @@ const drawerSub = computed(() => {
                         <component :is="iconFor('info')" :size="13" />
                       </span>
                     </td>
+                  </tr>
+                  <!-- 公摊合并行(纸单口径:一项一行,多池加总);表/段留 –,构成逐条在费项名悬浮里 -->
+                  <tr v-else-if="r0.t === 'merge'">
+                    <td><span class="bn-nv dim">{{ r0.no }}</span></td>
+                    <td class="l"><span class="bn-txt help" :title="r0.m.title">{{ r0.m.label }}</span></td>
+                    <td class="l"><span class="bn-txt dim">–</span></td>
+                    <td class="l"><span class="bn-txt dim">–</span></td>
+                    <td :colspan="3"></td>
+                    <td>
+                      <span class="bn-nv" :class="{ empty: r0.m.qty == null }">
+                        {{ r0.m.qty == null ? '–' : r0.m.unit === '元' ? fmt2(r0.m.qty) : fmt(r0.m.qty)
+                        }}<em v-if="r0.m.qty != null && r0.m.unit" class="bn-u">{{ r0.m.unit }}</em>
+                      </span>
+                    </td>
+                    <td><span class="bn-nv" :class="{ empty: r0.m.price == null }">{{ r0.m.price ?? '–' }}</span></td>
+                    <td><span class="bn-sumc" :class="{ neg: r0.m.amount < 0 }">{{ fmt2(r0.m.amount) }}</span></td>
+                    <td class="l"><span class="bn-txt dim">{{ r0.m.note || '' }}</span></td>
+                    <td></td>
                   </tr>
                   <tr v-else :class="r0.t === 'part' ? 'bn-part' : 'bn-sub'">
                     <td :colspan="9" class="l">
