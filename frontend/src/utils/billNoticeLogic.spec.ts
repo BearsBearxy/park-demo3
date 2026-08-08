@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { ALLOC_FEE_LABEL } from './allocLogic'
 import {
-  aggregateByTenant, auditTitle, billFeeLabel, billFeeName, billQtyCell, dormPriceCells,
-  groupDormExcelStyle, groupExcelStyle, groupRentByPremise, priceScopeLabel, rentAreaText,
-  rentByTenant, rentFeeName, resolvePhase, segLabel, tenantKpis,
+  aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, priceScopeLabel, rentAreaText,
+  rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
   type DormLineBase, type NoticeLike, type RentLineBase,
 } from './billNoticeLogic'
 
@@ -14,13 +15,20 @@ describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造�
     expect(billFeeLabel('water')).toBe('水费')
     expect(billFeeLabel('water_pipe')).toBe('水管网维护费')
   })
-  it('公摊键复用 ALLOC_FEE_LABEL', () => {
-    expect(billFeeLabel('share_elec_floor')).toBe('楼层照明')
+  // 2026-08-08 用户点名:公摊六键=租户单上的费用项名(不是电表/池档案名),与 ALLOC_FEE_LABEL 脱钩
+  it('公摊六键走租户单口径', () => {
+    expect(billFeeLabel('share_elec_floor')).toBe('楼层公共')
+    expect(billFeeLabel('share_elec_fire')).toBe('消防照明')
     expect(billFeeLabel('share_elec_elevator')).toBe('电梯用电')
+    expect(billFeeLabel('share_elec_loss')).toBe('线路损耗')
+    expect(billFeeLabel('share_elec_light')).toBe('路灯公摊')
     expect(billFeeLabel('share_green_water')).toBe('绿化水公摊')
   })
-  it('损耗按单据词汇显「线路损耗」(BILL-DERIVE §1.1,覆盖 alloc 的「损耗费」)', () =>
-    expect(billFeeLabel('share_elec_loss')).toBe('线路损耗'))
+  it('公共电核算屏词汇不被拖走(ALLOC_FEE_LABEL 原样)', () => {
+    expect(ALLOC_FEE_LABEL.share_elec_floor).toBe('楼层照明')
+    expect(ALLOC_FEE_LABEL.share_elec_fire).toBe('消防用电')
+    expect(ALLOC_FEE_LABEL.share_elec_loss).toBe('损耗费')
+  })
   it('未知键原样回落', () => expect(billFeeLabel('nope')).toBe('nope'))
 })
 
@@ -176,13 +184,74 @@ describe('groupDormExcelStyle 宿舍逐间子表(可莱恩宿舍段范式)', () 
   })
 })
 
-describe('billFeeName 行名带池名(S5 §3.2:「费项·池名」)', () => {
-  it('poolName 非空=费项·池名(同名公摊行分得清)', () =>
-    expect(billFeeName({ feeKey: 'share_elec_floor', poolName: 'B座楼梯间消防照明' }))
-      .toBe('楼层照明·B座楼梯间消防照明'))
-  it('无池名=纯费项;undefined 同 null', () => {
-    expect(billFeeName({ feeKey: 'elec', poolName: null })).toBe('电费')
-    expect(billFeeName({ feeKey: 'water' })).toBe('水费')
+describe('billFeeTitle 公摊来源人话悬浮(2026-08-08 用户诉求:行名只留费项名,池名进悬浮)', () => {
+  // 全部取 dev 库 2024-02 真值(bill_notice_line join alloc_rule)
+  type L = Parameters<typeof billFeeTitle>[0]
+  const line = (o: Partial<L>): L =>
+    ({ feeKey: 'elec', shareSrc: null, poolName: null, qty: null, baseSnap: null, priceSnap: null, amount: 0, note: null, ...o })
+
+  it('direct(share_src=member):整块表只服务一户——A座502室 一期A座五楼西侧', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 A座·五楼西侧·公共用电',
+      qty: 85.13, priceSnap: 1.114141, amount: 94.85,
+    }))).toBe('一期 A座·五楼西侧·公共用电 —— 这块表只服务你一家,本月走了 85.13 度,整块电费都算你的'))
+
+  it('floor(份数):base_snap=你占的份数——二期8栋1层101室 一车间电梯', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_elevator', shareSrc: 'floor', poolName: '二期 一车间·电梯+低压电房照明',
+      qty: 39.3, priceSnap: 0.980395, baseSnap: 0.27, amount: 38.53,
+    }))).toBe('二期 一车间·电梯+低压电房照明 —— 这块公共表是几家一起用的,按份数摊,你占 0.27 份,分到 39.3 度'))
+
+  it('area(面积):元/㎡ 说成「5 厘」——二期8栋1层101室 园区路灯', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_light', shareSrc: 'area', poolName: '二期园区·路灯',
+      qty: 3.73, priceSnap: 0.005, baseSnap: 714.3, amount: 3.57, note: '核算率 0.005 备查',
+    }))).toBe('二期园区·路灯 —— 这是大家一起用的,按各家面积摊,每平米 5 厘,你的面积 714.3 ㎡'))
+
+  it('area 缺口①(落库价是电价,元/㎡ 率靠 金额÷面积 补位)——消防设施 10.71÷714.30=1.5 分钱', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_fire', shareSrc: 'area', poolName: '二期园区·消防设施',
+      qty: 11.6, priceSnap: 0.895115, baseSnap: 714.3, amount: 10.71,
+    }))).toBe('二期园区·消防设施 —— 这是大家一起用的,按各家面积摊,每平米 1.5 分钱,你的面积 714.3 ㎡'))
+
+  it('loss 只认费项键:qty 恰好等于金额基数时乘数列落回用量档,损耗话照说(一期A座 43.80 度)', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_loss', qty: 43.8, priceSnap: 0.0616, baseSnap: 43.8, amount: 2.7,
+      note: '链[一期 A座]损耗=(场地电费 43.80+公摊 0)×率 0.06160000',
+    }))).toBe('一期 A座 总表用电和各家分表加起来对不上的那部分 —— 按你本月电费加楼内公摊 43.8 元的 6.16% 收'))
+
+  it('loss:池名为 null,链名从 note「链[…]」取;率说成百分比', () =>
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_loss', qty: 2323.6, priceSnap: 0.0271, baseSnap: 1867.89, amount: 50.62,
+      note: '链[二期 一车间]损耗=(场地电费 1824.01+公摊 43.88)×率 0.02710000',
+    }))).toBe('二期 一车间 总表用电和各家分表加起来对不上的那部分 —— 按你本月电费加楼内公摊 1,867.89 元的 2.71% 收'))
+
+  it('零金额行也要有话说:没走字 vs 摊到你这儿不足一分', () => {
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 B座·二楼东侧·公共用电', qty: 0, amount: 0,
+    }))).toBe('一期 B座·二楼东侧·公共用电 —— 这块表本月没走字,不收钱')
+    expect(billFeeTitle(line({
+      feeKey: 'share_elec_fire', shareSrc: 'area', poolName: '二期园区·消防水稳压泵',
+      qty: 0.02, priceSnap: 0.897222, baseSnap: 714.3, amount: 0,
+    }))).toBe('二期园区·消防水稳压泵 —— 本月摊到你这儿不足一分钱,不收钱')
+  })
+
+  it('行名不再含池名,池名只在悬浮里(同费项多条靠悬浮区分)', () => {
+    const a = line({
+      feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '一期 B座·四楼东侧·公共用电',
+      qty: 12, priceSnap: 1.114444, amount: 13.37,
+    })
+    const b = { ...a, poolName: '一期 B座·四楼西侧·公共用电' }
+    expect(billFeeLabel(a.feeKey)).toBe('楼层公共')
+    expect(billFeeLabel(a.feeKey)).not.toContain('B座')
+    expect(billFeeTitle(a)).toContain('一期 B座·四楼东侧·公共用电')
+    expect(billFeeTitle(b)).toContain('一期 B座·四楼西侧·公共用电')
+    expect(billFeeTitle(a)).not.toBe(billFeeTitle(b))
+  })
+
+  it('非公摊行:悬浮回落备注(宿舍 extras 表无备注列)→ 无备注回落费项名', () => {
+    expect(billFeeTitle(line({ feeKey: 'water_pipe', note: '按 15% 计', amount: 23 }))).toBe('按 15% 计')
+    expect(billFeeTitle(line({ feeKey: 'water_pipe', amount: 23 }))).toBe('水管网维护费')
   })
 })
 
@@ -501,6 +570,83 @@ describe('resolvePhase 期归属(v2 拍板4)', () => {
     expect(resolvePhase([], null)).toBe(1)
     expect(resolvePhase([], 'A座602室')).toBe(1)
   })
+})
+
+describe('tenantBuildings 主楼栋(改造二:一户只进一个组)', () => {
+  const c = (buildingId: number, buildingName: string, rentArea: number | null) => ({ buildingId, buildingName, rentArea })
+  it('单栋户 main=该栋,all 一项', () => {
+    expect(tenantBuildings([c(13, '一期 A座', 1528)])).toEqual({ main: { id: 13, name: '一期 A座' }, all: [{ id: 13, name: '一期 A座' }] })
+  })
+  it('跨栋取面积最大那栋;同栋多份合同先按栋求和(鑫皇锚点:A座1640+623.57 胜宿舍四栋492.21)', () => {
+    const t = tenantBuildings([
+      c(29, '一期 宿舍四栋', 282.15), c(13, '一期 A座', 1640), c(26, '一期 宿舍一栋', 204.58),
+      c(13, '一期 A座', 623.57), c(29, '一期 宿舍四栋', 173.53), c(29, '一期 宿舍四栋', 36.53),
+    ])
+    expect(t.main).toEqual({ id: 13, name: '一期 A座' })
+    expect(t.all.map(b => b.name)).toEqual(['一期 A座', '一期 宿舍四栋', '一期 宿舍一栋'])
+  })
+  it('面积并列取 id 小;面积空按 0', () => {
+    expect(tenantBuildings([c(20, 'B座', null), c(13, 'A座', null)]).main).toEqual({ id: 13, name: 'A座' })
+  })
+  it('无合同/无楼栋 = main null', () => {
+    expect(tenantBuildings([]).main).toBeNull()
+    expect(tenantBuildings([c(0, '', 100)]).all).toEqual([])
+  })
+  it('楼栋名空回落 #id(不让组头变空白)', () =>
+    expect(tenantBuildings([{ buildingId: 41, buildingName: null, rentArea: 1 }]).main).toEqual({ id: 41, name: '#41' }))
+})
+
+describe('crossBuildingMark 跨楼栋轻标记', () => {
+  it('两栋以上出徽标,悬浮列全部楼栋 + 说明不重复计入', () => {
+    const m = crossBuildingMark(tenantBuildings([
+      { buildingId: 13, buildingName: '一期 A座', rentArea: 1528 },
+      { buildingId: 20, buildingName: '一期 B座', rentArea: 2700 },
+      { buildingId: 29, buildingName: '一期 宿舍四栋', rentArea: 257.54 },
+    ]))
+    expect(m?.badge).toBe('+2栋')
+    expect(m?.tip).toContain('一期 B座、一期 A座、一期 宿舍四栋')
+    expect(m?.tip).toContain('「一期 B座」')
+    expect(m?.tip).toContain('不重复计入其他楼栋组')
+  })
+  it('单栋/无栋不出标记', () => {
+    expect(crossBuildingMark(tenantBuildings([{ buildingId: 13, buildingName: 'A座', rentArea: 1 }]))).toBeNull()
+    expect(crossBuildingMark(tenantBuildings([]))).toBeNull()
+    expect(crossBuildingMark(undefined)).toBeNull()
+  })
+})
+
+describe('groupByBuilding 楼栋分组(改造二:期 tab 内一级分组)', () => {
+  const r = (tenantId: number, totalAmount: number, b: { id: number; name: string } | null) => ({ tenantId, totalAmount, b })
+  const g = (rs: ReturnType<typeof r>[]) => groupByBuilding(rs, x => x.b)
+  const A = { id: 13, name: '一期 A座' }, B = { id: 20, name: '一期 B座' }, C = { id: 21, name: '一期 C座' }
+  it('组序=楼栋名自然序(A座/B座/C座)', () =>
+    expect(g([r(1, 10, C), r(2, 10, A), r(3, 10, B)]).map(x => x.name)).toEqual(['一期 A座', '一期 B座', '一期 C座']))
+  it('中文数字车间按数序,不走拼音(一/二/三/四/五/六车间)', () => {
+    const ws = [30, 31, 32, 33, 34, 35].map((id, i) => ({ id, name: `二期 ${'一二三四五六'[i]}车间` }))
+    const names = g([...ws].reverse().map((b, i) => r(i + 1, 1, b))).map(x => x.name)
+    expect(names).toEqual(['二期 一车间', '二期 二车间', '二期 三车间', '二期 四车间', '二期 五车间', '二期 六车间'])
+  })
+  it('未归楼栋组置末(名字排序上本会插在中间)', () =>
+    expect(g([r(1, 10, null), r(2, 10, C), r(3, 10, A)]).map(x => x.name)).toEqual(['一期 A座', '一期 C座', '未归楼栋']))
+  it('组内保入参行序;小计=组内和(浮点无噪音)', () => {
+    const gs = g([r(1, 0.1, A), r(2, 10, B), r(3, 0.2, A)])
+    expect(gs[0].rows.map(x => x.tenantId)).toEqual([1, 3])
+    expect(gs[0]).toMatchObject({ id: 13, count: 2, total: 0.3 })
+    expect(gs[1]).toMatchObject({ count: 1, total: 10 })
+  })
+  it('跨楼栋户只落主栋一次:组小计之和 = 全量合计(不翻倍)', () => {
+    // 可莱恩式:主栋 B座(2700㎡),另有 A座/宿舍四栋 —— 只出现在 B座组
+    const rs = [r(107, 500, B), r(1, 100, A), r(2, 200, B)]
+    const gs = g(rs)
+    expect(gs.flatMap(x => x.rows.map(y => y.tenantId))).toEqual([1, 107, 2])
+    expect(gs.reduce((s, x) => s + x.total, 0)).toBe(rs.reduce((s, x) => s + x.totalAmount, 0))
+  })
+  it('筛选后重算:空组不显示', () => {
+    const rs = [r(1, 10, A), r(2, 10, B)]
+    expect(g(rs).map(x => x.name)).toEqual(['一期 A座', '一期 B座'])
+    expect(g(rs.filter(x => x.tenantId === 2)).map(x => x.name)).toEqual(['一期 B座'])   // A座组消失
+  })
+  it('空行集=空组', () => expect(g([])).toEqual([]))
 })
 
 describe('rentByTenant 月租金(参考)合计', () => {

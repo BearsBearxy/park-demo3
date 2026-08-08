@@ -1,17 +1,27 @@
 // 催缴单纯逻辑(S4-BILL-NOTICE-SPEC §7 S4-4 v2 拍板):费项/段字典、Excel 版式分块(非宿舍/宿舍子表)、
 // 取价审计链 title、租户聚合(一个租户一条)/期归属/月租金参考/KPI。billNoticeLogic.spec.ts 锁定。
-// fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签直接复用 ALLOC_FEE_LABEL。
+// fee_key 词汇沿用 alloc_result 现值(spec §4:不造第三套)——公摊类标签 2026-08-08 起转「租户单口径」。
 // v1 的单据类/状态字典与按单 KPI 已随「屏上不显单据类/收款主体/状态」拍板删除。
-// S5 刀4:租金板块(fee_group='rent' 落库行)按 premise 分块 groupRentByPremise;公摊行名带池名 billFeeName。
+// S5 刀4:租金板块(fee_group='rent' 落库行)按 premise 分块 groupRentByPremise;公摊行名=纯费项名 + billFeeTitle 悬浮。
 import { ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { FEE_NAME, feeLabel, inferPropertyType, type FeeKey, type PropertyType } from '@/types/contract'
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-// ── 费项(spec §4 表):直连计费键 + 公摊键(复用 alloc 字典);损耗按单据词汇显「线路损耗」 ──
+// ── 费项(spec §4 表):直连计费键 + 公摊键 ──
+// 公摊六键走「租户单口径」(2026-08-08 用户点名):显租户单上的费用项名,不显电表/池档案名。
+// ⚠ 不动 ALLOC_FEE_LABEL——那是公共电核算屏的池侧词汇(消防用电/楼层照明/损耗费),改了会波及别的屏;
+// 此处逐条钉死与之脱钩(即便当前取值与 alloc 相同,也写出来,免得那边改词把单据词汇拖着走)。
 export const BILL_FEE_LABEL: Record<string, string> = {
   ...ALLOC_FEE_LABEL,
+  share_elec_floor: '楼层公共',
+  share_elec_fire: '消防照明',
+  share_elec_elevator: '电梯用电',
   share_elec_loss: '线路损耗',
+  share_elec_light: '路灯公摊',
+  share_green_water: '绿化水公摊',
+  share_water: '公用水公摊',        // 与上六键同理钉死:alloc 那边改词不许拖走单据词汇
+  park_loss_pool: '园区损耗池',
   elec: '电费',
   mgmt_fee: '电力管理费',
   capacity: '装机容量费',
@@ -19,10 +29,6 @@ export const BILL_FEE_LABEL: Record<string, string> = {
   water_pipe: '水管网维护费',
 }
 export const billFeeLabel = (k: string) => BILL_FEE_LABEL[k] ?? k
-
-// S5 §3.2:公摊行名带池名「费项·池名」(楼层照明·B座楼梯间消防照明),同名行分得清;无池名=纯费项
-export const billFeeName = (l: { feeKey: string; poolName?: string | null }): string =>
-  l.poolName ? `${billFeeLabel(l.feeKey)}·${l.poolName}` : billFeeLabel(l.feeKey)
 
 // ── 分时段 ──
 export const SEG_LABEL: Record<string, string> = { sharp: '尖', peak: '峰', flat: '平', valley: '谷' }
@@ -277,6 +283,58 @@ export function dormPriceCells(
   }
 }
 
+// ── 改造一(2026-08-08):公摊行名只显费用项名,「这笔钱哪来的」进悬浮 ──
+// 行名去掉池名后同一费项会出现多条(同栋多块公共表),仍逐条保留不合并:合并会打死上面
+// 「用量×单价=金额」的可验算性,也丢掉逐池溯源——靠本 tooltip 区分它们。
+// 文案是人话:先说这笔钱从哪块表/哪个池来,再说怎么分到你头上;份数/面积/率全取行上真值,不写死。
+// 面积档不认费项键,认 billQtyCell 的判定结果(哪个数验得通用哪个),tooltip 与「用量/单价」两列同源。
+const spokenPrice = (v: number): string =>
+  v >= 1 ? `${trimZeros(v.toFixed(4))} 元`
+    : v >= 0.01 ? `${trimZeros((v * 100).toFixed(2))} 分钱`
+      : `${trimZeros((v * 1000).toFixed(3))} 厘`
+const num = (v: number | null) =>
+  v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+export interface FeeTitleLine {
+  feeKey: string
+  shareSrc?: string | null
+  poolName?: string | null    // 公摊池/公共表档案名;损耗行为 null(链名只在 note 里)
+  qty: number | null
+  baseSnap: number | null
+  priceSnap: number | null
+  amount: number
+  note?: string | null
+}
+function shareTip(l: FeeTitleLine): string | null {
+  if (!l.feeKey.startsWith('share_')) return null
+  const water = l.feeKey.includes('water')
+  const unit = water ? '吨' : '度'
+  const src = l.poolName ?? l.note?.match(/链\[(.+?)\]/)?.[1] ?? '公共表'
+  if (l.amount === 0) {
+    return `${src} —— ${l.qty ? '本月摊到你这儿不足一分钱' : '这块表本月没走字'},不收钱`
+  }
+  // 损耗只认费项键:2024-02 有 3/121 条 qty 恰好等于金额基数,乘数列会落回用量档,但话得照说
+  if (l.feeKey === 'share_elec_loss' && l.baseSnap != null && l.priceSnap != null) {
+    return `${src} 总表用电和各家分表加起来对不上的那部分 —— `
+      + `按你本月电费加楼内公摊 ${num(l.baseSnap)} 元的 ${trimZeros((l.priceSnap * 100).toFixed(4))}% 收`
+  }
+  const q = billQtyCell(l)
+  if (q.unit === '㎡') {
+    return `${src} —— 这是大家一起用的,按各家面积摊,每平米 ${spokenPrice(+q.price)},你的面积 ${num(q.qty)} ㎡`
+  }
+  if (l.shareSrc === 'member') {
+    return `${src} —— 这块表只服务你一家,本月走了 ${num(l.qty)} ${unit},整块${water ? '水' : '电'}费都算你的`
+  }
+  if (l.shareSrc === 'floor' && l.baseSnap != null) {
+    // 「份数」池既有整层的(某侧走廊灯)也有全楼的(天面楼梯间/货梯,B座分 4 份跨 5 户),
+    // 所以只说「几家一起用」,不写死「整层楼」——写死对天面池是假话。总份数未落库到行上,不编。
+    return `${src} —— 这块公共表是几家一起用的,按份数摊,你占 ${num(l.baseSnap)} 份,分到 ${num(l.qty)} ${unit}`
+  }
+  return `${src} —— 本月分到你头上 ${num(l.qty)} ${unit}`
+}
+// 费项名悬浮:公摊行=上面的人话来源说明;其余行=落库备注(宿舍 extras 表无备注列,别把它弄丢)→ 兜底费项名
+export const billFeeTitle = (l: FeeTitleLine): string =>
+  shareTip(l) ?? l.note ?? billFeeLabel(l.feeKey)
+
 // ── 取价审计链 title(行尾 info 图标悬浮):price_key/price_scope/price_month/rule_branch ──
 export const RULE_BRANCH_LABEL: Record<string, string> = {
   tou: '分时四段',
@@ -379,6 +437,68 @@ export function resolvePhase(
   const m = premiseText?.match(/^(一|二|三)期/)
   if (m) return m[1] === '二' ? 2 : m[1] === '三' ? 3 : 1
   return 1
+}
+
+// ── 改造二(2026-08-08 用户点名「按楼栋分开每个租户」):期 tab 内加一级楼栋分组 ──
+// 一户只进一个组:主楼栋=该户当月在租合同**租赁面积**最大的那栋(同栋多份合同先按栋求和),并列取 id 小。
+// 跨栋户重复计入两个组会让组小计之和 ≠ tfoot 合计,所以只归主栋、行上给轻标记把别处场地说清。
+// 组序=楼栋名自然序:中文数字先换阿拉伯(否则 zh 排序走拼音,「一/二/三车间」会排成二/六/三…),
+// 再用 numeric 整理多位数;locale 取 'en' 让 A座 系列排在汉字名前(zh 会把汉字整体提前)。
+export interface BuildingRef { id: number; name: string }
+export interface TenantBuildings { main: BuildingRef | null; all: BuildingRef[] }   // all 按面积降序,主栋在首
+export function tenantBuildings(
+  cs: { buildingId: number; buildingName?: string | null; rentArea?: number | null }[],
+): TenantBuildings {
+  const m = new Map<number, { ref: BuildingRef; area: number }>()
+  for (const c of cs) {
+    if (!c.buildingId) continue
+    const e = m.get(c.buildingId) ?? { ref: { id: c.buildingId, name: c.buildingName || `#${c.buildingId}` }, area: 0 }
+    e.area += c.rentArea ?? 0
+    m.set(c.buildingId, e)
+  }
+  const all = [...m.values()].sort((a, b) => b.area - a.area || a.ref.id - b.ref.id).map(e => e.ref)
+  return { main: all[0] ?? null, all }
+}
+export interface CrossMark { badge: string; tip: string }
+export function crossBuildingMark(t: TenantBuildings | undefined): CrossMark | null {
+  if (!t?.main || t.all.length < 2) return null
+  return {
+    badge: `+${t.all.length - 1}栋`,
+    tip: `该户当月在 ${t.all.length} 栋有场地:${t.all.map(b => b.name).join('、')};`
+      + `本行按主楼栋(租赁面积最大)「${t.main.name}」归组,不重复计入其他楼栋组`,
+  }
+}
+export interface BuildingGroup<T> {
+  id: number | null      // null=未归楼栋(该户当月无在租合同/合同无楼栋)
+  name: string
+  rows: T[]
+  count: number
+  total: number          // 组内「本期合计」之和
+}
+const NO_BUILDING = '未归楼栋'
+const CN_NUM: Record<string, string> = {
+  一: '1', 二: '2', 三: '3', 四: '4', 五: '5', 六: '6', 七: '7', 八: '8', 九: '9', 十: '10',
+}
+// ponytail: 单字直换,现有楼栋名最大到「六」;真出现「十一栋」再补十位组合
+const bldSortKey = (s: string) => s.replace(/[一二三四五六七八九十]/g, c => CN_NUM[c])
+const bldCollator = new Intl.Collator('en', { numeric: true })
+export function groupByBuilding<T extends { totalAmount: number }>(
+  rows: T[],
+  buildingOf: (r: T) => BuildingRef | null,
+): BuildingGroup<T>[] {
+  const gs = new Map<number | string, BuildingGroup<T>>()
+  for (const r of rows) {
+    const b = buildingOf(r)
+    const k = b?.id ?? ''
+    let g = gs.get(k)
+    if (!g) { g = { id: b?.id ?? null, name: b?.name || NO_BUILDING, rows: [], count: 0, total: 0 }; gs.set(k, g) }
+    g.rows.push(r)
+    g.count++
+    g.total = r2(g.total + (r.totalAmount ?? 0))
+  }
+  // 空组不进 map(入参已是筛选后的行);未归楼栋置末
+  return [...gs.values()].sort((a, b) => (a.id == null ? 1 : b.id == null ? -1
+    : bldCollator.compare(bldSortKey(a.name), bldSortKey(b.name)) || a.id - b.id))
 }
 
 // ── v2:月租金(参考)——该户当月在租合同 monthlyRent 之和 ──

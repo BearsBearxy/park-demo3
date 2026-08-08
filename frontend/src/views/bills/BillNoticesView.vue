@@ -3,7 +3,7 @@
 // 对齐 Excel 每租户一张 worksheet);一期/二期/三期分 tab(期归属=在租合同楼栋 phase→premise 前缀→兜底一期);
 // 屏上不显收款主体/单据类/状态(引擎照旧拆单落库,只是 UI 聚合);签发/作废本轮撤下(api 端点保留)。
 // 明细抽屉两 tab:场地租金(S5 刀4:fee_group='rent' 落库行,厂房/办公室/宿舍逐间块+面积拆解+折算式备注)在前、
-// 水电费(全单明细合并,沿用 premise 分带小计+行名带池名+取价审计链悬浮)在后。
+// 水电费(全单明细合并,沿用 premise 分带小计+公摊行名走租户单口径「池名进悬浮」+取价审计链悬浮)在后。
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
@@ -17,9 +17,10 @@ import type { BuildingDTO } from '@/types/building'
 import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
-  aggregateByTenant, auditTitle, billFeeName, billQtyCell, dormPriceCells, groupDormExcelStyle,
-  groupExcelStyle, groupRentByPremise, rentAreaText, rentByTenant, rentFeeName, resolvePhase,
-  segLabel, tenantKpis, type QtyCell, type TenantNoticeRow,
+  aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, rentAreaText, rentByTenant,
+  rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
+  type CrossMark, type QtyCell, type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -87,17 +88,27 @@ const contractsByTenant = computed(() => {
   return m
 })
 const rentMap = computed(() => rentByTenant(contracts.value))
-interface DisplayRow extends TenantNoticeRow { rent: number | null; phase: 1 | 2 | 3 }
-const tenantRows = computed<DisplayRow[]>(() => aggregateByTenant(rows.value ?? []).map(t => ({
-  ...t,
-  rent: rentMap.value.get(t.tenantId) ?? null,
-  phase: resolvePhase(
-    (contractsByTenant.value.get(t.tenantId) ?? []).map(c => {
-      const b = bById.value.get(c.buildingId)
-      return { phase: b?.phase ?? 0, name: b?.name ?? '' }
-    }),
-    t.premiseText),
-})))
+interface DisplayRow extends TenantNoticeRow {
+  rent: number | null; phase: 1 | 2 | 3
+  bld: TenantBuildings          // 改造二:主楼栋(归组用)+全部楼栋
+  mark: CrossMark | null        // 跨楼栋轻标记(单栋户 null)
+}
+const tenantRows = computed<DisplayRow[]>(() => aggregateByTenant(rows.value ?? []).map(t => {
+  const cs = contractsByTenant.value.get(t.tenantId) ?? []
+  const bld = tenantBuildings(cs)
+  return {
+    ...t,
+    rent: rentMap.value.get(t.tenantId) ?? null,
+    phase: resolvePhase(
+      cs.map(c => {
+        const b = bById.value.get(c.buildingId)
+        return { phase: b?.phase ?? 0, name: b?.name ?? '' }
+      }),
+      t.premiseText),
+    bld,
+    mark: crossBuildingMark(bld),
+  }
+}))
 
 // ── 期 tab(PoolLedgerView 的 zone Segmented 手法;一级页签不参与重置) ──
 const phase = ref<string>('1')
@@ -115,6 +126,8 @@ const q = ref('')
 const filtered = computed(() => phaseRows.value.filter(r =>
   (!warnOnly.value || !!r.warn)
   && (q.value.trim() === '' || (r.tenantName ?? '').includes(q.value.trim()))))
+// 改造二:期 tab 内按主楼栋分组(入参=筛选后的行 → 搜索/仅看警告/换期自动重算,空组不出现)
+const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
 const footLines = computed(() => filtered.value.reduce((s, r) => s + r.lineCount, 0))
 const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmount ?? 0), 0))
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
@@ -306,16 +319,27 @@ const drawerSub = computed(() => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in filtered" :key="r.tenantId" :class="{ offbook: r.offbook }" @click="openDetail(r)">
-            <td class="l">
-              <span class="bn-tname" :title="r.tenantName ?? undefined">{{ r.tenantName ?? '#' + r.tenantId }}</span>
-            </td>
-            <td class="l"><span class="bn-txt dim" :title="r.premiseText ?? undefined">{{ r.premiseText || '–' }}</span></td>
-            <td><span class="bn-nv">{{ r.lineCount }}</span></td>
-            <td><span class="bn-sumc" :class="{ neg: r.totalAmount < 0 }">{{ fmt2(r.totalAmount) }}</span></td>
-            <td><span class="bn-nv" :class="{ empty: r.rent == null }">{{ fmt2(r.rent) }}</span></td>
-            <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
-          </tr>
+          <!-- 楼栋分组:组头(楼栋名 · 户数 · 组内本期合计)+ 组内租户行;跨栋户只在主楼栋组出现一次 -->
+          <template v-for="g in groups" :key="g.id ?? 'none'">
+            <tr class="bn-band">
+              <td class="l" :colspan="3">
+                <span class="bn-band-lbl">{{ g.name }}</span><span class="bn-band-sub">{{ g.count }} 户</span>
+              </td>
+              <td><span class="bn-sumc">{{ fmt2(g.total) }}</span></td>
+              <td :colspan="2"></td>
+            </tr>
+            <tr v-for="r in g.rows" :key="r.tenantId" :class="{ offbook: r.offbook }" @click="openDetail(r)">
+              <td class="l">
+                <span class="bn-tname" :title="r.tenantName ?? undefined">{{ r.tenantName ?? '#' + r.tenantId
+                  }}<em v-if="r.mark" class="bn-xb" :title="r.mark.tip">{{ r.mark.badge }}</em></span>
+              </td>
+              <td class="l"><span class="bn-txt dim" :title="r.premiseText ?? undefined">{{ r.premiseText || '–' }}</span></td>
+              <td><span class="bn-nv">{{ r.lineCount }}</span></td>
+              <td><span class="bn-sumc" :class="{ neg: r.totalAmount < 0 }">{{ fmt2(r.totalAmount) }}</span></td>
+              <td><span class="bn-nv" :class="{ empty: r.rent == null }">{{ fmt2(r.rent) }}</span></td>
+              <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
+            </tr>
+          </template>
           <tr v-if="filtered.length === 0">
             <td class="bn-noro" :colspan="6">
               {{ rows.length === 0 ? '本月尚未生成催缴单' : '本期无匹配租户 —— 换期页签或筛选条件试试' }}
@@ -421,8 +445,7 @@ const drawerSub = computed(() => {
             <table class="bn-dtable">
               <colgroup>
                 <col style="width:38px" />
-                <col style="width:272px" /><!-- 费项:公摊行显「费项·池名」,最长「电梯用电·二期 一车间·电梯+低压电房照明」21 字;
-                                                 窄了会把同栋不同表的楼层照明全截成「楼层照明·一…」,看着像重复项 -->
+                <col style="width:98px" /><!-- 费项:租户单口径下最长「水管网维护费」6 字;池名已移进悬浮,不再需要 272px -->
                 <col style="width:120px" />
                 <col style="width:38px" />
                 <col style="width:84px" />
@@ -459,7 +482,7 @@ const drawerSub = computed(() => {
                   </tr>
                   <tr v-else-if="r0.t === 'line'">
                     <td><span class="bn-nv dim">{{ r0.no }}</span></td>
-                    <td class="l"><span class="bn-txt" :title="billFeeName(r0.l)">{{ billFeeName(r0.l) }}</span></td>
+                    <td class="l"><span class="bn-txt" :class="{ help: r0.l.feeKey.startsWith('share_') }" :title="billFeeTitle(r0.l)">{{ billFeeLabel(r0.l.feeKey) }}</span></td>
                     <td class="l"><span class="bn-txt" :class="{ dim: !r0.l.meterLabel }">{{ r0.l.meterLabel ?? '–' }}</span></td>
                     <td class="l"><span class="bn-txt">{{ segLabel(r0.l.seg) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.prevRead == null }">{{ fmt(r0.l.prevRead) }}</span></td>
@@ -542,7 +565,7 @@ const drawerSub = computed(() => {
                   <!-- 配不上间的公摊/损耗行平铺兜底(现状:路灯一行整段/损耗行);乘数与单价照铺,同样逐行可验 -->
                   <tr v-for="({ l, q }, i) in dormElecExtras" :key="'x' + i">
                     <td></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :class="{ help: l.feeKey.startsWith('share_') }" :title="billFeeTitle(l)">{{ billFeeLabel(l.feeKey) }}</span></td>
                     <td :colspan="3"></td>
                     <td>
                       <span class="bn-nv" :class="{ empty: q.qty == null }" :title="q.title ?? undefined">
@@ -598,7 +621,7 @@ const drawerSub = computed(() => {
                   </tr>
                   <tr v-for="({ l, q }, i) in dormWaterExtras" :key="'x' + i">
                     <td></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.note ?? l.feeKey">{{ billFeeName(l) }}</span></td>
+                    <td class="l"><span class="bn-txt dim" :class="{ help: l.feeKey.startsWith('share_') }" :title="billFeeTitle(l)">{{ billFeeLabel(l.feeKey) }}</span></td>
                     <td :colspan="2"></td>
                     <td>
                       <span class="bn-nv" :class="{ empty: q.qty == null }" :title="q.title ?? undefined">
@@ -675,6 +698,11 @@ const drawerSub = computed(() => {
 /* 账外户视觉降淡(出单不入应收) */
 .bn-table tbody tr.offbook { opacity: .55; }
 .bn-table tbody tr:last-child td { cursor: default; }
+/* 楼栋分组头(抽屉 bn-band 同款;34px 行高铁律照旧,组小计对齐「本期合计」列) */
+.bn-table tr.bn-band td, .bn-table tbody tr.bn-band:hover td { height: 34px; background: var(--surface-sunken); border-top: 1px solid var(--border-strong); cursor: default; }
+/* 跨楼栋轻标记(悬浮列全部楼栋) */
+.bn-xb { margin-left: 6px; padding: 1px 5px; border-radius: var(--radius-full); background: var(--surface-sunken); font-style: normal; font-size: 10.5px; color: var(--text-muted); cursor: help; }
+.bn-xb:hover { color: var(--hue-blue); }
 .bn-noro { text-align: center !important; padding: 40px 16px !important; color: var(--text-disabled); font-size: var(--fs-label); cursor: default !important; }
 .bn-table tfoot th { position: sticky; bottom: 0; z-index: 5; height: 40px; font-weight: var(--fw-semibold); background: var(--surface-white); border-top: 2px solid var(--border-strong); font-family: var(--font-mono); color: var(--text-primary); text-align: right; }
 .bn-table tfoot th.l { text-align: left; }
@@ -685,6 +713,9 @@ const drawerSub = computed(() => {
 .bn-tname { display: block; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-txt { display: block; text-align: left; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-txt.dim { color: var(--text-muted); }
+/* 公摊费项名可悬浮看来源(同 .bn-info 手法:cursor:help + hover 变蓝) */
+.bn-txt.help { cursor: help; }
+.bn-txt.help:hover { color: var(--hue-blue); }
 .bn-nv { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-nv.empty, .bn-nv.dim { color: var(--text-disabled); }
 .bn-u { font-style: normal; font-size: 10px; color: var(--text-disabled); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
