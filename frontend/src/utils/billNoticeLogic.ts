@@ -296,13 +296,16 @@ const num = (v: number | null) =>
   v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 export interface FeeTitleLine {
   feeKey: string
+  priceKey?: string | null    // 包干行靠它认(落库 fee_key 沿用 share_elec_floor/share_green_water)
   shareSrc?: string | null
   poolName?: string | null    // 公摊池/公共表档案名;损耗行为 null(链名只在 note 里)
+  meterLabel?: string | null  // 电表①/水表①;逐表派生项合并后 tooltip 靠它答「哪几块表相加」
   qty: number | null
   baseSnap: number | null
   priceSnap: number | null
   amount: number
   note?: string | null
+  factorSnap?: number | null  // 合并行 tooltip 分辨撞号表用(meterWhy/mixFactor)
 }
 // 来源名(池档案名;损耗行池名为 null,链名从 note 取)与「一句话来源」拆开:
 // 合并行的 tooltip 要在两者之间插金额(池名 金额 来源),整串拼死了插不进去。
@@ -340,16 +343,39 @@ function shareWhy(l: FeeTitleLine): string {
 }
 const shareTip = (l: FeeTitleLine): string | null =>
   l.feeKey.startsWith('share_') ? shareSrcName(l) + shareWhy(l) : null
-// 费项名悬浮:公摊行=上面的人话来源说明;其余行=落库备注(宿舍 extras 表无备注列,别把它弄丢)→ 兜底费项名
+
+// ── 孵化协议固定收取(包干)行:落库 fee_key 沿用 share_elec_floor / share_green_water(后端收款映射与
+// 损耗基数白名单都不动),所以行名/悬浮不能照 fee_key 说「楼层公共」——那是假话:这笔钱是协议月固定额,
+// 已经把被替掉的几项包住了。判据取 price_key(rule_branch='fixed' 还有别的行在用)。
+export const PACKAGE_LABEL = '孵化协议固定收取'
+const PACKAGE_COVERS: Record<string, string> = {
+  share_elec_fixed: '已包含楼层公共、电梯、路灯三项,不再另计',
+  share_water_fixed: '已包含绿化水公摊,不再另计',
+}
+export const packageTip = (l: FeeTitleLine): string | null => {
+  const covers = l.priceKey == null ? undefined : PACKAGE_COVERS[l.priceKey]
+  return covers === undefined ? null
+    : `${PACKAGE_LABEL} —— 按协议每月固定 ${num(l.amount)} 元,${covers}`
+}
+export const isPackageLine = (l: FeeTitleLine): boolean => packageTip(l) !== null
+
+// 费项名悬浮:包干行=协议口径人话;公摊行=上面的人话来源说明;
+// 其余行=落库备注(宿舍 extras 表无备注列,别把它弄丢)→ 兜底费项名
 export const billFeeTitle = (l: FeeTitleLine): string =>
-  shareTip(l) ?? l.note ?? billFeeLabel(l.feeKey)
+  packageTip(l) ?? shareTip(l) ?? l.note ?? billFeeLabel(l.feeKey)
 
 // ── 改造三(2026-08-09 用户返工):维护费块按纸单合并成一行 ──
 // 上一刀只把行名从「费项·池名」换成费项名,行还是逐池一条,屏上出现好几个「楼层公共」——不是纸单的样子。
 // 纸单:一项一行,后台把多个池的钱加总。「楼层公共、消防照明」是一项不是两项(源册 zh 表 F4 表头
-// 原文就是一格文字一列钱),故 floor+fire 同组。电力管理费/电费/水费/容量费/水管网维护费不并——
-// 它们是逐表计费项,纸单也分列。合并粒度=premise 分带内(抽屉按场地分带是更早的拍板:
+// 原文就是一格文字一列钱),故 floor+fire 同组。合并粒度=premise 分带内(抽屉按场地分带是更早的拍板:
 // 「一个地块一个地块的给我」);单场地户合并后恰好是纸单那一行,多场地户每带各有自己一套。
+// 返工2(同日,金纳实证:用水维护费块出现两行「水管网维护费」水表①/水表②):逐表派生的
+// 水管网维护费/电力管理费也并——同一分带内多块表就是纸单的一行钱。2024-02 dev 库实测:
+// water_pipe 22/99 带 ≥2 行、mgmt_fee 7/133 带 ≥2 行,组内单价恒同,两键全月无行至/无分时段
+// (prev_read/curr_read/seg 全 NULL) → 同形态,一并处理免得电水两侧不一致。
+// ⚠ 「不遮任何抄表信息」不成立:这两键的成员**都带倍率**,实测 6 行组内倍率还不一致;
+// 合并行倍率列被 colspan 吞掉,故 meterWhy 在撞名/倍率不一致时把倍率写进悬浮补回来。
+// 电费/水费不并:它们逐表显上月/本月行至,纸单也逐表列。
 // ⚠ 一分钱不改:纯渲染层合并,groupExcelStyle 的 feeTotal/maintTotal/total 全走原始行,不经此函数。
 const MERGE_LABEL: Record<string, string> = {
   share_elec_floor: '楼层公共、消防照明',
@@ -358,11 +384,21 @@ const MERGE_LABEL: Record<string, string> = {
   share_elec_loss: '线路损耗',
   share_elec_light: '路灯公摊',
   share_green_water: '绿化水公摊',
+  mgmt_fee: '电力管理费',
+  water_pipe: '水管网维护费',
 }
-// 纸单行序:管理费/管网费(不并行,rank 0 保持入参序)在前,合并项照纸单排——
+// 包干行按 price_key 抢在 fee_key 之前定名:它落库借的是 share_elec_floor / share_green_water 两个键,
+// 照 MERGE_LABEL 会显成「楼层公共、消防照明」/「绿化水公摊」——那正是被它替掉的项,不是它本身。
+const mergeLabelOf = (l: FeeTitleLine): string | undefined =>
+  (isPackageLine(l) ? PACKAGE_LABEL : undefined) ?? MERGE_LABEL[l.feeKey]
+// 逐表派生的这两项只在「同带多块表」时并:单表时原样透传原行,表名/段/倍率/备注/审计链一个都不丢。
+const MERGE_IF_MULTI = new Set(['mgmt_fee', 'water_pipe'])
+// 纸单行序:管理费/管网费(rank 0,与未合并行同档保持入参序)在前,公摊项照纸单排——
 // 引擎 line_no 序是「路灯(17)在楼层(18)之前」,照搬就不是纸单的样子。sort 稳定(ES2019 起规范保证)。
 const MERGE_RANK: Record<string, number> = {
+  '电力管理费': 0, '水管网维护费': 0,
   '楼层公共、消防照明': 1, '电梯用电': 2, '线路损耗': 3, '路灯公摊': 4, '绿化水公摊': 5,
+  [PACKAGE_LABEL]: 1,   // 电包干占被替掉的「楼层公共」档位;水包干那带只有它自己,同档无歧义
 }
 // 备注列沿用纸单口径(按面积摊的两项);其余合并项留空
 const MERGE_NOTE: Record<string, string> = {
@@ -377,11 +413,24 @@ export interface ShareMergeRow<T> {
   unit: string
   price: string | null
   note: string | null
-  title: string          // 悬浮:逐条「池名 金额 一句话来源」
+  title: string          // 悬浮:公摊逐条「池名 金额 一句话来源」;逐表项逐条「表名 用量 单价 金额」
 }
 export type MaintRow<T> = { kind: 'line'; line: T } | { kind: 'merge'; row: ShareMergeRow<T> }
 const money = (v: number) =>
   v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// 逐表派生项合并后的一条构成:哪块表、走了多少、每单位多少钱、收多少(用户原话「写上有什么水表相加」)。
+// 单价取 billQtyCell 判定结果,与未合并时的单价列同源;缺价不编「每吨 – 元」。
+// meterLabel(电表①/水表①)是**按单**编号,合并粒度却是「租户×场地带」——跨单同带必撞号
+// (实测最狠一组 5 条都叫「电表①」)。倍率不同的表补一句「倍率 N」既能分辨,也补回合并行
+// 倍率列被 colspan 吞掉的那格信息。⚠ 真表名后端 DTO 未下发(只有 meterId/meterLabel),
+// 撞号且倍率相同的仍分不开,待 detail() 补 meterName 后收口。
+function meterWhy(l: FeeTitleLine, showFactor: boolean): string {
+  const unit = l.feeKey.includes('water') ? '吨' : '度'
+  const name = (l.meterLabel ?? '未标表') + (showFactor && l.factorSnap != null ? `(倍率 ${num(l.factorSnap)})` : '')
+  if (l.amount === 0) return `${name} ${l.qty ? `用了 ${num(l.qty)} ${unit},` : '本月没走字,'}不收钱`
+  const p = billQtyCell(l).price
+  return `${name} 用了 ${num(l.qty)} ${unit},${p === '–' ? '' : `每${unit} ${p} 元,`}收 ${money(l.amount)} 元`
+}
 // 用量/单价:能保住可验算就保住(单成员组、同一 std 拆多场地的路灯/绿化水),保不住才留空——
 // 不许一律留空。乘数求和后必须自己验平(逐行分币各自四舍五入,和未必等于和的四舍五入)。
 function mergeCells<T extends FeeTitleLine>(g: ShareMergeRow<T>): void {
@@ -397,7 +446,7 @@ export function mergeMaintRows<T extends FeeTitleLine>(lines: T[]): MaintRow<T>[
   const out: MaintRow<T>[] = []
   const byLabel = new Map<string, ShareMergeRow<T>>()
   for (const l of lines) {
-    const label = MERGE_LABEL[l.feeKey]
+    const label = mergeLabelOf(l)
     if (!label) { out.push({ kind: 'line', line: l }); continue }
     let g = byLabel.get(label)
     if (!g) {
@@ -411,16 +460,34 @@ export function mergeMaintRows<T extends FeeTitleLine>(lines: T[]): MaintRow<T>[
     g.members.push(l)
     g.amount = r2(g.amount + l.amount)
   }
-  for (const g of byLabel.values()) {
+  // 逐表两项独苗不并:退回原行(表名/倍率/备注/审计链全保住),只有多块表才合成纸单那一行
+  const rows = out.map(r =>
+    r.kind === 'merge' && r.row.members.length === 1 && MERGE_IF_MULTI.has(r.row.feeKey)
+      ? { kind: 'line' as const, line: r.row.members[0] }
+      : r)
+  for (const r of rows) {
+    if (r.kind !== 'merge') continue
+    const g = r.row
     // 组内费项键混合(floor+fire)时逐条前缀费项名,答「什么电表的哪一项费用」
     const mixed = new Set(g.members.map(m => m.feeKey)).size > 1
+    // 同一组里表名撞号(跨单同带)或倍率不一致时,逐条把倍率说出来——否则「哪几块表相加」答不上
+    const dupName = new Set(g.members.map(m => m.meterLabel)).size < g.members.length
+    const mixFactor = new Set(g.members.map(m => m.factorSnap ?? null)).size > 1
     g.title = g.members
-      .map(m => (mixed ? `${billFeeLabel(m.feeKey)}·` : '') + shareSrcName(m)
-        + ` ${money(m.amount)} 元` + shareWhy(m))
+      .map(m => packageTip(m) ?? (m.feeKey.startsWith('share_')
+        ? (mixed ? `${billFeeLabel(m.feeKey)}·` : '') + shareSrcName(m) + ` ${money(m.amount)} 元` + shareWhy(m)
+        : meterWhy(m, dupName || mixFactor) + (m.note ? `;${m.note}` : '')))
       .join('\n')
     mergeCells(g)
+    // 留空有两种原因,只对「舍入」那种解释:成员单价本来就不同(楼层公共来自三块表)是加不到一起,
+    // 不是舍入问题,套这句话反而误导。判据=显示单价只有一种却仍验不平(0.31+1.15=1.46×0.5=0.73 vs 落库 0.74)。
+    const ps = new Set(g.members.map(m => billQtyCell(m).price))
+    if (g.qty == null && g.members.length > 1 && g.members.every(m => m.qty != null)
+      && ps.size === 1 && !ps.has('–')) {   // 「–」= 本月零额无单价,留空与舍入无关,别贴这句话
+      g.title += '\n(各表分别四舍五入到分后相加,合计与「总量×单价」可能差 1 分,故不列用量单价)'
+    }
   }
-  return out.sort((a, b) =>
+  return rows.sort((a, b) =>
     (a.kind === 'merge' ? MERGE_RANK[a.row.label] ?? 9 : 0) - (b.kind === 'merge' ? MERGE_RANK[b.row.label] ?? 9 : 0))
 }
 

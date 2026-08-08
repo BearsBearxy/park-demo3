@@ -258,10 +258,10 @@ const drawerSub = computed(() => {
     <div class="bn-head">
       <div class="bn-head-l">
         <h2 class="bn-title"><span class="ic"><component :is="iconFor('file-check-2')" :size="18" /></span>催缴单</h2>
-        <div style="width:96px">
+        <div style="width:110px">
           <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
         </div>
-        <div style="width:84px">
+        <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <Segmented :options="PHASE_OPTS" v-model="phase" size="sm" />
@@ -453,7 +453,15 @@ const drawerSub = computed(() => {
             <table class="bn-dtable">
               <colgroup>
                 <col style="width:38px" />
-                <col style="width:98px" /><!-- 费项:租户单口径下最长「水管网维护费」6 字;池名已移进悬浮,不再需要 272px -->
+                <col style="width:128px" /><!-- 费项:98px 会截「楼层公共、消防照明」(用户截图实证)——上一刀只数了逐表行的 6 字,漏了合并标签。
+                     实际出现的标签清单(dev 库 bill_notice_line 非 rent 组 fee_key 全枚举 + MERGE_LABEL):
+                       逐表行 电费(2)/水费(2)/装机容量费(5)/电力管理费(5)/水管网维护费(6)
+                       合并行 电梯用电(4)/线路损耗(4)/路灯公摊(4)/绿化水公摊(5)/楼层公共、消防照明(9,「、」也是全角)
+                     最长者=「楼层公共、消防照明」9 全角字。计算依据:font-size 12px、CJK 进距 1em ⇒ 9×12=108px,
+                     加 td padding 0 8px 共 16px = 124px,取 128px 留 4px 字体余量。
+                     备注(唯一弹性列)因此少 30px,1920 视口下仍不截:抽屉 min(1720px,96vw)=1720 − body padding 44 − 竖滚动条≈15
+                     = 1661,减 bn-dwrap 边框 2 ⇒ 表宽 1659;定宽列合计 856 ⇒ 备注 803px。
+                     主表最长备注「管理费基数=Σ段 18920.0000(总示数 18921.0000)」35 字 ≤ 35×12+16=436px,余量充足。 -->
                 <col style="width:120px" />
                 <col style="width:38px" />
                 <col style="width:84px" />
@@ -510,11 +518,12 @@ const drawerSub = computed(() => {
                       </span>
                     </td>
                   </tr>
-                  <!-- 公摊合并行(纸单口径:一项一行,多池加总);表/段留 –,构成逐条在费项名悬浮里 -->
+                  <!-- 合并行(纸单口径:一项一行,多池/多表加总);表/段留 –,构成逐条在悬浮里(表格也挂,
+                       用户找「哪几块表相加」时手会落在表列上) -->
                   <tr v-else-if="r0.t === 'merge'">
                     <td><span class="bn-nv dim">{{ r0.no }}</span></td>
                     <td class="l"><span class="bn-txt help" :title="r0.m.title">{{ r0.m.label }}</span></td>
-                    <td class="l"><span class="bn-txt dim">–</span></td>
+                    <td class="l"><span class="bn-txt dim help" :title="r0.m.title">–</span></td>
                     <td class="l"><span class="bn-txt dim">–</span></td>
                     <td :colspan="3"></td>
                     <td>

@@ -13,8 +13,10 @@ export interface PriceKeyMeta {
   hint: string
 }
 
-// §2 受控白名单(V62 定格 19 键,扩展方式=加行不加列):顺序即页面分组渲染顺序。
+// §2 受控白名单(V62 定格 19 键 → 2026-08-09 起 20 键,扩展方式=加行不加列):顺序即页面分组渲染顺序。
 // 五个月推键(green_water/green_water_hi/lamp_sqm/fire_sqm/elevator_sqm)已删——引擎月推输出不入价目簿。
+// share_elec_fixed 是 elevator_package 改名(建键时以为包干只替电梯;源册证明它替楼层公共+电梯+路灯
+// 三项),share_water_fixed 是同一纸单第二个包干(替绿化水公摊)。改名时该键全库 0 行。
 export const PRICE_KEYS: PriceKeyMeta[] = [
   { key: 'elec_peak', label: '峰段电价', unit: '元/度', group: '电价·月变', overridable: false, monthly: true, hint: '代理购电逐月变' },
   { key: 'elec_sharp', label: '尖段电价(名义)', unit: '元/度', group: '电价·月变', overridable: false, monthly: true, hint: '实收按峰,见开关' },
@@ -34,7 +36,8 @@ export const PRICE_KEYS: PriceKeyMeta[] = [
   { key: 'elevator_area_base', label: '电梯面积基数', unit: '㎡', group: '月推参数', overridable: false, hint: 'A座12487.04(历史计费面积,原表硬编码)' },
   { key: 'loss_rate', label: '固定损耗率', unit: '比率', group: '特殊轨道', overridable: false, hint: '仅宿舍/商铺固定;厂房月算' },
   { key: 'elec_package', label: '包干电价', unit: '元/度', group: '特殊轨道', overridable: true, hint: '仅户级:包干户1.0/商铺1.5' },
-  { key: 'elevator_package', label: '电梯协议包干月额', unit: '元/月', group: '特殊轨道', overridable: true, hint: '仅户级:孵化器63.8/31/79.45' },
+  { key: 'share_elec_fixed', label: '孵化协议固定收取(电)', unit: '元/月', group: '特殊轨道', overridable: true, hint: '仅户级:替楼层公共+电梯+路灯三项' },
+  { key: 'share_water_fixed', label: '孵化协议固定收取(水)', unit: '元/月', group: '特殊轨道', overridable: true, hint: '仅户级:替绿化水公摊' },
 ]
 
 export const MONTHLY_KEYS: ReadonlySet<string> =

@@ -26,6 +26,13 @@ const emit = defineEmits<{
 
 const heightMap = { sm: 28, md: 32, lg: 38 } as const;
 
+// 根样式两条防变形(2026-08-09 催缴单抽屉报障):
+// width:fit-content —— 放进 flex column / grid 父(如 FPDrawer 的 .fp-dwr-body)时 inline-flex 被块化,
+//   cross 尺寸为 auto 会被 align-items:stretch 拉成整行宽(轨道底色铺满一横条 + 宽度随父内容宽抖动);
+//   宽度非 auto 即不参与 stretch,flex row 父(全站 14 处工具条)按 flex-basis:auto 走内容宽,无变化。
+// flexShrink:0 —— 定高 flex 列里本组件若是唯一可压缩项会独吞溢出被压扁(28→26px),下方内容随之上移。
+// 另:两态字重恒为 --fw-medium(选中只换底色/阴影),故切换不改变文本宽度,无需等宽占位。
+
 const items = computed(() =>
   props.options.map((o) =>
     typeof o === "string" ? { value: o, label: o, icon: undefined } : o
@@ -52,6 +59,8 @@ function handleClick(val: string) {
       gap: '2px',
       padding: '3px',
       height: `${heightMap[size]}px`,
+      width: 'fit-content',
+      flexShrink: 0,
       background: 'var(--bg-sunken)',
       borderRadius: 'var(--radius-full)',
       boxSizing: 'border-box',

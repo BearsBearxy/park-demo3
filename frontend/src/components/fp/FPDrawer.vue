@@ -137,6 +137,9 @@ watch(() => props.open, () => {})
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* 竖滚动条常驻占位:抽屉内切 tab(短内容↔长内容)时不再因滚动条出现/消失
+     让内容宽 ±15px,户头四格/胶囊/明细表整体横向抖动 */
+  scrollbar-gutter: stable;
   padding: 20px 22px 26px;
   display: flex;
   flex-direction: column;

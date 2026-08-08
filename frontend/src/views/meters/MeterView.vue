@@ -447,10 +447,10 @@ const emptyText = computed(() => {
     <div class="mt-head">
       <div class="mt-head-l">
         <h2 class="mt-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>园区抄表</h2>
-        <div style="width:96px">
+        <div style="width:110px">
           <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
         </div>
-        <div style="width:84px">
+        <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <div class="mt5-prog" :title="`抄表进度(随电水/分区筛选):已抄 ${cards.read} / 租户表 ${cards.tenant}`">

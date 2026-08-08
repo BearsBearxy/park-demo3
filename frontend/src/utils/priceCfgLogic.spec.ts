@@ -11,11 +11,11 @@ const row = (scope: string, cfgKey: string, value: number, acctMonth = '', updat
 
 const YM = '2099-05'
 
-describe('PRICE_KEYS 注册表(§2,V62 定格 19 键)', () => {
-  it('19 键且唯一(五个月推键已删)', () => {
-    expect(PRICE_KEYS).toHaveLength(19)
-    expect(new Set(PRICE_KEYS.map(k => k.key)).size).toBe(19)
-    for (const dead of ['green_water', 'green_water_hi', 'lamp_sqm', 'fire_sqm', 'elevator_sqm'])
+describe('PRICE_KEYS 注册表(§2,V62 定格 19 键 + 包干两键)', () => {
+  it('20 键且唯一(五个月推键与改名前的 elevator_package 都不在)', () => {
+    expect(PRICE_KEYS).toHaveLength(20)
+    expect(new Set(PRICE_KEYS.map(k => k.key)).size).toBe(20)
+    for (const dead of ['green_water', 'green_water_hi', 'lamp_sqm', 'fire_sqm', 'elevator_sqm', 'elevator_package'])
       expect(PRICE_KEYS.some(k => k.key === dead)).toBe(false)
   })
   it('5 组按序', () => {
@@ -28,9 +28,9 @@ describe('PRICE_KEYS 注册表(§2,V62 定格 19 键)', () => {
     expect(PRICE_KEYS.filter(k => k.monthly).map(k => k.key)).toEqual(
       ['elec_peak', 'elec_sharp', 'elec_flat', 'elec_valley', 'elec_resident', 'elec_commercial'])
   })
-  it('户级可覆盖集合=待录清单五键', () => {
+  it('户级可覆盖集合=待录清单六键', () => {
     expect(PRICE_KEYS.filter(k => k.overridable).map(k => k.key)).toEqual(
-      ['mgmt_fee', 'capacity_fee', 'water', 'elec_package', 'elevator_package'])
+      ['mgmt_fee', 'capacity_fee', 'water', 'elec_package', 'share_elec_fixed', 'share_water_fixed'])
   })
 })
 
@@ -156,7 +156,7 @@ describe('buildVersionStatus 版本状态组装(右栏卡+徽标)', () => {
     expect(vs.groups.map(x => x.group)).toEqual(['电价·月变', '附加与开关', '容量与水', '月推参数', '特殊轨道'])
     expect(g('容量与水')).toMatchObject({ effective: 2, total: 3 })
     expect(g('电价·月变')).toMatchObject({ effective: 0, total: 6 })
-    expect(g('特殊轨道')).toMatchObject({ effective: 0, total: 3 })
+    expect(g('特殊轨道')).toMatchObject({ effective: 0, total: 4 })   // +包干两键 −改名前的 elevator_package
   })
   it('全簿最近更新=max updatedAt+费项名', () => {
     const vs = buildVersionStatus([

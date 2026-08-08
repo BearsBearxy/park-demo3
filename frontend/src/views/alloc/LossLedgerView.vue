@@ -98,10 +98,10 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
     <div class="ll-head">
       <div class="ll-head-l">
         <h2 class="ll-title"><span class="ic"><component :is="iconFor('trending-down')" :size="18" /></span>楼栋损耗</h2>
-        <div style="width:96px">
+        <div style="width:110px">
           <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
         </div>
-        <div style="width:84px">
+        <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />

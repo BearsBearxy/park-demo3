@@ -260,7 +260,7 @@ describe('billFeeTitle 公摊来源人话悬浮(2026-08-08 用户诉求:行名�
 describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-09 返工)', () => {
   type L = Parameters<typeof billFeeTitle>[0]
   const l = (o: Partial<L>): L =>
-    ({ feeKey: 'elec', shareSrc: null, poolName: null, qty: null, baseSnap: null, priceSnap: null, amount: 0, note: null, ...o })
+    ({ feeKey: 'elec', shareSrc: null, poolName: null, meterLabel: null, qty: null, baseSnap: null, priceSnap: null, amount: 0, note: null, ...o })
   const rowsOf = (rs: ReturnType<typeof mergeMaintRows<L>>) =>
     rs.flatMap(r => (r.kind === 'merge' ? [r.row] : []))
   const labels = (rs: ReturnType<typeof mergeMaintRows<L>>) =>
@@ -292,20 +292,65 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
     expect(rowsOf(rs)[0].amount).toBe(20)
   })
 
+  // 抽屉费项列是定宽 128px(= 9 全角字 ×12px + padding 16),放不下更长的标签就又会像 98px 那样截字。
+  // 加新费项/改词时这条会先红:要么把词压到 9 字内,要么同步改 BillNoticesView 的 <col> 与其注释。
+  it('标签长度不超过费项列预算(9 全角字)', () => {
+    const merged = labels(mergeMaintRows(
+      ['share_elec_floor', 'share_elec_fire', 'share_elec_elevator', 'share_elec_loss', 'share_elec_light',
+        'share_green_water', 'elec', 'capacity', 'mgmt_fee', 'water', 'water_pipe'].map(feeKey => l({ feeKey })),
+    ))
+    expect(merged.every(s => [...s].length <= 9)).toBe(true)
+    expect(Math.max(...merged.map(s => [...s].length))).toBe(9)   // 最长者=「楼层公共、消防照明」
+  })
+
   it('单场地户(金纳形态):维护费块=管理费 + 四项各一行,屏上不再出现多条「楼层公共」', () => {
     const rs = mergeMaintRows(BWF)
     expect(labels(rs)).toEqual(['电力管理费', '楼层公共、消防照明', '电梯用电', '线路损耗', '路灯公摊'])
     expect(rs.filter(r => r.kind === 'merge')).toHaveLength(4)
   })
 
-  it('计费项不参与合并:电力管理费/水管网维护费原样透传(纸单也是分列的)', () => {
-    const rs = mergeMaintRows([
-      l({ feeKey: 'water_pipe', qty: 10, priceSnap: 0.5, amount: 5 }),
-      l({ feeKey: 'water_pipe', qty: 0, priceSnap: 0.5, amount: 0 }),
-      l({ feeKey: 'share_green_water', shareSrc: 'area', poolName: '一期园区·绿化水', qty: 6.12, priceSnap: 0.009, baseSnap: 3200, amount: 28.8 }),
+  // ── 返工2(2026-08-09,金纳实证):逐表派生的水管网维护费/电力管理费,同带多块表也并成一行 ──
+  // 金纳 2024-02 用水维护费块真值(dev 库 notice 4786 line_no 1..2 + 4785 line_no 4)
+  const JN_WATER = [
+    l({ feeKey: 'water_pipe', meterLabel: '水表①', qty: 10, priceSnap: 0.5, amount: 5 }),
+    l({ feeKey: 'water_pipe', meterLabel: '水表②', qty: 0, priceSnap: 0.5, amount: 0 }),
+    l({ feeKey: 'share_green_water', shareSrc: 'area', poolName: '一期园区·绿化水', qty: 6.12, priceSnap: 0.009, baseSnap: 3200, amount: 28.8 }),
+  ]
+
+  it('多块水表的水管网维护费并成一行:单价同则用量求和、单价保留,10+0=10 × 0.5 仍可心算', () => {
+    const rs = mergeMaintRows(JN_WATER)
+    expect(labels(rs)).toEqual(['水管网维护费', '绿化水公摊'])
+    const [g] = rowsOf(rs)
+    expect([g.qty, g.unit, g.price, g.amount]).toEqual([10, '', '0.5', 5])
+    expect(Math.round(g.qty! * +g.price! * 100) / 100).toBe(g.amount)
+    expect(g.members).toHaveLength(2)
+  })
+
+  it('悬浮写清是哪几块水表相加:带表名、人话、没走字的那块也列出来', () => {
+    const [g] = rowsOf(mergeMaintRows(JN_WATER))
+    expect(g.title.split('\n')).toEqual([
+      '水表① 用了 10 吨,每吨 0.5 元,收 5.00 元',
+      '水表② 本月没走字,不收钱',
     ])
-    expect(labels(rs)).toEqual(['水管网维护费', '水管网维护费', '绿化水公摊'])
-    expect(rs.filter(r => r.kind === 'line')).toHaveLength(2)
+  })
+
+  it('电力管理费同理(旭化成形态三块电表);逐表备注跟着表进悬浮不丢', () => {
+    const mf = (m: string, qty: number, amount: number, note?: string) =>
+      l({ feeKey: 'mgmt_fee', meterLabel: m, qty, priceSnap: 0.16, amount, note: note ?? null })
+    const [g] = rowsOf(mergeMaintRows([mf('电表①', 36, 5.76), mf('电表②', 210, 33.6, '管理费基数=Σ段 210.0000')]))
+    expect([g.label, g.qty, g.price, g.amount]).toEqual(['电力管理费', 246, '0.16', 39.36])
+    expect(g.title.split('\n')).toEqual([
+      '电表① 用了 36 度,每度 0.16 元,收 5.76 元',
+      '电表② 用了 210 度,每度 0.16 元,收 33.60 元;管理费基数=Σ段 210.0000',
+    ])
+  })
+
+  it('单块表不变形:仍是原行(表名/倍率/备注/审计链留在行上,不套合并壳)', () => {
+    const one = l({ feeKey: 'water_pipe', meterLabel: '水表①', qty: 10, priceSnap: 0.5, amount: 5 })
+    const rs = mergeMaintRows([one, JN_WATER[2]])
+    expect(rs[0]).toEqual({ kind: 'line', line: one })
+    expect(labels(rs)).toEqual(['水管网维护费', '绿化水公摊'])
+    expect(rowsOf(mergeMaintRows([BWF[0]]))).toEqual([])          // 单条电力管理费同理
   })
 
   it('同单价组保留「用量×单价=金额」:单成员路灯 3200㎡×0.04=128、损耗 538.10 元×0.0213=11.46', () => {
@@ -382,6 +427,21 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
     expect(band.maintTotal).toBe(563.1)
     expect(sum(mergeMaintRows(band.maint).map(r => (r.kind === 'merge' ? r.row.amount : r.line.amount))))
       .toBe(band.maintTotal)
+  })
+
+  // 包干行:落库借 share_elec_floor / share_green_water 两个键(后端收款映射与损耗基数白名单不动),
+  // 靠 price_key 认;行名显被替掉的项名就是假话。
+  it('孵化协议固定收取:行名不显「楼层公共」,悬浮说清每月多少、替掉了哪几项', () => {
+    const pkg = l({ feeKey: 'share_elec_floor', priceKey: 'share_elec_fixed', priceSnap: 232, amount: 232, note: '孵化协议固定收取' })
+    const rs = mergeMaintRows([pkg])
+    expect(labels(rs)).toEqual(['孵化协议固定收取'])
+    expect(rowsOf(rs)[0].title)
+      .toBe('孵化协议固定收取 —— 按协议每月固定 232 元,已包含楼层公共、电梯、路灯三项,不再另计')
+    expect(billFeeTitle(pkg)).toBe(rowsOf(rs)[0].title)
+    const w = l({ feeKey: 'share_green_water', priceKey: 'share_water_fixed', priceSnap: 155, amount: 155 })
+    expect(billFeeTitle(w)).toBe('孵化协议固定收取 —— 按协议每月固定 155 元,已包含绿化水公摊,不再另计')
+    // 同键的普通公摊行不受影响(price_key 不是包干键)
+    expect(labels(mergeMaintRows([BWF[3]]))).toEqual(['楼层公共、消防照明'])
   })
 
   it('空块=空数组;未知 share 键不并(纸单没这项,原样列出别丢行)', () => {

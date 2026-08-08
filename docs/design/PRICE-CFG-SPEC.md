@@ -48,7 +48,14 @@ CREATE TABLE tenant_price_cfg (
 | 月推参数 | elevator_area_base | 电梯面积基数 | ㎡ | p1行: 12487.04 | A座电梯分母(历史计费面积≠在租面积17424.19) |
 | 特殊轨道 | loss_rate | 固定损耗率 | 比率 | dorm行: 0.012 | 仅宿舍/商铺固定;厂房月算 |
 | 特殊轨道 | elec_package | 包干电价 | 元/度 | 无默认行 | 仅户级:包干户1.0/商铺1.5 |
-| 特殊轨道 | elevator_package | 电梯协议包干月额 | 元/月 | 无默认行 | 仅户级:孵化器63.8/31/79.45 |
+| 特殊轨道 | share_elec_fixed | 孵化协议固定收取(电) | 元/月 | 无默认行 | 仅户级:替楼层公共+电梯+路灯三项 |
+| 特殊轨道 | share_water_fixed | 孵化协议固定收取(水) | 元/月 | 无默认行 | 仅户级:替绿化水公摊 |
+
+**2026-08-09 包干两键**：`elevator_package` 改名 `share_elec_fixed`（建键时以为孵化器包干只替电梯；源册
+`一期2024年2月水电费.xlsx` 各户缴费通知单 + 电费/水费两张总表证明它替「楼层公共、消防照明 + 电梯用电 +
+路灯公摊」三项），并新增水侧同形态的 `share_water_fixed`（替「绿化水公摊」，**不含**按吨计的水管网维护费）。
+改名时 `elevator_package` 全库 0 行。派生消费点=`BillNoticeService.applyPackages`：命中户的原公摊行不落，
+改落一条固定额行（fee_key 沿用 `share_elec_floor`/`share_green_water`，回挂 pool_rule_id）。**注册表 20 键。**
 
 **V61→V62 演进**：V61 曾把公摊单价改为月行快照；**V62（用户拍板 2026-07-27）彻底删除这五个键**（green_water/green_water_hi/lamp_sqm/fire_sqm/elevator_sqm）——它们是引擎月推输出不是价目输入，不入价目簿（公式见 POOL-FORMULA-AUDIT-2024-02.md），价目簿只存其面积基数参数。**注册表定格 19 键**。电价 6 键标 `monthly: true`（月变键）。
 
@@ -73,7 +80,7 @@ CREATE TABLE tenant_price_cfg (
 ## 5. V60 种子
 
 默认行/分区行按 §2 表格"默认值"列全量插入（note 写文档锚点）；月行插 2024-02 六个电价。**V62**：删除五个月推键（green_water/green_water_hi/lamp_sqm/fire_sqm/elevator_sqm）全部行——引擎月推输出不入价目簿。**户级例外不入迁移**（tenant_id 环境相关），由录入页人工添加，待录清单（9 项，S3 锚点月验收前必录）：
-永龙 mgmt_fee 0.15｜朱漫钳 mgmt_fee 0.10｜林锐辉 mgmt_fee 0.1｜南一·朱漫钳 water 4.45｜可莱恩 capacity_fee 23｜禹晨/粤海华创/联塑精铟 elec_package 1.0 + water 4.45｜商铺户 elec_package 1.5｜孵化器3户 elevator_package 63.8/31/79.45。
+永龙 mgmt_fee 0.15｜朱漫钳 mgmt_fee 0.10｜林锐辉 mgmt_fee 0.1｜南一·朱漫钳 water 4.45｜可莱恩 capacity_fee 23｜禹晨/粤海华创/联塑精铟 elec_package 1.0 + water 4.45｜商铺户 elec_package 1.5｜孵化器5户 share_elec_fixed 232/47.2/63.8/47.3/79.45 + share_water_fixed 155/31.5/42.54/31.6/53（SQL 草稿 `backend/scripts/fixes/incubator-package-20260809.sql`）。
 
 ## 6. 页面设计（价目管理 · value='price-cfg' · 出账链组 合同管理之后）
 

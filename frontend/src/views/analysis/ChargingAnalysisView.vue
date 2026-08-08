@@ -185,7 +185,7 @@ const lossOpt = computed<object>(() => ({
         <button :class="{ on: tab === 'car' }" @click="tab = 'car'">汽车</button>
         <button :class="{ on: tab === 'ebike' }" @click="tab = 'ebike'">电动车</button>
       </span>
-      <div style="width: 96px">
+      <div style="width: 110px">
         <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
       </div>
     </template>
