@@ -308,6 +308,11 @@ public class BillNoticeService {
                     else acc[1] = acc[1].add(o.amount);
                     if (o.contractId != null) cidByPremise.putIfAbsent(wide(o), o.contractId);
                 }
+                // 刀C 零基数残渣:链内一条 premise 空的零额行(拆不出场地的公摊行/未归属合同的零度表)
+                // 会多开一个 chainBase=0 的桶,照桶补出一条 premise 空、金额 0.00 的损耗行。
+                // 有非零桶时零桶一律丢弃(只丢 0.00 行,合计不动);全零或链内无行仍至少出一行,不吞损耗行。
+                boolean anyBase = byPremise.values().stream().anyMatch(a -> a[0].add(a[1]).signum() != 0);
+                if (anyBase) byPremise.values().removeIf(a -> a[0].add(a[1]).signum() == 0);
                 if (byPremise.isEmpty())   // 链内无行:保留单行基数 0(原行为)
                     byPremise.put(wide(l), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
                 int i = 0;

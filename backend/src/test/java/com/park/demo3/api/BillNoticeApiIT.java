@@ -598,6 +598,50 @@ class BillNoticeApiIT extends AbstractMysqlIT {
                 .isEqualTo("A座101,A座102,A座103,A座104,A座105,等6处");
     }
 
+    // ── t17 刀C 损耗零基数残渣行:链内一条 premise 为空的零额公摊行(splitShare 拆不出场地=原样保留)
+    //    会给 byPremise 多开一个 chainBase=0 的桶,引擎照桶补一条 premise 空、base_snap 0、金额 0.00 的
+    //    损耗行(真数三户:中科华贸/方凯鑫/刘彪)。断言:只出 1 条损耗行,且金额一分不动。槽 2091-06。
+    //    造链:新栋隔离损耗组(总表 C=1000,户表 900 度绑合同)→ 率=−(900−1000)/1000=0.1;
+    //    p2 price_loss 走 V47 种子;损耗金额=场地电费 900×0.8=720.00 × 0.1 = 72.00。
+    //    零额行=挂本栋的 direct 电梯池(应分摊 0.00),池楼栋≠合同楼栋 → splitShare 候选空,premise 留空。 ──
+    @Test
+    void t17_lossZeroBaseBucket_dropped_amountUnchanged() throws Exception {
+        String ym = "2091-06";
+        monthlyPrices(ym);
+        int bid = postId("/api/buildings", "{\"name\":\"IT损耗零基数栋" + System.nanoTime()
+                + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":1,\"totalArea\":100,\"rentableArea\":100}");
+        int t = createTenant("IT损耗零基数户");
+        int c = contractLines(t, "2089-01-01", "2099-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT损耗A区\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int head = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT损耗总表\","
+                + "\"ownership\":\"infra\",\"buildingId\":" + bid + "}");
+        int mA = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT损耗户表甲\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + t + ",\"buildingId\":" + bid + "}");
+        bind(mA, c);
+        reading(head, ym, "\"prevTotal\":0,\"currTotal\":1000");
+        reading(mA, ym, "\"prevTotal\":0,\"currTotal\":900");
+        // 链内零额公摊行:池挂新栋(进链),受益人=本户,应分摊 0.00;池快照非空 poolContributions 才吐损耗链
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key,building_id) "
+                + "VALUES('p2','IT损耗零额电梯池','direct','share_elec_elevator',?)", bid);
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO alloc_rule_member(rule_id,tenant_id,acct_month) VALUES(?,?,'')", rid, t);
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
+                + "VALUES(?,?,0,0,NOW())", ym, rid);
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, t));
+        // 输入形态:电费 720.00(损耗基数来源,防两侧同错)+ premise 空的零额公摊行
+        assertThat(d(elecOfMeter(body, mA).get("amount"))).isEqualTo(720.0);
+        Map<String, Object> share = one(feeLines(body, "share_elec_elevator"));
+        assertThat(share.get("premise")).isNull();
+        assertThat(d(share.get("amount"))).isEqualTo(0.0);
+        // 出口:损耗行只此一条(零基数桶不落),金额=720.00×0.1
+        Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
+        assertThat(loss.get("premise")).isEqualTo("IT损耗A区");
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(720.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(72.0);
+    }
+
     // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。
     //    读侧纯 join,无需跑池引擎:JDBC 直造 notice+行(槽 2090-11,与 t11 各自回滚不相扰) ──
     @Test
