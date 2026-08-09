@@ -415,6 +415,34 @@ class AllocServiceTest {
                 fm(1, "500", "二楼", "三楼"), fm(2, "500", "二楼"), fm(3, "500")))));
     }
 
+    // 刀二:电梯池首层桶不参与分摊(纸约:力灏/罗立剑合同「首层租户不承担电梯维保费和维修费」;
+    // 源册先例:B座货梯 3 份=2/3/4F 各 1,首层不摊)。力灏锚点:一楼+二楼+三楼 → 二楼+三楼 两份
+    // 217.33×2=434.66(册值);首层独户=整桶剔除无金额;未定层桶照旧;旧签名默认不剔(消防/楼层公共照旧)。
+    @Test
+    void floorBuckets_skipFirstFloor_elevatorAnchor() {
+        var mems = java.util.List.of(
+            fm(48, "3000", "一楼", "二楼", "三楼"),   // 力灏:跨三层,首层份被剔
+            fm(61, "500", "四楼"),
+            fm(67, "800", "一楼"),                    // 首层独户 → 整桶剔除,无金额(不落行)
+            fm(99, "100", "1F"),                      // 词汇兼容:1F 也是首层
+            fm(3, "100"));                            // 未定层照旧一份
+        var split = AllocService.floorBuckets(mems, d("217.33"), true);
+        assertEquals(0, split.amounts().get(48).compareTo(d("434.66")));
+        assertEquals(0, split.amounts().get(61).compareTo(d("217.33")));
+        assertNull(split.amounts().get(67));
+        assertNull(split.amounts().get(99));
+        assertEquals(0, split.amounts().get(3).compareTo(d("217.33")));
+        assertEquals(1, split.unknownCount());
+        // 旧签名(=不剔):首层照摊——既有池与既有锚点不受影响(一楼桶 3000/800 按面积拆)
+        var old = AllocService.floorBuckets(mems, d("217.33"));
+        assertEquals(0, old.amounts().get(67).compareTo(d("45.75")));    // 217.33×800/3800
+        assertEquals(0, old.amounts().get(99).compareTo(d("217.33")));   // 「1F」自成键独占一桶(归一在上游)
+        // 读侧桶明细同口径:首层桶不再出现
+        assertEquals("按 3 层拆:二楼 1 户 / 三楼 1 户 / 四楼 1 户",
+            AllocService.floorNote(AllocService.floorBucketsOf(java.util.List.of(
+                fm(48, "3000", "一楼", "二楼", "三楼"), fm(61, "500", "四楼"), fm(67, "800", "一楼")), true)));
+    }
+
     // 分桶键归一:unit.floor=4 与户内表「4楼」「四楼」必须落同一个桶,否则同一层摊出两份
     @Test
     void floorLabel_normalizedToOneBucket() {

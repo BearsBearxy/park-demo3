@@ -677,6 +677,53 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath(my + ".stdValue").value(217.33));
     }
 
+    // ── 刀二(2091-12):电梯池首层不摊——纸约「首层租户不承担电梯维保费和维修费」+B座货梯先例(2/3/4F 各1份)。
+    // 首层户(户内表定层一楼,L2)电梯整桶剔除不落行;高层户独占其桶份额不被首层稀释;
+    // 同成员同读数的消防 floor 池首层照摊——锁「只砍电梯,不砍消防」。
+    @Test
+    void poolFloorElevator_firstFloorExcluded() throws Exception {
+        String ym = "2091-12";
+        int b = postId("/api/buildings", "{\"name\":\"IT-EL栋\",\"phase\":2,\"floorCount\":3,"
+                + "\"totalArea\":1000,\"rentableArea\":900}");
+        int t1 = createTenant("IT电梯首层户");
+        int t2 = createTenant("IT电梯三楼户");
+        // 户内表定层(合同单元为空 → §D.1 回退 L2 电表 floor_label)
+        postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT-EL首层户表\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + t1 + ",\"buildingId\":" + b + ",\"floorLabel\":\"一楼\"}");
+        postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT-EL三楼户表\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + t2 + ",\"buildingId\":" + b + ",\"floorLabel\":\"三楼\"}");
+        int mLift = createMeter("IT-EL电梯表", "p2", "share", null, b);
+        reading(mLift, ym, "0", "100");
+        int mFire = createMeter("IT-EL消防表", "p2", "share", null, b);
+        reading(mFire, ym, "0", "100");
+        // 无分时段回退平价:cost=100×(0.72076875+0.16)=88.08,std=ROUND(88.076875/2,2)=44.04 元/层
+        int rLift = postId("/api/alloc/rules", "{\"zone\":\"p2\",\"name\":\"IT-EL电梯池\",\"method\":\"floor\","
+                + "\"coefficient\":2,\"feeKey\":\"share_elec_elevator\",\"buildingId\":" + b + ","
+                + "\"meterIds\":[" + mLift + "],"
+                + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}");
+        int rFire = postId("/api/alloc/rules", "{\"zone\":\"p2\",\"name\":\"IT-EL消防池\",\"method\":\"floor\","
+                + "\"coefficient\":2,\"feeKey\":\"share_elec_fire\",\"buildingId\":" + b + ","
+                + "\"meterIds\":[" + mFire + "],"
+                + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}");
+        p2Prices(ym);
+        price("elec_commercial", ym, "0.79416875");
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+        String res = mvc.perform(get("/api/alloc/result").param("ym", ym).header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        // 电梯:首层户无行(整桶剔除);三楼户独占本桶一份 44.04,不因首层剔除而变
+        java.util.List<Object> liftT1 = JsonPath.read(res,
+                "$.data[?(@.ruleId==" + rLift + " && @.tenantId==" + t1 + ")].amount");
+        java.util.List<Object> liftT2 = JsonPath.read(res,
+                "$.data[?(@.ruleId==" + rLift + " && @.tenantId==" + t2 + ")].amount");
+        org.junit.jupiter.api.Assertions.assertTrue(liftT1.isEmpty(), "首层户不应有电梯行,实得 " + liftT1);
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(44.04), liftT2);
+        // 消防:首层照摊(每桶一份)——别把消防也砍了(力灏消防 3 层 342.39 含首层)
+        java.util.List<Object> fireT1 = JsonPath.read(res,
+                "$.data[?(@.ruleId==" + rFire + " && @.tenantId==" + t1 + ")].amount");
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(44.04), fireT1);
+    }
+
     // ── 损耗组结构(2099-10):loss_c_meter 只取指定总表/meter loss_exclude 剔除/variant=2 陈列不出率/
     //    供电侧总表挂栋(infra)不成组(B-G座总电真实档案范式,上轮修复补测) ──
     @Test

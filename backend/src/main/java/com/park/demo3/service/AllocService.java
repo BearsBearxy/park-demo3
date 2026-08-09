@@ -26,6 +26,8 @@ public class AllocService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     // share_water 占位首版不生成(真实数据量不成刀,spec §7)
     private static final String FEE_LOSS = "share_elec_loss";
+    // 刀二:电梯池首层桶不摊(纸约+B座货梯先例);只这一个费键走 skipFirstFloor
+    static final String FEE_ELEVATOR = "share_elec_elevator";
 
     private final AllocRuleMapper rules;
     private final AllocRuleMeterMapper ruleMeters;
@@ -322,10 +324,24 @@ public class AllocService {
         return buckets;
     }
 
+    // 刀二:skipFirstFloor=true → 首层桶整桶剔除(纸约:首层租户不承担电梯维保费和维修费;
+    // 源册先例 B座货梯 2/3/4F 各 1 份首层不摊)。只删桶不动成员解析:整户只在首层 → 无桶无金额。
+    // 仅 share_elec_elevator 池的调用点开这个口;消防/楼层公共每层价含首层,照旧走旧签名。
+    public static Map<String, List<FloorMember>> floorBucketsOf(List<FloorMember> mems, boolean skipFirstFloor) {
+        Map<String, List<FloorMember>> buckets = floorBucketsOf(mems);
+        // 首层判定走 floorNum(兼容 一楼/1楼/1F;库内词汇实测只有 一楼);「未定层」floorNum=null 不受影响
+        if (skipFirstFloor) buckets.keySet().removeIf(f -> Integer.valueOf(1).equals(floorNum(f)));
+        return buckets;
+    }
+
     // 每桶(含「未定层」桶)独立分 1 份 perFloor:桶内 Σ面积>0 按面积拆,Σ面积=0 按户数均分。
     // 摊出总额可能 < 应分摊:coefficient(如 7 层)是账册固定分母,实际有人的层数少于它时差额=空置损失,不做补偿。
     public static FloorSplit floorBuckets(List<FloorMember> mems, BigDecimal perFloor) {
-        Map<String, List<FloorMember>> buckets = floorBucketsOf(mems);
+        return floorBuckets(mems, perFloor, false);
+    }
+
+    public static FloorSplit floorBuckets(List<FloorMember> mems, BigDecimal perFloor, boolean skipFirstFloor) {
+        Map<String, List<FloorMember>> buckets = floorBucketsOf(mems, skipFirstFloor);
         Map<Integer, BigDecimal> amounts = new LinkedHashMap<>();
         for (List<FloorMember> bucket : buckets.values()) {
             BigDecimal areaSum = bucket.stream().map(m -> nz(m.area())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1096,14 +1112,17 @@ public class AllocService {
                     byFloor.add(new FloorMember(m.getTenantId(), fs.chosen(), nz(areaOf.get(m.getTenantId()))));
                 }
                 if (!byFloor.isEmpty()) {
-                    FloorSplit split = floorBuckets(byFloor, perFloor);
+                    // 刀二:电梯池首层桶整桶不摊(纸约「首层租户不承担电梯维保费和维修费」;
+                    // B座货梯先例 2/3/4F 各 1 份);消防/楼层公共每层价含首层,照旧
+                    boolean skip1F = FEE_ELEVATOR.equals(rule.getFeeKey());
+                    FloorSplit split = floorBuckets(byFloor, perFloor, skip1F);
                     amtOf.putAll(split.amounts());
                     // 「未定层」桶照样算 1 份(不摊=白丢钱,比摊错更糟),但必须点名要人去补主数据
                     if (split.unknownCount() > 0)
                         ctx.warnings().add("池「" + rule.getName() + "」有 " + split.unknownCount()
                             + " 户定不出楼层,已按 1 层合摊,请补合同单元或该户户内表楼层");
                     // §E5 桶数超账册分母(floor 池 base_key 恒为空 → base=coefficient,月行覆盖已在 base 里解析)
-                    String over = floorCoefWarn(rule.getName(), floorBucketsOf(byFloor).size(), p.base(),
+                    String over = floorCoefWarn(rule.getName(), floorBucketsOf(byFloor, skip1F).size(), p.base(),
                         amtOf.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add), cost);
                     if (over != null) ctx.warnings().add(over);
                 }
@@ -1144,7 +1163,11 @@ public class AllocService {
         // 计两次就是凭空多出的用量。suspect='incomplete'(档案不全但配不到重复对手)照常入Σ:
         // 5 块挂栋的 p2 临电就在这一档,排掉会让 E=D−C 长期偏低。集合过滤,不动任何公式。
         // 刀H §H2(V79):新增的 ownership='register'(非计费计度寄存器:反向有功/需量等附属读数)
-        // 由下面这个**白名单**天然排除 —— 它不是用电量,进 D 就是把一个绝对读数当增量算(永龙反向有功 15527 度)。
+        // 由下面这个**白名单**天然排除。
+        // ⚠2026-08-09 修订刀H的物理判断:源册「二期园区损耗」S56 分表Σ**确实计入**了那条 15527 度
+        // 无名行(S51,紧挨永龙,prev 空 → N×倍率整段入Σ)——册面就是这么算的,不计入它,二三四车间
+        // 合并链率会从 0.0255 飙到 0.2067(16 户/月多收 ≈7,123)。故该行按 ownership='park' 建档
+        // (园区自担:入损耗 D Σ、不向任何户计费),见 p2-loss-s51-park-meter-20260809.sql。
         if ("shadow".equals(m.getSuspect())) return false;
         String o = m.getOwnership();
         return "tenant".equals(o) || "share".equals(o) || "park".equals(o);
@@ -1712,10 +1735,11 @@ public class AllocService {
             for (AllocRuleMember m : mems)
                 floorsOf.put(m.getTenantId(), memberFloor(m.getTenantId(), r.getBuildingId(),
                     roster.unitsByTenant(), metersByTenant));
-            // §D.6:只有 floor 池才有分桶(显式份额户走人工覆盖,不进桶)
+            // §D.6:只有 floor 池才有分桶(显式份额户走人工覆盖,不进桶);电梯池首层桶已剔,明细串同口径
             String allocNote = !"floor".equals(r.getMethod()) ? null
                 : floorNote(floorBucketsOf(mems.stream().filter(m -> m.getWeight() == null)
-                    .map(m -> new FloorMember(m.getTenantId(), floorsOf.get(m.getTenantId()), null)).toList()));
+                    .map(m -> new FloorMember(m.getTenantId(), floorsOf.get(m.getTenantId()), null)).toList(),
+                    FEE_ELEVATOR.equals(r.getFeeKey())));
             rows.add(new AllocPoolDTOs.PoolRow(r.getId(), r.getZone(), r.getName(),
                 r.getBookBlock(), r.getBookKey(),
                 b == null ? "园区级" : b.getName(),
