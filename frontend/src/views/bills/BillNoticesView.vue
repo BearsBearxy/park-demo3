@@ -9,7 +9,7 @@
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  billNoticesApi, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
+  billNoticesApi, type BillNoteOverrideDTO, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
 } from '@/api/billNotices'
 import { contractApi } from '@/api/contract'
 import { PROPERTY_TYPE_LABEL, type ContractDTO, type PropertyType } from '@/types/contract'
@@ -19,9 +19,10 @@ import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
-  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, mergeMaintRows, rentAreaText,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
+  mergeNoteKey, noteDisplay, noteKeyId, rentAreaText,
   rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  type CrossMark, type QtyCell, type ShareMergeRow, type TenantBuildings, type TenantNoticeRow,
+  type CrossMark, type NoteKey, type QtyCell, type ShareMergeRow, type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -166,17 +167,69 @@ async function openDetail(r: DisplayRow) {
   dlgOpen.value = true
   dlgTab.value = 'rent'
   dlgRow.value = r
+  dlgYm.value = ym.value   // 快照:抽屉开着换月不改备注归属月
   dlgLoading.value = true
   details.value = []
+  noteMap.value = new Map()
+  noteEditKey.value = null
   const my = ++dlgSeq
   try {
-    const ds = await Promise.all(r.noticeIds.map(id => billNoticesApi.detail(id)))
+    const [ds, ns] = await Promise.all([
+      Promise.all(r.noticeIds.map(id => billNoticesApi.detail(id))),
+      // 备注覆盖失败不阻断明细(如后端未升级到 V92):按无覆盖显示引擎备注
+      billNoticesApi.notes(ym.value, r.tenantId).catch(() => [] as BillNoteOverrideDTO[]),
+    ])
     if (my !== dlgSeq) return
     details.value = ds
+    noteMap.value = new Map(ns.map(o => [noteKeyId(o), o.note]))
   } catch (e) {
     if (my !== dlgSeq) return
     alert(errMsg(e, '明细加载失败')); dlgOpen.value = false
   } finally { if (my === dlgSeq) dlgLoading.value = false }
+}
+
+// ── 备注人工覆盖(V92,本刀):独立表挂业务键(重生成先删后插不丢);显示优先级=人工覆盖>引擎备注。
+// 行键:普通行=feeKey+premise+meterId+seg,合并行=feeKey+premise+'merged'(billNoticeLogic 纯函数)。
+// 编辑手法照抄 MeterDetailDrawer 行内编辑(铅笔→行内输入+√/×),入口 hover 显现,仅 admin。
+// 宿舍子表(逐间宽行)本轮不接:另一套版式无独立备注列,待有诉求再开。
+const dlgYm = ref('')
+const noteMap = ref(new Map<string, string>())
+const noteEditKey = ref<string | null>(null)
+const noteDraft = ref('')
+const noteSaving = ref(false)
+const noteCell = (k: NoteKey, engine: string | null) => noteDisplay(noteMap.value, k, engine)
+const noteDotTitle = (engine: string | null) =>
+  `手写备注(引擎原文:${engine || '无'})${canEdit.value ? ';点击恢复引擎备注' : ''}`
+function startNoteEdit(k: NoteKey, current: string) {
+  if (!canEdit.value) return
+  noteEditKey.value = noteKeyId(k)
+  noteDraft.value = current
+}
+async function saveNoteEdit(k: NoteKey) {
+  if (noteSaving.value || !dlgRow.value) return
+  const base = { ym: dlgYm.value, tenantId: dlgRow.value.tenantId, ...k }
+  const text = noteDraft.value.trim()
+  noteSaving.value = true
+  try {
+    if (text) {
+      await billNoticesApi.saveNote({ ...base, note: text })
+      noteMap.value.set(noteKeyId(k), text)
+    } else {   // 清空保存=清除覆盖,恢复引擎备注(后端 DELETE 幂等)
+      await billNoticesApi.deleteNote(base)
+      noteMap.value.delete(noteKeyId(k))
+    }
+    noteEditKey.value = null
+  } catch (e) { alert(errMsg(e, '备注保存失败')) } finally { noteSaving.value = false }
+}
+async function restoreNote(k: NoteKey, engine: string | null) {
+  if (!canEdit.value || noteSaving.value || !dlgRow.value) return
+  if (!confirm(`恢复引擎备注${engine ? `「${engine}」` : '(该行引擎无备注)'}?手写内容将被清除。`)) return
+  noteSaving.value = true
+  try {
+    await billNoticesApi.deleteNote({ ym: dlgYm.value, tenantId: dlgRow.value.tenantId, ...k })
+    noteMap.value.delete(noteKeyId(k))
+    noteEditKey.value = null
+  } catch (e) { alert(errMsg(e, '恢复失败')) } finally { noteSaving.value = false }
 }
 
 // 水电 tab v3(可莱恩 worksheet 版式):非宿舍单→电/水两部逐场地「费块+维护费块」;
@@ -192,8 +245,8 @@ const utilGrand = computed(() => r2(xg.value.total + dorm.value.total))
 // 改造三:维护费块过 mergeMaintRows——公摊五项各一行(纸单口径),小计仍取 groupExcelStyle 的原始行累加。
 type UtilRowVM =
   | { t: 'band'; label: string }
-  | { t: 'line'; no: number; l: BillNoticeLineDTO; q: QtyCell }   // q=刀D 可验算的乘数/单位/显示价
-  | { t: 'merge'; no: number; m: ShareMergeRow<BillNoticeLineDTO> }
+  | { t: 'line'; no: number; l: BillNoticeLineDTO; q: QtyCell; nk: NoteKey }   // q=刀D 可验算的乘数/单位/显示价;nk=备注覆盖行键
+  | { t: 'merge'; no: number; m: ShareMergeRow<BillNoticeLineDTO>; nk: NoteKey }
   | { t: 'sub' | 'part'; label: string; amount: number }
 const utilRows = computed<UtilRowVM[]>(() => {
   const out: UtilRowVM[] = []
@@ -204,8 +257,8 @@ const utilRows = computed<UtilRowVM[]>(() => {
     out.push({ t: 'band', label })
     const rows = merge ? mergeMaintRows(ls) : ls.map(l => ({ kind: 'line' as const, line: l }))
     rows.forEach((r, i) => out.push(r.kind === 'line'
-      ? { t: 'line', no: i + 1, l: r.line, q: billQtyCell(r.line) }
-      : { t: 'merge', no: i + 1, m: r.row }))
+      ? { t: 'line', no: i + 1, l: r.line, q: billQtyCell(r.line), nk: lineNoteKey(r.line) }
+      : { t: 'merge', no: i + 1, m: r.row, nk: mergeNoteKey(r.row.feeKey, r.row.members[0]?.premise ?? null) }))
     if (subLabel) out.push({ t: 'sub', label: subLabel, amount: subAmount })
   }
   const g = xg.value
@@ -427,7 +480,22 @@ const drawerSub = computed(() => {
                     <td><span class="bn-nv" :class="{ empty: l.priceSnap == null }">{{ fmt(l.priceSnap) }}</span></td>
                     <td><span class="bn-nv" :class="{ empty: l.qty == null }">{{ rentAreaText(l.qty, l.baseSnap) ?? '–' }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: l.amount < 0 }">{{ fmt2(l.amount) }}</span></td>
-                    <td class="l"><span class="bn-txt dim" :title="l.note ?? undefined">{{ l.note || '' }}</span></td>
+                    <!-- 备注:人工覆盖>引擎;hover 出铅笔(admin),小圆点=有覆盖(悬浮引擎原文,点击恢复) -->
+                    <td class="l">
+                      <div class="bn-notec">
+                        <template v-if="noteEditKey === noteKeyId(lineNoteKey(l))">
+                          <input v-model="noteDraft" class="bn-nin" :disabled="noteSaving" placeholder="备注(清空保存=恢复引擎备注)"
+                            @keydown.enter.prevent="saveNoteEdit(lineNoteKey(l))" @keydown.esc.stop="noteEditKey = null" />
+                          <button class="bn-nop ok" title="保存" :disabled="noteSaving" @click="saveNoteEdit(lineNoteKey(l))"><component :is="iconFor('check')" :size="14" /></button>
+                          <button class="bn-nop" title="取消" :disabled="noteSaving" @click="noteEditKey = null"><component :is="iconFor('x')" :size="14" /></button>
+                        </template>
+                        <template v-else>
+                          <span class="bn-txt dim" :title="noteCell(lineNoteKey(l), l.note).text || undefined">{{ noteCell(lineNoteKey(l), l.note).text }}</span>
+                          <span v-if="noteCell(lineNoteKey(l), l.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(l.note)" @click="restoreNote(lineNoteKey(l), l.note)"></span>
+                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(lineNoteKey(l), noteCell(lineNoteKey(l), l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                        </template>
+                      </div>
+                    </td>
                   </tr>
                   <tr class="bn-sub">
                     <td :colspan="4" class="l"><span class="bn-txt dim">小计 · {{ g.label }}</span></td>
@@ -511,7 +579,22 @@ const drawerSub = computed(() => {
                     </td>
                     <td><span class="bn-nv" :class="{ empty: r0.l.priceSnap == null }" :title="r0.l.priceSnap != null ? String(r0.l.priceSnap) : undefined">{{ r0.q.price }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r0.l.amount < 0 }">{{ fmt2(r0.l.amount) }}</span></td>
-                    <td class="l"><span class="bn-txt dim" :title="r0.l.note ?? undefined">{{ r0.l.note || '' }}</span></td>
+                    <!-- 备注:人工覆盖>引擎;hover 出铅笔(admin),小圆点=有覆盖(悬浮引擎原文,点击恢复) -->
+                    <td class="l">
+                      <div class="bn-notec">
+                        <template v-if="noteEditKey === noteKeyId(r0.nk)">
+                          <input v-model="noteDraft" class="bn-nin" :disabled="noteSaving" placeholder="备注(清空保存=恢复引擎备注)"
+                            @keydown.enter.prevent="saveNoteEdit(r0.nk)" @keydown.esc.stop="noteEditKey = null" />
+                          <button class="bn-nop ok" title="保存" :disabled="noteSaving" @click="saveNoteEdit(r0.nk)"><component :is="iconFor('check')" :size="14" /></button>
+                          <button class="bn-nop" title="取消" :disabled="noteSaving" @click="noteEditKey = null"><component :is="iconFor('x')" :size="14" /></button>
+                        </template>
+                        <template v-else>
+                          <span class="bn-txt dim" :title="noteCell(r0.nk, r0.l.note).text || undefined">{{ noteCell(r0.nk, r0.l.note).text }}</span>
+                          <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
+                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                        </template>
+                      </div>
+                    </td>
                     <td class="ct">
                       <span v-if="auditTitle(r0.l)" class="bn-info" :title="auditTitle(r0.l)!">
                         <component :is="iconFor('info')" :size="13" />
@@ -534,7 +617,22 @@ const drawerSub = computed(() => {
                     </td>
                     <td><span class="bn-nv" :class="{ empty: r0.m.price == null }">{{ r0.m.price ?? '–' }}</span></td>
                     <td><span class="bn-sumc" :class="{ neg: r0.m.amount < 0 }">{{ fmt2(r0.m.amount) }}</span></td>
-                    <td class="l"><span class="bn-txt dim">{{ r0.m.note || '' }}</span></td>
+                    <!-- 合并行备注:键=feeKey+premise+'merged'(多池/多表合一行无单一 meter_id) -->
+                    <td class="l">
+                      <div class="bn-notec">
+                        <template v-if="noteEditKey === noteKeyId(r0.nk)">
+                          <input v-model="noteDraft" class="bn-nin" :disabled="noteSaving" placeholder="备注(清空保存=恢复引擎备注)"
+                            @keydown.enter.prevent="saveNoteEdit(r0.nk)" @keydown.esc.stop="noteEditKey = null" />
+                          <button class="bn-nop ok" title="保存" :disabled="noteSaving" @click="saveNoteEdit(r0.nk)"><component :is="iconFor('check')" :size="14" /></button>
+                          <button class="bn-nop" title="取消" :disabled="noteSaving" @click="noteEditKey = null"><component :is="iconFor('x')" :size="14" /></button>
+                        </template>
+                        <template v-else>
+                          <span class="bn-txt dim" :title="noteCell(r0.nk, r0.m.note).text || undefined">{{ noteCell(r0.nk, r0.m.note).text }}</span>
+                          <span v-if="noteCell(r0.nk, r0.m.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(r0.m.note)" @click="restoreNote(r0.nk, r0.m.note)"></span>
+                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.m.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                        </template>
+                      </div>
+                    </td>
                     <td></td>
                   </tr>
                   <tr v-else :class="r0.t === 'part' ? 'bn-part' : 'bn-sub'">
@@ -799,4 +897,22 @@ const drawerSub = computed(() => {
 /* 审计链 info 图标 */
 .bn-info { display: inline-grid; place-items: center; color: var(--text-disabled); cursor: help; }
 .bn-info:hover { color: var(--hue-blue); }
+
+/* ── 备注人工覆盖(V92):hover 出铅笔;小圆点=有覆盖(悬浮引擎原文,admin 点击恢复) ── */
+.bn-notec { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bn-notec .bn-txt { flex: 1 1 auto; min-width: 0; }
+.bn-ndot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); cursor: help; }
+.bn-ndot.act { cursor: pointer; }
+/* 铅笔入口:hover 该行才显现(admin);占位不塌行 */
+.bn-npen { flex: 0 0 auto; display: inline-grid; place-items: center; width: 20px; height: 20px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; visibility: hidden; }
+.bn-dtable tbody tr:hover .bn-npen { visibility: visible; }
+.bn-npen:hover { background: var(--surface-sunken); color: var(--hue-blue); }
+/* 行内输入(静默融入单元格,同 .ec-in/.md-din 家族)+ 保存/取消小按钮 */
+.bn-nin { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 24px; padding: 0 6px; border: 1px solid var(--hue-blue); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12px; color: var(--text-primary); }
+.bn-nin:focus { outline: none; }
+.bn-nin::placeholder { color: var(--text-disabled); }
+.bn-nop { flex: 0 0 auto; display: inline-grid; place-items: center; width: 20px; height: 20px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; }
+.bn-nop:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.bn-nop.ok { color: var(--hue-green); }
+.bn-nop:disabled { opacity: .5; cursor: default; }
 </style>

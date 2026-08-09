@@ -745,4 +745,88 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(share.get("poolName")).isEqualTo("IT电梯池");
         assertThat(one(feeLines(body, "elec")).get("poolName")).isNull();
     }
+
+    // ── 备注人工覆盖(V92)helpers ──
+
+    private String notes(String ym, int tenantId) throws Exception {
+        return new String(mvc.perform(get("/api/bill-notices/notes").param("ym", ym)
+                .param("tenantId", String.valueOf(tenantId)).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private void putNote(String ym, int tenantId, int meterId, String note) throws Exception {
+        mvc.perform(put("/api/bill-notices/notes").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"ym\":\"" + ym + "\",\"tenantId\":" + tenantId + ",\"feeKey\":\"elec\","
+                        + "\"premiseKey\":\"\",\"meterKey\":\"" + meterId + "\",\"segKey\":\"\","
+                        + "\"note\":\"" + note + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    // ── t19 备注人工覆盖(V92):upsert→fetch→二次 upsert 仍一行→重生成后 override 存活且键仍挂得回
+    //    新行(meter_id 稳定)→delete=恢复引擎默认。独立表挂业务键,先删后插重生成天然不丢。槽 2091-10 ──
+    @Test
+    void t19_noteOverride_upsertFetch_survivesRegenerate_delete() throws Exception {
+        String ym = "2091-10";
+        monthlyPrices(ym);
+        int t = createTenant("IT备注覆盖户");
+        int c = contract(t, "2089-01-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT备注覆盖电", t);
+        bind(m, c);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+        generate(ym);
+
+        // upsert + fetch:普通行键=feeKey+premise(本例空)+meterId+seg(非分时空)
+        putNote(ym, t, m, "手写备注一");
+        List<Map<String, Object>> rows = JsonPath.read(notes(ym, t), "$.data");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("note")).isEqualTo("手写备注一");
+        assertThat(rows.get(0).get("meterKey")).isEqualTo(String.valueOf(m));
+        // 二次 upsert 同键:仍一行,note 更新(uk_note_override 命中即改)
+        putNote(ym, t, m, "手写备注二");
+        rows = JsonPath.read(notes(ym, t), "$.data");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("note")).isEqualTo("手写备注二");
+
+        // 重生成(先删后插):override 存活,且新行同键(meter_id 稳定)——前端叠加仍能挂回
+        generate(ym);
+        rows = JsonPath.read(notes(ym, t), "$.data");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("note")).isEqualTo("手写备注二");
+        Map<String, Object> line = elecOfMeter(detail(soleNoticeId(ym, t)), m);
+        assertThat(line.get("seg")).isNull();
+        assertThat(line.get("premise")).isNull();   // 键三列与 override 空串键一致
+
+        // delete=恢复引擎默认;幂等(再删不报错)
+        mvc.perform(delete("/api/bill-notices/notes").header("Authorization", auth())
+                .param("ym", ym).param("tenantId", String.valueOf(t))
+                .param("feeKey", "elec").param("meterKey", String.valueOf(m)))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(JsonPath.<List<?>>read(notes(ym, t), "$.data")).isEmpty();
+        mvc.perform(delete("/api/bill-notices/notes").header("Authorization", auth())
+                .param("ym", ym).param("tenantId", String.valueOf(t))
+                .param("feeKey", "elec").param("meterKey", String.valueOf(m)))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    // ── t20 备注覆盖权限:GET=已登录可读(viewer 200),写=admin(viewer PUT/DELETE 403;SecurityConfig 统一门) ──
+    @Test
+    void t20_noteOverride_viewerReadOnly() throws Exception {
+        String vBody = mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"viewer\",\"password\":\"viewer123\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String vAuth = "Bearer " + JsonPath.read(vBody, "$.data.token");
+        mvc.perform(get("/api/bill-notices/notes").param("ym", "2091-10").param("tenantId", "1")
+                .header("Authorization", vAuth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        mvc.perform(put("/api/bill-notices/notes").header("Authorization", vAuth)
+                .contentType("application/json")
+                .content("{\"ym\":\"2091-10\",\"tenantId\":1,\"feeKey\":\"elec\",\"note\":\"越权\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(403));
+        mvc.perform(delete("/api/bill-notices/notes").header("Authorization", vAuth)
+                .param("ym", "2091-10").param("tenantId", "1").param("feeKey", "elec"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(403));
+    }
 }

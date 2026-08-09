@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { ALLOC_FEE_LABEL } from './allocLogic'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
-  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, mergeMaintRows, priceScopeLabel,
+  groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
+  mergeNoteKey, noteDisplay, noteKeyId, priceScopeLabel,
   rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
   type DormLineBase, type NoticeLike, type RentLineBase,
 } from './billNoticeLogic'
@@ -18,7 +19,7 @@ describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造�
   // 2026-08-08 用户点名:公摊六键=租户单上的费用项名(不是电表/池档案名),与 ALLOC_FEE_LABEL 脱钩
   it('公摊六键走租户单口径', () => {
     expect(billFeeLabel('share_elec_floor')).toBe('楼层公共')
-    expect(billFeeLabel('share_elec_fire')).toBe('消防照明')
+    expect(billFeeLabel('share_elec_fire')).toBe('消防用电')   // 二期纸单原文(2026-08-09 全册 68 sheet 词汇铁证:「消防照明」0 次)
     expect(billFeeLabel('share_elec_elevator')).toBe('电梯用电')
     expect(billFeeLabel('share_elec_loss')).toBe('线路损耗')
     expect(billFeeLabel('share_elec_light')).toBe('路灯公摊')
@@ -278,7 +279,9 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
     l({ feeKey: 'share_elec_loss', qty: 205.6, priceSnap: 0.0213, baseSnap: 538.1, amount: 11.46, note: '链[一期 B座]损耗=(场地电费 147.36+公摊 390.74)×率 0.02130000' }),
   ]
 
-  it('五项映射:floor+fire 是一项不是两项(源册 F4 表头一格文字一列钱)', () => {
+  // 2026-08-09 词汇定案改写:floor 与 fire 各按各的纸单显名(一期 zh!F4=「楼层公共、消防照明」只有 floor 键;
+  // 二期全册 68 sheet「消防照明/楼层公共」0 次、行名一律「消防用电」)。两键按期互斥,同现时出两行更诚实。
+  it('六项映射:floor 显一期表头,fire 显二期「消防用电」;两键同现出两行不硬并', () => {
     const rs = mergeMaintRows([
       l({ feeKey: 'share_elec_floor', poolName: '二期 一车间·楼层照明', amount: 10 }),
       l({ feeKey: 'share_elec_fire', poolName: '二期园区·消防设施', shareSrc: 'area', baseSnap: 100, priceSnap: 0.1, amount: 10 }),
@@ -287,9 +290,10 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
       l({ feeKey: 'share_elec_light', poolName: '二期园区·路灯', amount: 2 }),
       l({ feeKey: 'share_green_water', poolName: '二期园区·绿化水', amount: 1 }),
     ])
-    expect(labels(rs)).toEqual(['楼层公共、消防照明', '电梯用电', '线路损耗', '路灯公摊', '绿化水公摊'])
-    expect(rowsOf(rs)[0].members.map(m => m.feeKey)).toEqual(['share_elec_floor', 'share_elec_fire'])
-    expect(rowsOf(rs)[0].amount).toBe(20)
+    expect(labels(rs)).toEqual(['楼层公共、消防照明', '消防用电', '电梯用电', '线路损耗', '路灯公摊', '绿化水公摊'])
+    expect(rowsOf(rs)[0].members.map(m => m.feeKey)).toEqual(['share_elec_floor'])
+    expect(rowsOf(rs)[1].members.map(m => m.feeKey)).toEqual(['share_elec_fire'])
+    expect(rowsOf(rs)[0].amount + rowsOf(rs)[1].amount).toBe(20)   // 拆两行金额守恒
   })
 
   // 抽屉费项列是定宽 128px(= 9 全角字 ×12px + padding 16),放不下更长的标签就又会像 98px 那样截字。
@@ -396,15 +400,15 @@ describe('mergeMaintRows 改造三:维护费块按纸单合并成一行(2026-08-
     expect(g.title.split('\n')).toHaveLength(g.members.length)
   })
 
-  it('组内两个费项键(二期 floor+fire)时逐条前缀费项名,答「哪块表的哪一项费用」', () => {
-    const [g] = rowsOf(mergeMaintRows([
+  // 词汇定案后 floor/fire 不再同组,原「混合键前缀」场景对这两键不复存在——各出各的行,悬浮无前缀
+  it('floor 与 fire 各自成行,悬浮各说各的来源(不再共组加前缀)', () => {
+    const rs = rowsOf(mergeMaintRows([
       l({ feeKey: 'share_elec_floor', shareSrc: 'member', poolName: '二期 一车间·楼层照明', qty: 3, priceSnap: 1.1, amount: 3.3 }),
       l({ feeKey: 'share_elec_fire', shareSrc: 'area', poolName: '二期园区·消防设施', qty: 11.6, priceSnap: 0.895115, baseSnap: 714.3, amount: 10.71 }),
     ]))
-    expect(g.title.split('\n')).toEqual([
-      '楼层公共·二期 一车间·楼层照明 3.30 元 —— 这块表只服务你一家,本月走了 3 度,每度 1.1 元,整块电费都算你的',
-      '消防照明·二期园区·消防设施 10.71 元 —— 这是大家一起用的,按各家面积摊,每平米 1.5 分钱,你的面积 714.3 ㎡',
-    ])
+    expect(rs).toHaveLength(2)
+    expect(rs[0].title).toBe('二期 一车间·楼层照明 3.30 元 —— 这块表只服务你一家,本月走了 3 度,每度 1.1 元,整块电费都算你的')
+    expect(rs[1].title).toBe('二期园区·消防设施 10.71 元 —— 这是大家一起用的,按各家面积摊,每平米 1.5 分钱,你的面积 714.3 ㎡')
   })
 
   it('组内费项键单一时不加费项名前缀;损耗链名仍从 note 取', () => {
@@ -865,4 +869,38 @@ describe('tenantKpis KPI(v2:户数/水电总额/月租金合计(参考)/警告�
     expect(tenantKpis([r(100.5, 2000, null), r(0.25, null, '缺价'), r(-10, 1.05, '负数')]))
       .toEqual({ count: 3, total: 90.75, rent: 2001.05, warned: 2 }))
   it('空期=全 0', () => expect(tenantKpis([])).toEqual({ count: 0, total: 0, rent: 0, warned: 0 }))
+})
+
+describe('备注人工覆盖(V92):行键生成 + 显示优先级 + 恢复', () => {
+  it('普通行键=feeKey+premise+meterId+seg;空位=空串(与后端键列空串口径一致)', () => {
+    expect(lineNoteKey({ feeKey: 'elec', premise: 'A座309室', meterId: 42, seg: 'peak' }))
+      .toEqual({ feeKey: 'elec', premiseKey: 'A座309室', meterKey: '42', segKey: 'peak' })
+    expect(lineNoteKey({ feeKey: 'capacity', premise: null, meterId: null, seg: null }))
+      .toEqual({ feeKey: 'capacity', premiseKey: '', meterKey: '', segKey: '' })
+  })
+  it("合并行键=feeKey+premise+'merged'", () =>
+    expect(mergeNoteKey('share_elec_floor', 'B座201室'))
+      .toEqual({ feeKey: 'share_elec_floor', premiseKey: 'B座201室', meterKey: 'merged', segKey: '' }))
+  it('noteKeyId:键段含逗号/竖线不撞键(JSON 序列化,无分隔符歧义)', () => {
+    const a = noteKeyId({ feeKey: 'elec', premiseKey: 'A,B', meterKey: '', segKey: '' })
+    const b = noteKeyId({ feeKey: 'elec,A', premiseKey: 'B', meterKey: '', segKey: '' })
+    expect(a).not.toBe(b)
+    // 同键稳定相等(Map 命中前提)
+    expect(noteKeyId(lineNoteKey({ feeKey: 'elec', premise: null, meterId: 7, seg: null })))
+      .toBe(noteKeyId({ feeKey: 'elec', premiseKey: '', meterKey: '7', segKey: '' }))
+  })
+  it('优先级:有覆盖显覆盖并带 overridden 标记,引擎原文保留(悬浮/恢复用)', () => {
+    const k = lineNoteKey({ feeKey: 'elec', premise: null, meterId: 7, seg: null })
+    const m = new Map([[noteKeyId(k), '手写备注']])
+    expect(noteDisplay(m, k, '引擎备注')).toEqual({ text: '手写备注', overridden: true, engine: '引擎备注' })
+    // 引擎无备注也可覆盖(engine=null)
+    expect(noteDisplay(m, k, null)).toEqual({ text: '手写备注', overridden: true, engine: null })
+  })
+  it('恢复:清掉覆盖后回落引擎备注;引擎也无=空串', () => {
+    const k = mergeNoteKey('share_green_water', null)
+    const m = new Map([[noteKeyId(k), '手写']])
+    m.delete(noteKeyId(k))
+    expect(noteDisplay(m, k, '面积×公摊单价')).toEqual({ text: '面积×公摊单价', overridden: false, engine: '面积×公摊单价' })
+    expect(noteDisplay(m, k, null)).toEqual({ text: '', overridden: false, engine: null })
+  })
 })

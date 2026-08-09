@@ -1,0 +1,1709 @@
+﻿term_id	contract_id	租户	合同栋	fee_key	面积	location	绑定栋	栋来源	unit_no	楼层	方式	flags
+3310	16	汤周杰	22	rent_factory	3108.00	一期D座二楼	22	text	2F整层	2	match	whole_floor
+3410	61	双成	26	rent_dorm	0.00	宿舍305室	26	room_unique	305	3	match	room_unique
+3465	73	李李商铺	12	rent_shop	120.00	宿金区二号楼首层2110室	27	text	110	1	match	bld_mismatch(合同12)
+3617	145	保奔路	30	infra	1600.00	二期 8号楼⏎（一车间）602单元	30	text	602	6	match	
+3895	2	银纳	23	rent_factory	256.52	一期E座首层103室	23	text	103	1	match	
+6459	52	银纳	39	rent_factory	256.52	一期E座首层103室	23	text	103	1	match	bld_mismatch(合同39)
+6460	52	银纳	39	mgmt	256.52	一期E座首层103室	23	text	103	1	match	bld_mismatch(合同39)
+6461	52	银纳	39	infra	256.52	一期E座首层103室	23	text	103	1	match	bld_mismatch(合同39)
+6462	52	银纳	39	transformer	0.00	一期E座首层103室	23	text	103	1	match	bld_mismatch(合同39)
+6467	296	戎合	13	rent_factory	242.18	A座501室展厅	13	text	501	5	match	
+6468	296	戎合	13	infra	242.18	A座501室展厅	13	text	501	5	match	
+6469	296	戎合	13	rent_land	143.00	A座天面空地	13	text	天面空地	1	match	
+6470	93	成吉	13	rent_office	446.40	A座208室	13	text	208	2	match	
+6471	93	成吉	13	infra	446.40	A座208室	13	text	208	2	match	
+6472	93	成吉	13	elevator	0.00	A座208室	13	text	208	2	match	
+6473	93	成吉	13	transformer	0.00	A座208室	13	text	208	2	match	
+6495	297	飞度	22	rent_factory	627.50	D座401室	22	text	401	4	match	
+6496	297	飞度	22	infra	627.50	D座401室	22	text	401	4	match	
+6497	297	飞度	22	elevator	0.00	D座401室	22	text	401	4	match	
+6498	297	飞度	22	transformer	0.00	D座401室	22	text	401	4	match	
+6501	95	可莱恩	13	rent_office	1528.00	A座602室	13	text	602	6	match	
+6502	95	可莱恩	13	infra	0.00	A座602室	13	text	602	6	match	
+6503	95	可莱恩	13	elevator	0.00	A座602室	13	text	602	6	match	
+6504	406	可莱恩	20	rent_factory	2700.00	B座201室	20	text	201	2	match	
+6505	406	可莱恩	20	infra	0.00	B座201室	20	text	201	2	match	
+6506	406	可莱恩	20	elevator	0.00	B座201室	20	text	201	2	match	
+6507	406	可莱恩	20	transformer	0.00	B座201室	20	text	201	2	match	
+6521	6	中科美业	21	rent_factory	1450.00	C座四层402室	21	text	402	4	match	
+6522	6	中科美业	21	infra	0.00	C座四层402室	21	text	402	4	match	
+6523	6	中科美业	21	elevator	0.00	C座四层402室	21	text	402	4	match	
+6524	6	中科美业	21	transformer	0.00	C座四层402室	21	text	402	4	match	
+6525	96	新材料协会	13	rent_office	249.80	A座六层612、613室	13	text	612	6	match	
+6525	96	新材料协会	13	rent_office	249.80	A座六层612、613室	13	text	613	6	match	
+6526	96	新材料协会	13	infra	0.00	A座六层612、613室	13	text	612	6	match	
+6526	96	新材料协会	13	infra	0.00	A座六层612、613室	13	text	613	6	match	
+6527	96	新材料协会	13	elevator	0.00	A座六层612、613室	13	text	612	6	match	
+6527	96	新材料协会	13	elevator	0.00	A座六层612、613室	13	text	613	6	match	
+6528	96	新材料协会	13	transformer	0.00	A座六层612、613室	13	text	612	6	match	
+6528	96	新材料协会	13	transformer	0.00	A座六层612、613室	13	text	613	6	match	
+6529	132	次生代	13	rent_office	526.50	A座616、618室	13	text	616	6	match	
+6529	132	次生代	13	rent_office	526.50	A座616、618室	13	text	618	6	match	
+6530	132	次生代	13	rent_land	263.30	A座616、618室	13	text	616	6	match	
+6530	132	次生代	13	rent_land	263.30	A座616、618室	13	text	618	6	match	
+6531	132	次生代	13	infra	789.80	A座616、618室	13	text	616	6	match	
+6531	132	次生代	13	infra	789.80	A座616、618室	13	text	618	6	match	
+6532	132	次生代	13	elevator	0.00	A座616、618室	13	text	616	6	match	
+6532	132	次生代	13	elevator	0.00	A座616、618室	13	text	618	6	match	
+6533	132	次生代	13	transformer	0.00	A座616、618室	13	text	616	6	match	
+6533	132	次生代	13	transformer	0.00	A座616、618室	13	text	618	6	match	
+6534	132	次生代	13	land_tax	0.00	A座616、618室	13	text	616	6	match	
+6534	132	次生代	13	land_tax	0.00	A座616、618室	13	text	618	6	match	
+6539	7	一元兰欣	22	rent_factory	1445.00	D座403室	22	text	403	4	match	
+6540	7	一元兰欣	22	rent_land	722.50	D座403室	22	text	403	4	match	
+6541	7	一元兰欣	22	infra	1445.00	D座403室	22	text	403	4	match	
+6542	7	一元兰欣	22	elevator	0.00	D座403室	22	text	403	4	match	
+6543	7	一元兰欣	22	transformer	0.00	D座403室	22	text	403	4	match	
+6544	7	一元兰欣	22	land_tax	0.00	D座403室	22	text	403	4	match	
+6545	7	一元兰欣	22	rent_dorm	36.53	宿舍四座442室	29	text	442	4	match	bld_mismatch(合同22)
+6546	7	一元兰欣	22	infra	36.53	宿舍四座442室	29	text	442	4	match	bld_mismatch(合同22)
+6547	7	一元兰欣	22	access	0.00	宿舍四座442室	29	text	442	4	match	bld_mismatch(合同22)
+6548	7	一元兰欣	22	network	0.00	宿舍四座442室	29	text	442	4	match	bld_mismatch(合同22)
+6551	99	双成	13	rent_office	416.00	A座孵化器K306室	13	text	K306	3	match	
+6552	99	双成	13	infra	416.00	A座孵化器K306室	13	text	K306	3	match	
+6553	99	双成	13	elevator	0.00	A座孵化器K306室	13	text	K306	3	match	
+6554	99	双成	13	transformer	0.00	A座孵化器K306室	13	text	K306	3	match	
+6555	99	双成	13	land_tax	0.00	A座孵化器K306室	13	text	K306	3	match	
+6556	99	双成	13	rent_dorm	32.01	宿舍305室	26	room_unique	305	3	match	room_unique;bld_mismatch(合同13)
+6557	99	双成	13	infra	32.01	宿舍305室	26	room_unique	305	3	match	room_unique;bld_mismatch(合同13)
+6558	99	双成	13	access	0.00	宿舍305室	26	room_unique	305	3	match	room_unique;bld_mismatch(合同13)
+6559	99	双成	13	network	0.00	宿舍305室	26	room_unique	305	3	match	room_unique;bld_mismatch(合同13)
+6560	298	联塑精铟	13	rent_office	1548.00	A座孵化器A102室	13	text	A102	1	match	
+6565	100	粤海华创	13	rent_office	165.14	A座孵化器四楼411室	13	text	411	4	match	
+6566	100	粤海华创	13	mgmt	165.14	A座孵化器四楼411室	13	text	411	4	match	
+6580	102	禹晨	13	rent_office	212.68	A座孵化器四楼429室、430室、431室	13	text	429	4	match	
+6580	102	禹晨	13	rent_office	212.68	A座孵化器四楼429室、430室、431室	13	text	430	4	match	
+6580	102	禹晨	13	rent_office	212.68	A座孵化器四楼429室、430室、431室	13	text	431	4	match	
+6581	102	禹晨	13	mgmt	212.68	A座孵化器四楼429室、430室、431室	13	text	429	4	match	
+6581	102	禹晨	13	mgmt	212.68	A座孵化器四楼429室、430室、431室	13	text	430	4	match	
+6581	102	禹晨	13	mgmt	212.68	A座孵化器四楼429室、430室、431室	13	text	431	4	match	
+6582	402	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+6582	402	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+6582	402	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+6583	402	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+6583	402	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+6583	402	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+6584	402	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	311	3	match	
+6584	402	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	312	3	match	
+6584	402	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	313	3	match	
+6585	402	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	311	3	match	
+6585	402	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	312	3	match	
+6585	402	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	313	3	match	
+6586	402	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+6586	402	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+6586	402	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+6587	403	仁恒	13	rent_office	157.56	A座孵化器三楼315室	13	text	315	3	match	
+6588	403	仁恒	13	mgmt	157.56	A座孵化器三楼315室	13	text	315	3	match	
+6589	403	仁恒	13	elevator	0.00	A座孵化器三楼315室	13	text	315	3	match	
+6590	403	仁恒	13	land_tax	157.56	A座孵化器三楼315室	13	text	315	3	match	
+6591	62	仁恒	26	rent_dorm	46.02	宿舍新俊楼一座503室	26	text	503	5	match	
+6592	62	仁恒	26	infra	46.02	宿舍新俊楼一座503室	26	text	503	5	match	
+6593	62	仁恒	26	network	0.00	宿舍新俊楼一座503室	26	text	503	5	match	
+6594	62	仁恒	26	access	0.00	宿舍新俊楼一座503室	26	text	503	5	match	
+6595	62	仁恒	26	rent_dorm	36.53	宿舍新俊楼一座409室	26	text	409	4	match	
+6596	62	仁恒	26	infra	36.53	宿舍新俊楼一座409室	26	text	409	4	match	
+6597	62	仁恒	26	network	0.00	宿舍新俊楼一座409室	26	text	409	4	match	
+6598	62	仁恒	26	access	0.00	宿舍新俊楼一座409室	26	text	409	4	match	
+6599	104	采妍	13	rent_office	578.60	A座孵化器三楼316、317号室	13	text	316	3	match	
+6599	104	采妍	13	rent_office	578.60	A座孵化器三楼316、317号室	13	text	317	3	match	
+6600	104	采妍	13	mgmt	578.60	A座孵化器三楼316、317号室	13	text	316	3	match	
+6600	104	采妍	13	mgmt	578.60	A座孵化器三楼316、317号室	13	text	317	3	match	
+6601	104	采妍	13	elevator	0.00	A座孵化器三楼316、317号室	13	text	316	3	match	
+6601	104	采妍	13	elevator	0.00	A座孵化器三楼316、317号室	13	text	317	3	match	
+6602	104	采妍	13	transformer	0.00	A座孵化器三楼316、317号室	13	text	316	3	match	
+6602	104	采妍	13	transformer	0.00	A座孵化器三楼316、317号室	13	text	317	3	match	
+6603	104	采妍	13	rent_office	153.71	A座孵化器三楼318号室	13	text	318	3	create	
+6604	104	采妍	13	mgmt	153.71	A座孵化器三楼318号室	13	text	318	3	create	
+6605	106	优唯特	13	rent_office	157.56	A座四楼418室	13	text	418	4	match	
+6606	106	优唯特	13	mgmt	157.56	A座四楼418室	13	text	418	4	match	
+6607	106	优唯特	13	transformer	0.00	A座四楼418室	13	text	418	4	match	
+6608	106	优唯特	13	rent_office	158.43	A座四楼423室	13	text	423	4	match	
+6609	106	优唯特	13	mgmt	158.43	A座四楼423室	13	text	423	4	match	
+6610	10	信成洋	23	rent_factory	794.00	一期E座首层101室	23	text	101	1	match	
+6611	10	信成洋	23	mgmt	794.00	一期E座首层101室	23	text	101	1	match	
+6612	10	信成洋	23	infra	794.00	一期E座首层101室	23	text	101	1	match	
+6613	10	信成洋	23	transformer	0.00	一期E座首层101室	23	text	101	1	match	
+6614	11	叶子涛	22	rent_factory	1900.00	一期D座首层103室	22	text	103	1	match	
+6615	11	叶子涛	22	mgmt	1900.00	一期D座首层103室	22	text	103	1	match	
+6616	11	叶子涛	22	infra	1900.00	一期D座首层103室	22	text	103	1	match	
+6617	11	叶子涛	22	transformer	0.00	一期D座首层103室	22	text	103	1	match	
+6618	299	重瞳	13	rent_office	264.84	A座孵化器四楼439室、440室	13	text	439	4	match	
+6618	299	重瞳	13	rent_office	264.84	A座孵化器四楼439室、440室	13	text	440	4	match	
+6619	299	重瞳	13	mgmt	264.84	A座孵化器四楼439室、440室	13	text	439	4	match	
+6619	299	重瞳	13	mgmt	264.84	A座孵化器四楼439室、440室	13	text	440	4	match	
+6620	12	杨文正	20	rent_factory	1715.00	一期B座首层102室	20	text	102	1	match	
+6621	12	杨文正	20	mgmt	1715.00	一期B座首层102室	20	text	102	1	match	
+6622	12	杨文正	20	infra	1715.00	一期B座首层102室	20	text	102	1	match	
+6623	12	杨文正	20	transformer	0.00	一期B座首层102室	20	text	102	1	match	
+6624	46	金准智能	13	rent_office	95.43	一期A座孵化器四楼426室	13	text	426	4	match	
+6625	46	金准智能	13	mgmt	95.43	一期A座孵化器四楼426室	13	text	426	4	match	
+6626	46	金准智能	13	elevator	0.00	一期A座孵化器四楼426室	13	text	426	4	match	
+6627	15	张彦	20	rent_factory	1460.00	一期B座首层103室	20	text	103	1	match	
+6628	15	张彦	20	mgmt	1460.00	一期B座首层103室	20	text	103	1	match	
+6629	15	张彦	20	infra	1460.00	一期B座首层103室	20	text	103	1	match	
+6630	15	张彦	20	transformer	0.00	一期B座首层103室	20	text	103	1	match	
+6631	14	天玛	23	rent_factory	1460.00	一期E座二楼201室	23	text	201	2	match	
+6632	14	天玛	23	mgmt	1460.00	一期E座二楼201室	23	text	201	2	match	
+6633	14	天玛	23	infra	1460.00	一期E座二楼201室	23	text	201	2	match	
+6634	14	天玛	23	elevator	0.00	一期E座二楼201室	23	text	201	2	match	
+6635	14	天玛	23	transformer	0.00	一期E座二楼201室	23	text	201	2	match	
+6636	407	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+6636	407	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+6636	407	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+6637	407	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+6637	407	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+6637	407	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+6638	407	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+6638	407	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+6638	407	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+6639	407	碳紫	23	rent_factory	1973.00	一期E座104室	23	text	104	1	match	
+6640	407	碳紫	23	mgmt	1973.00	一期E座104室	23	text	104	1	match	
+6641	407	碳紫	23	infra	1973.00	一期E座104室	23	text	104	1	match	
+6642	407	碳紫	23	transformer	0.00	一期E座104室	23	text	104	1	match	
+6649	108	林春艳	13	rent_office	307.42	A座孵化器三楼321、322室	13	text	321	3	match	
+6649	108	林春艳	13	rent_office	307.42	A座孵化器三楼321、322室	13	text	322	3	create	
+6650	108	林春艳	13	mgmt	307.42	A座孵化器三楼321、322室	13	text	321	3	match	
+6650	108	林春艳	13	mgmt	307.42	A座孵化器三楼321、322室	13	text	322	3	create	
+6651	108	林春艳	13	elevator	0.00	A座孵化器三楼321、322室	13	text	321	3	match	
+6651	108	林春艳	13	elevator	0.00	A座孵化器三楼321、322室	13	text	322	3	create	
+6652	108	林春艳	13	transformer	0.00	A座孵化器三楼321、322室	13	text	321	3	match	
+6652	108	林春艳	13	transformer	0.00	A座孵化器三楼321、322室	13	text	322	3	create	
+6653	64	汤周杰	29	rent_factory	3108.00	一期D座二楼	22	text	2F整层	2	match	whole_floor;bld_mismatch(合同29)
+6654	64	汤周杰	29	mgmt	3108.00	一期D座二楼	22	text	2F整层	2	match	whole_floor;bld_mismatch(合同29)
+6655	64	汤周杰	29	infra	3108.00	一期D座二楼	22	text	2F整层	2	match	whole_floor;bld_mismatch(合同29)
+6656	64	汤周杰	29	elevator	0.00	一期D座二楼	22	text	2F整层	2	match	whole_floor;bld_mismatch(合同29)
+6657	64	汤周杰	29	transformer	0.00	一期D座二楼	22	text	2F整层	2	match	whole_floor;bld_mismatch(合同29)
+6658	64	汤周杰	29	rent_dorm	74.52	宿舍楼四座630室	29	text	630	6	match	
+6659	64	汤周杰	29	infra	74.52	宿舍楼四座630室	29	text	630	6	match	
+6660	64	汤周杰	29	access	0.00	宿舍楼四座630室	29	text	630	6	match	
+6661	64	汤周杰	29	network	0.00	宿舍楼四座630室	29	text	630	6	match	
+6662	17	邹同稳	21	rent_factory	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+6663	17	邹同稳	21	mgmt	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+6664	17	邹同稳	21	infra	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+6665	17	邹同稳	21	elevator	0.00	一期C座三楼西侧301室	21	text	301	3	match	
+6666	17	邹同稳	21	transformer	0.00	一期C座三楼西侧301室	21	text	301	3	match	
+6667	18	陈相钊	21	rent_factory	2000.00	一期C座三楼302室	21	text	302	3	match	
+6668	18	陈相钊	21	rent_factory	462.87	一期C座二楼217、218、219室	21	text	217	2	match	
+6668	18	陈相钊	21	rent_factory	462.87	一期C座二楼217、218、219室	21	text	218	2	match	
+6668	18	陈相钊	21	rent_factory	462.87	一期C座二楼217、218、219室	21	text	219	2	match	
+6669	109	林观平	13	rent_office	74.00	A座孵化器三楼A303室	13	text	A303	3	create	
+6670	109	林观平	13	mgmt	74.00	A座孵化器三楼A303室	13	text	A303	3	create	
+6671	109	林观平	13	elevator	0.00	A座孵化器三楼A303室	13	text	A303	3	create	
+6672	109	林观平	13	rent_office	62.86	A座孵化器四楼A445室	13	text	A445	4	match	
+6673	109	林观平	13	mgmt	62.86	A座孵化器四楼A445室	13	text	A445	4	match	
+6674	109	林观平	13	elevator	0.00	A座孵化器四楼A445室	13	text	A445	4	match	
+6675	65	陈昌辉	27	rent_shop	107.50	宿舍区二号楼首层2101、2102室	27	text	101	1	match	
+6675	65	陈昌辉	27	rent_shop	107.50	宿舍区二号楼首层2101、2102室	27	text	102	1	match	
+6676	65	陈昌辉	27	mgmt	107.50	宿舍区二号楼首层2101、2102室	27	text	101	1	match	
+6676	65	陈昌辉	27	mgmt	107.50	宿舍区二号楼首层2101、2102室	27	text	102	1	match	
+6677	65	陈昌辉	27	infra	107.50	宿舍区二号楼首层2101、2102室	27	text	101	1	match	
+6677	65	陈昌辉	27	infra	107.50	宿舍区二号楼首层2101、2102室	27	text	102	1	match	
+6678	65	陈昌辉	27	transformer	0.00	宿舍区二号楼首层2101、2102室	27	text	101	1	match	
+6678	65	陈昌辉	27	transformer	0.00	宿舍区二号楼首层2101、2102室	27	text	102	1	match	
+6679	65	陈昌辉	27	rent_dorm	35.53	宿舍楼四座550室	29	text	550	5	match	bld_mismatch(合同27)
+6680	65	陈昌辉	27	infra	35.53	宿舍楼四座550室	29	text	550	5	match	bld_mismatch(合同27)
+6681	65	陈昌辉	27	network	0.00	宿舍楼四座550室	29	text	550	5	match	bld_mismatch(合同27)
+6682	65	陈昌辉	27	access	0.00	宿舍楼四座550室	29	text	550	5	match	bld_mismatch(合同27)
+6683	66	张勤军	29	rent_shop	133.00	宿舍区3号楼首层3101室	28	text	101	1	match	bld_mismatch(合同29)
+6689	67	雷少康	27	rent_shop	102.00	宿舍区二号楼首层2108、2109室	27	text	108	1	match	
+6689	67	雷少康	27	rent_shop	102.00	宿舍区二号楼首层2108、2109室	27	text	109	1	match	
+6690	67	雷少康	27	mgmt	102.00	宿舍区二号楼首层2108、2109室	27	text	108	1	match	
+6690	67	雷少康	27	mgmt	102.00	宿舍区二号楼首层2108、2109室	27	text	109	1	match	
+6691	67	雷少康	27	infra	102.00	宿舍区二号楼首层2108、2109室	27	text	108	1	match	
+6691	67	雷少康	27	infra	102.00	宿舍区二号楼首层2108、2109室	27	text	109	1	match	
+6692	67	雷少康	27	transformer	0.00	宿舍区二号楼首层2108、2109室	27	text	108	1	match	
+6692	67	雷少康	27	transformer	0.00	宿舍区二号楼首层2108、2109室	27	text	109	1	match	
+6693	67	雷少康	27	rent_dorm	36.53	宿舍楼四座239室	29	text	239	2	match	bld_mismatch(合同27)
+6694	67	雷少康	27	infra	36.53	宿舍楼四座239室	29	text	239	2	match	bld_mismatch(合同27)
+6695	67	雷少康	27	network	0.00	宿舍楼四座239室	29	text	239	2	match	bld_mismatch(合同27)
+6696	67	雷少康	27	access	0.00	宿舍楼四座239室	29	text	239	2	match	bld_mismatch(合同27)
+6697	68	彭周荣	28	rent_shop	162.50	宿舍区三号楼首层3103室	28	text	103	1	match	
+6698	19	李卓伦	21	rent_factory	91.43	一期C座二楼203室	21	text	203	2	match	
+6699	69	张丽莉	28	rent_shop	927.50	宿舍区三号楼首层3106室	28	text	106	1	match	
+6703	71	威奈斯	27	rent_shop	491.00	宿舍区2号楼首层2106室	27	text	106	1	match	
+6704	72	蔡高育	27	rent_shop	74.40	宿舍区2号楼首层2107室	27	text	107	1	match	
+6706	75	章肖艳	27	rent_shop	690.00	宿舍区二号楼首层2112室	27	text	112	1	match	
+6707	111	布司曼	13	rent_office	95.43	A座孵化器四楼427室	13	text	427	4	match	
+6708	111	布司曼	13	mgmt	95.43	A座孵化器四楼427室	13	text	427	4	match	
+6709	111	布司曼	13	elevator	0.00	A座孵化器四楼427室	13	text	427	4	match	
+6710	20	高建军	21	rent_office	76.98	A座解化器六楼621室	13	text	621	6	match	bld_mismatch(合同21)
+6711	20	高建军	21	mgmt	76.98	A座解化器六楼621室	13	text	621	6	match	bld_mismatch(合同21)
+6712	20	高建军	21	elevator	0.00	A座解化器六楼621室	13	text	621	6	match	bld_mismatch(合同21)
+6713	20	高建军	21	rent_factory	896.00	C座首层103室	21	text	103	1	match	
+6714	300	炳记运输	13	rent_office	71.57	A座孵化器四楼432室	13	text	432	4	match	
+6715	300	炳记运输	13	mgmt	71.57	A座孵化器四楼432室	13	text	432	4	match	
+6716	300	炳记运输	13	elevator	0.00	A座孵化器四楼432室	13	text	432	4	match	
+6717	21	孙余	21	rent_factory	154.29	一期C座二楼220室	21	text	220	2	match	
+6718	22	吴耀兰	21	rent_factory	245.72	一期C座二楼201、221室	21	text	201	2	match	
+6718	22	吴耀兰	21	rent_factory	245.72	一期C座二楼201、221室	21	text	221	2	match	
+6719	23	桑尼号	24	rent_factory	3185.00	一期F座贰楼201室	24	text	201	2	match	
+6720	23	桑尼号	24	rent_factory	1353.00	一期F座叁楼301室	24	text	301	3	match	
+6721	24	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	208	2	match	
+6721	24	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	209	2	match	
+6721	24	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	210	2	match	
+6722	25	杨道扬	21	rent_factory	833.00	一期C座首层104室	21	text	104	1	match	
+6723	26	卢志华	21	rent_factory	833.00	一期C座首层105室	21	text	105	1	match	
+6724	76	袁华圣	29	rent_shop	740.00	宿舍区4栋4102室	29	text	102	1	match	
+6725	27	曾绍良	24	rent_factory	1750.00	一期F座三楼302室	24	text	302	3	match	
+6726	28	诺铃	21	rent_factory	656.00	一期C座首层106室	21	text	106	1	match	
+6727	77	彭健宜	27	rent_shop	75.00	宿舍区2号楼首层2103室	27	text	103	1	match	
+6728	78	SENAN	29	rent_shop	49.00	宿舍区三号楼首层3105室	28	text	105	1	match	bld_mismatch(合同29)
+6730	79	沙力海	28	rent_shop	100.56	宿舍3号楼3102室	28	text	102	1	match	
+6731	79	沙力海	28	rent_dorm	73.75	宿舍楼四座625室	29	text	625	6	match	bld_mismatch(合同28)
+6732	79	沙力海	28	infra	73.75	宿舍楼四座625室	29	text	625	6	match	bld_mismatch(合同28)
+6733	79	沙力海	28	network	0.00	宿舍楼四座625室	29	text	625	6	match	bld_mismatch(合同28)
+6734	79	沙力海	28	access	0.00	宿舍楼四座625室	29	text	625	6	match	bld_mismatch(合同28)
+6735	80	博浩	24	rent_factory	3200.00	一期F座四楼401室	24	text	401	4	match	
+6736	81	广联	27	rent_shop	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	115	1	match	
+6736	81	广联	27	rent_shop	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	104	1	match	
+6736	81	广联	27	rent_shop	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	105	1	match	
+6741	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	36.53	宿舍楼四座244室	29	text	244	2	match	bld_mismatch(合同26)
+6742	301	广东曼克维通信科技有限公司佛山分公司	26	infra	36.53	宿舍楼四座244室	29	text	244	2	match	bld_mismatch(合同26)
+6743	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼四座244室	29	text	244	2	match	bld_mismatch(合同26)
+6744	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼四座244室	29	text	244	2	match	bld_mismatch(合同26)
+6745	82	彭小兰	28	rent_shop	87.00	宿舍3号楼3104室	28	text	104	1	match	
+6746	30	优硕达	21	rent_factory	91.43	一期C座202室	21	text	202	2	match	
+6747	31	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	1F整层	1	match	whole_floor
+6747	31	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	2F整层	2	match	whole_floor
+6747	31	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	3F整层	3	match	whole_floor
+6747	31	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	4F整层	4	match	whole_floor
+6748	112	尧萍	13	rent_office	14.57	A座孵化器五楼514室	13	text	514	5	match	
+6749	112	尧萍	13	mgmt	14.57	A座孵化器五楼514室	13	text	514	5	match	
+6750	112	尧萍	13	elevator	0.00	A座孵化器五楼514室	13	text	514	5	match	
+6751	112	尧萍	13	transformer	0.00	A座孵化器五楼514室	13	text	514	5	match	
+6760	249	万众宿舍	29	rent_dorm	31.05	宿舍楼四座429室	29	text	429	4	match	
+6761	249	万众宿舍	29	infra	31.05	宿舍楼四座429室	29	text	429	4	match	
+6762	249	万众宿舍	29	network	0.00	宿舍楼四座429室	29	text	429	4	match	
+6763	249	万众宿舍	29	access	0.00	宿舍楼四座429室	29	text	429	4	match	
+6764	192	力灏	34	rent_factory	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6764	192	力灏	34	rent_factory	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6764	192	力灏	34	rent_factory	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6765	192	力灏	34	mgmt	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6765	192	力灏	34	mgmt	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6765	192	力灏	34	mgmt	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6766	192	力灏	34	infra	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6766	192	力灏	34	infra	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6766	192	力灏	34	infra	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6767	192	力灏	34	elevator	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6767	192	力灏	34	elevator	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6767	192	力灏	34	elevator	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6768	192	力灏	34	transformer	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6768	192	力灏	34	transformer	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6768	192	力灏	34	transformer	0.00	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6769	192	力灏	34	land_tax	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	101	1	match	
+6769	192	力灏	34	land_tax	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	201	2	match	
+6769	192	力灏	34	land_tax	14105.63	二期五号楼首层101室、二楼201室、三楼301室	34	text	301	3	match	
+6770	193	彭云霞	34	rent_factory	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+6771	193	彭云霞	34	mgmt	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+6772	193	彭云霞	34	infra	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+6773	193	彭云霞	34	elevator	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+6774	193	彭云霞	34	transformer	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+6775	194	丁天伦	35	rent_factory	1700.00	二期13号楼（六车间）501室	35	text	501	5	match	
+6776	194	丁天伦	35	mgmt	1700.00	二期13号楼（六车间）501室	35	text	501	5	match	
+6777	194	丁天伦	35	infra	1700.00	二期13号楼（六车间）501室	35	text	501	5	match	
+6778	194	丁天伦	35	elevator	0.00	二期13号楼（六车间）501室	35	text	501	5	match	
+6779	194	丁天伦	35	transformer	0.00	二期13号楼（六车间）501室	35	text	501	5	match	
+6780	195	石荣杰	35	rent_factory	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+6781	195	石荣杰	35	mgmt	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+6782	195	石荣杰	35	infra	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+6783	195	石荣杰	35	elevator	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+6784	195	石荣杰	35	transformer	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+6785	196	徐翾	35	rent_factory	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+6786	196	徐翾	35	mgmt	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+6787	196	徐翾	35	infra	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+6788	196	徐翾	35	elevator	0.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+6789	196	徐翾	35	transformer	0.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+6790	197	方凯鑫	34	rent_factory	1282.50	二期13号楼（六车间）首层102室	35	text	102	1	match	bld_mismatch(合同34)
+6791	197	方凯鑫	34	mgmt	1282.50	二期13号楼（六车间）首层102室	35	text	102	1	match	bld_mismatch(合同34)
+6792	197	方凯鑫	34	infra	1282.50	二期13号楼（六车间）首层102室	35	text	102	1	match	bld_mismatch(合同34)
+6793	197	方凯鑫	34	transformer	0.00	二期13号楼（六车间）首层102室	35	text	102	1	match	bld_mismatch(合同34)
+6794	197	方凯鑫	34	rent_factory	1982.00	二期12号楼（五车间）六楼601室	34	text	601	6	match	
+6795	197	方凯鑫	34	mgmt	1982.00	二期12号楼（五车间）六楼601室	34	text	601	6	match	
+6796	197	方凯鑫	34	infra	1982.00	二期12号楼（五车间）六楼601室	34	text	601	6	match	
+6797	197	方凯鑫	34	elevator	0.00	二期12号楼（五车间）六楼601室	34	text	601	6	match	
+6798	197	方凯鑫	34	transformer	0.00	二期12号楼（五车间）六楼601室	34	text	601	6	match	
+6799	198	罗立剑	35	rent_factory	7281.52	二期六号楼六层601室、七层701室	35	text	601	6	match	
+6799	198	罗立剑	35	rent_factory	7281.52	二期六号楼六层601室、七层701室	35	text	701	7	match	
+6800	198	罗立剑	35	mgmt	7281.52	二期六号楼六层601室、七层701室	35	text	601	6	match	
+6800	198	罗立剑	35	mgmt	7281.52	二期六号楼六层601室、七层701室	35	text	701	7	match	
+6801	198	罗立剑	35	infra	7281.52	二期六号楼六层601室、七层701室	35	text	601	6	match	
+6801	198	罗立剑	35	infra	7281.52	二期六号楼六层601室、七层701室	35	text	701	7	match	
+6802	198	罗立剑	35	elevator	0.00	二期六号楼六层601室、七层701室	35	text	601	6	match	
+6802	198	罗立剑	35	elevator	0.00	二期六号楼六层601室、七层701室	35	text	701	7	match	
+6803	198	罗立剑	35	transformer	0.00	二期六号楼六层601室、七层701室	35	text	601	6	match	
+6803	198	罗立剑	35	transformer	0.00	二期六号楼六层601室、七层701室	35	text	701	7	match	
+6804	198	罗立剑	35	rent_factory	56.00	二期六号楼天面空地	35	text	天面	1	match	
+6805	198	罗立剑	35	rent_factory	40.00	二期六号楼天面空地	35	text	天面	1	match	
+6806	212	曹小芳	35	rent_factory	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+6807	212	曹小芳	35	mgmt	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+6808	212	曹小芳	35	infra	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+6809	212	曹小芳	35	rent_dorm	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+6810	212	曹小芳	35	infra	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+6811	212	曹小芳	35	access	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+6812	212	曹小芳	35	network	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+6813	221	刘彪	17	rent_factory	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+6814	221	刘彪	17	mgmt	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+6815	221	刘彪	17	infra	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+6816	221	刘彪	17	elevator	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+6817	221	刘彪	17	transformer	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+6818	200	三龙	34	rent_factory	1006.03	二期五号楼七层701室	34	text	701	7	match	
+6819	200	三龙	34	mgmt	1006.03	二期五号楼七层701室	34	text	701	7	match	
+6820	201	庞俊妨	35	rent_factory	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+6821	201	庞俊妨	35	mgmt	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+6822	201	庞俊妨	35	infra	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+6823	201	庞俊妨	35	elevator	0.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+6824	201	庞俊妨	35	transformer	0.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+6825	202	应塘	35	rent_factory	1944.00	二期13座三楼303室	35	text	303	3	match	
+6826	202	应塘	35	mgmt	1944.00	二期13座三楼303室	35	text	303	3	match	
+6827	202	应塘	35	infra	1944.00	二期13座三楼303室	35	text	303	3	match	
+6828	202	应塘	35	elevator	0.00	二期13座三楼303室	35	text	303	3	match	
+6829	202	应塘	35	transformer	0.00	二期13座三楼303室	35	text	303	3	match	
+6830	202	应塘	35	rent_dorm	45.08	宿舍楼四座527室	29	text	527	5	match	bld_mismatch(合同35)
+6831	202	应塘	35	infra	45.08	宿舍楼四座527室	29	text	527	5	match	bld_mismatch(合同35)
+6832	202	应塘	35	network	0.00	宿舍楼四座527室	29	text	527	5	match	bld_mismatch(合同35)
+6833	202	应塘	35	access	0.00	宿舍楼四座527室	29	text	527	5	match	bld_mismatch(合同35)
+6834	203	欧培敬	35	rent_factory	1310.00	二期13座三楼302室	35	text	302	3	match	
+6835	203	欧培敬	35	mgmt	1310.00	二期13座三楼302室	35	text	302	3	match	
+6836	203	欧培敬	35	infra	1310.00	二期13座三楼302室	35	text	302	3	match	
+6837	203	欧培敬	35	elevator	0.00	二期13座三楼302室	35	text	302	3	match	
+6838	203	欧培敬	35	transformer	0.00	二期13座三楼302室	35	text	302	3	match	
+6843	204	邓宇峰	35	rent_factory	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+6844	204	邓宇峰	35	mgmt	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+6845	204	邓宇峰	35	infra	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+6846	204	邓宇峰	35	elevator	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+6847	204	邓宇峰	35	transformer	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+6848	204	邓宇峰	35	rent_factory	93.10	二期13座天面	35	text	天面	1	match	
+6849	204	邓宇峰	35	rent_dorm	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+6850	204	邓宇峰	35	infra	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+6851	204	邓宇峰	35	network	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+6852	204	邓宇峰	35	access	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+6858	213	陈书谨	38	rent_factory	610.50	二期钢构车间101室	38	text	101	1	match	
+6859	213	陈书谨	38	mgmt	610.50	二期钢构车间101室	38	text	101	1	match	
+6860	213	陈书谨	38	infra	610.50	二期钢构车间101室	38	text	101	1	match	
+6861	208	王红婷	34	rent_factory	517.00	二期12号楼六楼602室	34	text	602	6	match	
+6862	210	陈土生	34	rent_factory	743.00	二期12号楼六楼604室	34	text	604	6	match	
+6863	211	柯建伍	35	rent_factory	3400.00	二期13号楼（六车间）101室	35	text	101	1	match	
+6864	209	张文峰	34	rent_factory	1665.00	二期12座六楼603室	34	text	603	6	match	
+6865	209	张文峰	34	mgmt	1665.00	二期12座六楼603室	34	text	603	6	match	
+6866	209	张文峰	34	infra	1665.00	二期12座六楼603室	34	text	603	6	match	
+6867	209	张文峰	34	elevator	0.00	二期12座六楼603室	34	text	603	6	match	
+6868	209	张文峰	34	transformer	0.00	二期12座六楼603室	34	text	603	6	match	
+6869	209	张文峰	34	rent_dorm	73.75	宿舍楼四座425室	29	text	425	4	match	bld_mismatch(合同34)
+6870	209	张文峰	34	infra	73.75	宿舍楼四座425室	29	text	425	4	match	bld_mismatch(合同34)
+6871	209	张文峰	34	access	0.00	宿舍楼四座425室	29	text	425	4	match	bld_mismatch(合同34)
+6872	209	张文峰	34	network	0.00	宿舍楼四座425室	29	text	425	4	match	bld_mismatch(合同34)
+6873	205	朱漫钳	34	rent_factory	1944.00	12栋(五车间)四楼401室	34	text	401	4	match	
+6874	205	朱漫钳	34	rent_dorm	45.08	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+6875	205	朱漫钳	34	infra	45.08	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+6876	205	朱漫钳	34	network	0.00	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+6877	205	朱漫钳	34	access	0.00	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+6878	206	南一	34	rent_factory	1000.00	12栋(五车间)四楼402室	34	text	402	4	match	
+6879	136	锂朋	30	infra	714.30	二期8栋1层101室	30	text	101	1	match	
+6880	136	锂朋	30	transformer	0.00	二期8栋1层101室	30	text	101	1	match	
+6881	137	恩科	30	infra	1421.00	二期8栋1层103室	30	text	103	1	match	
+6882	137	恩科	30	transformer	0.00	二期8栋1层103室	30	text	103	1	match	
+6883	146	达博普	30	infra	650.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+6884	146	达博普	30	transformer	0.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+6885	146	达博普	30	elevator	0.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+6886	154	艾派斯	32	infra	1250.00	二期10号楼（3车间）1楼103单元	32	text	103	1	match	
+6887	154	艾派斯	32	transformer	0.00	二期10号楼（3车间）1楼103单元	32	text	103	1	match	
+6888	150	陈曼娜	31	infra	4537.50	二期9栋301室	31	text	301	3	match	
+6889	150	陈曼娜	31	elevator	0.00	二期9栋301室	31	text	301	3	match	
+6890	150	陈曼娜	31	transformer	0.00	二期9栋301室	31	text	301	3	match	
+6891	155	易立	32	infra	701.00	二期10号楼（3车间）104单元	32	text	104	1	match	
+6892	155	易立	32	transformer	0.00	二期10号楼（3车间）104单元	32	text	104	1	match	
+6893	141	谢福兵	30	infra	1700.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+6894	141	谢福兵	30	transformer	0.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+6895	141	谢福兵	30	elevator	0.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+6896	139	魏杰瑜	30	infra	1550.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+6897	139	魏杰瑜	30	transformer	0.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+6898	139	魏杰瑜	30	elevator	0.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+6899	147	何育平	30	infra	502.00	二期8号楼603室	30	text	603	6	match	
+6900	147	何育平	30	transformer	0.00	二期8号楼603室	30	text	603	6	match	
+6901	147	何育平	30	elevator	0.00	二期8号楼603室	30	text	603	6	match	
+6902	143	张炳南	30	infra	1243.00	二期8号楼(一车间)501单元	30	text	501	5	match	
+6903	143	张炳南	30	transformer	0.00	二期8号楼(一车间)501单元	30	text	501	5	match	
+6904	143	张炳南	30	elevator	0.00	二期8号楼(一车间)501单元	30	text	501	5	match	
+6905	138	飞浪	30	infra	3100.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+6906	138	飞浪	30	transformer	0.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+6907	138	飞浪	30	elevator	0.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+6908	151	联洛贸易	31	infra	2580.00	二期9号楼(二车间)401单元	31	text	401	4	match	
+6909	151	联洛贸易	31	transformer	0.00	二期9号楼(二车间)401单元	31	text	401	4	match	
+6910	151	联洛贸易	31	elevator	0.00	二期9号楼(二车间)401单元	31	text	401	4	match	
+6911	144	驰鸿印业	30	infra	1500.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+6912	144	驰鸿印业	30	transformer	0.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+6913	144	驰鸿印业	30	elevator	0.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+6914	142	铂超贸易	30	infra	1300.00	二期8号楼(一车间)402单元	30	text	402	4	match	
+6915	142	铂超贸易	30	transformer	0.00	二期8号楼(一车间)402单元	30	text	402	4	match	
+6916	142	铂超贸易	30	elevator	0.00	二期8号楼(一车间)402单元	30	text	402	4	match	
+6918	162	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+6918	162	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+6918	162	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+6918	162	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+6918	162	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+6919	162	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+6919	162	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+6919	162	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+6919	162	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+6919	162	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+6920	162	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+6920	162	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+6920	162	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+6920	162	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+6920	162	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+6921	163	氙明	33	infra	3705.00	二期11号楼西边101、201单元	33	text	101	1	match	
+6921	163	氙明	33	infra	3705.00	二期11号楼西边101、201单元	33	text	201	2	match	
+6922	163	氙明	33	transformer	0.00	二期11号楼西边101、201单元	33	text	101	1	match	
+6922	163	氙明	33	transformer	0.00	二期11号楼西边101、201单元	33	text	201	2	match	
+6923	163	氙明	33	elevator	0.00	二期11号楼西边101、201单元	33	text	101	1	match	
+6923	163	氙明	33	elevator	0.00	二期11号楼西边101、201单元	33	text	201	2	match	
+6924	164	威玛斯	33	infra	1852.50	二期11号楼（四车间）703、704单元	33	text	703	7	match	
+6924	164	威玛斯	33	infra	1852.50	二期11号楼（四车间）703、704单元	33	text	704	7	match	
+6925	164	威玛斯	33	elevator	0.00	二期11号楼（四车间）703、704单元	33	text	703	7	match	
+6925	164	威玛斯	33	elevator	0.00	二期11号楼（四车间）703、704单元	33	text	704	7	match	
+6926	156	星州	32	infra	2325.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+6927	156	星州	32	transformer	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+6928	156	星州	32	elevator	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+6930	157	永龙	32	infra	2325.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+6931	157	永龙	32	transformer	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+6932	157	永龙	32	elevator	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+6933	166	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+6933	166	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+6933	166	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+6934	166	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+6934	166	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+6934	166	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+6935	166	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+6935	166	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+6935	166	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+6942	167	两岸食品	33	infra	650.00	二期11号楼403室	33	text	403	4	match	
+6943	167	两岸食品	33	transformer	0.00	二期11号楼403室	33	text	403	4	match	
+6944	167	两岸食品	33	elevator	0.00	二期11号楼403室	33	text	403	4	match	
+6945	159	管中旺	32	infra	1726.00	二期10栋（三车间）403单元、404单元	32	text	403	4	match	
+6945	159	管中旺	32	infra	1726.00	二期10栋（三车间）403单元、404单元	32	text	404	4	match	
+6946	159	管中旺	32	transformer	0.00	二期10栋（三车间）403单元、404单元	32	text	403	4	match	
+6946	159	管中旺	32	transformer	0.00	二期10栋（三车间）403单元、404单元	32	text	404	4	match	
+6947	159	管中旺	32	elevator	0.00	二期10栋（三车间）403单元、404单元	32	text	403	4	match	
+6947	159	管中旺	32	elevator	0.00	二期10栋（三车间）403单元、404单元	32	text	404	4	match	
+6948	152	欧伟杰	31	infra	1543.00	二期9栋403、404单元	31	text	403	4	match	
+6948	152	欧伟杰	31	infra	1543.00	二期9栋403、404单元	31	text	404	4	match	
+6949	152	欧伟杰	31	transformer	0.00	二期9栋403、404单元	31	text	403	4	match	
+6949	152	欧伟杰	31	transformer	0.00	二期9栋403、404单元	31	text	404	4	match	
+6950	152	欧伟杰	31	elevator	0.00	二期9栋403、404单元	31	text	403	4	match	
+6950	152	欧伟杰	31	elevator	0.00	二期9栋403、404单元	31	text	404	4	match	
+6951	160	吉罗德	32	infra	5200.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+6951	160	吉罗德	32	infra	5200.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+6952	160	吉罗德	32	transformer	0.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+6952	160	吉罗德	32	transformer	0.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+6953	160	吉罗德	32	elevator	0.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+6953	160	吉罗德	32	elevator	0.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+6954	153	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+6955	153	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+6956	153	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+6957	161	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+6957	161	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+6957	161	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+6958	161	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+6958	161	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+6958	161	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+6959	161	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+6959	161	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+6959	161	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+6963	1	金纳	22	rent_factory	3200.00	一期D座三楼整层	22	text	3F整层	3	match	whole_floor
+6964	1	金纳	22	mgmt	3200.00	一期D座三楼整层	22	text	3F整层	3	match	whole_floor
+6965	1	金纳	22	infra	3200.00	一期D座三楼整层	22	text	3F整层	3	match	whole_floor
+6966	1	金纳	22	transformer	0.00	一期D座三楼整层	22	text	3F整层	3	match	whole_floor
+6967	1	金纳	22	elevator	0.00	一期D座三楼整层	22	text	3F整层	3	match	whole_floor
+7012	305	信成洋	23	rent_factory	794.00	一期E座首层101室	23	text	101	1	match	
+7013	305	信成洋	23	mgmt	794.00	一期E座首层101室	23	text	101	1	match	
+7014	305	信成洋	23	infra	794.00	一期E座首层101室	23	text	101	1	match	
+7015	305	信成洋	23	transformer	0.00	一期E座首层101室	23	text	101	1	match	
+7019	304	采妍	13	rent_office	578.60	A座孵化器三楼316、317号室	13	text	316	3	match	
+7019	304	采妍	13	rent_office	578.60	A座孵化器三楼316、317号室	13	text	317	3	match	
+7020	304	采妍	13	mgmt	578.60	A座孵化器三楼316、317号室	13	text	316	3	match	
+7020	304	采妍	13	mgmt	578.60	A座孵化器三楼316、317号室	13	text	317	3	match	
+7021	304	采妍	13	elevator	0.00	A座孵化器三楼316、317号室	13	text	316	3	match	
+7021	304	采妍	13	elevator	0.00	A座孵化器三楼316、317号室	13	text	317	3	match	
+7022	304	采妍	13	transformer	0.00	A座孵化器三楼316、317号室	13	text	316	3	match	
+7022	304	采妍	13	transformer	0.00	A座孵化器三楼316、317号室	13	text	317	3	match	
+7023	304	采妍	13	rent_office	153.71	A座孵化器三楼318号室	13	text	318	3	create	
+7024	304	采妍	13	mgmt	153.71	A座孵化器三楼318号室	13	text	318	3	create	
+7025	310	谢福兵	30	infra	1700.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+7026	310	谢福兵	30	transformer	0.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+7027	310	谢福兵	30	elevator	0.00	二期8号楼(一车间)401单元	30	text	401	4	match	
+7028	309	陈曼娜	31	infra	4537.50	二期9栋301室	31	text	301	3	match	
+7029	309	陈曼娜	31	elevator	0.00	二期9栋301室	31	text	301	3	match	
+7030	309	陈曼娜	31	transformer	0.00	二期9栋301室	31	text	301	3	match	
+7031	316	吉罗德	32	infra	5200.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+7031	316	吉罗德	32	infra	5200.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+7032	316	吉罗德	32	transformer	0.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+7032	316	吉罗德	32	transformer	0.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+7033	316	吉罗德	32	elevator	0.00	二期10栋5楼整层、601单元	32	text	601	6	match	
+7033	316	吉罗德	32	elevator	0.00	二期10栋5楼整层、601单元	32	text	5F整层	5	create	
+7034	311	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+7034	311	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+7034	311	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+7034	311	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+7034	311	广联	33	infra	9263.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+7035	311	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+7035	311	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+7035	311	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+7035	311	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+7035	311	广联	33	transformer	0.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+7036	311	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	301	3	match	
+7036	311	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	401	4	match	
+7036	311	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	501	5	match	
+7036	311	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	601	6	match	
+7036	311	广联	33	elevator	0.00	二期11号楼西边301、401、501、601、701单元	33	text	701	7	match	
+7037	312	氙明	33	infra	3705.00	二期11号楼西边101、201单元	33	text	101	1	match	
+7037	312	氙明	33	infra	3705.00	二期11号楼西边101、201单元	33	text	201	2	match	
+7038	312	氙明	33	transformer	0.00	二期11号楼西边101、201单元	33	text	101	1	match	
+7038	312	氙明	33	transformer	0.00	二期11号楼西边101、201单元	33	text	201	2	match	
+7039	312	氙明	33	elevator	0.00	二期11号楼西边101、201单元	33	text	101	1	match	
+7039	312	氙明	33	elevator	0.00	二期11号楼西边101、201单元	33	text	201	2	match	
+7040	313	威玛斯	33	infra	1852.50	二期11号楼（四车间）703、704单元	33	text	703	7	match	
+7040	313	威玛斯	33	infra	1852.50	二期11号楼（四车间）703、704单元	33	text	704	7	match	
+7041	313	威玛斯	33	elevator	0.00	二期11号楼（四车间）703、704单元	33	text	703	7	match	
+7041	313	威玛斯	33	elevator	0.00	二期11号楼（四车间）703、704单元	33	text	704	7	match	
+7042	314	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+7042	314	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+7042	314	张木兰	33	infra	2200.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+7043	314	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+7043	314	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+7043	314	张木兰	33	transformer	0.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+7044	314	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	202	2	match	
+7044	314	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	203	2	match	
+7044	314	张木兰	33	elevator	0.00	二期11栋（四车间）202、203、204单元	33	text	204	2	match	
+7045	308	朱漫钳	34	rent_factory	1944.00	12栋(五车间)四楼401室	34	text	401	4	match	
+7046	308	朱漫钳	34	rent_dorm	45.08	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+7047	308	朱漫钳	34	infra	45.08	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+7048	308	朱漫钳	34	network	0.00	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+7049	308	朱漫钳	34	access	0.00	宿舍楼一座304室	26	text	304	3	match	bld_mismatch(合同34)
+7050	307	陈书谨	38	rent_factory	610.50	二期钢构车间101室	38	text	101	1	match	
+7051	307	陈书谨	38	mgmt	610.50	二期钢构车间101室	38	text	101	1	match	
+7052	307	陈书谨	38	infra	610.50	二期钢构车间101室	38	text	101	1	match	
+7056	74	周兴	27	rent_shop	390.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7057	74	周兴	27	infra	0.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7058	74	周兴	27	mgmt	0.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7059	302	黎镇源	30	infra	1200.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7060	302	黎镇源	30	transformer	0.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7061	302	黎镇源	30	elevator	0.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7064	411	黎镇源	29	rent_dorm	44.20	宿舍楼 四座 648	29	text	648	6	match	
+7065	411	黎镇源	29	infra	44.20	宿舍楼 四座 648	29	text	648	6	match	
+7066	411	黎镇源	29	access	0.00	宿舍楼 四座 648	29	text	648	6	match	
+7067	411	黎镇源	29	network	0.00	宿舍楼 四座 648	29	text	648	6	match	
+7068	319	叶子涛	22	rent_factory	1900.00	一期D座首层103室	22	text	103	1	match	
+7069	319	叶子涛	22	mgmt	1900.00	一期D座首层103室	22	text	103	1	match	
+7070	319	叶子涛	22	infra	1900.00	一期D座首层103室	22	text	103	1	match	
+7071	319	叶子涛	22	transformer	0.00	一期D座首层103室	22	text	103	1	match	
+7072	320	天玛	23	rent_factory	1460.00	一期E座二楼201室	23	text	201	2	match	
+7073	320	天玛	23	mgmt	1460.00	一期E座二楼201室	23	text	201	2	match	
+7074	320	天玛	23	infra	1460.00	一期E座二楼201室	23	text	201	2	match	
+7075	320	天玛	23	elevator	0.00	一期E座二楼201室	23	text	201	2	match	
+7076	320	天玛	23	transformer	0.00	一期E座二楼201室	23	text	201	2	match	
+7077	321	邹同稳	21	rent_factory	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+7078	321	邹同稳	21	mgmt	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+7079	321	邹同稳	21	infra	1200.00	一期C座三楼西侧301室	21	text	301	3	match	
+7080	321	邹同稳	21	elevator	0.00	一期C座三楼西侧301室	21	text	301	3	match	
+7081	321	邹同稳	21	transformer	0.00	一期C座三楼西侧301室	21	text	301	3	match	
+7082	322	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	208	2	match	
+7082	322	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	209	2	match	
+7082	322	芷泉	21	rent_factory	274.50	一期C座二楼208、209、210室	21	text	210	2	match	
+7083	323	曾绍良	24	rent_factory	1750.00	一期F座三楼302室	24	text	302	3	match	
+7084	324	曾绍良	24	rent_factory	1750.00	一期F座三楼302室	24	text	302	3	match	
+7085	325	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	1F整层	1	match	whole_floor
+7085	325	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	2F整层	2	match	whole_floor
+7085	325	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	3F整层	3	match	whole_floor
+7085	325	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	4F整层	4	match	whole_floor
+7086	326	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	1F整层	1	match	whole_floor
+7086	326	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	2F整层	2	match	whole_floor
+7086	326	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	3F整层	3	match	whole_floor
+7086	326	林锐辉	25	rent_factory	12800.00	一期G座首层、二层、三层、四层整层	25	text	4F整层	4	match	whole_floor
+7087	327	张丽莉	28	rent_shop	927.50	宿舍区三号楼首层3106室	28	text	106	1	match	
+7088	328	威奈斯	27	rent_shop	491.00	宿舍区2号楼首层2106室	27	text	106	1	match	
+7089	329	蔡高育	27	rent_shop	74.40	宿舍区2号楼首层2107室	27	text	107	1	match	
+7090	330	周兴	27	rent_shop	390.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7091	330	周兴	27	infra	0.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7092	330	周兴	27	mgmt	0.00	宿舍区2号楼首层2111室	27	text	111	1	match	
+7093	331	彭健宜	27	rent_shop	75.00	宿舍区2号楼首层2103室	27	text	103	1	match	
+7094	332	彭健宜	27	rent_shop	75.00	宿舍区2号楼首层2103室	27	text	103	1	match	
+7095	333	SENAN	29	rent_shop	49.00	宿舍区三号楼首层3105室	28	text	105	1	match	bld_mismatch(合同29)
+7097	334	博浩	24	rent_factory	3200.00	一期F座四楼401室	24	text	401	4	match	
+7098	335	博浩	24	rent_factory	3200.00	一期F座四楼401室	24	text	401	4	match	
+7099	336	彭小兰	28	rent_shop	87.00	宿舍3号楼3104室	28	text	104	1	match	
+7100	337	粤海华创	13	rent_office	165.14	A座孵化器四楼411室	13	text	411	4	match	
+7101	337	粤海华创	13	mgmt	165.14	A座孵化器四楼411室	13	text	411	4	match	
+7102	338	锂朋	30	infra	714.30	二期8栋1层101室	30	text	101	1	match	
+7103	338	锂朋	30	transformer	0.00	二期8栋1层101室	30	text	101	1	match	
+7104	339	飞浪	30	infra	3100.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+7105	339	飞浪	30	transformer	0.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+7106	339	飞浪	30	elevator	0.00	二期8号楼(一车间)2楼整层	30	text	2F整层	2	match	whole_floor
+7107	340	魏杰瑜	30	infra	1550.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+7108	340	魏杰瑜	30	transformer	0.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+7109	340	魏杰瑜	30	elevator	0.00	二期8号楼(一车间)301单元	30	text	301	3	match	
+7110	341	驰鸿印业	30	infra	1500.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+7111	341	驰鸿印业	30	transformer	0.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+7112	341	驰鸿印业	30	elevator	0.00	二期8号楼(一车间)502单元	30	text	502	5	match	
+7113	342	达博普	30	infra	650.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+7114	342	达博普	30	transformer	0.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+7115	342	达博普	30	elevator	0.00	二期8号楼(1车间）6楼601单元	30	text	601	6	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+7116	343	健明包装	31	infra	5040.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+7117	343	健明包装	31	transformer	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	101	1	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	102	1	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	501	5	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	502	5	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	503	5	match	
+7118	343	健明包装	31	elevator	0.00	二期9栋(车间二)101单元、102单元、5楼整层501-504单元	31	text	504	5	match	
+7119	344	艾派斯	32	infra	1250.00	二期10号楼（3车间）1楼103单元	32	text	103	1	match	
+7120	344	艾派斯	32	transformer	0.00	二期10号楼（3车间）1楼103单元	32	text	103	1	match	
+7121	345	星州	32	infra	2325.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7122	345	星州	32	transformer	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7123	345	星州	32	elevator	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7125	346	星州	32	infra	2325.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7126	346	星州	32	transformer	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7127	346	星州	32	elevator	0.00	二期10号楼(三车间)301单元	32	text	301	3	match	
+7129	347	永龙	32	infra	2325.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7130	347	永龙	32	transformer	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7131	347	永龙	32	elevator	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7132	348	永龙	32	infra	2325.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7133	348	永龙	32	transformer	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7134	348	永龙	32	elevator	0.00	二期10号楼(三车间)302单元	32	text	302	3	match	
+7135	349	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+7135	349	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+7135	349	毅盛离合	32	infra	2270.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+7136	349	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+7136	349	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+7136	349	毅盛离合	32	transformer	0.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+7137	349	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	602	6	match	
+7137	349	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	603	6	match	
+7137	349	毅盛离合	32	elevator	0.00	二期10号楼（三车间）602、603、604单元	32	text	604	6	match	
+7138	350	两岸食品	33	infra	650.00	二期11号楼403室	33	text	403	4	match	
+7139	350	两岸食品	33	transformer	0.00	二期11号楼403室	33	text	403	4	match	
+7140	350	两岸食品	33	elevator	0.00	二期11号楼403室	33	text	403	4	match	
+7141	351	两岸食品	33	infra	650.00	二期11号楼403室	33	text	403	4	match	
+7142	351	两岸食品	33	transformer	0.00	二期11号楼403室	33	text	403	4	match	
+7143	351	两岸食品	33	elevator	0.00	二期11号楼403室	33	text	403	4	match	
+7144	352	彭云霞	34	rent_factory	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7145	352	彭云霞	34	mgmt	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7146	352	彭云霞	34	infra	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7147	352	彭云霞	34	elevator	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7148	352	彭云霞	34	transformer	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7149	353	彭云霞	34	rent_factory	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7150	353	彭云霞	34	mgmt	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7151	353	彭云霞	34	infra	4835.54	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7152	353	彭云霞	34	elevator	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7153	353	彭云霞	34	transformer	0.00	二期12号楼（五车间）五楼整层	34	text	5F整层	5	match	whole_floor
+7154	354	石荣杰	35	rent_factory	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7155	354	石荣杰	35	mgmt	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7156	354	石荣杰	35	infra	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7157	354	石荣杰	35	elevator	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7158	354	石荣杰	35	transformer	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7159	355	石荣杰	35	rent_factory	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7160	355	石荣杰	35	mgmt	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7161	355	石荣杰	35	infra	1030.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7162	355	石荣杰	35	elevator	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7163	355	石荣杰	35	transformer	0.00	二期13号楼（六车间）502室	35	text	502	5	match	
+7164	356	徐翾	35	rent_factory	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+7165	356	徐翾	35	mgmt	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+7166	356	徐翾	35	infra	1092.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+7167	356	徐翾	35	elevator	0.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+7168	356	徐翾	35	transformer	0.00	二期13号楼（六车间）第五层503室	35	text	503	5	match	
+7169	357	庞俊妨	35	rent_factory	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+7170	357	庞俊妨	35	mgmt	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+7171	357	庞俊妨	35	infra	1100.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+7172	357	庞俊妨	35	elevator	0.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+7173	357	庞俊妨	35	transformer	0.00	二期13栋（六车间）第四层402室	35	text	402	4	match	
+7174	358	欧培敬	35	rent_factory	1310.00	二期13座三楼302室	35	text	302	3	match	
+7175	358	欧培敬	35	mgmt	1310.00	二期13座三楼302室	35	text	302	3	match	
+7176	358	欧培敬	35	infra	1310.00	二期13座三楼302室	35	text	302	3	match	
+7177	358	欧培敬	35	elevator	0.00	二期13座三楼302室	35	text	302	3	match	
+7178	358	欧培敬	35	transformer	0.00	二期13座三楼302室	35	text	302	3	match	
+7183	359	邓宇峰	35	rent_factory	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7184	359	邓宇峰	35	mgmt	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7185	359	邓宇峰	35	infra	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7186	359	邓宇峰	35	elevator	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7187	359	邓宇峰	35	transformer	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7188	359	邓宇峰	35	rent_factory	93.10	二期13座天面	35	text	天面	1	match	
+7189	359	邓宇峰	35	rent_dorm	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7190	359	邓宇峰	35	infra	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7191	359	邓宇峰	35	network	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7192	359	邓宇峰	35	access	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7198	360	邓宇峰	35	rent_factory	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7199	360	邓宇峰	35	mgmt	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7200	360	邓宇峰	35	infra	4551.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7201	360	邓宇峰	35	elevator	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7202	360	邓宇峰	35	transformer	0.00	二期13座二楼	35	text	2F整层	2	match	whole_floor
+7203	360	邓宇峰	35	rent_factory	93.10	二期13座天面	35	text	天面	1	match	
+7204	360	邓宇峰	35	rent_dorm	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7205	360	邓宇峰	35	infra	31.05	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7206	360	邓宇峰	35	network	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7207	360	邓宇峰	35	access	0.00	宿舍楼四座229室	29	text	229	2	match	bld_mismatch(合同35)
+7213	361	南一	34	rent_factory	1000.00	12栋(五车间)四楼402室	34	text	402	4	match	
+7214	362	王红婷	34	rent_factory	517.00	二期12号楼六楼602室	34	text	602	6	match	
+7215	363	陈土生	34	rent_factory	743.00	二期12号楼六楼604室	34	text	604	6	match	
+7216	364	柯建伍	35	rent_factory	3400.00	二期13号楼（六车间）101室	35	text	101	1	match	
+7217	365	曹小芳	35	rent_factory	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7218	365	曹小芳	35	mgmt	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7219	365	曹小芳	35	infra	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7220	365	曹小芳	35	rent_dorm	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7221	365	曹小芳	35	infra	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7222	365	曹小芳	35	access	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7223	365	曹小芳	35	network	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7224	366	曹小芳	35	rent_factory	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7225	366	曹小芳	35	mgmt	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7226	366	曹小芳	35	infra	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7227	366	曹小芳	35	rent_dorm	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7228	366	曹小芳	35	infra	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7229	366	曹小芳	35	access	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7230	366	曹小芳	35	network	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7231	367	曹小芳	35	rent_factory	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7232	367	曹小芳	35	mgmt	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7233	367	曹小芳	35	infra	3170.35	二期13栋（六车间）第四层401室	35	text	401	4	match	
+7234	367	曹小芳	35	rent_dorm	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7235	367	曹小芳	35	infra	36.53	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7236	367	曹小芳	35	access	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7237	367	曹小芳	35	network	0.00	宿舍楼一座212室	26	text	212	2	match	bld_mismatch(合同35)
+7238	368	刘彪	17	rent_factory	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7239	368	刘彪	17	mgmt	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7240	368	刘彪	17	infra	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7241	368	刘彪	17	elevator	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7242	368	刘彪	17	transformer	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7243	369	刘彪	17	rent_factory	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7244	369	刘彪	17	mgmt	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7245	369	刘彪	17	infra	1347.50	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7246	369	刘彪	17	elevator	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7247	369	刘彪	17	transformer	0.00	二期13栋（六车间）第三层301室	35	text	301	3	create	bld_mismatch(合同17)
+7248	370	飞度	22	rent_factory	627.50	D座401室	22	text	401	4	match	
+7249	370	飞度	22	infra	627.50	D座401室	22	text	401	4	match	
+7250	370	飞度	22	elevator	0.00	D座401室	22	text	401	4	match	
+7251	370	飞度	22	transformer	0.00	D座401室	22	text	401	4	match	
+7252	371	飞度	22	rent_factory	627.50	D座401室	22	text	401	4	match	
+7253	371	飞度	22	infra	627.50	D座401室	22	text	401	4	match	
+7254	371	飞度	22	elevator	0.00	D座401室	22	text	401	4	match	
+7255	371	飞度	22	transformer	0.00	D座401室	22	text	401	4	match	
+7353	435	鑫皇	29	rent_dorm	36.53	宿舍楼四座538室	29	text	538	5	match	
+7354	435	鑫皇	29	infra	36.53	宿舍楼四座538室	29	text	538	5	match	
+7355	435	鑫皇	29	access	0.00	宿舍楼四座538室	29	text	538	5	match	
+7356	435	鑫皇	29	network	0.00	宿舍楼四座538室	29	text	538	5	match	
+7366	385	南宗	13	rent_factory	141.00	A座6楼623室	13	text	623	6	match	
+7367	385	南宗	13	infra	0.00	A座6楼623室	13	text	623	6	match	
+7368	385	南宗	13	elevator	0.00	A座6楼623室	13	text	623	6	match	
+7369	385	南宗	13	transformer	0.00	A座6楼623室	13	text	623	6	match	
+7370	385	南宗	13	land_tax	141.00	A座6楼623室	13	text	623	6	match	
+7371	386	欧培仪	20	rent_factory	2700.00	B座301室	20	text	301	3	match	
+7372	386	欧培仪	20	rent_land	675.00	B座301室	20	text	301	3	match	
+7373	386	欧培仪	20	infra	2700.00	B座301室	20	text	301	3	match	
+7374	386	欧培仪	20	elevator	0.00	B座301室	20	text	301	3	match	
+7375	386	欧培仪	20	transformer	0.00	B座301室	20	text	301	3	match	
+7376	386	欧培仪	20	land_tax	0.00	B座301室	20	text	301	3	match	
+7377	387	暨南中院	31	rent_office	134.58	A座孵化器二楼219号室	13	text	219	2	create	bld_mismatch(合同31);curated:账册A2西侧公共池(POOL-FORMULA-AUDIT行188)含暨南中院134.58㎡,证实A座二楼;C座219系另一房
+7378	387	暨南中院	31	mgmt	134.58	A座孵化器二楼219号室	13	text	219	2	create	bld_mismatch(合同31);curated:账册A2西侧公共池(POOL-FORMULA-AUDIT行188)含暨南中院134.58㎡,证实A座二楼;C座219系另一房
+7379	387	暨南中院	31	elevator	0.00	A座孵化器二楼219号室	13	text	219	2	create	bld_mismatch(合同31);curated:账册A2西侧公共池(POOL-FORMULA-AUDIT行188)含暨南中院134.58㎡,证实A座二楼;C座219系另一房
+7380	388	沈振	13	rent_office	165.14	A座孵化器四楼422室	13	text	422	4	match	
+7381	388	沈振	13	mgmt	165.14	A座孵化器四楼422室	13	text	422	4	match	
+7382	388	沈振	13	elevator	0.00	A座孵化器四楼422室	13	text	422	4	match	
+7383	389	幸悦	13	rent_office	277.60	A座孵化器四楼437、438室	13	text	437	4	match	
+7383	389	幸悦	13	rent_office	277.60	A座孵化器四楼437、438室	13	text	438	4	match	
+7384	389	幸悦	13	mgmt	277.60	A座孵化器四楼437、438室	13	text	437	4	match	
+7384	389	幸悦	13	mgmt	277.60	A座孵化器四楼437、438室	13	text	438	4	match	
+7385	389	幸悦	13	elevator	0.00	A座孵化器四楼437、438室	13	text	437	4	match	
+7385	389	幸悦	13	elevator	0.00	A座孵化器四楼437、438室	13	text	438	4	match	
+7386	389	幸悦	13	transformer	0.00	A座孵化器四楼437、438室	13	text	437	4	match	
+7386	389	幸悦	13	transformer	0.00	A座孵化器四楼437、438室	13	text	438	4	match	
+7387	390	MWILLAMA	13	rent_office	62.03	A座孵化器四楼425室	13	text	425	4	match	
+7388	390	MWILLAMA	13	mgmt	62.03	A座孵化器四楼425室	13	text	425	4	match	
+7389	390	MWILLAMA	13	elevator	0.00	A座孵化器四楼425室	13	text	425	4	match	
+7390	391	张文意	23	rent_factory	560.00	一期E座二楼203室	23	text	203	2	match	
+7391	391	张文意	23	mgmt	560.00	一期E座二楼203室	23	text	203	2	match	
+7392	391	张文意	23	infra	560.00	一期E座二楼203室	23	text	203	2	match	
+7393	391	张文意	23	elevator	0.00	一期E座二楼203室	23	text	203	2	match	
+7394	391	张文意	23	transformer	0.00	一期E座二楼203室	23	text	203	2	match	
+7395	393	顺心鸿	21	rent_factory	91.43	一期C座二楼211室	21	text	211	2	match	
+7396	393	顺心鸿	21	mgmt	91.43	一期C座二楼211室	21	text	211	2	match	
+7397	393	顺心鸿	21	infra	91.43	一期C座二楼211室	21	text	211	2	match	
+7398	393	顺心鸿	21	elevator	0.00	一期C座二楼211室	21	text	211	2	match	
+7399	393	顺心鸿	21	transformer	0.00	一期C座二楼211室	21	text	211	2	match	
+7400	394	羊城科技	13	rent_office	267.50	A座孵化器二楼220室	13	text	220	2	match	
+7401	394	羊城科技	13	mgmt	267.50	A座孵化器二楼220室	13	text	220	2	match	
+7402	394	羊城科技	13	elevator	0.00	A座孵化器二楼220室	13	text	220	2	match	
+7403	395	屋达玛	13	rent_office	14.57	A座孵化器五楼506室	13	text	506	5	match	
+7404	395	屋达玛	13	mgmt	14.57	A座孵化器五楼506室	13	text	506	5	match	
+7405	395	屋达玛	13	elevator	0.00	A座孵化器五楼506室	13	text	506	5	match	
+7406	395	屋达玛	13	transformer	0.00	A座孵化器五楼506室	13	text	506	5	match	
+7412	398	嘉荣	32	infra	2061.30	二期10栋1层101室	32	text	101	1	match	
+7413	398	嘉荣	32	transformer	0.00	二期10栋1层101室	32	text	101	1	match	
+7414	399	科文	32	infra	300.00	二期10栋1层102室	32	text	102	1	match	
+7415	400	新疆三林	30	infra	560.00	二期8栋1层102室	30	text	102	1	match	
+7416	400	新疆三林	30	transformer	0.00	二期8栋1层102室	30	text	102	1	match	
+7417	401	苏明东	30	infra	1550.00	二期8号楼(一车间)302单元	30	text	302	3	match	
+7418	401	苏明东	30	transformer	0.00	二期8号楼(一车间)302单元	30	text	302	3	match	
+7419	401	苏明东	30	elevator	0.00	二期8号楼(一车间)302单元	30	text	302	3	match	
+7420	103	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+7420	103	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+7420	103	仁恒	13	rent_office	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+7421	103	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+7421	103	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+7421	103	仁恒	13	mgmt	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+7422	103	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	311	3	match	
+7422	103	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	312	3	match	
+7422	103	仁恒	13	elevator	0.00	A座孵化器三楼311、312、313室	13	text	313	3	match	
+7423	103	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	311	3	match	
+7423	103	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	312	3	match	
+7423	103	仁恒	13	transformer	0.00	A座孵化器三楼311、312、313室	13	text	313	3	match	
+7424	103	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	311	3	match	
+7424	103	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	312	3	match	
+7424	103	仁恒	13	land_tax	411.55	A座孵化器三楼311、312、313室	13	text	313	3	match	
+7425	404	仁恒	13	rent_office	157.56	A座孵化器三楼315室	13	text	315	3	match	
+7426	404	仁恒	13	mgmt	157.56	A座孵化器三楼315室	13	text	315	3	match	
+7427	404	仁恒	13	elevator	0.00	A座孵化器三楼315室	13	text	315	3	match	
+7428	404	仁恒	13	land_tax	157.56	A座孵化器三楼315室	13	text	315	3	match	
+7429	9	仁恒	21	rent_factory	91.43	一期C座二楼207室	21	text	207	2	match	
+7430	9	仁恒	21	mgmt	91.43	一期C座二楼207室	21	text	207	2	match	
+7431	9	仁恒	21	infra	91.43	一期C座二楼207室	21	text	207	2	match	
+7432	9	仁恒	21	transformer	0.00	一期C座二楼207室	21	text	207	2	match	
+7433	9	仁恒	21	elevator	0.00	一期C座二楼207室	21	text	207	2	match	
+7438	56	可盈	40	rent_dorm	1302.00	饭堂	40	unit_name	饭堂	1	match	
+7439	56	可盈	40	infra	1302.00	饭堂	40	unit_name	饭堂	1	match	
+7440	56	可盈	40	access	0.00	饭堂	40	unit_name	饭堂	1	match	
+7441	56	可盈	40	network	0.00	饭堂	40	unit_name	饭堂	1	match	
+7442	405	可莱恩	13	rent_office	1528.00	A座602室	13	text	602	6	match	
+7443	405	可莱恩	13	rent_land	458.00	A座602室	13	text	602	6	match	
+7444	405	可莱恩	13	infra	1528.00	A座602室	13	text	602	6	match	
+7445	405	可莱恩	13	elevator	0.00	A座602室	13	text	602	6	match	
+7446	95	可莱恩	13	rent_land	458.00	A座602室	13	text	602	6	match	
+7447	406	可莱恩	20	rent_land	1350.00	B座201室	20	text	201	2	match	
+7453	107	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+7453	107	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+7453	107	碳紫	23	rent_office	212.68	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+7454	107	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+7454	107	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+7454	107	碳紫	23	mgmt	212.68	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+7455	107	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A614	6	match	bld_mismatch(合同23)
+7455	107	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A615	6	match	bld_mismatch(合同23)
+7455	107	碳紫	23	elevator	0.00	A座孵化器六楼A614、A615、A622室	13	text	A622	6	match	bld_mismatch(合同23)
+7456	107	碳紫	23	rent_factory	1973.00	一期E座104室	23	text	104	1	match	
+7457	107	碳紫	23	mgmt	1973.00	一期E座104室	23	text	104	1	match	
+7458	107	碳紫	23	infra	1973.00	一期E座104室	23	text	104	1	match	
+7459	107	碳紫	23	transformer	0.00	一期E座104室	23	text	104	1	match	
+7460	334	博浩	24	mgmt	3200.00	一期F座四楼401室	24	text	401	4	match	
+7461	334	博浩	24	infra	3200.00	一期F座四楼401室	24	text	401	4	match	
+7462	334	博浩	24	elevator	0.00	一期F座四楼401室	24	text	401	4	match	
+7463	334	博浩	24	transformer	0.00	一期F座四楼401室	24	text	401	4	match	
+7464	335	博浩	24	mgmt	3200.00	一期F座四楼401室	24	text	401	4	match	
+7465	335	博浩	24	infra	3200.00	一期F座四楼401室	24	text	401	4	match	
+7466	335	博浩	24	elevator	0.00	一期F座四楼401室	24	text	401	4	match	
+7467	335	博浩	24	transformer	0.00	一期F座四楼401室	24	text	401	4	match	
+7468	80	博浩	24	mgmt	3200.00	一期F座四楼401室	24	text	401	4	match	
+7469	80	博浩	24	infra	3200.00	一期F座四楼401室	24	text	401	4	match	
+7470	80	博浩	24	elevator	0.00	一期F座四楼401室	24	text	401	4	match	
+7471	80	博浩	24	transformer	0.00	一期F座四楼401室	24	text	401	4	match	
+7475	408	翔海	25	rent_factory	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7475	408	翔海	25	rent_factory	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7476	408	翔海	25	rent_factory	2354.00	G座1层	25	text	1F整层	1	match	whole_floor
+7477	408	翔海	25	rent_factory	2354.00	G座2层	25	text	2F整层	2	match	whole_floor
+7478	408	翔海	25	rent_factory	4708.00	G座3-4层	25	text	3F整层	3	match	whole_floor
+7478	408	翔海	25	rent_factory	4708.00	G座3-4层	25	text	4F整层	4	match	whole_floor
+7479	408	翔海	25	infra	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7479	408	翔海	25	infra	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7480	408	翔海	25	infra	9416.00	G座1-4层	25	text	1F整层	1	match	whole_floor
+7480	408	翔海	25	infra	9416.00	G座1-4层	25	text	2F整层	2	match	whole_floor
+7480	408	翔海	25	infra	9416.00	G座1-4层	25	text	3F整层	3	match	whole_floor
+7480	408	翔海	25	infra	9416.00	G座1-4层	25	text	4F整层	4	match	whole_floor
+7481	408	翔海	25	rent_land	280.00	空地一	14	unit_name	空地一	1	match	unit_name_unique;bld_mismatch(合同25)
+7482	408	翔海	25	rent_land	208.80	空地二	14	unit_name	空地二	1	match	unit_name_unique;bld_mismatch(合同25)
+7483	409	翔海	25	rent_factory	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7483	409	翔海	25	rent_factory	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7484	409	翔海	25	rent_factory	2354.00	G座1层	25	text	1F整层	1	match	whole_floor
+7485	409	翔海	25	rent_factory	2354.00	G座2层	25	text	2F整层	2	match	whole_floor
+7486	409	翔海	25	rent_factory	4708.00	G座3-4层	25	text	3F整层	3	match	whole_floor
+7486	409	翔海	25	rent_factory	4708.00	G座3-4层	25	text	4F整层	4	match	whole_floor
+7487	409	翔海	25	infra	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7487	409	翔海	25	infra	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7488	409	翔海	25	infra	9416.00	G座1-4层	25	text	1F整层	1	match	whole_floor
+7488	409	翔海	25	infra	9416.00	G座1-4层	25	text	2F整层	2	match	whole_floor
+7488	409	翔海	25	infra	9416.00	G座1-4层	25	text	3F整层	3	match	whole_floor
+7488	409	翔海	25	infra	9416.00	G座1-4层	25	text	4F整层	4	match	whole_floor
+7489	409	翔海	25	rent_land	280.00	空地一	14	unit_name	空地一	1	match	unit_name_unique;bld_mismatch(合同25)
+7490	409	翔海	25	rent_land	208.80	空地二	14	unit_name	空地二	1	match	unit_name_unique;bld_mismatch(合同25)
+7491	410	翔海	25	rent_factory	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7491	410	翔海	25	rent_factory	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7492	410	翔海	25	rent_factory	2354.00	G座1层	25	text	1F整层	1	match	whole_floor
+7493	410	翔海	25	rent_factory	2354.00	G座2层	25	text	2F整层	2	match	whole_floor
+7494	410	翔海	25	rent_factory	4708.00	G座3-4层	25	text	3F整层	3	match	whole_floor
+7494	410	翔海	25	rent_factory	4708.00	G座3-4层	25	text	4F整层	4	match	whole_floor
+7495	410	翔海	25	infra	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7495	410	翔海	25	infra	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7496	410	翔海	25	infra	9416.00	G座1-4层	25	text	1F整层	1	match	whole_floor
+7496	410	翔海	25	infra	9416.00	G座1-4层	25	text	2F整层	2	match	whole_floor
+7496	410	翔海	25	infra	9416.00	G座1-4层	25	text	3F整层	3	match	whole_floor
+7496	410	翔海	25	infra	9416.00	G座1-4层	25	text	4F整层	4	match	whole_floor
+7497	410	翔海	25	rent_land	280.00	空地一	14	unit_name	空地一	1	match	unit_name_unique;bld_mismatch(合同25)
+7498	410	翔海	25	rent_land	208.80	空地二	14	unit_name	空地二	1	match	unit_name_unique;bld_mismatch(合同25)
+7499	284	翔海	25	rent_factory	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7499	284	翔海	25	rent_factory	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7500	284	翔海	25	rent_factory	2354.00	G座1层	25	text	1F整层	1	match	whole_floor
+7501	284	翔海	25	rent_factory	2354.00	G座2层	25	text	2F整层	2	match	whole_floor
+7502	284	翔海	25	rent_factory	4708.00	G座3-4层	25	text	3F整层	3	match	whole_floor
+7502	284	翔海	25	rent_factory	4708.00	G座3-4层	25	text	4F整层	4	match	whole_floor
+7503	284	翔海	25	infra	4708.00	E座3-4层	23	text	3F整层	3	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7503	284	翔海	25	infra	4708.00	E座3-4层	23	text	4F整层	4	match	whole_floor;bld_mismatch(合同25);curated:area-shared-rent-review行15:库对翔海即记E座3-4层4708㎡,G座另有对上的9416,合同栋FK系旧值
+7504	284	翔海	25	infra	9416.00	G座1-4层	25	text	1F整层	1	match	whole_floor
+7504	284	翔海	25	infra	9416.00	G座1-4层	25	text	2F整层	2	match	whole_floor
+7504	284	翔海	25	infra	9416.00	G座1-4层	25	text	3F整层	3	match	whole_floor
+7504	284	翔海	25	infra	9416.00	G座1-4层	25	text	4F整层	4	match	whole_floor
+7505	284	翔海	25	rent_land	280.00	空地一	14	unit_name	空地一	1	match	unit_name_unique;bld_mismatch(合同25)
+7506	284	翔海	25	rent_land	208.80	空地二	14	unit_name	空地二	1	match	unit_name_unique;bld_mismatch(合同25)
+7538	315	黎镇源	30	infra	1200.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7539	315	黎镇源	30	transformer	0.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7540	315	黎镇源	30	elevator	0.00	二期8号楼（1车间）701单元	30	text	701	7	match	
+7541	3	思汗	24	rent_factory	2700.00	F座首层101室	24	text	101	1	match	
+7542	3	思汗	24	rent_land	810.00	F座首层101室	24	text	101	1	match	
+7543	3	思汗	24	infra	3510.00	F座首层101室	24	text	101	1	match	
+7544	3	思汗	24	transformer	0.00	F座首层101室	24	text	101	1	match	
+7548	396	胡广清	22	rent_factory	1450.00	一期D座101室	22	text	101	1	match	
+7549	396	胡广清	22	mgmt	1450.00	一期D座101室	22	text	101	1	match	
+7550	396	胡广清	22	infra	1450.00	一期D座101室	22	text	101	1	match	
+7551	396	胡广清	22	transformer	0.00	一期D座101室	22	text	101	1	match	
+7552	392	张文意	23	rent_factory	560.00	一期E座二楼203室	23	text	203	2	match	
+7553	392	张文意	23	mgmt	560.00	一期E座二楼203室	23	text	203	2	match	
+7554	392	张文意	23	infra	560.00	一期E座二楼203室	23	text	203	2	match	
+7555	392	张文意	23	elevator	0.00	一期E座二楼203室	23	text	203	2	match	
+7556	392	张文意	23	transformer	0.00	一期E座二楼203室	23	text	203	2	match	
+7636	418	旭化成	13	rent_office	489.00	A座首层101室	13	text	101	1	match	
+7637	418	旭化成	13	infra	489.00	A座首层101室	13	text	101	1	match	
+7638	419	旭化成	13	rent_office	489.00	A座首层101室	13	text	101	1	match	
+7639	419	旭化成	13	infra	489.00	A座首层101室	13	text	101	1	match	
+7642	421	旭化成	13	rent_office	489.00	A座首层101室	13	text	101	1	match	
+7643	421	旭化成	13	infra	489.00	A座首层101室	13	text	101	1	match	
+7651	422	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	201	2	match	
+7651	422	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	202	2	match	
+7652	422	旭化成	13	infra	98.00	A座二层201、202室	13	text	201	2	match	
+7652	422	旭化成	13	infra	98.00	A座二层201、202室	13	text	202	2	match	
+7653	422	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	201	2	match	
+7653	422	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	202	2	match	
+7654	422	旭化成	13	infra	64.00	A座二层201、202室	13	text	201	2	match	
+7654	422	旭化成	13	infra	64.00	A座二层201、202室	13	text	202	2	match	
+7655	422	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	201	2	match	
+7655	422	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	202	2	match	
+7656	422	旭化成	13	infra	476.90	A座二层201、202室	13	text	201	2	match	
+7656	422	旭化成	13	infra	476.90	A座二层201、202室	13	text	202	2	match	
+7657	423	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	201	2	match	
+7657	423	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	202	2	match	
+7658	423	旭化成	13	infra	98.00	A座二层201、202室	13	text	201	2	match	
+7658	423	旭化成	13	infra	98.00	A座二层201、202室	13	text	202	2	match	
+7659	423	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	201	2	match	
+7659	423	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	202	2	match	
+7660	423	旭化成	13	infra	64.00	A座二层201、202室	13	text	201	2	match	
+7660	423	旭化成	13	infra	64.00	A座二层201、202室	13	text	202	2	match	
+7661	423	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	201	2	match	
+7661	423	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	202	2	match	
+7662	423	旭化成	13	infra	476.90	A座二层201、202室	13	text	201	2	match	
+7662	423	旭化成	13	infra	476.90	A座二层201、202室	13	text	202	2	match	
+7669	383	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	201	2	match	
+7669	383	旭化成	13	rent_office	98.00	A座二层201、202室	13	text	202	2	match	
+7670	383	旭化成	13	infra	98.00	A座二层201、202室	13	text	201	2	match	
+7670	383	旭化成	13	infra	98.00	A座二层201、202室	13	text	202	2	match	
+7671	383	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	201	2	match	
+7671	383	旭化成	13	rent_office	64.00	A座二层201、202室	13	text	202	2	match	
+7672	383	旭化成	13	infra	64.00	A座二层201、202室	13	text	201	2	match	
+7672	383	旭化成	13	infra	64.00	A座二层201、202室	13	text	202	2	match	
+7673	383	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	201	2	match	
+7673	383	旭化成	13	rent_office	476.90	A座二层201、202室	13	text	202	2	match	
+7674	383	旭化成	13	infra	476.90	A座二层201、202室	13	text	201	2	match	
+7674	383	旭化成	13	infra	476.90	A座二层201、202室	13	text	202	2	match	
+7699	422	旭化成	13	transformer	0.00	A座101、201、202室	13	text	101	1	match	
+7699	422	旭化成	13	transformer	0.00	A座101、201、202室	13	text	201	2	match	
+7699	422	旭化成	13	transformer	0.00	A座101、201、202室	13	text	202	2	match	
+7702	423	旭化成	13	transformer	0.00	A座101、201、202室	13	text	101	1	match	
+7702	423	旭化成	13	transformer	0.00	A座101、201、202室	13	text	201	2	match	
+7702	423	旭化成	13	transformer	0.00	A座101、201、202室	13	text	202	2	match	
+7708	383	旭化成	13	transformer	0.00	A座101、201、202室	13	text	101	1	match	
+7708	383	旭化成	13	transformer	0.00	A座101、201、202室	13	text	201	2	match	
+7708	383	旭化成	13	transformer	0.00	A座101、201、202室	13	text	202	2	match	
+7715	424	戎合	13	rent_factory	242.18	A座501室展厅	13	text	501	5	match	
+7716	424	戎合	13	infra	242.18	A座501室展厅	13	text	501	5	match	
+7717	424	戎合	13	rent_land	143.00	A座天面空地	13	text	天面空地	1	match	
+7735	101	宏玥	13	rent_office	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7736	101	宏玥	13	mgmt	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7737	101	宏玥	13	elevator	0.00	A座孵化器二楼203号室	13	text	203	2	match	
+7738	101	宏玥	13	transformer	0.00	A座孵化器二楼203号室	13	text	203	2	match	
+7739	101	宏玥	13	land_tax	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7740	426	宏玥	13	rent_office	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7741	426	宏玥	13	mgmt	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7742	426	宏玥	13	elevator	0.00	A座孵化器二楼203号室	13	text	203	2	match	
+7743	426	宏玥	13	transformer	0.00	A座孵化器二楼203号室	13	text	203	2	match	
+7744	426	宏玥	13	land_tax	257.30	A座孵化器二楼203号室	13	text	203	2	match	
+7745	427	宏玥	13	rent_office	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7746	427	宏玥	13	mgmt	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7747	427	宏玥	13	elevator	0.00	A座孵化器六楼619号室	13	text	619	6	match	
+7748	427	宏玥	13	land_tax	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7749	428	宏玥	13	rent_office	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7750	428	宏玥	13	mgmt	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7751	428	宏玥	13	elevator	0.00	A座孵化器六楼619号室	13	text	619	6	match	
+7752	428	宏玥	13	land_tax	88.00	A座孵化器六楼619号室	13	text	619	6	match	
+7753	429	宏玥	13	rent_office	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7754	429	宏玥	13	mgmt	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7755	429	宏玥	13	elevator	0.00	A座孵化器二楼216号室	13	text	216	2	match	
+7756	429	宏玥	13	land_tax	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7757	430	宏玥	13	rent_office	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7758	430	宏玥	13	mgmt	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7759	430	宏玥	13	elevator	0.00	A座孵化器二楼216号室	13	text	216	2	match	
+7760	430	宏玥	13	land_tax	129.70	A座孵化器二楼216号室	13	text	216	2	match	
+7761	384	鑫皇	13	rent_office	1640.00	A座502室	13	text	502	5	match	
+7762	384	鑫皇	13	rent_land	820.00	A座502室	13	text	502	5	match	
+7763	384	鑫皇	13	infra	1640.00	A座502室	13	text	502	5	match	
+7764	384	鑫皇	13	elevator	0.00	A座502室	13	text	502	5	match	
+7765	384	鑫皇	13	transformer	0.00	A座502室	13	text	502	5	match	
+7766	384	鑫皇	13	land_tax	0.00	A座502室	13	text	502	5	match	
+7767	431	鑫皇	13	rent_office	1640.00	A座502室	13	text	502	5	match	
+7768	431	鑫皇	13	rent_land	820.00	A座502室	13	text	502	5	match	
+7769	431	鑫皇	13	infra	1640.00	A座502室	13	text	502	5	match	
+7770	431	鑫皇	13	elevator	0.00	A座502室	13	text	502	5	match	
+7771	431	鑫皇	13	transformer	0.00	A座502室	13	text	502	5	match	
+7772	431	鑫皇	13	land_tax	0.00	A座502室	13	text	502	5	match	
+7773	432	鑫皇	13	rent_office	623.57	A座503室	13	text	503	5	match	
+7774	432	鑫皇	13	infra	623.57	A座503室	13	text	503	5	match	
+7775	432	鑫皇	13	elevator	0.00	A座503室	13	text	503	5	match	
+7776	432	鑫皇	13	transformer	0.00	A座503室	13	text	503	5	match	
+7781	438	建奕	13	rent_office	45.20	A座孵化器 三楼306室	13	text	306	3	match	
+7782	438	建奕	13	mgmt	45.20	A座孵化器 三楼306室	13	text	306	3	match	
+7783	438	建奕	13	elevator	0.00	A座孵化器 三楼306室	13	text	306	3	match	
+7784	438	建奕	13	transformer	0.00	A座孵化器 三楼306室	13	text	306	3	match	
+7785	81	广联	27	mgmt	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	115	1	match	
+7785	81	广联	27	mgmt	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	104	1	match	
+7785	81	广联	27	mgmt	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	105	1	match	
+7786	81	广联	27	infra	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	115	1	match	
+7786	81	广联	27	infra	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	104	1	match	
+7786	81	广联	27	infra	500.56	宿舍区二号楼首层2115、2104、2105室	27	text	105	1	match	
+7787	81	广联	27	transformer	0.00	宿舍区二号楼首层2115、2104、2105室	27	text	115	1	match	
+7787	81	广联	27	transformer	0.00	宿舍区二号楼首层2115、2104、2105室	27	text	104	1	match	
+7787	81	广联	27	transformer	0.00	宿舍区二号楼首层2115、2104、2105室	27	text	105	1	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	309	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	310	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	311	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	313	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	315	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	316	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	318	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	320	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	326	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	328	3	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	407	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	411	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	413	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	415	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	417	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	421	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	423	4	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	506	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	511	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	513	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	515	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	516	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	517	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	520	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	521	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	522	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	523	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	524	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	526	5	match	
+7788	439	广联	26	rent_dorm	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	528	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	309	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	310	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	311	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	313	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	315	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	316	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	318	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	320	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	326	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	328	3	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	407	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	411	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	413	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	415	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	417	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	421	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	423	4	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	506	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	511	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	513	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	515	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	516	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	517	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	520	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	521	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	522	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	523	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	524	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	526	5	match	
+7789	439	广联	26	infra	1086.20	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	528	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	309	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	310	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	311	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	313	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	315	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	316	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	318	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	320	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	326	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	328	3	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	407	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	411	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	413	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	415	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	417	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	421	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	423	4	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	506	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	511	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	513	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	515	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	516	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	517	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	520	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	521	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	522	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	523	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	524	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	526	5	match	
+7790	439	广联	26	network	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	528	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	309	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	310	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	311	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	313	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	315	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	316	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	318	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	320	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	326	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	328	3	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	407	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	411	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	413	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	415	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	417	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	421	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	423	4	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	506	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	511	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	513	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	515	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	516	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	517	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	520	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	521	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	522	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	523	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	524	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	526	5	match	
+7791	439	广联	26	access	0.00	宿舍一栋309、310、311、313、315、316、318、320、326、328、407、411、413、415、417、421、423、506、511、513、515、516、517、520、521、522、523、524、526、528室	26	text	528	5	match	
+7792	440	广联	29	rent_dorm	45.08	宿舍楼四座627室	29	text	627	6	match	
+7793	440	广联	29	infra	45.08	宿舍楼四座627室	29	text	627	6	match	
+7794	440	广联	29	network	0.00	宿舍楼四座627室	29	text	627	6	match	
+7795	440	广联	29	access	0.00	宿舍楼四座627室	29	text	627	6	match	
+7796	441	广联	26	rent_dorm	36.53	宿舍楼一座424室	26	text	424	4	match	
+7797	441	广联	26	infra	36.53	宿舍楼一座424室	26	text	424	4	match	
+7798	441	广联	26	network	0.00	宿舍楼一座424室	26	text	424	4	match	
+7799	441	广联	26	access	0.00	宿舍楼一座424室	26	text	424	4	match	
+7812	445	广联	29	rent_dorm	35.53	宿舍楼四座250室	29	text	250	2	match	
+7813	445	广联	29	infra	35.53	宿舍楼四座250室	29	text	250	2	match	
+7814	445	广联	29	network	0.00	宿舍楼四座250室	29	text	250	2	match	
+7815	445	广联	29	access	0.00	宿舍楼四座250室	29	text	250	2	match	
+7816	446	广联	29	rent_dorm	31.93	宿舍楼四座631室	29	text	631	6	match	
+7817	446	广联	29	infra	31.93	宿舍楼四座631室	29	text	631	6	match	
+7818	446	广联	29	network	0.00	宿舍楼四座631室	29	text	631	6	match	
+7819	446	广联	29	access	0.00	宿舍楼四座631室	29	text	631	6	match	
+7824	447	力美	29	rent_dorm	36.53	宿舍四栋546室	29	text	546	5	match	
+7825	447	力美	29	infra	36.53	宿舍四栋546室	29	text	546	5	match	
+7826	447	力美	29	access	0.00	宿舍四栋546室	29	text	546	5	match	
+7827	447	力美	29	network	0.00	宿舍四栋546室	29	text	546	5	match	
+7832	448	龙为宿舍	26	rent_dorm	45.08	宿舍一栋604室	26	text	604	6	match	
+7833	448	龙为宿舍	26	infra	45.08	宿舍一栋604室	26	text	604	6	match	
+7834	448	龙为宿舍	26	access	0.00	宿舍一栋604室	26	text	604	6	match	
+7835	448	龙为宿舍	26	network	0.00	宿舍一栋604室	26	text	604	6	match	
+7863	22	吴耀兰	21	mgmt	245.72	一期C座二楼201、221室	21	text	201	2	match	
+7863	22	吴耀兰	21	mgmt	245.72	一期C座二楼201、221室	21	text	221	2	match	
+7864	22	吴耀兰	21	infra	245.72	一期C座二楼201、221室	21	text	201	2	match	
+7864	22	吴耀兰	21	infra	245.72	一期C座二楼201、221室	21	text	221	2	match	
+7865	22	吴耀兰	21	elevator	0.00	一期C座二楼201、221室	21	text	201	2	match	
+7865	22	吴耀兰	21	elevator	0.00	一期C座二楼201、221室	21	text	221	2	match	
+7866	22	吴耀兰	21	transformer	0.00	一期C座二楼201、221室	21	text	201	2	match	
+7866	22	吴耀兰	21	transformer	0.00	一期C座二楼201、221室	21	text	221	2	match	
+7867	459	嘉荣	29	rent_dorm	74.52	宿舍四栋230室	29	text	230	2	match	
+7868	459	嘉荣	29	infra	74.52	宿舍四栋230室	29	text	230	2	match	
+7869	459	嘉荣	29	network	0.00	宿舍四栋230室	29	text	230	2	match	
+7875	219	中科华贸	30	infra	320.00	二期8号楼（1车间）702单元	30	text	702	7	match	
+7876	219	中科华贸	30	transformer	0.00	二期8号楼（1车间）702单元	30	text	702	7	match	
+7877	219	中科华贸	30	elevator	0.00	二期8号楼（1车间）702单元	30	text	702	7	match	
+7878	219	中科华贸	30	rent_factory	0.00	二期8号楼（1车间）702单元	30	text	702	7	match	
+7879	219	中科华贸	30	mgmt	0.00	二期8号楼（1车间）702单元	30	text	702	7	match	
+7880	397	私人短租宿舍	26	rent_dorm	31.93	宿舍楼一座208室	26	text	208	2	match	
+7881	397	私人短租宿舍	26	infra	31.93	宿舍楼一座208室	26	text	208	2	match	
+7882	397	私人短租宿舍	26	network	0.00	宿舍楼一座208室	26	text	208	2	match	
+7883	397	私人短租宿舍	26	access	0.00	宿舍楼一座208室	26	text	208	2	match	
+7884	54	合源创盈	26	rent_dorm	24.00	新俊楼101室	26	text	101	1	match	
+7885	54	合源创盈	26	infra	24.00	新俊楼101室	26	text	101	1	match	
+7886	54	合源创盈	26	access	0.00	新俊楼101室	26	text	101	1	match	
+7887	54	合源创盈	26	network	0.00	新俊楼101室	26	text	101	1	match	
+7888	94	合源创盈	13	rent_office	499.25	A座206楼	13	text	206	2	match	
+7889	94	合源创盈	13	mgmt	499.25	A座206楼	13	text	206	2	match	
+7890	94	合源创盈	13	elevator	0.00	A座206楼	13	text	206	2	match	
+7891	94	合源创盈	13	transformer	0.00	A座206楼	13	text	206	2	match	
+7914	57	可莱恩	29	rent_dorm	36.53	宿舍楼四座436室	29	text	436	4	match	
+7915	57	可莱恩	29	infra	36.53	宿舍楼四座436室	29	text	436	4	match	
+7916	57	可莱恩	29	network	0.00	宿舍楼四座436室	29	text	436	4	match	
+7917	57	可莱恩	29	access	0.00	宿舍楼四座436室	29	text	436	4	match	
+7918	57	可莱恩	29	rent_dorm	36.53	宿舍楼四座438室	29	text	438	4	match	
+7919	57	可莱恩	29	infra	36.53	宿舍楼四座438室	29	text	438	4	match	
+7920	57	可莱恩	29	network	0.00	宿舍楼四座438室	29	text	438	4	match	
+7921	57	可莱恩	29	access	0.00	宿舍楼四座438室	29	text	438	4	match	
+7922	55	力美	29	rent_dorm	36.53	宿舍四栋444室	29	text	444	4	match	
+7923	55	力美	29	rent_dorm	36.53	宿舍四栋446室	29	text	446	4	match	
+7925	55	力美	29	infra	36.53	宿舍四栋444室	29	text	444	4	match	
+7926	55	力美	29	infra	36.53	宿舍四栋446室	29	text	446	4	match	
+7928	55	力美	29	access	0.00	宿舍四栋444室	29	text	444	4	match	
+7929	55	力美	29	access	0.00	宿舍四栋446室	29	text	446	4	match	
+7931	55	力美	29	network	0.00	宿舍四栋444室	29	text	444	4	match	
+7932	55	力美	29	network	0.00	宿舍四栋446室	29	text	446	4	match	
+7934	57	可莱恩	29	rent_dorm	74.52	宿舍楼四座430室	29	text	430	4	match	
+7935	57	可莱恩	29	rent_dorm	31.93	宿舍楼四座431室	29	text	431	4	match	
+7936	57	可莱恩	29	rent_dorm	46.02	宿舍楼四座432室	29	text	432	4	match	
+7937	57	可莱恩	29	rent_dorm	32.01	宿舍楼四座434室	29	text	434	4	match	
+7941	57	可莱恩	29	infra	74.52	宿舍楼四座430室	29	text	430	4	match	
+7942	57	可莱恩	29	infra	31.93	宿舍楼四座431室	29	text	431	4	match	
+7943	57	可莱恩	29	infra	46.02	宿舍楼四座432室	29	text	432	4	match	
+7944	57	可莱恩	29	infra	32.01	宿舍楼四座434室	29	text	434	4	match	
+7948	57	可莱恩	29	access	0.00	宿舍楼四座430室	29	text	430	4	match	
+7949	57	可莱恩	29	access	0.00	宿舍楼四座431室	29	text	431	4	match	
+7950	57	可莱恩	29	access	0.00	宿舍楼四座432室	29	text	432	4	match	
+7951	57	可莱恩	29	access	0.00	宿舍楼四座434室	29	text	434	4	match	
+7955	57	可莱恩	29	network	0.00	宿舍楼四座430室	29	text	430	4	match	
+7956	57	可莱恩	29	network	0.00	宿舍楼四座431室	29	text	431	4	match	
+7957	57	可莱恩	29	network	0.00	宿舍楼四座432室	29	text	432	4	match	
+7958	57	可莱恩	29	network	0.00	宿舍楼四座434室	29	text	434	4	match	
+7962	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	31.05	宿舍楼一座206室	26	text	206	2	match	
+7963	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	36.53	宿舍楼一座210室	26	text	210	2	match	
+7964	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	36.53	宿舍楼一座214室	26	text	214	2	match	
+7965	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	31.05	宿舍楼一座406室	26	text	406	4	match	
+7966	301	广东曼克维通信科技有限公司佛山分公司	26	rent_dorm	31.93	宿舍楼一座408室	26	text	408	4	match	
+7969	301	广东曼克维通信科技有限公司佛山分公司	26	infra	31.05	宿舍楼一座206室	26	text	206	2	match	
+7970	301	广东曼克维通信科技有限公司佛山分公司	26	infra	36.53	宿舍楼一座210室	26	text	210	2	match	
+7971	301	广东曼克维通信科技有限公司佛山分公司	26	infra	36.53	宿舍楼一座214室	26	text	214	2	match	
+7972	301	广东曼克维通信科技有限公司佛山分公司	26	infra	31.05	宿舍楼一座406室	26	text	406	4	match	
+7973	301	广东曼克维通信科技有限公司佛山分公司	26	infra	31.93	宿舍楼一座408室	26	text	408	4	match	
+7976	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼一座206室	26	text	206	2	match	
+7977	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼一座210室	26	text	210	2	match	
+7978	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼一座214室	26	text	214	2	match	
+7979	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼一座406室	26	text	406	4	match	
+7980	301	广东曼克维通信科技有限公司佛山分公司	26	access	0.00	宿舍楼一座408室	26	text	408	4	match	
+7983	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼一座206室	26	text	206	2	match	
+7984	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼一座210室	26	text	210	2	match	
+7985	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼一座214室	26	text	214	2	match	
+7986	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼一座406室	26	text	406	4	match	
+7987	301	广东曼克维通信科技有限公司佛山分公司	26	network	0.00	宿舍楼一座408室	26	text	408	4	match	
+7990	442	广联	29	rent_dorm	36.53	宿舍楼四座339室	29	text	339	3	match	
+7991	442	广联	29	rent_dorm	36.53	宿舍楼四座340室	29	text	340	3	match	
+7992	442	广联	29	rent_dorm	36.96	宿舍楼四座341室	29	text	341	3	match	
+7993	442	广联	29	rent_dorm	36.53	宿舍楼四座342室	29	text	342	3	match	
+7994	442	广联	29	rent_dorm	36.09	宿舍楼四座343室	29	text	343	3	match	
+7995	442	广联	29	rent_dorm	36.53	宿舍楼四座344室	29	text	344	3	match	
+7996	442	广联	29	rent_dorm	36.53	宿舍楼四座345室	29	text	345	3	match	
+7997	442	广联	29	rent_dorm	36.53	宿舍楼四座346室	29	text	346	3	match	
+7998	442	广联	29	rent_dorm	36.53	宿舍楼四座347室	29	text	347	3	match	
+7999	442	广联	29	rent_dorm	35.66	宿舍楼四座349室	29	text	349	3	match	
+8005	442	广联	29	infra	36.53	宿舍楼四座339室	29	text	339	3	match	
+8006	442	广联	29	infra	36.53	宿舍楼四座340室	29	text	340	3	match	
+8007	442	广联	29	infra	36.96	宿舍楼四座341室	29	text	341	3	match	
+8008	442	广联	29	infra	36.53	宿舍楼四座342室	29	text	342	3	match	
+8009	442	广联	29	infra	36.09	宿舍楼四座343室	29	text	343	3	match	
+8010	442	广联	29	infra	36.53	宿舍楼四座344室	29	text	344	3	match	
+8011	442	广联	29	infra	36.53	宿舍楼四座345室	29	text	345	3	match	
+8012	442	广联	29	infra	36.53	宿舍楼四座346室	29	text	346	3	match	
+8013	442	广联	29	infra	36.53	宿舍楼四座347室	29	text	347	3	match	
+8014	442	广联	29	infra	35.66	宿舍楼四座349室	29	text	349	3	match	
+8020	442	广联	29	access	0.00	宿舍楼四座339室	29	text	339	3	match	
+8021	442	广联	29	access	0.00	宿舍楼四座340室	29	text	340	3	match	
+8022	442	广联	29	access	0.00	宿舍楼四座341室	29	text	341	3	match	
+8023	442	广联	29	access	0.00	宿舍楼四座342室	29	text	342	3	match	
+8024	442	广联	29	access	0.00	宿舍楼四座343室	29	text	343	3	match	
+8025	442	广联	29	access	0.00	宿舍楼四座344室	29	text	344	3	match	
+8026	442	广联	29	access	0.00	宿舍楼四座345室	29	text	345	3	match	
+8027	442	广联	29	access	0.00	宿舍楼四座346室	29	text	346	3	match	
+8028	442	广联	29	access	0.00	宿舍楼四座347室	29	text	347	3	match	
+8029	442	广联	29	access	0.00	宿舍楼四座349室	29	text	349	3	match	
+8035	442	广联	29	network	0.00	宿舍楼四座339室	29	text	339	3	match	
+8036	442	广联	29	network	0.00	宿舍楼四座340室	29	text	340	3	match	
+8037	442	广联	29	network	0.00	宿舍楼四座341室	29	text	341	3	match	
+8038	442	广联	29	network	0.00	宿舍楼四座342室	29	text	342	3	match	
+8039	442	广联	29	network	0.00	宿舍楼四座343室	29	text	343	3	match	
+8040	442	广联	29	network	0.00	宿舍楼四座344室	29	text	344	3	match	
+8041	442	广联	29	network	0.00	宿舍楼四座345室	29	text	345	3	match	
+8042	442	广联	29	network	0.00	宿舍楼四座346室	29	text	346	3	match	
+8043	442	广联	29	network	0.00	宿舍楼四座347室	29	text	347	3	match	
+8044	442	广联	29	network	0.00	宿舍楼四座349室	29	text	349	3	match	
+8050	443	广联	29	rent_dorm	36.53	宿舍楼四座333室	29	text	333	3	match	
+8051	443	广联	29	rent_dorm	36.53	宿舍楼四座335室	29	text	335	3	match	
+8052	443	广联	29	rent_dorm	36.53	宿舍楼四座336室	29	text	336	3	match	
+8053	443	广联	29	rent_dorm	36.53	宿舍楼四座338室	29	text	338	3	match	
+8057	443	广联	29	infra	36.53	宿舍楼四座333室	29	text	333	3	match	
+8058	443	广联	29	infra	36.53	宿舍楼四座335室	29	text	335	3	match	
+8059	443	广联	29	infra	36.53	宿舍楼四座336室	29	text	336	3	match	
+8060	443	广联	29	infra	36.53	宿舍楼四座338室	29	text	338	3	match	
+8064	443	广联	29	access	0.00	宿舍楼四座333室	29	text	333	3	match	
+8065	443	广联	29	access	0.00	宿舍楼四座335室	29	text	335	3	match	
+8066	443	广联	29	access	0.00	宿舍楼四座336室	29	text	336	3	match	
+8067	443	广联	29	access	0.00	宿舍楼四座338室	29	text	338	3	match	
+8071	443	广联	29	network	0.00	宿舍楼四座333室	29	text	333	3	match	
+8072	443	广联	29	network	0.00	宿舍楼四座335室	29	text	335	3	match	
+8073	443	广联	29	network	0.00	宿舍楼四座336室	29	text	336	3	match	
+8074	443	广联	29	network	0.00	宿舍楼四座338室	29	text	338	3	match	
+8078	444	广联	29	rent_dorm	31.05	宿舍楼四座629室	29	text	629	6	match	
+8079	444	广联	29	rent_dorm	32.01	宿舍楼四座634室	29	text	634	6	match	
+8080	444	广联	29	rent_dorm	36.53	宿舍楼四座635室	29	text	635	6	match	
+8081	444	广联	29	infra	31.05	宿舍楼四座629室	29	text	629	6	match	
+8082	444	广联	29	infra	32.01	宿舍楼四座634室	29	text	634	6	match	
+8083	444	广联	29	infra	36.53	宿舍楼四座635室	29	text	635	6	match	
+8084	444	广联	29	access	0.00	宿舍楼四座629室	29	text	629	6	match	
+8085	444	广联	29	access	0.00	宿舍楼四座634室	29	text	634	6	match	
+8086	444	广联	29	access	0.00	宿舍楼四座635室	29	text	635	6	match	
+8087	444	广联	29	network	0.00	宿舍楼四座629室	29	text	629	6	match	
+8088	444	广联	29	network	0.00	宿舍楼四座634室	29	text	634	6	match	
+8089	444	广联	29	network	0.00	宿舍楼四座635室	29	text	635	6	match	
+8090	66	张勤军	29	rent_dorm	46.02	宿舍楼四座532室	29	text	532	5	match	
+8091	66	张勤军	29	rent_dorm	36.53	宿舍楼四座536室	29	text	536	5	match	
+8092	66	张勤军	29	rent_dorm	46.02	宿舍楼四座632室	29	text	632	6	match	
+8093	66	张勤军	29	infra	46.02	宿舍楼四座532室	29	text	532	5	match	
+8094	66	张勤军	29	infra	36.53	宿舍楼四座536室	29	text	536	5	match	
+8095	66	张勤军	29	infra	46.02	宿舍楼四座632室	29	text	632	6	match	
+8096	66	张勤军	29	access	0.00	宿舍楼四座532室	29	text	532	5	match	
+8097	66	张勤军	29	access	0.00	宿舍楼四座536室	29	text	536	5	match	
+8098	66	张勤军	29	access	0.00	宿舍楼四座632室	29	text	632	6	match	
+8099	66	张勤军	29	network	0.00	宿舍楼四座532室	29	text	532	5	match	
+8100	66	张勤军	29	network	0.00	宿舍楼四座536室	29	text	536	5	match	
+8101	66	张勤军	29	network	0.00	宿舍楼四座632室	29	text	632	6	match	
+8102	53	思汗	26	rent_dorm	36.53	宿舍新俊楼一座216室	26	text	216	2	match	
+8103	53	思汗	26	rent_dorm	36.53	宿舍新俊楼一座218室	26	text	218	2	match	
+8104	53	思汗	26	rent_dorm	36.53	宿舍新俊楼一座220室	26	text	220	2	match	
+8105	53	思汗	26	rent_dorm	36.53	宿舍新俊楼一座222室	26	text	222	2	match	
+8109	53	思汗	26	infra	36.53	宿舍新俊楼一座216室	26	text	216	2	match	
+8110	53	思汗	26	infra	36.53	宿舍新俊楼一座218室	26	text	218	2	match	
+8111	53	思汗	26	infra	36.53	宿舍新俊楼一座220室	26	text	220	2	match	
+8112	53	思汗	26	infra	36.53	宿舍新俊楼一座222室	26	text	222	2	match	
+8116	53	思汗	26	access	0.00	宿舍新俊楼一座216室	26	text	216	2	match	
+8117	53	思汗	26	access	0.00	宿舍新俊楼一座218室	26	text	218	2	match	
+8118	53	思汗	26	access	0.00	宿舍新俊楼一座220室	26	text	220	2	match	
+8119	53	思汗	26	access	0.00	宿舍新俊楼一座222室	26	text	222	2	match	
+8123	53	思汗	26	network	0.00	宿舍新俊楼一座216室	26	text	216	2	match	
+8124	53	思汗	26	network	0.00	宿舍新俊楼一座218室	26	text	218	2	match	
+8125	53	思汗	26	network	0.00	宿舍新俊楼一座220室	26	text	220	2	match	
+8126	53	思汗	26	network	0.00	宿舍新俊楼一座222室	26	text	222	2	match	
+8130	58	次生代	26	rent_dorm	36.53	宿舍一座307室	26	text	307	3	match	
+8131	58	次生代	26	rent_dorm	36.53	宿舍一座314室	26	text	314	3	match	
+8133	58	次生代	26	infra	36.53	宿舍一座307室	26	text	307	3	match	
+8134	58	次生代	26	infra	36.53	宿舍一座314室	26	text	314	3	match	
+8136	58	次生代	26	access	0.00	宿舍一座307室	26	text	307	3	match	
+8137	58	次生代	26	access	0.00	宿舍一座314室	26	text	314	3	match	
+8139	58	次生代	26	network	0.00	宿舍一座307室	26	text	307	3	match	
+8140	58	次生代	26	network	0.00	宿舍一座314室	26	text	314	3	match	
+8142	203	欧培敬	35	rent_dorm	46.02	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8143	203	欧培敬	35	rent_dorm	74.52	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8145	203	欧培敬	35	infra	46.02	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8146	203	欧培敬	35	infra	74.52	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8148	203	欧培敬	35	access	0.00	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8149	203	欧培敬	35	access	0.00	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8151	203	欧培敬	35	network	0.00	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8152	203	欧培敬	35	network	0.00	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8154	358	欧培敬	35	rent_dorm	46.02	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8155	358	欧培敬	35	rent_dorm	74.52	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8157	358	欧培敬	35	infra	46.02	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8158	358	欧培敬	35	infra	74.52	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8160	358	欧培敬	35	access	0.00	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8161	358	欧培敬	35	access	0.00	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8163	358	欧培敬	35	network	0.00	宿舍楼四座232室	29	text	232	2	match	bld_mismatch(合同35)
+8164	358	欧培敬	35	network	0.00	宿舍楼四座530室	29	text	530	5	match	bld_mismatch(合同35)
+8166	63	碳紫	26	rent_dorm	36.53	宿舍楼一座322室	26	text	322	3	match	
+8167	63	碳紫	26	rent_dorm	36.41	宿舍楼一座323室	26	text	323	3	match	
+8169	63	碳紫	26	infra	36.53	宿舍楼一座322室	26	text	322	3	match	
+8170	63	碳紫	26	infra	36.41	宿舍楼一座323室	26	text	323	3	match	
+8172	63	碳紫	26	access	0.00	宿舍楼一座322室	26	text	322	3	match	
+8173	63	碳紫	26	access	0.00	宿舍楼一座323室	26	text	323	3	match	
+8175	63	碳紫	26	network	0.00	宿舍楼一座322室	26	text	322	3	match	
+8176	63	碳紫	26	network	0.00	宿舍楼一座323室	26	text	323	3	match	
+8178	204	邓宇峰	35	rent_dorm	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8179	204	邓宇峰	35	rent_dorm	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8180	204	邓宇峰	35	rent_dorm	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8181	204	邓宇峰	35	rent_dorm	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8182	204	邓宇峰	35	rent_dorm	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8183	204	邓宇峰	35	rent_dorm	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8185	204	邓宇峰	35	infra	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8186	204	邓宇峰	35	infra	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8187	204	邓宇峰	35	infra	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8188	204	邓宇峰	35	infra	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8189	204	邓宇峰	35	infra	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8190	204	邓宇峰	35	infra	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8192	204	邓宇峰	35	access	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8193	204	邓宇峰	35	access	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8194	204	邓宇峰	35	access	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8195	204	邓宇峰	35	access	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8196	204	邓宇峰	35	access	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8197	204	邓宇峰	35	access	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8199	204	邓宇峰	35	network	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8200	204	邓宇峰	35	network	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8201	204	邓宇峰	35	network	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8202	204	邓宇峰	35	network	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8203	204	邓宇峰	35	network	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8204	204	邓宇峰	35	network	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8206	359	邓宇峰	35	rent_dorm	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8207	359	邓宇峰	35	rent_dorm	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8208	359	邓宇峰	35	rent_dorm	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8209	359	邓宇峰	35	rent_dorm	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8210	359	邓宇峰	35	rent_dorm	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8211	359	邓宇峰	35	rent_dorm	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8213	359	邓宇峰	35	infra	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8214	359	邓宇峰	35	infra	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8215	359	邓宇峰	35	infra	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8216	359	邓宇峰	35	infra	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8217	359	邓宇峰	35	infra	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8218	359	邓宇峰	35	infra	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8220	359	邓宇峰	35	access	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8221	359	邓宇峰	35	access	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8222	359	邓宇峰	35	access	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8223	359	邓宇峰	35	access	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8224	359	邓宇峰	35	access	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8225	359	邓宇峰	35	access	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8227	359	邓宇峰	35	network	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8228	359	邓宇峰	35	network	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8229	359	邓宇峰	35	network	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8230	359	邓宇峰	35	network	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8231	359	邓宇峰	35	network	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8232	359	邓宇峰	35	network	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8234	360	邓宇峰	35	rent_dorm	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8235	360	邓宇峰	35	rent_dorm	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8236	360	邓宇峰	35	rent_dorm	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8237	360	邓宇峰	35	rent_dorm	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8238	360	邓宇峰	35	rent_dorm	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8239	360	邓宇峰	35	rent_dorm	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8241	360	邓宇峰	35	infra	36.53	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8242	360	邓宇峰	35	infra	36.96	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8243	360	邓宇峰	35	infra	36.53	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8244	360	邓宇峰	35	infra	36.53	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8245	360	邓宇峰	35	infra	35.66	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8246	360	邓宇峰	35	infra	35.53	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8248	360	邓宇峰	35	access	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8249	360	邓宇峰	35	access	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8250	360	邓宇峰	35	access	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8251	360	邓宇峰	35	access	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8252	360	邓宇峰	35	access	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8253	360	邓宇峰	35	access	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8255	360	邓宇峰	35	network	0.00	宿舍楼四座644室	29	text	644	6	match	bld_mismatch(合同35)
+8256	360	邓宇峰	35	network	0.00	宿舍楼四座641室	29	text	641	6	match	bld_mismatch(合同35)
+8257	360	邓宇峰	35	network	0.00	宿舍楼四座646室	29	text	646	6	match	bld_mismatch(合同35)
+8258	360	邓宇峰	35	network	0.00	宿舍楼四座647室	29	text	647	6	match	bld_mismatch(合同35)
+8259	360	邓宇峰	35	network	0.00	宿舍楼四座649室	29	text	649	6	match	bld_mismatch(合同35)
+8260	360	邓宇峰	35	network	0.00	宿舍楼四座650室	29	text	650	6	match	bld_mismatch(合同35)
+8262	433	鑫皇	29	rent_dorm	31.05	宿舍四座529室	29	text	529	5	match	
+8263	433	鑫皇	29	rent_dorm	31.93	宿舍四座531室	29	text	531	5	match	
+8264	433	鑫皇	29	rent_dorm	36.53	宿舍四座533室	29	text	533	5	match	
+8265	433	鑫皇	29	rent_dorm	36.53	宿舍四座535室	29	text	535	5	match	
+8266	433	鑫皇	29	rent_dorm	36.53	宿舍四座537室	29	text	537	5	match	
+8267	433	鑫皇	29	rent_dorm	36.53	宿舍四座539室	29	text	539	5	match	
+8268	433	鑫皇	29	rent_dorm	36.96	宿舍四座541室	29	text	541	5	match	
+8269	433	鑫皇	29	rent_dorm	36.09	宿舍四座543室	29	text	543	5	match	
+8277	433	鑫皇	29	infra	31.05	宿舍四座529室	29	text	529	5	match	
+8278	433	鑫皇	29	infra	31.93	宿舍四座531室	29	text	531	5	match	
+8279	433	鑫皇	29	infra	36.53	宿舍四座533室	29	text	533	5	match	
+8280	433	鑫皇	29	infra	36.53	宿舍四座535室	29	text	535	5	match	
+8281	433	鑫皇	29	infra	36.53	宿舍四座537室	29	text	537	5	match	
+8282	433	鑫皇	29	infra	36.53	宿舍四座539室	29	text	539	5	match	
+8283	433	鑫皇	29	infra	36.96	宿舍四座541室	29	text	541	5	match	
+8284	433	鑫皇	29	infra	36.09	宿舍四座543室	29	text	543	5	match	
+8292	433	鑫皇	29	access	0.00	宿舍四座529室	29	text	529	5	match	
+8293	433	鑫皇	29	access	0.00	宿舍四座531室	29	text	531	5	match	
+8294	433	鑫皇	29	access	0.00	宿舍四座533室	29	text	533	5	match	
+8295	433	鑫皇	29	access	0.00	宿舍四座535室	29	text	535	5	match	
+8296	433	鑫皇	29	access	0.00	宿舍四座537室	29	text	537	5	match	
+8297	433	鑫皇	29	access	0.00	宿舍四座539室	29	text	539	5	match	
+8298	433	鑫皇	29	access	0.00	宿舍四座541室	29	text	541	5	match	
+8299	433	鑫皇	29	access	0.00	宿舍四座543室	29	text	543	5	match	
+8307	433	鑫皇	29	network	0.00	宿舍四座529室	29	text	529	5	match	
+8308	433	鑫皇	29	network	0.00	宿舍四座531室	29	text	531	5	match	
+8309	433	鑫皇	29	network	0.00	宿舍四座533室	29	text	533	5	match	
+8310	433	鑫皇	29	network	0.00	宿舍四座535室	29	text	535	5	match	
+8311	433	鑫皇	29	network	0.00	宿舍四座537室	29	text	537	5	match	
+8312	433	鑫皇	29	network	0.00	宿舍四座539室	29	text	539	5	match	
+8313	433	鑫皇	29	network	0.00	宿舍四座541室	29	text	541	5	match	
+8314	433	鑫皇	29	network	0.00	宿舍四座543室	29	text	543	5	match	
+8322	434	鑫皇	26	rent_dorm	31.05	宿舍新俊楼一座306室	26	text	306	3	match	
+8323	434	鑫皇	26	rent_dorm	31.93	宿舍新俊楼一座308室	26	text	308	3	match	
+8324	434	鑫皇	26	rent_dorm	36.53	宿舍新俊楼一座312室	26	text	312	3	match	
+8325	434	鑫皇	26	rent_dorm	32.01	宿舍新俊楼一座505室	26	text	505	5	match	
+8326	434	鑫皇	26	rent_dorm	36.53	宿舍新俊楼一座507室	26	text	507	5	match	
+8327	434	鑫皇	26	rent_dorm	36.53	宿舍新俊楼一座509室	26	text	509	5	match	
+8329	434	鑫皇	26	infra	31.05	宿舍新俊楼一座306室	26	text	306	3	match	
+8330	434	鑫皇	26	infra	31.93	宿舍新俊楼一座308室	26	text	308	3	match	
+8331	434	鑫皇	26	infra	36.53	宿舍新俊楼一座312室	26	text	312	3	match	
+8332	434	鑫皇	26	infra	32.01	宿舍新俊楼一座505室	26	text	505	5	match	
+8333	434	鑫皇	26	infra	36.53	宿舍新俊楼一座507室	26	text	507	5	match	
+8334	434	鑫皇	26	infra	36.53	宿舍新俊楼一座509室	26	text	509	5	match	
+8336	434	鑫皇	26	access	0.00	宿舍新俊楼一座306室	26	text	306	3	match	
+8337	434	鑫皇	26	access	0.00	宿舍新俊楼一座308室	26	text	308	3	match	
+8338	434	鑫皇	26	access	0.00	宿舍新俊楼一座312室	26	text	312	3	match	
+8339	434	鑫皇	26	access	0.00	宿舍新俊楼一座505室	26	text	505	5	match	
+8340	434	鑫皇	26	access	0.00	宿舍新俊楼一座507室	26	text	507	5	match	
+8341	434	鑫皇	26	access	0.00	宿舍新俊楼一座509室	26	text	509	5	match	
+8343	434	鑫皇	26	network	0.00	宿舍新俊楼一座306室	26	text	306	3	match	
+8344	434	鑫皇	26	network	0.00	宿舍新俊楼一座308室	26	text	308	3	match	
+8345	434	鑫皇	26	network	0.00	宿舍新俊楼一座312室	26	text	312	3	match	
+8346	434	鑫皇	26	network	0.00	宿舍新俊楼一座505室	26	text	505	5	match	
+8347	434	鑫皇	26	network	0.00	宿舍新俊楼一座507室	26	text	507	5	match	
+8348	434	鑫皇	26	network	0.00	宿舍新俊楼一座509室	26	text	509	5	match	
+8350	436	鑫皇	26	rent_dorm	44.25	宿舍楼一座419室	26	text	419	4	match	
+8351	436	鑫皇	26	rent_dorm	44.25	宿舍楼一座519室	26	text	519	5	match	
+8353	436	鑫皇	26	infra	44.25	宿舍楼一座419室	26	text	419	4	match	
+8354	436	鑫皇	26	infra	44.25	宿舍楼一座519室	26	text	519	5	match	
+8356	436	鑫皇	26	access	0.00	宿舍楼一座419室	26	text	419	4	match	
+8357	436	鑫皇	26	access	0.00	宿舍楼一座519室	26	text	519	5	match	
+8359	436	鑫皇	26	network	0.00	宿舍楼一座419室	26	text	419	4	match	
+8360	436	鑫皇	26	network	0.00	宿舍楼一座519室	26	text	519	5	match	
+8362	437	鑫皇	29	rent_dorm	32.01	宿舍楼四座234室	29	text	234	2	match	
+8363	437	鑫皇	29	rent_dorm	36.53	宿舍楼四座245室	29	text	245	2	match	
+8364	437	鑫皇	29	rent_dorm	31.93	宿舍楼四座331室	29	text	331	3	match	
+8365	437	鑫皇	29	rent_dorm	36.53	宿舍楼四座445室	29	text	445	4	match	
+8366	437	鑫皇	29	rent_dorm	36.53	宿舍楼四座447室	29	text	447	4	match	
+8369	437	鑫皇	29	infra	32.01	宿舍楼四座234室	29	text	234	2	match	
+8370	437	鑫皇	29	infra	36.53	宿舍楼四座245室	29	text	245	2	match	
+8371	437	鑫皇	29	infra	31.93	宿舍楼四座331室	29	text	331	3	match	
+8372	437	鑫皇	29	infra	36.53	宿舍楼四座445室	29	text	445	4	match	
+8373	437	鑫皇	29	infra	36.53	宿舍楼四座447室	29	text	447	4	match	
+8376	437	鑫皇	29	access	0.00	宿舍楼四座234室	29	text	234	2	match	
+8377	437	鑫皇	29	access	0.00	宿舍楼四座245室	29	text	245	2	match	
+8378	437	鑫皇	29	access	0.00	宿舍楼四座331室	29	text	331	3	match	
+8379	437	鑫皇	29	access	0.00	宿舍楼四座445室	29	text	445	4	match	
+8380	437	鑫皇	29	access	0.00	宿舍楼四座447室	29	text	447	4	match	
+8383	437	鑫皇	29	network	0.00	宿舍楼四座234室	29	text	234	2	match	
+8384	437	鑫皇	29	network	0.00	宿舍楼四座245室	29	text	245	2	match	
+8385	437	鑫皇	29	network	0.00	宿舍楼四座331室	29	text	331	3	match	
+8386	437	鑫皇	29	network	0.00	宿舍楼四座445室	29	text	445	4	match	
+8387	437	鑫皇	29	network	0.00	宿舍楼四座447室	29	text	447	4	match	
+8390	52	银纳	39	rent_dorm	45.08	保障房404室	39	text	404	4	match	
+8391	52	银纳	39	rent_dorm	36.53	保障房410室	39	text	410	4	match	
+8392	52	银纳	39	rent_dorm	36.53	保障房412室	39	text	412	4	match	
+8393	52	银纳	39	rent_dorm	36.53	保障房418室	39	text	418	4	match	
+8394	52	银纳	39	rent_dorm	36.53	保障房420室	39	text	420	4	match	
+8395	52	银纳	39	rent_dorm	36.53	保障房414室	39	text	414	4	match	
+8396	52	银纳	39	rent_dorm	36.53	保障房416室	39	text	416	4	match	
+8397	52	银纳	39	rent_dorm	36.53	保障房422室	39	text	422	4	match	
+8398	52	银纳	39	rent_dorm	31.93	保障房508室	39	text	508	5	match	
+8399	52	银纳	39	rent_dorm	36.53	保障房510室	39	text	510	5	match	
+8400	52	银纳	39	rent_dorm	36.53	保障房512室	39	text	512	5	match	
+8401	52	银纳	39	rent_dorm	36.53	保障房514室	39	text	514	5	match	
+8402	52	银纳	39	rent_dorm	46.02	保障房303室	39	text	303	3	match	
+8405	52	银纳	39	infra	45.08	保障房404室	39	text	404	4	match	
+8406	52	银纳	39	infra	36.53	保障房410室	39	text	410	4	match	
+8407	52	银纳	39	infra	36.53	保障房412室	39	text	412	4	match	
+8408	52	银纳	39	infra	36.53	保障房418室	39	text	418	4	match	
+8409	52	银纳	39	infra	36.53	保障房420室	39	text	420	4	match	
+8410	52	银纳	39	infra	36.53	保障房414室	39	text	414	4	match	
+8411	52	银纳	39	infra	36.53	保障房416室	39	text	416	4	match	
+8412	52	银纳	39	infra	36.53	保障房422室	39	text	422	4	match	
+8413	52	银纳	39	infra	31.93	保障房508室	39	text	508	5	match	
+8414	52	银纳	39	infra	36.53	保障房510室	39	text	510	5	match	
+8415	52	银纳	39	infra	36.53	保障房512室	39	text	512	5	match	
+8416	52	银纳	39	infra	36.53	保障房514室	39	text	514	5	match	
+8417	52	银纳	39	infra	46.02	保障房303室	39	text	303	3	match	
+8420	52	银纳	39	access	0.00	保障房404室	39	text	404	4	match	
+8421	52	银纳	39	access	0.00	保障房410室	39	text	410	4	match	
+8422	52	银纳	39	access	0.00	保障房412室	39	text	412	4	match	
+8423	52	银纳	39	access	0.00	保障房418室	39	text	418	4	match	
+8424	52	银纳	39	access	0.00	保障房420室	39	text	420	4	match	
+8425	52	银纳	39	access	0.00	保障房414室	39	text	414	4	match	
+8426	52	银纳	39	access	0.00	保障房416室	39	text	416	4	match	
+8427	52	银纳	39	access	0.00	保障房422室	39	text	422	4	match	
+8428	52	银纳	39	access	0.00	保障房508室	39	text	508	5	match	
+8429	52	银纳	39	access	0.00	保障房510室	39	text	510	5	match	
+8430	52	银纳	39	access	0.00	保障房512室	39	text	512	5	match	
+8431	52	银纳	39	access	0.00	保障房514室	39	text	514	5	match	
+8432	52	银纳	39	access	0.00	保障房303室	39	text	303	3	match	
+8435	52	银纳	39	network	0.00	保障房404室	39	text	404	4	match	
+8436	52	银纳	39	network	0.00	保障房410室	39	text	410	4	match	
+8437	52	银纳	39	network	0.00	保障房412室	39	text	412	4	match	
+8438	52	银纳	39	network	0.00	保障房418室	39	text	418	4	match	
+8439	52	银纳	39	network	0.00	保障房420室	39	text	420	4	match	
+8440	52	银纳	39	network	0.00	保障房414室	39	text	414	4	match	
+8441	52	银纳	39	network	0.00	保障房416室	39	text	416	4	match	
+8442	52	银纳	39	network	0.00	保障房422室	39	text	422	4	match	
+8443	52	银纳	39	network	0.00	保障房508室	39	text	508	5	match	
+8444	52	银纳	39	network	0.00	保障房510室	39	text	510	5	match	
+8445	52	银纳	39	network	0.00	保障房512室	39	text	512	5	match	
+8446	52	银纳	39	network	0.00	保障房514室	39	text	514	5	match	
+8447	52	银纳	39	network	0.00	保障房303室	39	text	303	3	match	
+8450	253	龙为宿舍	26	rent_dorm	74.52	宿舍一栋501室	26	text	501	5	match	
+8451	253	龙为宿舍	26	rent_dorm	45.08	宿舍一栋504室	26	text	504	5	match	
+8452	253	龙为宿舍	26	rent_dorm	36.53	宿舍四栋435室	29	text	435	4	match	bld_mismatch(合同26)
+8453	253	龙为宿舍	26	infra	74.52	宿舍一栋501室	26	text	501	5	match	
+8454	253	龙为宿舍	26	infra	45.08	宿舍一栋504室	26	text	504	5	match	
+8455	253	龙为宿舍	26	infra	36.53	宿舍四栋435室	29	text	435	4	match	bld_mismatch(合同26)
+8456	253	龙为宿舍	26	access	0.00	宿舍一栋501室	26	text	501	5	match	
+8457	253	龙为宿舍	26	access	0.00	宿舍一栋504室	26	text	504	5	match	
+8458	253	龙为宿舍	26	access	0.00	宿舍四栋435室	29	text	435	4	match	bld_mismatch(合同26)
+8459	253	龙为宿舍	26	network	0.00	宿舍一栋501室	26	text	501	5	match	
+8460	253	龙为宿舍	26	network	0.00	宿舍一栋504室	26	text	504	5	match	
+8461	253	龙为宿舍	26	network	0.00	宿舍四栋435室	29	text	435	4	match	bld_mismatch(合同26)
+8477	110	炳记	13	rent_office	95.43	A座孵化器⏎三楼433室	13	text	433	4	match	floor_text_conflict(显式[3]vs房号推层,交房册仲裁)
+8478	110	炳记	13	mgmt	95.43	A座孵化器⏎三楼433室	13	text	433	4	match	floor_text_conflict(显式[3]vs房号推层,交房册仲裁)
+8479	110	炳记	13	elevator	0.00	A座孵化器⏎三楼433室	13	text	433	4	match	floor_text_conflict(显式[3]vs房号推层,交房册仲裁)
+8480	110	炳记	13	transformer	0.00	A座孵化器⏎三楼433室	13	text	433	4	match	floor_text_conflict(显式[3]vs房号推层,交房册仲裁)
+8481	110	炳记	13	rent_office	71.57	A座孵化器⏎四楼432室	13	text	432	4	match	
+8482	110	炳记	13	mgmt	71.57	A座孵化器⏎四楼432室	13	text	432	4	match	
+8483	110	炳记	13	elevator	0.00	A座孵化器⏎四楼432室	13	text	432	4	match	
+8484	110	炳记	13	rent_office	84.43	A座孵化器⏎四楼434室	13	text	434	4	match	
+8485	110	炳记	13	mgmt	84.43	A座孵化器⏎四楼434室	13	text	434	4	match	
+8486	110	炳记	13	elevator	0.00	A座孵化器⏎四楼434室	13	text	434	4	match	
+8490	420	旭化成	13	rent_office	489.00	A座首层101室	13	text	101	1	match	
+8491	420	旭化成	13	mgmt	489.00	A座首层101室	13	text	101	1	match	
+8532	382	旭化成	13	rent_office	638.90	A座二层201、202室	13	text	201	2	match	
+8532	382	旭化成	13	rent_office	638.90	A座二层201、202室	13	text	202	2	match	
+8533	382	旭化成	13	mgmt	638.90	A座二层201、202室	13	text	201	2	match	
+8533	382	旭化成	13	mgmt	638.90	A座二层201、202室	13	text	202	2	match	
+8534	382	旭化成	13	transformer	0.00	A座二层201、202室	13	text	201	2	match	
+8534	382	旭化成	13	transformer	0.00	A座二层201、202室	13	text	202	2	match	
+8540	131	碧沃丰	20	rent_factory	3200.00	B座401室	20	text	401	4	match	
+8541	131	碧沃丰	20	mgmt	3200.00	B座401室	20	text	401	4	match	
+8542	131	碧沃丰	20	infra	3200.00	B座401室	20	text	401	4	match	
+8543	131	碧沃丰	20	elevator	0.00	B座401室	20	text	401	4	match	
+8544	131	碧沃丰	20	transformer	0.00	B座401室	20	text	401	4	match	
+8545	131	碧沃丰	20	rent_land	293.30	B座401室	20	text	401	4	match	
+8546	5	可莱恩	20	rent_factory	2700.00	B座201室	20	text	201	2	match	
+8547	5	可莱恩	20	infra	4050.00	B座201室	20	text	201	2	match	
+8548	5	可莱恩	20	elevator	0.00	B座201室	20	text	201	2	match	
+8549	5	可莱恩	20	transformer	0.00	B座201室	20	text	201	2	match	
+8550	5	可莱恩	20	mgmt	0.00	B座201室	20	text	201	2	match	
+8551	5	可莱恩	20	rent_land	1350.00	B座201室公摊	20	text	201	2	match	

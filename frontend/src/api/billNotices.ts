@@ -71,6 +71,18 @@ export interface BillNoticeGenResultDTO {
   batch: string
 }
 
+// 备注人工覆盖(V92):独立表挂业务键,重生成(先删后插)不丢。
+// 键=feeKey+premiseKey+meterKey+segKey(空位=空串,合并行 meterKey='merged');显示优先级=覆盖>引擎备注。
+export interface BillNoteOverrideDTO {
+  ym: string
+  tenantId: number
+  feeKey: string
+  premiseKey: string
+  meterKey: string
+  segKey: string
+  note: string
+}
+
 export const billNoticesApi = {
   // 某月全状态列表(含租户/收款公司名与行数)
   list: (ym: string): Promise<BillNoticeDTO[]> => http.get('/bill-notices', { params: { ym } }),
@@ -82,4 +94,10 @@ export const billNoticesApi = {
   issue: (id: number): Promise<BillNoticeDTO> => http.post(`/bill-notices/${id}/issue`),
   // draft/issued 可作废;已作废 409
   void: (id: number): Promise<BillNoticeDTO> => http.post(`/bill-notices/${id}/void`),
+  // 备注人工覆盖(V92):该户该月全量;PUT=upsert(admin),DELETE=清除该键恢复引擎默认(admin,幂等)
+  notes: (ym: string, tenantId: number): Promise<BillNoteOverrideDTO[]> =>
+    http.get('/bill-notices/notes', { params: { ym, tenantId } }),
+  saveNote: (o: BillNoteOverrideDTO): Promise<void> => http.put('/bill-notices/notes', o),
+  deleteNote: (o: Omit<BillNoteOverrideDTO, 'note'>): Promise<void> =>
+    http.delete('/bill-notices/notes', { params: o }),
 }

@@ -1,10 +1,13 @@
 package com.park.demo3.controller;
+import com.park.demo3.dto.BillNoteReq;
 import com.park.demo3.dto.BillNoticeDTO;
 import com.park.demo3.dto.BillNoticeDetailDTO;
 import com.park.demo3.dto.BillNoticeGenResultDTO;
+import com.park.demo3.entity.BillNoteOverride;
 import com.park.demo3.service.BillNoticeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -38,4 +41,24 @@ public class BillNoticeController {
 
     @Operation(summary = "签发(仅 draft 可签发;签发后不被重跑覆盖,须先作废)") @PostMapping("/{id}/issue")
     public BillNoticeDTO issue(@PathVariable Integer id) { return svc.issue(id); }
+
+    // ── 备注人工覆盖(V92):独立表挂业务键,重生成不丢;显示优先级=覆盖>引擎备注(前端合成) ──
+    @Operation(summary = "该户该月全部备注覆盖(键=fee_key+premise_key+meter_key+seg_key,合并行 meter_key='merged')")
+    @GetMapping("/notes")
+    public List<BillNoteOverride> notes(@RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym,
+                                        @RequestParam Integer tenantId) {
+        return svc.notes(ym, tenantId);
+    }
+
+    @Operation(summary = "写备注覆盖(upsert;仅 admin)") @PutMapping("/notes")
+    public void saveNote(@Valid @RequestBody BillNoteReq req) { svc.saveNote(req); }
+
+    @Operation(summary = "清除备注覆盖=恢复引擎默认备注(幂等;仅 admin)") @DeleteMapping("/notes")
+    public void deleteNote(@RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym,
+                           @RequestParam Integer tenantId, @RequestParam String feeKey,
+                           @RequestParam(defaultValue = "") String premiseKey,
+                           @RequestParam(defaultValue = "") String meterKey,
+                           @RequestParam(defaultValue = "") String segKey) {
+        svc.deleteNote(ym, tenantId, feeKey, premiseKey, meterKey, segKey);
+    }
 }

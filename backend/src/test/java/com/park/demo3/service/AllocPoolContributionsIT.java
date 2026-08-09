@@ -1,8 +1,16 @@
 package com.park.demo3.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.jayway.jsonpath.JsonPath;
 import com.park.demo3.AbstractMysqlIT;
+import com.park.demo3.dto.AllocGenerateResultDTO;
 import com.park.demo3.dto.AllocResultDTO;
+import com.park.demo3.entity.BillingTermUnit;
+import com.park.demo3.entity.ContractBillingTerm;
+import com.park.demo3.entity.Unit;
+import com.park.demo3.mapper.BillingTermUnitMapper;
+import com.park.demo3.mapper.ContractBillingTermMapper;
+import com.park.demo3.mapper.UnitMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,13 +30,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // S4-0.2 poolContributions:generate 后逐池×户级贡献行按 (tenant,feeKey) 聚合须与 alloc_result
 // 落库 gen 行金额全等(同一份额解析路径,池金额取当月快照);无池快照月=空表不抛错。
 // 落在 service 包:Contribution 包级可见,api 包够不着。@Transactional 回滚;
-// 独占槽 2095-03(2095-04 仅作无快照只读探针,全库无数据落该月)、2091-02(S5 分摊面积公式)。
+// 独占槽 2095-03(2095-04 仅作无快照只读探针,全库无数据落该月)、2091-02(S5 分摊面积公式)、
+// 2091-07(S8 账期面积)、2091-11(刀2 跨楼层公摊)。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
 class AllocPoolContributionsIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
     @Autowired AllocService alloc;
+    @Autowired ContractBillingTermMapper billingTerms;
+    @Autowired BillingTermUnitMapper termUnits;
+    @Autowired UnitMapper units;
     private String token;
 
     @BeforeEach
@@ -174,6 +186,71 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
         assertEquals(0, got.get(t).compareTo(new BigDecimal("100.00")),
                 "应只算当月覆盖的那一段 100㎡(双计=200,跨栋=600),实摊 " + got.get(t));
         assertNull(got.get(t2), "缺起止日期合同判不出在租,面积基数=0 不参与分摊");
+    }
+
+    // 刀2(2026-08-09)跨楼层公摊:area 池定位到层(floor_label 可解析出层号)时,户面积改按
+    // billing_term_unit 楼层口径 = Σ(该户租金计费行绑到「该栋该层 unit」的 area+IFNULL(area_shared,0));
+    // 该户在该栋无任何租金行绑定 → 回退整栋口径并 warn(渐进,不许未绑定户凭空变 0)。
+    // 跨层户一份合同两行租金(二楼100/三楼2000):二楼池只吃 100(旧口径整栋 2100 多收 20 倍)、
+    // 三楼池只吃 2000;未绑定户回退整栋 50 且 warnings 点名。独占槽 2091-11。
+    @Test
+    void areaPool_floorLabelScopesAreaByTermUnitBind() throws Exception {
+        String ym = "2091-11";
+        int tCross = postId("/api/tenants", "{\"companyName\":\"IT跨层户\",\"businessType\":\"IT\"}");
+        int tUnbound = postId("/api/tenants", "{\"companyName\":\"IT未绑定户\",\"businessType\":\"IT\"}");
+        String buildings = mvc.perform(get("/api/buildings").header("Authorization", auth()))
+                .andReturn().getResponse().getContentAsString();
+        int bid = ((java.util.List<Integer>) JsonPath.read(buildings, "$.data[*].id")).get(0);
+        int cid = postId("/api/contracts", "{\"contractNo\":\"IT-XF-" + System.nanoTime() + "\",\"tenantId\":" + tCross
+                + ",\"buildingId\":" + bid + ",\"status\":\"active\","
+                + "\"startDate\":\"2091-01-01\",\"endDate\":\"2093-12-31\",\"billingLines\":["
+                + "{\"propertyType\":\"factory\",\"location\":\"IT二楼201\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10},"
+                + "{\"propertyType\":\"factory\",\"location\":\"IT三楼301\",\"feeKey\":\"rent_factory\",\"area\":2000,\"unitPrice\":10}]}");
+        contract(tUnbound, bid, "2091-01-01", "2093-12-31", 50);
+        int u2 = unit(bid, 2, "IT-XF-201"), u3 = unit(bid, 3, "IT-XF-301");
+        for (ContractBillingTerm bt : billingTerms.selectList(
+                new QueryWrapper<ContractBillingTerm>().eq("contract_id", cid)))
+            bind(bt.getId(), bt.getArea().intValue() == 100 ? u2 : u3);
+        // 两个层定位池:qty=100、系数=100、单价钉 1 → std=ROUND(100/100×1,2)=1.00 元/㎡
+        int m2 = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT二楼池表\",\"ownership\":\"share\"}");
+        reading(m2, ym, "0", "100");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"area\",\"buildingId\":" + bid
+                + ",\"floorLabel\":\"二楼\",\"feeName\":\"IT公共电\",\"coefficient\":100,\"feeKey\":\"share_elec_light\","
+                + "\"meterIds\":[" + m2 + "],\"members\":[{\"tenantId\":" + tCross + "},{\"tenantId\":" + tUnbound + "}]}");
+        int m3 = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT三楼池表\",\"ownership\":\"share\"}");
+        reading(m3, ym, "0", "100");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"area\",\"buildingId\":" + bid
+                + ",\"floorLabel\":\"三楼\",\"feeName\":\"IT走廊灯\",\"coefficient\":100,\"feeKey\":\"share_elec_floor\","
+                + "\"meterIds\":[" + m3 + "],\"members\":[{\"tenantId\":" + tCross + "}]}");
+        price("elec_commercial", ym, "1");
+        price("mgmt_fee_commercial", ym, "0");
+        price("elec_sharp", ym, "1"); price("elec_peak", ym, "1");
+        price("elec_flat", ym, "1"); price("elec_valley", ym, "1");   // priceGate 全 zone 门禁
+        AllocGenerateResultDTO gen = alloc.generate(ym);
+
+        Map<String, BigDecimal> got = new HashMap<>();
+        for (AllocResultDTO r : alloc.resultByYm(ym)) got.put(r.tenantId() + "|" + r.feeKey(), r.amount());
+        assertEquals(0, got.get(tCross + "|share_elec_light").compareTo(new BigDecimal("100.00")),
+                "二楼池应只吃二楼行 100㎡(整栋口径=2100),实摊 " + got.get(tCross + "|share_elec_light"));
+        assertEquals(0, got.get(tCross + "|share_elec_floor").compareTo(new BigDecimal("2000.00")),
+                "三楼池应只吃三楼行 2000㎡,实摊 " + got.get(tCross + "|share_elec_floor"));
+        assertEquals(0, got.get(tUnbound + "|share_elec_light").compareTo(new BigDecimal("50.00")),
+                "未绑定户应回退整栋面积 50㎡,实摊 " + got.get(tUnbound + "|share_elec_light"));
+        assertTrue(gen.warnings().stream().anyMatch(w -> w.contains("IT未绑定户") && w.contains("回退")),
+                "未绑定户回退必须点名 warn,实际:" + gen.warnings());
+    }
+
+    private int unit(int buildingId, int floor, String unitNo) {
+        Unit u = new Unit();
+        u.setBuildingId(buildingId); u.setFloor(floor); u.setUnitNo(unitNo); u.setArea(BigDecimal.ZERO);
+        units.insert(u);
+        return u.getId();
+    }
+
+    private void bind(int termId, int unitId) {
+        BillingTermUnit b = new BillingTermUnit();
+        b.setTermId(termId); b.setUnitId(unitId); b.setSource("derived");
+        termUnits.insert(b);
     }
 
     private void contract(int tenantId, int buildingId, String start, String end, int area) throws Exception {

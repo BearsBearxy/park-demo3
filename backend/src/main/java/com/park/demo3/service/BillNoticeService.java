@@ -1,10 +1,12 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.BillNoteReq;
 import com.park.demo3.dto.BillNoticeDTO;
 import com.park.demo3.dto.BillNoticeDetailDTO;
 import com.park.demo3.dto.BillNoticeGenResultDTO;
 import com.park.demo3.dto.MeterBindingDTO;
+import com.park.demo3.entity.BillNoteOverride;
 import com.park.demo3.entity.AllocPoolResult;
 import com.park.demo3.entity.AllocRule;
 import com.park.demo3.entity.AllocRuleMember;
@@ -20,6 +22,7 @@ import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.AllocPoolResultMapper;
 import com.park.demo3.mapper.AllocRuleMapper;
 import com.park.demo3.mapper.AllocRuleMemberMapper;
+import com.park.demo3.mapper.BillNoteOverrideMapper;
 import com.park.demo3.mapper.BillNoticeLineMapper;
 import com.park.demo3.mapper.BillNoticeMapper;
 import com.park.demo3.mapper.BillPayCompanyMapper;
@@ -74,6 +77,7 @@ public class BillNoticeService {
 
     private final BillNoticeMapper notices;
     private final BillNoticeLineMapper noticeLines;
+    private final BillNoteOverrideMapper noteOverrides;
     private final MeterMapper meters;
     private final MeterReadingMapper readings;
     private final ContractMapper contracts;
@@ -89,6 +93,7 @@ public class BillNoticeService {
     private final MeterBindingService binding;
 
     public BillNoticeService(BillNoticeMapper notices, BillNoticeLineMapper noticeLines,
+                             BillNoteOverrideMapper noteOverrides,
                              MeterMapper meters, MeterReadingMapper readings,
                              ContractMapper contracts, ContractBillingTermMapper billingTerms,
                              TenantMapper tenants, ManagementCompanyMapper companies,
@@ -96,7 +101,7 @@ public class BillNoticeService {
                              AllocRuleMemberMapper ruleMembers,
                              AllocPoolResultMapper poolResults, PriceCfgService price,
                              AllocService alloc, MeterBindingService binding) {
-        this.notices = notices; this.noticeLines = noticeLines;
+        this.notices = notices; this.noticeLines = noticeLines; this.noteOverrides = noteOverrides;
         this.meters = meters; this.readings = readings;
         this.contracts = contracts; this.billingTerms = billingTerms;
         this.tenants = tenants; this.companies = companies;
@@ -979,6 +984,34 @@ public class BillNoticeService {
             n.getNoticeKind(), n.getPremiseText(), n.getTotalAmount(), n.getPrevDue(),
             n.getStatus(), n.getWarn(), lines);
     }
+
+    // ── 备注人工覆盖(V92):独立表挂业务键,重生成(先删后插)不丢;显示优先级=覆盖>引擎备注(前端合成) ──
+    public List<BillNoteOverride> notes(String ym, Integer tenantId) {
+        requireYm(ym);
+        return noteOverrides.selectList(new QueryWrapper<BillNoteOverride>()
+            .eq("ym", ym).eq("tenant_id", tenantId).orderByAsc("id"));
+    }
+
+    public void saveNote(BillNoteReq req) {
+        if (tenants.selectById(req.tenantId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        noteOverrides.upsertNote(req.ym(), req.tenantId(), req.feeKey(),
+            emptyIfNull(req.premiseKey()), emptyIfNull(req.meterKey()), emptyIfNull(req.segKey()),
+            req.note());
+    }
+
+    // 清除覆盖=恢复引擎默认备注;键未命中静默(幂等)
+    public void deleteNote(String ym, Integer tenantId, String feeKey,
+                           String premiseKey, String meterKey, String segKey) {
+        requireYm(ym);
+        noteOverrides.delete(new QueryWrapper<BillNoteOverride>()
+            .eq("ym", ym).eq("tenant_id", tenantId).eq("fee_key", feeKey)
+            .eq("premise_key", emptyIfNull(premiseKey))
+            .eq("meter_key", emptyIfNull(meterKey))
+            .eq("seg_key", emptyIfNull(segKey)));
+    }
+
+    private static String emptyIfNull(String s) { return s == null ? "" : s; }
 
     // 仅 issued/draft 可 void;issue 仅 draft(issued 不可被重跑覆盖,须先 void)
     public BillNoticeDTO voidNotice(Integer id) { return transition(id, "void"); }

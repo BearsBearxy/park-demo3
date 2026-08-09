@@ -42,6 +42,7 @@ public class AllocService {
     private final BuildingMapper buildings;
     private final ContractMapper contracts;
     private final ContractBillingTermMapper billingTerms;   // S5 §1:分摊面积改读租金计费行(只读)
+    private final BillingTermUnitMapper termUnits;   // 刀2:计费行↔单元绑定(V91),层定位 area 池的楼层面积口径
     private final UnitMapper units;                  // V69 受益人候选:楼栋+楼层 → 单元 → 合同 → 租户
     private final ContractUnitMapper contractUnits;
     private final ElecCostEntryMapper elecEntries;   // 互认提示行只读(单向:P-B 永不写 elec_cost)
@@ -53,6 +54,7 @@ public class AllocService {
                         AllocLossResultMapper lossResults, MeterMapper meters,
                         MeterReadingMapper readings, TenantMapper tenants, BuildingMapper buildings,
                         ContractMapper contracts, ContractBillingTermMapper billingTerms,
+                        BillingTermUnitMapper termUnits,
                         UnitMapper units, ContractUnitMapper contractUnits,
                         ElecCostEntryMapper elecEntries, PriceCfgService priceCfg) {
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
@@ -60,7 +62,7 @@ public class AllocService {
         this.poolMeterResults = poolMeterResults; this.lossResults = lossResults;
         this.meters = meters; this.readings = readings;
         this.tenants = tenants; this.buildings = buildings; this.contracts = contracts;
-        this.billingTerms = billingTerms;
+        this.billingTerms = billingTerms; this.termUnits = termUnits;
         this.units = units; this.contractUnits = contractUnits;
         this.elecEntries = elecEntries; this.priceCfg = priceCfg;
     }
@@ -180,6 +182,36 @@ public class AllocService {
         if (a != null) return a;
         if (c.getRentArea() != null) fallback.add(c.getId());
         return c.getRentArea();
+    }
+
+    // 刀2(2026-08-09)跨楼层公摊:层定位 area 池的户面积口径 —— 该户租金计费行经 billing_term_unit
+    // 绑到「某栋某层 unit」的行 Σ(area+IFNULL(area_shared,0))。同一行绑同层多房只计一次(217、218、219 型);
+    // 跨层行(G座1-4层型)每层各计全额:行面积无层拆分依据,不硬猜(现库此类行只在无层定位池的楼栋,零影响)。
+    // 只吃 covering 合同的行(与 areaByBuildingTenant 同口径);产物:building → floor → tenant → Σ面积。
+    static Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBuildingFloor(
+            List<BillingTermUnit> binds, Map<Integer, ContractBillingTerm> rentTermById,
+            Map<Integer, Integer> tenantOfCoveringContract, Map<Integer, Unit> unitById) {
+        Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> out = new HashMap<>();
+        Set<String> seen = new HashSet<>();
+        for (BillingTermUnit b : binds) {
+            ContractBillingTerm t = rentTermById.get(b.getTermId());
+            if (t == null) continue;                                   // 非租金行不入面积
+            Integer tenantId = tenantOfCoveringContract.get(t.getContractId());
+            if (tenantId == null) continue;                            // 非当月覆盖合同
+            Unit u = unitById.get(b.getUnitId());
+            if (u == null || u.getBuildingId() == null || u.getFloor() == null) continue;
+            if (!seen.add(b.getTermId() + "|" + u.getBuildingId() + "|" + u.getFloor())) continue;
+            out.computeIfAbsent(u.getBuildingId(), k -> new HashMap<>())
+                .computeIfAbsent(u.getFloor(), k -> new HashMap<>())
+                .merge(tenantId, nz(t.getArea()).add(nz(t.getAreaShared())), BigDecimal::add);
+        }
+        return out;
+    }
+
+    // 该户在该栋是否有任何租金行绑定(无绑定 → 层定位池回退整栋口径,渐进不许凭空变 0)
+    private static boolean boundInBuilding(Map<Integer, Map<Integer, BigDecimal>> floors, Integer tenantId) {
+        for (Map<Integer, BigDecimal> f : floors.values()) if (f.containsKey(tenantId)) return true;
+        return false;
     }
 
     private static AllocRuleMember autoMember(Integer tenantId) {
@@ -791,6 +823,8 @@ public class AllocService {
                        // 三态挂零判别:有绑定记录的规则 id(未按在册过滤)——bindsByRule 已剔除不在服务中的表,
                        // 光看它分不清「从未绑表」和「绑了但本月全停」,后者要挂零陈列不报缺读数
                        Set<Integer> boundRules,
+                       // 刀2:楼栋 → 楼层 → 租户 → 租金行绑定面积Σ(rentAreaByBuildingFloor 产物,层定位 area 池用)
+                       Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBuildingFloorTenant,
                        List<String> warnings) {}
 
     // (包级可见:S4 出账引擎经 poolContributions 消费公摊行)
@@ -826,9 +860,12 @@ public class AllocService {
         for (AllocCfg c : eff) if (!c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
         // 户租赁面积=Σ当月覆盖合同分摊面积(S5 §1:Σ租金计费行 area+IFNULL(area_shared,0),无租金行回退 rent_area)
         Map<Integer, BigDecimal> rentLineArea = new HashMap<>();
+        Map<Integer, ContractBillingTerm> rentTermById = new HashMap<>();   // 刀2:楼层面积口径按行绑定取
         for (ContractBillingTerm t : billingTerms.selectList(null))
-            if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey()))
+            if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey())) {
                 rentLineArea.merge(t.getContractId(), nz(t.getArea()).add(nz(t.getAreaShared())), BigDecimal::add);
+                rentTermById.put(t.getId(), t);
+            }
         Set<Integer> areaFallback = new HashSet<>();   // 回退 rent_area 的合同(收成一条 warn)
         Roster ro = loadRoster(ym);
         Map<Integer, BigDecimal> areaByTenant = new HashMap<>();
@@ -858,6 +895,14 @@ public class AllocService {
         for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
         Map<String, Map<Integer, BigDecimal>> areaByZone =
             areaByZoneTenant(ro.covering(), ro.unitsByContract(), zoneOfBuilding, rentLineArea, areaFallback);
+        // 刀2:层定位 area 池的楼层面积口径(covering 合同的租金行 × billing_term_unit 绑定 × unit 楼层)
+        Map<Integer, Integer> tenantOfCovering = new HashMap<>();
+        for (Contract c : ro.covering())
+            if (c.getTenantId() != null) tenantOfCovering.put(c.getId(), c.getTenantId());
+        Map<Integer, Unit> unitById = new HashMap<>();
+        for (Unit u : units.selectList(null)) unitById.put(u.getId(), u);
+        Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBldFloor =
+            rentAreaByBuildingFloor(termUnits.selectList(null), rentTermById, tenantOfCovering, unitById);
         // 缺日期户维持不入自动名册(塞进去会凭空多摊钱),但必须点名报数,别让缺口无声消失
         List<String> warnings = new ArrayList<>();
         if (!areaFallback.isEmpty())
@@ -874,7 +919,8 @@ public class AllocService {
             rules.selectByZone(null), bindsByRule, membersByRule, ruleLinks.selectList(null),
             buildingById, inForceByZone(ro.covering(), ro.unitsByContract(), zoneOfBuilding),
             areaByZone,
-            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), boundRules, warnings);
+            ro.unitsByTenant(), tenantMeters(meterById.values()), ro.nameById(), boundRules,
+            rentAreaByBldFloor, warnings);
     }
 
     private static BigDecimal cfgVal(Ctx ctx, String scope, String key) { return ctx.cfg().get(scope + "|" + key); }
@@ -999,8 +1045,24 @@ public class AllocService {
                 BigDecimal std = p.std();
                 if (std == null) break;
                 BigDecimal base = p.base();
+                // 刀2:层定位池(楼栋级且 floor_label 可解析出层号)→ 户面积按 billing_term_unit 楼层口径,
+                // 同栋跨层户不再被整栋面积多收(陈相钊 2462.87→462.87);该户在该栋无任何租金行绑定 →
+                // 回退整栋口径并收成一条 warn(渐进,不许未绑定户凭空变 0)。侧向(东/西)本刀不做,残差见报告。
+                Integer poolFloor = auto || rule.getBuildingId() == null ? null : floorNum(rule.getFloorLabel());
+                Map<Integer, Map<Integer, BigDecimal>> bldFloors = poolFloor == null ? null
+                    : ctx.rentAreaByBuildingFloorTenant().getOrDefault(rule.getBuildingId(), Map.of());
+                Map<Integer, BigDecimal> floorArea = bldFloors == null ? null
+                    : bldFloors.getOrDefault(poolFloor, Map.of());
+                List<String> fellBack = new ArrayList<>();
                 for (AllocRuleMember m : mems) {
-                    BigDecimal area = areaOf.get(m.getTenantId());
+                    BigDecimal area;
+                    if (floorArea != null && boundInBuilding(bldFloors, m.getTenantId())) {
+                        area = floorArea.get(m.getTenantId());
+                    } else {
+                        area = areaOf.get(m.getTenantId());
+                        if (floorArea != null && area != null && area.signum() != 0)
+                            fellBack.add(ctx.nameByTenant().getOrDefault(m.getTenantId(), "#" + m.getTenantId()));
+                    }
                     if (area == null || area.signum() == 0) {
                         if (auto) noArea++;   // 自动名册逐户报会淹掉提醒条 → 收成一条计数
                         else ctx.warnings().add("规则「" + rule.getName() + "」受益租户#" + m.getTenantId() + " 当月无有效合同或无租赁面积,跳过");
@@ -1011,6 +1073,9 @@ public class AllocService {
                     out.add(new Contribution(m.getTenantId(), rule.getFeeKey(), rule.getId(), rule.getName(),
                         qtyShare, r2(std.multiply(area)), std, effPrice, null, area, null, null));
                 }
+                if (!fellBack.isEmpty())
+                    ctx.warnings().add("池「" + rule.getName() + "」按层取面积:" + String.join("、", fellBack)
+                        + " 在该栋无计费行↔单元绑定,已回退整栋面积口径,请补绑定");
             }
             case "floor" -> {    // 元/层=池 std;显式份额户=元/层×weight;其余户按楼层分桶,每桶各分 1 份(§D.2)
                 BigDecimal perFloor = p.std();

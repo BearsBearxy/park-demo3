@@ -15,7 +15,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 export const BILL_FEE_LABEL: Record<string, string> = {
   ...ALLOC_FEE_LABEL,
   share_elec_floor: '楼层公共',
-  share_elec_fire: '消防照明',
+  share_elec_fire: '消防用电',   // 二期纸单原文(全册 0 次「消防照明」);一期无 fire 键
   share_elec_elevator: '电梯用电',
   share_elec_loss: '线路损耗',
   share_elec_light: '路灯公摊',
@@ -377,9 +377,13 @@ export const billFeeTitle = (l: FeeTitleLine): string =>
 // 合并行倍率列被 colspan 吞掉,故 meterWhy 在撞名/倍率不一致时把倍率写进悬浮补回来。
 // 电费/水费不并:它们逐表显上月/本月行至,纸单也逐表列。
 // ⚠ 一分钱不改:纯渲染层合并,groupExcelStyle 的 feeTotal/maintTotal/total 全走原始行,不经此函数。
+// ⚠ floor 与 fire 不同名(2026-08-09 二期全册词汇铁证,68 sheet 值+公式两遍扫):
+// 一期纸单 zh!F4=「楼层公共、消防照明」(一格文字一列钱,只有 floor 键);二期纸单一律「消防用电」,
+// 「楼层公共」「消防照明」在二期全册 0 次出现。两键按期互斥(2024-02 全库无同现),各按各的纸单显名;
+// 若未来真同现,mergeMaintRows 会出两行——那也比给二期行顶一个一期表头诚实。
 const MERGE_LABEL: Record<string, string> = {
   share_elec_floor: '楼层公共、消防照明',
-  share_elec_fire: '楼层公共、消防照明',
+  share_elec_fire: '消防用电',
   share_elec_elevator: '电梯用电',
   share_elec_loss: '线路损耗',
   share_elec_light: '路灯公摊',
@@ -397,7 +401,8 @@ const MERGE_IF_MULTI = new Set(['mgmt_fee', 'water_pipe'])
 // 引擎 line_no 序是「路灯(17)在楼层(18)之前」,照搬就不是纸单的样子。sort 稳定(ES2019 起规范保证)。
 const MERGE_RANK: Record<string, number> = {
   '电力管理费': 0, '水管网维护费': 0,
-  '楼层公共、消防照明': 1, '电梯用电': 2, '线路损耗': 3, '路灯公摊': 4, '绿化水公摊': 5,
+  '楼层公共、消防照明': 1, '消防用电': 1,   // 两键按期互斥,同档不撞
+  '电梯用电': 2, '线路损耗': 3, '路灯公摊': 4, '绿化水公摊': 5,
   [PACKAGE_LABEL]: 1,   // 电包干占被替掉的「楼层公共」档位;水包干那带只有它自己,同档无歧义
 }
 // 备注列沿用纸单口径(按面积摊的两项);其余合并项留空。
@@ -521,6 +526,33 @@ export function auditTitle(l: {
     l.ruleBranch ? `判定分支 ${RULE_BRANCH_LABEL[l.ruleBranch] ?? l.ruleBranch}` : null,
   ].filter((s): s is string => !!s)
   return rows.length ? rows.join('\n') : null
+}
+
+// ── 备注人工覆盖(V92):行键生成与显示合成。独立表挂业务键,重生成不丢;显示优先级=覆盖>引擎备注 ──
+// 键四段与后端 bill_note_override 逐列对齐(空位=空串,不用 null:MySQL unique 对 NULL 不去重)。
+// 普通行=feeKey+premise+meterId+seg;合并行(纸单口径多池/多表合一行)=feeKey+premise+'merged'。
+// ponytail: 同键行(如同场地同费项两条租金行)共享一条覆盖,真撞了再细化键。
+export interface NoteKey { feeKey: string; premiseKey: string; meterKey: string; segKey: string }
+export const lineNoteKey = (l: {
+  feeKey: string; premise: string | null; meterId: number | null; seg: string | null
+}): NoteKey => ({
+  feeKey: l.feeKey,
+  premiseKey: l.premise ?? '',
+  meterKey: l.meterId == null ? '' : String(l.meterId),
+  segKey: l.seg ?? '',
+})
+export const mergeNoteKey = (feeKey: string, premise: string | null): NoteKey =>
+  ({ feeKey, premiseKey: premise ?? '', meterKey: 'merged', segKey: '' })
+// Map 键=JSON 数组序列化:键段是业务原文(逗号/竖线都可能出现在 premise 里),不用分隔符免撞键
+export const noteKeyId = (k: NoteKey) =>
+  JSON.stringify([k.feeKey, k.premiseKey, k.meterKey, k.segKey])
+// 显示合成:有人工覆盖=覆盖文本+overridden 标记(悬浮/一键恢复用引擎原文);无=引擎备注
+export interface NoteDisplay { text: string; overridden: boolean; engine: string | null }
+export function noteDisplay(
+  overrides: Map<string, string>, k: NoteKey, engine: string | null,
+): NoteDisplay {
+  const o = overrides.get(noteKeyId(k))
+  return o != null ? { text: o, overridden: true, engine } : { text: engine ?? '', overridden: false, engine }
 }
 
 // ── v2 拍板1:租户聚合——一个租户一条,该户全部单据(含宿舍单)合并,对齐 Excel 每租户一张 worksheet ──
