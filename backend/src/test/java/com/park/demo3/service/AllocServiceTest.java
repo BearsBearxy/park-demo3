@@ -700,6 +700,33 @@ class AllocServiceTest {
         assertEquals("一期 A座·三楼东侧·已停用·电表①", AllocService.meterLabel(lm("一期 A座", "三楼东侧", "四楼", "西侧")));
     }
 
+    // ── S13 §7 二期车间池 Σ层份 vs 账册系数T 守卫:差>0.01 才警;欠配文案注明「空置园区自担」──
+    @Test
+    void weightCoefWarn_thresholdAndWording() {
+        assertNull(AllocService.weightCoefWarn("二期 二车间·消防", d("6.99"), d("7")), "差=0.01 视为闭合");
+        assertNull(AllocService.weightCoefWarn("二期 二车间·消防", d("4.38"), null), "无系数不警");
+        String under = AllocService.weightCoefWarn("二期 二车间·消防", d("4.38"), d("7"));   // 源册欠配 -2.62
+        assertNotNull(under);
+        assertTrue(under.contains("空置园区自担"), under);
+        String over = AllocService.weightCoefWarn("二期 一车间·电梯", d("5.84"), d("5.8"));  // 超配 0.04
+        assertNotNull(over);
+        assertTrue(over.contains("超配"), over);
+    }
+
+    // ── S13 §8 表标签占位:ownership∈{share,park,ops,infra} 豁免「(位置未录)」显 '–';租户表保留提示 ──
+    @Test
+    void meterLabel_poolOwnershipDashNotTodo() {
+        var m = lm("招商中心", null, null, null);
+        m.setOwnership("share");
+        assertEquals("招商中心·–·已停用·电表①", AllocService.meterLabel(m));
+        m.setOwnership("park");
+        assertEquals("招商中心·–·已停用·电表①", AllocService.meterLabel(m));
+        m.setOwnership("infra");
+        assertEquals("招商中心·–·已停用·电表①", AllocService.meterLabel(m));
+        m.setOwnership("tenant");
+        assertEquals("招商中心·(位置未录)·已停用·电表①", AllocService.meterLabel(m));
+    }
+
     // ── §H4.2e 无表行(method=manual,原册 r12 联塑精铟 / r47–49 C座一楼西侧三户)──
     // computePool 对 manual 池早退返回这个常量:十二格全空。
     // qty/cost/std 为 NULL → 屏上合计(只加非空的 costAmount)自然不含它;

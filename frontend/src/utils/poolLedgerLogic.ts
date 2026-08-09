@@ -112,28 +112,33 @@ export function groupPoolsByBookBlock(rows: AllocPoolRowDTO[], zone: string): Po
 // ── 池定位分类(§H4.2a 归一后):原册 C 列就是「楼层+方位」一格,side 一期不再写入 ──
 // park    园区级(不挂楼栋,本就没有楼层维度,留空)
 // located 已录 floor_label(原册 C 列那一格,可能本身含方位如「四楼西侧」)
-// todo    挂了楼栋却没录楼层 —— 屏上显「(未录)」并橙标,要人工补
+// whole   按层份(floor)池挂栋不录楼层=整栋刻意(P2-SHARE-LAYER-SPEC §8:池不分层,
+//         无楼层方位概念),留空不催补
+// todo    其余摊法挂了楼栋却没录楼层 —— 屏上显「(未录)」并橙标,要人工补
 // ⚠旧的 workshop(按车间)/net(整栋净额)两态连同话术一并废除(§H4.3.3:屏上不许再出现
-// 「天面东侧/天面西侧/整栋净额/按车间/–」)。代价:二期 16 个车间池、招商中心净额池会落 todo。
-export type PoolLocKind = 'park' | 'located' | 'todo'
-type PoolLocSrc = Pick<AllocPoolRowDTO, 'buildingId' | 'floorLabel'>
+// 「天面东侧/天面西侧/整栋净额/按车间/–」)。代价:招商中心净额池会落 todo(二期 16 个
+// 车间池按层份摊,已随 whole 豁免)。
+export type PoolLocKind = 'park' | 'located' | 'whole' | 'todo'
+type PoolLocSrc = Pick<AllocPoolRowDTO, 'buildingId' | 'floorLabel' | 'method'>
 export function poolLocKind(r: PoolLocSrc): PoolLocKind {
   if ((r.floorLabel ?? '').trim()) return 'located'
-  return r.buildingId == null ? 'park' : 'todo'
+  if (r.buildingId == null) return 'park'
+  return r.method === 'floor' ? 'whole' : 'todo'
 }
-// 屏上「楼层」格的悬停说明(located/park 无需解释)
+// 屏上「楼层」格的悬停说明(located/park/whole 无需解释)
 export const POOL_LOC_HINT: Record<PoolLocKind, string | null> = {
   park: null,
   located: null,
+  whole: null,
   todo: '这个池挂了楼栋却没录楼层 —— 点开池名在抽屉里补「楼层」(原册 C 列那一格,不拆方位)',
 }
 
-// ── 「楼层」列:单值 floor_label(不再拼 side);挂栋没录=「(未录)」,园区级池空 ──
+// ── 「楼层」列:单值 floor_label(不再拼 side);挂栋没录=「(未录)」,园区级/整栋(floor池)空 ──
 export const POOL_LOC_UNSET = '(未录)'
 export function poolFloor(r: PoolLocSrc): string {
   const kind = poolLocKind(r)
   if (kind === 'located') return (r.floorLabel ?? '').trim()
-  return kind === 'park' ? '' : POOL_LOC_UNSET
+  return kind === 'todo' ? POOL_LOC_UNSET : ''
 }
 
 // ── 池名称列优先显原册 A 列自然键 book_key(§H4.2d,回溯锚点);无键回退费项名,再回退全名 ──

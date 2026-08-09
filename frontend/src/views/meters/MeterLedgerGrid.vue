@@ -154,12 +154,14 @@ const locOf = (x: WorkbenchRow) => x.m as MeterLoc
 // V77 §G3:缺段要说出来。结构化楼层方位 > spot 原文(解析不出楼层的照原文显示) >
 // 有区域却什么都没录 → 占位「(位置未录)」(与后端 AllocService.LOC_TODO 同话术);
 // 区域也空的园区级/跨栋表不适用,仍显 '–'。清单见 scripts/meter-loc-todo.tsv。
+// P2-SHARE-LAYER-SPEC §8:非租户表(share/park/ops/infra)位置本可空,豁免催录,显 '–'。
 const LOC_TODO = '(位置未录)'
+const LOC_EXEMPT = new Set(['share', 'park', 'ops', 'infra'])
 function floorSide(x: WorkbenchRow): string {
   const l = locOf(x)
   return ((l.floorLabel ?? '').trim() + (l.side ?? '').trim())
     || x.m.spot?.trim()
-    || (x.m.area?.trim() ? LOC_TODO : '–')
+    || (x.m.area?.trim() && !LOC_EXEMPT.has(x.m.ownership) ? LOC_TODO : '–')
 }
 // dorm 回退:宿舍单元「1-309」(栋-房号)在导入时已随位置原文落 spot(如「三楼 1-309」),正则直读;
 // 无单元的宿舍表(总表/商铺/充电桩/分时子表)不命中,显 '–' 属预期

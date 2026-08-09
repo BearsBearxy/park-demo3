@@ -291,6 +291,11 @@ public class BillNoticeService {
         // ── 孵化协议固定收取(包干):须在损耗收尾之前,包干额才进得了 E2 损耗基数 ──
         applyPackages(byTenant, warnByTenant, seq, ym, coveringByTenant, locsByContract, ruleById);
 
+        // S13 §6:合同→楼栋(二期园区级公摊行/容量费行的损耗链归属按行合同楼栋判)
+        Map<Integer, Integer> buildingOfContract = new HashMap<>();
+        for (Contract c : allContracts)
+            if (c.getBuildingId() != null) buildingOfContract.put(c.getId(), c.getBuildingId());
+
         // ── 户级收尾:p1/p2 损耗行金额口径分链计(E2,定案 2026-08-05)+按场地落行(S4-3) ──
         // 宿舍段损耗行已删(2024-02 通知单实证宿舍段无此行;spec §3⑦ loss_rate dorm=0.012 保留配置暂不消费)。
         for (Map.Entry<Integer, List<L>> e : byTenant.entrySet()) {
@@ -304,6 +309,10 @@ public class BillNoticeService {
             for (L l : ls) {
                 if (l.rateTmp == null) continue;
                 List<Integer> chain = l.lossBuildings == null ? List.of() : l.lossBuildings;
+                // S13 §6 损耗base形态:户级flag(键带链作用域),无flag/未知值=B(现状)。A=另并链内 mgmt_fee 行;
+                // C=仅户电费+容量费(星州);F=B去电梯再并 mgmt(邓宇峰×三车间链);G=B附加指定park表电费(永龙)。
+                int form = lossBaseForm(ym, l.tenantId, chain);
+                String formNote = formTag(form);   // null=形态B/未知值(容错按B),note 不加尾巴
                 // 分桶键=wide(合同级粗粒度),不用细化后的 l.premise:两侧同桶才保住行数与逐行金额;
                 // 损耗行自身 premise=桶键,故仍是 S6 前的值。
                 Map<String, BigDecimal[]> byPremise = new LinkedHashMap<>();   // wide premise → {电费Σ,公摊Σ,度数Σ}
@@ -314,10 +323,22 @@ public class BillNoticeService {
                     if (!o.dorm && "elec".equals(o.feeKey) && o.meterId != null) {
                         Meter m = meterById.get(o.meterId);
                         inElec = m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId());
-                    } else if (o.poolRuleId != null && ("share_elec_floor".equals(o.feeKey)
-                            || "share_elec_elevator".equals(o.feeKey) || "share_elec_fire".equals(o.feeKey))) {
+                    } else if (form != FORM_C && o.poolRuleId != null && ("share_elec_floor".equals(o.feeKey)
+                            || (form != FORM_F && "share_elec_elevator".equals(o.feeKey))
+                            || "share_elec_fire".equals(o.feeKey))) {
                         AllocRule pr = ruleById.get(o.poolRuleId);
-                        inShare = pr != null && pr.getBuildingId() != null && chain.contains(pr.getBuildingId());
+                        // S13:二期园区级池(消防设施/稳压泵,楼栋空)在源册打包进户消防行 → base 也要吃;
+                        // 链归属按行合同的楼栋判(splitShare 拆过的行才带 contractId,拆不出的照旧不进)
+                        Integer cb = o.contractId == null ? null : buildingOfContract.get(o.contractId);
+                        inShare = pr != null && (pr.getBuildingId() != null ? chain.contains(pr.getBuildingId())
+                            : "p2".equals(pr.getZone()) && cb != null && chain.contains(cb));
+                    } else if ((form == FORM_A || form == FORM_F || form == FORM_G) && !o.dorm
+                            && "mgmt_fee".equals(o.feeKey) && o.meterId != null) {   // G 同源册:base 含管理费(永龙 K 列)
+                        Meter m = meterById.get(o.meterId);   // 管理费逐表行,按表楼栋圈链
+                        inShare = m != null && m.getBuildingId() != null && chain.contains(m.getBuildingId());
+                    } else if (form == FORM_C && !o.dorm && "capacity".equals(o.feeKey) && o.contractId != null) {
+                        Integer cb = buildingOfContract.get(o.contractId);   // 容量费无表,按合同楼栋圈链
+                        inShare = cb != null && chain.contains(cb);
                     }
                     if (!inElec && !inShare) continue;
                     BigDecimal[] acc = byPremise.computeIfAbsent(wide(o),
@@ -325,6 +346,32 @@ public class BillNoticeService {
                     if (inElec) { acc[0] = acc[0].add(o.amount); if (o.qty != null) acc[2] = acc[2].add(o.qty); }
                     else acc[1] = acc[1].add(o.amount);
                     if (o.contractId != null) cidByPremise.putIfAbsent(wide(o), o.contractId);
+                }
+                // G:附加指定 park 表(S51反向有功)电费。金额优先取月度覆盖 loss_base_park_amount
+                // (源册永龙 4 行反向按各段正价,单总读数推不出分段,逐月照抄册面金额),
+                // 无覆盖回退 度数×p2平段价;其 0.16 管理费仍不收(用户搁置)。
+                if (form == FORM_G) {
+                    PriceCfgService.PriceHit amtHit = price.resolveHit("loss_base_park_amount", ym, l.tenantId, null);
+                    BigDecimal add = amtHit != null && amtHit.scope().startsWith("tenant:") ? r2(amtHit.value()) : null;
+                    if (add == null) {
+                        PriceCfgService.PriceHit pmHit = price.resolveHit("loss_base_park_meter", ym, l.tenantId, null);
+                        Meter pkm = pmHit == null || !pmHit.scope().startsWith("tenant:") ? null
+                            : meterById.get(pmHit.value().intValue());
+                        MeterReading pr = pkm == null ? null : readingByMeter.get(pkm.getId());
+                        BigDecimal u = pr == null ? null
+                            : MeterService.usage(pr.getPrevTotal(), pr.getCurrTotal(), pr.getFactorSnap());
+                        BigDecimal fp = u == null || pkm.getBuildingId() == null || !chain.contains(pkm.getBuildingId())
+                            ? null : price.resolve("elec_flat", ym, null, pkm.getZone());
+                        if (u != null && fp != null) add = r2(u.multiply(fp));
+                    }
+                    if (add != null) {
+                        // ponytail: G 全册唯一(永龙,单场地)——附加额并入首桶电费侧,出现多场地 G 户再分桶
+                        BigDecimal[] acc = byPremise.isEmpty()
+                            ? byPremise.computeIfAbsent(wide(l),
+                                k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO})
+                            : byPremise.values().iterator().next();
+                        acc[0] = acc[0].add(add);
+                    }
                 }
                 // 刀C 零基数残渣:链内一条 premise 空的零额行(拆不出场地的公摊行/未归属合同的零度表)
                 // 会多开一个 chainBase=0 的桶,照桶补出一条 premise 空、金额 0.00 的损耗行。
@@ -350,7 +397,7 @@ public class BillNoticeService {
                     t.qty = a[2].signum() == 0 ? null : a[2];
                     t.amount = r2(chainBase.multiply(l.rateTmp));
                     t.note = trunc("链[" + l.chainName + "]损耗=(场地电费 " + a[0] + "+公摊 " + a[1]
-                        + ")×率 " + l.rateTmp, 255);
+                        + ")×率 " + l.rateTmp + (formNote == null ? "" : ";base形态" + formNote), 255);
                 }
             }
             ls.addAll(lossSplit);
@@ -690,19 +737,19 @@ public class BillNoticeService {
         // p2 池路径的 Contribution 不带面积,行上 baseSnap=金额÷标准 回推即面积(保奔路 12.80÷0.008=1600)
         BigDecimal base = c.base() != null ? c.base() : l.baseSnap;
         if (base == null) return;
-        BigDecimal collect = c.rate();   // p1/dorm 与 live 例外:收取价=当月核算率
+        BigDecimal collect = c.rate();   // 默认:收取价=当月池核算率(std,分量各自ROUND再相加)
         if (rule != null && "p2".equals(rule.getZone())) {
+            // S13 §9 翻转:p2 默认改当月核算率(绿化 V65=水泵0.001+装饰灯折入0.007=0.008,路灯 V95=0.005),
+            // 户级 tenant:{id}.{key} 显式收取价=例外(0.01 组≈37 户,=死模板 公共电分摊!M109 沿用户)。
+            // 旧机制退役:冻结常数 p2.{key} 与 tenant:{id}.{key}_live 不再参与分流,行留档备查。
             String key = lampFee ? "lamp_rate" : "green_rate";
-            PriceCfgService.PriceHit live = price.resolveHit(key + "_live", ym, l.tenantId, "p2");
-            if (live != null && live.scope().startsWith("tenant:") && live.value().signum() != 0) {
-                l.priceKey = key + "_live"; l.priceScope = live.scope(); l.priceMonth = live.acctMonth();
-                l.note = trunc("收取价=当月核算率(live 例外)", 255);
-            } else {
-                PriceCfgService.PriceHit hit = price.resolveHit(key, ym, l.tenantId, "p2");
-                if (hit == null) return;   // 冻结常数未录:维持核算口径原行不硬改(SQL① 应用后自然生效)
+            PriceCfgService.PriceHit hit = price.resolveHit(key, ym, l.tenantId, "p2");
+            if (hit != null && hit.scope().startsWith("tenant:")) {
                 collect = hit.value();
                 l.priceKey = key; l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
-                l.note = trunc("核算率 " + (c.rate() == null ? "-" : c.rate().stripTrailingZeros().toPlainString()) + " 备查", 255);
+                l.note = trunc("收取价例外;核算率 " + (c.rate() == null ? "-" : c.rate().stripTrailingZeros().toPlainString()) + " 备查", 255);
+            } else {
+                l.note = trunc("收取价=当月核算率", 255);
             }
         }
         if (collect == null) return;
@@ -737,9 +784,15 @@ public class BillNoticeService {
         }
         for (Integer tid : covering.keySet()) {   // 当月无在租合同=不落包干行(跟源册走)
             packageLine(byTenant, warnByTenant, seq, ym, tid, "share_elec_fixed", "share_elec_floor",
-                PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs);
+                PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs, "孵化协议固定收取");
             packageLine(byTenant, warnByTenant, seq, ym, tid, "share_water_fixed", "share_green_water",
-                PKG_WATER_SWALLOW, null, covering, locs);
+                PKG_WATER_SWALLOW, null, covering, locs, "孵化协议固定收取");
+            // S13 拍板③:曹小芳/刘彪消防照抄源册实收(I=ROUND(公共电分摊!L24+L99×面积/层份,2)×层份,
+            // 合成价≈250,全册仅此两户)——该户全部 share_elec_fire 行(车间池+园区消防设施+稳压泵)
+            // 整组替换为一条固定额行;层份 weight 仍在册供 Σweight 对账。走 applyPackages 同一时点,
+            // 天然在 E2 之前:两户损耗 base 的消防分量=实收合成额(源册 K42 同口径)。
+            packageLine(byTenant, warnByTenant, seq, ym, tid, "fire_amount_fixed", "share_elec_fire",
+                Set.of("share_elec_fire"), null, covering, locs, "消防照抄源册实收(L24+L99合成价;S13拍板③户级例外)");
         }
     }
 
@@ -750,7 +803,7 @@ public class BillNoticeService {
     private void packageLine(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
                              String ym, Integer tid, String cfgKey, String feeKey, Set<String> swallow,
                              Integer anchor, Map<Integer, List<Contract>> covering,
-                             Map<Integer, List<String>> locs) {
+                             Map<Integer, List<String>> locs, String note) {
         PriceCfgService.PriceHit hit = price.resolveHit(cfgKey, ym, tid, null);
         if (hit == null || !hit.scope().startsWith("tenant:")) return;   // 只认户级配置
         List<L> ls = byTenant.computeIfAbsent(tid, k -> new ArrayList<>());
@@ -763,6 +816,8 @@ public class BillNoticeService {
             if (poolId == null && feeKey.equals(o.feeKey)) poolId = o.poolRuleId;
             it.remove();
         }
+        // 固定 0=免收:吞掉原公摊行、不落新行(S13 陈书谨钢构——源册无消防行,园区面积项也不收)。
+        if (hit.value().signum() == 0) return;
         // 被吞的行都没落上场地(池楼栋≠合同楼栋时 splitShare 拆不出)→ 回退合同级:
         // 与该户表行同一个损耗分桶键,否则 E2 会为包干额单开一桶多出一条损耗行。
         if (premise == null)
@@ -776,7 +831,7 @@ public class BillNoticeService {
         l.ruleBranch = "fixed"; l.poolRuleId = poolId;
         l.priceKey = cfgKey; l.priceScope = hit.scope(); l.priceMonth = hit.acctMonth();
         l.priceSnap = hit.value(); l.amount = r2(hit.value());
-        l.note = "孵化协议固定收取";
+        l.note = note;
         ls.add(l);
         if (poolId == null)
             warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("包干行无公摊池锚点");
@@ -854,6 +909,29 @@ public class BillNoticeService {
 
     private static void missPrice(Map<Integer, Set<String>> warnByTenant, Integer tid, String key, String ym) {
         warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>()).add("缺价 " + key + "(" + ym + ")");
+    }
+
+    // ── S13 §6 损耗base形态flag(tenant_price_cfg,不进价目白名单,SQL 直落;resolveHit 只认 tenant: 作用域):
+    //    值 1=A(B+管理费)/3=C(仅户电费+容量费)/6=F(B去电梯+管理费)/7=G(B+park表电费);缺省或未知值=B(现状)。
+    //    键带损耗链作用域:loss_base_form_b{楼栋id}(链内任一成员楼栋,邓宇峰三车间链≠六车间链靠它分)
+    //    优先,回退 loss_base_form(整户);G 另配 loss_base_park_meter=park表id(S51反向有功)。 ──
+    private static final int FORM_A = 1, FORM_B = 2, FORM_C = 3, FORM_F = 6, FORM_G = 7;
+
+    private int lossBaseForm(String ym, Integer tid, List<Integer> chain) {
+        for (Integer bid : chain) {
+            PriceCfgService.PriceHit h = price.resolveHit("loss_base_form_b" + bid, ym, tid, null);
+            if (h != null && h.scope().startsWith("tenant:")) return h.value().intValue();
+        }
+        PriceCfgService.PriceHit h = price.resolveHit("loss_base_form", ym, tid, null);
+        return h != null && h.scope().startsWith("tenant:") ? h.value().intValue() : FORM_B;
+    }
+
+    private static String formTag(int form) {
+        return switch (form) {
+            case FORM_A -> "A(含管理费)"; case FORM_C -> "C(户电费+容量费)";
+            case FORM_F -> "F(不含电梯,含管理费)"; case FORM_G -> "G(附加park表电费)";
+            default -> null;
+        };
     }
 
     // 损耗分桶键:表行取 S6 前的合同级值,其余行(公摊/租金/容量)premise 本就是合同级

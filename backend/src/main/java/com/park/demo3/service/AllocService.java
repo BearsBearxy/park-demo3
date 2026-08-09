@@ -438,6 +438,18 @@ public class AllocService {
             + r2(allocated.subtract(cost)) + " 元,请核对系数或成员楼层";
     }
 
+    // S13 §7 warn 文案(纯函数;差绝对值≤0.01 或无系数返回 null=不警)。不封顶不阻断:
+    // 二/三/四车间 Σ层份<T 是账册刻意欠配(-2.26/-2.75/-2.30),差额=空置园区自担;>T 超配才真要人核对。
+    static String weightCoefWarn(String poolName, BigDecimal weightSum, BigDecimal coefficient) {
+        if (coefficient == null || weightSum.subtract(coefficient).abs().compareTo(new BigDecimal("0.01")) <= 0)
+            return null;
+        BigDecimal diff = weightSum.subtract(coefficient);
+        return "池「" + poolName + "」Σ层份 " + weightSum.stripTrailingZeros().toPlainString()
+            + " 与账册系数 T=" + coefficient.stripTrailingZeros().toPlainString()
+            + " 差 " + diff.stripTrailingZeros().toPlainString()
+            + (diff.signum() < 0 ? "(欠配层份=空置园区自担,账册刻意态)" : "(超配,请核对层份档案)");
+    }
+
     // 户内表按户索引(停用表由调用方先剔除:ctx.meterById 已过滤,读表侧显式过滤)
     private static Map<Integer, List<Meter>> tenantMeters(Collection<Meter> live) {
         Map<Integer, List<Meter>> out = new HashMap<>();
@@ -1001,7 +1013,13 @@ public class AllocService {
         for (AllocRule rule : ctx.ruleList()) {
             if ("loss".equals(rule.getMethod()) || "share_water".equals(rule.getFeeKey())) continue;   // loss 走损耗链;水占位不生成
             PoolCalc p = pools.get(rule.getId());
-            if (p == null || p.cost() == null) continue;   // 缺读数/ref 纯标准行不出户级
+            if (p == null) continue;
+            // S13 §4 V64 加价档:ref 池挂了显式层份成员=价目直供池(户=std×weight),放行;
+            // 其余 ref(纯标准行/fold 源)与缺读数照旧不出户级。cost 保持 null=不入池合计,不双计货梯表。
+            boolean refWeighted = "ref".equals(rule.getMethod()) && p.std() != null
+                && ctx.membersByRule().getOrDefault(rule.getId(), List.of()).stream()
+                    .anyMatch(m -> m.getWeight() != null);
+            if (p.cost() == null && !refWeighted) continue;   // 缺读数/ref 纯标准行不出户级
             out.addAll(memberAmounts(rule, p, ctx));
         }
         out.addAll(lossContributions(ctx));
@@ -1040,9 +1058,9 @@ public class AllocService {
                 ? ctx.areaByBuildingTenant().getOrDefault(rule.getBuildingId(), Map.of())
                 : ctx.areaByTenant();
         List<Contribution> out = new ArrayList<>();
-        BigDecimal cost = p.cost();
+        BigDecimal cost = p.cost();   // ref 价目直供池为 null(S13 §4),下游用到处均须判空
         BigDecimal qty = nz(p.qtyTotal());
-        BigDecimal effPrice = qty.signum() == 0 ? null : cost.divide(qty, 6, RoundingMode.HALF_UP);
+        BigDecimal effPrice = cost == null || qty.signum() == 0 ? null : cost.divide(qty, 6, RoundingMode.HALF_UP);
         if (auto && "floor".equals(rule.getMethod()))
             ctx.warnings().add("池「" + rule.getName() + "」园区级按层池无显式受益人,已按全园在租名册逐层分桶分摊,请核对");
         // 静默吞钱防线:能摊却没人可摊 → 报出未摊金额(area/floor 原先 for 空转,连 warning 都不出)
@@ -1096,6 +1114,19 @@ public class AllocService {
             case "floor" -> {    // 元/层=池 std;显式份额户=元/层×weight;其余户按楼层分桶,每桶各分 1 份(§D.2)
                 BigDecimal perFloor = p.std();
                 if (perFloor == null) break;
+                // S13 §7 二期车间池守卫(仅 p2;一期分桶是常态不警):全员显式层份时 Σweight 偏离系数 T>0.01
+                // → warn(不封顶不阻断);出现 weight=null 成员 → warn(防楼层分桶与手工层份两路叠加)。
+                if ("p2".equals(rule.getZone())) {
+                    long nullW = mems.stream().filter(m -> m.getWeight() == null).count();
+                    if (nullW > 0)
+                        ctx.warnings().add("池「" + rule.getName() + "」有 " + nullW
+                            + " 户成员未设层份(weight),已走楼层分桶,请补层份档案(S13 全员显式约定)");
+                    else {
+                        String w = weightCoefWarn(rule.getName(), mems.stream()
+                            .map(AllocRuleMember::getWeight).reduce(BigDecimal.ZERO, BigDecimal::add), p.base());
+                        if (w != null) ctx.warnings().add(w);
+                    }
+                }
                 Map<Integer, BigDecimal> amtOf = new LinkedHashMap<>();
                 for (AllocRuleMember m : mems)   // 显式份额=人工覆盖,一字不改(账册已核对的 rule 49/77 靠它)
                     if (m.getWeight() != null) amtOf.put(m.getTenantId(), r2(perFloor.multiply(m.getWeight())));
@@ -1134,6 +1165,14 @@ public class AllocService {
                     out.add(new Contribution(m.getTenantId(), rule.getFeeKey(), rule.getId(), rule.getName(),
                         qtyShare, amt, perFloor, effPrice, null));
                 }
+            }
+            case "ref" -> {   // S13 §4 V64 加价档:纯标准池按显式层份直供,户=std×weight;无 weight 成员不摊
+                BigDecimal std = p.std();
+                if (std == null) break;
+                for (AllocRuleMember m : mems)
+                    if (m.getWeight() != null)
+                        out.add(new Contribution(m.getTenantId(), rule.getFeeKey(), rule.getId(), rule.getName(),
+                            null, r2(std.multiply(m.getWeight())), std, effPrice, null));
             }
             default -> { }
         }
@@ -1278,6 +1317,22 @@ public class AllocService {
                 BigDecimal u = r == null ? null : MeterService.usage(r.getPrevTotal(), r.getCurrTotal(), r.getFactorSnap());
                 if (u != null && u.signum() > 0) usageByTenant.merge(m.getTenantId(), u, BigDecimal::add);
             }
+            // S13 §6 形态D(氙明/威玛斯):纯公摊户(链内零户表)也是损耗受益人——源册按(电梯+消防)×率收。
+            // 仅 p2:组内车间池(floor/ref)显式正权成员补零度 stub,E2 账单侧按公摊行金额计 base;
+            // 一期不动(锚点已闭合,分桶常态不同)。已有用电户 putIfAbsent 不重复。
+            // ⚠双闸(实测教训):①规则自身 zone 也必须是 p2——只查"楼栋∈链"时,一期池(rule 49 楼梯间,
+            // 带权成员含已不在档的老租户)会在楼栋 id 碰撞时被误当受益人;②成员必须在租户档案里,
+            // 幽灵成员直通 bill_notice 会撞 fk_notice_tenant。
+            if ("p2".equals(g.zone()))
+                for (AllocRule r : ctx.ruleList()) {
+                    if (!"p2".equals(r.getZone()) || r.getBuildingId() == null
+                            || !g.buildingIds().contains(r.getBuildingId())
+                            || !("floor".equals(r.getMethod()) || "ref".equals(r.getMethod()))) continue;
+                    for (AllocRuleMember m : ctx.membersByRule().getOrDefault(r.getId(), List.of()))
+                        if (m.getWeight() != null && m.getWeight().signum() > 0
+                                && ctx.nameByTenant().containsKey(m.getTenantId()))
+                            usageByTenant.putIfAbsent(m.getTenantId(), BigDecimal.ZERO);
+                }
             // S4-3 E2:携链信息(成员楼栋+链名)供出账引擎按链计金额口径;度数口径 amount 原样保留(alloc_result 契约不动)
             String chainName = g.buildingIds().stream()
                 .map(bid -> { Building b = ctx.buildingById().get(bid); return b == null ? "#" + bid : b.getName(); })
@@ -1799,9 +1854,11 @@ public class AllocService {
 
     static String meterLabel(Meter m) {   // 包级可见=供 AllocServiceTest 直测
         String use = meterUse(m);
+        // S13 §8:公摊/园区自担/运营/基础设施表无「租户位置」可录,占位不当待办催,显 '–';仅租户表保留提示
+        String todo = m.getOwnership() != null && POOL_OWNERSHIP.contains(m.getOwnership()) ? "–" : LOC_TODO;
         String loc = !blank(m.getSpot()) ? m.getSpot()
             : !blank(m.getFloorLabel()) ? m.getFloorLabel().trim() + (blank(m.getSide()) ? "" : m.getSide().trim())
-            : blank(m.getArea()) ? null : LOC_TODO;
+            : blank(m.getArea()) ? null : todo;
         return Stream.of(m.getArea(), loc, use, m.getSubName())
             .filter(s -> !blank(s)).map(String::trim).distinct().collect(Collectors.joining("·"));
     }

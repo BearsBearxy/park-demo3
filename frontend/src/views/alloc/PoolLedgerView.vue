@@ -630,7 +630,7 @@ async function delPool() {
                 title="原册 B 列:楼栋/车间(不带期数)。招商中心那几行原册写的就是「招商中心」,不是「A座」">区域</th>
             <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixFloor"
                 title="原册 C 列那一格(楼层+方位写在一起,如「四楼西侧」);
-橙色「(未录)」=挂了楼栋却没录楼层,点开池名在抽屉里补;园区级池不挂楼栋,留空">楼层</th>
+橙色「(未录)」=挂了楼栋却没录楼层,点开池名在抽屉里补;按层份池楼层空=整栋、园区级池不挂楼栋,均留空">楼层</th>
             <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixName"
                 title="原册 A 列自然键(如「A4西侧走廊灯」);无自然键的显费项名。悬停行内池名可看系统全名">池名称</th>
             <th rowspan="2" class="pl-grp-th" :style="w(230)"

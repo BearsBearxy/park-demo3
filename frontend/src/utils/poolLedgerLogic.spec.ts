@@ -137,10 +137,14 @@ describe('poolFloor 楼层列(单值,不拼方位)', () => {
     expect(poolFloor(pool({ floorLabel: '天面', side: '东侧' }))).toBe('天面')
     expect(poolFloor(pool({ floorLabel: '二楼', side: '东侧' }))).toBe('二楼')
   })
-  it('园区级池(不挂楼栋)=空;挂栋没录=「(未录)」', () => {
+  it('园区级池(不挂楼栋)=空;挂栋没录=「(未录)」(非层份摊法才催)', () => {
     expect(poolFloor(pool({ buildingId: null, floorLabel: null }))).toBe('')
-    expect(poolFloor(pool({ buildingId: 13, floorLabel: null }))).toBe('(未录)')
-    expect(poolFloor(pool({ buildingId: 13, floorLabel: '  ' }))).toBe('(未录)')
+    expect(poolFloor(pool({ method: 'area', buildingId: 13, floorLabel: null }))).toBe('(未录)')
+    expect(poolFloor(pool({ method: 'area', buildingId: 13, floorLabel: '  ' }))).toBe('(未录)')
+  })
+  it('P2-SHARE §8:按层份(floor)池挂栋不录楼层=整栋刻意,留空不出「(未录)」', () => {
+    expect(poolFloor(pool({ method: 'floor', buildingId: 14, floorLabel: null }))).toBe('')
+    expect(poolFloor(pool({ method: 'floor', buildingId: 14, floorLabel: '  ' }))).toBe('')
   })
   it('五种废话术在任何输入下都不再产出', () => {
     const banned = ['天面东侧', '天面西侧', '整栋净额', '按车间', '–']
@@ -156,21 +160,26 @@ describe('poolFloor 楼层列(单值,不拼方位)', () => {
   })
 })
 
-describe('poolLocKind 池定位三态(workshop/net 两态已随 §H4 废除)', () => {
+describe('poolLocKind 池定位四态(workshop/net 两态已随 §H4 废除)', () => {
   it('有 floor_label=located(园区级池也算,原册 r5 那类有楼层)', () => {
     expect(poolLocKind(pool({ floorLabel: '四楼西侧' }))).toBe('located')
     expect(poolLocKind(pool({ buildingId: null, floorLabel: '负一层' }))).toBe('located')
   })
   it('不挂楼栋且无楼层=park(留空,不催补)', () =>
     expect(poolLocKind(pool({ buildingId: null, floorLabel: null }))).toBe('park'))
-  it('挂栋没录=todo —— 二期车间池/净额池现在也落这一类(§H4 代价,已知)', () => {
-    expect(poolLocKind(pool({ zone: 'p1', buildingId: 13, floorLabel: null }))).toBe('todo')
-    expect(poolLocKind(pool({ zone: 'p2', buildingId: 14, buildingName: '二期 一车间', floorLabel: null }))).toBe('todo')
+  it('非层份摊法挂栋没录=todo —— 净额池(direct)/面积池落这一类(§H4 代价,已知)', () => {
+    expect(poolLocKind(pool({ zone: 'p1', method: 'direct', buildingId: 13, floorLabel: null }))).toBe('todo')
+    expect(poolLocKind(pool({ zone: 'p1', method: 'area', buildingId: 13, floorLabel: null }))).toBe('todo')
+  })
+  it('P2-SHARE §8:按层份(floor)池挂栋无 floor_label=whole 整栋刻意,不再判 todo', () => {
+    expect(poolLocKind(pool({ zone: 'p2', method: 'floor', buildingId: 14, buildingName: '二期 一车间', floorLabel: null }))).toBe('whole')
+    expect(poolLocKind(pool({ zone: 'p2', method: 'floor', buildingId: 14, floorLabel: '  ' }))).toBe('whole')
   })
   it('只有 todo 提示用户去补', () => {
     expect(POOL_LOC_HINT.todo).toContain('补')
     expect(POOL_LOC_HINT.located).toBeNull()
     expect(POOL_LOC_HINT.park).toBeNull()
+    expect(POOL_LOC_HINT.whole).toBeNull()
   })
 })
 

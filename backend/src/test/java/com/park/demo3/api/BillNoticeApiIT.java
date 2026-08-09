@@ -21,8 +21,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // 催缴单派生引擎(S4-BILL-NOTICE-SPEC §4/§5 + BILL-DERIVE-SPEC §2):判定树分支/取价审计链/
 // 容量费按天折/paymap 拆单/宿舍段拆 dorm 单/幂等与 issued 跳过/offbook/负用量/未归属降级/读数批删 409 守卫。
-// @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04/05(月份无 13/14,租金用例 t13/t14 顺延;
-// 2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
+// @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04/05 + 2092-02..2092-06(S13 损耗base形态;
+// 月份无 13/14,租金用例 t13/t14 顺延;2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT、
+// 2092-01/2092-12=ContractFullImportApiIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
 // 断言只圈自建数据(种子合同 2028 年前到期、种子表无 2090 读数,槽内 generated 计数=本用例数据,可精确断言)。
 // is_dorm_room/offbook 系 V89 新列,实体未必已挂字段 → 直落 JDBC(同事务同连接,引擎 mapper 读得到)。
 // 公摊行用例刻意不做:贡献一致性归 AllocPoolContributionsIT,引擎侧集成留 S4-3 真数月验收。
@@ -722,6 +723,207 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat(jdbc.queryForObject(
                 "SELECT allocated_amount FROM alloc_pool_result WHERE ym=? AND rule_id=?",
                 java.math.BigDecimal.class, ym, rFloor)).isEqualByComparingTo("232.00");
+    }
+
+    // ── S13 §6 损耗base形态 helpers:隔离损耗链(新栋,总表+户表)+挂本栋合同;
+    //    flag 落 tenant_price_cfg(键不在价目白名单,JDBC 直插;引擎 resolveHit 只认 tenant: 作用域) ──
+    private int contractB(int tenantId, int buildingId, String kva, String linesJson) throws Exception {
+        return postId("/api/contracts", "{\"contractNo\":\"IT-BN-" + System.nanoTime() + "\","
+                + "\"tenantId\":" + tenantId + ",\"buildingId\":" + buildingId + ","
+                + "\"startDate\":\"2089-01-01\",\"endDate\":\"2099-12-31\","
+                + (kva == null ? "" : "\"kva\":" + kva + ",")
+                + "\"deposit\":0,\"status\":\"active\",\"billingLines\":" + linesJson + "}");
+    }
+
+    private void flag(int tenantId, String key, String value) {
+        jdbc.update("INSERT INTO tenant_price_cfg(scope,cfg_key,acct_month,cfg_value) VALUES(?,?,'',?)",
+                "tenant:" + tenantId, key, new java.math.BigDecimal(value));
+    }
+
+    // 造隔离链:总表 C=headTotal,户表 900 度绑本栋合同 → 率=(C−900−其余分表)/C;电价 elec_commercial 0.8
+    // → 场地电费 900×0.8=720.00。返回 {tenantId, contractId, buildingId, meterId}。
+    private int[] lossChain(String ym, String tag, String headTotal, String kva) throws Exception {
+        int bid = postId("/api/buildings", "{\"name\":\"IT形态" + tag + "栋" + System.nanoTime()
+                + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":1,\"totalArea\":100,\"rentableArea\":100}");
+        int t = createTenant("IT形态" + tag + "户");
+        int c = contractB(t, bid, kva,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT形态" + tag + "区\",\"feeKey\":\"rent_factory\",\"area\":10,\"unitPrice\":1}]");
+        int head = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT形态" + tag + "总表\","
+                + "\"ownership\":\"infra\",\"buildingId\":" + bid + "}");
+        int m = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT形态" + tag + "户表\","
+                + "\"ownership\":\"tenant\",\"tenantId\":" + t + ",\"buildingId\":" + bid + "}");
+        bind(m, c);
+        reading(head, ym, "\"prevTotal\":0,\"currTotal\":" + headTotal);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":900");
+        return new int[]{t, c, bid, m};
+    }
+
+    private Map<String, Object> lossLine(String ym, int tenantId) throws Exception {
+        return one(feeLines(detail(soleNoticeId(ym, tenantId)), "share_elec_loss"));
+    }
+
+    // ── t30 形态A(两单标准形 33 户):base=B+链内电力管理费行。槽 2092-02。
+    //    链率 0.1;电费 720.00+电梯池 50.00+mgmt 900×0.32=288.00 → base 1058×0.1=105.80(B 口径只有 77.00)──
+    @Test
+    void t30_lossFormA_mgmtInBase() throws Exception {
+        String ym = "2092-02";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "A", "1000", null);
+        pool("IT形态A电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
+        priceScoped("tenant:" + ch[0], "mgmt_fee_commercial", "0.32");
+        flag(ch[0], "loss_base_form", "1");
+
+        generate(ym);
+        Map<String, Object> loss = lossLine(ym, ch[0]);
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(1058.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(105.8);
+        assertThat((String) loss.get("note")).contains("base形态A");
+    }
+
+    // ── t31 形态C(星州,全册唯一):base=仅户电费+容量费,电梯/消防/管理全不进。槽 2092-03。
+    //    kva=10×容量价 18=180.00 → base=720+180=900×0.1=90.00;电梯池 50.00 行照出但不进 base ──
+    @Test
+    void t31_lossFormC_capacityNotShare() throws Exception {
+        String ym = "2092-03";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "C", "1000", "10");
+        pool("IT形态C电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
+        priceScoped("tenant:" + ch[0], "capacity_fee", "18");
+        flag(ch[0], "loss_base_form", "3");
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, ch[0]));
+        assertThat(d(one(feeLines(body, "capacity")).get("amount"))).isEqualTo(180.0);
+        assertThat(d(one(feeLines(body, "share_elec_elevator")).get("amount"))).isEqualTo(50.0);
+        Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(900.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(90.0);
+    }
+
+    // ── t32 形态F(邓宇峰×三车间链):base=消防+管理费+户电费,不含电梯;键带链作用域
+    //    loss_base_form_b{楼栋id}。槽 2092-04。base=720+消防30+mgmt288=1038×0.1=103.80 ──
+    @Test
+    void t32_lossFormF_noElevator_chainScopedKey() throws Exception {
+        String ym = "2092-04";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "F", "1000", null);
+        pool("IT形态F电梯池", "share_elec_elevator", ch[2], ch[0], ym, "50");
+        pool("IT形态F消防池", "share_elec_fire", ch[2], ch[0], ym, "30");
+        priceScoped("tenant:" + ch[0], "mgmt_fee_commercial", "0.32");
+        flag(ch[0], "loss_base_form_b" + ch[2], "6");
+
+        generate(ym);
+        Map<String, Object> loss = lossLine(ym, ch[0]);
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(1038.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(103.8);
+    }
+
+    // ── t33 形态G(永龙):base=B+指定park表(S51反向有功)电费=度数×平段价;其管理费不收。槽 2092-05。
+    //    park表 100 度入分表Σ:D=1000,C=1250 → 率 0.2;base=720+0+100×0.7=790×0.2=158.00 ──
+    @Test
+    void t33_lossFormG_parkMeterAmountAdded() throws Exception {
+        String ym = "2092-05";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "G", "1250", null);
+        int park = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p2\",\"name\":\"IT形态G反向有功\","
+                + "\"ownership\":\"park\",\"buildingId\":" + ch[2] + "}");
+        reading(park, ym, "\"prevTotal\":0,\"currTotal\":100");
+        pool("IT形态G电梯池", "share_elec_elevator", ch[2], ch[0], ym, "0");   // 池快照非空才吐损耗链
+        flag(ch[0], "loss_base_form", "7");
+        flag(ch[0], "loss_base_park_meter", String.valueOf(park));
+
+        generate(ym);
+        Map<String, Object> loss = lossLine(ym, ch[0]);
+        // S13-b:G 形与源册对齐后 base 含管理费(永龙 K 列铁证)=720+park70+mgmt288=1078
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(1078.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(215.6);
+        assertThat((String) loss.get("note")).contains("base形态G");
+    }
+
+    // ── t34 形态B也吃二期园区级池(消防设施 0.015×面积,楼栋空):源册消防行打包园区面积项,
+    //    损耗 base 含它(力灏 dev−源=−6.07=漏掉的 211.58×0.0287 实锚)。链归属按行合同楼栋判。槽 2092-06。
+    //    base=720+园区级消防池 30=750×0.1=75.00(无 flag=默认B) ──
+    @Test
+    void t34_lossFormB_parkLevelFirePoolInBase() throws Exception {
+        String ym = "2092-06";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "B", "1000", null);
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
+                + "VALUES('p2','IT园区级消防设施池','direct','share_elec_fire')");
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO alloc_rule_member(rule_id,tenant_id,acct_month) VALUES(?,?,'')", rid, ch[0]);
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
+                + "VALUES(?,?,0,30,NOW())", ym, rid);
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, ch[0]));
+        // 园区级池行经 splitShare 落到本合同场地(链归属判定的前提)
+        Map<String, Object> fire = one(feeLines(body, "share_elec_fire"));
+        assertThat(fire.get("premise")).isEqualTo("IT形态B区");
+        Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(750.0);
+        assertThat(d(loss.get("amount"))).isEqualTo(75.0);
+    }
+
+    // ── t35 消防照抄实收(S13 拍板③,曹小芳/刘彪 L24+L99 合成价):fire_amount_fixed 命中 →
+    //    该户全部 share_elec_fire 行整组替换为一条固定额行,且时点在 E2 之前:
+    //    损耗 base 的消防分量=实收合成额(base=720+88.88=808.88×0.1=80.89)。槽 2092-07。──
+    @Test
+    void t35_fireAmountFixed_replacesFireRowsBeforeE2() throws Exception {
+        String ym = "2092-07";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "B", "1000", null);
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
+                + "VALUES('p2','IT照抄消防池','direct','share_elec_fire')");
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO alloc_rule_member(rule_id,tenant_id,acct_month) VALUES(?,?,'')", rid, ch[0]);
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,cost_amount,generated_at) "
+                + "VALUES(?,?,0,30,NOW())", ym, rid);
+        flag(ch[0], "fire_amount_fixed", "88.88");
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, ch[0]));
+        Map<String, Object> fire = one(feeLines(body, "share_elec_fire"));   // one=断言仅一条(30 元原行已被吞)
+        assertThat(d(fire.get("amount"))).isEqualTo(88.88);
+        assertThat((String) fire.get("note")).contains("照抄源册实收");
+        Map<String, Object> loss = one(feeLines(body, "share_elec_loss"));
+        assertThat(d(loss.get("baseSnap"))).isEqualTo(808.88);
+        assertThat(d(loss.get("amount"))).isEqualTo(80.89);
+
+        // 固定 0=免收(S13 陈书谨钢构):吞掉原公摊行、不落新行,损耗 base 回到无消防口径。
+        // fire_amount_fixed 不在价目白名单(白名单不放宽,S7 铁律),API PUT 会 400 → 裸 jdbc 改值;
+        // 但裸 jdbc 不 evict 价目缓存(volatile 全表快照),再 PUT 一条白名单内月价触发 evict
+        // (prod 同类 SQL 手术靠重启后端失效,IT 里用这条等价路径)。
+        jdbc.update("UPDATE tenant_price_cfg SET cfg_value=0 WHERE scope=? AND cfg_key='fire_amount_fixed'",
+                "tenant:" + ch[0]);
+        mvc.perform(put("/api/price-cfg").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"scope\":\"\",\"cfgKey\":\"water\",\"acctMonth\":\"" + ym + "\",\"value\":4.2}"))
+                .andExpect(jsonPath("$.code").value(0));
+        generate(ym);
+        String body2 = detail(soleNoticeId(ym, ch[0]));
+        assertThat(feeLines(body2, "share_elec_fire")).isEmpty();
+        assertThat(d(one(feeLines(body2, "share_elec_loss")).get("baseSnap"))).isEqualTo(720.0);
+    }
+
+    // ── t36 ref 价目直供池(S13 §4 V64 加价档):method='ref' 池 cost=null 不入池合计,
+    //    但挂显式层份成员时按 std×weight 直供户级行(482.12×0.5=241.06)。槽 2092-08。──
+    @Test
+    void t36_refPoolWithWeights_billsStdTimesWeight() throws Exception {
+        String ym = "2092-08";
+        monthlyPrices(ym);
+        int[] ch = lossChain(ym, "B", "0", null);
+        jdbc.update("INSERT INTO alloc_rule(zone,name,method,fee_key) "
+                + "VALUES('p2','IT加价档电梯池','ref','share_elec_elevator')");
+        Integer rid = jdbc.queryForObject("SELECT MAX(id) FROM alloc_rule", Integer.class);
+        jdbc.update("INSERT INTO alloc_rule_member(rule_id,tenant_id,weight,acct_month) VALUES(?,?,0.5,'')", rid, ch[0]);
+        jdbc.update("INSERT INTO alloc_pool_result(ym,rule_id,qty_total,std_value,generated_at) "
+                + "VALUES(?,?,0,482.12,NOW())", ym, rid);
+
+        generate(ym);
+        String body = detail(soleNoticeId(ym, ch[0]));
+        Map<String, Object> lift = one(feeLines(body, "share_elec_elevator"));
+        assertThat(d(lift.get("amount"))).isEqualTo(241.06);
     }
 
     // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。
