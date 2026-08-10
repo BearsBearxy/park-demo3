@@ -171,7 +171,10 @@ function sumArea(keys: string[]): number | null {
     if (keys.includes(l.feeKey) && l.area != null) { s += l.area; has = true }
   return has ? Math.round(s * 100) / 100 : null
 }
-const rentAreaShow = computed(() => sumArea(BUILDING_RENT) ?? props.contract?.rentArea ?? null)
+// S15-b:与编辑弹窗同口径分列——租赁面积(非宿舍)/宿舍面积,不再显示混总(公摊基数=非宿舍)
+const rentAreaShow = computed(() =>
+  sumArea(BUILDING_RENT.filter(k => k !== 'rent_dorm')) ?? props.contract?.rentArea ?? null)
+const dormAreaSum = computed(() => sumArea(['rent_dorm']))
 const landAreaSum = computed(() => sumArea(['rent_land']))
 
 // 租户联系方式:联系人/电话可空,过滤后拼接;全空则整行不显(不再渲染 null · null)
@@ -235,7 +238,8 @@ const contactLine = computed(() =>
         <div class="fp-field"><span class="k">楼栋</span><span class="v">{{ contract.buildingName }}</span></div>
         <div class="fp-field"><span class="k">楼层 / 房号</span><span class="v mono">{{ contract.floorInfo || '—' }}</span></div>
         <div class="fp-field"><span class="k">建筑面积</span><span class="v mono">{{ contract.buildingArea != null ? contract.buildingArea.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
-        <div class="fp-field"><span class="k">租赁面积</span><span class="v mono">{{ rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
+        <div class="fp-field"><span class="k">租赁面积(非宿舍)</span><span class="v mono" title="各标的段建筑类租金面积之和(宿舍段除外);公摊面积基数同口径">{{ rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') + ' ㎡' : '—' }}</span></div>
+        <div v-if="dormAreaSum != null" class="fp-field"><span class="k">宿舍面积</span><span class="v mono" title="各宿舍段租金行面积之和,不计入租赁面积(非宿舍)">{{ dormAreaSum.toLocaleString('en-US') }} ㎡</span></div>
         <div v-if="landAreaSum != null" class="fp-field"><span class="k">空地面积</span><span class="v mono">{{ landAreaSum.toLocaleString('en-US') }} ㎡</span></div>
         <div class="fp-field"><span class="k">押金</span><span class="v mono">{{ fpMoney(contract.deposit) }}</span></div>
         <!-- 电费签约要素(裁定④):KVA 仅大工业行显示 -->

@@ -262,9 +262,9 @@ async function onContractCreated() {
           <span style="font-family:var(--font-mono);font-size:14px;font-weight:var(--fw-semibold)">{{ selUnit.floor }}F-{{ selUnit.unitNo }}</span>
           <span style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">{{ selUnit.area?.toLocaleString('en-US') }} ㎡</span>
           <!-- 合同派生面积(S15 服务刀字段):单元未录面积时给占用合同的租赁面积兜底展示 -->
-          <span v-if="!selUnit.area && selUnit.contractRentArea"
+          <span v-if="!selUnit.area && selUnit.derivedArea"
                 style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)"
-                title="合同派生面积:单元未录面积,取占用合同租赁面积(整约口径)">≈{{ selUnit.contractRentArea.toLocaleString('en-US') }} ㎡ 合同</span>
+                title="合同派生面积:单元未录面积,取占用合同计费行面积(绑定行Σ,无绑定按同类型行均摊)">≈{{ selUnit.derivedArea.toLocaleString('en-US') }} ㎡ 合同</span>
         </span>
         <span style="display:flex;align-items:center;gap:8px">
           <!-- 跨栋占用(S15 服务刀字段):经附加单元挂入的外栋合同 -->

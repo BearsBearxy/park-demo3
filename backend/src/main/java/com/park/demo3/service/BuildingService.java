@@ -79,23 +79,41 @@ public class BuildingService {
                 t.getArea().divide(BigDecimal.valueOf(unitCntByTerm.get(t.getId())), 2, RoundingMode.HALF_UP),
                 BigDecimal::add);
         }
-        // 回退:合同级非宿舍租金面积 ÷ 合同单元数,摊给无绑定的单元(有绑定的单元以绑定为准,不叠加)
+        // 回退(S15-b 型匹配):合同级面积按 单元所在栋的类型 分路均摊——宿舍单元吃宿舍行Σ、
+        // 非宿舍单元吃非宿舍行Σ(混装合同不再把厂房面积摊进宿舍间,汤周杰630室曾被摊1554㎡)。
+        // 有绑定的单元以绑定为准,不叠加。
         Map<Integer, List<ContractBillingTerm>> termsByContract = allTerms.stream()
             .collect(Collectors.groupingBy(ContractBillingTerm::getContractId));
         Map<Integer, List<Integer>> extrasByContract = new HashMap<>();
         links.forEach((uid, cids) -> cids.forEach(cid ->
             extrasByContract.computeIfAbsent(cid, k -> new ArrayList<>()).add(uid)));
+        Map<Integer, Boolean> dormUnit = new HashMap<>();   // unitId → 所在栋是否宿舍(phase=4)
+        Map<Integer, Building> bById = new HashMap<>();
+        for (Building b : buildings.selectList(null)) bById.put(b.getId(), b);
+        for (Unit u : units.selectList(null)) {
+            Building b = u.getBuildingId() == null ? null : bById.get(u.getBuildingId());
+            dormUnit.put(u.getId(), b != null && b.getPhase() != null && b.getPhase() == 4);
+        }
         for (Contract c : rentCs.values()) {
             List<Integer> cus = new ArrayList<>();
             if (c.getUnitId() != null) cus.add(c.getUnitId());
             for (Integer uid : extrasByContract.getOrDefault(c.getId(), List.of()))
                 if (!cus.contains(uid)) cus.add(uid);
             if (cus.isEmpty()) continue;
-            BigDecimal nondorm = ContractService.dedupAreaSum(
-                termsByContract.getOrDefault(c.getId(), List.of()), ContractService.NONDORM_RENT_KEYS);
-            if (nondorm.signum() == 0) continue;
-            BigDecimal share = nondorm.divide(BigDecimal.valueOf(cus.size()), 2, RoundingMode.HALF_UP);
-            for (Integer uid : cus) if (!bound.contains(uid)) area.merge(uid, share, BigDecimal::add);
+            List<ContractBillingTerm> rows = termsByContract.getOrDefault(c.getId(), List.of());
+            BigDecimal nondorm = ContractService.dedupAreaSum(rows, ContractService.NONDORM_RENT_KEYS);
+            BigDecimal dorm = ContractService.dedupAreaSum(rows, Set.of("rent_dorm"));
+            List<Integer> dormUs = cus.stream().filter(u -> Boolean.TRUE.equals(dormUnit.get(u))).toList();
+            List<Integer> nonDormUs = cus.stream().filter(u -> !Boolean.TRUE.equals(dormUnit.get(u))).toList();
+            // 严格型匹配:没有同类单元的行不摊(宁缺勿错——错配合同的厂房面积不落宿舍间,反之亦然)
+            if (nondorm.signum() != 0 && !nonDormUs.isEmpty()) {
+                BigDecimal share = nondorm.divide(BigDecimal.valueOf(nonDormUs.size()), 2, RoundingMode.HALF_UP);
+                for (Integer uid : nonDormUs) if (!bound.contains(uid)) area.merge(uid, share, BigDecimal::add);
+            }
+            if (dorm.signum() != 0 && !dormUs.isEmpty()) {
+                BigDecimal share = dorm.divide(BigDecimal.valueOf(dormUs.size()), 2, RoundingMode.HALF_UP);
+                for (Integer uid : dormUs) if (!bound.contains(uid)) area.merge(uid, share, BigDecimal::add);
+            }
         }
         return area;
     }
@@ -193,6 +211,10 @@ public class BuildingService {
                 case "active" -> 0; case "expiring" -> 1; default -> 2;
             })).orElse(null);
         Tenant t = c != null ? tenantMapper.selectById(c.getTenantId()) : null;
+        // S15-b 跨栋徽章:占用合同主楼栋非本栋(经附加单元挂入)时点亮,并带主栋名
+        boolean cross = c != null && u.getBuildingId() != null
+            && !Objects.equals(c.getBuildingId(), u.getBuildingId());
+        Building home = cross ? buildings.selectById(c.getBuildingId()) : null;
         return new UnitDTO(
             u.getId(), u.getFloor(), u.getUnitNo(), u.getArea(),
             unitAreas.getOrDefault(u.getId(), BigDecimal.ZERO),   // S15 合同派生面积(unit.area 全 0)
@@ -202,7 +224,9 @@ public class BuildingService {
             t != null ? t.getCompanyName() : null,
             t != null ? t.getBusinessType() : null,
             c != null ? c.getContractNo() : null,
-            c != null ? c.getMonthlyRent() : null
+            c != null ? c.getMonthlyRent() : null,
+            cross ? Boolean.TRUE : null,
+            home != null ? home.getName() : null
         );
     }
 

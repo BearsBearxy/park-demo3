@@ -5,15 +5,12 @@ export interface BuildingDTO {
   expiringCount: number; reservedCount: number; leasedArea: number
   occRate: number; monthlyRent: number; tenantIds: number[]
   tenantBuildingArea: number   // 栋内在租合同建筑面积汇总(只读展示)
-  // ─── S15 服务刀对齐点(DTO 草案,后端落地前可空;字段名以服务刀实际为准) ───
-  contractRentArea?: number | null   // 栋内在租合同租赁面积汇总(合同派生;单元面积Σ恒0时的在租面积替代口径)
   remark?: string | null
 }
 
-// 在租面积显示口径(S15 §4):单元面积Σ(leasedArea)缺失/恒0 时回落合同派生汇总;
-// 服务刀字段名若有出入,只需改这里与上面草案两处
-export const leasedAreaShow = (b: BuildingDTO): number =>
-  b.leasedArea > 0 ? b.leasedArea : (b.contractRentArea ?? 0)
+// 在租面积显示口径(S15-b 对线定稿):后端 leasedArea 已=Σ被占单元合同派生面积
+// (BuildingService.toDTO,unit.area 全 0 时代替口径),直接用;无回落项。
+export const leasedAreaShow = (b: BuildingDTO): number => b.leasedArea ?? 0
 
 export interface BuildingCreateReq {
   name: string; phase: number; floorCount: number
@@ -48,8 +45,8 @@ export interface UnitDTO {
   status: 'occupied' | 'expiring' | 'reserved' | 'vacant'
   tenantId: number | null; tenantName: string | null; companyName: string | null
   businessType: string | null; contractNo: string | null; monthlyRent: number | null
-  // ─── S15 服务刀对齐点(DTO 草案,后端落地前可空;字段名以服务刀实际为准) ───
-  contractRentArea?: number | null   // 占用合同租赁面积(整约口径,合同派生;单元未录面积时的展示回落)
+  // ─── S15-b 对线定稿(后端 UnitDTO 实名) ───
+  derivedArea?: number | null        // 合同派生面积:绑定行Σ(÷绑定单元数),无绑定回退同类型行均摊(unit.area 全库 0)
   crossBuilding?: boolean | null     // 跨栋占用:占用合同主楼栋非本栋(经附加单元挂入)
   homeBuildingName?: string | null   // 跨栋占用合同的主楼栋名(展示用)
 }

@@ -109,14 +109,16 @@ class BuildingServiceTest {
         Mockito.when(cm.selectList(null)).thenReturn(List.of(c(101,1,11,1,"active",8000)));
         ContractUnit cu = new ContractUnit(); cu.setContractId(101); cu.setUnitId(22);
         Mockito.when(cum.selectList(null)).thenReturn(List.of(cu));
-        Mockito.when(btm.selectList(null)).thenReturn(List.of(line(1,101,"rent_factory",400)));
+        Mockito.when(btm.selectList(null)).thenReturn(List.of(
+            line(1,101,"rent_factory",400), line(2,101,"rent_dorm",74)));
         List<BuildingDTO> r = svc.list();
         BuildingDTO d2 = r.stream().filter(x->x.id()==2).findFirst().orElseThrow();
         assertThat(d2.occupiedCount()).isEqualTo(1);            // 跨栋占用显示
         assertThat(d2.monthlyRent()).isEqualByComparingTo("0"); // 金额仍按主栋,不双算
-        assertThat(d2.leasedArea()).isEqualByComparingTo("200"); // 400÷2 单元均摊
+        // S15-b 型匹配:宿舍栋(phase=4)单元只吃 rent_dorm 行面积,厂房行 400 不再错摊进宿舍间
+        assertThat(d2.leasedArea()).isEqualByComparingTo("74");
         BuildingDTO d1 = r.stream().filter(x->x.id()==1).findFirst().orElseThrow();
         assertThat(d1.monthlyRent()).isEqualByComparingTo("8000");
-        assertThat(d1.leasedArea()).isEqualByComparingTo("200");
+        assertThat(d1.leasedArea()).isEqualByComparingTo("400"); // 非宿舍行整份归同类单元
     }
 }
