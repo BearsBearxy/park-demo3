@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // 落库 gen 行金额全等(同一份额解析路径,池金额取当月快照);无池快照月=空表不抛错。
 // 落在 service 包:Contribution 包级可见,api 包够不着。@Transactional 回滚;
 // 独占槽 2095-03(2095-04 仅作无快照只读探针,全库无数据落该月)、2091-02(S5 分摊面积公式)、
-// 2091-07(S8 账期面积)、2091-11(刀2 跨楼层公摊)。
+// 2091-07(S8 账期面积)、2091-11(刀2 跨楼层公摊)、2093-01(S15 宿舍行面积拆分)。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
 class AllocPoolContributionsIT extends AbstractMysqlIT {
@@ -41,6 +41,7 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
     @Autowired ContractBillingTermMapper billingTerms;
     @Autowired BillingTermUnitMapper termUnits;
     @Autowired UnitMapper units;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     private String token;
 
     @BeforeEach
@@ -238,6 +239,63 @@ class AllocPoolContributionsIT extends AbstractMysqlIT {
                 "未绑定户应回退整栋面积 50㎡,实摊 " + got.get(tUnbound + "|share_elec_light"));
         assertTrue(gen.warnings().stream().anyMatch(w -> w.contains("IT未绑定户") && w.contains("回退")),
                 "未绑定户回退必须点名 warn,实际:" + gen.warnings());
+    }
+
+    // S15 §4 面积污染根修:计费行 property_type='dorm'(或 fee_key='rent_dorm')的行面积不再跟合同主楼栋走,
+    // 拆入该户 dorm zone 基数;非宿舍行照旧记主楼栋 zone/楼栋。
+    // 锚点:双成 p1 路灯基数 448.01→416(32.01㎡ 宿舍行出 p1)、邓宇峰 p2 路灯基数 4892.89→4644.10(248.79㎡ 宿舍行出 p2)。
+    // 同月三口径:①楼栋级显式池(areaByBuildingTenant)基数=非宿舍 416
+    //           ②园区级自动池(areaByZoneTenant.p1)基数=非宿舍 416(双成锚数字)
+    //           ③园区级显式池(areaByTenant 户总面积)=448.01 不变(宿舍行仍属该户,只换 zone 不减总量)。
+    // dorm zone 基数=32.01 的断言在 UT(areaByZoneTenant_dormRowsSplitToDormZone);此处该户不入宿舍名册(无宿舍楼单元)。
+    // 独占槽 2093-01。
+    @Test
+    void areaPool_dormRowsSplitOutOfBuildingAndZoneBase() throws Exception {
+        String ym = "2093-01";
+        int t = postId("/api/tenants", "{\"companyName\":\"IT宿舍拆分户\",\"businessType\":\"IT\"}");
+        // 自建栋(种子栋的 zone 由种子表决定,不可控);挂一块水表定楼栋期别 p1(kind=water 不进电损耗组)
+        jdbc.update("INSERT INTO building(name,phase,floor_count,total_area,rentable_area,status,per_floor) "
+                + "VALUES('IT宿舍拆分栋',1,4,0,0,1,4)");
+        Integer bid = jdbc.queryForObject("SELECT MAX(id) FROM building", Integer.class);
+        postId("/api/meters", "{\"kind\":\"water\",\"zone\":\"p1\",\"buildingId\":" + bid
+                + ",\"name\":\"IT宿舍拆分栋锚表\",\"ownership\":\"infra\"}");
+        // 混装合同(双成型):厂房 416㎡ + 宿舍 32.01㎡,主楼栋=厂房栋
+        postId("/api/contracts", "{\"contractNo\":\"IT-S15-" + System.nanoTime() + "\",\"tenantId\":" + t
+                + ",\"buildingId\":" + bid + ",\"status\":\"active\","
+                + "\"startDate\":\"2093-01-01\",\"endDate\":\"2095-12-31\",\"billingLines\":["
+                + "{\"propertyType\":\"factory\",\"location\":\"IT厂房101\",\"feeKey\":\"rent_factory\",\"area\":416,\"unitPrice\":10},"
+                + "{\"propertyType\":\"dorm\",\"location\":\"IT宿舍201\",\"feeKey\":\"rent_dorm\",\"area\":32.01,\"unitPrice\":5}]}");
+        // 三池单价钉 1、系数=期望基数 → std=1.00 元/㎡,户金额=基数原数
+        int mA = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT楼栋池表S15\",\"ownership\":\"share\"}");
+        reading(mA, ym, "0", "416");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT楼栋池S15\",\"method\":\"area\",\"buildingId\":" + bid
+                + ",\"coefficient\":416,\"feeKey\":\"share_elec_elevator\",\"meterIds\":[" + mA + "],"
+                + "\"members\":[{\"tenantId\":" + t + "}]}");
+        int mB = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT自动池表S15\",\"ownership\":\"share\"}");
+        reading(mB, ym, "0", "416");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT自动池S15\",\"method\":\"area\","
+                + "\"coefficient\":416,\"feeKey\":\"share_elec_light\",\"meterIds\":[" + mB + "]}");
+        int mC = postId("/api/meters", "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT户总池表S15\",\"ownership\":\"share\"}");
+        reading(mC, ym, "0", "448.01");
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT户总池S15\",\"method\":\"area\","
+                + "\"coefficient\":448.01,\"feeKey\":\"share_elec_floor\",\"meterIds\":[" + mC + "],"
+                + "\"members\":[{\"tenantId\":" + t + "}]}");
+        price("elec_commercial", ym, "1");
+        price("mgmt_fee_commercial", ym, "0");
+        price("elec_sharp", ym, "1"); price("elec_peak", ym, "1");
+        price("elec_flat", ym, "1"); price("elec_valley", ym, "1");   // priceGate 全 zone 门禁
+        mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        Map<String, BigDecimal> got = new HashMap<>();
+        for (AllocResultDTO r : alloc.resultByYm(ym))
+            if (r.tenantId().equals(t)) got.put(r.feeKey(), r.amount());
+        assertEquals(0, got.get("share_elec_elevator").compareTo(new BigDecimal("416.00")),
+                "楼栋级池基数应剔除宿舍行 32.01㎡(污染口径=448.01),实摊 " + got.get("share_elec_elevator"));
+        assertEquals(0, got.get("share_elec_light").compareTo(new BigDecimal("416.00")),
+                "p1 自动名册基数应剔除宿舍行(锚:双成 448.01→416),实摊 " + got.get("share_elec_light"));
+        assertEquals(0, got.get("share_elec_floor").compareTo(new BigDecimal("448.01")),
+                "园区级显式池户总面积应仍含宿舍行(拆分不减总量),实摊 " + got.get("share_elec_floor"));
     }
 
     private int unit(int buildingId, int floor, String unitNo) {

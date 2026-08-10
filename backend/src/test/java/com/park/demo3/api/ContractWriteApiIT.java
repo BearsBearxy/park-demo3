@@ -384,6 +384,80 @@ class ContractWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.message").value("合同号已存在"));
     }
 
+    // ─── S15:附加单元允许跨栋(宿舍527式) + 面积合同派生口径 ─────
+
+    /** 新建 1层×2单元 楼栋,返回 id */
+    private int newBuilding(String name) throws Exception {
+        String body = mvc.perform(post("/api/buildings")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"name\":\"" + name + "\",\"phase\":2,\"floorCount\":1,\"perFloor\":2,"
+                        + "\"totalArea\":1000,\"rentableArea\":900,\"remark\":\"IT S15\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(body, "$.data.id");
+    }
+
+    private int firstUnitOf(int buildingId) throws Exception {
+        return ((List<Integer>) JsonPath.read(getBody("/api/buildings/" + buildingId),
+                "$.data.units[*].id")).get(0);
+    }
+
+    @Test
+    void crossBuildingExtraUnit_saves_occupiesTargetBuilding_areaDerived() throws Exception {
+        int tid = firstTenantId();
+        long n = System.nanoTime();
+        int b1 = newBuilding("IT-S15主栋-" + n);
+        int b2 = newBuilding("IT-S15跨栋-" + n);
+        int u1 = firstUnitOf(b1);
+        int u2 = firstUnitOf(b2);
+
+        // 主单元 u1 在 b1(同栋校验保留),附加单元 u2 跨栋 → 放开后应保存成功
+        mvc.perform(post("/api/contracts")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"tenantId\":" + tid
+                        + ",\"buildingId\":" + b1 + ",\"unitId\":" + u1
+                        + ",\"extraUnitIds\":[" + u2 + "],\"monthlyRent\":8000,\"deposit\":0,"
+                        + "\"billingLines\":[{\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":321.5,\"unitPrice\":10,\"seq\":1}],"
+                        + "\"startDate\":\"2026-01-01\",\"endDate\":\"2028-12-31\",\"status\":\"active\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 跨栋占用联动:目标栋 b2 详情里 u2 应显示 occupied
+        String d2 = getBody("/api/buildings/" + b2);
+        List<String> st = JsonPath.read(d2, "$.data.units[?(@.id==" + u2 + ")].status");
+        assertThat(st).containsExactly("occupied");
+
+        // 面积合同派生(无 billing_term_unit 绑定 → 回退):非宿舍行 321.5 ÷ 2 单元 = 160.75
+        List<Double> da = JsonPath.read(d2, "$.data.units[?(@.id==" + u2 + ")].derivedArea");
+        assertThat(da).containsExactly(160.75);
+        // 楼栋卡「在租面积」= Σ被占单元派生值;金额/户数仍按主栋(跨栋只显占用,不双算钱)
+        assertThat(new java.math.BigDecimal(JsonPath.read(d2, "$.data.building.leasedArea").toString()))
+                .isEqualByComparingTo("160.75");
+        assertThat(new java.math.BigDecimal(JsonPath.read(d2, "$.data.building.monthlyRent").toString()))
+                .isEqualByComparingTo("0");
+        // 主栋 b1:u1 同样均摊 160.75
+        List<Double> da1 = JsonPath.read(getBody("/api/buildings/" + b1),
+                "$.data.units[?(@.id==" + u1 + ")].derivedArea");
+        assertThat(da1).containsExactly(160.75);
+    }
+
+    @Test
+    void extraUnit_notExists_stillRejected() throws Exception {
+        // 放开的只是跨栋;不存在的单元仍拒绝
+        mvc.perform(post("/api/contracts")
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"contractNo\":\"" + uniqueNo() + "\",\"tenantId\":" + firstTenantId()
+                        + ",\"buildingId\":" + firstBuildingId()
+                        + ",\"extraUnitIds\":[99999999],\"monthlyRent\":0,\"deposit\":0,\"status\":\"draft\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("附加单元不存在"));
+    }
+
     @Test
     void deleteContract_success_goneFromList() throws Exception {
         int id = createContract(uniqueNo(), firstTenantId(), firstBuildingId(), null, null, null, "draft");

@@ -37,5 +37,6 @@ public record ContractDTO(
     // V55 期限原文三件套(合同导入必现):原文原样回显,不因解析失败而丢失
     String  termText,          // 期限原文,如「2023年7月14日起至2026年7月13日」
     String  termType,          // explicit|multiple|relative|none
-    String  tierPriceNote      // 分年阶梯价说明(AH 列原文)
+    String  tierPriceNote,     // 分年阶梯价说明(AH 列原文)
+    java.util.List<String> warnings  // S15:编辑整组替换时未能回挂的计费行单元绑定告警(仅 PUT 回包,读路径 null)
 ) {}

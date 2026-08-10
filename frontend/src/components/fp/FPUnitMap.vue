@@ -11,6 +11,7 @@ export interface UnitDTO {
   status: 'occupied' | 'expiring' | 'reserved' | 'vacant'
   tenantId?: number | null
   companyName?: string | null
+  contractRentArea?: number | null   // S15 服务刀对齐点(草案):占用合同租赁面积,单元未录面积时 ≈ 展示
 }
 
 interface Props {
@@ -73,8 +74,10 @@ const floors = computed(() => {
             <span class="u-nm">
               {{ u.companyName ?? UNIT_STATUS[u.status]?.label }}
             </span>
-            <span class="u-ar">
-              {{ u.area != null ? Number(u.area).toLocaleString('zh-CN') + ' ㎡' : '' }}
+            <span class="u-ar" :title="!u.area && u.contractRentArea ? '合同派生面积(单元未录面积,取占用合同租赁面积)' : undefined">
+              {{ u.area ? Number(u.area).toLocaleString('zh-CN') + ' ㎡'
+                 : u.contractRentArea ? '≈' + Number(u.contractRentArea).toLocaleString('zh-CN') + ' ㎡'
+                 : u.area != null ? '0 ㎡' : '' }}
             </span>
           </div>
           <div v-if="!byFloor[f]?.length" class="fp-flr-empty">本层暂无单元</div>

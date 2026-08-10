@@ -181,8 +181,21 @@ describe('readingFlags — 异常标记纯函数', () => {
   })
   it('时段不符:四段齐全 Σ段≠总超容差;缺段不判(公共表只有总)', () => {
     expect(readingFlags({ ...base, usageValley: 50 }).touMismatch).toBe(true)
-    expect(readingFlags({ ...base, usageTotal: 100.5 }).touMismatch).toBe(false)   // 容差 max(1,1%) 内
+    expect(readingFlags({ ...base, usageTotal: 100.5 }).touMismatch).toBe(false)   // 容差 max(0.1×倍率,1%) 内
     expect(readingFlags({ ...base, usageValley: null }).touMismatch).toBe(false)
+  })
+
+  // S15 §4:容差地板 固定1 → max(0.1×倍率, |总|×1%)——高倍率表寄存器截断噪声(表盘度≤0.1)不再误报
+  it('高倍率压线消警:0.06表盘度×倍率20=1.2 ≤ 0.1×20(旧固定地板1会误报,陈书谨案例)', () => {
+    expect(readingFlags({ ...base, usageTotal: 101.2, factorSnap: 20 }).touMismatch).toBe(false)
+  })
+  it('高倍率真错仍报:0.53表盘度×倍率20=10.6 > 容差(欧伟杰案例)', () => {
+    expect(readingFlags({ ...base, usageTotal: 110.6, factorSnap: 20 }).touMismatch).toBe(true)
+  })
+  it('低倍率表行为不变:倍率1(或无快照缺省1)微差不报/真错仍报', () => {
+    expect(readingFlags({ ...base, usageTotal: 100.5, factorSnap: 1 }).touMismatch).toBe(false)
+    expect(readingFlags({ ...base, usageTotal: 103, factorSnap: 1 }).touMismatch).toBe(true)
+    expect(readingFlags({ ...base, usageTotal: 103 }).touMismatch).toBe(true)
   })
 })
 

@@ -10,6 +10,8 @@ import { ref, computed, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
+import type { FPUnitOption } from '@/components/fp/fpUnitPicker'
 import { contractApi } from '@/api/contract'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
@@ -20,7 +22,7 @@ import {
 } from '@/types/contract'
 import type { ContractDTO, RentFreePeriod, FeeKey, PropertyType, BillingLineDTO, BillingLineReq } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
-import type { BuildingDTO, UnitDTO } from '@/types/building'
+import type { BuildingDTO } from '@/types/building'
 
 const props = defineProps<{
   /** 编辑态:待编辑合同(与 renewFrom 互斥) */
@@ -46,13 +48,14 @@ const tenants = ref<TenantDTO[]>([])
 const tenantOptions = computed(() =>
   tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName })))
 const buildings = ref<BuildingDTO[]>([])
-const units = ref<UnitDTO[]>([])
 
 const contractNo = ref('')
 const tenantId = ref<number | null>(null)
 const buildingId = ref<number | null>(null)
-const unitId = ref<number | null>(null)
-const extraUnitIds = ref<number[]>([])   // 附加单元(多场地合同,主单元之外;整组替换语义同后端)
+// 单元多选(S15 §2 FPUnitPicker):有序数组,首个=主单元(提交 unitId),其余=extraUnitIds;跨栋可选
+const unitSel = ref<number[]>([])
+const unitOptions = ref<FPUnitOption[]>([])
+const unitsLoading = ref(false)
 const buildingArea = ref<number | null>(null)   // 建筑面积㎡(可清空:留空保存=租赁面积×0.8 后端重算,裁定①)
 const rentArea = ref<number | null>(null)        // 续签态可改;新增/编辑为计费行汇总只读
 const monthlyRent = ref<number | null>(null)     // 续签态可改;新增/编辑由计费行汇总,提交时算出
@@ -152,13 +155,12 @@ onMounted(async () => {
     return
   }
   ;[tenants.value, buildings.value] = await Promise.all([tenantApi.list(), buildingApi.list()])
+  loadAllUnits()   // 不阻塞:chips 在候选到位后自动解析,缺档期间以「未知单元」可见
   const c = props.initial
   if (c) {
     contractNo.value = c.contractNo
     tenantId.value = c.tenantId
     buildingId.value = c.buildingId
-    if (c.buildingId != null) units.value = (await buildingApi.detail(c.buildingId)).units
-    unitId.value = c.unitId
     buildingArea.value = c.buildingArea ?? null
     rentArea.value = c.rentArea
     deposit.value = c.deposit
@@ -183,12 +185,26 @@ onMounted(async () => {
       coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null,
     }))
     segments.value = groupLines(d.billingLines.filter(l => !isIndepOther(l)))
-    extraUnitIds.value = d.extraUnitIds ?? []
+    // 主单元居首,附加单元按回带序;主可为空(遗留数据)时首个附加即为主展示——保存前用户可见
+    const extra = (d.extraUnitIds ?? []).filter(id => id !== c.unitId)
+    unitSel.value = c.unitId != null ? [c.unitId, ...extra] : [...extra]
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
-    units.value = (await buildingApi.detail(props.presetBuildingId)).units
   }
 })
+
+// 全楼栋单元候选(跨栋可选;后端无全量单元端点,并发逐栋 detail——S15 后端零改约束)
+async function loadAllUnits() {
+  unitsLoading.value = true
+  try {
+    const ds = await Promise.all(buildings.value.map(b => buildingApi.detail(b.id)))
+    unitOptions.value = ds.flatMap((d, i) => d.units.map(u => ({
+      id: u.id, buildingId: buildings.value[i].id, buildingName: buildings.value[i].name,
+      floor: u.floor, unitNo: u.unitNo, area: u.area, status: u.status,
+    })))
+  } catch { /* 失败不拦:已选 id 仍以「未知单元」chips 可见,提交不受影响 */ }
+  finally { unitsLoading.value = false }
+}
 
 // 详情计费行 → 标的段(按 propertyType+location 分组;遗留 propertyType 空按租金行反推;钉死行缺失补齐)
 function groupLines(lines: BillingLineDTO[]): Segment[] {
@@ -205,38 +221,27 @@ function groupLines(lines: BillingLineDTO[]): Segment[] {
   return segs
 }
 
-// 选楼栋后载入其单元列表(可留空);切换楼栋清空已选单元。
-async function onBuildingChange() {
-  err.value = ''
-  unitId.value = null
-  extraUnitIds.value = []
-  try {
-    units.value = buildingId.value == null ? [] : (await buildingApi.detail(buildingId.value)).units
-  } catch {
-    units.value = []   // 失败清空,不残留上一栋的单元列表(派生审计)
-    err.value = '单元列表加载失败,请重选楼栋'
-  }
-}
-
-function toggleExtraUnit(id: number) {
-  const i = extraUnitIds.value.indexOf(id)
-  if (i >= 0) extraUnitIds.value.splice(i, 1)
-  else extraUnitIds.value.push(id)
-  err.value = ''
-}
+// 单元候选已是全楼栋(跨栋可选):切换楼栋不再清已选单元——chips 带栋名可见,不会隐形残留
+function onBuildingChange() { err.value = '' }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const isNum = (v: number | null): v is number => typeof v === 'number' && !Number.isNaN(v)
 
-// 租赁面积=各段建筑类租金行面积之和(空地租金单列不计);无该类行=null(回落续签 rentArea)
-const rentAreaSum = computed<number | null>(() => {
+// 面积分类汇总(S15 §3):建筑类租金行拆非宿舍/宿舍两桶(空地租金单列不计);无该类行=null
+function areaSum(pred: (k: FeeKey) => boolean): number | null {
   let sum = 0, has = false
   for (const seg of segments.value)
     for (const r of seg.rows)
-      if (BUILDING_RENT_KEYS.includes(r.feeKey) && isNum(r.area)) { sum += r.area; has = true }
+      if (pred(r.feeKey) && isNum(r.area)) { sum += r.area; has = true }
   return has ? round2(sum) : null
-})
-const rentAreaShow = computed<number | null>(() => rentAreaSum.value ?? rentArea.value)
+}
+// 租赁面积(非宿舍)=Σ非 rent_dorm 建筑类租金行;提交 rentArea 用此口径(与后端新口径一致)
+const nonDormAreaSum = computed<number | null>(() => areaSum(k => BUILDING_RENT_KEYS.includes(k) && k !== 'rent_dorm'))
+// 宿舍面积=Σ rent_dorm 行;仅有宿舍行时显示
+const dormAreaSum = computed<number | null>(() => areaSum(k => k === 'rent_dorm'))
+const rentAreaShow = computed<number | null>(() => nonDormAreaSum.value ?? rentArea.value)
+// 建筑面积提示=非宿舍Σ×0.8(留空保存由后端同口径重算)
+const bldAreaHint = computed<number | null>(() => rentAreaShow.value != null ? round2(rentAreaShow.value * 0.8) : null)
 // 段面积(段内建筑类租金行面积之和,供段头只读展示;空地段无此显示)
 function segArea(seg: Segment): number | null {
   let sum = 0, has = false
@@ -334,10 +339,10 @@ async function submit() {
       contractNo: contractNo.value.trim(),
       tenantId: tenantId.value!,
       buildingId: buildingId.value!,
-      unitId: unitId.value,
-      extraUnitIds: extraUnitIds.value.filter(id => id !== unitId.value),
+      unitId: unitSel.value[0] ?? null,          // 首个=主单元
+      extraUnitIds: unitSel.value.slice(1),      // 其余=附加单元(含跨栋)
       buildingArea: numOrNull(buildingArea.value),
-      rentArea: rentAreaSum.value ?? num(rentArea.value),
+      rentArea: nonDormAreaSum.value ?? num(rentArea.value),   // S15 §3:宿舍面积不计入
       unitPrice: rentL ? (rentL.unitPrice ?? null) : (init?.unitPrice ?? null),
       monthlyRent: monthlyTotal(),                 // §3.2:计费行月额之和,不双录入
       deposit: num(deposit.value),
@@ -416,43 +421,35 @@ async function submit() {
                 <option v-for="b in buildings" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>
             </div>
-            <div class="ct-field">
-              <div class="lab">单元</div>
+            <!-- 单元多选(S15 §2 FPUnitPicker):全楼栋分组候选,跨栋可选;首个=主单元(★可换主),其余=附加单元 -->
+            <div class="ct-field ct-field-wide">
+              <div class="lab">单元 · 可跨栋多选,首个为主单元(★可换主)</div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.floorInfo || '未指定单元'" disabled />
-              <select v-else class="ct-in" v-model="unitId" :disabled="buildingId == null" @change="err = ''">
-                <option :value="null">留空 · 不指定单元</option>
-                <option v-for="u in units" :key="u.id" :value="u.id">
-                  {{ u.floor }}F-{{ u.unitNo }} · {{ u.area }}㎡{{ u.status === 'vacant' ? '' : ' · 非空置' }}
-                </option>
-              </select>
+              <FPUnitPicker v-else v-model="unitSel" :units="unitOptions" :loading="unitsLoading"
+                            @update:model-value="err = ''" />
             </div>
-            <!-- 附加单元(多场地合同):主单元之外再勾选,占用/楼栋派生按并集自动跟随 -->
-            <div v-if="mode !== 'renew'" class="ct-field ct-field-wide">
-              <div class="lab">附加单元 · 多场地可多选{{ extraUnitIds.length ? `(已选${extraUnitIds.length})` : '' }}</div>
-              <div class="ct-units" :class="{ dim: buildingId == null }">
-                <span v-if="buildingId == null" class="ct-units-empty">先选楼栋</span>
-                <span v-else-if="units.filter(u => u.id !== unitId).length === 0" class="ct-units-empty">该栋无其他单元</span>
-                <label v-else v-for="u in units.filter(u => u.id !== unitId)" :key="u.id" class="ct-unit-chk">
-                  <input type="checkbox" :checked="extraUnitIds.includes(u.id)" @change="toggleExtraUnit(u.id)" />
-                  {{ u.floor }}F-{{ u.unitNo }}
-                </label>
-              </div>
-            </div>
-            <!-- 建筑面积 → 租赁面积(计费行汇总只读);月租金/租金单价并入下方标的段,不双录入 -->
+            <!-- 建筑面积 → 面积分类(计费行汇总只读,S15 §3);月租金/租金单价并入下方标的段,不双录入 -->
             <div class="ct-field">
               <div class="lab">建筑面积 ㎡</div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingArea ?? '—'" disabled title="续签继承原合同" />
-              <input v-else class="ct-in" type="number" min="0" v-model.number="buildingArea" placeholder="留空=租赁面积×0.8"
-                     title="可清空:留空保存后自动=租赁面积×0.8 重算;显式填值则尊重填值"
+              <input v-else class="ct-in" type="number" min="0" v-model.number="buildingArea"
+                     :placeholder="bldAreaHint != null ? `留空=${bldAreaHint.toLocaleString('en-US')}(非宿舍×0.8)` : '留空=非宿舍租赁面积×0.8'"
+                     title="可清空:留空保存后自动=租赁面积(非宿舍)×0.8 重算;显式填值则尊重填值"
                      @input="err = ''" @keydown.enter="submit" />
             </div>
             <div class="ct-field">
-              <div class="lab">租赁面积 ㎡{{ mode === 'renew' ? '' : ' · 自动汇总' }}</div>
+              <div class="lab">租赁面积(非宿舍) ㎡{{ mode === 'renew' ? '' : ' · 自动汇总' }}</div>
               <input v-if="mode === 'renew'" class="ct-in" type="number" min="0" v-model.number="rentArea" placeholder="0"
                      @input="err = ''" @keydown.enter="submit" />
-              <input v-else class="ct-in" disabled placeholder="按标的段建筑类租金面积汇总"
-                     title="租赁面积=各标的段建筑类租金面积之和,面积只在标的段内录入"
+              <input v-else class="ct-in" disabled placeholder="按非宿舍标的段租金面积汇总"
+                     title="租赁面积(非宿舍)=各标的段建筑类租金面积之和(宿舍段除外),面积只在标的段内录入"
                      :value="rentAreaShow != null ? rentAreaShow.toLocaleString('en-US') : ''" />
+            </div>
+            <div v-if="mode !== 'renew' && dormAreaSum != null" class="ct-field">
+              <div class="lab">宿舍面积 ㎡ · 自动汇总</div>
+              <input class="ct-in" disabled
+                     title="宿舍面积=各宿舍段租金行面积之和,不计入租赁面积(非宿舍)与建筑面积换算"
+                     :value="dormAreaSum.toLocaleString('en-US')" />
             </div>
             <div v-if="mode === 'renew'" class="ct-field">
               <div class="lab">月租金 元</div>
@@ -672,11 +669,6 @@ async function submit() {
 .ct-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .ct-field .lab i { color:var(--hue-red); font-style:normal; }
 .ct-field-wide { grid-column:1 / -1; }
-.ct-units { display:flex; flex-wrap:wrap; gap:4px 10px; max-height:96px; overflow-y:auto; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-white); }
-.ct-units.dim { background:var(--surface-muted, #fafafa); }
-.ct-units-empty { font-size:12.5px; color:var(--text-disabled); }
-.ct-unit-chk { display:inline-flex; align-items:center; gap:5px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
-.ct-unit-chk input { accent-color:var(--hue-blue); }
 .ct-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .ct-in:focus { border-color:var(--hue-blue); }
 .ct-in.err { border-color:var(--hue-red); }

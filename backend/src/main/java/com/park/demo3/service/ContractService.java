@@ -28,13 +28,16 @@ public class ContractService {
     private final UnitMapper     units;
     private final ContractBillingTermMapper terms;   // V51 起仅作「其他费项」留档表(§1.1 零静默丢弃)
     private final ContractUnitMapper contractUnits;  // V58 附加单元(主单元在 unit_id),floorInfo 显「等N单元」
+    private final BillingTermUnitMapper termUnits;   // S15:计费行↔单元绑定(V91),整组替换时快照回挂防孤儿
 
     public ContractService(ContractMapper contracts, TenantMapper tenants,
                            BuildingMapper buildings, UnitMapper units,
-                           ContractBillingTermMapper terms, ContractUnitMapper contractUnits) {
+                           ContractBillingTermMapper terms, ContractUnitMapper contractUnits,
+                           BillingTermUnitMapper termUnits) {
         this.contracts = contracts; this.tenants = tenants;
         this.buildings = buildings; this.units   = units;
         this.terms = terms; this.contractUnits = contractUnits;
+        this.termUnits = termUnits;
     }
 
     /** 全量列表;asOfDate 非空 → 某日在租过滤(§5.2/§8⑦):非草稿且 startDate≤asOf≤endDate。 */
@@ -158,16 +161,17 @@ public class ContractService {
         c.setFeeSrc(writeFeeSrc(src));
         // 计费行整组替换(单一编辑模式最终态):保留同 id 行原 source(手录不丢),新行标 manual;
         // 落库后从租金主行反向同步五标量缓存(§1.1)——覆盖 applyReq 写入的标量。
+        List<String> warnings = List.of();
         if (req.billingLines() != null) {
             Map<Integer,String> oldSrc = terms.selectList(
                     new QueryWrapper<ContractBillingTerm>().eq("contract_id", id)).stream()
                 .collect(Collectors.toMap(ContractBillingTerm::getId, ContractBillingTerm::getSource));
-            replaceLinesFromReq(id, req.billingLines(), oldSrc);
+            warnings = replaceLinesFromReq(id, req.billingLines(), oldSrc);
             syncScalarCache(c);
         }
         contracts.updateById(c);
         replaceExtraUnits(id, req.extraUnitIds());
-        return dtoOf(contracts.selectById(id));
+        return dtoOf(contracts.selectById(id), warnings.isEmpty() ? null : warnings);
     }
 
     /** 附加单元整组替换(语义同 billingLines:null=不动;空列表=清空)。占用/楼栋派生读时按 主单元∪附加 并集。 */
@@ -535,6 +539,10 @@ public class ContractService {
     // 建筑类租金(计入租赁面积);rent_land=空地租金单列不入(裁定 2026-07-24);包级开放给 AllocService 分摊面积口径(S5 §1)
     static final Set<String> BUILDING_RENT_KEYS = Set.of(
         "rent_factory","rent_office","rent_dorm","rent_shop");
+    // S15:非宿舍建筑类租金(= BUILDING_RENT_KEYS − rent_dorm)。合同级 rent_area 缓存与楼栋面积回退口径用它;
+    // 分摊面积(S5 §1,BillNoticeService/AllocService)仍按全集——宿舍户也分摊,是否改子集由引擎侧裁定。
+    static final Set<String> NONDORM_RENT_KEYS = Set.of(
+        "rent_factory","rent_office","rent_shop");
     private static final Map<String,String> FEE_NAME = Map.ofEntries(
         Map.entry("rent_factory","厂房租金"), Map.entry("rent_office","办公室租金"),
         Map.entry("rent_dorm","宿舍租金"), Map.entry("rent_shop","商铺租金"),
@@ -616,10 +624,27 @@ public class ContractService {
         }
     }
 
-    /** 计费行整组替换(单一编辑 PUT):删旧全组、插新组;同 id 行沿旧 source,新行标 manual。 */
-    private void replaceLinesFromReq(Integer contractId, List<BillingLineReq> lines, Map<Integer,String> oldSrc) {
+    /** 计费行整组替换(单一编辑 PUT):删旧全组、插新组;同 id 行沿旧 source,新行标 manual。
+     *  S15 孤儿雷修复:billing_term_unit 行级绑定挂在 term id 上,delete+insert 重建会经 FK CASCADE
+     *  连带清光(dev 库 1708 行绑定)。重建前按 (location|feeKey|area) 键快照旧行绑定,重建后按同键
+     *  回挂到新 term id;键撞多行按 (seq,id)↔插入序 配对,配不上的绑定随 CASCADE 删除并在返回警告点名。 */
+    private List<String> replaceLinesFromReq(Integer contractId, List<BillingLineReq> lines, Map<Integer,String> oldSrc) {
+        List<ContractBillingTerm> oldTerms = terms.selectList(
+            new QueryWrapper<ContractBillingTerm>().eq("contract_id", contractId).orderByAsc("seq", "id"));
+        Map<Integer, List<BillingTermUnit>> bindsByTerm = oldTerms.isEmpty() ? Map.of()
+            : termUnits.selectList(new QueryWrapper<BillingTermUnit>()
+                    .in("term_id", oldTerms.stream().map(ContractBillingTerm::getId).toList()))
+                .stream().collect(Collectors.groupingBy(BillingTermUnit::getTermId));
+        Map<String, Deque<List<BillingTermUnit>>> snapshot = new LinkedHashMap<>();
+        for (ContractBillingTerm t : oldTerms) {
+            List<BillingTermUnit> b = bindsByTerm.get(t.getId());
+            if (b != null) snapshot.computeIfAbsent(bindKey(t.getLocation(), t.getFeeKey(), t.getArea()),
+                k -> new ArrayDeque<>()).add(b);
+        }
+
         terms.delete(new QueryWrapper<ContractBillingTerm>().eq("contract_id", contractId));
         int idx = 0;
+        List<ContractBillingTerm> inserted = new ArrayList<>();
         for (BillingLineReq l : lines) {
             ContractBillingTerm t = new ContractBillingTerm();
             t.setContractId(contractId);
@@ -637,8 +662,29 @@ public class ContractService {
             t.setSeq(l.seq() != null ? l.seq() : idx);
             t.setSource(l.id() != null && oldSrc.containsKey(l.id()) ? oldSrc.get(l.id()) : "manual");
             terms.insert(t);
+            inserted.add(t);
             idx++;
         }
+        // 回挂:新行按插入序领取同键快照组(键撞多行 → 队列按序配对)
+        for (ContractBillingTerm t : inserted) {
+            Deque<List<BillingTermUnit>> q = snapshot.get(bindKey(t.getLocation(), t.getFeeKey(), t.getArea()));
+            if (q == null || q.isEmpty()) continue;
+            for (BillingTermUnit old : q.poll()) {
+                BillingTermUnit nb = new BillingTermUnit();
+                nb.setTermId(t.getId()); nb.setUnitId(old.getUnitId()); nb.setSource(old.getSource());
+                termUnits.insert(nb);
+            }
+        }
+        List<String> warnings = new ArrayList<>();
+        snapshot.forEach((key, q) -> q.forEach(b -> warnings.add(
+            "计费行 " + key + " 被删除,其 " + b.size() + " 个单元绑定已随之删除")));
+        return warnings;
+    }
+
+    /** 绑定回挂键(S15):行的 (location|feeKey|area),area 归一(stripTrailingZeros)同 dedupAreaSum。 */
+    private static String bindKey(String location, String feeKey, BigDecimal area) {
+        return location + "|" + feeKey + "|"
+            + (area == null ? "-" : area.stripTrailingZeros().toPlainString());
     }
 
     /** 五标量只读缓存 = 从计费行反向同步(§1.1):主行=同类 seq 最小者;无该类行则不动缓存。
@@ -670,9 +716,11 @@ public class ContractService {
         // monthlyRent=Σ lineMonthly(V58 起单一事实源=计费行);行清空=待录=0(重导清子期孤儿行同款语义)
         c.setMonthlyRent(lines.stream().map(l -> lineMonthly(l, c.getKva()))
             .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add));
+        // S15:rent_area 改为非宿舍行Σ(宿舍间面积走单元绑定口径,不入合同级租赁面积);
+        // hasRentLine 仍按全集判——纯宿舍户不得回退 infra(宿舍行只是不计面积,不是没租金行)
         boolean hasRentLine = lines.stream().anyMatch(l -> BUILDING_RENT_KEYS.contains(l.getFeeKey()));
         BigDecimal rentArea = hasRentLine
-            ? dedupAreaSum(lines, BUILDING_RENT_KEYS)
+            ? dedupAreaSum(lines, NONDORM_RENT_KEYS)
             : dedupAreaSum(lines, Set.of("infra"));
         c.setRentArea(rentArea);
         c.setBuildingArea(rentArea.signum() > 0
@@ -690,8 +738,9 @@ public class ContractService {
     }
 
     /** 指定 feeKey 集合内的行按 (location,feeKey,area) 三元完全去重后求面积和。
-     *  area 归一(stripTrailingZeros)保证 3200 与 3200.00 视为同值;location/area 不同的合理多位置行照常各计。 */
-    private static BigDecimal dedupAreaSum(List<ContractBillingTerm> lines, Set<String> feeKeys) {
+     *  area 归一(stripTrailingZeros)保证 3200 与 3200.00 视为同值;location/area 不同的合理多位置行照常各计。
+     *  包级开放(S15):BuildingService 面积派生回退口径复用。 */
+    static BigDecimal dedupAreaSum(List<ContractBillingTerm> lines, Set<String> feeKeys) {
         Set<String> seen = new HashSet<>();
         BigDecimal sum = BigDecimal.ZERO;
         for (ContractBillingTerm l : lines) {
@@ -766,9 +815,9 @@ public class ContractService {
             for (Integer uid : req.extraUnitIds()) {
                 if (Objects.equals(uid, req.unitId()))
                     throw new BizException(ResultCode.CONFLICT, "附加单元不能与主单元重复");
-                Unit u = uid == null ? null : units.selectById(uid);
-                if (u == null || !Objects.equals(u.getBuildingId(), req.buildingId()))
-                    throw new BizException(ResultCode.CONFLICT, "附加单元不存在或不属于所选楼栋");
+                // S15:附加单元放开跨栋(宿舍527式:厂房主栋合同带跨栋宿舍间),单元存在即可;主单元仍限同栋
+                if (uid == null || units.selectById(uid) == null)
+                    throw new BizException(ResultCode.CONFLICT, "附加单元不存在");
             }
         }
         if (req.startDate() != null && req.endDate() != null && req.endDate().isBefore(req.startDate()))
@@ -843,7 +892,9 @@ public class ContractService {
     }
 
     /** 单条回显:按 id 点查租户/楼栋/单元拼 DTO(写路径共用)。 */
-    private ContractDTO dtoOf(Contract c) {
+    private ContractDTO dtoOf(Contract c) { return dtoOf(c, null); }
+
+    private ContractDTO dtoOf(Contract c, List<String> warnings) {
         Tenant t = tenants.selectById(c.getTenantId());
         Building b = buildings.selectById(c.getBuildingId());
         Unit u = c.getUnitId() != null ? units.selectById(c.getUnitId()) : null;
@@ -852,7 +903,7 @@ public class ContractService {
         return toDTO(c,
             t != null ? Map.of(t.getId(), t.getCompanyName()) : Map.of(),
             b != null ? Map.of(b.getId(), b.getName()) : Map.of(),
-            uFloor, extraUnitCounts());
+            uFloor, extraUnitCounts(), warnings);
     }
 
     /** 全表附加单元计数 contract_id→N(V58);list/detail/dtoOf 组装 DTO 前取一次。 */
@@ -865,6 +916,12 @@ public class ContractService {
     private ContractDTO toDTO(Contract c, Map<Integer,String> tName,
                               Map<Integer,String> bName, Map<Integer,String> uFloor,
                               Map<Integer,Long> extraUnits) {
+        return toDTO(c, tName, bName, uFloor, extraUnits, null);
+    }
+
+    private ContractDTO toDTO(Contract c, Map<Integer,String> tName,
+                              Map<Integer,String> bName, Map<Integer,String> uFloor,
+                              Map<Integer,Long> extraUnits, List<String> warnings) {
         int termMonths = (c.getStartDate() != null && c.getEndDate() != null)
             ? (int) ChronoUnit.MONTHS.between(c.getStartDate(), c.getEndDate()) : 0;
         Integer daysToEnd = c.getEndDate() != null
@@ -889,7 +946,8 @@ public class ContractService {
             effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate()),   // 展示态派生桶(§5.1)
             c.getParentContractId(), c.getLinkType(), c.getKind(),
             termMonths, daysToEnd, c.getRemark(), c.getRentFree(),
-            c.getTermText(), c.getTermType(), c.getTierPriceNote()   // V55 期限原文必现
+            c.getTermText(), c.getTermType(), c.getTierPriceNote(),   // V55 期限原文必现
+            warnings   // S15:绑定回挂告警(仅写路径)
         );
     }
 }

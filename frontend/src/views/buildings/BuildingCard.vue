@@ -4,6 +4,7 @@ import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import { fpWan } from '@/utils/money'
+import { leasedAreaShow } from '@/types/building'
 import type { BuildingDTO } from '@/types/building'
 
 const props = defineProps<{ building: BuildingDTO }>()
@@ -57,9 +58,10 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
 
     <!-- Row 3: stats grid -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <div>
-        <div style="font-size:10.5px;color:var(--text-disabled)">可租面积</div>
-        <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ building.rentableArea.toLocaleString('en-US') }}</div>
+      <!-- 在租面积:单元面积Σ恒0时回落合同派生汇总(S15 服务刀字段);可租面积移入 tooltip -->
+      <div :title="`可租面积 ${building.rentableArea.toLocaleString('en-US')} ㎡`">
+        <div style="font-size:10.5px;color:var(--text-disabled)">在租面积</div>
+        <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ leasedAreaShow(building).toLocaleString('en-US') }}</div>
       </div>
       <div>
         <div style="font-size:10.5px;color:var(--text-disabled)">在租 / 空置</div>

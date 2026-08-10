@@ -23,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // 容量费按天折/paymap 拆单/宿舍段拆 dorm 单/幂等与 issued 跳过/offbook/负用量/未归属降级/读数批删 409 守卫。
 // @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04/05 + 2092-02..2092-06(S13 损耗base形态;
 // 月份无 13/14,租金用例 t13/t14 顺延;2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT、
-// 2092-01/2092-12=ContractFullImportApiIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
+// 2092-01/2092-12=ContractFullImportApiIT 已占)+ 2093-02(S15 拆场地比例剔宿舍行;
+// 2093-01=AllocPoolContributionsIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
 // 断言只圈自建数据(种子合同 2028 年前到期、种子表无 2090 读数,槽内 generated 计数=本用例数据,可精确断言)。
 // is_dorm_room/offbook 系 V89 新列,实体未必已挂字段 → 直落 JDBC(同事务同连接,引擎 mapper 读得到)。
 // 公摊行用例刻意不做:贡献一致性归 AllocPoolContributionsIT,引擎侧集成留 S4-3 真数月验收。
@@ -924,6 +925,34 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         String body = detail(soleNoticeId(ym, ch[0]));
         Map<String, Object> lift = one(feeLines(body, "share_elec_elevator"));
         assertThat(d(lift.get("amount"))).isEqualTo(241.06);
+    }
+
+    // ── t37 S15 §4 拆场地比例剔除宿舍行:rentAreaByContract 只Σ非宿舍租金行(property_type='dorm' 或
+    //    fee_key='rent_dorm' 的行不入;宿舍场地拆行已有 dormRooms 专径)。同栋两合同(纯厂房 100㎡ /
+    //    厂房 100㎡+宿舍 100㎡),楼栋级 share 池 300 元:污染口径按 100:200 拆 100/200,修后按 100:100 拆 150/150。
+    //    (锚:邓宇峰双场地拆比被宿舍行面积 248.79㎡ 稀释同型)。槽 2093-02。──
+    @Test
+    void t37_splitShare_dormRowsExcludedFromRatio() throws Exception {
+        String ym = "2093-02";
+        int t = createTenant("IT宿舍拆比户");
+        int cA = contractLines(t, "2093-01-01", "2095-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT厂A\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10}]");
+        int cB = contractLines(t, "2093-01-01", "2095-12-31", null,
+                "[{\"propertyType\":\"factory\",\"location\":\"IT厂B\",\"feeKey\":\"rent_factory\",\"area\":100,\"unitPrice\":10},"
+                + "{\"propertyType\":\"dorm\",\"location\":\"IT宿舍201\",\"feeKey\":\"rent_dorm\",\"area\":100,\"unitPrice\":5}]");
+        pool("IT宿舍拆比池", "share_elec_light", building(), t, ym, "300");
+
+        generate(ym);
+        // 宿舍租金行拆 dorm 单 → 该户 combined 单里看 share 行
+        List<Map<String, Object>> combined = JsonPath.read(list(ym),
+                "$.data[?(@.tenantId==" + t + " && @.noticeKind=='combined')]");
+        String body = detail(((Number) one(combined).get("id")).intValue());
+        List<Map<String, Object>> rows = feeLines(body, "share_elec_light");
+        assertThat(rows).hasSize(2);
+        Map<Integer, Double> byContract = new java.util.HashMap<>();
+        for (Map<String, Object> r : rows) byContract.put((Integer) r.get("contractId"), d(r.get("amount")));
+        assertThat(byContract.get(cA)).isEqualTo(150.0);
+        assertThat(byContract.get(cB)).isEqualTo(150.0);
     }
 
     // ── t15 detail 池名 join(S5 §3.2):share 行 poolName=alloc_rule.name,非公摊行 null。

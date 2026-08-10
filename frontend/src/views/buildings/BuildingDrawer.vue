@@ -10,6 +10,7 @@ import Button from '@/components/ds/Button.vue'
 import ContractNewDialog from '@/views/contracts/ContractNewDialog.vue'
 import { buildingApi } from '@/api/building'
 import { fpMoney, fpWan } from '@/utils/money'
+import { leasedAreaShow } from '@/types/building'
 import type { BuildingDTO, BuildingDetailDTO, BuildingUpdateReq, UnitDTO } from '@/types/building'
 import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
 
@@ -203,10 +204,11 @@ async function onContractCreated() {
 
     <!-- A: 6 FPStat grid -->
     <div v-if="b" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+      <!-- 在租面积回落合同派生汇总(S15 服务刀字段):单元面积Σ恒0不再显示 0 / 可租 -->
       <FPStat
         label="出租率" tint="blue"
         :value="b.status === 0 ? '停用' : b.occRate + '%'"
-        :sub="`${b.leasedArea.toLocaleString('en-US')} / ${b.rentableArea.toLocaleString('en-US')} ㎡`"
+        :sub="`${leasedAreaShow(b).toLocaleString('en-US')} / ${b.rentableArea.toLocaleString('en-US')} ㎡`"
       />
       <FPStat
         label="在租单元" tint="slate"
@@ -259,8 +261,18 @@ async function onContractCreated() {
         <span style="display:flex;align-items:center;gap:9px">
           <span style="font-family:var(--font-mono);font-size:14px;font-weight:var(--fw-semibold)">{{ selUnit.floor }}F-{{ selUnit.unitNo }}</span>
           <span style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">{{ selUnit.area?.toLocaleString('en-US') }} ㎡</span>
+          <!-- 合同派生面积(S15 服务刀字段):单元未录面积时给占用合同的租赁面积兜底展示 -->
+          <span v-if="!selUnit.area && selUnit.contractRentArea"
+                style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)"
+                title="合同派生面积:单元未录面积,取占用合同租赁面积(整约口径)">≈{{ selUnit.contractRentArea.toLocaleString('en-US') }} ㎡ 合同</span>
         </span>
-        <span style="font-size:12px;color:var(--text-muted)">{{ STATUS_LABEL[selUnit.status] }}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <!-- 跨栋占用(S15 服务刀字段):经附加单元挂入的外栋合同 -->
+          <span v-if="selUnit.crossBuilding"
+                style="font-size:11.5px;color:rgb(64,84,124);background:var(--accent-slate);padding:2px 8px;border-radius:999px"
+                title="跨栋占用:该单元由其他楼栋的合同经附加单元挂入">跨栋{{ selUnit.homeBuildingName ? ' · ' + selUnit.homeBuildingName : '' }}</span>
+          <span style="font-size:12px;color:var(--text-muted)">{{ STATUS_LABEL[selUnit.status] }}</span>
+        </span>
       </div>
       <div v-if="selUnit.tenantId" style="display:flex;align-items:center;gap:10px">
         <Avatar :name="selUnit.companyName ?? ''" :size="32" />

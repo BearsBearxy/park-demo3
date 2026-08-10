@@ -16,7 +16,8 @@ class ContractServiceTest {
     UnitMapper     um = Mockito.mock(UnitMapper.class);
     ContractBillingTermMapper btm = Mockito.mock(ContractBillingTermMapper.class);
     ContractUnitMapper cum = Mockito.mock(ContractUnitMapper.class);
-    ContractService svc = new ContractService(cm, tm, bm, um, btm, cum);
+    BillingTermUnitMapper btum = Mockito.mock(BillingTermUnitMapper.class);
+    ContractService svc = new ContractService(cm, tm, bm, um, btm, cum, btum);
 
     // --- helpers ---
     Tenant tenant(int id) {
@@ -126,12 +127,28 @@ class ContractServiceTest {
             .isInstanceOf(BizException.class).hasMessageContaining("附加单元不能与主单元重复");
     }
 
-    @Test void create_rejectsExtraUnitOfAnotherBuilding() {
+    @Test void create_allowsCrossBuildingExtraUnit() {
+        // S15:附加单元放开跨栋(宿舍527式),单元存在即可保存
         Mockito.when(tm.selectById(1)).thenReturn(tenant(1));
         Mockito.when(bm.selectById(13)).thenReturn(building(13, "一期A座"));
-        Unit other = unit(555, 6, "61"); other.setBuildingId(31);   // 二期栋的单元
+        Unit other = unit(555, 6, "61"); other.setBuildingId(31);   // 二期栋的单元(跨栋)
         Mockito.when(um.selectById(555)).thenReturn(other);
-        assertThatThrownBy(() -> svc.create(reqWithExtras(null, List.of(555))))
-            .isInstanceOf(BizException.class).hasMessageContaining("附加单元不存在或不属于所选楼栋");
+        Contract[] saved = new Contract[1];
+        Mockito.when(cm.insert(Mockito.any(Contract.class))).thenAnswer(inv -> {
+            saved[0] = inv.getArgument(0); saved[0].setId(99); return 1;
+        });
+        Mockito.when(cm.selectById(99)).thenAnswer(inv -> saved[0]);
+
+        ContractDTO d = svc.create(reqWithExtras(null, List.of(555)));
+        assertThat(d.id()).isEqualTo(99);
+        Mockito.verify(cum).insert(Mockito.argThat((ContractUnit x) -> x.getUnitId() == 555));
+    }
+
+    @Test void create_rejectsExtraUnitNotExists() {
+        // 放开的只是跨栋;不存在的单元仍拒绝
+        Mockito.when(tm.selectById(1)).thenReturn(tenant(1));
+        Mockito.when(bm.selectById(13)).thenReturn(building(13, "一期A座"));
+        assertThatThrownBy(() -> svc.create(reqWithExtras(null, List.of(777))))
+            .isInstanceOf(BizException.class).hasMessageContaining("附加单元不存在");
     }
 }

@@ -164,7 +164,9 @@ public class BillNoticeService {
                 .orderByAsc("contract_id", "seq", "id"))) {
             termsByContract.computeIfAbsent(t.getContractId(), k -> new ArrayList<>()).add(t);
             // S5 §1 分摊面积=Σ租金计费行(area+IFNULL(area_shared,0)),splitShare 拆分比例用(旧口径 rent_area 不含公摊)
-            if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey()) && t.getArea() != null)
+            // S15 §4:宿舍行(AllocService.dormTerm)不入拆分比例——拆场地只用非宿舍面积,宿舍场地已有 dormRooms 专径
+            if (ContractService.BUILDING_RENT_KEYS.contains(t.getFeeKey()) && t.getArea() != null
+                    && !AllocService.dormTerm(t))
                 rentAreaByContract.merge(t.getContractId(),
                     t.getArea().add(t.getAreaShared() == null ? BigDecimal.ZERO : t.getAreaShared()), BigDecimal::add);
             if (t.getLocation() == null || t.getLocation().isBlank()) continue;

@@ -617,13 +617,41 @@ class AllocServiceTest {
         // 计费行面积映射传空 → 全部走 rent_area 回退(S5 §1 回退分支即旧口径,期别切分断言不变)
         var area = AllocService.areaByZoneTenant(java.util.List.of(factory, dorm, mixed, land, byUnit),
             java.util.Map.of(3, java.util.List.of(unit(26)), 5, java.util.List.of(unit(35))), zoneOfBuilding,
-            java.util.Map.of(), new java.util.HashSet<>());
+            java.util.Map.of(), java.util.Map.of(), new java.util.HashSet<>());
         assertEquals(new BigDecimal("4892.89"), area.get("p2").get(100));
         assertEquals(new BigDecimal("72.94"), area.get("dorm").get(100));    // 厂房面积不进宿舍池
         assertNull(area.get("dorm").get(200));                               // 附加单元不带面积过区
         assertEquals(new BigDecimal("3206.88"), area.get("p2").get(200));
         assertEquals(2, area.size());                                        // 无期别楼栋的合同不入任何期别(300 户不出现)
         assertEquals(new BigDecimal("100.00"), area.get("p2").get(400));
+    }
+
+    // S15 §4 面积污染根修:宿舍计费行(property_type='dorm' 或 fee_key='rent_dorm')面积拆入 dorm zone,
+    // 非宿舍行照旧按合同主楼栋 zone。锚点:双成 p1 路灯基数 448.01→416(32.01㎡ 宿舍行出 p1)、
+    // 邓宇峰 p2 路灯基数 4892.89→4644.10(248.79㎡ 宿舍行出 p2)。
+    @Test
+    void areaByZoneTenant_dormRowsSplitToDormZone() {
+        var zoneOfBuilding = java.util.Map.of(35, "p2", 26, "dorm");
+        var mixed = contract(1, 100, 35, null);        // 邓宇峰型:厂房主楼栋 + 宿舍行
+        var pureDorm = contract(2, 200, 26, null);     // 纯宿舍:主楼栋=宿舍楼
+        pureDorm.setRentArea(new BigDecimal("999"));   // 有 dorm 租金行就不许回退 rent_area(回退=双计)
+        var pureFactory = contract(3, 300, 35, null);  // 纯厂房:行为不变
+        var tang = contract(4, 400, 26, null);         // 汤周杰型:主楼栋=宿舍楼但含厂房行
+        var fallbackSet = new java.util.HashSet<Integer>();
+        var area = AllocService.areaByZoneTenant(java.util.List.of(mixed, pureDorm, pureFactory, tang),
+            java.util.Map.of(), zoneOfBuilding,
+            java.util.Map.of(1, new BigDecimal("4644.10"), 3, new BigDecimal("500.00"), 4, new BigDecimal("300.00")),
+            java.util.Map.of(1, new BigDecimal("248.79"), 2, new BigDecimal("72.94")),
+            fallbackSet);
+        assertEquals(new BigDecimal("4644.10"), area.get("p2").get(100));   // 邓宇峰 p2 基数 4892.89→4644.10
+        assertEquals(new BigDecimal("248.79"), area.get("dorm").get(100));  // 宿舍行面积落 dorm zone
+        assertEquals(new BigDecimal("72.94"), area.get("dorm").get(200));   // 纯宿舍不变(仍在 dorm zone)
+        assertNull(area.get("p2").get(200));
+        assertTrue(fallbackSet.isEmpty(), "纯宿舍合同不得回退 rent_area:" + fallbackSet);
+        assertEquals(new BigDecimal("500.00"), area.get("p2").get(300));    // 纯厂房不变
+        // 汤周杰型边界:厂房行仍按主楼栋 zone(=dorm)——主楼栋挂错是数据错,由 SQL 刀改对主楼栋,
+        // 引擎不做 location 猜测
+        assertEquals(new BigDecimal("300.00"), area.get("dorm").get(400));
     }
 
     private static com.park.demo3.entity.Contract contract(int id, int tenantId, Integer buildingId, Integer unitId) {

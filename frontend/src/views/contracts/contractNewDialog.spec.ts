@@ -121,3 +121,99 @@ describe('合同弹窗 · per_sqm 条件项(空地基础设施维护费)', () =>
     expect((area.element as HTMLInputElement).value).toBe('179.7')
   })
 })
+
+// ── S15 §3:面积分类拆分——租赁面积(非宿舍)/宿舍面积两行;提交 rentArea=非宿舍Σ(后端新口径) ──
+type W = ReturnType<typeof mountEdit>
+const fieldByLab = (w: W, kw: string) =>
+  w.findAll('.ct-field').find((f) => f.find('.lab').exists() && f.find('.lab').text().includes(kw))
+
+describe('合同弹窗 · 面积分类(非宿舍/宿舍拆分)', () => {
+  const detail: ContractDetailDTO = {
+    contract: initial,
+    tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+    billingLines: [
+      { id: 21, contractId: 7, propertyType: 'factory', location: 'E座', feeKey: 'rent_factory', area: 390, unitPrice: 10, billMode: 'per_sqm_month', seq: 0 },
+      { id: 22, contractId: 7, propertyType: 'dorm', location: '宿舍楼', feeKey: 'rent_dorm', area: 120, unitPrice: 8, billMode: 'per_sqm_month', seq: 0 },
+    ],
+    extraUnitIds: [],
+  }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(contractApi.detail).mockResolvedValue(detail)
+    vi.mocked(contractApi.update).mockResolvedValue(initial)
+  })
+
+  it('两行分类:租赁面积(非宿舍)=Σ非rent_dorm行,宿舍面积=Σrent_dorm行', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    const nonDorm = fieldByLab(w, '租赁面积(非宿舍)')!
+    expect((nonDorm.find('input').element as HTMLInputElement).value).toBe('390')
+    const dorm = fieldByLab(w, '宿舍面积')!
+    expect((dorm.find('input').element as HTMLInputElement).value).toBe('120')
+  })
+
+  it('提交 rentArea=非宿舍Σ(宿舍面积不计入);建筑面积提示=非宿舍Σ×0.8', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    const bld = fieldByLab(w, '建筑面积')!
+    expect((bld.find('input').element as HTMLInputElement).placeholder).toContain('312')   // 390×0.8
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
+    expect(req.rentArea).toBe(390)
+  })
+
+  it('无宿舍行时不出现宿舍面积字段', async () => {
+    vi.mocked(contractApi.detail).mockResolvedValue({ ...detail, billingLines: [detail.billingLines[0]] })
+    const w = mountEdit()
+    await flushPromises()
+    expect(fieldByLab(w, '宿舍面积')).toBeUndefined()
+    expect((fieldByLab(w, '租赁面积(非宿舍)')!.find('input').element as HTMLInputElement).value).toBe('390')
+  })
+})
+
+// ── S15 §2:FPUnitPicker 单元多选(首个=主单元)——payload 结构不动:unitId=主,extraUnitIds=其余 ──
+describe('合同弹窗 · 单元多选(FPUnitPicker)', () => {
+  const withUnit = { ...initial, unitId: 30 } as ContractDTO
+  const mountUnit = () => mount(ContractNewDialog, { props: { initial: withUnit }, global: { stubs: { teleport: true } } })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(contractApi.detail).mockResolvedValue({
+      contract: withUnit,
+      tenant: { companyName: '周兴', contactName: '', contactPhone: '', businessType: '', status: 1 },
+      billingLines: [],
+      extraUnitIds: [31, 32],
+    })
+    vi.mocked(contractApi.update).mockResolvedValue(withUnit)
+  })
+
+  it('回填 chips 全部可见(候选缺档也出「未知单元」chip——隐形id炸弹回归)', async () => {
+    const w = mountUnit()
+    await flushPromises()
+    const chips = w.findAll('.fp-up-chip')
+    expect(chips.length).toBe(3)
+    expect(chips[0].classes()).toContain('main')       // 首个=主单元
+    expect(chips[0].classes()).toContain('missing')    // 候选空(buildingApi mock 无单元)仍可见
+  })
+
+  it('提交回带 unitId=主 / extraUnitIds=其余,缺档 id 不丢', async () => {
+    const w = mountUnit()
+    await flushPromises()
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
+    expect(req.unitId).toBe(30)
+    expect(req.extraUnitIds).toEqual([31, 32])
+  })
+
+  it('chip 星标换主:☆点击后该单元升主,提交 unitId 随之切换', async () => {
+    const w = mountUnit()
+    await flushPromises()
+    await w.findAll('.fp-up-chip .star')[1].trigger('click')
+    await w.findAll('.ct-dlg-f button')[1].trigger('click')
+    await flushPromises()
+    const [, req] = vi.mocked(contractApi.update).mock.calls[0] as [number, ContractCreateReq]
+    expect(req.unitId).toBe(31)
+    expect(req.extraUnitIds).toEqual([30, 32])
+  })
+})

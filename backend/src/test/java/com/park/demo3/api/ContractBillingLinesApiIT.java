@@ -3,7 +3,9 @@ package com.park.demo3.api;
 import com.park.demo3.AbstractMysqlIT;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.jayway.jsonpath.JsonPath;
+import com.park.demo3.entity.BillingTermUnit;
 import com.park.demo3.entity.ContractBillingTerm;
+import com.park.demo3.mapper.BillingTermUnitMapper;
 import com.park.demo3.mapper.ContractBillingTermMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,7 @@ class ContractBillingLinesApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
     @Autowired ContractBillingTermMapper lines;
+    @Autowired BillingTermUnitMapper termUnits;
     private String token;
     private int tid, bid;
 
@@ -254,15 +257,28 @@ class ContractBillingLinesApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void rentArea_multiLocation_sumsBuildingRentAreas() throws Exception {
-        // 多位置:厂房 256.52 + 宿舍 488.33 = 744.85(门禁/网络无面积不计)
+    void rentArea_multiLocation_sumsNonDormRentAreas() throws Exception {
+        // S15:宿舍行面积不入 rent_area(全库 unit.area=0 后面积口径改派生,宿舍间面积另走单元绑定口径)
+        // 多位置:厂房 256.52 计入;宿舍 488.33 不计;门禁/网络无面积不计
         int id = newContract("\"billingLines\":["
                 + "{\"location\":\"厂房\",\"feeKey\":\"rent_factory\",\"area\":256.52,\"unitPrice\":22.565,\"seq\":1},"
                 + "{\"location\":\"厂房\",\"feeKey\":\"access\",\"unitPrice\":100,\"roomCount\":13,\"seq\":2},"
                 + "{\"location\":\"宿舍\",\"feeKey\":\"rent_dorm\",\"area\":488.33,\"unitPrice\":19,\"seq\":1}]");
         String d = getBody("/api/contracts/" + id);
-        assertThat((Double) JsonPath.read(d, "$.data.contract.rentArea")).isEqualTo(744.85);
-        assertThat((Double) JsonPath.read(d, "$.data.contract.buildingArea")).isEqualTo(595.88);   // 744.85×0.8
+        assertThat((Double) JsonPath.read(d, "$.data.contract.rentArea")).isEqualTo(256.52);
+        assertThat((Double) JsonPath.read(d, "$.data.contract.buildingArea")).isEqualTo(205.22);   // 256.52×0.8
+    }
+
+    @Test
+    void rentArea_dormOnly_isZeroDormExcluded() throws Exception {
+        // S15:纯宿舍户(rent_dorm 有面积但无建筑类非宿舍租金行)→ rentArea=0,buildingArea 清空;
+        // 且不回退 infra(有租金行即不走 infra 回退,宿舍行只是不计面积)
+        int id = newContract("\"billingLines\":["
+                + "{\"location\":\"宿舍\",\"feeKey\":\"rent_dorm\",\"area\":488.33,\"unitPrice\":19,\"seq\":1},"
+                + "{\"location\":\"宿舍\",\"feeKey\":\"infra\",\"area\":488.33,\"unitPrice\":3,\"seq\":2}]");
+        String d = getBody("/api/contracts/" + id);
+        assertThat((Double) JsonPath.read(d, "$.data.contract.rentArea")).isEqualTo(0.0);
+        assertThat((Object) JsonPath.read(d, "$.data.contract.buildingArea")).isNull();
     }
 
     @Test
@@ -305,6 +321,101 @@ class ContractBillingLinesApiIT extends AbstractMysqlIT {
         String d = getBody("/api/contracts/" + id);
         assertThat((Double) JsonPath.read(d, "$.data.contract.rentArea")).isEqualTo(14124.0);
         assertThat((Double) JsonPath.read(d, "$.data.contract.buildingArea")).isEqualTo(11299.2);   // 14124×0.8
+    }
+
+    // ─── S15 孤儿雷:PUT 整组替换重建计费行,billing_term_unit 绑定按 (location|feeKey|area) 回挂 ─────
+    // 背景:计费行 delete+insert 重建,行级绑定经 FK CASCADE 连带删除(dev 库 1708 行绑定孤儿雷)。
+
+    /** 任取一个真实单元 id(绑定 FK 需要) */
+    private int anyUnitId() throws Exception {
+        return ((List<Integer>) JsonPath.read(getBody("/api/buildings/" + bid), "$.data.units[*].id")).get(0);
+    }
+
+    private void bind(int termId, int unitId, String source) {
+        BillingTermUnit b = new BillingTermUnit();
+        b.setTermId(termId); b.setUnitId(unitId); b.setSource(source);
+        termUnits.insert(b);
+    }
+
+    @Test
+    void putReplace_rehangsTermUnitBindings_bySameKey() throws Exception {
+        int id = newContract("\"billingLines\":["
+                + "{\"location\":\"厂房\",\"feeKey\":\"rent_factory\",\"area\":300,\"unitPrice\":10,\"seq\":1},"
+                + "{\"location\":\"宿舍\",\"feeKey\":\"rent_dorm\",\"area\":488.33,\"unitPrice\":19,\"seq\":2}]");
+        List<ContractBillingTerm> before = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id).orderByAsc("seq", "id"));
+        assertThat(before).hasSize(2);
+        int u1 = anyUnitId();
+        for (ContractBillingTerm t : before) bind(t.getId(), u1, "manual");
+
+        // 单一编辑只改价,(location|feeKey|area) 键不变 → 绑定必须存活并挂到新 term id
+        String no = JsonPath.read(getBody("/api/contracts/" + id), "$.data.contract.contractNo");
+        putContract(id, no, "\"billingLines\":["
+                + "{\"location\":\"厂房\",\"feeKey\":\"rent_factory\",\"area\":300,\"unitPrice\":11,\"seq\":1},"
+                + "{\"location\":\"宿舍\",\"feeKey\":\"rent_dorm\",\"area\":488.33,\"unitPrice\":20,\"seq\":2}]")
+                .andExpect(jsonPath("$.code").value(0));
+        List<ContractBillingTerm> after = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id).orderByAsc("seq", "id"));
+        assertThat(after).hasSize(2);
+        for (ContractBillingTerm t : after) {
+            List<BillingTermUnit> bs = termUnits.selectList(
+                    new QueryWrapper<BillingTermUnit>().eq("term_id", t.getId()));
+            assertThat(bs).as("绑定回挂到新 term %s(%s)", t.getId(), t.getFeeKey()).hasSize(1);
+            assertThat(bs.get(0).getUnitId()).isEqualTo(u1);
+            assertThat(bs.get(0).getSource()).isEqualTo("manual");   // source 原样保留
+        }
+    }
+
+    @Test
+    void putReplace_sameKeyTwice_pairedInOrder() throws Exception {
+        // 键撞多行(碧沃丰式两条同键行):按序配对,各自绑定各归各行
+        int id = newContract("\"billingLines\":["
+                + "{\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":3200,\"unitPrice\":9,\"seq\":1},"
+                + "{\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":3200,\"unitPrice\":9,\"seq\":2}]");
+        List<ContractBillingTerm> before = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id).orderByAsc("seq", "id"));
+        List<Integer> uids = JsonPath.read(getBody("/api/buildings/" + bid), "$.data.units[*].id");
+        bind(before.get(0).getId(), uids.get(0), "derived");
+        bind(before.get(1).getId(), uids.get(1), "manual");
+
+        String no = JsonPath.read(getBody("/api/contracts/" + id), "$.data.contract.contractNo");
+        putContract(id, no, "\"billingLines\":["
+                + "{\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":3200,\"unitPrice\":10,\"seq\":1},"
+                + "{\"location\":\"主\",\"feeKey\":\"rent_factory\",\"area\":3200,\"unitPrice\":11,\"seq\":2}]")
+                .andExpect(jsonPath("$.code").value(0));
+        List<ContractBillingTerm> after = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id).orderByAsc("seq", "id"));
+        List<BillingTermUnit> b0 = termUnits.selectList(
+                new QueryWrapper<BillingTermUnit>().eq("term_id", after.get(0).getId()));
+        List<BillingTermUnit> b1 = termUnits.selectList(
+                new QueryWrapper<BillingTermUnit>().eq("term_id", after.get(1).getId()));
+        assertThat(b0).hasSize(1);
+        assertThat(b0.get(0).getUnitId()).isEqualTo(uids.get(0));
+        assertThat(b1).hasSize(1);
+        assertThat(b1.get(0).getUnitId()).isEqualTo(uids.get(1));
+    }
+
+    @Test
+    void putReplace_unmatchedBindingDropped_andNamedInWarnings() throws Exception {
+        int id = newContract("\"billingLines\":["
+                + "{\"location\":\"宿舍\",\"feeKey\":\"rent_dorm\",\"area\":488.33,\"unitPrice\":19,\"seq\":1}]");
+        ContractBillingTerm dorm = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id)).get(0);
+        int u1 = anyUnitId();
+        bind(dorm.getId(), u1, "manual");
+
+        // 整行删除换新键 → 绑定无处可挂:随 CASCADE 删除,返回警告点名
+        String no = JsonPath.read(getBody("/api/contracts/" + id), "$.data.contract.contractNo");
+        putContract(id, no, "\"billingLines\":["
+                + "{\"location\":\"厂房\",\"feeKey\":\"rent_factory\",\"area\":300,\"unitPrice\":10,\"seq\":1}]")
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.warnings[0]").value(
+                        org.hamcrest.Matchers.containsString("宿舍|rent_dorm|488.33")));
+        List<ContractBillingTerm> after = lines.selectList(new QueryWrapper<ContractBillingTerm>()
+                .eq("contract_id", id));
+        assertThat(after).hasSize(1);
+        assertThat(termUnits.selectCount(
+                new QueryWrapper<BillingTermUnit>().eq("term_id", after.get(0).getId()))).isZero();
     }
 
     /** 用电分类不锁配电容量(用户拍板 2026-07-27,推翻裁定④):商业户带 kVA 正常落库。 */
