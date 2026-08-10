@@ -109,10 +109,14 @@ public class AllocService {
         return tens * 10 + ones;
     }
 
-    // 受益人解析:有该月行取该月,否则取默认长期行('')——与 alloc_cfg「月行优先回退默认」同款
+    // 受益人版本组前滚(S14,对齐价目 tenant_price_cfg):取 acct_month≤ym 的最大版本组整组快照替换,
+    // ''=初始版最小——03 版本组自动沿用到 04/05…直到更晚版本覆盖,重生成历史月取历史版本组。
+    // ''(空串)字典序恒小于 'YYYY-MM',天然满足「初始版最小」;全部行都在未来(>ym)= 空名单。
     static List<AllocRuleMember> pickMembers(List<AllocRuleMember> rows, String ym) {
-        List<AllocRuleMember> month = rows.stream().filter(m -> ym.equals(m.getAcctMonth())).toList();
-        return month.isEmpty() ? rows.stream().filter(m -> blank(m.getAcctMonth())).toList() : month;
+        String best = rows.stream().map(m -> m.getAcctMonth() == null ? "" : m.getAcctMonth())
+            .filter(am -> am.compareTo(ym) <= 0).max(Comparator.naturalOrder()).orElse(null);
+        return best == null ? List.of()
+            : rows.stream().filter(m -> best.equals(m.getAcctMonth() == null ? "" : m.getAcctMonth())).toList();
     }
 
     List<AllocRuleMember> resolveMembers(Integer ruleId, String ym) {
@@ -596,7 +600,7 @@ public class AllocService {
         return new AllocRuleDTO(r.getId(), r.getZone(), r.getName(), r.getBuildingId(), r.getMethod(),
             r.getCoefficient(), r.getExtraQty(), r.getFeeKey(), r.getNote(), r.getSortNo(),
             binds.stream().map(AllocRuleMeter::getMeterId).toList(),
-            mems.stream().map(m -> new AllocMemberDTO(m.getTenantId(), m.getWeight())).toList(),
+            mems.stream().map(m -> new AllocMemberDTO(m.getTenantId(), m.getWeight(), m.getAcctMonth())).toList(),
             r.getRoundScale(), r.getStdKind(), r.getBaseKey(),
             binds.stream().map(b -> new AllocPoolDTOs.MeterBind(b.getMeterId(), null,
                 b.getSign() == null ? 1 : b.getSign())).toList(),
@@ -915,7 +919,7 @@ public class AllocService {
         Map<Integer, List<AllocRuleMeter>> bindsByRule = rawBinds.stream()
             .filter(b -> meterById.containsKey(b.getMeterId()))   // 停用表的绑定当月不生效(V68)
             .collect(groupingBy(AllocRuleMeter::getRuleId));
-        // 受益人:月行优先回退默认行(V69),解析后进 ctx——引擎与读侧看到的是同一份当月受益人
+        // 受益人:版本组前滚(S14,acct_month≤ym 最大版本组),解析后进 ctx——引擎与读侧看到的是同一份当月受益人
         Map<Integer, List<AllocRuleMember>> membersByRule = new HashMap<>();
         ruleMembers.selectList(null).stream().collect(groupingBy(AllocRuleMember::getRuleId))
             .forEach((rid, rows) -> membersByRule.put(rid, pickMembers(rows, ym)));
@@ -1773,7 +1777,7 @@ public class AllocService {
         // 刀I §I2:净额池不落逐表快照,构成明细读时按当月读数现算(全库净额池 4 条,一次 selectByYm 够用)
         Map<Integer, MeterReading> rdByMeter = new HashMap<>();
         for (MeterReading rd : readings.selectByYm(ym)) rdByMeter.put(rd.getMeterId(), rd);
-        // 受益人当月解析(月行优先回退默认)+ 在租/单元号
+        // 受益人当月解析(版本组前滚 S14)+ 在租/单元号
         Map<Integer, List<AllocRuleMember>> memByRule = new HashMap<>();
         ruleMembers.selectList(null).stream().collect(groupingBy(AllocRuleMember::getRuleId))
             .forEach((rid, rws) -> memByRule.put(rid, pickMembers(rws, ym)));

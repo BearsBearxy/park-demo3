@@ -38,7 +38,7 @@ public final class AllocPoolDTOs {
     // 前端「电表」列尾 −N 角标取 meterId!=null && sign<0 的条数(扣度不计入表数)。
     public record NetPart(Integer meterId, String label, Integer sign, BigDecimal qty) {}
 
-    // V69 受益人:src=month(该月覆盖行)/default(默认长期行)
+    // V69 受益人:src=month(版本组行,自该月起前滚 S14)/default(默认长期行=初始版)
     // inForce 三态(2026-07-30 契约变更,前端同步):'yes' 在租 / 'no' 已退租 / 'unknown' 合同缺起止日期判不了
     // 刀D:floorLabel=该户在本池楼栋解析出的楼层(§D.1 两级回退,读时现算不落库),跨多层用「、」连,定不出=null
     public record PoolMember(Integer tenantId, String tenantName, String unitNo,

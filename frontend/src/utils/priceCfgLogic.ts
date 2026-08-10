@@ -38,6 +38,7 @@ export const PRICE_KEYS: PriceKeyMeta[] = [
   { key: 'elec_package', label: '包干电价', unit: '元/度', group: '特殊轨道', overridable: true, hint: '仅户级:包干户1.0/商铺1.5' },
   { key: 'share_elec_fixed', label: '孵化协议固定收取(电)', unit: '元/月', group: '特殊轨道', overridable: true, hint: '仅户级:替楼层公共+电梯+路灯三项' },
   { key: 'share_water_fixed', label: '孵化协议固定收取(水)', unit: '元/月', group: '特殊轨道', overridable: true, hint: '仅户级:替绿化水公摊' },
+  { key: 'green_rate', label: '绿化水收取价', unit: '元/㎡', group: '特殊轨道', overridable: true, hint: '仅户级:0.01组37户(S13);无户级行=池核算率0.008推导' },
 ]
 
 export const MONTHLY_KEYS: ReadonlySet<string> =

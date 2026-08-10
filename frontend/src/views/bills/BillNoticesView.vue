@@ -31,6 +31,7 @@ import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPStat from '@/components/fp/FPStat.vue'
+import CoefBookWindow from './CoefBookWindow.vue'
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
@@ -133,6 +134,9 @@ const groups = computed(() => groupByBuilding(filtered.value, r => r.bld.main))
 const footLines = computed(() => filtered.value.reduce((s, r) => s + r.lineCount, 0))
 const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmount ?? 0), 0))
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
+
+// ── 系数簿窗口(S14):批量改系数;viewer 也可打开只读查看(窗口内编辑模式走 canEdit) ──
+const coefOpen = ref(false)
 
 // ── 重新生成(admin;confirm 后 POST generate,轻提示显摘要,完成刷新) ──
 const generating = ref(false)
@@ -320,6 +324,10 @@ const drawerSub = computed(() => {
         <Segmented :options="PHASE_OPTS" v-model="phase" size="sm" />
       </div>
       <div class="bn-actions">
+        <Button variant="outline" size="sm" @click="coefOpen = true">
+          <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
+          系数簿
+        </Button>
         <Button v-if="canEdit" variant="outline" size="sm" :disabled="generating" @click="onGenerate">
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
@@ -789,6 +797,10 @@ const drawerSub = computed(() => {
         <Button variant="outline" size="sm" @click="dlgOpen = false">关闭</Button>
       </template>
     </FPDrawer>
+
+    <!-- 系数簿窗口(S14):合同/楼栋/年清单与本页同源,生效月默认=当前账期 -->
+    <CoefBookWindow :open="coefOpen" :ym="ym" :phase="phase" :contracts="contracts"
+                    :buildings="buildings" :years="dataYears" @close="coefOpen = false" />
   </div>
 </template>
 

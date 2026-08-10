@@ -6,12 +6,9 @@
 // 编辑模式遵 EDIT-MODE-SPEC v2(浏览态零写入口);56px 行高遵 LIST-PAGE-SPEC(全量小表免分页,
 // 短窗外层滚动);加载门/覆盖层遵 DESIGN-FIDELITY §6/§7。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
-import { onReactivated } from '@/composables/onReactivated'
 import { priceCfgApi, type PriceCfgDTO } from '@/api/priceCfg'
 import { allocApi } from '@/api/alloc'
-import { tenantApi } from '@/api/tenant'
 import { buildYearOptions } from '@/utils/yearGate'
-import type { TenantDTO } from '@/types/tenant'
 import {
   PRICE_KEYS, SCOPE_LABEL, buildPriceGrid, buildVersionStatus, type PriceKeyMeta,
 } from '@/utils/priceCfgLogic'
@@ -20,11 +17,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
-import Input from '@/components/ds/Input.vue'
 import Badge from '@/components/ds/Badge.vue'
-import FPDrawer from '@/components/fp/FPDrawer.vue'
-import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
-import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
@@ -33,7 +26,7 @@ const fmtTime = (iso: string) => iso.slice(0, 16).replace('T', ' ') // YYYY-MM-D
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态 ──
 const editMode = ref(false)
-onDeactivated(() => { editMode.value = false; drawer.value = false })
+onDeactivated(() => { editMode.value = false })
 
 // ── 年月(alloc 式,年清单来自现有口径) ──
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -50,9 +43,6 @@ const prevYm = computed(() =>
 
 // ── 数据(GET 无参全量,版本链解析归前端;月切换重拉顺带刷新并发改动) ──
 const rows = ref<PriceCfgDTO[] | null>(null)
-const tenants = ref<TenantDTO[]>([])
-const tenantOpts = computed<FPTenantOption[]>(() =>
-  tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase })))
 
 // 竞态守卫:快速切年月只接受最新一次请求
 let seq = 0
@@ -62,9 +52,7 @@ async function loadBook() {
   if (my !== seq) return
   rows.value = rs
 }
-onReactivated(() => { tenantApi.list().then(ts => { tenants.value = ts }) })   // 页签切回:户级例外picker候选回拉
 onMounted(async () => {
-  tenantApi.list().then(ts => { tenants.value = ts })
   try {
     dataYears.value = await allocApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]
@@ -125,30 +113,8 @@ function delException(r: ExRow) {
     .catch(e => alert(errMsg(e, '删除失败')))
 }
 
-// 新增例外抽屉(FPDrawer 居中卡):租户+overridable 费项+生效月(空=长期)+值+备注
-const drawer = ref(false)
-const exErr = ref('')
-const OVERRIDABLE = PRICE_KEYS.filter(k => k.overridable)
-const feeOpts = OVERRIDABLE.map(k => ({ value: k.key, label: `${k.label}(${k.unit})` }))
-const exForm = ref({ tenantId: null as number | null, cfgKey: OVERRIDABLE[0].key, month: '', value: '', note: '' })
-function openDrawer() {
-  exForm.value = { tenantId: null, cfgKey: OVERRIDABLE[0].key, month: '', value: '', note: '' }
-  exErr.value = ''
-  drawer.value = true
-}
-async function submitException() {
-  const f = exForm.value
-  if (f.tenantId == null) { exErr.value = '请选择租户'; return }
-  const v = Number(f.value)
-  if (f.value.trim() === '' || !isFinite(v)) { exErr.value = '请输入数值'; return }
-  const m = f.month.trim()
-  if (m !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(m)) { exErr.value = '生效月格式 YYYY-MM,留空=长期'; return }
-  try {
-    await priceCfgApi.save({ scope: `tenant:${f.tenantId}`, cfgKey: f.cfgKey, acctMonth: m, value: v, note: f.note.trim() || null })
-    drawer.value = false
-    await loadBook()
-  } catch (e) { exErr.value = errMsg(e, '保存失败') }
-}
+// 新增/批量修改入口已并入系数簿(S14 §3.1:同一张 tenant_price_cfg 同一版本链,
+// 删除本页 FPDrawer 新增表单避免双入口漂移);本卡降级为只读列表+删除(长期例外行的唯一删除口)。
 </script>
 
 <template>
@@ -285,13 +251,10 @@ async function submitException() {
               <span class="pc-cardtitle">户级例外</span>
               <span class="pc-cardsub">户级价覆盖分区与全园(级联第一优先)</span>
             </div>
-            <Button v-if="editMode" variant="outline" size="sm" @click="openDrawer">
-              <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-              新增
-            </Button>
           </div>
+          <div class="pc-exhint">批量新增/修改请到 催缴单 → 系数簿(本卡只读展示)</div>
           <div v-if="exceptions.length === 0" class="pc-exempty">
-            暂无户级例外,全部租户按默认价目计价<template v-if="editMode">;点上方「新增」为个别租户设置专属价</template>。
+            暂无户级例外,全部租户按默认价目计价。
           </div>
           <table v-else class="pc-extab">
             <colgroup><col /><col style="width:88px" /><col style="width:62px" /><col style="width:64px" /><col v-if="editMode" style="width:32px" /></colgroup>
@@ -316,23 +279,6 @@ async function submitException() {
       </div>
     </div>
 
-    <!-- 新增例外抽屉(编辑态) -->
-    <FPDrawer :open="drawer" title="新增户级例外" subtitle="户级价覆盖分区与全园默认 · 生效月留空=长期生效"
-              icon="tags" :width="460" @close="drawer = false">
-      <FPTenantPicker :tenants="tenantOpts" v-model="exForm.tenantId" placeholder="选择租户" />
-      <Select v-model="exForm.cfgKey" label="费项(仅可户级覆盖项)" :options="feeOpts" size="sm" />
-      <Input v-model="exForm.month" label="生效月" placeholder="YYYY-MM,留空=长期" size="sm" />
-      <Input v-model="exForm.value" label="值" placeholder="如 4.45" size="sm" />
-      <Input v-model="exForm.note" label="备注" placeholder="数值来源锚点,如:合同约定" size="sm" />
-      <div class="pc-dlg-err">{{ exErr }}</div>
-      <template #footer>
-        <Button variant="gray" size="sm" @click="drawer = false">取消</Button>
-        <Button variant="filled" size="sm" @click="submitException">
-          <template #leading><component :is="iconFor('check')" :size="14" /></template>
-          保存
-        </Button>
-      </template>
-    </FPDrawer>
   </div>
 </template>
 
@@ -406,7 +352,8 @@ async function submitException() {
 .pc-vsmiss { font-size: var(--fs-label); color: var(--hue-red); line-height: 1.5; }
 .pc-vsdiv { border-top: 1px solid var(--divider); margin: 2px 0; }
 
-/* 右栏·户级例外紧凑表 */
+/* 右栏·户级例外紧凑表(只读;批量入口在系数簿) */
+.pc-exhint { padding: 8px 18px 0; font-size: 11.5px; color: var(--text-muted); }
 .pc-exempty { padding: 18px; font-size: var(--fs-label); color: var(--text-muted); }
 .pc-extab { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--font-sans); }
 .pc-extab th { padding: 8px 10px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
@@ -421,6 +368,4 @@ async function submitException() {
 .pc-extab td.ops { padding: 0 6px; text-align: right; overflow: visible; }
 .pc-del { width: 24px; height: 24px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
 .pc-del:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
-
-.pc-dlg-err { font-size: 11.5px; color: var(--hue-red); min-height: 14px; }
 </style>

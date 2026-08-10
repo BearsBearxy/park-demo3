@@ -34,7 +34,8 @@ public class PriceCfgService {
         "mgmt_fee", "mgmt_fee_commercial", "sharp_as_peak_ratio",                                     // 附加与开关
         "capacity_fee", "water", "water_pipe",                                                        // 容量与水
         "lamp_area_base", "green_area_base", "area_base", "elevator_area_base",                       // 月推参数
-        "loss_rate", "elec_package", "share_elec_fixed", "share_water_fixed");                        // 特殊轨道
+        "loss_rate", "elec_package", "share_elec_fixed", "share_water_fixed",                         // 特殊轨道
+        "green_rate");   // S14:绿化水户级收取价(S13 翻转后默认=池核算率,0.01 组 37 户例外行已在库;系数簿批量入口需可写)
     // ⚠ share_elec_fixed 是 elevator_package 改名(2026-08-09):后者建键时以为包干只替电梯,源册
     // (一期2024年2月水电费.xlsx 各户缴费通知单 + 两张总表)证明它替「楼层公共、消防照明+电梯+路灯公摊」
     // 三项;水侧同一纸单第二个包干替「绿化水公摊」=share_water_fixed。改名时 elevator_package 全库 0 行。

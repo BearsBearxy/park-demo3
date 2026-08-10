@@ -247,7 +247,7 @@ class AllocServiceTest {
         return ms.stream().map(com.park.demo3.entity.AllocRuleMember::getTenantId).toList();
     }
 
-    // 受益人月行优先回退默认行(同 alloc_cfg):改 2026-07 不影响 2026-06 已出账
+    // 受益人版本组:零月行回退常态组/当月版本组精确命中/历史月不受未来版本影响(改 2026-07 不影响 2026-06 已出账)
     @Test
     void pickMembers_monthOverridesDefault() {
         var def = java.util.List.of(mem(7, ""), mem(8, ""));
@@ -256,6 +256,19 @@ class AllocServiceTest {
         assertEquals(java.util.List.of(9), ids(AllocService.pickMembers(withMonth, "2026-07")));
         assertEquals(java.util.List.of(7, 8), ids(AllocService.pickMembers(withMonth, "2026-06")));
         assertTrue(AllocService.pickMembers(java.util.List.of(mem(9, "2026-07")), "2026-06").isEmpty());
+    }
+
+    // S14 版本组前滚(对齐价目 tenant_price_cfg):取 acct_month≤ym 的最大版本组整组快照,''=初始版最小;
+    // 03 版本组自动沿用到 04/05…直到更晚版本覆盖,重生成历史月取历史版本组
+    @Test
+    void pickMembers_versionGroupRollForward() {
+        var rows = java.util.List.of(mem(1, ""), mem(2, ""),        // 初始版
+            mem(3, "2026-03"), mem(4, "2026-03"),                   // 03 版本组
+            mem(5, "2026-05"));                                     // 05 版本组
+        assertEquals(java.util.List.of(1, 2), ids(AllocService.pickMembers(rows, "2026-02")));  // 历史月取历史组
+        assertEquals(java.util.List.of(3, 4), ids(AllocService.pickMembers(rows, "2026-03")));  // 当月版本组精确命中
+        assertEquals(java.util.List.of(3, 4), ids(AllocService.pickMembers(rows, "2026-04")));  // 跨月前滚
+        assertEquals(java.util.List.of(5), ids(AllocService.pickMembers(rows, "2026-06")));     // 更晚版本覆盖
     }
 
     // 已分摊分摊四法(V69,池 cost/std 摊到受益人;端到端由 AllocApiIT.poolMembers_* 复核同批数字):

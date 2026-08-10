@@ -774,14 +774,16 @@ public class BillNoticeService {
                                String ym, Map<Integer, List<Contract>> covering,
                                Map<Integer, List<String>> locs, Map<Integer, AllocRule> ruleById) {
         Map<Integer, Integer> floorAnchor = new HashMap<>();
-        for (AllocRuleMember m : ruleMembers.selectList(null)) {
-            String am = m.getAcctMonth();
-            if (am != null && !am.isEmpty() && !am.equals(ym)) continue;   // 月行只在本月生效(V69)
-            AllocRule r = ruleById.get(m.getRuleId());
-            if (r == null || !"share_elec_floor".equals(r.getFeeKey())) continue;
-            floorAnchor.merge(m.getTenantId(), r.getId(),
-                (a, b) -> sortNo(ruleById.get(a)) <= sortNo(ruleById.get(b)) ? a : b);
-        }
+        // 受益人=版本组前滚(S14):逐规则走 AllocService.pickMembers 同源解析,与引擎当月受益人口径一致
+        Map<Integer, List<AllocRuleMember>> memRows = ruleMembers.selectList(null).stream()
+            .collect(Collectors.groupingBy(AllocRuleMember::getRuleId));
+        for (List<AllocRuleMember> rows : memRows.values())
+            for (AllocRuleMember m : AllocService.pickMembers(rows, ym)) {
+                AllocRule r = ruleById.get(m.getRuleId());
+                if (r == null || !"share_elec_floor".equals(r.getFeeKey())) continue;
+                floorAnchor.merge(m.getTenantId(), r.getId(),
+                    (a, b) -> sortNo(ruleById.get(a)) <= sortNo(ruleById.get(b)) ? a : b);
+            }
         for (Integer tid : covering.keySet()) {   // 当月无在租合同=不落包干行(跟源册走)
             packageLine(byTenant, warnByTenant, seq, ym, tid, "share_elec_fixed", "share_elec_floor",
                 PKG_ELEC_SWALLOW, floorAnchor.get(tid), covering, locs, "孵化协议固定收取");

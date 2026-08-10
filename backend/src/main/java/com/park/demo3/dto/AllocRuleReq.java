@@ -22,7 +22,8 @@ public record AllocRuleReq(
     String baseKey,
     List<AllocPoolDTOs.MeterBind> meters,   // 携 sign 的绑定(name 忽略)
     List<AllocPoolDTOs.Link> links,         // 入向折入链 {ruleId=src, type}(name 忽略)
-    // V69 四级定位(池名由此自动生成)+ 受益人写入月份:null=写默认长期行,'YYYY-MM'=只覆盖该月
+    // V69 四级定位(池名由此自动生成)+ 受益人写入月份:null=写默认长期行,'YYYY-MM'=写该月版本组
+    // (写只覆盖目标月的行;读侧版本组前滚 S14——自该月起生效直到更晚版本覆盖)
     String floorLabel,
     String side,
     String feeName,
