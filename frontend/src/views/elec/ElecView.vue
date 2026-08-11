@@ -8,8 +8,8 @@ import { ref, computed, onMounted } from 'vue'
 import { elecApi } from '@/api/elec'
 import { exportElecYear } from '@/utils/elecExcel'
 import { parserProps, runImport } from '@/utils/importRegistry'
+import { useSchedScreen } from '@/composables/useSchedScreen'
 import type { ElecPhaseDTO, ElecOverviewDTO, ElecYearDTO, ElecRecordDTO, ElecRecordReq, ElecImportRow } from '@/types/elec'
-import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -25,15 +25,40 @@ import ElecCostView from './ElecCostView.vue'
 // 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表11流程零行为变化,整体包进 v-else。
 const mode = ref<'summary' | 'cost' | null>(null)
 
-// ── 状态机 ───────────────────────────────────────────────
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const type = ref<'energy' | 'basic'>('energy')
-const edit = ref(false)
-const drawer = ref(false)
-
 const phases = ref<ElecPhaseDTO[]>([])
 const overview = ref<ElecOverviewDTO | null>(null)  // §6 加载信号
 const yearData = ref<ElecYearDTO | null>(null)
+
+// 竞态守卫:快速切类型时只接受最新一次请求的结果(防乱序落表)
+let yearSeq = 0
+async function loadYear(y: number) {
+  const seq = ++yearSeq
+  const data = await elecApi.records(y, type.value)
+  if (seq !== yearSeq) return
+  yearData.value = data
+}
+async function reloadOverview() {
+  overview.value = await elecApi.overview()
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadYear,
+  reloadOverview,
+  rows: () => yearData.value?.rows ?? [],
+  clearData: () => { yearData.value = null },
+  onPickYear: () => { type.value = 'energy' },
+  batchDelete: elecApi.batchDelete,
+  clear: {
+    call: elecApi.clearImported,
+    // 本屏例外:清空跨 energy+basic 两类,不看当前视图的导入行数,文案固定
+    confirm: () => confirm('确认清空本年全部导入数据(电量电费 + 基本电费)?手动/种子行不受影响。'),
+  },
+})
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年电费成本·N条」)
 const yearCards = computed<YearCard[]>(() =>
@@ -51,34 +76,6 @@ onMounted(async () => {
   overview.value = await elecApi.overview()
 })
 
-// 竞态守卫:快速切类型时只接受最新一次请求的结果(防乱序落表)
-let yearSeq = 0
-async function loadYear(y: number) {
-  const seq = ++yearSeq
-  const data = await elecApi.records(y, type.value)
-  if (seq !== yearSeq) return
-  yearData.value = data
-}
-async function reloadOverview() {
-  overview.value = await elecApi.overview()
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  type.value = 'energy'
-  yearData.value = null
-  selectedIds.value = new Set()
-  await loadYear(y)
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  yearData.value = null
-  selectedIds.value = new Set()
-}
-
 // 右上 type 切换:重新取该年该类台账(后端按 type 过滤)
 async function switchType(t: string) {
   if (t === type.value || year.value == null) return
@@ -88,105 +85,38 @@ async function switchType(t: string) {
 }
 
 // ── 导入 Excel(自定义解析:一(记账期,期)→ 多 energy + 大工业附 1 basic,扁平 records) ──
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-
 // 确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
-  try {
+  await guard('导入失败', async () => {
     importResult.value = await runImport('elec', recs, {}, fileName)
     await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
+  })
 }
 
-// ── 清空本期导入(本年,跨 energy+basic) ──
-const importedCount = computed(() =>
-  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (!confirm('确认清空本年全部导入数据(电量电费 + 基本电费)?手动/种子行不受影响。')) return
-  try {
-    await elecApi.clearImported(year.value)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
-}
+const onCreate = (req: ElecRecordReq) => guard('新增记账失败', async () => {
+  await elecApi.create(req)
+  drawer.value = false
+  // 提交后归入对应年份与费用类型(可能与当前选中不同)
+  year.value = parseInt(req.acctMonth.split('-')[0], 10)
+  type.value = req.type
+  await refresh()
+})
 
-// ── 批量删除(编辑态复选框;按当前 type 视图行) ──
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: ElecRecordDTO) {
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
-  if (!yearData.value) return
-  selectedIds.value = checked ? new Set(yearData.value.rows.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await elecApi.batchDelete(ids)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
+const onDelete = (row: ElecRecordDTO) => guard('删除失败', async () => {   // seed 行 → 409
+  await elecApi.remove(row.id)
+  await refresh()
+})
 
-// 新增 / 删除 / 改备注后重载该年 + overview(jsx saveRecord/delRecord)
-async function refresh() {
-  if (year.value != null) await loadYear(year.value)
-  await reloadOverview()
-}
+const onNote = (row: ElecRecordDTO, text: string) => guard('保存备注失败', async () => {
+  await elecApi.updateNote(row.id, text || null)
+  await refresh()
+})
 
-async function onCreate(req: ElecRecordReq) {
-  try {
-    await elecApi.create(req)
-    drawer.value = false
-    // 提交后归入对应年份与费用类型(可能与当前选中不同)
-    year.value = parseInt(req.acctMonth.split('-')[0], 10)
-    type.value = req.type
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增记账失败')
-  }
-}
-
-async function onDelete(row: ElecRecordDTO) {
-  try {
-    await elecApi.remove(row.id)
-    await refresh()
-  } catch (e) {
-    // seed 行 → 409
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-async function onNote(row: ElecRecordDTO, text: string) {
-  try {
-    await elecApi.updateNote(row.id, text || null)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存备注失败')
-  }
-}
-
-async function onExport() {
+const onExport = () => guard('导出失败', async () => {
   if (!yearData.value || year.value == null) return
-  try {
-    await exportElecYear(yearData.value, year.value)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportElecYear(yearData.value, year.value)
+})
 
 const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>

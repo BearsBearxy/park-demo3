@@ -3,12 +3,13 @@
 // 动线 1:1 from screen-schedule6.jsx Schedule6Screen(237-440):
 // ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + PvTable + 抽屉)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
 import { pvApi } from '@/api/pv'
 import { exportPvYear } from '@/utils/pvExcel'
 import { parserProps, runImport } from '@/utils/importRegistry'
+import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq, PvImportRow } from '@/types/pv'
-import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -24,15 +25,33 @@ import PvMeterView from './PvMeterView.vue'
 // 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表6流程零行为变化,整体包进 v-else。
 const mode = ref<'summary' | 'meter' | null>(null)
 
-// ── 状态机 ───────────────────────────────────────────────
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const phase = ref('all')
-const edit = ref(false)
-const drawer = ref(false)
-
 const phases = ref<PvPhaseDTO[]>([])
 const overview = ref<PvOverviewDTO | null>(null)  // §6 加载信号
 const yearData = ref<PvYearDTO | null>(null)
+
+async function loadYear(y: number) {
+  yearData.value = await pvApi.records(y)
+}
+async function reloadOverview() {
+  overview.value = await pvApi.overview()
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadYear,
+  reloadOverview,
+  rows: () => yearData.value?.rows ?? [],
+  clearData: () => { yearData.value = null },
+  onPickYear: () => { phase.value = 'all' },
+  // 全选当前期视图行(与表内 allSelected 口径一致:按 phase 过滤)
+  selectAllFilter: (r: PvRecordDTO) => phase.value === 'all' || r.phase === phase.value,
+  batchDelete: pvApi.batchDelete,
+  clear: { call: pvApi.clearImported, confirm: clearConfirm('本年', '手动/种子行不受影响。') },
+})
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年电费收益·N条」)
 const yearCards = computed<YearCard[]>(() =>
@@ -50,131 +69,38 @@ onMounted(async () => {
   overview.value = await pvApi.overview()
 })
 
-async function loadYear(y: number) {
-  yearData.value = await pvApi.records(y)
-}
-async function reloadOverview() {
-  overview.value = await pvApi.overview()
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  phase.value = 'all'
-  yearData.value = null
-  selectedIds.value = new Set()
-  await loadYear(y)
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  yearData.value = null
-  selectedIds.value = new Set()
-}
-
-// 新增 / 删除 / 改备注后重载该年 + overview(jsx saveRecord/delRecord)
-async function refresh() {
-  if (year.value != null) await loadYear(year.value)
-  await reloadOverview()
-}
-
 // ── 导入 Excel(自定义解析:多段堆叠按期切段,行自带 phaseId+acctMonth) ──
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-
 // 各段确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
 async function onImportSections(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
   importing.value = false
-  try {
+  await guard('导入失败', async () => {
     importResult.value = await runImport('pv', picks, {}, fileName)
     await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
+  })
 }
 
-// ── 清空本期导入(本年) ──
-const importedCount = computed(() =>
-  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
-  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动/种子行不受影响。`)) return
-  try {
-    await pvApi.clearImported(year.value)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
-}
+const onCreate = (req: PvRecordReq) => guard('新增记账失败', async () => {
+  await pvApi.create(req)
+  drawer.value = false
+  // 提交后归入对应年份(可能与当前选中年不同)
+  year.value = parseInt(req.acctMonth.split('-')[0], 10)
+  await refresh()
+})
 
-// ── 批量删除(编辑态复选框) ──
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: PvRecordDTO) {
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
-  if (!yearData.value) return
-  // 全选当前期视图行(与表内 allSelected 口径一致:按 phase 过滤)
-  const visible = yearData.value.rows.filter(r => phase.value === 'all' || r.phase === phase.value)
-  selectedIds.value = checked ? new Set(visible.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await pvApi.batchDelete(ids)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
+const onDelete = (row: PvRecordDTO) => guard('删除失败', async () => {   // seed 行 → 409
+  await pvApi.remove(row.id)
+  await refresh()
+})
 
-async function onCreate(req: PvRecordReq) {
-  try {
-    await pvApi.create(req)
-    drawer.value = false
-    // 提交后归入对应年份(可能与当前选中年不同)
-    year.value = parseInt(req.acctMonth.split('-')[0], 10)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增记账失败')
-  }
-}
+const onNote = (row: PvRecordDTO, text: string) => guard('保存备注失败', async () => {
+  await pvApi.updateNote(row.id, text || null)
+  await refresh()
+})
 
-async function onDelete(row: PvRecordDTO) {
-  try {
-    await pvApi.remove(row.id)
-    await refresh()
-  } catch (e) {
-    // seed 行 → 409
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-async function onNote(row: PvRecordDTO, text: string) {
-  try {
-    await pvApi.updateNote(row.id, text || null)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存备注失败')
-  }
-}
-
-async function onExport() {
+const onExport = () => guard('导出失败', async () => {
   if (!yearData.value || year.value == null) return
-  try {
-    await exportPvYear(yearData.value, year.value)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportPvYear(yearData.value, year.value)
+})
 
 const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>

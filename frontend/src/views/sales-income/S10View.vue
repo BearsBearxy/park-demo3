@@ -3,13 +3,14 @@
 // 1:1 from screen-schedule10.jsx Schedule10Screen:
 // ⓪ SchedYearGate(store-key 's10') → ① 月份 SchedMonthPills(已录月高亮) → ② 期 Segmented(一期/二期/三期/宿舍) → ③ 宽表。
 // §6 加载门:overview 未就绪显 .page-loading,不假空态。编辑态单元格即时重算,完成时把改动 upsert 回后端。
+// 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
 import { parseS10DeepLink } from '@/utils/deepLink'
 import { exportS10Month } from '@/utils/s10Excel'
+import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq, S10ImportRow } from '@/types/s10'
-import type { ImportResultDTO } from '@/types/import'
 import { PHASES, PHASE_LAYOUT, leavesOf } from './layout'
 import { parserProps, runImport } from '@/utils/importRegistry'
 import { iconFor } from '@/components/ds/icon'
@@ -25,12 +26,9 @@ import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import S10Table from './S10Table.vue'
 import S10RecordDrawer from './S10RecordDrawer.vue'
 
-// ── 状态机 ───────────────────────────────────────────────
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const month = ref(1)
 const phase = ref(1)
-const edit = ref(false)
-const drawer = ref(false)
 
 const overview = ref<S10OverviewDTO | null>(null)  // §6 加载信号
 const monthData = ref<S10MonthDTO | null>(null)
@@ -40,6 +38,40 @@ const dirty = reactive(new Set<number>())
 const meta = computed(() => PHASES.find(p => p.phase === phase.value)!)
 const layout = computed(() => PHASE_LAYOUT[phase.value])
 const leaves = computed(() => leavesOf(layout.value))
+
+// 竞态守卫:快速切月/期时只接受最新一次请求的结果(防乱序落表)
+let monthSeq = 0
+async function loadMonth(y: number) {
+  const seq = ++monthSeq
+  const data = await s10Api.getMonth(phase.value, y, month.value)
+  if (seq !== monthSeq) return
+  monthData.value = data
+  dirty.clear()
+}
+async function reloadOverview() {
+  overview.value = await s10Api.getOverview()
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadMonth,
+  reloadOverview,
+  rows: () => monthData.value?.rows ?? [],
+  clearData: () => { monthData.value = null },
+  onPickYear: () => { phase.value = 1 },
+  // seed 行不可删 → 既不进全选,也不响应单勾
+  selectAllFilter: (r: S10RecordDTO) => r.source !== 'seed',
+  canSelect: (r: S10RecordDTO) => r.source !== 'seed',
+  // 本屏例外:切年/回门原本不清勾选,保持原状
+  keepSelectionOnNav: true,
+  batchDelete: s10Api.batchDelete,
+  clear: {
+    call: y => s10Api.clearImported(phase.value, `${y}-${String(month.value).padStart(2, '0')}`),
+    confirm: clearConfirm('本期', '手动行不受影响。'),
+  },
+})
 
 // ⓪ overview.summaries → YearCard
 const yearCards = computed<YearCard[]>(() => {
@@ -81,49 +113,23 @@ onMounted(async () => {
   year.value = dl.y
   month.value = dl.m
   phase.value = dl.phase
-  await loadMonth()
+  await loadMonth(dl.y)
   focusTenant.value = dl.tenant
 })
 
-// 竞态守卫:快速切月/期时只接受最新一次请求的结果(防乱序落表)
-let monthSeq = 0
-async function loadMonth() {
-  if (year.value == null) return
-  const seq = ++monthSeq
-  const data = await s10Api.getMonth(phase.value, year.value, month.value)
-  if (seq !== monthSeq) return
-  monthData.value = data
-  dirty.clear()
-}
-async function reloadOverview() {
-  overview.value = await s10Api.getOverview()
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  phase.value = 1
-  monthData.value = null
-  await loadMonth()
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  monthData.value = null
-}
+// ── 状态迁移(切月 / 切期:不清空 monthData,旧表保留到新数据落位,避免整屏闪烁) ──
 async function switchMonth(m: number) {
   if (m === month.value) return
   month.value = m
   selectedIds.value = new Set()
-  await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
+  if (year.value != null) await loadMonth(year.value)
 }
 async function switchPhase(v: string) {
   const p = parseInt(v, 10)
   if (p === phase.value) return
   phase.value = p
   selectedIds.value = new Set()
-  await loadMonth()   // 同上:不清空,避免整屏闪烁
+  if (year.value != null) await loadMonth(year.value)
 }
 
 // ── 编辑态:单元格 / 备注 / 名称 即时写回本地行（触发表内重算）+ 标脏 ──
@@ -168,14 +174,11 @@ async function onSaveChanges() {
   edit.value = false
   selectedIds.value = new Set()
   if (dirty.size === 0 || !monthData.value) return
-  try {
-    const rows = monthData.value.rows.filter(r => dirty.has(r.id))
+  const rows = monthData.value.rows.filter(r => dirty.has(r.id))
+  await guard('保存失败', async () => {
     for (const r of rows) await s10Api.saveRecord(toReq(r))
-    await loadMonth()
-    await reloadOverview()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')
-  }
+    await refresh()
+  })
 }
 
 // 放弃修改:重载丢弃本地改动 + 退出
@@ -183,52 +186,32 @@ async function onDiscardChanges() {
   saveConfirm.value = false
   edit.value = false
   selectedIds.value = new Set()
-  await loadMonth()
+  if (year.value != null) await loadMonth(year.value)
 }
 
 // 新增租户:POST（tenantId 空、source 后端定 manual）
 async function onCreate(name: string, profile: string) {
   if (year.value == null) return
-  try {
-    await s10Api.saveRecord({
-      tenantId: null,
-      tenantName: name,
-      phase: phase.value,
-      acctMonth: `${year.value}-${String(month.value).padStart(2, '0')}`,
-      profile,
-    })
+  const acctMonth = `${year.value}-${String(month.value).padStart(2, '0')}`
+  await guard('新增租户失败', async () => {
+    await s10Api.saveRecord({ tenantId: null, tenantName: name, phase: phase.value, acctMonth, profile })
     drawer.value = false
     edit.value = true
-    await loadMonth()
-    await reloadOverview()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增租户失败')
-  }
+    await refresh()
+  })
 }
 
-async function onDelete(row: S10RecordDTO) {
-  try {
-    await s10Api.deleteRecord(row.id)
-    await loadMonth()
-    await reloadOverview()
-  } catch (e) {
-    // seed 行 → 409
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
+const onDelete = (row: S10RecordDTO) => guard('删除失败', async () => {   // seed 行 → 409
+  await s10Api.deleteRecord(row.id)
+  await refresh()
+})
 
-async function onExport() {
+const onExport = () => guard('导出失败', async () => {
   if (!monthData.value) return
-  try {
-    await exportS10Month(monthData.value, '附表10 · 销售收入')
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportS10Month(monthData.value, '附表10 · 销售收入')
+})
 
 // ── 智能整表导入 Excel ──────────────────────────────────
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 const importSummary = ref('')   // 各段年月期·导入/跳过/错误 文本
 // 模板列(仅展示用,智能模式由 ImportSummary 替代):租户名称 + 当前版面叶子 label
 const importCols = computed(() => ['租户名称', ...leaves.value.map(l => l.label)])
@@ -247,7 +230,7 @@ async function onSmartImport(
   fileName: string,
 ) {
   importing.value = false
-  try {
+  await guard('导入失败', async () => {
     importResult.value = await runImport('s10', picks, {}, fileName)
     importSummary.value = picks
       .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase!]}:${p.records.length} 条`)
@@ -258,55 +241,9 @@ async function onSmartImport(
       month.value = first.month!
       phase.value = first.phase!
       await reloadOverview()
-      await loadMonth()
+      await loadMonth(first.year!)
     }
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
-}
-
-// ── 批量删除 ────────────────────────────────────────────
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: S10RecordDTO) {
-  if (row.source === 'seed') return
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
-  if (!monthData.value) return
-  const selectable = monthData.value.rows.filter(r => r.source !== 'seed')
-  selectedIds.value = checked ? new Set(selectable.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await s10Api.batchDelete(ids)
-    selectedIds.value = new Set()
-    await loadMonth()
-    await reloadOverview()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-// 本期导入行数(source='import')
-const importedCount = computed(() =>
-  (monthData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (importedCount.value === 0) { alert('本期没有导入的行。'); return }
-  if (!confirm(`确认清空本期 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
-  try {
-    await s10Api.clearImported(phase.value, `${year.value}-${String(month.value).padStart(2, '0')}`)
-    selectedIds.value = new Set()
-    await loadMonth()
-    await reloadOverview()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
+  })
 }
 
 // ── KPI（本月总收款 / 户数 / 户均 / 已修改处）— 编辑态从本地行即时算 ──

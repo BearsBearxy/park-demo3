@@ -1,1 +1,16 @@
-{}
+# 本文件是 dev 专用弱默认的唯一落点：仓库里可直接用来登录/连库的弱口令字面量只允许出现在这里。
+# ⚠ 禁止用于任何对外可达的实例。application.yml 的 base 已改成无兜底（${JWT_SECRET} 等），
+#    非 dev profile 缺环境变量即启动失败，不会悄悄落回这些默认值。
+# 注：测试不设 profile，默认走 dev（application.yml 的 spring.profiles.active），因此本文件也是测试的兜底来源；
+#    AbstractMysqlIT 会用 @DynamicPropertySource 覆盖 datasource / jwt.secret / viewer.password。
+spring:
+  datasource:
+    password: ${DB_PASSWORD:root}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-insecure-secret-change-me-32+chars}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}   # dev 全开
+  viewer:
+    password: ${VIEWER_PASSWORD:viewer123}       # 只读账号(viewer/GET-only)，置空=不创建

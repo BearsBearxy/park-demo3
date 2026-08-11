@@ -213,6 +213,9 @@ export async function exportBillsZip(families: BillFamily[], year: number, month
     // sanitize 后撞名兜底(如「甲/乙」与「甲乙」)
     for (let i = 2; files[name]; i++) name = billFileName(year, month, `${fam.rootName}~${i}`)
     files[name] = await billXlsxBytes(fam, year, month, payCo)
+    // 让出宏任务:billXlsxBytes 里的 await import('xlsx') 从第二轮起已是 resolved Promise,
+    // 只产生微任务 —— 微任务不让渲染帧,136 户会连成一个不间断长任务,按钮不变灰、界面僵死到导完。
+    await new Promise(r => setTimeout(r))
   }
   // ponytail: level 0 存储——xlsx 本身已是 deflate 压缩包,再压白耗 CPU
   const zipped = zipSync(files, { level: 0 })

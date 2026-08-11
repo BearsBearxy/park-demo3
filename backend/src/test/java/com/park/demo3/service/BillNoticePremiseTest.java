@@ -133,6 +133,61 @@ class BillNoticePremiseTest {
         assertThat(BillNoticeService.pin(meter(null, "999.00", null, null), 1, LOCS).undecided()).isTrue();
     }
 
+    // ── §2.5 整层回退(S17):房号零命中时,表侧楼层文本与「无房号候选」唯一同层 → 落整层场地 ──
+    @Test
+    void wholeFloorFallbackPinsRoomlessCandidateByFloor() {
+        Map<Integer, List<String>> locs = Map.of(
+            5, List.of("一期D座二楼", "宿舍楼四座630室"),
+            6, List.of("一期D座二楼", "一期E座二楼"));
+        // 汤周杰型:5 表房号 201 打不中 630,但 spot「二楼201室」↔「一期D座二楼」唯一同层 → 细化,不再未定
+        BillNoticeService.Pin tang = BillNoticeService.pin(meter("201室", "D201电", "二楼201室", null), 5, locs);
+        assertThat(tang.text()).isEqualTo("一期D座二楼");
+        assertThat(tang.hits()).isEqualTo(1);
+        assertThat(tang.undecided()).isFalse();
+        // 楼层对不上:三楼表 vs 二楼整层 → 回退不触发,仍是真·零命中(D3 借表/挂错合同要继续报)
+        BillNoticeService.Pin miss = BillNoticeService.pin(meter("301室", null, "三楼301室", null), 5, locs);
+        assertThat(miss.text()).isNull();
+        assertThat(miss.undecided()).isTrue();
+        // 同层多个整层候选 → 歧义不猜(候选全无房号,本就不告警,只是不细化)
+        BillNoticeService.Pin ambi = BillNoticeService.pin(meter("201室", null, "二楼201室", null), 6, locs);
+        assertThat(ambi.text()).isNull();
+        assertThat(ambi.undecided()).isFalse();
+        // 表侧无楼层文本 → 不触发回退(金纳 301室 无「N楼」字样,行为与既有用例一致)
+        assertThat(BillNoticeService.pin(meter("301室", "金纳D301电", null, null), 4, LOCS).text()).isNull();
+        // floorOf 变体
+        assertThat(BillNoticeService.floorOf("2F-2F整层")).isEqualTo(2);
+        assertThat(BillNoticeService.floorOf("首层商铺")).isEqualTo(1);
+        assertThat(BillNoticeService.floorOf("十一楼")).isEqualTo(11);
+        assertThat(BillNoticeService.floorOf("11号楼")).isNull();
+        assertThat(BillNoticeService.floorOf("宿舍楼四座630室")).isNull();
+    }
+
+    // ── §2.5b 单元候选(S17):结构化楼层/单元号驱动——「合同里写了2F整层」就是判据,不靠文本抠字 ──
+    @Test
+    void unitCandidatesDriveWholeFloorPin() {
+        Map<Integer, List<String>> locs = Map.of(7, List.of("一期D座", "宿舍楼四座630室"));
+        Map<Integer, List<BillNoticeService.UnitCand>> ucs = Map.of(7, List.of(
+            new BillNoticeService.UnitCand(2, java.util.Set.of(), "一期D座"),            // 「2F-2F整层」:floor=2,无房号token
+            new BillNoticeService.UnitCand(6, java.util.Set.of("630"), "宿舍楼四座630室")));
+        // b级:location 文本连楼层字样都没有(「一期D座」),单元结构化 floor=2 仍能落位
+        BillNoticeService.Pin p = BillNoticeService.pin(meter("201室", "D201电", "二楼201室", null), 7, locs, ucs);
+        assertThat(p.text()).isEqualTo("一期D座");
+        assertThat(p.undecided()).isFalse();
+        // a级:表房号 ↔ 单元号 token(location 文本无 630 也能中)
+        Map<Integer, List<String>> locs2 = Map.of(8, List.of("一期D座", "宿舍楼四座"));
+        Map<Integer, List<BillNoticeService.UnitCand>> ucs2 = Map.of(8, List.of(
+            new BillNoticeService.UnitCand(6, java.util.Set.of("630"), "宿舍楼四座")));
+        assertThat(BillNoticeService.pin(meter(null, "630.00", null, null), 8, locs2, ucs2).text())
+            .isEqualTo("宿舍楼四座");
+        // 歧义:两个同层单元不同 location → 不猜(文本兜底也无楼层字样,维持 null)
+        Map<Integer, List<BillNoticeService.UnitCand>> ucs3 = Map.of(7, List.of(
+            new BillNoticeService.UnitCand(2, java.util.Set.of(), "一期D座"),
+            new BillNoticeService.UnitCand(2, java.util.Set.of(), "一期E座")));
+        assertThat(BillNoticeService.pin(meter("201室", null, "二楼201室", null), 7, locs, ucs3).text()).isNull();
+        // 3-arg 兼容:老签名=空单元候选,行为与既有用例一致
+        assertThat(BillNoticeService.pin(meter("201室", null, "二楼201室", null), 7, locs).text()).isNull();
+    }
+
     // ── §2.3 synthesize:规范表格逐行五例 ──
     @Test
     void synthesizeMatchesSpecTable() {

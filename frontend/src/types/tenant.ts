@@ -1,6 +1,8 @@
+// 可空三项(contactName/contactPhone/phase):V1__schema.sql 建表就是 NULL,后端 TenantDTO 是装箱
+// String/Integer,Jackson 原样序列化 null —— 前端以前声明非空,消费方一律漏兜底
 export interface TenantDTO {
-  id: number; companyName: string; contactName: string; contactPhone: string
-  businessType: string; status: number; categoryId: number | null; phase: number
+  id: number; companyName: string; contactName: string | null; contactPhone: string | null
+  businessType: string; status: number; categoryId: number | null; phase: number | null
   since: string | null; monthlyRent: number; leasedArea: number
   primaryBuilding: string | null; contractCount: number; remark?: string
   parentId: number | null; parentName: string | null

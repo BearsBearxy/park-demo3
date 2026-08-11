@@ -9,6 +9,9 @@
 // 二期 79 份合同全部走③。三期无任何信号 → 全量 MANUAL 留在旧「三期」栋。
 // 旧栋(11/12/15/16/17)不删不改名不停用,等 MANUAL 人工清零后再处置(§3.5)。
 // 回滚:apply 前先 mysqldump(demo3/backup-building-restructure-*.sql);plan CSV 即逆映射。
+// 运行前须设管理员账号环境变量(口令不落仓库,免明文随 git 外泄):
+//   PowerShell: $env:ADMIN_USER='admin'; $env:ADMIN_PASSWORD='<口令>'
+//   bash:       export ADMIN_USER=admin ADMIN_PASSWORD='<口令>'
 /* eslint-disable no-console */
 import { writeFileSync } from 'node:fs'
 import { buildingIdFor } from '@/utils/meterSplit'
@@ -52,9 +55,16 @@ async function call<T = unknown>(method: string, path: string, body?: unknown): 
   return data.data
 }
 async function login() {
+  // 缺环境变量直接炸,不回退默认口令:静默兜底等于口令照样写死在代码里
+  const username = process.env.ADMIN_USER
+  const password = process.env.ADMIN_PASSWORD
+  if (!username || !password) {
+    throw new Error('缺少管理员凭据环境变量 ADMIN_USER / ADMIN_PASSWORD。'
+      + "PowerShell: $env:ADMIN_USER='admin'; $env:ADMIN_PASSWORD='<口令>'  |  bash: export ADMIN_USER=admin ADMIN_PASSWORD='<口令>'")
+  }
   const res = await fetch(API + '/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    body: JSON.stringify({ username, password }),
   })
   const d = (await res.json()) as { code: number; data: { token: string } }
   if (d.code !== 0) throw new Error('登录失败')

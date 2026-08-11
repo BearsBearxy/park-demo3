@@ -268,10 +268,18 @@ public class ContractService {
     @Transactional
     public ImportResultDTO importBillingLines(BillingLinesImportRequest req) {
         List<ImportError> errors = new ArrayList<>();
+        // P3-4:合同一次批量取回(原每行一次 selectById)。同一合同被多行引用时共用同一对象——
+        // 原逐行重查看到的也是上一行 updateById 刚落库的同一份值,故标量缓存结果不变。
+        Set<Integer> wantIds = req.rows().stream().map(BillingLinesImportRequest.Row::contractId)
+            .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Integer, Contract> byId = wantIds.isEmpty() ? Map.of()
+            : contracts.selectBatchIds(wantIds).stream()
+                .collect(Collectors.toMap(Contract::getId, c -> c));
         int imported = 0, i = -1;
         for (BillingLinesImportRequest.Row r : req.rows()) {
             i++;
-            Contract c = r.contractId() == null ? null : contracts.selectById(r.contractId());
+            // 查不到 = 合同不存在:仍按行级错误跳过,不整批拦(§1.2)
+            Contract c = r.contractId() == null ? null : byId.get(r.contractId());
             if (c == null) { errors.add(new ImportError(i, "合同" + r.contractId(), "合同不存在")); continue; }
             String err = validateLines(r.lines());
             if (err != null) { errors.add(new ImportError(i, "合同" + r.contractId(), err)); continue; }
@@ -325,7 +333,17 @@ public class ContractService {
         List<ContractFullImportRequest.Item> report = new ArrayList<>();
         List<Tenant> allTenants = tenants.selectList(null);
         List<Building> allBuildings = buildings.selectList(null);
-        int matched = 0, created = 0, nextNo = nextImportNoSeq();
+        // P3-4:合同表(数百行)与租户/楼栋同款循环外预载(手法同 AllocService.loadCtx),
+        // 循环内 escalation 判定 / findByStart / owned 认领三处改在内存筛,313 行导入省下约 900 次单发查询。
+        // ⚠ 本 Map 是循环开始时的快照,而循环体内会新建合同:insert 后必须把新合同回填进 ofTenant
+        //   (下方两处 ofTenant.add),否则同租户的后续行看不见刚建的合同 → 重复建档、链分叉。
+        // ⚠ 命中的合同直接复用 Map 里的对象(不重查):对象字段的改动都在同一轮里 updateById 落库,
+        //   与原「每行重查」看到的库内状态逐字段一致,认领/幂等判定不受影响。
+        Map<Integer, List<Contract>> byTenant = new HashMap<>();
+        List<Contract> allContracts = contracts.selectList(null);
+        for (Contract c : allContracts)   // tenant_id 可空,用显式循环(groupingBy 遇 null 键抛 NPE)
+            byTenant.computeIfAbsent(c.getTenantId(), k -> new ArrayList<>()).add(c);
+        int matched = 0, created = 0, nextNo = nextImportNoSeq(allContracts);
         // 批内认领台账:同租户多行(如广联一期/二期同名落同一户)不得抢同一份合同互相覆盖起止
         Set<Integer> claimed = new HashSet<>();
 
@@ -343,10 +361,12 @@ public class ContractService {
                 continue;
             }
 
+            // 该户名下的合同(预载切片,可变:本轮新建的合同就地追加,供后续行看见)
+            List<Contract> ofTenant = byTenant.computeIfAbsent(t.getId(), k -> new ArrayList<>());
+
             // 已拆递增链防线(ESCALATION-SPLIT-SPEC §4):该户存在 escalation 段即整行跳过——
             // 拆链后原行价与起点已按末档改写且带 parent,重导会匹配失败另建重复合同并拍回旧值。
-            if (contracts.exists(new QueryWrapper<Contract>()
-                    .eq("tenant_id", t.getId()).eq("link_type", "escalation"))) {
+            if (ofTenant.stream().anyMatch(o -> "escalation".equals(o.getLinkType()))) {
                 String reason = "该户已拆递增链,合同导入跳过(ESCALATION-SPLIT-SPEC §4)";
                 errors.add(new ImportError(i, label, reason));
                 report.add(new ContractFullImportRequest.Item(i, label, t.getId(), null, null, "skipped", reason));
@@ -356,19 +376,20 @@ public class ContractService {
             // 多租期 A 类:首期已被上次导入标成 renewed(不在 owned 里),故先按 tenantId+startDate 认领,保幂等
             List<ContractFullImportRequest.Term> chain =
                 r.terms() == null ? List.of() : r.terms();
-            Contract c = chain.size() > 1 ? findByStart(t.getId(), chain.get(0).startDate()) : null;
+            Contract c = chain.size() > 1 ? findByStart(ofTenant, chain.get(0).startDate()) : null;
             String action = "matched";
             if (c != null) {
                 matched++;
             } else {
                 // 在册合同:排除已终止/已续签、排除续签链子期(parent 非空的不参与认领,否则会被无 terms 的行
                 // 抢去覆写起止 → 下次 findByStart 失配再建一份,链分叉)、排除批内已认领
-                List<Contract> owned = contracts.selectList(new QueryWrapper<Contract>()
-                    .eq("tenant_id", t.getId()).notIn("status", "terminated", "renewed")
-                    .isNull("parent_contract_id")
-                    .orderByDesc("start_date").orderByDesc("id"))
-                    .stream().filter(o -> !claimed.contains(o.getId())).toList();
-                if (owned.isEmpty()) {
+                // 取序照抄原 SQL 的 order by start_date desc, id desc 首行(MySQL 降序把 NULL 排最后 → nullsLast)
+                Contract owned = ofTenant.stream()
+                    .filter(o -> !"terminated".equals(o.getStatus()) && !"renewed".equals(o.getStatus()))
+                    .filter(o -> o.getParentContractId() == null)
+                    .filter(o -> !claimed.contains(o.getId()))
+                    .min(LATEST_TERM_FIRST).orElse(null);
+                if (owned == null) {
                     Integer bid = resolveBuilding(allBuildings, r.buildingHint(), r.phase());
                     if (bid == null) {
                         String reason = "无法确定楼栋(物业位置原文未匹配且无同期楼栋)";
@@ -385,9 +406,10 @@ public class ContractService {
                     c.setMonthlyRent(BigDecimal.ZERO);
                     c.setDeposit(BigDecimal.ZERO);
                     contracts.insert(c);
+                    ofTenant.add(c);   // ⚠ 回填快照:同租户后续行才看得见这份新建合同(否则重复建档)
                     created++; action = "created";
                 } else {
-                    c = owned.get(0);
+                    c = owned;
                     matched++;
                 }
             }
@@ -411,7 +433,7 @@ public class ContractService {
             Contract prev = c;
             for (int k = 1; k < chain.size(); k++) {
                 ContractFullImportRequest.Term tm = chain.get(k);
-                Contract n = findByStart(t.getId(), tm.startDate());   // 幂等键:同租户同起租日 = 同一期,不重复建链
+                Contract n = findByStart(ofTenant, tm.startDate());   // 幂等键:同租户同起租日 = 同一期,不重复建链
                 boolean isNew = n == null;
                 if (isNew) {
                     n = new Contract();
@@ -424,6 +446,7 @@ public class ContractService {
                     n.setMonthlyRent(BigDecimal.ZERO);
                     n.setDeposit(BigDecimal.ZERO);
                     contracts.insert(n);
+                    ofTenant.add(n);   // ⚠ 同上:本期起租日随后写入同一对象,下一期/下一行的 findByStart 才能命中
                     created++;
                 } else matched++;
                 claimed.add(n.getId());
@@ -464,12 +487,18 @@ public class ContractService {
         return validateLines(r.lines());
     }
 
-    /** 续签链幂等键:同租户 + 同起租日 = 同一期(首期被标 renewed 后已不在 owned 里)。 */
-    private Contract findByStart(Integer tenantId, LocalDate start) {
+    /** 在册合同认领取序(原 SQL:order by start_date desc, id desc;MySQL 降序 NULL 落最后 → nullsLast)。 */
+    private static final Comparator<Contract> LATEST_TERM_FIRST =
+        Comparator.<Contract, LocalDate>comparing(Contract::getStartDate,
+                Comparator.nullsLast(Comparator.reverseOrder()))
+            .thenComparing(Contract::getId, Comparator.reverseOrder());
+
+    /** 续签链幂等键:同租户 + 同起租日 = 同一期(首期被标 renewed 后已不在 owned 里)。
+     *  P3-4:在该户的预载切片上筛(原为每次单发一条 SQL),取序同原 order by id asc。 */
+    private static Contract findByStart(List<Contract> ofTenant, LocalDate start) {
         if (start == null) return null;
-        return contracts.selectList(new QueryWrapper<Contract>()
-            .eq("tenant_id", tenantId).eq("start_date", start).orderByAsc("id"))
-            .stream().findFirst().orElse(null);
+        return ofTenant.stream().filter(o -> start.equals(o.getStartDate()))
+            .min(Comparator.comparing(Contract::getId)).orElse(null);
     }
 
     /** 租户匹配:企业全称精确 → 简称精确(均含别名,V86);同名多户用「期」去歧义,仍不唯一则不匹配(交由行级错误)。 */
@@ -508,12 +537,15 @@ public class ContractService {
         return b.getName() == null ? "" : b.getName().replaceFirst("^[一二三四五六七八九十]+期\\s*", "").trim();
     }
 
-    /** 自动建合同编号序:取既有 C2024M-### 最大序号 +1。 */
-    private int nextImportNoSeq() {
+    /** 自动建合同编号序:取既有 C2024M-### 最大序号 +1。
+     *  P3-4:改在预载全表上筛,不再单发一次 likeRight 全表查;regionMatches(true,…) 复刻 MySQL
+     *  LIKE 的大小写不敏感口径(utf8mb4_0900_ai_ci),命中集与原 SQL 一致。 */
+    private static int nextImportNoSeq(List<Contract> all) {
         int max = 0;
-        for (Contract c : contracts.selectList(new QueryWrapper<Contract>()
-                .likeRight("contract_no", IMPORT_NO_PREFIX))) {
-            try { max = Math.max(max, Integer.parseInt(c.getContractNo().substring(IMPORT_NO_PREFIX.length()))); }
+        for (Contract c : all) {
+            String no = c.getContractNo();
+            if (no == null || !no.regionMatches(true, 0, IMPORT_NO_PREFIX, 0, IMPORT_NO_PREFIX.length())) continue;
+            try { max = Math.max(max, Integer.parseInt(no.substring(IMPORT_NO_PREFIX.length()))); }
             catch (NumberFormatException ignore) { /* 人工改过的号,不参与排序 */ }
         }
         return max + 1;

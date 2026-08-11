@@ -1,157 +1,63 @@
 <script setup lang="ts">
-// 科目余额表屏 — L1/L2/L3 状态机 + §6 加载门。范式同 BalanceSheetView,差异(spec §0/C6-C8):
+// 科目余额表屏 — L1/L2/L3 状态机(useFinStatementScreen 三屏共用) + §6 加载门。差异(spec §0/C6-C8):
 //   · 科目树是数据(按期存库),非前端模板:accounts 随 period 下发,编辑态本地增删,保存整期树+金额双写。
 //   · 8 金额列(期初/本期/本年/期末 × 借贷);所有行皆叶子直录,合计尾行=Σ一级科目(客端算不落库)。
 //   · 默认折叠到一级 + 搜索(命中自动展开到命中行);companyId==='all' 只读平铺一级(后端已合并)。
 //   · KPI:期末借合计/期末贷合计/平衡差(非0红,0显「已平」)/科目数。
-import { ref, computed, onMounted } from 'vue'
-import { companyApi } from '@/api/ledger'
-import { reportApi } from '@/api/report'
-import type { CompanyDTO } from '@/types/ledger'
-import type { ReportPeriodDTO, ReportCell } from '@/types/report'
-import type { ImportResultDTO } from '@/types/import'
+import { ref, computed } from 'vue'
+import type { ReportCell } from '@/types/report'
 import { TB_FIELDS, tbTotals, tbBalanceDiff, visibleRows, type TbAccount, type TbAmounts, type TbFieldKey } from '@/reports/trialBalance'
-import { parserProps, runImport } from '@/utils/importRegistry'
+import { parserProps } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import SearchField from '@/components/ds/SearchField.vue'
 import Select from '@/components/ds/Select.vue'
-import FinCompanyPicker, { type FinCompany } from '@/components/fin/FinCompanyPicker.vue'
-import FinMonthGrid, { type FinMonthMeta } from '@/components/fin/FinMonthGrid.vue'
+import FinCompanyPicker from '@/components/fin/FinCompanyPicker.vue'
+import FinMonthGrid from '@/components/fin/FinMonthGrid.vue'
 import SchedYearGate from '@/components/sched/SchedYearGate.vue'
-import { useReportYearGate } from '@/components/fin/useReportYearGate'
-import { maxSelectableYear } from '@/utils/yearGate'
-import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
+import FinDialogs from '@/components/fin/FinDialogs.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import TbTable from './TbTable.vue'
 
 const STMT = 'tb'
 
-// ── 状态机 ───────────────────────────────────────────────
-const companyId = ref<number | 'all' | null>(null)  // null → L1 选公司;'all' → 全部汇总(只读)
-const year = ref(new Date().getFullYear())
-const month = ref<number | null>(null)                // null → L2 月历
-const edit = ref(false)
-const saving = ref(false)
-const maxYear = maxSelectableYear()   // 与年份门区间上界同源(今年+1)
-
-// ── 数据 ─────────────────────────────────────────────────
-const companies = ref<CompanyDTO[]>([])
-const companiesLoaded = ref(false)                    // L1 首次加载完成前转圈,不闪空网格
-const yearMonths = ref<FinMonthMeta[] | null>(null)   // L2 月历
-const period = ref<ReportPeriodDTO | null>(null)      // L3 服务端本期快照(读态源)
-const accounts = ref<TbAccount[]>([])                  // 科目树工作副本(编辑态本地增删,保存整期覆盖)
-const draft = ref<Record<string, number>>({})          // 金额草稿:key=`${rowKey}|${field}`
-const structEdits = ref(0)                             // 科目增删次数(计入保存确认改动数)
-const dlg = ref<FinDialog | null>(null)
-
+// ── 屏内私有态(科目树是本屏独有:按期存库,编辑态本地增删) ──
+const accounts = ref<TbAccount[]>([])   // 科目树工作副本(编辑态本地增删,保存整期覆盖)
+const structEdits = ref(0)              // 科目增删次数(计入保存确认改动数)
+const selected = ref(new Set<string>())
 // 折叠 + 搜索(spec C6):默认折叠到一级
 const expanded = ref(new Set<string>())
 const query = ref('')
 
-const isAll = computed(() => companyId.value === 'all')
-const company = computed(() => companies.value.find(c => c.id === companyId.value) ?? null)
-const companyName = computed(() => (isAll.value ? null : company.value?.name ?? null))
-const finCompanies = computed<FinCompany[]>(() =>
-  companies.value.map(c => ({ id: c.id, name: c.name, short: c.short })),
-)
-
-// ── L1 载入公司 ──────────────────────────────────────────
-onMounted(loadCompanies)
-async function loadCompanies() {
-  companies.value = await companyApi.list()
-  companiesLoaded.value = true
-}
-
-// ── L2 载入年历 ──────────────────────────────────────────
-// 单公司:reportApi.year;全部汇总:各公司 year 合并(hasData 取或,预览取和)。竞态守卫。
-let yearReq = 0
-async function loadYear() {
-  if (companyId.value == null) return
-  const reqId = ++yearReq
-  let metas: FinMonthMeta[]
-  if (isAll.value) {
-    const all = await Promise.all(companies.value.map(c => reportApi.year(STMT, c.id, year.value)))
-    metas = Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1
-      let hasData = false, preview = 0
-      for (const y of all) {
-        const mm = y.months.find(x => x.month === m)
-        if (mm?.hasData) { hasData = true; preview += mm.netPreview }
-      }
-      // 零值预览抑制:tb 无 'cur' 字段,后端 netPreview(行1 cur)恒 0,显 ¥0.00 是误导 → 月卡只标「已录入」
-      return { month: m, hasData, preview: hasData && preview ? finMoney(preview) : undefined }
-    })
-  } else {
-    const y = await reportApi.year(STMT, companyId.value as number, year.value)
-    metas = Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1
-      const mm = y.months.find(x => x.month === m)
-      return { month: m, hasData: !!mm?.hasData, preview: mm?.hasData && mm.netPreview ? finMoney(mm.netPreview) : undefined }
-    })
-  }
-  if (reqId === yearReq) yearMonths.value = metas
-}
-
-// ── L3 载入本期 ──────────────────────────────────────────
-let periodReq = 0
-async function loadPeriod() {
-  if (companyId.value == null || month.value == null) return
-  const reqId = ++periodReq
-  const data = isAll.value
-    ? await reportApi.allPeriod(STMT, year.value, month.value)
-    : await reportApi.period(STMT, companyId.value as number, year.value, month.value)
-  if (reqId === periodReq) {
-    period.value = data
-    accounts.value = (data.accounts ?? []).map(a => ({ ...a }))
-  }
-}
-
-// ── 年份门(公司→年份→月历,同附表) ────────────────────────
-const { yearGated, gateYears, yearCards, gateCurrent, loadGateYears, resetGate, pickYear, backToYearGate } =
-  useReportYearGate({
-    stmt: STMT, companyId, companies, year,
-    // period 一并清:否则 yearMonths 加载期间 v-if 链穿透到旧 period,数据表闪现
-    onEnterYear: async () => { yearMonths.value = null; period.value = null; await loadYear() },
-  })
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickCompany(id: number | string) {
-  companyId.value = id as number
-  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
-  resetGate()
-  await loadGateYears()
-}
-function pickAll() {
-  companyId.value = 'all'
-  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
-  resetGate()
-  loadGateYears()
-}
-function goGate() {
-  companyId.value = null; month.value = null; edit.value = false
-  resetGate()
-  loadCompanies()
-}
-async function setYear(y: number) {
-  year.value = y
-  yearMonths.value = null; period.value = null
-  await loadYear()
-}
-async function pickMonth(m: number) {
-  month.value = m; edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
-  expanded.value = new Set(); query.value = ''
-  period.value = null
-  await loadPeriod()
-}
-function backToMonths() {
-  if (edit.value) cancelEdit()
-  month.value = null
-}
+const {
+  companyId, year, month, edit, saving, maxYear,
+  companiesLoaded, yearMonths, period, draft, dirty, dlg,
+  isAll, company, companyName, finCompanies,
+  yearGated, gateYears, yearCards, gateCurrent,
+  pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
+  enterEdit, cancelEdit, saveConfirm, finishEdit, save, onDiscard,
+  onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
+  importing, importResult, importSummary, onImport,
+} = useFinStatementScreen({
+  stmt: STMT,
+  // tb 无 'cur' 字段,后端 netPreview(行1 cur)恒 0,月卡显 ¥0.00 是误导 → 只标「已录入」
+  zeroPreviewHidden: true,
+  extraDirty: structEdits,
+  // 本期(读取/保存)到手即刷科目树工作副本
+  onPeriod: p => { accounts.value = (p.accounts ?? []).map(a => ({ ...a })) },
+  onPickMonth: () => { expanded.value = new Set(); query.value = '' },
+  // 进出编辑/切月/保存后:清选集与科目增删计数,并放弃本地科目增删(回滚到服务端快照)
+  resetLocal: () => {
+    structEdits.value = 0
+    selected.value = new Set()
+    accounts.value = (period.value?.accounts ?? []).map(a => ({ ...a }))
+  },
+})
 
 // ── 取值:所有科目行皆叶子直录(父行金额来自文件/录入,不自动汇总;合计只 Σ 一级) ──
 function getLeaf(rowKey: string, field: TbFieldKey): number {
@@ -198,52 +104,20 @@ const kpiDiff = computed(() => tbBalanceDiff(totals.value))
 // 浮点噪声容差(分以下视为已平)
 const balanced = computed(() => Math.abs(kpiDiff.value) < 0.005)
 
-// ── 编辑流 ───────────────────────────────────────────────
-const dirty = computed(() => Object.keys(draft.value).length + structEdits.value)
-function enterEdit() {
-  draft.value = {}; structEdits.value = 0; selected.value = new Set(); edit.value = true
-}
-function cancelEdit() {
-  edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
-  // 放弃本地科目增删:回滚到服务端快照
-  accounts.value = (period.value?.accounts ?? []).map(a => ({ ...a }))
-}
+// ── 编辑流(进出编辑/保存外壳在 useFinStatementScreen;此处只给本表的录入与保存载荷) ──
 function onInput(rowKey: string, field: TbFieldKey, value: string) {
   draft.value = { ...draft.value, [`${rowKey}|${field}`]: value === '' ? 0 : Number(value) }
 }
-// 退出编辑:有改动先弹保存确认,无改动直接退。
-const saveConfirm = ref(false)
-function finishEdit() {
-  if (dirty.value > 0) { saveConfirm.value = true; return }
-  edit.value = false
-}
-async function save() {
-  if (companyId.value == null || month.value == null || isAll.value) return
-  saveConfirm.value = false
-  saving.value = true
-  try {
-    // 整期双写:cells = 全部科目 × 8 字段(draft 覆盖服务端值,0 不落库);accounts = 工作副本(重排 sortOrder)。
-    const cells: ReportCell[] = []
-    for (const a of accounts.value) {
-      for (const f of TB_FIELDS) {
-        const v = getLeaf(a.rowKey, f.key)
-        if (v !== 0) cells.push({ rowKey: a.rowKey, field: f.key, amount: v })
-      }
+// 整期双写:cells = 全部科目 × 8 字段(draft 覆盖服务端值,0 不落库);accounts = 工作副本(重排 sortOrder)。
+function saveBody() {
+  const cells: ReportCell[] = []
+  for (const a of accounts.value) {
+    for (const f of TB_FIELDS) {
+      const v = getLeaf(a.rowKey, f.key)
+      if (v !== 0) cells.push({ rowKey: a.rowKey, field: f.key, amount: v })
     }
-    const body = { cells, accounts: accounts.value.map((a, i) => ({ ...a, sortOrder: i })) }
-    period.value = await reportApi.save(STMT, companyId.value as number, year.value, month.value, body)
-    accounts.value = (period.value.accounts ?? []).map(a => ({ ...a }))
-    edit.value = false; draft.value = {}; structEdits.value = 0; selected.value = new Set()
-    await loadYear()  // 刷新月历(hasData/预览)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')
-  } finally {
-    saving.value = false
   }
-}
-function onDiscard() {
-  saveConfirm.value = false
-  cancelEdit()
+  return { cells, accounts: accounts.value.map((a, i) => ({ ...a, sortOrder: i })) }
 }
 
 // ── 新增科目(居中弹窗:code?/名称/父级下拉) ────────────────
@@ -327,7 +201,6 @@ function removeAccount(rowKey: string) {
 }
 
 // ── 批量删除(编辑态复选 → §7 居中确认 → 沿单删语义连子树移除,随保存落库) ──
-const selected = ref(new Set<string>())
 const bulkConfirm = ref(false)
 const bulkDoomed = computed(() => collectDoomed(selected.value))  // 含级联子树的实际移除行数(确认弹窗展示)
 function toggleSelect(rowKey: string) {
@@ -340,60 +213,6 @@ function bulkRemove() {
   bulkConfirm.value = false
   removeKeys(collectDoomed(selected.value))
   selected.value = new Set()
-}
-
-// ── 公司增删改(同 BS 屏) ─────────────────────────────────
-function onNewCompany() { dlg.value = { type: 'company', mode: 'new' } }
-function onEditCompany(c: FinCompany) {
-  dlg.value = { type: 'company', mode: 'edit', company: c }
-}
-function onDeleteCompany(c: FinCompany) { dlg.value = { type: 'delco', company: c } }
-async function submitCompany(name: string) {
-  const d = dlg.value
-  if (d?.type !== 'company') return
-  try {
-    if (d.mode === 'edit' && d.company) {
-      await companyApi.rename(Number(d.company.id), name)
-    } else {
-      await companyApi.create(name)
-    }
-    dlg.value = null
-    companies.value = await companyApi.list()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存公司失败')
-  }
-}
-async function confirmDelete() {
-  const d = dlg.value
-  if (d?.type !== 'delco') return
-  try {
-    await companyApi.remove(Number(d.company.id))
-    dlg.value = null
-    if (companyId.value === d.company.id) goGate()
-    else companies.value = await companyApi.list()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除公司失败')
-  }
-}
-
-// ── 导入 Excel(整本工作簿,每张「余额表」sheet=一公司段,未匹配公司自动新建)──────
-// 仅单公司 + 已选月可导入(同 bs 屏)。目标期 = 当前 year/month。
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-const importSummary = ref('')
-async function onImport(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (month.value == null) return
-  try {
-    importResult.value = await runImport('report_tb', picks, { year: year.value, month: month.value }, fileName)
-    importSummary.value = picks.map(p => `${p.label ?? ''}:${p.records.length} 行`).join('\n')
-    if (edit.value) cancelEdit()                 // 编辑态导入成功=整期替换:未保存草稿作废,退出编辑再重拉(spec J3)
-    companies.value = await companyApi.list()   // 可能自动新建了公司
-    await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新树+新值)
-    await loadYear()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
 }
 
 // ── 导出 xlsx(懒加载,平铺全部行 10 列) ────────────────────
@@ -560,7 +379,7 @@ async function onExport() {
     <SaveConfirmDialog
       v-if="saveConfirm"
       :count="dirty"
-      @save="save"
+      @save="save(saveBody)"
       @discard="onDiscard"
       @close="saveConfirm = false"
     />

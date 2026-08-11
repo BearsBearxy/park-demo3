@@ -74,3 +74,18 @@
 - ❌ pageSize 依赖渲染内容的任何测量
 - ❌ 分页器脱离卡片悬浮在页面中部或底部（卡片墙除外）
 - ❌ 任何交互（滚动/翻页/筛选/hover/编辑态切换）引发布局位移或闪烁——列宽、行高、sticky 偏移在交互期间必须零变化（审核清单项，全站表格适用）
+
+## 8. 渲染开销铁律（2026-08-11 审计新增，全站表格适用）
+
+> 根因：宽表在**编辑态**每敲一个字符就整表重渲染。此时模板里每个「返回新对象/新数组的函数调用」都会被乘以 `行数 × 列数`。
+
+- ❌ **模板里禁止调用返回新对象的函数**（`:style="cellStyle(c)"` 这类）。返回值每次都是新引用 → Vue patcher 认为样式全变 → 全表元素重刷样式。
+  - 只依赖**列**不依赖行的样式，必须做成按列缓存的 `computed`：`cellStyles[c.key]`（引用稳定，patcher 直接跳过 diff）。
+  - 实案：`FPLedgerTable` 27 列 × 130 行，`cellStyle()` 每次渲染分配约 **5,300 个对象**；改按列 computed 后 **27 个**。影响 5 屏。
+- ❌ **模板里禁止调用做全表聚合的普通函数**（`{{ sum(c.key) }}`、`{{ rowTotal(row) }}`、`{{ colTotal(id) }}`）。写在 `tfoot` 里就是「每列扫一遍全表」。
+  - 合计一律做成**一次遍历产出全部列**的 `computed`，行合计与总计共用同一次遍历。
+  - 实案：`FPLedgerTable` tfoot 约 3,500 次 reduce/渲染；`S10Table` 200 行时约 15,000 次乘加/渲染。
+- ❌ **模板里禁止对数组做线性查找**（`cfgs.find(x => x.id === row.id)`）。预先 `computed` 成 `Map` 再按键取。
+- ❌ **比较器/热路径里禁止 `new RegExp(...)`**。正则提到模块级常量（`useMeterWorkbench.floorRank` 实案：排序每次比较都在造正则）。
+- ❌ **分组/排序结果若不依赖编辑草稿，禁止和草稿放同一个 computed**。拆成两个：`groups`（只依赖 `props.rows`）+ `usage`（依赖 draft），否则每敲一键全量重分组 + 逐组重排序。
+- ✅ **行数可能上千的表必须窗口化**。`composables/useMeterWorkbench.ts` 的 `buildWindow()` 是现成实现（rAF 节流 + 窗口位移 <4 行不 setState + spacer 撑高），配 `table-layout:fixed` + `<colgroup>` 使用，**不要另写一套**。

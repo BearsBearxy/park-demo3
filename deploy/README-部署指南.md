@@ -40,7 +40,11 @@ bash deploy/gen-env.sh <公网IP>      # 生成 .env:随机 DB/JWT/admin/viewer 
 docker compose up -d --build         # 构建+启动三容器
 ```
 
-注意两点：
+注意三点：
+- **gen-env 这步不能跳过**：compose 里 `DB_PASSWORD`/`JWT_SECRET`/`ADMIN_PASSWORD`/`CORS_ALLOWED_ORIGINS`
+  四项已改成无兜底（fail-closed），缺任何一项 `up` 会直接报中文错误退出。以前「不建 .env 也能起」
+  的做法已作废——那样起出来的是仓库公开 JWT 密钥 + 种子口令 admin/admin123 的可写实例，端口一开即等同无认证。
+  （同理，`docker compose ps/logs/down` 也需要 .env 在场，正常部署后它一直在 /opt/demo3 下）
 - **gen-env 若报「.env 已存在」必须停下检查**，不可带着来路不明的 .env 继续 up（会以弱口令上公网）
 - 首次构建 **10-40 分钟视网络而定**（Maven/npm 依赖直连境外源）；构建中 mvn 步骤长时间无输出属正常，**不要中断**（中断后已下载的依赖不缓存，重来更慢）
 
@@ -50,6 +54,8 @@ docker compose up -d --build         # 构建+启动三容器
 docker compose ps        # 三个服务 STATUS 应为 healthy(mysql 初始化约 1-2 分钟)
 docker compose logs backend | grep -E "Migrating|viewer|Started"
 # 应看到: Flyway 迁移到 v32 / "viewer (read-only) user created" / "Started Demo3Application"
+curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-policy|content-security"
+# 应看到四个安全响应头(nginx 下发,防点击劫持/MIME 嗅探/来源泄露/外链脚本注入)
 ```
 
 若首次 up 偶发 backend 启动失败（与 MySQL 首次初始化竞速），再执行一次 `docker compose up -d` 即可（restart 策略平时会自动拉起）。
@@ -89,7 +95,10 @@ docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_
 按顺序：
 1. **拆 Flyway 演示种子**（审计已立项：seed 与 schema 同目录，正式库会混入演示数据）——上真实数据前必修
 2. 真实数据迁移：本机 `mysqldump` → scp → 导入（此时不再走演示种子）
-3. 域名 + HTTPS：买域名 → 国内地域办 ICP 备案（或迁香港）→ 前置 Caddy 自动签发 TLS 证书
+3. 域名 + HTTPS：买域名 → 国内地域办 ICP 备案（或迁香港）→ 前置 Caddy 自动签发 TLS 证书。
+   上了 TLS 之后再回头给 `frontend/nginx.conf` 补 `Strict-Transport-Security`（明文 HTTP 下发 HSTS 无意义，
+   所以现在故意不加）。注意 nginx 子 `location` 不继承父级 `add_header`，本文件里安全头一共写了 3 处，改要一起改。
+   ~~CSP 收紧远程 webfont~~ —— 2026-08-11 已完成（远程 Google Fonts 已从 `tokens.css` 移除，CSP 三处同步收紧为 `'self'`）
 4. 定期备份：第 6 节备份命令进 crontab（每日一份 + 异地留存）
 5. 服务器加固：SSH 改密钥登录禁密码、fail2ban
 6. 多用户/角色扩展视使用反馈再说（当前 admin+viewer 两级已够测试与汇报）

@@ -4,9 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Factory Park</title>
-    <!-- 提前建连，缩短 webfont 首字节；字体已 display=swap，离线/被墙时回退 PingFang/微软雅黑 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- 远程 webfont 已从 tokens.css 移除(境内不可达,一直走回退字体),故这里的 preconnect
+         也一并删掉——没有后续请求要复用连接,预建连纯属浪费 DNS/TLS 往返 -->
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html { width: 100%; height: 100%; overflow: hidden; }

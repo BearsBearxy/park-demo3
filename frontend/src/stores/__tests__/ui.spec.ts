@@ -67,3 +67,15 @@ describe('ui store — 侧栏自动折叠(≤1280px)', () => {
     expect(useUiStore().sbOpen).toBe(true)
   })
 })
+
+describe('ui store — 导航进度(P2-3)', () => {
+  it('默认 false;startNav 置位、endNav 复位', () => {
+    mockMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.navigating).toBe(false)
+    ui.startNav()
+    expect(ui.navigating).toBe(true)
+    ui.endNav()
+    expect(ui.navigating).toBe(false)
+  })
+})

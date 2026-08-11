@@ -423,7 +423,8 @@ const conclusion = computed(() => buildConclusion(
 .cv2-all { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
 .cv2-all:hover { text-decoration: underline; }
 /* 弹层 */
-.cv2-mask { position: fixed; inset: 0; z-index: 60; background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; }
+/* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
+.cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; }
 .cv2-modal { background: var(--surface-white); border-radius: 14px; box-shadow: 0 12px 40px rgba(28, 28, 28, 0.22); padding: 16px 18px; width: min(620px, 92vw); max-height: 80vh; overflow: auto; }
 .cv2-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .cv2-modal-h .t { font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }

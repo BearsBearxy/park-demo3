@@ -26,11 +26,6 @@ class DataHomeServiceTest {
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService);
 
     // ── helpers ──
-    MonthlyLedger ledgerRow(int year, int month, LocalDateTime updated) {
-        MonthlyLedger l = new MonthlyLedger();
-        l.setPeriodYear(year); l.setPeriodMonth(month); l.setUpdatedAt(updated);
-        return l;
-    }
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
         S10Record r = new S10Record(); r.setAcctMonth(acctMonth); r.setPhase(phase); r.setUpdatedAt(updated);
         return r;
@@ -56,15 +51,18 @@ class DataHomeServiceTest {
         return new ContractSummaryDTO(10, 5, expiring, 1, java.math.BigDecimal.ZERO);
     }
 
-    /** 默认全部 mapper 返回空(所有源 missing)；按需在测试里覆盖。 */
+    /**
+     * 默认全部 mapper 返回空(所有源 missing)；按需在测试里覆盖。
+     * 本期口径走聚合查询：selectObjs 回一个标量(ledger 是 year*100+month 编码，其余是 acct_month 字符串)。
+     */
     void stubAllEmpty() {
         when(ledger.selectList(any())).thenReturn(List.of());
-        when(s10.selectList(any())).thenReturn(List.of());
+        when(ledger.<Object>selectObjs(any())).thenReturn(List.of());
+        when(s10.<Object>selectObjs(any())).thenReturn(List.of());
         when(s10.selectBySlot(anyInt(), anyString())).thenReturn(List.of());
-        when(salary.selectList(any())).thenReturn(List.of());
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of());
         when(salary.selectByMonth(anyString())).thenReturn(List.of());
-        when(office.selectList(any())).thenReturn(List.of());
-        when(office.selectBySchedule(anyInt())).thenReturn(List.of());
+        when(office.<Object>selectObjs(any())).thenReturn(List.of());
         when(office.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
         when(pv.selectByYear(anyInt())).thenReturn(List.of());
         when(charging.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
@@ -75,11 +73,9 @@ class DataHomeServiceTest {
     @Test
     void period_isMaxAcrossMonthlySubsystems() {
         stubAllEmpty();
-        // ledger only to 2026-05, salary to 2026-06 → 本期 = 2026年6月
-        when(ledger.selectList(null)).thenReturn(List.of(
-            ledgerRow(2026, 4, LocalDateTime.of(2026, 4, 1, 9, 0)),
-            ledgerRow(2026, 5, LocalDateTime.of(2026, 5, 1, 9, 0))));
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 9, 0))));
+        // ledger only to 2026-05(编码 202605), salary to 2026-06 → 本期 = 2026年6月
+        when(ledger.<Object>selectObjs(any())).thenReturn(List.of(202605L));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
 
         DataHomeOverviewDTO o = svc.overview();
         assertThat(o.period().year()).isEqualTo(2026);
@@ -87,11 +83,27 @@ class DataHomeServiceTest {
         assertThat(o.period().label()).isEqualTo("2026年6月");
     }
 
+    /** 空表边界：MySQL 的 MAX() 在空表上返回一行 NULL(不是空结果集)，5 源全空必须回退到兜底期而不是 NPE。 */
+    @Test
+    void period_allTablesEmpty_aggregateReturnsNullRow_fallsBackTo200001() {
+        stubAllEmpty();
+        List<Object> nullRow = java.util.Collections.singletonList(null);
+        when(ledger.<Object>selectObjs(any())).thenReturn(nullRow);
+        when(s10.<Object>selectObjs(any())).thenReturn(nullRow);
+        when(salary.<Object>selectObjs(any())).thenReturn(nullRow);
+        when(office.<Object>selectObjs(any())).thenReturn(nullRow);
+
+        DataHomeOverviewDTO o = svc.overview();
+        assertThat(o.period().year()).isEqualTo(2000);
+        assertThat(o.period().month()).isEqualTo(1);
+        assertThat(o.progressDone()).isZero();
+    }
+
     @Test
     void source_doneVsMissing_andUpdatedFormat() {
         stubAllEmpty();
         // 本期由 salary 2026-06 决定
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 0))));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
         when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
 
         DataHomeOverviewDTO o = svc.overview();
@@ -114,7 +126,7 @@ class DataHomeServiceTest {
     @Test
     void missingSources_generateWarningTasks() {
         stubAllEmpty();
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 0))));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
         when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
 
         DataHomeOverviewDTO o = svc.overview();
@@ -128,7 +140,7 @@ class DataHomeServiceTest {
     @Test
     void contractExpiring_addsTask() {
         stubAllEmpty();
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 0))));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
         when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
         when(contractService.summary()).thenReturn(summary(3));
 
@@ -143,7 +155,7 @@ class DataHomeServiceTest {
     void recent_top6_orderedByUpdatedDesc() {
         stubAllEmpty();
         // 本期 2026-06；造 7 条不同时间的本期行，应取最新 6 条降序
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 1, 0, 0))));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
         when(salary.selectByMonth("2026-06")).thenReturn(List.of(
             salaryRow("2026-06", LocalDateTime.of(2026, 6, 1, 10, 0)),
             salaryRow("2026-06", LocalDateTime.of(2026, 6, 7, 10, 0))));
@@ -173,7 +185,7 @@ class DataHomeServiceTest {
     @Test
     void kpis_deriveCountsAndMaxUpdate() {
         stubAllEmpty();
-        when(salary.selectList(null)).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 1, 0, 0))));
+        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
         when(salary.selectByMonth("2026-06")).thenReturn(List.of(
             salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 9, 12)),
             salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 9, 13))));

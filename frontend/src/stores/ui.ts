@@ -32,5 +32,11 @@ export const useUiStore = defineStore('ui', () => {
   }
   function dismissNetError() { clearTimeout(netErrTimer); netError.value = null }
 
-  return { sbOpen, toggleSidebar, netError, reportNetError, dismissNetError }
+  // 路由导航中(P2-3):45 屏全是 () => import(),chunk 下载完才 confirm 导航,
+  // 这段空窗里页签高亮/面包屑/内容区全停在上一页 —— 本 flag 是那期间唯一的可见反馈来源。
+  const navigating = ref(false)
+  function startNav() { navigating.value = true }
+  function endNav() { navigating.value = false }
+
+  return { sbOpen, toggleSidebar, netError, reportNetError, dismissNetError, navigating, startNav, endNav }
 })

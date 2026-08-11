@@ -4,16 +4,17 @@
 // ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + ChargingTable + 抽屉)。
 // schedule no 从路由 meta.kind 取(schedule7→7 汽车 / schedule8→8 电动车);两路由共用本 View。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { chargingApi } from '@/api/charging'
 import { exportChargingYear } from '@/utils/chargingExcel'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
+import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type {
   ChargingCatDTO, ChargingOverviewDTO, ChargingYearDTO, ChargingRecordDTO, ChargingRecordReq,
   ChargingImportRow,
 } from '@/types/charging'
-import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -42,15 +43,35 @@ const vehicleType = computed<'car' | 'ebike'>(() => (no.value === 8 ? 'ebike' : 
 // 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表7/8 流程零行为变化,整体包进 v-else。
 const mode = ref<'summary' | 'meter' | null>(null)
 
-// ── 状态机 ───────────────────────────────────────────────
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const cat = ref('all')
-const edit = ref(false)
-const drawer = ref(false)
-
 const cats = ref<ChargingCatDTO[]>([])
 const overview = ref<ChargingOverviewDTO | null>(null)  // §6 加载信号
 const yearData = ref<ChargingYearDTO | null>(null)
+
+async function loadYear(y: number) {
+  yearData.value = await chargingApi.records(no.value, y)
+}
+async function reloadOverview() {
+  overview.value = await chargingApi.overview(no.value)
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadYear,
+  reloadOverview,
+  rows: () => yearData.value?.rows ?? [],
+  clearData: () => { yearData.value = null },
+  onPickYear: () => { cat.value = 'all' },
+  selectAllFilter: (r: ChargingRecordDTO) => cat.value === 'all' || r.cat === cat.value,
+  batchDelete: ids => chargingApi.batchDelete(no.value, ids),
+  clear: {
+    call: y => chargingApi.clearImported(no.value, y),
+    confirm: clearConfirm('本年', '手动行不受影响。'),
+  },
+})
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年利润·N条」)
 const yearCards = computed<YearCard[]>(() =>
@@ -72,129 +93,38 @@ onMounted(async () => {
   overview.value = await chargingApi.overview(no.value)
 })
 
-async function loadYear(y: number) {
-  yearData.value = await chargingApi.records(no.value, y)
-}
-async function reloadOverview() {
-  overview.value = await chargingApi.overview(no.value)
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  cat.value = 'all'
-  yearData.value = null
-  selectedIds.value = new Set()
-  await loadYear(y)
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  yearData.value = null
-  selectedIds.value = new Set()
-}
-
-// 新增 / 删除 / 改备注后重载该年 + overview
-async function refresh() {
-  if (year.value != null) await loadYear(year.value)
-  await reloadOverview()
-}
-
 // ── 导入 Excel(自定义解析:单表逐行,运营商下填,fee 按附表口径算好) ──
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 // 确认导入 → runImport(共享 registry:customParse 已把解析期跳过暂存到 importCtx._parseErrors,run 合并 + 记录 import_log)。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
-  try {
+  await guard('导入失败', async () => {
     importResult.value = await runImport('charging_' + no.value, recs, importCtx, fileName)
     await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
+  })
 }
 
-// ── 清空本期导入(本附表本年) ──
-const importedCount = computed(() =>
-  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
-  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
-  try {
-    await chargingApi.clearImported(no.value, year.value)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
-}
+const onCreate = (req: ChargingRecordReq) => guard('新增记账失败', async () => {
+  await chargingApi.create(no.value, req)
+  drawer.value = false
+  // 提交后归入对应年份(可能与当前选中年不同)
+  year.value = parseInt(req.acctMonth.split('-')[0], 10)
+  await refresh()
+})
 
-// ── 批量删除(编辑态复选框) ──
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: ChargingRecordDTO) {
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
-  if (!yearData.value) return
-  const visible = yearData.value.rows.filter(r => cat.value === 'all' || r.cat === cat.value)
-  selectedIds.value = checked ? new Set(visible.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await chargingApi.batchDelete(no.value, ids)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
+const onDelete = (row: ChargingRecordDTO) => guard('删除失败', async () => {   // seed 行 → 409
+  await chargingApi.remove(no.value, row.id)
+  await refresh()
+})
 
-async function onCreate(req: ChargingRecordReq) {
-  try {
-    await chargingApi.create(no.value, req)
-    drawer.value = false
-    // 提交后归入对应年份(可能与当前选中年不同)
-    year.value = parseInt(req.acctMonth.split('-')[0], 10)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增记账失败')
-  }
-}
+const onNote = (row: ChargingRecordDTO, text: string) => guard('保存备注失败', async () => {
+  await chargingApi.updateNote(no.value, row.id, text || null)
+  await refresh()
+})
 
-async function onDelete(row: ChargingRecordDTO) {
-  try {
-    await chargingApi.remove(no.value, row.id)
-    await refresh()
-  } catch (e) {
-    // seed 行 → 409
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-async function onNote(row: ChargingRecordDTO, text: string) {
-  try {
-    await chargingApi.updateNote(no.value, row.id, text || null)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存备注失败')
-  }
-}
-
-async function onExport() {
+const onExport = () => guard('导出失败', async () => {
   if (!yearData.value || year.value == null) return
-  try {
-    await exportChargingYear(yearData.value, year.value, title.value)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportChargingYear(yearData.value, year.value, title.value)
+})
 
 const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>

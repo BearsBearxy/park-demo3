@@ -77,7 +77,8 @@ async function onTenantDeleted() {
 // ─── computed ─────────────────────────────────────────────
 const phaseCounts = computed(() => {
   const c: Record<string | number, number> = { all: tenants.value.length, 1: 0, 2: 0, 3: 0, 4: 0 }
-  for (const t of tenants.value) c[t.phase] = (c[t.phase] ?? 0) + 1
+  // phase 可空(档案未定期):不计入任何期别筹码,只进 all —— 与筹码只有 1~4 档的现状一致
+  for (const t of tenants.value) if (t.phase != null) c[t.phase] = (c[t.phase] ?? 0) + 1
   return c
 })
 
@@ -126,11 +127,11 @@ const TABLE_COLUMNS = computed(() => [
   },
   {
     key: 'contactName', header: '联系人', width: '84px',
-    render: (r: TenantDTO) => h('span', { style: { color: 'var(--text-secondary)' } }, r.contactName),
+    render: (r: TenantDTO) => h('span', { style: { color: 'var(--text-secondary)' } }, r.contactName ?? '—'),
   },
   {
     key: 'contactPhone', header: '联系电话', width: '134px', mono: true,
-    render: (r: TenantDTO) => h('span', { style: { color: 'var(--text-muted)', fontSize: '12px' } }, r.contactPhone),
+    render: (r: TenantDTO) => h('span', { style: { color: 'var(--text-muted)', fontSize: '12px' } }, r.contactPhone ?? '—'),
   },
   {
     key: 'businessType', header: '经营类型', width: '108px',

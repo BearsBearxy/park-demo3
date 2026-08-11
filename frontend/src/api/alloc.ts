@@ -6,10 +6,11 @@ import http from './index'
 export type AllocZone = 'p1' | 'p2' | 'dorm'
 // none=不分摊全额挂亏;ref=纯标准行(只出std不出应分摊,不入合计)— POOL-ENGINE-SPEC §2
 // carrier(V73)=冲减载体:表已在别池以 sign=-1 冲减,本行只陈列用量不出应分摊、不入金额合计(账册 W89 为空)
-// ⚠V81 起后端还会返回 'manual'(§H4.2e 原册 r12/r47-49 四个无电表行,qty/cost 恒 null)——
-// 故意不进本联合:进了会破 allocLogic.ALLOC_METHOD_LABEL 的 Record 穷举,也会把它塞进池抽屉的
-// 方法下拉(manual 行不该由屏上新建)。消费方按字符串比(poolSemantics/poolNote 收 string)。
-export type AllocMethod = 'direct' | 'area' | 'floor' | 'loss' | 'none' | 'ref' | 'carrier'
+// V81 起后端还会返回 'manual'(§H4.2e 原册 r12/r47-49 四个无电表行,qty/cost 恒 null)。
+// 拆两层:AllocMethod=后端真实值域(读侧一律用它);AllocMethodEditable=屏上可选值域,
+// 排掉 manual(人工指定的池不该由抽屉单选组新建/改写)。
+export type AllocMethodEditable = 'direct' | 'area' | 'floor' | 'loss' | 'none' | 'ref' | 'carrier'
+export type AllocMethod = AllocMethodEditable | 'manual'
 export type AllocFeeKey =
   | 'share_elec_fire' | 'share_elec_elevator' | 'share_elec_light'
   | 'share_elec_floor' | 'share_elec_loss' | 'share_green_water' | 'share_water' | 'park_loss_pool'

@@ -258,6 +258,64 @@
 
 本节只保证「**不闪假空态 / 不闪主壳**」，不解决「切页非无缝」——当前仍是 CSR + `onMounted` 取数的瀑布（先渲转圈 → 取数 → 渲内容；localhost 快到近乎无感，网络慢时可见转圈）。无缝化手段（路由级预取 loader、SWR 缓存、hover 预取、骨架屏、keep-alive、后端 gzip/ETag 等）属性能优化范畴，另行评估，不在保真规范内。
 
+> 2026-08-11 更新：其中「路由切换零反馈」已由 §6.5 收编为硬约束（不再算"另行评估"）；预取/SWR 仍不在本规范内。
+
+### 6.4 加载完成不得撑开容器（Layout Stability）
+
+> 来源：2026-08-11 全面审计，用户原话「点一个卡片，还没加载出来的时候是缩放状态，过一下子加载完了把卡片或者页面撑开了的变形」。
+> §6.2 保证了"不闪假空态"，但没保证"容器尺寸稳定"——占位和正文高度不等时，数据到达就是一次可见的撑开。
+
+**铁律：容器的尺寸必须在打开/挂载那一刻就是终态，不得由后到的内容决定。**
+
+| 场景 | 规则 | 反例（已修） |
+|---|---|---|
+| **抽屉 / 弹窗** | 凡「先打开、再 `await` 取详情」的覆盖层，一律传 `:fixed-height="true"`（`FPDrawer` 已内置 `.fp-dwr--fixed{height:min(85vh,760px)}`）。内容后到只在 `.fp-dwr-body` 内部滚动，外框零位移。**只有"内容一次性同步给全、不再异步补"的小弹窗**才允许内容定高。 | `BuildingsView` 打开楼栋抽屉：先渲 6 个 FPStat（约 260px）+ 入场 `scale(.985)` 动画，`buildingApi.detail` 回来后 18 层单元图（800px+）插入，抽屉从 260px 弹到 760px |
+| **抽屉内的高块** | 抽屉里最高的那块内容若用 `v-if="detail"` 挡住，必须给等量级 `v-else` 骨架占位（`min-height` 取真实内容量级），不得让它高度归零 | `BuildingDrawer` 楼层单元图块 |
+| **KPI 条 / 统计条** | KPI 容器**不得**被 loaded 门整条挡掉。门只挡瓦片内的数值（显 `—`），容器本身连同 `min-height` 常驻——否则它插入时会把下方全部内容整体下推 | `AnaShell` 的 `v-if="loaded && $slots.kpis"`，瓦片 68px + padding 12px = **下推 80px**，19 个分析屏里 16 屏中招 |
+| **图表容器** | `<div>` 必须有显式高度（`AnaEChart` 的 `:style="{height: height+'px'}"` 是正确范例），不得靠内容撑——高度为 0 时 `echarts.init` 拿不到尺寸，数据到达再撑开是双重抖动 | ✅ 现状已正确，勿改 |
+| **表格列宽** | 见 LIST-PAGE-SPEC §4「列宽铁律」——窗口化表格必须 `table-layout:fixed` + `<colgroup>` | ✅ `MeterLedgerGrid` 已正确 |
+| **Web 字体** | 禁止远程 webfont（见 §6.5）。字体换入会改变 mono 金额列与 KPI 数字的字宽，触发整页二次重排 | `tokens.css` 曾 `@import` Google Fonts |
+
+`.page-loading` 本身是合规的（`flex:1 1 auto; min-height:240px`，配合 `AppShell` 的 `scrollbar-gutter: stable both-edges` 无横向抖动），**前提是它的父容器已由布局链定高**（参照 `.anx-body{flex:1;min-height:0}`）。放进一个高度 auto 的块级父容器就会退化成 240px 再撑开——新屏套加载门时必须确认父链定高。
+
+### 6.5 点击必须立刻有反馈（Navigation Feedback）
+
+> 来源：同上审计，用户原话「点击一个页面、按钮或 Tab 的时候会出现点了有几秒卡顿」。
+> 根因不是慢，是**没反馈**：45 屏全部 `() => import()`，vue-router 要 `await` 完 chunk 才 confirm 导航，而页签高亮读的是 `route.meta`——confirm 前面包屑不动、药丸不动、内容区还是上一页、连转圈都没有。
+
+| 规则 | 实现 |
+|---|---|
+| 路由切换必须有全局反馈 | `router.beforeEach` 置 `ui.navigating = true`、`afterEach`/`onError` 置 false；`AppShell` 主卡顶部渲染 2px 进度条。**这是导航期间唯一的反馈，不可省** |
+| 空闲期预取 | `requestIdleCallback` 里预拉全部路由 chunk，让第二次点击起零等待 |
+| 禁止远程 webfont | CSS `@import` 远程字体是渲染阻塞样式表里的**串行子请求**（下 index.css → 解析 → 发 googleapis → 发 gstatic，三跳）。境内访问境外字体 CDN 常是连接挂起而非立即 RST，首屏白屏等 TCP 超时。字体一律自托管或用系统栈 |
+| 重型第三方库按需引入 | ECharts 一类必须 `echarts/core` + 显式 `use([...])`，禁止 `import('echarts')` 引包根（全量 1.13MB，实际只用 7 种 series）。**新增图表类型时同步在 `AnaEChart.vue` 的 `use([...])` 里注册**，忘了会运行时报「Series bar is used but not imported」 |
+| 主线程长任务必须让出 | 循环里做同步重活（`XLSX.write` 批量导出、大数组序列化）时，每轮之间 `await new Promise(r => setTimeout(r))` 让出**宏任务**。只 `await` 一个已 resolve 的 Promise 是微任务，**不让出渲染帧**，界面会僵死到循环结束（`billExcel` 批量导出 136 户实案） |
+
+---
+
+## 八、层级（z-index）令牌
+
+> 来源：2026-08-11 审计——全站 20 个不同 z-index 取值、8 个遮罩档位，`tokens.css` 里零 `--z-*` 变量，已经出现 `BuildingNewDialog` 用内联三元 `:style="isEdit ? 'z-index:340' : ''"` 打补丁。
+
+**七级阶梯（`tokens.css`）。取值刻意沿用现状数值，只做令牌化不做重编号——零视觉回归。**
+
+| 令牌 | 值 | 用途 | 现有落点 |
+|---|---|---|---|
+| `--z-sticky` | 20 | 表头 / 工具条 / sticky 列 | `AnaShell .anx-tools` |
+| `--z-popover` | 60 | 下拉 / 浮层 / 跳页 popover（**贴附在触发元素上的**） | `FPPager`、`FPTenantPicker`、`FPUnitPicker`、`TabStrip` |
+| `--z-palette` | 200 | 命令面板（Ctrl-K） | `CommandPalette` |
+| `--z-modal` | 300 | 页面级弹窗 / 抽屉 / 遮罩 | `FPDrawer`(卡片用 `calc(var(--z-modal) + 1)`)、三大报表 `.fin-mask`、`ReconWorkbench`、附表屏 masks、ledger dialogs |
+| `--z-modal-2` | 320 | **弹窗之上再开**的弹窗 / 抽屉 | `BuildingDrawer`、`ContractDrawer`、`ContractNewDialog`、`TenantDrawer`、`FpImportModal`、`LedgerWideTable` 批量 |
+| `--z-confirm` | 350 | 保存 / 删除二次确认、导入结果（必须盖住一切弹窗） | `SaveConfirmDialog`、`ImportResultToast` |
+| `--z-toast` | 400 | 全局提示（最高，不被任何层遮挡） | `AppShell .fp-net-toast` |
+
+### 规则
+
+- **新增覆盖层一律用令牌**，禁止写字面量 z-index；禁止用内联 `:style` 覆盖层级（层级是结构问题，不是实例问题）。
+- **模态遮罩不得用 `--z-popover`**。popover 档是给"贴附浮层"的，页面级弹窗放这一档会被任何抽屉盖住。
+  - 已修两处错位：`CockpitView .cv2-mask`、`FinCashflowView .fin-mask` 原为 `z-index:60`（模态却在 popover 档）。
+- 层内平级冲突靠 DOM 顺序决定，不再加中间档。需要"盖住同级"就升一档。
+
 ---
 
 ## 七、弹窗 / 覆盖层（Modal / Overlay）— 居中卡，**取代原型右侧抽屉**

@@ -81,6 +81,14 @@ function widthStyle(c: LeafColumn): Record<string, string> {
 function cellStyle(c: LeafColumn): Record<string, string> {
   return { ...widthStyle(c), ...fixStyle(c) }
 }
+// spec LIST-PAGE §8:列宽/sticky offset 只随列模型与 selectable(→leftOff)变,与行无关。
+// 逐格调 cellStyle() 每次都返回新对象,27 列×130 行 = patcher 认为样式全变→全表重刷;
+// 改按列算一次、引用稳定后 diff 直接跳过。编辑态切换会让整张表重算一次,那是必须的。
+const cellStyles = computed<Record<string, Record<string, string>>>(() =>
+  Object.fromEntries(allCols.value.map(c => [c.key, cellStyle(c)])))
+const fixedKeys = computed(() => new Set(allCols.value.filter(isFixed).map(c => c.key)))
+// 选择列格样式(编辑态每行一个)同理提成常量,避免逐行新建对象
+const SEL_TD_STYLE = { position: 'sticky', left: '0px' } as const
 
 // number format (jsx lgFmt): 0/empty → "", else 2dp grouped.
 function lgFmt(v: number | null | undefined): string {
@@ -89,10 +97,16 @@ function lgFmt(v: number | null | undefined): string {
 }
 
 const view = computed(() => props.rows)
-function sum(k: ColumnKey): number {
-  return view.value.reduce((s, r) => s + (Number((r as any)[k]) || 0), 0)
-}
-const sumEnd = computed(() => sum('balanceEnd'))
+// tfoot 合计:原来每列一次 reduce = 列数×行数 次遍历(27×130 ≈ 3.5k),编辑态每敲一键重来一遍。
+// 改成扫一遍全表产出全部列;每列的累加顺序仍是行序,浮点结果与逐列 reduce 全等。
+const sums = computed<Record<string, number>>(() => {
+  const cs = allCols.value
+  const m: Record<string, number> = {}
+  cs.forEach(c => { m[c.key] = 0 })
+  view.value.forEach(r => cs.forEach(c => { m[c.key] += Number((r as any)[c.key]) || 0 }))
+  return m
+})
+const sumEnd = computed(() => sums.value.balanceEnd)
 
 function onInput(tenantId: number, key: ColumnKey, e: Event) {
   emit('cell-edit', { tenantId, key, value: (e.target as HTMLInputElement).value })
@@ -108,24 +122,24 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
             <input type="checkbox" class="lg-cb" :checked="allChecked" title="全选/清空" @change="emit('toggle-select-all')" />
           </th>
           <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
-              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyle(c)">{{ c.label }}</th>
+              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyles[c.key]">{{ c.label }}</th>
           <th v-for="g in columns.groups" :key="g.name" :colspan="g.cols.length"
               class="lg-grp-th">{{ g.name }}</th>
           <th v-for="c in columns.fixedRight" :key="c.key" rowspan="2"
-              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyle(c)">{{ c.label }}</th>
+              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyles[c.key]">{{ c.label }}</th>
         </tr>
         <tr>
-          <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="widthStyle(c)">{{ c.label }}</th>
+          <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="cellStyles[c.key]">{{ c.label }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="row in view" :key="row.tenantId">
-          <td v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }">
+          <td v-if="selectable" class="lg-fix lg-selc" :style="SEL_TD_STYLE">
             <input type="checkbox" class="lg-cb" :checked="selected!.has(row.tenantId)"
                    @change="emit('toggle-select', row.tenantId)" />
           </td>
           <td v-for="c in allCols" :key="c.key"
-              :class="isFixed(c) ? 'lg-fix' : undefined" :style="cellStyle(c)">
+              :class="fixedKeys.has(c.key) ? 'lg-fix' : undefined" :style="cellStyles[c.key]">
             <!-- 租户名 (text) -->
             <span v-if="c.kind === 'text'" class="lg-tname" :title="row.tenantName" @click="emit('tenant-click', row.tenantId)">
               {{ row.tenantName }}<component :is="ChevronRight" :size="13" class="ch" />
@@ -157,19 +171,19 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
       <tfoot>
         <tr>
           <th v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }"></th>
-          <th v-for="(c, i) in columns.fixedLeft" :key="c.key" class="lg-fix" :style="cellStyle(c)">
+          <th v-for="(c, i) in columns.fixedLeft" :key="c.key" class="lg-fix" :style="cellStyles[c.key]">
             <span v-if="i === 0" class="lg-foot-lbl">合　计</span>
-            <span v-else class="lg-foot-v">{{ lgFmt(sum(c.key)) }}</span>
+            <span v-else class="lg-foot-v">{{ lgFmt(sums[c.key]) }}</span>
           </th>
-          <th v-for="c in leaves" :key="c.key" :style="widthStyle(c)">
-            <span class="lg-foot-v">{{ lgFmt(sum(c.key)) }}</span>
+          <th v-for="c in leaves" :key="c.key" :style="cellStyles[c.key]">
+            <span class="lg-foot-v">{{ lgFmt(sums[c.key]) }}</span>
           </th>
-          <th v-for="c in columns.fixedRight" :key="c.key" class="lg-fix" :style="cellStyle(c)">
+          <th v-for="c in columns.fixedRight" :key="c.key" class="lg-fix" :style="cellStyles[c.key]">
             <span v-if="c.kind === 'note'"></span>
             <span v-else class="lg-foot-v"
                   :style="c.key === 'totalReceivable' ? { color: 'var(--brand-deep)' }
                         : c.key === 'balanceEnd' ? { color: sumEnd < 0 ? 'var(--hue-red)' : 'var(--hue-orange)' }
-                        : undefined">{{ lgFmt(sum(c.key)) }}</span>
+                        : undefined">{{ lgFmt(sums[c.key]) }}</span>
           </th>
         </tr>
       </tfoot>

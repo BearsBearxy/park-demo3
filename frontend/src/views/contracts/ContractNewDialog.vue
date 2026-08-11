@@ -6,7 +6,7 @@
 // 计费(CONTRACT-CARD-SPEC §6.2 单一编辑):选物业类型 → 钉死费用组自动出现(无自由加费用名);条件项 checkbox
 // 勾选落行(电梯/变压器填月额,infra 为 per_sqm 填面积×单价);宿舍门禁/网络只填间数;空地为附加段。
 // 月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
@@ -82,6 +82,13 @@ const remark = ref('')
 const err = ref('')
 const submitting = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
+// 计费明细是否到位。编辑提交是「整组落库最终态」:detail 请求挂了 → segments/otherItems 空着,
+// 界面与「这份合同本来就没录计费行」长得一模一样,用户改个备注保存就把全部计费行删光、月租金归零、
+// 单元解绑,无二次确认无撤销。故必须把「没取到」和「本来就没有」分成两态。新增/续签无详情可取,天然到位。
+const detailLoaded = ref(props.initial == null)
+const DETAIL_FAIL = '计费明细加载失败,请关闭重开——此时保存会清空该合同的计费行'
+// 遮罩误点会丢整份录入(标的段/费用行/免租期);dirty 由弹窗内任一输入/勾选冒上来置位,不做深比较
+const dirty = ref(false)
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
 type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }
@@ -155,7 +162,14 @@ onMounted(async () => {
     status.value = 'active'
     return
   }
-  ;[tenants.value, buildings.value] = await Promise.all([tenantApi.list(), buildingApi.list()])
+  // 这一路挂了会让下面整段回填不执行,弹窗变成一片空白。detailLoaded 保持 false 已经挡住了删数据,
+  // 但用户看不出为什么空——补一条提示,别让人对着空表单猜。
+  try {
+    ;[tenants.value, buildings.value] = await Promise.all([tenantApi.list(), buildingApi.list()])
+  } catch {
+    err.value = '租户/楼栋清单加载失败,请关闭重开' + (props.initial ? '——此时保存会清空该合同的计费行' : '')
+    return
+  }
   loadAllUnits()   // 不阻塞:chips 在候选到位后自动解析,缺档期间以「未知单元」可见
   const c = props.initial
   if (c) {
@@ -177,18 +191,23 @@ onMounted(async () => {
     status.value = c.status === 'expiring' || c.status === 'expired' ? 'active' : c.status   // 派生桶回收纳为存储态
     remark.value = c.remark ?? ''
     // 计费行:详情端点带出(按 propertyType,location,seq 排序),分组进可编辑标的段
-    const d = await contractApi.detail(c.id)
-    // 其他费用独立标的:propertyType 空的 other 行不入段;段内 other(存量导入)照旧走遗留行
-    const isIndepOther = (l: BillingLineDTO) => l.feeKey === 'other' && l.propertyType == null
-    otherItems.value = d.billingLines.filter(isIndepOther).map(l => ({
-      id: l.id, feeKey: 'other' as FeeKey, location: l.location, billMode: l.billMode ?? 'per_month',
-      area: l.area ?? null, areaShared: l.areaShared ?? null, unitPrice: l.unitPrice ?? null,
-      coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null,
-    }))
-    segments.value = groupLines(d.billingLines.filter(l => !isIndepOther(l)))
-    // 主单元居首,附加单元按回带序;主可为空(遗留数据)时首个附加即为主展示——保存前用户可见
-    const extra = (d.extraUnitIds ?? []).filter(id => id !== c.unitId)
-    unitSel.value = c.unitId != null ? [c.unitId, ...extra] : [...extra]
+    try {
+      const d = await contractApi.detail(c.id)
+      // 其他费用独立标的:propertyType 空的 other 行不入段;段内 other(存量导入)照旧走遗留行
+      const isIndepOther = (l: BillingLineDTO) => l.feeKey === 'other' && l.propertyType == null
+      otherItems.value = d.billingLines.filter(isIndepOther).map(l => ({
+        id: l.id, feeKey: 'other' as FeeKey, location: l.location, billMode: l.billMode ?? 'per_month',
+        area: l.area ?? null, areaShared: l.areaShared ?? null, unitPrice: l.unitPrice ?? null,
+        coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null,
+      }))
+      segments.value = groupLines(d.billingLines.filter(l => !isIndepOther(l)))
+      // 主单元居首,附加单元按回带序;主可为空(遗留数据)时首个附加即为主展示——保存前用户可见
+      const extra = (d.extraUnitIds ?? []).filter(id => id !== c.unitId)
+      unitSel.value = c.unitId != null ? [c.unitId, ...extra] : [...extra]
+      detailLoaded.value = true   // 只有整段赋值走完才算到位,中途抛错一律留 false
+    } catch {
+      err.value = DETAIL_FAIL   // 提交闸门 + 保存按钮置灰都盯这一态
+    }
   } else if (props.presetBuildingId != null) {
     buildingId.value = props.presetBuildingId
   }
@@ -293,8 +312,20 @@ function rowWarn(r: { start: string; end: string }): string {
 const num = (v: number | null) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0)
 const numOrNull = (v: number | null) => (isNum(v) ? v : null)
 
+// Esc 关闭:与 TenantNewDialog 同一套(window keydown;picker 浮层的 Esc 已在组件内 stopPropagation)
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+// 遮罩误点:本弹窗表单体量大(标的段/费用行/免租期),已有录入时先确认再丢
+function onMaskDown() {
+  if (dirty.value && !confirm('弹窗内已有未保存的录入,关闭将全部丢失。确认关闭?')) return
+  emit('close')
+}
+
 async function submit() {
   if (submitting.value) return
+  // 详情未到位就走编辑提交 = 拿空计费行做整组替换,等于删光该合同的计费行
+  if (mode.value === 'edit' && !detailLoaded.value) { err.value = DETAIL_FAIL; return }
   if (!contractNo.value.trim()) { err.value = '请输入合同号'; return }
   if (mode.value !== 'renew') {
     if (tenantId.value == null) { err.value = '请选择租户'; return }
@@ -400,8 +431,10 @@ async function submit() {
 
 <template>
   <Teleport to="body">
-    <div class="ct-mask" @mousedown="emit('close')">
-      <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop>
+    <div class="ct-mask" @mousedown="onMaskDown">
+      <!-- dirty 靠 capture 阶段收弹窗内所有原生输入/勾选(含 picker 内部),不逐字段挂标记 -->
+      <div class="ct-dlg" role="dialog" aria-modal="true" @mousedown.stop
+           @input.capture="dirty = true" @change.capture="dirty = true">
         <div class="ct-dlg-h">
           <h3>{{ mode === 'edit' ? '编辑合同' : mode === 'renew' ? '续签合同' : '新增合同' }}</h3>
           <p v-if="mode === 'renew'">为「{{ renewFrom?.contractNo }}」创建续签新约,租户/楼栋/单元沿用原合同。提交后原合同将标记为已续签。</p>
@@ -661,7 +694,8 @@ async function submit() {
         </div>
         <div class="ct-dlg-f">
           <Button variant="gray" size="sm" @click="emit('close')">取消</Button>
-          <Button variant="filled" size="sm" :disabled="submitting" @click="submit">
+          <!-- 计费明细没到位时保存=清空计费行,按钮直接点不动(不只靠 submit 里 return) -->
+          <Button variant="filled" size="sm" :disabled="submitting || (mode === 'edit' && !detailLoaded)" @click="submit">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
             {{ mode === 'edit' ? '保存' : mode === 'renew' ? '续签' : '创建' }}
           </Button>

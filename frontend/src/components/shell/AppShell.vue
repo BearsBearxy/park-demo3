@@ -47,6 +47,8 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
+      <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(DESIGN-FIDELITY §6.5) -->
+      <div v-if="ui.navigating" class="fp-nav-bar" aria-hidden="true" />
       <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
       <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
       <!-- content area -->
@@ -125,6 +127,28 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-2xl);
   overflow: hidden;
+  /* 给进度条做定位参照;已有 overflow:hidden,绝对定位子元素会被裁进圆角内 */
+  position: relative;
+}
+
+/* ── 导航进度条 ── */
+/* 绝对定位而非 flex 子项:作为兄弟节点插进这个 column flex 会把 TabStrip 整体下推 2px,
+   出现/消失各抖一次 —— 正是 DESIGN-FIDELITY §6.4 禁止的布局位移。 */
+.fp-nav-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  z-index: 20; /* P4 z-index 令牌化时改成 var(--z-sticky) */
+  overflow: hidden;
+  pointer-events: none;
+}
+/* 不定长进度:导航时长不可预估,用往返滑块表示「在动」而非表示进度百分比 */
+.fp-nav-bar::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 36%;
+  background: var(--hue-blue);
+  animation: fp-nav-slide 1.1s ease-in-out infinite;
+}
+@keyframes fp-nav-slide {
+  from { left: -36%; }
+  to   { left: 100%; }
 }
 
 /* content area */

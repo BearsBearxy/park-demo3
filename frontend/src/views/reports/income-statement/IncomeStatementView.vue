@@ -1,146 +1,48 @@
 <script setup lang="ts">
-// 利润表屏 — L1/L2/L3 状态机 + §6 加载门。
+// 利润表屏 — L1/L2/L3 状态机(useFinStatementScreen 三屏共用) + §6 加载门。
 // 动线 1:1 from screen-income-statement.jsx:L1 选公司(全部汇总/各公司,可增删) → L2 选年月 → L3 利润表正文。
 //   · 单公司 = 可编辑(本月 cur / 本年累计 ytd 两列);companyId==='all' = 跨公司只读求和(无编辑/导入)。
 //   · 常驻行(IS_ROWS)无数据留空;明细行下可加自定义子类(父项自动汇总);小计行(21/30/32)按公式算。
-import { ref, computed, onMounted } from 'vue'
-import { companyApi } from '@/api/ledger'
+// 本屏只留利润表特有部分:双列取值、行树、公式/KPI、保存载荷、自定义子类与批量删除、导出。
+import { ref, computed } from 'vue'
 import { reportApi } from '@/api/report'
-import type { CompanyDTO } from '@/types/ledger'
-import type { ReportPeriodDTO, ReportCell, ReportCustomRowDTO } from '@/types/report'
-import type { ImportResultDTO } from '@/types/import'
+import type { ReportCell, ReportCustomRowDTO } from '@/types/report'
 import { IS_ROWS, computeRow } from '@/reports/incomeStatement'
-import { parserProps, runImport } from '@/utils/importRegistry'
+import { parserProps } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
-import FinCompanyPicker, { type FinCompany } from '@/components/fin/FinCompanyPicker.vue'
-import FinMonthGrid, { type FinMonthMeta } from '@/components/fin/FinMonthGrid.vue'
+import FinCompanyPicker from '@/components/fin/FinCompanyPicker.vue'
+import FinMonthGrid from '@/components/fin/FinMonthGrid.vue'
 import SchedYearGate from '@/components/sched/SchedYearGate.vue'
-import { useReportYearGate } from '@/components/fin/useReportYearGate'
-import { maxSelectableYear } from '@/utils/yearGate'
-import FinDialogs, { type FinDialog } from '@/components/fin/FinDialogs.vue'
+import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
+import FinDialogs from '@/components/fin/FinDialogs.vue'
 import type { FinTableRow } from '@/components/fin/FinReportTable.vue'
-import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
+import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import IncomeStatementTable from './IncomeStatementTable.vue'
 
 const STMT = 'is'
 
-// ── 状态机 ───────────────────────────────────────────────
-const companyId = ref<number | 'all' | null>(null)  // null → L1 选公司;'all' → 全部汇总(只读)
-const year = ref(new Date().getFullYear())
-const month = ref<number | null>(null)                // null → L2 月历
-const edit = ref(false)
-const saving = ref(false)
-const maxYear = maxSelectableYear()   // 与年份门区间上界同源(今年+1)
+// 批量删除选集(屏内私有;进出编辑/切月由 resetLocal 清空)
+const selected = ref(new Set<string | number>())
 
-// ── 数据 ─────────────────────────────────────────────────
-const companies = ref<CompanyDTO[]>([])
-const companiesLoaded = ref(false)                    // L1 首次加载完成前转圈,不闪空网格
-const yearMonths = ref<FinMonthMeta[] | null>(null)   // L2 月历(有数据/预览)
-const period = ref<ReportPeriodDTO | null>(null)      // L3 服务端本期快照(读态源)
-const draft = ref<Record<string, number>>({})         // L3 编辑草稿:key=`${rowKey}|${field}`
-const dirty = ref(0)                                   // 已改处计数(KPI/保存确认)
-const dlg = ref<FinDialog | null>(null)
-
-const isAll = computed(() => companyId.value === 'all')
-const company = computed(() => companies.value.find(c => c.id === companyId.value) ?? null)
-const companyName = computed(() => (isAll.value ? null : company.value?.name ?? null))
-const finCompanies = computed<FinCompany[]>(() =>
-  companies.value.map(c => ({ id: c.id, name: c.name, short: c.short })),
-)
-
-// ── L1 载入公司 ──────────────────────────────────────────
-onMounted(loadCompanies)
-async function loadCompanies() {
-  companies.value = await companyApi.list()
-  companiesLoaded.value = true
-}
-
-// ── L2 载入年历 ──────────────────────────────────────────
-// 单公司:reportApi.year;全部汇总:各公司 year 合并(hasData 取或,预览取和)。竞态守卫。
-let yearReq = 0
-async function loadYear() {
-  if (companyId.value == null) return
-  const reqId = ++yearReq
-  let metas: FinMonthMeta[]
-  if (isAll.value) {
-    const all = await Promise.all(companies.value.map(c => reportApi.year(STMT, c.id, year.value)))
-    metas = Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1
-      let hasData = false, preview = 0
-      for (const y of all) {
-        const mm = y.months.find(x => x.month === m)
-        if (mm?.hasData) { hasData = true; preview += mm.netPreview }
-      }
-      return { month: m, hasData, preview: hasData ? finMoney(preview) : undefined }
-    })
-  } else {
-    const y = await reportApi.year(STMT, companyId.value as number, year.value)
-    metas = Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1
-      const mm = y.months.find(x => x.month === m)
-      return { month: m, hasData: !!mm?.hasData, preview: mm?.hasData ? finMoney(mm.netPreview) : undefined }
-    })
-  }
-  if (reqId === yearReq) yearMonths.value = metas
-}
-
-// ── L3 载入本期 ──────────────────────────────────────────
-let periodReq = 0
-async function loadPeriod() {
-  if (companyId.value == null || month.value == null) return
-  const reqId = ++periodReq
-  const data = isAll.value
-    ? await reportApi.allPeriod(STMT, year.value, month.value)
-    : await reportApi.period(STMT, companyId.value as number, year.value, month.value)
-  if (reqId === periodReq) period.value = data
-}
-
-// ── 年份门(公司→年份→月历,同附表) ────────────────────────
-const { yearGated, gateYears, yearCards, gateCurrent, loadGateYears, resetGate, pickYear, backToYearGate } =
-  useReportYearGate({
-    stmt: STMT, companyId, companies, year,
-    // period 一并清:否则 yearMonths 加载期间 v-if 链穿透到旧 period,数据表闪现
-    onEnterYear: async () => { yearMonths.value = null; period.value = null; await loadYear() },
-  })
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickCompany(id: number | string) {
-  companyId.value = id as number
-  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
-  resetGate()
-  await loadGateYears()
-}
-function pickAll() {
-  companyId.value = 'all'
-  month.value = null; edit.value = false; yearMonths.value = null; period.value = null
-  resetGate()
-  loadGateYears()
-}
-function goGate() {
-  companyId.value = null; month.value = null; edit.value = false
-  resetGate()
-  loadCompanies()
-}
-async function setYear(y: number) {
-  year.value = y
-  yearMonths.value = null; period.value = null
-  await loadYear()
-}
-async function pickMonth(m: number) {
-  month.value = m; edit.value = false; draft.value = {}; dirty.value = 0
-  selected.value = new Set()
-  period.value = null
-  await loadPeriod()
-}
-function backToMonths() {
-  if (edit.value) cancelEdit()
-  month.value = null
-}
+const {
+  companyId, year, month, edit, saving, maxYear,
+  companiesLoaded, yearMonths, period, draft, dirty, dlg,
+  isAll, company, companyName, finCompanies,
+  yearGated, gateYears, yearCards, gateCurrent,
+  pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
+  loadPeriod,
+  enterEdit, cancelEdit, saveConfirm, finishEdit, save, onDiscard,
+  onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
+  importing, importResult, importSummary, onImport,
+} = useFinStatementScreen({
+  stmt: STMT,
+  resetLocal: () => { selected.value = new Set() },
+})
 
 // ── 计算(客户端):叶子 = 录入/持久值;自定义父项 = 子类求和;小计 = IS_FORMULA ──
 const customRows = computed<ReportCustomRowDTO[]>(() => period.value?.customRows ?? [])
@@ -206,44 +108,20 @@ const flatRows = computed<FinTableRow[]>(() => {
   return out
 })
 
-// ── 编辑流 ───────────────────────────────────────────────
-function enterEdit() {
-  draft.value = {}; dirty.value = 0; selected.value = new Set(); edit.value = true
-}
-function cancelEdit() {
-  edit.value = false; draft.value = {}; dirty.value = 0; selected.value = new Set()
-}
+// ── 编辑流(进出编辑/保存外壳在 useFinStatementScreen;此处只给本表的录入与保存载荷) ──
 function onInput(rowKey: string | number, field: string, value: string) {
   const dk = `${String(rowKey)}|${field}`
   draft.value = { ...draft.value, [dk]: value === '' ? 0 : Number(value) }
-  dirty.value = Object.keys(draft.value).length
 }
-// 退出编辑:有改动先弹保存确认,无改动直接退。
-const saveConfirm = ref(false)
-function finishEdit() {
-  if (dirty.value > 0) { saveConfirm.value = true; return }
-  edit.value = false
-}
-async function save() {
-  if (companyId.value == null || month.value == null || isAll.value) return
-  saveConfirm.value = false
-  saving.value = true
-  try {
-    // 保存本期该公司全部叶子(常驻 normal + 自定义)cur/ytd:合并服务端已有值与 draft 覆盖。
-    const cells: ReportCell[] = []
-    const merged = mergedLeafValues()
-    for (const [dk, amount] of merged) {
-      const [rowKey, field] = dk.split('|')
-      cells.push({ rowKey, field, amount })
-    }
-    period.value = await reportApi.save(STMT, companyId.value as number, year.value, month.value, { cells })
-    edit.value = false; draft.value = {}; dirty.value = 0; selected.value = new Set()
-    await loadYear()  // 刷新月历(hasData/预览)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存失败')
-  } finally {
-    saving.value = false
+// 保存本期该公司全部叶子(常驻 normal + 自定义)cur/ytd:合并服务端已有值与 draft 覆盖。
+function saveBody() {
+  const cells: ReportCell[] = []
+  const merged = mergedLeafValues()
+  for (const [dk, amount] of merged) {
+    const [rowKey, field] = dk.split('|')
+    cells.push({ rowKey, field, amount })
   }
+  return { cells }
 }
 // 保存体:所有可录入叶子行(常驻 normal + 自定义)× cur/ytd,draft 覆盖服务端值。
 function mergedLeafValues(): Map<string, number> {
@@ -262,10 +140,6 @@ function mergedLeafValues(): Map<string, number> {
     }
   }
   return m
-}
-function onDiscard() {
-  saveConfirm.value = false
-  cancelEdit()
 }
 
 // ── 自定义子类增删 ────────────────────────────────────────
@@ -307,7 +181,6 @@ async function removeCustom(row: FinTableRow) {
 }
 
 // ── 批量删除(P2-G3):编辑态多选 → 自定义行立即级联删、固定行清空本期值进 draft ──
-const selected = ref(new Set<string | number>())
 const bulkConfirm = ref(false)
 function onToggleSelect(row: FinTableRow) {
   if (selected.value.has(row.key)) selected.value.delete(row.key)
@@ -345,45 +218,10 @@ async function bulkDelete() {
     const d = { ...draft.value }
     for (const k of fixed) for (const f of ['cur', 'ytd']) d[`${k}|${f}`] = 0
     draft.value = d
-    dirty.value = Object.keys(d).length
     selected.value = new Set()
     if (custom.length) await loadPeriod()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '删除所选失败')
-  }
-}
-
-// ── 公司增删改 ────────────────────────────────────────────
-function onNewCompany() { dlg.value = { type: 'company', mode: 'new' } }
-function onEditCompany(c: FinCompany) {
-  dlg.value = { type: 'company', mode: 'edit', company: c }
-}
-function onDeleteCompany(c: FinCompany) { dlg.value = { type: 'delco', company: c } }
-async function submitCompany(name: string) {
-  const d = dlg.value
-  if (d?.type !== 'company') return
-  try {
-    if (d.mode === 'edit' && d.company) {
-      await companyApi.rename(Number(d.company.id), name)
-    } else {
-      await companyApi.create(name)
-    }
-    dlg.value = null
-    companies.value = await companyApi.list()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存公司失败')
-  }
-}
-async function confirmDelete() {
-  const d = dlg.value
-  if (d?.type !== 'delco') return
-  try {
-    await companyApi.remove(Number(d.company.id))
-    dlg.value = null
-    if (companyId.value === d.company.id) goGate()
-    else companies.value = await companyApi.list()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除公司失败')
   }
 }
 
@@ -396,26 +234,6 @@ const kpiNet = computed(() => nodeValue(32, 'cur'))
 const itemCount = computed(() =>
   IS_ROWS.filter(r => r.type === 'normal').length + customRows.value.length,
 )
-
-// ── 导入 Excel(合并多公司利润表 → 逐公司段,未匹配公司自动新建)───────
-// 仅单公司 + 已选月可导入(isAll / 未选月由模板按钮禁用兜底)。目标期 = 当前 year/month。
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
-const importSummary = ref('')
-async function onImport(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
-  importing.value = false
-  if (month.value == null) return
-  try {
-    importResult.value = await runImport('report_is', picks, { year: year.value, month: month.value }, fileName)
-    importSummary.value = picks.map(p => `${p.label ?? ''}:${p.records.length} 行`).join('\n')
-    if (edit.value) cancelEdit()                 // 导入=整期替换:先退出编辑(未保存草稿作废)再重拉
-    companies.value = await companyApi.list()   // 可能自动新建了公司
-    await loadPeriod()                           // 刷新本期(本公司若在导入名单则见新值)
-    await loadYear()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
-}
 
 // ── 导出 xlsx(懒加载)────────────────────────────────────
 async function onExport() {
@@ -565,7 +383,7 @@ async function onExport() {
     <SaveConfirmDialog
       v-if="saveConfirm"
       :count="dirty"
-      @save="save"
+      @save="save(saveBody)"
       @discard="onDiscard"
       @close="saveConfirm = false"
     />

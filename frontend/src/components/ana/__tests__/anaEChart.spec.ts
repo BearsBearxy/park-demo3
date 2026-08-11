@@ -1,5 +1,6 @@
-// AnaEChart 薄封装单测(jsdom 无 canvas → vi.mock('echarts');屏组组件测试沿用此规约):
+// AnaEChart 薄封装单测(jsdom 无 canvas → 整体 mock ./echartsBundle;屏组组件测试沿用此规约):
 // init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose。
+// ⚠ 桩掉的是整个装配模块,所以「注册清单是否漏项」本测试**零覆盖** —— 只能在浏览器里看控制台。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -8,7 +9,7 @@ const h = vi.hoisted(() => {
   const chart = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), on: vi.fn() }
   return { chart, init: vi.fn(() => chart), registerTheme: vi.fn() }
 })
-vi.mock('echarts', () => ({ init: h.init, registerTheme: h.registerTheme }))
+vi.mock('../echartsBundle', () => ({ init: h.init, registerTheme: h.registerTheme }))
 
 // jsdom 无 ResizeObserver:桩记录回调供手动触发
 let lastRO: ROStub | null = null

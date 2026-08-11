@@ -150,25 +150,33 @@ public class DataHomeService {
     }
 
     // ── 本期口径：5 个月度类子系统有数据的最新 (年,月) 的 max；无数据兜底当前无意义，回退 (0,1) 不会发生(种子保证有数据) ──
+    // I/O：原来把 5 张月度表整表读成实体只为取 MAX 两列(monthly_ledger 近两万行 × 21 个 DECIMAL 列)，
+    // 而 data-home 是登录后第一屏、每次刷新都跑。改为 4 条聚合查询，各回 1 个标量；口径与原逐行取 max 逐条等价。
     private YearMonth currentPeriod() {
         List<YearMonth> candidates = new ArrayList<>();
-        // 月度台账：period_year + period_month
-        for (MonthlyLedger l : ledger.selectList(null)) {
-            if (l.getPeriodYear() != null && l.getPeriodMonth() != null) {
-                candidates.add(YearMonth.of(l.getPeriodYear(), l.getPeriodMonth()));
-            }
+        // 月度台账：MAX(period_year*100+period_month)。月∈[1,12] 时该编码与 YearMonth 的(年,月)字典序严格同序；
+        // 任一列为 NULL 则整个表达式为 NULL 被 MAX 忽略——与原来"两列都非 null 才计入"完全一致。
+        for (Object o : ledger.selectObjs(new QueryWrapper<MonthlyLedger>()
+                .select("MAX(period_year * 100 + period_month)"))) {
+            // 空表时聚合返回一行 NULL(不是空结果集)，instanceof 挡掉 → 不产生候选，与原来空 List 不产生候选一致
+            if (o instanceof Number n) candidates.add(YearMonth.of(n.intValue() / 100, n.intValue() % 100));
         }
-        // s10 / salary / office(13,14)：acct_month 'YYYY-MM'
-        addAcctMonths(candidates, s10.selectList(null), S10Record::getAcctMonth);
-        addAcctMonths(candidates, salary.selectList(null), SalaryRecord::getAcctMonth);
-        addAcctMonths(candidates, office.selectBySchedule(13), OfficeRecord::getAcctMonth);
-        addAcctMonths(candidates, office.selectBySchedule(14), OfficeRecord::getAcctMonth);
+        // s10 / salary / office(13,14)：acct_month 是 'YYYY-MM' 定长零填充，字符串 MAX == 时序 MAX。
+        // 脏值口径与原逐行 parse-忽略不严格等价(排序在合法值之上的畸形串会顶掉真最大月)，但三张表
+        // acct_month 均 NOT NULL CHAR/VARCHAR(7) 且全部写入路径经应用层 \d{4}-\d{2} 校验，造不出脏行。
+        addAcctMonth(candidates, s10.selectObjs(new QueryWrapper<S10Record>().select("MAX(acct_month)")));
+        addAcctMonth(candidates, salary.selectObjs(new QueryWrapper<SalaryRecord>().select("MAX(acct_month)")));
+        // 13/14 原本分两次取整表再一起求 max，并成一条 IN 查询求并集 MAX 等价(走 idx_office_sched_acct)
+        addAcctMonth(candidates, office.selectObjs(new QueryWrapper<OfficeRecord>()
+            .select("MAX(acct_month)").in("schedule_no", 13, 14)));
         return candidates.stream().max(Comparator.naturalOrder()).orElse(YearMonth.of(2000, 1));
     }
 
-    private static <T> void addAcctMonths(List<YearMonth> out, List<T> rows, Function<T, String> getAcctMonth) {
-        for (T r : rows) {
-            YearMonth ym = parseAcctMonth(getAcctMonth.apply(r));
+    /** 聚合结果按元素判空：空表回一行 NULL，非法/畸形串经 parseAcctMonth 返回 null 后同样不产生候选。 */
+    private static void addAcctMonth(List<YearMonth> out, List<Object> maxRow) {
+        for (Object o : maxRow) {
+            if (!(o instanceof String s)) continue;
+            YearMonth ym = parseAcctMonth(s);
             if (ym != null) out.add(ym);
         }
     }

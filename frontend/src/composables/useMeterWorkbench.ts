@@ -378,10 +378,13 @@ const SEG_MAP = [
   ['valley', 'currValley', 'usageValley'],
 ] as const
 
+// draft 是可选的第三参:分组与排序压根不看草稿(只读 ownership/位置/sortNo),给了才顺带把
+// 组末汇总算上。MeterLedgerGrid 走「不给 draft + 单独调 groupUsage」两层,敲一个数字只重算
+// 汇总,不再全量重分组重排序(P2 渲染开销铁律)。
 export function groupByBuilding(
   rows: WorkbenchRow[],
   buildingNameById: Map<number, string>,
-  draft: Map<number, MeterDraft>,
+  draft?: Map<number, MeterDraft>,
 ): BuildingGroup[] {
   const groups: BuildingGroup[] = []
   const byKey = new Map<string, BuildingGroup>()
@@ -400,29 +403,35 @@ export function groupByBuilding(
       groups.push(g)
     }
     g.rows.push(x)
+  }
+  for (const g of groups) g.rows.sort(compareRowInBuilding)
+  // 并列时用首现序兜底(保持稳定,不对未收录的楼栋名做字母重排)
+  const seen = new Map(groups.map((g, i) => [g.key, i]))
+  groups.sort((a, b) => buildingRank(a.label) - buildingRank(b.label) || seen.get(a.key)! - seen.get(b.key)!)
+  if (draft) for (const g of groups) g.usage = groupUsage(g.rows, draft)
+  return groups
+}
+
+// 组末汇总用量:只汇 inSubSigma=tenant+share+park(infra 防重复/ops 非收费口径),随 draft 实时
+export function groupUsage(rows: WorkbenchRow[], draft: Map<number, MeterDraft>): BuildingGroupUsage {
+  const u: BuildingGroupUsage = { total: null, sharp: null, peak: null, flat: null, valley: null }
+  const acc = (k: keyof BuildingGroupUsage, v: number | null) => {
+    if (v != null) u[k] = (u[k] ?? 0) + v
+  }
+  for (const x of rows) {
     if (!inSubSigma(x.m)) continue
     const d = draft.get(x.m.id)
-    const u = g.usage
-    const acc = (k: keyof BuildingGroupUsage, v: number | null) => {
-      if (v != null) u[k] = (u[k] ?? 0) + v
-    }
     acc('total', rowUsage(x, d))
     for (const [k, c, sv] of SEG_MAP) {
       acc(k, d?.[c] != null ? segUsage(x.prevSegs[k], numOrNull(d[c]!), x.factor) : (x.r?.[sv] ?? null))
     }
   }
   // 累加后统一 round2 防浮点尾差(meterGroup 同法)
-  for (const g of groups) {
-    for (const k of ['total', 'sharp', 'peak', 'flat', 'valley'] as const) {
-      const v = g.usage[k]
-      if (v != null) g.usage[k] = round2(v)
-    }
-    g.rows.sort(compareRowInBuilding)
+  for (const k of ['total', 'sharp', 'peak', 'flat', 'valley'] as const) {
+    const v = u[k]
+    if (v != null) u[k] = round2(v)
   }
-  // 并列时用首现序兜底(保持稳定,不对未收录的楼栋名做字母重排)
-  const seen = new Map(groups.map((g, i) => [g.key, i]))
-  groups.sort((a, b) => buildingRank(a.label) - buildingRank(b.label) || seen.get(a.key)! - seen.get(b.key)!)
-  return groups
+  return u
 }
 
 // ── 排序口径(用户 2026-07-30 报障:D座跑到 A座 前面、总表不在段首) ──
@@ -441,14 +450,20 @@ export function buildingRank(label: string): number {
 // 段内:总表(infra)→ 其余;再按 楼层→方位→房号(V74 结构化字段,缺则回退位置原文解析)→ 导入序
 // floorRank(spot) 保留导出:poolLedgerLogic.floorSort 用它排池带内序。
 const FLOOR_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+// 四个式子提到模块级:floorRank 在排序比较器里,O(n log n) 次调用各造 3~4 个 RegExp(尤其
+// new RegExp 还要每次编译),纯属白烧。都不带 g/y 标志,没有 lastIndex 状态,复用安全。
+const RE_BASEMENT = /负\s*[一1]|地下|负一层/
+const RE_ROOF = /天面|屋面|楼顶/
+const RE_FLOOR_NUM = /(\d+)\s*[楼层]/
+const RE_FLOOR_CN = new RegExp(`([${FLOOR_CN.join('')}])\\s*[楼层]`)
 export function floorRank(spot: string | null | undefined): number {
   const s = spot ?? ''
   if (!s) return 0                                    // 无位置(总表/楼栋级)排段首
-  if (/负\s*[一1]|地下|负一层/.test(s)) return -1
-  if (/天面|屋面|楼顶/.test(s)) return 99
-  const ar = s.match(/(\d+)\s*[楼层]/)
+  if (RE_BASEMENT.test(s)) return -1
+  if (RE_ROOF.test(s)) return 99
+  const ar = s.match(RE_FLOOR_NUM)
   if (ar) return +ar[1]
-  const cn = s.match(new RegExp(`([${FLOOR_CN.join('')}])\\s*[楼层]`))
+  const cn = s.match(RE_FLOOR_CN)
   if (cn) return FLOOR_CN.indexOf(cn[1]) + 1
   return 50                                           // 有位置但认不出楼层(如"东侧"),排在具名楼层之后
 }
@@ -460,9 +475,9 @@ export function floorRankOf(m: MeterLoc): number {
   return floorRank(f || m.spot)
 }
 
+const infraRank = (x: WorkbenchRow) => (x.m.ownership === 'infra' ? 0 : 1)
 export function compareRowInBuilding(a: WorkbenchRow, b: WorkbenchRow): number {
-  const infra = (x: WorkbenchRow) => (x.m.ownership === 'infra' ? 0 : 1)
-  return infra(a) - infra(b)
+  return infraRank(a) - infraRank(b)
     || floorRankOf(a.m) - floorRankOf(b.m)
     || sideRank(a.m) - sideRank(b.m)
     || roomRank(a.m) - roomRank(b.m)

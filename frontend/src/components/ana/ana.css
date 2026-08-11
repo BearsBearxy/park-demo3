@@ -8,12 +8,6 @@
 
 /* ── ana-charts.jsx ChartStyles(cz-*) ── */
 .cz-grid { display:grid; gap:16px; }
-.cz-statbar { display:flex; flex-wrap:wrap; gap:0; background:var(--surface-card); border-radius:var(--radius-lg); padding:12px 2px; }
-.cz-stat { flex:1 1 auto; min-width:96px; padding:2px 18px; border-right:1px solid var(--divider); display:flex; flex-direction:column; gap:3px; }
-.cz-stat:last-child { border-right:none; }
-.cz-stat .l { font-size:11px; color:var(--text-muted); white-space:nowrap; }
-.cz-stat .v { font-size:17px; font-weight:600; font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); letter-spacing:-0.01em; white-space:nowrap; }
-.cz-stat .d { font-size:10.5px; font-family:var(--font-mono); white-space:nowrap; }
 .cz-tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size:11.5px; }
 .cz-tip .h { opacity:.62; font-size:10.5px; margin-bottom:5px; }
 .cz-tip .r { display:flex; align-items:center; gap:8px; margin-top:3px; white-space:nowrap; }
@@ -22,13 +16,6 @@
 .cz-legend { display:flex; flex-wrap:wrap; gap:7px 16px; justify-content:center; }
 .cz-leg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-secondary); }
 .cz-leg .sw { width:11px; height:11px; border-radius:3px; flex:0 0 auto; }
-.cz-spark { display:grid; gap:1px; }
-.cz-sp { padding:11px 13px; background:var(--surface-card); border-radius:12px; display:flex; flex-direction:column; gap:7px; min-width:0; }
-.cz-sp .top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-.cz-sp .nm { font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cz-sp .vl { font-size:12.5px; font-family:var(--font-mono); font-weight:600; font-variant-numeric:tabular-nums; flex:0 0 auto; }
-.cz-sp .sub { display:flex; align-items:center; justify-content:space-between; font-size:10.5px; font-family:var(--font-mono); }
-
 /* ── ana-kit.jsx AnaKitStyles(ak-*) ── */
 .ak-page { display:flex; flex-direction:column; gap:18px; width:100%; max-width:1640px; margin:0 auto; box-sizing:border-box; }
 .ak-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
@@ -36,13 +23,6 @@
 .ak-h-ic { width:40px; height:40px; flex:0 0 auto; border-radius:12px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); }
 .ak-title { margin:0; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); letter-spacing:-0.01em; display:flex; align-items:center; gap:10px; }
 .ak-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
-
-.ak-sec { display:flex; align-items:center; gap:9px; margin:2px 0 -2px; }
-.ak-sec .t { font-size:var(--fs-h3); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ak-sec .hint { font-size:12px; color:var(--text-muted); }
-.ak-sec .ln { flex:1; height:1px; background:var(--divider); }
-.ak-sec .chip { font-size:11px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); }
-
 .ak-row { display:flex; gap:16px; flex-wrap:wrap; align-items:stretch; }
 .ak-card { background:var(--surface-card); border-radius:var(--radius-2xl); padding:22px; box-sizing:border-box; }
 .ak-card.white { background:var(--surface-white); border:1px solid var(--border-subtle); }
@@ -52,30 +32,6 @@
 
 /* ── StatTile:管理层主指标 ── */
 .ak-tiles { display:grid; gap:14px; }
-.ak-tile { position:relative; border-radius:var(--radius-xl); padding:18px 18px 16px; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; overflow:hidden; min-width:0; }
-.ak-tile.t-slate { background:var(--accent-slate); } .ak-tile.t-sky { background:var(--accent-sky); }
-.ak-tile.t-blue { background:var(--accent-blue); } .ak-tile.t-cyan { background:var(--accent-cyan); }
-.ak-tile.t-plain { background:var(--surface-white); border:1px solid var(--border-subtle); }
-.ak-tile-top { display:flex; align-items:center; gap:8px; }
-.ak-tile-ic { width:26px; height:26px; border-radius:8px; background:rgba(255,255,255,.6); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
-.ak-tile-label { flex:0 1 auto; font-size:12.5px; font-weight:var(--fw-medium); color:var(--text-secondary); white-space:nowrap; }
-.ak-tile-status { flex:0 0 auto; margin-left:auto; display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 8px; border-radius:var(--radius-full); white-space:nowrap; }
-.ak-tile-val { font-size:27px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); letter-spacing:-0.02em; line-height:1.05; white-space:nowrap; }
-.ak-tile-deltas { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-.ak-delta { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-variant-numeric:tabular-nums; }
-.ak-delta .k { color:var(--text-muted); font-weight:var(--fw-regular); }
-.ak-delta .v { font-weight:var(--fw-semibold); font-family:var(--font-mono); display:inline-flex; align-items:center; gap:2px; }
-.ak-tile-spark { margin-top:2px; }
-
-/* ── Verdict ── */
-.ak-verdict { display:flex; gap:16px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-2xl); padding:20px 22px; box-sizing:border-box; }
-.ak-verdict-badge { flex:0 0 auto; width:52px; height:52px; border-radius:16px; display:grid; place-items:center; }
-.ak-verdict-body { flex:1; min-width:0; }
-.ak-verdict-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.ak-verdict-h .ttl { font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ak-verdict-pts { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:11px; }
-.ak-vpt { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--text-secondary); }
-.ak-vpt .dot { width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
 
 /* ── 通用进度条行 ── */
 .ak-bar-rows { display:flex; flex-direction:column; gap:14px; }
@@ -116,56 +72,11 @@
 
 /* ── 异常卡 ── */
 .ak-anoms { display:flex; flex-direction:column; gap:10px; }
-.ak-anom { display:flex; align-items:flex-start; gap:13px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--surface-white); border:1px solid var(--border-subtle); cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
-.ak-anom:hover { border-color:var(--border-strong); box-shadow:0 6px 18px rgba(28,28,28,.08); transform:translateY(-1px); }
-.ak-anom-bar { width:4px; align-self:stretch; border-radius:3px; flex:0 0 auto; }
-.ak-anom-ic { width:34px; height:34px; flex:0 0 auto; border-radius:10px; display:grid; place-items:center; }
-.ak-anom-body { flex:1; min-width:0; }
-.ak-anom-t { font-size:13.5px; font-weight:var(--fw-semibold); color:var(--text-primary); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.ak-anom-tag { font-size:10px; font-weight:var(--fw-medium); color:var(--text-muted); background:var(--surface-sunken); border-radius:var(--radius-full); padding:1px 8px; }
-.ak-anom-d { font-size:12px; color:var(--text-muted); margin-top:4px; line-height:1.5; }
-.ak-anom-v { flex:0 0 auto; align-self:center; font-size:13px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
-.ak-anom-go { flex:0 0 auto; align-self:center; color:var(--text-disabled); }
-.ak-anom:hover .ak-anom-go { color:var(--text-primary); }
-
-/* ── heatmap ── */
-.ak-hm { width:100%; border-collapse:separate; border-spacing:3px; }
-.ak-hm th { font-size:10.5px; font-weight:var(--fw-medium); color:var(--text-muted); padding:2px 4px; text-align:center; }
-.ak-hm th.row { text-align:left; }
-.ak-hm td { text-align:center; }
-.ak-hm-name { font-size:12px; color:var(--text-primary); white-space:nowrap; padding-right:8px; text-align:left; }
-.ak-hm-cell { height:30px; border-radius:6px; display:grid; place-items:center; font-size:10.5px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 
 /* ── 切换胶囊(同比/环比/构成) ── */
 .ak-seg2 { display:inline-flex; background:var(--surface-sunken); border-radius:var(--radius-full); padding:3px; gap:2px; }
 .ak-seg2 button { border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:5px 13px; border-radius:var(--radius-full); transition:background var(--dur-fast), color var(--dur-fast); white-space:nowrap; }
 .ak-seg2 button.on { background:var(--surface-white); color:var(--text-primary); font-weight:var(--fw-semibold); box-shadow:0 1px 3px rgba(28,28,28,.10); }
-
-/* ── InsightHero(管理层结论卡) ── */
-.ak-hero { display:flex; gap:26px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-2xl); padding:24px 28px; box-sizing:border-box; }
-.ak-hero-main { flex:0 0 auto; display:flex; flex-direction:column; gap:10px; min-width:176px; justify-content:center; }
-.ak-hero-label { font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:8px; }
-.ak-hero-val { font-size:40px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; letter-spacing:-0.025em; line-height:1; color:var(--text-primary); white-space:nowrap; }
-.ak-hero-deltas { display:flex; gap:16px; }
-.ak-hero-div { width:1px; background:var(--divider); flex:0 0 auto; }
-.ak-hero-say { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:15px; }
-.ak-hero-headline { margin:0; font-size:18.5px; font-weight:var(--fw-semibold); line-height:1.55; letter-spacing:-0.01em; color:var(--text-primary); text-wrap:pretty; }
-.ak-hero-headline b.up { color:var(--hue-blue); } .ak-hero-headline b.down { color:var(--hue-red); } .ak-hero-headline b.warn { color:var(--hue-orange); }
-@media (max-width:760px){ .ak-hero{flex-direction:column;gap:16px;} .ak-hero-div{display:none;} }
-
-/* ── 解读列表(管理层 · 红黄蓝信号) ── */
-.ak-read { display:flex; flex-direction:column; gap:10px; }
-.ak-read-item { display:flex; gap:11px; align-items:flex-start; font-size:13.5px; color:var(--text-secondary); line-height:1.5; }
-.ak-read-dot { width:8px; height:8px; border-radius:50%; margin-top:6px; flex:0 0 auto; }
-.ak-read-item b { color:var(--text-primary); font-weight:var(--fw-semibold); }
-
-/* ── 指标条(分析师 · 细,无卡片) ── */
-.ak-strip { display:flex; flex-wrap:wrap; background:var(--surface-card); border-radius:var(--radius-lg); padding:14px 2px; box-sizing:border-box; }
-.ak-strip-item { flex:1 1 auto; min-width:126px; padding:3px 22px; border-right:1px solid var(--divider); display:flex; flex-direction:column; gap:5px; }
-.ak-strip-item:last-child { border-right:none; }
-.ak-strip-l { font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
-.ak-strip-v { font-size:19px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; letter-spacing:-0.01em; color:var(--text-primary); white-space:nowrap; }
-.ak-strip-d { font-size:11px; font-family:var(--font-mono); white-space:nowrap; }
 
 /* analyst-only 区块淡入 */
 .ak-analyst { animation:akFade .3s var(--ease-standard); }

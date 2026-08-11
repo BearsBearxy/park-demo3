@@ -46,8 +46,8 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <!-- 编辑态从抽屉(z 300/301)上层打开,mask 需压过抽屉;新增态保持原 z 80 -->
-    <div class="lg-dlg-mask" :style="isEdit ? 'z-index:340' : ''" @click="emit('close')">
+    <!-- 编辑态从楼栋抽屉(FPDrawer 300/301)的页脚按钮打开,须压过抽屉 → 升一档 --z-modal-2 -->
+    <div class="lg-dlg-mask" :class="{ nested: isEdit }" @click="emit('close')">
       <div class="lg-dlg" @click.stop>
         <div class="lg-dlg-h">
           <h3>{{ isEdit ? '编辑楼栋' : '新建楼栋' }}</h3>
@@ -111,7 +111,12 @@ function submit() {
 
 <style scoped>
 /* 1:1 from ledger/LedgerNewCompanyDialog.vue */
-.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:80; display:grid; place-items:center; opacity:0; animation:lgfade .16s forwards; }
+.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:lgfade .16s forwards; }
+/* 嵌套态(编辑楼栋从抽屉里打开)升一档,与同场景的 ContractNewDialog .ct-mask 同档。
+   层级是结构问题不是实例问题,故用 class 切档,不用内联 :style 打补丁(见 DESIGN-FIDELITY §八)。
+   与 BuildingDrawer 的 .bd-mask(同 320)不会同屏:那三个小弹窗都由抽屉内按钮触发,
+   而任一遮罩铺开后抽屉页脚的「编辑楼栋」已点不到,两者互斥;真同屏也由 DOM 后序取胜。 */
+.lg-dlg-mask.nested { z-index:var(--z-modal-2); }
 @keyframes lgfade { to { opacity:1; } }
 .lg-dlg { width:min(480px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22);
   overflow:hidden; animation:lgrise .2s var(--ease-standard) both; }

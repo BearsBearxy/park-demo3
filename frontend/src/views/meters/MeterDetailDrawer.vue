@@ -219,6 +219,7 @@ async function delMeter(mm: MeterDTO) {
 
 // ── 【历史读数】装载(换表即重拉;竞态守卫=闭包表 id 对当前 meter) ──
 const history = ref<MeterReadingDTO[] | null>(null)
+const historyErr = ref('')
 // ⚠换表重置的 watch 在 editId/adding 声明之后注册(见下)——原先放这里 immediate 触发时
 // cancelForm 引用尚在 TDZ 的 editId,setup 期 ReferenceError(2026-08-04 控制台实测)
 
@@ -265,14 +266,24 @@ function startEdit(r: MeterReadingDTO) {
 }
 function cancelForm() { editId.value = null; adding.value = false; touOpen.value = false }
 watch(() => props.editMode, v => { if (!v) cancelForm() })
-watch(() => m.value?.id, async () => {
-  cancelForm()
-  tab.value = 'profile'
+// P1-5:原先这里无 catch —— 一次失败 history 就永远停在 null,「加载中…」不散、
+// 「新增读数」(:disabled="!history")永久禁用,只能关抽屉重开碰运气。改为记失败态 + 重试。
+async function loadHistory() {
   history.value = null
+  historyErr.value = ''
   const mm = m.value
   if (!mm) return
-  const data = await metersApi.meterReadings(mm.id)
-  if (m.value?.id === mm.id) history.value = data
+  try {
+    const data = await metersApi.meterReadings(mm.id)
+    if (m.value?.id === mm.id) history.value = data       // 竞态守卫=闭包表 id 对当前 meter
+  } catch (e) {
+    if (m.value?.id === mm.id) historyErr.value = (e as { message?: string })?.message ?? '历史读数加载失败，请重试'
+  }
+}
+watch(() => m.value?.id, () => {
+  cancelForm()
+  tab.value = 'profile'
+  loadHistory()
 }, { immediate: true })
 
 // 用量预览:(本月−上月)×倍率快照(编辑=原快照;新增=当前表倍率,保存时后端快照)
@@ -509,7 +520,12 @@ async function doBind(contractId: number | null) {
 
     <!-- ── 历史读数(原 ReadingDrawer 内容) ── -->
     <template v-else-if="tab === 'history'">
-      <div v-if="!history" class="md-empty">加载中…</div>
+      <!-- 失败态:给出原因与重试入口(此时 history 恒 null,「新增读数」照旧禁用 —— 不知道有哪些月就录会撞 409) -->
+      <div v-if="historyErr" class="md-empty fail">
+        <div>{{ historyErr }}</div>
+        <Button variant="outline" size="sm" @click="loadHistory">重试</Button>
+      </div>
+      <div v-else-if="!history" class="md-empty">加载中…</div>
       <div v-else-if="drawerRows.length === 0 && !adding" class="md-empty">
         该表暂无读数{{ editMode ? ',点下方「新增读数」补录历史月,或在表格里直接录当月。' : ',进入编辑模式后可补录。' }}
       </div>
@@ -726,6 +742,8 @@ async function doBind(contractId: number | null) {
 
 /* ── 历史读数(mt-d* 家族迁自 v4 ReadingDrawer) ── */
 .md-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
+/* 加载失败:与「加载中…」同位,红字 + 重试按钮竖排 */
+.md-empty.fail { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--hue-red); }
 .md-hwrap { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
 .md-htable { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; white-space: nowrap; }
 .md-htable th { padding: 8px 10px; text-align: right; font-family: var(--font-sans); font-weight: var(--fw-medium); font-size: 11px; color: var(--text-muted); background: var(--surface-card); border-bottom: 1px solid var(--divider); }

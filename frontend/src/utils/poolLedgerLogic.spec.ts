@@ -198,8 +198,7 @@ describe('poolFeeLabel 池名称列优先原册自然键', () => {
 
 // §H4.2e:V81 四个无电表行(原册 r12 联塑精铟 / r47-49 C座一楼西侧三户)
 describe('manual 无电表行', () => {
-  // manual 故意没进 AllocMethod 联合(理由见 api/alloc.ts),夹具里强转
-  const MANUAL = 'manual' as unknown as AllocMethod
+  const MANUAL: AllocMethod = 'manual'
   const man = pool({ method: MANUAL, note: null })
   it('语义列=无电表(不落到 method 原文)', () => expect(poolSemantics(man)).toBe('无电表'))
   it('备注列固定话术,覆盖池自带备注为空的情形', () => {
@@ -229,7 +228,7 @@ describe('poolFooter/bandFooter 合计(ref 行剔除)', () => {
   it('原册 r31 怪癖:无用量的 manual 行不进 Σ用量,金额照进 Σ应分摊', () => {
     const B2 = 'A座电梯及楼层公共电合计'
     const bands = groupPoolsByBookBlock([
-      pool({ ruleId: 12, bookBlock: B2, method: 'manual' as unknown as AllocMethod,
+      pool({ ruleId: 12, bookBlock: B2, method: 'manual',
         qtyTotal: null, costAmount: 232 }),                       // r12 联塑精铟
       pool({ ruleId: 13, bookBlock: B2, qtyTotal: 100, costAmount: 111.18 }),
       pool({ ruleId: 30, bookBlock: B2, qtyTotal: 200, costAmount: 222.42 }),

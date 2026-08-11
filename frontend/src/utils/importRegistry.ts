@@ -3,6 +3,16 @@
 // T5 已完成(45cf8bf):全部原屏均经 parserProps()/runImport() 消费本 registry,屏内不再有重复列映射。
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
+// 各域「导入行」契约:以前 run() 一律 `as never` 上抛,后端契约的键名一次都没被编译器对过(P5-5)
+import type { LedgerImportRow } from '@/types/ledger'
+import type { S10ImportRow, S10Fees } from '@/types/s10'
+import type { PvImportRow } from '@/types/pv'
+import type { ChargingImportRow } from '@/types/charging'
+import type { ElecImportRow } from '@/types/elec'
+import type { SalaryImportRow } from '@/types/salary'
+import type { OfficeImportRow } from '@/types/utilities'
+import type { PnlRowDTO } from '@/types/pnl'
+import type { BudgetImportRow } from '@/api/budget'
 import { importLogApi } from '@/api/importLog'
 import { ledgerApi } from '@/api/ledger'
 import { s10Api } from '@/api/s10'
@@ -26,7 +36,7 @@ import { budgetApi } from '@/api/budget'
 import { importBudget, BUDGET_SHEET_RE } from '@/utils/importBudget'
 import { PNL_SOT_FROM_YEAR } from '@/analysis/budget'
 import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
-import { importChargingRows } from '@/utils/importChargingRows'
+import { importChargingRows, type ChargingCatLite } from '@/utils/importChargingRows'
 import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
 import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
 import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_ZONE_LABEL, METER_KIND_LABEL } from '@/utils/meterExcel'
@@ -47,7 +57,8 @@ import { PHASE_LAYOUT, leavesOf } from '@/views/sales-income/layout'
 // ── 解析工具/常量(临时复制自各屏,T5 dedup 时归并) ─────────────
 const pad2 = (m: number) => String(m).padStart(2, '0')
 
-const SALARY_COLUMN_MAP = [
+// key 收紧到 SalaryImportRow 的字段名:改后端契约字段名时这张表直接编译失败,不再静默丢列
+const SALARY_COLUMN_MAP: (ColumnMapEntry & { key: Exclude<keyof SalaryImportRow, 'tenantName'> })[] = [
   { label: '职种/职务', key: 'role', text: true },
   { label: '基本工资', key: 'base' },
   { label: '岗位工资', key: 'post' },
@@ -225,7 +236,8 @@ export interface ImportCtx {
   companyNames?: string[]   // 已有管理公司名单(台账整册拆段的 sheet 名识别用)
   tenantNames?: string[]                      // 租户库 companyName 全量(meter §6.2 拆分;视图填,同 companyNames 机制)
   buildings?: { id: number; name: string }[]  // 楼栋清单(meter §6.3 区域→楼栋映射;视图填,BuildingDTO 结构兼容)
-  cats?: unknown[]; _parseErrors?: { rowIndex: number; label: string; reason: string }[]
+  cats?: ChargingCatLite[]   // 充电桩运营商字典(视图填 ChargingCatDTO[],结构兼容)
+  _parseErrors?: { rowIndex: number; label: string; reason: string }[]
   _bfReport?: BillingReportRow[]   // 计费字段导入:解析期到户报告,导入成功后落 CSV(裁定⑤)
   _cfReport?: ContractReportRow[]  // 合同汇总册导入:解析期到户报告(与 rows 同序),导入后并入后端匹配结果落 CSV
 }
@@ -246,6 +258,66 @@ export function deriveStatus(res: ImportResultDTO): ImportStatus {
 
 // 空聚合器
 const zero = (): ImportResultDTO => ({ imported: 0, skipped: 0, errors: [] })
+
+// ── ImportRec → 各域导入行 DTO(P5-5)───────────────────────
+// 解析器产出的 ImportRec 是 `[k: string]: unknown` 袋子,以前一律 `as never` 上抛 —— 等于把整个后端契约
+// 的键名校验关掉:改一个 DTO 字段名编译器不吭声,导入就静默丢那一列。这里逐键搬进 DTO,键名交给编译器对。
+// 值一律直接断言、不做 Number()/String() 转换:解析器已把类型定形,再转一遍会把 undefined 变成 NaN,
+// 线上 JSON 形状就变了(undefined 被 JSON.stringify 丢掉,NaN 却序列化成 null)。
+// DTO 里可选的键即使源上没有也照列:值是 undefined,序列化时自然消失,与「键根本不出现」等价。
+
+// 台账:列级定向 upsert,文件没有的列必须「键不出现」(出现即被后端当显式清零),故逐键判 undefined。
+// 顺带把 __ 前缀内部键(__ymDetected/__company/__ym)挡在外面。
+const toLedgerRow = (r: ImportRec): LedgerImportRow => {
+  const row: LedgerImportRow = { tenantName: String(r.tenantName) }
+  for (const k of FEE_KEYS) if (r[k] !== undefined) row[k] = r[k] as number
+  if (r.balancePrev !== undefined) row.balancePrev = r.balancePrev as number
+  if (r.totalCollected !== undefined) row.totalCollected = r.totalCollected as number
+  if (r.note !== undefined) row.note = r.note as string
+  return row
+}
+
+const toPvRow = (r: ImportRec): PvImportRow => ({
+  phaseId: r.phaseId as string, acctMonth: r.acctMonth as string, occurMonth: r.occurMonth as string,
+  selfKwh: r.selfKwh as number, selfAmt: r.selfAmt as number,
+  gridKwh: r.gridKwh as number, gridAmt: r.gridAmt as number, note: r.note as string | undefined,
+})
+
+const toChargingRow = (r: ImportRec): ChargingImportRow => ({
+  cat: r.cat as string, acctMonth: r.acctMonth as string,
+  kwh: r.kwh as number, fee: r.fee as number, cost: r.cost as number, note: r.note as string | null,
+})
+
+// energy / basic 两形态共用一个搬运:各自没有的键取到 undefined,序列化后消失
+const toElecRow = (r: ImportRec): ElecImportRow => ({
+  type: r.type as 'energy' | 'basic', phaseId: r.phaseId as string, acctMonth: r.acctMonth as string,
+  invDate: r.invDate as string | null, period: r.period as string | null,
+  cat: r.cat as string | null, unit: r.unit as string | null,
+  qty: r.qty as number | null, demand: r.demand as number | null,
+  price: r.price as number, rate: r.rate as number, note: r.note as string | null,
+})
+
+// 工资:列集就是 SALARY_COLUMN_MAP(其 key 已收紧成 SalaryImportRow 字段名),不另抄一份字段清单
+const toSalaryRow = (r: ImportRec): SalaryImportRow => {
+  const row: SalaryImportRow = { tenantName: String(r.tenantName) }
+  for (const c of SALARY_COLUMN_MAP) {
+    if (r[c.key] === undefined) continue
+    if (c.key === 'role') row.role = r.role as string
+    else row[c.key] = r[c.key] as number
+  }
+  return row
+}
+
+const toPnlRow = (r: ImportRec): PnlRowDTO => ({
+  rowKey: r.rowKey as string, groupLabel: r.groupLabel as string, label: r.label as string,
+  kind: r.kind as PnlRowDTO['kind'], note: r.note as string | null,
+  m: r.m as (number | null)[], sortOrder: r.sortOrder as number,
+})
+
+const toBudgetRow = (r: ImportRec): BudgetImportRow => ({
+  year: r.year as number, label: r.label as string, sub: r.sub as boolean, sortOrder: r.sortOrder as number,
+  budget: r.budget as number | undefined, actual: r.actual as number | undefined, note: r.note as string | undefined,
+})
 
 // 到户报告落盘(计费行/合同汇总册共用)
 function downloadCsv(name: string, text: string): void {
@@ -292,11 +364,9 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       }
     },
     run: async (payload, ctx) => {
-      // 发后端前剥所有 __ 前缀内部键(__ymDetected/__company/__ym)
-      const strip = (r: ImportRec) => Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith('__')))
       // Pick[] 段分支(元素带 .records):逐段公司名精确匹配、未匹配自动新建(同 report_is 惯例),
       // 年月未识别回退 ctx;段公司名空则用 ctx.companyId → 聚合 ImportResultDTO
-      if (payload.length && (payload[0] as Pick).records) {
+      if (Array.isArray(payload[0]?.records)) {
         const picks = payload as Pick[]
         const companies = await companyApi.list()
         const byName = new Map(companies.map(c => [c.name.trim(), c.id]))
@@ -315,13 +385,13 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
           }
           const ym = first.__ym as { year: number; month: number } | undefined
           const res = await ledgerApi.import(companyId!, ym?.year ?? ctx.year!, ym?.month ?? ctx.month!,
-            { rows: p.records.map(strip) as never })
+            { rows: p.records.map(toLedgerRow) })
           agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
         }
         return agg
       }
-      const rows = (payload as ImportRec[]).map(strip)
-      return ledgerApi.import(ctx.companyId!, ctx.year!, ctx.month!, { rows: rows as never })
+      return ledgerApi.import(ctx.companyId!, ctx.year!, ctx.month!,
+        { rows: (payload as ImportRec[]).map(toLedgerRow) })
     },
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · ${ctx.companyName ?? ''}`,
   },
@@ -338,8 +408,10 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const agg = zero()
       for (const p of picks) {
         const acctMonth = `${p.year}-${pad2(p.month!)}`
-        const rows = p.records.map(r => ({ profile: PHASE_LAYOUT[p.phase!], ...r }))
-        const res = await s10Api.importRows({ phase: p.phase!, acctMonth, rows: rows as never })
+        // r 的运行时形状 = tenantName + 该版面 colId(colId 即 keyof S10Fees,见 layout.ts)
+        const rows: S10ImportRow[] = p.records.map(r =>
+          ({ profile: PHASE_LAYOUT[p.phase!], ...(r as Partial<S10Fees> & { tenantName: string }) }))
+        const res = await s10Api.importRows({ phase: p.phase!, acctMonth, rows })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
       }
       return agg
@@ -358,7 +430,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const picks = payload as Pick[]
       const rows = picks.flatMap(p => p.records)
       if (!rows.length) return zero()
-      return pvApi.importRows(rows as never)
+      return pvApi.importRows(rows.map(toPvRow))
     },
     target: () => null,
   },
@@ -524,7 +596,9 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       },
     }),
     run: async (payload, ctx) => {
-      const rows = payload as unknown as ContractFullRow[]
+      // ContractFullRow 是 type 而非 interface(见 importContractSummary.ts),自带隐式索引签名,
+      // 与 ImportRec 可比 —— 单次断言即可,不必 `as unknown as`
+      const rows = payload as ContractFullRow[]
       const pe = ctx._parseErrors ?? []
       if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
       const res = await http.post<{ result: ImportResultDTO; matched: number; created: number
@@ -553,7 +627,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       sub: '上传/粘贴充电桩损益明细,系统按运营商、按月份识别行,核对后导入',
       templateCols: ['充电桩类别', '记账月', '充电电量', '手续费及服务费', '充电成本'],
       customParse: (matrix: string[][]) => {
-        const { records, errors } = importChargingRows(matrix, no, (ctx.cats ?? []) as never)
+        const { records, errors } = importChargingRows(matrix, no, ctx.cats ?? [])
         ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
         const headerErr = errors.find(e => e.rowIndex < 0)
         if (headerErr) return { error: headerErr.reason }
@@ -562,7 +636,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     }),
     run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
       const rows = payload as ImportRec[]
-      const res = await chargingApi.importRows(no, { rows: rows as never })
+      const res = await chargingApi.importRows(no, { rows: rows.map(toChargingRow) })
       const pe = ctx._parseErrors ?? []
       return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
     },
@@ -578,7 +652,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     }),
     run: async (payload) => {
       const rows = payload as ImportRec[]
-      return elecApi.importRows(rows as never)
+      return elecApi.importRows(rows.map(toElecRow))
     },
     target: () => null,
   },
@@ -623,7 +697,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const agg = zero()
       for (const p of picks) {
         const y = p.year ?? ctx.year!; const m = p.month ?? ctx.month ?? 1
-        const res = await salaryApi.importRows(y, m, { rows: p.records as never })
+        const res = await salaryApi.importRows(y, m, { rows: p.records.map(toSalaryRow) })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
       }
       return agg
@@ -641,7 +715,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     }),
     run: async (payload: ImportRec[] | Pick[]) => {
       const recs = payload as ImportRec[]
-      const byYear = new Map<number, unknown[]>()
+      const byYear = new Map<number, OfficeImportRow[]>()
       const errors: ImportResultDTO['errors'] = []
       let frontSkipped = 0
       recs.forEach((r, i) => {
@@ -651,12 +725,13 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         const bm = parseYearMonth(r.belongMonth, ym.year)
         const belongMonth = bm ? `${bm.year}-${pad2(bm.month)}` : acctMonth
         const arr = byYear.get(ym.year) ?? []
-        arr.push({ acctMonth, belongMonth, elecQty: r.elecQty, elecPrice: r.elecPrice, waterQty: r.waterQty, waterPrice: r.waterPrice })
+        arr.push({ acctMonth, belongMonth, elecQty: r.elecQty as number, elecPrice: r.elecPrice as number,
+          waterQty: r.waterQty as number, waterPrice: r.waterPrice as number })
         byYear.set(ym.year, arr)
       })
       const agg: ImportResultDTO = { imported: 0, skipped: frontSkipped, errors }
       for (const rows of byYear.values()) {
-        const res = await utilitiesApi.importRows(no, { rows: rows as never })
+        const res = await utilitiesApi.importRows(no, { rows })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
       }
       return agg
@@ -794,8 +869,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     run: async (payload: ImportRec[] | Pick[], ctx: ImportCtx) => {
       const rows = payload as ImportRec[]
       const y = (rows[0]?.__yearDetected as number | null) ?? ctx.year!
-      const clean = rows.map(r => { const { __yearDetected, ...rest } = r; void __yearDetected; return rest })
-      const res = await pnlApi.import(config.schedule, y, { rows: clean as never })
+      // toPnlRow 只搬 PnlRowDTO 的键,__yearDetected 自然被挡下(不再需要单独 destructure 剥离)
+      const res = await pnlApi.import(config.schedule, y, { rows: rows.map(toPnlRow) })
       return Object.assign(res, { __usedYear: y })
     },
     target: (ctx: ImportCtx) => `${ctx.year ?? ''} · ${config.title}`,
@@ -817,7 +892,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     run: async (payload) => {
       const rows = (payload as Pick[]).flatMap(p => p.records)
       if (!rows.length) return zero()
-      return budgetApi.import({ rows: rows as never })
+      return budgetApi.import({ rows: rows.map(toBudgetRow) })
     },
     target: () => null,
   },

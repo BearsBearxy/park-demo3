@@ -8,8 +8,8 @@ import { ref, computed, onMounted } from 'vue'
 import { utilitiesApi } from '@/api/utilities'
 import { exportUtilitiesYear } from '@/utils/utilitiesExcel'
 import { parseYearMonth } from '@/utils/parseYearMonth'
+import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { OfficeOverviewDTO, OfficeYearDTO, OfficeRecordDTO, OfficeRecordReq, OfficeImportRow } from '@/types/utilities'
-import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -35,17 +35,40 @@ const TABS: Record<Tab, { no: number; name: string; icon: string; sub: string; n
   },
 }
 
-// ── 状态机 ───────────────────────────────────────────────
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const tab = ref<Tab>('office')
 const no = computed(() => TABS[tab.value].no)
 const meta = computed(() => TABS[tab.value])
 
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
-const edit = ref(false)
-const drawer = ref(false)
-
 const overview = ref<OfficeOverviewDTO | null>(null)  // §6 加载信号(合并 13+14)
 const yearData = ref<OfficeYearDTO | null>(null)
+
+// 竞态守卫:快速切子表时只接受最新一次请求的结果(防乱序落表)
+let yearSeq = 0
+async function loadYear(y: number) {
+  const seq = ++yearSeq
+  const data = await utilitiesApi.records(no.value, y)
+  if (seq !== yearSeq) return
+  yearData.value = data
+}
+async function reloadOverview() {
+  overview.value = await utilitiesApi.overview()
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadYear,
+  reloadOverview,
+  rows: () => yearData.value?.rows ?? [],
+  clearData: () => { yearData.value = null },
+  batchDelete: utilitiesApi.batchDelete,
+  clear: {
+    call: y => utilitiesApi.clearImported(no.value, y),
+    confirm: clearConfirm('本年', '手动行不受影响。'),
+  },
+})
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年水电费·N条」)
 const yearCards = computed<YearCard[]>(() =>
@@ -64,92 +87,15 @@ onMounted(async () => {
   overview.value = await utilitiesApi.overview()
 })
 
-// 竞态守卫:快速切子表时只接受最新一次请求的结果(防乱序落表)
-let yearSeq = 0
-async function loadYear(y: number) {
-  const seq = ++yearSeq
-  const data = await utilitiesApi.records(no.value, y)
-  if (seq !== yearSeq) return
-  yearData.value = data
-}
-async function reloadOverview() {
-  overview.value = await utilitiesApi.overview()
-}
-
-// 新增 / 删除 / 改备注后重载该年 + overview
-async function refresh() {
-  if (year.value != null) await loadYear(year.value)
-  await reloadOverview()
-}
-
 // ── 导入 Excel(按表头名字匹配,行身份=月份字符串) ──────────
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 // 经 runImport(共享 registry:逐行 parseYearMonth 分年 + importRows + 记录 import_log)→ 刷新。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
   if (year.value == null) return
-  try {
+  await guard('导入失败', async () => {
     importResult.value = await runImport('office_' + no.value, recs, {}, fileName)
     await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
-}
-
-// ── 清空本期导入(本附表本年) ──────────────────────────────
-const importedCount = computed(() =>
-  (yearData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (importedCount.value === 0) { alert('本年没有导入的行。'); return }
-  if (!confirm(`确认清空本年 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
-  try {
-    await utilitiesApi.clearImported(no.value, year.value)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
-}
-
-// ── 批量删除 ─────────────────────────────────────────────
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: OfficeRecordDTO) {
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
-  if (!yearData.value) return
-  selectedIds.value = checked ? new Set(yearData.value.rows.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await utilitiesApi.batchDelete(ids)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  yearData.value = null
-  selectedIds.value = new Set()
-  await loadYear(y)
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  yearData.value = null
-  selectedIds.value = new Set()
+  })
 }
 
 // 切子表 → 用对应 no 重载当前年 records
@@ -162,44 +108,28 @@ async function switchTab(t: Tab) {
   }
 }
 
-async function onCreate(req: OfficeRecordReq) {
-  try {
-    await utilitiesApi.create(no.value, req)
-    drawer.value = false
-    // 提交后归入对应年份(可能与当前选中年不同)
-    year.value = parseInt(req.acctMonth.split('-')[0], 10)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增记账失败')
-  }
-}
+const onCreate = (req: OfficeRecordReq) => guard('新增记账失败', async () => {
+  await utilitiesApi.create(no.value, req)
+  drawer.value = false
+  // 提交后归入对应年份(可能与当前选中年不同)
+  year.value = parseInt(req.acctMonth.split('-')[0], 10)
+  await refresh()
+})
 
-async function onDelete(row: OfficeRecordDTO) {
-  try {
-    await utilitiesApi.remove(no.value, row.id)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
+const onDelete = (row: OfficeRecordDTO) => guard('删除失败', async () => {
+  await utilitiesApi.remove(no.value, row.id)
+  await refresh()
+})
 
-async function onNote(row: OfficeRecordDTO, text: string) {
-  try {
-    await utilitiesApi.updateNote(no.value, row.id, text || null)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存备注失败')
-  }
-}
+const onNote = (row: OfficeRecordDTO, text: string) => guard('保存备注失败', async () => {
+  await utilitiesApi.updateNote(no.value, row.id, text || null)
+  await refresh()
+})
 
-async function onExport() {
+const onExport = () => guard('导出失败', async () => {
   if (!yearData.value || year.value == null) return
-  try {
-    await exportUtilitiesYear(yearData.value, year.value, '附表' + no.value + ' · ' + meta.value.name)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportUtilitiesYear(yearData.value, year.value, '附表' + no.value + ' · ' + meta.value.name)
+})
 </script>
 
 <template>

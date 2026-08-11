@@ -665,6 +665,11 @@ public class AllocService {
         LocalDateTime poolNow = LocalDateTime.now();
         poolResults.deleteByYm(ym);
         poolMeterResults.deleteByYm(ym);          // V73 逐表明细与池行同批先删后插
+        // 四张结果表都先攒行后批量落库(P3-4 纯 I/O):行内容与表内行序一格未动,只是把「一行一发 insert」
+        // 换成「500 行一发」。两表由交替写改成先池行后明细行是安全的 —— 逐表明细认 ym+rule_id+meter_id,
+        // 不引用 alloc_pool_result.id(FK 只指向 alloc_rule),故池行不必先落库拿自增 id。
+        List<AllocPoolResult> poolRows = new ArrayList<>();
+        List<AllocPoolMeterResult> meterRows = new ArrayList<>();
         for (Map.Entry<Integer, PoolCalc> e : pools.entrySet()) {
             PoolCalc p = e.getValue();
             AllocPoolResult row = new AllocPoolResult();
@@ -685,13 +690,14 @@ public class AllocService {
             row.setGapAmount(p.cost() == null ? null : alloc.subtract(p.cost()));   // 盈亏=已分摊−应分摊
             row.setWarn(p.warn());
             row.setGeneratedAt(poolNow);
-            poolResults.insert(row);
+            poolRows.add(row);
             AllocRule rr = ruleOf(ctx, e.getKey());
-            if (rr != null) for (AllocPoolMeterResult ln : poolMeterLines(rr, ctx, p, poolNow))
-                poolMeterResults.insert(ln);
+            if (rr != null) meterRows.addAll(poolMeterLines(rr, ctx, p, poolNow));
         }
+        insertBatched(poolRows, poolResults::insertBatch);
+        insertBatched(meterRows, poolMeterResults::insertBatch);
         lossResults.deleteByYm(ym);
-        for (AllocLossResult r : computeLossUnits(ctx)) lossResults.insert(r);
+        insertBatched(computeLossUnits(ctx), lossResults::insertBatch);
 
         // ── 既有户级流程(alloc_result=P-C 缴费单契约,manual 保留语义不动) ──
         // (tenant|fee) 聚合(uk 粒度);多规则同费项合并 → rule_id 置空,note 并列规则名
@@ -702,7 +708,8 @@ public class AllocService {
         Set<String> manualKeys = new HashSet<>();
         for (AllocResult m : results.selectByYm(ym)) manualKeys.add(m.getTenantId() + "|" + m.getFeeKey());
 
-        int rows = 0, manualKept = manualKeys.size();   // 删 gen 后仅剩 manual 行=全部保留
+        int manualKept = manualKeys.size();   // 删 gen 后仅剩 manual 行=全部保留
+        List<AllocResult> genRows = new ArrayList<>();
         Set<Integer> tenantIds = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         for (Map.Entry<String, List<Contribution>> e : byKey.entrySet()) {
@@ -723,13 +730,20 @@ public class AllocService {
                 .reduce((a, b) -> a + ";" + b).orElse(null);
             r.setNote(note);
             r.setGeneratedAt(now);
-            results.insert(r);
-            rows++;
+            genRows.add(r);
             tenantIds.add(first.tenantId());
         }
+        insertBatched(genRows, results::insertBatch);
         // 损耗链会二次派生规则用量,同一「缺抄」可能重复上报 → 去重保序
-        return new AllocGenerateResultDTO(rows, tenantIds.size(), manualKept,
+        return new AllocGenerateResultDTO(genRows.size(), tenantIds.size(), manualKept,
             new ArrayList<>(new LinkedHashSet<>(ctx.warnings())));
+    }
+
+    // 结果表批量落库:每 500 行一条 INSERT。行序=入参顺序,自增 id 仍按原顺序分配(MySQL 多值 INSERT 顺序发号),
+    // 故 selectByYm 无 ORDER BY 的两张池表读出来的行序不变。空表直接跳过——<foreach> 拼不出合法 VALUES。
+    private static <T> void insertBatched(List<T> rows, java.util.function.Consumer<List<T>> insertBatch) {
+        for (int i = 0; i < rows.size(); i += 500)
+            insertBatch.accept(rows.subList(i, Math.min(i + 500, rows.size())));
     }
 
     // ── 结果读取 ──
@@ -962,10 +976,9 @@ public class AllocService {
         Map<Integer, Integer> tenantOfCovering = new HashMap<>();
         for (Contract c : ro.covering())
             if (c.getTenantId() != null) tenantOfCovering.put(c.getId(), c.getTenantId());
-        Map<Integer, Unit> unitById = new HashMap<>();
-        for (Unit u : units.selectList(null)) unitById.put(u.getId(), u);
+        // 单元全表索引复用 loadRoster 那一份(同一句 units.selectList(null) 建的同一个 id→Unit 映射),不再查第二遍
         Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBldFloor =
-            rentAreaByBuildingFloor(termUnits.selectList(null), rentTermById, tenantOfCovering, unitById);
+            rentAreaByBuildingFloor(termUnits.selectList(null), rentTermById, tenantOfCovering, ro.unitById());
         // 缺日期户维持不入自动名册(塞进去会凭空多摊钱),但必须点名报数,别让缺口无声消失
         List<String> warnings = new ArrayList<>();
         if (!areaFallback.isEmpty())
@@ -1976,9 +1989,11 @@ public class AllocService {
 
     // 当月在租名册(在租语义复用 MeterBindingService.covers:非草稿+起止齐全+月区间重叠)
     // stateByTenant=三态;unitsByTenant=在租合同带出的单元(房号按池定位取,不再随便抓一个)
+    // unitById=单元全表索引,顺带带出来给 loadCtx 复用(层面积口径要它),省一次全表查
     private record Roster(Map<Integer, String> stateByTenant, Map<Integer, String> nameById,
                           Map<Integer, List<Unit>> unitsByTenant,
-                          List<Contract> covering, Map<Integer, List<Unit>> unitsByContract) {
+                          List<Contract> covering, Map<Integer, List<Unit>> unitsByContract,
+                          Map<Integer, Unit> unitById) {
         String nameOf(Integer t) { return nameById.get(t); }
         String stateOf(Integer t) { return stateByTenant.getOrDefault(t, "no"); }
         // 房号按池定位取:同楼栋(池有楼层则楼层也须相符)的单元;取不到返回 null(宁可不显也不显无关房号)
@@ -2004,13 +2019,16 @@ public class AllocService {
             extraUnits.computeIfAbsent(cu.getContractId(), k -> new ArrayList<>()).add(cu.getUnitId());
         Map<Integer, String> nameById = new HashMap<>();
         for (Tenant t : tenants.selectList(null)) nameById.put(t.getId(), t.getCompanyName());
+        // 合同全表拉一次两处用:三态口径(非草稿)与 covering 口径(月覆盖)的过滤条件不同,但取数是同一条
+        // 无条件全表查 —— 查两遍除了多一次往返没有任何差别(P3-4)
+        List<Contract> allContracts = contracts.selectList(null);
         Map<Integer, List<Contract>> nonDraftByTenant = new HashMap<>();
-        for (Contract c : contracts.selectList(null))
+        for (Contract c : allContracts)
             if (c.getTenantId() != null && !"draft".equals(c.getStatus()))
                 nonDraftByTenant.computeIfAbsent(c.getTenantId(), k -> new ArrayList<>()).add(c);
         Map<Integer, String> state = new HashMap<>();
         nonDraftByTenant.forEach((t, cs) -> state.put(t, inForceState(cs, first, last)));
-        List<Contract> covering = contracts.selectList(null).stream()
+        List<Contract> covering = allContracts.stream()
             .filter(c -> c.getTenantId() != null && MeterBindingService.covers(c, first, last)).toList();
         Map<Integer, List<Unit>> unitsByTenant = new HashMap<>();
         Map<Integer, List<Unit>> unitsByContract = new HashMap<>();
@@ -2022,7 +2040,7 @@ public class AllocService {
             unitsByContract.put(c.getId(), us);
             unitsByTenant.computeIfAbsent(c.getTenantId(), k -> new ArrayList<>()).addAll(us);
         }
-        return new Roster(state, nameById, unitsByTenant, covering, unitsByContract);
+        return new Roster(state, nameById, unitsByTenant, covering, unitsByContract, unitById);
     }
 
     // 该定位在租租户(preChecked=按合同预勾)。楼层→unit.floor 数字比对;

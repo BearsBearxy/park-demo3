@@ -77,16 +77,39 @@ const buildings = ref<BuildingDTO[]>([])
 const tenantNameById = computed(() => new Map(tenants.value.map(t => [t.id, t.companyName])))
 const buildingNameById = computed(() => new Map(buildings.value.map(b => [b.id, b.name])))
 
-async function loadMeters() { meters.value = await metersApi.list() }
+// 加载失败态(P1-5):两路都要打回可见失败 + 重试入口,不能只剩转圈或旧数据顶着
+const metersErr = ref('')
+const readErr = ref('')
+async function loadMeters() {
+  // 首载失败若不记,整页永久停在骨架屏(meters 恒 null),连个重试入口都没有
+  try { meters.value = await metersApi.list(); metersErr.value = '' }
+  catch { metersErr.value = '表档案加载失败，请重试' }
+}
 // 竞态守卫同 v4:切期保留旧数据到新数据落位,不闪 gate;上月读数供「上月行至」基准
 let rSeq = 0
 async function loadReadings() {
   const my = ++rSeq
-  const [cur, prev] = await Promise.all([
-    metersApi.readings(ym.value),
-    metersApi.readings(prevYm.value).catch(() => [] as MeterReadingDTO[]),
-  ])
-  if (my === rSeq) { readings.value = cur; prevReadings.value = prev }
+  try {
+    const [cur, prev] = await Promise.all([
+      metersApi.readings(ym.value),
+      metersApi.readings(prevYm.value).catch(() => [] as MeterReadingDTO[]),   // 上月缺失是正常业务态,不算失败
+    ])
+    if (my !== rSeq) return
+    readings.value = cur; prevReadings.value = prev
+    readErr.value = ''
+  } catch {
+    if (my !== rSeq) return
+    // 关键:打回「无数据」,绝不留旧月数据冒充新月 —— 年月已经切了,旧数组还挂着,
+    // 用户在那些行上录一格,保存走的是旧行 id 的 PUT,直接覆盖上个账期的读数
+    readings.value = []
+    readErr.value = '本月读数加载失败，请重试'
+  }
+}
+// 失败态锁录入:此刻「本月」列空着不是「没抄」而是「没读到」,在上面录=覆盖旧月或凭空补条
+const editable = computed(() => editMode.value && !readErr.value)
+function retryLoad() {
+  if (metersErr.value) loadMeters()
+  if (readErr.value) loadReadings()
 }
 // 绑定数据(S2 §3):失败降级(null+bindFail),不阻断整页
 const bindRows = ref<MeterBindingRowDTO[] | null>(null)
@@ -319,11 +342,20 @@ const delTyped = ref('')
 const delBusy = ref(false)
 const delOpt = computed(() => ({ cascade: delCascade.value, dropEmptyMeters: delDropMeters.value }))
 
+// 竞态守卫同 rSeq:连点勾选项时慢的那次可能后到,弹窗复述的数字就不是即将执行的那一套口径了
+let dSeq = 0
 async function loadDelPreview() {
+  const my = ++dSeq
   delBusy.value = true
-  try { delPreview.value = await metersApi.deletePreview(ym.value, delOpt.value) }
-  catch (e) { delPreview.value = null; alert((e as { message?: string })?.message ?? '预览失败') }
-  finally { delBusy.value = false }
+  try {
+    const p = await metersApi.deletePreview(ym.value, delOpt.value)
+    if (my === dSeq) delPreview.value = p
+  } catch (e) {
+    if (my === dSeq) { delPreview.value = null; alert((e as { message?: string })?.message ?? '预览失败') }
+  } finally {
+    // 过期那次不许解锁:新预览还在飞,提前放行「确认删除」等于按旧数字执行
+    if (my === dSeq) delBusy.value = false
+  }
 }
 async function openDelDlg() {
   delTyped.value = ''
@@ -440,7 +472,15 @@ const emptyText = computed(() => {
 
 <template>
   <!-- 首载 gate:表档案/当月读数未落位不闪空表(v-else 紧邻,LIST-PAGE 加载门) -->
-  <div v-if="!meters || !readings" class="page-loading"><span class="page-spin" /></div>
+  <!-- 表档案首载失败:整页无内容可显,骨架屏会一直转 —— 换成提示+重试,别让用户干等 -->
+  <div v-if="!meters && metersErr" class="mt-gate-fail">
+    <div class="mt-empty bad">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span>{{ metersErr }}</span>
+      <Button variant="outline" size="sm" @click="loadMeters">重试</Button>
+    </div>
+  </div>
+  <div v-else-if="!meters || !readings" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="mt-page">
     <!-- 标题行:h2+账期+抄表进度条;右=模板/导出(常驻)+导入/新增表(编辑态)+编辑模式(最右) -->
@@ -487,7 +527,12 @@ const emptyText = computed(() => {
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           批量删除本期
         </Button>
-        <Button v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm" :disabled="saving" @click="onEditBtn">
+        <Button
+          v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm"
+          :disabled="saving || !!readErr"
+          :title="readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
+          @click="onEditBtn"
+        >
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -508,8 +553,18 @@ const emptyText = computed(() => {
       </button>
     </div>
 
-    <!-- 月度空态引导(三分支:编辑态/可编辑/只读) -->
-    <div v-if="readings.length === 0" class="mt-empty">
+    <!-- 加载失败条:两条各自成行(同 PoolLedgerView §F11,别让一条盖掉另一条的原因) -->
+    <div v-if="readErr || metersErr" class="mt-empty bad">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <div class="msg">
+        <div v-if="readErr">{{ readErr }} —— 读数列一律置空(不拿上月数据顶替),编辑模式已锁,重试成功后再录入</div>
+        <div v-if="metersErr">{{ metersErr }} —— 表档案停留在上次拉到的版本</div>
+      </div>
+      <Button variant="outline" size="sm" @click="retryLoad">重试</Button>
+    </div>
+
+    <!-- 月度空态引导(三分支:编辑态/可编辑/只读);读数没拉到不是「本月无数据」,让位给失败条 -->
+    <div v-if="!readErr && readings.length === 0" class="mt-empty">
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无抄表数据 ——
@@ -558,7 +613,7 @@ const emptyText = computed(() => {
 
     <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
     <MeterLedgerGrid
-      :rows="gridRows" :edit-mode="editMode" :kind="kind" :zone="zone" :draft="draft"
+      :rows="gridRows" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
       :building-name-by-id="buildingNameById" :empty-text="emptyText"
       @open="openId = $event" @cell-edit="onCellEdit"
     />
@@ -727,6 +782,12 @@ const emptyText = computed(() => {
 .mt-empty { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 .mt-link { border: none; background: none; padding: 0; margin: 0 2px; font: inherit; color: var(--hue-blue); cursor: pointer; }
 .mt-link:hover { text-decoration: underline; }
+
+/* 加载失败条(借空态条骨架换红):提示 + 重试入口 */
+.mt-empty.bad { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
+.mt-empty .msg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+/* 首载失败占满 gate 的位置(与 .page-loading 同为整页态,顶部起排不居中) */
+.mt-gate-fail { padding: 24px 0; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 
 /* 新增表弹窗(v4 mt-dlg 家族) */
 .mt-mask { position: fixed; inset: 0; background: rgba(28, 28, 28, .34); z-index: 140; display: grid; place-items: center; }

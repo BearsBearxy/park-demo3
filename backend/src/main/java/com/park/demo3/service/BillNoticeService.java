@@ -7,6 +7,8 @@ import com.park.demo3.dto.BillNoticeDetailDTO;
 import com.park.demo3.dto.BillNoticeGenResultDTO;
 import com.park.demo3.dto.MeterBindingDTO;
 import com.park.demo3.entity.BillNoteOverride;
+import com.park.demo3.entity.BillingTermUnit;
+import com.park.demo3.entity.Unit;
 import com.park.demo3.entity.AllocPoolResult;
 import com.park.demo3.entity.AllocRule;
 import com.park.demo3.entity.AllocRuleMember;
@@ -20,6 +22,8 @@ import com.park.demo3.entity.Meter;
 import com.park.demo3.entity.MeterReading;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.AllocPoolResultMapper;
+import com.park.demo3.mapper.BillingTermUnitMapper;
+import com.park.demo3.mapper.UnitMapper;
 import com.park.demo3.mapper.AllocRuleMapper;
 import com.park.demo3.mapper.AllocRuleMemberMapper;
 import com.park.demo3.mapper.BillNoteOverrideMapper;
@@ -88,6 +92,8 @@ public class BillNoticeService {
     private final AllocRuleMapper rules;
     private final AllocRuleMemberMapper ruleMembers;
     private final AllocPoolResultMapper poolResults;
+    private final UnitMapper units;                  // S17 §2.5b 单元候选(结构化楼层/单元号)
+    private final BillingTermUnitMapper termUnits;   // S17 §2.5b 行级绑定 → 单元候选的 location 归属
     private final PriceCfgService price;
     private final AllocService alloc;
     private final MeterBindingService binding;
@@ -99,7 +105,9 @@ public class BillNoticeService {
                              TenantMapper tenants, ManagementCompanyMapper companies,
                              BillPayCompanyMapper payMap, AllocRuleMapper rules,
                              AllocRuleMemberMapper ruleMembers,
-                             AllocPoolResultMapper poolResults, PriceCfgService price,
+                             AllocPoolResultMapper poolResults,
+                             UnitMapper units, BillingTermUnitMapper termUnits,
+                             PriceCfgService price,
                              AllocService alloc, MeterBindingService binding) {
         this.notices = notices; this.noticeLines = noticeLines; this.noteOverrides = noteOverrides;
         this.meters = meters; this.readings = readings;
@@ -107,6 +115,7 @@ public class BillNoticeService {
         this.tenants = tenants; this.companies = companies;
         this.payMap = payMap; this.rules = rules; this.ruleMembers = ruleMembers;
         this.poolResults = poolResults;
+        this.units = units; this.termUnits = termUnits;
         this.price = price; this.alloc = alloc; this.binding = binding;
     }
 
@@ -177,6 +186,22 @@ public class BillNoticeService {
                 dormRoomsByContract.computeIfAbsent(t.getContractId(), k -> new LinkedHashMap<>())
                     .putIfAbsent(loc, t.getArea());
         }
+        // §2.5b 单元候选(S17):行级绑定 billing_term_unit → (单元结构化楼层, 单元号房号token, 行location)。
+        // 「2F-2F整层」这类整层单元 floor=2 是结构化判据,不靠位置文本抠字;主/附加单元无行绑定的
+        // 不入(location 归属不明,宁缺勿错)。供 pin() 房号零命中时的单元回退。
+        Map<Integer, Unit> unitById = units.selectList(null).stream()
+            .collect(Collectors.toMap(Unit::getId, u -> u));
+        Map<Integer, ContractBillingTerm> termById = termsByContract.values().stream()
+            .flatMap(List::stream).collect(Collectors.toMap(ContractBillingTerm::getId, t -> t));
+        Map<Integer, List<UnitCand>> unitCandsByContract = new HashMap<>();
+        for (BillingTermUnit b : termUnits.selectList(null)) {
+            ContractBillingTerm t = termById.get(b.getTermId());
+            Unit u = unitById.get(b.getUnitId());
+            if (t == null || u == null || t.getLocation() == null || t.getLocation().isBlank()) continue;
+            unitCandsByContract.computeIfAbsent(t.getContractId(), k -> new ArrayList<>())
+                .add(new UnitCand(u.getFloor(), tok(u.getUnitNo()), t.getLocation().trim()));
+        }
+
         // 当月在租合同(share 行按合同拆场地用;与容量费同一 covers 口径)
         List<Contract> allContracts = contracts.selectList(null);
         Map<Integer, List<Contract>> coveringByTenant = new HashMap<>();
@@ -220,13 +245,13 @@ public class BillNoticeService {
                 if (r == null) continue;   // 缺抄不硬算(与池引擎同口径)
                 // S6 §2.4:仅「真·零命中」按表记一条短警告(D3 借表/挂错合同,催缴单屏可见);
                 // 无房号、候选无房号(整层/整栋计)、多命中都不是「未定」,不出噪音(判据见 Pin.undecided)
-                if (pin(m, row.contractId(), locsByContract).undecided())
+                if (pin(m, row.contractId(), locsByContract, unitCandsByContract).undecided())
                     warnByTenant.computeIfAbsent(tid, k -> new LinkedHashSet<>())
                         .add("场地未定:" + m.getName());
                 if ("elec".equals(m.getKind()))
-                    elecLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract);
+                    elecLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract, unitCandsByContract);
                 else
-                    waterLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract);
+                    waterLines(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locsByContract, unitCandsByContract);
             }
         }
 
@@ -436,7 +461,12 @@ public class BillNoticeService {
         }
 
         // ── 落库:行号=场地段(首现序)→表序→段序(构造序);单头 warn 拼接;负数合计打 warn ──
-        int generated = 0, lineCount = 0, warned = skippedIssued;
+        // 单头仍逐条 insert(明细行要它回填的自增 id,350 次可接受);明细行先攒进 pending,
+        // 循环结束后每 500 行一条多值 INSERT —— 逐条单发 8000 次在云上是 8~16s 且整段持锁独占两张表。
+        // 事务不变(仍在同一 @Transactional 内全成全败),行的构造顺序与 line_no 也不变;
+        // 唯一变的是行到达 DB 的时点后移,而本方法在 flush 之前不读回自己刚写的行(§5.9 回填在 flush 之后)。
+        int generated = 0, warned = skippedIssued;
+        List<BillNoticeLine> pending = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         for (Map.Entry<NKey, List<L>> g : groups.entrySet()) {
             List<L> ls = new ArrayList<>(g.getValue());
@@ -479,11 +509,13 @@ public class BillNoticeService {
                 // fee_group(V90):rent 派生行显式 'rent'(S5 刀2);水电引擎行按 fee_key 归组,重生成不冲掉迁移回填
                 row.setFeeGroup(l.feeGroup != null ? l.feeGroup
                     : WATER_GROUP.contains(l.feeKey) ? "water" : "elec");
-                noticeLines.insert(row);
-                lineCount++;
+                pending.add(row);
             }
             generated++;
         }
+        int lineCount = pending.size();
+        for (int i = 0; i < lineCount; i += 500)   // 分批:一条 SQL 太长会撞 max_allowed_packet
+            noticeLines.insertBatch(pending.subList(i, Math.min(i + 500, lineCount)));
 
         // ── 回填:按 poolRuleId 聚合公摊行(含既有 issued 单的行,void 已清)→ alloc_pool_result 两列(§5.9) ──
         Map<Integer, BigDecimal> byRule = new HashMap<>();
@@ -503,7 +535,8 @@ public class BillNoticeService {
     //    / is_dorm_room→居民+mgmt0.16 / 商业+mgmt0.32;户级例外由 resolveHit 的 scope 链天然覆盖 ──
     private void elecLines(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
                            String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
-                           String label, Map<Integer, List<String>> locs) {
+                           String label, Map<Integer, List<String>> locs,
+                           Map<Integer, List<UnitCand>> unitCands) {
         boolean dormRoom = m.getIsDormRoom() != null && m.getIsDormRoom() == 1;
         String zone = dormRoom ? "dorm" : m.getZone();
         BigDecimal f = r.getFactorSnap();
@@ -512,7 +545,7 @@ public class BillNoticeService {
         PriceCfgService.PriceHit pkg = price.resolveHit("elec_package", ym, tid, zone);
         if (pkg != null && pkg.scope().startsWith("tenant:")) {
             if (total == null) return;
-            L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, "elec", "elec_package", null,
+            L l = meterLine(byTenant, seq, tid, m, row, label, locs, unitCands, dormRoom, "elec", "elec_package", null,
                 r.getPrevTotal(), r.getCurrTotal(), f, total, pkg, "tenant_override");
             l.amount = r2(total.multiply(pkg.value()));
             return;
@@ -544,7 +577,7 @@ public class BillNoticeService {
                     if (hit == null) { missPrice(warnByTenant, tid, "elec_" + seg, ym); continue; }
                     p = hit.value();
                 }
-                L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, "elec",
+                L l = meterLine(byTenant, seq, tid, m, row, label, locs, unitCands, dormRoom, "elec",
                     "elec_" + seg, seg, prev, curr, f, u, hit, tenantOverride(hit, "tou"));
                 l.priceSnap = p;
                 l.amount = r2(u.multiply(p));
@@ -552,11 +585,11 @@ public class BillNoticeService {
             }
         } else if (dormRoom) {
             mgmtKey = "mgmt_fee";
-            singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, true,
+            singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, unitCands, true,
                 "elec", "elec_resident", zone, total, "resident");
         } else {
             mgmtKey = "mgmt_fee_commercial";
-            singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, false,
+            singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, unitCands, false,
                 "elec", "elec_commercial", zone, total, "commercial");
         }
         // 电力管理费:基数×费率;分时表基数=Σ段用量(E3),否则总用量;费率查无或为 0 不出行(§5 要点);逐表落行保 meter 关联
@@ -564,7 +597,7 @@ public class BillNoticeService {
         if (mgmtBase == null) return;
         PriceCfgService.PriceHit mg = price.resolveHit(mgmtKey, ym, tid, zone);
         if (mg == null || mg.value().signum() == 0) return;
-        L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, "mgmt_fee", mgmtKey, null,
+        L l = meterLine(byTenant, seq, tid, m, row, label, locs, unitCands, dormRoom, "mgmt_fee", mgmtKey, null,
             null, null, f, mgmtBase, mg, tenantOverride(mg, "fixed"));
         l.amount = r2(mgmtBase.multiply(mg.value()));
         if (total != null && segSum != null && segSum.compareTo(total) != 0)
@@ -574,16 +607,17 @@ public class BillNoticeService {
     // ── 水表:is_dorm_room→3.85+管网0(dorm scope 天然给 0=不出行)/否则 3.95+0.5;户级例外同链 ──
     private void waterLines(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
                             String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
-                            String label, Map<Integer, List<String>> locs) {
+                            String label, Map<Integer, List<String>> locs,
+                            Map<Integer, List<UnitCand>> unitCands) {
         boolean dormRoom = m.getIsDormRoom() != null && m.getIsDormRoom() == 1;
         String zone = dormRoom ? "dorm" : m.getZone();
         BigDecimal total = MeterService.usage(r.getPrevTotal(), r.getCurrTotal(), r.getFactorSnap());
         if (total == null) return;
-        singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, dormRoom,
+        singlePrice(byTenant, warnByTenant, seq, ym, tid, m, row, r, label, locs, unitCands, dormRoom,
             "water", "water", zone, total, dormRoom ? "resident" : "commercial");
         PriceCfgService.PriceHit pipe = price.resolveHit("water_pipe", ym, tid, zone);
         if (pipe == null || pipe.value().signum() == 0) return;
-        L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, "water_pipe", "water_pipe", null,
+        L l = meterLine(byTenant, seq, tid, m, row, label, locs, unitCands, dormRoom, "water_pipe", "water_pipe", null,
             null, null, r.getFactorSnap(), total, pipe, tenantOverride(pipe, "fixed"));
         l.amount = r2(total.multiply(pipe.value()));
     }
@@ -591,19 +625,21 @@ public class BillNoticeService {
     // 单一价行(电居民/电商业/水)
     private void singlePrice(Map<Integer, List<L>> byTenant, Map<Integer, Set<String>> warnByTenant, int[] seq,
                              String ym, Integer tid, Meter m, MeterBindingDTO.Row row, MeterReading r,
-                             String label, Map<Integer, List<String>> locs, boolean dormRoom,
+                             String label, Map<Integer, List<String>> locs,
+                             Map<Integer, List<UnitCand>> unitCands, boolean dormRoom,
                              String feeKey, String priceKey, String zone, BigDecimal total, String branch) {
         if (total == null) return;
         PriceCfgService.PriceHit hit = price.resolveHit(priceKey, ym, tid, zone);
         if (hit == null) { missPrice(warnByTenant, tid, priceKey, ym); return; }
-        L l = meterLine(byTenant, seq, tid, m, row, label, locs, dormRoom, feeKey, priceKey, null,
+        L l = meterLine(byTenant, seq, tid, m, row, label, locs, unitCands, dormRoom, feeKey, priceKey, null,
             r.getPrevTotal(), r.getCurrTotal(), r.getFactorSnap(), total, hit, tenantOverride(hit, branch));
         l.amount = r2(total.multiply(hit.value()));
     }
 
     // 表行公共骨架(审计链 price_key/scope/month + 合同快照 + 场地段)
     private L meterLine(Map<Integer, List<L>> byTenant, int[] seq, Integer tid, Meter m,
-                        MeterBindingDTO.Row row, String label, Map<Integer, List<String>> locs, boolean dorm,
+                        MeterBindingDTO.Row row, String label, Map<Integer, List<String>> locs,
+                        Map<Integer, List<UnitCand>> unitCands, boolean dorm,
                         String feeKey, String cfgKey, String seg, BigDecimal prev, BigDecimal curr, BigDecimal f,
                         BigDecimal qty, PriceCfgService.PriceHit hit, String branch) {
         L l = new L();
@@ -611,7 +647,7 @@ public class BillNoticeService {
         l.feeKey = feeKey; l.seg = seg;
         l.meterId = m.getId(); l.meterLabel = label;
         l.contractId = row.contractId();
-        l.premise = resolveMeterPremise(m, row.contractId(), locs);   // S6 §2.2 表行场地跟表走,不跟合同走
+        l.premise = resolveMeterPremise(m, row.contractId(), locs, unitCands);   // S6 §2.2 表行场地跟表走,不跟合同走
         l.premiseWide = premiseOf(row.contractId(), locs);            // 损耗分桶键=S6 前的合同级值(见 L.premiseWide)
         l.prevRead = prev; l.currRead = curr; l.factorSnap = f; l.qty = qty;
         l.priceSnap = hit.value(); l.priceKey = cfgKey;
@@ -981,21 +1017,54 @@ public class BillNoticeService {
         boolean undecided() { return tokens > 0 && cands > 0 && candTokens > 0 && hits == 0; }
     }
 
+    // §2.5b 单元候选(S17):floor=单元结构化楼层(「2F-2F整层」→2)、tokens=单元号房号token、
+    // location=该单元经 billing_term_unit 绑定的计费行位置原文(premise 输出仍取合同侧文本)。
+    record UnitCand(Integer floor, Set<String> tokens, String location) {}
+
     // §2.2 定位:表房号 ∩ 合同计费行 location 房号,唯一命中才细化,否则回退 premiseOf(不猜)。
     // 取的是合同侧原文而非表侧自描述——公摊行 premise 同源于此,前端 byPremise 才配得上。
     static String resolveMeterPremise(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+        return resolveMeterPremise(m, contractId, locs, Map.of());
+    }
+
+    static String resolveMeterPremise(Meter m, Integer contractId, Map<Integer, List<String>> locs,
+                                      Map<Integer, List<UnitCand>> unitCands) {
         if (contractId == null) return null;
-        String p = pin(m, contractId, locs).text();
+        String p = pin(m, contractId, locs, unitCands).text();
         return p != null ? p : premiseOf(contractId, locs);
     }
 
     static Pin pin(Meter m, Integer contractId, Map<Integer, List<String>> locs) {
+        return pin(m, contractId, locs, Map.of());
+    }
+
+    static Pin pin(Meter m, Integer contractId, Map<Integer, List<String>> locs,
+                   Map<Integer, List<UnitCand>> unitCands) {
         Set<String> rt = roomTokens(m);
         List<String> ls = contractId == null ? null : locs.get(contractId);
         int cands = ls == null ? 0 : ls.size();
         if (rt.isEmpty() || cands == 0) return new Pin(null, rt.size(), cands, 0, 0);
         int ct = (int) ls.stream().flatMap(l -> tok(l).stream()).distinct().count();
         List<String> hits = ls.stream().filter(l -> tok(l).stream().anyMatch(rt::contains)).toList();
+        // §2.5 整层回退(S17,三级):房号打不中计费行文本时——
+        //   a. 表房号 ↔ 合同绑定单元的单元号 token,唯一 → 落该单元绑定行的 location;
+        //   b. 表楼层文本(「二楼201室」→2) ↔ 单元结构化楼层(「2F-2F整层」floor=2),唯一 → 同上;
+        //   c. 表楼层文本 ↔ 「无房号候选」location 的楼层文本(无单元绑定的老合同兜底)。
+        // 汤周杰型:整层租户天然无房号,不该让用户编房号;歧义或表无楼层文本照旧不猜。
+        if (hits.isEmpty()) {
+            List<UnitCand> ucs = unitCands.getOrDefault(contractId, List.of());
+            List<String> uHit = ucs.stream().filter(c -> c.tokens().stream().anyMatch(rt::contains))
+                .map(UnitCand::location).distinct().toList();
+            if (uHit.size() == 1) return new Pin(trunc(uHit.get(0), 64), rt.size(), cands, ct, 1);
+            Integer mf = floorOf(m.getSpot(), m.getRoomNo(), m.getName(), m.getSubName());
+            if (mf != null) {
+                List<String> fHit = ucs.stream().filter(c -> mf.equals(c.floor()))
+                    .map(UnitCand::location).distinct().toList();
+                if (fHit.size() == 1) return new Pin(trunc(fHit.get(0), 64), rt.size(), cands, ct, 1);
+                List<String> fh = ls.stream().filter(l -> tok(l).isEmpty() && mf.equals(floorOf(l))).toList();
+                if (fh.size() == 1) return new Pin(trunc(fh.get(0), 64), rt.size(), cands, ct, 1);
+            }
+        }
         if (hits.size() != 1) return new Pin(null, rt.size(), cands, ct, hits.size());
         String l = hits.get(0);
         Set<String> lt = tok(l);
@@ -1003,6 +1072,24 @@ public class BillNoticeService {
         // |inter|>1 不合成:表确实同时管几间(一楼商铺 2101、2102),原文才是对的
         return new Pin(trunc(lt.size() > 1 && inter.size() == 1 ? synthesize(l, inter.get(0)) : l, 64),
             rt.size(), cands, ct, 1);
+    }
+
+    // §2.5 楼层抽取(整层回退用):混合文本里找「N楼/N层/NF/中文数字楼层」首个命中;首层=1。
+    // 「11号楼」的 11 后跟「号」不命中;中文数字复用 AllocService.floorNum(补「楼」尾喂纯标签)。
+    private static final java.util.regex.Pattern FLOOR_PAT =
+        java.util.regex.Pattern.compile("([0-9]{1,2}|[一二三四五六七八九十]{1,3})\\s*[楼层F]");
+    static Integer floorOf(String... texts) {
+        for (String s : texts) {
+            if (s == null) continue;
+            if (s.contains("首层")) return 1;
+            var mm = FLOOR_PAT.matcher(s);
+            if (mm.find()) {
+                String d = mm.group(1);
+                return d.chars().allMatch(Character::isDigit)
+                    ? Integer.valueOf(d) : AllocService.floorNum(d + "楼");
+            }
+        }
+        return null;
     }
 
     // §2.3 把 L 中「首 token 起、末 token 止」整段换成 t,前后缀原样保留

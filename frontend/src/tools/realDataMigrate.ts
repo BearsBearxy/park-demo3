@@ -5,6 +5,9 @@
 //   masters 创建公司(台账6家)+楼栋(附表10期区4栋)+租户(附表10∪台账并集)
 //   import  导入 13 个文件(附表6/7/8/10/11/12/13 + 损益附表1-5 + 台账2025-01×6公司)
 //   verify  各屏 API 抽查
+// 运行前须设管理员账号环境变量(口令不落仓库,免明文随 git 外泄):
+//   PowerShell: $env:ADMIN_USER='admin'; $env:ADMIN_PASSWORD='<口令>'
+//   bash:       export ADMIN_USER=admin ADMIN_PASSWORD='<口令>'
 /* eslint-disable no-console */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -34,9 +37,16 @@ async function call<T = unknown>(method: string, path: string, body?: unknown): 
   return data.data
 }
 async function login() {
+  // 缺环境变量直接炸,不回退默认口令:静默兜底等于口令照样写死在代码里
+  const username = process.env.ADMIN_USER
+  const password = process.env.ADMIN_PASSWORD
+  if (!username || !password) {
+    throw new Error('缺少管理员凭据环境变量 ADMIN_USER / ADMIN_PASSWORD。'
+      + "PowerShell: $env:ADMIN_USER='admin'; $env:ADMIN_PASSWORD='<口令>'  |  bash: export ADMIN_USER=admin ADMIN_PASSWORD='<口令>'")
+  }
   const res = await fetch(API + '/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    body: JSON.stringify({ username, password }),
   })
   const d = (await res.json()) as { code: number; data: { token: string } }
   if (d.code !== 0) throw new Error('登录失败')
@@ -187,7 +197,7 @@ async function dry() {
   // 充电桩需 cats(登录后取)
   await login()
   for (const no of [7, 8] as const) {
-    const cats = await call<unknown[]>('GET', `/charging/${no}/cats`)
+    const cats = await call<ImportCtx['cats']>('GET', `/charging/${no}/cats`)
     const file = no === 7 ? '汽车充电桩测试.xlsx' : '电动车充电桩测试.xlsx'
     const ctx: ImportCtx = { cats }
     const r = parseCustom(`charging_${no}`, file, ctx)
@@ -261,7 +271,7 @@ async function importAll() {
   }
   // 充电桩 7/8(cats 上下文)
   for (const no of [7, 8] as const) {
-    const cats = await call<unknown[]>('GET', `/charging/${no}/cats`)
+    const cats = await call<ImportCtx['cats']>('GET', `/charging/${no}/cats`)
     const ctx: ImportCtx = { cats }
     const { records } = parseCustom(`charging_${no}`, no === 7 ? '汽车充电桩测试.xlsx' : '电动车充电桩测试.xlsx', ctx)
     const res = await call<ImportResult>('POST', `/charging/${no}/import`, { rows: records })

@@ -16,9 +16,8 @@ const fmtN = (v: number | null) =>
   v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
 // ── 分摊语义:method+基数标签(X层/㎡/户对户/不分摊/纯标准行) ──
-// ⚠method 收 string 而不是 AllocMethod:V81 的 'manual'(原册 r12/r47-49 四个无电表行)故意
-// 没进 AllocMethod 联合 —— 进了会破 allocLogic.ALLOC_METHOD_LABEL 的 Record 穷举,而那个
-// 文件不在本刀独占清单里。故这里按字符串比,联合类型的池行结构上也能传进来。
+// method 收 string 而不是 AllocMethod:后端值域随原册增补(V81 加过 'manual'),
+// 这里按字符串比,未知方法回落 default 显原文,不会因为联合没跟上就整屏报错。
 export function poolSemantics(r: { method: string; baseSnap: number | null }): string {
   const base = r.baseSnap
   switch (r.method) {

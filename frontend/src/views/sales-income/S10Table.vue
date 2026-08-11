@@ -64,12 +64,27 @@ const grpLabel = (label?: string) => (label ?? '').replace('MON', props.month + 
 const fmt = (v: number) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const s10Num = (x: string) => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
 
-// 行合计 = 该行 25 列之和（编辑态随单元格写回即时重算）
-const rowTotal = (r: S10RecordDTO) => leaves.value.reduce((a, l) => a + (Number(r[l.colId]) || 0), 0)
-// 列合计 = 该列所有行之和
-const colTotal = (colId: S10ColId) => props.rows.reduce((a, r) => a + (Number(r[colId]) || 0), 0)
-// 总计 = 全表之和
-const grand = computed(() => props.rows.reduce((a, r) => a + rowTotal(r), 0))
+// 行合计 / 列合计 / 总计 —— 一次 N×列 遍历同时产出三者（编辑态随单元格写回即时重算）。
+// 为什么不写成三个模板内函数:模板里逐格调用会跑 N次行合计 + 25次列合计(各N行) + 总计再一遍 N×25
+// ≈ 75×N 次乘加,且每次编辑输入都整表重跑;合成一个 computed 后压到 1×N,并有缓存不随无关重渲染重算。
+const totals = computed(() => {
+  const cols = leaves.value
+  const byRow = new Map<number, number>()   // 键 = r.id（模板 v-for 也用它,唯一）
+  const byCol: Record<string, number> = {}
+  for (const l of cols) byCol[l.colId] = 0
+  let grand = 0
+  for (const r of props.rows) {
+    let sum = 0
+    for (const l of cols) {
+      const v = Number(r[l.colId]) || 0
+      sum += v
+      byCol[l.colId] += v
+    }
+    byRow.set(r.id, sum)
+    grand += sum
+  }
+  return { byRow, byCol, grand }
+})
 
 function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
   emit('cell', r, colId, s10Num(raw))
@@ -194,7 +209,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
             </template>
           </td>
 
-          <td class="s10-c-total">{{ fmt(rowTotal(r)) }}</td>
+          <td class="s10-c-total">{{ fmt(totals.byRow.get(r.id) ?? 0) }}</td>
         </tr>
 
         <!-- 撑高行:把合计顶到卡底 -->
@@ -208,9 +223,9 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
       <tfoot>
         <tr>
           <th class="s10-foot-name">合计 · {{ props.rows.length }} 户</th>
-          <th v-for="l in leaves" :key="l.colId" class="s10-c-num">{{ fmt(colTotal(l.colId)) }}</th>
+          <th v-for="l in leaves" :key="l.colId" class="s10-c-num">{{ fmt(totals.byCol[l.colId]) }}</th>
           <th class="s10-foot-note"></th>
-          <th class="s10-foot-total">{{ fmt(grand) }}</th>
+          <th class="s10-foot-total">{{ fmt(totals.grand) }}</th>
         </tr>
       </tfoot>
     </table>

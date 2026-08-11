@@ -21,7 +21,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
-  type AllocMethod, type AllocPoolLineDTO, type AllocPoolRowDTO,
+  type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolRowDTO,
   type AllocPoolsDTO, type AllocCfgDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
 } from '@/api/alloc'
 import { metersApi, type MeterDTO } from '@/api/meters'
@@ -82,16 +82,30 @@ const buildings = ref<BuildingDTO[]>([])
 const meters = ref<MeterDTO[]>([])
 const tenants = ref<TenantDTO[]>([])           // §E6:direct 池的全库租户选择器候选
 const diffs = ref<AllocMemberDiffDTO[]>([])
+// P1-6:三条 Promise 里唯独主数据 pools 过去没兜底 —— /alloc/pools 一挂,pools 恒为 null,
+// 整页就停在转圈骨架上(没有一个字、没有重试入口,只能刷浏览器);换月失败更险:上个月的行
+// 留在屏上,而行内月度参数写的是**新**月份。故失败=清空本月三份数据 + 记 loadErr,
+// 让「加载失败」与「本月无数据」在屏上分得开(前者红条+重试,后者仍走 generated=false 的灰条)。
+// 兜底放 loadMonth 内部,六个调用点(onMounted/watch/onGenerate/commitRuleCfg/submitPool/delPool)
+// 就都不必各自 catch。
+const loadErr = ref('')
 let seq = 0
 async function loadMonth() {
   const my = ++seq
-  const [ps, cs, df] = await Promise.all([
-    allocApi.pools(ym.value),
-    allocApi.cfg(ym.value).catch(() => [] as AllocCfgDTO[]),
-    allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
-  ])
-  if (my !== seq) return
-  pools.value = ps; cfgs.value = cs; diffs.value = df
+  loadErr.value = ''                 // 先清:重试点下去立刻回落转圈骨架,不然按钮像没反应
+  try {
+    const [ps, cs, df] = await Promise.all([
+      allocApi.pools(ym.value),
+      allocApi.cfg(ym.value).catch(() => [] as AllocCfgDTO[]),
+      allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
+    ])
+    if (my !== seq) return
+    pools.value = ps; cfgs.value = cs; diffs.value = df
+  } catch (e) {
+    if (my !== seq) return           // 更晚的一次请求已在路上,别用旧的失败盖掉它的结果
+    pools.value = null; cfgs.value = []; diffs.value = []
+    loadErr.value = errMsg(e, '服务异常')
+  }
 }
 // §E2 隐患①:rules 载入失败过去被 .catch(()=>{}) 全静默 —— openPoolDlg 从 ruleById 取
 // feeKey/coefficient/extraQty,拿不到就静默回落默认值,保存即把这三项冲掉。改为记失败标记,
@@ -256,20 +270,24 @@ function emptyForm(): PoolForm {
     roundScale: 2, stdKind: '', baseKey: '', meters: [], links: [], members: [], monthOnly: false,
     oldName: '' }
 }
-// 分摊方式(草图四档);ref/loss 只在该池本来就是时才露出,免把存量纯标准行误改
-const METHOD_TEXT: Record<AllocMethod, string> = {
+// 分摊方式(草图四档);ref/loss 只在该池本来就是时才露出,免把存量纯标准行误改。
+// manual 不在可选值域(AllocMethodEditable 已排掉):它没有 TEXT/HINT,以前会渲染出一个无字空单选。
+const METHOD_TEXT: Record<AllocMethodEditable, string> = {
   area: '按面积', floor: '按层份', direct: '户对户', none: '园区自担',
   loss: '并入损耗', ref: '纯标准行', carrier: '冲减载体',
 }
-const METHOD_HINT: Record<AllocMethod, string> = {
+const METHOD_HINT: Record<AllocMethodEditable, string> = {
   area: '按受益户租赁面积摊(基数=Σ㎡)', floor: '按层份摊(基数=层数,可小数)',
   direct: '整笔给唯一受益户', none: '不摊给租户,全额挂园区亏',
   loss: '并入损耗链', ref: '只出分摊标准供别池折入,不出应分摊',
   carrier: '表已在别池以「−」冲减,本行只陈列用量,不出应分摊、不入金额合计',
 }
+const isManualPool = computed(() => form.value.method === 'manual')
 const methodRadios = computed(() => {
-  const base: AllocMethod[] = ['area', 'floor', 'direct', 'none']
-  return (base.includes(form.value.method) ? base : [...base, form.value.method])
+  const cur = form.value.method
+  if (cur === 'manual') return []          // 人工指定池不给单选,改由旁边一行说明顶上
+  const base: AllocMethodEditable[] = ['area', 'floor', 'direct', 'none']
+  return (base.includes(cur) ? base : [...base, cur])
     .map(k => ({ value: k, label: METHOD_TEXT[k], hint: METHOD_HINT[k] }))
 })
 const FEE_OPTS = ([...ALLOC_FEE_KEYS, 'park_loss_pool'] as AllocFeeKey[])
@@ -346,6 +364,9 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
     }
   } else form.value = emptyForm()
   otherOpen.value = false; otherQ.value = ''
+  // 候选先清空再取:抽屉是同一份 state,不清就还挂着**上一个池**的候选表/受益人,
+  // 新候选回来前那半秒里勾中的是别的池的表,保存即写进当前池
+  cands.value = { meters: [], tenants: [], tenantNote: null }
   poolDlg.value = true
   loadCands()
 }
@@ -468,7 +489,7 @@ function commitWeight(id: number, raw: string) {
 }
 // 改成户对户时只留第一个受益人(§D.4 整笔归一户,免存出一个 13 户的 direct 池);
 // 只在用户点分摊方式时触发,不在打开抽屉时静默改动既有名单
-function setMethod(m: AllocMethod) {
+function setMethod(m: AllocMethodEditable) {
   form.value.method = m
   if (m === 'direct') form.value.members = form.value.members.slice(0, 1)
   // §E6:候选口径随 method 变(direct 不推在租名单)。不用 watch:打开抽屉时 method 也在变,
@@ -539,7 +560,9 @@ async function delPool() {
 </script>
 
 <template>
-  <div v-if="!pools" class="page-loading"><span class="page-spin" /></div>
+  <!-- 加载失败不走骨架:骨架下面没有任何文字与出口。失败时照常出页壳,账期选择器要留着
+       —— 否则用户被锁在失败的那个月上,连切回上个月都做不到 -->
+  <div v-if="!pools && !loadErr" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="pl-page">
     <!-- 标题行:h2+账期;右=导出(常驻)+生成/新增池(编辑态)+编辑模式 -->
@@ -559,7 +582,10 @@ async function delPool() {
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出当月
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" :disabled="generating" @click="onGenerate">
+        <!-- 加载失败时禁生成:generate 是按月先删后插,读不到本月现状就按下去等于蒙着眼覆盖快照 -->
+        <Button v-if="editMode" variant="outline" size="sm" :disabled="generating || !!loadErr"
+                :title="loadErr ? '本月数据没加载出来 —— 先重试,否则生成会覆盖看不见的快照' : undefined"
+                @click="onGenerate">
           <template #leading><component :is="iconFor(generated ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generated ? '重新生成' : '生成本月' }}
         </Button>
@@ -579,8 +605,17 @@ async function delPool() {
       <component :is="iconFor('check')" :size="14" />
       <span>{{ okMsg }}</span>
     </div>
-    <!-- 提示条:本月未生成 / 配置已变请重新生成 -->
-    <div v-if="!generated" class="pl-bar">
+    <!-- 加载失败条(与下面「本月未生成」的灰条分属两态:那条是「读到了,本月没快照」,
+         这条是「压根没读到」)。失败时 pools 已清空 —— 屏上不留上个月的行,
+         行内月度参数(系数/加度)随行一起消失,生成按钮也已禁用,写不进当前月份 -->
+    <div v-if="loadErr" class="pl-bar err">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span>{{ year }}年{{ month }}月池数据加载失败:{{ loadErr }}
+        —— 屏上已清空(不显示上个月的数字),重试成功前不能生成或改月度参数。</span>
+      <Button variant="outline" size="sm" @click="loadMonth()">重试</Button>
+    </div>
+    <!-- 提示条:本月未生成 / 配置已变请重新生成(加载失败时不出「未生成」——没读到就不知道生没生) -->
+    <div v-if="!generated && !loadErr" class="pl-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月未生成 —— 池配置照常展示,数值列为'–'。
         <template v-if="editMode">点「生成本月」按当月读数与价目落快照。</template>
@@ -761,12 +796,18 @@ async function delPool() {
               <td><span class="pl-foot-v">{{ fmt(bandFooter(b.rows).qty) }}</span></td>
               <td v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></td>
               <td><span class="pl-foot-v">{{ fmt2(bandFooter(b.rows).cost) }}</span></td>
-              <td :colspan="colCount - segDefs.length - 7"></td>
+              <!-- 尾部空档 = colCount − 本行已占。已占 = 区域·楼层·池名称 3 + 电表·倍率·上月·本月 4
+                   + 用量段 segDefs.length + 应分摊 1 = segDefs.length + 8(原来减 7,漏数了应分摊
+                   那一列,表格右侧多挂出一条空列)。展开即 5 + 编辑态月参 2 列 -->
+              <td :colspan="colCount - segDefs.length - 8"></td>
             </tr>
           </template>
+          <!-- 空表两因必须分开说:加载失败(出口在上方红条)vs 该期别真没池 ——
+               否则一次 500 会被读成「这个期别的池被谁删光了」 -->
           <tr v-if="bands.length === 0">
             <td class="pl-noro" :colspan="colCount">
-              {{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}
+              <template v-if="loadErr">数据未加载 —— 请点上方「重试」</template>
+              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}</template>
             </td>
           </tr>
         </tbody>
@@ -780,7 +821,8 @@ async function delPool() {
             <th><span class="pl-foot-v">{{ fmt(foot.qty) }}</span></th>
             <th v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></th>
             <th><span class="pl-foot-v">{{ fmt2(foot.cost) }}</span></th>
-            <th :colspan="colCount - segDefs.length - 7">
+            <!-- 列数算式同带尾小计:已占 3 + 4 + segDefs.length + 1 = segDefs.length + 8 -->
+            <th :colspan="colCount - segDefs.length - 8">
               <span class="pl-foot-note">纯标准行(ref)不入合计;冲减载体(carrier)只计度数不计金额</span>
             </th>
           </tr>
@@ -872,6 +914,7 @@ async function delPool() {
         <div class="pl-sec">
           <div class="pl-sectitle">③ 怎么摊</div>
           <div class="pl-radios">
+            <span v-if="isManualPool" class="pl-manual">人工指定(无电表)——分摊方式不在此改</span>
             <label v-for="o in methodRadios" :key="o.value" class="pl-radio" :title="o.hint">
               <input type="radio" :value="o.value" :checked="form.method === o.value"
                      @change="setMethod(o.value)" />
@@ -1020,6 +1063,7 @@ async function delPool() {
 .pl-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
 .pl-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
+.pl-bar.err { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 .pl-barlink { border: none; background: transparent; color: var(--hue-blue); font-size: var(--fs-label); cursor: pointer; text-decoration: underline; padding: 0; }
 .pl-difflist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; margin-top: 2px; }
 .pl-warnrow { font-size: 12px; line-height: 1.55; color: inherit; }
@@ -1124,6 +1168,7 @@ td.ct { text-align: center; }
 .pl-radios { display: flex; gap: 8px; flex-wrap: wrap; }
 .pl-radio { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; cursor: pointer; }
 .pl-radio:hover { background: var(--bg-hover); }
+.pl-manual { font-size: 12.5px; color: var(--text-muted); padding: 5px 0; }
 .pl-chip { flex: 0 0 auto; font-size: 11px; border-radius: var(--radius-full); padding: 0 7px; background: var(--surface-sunken); color: var(--text-muted); }
 .pl-chip.infra { background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
 .pl-chip.warn { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }

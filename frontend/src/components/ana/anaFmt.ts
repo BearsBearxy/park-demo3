@@ -91,7 +91,7 @@ export const fiveNum = (a: number[]): FiveNum => ({
   std: std(a),
 })
 
-// ── Catmull-Rom 平滑路径(AnaTrend/FigLineChart 共用) ──
+// ── Catmull-Rom 平滑路径(AnaTrend 用;FigLineChart 已随自绘图元一并删除) ──
 export interface Pt { x: number; y: number }
 export function smoothSegs(c: Pt[]): string {
   let d = ''

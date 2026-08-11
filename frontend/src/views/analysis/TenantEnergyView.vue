@@ -272,7 +272,11 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 <template>
   <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以横幅显式 -->
   <AnaShell period-mode="full">
-    <template v-if="loaded && !err && s10Months.length" #kpis>
+    <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
+         AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
+         把下方图表整体下推 93px(DESIGN-FIDELITY §6.4)。写法对齐 ExpiryView。 -->
+    <template #kpis>
+      <template v-if="loaded && !err && s10Months.length">
       <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />
       <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户 σ ${fint(crossStd)}`" />
       <!-- spec §C/C1 人话化:主标签人话,z 分数口径退 AnaMethodNote(计算零变化) -->
@@ -281,6 +285,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       <AnaKpiTile v-else label="收缴率" value="—" note="台账未录入" />
       <AnaKpiTile label="期末欠费" :value="`¥${(arrearsSum / 10000).toFixed(1)}万`" :note="ledgerYm || '台账未录入'" />
       <AnaKpiTile label="欠费户数" :value="`${arrears.length} 户`" :note="ledgerYm || '台账未录入'" />
+      </template>
     </template>
     <template #tools>
       <div v-if="loaded && !err && s10Months.length" class="anx-seg te2-seg">

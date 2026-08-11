@@ -25,6 +25,7 @@ export const ALLOC_METHOD_LABEL: Record<AllocMethod, string> = {
   none: '不分摊',
   ref: '纯标准行',
   carrier: '冲减载体',
+  manual: '无电表',   // V81 §H4.2e 人工指定行(与 poolSemantics 的话术一致)
 }
 
 // 参数解析:月行(acctMonth=ym)优先,回退默认行('');两级都缺=null(同后端 resolveCfg 规则)

@@ -213,13 +213,18 @@ const listRows = computed(() => {
 <template>
   <!-- §五:期间无关屏(主数据快照)→ 隐期间控件,显口径徽章 -->
   <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关">
-    <template v-if="loaded && !err && activeTenants.length" #kpis>
+    <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
+         AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
+         把下方图表整体下推 93px(DESIGN-FIDELITY §6.4)。写法对齐 ExpiryView。 -->
+    <template #kpis>
+      <template v-if="loaded && !err && activeTenants.length">
       <AnaKpiTile label="在租租户" :value="`${activeTenants.length} 户`" :note="`${shares.length} 户有月租金`" />
       <AnaKpiTile label="Top5 集中度" :value="`${top5Share}%`" :note="top5Share > 55 ? '偏高' : '正常'" />
       <AnaKpiTile label="Top10 集中度" :value="`${top10Share}%`" />
       <AnaKpiTile label="集中度指数(HHI)" :value="String(hhi)" :note="hhi > 1500 ? '中等集中 · >2500为高度集中' : '较分散 · >2500为高度集中'" />
       <AnaKpiTile label="生效合同" :value="`${activeContracts} 份`" />
       <AnaKpiTile label="月租金总额" :value="`¥${(totalRent / 10000).toFixed(1)}万`" />
+      </template>
     </template>
 
     <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>

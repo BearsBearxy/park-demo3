@@ -141,8 +141,13 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
       </div>
     </div>
 
-    <!-- v2 可选 KPI 条(紧贴工具条下,.av2-kpis 栅格容器;不传槽 = 零渲染) -->
-    <div v-if="loaded && $slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
+    <!-- v2 可选 KPI 条(紧贴工具条下,.av2-kpis 栅格容器;不传槽 = 零渲染)
+         §6.4:容器**不得**被 loaded 门整条挡掉——它一插入就把下方全部内容整体下推(16 屏中招)。
+         这里直接放开门(不再判 loaded),依据:loaded 只表示 fetchAvailableMonths 完成,与各屏自己的
+         数据就绪无关(且该请求走 anaData cached,二次进屏几乎立即 true),所以各屏 #kpis 早就要在
+         「本屏数据未到」时渲染一遍——瓦片绑定本来就是 null-safe(atPeriod/colPick 等返回 null → 显 '—'),
+         不会出 NaN/undefined。高度稳定另由 .anx-kpis 的 min-height 兜(见下)。 -->
+    <div v-if="$slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
 
     <div class="anx-body">
       <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
@@ -165,7 +170,14 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
 .anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
 .anx-seg button:disabled { opacity: .4; cursor: default; }
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; }
+/* min-height = 12(本容器 padding-top)+ 81.2(一行 .av2-kpi 瓦片实高)≈ 93,取整向下,
+   保证「常驻空条 → 瓦片填入」零位移,且加载完成后 min-height 永不生效(不多占一个像素)。
+   瓦片 81.2 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):
+   padding 10+10 + .l 20(line-height 继承 --lh-snug:20px)+ gap 3 + .vr 20(.v 行盒 20 / .spk 20 取大)
+   + gap 3 + .d 14.2(10.5px × line-height 1.35)+ 边框 0.5×2 = 81.2。
+   ⚠ 改瓦片 padding / 字号 / 行高时必须回来同步这个数,否则重新出现撑开或多余留白。
+   窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。 */
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 93px; }
 .anx-sel { position: relative; }
 .anx-sel select { appearance: none; -webkit-appearance: none; font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 6px 28px 6px 13px; cursor: pointer; outline: none; }
 .anx-sel select:hover:not(:disabled) { background: var(--bg-hover); }

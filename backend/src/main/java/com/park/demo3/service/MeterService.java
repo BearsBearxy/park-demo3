@@ -266,8 +266,13 @@ public class MeterService {
     }
 
     // ── 导入(METER-IMPORT-SPEC §3):表身份走分层匹配管道 编码 → 位置 → 标识 → 新建,
-    //   命中唯一才算命中,多候选=歧义不落库;读数按 (表,ym) 先删后插覆盖(同批重复行=后行覆盖)。
+    //   命中唯一才算命中,多候选=歧义不落库;读数按 (表,ym) upsert 覆盖(同批重复行=后行覆盖)。
     //   factor_snap = 行倍率(空则表档案倍率)。非法 kind/zone/ym、无从取名=行级错误跳过,不整批拦。 ──
+    // 读数写入攒批(2026-08-11 审计 P3):500 行一条 upsert(MeterReadingMapper.upsertBatch),
+    // 语义与原「先删后插」等价。攒批不影响任何判定 —— readByYm 每个 ym 只在**首次遇到**时从库装载一次,
+    // 之后全走内存 map(本批新行随写随进),所以推迟落库改变不了 §E3.4 探针看见的东西。
+    private static final int READING_BATCH = 500;
+
     @Transactional
     public MeterImportResultDTO importRows(MeterImportRequest req) {
         List<Meter> all = meters.selectList(null);
@@ -281,6 +286,7 @@ public class MeterService {
         // 单列出来,末尾才并进 errors —— skipped 只数真正跳过的行
         List<ImportError> notices = new ArrayList<>();
         List<MeterImportResultDTO.Match> matches = new ArrayList<>();
+        List<MeterReading> pending = new ArrayList<>();   // 待落库读数,满 READING_BATCH 冲一次
         int imported = 0, sortNo = meters.maxSortNo();
         List<MeterImportRequest.Row> rows = req.rows();
         for (int i = 0; i < rows.size(); i++) {
@@ -336,7 +342,6 @@ public class MeterService {
                 idx.add(m);
             }
             matches.add(new MeterImportResultDTO.Match(i, name, hit.by, m.getId()));
-            readings.delete(new QueryWrapper<MeterReading>().eq("meter_id", m.getId()).eq("ym", row.ym()));
             MeterReading r = new MeterReading();
             r.setMeterId(m.getId());
             r.setYm(row.ym());
@@ -348,10 +353,13 @@ public class MeterService {
             r.setFactorSnap(one(row.factor() == null ? m.getFactor() : row.factor()));
             r.setNote(blankToNull(row.note()));
             r.setSource("import");
-            readings.insert(r);
-            readOfYm.put(m.getId(), r);
+            // 表档案两条分支(insert 新建 / 已在库)都已先于本行落库,FK fk_meter_reading_meter 冲批时必定有主
+            pending.add(r);
+            if (pending.size() >= READING_BATCH) { readings.upsertBatch(pending); pending.clear(); }
+            readOfYm.put(m.getId(), r);   // 探针拿的是这个内存对象,不依赖它是否已落库(也不依赖自增 id)
             imported++;
         }
+        if (!pending.isEmpty()) readings.upsertBatch(pending);   // 同一 @Transactional 内,失败照样整批回滚
         // 刀G 复核:提示走独立通道,不再 addAll 进 errors —— 混进去会被前端渲染成「N 行未导入」+警告三角。
         return new MeterImportResultDTO(imported, errors.size(), errors, matches, notices);
     }
@@ -423,10 +431,22 @@ public class MeterService {
         }
 
         // applyDesc 会改 code/area/spot/sub_name → 改前先摘出索引,改后再 add(否则索引指向陈旧键)
+        // ⚠ 前置条件(调用点唯一,importRows 里 idx.remove(m) 紧挨着 applyDesc 之前):调用时 m 的
+        //    键值必须还是它 add 进来时那一套。故这里按键定点删,建键的表达式与 add() 逐行对称 ——
+        //    原先是遍历 byCode/byAddr 全部约 1134 个桶挨个 List.remove,每命中一行扫三遍全索引。
+        //    定点删与全扫等价:add() 保证一块表只落进一个 byCode 桶、一个 byAddr 桶,
+        //    且 Meter 的 equals 含 id(各不相同),全扫也只可能在它自己那个桶里命中。
         void remove(Meter m) {
-            byName.values().remove(m);
-            byCode.values().forEach(l -> l.remove(m));
-            byAddr.values().forEach(l -> l.remove(m));
+            byName.remove(m.getKind() + "|" + m.getZone() + "|" + m.getName(), m);
+            if (blankToNull(m.getCode()) != null)
+                drop(byCode, codeKey(m.getKind(), m.getCode().trim()), m);
+            if (blankToNull(m.getArea()) != null)
+                drop(byAddr, addrKey(m.getKind(), m.getZone(), m.getArea().trim(), m.getSpot(), m.getSubName()), m);
+        }
+
+        private static void drop(Map<String, List<Meter>> bucket, String key, Meter m) {
+            List<Meter> l = bucket.get(key);
+            if (l != null) l.remove(m);
         }
 
         // 合成名撞了 uk_meter(kind,zone,name) 且不是同一块表 → 追加 #2/#3(§3.1)

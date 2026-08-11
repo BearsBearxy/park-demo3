@@ -18,6 +18,8 @@ const props = defineProps<{
   open: boolean
   building: BuildingDTO | null
   detail: BuildingDetailDTO | null
+  // 显式转发给 FPDrawer 的同名 prop(不用 $attrs,避免连带透传别的属性)
+  fixedHeight?: boolean
 }>()
 
 const emit = defineEmits<{ close: []; edit: []; delete: []; refreshed: [BuildingDetailDTO] }>()
@@ -181,6 +183,7 @@ async function onContractCreated() {
     :subtitle="b ? `${b.phaseName} · ${b.kind} · ${b.floorCount} 层` : ''"
     :icon="b?.phase === 4 ? 'bed-double' : 'building-2'"
     :width="640"
+    :fixed-height="fixedHeight"
     @close="emit('close'); resetSel()"
   >
     <template #badge>
@@ -251,6 +254,14 @@ async function onContractCreated() {
         @add-unit="onAddUnit"
       />
     </div>
+    <!-- detail 未到时的等量级骨架(§6.4):楼层单元图是抽屉里最高的一块,高度归零 → detail 到达时
+         下方「在租租户」整体下坠。高度按真实量级估:区标题+图例约 70px,每层一行 ≥44px + 6px gap = 50px -->
+    <div
+      v-else
+      class="bd-mapskel"
+      :style="{ minHeight: 70 + (b?.floorCount ?? 6) * 50 + 'px' }"
+      aria-hidden="true"
+    ></div>
 
     <!-- C: Selected unit panel -->
     <div
@@ -423,6 +434,9 @@ async function onContractCreated() {
 .bd-in:focus { border-color:var(--hue-blue); }
 .bd-in.err { border-color:var(--hue-red); }
 .bd-erm { font-size:11.5px; color:var(--hue-red); min-height:14px; }
+
+/* 楼层单元图加载骨架(高度由内联 min-height 给,按楼层数估) */
+.bd-mapskel { background:var(--bg-sunken); border-radius:var(--radius-lg); }
 
 /* 换层小下拉(单元面板 / 租户行) */
 .bd-sel { height:26px; padding:0 6px; font-size:12px; font-family:var(--font-sans); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-white); outline:none; cursor:pointer; }

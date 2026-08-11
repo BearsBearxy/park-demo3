@@ -1,12 +1,15 @@
-# 一键部署:docker compose up -d --build → http://localhost:${WEB_PORT:-8081}
+# 部署:先 bash deploy/gen-env.sh <公网IP或域名> 生成 .env,再 docker compose up -d --build → http://<host>:${WEB_PORT:-8081}
 # 三件套:mysql(健康检查) + backend(Flyway 建表+种子,依赖 db 健康) + frontend(nginx 静态 + /api 反代)。
-# 环境变量见 .env.example;不建 .env 时按 dev 默认起(admin/admin123,勿用于公网)。
+# 环境变量见 .env.example。安全关键项一律用 ${VAR:?...} 无兜底(fail-closed):缺哪项就在 up 阶段
+# 报错退出,而不是静默用仓库里公开的 JWT 密钥 + 种子口令 admin/admin123 起一个"谁都能登且可写"的实例
+# ——端口一旦对公网开放,弱默认等同无认证。本机演示走同一条路,一行:
+#   bash deploy/gen-env.sh localhost   (随机口令;端口占用就改生成的 .env 里 WEB_PORT)
 services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
       MYSQL_DATABASE: park_demo3
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
@@ -29,12 +32,13 @@ services:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: ${DB_PASSWORD:-root}
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me-32+chars}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);prod 留空则功能关闭
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      DB_PASSWORD: ${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
+      # 默认档位 prod 而非 dev:忘配 profile 时走严格档(关 swagger/api-docs),弱档必须显式声明
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      JWT_SECRET: ${JWT_SECRET:?未设置 JWT_SECRET。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?未设置 ADMIN_PASSWORD。仓库种子口令 admin/admin123 众所周知,必须覆盖}
+      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}   # 非空=创建只读账号 viewer(GET-only);留空则功能关闭(唯一可选项)
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?未设置 CORS_ALLOWED_ORIGINS(前端域名白名单,如 http://1.2.3.4)}
     depends_on:
       mysql:
         condition: service_healthy

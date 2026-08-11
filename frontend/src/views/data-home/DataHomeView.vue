@@ -26,11 +26,6 @@ function go(v: string) {
   router.push('/' + v)
 }
 
-// 导入 Excel:占位(导入即将上线),同其他屏。
-function onImport() {
-  alert('导入 Excel 即将上线')
-}
-
 // 待办严重度 → 圆点色 + 标签(1:1 from jsx DH_SEV)。
 const SEV: Record<string, { c: string; t: string }> = {
   danger: { c: 'var(--hue-red)', t: '逾期' },
@@ -62,7 +57,8 @@ function sevMix(c: string) {
         </p>
       </div>
       <div class="dh-actions">
-        <Button variant="outline" size="sm" @click="onImport">
+        <!-- 导入中心已上线,首页按钮直达该屏(同 go 语义:openFresh 全新状态) -->
+        <Button variant="outline" size="sm" @click="go('import')">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入 Excel
         </Button>

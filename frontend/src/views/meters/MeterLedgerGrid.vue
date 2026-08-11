@@ -14,7 +14,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import {
-  STATUS_META, statusDims, effCurr, rowUsage, draftRowIssues, gridFooter, groupByBuilding,
+  STATUS_META, statusDims, effCurr, rowUsage, draftRowIssues, gridFooter, groupByBuilding, groupUsage,
   flattenGroups, buildWindow, offsetOf,
   type WorkbenchRow, type MeterDraft, type CurrField, type PrevSegs, type BuildingGroup,
   type RowWindow,
@@ -74,8 +74,14 @@ const fixSt = { ...w(ST_W), right: '0px' }
 // 汇总行标签格 colspan 跨 区域~倍率 8 列:sticky left 但不锁宽(列宽由表头定)
 const fixGrpLbl = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
-// ── 楼栋分组(§7.6):首现序稳定分组,组末汇总行(tenant+share,随 draft 实时) ──
-const groups = computed(() => groupByBuilding(props.rows, props.buildingNameById, props.draft))
+// ── 楼栋分组(§7.6):首现序稳定分组 ──
+// 分组/排序只由 rows 决定,**不传 draft**:否则编辑态每敲一个数字都要重分组+逐组重排序
+// (draft 是 reactive Map,一次 set 就打翻整条 groups→displayList→visItems 计算链)。
+const groups = computed(() => groupByBuilding(props.rows, props.buildingNameById))
+// 组末汇总(tenant+share,随 draft 实时)叠在分组结果之上:敲键只重算这一层
+const grpUsage = computed(() =>
+  new Map(groups.value.map(g => [g.key, groupUsage(g.rows, props.draft)] as const)))
+const usageOf = (g: BuildingGroup) => grpUsage.value.get(g.key)!
 
 // ── 行窗口化虚拟滚动(§7 6.5):组 flatten 成显示列表,只渲染可视±12 行,前后 spacer 撑高 ──
 const wrapEl = ref<HTMLElement | null>(null)
@@ -120,9 +126,11 @@ watch(() => props.rows, () => {
   syncWindow(true)
 })
 const grpLabel = (g: BuildingGroup) => `${g.label} · 总用${props.kind === 'water' ? '水' : '电'}量`
-const grpSegTitle = (g: BuildingGroup) => props.kind === 'elec'
-  ? `尖 ${fmt(g.usage.sharp)} 峰 ${fmt(g.usage.peak)} 平 ${fmt(g.usage.flat)} 谷 ${fmt(g.usage.valley)}`
-  : undefined
+const grpSegTitle = (g: BuildingGroup) => {
+  if (props.kind !== 'elec') return undefined
+  const u = usageOf(g)
+  return `尖 ${fmt(u.sharp)} 峰 ${fmt(u.peak)} 平 ${fmt(u.flat)} 谷 ${fmt(u.valley)}`
+}
 
 // ── 行派生(草稿实时):用量+校验红显;页脚合计 ──
 const drv = computed(() => {
@@ -164,10 +172,12 @@ function floorSide(x: WorkbenchRow): string {
     || (x.m.area?.trim() && !LOC_EXEMPT.has(x.m.ownership) ? LOC_TODO : '–')
 }
 // dorm 回退:宿舍单元「1-309」(栋-房号)在导入时已随位置原文落 spot(如「三楼 1-309」),正则直读;
-// 无单元的宿舍表(总表/商铺/充电桩/分时子表)不命中,显 '–' 属预期
+// 无单元的宿舍表(总表/商铺/充电桩/分时子表)不命中,显 '–' 属预期。
+// 式子提到模块级:逐行渲染调用,不必每格新造一个 RegExp(无 g 标志,无 lastIndex 状态)
+const RE_DORM_UNIT = /\d+-\d{3,4}/
 const roomNo = (x: WorkbenchRow) =>
   locOf(x).roomNo?.trim()
-  || (props.zone === 'dorm' ? x.m.spot?.match(/\d+-\d{3,4}/)?.[0] : undefined)
+  || (props.zone === 'dorm' ? x.m.spot?.match(RE_DORM_UNIT)?.[0] : undefined)
   || '–'
 // 「区域」=账册 B 列原文(A座/一车间/招商中心),已是不带期数的写法,直接取 meter.area 不做加工。
 // 区块带头虽然也是楼栋名,但原册每行都写满 —— 逐行显才对得上原册一行一行。
@@ -332,7 +342,7 @@ function onEnter(e: KeyboardEvent) {
           </td>
           <td :colspan="segDefs.length * 2"></td>
           <td class="mlg-fix" :style="fixUsage">
-            <span class="mlg-bsum-v" :title="grpSegTitle(v.g!)">{{ fmt(v.g!.usage.total) }}</span>
+            <span class="mlg-bsum-v" :title="grpSegTitle(v.g!)">{{ fmt(usageOf(v.g!).total) }}</span>
           </td>
           <td class="mlg-fix" :style="fixSt"></td>
         </tr>

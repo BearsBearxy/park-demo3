@@ -3,11 +3,12 @@
 // 动线 1:1 from screen-schedule12.jsx Schedule12Screen(274-516):
 // ⓪ 年份选择层(SchedYearGate) → 月份胶囊(SchedMonthPills) → 该月宽表(SchedHeader + SalaryTable + 抽屉)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
 import { salaryApi } from '@/api/salary'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
+import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq, SalaryImportRow } from '@/types/salary'
-import type { ImportResultDTO } from '@/types/import'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -19,14 +20,42 @@ import { parserProps, runImport } from '@/utils/importRegistry'
 import SalaryTable from './SalaryTable.vue'
 import SalaryRecordDrawer from './SalaryRecordDrawer.vue'
 
-// ── 状态机 ───────────────────────────────────────────────
-const year = ref<number | null>(null)   // null → ⓪ 年份选择层
+// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const month = ref(1)
-const edit = ref(false)
-const drawer = ref(false)
-
 const overview = ref<SalaryOverviewDTO | null>(null)  // §6 加载信号
 const monthData = ref<SalaryYearMonthDTO | null>(null)
+
+// 竞态守卫:快速切月时只接受最新一次请求的结果(防乱序落表)
+let monthSeq = 0
+async function loadMonth(y: number) {
+  const seq = ++monthSeq
+  const data = await salaryApi.records(y, month.value)
+  if (seq !== monthSeq) return
+  monthData.value = data
+}
+async function reloadOverview() {
+  overview.value = await salaryApi.overview()
+}
+
+const {
+  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+} = useSchedScreen({
+  load: loadMonth,
+  reloadOverview,
+  rows: () => monthData.value?.rows ?? [],
+  clearData: () => { monthData.value = null },
+  // 进年默认落到该年有数据的最大月,无则 1 月(零系统时钟)
+  onPickYear: y => {
+    const ms = overview.value?.years.find(yr => yr.year === y)?.months ?? []
+    month.value = ms.length ? ms[ms.length - 1] : 1
+  },
+  batchDelete: salaryApi.batchDelete,
+  clear: {
+    call: y => salaryApi.clearImported(y, month.value),
+    confirm: clearConfirm('本月', '手动行不受影响。'),
+  },
+})
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年实发·N人次」)
 const yearCards = computed<YearCard[]>(() =>
@@ -51,51 +80,14 @@ onMounted(async () => {
   overview.value = await salaryApi.overview()
 })
 
-// 竞态守卫:快速切月时只接受最新一次请求的结果(防乱序落表)
-let monthSeq = 0
-async function loadMonth() {
-  if (year.value == null) return
-  const seq = ++monthSeq
-  const data = await salaryApi.records(year.value, month.value)
-  if (seq !== monthSeq) return
-  monthData.value = data
-}
-async function reloadOverview() {
-  overview.value = await salaryApi.overview()
-}
-
-// ── 状态迁移 ─────────────────────────────────────────────
-async function pickYear(y: number) {
-  year.value = y
-  edit.value = false
-  monthData.value = null
-  selectedIds.value = new Set()
-  // 默认落到该年有数据的最大月,无则 1 月(零系统时钟)
-  const ms = overview.value?.years.find(yr => yr.year === y)?.months ?? []
-  month.value = ms.length ? ms[ms.length - 1] : 1
-  await loadMonth()
-}
-function goGate() {
-  year.value = null
-  edit.value = false
-  monthData.value = null
-  selectedIds.value = new Set()
-}
 async function pickMonth(m: number) {
   month.value = m
   selectedIds.value = new Set()
-  await loadMonth()   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
-}
-
-// 新增 / 删除 / 改备注后重载该月 + overview(jsx saveRecord/delRecord)
-async function refresh() {
-  await loadMonth()
-  await reloadOverview()
+  // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
+  if (year.value != null) await loadMonth(year.value)
 }
 
 // ── 导入 Excel(按表头名字匹配,行身份=姓名) ──────────────
-const importing = ref(false)
-const importResult = ref<ImportResultDTO | null>(null)
 // columnMap:真实工资表叶子标签 → SalaryRecord 字段 key(姓名走 nameLabels;派生/未建模列不入)。
 // role=文本列(text:true,存原串不 cleanNum)。前缀匹配扛单位后缀(应出勤（天）/请假（天）)。
 // 「其它津贴」(other,津贴项) 与 「其他」(otherDeduct,扣项) 靠完整标签+前缀消歧;不导 合计工资/实出勤/全勤考核/应发/实发/代缴代扣。
@@ -106,96 +98,39 @@ async function onImportSections(
 ) {
   importing.value = false
   if (year.value == null) return
-  try {
-    importResult.value = await runImport('salary', picks, { year: year.value, month: month.value }, fileName)
+  const ctx = { year: year.value, month: month.value }
+  await guard('导入失败', async () => {
+    importResult.value = await runImport('salary', picks, ctx, fileName)
     const first = picks[0]
     if (first) { year.value = first.year ?? year.value; month.value = first.month ?? month.value }
     await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导入失败')
-  }
+  })
 }
 
-// ── 清空本期导入 ─────────────────────────────────────────
-const importedCount = computed(() =>
-  (monthData.value?.rows ?? []).filter(r => r.source === 'import').length,
-)
-async function onClearImported() {
-  if (year.value == null) return
-  if (importedCount.value === 0) { alert('本月没有导入的行。'); return }
-  if (!confirm(`确认清空本月 ${importedCount.value} 条导入数据?手动行不受影响。`)) return
-  try {
-    await salaryApi.clearImported(year.value, month.value)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '清空失败')
-  }
-}
+const onCreate = (req: SalaryRecordReq) => guard('新增工资失败', async () => {
+  await salaryApi.create(req)
+  drawer.value = false
+  // 提交后归入对应年月(可能与当前选中不同)
+  const [y, m] = req.acctMonth.split('-')
+  year.value = parseInt(y, 10)
+  month.value = parseInt(m, 10)
+  await refresh()
+})
 
-// ── 批量删除 ─────────────────────────────────────────────
-const selectedIds = ref<Set<number>>(new Set())
-function toggleSelect(row: SalaryRecordDTO) {
-  const next = new Set(selectedIds.value)
-  if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
-  selectedIds.value = next
-}
-function selectAll(checked: boolean) {
+const onDelete = (row: SalaryRecordDTO) => guard('删除失败', async () => {
+  await salaryApi.remove(row.id)
+  await refresh()
+})
+
+const onNote = (row: SalaryRecordDTO, text: string) => guard('保存备注失败', async () => {
+  await salaryApi.updateNote(row.id, text || null)
+  await refresh()
+})
+
+const onExport = () => guard('导出失败', async () => {
   if (!monthData.value) return
-  selectedIds.value = checked ? new Set(monthData.value.rows.map(r => r.id)) : new Set()
-}
-async function onBatchDelete() {
-  const ids = [...selectedIds.value]
-  if (!ids.length) return
-  try {
-    await salaryApi.batchDelete(ids)
-    selectedIds.value = new Set()
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-async function onCreate(req: SalaryRecordReq) {
-  try {
-    await salaryApi.create(req)
-    drawer.value = false
-    // 提交后归入对应年月(可能与当前选中不同)
-    const [y, m] = req.acctMonth.split('-')
-    year.value = parseInt(y, 10)
-    month.value = parseInt(m, 10)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '新增工资失败')
-  }
-}
-
-async function onDelete(row: SalaryRecordDTO) {
-  try {
-    await salaryApi.remove(row.id)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '删除失败')
-  }
-}
-
-async function onNote(row: SalaryRecordDTO, text: string) {
-  try {
-    await salaryApi.updateNote(row.id, text || null)
-    await refresh()
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '保存备注失败')
-  }
-}
-
-async function onExport() {
-  if (!monthData.value) return
-  try {
-    await exportSalaryMonth(monthData.value)
-  } catch (e) {
-    alert((e as { message?: string })?.message ?? '导出失败')
-  }
-}
+  await exportSalaryMonth(monthData.value)
+})
 </script>
 
 <template>

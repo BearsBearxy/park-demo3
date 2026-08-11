@@ -3,7 +3,13 @@
    Copied verbatim from Factory Park Design System/tokens/*.css
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
+/* 这里原有一条 fonts.googleapis 的 @import,已删除。原因:@import 会落在打包后 index.css 的
+   第一个字节,是渲染阻塞样式表里的串行子请求(下 index.css → 解析 → 发 googleapis → 发 gstatic,
+   三跳);而本系统部署在香港 ECS 供大陆用户访问,fonts.googleapis 境内通常是连接挂起而非立即 RST,
+   首屏要白等一整个 TCP 超时。实测该请求 1ms 即失败(transferSize=0),即线上一直走的是回退字体,
+   删掉不改变任何观感。下面 --font-sans/--font-mono 里的 "Inter"/"Roboto Mono" 刻意保留:
+   本机装了就用,没装走回退,两种情况都与删除前一致。
+   要恢复自定义字体请自托管 woff2 到 public/fonts/ 用本地 @font-face,不要再引远程。 */
 
 :root {
   /* ---- Webfont families ---- */
@@ -21,6 +27,9 @@
   --fs-h1:      24px;
   --fs-h2:      20px;
   --fs-h3:      16px;
+  /* 卡内小节标题（面板标题 16px 之下的一级）。6 处早已在用 var(--fs-h4) 却从未定义,
+     声明作废后退回继承的 14px = 与正文同大,层级消失;15px 是本仓已有的小节标题事实值。 */
+  --fs-h4:      15px;
   --fs-body:    14px;
   --fs-label:   12px;
   --fs-micro:   11px;
@@ -57,6 +66,9 @@
   --surface-sunken:  rgb(245, 245, 246);
   --surface-overlay: rgba(255, 255, 255, 0.9);
   --surface-white:   rgb(255, 255, 255);
+  /* 胶囊/标签底色别名。全站 chip 事实上都用 sunken(见 .pl-chip/.rc-chip/.tp2-chip),
+     只有 PoolLedgerView 的 .pl-linkchip 写了未定义的 --surface-subtle → 底色丢失成裸文字。 */
+  --surface-subtle:  var(--surface-sunken);
 
   /* ---- Pastel accent surfaces (blue family) ---- */
   --accent-slate: rgb(229, 236, 246);
@@ -150,6 +162,19 @@
   --rightbar-width:  280px;
   --topbar-height:   60px;
   --content-max:     1440px;
+
+  /* ---- Z 层级(七级阶梯,见 DESIGN-FIDELITY §八) ----
+     取值刻意等于现状数值,令牌化不重编号 → 与仍写字面量的存量文件数值全等,混合态不会错层。
+     规则:新增覆盖层一律用令牌,禁止写字面量;禁止用内联 :style 覆盖层级(层级是结构问题,不是实例问题);
+     模态遮罩不得放 --z-popover 档——那档是给"贴附在触发元素上的浮层"的,页面级弹窗放这档会被任何抽屉盖住。
+     层内平级冲突靠 DOM 顺序决定,不加中间档;要盖住同级就升一档。 */
+  --z-sticky:  20;    /* 表头 / 工具条 / sticky 列 */
+  --z-popover: 60;    /* 下拉 / 跳页 popover 等贴附浮层 */
+  --z-palette: 200;   /* 命令面板(Ctrl-K) */
+  --z-modal:   300;   /* 页面级弹窗 / 抽屉 / 遮罩 */
+  --z-modal-2: 320;   /* 弹窗之上再开的弹窗 / 抽屉 */
+  --z-confirm: 350;   /* 二次确认 / 导入结果(必须盖住一切弹窗) */
+  --z-toast:   400;   /* 全局提示(最高) */
 
   /* ---- Motion ---- */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
