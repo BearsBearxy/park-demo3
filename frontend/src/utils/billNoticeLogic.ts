@@ -555,6 +555,45 @@ export function noteDisplay(
   return o != null ? { text: o, overridden: true, engine } : { text: engine ?? '', overridden: false, engine }
 }
 
+// ── 水电明细拍平(S20:原 BillNoticesView 内联 utilRows,提取成纯函数供屏与 Excel 导出共用) ──
+// 五型行:band(块头)/line(明细行,块内重编号)/merge(公摊按纸单合并行)/sub(块小计)/part(部合计)。
+// ⚠ 小计/合计一律取 groupExcelStyle 的原始行累加,不经 mergeMaintRows —— 合并是纯呈现层,一分钱不改。
+// 维护费块过 mergeMaintRows(纸单口径一项一行),费块逐表逐段照原行。
+export interface UtilRowLine extends FeeTitleLine, UtilLineBase {
+  meterId: number | null
+  seg: string | null
+}
+export type UtilRowVM<T> =
+  | { t: 'band'; label: string }
+  | { t: 'line'; no: number; l: T; q: QtyCell; nk: NoteKey }   // q=刀D 可验算的乘数/单位/显示价;nk=备注覆盖行键
+  | { t: 'merge'; no: number; m: ShareMergeRow<T>; nk: NoteKey }
+  | { t: 'sub' | 'part'; label: string; amount: number }
+export function buildUtilRows<T extends UtilRowLine>(g: ExcelStyleGroups<T>): UtilRowVM<T>[] {
+  const out: UtilRowVM<T>[] = []
+  const block = (label: string, ls: T[], subLabel: string | null, subAmount: number, merge = false) => {
+    if (!ls.length) return
+    out.push({ t: 'band', label })
+    const rows = merge ? mergeMaintRows(ls) : ls.map(l => ({ kind: 'line' as const, line: l }))
+    rows.forEach((r, i) => out.push(r.kind === 'line'
+      ? { t: 'line', no: i + 1, l: r.line, q: billQtyCell(r.line), nk: lineNoteKey(r.line) }
+      : { t: 'merge', no: i + 1, m: r.row, nk: mergeNoteKey(r.row.feeKey, r.row.members[0]?.premise ?? null) }))
+    if (subLabel) out.push({ t: 'sub', label: subLabel, amount: subAmount })
+  }
+  for (const p of g.elec.groups) {
+    block(`电费(${p.label})`, p.fee, '场地电费合计', p.feeTotal)
+    block(`用电维护费(${p.label})`, p.maint, '场地维护费合计', p.maintTotal, true)
+  }
+  if (g.elec.groups.length) out.push({ t: 'part', label: '电费、用电维护费合计', amount: g.elec.total })
+  for (const p of g.water.groups) {
+    block(`水费(${p.label})`, p.fee, null, 0)
+    block(`用水维护费(${p.label})`, p.maint, null, 0, true)
+    out.push({ t: 'sub', label: `场地水费、维护费合计(${p.label})`, amount: p.subtotal })
+  }
+  if (g.water.groups.length) out.push({ t: 'part', label: '水费、用水维护费合计', amount: g.water.total })
+  block('其他费项', g.other, '其他费项合计', g.otherTotal)
+  return out
+}
+
 // ── v2 拍板1:租户聚合——一个租户一条,该户全部单据(含宿舍单)合并,对齐 Excel 每租户一张 worksheet ──
 export interface NoticeLike {
   id: number

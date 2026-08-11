@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // 容量费按天折/paymap 拆单/宿舍段拆 dorm 单/幂等与 issued 跳过/offbook/负用量/未归属降级/读数批删 409 守卫。
 // @Transactional 回滚;月份槽独占 2090-01..2090-12 + 2091-03/04/05 + 2092-02..2092-06(S13 损耗base形态;
 // 月份无 13/14,租金用例 t13/t14 顺延;2091-01=AllocApiIT、2091-02=AllocPoolContributionsIT、
-// 2092-01/2092-12=ContractFullImportApiIT 已占)+ 2093-02(S15 拆场地比例剔宿舍行;
+// 2092-01/2092-12=ContractFullImportApiIT 已占)+ 2093-02(S15 拆场地比例剔宿舍行)+ 2093-05(S20 交付状态流;
 // 2093-01=AllocPoolContributionsIT 已占),每用例一槽(generate 先删本 ym 全部 draft,共槽互删);
 // 断言只圈自建数据(种子合同 2028 年前到期、种子表无 2090 读数,槽内 generated 计数=本用例数据,可精确断言)。
 // is_dorm_room/offbook 系 V89 新列,实体未必已挂字段 → 直落 JDBC(同事务同连接,引擎 mapper 读得到)。
@@ -1059,5 +1059,65 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         mvc.perform(delete("/api/bill-notices/notes").header("Authorization", vAuth)
                 .param("ym", "2091-10").param("tenantId", "1").param("feeKey", "elec"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(403));
+    }
+
+    // ── t21 交付状态流(S20 §1.3):draft→确认→(重生成跳过)→标记导出→(重生成仍跳过);
+    //    已 void 单不参与流转。槽 2093-05。 ──
+    @Test
+    void t21_confirm_regenerateSkips_markExported() throws Exception {
+        String ym = "2093-05";
+        monthlyPrices(ym);
+        int t = createTenant("IT交付状态户");
+        int c = contract(t, "2089-01-01", "2099-12-31", null);
+        int m = createMeter("elec", "p1", "IT交付状态电", t);
+        bind(m, c);
+        reading(m, ym, "\"prevTotal\":0,\"currTotal\":100");
+
+        assertThat((int) JsonPath.read(generate(ym), "$.data.generated")).isEqualTo(1);
+        int id = soleNoticeId(ym, t);
+        assertThat(one(notices(ym, t)).get("status")).isEqualTo("draft");
+        assertThat(one(notices(ym, t)).get("confirmedAt")).isNull();
+
+        // 确认:draft→confirmed,落 confirmed_at
+        String r1 = postOk("/api/bill-notices/confirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat((int) JsonPath.read(r1, "$.data.confirmed")).isEqualTo(1);
+        assertThat((int) JsonPath.read(r1, "$.data.skipped")).isZero();
+        Map<String, Object> row = one(notices(ym, t));
+        assertThat(row.get("status")).isEqualTo("confirmed");
+        assertThat(row.get("confirmedAt")).isNotNull();
+        assertThat(row.get("exportedAt")).isNull();
+
+        // 二次确认:非 draft 单只计 skipped
+        String r2 = postOk("/api/bill-notices/confirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat((int) JsonPath.read(r2, "$.data.confirmed")).isZero();
+        assertThat((int) JsonPath.read(r2, "$.data.skipped")).isEqualTo(1);
+
+        // 重新生成:已确认户整户跳过,单 id 与状态不动(这是防静默覆盖的闸门)
+        String g = generate(ym);
+        assertThat((int) JsonPath.read(g, "$.data.skippedConfirmed")).isEqualTo(1);
+        assertThat((int) JsonPath.read(g, "$.data.generated")).isZero();
+        assertThat(((Number) one(notices(ym, t)).get("id")).intValue()).isEqualTo(id);
+        assertThat(one(notices(ym, t)).get("status")).isEqualTo("confirmed");
+
+        // 标记导出:confirmed→exported,落 exported_at;重生成仍跳过
+        String e1 = postOk("/api/bill-notices/mark-exported",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat((int) JsonPath.read(e1, "$.data.marked")).isEqualTo(1);
+        row = one(notices(ym, t));
+        assertThat(row.get("status")).isEqualTo("exported");
+        assertThat(row.get("exportedAt")).isNotNull();
+        assertThat((int) JsonPath.read(generate(ym), "$.data.skippedConfirmed")).isEqualTo(1);
+
+        // 作废后不再参与流转:确认只计 skipped,标记导出不改状态
+        postOk("/api/bill-notices/" + id + "/void", "{}");
+        String r3 = postOk("/api/bill-notices/confirm",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}");
+        assertThat((int) JsonPath.read(r3, "$.data.confirmed")).isZero();
+        assertThat((int) JsonPath.read(r3, "$.data.skipped")).isEqualTo(1);
+        assertThat((int) JsonPath.read(postOk("/api/bill-notices/mark-exported",
+                "{\"ym\":\"" + ym + "\",\"tenantIds\":[" + t + "]}"), "$.data.marked")).isZero();
+        assertThat(one(notices(ym, t)).get("status")).isEqualTo("void");
     }
 }

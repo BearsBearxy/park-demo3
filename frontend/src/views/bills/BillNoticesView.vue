@@ -32,6 +32,19 @@ import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPStat from '@/components/fp/FPStat.vue'
 import CoefBookWindow from './CoefBookWindow.vue'
+// ── S20 交付链:收款公司/收款簿/两个导出窗口 + 抽屉方格 + 状态流 ──
+import CompanyBookWindow from './CompanyBookWindow.vue'
+import PayBookWindow from './PayBookWindow.vue'
+import ExportNoticeWindow from './ExportNoticeWindow.vue'
+import ExportReconWindow from './ExportReconWindow.vue'
+import PaySlotGrid from '@/components/fp/PaySlotGrid.vue'
+import { billDeliveryApi, companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
+import { billsApi } from '@/api/bills'
+import {
+  buildSlotCells, slotAmounts, tenantStatus,
+  type ExportNoticeReq, type ExportReconReq, type SlotCell, type TenantStatus,
+} from '@/utils/payBookLogic'
+import { exportNoticeZip, exportReconWorkbook, type ReconRow } from '@/utils/billNoticeExcel'
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
@@ -71,6 +84,7 @@ async function loadMonth() {
 }
 onMounted(async () => {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => { /* 楼栋失败按 premise 回退归期 */ })
+  loadCompanies(); loadPayMap()   // S20:收款公司与映射(状态列橙点与抽屉方格用)
   try {
     dataYears.value = await metersApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]
@@ -137,6 +151,145 @@ const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0
 
 // ── 系数簿窗口(S14):批量改系数;viewer 也可打开只读查看(窗口内编辑模式走 canEdit) ──
 const coefOpen = ref(false)
+
+// ── S20 交付链:三个新窗口 + 户级状态/收款缺口(状态单据级存储、户级展示) ──
+const companyOpen = ref(false)
+const payBookOpen = ref(false)
+const expNoticeOpen = ref(false)
+const expReconOpen = ref(false)
+const exportBusy = ref(false)
+const exportResult = ref('')
+const companies = ref<CompanyFullDTO[]>([])
+const payMap = ref(new Map<string, number>())   // `${tenantId}|${colId}` → companyId
+const selected = ref(new Set<number>())         // 列表勾选的 tenantId
+const confirming = ref(false)
+
+function loadCompanies() {
+  companyBookApi.list().then(cs => { companies.value = cs }).catch(() => { /* 公司失败=下拉空,不阻断列表 */ })
+}
+function loadPayMap() {
+  billsApi.paymap().then(ps => {
+    payMap.value = new Map(ps.map(p => [`${p.tenantId}|${p.feeKey}`, p.companyId]))
+  }).catch(() => { /* 映射失败=全按未设置显示 */ })
+}
+
+// 户级状态 = 该户全部单据状态收敛(tenantStatus:全 confirmed→confirmed,混态→confirmed,全 exported→exported)
+const noticesByTenant = computed(() => {
+  const m = new Map<number, BillNoticeDTO[]>()
+  for (const n of rows.value ?? []) {
+    const l = m.get(n.tenantId); if (l) l.push(n); else m.set(n.tenantId, [n])
+  }
+  return m
+})
+const statusOf = (tid: number): TenantStatus => tenantStatus(noticesByTenant.value.get(tid) ?? [])
+// 收款缺口:该户任一单 pay_company_id 为空(提示不阻断,确认后橙点保留)
+const gapOf = (tid: number) => (noticesByTenant.value.get(tid) ?? []).some(n => n.payCompanyId == null)
+const ST_LABEL: Record<TenantStatus, string> = {
+  draft: '待核对', partial: '部分确认', confirmed: '已确认', exported: '已导出',
+}
+
+const selCount = computed(() => filtered.value.filter(r => selected.value.has(r.tenantId)).length)
+const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every(r => selected.value.has(r.tenantId)))
+function toggleAll() {
+  const on = !allChecked.value
+  for (const r of filtered.value) { if (on) selected.value.add(r.tenantId); else selected.value.delete(r.tenantId) }
+  selected.value = new Set(selected.value)
+}
+function toggleOne(tid: number) {
+  if (selected.value.has(tid)) selected.value.delete(tid); else selected.value.add(tid)
+  selected.value = new Set(selected.value)
+}
+
+// 确认:未设收款公司只提示不阻断(§2.2);单向流转,已确认/已导出户重新生成自动跳过
+async function confirmTenants(tids: number[]) {
+  if (!canEdit.value || confirming.value || !tids.length) return
+  const gaps = tids.filter(gapOf)
+  if (gaps.length) {
+    const names = gaps.slice(0, 5)
+      .map(t => filtered.value.find(r => r.tenantId === t)?.tenantName ?? '#' + t).join('、')
+    if (!confirm(`${gaps.length} 户有费用未指定收款公司(${names}${gaps.length > 5 ? ' 等' : ''})。\n`
+      + '导出的通知单上这部分不显示收款账户信息,租户可能不知道往哪付款。\n仍然确认?')) return
+  }
+  confirming.value = true
+  try {
+    const res = await billDeliveryApi.confirm(ym.value, tids)
+    flashOk(`已确认 ${res.confirmed} 单${res.skipped ? `,跳过 ${res.skipped} 单(已确认/已作废)` : ''}`)
+    selected.value = new Set()
+    await loadMonth()
+  } catch (e) { alert(errMsg(e, '确认失败')) } finally { confirming.value = false }
+}
+
+// 导出通知单编排(窗口只发请求,拉明细→出 zip→标记已导出 归宿主,§5.1)
+async function onExportNotice(req: ExportNoticeReq) {
+  if (exportBusy.value) return
+  exportBusy.value = true
+  exportResult.value = ''
+  try {
+    const items = []
+    for (const tid of req.tenantIds) {
+      const row = (rows.value ?? []).filter(n => n.tenantId === tid)
+      const ds = await Promise.all(row.map(n => billNoticesApi.detail(n.id)))
+      const ns = await billNoticesApi.notes(req.ym, tid).catch(() => [] as BillNoteOverrideDTO[])
+      items.push({
+        tenantId: tid, tenantName: row[0]?.tenantName ?? null, details: ds,
+        notes: new Map(ns.map(o => [noteKeyId(o), o.note])),
+        premiseText: row.map(n => n.premiseText).find(Boolean) ?? null,
+      })
+    }
+    const accById = new Map(companies.value.flatMap(c => (c.accounts ?? []).map(a => [a.id, a] as const)))
+    const coById = new Map(companies.value.map(c => [c.id, c] as const))
+    const res = await exportNoticeZip(items, req.ym,
+      cid => (cid == null ? null : accById.get(req.accountByCompany[cid] ?? -1) ?? null),
+      cid => (cid == null ? null : coById.get(cid) ?? null))
+    await billDeliveryApi.markExported(req.ym, req.tenantIds).catch(() => { /* 标记失败不影响已下载文件 */ })
+    const noAcct = req.tenantIds.filter(gapOf).length
+    exportResult.value = `已导出 ${req.tenantIds.length} 户 / ${res.files} 张通知单`
+      + (noAcct ? ` · 其中 ${noAcct} 户无收款账户` : '')
+    flashOk(exportResult.value)
+    expNoticeOpen.value = false
+    await loadMonth()
+  } catch (e) { alert(errMsg(e, '导出失败')) } finally { exportBusy.value = false }
+}
+
+// 导出对账表:摊平当月全部明细行 → 每公司一 sheet + 总表(§5.2)
+async function onExportRecon(req: ExportReconReq) {
+  if (exportBusy.value) return
+  exportBusy.value = true
+  try {
+    const recon: ReconRow[] = []
+    for (const n of rows.value ?? []) {
+      const d = await billNoticesApi.detail(n.id)
+      for (const l of d.lines)
+        recon.push({
+          companyId: n.payCompanyId ?? null, tenantId: n.tenantId,
+          tenantName: n.tenantName, feeKey: l.feeKey, amount: l.amount ?? 0,
+        })
+    }
+    await exportReconWorkbook(recon, req.ym, req.sheets)
+    flashOk(`对账表已导出(${req.sheets.length} 个 sheet)`)
+    expReconOpen.value = false
+  } catch (e) { alert(errMsg(e, '导出失败')) } finally { exportBusy.value = false }
+}
+
+// 抽屉方格(§2.1 收款方分段):该户有钱的槽才出格;保存=逐条 PUT paymap
+const slotSaving = ref(false)
+const slotCells = computed<SlotCell[]>(() => {
+  const r = dlgRow.value
+  if (!r || !details.value.length) return []
+  return buildSlotCells(r.tenantId,
+    { dorm: details.value.some(d => d.noticeKind === 'dorm'), amounts: slotAmounts(details.value) },
+    payMap.value, companies.value)
+})
+async function onSlotSave(p: { colIds: string[]; companyId: number }) {
+  if (!canEdit.value || slotSaving.value || !dlgRow.value) return
+  const tid = dlgRow.value.tenantId
+  slotSaving.value = true
+  try {
+    for (const colId of p.colIds) await billsApi.setPaymap({ tenantId: tid, feeKey: colId as never, companyId: p.companyId })
+    loadPayMap()
+    flashOk(`已指定 ${p.colIds.length} 项收款公司;下次重新生成按新归属拆单`)
+  } catch (e) { alert(errMsg(e, '保存失败')) } finally { slotSaving.value = false }
+}
 
 // ── 重新生成(admin;confirm 后 POST generate,轻提示显摘要,完成刷新) ──
 const generating = ref(false)
@@ -324,9 +477,25 @@ const drawerSub = computed(() => {
         <Segmented :options="PHASE_OPTS" v-model="phase" size="sm" />
       </div>
       <div class="bn-actions">
+        <Button variant="outline" size="sm" @click="companyOpen = true">
+          <template #leading><component :is="iconFor('building-2')" :size="14" /></template>
+          收款公司
+        </Button>
+        <Button variant="outline" size="sm" @click="payBookOpen = true">
+          <template #leading><component :is="iconFor('credit-card')" :size="14" /></template>
+          收款簿
+        </Button>
         <Button variant="outline" size="sm" @click="coefOpen = true">
           <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
           系数簿
+        </Button>
+        <Button variant="outline" size="sm" :disabled="!rows.length || exportBusy" @click="expNoticeOpen = true">
+          <template #leading><component :is="iconFor('download')" :size="14" /></template>
+          导出通知单
+        </Button>
+        <Button variant="outline" size="sm" :disabled="!rows.length || exportBusy" @click="expReconOpen = true">
+          <template #leading><component :is="iconFor('table')" :size="14" /></template>
+          导出对账表
         </Button>
         <Button v-if="canEdit" variant="outline" size="sm" :disabled="generating" @click="onGenerate">
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
@@ -363,6 +532,15 @@ const drawerSub = computed(() => {
         仅看有警告
       </label>
       <span style="flex:1"></span>
+      <!-- S20:批量确认(选中态才出;未设收款公司的户会在确认时提示不阻断) -->
+      <template v-if="canEdit && selCount">
+        <span class="bn-selc">已选 {{ selCount }} 户</span>
+        <Button variant="primary" size="sm" :disabled="confirming"
+                @click="confirmTenants(filtered.filter(r => selected.has(r.tenantId)).map(r => r.tenantId))">
+          <template #leading><component :is="iconFor('check')" :size="14" /></template>
+          {{ confirming ? '确认中…' : '确认选中' }}
+        </Button>
+      </template>
       <input v-model="q" class="bn-search" type="text" placeholder="搜租户名" />
     </div>
 
@@ -379,11 +557,13 @@ const drawerSub = computed(() => {
         </colgroup>
         <thead>
           <tr>
+            <th v-if="canEdit" class="ct bn-ckc"><input type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
             <th class="l">租户</th>
             <th class="l" title="该户全部单据场地去重合并,明细内按场地分段小计">位置</th>
             <th>行数</th>
             <th title="该户全部单据本期合计之和(租金+水电,含宿舍单);账外户降淡不入应收">本期合计(元)</th>
             <th title="该户当月在租合同月租之和;参考口径:整月,未含免租期/按天折">月租金(参考)</th>
+            <th class="l" title="待核对→已确认→已导出(单向);橙点=该户有费用未指定收款公司(提示不阻断);已确认/已导出户重新生成自动跳过">状态</th>
             <th title="门禁告警:缺价/表未归属合同/费项未设收款公司/合计为负…各单去重合并,悬停「!」看原文">警告</th>
           </tr>
         </thead>
@@ -391,13 +571,16 @@ const drawerSub = computed(() => {
           <!-- 楼栋分组:组头(楼栋名 · 户数 · 组内本期合计)+ 组内租户行;跨栋户只在主楼栋组出现一次 -->
           <template v-for="g in groups" :key="g.id ?? 'none'">
             <tr class="bn-band">
-              <td class="l" :colspan="3">
+              <td class="l" :colspan="canEdit ? 4 : 3">
                 <span class="bn-band-lbl">{{ g.name }}</span><span class="bn-band-sub">{{ g.count }} 户</span>
               </td>
               <td><span class="bn-sumc">{{ fmt2(g.total) }}</span></td>
-              <td :colspan="2"></td>
+              <td :colspan="3"></td>
             </tr>
             <tr v-for="r in g.rows" :key="r.tenantId" :class="{ offbook: r.offbook }" @click="openDetail(r)">
+              <td v-if="canEdit" class="ct bn-ckc" @click.stop>
+                <input type="checkbox" :checked="selected.has(r.tenantId)" @change="toggleOne(r.tenantId)" />
+              </td>
               <td class="l">
                 <span class="bn-tname" :title="r.tenantName ?? undefined">{{ r.tenantName ?? '#' + r.tenantId
                   }}<em v-if="r.mark" class="bn-xb" :title="r.mark.tip">{{ r.mark.badge }}</em></span>
@@ -406,22 +589,31 @@ const drawerSub = computed(() => {
               <td><span class="bn-nv">{{ r.lineCount }}</span></td>
               <td><span class="bn-sumc" :class="{ neg: r.totalAmount < 0 }">{{ fmt2(r.totalAmount) }}</span></td>
               <td><span class="bn-nv" :class="{ empty: r.rent == null }">{{ fmt2(r.rent) }}</span></td>
+              <!-- S20 状态列:徽标 + 橙点(收款缺口) + hover 出确认按钮 -->
+              <td class="l bn-stc">
+                <span class="bn-st" :class="statusOf(r.tenantId)">{{ ST_LABEL[statusOf(r.tenantId)] }}</span>
+                <span v-if="gapOf(r.tenantId)" class="bn-gapdot" title="该户有费用未指定收款公司(提示,不阻断导出)"></span>
+                <button v-if="canEdit && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
+                        :disabled="confirming" title="核对无误,确认该户" @click.stop="confirmTenants([r.tenantId])">确认</button>
+              </td>
               <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
             </tr>
           </template>
           <tr v-if="filtered.length === 0">
-            <td class="bn-noro" :colspan="6">
+            <td class="bn-noro" :colspan="canEdit ? 8 : 7">
               {{ rows.length === 0 ? '本月尚未生成催缴单' : '本期无匹配租户 —— 换期页签或筛选条件试试' }}
             </td>
           </tr>
         </tbody>
         <tfoot>
           <tr>
+            <th v-if="canEdit" class="bn-ckc"></th>
             <th class="l"><span class="bn-foot-lbl">合　计 · {{ filtered.length }} 户</span></th>
             <th></th>
             <th><span class="bn-foot-v">{{ footLines }}</span></th>
             <th><span class="bn-foot-v">{{ fmt2(footTotal) }}</span></th>
             <th><span class="bn-foot-v">{{ fmt2(footRent) }}</span></th>
+            <th></th>
             <th></th>
           </tr>
         </tfoot>
@@ -450,6 +642,10 @@ const drawerSub = computed(() => {
           <div class="bn-hfld"><label>月租金(参考)</label><span class="mono" :class="{ dim: dlgRow.rent == null }">{{ dlgRow.rent == null ? '–' : fmt2(dlgRow.rent) + ' 元' }}</span></div>
           <div class="bn-hfld"><label>上期欠费</label><span class="mono dim" title="催缴闭环接口点,S4 恒 0,待收款流水接入">{{ fmt2(dlgRow.prevDue) }} 元</span></div>
         </div>
+
+        <!-- S20 收款方分段:按收款槽出方格(同槽多费项共用一家公司),多选后指定公司 -->
+        <PaySlotGrid v-if="slotCells.length" :cells="slotCells" :companies="companies"
+                     :can-edit="canEdit" :saving="slotSaving" @save="onSlotSave" />
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
@@ -801,6 +997,18 @@ const drawerSub = computed(() => {
     <!-- 系数簿窗口(S14):合同/楼栋/年清单与本页同源,生效月默认=当前账期 -->
     <CoefBookWindow :open="coefOpen" :ym="ym" :phase="phase" :contracts="contracts"
                     :buildings="buildings" :years="dataYears" @close="coefOpen = false" />
+
+    <!-- S20 交付链四窗口:收款公司 / 收款簿 / 导出通知单 / 导出对账表 -->
+    <CompanyBookWindow :open="companyOpen" @close="companyOpen = false" @saved="loadCompanies" />
+    <PayBookWindow :open="payBookOpen" :ym="ym" :phase="phase" :notices="rows"
+                   :contracts="contracts" :buildings="buildings"
+                   @close="payBookOpen = false" @saved="loadPayMap(); loadMonth()" />
+    <ExportNoticeWindow :open="expNoticeOpen" :ym="ym" :phase="phase" :notices="rows"
+                        :contracts="contracts" :buildings="buildings"
+                        :busy="exportBusy" :result="exportResult"
+                        @close="expNoticeOpen = false" @export="onExportNotice" />
+    <ExportReconWindow :open="expReconOpen" :ym="ym" :notices="rows" :busy="exportBusy"
+                       @close="expReconOpen = false" @export="onExportRecon" />
   </div>
 </template>
 
@@ -868,6 +1076,20 @@ const drawerSub = computed(() => {
 .bn-sumc.neg { color: var(--hue-red); }
 
 /* 警告角标(悬停显原文) */
+/* S20 交付链:勾选列/状态徽标/收款缺口橙点/行内确认按钮 */
+.bn-ckc { width: 34px; }
+.bn-ckc input { width: 15px; height: 15px; accent-color: var(--accent); vertical-align: -2px; }
+.bn-selc { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-secondary); }
+.bn-stc { white-space: nowrap; }
+.bn-st { display: inline-block; padding: 1px 9px; border-radius: var(--radius-full); font-size: 11.5px; font-weight: var(--fw-semibold); }
+.bn-st.draft { background: var(--surface-sunken); color: var(--text-tertiary); }
+.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--accent); }
+.bn-st.exported { background: rgb(220, 242, 227); color: rgb(17, 99, 41); }
+.bn-st.partial { background: rgb(255, 242, 207); color: rgb(125, 92, 0); }
+.bn-gapdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-orange, #e8912d); margin-left: 5px; vertical-align: 1px; cursor: help; }
+.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
+.bn-cfm:hover { border-color: var(--accent); color: var(--accent); }
+tbody tr:hover .bn-cfm { visibility: visible; }
 .bn-warn { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); background: rgb(255, 238, 237); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); cursor: help; }
 
 /* ── 抽屉:户头 + 两 tab 明细行表(md-htable 家族) ── */

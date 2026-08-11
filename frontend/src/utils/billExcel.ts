@@ -187,7 +187,7 @@ async function billXlsxBytes(fam: BillFamily, year: number, month: number, payCo
   return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))
 }
 
-function downloadBlob(blob: Blob, name: string): void {
+export function downloadBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

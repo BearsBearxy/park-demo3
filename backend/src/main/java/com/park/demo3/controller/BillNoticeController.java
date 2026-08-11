@@ -1,4 +1,5 @@
 package com.park.demo3.controller;
+import com.park.demo3.dto.BillDeliveryDTO;
 import com.park.demo3.dto.BillNoteReq;
 import com.park.demo3.dto.BillNoticeDTO;
 import com.park.demo3.dto.BillNoticeDetailDTO;
@@ -22,7 +23,8 @@ public class BillNoticeController {
     private final BillNoticeService svc;
     public BillNoticeController(BillNoticeService svc) { this.svc = svc; }
 
-    @Operation(summary = "按月派生催缴单(幂等:先删本月 draft/void 再插;有 issued 单的租户跳过并计入 warned)")
+    @Operation(summary = "按月派生催缴单(幂等:先删本月 draft/void 再插;已确认/已导出的租户整户跳过,"
+        + "计入 warned 与 skippedConfirmed,其单与草稿都原样保留)")
     @PostMapping("/generate")
     public BillNoticeGenResultDTO generate(@RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym) {
         return svc.generate(ym);
@@ -41,6 +43,19 @@ public class BillNoticeController {
 
     @Operation(summary = "签发(仅 draft 可签发;签发后不被重跑覆盖,须先作废)") @PostMapping("/{id}/issue")
     public BillNoticeDTO issue(@PathVariable Integer id) { return svc.issue(id); }
+
+    // ── 交付状态流(S20 §1.3):户级批量,该月这些租户的全部单一起流转 ──
+    @Operation(summary = "确认无误(draft→confirmed,落确认人与时间;非 draft 单跳过并计数)")
+    @PostMapping("/confirm")
+    public BillDeliveryDTO.Confirm confirm(@Valid @RequestBody BillDeliveryDTO.Req req) {
+        return svc.confirm(req.ym(), req.tenantIds());
+    }
+
+    @Operation(summary = "标记已导出(draft/confirmed→exported,刷新导出时间;已作废单不动)")
+    @PostMapping("/mark-exported")
+    public BillDeliveryDTO.Export markExported(@Valid @RequestBody BillDeliveryDTO.Req req) {
+        return svc.markExported(req.ym(), req.tenantIds());
+    }
 
     // ── 备注人工覆盖(V92):独立表挂业务键,重生成不丢;显示优先级=覆盖>引擎备注(前端合成) ──
     @Operation(summary = "该户该月全部备注覆盖(键=fee_key+premise_key+meter_key+seg_key,合并行 meter_key='merged')")

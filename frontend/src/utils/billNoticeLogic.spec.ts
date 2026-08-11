@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { ALLOC_FEE_LABEL } from './allocLogic'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
+  buildUtilRows,
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
   mergeNoteKey, noteDisplay, noteKeyId, priceScopeLabel,
   rentAreaText, rentByTenant, rentFeeName, resolvePhase, segLabel, tenantBuildings, tenantKpis,
-  type DormLineBase, type NoticeLike, type RentLineBase,
+  type DormLineBase, type NoticeLike, type RentLineBase, type UtilRowLine,
 } from './billNoticeLogic'
 
 describe('billFeeLabel 费项字典(spec §4:沿用 alloc_result 现值,不造第三套)', () => {
@@ -902,5 +903,53 @@ describe('备注人工覆盖(V92):行键生成 + 显示优先级 + 恢复', () =
     m.delete(noteKeyId(k))
     expect(noteDisplay(m, k, '面积×公摊单价')).toEqual({ text: '面积×公摊单价', overridden: false, engine: '面积×公摊单价' })
     expect(noteDisplay(m, k, null)).toEqual({ text: '', overridden: false, engine: null })
+  })
+})
+
+// -- S20 提取:原 BillNoticesView 内联 utilRows(band/line/merge/sub/part 五型),屏与 Excel 导出共用 --
+describe('buildUtilRows 水电明细拍平', () => {
+  const L = (o: Partial<UtilRowLine>): UtilRowLine => ({
+    feeKey: 'elec', premise: null, meterId: null, meterLabel: null, seg: null,
+    qty: null, baseSnap: null, priceSnap: null, amount: 0, note: null, ...o,
+  })
+  const rows = (ls: UtilRowLine[]) => buildUtilRows(groupExcelStyle(ls))
+
+  it('电部:费块+维护费块各带块头,块小计与部合计逐条出现', () => {
+    const out = rows([
+      L({ feeKey: 'elec', premise: 'A座', qty: 10, priceSnap: 1, amount: 10 }),
+      L({ feeKey: 'mgmt_fee', premise: 'A座', meterId: 1, meterLabel: '电表①', qty: 10, priceSnap: 0.2, amount: 2 }),
+    ])
+    expect(out.map(r => r.t)).toEqual(['band', 'line', 'sub', 'band', 'line', 'sub', 'part'])
+    expect(out.flatMap(r => (r.t === 'band' ? [r.label] : []))).toEqual(['电费(A座)', '用电维护费(A座)'])
+    expect(out.flatMap(r => (r.t === 'sub' || r.t === 'part' ? [r.amount] : []))).toEqual([10, 2, 12])
+  })
+  it('维护费块过 mergeMaintRows:同费项多池并一行(merge 型)', () => {
+    const out = rows([
+      L({ feeKey: 'share_elec_floor', premise: 'A座', shareSrc: 'floor', baseSnap: 1, amount: 10 }),
+      L({ feeKey: 'share_elec_floor', premise: 'A座', shareSrc: 'floor', baseSnap: 2, amount: 20 }),
+    ])
+    const merged = out.flatMap(r => (r.t === 'merge' ? [r.m] : []))
+    expect(merged).toHaveLength(1)
+    expect([merged[0].label, merged[0].amount]).toEqual(['楼层公共、消防照明', 30])
+  })
+  it('水部:每场地一条「场地水费、维护费合计」+ 部合计;费块无 sub', () => {
+    const out = rows([L({ feeKey: 'water', premise: 'B座', qty: 3, priceSnap: 2, amount: 6 })])
+    expect(out.map(r => r.t)).toEqual(['band', 'line', 'sub', 'part'])
+    expect(out[2]).toEqual({ t: 'sub', label: '场地水费、维护费合计(B座)', amount: 6 })
+  })
+  it('未知费项键落「其他费项」块,不丢行', () => {
+    const out = rows([L({ feeKey: 'nope', amount: 5 })])
+    expect(out[0]).toEqual({ t: 'band', label: '其他费项' })
+    expect(out.at(-1)).toEqual({ t: 'sub', label: '其他费项合计', amount: 5 })
+  })
+  it('空入参出空数组(空块不出块头)', () => expect(rows([])).toEqual([]))
+  it('块内行重编号从 1 起,备注覆盖行键随行型走', () => {
+    const out = rows([
+      L({ feeKey: 'elec', premise: 'A座', meterId: 9, seg: 'peak', qty: 1, priceSnap: 1, amount: 1 }),
+      L({ feeKey: 'elec', premise: 'A座', meterId: 9, seg: 'flat', qty: 2, priceSnap: 1, amount: 2 }),
+    ])
+    const ls = out.flatMap(r => (r.t === 'line' ? [r] : []))
+    expect(ls.map(r => r.no)).toEqual([1, 2])
+    expect(ls[0].nk).toEqual({ feeKey: 'elec', premiseKey: 'A座', meterKey: '9', segKey: 'peak' })
   })
 })

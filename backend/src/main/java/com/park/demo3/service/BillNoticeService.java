@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.BillDeliveryDTO;
 import com.park.demo3.dto.BillNoteReq;
 import com.park.demo3.dto.BillNoticeDTO;
 import com.park.demo3.dto.BillNoticeDetailDTO;
@@ -62,7 +63,7 @@ import java.util.stream.Collectors;
 
 // 催缴单派生引擎(S4-BILL-NOTICE-SPEC §5 + BILL-DERIVE-SPEC §2/§3 判定树B):
 // 单事务;幂等=先删本 ym 的 draft(与 void:uk_notice 不含 status,void 留着会撞重生成的新 draft)再插;
-// 存在 issued 单的租户整户跳过并计入 warned 摘要。
+// 已确认/已导出(含历史 issued)的租户整户跳过并计入 warned/skippedConfirmed 摘要(S20 §1.3 重新生成保护)。
 // 取价一律 PriceCfgService.resolveHit(scope/acctMonth 落审计链);公摊行取 AllocService.poolContributions
 // (池快照口径);表→合同走 MeterBindingService.resolveBinding 行级快照。
 @Service
@@ -143,11 +144,20 @@ public class BillNoticeService {
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
         String batch = "BN" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-        // 幂等:draft 先删;void 一并清(uk_notice 不含 status,作废单留着会撞重生成的新 draft;行由 FK CASCADE 连删)
-        notices.delete(new QueryWrapper<BillNotice>().eq("ym", ym).in("status", "draft", "void"));
-        Set<Integer> issuedTenants = notices.selectList(new QueryWrapper<BillNotice>()
-                .eq("ym", ym).eq("status", "issued"))
+        // 重新生成保护(S20 §1.3):已确认/已导出(含历史 issued)的户整户跳过 —— 这是防止已核对数据
+        // 被静默覆盖的闸门。锁定户先算出来,再排除在删除范围外:否则该户「部分确认」时剩下的 draft
+        // 会被删掉又因跳过而不重建,凭空少单。
+        Set<Integer> lockedTenants = notices.selectList(new QueryWrapper<BillNotice>()
+                .eq("ym", ym).in("status", "confirmed", "exported", "issued"))
             .stream().map(BillNotice::getTenantId).collect(Collectors.toSet());
+        Set<Integer> confirmedTenants = notices.selectList(new QueryWrapper<BillNotice>()
+                .eq("ym", ym).in("status", "confirmed", "exported"))
+            .stream().map(BillNotice::getTenantId).collect(Collectors.toSet());
+        // 幂等:draft 先删;void 一并清(uk_notice 不含 status,作废单留着会撞重生成的新 draft;行由 FK CASCADE 连删)
+        QueryWrapper<BillNotice> del = new QueryWrapper<BillNotice>()
+            .eq("ym", ym).in("status", "draft", "void");
+        if (!lockedTenants.isEmpty()) del.notIn("tenant_id", lockedTenants);
+        notices.delete(del);
 
         // ── 语境 ──
         Map<Integer, Meter> meterById = new HashMap<>();
@@ -433,11 +443,17 @@ public class BillNoticeService {
         // ── 拆单归集(§4):行→colId→bill_pay_company;宿舍段整段进 dorm 单收 dormRent 映射;offbook 户全单 offbook ──
         record NKey(Integer tenantId, Integer companyId, String kind) {}
         Map<NKey, List<L>> groups = new LinkedHashMap<>();
-        int skippedIssued = 0;
+        int skippedIssued = 0, skippedConfirmed = 0;
         Set<Integer> seenSkipped = new LinkedHashSet<>();
         for (Map.Entry<Integer, List<L>> e : byTenant.entrySet()) {
             Integer tid = e.getKey();
-            if (issuedTenants.contains(tid)) { if (seenSkipped.add(tid)) skippedIssued++; continue; }
+            if (lockedTenants.contains(tid)) {
+                if (seenSkipped.add(tid)) {
+                    skippedIssued++;
+                    if (confirmedTenants.contains(tid)) skippedConfirmed++;
+                }
+                continue;
+            }
             Tenant t = tenantById.get(tid);
             boolean off = t != null && t.getOffbook() != null && t.getOffbook() == 1;
             for (L l : e.getValue()) {
@@ -528,7 +544,7 @@ public class BillNoticeService {
             s.setGapAmount(s.getCostAmount() == null ? null : allocated.subtract(s.getCostAmount()));
             poolResults.updateById(s);
         }
-        return new BillNoticeGenResultDTO(generated, lineCount, warned, batch);
+        return new BillNoticeGenResultDTO(generated, lineCount, warned, skippedConfirmed, batch);
     }
 
     // ── 电表判定树B:elec_package 户级命中→包干单行 / 分时(curr_peak|flat|valley 任一非空)→四段+mgmt0.16
@@ -1182,6 +1198,53 @@ public class BillNoticeService {
 
     private static String emptyIfNull(String s) { return s == null ? "" : s; }
 
+    // ── 交付状态流(S20 §1.3):draft ──确认──> confirmed ──导出──> exported;单向,要改就作废后重生成 ──
+    // 户级批量:该月这些租户的全部单一起流转(状态是单据级存储、户级展示)。
+
+    @Transactional
+    public BillDeliveryDTO.Confirm confirm(String ym, List<Integer> tenantIds) {
+        String who = currentUser();
+        LocalDateTime now = LocalDateTime.now();
+        int confirmed = 0, skipped = 0;
+        for (BillNotice n : byTenants(ym, tenantIds)) {
+            if (!"draft".equals(n.getStatus())) { skipped++; continue; }  // 已确认/已导出/已作废原样跳过
+            n.setStatus("confirmed");
+            n.setConfirmedAt(now);
+            n.setConfirmedBy(who);
+            notices.updateById(n);
+            confirmed++;
+        }
+        return new BillDeliveryDTO.Confirm(confirmed, skipped);
+    }
+
+    // 导出后回标;重复导出刷新 exported_at(「最近一次导出时间」)。已作废单不动。
+    @Transactional
+    public BillDeliveryDTO.Export markExported(String ym, List<Integer> tenantIds) {
+        LocalDateTime now = LocalDateTime.now();
+        int marked = 0;
+        for (BillNotice n : byTenants(ym, tenantIds)) {
+            if ("void".equals(n.getStatus())) continue;
+            n.setStatus("exported");
+            n.setExportedAt(now);
+            notices.updateById(n);
+            marked++;
+        }
+        return new BillDeliveryDTO.Export(marked);
+    }
+
+    private List<BillNotice> byTenants(String ym, List<Integer> tenantIds) {
+        requireYm(ym);
+        if (tenantIds == null || tenantIds.isEmpty()) return List.of();
+        return notices.selectList(new QueryWrapper<BillNotice>()
+            .eq("ym", ym).in("tenant_id", tenantIds).orderByAsc("id"));
+    }
+
+    private static String currentUser() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+            .getContext().getAuthentication();
+        return auth == null ? null : auth.getName();
+    }
+
     // 仅 issued/draft 可 void;issue 仅 draft(issued 不可被重跑覆盖,须先 void)
     public BillNoticeDTO voidNotice(Integer id) { return transition(id, "void"); }
     public BillNoticeDTO issue(Integer id) { return transition(id, "issued"); }
@@ -1209,7 +1272,7 @@ public class BillNoticeService {
         return new BillNoticeDTO(n.getId(), n.getYm(), n.getTenantId(), names.tenant().get(n.getTenantId()),
             n.getPayCompanyId(), n.getPayCompanyId() == null ? null : names.company().get(n.getPayCompanyId()),
             n.getNoticeKind(), n.getPremiseText(), n.getTotalAmount(), n.getPrevDue(),
-            n.getStatus(), n.getWarn(), lineCount);
+            n.getStatus(), n.getWarn(), lineCount, n.getConfirmedAt(), n.getExportedAt());
     }
 
     // ══════════ helpers ══════════

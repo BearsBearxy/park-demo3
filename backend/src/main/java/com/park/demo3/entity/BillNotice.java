@@ -13,8 +13,11 @@ public class BillNotice {
     private String premiseText;        // 位置原文,多场地逗号连
     private BigDecimal totalAmount;
     private BigDecimal prevDue;        // 上期欠费;催缴闭环接口点,S4 先留 0
-    private String status;             // draft/issued/void;issued 不可被重跑覆盖
+    private String status;             // draft/confirmed/exported/void(+历史 issued);非 draft 不可被重跑覆盖
     private String warn;               // 门禁警告拼接
     private String genBatch;           // 派生批次;重跑幂等键
     private LocalDateTime generatedAt;
+    private LocalDateTime confirmedAt; // V94 核对确认时间
+    private String confirmedBy;        // V94 确认人登录名
+    private LocalDateTime exportedAt;  // V94 最近一次导出时间
 }
