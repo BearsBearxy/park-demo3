@@ -11,6 +11,7 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
+import { selectedAreaSums, prefillRentArea } from '@/components/fp/fpUnitPicker'
 import type { FPUnitOption } from '@/components/fp/fpUnitPicker'
 import { contractApi } from '@/api/contract'
 import { tenantApi } from '@/api/tenant'
@@ -83,7 +84,7 @@ const submitting = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
-type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null }
+type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }
 type Segment = { propertyType: PropertyType; location: string; rows: SegRow[] }
 const segments = ref<Segment[]>([])
 const showTypeMenu = ref(false)
@@ -94,7 +95,7 @@ function newRow(feeKey: FeeKey): SegRow {
 function buildSegment(pt: PropertyType): Segment {
   return { propertyType: pt, location: '', rows: PINNED_FEES[pt].map(newRow) }
 }
-function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = '' }
+function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = ''; applyUnitAreaPrefill() }
 function removeSegment(i: number) { segments.value.splice(i, 1) }
 
 // 其他费用独立标的(2026-08-07 旭化成裁定):单行一笔杂费,location=收费项目名,金额直填;
@@ -200,7 +201,7 @@ async function loadAllUnits() {
     const ds = await Promise.all(buildings.value.map(b => buildingApi.detail(b.id)))
     unitOptions.value = ds.flatMap((d, i) => d.units.map(u => ({
       id: u.id, buildingId: buildings.value[i].id, buildingName: buildings.value[i].name,
-      floor: u.floor, unitNo: u.unitNo, area: u.area, status: u.status,
+      floor: u.floor, unitNo: u.unitNo, area: u.area, status: u.status, phase: buildings.value[i].phase,
     })))
   } catch { /* 失败不拦:已选 id 仍以「未知单元」chips 可见,提交不受影响 */ }
   finally { unitsLoading.value = false }
@@ -223,6 +224,20 @@ function groupLines(lines: BillingLineDTO[]): Segment[] {
 
 // 单元候选已是全楼栋(跨栋可选):切换楼栋不再清已选单元——chips 带栋名可见,不会隐形残留
 function onBuildingChange() { err.value = '' }
+
+// 标的面积预填(a方案联动半):选单元变化/新增段时,每段首条租金行面积格空或0 → 自动填Σ同类型
+// 选中单元面积(宿舍段=phase4栋Σ,其余=非宿舍Σ);用户已填的值绝不覆盖;autoArea 标记出
+// 「来自单元档案,可改」提示+短暂高亮,用户改动该格即清
+function applyUnitAreaPrefill() {
+  const sums = selectedAreaSums(unitSel.value, unitOptions.value)
+  for (const seg of segments.value) {
+    const row = seg.rows.find(r => BUILDING_RENT_KEYS.includes(r.feeKey))
+    if (!row) continue
+    const v = prefillRentArea(row.feeKey, row.area, sums)
+    if (v != null) { row.area = v; row.autoArea = true }
+  }
+}
+function onUnitSelChange() { err.value = ''; applyUnitAreaPrefill() }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const isNum = (v: number | null): v is number => typeof v === 'number' && !Number.isNaN(v)
@@ -426,7 +441,7 @@ async function submit() {
               <div class="lab">单元 · 可跨栋多选,首个为主单元(★可换主)</div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.floorInfo || '未指定单元'" disabled />
               <FPUnitPicker v-else v-model="unitSel" :units="unitOptions" :loading="unitsLoading"
-                            @update:model-value="err = ''" />
+                            @update:model-value="onUnitSelChange()" />
             </div>
             <!-- 建筑面积 → 面积分类(计费行汇总只读,S15 §3);月租金/租金单价并入下方标的段,不双录入 -->
             <div class="ct-field">
@@ -497,7 +512,10 @@ async function submit() {
                   <div v-for="row in pinnedRows(seg)" :key="'p' + row.feeKey" class="ct-bl-row">
                     <span class="ct-bl-feename">{{ feeLabel(seg.propertyType, row.feeKey) }}</span>
                     <template v-if="isSqm(row.feeKey)">
-                      <input class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.area" placeholder="面积" @input="err = ''" />
+                      <input class="ct-in ct-bl-n" :class="{ 'auto-area': row.autoArea }" type="number" min="0" step="0.01"
+                             v-model.number="row.area" placeholder="面积"
+                             :title="row.autoArea ? '来自单元档案,可改' : ''"
+                             @input="err = ''; row.autoArea = false" />
                       <!-- 公摊面积(S5 §1/§4):仅租金行;填了=左侧面积为建筑面积,分摊按两者之和;留空=面积已含公摊 -->
                       <input v-if="isRentKey(row.feeKey)" class="ct-in ct-bl-n" type="number" min="0" step="0.01" v-model.number="row.areaShared"
                              placeholder="公摊(选填)" title="填了公摊 = 面积格为建筑面积,公摊分摊按 面积+公摊 之和;留空 = 面积已含公摊" @input="err = ''" />
@@ -690,6 +708,9 @@ select.ct-in { appearance:auto; }
 .ct-bl-feename { flex:0 0 148px; font-size:12.5px; color:var(--text-primary); }
 .ct-bl-feename em { font-style:normal; font-size:10.5px; color:var(--text-disabled); }
 .ct-bl-n { flex:1 1 0; min-width:0; }
+/* 标的面积预填提示:来自单元档案的自动填充短暂高亮(title 注明「来自单元档案,可改」),用户改动即清 */
+.ct-bl-n.auto-area { border-color:var(--hue-blue); animation:ctAutoFill 1.8s var(--ease-standard); }
+@keyframes ctAutoFill { from { background:rgba(59,130,246,.14); } to { background:var(--surface-white); } }
 .ct-chk { flex:0 0 148px; display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; }
 .ct-chk input { accent-color:var(--hue-blue); }
 .ct-bl-mo { flex:0 0 88px; text-align:right; font-family:var(--font-mono); font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); }

@@ -111,7 +111,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDoc, true))
             <label v-for="u in g.units" :key="u.id" class="fp-up-item" role="option" :aria-selected="isSel(u.id)">
               <input type="checkbox" :checked="isSel(u.id)" @change="onToggleUnit(u.id)" />
               <span class="nm">{{ u.floor }}F-{{ u.unitNo }}</span>
-              <span class="meta">{{ u.area != null ? u.area + '㎡' : '' }}{{ u.status && u.status !== 'vacant' ? ' · 非空置' : '' }}</span>
+              <span class="meta">{{ (u.area ?? 0) > 0 ? u.area + '㎡' : '' }}{{ u.status && u.status !== 'vacant' ? ' · 非空置' : '' }}</span>
             </label>
           </div>
           <div v-if="!groups.length" class="fp-up-empty">无匹配单元</div>
