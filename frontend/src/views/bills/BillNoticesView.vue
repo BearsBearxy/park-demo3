@@ -163,6 +163,9 @@ const companies = ref<CompanyFullDTO[]>([])
 const payMap = ref(new Map<string, number>())   // `${tenantId}|${colId}` → companyId
 const selected = ref(new Set<number>())         // 列表勾选的 tenantId
 const confirming = ref(false)
+// 批量模式:常态列表无勾选列(106 行 × 一个方框的永久视觉成本换一个偶尔用的操作,不划算),
+// 点「批量确认」才滑出勾选列并把筛选行换成操作条;确认完/点退出即收起。
+const bulkMode = ref(false)
 
 function loadCompanies() {
   companyBookApi.list().then(cs => { companies.value = cs }).catch(() => { /* 公司失败=下拉空,不阻断列表 */ })
@@ -188,6 +191,10 @@ const ST_LABEL: Record<TenantStatus, string> = {
   draft: '待核对', partial: '部分确认', confirmed: '已确认', exported: '已导出',
 }
 
+const bulk = computed(() => canEdit.value && bulkMode.value)
+function exitBulk() { bulkMode.value = false; selected.value = new Set() }
+// 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
+watch([phase, year, month], exitBulk)
 const selCount = computed(() => filtered.value.filter(r => selected.value.has(r.tenantId)).length)
 const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every(r => selected.value.has(r.tenantId)))
 function toggleAll() {
@@ -214,7 +221,7 @@ async function confirmTenants(tids: number[]) {
   try {
     const res = await billDeliveryApi.confirm(ym.value, tids)
     flashOk(`已确认 ${res.confirmed} 单${res.skipped ? `,跳过 ${res.skipped} 单(已确认/已作废)` : ''}`)
-    selected.value = new Set()
+    exitBulk()
     await loadMonth()
   } catch (e) { alert(errMsg(e, '确认失败')) } finally { confirming.value = false }
 }
@@ -525,39 +532,55 @@ const drawerSub = computed(() => {
       </span>
     </div>
 
-    <!-- 筛选行:仅看有警告 + 租户搜索 -->
-    <div class="bn-toolbar">
-      <label class="bn-chk">
-        <input type="checkbox" v-model="warnOnly" />
-        仅看有警告
-      </label>
-      <span style="flex:1"></span>
-      <!-- S20:批量确认(选中态才出;未设收款公司的户会在确认时提示不阻断) -->
-      <template v-if="canEdit && selCount">
-        <span class="bn-selc">已选 {{ selCount }} 户</span>
-        <Button variant="primary" size="sm" :disabled="confirming"
+    <!-- 筛选行:仅看有警告 + 租户搜索;批量模式下整条换成操作条(未设收款公司的户会在确认时提示不阻断) -->
+    <div class="bn-toolbar" :class="{ bulk }">
+      <template v-if="bulk">
+        <span class="bn-selc">{{ selCount ? `已选 ${selCount} 户` : '勾选要确认的租户' }}</span>
+        <span style="flex:1"></span>
+        <button class="bn-bulkb" type="button" @click="toggleAll">
+          {{ allChecked ? '取消全选' : `全选 ${filtered.length} 户` }}
+        </button>
+        <Button variant="primary" size="sm" :disabled="confirming || !selCount"
                 @click="confirmTenants(filtered.filter(r => selected.has(r.tenantId)).map(r => r.tenantId))">
           <template #leading><component :is="iconFor('check')" :size="14" /></template>
-          {{ confirming ? '确认中…' : '确认选中' }}
+          {{ confirming ? '确认中…' : `确认选中${selCount ? ` ${selCount} 户` : '' }` }}
         </Button>
+        <button class="bn-bulkb" type="button" title="退出批量模式" @click="exitBulk">
+          <component :is="iconFor('x')" :size="14" /> 退出
+        </button>
       </template>
-      <input v-model="q" class="bn-search" type="text" placeholder="搜租户名" />
+      <template v-else>
+        <label class="bn-chk">
+          <input type="checkbox" v-model="warnOnly" />
+          仅看有警告
+        </label>
+        <span style="flex:1"></span>
+        <Button v-if="canEdit && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
+          <template #leading><component :is="iconFor('list-todo')" :size="14" /></template>
+          批量确认
+        </Button>
+        <input v-model="q" class="bn-search" type="text" placeholder="搜租户名" />
+      </template>
     </div>
 
     <!-- 一行一户(pl-table 手法:sticky 表头/34px 行/tfoot 钉底合计) -->
     <div class="bn-wrap">
       <table class="bn-table">
+        <!-- table-layout:fixed ⇒ col 必须与列数逐一对齐,缺一个后面全体串位。
+             S20 加「勾选/状态」两列时漏补,导致月租金列拿到 52px(表头「月租金(参考)」被截成「月租金(参」)。 -->
         <colgroup>
+          <col v-if="bulk" style="width:36px" />
           <col style="width:220px" />
           <col /><!-- 位置:唯一弹性列 -->
           <col style="width:88px" />
           <col style="width:130px" />
           <col style="width:130px" />
+          <col style="width:150px" /><!-- 状态:「部分确认」徽标 + 收款缺口橙点 + hover 出的确认按钮 -->
           <col style="width:52px" />
         </colgroup>
         <thead>
           <tr>
-            <th v-if="canEdit" class="ct bn-ckc"><input type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
+            <th v-if="bulk" class="ct bn-ckc"><input type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
             <th class="l">租户</th>
             <th class="l" title="该户全部单据场地去重合并,明细内按场地分段小计">位置</th>
             <th>行数</th>
@@ -571,14 +594,17 @@ const drawerSub = computed(() => {
           <!-- 楼栋分组:组头(楼栋名 · 户数 · 组内本期合计)+ 组内租户行;跨栋户只在主楼栋组出现一次 -->
           <template v-for="g in groups" :key="g.id ?? 'none'">
             <tr class="bn-band">
-              <td class="l" :colspan="canEdit ? 4 : 3">
+              <td class="l" :colspan="bulk ? 4 : 3">
                 <span class="bn-band-lbl">{{ g.name }}</span><span class="bn-band-sub">{{ g.count }} 户</span>
               </td>
               <td><span class="bn-sumc">{{ fmt2(g.total) }}</span></td>
               <td :colspan="3"></td>
             </tr>
-            <tr v-for="r in g.rows" :key="r.tenantId" :class="{ offbook: r.offbook }" @click="openDetail(r)">
-              <td v-if="canEdit" class="ct bn-ckc" @click.stop>
+            <!-- 批量模式下整行点击=切勾选(已进入选择语境,再弹抽屉会打架);常态点击=开明细 -->
+            <tr v-for="r in g.rows" :key="r.tenantId"
+                :class="{ offbook: r.offbook, sel: bulk && selected.has(r.tenantId) }"
+                @click="bulk ? toggleOne(r.tenantId) : openDetail(r)">
+              <td v-if="bulk" class="ct bn-ckc" @click.stop>
                 <input type="checkbox" :checked="selected.has(r.tenantId)" @change="toggleOne(r.tenantId)" />
               </td>
               <td class="l">
@@ -593,21 +619,21 @@ const drawerSub = computed(() => {
               <td class="l bn-stc">
                 <span class="bn-st" :class="statusOf(r.tenantId)">{{ ST_LABEL[statusOf(r.tenantId)] }}</span>
                 <span v-if="gapOf(r.tenantId)" class="bn-gapdot" title="该户有费用未指定收款公司(提示,不阻断导出)"></span>
-                <button v-if="canEdit && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
+                <button v-if="canEdit && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
                         :disabled="confirming" title="核对无误,确认该户" @click.stop="confirmTenants([r.tenantId])">确认</button>
               </td>
               <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
             </tr>
           </template>
           <tr v-if="filtered.length === 0">
-            <td class="bn-noro" :colspan="canEdit ? 8 : 7">
+            <td class="bn-noro" :colspan="bulk ? 8 : 7">
               {{ rows.length === 0 ? '本月尚未生成催缴单' : '本期无匹配租户 —— 换期页签或筛选条件试试' }}
             </td>
           </tr>
         </tbody>
         <tfoot>
           <tr>
-            <th v-if="canEdit" class="bn-ckc"></th>
+            <th v-if="bulk" class="bn-ckc"></th>
             <th class="l"><span class="bn-foot-lbl">合　计 · {{ filtered.length }} 户</span></th>
             <th></th>
             <th><span class="bn-foot-v">{{ footLines }}</span></th>
@@ -1032,8 +1058,12 @@ const drawerSub = computed(() => {
 /* 各单 warn 换行合并后逐行显示 */
 .bn-warn-multi { white-space: pre-line; }
 
-/* 筛选行 */
+/* 筛选行;批量模式下整条改蓝底操作条(视觉上宣告"你在选择态",退出即恢复) */
 .bn-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bn-toolbar.bulk { padding: 7px 12px; border-radius: var(--radius-md); background: rgb(238, 244, 255); border: 1px solid rgb(206, 223, 252); }
+.bn-toolbar.bulk .bn-selc { color: var(--accent); }
+.bn-bulkb { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+.bn-bulkb:hover { border-color: var(--accent); color: var(--accent); }
 .bn-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-chk input { accent-color: var(--hue-blue); }
 .bn-search { width: 230px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
@@ -1048,6 +1078,8 @@ const drawerSub = computed(() => {
 .bn-table td.ct { text-align: center; }
 .bn-table tbody td { height: 34px; background: var(--surface-white); vertical-align: middle; text-align: right; cursor: pointer; }
 .bn-table tbody tr:hover td { background: var(--surface-card); }
+/* 批量模式选中行(整行点击即切勾选,需要一眼能扫出选了哪些) */
+.bn-table tbody tr.sel td, .bn-table tbody tr.sel:hover td { background: rgb(238, 244, 255); }
 /* 账外户视觉降淡(出单不入应收) */
 .bn-table tbody tr.offbook { opacity: .55; }
 .bn-table tbody tr:last-child td { cursor: default; }

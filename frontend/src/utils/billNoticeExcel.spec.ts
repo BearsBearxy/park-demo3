@@ -187,7 +187,9 @@ describe('buildReconSheet 对账表(spec §5.2:户 × 费项 × 金额)', () => 
 })
 
 // ── exceljs 出流通性验证(不比对二进制:只验能写出非空 xlsx 且回读得到锚点格) ──
-describe('exceljs 出流', () => {
+// 出流两例要真 import exceljs(~500KB)再写读一遍 workbook:单跑 ~0.6s,但全量并发时
+// 与 deriveSweep(44s 真文件扫描)抢 CPU 会破 5s 默认阈值。给 30s 而不是让它间歇性红。
+describe('exceljs 出流', { timeout: 30_000 }, () => {
   const item: NoticeExportItem = {
     tenantId: 7, tenantName: '王红婷', premiseText: '二期12号楼\n六楼602室', notes: noNotes,
     details: [detail(3, wangElec)],
