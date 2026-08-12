@@ -2,13 +2,13 @@
 import { describe, it, expect } from 'vitest'
 import { FP_NAV, fpAllPages, fpBuildRoutes, fpFindLayer } from '../fpNav'
 describe('fpNav', () => {
-  it('has 3 layers and 48 items', () => {
+  it('has 3 layers and 47 items', () => {
     expect(FP_NAV).toHaveLength(3)
-    expect(fpAllPages()).toHaveLength(48)
+    expect(fpAllPages()).toHaveLength(47)
   })
   it('builds a route per item with layer back-refs', () => {
     const r = fpBuildRoutes()
-    expect(Object.keys(r)).toHaveLength(48)
+    expect(Object.keys(r)).toHaveLength(47)
     expect(r['buildings'].layer).toBe('data')
     // 价目管理(PRICE-CFG-SPEC §6):出账链组,合同管理之后
     expect(r['price-cfg'].layer).toBe('data')

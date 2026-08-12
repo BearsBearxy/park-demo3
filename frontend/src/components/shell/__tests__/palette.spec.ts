@@ -6,7 +6,7 @@ const allPages = buildAllPages()
 
 describe('filterPages', () => {
   it('empty query yields 最近 group (≤5) + per-layer groups', () => {
-    const recent = ['buildings', 'tenants', 'ledger', 'cockpit', 'bills', 'bank-flow', 'salary', 'import']
+    const recent = ['buildings', 'tenants', 'ledger', 'cockpit', 'meters', 'bank-flow', 'salary', 'import']
     const groups = filterPages('', allPages, recent)
 
     const recentGroup = groups.find(g => g.title === '最近访问')

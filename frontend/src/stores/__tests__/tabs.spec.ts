@@ -88,7 +88,7 @@ describe('tabs store', () => {
 
   it('recent deduplicates and caps at 8', () => {
     const store = useTabsStore()
-    const values = ['buildings', 'tenants', 'contracts', 'ledger', 'bills',
+    const values = ['buildings', 'tenants', 'contracts', 'ledger', 'meters',
                     'bank-flow', 'pv-income', 'car-charging', 'ebike-charging']
     for (const v of values) store.open(v)
     expect(store.recent.length).toBeLessThanOrEqual(8)

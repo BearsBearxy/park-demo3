@@ -25,7 +25,6 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'alloc-loss': () => import('@/views/alloc/LossLedgerView.vue'),
   'bill-notices': () => import('@/views/bills/BillNoticesView.vue'),
   'ledger': () => import('@/views/ledger/LedgerView.vue'),
-  'bills': () => import('@/views/bills/BillsView.vue'),
   'pv-income': () => import('@/views/pv/PvView.vue'),
   'car-charging': ChargingView,
   'ebike-charging': ChargingView,
@@ -89,6 +88,10 @@ const router = createRouter({
       // 展开成新鲜字面量:fpNav.RouteMeta 是具名接口,无隐式索引签名,直接赋给 vue-router 的 meta 会报 TS2322
       meta: { ...meta },
     })),
+    // 撤下的屏(如 2026-08-13 的 /bills 账单管理)与手打错的地址都落这里。
+    // 没有兜底时 vue-router 匹配不到会渲染空 router-view —— 外壳在、内容区全白,像页面崩了。
+    // 标签页/最近访问的残留项由 tabs store 的 ROUTES 过滤自动丢弃,不必在此处理。
+    { path: '/:pathMatch(.*)*', redirect: '/data-home' },
   ],
 })
 

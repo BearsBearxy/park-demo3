@@ -19,7 +19,6 @@ export const FP_NAV: NavLayer[] = [
       { value: 'bill-notices', label: '催缴单', icon: 'file-check-2', kind: 'billNotices' } ] },
     { title: '实际数 · 事后录入', items: [
       { value: 'ledger', label: '月度台账', icon: 'book-open', kind: 'ledger' },
-      { value: 'bills', label: '账单管理', icon: 'receipt', kind: 'bills' },
       { value: 'pv-income', label: '附表6 光伏发电', icon: 'sun', kind: 'schedule6' },
       { value: 'car-charging', label: '附表7 汽车充电桩', icon: 'car', kind: 'schedule7' },
       { value: 'ebike-charging', label: '附表8 电动车充电桩', icon: 'bike', kind: 'schedule8' },
