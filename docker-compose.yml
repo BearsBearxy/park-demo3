@@ -4,6 +4,12 @@
 # 报错退出,而不是静默用仓库里公开的 JWT 密钥 + 种子口令 admin/admin123 起一个"谁都能登且可写"的实例
 # ——端口一旦对公网开放,弱默认等同无认证。本机演示走同一条路,一行:
 #   bash deploy/gen-env.sh localhost   (随机口令;端口占用就改生成的 .env 里 WEB_PORT)
+#
+# backend/frontend 同时给 image 与 build(2026-08-13):
+#   服务器  docker compose pull && up -d       → 拉 CI 构建好的镜像,机器上不编译
+#   本地/应急 docker compose up -d --build     → 照旧本地构建,产物打成同名 tag
+# 起因:2C4G 的云主机跑 vue-tsc + maven 会内存耗尽(v0.10.0-beta.1 部署实测),
+# 构建挪到 GitHub runner 后服务器只负责跑。镜像在 ghcr 上随私有仓库私有,拉取需 docker login。
 services:
   mysql:
     image: mysql:8.0
@@ -26,6 +32,7 @@ services:
     # 仅 compose 内网可达;需宿主机直连调库时自行加 ports(如 "13307:3306",避开 dev 的 13306)
 
   backend:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-backend:${IMAGE_TAG:-latest}
     build: ./backend
     restart: unless-stopped   # 服务器重启/OOM 后自愈;重启竞速(mysql 未就绪)由重试循环兜住
     environment:
@@ -44,6 +51,7 @@ services:
         condition: service_healthy
 
   frontend:
+    image: ${IMAGE_PREFIX:-ghcr.io/bearsbearxy/park-demo3}-frontend:${IMAGE_TAG:-latest}
     build: ./frontend
     restart: unless-stopped
     ports:

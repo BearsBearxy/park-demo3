@@ -8,7 +8,7 @@
 | 项 | 选择 | 说明 |
 |---|---|---|
 | 产品 | 腾讯云/阿里云 **轻量应用服务器** | 面板简单，带宽计费友好；不要选 ECS/CVM（配置项多） |
-| 规格 | **2 核 4G**，系统盘 ≥50G | 4G 内存是硬要求：服务器上构建镜像（Maven+npm）+ MySQL + JVM 同时跑，2G 会内存不足 |
+| 规格 | **2 核 4G**，系统盘 ≥50G | 日常更新由 CI 构建镜像、服务器只拉取（见 §6），4G 足够跑 MySQL+JVM+nginx。首次手工部署若在服务器上 `--build`，2C4G 是下限且大概率要靠 swap 顶（`server-setup.sh` 已配） |
 | 系统镜像 | **Ubuntu 22.04 LTS** | 本套脚本按它写 |
 | 地域 | 国内城市（低延迟）或香港 | 测试期用 `http://IP` 访问，**国内地域也无需备案**；将来绑域名时国内须 ICP 备案（2-4 周），香港免备案但延迟略高。⚠️ 国内地域拉取 Docker 镜像必须走加速（初始化脚本已内置配置），若加速站失效则换香港地域最省事 |
 | 时长 | 先买 1 个月 | 测试完可续可弃，约 ¥60-120/月 |
@@ -46,7 +46,10 @@ docker compose up -d --build         # 构建+启动三容器
   的做法已作废——那样起出来的是仓库公开 JWT 密钥 + 种子口令 admin/admin123 的可写实例，端口一开即等同无认证。
   （同理，`docker compose ps/logs/down` 也需要 .env 在场，正常部署后它一直在 /opt/demo3 下）
 - **gen-env 若报「.env 已存在」必须停下检查**，不可带着来路不明的 .env 继续 up（会以弱口令上公网）
-- 首次构建 **10-40 分钟视网络而定**（Maven/npm 依赖直连境外源）；构建中 mvn 步骤长时间无输出属正常，**不要中断**（中断后已下载的依赖不缓存，重来更慢）
+- 首次构建 **10-40 分钟视网络而定**（Maven/npm 依赖直连境外源）；构建中 mvn 步骤长时间无输出属正常，**不要中断**（中断后已下载的依赖不缓存，重来更慢）。
+  这条只适用于**首次手工部署**——之后的更新走 CI 拉镜像（§6），服务器上不再编译。
+  若首次 `--build` 就撞内存不足，可直接改用镜像：`docker login ghcr.io -u <你的GitHub用户名> -p <PAT>` 后
+  `docker compose pull && docker compose up -d`（镜像随私有仓库私有，PAT 需 `read:packages` 权限）
 
 ## 5. 验收
 
@@ -69,21 +72,35 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
 数据说明：全新库由 Flyway 自动建表并灌入**演示数据**（演示楼栋/租户/合同/台账），测试者开箱即有数据可点。
 不是你本机的真实数据——真实数据涉及 313 户租户财务明细，放公网前需单独决策（见第 7 节）。
 
-## 5.5 自动发布（CD，2026-07-13 起启用）
+## 5.5 自动发布（CD，2026-07-13 起启用；2026-08-13 改为镜像分发）
 
-推送到 master 且 CI 双职全绿后，GitHub Actions 自动发布到云服务器（整树替换、保留 .env、
-数据卷不动），随后从公网做健康检查，失败会把该次运行标红并通知。
-**日常更新只需：改代码 → git push → 等 Actions 页全绿**，手工的 tar/scp/up --build（下节）
-从此只作为 CD 故障时的后备手段。回滚：服务器上保留上一版于 /opt/demo3.prev，
-`cd /opt && rm -rf demo3 && mv demo3.prev demo3 && cd demo3 && docker compose up -d --build`。
-凭据在仓库 Settings → Secrets（DEPLOY_HOST/DEPLOY_SSH_KEY），换服务器时更新这两项即可。
+推送到 master 且 CI 双职全绿后，GitHub Actions 依次做两件事：
+
+1. **构建镜像**（`images` job）：在 runner 上编译前后端，推 `ghcr.io/bearsbearxy/park-demo3-{backend,frontend}`，
+   打两个 tag —— `latest`（compose 默认拉的）与提交 sha（回滚锚点）。
+2. **发布**（`deploy` job）：上传源码树 → 服务器 `docker compose pull && up -d` → 从公网健康检查。
+
+**为什么把构建搬走**：2C4G 的机器跑 `vue-tsc` + Maven 会内存耗尽，v0.10.0-beta.1 部署实测撞过。
+runner 是 4C16G 且构建缓存免费，服务器从此只负责跑。副作用是部署时间从十几分钟降到一两分钟。
+
+源码树仍然上传——不为构建，而是让服务器留一份可应急 `--build` 的底子，且 compose/迁移文件与镜像同版本。
+
+**日常更新只需：改代码 → git push → 等 Actions 页全绿。**
+
+回滚两条路：
+- 换镜像 tag（快）：`IMAGE_TAG=<上一次的提交sha> docker compose up -d`
+- 整树回退：`cd /opt && rm -rf demo3 && mv demo3.prev demo3 && cd demo3 && docker compose up -d`
+
+凭据在仓库 Settings → Secrets（DEPLOY_HOST/DEPLOY_SSH_KEY），换服务器时更新这两项即可；
+ghcr 的推拉用 Actions 自带的 GITHUB_TOKEN，不需要额外配 secret。
 
 ## 6. 日常命令（都在 /opt/demo3 下）
 
 ```bash
 docker compose logs -f backend                # 看后端日志
 docker compose restart backend                # 重启后端
-docker compose up -d --build                  # 更新代码后重新部署(先重复第 3 步上传)
+docker compose pull && docker compose up -d   # 拉 CI 构建好的新镜像重新部署(CD 就是跑这一条)
+docker compose up -d --build                  # 应急:在本机构建(2C4G 慎用,见 §5.5)
 docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_demo3' > backup-$(date +%F).sql   # 备份
 ```
 
