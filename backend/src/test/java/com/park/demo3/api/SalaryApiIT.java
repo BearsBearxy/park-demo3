@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SalaryApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
     private String token;
 
     @BeforeEach
     void login() throws Exception {
+        // ⭐环境归一:清掉任何 IT 留在远期槽位的 salary 行。
+        // 下面 overview 的 currentYear 断言取的是「表内最大数据年」,而共享容器里
+        // SalaryImportApiIT(2099-02)/SalaryDeleteApiIT(2099-05)/ImportHardeningApiIT(2099-03)
+        // 都拿 2099 当干净槽,留一行就把 2026 顶成 2099;surefire 类顺序不保证(本地字母序恰好
+        // 让本类先跑所以看不见,CI 上换序即红——feat 分支首推实测)。
+        // 靠"各测试自觉清理"迟早再犯:这里主动归一,对任何污染源免疫。
+        jdbc.update("DELETE FROM salary_record WHERE acct_month > '2027-12'");
         String body = mvc.perform(post("/api/auth/login")
                 .contentType("application/json")
                 .content("{\"username\":\"admin\",\"password\":\"admin123\"}"))
@@ -41,6 +50,7 @@ class SalaryApiIT extends AbstractMysqlIT {
     }
 
     // ── overview: deterministic range [2024..2027], currentYear 2026 ──
+    // 此断言对 salary 表的全局最大年份敏感(currentYear 由它推导);远期行已在 @BeforeEach 归一。
     @Test
     void overview_shapeAndDeterministicYearRange() throws Exception {
         String body = utf8(mvc.perform(get("/api/salary/overview").header("Authorization", auth()))

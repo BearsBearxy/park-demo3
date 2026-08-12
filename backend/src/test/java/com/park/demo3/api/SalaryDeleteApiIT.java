@@ -44,10 +44,11 @@ class SalaryDeleteApiIT extends AbstractMysqlIT {
     @Test
     void clearImported_deletesOnlyImport_keepsManual_returnsCount() throws Exception {
         // 干净 slot 2099-05:1 manual + 2 import
-        mvc.perform(post("/api/salary/records").header("Authorization", auth())
+        String createdManual = utf8(mvc.perform(post("/api/salary/records").header("Authorization", auth())
                 .contentType("application/json")
                 .content("{\"acctMonth\":\"2099-05\",\"name\":\"手动员工\",\"base\":100}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()).andReturn());
+        long manualId = ((Number) JsonPath.read(createdManual, "$.data.id")).longValue();
         mvc.perform(post("/api/salary/import").header("Authorization", auth())
                 .param("year", "2099").param("month", "5")
                 .contentType("application/json")
@@ -78,6 +79,16 @@ class SalaryDeleteApiIT extends AbstractMysqlIT {
                 .param("year", "2099").param("month", "5"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deleted").value(0));
+
+        // ⭐收尾必须删掉这条 manual:salary/overview 的 currentYear 是「表内最大数据年」推导的,
+        // 留一条 2099 行会把 SalaryApiIT 的 currentYear 断言从 2026 顶到 2099。共享容器里
+        // surefire 顺序不保证:本地按类名字母序 SalaryApiIT 先跑所以看不见,CI 上换了顺序就红
+        // (feat 分支首推实测)。断言全部做完才删,不影响本例的"manual 不动"语义。
+        mvc.perform(delete("/api/salary/batch").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"ids\":[" + manualId + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deleted").value(1));
     }
 
     // ── 批删:seed 与 manual 同等可删(deleted 含种子,skipped=0);不存在 id 静默忽略 ──
