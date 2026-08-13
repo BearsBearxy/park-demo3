@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 导出「发租户 · 通知单」窗口(S20-BILL-DELIVERY-SPEC §5.1):期页签 + 楼栋分组 + 租户多选,
 // 默认勾选已确认的户(未确认的可勾,点导出时提示不阻断);每家公司选用哪个收款账户(默认取 is_default)。
-// 导出粒度=一户一张、按收款公司拆(同户跨两家公司出两张),打包 zip 按公司分文件夹。
+// 导出粒度=一户一个 Excel 文件(2026-08-14 改:不再按公司分文件夹——一户可能要给几家公司转账,
+// 分文件夹等于把同一户的单据拆到几处);同户跨两家公司=文件内两个 sheet。
 // 本组件只负责「选什么、用哪个账户」,真正写文件与 mark-exported 由宿主处理:emit('export', req)。
 import { computed, ref, watch } from 'vue'
 import { companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
@@ -126,7 +127,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
 
 <template>
   <FPDrawer :open="open" title="导出通知单" icon="download" :width="1040" :fixed-height="true"
-            :subtitle="`发租户 · ${ym} · 一户一张按收款公司拆,打包 zip 按公司分文件夹`"
+            :subtitle="`发租户 · ${ym} · 一户一个 Excel(上表租金、下表水电),跨收款公司在文件内分 sheet,打包 zip`"
             @close="emit('close')">
     <div v-if="result" class="ex-bar ok">
       <component :is="iconFor('check')" :size="14" />
@@ -141,7 +142,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
         只看已确认
       </label>
       <span style="flex:1"></span>
-      <span class="ex-sum">已选 <b>{{ picked.length }}</b> 户 · 将出 <b>{{ sheetTotal }}</b> 张单</span>
+      <span class="ex-sum">已选 <b>{{ picked.length }}</b> 户 · <b>{{ picked.length }}</b> 个文件 / <b>{{ sheetTotal }}</b> 张单</span>
     </div>
 
     <!-- 每家公司用哪个账户(默认 is_default) -->
@@ -173,7 +174,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
             <th class="l">楼栋</th>
             <th>状态</th>
             <th>本期合计</th>
-            <th title="按收款公司拆:同户跨两家公司出两张;未设公司那部分也出一张(无账户块)">将出几张单</th>
+            <th title="一户一个文件;文件内按收款公司分 sheet(同户跨两家公司=两个 sheet),未设公司那部分也占一个(无账户块)">将出几张单</th>
           </tr>
         </thead>
         <tbody>
@@ -208,7 +209,7 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
     </div>
 
     <template #footer>
-      <span class="ex-foot">{{ picked.length }} 户 / {{ sheetTotal }} 张<template v-if="gapCount"> · {{ gapCount }} 户无收款账户</template></span>
+      <span class="ex-foot">{{ picked.length }} 个文件 / {{ sheetTotal }} 张单<template v-if="gapCount"> · {{ gapCount }} 户无收款账户</template></span>
       <Button variant="outline" size="sm" @click="emit('close')">关闭</Button>
       <Button variant="filled" size="sm" :disabled="picked.length === 0 || busy" @click="onExport">
         <template #leading><component :is="iconFor('download')" :size="14" /></template>

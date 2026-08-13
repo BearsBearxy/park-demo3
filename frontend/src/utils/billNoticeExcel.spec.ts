@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BillNoticeLineDTO } from '@/api/billNotices'
 import {
-  buildNoticeSections, buildReconSheet, noticeFileName, noticeWorkbookBytes, reconWorkbookBytes,
-  splitByPayCompany, type NoticeExportItem,
+  buildNoticeSections, buildReconSheet, buildRentBlocks, noticeFileName, reconWorkbookBytes,
+  splitByPayCompany, tenantWorkbookBytes, type NoticeExportItem,
 } from './billNoticeExcel'
 
 // ── 造行:字段默认全空,逐用例只填相关列(与 billNoticeLogic.spec 同手法) ──
@@ -43,15 +43,80 @@ describe('splitByPayCompany 一户一单按收款公司拆(spec §5.1)', () => {
     expect(gs[0].total).toBe(110)
     expect(gs[1].total).toBe(20)
   })
-  it('租金行不进水电通知单', () => {
+  // 2026-08-14 改:租金随联带出(同一张单、同一家收款公司),落到通知单上表
+  it('租金行随联带出,与水电分列 rent/lines 两侧', () => {
+    const gs = splitByPayCompany({
+      ...it0,
+      details: [detail(3, [
+        line({ feeKey: 'rent_factory', amount: 999, feeGroup: 'rent' }),
+        line({ feeKey: 'elec', amount: 100 }),
+      ])],
+    })
+    expect(gs).toHaveLength(1)
+    expect(gs[0].rent.map(l => l.feeKey)).toEqual(['rent_factory'])
+    expect(gs[0].lines.map(l => l.feeKey)).toEqual(['elec'])
+    expect([gs[0].rentTotal, gs[0].total]).toEqual([999, 100])
+  })
+  it('只有租金行的单也成联(改前会被整联丢掉)', () => {
     const gs = splitByPayCompany({
       ...it0, details: [detail(3, [line({ feeKey: 'rent_factory', amount: 999, feeGroup: 'rent' })])],
     })
-    expect(gs).toEqual([])
+    expect([gs.length, gs[0].rentTotal, gs[0].total]).toEqual([1, 999, 0])
   })
   it('未指定收款公司的单独立成联(companyId=null)', () => {
     const gs = splitByPayCompany({ ...it0, details: [detail(null, [line({ amount: 5 })])] })
     expect(gs[0].companyId).toBeNull()
+  })
+})
+
+// 源册锚点(二期2024年03月租金.xlsx / 丁天伦 sheet 的通知单块 B34:I40)
+describe('buildRentBlocks 租金表(源册租金通知单块逐列)', () => {
+  const dingLines = [
+    line({ feeKey: 'rent_factory', premise: '二期13号楼（六车间）501室', qty: 1700, priceSnap: 11.435, amount: 19439.5, feeGroup: 'rent' }),
+    line({ feeKey: 'mgmt', premise: '二期13号楼（六车间）501室', qty: 1700, priceSnap: 5, amount: 8500, feeGroup: 'rent' }),
+    line({ feeKey: 'infra', premise: '二期13号楼（六车间）501室', qty: 1700, priceSnap: 1.8, amount: 3060, feeGroup: 'rent' }),
+    line({ feeKey: 'elevator', premise: '二期13号楼（六车间）501室', amount: 300, feeGroup: 'rent' }),
+  ]
+  it('按 premise 分块,收费项目走 rentFeeName(mgmt/infra 带段类型前缀)', () => {
+    const { blocks, total } = buildRentBlocks(dingLines, noNotes)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].label).toBe('二期13号楼（六车间）501室')
+    expect(blocks[0].rows.map(r => r.name))
+      .toEqual(['厂房租金', '厂房企业管理服务费', '厂房基础设施维护费', '电梯维护费'])
+    expect(total).toBe(31299.5)
+  })
+  it('面积落建筑面积列,月单价=面积×单价(源册 E/F/G 三列)', () => {
+    const [r0] = buildRentBlocks(dingLines, noNotes).blocks[0].rows
+    expect([r0.landArea, r0.bldArea, r0.unitPrice, r0.monthly, r0.amount])
+      .toEqual([null, 1700, 11.435, 19439.5, 19439.5])
+  })
+  it('无面积的按月固定项:月单价回落金额(源册 G38=H38=300)', () => {
+    const rows = buildRentBlocks(dingLines, noNotes).blocks[0].rows
+    expect([rows[3].bldArea, rows[3].unitPrice, rows[3].monthly]).toEqual([null, null, 300])
+  })
+  it('空地段的面积落空地面积列', () => {
+    const [b] = buildRentBlocks(
+      [line({ feeKey: 'rent_land', premise: '消防通道', qty: 179.7, priceSnap: 6.7, amount: 1203.99, feeGroup: 'rent' })],
+      noNotes).blocks
+    expect([b.rows[0].landArea, b.rows[0].bldArea]).toEqual([179.7, null])
+  })
+  it('带公摊面积时建筑面积列显拆解串(同抽屉 rentAreaText)', () => {
+    const [b] = buildRentBlocks(
+      [line({ feeKey: 'rent_office', premise: 'A座602室', qty: 1528, baseSnap: 1986, priceSnap: 10, amount: 15280, feeGroup: 'rent' })],
+      noNotes).blocks
+    expect(b.rows[0].bldArea).toBe('1528+458')
+  })
+  it('折算行:月单价(标准额)与应收金额分开,算式在备注', () => {
+    const [b] = buildRentBlocks(
+      [line({ feeKey: 'rent_factory', premise: 'X', qty: 100, priceSnap: 10, amount: 723.9, note: '1000÷29×21', feeGroup: 'rent' })],
+      noNotes).blocks
+    expect([b.rows[0].monthly, b.rows[0].amount, b.rows[0].note]).toEqual([1000, 723.9, '1000÷29×21'])
+  })
+  it('备注人工覆盖优先于引擎备注', () => {
+    const [b] = buildRentBlocks(
+      [line({ feeKey: 'rent_factory', premise: 'X', amount: 1, note: '引擎原文', feeGroup: 'rent' })],
+      new Map([[JSON.stringify(['rent_factory', 'X', '', '']), '人工改写']])).blocks
+    expect(b.rows[0].note).toBe('人工改写')
   })
 })
 
@@ -155,13 +220,14 @@ describe('公摊三类行形状(源册 R40-R43/R47 逐格)', () => {
   })
 })
 
+// 2026-08-14 改:一户一个文件,不再有公司文件夹(一户可能要给几家公司转账,分文件夹会把同户单据拆散)
 describe('noticeFileName 文件名(spec §5.1)', () => {
-  it('公司文件夹 + 通知单-YYYY年MM月-户名.xlsx', () =>
-    expect(noticeFileName('一泽', '2024-02', '王红婷')).toBe('一泽/水电费缴费通知单-2024年02月-王红婷.xlsx'))
+  it('平铺文件名,无公司目录', () =>
+    expect(noticeFileName('2024-02', '王红婷')).toBe('费用缴费通知单-2024年02月-王红婷.xlsx'))
   it('非法字符剔除(sanitize 同 billExcel)', () =>
-    expect(noticeFileName('一泽/A', '2024-02', '甲*乙?丙')).toBe('一泽A/水电费缴费通知单-2024年02月-甲乙丙.xlsx'))
-  it('无收款公司落「未指定收款公司」文件夹', () =>
-    expect(noticeFileName(null, '2024-02', '王红婷')).toBe('未指定收款公司/水电费缴费通知单-2024年02月-王红婷.xlsx'))
+    expect(noticeFileName('2024-02', '甲*乙?丙/丁')).toBe('费用缴费通知单-2024年02月-甲乙丙丁.xlsx'))
+  it('无户名兜底', () =>
+    expect(noticeFileName('2024-02', null)).toBe('费用缴费通知单-2024年02月-租户.xlsx'))
 })
 
 describe('buildReconSheet 对账表(spec §5.2:户 × 费项 × 金额)', () => {
@@ -194,22 +260,32 @@ describe('exceljs 出流', { timeout: 30_000 }, () => {
     tenantId: 7, tenantName: '王红婷', premiseText: '二期12号楼\n六楼602室', notes: noNotes,
     details: [detail(3, wangElec)],
   }
-  it('通知单 workbook 写得出且回读锚点格对得上', async () => {
-    const bytes = await noticeWorkbookBytes(
-      splitByPayCompany(item)[0], item, '2024-02',
-      { kind: 'bank', accountName: '佛山一泽科技有限公司', accountNo: '800 200 000 193 366 78', bankName: '广东南海农商行里水太行支行' },
-      { id: 3, name: '一泽', short: '一泽', fullName: '佛山一泽科技有限公司' })
-    expect(bytes.byteLength).toBeGreaterThan(2000)
+  const yize = { id: 3, name: '一泽', short: '一泽', fullName: '佛山一泽科技有限公司' }
+  const yizeAcct = {
+    kind: 'bank', accountName: '佛山一泽科技有限公司',
+    accountNo: '800 200 000 193 366 78', bankName: '广东南海农商行里水太行支行',
+  }
+  const load = async (bytes: Uint8Array) => {
     const ExcelJS = (await import('exceljs')).Workbook
     const wb = new ExcelJS()
     await wb.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
-    const ws = wb.worksheets[0]
-    expect(ws.getCell('B1').value).toBe('水电费缴费通知单')
+    return wb
+  }
+  const texts = (ws: { getSheetValues(): unknown[] }) =>
+    ws.getSheetValues().flatMap(r => (Array.isArray(r) ? r : [])).map(v => String(v ?? ''))
+
+  it('通知单 workbook 写得出且回读锚点格对得上', async () => {
+    const { bytes, sheets } = await tenantWorkbookBytes(item, '2024-02', () => yizeAcct, () => yize)
+    expect(bytes.byteLength).toBeGreaterThan(2000)
+    expect(sheets).toBe(1)
+    const ws = (await load(bytes)).worksheets[0]
+    expect(ws.name).toBe('王红婷')            // 单联=户名
+    expect(ws.getCell('B1').value).toBe('费用缴费通知单')
     expect(ws.getCell('B2').value).toBe('计费期限：2024年2月')
     expect(ws.getCell('B3').value).toBe('租户名称：王红婷')
-    expect(ws.getCell('B4').value).toBe('项目')
+    expect(ws.getCell('B4').value).toBe('项目')   // 无租金行 → 水电表直接接在户头下
     expect(ws.getCell('L4').value).toBe('备注')
-    const all = ws.getSheetValues().flatMap(r => (Array.isArray(r) ? r : [])).map(v => String(v ?? ''))
+    const all = texts(ws)
     expect(all.some(t => t.includes('户名：佛山一泽科技有限公司') && t.includes('开户行：'))).toBe(true)
     expect(all).toContain('电费合计')
     expect(all).toContain('水电费合计')
@@ -217,15 +293,48 @@ describe('exceljs 出流', { timeout: 30_000 }, () => {
     expect(ws.pageSetup.orientation).toBe('portrait')
     expect(ws.pageSetup.scale).toBe(85)
   })
+  it('租金在上表、水电在下表,本期合计=两块之和', async () => {
+    const withRent: NoticeExportItem = {
+      ...item,
+      details: [detail(3, [
+        line({ feeKey: 'rent_factory', premise: '二期12号楼602室', qty: 100, priceSnap: 10, amount: 1000, feeGroup: 'rent' }),
+        ...wangElec,
+      ])],
+    }
+    const { bytes } = await tenantWorkbookBytes(withRent, '2024-02', () => null, () => yize)
+    const ws = (await load(bytes)).worksheets[0]
+    expect(ws.getCell('B4').value).toBe('租金、物业维护费')   // 上表标题在户头之后
+    expect(ws.getCell('B5').value).toBe('物业名称')
+    expect(ws.getCell('K5').value).toBe('应收金额（元）')
+    expect(ws.getCell('B6').value).toBe('二期12号楼602室')     // B:C 竖跨物业名称
+    expect(ws.getCell('D6').value).toBe('厂房租金')
+    const all = texts(ws)
+    expect(all).toContain('租金、物业维护费合计')
+    expect(all).toContain('水电费')                            // 下表标题
+    expect(all).toContain('水电费合计')
+    // 本期合计 = 1000 租金 + 835.56 水电(819.76 电 + 15.8 水)
+    expect(all).toContain('本期合计')
+    expect(ws.getSheetValues().flatMap(r => (Array.isArray(r) ? r : [])).includes(1835.56)).toBe(true)
+  })
+  it('跨两家收款公司 → 同一 workbook 内两个 sheet,按公司命名', async () => {
+    const two: NoticeExportItem = {
+      ...item,
+      details: [
+        detail(3, [line({ feeKey: 'elec', amount: 100 })]),
+        detail(5, [line({ feeKey: 'mgmt_fee', amount: 20 })], { payCompanyName: '积前' }),
+      ],
+    }
+    const { bytes, sheets } = await tenantWorkbookBytes(two, '2024-02', () => null,
+      id => (id === 3 ? yize : { id: 5, name: '积前', short: '积前', fullName: '佛山积前实业有限公司' }))
+    expect(sheets).toBe(2)
+    expect((await load(bytes)).worksheets.map(w => w.name)).toEqual(['一泽', '积前'])
+  })
   it('无账户信息 → 收款语与账户块整块省略(源册 17/56 户即如此)', async () => {
-    const bytes = await noticeWorkbookBytes(splitByPayCompany(item)[0], item, '2024-02', null, null)
-    const ExcelJS = (await import('exceljs')).Workbook
-    const wb = new ExcelJS()
-    await wb.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
-    const ws = wb.worksheets[0]
-    const texts = ws.getSheetValues().flatMap(r => (Array.isArray(r) ? r : [])).map(v => String(v ?? ''))
-    expect(texts.some(t => t.includes('存入我公司以下账户'))).toBe(false)
-    expect(texts.some(t => t.includes('通知单签收信息栏'))).toBe(true)
+    const { bytes } = await tenantWorkbookBytes(item, '2024-02', () => null, () => null)
+    const ws = (await load(bytes)).worksheets[0]
+    const all = texts(ws)
+    expect(all.some(t => t.includes('存入我公司以下账户'))).toBe(false)
+    expect(all.some(t => t.includes('通知单签收信息栏'))).toBe(true)
   })
   it('对账表 workbook 写得出,总表在首、每公司一 sheet', async () => {
     const bytes = await reconWorkbookBytes(

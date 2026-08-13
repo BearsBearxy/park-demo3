@@ -1,15 +1,22 @@
 // 催缴单交付导出(S20-BILL-DELIVERY-SPEC §5):发租户·通知单 zip / 发财务·对账表。
-// 版式=源册「二期2024年2月水电费.xlsx」租户 sheet(王红婷)逐格实测复刻:12 列宽、双线外框、
-// 电/水 两侧表头(电侧多「按尖峰电价收取比率」列)、B:C 竖跨块名、公摊三类行形状、账户块、签收栏、落款。
+// 版式=源册两张租户 worksheet 逐格实测复刻,合成一页两表(2026-08-14 用户拍板):
+//   上表「租金、物业维护费」= 源册「二期2024年03月租金.xlsx」租户 sheet 的通知单块(物业名称/收费项目/
+//        空地面积/建筑面积/面积单价/月单价/应收金额/备注),映到本页 12 列栅格,金额/备注与下表同列;
+//   下表「水电费」= 源册「二期2024年2月水电费.xlsx」租户 sheet(王红婷):电/水两侧表头(电侧多
+//        「按尖峰电价收取比率」列)、B:C 竖跨块名、公摊三类行形状。
+// 两表共用 12 列宽、双线外框、账户块、签收栏、落款 —— 一户一个文件(不再按收款公司分文件夹:
+// 一户可能要给几家公司转账,分文件夹等于把同一户的单据拆到几处)。跨公司改为同一 workbook 内一家一 sheet。
 // SheetJS 社区版不支持字体/边框/填充(Pro 功能),故本文件走 exceljs(懒加载,与现有 xlsx 并存不替换)。
 // ⭐口径复用铁律:费项名/合并行/用量单价格式一律调 billNoticeLogic 现成纯函数(billFeeLabel/mergeMaintRows/
-// billQtyCell/segLabel/noteDisplay…),禁另抄一份 —— 屏上看到什么,导出就是什么。
-// 纯函数(splitByPayCompany/buildNoticeSections/noticeFileName/buildReconSheet)由 billNoticeExcel.spec.ts 锁定;
-// exceljs 出流只验通性(能写出、回读锚点格对得上),不比对二进制。
+// billQtyCell/segLabel/noteDisplay/groupRentByPremise/rentFeeName/rentAreaText…),禁另抄一份 ——
+// 屏上看到什么,导出就是什么。
+// 纯函数(splitByPayCompany/buildNoticeSections/buildRentBlocks/noticeFileName/buildReconSheet)由
+// billNoticeExcel.spec.ts 锁定;exceljs 出流只验通性(能写出、回读锚点格对得上),不比对二进制。
 import type { BorderStyle, Worksheet } from 'exceljs'
 import type { BillNoticeDetailDTO, BillNoticeLineDTO } from '@/api/billNotices'
 import {
-  billFeeLabel, billQtyCell, groupExcelStyle, lineNoteKey, mergeMaintRows, mergeNoteKey, noteDisplay, segLabel,
+  billFeeLabel, billQtyCell, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows, mergeNoteKey,
+  noteDisplay, rentAreaText, rentFeeName, segLabel,
   type MaintRow,
 } from './billNoticeLogic'
 import { downloadBlob } from './billExcel'
@@ -40,29 +47,38 @@ export interface NoticeExportItem {
   premiseText: string | null
 }
 
-// ── 一户一单按收款公司拆(§5.1:同户跨两家公司出两张,与源册当年一致) ──
+// ── 一联=一家收款公司(§5.1:同户跨两家公司出两联,与源册当年一致) ──
+// 2026-08-14 起「一联」不再等于「一个文件」:一户一个 workbook,联落到 sheet(见 tenantWorkbookBytes)。
+// 租金行(fee_group='rent')从本轮起随联一起带出——它与水电行同挂在一张单上,收款公司也是同一家。
 export interface PayGroup {
   companyId: number | null
   companyName: string | null
-  lines: BillNoticeLineDTO[]
-  total: number
+  rent: BillNoticeLineDTO[]    // 租金板块行(上表)
+  lines: BillNoticeLineDTO[]   // 水电行(下表)
+  rentTotal: number
+  total: number                // 水电合计(「水电费合计」行取它;本期合计=rentTotal+total)
   prevDue: number
 }
 export function splitByPayCompany(item: NoticeExportItem): PayGroup[] {
   const out: PayGroup[] = []
   const by = new Map<number | string, PayGroup>()
   for (const d of item.details) {
-    // 租金行不进水电费通知单(源册是「水电费缴费通知单」;租金另有合同/账单链)
+    const rent = d.lines.filter(l => l.feeGroup === 'rent')
     const ls = d.lines.filter(l => l.feeGroup !== 'rent')
-    if (!ls.length) continue
+    if (!rent.length && !ls.length) continue
     const k = d.payCompanyId ?? ''
     let g = by.get(k)
     if (!g) {
-      g = { companyId: d.payCompanyId, companyName: d.payCompanyName, lines: [], total: 0, prevDue: 0 }
+      g = {
+        companyId: d.payCompanyId, companyName: d.payCompanyName,
+        rent: [], lines: [], rentTotal: 0, total: 0, prevDue: 0,
+      }
       by.set(k, g)
       out.push(g)
     }
+    g.rent.push(...rent)
     g.lines.push(...ls)
+    g.rentTotal = r2(g.rentTotal + rent.reduce((s, l) => s + l.amount, 0))
     g.total = r2(g.total + ls.reduce((s, l) => s + l.amount, 0))
     g.prevDue = r2(g.prevDue + (d.prevDue ?? 0))
     g.companyName ??= d.payCompanyName
@@ -249,12 +265,57 @@ export function buildNoticeSections(lines: BillNoticeLineDTO[], notes: Map<strin
   return out
 }
 
-/** 文件名(§5.1):公司文件夹 / 水电费缴费通知单-YYYY年MM月-户名.xlsx;sanitize 同 billExcel。 */
-export function noticeFileName(company: string | null, ym: string, tenantName: string | null): string {
+// ── 租金板块(上表):源册租金通知单块逐列 ──────────────────────────
+// 源册列:物业名称 / 收费项目 / 空地面积㎡ / 建筑面积㎡ / 面积单价㎡/元 / 月单价（元）/ 应收金额（元）/ 备注。
+// ⚠「月单价」与「应收金额」在源册是两件事:前者=签约标准月额,后者=当月实收(按天折算/免租期后)。
+// 本实现照此语义:月单价 = 面积×单价(引擎两值相乘恒等于未折算的标准额,2024-02 全库实测逐行相等),
+// 无面积的按月固定项(电梯/变压器/门禁/网络)回落金额本身 —— 与源册 G38=H38=300 同形。
+// 差额出现时正是折算/免租那几行,算式在备注列(引擎写的「3302.8÷29×21」「免租扣 5200.00」)。
+export interface RentBodyRow {
+  name: string                       // 收费项目(rentFeeName:mgmt/infra 带段类型前缀)
+  // 两个面积列取值同形(数值;带公摊面积时是「1528+458」拆解串,同抽屉),只是按段类型二选一落列
+  landArea: number | string | null   // 空地面积㎡(段类型 land 走这列)
+  bldArea: number | string | null    // 建筑面积㎡
+  unitPrice: number | null           // 面积单价 元/㎡
+  monthly: number | null             // 月单价(标准月额)
+  amount: number                     // 应收金额
+  note: string                       // 人工覆盖 > 引擎备注
+}
+export interface RentBlock { label: string; rows: RentBodyRow[]; subtotal: number }
+
+/** 租金板块分块(纯函数):按 premise 分块(块序=首现序),块内逐行;段类型由块内 rent_* 行反推。 */
+export function buildRentBlocks(
+  lines: BillNoticeLineDTO[], notes: Map<string, string>,
+): { blocks: RentBlock[]; total: number } {
+  const g = groupRentByPremise(lines)
+  return {
+    total: g.total,
+    blocks: g.groups.map(p => ({
+      label: p.label,
+      subtotal: p.subtotal,
+      rows: p.lines.map(l => {
+        // rentAreaText 是面积拆解的唯一事实源:'1528+458'(带公摊)或纯数字串;此处只分流不重写规则
+        const t = rentAreaText(l.qty, l.baseSnap)
+        const area: number | string | null = t == null ? null : t.includes('+') ? t : l.qty
+        return {
+          name: rentFeeName(l.feeKey, p.type),
+          landArea: p.type === 'land' ? area : null,
+          bldArea: p.type === 'land' ? null : area,
+          unitPrice: l.priceSnap,
+          monthly: l.qty != null && l.priceSnap != null ? r2(l.qty * l.priceSnap) : r2(l.amount),
+          amount: r2(l.amount),
+          note: noteDisplay(notes, lineNoteKey(l), l.note).text,
+        }
+      }),
+    })),
+  }
+}
+
+/** 文件名(§5.1,2026-08-14 改):一户一个文件,不再按收款公司分文件夹;sanitize 同 billExcel。 */
+export function noticeFileName(ym: string, tenantName: string | null): string {
   const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '')
   const [y, mo] = ym.split('-')
-  const dir = safe(company ?? '') || '未指定收款公司'
-  return `${dir}/水电费缴费通知单-${y}年${mo}月-${safe(tenantName ?? '') || '租户'}.xlsx`
+  return `费用缴费通知单-${y}年${mo}月-${safe(tenantName ?? '') || '租户'}.xlsx`
 }
 
 // ═══ exceljs 版式层 ═══════════════════════════════════════════
@@ -265,8 +326,10 @@ const MONEY = '0.00_ '           // 源册 K 列格式(尾部 _ 留出负号位)
 const PCT = '0.00%'
 const C_FIRST = 2                // B
 const C_LAST = 12                // L
-const TITLE = '水电费缴费通知单'
-const BANNER = '以上是贵公司水电费明细，麻烦把水电费存入我公司以下账户，谢谢！'
+const TITLE = '费用缴费通知单'   // 一页两表(租金 + 水电),不再只是水电
+const CAP_RENT = '租金、物业维护费'
+const CAP_UTIL = '水电费'
+const BANNER = '以上是贵公司本期应缴费用明细，麻烦把费用存入我公司以下账户，谢谢！'
 const LATE_NOTE = '滞纳金按每日  ‰收取'
 const HEAD_E = ['上月行至', '本月行至', '倍率', '按尖峰电价收取比率', '实际用量', '单价', '金额', '备注']
 const HEAD_W = ['上月行至', '本月行至', '倍率', '', '实际用量', '单价', '金额', '备注']
@@ -327,13 +390,68 @@ function writeBodyRow(ws: Worksheet, r: number, b: NoticeBodyRow): void {
   writeRow(ws, r, segs, { h: 21 })
 }
 
-/** 一联通知单落到一张 worksheet(§5.3 版式);返回最后一行号。 */
+// 租金表(上表)一行:D 收费项目 / E 空地面积 / F 建筑面积 / G:H 面积单价 / I:J 月单价 / K 金额 / L 备注。
+// B:C 留白由 writeRow 补格,块写完后竖跨合并成「物业名称」(与下表 B:C 竖跨块名同结构,两表栅格对齐)。
+function writeRentRow(ws: Worksheet, r: number, b: RentBodyRow): void {
+  const segs: Seg[] = [
+    { from: 4, v: b.name, align: 'left' },
+    { from: 5, v: b.landArea },
+    { from: 6, v: b.bldArea },
+    { from: 7, to: 8, v: b.unitPrice },
+    { from: 9, to: 10, v: b.monthly, fmt: MONEY },
+    { from: 11, v: b.amount, fmt: MONEY },
+  ]
+  if (b.note) segs.push({ from: 12, v: b.note, align: 'left', wrap: true })
+  writeRow(ws, r, segs, { h: 21 })
+}
+
+/** 租金表整块(表头 + 逐块行 + 块小计 + 板块合计);返回下一个可写行号。 */
+function writeRentTable(ws: Worksheet, from: number, blocks: RentBlock[], total: number): number {
+  let r = from
+  writeRow(ws, r++, [{ from: 2, to: 12, v: CAP_RENT, bold: true, align: 'left' }], { h: 21, naked: true })
+  // 表头一律 wrap:「空地面积㎡」「应收金额（元）」在各自列宽下都超一行,不换行会被截掉尾字
+  writeRow(ws, r++, ([
+    { from: 2, to: 3, v: '物业名称' },
+    { from: 4, v: '收费项目' },
+    { from: 5, v: '空地面积㎡' },
+    { from: 6, v: '建筑面积㎡' },
+    { from: 7, to: 8, v: '面积单价㎡/元' },
+    { from: 9, to: 10, v: '月单价（元）' },
+    { from: 11, v: '应收金额（元）' },
+    { from: 12, v: '备注' },
+  ] as Seg[]).map(s => ({ ...s, wrap: true })), { h: 33, top: 'double' })
+  for (const b of blocks) {
+    const first = r
+    for (const row of b.rows) writeRentRow(ws, r++, row)
+    ws.mergeCells(first, 2, r - 1, 3)
+    const label = ws.getCell(first, 2)
+    label.value = b.label
+    label.font = { name: FONT, size: 9 }
+    label.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    label.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'double' }, right: { style: 'thin' } }
+    // 单场地户与源册逐行相同(源册只有一个「合计」B40:G40);多场地才补块小计,否则读者要自己按场地加。
+    // 标签跨到 G(照源册合计行跨度):B:D 只有 28 单位宽,「小计 · 二期13号楼（六车间）501室」会被截。
+    if (blocks.length > 1)
+      writeRow(ws, r++, [
+        { from: 2, to: 7, v: `小计 · ${b.label}`, align: 'left' },
+        { from: 11, v: b.subtotal, fmt: MONEY },
+      ], { h: 21 })
+  }
+  writeRow(ws, r++, [
+    { from: 2, to: 7, v: `${CAP_RENT}合计`, bold: true },
+    { from: 11, v: total, bold: true, fmt: MONEY },
+  ], { h: 23.1, top: 'double', bottom: 'double' })
+  return r
+}
+
+/** 一联通知单落到一张 worksheet(§5.3 版式:上表租金 / 下表水电)。 */
 function writeNoticeSheet(
   ws: Worksheet, g: PayGroup, item: NoticeExportItem, ym: string,
   account: CompanyAccount | null, company: Company | null,
 ): void {
   COL_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w })
   const [y, mo] = ym.split('-')
+  const rent = buildRentBlocks(g.rent, item.notes)
   const sections = buildNoticeSections(g.lines, item.notes)
   const tenant = item.tenantName ?? `#${item.tenantId}`
   let r = 1
@@ -346,6 +464,15 @@ function writeNoticeSheet(
     { from: 10, to: 12, v: item.premiseText, wrap: true },
   ], { h: 21, naked: true })
 
+  // ── 上表:租金、物业维护费 ──
+  if (rent.blocks.length) {
+    r = writeRentTable(ws, r, rent.blocks, rent.total)
+    if (sections.length) writeRow(ws, r++, [], { h: 8, naked: true })   // 两表之间留白,读作两张表
+  }
+
+  // ── 下表:水电费 ──
+  if (rent.blocks.length && sections.length)
+    writeRow(ws, r++, [{ from: 2, to: 12, v: CAP_UTIL, bold: true, align: 'left' }], { h: 21, naked: true })
   let side: 'e' | 'w' | null = null
   for (const s of sections) {
     const mySide = s.water ? 'w' : 'e'
@@ -373,18 +500,20 @@ function writeNoticeSheet(
     ], { h: s.water ? 20.1 : 29.1 })
   }
 
-  const grand = r2(g.total + g.prevDue)
-  writeRow(ws, r++, [
-    // 联内只有维护费块时,源册合计行原文是「水电维护费合计」(维护费联走另一家公司)
-    { from: 2, to: 4, v: sections.every(s => s.maint) ? '水电维护费合计' : '水电费合计', bold: true },
-    { from: 11, v: g.total, bold: true, fmt: MONEY },
-  ], { h: 23.1, top: 'double', bottom: 'double' })
+  const period = r2(rent.total + g.total)      // 本期合计 = 租金板块 + 水电板块
+  const grand = r2(period + g.prevDue)
+  if (sections.length)
+    writeRow(ws, r++, [
+      // 联内只有维护费块时,源册合计行原文是「水电维护费合计」(维护费联走另一家公司)
+      { from: 2, to: 4, v: sections.every(s => s.maint) ? '水电维护费合计' : '水电费合计', bold: true },
+      { from: 11, v: g.total, bold: true, fmt: MONEY },
+    ], { h: 23.1, top: 'double', bottom: 'double' })
   writeRow(ws, r++, [
     { from: 2, to: 3, v: '本期合计' },
-    { from: 4, to: 7, v: g.total, bold: true, fmt: MONEY },
+    { from: 4, to: 7, v: period, bold: true, fmt: MONEY },
     { from: 9, to: 10, v: LATE_NOTE },
     { from: 11, to: 12 },
-  ], { h: 27 })
+  ], { h: 27, top: sections.length ? 'thin' : 'double' })
   writeRow(ws, r++, [
     { from: 2, to: 3, v: '上期欠费' },
     { from: 4, to: 7, v: g.prevDue || null, bold: true, fmt: MONEY },
@@ -444,47 +573,70 @@ const PAGE_SETUP = {
 
 const loadExcelJS = async () => (await import('exceljs')).Workbook
 
-/** 单联通知单 → xlsx 字节(批量与单户共用)。 */
-export async function noticeWorkbookBytes(
-  g: PayGroup, item: NoticeExportItem, ym: string,
-  account: CompanyAccount | null, company: Company | null,
-): Promise<Uint8Array> {
+// Excel sheet 名禁用字符与 31 字上限
+const sheetName = (s: string) => (s.replace(/[\\/:*?[\]]/g, '').slice(0, 31) || 'sheet')
+
+export type AccountOf = (companyId: number | null) => CompanyAccount | null
+export type CompanyOf = (id: number | null) => Company | null
+
+/** 一户一个 workbook:跨收款公司的联落成各自的 sheet(同一户只有一家公司时=单 sheet,sheet 名取户名)。 */
+export async function tenantWorkbookBytes(
+  item: NoticeExportItem, ym: string, accountOf: AccountOf, companyOf: CompanyOf,
+): Promise<{ bytes: Uint8Array; sheets: number }> {
   const Workbook = await loadExcelJS()
   const wb = new Workbook()
-  const ws = wb.addWorksheet(item.tenantName?.slice(0, 28) || `#${item.tenantId}`, {
-    pageSetup: PAGE_SETUP, properties: { defaultRowHeight: 21 },
-  })
-  writeNoticeSheet(ws, g, item, ym, account, company)
-  return new Uint8Array(await wb.xlsx.writeBuffer())
+  const groups = splitByPayCompany(item)
+  const used = new Set<string>()
+  for (const g of groups) {
+    const co = companyOf(g.companyId)
+    // 单联=户名(与改前同);多联=各家公司名,租户一眼看出「这张交给谁」
+    const base = groups.length === 1
+      ? (item.tenantName || `#${item.tenantId}`)
+      : (co?.short || co?.name || g.companyName || '未指定收款公司')
+    let name = sheetName(base)
+    for (let i = 2; used.has(name); i++) name = sheetName(`${base}~${i}`)
+    used.add(name)
+    const ws = wb.addWorksheet(name, { pageSetup: PAGE_SETUP, properties: { defaultRowHeight: 21 } })
+    writeNoticeSheet(ws, g, item, ym, accountOf(g.companyId), co)
+  }
+  return { bytes: new Uint8Array(await wb.xlsx.writeBuffer()), sheets: groups.length }
 }
 
-/** 发租户·通知单(§5.1):一户一联按收款公司拆,zip 按公司分文件夹。 */
+/** 单户下载(催缴卡片按钮):不打包,直接落一个 xlsx。 */
+export async function exportTenantNotice(
+  item: NoticeExportItem, ym: string, accountOf: AccountOf, companyOf: CompanyOf,
+): Promise<{ sheets: number }> {
+  const { bytes, sheets } = await tenantWorkbookBytes(item, ym, accountOf, companyOf)
+  downloadBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    noticeFileName(ym, item.tenantName))
+  return { sheets }
+}
+
+/** 发租户·通知单(§5.1,2026-08-14 改):一户一个文件平铺进 zip,跨公司在文件内分 sheet。 */
 export async function exportNoticeZip(
-  items: NoticeExportItem[], ym: string,
-  accountOf: (companyId: number | null) => CompanyAccount | null,
-  companyOf: (id: number | null) => Company | null,
-): Promise<{ files: number }> {
+  items: NoticeExportItem[], ym: string, accountOf: AccountOf, companyOf: CompanyOf,
+): Promise<{ files: number; sheets: number }> {
   const { zipSync } = await import('fflate')
   const files: Record<string, Uint8Array> = {}
+  let sheets = 0
   for (const item of items) {
-    for (const g of splitByPayCompany(item)) {
-      const co = companyOf(g.companyId)
-      const dir = co?.short || co?.name || g.companyName
-      let name = noticeFileName(dir, ym, item.tenantName)
-      // sanitize 后撞名兜底(如「甲/乙」与「甲乙」);同户同公司两联理论上已被 splitByPayCompany 合并
-      for (let i = 2; files[name]; i++) name = noticeFileName(dir, ym, `${item.tenantName ?? ''}~${i}`)
-      files[name] = await noticeWorkbookBytes(g, item, ym, accountOf(g.companyId), co)
-      // 让出宏任务:百来户连成一个不间断长任务会让按钮不变灰、界面僵死到导完(billExcel 同手法)
-      await new Promise(r => setTimeout(r))
-    }
+    const r = await tenantWorkbookBytes(item, ym, accountOf, companyOf)
+    if (!r.sheets) continue                    // 该户本月无任何费用行
+    let name = noticeFileName(ym, item.tenantName)
+    // sanitize 后撞名兜底(如「甲/乙」与「甲乙」,或两户重名)
+    for (let i = 2; files[name]; i++) name = noticeFileName(ym, `${item.tenantName ?? ''}~${i}`)
+    files[name] = r.bytes
+    sheets += r.sheets
+    // 让出宏任务:百来户连成一个不间断长任务会让按钮不变灰、界面僵死到导完(billExcel 同手法)
+    await new Promise(res => setTimeout(res))
   }
   const count = Object.keys(files).length
   if (count) {
     // ponytail: level 0 存储——xlsx 本身已是 deflate 压缩包,再压白耗 CPU
     downloadBlob(new Blob([zipSync(files, { level: 0 })], { type: 'application/zip' }),
-      `水电费缴费通知单-${ym.replace('-', '年')}月.zip`)
+      `费用缴费通知单-${ym.replace('-', '年')}月.zip`)
   }
-  return { files: count }
+  return { files: count, sheets }
 }
 
 // ── 发财务·对账表(§5.2):每家公司一 sheet(户 × 费项 × 金额)+ 总表 ──
@@ -540,9 +692,6 @@ export function buildReconSummary(rows: ReconRow[], sheets: { companyId: number 
   }
   return aoa
 }
-
-// Excel sheet 名禁用字符与 31 字上限
-const sheetName = (s: string) => (s.replace(/[\\/:*?[\]]/g, '').slice(0, 31) || 'sheet')
 
 export async function reconWorkbookBytes(
   rows: ReconRow[], ym: string, sheets: { companyId: number | null; name: string }[],

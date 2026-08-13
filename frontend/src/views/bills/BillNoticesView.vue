@@ -44,7 +44,10 @@ import {
   buildSlotCells, slotAmounts, tenantStatus,
   type ExportNoticeReq, type ExportReconReq, type SlotCell, type TenantStatus,
 } from '@/utils/payBookLogic'
-import { exportNoticeZip, exportReconWorkbook, type ReconRow } from '@/utils/billNoticeExcel'
+import {
+  exportNoticeZip, exportReconWorkbook, exportTenantNotice,
+  type CompanyAccount, type Company as ExcelCompany, type NoticeExportItem, type ReconRow,
+} from '@/utils/billNoticeExcel'
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
@@ -226,36 +229,67 @@ async function confirmTenants(tids: number[]) {
   } catch (e) { alert(errMsg(e, '确认失败')) } finally { confirming.value = false }
 }
 
+// 该户导出所需的一整包(明细 + 备注覆盖 + 场地);批量与单户共用,免两处拼装走样
+async function buildExportItem(tid: number, exportYm: string): Promise<NoticeExportItem> {
+  const row = (rows.value ?? []).filter(n => n.tenantId === tid)
+  const ds = await Promise.all(row.map(n => billNoticesApi.detail(n.id)))
+  const ns = await billNoticesApi.notes(exportYm, tid).catch(() => [] as BillNoteOverrideDTO[])
+  return {
+    tenantId: tid, tenantName: row[0]?.tenantName ?? null, details: ds,
+    notes: new Map(ns.map(o => [noteKeyId(o), o.note])),
+    premiseText: row.map(n => n.premiseText).find(Boolean) ?? null,
+  }
+}
+// 账户解析器:批量走窗口里选的账户,单户(卡片按钮)没有选择界面 → 取该公司默认账户(is_default,其次首个)
+function accountResolver(pick?: Record<number, number | null>): (cid: number | null) => CompanyAccount | null {
+  const accById = new Map(companies.value.flatMap(c => (c.accounts ?? []).map(a => [a.id, a] as const)))
+  const coById = new Map(companies.value.map(c => [c.id, c] as const))
+  return cid => {
+    if (cid == null) return null
+    if (pick) return accById.get(pick[cid] ?? -1) ?? null
+    const accs = coById.get(cid)?.accounts ?? []
+    return accs.find(a => a.isDefault) ?? accs[0] ?? null
+  }
+}
+const companyResolver = (): (id: number | null) => ExcelCompany | null => {
+  const coById = new Map(companies.value.map(c => [c.id, c] as const))
+  return id => (id == null ? null : coById.get(id) ?? null)
+}
+
 // 导出通知单编排(窗口只发请求,拉明细→出 zip→标记已导出 归宿主,§5.1)
 async function onExportNotice(req: ExportNoticeReq) {
   if (exportBusy.value) return
   exportBusy.value = true
   exportResult.value = ''
   try {
-    const items = []
-    for (const tid of req.tenantIds) {
-      const row = (rows.value ?? []).filter(n => n.tenantId === tid)
-      const ds = await Promise.all(row.map(n => billNoticesApi.detail(n.id)))
-      const ns = await billNoticesApi.notes(req.ym, tid).catch(() => [] as BillNoteOverrideDTO[])
-      items.push({
-        tenantId: tid, tenantName: row[0]?.tenantName ?? null, details: ds,
-        notes: new Map(ns.map(o => [noteKeyId(o), o.note])),
-        premiseText: row.map(n => n.premiseText).find(Boolean) ?? null,
-      })
-    }
-    const accById = new Map(companies.value.flatMap(c => (c.accounts ?? []).map(a => [a.id, a] as const)))
-    const coById = new Map(companies.value.map(c => [c.id, c] as const))
+    const items: NoticeExportItem[] = []
+    for (const tid of req.tenantIds) items.push(await buildExportItem(tid, req.ym))
     const res = await exportNoticeZip(items, req.ym,
-      cid => (cid == null ? null : accById.get(req.accountByCompany[cid] ?? -1) ?? null),
-      cid => (cid == null ? null : coById.get(cid) ?? null))
+      accountResolver(req.accountByCompany), companyResolver())
     await billDeliveryApi.markExported(req.ym, req.tenantIds).catch(() => { /* 标记失败不影响已下载文件 */ })
     const noAcct = req.tenantIds.filter(gapOf).length
-    exportResult.value = `已导出 ${req.tenantIds.length} 户 / ${res.files} 张通知单`
+    exportResult.value = `已导出 ${res.files} 个租户文件 / ${res.sheets} 张通知单`
       + (noAcct ? ` · 其中 ${noAcct} 户无收款账户` : '')
     flashOk(exportResult.value)
     expNoticeOpen.value = false
     await loadMonth()
   } catch (e) { alert(errMsg(e, '导出失败')) } finally { exportBusy.value = false }
+}
+
+// 单户导出(催缴卡片按钮):同一套版式与账户口径,只是不打包;与批量一样回标已导出
+const cardBusy = ref(false)
+async function onExportTenant() {
+  const r = dlgRow.value
+  if (!r || cardBusy.value) return
+  cardBusy.value = true
+  try {
+    const item = await buildExportItem(r.tenantId, dlgYm.value)
+    const res = await exportTenantNotice(item, dlgYm.value, accountResolver(), companyResolver())
+    if (!res.sheets) { alert('该户本月没有可导出的费用行'); return }
+    await billDeliveryApi.markExported(dlgYm.value, [r.tenantId]).catch(() => { /* 标记失败不影响已下载文件 */ })
+    flashOk(`已导出 ${r.tenantName ?? '#' + r.tenantId}${res.sheets > 1 ? ` · ${res.sheets} 家收款公司分 sheet` : ''}`)
+    await loadMonth()
+  } catch (e) { alert(errMsg(e, '导出失败')) } finally { cardBusy.value = false }
 }
 
 // 导出对账表:摊平当月全部明细行 → 每公司一 sheet + 总表(§5.2)
@@ -1016,6 +1050,13 @@ const drawerSub = computed(() => {
       </template>
 
       <template #footer>
+        <!-- 单户导出:与「导出通知单」窗口同一套版式(上表租金/下表水电),账户取该公司默认账户 -->
+        <Button variant="outline" size="sm" :disabled="dlgLoading || cardBusy || !dlgRow"
+                title="导出本户 Excel:一个文件,上表场地租金、下表水电费;跨收款公司按 sheet 分。账户取各公司的默认收款账户"
+                @click="onExportTenant">
+          <template #leading><component :is="iconFor('download')" :size="14" /></template>
+          {{ cardBusy ? '导出中…' : '导出本户 Excel' }}
+        </Button>
         <Button variant="outline" size="sm" @click="dlgOpen = false">关闭</Button>
       </template>
     </FPDrawer>
