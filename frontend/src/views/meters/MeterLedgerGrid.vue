@@ -56,7 +56,14 @@ const colCount = computed(() => 10 + segDefs.value.length * 2)
 // 右=状态←用量 反向累加。改列宽必须同步改 offset,否则固定列错位。
 // 分隔线用 border 而非 box-shadow(§7 6.5:去阴影绘制成本;th/td 已 border-box 不占额外宽)
 const AREA_W = 76
-const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 130, SUB_W = 70, CODE_W = 118, FAC_W = 56
+// TEN_W 130→216(2026-08-14 用户报障「电表的租户列都看不见了」):该格不只放名字,还并排放
+// 归属徽标(园区公摊/配电总表/园区经营/园区自担/计度寄存器,最长 5 全角)+ 待核/存疑徽标 + 悬停箭头。
+// 130px 里徽标 nowrap 先占满(「园区公摊」≈54px + 箭头/间距/padding ≈45px),名字只剩 30px ⇒ 一个字加省略号。
+// 216 = 名字 9 全角 113px + 徽标 54 + 箭头/间距/padding 46 + 3 余量。取 9 字是实测分布的拐点:
+// 全库 1137 块表按 COALESCE(tenant_name,name) 字数,8/9 字各 37/28 块是主峰,10 字以上只有 15 块
+// (最长 17 字「三车间S51未名行(永龙反向有功)」1 块)—— 为那 15 块再加 100px 不划算,它们截断后
+// 悬停有全名(:title=tenTitle),且「用途」列同一行就写着同一串原文。表本就横向滚动,加 86px 不挤别的列。
+const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 216, SUB_W = 70, CODE_W = 118, FAC_W = 56
 const SEG_W = 96, USAGE_W = 104, ST_W = 88
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 // 表总宽=全列宽之和(colgroup+table-layout:fixed 用):窗口化每帧换行,auto 布局会按可见内容
@@ -397,7 +404,10 @@ td.ct { text-align:center; }
 /* 租户格:点击开抽屉;hover 出 chevron;待核 coral/占位 dim */
 .mlg-tname { display:inline-flex; align-items:center; gap:5px; padding:0 10px; font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; max-width:100%; }
 .mlg-tname:hover .nm { color:var(--hue-blue); }
-.mlg-tname .nm { overflow:hidden; text-overflow:ellipsis; }
+/* 名字吃剩余宽、徽标不许被压(改前 .nm 与徽标同为 flex:0 1 auto,而徽标 nowrap 压不动,
+   于是全部收缩都落在名字上 —— 列一窄名字就只剩一个字。min-width:0 是让 ellipsis 生效的前提) */
+.mlg-tname .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.mlg-tname .mlg-st { flex:0 0 auto; }
 .mlg-tname.coral .nm { color:rgb(202, 66, 41); }
 .mlg-tname.dim .nm { color:var(--text-disabled); font-weight:var(--fw-regular); }
 .mlg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
