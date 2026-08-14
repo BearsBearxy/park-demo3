@@ -19,6 +19,7 @@ import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO } from '@/types/building'
 import {
   buildRows, filterRows, cardCounts, autoLinkEstimate, isPendingMeter,
+  isRemovedMeter, isNotYetActive,
   draftDirtyIds, draftReq,
   type StatusFilter, type MeterDraft, type CurrField,
 } from '@/composables/useMeterWorkbench'
@@ -225,6 +226,8 @@ const STATUS_OPTS = [
   { value: 'negative', label: '倒走' }, { value: 'touMismatch', label: '时段不符' },
   { value: 'pending', label: '待核' }, { value: 'unbound', label: '待绑定' }, { value: 'placeholder', label: '占位槽' },
   { value: 'retired', label: '已停用' },   // V68:默认隐藏,选此项调出
+  // V88/V87 隐藏表的唯一出口:这两类不产行,设错一格就在所有月份消失,没有这两项就再也找不回来
+  { value: 'removed', label: '已退场' }, { value: 'notYet', label: '未启用' },
 ]
 // 状态 Select 与统计卡互斥共用一个 status:卡的粗粒度键(anomaly/attention/ready/tenant)在 Select 显「全部」
 const statusSel = computed(() => (STATUS_OPTS.some(o => o.value === status.value) ? status.value : 'all'))
@@ -235,10 +238,36 @@ function resetFilters() {
 function cardClick(k: StatusFilter) {
   status.value = status.value === k ? 'all' : k
 }
+// 隐藏表出口的说明:说清「列的是什么」+「改哪一格能回来」——这两批是专门为了改回去才列出来的
+const hiddenHint = computed(() => {
+  if (status.value === 'removed')
+    return '列出自某账期起不再显示的表(退租/拆表)。点开任意一行,'
+      + '把抽屉里的「退场账期」清空即可恢复;历史月本就照常显示,不受影响。'
+  if (status.value === 'notYet')
+    return '列出启用账期晚于本月、因而本月不出现的表。点开任意一行,把抽屉里的「启用账期」'
+      + '改早或清空(清空=一直在册)即可让它在本月出现。'
+  return ''
+})
 
 // ── 行合流与各口径行集 ──
 const rowsAll = computed(() =>
   buildRows(meters.value ?? [], readings.value ?? [], prevReadings.value, bindRows.value, tenantNameById.value, ym.value))
+// ⭐隐藏表的唯一出口(2026-08-14 用户报障:「我在23年9月停用了旭化成的一个表,现在根本不知道
+// 上哪去重新启用他」)。未启用(V87)/已退场(V88)是 buildRows 直接不产行,不像停用还留在表里,
+// 所以设错一格那张表就在**所有月份**消失 —— 下拉、搜索、统计卡全都调不出来,只能靠人猜
+// 「切到哪个月它还在」。这两个筛选项按需重建行集:不传 ym ⇒ buildRows 一律按在用产行。
+// 2026-08-04「未启用不进任何筛选」的裁定只在此放宽一个**显式**入口:默认视图、统计卡、
+// 其余筛选一行不动(hiddenRows 只在选中这两项时才非空)。
+const HIDDEN_STATUS: Record<string, (m: MeterDTO) => boolean> = {
+  removed: m => isRemovedMeter(m, ym.value),
+  notYet: m => isNotYetActive(m, ym.value),
+}
+const hiddenRows = computed(() => {
+  const hit = HIDDEN_STATUS[status.value]
+  if (!hit) return []
+  return buildRows((meters.value ?? []).filter(hit), readings.value ?? [], prevReadings.value,
+    bindRows.value, tenantNameById.value)   // 省略 ym = 一律在用,否则又被同一条规则滤掉
+})
 // 统计卡/进度条口径:跟随 电水+分区(§1),不受楼栋/归属/状态/搜索影响
 const kindZoneRows = computed(() =>
   filterRows(rowsAll.value, { kind: kind.value, zone: zone.value, building: 'all', own: 'all', status: 'all', q: '' }))
@@ -251,8 +280,12 @@ const suspectOnly = ref(false)
 const suspectCount = computed(() => kindZoneRows.value.filter(x => !!x.m.suspect).length)
 const shadowCount = computed(() => kindZoneRows.value.filter(x => x.m.suspect === 'shadow').length)
 // 表格行集:全筛选链(tfoot 已抄/未抄/Σ用量 即按此行集算)
+// 隐藏表两项走 hiddenRows,其余维度(电水/分区/楼栋/归属/搜索)照常过一遍 —— 状态那格传 'all',
+// 因为这批行的"状态"就是筛选项本身,再拿 matchStatus 判一次会把它们全滤掉。
 const gridRows = computed(() => {
-  const rs = filterRows(rowsAll.value, { kind: kind.value, zone: zone.value, building: building.value, own: own.value, status: status.value, q: q.value })
+  const src = HIDDEN_STATUS[status.value] ? hiddenRows.value : rowsAll.value
+  const st = HIDDEN_STATUS[status.value] ? 'all' as StatusFilter : status.value
+  const rs = filterRows(src, { kind: kind.value, zone: zone.value, building: building.value, own: own.value, status: st, q: q.value })
   return suspectOnly.value ? rs.filter(x => !!x.m.suspect) : rs
 })
 
@@ -309,7 +342,13 @@ const cardDefs = computed(() => {
 })
 
 // ── 详情抽屉(点行打开;行集重载后引用自动更新;表被删/换期即自动关) ──
-const openRow = computed(() => rowsAll.value.find(x => x.m.id === openId.value) ?? null)
+// ⚠ 也要从 hiddenRows 里找:隐藏表按定义不在 rowsAll 里,只查 rowsAll 会让 openRow 恒 null,
+// 下面那个 watch 立刻把 openId 清掉 —— 表面现象是「点了没反应,抽屉打不开」,
+// 而这批行存在的唯一目的就是点进去改那两格(2026-08-14 实测踩到)。
+const openRow = computed(() =>
+  rowsAll.value.find(x => x.m.id === openId.value)
+  ?? hiddenRows.value.find(x => x.m.id === openId.value)
+  ?? null)
 watch(openRow, r => { if (openId.value != null && !r) openId.value = null })
 
 // ── 「按名精确匹配一键挂」(待核卡激活时工具栏侧出现,编辑态) ──
@@ -611,6 +650,13 @@ const emptyText = computed(() => {
       <Button variant="outline" size="sm" @click="resetFilters">重置</Button>
     </div>
 
+    <!-- 隐藏表出口的说明条:这两批平时不产行,列出来是为了改回去,所以得直说改哪一格 -->
+    <div v-if="hiddenHint" class="mt-hidbar">
+      <component :is="iconFor('info')" :size="14" />
+      <span>{{ hiddenHint }}</span>
+      <span v-if="!editMode" class="mt-hidbar-em">先点右上「编辑模式」才能改这两格。</span>
+    </div>
+
     <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
     <MeterLedgerGrid
       :rows="gridRows" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
@@ -785,6 +831,9 @@ const emptyText = computed(() => {
 
 /* 加载失败条(借空态条骨架换红):提示 + 重试入口 */
 .mt-empty.bad { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
+/* 隐藏表出口说明条:蓝调=这不是错误,是「你正在看平时不显示的那批」 */
+.mt-hidbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgb(206, 223, 252); border-radius: var(--radius-md); background: rgb(238, 244, 255); font-size: 12px; color: rgb(28, 84, 168); }
+.mt-hidbar-em { font-weight: var(--fw-semibold); }
 .mt-empty .msg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 /* 首载失败占满 gate 的位置(与 .page-loading 同为整页态,顶部起排不居中) */
 .mt-gate-fail { padding: 24px 0; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }

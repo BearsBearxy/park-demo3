@@ -179,11 +179,17 @@ export function statusDims(x: WorkbenchRow): string {
 export type StatusFilter =
   | 'all' | RowStatus            // 状态 Select 八项
   | 'tenant' | 'anomaly' | 'attention' | 'ready'   // 统计卡粗粒度维度
+  // V87/V88 隐藏表两项:这两类在 buildRows 就不产行,故不是"行的状态"而是"换一批行"——
+  // 由 MeterView 的 hiddenRows 重建行集,matchStatus 对普通行集恒 false(它们本来就不在里面)
+  | 'removed' | 'notYet'
 
 // 维度谓词:统计卡计数与状态筛选共用同一口径。
 // 已抄/未抄以租户表为分母(标题行进度条口径:总数=已抄+未抄),非租户表读数经 归属 筛选查看。
 // V68 已停用表:除「已停用」筛选项外全维排除(默认隐藏 + 统计卡分母排除,一处生效)。
 export function matchStatus(x: WorkbenchRow, s: StatusFilter): boolean {
+  // 隐藏表两项不是行状态:普通行集里根本没有这类行(buildRows 已滤掉),恒 false;
+  // 选中它们时 MeterView 换一批行进来并把状态位传 'all',不会走到这里
+  if (s === 'removed' || s === 'notYet') return false
   if (s === 'retired') return x.retired
   // 停用行「全部」筛选照常显示(2026-08-04 用户裁定:停用=这个月还在只是不用,须在表格可见);
   // 其余统计维度(租户表/已抄/未抄/待核…)仍排除=不进任何分母
