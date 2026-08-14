@@ -17,6 +17,7 @@
 // §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import {
   allocApi,
@@ -123,9 +124,22 @@ function loadMasters() {
 }
 onReactivated(loadMasters)
 
+// 楼栋损耗屏「去公共电核算重新生成」送过来的:带账期落到同一个月,并直接进编辑模式
+// —— 否则用户到了这儿还要自己重选年月、再找到「编辑模式」才看得见生成按钮(2026-08-14 用户报障)。
+const route = useRoute()
+function applyHandoff(): boolean {
+  const q = route.query
+  const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
+  if (q.generate === '1') editMode.value = true
+  if (!m) return false
+  year.value = +m[1]; month.value = +m[2]
+  return true
+}
+
 onMounted(async () => {
   loadRules().catch(() => {})
   loadMasters()
+  if (applyHandoff()) { loadMonth(); return }   // 带账期来的:不再被「跳到最新年」覆盖
   try {
     dataYears.value = await allocApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]

@@ -5,6 +5,7 @@
 // 编辑态(EDIT-MODE-SPEC v2):调整度数/调整损耗/g_adj 行内改 → PUT /cfg scope=building:{id}
 // 月行 loss_adj_qty/loss_adj_rate/loss_g_adj(commitAdj 模式)→ 提示重新生成。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { allocApi, type AllocCfgDTO, type AllocLossDTO } from '@/api/alloc'
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { buildYearOptions } from '@/utils/yearGate'
@@ -76,10 +77,22 @@ const LBL_W = 210
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
+// G(公摊分摊度数)的算式:屏上只给一个数,用户没法核对它怎么来的 —— 2023-08 实测与源册差 670 度,
+// 根因是某个园区公摊池挂着「不限月份」的默认加度。把算式和该去哪查写进悬浮,至少能顺藤摸瓜。
+const G_TITLE = 'G = Σ(一期园区公摊池本月净量) ÷ 均摊座数(park_share_div,现为 6),各栋同值。\n'
+  + '池的净量含该池的「加度」——加度若填在规则默认行(不限月份),会对每个月都生效。\n'
+  + '要核对构成:去「公共电核算」屏看 fee_key=园区损耗池 的那几行与它们的「加度(月)」。'
+
 // ── 行内人工参数(编辑态):building:{headBuildingId} 月行,commitAdj 模式 → 提示重新生成 ──
 const cfgDirty = ref(false)
 const cfgRaw = (buildingId: number, key: string) =>
   cfgs.value.find(c => c.scope === `building:${buildingId}` && c.cfgKey === key && c.acctMonth === ym.value)
+// 带着同一账期跳过去:换屏后还要用户自己再选一遍年月,是最容易把人绕晕的一步
+const router = useRouter()
+function gotoGenerate() {
+  // ⚠ 路由表是纯 path(fpNav 生成,没有 name),push({name}) 会静默失败 —— 实测点了不动窝
+  router.push({ path: '/alloc', query: { ym: ym.value, generate: '1' } })
+}
 function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | 'loss_g_adj', raw: string) {
   const t = raw.trim()
   const v = t === '' ? null : Number(t)
@@ -119,9 +132,16 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月未生成 —— 损耗快照为空;在「公共电核算」屏点「生成本月」后此处落数。</span>
     </div>
+    <!-- 改完不生效是本屏最大的坑:三格都只写参数,重算在**另一个屏**,而那个屏的「重新生成」
+         按钮还要先开它自己的编辑模式才出现。光写一句话等于让人去猜,故直接给一个按钮送过去。 -->
     <div v-if="cfgDirty" class="ll-bar warn">
       <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>参数已变,请重新生成 —— 屏上数字仍是旧快照,到「公共电核算」屏点「重新生成」后生效。</span>
+      <span>参数已存,但屏上数字仍是旧快照 —— 损耗要在「公共电核算」屏重算才生效
+        (那边需先点「编辑模式」,「重新生成」按钮才会出现)。</span>
+      <Button variant="outline" size="sm" @click="gotoGenerate">
+        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
+        去公共电核算重新生成
+      </Button>
     </div>
 
     <!-- 台账式宽表:单元行 + 对账区两行(供电侧总表 vs 单元合计) + tfoot 合计 -->
@@ -156,12 +176,20 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
             <td><span class="ll-nv" :class="{ empty: u.dQty == null }">{{ fmt(u.dQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: u.eQty == null, neg: (u.eQty ?? 0) < 0 }">{{ fmt(u.eQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: u.rawRate == null }">{{ fpct(u.rawRate) }}</span></td>
+            <!-- ⭐名实分离(2026-08-14 用户报障「改了跟没改一样,既不显示也没改读数」):
+                 这一格只读显的是**派生值 G**,而编辑框绑的是 loss_g_adj(对 G 的增减量,默认空)。
+                 改前编辑态只出输入框 → 用户看到空白以为「没值」,填 388.62 以为是「设成 388.62」,
+                 实际是「在 276.95 上再加 388.62」。现在编辑态把 G 与调整量并排显示,谁是谁一眼可见。 -->
             <td v-if="zone === 'p1'">
-              <input v-if="editMode" class="ll-ni" type="number" step="any"
-                     :value="cfgRaw(u.headBuildingId, 'loss_g_adj')?.value ?? ''"
-                     placeholder="g_adj –" :title="`g_adj 人工调整(如 −1500);当前快照 G=${fmt(u.gQty)}`"
-                     @change="commitAdj(u.headBuildingId, 'loss_g_adj', ($event.target as HTMLInputElement).value)" />
-              <span v-else class="ll-nv" :class="{ empty: u.gQty == null }">{{ fmt(u.gQty) }}</span>
+              <div v-if="editMode" class="ll-gcell">
+                <span class="ll-gbase" :title="G_TITLE">{{ fmt(u.gQty) }}</span>
+                <input class="ll-ni" type="number" step="any"
+                       :value="cfgRaw(u.headBuildingId, 'loss_g_adj')?.value ?? ''"
+                       placeholder="±调整"
+                       :title="`在派生值 G=${fmt(u.gQty)} 上加减多少(如 −1500),留空=不调整。\n这里填的不是 G 本身。\n${G_TITLE}`"
+                       @change="commitAdj(u.headBuildingId, 'loss_g_adj', ($event.target as HTMLInputElement).value)" />
+              </div>
+              <span v-else class="ll-nv" :class="{ empty: u.gQty == null }" :title="G_TITLE">{{ fmt(u.gQty) }}</span>
             </td>
             <td>
               <input v-if="editMode" class="ll-ni" type="number" step="any"
@@ -247,6 +275,11 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
 /* 对账区两行(分隔带样式对标 mlg-bsum) */
 .ll-table tbody tr.ll-recon td { height: 40px; background: var(--surface-sunken); border-top: 2px solid var(--border-strong); border-bottom: 2px solid var(--border-strong); }
 .ll-table tbody tr.ll-recon + tr.ll-recon td { border-top: none; }
+
+/* G 格编辑态:左派生值(灰,只读)+右调整输入 —— 两个量并排,谁是谁一眼可见 */
+.ll-gcell { display: flex; align-items: center; gap: 4px; padding: 0 4px; }
+.ll-gbase { flex: 0 0 auto; font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; cursor: help; }
+.ll-gcell .ll-ni { flex: 1 1 auto; min-width: 0; }
 
 /* 行内 input(透明格) */
 .ll-ni { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; text-align: right; font-size: 12px; padding: 3px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
