@@ -377,6 +377,9 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
       oldName: r.name,
     }
   } else form.value = emptyForm()
+  // 名单快照按池重置(与 cands 同理:不清就还挂着上一个池的受益人),再把本池已存受益人全部记进去
+  seenMembers.value = new Map()
+  for (const m of form.value.members) rememberMember(m)
   otherOpen.value = false; otherQ.value = ''
   // 候选先清空再取:抽屉是同一份 state,不清就还挂着**上一个池**的候选表/受益人,
   // 新候选回来前那半秒里勾中的是别的池的表,保存即写进当前池
@@ -454,15 +457,24 @@ const otherList = computed(() => {
       || (m.tenantName ?? '').includes(kw) || (m.code ?? '').includes(kw))).slice(0, 40)
 })
 
-// 受益人勾选行=候选(在租) ∪ 已存受益人(退租的灰显标注,缺日期的橙标「判不了」)
+// 受益人勾选行=候选(在租) ∪ 本次会话出现过的受益人(退租的灰显标注,缺日期的橙标「判不了」)
 interface TenantRow { tenantId: number; name: string; unitNo: string | null; inForce: AllocInForce; other: boolean }
+// ⭐行集必须「只增不减」(2026-08-14 用户报障:「分摊给谁只要一点移除,租户选项直接消失,
+// 根本没办法重新找到入口」)。原实现取 候选 ∪ **当前** form.members —— 那些「已是受益人但不在
+// 本定位候选里」的户(退租户、跨定位手工加的户)一取消勾选就同时退出两个来源,行当场消失且勾不回来,
+// 唯一补救是取消整个抽屉重开,这一路的其它改动一并作废。现在把它们记进 seenMembers:
+// 取消只改 form.members(勾选态),行照留在名单里,随时能勾回来(份额也由 weightStash 原样取回)。
+const seenMembers = ref(new Map<number, Omit<TenantRow, 'other'>>())
+function rememberMember(m: { tenantId: number; tenantName: string; unitNo: string | null; inForce: AllocInForce }) {
+  seenMembers.value.set(m.tenantId,
+    { tenantId: m.tenantId, name: m.tenantName, unitNo: m.unitNo, inForce: m.inForce })
+}
 const tenantRows = computed<TenantRow[]>(() => {
   const rows: TenantRow[] = cands.value.tenants.map(t => ({
     tenantId: t.tenantId, name: t.tenantName ?? `#${t.tenantId}`, unitNo: t.unitNo,
     inForce: t.inForce ?? 'yes', other: false }))
   const has = new Set(rows.map(r => r.tenantId))
-  for (const m of form.value.members) if (!has.has(m.tenantId))
-    rows.push({ tenantId: m.tenantId, name: m.tenantName, unitNo: m.unitNo, inForce: m.inForce, other: true })
+  for (const m of seenMembers.value.values()) if (!has.has(m.tenantId)) rows.push({ ...m, other: true })
   return rows
 })
 const memberOf = (id: number) => form.value.members.find(m => m.tenantId === id)
@@ -477,6 +489,7 @@ function toggleMember(t: TenantRow) {
   if (form.value.method === 'direct') form.value.members = []
   form.value.members.push({ tenantId: t.tenantId, tenantName: t.name, unitNo: t.unitNo,
     weight: weightStash.get(t.tenantId) ?? null, inForce: t.inForce })
+  rememberMember({ tenantId: t.tenantId, tenantName: t.name, unitNo: t.unitNo, inForce: t.inForce })
 }
 // §E6 direct=户对户:后端不推该定位在租名单(推了也没意义),那一户从全库租户里直接挑
 const tenantOpts = computed(() =>
@@ -489,6 +502,7 @@ function pickDirect(id: number | null) {
     tenantId: id, tenantName: tenantOpts.value.find(t => t.id === id)?.name ?? `#${id}`,
     unitNo: cand?.unitNo ?? null, weight: null, inForce: cand?.inForce ?? 'yes',
   }]
+  rememberMember(form.value.members[0])
 }
 // §D.5 份额:空=按楼层自动分(该户所在层各摊 1 份,层内多户按面积拆);填值=显式份额覆盖(账册 49/77 的 0.5)
 function commitWeight(id: number, raw: string) {

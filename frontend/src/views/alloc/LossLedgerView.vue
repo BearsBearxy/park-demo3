@@ -6,7 +6,10 @@
 // 月行 loss_adj_qty/loss_adj_rate/loss_g_adj(commitAdj 模式)→ 提示重新生成。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { allocApi, type AllocCfgDTO, type AllocLossDTO } from '@/api/alloc'
+import { allocApi, type AllocCfgDTO, type AllocLossDTO, type AllocRuleDTO } from '@/api/alloc'
+import { metersApi, type MeterDTO } from '@/api/meters'
+import { buildingApi } from '@/api/building'
+import type { BuildingDTO } from '@/types/building'
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useAuthStore } from '@/stores/auth'
@@ -43,6 +46,10 @@ const ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二�
 // ── 数据(竞态守卫) ──
 const loss = ref<AllocLossDTO | null>(null)
 const cfgs = ref<AllocCfgDTO[]>([])
+// 「本月口径」面板要把 scope 里的 id 翻成人看得懂的名字,故一并拉表/栋/池档案(失败降级为显 id)
+const meters = ref<MeterDTO[]>([])
+const buildings = ref<BuildingDTO[]>([])
+const rules = ref<AllocRuleDTO[]>([])
 let seq = 0
 async function loadMonth() {
   const my = ++seq
@@ -53,7 +60,13 @@ async function loadMonth() {
   if (my !== seq) return
   loss.value = ls; cfgs.value = cs
 }
+function loadMasters() {
+  metersApi.list().then(d => { meters.value = d }).catch(() => { /* 降级显 id */ })
+  buildingApi.list().then(d => { buildings.value = d }).catch(() => { /* 降级显 id */ })
+  allocApi.rules().then(d => { rules.value = d }).catch(() => { /* 降级不列加度 */ })
+}
 onMounted(async () => {
+  loadMasters()
   try {
     dataYears.value = await allocApi.years()
     const latest = dataYears.value[dataYears.value.length - 1]
@@ -82,6 +95,66 @@ const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-
 const G_TITLE = 'G = Σ(一期园区公摊池本月净量) ÷ 均摊座数(park_share_div,现为 6),各栋同值。\n'
   + '池的净量含该池的「加度」——加度若填在规则默认行(不限月份),会对每个月都生效。\n'
   + '要核对构成:去「公共电核算」屏看 fee_key=园区损耗池 的那几行与它们的「加度(月)」。'
+
+// ── ⭐「本月口径」面板(2026-08-14):把左右屏上数字的**隐藏参数**摊开 ──────────────────
+// 起因:2023-08 与源册逐格核对出三处差额,根因全是同一个形状 —— 为某个月校准的参数写在
+// **默认行(acct_month 为空 ⇒ 对所有月份生效)**,而屏上一个字都看不到:
+//   ① 招商中心池 extra_qty=−670(规则默认列)→ 公摊分摊度数 276.95 vs 源册 388.62,差 670
+//   ② meter:307「力美C201电」loss_exclude(默认行)→ C座分表少 293
+//   ③ building:25「G座」loss_variant=2 不核算 → 分表落 0、−100%,还污染对账与合计
+// 用户既核不出差在哪、也不知道去哪改。此面板逐条列出对本 zone 生效的口径,并**标明作用月份**:
+// 「默认(所有月份)」是最容易背着人生效的那种,单独标红。
+const cfgOpen = ref(false)
+const meterName = (id: number) => meters.value.find(m => m.id === id)?.name ?? `表#${id}`
+const bldName = (id: number) => buildings.value.find(b => b.id === id)?.name ?? `栋#${id}`
+const bldZone = (id: number) => buildings.value.find(b => b.id === id)?.phase
+interface CalibRow { kind: string; target: string; detail: string; scope: string; monthly: boolean }
+const LOSS_VARIANT_TEXT: Record<string, string> = {
+  '1': '纯公摊式(率=G÷总表+加点)', '2': '不核算(只陈列,不出损耗率)',
+}
+const calibRows = computed<CalibRow[]>(() => {
+  const out: CalibRow[] = []
+  const inZone = (bid: number) => {
+    const p = bldZone(bid)
+    return p == null || (zone.value === 'p1' ? p === 1 : p === 2)
+  }
+  for (const c of cfgs.value) {
+    const monthly = !!c.acctMonth
+    const [pfx, idStr] = c.scope.split(':')
+    const id = Number(idStr)
+    if (pfx === 'meter' && c.cfgKey === 'loss_exclude' && c.value) {
+      const m = meters.value.find(x => x.id === id)
+      if (m && m.buildingId != null && !inZone(m.buildingId)) continue
+      out.push({ kind: '剔出总表/分表Σ', target: meterName(id),
+        detail: `${m?.buildingId != null ? bldName(m.buildingId) + ' · ' : ''}该表用量不计入 C(总表)与 D(分表)`,
+        scope: c.scope, monthly })
+    } else if (pfx === 'building' && inZone(id)) {
+      if (c.cfgKey === 'loss_variant')
+        out.push({ kind: '损耗口径', target: bldName(id),
+          detail: LOSS_VARIANT_TEXT[String(c.value)] ?? `variant=${c.value}`, scope: c.scope, monthly })
+      else if (c.cfgKey === 'loss_c_meter')
+        out.push({ kind: '组C只取此总表', target: bldName(id),
+          detail: `${meterName(Number(c.value))} —— 该栋其余总表既不入 C 也不入 D`, scope: c.scope, monthly })
+      else if (c.cfgKey === 'loss_head')
+        out.push({ kind: '并入他栋核算', target: bldName(id),
+          detail: `与 ${bldName(Number(c.value))} 合成一组共用总表`, scope: c.scope, monthly })
+      else if (c.cfgKey === 'loss_recon' && Number(c.value) === 0)
+        out.push({ kind: '不入对账Σ', target: bldName(id),
+          detail: '该栋不参与下方「供电侧总表 vs 单元Σ」两行对账', scope: c.scope, monthly })
+    }
+  }
+  // 池加度:−670 那条住在 alloc_rule.extra_qty 列(不是 alloc_cfg),cfg 里看不到,必须单独捞
+  for (const r of rules.value) {
+    if (r.zone !== zone.value || !r.extraQty) continue
+    const monthRow = cfgs.value.find(c => c.scope === `rule:${r.id}` && c.cfgKey === 'extra_qty' && c.acctMonth)
+    out.push({ kind: '池加度(影响公摊分摊度数)', target: r.name,
+      detail: `${monthRow ? monthRow.value : r.extraQty} 度计入该池净量`
+        + (r.feeKey === 'park_loss_pool' ? ' —— 园区公摊池,直接进 G 的分子' : ''),
+      scope: `rule:${r.id}`, monthly: !!monthRow })
+  }
+  return out
+})
+const calibDefaults = computed(() => calibRows.value.filter(r => !r.monthly).length)
 
 // ── 行内人工参数(编辑态):building:{headBuildingId} 月行,commitAdj 模式 → 提示重新生成 ──
 const cfgDirty = ref(false)
@@ -142,6 +215,24 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
         去公共电核算重新生成
       </Button>
+    </div>
+
+    <!-- 「本月口径」:屏上数字背后的隐藏参数。不列出来,与源册对不上时无从查起 -->
+    <div v-if="calibRows.length" class="ll-bar calib">
+      <component :is="iconFor('sliders-horizontal')" :size="14" />
+      <span>本月对 {{ POOL_ZONE_LABEL[zone] }} 生效的口径参数 <b>{{ calibRows.length }}</b> 条<template
+        v-if="calibDefaults"> —— 其中 <b class="em">{{ calibDefaults }}</b> 条是「默认(所有月份)」,
+        它们多半是给某一个月校准的,却对每个月都生效</template>。</span>
+      <button class="ll-link" @click="cfgOpen = !cfgOpen">{{ cfgOpen ? '收起' : '展开' }}</button>
+      <div v-if="cfgOpen" class="ll-caliblist">
+        <div v-for="(r, i) in calibRows" :key="i" class="ll-calibrow">
+          <span class="k">{{ r.kind }}</span>
+          <span class="t">{{ r.target }}</span>
+          <span class="d">{{ r.detail }}</span>
+          <span class="m" :class="{ em: !r.monthly }">{{ r.monthly ? `仅 ${ym}` : '默认 · 所有月份' }}</span>
+          <span class="s">{{ r.scope }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- 台账式宽表:单元行 + 对账区两行(供电侧总表 vs 单元合计) + tfoot 合计 -->
@@ -249,6 +340,19 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
 
 .ll-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 .ll-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
+/* 本月口径面板:中性蓝(这不是错误,是「你该知道的隐藏前提」);默认行标红提醒它跨月生效 */
+.ll-bar.calib { flex-wrap: wrap; border-style: solid; border-color: rgb(206, 223, 252); background: rgb(238, 244, 255); color: rgb(28, 84, 168); font-size: 12px; }
+.ll-bar.calib b { font-variant-numeric: tabular-nums; }
+.ll-bar.calib b.em { color: var(--hue-red); }
+.ll-link { border: none; background: none; padding: 0 2px; font: inherit; color: var(--hue-blue); cursor: pointer; text-decoration: underline; }
+.ll-caliblist { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 6px; max-height: 200px; overflow: auto; }
+.ll-calibrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--surface-white); font-size: 11.5px; color: var(--text-secondary); }
+.ll-calibrow .k { flex: 0 0 auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.ll-calibrow .t { flex: 0 0 auto; color: var(--hue-blue); }
+.ll-calibrow .d { flex: 1 1 200px; min-width: 0; }
+.ll-calibrow .m { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--radius-full); background: var(--bg-sunken); font-size: var(--fs-micro); }
+.ll-calibrow .m.em { background: rgb(255, 238, 237); color: var(--hue-red); }
+.ll-calibrow .s { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-disabled); }
 
 /* ── 宽表(FPLedgerTable 手法) ── */
 .ll-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }
