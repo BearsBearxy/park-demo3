@@ -11,6 +11,7 @@ import { metersApi, type MeterDTO } from '@/api/meters'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
+import { resolveCfg } from '@/utils/allocLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -131,29 +132,45 @@ const calibRows = computed<CalibRow[]>(() => {
     const p = bldZone(bid)
     return p == null || (zone.value === 'p1' ? p === 1 : p === 2)
   }
+  // ⭐必须按 (scope,cfgKey) 归并后再判,不能逐条遍历 cfgs(2026-08-14 自查两个真缺陷):
+  //  ① cfgs 是 selectEffective = 默认行 ∪ 当月行,逐条遍历会让同一个 building 的 loss_variant
+  //     出**两行**(一条默认一条本月),面板里看着像有两套口径;
+  //  ② 更糟的是 `&& c.value` 这种真值判断:勾「本月计入Σ」写的是 loss_exclude=**0**,0 在 JS 里是假值,
+  //     该月行直接被跳过 → 只剩 value=1 的默认行 → :checked 回落 false → 复选框保存成功却自己弹回,
+  //     用户以为没存上。所以一律走 resolveCfg(月行优先回退默认,已有单测)拿**有效值**,
+  //     再用 hasMonth 单独判「本月是否有覆盖行」。
+  const seen = new Set<string>()
+  const hasMonth = (scope: string, key: string) =>
+    cfgs.value.some(c => c.scope === scope && c.cfgKey === key && !!c.acctMonth)
   for (const c of cfgs.value) {
-    const monthly = !!c.acctMonth
+    const k = `${c.scope}|${c.cfgKey}`
+    if (seen.has(k)) continue
+    seen.add(k)
     const [pfx, idStr] = c.scope.split(':')
     const id = Number(idStr)
-    if (pfx === 'meter' && c.cfgKey === 'loss_exclude' && c.value) {
+    const eff = resolveCfg(cfgs.value, c.scope, c.cfgKey)
+    const monthly = hasMonth(c.scope, c.cfgKey)
+    if (pfx === 'meter' && c.cfgKey === 'loss_exclude') {
       const m = meters.value.find(x => x.id === id)
       if (m && m.buildingId != null && !inZone(m.buildingId)) continue
-      out.push({ kind: '剔出总表/分表Σ', target: meterName(id),
-        detail: `${m?.buildingId != null ? bldName(m.buildingId) + ' · ' : ''}该表用量不计入 C(总表)与 D(分表)`,
-        scope: c.scope, monthly, edit: 'exclude', cur: '1' })
+      const excluded = eff != null && eff !== 0
+      out.push({ kind: excluded ? '剔出总表/分表Σ' : '本月已改回计入Σ', target: meterName(id),
+        detail: `${m?.buildingId != null ? bldName(m.buildingId) + ' · ' : ''}`
+          + (excluded ? '该表用量不计入 C(总表)与 D(分表)' : '本月已覆盖为计入 C/D(默认是剔出)'),
+        scope: c.scope, monthly, edit: 'exclude', cur: excluded ? '1' : '0' })
     } else if (pfx === 'building' && inZone(id)) {
       if (c.cfgKey === 'loss_variant')
         out.push({ kind: '损耗口径', target: bldName(id),
-          detail: LOSS_VARIANT_TEXT[String(c.value)] ?? `variant=${c.value}`,
-          scope: c.scope, monthly, edit: 'variant', cur: String(Number(c.value)) })
+          detail: LOSS_VARIANT_TEXT[String(eff)] ?? `正常核算(总表−分表)`,
+          scope: c.scope, monthly, edit: 'variant', cur: String(Number(eff ?? 0)) })
       else if (c.cfgKey === 'loss_c_meter')
         out.push({ kind: '组C只取此总表', target: bldName(id),
-          detail: `${meterName(Number(c.value))} —— 该栋其余总表既不入 C 也不入 D`,
+          detail: `${meterName(Number(eff))} —— 该栋其余总表既不入 C 也不入 D`,
           scope: c.scope, monthly, edit: null, cur: '' })
       else if (c.cfgKey === 'loss_head')
         out.push({ kind: '并入他栋核算', target: bldName(id),
-          detail: `与 ${bldName(Number(c.value))} 合成一组共用总表`, scope: c.scope, monthly, edit: null, cur: '' })
-      else if (c.cfgKey === 'loss_recon' && Number(c.value) === 0)
+          detail: `与 ${bldName(Number(eff))} 合成一组共用总表`, scope: c.scope, monthly, edit: null, cur: '' })
+      else if (c.cfgKey === 'loss_recon' && Number(eff) === 0)
         out.push({ kind: '不入对账Σ', target: bldName(id),
           detail: '该栋不参与下方「供电侧总表 vs 单元Σ」两行对账', scope: c.scope, monthly, edit: null, cur: '' })
     }
@@ -268,7 +285,8 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
           <template v-if="editMode && r.edit">
             <label v-if="r.edit === 'exclude'" class="ll-cbx"
                    title="勾上=本月把这块表算回 C/D 两个Σ(写本月行压过默认);取消=退回默认(剔出)">
-              <input type="checkbox" :checked="r.monthly"
+              <!-- 绑**有效值**而非 monthly:勾选态要回答「本月到底算不算进Σ」,不是「有没有月行」 -->
+              <input type="checkbox" :checked="r.cur === '0'"
                      @change="onExclude(r, ($event.target as HTMLInputElement).checked)" />
               本月计入Σ
             </label>
