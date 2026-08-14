@@ -56,14 +56,15 @@ const colCount = computed(() => 10 + segDefs.value.length * 2)
 // 右=状态←用量 反向累加。改列宽必须同步改 offset,否则固定列错位。
 // 分隔线用 border 而非 box-shadow(§7 6.5:去阴影绘制成本;th/td 已 border-box 不占额外宽)
 const AREA_W = 76
-// TEN_W 130→216(2026-08-14 用户报障「电表的租户列都看不见了」):该格不只放名字,还并排放
-// 归属徽标(园区公摊/配电总表/园区经营/园区自担/计度寄存器,最长 5 全角)+ 待核/存疑徽标 + 悬停箭头。
-// 130px 里徽标 nowrap 先占满(「园区公摊」≈54px + 箭头/间距/padding ≈45px),名字只剩 30px ⇒ 一个字加省略号。
-// 216 = 名字 9 全角 113px + 徽标 54 + 箭头/间距/padding 46 + 3 余量。取 9 字是实测分布的拐点:
-// 全库 1137 块表按 COALESCE(tenant_name,name) 字数,8/9 字各 37/28 块是主峰,10 字以上只有 15 块
-// (最长 17 字「三车间S51未名行(永龙反向有功)」1 块)—— 为那 15 块再加 100px 不划算,它们截断后
-// 悬停有全名(:title=tenTitle),且「用途」列同一行就写着同一串原文。表本就横向滚动,加 86px 不挤别的列。
-const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 216, SUB_W = 70, CODE_W = 118, FAC_W = 56
+// TEN_W 130→180(2026-08-14 用户报障「电表的租户列都看不见了」):该格并排放名字 + 待核/存疑徽标
+// + 归属徽标(非租户表)+ 悬停箭头。130px 里徽标 nowrap 先占满(「园区公摊」≈54px + 箭头/间距/padding
+// ≈45px),名字只剩 30px ⇒ 一个字加省略号。同刀去掉了非租户行的名字(与「用途」列重复,见 tenName),
+// 所以不必按「名字+归属徽标」并存来配宽 —— 两类行各自的需求:
+//   非租户行 = 只有徽标:最长「计度寄存器」5 全角 ≈64 + 箭头间距 padding 38 = 102px
+//   租户行   = 档案名 + 可能的待核徽标:实测 400 块租户表里 3/4 字占 353 块(296+57),
+//              6 字以下共 384 块;长尾 18 字 12 块(曼克维全称)、14 字 6 块 —— 那 20 块截断后
+//              悬停有全名。按 8 全角 100px + 待核 40 + 箭头间距 padding 38 = 178,取 180。
+const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 180, SUB_W = 70, CODE_W = 118, FAC_W = 56
 const SEG_W = 96, USAGE_W = 104, ST_W = 88
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 // 表总宽=全列宽之和(colgroup+table-layout:fixed 用):窗口化每帧换行,auto 布局会按可见内容
@@ -191,12 +192,17 @@ const roomNo = (x: WorkbenchRow) =>
 const areaLabel = (x: WorkbenchRow) => x.m.area?.trim() ?? ''
 // 「用途」=账册「企业名称」列原文;公摊/基础设施表存的是用途描述,缺则回退标识名
 const useLabel = (x: WorkbenchRow) => x.m.tenantName ?? x.m.name
+// 非租户表(公摊/总表/园区自担/园区经营/寄存器)本来就没有租户,这一格只出归属徽标。
+// 改前它回落 `tenantName ?? name` —— 与「用途」列**逐字相同**(useLabel 同一个表达式),
+// 同一串话在一行里写两遍,还把格子挤到只剩一个字(2026-08-14 用户报障)。
+// 租户表照旧显档案名:那是 tenant.company_name,与「用途」的账册原文不是一回事
+// (原文「旭化成（男厕所）」↔ 档案「旭化成」),待核/绑定判定也挂在它上面,不能省。
 function tenName(x: WorkbenchRow): string {
-  if (x.m.ownership === 'tenant') return x.tenantLabel ?? '—'
-  return x.m.tenantName ?? x.m.name
+  return x.m.ownership === 'tenant' ? (x.tenantLabel ?? '—') : ''
 }
+// 悬浮同理:非租户表不重复用途原文(那一列自己有 title)
 function tenTitle(x: WorkbenchRow): string | undefined {
-  return x.tenantLabel ?? x.m.tenantName ?? undefined
+  return x.m.ownership === 'tenant' ? (x.tenantLabel ?? x.m.tenantName ?? undefined) : undefined
 }
 
 function onInput(x: WorkbenchRow, s: SegDef, e: Event) {
