@@ -108,7 +108,20 @@ const cfgOpen = ref(false)
 const meterName = (id: number) => meters.value.find(m => m.id === id)?.name ?? `表#${id}`
 const bldName = (id: number) => buildings.value.find(b => b.id === id)?.name ?? `栋#${id}`
 const bldZone = (id: number) => buildings.value.find(b => b.id === id)?.phase
-interface CalibRow { kind: string; target: string; detail: string; scope: string; monthly: boolean }
+// 可改的三类:剔出Σ / 损耗口径 / 池加度。⭐一律只写**本月行**,默认行分毫不动 ——
+// 默认行是别的月份(2024-02)校准出来的,为了修 2023-08 去改它会把那个月一起弄坏。
+// 月行存在即压过默认行(loadCtx:默认行先落、月行覆盖),所以「本月改回来」是安全且可逆的:
+// 清空月行(value=null → saveCfg 删行)就退回默认。
+type CalibEdit = 'exclude' | 'variant' | 'extra' | null
+interface CalibRow {
+  kind: string; target: string; detail: string; scope: string; monthly: boolean
+  edit: CalibEdit; cur: string          // 当前生效值(月行优先),给控件回显
+}
+const VARIANT_OPTS = [
+  { value: '0', label: '正常核算(总表−分表)' },
+  { value: '1', label: '纯公摊式(G÷总表+加点)' },
+  { value: '2', label: '不核算(只陈列)' },
+]
 const LOSS_VARIANT_TEXT: Record<string, string> = {
   '1': '纯公摊式(率=G÷总表+加点)', '2': '不核算(只陈列,不出损耗率)',
 }
@@ -127,33 +140,55 @@ const calibRows = computed<CalibRow[]>(() => {
       if (m && m.buildingId != null && !inZone(m.buildingId)) continue
       out.push({ kind: '剔出总表/分表Σ', target: meterName(id),
         detail: `${m?.buildingId != null ? bldName(m.buildingId) + ' · ' : ''}该表用量不计入 C(总表)与 D(分表)`,
-        scope: c.scope, monthly })
+        scope: c.scope, monthly, edit: 'exclude', cur: '1' })
     } else if (pfx === 'building' && inZone(id)) {
       if (c.cfgKey === 'loss_variant')
         out.push({ kind: '损耗口径', target: bldName(id),
-          detail: LOSS_VARIANT_TEXT[String(c.value)] ?? `variant=${c.value}`, scope: c.scope, monthly })
+          detail: LOSS_VARIANT_TEXT[String(c.value)] ?? `variant=${c.value}`,
+          scope: c.scope, monthly, edit: 'variant', cur: String(Number(c.value)) })
       else if (c.cfgKey === 'loss_c_meter')
         out.push({ kind: '组C只取此总表', target: bldName(id),
-          detail: `${meterName(Number(c.value))} —— 该栋其余总表既不入 C 也不入 D`, scope: c.scope, monthly })
+          detail: `${meterName(Number(c.value))} —— 该栋其余总表既不入 C 也不入 D`,
+          scope: c.scope, monthly, edit: null, cur: '' })
       else if (c.cfgKey === 'loss_head')
         out.push({ kind: '并入他栋核算', target: bldName(id),
-          detail: `与 ${bldName(Number(c.value))} 合成一组共用总表`, scope: c.scope, monthly })
+          detail: `与 ${bldName(Number(c.value))} 合成一组共用总表`, scope: c.scope, monthly, edit: null, cur: '' })
       else if (c.cfgKey === 'loss_recon' && Number(c.value) === 0)
         out.push({ kind: '不入对账Σ', target: bldName(id),
-          detail: '该栋不参与下方「供电侧总表 vs 单元Σ」两行对账', scope: c.scope, monthly })
+          detail: '该栋不参与下方「供电侧总表 vs 单元Σ」两行对账', scope: c.scope, monthly, edit: null, cur: '' })
     }
   }
   // 池加度:−670 那条住在 alloc_rule.extra_qty 列(不是 alloc_cfg),cfg 里看不到,必须单独捞
   for (const r of rules.value) {
     if (r.zone !== zone.value || !r.extraQty) continue
     const monthRow = cfgs.value.find(c => c.scope === `rule:${r.id}` && c.cfgKey === 'extra_qty' && c.acctMonth)
+    const eff = monthRow ? monthRow.value : r.extraQty
     out.push({ kind: '池加度(影响公摊分摊度数)', target: r.name,
-      detail: `${monthRow ? monthRow.value : r.extraQty} 度计入该池净量`
+      detail: `${eff} 度计入该池净量`
         + (r.feeKey === 'park_loss_pool' ? ' —— 园区公摊池,直接进 G 的分子' : ''),
-      scope: `rule:${r.id}`, monthly: !!monthRow })
+      scope: `rule:${r.id}`, monthly: !!monthRow, edit: 'extra', cur: String(eff ?? '') })
   }
   return out
 })
+
+// 本月改口径:一律写月行(acct_month=ym),默认行不动;传 null=删月行退回默认
+function commitCalib(scope: string, key: string, value: number | null) {
+  allocApi.saveCfg({ scope, cfgKey: key, acctMonth: ym.value, value })
+    .then(() => { cfgDirty.value = true; loadMonth() })
+    .catch(e => alert(errMsg(e, '保存失败，请重试')))
+}
+// 「本月计入Σ」= 写 loss_exclude=0 月行压过默认的 1;取消勾选=删月行,退回默认(剔出)
+const onExclude = (r: CalibRow, includeThisMonth: boolean) =>
+  commitCalib(r.scope, 'loss_exclude', includeThisMonth ? 0 : null)
+const onVariant = (r: CalibRow, v: string) =>
+  commitCalib(r.scope, 'loss_variant', v === '' ? null : Number(v))
+function onExtra(r: CalibRow, raw: string) {
+  const t = raw.trim()
+  if (t === '') { commitCalib(r.scope, 'extra_qty', null); return }   // 清空=退回规则默认值
+  const v = Number(t)
+  if (!isFinite(v)) { alert('请输入数字'); return }
+  commitCalib(r.scope, 'extra_qty', v)
+}
 const calibDefaults = computed(() => calibRows.value.filter(r => !r.monthly).length)
 
 // ── 行内人工参数(编辑态):building:{headBuildingId} 月行,commitAdj 模式 → 提示重新生成 ──
@@ -229,9 +264,30 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
           <span class="k">{{ r.kind }}</span>
           <span class="t">{{ r.target }}</span>
           <span class="d">{{ r.detail }}</span>
+          <!-- 只在编辑态出控件,且**只写本月行** —— 默认行是别的月校准的,动它会连坐那个月 -->
+          <template v-if="editMode && r.edit">
+            <label v-if="r.edit === 'exclude'" class="ll-cbx"
+                   title="勾上=本月把这块表算回 C/D 两个Σ(写本月行压过默认);取消=退回默认(剔出)">
+              <input type="checkbox" :checked="r.monthly"
+                     @change="onExclude(r, ($event.target as HTMLInputElement).checked)" />
+              本月计入Σ
+            </label>
+            <select v-else-if="r.edit === 'variant'" class="ll-csel"
+                    title="只改本月的损耗口径;选「跟随默认」=删本月行退回默认"
+                    :value="r.monthly ? r.cur : ''"
+                    @change="onVariant(r, ($event.target as HTMLSelectElement).value)">
+              <option value="">跟随默认</option>
+              <option v-for="o in VARIANT_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+            <input v-else class="ll-cin" type="number" step="any"
+                   :value="r.monthly ? r.cur : ''" :placeholder="`默认 ${r.cur}`"
+                   title="只改本月的加度;清空=退回规则默认值。源册某月不该有这笔调整时,这里填 0"
+                   @change="onExtra(r, ($event.target as HTMLInputElement).value)" />
+          </template>
           <span class="m" :class="{ em: !r.monthly }">{{ r.monthly ? `仅 ${ym}` : '默认 · 所有月份' }}</span>
           <span class="s">{{ r.scope }}</span>
         </div>
+        <div v-if="!editMode" class="ll-calibhint">点右上「编辑模式」可逐条改本月口径(只写本月,不动默认)。</div>
       </div>
     </div>
 
@@ -353,6 +409,12 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
 .ll-calibrow .m { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--radius-full); background: var(--bg-sunken); font-size: var(--fs-micro); }
 .ll-calibrow .m.em { background: rgb(255, 238, 237); color: var(--hue-red); }
 .ll-calibrow .s { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-disabled); }
+.ll-cbx { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--hue-blue); cursor: pointer; white-space: nowrap; }
+.ll-cbx input { accent-color: var(--hue-blue); cursor: pointer; }
+.ll-csel { flex: 0 0 auto; height: 24px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 11.5px; color: var(--text-primary); }
+.ll-cin { flex: 0 0 96px; height: 24px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); text-align: right; font-size: 11.5px; padding: 0 6px; font-family: var(--font-mono); color: var(--text-primary); }
+.ll-cin::-webkit-outer-spin-button, .ll-cin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ll-calibhint { padding: 4px 8px; font-size: 11px; color: var(--text-muted); }
 
 /* ── 宽表(FPLedgerTable 手法) ── */
 .ll-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }
