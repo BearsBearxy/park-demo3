@@ -3,17 +3,67 @@
    Copied verbatim from Factory Park Design System/tokens/*.css
    ============================================================ */
 
-/* 这里原有一条 fonts.googleapis 的 @import,已删除。原因:@import 会落在打包后 index.css 的
-   第一个字节,是渲染阻塞样式表里的串行子请求(下 index.css → 解析 → 发 googleapis → 发 gstatic,
-   三跳);而本系统部署在香港 ECS 供大陆用户访问,fonts.googleapis 境内通常是连接挂起而非立即 RST,
-   首屏要白等一整个 TCP 超时。实测该请求 1ms 即失败(transferSize=0),即线上一直走的是回退字体,
-   删掉不改变任何观感。下面 --font-sans/--font-mono 里的 "Inter"/"Roboto Mono" 刻意保留:
-   本机装了就用,没装走回退,两种情况都与删除前一致。
-   要恢复自定义字体请自托管 woff2 到 public/fonts/ 用本地 @font-face,不要再引远程。 */
+/* Roboto Mono 自托管(2026-08-13)。
+   历史:这里原有一条 fonts.googleapis 的 @import,是渲染阻塞样式表里的串行子请求(下 index.css →
+   解析 → 发 googleapis → 发 gstatic,三跳),而本系统给大陆用户访问、境内连 googleapis 通常是挂起
+   而非立即 RST,首屏要白等一整个 TCP 超时。实测那条请求 1ms 即失败,即线上一直在走回退字体。
+   现改为自托管:同源、无第三方、无 DNS/TLS 额外往返,字体真正生效。
+
+   为什么是 woff2 可变字体子集:
+   · 可变字体一个文件覆盖 wght 100-700,项目用到的 400/500/600/700 全在内,不用切四个文件;
+   · 子集到 ASCII + Latin-1 + 通用标点 + 实际用到的数学/货币符号(295 字符),47 KB —— 全量是 104 KB。
+     子集不是为省流量,是为**抢在首帧前到达**:字体换入会改变字宽 → 整页重排,正是 DESIGN-FIDELITY
+     §6.4 禁止的布局跳动。配 index.html 的 <link rel="preload"> 基本看不到 FOUT。
+   · 不打包 Italic(另 104 KB):全站仅 TabStrip 预览页签用斜体,而页签名是中文,走 CJK 字体合成。
+   汉字不在此字体内(Roboto Mono 无 CJK),由下面 font-family 里的 PingFang/雅黑逐字回退承接 ——
+   即「数字和字母走 Roboto Mono,汉字走系统字体」。㎡ ① ⚠ 这类符号同理回退,与改前行为一致。
+   换字体文件必须同时改文件名里的 -v1(public/ 不带 hash,靠文件名做 cache busting),
+   index.html 的 <link rel="preload"> 文件名要一起改。
+
+   重新生成子集(原始 TTF 从 fonts.google.com 下 Roboto_Mono 包,不入库见 .gitignore):
+     pip install fonttools brotli
+     python -m fontTools.subset RobotoMono-VariableFont_wght.ttf \
+       --unicodes=U+0020-007E,U+00A0-00FF,U+2000-206F,U+2070-209F,U+20A0-20BF,\
+U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
+       --layout-features='*' --flavor=woff2 \
+       --output-file=frontend/public/fonts/RobotoMono-subset-v2.woff2
+   加字符前先确认它真会上屏:㎡ ① ⚠ → 这些 Roboto Mono 本来就没有,一直靠逐字回退到 CJK 字体,
+   不需要塞进子集。 */
+/* ⚠ format 关键字必须是 "woff2",不能写 "woff2-variations":后者是早期草案写法,已被 CSS Fonts 4 移除。
+   浏览器遇到不认识的 format 关键字会判定**整条 src 无可用源** ⇒ 这个 @font-face 静默作废、
+   回落系统字体,而且不报任何错(表现就是"字体没生效但没人知道")。woff2 可变字体照常走可变轴,
+   不需要额外关键字。 */
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("/fonts/RobotoMono-subset-v1.woff2") format("woff2");
+  font-weight: 100 700;   /* 可变轴区间,浏览器按 font-weight 取实例,不做合成加粗 */
+  font-style: normal;
+  font-display: swap;     /* 先用回退字体显示文字,别让首屏空白;preload 已把换入窗口压到很小 */
+}
+/* 同一个文件再声明一个「只管数字」的族(2026-08-14 用户拍板「我要求数字改成 Roboto Mono」)。
+   unicode-range 就是为这件事设计的:浏览器**逐字符**选字体,落在区间内的字符用本族,其余继续
+   往 font-family 后面找。文件同源同名,浏览器只下载/缓存一次,不多一个请求。
+   为什么不直接把 "Roboto Mono" 放 --font-sans 首位(改前的写法):那样连拉丁**字母**也变等宽,
+   实测同串 16px 文本 163.2px vs 系统 sans 149.9px = +9%。这 9% 全砸在按实测值写死的定宽列上
+   (MeterLedgerGrid 编码 118 / 表号 70 / 倍率 56,且 table-layout:fixed + colgroup ⇒ 撑不开、
+   只会变省略号),等于把刚按真实数据量好的列宽全部作废。数字要等宽是为了竖排对齐,字母不需要。
+   区间只收 0-9:逗号/小数点/负号留给正文字体——真正要求等宽对齐的数值格用的是 --font-mono
+   (全字符集 Roboto Mono),不走这一族,不受影响。 */
+@font-face {
+  font-family: "Roboto Mono Digits";
+  src: url("/fonts/RobotoMono-subset-v1.woff2") format("woff2");
+  unicode-range: U+0030-0039;   /* 仅 0-9 */
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
-  /* ---- Webfont families ---- */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  /* ---- Webfont families ----
+     首位是「只管数字」的 Roboto Mono Digits(unicode-range=0-9):正文里的数字走等宽、竖排能对齐,
+     字母与汉字继续往后回退到系统字体、字宽不变(见上面 @font-face 里为什么不能整族排首位)。
+     原首位 "Inter" 已移除:它从未自托管过、远程也拉不到,留着只会误导后人以为在生效。 */
+  --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
   --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* ---- Font weights ---- */

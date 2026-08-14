@@ -4,8 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Factory Park</title>
-    <!-- 远程 webfont 已从 tokens.css 移除(境内不可达,一直走回退字体),故这里的 preconnect
-         也一并删掉——没有后续请求要复用连接,预建连纯属浪费 DNS/TLS 往返 -->
+    <!-- 远程 webfont 已从 tokens.css 移除(境内不可达,一直走回退字体),preconnect 随之删除。
+         改为自托管 Roboto Mono,这里 preload 它:浏览器默认要等 CSS 解析完、并且发现有文字真的
+         用到该 font-family 才去下字体,那已经在首帧之后 —— 字体换入就会改字宽、整页重排
+         (DESIGN-FIDELITY §6.4 明令禁止的布局跳动)。preload 把下载提到与 CSS/JS 并行,
+         47 KB 同源基本能赶在首帧前到位,看不到 FOUT。
+         ⚠ crossorigin 必须写:字体请求即使同源也走 CORS 模式,漏了会下两遍(preload 那份作废)。
+         ⚠ 换字体文件时这里的文件名要和 tokens.css 的 @font-face 一起改。 -->
+    <link rel="preload" href="/fonts/RobotoMono-subset-v1.woff2" as="font" type="font/woff2" crossorigin />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html { width: 100%; height: 100%; overflow: hidden; }

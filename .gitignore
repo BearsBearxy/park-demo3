@@ -38,3 +38,9 @@ backup-*.sql
 frontend/dev-fe.*
 # 一次性数据修复的库表备份(与 backup-*.sql 同类,勿入库)
 backend/scripts/backups/
+
+# Google Fonts 原始下载包(600+KB 的 TTF 全字重)。入库的只有子集后的
+# frontend/public/fonts/*.woff2(47KB)+ OFL 许可;要重新子集时再下一次即可,
+# 命令见 frontend/src/styles/tokens.css 的 @font-face 注释。
+Roboto_Mono/
+Roboto_Mono.zip

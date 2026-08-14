@@ -3,7 +3,9 @@
 // tooltip 深底白字沿 .cz-tip 观感(背景 rgb(40,52,66)、圆角 9、字号 11.5)。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值(--divider=ink-100、--text-muted)。
 
-const FONT_SANS = '"Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif'
+// ⚠ 必须与 tokens.css 的 --font-sans 逐字一致(ECharts 主题是纯 JSON,引不了 CSS 变量)。
+// 不同步的话图表轴标签/图例会和页面其余部分不是同一个字体,并排一看就出戏。
+const FONT_SANS = '"Roboto Mono", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif'
 const GRID_LINE = 'rgba(28,28,28,.1)'     // var(--divider) 观感
 const AXIS_LINE = 'rgba(28,28,28,.15)'
 const AXIS_LABEL = 'rgba(28,28,28,.62)'   // var(--text-muted) 观感

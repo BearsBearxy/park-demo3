@@ -56,7 +56,12 @@ const colCount = computed(() => 10 + segDefs.value.length * 2)
 // sticky offset 列宽累加(FPLedgerTable 手法):左=楼层·方位(left:0)←用途(left:FLOOR_W) 正向累加;
 // 右=状态←用量 反向累加。改列宽必须同步改 offset,否则固定列错位。
 // 分隔线用 border 而非 box-shadow(§7 6.5:去阴影绘制成本;th/td 已 border-box 不占额外宽)
-const AREA_W = 76
+// AREA_W 76→100、SUB_W 70→84(2026-08-15 实测 2024-02 抄表屏滚全表 115 个格,3 个截断:
+// 区域「A座自装总电表」需 100、「三期项目工地」需 92;表号「电表①新表」需 80)。
+// 与字体无关 —— 这三串都是汉字为主,汉字从来走系统回退,Roboto Mono 子集里根本没有 CJK;
+// 是原先按短名(「A座」「电表①」)量的宽度没覆盖到长尾。sticky offset 由这两个常量推导
+// (fixFloor/fixUse/tableW 都引用它们),改常量即自动跟上,不必手工同步。
+const AREA_W = 100
 // TEN_W 130→180(2026-08-14 用户报障「电表的租户列都看不见了」):该格并排放名字 + 待核/存疑徽标
 // + 归属徽标(非租户表)+ 悬停箭头。130px 里徽标 nowrap 先占满(「园区公摊」≈54px + 箭头/间距/padding
 // ≈45px),名字只剩 30px ⇒ 一个字加省略号。同刀去掉了非租户行的名字(与「用途」列重复,见 tenName),
@@ -65,7 +70,7 @@ const AREA_W = 76
 //   租户行   = 档案名 + 可能的待核徽标:实测 400 块租户表里 3/4 字占 353 块(296+57),
 //              6 字以下共 384 块;长尾 18 字 12 块(曼克维全称)、14 字 6 块 —— 那 20 块截断后
 //              悬停有全名。按 8 全角 100px + 待核 40 + 箭头间距 padding 38 = 178,取 180。
-const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 180, SUB_W = 70, CODE_W = 118, FAC_W = 56
+const FLOOR_W = 96, USE_W = 160, ROOM_W = 72, TEN_W = 180, SUB_W = 84, CODE_W = 118, FAC_W = 56
 const SEG_W = 96, USAGE_W = 104, ST_W = 88
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 // 表总宽=全列宽之和(colgroup+table-layout:fixed 用):窗口化每帧换行,auto 布局会按可见内容
