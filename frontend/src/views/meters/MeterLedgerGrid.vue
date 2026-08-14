@@ -24,6 +24,7 @@ import type { MeterLoc } from '@/utils/meterGroup'
 
 const props = defineProps<{
   rows: WorkbenchRow[]              // 筛选后有序行集
+  viewKey: string                   // 视图身份(筛选维度拼串):回顶的唯一判据,见下方 watch
   editMode: boolean
   kind: string
   zone: string                      // 当前分区(p1/p2/dorm):dorm 下房号列显「宿舍单元」
@@ -128,10 +129,30 @@ onBeforeUnmount(() => {
   ro?.disconnect()
   if (rafId) cancelAnimationFrame(rafId)
 })
-// 行集变化(筛选/分区/账期切换)=另一张表:回顶重建窗口;draft 键入不动 rows 引用,不受影响
-watch(() => props.rows, () => {
+// 回顶只认视图身份,不认数组引用(WRITE-KEEP-CONTEXT-SPEC 铁律一)。
+// 改前两件事写在一个 watch 里:rows 是新数组就回顶。但 buildRows/filterRows 每次都产新数组,
+// 「换了另一张表」与「同一张表重载」在 Object.is 眼里没区别 —— 于是抽屉 7 个 emit('reload')、
+// 草稿批量保存、KeepAlive 回页全部把用户打回第 0 行,在 200-400 行的视图里重新找刚改的那块表
+// (用户报障:「点完直接刷新页面,然后需要从头开始滚动找到对应电表」;停用/退场账期那两格最典型
+// —— 停用行照旧产行、位置分毫未变,却整表回顶)。
+// 换筛选/账期/电水/分区仍照旧回顶:那些维度都在 viewKey 里,变了就是另一张表(铁律一即此判据)。
+// ⚠ 不变式(反方向,与下面那条注释配对):**凡进 viewKey 的维度,必须也是 gridRows 的依赖**。
+// 现在 8 个维度条条成立(ym 经 buildRows/hiddenRows,其余 7 项经 filterRows),所以 viewKey 一变
+// 必产新 rows、rows watch 必在同一 flush 跟着跑。但哪天塞进一个「不改行集」的维度(排序开关、
+// 只读展示模式),回顶后就没有 rows watch 兜底重建窗口 ⇒ 永久白屏顶。故这里自己也重建一次:
+// 此刻 props.rows 已是新值(props 先于 watch 回调更新),重复调一次 syncWindow 无副作用。
+watch(() => props.viewKey, () => {
   if (wrapEl.value) wrapEl.value.scrollTop = 0
   syncWindow(true)
+})
+// 行集变化只重建窗口:重拉后行数可能变(新增/删除),spacer 高度与 [start,end) 要跟上,但不动 scrollTop。
+// draft 键入不动 rows 引用,不受影响。
+// nextTick 二次同步:watch 默认 pre-flush,此刻读到的是 **DOM 更新前**的 scrollTop。行集一次变短
+// ≥12 行(超出缓冲)且用户正停在底部时,浏览器会把 scrollTop 同步夹紧,而窗口是按夹紧前的值算的
+// ⇒ [start,end) 整体落在视口上方,顶部留一条空白要等下次滚动才自愈。DOM 落位后再算一次即消。
+watch(() => props.rows, () => {
+  syncWindow(true)
+  nextTick(() => syncWindow(true))
 })
 const grpLabel = (g: BuildingGroup) => `${g.label} · 总用${props.kind === 'water' ? '水' : '电'}量`
 const grpSegTitle = (g: BuildingGroup) => {

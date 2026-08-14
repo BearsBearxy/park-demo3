@@ -11,7 +11,7 @@ import { metersApi, type MeterDTO } from '@/api/meters'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
-import { resolveCfg } from '@/utils/allocLogic'
+import { resolveCfg, upsertMonthCfg } from '@/utils/allocLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -188,10 +188,18 @@ const calibRows = computed<CalibRow[]>(() => {
   return out
 })
 
-// 本月改口径:一律写月行(acct_month=ym),默认行不动;传 null=删月行退回默认
+// 本月改口径:一律写月行(acct_month=ym),默认行不动;传 null=删月行退回默认。
+// WRITE-KEEP-CONTEXT-SPEC 铁律二:保存成功只 patch cfgs 里那一条,不再 loadMonth() 重拉整月 ——
+// 屏上数字本就是旧快照(所以才有下面那条提示条),重拉也不会让它们变新,唯一会变的就是这一条参数;
+// 而重拉会把 loss/cfgs 两个 ref 整体换掉,面板每行控件回显重建、用户刚点的那格视觉上「跳一下」。
+// m 快照:回包到达前用户可能换了月,换了就别把上个月的值补进本月名单(同 PoolLedgerView.commitRuleCfg)。
 function commitCalib(scope: string, key: string, value: number | null) {
-  allocApi.saveCfg({ scope, cfgKey: key, acctMonth: ym.value, value })
-    .then(() => { cfgDirty.value = true; loadMonth() })
+  const m = ym.value
+  allocApi.saveCfg({ scope, cfgKey: key, acctMonth: m, value })
+    .then(() => {
+      cfgDirty.value = true
+      if (m === ym.value) upsertMonthCfg(cfgs.value, scope, key, m, value)
+    })
     .catch(e => alert(errMsg(e, '保存失败，请重试')))
 }
 // 「本月计入Σ」= 写 loss_exclude=0 月行压过默认的 1;取消勾选=删月行,退回默认(剔出)
@@ -218,13 +226,13 @@ function gotoGenerate() {
   // ⚠ 路由表是纯 path(fpNav 生成,没有 name),push({name}) 会静默失败 —— 实测点了不动窝
   router.push({ path: '/alloc', query: { ym: ym.value, generate: '1' } })
 }
+// 同 commitCalib:铁律二,只 patch 这一条。行内三格(调整度数/调整损耗/G调整)的编辑态回显取自
+// cfgRaw(=cfgs),patch 完即正确;只读态那几格取快照(u.adjQty…),本就要等重新生成才变,与提示条一致。
 function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | 'loss_g_adj', raw: string) {
   const t = raw.trim()
   const v = t === '' ? null : Number(t)
   if (v != null && !isFinite(v)) { alert('请输入数字'); return }
-  allocApi.saveCfg({ scope: `building:${buildingId}`, cfgKey: key, acctMonth: ym.value, value: v })
-    .then(() => { cfgDirty.value = true; loadMonth() })
-    .catch(e => alert(errMsg(e, '保存失败，请重试')))
+  commitCalib(`building:${buildingId}`, key, v)
 }
 </script>
 
@@ -259,7 +267,10 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
     </div>
     <!-- 改完不生效是本屏最大的坑:三格都只写参数,重算在**另一个屏**,而那个屏的「重新生成」
          按钮还要先开它自己的编辑模式才出现。光写一句话等于让人去猜,故直接给一个按钮送过去。 -->
-    <div v-if="cfgDirty" class="ll-bar warn">
+    <!-- 铁律三:这条是**写出来的**提示条,一冒出来就把下面 flex:1 的表格挤矮、内容上移、
+         底部行被切掉,用户刚改的那行可能滑出视口。故编辑态常驻占位(只切 visibility);
+         浏览态没有写入口不占位,已脏则照常显示。同 PoolLedgerView 的 .pl-bar.ghost。 -->
+    <div v-if="editMode || cfgDirty" class="ll-bar warn" :class="{ ghost: !cfgDirty }">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>参数已存,但屏上数字仍是旧快照 —— 损耗要在「公共电核算」屏重算才生效
         (那边需先点「编辑模式」,「重新生成」按钮才会出现)。</span>
@@ -414,6 +425,8 @@ function commitAdj(buildingId: number, key: 'loss_adj_qty' | 'loss_adj_rate' | '
 
 .ll-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 .ll-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
+/* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
+.ll-bar.ghost { visibility: hidden; }
 /* 本月口径面板:中性蓝(这不是错误,是「你该知道的隐藏前提」);默认行标红提醒它跨月生效 */
 .ll-bar.calib { flex-wrap: wrap; border-style: solid; border-color: rgb(206, 223, 252); background: rgb(238, 244, 255); color: rgb(28, 84, 168); font-size: 12px; }
 .ll-bar.calib b { font-variant-numeric: tabular-nums; }

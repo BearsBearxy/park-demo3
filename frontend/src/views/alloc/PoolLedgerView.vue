@@ -30,7 +30,7 @@ import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
-import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
+import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL, upsertMonthCfg } from '@/utils/allocLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
@@ -87,7 +87,7 @@ const diffs = ref<AllocMemberDiffDTO[]>([])
 // 整页就停在转圈骨架上(没有一个字、没有重试入口,只能刷浏览器);换月失败更险:上个月的行
 // 留在屏上,而行内月度参数写的是**新**月份。故失败=清空本月三份数据 + 记 loadErr,
 // 让「加载失败」与「本月无数据」在屏上分得开(前者红条+重试,后者仍走 generated=false 的灰条)。
-// 兜底放 loadMonth 内部,六个调用点(onMounted/watch/onGenerate/commitRuleCfg/submitPool/delPool)
+// 兜底放 loadMonth 内部,五个调用点(onMounted/watch/onGenerate/submitPool/delPool)
 // 就都不必各自 catch。
 const loadErr = ref('')
 let seq = 0
@@ -245,12 +245,22 @@ const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName
 // ── 月度参数行内编辑(编辑态两列):rule:{id} 月行 coefficient/extra_qty,commitAdj 模式 ──
 const cfgRaw = (scope: string, key: string) =>
   cfgs.value.find(c => c.scope === scope && c.cfgKey === key && c.acctMonth === ym.value)
+// WRITE-KEEP-CONTEXT-SPEC 铁律二:改一格只 patch 这一条。原来 .then(loadMonth) 为一个格子重拉
+// pools+cfg+member-diff 三个整月接口、整张宽表重渲染,用户刚改的那行当场被冲走。屏上数字本就是
+// 旧快照(所以才有 cfgDirty 这条提示条),重拉也不会让它们变新 —— 唯一会变的就是这一格。
+// 回显:格子的 :value 取自 cfgs,所以写回**解析后的数字**(=存进库的那个数),代价只有格式规整
+// (5.00→5),不会把值改成别的数;失败不 patch,格里仍是用户输入的原文,配 alert 让人重来。
 function commitRuleCfg(ruleId: number, key: 'coefficient' | 'extra_qty', raw: string) {
   const t = raw.trim()
   const v = t === '' ? null : Number(t)
   if (v != null && !isFinite(v)) { alert('请输入数字'); return }
-  allocApi.saveCfg({ scope: `rule:${ruleId}`, cfgKey: key, acctMonth: ym.value, value: v })
-    .then(() => { cfgDirty.value = true; loadMonth() })
+  const scope = `rule:${ruleId}`
+  const m = ym.value                  // 回包到达前用户可能换了月:换了就别把上个月的值补进本月名单
+  allocApi.saveCfg({ scope, cfgKey: key, acctMonth: m, value: v })
+    .then(() => {
+      cfgDirty.value = true
+      if (m === ym.value) upsertMonthCfg(cfgs.value, scope, key, m, v)
+    })
     .catch(e => alert(errMsg(e, '保存失败，请重试')))
 }
 
@@ -650,7 +660,11 @@ async function delPool() {
         <template v-else-if="canEdit">进入右上角「编辑模式」可生成。</template>
       </span>
     </div>
-    <div v-if="cfgDirty" class="pl-bar warn">
+    <!-- WRITE-KEEP-CONTEXT-SPEC 铁律三:这条是**写出来的**提示条 —— 改一格系数它就冒出来,
+         下面 flex:1 的表格容器当场矮一截、内容整体上移、底部行被切掉,用户刚改的那行可能滑出视口。
+         故编辑态常驻占位:始终渲染、始终占高,只切 visibility,写前写后表格高度分毫不变。
+         浏览态没有写入口,不占位(白占一条空条难看);已经脏了则照常显示。 -->
+    <div v-if="editMode || cfgDirty" class="pl-bar warn" :class="{ ghost: !cfgDirty }">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
     </div>
@@ -1092,6 +1106,8 @@ async function delPool() {
 .pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
 .pl-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 .pl-bar.err { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
+/* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
+.pl-bar.ghost { visibility: hidden; }
 .pl-barlink { border: none; background: transparent; color: var(--hue-blue); font-size: var(--fs-label); cursor: pointer; text-decoration: underline; padding: 0; }
 .pl-difflist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; margin-top: 2px; }
 .pl-warnrow { font-size: 12px; line-height: 1.55; color: inherit; }

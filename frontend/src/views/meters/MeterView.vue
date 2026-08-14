@@ -288,6 +288,11 @@ const gridRows = computed(() => {
   const rs = filterRows(src, { kind: kind.value, zone: zone.value, building: building.value, own: own.value, status: st, q: q.value })
   return suspectOnly.value ? rs.filter(x => !!x.m.suspect) : rs
 })
+// 视图身份(WRITE-KEEP-CONTEXT-SPEC 铁律一):表格回顶的唯一判据。
+// 这里列全 gridRows 的筛选维度 —— 这些一变就是「另一张表」,该从头看;
+// 而 reloadAll() 只换 gridRows 的数组引用、视图身份没变,表格保住滚动位。加筛选维度记得同步加进来。
+const viewKey = computed(() =>
+  [ym.value, kind.value, zone.value, building.value, own.value, status.value, q.value, suspectOnly.value].join('|'))
 
 // ── 位置字段候选(§A.3/§A.4 共用:抽屉行内编辑 + 新增表弹窗) ──
 // 楼层/方位给基准表打底,再并上库内既有值(存量文件里出现过"中间""夹层"这类基准表外的写法);
@@ -659,7 +664,7 @@ const emptyText = computed(() => {
 
     <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
     <MeterLedgerGrid
-      :rows="gridRows" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
+      :rows="gridRows" :view-key="viewKey" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
       :building-name-by-id="buildingNameById" :empty-text="emptyText"
       @open="openId = $event" @cell-edit="onCellEdit"
     />
