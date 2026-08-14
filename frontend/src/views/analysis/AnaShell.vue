@@ -7,7 +7,7 @@
 // §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
 // 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
 // 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
@@ -55,7 +55,37 @@ function stepYear(dir: 1 | -1) {
 }
 
 // ── 设置弹层 ──
+// 点外关闭/Esc 三段照 ds/Popover.vue(UI-OVERLAY-SPEC §4)。这里没换成 Popover 组件:
+// 面板外观全在 scoped .anx-pop(268px/圆角 14/自定阴影/top 42px/z-index 30),Popover 的
+// 面板 div 不吃父组件 scoped class,换过去要把这些改写成内联 style 对象,视觉会漂。
 const pop = ref(false)
+const popRoot = ref<HTMLElement | null>(null)
+
+function onDoc(e: MouseEvent) {
+  if (popRoot.value && !popRoot.value.contains(e.target as Node)) pop.value = false
+}
+function onKey(e: KeyboardEvent) {
+  // Esc 只关本弹层:不阻断传播的话,宿主(监听 window keydown 的抽屉/弹窗)会跟着一起关
+  if (e.key === 'Escape') { e.stopPropagation(); pop.value = false }
+}
+// 第三参 true = capture 阶段。本弹层的触发按钮与面板自带 @click.stop,宿主容器也普遍带
+// .stop(FPDrawer.vue:33 的 <div class="fp-dwr" @mousedown.stop>),冒泡阶段的 document
+// 监听在这些容器内收不到事件,点外关闭会整条失效;capture 先于 .stop 派发。
+// 注销必须同样带 true —— 不带移不掉 capture 监听,会泄漏。
+watch(pop, (v) => {
+  if (v) {
+    document.addEventListener('mousedown', onDoc, true)
+    document.addEventListener('keydown', onKey, true)
+  } else {
+    document.removeEventListener('mousedown', onDoc, true)
+    document.removeEventListener('keydown', onKey, true)
+  }
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDoc, true)
+  document.removeEventListener('keydown', onKey, true)
+})
+
 function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedRatio' | 'pvInvestment' | 'spikeTh', e: Event) {
   const v = Number((e.target as HTMLInputElement).value)
   saveAnaSettings({ [key]: Number.isFinite(v) ? v : 0 })
@@ -114,7 +144,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           </div>
         </div>
         <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" />数据截至 {{ asof }}</span>
-        <div style="position: relative">
+        <div ref="popRoot" style="position: relative">
           <button class="anx-icobtn" :class="{ on: pop }" title="目标与阈值" @click.stop="pop = !pop">
             <component :is="iconFor('sliders-horizontal')" :size="16" />
           </button>

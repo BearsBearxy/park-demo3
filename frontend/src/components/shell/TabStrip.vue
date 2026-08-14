@@ -49,11 +49,13 @@ onMounted(() => {
     ro = new ResizeObserver(check)
     ro.observe(tabsRef.value)
   }
-  document.addEventListener('mousedown', onDocClick)
+  // capture 阶段:与全站浮层统一(UI-OVERLAY-SPEC §1)。外壳浮层虽不在弹窗内,
+  // 但页面里带 @mousedown.stop 的容器不止弹窗(表格行、卡片也有),冒泡监听同样会漏。
+  document.addEventListener('mousedown', onDocClick, true)
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
-  document.removeEventListener('mousedown', onDocClick)
+  document.removeEventListener('mousedown', onDocClick, true)
 })
 
 // re-check overflow when tab list changes

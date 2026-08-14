@@ -81,17 +81,26 @@ function onDoc(e: MouseEvent) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === "Escape") open.value = false;
+  // Esc 只关本下拉:不阻断的话宿主弹窗(FPDrawer 的 window keydown)会连宿主一起关,
+  // 用户想收下拉、结果整个抽屉没了,录到一半的东西全丢(UI-OVERLAY-SPEC §2)
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    open.value = false;
+  }
 }
 
+// ⭐capture 阶段(UI-OVERLAY-SPEC §1):宿主弹窗容器普遍带 @mousedown.stop —— FPDrawer.vue:33
+// 的 .fp-dwr 就是。冒泡阶段监听在弹窗内**永远收不到**事件,于是抽屉里每一个下拉点外面都不关,
+// 只能再点一次触发器或按 Esc(2026-08-15 用户报障「点开了点击别的区域不会回弹关闭」)。
+// capture 先于任何 .stop 派发,不受影响。同 ds/Popover.vue 的既有做法。
 onMounted(() => {
-  document.addEventListener("mousedown", onDoc);
-  document.addEventListener("keydown", onKey);
+  document.addEventListener("mousedown", onDoc, true);
+  document.addEventListener("keydown", onKey, true);
 });
 
 onUnmounted(() => {
-  document.removeEventListener("mousedown", onDoc);
-  document.removeEventListener("keydown", onKey);
+  document.removeEventListener("mousedown", onDoc, true);
+  document.removeEventListener("keydown", onKey, true);
 });
 </script>
 

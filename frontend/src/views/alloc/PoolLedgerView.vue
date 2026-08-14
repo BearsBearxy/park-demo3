@@ -147,7 +147,10 @@ onMounted(async () => {
   } catch { /* 年份失败不阻断 */ }
   loadMonth()
 })
-watch([year, month], () => { genWarnings.value = []; loadMonth() })   // 换账期:上次生成的告警不再适用
+// 换账期:上次生成的告警不再适用;cfgDirty 同理 —— 它记的是「**这个月**改过参数还没重算」,
+// 换到别的月还亮着就是误报(在 8 月改了参数,切到 9/10 月那条橙条一路跟着,而那些月根本没动过),
+// 用户分不清哪个月真的需要重算。2026-08-15 用户点名。
+watch([year, month], () => { genWarnings.value = []; cfgDirty.value = false; loadMonth() })
 
 const ruleById = computed(() => new Map(rules.value.map(r => [r.id, r])))
 const buildingOpts = computed(() => [{ value: '', label: '(园区级,不挂楼栋)' },
@@ -668,16 +671,24 @@ async function delPool() {
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
     </div>
-    <!-- 生成告警清单:引擎在 generate 时报的「未摊到户/缺读数/缺参」,过去被前端整个丢弃 -->
-    <div v-if="genWarnings.length" class="pl-bar warn">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>本次生成有 {{ genWarnings.length }} 条告警(全期别一份,不随上方一期/二期页签过滤)
-        —— 常见为「池无受益人,应分摊 N 元未摊到户」「缺读数」「缺参数」,逐条核对后重新生成。</span>
-      <button class="pl-barlink" @click="warnOpen = !warnOpen">{{ warnOpen ? '收起' : '展开' }}</button>
-      <div v-if="warnOpen" class="pl-difflist">
-        <div v-for="(wrn, i) in genWarnings" :key="i" class="pl-warnrow">{{ wrn }}</div>
+    <!-- 生成告警清单:引擎在 generate 时报的「未摊到户/缺读数/缺参」,过去被前端整个丢弃。
+         WRITE-KEEP-CONTEXT-SPEC 铁律三:这条也是**写出来的**(点生成才有),但它高度不定
+         (文案会折行 + 可展开几十条),做不了 cfgDirty 那样的常驻占位 —— 常驻等于永久留两行空白。
+         故改浮层:绝对定位在表格区顶上,完全不参与 flex 高度计算,出现/消失时表格一格都不动。
+         展开时盖住表格顶部几行是可接受的 —— 那一刻用户正在读告警,不在看数字;给 × 随手关掉。 -->
+    <div class="pl-tablearea">
+      <div v-if="genWarnings.length" class="pl-bar warn pl-float">
+        <component :is="iconFor('alert-triangle')" :size="14" />
+        <span>本次生成有 {{ genWarnings.length }} 条告警(全期别一份,不随上方一期/二期页签过滤)
+          —— 常见为「池无受益人,应分摊 N 元未摊到户」「缺读数」「缺参数」,逐条核对后重新生成。</span>
+        <button class="pl-barlink" @click="warnOpen = !warnOpen">{{ warnOpen ? '收起' : '展开' }}</button>
+        <button class="pl-barx" title="关闭(重新生成后会再出现)" @click="genWarnings = []">
+          <component :is="iconFor('x')" :size="14" />
+        </button>
+        <div v-if="warnOpen" class="pl-difflist">
+          <div v-for="(wrn, i) in genWarnings" :key="i" class="pl-warnrow">{{ wrn }}</div>
+        </div>
       </div>
-    </div>
     <!-- V69 受益人变动提醒条:该定位本月在租租户 vs 池受益人的差集 -->
     <div v-if="zoneDiffs.length" class="pl-bar warn">
       <component :is="iconFor('users')" :size="14" />
@@ -870,7 +881,8 @@ async function delPool() {
           </tr>
         </tfoot>
       </table>
-    </div>
+      </div>
+    </div><!-- /pl-tablearea:浮层告警条的定位上下文,见上方 pl-float -->
 
     <!-- 池配置抽屉(编辑态;迁自旧屏规则弹窗+S3-B1 增量字段) -->
     <FPDrawer :open="poolDlg" :title="form.id == null ? '新增池' : '编辑池 · ' + formAutoName"
@@ -1126,6 +1138,12 @@ async function delPool() {
 .pl-diffrow .tag { font-size: 11px; border-radius: var(--radius-full); padding: 0 7px; cursor: help; }
 .pl-diffrow .tag.add { background: rgb(222, 244, 229); color: rgb(21, 128, 61); }
 .pl-diffrow .tag.del { background: rgb(255, 238, 237); color: var(--hue-red); }
+
+/* 表格区:浮层告警条的定位上下文(铁律三——那条不占 flex 高度,出现/消失时表格纹丝不动) */
+.pl-tablearea { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.pl-bar.pl-float { position: absolute; top: 0; left: 0; right: 0; z-index: 9; box-shadow: var(--shadow-md, 0 4px 14px rgba(0,0,0,.10)); }
+.pl-barx { display: inline-grid; place-items: center; width: 22px; height: 22px; border: none; background: none; border-radius: var(--radius-sm); color: inherit; opacity: .65; cursor: pointer; }
+.pl-barx:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
 
 /* ── 宽表(FPLedgerTable 1:1 手法自 MeterLedgerGrid) ── */
 .pl-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }

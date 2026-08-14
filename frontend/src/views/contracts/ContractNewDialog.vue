@@ -6,7 +6,7 @@
 // 计费(CONTRACT-CARD-SPEC §6.2 单一编辑):选物业类型 → 钉死费用组自动出现(无自由加费用名);条件项 checkbox
 // 勾选落行(电梯/变压器填月额,infra 为 per_sqm 填面积×单价);宿舍门禁/网络只填间数;空地为附加段。
 // 月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
@@ -97,6 +97,28 @@ type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShar
 type Segment = { propertyType: PropertyType; location: string; rows: SegRow[]; unitIds: number[] }
 const segments = ref<Segment[]>([])
 const showTypeMenu = ref(false)
+// 「添加标的段」菜单的点外关闭(UI-OVERLAY-SPEC)。手写而非换 ds/Popover.vue 包一层:Popover 的面板样式
+// 固定(240px 宽/8px 内边距/top calc(100%+8px)/zIndex 60)与 .ct-seg-menu 不同,换过去会改外观与定位。
+// 触发器与菜单同在 .ct-seg-add 内,故 contains 判定挂这一个根节点即可(菜单未 teleport)。
+const segAddRef = ref<HTMLElement | null>(null)
+function onTypeMenuDoc(e: MouseEvent) {
+  if (segAddRef.value && !segAddRef.value.contains(e.target as Node)) showTypeMenu.value = false
+}
+// Esc 只关菜单:不阻断传播会被本弹窗的 window keydown(见下方 onKey)接走,整份合同录入一起关掉
+function onTypeMenuKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.stopPropagation(); showTypeMenu.value = false }
+}
+// capture=true 不能省:宿主 .ct-dlg 带 @mousedown.stop(同 FPDrawer.vue:33 的 .fp-dwr),
+// 冒泡阶段的 document 监听在弹窗内永远收不到事件,点外关闭会整体失效;capture 先于 .stop 派发。
+watch(showTypeMenu, (v) => {
+  if (v) {
+    document.addEventListener('mousedown', onTypeMenuDoc, true)
+    document.addEventListener('keydown', onTypeMenuKey, true)
+  } else {
+    document.removeEventListener('mousedown', onTypeMenuDoc, true)
+    document.removeEventListener('keydown', onTypeMenuKey, true)
+  }
+})
 
 function newRow(feeKey: FeeKey): SegRow {
   return { id: null, feeKey, area: null, areaShared: null, unitPrice: pinnedDefaultUnitPrice(feeKey), coeff: null, roomCount: null, amountOverride: null }
@@ -337,7 +359,12 @@ const numOrNull = (v: number | null) => (isNum(v) ? v : null)
 // Esc 关闭:与 TenantNewDialog 同一套(window keydown;picker 浮层的 Esc 已在组件内 stopPropagation)
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
 onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
+  // 菜单开着时卸载:capture 标志必须与注册时一致,否则移不掉(UI-OVERLAY-SPEC §3)
+  document.removeEventListener('mousedown', onTypeMenuDoc, true)
+  document.removeEventListener('keydown', onTypeMenuKey, true)
+})
 // 遮罩误点:本弹窗表单体量大(标的段/费用行/免租期),已有录入时先确认再丢
 function onMaskDown() {
   if (dirty.value && !confirm('弹窗内已有未保存的录入,关闭将全部丢失。确认关闭?')) return
@@ -647,7 +674,7 @@ async function submit() {
                   </div>
                 </div>
                 <!-- 添加标的段:选物业类型 → 钉死组自动出现;其他费用=独立单行标的 -->
-                <div class="ct-seg-add">
+                <div class="ct-seg-add" ref="segAddRef">
                   <Button variant="gray" size="sm" @click="showTypeMenu = !showTypeMenu">
                     <template #leading><component :is="iconFor('plus')" :size="13" /></template>
                     添加标的段

@@ -20,16 +20,18 @@ function onDoc(e: MouseEvent) {
   if (wrapRef.value && !wrapRef.value.contains(e.target as Node)) open.value = false
 }
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') open.value = false
+  // Esc 只关跳页浮层,不连坐宿主弹窗(UI-OVERLAY-SPEC §2)
+  if (e.key === 'Escape') { e.stopPropagation(); open.value = false }
 }
 
+// capture 阶段:宿主容器带 @mousedown.stop 时冒泡监听收不到事件,点外面不关(UI-OVERLAY-SPEC §1)
 onMounted(() => {
-  document.addEventListener('mousedown', onDoc)
-  document.addEventListener('keydown', onKey)
+  document.addEventListener('mousedown', onDoc, true)
+  document.addEventListener('keydown', onKey, true)
 })
 onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', onDoc)
-  document.removeEventListener('keydown', onKey)
+  document.removeEventListener('mousedown', onDoc, true)
+  document.removeEventListener('keydown', onKey, true)
 })
 
 function pick(p: number) {
