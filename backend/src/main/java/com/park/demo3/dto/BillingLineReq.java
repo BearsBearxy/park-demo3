@@ -14,5 +14,8 @@ public record BillingLineReq(
     @Min(0) Integer roomCount,
     String billMode,            // null→按 feeKey 默认
     @DecimalMin("0") BigDecimal amountOverride,
-    Integer seq
+    Integer seq,
+    // 行级单元绑定(2026-08-14):null=不显式指定,沿用 replaceLinesFromReq 的按键回挂快照(老客户端/导入路径不受影响);
+    // 非 null(含空列表)=以本次为准整组替换该行绑定。按层取面积的公摊池靠它把户面积落到楼层。
+    java.util.List<Integer> unitIds
 ) {}

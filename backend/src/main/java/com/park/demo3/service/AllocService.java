@@ -440,6 +440,16 @@ public class AllocService {
         return memberFloorSources(tenantId, buildingId, unitsByTenant, metersByTenant).chosen();
     }
 
+    // ⭐告警点名(2026-08-14):聚合告警的「:甲、乙、丙 等」后缀。空集合返回空串(不留一个孤零零的冒号)。
+    // 只列前 NAME_CAP 个 —— 125 个名字塞进一行提醒条谁也读不完,全量靠告警文案里指的那个筛选看。
+    static final int NAME_CAP = 8;
+    static String suffix(Collection<String> names) {
+        List<String> ns = names.stream().filter(s -> s != null && !s.isBlank()).distinct().sorted().toList();
+        if (ns.isEmpty()) return "";
+        String head = String.join("、", ns.subList(0, Math.min(NAME_CAP, ns.size())));
+        return ":" + head + (ns.size() > NAME_CAP ? " 等" : "");
+    }
+
     // §E4 warn 文案(纯函数,单测直接喂;不冲突返回 null=不落 warn)
     static String floorConflictWarn(String poolName, String tenantName, FloorSources fs) {
         if (!fs.conflict()) return null;
@@ -979,12 +989,23 @@ public class AllocService {
         // 单元全表索引复用 loadRoster 那一份(同一句 units.selectList(null) 建的同一个 id→Unit 映射),不再查第二遍
         Map<Integer, Map<Integer, Map<Integer, BigDecimal>>> rentAreaByBldFloor =
             rentAreaByBuildingFloor(termUnits.selectList(null), rentTermById, tenantOfCovering, ro.unitById());
-        // 缺日期户维持不入自动名册(塞进去会凭空多摊钱),但必须点名报数,别让缺口无声消失
+        // 缺日期户维持不入自动名册(塞进去会凭空多摊钱),但必须点名报数,别让缺口无声消失。
+        // ⭐点名铁律(2026-08-14 用户拍板「不希望出现无法手动修改的问题」):告警只报数字=让用户去
+        // 431 份合同里大海捞针,等于没有修复路径。聚合告警一律带「前 N 个名字 + 去哪筛全量」。
         List<String> warnings = new ArrayList<>();
-        if (!areaFallback.isEmpty())
-            warnings.add("有 " + areaFallback.size() + " 份合同无租金计费行,分摊面积回退合同租赁面积,请补计费行");
-        long dateless = ro.stateByTenant().values().stream().filter("unknown"::equals).count();
-        if (dateless > 0) warnings.add("有 " + dateless + " 户因合同缺起止日期无法判定是否在租,未进入自动在租名册参与分摊,请补齐合同起止日期");
+        if (!areaFallback.isEmpty()) {
+            Map<Integer, String> nameOfContract = new HashMap<>();
+            for (Contract c : ro.covering())
+                if (areaFallback.contains(c.getId())) nameOfContract.put(c.getId(), ro.nameOf(c.getTenantId()));
+            // ⚠ 括号里的筛选名必须与合同页 chip 文案逐字相同,否则用户按图索骥找不到那个按钮
+            warnings.add("有 " + areaFallback.size() + " 份合同无租金计费行,分摊面积回退合同租赁面积,请补计费行"
+                + suffix(nameOfContract.values()) + "(合同页「无租金计费行」筛选可列全)");
+        }
+        List<String> datelessNames = ro.stateByTenant().entrySet().stream()
+            .filter(e -> "unknown".equals(e.getValue())).map(e -> ro.nameOf(e.getKey())).toList();
+        if (!datelessNames.isEmpty())
+            warnings.add("有 " + datelessNames.size() + " 户因合同缺起止日期无法判定是否在租,未进入自动在租名册参与分摊,"
+                + "请补齐合同起止日期" + suffix(datelessNames) + "(合同页「缺起止日期」筛选可列全)");
         // V75 §E3.3:存疑(疑似重复建档)表本月有读数却不计入 —— 点名报数,别让隔离静默发生
         long suspects = meterById.values().stream()
             .filter(m -> "shadow".equals(m.getSuspect()) && readingByMeter.containsKey(m.getId())).count();
@@ -1113,13 +1134,18 @@ public class AllocService {
             ctx.warnings().add("池「" + rule.getName() + "」园区级按层池无显式受益人,已按全园在租名册逐层分桶分摊,请核对");
         // 静默吞钱防线:能摊却没人可摊 → 报出未摊金额(area/floor 原先 for 空转,连 warning 都不出)
         if (mems.isEmpty() && ("area".equals(rule.getMethod()) || "floor".equals(rule.getMethod()))) {
-            ctx.warnings().add("池「" + rule.getName() + "」无受益人,应分摊 " + r2(cost) + " 元未摊到户");
+            ctx.warnings().add("池「" + rule.getName() + "」无受益人,应分摊 " + r2(cost)
+                + " 元未摊到户 —— 点该池名进配置抽屉,在第④段勾受益人");
             return out;
         }
-        int noArea = 0;
+        List<String> noArea = new ArrayList<>();   // 自动名册里当月无面积的户(点名,不只计数)
         switch (rule.getMethod()) {
             case "direct" -> {   // 户金额=全额整笔归户(AC14 型)
-                if (mems.isEmpty()) { ctx.warnings().add("规则「" + rule.getName() + "」无受益人,跳过"); break; }
+                if (mems.isEmpty()) {
+                    ctx.warnings().add("规则「" + rule.getName() + "」无受益人,跳过 —— 户对户池只摊给一户,"
+                        + "点该池名进配置抽屉,用第④段的「受益户」搜索框挑那一户");
+                    break;
+                }
                 out.add(new Contribution(mems.get(0).getTenantId(), rule.getFeeKey(), rule.getId(), rule.getName(),
                     qty, cost, null, effPrice, null));
             }
@@ -1146,8 +1172,12 @@ public class AllocService {
                             fellBack.add(ctx.nameByTenant().getOrDefault(m.getTenantId(), "#" + m.getTenantId()));
                     }
                     if (area == null || area.signum() == 0) {
-                        if (auto) noArea++;   // 自动名册逐户报会淹掉提醒条 → 收成一条计数
-                        else ctx.warnings().add("规则「" + rule.getName() + "」受益租户#" + m.getTenantId() + " 当月无有效合同或无租赁面积,跳过");
+                        // ⭐点名而非编号:同一循环上面 4 行的 fellBack 分支早就用了 nameByTenant,这里漏了 ——
+                        // 用户拿到「受益租户#371」在界面上无从查起(租户屏搜不了内部 id),等于没有修复路径。
+                        String who = ctx.nameByTenant().getOrDefault(m.getTenantId(), "#" + m.getTenantId());
+                        if (auto) noArea.add(who);   // 自动名册逐户报会淹掉提醒条 → 收成一条并点名
+                        else ctx.warnings().add("规则「" + rule.getName() + "」受益租户「" + who
+                            + "」当月无有效合同或无租赁面积,跳过 —— 该池受益人是长期名单,算历史月请在池抽屉勾「只改本月」另存当月名册");
                         continue;
                     }
                     BigDecimal qtyShare = base == null || base.signum() == 0 ? null
@@ -1157,7 +1187,8 @@ public class AllocService {
                 }
                 if (!fellBack.isEmpty())
                     ctx.warnings().add("池「" + rule.getName() + "」按层取面积:" + String.join("、", fellBack)
-                        + " 在该栋无计费行↔单元绑定,已回退整栋面积口径,请补绑定");
+                        + " 在该栋无计费行↔单元绑定,已回退整栋面积口径 —— 合同页「租金行未绑单元」筛选可列全,"
+                        + "打开合同在标的段的「面积落在」处勾单元");
             }
             case "floor" -> {    // 元/层=池 std;显式份额户=元/层×weight;其余户按楼层分桶,每桶各分 1 份(§D.2)
                 BigDecimal perFloor = p.std();
@@ -1224,15 +1255,24 @@ public class AllocService {
             }
             default -> { }
         }
-        if (noArea > 0)
-            ctx.warnings().add("池「" + rule.getName() + "」自动受益人有 " + noArea
-                + " 户在本期别无租赁面积(该户本期合同,多场地户的外区面积不计入),未参与分摊");
+        if (!noArea.isEmpty())
+            ctx.warnings().add("池「" + rule.getName() + "」自动受益人有 " + noArea.size()
+                + " 户在本期别无租赁面积(该户本期合同,多场地户的外区面积不计入),未参与分摊" + suffix(noArea));
         // 反向防线:名册面积Σ 与池面积基数(base)不是同一批户时会「多收」——凭空生出的钱同样不能静默
         if (auto) {
             BigDecimal sum = out.stream().map(Contribution::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (sum.compareTo(cost) > 0)
+            if (sum.compareTo(cost) > 0) {
+                // ⭐把「该填多少」也算出来:只说基数不对、不给目标值,用户在抽屉里照样不知道往里写什么。
+                // 名册Σ = 参与分摊那批户的份额基数和(area 池即面积㎡,与 std 同分母口径),正是基数应有的值。
+                // 按层池(base 恒 null)算不出这个数 → 不编,只报差额。
+                BigDecimal rosterArea = out.stream().map(Contribution::base).filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
                 ctx.warnings().add("池「" + rule.getName() + "」自动名册已分摊 " + r2(sum) + " 元 超出应分摊 "
-                    + r2(cost) + " 元(面积基数 " + p.base() + " 与在租名册面积Σ 不一致),请核对基数或改人工勾选受益人");
+                    + r2(cost) + " 元(面积基数填的是 " + p.base() + ")"
+                    + (rosterArea.signum() == 0 ? ",请核对基数或改人工勾选受益人"
+                        : " —— 本月在租名册面积Σ 只有 " + r2(rosterArea)
+                          + ",请在池抽屉把「基数」改成 " + r2(rosterArea) + ",或改人工勾选受益人"));
+            }
         }
         return out;
     }

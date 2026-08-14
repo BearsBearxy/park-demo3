@@ -92,7 +92,9 @@ const dirty = ref(false)
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
 type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }
-type Segment = { propertyType: PropertyType; location: string; rows: SegRow[] }
+// unitIds=该段租金面积落到哪几个单元(billing_term_unit)。段级而非行级:两个消费方(BuildingService
+// 单元派生面积 / AllocService 按层取面积)都只读**建筑类租金行**的绑定,给每行各配一个选择器纯属噪声。
+type Segment = { propertyType: PropertyType; location: string; rows: SegRow[]; unitIds: number[] }
 const segments = ref<Segment[]>([])
 const showTypeMenu = ref(false)
 
@@ -100,7 +102,7 @@ function newRow(feeKey: FeeKey): SegRow {
   return { id: null, feeKey, area: null, areaShared: null, unitPrice: pinnedDefaultUnitPrice(feeKey), coeff: null, roomCount: null, amountOverride: null }
 }
 function buildSegment(pt: PropertyType): Segment {
-  return { propertyType: pt, location: '', rows: PINNED_FEES[pt].map(newRow) }
+  return { propertyType: pt, location: '', rows: PINNED_FEES[pt].map(newRow), unitIds: [] }
 }
 function addSegment(pt: PropertyType) { segments.value.push(buildSegment(pt)); showTypeMenu.value = false; err.value = ''; applyUnitAreaPrefill() }
 function removeSegment(i: number) { segments.value.splice(i, 1) }
@@ -232,8 +234,11 @@ function groupLines(lines: BillingLineDTO[]): Segment[] {
   for (const l of lines) {
     const pt = (l.propertyType ?? inferPropertyType(l.feeKey)) as PropertyType
     let g = segs.find(s => s.propertyType === pt && s.location === l.location)
-    if (!g) { g = { propertyType: pt, location: l.location, rows: [] }; segs.push(g) }
+    if (!g) { g = { propertyType: pt, location: l.location, rows: [], unitIds: [] }; segs.push(g) }
     g.rows.push({ id: l.id, feeKey: l.feeKey, area: l.area ?? null, areaShared: l.areaShared ?? null, unitPrice: l.unitPrice ?? null, coeff: l.coeff ?? null, roomCount: l.roomCount ?? null, amountOverride: l.amountOverride ?? null })
+    // 段绑定=段内建筑类租金行绑定的并集(那是唯一被读的一档;其余行的绑定原样透传,提交时不动)
+    if (BUILDING_RENT_KEYS.includes(l.feeKey))
+      for (const uid of l.unitIds ?? []) if (!g.unitIds.includes(uid)) g.unitIds.push(uid)
   }
   for (const s of segs)
     for (const k of PINNED_FEES[s.propertyType])
@@ -256,7 +261,24 @@ function applyUnitAreaPrefill() {
     if (v != null) { row.area = v; row.autoArea = true }
   }
 }
-function onUnitSelChange() { err.value = ''; applyUnitAreaPrefill() }
+function onUnitSelChange() {
+  err.value = ''
+  applyUnitAreaPrefill()
+  // 合同层面取消的单元不能继续留在段绑定里(会绑到一个本合同已经不占的单元上)
+  for (const s of segments.value) s.unitIds = s.unitIds.filter(u => unitSel.value.includes(u))
+}
+
+// ── 段↔单元绑定(billing_term_unit)──
+const unitLabel = (id: number) => {
+  const u = unitOptions.value.find(o => o.id === id)
+  return u ? `${u.floor}F-${u.unitNo}` : `#${id}`
+}
+function toggleSegUnit(seg: Segment, unitId: number) {
+  const i = seg.unitIds.indexOf(unitId)
+  if (i >= 0) seg.unitIds.splice(i, 1); else seg.unitIds.push(unitId)
+  dirty.value = true
+  err.value = ''
+}
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const isNum = (v: number | null): v is number => typeof v === 'number' && !Number.isNaN(v)
@@ -365,6 +387,8 @@ async function submit() {
         // per_sqm 行 override 无效(仅 per_month 生效):面积×单价齐了即清,救回存坏的 infra 条件行
         amountOverride: isSqm(r.feeKey) && isNum(r.area) && isNum(r.unitPrice) ? null : numOrNull(r.amountOverride),
         seq: i,
+        // 只有建筑类租金行显式送绑定(唯一被读的一档);其余行送 null=后端沿用旧绑定快照,不误清
+        unitIds: BUILDING_RENT_KEYS.includes(r.feeKey) ? seg.unitIds : null,
       }))
     }
     // 其他费用独立标的:不带段类型(后端跳过钉死校验),位置=收费项目名;非金额字段透传保存量往返无损
@@ -540,6 +564,18 @@ async function submit() {
                     <button type="button" class="ct-rf-del" title="删除标的段" @click="removeSegment(si)">
                       <component :is="iconFor('trash-2')" :size="14" />
                     </button>
+                  </div>
+                  <!-- 段↔单元绑定(2026-08-14):公共电核算「按层取面积」靠它把该段租金面积落到楼层。
+                       不绑=回退整栋面积口径,同栋跨层户会被多收 —— 过去这个绑定只有迁移脚本写得进去。
+                       候选只列本合同已选的单元:段是合同的一部分,绑到合同外的单元没有意义。 -->
+                  <div v-if="unitSel.length" class="ct-bl-bind">
+                    <span class="ct-bl-bindlab"
+                          title="该段的租金面积算在哪几个单元上;不选=按整栋面积口径参与公摊分摊">面积落在</span>
+                    <button v-for="u in unitSel" :key="u" type="button" class="ct-bl-uchip"
+                            :class="{ on: seg.unitIds.includes(u) }" @click="toggleSegUnit(seg, u)">
+                      {{ unitLabel(u) }}
+                    </button>
+                    <span v-if="!seg.unitIds.length" class="ct-bl-bindhint">未绑 · 按整栋面积摊</span>
                   </div>
                   <!-- 钉死行:费用名固定,只填数值 -->
                   <div v-for="row in pinnedRows(seg)" :key="'p' + row.feeKey" class="ct-bl-row">
@@ -735,6 +771,13 @@ select.ct-in { appearance:auto; }
 .ct-seg-badge { flex:0 0 auto; padding:3px 10px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:var(--fw-semibold); }
 .ct-bl-loc { flex:1 1 auto; height:34px; font-size:12.5px; font-weight:var(--fw-medium); }
 .ct-seg-area { flex:0 0 auto; font-size:12px; font-family:var(--font-mono); color:var(--text-muted); }
+/* 段↔单元绑定 chips:未绑给橙提示(公摊会回退整栋口径),绑了就是普通选中态 */
+.ct-bl-bind { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ct-bl-bindlab { font-size:11.5px; color:var(--text-muted); cursor:help; }
+.ct-bl-uchip { height:24px; padding:0 9px; border:1px solid var(--border-subtle); border-radius:999px; background:var(--surface-white); font-size:11.5px; font-family:var(--font-mono); color:var(--text-secondary); cursor:pointer; }
+.ct-bl-uchip:hover { border-color:var(--hue-blue); }
+.ct-bl-uchip.on { background:var(--hue-blue); border-color:var(--hue-blue); color:#fff; }
+.ct-bl-bindhint { font-size:11px; color:rgb(178,100,0); }
 /* 其他费用独立块:金额窄列(段头行内,高度对齐位置输入) */
 .ct-other-amt { flex:0 0 120px; height:34px; font-size:12.5px; padding:0 8px; }
 .ct-bl-row, .ct-bl-cond { display:flex; align-items:center; gap:6px; }

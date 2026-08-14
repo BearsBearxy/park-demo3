@@ -61,7 +61,8 @@ public class ContractService {
             .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
 
         Map<Integer,Long> extraUnits = extraUnitCounts();
-        return all.stream().map(c -> toDTO(c, tName, bName, uFloor, extraUnits)).toList();
+        Map<Integer,int[]> stats = termStats();
+        return all.stream().map(c -> toDTO(c, tName, bName, uFloor, extraUnits, stats)).toList();
     }
 
     /** 某日在租:非草稿且当日落在 [startDate, endDate] 闭区间(缺任一端日期视为无法确认在租,排除)。 */
@@ -107,7 +108,7 @@ public class ContractService {
             .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
         Map<Integer,String> tName = Map.of(t.getId(), t.getCompanyName());
 
-        ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts());
+        ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts(), termStats());
         ContractDetailDTO.TenantSnap snap = new ContractDetailDTO.TenantSnap(
             t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus()
@@ -697,13 +698,27 @@ public class ContractService {
             inserted.add(t);
             idx++;
         }
-        // 回挂:新行按插入序领取同键快照组(键撞多行 → 队列按序配对)
-        for (ContractBillingTerm t : inserted) {
+        // 回挂:新行按插入序领取同键快照组(键撞多行 → 队列按序配对)。
+        // ⭐2026-08-14:请求显式带了 unitIds 的行改以请求为准(界面上人工绑的那次编辑),并从快照队列里
+        // 领走自己那一份免得被后面同键行错领;unitIds 为 null 的行行为与改前逐字相同(导入/老客户端不受影响)。
+        for (int i = 0; i < inserted.size(); i++) {
+            ContractBillingTerm t = inserted.get(i);
             Deque<List<BillingTermUnit>> q = snapshot.get(bindKey(t.getLocation(), t.getFeeKey(), t.getArea()));
-            if (q == null || q.isEmpty()) continue;
-            for (BillingTermUnit old : q.poll()) {
+            List<Integer> explicit = lines.get(i).unitIds();
+            List<BillingTermUnit> old = q == null || q.isEmpty() ? null : q.poll();
+            if (explicit != null) {
+                for (Integer uid : new LinkedHashSet<>(explicit)) {
+                    if (uid == null) continue;
+                    BillingTermUnit nb = new BillingTermUnit();
+                    nb.setTermId(t.getId()); nb.setUnitId(uid); nb.setSource("manual");
+                    termUnits.insert(nb);
+                }
+                continue;
+            }
+            if (old == null) continue;
+            for (BillingTermUnit b : old) {
                 BillingTermUnit nb = new BillingTermUnit();
-                nb.setTermId(t.getId()); nb.setUnitId(old.getUnitId()); nb.setSource(old.getSource());
+                nb.setTermId(t.getId()); nb.setUnitId(b.getUnitId()); nb.setSource(b.getSource());
                 termUnits.insert(nb);
             }
         }
@@ -787,13 +802,20 @@ public class ContractService {
     /** 计费行读出(按 property_type, location, seq 排序,§7.2),供 detail 段分组带出。
      *  feeName 读侧按 (propertyType, feeKey) 上下文重算,回显始终一致。 */
     private List<BillingLineDTO> loadLines(Integer contractId) {
-        return terms.selectList(new QueryWrapper<ContractBillingTerm>()
-                // 按 location 分组内 seq 排(seq 每场地各自起算)。曾以 property_type 首排:MySQL NULL 靠前,
-                // 把 property_type 为空的 infra 行顶到卡片最上并与同场地租金行拆成两个段带(2026-07-29 修)。
-                .eq("contract_id", contractId).orderByAsc("location", "seq", "id")).stream()
+        List<ContractBillingTerm> ts = terms.selectList(new QueryWrapper<ContractBillingTerm>()
+            // 按 location 分组内 seq 排(seq 每场地各自起算)。曾以 property_type 首排:MySQL NULL 靠前,
+            // 把 property_type 为空的 infra 行顶到卡片最上并与同场地租金行拆成两个段带(2026-07-29 修)。
+            .eq("contract_id", contractId).orderByAsc("location", "seq", "id"));
+        Map<Integer, List<Integer>> bindByTerm = ts.isEmpty() ? Map.of()
+            : termUnits.selectList(new QueryWrapper<BillingTermUnit>()
+                    .in("term_id", ts.stream().map(ContractBillingTerm::getId).toList()))
+                .stream().collect(Collectors.groupingBy(BillingTermUnit::getTermId,
+                    Collectors.mapping(BillingTermUnit::getUnitId, Collectors.toList())));
+        return ts.stream()
             .map(t -> new BillingLineDTO(t.getId(), t.getContractId(), t.getPropertyType(), t.getLocation(),
                 t.getFeeKey(), feeLabel(t.getPropertyType(), t.getFeeKey()), t.getArea(), t.getAreaShared(), t.getUnitPrice(), t.getCoeff(),
-                t.getRoomCount(), t.getBillMode(), t.getAmountOverride(), t.getSeq(), t.getSource()))
+                t.getRoomCount(), t.getBillMode(), t.getAmountOverride(), t.getSeq(), t.getSource(),
+                bindByTerm.getOrDefault(t.getId(), List.of())))
             .toList();
     }
 
@@ -935,7 +957,7 @@ public class ContractService {
         return toDTO(c,
             t != null ? Map.of(t.getId(), t.getCompanyName()) : Map.of(),
             b != null ? Map.of(b.getId(), b.getName()) : Map.of(),
-            uFloor, extraUnitCounts(), warnings);
+            uFloor, extraUnitCounts(), termStats(), warnings);
     }
 
     /** 全表附加单元计数 contract_id→N(V58);list/detail/dtoOf 组装 DTO 前取一次。 */
@@ -944,16 +966,36 @@ public class ContractService {
             Collectors.groupingBy(ContractUnit::getContractId, Collectors.counting()));
     }
 
+    /** 全表计费行统计 contract_id→[租金行数, 未绑单元的租金行数](2026-08-14 缺口筛选);手法同 extraUnitCounts。
+     *  ⚠ 两个计数都只数 BUILDING_RENT_KEYS 行 —— 必须与引擎实际读的那一档逐字同口径,否则筛选出来的
+     *  合同和告警报的那批对不上:①allocArea 的「无租金计费行」判据就是该合同没有建筑类租金行(光有
+     *  电梯/变压器行照样回退);②billing_term_unit 的两个消费点(单元派生面积/按层取面积)也只读租金行绑定,
+     *  把电梯行算作「未绑」会凭空多报一批根本不需要绑的合同。 */
+    private Map<Integer, int[]> termStats() {
+        Set<Integer> bound = termUnits.selectList(null).stream()
+            .map(BillingTermUnit::getTermId).collect(Collectors.toSet());
+        Map<Integer, int[]> m = new HashMap<>();
+        for (ContractBillingTerm t : terms.selectList(null)) {
+            if (!BUILDING_RENT_KEYS.contains(t.getFeeKey())) continue;
+            int[] s = m.computeIfAbsent(t.getContractId(), k -> new int[2]);
+            s[0]++;
+            if (!bound.contains(t.getId())) s[1]++;
+        }
+        return m;
+    }
+
     // ponytail: shared derivation — list() and detail() both call this
     private ContractDTO toDTO(Contract c, Map<Integer,String> tName,
                               Map<Integer,String> bName, Map<Integer,String> uFloor,
-                              Map<Integer,Long> extraUnits) {
-        return toDTO(c, tName, bName, uFloor, extraUnits, null);
+                              Map<Integer,Long> extraUnits, Map<Integer,int[]> termStats) {
+        return toDTO(c, tName, bName, uFloor, extraUnits, termStats, null);
     }
 
     private ContractDTO toDTO(Contract c, Map<Integer,String> tName,
                               Map<Integer,String> bName, Map<Integer,String> uFloor,
-                              Map<Integer,Long> extraUnits, List<String> warnings) {
+                              Map<Integer,Long> extraUnits, Map<Integer,int[]> termStats,
+                              List<String> warnings) {
+        int[] stat = termStats == null ? new int[2] : termStats.getOrDefault(c.getId(), new int[2]);
         int termMonths = (c.getStartDate() != null && c.getEndDate() != null)
             ? (int) ChronoUnit.MONTHS.between(c.getStartDate(), c.getEndDate()) : 0;
         Integer daysToEnd = c.getEndDate() != null
@@ -979,7 +1021,8 @@ public class ContractService {
             c.getParentContractId(), c.getLinkType(), c.getKind(),
             termMonths, daysToEnd, c.getRemark(), c.getRentFree(),
             c.getTermText(), c.getTermType(), c.getTierPriceNote(),   // V55 期限原文必现
-            warnings   // S15:绑定回挂告警(仅写路径)
+            warnings,  // S15:绑定回挂告警(仅写路径)
+            stat[0], stat[1]   // 缺口筛选:计费行数 / 未绑单元的计费行数
         );
     }
 }

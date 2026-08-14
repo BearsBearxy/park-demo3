@@ -37,6 +37,10 @@ export interface ContractDTO {
   kind?: 'normal' | 'master_lease' | null            // V59 合同性质:整体承租不计出租率/KPI,列表显「整租」徽标
   termMonths: number; daysToEnd: number | null
   remark: string | null
+  // 缺口筛选数据源(2026-08-14):公共电核算报「N 份合同无租金计费行 / N 条计费行未绑单元」时,
+  // 合同页据此一键筛出该补的那批(缺起止日期直接看 startDate/endDate,不占列)
+  billingLineCount?: number   // 计费行数;0=分摊面积只能回退合同租赁面积
+  unboundTermCount?: number   // 未绑单元的计费行数;>0=按层取面积会回退整栋口径
 }
 
 export interface ContractCreateReq {
@@ -110,6 +114,7 @@ export interface BillingLineDTO {
   area?: number | null; areaShared?: number | null; unitPrice?: number | null; coeff?: number | null   // areaShared(V90):公摊面积,非空=area为建筑面积
   roomCount?: number | null; billMode?: string | null
   amountOverride?: number | null; seq?: number | null; source?: string | null
+  unitIds?: number[] | null      // 行↔单元绑定(V91 billing_term_unit);按层取面积的公摊池读它
 }
 // 写 Req(§1.7:内嵌 ContractCreateReq,单一编辑随合同整体 PUT 整组替换)
 export interface BillingLineReq {
@@ -125,6 +130,8 @@ export interface BillingLineReq {
   billMode?: string | null       // null→按 feeKey 默认
   amountOverride?: number | null
   seq?: number | null
+  // 行↔单元绑定:null/省略=沿用后端旧绑定快照(导入路径与老客户端不受影响);非 null=以本次为准整组替换
+  unitIds?: number[] | null
 }
 // 导入 Line(§1.7:FeeRow 1:1;对应后端 BillingLinesImportRequest.Row.Line)
 export interface BillingLineImport {

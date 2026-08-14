@@ -121,11 +121,39 @@ const lifecycleCounts = computed(() => {
   return c
 })
 
+// ─── 缺口筛选(2026-08-14 用户「不希望出现无法手动修改的问题」)─────────────────────
+// 公共电核算生成时会报「有 N 份合同无租金计费行」「有 N 户缺起止日期」——过去只报数,
+// 用户要在 431 份里肉眼找那批。这两个筛选就是那两条告警的落点:一键列出该补的合同。
+// 含历史默认打开:缺口合同常是 renewed/expired 段,折叠到生效段会看不见要补的那份。
+const GAPS = [
+  { value: 'noDate', label: '缺起止日期', hit: (c: ContractDTO) => !c.startDate || !c.endDate,
+    tip: '判不出是否在租 → 不进自动在租名册,不参与公摊分摊' },
+  { value: 'noLine', label: '无租金计费行', hit: (c: ContractDTO) => (c.billingLineCount ?? 0) === 0,
+    tip: '分摊面积只能回退合同租赁面积,与逐行口径可能不符' },
+  { value: 'noUnitBind', label: '租金行未绑单元', hit: (c: ContractDTO) => (c.unboundTermCount ?? 0) > 0,
+    tip: '按层取面积的池会回退整栋口径,同栋跨层户可能被多收' },
+] as const
+type GapKey = typeof GAPS[number]['value']
+const gap = ref<GapKey | ''>('')
+const gapDef = computed(() => GAPS.find(g => g.value === gap.value) ?? null)
+// 缺口计数按「全量合同」算,不受期数/状态/搜索影响 —— 徽标上的数要和告警里的数对得上
+const gapCounts = computed(() => {
+  const m = {} as Record<GapKey, number>
+  for (const g of GAPS) m[g.value] = contracts.value.filter(g.hit).length
+  return m
+})
+function toggleGap(k: GapKey) {
+  const on = gap.value !== k
+  gap.value = on ? k : ''
+  if (on) showHistory.value = true   // 缺口合同常在历史段上,折叠会藏住它们
+}
+
 // ─── filtered ─────────────────────────────────────────────
 const filtered = computed(() =>
   displayBase.value
     .filter(c => statusFilter.value === 'all' || c.status === statusFilter.value)
     .filter(c => phase.value === '全部期数' || phaseOf(c) === phase.value)
+    .filter(c => !gapDef.value || gapDef.value.hit(c))
     .filter(c => !q.value.trim() ||
       c.contractNo.includes(q.value.trim()) ||
       c.tenantName.includes(q.value.trim()) ||
@@ -313,6 +341,18 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
       </div>
     </div>
 
+    <!-- 缺口筛选条:公共电核算「N 份合同无租金计费行 / N 户缺起止日期」两条告警的落点。
+         只在真有缺口时出现,补完自动消失 —— 平时不占地方,有活干时一眼看见还剩几份。 -->
+    <div v-if="GAPS.some(g => gapCounts[g.value] > 0)" class="mx-gapbar">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span class="mx-gaplbl">待补档案</span>
+      <button v-for="g in GAPS" :key="g.value" v-show="gapCounts[g.value] > 0" type="button"
+              class="mx-gapchip" :class="{ on: gap === g.value }" :title="g.tip" @click="toggleGap(g.value)">
+        {{ g.label }} <b>{{ gapCounts[g.value] }}</b>
+      </button>
+      <span v-if="gapDef" class="mx-gaphint">{{ gapDef.tip }} —— 点开合同补齐后重新生成公共电核算</span>
+    </div>
+
     <div class="mx-md">
       <!-- 左:合同列表 sidebar(紧凑列表项;详情占主区) -->
       <div class="mx-md-list">
@@ -394,4 +434,13 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 .mx-hist-toggle { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 10px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); font-size:12.5px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
 .mx-hist-toggle.on { border-color:var(--hue-blue); color:var(--hue-blue); }
 .mx-hist-toggle input { accent-color:var(--hue-blue); }
+
+/* 缺口筛选条(2026-08-14):橙色=有档案要补,不是错误;补完整条消失 */
+.mx-gapbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 12px; border:1px dashed var(--hue-orange); border-radius:var(--radius-md); background:rgb(255,250,235); color:rgb(138,97,0); font-size:12px; }
+.mx-gaplbl { font-weight:var(--fw-semibold); }
+.mx-gapchip { height:26px; padding:0 10px; border:1px solid rgba(138,97,0,.28); border-radius:var(--radius-full); background:var(--surface-white); font-size:12px; color:rgb(138,97,0); cursor:pointer; white-space:nowrap; }
+.mx-gapchip:hover { border-color:var(--hue-orange); }
+.mx-gapchip.on { background:var(--hue-orange); border-color:var(--hue-orange); color:#fff; }
+.mx-gapchip b { font-variant-numeric:tabular-nums; }
+.mx-gaphint { color:var(--text-muted); font-size:11.5px; }
 </style>

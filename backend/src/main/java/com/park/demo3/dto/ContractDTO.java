@@ -38,5 +38,11 @@ public record ContractDTO(
     String  termText,          // 期限原文,如「2023年7月14日起至2026年7月13日」
     String  termType,          // explicit|multiple|relative|none
     String  tierPriceNote,     // 分年阶梯价说明(AH 列原文)
-    java.util.List<String> warnings  // S15:编辑整组替换时未能回挂的计费行单元绑定告警(仅 PUT 回包,读路径 null)
+    java.util.List<String> warnings, // S15:编辑整组替换时未能回挂的计费行单元绑定告警(仅 PUT 回包,读路径 null)
+    // ⭐两个「缺口筛选」的数据源(2026-08-14):公共电核算报「N 份合同无租金计费行」「N 户缺起止日期」时,
+    // 用户要能在合同页一键筛出那批来补 —— 只报数不给筛选等于没有修复路径。
+    // 缺日期直接用 startDate/endDate 判,不占列;计费行数前端算不出,故随列表下发。
+    // 两个计数都只数「建筑类租金行」——与引擎读的那一档同口径,筛出来的合同才和告警报的那批一致
+    int     billingLineCount,        // 租金计费行数(0=分摊面积只能回退合同租赁面积)
+    int     unboundTermCount         // 没绑单元的租金计费行数(>0=按层取面积会回退整栋口径)
 ) {}
