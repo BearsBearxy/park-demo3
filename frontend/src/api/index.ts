@@ -13,9 +13,9 @@ declare module 'axios' {
 
 const http = axios.create({ baseURL: '/api' })
 
-// Attach token from localStorage if present
+// Attach token if present:localStorage(记住登录)优先,sessionStorage(不记住)兜底,口径同 stores/auth.ts
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem('token') ?? sessionStorage.getItem('token')
   if (token) config.headers['Authorization'] = `Bearer ${token}`
   return config
 })
@@ -32,9 +32,10 @@ http.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('displayName')
-      localStorage.removeItem('role')
+      for (const k of ['token', 'displayName', 'role']) {
+        localStorage.removeItem(k)
+        sessionStorage.removeItem(k)
+      }
       // 整页跳转让 Pinia auth store 从（已清空的）localStorage 重新初始化为 null；
       // 带 redirect 以便登录后回到原页，且避免在登录页自身重复跳转
       if (!location.pathname.startsWith('/login')) {
