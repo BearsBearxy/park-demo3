@@ -8,6 +8,7 @@ public class TenantPriceCfg {
     private String scope;         // ''=全园 | p1/p2/dorm 分区 | tenant:{id} 户级
     private String cfgKey;        // 受控白名单(PriceCfgService.CFG_KEYS)
     private String acctMonth;     // 'YYYY-MM' 月行 | ''=默认行
+    private String mode;          // S21:from=自 acctMonth 起长期(''=初始版) / month=仅该月(VersionResolver)
     private BigDecimal cfgValue;  // DECIMAL(14,8),电价 8 位小数
     private String note;          // 数值来源锚点
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;

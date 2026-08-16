@@ -198,11 +198,12 @@ class PoolSeedIT extends AbstractMysqlIT {
                 "select c.cfg_value from alloc_cfg c join alloc_rule r on c.scope=concat('rule:',r.id)"
                         + " where r.sort_no=11 and c.cfg_key='std_add' and c.acct_month='2024-02'",
                 BigDecimal.class)).isEqualByComparingTo("100");
-        // 一期 A座:g_adj=-1500(月行)+ H加点 0.003 + 独立链路排除对账(默认行)
+        // 一期 A座:V65 g_adj=-1500(月行)→ V96 并入 loss_adj_qty(仅当月 month)+ H加点 0.003 + 独立链路排除对账(默认行)
         Integer aId = jdbc.queryForObject("select id from building where name='一期 A座'", Integer.class);
         assertThat(jdbc.queryForObject(
-                "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_g_adj' and acct_month='2024-02'",
+                "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_adj_qty' and acct_month='2024-02' and mode='month'",
                 BigDecimal.class, aId)).isEqualByComparingTo("-1500");
+        assertThat(jdbc.queryForObject("select count(*) from alloc_cfg where cfg_key='loss_g_adj'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject(
                 "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_recon' and acct_month=''",
                 BigDecimal.class, aId)).isEqualByComparingTo("0");
