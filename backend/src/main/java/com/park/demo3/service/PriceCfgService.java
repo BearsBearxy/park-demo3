@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
 
 // 价目管理(PRICE-CFG-SPEC v2):派生引擎取价的单一事实源。acct_month=版本生效起点(''=初始版本),
 // 每 (scope,cfg_key) 行序列构成版本链(§3):常数键沿链前滚(<=ym 最大者),月变键(电价6键)仅命中当月版本。
+// S21:判据从「键属于 MONTHLY_KEYS」改为「行的 mode」(from=前滚/month=仅该月),取值走 VersionResolver(与 alloc_cfg 同一实现);
+// 写入 mode 缺省仍按 MONTHLY_KEYS 给(过渡,注册表落地后改注册表默认),故旧语义一格不变。
 @Service
 public class PriceCfgService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
@@ -62,12 +64,13 @@ public class PriceCfgService {
         return rows.stream().map(c -> {
             Integer t = tenantIdOf(c.getScope());
             String name = t == null ? null : nameById.getOrDefault(t, "已删租户#" + t);
-            return new PriceCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getAcctMonth(),
+            return new PriceCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(),
                 c.getCfgValue(), c.getNote(), c.getUpdatedAt(), name);
         }).toList();
     }
 
     // ── 写:单行 upsert(§4);月变键 acctMonth 必填非空(禁 '' 行);value=null 删该版本行(有行删、无行零操作) ──
+    //    mode 缺省:月变键 month、其余 from(=旧语义;S21 过渡规则,注册表接管后改 defaultMode)
     public void upsert(PriceCfgReq req) {
         String key = req.cfgKey().trim();
         if (!CFG_KEYS.contains(key)) throw new BizException(ResultCode.BAD_REQUEST, "费项键不在白名单：" + key);
@@ -75,14 +78,16 @@ public class PriceCfgService {
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         if (MONTHLY_KEYS.contains(key) && month.isEmpty())
             throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
-        TenantPriceCfg row = cfgs.selectByKey(scope, key, month);
+        String mode = req.mode() == null || req.mode().isBlank()
+            ? (MONTHLY_KEYS.contains(key) ? "month" : "from") : req.mode().trim();
+        TenantPriceCfg row = cfgs.selectByKey(scope, key, month, mode);
         if (req.value() == null) {
             if (row != null) { cfgs.deleteById(row.getId()); evict(); }
             return;
         }
         if (row == null) {
             row = new TenantPriceCfg();
-            row.setScope(scope); row.setCfgKey(key); row.setAcctMonth(month);
+            row.setScope(scope); row.setCfgKey(key); row.setAcctMonth(month); row.setMode(mode);
         }
         row.setCfgValue(req.value());
         row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
@@ -99,9 +104,10 @@ public class PriceCfgService {
         int copied = 0, skipped = 0;
         for (TenantPriceCfg src : cfgs.selectList(new QueryWrapper<TenantPriceCfg>()
                 .eq("acct_month", fromYm).in("cfg_key", MONTHLY_KEYS).orderByAsc("scope", "cfg_key"))) {
-            if (cfgs.selectByKey(src.getScope(), src.getCfgKey(), toYm) != null) { skipped++; continue; }
+            String mode = src.getMode() == null ? "month" : src.getMode();
+            if (cfgs.selectByKey(src.getScope(), src.getCfgKey(), toYm, mode) != null) { skipped++; continue; }
             TenantPriceCfg row = new TenantPriceCfg();
-            row.setScope(src.getScope()); row.setCfgKey(src.getCfgKey()); row.setAcctMonth(toYm);
+            row.setScope(src.getScope()); row.setCfgKey(src.getCfgKey()); row.setAcctMonth(toYm); row.setMode(mode);
             row.setCfgValue(src.getCfgValue()); row.setNote(src.getNote());
             cfgs.insert(row); copied++;
         }
@@ -110,8 +116,8 @@ public class PriceCfgService {
     }
 
     // ── §3 取价 v2 版本链,scope 级联 tenant:{id}→zone→'' 首中即返:
-    //    月变键仅命中 acct_month==ym;常数键取 acct_month<=ym 最大者(''最小,版本自动前滚)。
-    //    字符串比较即可(YYYY-MM 字典序=时间序)。public 供派生引擎复用。 ──
+    //    行 mode=month 仅命中 acct_month==ym;mode=from 取 acct_month<=ym 最大者(''最小,版本自动前滚)。
+    //    规则实现在 VersionResolver(alloc_cfg 同一份)。public 供派生引擎复用。 ──
     public BigDecimal resolve(String key, String ym, Integer tenantId, String zone) {
         PriceHit hit = resolveHit(key, ym, tenantId, zone);
         return hit == null ? null : hit.value();
@@ -122,35 +128,27 @@ public class PriceCfgService {
 
     public PriceHit resolveHit(String key, String ym, Integer tenantId, String zone) {
         requireYm(ym);
-        Map<String, List<TenantPriceCfg>> idx = index();
         List<String> scopes = new ArrayList<>();
         if (tenantId != null) scopes.add("tenant:" + tenantId);
         if (zone != null && !zone.isEmpty()) scopes.add(zone);
         scopes.add("");
-        boolean monthly = MONTHLY_KEYS.contains(key);
-        for (String scope : scopes) {
-            TenantPriceCfg hit = null;
-            for (TenantPriceCfg c : idx.getOrDefault(scope + "|" + key, List.of())) {
-                String m = c.getAcctMonth();
-                if (monthly ? !m.equals(ym) : m.compareTo(ym) > 0) continue;
-                if (hit == null || m.compareTo(hit.getAcctMonth()) > 0) hit = c;
-            }
-            if (hit != null) return new PriceHit(hit.getCfgValue(), hit.getScope(), hit.getAcctMonth());
-        }
-        return null;
+        VersionResolver.Hit hit = VersionResolver.resolve(index(), key, ym, scopes);
+        return hit == null ? null : new PriceHit(hit.value(), hit.scope(), hit.acctMonth());
     }
 
-    // 整表<100行,一次载入按 scope|cfg_key 分组(派生是 户×费项 量级的 resolve,逐次单查是 N+1)。
+    // 整表<300行,一次载入按 cfg_key→scope 分组(派生是 户×费项 量级的 resolve,逐次单查是 N+1)。
     // 简单 volatile 快照,本 service 写路径失效;写在事务里时提交/回滚后再失效一次,
     // 防止事务内重建把未提交行缓过事务边界(IT 全程 @Transactional 回滚,靠这条不串档)。
-    private volatile Map<String, List<TenantPriceCfg>> index;
+    private volatile Map<String, Map<String, List<VersionResolver.Row>>> index;
 
-    private Map<String, List<TenantPriceCfg>> index() {
-        Map<String, List<TenantPriceCfg>> idx = index;
+    private Map<String, Map<String, List<VersionResolver.Row>>> index() {
+        Map<String, Map<String, List<VersionResolver.Row>>> idx = index;
         if (idx == null) {
             idx = new HashMap<>();
             for (TenantPriceCfg c : cfgs.selectList(null))
-                idx.computeIfAbsent(c.getScope() + "|" + c.getCfgKey(), k -> new ArrayList<>()).add(c);
+                idx.computeIfAbsent(c.getCfgKey(), k -> new HashMap<>())
+                   .computeIfAbsent(c.getScope(), s -> new ArrayList<>())
+                   .add(new VersionResolver.Row(c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(), c.getCfgValue(), c.getId()));
             index = idx;
         }
         return idx;

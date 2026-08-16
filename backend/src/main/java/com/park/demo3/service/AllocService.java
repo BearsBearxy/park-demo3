@@ -637,23 +637,27 @@ public class AllocService {
     }
 
     // ── 参数(读=默认行∪当月行原值,解析「月行优先」由读侧完成;写=单行 upsert,value=null 删行回退默认) ──
+    //    S21 过渡:cfgList 仍是 ''∪当月 的兼容读(前端 allocLogic.resolveCfg 只读用,参数页落地后收敛);
+    //    引擎取值(loadCtx)已改走 VersionResolver(from 前滚/month 仅当月),两者只在 from 月行的后续月份上有差。
     public List<AllocCfgDTO> cfgList(String ym) {
         requireYm(ym);
         return cfgs.selectEffective(ym).stream()
-            .map(c -> new AllocCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getCfgValue(), c.getAcctMonth(), c.getNote()))
+            .map(c -> new AllocCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getCfgValue(), c.getAcctMonth(), c.getMode(), c.getNote()))
             .toList();
     }
 
+    // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     public void saveCfg(AllocCfgReq req) {
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
-        AllocCfg row = cfgs.selectByKey(req.scope().trim(), req.cfgKey().trim(), month);
+        String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
+        AllocCfg row = cfgs.selectByKey(req.scope().trim(), req.cfgKey().trim(), month, mode);
         if (req.value() == null) {
             if (row != null) cfgs.deleteById(row.getId());
             return;
         }
         if (row == null) {
             row = new AllocCfg();
-            row.setScope(req.scope().trim()); row.setCfgKey(req.cfgKey().trim()); row.setAcctMonth(month);
+            row.setScope(req.scope().trim()); row.setCfgKey(req.cfgKey().trim()); row.setAcctMonth(month); row.setMode(mode);
         }
         row.setCfgValue(req.value());
         row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
@@ -926,11 +930,11 @@ public class AllocService {
         }
         Map<Integer, MeterReading> readingByMeter = new HashMap<>();
         for (MeterReading r : readings.selectByYm(ym)) readingByMeter.put(r.getMeterId(), r);
-        // 参数解析:默认行先落,当月行覆盖(月行优先回退默认,ElecCostService.resolveCfg 同规则)
-        Map<String, BigDecimal> cfg = new HashMap<>();
-        List<AllocCfg> eff = cfgs.selectEffective(ym);
-        for (AllocCfg c : eff) if (c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
-        for (AllocCfg c : eff) if (!c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
+        // 参数解析(S21 §2.2):整表载入,站在 ym 按行 mode 取值 —— month 仅当月优先,from 取 acct_month<=ym 最大者前滚
+        // (''=初始版最小)。与 tenant_price_cfg 同一份 VersionResolver;cfgVal 仍是 scope|key 扁平查表。
+        Map<String, BigDecimal> cfg = VersionResolver.effectiveMap(cfgs.selectList(null).stream()
+            .map(c -> new VersionResolver.Row(c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(), c.getCfgValue(), c.getId()))
+            .toList(), ym);
         // 户租赁面积=Σ当月覆盖合同分摊面积(S5 §1:Σ租金计费行 area+IFNULL(area_shared,0),无租金行回退 rent_area)
         // S15 §4 面积污染根修:宿舍计费行(dormTerm)面积单独聚合,不混进主楼栋口径
         Map<Integer, BigDecimal> rentLineArea = new HashMap<>();
