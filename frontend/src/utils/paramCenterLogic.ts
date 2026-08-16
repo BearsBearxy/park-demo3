@@ -36,6 +36,19 @@ export function rangeBadge(r: ParamRow): { text: string; tone: RangeTone } {
   return { text: r.rangeText || (tone === 'inherit' ? '未设置' : ''), tone }
 }
 
+// ── 「来自」列(spec §5.2)= 命中链尾:本栋设定 / 继承一期 / 全园默认 / 户级例外（覆盖 全园 0.16 元/度）/ 未设置。
+//    sourceChain 每级 `scopeLabel:valueText`,首项=生效来源;首项作用域名 == 本行作用域名 ⇒ 自设,否则继承 ──
+export function sourceLabel(r: ParamRow): string {
+  const chain = r.sourceChain ?? []
+  if (!chain.length) return '未设置'
+  const hitLabel = chain[0].slice(0, chain[0].indexOf(':'))
+  if (hitLabel !== r.scopeLabel) return hitLabel === '全园' ? '全园默认' : `继承${hitLabel}`
+  if (r.scope === '') return '全园默认'
+  if (r.scope.startsWith('tenant:')) return chain[1] ? `户级例外（覆盖 ${chain[1].replace(':', ' ')}）` : '户级例外'
+  const kind = r.scope.startsWith('building:') ? '栋' : r.scope.startsWith('rule:') ? '池' : r.scope.startsWith('meter:') ? '表' : '期'
+  return `本${kind}设定`
+}
+
 // ── 页面禁词(spec §5.2 / §8.4):字段值与内部标识不得上屏;页面 spec 用它扫全文 ──
 const FORBIDDEN = /(p1|p2|dorm|building:|rule:|meter:|tenant:|默认·所有月份)/
 export function forbiddenText(s: string): boolean { return FORBIDDEN.test(s) }

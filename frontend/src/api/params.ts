@@ -75,8 +75,9 @@ export const paramsApi = {
   list: (ym: string, zone: ParamZone = 'all'): Promise<ParamRowDTO[]> =>
     http.get('/params', { params: { ym, zone } }),
   status: (ym: string): Promise<ParamStatusDTO> => http.get('/params/status', { params: { ym } }),
-  // 写一行(注册表校验/日志/evict),返回该键站在 acctMonth 或 ym 的新生效行(铁律二:只 patch 该行)
-  put: (req: ParamPutReq): Promise<ParamRowDTO> => http.put('/params', req),
+  // 写一行(注册表校验/日志/evict),返回该键站在 ym(缺省 acctMonth)的新生效行(铁律二:只 patch 该行);
+  // 页面传自己的账期 ym,回包才与屏上其它行同一账期(删版本行 / 改错时 acctMonth 可能不是页面账期)
+  put: (req: ParamPutReq, ym?: string): Promise<ParamRowDTO> => http.put('/params', req, { params: { ym } }),
   history: (key: string, scope: string): Promise<ParamHistoryDTO> =>
     http.get('/params/history', { params: { key, scope } }),
   changes: (ym: string, limit = 200): Promise<ParamChangeDTO[]> =>

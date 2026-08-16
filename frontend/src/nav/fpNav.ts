@@ -1,5 +1,6 @@
 // src/nav/fpNav.ts — 导航单一事实源(48屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
-// 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→价目→园区抄表→公共电核算→楼栋损耗→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
+// 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→计费参数→园区抄表→公共电核算→楼栋损耗→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
+// S21:「价目管理」/price-cfg 退役,由「计费参数」/params 取代(router 里 /price-cfg 重定向)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
 export interface NavSection { title?: string; items: NavItem[] }
 export interface NavLayer { id: string; label: string; short: string; icon: string; caption: string; home: string; sections: NavSection[] }
@@ -12,7 +13,7 @@ export const FP_NAV: NavLayer[] = [
       { value: 'tenants', label: '租户管理', icon: 'users', kind: 'tenants' } ] },
     { title: '出账链 · 应收派生', items: [
       { value: 'contracts', label: '合同管理', icon: 'file-text', kind: 'contracts' },
-      { value: 'price-cfg', label: '价目管理', icon: 'tags', kind: 'priceCfg' },
+      { value: 'params', label: '计费参数', icon: 'sliders-horizontal', kind: 'params' },
       { value: 'meters', label: '园区抄表', icon: 'gauge', kind: 'meters' },
       { value: 'alloc', label: '公共电核算', icon: 'share-2', kind: 'alloc' },
       { value: 'alloc-loss', label: '楼栋损耗', icon: 'trending-down', kind: 'allocLoss' },

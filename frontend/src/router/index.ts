@@ -19,7 +19,7 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'buildings': () => import('@/views/buildings/BuildingsView.vue'),
   'tenants': () => import('@/views/tenants/TenantsView.vue'),
   'contracts': () => import('@/views/contracts/ContractsView.vue'),
-  'price-cfg': () => import('@/views/price-cfg/PriceCfgView.vue'),
+  'params': () => import('@/views/params/ParamCenterView.vue'),   // S21:取代 price-cfg 价目管理(旧地址见下方 redirect)
   'meters': () => import('@/views/meters/MeterView.vue'),
   'alloc': () => import('@/views/alloc/PoolLedgerView.vue'),
   'alloc-loss': () => import('@/views/alloc/LossLedgerView.vue'),
@@ -80,6 +80,8 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/data-home' },
+    // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
+    { path: '/price-cfg', redirect: '/params' },
     { path: '/login', component: LoginView },
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({

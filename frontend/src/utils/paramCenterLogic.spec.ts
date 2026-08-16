@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge,
+  copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel,
   type ParamRow, type ParamStatus,
 } from './paramCenterLogic'
 
@@ -56,6 +56,25 @@ describe('rangeBadge 三态(spec §5.2 生效区间)', () => {
       .toEqual({ text: '未设置', tone: 'inherit' })
     expect(rangeBadge(row({ ...base, mode: null, rangeText: '沿用默认', rowId: null })))
       .toEqual({ text: '沿用默认', tone: 'inherit' })
+  })
+})
+
+describe('sourceLabel 「来自」列(spec §5.2 命中链尾)', () => {
+  const base = { key: 'mgmt_fee', group: 'constant' as const }
+  it('首项作用域 == 本行 → 本栋/本池/本期设定;全园 → 全园默认', () => {
+    expect(sourceLabel(row({ ...base, scope: 'building:13', scopeLabel: '一期 A座', sourceChain: ['一期 A座:0.16 元/度', '全园:0.16 元/度'] }))).toBe('本栋设定')
+    expect(sourceLabel(row({ ...base, scope: 'rule:23', scopeLabel: '招商中心净电（池）', sourceChain: ['招商中心净电（池）:-670 度'] }))).toBe('本池设定')
+    expect(sourceLabel(row({ ...base, scope: 'p1', scopeLabel: '一期', sourceChain: ['一期:80000 ㎡'] }))).toBe('本期设定')
+    expect(sourceLabel(row({ ...base, scope: '', scopeLabel: '全园', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园默认')
+  })
+  it('首项来自上级 → 继承X / 全园默认', () => {
+    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['一期:0.003 比率', '全园:0.003 比率'] }))).toBe('继承一期')
+    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园默认')
+  })
+  it('户级例外带「覆盖 上级值」;无链 → 未设置', () => {
+    expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }))).toBe('户级例外（覆盖 全园 0.16 元/度）')
+    expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度'] }))).toBe('户级例外')
+    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: [] }))).toBe('未设置')
   })
 })
 
