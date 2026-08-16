@@ -98,6 +98,7 @@ CREATE TABLE alloc_loss_result (
    - share_only：I = ROUND(G/C, 4) + adj_rate
    - G座类（组内无分表或 D=C）：variant=none，不出率
    - 二期 J5 的 ROUND 内置变体不实现，统一外置式（锚点月同值，差异已录异常清单）
+   - **S21 定稿覆盖本条**：G 各栋同值不再含 loss_g_adj（并入 loss_adj_qty）；率加「手工率覆盖」「分母含铝缆」「并栋按月版本」；损耗费/对账价改走价目簿月价 —— 见 `S21-PARAM-CENTER-SPEC.md` §4。
 5. **快照**：generate(ym) 按 ym 先删后插 alloc_pool_result + alloc_loss_result（幂等）；既有户级 alloc_result 流程保留不动（无 member 的池自然跳过户级）。价与基数全部落 snap 列。
 6. **门禁**：电价月推键缺当月 → 该 zone 整体拒绝生成（BizException，提示先录价）；个别池缺读数 → 池行落 warn 照常生成其余。
 
