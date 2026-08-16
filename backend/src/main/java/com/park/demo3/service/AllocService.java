@@ -669,9 +669,12 @@ public class AllocService {
             .toList();
     }
 
+    // 键/作用域形态过 ParamRegistry 门(S21 §2.1:注册表之外一律 400);
     // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     public void saveCfg(AllocCfgReq req) {
         String scope = req.scope().trim(), key = req.cfgKey().trim();
+        if (!ParamRegistry.allowed(key, scope) || ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
+            throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + "@" + scope);
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
         AllocCfg row = cfgs.selectByKey(scope, key, month, mode);

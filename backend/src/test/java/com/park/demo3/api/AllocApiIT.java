@@ -277,13 +277,23 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.rows[?(@.name=='IT园区路灯')].allocated").value(2.40))
                 .andExpect(jsonPath("$.data.rows[?(@.name=='一期损耗')].qty").value(-4000.0))
                 .andExpect(jsonPath("$.data.allocSum").value(77.83));
-        // 参数月行优先:当月 price_flat 覆盖默认 → 抽屉现算金额随月价变(默认行不动)
+        // 参数月行与默认行并存:当月 park_share_div 月行覆盖默认(默认行不动;S21 注册表门:price_flat 已退役不可写)
         mvc.perform(put("/api/alloc/cfg").header("Authorization", auth()).contentType("application/json")
-                .content("{\"scope\":\"p1\",\"cfgKey\":\"price_flat\",\"acctMonth\":\"2099-05\",\"value\":2}"))
+                .content("{\"scope\":\"p1\",\"cfgKey\":\"park_share_div\",\"acctMonth\":\"2099-05\",\"value\":7}"))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/alloc/cfg").param("ym", "2099-05").header("Authorization", auth()))
-                .andExpect(jsonPath("$.data[?(@.scope=='p1'&&@.cfgKey=='price_flat'&&@.acctMonth=='2099-05')].value").value(2.0))
-                .andExpect(jsonPath("$.data[?(@.scope=='p1'&&@.cfgKey=='price_flat'&&@.acctMonth=='')]").exists());
+                .andExpect(jsonPath("$.data[?(@.scope=='p1'&&@.cfgKey=='park_share_div'&&@.acctMonth=='2099-05')].value").value(7.0))
+                .andExpect(jsonPath("$.data[?(@.scope=='p1'&&@.cfgKey=='park_share_div'&&@.acctMonth=='')]").exists());
+        // 退役键 / 注册表外键 → 400
+        mvc.perform(put("/api/alloc/cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"p1\",\"cfgKey\":\"price_flat\",\"acctMonth\":\"2099-05\",\"value\":2}"))
+                .andExpect(jsonPath("$.code").value(400));
+        mvc.perform(put("/api/alloc/cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"building:" + b + "\",\"cfgKey\":\"loss_g_adj\",\"value\":-1}"))
+                .andExpect(jsonPath("$.code").value(400));
+        mvc.perform(put("/api/alloc/cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"p1\",\"cfgKey\":\"loss_variant\",\"value\":1}"))   // 键在表但作用域形态不允许(栋级键)
+                .andExpect(jsonPath("$.code").value(400));
     }
 
     // ── elec-cost 桥:有分摊数据月「分摊额度」=alloc_result Σ 真值;无数据月回退 ×50% 假设不变 ──
@@ -438,7 +448,8 @@ class AllocApiIT extends AbstractMysqlIT {
         reading(mSupply, "2099-07", "0", "1600");
         postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT-PE园区公摊池\",\"method\":\"loss\","
                 + "\"feeKey\":\"park_loss_pool\",\"meterIds\":[" + mPark + "]}");
-        allocCfg("building:" + b1, "loss_g_adj", "-50");     // b1 G=86.8-50=36.8
+        // S21/V96:loss_g_adj 退役并入 loss_adj_qty(G+g ≡ E−G−a,a=g);注册表门下 loss_g_adj 写入 400
+        allocCfg("building:" + b1, "loss_adj_qty", "-50");   // b1 a=-50 ⇒ E−G−a=-100-86.8+50=-136.8
         allocCfg("building:" + b1, "loss_recon", "0");       // b1 独立供电链路,排除对账
         allocCfg("building:" + b2, "loss_variant", "1");     // b2=纯公摊式
         allocCfg("building:" + b2, "loss_adj_rate", "0.005");
@@ -447,7 +458,7 @@ class AllocApiIT extends AbstractMysqlIT {
         p2Prices("2099-07");
         mvc.perform(post("/api/alloc/generate").param("ym", "2099-07").header("Authorization", auth()))
                 .andExpect(jsonPath("$.code").value(0));
-        // b1 net:I=-r4((-100-36.8)/1000)=0.1368;b2 share_only:I=r4(86.8/500)+0.005=0.1786
+        // b1 net:I=-r4((-100-86.8+50)/1000)=0.1368;b2 share_only:I=r4(86.8/500)+0.005=0.1786
         mvc.perform(get("/api/alloc/loss").param("ym", "2099-07").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.generated").value(true))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].label").value("IT-PE-A座"))
@@ -456,7 +467,8 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].dQty").value(900.0))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].eQty").value(-100.0))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].rawRate").value(-0.1))
-                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].gQty").value(36.8))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].gQty").value(86.8))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].adjQty").value(-50.0))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b1 + ")].tenantRate").value(0.1368))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b2 + ")].variant").value("share_only"))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + b2 + ")].tenantRate").value(0.1786))
@@ -477,7 +489,8 @@ class AllocApiIT extends AbstractMysqlIT {
     // 不是某一个池的量。V84 前该费键只挂 1 条池(招商中心靠 fold_qty 折进去),测不出「Σ 跨规则」这条性质;
     // 本例按原册铺 5 条(4 条 direct 独立行 + 1 条净额行),数量与 method 都不同,任何"只取某一个池"的写法都会红。
     // 锚点全取原册块1:29.51/18.55/101.51/219.19 + 152.06 = 520.82 → G=ROUND(520.82/6,2)=86.80;
-    //             A座另 loss_g_adj=-1500 → g_qty=-1413.20;4 条独立行应分摊=逐表ROUND(度×1.11416875)。
+    //             A座另 损耗调整度数 loss_adj_qty=-1500(S21/V96:原 loss_g_adj 并入,G 各栋同值不再分栋加减)
+    //             → g_qty 两栋皆 86.80、A座 adj_qty=-1500;4 条独立行应分摊=逐表ROUND(度×1.11416875)。
     @Test
     void parkLossPool_sumsAcrossRules_gBase() throws Exception {
         String ym = "2099-09";
@@ -509,15 +522,16 @@ class AllocApiIT extends AbstractMysqlIT {
         reading(mZs, ym, "0", "152.06");
         postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT-I1招商中心净电\",\"method\":\"loss\","
                 + "\"feeKey\":\"park_loss_pool\",\"meterIds\":[" + mZs + "]}");
-        allocCfg("building:" + bA, "loss_g_adj", "-1500");
+        allocCfg("building:" + bA, "loss_adj_qty", "-1500");
         price("elec_commercial", ym, "0.79416875");
         p2Prices(ym);
         mvc.perform(post("/api/alloc/generate").param("ym", ym).header("Authorization", auth()))
                 .andExpect(jsonPath("$.code").value(0));
-        // G 基数:五行 Σ=520.82 → 86.80;A座 -1500 → -1413.20(六座 g_qty 口径由此一处决定)
+        // G 基数:五行 Σ=520.82 → 86.80(六座 g_qty 口径由此一处决定);A座调整度数 -1500 落 adj_qty
         mvc.perform(get("/api/alloc/loss").param("ym", ym).header("Authorization", auth()))
                 .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + bB + ")].gQty").value(86.80))
-                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + bA + ")].gQty").value(-1413.20));
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + bA + ")].gQty").value(86.80))
+                .andExpect(jsonPath("$.data.units[?(@.headBuildingId==" + bA + ")].adjQty").value(-1500.0));
         // 拆出的 4 条各自应分摊(原册 AD5/AD6/AD7/AD9),direct → 分摊标准 = 应分摊(原册 AC=AD)
         for (int i = 0; i < book.length; i++)
             mvc.perform(get("/api/alloc/pools").param("ym", ym).header("Authorization", auth()))

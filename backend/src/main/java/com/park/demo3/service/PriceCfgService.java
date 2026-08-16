@@ -15,35 +15,34 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 // 价目管理(PRICE-CFG-SPEC v2):派生引擎取价的单一事实源。acct_month=版本生效起点(''=初始版本),
 // 每 (scope,cfg_key) 行序列构成版本链(§3):常数键沿链前滚(<=ym 最大者),月变键(电价6键)仅命中当月版本。
 // S21:判据从「键属于 MONTHLY_KEYS」改为「行的 mode」(from=前滚/month=仅该月),取值走 VersionResolver(与 alloc_cfg 同一实现);
-// 写入 mode 缺省仍按 MONTHLY_KEYS 给(过渡,注册表落地后改注册表默认),故旧语义一格不变。
+// 白名单与写入 mode 缺省都来自 ParamRegistry(S21-PARAM-CENTER-SPEC §2.3:两表唯一注册表),旧语义一格不变。
 @Service
 public class PriceCfgService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
-    // §2 cfg_key 受控白名单(V62 定格 19 键;前端 utils/priceCfgLogic.ts PRICE_KEYS 镜像)
+    // §2 cfg_key 受控白名单 = 注册表里 table=PRICE 的全部键(S21 起唯一来源;spec §3.4 新键 lamp_rate/fire_amount_fixed/
+    // loss_base_form(_b{bid})/loss_base_park_meter|amount 放行,退役键 loss_rate/green_rate_live/lamp_rate_live 出局)。
     // ⚠BOOK-REBUILD-SPEC §H3 的四个「2023 冻结参数」(隐藏表『公共电分摊』M99/M109/L24/L99)**刻意不进
     // 本白名单、也不进 tenant_price_cfg**:它们不是价目输入,而是绑定在具体池上的历史事实 —— V62(用户
-    // 2026-07-27 拍板)已把五个月推单价键清出价目簿,且前端 PRICE_KEYS 是价目页渲染的唯一驱动,塞回来只会
-    // 是查不到也编辑不了的隐形行。它们由 V83__frozen_params.sql 落成 alloc_cfg 的 rule:{id} 默认行
+    // 2026-07-27 拍板)已把五个月推单价键清出价目簿。它们由 V83__frozen_params.sql 落成 alloc_cfg 的 rule:{id} 默认行
     // (cfg_key='frozen_2023',acct_month='' 即「不随月份变」=冻结,真实年月写 note),由公共电核算屏
     // 「分摊标准」列 title 披露(前端 poolLedgerLogic.FROZEN_CFG_KEY)。找 2023 冻结价请去那里。
-    static final Set<String> CFG_KEYS = Set.of(
-        "elec_peak", "elec_sharp", "elec_flat", "elec_valley", "elec_resident", "elec_commercial",   // 电价·月变
-        "mgmt_fee", "mgmt_fee_commercial", "sharp_as_peak_ratio",                                     // 附加与开关
-        "capacity_fee", "water", "water_pipe",                                                        // 容量与水
-        "lamp_area_base", "green_area_base", "area_base", "elevator_area_base",                       // 月推参数
-        "loss_rate", "elec_package", "share_elec_fixed", "share_water_fixed",                         // 特殊轨道
-        "green_rate");   // S14:绿化水户级收取价(S13 翻转后默认=池核算率,0.01 组 37 户例外行已在库;系数簿批量入口需可写)
+    static final Set<String> CFG_KEYS = ParamRegistry.keysOf(ParamRegistry.Table.PRICE);
     // ⚠ share_elec_fixed 是 elevator_package 改名(2026-08-09):后者建键时以为包干只替电梯,源册
     // (一期2024年2月水电费.xlsx 各户缴费通知单 + 两张总表)证明它替「楼层公共、消防照明+电梯+路灯公摊」
     // 三项;水侧同一纸单第二个包干替「绿化水公摊」=share_water_fixed。改名时 elevator_package 全库 0 行。
 
-    // 月变键=电价6键(registry monthly:true):逐月变,不前滚,缺当月版本=null→派生门禁拦截
-    static final Set<String> MONTHLY_KEYS = Set.of(
+    // 月变键=注册表默认 month 的价目键(电价6键 + 永龙照抄金额 loss_base_park_amount):逐月变,不前滚,
+    // acctMonth 必填(禁 '' 行);电价缺当月版本=null→派生门禁拦截
+    static final Set<String> MONTHLY_KEYS = CFG_KEYS.stream()
+        .filter(k -> "month".equals(ParamRegistry.defaultMode(k))).collect(Collectors.toUnmodifiableSet());
+    // 「复制上月电价」只搬电价 6 键(照抄金额类月参不复制)
+    static final Set<String> ELEC_KEYS = Set.of(
         "elec_peak", "elec_sharp", "elec_flat", "elec_valley", "elec_resident", "elec_commercial");
 
     private final TenantPriceCfgMapper cfgs;
@@ -70,16 +69,16 @@ public class PriceCfgService {
     }
 
     // ── 写:单行 upsert(§4);月变键 acctMonth 必填非空(禁 '' 行);value=null 删该版本行(有行删、无行零操作) ──
-    //    mode 缺省:月变键 month、其余 from(=旧语义;S21 过渡规则,注册表接管后改 defaultMode)
+    //    键/作用域形态过注册表门(spec §2.1:键之外一律 400);mode 缺省=注册表 defaultMode(电价 month、其余 from,=旧语义)
     public void upsert(PriceCfgReq req) {
         String key = req.cfgKey().trim();
-        if (!CFG_KEYS.contains(key)) throw new BizException(ResultCode.BAD_REQUEST, "费项键不在白名单：" + key);
         String scope = req.scope() == null ? "" : req.scope().trim();
+        if (!ParamRegistry.allowed(key, scope))
+            throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + (scope.isEmpty() ? "" : "@" + scope));
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         if (MONTHLY_KEYS.contains(key) && month.isEmpty())
             throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
-        String mode = req.mode() == null || req.mode().isBlank()
-            ? (MONTHLY_KEYS.contains(key) ? "month" : "from") : req.mode().trim();
+        String mode = req.mode() == null || req.mode().isBlank() ? ParamRegistry.defaultMode(key) : req.mode().trim();
         TenantPriceCfg row = cfgs.selectByKey(scope, key, month, mode);
         if (req.value() == null) {
             if (row != null) { cfgs.deleteById(row.getId()); evict(); }
@@ -103,7 +102,7 @@ public class PriceCfgService {
         requireYm(fromYm); requireYm(toYm);
         int copied = 0, skipped = 0;
         for (TenantPriceCfg src : cfgs.selectList(new QueryWrapper<TenantPriceCfg>()
-                .eq("acct_month", fromYm).in("cfg_key", MONTHLY_KEYS).orderByAsc("scope", "cfg_key"))) {
+                .eq("acct_month", fromYm).in("cfg_key", ELEC_KEYS).orderByAsc("scope", "cfg_key"))) {
             String mode = src.getMode() == null ? "month" : src.getMode();
             if (cfgs.selectByKey(src.getScope(), src.getCfgKey(), toYm, mode) != null) { skipped++; continue; }
             TenantPriceCfg row = new TenantPriceCfg();
