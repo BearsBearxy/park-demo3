@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,
+  tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type ParamStatus,
 } from './paramCenterLogic'
 
@@ -75,6 +76,35 @@ describe('sourceLabel 「来自」列(spec §5.2 命中链尾)', () => {
     expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }))).toBe('户级例外（覆盖 全园 0.16 元/度）')
     expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度'] }))).toBe('户级例外')
     expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: [] }))).toBe('未设置')
+  })
+})
+
+describe('tenantExceptionReqs / tenantExceptionDelReqs ④ 户级例外写序列(spec §3.4 写计划与系数簿同源)', () => {
+  const f = { tenantId: 9, value: 4.45, mode: 'from' as const, note: '包干' }
+  it('水价 → 水价 + 管网费=0 两条;包干电价 → 三条(双 mgmt=0);管理费 → 双键同值;单键只写自身', () => {
+    expect(tenantExceptionReqs({ ...f, key: 'water' }, '2024-02')).toEqual([
+      { key: 'water', scope: 'tenant:9', acctMonth: '2024-02', mode: 'from', value: 4.45, note: '包干' },
+      { key: 'water_pipe', scope: 'tenant:9', acctMonth: '2024-02', mode: 'from', value: 0, note: '包干' },
+    ])
+    expect(tenantExceptionReqs({ ...f, key: 'elec_package', value: 1 }, '2024-02').map(r => [r.key, r.value]))
+      .toEqual([['elec_package', 1], ['mgmt_fee', 0], ['mgmt_fee_commercial', 0]])
+    expect(tenantExceptionReqs({ ...f, key: 'mgmt_fee', value: 0.15 }, '2024-02').map(r => [r.key, r.value]))
+      .toEqual([['mgmt_fee', 0.15], ['mgmt_fee_commercial', 0.15]])
+    expect(tenantExceptionReqs({ ...f, key: 'capacity_fee', value: 23, mode: 'month', note: null }, '2023-08'))
+      .toEqual([{ key: 'capacity_fee', scope: 'tenant:9', acctMonth: '2023-08', mode: 'month', value: 23, note: null }])
+  })
+  it('损耗费基数形态（按栋）模板键 + 楼栋 → loss_base_form_b{栋id}', () => {
+    expect(tenantExceptionReqs({ ...f, key: 'loss_base_form_b{bid}', bid: 32, value: 6 }, '2024-02'))
+      .toEqual([{ key: 'loss_base_form_b32', scope: 'tenant:9', acctMonth: '2024-02', mode: 'from', value: 6, note: '包干' }])
+  })
+  it('[删] 整组:主键行 + 配套键同 (月,方式) 行都发 value=null', () => {
+    const r = row({ key: 'water', group: 'constant', scope: 'tenant:9', scopeLabel: '鑫皇（户）', mode: 'from', acctMonth: '2024-02' })
+    expect(tenantExceptionDelReqs(r)).toEqual([
+      { key: 'water', scope: 'tenant:9', acctMonth: '2024-02', mode: 'from', value: null },
+      { key: 'water_pipe', scope: 'tenant:9', acctMonth: '2024-02', mode: 'from', value: null },
+    ])
+    expect(tenantExceptionDelReqs(row({ key: 'green_rate', group: 'tenant', scope: 'tenant:9', scopeLabel: '鑫皇（户）' })))
+      .toEqual([{ key: 'green_rate', scope: 'tenant:9', acctMonth: '', mode: 'from', value: null }])
   })
 })
 

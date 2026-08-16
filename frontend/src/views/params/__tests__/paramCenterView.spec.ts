@@ -8,9 +8,10 @@ import { forbiddenText } from '@/utils/paramCenterLogic'
 beforeEach(() => setActivePinia(createPinia()))
 
 const push = vi.fn()
+const query: Record<string, string> = { ym: '2024-02', zone: 'p1' }   // 深链;单测里可临时加 edit=1
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
-  useRoute: () => ({ query: { ym: '2024-02', zone: 'p1' } }),
+  useRoute: () => ({ query }),
 }))
 
 let id = 0
@@ -38,6 +39,12 @@ const ROWS: ParamRowDTO[] = [
   row({ key: 'loss_supply_meter', label: '供电侧对账总表', group: 'rule', scope: 'p1', scopeLabel: '一期', value: 5, valueText: 'B-G座总电' }),
   row({ key: 'mgmt_fee', label: '电力管理费（分时 / 居民）', unit: '元/度', group: 'constant', scope: 'tenant:5', scopeLabel: '力灏（户）', value: 0.15,
     valueText: '0.15 元/度', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }),
+  // 户级版本起点晚于 ym:后端出的是继承全园的行(rowId 空)—— 不是例外,④ 不列
+  row({ key: 'capacity_fee', label: '装机容量费', unit: '元/kVA·月', group: 'constant', scope: 'tenant:5', scopeLabel: '力灏（户）', value: 22.6,
+    valueText: '22.6 元/kVA·月', sourceChain: ['全园:22.6 元/kVA·月'], rowId: null }),
+  // 全园级电价本月无值:月核对项不折叠,值格「— 缺」
+  row({ key: 'elec_valley', label: '谷段裸电价', unit: '元/度', group: 'monthly', scope: '', scopeLabel: '全园', value: null,
+    valueText: '', mode: null, acctMonth: '', rangeText: '', sourceChain: [], monthlyCheck: true, rowId: null }),
 ]
 const STATUS: ParamStatusDTO = {
   priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,
@@ -112,28 +119,52 @@ describe('ParamCenterView 计费参数页', () => {
     w.unmount()
   })
 
-  it('无命中的行默认折叠,点「显示未设置项」展开;③ 口径无命中显默认语义', async () => {
+  it('无命中的对象级行默认折叠,点「显示未设置项」展开;全园级月核对项无值常显 + 「缺」;③ 口径无命中显默认语义', async () => {
     const w = await mountPage()
-    const bRow = () => w.findAll('.pm-table tbody tr').some(tr => tr.text().includes('一期 B座') && tr.text().includes('损耗调整度数'))
-    expect(bRow()).toBe(false)                                 // ① 未设置行藏起
+    const trs = () => w.findAll('.pm-table tbody tr')
+    const bRow = () => trs().some(tr => tr.text().includes('一期 B座') && tr.text().includes('损耗调整度数'))
+    expect(bRow()).toBe(false)                                 // ① 栋级未设置行藏起
+    const valley = trs().find(tr => tr.text().includes('谷段裸电价'))!
+    expect(valley, '全园级电价无值不折叠').toBeTruthy()
+    expect(valley.text()).toContain('缺')
     expect(w.text()).toContain('参与供电侧对账：参与对账')   // ③ 默认语义始终列
     const link = w.findAll('button.pm-link').find(b => b.text().includes('显示未设置项'))!
-    expect(link.text()).toContain('（1）')
+    expect(link.text()).toContain('（1）')                    // 只数被折叠的对象级行
     await link.trigger('click')
     expect(bRow()).toBe(true)
     w.unmount()
   })
 
-  it('浏览态零写入口:编辑模式后才出 [改…] / [新增例外] / [复制上月电价]', async () => {
+  it('④ 只列该户自己的版本行:继承全园的 tenant 行(rowId 空)不当例外', async () => {
+    const w = await mountPage()
+    const t4 = w.find('#sec-tenant').text()
+    expect(t4).toContain('电力管理费')
+    expect(t4).not.toContain('装机容量费')
+    w.unmount()
+  })
+
+  it('浏览态零写入口:编辑模式后才出 [改…] / [新增例外] / [复制上月电价] / [重算本月]', async () => {
     const w = await mountPage()
     const texts = () => w.findAll('button').map(b => b.text())
     expect(texts().some(s => s === '改…')).toBe(false)
     expect(texts().some(s => s.includes('新增例外'))).toBe(false)
+    expect(texts().some(s => s.includes('重算本月'))).toBe(false)
     await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
     expect(texts().filter(s => s === '改…').length).toBeGreaterThan(3)
     expect(texts().some(s => s.includes('新增例外'))).toBe(true)
     expect(texts().some(s => s.includes('复制上月电价'))).toBe(true)
+    expect(texts().some(s => s.includes('重算本月'))).toBe(true)
     w.unmount()
+  })
+
+  it('深链 edit=1(三屏 [去重算])直接进编辑态:重算本月可点', async () => {
+    query.edit = '1'
+    try {
+      const w = await mountPage()
+      expect(w.findAll('button').some(b => b.text().includes('重算本月'))).toBe(true)
+      expect(w.findAll('button').some(b => b.text() === '完成')).toBe(true)
+      w.unmount()
+    } finally { delete query.edit }
   })
 
   it('保存:PUT 带页面账期 → 只 patch 该行(其它行引用不变)+ 状态条「参数已改 1 项」', async () => {
@@ -180,6 +211,18 @@ describe('ParamEditPopover 改…弹窗', () => {
     expect(ev).toHaveLength(1)
     expect(ev[0][0]).toEqual({ key: 'loss_adj_qty', scope: 'building:13', acctMonth: '2024-02', mode: 'month', value: -1400, note: null, correction: false })
     w.unmount()
+  })
+  it('只能按月生效的键(电价)不出「自 X 起长期」;损耗调整度数照出', async () => {
+    const ways = () => [...document.querySelectorAll('.fp-dwr .pe-way')].map(l => l.textContent?.trim())
+    const w1 = mount(ParamEditPopover, { props: { open: true, row: ROWS[0], ym: '2024-02' }, attachTo: document.body })   // elec_peak
+    await flushPromises()
+    expect(ways().some(s => s?.includes('起长期'))).toBe(false)
+    expect(ways().some(s => s?.includes('仅 2024-02'))).toBe(true)
+    w1.unmount()
+    const w2 = mount(ParamEditPopover, { props: { open: true, row: aRow, ym: '2024-02' }, attachTo: document.body })
+    await flushPromises()
+    expect(ways().some(s => s?.includes('起长期'))).toBe(true)
+    w2.unmount()
   })
   it('有本月专属行 → 出「删除本月专属值」;点它 emit value=null 的 month 行删除', async () => {
     const w = mount(ParamEditPopover, { props: { open: true, row: aRow, ym: '2024-02' }, attachTo: document.body })

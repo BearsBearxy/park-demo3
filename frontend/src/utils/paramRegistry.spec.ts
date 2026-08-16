@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PARAM_DEFS, paramDef, type ParamDef } from './paramRegistry'
+import { PARAM_DEFS, paramDef, writePlan, type ParamDef } from './paramRegistry'
 import fixture from './__fixtures__/param-registry.json'
 
 // 后端 ParamRegistryTest.exportJson 导出的镜像(字段名对齐 ParamDef;null=无)
@@ -23,7 +23,7 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
     expect(new Set(PARAM_DEFS.map(d => d.key)).size).toBe(PARAM_DEFS.length)
     expect(PARAM_DEFS.length).toBe(43)
   })
-  it('逐键 label/unit/group/defaultMode/monthlyCheck/valueKind/enumOptions/formula/hint/tenantEditable/pairedWith 相同', () => {
+  it('逐键 label/unit/group/defaultMode/monthlyCheck/valueKind/enumOptions/formula/hint/tenantEditable/pairedWith/monthOnly 相同', () => {
     for (const f of FIX) {
       const d = paramDef(f.key)!
       expect(d, f.key).toBeDefined()
@@ -37,8 +37,16 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
       if (f.hint) norm.hint = f.hint
       if (f.tenantEditable) norm.tenantEditable = true
       if (f.pairedWith) norm.pairedWith = f.pairedWith
+      // 后端 ParamService.write:价目表 && MONTHLY_KEYS(默认 month) 的键 mode≠month → 400「只能按月生效」;前端弹窗/新增例外据此藏 from
+      if (f.table === 'price' && f.defaultMode === 'month') norm.monthOnly = true
       expect(d, f.key).toEqual(norm)
     }
+  })
+  it('只能按月生效的键 = 电价 6 键 + 照抄金额(7 键);损耗月参(alloc 表)不受限', () => {
+    expect(PARAM_DEFS.filter(d => d.monthOnly).map(d => d.key)).toEqual([
+      'elec_commercial', 'elec_peak', 'elec_sharp', 'elec_flat', 'elec_valley', 'elec_resident', 'loss_base_park_amount'])
+    expect(paramDef('loss_adj_qty')?.monthOnly).toBeUndefined()
+    expect(paramDef('extra_qty')?.monthOnly).toBeUndefined()
   })
 })
 
@@ -81,5 +89,23 @@ describe('人话铁律(spec §5.2)', () => {
       'water_pipe', 'elec_package', 'share_elec_fixed', 'share_water_fixed', 'green_rate', 'lamp_rate',
       'fire_amount_fixed', 'loss_base_form', 'loss_base_form_b{bid}', 'loss_base_park_meter'])
     expect(paramDef('mgmt_fee')?.pairedWith).toBe('mgmt_fee_commercial')
+  })
+})
+
+describe('writePlan 户级例外配套写计划(spec §3.4;参数页 ④ 与系数簿共用)', () => {
+  it('管理费双键同值 / 水价配 管网费=0 / 包干电价配 双 mgmt=0;其余只写自身', () => {
+    expect(writePlan('mgmt_fee')).toEqual([{ key: 'mgmt_fee' }, { key: 'mgmt_fee_commercial' }])
+    expect(writePlan('water')).toEqual([{ key: 'water' }, { key: 'water_pipe', fixed: 0 }])
+    expect(writePlan('elec_package')).toEqual([{ key: 'elec_package' }, { key: 'mgmt_fee', fixed: 0 }, { key: 'mgmt_fee_commercial', fixed: 0 }])
+    expect(writePlan('capacity_fee')).toEqual([{ key: 'capacity_fee' }])
+    expect(writePlan('loss_base_form_b32')).toEqual([{ key: 'loss_base_form_b32' }])
+  })
+  it('计划首键=主键;配套键皆已注册且允许户级;pairedWith 一定在计划里', () => {
+    for (const d of PARAM_DEFS.filter(x => x.tenantEditable)) {
+      const plan = writePlan(d.key)
+      expect(plan[0]).toEqual({ key: d.key })
+      for (const w of plan) expect(paramDef(w.key)?.tenantEditable, `${d.key} → ${w.key}`).toBe(true)
+      if (d.pairedWith) expect(plan.map(w => w.key)).toContain(d.pairedWith)
+    }
   })
 })

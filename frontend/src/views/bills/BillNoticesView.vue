@@ -97,16 +97,19 @@ const staleMsg = computed(() => staleText(status.value, 'bill'))
 // 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh
 const router = useRouter()
 const tabs = useTabsStore()
+// edit=1:[去重算] 落地直接进编辑态(参数页的重算按钮只在编辑态出)
 function gotoParams() {
   tabs.openFresh('params', { pin: true })
-  router.push({ path: '/params', query: { ym: ym.value } })
+  router.push({ path: '/params', query: { ym: ym.value, edit: '1' } })
 }
 // 页签切回:参数页那边可能刚重算过 —— 批次时间变了就整月重拉(单与 stale 条一起变新),没变只刷状态
+// (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
-  const before = status.value?.billBatchAt
+  const my = seq, before = status.value?.billBatchAt
   const st = await paramsApi.status(ym.value).catch(() => null)
-  if (st && st.billBatchAt !== before) loadMonth()
-  else if (st) status.value = st
+  if (my !== seq || !st) return
+  if (st.billBatchAt !== before) loadMonth()
+  else status.value = st
 })
 onMounted(async () => {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => { /* 楼栋失败按 premise 回退归期 */ })

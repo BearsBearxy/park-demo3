@@ -4,7 +4,8 @@
 // 每行=人话(作用范围/值/生效区间/来自 = 命中链尾)由后端 GET /api/params 解析,本页只分组渲染(utils/paramCenterLogic)。
 // 编辑态(EDIT-MODE-SPEC v2:浏览态零写入口;onDeactivated 复位)每行 [改…] → ParamEditPopover(值 | 生效方式 | 备注)→ PUT /api/params
 // → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二)+ 状态条「参数已改 N 项」→ [重算本月](池 → 损耗 → 催缴单)闭环(spec §5.5)。
-// ①② ④ 无命中的行(未设置)默认折叠(一期 2024-02 有 480+ 行,只 60 来行有值),按区展开;③ 口径行无命中=默认语义,始终全列。
+// ①② 无命中的对象级行(栋/池/表,未设置)默认折叠(一期 2024-02 有 480+ 行,只 60 来行有值),按区展开;全园/期级月核对项常显并标「缺」;
+// ③ 口径行无命中=默认语义,始终全列;④ 只列该户自己的版本行(rowId 非空,继承上级的不算例外)。
 // 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px + 单元格 nowrap/ellipsis/title。
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,8 +16,11 @@ import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
-import { groupRows, pendingSummary, rangeBadge, sourceLabel, type ParamRow, type RuleGroup } from '@/utils/paramCenterLogic'
-import { PARAM_DEFS, paramDef, type ParamMode } from '@/utils/paramRegistry'
+import {
+  groupRows, pendingSummary, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
+  type ParamRow, type RuleGroup,
+} from '@/utils/paramCenterLogic'
+import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -38,7 +42,10 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态,浮层一并关 ──
 const editMode = ref(false)
-onDeactivated(() => { editMode.value = false; editRow.value = null; exOpen.value = false; addExcl.value = null })
+onDeactivated(() => {
+  editMode.value = false; editRow.value = null; exOpen.value = false; addExcl.value = null
+  histRow.value = null; changesOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
+})
 
 // ── 账期 + 期区(全园 | 一期 | 二期 | 宿舍) ──
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -89,7 +96,8 @@ function loadMasters() {
   tenantApi.list().then(d => { tenants.value = d }).catch(() => {})
   allocApi.rules().then(d => { rules.value = d }).catch(() => {})
 }
-// 其它屏跳来的深链:?ym=2024-02&zone=p1&section=rule&rule=23(楼栋损耗 / 公共电核算 的「去计费参数」)
+// 其它屏跳来的深链:?ym=2024-02&zone=p1&section=rule&rule=23(楼栋损耗 / 公共电核算 的「去计费参数」);
+// edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
 const route = useRoute()
 const router = useRouter()
 const hlScope = ref('')
@@ -99,6 +107,7 @@ function applyHandoff(): boolean {
   if (typeof q.zone === 'string' && ZONE_OPTS.some(o => o.value === q.zone)) zone.value = q.zone as ParamZone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
+  if (q.edit === '1') editMode.value = true
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
   if (!m) return false
   year.value = +m[1]; month.value = +m[2]
@@ -123,17 +132,22 @@ onMounted(async () => {
 })
 watch([year, month, zone], load)
 
-// ── 四区分组 + 未设置折叠(①②④:无命中行默认藏起来,按区展开;③ 无命中=默认语义,始终全列) ──
+// ── 四区分组 + 未设置折叠(①②:无命中的**对象级**行(栋/池/表)默认藏起来,按区展开;全园/期级月核对项无值常显 + 「缺」——
+//    折叠是为压掉几百条栋级/池级空行,不该连状态条「缺 6 项」的电价一起藏;③ 无命中=默认语义,始终全列) ──
 const grouped = computed(() => groupRows(rows.value ?? []))
 const hasHit = (r: ParamRow) => r.mode != null
+const objectScope = (s: string) => s.startsWith('building:') || s.startsWith('rule:') || s.startsWith('meter:')
+const missing = (r: ParamRow) => !hasHit(r) && r.monthlyCheck && !objectScope(r.scope)   // 全园/期级月核对项本月无值
+const foldable = (r: ParamRow) => !hasHit(r) && !missing(r)
 const showEmpty = ref({ monthly: false, constant: false })
 function split(list: ParamRow[], key: 'monthly' | 'constant') {
-  const hidden = list.filter(r => !hasHit(r)).length
-  return { rows: showEmpty.value[key] ? list : list.filter(hasHit), hidden }
+  const hidden = list.filter(foldable).length
+  return { rows: showEmpty.value[key] ? list : list.filter(r => !foldable(r)), hidden }
 }
 const monthly = computed(() => split(grouped.value.monthly, 'monthly'))
 const constant = computed(() => split(grouped.value.constant, 'constant'))
-const tenantRows = computed(() => grouped.value.tenant.filter(hasHit))
+// ④ 只列该户自己命中的版本行:户级版本起点晚于 ym 时后端出的是继承上级的行(rowId 空),它不是例外、也没有可删的行
+const tenantRows = computed(() => grouped.value.tenant.filter(r => r.rowId != null))
 
 // ③ 口径:期级组在前、栋级组次之;表级「剔出合计」行按表所在栋归到该栋组下(表主数据未到时暂列「其它表」);池级披露行(2023 冻结价)殿后
 interface BuildingRuleGroup extends RuleGroup { bid: number; excludes: ParamRow[] }
@@ -195,20 +209,29 @@ function bumpPending() {
   if (s.poolSnapshotAt || s.billBatchAt) s.stale = true
 }
 async function put(req: ParamPutReq): Promise<boolean> {
+  const my = seq
   try {
     const nr = await paramsApi.put(req, ym.value)
+    if (my !== seq) return true          // 回包前换了月:写已成功,但别把旧月的行 patch 进新月列表
     patchRow(nr, req.value == null)
     bumpPending()
     return true
   } catch (e) { alert(errMsg(e, '保存失败')); return false }
 }
+// 成组写(④ 写计划:主键 + 配套键),中途失败即停(已写的留着;alert 已出)
+async function putAll(reqs: ParamPutReq[]): Promise<boolean> {
+  for (const r of reqs) if (!(await put(r))) return false
+  return true
+}
 async function onSave(req: ParamPutReq) {
   if (await put(req)) editRow.value = null
 }
-// ④ [删]:删该户命中的版本行(后端拦已被生成月取用的行)
+// ④ [删]:按写计划整组删该户的版本行(主键 + 配套键;后端拦已被生成月取用的行)
 function delTenantRow(r: ParamRow) {
-  if (!confirm(`确认删除「${r.scopeLabel} · ${r.label}」例外（${r.rangeText}）？删除后该户回退默认值。`)) return
-  put({ key: r.key, scope: r.scope, acctMonth: r.acctMonth, mode: r.mode, value: null })
+  const mates = writePlan(r.key).slice(1).map(w => paramDef(w.key)?.label).filter(Boolean)
+  const extra = mates.length ? `连同配套的「${mates.join('」「')}」一起删除，` : ''
+  if (!confirm(`确认删除「${r.scopeLabel} · ${r.label}」例外（${r.rangeText}）？${extra}删除后该户回退默认值。`)) return
+  putAll(tenantExceptionDelReqs(r))
 }
 
 // 弹窗引用型值的候选:并入他栋 → 同期楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
@@ -244,10 +267,12 @@ async function submitExcl() {
   if (await put({ key: 'loss_exclude', scope: `meter:${a.meterId}`, acctMonth: ym.value, mode: 'from', value: 1 })) addExcl.value = null
 }
 
-// ④ [+ 新增例外]:租户(FPTenantPicker)+ 键(注册表 tenantEditable)+ 值 + 生效方式 + 备注;成对键(电力管理费双键)同值写两条
+// ④ [+ 新增例外]:租户(FPTenantPicker)+ 键(注册表 tenantEditable)+ 值 + 生效方式 + 备注;
+// 写序列按注册表写计划成组展开(水价配管网费=0 / 包干价配双 mgmt=0 / 管理费双键同值 —— 与系数簿同一份 writePlan);
+// 「损耗费基数形态（按栋）」多选一个楼栋(该户挂表所在栋 = 损耗链成员栋)拼 loss_base_form_b{栋id}
 const exOpen = ref(false)
-const ex = ref({ tenantId: null as number | null, key: '', val: '', mode: 'from' as ParamMode, note: '' })
-const exKeyOpts = PARAM_DEFS.filter(d => d.tenantEditable && !d.key.includes('{')).map(d => ({ value: d.key, label: d.unit ? `${d.label}（${d.unit}）` : d.label }))
+const ex = ref({ tenantId: null as number | null, key: '', val: '', bid: '' as string, mode: 'from' as ParamMode, note: '' })
+const exKeyOpts = PARAM_DEFS.filter(d => d.tenantEditable).map(d => ({ value: d.key, label: d.unit ? `${d.label}（${d.unit}）` : d.label }))
 const exDef = computed(() => paramDef(ex.value.key))
 const exValOpts = computed<RefOption[]>(() => {
   const d = exDef.value
@@ -257,10 +282,28 @@ const exValOpts = computed<RefOption[]>(() => {
   return []
 })
 const exPickable = computed(() => exDef.value?.valueKind === 'enum' || exDef.value?.valueKind === 'ref_meter')
+const exByBuilding = computed(() => ex.value.key === LOSS_BASE_FORM_B_TEMPLATE)
+const exBuildingOpts = computed<RefOption[]>(() => {
+  const mine = new Set(meters.value.filter(m => m.tenantId === ex.value.tenantId).map(m => m.buildingId))
+  const bs = mine.size ? buildings.value.filter(b => mine.has(b.id)) : buildings.value   // 该户无挂表(或表未载入)时退到全部楼栋
+  return bs.map(b => ({ value: String(b.id), label: b.name }))
+})
 const tenantOpts = computed(() => tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName })))
-const EX_MODE_OPTS = computed(() => [{ value: 'month', label: `仅 ${ym.value}` }, { value: 'from', label: `自 ${ym.value} 起长期` }])
+// 只能按月生效的键(照抄金额)不出「自 X 起长期」(后端 400 的镜像);默认生效方式按键取
+const exModeOpts = computed(() => [
+  { value: 'month', label: `仅 ${ym.value}` },
+  ...(exDef.value?.monthOnly ? [] : [{ value: 'from', label: `自 ${ym.value} 起长期` }]),
+])
+function setExKey(key: string) {
+  ex.value.key = key; ex.value.val = ''; ex.value.bid = ''
+  ex.value.mode = paramDef(key)?.defaultMode ?? 'from'
+}
+// 配套写提示:「水管网维护费 = 0」/「商业维护费同值」
+const exMates = computed(() => writePlan(ex.value.key).slice(1)
+  .map(w => `${paramDef(w.key)?.label ?? w.key}${w.fixed != null ? ` = ${w.fixed}` : '同值'}`).join('、'))
 function openEx() {
-  ex.value = { tenantId: null, key: exKeyOpts[0]?.value ?? '', val: '', mode: 'from', note: '' }
+  ex.value = { tenantId: null, key: '', val: '', bid: '', mode: 'from', note: '' }
+  setExKey(exKeyOpts[0]?.value ?? '')
   exOpen.value = true
 }
 async function submitEx() {
@@ -268,18 +311,19 @@ async function submitEx() {
   const v = t.val.trim() === '' ? NaN : Number(t.val)
   if (!t.tenantId) { alert('请选择租户'); return }
   if (!d || !Number.isFinite(v)) { alert('请输入值'); return }
-  const scope = `tenant:${t.tenantId}`
-  const base = { scope, acctMonth: ym.value, mode: t.mode, value: v, note: t.note.trim() || null }
-  if (!(await put({ key: d.key, ...base }))) return
-  if (d.pairedWith) await put({ key: d.pairedWith, ...base })
-  exOpen.value = false
+  if (exByBuilding.value && !t.bid) { alert('请选择楼栋'); return }
+  const reqs = tenantExceptionReqs({ tenantId: t.tenantId, key: d.key, bid: t.bid ? Number(t.bid) : null, value: v, mode: t.mode, note: t.note.trim() || null }, ym.value)
+  if (await putAll(reqs)) exOpen.value = false
 }
 function gotoCoefBook() { router.push({ path: '/bill-notices', query: { ym: ym.value, coef: '1' } }) }
 
 // ── 闭环:重算本月(池 → 损耗 → 催缴单)/ 复制上月电价 ──
 const busy = ref(false)
 async function onRecalc() {
-  if (!confirm(`确认重算 ${ym.value}？将按当前参数重新生成 池核算 / 楼栋损耗 / 催缴单（已确认、已导出的户照旧跳过）。`)) return
+  // 从未生成过催缴单的月(spec §10.6):「重算」其实是首次生成,用户须知道会新添一批催缴单
+  const first = status.value && !status.value.billBatchAt
+    ? `。注意：${ym.value} 尚无催缴单，本次将首次生成该月催缴单批次。` : '（已确认、已导出的户照旧跳过）。'
+  if (!confirm(`确认重算 ${ym.value}？将按当前参数重新生成 池核算 / 楼栋损耗 / 催缴单${first}`)) return
   busy.value = true
   flash.value = ''
   try {
@@ -349,7 +393,8 @@ const FIXED_RULES = [
       <component :is="iconFor(stale ? 'alert-triangle' : 'info')" :size="14" />
       <span class="pm-status-text">{{ summary || '状态未知（状态接口不可用）' }}</span>
       <span v-if="flash" class="pm-flash">{{ flash }}</span>
-      <Button v-if="canEdit && (editMode || stale)" variant="outline" size="sm" :disabled="busy" @click="onRecalc">
+      <!-- 重算=池/损耗/催缴单三表先删后插,是写操作:只在编辑态出(EDIT-MODE v2);三屏 [去重算] 深链带 edit=1 直接进编辑态 -->
+      <Button v-if="canEdit && editMode" variant="outline" size="sm" :disabled="busy" @click="onRecalc">
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
         重算本月
       </Button>
@@ -391,7 +436,10 @@ const FIXED_RULES = [
                   <span class="dim">{{ carriedText(r) }}</span>
                   <Badge tone="orange" variant="subtle" :dot="false">未核对</Badge>
                 </template>
-                <span v-else-if="!hasHit(r)" class="dim">—</span>
+                <template v-else-if="!hasHit(r)">
+                  <span class="dim">—</span>
+                  <Badge v-if="missing(r)" tone="orange" variant="subtle" :dot="false">缺</Badge>
+                </template>
                 <template v-else>{{ r.valueText }}</template>
               </td>
               <td><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
@@ -581,10 +629,14 @@ const FIXED_RULES = [
     <ParamChangesDrawer :open="changesOpen" :ym="ym" @close="changesOpen = false" />
 
     <!-- ④ 新增例外 -->
-    <FPDrawer :open="exOpen" title="新增户级例外" :subtitle="`自 ${ym} 起（可改为仅本月）；只影响该户，覆盖期 / 全园默认值`" icon="plus" :width="520" @close="exOpen = false">
+    <FPDrawer :open="exOpen" title="新增户级例外" :subtitle="`账期 ${ym}；只影响该户，覆盖期 / 全园默认值`" icon="plus" :width="520" @close="exOpen = false">
       <div class="pm-exform">
         <label class="pm-exfield"><span class="k">租户</span><FPTenantPicker v-model="ex.tenantId" :tenants="tenantOpts" placeholder="搜索并选择租户" /></label>
-        <label class="pm-exfield"><span class="k">参数</span><Select :options="exKeyOpts" :model-value="ex.key" size="sm" @update:model-value="ex.key = $event; ex.val = ''" /></label>
+        <label class="pm-exfield"><span class="k">参数</span><Select :options="exKeyOpts" :model-value="ex.key" size="sm" @update:model-value="setExKey($event)" /></label>
+        <label v-if="exByBuilding" class="pm-exfield">
+          <span class="k">楼栋（该户所在损耗链的任一成员栋）</span>
+          <Select :options="exBuildingOpts" :model-value="ex.bid" size="sm" placeholder="请选择楼栋" @update:model-value="ex.bid = $event" />
+        </label>
         <label class="pm-exfield">
           <span class="k">值<span v-if="exDef?.unit" class="pm-unit">{{ exDef.unit }}</span></span>
           <Select v-if="exPickable" :options="exValOpts" :model-value="ex.val" size="sm" placeholder="请选择" @update:model-value="ex.val = $event" />
@@ -592,9 +644,9 @@ const FIXED_RULES = [
                  @input="ex.val = ($event.target as HTMLInputElement).value" />
           <span v-if="exDef?.hint" class="pm-exhint">{{ exDef.hint }}</span>
         </label>
-        <label class="pm-exfield"><span class="k">生效方式</span><Segmented :options="EX_MODE_OPTS" :model-value="ex.mode" size="sm" @update:model-value="ex.mode = $event as ParamMode" /></label>
+        <label class="pm-exfield"><span class="k">生效方式</span><Segmented :options="exModeOpts" :model-value="ex.mode" size="sm" @update:model-value="ex.mode = $event as ParamMode" /></label>
         <label class="pm-exfield"><span class="k">备注</span><input v-model="ex.note" class="pm-exin txt" type="text" placeholder="来源 / 依据" /></label>
-        <p v-if="exDef?.pairedWith" class="pm-exhint">配套键「{{ paramDef(exDef.pairedWith)?.label }}」同值成对写。</p>
+        <p v-if="exMates" class="pm-exhint">配套同写：{{ exMates }}。</p>
       </div>
       <template #footer>
         <Button variant="outline" size="sm" @click="exOpen = false">取消</Button>
@@ -632,7 +684,7 @@ const FIXED_RULES = [
 
 /* 表格:定宽列律 + 等高行(--mx-row-h 56px);内容 ellipsis 不撑行 */
 .pm-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--font-sans); }
-.pm-table th { position: sticky; top: 0; z-index: 2; background: var(--surface-white); padding: 8px 14px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
+.pm-table th { background: var(--surface-white); padding: 8px 14px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
 .pm-table tbody tr { height: var(--mx-row-h, 56px); border-bottom: 1px solid var(--divider); }
 .pm-table tbody tr:last-child { border-bottom: none; }
 .pm-table tbody tr.hl td { background: rgb(255, 250, 225); }

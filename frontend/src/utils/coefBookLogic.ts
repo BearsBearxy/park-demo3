@@ -1,5 +1,5 @@
 // 系数簿纯逻辑(S14-COEF-BOOK-SPEC §2/§3;S21 起键源=计费参数注册表):COEF_KEYS=注册表 tenantEditable 价目键
-// (label/单位/值类型/枚举字典皆取自 paramRegistry;配套写计划仍按 S14 §3.1 约定)+ 二期层份两键、
+// (label/单位/值类型/枚举字典/配套写计划皆取自 paramRegistry —— 写计划与参数页 ④ 共用一份 writePlan)+ 二期层份两键、
 // 行构建(期归属复用 billNoticeLogic.resolvePhase,按楼栋分组走 groupByBuilding)、
 // 当前生效值解析(价目键=GET /params?ym&key= 后端已级联解析,前端按 户→期→全园 找行;层份键=GET /alloc/pools?ym 成员行)、
 // 暂存模型 Map<tenantId, value|null>(null=清除:删该月版本/回自动分)与提交计划
@@ -8,11 +8,11 @@ import type { ParamPutReq, ParamRowDTO } from '@/api/params'
 import type {
   AllocFeeKey, AllocLinkType, AllocMethod, AllocRuleReq, AllocStdKind, AllocZone,
 } from '@/api/alloc'
-import { PARAM_DEFS, type ParamDef, type ParamValueKind } from './paramRegistry'
+import { PARAM_DEFS, writePlan, type ParamDef, type ParamValueKind, type ParamWrite } from './paramRegistry'
 import { resolvePhase, tenantBuildings, type TenantBuildings } from './billNoticeLogic'
 
 // ── 注册表:label/unit/写计划(fixed=配套键写死值,缺省=写用户值)/层份类挂池费项/值类型(enum 给字典) ──
-export interface CoefWrite { key: string; fixed?: number }
+export type CoefWrite = ParamWrite
 export interface CoefKeyMeta {
   id: string
   label: string
@@ -25,20 +25,11 @@ export interface CoefKeyMeta {
   enumOptions?: Record<number, string>
 }
 
-// 配套写计划(S14 §3.1 户级例外惯例;注册表只标 pairedWith,写死值约定在这里):缺省=只写自身
-const WRITES: Record<string, { writes: CoefWrite[]; hint: string }> = {
-  mgmt_fee: {
-    writes: [{ key: 'mgmt_fee' }, { key: 'mgmt_fee_commercial' }],
-    hint: '双键同值成对写(tenant-price-exceptions 惯例,引擎走哪支都被压过);默认 0.16 不落户级行',
-  },
-  water: {
-    writes: [{ key: 'water' }, { key: 'water_pipe', fixed: 0 }],
-    hint: '例外惯例:户级水价配套 管网维护费=0 同写(免叠默认管网费)',
-  },
-  elec_package: {
-    writes: [{ key: 'elec_package' }, { key: 'mgmt_fee', fixed: 0 }, { key: 'mgmt_fee_commercial', fixed: 0 }],
-    hint: '包干价已含管理费:配套双 mgmt 键=0 成组写',
-  },
+// 配套写计划取注册表 writePlan(与参数页 ④ 同一份);这里只放系数簿的窗口提示语
+const WRITE_HINTS: Record<string, string> = {
+  mgmt_fee: '双键同值成对写(tenant-price-exceptions 惯例,引擎走哪支都被压过);默认 0.16 不落户级行',
+  water: '例外惯例:户级水价配套 管网维护费=0 同写(免叠默认管网费)',
+  elec_package: '包干价已含管理费:配套双 mgmt 键=0 成组写',
 }
 // 配套键只随主键成组写,不单列
 const SECONDARY = new Set(['mgmt_fee_commercial', 'water_pipe'])
@@ -47,8 +38,8 @@ const SECONDARY = new Set(['mgmt_fee_commercial', 'water_pipe'])
 const BATCH_KINDS = new Set<ParamValueKind>(['number', 'rate', 'money', 'int', 'enum'])
 const priceMeta = (d: ParamDef): CoefKeyMeta => ({
   id: d.key, label: d.label, unit: d.unit, floorShare: false, feeKey: null,
-  writes: WRITES[d.key]?.writes ?? [{ key: d.key }],
-  hint: WRITES[d.key]?.hint ?? d.hint ?? '',
+  writes: writePlan(d.key),
+  hint: WRITE_HINTS[d.key] ?? d.hint ?? '',
   valueKind: d.valueKind, enumOptions: d.enumOptions,
 })
 const FLOOR_KEYS: CoefKeyMeta[] = [

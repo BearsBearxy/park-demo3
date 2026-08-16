@@ -1,8 +1,8 @@
 // 计费参数页纯逻辑(S21-PARAM-CENTER-SPEC §5):四区分组 / 生效区间徽标 / 页面禁词 / 状态条文案 /
 // 复制上月电价键集。行数据 = 后端 GET /api/params 的 ParamRowDTO(人话解析在后端),本文件不碰网络。
 // paramCenterLogic.spec.ts 锁定。
-import type { ParamRowDTO, ParamStatusDTO } from '@/api/params'
-import { PARAM_DEFS } from './paramRegistry'
+import type { ParamPutReq, ParamRowDTO, ParamStatusDTO } from '@/api/params'
+import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, writePlan, type ParamMode } from './paramRegistry'
 
 export type ParamRow = ParamRowDTO
 export type ParamStatus = ParamStatusDTO
@@ -47,6 +47,19 @@ export function sourceLabel(r: ParamRow): string {
   if (r.scope.startsWith('tenant:')) return chain[1] ? `户级例外（覆盖 ${chain[1].replace(':', ' ')}）` : '户级例外'
   const kind = r.scope.startsWith('building:') ? '栋' : r.scope.startsWith('rule:') ? '池' : r.scope.startsWith('meter:') ? '表' : '期'
   return `本${kind}设定`
+}
+
+// ── ④ 户级例外的写序列(spec §3.4):按注册表 writePlan 成组展开(配套键 fixed 值 / 同值);
+//    「损耗费基数形态（按栋）」是模板键,拼该户所在损耗链的楼栋 id → loss_base_form_b{bid} ──
+export interface TenantExceptionForm { tenantId: number; key: string; bid?: number | null; value: number; mode: ParamMode; note: string | null }
+export function tenantExceptionReqs(f: TenantExceptionForm, ym: string): ParamPutReq[] {
+  const key = f.key === LOSS_BASE_FORM_B_TEMPLATE ? `loss_base_form_b${f.bid}` : f.key
+  const scope = `tenant:${f.tenantId}`
+  return writePlan(key).map(w => ({ key: w.key, scope, acctMonth: ym, mode: f.mode, value: w.fixed ?? f.value, note: f.note }))
+}
+// ④ [删]:按同一写计划整组删(配套键取同版本行;ponytail: 配套键若是单独另录的版本,同 (月,方式) 才会一起删,不同则留;无该行后端 no-op)
+export function tenantExceptionDelReqs(r: ParamRow): ParamPutReq[] {
+  return writePlan(r.key).map(w => ({ key: w.key, scope: r.scope, acctMonth: r.acctMonth, mode: r.mode, value: null }))
 }
 
 // ── 页面禁词(spec §5.2 / §8.4):字段值与内部标识不得上屏;页面 spec 用它扫全文 ──

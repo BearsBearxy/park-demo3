@@ -118,11 +118,13 @@ async function loadMonth() {
   }
 }
 // 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
+// (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 async function refreshStatus() {
-  const before = status.value?.poolSnapshotAt
+  const my = seq, before = status.value?.poolSnapshotAt
   const st = await paramsApi.status(ym.value).catch(() => null)
-  if (st && st.poolSnapshotAt !== before) loadMonth()
-  else if (st) status.value = st
+  if (my !== seq || !st) return
+  if (st.poolSnapshotAt !== before) loadMonth()
+  else status.value = st
 }
 const staleMsg = computed(() => staleText(status.value, 'pool'))
 // §E2 隐患①:rules 载入失败过去被 .catch(()=>{}) 全静默 —— openPoolDlg 从 ruleById 取
@@ -245,8 +247,6 @@ async function onExport() {
 
 // ── §H3 二期 2023 冻结参数披露:V83 落在 alloc_cfg 的 rule:{id} 初始版本行(不随月份变=冻结)。
 //    note 原文进「分摊标准」列 title,格上加 ❄ 让它不用悬停也看得见。──
-const ruleParam = (ruleId: number, key: string) =>
-  paramRows.value.find(r => r.scope === `rule:${ruleId}` && r.key === key)
 const frozenNote = computed(() => {
   const m = new Map<number, string>()
   for (const r of paramRows.value)
@@ -266,22 +266,37 @@ const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName
 // ── 池参数只读镜像(S21 §2.4):编辑态「分母/加度」两列 + 抽屉③一行,值=站在本月的生效值(不是月行也不是默认列),
 //    徽标=生效方式(仅本月 / 长期);写入口只在计费参数页(点击带 ym+池高亮跳过去) ──
 // text=格里的紧凑数;full=抽屉里的整句(走基数键的池后端给的是只读句「分母 = 一期路灯面积基数 80000（价目参数）」,格里只显数+「价目」徽标)
+// LIST-PAGE-SPEC §8:模板每格调 6 次、抽屉与表同组件(抽屉里每敲一键整表重渲染)—— 格对象按 (池,键) 在 computed 里建一次 Map,模板只 get
 interface ParamCell { text: string; full: string; badge: string; tone: 'month' | 'from' | 'inherit'; title: string; range: string }
-function paramCell(ruleId: number, key: 'coefficient' | 'extra_qty'): ParamCell {
-  const r = ruleParam(ruleId, key)
-  if (!r || r.mode == null) return { text: '–', full: '未设置', badge: '', tone: 'inherit', title: '未设置 —— 点击去计费参数页填', range: '未设置' }
-  const b = rangeBadge(r)
-  return { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText,
-    badge: !r.editable ? '价目' : b.tone === 'month' ? '仅本月' : '长期',
-    title: `${r.valueText}（${r.rangeText}）· 点击去计费参数页改` }
+const EMPTY_CELL: ParamCell = { text: '–', full: '未设置', badge: '', tone: 'inherit', title: '未设置 —— 点击去计费参数页填', range: '未设置' }
+const paramCells = computed(() => {
+  const m = new Map<string, ParamCell>()
+  for (const r of paramRows.value) {
+    if (r.mode == null || (r.key !== 'coefficient' && r.key !== 'extra_qty')) continue
+    const b = rangeBadge(r)
+    m.set(`${r.scope}|${r.key}`, { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText,
+      badge: !r.editable ? '价目' : b.tone === 'month' ? '仅本月' : '长期',
+      title: `${r.valueText}（${r.rangeText}）· 点击去计费参数页改` })
+  }
+  return m
+})
+const paramCell = (ruleId: number, key: 'coefficient' | 'extra_qty'): ParamCell => paramCells.value.get(`rule:${ruleId}|${key}`) ?? EMPTY_CELL
+// 抽屉③只读句:基数键池的 full 本身就是整句「分母 = …（价目参数）」,不再套「分母 T =」;未设置不重复括注
+function roParamLine(ruleId: number): string {
+  const c = paramCell(ruleId, 'coefficient'), e = paramCell(ruleId, 'extra_qty')
+  const coef = c.tone === 'inherit' ? '分母 T 未设置' : c.badge === '价目' ? c.full : `分母 T = ${c.full}（${c.range}）`
+  const extra = e.tone === 'inherit' ? '加度 未设置' : `加度 ${e.full}（${e.range}）`
+  return `当月${coef} · ${extra}`
 }
 const router = useRouter()
 const tabs = useTabsStore()
-// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加度=① 本月参数,分母=② 长期常数)
-function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = null) {
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加度=① 本月参数,分母=② 长期常数);
+// edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
+function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = null, edit = false) {
   tabs.openFresh('params', { pin: true })
   const section = key === 'extra_qty' ? 'monthly' : 'constant'
-  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section, ...(ruleId != null ? { rule: String(ruleId) } : {}) } })
+  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,
+    ...(ruleId != null ? { rule: String(ruleId) } : {}), ...(edit ? { edit: '1' } : {}) } })
 }
 
 // ── 池配置抽屉(V69 勾选式):四级定位→池名自动生成;组成电表/受益人按定位候选勾选 ──
@@ -693,7 +708,7 @@ async function delPool() {
     <div v-if="staleMsg" class="pl-bar warn">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>{{ staleMsg }} —— 屏上数字仍是改参前生成的,去计费参数页「重算本月」后生效。</span>
-      <Button variant="outline" size="sm" @click="gotoParams()">
+      <Button variant="outline" size="sm" @click="gotoParams(undefined, null, true)">
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
         去重算
       </Button>
@@ -845,7 +860,8 @@ async function delPool() {
               <template v-if="editMode && li === 0">
                 <td v-for="k in (['coefficient', 'extra_qty'] as const)" :key="k" :rowspan="poolSpan(r)">
                   <span class="pl-nv pl-pv" :class="{ empty: paramCell(r.ruleId, k).tone === 'inherit' }"
-                        :title="paramCell(r.ruleId, k).title" @click="gotoParams(r.ruleId, k)">
+                        :title="paramCell(r.ruleId, k).title" role="button" tabindex="0"
+                        @click="gotoParams(r.ruleId, k)" @keydown.enter.prevent="gotoParams(r.ruleId, k)">
                     <span class="v">{{ paramCell(r.ruleId, k).text }}</span>
                     <span v-if="paramCell(r.ruleId, k).badge" class="pl-badge" :class="paramCell(r.ruleId, k).tone">{{ paramCell(r.ruleId, k).badge }}</span>
                   </span>
@@ -1006,8 +1022,7 @@ async function delPool() {
             <Input v-model="form.baseKey" label="基数键(价目簿,优先于分母)" placeholder="如 area_base;空=用分母" size="sm" />
           </div>
           <div v-if="form.id != null" class="pl-roparam">
-            <span>当月分母 T = <b>{{ paramCell(form.id, 'coefficient').full }}</b>（{{ paramCell(form.id, 'coefficient').range }}）
-              · 加度 <b>{{ paramCell(form.id, 'extra_qty').full }}</b>（{{ paramCell(form.id, 'extra_qty').range }}）</span>
+            <span>{{ roParamLine(form.id) }}</span>
             <button type="button" class="pl-more" @click="gotoParams(form.id!)">
               <component :is="iconFor('arrow-right')" :size="13" />去计费参数页改
             </button>
@@ -1241,7 +1256,6 @@ td.ct { text-align: center; }
 .pl-badge.from { background: rgb(232, 240, 254); color: var(--hue-blue); }
 /* 抽屉③只读一行:当月分母/加度 + 去参数页改 */
 .pl-roparam { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: 12px; color: var(--text-secondary); }
-.pl-roparam b { font-family: var(--font-mono); font-weight: var(--fw-semibold); color: var(--text-primary); }
 
 .pl-noro { text-align: center; padding: 40px 16px; color: var(--text-disabled); font-size: var(--fs-label); }
 

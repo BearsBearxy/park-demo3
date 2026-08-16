@@ -97,3 +97,16 @@
 1. S1（写计划共享）+ M3（monthOnly 镜像）—— 都是 ④ 新增例外/弹窗的一处小改，可同一提交。
 2. M1（rowId 过滤）一行；M2（重算门到编辑态 + 深链 edit=1）三处小改。
 3. M5（两屏 Map 化）纯性能；M6（折叠规则）文案/过滤；M4 与 M7 记入 spec §10 待修清单或本刀收尾一起做。
+
+## 4. 处理记录（前端实现，2026-08-16 同日；无一项证伪）
+| 项 | 处置 |
+|---|---|
+| S1 | 已修：写计划抬到 `paramRegistry.writePlan()`（系数簿 `COEF_KEYS.writes` 改取同一份，只留窗口提示语）；④ 新增例外走 `paramCenterLogic.tenantExceptionReqs`（水价→+管网费=0 / 包干价→+双 mgmt=0 / 管理费双键同值）、[删] 走 `tenantExceptionDelReqs` 整组删（confirm 文案列出配套键）；`paramRegistry.spec` 断言计划首键=主键、配套键皆 tenantEditable、pairedWith ∈ 计划 |
+| M1 | 已修：`tenantRows = grouped.tenant.filter(r => r.rowId != null)`；页面 spec 加继承行断言 |
+| M2 | 已修：[重算本月] `v-if="canEdit && editMode"`；`applyHandoff` 认 `edit=1`；楼栋损耗 / 公共电核算 / 催缴单 三屏 [去重算] 深链带 `edit:'1'`；页面 spec 加浏览态无重算 + `edit=1` 进编辑态两断言 |
+| M3 | 已修：TS 注册表加 `monthOnly`（7 键；spec 按 fixture `table==='price' && defaultMode==='month'` 断言镜像）；改…弹窗与新增例外 monthOnly 时不出「自 X 起长期」；新增例外默认 mode 按键 `defaultMode` |
+| M4 | 已修：新增例外「参数」下拉含「损耗费基数形态（按栋）」，选中多出「楼栋」Select（候选=该户挂表所在栋，无则全部楼栋），提交拼 `loss_base_form_b{bid}`；系数簿仍不收（需指定楼栋，批量语义不合） |
+| M5 | 已修：PoolLedgerView `paramCells` computed Map（`rule:{id}|key`），`paramCell()` 只 get；LossLedgerView `badges` computed Map 同法 |
+| M6 | 已修：折叠只压对象级（building:/rule:/meter:）无命中行；全园/期级月核对项无值常显，值格「— 缺」；spec §5.2 补一句 |
+| M7 | 未改代码（note 是自由文本，按设计不过滤）：spec §5.2 注明 note 不受禁词约束、§10 ⑦ 记 3 条注记数据债（前端不能 SQL 写 dev 库，留给用户在页面备注栏或迁移改写） |
+| 低 | 已修：抽屉③只读句改 `roParamLine`（基数键池直显后端整句、未设置不重复括注）；三屏切回补拉 status 加 seq 守卫；`onDeactivated` 关 histRow/changesOpen；重算 confirm 在 `billBatchAt` 空时提示首次生成；`.ll-pv/.pl-pv` 加 role=button/tabindex/Enter；`.pm-table thead` 去 sticky；`put()` 加 seq 守卫（回包前换月不 patch）。**未动**：`api/alloc.ts cfg/saveCfg/AllocCfgDTO/AllocCfgReq`——计划与源码注释明写「过渡保留」（后端 `PUT /api/alloc/cfg` 兼容端点仍在），留待下刀统一删 |

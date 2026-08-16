@@ -23,26 +23,27 @@ export interface ParamDef {
   hint?: string
   tenantEditable?: boolean               // 允许 tenant:{id} 作用域 → ④ 区新增例外 / 系数簿键源
   pairedWith?: string                    // 成对写的配套键(电力管理费双键)
+  monthOnly?: boolean                    // 只能按月生效(= 后端 价目表 && 默认 month:电价 6 键 + 照抄金额;from 会被 400「只能按月生效」)
 }
 
 // 顺序 = 后端 all() 顺序 = 页面各区内渲染顺序
 export const PARAM_DEFS: ParamDef[] = [
-  { key: 'elec_commercial', label: '商业裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_commercial', label: '商业裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '代理购电逐月变；一期公摊池成本与损耗费单价的底价' },
-  { key: 'elec_peak', label: '峰段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_peak', label: '峰段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '代理购电逐月变' },
-  { key: 'elec_sharp', label: '尖段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_sharp', label: '尖段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '名义价；实收按「尖峰按尖价收取比率」折算' },
-  { key: 'elec_flat', label: '平段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_flat', label: '平段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '代理购电逐月变；二期公摊池成本与损耗费单价的底价' },
-  { key: 'elec_valley', label: '谷段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_valley', label: '谷段裸电价', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '代理购电逐月变' },
-  { key: 'elec_resident', label: '居民裸电价（宿舍）', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'elec_resident', label: '居民裸电价（宿舍）', unit: '元/度', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '电费 = 用量 × (裸电价 + 电力管理费)；缺当月电价整期不生成',
     hint: '单一价' },
   { key: 'sharp_as_peak_ratio', label: '尖峰按尖价收取比率', unit: '比率', group: 'monthly', defaultMode: 'from', monthlyCheck: true, valueKind: 'rate',
@@ -64,7 +65,7 @@ export const PARAM_DEFS: ParamDef[] = [
   { key: 'manual_qty', label: '池手输用量', unit: '度或吨', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'number',
     formula: '无表池：用量直接取手输值，不读电表',
     hint: '宿舍绿化水 84 吨' },
-  { key: 'loss_base_park_amount', label: '损耗基数：园区表金额（照抄册面）', unit: '元', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money',
+  { key: 'loss_base_park_amount', label: '损耗基数：园区表金额（照抄册面）', unit: '元', group: 'monthly', defaultMode: 'month', monthlyCheck: true, valueKind: 'money', monthOnly: true,
     formula: '损耗费基数 = 户电费 + 公摊 + 管理费 + 本金额（形态 G）',
     hint: '永龙：逐月照抄源册金额；无值时按园区表度数 × 平段价推',
     tenantEditable: true },
@@ -179,7 +180,19 @@ export const PARAM_DEFS: ParamDef[] = [
 ]
 
 // 前缀键:loss_base_form_b{楼栋id}(按楼栋损耗链的基数形态)注册一条模板,查询按前缀匹配(与 Java get() 同规则)
+export const LOSS_BASE_FORM_B_TEMPLATE = 'loss_base_form_b{bid}'
 const LOSS_BASE_FORM_B = /^loss_base_form_b\d+$/
 const BY_KEY = new Map(PARAM_DEFS.map(d => [d.key, d]))
 export const paramDef = (key: string): ParamDef | undefined =>
-  BY_KEY.get(key) ?? (LOSS_BASE_FORM_B.test(key) ? BY_KEY.get('loss_base_form_b{bid}') : undefined)
+  BY_KEY.get(key) ?? (LOSS_BASE_FORM_B.test(key) ? BY_KEY.get(LOSS_BASE_FORM_B_TEMPLATE) : undefined)
+
+// 户级例外配套写计划(spec §3.4 / S14 §3.1 惯例):主键 → 成组写的键(fixed=写死值,缺省=写用户值);缺省=只写自身。
+// 参数页 ④ 新增例外/[删] 与 系数簿 共用这一份 —— 分叉过一次(参数页只按 pairedWith 同值写,漏了 water_pipe=0 / 包干 mgmt=0,
+// 户级水价/包干价被引擎多叠管网费/管理费),写计划只许在这里改。
+export interface ParamWrite { key: string; fixed?: number }
+const TENANT_WRITES: Record<string, ParamWrite[]> = {
+  mgmt_fee: [{ key: 'mgmt_fee' }, { key: 'mgmt_fee_commercial' }],                                        // 双键同值(引擎走哪支都被压过)
+  water: [{ key: 'water' }, { key: 'water_pipe', fixed: 0 }],                                              // 户级水价已含管网费
+  elec_package: [{ key: 'elec_package' }, { key: 'mgmt_fee', fixed: 0 }, { key: 'mgmt_fee_commercial', fixed: 0 }],   // 包干价已含管理费
+}
+export const writePlan = (key: string): ParamWrite[] => TENANT_WRITES[key] ?? [{ key }]

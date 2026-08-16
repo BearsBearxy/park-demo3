@@ -50,9 +50,10 @@ watch(() => [props.open, props.row] as const, ([o]) => {
 }, { immediate: true })
 
 const canCorrect = computed(() => props.row?.rowId != null)
+// 只能按月生效的键(电价 6 键 / 照抄金额,注册表 monthOnly = 后端 400「只能按月生效」的镜像)不出「自 X 起长期」
 const wayOpts = computed(() => [
   { value: 'month', label: `仅 ${props.ym}` },
-  { value: 'from', label: `自 ${props.ym} 起长期` },
+  ...(def.value?.monthOnly ? [] : [{ value: 'from', label: `自 ${props.ym} 起长期` }]),
   ...(canCorrect.value ? [{ value: 'correction', label: '改错：原地更正当前版本' }] : []),
 ])
 const wayHint = computed(() => way.value === 'month'

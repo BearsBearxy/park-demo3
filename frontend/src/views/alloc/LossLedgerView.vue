@@ -62,11 +62,13 @@ onMounted(async () => {
 })
 watch([year, month, zone], loadMonth)
 // 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
+// (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
-  const before = status.value?.poolSnapshotAt
+  const my = seq, before = status.value?.poolSnapshotAt
   const st = await paramsApi.status(ym.value).catch(() => null)
-  if (st && st.poolSnapshotAt !== before) loadMonth()
-  else if (st) status.value = st
+  if (my !== seq || !st) return
+  if (st.poolSnapshotAt !== before) loadMonth()
+  else status.value = st
 })
 
 const generated = computed(() => loss.value?.generated ?? false)
@@ -85,14 +87,18 @@ const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px
 const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
-const paramOf = (buildingId: number, key: string) =>
-  params.value.find(r => r.scope === `building:${buildingId}` && r.key === key)
-const badgeOf = (buildingId: number, key: string) => {
-  const r = paramOf(buildingId, key)
-  if (!r || r.mode == null) return null
-  const b = rangeBadge(r)
-  return { text: b.tone === 'month' ? '仅本月' : '长期', tone: b.tone, title: `${r.rangeText} · 点击去计费参数页改` }
-}
+// LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)
+interface ParamBadge { text: string; tone: 'month' | 'from' | 'inherit'; title: string }
+const badges = computed(() => {
+  const m = new Map<string, ParamBadge>()
+  for (const r of params.value) {
+    if (r.mode == null) continue
+    const b = rangeBadge(r)
+    m.set(`${r.scope}|${r.key}`, { text: b.tone === 'month' ? '仅本月' : '长期', tone: b.tone, title: `${r.rangeText} · 点击去计费参数页改` })
+  }
+  return m
+})
+const badgeOf = (buildingId: number, key: string) => badges.value.get(`building:${buildingId}|${key}`) ?? null
 // G 悬浮分解式(spec §4.1):「(45.28 + 59.57 + 138.33 + 893.01 + 1195.53) ÷ 6 = 388.62」,分项=池名+本次生成的池快照净量
 // (算式里不加千分位:「1,195.53 + …」的逗号会和加号打架)
 const plain = (v: number | null | undefined) => (v == null ? '–' : String(v))
@@ -111,9 +117,10 @@ const rateTitle = (u: AllocLossUnitDTO) => u.manualRate != null
 // ── 跳参数页(深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh) ──
 const router = useRouter()
 const tabs = useTabsStore()
-function gotoParams(section: 'monthly' | 'constant' | 'rule') {
+// edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
+function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
   tabs.openFresh('params', { pin: true })
-  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section } })
+  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section, ...(edit ? { edit: '1' } : {}) } })
 }
 </script>
 
@@ -150,7 +157,7 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule') {
     <div v-if="staleMsg" class="ll-bar warn">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>{{ staleMsg }} —— 屏上数字仍是改参前生成的,去计费参数页「重算本月」后生效。</span>
-      <Button variant="outline" size="sm" @click="gotoParams('monthly')">
+      <Button variant="outline" size="sm" @click="gotoParams('monthly', true)">
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
         去重算
       </Button>
@@ -195,7 +202,7 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule') {
             <!-- 调整度数 / 调整损耗:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
             <td>
               <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" title="点击去计费参数页改(① 本月参数 · 损耗调整度数)"
-                    @click="gotoParams('monthly')">
+                    role="button" tabindex="0" @click="gotoParams('monthly')" @keydown.enter.prevent="gotoParams('monthly')">
                 {{ fmt(u.adjQty) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_qty')" class="ll-badge"
                       :class="badgeOf(u.headBuildingId, 'loss_adj_qty')!.tone" :title="badgeOf(u.headBuildingId, 'loss_adj_qty')!.title">
@@ -204,7 +211,7 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule') {
             </td>
             <td>
               <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" title="点击去计费参数页改(② 长期常数 · 损耗加点)"
-                    @click="gotoParams('constant')">
+                    role="button" tabindex="0" @click="gotoParams('constant')" @keydown.enter.prevent="gotoParams('constant')">
                 {{ fpct(u.adjRate) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_rate')" class="ll-badge"
                       :class="badgeOf(u.headBuildingId, 'loss_adj_rate')!.tone" :title="badgeOf(u.headBuildingId, 'loss_adj_rate')!.title">
