@@ -497,7 +497,9 @@ public class AllocService {
     }
 
     // ── 规则 CRUD(整体保存:rule+meterIds+members 随行覆盖) ──
-    public List<AllocRuleDTO> ruleList(String zone) {
+    // S21 §2.4:DTO 的 coefficient/extraQty 回传 alloc_cfg rule:{id} 版本链站在 ym 的生效值(ym 空=初始版本 '' 行,
+    // 即旧「默认列」语义);两列不再存 alloc_rule。
+    public List<AllocRuleDTO> ruleList(String zone, String ym) {
         Map<Integer, List<AllocRuleMeter>> mByRule = ruleMeters.selectList(null).stream()
             .collect(groupingBy(AllocRuleMeter::getRuleId));
         Map<Integer, List<AllocRuleMember>> memByRule = ruleMembers.selectList(null).stream()
@@ -507,20 +509,33 @@ public class AllocService {
         List<AllocRule> all = rules.selectByZone(null);
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : all) nameById.put(r.getId(), r.getName());
+        Map<String, BigDecimal> cfg = cfgEffective(ym);
         return all.stream().filter(r -> zone == null || zone.equals(r.getZone()))
             .map(r -> toDTO(r, mByRule.getOrDefault(r.getId(), List.of()),
                 memByRule.getOrDefault(r.getId(), List.of()),
-                linkByDst.getOrDefault(r.getId(), List.of()), nameById)).toList();
+                linkByDst.getOrDefault(r.getId(), List.of()), nameById, cfg)).toList();
+    }
+
+    // 站在 ym 的 (scope|key → 值) 扁平表;ym 空/null = 只取 '' 初始版本行
+    private Map<String, BigDecimal> cfgEffective(String ym) {
+        return VersionResolver.effectiveMap(cfgs.selectList(null).stream()
+            .map(c -> new VersionResolver.Row(c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(), c.getCfgValue(), c.getId()))
+            .toList(), ym == null ? "" : ym);
     }
 
     @Transactional
     public AllocRuleDTO createRule(AllocRuleReq req) {
-        validateRule(req);
+        validateRule(req, null);
         AllocRule r = new AllocRule();
         apply(r, req);
         r.setSortNo(rules.maxSortNo() + 1);
         rules.insert(r);
         saveChildren(r.getId(), req);
+        // S21 §2.4 新建池例外:初始分母/初始加度落成 rule:{id} 的 '' from 行(同表同版本链);池建成后只在参数页改
+        if (req.coefficient() != null)
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"));
+        if (req.extraQty() != null && req.extraQty().signum() != 0)
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"));
         return ruleById(r.getId());
     }
 
@@ -528,8 +543,8 @@ public class AllocService {
     public AllocRuleDTO updateRule(Integer id, AllocRuleReq req) {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
-        validateRule(req);
-        apply(r, req);
+        validateRule(req, id);
+        apply(r, req);   // 既有池:coefficient/extraQty 入参忽略,分母/加度只在参数页按版本改
         rules.updateById(r);
         ruleMeters.deleteByRule(id);
         ruleMembers.deleteByRuleMonth(id, memberMonth(req));   // 只覆盖目标月,其他月已出账口径不动
@@ -544,14 +559,21 @@ public class AllocService {
         rules.deleteById(id);   // 绑定表/受益人 FK 级联删
     }
 
-    private static void validateRule(AllocRuleReq req) {
+    private void validateRule(AllocRuleReq req, Integer existingId) {
         // §E2 根因:基数二选一 —— baseKey 非空时基数取价目簿(computePool §1348 压根不读 coefficient),
         // 此时 coefficient 为 NULL 是正常态(V65 种子的 10 个 area 池即如此)。旧判据只认 coefficient,
         // 把这批池的任何编辑(改个费项也算)一律 400 挡掉。
-        if (("area".equals(req.method()) || "floor".equals(req.method()))
-                && blank(req.baseKey())
-                && (req.coefficient() == null || req.coefficient().signum() <= 0))
-            throw new BizException(ResultCode.BAD_REQUEST, "按面积/按层规则必须填正系数(面积Σ㎡/层数)或指定基数键");
+        // S21 §2.4:分母只存 alloc_cfg rule:{id}.coefficient 版本链 —— 新建池看入参「初始分母」;既有池查参数表
+        // (任一版本 >0 即可,入参 coefficient 不再是分母的来源)。
+        if (("area".equals(req.method()) || "floor".equals(req.method())) && blank(req.baseKey())) {
+            boolean ok = existingId == null
+                ? req.coefficient() != null && req.coefficient().signum() > 0
+                : cfgs.selectList(new QueryWrapper<AllocCfg>().eq("scope", "rule:" + existingId).eq("cfg_key", "coefficient"))
+                    .stream().anyMatch(c -> c.getCfgValue() != null && c.getCfgValue().signum() > 0);
+            if (!ok) throw new BizException(ResultCode.BAD_REQUEST, existingId == null
+                ? "按面积/按层规则必须填正的初始分母(面积Σ㎡/层数)或指定基数键"
+                : "按面积/按层规则须有分母(去计费参数页设该池的分母)或指定基数键");
+        }
         if ("direct".equals(req.method()) && (req.members() == null || req.members().size() != 1))
             throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
     }
@@ -571,8 +593,7 @@ public class AllocService {
         boolean noLocation = blank(req.floorLabel()) && blank(req.side()) && blank(req.feeName());
         r.setName(noLocation && !blank(r.getName()) ? r.getName()
             : noLocation && !blank(req.name()) ? req.name().trim() : auto);
-        r.setMethod(req.method()); r.setCoefficient(req.coefficient());
-        r.setExtraQty(nz(req.extraQty())); r.setFeeKey(req.feeKey());
+        r.setMethod(req.method()); r.setFeeKey(req.feeKey());   // S21:coefficient/extraQty 两列退出引擎,不再写(恒 NULL/0)
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
         r.setRoundScale(req.roundScale() == null ? 2 : req.roundScale());
         r.setStdKind(req.stdKind() == null || req.stdKind().isBlank() ? null : req.stdKind());
@@ -619,13 +640,15 @@ public class AllocService {
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : rules.selectByZone(null)) nameById.put(r.getId(), r.getName());
         return toDTO(rules.selectById(id), ruleMeters.selectByRule(id), ruleMembers.selectByRule(id),
-            ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), nameById);
+            ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), nameById, cfgEffective(null));
     }
 
     private static AllocRuleDTO toDTO(AllocRule r, List<AllocRuleMeter> binds, List<AllocRuleMember> mems,
-                                      List<AllocRuleLink> inLinks, Map<Integer, String> ruleNameById) {
+                                      List<AllocRuleLink> inLinks, Map<Integer, String> ruleNameById,
+                                      Map<String, BigDecimal> cfg) {
         return new AllocRuleDTO(r.getId(), r.getZone(), r.getName(), r.getBuildingId(), r.getMethod(),
-            r.getCoefficient(), r.getExtraQty(), r.getFeeKey(), r.getNote(), r.getSortNo(),
+            cfg.get("rule:" + r.getId() + "|coefficient"), nz(cfg.get("rule:" + r.getId() + "|extra_qty")),
+            r.getFeeKey(), r.getNote(), r.getSortNo(),
             binds.stream().map(AllocRuleMeter::getMeterId).toList(),
             mems.stream().map(m -> new AllocMemberDTO(m.getTenantId(), m.getWeight(), m.getAcctMonth())).toList(),
             r.getRoundScale(), r.getStdKind(), r.getBaseKey(),
@@ -648,16 +671,17 @@ public class AllocService {
 
     // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     public void saveCfg(AllocCfgReq req) {
+        String scope = req.scope().trim(), key = req.cfgKey().trim();
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
-        AllocCfg row = cfgs.selectByKey(req.scope().trim(), req.cfgKey().trim(), month, mode);
+        AllocCfg row = cfgs.selectByKey(scope, key, month, mode);
         if (req.value() == null) {
             if (row != null) cfgs.deleteById(row.getId());
             return;
         }
         if (row == null) {
             row = new AllocCfg();
-            row.setScope(req.scope().trim()); row.setCfgKey(req.cfgKey().trim()); row.setAcctMonth(month); row.setMode(mode);
+            row.setScope(scope); row.setCfgKey(key); row.setAcctMonth(month); row.setMode(mode);
         }
         row.setCfgValue(req.value());
         row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
@@ -1062,7 +1086,7 @@ public class AllocService {
         if ("p1".equals(rule.getZone())) {
             BigDecimal price = cfgVal(ctx, "p1", "price_flat");
             if (price == null) { ctx.warnings().add("缺参数 p1.price_flat,规则「" + rule.getName() + "」跳过"); return null; }
-            return r2(u.qty().add(nz(rule.getExtraQty())).multiply(price));
+            return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
         }
         boolean hasTou = u.sharp().signum() != 0 || u.peak().signum() != 0
             || u.flat().signum() != 0 || u.valley().signum() != 0;
@@ -1073,7 +1097,7 @@ public class AllocService {
                 pNorm, cfgVal(ctx, "p2", "price_valley"));
         }
         if (pNorm == null) { ctx.warnings().add("缺参数 p2.price_norm,规则「" + rule.getName() + "」跳过"); return null; }
-        return r2(u.qty().add(nz(rule.getExtraQty())).multiply(pNorm));
+        return r2(u.qty().add(poolExtra(rule, ctx)).multiply(pNorm));
     }
 
     // 全部规则(非 loss)+损耗链 → 户级贡献清单(生成/抽屉/对账共用同一计算体,口径全等由结构保证)
@@ -1519,15 +1543,14 @@ public class AllocService {
         return out;
     }
 
-    // 月度参数:rule:{id} 月行优先回退规则默认值
+    // S21 §2.4 池默认列归一:加度/分母只有 alloc_cfg rule:{id} 一条版本链(V97 把旧默认列搬成 '' from 行),
+    // 不再回退 alloc_rule.extra_qty/coefficient 两列(恒 0/NULL,仅历史)。
     private BigDecimal poolExtra(AllocRule rule, Ctx ctx) {
-        BigDecimal v = cfgVal(ctx, "rule:" + rule.getId(), "extra_qty");
-        return v != null ? v : nz(rule.getExtraQty());
+        return nz(cfgVal(ctx, "rule:" + rule.getId(), "extra_qty"));
     }
 
     private BigDecimal coefficientOf(AllocRule rule, Ctx ctx) {
-        BigDecimal v = cfgVal(ctx, "rule:" + rule.getId(), "coefficient");
-        return v != null ? v : rule.getCoefficient();
+        return cfgVal(ctx, "rule:" + rule.getId(), "coefficient");
     }
 
     private boolean isNetPool(AllocRule rule, Ctx ctx) {
@@ -1873,6 +1896,7 @@ public class AllocService {
         // 刀D:受益人楼层与分桶明细读时现算(楼层不落库),与 generate 同一组纯函数,主数据未变即口径全等
         Map<Integer, List<Meter>> metersByTenant = tenantMeters(meterById.values().stream()
             .filter(m -> !MeterService.outOfService(m, ym)).toList());
+        Map<String, BigDecimal> cfgEff = cfgEffective(ym);   // S21:无快照月的构成明细加度取当月生效参数(列已退出)
         List<AllocPoolDTOs.PoolRow> rows = new ArrayList<>();
         for (AllocRule r : all) {
             AllocPoolResult s = snap.get(r.getId());
@@ -1909,7 +1933,7 @@ public class AllocService {
                 lineByRule.getOrDefault(r.getId(), List.of()).stream()
                     .map(ln -> lineDTO(ln, meterById.get(ln.getMeterId()))).toList(),
                 netParts(bindsByRule.getOrDefault(r.getId(), List.of()), meterById, rdByMeter,
-                    s == null ? r.getExtraQty() : s.getExtraQtySnap()),
+                    s == null ? cfgEff.get("rule:" + r.getId() + "|extra_qty") : s.getExtraQtySnap()),
                 s == null ? null : s.getQtyTotal(), s == null ? null : s.getQtySharp(),
                 s == null ? null : s.getQtyPeak(), s == null ? null : s.getQtyFlat(),
                 s == null ? null : s.getQtyValley(),

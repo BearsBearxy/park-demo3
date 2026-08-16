@@ -6,8 +6,8 @@ import java.util.List;
 public record AllocRuleDTO(
     Integer id, String zone, String name, Integer buildingId,
     String method,                 // direct / area / floor / loss / none / ref
-    BigDecimal coefficient,        // area=受益面积Σ㎡;floor=层数(可小数)
-    BigDecimal extraQty,           // 人工加度(默认值,rule:{id} 月行优先)
+    BigDecimal coefficient,        // area=受益面积Σ㎡;floor=层数(可小数)。S21:=alloc_cfg rule:{id}.coefficient 站在 ym 的生效值(ym 空=初始版本)
+    BigDecimal extraQty,           // 人工加度。S21:=alloc_cfg rule:{id}.extra_qty 生效值(两列已退出 alloc_rule)
     String feeKey, String note, Integer sortNo,
     List<Integer> meterIds,
     List<AllocMemberDTO> members,

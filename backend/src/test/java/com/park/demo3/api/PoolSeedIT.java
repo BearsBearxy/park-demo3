@@ -105,10 +105,14 @@ class PoolSeedIT extends AbstractMysqlIT {
     @Test
     void spotCheck_fiveRules() {
         // 1) 五车间消防(sort_no 13):floor 6.5 层,+主表 -广告字分表
+        //    S21(V97):分母只存 alloc_cfg rule:{id}.coefficient 版本链('' from=初始版本),alloc_rule.coefficient 恒 NULL
         Map<String, Object> r1 = jdbc.queryForMap(
-                "select method, coefficient, round_scale, base_key from alloc_rule where sort_no=13");
+                "select r.id, r.method, r.coefficient, r.round_scale, r.base_key, c.cfg_value coef0 from alloc_rule r"
+                        + " left join alloc_cfg c on c.scope=concat('rule:', r.id) and c.cfg_key='coefficient' and c.acct_month='' and c.mode='from'"
+                        + " where r.sort_no=13");
         assertThat(r1.get("method")).isEqualTo("floor");
-        assertThat((BigDecimal) r1.get("coefficient")).isEqualByComparingTo("6.5");
+        assertThat(r1.get("coefficient")).isNull();
+        assertThat((BigDecimal) r1.get("coef0")).isEqualByComparingTo("6.5");
         assertThat(r1.get("base_key")).isNull();
         List<Map<String, Object>> b1 = jdbc.queryForList(
                 "select m.name, rm.sign from alloc_rule_meter rm join meter m on m.id=rm.meter_id"
@@ -127,7 +131,10 @@ class PoolSeedIT extends AbstractMysqlIT {
         Map<String, Object> r3 = jdbc.queryForMap(
                 "select id, method, coefficient from alloc_rule where sort_no=49");
         assertThat(r3.get("method")).isEqualTo("floor");
-        assertThat((BigDecimal) r3.get("coefficient")).isEqualByComparingTo("3");
+        assertThat(r3.get("coefficient")).isNull();   // S21:列退出引擎
+        assertThat(jdbc.queryForObject(
+                "select cfg_value from alloc_cfg where scope=concat('rule:', ?) and cfg_key='coefficient' and acct_month='' and mode='from'",
+                BigDecimal.class, r3.get("id"))).isEqualByComparingTo("3");
         assertThat(jdbc.queryForList(
                 "select m.name from alloc_rule_meter rm join meter m on m.id=rm.meter_id where rm.rule_id=?",
                 String.class, r3.get("id")))
