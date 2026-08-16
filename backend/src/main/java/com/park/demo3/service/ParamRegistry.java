@@ -75,6 +75,10 @@ public final class ParamRegistry {
             elecF, "代理购电逐月变", null);
         price("elec_resident", "居民裸电价（宿舍）", "元/度", Group.MONTHLY, S_GLOBAL_ZONE, "month", true, ValueKind.MONEY, null,
             elecF, "单一价", null);
+        // 用户 2026-08-16 拍板(M1):二期损耗「度数口径」折算价不写死,开统一入口 —— 供电局综合月均裸价(账单总金额÷总度数),
+        // 与源册火炬园「高压用电分配」单价同源;缺当月值时引擎回退 平段裸价+管理费(spec §4.3)。只影响公共电核算/对账屏陈列,催缴单不读它。
+        price("elec_grid_avg", "供电局综合电价（月均裸价）", "元/度", Group.MONTHLY, S_GLOBAL_ZONE, "month", true, ValueKind.MONEY, null,
+            "二期损耗折算价 = 综合电价 + 电力管理费（缺当月值时按 平段裸价 + 管理费）", "供电局账单 总金额 ÷ 总度数；源册火炬园「高压用电分配」单价同一个数（2024-02 二期 1.09312）", null);
         price("sharp_as_peak_ratio", "尖峰按尖价收取比率", "比率", Group.MONTHLY, S_GLOBAL_ZONE_TENANT, "from", true, ValueKind.RATE, null,
             "尖段实收单价 = 尖价 × 比率 + 峰价 × (1 − 比率)", "政策开关：0 = 尖段全按峰价收；二期 2023 下半年 1→0.0994→0；可按户设", null);
         price("elevator_area_base", "A座电梯面积基数", "㎡", Group.MONTHLY, S_ZONE, "from", true, ValueKind.NUMBER, null,

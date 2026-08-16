@@ -24,7 +24,7 @@ class ParamRegistryTest {
         // ①
         "elec_commercial", "elec_peak", "elec_sharp", "elec_flat", "elec_valley", "elec_resident",
         "sharp_as_peak_ratio", "elevator_area_base", "loss_adj_qty", "loss_rate_manual", "extra_qty", "manual_qty",
-        "loss_base_park_amount",
+        "loss_base_park_amount", "elec_grid_avg",   // M1 拍板(2026-08-16):二期损耗折算用 供电局综合月均裸价,统一入口
         // ②
         "mgmt_fee", "mgmt_fee_commercial", "capacity_fee", "water", "water_pipe",
         "lamp_area_base", "green_area_base", "area_base", "park_share_div", "loss_adj_rate",
@@ -127,7 +127,7 @@ class ParamRegistryTest {
         assertFalse(price.contains("loss_rate"));
         assertFalse(price.contains("green_rate_live"));
         assertEquals(Set.of("elec_peak", "elec_sharp", "elec_flat", "elec_valley", "elec_resident", "elec_commercial",
-            "loss_base_park_amount"), PriceCfgService.MONTHLY_KEYS);
+            "loss_base_park_amount", "elec_grid_avg"), PriceCfgService.MONTHLY_KEYS);
         // alloc 键不进价目簿白名单
         for (String k : List.of("coefficient", "extra_qty", "loss_variant", "loss_adj_qty")) assertFalse(price.contains(k));
     }

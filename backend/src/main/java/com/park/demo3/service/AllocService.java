@@ -1415,12 +1415,14 @@ public class AllocService {
         return nz(shareQtyOf(g.zone(), ctx));
     }
 
-    // 损耗费单价(S21 §4.3):一期/宿舍=商业裸价+商业维护费(与池成本同口径);二期=平段裸价+管理费。
+    // 损耗费单价(S21 §4.3):一期/宿舍=商业裸价+商业维护费(与池成本同口径);二期=供电局综合月均裸价(elec_grid_avg,
+    // 用户 2026-08-16 拍板开的统一入口,与源册火炬园「高压用电分配」单价同源)+管理费,缺当月值回退 平段裸价+管理费。
     // 价目簿缺当月电价 → null(生成路径已被 priceGate 拦下;读时派生 recon 跳过并 warn 一次)。
     private BigDecimal lossPrice(String zone, Ctx ctx) {
         boolean p2 = "p2".equals(zone);
         String elecKey = p2 ? "elec_flat" : "elec_commercial";
-        BigDecimal elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
+        BigDecimal elec = p2 ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
+        if (elec == null) elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
         if (elec == null) {
             String w = zone + " 缺 " + ctx.ym() + " 电价(" + elecKey + "),损耗费/对账价未算";
             if (!ctx.warnings().contains(w)) ctx.warnings().add(w);

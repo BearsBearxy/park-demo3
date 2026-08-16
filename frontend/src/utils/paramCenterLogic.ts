@@ -90,9 +90,11 @@ export function staleText(s: ParamStatus | null | undefined, kind: SnapKind): st
   return `参数于 ${hhmm(s.lastChangeAt)} 更新，本屏为旧快照`
 }
 
-// ── 「复制上月电价」键集 = 注册表里默认 month 的裸电价键(6 键;与后端 POST /price-cfg/copy 复制范围同源) ──
+// ── 「复制上月电价」键集 = 代理购电六段裸价(与后端 PriceCfgService.ELEC_KEYS / POST /price-cfg/copy 复制范围同源) ──
+// 供电局综合电价 elec_grid_avg 也是 month 键但**不复制**:它是账单总金额÷总度数,月月不同,抄上月只会错。
+const COPY_ELEC_KEYS = ['elec_commercial', 'elec_peak', 'elec_sharp', 'elec_flat', 'elec_valley', 'elec_resident']
 export function copyPrevMonthKeys(): string[] {
-  return PARAM_DEFS.filter(d => d.defaultMode === 'month' && d.key.startsWith('elec_')).map(d => d.key)
+  return PARAM_DEFS.filter(d => COPY_ELEC_KEYS.includes(d.key)).map(d => d.key)
 }
 
 export function prevYm(ym: string): string {

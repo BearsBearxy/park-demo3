@@ -21,7 +21,7 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
   it('键集合与顺序逐一相同', () => {
     expect(PARAM_DEFS.map(d => d.key)).toEqual(FIX.map(f => f.key))
     expect(new Set(PARAM_DEFS.map(d => d.key)).size).toBe(PARAM_DEFS.length)
-    expect(PARAM_DEFS.length).toBe(43)
+    expect(PARAM_DEFS.length).toBe(44)   // 43 + elec_grid_avg(M1 拍板 2026-08-16)
   })
   it('逐键 label/unit/group/defaultMode/monthlyCheck/valueKind/enumOptions/formula/hint/tenantEditable/pairedWith/monthOnly 相同', () => {
     for (const f of FIX) {
@@ -42,9 +42,9 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
       expect(d, f.key).toEqual(norm)
     }
   })
-  it('只能按月生效的键 = 电价 6 键 + 照抄金额(7 键);损耗月参(alloc 表)不受限', () => {
+  it('只能按月生效的键 = 电价 6 键 + 供电局综合电价 + 照抄金额(8 键);损耗月参(alloc 表)不受限', () => {
     expect(PARAM_DEFS.filter(d => d.monthOnly).map(d => d.key)).toEqual([
-      'elec_commercial', 'elec_peak', 'elec_sharp', 'elec_flat', 'elec_valley', 'elec_resident', 'loss_base_park_amount'])
+      'elec_commercial', 'elec_peak', 'elec_sharp', 'elec_flat', 'elec_valley', 'elec_resident', 'elec_grid_avg', 'loss_base_park_amount'])
     expect(paramDef('loss_adj_qty')?.monthOnly).toBeUndefined()
     expect(paramDef('extra_qty')?.monthOnly).toBeUndefined()
   })

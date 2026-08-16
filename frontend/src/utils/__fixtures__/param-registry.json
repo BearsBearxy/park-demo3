@@ -89,6 +89,21 @@
   "tenantEditable" : false,
   "pairedWith" : null
 }, {
+  "key" : "elec_grid_avg",
+  "table" : "price",
+  "label" : "供电局综合电价（月均裸价）",
+  "unit" : "元/度",
+  "group" : "monthly",
+  "scopes" : [ "global", "zone" ],
+  "defaultMode" : "month",
+  "monthlyCheck" : true,
+  "valueKind" : "money",
+  "enumOptions" : null,
+  "formula" : "二期损耗折算价 = 综合电价 + 电力管理费（缺当月值时按 平段裸价 + 管理费）",
+  "hint" : "供电局账单 总金额 ÷ 总度数；源册火炬园「高压用电分配」单价同一个数（2024-02 二期 1.09312）",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
   "key" : "sharp_as_peak_ratio",
   "table" : "price",
   "label" : "尖峰按尖价收取比率",
