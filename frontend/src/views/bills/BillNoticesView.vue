@@ -8,9 +8,14 @@
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
+import { useTabsStore } from '@/stores/tabs'
 import {
   billNoticesApi, type BillNoteOverrideDTO, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
 } from '@/api/billNotices'
+import { paramsApi, type ParamStatusDTO } from '@/api/params'
+import { staleText } from '@/utils/paramCenterLogic'
 import { contractApi } from '@/api/contract'
 import { PROPERTY_TYPE_LABEL, type ContractDTO, type PropertyType } from '@/types/contract'
 import { buildingApi } from '@/api/building'
@@ -74,17 +79,35 @@ const ym = computed(() => `${year.value}-${pad2(month.value)}`)
 const rows = ref<BillNoticeDTO[] | null>(null)
 const contracts = ref<ContractDTO[]>([])
 const buildings = ref<BuildingDTO[]>([])
+const status = ref<ParamStatusDTO | null>(null)   // S21:计费参数状态(参数晚于本月批次 → stale 条)
 let seq = 0
 async function loadMonth() {
   const my = ++seq
-  const [ns, cs] = await Promise.all([
+  const [ns, cs, st] = await Promise.all([
     billNoticesApi.list(ym.value).catch(() => [] as BillNoticeDTO[]),
     contractApi.list(`${ym.value}-15`).catch(() => [] as ContractDTO[]),
+    paramsApi.status(ym.value).catch(() => null),
   ])
   if (my !== seq) return
   rows.value = ns
   contracts.value = cs
+  status.value = st
 }
+const staleMsg = computed(() => staleText(status.value, 'bill'))
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh
+const router = useRouter()
+const tabs = useTabsStore()
+function gotoParams() {
+  tabs.openFresh('params', { pin: true })
+  router.push({ path: '/params', query: { ym: ym.value } })
+}
+// 页签切回:参数页那边可能刚重算过 —— 批次时间变了就整月重拉(单与 stale 条一起变新),没变只刷状态
+onReactivated(async () => {
+  const before = status.value?.billBatchAt
+  const st = await paramsApi.status(ym.value).catch(() => null)
+  if (st && st.billBatchAt !== before) loadMonth()
+  else if (st) status.value = st
+})
 onMounted(async () => {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => { /* 楼栋失败按 premise 回退归期 */ })
   loadCompanies(); loadPayMap()   // S20:收款公司与映射(状态列橙点与抽屉方格用)
@@ -557,6 +580,15 @@ const drawerSub = computed(() => {
     <div v-if="okMsg" class="bn-bar ok">
       <component :is="iconFor('check')" :size="14" />
       <span>{{ okMsg }}</span>
+    </div>
+    <!-- S21 stale 条:计费参数改过而本月催缴单批次没重生成(判据 spec §6.3);[去重算] 送到参数页(池 → 损耗 → 催缴单一起重算) -->
+    <div v-if="staleMsg" class="bn-bar warn">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span>{{ staleMsg }} —— 单上金额仍是改参前派生的,去计费参数页「重算本月」后生效(已确认 / 已导出的户照旧跳过)。</span>
+      <Button variant="outline" size="sm" @click="gotoParams">
+        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
+        去重算
+      </Button>
     </div>
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />

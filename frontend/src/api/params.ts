@@ -71,9 +71,10 @@ export interface RecalcResultDTO {
 export interface PriceCfgCopyResultDTO { copied: number; skipped: number }
 
 export const paramsApi = {
-  // 站在 ym 看的全部生效参数行(四区);zone=all|p1|p2|dorm
-  list: (ym: string, zone: ParamZone = 'all'): Promise<ParamRowDTO[]> =>
-    http.get('/params', { params: { ym, zone } }),
+  // 站在 ym 看的全部生效参数行(四区);zone=all|p1|p2|dorm。
+  // scope=作用域前缀 / key=逗号分隔键名 —— 公共电核算/楼栋损耗只读镜像只要几十行,别拉整页几百行
+  list: (ym: string, zone: ParamZone = 'all', filter?: { scope?: string; key?: string }): Promise<ParamRowDTO[]> =>
+    http.get('/params', { params: { ym, zone, ...filter } }),
   status: (ym: string): Promise<ParamStatusDTO> => http.get('/params/status', { params: { ym } }),
   // 写一行(注册表校验/日志/evict),返回该键站在 ym(缺省 acctMonth)的新生效行(铁律二:只 patch 该行);
   // 页面传自己的账期 ym,回包才与屏上其它行同一账期(删版本行 / 改错时 acctMonth 可能不是页面账期)

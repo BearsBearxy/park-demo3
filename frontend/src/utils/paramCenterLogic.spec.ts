@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel,
+  copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,
   type ParamRow, type ParamStatus,
 } from './paramCenterLogic'
 
@@ -106,6 +106,26 @@ describe('pendingSummary 状态条文案(spec §5.1 / §5.5)', () => {
   it('其它月份受 from 影响 → 提示切月重算', () => {
     expect(pendingSummary(st({ pendingChanges: 1, stale: true, otherMonthsAffected: ['2024-02', '2024-03'] })))
       .toBe('本月电价 6/6 ✓ · 参数已改 1 项，池核算 / 楼栋损耗 / 催缴单为旧快照 ⚠ · 另有 2024-02、2024-03 也受影响，请切到该月重算')
+  })
+})
+
+describe('staleText 其它三屏 stale 条(spec §5.5.3:池屏看池快照,催缴单看批次)', () => {
+  const st = (p: Partial<ParamStatus> = {}): ParamStatus => ({
+    priceOk: 6, priceTotal: 6, pendingChanges: 1, lastChangeAt: '2026-08-16T15:30:00',
+    poolSnapshotAt: '2026-08-16T14:02:11', billBatchAt: '2026-08-16T14:03:40', stale: true, otherMonthsAffected: [], ...p,
+  })
+  it('改动晚于池快照 → 池屏文案', () => {
+    expect(staleText(st(), 'pool')).toBe('参数于 08-16 15:30 更新，本屏为旧快照')
+  })
+  it('池已重生成、催缴单未重生成 → 池屏一致,催缴单屏仍旧', () => {
+    const s = st({ poolSnapshotAt: '2026-08-16T15:31:00' })
+    expect(staleText(s, 'pool')).toBe('')
+    expect(staleText(s, 'bill')).not.toBe('')
+  })
+  it('未生成 / 从未改过参数 / 状态接口不可用 → 不算旧', () => {
+    expect(staleText(st({ poolSnapshotAt: null }), 'pool')).toBe('')
+    expect(staleText(st({ lastChangeAt: null }), 'bill')).toBe('')
+    expect(staleText(null, 'pool')).toBe('')
   })
 })
 

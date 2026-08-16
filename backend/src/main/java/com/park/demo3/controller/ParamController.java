@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Set;
 
 // 计费参数中心(S21-PARAM-CENTER-SPEC §6)。GET=已登录可读,写/重算=admin(SecurityConfig 全局门)。
 // 业务错(注册表外键/上级作用域改错/删被使用版本)HTTP 200+body.code=400;校验错(@Valid/@Pattern)HTTP 400。
@@ -20,10 +21,17 @@ public class ParamController {
     private final ParamService svc;
     public ParamController(ParamService svc) { this.svc = svc; }
 
-    @Operation(summary = "站在 ym 看的全部生效参数行(四区;人话作用域/值/区间/命中链);zone=all|p1|p2|dorm") @GetMapping
+    @Operation(summary = "站在 ym 看的全部生效参数行(四区;人话作用域/值/区间/命中链);zone=all|p1|p2|dorm;"
+        + "scope=作用域前缀过滤(如 rule:/building:),key=逗号分隔键名过滤 —— 其它屏只读镜像用,少拉几百行")
+    @GetMapping
     public List<ParamRowDTO> list(@RequestParam @Pattern(regexp = YM) String ym,
-                                  @RequestParam(defaultValue = "all") @Pattern(regexp = "all|p1|p2|dorm") String zone) {
-        return svc.list(ym, zone);
+                                  @RequestParam(defaultValue = "all") @Pattern(regexp = "all|p1|p2|dorm") String zone,
+                                  @RequestParam(required = false) String scope,
+                                  @RequestParam(required = false) String key) {
+        List<ParamRowDTO> rows = svc.list(ym, zone);
+        if (scope == null && key == null) return rows;
+        Set<String> keys = key == null ? null : Set.of(key.split(","));
+        return rows.stream().filter(r -> (scope == null || r.scope().startsWith(scope)) && (keys == null || keys.contains(r.key()))).toList();
     }
 
     @Operation(summary = "状态条:本月电价 n/6、自快照以来改动数、池快照/催缴单批次时间、stale、其它受影响月") @GetMapping("/status")

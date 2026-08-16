@@ -2239,12 +2239,23 @@ public class AllocService {
         requireYm(ym);
         List<AllocLossResult> units = lossResults.selectByYm(ym);
         Ctx ctx = loadCtx(ym);
+        // S21 §4.1 G 分解(屏上悬浮「(a + b + …) ÷ 6 = G」):取**本次 generate 的池快照**净量(与 g_qty 同批),
+        // 不按当前读数现算 —— 读数改了快照没重生成时,分解式仍与格里的 G 自洽;分母=park_share_div 当前生效值
+        Map<Integer, BigDecimal> snapQty = new HashMap<>();
+        for (AllocPoolResult r : poolResults.selectByYm(ym)) snapQty.put(r.getRuleId(), r.getQtyTotal());
+        List<AllocLossRowDTO.GPart> gParts = new ArrayList<>();
+        for (AllocRule rule : ctx.ruleList())
+            if (PARK_POOL.equals(rule.getFeeKey()) && "p1".equals(rule.getZone()) && snapQty.get(rule.getId()) != null)
+                gParts.add(new AllocLossRowDTO.GPart(rule.getName(), snapQty.get(rule.getId())));
+        BigDecimal gDiv = cfgVal(ctx, "p1", "park_share_div");
         List<AllocPoolDTOs.LossUnit> unitRows = new ArrayList<>();
         Map<String, List<AllocLossResult>> byZone = new LinkedHashMap<>();
         for (AllocLossResult u : units) {
+            boolean p1 = "p1".equals(u.getZone());
             unitRows.add(new AllocPoolDTOs.LossUnit(u.getHeadBuildingId(), lossLabel(u, ctx), u.getZone(),
                 u.getCQty(), u.getCableQty(), u.getDQty(), u.getEQty(), u.getRawRate(),
-                u.getGQty(), u.getAdjQty(), u.getAdjRate(), u.getVariant(), u.getTenantRate(), null));
+                u.getGQty(), u.getAdjQty(), u.getAdjRate(), u.getVariant(), u.getTenantRate(), null,
+                u.getFormulaRate(), u.getManualRate(), p1 ? gParts : null, p1 ? gDiv : null));
             byZone.computeIfAbsent(u.getZone(), k -> new ArrayList<>()).add(u);
         }
         List<AllocPoolDTOs.LossRecon> recon = new ArrayList<>();

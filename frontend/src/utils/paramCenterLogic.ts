@@ -66,6 +66,17 @@ export function pendingSummary(s: ParamStatus): string {
   return parts.join(' · ')
 }
 
+// ── 其它三屏头部的 stale 条(spec §5.5.3):公共电核算 / 楼栋损耗看池快照,催缴单看批次时间 ——
+//    本屏那份快照早于最近一次参数改动才算旧(后端 status.stale 是两者取或,催缴单没重生成不该让池屏也亮);
+//    未生成(快照 null)不算旧。返回文案,'' = 一致 ──
+export type SnapKind = 'pool' | 'bill'
+export function staleText(s: ParamStatus | null | undefined, kind: SnapKind): string {
+  if (!s?.lastChangeAt) return ''
+  const snap = kind === 'bill' ? s.billBatchAt : s.poolSnapshotAt
+  if (!snap || s.lastChangeAt <= snap) return ''       // ISO 'YYYY-MM-DDTHH:mm:ss' 字典序=时间序
+  return `参数于 ${hhmm(s.lastChangeAt)} 更新，本屏为旧快照`
+}
+
 // ── 「复制上月电价」键集 = 注册表里默认 month 的裸电价键(6 键;与后端 POST /price-cfg/copy 复制范围同源) ──
 export function copyPrevMonthKeys(): string[] {
   return PARAM_DEFS.filter(d => d.defaultMode === 'month' && d.key.startsWith('elec_')).map(d => d.key)
