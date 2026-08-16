@@ -261,16 +261,17 @@ public class AllocService {
         return r2(touAmt.divide(coefficient, 10, RoundingMode.HALF_UP));
     }
 
-    // 收取租户损耗率 I(POOL-ENGINE-SPEC §3.4):变体按座配置(loss_variant),不按 E 符号推断
-    // (审计:一期F座 E=+55.7 仍净额式)。net:I=−ROUND((E−G−adjQty)/C,4)+adjRate;
-    // share_only:I=ROUND(G/C,4)+adjRate。C=总表量,E=分表Σ−总表,G 已含 g_adj。
+    // 收取租户损耗率 I(POOL-ENGINE-SPEC §3.4 / S21 §4.2):变体按座配置(loss_variant),不按 E 符号推断
+    // (审计:一期F座 E=+55.7 仍净额式)。net:I=−ROUND((E−G−adjQty)/分母,4)+adjRate;
+    // share_only:I=ROUND(G/分母,4)+adjRate。E=分表Σ−总表;G=公摊分摊度数(各栋同值,不再含 g_adj);
+    // denom=C(总表量)或 C+铝缆(loss_denom_cable=1,二期 2023-08/09 源册 G5=ROUND(F5/(C5+C6+C7+D6),4))。
     public static BigDecimal tenantLossRate(String variant, BigDecimal lossQty, BigDecimal shareQty,
-                                            BigDecimal adjQty, BigDecimal adjRate, BigDecimal headQty) {
-        if (headQty == null || headQty.signum() == 0) return null;
+                                            BigDecimal adjQty, BigDecimal adjRate, BigDecimal denom) {
+        if (denom == null || denom.signum() == 0) return null;
         BigDecimal base = "share_only".equals(variant)
-            ? r4(nz(shareQty).divide(headQty, 10, RoundingMode.HALF_UP))
+            ? r4(nz(shareQty).divide(denom, 10, RoundingMode.HALF_UP))
             : r4(lossQty.subtract(nz(shareQty)).subtract(nz(adjQty))
-                .divide(headQty, 10, RoundingMode.HALF_UP)).negate();
+                .divide(denom, 10, RoundingMode.HALF_UP)).negate();
         return base.add(nz(adjRate));
     }
 
@@ -1084,23 +1085,25 @@ public class AllocService {
         return any ? new RuleUsage(qty, sharp, peak, flat, valley) : null;
     }
 
-    // 规则全额成本(§2.3 AD 口径):p1=ROUND((用量+加度)×单价,2);p2=分时金额 W(无分时段回退 平价×总量)
+    // 规则全额成本(§2.3 AD 口径):p1=ROUND((用量+加度)×单价,2);p2=分时金额 W(无分时段回退 平价×总量)。
+    // S21 §4.3:单价走价目簿月价(p1=商业裸价+商业维护费;p2=四段裸价+管理费),不再读 alloc_cfg 冻结价;
+    // dorm 规则一如既往不出对账行(旧实现读不到 p2.price_norm 即跳过)。
     private BigDecimal ruleCostAmount(AllocRule rule, RuleUsage u, Ctx ctx) {
-        if ("p1".equals(rule.getZone())) {
-            BigDecimal price = cfgVal(ctx, "p1", "price_flat");
-            if (price == null) { ctx.warnings().add("缺参数 p1.price_flat,规则「" + rule.getName() + "」跳过"); return null; }
-            return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
-        }
+        String zone = rule.getZone();
+        if (!"p1".equals(zone) && !"p2".equals(zone)) return null;
+        BigDecimal price = lossPrice(zone, ctx);   // p1 商业价 / p2 平段价(含管理费)
+        if (price == null) return null;
+        if ("p1".equals(zone)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
         boolean hasTou = u.sharp().signum() != 0 || u.peak().signum() != 0
             || u.flat().signum() != 0 || u.valley().signum() != 0;
-        BigDecimal pNorm = cfgVal(ctx, "p2", "price_norm");
         if (hasTou) {
+            BigDecimal mgmt = nz(priceCfg.resolve("mgmt_fee", ctx.ym(), null, zone));
             return touAmount(u.sharp(), u.peak(), u.flat(), u.valley,
-                cfgVal(ctx, "p2", "price_sharp"), cfgVal(ctx, "p2", "price_peak"),
-                pNorm, cfgVal(ctx, "p2", "price_valley"));
+                nz(priceCfg.resolve("elec_sharp", ctx.ym(), null, zone)).add(mgmt),
+                nz(priceCfg.resolve("elec_peak", ctx.ym(), null, zone)).add(mgmt),
+                price, nz(priceCfg.resolve("elec_valley", ctx.ym(), null, zone)).add(mgmt));
         }
-        if (pNorm == null) { ctx.warnings().add("缺参数 p2.price_norm,规则「" + rule.getName() + "」跳过"); return null; }
-        return r2(u.qty().add(poolExtra(rule, ctx)).multiply(pNorm));
+        return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
     }
 
     // 全部规则(非 loss)+损耗链 → 户级贡献清单(生成/抽屉/对账共用同一计算体,口径全等由结构保证)
@@ -1392,13 +1395,20 @@ public class AllocService {
         BigDecimal div = cfgVal(ctx, "p1", "park_share_div");
         if (div == null || div.signum() == 0) return BigDecimal.ZERO;
         BigDecimal sum = BigDecimal.ZERO;
+        for (AllocLossRowDTO.GPart p : gParts(ctx)) sum = sum.add(p.qty());
+        return r2(sum.divide(div, 10, RoundingMode.HALF_UP));
+    }
+
+    // S21 §4.1 G 分解:一期园区公摊池 池名+当月净量(缺读数池不列),Σ÷park_share_div=G(屏上悬浮分解式)
+    private List<AllocLossRowDTO.GPart> gParts(Ctx ctx) {
+        List<AllocLossRowDTO.GPart> out = new ArrayList<>();
         Map<Integer, SegQty> memo = new HashMap<>();
         for (AllocRule rule : ctx.ruleList()) {
             if (!PARK_POOL.equals(rule.getFeeKey()) || !"p1".equals(rule.getZone())) continue;
             SegQty q = poolSegQty(rule, ctx, memo, new ArrayDeque<>());
-            if (q.any()) sum = sum.add(q.total());
+            if (q.any()) out.add(new AllocLossRowDTO.GPart(rule.getName(), q.total()));
         }
-        return r2(sum.divide(div, 10, RoundingMode.HALF_UP));
+        return out;
     }
 
     // 损耗变体(§3.4):组内无分表=none 不出率;否则按 building:{head}.loss_variant(0=net默认/1=share_only/2=陈列不出率)
@@ -1409,15 +1419,24 @@ public class AllocService {
         return v != null && v.intValue() == 1 ? "share_only" : "net";
     }
 
-    // G 列(仅 p1):公摊池均摊 + building:{head}.loss_g_adj(一期A座 -1500);二期 null
+    // G 列(仅 p1):公摊池均摊,各栋同值(S21:loss_g_adj 已并入 loss_adj_qty,分栋差异走调整度数);二期 null
     private BigDecimal groupG(LossGroup g, Ctx ctx) {
         if (!"p1".equals(g.zone())) return null;
-        return nz(shareQtyOf(g.zone(), ctx)).add(nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_g_adj")));
+        return nz(shareQtyOf(g.zone(), ctx));
     }
 
+    // 损耗费单价(S21 §4.3):一期/宿舍=商业裸价+商业维护费(与池成本同口径);二期=平段裸价+管理费。
+    // 价目簿缺当月电价 → null(生成路径已被 priceGate 拦下;读时派生 recon 跳过并 warn 一次)。
     private BigDecimal lossPrice(String zone, Ctx ctx) {
-        BigDecimal p = cfgVal(ctx, zone, "price_loss");
-        return p != null ? p : cfgVal(ctx, zone, "price_flat");   // 一期损耗按商业价回退
+        boolean p2 = "p2".equals(zone);
+        String elecKey = p2 ? "elec_flat" : "elec_commercial";
+        BigDecimal elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
+        if (elec == null) {
+            String w = zone + " 缺 " + ctx.ym() + " 电价(" + elecKey + "),损耗费/对账价未算";
+            if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
+            return null;
+        }
+        return elec.add(nz(priceCfg.resolve(p2 ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
     }
 
     private List<Contribution> lossContributions(Ctx ctx) {
@@ -1471,16 +1490,36 @@ public class AllocService {
         return adjQty;
     }
 
-    private BigDecimal groupRate(LossGroup g, Ctx ctx) {
-        String variant = lossVariant(g, ctx);
-        if ("none".equals(variant)) return null;
-        BigDecimal lossQty = g.subQty().subtract(g.headQty());   // E=分表Σ−总表(负=有损耗)
-        BigDecimal adjRate = nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"));
-        return tenantLossRate(variant, lossQty, groupG(g, ctx), groupAdjQty(g, ctx), adjRate, g.headQty());
+    // 组率三件套(S21 §4.2):rate=对外收取率(手工率非空即覆盖);formula=三式公式率(并排备查);denom=分母(C 或 C+铝缆)。
+    // 分母开关 loss_denom_cable 栋级优先、期级回退;variant=none 时 rate/formula 皆 null,denom 仍给出。
+    record GroupRate(BigDecimal rate, BigDecimal formula, BigDecimal manual, BigDecimal denom) {}
+
+    // 纯函数(单测锁定):denomCable ⇒ 分母=C+铝缆;manual 非空 ⇒ rate=manual 而 formula 仍算出并排;variant=none ⇒ 皆 null
+    static GroupRate lossGroupRate(String variant, BigDecimal headQty, BigDecimal cableQty, boolean denomCable,
+                                   BigDecimal lossQty, BigDecimal shareQty, BigDecimal adjQty, BigDecimal adjRate,
+                                   BigDecimal manual) {
+        BigDecimal denom = denomCable ? headQty.add(nz(cableQty)) : headQty;
+        if ("none".equals(variant)) return new GroupRate(null, null, null, denom);
+        BigDecimal formula = tenantLossRate(variant, lossQty, shareQty, adjQty, adjRate, denom);
+        return new GroupRate(manual != null ? manual : formula, formula, manual, denom);
     }
+
+    private GroupRate groupRateDetail(LossGroup g, Ctx ctx) {
+        BigDecimal cable = cfgVal(ctx, "building:" + g.headBuildingId(), "loss_denom_cable");
+        if (cable == null) cable = cfgVal(ctx, g.zone(), "loss_denom_cable");
+        return lossGroupRate(lossVariant(g, ctx), g.headQty(), g.cableQty(), cable != null && cable.signum() != 0,
+            g.subQty().subtract(g.headQty()),   // E=分表Σ−总表(负=有损耗)
+            groupG(g, ctx), groupAdjQty(g, ctx),
+            nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate")),
+            cfgVal(ctx, "building:" + g.headBuildingId(), "loss_rate_manual"));
+    }
+
+    private BigDecimal groupRate(LossGroup g, Ctx ctx) { return groupRateDetail(g, ctx).rate(); }
 
     private List<AllocLossRowDTO> lossTable(Ctx ctx) {
         List<AllocLossRowDTO> out = new ArrayList<>();
+        List<AllocLossRowDTO.GPart> parts = gParts(ctx).stream()
+            .map(p -> new AllocLossRowDTO.GPart(p.name(), r2(p.qty()))).toList();
         for (LossGroup g : lossGroups(ctx)) {
             BigDecimal lossQty = g.subQty().subtract(g.headQty());
             BigDecimal rawRate = g.headQty().signum() == 0 ? null
@@ -1488,11 +1527,13 @@ public class AllocService {
             String name = g.buildingIds().stream()
                 .map(bid -> { Building b = ctx.buildingById().get(bid); return b == null ? "#" + bid : b.getName(); })
                 .reduce((a, b) -> a + "+" + b).orElse("#" + g.headBuildingId());
+            GroupRate gr = groupRateDetail(g, ctx);
             out.add(new AllocLossRowDTO(g.zone(), g.headBuildingId(), name,
                 r2(g.headQty()), r2(g.subQty()), r2(lossQty), rawRate,
                 nz(groupG(g, ctx)), r2(groupAdjQty(g, ctx)),
                 cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"),
-                groupRate(g, ctx)));
+                gr.rate(), gr.formula(), gr.manual(), r2(gr.denom()),
+                "p1".equals(g.zone()) ? parts : null));
         }
         out.sort(Comparator.comparing(AllocLossRowDTO::zone).thenComparing(AllocLossRowDTO::buildingId));
         return out;
@@ -1840,7 +1881,11 @@ public class AllocService {
             r.setAdjQty(r2(groupAdjQty(g, ctx)));
             r.setAdjRate(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"));
             r.setVariant(lossVariant(g, ctx));
-            r.setTenantRate(groupRate(g, ctx));
+            GroupRate gr = groupRateDetail(g, ctx);
+            r.setTenantRate(gr.rate());
+            r.setFormulaRate(gr.formula());
+            r.setManualRate(gr.manual());
+            r.setDenomQty(r2(gr.denom()));
             r.setGeneratedAt(now);
             out.add(r);
         }

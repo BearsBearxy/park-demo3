@@ -17,6 +17,9 @@ public class AllocLossResult {
     private BigDecimal adjQty;         // 调整度数(二期H列)
     private BigDecimal adjRate;        // 调整损耗加点
     private String variant;            // net / share_only / none
-    private BigDecimal tenantRate;     // 收取租户损耗率
+    private BigDecimal tenantRate;     // 收取租户损耗率(manual 非空取 manual,否则=formulaRate)
+    private BigDecimal formulaRate;    // S21:三式公式率(手工率覆盖时并排备查)
+    private BigDecimal manualRate;     // S21:手工收取率 loss_rate_manual(无=NULL)
+    private BigDecimal denomQty;       // S21:率分母 C 或 C+铝缆(loss_denom_cable)
     private LocalDateTime generatedAt;
 }
