@@ -1,5 +1,9 @@
 # 价目管理（PRICE-CFG-SPEC）— UTILITY-BILLING 刀3 · S1 切片
 
+> ⚠ **已被 `S21-PARAM-CENTER-SPEC.md` 取代（2026-08-16）**：价目管理页 `/price-cfg` 退役（路由重定向到 `/params` 计费参数页），
+> `tenant_price_cfg` 加 `mode` 列与 `alloc_cfg` 统一版本语义（`VersionResolver`），白名单/人话/默认生效方式统一由 `ParamRegistry` 给出，
+> 写入口统一 `PUT /api/params`（旧 `PUT /api/price-cfg` 保留但内部改走 `ParamService`）。本文档仅作 V60 表结构与 S1 取价级联的历史记录。
+>
 > 状态：定稿（2026-07-27，用户拍板开工）。定位：**派生引擎取价的单一事实源**。
 > 本切片只做：储价（V60）+ 录入页（价目管理屏）+ 取价级联规则。**不做派生计算**（S3）。
 > 价值锚点：终结"价格活在 Excel 格子里"（宿舍路灯 1.1315688 陈旧跨册引用事故即本切片的反面教材）。
