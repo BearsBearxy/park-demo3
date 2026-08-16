@@ -33,8 +33,11 @@ import java.util.regex.Pattern;
 @Service
 public class ParamService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
-    // ③ 区栋级口径键:对每个损耗栋出一行(无行=默认语义) / 池级键:对每个池出一行(无行显空)
-    static final Set<String> LOSS_BUILDING_KEYS = Set.of("loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_denom_cable");
+    // ③ 区栋级口径键 + ① 区栋级月参(调整度数/手工率/加点):对每个损耗栋出一行(无行=默认语义/未设置) / 池级键:对每个池出一行(无行显空)
+    // ⚠ 月参三键必须也按栋全集出行:只对库里已有 (栋,键) 出行会让「从未设过的栋」在页面上没有 [改…]——
+    //   Task 14 验收时 E座 2023-08 调整度数、任何栋的手工收取率都无处首次录入,只能绕道 API(spec §10 ①)。
+    static final Set<String> LOSS_BUILDING_KEYS = Set.of("loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_denom_cable",
+        "loss_adj_qty", "loss_adj_rate", "loss_rate_manual");
     static final Set<String> POOL_KEYS = Set.of("coefficient", "extra_qty", "manual_qty", "price_override", "std_add");
     private static final Pattern LOSS_BASE_FORM_B = Pattern.compile("loss_base_form_b(\\d+)");
 

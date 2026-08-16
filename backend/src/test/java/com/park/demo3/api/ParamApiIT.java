@@ -180,6 +180,16 @@ class ParamApiIT extends AbstractMysqlIT {
         List<Map<String, Object>> all = rows("2024-02", "all");
         assertTrue(all.stream().anyMatch(r -> "loss_variant".equals(r.get("key")) && "一期 A座".equals(r.get("scopeLabel"))), "A座 loss_variant 应出行");
         assertTrue(all.stream().anyMatch(r -> "loss_variant".equals(r.get("key")) && "二期 三车间".equals(r.get("scopeLabel"))), "三车间 loss_variant 应出行");
+        // 栋级月参三键(调整度数/加点/手工率)对每个损耗栋也出行,库里从未设过的栋才有首次录入口(spec §10 ①):
+        // loss_denom_cable 的栋级行只来自「损耗栋全集」(库里只有 p2 期级行),拿它当全集基准
+        java.util.Set<Object> lossBld = all.stream()
+            .filter(r -> "loss_denom_cable".equals(r.get("key")) && String.valueOf(r.get("scope")).startsWith("building:"))
+            .map(r -> r.get("scope")).collect(java.util.stream.Collectors.toSet());
+        assertFalse(lossBld.isEmpty(), "损耗栋全集不该为空");
+        for (String k : List.of("loss_adj_qty", "loss_adj_rate", "loss_rate_manual")) {
+            java.util.Set<Object> got = all.stream().filter(r -> k.equals(r.get("key"))).map(r -> r.get("scope")).collect(java.util.stream.Collectors.toSet());
+            assertTrue(got.containsAll(lossBld), k + " 应对每个损耗栋出行(未设置也出),缺: " + lossBld.stream().filter(s -> !got.contains(s)).toList());
+        }
         Map<String, Object> mgmt = one(all, "mgmt_fee", "");
         assertEquals("constant", mgmt.get("group"));
         assertEquals("全园", mgmt.get("scopeLabel"));
