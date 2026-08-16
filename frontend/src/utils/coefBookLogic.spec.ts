@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { PriceCfgDTO } from '@/api/priceCfg'
+import type { ParamRowDTO } from '@/api/params'
+import { paramDef } from './paramRegistry'
 import { groupByBuilding } from './billNoticeLogic'
 import {
   COEF_KEYS, buildCoefRows, buildFloorPlan, buildPricePlan, coefMeta, floorMemberships,
@@ -7,14 +8,34 @@ import {
   type CoefPoolIn, type CoefRuleIn, type CoefStash,
 } from './coefBookLogic'
 
-// ── COEF_KEYS 注册表(S14 §3:九键=价目户级例外全部 overridable 键 + 二期层份) ──
+// ── COEF_KEYS 注册表(S21:价目键源=paramRegistry tenantEditable;S14 九键 + 路灯收取价/消防固定额/损耗基数形态 + 二期层份) ──
 describe('COEF_KEYS 注册表', () => {
-  it('九键齐全且 id 唯一,顺序=spec §3 下拉序', () => {
+  it('十二键齐全且 id 唯一:注册表序价目 10 键 + 层份 2 键;首键=电力管理费(窗口默认)', () => {
     expect(COEF_KEYS.map(k => k.id)).toEqual([
-      'mgmt_fee', 'elevator_share', 'fire_share', 'water', 'capacity_fee',
-      'green_rate', 'elec_package', 'share_elec_fixed', 'share_water_fixed',
+      'mgmt_fee', 'capacity_fee', 'water', 'elec_package', 'share_elec_fixed', 'share_water_fixed',
+      'green_rate', 'lamp_rate', 'fire_amount_fixed', 'loss_base_form',
+      'elevator_share', 'fire_share',
     ])
-    expect(new Set(COEF_KEYS.map(k => k.id)).size).toBe(9)
+    expect(new Set(COEF_KEYS.map(k => k.id)).size).toBe(12)
+  })
+  it('价目键全部是注册表 tenantEditable 键,label/unit/valueKind 取自注册表', () => {
+    for (const k of COEF_KEYS.filter(k => !k.floorShare)) {
+      const d = paramDef(k.id)!
+      expect(d.tenantEditable).toBe(true)
+      expect([k.label, k.unit, k.valueKind]).toEqual([d.label, d.unit, d.valueKind])
+    }
+  })
+  it('注册表里不进系数簿的 tenantEditable 键:月核对项/配套键/前缀模板/引用型', () => {
+    for (const id of ['sharp_as_peak_ratio', 'loss_base_park_amount', 'mgmt_fee_commercial', 'water_pipe',
+      'loss_base_form_b{bid}', 'loss_base_park_meter'])
+      expect(COEF_KEYS.some(k => k.id === id)).toBe(false)
+  })
+  it('损耗基数形态=枚举(Select 字典 A/B/C/F/G),其余价目键数字类', () => {
+    expect(coefMeta('loss_base_form').valueKind).toBe('enum')
+    expect(coefMeta('loss_base_form').enumOptions).toEqual(paramDef('loss_base_form')!.enumOptions)
+    expect(Object.keys(coefMeta('loss_base_form').enumOptions!)).toEqual(['1', '2', '3', '6', '7'])
+    expect(coefMeta('lamp_rate').valueKind).toBe('money')
+    expect(coefMeta('fire_amount_fixed').valueKind).toBe('money')
   })
   it('电力管理费=双键同值成对写(tenant-price-exceptions 惯例)', () => {
     expect(coefMeta('mgmt_fee').writes).toEqual([{ key: 'mgmt_fee' }, { key: 'mgmt_fee_commercial' }])
@@ -35,8 +56,9 @@ describe('COEF_KEYS 注册表', () => {
     expect(coefMeta('elevator_share').writes).toEqual([])
     expect(coefMeta('fire_share').writes).toEqual([])
   })
-  it('单键四项各写自身', () => {
-    for (const id of ['capacity_fee', 'green_rate', 'share_elec_fixed', 'share_water_fixed'])
+  it('单键各写自身(含 S21 新增三键)', () => {
+    for (const id of ['capacity_fee', 'green_rate', 'share_elec_fixed', 'share_water_fixed',
+      'lamp_rate', 'fire_amount_fixed', 'loss_base_form'])
       expect(coefMeta(id).writes).toEqual([{ key: id }])
   })
 })
@@ -71,36 +93,35 @@ describe('buildCoefRows 行构建', () => {
   })
 })
 
-// ── 当前生效值:价目键 tenant 级联 + 常数键版本前滚(resolvePrice 同规则,附命中 scope) ──
-describe('resolveCoefPrice tenant 级联', () => {
-  let id = 0
-  const row = (scope: string, cfgKey: string, acctMonth: string, value: number): PriceCfgDTO =>
-    ({ id: ++id, scope, cfgKey, acctMonth, value, note: null, updatedAt: '2026-01-01T00:00:00', tenantName: null })
+// ── 当前生效值:GET /params 行已按 ym 级联解析,本函数按 户→期→全园 找行;例外=户级行命中自身版本(rowId 非空) ──
+describe('resolveCoefPrice 作用域找行', () => {
+  const row = (scope: string, key: string, value: number | null, over: Partial<ParamRowDTO> = {}): ParamRowDTO => ({
+    key, label: key, unit: '元/度', group: 'tenant', scope, scopeLabel: scope || '全园',
+    value, valueText: value == null ? '' : `${value} 元/度`, mode: value == null ? null : 'from', acctMonth: '',
+    rangeText: value == null ? '' : '长期（初始版本）', sourceChain: value == null ? [] : [`${scope || '全园'}:${value} 元/度`],
+    formula: null, hint: null, editable: true, monthlyCheck: false, hasMonthRow: false, rowId: null, note: null, ...over,
+  })
 
-  it('tenant 行优先命中且回报例外 scope', () => {
-    const rows = [row('', 'mgmt_fee', '', 0.16), row('tenant:7', 'mgmt_fee', '', 0.1)]
-    expect(resolveCoefPrice(rows, 'mgmt_fee', '2026-06', 7, 'p2'))
-      .toEqual({ value: 0.1, effMonth: '', scope: 'tenant:7' })
+  it('户级行命中自身版本 → 例外徽标,带人话值/区间/命中链', () => {
+    const rows = [row('', 'mgmt_fee', 0.16), row('tenant:7', 'mgmt_fee', 0.1, { rowId: 99, rangeText: '2026-03 起长期',
+      sourceChain: ['甲（户）:0.1 元/度', '全园:0.16 元/度'] })]
+    expect(resolveCoefPrice(rows, 'mgmt_fee', 7, 'p2')).toEqual({
+      value: 0.1, valueText: '0.1 元/度', rangeText: '2026-03 起长期', exception: true,
+      chain: ['甲（户）:0.1 元/度', '全园:0.16 元/度'],
+    })
   })
-  it('无户级行回落 zone,再回落全园', () => {
-    const rows = [row('', 'water', '', 3.95), row('p2', 'water', '', 4.2)]
-    expect(resolveCoefPrice(rows, 'water', '2026-06', 7, 'p2'))
-      .toEqual({ value: 4.2, effMonth: '', scope: 'p2' })
-    expect(resolveCoefPrice(rows, 'water', '2026-06', 7, null))
-      .toEqual({ value: 3.95, effMonth: '', scope: '' })
+  it('户级行存在但值继承上级(rowId 空)→ 非例外', () => {
+    const rows = [row('', 'water', 3.95), row('tenant:7', 'water', 3.95, { rowId: null })]
+    expect(resolveCoefPrice(rows, 'water', 7, null)?.exception).toBe(false)
   })
-  it('常数键版本前滚:取 acctMonth≤ym 最大版本,更晚版本不生效', () => {
-    const rows = [
-      row('tenant:7', 'water', '', 4.0), row('tenant:7', 'water', '2026-03', 4.45),
-      row('tenant:7', 'water', '2026-09', 5.0),
-    ]
-    expect(resolveCoefPrice(rows, 'water', '2026-06', 7, null))
-      .toEqual({ value: 4.45, effMonth: '2026-03', scope: 'tenant:7' })
-    expect(resolveCoefPrice(rows, 'water', '2026-02', 7, null))
-      .toEqual({ value: 4.0, effMonth: '', scope: 'tenant:7' })
+  it('无户级行回落期行,再回落全园;户级行值 null 视为无命中', () => {
+    const rows = [row('', 'water', 3.95), row('p2', 'water', 4.2), row('tenant:7', 'water', null)]
+    expect(resolveCoefPrice(rows, 'water', 7, 'p2')?.value).toBe(4.2)
+    expect(resolveCoefPrice(rows, 'water', 7, null)?.value).toBe(3.95)
   })
-  it('整链无行 → null', () => {
-    expect(resolveCoefPrice([], 'capacity_fee', '2026-06', 7, 'p1')).toBeNull()
+  it('只认同键的行;整链无行 → null', () => {
+    expect(resolveCoefPrice([row('', 'water', 3.95)], 'capacity_fee', 7, 'p1')).toBeNull()
+    expect(resolveCoefPrice([], 'capacity_fee', 7, 'p1')).toBeNull()
   })
 })
 
@@ -135,28 +156,32 @@ describe('poolsOfFeeKey / floorMemberships', () => {
   })
 })
 
-// ── 提交计划:价目键 → PUT /price-cfg 序列(含配套键);清除=全部配套键删该月版本 ──
+// ── 提交计划:价目键 → PUT /params 序列(含配套键;mode 不传=注册表默认 from);清除=全部配套键删该月版本 ──
 describe('buildPricePlan', () => {
   it('每户按写计划展开:mgmt 双键同值', () => {
     const stash: CoefStash = new Map([[7, 0.1]])
     expect(buildPricePlan(coefMeta('mgmt_fee'), stash, '2026-06')).toEqual([{
       tenantId: 7,
       reqs: [
-        { scope: 'tenant:7', cfgKey: 'mgmt_fee', acctMonth: '2026-06', value: 0.1, note: '系数簿批量' },
-        { scope: 'tenant:7', cfgKey: 'mgmt_fee_commercial', acctMonth: '2026-06', value: 0.1, note: '系数簿批量' },
+        { key: 'mgmt_fee', scope: 'tenant:7', acctMonth: '2026-06', value: 0.1, note: '系数簿批量' },
+        { key: 'mgmt_fee_commercial', scope: 'tenant:7', acctMonth: '2026-06', value: 0.1, note: '系数簿批量' },
       ],
     }])
   })
   it('fixed 配套键写死值(water_pipe=0),不吃用户值', () => {
     const [it7] = buildPricePlan(coefMeta('water'), new Map([[7, 4.45]]), '2026-06')
-    expect(it7.reqs.map(r => [r.cfgKey, r.value])).toEqual([['water', 4.45], ['water_pipe', 0]])
+    expect(it7.reqs.map(r => [r.key, r.value])).toEqual([['water', 4.45], ['water_pipe', 0]])
   })
   it('清除模式(null)=全部配套键 value null 删该月版本回退', () => {
     const [it7] = buildPricePlan(coefMeta('elec_package'), new Map([[7, null]]), '2026-06')
-    expect(it7.reqs.map(r => [r.cfgKey, r.value])).toEqual([
+    expect(it7.reqs.map(r => [r.key, r.value])).toEqual([
       ['elec_package', null], ['mgmt_fee', null], ['mgmt_fee_commercial', null],
     ])
     expect(it7.reqs.every(r => r.note == null)).toBe(true)
+  })
+  it('枚举键(损耗基数形态)写字典值本身', () => {
+    const [it7] = buildPricePlan(coefMeta('loss_base_form'), new Map([[7, 6]]), '2026-06')
+    expect(it7.reqs).toEqual([{ key: 'loss_base_form', scope: 'tenant:7', acctMonth: '2026-06', value: 6, note: '系数簿批量' }])
   })
   it('空暂存 → 空计划', () => {
     expect(buildPricePlan(coefMeta('water'), new Map(), '2026-06')).toEqual([])
