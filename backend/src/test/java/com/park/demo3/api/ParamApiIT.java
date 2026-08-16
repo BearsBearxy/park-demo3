@@ -19,10 +19,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 计费参数中心(S21-PARAM-CENTER-SPEC §5/§6):读侧(站在账期的生效行/人话/区间/命中链/状态条)(写侧用例见 Task 8)。
+// 计费参数中心(S21-PARAM-CENTER-SPEC §5/§6):读侧(站在账期的生效行/人话/区间/命中链/状态条)+ 写侧(PUT/改错/删版本/历史/重算/旧端点)。
 // 读侧断言靠种子(V65 池/V97 口径版本链),但**对象 id 一律现查**(JdbcTemplate):种子库的池 id 与 dev 差 1(V70 按 dev id 硬编码
 // 改名 → 种子库里「招商中心净电」的月参挂在别名的池上),按名断言会假红;楼栋按名查(V65/V97 都按名落行)。
-// @Transactional 回滚;状态条探针月用 2099-04(本类只读)。
+// @Transactional 回滚;写路径月份用 2099-04 / 2099-10 / 2099-11 槽。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
 class ParamApiIT extends AbstractMysqlIT {
@@ -61,6 +61,20 @@ class ParamApiIT extends AbstractMysqlIT {
     }
 
     private static double num(Object o) { return ((Number) o).doubleValue(); }
+
+    /** PUT /api/params → 200 + code 0 → 返回行 */
+    private Map<String, Object> putRow(String json, String ym) throws Exception {
+        var req = put("/api/params").header("Authorization", auth()).contentType("application/json").content(json);
+        if (ym != null) req = req.param("ym", ym);
+        String b = body(mvc.perform(req).andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)));
+        return JsonPath.read(b, "$.data");
+    }
+
+    /** PUT /api/params → 业务错 HTTP 200 + code 400 */
+    private void put400(String json) throws Exception {
+        mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json").content(json))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(400));
+    }
 
     private int buildingId(String name) {
         return jdbc.queryForObject("select id from building where name=? order by id limit 1", Integer.class, name);
@@ -193,5 +207,159 @@ class ParamApiIT extends AbstractMysqlIT {
                 .andExpect(status().isBadRequest());
         mvc.perform(get("/api/params").param("ym", "2024-02").param("zone", "p9").header("Authorization", auth()))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ══════════ 写侧 ══════════
+
+    // ── ①② month 行仅当月命中 / from 行前滚;返回行站在 ym;户级例外命中链到全园;改错原地 + 上级作用域改错 400;历史 ──
+    @Test
+    void put_month_from_correction_history() throws Exception {
+        String b = "building:" + buildingId("一期 B座");
+        // ① month 行:2099-04 命中,2099-05 不命中(ym 参数直接站在次月看)
+        Map<String, Object> r = putRow("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-04\",\"mode\":\"month\",\"value\":-8000,\"note\":\"IT-D5\"}", null);
+        assertEquals(-8000.0, num(r.get("value")));
+        assertEquals("month", r.get("mode"));
+        assertEquals("仅 2099-04", r.get("rangeText"));
+        assertEquals(true, r.get("hasMonthRow"));
+        assertNotNull(r.get("rowId"));
+        assertEquals("IT-D5", r.get("note"));
+        Map<String, Object> next = putRow("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-04\",\"mode\":\"month\",\"value\":-8000}", "2099-05");
+        assertNotEquals(-8000.0, next.get("value") == null ? null : num(next.get("value")));
+        assertEquals(false, next.get("hasMonthRow"));
+        assertEquals(-8000.0, num(one(rows("2099-04", "p1"), "loss_adj_qty", b).get("value")));
+        // ② from 行(mode 缺省=注册表 from):2099-04 起 → 2099-06 命中,区间「2099-04 起长期」
+        Map<String, Object> f = putRow("{\"key\":\"loss_adj_rate\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-04\",\"value\":0.005}", "2099-06");
+        assertEquals(0.005, num(f.get("value")));
+        assertEquals("from", f.get("mode"));
+        assertEquals("2099-04 起长期", f.get("rangeText"));
+        // 户级例外:命中链 户 → 全园(全园 0.16 长期);tenant 不存在也可写(与旧价目端点同)
+        Map<String, Object> t = putRow("{\"key\":\"mgmt_fee\",\"scope\":\"tenant:999999\",\"acctMonth\":\"\",\"value\":0.15}", "2099-06");
+        List<?> chain = (List<?>) t.get("sourceChain");
+        assertTrue(chain.size() >= 2, chain.toString());
+        assertEquals("已删租户#999999（户）:0.15 元/度", chain.get(0));
+        assertEquals("全园:0.16 元/度", chain.get(chain.size() - 1));
+        assertEquals("constant", t.get("group"));   // group=键主场;户级行归 ④ 由前端按 scope 判(paramCenterLogic.groupRows)
+        // ③ 改错:站在 2099-06 命中 2099-04 起的 from 行 → 原地改 0.006,不新增版本;上级作用域继承值改错 → 400
+        Map<String, Object> c = putRow("{\"key\":\"loss_adj_rate\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-06\",\"value\":0.006,\"correction\":true}", "2099-06");
+        assertEquals(0.006, num(c.get("value")));
+        assertEquals("2099-04", c.get("acctMonth"));
+        assertEquals("2099-04 起长期", c.get("rangeText"));
+        put400("{\"key\":\"loss_denom_cable\",\"scope\":\"building:" + buildingId("二期 三车间") + "\",\"acctMonth\":\"2099-04\",\"value\":0,\"correction\":true}");
+        // ⑥ 历史:2099-04 版本只一条且已改成 0.006(改错不新增版本;B座另有种子 2024-02 起的 0.003 版本与其 migrate 日志)
+        //    该版本的日志 2 条(倒序:改错 old 0.005→new 0.006 在前,首建 old null 在后)
+        String h = body(mvc.perform(get("/api/params/history").param("key", "loss_adj_rate").param("scope", b).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)));
+        List<Map<String, Object>> versions = JsonPath.read(h, "$.data.versions");
+        List<Map<String, Object>> v04 = versions.stream().filter(v -> "2099-04".equals(v.get("acctMonth"))).toList();
+        assertEquals(1, v04.size(), versions.toString());
+        assertEquals(0.006, num(v04.get(0).get("value")));
+        assertEquals("2099-04 起长期", v04.get(0).get("rangeText"));
+        List<Map<String, Object>> changes = JsonPath.read(h, "$.data.changes");
+        List<Map<String, Object>> c04 = changes.stream().filter(x -> "2099-04".equals(x.get("acctMonth"))).toList();
+        assertEquals(2, c04.size(), changes.toString());
+        assertEquals("set", c04.get(0).get("action"));
+        assertEquals(0.005, num(c04.get(0).get("oldValue")));
+        assertEquals(0.006, num(c04.get(0).get("newValue")));
+        assertEquals("改错", c04.get(0).get("note"));
+        assertEquals("admin", c04.get(0).get("actor"));
+        assertEquals("一期 B座", c04.get(0).get("scopeLabel"));
+        assertNull(c04.get(1).get("oldValue"));
+        assertEquals(0.005, num(c04.get(1).get("newValue")));
+    }
+
+    // ── ④ 注册表门:退役键 / 未注册键 / 作用域形态不允许 / 月变键缺月 → 400 ──
+    @Test
+    void put_registryGate_400() throws Exception {
+        String b = "building:" + buildingId("一期 B座");
+        put400("{\"key\":\"loss_g_adj\",\"scope\":\"" + b + "\",\"value\":-1}");
+        put400("{\"key\":\"no_such_key\",\"scope\":\"\",\"value\":1}");
+        put400("{\"key\":\"loss_variant\",\"scope\":\"p1\",\"value\":1}");
+        put400("{\"key\":\"elec_peak\",\"scope\":\"\",\"value\":1.2}");
+        put400("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"\",\"mode\":\"month\",\"value\":1}");
+        // 值域:枚举不在字典 / 布尔非 0|1 / 引用型非整数 → 400
+        put400("{\"key\":\"loss_variant\",\"scope\":\"" + b + "\",\"value\":5}");
+        put400("{\"key\":\"loss_recon\",\"scope\":\"" + b + "\",\"value\":2}");
+        put400("{\"key\":\"loss_head\",\"scope\":\"" + b + "\",\"value\":1.5}");
+        // 校验错 HTTP 400:scope 形态非法 / 月份格式
+        mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json")
+                .content("{\"key\":\"water\",\"scope\":\"p9\",\"value\":1}")).andExpect(status().isBadRequest());
+        mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json")
+                .content("{\"key\":\"water\",\"scope\":\"\",\"acctMonth\":\"2099/01\",\"value\":1}")).andExpect(status().isBadRequest());
+    }
+
+    // ── ⑤⑦ 重算 → 状态条与快照一致 → 删被使用版本 400 / 未使用版本可删 → 再改参 stale → 变更记录含 recalc ──
+    @Test
+    void recalc_status_deleteUsedVersion() throws Exception {
+        String ym = "2099-10";
+        for (String k : List.of("elec_commercial", "elec_sharp", "elec_peak", "elec_flat", "elec_valley"))
+            putRow("{\"key\":\"" + k + "\",\"scope\":\"\",\"acctMonth\":\"" + ym + "\",\"value\":1.0}", null);
+        String pool = "rule:" + jdbc.queryForObject("select r.id from alloc_rule r where r.zone='p1' and r.method='direct' and not exists"
+                + " (select 1 from alloc_cfg c where c.scope=concat('rule:', r.id) and c.cfg_key='extra_qty' and c.acct_month='') order by r.id limit 1", Integer.class);
+        putRow("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"" + ym + "\",\"value\":-100}", null);
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.priceOk").value(5))
+                .andExpect(jsonPath("$.data.stale").value(false))          // 未生成过 → 无快照可过期
+                .andExpect(jsonPath("$.data.pendingChanges").value(6));
+        String rc = body(mvc.perform(post("/api/params/recalc").param("ym", ym).header("Authorization", auth()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)));
+        int pools = jdbc.queryForObject("select count(*) from alloc_pool_result where ym=?", Integer.class, ym);
+        int units = jdbc.queryForObject("select count(*) from alloc_loss_result where ym=?", Integer.class, ym);
+        assertTrue(pools > 0);
+        assertEquals(pools, (int) JsonPath.read(rc, "$.data.pools"));
+        assertEquals(units, (int) JsonPath.read(rc, "$.data.lossUnits"));
+        assertEquals(0, (int) JsonPath.read(rc, "$.data.skippedConfirmed"));
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.stale").value(false))
+                .andExpect(jsonPath("$.data.pendingChanges").value(0))
+                .andExpect(jsonPath("$.data.poolSnapshotAt").isNotEmpty());
+        // 删被 2099-10 使用的月行 → 400;2099-11 月行未被使用 → 可删,回读值空
+        put400("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"" + ym + "\",\"value\":null}");
+        putRow("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"2099-11\",\"value\":-50}", null);
+        Map<String, Object> gone = putRow("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"2099-11\",\"value\":null}", null);
+        assertNull(gone.get("value"));
+        assertEquals(false, gone.get("hasMonthRow"));
+        // 重算后再改本月参数 → stale + 待重算 1 项;变更记录含 recalc 与本次 set,倒序
+        Thread.sleep(1100);   // ts / generated_at 都是 DATETIME(0):同一秒内的改动分不出先后,判据是「严格晚于快照那一秒」
+        putRow("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"" + ym + "\",\"value\":-120}", null);
+        mvc.perform(get("/api/params/status").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.stale").value(true))
+                .andExpect(jsonPath("$.data.pendingChanges").value(1));
+        String ch = body(mvc.perform(get("/api/params/changes").param("ym", ym).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)));
+        List<Map<String, Object>> changes = JsonPath.read(ch, "$.data");
+        assertEquals("set", changes.get(0).get("action"));
+        assertEquals(-120.0, num(changes.get(0).get("newValue")));
+        assertEquals(1, changes.stream().filter(c -> "recalc".equals(c.get("action")) && ym.equals(c.get("ym"))).count());
+        assertTrue(changes.stream().noneMatch(c -> "migrate".equals(c.get("action"))));
+        // 2099-11 的 set/delete 不影响 2099-10 的记录
+        assertTrue(changes.stream().noneMatch(c -> "2099-11".equals(c.get("acctMonth"))));
+    }
+
+    // ── ⑧ 旧端点 PUT /api/price-cfg、PUT /api/alloc/cfg 仍可写且走同一日志;/alloc/cfg 带月缺省 month ──
+    @Test
+    void legacyEndpoints_writeThroughParamService() throws Exception {
+        mvc.perform(put("/api/price-cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"\",\"cfgKey\":\"water\",\"acctMonth\":\"2099-04\",\"value\":4.2}"))
+                .andExpect(jsonPath("$.code").value(0));
+        String h = body(mvc.perform(get("/api/params/history").param("key", "water").param("scope", "").header("Authorization", auth())));
+        List<Map<String, Object>> ch = JsonPath.read(h, "$.data.changes");
+        assertEquals("set", ch.get(0).get("action"));
+        assertEquals("2099-04", ch.get(0).get("acctMonth"));
+        assertEquals("from", ch.get(0).get("mode"));
+        assertEquals(4.2, num(ch.get(0).get("newValue")));
+        Map<String, Object> w = one(rows("2099-05", "all"), "water", "");
+        assertEquals("4.2 元/吨", w.get("valueText"));
+        assertEquals("2099-04 起长期", w.get("rangeText"));
+        String b = "building:" + buildingId("一期 B座");
+        mvc.perform(put("/api/alloc/cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"" + b + "\",\"cfgKey\":\"loss_adj_qty\",\"acctMonth\":\"2099-11\",\"value\":-1}"))
+                .andExpect(jsonPath("$.code").value(0));
+        Map<String, Object> a = one(rows("2099-11", "all"), "loss_adj_qty", b);
+        assertEquals("仅 2099-11", a.get("rangeText"));
+        assertEquals(true, a.get("hasMonthRow"));
+        String h2 = body(mvc.perform(get("/api/params/history").param("key", "loss_adj_qty").param("scope", b).header("Authorization", auth())));
+        List<Map<String, Object>> ch2 = JsonPath.read(h2, "$.data.changes");
+        assertEquals("month", ch2.get(0).get("mode"));
+        assertEquals(-1.0, num(ch2.get(0).get("newValue")));
     }
 }

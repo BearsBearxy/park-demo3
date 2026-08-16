@@ -49,6 +49,7 @@ public class AllocService {
     private final ContractUnitMapper contractUnits;
     private final ElecCostEntryMapper elecEntries;   // 互认提示行只读(单向:P-B 永不写 elec_cost)
     private final PriceCfgService priceCfg;          // 池引擎取价单一事实源(POOL-ENGINE-SPEC §3)
+    private final ParamService params;               // S21:alloc_cfg 写路径(注册表门+变更日志)唯一入口
 
     public AllocService(AllocRuleMapper rules, AllocRuleMeterMapper ruleMeters, AllocRuleMemberMapper ruleMembers,
                         AllocRuleLinkMapper ruleLinks, AllocCfgMapper cfgs, AllocResultMapper results,
@@ -58,7 +59,7 @@ public class AllocService {
                         ContractMapper contracts, ContractBillingTermMapper billingTerms,
                         BillingTermUnitMapper termUnits,
                         UnitMapper units, ContractUnitMapper contractUnits,
-                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg) {
+                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg, ParamService params) {
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
         this.cfgs = cfgs; this.results = results; this.poolResults = poolResults;
         this.poolMeterResults = poolMeterResults; this.lossResults = lossResults;
@@ -66,7 +67,7 @@ public class AllocService {
         this.tenants = tenants; this.buildings = buildings; this.contracts = contracts;
         this.billingTerms = billingTerms; this.termUnits = termUnits;
         this.units = units; this.contractUnits = contractUnits;
-        this.elecEntries = elecEntries; this.priceCfg = priceCfg;
+        this.elecEntries = elecEntries; this.priceCfg = priceCfg; this.params = params;
     }
 
     // ══ V69 池定位与受益人(用户 2026-07-30 拍板:池名不手写/受益人勾选+按月留痕) ══
@@ -670,26 +671,15 @@ public class AllocService {
             .toList();
     }
 
-    // 键/作用域形态过 ParamRegistry 门(S21 §2.1:注册表之外一律 400);
+    // S21:写走 ParamService.write(注册表门 + param_change_log;删被已生成月使用的版本行 400)。本端点只收 alloc 键;
     // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     public void saveCfg(AllocCfgReq req) {
         String scope = req.scope().trim(), key = req.cfgKey().trim();
-        if (!ParamRegistry.allowed(key, scope) || ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
+        if (ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
             throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + "@" + scope);
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
-        AllocCfg row = cfgs.selectByKey(scope, key, month, mode);
-        if (req.value() == null) {
-            if (row != null) cfgs.deleteById(row.getId());
-            return;
-        }
-        if (row == null) {
-            row = new AllocCfg();
-            row.setScope(scope); row.setCfgKey(key); row.setAcctMonth(month); row.setMode(mode);
-        }
-        row.setCfgValue(req.value());
-        row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
-        if (row.getId() == null) cfgs.insert(row); else cfgs.updateById(row);
+        params.write(new ParamPutReq(key, scope, month, mode, req.value(), req.note(), null), null);
     }
 
     // ── 生成(§1 alloc_result):按 ym 先删后插 gen 行幂等;manual 行保留不覆盖;缺抄跳过并入 warnings ──

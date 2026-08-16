@@ -2,7 +2,6 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.PriceCfgDTO;
-import com.park.demo3.dto.PriceCfgReq;
 import com.park.demo3.entity.Tenant;
 import com.park.demo3.entity.TenantPriceCfg;
 import com.park.demo3.mapper.TenantMapper;
@@ -20,7 +19,8 @@ import java.util.stream.Collectors;
 // 价目管理(PRICE-CFG-SPEC v2):派生引擎取价的单一事实源。acct_month=版本生效起点(''=初始版本),
 // 每 (scope,cfg_key) 行序列构成版本链(§3):常数键沿链前滚(<=ym 最大者),月变键(电价6键)仅命中当月版本。
 // S21:判据从「键属于 MONTHLY_KEYS」改为「行的 mode」(from=前滚/month=仅该月),取值走 VersionResolver(与 alloc_cfg 同一实现);
-// 白名单与写入 mode 缺省都来自 ParamRegistry(S21-PARAM-CENTER-SPEC §2.3:两表唯一注册表),旧语义一格不变。
+// 白名单与写入 mode 缺省都来自 ParamRegistry(S21-PARAM-CENTER-SPEC §2.3:两表唯一注册表),旧语义一格不变;
+// 写路径(单行 upsert/删版本行)已归 ParamService.write(注册表门 + 变更日志),本类只剩读/取价/复制上月电价。
 @Service
 public class PriceCfgService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
@@ -68,31 +68,8 @@ public class PriceCfgService {
         }).toList();
     }
 
-    // ── 写:单行 upsert(§4);月变键 acctMonth 必填非空(禁 '' 行);value=null 删该版本行(有行删、无行零操作) ──
-    //    键/作用域形态过注册表门(spec §2.1:键之外一律 400);mode 缺省=注册表 defaultMode(电价 month、其余 from,=旧语义)
-    public void upsert(PriceCfgReq req) {
-        String key = req.cfgKey().trim();
-        String scope = req.scope() == null ? "" : req.scope().trim();
-        if (!ParamRegistry.allowed(key, scope))
-            throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + (scope.isEmpty() ? "" : "@" + scope));
-        String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
-        if (MONTHLY_KEYS.contains(key) && month.isEmpty())
-            throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
-        String mode = req.mode() == null || req.mode().isBlank() ? ParamRegistry.defaultMode(key) : req.mode().trim();
-        TenantPriceCfg row = cfgs.selectByKey(scope, key, month, mode);
-        if (req.value() == null) {
-            if (row != null) { cfgs.deleteById(row.getId()); evict(); }
-            return;
-        }
-        if (row == null) {
-            row = new TenantPriceCfg();
-            row.setScope(scope); row.setCfgKey(key); row.setAcctMonth(month); row.setMode(mode);
-        }
-        row.setCfgValue(req.value());
-        row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
-        if (row.getId() == null) cfgs.insert(row); else cfgs.updateById(row);
-        evict();
-    }
+    // ── 写:S21 起单行 upsert / 删版本行统一走 ParamService.write(注册表门 + param_change_log + evict);
+    //    PUT /api/price-cfg 在 PriceCfgController 直接转调(本类不依赖 ParamService,免 bean 环)。 ──
 
     public record CopyResult(int copied, int skipped) {}
 
@@ -153,7 +130,8 @@ public class PriceCfgService {
         return idx;
     }
 
-    private void evict() {
+    // 写路径(本类 copy / ParamService.write)失效缓存
+    void evict() {
         index = null;
         if (TransactionSynchronizationManager.isSynchronizationActive())
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

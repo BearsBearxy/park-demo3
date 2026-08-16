@@ -10,17 +10,21 @@ import com.park.demo3.service.ParamRegistry.Table;
 import com.park.demo3.service.VersionResolver.Hit;
 import com.park.demo3.service.VersionResolver.Row;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
 import java.util.regex.Pattern;
 
-// 计费参数中心(S21-PARAM-CENTER-SPEC §5/§6):tenant_price_cfg + alloc_cfg 两表参数的**同一读侧**。
+// 计费参数中心(S21-PARAM-CENTER-SPEC §5/§6):tenant_price_cfg + alloc_cfg 两表参数的**同一读写口**。
 // 读 = 对注册表每键 × 该键在库中出现过的作用域(+「应有一行」的栋级口径键 / 池级键),站在 ym 用 VersionResolver 级联取值,
 // 再做人话解析(作用域名 / 值文案 / 生效区间 / 命中链)。名字表(楼栋/池/表/租户)每次请求整表载入(皆 <1200 行)。
-// 写侧(PUT/历史/重算)见 Task 8。
+// 写 = 注册表门 → 落对应表(同一 (scope,key,acct_month,mode) 行 upsert / 改错原地 / 删版本行) → param_change_log → 价目缓存失效;
+// 旧 PUT /api/price-cfg、PUT /api/alloc/cfg 内部都走 write(),AllocService.createRule 的初始分母也是。
 // 状态条 stale 判据 spec §6.3:影响本月的最近参数改动 晚于 池快照(alloc_pool_result.generated_at) 或 催缴单批次。
 // ⚠ 参数日志 ts 与快照 generated_at 必须同一口钟:快照是 JVM LocalDateTime.now(),日志 ts 也在 Java 侧写入(不用 DB 默认
 //   CURRENT_TIMESTAMP —— 容器 MySQL 是 UTC,本机不是),否则 stale 比较会差一个时区。
@@ -38,18 +42,24 @@ public class ParamService {
     private final TenantPriceCfgMapper priceCfgs;
     private final ParamChangeLogMapper logs;
     private final AllocPoolResultMapper poolResults;
+    private final AllocLossResultMapper lossResults;
     private final BillNoticeMapper notices;
     private final BuildingMapper buildings;
     private final AllocRuleMapper rules;
     private final MeterMapper meters;
     private final TenantMapper tenants;
+    private final PriceCfgService priceCfg;      // 价目缓存失效
+    private final AllocService alloc;            // @Lazy:AllocService 写参数走本类,本类重算又调它 —— 懒代理断环
+    private final BillNoticeService billNotice;
 
     public ParamService(AllocCfgMapper allocCfgs, TenantPriceCfgMapper priceCfgs, ParamChangeLogMapper logs,
-                        AllocPoolResultMapper poolResults, BillNoticeMapper notices,
-                        BuildingMapper buildings, AllocRuleMapper rules, MeterMapper meters, TenantMapper tenants) {
+                        AllocPoolResultMapper poolResults, AllocLossResultMapper lossResults, BillNoticeMapper notices,
+                        BuildingMapper buildings, AllocRuleMapper rules, MeterMapper meters, TenantMapper tenants,
+                        PriceCfgService priceCfg, @Lazy AllocService alloc, @Lazy BillNoticeService billNotice) {
         this.allocCfgs = allocCfgs; this.priceCfgs = priceCfgs; this.logs = logs;
-        this.poolResults = poolResults; this.notices = notices;
+        this.poolResults = poolResults; this.lossResults = lossResults; this.notices = notices;
         this.buildings = buildings; this.rules = rules; this.meters = meters; this.tenants = tenants;
+        this.priceCfg = priceCfg; this.alloc = alloc; this.billNotice = billNotice;
     }
 
     // ══════════ 读:站在 ym 看的全部生效参数行 ══════════
@@ -322,6 +332,163 @@ public class ParamService {
             if (c.getNote() != null) idx.priceNote.put(c.getId(), c.getNote());
         }
         return idx;
+    }
+
+    // ══════════ 写(spec §5.3/§6):注册表门 → 落对应表 → 日志 → 价目缓存失效 ══════════
+    // mode 缺省=注册表默认;month 模式须带月份;价目月变键(电价 6 键/照抄金额)即使 from 也禁 '' 行(=PRICE-CFG-SPEC 旧规则)。
+    // correction=true 改错:站在 acctMonth(=页面账期)解析该 (键,作用域) 的命中行,原地改值不新建版本;命中行不在本作用域
+    //   (值继承自上级)→ 400 请新建版本。
+    // value=null 删该版本行:该行覆盖月份(month=该月;from=该月起到下一版本前)∩ 已生成月份(池快照/催缴单批次)非空 → 400。
+    // 返回站在 ym(缺省 acctMonth)的该 (键,作用域) 生效行(WRITE-KEEP-CONTEXT 铁律二:前端只 patch 该行)。
+    @Transactional
+    public ParamRowDTO write(ParamPutReq req, String ym) {
+        String key = req.key().trim();
+        String scope = req.scope() == null ? "" : req.scope().trim();
+        if (!ParamRegistry.allowed(key, scope))
+            throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + (scope.isEmpty() ? "" : "@" + scope));
+        Def d = ParamRegistry.get(key);
+        boolean price = d.table() == Table.PRICE;
+        String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
+        String mode = req.mode() == null || req.mode().isBlank() ? d.defaultMode() : req.mode().trim();
+        if (month.isEmpty() && ("month".equals(mode) || (price && PriceCfgService.MONTHLY_KEYS.contains(key))))
+            throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
+        if (req.value() != null && !valueOk(d, req.value()))
+            throw new BizException(ResultCode.BAD_REQUEST, "值不在「" + d.label() + "」的允许范围");
+        String note = req.note() == null || req.note().isBlank() ? null : req.note().trim();
+        String stand = ym == null ? month : ym;
+        if (Boolean.TRUE.equals(req.correction())) {
+            if (req.value() == null) throw new BizException(ResultCode.BAD_REQUEST, "改错须给出新值");
+            Map<String, List<Row>> byScope = index().rows.getOrDefault(key, Map.of());
+            Hit hit = null;
+            for (String s : cascade(scope, names())) if ((hit = VersionResolver.resolveOne(byScope.get(s), stand)) != null) break;
+            if (hit == null) throw new BizException(ResultCode.BAD_REQUEST, "该月无可更正的版本，请新建版本");
+            if (!hit.scope().equals(scope)) throw new BizException(ResultCode.BAD_REQUEST, "该值来自上级作用域，请新建版本");
+            save(price, hit.id(), scope, key, hit.acctMonth(), hit.mode(), req.value(), note);
+            log("set", price, scope, key, hit.acctMonth(), hit.mode(), hit.value(), req.value(),
+                note == null ? "改错" : "改错：" + note, null);
+        } else {
+            Cur cur = cur(price, scope, key, month, mode);
+            if (req.value() == null) {
+                if (cur != null) {
+                    String used = usedBy(key, scope, month, mode);
+                    if (used != null) throw new BizException(ResultCode.BAD_REQUEST, "已被 " + used + " 使用，请改用新版本");
+                    del(price, cur.id());
+                    log("delete", price, scope, key, month, mode, cur.value(), null, note, null);
+                }
+            } else {
+                save(price, cur == null ? null : cur.id(), scope, key, month, mode, req.value(), note);
+                log("set", price, scope, key, month, mode, cur == null ? null : cur.value(), req.value(), note, null);
+            }
+        }
+        if (price) priceCfg.evict();
+        return row(key, scope, stand);
+    }
+
+    // 值域(spec §6):枚举须在字典里;布尔 0/1;整数与引用型(表/栋/池 id)须为整数;数值/比率/金额不设限
+    private static boolean valueOk(Def d, BigDecimal v) {
+        boolean integral = v.stripTrailingZeros().scale() <= 0;
+        return switch (d.valueKind()) {
+            case ENUM -> integral && d.enumOptions() != null && d.enumOptions().containsKey(v.intValue());
+            case BOOL -> v.signum() == 0 || v.compareTo(BigDecimal.ONE) == 0;
+            case INT, REF_METER, REF_BUILDING, REF_RULE -> integral;
+            default -> true;
+        };
+    }
+
+    private record Cur(Integer id, BigDecimal value) {}
+
+    private Cur cur(boolean price, String scope, String key, String month, String mode) {
+        if (price) { TenantPriceCfg r = priceCfgs.selectByKey(scope, key, month, mode); return r == null ? null : new Cur(r.getId(), r.getCfgValue()); }
+        AllocCfg r = allocCfgs.selectByKey(scope, key, month, mode);
+        return r == null ? null : new Cur(r.getId(), r.getCfgValue());
+    }
+
+    // id 空=insert,否则 updateById(MP 只更新非空列:note 传空不清旧备注,与旧 upsert 同)
+    private void save(boolean price, Integer id, String scope, String key, String month, String mode, BigDecimal value, String note) {
+        if (price) {
+            TenantPriceCfg r = new TenantPriceCfg();
+            r.setId(id); r.setScope(scope); r.setCfgKey(key); r.setAcctMonth(month); r.setMode(mode); r.setCfgValue(value); r.setNote(note);
+            if (id == null) priceCfgs.insert(r); else priceCfgs.updateById(r);
+        } else {
+            AllocCfg r = new AllocCfg();
+            r.setId(id); r.setScope(scope); r.setCfgKey(key); r.setAcctMonth(month); r.setMode(mode); r.setCfgValue(value); r.setNote(note);
+            if (id == null) allocCfgs.insert(r); else allocCfgs.updateById(r);
+        }
+    }
+
+    private void del(boolean price, Integer id) { if (price) priceCfgs.deleteById(id); else allocCfgs.deleteById(id); }
+
+    // 该版本行覆盖的月份里第一个已生成月(池快照或催缴单),无=null
+    private String usedBy(String key, String scope, String month, String mode) {
+        TreeSet<String> gen = new TreeSet<>();
+        for (Object o : poolResults.selectObjs(new QueryWrapper<AllocPoolResult>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
+        for (Object o : notices.selectObjs(new QueryWrapper<BillNotice>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
+        if ("month".equals(mode)) return gen.contains(month) ? month : null;
+        String next = VersionResolver.nextFrom(index().rows.getOrDefault(key, Map.of()).getOrDefault(scope, List.of()), month);
+        for (String g : gen) if (g.compareTo(month) >= 0 && (next == null || g.compareTo(next) < 0)) return g;
+        return null;
+    }
+
+    private void log(String action, boolean price, String scope, String key, String month, String mode,
+                     BigDecimal oldV, BigDecimal newV, String note, String ym) {
+        ParamChangeLog l = new ParamChangeLog();
+        l.setTs(LocalDateTime.now()); l.setActor(actor()); l.setTbl(price ? "price" : "alloc");
+        l.setScope(scope); l.setCfgKey(key); l.setAcctMonth(month); l.setMode(mode);
+        l.setOldValue(oldV); l.setNewValue(newV); l.setNote(note); l.setAction(action); l.setYm(ym);
+        logs.insert(l);
+    }
+
+    private static String actor() {
+        var a = SecurityContextHolder.getContext().getAuthentication();
+        return a == null || a.getName() == null ? "" : a.getName();
+    }
+
+    // ══════════ 历史 / 变更记录(spec §5.4) ══════════
+
+    public ParamHistoryDTO history(String key, String scope) {
+        if (ParamRegistry.get(key) == null) throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key);
+        String s = scope == null ? "" : scope.trim();
+        Idx idx = index();
+        List<Row> rows = new ArrayList<>(idx.rows.getOrDefault(key, Map.of()).getOrDefault(s, List.of()));
+        rows.sort(Comparator.comparing(Row::mode).thenComparing(Row::acctMonth));   // from 链在前(按起点),month 单点在后
+        List<ParamHistoryDTO.Version> versions = rows.stream().map(r -> new ParamHistoryDTO.Version(r.acctMonth(), r.mode(), r.value(),
+            idx.note(key, r.id()), rangeText(new Hit(r.value(), s, r.acctMonth(), r.mode(), r.id()), rows), r.id())).toList();
+        Names n = names();
+        List<ParamHistoryDTO.Change> changes = logs.selectList(new QueryWrapper<ParamChangeLog>()
+                .eq("scope", s).eq("cfg_key", key).orderByDesc("ts").orderByDesc("id"))
+            .stream().map(l -> change(l, n)).toList();
+        return new ParamHistoryDTO(versions, changes);
+    }
+
+    // 影响 ym 的改动(from 且起点<=ym / month 且=ym)+ 该月的 recalc;迁移基线行不列(见类头)
+    public List<ParamHistoryDTO.Change> changes(String ym, int limit) {
+        requireYm(ym);
+        Names n = names();
+        return logs.selectList(new QueryWrapper<ParamChangeLog>()
+                .and(w -> w.eq("action", "recalc").eq("ym", ym).or(x -> monthCond(x.in("action", "set", "delete"), ym)))
+                .orderByDesc("ts").orderByDesc("id").last("LIMIT " + Math.max(1, Math.min(limit, 1000))))
+            .stream().map(l -> change(l, n)).toList();
+    }
+
+    private static ParamHistoryDTO.Change change(ParamChangeLog l, Names n) {
+        Def d = ParamRegistry.get(l.getCfgKey());
+        boolean recalc = "recalc".equals(l.getAction());
+        return new ParamHistoryDTO.Change(l.getId(), l.getTs(), l.getActor(), l.getAction(),
+            recalc ? null : l.getCfgKey(), recalc ? null : l.getScope(), recalc ? null : scopeLabel(l.getScope(), n),
+            recalc ? "重算本月" : d == null ? l.getCfgKey() : label(d, l.getCfgKey(), n),
+            l.getAcctMonth(), l.getMode(), l.getOldValue(), l.getNewValue(), l.getNote(), l.getYm());
+    }
+
+    // ══════════ 重算(spec §5.5):池+损耗 → 催缴单(已确认/已导出户跳过) → 日志 recalc ══════════
+    @Transactional
+    public RecalcResultDTO recalc(String ym) {
+        requireYm(ym);
+        AllocGenerateResultDTO a = alloc.generate(ym);
+        BillNoticeGenResultDTO b = billNotice.generate(ym);
+        int pools = Math.toIntExact(poolResults.selectCount(new QueryWrapper<AllocPoolResult>().eq("ym", ym)));
+        int units = Math.toIntExact(lossResults.selectCount(new QueryWrapper<AllocLossResult>().eq("ym", ym)));
+        log("recalc", false, "", "", "", "from", null, null, "池 " + pools + " / 损耗 " + units + " / 催缴单 " + b.generated(), ym);
+        return new RecalcResultDTO(pools, units, b.generated(), b.skippedConfirmed(), a.warnings());
     }
 
     // ══════════ 状态条(spec §5.1/§6.3) ══════════
