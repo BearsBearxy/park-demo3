@@ -32,8 +32,8 @@ public class PriceCfgController {
         params.write(new ParamPutReq(req.cfgKey(), req.scope(), req.acctMonth(), req.mode(), req.value(), req.note(), null), null);
     }
 
-    @Operation(summary = "复制上月电价 fromYm→toYm(仅月变键,目标已有跳过,幂等)") @PostMapping("/copy")
-    public PriceCfgService.CopyResult copy(@Valid @RequestBody PriceCfgCopyReq req) {
-        return svc.copy(req.fromYm(), req.toYm());
+    @Operation(summary = "复制上月电价 fromYm→toYm(仅电价 6 键月行,目标已有跳过,幂等;逐行走 ParamService 记日志)") @PostMapping("/copy")
+    public ParamService.CopyResult copy(@Valid @RequestBody PriceCfgCopyReq req) {
+        return params.copyElec(req.fromYm(), req.toYm());
     }
 }

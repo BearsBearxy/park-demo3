@@ -276,6 +276,14 @@ class ParamApiIT extends AbstractMysqlIT {
         put400("{\"key\":\"loss_variant\",\"scope\":\"p1\",\"value\":1}");
         put400("{\"key\":\"elec_peak\",\"scope\":\"\",\"value\":1.2}");
         put400("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"\",\"mode\":\"month\",\"value\":1}");
+        // 价目月变键(电价 6 键 / 照抄金额)只能按月生效:mode=from 带月也 400(否则 from 行前滚绕过 priceGate,而 priceOk/复制上月电价只认月行);
+        //   同键 mode=month 照常可写;旧 PUT /api/price-cfg 带 mode=from 同样 400
+        put400("{\"key\":\"elec_peak\",\"scope\":\"\",\"acctMonth\":\"2099-04\",\"mode\":\"from\",\"value\":1.2}");
+        put400("{\"key\":\"loss_base_park_amount\",\"scope\":\"tenant:999997\",\"acctMonth\":\"2099-04\",\"mode\":\"from\",\"value\":100}");
+        assertEquals("month", putRow("{\"key\":\"elec_peak\",\"scope\":\"\",\"acctMonth\":\"2099-04\",\"mode\":\"month\",\"value\":1.2}", null).get("mode"));
+        mvc.perform(put("/api/price-cfg").header("Authorization", auth()).contentType("application/json")
+                .content("{\"scope\":\"p2\",\"cfgKey\":\"elec_flat\",\"acctMonth\":\"2099-04\",\"mode\":\"from\",\"value\":0.7}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(400));
         // 值域:枚举不在字典 / 布尔非 0|1 / 引用型非整数 → 400
         put400("{\"key\":\"loss_variant\",\"scope\":\"" + b + "\",\"value\":5}");
         put400("{\"key\":\"loss_recon\",\"scope\":\"" + b + "\",\"value\":2}");
@@ -333,6 +341,19 @@ class ParamApiIT extends AbstractMysqlIT {
         assertTrue(changes.stream().noneMatch(c -> "migrate".equals(c.get("action"))));
         // 2099-11 的 set/delete 不影响 2099-10 的记录
         assertTrue(changes.stream().noneMatch(c -> "2099-11".equals(c.get("acctMonth"))));
+        // 「已被使用」看的是快照是否在**建行之后**生成:重算之后才新建的行(覆盖 2099-10 的初始版本 '' 行 / 2099-09 起 from 行 / 2099-10 month 行)
+        //   快照没吃过 → 可删,回读回落上级/无行;而重算前就存在、重算后只改过值的 extra_qty 2099-10 行(created_at 不变)仍 400
+        String b = "building:" + buildingId("一期 B座");
+        putRow("{\"key\":\"mgmt_fee\",\"scope\":\"tenant:999998\",\"acctMonth\":\"\",\"value\":0.15}", null);
+        putRow("{\"key\":\"loss_adj_rate\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-09\",\"value\":0.009}", null);
+        putRow("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"" + ym + "\",\"mode\":\"month\",\"value\":-1}", null);
+        Map<String, Object> d1 = putRow("{\"key\":\"mgmt_fee\",\"scope\":\"tenant:999998\",\"acctMonth\":\"\",\"value\":null}", ym);
+        assertNull(d1.get("rowId"));
+        assertEquals(0.16, num(d1.get("value")));   // 回落全园
+        Map<String, Object> d2 = putRow("{\"key\":\"loss_adj_rate\",\"scope\":\"" + b + "\",\"acctMonth\":\"2099-09\",\"value\":null}", "2099-09");
+        assertNotEquals("2099-09", d2.get("acctMonth"));
+        assertEquals(false, putRow("{\"key\":\"loss_adj_qty\",\"scope\":\"" + b + "\",\"acctMonth\":\"" + ym + "\",\"mode\":\"month\",\"value\":null}", null).get("hasMonthRow"));
+        put400("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"" + ym + "\",\"value\":null}");
     }
 
     // ── ⑧ 旧端点 PUT /api/price-cfg、PUT /api/alloc/cfg 仍可写且走同一日志;/alloc/cfg 带月缺省 month ──

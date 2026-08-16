@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 // 读 = 对注册表每键 × 该键在库中出现过的作用域(+「应有一行」的栋级口径键 / 池级键),站在 ym 用 VersionResolver 级联取值,
 // 再做人话解析(作用域名 / 值文案 / 生效区间 / 命中链)。名字表(楼栋/池/表/租户)每次请求整表载入(皆 <1200 行)。
 // 写 = 注册表门 → 落对应表(同一 (scope,key,acct_month,mode) 行 upsert / 改错原地 / 删版本行) → param_change_log → 价目缓存失效;
-// 旧 PUT /api/price-cfg、PUT /api/alloc/cfg 内部都走 write(),AllocService.createRule 的初始分母也是。
+// 旧 PUT /api/price-cfg、PUT /api/alloc/cfg、POST /api/price-cfg/copy(copyElec)内部都走 write(),AllocService.createRule 的初始分母也是。
 // 状态条 stale 判据 spec §6.3:影响本月的最近参数改动 晚于 池快照(alloc_pool_result.generated_at) 或 催缴单批次。
 // ⚠ 参数日志 ts 与快照 generated_at 必须同一口钟:快照是 JVM LocalDateTime.now(),日志 ts 也在 Java 侧写入(不用 DB 默认
 //   CURRENT_TIMESTAMP —— 容器 MySQL 是 UTC,本机不是),否则 stale 比较会差一个时区。
@@ -335,10 +335,12 @@ public class ParamService {
     }
 
     // ══════════ 写(spec §5.3/§6):注册表门 → 落对应表 → 日志 → 价目缓存失效 ══════════
-    // mode 缺省=注册表默认;month 模式须带月份;价目月变键(电价 6 键/照抄金额)即使 from 也禁 '' 行(=PRICE-CFG-SPEC 旧规则)。
+    // mode 缺省=注册表默认;month 模式须带月份;价目月变键(电价 6 键/照抄金额)**只能 mode=month**(spec §3.1「缺当月=门禁」:
+    //   from 行会前滚,priceGate 就永远拦不住,而 status.priceOk / 复制上月电价 又只认月行 —— 三处口径必须同一)。
     // correction=true 改错:站在 acctMonth(=页面账期)解析该 (键,作用域) 的命中行,原地改值不新建版本;命中行不在本作用域
     //   (值继承自上级)→ 400 请新建版本。
-    // value=null 删该版本行:该行覆盖月份(month=该月;from=该月起到下一版本前)∩ 已生成月份(池快照/催缴单批次)非空 → 400。
+    // value=null 删该版本行:该行覆盖月份(month=该月;from=该月起到下一版本前)里存在**建行之后**生成的池快照/催缴单批次 → 400
+    //   (spec §5.3「取用过」;建行前就有的快照没吃过这行,不算 —— 否则误录的初始版本行永远删不掉)。
     // 返回站在 ym(缺省 acctMonth)的该 (键,作用域) 生效行(WRITE-KEEP-CONTEXT 铁律二:前端只 patch 该行)。
     @Transactional
     public ParamRowDTO write(ParamPutReq req, String ym) {
@@ -350,7 +352,9 @@ public class ParamService {
         boolean price = d.table() == Table.PRICE;
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? d.defaultMode() : req.mode().trim();
-        if (month.isEmpty() && ("month".equals(mode) || (price && PriceCfgService.MONTHLY_KEYS.contains(key))))
+        if (price && PriceCfgService.MONTHLY_KEYS.contains(key) && !"month".equals(mode))
+            throw new BizException(ResultCode.BAD_REQUEST, "「" + d.label() + "」只能按月生效");
+        if (month.isEmpty() && "month".equals(mode))
             throw new BizException(ResultCode.BAD_REQUEST, "月变键须指定生效月：" + key);
         if (req.value() != null && !valueOk(d, req.value()))
             throw new BizException(ResultCode.BAD_REQUEST, "值不在「" + d.label() + "」的允许范围");
@@ -370,7 +374,7 @@ public class ParamService {
             Cur cur = cur(price, scope, key, month, mode);
             if (req.value() == null) {
                 if (cur != null) {
-                    String used = usedBy(key, scope, month, mode);
+                    String used = usedBy(key, scope, month, mode, cur.createdAt());
                     if (used != null) throw new BizException(ResultCode.BAD_REQUEST, "已被 " + used + " 使用，请改用新版本");
                     del(price, cur.id());
                     log("delete", price, scope, key, month, mode, cur.value(), null, note, null);
@@ -395,12 +399,12 @@ public class ParamService {
         };
     }
 
-    private record Cur(Integer id, BigDecimal value) {}
+    private record Cur(Integer id, BigDecimal value, LocalDateTime createdAt) {}
 
     private Cur cur(boolean price, String scope, String key, String month, String mode) {
-        if (price) { TenantPriceCfg r = priceCfgs.selectByKey(scope, key, month, mode); return r == null ? null : new Cur(r.getId(), r.getCfgValue()); }
+        if (price) { TenantPriceCfg r = priceCfgs.selectByKey(scope, key, month, mode); return r == null ? null : new Cur(r.getId(), r.getCfgValue(), r.getCreatedAt()); }
         AllocCfg r = allocCfgs.selectByKey(scope, key, month, mode);
-        return r == null ? null : new Cur(r.getId(), r.getCfgValue());
+        return r == null ? null : new Cur(r.getId(), r.getCfgValue(), r.getCreatedAt());
     }
 
     // id 空=insert,否则 updateById(MP 只更新非空列:note 传空不清旧备注,与旧 upsert 同)
@@ -418,16 +422,43 @@ public class ParamService {
 
     private void del(boolean price, Integer id) { if (price) priceCfgs.deleteById(id); else allocCfgs.deleteById(id); }
 
-    // 该版本行覆盖的月份里第一个已生成月(池快照或催缴单),无=null
-    private String usedBy(String key, String scope, String month, String mode) {
+    // 该版本行覆盖的月份里,第一个「建行之后(含同一秒)生成过」池快照/催缴单批次的月;无=null。
+    // 建行前就存在的快照没取用过这行(它当时不存在),不算 —— 判据只看快照时间与 created_at 先后。
+    // 快照/催缴单 generated_at 与 Java 写入的 created_at 同用 JVM 钟;迁移(SQL)插入的行 created_at 是 DB 默认钟(容器 UTC,偏早),
+    // 只会更保守地判成「已使用」,方向安全。DATETIME(0) 同一秒分不出先后 → 按已使用算。
+    private String usedBy(String key, String scope, String month, String mode, LocalDateTime createdAt) {
         TreeSet<String> gen = new TreeSet<>();
         for (Object o : poolResults.selectObjs(new QueryWrapper<AllocPoolResult>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
         for (Object o : notices.selectObjs(new QueryWrapper<BillNotice>().select("DISTINCT ym"))) gen.add(String.valueOf(o));
-        if ("month".equals(mode)) return gen.contains(month) ? month : null;
-        String next = VersionResolver.nextFrom(index().rows.getOrDefault(key, Map.of()).getOrDefault(scope, List.of()), month);
-        for (String g : gen) if (g.compareTo(month) >= 0 && (next == null || g.compareTo(next) < 0)) return g;
+        String next = "month".equals(mode) ? null
+            : VersionResolver.nextFrom(index().rows.getOrDefault(key, Map.of()).getOrDefault(scope, List.of()), month);
+        for (String g : gen) {
+            boolean covers = "month".equals(mode) ? g.equals(month) : g.compareTo(month) >= 0 && (next == null || g.compareTo(next) < 0);
+            if (!covers) continue;
+            Snap s = snap(g);
+            LocalDateTime at = s.pool == null ? s.bill : s.bill == null ? s.pool : s.pool.isAfter(s.bill) ? s.pool : s.bill;
+            if (createdAt == null || at == null || !at.isBefore(createdAt)) return g;
+        }
         return null;
     }
+
+    // 复制上月电价(spec §5.1 / §6「POST /api/price-cfg/copy 保留」):仅电价 6 键 fromYm 的月行 → toYm 月行,目标已有跳过(幂等二跑 copied=0)。
+    // 逐行走 write():同一注册表门 + param_change_log(变更记录页可见 / status.pendingChanges 计入 / stale 判据可用)+ 价目缓存失效,
+    // 不再绕过日志直插(每月第一步写入若无日志,补价后 stale 不亮)。
+    @Transactional
+    public CopyResult copyElec(String fromYm, String toYm) {
+        requireYm(fromYm); requireYm(toYm);
+        int copied = 0, skipped = 0;
+        for (TenantPriceCfg src : priceCfgs.selectList(new QueryWrapper<TenantPriceCfg>()
+                .eq("acct_month", fromYm).eq("mode", "month").in("cfg_key", PriceCfgService.ELEC_KEYS).orderByAsc("scope", "cfg_key"))) {
+            if (cur(true, src.getScope(), src.getCfgKey(), toYm, "month") != null) { skipped++; continue; }
+            write(new ParamPutReq(src.getCfgKey(), src.getScope(), toYm, "month", src.getCfgValue(), src.getNote(), null), null);
+            copied++;
+        }
+        return new CopyResult(copied, skipped);
+    }
+
+    public record CopyResult(int copied, int skipped) {}
 
     private void log(String action, boolean price, String scope, String key, String month, String mode,
                      BigDecimal oldV, BigDecimal newV, String note, String ym) {

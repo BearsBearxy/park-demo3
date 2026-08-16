@@ -8,7 +8,6 @@ import com.park.demo3.mapper.TenantMapper;
 import com.park.demo3.mapper.TenantPriceCfgMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
@@ -20,7 +19,7 @@ import java.util.stream.Collectors;
 // 每 (scope,cfg_key) 行序列构成版本链(§3):常数键沿链前滚(<=ym 最大者),月变键(电价6键)仅命中当月版本。
 // S21:判据从「键属于 MONTHLY_KEYS」改为「行的 mode」(from=前滚/month=仅该月),取值走 VersionResolver(与 alloc_cfg 同一实现);
 // 白名单与写入 mode 缺省都来自 ParamRegistry(S21-PARAM-CENTER-SPEC §2.3:两表唯一注册表),旧语义一格不变;
-// 写路径(单行 upsert/删版本行)已归 ParamService.write(注册表门 + 变更日志),本类只剩读/取价/复制上月电价。
+// 写路径(单行 upsert/删版本行/复制上月电价)已归 ParamService(注册表门 + 变更日志),本类只剩读/取价。
 @Service
 public class PriceCfgService {
     private static final Pattern YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
@@ -68,28 +67,9 @@ public class PriceCfgService {
         }).toList();
     }
 
-    // ── 写:S21 起单行 upsert / 删版本行统一走 ParamService.write(注册表门 + param_change_log + evict);
-    //    PUT /api/price-cfg 在 PriceCfgController 直接转调(本类不依赖 ParamService,免 bean 环)。 ──
-
-    public record CopyResult(int copied, int skipped) {}
-
-    // ── 复制上月电价:仅月变键的 fromYm 版本→toYm,目标已有跳过=幂等二跑 copied=0(§4) ──
-    @Transactional
-    public CopyResult copy(String fromYm, String toYm) {
-        requireYm(fromYm); requireYm(toYm);
-        int copied = 0, skipped = 0;
-        for (TenantPriceCfg src : cfgs.selectList(new QueryWrapper<TenantPriceCfg>()
-                .eq("acct_month", fromYm).in("cfg_key", ELEC_KEYS).orderByAsc("scope", "cfg_key"))) {
-            String mode = src.getMode() == null ? "month" : src.getMode();
-            if (cfgs.selectByKey(src.getScope(), src.getCfgKey(), toYm, mode) != null) { skipped++; continue; }
-            TenantPriceCfg row = new TenantPriceCfg();
-            row.setScope(src.getScope()); row.setCfgKey(src.getCfgKey()); row.setAcctMonth(toYm); row.setMode(mode);
-            row.setCfgValue(src.getCfgValue()); row.setNote(src.getNote());
-            cfgs.insert(row); copied++;
-        }
-        if (copied > 0) evict();
-        return new CopyResult(copied, skipped);
-    }
+    // ── 写:S21 起单行 upsert / 删版本行 / 复制上月电价(ParamService.copyElec)统一走 ParamService.write(注册表门 +
+    //    param_change_log + evict);PUT /api/price-cfg、POST /api/price-cfg/copy 在 PriceCfgController 直接转调
+    //    (本类不依赖 ParamService,免 bean 环)。 ──
 
     // ── §3 取价 v2 版本链,scope 级联 tenant:{id}→zone→'' 首中即返:
     //    行 mode=month 仅命中 acct_month==ym;mode=from 取 acct_month<=ym 最大者(''最小,版本自动前滚)。
@@ -130,7 +110,7 @@ public class PriceCfgService {
         return idx;
     }
 
-    // 写路径(本类 copy / ParamService.write)失效缓存
+    // 写路径(ParamService.write)失效缓存
     void evict() {
         index = null;
         if (TransactionSynchronizationManager.isSynchronizationActive())
