@@ -27,9 +27,9 @@ export interface CoefKeyMeta {
 
 // 配套写计划取注册表 writePlan(与参数页 ④ 同一份);这里只放系数簿的窗口提示语
 const WRITE_HINTS: Record<string, string> = {
-  mgmt_fee: '双键同值成对写(tenant-price-exceptions 惯例,引擎走哪支都被压过);默认 0.16 不落户级行',
-  water: '例外惯例:户级水价配套 管网维护费=0 同写(免叠默认管网费)',
-  elec_package: '包干价已含管理费:配套双 mgmt 键=0 成组写',
+  mgmt_fee: '电力管理费 与 电力管理费（商业）双键同值成对写（引擎走哪支都被覆盖）；默认 0.16 不落户级行',
+  water: '户级水价配套 水管网维护费 = 0 同写（免叠默认管网费）',
+  elec_package: '一口价已含电力管理费：配套 电力管理费 / 电力管理费（商业）= 0 成组写',
 }
 // 配套键只随主键成组写,不单列
 const SECONDARY = new Set(['mgmt_fee_commercial', 'water_pipe'])

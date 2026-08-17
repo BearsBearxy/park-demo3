@@ -53,7 +53,7 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
 describe('paramDef 查询', () => {
   it('前缀键 loss_base_form_b{bid} 按前缀命中模板;非数字后缀不命中', () => {
     expect(paramDef('loss_base_form_b13')?.key).toBe('loss_base_form_b{bid}')
-    expect(paramDef('loss_base_form_b32')?.label).toBe('损耗费基数形态（按栋）')
+    expect(paramDef('loss_base_form_b32')?.label).toBe('损耗费计费基数（按栋）')
     expect(paramDef('loss_base_form_bx')).toBeUndefined()
     expect(paramDef('loss_base_form')?.key).toBe('loss_base_form')
   })

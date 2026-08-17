@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,
+  baseRefLabel, copyPrevMonthKeys, forbiddenText, groupRows, pendingSummary, prevYm, rangeBadge, sourceLabel, staleText,
   tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type ParamStatus,
 } from './paramCenterLogic'
 
 let id = 0
 const row = (p: Partial<ParamRow> & Pick<ParamRow, 'key' | 'group' | 'scope' | 'scopeLabel'>): ParamRow => ({
-  label: p.key, unit: '', value: 1, valueText: '1', mode: 'from', acctMonth: '', rangeText: '长期（初始版本）',
+  label: p.key, unit: '', value: 1, valueText: '1', mode: 'from', acctMonth: '', rangeText: '长期',
   sourceChain: [`${p.scopeLabel}:1`], formula: null, hint: null, editable: true, monthlyCheck: false,
   hasMonthRow: false, rowId: ++id, note: null, ...p,
 })
@@ -45,11 +45,11 @@ describe('rangeBadge 三态(spec §5.2 生效区间)', () => {
     expect(rangeBadge(row({ ...base, mode: 'month', acctMonth: '2024-02', rangeText: '仅 2024-02' })))
       .toEqual({ text: '仅 2024-02', tone: 'month' })
   })
-  it('from 行 → X 起长期 / 区间 / 初始版本', () => {
+  it('from 行 → X 起长期 / 区间 / 长期(初始版本)', () => {
     expect(rangeBadge(row({ ...base, mode: 'from', acctMonth: '2023-11', rangeText: '2023-11 起长期' })))
       .toEqual({ text: '2023-11 起长期', tone: 'from' })
-    expect(rangeBadge(row({ ...base, mode: 'from', acctMonth: '', rangeText: '长期（初始版本）' })))
-      .toEqual({ text: '长期（初始版本）', tone: 'from' })
+    expect(rangeBadge(row({ ...base, mode: 'from', acctMonth: '', rangeText: '长期' })))
+      .toEqual({ text: '长期', tone: 'from' })
     expect(rangeBadge(row({ ...base, mode: 'from', acctMonth: '2023-08', rangeText: '2023-08 ~ 2023-10' })).tone).toBe('from')
   })
   it('无命中行(默认语义,mode 空) → inherit;文案取后端 rangeText,空则「未设置」', () => {
@@ -62,20 +62,27 @@ describe('rangeBadge 三态(spec §5.2 生效区间)', () => {
 
 describe('sourceLabel 「来自」列(spec §5.2 命中链尾)', () => {
   const base = { key: 'mgmt_fee', group: 'constant' as const }
-  it('首项作用域 == 本行 → 本栋/本池/本期设定;全园 → 全园默认', () => {
-    expect(sourceLabel(row({ ...base, scope: 'building:13', scopeLabel: '一期 A座', sourceChain: ['一期 A座:0.16 元/度', '全园:0.16 元/度'] }))).toBe('本栋设定')
-    expect(sourceLabel(row({ ...base, scope: 'rule:23', scopeLabel: '招商中心净电（池）', sourceChain: ['招商中心净电（池）:-670 度'] }))).toBe('本池设定')
-    expect(sourceLabel(row({ ...base, scope: 'p1', scopeLabel: '一期', sourceChain: ['一期:80000 ㎡'] }))).toBe('本期设定')
-    expect(sourceLabel(row({ ...base, scope: '', scopeLabel: '全园', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园默认')
+  it('首项作用域 == 本行 → 本栋/本池/本期设置;全园 → 全园设置', () => {
+    expect(sourceLabel(row({ ...base, scope: 'building:13', scopeLabel: '一期 A座', sourceChain: ['一期 A座:0.16 元/度', '全园:0.16 元/度'] }))).toBe('本栋设置')
+    expect(sourceLabel(row({ ...base, scope: 'rule:23', scopeLabel: '招商中心净电（池）', sourceChain: ['招商中心净电（池）:-670 度'] }))).toBe('本池设置')
+    expect(sourceLabel(row({ ...base, scope: 'p1', scopeLabel: '一期', sourceChain: ['一期:80,000 ㎡'] }))).toBe('本期设置')
+    expect(sourceLabel(row({ ...base, scope: '', scopeLabel: '全园', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园设置')
   })
-  it('首项来自上级 → 继承X / 全园默认', () => {
-    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['一期:0.003 比率', '全园:0.003 比率'] }))).toBe('继承一期')
-    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园默认')
+  it('首项来自上级 → 一期设置 / 全园设置', () => {
+    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['一期:0.003 比率', '全园:0.003 比率'] }))).toBe('一期设置')
+    expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: ['全园:0.16 元/度'] }))).toBe('全园设置')
   })
   it('户级例外带「覆盖 上级值」;无链 → 未设置', () => {
     expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }))).toBe('户级例外（覆盖 全园 0.16 元/度）')
     expect(sourceLabel(row({ ...base, scope: 'tenant:5', scopeLabel: '力灏（户）', sourceChain: ['力灏（户）:0.15 元/度'] }))).toBe('户级例外')
     expect(sourceLabel(row({ ...base, scope: 'building:20', scopeLabel: '一期 B座', sourceChain: [] }))).toBe('未设置')
+  })
+  it('走面积基数的池:链尾「取自「园区分摊面积基数」」→ 来自列原样显、baseRefLabel 给出基数键 label(页面据此跳行)', () => {
+    const r = row({ key: 'coefficient', group: 'constant', scope: 'rule:14', scopeLabel: '二期园区·消防设施（池）',
+      sourceChain: ['二期:148,918.01 ㎡', '取自「园区分摊面积基数」'] })
+    expect(sourceLabel(r)).toBe('取自「园区分摊面积基数」')
+    expect(baseRefLabel(r)).toBe('园区分摊面积基数')
+    expect(baseRefLabel(row({ ...base, scope: '', scopeLabel: '全园', sourceChain: ['全园:0.16 元/度'] }))).toBeNull()
   })
 })
 
@@ -111,7 +118,7 @@ describe('tenantExceptionReqs / tenantExceptionDelReqs ④ 户级例外写序列
 describe('forbiddenText 页面禁词(spec §5.2 / §8.4)', () => {
   it.each(['building:13', 'rule:23', 'meter:307', 'tenant:5', 'p1', 'p2', 'dorm', '默认·所有月份', '组C只取此总表 building:13 默认·所有月份'])(
     '「%s」→ 禁', s => expect(forbiddenText(s)).toBe(true))
-  it.each(['一期 B座', '招商中心净电（池）', '仅 2024-02', '2023-11 起长期', '长期（初始版本）', '', '损耗按纯公摊算（率 = 公摊度数 ÷ 总表 + 加点）'])(
+  it.each(['一期 B座', '招商中心净电（池）', '仅 2024-02', '2023-11 起长期', '长期', '', '仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）'])(
     '「%s」→ 放行', s => expect(forbiddenText(s)).toBe(false))
 })
 
@@ -160,7 +167,7 @@ describe('staleText 其它三屏 stale 条(spec §5.5.3:池屏看池快照,催�
 })
 
 describe('copyPrevMonthKeys / prevYm(复制上月电价)', () => {
-  it('电价 6 键(注册表里默认 month 的裸电价键)', () => {
+  it('电价 6 键(注册表里默认 month 的电价键)', () => {
     expect([...copyPrevMonthKeys()].sort()).toEqual(
       ['elec_commercial', 'elec_flat', 'elec_peak', 'elec_resident', 'elec_sharp', 'elec_valley'])
   })

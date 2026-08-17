@@ -36,11 +36,11 @@ const shown = computed(() => {
 const fmtTs = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 const fmtV = (v: number | null) => (v == null ? '—' : String(v))
 const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
-  : c.mode === 'month' ? `仅 ${c.acctMonth}` : c.acctMonth ? `${c.acctMonth} 起长期` : '初始版本'
+  : c.mode === 'month' ? `仅 ${c.acctMonth}` : c.acctMonth ? `${c.acctMonth} 起长期` : '长期'
 </script>
 
 <template>
-  <FPDrawer :open="open" :title="`变更记录 · ${ym}`" subtitle="影响本月的参数改动与本月重算，时间倒序" icon="history" :width="860" fixed-height @close="emit('close')">
+  <FPDrawer :open="open" :title="`变更记录 · ${ym}`" subtitle="影响本月的参数改动与本月重算，时间倒序" icon="history" :width="1040" fixed-height @close="emit('close')">
     <div class="pc-tools">
       <input v-model="q" class="pc-q" type="text" placeholder="按参数 / 范围 / 备注筛选" />
       <span class="pc-cnt">{{ shown.length }} 条</span>
@@ -48,22 +48,24 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
     <div v-if="err" class="pc-err">{{ err }}</div>
     <div v-else-if="!list" class="pc-empty">加载中…</div>
     <div v-else-if="!shown.length" class="pc-empty">暂无变更记录。</div>
-    <table v-else class="pc-tab">
-      <colgroup><col style="width:132px" /><col style="width:64px" /><col style="width:72px" /><col style="width:170px" /><col style="width:150px" /><col style="width:118px" /><col style="width:150px" /><col /></colgroup>
-      <thead><tr><th>时间</th><th>人</th><th>动作</th><th>参数</th><th>作用范围</th><th>生效</th><th class="num">旧 → 新</th><th>备注</th></tr></thead>
+    <div v-else class="pc-wrap">
+    <table class="pc-tab">
+      <colgroup><col style="width:132px" /><col style="width:64px" /><col style="width:72px" /><col style="width:150px" /><col style="width:140px" /><col style="width:110px" /><col style="width:120px" /><col /></colgroup>
+      <thead><tr><th>时间</th><th>人</th><th>动作</th><th class="wrap">参数</th><th class="wrap">作用范围</th><th>生效</th><th class="num">变更（旧 → 新）</th><th class="note">备注</th></tr></thead>
       <tbody>
         <tr v-for="c in shown" :key="c.ts + (c.key ?? '') + (c.scope ?? '') + c.action">
           <td class="mono">{{ fmtTs(c.ts) }}</td>
           <td>{{ c.actor }}</td>
           <td><Badge :tone="ACTION[c.action]?.tone ?? 'neutral'" :dot="false">{{ ACTION[c.action]?.text ?? c.action }}</Badge></td>
-          <td :title="c.label ?? undefined">{{ c.label ?? '' }}</td>
-          <td :title="c.scopeLabel ?? undefined">{{ c.scopeLabel ?? '' }}</td>
+          <td class="wrap">{{ c.label ?? '' }}</td>
+          <td class="wrap">{{ c.scopeLabel ?? '' }}</td>
           <td>{{ effText(c) }}</td>
           <td class="num mono">{{ c.action === 'recalc' ? '' : `${fmtV(c.oldValue)} → ${fmtV(c.newValue)}` }}</td>
-          <td class="note" :title="c.note ?? undefined">{{ c.note ?? '' }}</td>
+          <td class="note wrap">{{ c.note ?? '' }}</td>
         </tr>
       </tbody>
     </table>
+    </div>
   </FPDrawer>
 </template>
 
@@ -74,9 +76,15 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
 .pc-cnt { font-size: var(--fs-label); color: var(--text-muted); }
 .pc-err { color: var(--hue-red); font-size: var(--fs-label); }
 .pc-empty { color: var(--text-muted); font-size: var(--fs-label); }
-.pc-tab { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+/* 表:auto 布局,列宽是下限;时间/人/动作/生效/变更 nowrap 不截;参数/作用范围/备注 换行;过宽横向滚动 */
+.pc-wrap { overflow-x: auto; }
+.pc-tab { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
 .pc-tab th { text-align: left; padding: 6px 8px; font-weight: var(--fw-regular); color: var(--text-muted); border-bottom: 1px solid var(--divider); white-space: nowrap; }
-.pc-tab td { padding: 7px 8px; border-bottom: 1px solid var(--divider); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.pc-tab td { padding: 7px 8px; border-bottom: 1px solid var(--divider); white-space: nowrap; vertical-align: top; color: var(--text-primary); }
+/* 换行列要给 min-width:auto 布局下会被 nowrap 列挤到一字一行 */
+.pc-tab td.wrap { white-space: normal; line-height: 1.4; }
+.pc-tab th.wrap, .pc-tab td.wrap { min-width: 120px; }
+.pc-tab th.note, .pc-tab td.note { min-width: 200px; }
 .pc-tab .num { text-align: right; }
 .pc-tab .note { color: var(--text-muted); }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

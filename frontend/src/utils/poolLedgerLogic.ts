@@ -297,20 +297,20 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
   return aoa
 }
 
-// ── 损耗对账区两行(供电侧总表 vs 单元总表Σ / 单元分表Σ),读时派生列落位到屏列 ──
+// ── 损耗对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计),读时派生列落位到屏列 ──
+// 供电局读数不拼进标签,单独落「总表用电量」列;被比的合计落「分表用电量」列(从供电局总表看,各栋的表都是它的分表)
 export interface LossReconRow {
   label: string
-  cQty: number | null    // 落「总表用电量」列(vs 总表Σ行)
-  dQty: number | null    // 落「分表用电量」列(vs 分表Σ行)
+  supplyQty: number | null   // 供电局总表读数 → 「总表用电量」列
+  sumQty: number | null      // 各栋总表合计 / 各栋分表合计 → 「分表用电量」列
   loss: number | null
   rate: number | null
 }
 export function buildLossReconRows(r: AllocLossReconDTO | null | undefined): LossReconRow[] {
   if (!r) return []
-  const s = fmtN(r.supplyQty)
   return [
-    { label: `对账 · 供电侧总表 ${s} vs 单元总表Σ`, cQty: r.sumC, dQty: null, loss: r.lossVsC, rate: r.rateVsC },
-    { label: `对账 · 供电侧总表 ${s} vs 单元分表Σ`, cQty: null, dQty: r.sumD, loss: r.lossVsD, rate: r.rateVsD },
+    { label: '供电局总表 vs 各栋总表合计', supplyQty: r.supplyQty, sumQty: r.sumC, loss: r.lossVsC, rate: r.rateVsC },
+    { label: '供电局总表 vs 各栋分表合计', supplyQty: r.supplyQty, sumQty: r.sumD, loss: r.lossVsD, rate: r.rateVsD },
   ]
 }
 

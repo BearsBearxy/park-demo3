@@ -43,7 +43,7 @@ describe('COEF_KEYS 注册表', () => {
   it('水价配套 water_pipe=0 同写', () => {
     expect(coefMeta('water').writes).toEqual([{ key: 'water' }, { key: 'water_pipe', fixed: 0 }])
   })
-  it('包干电价配套双 mgmt 键=0(包干价已含管理费)', () => {
+  it('电费一口价配套双 mgmt 键=0(一口价已含管理费)', () => {
     expect(coefMeta('elec_package').writes).toEqual([
       { key: 'elec_package' }, { key: 'mgmt_fee', fixed: 0 }, { key: 'mgmt_fee_commercial', fixed: 0 },
     ])

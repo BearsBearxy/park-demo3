@@ -34,7 +34,7 @@ import type { TenantDTO } from '@/types/tenant'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
-import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
+import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useTabsStore } from '@/stores/tabs'
 import {
@@ -263,34 +263,35 @@ const rowArea = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineArea(ln
 const rowFloor = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineFloor(ln, poolFloor(r))
 const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName(ln, poolFeeLabel(r))
 
-// ── 池参数只读镜像(S21 §2.4):编辑态「分母/加度」两列 + 抽屉③一行,值=站在本月的生效值(不是月行也不是默认列),
+// ── 池参数只读镜像(S21 §2.4):编辑态「分摊基数 / 加减度数」两列 + 抽屉③一行,值=站在本月的生效值(不是月行也不是默认列),
 //    徽标=生效方式(仅本月 / 长期);写入口只在计费参数页(点击带 ym+池高亮跳过去) ──
-// text=格里的紧凑数;full=抽屉里的整句(走基数键的池后端给的是只读句「分母 = 一期路灯面积基数 80000（价目参数）」,格里只显数+「价目」徽标)
+// text=格里的紧凑数;full=抽屉里的值文案(走面积基数的池后端给「148,918.01 ㎡」+ 命中链末项「取自「园区分摊面积基数」」,格里显数+「面积基数」徽标)
 // LIST-PAGE-SPEC §8:模板每格调 6 次、抽屉与表同组件(抽屉里每敲一键整表重渲染)—— 格对象按 (池,键) 在 computed 里建一次 Map,模板只 get
-interface ParamCell { text: string; full: string; badge: string; tone: 'month' | 'from' | 'inherit'; title: string; range: string }
-const EMPTY_CELL: ParamCell = { text: '–', full: '未设置', badge: '', tone: 'inherit', title: '未设置 —— 点击去计费参数页填', range: '未设置' }
+interface ParamCell { text: string; full: string; badge: string; tone: 'month' | 'from' | 'inherit'; title: string; range: string; baseRef: string | null }
+const EMPTY_CELL: ParamCell = { text: '–', full: '未设置', badge: '', tone: 'inherit', title: '未设置 —— 点击去计费参数页填', range: '未设置', baseRef: null }
 const paramCells = computed(() => {
   const m = new Map<string, ParamCell>()
   for (const r of paramRows.value) {
     if (r.mode == null || (r.key !== 'coefficient' && r.key !== 'extra_qty')) continue
     const b = rangeBadge(r)
-    m.set(`${r.scope}|${r.key}`, { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText,
-      badge: !r.editable ? '价目' : b.tone === 'month' ? '仅本月' : '长期',
-      title: `${r.valueText}（${r.rangeText}）· 点击去计费参数页改` })
+    const baseRef = baseRefLabel(r)
+    m.set(`${r.scope}|${r.key}`, { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText, baseRef,
+      badge: baseRef ? '面积基数' : b.tone === 'month' ? '仅本月' : '长期',
+      title: `${r.valueText}（${r.rangeText}）${baseRef ? `· 取自「${baseRef}」` : ''}· 点击去计费参数页改` })
   }
   return m
 })
 const paramCell = (ruleId: number, key: 'coefficient' | 'extra_qty'): ParamCell => paramCells.value.get(`rule:${ruleId}|${key}`) ?? EMPTY_CELL
-// 抽屉③只读句:基数键池的 full 本身就是整句「分母 = …（价目参数）」,不再套「分母 T =」;未设置不重复括注
+// 抽屉③只读句:「分摊基数 5.7（2023-12 起长期）· 加减度数 +170（仅本月）」;走面积基数的池写「分摊基数 148,918.01 ㎡（取自「园区分摊面积基数」）」
 function roParamLine(ruleId: number): string {
   const c = paramCell(ruleId, 'coefficient'), e = paramCell(ruleId, 'extra_qty')
-  const coef = c.tone === 'inherit' ? '分母 T 未设置' : c.badge === '价目' ? c.full : `分母 T = ${c.full}（${c.range}）`
-  const extra = e.tone === 'inherit' ? '加度 未设置' : `加度 ${e.full}（${e.range}）`
-  return `当月${coef} · ${extra}`
+  const coef = c.tone === 'inherit' ? '分摊基数 未设置' : c.baseRef ? `分摊基数 ${c.full}（取自「${c.baseRef}」）` : `分摊基数 ${c.full}（${c.range}）`
+  const extra = e.tone === 'inherit' ? '加减度数 未设置' : `加减度数 ${e.full}（${e.range}）`
+  return `${coef} · ${extra}`
 }
 const router = useRouter()
 const tabs = useTabsStore()
-// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加度=① 本月参数,分母=② 长期常数);
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加减度数=① 本月参数,分摊基数=② 长期常数);
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
 function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = null, edit = false) {
   tabs.openFresh('params', { pin: true })
@@ -337,7 +338,7 @@ const METHOD_TEXT: Record<AllocMethodEditable, string> = {
   loss: '并入损耗', ref: '纯标准行', carrier: '冲减载体',
 }
 const METHOD_HINT: Record<AllocMethodEditable, string> = {
-  area: '按受益户租赁面积摊(基数=Σ㎡)', floor: '按层份摊(基数=层数,可小数)',
+  area: '按受益户租赁面积摊（分摊基数 = 受益面积合计 ㎡）', floor: '按层份摊（分摊基数 = 层数，可小数）',
   direct: '整笔给唯一受益户', none: '不摊给租户,全额挂园区亏',
   loss: '并入损耗链', ref: '只出分摊标准供别池折入,不出应分摊',
   carrier: '表已在别池以「−」冲减,本行只陈列用量,不出应分摊、不入金额合计',
@@ -378,12 +379,12 @@ const formNoDate = computed(() => form.value.members.filter(m => m.inForce === '
 // 园区级池不勾人=后端按该期全园在租名册自动摊(与 AllocService.autoMembers 同口径)
 const formAutoMembers = computed(() => form.value.buildingId == null && form.value.members.length === 0
   && (form.value.method === 'area' || form.value.method === 'floor'))
-const ROUND_OPTS = [{ value: '2', label: 'ROUND 2 位' }, { value: '3', label: 'ROUND 3 位' }]
+const ROUND_OPTS = [{ value: '2', label: '四舍五入到 2 位' }, { value: '3', label: '四舍五入到 3 位' }]
 const STD_OPTS = [
-  { value: '', label: '按 zone 默认' },
-  { value: 'amount_over_base', label: '金额/基数(p2 默认)' },
-  { value: 'qty_price_over_base', label: '(量+加度)/基数×价(p1/宿舍默认)' },
-  { value: 'qty_over_base', label: '量/基数(广告字档)' },
+  { value: '', label: '按期别默认' },
+  { value: 'amount_over_base', label: '金额 ÷ 分摊基数（二期默认）' },
+  { value: 'qty_price_over_base', label: '(用量 + 加减度数) ÷ 分摊基数 × 单价（一期 / 宿舍默认）' },
+  { value: 'qty_over_base', label: '用量 ÷ 分摊基数（广告字档）' },
 ]
 const LINK_TYPE_OPTS = [
   { value: 'fold_price', label: '折入标准(fold_price)' },
@@ -773,8 +774,8 @@ async function delPool() {
                 title="逐表金额(p1/宿舍逐表ROUND口径);二期为池级一次ROUND,逐表金额不存在→按池合并显池级合计">应分摊(元)</th>
             <th rowspan="2" class="pl-grp-th" :style="w(112)">分摊语义</th>
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(132)" title="池分母(层数 T / 受益面积Σ)站在本月的生效值 + 生效方式;走基数键的池显基数来源。只读 —— 点格子去计费参数页改">分母(当月)</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(132)" title="池加度/扣度(+170/−670…,进标准分子不进应分摊)站在本月的生效值 + 生效方式。只读 —— 点格子去计费参数页改">加度(当月)</th>
+            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="分摊基数（层数或面积）站在本月的生效值 + 生效方式；走面积基数的池显「面积基数」并注明取自哪一条。只读 —— 点格子去计费参数页改">分摊基数（当月）</th>
+            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="公摊池加减度数（+170 / −670 …，进分摊标准分子不进应分摊）站在本月的生效值 + 生效方式。只读 —— 点格子去计费参数页改">加减度数（当月）</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
                 title="租户实际缴回的公摊额 —— 待账单模块(bill_notice)落地后从账单侧回填,现全为'–'">实收</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
@@ -856,7 +857,7 @@ async function delPool() {
                       :title="stdCell(r).title ?? undefined">{{ stdCell(r).text
                   }}<sup v-if="frozenNote.has(r.ruleId)" class="pl-frz">❄</sup></span>
               </td>
-              <!-- S21:分母/加度只读镜像(当月生效值 + 徽标),点格子带 ym+池高亮跳计费参数页 -->
+              <!-- S21:分摊基数/加减度数只读镜像(当月生效值 + 徽标),点格子带 ym+池高亮跳计费参数页 -->
               <template v-if="editMode && li === 0">
                 <td v-for="k in (['coefficient', 'extra_qty'] as const)" :key="k" :rowspan="poolSpan(r)">
                   <span class="pl-nv pl-pv" :class="{ empty: paramCell(r.ruleId, k).tone === 'inherit' }"
@@ -1015,11 +1016,11 @@ async function delPool() {
             </label>
           </div>
           <!-- S21 §2.4:抽屉管「怎么算」(结构),参数页管「算式里的数随时间怎么变」——
-               既有池的分母/加度只有 rule:{id} 一条版本链,这里只读一行;仅新建池要个初始分母才能算 -->
+               既有池的分摊基数/加减度数只有 rule:{id} 一条版本链,这里只读一行;仅新建池要个初始分摊基数才能算 -->
           <div class="pl-formrow">
-            <Input v-if="form.id == null" v-model="form.coefficient" label="初始分母(层数/受益面积Σ㎡)"
-                   placeholder="按面积/按层且无基数键时必填;建成后在计费参数页按版本改" size="sm" />
-            <Input v-model="form.baseKey" label="基数键(价目簿,优先于分母)" placeholder="如 area_base;空=用分母" size="sm" />
+            <Input v-if="form.id == null" v-model="form.coefficient" label="初始分摊基数（层数或受益面积 ㎡）"
+                   placeholder="按面积 / 按层且不走面积基数时必填；建成后在计费参数页按版本改" size="sm" />
+            <Input v-model="form.baseKey" label="面积基数来源" placeholder="如 area_base（园区分摊面积基数）；空 = 用本池分摊基数" size="sm" />
           </div>
           <div v-if="form.id != null" class="pl-roparam">
             <span>{{ roParamLine(form.id) }}</span>
@@ -1030,7 +1031,7 @@ async function delPool() {
           <div class="pl-formrow">
             <Select v-model="form.feeKey" label="出口费项(入账用)" :options="FEE_OPTS" size="sm" />
             <Select v-model="form.stdKind" label="分摊标准算式(按册复刻)" :options="STD_OPTS" size="sm" />
-            <Select :model-value="String(form.roundScale)" label="标准 ROUND 位数" :options="ROUND_OPTS" size="sm"
+            <Select :model-value="String(form.roundScale)" label="分摊标准四舍五入位数" :options="ROUND_OPTS" size="sm"
                     @update:model-value="form.roundScale = +$event" />
           </div>
           <Input v-model="form.note" label="备注" placeholder="如:电梯用电加170度" size="sm" />
@@ -1248,9 +1249,10 @@ td.ct { text-align: center; }
 
 /* S21 池参数只读镜像格:值 + 生效方式徽标,可点(跳计费参数页) */
 /* 定宽 116 + 两侧 8 内边距 = 列宽 132(表是 max-content 布局,不定宽会被长句撑开整列;数最长「1,734.73」+ 徽标「仅本月」刚好放下) */
-.pl-pv { cursor: pointer; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 116px; }
+/* 值 + 徽标撑满格(列宽 156 按「12,487.04 + 面积基数」最长组合给足,不截字) */
+.pl-pv { cursor: pointer; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: auto; }
 .pl-pv:hover { color: var(--hue-blue); }
-.pl-pv .v { overflow: hidden; text-overflow: ellipsis; }
+.pl-pv .v { flex: 0 0 auto; }
 .pl-badge { flex: 0 0 auto; font-family: var(--font-sans); font-size: 10px; line-height: 14px; border-radius: var(--radius-full); padding: 0 5px; background: var(--bg-sunken); color: var(--text-muted); }
 .pl-badge.month { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
 .pl-badge.from { background: rgb(232, 240, 254); color: var(--hue-blue); }

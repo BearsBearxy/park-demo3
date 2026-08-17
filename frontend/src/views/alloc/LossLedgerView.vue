@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // 楼栋损耗(POOL-ENGINE-SPEC §6,S3-B1 刀2)— 新路由 /alloc-loss,紧随公共电核算。
 // FPLedgerTable 手法(sticky 首列/34px 行/mono 空值'–'/tfoot 钉底);行数≤20 不虚拟滚动。
-// units=楼栋损耗快照;对账区两行=读时派生(供电侧总表 vs 单元总表Σ/分表Σ),单元行后接续渲染。
-// S21(S21-PARAM-CENTER-SPEC §5.6):本屏**零写入口** —— 原「本月口径」面板与行内 调整度数/调整损耗/G调整 三格编辑
-// 全部收敛到「计费参数」页(/params);这里只读:调整度数/调整损耗两格带「仅本月/长期」徽标、点击跳参数页;
+// units=楼栋损耗快照;对账区两行=读时派生(供电局总表 vs 各栋总表合计 / 各栋分表合计),单元行后接续渲染。
+// S21(S21-PARAM-CENTER-SPEC §5.6):本屏**零写入口** —— 原「本月口径」面板与行内 损耗调整度数/损耗率加点/G调整 三格编辑
+// 全部收敛到「计费参数」页(/params);这里只读:损耗调整度数/损耗率加点两格带「仅本月/长期」徽标、点击跳参数页;
 // G 格悬浮给分解式「(a + b + …) ÷ 6 = G」;手工率覆盖时收取率并排显公式率;头部 stale 条(参数晚于池快照 → 去重算)。
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -82,7 +82,7 @@ const staleMsg = computed(() => staleText(status.value, 'pool'))
 const isP2 = computed(() => zone.value === 'p2')
 // 基础 9 列(位置/总表/分表/损耗量/原率/调整度/调整损/收租率/备注)+铝缆(p2)+公摊度数(p1)
 const colCount = computed(() => 9 + (isP2.value ? 1 : 0) + (zone.value === 'p1' ? 1 : 0))
-const LBL_W = 210
+const LBL_W = 230
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
 const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
@@ -104,14 +104,14 @@ const badgeOf = (buildingId: number, key: string) => badges.value.get(`building:
 const plain = (v: number | null | undefined) => (v == null ? '–' : String(v))
 const gTitle = (u: AllocLossUnitDTO) => {
   const parts = u.gParts ?? []
-  if (!parts.length || u.gDiv == null) return '公摊分摊度数 = Σ(一期园区公摊池本月净量) ÷ 均摊栋数,各栋同值;本月无池快照'
-  return `公摊分摊度数 = Σ(一期园区公摊池本月净量) ÷ 均摊栋数,各栋同值\n`
+  if (!parts.length || u.gDiv == null) return '公摊分摊度数 = 一期园区公共电池本月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；本月无池快照'
+  return `公摊分摊度数 = 一期园区公共电池本月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值\n`
     + `（${parts.map(p => plain(p.qty)).join(' + ')}）÷ ${plain(u.gDiv)} = ${plain(u.gQty)}\n`
     + parts.map(p => `${p.name}：${plain(p.qty)}`).join('\n')
 }
-// 收取率:手工率覆盖时并排显公式率(spec §4.2 快照同时保存两者)
+// 收取损耗率:手工指定时并排显公式率(spec §4.2 快照同时保存两者)
 const rateTitle = (u: AllocLossUnitDTO) => u.manualRate != null
-  ? `手工收取率 ${fpct(u.manualRate)}（公式 ${fpct(u.formulaRate)}）—— 手工率在计费参数页按月填`
+  ? `损耗率（手工指定）${fpct(u.manualRate)}（公式算出 ${fpct(u.formulaRate)}）—— 手工指定的率在计费参数页按月填`
   : undefined
 
 // ── 跳参数页(深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh) ──
@@ -141,10 +141,10 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="ll-actions">
-        <!-- 本屏零写入口:口径(损耗形态/并栋/总表/剔出表)、调整度数/加点/手工率全在计费参数页 ③ 核算口径 -->
-        <Button variant="outline" size="sm" title="本月对本期生效的损耗口径与人工参数,去计费参数页看/改" @click="gotoParams('rule')">
+        <!-- 本屏零写入口:口径(损耗核算方式/归组/总表取数/不计入的表)、损耗调整度数/损耗率加点/手工指定率全在计费参数页 ③ 核算口径 -->
+        <Button variant="outline" size="sm" title="本月对本期生效的损耗核算口径与人工参数,去计费参数页看 / 改" @click="gotoParams('rule')">
           <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
-          本月口径 → 计费参数
+          核算口径设置
         </Button>
       </div>
     </div>
@@ -163,21 +163,21 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
       </Button>
     </div>
 
-    <!-- 台账式宽表:单元行 + 对账区两行(供电侧总表 vs 单元合计) + tfoot 合计 -->
+    <!-- 台账式宽表:单元行 + 对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计) + tfoot 合计 -->
     <div class="ll-wrap">
       <table class="ll-table">
         <thead>
           <tr>
             <th class="ll-th ll-fix-th ll-fix" :style="fixLbl">位置</th>
             <th class="ll-th" :style="w(108)">总表用电量</th>
-            <th v-if="isP2" class="ll-th" :style="w(104)" title="仅陈列,不入总表/分表合计">铝缆用电量</th>
+            <th v-if="isP2" class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计">铝缆用电量</th>
             <th class="ll-th" :style="w(108)">分表用电量</th>
             <th class="ll-th" :style="w(100)">损耗量</th>
             <th class="ll-th" :style="w(92)">原损耗率</th>
-            <th v-if="zone === 'p1'" class="ll-th" :style="w(116)" title="一期:Σ(园区公摊池本月净量) ÷ 均摊栋数,各栋同值;悬停格子看分解式">公摊分摊度数</th>
-            <th class="ll-th" :style="w(110)" title="人工调整度数(正=多收/负=少收),按栋按月;在计费参数页 ① 本月参数改">调整度数</th>
-            <th class="ll-th" :style="w(104)" title="损耗加点(收取率加成,如 0.3%),按栋长期;在计费参数页 ② 长期常数改">调整损耗</th>
-            <th class="ll-th" :style="w(160)" title="三式公式率;填了手工率则以手工率为准并并排显示公式率">收取租户损耗率</th>
+            <th v-if="zone === 'p1'" class="ll-th" :style="w(116)" title="一期:园区公共电池本月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式">公摊分摊度数</th>
+            <th class="ll-th" :style="w(116)" title="损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页 ① 本月参数改">损耗调整度数</th>
+            <th class="ll-th" :style="w(104)" title="损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改">损耗率加点</th>
+            <th class="ll-th" :style="w(160)" title="按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率">收取损耗率</th>
             <th class="ll-th" :style="w(170)">备注</th>
           </tr>
         </thead>
@@ -186,8 +186,8 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
             <td class="ll-fix" :style="fixLbl">
               <span class="ll-lbl" :title="u.label">
                 {{ u.label }}
-                <span v-if="u.variant === 'share_only'" class="ll-var" title="纯公摊式:率=公摊度数÷总表+加点">公摊式</span>
-                <span v-else-if="u.variant === 'none'" class="ll-var dim" title="不核算(组内无分表或设为只陈列)">不核算</span>
+                <span v-if="u.variant === 'share_only'" class="ll-var" title="仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分母 + 加点">仅按公摊分摊度数</span>
+                <span v-else-if="u.variant === 'none'" class="ll-var dim" title="不核算（组内无分表或设为只列示用量）">不核算</span>
               </span>
             </td>
             <td><span class="ll-nv" :class="{ empty: u.cQty == null }">{{ fmt(u.cQty) }}</span></td>
@@ -199,9 +199,9 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
             <td v-if="zone === 'p1'">
               <span class="ll-nv help" :class="{ empty: u.gQty == null }" :title="gTitle(u)">{{ fmt(u.gQty) }}</span>
             </td>
-            <!-- 调整度数 / 调整损耗:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
+            <!-- 损耗调整度数 / 损耗率加点:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" title="点击去计费参数页改(① 本月参数 · 损耗调整度数)"
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjQty == null }" title="点击去计费参数页改（① 本月参数 · 损耗调整度数）"
                     role="button" tabindex="0" @click="gotoParams('monthly')" @keydown.enter.prevent="gotoParams('monthly')">
                 {{ fmt(u.adjQty) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_qty')" class="ll-badge"
@@ -210,7 +210,7 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
               </span>
             </td>
             <td>
-              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" title="点击去计费参数页改(② 长期常数 · 损耗加点)"
+              <span class="ll-nv ll-pv" :class="{ empty: u.adjRate == null }" title="点击去计费参数页改（② 长期常数 · 损耗率加点）"
                     role="button" tabindex="0" @click="gotoParams('constant')" @keydown.enter.prevent="gotoParams('constant')">
                 {{ fpct(u.adjRate) }}
                 <span v-if="badgeOf(u.headBuildingId, 'loss_adj_rate')" class="ll-badge"
@@ -220,27 +220,27 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
             </td>
             <td>
               <span class="ll-rate" :class="{ empty: u.tenantRate == null }" :title="rateTitle(u)">
-                <template v-if="u.manualRate != null"><span class="ll-manual">手工</span>{{ fpct(u.tenantRate) }}<span class="ll-formula">（公式 {{ fpct(u.formulaRate) }}）</span></template>
+                <template v-if="u.manualRate != null"><span class="ll-manual">手工指定</span>{{ fpct(u.tenantRate) }}<span class="ll-formula">（公式 {{ fpct(u.formulaRate) }}）</span></template>
                 <template v-else>{{ fpct(u.tenantRate) }}</template>
               </span>
             </td>
             <td><span class="ll-txt" :title="u.note ?? undefined">{{ u.note ?? '–' }}</span></td>
           </tr>
           <tr v-if="units.length === 0">
-            <td class="ll-noro" :colspan="colCount">{{ POOL_ZONE_LABEL[zone] }}本月无损耗单元(需生成快照)</td>
+            <td class="ll-noro" :colspan="colCount">{{ POOL_ZONE_LABEL[zone] }}本月无损耗单元（需生成快照）</td>
           </tr>
-          <!-- 对账区两行(读时派生;p1 的Σ排除 A座 loss_recon=0) -->
+          <!-- 对账区两行(读时派生;一期的合计排除 供电局对账=不参与 的 A座):供电局读数落「总表用电量」列,各栋合计落「分表用电量」列 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon">
             <td class="ll-fix" :style="fixLbl"><span class="ll-lbl">{{ r.label }}</span></td>
-            <td><span class="ll-nv" :class="{ empty: r.cQty == null }">{{ fmt(r.cQty) }}</span></td>
+            <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" title="供电局总表本月读数">{{ fmt(r.supplyQty) }}</span></td>
             <td v-if="isP2"></td>
-            <td><span class="ll-nv" :class="{ empty: r.dQty == null }">{{ fmt(r.dQty) }}</span></td>
+            <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" :title="i === 0 ? '各栋总表合计' : '各栋分表合计'">{{ fmt(r.sumQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.loss == null, neg: (r.loss ?? 0) < 0 }">{{ fmt(r.loss) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.rate == null }">{{ fpct(r.rate) }}</span></td>
             <td :colspan="colCount - 5 - (isP2 ? 1 : 0)"></td>
           </tr>
         </tbody>
-        <!-- tfoot 合计:Σ总表/铝缆/分表/损耗量(率不合计) -->
+        <!-- tfoot 合计:总表/铝缆/分表/损耗量 合计(率不合计) -->
         <tfoot>
           <tr>
             <th class="ll-fix" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>

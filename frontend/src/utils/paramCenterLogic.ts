@@ -36,17 +36,25 @@ export function rangeBadge(r: ParamRow): { text: string; tone: RangeTone } {
   return { text: r.rangeText || (tone === 'inherit' ? '未设置' : ''), tone }
 }
 
-// ── 「来自」列(spec §5.2)= 命中链尾:本栋设定 / 继承一期 / 全园默认 / 户级例外（覆盖 全园 0.16 元/度）/ 未设置。
-//    sourceChain 每级 `scopeLabel:valueText`,首项=生效来源;首项作用域名 == 本行作用域名 ⇒ 自设,否则继承 ──
+// ── 「来自」列(spec §5.2)= 命中链尾:本栋设置 / 一期设置 / 全园设置 / 户级例外（覆盖 全园 0.16 元/度）/ 未设置 /
+//    取自「园区分摊面积基数」(走面积基数的池:后端把基数键 label 挂在链尾,值来自那条参数;页面可点跳过去)。
+//    sourceChain 每级 `scopeLabel:valueText`,首项=生效来源;首项作用域名 == 本行作用域名 ⇒ 自设,否则来自上级 ──
+export const BASE_REF_PREFIX = '取自「'
+export function baseRefLabel(r: ParamRow): string | null {
+  const last = r.sourceChain?.[r.sourceChain.length - 1]
+  return last?.startsWith(BASE_REF_PREFIX) ? last.slice(BASE_REF_PREFIX.length).replace(/」$/, '') : null
+}
 export function sourceLabel(r: ParamRow): string {
   const chain = r.sourceChain ?? []
   if (!chain.length) return '未设置'
+  const base = baseRefLabel(r)
+  if (base) return `取自「${base}」`
   const hitLabel = chain[0].slice(0, chain[0].indexOf(':'))
-  if (hitLabel !== r.scopeLabel) return hitLabel === '全园' ? '全园默认' : `继承${hitLabel}`
-  if (r.scope === '') return '全园默认'
+  if (hitLabel !== r.scopeLabel) return `${hitLabel}设置`
+  if (r.scope === '') return '全园设置'
   if (r.scope.startsWith('tenant:')) return chain[1] ? `户级例外（覆盖 ${chain[1].replace(':', ' ')}）` : '户级例外'
   const kind = r.scope.startsWith('building:') ? '栋' : r.scope.startsWith('rule:') ? '池' : r.scope.startsWith('meter:') ? '表' : '期'
-  return `本${kind}设定`
+  return `本${kind}设置`
 }
 
 // ── ④ 户级例外的写序列(spec §3.4):按注册表 writePlan 成组展开(配套键 fixed 值 / 同值);

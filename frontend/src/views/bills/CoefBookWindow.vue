@@ -311,7 +311,7 @@ function onClose() {
         <input v-model="q" class="cb-search" type="text" placeholder="搜租户名" />
         <span style="flex:1"></span>
         <span class="cb-lbl">系数</span>
-        <div style="width:210px">
+        <div style="width:250px">
           <Select :options="coefOpts" :model-value="coefId" size="sm" @update:model-value="setCoef" />
         </div>
         <span class="cb-lbl">生效月</span>

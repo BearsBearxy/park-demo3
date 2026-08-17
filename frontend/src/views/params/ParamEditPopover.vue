@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 计费参数「改…」小弹窗(S21-PARAM-CENTER-SPEC §5.3):值 | 生效方式(仅本月 / 自本月起长期 / 改错原地更正) | 备注 → 保存。
+// 计费参数「修改」小弹窗(S21-PARAM-CENTER-SPEC §5.3):值 | 生效方式(仅本月 / 自本月起长期 / 改错原地更正) | 备注 → 保存。
 // 值控件按注册表 valueKind:数值类 input / enum→Select(字典) / bool→Segmented(状态句) / ref_meter·ref_building→Select(候选由父页给)。
 // 默认生效方式 = 注册表 defaultMode;「改错」仅当当前值来自本作用域的明确版本行(row.rowId)时可选。
 // 删除:本月有专属 month 行 → 「删除本月专属值(恢复长期值)」;否则命中行在本作用域 → 「删除此版本」(后端拦已被生成月取用的行)。
@@ -27,9 +27,9 @@ const kind = computed(() => def.value?.valueKind ?? 'number')
 
 // 布尔键状态句(与后端 valueText 同口径:0/1 各一句)
 const BOOL_TEXT: Record<string, [string, string]> = {
-  loss_recon: ['不参与对账', '参与对账'],
-  loss_exclude: ['计入合计', '剔出合计'],
-  loss_denom_cable: ['分母 = 总表', '分母 = 总表 + 铝缆'],
+  loss_recon: ['不参与', '参与'],
+  loss_exclude: ['计入', '不计入'],
+  loss_denom_cable: ['仅总表', '总表 + 铝缆'],
 }
 const boolOpts = computed(() => {
   const t = BOOL_TEXT[props.row?.key ?? ''] ?? ['否', '是']

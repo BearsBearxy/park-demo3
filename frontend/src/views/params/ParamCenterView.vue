@@ -2,11 +2,12 @@
 // 计费参数(S21-PARAM-CENTER-SPEC §5)— 数据中心·出账链组,取代价目管理。tenant_price_cfg + alloc_cfg 两表参数的**同一读写口**:
 // 站在账期看的全部生效参数分四区(① 本月参数 ② 长期常数 ③ 核算口径 ④ 户级例外)+ ⑤ 固定规则只读区;
 // 每行=人话(作用范围/值/生效区间/来自 = 命中链尾)由后端 GET /api/params 解析,本页只分组渲染(utils/paramCenterLogic)。
-// 编辑态(EDIT-MODE-SPEC v2:浏览态零写入口;onDeactivated 复位)每行 [改…] → ParamEditPopover(值 | 生效方式 | 备注)→ PUT /api/params
+// 编辑态(EDIT-MODE-SPEC v2:浏览态零写入口;onDeactivated 复位)每行 [修改] → ParamEditPopover(值 | 生效方式 | 备注)→ PUT /api/params
 // → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二)+ 状态条「参数已改 N 项」→ [重算本月](池 → 损耗 → 催缴单)闭环(spec §5.5)。
 // ①② 无命中的对象级行(栋/池/表,未设置)默认折叠(一期 2024-02 有 480+ 行,只 60 来行有值),按区展开;全园/期级月核对项常显并标「缺」;
 // ③ 口径行无命中=默认语义,始终全列;④ 只列该户自己的版本行(rowId 非空,继承上级的不算例外)。
-// 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px + 单元格 nowrap/ellipsis/title。
+// 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px;表格 table-layout:auto —— 用户可见文字一律不截断
+// (参数 / 作用范围 / 来自 三列两行内换行且给 min-width、单位另起小灰字;值 / 区间 nowrap 按内容撑开;说明列三行 line-clamp + 完整 title;宽了横向滚动)。
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
@@ -17,7 +18,7 @@ import type { BuildingDTO } from '@/types/building'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import {
-  groupRows, pendingSummary, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
+  baseRefLabel, groupRows, pendingSummary, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type RuleGroup,
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
@@ -176,17 +177,29 @@ const gLine = computed(() => {
   if (zone.value === 'p2' || zone.value === 'dorm') return ''
   const names = rules.value.filter(r => r.zone === 'p1' && r.feeKey === 'park_loss_pool').map(r => r.name)
   const div = (rows.value ?? []).find(r => r.key === 'park_share_div' && (r.scope === 'p1' || r.scope === ''))
-  const d = div?.value == null ? '均摊栋数' : String(div.value)
-  return `一期公摊分摊度数 = Σ(${names.length ? names.join('、') : '园区公摊池'} 本月净量) ÷ ${d}`
+  const d = div?.value == null ? '均摊栋数' : `${div.value} 栋`
+  return `一期公摊分摊度数 = ${names.length ? names.join('、') : '园区公共电池'} 本月净量合计 ÷ ${d}（四舍五入到 2 位）`
 })
 
-// ── 行呈现:值 / 生效区间徽标 / 来自 / ① 月核对项「沿用 X 值 + 未核对」 ──
+// ── 行呈现:值 / 生效区间徽标 / 来自 / ① 月核对项「值 + 沿用徽标 + 未核对」 ──
 const RANGE_TONE = { month: 'orange', from: 'blue', inherit: 'neutral' } as const
-// 月核对项本月无专属值(不是 month 行、from 版本也不是本月起的)→ 灰字「沿用 X 起长期值 …」+ 未核对
+// 月核对项本月无专属值(不是 month 行、from 版本也不是本月起的)→ 值照常显 + 灰徽标「沿用 X 起设置 / 沿用长期设置」+ 未核对
 const unchecked = (r: ParamRow) => r.group === 'monthly' && r.monthlyCheck && r.mode === 'from' && !r.hasMonthRow && r.acctMonth !== ym.value
-const carriedText = (r: ParamRow) => `沿用${r.acctMonth ? ` ${r.acctMonth} 起` : ''}长期值 ${r.valueText}`
+const carriedBadge = (r: ParamRow) => (r.acctMonth ? `沿用 ${r.acctMonth} 起设置` : '沿用长期设置')
 const rowKey = (r: ParamRow) => `${r.scope}|${r.key}`
 const chainTitle = (r: ParamRow) => r.sourceChain.length ? `命中链：${r.sourceChain.join(' → ')}` : '各级作用域均未设置'
+// 走面积基数的池:「来自」列显「取自「园区分摊面积基数」」,点它跳到 ② 区那一行(命中作用域的那条)并短暂高亮
+const hlRow = ref('')
+function gotoBaseRow(r: ParamRow) {
+  const label = baseRefLabel(r)
+  const key = label ? PARAM_DEFS.find(d => d.label === label)?.key : undefined
+  const hitLabel = r.sourceChain[0]?.slice(0, r.sourceChain[0].indexOf(':'))
+  const target = key ? (rows.value ?? []).find(x => x.key === key && (x.scopeLabel === hitLabel || hitLabel == null)) : undefined
+  if (!target) return
+  hlRow.value = rowKey(target)
+  nextTick(() => document.getElementById(`pm-row-${hlRow.value}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }))
+}
+const isHl = (r: ParamRow) => (!!hlScope.value && r.scope === hlScope.value) || hlRow.value === rowKey(r)
 const summary = computed(() => (status.value ? pendingSummary(status.value) : ''))
 const stale = computed(() => !!status.value?.stale)
 
@@ -255,7 +268,7 @@ const refOptions = computed<RefOption[]>(() => {
   return []
 })
 
-// ③「剔出合计的表 [+ 添加]」:选该栋的表 → 写 loss_exclude=1(自本月起长期)
+// ③「不计入楼栋合计的电表 [+ 添加]」:选该栋的表 → 写 loss_exclude=1(自本月起长期)
 const addExcl = ref<{ bid: number; meterId: string } | null>(null)
 const exclCandidates = (g: BuildingRuleGroup): RefOption[] => {
   const done = new Set(g.excludes.map(r => idOf(r.scope)))
@@ -268,8 +281,8 @@ async function submitExcl() {
 }
 
 // ④ [+ 新增例外]:租户(FPTenantPicker)+ 键(注册表 tenantEditable)+ 值 + 生效方式 + 备注;
-// 写序列按注册表写计划成组展开(水价配管网费=0 / 包干价配双 mgmt=0 / 管理费双键同值 —— 与系数簿同一份 writePlan);
-// 「损耗费基数形态（按栋）」多选一个楼栋(该户挂表所在栋 = 损耗链成员栋)拼 loss_base_form_b{栋id}
+// 写序列按注册表写计划成组展开(水价配管网费=0 / 一口价配双 mgmt=0 / 管理费双键同值 —— 与系数簿同一份 writePlan);
+// 「损耗费计费基数（按栋）」多选一个楼栋(该户挂表所在栋 = 损耗组成员栋)拼 loss_base_form_b{栋id}
 const exOpen = ref(false)
 const ex = ref({ tenantId: null as number | null, key: '', val: '', bid: '' as string, mode: 'from' as ParamMode, note: '' })
 const exKeyOpts = PARAM_DEFS.filter(d => d.tenantEditable).map(d => ({ value: d.key, label: d.unit ? `${d.label}（${d.unit}）` : d.label }))
@@ -298,7 +311,7 @@ function setExKey(key: string) {
   ex.value.key = key; ex.value.val = ''; ex.value.bid = ''
   ex.value.mode = paramDef(key)?.defaultMode ?? 'from'
 }
-// 配套写提示:「水管网维护费 = 0」/「商业维护费同值」
+// 配套写提示:「水管网维护费 = 0」/「电力管理费（商业）同值」
 const exMates = computed(() => writePlan(ex.value.key).slice(1)
   .map(w => `${paramDef(w.key)?.label ?? w.key}${w.fixed != null ? ` = ${w.fixed}` : '同值'}`).join('、'))
 function openEx() {
@@ -344,14 +357,14 @@ async function onCopy() {
   } catch (e) { alert(errMsg(e, '复制失败')) } finally { busy.value = false }
 }
 
-// ⑤ 固定规则(spec §3.5,只读折叠;改它要改代码)
+// ⑤ 固定规则(spec §3.5,只读折叠;改它要改代码)—— 人话句子,不出现 Σ / ROUND
 const FIXED_RULES = [
-  '一期公摊分摊度数 = ROUND(Σ园区公摊池当月净量 ÷ 均摊栋数, 2)，各栋同值；分栋差异走「损耗调整度数」。',
-  '收取损耗率三式：正常核算 −(分表合计 − 总表 − 公摊度数 − 调整度数) ÷ 分母 + 加点；纯公摊 公摊度数 ÷ 分母 + 加点；不核算只陈列度数。手工率填了直接用它。',
-  '净额池先净量后一次 ROUND；一期逐表 ROUND 再Σ；二期池级一次 ROUND。',
-  '分摊标准三式：金额 / 用量 × 单价 / 用量 ÷ 基数，ROUND 位数按池设置；末端加价加在算式值之后。',
-  '尖段按「尖峰按尖价收取比率」混价；电梯池首层不摊；包干户替换项：电 = 楼层公共 + 电梯 + 路灯，水 = 绿化水。',
-  '损耗费基数按形态圈行；装机容量费按合同天数折算；建筑面积 = 租赁面积 × 0.8；率取 4 位、金额取 2 位。',
+  '一期公摊分摊度数 = 园区公共电池当月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；分栋差异走「损耗调整度数」。',
+  '收取损耗率按「损耗核算方式」三选一：按损耗量核算 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数 = 公摊分摊度数 ÷ 分母 + 加点；不核算只列示用量。填了「损耗率（手工指定）」则直接用它。',
+  '净额池先算净量再四舍五入一次；一期逐表四舍五入后再合计；二期按池一次四舍五入。',
+  '分摊标准三式：金额 ÷ 分摊基数 / 用量 × 单价 ÷ 分摊基数 / 用量 ÷ 分摊基数，四舍五入位数按池设置；「分摊标准附加金额」加在算式值之后。',
+  '尖段按「尖段按尖价计收比例」混价；电梯池首层不摊；固定月额户替换项：公共电费固定月额 = 楼层公共 + 电梯 + 路灯，公共水费固定月额 = 绿化水。',
+  '损耗费计费基数按形态圈定费项；装机容量费按合同天数折算；建筑面积 = 租赁面积 × 0.8；率取 4 位、金额取 2 位。',
 ]
 </script>
 
@@ -420,21 +433,24 @@ const FIXED_RULES = [
       <div class="pm-tablewrap">
         <table class="pm-table">
           <colgroup>
-            <col style="width:210px" /><col style="width:190px" /><col style="width:176px" /><col style="width:144px" /><col style="width:100px" /><col />
-            <col style="width:70px" /><col style="width:44px" />
+            <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
+            <col style="width:78px" /><col style="width:44px" />
           </colgroup>
           <thead>
-            <tr><th>参数</th><th>作用范围</th><th>本月值</th><th>生效区间</th><th>来自</th><th>说明 / 算式</th><th></th><th></th></tr>
+            <tr><th class="lbl">参数</th><th class="scope">作用范围</th><th>本月值</th><th>生效区间</th><th class="src">来自</th><th class="formula">说明 / 算式</th><th></th><th></th></tr>
           </thead>
           <tbody>
             <tr v-if="!monthly.rows.length"><td :colspan="8" class="pm-none">本月无已设置的参数{{ monthly.hidden ? '（点右上「显示未设置项」查看可设的项）' : '' }}</td></tr>
-            <tr v-for="r in monthly.rows" :key="rowKey(r)" :class="{ hl: !!hlScope && r.scope === hlScope }">
-              <td class="lbl" :title="r.hint ?? undefined">{{ r.label }}<span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="mut" :title="r.scopeLabel">{{ r.scopeLabel }}</td>
-              <td class="val" :title="r.valueText || undefined">
+            <tr v-for="r in monthly.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
+              <td class="lbl" :title="r.hint ?? undefined"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
+              <td class="mut scope"><span class="pm-lbl">{{ r.scopeLabel }}</span></td>
+              <td class="val">
                 <template v-if="unchecked(r)">
-                  <span class="dim">{{ carriedText(r) }}</span>
-                  <Badge tone="orange" variant="subtle" :dot="false">未核对</Badge>
+                  <span class="pm-v">{{ r.valueText }}</span>
+                  <span class="pm-vbadges">
+                    <Badge tone="neutral" variant="subtle" :dot="false" class="pm-carried">{{ carriedBadge(r) }}</Badge>
+                    <Badge tone="orange" variant="subtle" :dot="false">未核对</Badge>
+                  </span>
                 </template>
                 <template v-else-if="!hasHit(r)">
                   <span class="dim">—</span>
@@ -442,10 +458,13 @@ const FIXED_RULES = [
                 </template>
                 <template v-else>{{ r.valueText }}</template>
               </td>
-              <td><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut" :title="chainTitle(r)">{{ sourceLabel(r) }}</td>
-              <td class="mut formula" :title="r.formula ?? undefined">{{ r.formula ?? '' }}</td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">改…</Button></td>
+              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
+              <td class="mut src" :title="chainTitle(r)">
+                <button v-if="baseRefLabel(r)" class="pm-link" @click="gotoBaseRow(r)">{{ sourceLabel(r) }}</button>
+                <template v-else>{{ sourceLabel(r) }}</template>
+              </td>
+              <td class="mut formula" :title="r.formula ?? undefined"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
+              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
             </tr>
           </tbody>
@@ -458,7 +477,7 @@ const FIXED_RULES = [
       <div class="pm-cardhead">
         <div class="pm-cardtitles">
           <span class="pm-cardtitle">② 长期常数（改一次，管到下次改）</span>
-          <span class="pm-cardsub">自某月起长期生效，直到更晚版本；含池分母 / 加价 / 单价覆盖</span>
+          <span class="pm-cardsub">自某月起长期生效，直到更晚版本；含分摊基数 / 分摊标准附加金额 / 公摊池指定单价</span>
         </div>
         <div class="pm-cardops">
           <button v-if="constant.hidden" class="pm-link" @click="showEmpty.constant = !showEmpty.constant">
@@ -469,22 +488,25 @@ const FIXED_RULES = [
       <div class="pm-tablewrap">
         <table class="pm-table">
           <colgroup>
-            <col style="width:210px" /><col style="width:190px" /><col style="width:176px" /><col style="width:144px" /><col style="width:100px" /><col />
-            <col style="width:70px" /><col style="width:44px" />
+            <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
+            <col style="width:78px" /><col style="width:44px" />
           </colgroup>
           <thead>
-            <tr><th>参数</th><th>作用范围</th><th>生效值</th><th>生效区间</th><th>来自</th><th>说明 / 算式</th><th></th><th></th></tr>
+            <tr><th class="lbl">参数</th><th class="scope">作用范围</th><th>生效值</th><th>生效区间</th><th class="src">来自</th><th class="formula">说明 / 算式</th><th></th><th></th></tr>
           </thead>
           <tbody>
             <tr v-if="!constant.rows.length"><td :colspan="8" class="pm-none">无已设置的长期常数</td></tr>
-            <tr v-for="r in constant.rows" :key="rowKey(r)" :class="{ hl: !!hlScope && r.scope === hlScope }">
-              <td class="lbl" :title="r.hint ?? undefined">{{ r.label }}<span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="mut" :title="r.scopeLabel">{{ r.scopeLabel }}</td>
-              <td class="val" :title="r.valueText || undefined"><span v-if="!hasHit(r) && !r.valueText" class="dim">—</span><template v-else>{{ r.valueText }}</template></td>
-              <td><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut" :title="chainTitle(r)">{{ sourceLabel(r) }}</td>
-              <td class="mut formula" :title="r.formula ?? undefined">{{ r.formula ?? '' }}</td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">改…</Button></td>
+            <tr v-for="r in constant.rows" :id="`pm-row-${rowKey(r)}`" :key="rowKey(r)" :class="{ hl: isHl(r) }">
+              <td class="lbl" :title="r.hint ?? undefined"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
+              <td class="mut scope"><span class="pm-lbl">{{ r.scopeLabel }}</span></td>
+              <td class="val"><span v-if="!hasHit(r) && !r.valueText" class="dim">—</span><template v-else>{{ r.valueText }}</template></td>
+              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
+              <td class="mut src" :title="chainTitle(r)">
+                <button v-if="baseRefLabel(r)" class="pm-link" @click="gotoBaseRow(r)">{{ sourceLabel(r) }}</button>
+                <template v-else>{{ sourceLabel(r) }}</template>
+              </td>
+              <td class="mut formula" :title="r.formula ?? undefined"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
+              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
             </tr>
           </tbody>
@@ -497,7 +519,7 @@ const FIXED_RULES = [
       <div class="pm-cardhead">
         <div class="pm-cardtitles">
           <span class="pm-cardtitle">③ 核算口径（按栋）</span>
-          <span class="pm-cardsub">结构性口径：损耗怎么算、总表认哪块、并不并栋、剔不剔表；无专属设置的按默认语义显示</span>
+          <span class="pm-cardsub">损耗核算方式、总表取数、损耗核算归组、不计入合计的电表、供电局对账；无专属设置的按默认显示</span>
         </div>
       </div>
       <div class="pm-rules">
@@ -513,7 +535,7 @@ const FIXED_RULES = [
             <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" :title="chainTitle(r)">{{ sourceLabel(r) }}</span>
             <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">改…</Button>
+              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
@@ -526,22 +548,22 @@ const FIXED_RULES = [
             <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" :title="chainTitle(r)">{{ sourceLabel(r) }}</span>
             <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">改…</Button>
+              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
           <div class="pm-rrow excl">
-            <span class="pm-rtxt">剔出合计的表：</span>
+            <span class="pm-rtxt">不计入楼栋合计的电表：</span>
             <span v-if="!g.excludes.length" class="pm-rnote">（无）</span>
             <span v-for="r in g.excludes" :key="rowKey(r)" class="pm-chip" :class="{ off: !r.value }" :title="`${r.valueText} · ${r.rangeText}`">
               {{ r.scopeLabel.replace(/（表）$/, '') }}<template v-if="!r.value">（本月计入）</template>
-              <button v-if="editMode" class="pm-chipx" title="改…" @click="editRow = r"><component :is="iconFor('pencil')" :size="11" /></button>
+              <button v-if="editMode" class="pm-chipx" title="修改" @click="editRow = r"><component :is="iconFor('pencil')" :size="11" /></button>
               <button v-else class="pm-chipx" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="11" /></button>
             </span>
             <template v-if="editMode">
               <template v-if="addExcl?.bid === g.bid">
                 <div style="width:240px"><Select :options="exclCandidates(g)" :model-value="addExcl.meterId" size="sm" placeholder="选择该栋的表" @update:model-value="addExcl.meterId = $event" /></div>
-                <Button variant="filled" size="sm" :disabled="!addExcl.meterId" @click="submitExcl">剔出</Button>
+                <Button variant="filled" size="sm" :disabled="!addExcl.meterId" @click="submitExcl">设为不计入</Button>
                 <Button variant="outline" size="sm" @click="addExcl = null">取消</Button>
               </template>
               <Button v-else variant="outline" size="sm" @click="addExcl = { bid: g.bid, meterId: '' }">
@@ -556,7 +578,7 @@ const FIXED_RULES = [
             <span class="pm-rtxt" :title="r.formula ?? undefined">{{ r.label }}：{{ r.valueText }}</span>
             <Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">改…</Button>
+              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
@@ -586,22 +608,22 @@ const FIXED_RULES = [
       <div class="pm-tablewrap">
         <table class="pm-table">
           <colgroup>
-            <col style="width:220px" /><col style="width:230px" /><col style="width:200px" /><col style="width:150px" /><col />
-            <col style="width:120px" /><col style="width:44px" />
+            <col style="width:200px" /><col style="width:200px" /><col style="width:170px" /><col style="width:130px" /><col />
+            <col style="width:112px" /><col style="width:44px" />
           </colgroup>
           <thead>
-            <tr><th>租户</th><th>参数</th><th>值</th><th>生效区间</th><th>覆盖了</th><th></th><th></th></tr>
+            <tr><th class="lbl">租户</th><th class="lbl">参数</th><th>值</th><th>生效区间</th><th class="src">覆盖了</th><th></th><th></th></tr>
           </thead>
           <tbody>
             <tr v-if="!tenantRows.length"><td :colspan="7" class="pm-none">暂无户级例外，全部租户按期 / 全园默认值计价。</td></tr>
             <tr v-for="r in tenantRows" :key="rowKey(r)">
-              <td class="lbl" :title="r.scopeLabel">{{ r.scopeLabel.replace(/（户）$/, '') }}</td>
-              <td class="mut" :title="r.hint ?? undefined">{{ r.label }}<span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
-              <td class="val" :title="r.valueText || undefined">{{ r.valueText }}</td>
-              <td><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
-              <td class="mut" :title="chainTitle(r)">{{ r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）' }}</td>
+              <td class="lbl"><span class="pm-lbl">{{ r.scopeLabel.replace(/（户）$/, '') }}</span></td>
+              <td class="mut lbl2" :title="r.hint ?? undefined"><span class="pm-lbl">{{ r.label }}</span><span v-if="r.unit" class="pm-unit">{{ r.unit }}</span></td>
+              <td class="val">{{ r.valueText }}</td>
+              <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
+              <td class="mut src" :title="chainTitle(r)">{{ r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）' }}</td>
               <td class="ops">
-                <Button v-if="editMode" variant="outline" size="sm" @click="editRow = r">改…</Button>
+                <Button v-if="editMode" variant="outline" size="sm" @click="editRow = r">修改</Button>
                 <button v-if="editMode" class="pm-ib danger" title="删除例外" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
               </td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
@@ -634,7 +656,7 @@ const FIXED_RULES = [
         <label class="pm-exfield"><span class="k">租户</span><FPTenantPicker v-model="ex.tenantId" :tenants="tenantOpts" placeholder="搜索并选择租户" /></label>
         <label class="pm-exfield"><span class="k">参数</span><Select :options="exKeyOpts" :model-value="ex.key" size="sm" @update:model-value="setExKey($event)" /></label>
         <label v-if="exByBuilding" class="pm-exfield">
-          <span class="k">楼栋（该户所在损耗链的任一成员栋）</span>
+          <span class="k">楼栋（该户所在损耗组的任一成员栋）</span>
           <Select :options="exBuildingOpts" :model-value="ex.bid" size="sm" placeholder="请选择楼栋" @update:model-value="ex.bid = $event" />
         </label>
         <label class="pm-exfield">
@@ -677,27 +699,44 @@ const FIXED_RULES = [
 .pm-cardhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px 12px; border-bottom: 1px solid var(--divider); }
 .pm-cardtitles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pm-cardtitle { font-size: 14.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pm-cardsub { font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-cardsub { font-size: var(--fs-label); color: var(--text-muted); }
 .pm-cardops { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .pm-link { border: none; background: none; padding: 0 2px; font: inherit; font-size: var(--fs-label); color: var(--hue-blue); cursor: pointer; text-decoration: underline; }
 .pm-tablewrap { overflow-x: auto; }
 
-/* 表格:定宽列律 + 等高行(--mx-row-h 56px);内容 ellipsis 不撑行 */
-.pm-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: var(--font-sans); }
+/* 表格:等高行(--mx-row-h 56px)+ table-layout:auto —— 列宽是下限,内容更宽就撑开(横向滚动),任何文字不截断;
+   参数列 label 两行内换行、单位另起一行小灰字;值/区间/来自 nowrap;说明列两行 line-clamp(完整算式在 title) */
+.pm-table { width: 100%; border-collapse: collapse; table-layout: auto; font-family: var(--font-sans); }
 .pm-table th { background: var(--surface-white); padding: 8px 14px; text-align: left; font: var(--type-label); font-weight: var(--fw-regular); color: var(--text-muted); white-space: nowrap; border-bottom: 1px solid var(--divider); }
+/* 换行列(参数 / 作用范围 / 来自 / 说明)必须给 min-width:auto 布局下 nowrap 列先按内容占位,换行列会被压到最窄再 clamp 成截断 */
+.pm-table th.lbl, .pm-table td.lbl { min-width: 150px; }
+.pm-table th.scope, .pm-table td.scope { min-width: 160px; white-space: normal; line-height: 1.35; }
+.pm-table td.scope .pm-lbl { -webkit-line-clamp: 3; }   /* 池名最长 22 字:160px 两行放完;三行仍在 56px 内 */
+.pm-table th.src, .pm-table td.src { min-width: 96px; white-space: normal; line-height: 1.35; }
+.pm-table th.formula, .pm-table td.formula { min-width: 220px; }
 .pm-table tbody tr { height: var(--mx-row-h, 56px); border-bottom: 1px solid var(--divider); }
 .pm-table tbody tr:last-child { border-bottom: none; }
 .pm-table tbody tr.hl td { background: rgb(255, 250, 225); }
-.pm-table td { padding: 0 14px; vertical-align: middle; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pm-table td.lbl { font-weight: var(--fw-medium); }
+.pm-table td { padding: 0 14px; vertical-align: middle; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; }
+.pm-table td.lbl { font-weight: var(--fw-medium); white-space: normal; line-height: 1.3; }
+.pm-table td.lbl2 { white-space: normal; line-height: 1.3; min-width: 150px; }
+.pm-lbl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .pm-table td.mut { color: var(--text-muted); }
-.pm-table td.formula { font-size: 11.5px; }
+.pm-table td.formula { font-size: 11.5px; white-space: normal; line-height: 1.4; }
+/* 说明列最多 3 行(11.5px × 1.4 × 3 ≈ 48px,仍在 56px 行高内);列宽 260 下 44 字算式两行放完,更长的 title 里看全 */
+.pm-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .pm-table td.val { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .pm-table td.val .dim { font-weight: var(--fw-regular); color: var(--text-disabled); margin-right: 6px; }
-.pm-table td.ops { padding: 0 6px; text-align: right; overflow: visible; }
+/* 沿用值:值一行(nowrap)+ 徽标行(沿用 X 起设置 / 未核对)—— 徽标另起一行免得把值列撑得过宽 */
+.pm-table td.val .pm-v { white-space: nowrap; }
+.pm-table td.val .pm-vbadges { display: flex; gap: 6px; margin-top: 3px; white-space: nowrap; }
+.pm-table td.val .pm-carried { font-weight: var(--fw-regular); }
+.pm-table td.ops { padding: 0 6px; text-align: right; }
 .pm-table td.ops > * { vertical-align: middle; }
-.pm-none { text-align: center; padding: 28px 16px; color: var(--text-disabled); font-size: var(--fs-label); }
-.pm-unit { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-disabled); font-weight: var(--fw-regular); }
+.pm-table td.src .pm-link { padding: 0; }
+.pm-none { text-align: center; padding: 28px 16px; color: var(--text-disabled); font-size: var(--fs-label); white-space: normal; }
+.pm-unit { display: block; margin-top: 2px; font-size: var(--fs-micro); color: var(--text-disabled); font-weight: var(--fw-regular); line-height: 1.2; }
+.pm-exfield .pm-unit { display: inline; margin: 0 0 0 6px; }
 .pm-ib { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
 .pm-ib:hover { background: var(--bg-hover); color: var(--text-primary); }
 .pm-ib.danger:hover { background: rgb(255, 238, 237); color: var(--hue-red); }
@@ -709,7 +748,7 @@ const FIXED_RULES = [
 .pm-rhead { padding: 6px 18px 4px; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-secondary); }
 .pm-rrow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 18px 0 30px; font-size: 12.5px; color: var(--text-primary); flex-wrap: wrap; }
 .pm-rrow.excl { padding-top: 4px; padding-bottom: 4px; }
-.pm-rtxt { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 720px; }
+.pm-rtxt { flex: 0 1 auto; min-width: 0; white-space: normal; line-height: 1.4; }
 .pm-rnote { font-size: var(--fs-micro); color: var(--text-disabled); }
 .pm-rops { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .pm-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: var(--radius-full); background: rgb(232, 240, 254); color: var(--hue-blue); font-size: var(--fs-micro); }

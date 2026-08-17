@@ -43,7 +43,7 @@ const fmtV = (v: number | null) => (v == null ? '—' : String(v))
           <Badge :tone="v.mode === 'month' ? 'orange' : 'blue'" :dot="false">{{ v.mode === 'month' ? '仅当月' : '长期' }}</Badge>
           <span class="ph-range">{{ v.rangeText }}</span>
           <span class="ph-val mono">{{ v.value }}</span>
-          <span class="ph-note" :title="v.note ?? undefined">{{ v.note ?? '' }}</span>
+          <span class="ph-note">{{ v.note ?? '' }}</span>
         </div>
       </section>
       <section class="ph-sec">
@@ -51,15 +51,15 @@ const fmtV = (v: number | null) => (v == null ? '—' : String(v))
         <div v-if="!data.changes.length" class="ph-empty">暂无变更记录。</div>
         <table v-else class="ph-tab">
           <colgroup><col style="width:128px" /><col style="width:64px" /><col style="width:64px" /><col style="width:110px" /><col style="width:130px" /><col /></colgroup>
-          <thead><tr><th>时间</th><th>人</th><th>动作</th><th>生效</th><th class="num">旧 → 新</th><th>备注</th></tr></thead>
+          <thead><tr><th>时间</th><th>人</th><th>动作</th><th>生效</th><th class="num">变更（旧 → 新）</th><th>备注</th></tr></thead>
           <tbody>
             <tr v-for="c in data.changes" :key="c.ts + c.action + (c.acctMonth ?? '')">
               <td class="mono">{{ fmtTs(c.ts) }}</td>
               <td>{{ c.actor }}</td>
               <td>{{ ACTION_TEXT[c.action] ?? c.action }}</td>
-              <td>{{ c.mode === 'month' ? `仅 ${c.acctMonth}` : c.acctMonth ? `${c.acctMonth} 起` : '初始版本' }}</td>
+              <td>{{ c.mode === 'month' ? `仅 ${c.acctMonth}` : c.acctMonth ? `${c.acctMonth} 起` : '长期' }}</td>
               <td class="num mono">{{ fmtV(c.oldValue) }} → {{ fmtV(c.newValue) }}</td>
-              <td class="ph-note" :title="c.note ?? undefined">{{ c.note ?? '' }}</td>
+              <td class="ph-note">{{ c.note ?? '' }}</td>
             </tr>
           </tbody>
         </table>
@@ -73,16 +73,18 @@ const fmtV = (v: number | null) => (v == null ? '—' : String(v))
 .ph-loading, .ph-empty { color: var(--text-muted); font-size: var(--fs-label); }
 .ph-sec { display: flex; flex-direction: column; gap: 8px; }
 .ph-h { margin: 0; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-secondary); }
-/* 时间轴行:左色条 from=连续蓝条 / month=橙色单点 */
-.ph-ver { display: flex; align-items: center; gap: 10px; height: 34px; font-size: 12.5px; color: var(--text-primary); }
-.ph-bar { width: 4px; height: 100%; border-radius: 2px; background: var(--hue-blue); flex: 0 0 auto; }
-.ph-ver.month .ph-bar { height: 10px; width: 10px; border-radius: 50%; background: var(--hue-orange); margin: 0 -3px; }
+/* 时间轴行:左色条 from=连续蓝条 / month=橙色单点;备注换行不截 */
+.ph-ver { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 0; box-sizing: border-box; font-size: 12.5px; color: var(--text-primary); }
+.ph-bar { width: 4px; align-self: stretch; border-radius: 2px; background: var(--hue-blue); flex: 0 0 auto; }
+.ph-ver.month .ph-bar { align-self: center; height: 10px; width: 10px; border-radius: 50%; background: var(--hue-orange); margin: 0 -3px; }
 .ph-range { flex: 0 0 160px; color: var(--text-secondary); }
 .ph-val { flex: 0 0 auto; font-weight: var(--fw-semibold); }
-.ph-note { flex: 1 1 auto; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph-note { flex: 1 1 auto; min-width: 0; color: var(--text-muted); white-space: normal; line-height: 1.4; overflow-wrap: anywhere; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.ph-tab { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+/* 表:列宽是下限(auto 布局),时间/人/动作/生效/变更 nowrap 按内容撑开;备注换行 */
+.ph-tab { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
 .ph-tab th { text-align: left; padding: 6px 8px; font-weight: var(--fw-regular); color: var(--text-muted); border-bottom: 1px solid var(--divider); white-space: nowrap; }
-.ph-tab td { padding: 6px 8px; border-bottom: 1px solid var(--divider); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph-tab td { padding: 6px 8px; border-bottom: 1px solid var(--divider); white-space: nowrap; vertical-align: top; }
+.ph-tab td.ph-note { white-space: normal; line-height: 1.4; min-width: 140px; }
 .ph-tab .num { text-align: right; }
 </style>
