@@ -527,12 +527,13 @@ describe('buildLossReconRows 对账区两行', () => {
     zone: 'p1', supplyQty: 68320, sumC: 68000, sumD: 66500,
     lossVsC: -320, rateVsC: -0.0047, lossVsD: -1820, rateVsD: -0.0266,
   }
-  it('两行:vs 总表Σ落 cQty,vs 分表Σ落 dQty', () => {
+  it('两行:标签不拼数字;供电局读数单独落 supplyQty,各栋总表合计 / 分表合计落 sumQty', () => {
     const rows = buildLossReconRows(recon)
     expect(rows).toHaveLength(2)
-    expect(rows[0].label).toContain('68,320')
-    expect(rows[0]).toMatchObject({ cQty: 68000, dQty: null, loss: -320, rate: -0.0047 })
-    expect(rows[1]).toMatchObject({ cQty: null, dQty: 66500, loss: -1820, rate: -0.0266 })
+    expect(rows[0].label).toBe('供电局总表 vs 各栋总表合计')
+    expect(rows[1].label).toBe('供电局总表 vs 各栋分表合计')
+    expect(rows[0]).toMatchObject({ supplyQty: 68320, sumQty: 68000, loss: -320, rate: -0.0047 })
+    expect(rows[1]).toMatchObject({ supplyQty: 68320, sumQty: 66500, loss: -1820, rate: -0.0266 })
   })
   it('无 recon=空', () => expect(buildLossReconRows(null)).toEqual([]))
 })

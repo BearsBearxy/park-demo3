@@ -2,8 +2,10 @@
 // 公共电核算(POOL-ENGINE-SPEC §6,S3-B1 刀2)— 承接 /alloc 路由。FPLedgerTable 手法
 // (MeterLedgerGrid 同款:双级表头/sticky 首列/34px 行/mono 空值'–'/tfoot 钉底/分组分隔带§7.6);
 // 行数≤70 不虚拟滚动。rows=全部池(config)左连当月快照;无快照月 generated=false 数值列'–'。
-// 编辑态(EDIT-MODE-SPEC v2):池配置抽屉(FPDrawer,迁自旧 AllocView 规则弹窗)+月度参数行内编辑
-// (coefficient/extra_qty → PUT /cfg scope=rule:{id} 月行,commitAdj 模式)→ 改完提示重新生成。
+// 编辑态(EDIT-MODE-SPEC v2):池配置抽屉(FPDrawer,迁自旧 AllocView 规则弹窗)→ 改完提示重新生成。
+// S21(S21-PARAM-CENTER-SPEC §2.4/§5.6):池的分母 T/加度只有 alloc_cfg rule:{id} 一条版本链,写入口收敛到「计费参数」页 ——
+// 编辑态「分母/加度」两列与抽屉「③怎么摊」改为**只读镜像**(当月生效值 + 仅本月/长期徽标 + 点击跳参数页);
+// 仅新建池保留「初始分母」;头部 stale 条(参数晚于池快照 → 去重算)。
 // V69(用户 2026-07-30 拍板):池=楼栋+楼层+侧向+费项四级定位,池名自动生成不手写;组成电表与受益人
 // 一律勾选(候选来自 /pool-candidates,标签用位置不用内部标识);
 // 顶部 /member-diff 提醒条=本月在租租户与池受益人的差集。
@@ -17,21 +19,25 @@
 // §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
   type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolRowDTO,
-  type AllocPoolsDTO, type AllocCfgDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
+  type AllocPoolsDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
 } from '@/api/alloc'
+import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
 import { metersApi, type MeterDTO } from '@/api/meters'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
-import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL, upsertMonthCfg } from '@/utils/allocLogic'
+import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
+import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
+import { PARAM_DEFS } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
+import { useTabsStore } from '@/stores/tabs'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
   costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
@@ -77,7 +83,9 @@ const ZONE_OPTS = [
 
 // ── 数据(竞态守卫:快速切年月只接受最新一次请求) ──
 const pools = ref<AllocPoolsDTO | null>(null)
-const cfgs = ref<AllocCfgDTO[]>([])
+// S21:池参数只读镜像(分母/加度/2023 冻结价披露)= 计费参数页同一读口,只拉 rule: 三个键(全期别一份,随月不随 zone)
+const paramRows = ref<ParamRowDTO[]>([])
+const status = ref<ParamStatusDTO | null>(null)
 const rules = ref<AllocRuleDTO[]>([])
 const buildings = ref<BuildingDTO[]>([])
 const meters = ref<MeterDTO[]>([])
@@ -95,19 +103,31 @@ async function loadMonth() {
   const my = ++seq
   loadErr.value = ''                 // 先清:重试点下去立刻回落转圈骨架,不然按钮像没反应
   try {
-    const [ps, cs, df] = await Promise.all([
+    const [ps, pr, df, st] = await Promise.all([
       allocApi.pools(ym.value),
-      allocApi.cfg(ym.value).catch(() => [] as AllocCfgDTO[]),
+      paramsApi.list(ym.value, 'all', { scope: 'rule:', key: 'coefficient,extra_qty,frozen_2023' })
+        .catch(() => [] as ParamRowDTO[]),
       allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
+      paramsApi.status(ym.value).catch(() => null),
     ])
     if (my !== seq) return
-    pools.value = ps; cfgs.value = cs; diffs.value = df
+    pools.value = ps; paramRows.value = pr; diffs.value = df; status.value = st
   } catch (e) {
     if (my !== seq) return           // 更晚的一次请求已在路上,别用旧的失败盖掉它的结果
-    pools.value = null; cfgs.value = []; diffs.value = []
+    pools.value = null; paramRows.value = []; diffs.value = []
     loadErr.value = errMsg(e, '服务异常')
   }
 }
+// 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
+// (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
+async function refreshStatus() {
+  const my = seq, before = status.value?.poolSnapshotAt
+  const st = await paramsApi.status(ym.value).catch(() => null)
+  if (my !== seq || !st) return
+  if (st.poolSnapshotAt !== before) loadMonth()
+  else status.value = st
+}
+const staleMsg = computed(() => staleText(status.value, 'pool'))
 // §E2 隐患①:rules 载入失败过去被 .catch(()=>{}) 全静默 —— openPoolDlg 从 ruleById 取
 // feeKey/coefficient/extraQty,拿不到就静默回落默认值,保存即把这三项冲掉。改为记失败标记,
 // 抽屉据此禁用保存并给重试(不改调用方的 catch:那只是别让加载失败炸掉整页)。
@@ -122,10 +142,10 @@ function loadMasters() {
   metersApi.list('elec').then(ms => { meters.value = ms }).catch(() => {})
   tenantApi.list().then(ts => { tenants.value = ts }).catch(() => {})
 }
-onReactivated(loadMasters)
+onReactivated(() => { loadMasters(); refreshStatus() })
 
-// 楼栋损耗屏「去公共电核算重新生成」送过来的:带账期落到同一个月,并直接进编辑模式
-// —— 否则用户到了这儿还要自己重选年月、再找到「编辑模式」才看得见生成按钮(2026-08-14 用户报障)。
+// 深链带账期落到同一个月(generate=1 直接进编辑模式) —— 否则用户到了这儿还要自己重选年月、再找到「编辑模式」
+// 才看得见生成按钮(2026-08-14 用户报障)。
 const route = useRoute()
 function applyHandoff(): boolean {
   const q = route.query
@@ -226,13 +246,12 @@ async function onExport() {
   XLSX.writeFile(wb, `公共电核算-${ym.value}-${POOL_ZONE_LABEL[zone.value]}.xlsx`)
 }
 
-// ── §H3 二期 2023 冻结参数披露:V83 落在 alloc_cfg 的 rule:{id} **默认行**(acct_month='' 即不随
-//    月份变=冻结),所以不能走只认当月行的 cfgRaw。note 原文进「分摊标准」列 title,格上加 ❄ 让它不用悬停也看得见。──
+// ── §H3 二期 2023 冻结参数披露:V83 落在 alloc_cfg 的 rule:{id} 初始版本行(不随月份变=冻结)。
+//    note 原文进「分摊标准」列 title,格上加 ❄ 让它不用悬停也看得见。──
 const frozenNote = computed(() => {
   const m = new Map<number, string>()
-  for (const c of cfgs.value)
-    if (c.cfgKey === FROZEN_CFG_KEY && c.scope.startsWith('rule:') && c.note)
-      m.set(Number(c.scope.slice(5)), c.note)
+  for (const r of paramRows.value)
+    if (r.key === FROZEN_CFG_KEY && r.note) m.set(Number(r.scope.slice(5)), r.note)
   return m
 })
 const stdCell = (r: AllocPoolRowDTO) => stdDisplay(r, frozenNote.value.get(r.ruleId))
@@ -245,26 +264,41 @@ const rowArea = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineArea(ln
 const rowFloor = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineFloor(ln, poolFloor(r))
 const rowName = (r: AllocPoolRowDTO, ln: AllocPoolLineDTO | null) => lineUseName(ln, poolFeeLabel(r))
 
-// ── 月度参数行内编辑(编辑态两列):rule:{id} 月行 coefficient/extra_qty,commitAdj 模式 ──
-const cfgRaw = (scope: string, key: string) =>
-  cfgs.value.find(c => c.scope === scope && c.cfgKey === key && c.acctMonth === ym.value)
-// WRITE-KEEP-CONTEXT-SPEC 铁律二:改一格只 patch 这一条。原来 .then(loadMonth) 为一个格子重拉
-// pools+cfg+member-diff 三个整月接口、整张宽表重渲染,用户刚改的那行当场被冲走。屏上数字本就是
-// 旧快照(所以才有 cfgDirty 这条提示条),重拉也不会让它们变新 —— 唯一会变的就是这一格。
-// 回显:格子的 :value 取自 cfgs,所以写回**解析后的数字**(=存进库的那个数),代价只有格式规整
-// (5.00→5),不会把值改成别的数;失败不 patch,格里仍是用户输入的原文,配 alert 让人重来。
-function commitRuleCfg(ruleId: number, key: 'coefficient' | 'extra_qty', raw: string) {
-  const t = raw.trim()
-  const v = t === '' ? null : Number(t)
-  if (v != null && !isFinite(v)) { alert('请输入数字'); return }
-  const scope = `rule:${ruleId}`
-  const m = ym.value                  // 回包到达前用户可能换了月:换了就别把上个月的值补进本月名单
-  allocApi.saveCfg({ scope, cfgKey: key, acctMonth: m, value: v })
-    .then(() => {
-      cfgDirty.value = true
-      if (m === ym.value) upsertMonthCfg(cfgs.value, scope, key, m, v)
-    })
-    .catch(e => alert(errMsg(e, '保存失败，请重试')))
+// ── 池参数只读镜像(S21 §2.4):编辑态「分摊基数 / 加减度数」两列 + 抽屉③一行,值=站在本月的生效值(不是月行也不是默认列),
+//    徽标=生效方式(仅本月 / 长期);写入口只在计费参数页(点击带 ym+池高亮跳过去) ──
+// text=格里的紧凑数;full=抽屉里的值文案(走面积基数的池后端给「148,918.01 ㎡」+ 命中链末项「取自「园区分摊面积基数」」,格里显数+「面积基数」徽标)
+// LIST-PAGE-SPEC §8:模板每格调 6 次、抽屉与表同组件(抽屉里每敲一键整表重渲染)—— 格对象按 (池,键) 在 computed 里建一次 Map,模板只 get
+interface ParamCell { text: string; full: string; badge: string; tone: 'month' | 'from' | 'inherit'; title: string; range: string; baseRef: string | null }
+const EMPTY_CELL: ParamCell = { text: '–', full: '未设置', badge: '', tone: 'inherit', title: '未设置 —— 点击去计费参数页填', range: '未设置', baseRef: null }
+const paramCells = computed(() => {
+  const m = new Map<string, ParamCell>()
+  for (const r of paramRows.value) {
+    if (r.mode == null || (r.key !== 'coefficient' && r.key !== 'extra_qty')) continue
+    const b = rangeBadge(r)
+    const baseRef = baseRefLabel(r)
+    m.set(`${r.scope}|${r.key}`, { text: fmt(r.value), full: r.valueText, tone: b.tone, range: r.rangeText, baseRef,
+      badge: baseRef ? '面积基数' : b.tone === 'month' ? '仅本月' : '长期',
+      title: `${r.valueText}（${r.rangeText}）${baseRef ? `· 取自「${baseRef}」` : ''}· 点击去计费参数页改` })
+  }
+  return m
+})
+const paramCell = (ruleId: number, key: 'coefficient' | 'extra_qty'): ParamCell => paramCells.value.get(`rule:${ruleId}|${key}`) ?? EMPTY_CELL
+// 抽屉③只读句:「分摊基数 5.7（2023-12 起长期）· 加减度数 +170（仅本月）」;走面积基数的池写「分摊基数 148,918.01 ㎡（取自「园区分摊面积基数」）」
+function roParamLine(ruleId: number): string {
+  const c = paramCell(ruleId, 'coefficient'), e = paramCell(ruleId, 'extra_qty')
+  const coef = c.tone === 'inherit' ? '分摊基数 未设置' : c.baseRef ? `分摊基数 ${c.full}（取自「${c.baseRef}」）` : `分摊基数 ${c.full}（${c.range}）`
+  const extra = e.tone === 'inherit' ? '加减度数 未设置' : `加减度数 ${e.full}（${e.range}）`
+  return `${coef} · ${extra}`
+}
+const router = useRouter()
+const tabs = useTabsStore()
+// 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh;section 按键归区(加减度数=① 本月参数,分摊基数=② 长期常数);
+// edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
+function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = null, edit = false) {
+  tabs.openFresh('params', { pin: true })
+  const section = key === 'extra_qty' ? 'monthly' : 'constant'
+  router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,
+    ...(ruleId != null ? { rule: String(ruleId) } : {}), ...(edit ? { edit: '1' } : {}) } })
 }
 
 // ── 池配置抽屉(V69 勾选式):四级定位→池名自动生成;组成电表/受益人按定位候选勾选 ──
@@ -282,18 +316,19 @@ function flashOk(msg: string) {
 interface PoolForm {
   id: number | null; zone: AllocZone
   buildingId: number | null; floorLabel: string; side: string; feeName: string
-  method: AllocMethod; feeKey: AllocFeeKey; coefficient: string; extraQty: string; note: string
+  method: AllocMethod; feeKey: AllocFeeKey; note: string
+  coefficient: string                 // 仅新建池:初始分母(落成 rule:{新id}.coefficient 初始版本行);既有池的分母在计费参数页改
   roundScale: number; stdKind: '' | AllocStdKind; baseKey: string
   meters: { meterId: number; sign: number; label: string }[]
   links: { ruleId: string; type: AllocLinkType }[]
   members: { tenantId: number; tenantName: string; unitNo: string | null; weight: number | null; inForce: AllocInForce }[]
-  monthOnly: boolean                  // 受益人只改本月(写 acct_month 月行,不动历史与默认行)
+  monthOnly: boolean                  // 受益人自本月起(写 acct_month 版本组,不动此前月份与默认长期名单)
   oldName: string                     // 存量池名(定位三项全空时后端保留原名,此处照实展示)
 }
 const form = ref<PoolForm>(emptyForm())
 function emptyForm(): PoolForm {
   return { id: null, zone: zone.value as AllocZone, buildingId: null, floorLabel: '', side: '', feeName: '',
-    method: 'floor', feeKey: 'share_elec_floor', coefficient: '', extraQty: '', note: '',
+    method: 'floor', feeKey: 'share_elec_floor', coefficient: '', note: '',
     roundScale: 2, stdKind: '', baseKey: '', meters: [], links: [], members: [], monthOnly: false,
     oldName: '' }
 }
@@ -304,7 +339,7 @@ const METHOD_TEXT: Record<AllocMethodEditable, string> = {
   loss: '并入损耗', ref: '纯标准行', carrier: '冲减载体',
 }
 const METHOD_HINT: Record<AllocMethodEditable, string> = {
-  area: '按受益户租赁面积摊(基数=Σ㎡)', floor: '按层份摊(基数=层数,可小数)',
+  area: '按受益户租赁面积摊（分摊基数 = 受益面积合计 ㎡）', floor: '按层份摊（分摊基数 = 层数，可小数）',
   direct: '整笔给唯一受益户', none: '不摊给租户,全额挂园区亏',
   loss: '并入损耗链', ref: '只出分摊标准供别池折入,不出应分摊',
   carrier: '表已在别池以「−」冲减,本行只陈列用量,不出应分摊、不入金额合计',
@@ -345,13 +380,16 @@ const formNoDate = computed(() => form.value.members.filter(m => m.inForce === '
 // 园区级池不勾人=后端按该期全园在租名册自动摊(与 AllocService.autoMembers 同口径)
 const formAutoMembers = computed(() => form.value.buildingId == null && form.value.members.length === 0
   && (form.value.method === 'area' || form.value.method === 'floor'))
-const ROUND_OPTS = [{ value: '2', label: 'ROUND 2 位' }, { value: '3', label: 'ROUND 3 位' }]
+const ROUND_OPTS = [{ value: '2', label: '四舍五入到 2 位' }, { value: '3', label: '四舍五入到 3 位' }]
 const STD_OPTS = [
-  { value: '', label: '按 zone 默认' },
-  { value: 'amount_over_base', label: '金额/基数(p2 默认)' },
-  { value: 'qty_price_over_base', label: '(量+加度)/基数×价(p1/宿舍默认)' },
-  { value: 'qty_over_base', label: '量/基数(广告字档)' },
+  { value: '', label: '按期别默认' },
+  { value: 'amount_over_base', label: '金额 ÷ 分摊基数（二期默认）' },
+  { value: 'qty_price_over_base', label: '(用量 + 加减度数) ÷ 分摊基数 × 单价（一期 / 宿舍默认）' },
+  { value: 'qty_over_base', label: '用量 ÷ 分摊基数（广告字档）' },
 ]
+// 面积基数来源候选 = 注册表里的面积基数键(value 仍是键,页面显 label;空 = 用本池分摊基数);提交体不变
+const BASE_KEY_OPTS = [{ value: '', label: '用本池分摊基数' },
+  ...PARAM_DEFS.filter(d => d.key.endsWith('area_base')).map(d => ({ value: d.key, label: d.label }))]
 const LINK_TYPE_OPTS = [
   { value: 'fold_price', label: '折入标准(fold_price)' },
   { value: 'fold_qty', label: '折入度数(fold_qty)' },
@@ -379,8 +417,7 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
       id: r.ruleId, zone: r.zone, buildingId: r.buildingId,
       floorLabel: r.floorLabel ?? '', side: r.side ?? '', feeName: r.feeName ?? '',
       method: r.method, feeKey: rule?.feeKey ?? 'share_elec_floor',
-      coefficient: rule?.coefficient != null ? String(rule.coefficient) : '',
-      extraQty: rule?.extraQty ? String(rule.extraQty) : '', note: r.note ?? '',
+      coefficient: '', note: r.note ?? '',      // 既有池不再从抽屉写分母(参数页版本链是唯一入口)
       roundScale: r.roundScale, stdKind: r.stdKind ?? '', baseKey: r.baseKey ?? '',
       meters: r.meters.map(m => ({ meterId: m.meterId, sign: m.sign, label: m.label ?? m.name })),
       links: r.links.map(l => ({ ruleId: String(l.ruleId), type: l.type })),
@@ -557,7 +594,8 @@ async function submitPool() {
       zone: f.zone, name: formAutoName.value, buildingId: f.buildingId,
       floorLabel: f.floorLabel.trim() || null, side: f.side.trim() || null,
       feeName: f.feeName.trim() || null,
-      method: f.method, coefficient: num(f.coefficient), extraQty: num(f.extraQty),
+      // 新建池:初始分母经后端落成 rule:{新id}.coefficient 初始版本行;既有池入参被后端忽略(分母/加度只在参数页改)
+      method: f.method, coefficient: f.id == null ? num(f.coefficient) : null,
       feeKey: f.feeKey, note: f.note.trim() || null,
       meterIds: f.meters.map(m => m.meterId),
       meters: f.meters.map(m => ({ meterId: m.meterId, sign: m.sign })),
@@ -671,6 +709,15 @@ async function delPool() {
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
     </div>
+    <!-- S21 stale 条:计费参数改过而池快照没重生成(判据 spec §6.3);[去重算] 送到参数页(池 → 损耗 → 催缴单一起重算) -->
+    <div v-if="staleMsg" class="pl-bar warn">
+      <component :is="iconFor('alert-triangle')" :size="14" />
+      <span>{{ staleMsg }} —— 屏上数字仍是改参前生成的,去计费参数页「重算本月」后生效。</span>
+      <Button variant="outline" size="sm" @click="gotoParams(undefined, null, true)">
+        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
+        去重算
+      </Button>
+    </div>
     <!-- 生成告警清单:引擎在 generate 时报的「未摊到户/缺读数/缺参」,过去被前端整个丢弃。
          WRITE-KEEP-CONTEXT-SPEC 铁律三:这条也是**写出来的**(点生成才有),但它高度不定
          (文案会折行 + 可展开几十条),做不了 cfgDirty 那样的常驻占位 —— 常驻等于永久留两行空白。
@@ -731,8 +778,8 @@ async function delPool() {
                 title="逐表金额(p1/宿舍逐表ROUND口径);二期为池级一次ROUND,逐表金额不存在→按池合并显池级合计">应分摊(元)</th>
             <th rowspan="2" class="pl-grp-th" :style="w(112)">分摊语义</th>
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(92)" title="rule:{id} 月行 coefficient(层数/面积基数月变);清空=回退池默认系数">系数(月)</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(92)" title="rule:{id} 月行 extra_qty(加度/扣度:+170/-670…,进标准分子不进应分摊)">加度(月)</th>
+            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="分摊基数（层数或面积）站在本月的生效值 + 生效方式；走面积基数的池显「面积基数」并注明取自哪一条。只读 —— 点格子去计费参数页改">分摊基数（当月）</th>
+            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="公摊池加减度数（+170 / −670 …，进分摊标准分子不进应分摊）站在本月的生效值 + 生效方式。只读 —— 点格子去计费参数页改">加减度数（当月）</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
                 title="租户实际缴回的公摊额 —— 待账单模块(bill_notice)落地后从账单侧回填,现全为'–'">实收</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
@@ -814,20 +861,17 @@ async function delPool() {
                       :title="stdCell(r).title ?? undefined">{{ stdCell(r).text
                   }}<sup v-if="frozenNote.has(r.ruleId)" class="pl-frz">❄</sup></span>
               </td>
-              <td v-if="editMode && li === 0" :rowspan="poolSpan(r)">
-                <input class="pl-ni" type="number" step="any"
-                       :value="cfgRaw(`rule:${r.ruleId}`, 'coefficient')?.value ?? ''"
-                       :placeholder="ruleById.get(r.ruleId)?.coefficient != null ? String(ruleById.get(r.ruleId)!.coefficient) : '–'"
-                       title="当月系数(层数/面积基数),回车/失焦保存;清空=回退默认"
-                       @change="commitRuleCfg(r.ruleId, 'coefficient', ($event.target as HTMLInputElement).value)" />
-              </td>
-              <td v-if="editMode && li === 0" :rowspan="poolSpan(r)">
-                <input class="pl-ni" type="number" step="any"
-                       :value="cfgRaw(`rule:${r.ruleId}`, 'extra_qty')?.value ?? ''"
-                       :placeholder="ruleById.get(r.ruleId)?.extraQty ? String(ruleById.get(r.ruleId)!.extraQty) : '–'"
-                       title="当月加度/扣度,回车/失焦保存;清空=回退默认"
-                       @change="commitRuleCfg(r.ruleId, 'extra_qty', ($event.target as HTMLInputElement).value)" />
-              </td>
+              <!-- S21:分摊基数/加减度数只读镜像(当月生效值 + 徽标),点格子带 ym+池高亮跳计费参数页 -->
+              <template v-if="editMode && li === 0">
+                <td v-for="k in (['coefficient', 'extra_qty'] as const)" :key="k" :rowspan="poolSpan(r)">
+                  <span class="pl-nv pl-pv" :class="{ empty: paramCell(r.ruleId, k).tone === 'inherit' }"
+                        :title="paramCell(r.ruleId, k).title" role="button" tabindex="0"
+                        @click="gotoParams(r.ruleId, k)" @keydown.enter.prevent="gotoParams(r.ruleId, k)">
+                    <span class="v">{{ paramCell(r.ruleId, k).text }}</span>
+                    <span v-if="paramCell(r.ruleId, k).badge" class="pl-badge" :class="paramCell(r.ruleId, k).tone">{{ paramCell(r.ruleId, k).badge }}</span>
+                  </span>
+                </td>
+              </template>
               <!-- 实收/盈亏:账册 AE/AF 口径(从账单侧拉回),bill_notice 未落地故恒'–' -->
               <td v-if="li === 0" :rowspan="poolSpan(r)">
                 <span class="pl-nv empty" title="待账单模块落地后从账单侧回填">–</span>
@@ -975,15 +1019,23 @@ async function delPool() {
               <span>{{ o.label }}</span>
             </label>
           </div>
+          <!-- S21 §2.4:抽屉管「怎么算」(结构),参数页管「算式里的数随时间怎么变」——
+               既有池的分摊基数/加减度数只有 rule:{id} 一条版本链,这里只读一行;仅新建池要个初始分摊基数才能算 -->
           <div class="pl-formrow">
-            <Input v-model="form.coefficient" label="基数(层数/受益面积Σ㎡)" placeholder="月变走表内「系数(月)」列" size="sm" />
-            <Input v-model="form.baseKey" label="基数键(价目簿,优先于基数)" placeholder="如 area_base;空=用基数" size="sm" />
-            <Input v-model="form.extraQty" label="默认加度" placeholder="如 170" size="sm" />
+            <Input v-if="form.id == null" v-model="form.coefficient" label="初始分摊基数（层数或受益面积 ㎡）"
+                   placeholder="按面积 / 按层且不走面积基数时必填；建成后在计费参数页按版本改" size="sm" />
+            <Select v-model="form.baseKey" label="面积基数来源" :options="BASE_KEY_OPTS" size="sm" />
+          </div>
+          <div v-if="form.id != null" class="pl-roparam">
+            <span>{{ roParamLine(form.id) }}</span>
+            <button type="button" class="pl-more" @click="gotoParams(form.id!)">
+              <component :is="iconFor('arrow-right')" :size="13" />去计费参数页改
+            </button>
           </div>
           <div class="pl-formrow">
             <Select v-model="form.feeKey" label="出口费项(入账用)" :options="FEE_OPTS" size="sm" />
             <Select v-model="form.stdKind" label="分摊标准算式(按册复刻)" :options="STD_OPTS" size="sm" />
-            <Select :model-value="String(form.roundScale)" label="标准 ROUND 位数" :options="ROUND_OPTS" size="sm"
+            <Select :model-value="String(form.roundScale)" label="分摊标准四舍五入位数" :options="ROUND_OPTS" size="sm"
                     @update:model-value="form.roundScale = +$event" />
           </div>
           <Input v-model="form.note" label="备注" placeholder="如:电梯用电加170度" size="sm" />
@@ -1052,9 +1104,9 @@ async function delPool() {
                 : '该定位本月无在租租户' }}
             </div>
           </div>
-          <label class="pl-chkline" title="勾上=只写本月(acct_month 月行),历史月与默认长期名单不动">
+          <label class="pl-chkline" title="勾上=写自本月起的受益人版本组(此前月份与默认长期名单不动,本月及以后沿用这份直到下一版本)">
             <input type="checkbox" v-model="form.monthOnly" />
-            只改本月({{ ym }})的受益人名单,不动默认长期名单
+            自本月（{{ ym }}）起（版本组）改受益人名单,不动此前月份与默认长期名单
           </label>
         </div>
 
@@ -1089,7 +1141,7 @@ async function delPool() {
              400 的红字落在视口外,看起来就是「保存无反应」 -->
         <!-- §F11:两条各自成行 —— 原来是三元式,池参数加载失败时把后端 400 的原因整条盖掉 -->
         <div class="pl-dlg-err">
-          <div v-if="rulesFailed">池参数(系数/加度/出口费项)未加载成功 —— 此时保存会冲掉这三项,请先重试</div>
+          <div v-if="rulesFailed">池参数(出口费项)未加载成功 —— 此时保存会把它冲成默认值,请先重试</div>
           <div v-if="poolErr">{{ poolErr }}</div>
         </div>
         <Button v-if="rulesFailed" variant="outline" size="sm" @click="loadRules().catch(() => {})">重试</Button>
@@ -1199,11 +1251,17 @@ td.ct { text-align: center; }
 .pl-table tbody tr.pl-bfoot td { height: 34px; background: var(--surface-sunken); border-top: 1px solid var(--border-strong); font-family: var(--font-mono); }
 
 
-/* 行内月度参数 input(透明格) */
-.pl-ni { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; text-align: right; font-size: 12px; padding: 3px 6px; outline: none; color: var(--text-primary); font-family: var(--font-mono); border-radius: var(--radius-sm); }
-.pl-ni:focus { background: var(--accent-blue); border-color: var(--hue-blue); }
-.pl-ni::-webkit-outer-spin-button, .pl-ni::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.pl-ni::placeholder { color: var(--text-disabled); }
+/* S21 池参数只读镜像格:值 + 生效方式徽标,可点(跳计费参数页) */
+/* 定宽 116 + 两侧 8 内边距 = 列宽 132(表是 max-content 布局,不定宽会被长句撑开整列;数最长「1,734.73」+ 徽标「仅本月」刚好放下) */
+/* 值 + 徽标撑满格(列宽 156 按「12,487.04 + 面积基数」最长组合给足,不截字) */
+.pl-pv { cursor: pointer; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: auto; }
+.pl-pv:hover { color: var(--hue-blue); }
+.pl-pv .v { flex: 0 0 auto; }
+.pl-badge { flex: 0 0 auto; font-family: var(--font-sans); font-size: 10px; line-height: 14px; border-radius: var(--radius-full); padding: 0 5px; background: var(--bg-sunken); color: var(--text-muted); }
+.pl-badge.month { background: rgb(255, 247, 235); color: rgb(180, 83, 9); }
+.pl-badge.from { background: rgb(232, 240, 254); color: var(--hue-blue); }
+/* 抽屉③只读一行:当月分母/加度 + 去参数页改 */
+.pl-roparam { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: 12px; color: var(--text-secondary); }
 
 .pl-noro { text-align: center; padding: 40px 16px; color: var(--text-disabled); font-size: var(--fs-label); }
 

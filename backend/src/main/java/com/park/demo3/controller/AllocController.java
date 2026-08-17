@@ -22,9 +22,10 @@ public class AllocController {
     @Operation(summary = "年份(抄表年∪结果年,升序;年下拉数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 
-    @Operation(summary = "规则列表(携 meterIds+members+meters(sign)+links;可选 zone 过滤)") @GetMapping("/rules")
-    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone) {
-        return svc.ruleList(zone);
+    @Operation(summary = "规则列表(携 meterIds+members+meters(sign)+links;可选 zone 过滤;S21:coefficient/extraQty=站在 ym 的生效值,ym 空=初始版本)") @GetMapping("/rules")
+    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone,
+                                    @RequestParam(required = false) @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.ruleList(zone, ym);
     }
 
     @Operation(summary = "池核算表(POOL-ENGINE-SPEC §4:config 左连当月快照;无快照月 generated=false)") @GetMapping("/pools")

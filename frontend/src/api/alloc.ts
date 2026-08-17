@@ -73,7 +73,7 @@ export interface AllocRuleReq {
   memberMonth?: string | null
 }
 
-// 参数原值行(acctMonth ''=默认行);解析「月行优先回退默认」用 allocLogic.resolveCfg
+// 参数原值行(acctMonth ''=初始版本;S21 后屏上取值/改值一律走 api/params,本端点仅过渡保留)
 export interface AllocCfgDTO {
   id: number
   scope: string                  // p1/p2 或 building:{id}
@@ -337,8 +337,14 @@ export interface AllocLossUnitDTO {
   adjQty: number | null          // 调整度数(二期H列)
   adjRate: number | null         // 调整损耗加点
   variant: 'net' | 'share_only' | 'none'
-  tenantRate: number | null      // 收取租户损耗率
+  tenantRate: number | null      // 收取租户损耗率(手工率非空时=手工率)
   note: string | null
+  // S21:公式率 / 手工率并排;gParts=G 分解(一期园区公摊池 池名+本次生成的池快照净量,Σ÷gDiv=gQty;二期 null)。
+  // 可选=与既有测试夹具兼容(同 netParts/allocNote 那批增量字段的写法)
+  formulaRate?: number | null
+  manualRate?: number | null
+  gParts?: { name: string; qty: number }[] | null
+  gDiv?: number | null
 }
 export interface AllocLossReconDTO {
   zone: AllocZone

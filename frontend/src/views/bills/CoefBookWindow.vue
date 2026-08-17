@@ -4,13 +4,13 @@
 // 期页签+搜索/系数下拉(一次一个)/生效月(默认=催缴单页 ym,版本自该月起前滚)/多选+表头全选
 // (=当前筛选可见行)/统一修改条唯一改值入口(表格无逐行输入框)/暂存-提交模型(保存一次性顺序提交,
 // 失败中断报错并刷新已提交部分)。层份键仅二期页签开放;viewer 只读查看(编辑模式按钮走 canEdit)。
+// S21:价目键源=计费参数注册表(coefBookLogic.COEF_KEYS),读 GET /params?ym&key= 写 PUT /params;值控件按 valueKind(enum→Select)。
 import { computed, ref, watch } from 'vue'
-import { priceCfgApi, type PriceCfgDTO } from '@/api/priceCfg'
+import { paramsApi, type ParamRowDTO } from '@/api/params'
 import { allocApi, type AllocPoolRowDTO, type AllocRuleDTO } from '@/api/alloc'
 import type { ContractDTO } from '@/types/contract'
 import type { BuildingDTO } from '@/types/building'
 import { buildYearOptions } from '@/utils/yearGate'
-import { SCOPE_LABEL } from '@/utils/priceCfgLogic'
 import { groupByBuilding } from '@/utils/billNoticeLogic'
 import {
   COEF_KEYS, buildCoefRows, buildFloorPlan, buildPricePlan, coefMeta, floorMemberships,
@@ -59,15 +59,20 @@ const curMeta = computed(() => coefMeta(coefId.value))
 // 层份键仅二期开放:一期/三期页签下禁用编辑并提示(表格让位提示条)
 const floorLocked = computed(() => curMeta.value.floorShare && phase.value !== '2')
 const coefOpts = COEF_KEYS.map(k => ({
-  value: k.id, label: k.floorShare ? `${k.label}(仅二期)` : `${k.label}(${k.unit})`,
+  value: k.id, label: k.floorShare ? `${k.label}(仅二期)` : k.unit ? `${k.label}(${k.unit})` : k.label,
 }))
+// 枚举键(损耗基数形态)统一修改条用 Select 字典;值存数字,显示文字
+const enumOpts = computed(() =>
+  Object.entries(curMeta.value.enumOptions ?? {}).map(([v, l]) => ({ value: v, label: l })))
+const enumText = (v: number) => curMeta.value.enumOptions?.[v] ?? String(v)
 const yearOpts = computed(() =>
   buildYearOptions(props.years, today).map(y => ({ value: String(y), label: `${y}年` })))
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 
-// ── 数据:价目全量 + 当月池快照(层份成员) + p2 规则(池费项在 rule 上);竞态守卫 ──
+// ── 数据:价目键站在生效月的生效行(后端已级联解析) + 当月池快照(层份成员) + p2 规则(池费项在 rule 上);竞态守卫 ──
+const PRICE_KEY_PARAM = COEF_KEYS.filter(k => !k.floorShare).map(k => k.id).join(',')
 const loading = ref(false)
-const priceRows = ref<PriceCfgDTO[]>([])
+const priceRows = ref<ParamRowDTO[]>([])
 const pools = ref<AllocPoolRowDTO[]>([])
 const rules = ref<AllocRuleDTO[]>([])
 let seq = 0
@@ -76,7 +81,7 @@ async function load() {
   loading.value = true
   try {
     const [ps, pl, rs] = await Promise.all([
-      priceCfgApi.list(),
+      paramsApi.list(effYm.value, 'all', { key: PRICE_KEY_PARAM }),
       allocApi.pools(effYm.value).catch(() => ({ generated: false, rows: [] as AllocPoolRowDTO[] })),
       allocApi.rules('p2').catch(() => [] as AllocRuleDTO[]),
     ])
@@ -120,7 +125,7 @@ watch(q, () => {
   for (const id of [...selected.value]) if (!vis.has(id)) selected.value.delete(id)
 })
 
-// ── 当前生效值:价目键=tenant 级联+常数键前滚(例外徽标=tenant scope 命中);
+// ── 当前生效值:价目键=GET /params 行按 户→期→全园 找(例外徽标=户级行命中自身版本),值/区间用后端人话;
 //    层份键=当月池成员行(weight+src),hover 明示逐池构成(spec §4 改前披露) ──
 const zone = computed(() => phase.value === '1' ? 'p1' : phase.value === '2' ? 'p2' : null)
 interface CurCell { text: string; eff: string; exception: boolean; title?: string }
@@ -141,14 +146,13 @@ const curMap = computed<Map<number, CurCell>>(() => {
     }
   } else {
     for (const r of filtered.value) {
-      const hit = resolveCoefPrice(priceRows.value, meta.writes[0].key, effYm.value, r.tenantId, zone.value)
+      const hit = resolveCoefPrice(priceRows.value, meta.writes[0].key, r.tenantId, zone.value)
       if (!hit) { m.set(r.tenantId, { text: '—', eff: '', exception: false, title: '整链无版本(按引擎默认)' }); continue }
-      const scopeLbl = hit.scope.startsWith('tenant:') ? '户级例外' : (SCOPE_LABEL[hit.scope] ?? hit.scope)
       m.set(r.tenantId, {
-        text: String(hit.value),
-        eff: hit.effMonth === '' ? '长期' : hit.effMonth,
-        exception: hit.scope.startsWith('tenant:'),
-        title: `命中 ${scopeLbl};非户级=继承默认价(灰体)`,
+        text: hit.valueText || String(hit.value),
+        eff: hit.rangeText,
+        exception: hit.exception,
+        title: `命中链: ${hit.chain.join(' → ')};非户级=继承默认价(灰体)`,
       })
     }
   }
@@ -174,7 +178,9 @@ function applyUni() {
   if (!clearMode.value) {
     const t = uni.value.trim()
     const n = Number(t)
-    if (t === '' || !isFinite(n)) { alert(`请输入数字(${curMeta.value.unit})`); return }
+    if (curMeta.value.enumOptions) {
+      if (!(n in curMeta.value.enumOptions)) { alert(`请选择${curMeta.value.label}`); return }
+    } else if (t === '' || !isFinite(n)) { alert(`请输入数字(${curMeta.value.unit})`); return }
     v = n
   }
   for (const id of selected.value) stash.value.set(id, v)
@@ -209,7 +215,7 @@ function setEffMonth(v: string) {
   load()
 }
 
-// ── 保存:顺序提交(价目键=逐户 PUT /price-cfg 序列含配套键;层份键=逐池 PUT /alloc/rules
+// ── 保存:顺序提交(价目键=逐户 PUT /params 序列含配套键,注册表校验+变更日志;层份键=逐池 PUT /alloc/rules
 //    整组月版本);失败中断报错并刷新已提交部分;成功 toast+重拉 ──
 const saving = ref(false)
 const okMsg = ref('')
@@ -249,7 +255,7 @@ async function onSave() {
       const items = buildPricePlan(meta, stash.value, effYm.value)
       let ok = 0
       for (const it of items) {
-        try { for (const req of it.reqs) await priceCfgApi.save(req) }
+        try { for (const req of it.reqs) await paramsApi.put(req, effYm.value) }
         catch (e) {
           alert(errMsg(e, `「${nameOf(it.tenantId)}」保存失败`) + `;之前 ${ok} 户已提交生效,窗口数据已刷新`)
           await load()
@@ -290,7 +296,7 @@ function onClose() {
 
 <template>
   <FPDrawer :open="open" title="系数簿" icon="sliders-horizontal" :width="1080" :fixed-height="true"
-            :subtitle="`批量修改租户系数 · 版本语义与价目管理一致:自生效月起前滚,历史账期不动`"
+            :subtitle="`批量修改租户系数 · 版本语义与计费参数页一致:自生效月起前滚,历史账期不动`"
             @close="onClose">
     <div v-if="loading" class="cb-empty">加载中…</div>
     <template v-else>
@@ -305,7 +311,7 @@ function onClose() {
         <input v-model="q" class="cb-search" type="text" placeholder="搜租户名" />
         <span style="flex:1"></span>
         <span class="cb-lbl">系数</span>
-        <div style="width:210px">
+        <div style="width:250px">
           <Select :options="coefOpts" :model-value="coefId" size="sm" @update:model-value="setCoef" />
         </div>
         <span class="cb-lbl">生效月</span>
@@ -330,7 +336,12 @@ function onClose() {
           <span>已选 <b>{{ selected.size }}</b> 户</span>
           <span class="cb-sep">·</span>
           <span>统一修改为</span>
-          <input v-model="uni" class="cb-uni-in" :disabled="clearMode"
+          <!-- 值控件按注册表 valueKind:枚举(损耗基数形态)→字典 Select;其余数字输入 -->
+          <div v-if="curMeta.enumOptions" style="width:300px">
+            <Select :options="enumOpts" :model-value="uni" size="sm" :disabled="clearMode"
+                    :placeholder="clearMode ? '清除(空值)' : '请选择'" @update:model-value="uni = $event" />
+          </div>
+          <input v-else v-model="uni" class="cb-uni-in" :disabled="clearMode"
                  :placeholder="clearMode ? '清除(空值)' : curMeta.unit" @keydown.enter.prevent="applyUni" />
           <Button variant="outline" size="sm" :disabled="selected.size === 0" @click="applyUni">应用到选中</Button>
           <label class="cb-chk"
@@ -347,8 +358,8 @@ function onClose() {
               <col v-if="editMode" style="width:36px" />
               <col /><!-- 租户:唯一弹性列 -->
               <col style="width:150px" />
-              <col style="width:230px" />
-              <col v-if="editMode" style="width:170px" />
+              <col :style="{ width: curMeta.enumOptions ? '320px' : '230px' }" /><!-- 枚举字典文字长 -->
+              <col v-if="editMode" :style="{ width: curMeta.enumOptions ? '260px' : '170px' }" />
             </colgroup>
             <thead>
               <tr>
@@ -392,7 +403,7 @@ function onClose() {
                   <td v-if="editMode">
                     <span v-if="stash.has(r.tenantId)" class="cb-stash">
                       <b :class="{ del: stash.get(r.tenantId) == null }">
-                        {{ stash.get(r.tenantId) == null ? '清除(回退)' : stash.get(r.tenantId) }}
+                        {{ stash.get(r.tenantId) == null ? '清除(回退)' : curMeta.enumOptions ? enumText(stash.get(r.tenantId)!) : stash.get(r.tenantId) }}
                       </b>
                       <button class="cb-undo" title="撤销该行暂存" @click.stop="unstash(r.tenantId)">
                         <component :is="iconFor('x')" :size="12" />

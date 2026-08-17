@@ -9,6 +9,7 @@ public class AllocCfg {
     private String cfgKey;
     private BigDecimal cfgValue;
     private String acctMonth;     // ''=默认行
+    private String mode;          // S21:from=自 acctMonth 起长期(''=初始版) / month=仅该月(VersionResolver)
     private String note;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

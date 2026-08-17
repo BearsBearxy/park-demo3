@@ -90,9 +90,55 @@ class AllocServiceTest {
     // ── 损耗率(变体按配置,POOL-FORMULA-AUDIT 损耗表增补节) ──
     @Test
     void lossRate_p1_a_net() {
-        // A座 net:C=38550,E=-3673.5,G=86.8+g_adj(-1500)=-1413.2 → I=-ROUND((E-G)/C,4)+0.003=0.0616
+        // A座 net(2024-02):C=38550,E=-3673.5,G=86.8,a=-1500(S21:原 g_adj 并入调整度数,G+g ≡ E−G−a)
+        // → I=-ROUND((E-G-a)/C,4)+0.003=0.0616,与并入前 G=-1413.2 逐格相等
+        assertEquals(0, AllocService.tenantLossRate("net", d("-3673.5"), d("86.8"), d("-1500"), d("0.003"), d("38550"))
+            .compareTo(d("0.0616")));
         assertEquals(0, AllocService.tenantLossRate("net", d("-3673.5"), d("-1413.2"), null, d("0.003"), d("38550"))
             .compareTo(d("0.0616")));
+    }
+
+    // ── S21 §4.2 定稿四组(源册 2023-08) ──
+    @Test
+    void lossRate_s21_p1_a_net_2023_08() {
+        // 一期 A座 H5:E=-13471.14,G=388.62,a=-8000(源册 D+8000 ⇒ a=-8000),C=106245 → -ROUND((E-G-a)/C,4)=0.0552
+        assertEquals(0, AllocService.tenantLossRate("net", d("-13471.14"), d("388.62"), d("-8000"), null, d("106245"))
+            .compareTo(d("0.0552")));
+    }
+
+    @Test
+    void lossRate_s21_shareOnly_plusRate() {
+        // 纯公摊式:ROUND(388.62/28792.8,4)=0.0135 + 加点 0.003 = 0.0165
+        assertEquals(0, AllocService.tenantLossRate("share_only", d("-100"), d("388.62"), null, d("0.003"), d("28792.8"))
+            .compareTo(d("0.0165")));
+    }
+
+    @Test
+    void lossRate_s21_p2_denomCable() {
+        // 二期 2023-08 二三四车间 G5=ROUND(F5/(C5+C6+C7+D6),4):E=-44.89,分母=总表 19220+铝缆 9972=29192 → 0.0015
+        // (只取总表会算成 0.0023,源册不是这样)
+        AllocService.GroupRate gr = AllocService.lossGroupRate("net", d("19220"), d("9972"), true,
+            d("-44.89"), null, null, null, null);
+        assertEquals(0, gr.denom().compareTo(d("29192")));
+        assertEquals(0, gr.rate().compareTo(d("0.0015")));
+        assertEquals(0, gr.formula().compareTo(d("0.0015")));
+        assertNull(gr.manual());
+        assertEquals(0, AllocService.lossGroupRate("net", d("19220"), d("9972"), false,
+            d("-44.89"), null, null, null, null).rate().compareTo(d("0.0023")));
+    }
+
+    @Test
+    void lossRate_s21_manualOverride_keepsFormula() {
+        // 一期 2023-08 B座:手工率 0.0156 覆盖收取率,公式值仍算出并排(E=-277.6,G=388.62,C=28792.8 → 0.0231)
+        AllocService.GroupRate gr = AllocService.lossGroupRate("net", d("28792.8"), null, false,
+            d("-277.6"), d("388.62"), null, null, d("0.0156"));
+        assertEquals(0, gr.rate().compareTo(d("0.0156")));
+        assertEquals(0, gr.manual().compareTo(d("0.0156")));
+        assertEquals(0, gr.formula().compareTo(d("0.0231")));
+        assertEquals(0, gr.denom().compareTo(d("28792.8")));
+        // 不核算栋:率与公式皆空,分母仍给出
+        AllocService.GroupRate none = AllocService.lossGroupRate("none", d("100"), null, false, d("-1"), null, null, null, d("0.01"));
+        assertNull(none.rate()); assertNull(none.formula()); assertEquals(0, none.denom().compareTo(d("100")));
     }
 
     @Test

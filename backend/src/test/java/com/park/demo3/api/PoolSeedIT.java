@@ -105,10 +105,14 @@ class PoolSeedIT extends AbstractMysqlIT {
     @Test
     void spotCheck_fiveRules() {
         // 1) 五车间消防(sort_no 13):floor 6.5 层,+主表 -广告字分表
+        //    S21(V97):分母只存 alloc_cfg rule:{id}.coefficient 版本链('' from=初始版本),alloc_rule.coefficient 恒 NULL
         Map<String, Object> r1 = jdbc.queryForMap(
-                "select method, coefficient, round_scale, base_key from alloc_rule where sort_no=13");
+                "select r.id, r.method, r.coefficient, r.round_scale, r.base_key, c.cfg_value coef0 from alloc_rule r"
+                        + " left join alloc_cfg c on c.scope=concat('rule:', r.id) and c.cfg_key='coefficient' and c.acct_month='' and c.mode='from'"
+                        + " where r.sort_no=13");
         assertThat(r1.get("method")).isEqualTo("floor");
-        assertThat((BigDecimal) r1.get("coefficient")).isEqualByComparingTo("6.5");
+        assertThat(r1.get("coefficient")).isNull();
+        assertThat((BigDecimal) r1.get("coef0")).isEqualByComparingTo("6.5");
         assertThat(r1.get("base_key")).isNull();
         List<Map<String, Object>> b1 = jdbc.queryForList(
                 "select m.name, rm.sign from alloc_rule_meter rm join meter m on m.id=rm.meter_id"
@@ -127,7 +131,10 @@ class PoolSeedIT extends AbstractMysqlIT {
         Map<String, Object> r3 = jdbc.queryForMap(
                 "select id, method, coefficient from alloc_rule where sort_no=49");
         assertThat(r3.get("method")).isEqualTo("floor");
-        assertThat((BigDecimal) r3.get("coefficient")).isEqualByComparingTo("3");
+        assertThat(r3.get("coefficient")).isNull();   // S21:列退出引擎
+        assertThat(jdbc.queryForObject(
+                "select cfg_value from alloc_cfg where scope=concat('rule:', ?) and cfg_key='coefficient' and acct_month='' and mode='from'",
+                BigDecimal.class, r3.get("id"))).isEqualByComparingTo("3");
         assertThat(jdbc.queryForList(
                 "select m.name from alloc_rule_meter rm join meter m on m.id=rm.meter_id where rm.rule_id=?",
                 String.class, r3.get("id")))
@@ -198,11 +205,12 @@ class PoolSeedIT extends AbstractMysqlIT {
                 "select c.cfg_value from alloc_cfg c join alloc_rule r on c.scope=concat('rule:',r.id)"
                         + " where r.sort_no=11 and c.cfg_key='std_add' and c.acct_month='2024-02'",
                 BigDecimal.class)).isEqualByComparingTo("100");
-        // 一期 A座:g_adj=-1500(月行)+ H加点 0.003 + 独立链路排除对账(默认行)
+        // 一期 A座:V65 g_adj=-1500(月行)→ V96 并入 loss_adj_qty(仅当月 month)+ H加点 0.003 + 独立链路排除对账(默认行)
         Integer aId = jdbc.queryForObject("select id from building where name='一期 A座'", Integer.class);
         assertThat(jdbc.queryForObject(
-                "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_g_adj' and acct_month='2024-02'",
+                "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_adj_qty' and acct_month='2024-02' and mode='month'",
                 BigDecimal.class, aId)).isEqualByComparingTo("-1500");
+        assertThat(jdbc.queryForObject("select count(*) from alloc_cfg where cfg_key='loss_g_adj'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject(
                 "select cfg_value from alloc_cfg where scope=concat('building:', ?) and cfg_key='loss_recon' and acct_month=''",
                 BigDecimal.class, aId)).isEqualByComparingTo("0");

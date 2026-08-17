@@ -49,6 +49,7 @@ public class AllocService {
     private final ContractUnitMapper contractUnits;
     private final ElecCostEntryMapper elecEntries;   // 互认提示行只读(单向:P-B 永不写 elec_cost)
     private final PriceCfgService priceCfg;          // 池引擎取价单一事实源(POOL-ENGINE-SPEC §3)
+    private final ParamService params;               // S21:alloc_cfg 写路径(注册表门+变更日志)唯一入口
 
     public AllocService(AllocRuleMapper rules, AllocRuleMeterMapper ruleMeters, AllocRuleMemberMapper ruleMembers,
                         AllocRuleLinkMapper ruleLinks, AllocCfgMapper cfgs, AllocResultMapper results,
@@ -58,7 +59,7 @@ public class AllocService {
                         ContractMapper contracts, ContractBillingTermMapper billingTerms,
                         BillingTermUnitMapper termUnits,
                         UnitMapper units, ContractUnitMapper contractUnits,
-                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg) {
+                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg, ParamService params) {
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
         this.cfgs = cfgs; this.results = results; this.poolResults = poolResults;
         this.poolMeterResults = poolMeterResults; this.lossResults = lossResults;
@@ -66,7 +67,7 @@ public class AllocService {
         this.tenants = tenants; this.buildings = buildings; this.contracts = contracts;
         this.billingTerms = billingTerms; this.termUnits = termUnits;
         this.units = units; this.contractUnits = contractUnits;
-        this.elecEntries = elecEntries; this.priceCfg = priceCfg;
+        this.elecEntries = elecEntries; this.priceCfg = priceCfg; this.params = params;
     }
 
     // ══ V69 池定位与受益人(用户 2026-07-30 拍板:池名不手写/受益人勾选+按月留痕) ══
@@ -261,16 +262,17 @@ public class AllocService {
         return r2(touAmt.divide(coefficient, 10, RoundingMode.HALF_UP));
     }
 
-    // 收取租户损耗率 I(POOL-ENGINE-SPEC §3.4):变体按座配置(loss_variant),不按 E 符号推断
-    // (审计:一期F座 E=+55.7 仍净额式)。net:I=−ROUND((E−G−adjQty)/C,4)+adjRate;
-    // share_only:I=ROUND(G/C,4)+adjRate。C=总表量,E=分表Σ−总表,G 已含 g_adj。
+    // 收取租户损耗率 I(POOL-ENGINE-SPEC §3.4 / S21 §4.2):变体按座配置(loss_variant),不按 E 符号推断
+    // (审计:一期F座 E=+55.7 仍净额式)。net:I=−ROUND((E−G−adjQty)/分母,4)+adjRate;
+    // share_only:I=ROUND(G/分母,4)+adjRate。E=分表Σ−总表;G=公摊分摊度数(各栋同值,不再含 g_adj);
+    // denom=C(总表量)或 C+铝缆(loss_denom_cable=1,二期 2023-08/09 源册 G5=ROUND(F5/(C5+C6+C7+D6),4))。
     public static BigDecimal tenantLossRate(String variant, BigDecimal lossQty, BigDecimal shareQty,
-                                            BigDecimal adjQty, BigDecimal adjRate, BigDecimal headQty) {
-        if (headQty == null || headQty.signum() == 0) return null;
+                                            BigDecimal adjQty, BigDecimal adjRate, BigDecimal denom) {
+        if (denom == null || denom.signum() == 0) return null;
         BigDecimal base = "share_only".equals(variant)
-            ? r4(nz(shareQty).divide(headQty, 10, RoundingMode.HALF_UP))
+            ? r4(nz(shareQty).divide(denom, 10, RoundingMode.HALF_UP))
             : r4(lossQty.subtract(nz(shareQty)).subtract(nz(adjQty))
-                .divide(headQty, 10, RoundingMode.HALF_UP)).negate();
+                .divide(denom, 10, RoundingMode.HALF_UP)).negate();
         return base.add(nz(adjRate));
     }
 
@@ -497,7 +499,9 @@ public class AllocService {
     }
 
     // ── 规则 CRUD(整体保存:rule+meterIds+members 随行覆盖) ──
-    public List<AllocRuleDTO> ruleList(String zone) {
+    // S21 §2.4:DTO 的 coefficient/extraQty 回传 alloc_cfg rule:{id} 版本链站在 ym 的生效值(ym 空=初始版本 '' 行,
+    // 即旧「默认列」语义);两列不再存 alloc_rule。
+    public List<AllocRuleDTO> ruleList(String zone, String ym) {
         Map<Integer, List<AllocRuleMeter>> mByRule = ruleMeters.selectList(null).stream()
             .collect(groupingBy(AllocRuleMeter::getRuleId));
         Map<Integer, List<AllocRuleMember>> memByRule = ruleMembers.selectList(null).stream()
@@ -507,20 +511,33 @@ public class AllocService {
         List<AllocRule> all = rules.selectByZone(null);
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : all) nameById.put(r.getId(), r.getName());
+        Map<String, BigDecimal> cfg = cfgEffective(ym);
         return all.stream().filter(r -> zone == null || zone.equals(r.getZone()))
             .map(r -> toDTO(r, mByRule.getOrDefault(r.getId(), List.of()),
                 memByRule.getOrDefault(r.getId(), List.of()),
-                linkByDst.getOrDefault(r.getId(), List.of()), nameById)).toList();
+                linkByDst.getOrDefault(r.getId(), List.of()), nameById, cfg)).toList();
+    }
+
+    // 站在 ym 的 (scope|key → 值) 扁平表;ym 空/null = 只取 '' 初始版本行
+    private Map<String, BigDecimal> cfgEffective(String ym) {
+        return VersionResolver.effectiveMap(cfgs.selectList(null).stream()
+            .map(c -> new VersionResolver.Row(c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(), c.getCfgValue(), c.getId()))
+            .toList(), ym == null ? "" : ym);
     }
 
     @Transactional
     public AllocRuleDTO createRule(AllocRuleReq req) {
-        validateRule(req);
+        validateRule(req, null);
         AllocRule r = new AllocRule();
         apply(r, req);
         r.setSortNo(rules.maxSortNo() + 1);
         rules.insert(r);
         saveChildren(r.getId(), req);
+        // S21 §2.4 新建池例外:初始分母/初始加度落成 rule:{id} 的 '' from 行(同表同版本链);池建成后只在参数页改
+        if (req.coefficient() != null)
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"));
+        if (req.extraQty() != null && req.extraQty().signum() != 0)
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"));
         return ruleById(r.getId());
     }
 
@@ -528,8 +545,8 @@ public class AllocService {
     public AllocRuleDTO updateRule(Integer id, AllocRuleReq req) {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
-        validateRule(req);
-        apply(r, req);
+        validateRule(req, id);
+        apply(r, req);   // 既有池:coefficient/extraQty 入参忽略,分母/加度只在参数页按版本改
         rules.updateById(r);
         ruleMeters.deleteByRule(id);
         ruleMembers.deleteByRuleMonth(id, memberMonth(req));   // 只覆盖目标月,其他月已出账口径不动
@@ -544,14 +561,21 @@ public class AllocService {
         rules.deleteById(id);   // 绑定表/受益人 FK 级联删
     }
 
-    private static void validateRule(AllocRuleReq req) {
+    private void validateRule(AllocRuleReq req, Integer existingId) {
         // §E2 根因:基数二选一 —— baseKey 非空时基数取价目簿(computePool §1348 压根不读 coefficient),
         // 此时 coefficient 为 NULL 是正常态(V65 种子的 10 个 area 池即如此)。旧判据只认 coefficient,
         // 把这批池的任何编辑(改个费项也算)一律 400 挡掉。
-        if (("area".equals(req.method()) || "floor".equals(req.method()))
-                && blank(req.baseKey())
-                && (req.coefficient() == null || req.coefficient().signum() <= 0))
-            throw new BizException(ResultCode.BAD_REQUEST, "按面积/按层规则必须填正系数(面积Σ㎡/层数)或指定基数键");
+        // S21 §2.4:分母只存 alloc_cfg rule:{id}.coefficient 版本链 —— 新建池看入参「初始分母」;既有池查参数表
+        // (任一版本 >0 即可,入参 coefficient 不再是分母的来源)。
+        if (("area".equals(req.method()) || "floor".equals(req.method())) && blank(req.baseKey())) {
+            boolean ok = existingId == null
+                ? req.coefficient() != null && req.coefficient().signum() > 0
+                : cfgs.selectList(new QueryWrapper<AllocCfg>().eq("scope", "rule:" + existingId).eq("cfg_key", "coefficient"))
+                    .stream().anyMatch(c -> c.getCfgValue() != null && c.getCfgValue().signum() > 0);
+            if (!ok) throw new BizException(ResultCode.BAD_REQUEST, existingId == null
+                ? "按面积/按层规则必须填正的初始分母(面积Σ㎡/层数)或指定基数键"
+                : "按面积/按层规则须有分母(去计费参数页设该池的分母)或指定基数键");
+        }
         if ("direct".equals(req.method()) && (req.members() == null || req.members().size() != 1))
             throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
     }
@@ -571,8 +595,7 @@ public class AllocService {
         boolean noLocation = blank(req.floorLabel()) && blank(req.side()) && blank(req.feeName());
         r.setName(noLocation && !blank(r.getName()) ? r.getName()
             : noLocation && !blank(req.name()) ? req.name().trim() : auto);
-        r.setMethod(req.method()); r.setCoefficient(req.coefficient());
-        r.setExtraQty(nz(req.extraQty())); r.setFeeKey(req.feeKey());
+        r.setMethod(req.method()); r.setFeeKey(req.feeKey());   // S21:coefficient/extraQty 两列退出引擎,不再写(恒 NULL/0)
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
         r.setRoundScale(req.roundScale() == null ? 2 : req.roundScale());
         r.setStdKind(req.stdKind() == null || req.stdKind().isBlank() ? null : req.stdKind());
@@ -619,13 +642,15 @@ public class AllocService {
         Map<Integer, String> nameById = new HashMap<>();
         for (AllocRule r : rules.selectByZone(null)) nameById.put(r.getId(), r.getName());
         return toDTO(rules.selectById(id), ruleMeters.selectByRule(id), ruleMembers.selectByRule(id),
-            ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), nameById);
+            ruleLinks.selectList(new QueryWrapper<AllocRuleLink>().eq("dst_rule_id", id)), nameById, cfgEffective(null));
     }
 
     private static AllocRuleDTO toDTO(AllocRule r, List<AllocRuleMeter> binds, List<AllocRuleMember> mems,
-                                      List<AllocRuleLink> inLinks, Map<Integer, String> ruleNameById) {
+                                      List<AllocRuleLink> inLinks, Map<Integer, String> ruleNameById,
+                                      Map<String, BigDecimal> cfg) {
         return new AllocRuleDTO(r.getId(), r.getZone(), r.getName(), r.getBuildingId(), r.getMethod(),
-            r.getCoefficient(), r.getExtraQty(), r.getFeeKey(), r.getNote(), r.getSortNo(),
+            cfg.get("rule:" + r.getId() + "|coefficient"), nz(cfg.get("rule:" + r.getId() + "|extra_qty")),
+            r.getFeeKey(), r.getNote(), r.getSortNo(),
             binds.stream().map(AllocRuleMeter::getMeterId).toList(),
             mems.stream().map(m -> new AllocMemberDTO(m.getTenantId(), m.getWeight(), m.getAcctMonth())).toList(),
             r.getRoundScale(), r.getStdKind(), r.getBaseKey(),
@@ -637,27 +662,24 @@ public class AllocService {
     }
 
     // ── 参数(读=默认行∪当月行原值,解析「月行优先」由读侧完成;写=单行 upsert,value=null 删行回退默认) ──
+    //    S21 过渡:cfgList 仍是 ''∪当月 的兼容读(前端 allocLogic.resolveCfg 只读用,参数页落地后收敛);
+    //    引擎取值(loadCtx)已改走 VersionResolver(from 前滚/month 仅当月),两者只在 from 月行的后续月份上有差。
     public List<AllocCfgDTO> cfgList(String ym) {
         requireYm(ym);
         return cfgs.selectEffective(ym).stream()
-            .map(c -> new AllocCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getCfgValue(), c.getAcctMonth(), c.getNote()))
+            .map(c -> new AllocCfgDTO(c.getId(), c.getScope(), c.getCfgKey(), c.getCfgValue(), c.getAcctMonth(), c.getMode(), c.getNote()))
             .toList();
     }
 
+    // S21:写走 ParamService.write(注册表门 + param_change_log;删被已生成月使用的版本行 400)。本端点只收 alloc 键;
+    // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     public void saveCfg(AllocCfgReq req) {
+        String scope = req.scope().trim(), key = req.cfgKey().trim();
+        if (ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
+            throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + "@" + scope);
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
-        AllocCfg row = cfgs.selectByKey(req.scope().trim(), req.cfgKey().trim(), month);
-        if (req.value() == null) {
-            if (row != null) cfgs.deleteById(row.getId());
-            return;
-        }
-        if (row == null) {
-            row = new AllocCfg();
-            row.setScope(req.scope().trim()); row.setCfgKey(req.cfgKey().trim()); row.setAcctMonth(month);
-        }
-        row.setCfgValue(req.value());
-        row.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
-        if (row.getId() == null) cfgs.insert(row); else cfgs.updateById(row);
+        String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
+        params.write(new ParamPutReq(key, scope, month, mode, req.value(), req.note(), null), null);
     }
 
     // ── 生成(§1 alloc_result):按 ym 先删后插 gen 行幂等;manual 行保留不覆盖;缺抄跳过并入 warnings ──
@@ -926,11 +948,11 @@ public class AllocService {
         }
         Map<Integer, MeterReading> readingByMeter = new HashMap<>();
         for (MeterReading r : readings.selectByYm(ym)) readingByMeter.put(r.getMeterId(), r);
-        // 参数解析:默认行先落,当月行覆盖(月行优先回退默认,ElecCostService.resolveCfg 同规则)
-        Map<String, BigDecimal> cfg = new HashMap<>();
-        List<AllocCfg> eff = cfgs.selectEffective(ym);
-        for (AllocCfg c : eff) if (c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
-        for (AllocCfg c : eff) if (!c.getAcctMonth().isEmpty()) cfg.put(c.getScope() + "|" + c.getCfgKey(), c.getCfgValue());
+        // 参数解析(S21 §2.2):整表载入,站在 ym 按行 mode 取值 —— month 仅当月优先,from 取 acct_month<=ym 最大者前滚
+        // (''=初始版最小)。与 tenant_price_cfg 同一份 VersionResolver;cfgVal 仍是 scope|key 扁平查表。
+        Map<String, BigDecimal> cfg = VersionResolver.effectiveMap(cfgs.selectList(null).stream()
+            .map(c -> new VersionResolver.Row(c.getScope(), c.getCfgKey(), c.getAcctMonth(), c.getMode(), c.getCfgValue(), c.getId()))
+            .toList(), ym);
         // 户租赁面积=Σ当月覆盖合同分摊面积(S5 §1:Σ租金计费行 area+IFNULL(area_shared,0),无租金行回退 rent_area)
         // S15 §4 面积污染根修:宿舍计费行(dormTerm)面积单独聚合,不混进主楼栋口径
         Map<Integer, BigDecimal> rentLineArea = new HashMap<>();
@@ -1053,23 +1075,25 @@ public class AllocService {
         return any ? new RuleUsage(qty, sharp, peak, flat, valley) : null;
     }
 
-    // 规则全额成本(§2.3 AD 口径):p1=ROUND((用量+加度)×单价,2);p2=分时金额 W(无分时段回退 平价×总量)
+    // 规则全额成本(§2.3 AD 口径):p1=ROUND((用量+加度)×单价,2);p2=分时金额 W(无分时段回退 平价×总量)。
+    // S21 §4.3:单价走价目簿月价(p1=商业裸价+商业维护费;p2=四段裸价+管理费),不再读 alloc_cfg 冻结价;
+    // dorm 规则一如既往不出对账行(旧实现读不到 p2.price_norm 即跳过)。
     private BigDecimal ruleCostAmount(AllocRule rule, RuleUsage u, Ctx ctx) {
-        if ("p1".equals(rule.getZone())) {
-            BigDecimal price = cfgVal(ctx, "p1", "price_flat");
-            if (price == null) { ctx.warnings().add("缺参数 p1.price_flat,规则「" + rule.getName() + "」跳过"); return null; }
-            return r2(u.qty().add(nz(rule.getExtraQty())).multiply(price));
-        }
+        String zone = rule.getZone();
+        if (!"p1".equals(zone) && !"p2".equals(zone)) return null;
+        BigDecimal price = lossPrice(zone, ctx);   // p1 商业价 / p2 平段价(含管理费)
+        if (price == null) return null;
+        if ("p1".equals(zone)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
         boolean hasTou = u.sharp().signum() != 0 || u.peak().signum() != 0
             || u.flat().signum() != 0 || u.valley().signum() != 0;
-        BigDecimal pNorm = cfgVal(ctx, "p2", "price_norm");
         if (hasTou) {
+            BigDecimal mgmt = nz(priceCfg.resolve("mgmt_fee", ctx.ym(), null, zone));
             return touAmount(u.sharp(), u.peak(), u.flat(), u.valley,
-                cfgVal(ctx, "p2", "price_sharp"), cfgVal(ctx, "p2", "price_peak"),
-                pNorm, cfgVal(ctx, "p2", "price_valley"));
+                nz(priceCfg.resolve("elec_sharp", ctx.ym(), null, zone)).add(mgmt),
+                nz(priceCfg.resolve("elec_peak", ctx.ym(), null, zone)).add(mgmt),
+                price, nz(priceCfg.resolve("elec_valley", ctx.ym(), null, zone)).add(mgmt));
         }
-        if (pNorm == null) { ctx.warnings().add("缺参数 p2.price_norm,规则「" + rule.getName() + "」跳过"); return null; }
-        return r2(u.qty().add(nz(rule.getExtraQty())).multiply(pNorm));
+        return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
     }
 
     // 全部规则(非 loss)+损耗链 → 户级贡献清单(生成/抽屉/对账共用同一计算体,口径全等由结构保证)
@@ -1361,13 +1385,20 @@ public class AllocService {
         BigDecimal div = cfgVal(ctx, "p1", "park_share_div");
         if (div == null || div.signum() == 0) return BigDecimal.ZERO;
         BigDecimal sum = BigDecimal.ZERO;
+        for (AllocLossRowDTO.GPart p : gParts(ctx)) sum = sum.add(p.qty());
+        return r2(sum.divide(div, 10, RoundingMode.HALF_UP));
+    }
+
+    // S21 §4.1 G 分解:一期园区公摊池 池名+当月净量(缺读数池不列),Σ÷park_share_div=G(屏上悬浮分解式)
+    private List<AllocLossRowDTO.GPart> gParts(Ctx ctx) {
+        List<AllocLossRowDTO.GPart> out = new ArrayList<>();
         Map<Integer, SegQty> memo = new HashMap<>();
         for (AllocRule rule : ctx.ruleList()) {
             if (!PARK_POOL.equals(rule.getFeeKey()) || !"p1".equals(rule.getZone())) continue;
             SegQty q = poolSegQty(rule, ctx, memo, new ArrayDeque<>());
-            if (q.any()) sum = sum.add(q.total());
+            if (q.any()) out.add(new AllocLossRowDTO.GPart(rule.getName(), q.total()));
         }
-        return r2(sum.divide(div, 10, RoundingMode.HALF_UP));
+        return out;
     }
 
     // 损耗变体(§3.4):组内无分表=none 不出率;否则按 building:{head}.loss_variant(0=net默认/1=share_only/2=陈列不出率)
@@ -1378,15 +1409,26 @@ public class AllocService {
         return v != null && v.intValue() == 1 ? "share_only" : "net";
     }
 
-    // G 列(仅 p1):公摊池均摊 + building:{head}.loss_g_adj(一期A座 -1500);二期 null
+    // G 列(仅 p1):公摊池均摊,各栋同值(S21:loss_g_adj 已并入 loss_adj_qty,分栋差异走调整度数);二期 null
     private BigDecimal groupG(LossGroup g, Ctx ctx) {
         if (!"p1".equals(g.zone())) return null;
-        return nz(shareQtyOf(g.zone(), ctx)).add(nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_g_adj")));
+        return nz(shareQtyOf(g.zone(), ctx));
     }
 
+    // 损耗费单价(S21 §4.3):一期/宿舍=商业裸价+商业维护费(与池成本同口径);二期=供电局综合月均裸价(elec_grid_avg,
+    // 用户 2026-08-16 拍板开的统一入口,与源册火炬园「高压用电分配」单价同源)+管理费,缺当月值回退 平段裸价+管理费。
+    // 价目簿缺当月电价 → null(生成路径已被 priceGate 拦下;读时派生 recon 跳过并 warn 一次)。
     private BigDecimal lossPrice(String zone, Ctx ctx) {
-        BigDecimal p = cfgVal(ctx, zone, "price_loss");
-        return p != null ? p : cfgVal(ctx, zone, "price_flat");   // 一期损耗按商业价回退
+        boolean p2 = "p2".equals(zone);
+        String elecKey = p2 ? "elec_flat" : "elec_commercial";
+        BigDecimal elec = p2 ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
+        if (elec == null) elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
+        if (elec == null) {
+            String w = zone + " 缺 " + ctx.ym() + " 电价(" + elecKey + "),损耗费/对账价未算";
+            if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
+            return null;
+        }
+        return elec.add(nz(priceCfg.resolve(p2 ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
     }
 
     private List<Contribution> lossContributions(Ctx ctx) {
@@ -1440,16 +1482,36 @@ public class AllocService {
         return adjQty;
     }
 
-    private BigDecimal groupRate(LossGroup g, Ctx ctx) {
-        String variant = lossVariant(g, ctx);
-        if ("none".equals(variant)) return null;
-        BigDecimal lossQty = g.subQty().subtract(g.headQty());   // E=分表Σ−总表(负=有损耗)
-        BigDecimal adjRate = nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"));
-        return tenantLossRate(variant, lossQty, groupG(g, ctx), groupAdjQty(g, ctx), adjRate, g.headQty());
+    // 组率三件套(S21 §4.2):rate=对外收取率(手工率非空即覆盖);formula=三式公式率(并排备查);denom=分母(C 或 C+铝缆)。
+    // 分母开关 loss_denom_cable 栋级优先、期级回退;variant=none 时 rate/formula 皆 null,denom 仍给出。
+    record GroupRate(BigDecimal rate, BigDecimal formula, BigDecimal manual, BigDecimal denom) {}
+
+    // 纯函数(单测锁定):denomCable ⇒ 分母=C+铝缆;manual 非空 ⇒ rate=manual 而 formula 仍算出并排;variant=none ⇒ 皆 null
+    static GroupRate lossGroupRate(String variant, BigDecimal headQty, BigDecimal cableQty, boolean denomCable,
+                                   BigDecimal lossQty, BigDecimal shareQty, BigDecimal adjQty, BigDecimal adjRate,
+                                   BigDecimal manual) {
+        BigDecimal denom = denomCable ? headQty.add(nz(cableQty)) : headQty;
+        if ("none".equals(variant)) return new GroupRate(null, null, null, denom);
+        BigDecimal formula = tenantLossRate(variant, lossQty, shareQty, adjQty, adjRate, denom);
+        return new GroupRate(manual != null ? manual : formula, formula, manual, denom);
     }
+
+    private GroupRate groupRateDetail(LossGroup g, Ctx ctx) {
+        BigDecimal cable = cfgVal(ctx, "building:" + g.headBuildingId(), "loss_denom_cable");
+        if (cable == null) cable = cfgVal(ctx, g.zone(), "loss_denom_cable");
+        return lossGroupRate(lossVariant(g, ctx), g.headQty(), g.cableQty(), cable != null && cable.signum() != 0,
+            g.subQty().subtract(g.headQty()),   // E=分表Σ−总表(负=有损耗)
+            groupG(g, ctx), groupAdjQty(g, ctx),
+            nz(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate")),
+            cfgVal(ctx, "building:" + g.headBuildingId(), "loss_rate_manual"));
+    }
+
+    private BigDecimal groupRate(LossGroup g, Ctx ctx) { return groupRateDetail(g, ctx).rate(); }
 
     private List<AllocLossRowDTO> lossTable(Ctx ctx) {
         List<AllocLossRowDTO> out = new ArrayList<>();
+        List<AllocLossRowDTO.GPart> parts = gParts(ctx).stream()
+            .map(p -> new AllocLossRowDTO.GPart(p.name(), r2(p.qty()))).toList();
         for (LossGroup g : lossGroups(ctx)) {
             BigDecimal lossQty = g.subQty().subtract(g.headQty());
             BigDecimal rawRate = g.headQty().signum() == 0 ? null
@@ -1457,11 +1519,13 @@ public class AllocService {
             String name = g.buildingIds().stream()
                 .map(bid -> { Building b = ctx.buildingById().get(bid); return b == null ? "#" + bid : b.getName(); })
                 .reduce((a, b) -> a + "+" + b).orElse("#" + g.headBuildingId());
+            GroupRate gr = groupRateDetail(g, ctx);
             out.add(new AllocLossRowDTO(g.zone(), g.headBuildingId(), name,
                 r2(g.headQty()), r2(g.subQty()), r2(lossQty), rawRate,
                 nz(groupG(g, ctx)), r2(groupAdjQty(g, ctx)),
                 cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"),
-                groupRate(g, ctx)));
+                gr.rate(), gr.formula(), gr.manual(), r2(gr.denom()),
+                "p1".equals(g.zone()) ? parts : null));
         }
         out.sort(Comparator.comparing(AllocLossRowDTO::zone).thenComparing(AllocLossRowDTO::buildingId));
         return out;
@@ -1515,15 +1579,14 @@ public class AllocService {
         return out;
     }
 
-    // 月度参数:rule:{id} 月行优先回退规则默认值
+    // S21 §2.4 池默认列归一:加度/分母只有 alloc_cfg rule:{id} 一条版本链(V97 把旧默认列搬成 '' from 行),
+    // 不再回退 alloc_rule.extra_qty/coefficient 两列(恒 0/NULL,仅历史)。
     private BigDecimal poolExtra(AllocRule rule, Ctx ctx) {
-        BigDecimal v = cfgVal(ctx, "rule:" + rule.getId(), "extra_qty");
-        return v != null ? v : nz(rule.getExtraQty());
+        return nz(cfgVal(ctx, "rule:" + rule.getId(), "extra_qty"));
     }
 
     private BigDecimal coefficientOf(AllocRule rule, Ctx ctx) {
-        BigDecimal v = cfgVal(ctx, "rule:" + rule.getId(), "coefficient");
-        return v != null ? v : rule.getCoefficient();
+        return cfgVal(ctx, "rule:" + rule.getId(), "coefficient");
     }
 
     private boolean isNetPool(AllocRule rule, Ctx ctx) {
@@ -1810,7 +1873,11 @@ public class AllocService {
             r.setAdjQty(r2(groupAdjQty(g, ctx)));
             r.setAdjRate(cfgVal(ctx, "building:" + g.headBuildingId(), "loss_adj_rate"));
             r.setVariant(lossVariant(g, ctx));
-            r.setTenantRate(groupRate(g, ctx));
+            GroupRate gr = groupRateDetail(g, ctx);
+            r.setTenantRate(gr.rate());
+            r.setFormulaRate(gr.formula());
+            r.setManualRate(gr.manual());
+            r.setDenomQty(r2(gr.denom()));
             r.setGeneratedAt(now);
             out.add(r);
         }
@@ -1869,6 +1936,7 @@ public class AllocService {
         // 刀D:受益人楼层与分桶明细读时现算(楼层不落库),与 generate 同一组纯函数,主数据未变即口径全等
         Map<Integer, List<Meter>> metersByTenant = tenantMeters(meterById.values().stream()
             .filter(m -> !MeterService.outOfService(m, ym)).toList());
+        Map<String, BigDecimal> cfgEff = cfgEffective(ym);   // S21:无快照月的构成明细加度取当月生效参数(列已退出)
         List<AllocPoolDTOs.PoolRow> rows = new ArrayList<>();
         for (AllocRule r : all) {
             AllocPoolResult s = snap.get(r.getId());
@@ -1905,7 +1973,7 @@ public class AllocService {
                 lineByRule.getOrDefault(r.getId(), List.of()).stream()
                     .map(ln -> lineDTO(ln, meterById.get(ln.getMeterId()))).toList(),
                 netParts(bindsByRule.getOrDefault(r.getId(), List.of()), meterById, rdByMeter,
-                    s == null ? r.getExtraQty() : s.getExtraQtySnap()),
+                    s == null ? cfgEff.get("rule:" + r.getId() + "|extra_qty") : s.getExtraQtySnap()),
                 s == null ? null : s.getQtyTotal(), s == null ? null : s.getQtySharp(),
                 s == null ? null : s.getQtyPeak(), s == null ? null : s.getQtyFlat(),
                 s == null ? null : s.getQtyValley(),
@@ -2173,12 +2241,23 @@ public class AllocService {
         requireYm(ym);
         List<AllocLossResult> units = lossResults.selectByYm(ym);
         Ctx ctx = loadCtx(ym);
+        // S21 §4.1 G 分解(屏上悬浮「(a + b + …) ÷ 6 = G」):取**本次 generate 的池快照**净量(与 g_qty 同批),
+        // 不按当前读数现算 —— 读数改了快照没重生成时,分解式仍与格里的 G 自洽;分母=park_share_div 当前生效值
+        Map<Integer, BigDecimal> snapQty = new HashMap<>();
+        for (AllocPoolResult r : poolResults.selectByYm(ym)) snapQty.put(r.getRuleId(), r.getQtyTotal());
+        List<AllocLossRowDTO.GPart> gParts = new ArrayList<>();
+        for (AllocRule rule : ctx.ruleList())
+            if (PARK_POOL.equals(rule.getFeeKey()) && "p1".equals(rule.getZone()) && snapQty.get(rule.getId()) != null)
+                gParts.add(new AllocLossRowDTO.GPart(rule.getName(), snapQty.get(rule.getId())));
+        BigDecimal gDiv = cfgVal(ctx, "p1", "park_share_div");
         List<AllocPoolDTOs.LossUnit> unitRows = new ArrayList<>();
         Map<String, List<AllocLossResult>> byZone = new LinkedHashMap<>();
         for (AllocLossResult u : units) {
+            boolean p1 = "p1".equals(u.getZone());
             unitRows.add(new AllocPoolDTOs.LossUnit(u.getHeadBuildingId(), lossLabel(u, ctx), u.getZone(),
                 u.getCQty(), u.getCableQty(), u.getDQty(), u.getEQty(), u.getRawRate(),
-                u.getGQty(), u.getAdjQty(), u.getAdjRate(), u.getVariant(), u.getTenantRate(), null));
+                u.getGQty(), u.getAdjQty(), u.getAdjRate(), u.getVariant(), u.getTenantRate(), null,
+                u.getFormulaRate(), u.getManualRate(), p1 ? gParts : null, p1 ? gDiv : null));
             byZone.computeIfAbsent(u.getZone(), k -> new ArrayList<>()).add(u);
         }
         List<AllocPoolDTOs.LossRecon> recon = new ArrayList<>();

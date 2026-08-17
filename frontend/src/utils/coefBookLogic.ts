@@ -1,19 +1,18 @@
-// 系数簿纯逻辑(S14-COEF-BOOK-SPEC §2/§3):COEF_KEYS 注册表(九键=价目户级例外全部 overridable 键
-// + 二期层份)、行构建(期归属复用 billNoticeLogic.resolvePhase,按楼栋分组走 groupByBuilding)、
-// 当前生效值解析(价目键=resolvePrice tenant 级联+常数键前滚;层份键=GET /alloc/pools?ym 成员行)、
+// 系数簿纯逻辑(S14-COEF-BOOK-SPEC §2/§3;S21 起键源=计费参数注册表):COEF_KEYS=注册表 tenantEditable 价目键
+// (label/单位/值类型/枚举字典/配套写计划皆取自 paramRegistry —— 写计划与参数页 ④ 共用一份 writePlan)+ 二期层份两键、
+// 行构建(期归属复用 billNoticeLogic.resolvePhase,按楼栋分组走 groupByBuilding)、
+// 当前生效值解析(价目键=GET /params?ym&key= 后端已级联解析,前端按 户→期→全园 找行;层份键=GET /alloc/pools?ym 成员行)、
 // 暂存模型 Map<tenantId, value|null>(null=清除:删该月版本/回自动分)与提交计划
-// (价目键→PUT /price-cfg 序列含配套键;层份键→按池分组整组写月版本)。coefBookLogic.spec.ts 锁定。
-import type { PriceCfgDTO, PriceCfgUpsertReq } from '@/api/priceCfg'
+// (价目键→PUT /params 序列含配套键;层份键→按池分组整组写月版本)。coefBookLogic.spec.ts 锁定。
+import type { ParamPutReq, ParamRowDTO } from '@/api/params'
 import type {
   AllocFeeKey, AllocLinkType, AllocMethod, AllocRuleReq, AllocStdKind, AllocZone,
 } from '@/api/alloc'
-import { resolvePrice } from './priceCfgLogic'
+import { PARAM_DEFS, writePlan, type ParamDef, type ParamValueKind, type ParamWrite } from './paramRegistry'
 import { resolvePhase, tenantBuildings, type TenantBuildings } from './billNoticeLogic'
 
-// ── 注册表:label/unit/写计划(fixed=配套键写死值,缺省=写用户值)/层份类挂池费项 ──
-// ⚠green_rate 现不在后端 PriceCfgService.CFG_KEYS 白名单(S13 行走裸 SQL 入库),
-//   走 PUT /price-cfg 会 400——白名单补键归后端刀,本注册表按 spec §3.1 先列全。
-export interface CoefWrite { key: string; fixed?: number }
+// ── 注册表:label/unit/写计划(fixed=配套键写死值,缺省=写用户值)/层份类挂池费项/值类型(enum 给字典) ──
+export type CoefWrite = ParamWrite
 export interface CoefKeyMeta {
   id: string
   label: string
@@ -22,29 +21,37 @@ export interface CoefKeyMeta {
   feeKey: 'share_elec_elevator' | 'share_elec_fire' | null
   writes: CoefWrite[]                                    // 价目类写计划(层份类空)
   hint: string
+  valueKind: ParamValueKind                              // 值控件:enum→Select(字典),其余数字输入
+  enumOptions?: Record<number, string>
 }
-export const COEF_KEYS: CoefKeyMeta[] = [
-  { id: 'mgmt_fee', label: '电力管理费单价', unit: '元/度', floorShare: false, feeKey: null,
-    writes: [{ key: 'mgmt_fee' }, { key: 'mgmt_fee_commercial' }],
-    hint: '双键同值成对写(tenant-price-exceptions 惯例,引擎走哪支都被压过);默认 0.16 不落户级行' },
+
+// 配套写计划取注册表 writePlan(与参数页 ④ 同一份);这里只放系数簿的窗口提示语
+const WRITE_HINTS: Record<string, string> = {
+  mgmt_fee: '电力管理费 与 电力管理费（商业）双键同值成对写（引擎走哪支都被覆盖）；默认 0.16 不落户级行',
+  water: '户级水价配套 水管网维护费 = 0 同写（免叠默认管网费）',
+  elec_package: '一口价已含电力管理费：配套 电力管理费 / 电力管理费（商业）= 0 成组写',
+}
+// 配套键只随主键成组写,不单列
+const SECONDARY = new Set(['mgmt_fee_commercial', 'water_pipe'])
+// 价目键 = 注册表 tenantEditable 且:非 ① 区月核对项(尖峰比率/照抄金额由计费参数页按月管,系数簿版本语义是自生效月起前滚)、
+// 非配套键、非前缀模板键(loss_base_form_b{bid} 需指定楼栋)、值类型可批量输入(数字/枚举;引用型需选表器,去计费参数页 ④ 区)
+const BATCH_KINDS = new Set<ParamValueKind>(['number', 'rate', 'money', 'int', 'enum'])
+const priceMeta = (d: ParamDef): CoefKeyMeta => ({
+  id: d.key, label: d.label, unit: d.unit, floorShare: false, feeKey: null,
+  writes: writePlan(d.key),
+  hint: WRITE_HINTS[d.key] ?? d.hint ?? '',
+  valueKind: d.valueKind, enumOptions: d.enumOptions,
+})
+const FLOOR_KEYS: CoefKeyMeta[] = [
   { id: 'elevator_share', label: '电梯层份', unit: '份', floorShare: true, feeKey: 'share_elec_elevator',
-    writes: [], hint: '仅二期;保存=自生效月起整名单版本组,历史月不动;空=层内按面积自动分' },
+    writes: [], hint: '仅二期;保存=自生效月起整名单版本组,历史月不动;空=层内按面积自动分', valueKind: 'number' },
   { id: 'fire_share', label: '消防层份', unit: '份', floorShare: true, feeKey: 'share_elec_fire',
-    writes: [], hint: '仅二期;保存=自生效月起整名单版本组,历史月不动;空=层内按面积自动分' },
-  { id: 'water', label: '水价', unit: '元/吨', floorShare: false, feeKey: null,
-    writes: [{ key: 'water' }, { key: 'water_pipe', fixed: 0 }],
-    hint: '例外惯例:户级水价配套 管网维护费=0 同写(免叠默认管网费)' },
-  { id: 'capacity_fee', label: '装机容量费单价', unit: '元/kVA·月', floorShare: false, feeKey: null,
-    writes: [{ key: 'capacity_fee' }], hint: '' },
-  { id: 'green_rate', label: '绿化水收取价', unit: '元/㎡', floorShare: false, feeKey: null,
-    writes: [{ key: 'green_rate' }], hint: '' },
-  { id: 'elec_package', label: '包干电价', unit: '元/度', floorShare: false, feeKey: null,
-    writes: [{ key: 'elec_package' }, { key: 'mgmt_fee', fixed: 0 }, { key: 'mgmt_fee_commercial', fixed: 0 }],
-    hint: '包干价已含管理费:配套双 mgmt 键=0 成组写' },
-  { id: 'share_elec_fixed', label: '公共用电包干额', unit: '元/月', floorShare: false, feeKey: null,
-    writes: [{ key: 'share_elec_fixed' }], hint: '替楼层公共+电梯+路灯三项' },
-  { id: 'share_water_fixed', label: '公共用水包干额', unit: '元/月', floorShare: false, feeKey: null,
-    writes: [{ key: 'share_water_fixed' }], hint: '替绿化水公摊' },
+    writes: [], hint: '仅二期;保存=自生效月起整名单版本组,历史月不动;空=层内按面积自动分', valueKind: 'number' },
+]
+export const COEF_KEYS: CoefKeyMeta[] = [
+  ...PARAM_DEFS.filter(d => d.tenantEditable && !d.monthlyCheck && !SECONDARY.has(d.key)
+    && !d.key.includes('{') && BATCH_KINDS.has(d.valueKind)).map(priceMeta),
+  ...FLOOR_KEYS,
 ]
 export function coefMeta(id: string): CoefKeyMeta {
   const m = COEF_KEYS.find(k => k.id === id)
@@ -86,15 +93,18 @@ export function buildCoefRows(
   }))
 }
 
-// ── 价目键当前生效值:resolvePrice 同规则逐级试(tenant:{id}→zone→''),附命中 scope(例外徽标) ──
-export interface CoefPriceHit { value: number; effMonth: string; scope: string }
+// ── 价目键当前生效值:GET /params?ym&key= 每行已站在 ym 级联解析(值/人话/区间/命中链);本函数只按作用域找行
+//    tenant:{id} → 期 → 全园,首个有值者;例外徽标 = 户级行且命中本户自己的版本(rowId 非空,而非继承上级) ──
+export interface CoefPriceHit { value: number; valueText: string; rangeText: string; exception: boolean; chain: string[] }
 export function resolveCoefPrice(
-  rows: PriceCfgDTO[], key: string, ym: string, tenantId: number, zone: string | null,
+  rows: ParamRowDTO[], key: string, tenantId: number, zone: string | null,
 ): CoefPriceHit | null {
   const scopes = [`tenant:${tenantId}`, ...(zone ? [zone] : []), '']
   for (const s of scopes) {
-    const hit = resolvePrice(rows.filter(r => r.scope === s), key, ym, tenantId, s === '' ? null : s)
-    if (hit) return { value: hit.value, effMonth: hit.effMonth, scope: s }
+    const r = rows.find(x => x.key === key && x.scope === s)
+    if (r && r.value != null)
+      return { value: r.value, valueText: r.valueText, rangeText: r.rangeText,
+               exception: s.startsWith('tenant:') && r.rowId != null, chain: r.sourceChain }
   }
   return null
 }
@@ -128,15 +138,16 @@ export function floorMemberships(feePools: CoefPoolIn[], tenantId: number): Floo
 // ── 暂存模型:Map<tenantId, 新值|null>(null=清除:价目键删该月版本回退/层份键回自动分) ──
 export type CoefStash = Map<number, number | null>
 
-// 价目键提交计划:一户一组,组内按注册表写计划展开(配套键成组写;清除=全部键 value null)
-export interface PricePlanItem { tenantId: number; reqs: PriceCfgUpsertReq[] }
+// 价目键提交计划:一户一组,组内按注册表写计划展开(配套键成组写;清除=全部键 value null);
+// mode 不传=注册表默认(系数簿键皆 from:自生效月起前滚,与旧 PUT /price-cfg 同义)
+export interface PricePlanItem { tenantId: number; reqs: ParamPutReq[] }
 export function buildPricePlan(meta: CoefKeyMeta, stash: CoefStash, ym: string): PricePlanItem[] {
   const out: PricePlanItem[] = []
   for (const [tenantId, v] of stash) {
     out.push({
       tenantId,
       reqs: meta.writes.map(w => ({
-        scope: `tenant:${tenantId}`, cfgKey: w.key, acctMonth: ym,
+        key: w.key, scope: `tenant:${tenantId}`, acctMonth: ym,
         value: v == null ? null : (w.fixed ?? v),
         note: v == null ? null : '系数簿批量',
       })),

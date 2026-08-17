@@ -159,6 +159,18 @@ class PriceCfgApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content("{\"fromYm\":\"2099-07\",\"toYm\":\"2099-08\"}"))
                 .andExpect(jsonPath("$.data.copied").value(0))
                 .andExpect(jsonPath("$.data.skipped").value(2));
+        // S21:复制逐行走 ParamService.write → 每条复制都有 param_change_log(变更记录可见 / 待重算计数含它);二跑跳过不记
+        String h = mvc.perform(get("/api/params/history").param("key", "elec_peak").param("scope", "").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)).andReturn().getResponse().getContentAsString();
+        List<java.util.Map<String, Object>> ch = JsonPath.read(h, "$.data.changes[?(@.acctMonth=='2099-08')]");
+        assertEquals(1, ch.size(), ch.toString());
+        assertEquals("set", ch.get(0).get("action"));
+        assertEquals("month", ch.get(0).get("mode"));
+        assertEquals(1.5, ((Number) ch.get(0).get("newValue")).doubleValue());
+        assertEquals("admin", ch.get(0).get("actor"));
+        mvc.perform(get("/api/params/status").param("ym", "2099-08").header("Authorization", auth()))
+                .andExpect(jsonPath("$.data.priceOk").value(2))
+                .andExpect(jsonPath("$.data.pendingChanges").value(3));   // 2 条复制 + water 2099-07 起 from 行
     }
 
     // ── 业务错=HTTP 200+body.code 400:白名单外 key / V62 已删键 / 月变键 acctMonth 空 ──

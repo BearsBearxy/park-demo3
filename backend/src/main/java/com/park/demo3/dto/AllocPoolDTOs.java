@@ -85,11 +85,14 @@ public final class AllocPoolDTOs {
     public record Pools(boolean generated, List<PoolRow> rows) {}
 
     // 楼栋损耗表:units=快照;recon=读时派生(供电侧总表 vs 单元合计,loss_recon=0 的单元排除)
+    // S21:formulaRate/manualRate=快照的公式率/手工率(手工非空即覆盖 tenantRate,屏上并排);
+    // gParts/gDiv=G 分解(一期园区公摊池 池名+本次 generate 的池快照净量,Σ÷gDiv=gQty;二期 null)
     public record LossUnit(
         Integer headBuildingId, String label, String zone,
         BigDecimal cQty, BigDecimal cableQty, BigDecimal dQty, BigDecimal eQty, BigDecimal rawRate,
         BigDecimal gQty, BigDecimal adjQty, BigDecimal adjRate,
-        String variant, BigDecimal tenantRate, String note) {}
+        String variant, BigDecimal tenantRate, String note,
+        BigDecimal formulaRate, BigDecimal manualRate, List<AllocLossRowDTO.GPart> gParts, BigDecimal gDiv) {}
 
     public record LossRecon(
         String zone, BigDecimal supplyQty, BigDecimal sumC, BigDecimal sumD,
