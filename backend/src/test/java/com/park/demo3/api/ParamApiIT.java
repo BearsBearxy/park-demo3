@@ -82,7 +82,7 @@ class ParamApiIT extends AbstractMysqlIT {
 
     // ══════════ 读侧 ══════════
 
-    // ── ① 栋级口径:B座 2024-02 命中 2023-11 起的纯公摊版本;人话与区间;命中链首项=本栋;二期栋级「分母含铝缆」继承期级版本 ──
+    // ── ① 栋级口径:B座 2024-02 命中 2023-11 起的「仅按公摊分摊度数」版本;人话与区间;命中链首项=本栋;二期栋级「损耗率分母」继承期级版本 ──
     @Test
     void list_lossVariant_versionChain_humanText() throws Exception {
         String bScope = "building:" + buildingId("一期 B座");
@@ -90,7 +90,7 @@ class ParamApiIT extends AbstractMysqlIT {
         assertEquals("rule", b.get("group"));
         assertEquals("一期 B座", b.get("scopeLabel"));
         assertEquals(1.0, num(b.get("value")));
-        assertTrue(String.valueOf(b.get("valueText")).contains("纯公摊"), b.toString());
+        assertTrue(String.valueOf(b.get("valueText")).startsWith("仅按公摊分摊度数"), b.toString());
         assertEquals("from", b.get("mode"));
         assertEquals("2023-11", b.get("acctMonth"));
         assertEquals("2023-11 起长期", b.get("rangeText"));
@@ -98,26 +98,26 @@ class ParamApiIT extends AbstractMysqlIT {
         List<?> chain = (List<?>) b.get("sourceChain");
         assertEquals(1, chain.size());
         assertTrue(String.valueOf(chain.get(0)).startsWith("一期 B座:"), chain.toString());
-        // 2023-10 站在初始版本(净额式),区间右端由 2023-11 版本推出
+        // 2023-10 站在初始版本(按损耗量核算),区间右端由 2023-11 版本推出 → 「2023-10 及以前」
         Map<String, Object> b10 = one(rows("2023-10", "all"), "loss_variant", bScope);
         assertEquals(0.0, num(b10.get("value")));
-        assertEquals("初始版本 ~ 2023-10", b10.get("rangeText"));
-        assertTrue(String.valueOf(b10.get("valueText")).contains("正常核算"));
-        // 二期期级「分母含铝缆」版本链(V97):2023-08 含铝缆(初始版本 ~ 2023-09),2023-10 起不含
+        assertEquals("2023-10 及以前", b10.get("rangeText"));
+        assertTrue(String.valueOf(b10.get("valueText")).startsWith("按损耗量核算"));
+        // 二期期级「损耗率分母」版本链(V97):2023-08 总表 + 铝缆(2023-09 及以前),2023-10 起仅总表
         Map<String, Object> cable = one(rows("2023-08", "p2"), "loss_denom_cable", "p2");
-        assertEquals("分母 = 总表 + 铝缆", cable.get("valueText"));
-        assertEquals("初始版本 ~ 2023-09", cable.get("rangeText"));
+        assertEquals("总表 + 铝缆", cable.get("valueText"));
+        assertEquals("2023-09 及以前", cable.get("rangeText"));
         assertNotNull(cable.get("rowId"));
         Map<String, Object> cable24 = one(rows("2024-02", "p2"), "loss_denom_cable", "p2");
-        assertEquals("分母 = 总表", cable24.get("valueText"));
+        assertEquals("仅总表", cable24.get("valueText"));
         assertEquals("2023-10 起长期", cable24.get("rangeText"));
         // 二期栋级(三车间,V65 铝缆表挂栋)无自有行 → 继承期级;命中链来自「二期」;不可原地改错
         String c3 = "building:" + buildingId("二期 三车间");
         Map<String, Object> inh = one(rows("2023-08", "p2"), "loss_denom_cable", c3);
-        assertEquals("分母 = 总表 + 铝缆", inh.get("valueText"));
-        assertEquals("初始版本 ~ 2023-09", inh.get("rangeText"));
+        assertEquals("总表 + 铝缆", inh.get("valueText"));
+        assertEquals("2023-09 及以前", inh.get("rangeText"));
         assertNull(inh.get("rowId"));
-        assertEquals(List.of("二期:分母 = 总表 + 铝缆"), inh.get("sourceChain"));
+        assertEquals(List.of("二期:总表 + 铝缆"), inh.get("sourceChain"));
         assertEquals("二期 三车间", inh.get("scopeLabel"));
     }
 
@@ -143,15 +143,19 @@ class ParamApiIT extends AbstractMysqlIT {
         // V97 补的 2023-12 −1470 月行(按 book_key 定位;种子库无该键时为空 → 只在有行时断言)
         List<String> dec = jdbc.queryForList("select scope from alloc_cfg where cfg_key='extra_qty' and acct_month='2023-12'", String.class);
         if (!dec.isEmpty()) assertEquals(-1470.0, num(one(rows("2023-12", "all"), "extra_qty", dec.get(0)).get("value")));
-        // 基数键池(A东侧货梯 base_key=elevator_area_base):不出可编辑分母行,改只读「分母 = … （价目参数）」并按版本链取值
+        // 基数键池(A东侧货梯 base_key=elevator_area_base):不出可编辑分摊基数行,改只读行:值=那条面积基数参数的值(千分位+单位),
+        // 命中链末项「取自「A座电梯分摊面积基数」」,并按版本链取值
         String elev = "rule:" + jdbc.queryForObject("select id from alloc_rule where base_key='elevator_area_base' and zone='p1' order by id limit 1", Integer.class);
         Map<String, Object> e = one(rows("2024-02", "p1"), "coefficient", elev);
         assertEquals(false, e.get("editable"));
-        assertTrue(String.valueOf(e.get("valueText")).startsWith("分母 = A座电梯面积基数 12487.04"), e.toString());
+        assertEquals("12,487.04 ㎡", e.get("valueText"));
         assertEquals("2024-02 起长期", e.get("rangeText"));
+        List<?> ec = (List<?>) e.get("sourceChain");
+        assertEquals("取自「A座电梯分摊面积基数」", ec.get(ec.size() - 1), ec.toString());
+        assertEquals("一期:12,487.04 ㎡", ec.get(0));
         Map<String, Object> e08 = one(rows("2023-08", "p1"), "coefficient", elev);
-        assertTrue(String.valueOf(e08.get("valueText")).contains("14818.35"), e08.toString());
-        assertEquals("初始版本 ~ 2023-08", e08.get("rangeText"));
+        assertEquals("14,818.35 ㎡", e08.get("valueText"));
+        assertEquals("2023-08 及以前", e08.get("rangeText"));
     }
 
     // ── ④ 人话:全部行 label/valueText/scopeLabel/rangeText/sourceChain 无字段值与内部标识;zone 过滤只出该期对象 ──
@@ -194,7 +198,7 @@ class ParamApiIT extends AbstractMysqlIT {
         assertEquals("constant", mgmt.get("group"));
         assertEquals("全园", mgmt.get("scopeLabel"));
         assertEquals("0.16 元/度", mgmt.get("valueText"));
-        assertEquals("长期（初始版本）", mgmt.get("rangeText"));
+        assertEquals("长期", mgmt.get("rangeText"));
         // 电价键 2024-02:全园月行 → 「仅 2024-02」+ hasMonthRow + 月核对项
         Map<String, Object> peak = one(rows("2024-02", "p1"), "elec_peak", "");
         assertEquals("仅 2024-02", peak.get("rangeText"));

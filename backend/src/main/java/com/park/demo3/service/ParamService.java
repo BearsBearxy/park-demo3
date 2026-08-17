@@ -107,7 +107,7 @@ public class ParamService {
 
     private ParamRowDTO buildRow(Def d, String key, String scope, String ym, Names n, Idx idx) {
         Map<String, List<Row>> byScope = idx.rows.getOrDefault(key, Map.of());
-        // spec §2.4:有基数键的池不出可编辑「分母」行,改出只读「分母 = {基数键 label} {值}（价目参数）」指向那条参数
+        // spec §2.4:有基数键的池不出可编辑「分摊基数」行,改出只读行(值=那条面积基数参数的值,命中链末项「取自「{基数键 label}」」)
         if ("coefficient".equals(key) && scope.startsWith("rule:")) {
             String baseKey = n.baseKeyOfRule.get(idOf(scope));
             if (baseKey != null && !baseKey.isBlank()) return baseRow(d, scope, baseKey, ym, n, idx);
@@ -131,10 +131,12 @@ public class ParamService {
             own ? hit.id() : null, hit == null ? null : idx.note(key, hit.id()));
     }
 
-    // 基数键池的分母行:值/区间/命中链全部来自那条价目参数(rule.zone → 全园 级联),只读
+    // 基数键池的分摊基数行:值/区间/命中链全部来自那条面积基数参数(rule.zone → 全园 级联),只读;
+    // valueText=「148,918.01 ㎡」(基数键单位),sourceChain 末项=「取自「园区分摊面积基数」」(前端「来自」列取它并按 label 跳那一行)
     private ParamRowDTO baseRow(Def coef, String scope, String baseKey, String ym, Names n, Idx idx) {
         Def bd = ParamRegistry.get(baseKey);
         String bLabel = bd == null ? baseKey : bd.label();
+        String unit = bd == null || bd.unit() == null || bd.unit().isEmpty() ? "" : " " + bd.unit();
         Map<String, List<Row>> byScope = idx.rows.getOrDefault(baseKey, Map.of());
         String zone = n.zoneOfRule.get(idOf(scope));
         Hit hit = null;
@@ -143,14 +145,14 @@ public class ParamService {
             Hit h = VersionResolver.resolveOne(byScope.get(s), ym);
             if (h == null) continue;
             if (hit == null) hit = h;
-            chain.add(scopeLabel(s, n) + ":" + plain(h.value()));
+            chain.add(scopeLabel(s, n) + ":" + plain(h.value()) + unit);
         }
-        String text = hit == null ? "分母 = " + bLabel + "（价目参数，未设置）"
-            : "分母 = " + bLabel + " " + plain(hit.value()) + "（价目参数）";
+        chain.add("取自「" + bLabel + "」");
+        String text = hit == null ? "" : plain(hit.value()) + unit;
         return new ParamRowDTO("coefficient", coef.label(), coef.unit(), group(coef), scope, scopeLabel(scope, n),
             hit == null ? null : hit.value(), text, hit == null ? null : hit.mode(), hit == null ? "" : hit.acctMonth(),
             hit == null ? "" : rangeText(hit, byScope.get(hit.scope())), chain, coef.formula(),
-            "该池分母走价目参数「" + bLabel + "」，去那条参数改", false, false, false, null, null);
+            "分摊基数取自「" + bLabel + "」，去那一行修改", false, false, false, null, null);
     }
 
     // ── 人话解析 ──
@@ -161,7 +163,7 @@ public class ParamService {
         var m = LOSS_BASE_FORM_B.matcher(key);
         if (!m.matches()) return d.label();
         String b = n.building.get(Integer.valueOf(m.group(1)));
-        return "损耗费基数形态（" + (b == null ? "楼栋#" + m.group(1) : b) + " 链）";
+        return "损耗费计费基数（" + (b == null ? "楼栋#" + m.group(1) : b) + "）";
     }
 
     static String scopeLabel(String scope, Names n) {
@@ -180,15 +182,15 @@ public class ParamService {
         return scope;
     }
 
-    // 值文案:枚举字典 / 布尔状态句 / 引用型显名字 / 数值带单位;无命中给默认语义(栋级口径键)或空(其余)
+    // 值文案:枚举字典 / 布尔状态句 / 引用型显名字 / 数值带单位(千分位);无命中给默认语义(栋级口径键)或空(其余)
     private static String valueText(Def d, String key, String scope, BigDecimal v, Names n) {
         if (v == null) {
             return switch (key) {
                 case "loss_variant" -> d.enumOptions().get(0);
                 case "loss_head" -> "独立核算";
                 case "loss_c_meter" -> "全部总表";
-                case "loss_recon" -> "参与对账";
-                case "loss_denom_cable" -> "分母 = 总表";
+                case "loss_recon" -> "参与";
+                case "loss_denom_cable" -> "仅总表";
                 default -> "";
             };
         }
@@ -200,32 +202,48 @@ public class ParamService {
             case BOOL: {
                 boolean on = v.signum() != 0;
                 return switch (key) {
-                    case "loss_recon" -> on ? "参与对账" : "不参与对账";
-                    case "loss_exclude" -> on ? "剔出合计" : "计入合计";
-                    case "loss_denom_cable" -> on ? "分母 = 总表 + 铝缆" : "分母 = 总表";
+                    case "loss_recon" -> on ? "参与" : "不参与";
+                    case "loss_exclude" -> on ? "不计入" : "计入";
+                    case "loss_denom_cable" -> on ? "总表 + 铝缆" : "仅总表";
                     default -> on ? "是" : "否";
                 };
             }
-            case REF_METER: return n.meter.getOrDefault(v.intValue(), "表#" + v.intValue());
+            case REF_METER: {
+                String m = n.meter.getOrDefault(v.intValue(), "表#" + v.intValue());
+                return "loss_c_meter".equals(key) ? "仅「" + m + "」" : m;
+            }
             case REF_BUILDING: {
                 int bid = v.intValue();
                 if ("loss_head".equals(key) && scope.startsWith("building:") && idOf(scope) == bid) return "独立核算";
                 String b = n.building.getOrDefault(bid, "楼栋#" + bid);
-                return "loss_head".equals(key) ? "并入 " + b : b;
+                return "loss_head".equals(key) ? "并入「" + b + "」核算" : b;
             }
             case REF_RULE: return n.rule.getOrDefault(v.intValue(), "池#" + v.intValue());
             default: return d.unit() == null || d.unit().isEmpty() ? plain(v) : plain(v) + " " + d.unit();
         }
     }
 
-    static String plain(BigDecimal v) { return v.stripTrailingZeros().toPlainString(); }
+    // 数字文案:去尾零 + 整数部分千分位(148918.01 → 148,918.01;-670 → -670;小数位原样不舍入)
+    static String plain(BigDecimal v) {
+        String p = v.stripTrailingZeros().toPlainString();
+        int dot = p.indexOf('.');
+        String ip = dot < 0 ? p : p.substring(0, dot), frac = dot < 0 ? "" : p.substring(dot);
+        boolean neg = ip.startsWith("-");
+        if (neg) ip = ip.substring(1);
+        StringBuilder sb = new StringBuilder(neg ? "-" : "");
+        for (int i = 0; i < ip.length(); i++) {
+            if (i > 0 && (ip.length() - i) % 3 == 0) sb.append(',');
+            sb.append(ip.charAt(i));
+        }
+        return sb.append(frac).toString();
+    }
 
-    // 生效区间(spec §5.2):month=仅 X;from=X 起长期 / X ~ 下一版本前一月 / 长期（初始版本）/ 初始版本 ~ Y
+    // 生效区间(spec §5.2):month=仅 X;from=X 起长期 / X ~ 下一版本前一月 / 长期(初始版本无下一版本)/ Y 及以前(初始版本被 Y 的下一版本截断)
     static String rangeText(Hit hit, List<Row> rowsOfScope) {
         if ("month".equals(hit.mode())) return "仅 " + hit.acctMonth();
         String next = VersionResolver.nextFrom(rowsOfScope == null ? List.of() : rowsOfScope, hit.acctMonth());
         String am = hit.acctMonth();
-        if (am.isEmpty()) return next == null ? "长期（初始版本）" : "初始版本 ~ " + prevMonth(next);
+        if (am.isEmpty()) return next == null ? "长期" : prevMonth(next) + " 及以前";
         return next == null ? am + " 起长期" : am + " ~ " + prevMonth(next);
     }
 
