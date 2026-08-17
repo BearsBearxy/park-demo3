@@ -35,6 +35,7 @@ import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
+import { PARAM_DEFS } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
 import { useTabsStore } from '@/stores/tabs'
 import {
@@ -386,6 +387,9 @@ const STD_OPTS = [
   { value: 'qty_price_over_base', label: '(用量 + 加减度数) ÷ 分摊基数 × 单价（一期 / 宿舍默认）' },
   { value: 'qty_over_base', label: '用量 ÷ 分摊基数（广告字档）' },
 ]
+// 面积基数来源候选 = 注册表里的面积基数键(value 仍是键,页面显 label;空 = 用本池分摊基数);提交体不变
+const BASE_KEY_OPTS = [{ value: '', label: '用本池分摊基数' },
+  ...PARAM_DEFS.filter(d => d.key.endsWith('area_base')).map(d => ({ value: d.key, label: d.label }))]
 const LINK_TYPE_OPTS = [
   { value: 'fold_price', label: '折入标准(fold_price)' },
   { value: 'fold_qty', label: '折入度数(fold_qty)' },
@@ -1020,7 +1024,7 @@ async function delPool() {
           <div class="pl-formrow">
             <Input v-if="form.id == null" v-model="form.coefficient" label="初始分摊基数（层数或受益面积 ㎡）"
                    placeholder="按面积 / 按层且不走面积基数时必填；建成后在计费参数页按版本改" size="sm" />
-            <Input v-model="form.baseKey" label="面积基数来源" placeholder="如 area_base（园区分摊面积基数）；空 = 用本池分摊基数" size="sm" />
+            <Select v-model="form.baseKey" label="面积基数来源" :options="BASE_KEY_OPTS" size="sm" />
           </div>
           <div v-if="form.id != null" class="pl-roparam">
             <span>{{ roParamLine(form.id) }}</span>

@@ -82,9 +82,12 @@ const staleMsg = computed(() => staleText(status.value, 'pool'))
 const isP2 = computed(() => zone.value === 'p2')
 // 基础 9 列(位置/总表/分表/损耗量/原率/调整度/调整损/收租率/备注)+铝缆(p2)+公摊度数(p1)
 const colCount = computed(() => 9 + (isP2.value ? 1 : 0) + (zone.value === 'p1' ? 1 : 0))
-const LBL_W = 230
+// 「位置」列定宽按期别取:一期是单栋名(+「仅按公摊分摊度数」徽标)230 够;二期共用总表的归组标签
+// 「二期 二车间/二期 三车间/二期 四车间(二期 三车间供电)」实测 331px,给 360 不截(用户可见文字一律不截断)
+// ponytail: 归组再并进一栋(4 栋一组 ≈ 430px)会再截 —— 到时按 units 里最长 label 估宽
+const LBL_W = computed(() => (isP2.value ? 360 : 230))
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
+const fixLbl = computed(() => ({ ...w(LBL_W.value), left: '0px', borderRight: '1px solid var(--border-subtle)' }))
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
 // LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)

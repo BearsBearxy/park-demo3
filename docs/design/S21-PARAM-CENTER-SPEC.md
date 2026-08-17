@@ -240,6 +240,7 @@ loss_rate_manual(组头, month) 非空 ⇒ I = 手工率（覆盖上式；快照
 ### 5.4 历史与变更记录
 - 行内 [历史] → 右抽屉：该 (scope,key) 版本时间轴（月份色条：`from` 连续条、`month` 单点）+ 变更日志（时间/人/旧→新/备注/动作）。
 - 顶部 [变更记录] → 全页日志列表（时间倒序，可按键/范围/月筛）。
+- 两处的值列都显后端文案（版本 `valueText`、变更 `oldText/newText`，与列表行 `valueText` 同一格式器：枚举字典 / 布尔状态句 / 引用显名 / 千分位+单位），不显原始数字；值空（此前无值 / 已删）显「—」。长枚举文字（损耗核算方式）在值列内换行，短值不换行。
 
 ### 5.5 保存→生效闭环
 1. 保存后状态条：「参数已改 N 项（自上次重算起），本月池核算/楼栋损耗/催缴单为旧快照」+ [重算本月]。
@@ -265,8 +266,8 @@ loss_rate_manual(组头, month) 非空 ⇒ I = 手工率（覆盖上式；快照
 |---|---|
 | `GET /api/params?ym=&zone=` | 站在 ym 看的**全部**生效参数行（四区），每行 `{key,label,unit,group,scope,scopeLabel,value,valueText,mode,acctMonth,rangeText,sourceChain[],formula,hint,editable}`；含池/栋/表/户名解析 |
 | `PUT /api/params` | `{table?, key, scope, acctMonth, mode, value|null, note, correction?}`；注册表校验键/作用域/值域；写入对应表；写日志；返回该键在 ym 的新生效行 |
-| `GET /api/params/history?key=&scope=` | 版本时间轴 + 日志 |
-| `GET /api/params/changes?ym=&limit=` | 全页变更记录 |
+| `GET /api/params/history?key=&scope=` | 版本时间轴 + 日志；版本行带 `valueText`，日志行带 `oldText/newText`（值文案与列表行同一格式器；值空为 null） |
+| `GET /api/params/changes?ym=&limit=` | 全页变更记录（行结构同上日志行） |
 | `GET /api/params/status?ym=` | `{priceOk(6/6), pendingChanges, lastRecalcAt, snapshotAt, stale}` |
 | `POST /api/params/recalc?ym=` | 池+损耗+催缴单重生成，返回摘要 |
 | 兼容 | `PUT /api/price-cfg`、`PUT /api/alloc/cfg` 保留但内部走同一 `ParamService`（注册表校验 + 日志）；旧调用没有 `mode`：`/alloc/cfg` 带 acctMonth ⇒ `month`（=旧「仅当月」语义），空 ⇒ `from ''`；`/price-cfg` ⇒ 注册表默认方式（电价键 month，其余 from，=旧语义）。`POST /api/price-cfg/copy` 保留 |

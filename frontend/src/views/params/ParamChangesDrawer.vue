@@ -34,7 +34,11 @@ const shown = computed(() => {
   return kw ? all.filter(c => `${c.label ?? ''} ${c.scopeLabel ?? ''} ${c.note ?? ''}`.includes(kw)) : all
 })
 const fmtTs = (iso: string) => iso.slice(0, 16).replace('T', ' ')
-const fmtV = (v: number | null) => (v == null ? '—' : String(v))
+// 值文案由后端给(枚举字典 / 布尔状态句 / 引用显名 / 千分位+单位,与列表行同一格式器);值空 = 此前无值 / 已删 → 「—」
+// (老后端没有文案字段时退回原始数字,不显一排「—」)
+const fmtV = (t: string | null | undefined, v: number | null) => t ?? (v == null ? '—' : String(v))
+// 枚举文字(如「按损耗量核算（率 = …）」)一行放不下才换行;数字对(「0.16 元/度 → 0.15 元/度」)保持不换行
+const longV = (c: ParamChangeDTO) => (c.oldText?.length ?? 0) + (c.newText?.length ?? 0) > 40
 const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
   : c.mode === 'month' ? `仅 ${c.acctMonth}` : c.acctMonth ? `${c.acctMonth} 起长期` : '长期'
 </script>
@@ -60,7 +64,7 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
           <td class="wrap">{{ c.label ?? '' }}</td>
           <td class="wrap">{{ c.scopeLabel ?? '' }}</td>
           <td>{{ effText(c) }}</td>
-          <td class="num mono">{{ c.action === 'recalc' ? '' : `${fmtV(c.oldValue)} → ${fmtV(c.newValue)}` }}</td>
+          <td class="num mono" :class="{ wrap: longV(c) }">{{ c.action === 'recalc' ? '' : `${fmtV(c.oldText, c.oldValue)} → ${fmtV(c.newText, c.newValue)}` }}</td>
           <td class="note wrap">{{ c.note ?? '' }}</td>
         </tr>
       </tbody>
@@ -85,6 +89,7 @@ const effText = (c: ParamChangeDTO) => c.action === 'recalc' ? (c.ym ?? '')
 .pc-tab td.wrap { white-space: normal; line-height: 1.4; }
 .pc-tab th.wrap, .pc-tab td.wrap { min-width: 120px; }
 .pc-tab th.note, .pc-tab td.note { min-width: 200px; }
+.pc-tab td.num.wrap { min-width: 220px; }   /* 变更列遇长枚举文字才换行,短的数字对保持 nowrap */
 .pc-tab .num { text-align: right; }
 .pc-tab .note { color: var(--text-muted); }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

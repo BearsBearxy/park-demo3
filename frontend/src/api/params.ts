@@ -54,11 +54,13 @@ export interface ParamStatusDTO {
   otherMonthsAffected: string[]   // from 版本波及的其它已生成月份
 }
 
-export interface ParamVersionDTO { acctMonth: string; mode: ParamMode; value: number; note: string | null; rangeText: string }
+// valueText / oldText / newText:值的人话文案(后端与列表行同一格式器:枚举字典 / 布尔状态句 / 引用显名 / 千分位+单位);值空则 null → 页面显「—」
+export interface ParamVersionDTO { acctMonth: string; mode: ParamMode; value: number; valueText: string | null; note: string | null; rangeText: string }
 export interface ParamChangeDTO {
   ts: string; actor: string; action: 'set' | 'delete' | 'recalc' | 'migrate'
   key?: string; scope?: string; scopeLabel?: string; label?: string
-  acctMonth: string; mode: ParamMode; oldValue: number | null; newValue: number | null; note: string | null
+  acctMonth: string; mode: ParamMode; oldValue: number | null; newValue: number | null
+  oldText: string | null; newText: string | null; note: string | null
   ym?: string | null          // recalc 动作的账期
 }
 export interface ParamHistoryDTO { versions: ParamVersionDTO[]; changes: ParamChangeDTO[] }

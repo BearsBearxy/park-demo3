@@ -498,14 +498,16 @@ public class ParamService {
     // ══════════ 历史 / 变更记录(spec §5.4) ══════════
 
     public ParamHistoryDTO history(String key, String scope) {
-        if (ParamRegistry.get(key) == null) throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key);
+        Def d = ParamRegistry.get(key);
+        if (d == null) throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key);
         String s = scope == null ? "" : scope.trim();
         Idx idx = index();
+        Names n = names();
         List<Row> rows = new ArrayList<>(idx.rows.getOrDefault(key, Map.of()).getOrDefault(s, List.of()));
         rows.sort(Comparator.comparing(Row::mode).thenComparing(Row::acctMonth));   // from 链在前(按起点),month 单点在后
         List<ParamHistoryDTO.Version> versions = rows.stream().map(r -> new ParamHistoryDTO.Version(r.acctMonth(), r.mode(), r.value(),
+            valueTextOrNull(d, key, s, r.value(), n),
             idx.note(key, r.id()), rangeText(new Hit(r.value(), s, r.acctMonth(), r.mode(), r.id()), rows), r.id())).toList();
-        Names n = names();
         List<ParamHistoryDTO.Change> changes = logs.selectList(new QueryWrapper<ParamChangeLog>()
                 .eq("scope", s).eq("cfg_key", key).orderByDesc("ts").orderByDesc("id"))
             .stream().map(l -> change(l, n)).toList();
@@ -525,10 +527,19 @@ public class ParamService {
     private static ParamHistoryDTO.Change change(ParamChangeLog l, Names n) {
         Def d = ParamRegistry.get(l.getCfgKey());
         boolean recalc = "recalc".equals(l.getAction());
+        String key = l.getCfgKey(), scope = l.getScope() == null ? "" : l.getScope();
         return new ParamHistoryDTO.Change(l.getId(), l.getTs(), l.getActor(), l.getAction(),
-            recalc ? null : l.getCfgKey(), recalc ? null : l.getScope(), recalc ? null : scopeLabel(l.getScope(), n),
-            recalc ? "重算本月" : d == null ? l.getCfgKey() : label(d, l.getCfgKey(), n),
-            l.getAcctMonth(), l.getMode(), l.getOldValue(), l.getNewValue(), l.getNote(), l.getYm());
+            recalc ? null : key, recalc ? null : l.getScope(), recalc ? null : scopeLabel(l.getScope(), n),
+            recalc ? "重算本月" : d == null ? key : label(d, key, n),
+            l.getAcctMonth(), l.getMode(), l.getOldValue(), l.getNewValue(),
+            recalc || d == null ? null : valueTextOrNull(d, key, scope, l.getOldValue(), n),
+            recalc || d == null ? null : valueTextOrNull(d, key, scope, l.getNewValue(), n),
+            l.getNote(), l.getYm());
+    }
+
+    // 历史 / 变更记录的值文案:与列表行同一格式器;空值给 null(不给「参与」这类默认语义 —— 日志里的空是「此前无值 / 已删」,前端显「—」)
+    private static String valueTextOrNull(Def d, String key, String scope, BigDecimal v, Names n) {
+        return v == null ? null : valueText(d, key, scope, v, n);
     }
 
     // ══════════ 重算(spec §5.5):池+损耗 → 催缴单(已确认/已导出户跳过) → 日志 recalc ══════════

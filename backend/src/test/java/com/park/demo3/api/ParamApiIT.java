@@ -267,6 +267,7 @@ class ParamApiIT extends AbstractMysqlIT {
         List<Map<String, Object>> v04 = versions.stream().filter(v -> "2099-04".equals(v.get("acctMonth"))).toList();
         assertEquals(1, v04.size(), versions.toString());
         assertEquals(0.006, num(v04.get(0).get("value")));
+        assertEquals("0.006 比率", v04.get(0).get("valueText"));   // 版本 / 变更值文案与列表行同一格式器(千分位 + 单位)
         assertEquals("2099-04 起长期", v04.get(0).get("rangeText"));
         List<Map<String, Object>> changes = JsonPath.read(h, "$.data.changes");
         List<Map<String, Object>> c04 = changes.stream().filter(x -> "2099-04".equals(x.get("acctMonth"))).toList();
@@ -274,11 +275,21 @@ class ParamApiIT extends AbstractMysqlIT {
         assertEquals("set", c04.get(0).get("action"));
         assertEquals(0.005, num(c04.get(0).get("oldValue")));
         assertEquals(0.006, num(c04.get(0).get("newValue")));
+        assertEquals("0.005 比率", c04.get(0).get("oldText"));
+        assertEquals("0.006 比率", c04.get(0).get("newText"));
         assertEquals("改错", c04.get(0).get("note"));
         assertEquals("admin", c04.get(0).get("actor"));
         assertEquals("一期 B座", c04.get(0).get("scopeLabel"));
         assertNull(c04.get(1).get("oldValue"));
+        assertNull(c04.get(1).get("oldText"));   // 空值文案为 null(前端显「—」),不给默认语义
         assertEquals(0.005, num(c04.get(1).get("newValue")));
+        // 枚举 / 千分位:B座 loss_variant 种子版本(2023-11 起 =1)历史显字典文字不显 1;loss_adj_qty -8000 版本显「-8,000 度」
+        String hv = body(mvc.perform(get("/api/params/history").param("key", "loss_variant").param("scope", b).header("Authorization", auth())));
+        List<Map<String, Object>> vv = JsonPath.read(hv, "$.data.versions");
+        assertTrue(vv.stream().anyMatch(v -> "2023-11".equals(v.get("acctMonth")) && String.valueOf(v.get("valueText")).startsWith("仅按公摊分摊度数")), vv.toString());
+        String hq = body(mvc.perform(get("/api/params/history").param("key", "loss_adj_qty").param("scope", b).header("Authorization", auth())));
+        List<Map<String, Object>> vq = JsonPath.read(hq, "$.data.versions");
+        assertTrue(vq.stream().anyMatch(v -> "-8,000 度".equals(v.get("valueText"))), vq.toString());
     }
 
     // ── ④ 注册表门:退役键 / 未注册键 / 作用域形态不允许 / 月变键缺月 → 400 ──
