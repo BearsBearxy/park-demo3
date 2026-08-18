@@ -6,6 +6,7 @@ import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import { useFitRows } from '@/components/fp/useFitRows'
 import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
+import { occPct, OCC_NULL_WHY } from '@/types/building'
 import { fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
@@ -101,11 +102,13 @@ const filtered = computed(() =>
 )
 
 // ponytail: BdOccBar inlined as render function — no extra component file
-function OccBar(rate: number, h_px = 6) {
-  const tone = rate >= 90 ? 'var(--hue-blue)' : rate >= 75 ? 'var(--fill-slate)' : 'var(--hue-orange)'
-  return h('div', { style: { height: h_px + 'px', borderRadius: '999px', background: 'var(--ink-040)', overflow: 'hidden', width: '100%' } }, [
-    h('div', { style: { width: rate + '%', height: '100%', background: tone, borderRadius: '999px', transition: 'width .3s var(--ease-standard)' } }),
-  ])
+// rate 为 null(算不出来)只留浅色轨道:0 宽的条会被读成「出租率 0%」(METRIC-SOURCE-SPEC §3)
+function OccBar(rate: number | null, h_px = 6) {
+  const tone = rate == null ? '' : rate >= 90 ? 'var(--hue-blue)' : rate >= 75 ? 'var(--fill-slate)' : 'var(--hue-orange)'
+  return h('div', { style: { height: h_px + 'px', borderRadius: '999px', background: 'var(--ink-040)', overflow: 'hidden', width: '100%' } },
+    rate == null ? [] : [
+      h('div', { style: { width: rate + '%', height: '100%', background: tone, borderRadius: '999px', transition: 'width .3s var(--ease-standard)' } }),
+    ])
 }
 
 const TABLE_COLUMNS = computed(() => [
@@ -140,9 +143,10 @@ const TABLE_COLUMNS = computed(() => [
     render: (b: BuildingDTO) => h('span', null, b.tenantBuildingArea ? b.tenantBuildingArea.toLocaleString('en-US') : '—') },
   {
     key: 'occRate', header: '出租率', width: '132px', sortValue: (b: BuildingDTO) => b.occRate,
-    render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' } }, [
+    // 本列有 render,FPSortableTable 的自动 title 不生效(c.render ? undefined : …),缺因 tooltip 得自己挂
+    render: (b: BuildingDTO) => h('span', { style: { display: 'flex', alignItems: 'center', gap: '9px' }, title: b.occRate == null ? OCC_NULL_WHY : undefined }, [
       h('span', { style: { flex: '1', minWidth: '54px' } }, [OccBar(b.occRate, 5)]),
-      h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', width: '40px', textAlign: 'right' } }, b.occRate + '%'),
+      h('span', { style: { fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'var(--fw-semibold)', width: '40px', textAlign: 'right' } }, occPct(b.occRate)),
     ]),
   },
   { key: 'monthlyRent', header: '月租金', width: '104px', align: 'right' as const, mono: true, sortValue: (b: BuildingDTO) => b.monthlyRent,
@@ -184,6 +188,17 @@ function onTableRowClick(b: BuildingDTO) { onOpenBuilding(b) }
 
 // KPI: stoppedCount from client list
 const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).length)
+
+// 出租率副标(§3 替代口径):按单元口径不依赖可租面积,主口径算不出来时它仍在,故两态都给。
+// ⚠ 两个口径的样本集不同:occRate 只统计非停用栋,unitCount/vacantCount 是全量(含停用栋),
+//   所以副标必须显式写「按单元」标明口径名,不能拿它当主口径的验算。
+// 副标在 224px KPI 栏会被 ellipsis 截,缺因另挂卡片 title 兜底。
+const occSub = computed(() => {
+  const s = summary.value
+  if (!s) return undefined
+  const byUnit = `按单元 ${s.unitCount - s.vacantCount}/${s.unitCount}`
+  return s.occRate == null ? `${byUnit} · ${OCC_NULL_WHY}` : byUnit
+})
 </script>
 
 <template>
@@ -222,7 +237,10 @@ const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).
       <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" tint="sky" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('ruler')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="blue" :style="{ padding: '20px' }">
+      <KpiCard
+        label="园区出租率" :value="occPct(summary.occRate)" :sub="occSub" tint="blue"
+        :title="summary.occRate == null ? OCC_NULL_WHY : undefined" :style="{ padding: '20px' }"
+      >
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
       <KpiCard label="空置单元" :value="String(summary.vacantCount)" delta="待招商" trend="down" tint="cyan" :style="{ padding: '20px' }">

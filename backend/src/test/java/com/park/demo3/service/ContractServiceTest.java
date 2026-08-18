@@ -45,9 +45,10 @@ class ContractServiceTest {
         LocalDate end   = LocalDate.of(2025, 1, 1);  // 24 months
         Contract ct = contract(1, 1, 7, 3, "active", start, end, 8000);
         Mockito.when(cm.selectList(null)).thenReturn(List.of(ct));
-        Mockito.when(tm.selectList(null)).thenReturn(List.of(tenant(1)));
-        Mockito.when(bm.selectList(null)).thenReturn(List.of(building(7, "一期A栋")));
-        Mockito.when(um.selectList(null)).thenReturn(List.of(unit(3, 3, "301")));
+        // 三个名字字典已按 all 里出现的 id 收敛(in 查),不再是 selectList(null) → 用 any() 匹配
+        Mockito.when(tm.selectList(Mockito.any())).thenReturn(List.of(tenant(1)));
+        Mockito.when(bm.selectList(Mockito.any())).thenReturn(List.of(building(7, "一期A栋")));
+        Mockito.when(um.selectList(Mockito.any())).thenReturn(List.of(unit(3, 3, "301")));
 
         List<ContractDTO> result = svc.list(null);
         assertThat(result).hasSize(1);
@@ -100,8 +101,9 @@ class ContractServiceTest {
         Contract ct = contract(1,1,7,3,"active",s,e,8000);
         Mockito.when(cm.selectById(1)).thenReturn(ct);
         Mockito.when(tm.selectById(1)).thenReturn(tenant(1));
-        Mockito.when(bm.selectList(null)).thenReturn(List.of(building(7,"一期A栋")));
-        Mockito.when(um.selectList(null)).thenReturn(List.of(unit(3,3,"301")));
+        // detail 单合同路径改按 id 点查楼栋/单元(同 dtoOf),故 stub 也从全表改点查
+        Mockito.when(bm.selectById(7)).thenReturn(building(7,"一期A栋"));
+        Mockito.when(um.selectById(3)).thenReturn(unit(3,3,"301"));
 
         ContractDetailDTO d = svc.detail(1);
         assertThat(d.contract().tenantName()).isEqualTo("T1");

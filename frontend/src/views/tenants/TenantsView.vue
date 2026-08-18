@@ -5,6 +5,8 @@ import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import type { TenantDTO, TenantSummaryDTO } from '@/types/tenant'
+// 出租率与楼栋屏同源(转发自 BuildingService.summary()),显示口径也复用同一个函数,禁止本屏另写一份
+import { occPct, OCC_NULL_WHY } from '@/types/building'
 import { fpMoney, fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
@@ -206,7 +208,12 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       <KpiCard label="在租租户" :value="String(summary.tenantActive)" tint="slate" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="园区出租率" :value="`${summary.occRate}%`" tint="sky" :style="{ padding: '20px' }">
+      <!-- 算不出来只给缺因:TenantSummaryDTO 没有 unitCount/vacantCount,楼栋屏那句「按单元 x/y」这里给不了。
+           ponytail: 为一句副标多发一次 /api/buildings/summary 不划算 -->
+      <KpiCard
+        label="园区出租率" :value="occPct(summary.occRate)" :sub="summary.occRate == null ? OCC_NULL_WHY : undefined"
+        :title="summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky" :style="{ padding: '20px' }"
+      >
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
       <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '20px' }">

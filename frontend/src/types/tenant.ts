@@ -9,8 +9,9 @@ export interface TenantDTO {
   aliases?: string | null   // 别名,逗号分隔(V86):worksheet老板名/曾用名,导入与挂号匹配同权
 }
 
+// occRate 转发自 BuildingService.summary(),同样可空(METRIC-SOURCE-SPEC §3)
 export interface TenantSummaryDTO {
-  tenantActive: number; occRate: number; monthlyRent: number; expiringTenants: number
+  tenantActive: number; occRate: number | null; monthlyRent: number; expiringTenants: number
 }
 
 export interface TenantCategoryDTO {

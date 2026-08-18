@@ -41,12 +41,10 @@ public class TenantService {
         List<Tenant> ts = tenants.selectList(null);
         List<Contract> allCt = contracts.selectList(null);
         int active = (int) ts.stream().filter(t -> t.getStatus()==1).count();
-        BigDecimal monthly = allCt.stream().filter(c -> BuildingService.RENT.contains(c.getStatus()))
-            .map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);
-        int expiringTenants = (int) allCt.stream().filter(c -> "expiring".equals(c.getStatus()))
-            .map(Contract::getTenantId).distinct().count();
-        double occRate = buildingService.summary().occRate();
-        return new TenantSummaryDTO(active, occRate, monthly, expiringTenants);
+        // 月租金/将到期与合同屏同源(METRIC-SOURCE-SPEC §2):一律走 rentRollMetrics,不得自己按 status 列过滤
+        ContractService.RentRoll rr = ContractService.rentRollMetrics(allCt);
+        Double occRate = buildingService.summary().occRate();   // 算不出来透传 null(§3),不在此兜 0
+        return new TenantSummaryDTO(active, occRate, rr.monthlyRent(), rr.expiringTenantIds().size());
     }
 
     // tenant 表无 company_name 唯一键(仅普通索引 idx_tenant_name),应用层 selectCount 查重
@@ -84,10 +82,8 @@ public class TenantService {
             .set("since", req.since()).set("remark", req.remark()).set("status", req.status())
             .set("parent_id", req.parentId()).set("aliases", req.aliases()));
         List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
-        Map<Integer,String> bName = buildings.selectList(null).stream()
-            .collect(Collectors.toMap(Building::getId, Building::getName));
         Tenant saved = tenants.selectById(id);
-        return buildTenantDto(saved, cs, bName, parentName(saved));
+        return buildTenantDto(saved, cs, bNameOf(cs), parentName(saved));
     }
 
     // 一级关联三重校验:查无→404;关联自己→409;所选主租户已是子租户→409(禁止二级链)
@@ -131,12 +127,15 @@ public class TenantService {
         Tenant t = tenants.selectById(id);
         if (t == null) throw new NoSuchElementException("tenant " + id);
         List<Contract> cs = contracts.selectList(new QueryWrapper<Contract>().eq("tenant_id", id));
-        Map<Integer,String> bName = buildings.selectList(null).stream()
-            .collect(Collectors.toMap(Building::getId, Building::getName));
-        // unitId → "{floor}F-{unitNo}"
-        Map<Integer,String> uFloor = units.selectList(null).stream()
-            .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
-            .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
+        Map<Integer,String> bName = bNameOf(cs);
+        // unitId → "{floor}F-{unitNo}";只有 cs 里的 unitId 会被 getOrDefault 读到,故按这批 id 收敛
+        // ⚠ 空集守卫:无合同/合同全无单元时 ids 为空,MP 的 in(空集) 生成 `IN ()` 是 SQL 语法错(500)
+        Set<Integer> uIds = cs.stream().map(Contract::getUnitId).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<Integer,String> uFloor = uIds.isEmpty() ? Map.of()
+            : units.selectList(new QueryWrapper<Unit>().in("id", uIds)).stream()
+                .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
+                .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
 
         TenantDTO tenantDto = buildTenantDto(t, cs, bName, parentName(t));
         List<ContractHistoryDTO> history = cs.stream().map(c -> new ContractHistoryDTO(
@@ -149,9 +148,24 @@ public class TenantService {
         return new TenantDetailDTO(tenantDto, history);
     }
 
+    /** 单租户路径(update/detail)的楼栋名字典:bName 的读法全是 getOrDefault(该租户合同上的 buildingId),
+     *  故只查这批 id 即可,DTO 逐字段不变。⚠ 空集守卫:新建/无合同租户 ids 为空,MP 的 in(空集)
+     *  生成 `IN ()` 是 SQL 语法错(500),必须提前返空表 —— 空表配 getOrDefault("—"/"") 与全表 miss 同行为。
+     *  list() 那条路径是全量合同,仍需全表字典,不走这里。 */
+    private Map<Integer,String> bNameOf(List<Contract> cs) {
+        Set<Integer> ids = cs.stream().map(Contract::getBuildingId).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        return ids.isEmpty() ? Map.of()
+            : buildings.selectList(new QueryWrapper<Building>().in("id", ids)).stream()
+                .collect(Collectors.toMap(Building::getId, Building::getName));
+    }
+
     // ponytail: extracted so list() and detail() share derivation without re-querying all tenants
     private TenantDTO buildTenantDto(Tenant t, List<Contract> cs, Map<Integer,String> bName, String parentName) {
-        List<Contract> current = cs.stream().filter(c -> BuildingService.RENT.contains(c.getStatus()))
+        // 在租判定取展示态(§5.1 日期派生),与楼栋屏 toDTO 同一把尺:直读 status 列会把已到期/未起租的算成在租
+        List<Contract> current = cs.stream()
+            .filter(c -> BuildingService.RENT.contains(
+                ContractService.effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate())))
             .sorted(Comparator.comparing(Contract::getId,
                 Comparator.nullsFirst(Comparator.naturalOrder()))).toList();
         BigDecimal monthly = current.stream().map(Contract::getMonthlyRent).reduce(BigDecimal.ZERO, BigDecimal::add);

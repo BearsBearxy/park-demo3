@@ -4,7 +4,7 @@ import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
 import FPContractStatus from '@/components/fp/FPContractStatus.vue'
 import { fpWan } from '@/utils/money'
-import { leasedAreaShow } from '@/types/building'
+import { leasedAreaShow, occPct, OCC_NULL_WHY } from '@/types/building'
 import type { BuildingDTO } from '@/types/building'
 
 const props = defineProps<{ building: BuildingDTO }>()
@@ -44,15 +44,16 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
     </div>
 
     <!-- Row 2: occ rate bar -->
-    <div>
+    <div :title="building.status !== 0 && building.occRate == null ? OCC_NULL_WHY : undefined">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:var(--fs-label);color:var(--text-muted)">出租率</span>
         <span style="font-size:15px;font-weight:var(--fw-semibold);font-family:var(--font-mono);color:var(--text-primary)">
-          {{ building.status === 0 ? '停用' : building.occRate + '%' }}
+          {{ building.status === 0 ? '停用' : occPct(building.occRate) }}
         </span>
       </div>
+      <!-- occRate 为 null 只留浅色轨道:画一根 0 宽的条会被读成「出租率 0%」,正是 §3 要禁的歧义 -->
       <div style="height:6px;border-radius:999px;background:var(--ink-040);overflow:hidden;width:100%">
-        <div :style="{ width: building.occRate + '%', height: '100%', background: occBarColor(building.occRate), borderRadius: '999px', transition: 'width .3s var(--ease-standard)' }" />
+        <div v-if="building.occRate != null" :style="{ width: building.occRate + '%', height: '100%', background: occBarColor(building.occRate), borderRadius: '999px', transition: 'width .3s var(--ease-standard)' }" />
       </div>
     </div>
 
