@@ -1,203 +1,193 @@
 <script setup lang="ts">
-// 数据中心首页 — 任务驱动工作台。1:1 移植 screen-data-home.jsx 三栏布局。
-// 纯只读聚合屏:overview 全派生自已建子系统真实数据。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不假空态。
-import { ref, onMounted } from 'vue'
+// 数据中心首页 = 录入工作台(DATA-HOME-REDESIGN spec §2)。只回答一件事:现在该干什么。
+//
+// 2026-08-18 重设计。改版前这屏把同一批信息说了三遍:4 个 KPI 卡里 3 个是下方栏目的重复,
+// 而「本期待办」本身是「完整度」的子集(后端直接遍历同一个 sources 生成 tasks)。
+// 用户原话「无从下手、信息量过多、没有主次」—— 那是信息架构问题不是排版问题,所以是删不是排。
+//
+// 现在三级主次:① 顶部一行总览 → ② 出账链流水线 → ③ 当前步大卡 + 全页唯一主 CTA。
+// 出账链有先后依赖(抄表没抄完算不了公摊,公摊没生成出不了催缴单)所以画成流水线;
+// 附表互相独立、能并行做,所以画成紧凑清单。结构与真实工作的形状同构。
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
 import { dataHomeApi } from '@/api/dataHome'
 import type { DataHomeOverviewDTO } from '@/types/dataHome'
 import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
-import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 
 const router = useRouter()
-const overview = ref<DataHomeOverviewDTO | null>(null)   // §6 加载信号
-
-onMounted(async () => {
-  overview.value = await dataHomeApi.getOverview()
-})
-
-// 行点击 = 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义);afterEach 的 tabs.open 不再重复处理。
 const tabsStore = useTabsStore()
+const auth = useAuthStore()
+
+const ov = ref<DataHomeOverviewDTO | null>(null)
+// 用户手动选的月;null = 跟随后端锚定月。**刻意不持久化** —— 下次打开仍按锚重算,
+// 否则看过一眼历史月之后天天落在那儿(spec §2.2)。
+const pickedYm = ref<string | null>(null)
+
+async function load() {
+  ov.value = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+}
+onMounted(load)
+watch(pickedYm, load)
+
+// 行点击 = 「去做事」显式导航 → 全新状态(openFresh,非侧边栏入口语义)
 function go(v: string) {
   tabsStore.openFresh(v)
   router.push('/' + v)
 }
 
-// 待办严重度 → 圆点色 + 标签(1:1 from jsx DH_SEV)。
-const SEV: Record<string, { c: string; t: string }> = {
-  danger: { c: 'var(--hue-red)', t: '逾期' },
-  warning: { c: 'var(--hue-orange)', t: '待办' },
-  info: { c: 'var(--hue-cyan)', t: '进行中' },
-}
-// 数据源状态 → 胶囊样式(契约二态 done|missing,1:1 from jsx DH_SRC 子集)。
-const SRC: Record<string, { label: string; c: string; bg: string }> = {
-  done: { label: '已录入', c: 'var(--hue-blue)', bg: 'var(--accent-blue)' },
-  missing: { label: '未录入', c: 'var(--hue-red)', bg: 'rgb(252,235,233)' },
-}
+const curYm = computed(() =>
+  ov.value?.period ? `${ov.value.period.year}-${String(ov.value.period.month).padStart(2, '0')}` : '')
+const monthOpts = computed(() =>
+  (ov.value?.months ?? []).map(m => ({ value: m, label: `${+m.slice(0, 4)}年${+m.slice(5, 7)}月` })))
 
-function sevMix(c: string) {
-  return 'color-mix(in srgb, ' + c + ' 12%, white)'
-}
+const doneSteps = computed(() => ov.value?.chain.steps.filter(s => s.status === 'done').length ?? 0)
+const curStep = computed(() => {
+  const c = ov.value?.chain
+  return c && c.currentIndex >= 0 ? c.steps[c.currentIndex] : null
+})
+// 未录在前、已录在后(组内保持后端给的契约序):该做的事排在眼睛先扫到的位置
+const sortedItems = computed(() =>
+  [...(ov.value?.schedules.items ?? [])].sort((a, b) => Number(a.done) - Number(b.done)))
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
-  <div v-if="overview" class="dh">
+  <!-- 加载门:overview 到达前不渲染,避免闪一下空态 -->
+  <div v-if="ov" class="dh">
+    <!-- 顶部唯一总览行:月份 + 两个进度数字。改版前这里是 4 个 KPI 卡,其中 3 个与下方重复 -->
     <div class="dh-head">
-      <div>
-        <h2 class="dh-title">数据中心</h2>
-        <p class="dh-sub">
-          <span class="dh-period">
-            <component :is="iconFor('calendar')" :size="13" />本期 · {{ overview.period.label }}
-          </span>
-          录入与维护 — 把当期数据补齐,报表与分析自动跟着更新
-        </p>
+      <div class="dh-period">
+        <span class="dh-title">本月工作</span>
+        <div v-if="ov.period" class="dh-msel">
+          <Select :options="monthOpts" :model-value="curYm" size="sm"
+                  @update:model-value="pickedYm = $event" />
+        </div>
       </div>
-      <div class="dh-actions">
-        <!-- 导入中心已上线,首页按钮直达该屏(同 go 语义:openFresh 全新状态) -->
-        <Button variant="outline" size="sm" @click="go('import')">
-          <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-          导入 Excel
-        </Button>
-        <Button variant="filled" size="sm" @click="go('ledger')">
-          <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-          录入台账
-        </Button>
-      </div>
+      <span v-if="ov.period" class="dh-counts">
+        出账 {{ doneSteps }}/4 · 附表 {{ ov.schedules.done }}/{{ ov.schedules.total }}
+      </span>
     </div>
 
-    <div class="dh-kpis">
-      <KpiCard
-        v-for="k in overview.kpis"
-        :key="k.label"
-        :label="k.label"
-        :value="k.value"
-        :sub="k.sub"
-        :tint="(k.tint as any)"
-      >
-        <template #icon><component :is="iconFor(k.icon)" :size="18" /></template>
-      </KpiCard>
-    </div>
+    <!-- 全新库:一条数据都没有,只给一句引导,不摆空架子 -->
+    <Card v-if="!ov.period" surface="white" class="dh-empty">
+      <component :is="iconFor('gauge')" :size="16" />
+      <span>还没开始出账</span>
+      <Button data-primary-cta variant="filled" size="sm" @click="go('meters')">从园区抄表开始 →</Button>
+    </Card>
 
-    <div class="dh-cols">
-      <!-- 本期待办 -->
-      <div class="dh-col-tasks">
-        <Card title="本期待办">
-          <template #action>
-            <span style="font-size:var(--fs-label);color:var(--text-muted)">{{ overview.tasks.length }} 项 · 点击直达</span>
+    <template v-else>
+      <!-- 前置条:blockers 为空则整条不渲染。没问题的东西不该占版面 —— 这是「有主次」的关键,
+           和合同屏「待补档案」条同一原则(那条也是 v-if 有缺口才出现,补完自动消失) -->
+      <div v-for="b in ov.blockers" :key="b.kind" class="dh-blocker">
+        <component :is="iconFor('alert-triangle')" :size="14" />
+        <span class="dh-bt">{{ b.text }}</span>
+        <!-- viewer 只读:去补档/去重算都是写操作,隐藏而不是让他点了弹 403 -->
+        <Button v-if="!auth.isReadonly" variant="outline" size="sm" @click="go(b.go)">{{ b.cta }}</Button>
+      </div>
+
+      <!-- ① 出账链:有先后依赖,画成流水线,一眼看出卡在哪一步 -->
+      <section class="dh-sec">
+        <h3 class="dh-h3">出账链</h3>
+        <ol class="dh-steps">
+          <li v-for="s in ov.chain.steps" :key="s.key" :data-status="s.status"
+              class="dh-step" @click="go(s.go)">
+            <span class="dh-dot">{{ s.status === 'done' ? '✓' : s.status === 'current' ? '●' : '○' }}</span>
+            <span class="dh-slabel">{{ s.label }}</span>
+            <span v-if="s.detail" class="dh-sdetail">{{ s.detail }}</span>
+          </li>
+        </ol>
+
+        <!-- ② 当前步大卡:全页唯一主 CTA。打开首页第一眼就知道该点哪儿 -->
+        <Card surface="white" class="dh-cur">
+          <template v-if="curStep">
+            <div class="dh-curmain">
+              <span class="dh-curlabel">{{ curStep.label }}</span>
+              <span v-if="curStep.detail" class="dh-curdetail">{{ curStep.detail }}</span>
+            </div>
+            <Button data-primary-cta variant="filled" @click="go(curStep.go)">
+              {{ auth.isReadonly ? '查看' : '去处理' }} →
+            </Button>
           </template>
-          <div>
-            <button
-              v-for="(t, i) in overview.tasks"
-              :key="i"
-              class="dh-task"
-              @click="go(t.go)"
-            >
-              <span class="dh-dot" :style="{ background: SEV[t.sev].c }"></span>
-              <span class="dh-task-main">
-                <span class="dh-task-label">{{ t.label }}</span>
-                <span class="dh-task-meta">{{ t.meta }}</span>
-              </span>
-              <span class="dh-sevtag" :style="{ color: SEV[t.sev].c, background: sevMix(SEV[t.sev].c) }">{{ SEV[t.sev].t }}</span>
-              <span class="dh-task-cta">{{ t.cta }}<component :is="iconFor('chevron-right')" :size="13" /></span>
-            </button>
-          </div>
+          <template v-else>
+            <div class="dh-curmain"><span class="dh-curlabel">本月出账已完成</span></div>
+            <Button data-primary-cta variant="outline" @click="go('reconciliation')">去对账核对 →</Button>
+          </template>
         </Card>
-      </div>
+      </section>
 
-      <!-- 本期数据完整度 -->
-      <div class="dh-col-prog">
-        <Card title="本期数据完整度">
-          <div class="dh-progress">
-            <div class="dh-progress-row">
-              <span class="dh-progress-pct">{{ overview.pct }}%</span>
-              <span class="dh-progress-cap">{{ overview.progressDone }} / {{ overview.progressTotal }} 项已就绪</span>
-            </div>
-            <div class="dh-progress-bar"><div class="dh-progress-fill" :style="{ width: overview.pct + '%' }"></div></div>
-          </div>
-          <div class="dh-src">
-            <button
-              v-for="s in overview.sources"
-              :key="s.name"
-              class="dh-src-row"
-              @click="go(s.go)"
-            >
-              <span class="dh-src-name">{{ s.name }}</span>
-              <span class="dh-src-tag">{{ s.tag }}</span>
-              <span class="dh-src-time">{{ s.updated }}</span>
-              <span class="dh-pill" :style="{ color: SRC[s.status].c, background: SRC[s.status].bg }">{{ SRC[s.status].label }}</span>
-            </button>
-          </div>
-        </Card>
-      </div>
-
-      <!-- 最近动态(无"谁",灰底首字 + 文案) -->
-      <div class="dh-col-recent">
-        <Card title="最近动态">
-          <div class="dh-recent">
-            <div v-for="(r, i) in overview.recent" :key="i" class="dh-recent-row">
-              <span class="dh-recent-mark">{{ r.source.slice(0, 1) }}</span>
-              <span class="dh-recent-txt"><b>{{ r.source }}</b> · {{ r.period }} 更新</span>
-              <span class="dh-recent-time">{{ r.time }}</span>
-            </div>
-          </div>
-        </Card>
-      </div>
-    </div>
+      <!-- ③ 附表录入:互相独立、可并行,画成紧凑清单;已录淡化不抢眼 -->
+      <section class="dh-sec">
+        <h3 class="dh-h3">附表录入 <span class="dh-h3n">{{ ov.schedules.done }}/{{ ov.schedules.total }}</span></h3>
+        <ul class="dh-items">
+          <li v-for="i in sortedItems" :key="i.go + i.name" :data-done="i.done"
+              class="dh-item" @click="go(i.go)">
+            <span class="dh-idot">{{ i.done ? '✓' : '○' }}</span>
+            <span class="dh-iname">{{ i.name }}</span>
+            <span class="dh-itag">{{ i.tag }}</span>
+          </li>
+        </ul>
+      </section>
+    </template>
   </div>
-
-  <div v-else class="page-loading"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
-/* 1:1 移植 screen-data-home.jsx DhStyles。本组件独享,绝不复用别组件 scoped 类。 */
-.dh { display:flex; flex-direction:column; gap:20px; max-width:1640px; margin:0 auto; width:100%; }
-.dh-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-.dh-title { margin:0; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.dh-sub { margin:5px 0 0; font-size:var(--fs-label); color:var(--text-muted); display:flex; align-items:center; gap:10px; }
-.dh-period { display:inline-flex; align-items:center; gap:5px; padding:2px 10px; border-radius:var(--radius-full); background:var(--accent-slate); color:var(--text-secondary); font-weight:var(--fw-medium); }
-.dh-actions { display:flex; gap:8px; }
-.dh-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(204px,1fr)); gap:16px; }
-.dh-cols { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
-.dh-col-tasks { flex:1.5 1 400px; min-width:0; }
-.dh-col-prog { flex:1.15 1 320px; min-width:0; }
-.dh-col-recent { flex:1 1 280px; min-width:0; }
+.dh { display: flex; flex-direction: column; gap: 20px; padding: 24px; }
+.dh-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.dh-period { display: flex; align-items: center; gap: 12px; }
+.dh-title { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.dh-msel { width: 140px; }
+.dh-counts { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
 
-.dh-task { display:flex; align-items:center; gap:13px; width:100%; padding:14px 6px; border:none; background:transparent; cursor:pointer; text-align:left; font-family:var(--font-sans); border-bottom:1px solid var(--divider); transition:background var(--dur-fast) var(--ease-standard); border-radius:var(--radius-sm); }
-.dh-task:last-child { border-bottom:none; }
-.dh-task:hover { background:var(--bg-hover); }
-.dh-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
-.dh-task-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
-.dh-task-label { font-size:var(--fs-body); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.dh-task-meta { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dh-task-cta { font-size:var(--fs-label); font-weight:var(--fw-medium); color:var(--text-secondary); display:inline-flex; align-items:center; gap:3px; white-space:nowrap; flex:0 0 auto; }
-.dh-task:hover .dh-task-cta { color:var(--text-primary); }
-.dh-sevtag { font-size:11px; font-weight:var(--fw-semibold); padding:2px 8px; border-radius:var(--radius-full); white-space:nowrap; flex:0 0 auto; }
+.dh-empty { display: flex; align-items: center; gap: 12px; padding: 24px; color: var(--text-secondary); }
 
-.dh-src { display:flex; flex-direction:column; }
-.dh-src-row { display:flex; align-items:center; gap:10px; width:100%; padding:11px 6px; border:none; background:transparent; cursor:pointer; text-align:left; font-family:var(--font-sans); border-bottom:1px solid var(--divider); transition:background var(--dur-fast) var(--ease-standard); border-radius:var(--radius-sm); }
-.dh-src-row:last-child { border-bottom:none; }
-.dh-src-row:hover { background:var(--bg-hover); }
-.dh-src-name { font-size:var(--fs-body); color:var(--text-primary); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dh-src-tag { font-size:10px; color:var(--text-disabled); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:1px 6px; flex:0 0 auto; }
-.dh-src-time { font-size:var(--fs-micro); color:var(--text-muted); font-family:var(--font-mono); width:40px; text-align:right; flex:0 0 auto; }
-.dh-pill { font-size:11px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); white-space:nowrap; flex:0 0 auto; }
+.dh-blocker {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: color-mix(in srgb, var(--hue-orange) 8%, white);
+  border: 1px solid color-mix(in srgb, var(--hue-orange) 24%, white);
+  border-radius: var(--radius-sm); color: var(--hue-orange);
+}
+.dh-bt { flex: 1; font-size: var(--fs-label); color: var(--text-primary); }
 
-.dh-progress { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
-.dh-progress-bar { height:7px; border-radius:4px; background:var(--ink-050); overflow:hidden; }
-.dh-progress-fill { height:100%; border-radius:4px; background:var(--fill-blue); }
-.dh-progress-row { display:flex; align-items:baseline; justify-content:space-between; }
-.dh-progress-pct { font-size:24px; font-weight:var(--fw-semibold); color:var(--text-primary); font-variant-numeric:tabular-nums; }
-.dh-progress-cap { font-size:var(--fs-label); color:var(--text-muted); }
+.dh-sec { display: flex; flex-direction: column; gap: 12px; }
+.dh-h3 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text-primary); margin: 0; }
+.dh-h3n { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); margin-left: 8px; }
 
-.dh-recent { display:flex; flex-direction:column; }
-.dh-recent-row { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid var(--divider); }
-.dh-recent-row:last-child { border-bottom:none; }
-.dh-recent-mark { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; flex:0 0 auto; border-radius:50%; background:var(--bg-sunken); color:var(--text-secondary); font-size:11px; font-weight:var(--fw-semibold); }
-.dh-recent-txt { font-size:var(--fs-body); color:var(--text-secondary); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dh-recent-txt b { color:var(--text-primary); font-weight:var(--fw-semibold); }
-.dh-recent-time { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; flex:0 0 auto; }
+.dh-steps { display: flex; align-items: stretch; gap: 8px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+.dh-step {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--surface-white); transition: background var(--dur-fast) var(--ease-standard);
+}
+.dh-step:hover { background: var(--surface-card); }
+.dh-step[data-status="done"] { color: var(--text-secondary); }
+.dh-step[data-status="done"] .dh-dot { color: var(--hue-blue); }
+.dh-step[data-status="current"] { border-color: var(--ink-900); background: var(--surface-card); }
+.dh-step[data-status="current"] .dh-slabel { font-weight: var(--fw-semibold); color: var(--text-primary); }
+.dh-step[data-status="todo"] { color: var(--text-disabled); }
+.dh-dot { font-size: 12px; }
+.dh-slabel { font-size: var(--fs-label); }
+.dh-sdetail { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-secondary); }
+
+.dh-cur { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; }
+.dh-curmain { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dh-curlabel { font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.dh-curdetail { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
+
+.dh-items { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.dh-item {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  background: var(--surface-white); font-size: var(--fs-label);
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.dh-item:hover { background: var(--surface-card); }
+.dh-item[data-done="true"] { opacity: 0.45; }
+.dh-idot { font-size: 11px; color: var(--hue-blue); }
+.dh-iname { color: var(--text-primary); }
+.dh-itag { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-secondary); }
 </style>
