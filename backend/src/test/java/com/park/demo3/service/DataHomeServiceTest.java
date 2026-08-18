@@ -261,4 +261,30 @@ class DataHomeServiceTest {
         var chain = DataHomeService.buildChain(1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
         assertThat(chain.steps().get(0).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
     }
+
+    // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════
+    @Test void blockers_都没问题时为空数组() {
+        assertThat(DataHomeService.buildBlockers(0, false)).isEmpty();
+    }
+
+    @Test void blockers_合同缺计费行时出一条() {
+        var bs = DataHomeService.buildBlockers(219, false);
+        assertThat(bs).hasSize(1);
+        assertThat(bs.get(0).kind()).isEqualTo("contract-gap");
+        assertThat(bs.get(0).text()).contains("219");
+        assertThat(bs.get(0).go()).isEqualTo("contracts");
+    }
+
+    @Test void blockers_参数过期时出一条() {
+        var bs = DataHomeService.buildBlockers(0, true);
+        assertThat(bs).hasSize(1);
+        assertThat(bs.get(0).kind()).isEqualTo("param-stale");
+        assertThat(bs.get(0).go()).isEqualTo("params");
+    }
+
+    @Test void blockers_两个问题都在时出两条_合同在前() {
+        assertThat(DataHomeService.buildBlockers(219, true))
+            .extracting(DataHomeOverviewDTO.Blocker::kind)
+            .containsExactly("contract-gap", "param-stale");
+    }
 }

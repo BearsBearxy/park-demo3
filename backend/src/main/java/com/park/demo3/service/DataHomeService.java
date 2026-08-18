@@ -280,4 +280,21 @@ public class DataHomeService {
         }
         return new DataHomeOverviewDTO.Chain(current, steps);
     }
+
+    // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════════════════════
+    /** 合同/参数不按月完成,不进流水线;只在**有问题时**产出一条,没问题时返回空数组、
+     *  前端整条不渲染 —— 没问题的东西不该占版面,这是「有主次」的关键(用户原话:信息量过多、
+     *  没有主次)。改版前那 4 个 KPI 卡有 3 个是下方栏目的重复,就是反面教材。
+     *  ⚠ 合同缺口口径必须与合同屏 ContractsView 的 noLine 谓词同源(billingLineCount==0),
+     *    别在这里另写一套查询(METRIC-SOURCE-SPEC §1)。 */
+    static List<DataHomeOverviewDTO.Blocker> buildBlockers(int contractNoLine, boolean paramStale) {
+        List<DataHomeOverviewDTO.Blocker> out = new ArrayList<>(2);
+        if (contractNoLine > 0)
+            out.add(new DataHomeOverviewDTO.Blocker("contract-gap",
+                contractNoLine + " 份合同无租金计费行，会让公摊/催缴单算不准", "去补档", "contracts"));
+        if (paramStale)
+            out.add(new DataHomeOverviewDTO.Blocker("param-stale",
+                "计费参数改动晚于本月快照，屏上数字还是改参前派生的", "去重算", "params"));
+        return out;
+    }
 }
