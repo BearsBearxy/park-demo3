@@ -11,6 +11,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * data-home 只读聚合：所有数字从已建子系统真实数据派生。零新表、零迁移、不读 new Date()。
@@ -218,5 +219,29 @@ public class DataHomeService {
             case "warning" -> 1;
             default -> 2; // info
         };
+    }
+
+    // ══ 锚定月与 months 全集(spec §2.2) ══════════════════════════════════════════════
+    // 首页只服务「录入的人」,所以锚必须落在他接着要干活的那个月。三个候选实测下来只有一个可用:
+    //   ✗ 「最早未完工月」—— 覆盖矩阵实测:没有任何一个月是全做完的(出账链只在 2023-08/10、2024-02
+    //      三个样本月跑过,台账/附表是 2025 全年,两边根本不重叠),该口径恒落 2023-08,
+    //      首页会永远停在两年前指着一堆不打算补的历史缺口。
+    //   ✗ 「最新有数据月」—— 即改版前的口径(5 个月度源取 max = 2026-01),出账链在该月完全为空,
+    //      完整度永远停在 20% 上下,天天打开先被数落一遍。
+    //   ✓ 「出账链最新有数据月」—— 正是用户接着往下补的位置;补到 2024-03 锚自动前移,
+    //      零新增状态、零配置、自动推进。
+
+    /** 锚定月三级回退:出账链最新月 → 附表最新月(已导附表尚未跑链的库) → null(全新库)。
+     *  ym 是零补 YYYY-MM,字典序即时间序,不解析成 YearMonth 再比。 */
+    static String anchorYm(List<String> chainYms, List<String> scheduleYms) {
+        String chain = chainYms.stream().max(Comparator.naturalOrder()).orElse(null);
+        if (chain != null) return chain;
+        return scheduleYms.stream().max(Comparator.naturalOrder()).orElse(null);
+    }
+
+    /** 顶部月份下拉的可切月份:链 ∪ 附表,升序去重。
+     *  不能只给链的月份 —— 用户要能切到 2025-06 补台账,而那个月链上一条数据都没有。 */
+    static List<String> allMonths(List<String> chainYms, List<String> scheduleYms) {
+        return Stream.concat(chainYms.stream(), scheduleYms.stream()).distinct().sorted().toList();
     }
 }

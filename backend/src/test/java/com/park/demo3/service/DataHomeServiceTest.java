@@ -211,4 +211,25 @@ class DataHomeServiceTest {
         assertThat(k2.label()).isEqualTo("待处理事项");
         assertThat(k2.value()).isEqualTo(String.valueOf(o.tasks().size()));
     }
+
+    // ══ 锚定月与 months 全集(spec §2.2) ══════════════════════════════
+    // 纯函数,不碰 mapper —— 锚口径是本次重设计的核心决策,值得单独钉死。
+
+    @Test void 锚定月_取出账链最新月() {
+        assertThat(DataHomeService.anchorYm(List.of("2023-08", "2023-10", "2024-02"), List.of("2025-10")))
+            .isEqualTo("2024-02");
+    }
+
+    @Test void 锚定月_链为空时退到附表最新月() {
+        assertThat(DataHomeService.anchorYm(List.of(), List.of("2025-01", "2025-10"))).isEqualTo("2025-10");
+    }
+
+    @Test void 锚定月_两边都空返回null() {
+        assertThat(DataHomeService.anchorYm(List.of(), List.of())).isNull();
+    }
+
+    @Test void months全集_并集去重升序() {
+        assertThat(DataHomeService.allMonths(List.of("2024-02", "2023-08"), List.of("2025-01", "2024-02")))
+            .containsExactly("2023-08", "2024-02", "2025-01");
+    }
 }
