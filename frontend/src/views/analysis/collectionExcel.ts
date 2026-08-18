@@ -1,6 +1,8 @@
-// 催缴清单 Excel 导出(SheetJS,审计建议#1)。屏私有(仅 FinCashflowView 消费,不入 utils 以免
+// 催缴清单 Excel 导出(审计建议#1)。屏私有(仅 FinCashflowView 消费,不入 utils 以免
 // utils→views 倒置)。列序:租户/家族 · 公司 · 联系人 · 电话 · 4 账龄桶 · 欠费合计 · 最早欠费月 + 末行合计。
 // 金额为元(屏上折万仅为显示;催缴按精确值行动)。联系方式按租户名查主数据,家族根名即主租户名。
+// 出流走 utils/sheet.ts 适配层(exceljs,内部懒加载,仅点「导出」才拉)。
+import { writeAoaWorkbook } from '@/utils/sheet'
 import type { CollectionRow } from './finCashflow.logic'
 import { AGING_LABELS } from './finCashflow.logic'
 import type { TenantDTO } from '@/types/tenant'
@@ -12,9 +14,6 @@ export interface CollectionExportOpts {
 }
 
 export async function exportCollectionList(rows: CollectionRow[], tenants: TenantDTO[], opts: CollectionExportOpts): Promise<void> {
-  // 懒加载 SheetJS(~200KB):仅在用户点「导出」时才拉(对齐 pvExcel/ledgerExcel)
-  const XLSX = await import('xlsx')
-
   const byName = new Map(tenants.map((t) => [t.companyName, t]))
   const who = opts.familyMode ? '家族' : '租户'
   const caption = [`催缴清单 · ${opts.companyLabel} · 按${who} · 账龄距 ${opts.latestYm}(FIFO 冲抵,期初旧账固定>6月) · 金额单位:元`]
@@ -30,8 +29,6 @@ export async function exportCollectionList(rows: CollectionRow[], tenants: Tenan
   const footer = [`合计(${rows.length}${opts.familyMode ? '族' : '户'})`, '', '', '',
     sum(0), sum(1), sum(2), sum(3), rows.reduce((s, r) => s + r.total, 0), '']
 
-  const ws = XLSX.utils.aoa_to_sheet([caption, header, ...body, footer])
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, '催缴清单')
-  XLSX.writeFile(wb, `催缴清单-${opts.latestYm}-按${who}.xlsx`)
+  await writeAoaWorkbook(`催缴清单-${opts.latestYm}-按${who}.xlsx`,
+    [{ name: '催缴清单', aoa: [caption, header, ...body, footer] }])
 }

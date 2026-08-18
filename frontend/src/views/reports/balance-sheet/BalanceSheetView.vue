@@ -250,7 +250,7 @@ const itemCount = computed(() =>
 async function onExport() {
   if (!period.value || month.value == null) return
   try {
-    const XLSX = await import('xlsx')
+    const { writeAoaWorkbook } = await import('@/utils/sheet')
     const cellRow = (r: FinTableRow | undefined): (string | number)[] => {
       if (!r) return ['', '', '']
       const no = r.type === 'label' || r.custom ? '' : r.no ?? r.key
@@ -259,10 +259,8 @@ async function onExport() {
     const header = ['资产', '行次', '期末余额', '负债和所有者权益', '行次', '期末余额']
     const n = Math.max(rowsL.value.length, rowsR.value.length)
     const body = Array.from({ length: n }, (_, i) => [...cellRow(rowsL.value[i]), ...cellRow(rowsR.value[i])])
-    const ws = XLSX.utils.aoa_to_sheet([header, ...body])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `${year.value}年${month.value}月`)
-    XLSX.writeFile(wb, `资产负债表-${companyName.value ?? '全部汇总'}-${year.value}年${month.value}月.xlsx`)
+    await writeAoaWorkbook(`资产负债表-${companyName.value ?? '全部汇总'}-${year.value}年${month.value}月.xlsx`,
+      [{ name: `${year.value}年${month.value}月`, aoa: [header, ...body] }])
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导出失败')
   }

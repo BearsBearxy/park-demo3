@@ -1,7 +1,8 @@
 // 电费成本 Excel 全家桶(ELEC-COST-SPEC §5):导入行解析 + 模板生成 + 月度导出。
 // 导入 = 单 sheet 长表(一行 = 一表一费项一月),表头按名识别(matchByHeader);
 // 费项名/拆分名精确匹配(映射见下,行级错误不整批拦);未知电表名由后端行级 ImportError 报告(表是 DB 驱动 CRUD)。
-// AOA 构建为纯函数(elecCostExcel.spec.ts 锁定);xlsx 懒加载,仅点下载/导出才拉(仿 pvMeterExcel)。
+// AOA 构建为纯函数(elecCostExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
+import { writeAoaWorkbook } from './sheet'
 import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 import { parseYearMonth } from './parseYearMonth'
 
@@ -123,10 +124,8 @@ export function buildElecCostTemplateAoa(): (string | number)[][] {
 }
 
 export async function buildElecCostTemplate(): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildElecCostTemplateAoa()), '电费成本')
-  XLSX.writeFile(wb, '电费成本导入模板.xlsx')
+  await writeAoaWorkbook('电费成本导入模板.xlsx',
+    [{ name: '电费成本', aoa: buildElecCostTemplateAoa() }])
 }
 
 // ── 月度导出:sheet1=电表分区镜像(长表,含拆分行+来源标注列),sheet2=派生指标 ──────
@@ -199,9 +198,8 @@ export async function exportElecCostMonth(
   entries: ElecCostEntryLite[], meters: ElecMeterLite[], metrics: ElecMetricLite[],
   year: number, month: number,
 ): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildElecCostMonthAoa(entries, meters, year, month)), `${year}年${month}月`)
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildElecCostMetricsAoa(metrics, year, month)), '派生指标')
-  XLSX.writeFile(wb, `电费成本-${year}年${String(month).padStart(2, '0')}月.xlsx`)
+  await writeAoaWorkbook(`电费成本-${year}年${String(month).padStart(2, '0')}月.xlsx`, [
+    { name: `${year}年${month}月`, aoa: buildElecCostMonthAoa(entries, meters, year, month) },
+    { name: '派生指标', aoa: buildElecCostMetricsAoa(metrics, year, month) },
+  ])
 }

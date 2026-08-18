@@ -8,11 +8,17 @@ export interface YearMonth { year: number; month: number }
 
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30)   // 1899-12-30 UTC,序列号 0 对应日
 
-function fromSerial(n: number): YearMonth | null {
+/** Excel 日期序列号 → Date(UTC 零点);不像日期序列号则 null。日粒度的调用方(parseInvDate)也用它,
+ *  避免各自抄一份 epoch 常量 —— 1900 非闰年 bug 只在这一处吃掉。 */
+export function excelSerialToDate(n: number): Date | null {
   // 仅当像合理日期序列号(>0 且落在 ~1900-2200)才认;否则可能是裸月号,交后续分支
   if (!(n > 60) || n > 120000) return null
-  const d = new Date(EXCEL_EPOCH + Math.floor(n) * 86400000)
-  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }
+  return new Date(EXCEL_EPOCH + Math.floor(n) * 86400000)
+}
+
+function fromSerial(n: number): YearMonth | null {
+  const d = excelSerialToDate(n)
+  return d && { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }
 }
 
 function ok(year: number, month: number): YearMonth | null {

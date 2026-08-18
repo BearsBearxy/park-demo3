@@ -4,8 +4,9 @@
 //              标题缺项 → 用调用方传入的 fallback 账期/分区/类别,段落标 ymSource='fallback' 供 UI 披露);
 //            ②表头行(含「区域」)必须同时有 上月行至+本月行至——挡掉标题被复制串味的分摊 sheet。
 // 未识别 sheet 静默跳过(整册常混上百张租户缴费单 sheet)。
-// 已知脏数据(审计实测):幽灵行列(blankrows:false 已剔空行,列按映射索引取不受游离列影响)、
+// 已知脏数据(审计实测):幽灵行列(utils/sheet.ts 读取时已剔全空行,列按映射索引取不受游离列影响)、
 // 缺本月读数(=漏抄,照收 null 不报错——进系统标黄,而不是像手工表算出负 231 万度)。
+import { writeAoaWorkbook } from './sheet'
 import type { ImportRec } from './importHeaderMatch'
 import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
 import { tenantMatchNames } from './tenantAlias'
@@ -242,11 +243,8 @@ const TEMPLATE_SHEETS: [string, string, string][] = [
 ]
 
 export async function buildMeterTemplate(ym: string): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  for (const [sheet, zone, kind] of TEMPLATE_SHEETS)
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildMeterTemplateAoa(zone, kind, ym)), sheet)
-  XLSX.writeFile(wb, `园区抄表导入模板-${ym}.xlsx`)
+  await writeAoaWorkbook(`园区抄表导入模板-${ym}.xlsx`,
+    TEMPLATE_SHEETS.map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterTemplateAoa(zone, kind, ym) })))
 }
 
 // ── 当月导出:6 sheet 同构真实版式,可改后直接重导(修正回路,同 PV 导出口径) ──
@@ -282,11 +280,6 @@ export function buildMeterExportAoa(
 }
 
 export async function exportMeterMonth(ym: string, meters: MeterLite[], readings: MeterReadingLite[]): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  for (const [sheet, zone, kind] of TEMPLATE_SHEETS) {
-    const aoa = buildMeterExportAoa(zone, kind, ym, meters, readings)
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheet)
-  }
-  XLSX.writeFile(wb, `园区抄表-${ym}.xlsx`)
+  await writeAoaWorkbook(`园区抄表-${ym}.xlsx`,
+    TEMPLATE_SHEETS.map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterExportAoa(zone, kind, ym, meters, readings) })))
 }

@@ -2,7 +2,8 @@
 // 导入 = 单 sheet 长表(一行 = 一站一日),表头按名识别(matchByHeader,含别名/单位后缀前缀匹配);
 // 行级校验(日期可识别、三量≥0)错误逐行报告不整批拦;未知站名由后端行级 ImportError 报告。
 // 期数列仅校验参考,捕获进预览但不上传(spec §3)。
-// AOA 构建为纯函数(pvMeterExcel.spec.ts 锁定);xlsx 懒加载,仅点下载/导出才拉(仿 billExcel/s10Excel)。
+// AOA 构建为纯函数(pvMeterExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
+import { writeAoaWorkbook } from './sheet'
 import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 
 export interface PvMeterImportError { rowIndex: number; label: string; reason: string }
@@ -21,7 +22,7 @@ const PV_METER_COLUMN_MAP: ColumnMapEntry[] = [
 ]
 
 // ── 日期解析:YYYY-MM-DD / YYYY/M/D / YYYY年M月D日 / Excel 日期序列 ──
-// FpImportModal 读文件走 cellDates+raw:false → 日期格出 'yyyy-mm-dd' 字符串;
+// FpImportModal 读文件走 utils/sheet.ts → 日期格已归一成 'yyyy-mm-dd' 字符串;
 // 粘贴路径或未设日期格式的单元格可能是裸序列号字符串(如 '45658'),按 1899-12-30 epoch 换算
 // (与 parseYearMonth 同口径,吃掉 1900 非闰年 bug)。非法/聚合串 → null,调用方收行级错误。
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30)
@@ -91,10 +92,8 @@ export function buildPvMeterTemplateAoa(): (string | number)[][] {
 }
 
 export async function buildPvMeterTemplate(): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildPvMeterTemplateAoa()), '光伏抄表')
-  XLSX.writeFile(wb, '光伏抄表导入模板.xlsx')
+  await writeAoaWorkbook('光伏抄表导入模板.xlsx',
+    [{ name: '光伏抄表', aoa: buildPvMeterTemplateAoa() }])
 }
 
 // ── 月度汇总导出:一行一电站(含无数据站,方便盯漏抄),末行合计 ──────
@@ -169,10 +168,9 @@ export function buildPvMeterDetailAoa(
 export async function exportPvMeterMonth(
   rows: PvMeterReadingLite[], stations: PvMeterStationLite[], year: number, month: number,
 ): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildPvMeterMonthAoa(rows, stations, year, month)), `${year}年${month}月`)
-  // 第二 sheet「明细」= 导入模板格式,支持导出→改→重导的修正闭环
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildPvMeterDetailAoa(rows, stations)), '明细')
-  XLSX.writeFile(wb, `光伏抄表汇总-${year}年${String(month).padStart(2, '0')}月.xlsx`)
+  await writeAoaWorkbook(`光伏抄表汇总-${year}年${String(month).padStart(2, '0')}月.xlsx`, [
+    { name: `${year}年${month}月`, aoa: buildPvMeterMonthAoa(rows, stations, year, month) },
+    // 第二 sheet「明细」= 导入模板格式,支持导出→改→重导的修正闭环
+    { name: '明细', aoa: buildPvMeterDetailAoa(rows, stations) },
+  ])
 }
