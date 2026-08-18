@@ -36,7 +36,25 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      # build 含 vue-tsc 类型门禁(tsconfig.app.json 实跑)
+      # 重型库懒加载门禁:exceljs(917KB)/echarts(678KB)只许 await import 拉起。谁在某个屏里
+      # 写一句静态 import,它就被压进那个屏的首屏 chunk —— 体积预算(scripts/size-check.mjs)拦不住
+      # 这种事(总量没变,只是搬了家),只能在源码层拦。放在 build 前面:失败得快。
+      # 放行三类:import type(编译期擦除,billNoticeExcel.ts:15 在用)、components/ana/echartsBundle.ts
+      # (全站唯一 echarts 装配点,本身只被 AnaEChart.vue 动态 import)、tools/ 与 *.spec.ts(不进产物)。
+      # 匹配 from 那一侧而不是 import 那一侧:echartsBundle.ts 里有跨行写法(`}` 换行才 from),
+      # 盯 import 开头会漏掉;而动态 import('exceljs') 没有 from,天然不会误伤。
+      - name: heavy-lib static import gate
+        run: |
+          hits=$(grep -rnE "from[[:space:]]*['\"](exceljs|echarts)|^[[:space:]]*import[[:space:]]*['\"](exceljs|echarts)" \
+                   src --include='*.ts' --include='*.vue' \
+                 | grep -vE "^src/tools/|\.spec\.ts:|import type|^src/components/ana/echartsBundle\.ts:") || true
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "静态 import 重型库不许:改成 await import(...),否则它会被打进这个屏的首屏 chunk。"
+            echo "确需新增装配点?先说服自己它只被动态 import 拉起,再把它加进本步骤的放行名单。"
+            exit 1
+          fi
+      # build 含 vue-tsc 类型门禁(tsconfig.app.json 实跑) + 预压缩 + 包体预算(scripts/size-check.mjs)
       - run: npm run build
       - run: npm run test
 
