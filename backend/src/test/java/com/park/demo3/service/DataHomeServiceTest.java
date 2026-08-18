@@ -232,4 +232,33 @@ class DataHomeServiceTest {
         assertThat(DataHomeService.allMonths(List.of("2024-02", "2023-08"), List.of("2025-01", "2024-02")))
             .containsExactly("2023-08", "2024-02", "2025-01");
     }
+
+    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════
+    @Test void 出账链_当前步是第一个非done() {
+        var chain = DataHomeService.buildChain(1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.currentIndex()).isEqualTo(3);
+        assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
+            .containsExactly("done", "done", "done", "current");
+    }
+
+    @Test void 出账链_全部完成时currentIndex为负1() {
+        var chain = DataHomeService.buildChain(1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
+        assertThat(chain.currentIndex()).isEqualTo(-1);
+        assertThat(chain.steps()).allMatch(s -> "done".equals(s.status()));
+    }
+
+    @Test void 出账链_空月第一步为current其余todo() {
+        var chain = DataHomeService.buildChain(0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.currentIndex()).isZero();
+        assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
+            .containsExactly("current", "todo", "todo", "todo");
+    }
+
+    @Test void 出账链_抄表detail只给已抄数不给分母() {
+        // 92/94 那个比例是 MeterView 前端 cardCounts() 在电水+分区筛选链上算的,
+        // 后端另算一份分母必然与之漂移 —— METRIC-SOURCE-SPEC §1 禁止同一判定两份实现。
+        // 首页只回答「这步做没做、做了多少」,比例留在抄表屏(它才有完整筛选口径)。
+        var chain = DataHomeService.buildChain(1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(0).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
+    }
 }

@@ -9,4 +9,8 @@ public record DataHomeOverviewDTO(
     List<DataHomeRecentDTO> recent
 ) {
     public record Period(int year, int month, String label) {}
+    /** 出账链(spec §2.1)。currentIndex=-1 表示 4 步全部完成。 */
+    public record Chain(int currentIndex, List<Step> steps) {}
+    /** status: done | current | todo;go = 导航 value。 */
+    public record Step(String key, String label, String status, String detail, String go) {}
 }

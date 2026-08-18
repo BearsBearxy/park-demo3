@@ -6,6 +6,8 @@ import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -243,5 +245,39 @@ public class DataHomeService {
      *  不能只给链的月份 —— 用户要能切到 2025-06 补台账,而那个月链上一条数据都没有。 */
     static List<String> allMonths(List<String> chainYms, List<String> scheduleYms) {
         return Stream.concat(chainYms.stream(), scheduleYms.stream()).distinct().sorted().toList();
+    }
+
+    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════════════════════
+    // 只画 4 步不画 6 步:合同与参数**不按月完成** —— 合同的「待补档案」是全局档案缺口,
+    // 参数是版本簿 —— 塞进流水线会得到两个永远不知道该不该打勾的格子。
+    // 它们改由 buildBlockers 承担:只在有问题时渲染,没问题时整条不出现。
+
+    /** 出账链 4 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+     *  ⚠ 抄表 detail 只给「已抄 N 块」不给分母:92/94 那个比例是 MeterView 前端 cardCounts()
+     *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1
+     *    禁止同一判定两份实现)。首页只回答「做没做、做了多少」,比例留在抄表屏。 */
+    static DataHomeOverviewDTO.Chain buildChain(long readingCount, boolean poolGenerated, boolean lossGenerated,
+                                                int noticeCount, BigDecimal noticeTotal, int noticeWarn) {
+        boolean[] done   = { readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
+        String[]  keys   = { "meters", "alloc", "alloc-loss", "bill-notices" };
+        String[]  labels = { "园区抄表", "公共电核算", "楼栋损耗", "催缴单" };
+        String[]  details = {
+            readingCount > 0 ? "已抄 " + readingCount + " 块" : "未抄表",
+            poolGenerated ? "" : "未生成",
+            lossGenerated ? "" : "未生成",
+            noticeCount > 0
+                ? noticeCount + " 户 · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                  + (noticeWarn > 0 ? " · " + noticeWarn + " 户带警告" : "")
+                : "未生成",
+        };
+        int current = -1;
+        for (int i = 0; i < 4; i++) if (!done[i]) { current = i; break; }
+
+        List<DataHomeOverviewDTO.Step> steps = new ArrayList<>(4);
+        for (int i = 0; i < 4; i++) {
+            String status = done[i] ? "done" : (i == current ? "current" : "todo");
+            steps.add(new DataHomeOverviewDTO.Step(keys[i], labels[i], status, details[i], keys[i]));
+        }
+        return new DataHomeOverviewDTO.Chain(current, steps);
     }
 }
