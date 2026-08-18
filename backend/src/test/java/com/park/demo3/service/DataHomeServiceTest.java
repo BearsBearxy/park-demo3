@@ -22,8 +22,14 @@ class DataHomeServiceTest {
     ChargingRecordMapper charging = Mockito.mock(ChargingRecordMapper.class);
     ElecRecordMapper elec = Mockito.mock(ElecRecordMapper.class);
     ContractService contractService = Mockito.mock(ContractService.class);
+    MeterReadingMapper meterReadings = Mockito.mock(MeterReadingMapper.class);
+    AllocPoolResultMapper poolResults = Mockito.mock(AllocPoolResultMapper.class);
+    AllocLossResultMapper lossResults = Mockito.mock(AllocLossResultMapper.class);
+    BillNoticeMapper billNotices = Mockito.mock(BillNoticeMapper.class);
+    ParamService paramService = Mockito.mock(ParamService.class);
 
-    DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService);
+    DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
+        meterReadings, poolResults, lossResults, billNotices, paramService);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
@@ -68,147 +74,137 @@ class DataHomeServiceTest {
         when(charging.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
         when(elec.selectByYearAndType(anyInt(), anyString())).thenReturn(List.of());
         when(contractService.summary()).thenReturn(summary(0));
+        // 出账链四源:空库(4 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
+        when(meterReadings.selectDistinctYms()).thenReturn(List.of());
+        when(poolResults.selectDistinctYms()).thenReturn(List.of());
+        when(lossResults.selectDistinctYms()).thenReturn(List.of());
+        when(billNotices.selectDistinctYms()).thenReturn(List.of());
+        when(meterReadings.selectCount(any())).thenReturn(0L);
+        when(poolResults.selectCount(any())).thenReturn(0L);
+        when(lossResults.selectCount(any())).thenReturn(0L);
+        when(billNotices.selectList(any())).thenReturn(List.of());
+        when(contractService.list(any())).thenReturn(List.of());
+        when(paramService.status(anyString())).thenReturn(
+            new ParamStatusDTO(0, 0, 0, null, null, null, false, List.of()));
+    }
+
+    // ══ 旧契约的 7 个测试已随重设计删除 ══════════════════════════════
+    // period_isMaxAcrossMonthlySubsystems / period_allTablesEmpty… → 锚口径已换
+    //   (5 个月度源取 max → 出账链最新月),由下方「锚定月_*」四条取代;
+    // missingSources_generateWarningTasks / contractExpiring_addsTask → 待办已删。
+    //   待办本就是 sources 的子集(旧 service 直接遍历同一个 sources 生成 tasks),
+    //   这正是本次重设计要消灭的重复,不存在等价替换;
+    // recent_top6_orderedByUpdatedDesc → 最近动态已从产品上移除(spec §2);
+    // kpis_deriveCountsAndMaxUpdate → 4 个 KPI 卡里 3 个是下方栏目的重复,整组删除。
+
+    @Test
+    void 附表项_已录与未录() {
+        stubAllEmpty();
+        when(salary.selectByMonth("2026-06"))
+            .thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
+
+        DataHomeOverviewDTO o = svc.overview("2026-06");
+        assertThat(o.schedules().items()).hasSize(9);
+        assertThat(o.schedules().total()).isEqualTo(9);
+        assertThat(o.schedules().done()).isEqualTo(1);
+        assertThat(o.schedules().items()).filteredOn(i -> i.name().equals("工资明细"))
+            .allMatch(DataHomeOverviewDTO.Item::done);
+        assertThat(o.schedules().items()).filteredOn(i -> i.name().equals("月度台账"))
+            .noneMatch(DataHomeOverviewDTO.Item::done);
     }
 
     @Test
-    void period_isMaxAcrossMonthlySubsystems() {
+    void 全新库_period为null且不炸() {
         stubAllEmpty();
-        // ledger only to 2026-05(编码 202605), salary to 2026-06 → 本期 = 2026年6月
-        when(ledger.<Object>selectObjs(any())).thenReturn(List.of(202605L));
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-
-        DataHomeOverviewDTO o = svc.overview();
-        assertThat(o.period().year()).isEqualTo(2026);
-        assertThat(o.period().month()).isEqualTo(6);
-        assertThat(o.period().label()).isEqualTo("2026年6月");
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.period()).isNull();
+        assertThat(o.months()).isEmpty();
+        assertThat(o.chain().currentIndex()).isZero();
+        assertThat(o.schedules().done()).isZero();
     }
 
-    /** 空表边界：MySQL 的 MAX() 在空表上返回一行 NULL(不是空结果集)，5 源全空必须回退到兜底期而不是 NPE。 */
-    @Test
-    void period_allTablesEmpty_aggregateReturnsNullRow_fallsBackTo200001() {
-        stubAllEmpty();
-        List<Object> nullRow = java.util.Collections.singletonList(null);
-        when(ledger.<Object>selectObjs(any())).thenReturn(nullRow);
-        when(s10.<Object>selectObjs(any())).thenReturn(nullRow);
-        when(salary.<Object>selectObjs(any())).thenReturn(nullRow);
-        when(office.<Object>selectObjs(any())).thenReturn(nullRow);
+    // ══ 锚定月与 months 全集(spec §2.2) ══════════════════════════════
+    // 纯函数,不碰 mapper —— 锚口径是本次重设计的核心决策,值得单独钉死。
 
-        DataHomeOverviewDTO o = svc.overview();
-        assertThat(o.period().year()).isEqualTo(2000);
-        assertThat(o.period().month()).isEqualTo(1);
-        assertThat(o.progressDone()).isZero();
+    @Test void 锚定月_取出账链最新月() {
+        assertThat(DataHomeService.anchorYm(List.of("2023-08", "2023-10", "2024-02"), List.of("2025-10")))
+            .isEqualTo("2024-02");
     }
 
-    @Test
-    void source_doneVsMissing_andUpdatedFormat() {
-        stubAllEmpty();
-        // 本期由 salary 2026-06 决定
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-        when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
-
-        DataHomeOverviewDTO o = svc.overview();
-        DataHomeSourceDTO salarySrc = o.sources().stream()
-            .filter(s -> s.name().equals("工资明细")).findFirst().orElseThrow();
-        assertThat(salarySrc.status()).isEqualTo("done");
-        assertThat(salarySrc.updated()).isEqualTo("6/5");
-
-        DataHomeSourceDTO ledgerSrc = o.sources().stream()
-            .filter(s -> s.name().equals("月度台账")).findFirst().orElseThrow();
-        assertThat(ledgerSrc.status()).isEqualTo("missing");
-        assertThat(ledgerSrc.updated()).isEqualTo("—");
-
-        assertThat(o.sources()).hasSize(9);
-        assertThat(o.progressTotal()).isEqualTo(9);
-        assertThat(o.progressDone()).isEqualTo(1);
-        assertThat(o.pct()).isEqualTo(11); // round(1/9*100)=11
+    @Test void 锚定月_链为空时退到附表最新月() {
+        assertThat(DataHomeService.anchorYm(List.of(), List.of("2025-01", "2025-10"))).isEqualTo("2025-10");
     }
 
-    @Test
-    void missingSources_generateWarningTasks() {
-        stubAllEmpty();
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-        when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
-
-        DataHomeOverviewDTO o = svc.overview();
-        // 8 个 missing 源 → 8 条待办；salary done 无待办；无合同到期
-        assertThat(o.tasks()).hasSize(8);
-        assertThat(o.tasks()).allMatch(t -> t.sev().equals("warning"));
-        assertThat(o.tasks()).anyMatch(t -> t.label().equals("月度台账 本期未录入")
-            && t.go().equals("ledger") && t.meta().equals("本期 2026年6月 暂无数据"));
+    @Test void 锚定月_两边都空返回null() {
+        assertThat(DataHomeService.anchorYm(List.of(), List.of())).isNull();
     }
 
-    @Test
-    void contractExpiring_addsTask() {
-        stubAllEmpty();
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-        when(salary.selectByMonth("2026-06")).thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
-        when(contractService.summary()).thenReturn(summary(3));
-
-        DataHomeOverviewDTO o = svc.overview();
-        assertThat(o.tasks()).anyMatch(t -> t.label().equals("3 份合同即将到期待续签")
-            && t.go().equals("contracts") && t.sev().equals("warning"));
-        // 8 missing + 1 合同 = 9
-        assertThat(o.tasks()).hasSize(9);
+    @Test void months全集_并集去重升序() {
+        assertThat(DataHomeService.allMonths(List.of("2024-02", "2023-08"), List.of("2025-01", "2024-02")))
+            .containsExactly("2023-08", "2024-02", "2025-01");
     }
 
-    @Test
-    void recent_top6_orderedByUpdatedDesc() {
-        stubAllEmpty();
-        // 本期 2026-06；造 7 条不同时间的本期行，应取最新 6 条降序
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-        when(salary.selectByMonth("2026-06")).thenReturn(List.of(
-            salaryRow("2026-06", LocalDateTime.of(2026, 6, 1, 10, 0)),
-            salaryRow("2026-06", LocalDateTime.of(2026, 6, 7, 10, 0))));
-        when(s10.selectBySlot(1, "2026-06")).thenReturn(List.of(
-            s10Row("2026-06", 1, LocalDateTime.of(2026, 6, 2, 10, 0)),
-            s10Row("2026-06", 1, LocalDateTime.of(2026, 6, 6, 10, 0))));
-        when(pv.selectByYear(2026)).thenReturn(List.of(
-            pvRow("2026-03", LocalDateTime.of(2026, 6, 3, 10, 0)),
-            pvRow("2026-04", LocalDateTime.of(2026, 6, 5, 10, 0)),
-            pvRow("2026-05", LocalDateTime.of(2026, 6, 4, 10, 0))));
-
-        DataHomeOverviewDTO o = svc.overview();
-        assertThat(o.recent()).hasSize(6);
-        // 最新一条 = 6/7 10:00 工资
-        assertThat(o.recent().get(0).source()).isEqualTo("工资明细");
-        assertThat(o.recent().get(0).time()).isEqualTo("6/7 10:00");
-        // 降序：时间字符串对应 7,6,5,4,3,2 日
-        List<String> times = o.recent().stream().map(DataHomeRecentDTO::time).toList();
-        assertThat(times).containsExactly(
-            "6/7 10:00", "6/6 10:00", "6/5 10:00", "6/4 10:00", "6/3 10:00", "6/2 10:00");
-        // 年度源 period 用 'YYYY年M月'，月度源用 acct_month
-        DataHomeRecentDTO pvRecent = o.recent().stream()
-            .filter(r -> r.source().equals("光伏发电")).findFirst().orElseThrow();
-        assertThat(pvRecent.period()).isEqualTo("2026年6月");
+    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════
+    @Test void 出账链_当前步是第一个非done() {
+        var chain = DataHomeService.buildChain(1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.currentIndex()).isEqualTo(3);
+        assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
+            .containsExactly("done", "done", "done", "current");
     }
 
-    @Test
-    void kpis_deriveCountsAndMaxUpdate() {
-        stubAllEmpty();
-        when(salary.<Object>selectObjs(any())).thenReturn(List.of("2026-06"));
-        when(salary.selectByMonth("2026-06")).thenReturn(List.of(
-            salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 9, 12)),
-            salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 9, 13))));
-        when(pv.selectByYear(2026)).thenReturn(List.of(pvRow("2026-06", LocalDateTime.of(2026, 6, 6, 11, 59))));
+    @Test void 出账链_催缴单detail报张数不报户数() {
+        // bill_notice 一租户可有多行(按收款公司/单据类型拆单);而催缴单屏的「户数」是
+        // aggregateByTenant 聚合后、且只算当前期别 tab(默认一期)的数。两者根本不是一个口径,
+        // 首页报「张」= 唯一且不会与屏上户数打架(METRIC-SOURCE-SPEC §2)。
+        var chain = DataHomeService.buildChain(1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183);
+        assertThat(chain.steps().get(3).detail())
+            .isEqualTo("295 张 · ¥4107986.54 · 183 张有警告").doesNotContain("户");
+    }
 
-        DataHomeOverviewDTO o = svc.overview();
-        // 2 source done(salary, pv) → pct round(2/9*100)=22
-        DataHomeKpiDTO k1 = o.kpis().get(0);
-        assertThat(k1.label()).isEqualTo("数据完整度");
-        assertThat(k1.value()).isEqualTo("22%");
-        assertThat(k1.sub()).isEqualTo("2 / 9 项");
-        // 本期记录数 = 2(salary) + 1(pv) = 3
-        DataHomeKpiDTO k3 = o.kpis().get(2);
-        assertThat(k3.label()).isEqualTo("本期记录数");
-        assertThat(k3.value()).isEqualTo("3");
-        // 最近更新 = max(updated_at) = 6/6 11:59 光伏发电
-        DataHomeKpiDTO k4 = o.kpis().get(3);
-        assertThat(k4.label()).isEqualTo("最近更新");
-        assertThat(k4.value()).isEqualTo("11:59");
-        assertThat(k4.sub()).isEqualTo("6/6 · 光伏发电");
-        // 待处理事项 = tasks.length
-        DataHomeKpiDTO k2 = o.kpis().get(1);
-        assertThat(k2.label()).isEqualTo("待处理事项");
-        assertThat(k2.value()).isEqualTo(String.valueOf(o.tasks().size()));
+    @Test void 出账链_全部完成时currentIndex为负1() {
+        var chain = DataHomeService.buildChain(1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
+        assertThat(chain.currentIndex()).isEqualTo(-1);
+        assertThat(chain.steps()).allMatch(s -> "done".equals(s.status()));
+    }
+
+    @Test void 出账链_空月第一步为current其余todo() {
+        var chain = DataHomeService.buildChain(0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.currentIndex()).isZero();
+        assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
+            .containsExactly("current", "todo", "todo", "todo");
+    }
+
+    @Test void 出账链_抄表detail只给已抄数不给分母() {
+        // 92/94 那个比例是 MeterView 前端 cardCounts() 在电水+分区筛选链上算的,
+        // 后端另算一份分母必然与之漂移 —— METRIC-SOURCE-SPEC §1 禁止同一判定两份实现。
+        // 首页只回答「这步做没做、做了多少」,比例留在抄表屏(它才有完整筛选口径)。
+        var chain = DataHomeService.buildChain(1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(0).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
+    }
+
+    // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════
+    @Test void blockers_都没问题时为空数组() {
+        assertThat(DataHomeService.buildBlockers(0, false)).isEmpty();
+    }
+
+    @Test void blockers_合同缺计费行时出一条() {
+        var bs = DataHomeService.buildBlockers(219, false);
+        assertThat(bs).hasSize(1);
+        assertThat(bs.get(0).kind()).isEqualTo("contract-gap");
+        assertThat(bs.get(0).text()).contains("219");
+        assertThat(bs.get(0).go()).isEqualTo("contracts");
+    }
+
+    @Test void blockers_参数过期时出一条() {
+        var bs = DataHomeService.buildBlockers(0, true);
+        assertThat(bs).hasSize(1);
+        assertThat(bs.get(0).kind()).isEqualTo("param-stale");
+        assertThat(bs.get(0).go()).isEqualTo("params");
+    }
+
+    @Test void blockers_两个问题都在时出两条_合同在前() {
+        assertThat(DataHomeService.buildBlockers(219, true))
+            .extracting(DataHomeOverviewDTO.Blocker::kind)
+            .containsExactly("contract-gap", "param-stale");
     }
 }
