@@ -127,6 +127,8 @@ public class ElecCostService {
     // ── 费项月度值 ──
     // 年份数据驱动:有数据的年份升序,空表=[](同 pv-meter 模式)
     public List<Integer> years() { return entries.selectDistinctYears(); }
+    // 有数据的账期升序,空表=[](前端默认月直接取 max,不再 12→1 逐月试探)
+    public List<String> months() { return entries.selectDistinctYms(); }
 
     public List<ElecCostEntryDTO> entryList(int year, int month) {
         Map<Integer, String> names = meterNames();
@@ -439,9 +441,14 @@ public class ElecCostService {
             .collect(groupingBy(r -> r.getReadDate().getMonthValue()));
         Map<Integer, List<CpPowerUsage>> powerByM = cpPowers.selectByYear(year).stream()
             .collect(groupingBy(u -> u.getPeriod().getMonthValue()));
-        // 电价参数全量一次取(表极小):月行优先回退默认行(''),与 resolveCfg 同规则
+        // 电价参数一次取(表极小):月行优先回退默认行(''),与 resolveCfg 同规则
+        // 收敛下推:下面只按 ym(year,1..12) 与默认行 '' 这 13 个 acct_month 查,别的月份行取回来也永不命中;
+        // 13 个字面量恒非空故不需空集守卫;IN 只筛行不筛值,cfgResolve 的 containsKey(值可为 null)语义不受影响
+        List<String> cfgMonths = new ArrayList<>(List.of(""));
+        for (int m = 1; m <= 12; m++) cfgMonths.add(ym(year, m));
         Map<String, BigDecimal> cfgAll = new HashMap<>();
-        for (ElecPriceCfg c : cfgs.selectList(null)) cfgAll.put(c.getAcctMonth() + "|" + c.getCfgKey(), c.getCfgValue());
+        for (ElecPriceCfg c : cfgs.selectList(new QueryWrapper<ElecPriceCfg>().in("acct_month", cfgMonths)))
+            cfgAll.put(c.getAcctMonth() + "|" + c.getCfgKey(), c.getCfgValue());
         List<ElecMetricsMonthDTO> out = new ArrayList<>(12);
         for (int m = 1; m <= 12; m++) {
             String acctMonth = ym(year, m);

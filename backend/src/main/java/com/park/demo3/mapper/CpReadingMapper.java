@@ -27,4 +27,11 @@ public interface CpReadingMapper extends BaseMapper<CpReading> {
         return selectObjs(new QueryWrapper<CpReading>().select("distinct year(read_date)"))
             .stream().map(o -> ((Number) o).intValue()).sorted().toList();
     }
+    // 有记录的 distinct 账期升序('YYYY-MM')。本表按日记条没有 ym 列,date_format 直接出补零串
+    // ——别在 Java 侧拼 year+"-"+month,那样 '2025-2' 会排到 '2025-12' 后面。
+    // 表达式吃不到松散扫描(与上面 year() 同一档),33 行亚毫秒,不为此加索引。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<CpReading>().select("distinct date_format(read_date,'%Y-%m')"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 }

@@ -23,6 +23,7 @@ import {
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -48,7 +49,8 @@ onDeactivated(() => {
   histRow.value = null; changesOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
 })
 
-// ── 账期 + 期区(全园 | 一期 | 二期 | 宿舍) ──
+// ── 账期(整体数据驱动)+ 期区(全园 | 一期 | 二期 | 宿舍) ──
+// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const today = new Date()
 const year = ref(today.getFullYear())
@@ -125,9 +127,17 @@ onMounted(async () => {
   loadMasters()
   if (handoff) { load(); return }   // 带账期来的:不再被「跳到最新年」覆盖
   try {
-    dataYears.value = await allocApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }   // watch 触发 load
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([allocApi.years(), paramsApi.months()])
+    dataYears.value = ys
+    // §4:year 与 month 一起 snap(原来只 snap year、month 留系统当月,拼出的账期从来没被核算过)。
+    // 判据用 /params/status 的两个时间戳 —— 参数是版本簿,任何月都解析得出生效值,「这个月有没有数据」
+    // 对本屏就等于「这个月有没有被核算过」(池快照或催缴单批次),而 status 本来就是本屏 stale 条的消费口,
+    // /params/months 直接给「有池快照 ∪ 有出单批次」的账期全集,一个往返取 max,不再逐月探测。
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return   // watch 触发 load
+    }
   } catch { /* 年份失败不阻断 */ }
   load()
 })

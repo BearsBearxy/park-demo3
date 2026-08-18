@@ -36,6 +36,9 @@ public class PvMeterController {
     @Operation(summary = "有抄表记录的年份(升序;空表=[],年选择器数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 
+    @Operation(summary = "有抄表记录的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "某年月抄表记录(month 可空=全年,ENERGY-ANALYSIS §4;可选按站过滤;行含 price_snap 与派生收益)") @GetMapping("/readings")
     public List<PvReadingDTO> readings(@RequestParam @Min(2000) @Max(2100) int year,
                                        @RequestParam(required = false) @Min(1) @Max(12) Integer month,

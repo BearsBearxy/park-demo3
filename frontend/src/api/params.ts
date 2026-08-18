@@ -78,6 +78,8 @@ export const paramsApi = {
   list: (ym: string, zone: ParamZone = 'all', filter?: { scope?: string; key?: string }): Promise<ParamRowDTO[]> =>
     http.get('/params', { params: { ym, zone, ...filter } }),
   status: (ym: string): Promise<ParamStatusDTO> => http.get('/params/status', { params: { ym } }),
+  // 有池快照 ∪ 有出单批次的账期全集('YYYY-MM' 升序);默认月取 max,替代逐月拉 status
+  months: (): Promise<string[]> => http.get('/params/months'),
   // 写一行(注册表校验/日志/evict),返回该键站在 ym(缺省 acctMonth)的新生效行(铁律二:只 patch 该行);
   // 页面传自己的账期 ym,回包才与屏上其它行同一账期(删版本行 / 改错时 acctMonth 可能不是页面账期)
   put: (req: ParamPutReq, ym?: string): Promise<ParamRowDTO> => http.put('/params', req, { params: { ym } }),

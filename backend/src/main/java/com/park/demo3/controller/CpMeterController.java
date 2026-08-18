@@ -37,6 +37,9 @@ public class CpMeterController {
     @Operation(summary = "有充电记录的年份(升序;空表=[],年选择器数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 
+    @Operation(summary = "有充电记录的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "某年月充电记录(month 可空=全年,ENERGY-ANALYSIS §4;可选按桩过滤)") @GetMapping("/readings")
     public List<CpReadingDTO> readings(@RequestParam @Min(2000) @Max(2100) int year,
                                        @RequestParam(required = false) @Min(1) @Max(12) Integer month,

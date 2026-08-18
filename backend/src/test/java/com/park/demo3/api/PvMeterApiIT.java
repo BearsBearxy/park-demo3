@@ -251,6 +251,11 @@ class PvMeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0]").value(2023))
                 .andExpect(jsonPath("$.data[1]").value(2026));
+        // 同两条记录看 /months:无 ym 列靠 date_format 补零(06 不能出成 6,否则前端取 max 会错序);
+        // containsExactly 一口气把格式/升序/无重复都钉住。
+        List<String> months = JsonPath.read(utf8(mvc.perform(get("/api/pv-meter/months").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)).andReturn()), "$.data");
+        assertThat(months).containsExactly("2023-06", "2026-01");
     }
 
     // ── ENERGY-ANALYSIS §4:readings month 可空=全年(各月并集,跨年不混);month 传值行为不变 ──

@@ -36,6 +36,9 @@ public class MeterController {
     @Operation(summary = "删除表(有读数或绑公摊池 409;不存在 404)") @DeleteMapping("/{id}")
     public void delete(@PathVariable Integer id) { svc.delete(id); }
 
+    @Operation(summary = "有读数的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "有读数的年份(升序;空表=[],年选择器数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 

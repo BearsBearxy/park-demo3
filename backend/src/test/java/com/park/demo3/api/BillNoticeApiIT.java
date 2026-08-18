@@ -221,6 +221,12 @@ class BillNoticeApiIT extends AbstractMysqlIT {
         assertThat((String) mgmt.get("note")).contains("Σ段");
         Number total = JsonPath.read(body, "$.data.totalAmount");
         assertThat(total.doubleValue()).isEqualTo(850.0);
+        // 账期数据驱动:本域原先没有自己的月列表(借 /meters/years 的抄表年再逐月试探),现在直接查出单月
+        List<String> months = JsonPath.read(new String(mvc.perform(get("/api/bill-notices/months")
+                .header("Authorization", auth())).andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8), "$.data");
+        assertThat(months).contains(ym).isSorted().doesNotHaveDuplicates()
+                .allMatch(s -> s.matches("\\d{4}-\\d{2}"));
     }
 
     // ── t2 宿舍房间表:居民价+mgmt 0.16;水 3.85(dorm scope)+管网 0;ruleBranch='resident' ──

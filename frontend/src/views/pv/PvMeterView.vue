@@ -24,6 +24,7 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // Wave2-B 并行契约:registry key 'pvMeter' + 模板/月度导出(buildPvMeterTemplate/exportPvMeterMonth)
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
@@ -42,7 +43,8 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 const today = new Date()
 const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
-// 年份数据驱动(P0 审计):选项 = 有记录年份 ∪ 当前年,升序;初值 = 最新有数据年(无数据=当前年)
+// 年份数据驱动(P0 审计):选项 = 有记录年份 ∪ 当前年,升序;
+// 初值 = 最后一个有抄表记录的账期(§4:年月一起 snap;全系统无记录才留当年当月)
 const dataYears = ref<number[]>([])
 const yearOpts = computed(() =>
   buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
@@ -65,11 +67,17 @@ async function loadReadings() {
 }
 onMounted(async () => {
   loadStations()
-  // 先拉数据年份定位初始年:最新有数据年;改年会经 watch 触发 loadReadings,未改则本函数兜底首载
+  // 先拉数据年份定位初始账期:§4 要求 year 与 month 一起 snap 到最后一个有抄表记录的账期
+  // (原来只 snap year、month 留系统当月,拼出的账期一条记录都没有,进来是空表)。
+  // 改了年月会经 watch 触发 loadReadings,未改则本函数兜底首载。
   try {
-    dataYears.value = await pvMeterApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([pvMeterApi.years(), pvMeterApi.months()])
+    dataYears.value = ys
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return
+    }
   } catch { /* years 拉取失败不阻断:保持当前年,选项由 ∪ 当前年兜底 */ }
   loadReadings()
 })

@@ -38,6 +38,9 @@ public class ElecCostController {
     @Operation(summary = "有数据的年份(升序;空表=[],年选择器数据驱动)") @GetMapping("/years")
     public List<Integer> years() { return svc.years(); }
 
+    @Operation(summary = "有数据的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "某年月费项行(含 source;合计行与拆分行并存照返,黄警前端判)") @GetMapping("/entries")
     public List<ElecCostEntryDTO> entries(@RequestParam @Min(2000) @Max(2100) int year,
                                           @RequestParam @Min(1) @Max(12) int month) {

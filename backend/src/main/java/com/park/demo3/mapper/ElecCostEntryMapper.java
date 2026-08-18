@@ -29,4 +29,10 @@ public interface ElecCostEntryMapper extends BaseMapper<ElecCostEntry> {
         return selectObjs(new QueryWrapper<ElecCostEntry>().select("distinct substring(acct_month,1,4)"))
             .stream().map(o -> Integer.parseInt(String.valueOf(o))).sorted().toList();
     }
+    // 有数据的 distinct 账期升序('YYYY-MM',列名是 acct_month 不是 ym)。用途同 MeterReadingMapper:
+    // 顶掉前端逐月试探「最新有数月」。零补串,Java 排序与 SQL ORDER BY 等价。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<ElecCostEntry>().select("distinct acct_month"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 }

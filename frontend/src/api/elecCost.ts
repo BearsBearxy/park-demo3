@@ -106,6 +106,8 @@ export const elecCostApi = {
   deleteMeter: (id: number): Promise<void> => http.delete(`/elec-cost/meters/${id}`),
   // 有数据年份升序;空表=[](年选择器数据驱动,同 pv-meter)
   years: (): Promise<number[]> => http.get('/elec-cost/years'),
+  // 有录入的账期全集('YYYY-MM' 升序);默认月取 max,替代逐月探测
+  months: (): Promise<string[]> => http.get('/elec-cost/months'),
   entries: (year: number, month: number): Promise<ElecCostEntryDTO[]> =>
     http.get('/elec-cost/entries', { params: { year, month } }),
   upsertEntry: (req: ElecCostEntryReq): Promise<ElecCostEntryDTO> => http.put('/elec-cost/entries', req),

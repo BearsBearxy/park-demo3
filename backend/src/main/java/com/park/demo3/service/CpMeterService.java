@@ -125,6 +125,8 @@ public class CpMeterService {
     // ── 充电记录 ──
     // 年份数据驱动:有记录的年份升序,空表=[](前端年选择器数据源)
     public List<Integer> years() { return readings.selectDistinctYears(); }
+    // 有记录的账期升序,空表=[](前端默认月直接取 max,不再 12→1 逐月试探)
+    public List<String> months() { return readings.selectDistinctYms(); }
 
     public List<CpReadingDTO> readingList(int year, Integer month, Integer stationId) {   // month null=全年
         Map<Integer, String> names = stations.selectList(null).stream()

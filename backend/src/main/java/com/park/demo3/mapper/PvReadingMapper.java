@@ -27,4 +27,10 @@ public interface PvReadingMapper extends BaseMapper<PvReading> {
         return selectObjs(new QueryWrapper<PvReading>().select("distinct year(read_date)"))
             .stream().map(o -> ((Number) o).intValue()).sorted().toList();
     }
+    // 有记录的 distinct 账期升序('YYYY-MM')。同 CpReadingMapper:按日记条无 ym 列,靠 date_format 补零,
+    // 不在 Java 侧拼串(否则 '2025-2' 排在 '2025-12' 之后)。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<PvReading>().select("distinct date_format(read_date,'%Y-%m')"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 }

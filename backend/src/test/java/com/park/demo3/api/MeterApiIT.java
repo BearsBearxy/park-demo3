@@ -178,6 +178,13 @@ class MeterApiIT extends AbstractMysqlIT {
         // 年份数据驱动
         mvc.perform(get("/api/meters/years").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[?(@==2099)]").exists());
+        // 账期数据驱动:前端默认月直接取 max,顶掉原先 12→1 逐月试探(本表数据最新只到 2024-02 时空打 11 次)
+        java.util.List<String> months = JsonPath.read(utf8(mvc.perform(get("/api/meters/months")
+                .header("Authorization", auth())).andExpect(jsonPath("$.code").value(0)).andReturn()), "$.data");
+        org.junit.jupiter.api.Assertions.assertEquals(months.stream().distinct().sorted().toList(), months,
+                "账期须升序无重复: " + months);
+        org.junit.jupiter.api.Assertions.assertTrue(months.contains("2099-05")
+                && months.stream().allMatch(m -> m.matches("\\d{4}-\\d{2}")), "格式须 YYYY-MM 且含本例月: " + months);
     }
 
     // ── v2 结构化档案(§6.1):导入行 tenantId/buildingId/ownership 落库;非法 ownership 行级错误;空值不覆盖既有 ──

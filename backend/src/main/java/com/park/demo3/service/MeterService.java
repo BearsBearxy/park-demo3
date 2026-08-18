@@ -155,6 +155,8 @@ public class MeterService {
 
     // ── 读数 ──
     public List<Integer> years() { return readings.selectDistinctYears(); }
+    // 有读数的账期升序,空表=[](前端默认月直接取 max,不再 12→1 逐月试探)
+    public List<String> months() { return readings.selectDistinctYms(); }
 
     public List<MeterReadingDTO> readingsByYm(String ym) {
         requireYm(ym);
@@ -222,8 +224,11 @@ public class MeterService {
             .filter(id -> counts.getOrDefault(id, 0L) <= 1L).toList();
         // 撞 alloc_rule_meter FK 的跳过:池成员表删不得(也正是 V65 那 109 块种子表的护栏 ——
         // 种子表全部有池绑定,「非种子建档」这条与 FK 守卫是同一条线,不另立标志列)
-        java.util.Set<Integer> bound = ruleMeters.selectList(null).stream()
-            .map(AllocRuleMeter::getMeterId).collect(Collectors.toSet());
+        // 收敛下推:bound 只被下面两行对 emptied 里的 id 做 contains 判定,查这批绑定即可
+        // ⚠ 空集守卫:emptied 经常为空(涉及的表都还有别月读数时),MP 的 in(空集) 生成 `IN ()` 是 SQL 语法错
+        java.util.Set<Integer> bound = emptied.isEmpty() ? java.util.Set.of()
+            : ruleMeters.selectList(new QueryWrapper<AllocRuleMeter>().in("meter_id", emptied)).stream()
+                .map(AllocRuleMeter::getMeterId).collect(Collectors.toSet());
         List<Integer> dropIds = dropEmptyMeters ? emptied.stream().filter(id -> !bound.contains(id)).toList() : List.of();
         List<String> blocked = dropEmptyMeters
             ? emptied.stream().filter(bound::contains).map(id -> label(scope.get(id))).toList() : List.of();

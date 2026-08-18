@@ -22,6 +22,7 @@ import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
 import { metersApi } from '@/api/meters'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
@@ -65,7 +66,8 @@ const fmt2 = (v: number | null | undefined) =>
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-// ── 账期(年数据驱动;bill-notices 无 years 端点,复用抄表年份——单随读数走,alloc 屏同手法) ──
+// ── 账期(整体数据驱动;bill-notices 无 years 端点,复用抄表年份——单随读数走,alloc 屏同手法) ──
+// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
 const today = new Date()
 const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
@@ -115,9 +117,16 @@ onMounted(async () => {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => { /* 楼栋失败按 premise 回退归期 */ })
   loadCompanies(); loadPayMap()   // S20:收款公司与映射(状态列橙点与抽屉方格用)
   try {
-    dataYears.value = await metersApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }   // watch 触发 loadMonth
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([metersApi.years(), billNoticesApi.months()])
+    dataYears.value = ys
+    // §4:year 与 month 一起 snap 到最后一个**有单**的账期。原来只 snap year、month 留系统当月,
+    // 拼出的 2024-08 根本没批次,用户打开就是空表(立档证据第 4 条即本屏)。
+    // 判据必须是「这个月有没有催缴单」而不是「有没有读数」—— 年列表借的是抄表年,抄了表不等于出了单。
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
+    }
   } catch { /* 年份失败不阻断 */ }
   loadMonth()
 })

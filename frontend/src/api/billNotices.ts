@@ -86,6 +86,8 @@ export interface BillNoteOverrideDTO {
 export const billNoticesApi = {
   // 某月全状态列表(含租户/收款公司名与行数)
   list: (ym: string): Promise<BillNoticeDTO[]> => http.get('/bill-notices', { params: { ym } }),
+  // 有单的账期全集('YYYY-MM' 升序);默认月取 max,替代逐月拉整月单
+  months: (): Promise<string[]> => http.get('/bill-notices/months'),
   detail: (id: number): Promise<BillNoticeDetailDTO> => http.get(`/bill-notices/${id}`),
   // 幂等:先删本月 draft/void 再插;有 issued 单的租户跳过并计入 warned
   generate: (ym: string): Promise<BillNoticeGenResultDTO> =>

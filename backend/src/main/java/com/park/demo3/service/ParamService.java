@@ -556,6 +556,15 @@ public class ParamService {
 
     // ══════════ 状态条(spec §5.1/§6.3) ══════════
 
+    // 有状态可看的账期升序,空表=[]。判据必须与 status() 的 poolSnapshotAt‖billBatchAt 非空同源:
+    // 两个时间分别取自 alloc_pool_result / bill_notice 该月最后一行的 generated_at(两列 NOT NULL),
+    // 故「至少一个非空」⟺「该 ym 在两表之一有行」= 下面这个并集。
+    public List<String> months() {
+        Set<String> ms = new TreeSet<>(poolResults.selectDistinctYms());
+        ms.addAll(notices.selectDistinctYms());
+        return new ArrayList<>(ms);
+    }
+
     public ParamStatusDTO status(String ym) {
         requireYm(ym);
         Set<String> ok = new HashSet<>();

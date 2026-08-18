@@ -73,7 +73,12 @@ async function loadCompanies() {
   companies.value = await companyApi.list()
   const results = await Promise.all(
     companies.value.map(async c => {
-      const ov = await ledgerApi.overview(c.id, year.value)
+      // ⓪ 卡片统计年也必须数据驱动(METRIC-SOURCE-SPEC §4):这里过去直接用 year.value(=系统当年),
+      // 而真实台账只到 2025 —— 系统当年一行都没有,六张卡就全是 ¥0,标签还写着「8月应收」这个
+      // 不存在的账期。年取该公司最后一个有数据年,月仍由 overview 的 status==='current' 派生,
+      // 两者这才落在同一个账期上(各公司最新年可能不同,故逐公司取,不动 year.value——它归年份门管)。
+      const ys = await ledgerApi.years(c.id).catch(() => [] as YearMonthsDTO[])
+      const ov = await ledgerApi.overview(c.id, ys[ys.length - 1]?.year ?? year.value)
       const cur = ov.months.find(m => m.status === 'current')
       return { id: c.id, tenants: ov.activeTenants, recv: cur?.recv ?? 0, month: cur?.month ?? null }
     }),
