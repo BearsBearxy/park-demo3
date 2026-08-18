@@ -152,6 +152,15 @@ class DataHomeServiceTest {
             .containsExactly("done", "done", "done", "current");
     }
 
+    @Test void 出账链_催缴单detail报张数不报户数() {
+        // bill_notice 一租户可有多行(按收款公司/单据类型拆单);而催缴单屏的「户数」是
+        // aggregateByTenant 聚合后、且只算当前期别 tab(默认一期)的数。两者根本不是一个口径,
+        // 首页报「张」= 唯一且不会与屏上户数打架(METRIC-SOURCE-SPEC §2)。
+        var chain = DataHomeService.buildChain(1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183);
+        assertThat(chain.steps().get(3).detail())
+            .isEqualTo("295 张 · ¥4107986.54 · 183 张有警告").doesNotContain("户");
+    }
+
     @Test void 出账链_全部完成时currentIndex为负1() {
         var chain = DataHomeService.buildChain(1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
         assertThat(chain.currentIndex()).isEqualTo(-1);

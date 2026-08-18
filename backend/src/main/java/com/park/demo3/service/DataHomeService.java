@@ -226,6 +226,10 @@ public class DataHomeService {
     // 它们改由 buildBlockers 承担:只在有问题时渲染,没问题时整条不出现。
 
     /** 出账链 4 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+     *  ⚠ 催缴单 detail 给「N 张」不是「N 户」:bill_notice 一租户可有多行(按收款公司/单据类型拆单),
+     *    而催缴单屏的「户数」是 aggregateByTenant 聚合后、且只算当前期别 tab 的数(默认一期)。
+     *    首页要的是整月全期口径,屏上压根没有这个数 —— 与其重算一份聚合(METRIC-SOURCE-SPEC §1
+     *    禁止同一判定两份实现),不如老实报单据张数:口径唯一、不会和屏上的户数打架。
      *  ⚠ 抄表 detail 只给「已抄 N 块」不给分母:92/94 那个比例是 MeterView 前端 cardCounts()
      *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1
      *    禁止同一判定两份实现)。首页只回答「做没做、做了多少」,比例留在抄表屏。 */
@@ -239,8 +243,8 @@ public class DataHomeService {
             poolGenerated ? "" : "未生成",
             lossGenerated ? "" : "未生成",
             noticeCount > 0
-                ? noticeCount + " 户 · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString()
-                  + (noticeWarn > 0 ? " · " + noticeWarn + " 户带警告" : "")
+                ? noticeCount + " 张 · ¥" + noticeTotal.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                  + (noticeWarn > 0 ? " · " + noticeWarn + " 张有警告" : "")
                 : "未生成",
         };
         int current = -1;
