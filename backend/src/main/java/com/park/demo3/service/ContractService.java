@@ -49,20 +49,33 @@ public class ContractService {
             all = all.stream().filter(c -> inForceOn(c, asOf)).toList();
         }
 
-        Map<Integer,String> bName = buildings.selectList(null).stream()
-            .collect(Collectors.toMap(Building::getId, Building::getName));
+        // 三个字典建在 asOf 过滤之后:唯一消费点是 toDTO 的 getOrDefault(c.getXxxId(),""),
+        // 只需覆盖 all 里出现过的 id(不传 asOfDate 时 ≈ 全量,省的是过滤后那条路径)
+        // ⚠ 空集守卫 ×3:asOfDate 落在无合同的日期时 all 为空,MP 的 in(空集) 生成 `IN ()` 是 SQL 语法错
+        Set<Integer> bIds = idsOf(all, Contract::getBuildingId);
+        Map<Integer,String> bName = bIds.isEmpty() ? Map.of()
+            : buildings.selectList(new QueryWrapper<Building>().in("id", bIds)).stream()
+                .collect(Collectors.toMap(Building::getId, Building::getName));
 
         // unitId → "{floor}F-{unitNo}" (same derivation as TenantService.detail)
-        Map<Integer,String> uFloor = units.selectList(null).stream()
-            .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
-            .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
+        Set<Integer> uIds = idsOf(all, Contract::getUnitId);
+        Map<Integer,String> uFloor = uIds.isEmpty() ? Map.of()
+            : units.selectList(new QueryWrapper<Unit>().in("id", uIds)).stream()
+                .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
+                .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
 
-        Map<Integer,String> tName = tenants.selectList(null).stream()
-            .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
+        Set<Integer> tIds = idsOf(all, Contract::getTenantId);
+        Map<Integer,String> tName = tIds.isEmpty() ? Map.of()
+            : tenants.selectList(new QueryWrapper<Tenant>().in("id", tIds)).stream()
+                .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
 
         Map<Integer,Long> extraUnits = extraUnitCounts();
         Map<Integer,int[]> stats = termStats();
         return all.stream().map(c -> toDTO(c, tName, bName, uFloor, extraUnits, stats)).toList();
+    }
+
+    private static Set<Integer> idsOf(List<Contract> cs, java.util.function.Function<Contract,Integer> f) {
+        return cs.stream().map(f).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     /** 某日在租:非草稿且当日落在 [startDate, endDate] 闭区间(缺任一端日期视为无法确认在租,排除)。 */
@@ -77,22 +90,37 @@ public class ContractService {
         catch (DateTimeParseException e) { throw new BizException(ResultCode.BAD_REQUEST, "asOfDate 格式须为 yyyy-MM-dd"); }
     }
 
-    public ContractSummaryDTO summary() {
-        List<Contract> all = contracts.selectList(null);
-        int total = all.size();
+    /** 计租口径的唯一实现(METRIC-SOURCE-SPEC §1/§2):合同屏与租户屏的「月租金合计/将到期」都调它,
+     *  物理上不可能再各算各的——旧的租户屏自己按 status 列过滤,既绕过 effectiveStatus 的日期派生
+     *  又没排 master_lease,同一个「月租金合计」标签两屏差 2.57 倍(795万 vs 309万)。
+     *  在租/将到期一律取 effectiveStatus 的返回值判定,禁止读 status 列(它只存人工态)。 */
+    public static RentRoll rentRollMetrics(List<Contract> all) {
         int active = 0, expiring = 0, draft = 0;
         BigDecimal monthly = BigDecimal.ZERO;
+        Set<Integer> expiringTenants = new LinkedHashSet<>();
         for (Contract c : all) {
             // V59:整体承租(master_lease)与散户空间重叠,月租金计入即双算 → KPI 金额排除,份数照计
             boolean master = "master_lease".equals(c.getKind());
             switch (effectiveStatus(c.getStatus(), c.getStartDate(), c.getEndDate())) {   // 派生桶计数(§5.1)
                 case "active":    active++;   if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
-                case "expiring":  expiring++; if (!master) monthly = monthly.add(c.getMonthlyRent()); break;
+                case "expiring":  expiring++; if (!master) monthly = monthly.add(c.getMonthlyRent());
+                                              expiringTenants.add(c.getTenantId()); break;
                 case "draft":     draft++;    break;
                 default: break;   // expired/terminated/renewed 不计
             }
         }
-        return new ContractSummaryDTO(total, active, expiring, draft, monthly);
+        return new RentRoll(active, expiring, draft, monthly, expiringTenants);
+    }
+
+    /** rentRollMetrics 的产出。expiringTenantIds 供租户屏出「N 户需续签」——
+     *  户数与份数是两个指标(一户可有多份将到期合同),故两者都给,取用方别互相换算。 */
+    public record RentRoll(int active, int expiring, int draft,
+                           BigDecimal monthlyRent, Set<Integer> expiringTenantIds) {}
+
+    public ContractSummaryDTO summary() {
+        List<Contract> all = contracts.selectList(null);
+        RentRoll r = rentRollMetrics(all);
+        return new ContractSummaryDTO(all.size(), r.active(), r.expiring(), r.draft(), r.monthlyRent());
     }
 
     public ContractDetailDTO detail(Integer id) {
@@ -101,14 +129,16 @@ public class ContractService {
         Tenant t = tenants.selectById(c.getTenantId());
         if (t == null) throw new NoSuchElementException("tenant " + c.getTenantId());
 
-        Map<Integer,String> bName = buildings.selectList(null).stream()
-            .collect(Collectors.toMap(Building::getId, Building::getName));
-        Map<Integer,String> uFloor = units.selectList(null).stream()
-            .filter(u -> u.getFloor() != null && u.getUnitNo() != null)
-            .collect(Collectors.toMap(Unit::getId, u -> u.getFloor() + "F-" + u.getUnitNo()));
+        // 收敛下推:本页只渲染这一份合同,bName/uFloor 的唯一读法是 getOrDefault(c.getXxxId(),"") ——
+        // 按 id 点查即可,写法照抄同文件 dtoOf()(未命中给空表,与全表字典 miss 同行为)
+        Building b = buildings.selectById(c.getBuildingId());
+        Unit u = c.getUnitId() != null ? units.selectById(c.getUnitId()) : null;
+        Map<Integer,String> bName = b != null ? Map.of(b.getId(), b.getName()) : Map.of();
+        Map<Integer,String> uFloor = (u != null && u.getFloor() != null && u.getUnitNo() != null)
+            ? Map.of(u.getId(), u.getFloor() + "F-" + u.getUnitNo()) : Map.of();
         Map<Integer,String> tName = Map.of(t.getId(), t.getCompanyName());
 
-        ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts(), termStats());
+        ContractDTO dto = toDTO(c, tName, bName, uFloor, extraUnitCounts(c.getId()), termStats(c.getId()));
         ContractDetailDTO.TenantSnap snap = new ContractDetailDTO.TenantSnap(
             t.getCompanyName(), t.getContactName(), t.getContactPhone(),
             t.getBusinessType(), t.getStatus()
@@ -597,8 +627,10 @@ public class ContractService {
         return FEE_NAME.getOrDefault(feeKey, feeKey);
     }
 
-    /** 展示态派生(§5.1):draft/terminated/renewed 人工态透传;active 据起止日与今天(Asia/Shanghai)派生。
-     *  status 只存人工态,时间态(future/expiring/expired)全部在此派生(裁定 2026-07-28)。 */
+    /** 合同展示态的**唯一判据**(METRIC-SOURCE-SPEC §1.1 登记册)。
+     *  draft/terminated/renewed 人工态透传;active 据起止日与今天(Asia/Shanghai)派生。
+     *  status 只存人工态,时间态(future/expiring/expired)全部在此派生(裁定 2026-07-28)——
+     *  所以任何地方要判「在租/将到期/已到期」都必须调本方法,直读 status 列读到的是已不存在的语义。 */
     static String effectiveStatus(String stored, LocalDate startDate, LocalDate endDate) {
         if (!"active".equals(stored)) return stored;          // draft/terminated/renewed 及历史 expiring 透传
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
@@ -957,13 +989,20 @@ public class ContractService {
         return toDTO(c,
             t != null ? Map.of(t.getId(), t.getCompanyName()) : Map.of(),
             b != null ? Map.of(b.getId(), b.getName()) : Map.of(),
-            uFloor, extraUnitCounts(), termStats(), warnings);
+            uFloor, extraUnitCounts(c.getId()), termStats(c.getId()), warnings);
     }
 
-    /** 全表附加单元计数 contract_id→N(V58);list/detail/dtoOf 组装 DTO 前取一次。 */
+    /** 全表附加单元计数 contract_id→N(V58);list 组装 DTO 前取一次。 */
     private Map<Integer, Long> extraUnitCounts() {
         return contractUnits.selectList(null).stream().collect(
             Collectors.groupingBy(ContractUnit::getContractId, Collectors.counting()));
+    }
+
+    /** 单合同版(detail/dtoOf):toDTO 只读 getOrDefault(c.getId(),0L),一份合同没必要扫全表。
+     *  计数 0 时返空表,与全表版「该合同不出现在 groupingBy 结果里」同行为。 */
+    private Map<Integer, Long> extraUnitCounts(Integer contractId) {
+        long n = contractUnits.selectCount(new QueryWrapper<ContractUnit>().eq("contract_id", contractId));
+        return n == 0 ? Map.of() : Map.of(contractId, n);
     }
 
     /** 全表计费行统计 contract_id→[租金行数, 未绑单元的租金行数](2026-08-14 缺口筛选);手法同 extraUnitCounts。
@@ -972,10 +1011,25 @@ public class ContractService {
      *  电梯/变压器行照样回退);②billing_term_unit 的两个消费点(单元派生面积/按层取面积)也只读租金行绑定,
      *  把电梯行算作「未绑」会凭空多报一批根本不需要绑的合同。 */
     private Map<Integer, int[]> termStats() {
-        Set<Integer> bound = termUnits.selectList(null).stream()
-            .map(BillingTermUnit::getTermId).collect(Collectors.toSet());
+        return termStatsOf(terms.selectList(null), termUnits.selectList(null).stream()
+            .map(BillingTermUnit::getTermId).collect(Collectors.toSet()));
+    }
+
+    /** 单合同版(detail/dtoOf):toDTO 只读 getOrDefault(c.getId(),new int[2]),不必扫两张全表。
+     *  ⚠ 空集守卫:该合同无计费行时 termIds 为空,MP 的 in(空集) 生成 `IN ()` 是 SQL 语法错。
+     *  统计口径与全表版共用 termStatsOf —— 那段 BUILDING_RENT_KEYS 口径分叉了就对不上告警名单。 */
+    private Map<Integer, int[]> termStats(Integer contractId) {
+        List<ContractBillingTerm> ts = terms.selectList(
+            new QueryWrapper<ContractBillingTerm>().eq("contract_id", contractId));
+        List<Integer> tids = ts.stream().map(ContractBillingTerm::getId).toList();
+        return termStatsOf(ts, tids.isEmpty() ? Set.of()
+            : termUnits.selectList(new QueryWrapper<BillingTermUnit>().in("term_id", tids)).stream()
+                .map(BillingTermUnit::getTermId).collect(Collectors.toSet()));
+    }
+
+    private static Map<Integer, int[]> termStatsOf(List<ContractBillingTerm> ts, Set<Integer> bound) {
         Map<Integer, int[]> m = new HashMap<>();
-        for (ContractBillingTerm t : terms.selectList(null)) {
+        for (ContractBillingTerm t : ts) {
             if (!BUILDING_RENT_KEYS.contains(t.getFeeKey())) continue;
             int[] s = m.computeIfAbsent(t.getContractId(), k -> new int[2]);
             s[0]++;

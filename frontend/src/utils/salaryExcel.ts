@@ -1,12 +1,11 @@
-// 附表12 工资明细 Excel 导出(SheetJS)。列序对齐屏宽表(screen-schedule12.jsx 表头):
+// 附表12 工资明细 Excel 导出。列序对齐屏宽表(screen-schedule12.jsx 表头):
 // 序号·姓名·职务 + 月工资大类8(基本/岗位/绩效/全勤奖/技能/学历/其它/合计工资) + 补贴2 + 招商提成
 // + 考勤4(应出勤/请假/实出勤/全勤) + 应发 + 代缴代扣3 + 实发 + 签收 + 备注 + 末行本月合计。
+// 出流走 utils/sheet.ts 适配层(exceljs,内部懒加载,仅点「导出」才拉)。
+import { writeAoaWorkbook } from './sheet'
 import type { SalaryYearMonthDTO } from '../types/salary'
 
 export async function exportSalaryMonth(dto: SalaryYearMonthDTO): Promise<void> {
-  // 懒加载 SheetJS(~200KB):仅在用户点「导出」时才拉(对齐 pvExcel)。
-  const XLSX = await import('xlsx')
-
   const header = [
     '序号', '姓名', '职务',
     '基本', '岗位', '绩效奖金', '全勤奖', '技能津贴', '学历津贴', '其它津贴', '合计工资',
@@ -32,8 +31,6 @@ export async function exportSalaryMonth(dto: SalaryYearMonthDTO): Promise<void> 
     t.gross, t.social, t.tax, t.otherDeduct, t.net, '', '',
   ]
 
-  const ws = XLSX.utils.aoa_to_sheet([header, ...body, footer])
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, `${dto.year}年${dto.month}月`)
-  XLSX.writeFile(wb, `附表12-工资明细-${dto.year}年${dto.month}月.xlsx`)
+  await writeAoaWorkbook(`附表12-工资明细-${dto.year}年${dto.month}月.xlsx`,
+    [{ name: `${dto.year}年${dto.month}月`, aoa: [header, ...body, footer] }])
 }

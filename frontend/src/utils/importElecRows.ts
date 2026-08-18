@@ -7,7 +7,7 @@
 //   energy 记录:type=energy,cat=用电类别·unit=单位·qty=电量·price=不含税单价·rate=税率·period=用电时段(空→null)。
 //   basic  记录:行若「计费需量」非空(大工业行)→ 额外产 type=basic,demand=计费需量·price=单价(basic 列)·rate=同行税率(或 0)。
 // 派生(不含税金额/税额/价税合计/基本用电费)不导,后端读时算。
-import { parseYearMonth } from './parseYearMonth'
+import { excelSerialToDate, parseYearMonth } from './parseYearMonth'
 import type { ImportRec } from './importHeaderMatch'
 
 export interface ElecImportRow {
@@ -63,6 +63,13 @@ function parseInvDate(v: unknown): string | null {
   if (!s) return null
   const ym = parseYearMonth(v)
   if (!ym) return s
+  // Excel 日期序列号(单元格没带日期格式时 exceljs 出的是裸数字,如 45064)先还原成真日期 ——
+  // 兄弟解析器 parseYearMonth/parsePvReadDate 早就认序列号,只有这里不认:落到下面的正则全不匹配、
+  // day 静默补 1,开票日期会整列塌成当月 1 日(5/18 开的票记成 05-01),且不报错。
+  if (typeof v === 'number') {
+    const d = excelSerialToDate(v)
+    if (d) return `${ym.year}-${String(ym.month).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  }
   // 取「日」:YYYY-MM-DD / YYYY/M/D / m/d/yy 中位日字段;取不到补 01
   let day = 1
   let m = s.match(/^\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*(\d{1,2})/)        // YYYY-MM-DD

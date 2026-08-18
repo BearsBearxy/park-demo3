@@ -7,8 +7,9 @@ export function pickSheet(names: string[], re?: RegExp): string {
 
 <script setup lang="ts">
 // 通用「导入 Excel」右滑抽屉(共享引擎)— 1:1 移植 import-excel.jsx FPImportModal。
-// 两入口:① 上传 .xlsx/.xls/.csv(csv 用 FileReader+内置解析;xlsx 懒加载 SheetJS)
+// 两入口:① 上传 .xlsx/.csv(csv 用 FileReader+内置解析;xlsx 走 utils/sheet.ts 适配层)
 //        ② 从 Excel 粘贴(textarea,TSV/CSV)。两者都先解析成二维数组,再交各屏 parseRow 映射。
+// .xls 旧格式(BIFF)读不了:适配层底层是 exceljs,只认 xlsx/csv —— 给「另存为」指引,不静默失败。
 // 解析结果进预览表(前 6 行)+ 条数 + 错误/成功提示,确认后 onImport(剥 __preview)。
 import { ref, computed, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
@@ -158,24 +159,28 @@ function handleFile(file: File | undefined) {
     fr.readAsText(file, 'utf-8')
     return
   }
-  if (ext === 'xlsx' || ext === 'xls') {
+  if (ext === 'xlsx') {
     const fr = new FileReader()
     fr.onload = async () => {
       try {
-        const XLSX = await import('xlsx')   // 懒加载 ~200KB,仅上传 xlsx 才拉
-        // cellDates+raw:false+dateNF → 日期单元格出 'yyyy-mm-dd' 字符串(办公水电月份列需要),
-        // 数字也变字符串但下游 cleanNum/String 容错(台账/附表10/工资分段不受影响)。
-        const wb = XLSX.read(new Uint8Array(fr.result as ArrayBuffer), { type: 'array', cellDates: true })
-        const toMatrix = (name: string) => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' }) as string[][]
+        // 适配层懒加载(exceljs 自身也在其内部懒加载),并把日期格归一成 'yyyy-mm-dd'(办公水电月份列
+        // 需要)、数字出原始数字串(下游 cleanNum/String 容错,台账/附表10/工资分段不受影响)。
+        const { readAoaWorkbook } = await import('@/utils/sheet')
+        const sheets = await readAoaWorkbook(fr.result as ArrayBuffer)
         // parseWorkbook:全部 sheet 一并传入(多 sheet 分段);否则 sheetMatch 按名挑单表(未命中回退第一个)
-        if (props.parseWorkbook) { runWorkbook(wb.SheetNames.map(n => ({ name: n, matrix: toMatrix(n) }))); return }
-        mapMatrix(toMatrix(pickSheet(wb.SheetNames, props.sheetMatch)))
+        if (props.parseWorkbook) { runWorkbook(sheets); return }
+        const pick = pickSheet(sheets.map(s => s.name), props.sheetMatch)
+        mapMatrix(sheets.find(s => s.name === pick)?.matrix ?? [])
       } catch (e) { err.value = '文件解析失败:' + (e as Error).message }
     }
     fr.readAsArrayBuffer(file)
     return
   }
-  err.value = '仅支持 .xlsx / .xls / .csv 文件。'
+  if (ext === 'xls') {
+    err.value = '.xls 是旧格式,请用 Excel 打开后「另存为」.xlsx 再上传。'
+    return
+  }
+  err.value = '仅支持 .xlsx / .csv 文件。'
 }
 
 function doPaste() {
@@ -239,8 +244,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
              @drop="onDrop">
           <span class="fpimp-drop-ic"><component :is="iconFor('upload-cloud')" :size="24" /></span>
           <span class="fpimp-drop-t">{{ fileName || '拖拽 Excel 到此,或点击选择' }}</span>
-          <span class="fpimp-drop-d">{{ columnMap || parseWorkbook ? '支持 .xlsx/.xls/.csv · 自动识别表头行,前置分类列与合计·备注列自动忽略' + (parseWorkbook ? ';工作簿多表自动逐表解析' : '') : '支持 .xlsx / .xls / .csv · 读取第一个工作表,首行视为表头' }}</span>
-          <input ref="inputRef" type="file" accept=".xlsx,.xls,.csv" style="display:none"
+          <span class="fpimp-drop-d">{{ columnMap || parseWorkbook ? '支持 .xlsx/.csv · 自动识别表头行,前置分类列与合计·备注列自动忽略' + (parseWorkbook ? ';工作簿多表自动逐表解析' : '') : '支持 .xlsx / .csv · 读取第一个工作表,首行视为表头' }}</span>
+          <input ref="inputRef" type="file" accept=".xlsx,.csv" style="display:none"
                  @change="handleFile(($event.target as HTMLInputElement).files?.[0])" />
         </div>
         <div v-else>

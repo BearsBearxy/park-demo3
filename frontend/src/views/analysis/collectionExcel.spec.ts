@@ -2,15 +2,10 @@ import { describe, it, expect, vi } from 'vitest'
 import type { CollectionRow } from './finCashflow.logic'
 import type { TenantDTO } from '@/types/tenant'
 
-// capture the AOA passed to aoa_to_sheet without writing a file (同 pvExcel.spec 模式)
+// capture the AOA handed to the sheet adapter without writing a file (同 pvExcel.spec 模式)
 const aoaSpy = vi.fn((rows: unknown[][]) => ({ rows }))
-vi.mock('xlsx', () => ({
-  utils: {
-    aoa_to_sheet: (rows: unknown[][]) => aoaSpy(rows),
-    book_new: () => ({}),
-    book_append_sheet: () => {},
-  },
-  writeFile: () => {},
+vi.mock('@/utils/sheet', () => ({
+  writeAoaWorkbook: (_f: string, sheets: { aoa: unknown[][] }[]) => { aoaSpy(sheets[0].aoa) },
 }))
 
 import { exportCollectionList } from './collectionExcel'

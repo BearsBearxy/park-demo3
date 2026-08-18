@@ -53,7 +53,7 @@ class BuildingServiceTest {
         assertThat(d1.monthlyRent()).isEqualByComparingTo("13000"); // active+expiring
         assertThat(d1.tenantIds()).containsExactlyInAnyOrder(1,2);
         BuildingDTO d2 = r.stream().filter(x->x.id()==2).findFirst().orElseThrow();
-        assertThat(d2.occRate()).isEqualTo(0.0); // 停用
+        assertThat(d2.occRate()).isNull(); // 停用栋算不出出租率(§3),不得用 0 冒充
     }
 
     @Test void summaryRollsUp() {

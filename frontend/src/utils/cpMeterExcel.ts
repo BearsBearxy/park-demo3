@@ -2,7 +2,8 @@
 // 与 pvMeterExcel.ts 同构:导入 = 单 sheet 长表(一行 = 一桩一日),表头按名识别(matchByHeader,含别名/单位后缀前缀匹配);
 // 行级校验(日期可识别、三金额≥0)错误逐行报告不整批拦;未知桩名由后端行级 ImportError 报告。
 // 运营商列仅校验参考,捕获进预览但不上传(spec §3);电表用电量不进导入模板(页面手录)。
-// AOA 构建为纯函数(cpMeterExcel.spec.ts 锁定);xlsx 懒加载,仅点下载/导出才拉。
+// AOA 构建为纯函数(cpMeterExcel.spec.ts 锁定);出流走 utils/sheet.ts 适配层(exceljs,内部懒加载)。
+import { writeAoaWorkbook } from './sheet'
 import { matchByHeader, type ColumnMapEntry, type ImportRec } from './importHeaderMatch'
 import { parsePvReadDate } from './pvMeterExcel'   // ponytail: 日期双格式解析直接复用光伏的(同口径同 epoch)
 
@@ -64,10 +65,8 @@ export function buildCpMeterTemplateAoa(): (string | number)[][] {
 }
 
 export async function buildCpMeterTemplate(): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildCpMeterTemplateAoa()), '充电桩明细')
-  XLSX.writeFile(wb, '充电桩明细导入模板.xlsx')
+  await writeAoaWorkbook('充电桩明细导入模板.xlsx',
+    [{ name: '充电桩明细', aoa: buildCpMeterTemplateAoa() }])
 }
 
 // ── 月度汇总导出:一行一桩(含无数据桩零值行,方便盯漏录),末行合计 ──────
@@ -108,8 +107,6 @@ export function buildCpMeterMonthAoa(
 export async function exportCpMeterMonth(
   rows: CpMeterReadingLite[], stations: CpMeterStationLite[], year: number, month: number,
 ): Promise<void> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildCpMeterMonthAoa(rows, stations, year, month)), `${year}年${month}月`)
-  XLSX.writeFile(wb, `充电桩明细汇总-${year}年${String(month).padStart(2, '0')}月.xlsx`)
+  await writeAoaWorkbook(`充电桩明细汇总-${year}年${String(month).padStart(2, '0')}月.xlsx`,
+    [{ name: `${year}年${month}月`, aoa: buildCpMeterMonthAoa(rows, stations, year, month) }])
 }

@@ -1,15 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { PvYearDTO } from '../types/pv'
 
-// capture the AOA passed to aoa_to_sheet without writing a file
+// capture the AOA handed to the sheet adapter without writing a file
 const aoaSpy = vi.fn((rows: unknown[][]) => ({ rows }))
-vi.mock('xlsx', () => ({
-  utils: {
-    aoa_to_sheet: (rows: unknown[][]) => aoaSpy(rows),
-    book_new: () => ({}),
-    book_append_sheet: () => {},
-  },
-  writeFile: () => {},
+vi.mock('./sheet', () => ({
+  writeAoaWorkbook: (_f: string, sheets: { aoa: unknown[][] }[]) => { aoaSpy(sheets[0].aoa) },
 }))
 
 import { exportPvYear } from './pvExcel'

@@ -17,7 +17,11 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?未设置 DB_PASSWORD。请先运行 bash deploy/gen-env.sh <公网IP或域名> 生成 .env}
       MYSQL_DATABASE: park_demo3
+    # 慢查询日志(见 docs/OPS-SLOW-QUERY.md):正常查询在 2ms 级,阈值取 0.2s 是「已经离谱一个数量级」的线,
+    # 不是 MySQL 默认的 10s ——按默认这库永远打不出一条,等于没开。日志落在 datadir(mysql-data 卷)里,重启不丢。
+    # log_queries_not_using_indexes 会把小表全扫也算进去(本库小表全扫 <1ms,属正常),嫌吵就单独去掉这一个开关
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+             --slow_query_log=1 --long_query_time=0.2 --log_queries_not_using_indexes=1
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:

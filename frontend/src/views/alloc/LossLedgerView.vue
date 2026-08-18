@@ -12,6 +12,7 @@ import { paramsApi, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
@@ -24,7 +25,8 @@ const fmt = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 const fpct = (r: number | null | undefined) => (r == null ? '–' : (r * 100).toFixed(2) + '%')
 
-// ── 账期 + zone Segmented(只有一期/二期;宿舍无损耗单元) ──
+// ── 账期(整体数据驱动)+ zone Segmented(只有一期/二期;宿舍无损耗单元) ──
+// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
 const today = new Date()
 const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
@@ -54,9 +56,15 @@ async function loadMonth() {
 }
 onMounted(async () => {
   try {
-    dataYears.value = await allocApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }   // watch 触发 loadMonth
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([allocApi.years(), allocApi.lossMonths()])
+    dataYears.value = ys
+    // §4:year 与 month 一起 snap 到最后一个**有损耗快照**的账期(原来只 snap year、month 留系统当月,
+    // 拼出的账期没快照,一进来就是「本月未生成」的灰条)。判据走 /alloc/loss-months 直查快照表。
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
+    }
   } catch { /* 年份失败不阻断 */ }
   loadMonth()
 })

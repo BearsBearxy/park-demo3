@@ -35,6 +35,9 @@ app:
   viewer:
     # 只读账号(viewer/GET-only)：留空=不创建，与 prod 一致；dev 默认见 application-dev.yml
     password: ${VIEWER_PASSWORD:}
+  # SlowRequestFilter 的 warn 阈值(ms)。正常请求 2ms 级、最重的聚合接口 200ms 上下，
+  # 取 500 是「已经不像正常了」的线；线上想收紧临时改环境变量即可，不必重打包
+  slow-request-ms: ${SLOW_REQUEST_MS:500}
 management:
   endpoints:
     web:
@@ -43,6 +46,15 @@ management:
   endpoint:
     health:
       show-details: when-authorized   # 匿名探针只见 UP/DOWN；DB/磁盘等组件细节仅认证后可见
+  metrics:
+    distribution:
+      # http.server.requests 默认只有 count/sum/max，看不出分布——p95 被均值抹平正是慢请求藏身处。
+      # 开直方图后 /actuator/metrics 才能给出分位数；SLO 桶按「体感分级」取：
+      # 200ms 内=顺滑，500ms=SlowRequestFilter 的告警线，1s/3s=用户已在等
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 200ms,500ms,1s,3s
 logging:
   level:
     com.park.demo3: INFO

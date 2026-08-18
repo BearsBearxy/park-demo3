@@ -37,6 +37,7 @@ import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { PARAM_DEFS } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { useTabsStore } from '@/stores/tabs'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
@@ -67,7 +68,8 @@ const fmt2 = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
-// ── 账期(年数据驱动)+ zone Segmented(一期/二期/宿舍,无全部;一级页签不参与重置) ──
+// ── 账期(整体数据驱动)+ zone Segmented(一期/二期/宿舍,无全部;一级页签不参与重置) ──
+// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
 const today = new Date()
 const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
@@ -161,9 +163,17 @@ onMounted(async () => {
   loadMasters()
   if (applyHandoff()) { loadMonth(); return }   // 带账期来的:不再被「跳到最新年」覆盖
   try {
-    dataYears.value = await allocApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }   // watch 触发 loadMonth
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([allocApi.years(), allocApi.poolMonths()])
+    dataYears.value = ys
+    // §4:year 与 month 一起 snap 到最后一个**有池快照**的账期(原来只 snap year、month 留系统当月,
+    // 拼出的账期没快照,一进来就是「本月未生成」的灰条)。
+    // ⚠ 判据必须走 /alloc/pool-months(直查快照表),**不能拿 /alloc/pools 的 rows 判有无** ——
+    //   那是 alloc_rule 全表左连当月快照,任何月都非空,判出来恒为 true、默认月恒落 12 月。
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
+    }
   } catch { /* 年份失败不阻断 */ }
   loadMonth()
 })
@@ -239,11 +249,10 @@ async function onGenerate() {
 
 // ── 导出当月(纯函数 buildPoolExportAoa) ──
 async function onExport() {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
+  const { writeAoaWorkbook } = await import('@/utils/sheet')
   const aoa = buildPoolExportAoa(bands.value, ym.value, POOL_ZONE_LABEL[zone.value])
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '公共电核算')
-  XLSX.writeFile(wb, `公共电核算-${ym.value}-${POOL_ZONE_LABEL[zone.value]}.xlsx`)
+  await writeAoaWorkbook(`公共电核算-${ym.value}-${POOL_ZONE_LABEL[zone.value]}.xlsx`,
+    [{ name: '公共电核算', aoa }])
 }
 
 // ── §H3 二期 2023 冻结参数披露:V83 落在 alloc_cfg 的 rule:{id} 初始版本行(不随月份变=冻结)。

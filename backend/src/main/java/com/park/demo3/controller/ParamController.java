@@ -34,6 +34,10 @@ public class ParamController {
         return rows.stream().filter(r -> (scope == null || r.scope().startsWith(scope)) && (keys == null || keys.contains(r.key()))).toList();
     }
 
+    @Operation(summary = "有状态可看的账期('YYYY-MM' 升序;空表=[]);= status 的 poolSnapshotAt‖billBatchAt 非空月,"
+        + "池快照月 ∪ 出单月") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "状态条:本月电价 n/6、自快照以来改动数、池快照/催缴单批次时间、stale、其它受影响月") @GetMapping("/status")
     public ParamStatusDTO status(@RequestParam @Pattern(regexp = YM) String ym) {
         return svc.status(ym);

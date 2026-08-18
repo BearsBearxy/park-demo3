@@ -23,4 +23,10 @@ public interface AllocLossResultMapper extends BaseMapper<AllocLossResult> {
     default void deleteByYm(String ym) {
         delete(new QueryWrapper<AllocLossResult>().eq("ym", ym));
     }
+    // 有损耗快照的 distinct 账期升序('YYYY-MM')。同 AllocPoolResultMapper:/alloc/years 不是本表的年,
+    // 前端拿它顶掉逐月试探。零补 CHAR(7),Java 排序与 SQL ORDER BY 等价。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<AllocLossResult>().select("distinct ym"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 }

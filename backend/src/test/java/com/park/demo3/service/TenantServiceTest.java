@@ -51,8 +51,9 @@ class TenantServiceTest {
         Contract terminated = cWithUnit(1, 7, null, "terminated", 9999, 300);
         Mockito.when(tm.selectById(1)).thenReturn(tenant);
         Mockito.when(cm.selectList(any())).thenReturn(List.of(active, terminated));
-        Mockito.when(bm.selectList(null)).thenReturn(List.of(b(7, "一期A栋")));
-        Mockito.when(um.selectList(null)).thenReturn(List.of(u(3, 3, "301")));
+        // 楼栋/单元字典已按该租户合同上的 id 收敛(in 查),不再是 selectList(null) → 用 any() 匹配
+        Mockito.when(bm.selectList(any())).thenReturn(List.of(b(7, "一期A栋")));
+        Mockito.when(um.selectList(any())).thenReturn(List.of(u(3, 3, "301")));
 
         TenantDetailDTO d = svc.detail(1);
         assertThat(d.tenant().companyName()).isEqualTo("T1");

@@ -345,6 +345,13 @@ class ParamApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.stale").value(false))
                 .andExpect(jsonPath("$.data.pendingChanges").value(0))
                 .andExpect(jsonPath("$.data.poolSnapshotAt").isNotEmpty());
+        // /months 判据必须与 status 的 poolSnapshotAt‖billBatchAt 非空同源:刚重算的 2099-10 在内,
+        // 上面 status_priceOk_snapshotAbsent 证过无快照的 2099-04 不在(前端默认月取 max,不再逐月试探)
+        List<String> ms = JsonPath.read(body(mvc.perform(get("/api/params/months").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))), "$.data");
+        assertTrue(ms.contains(ym) && !ms.contains("2099-04"), "月全集应=池快照月∪出单月: " + ms);
+        assertEquals(ms.stream().distinct().sorted().toList(), ms, "账期须升序无重复: " + ms);
+        assertTrue(ms.stream().allMatch(m -> m.matches("\\d{4}-\\d{2}")), "账期格式须 YYYY-MM: " + ms);
         // 删被 2099-10 使用的月行 → 400;2099-11 月行未被使用 → 可删,回读值空
         put400("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"" + ym + "\",\"value\":null}");
         putRow("{\"key\":\"extra_qty\",\"scope\":\"" + pool + "\",\"acctMonth\":\"2099-11\",\"value\":-50}", null);

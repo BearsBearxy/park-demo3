@@ -23,4 +23,11 @@ public interface AllocPoolResultMapper extends BaseMapper<AllocPoolResult> {
     default void deleteByYm(String ym) {
         delete(new QueryWrapper<AllocPoolResult>().eq("ym", ym));
     }
+    // 有池快照的 distinct 账期升序('YYYY-MM')。⚠ 不能借 /alloc/years(那是 meter_reading∪alloc_result 的年),
+    // 也不能拿 /pools 的 rows 判有无 —— rows 是 alloc_rule 全库左连,任何月都非空(见 AllocService.pools 头注)。
+    // ym 是零补 CHAR(7) 且是 uk_pool_result 最左列,Java 排序与 SQL ORDER BY 等价。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<AllocPoolResult>().select("distinct ym"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 }

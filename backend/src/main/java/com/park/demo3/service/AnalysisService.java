@@ -54,13 +54,34 @@ public class AnalysisService {
             .stream().map(String::valueOf).toList();
     }
 
+    // s5 底带大合计行标签,与前端 anaData.ts 的 S5_GRAND_LABEL 同值;两处改一处必须改另一处。
+    private static final String S5_GRAND_LABEL = "运营费用总计";
+
+    /** 「某月有损益覆盖」的唯一判据(METRIC-SOURCE-SPEC §1.1/§4)。
+     *  本方法是前端 extractPnlBand(analysis/anaData.ts)取数条件的**逐字镜像**——规范 §4 要求
+     *  「判定某期有数据的判据必须与该屏实际消费的判据是同一个」,只要两边宽窄不一致,
+     *  默认期就会落到「有行但取不到数」的月:驾驶舱主区全「—」,看着像系统没数据。
+     *  旧判据「任一行该月非 null」正是这么炸的(s2 那 9 行光伏 detail/subtotal 让 2026-01 被判有数)。
+     *  s5 单列一支:前端只认「运营费用总计」这一行,不看 groupLabel —— 库里 groupLabel='' 的 s5 total
+     *  另有「修缮、改造费用」「管理费用总计」「财务费用合计」三行,按它们判覆盖同样会落空月。
+     *  groupLabel 用 equals("") 而非判空:前端 `r.groupLabel !== ''` 同样把 null 排除在底带外。 */
+    static boolean isPnlBandRow(PnlRow r) {
+        String label = r.getLabel() == null ? "" : r.getLabel();
+        if ("s5".equals(r.getSchedule()))
+            return "total".equals(r.getKind()) && label.startsWith(S5_GRAND_LABEL);
+        if (!"".equals(r.getGroupLabel())) return false;
+        if ("pnl".equals(r.getKind())) return true;
+        return "total".equals(r.getKind()) && (label.contains("收入") || label.contains("成本"));
+    }
+
     // ── GET /api/analysis/months:各源 distinct 月份 + 并集 ──
     public AnalysisMonthsDTO months() {
         Map<String, List<String>> sources = new LinkedHashMap<>();
 
-        // pnl:某月有覆盖 = 任一行该月列非 null(null=未录,区分 0)
+        // pnl:某月有覆盖 = 园区底带行该月列非 null(null=未录,区分 0)
         Set<String> pnlMonths = new TreeSet<>();
         for (PnlRow r : pnl.selectList(null)) {
+            if (!isPnlBandRow(r)) continue;
             BigDecimal[] ms = { r.getM1(), r.getM2(), r.getM3(), r.getM4(), r.getM5(), r.getM6(),
                                 r.getM7(), r.getM8(), r.getM9(), r.getM10(), r.getM11(), r.getM12() };
             for (int i = 0; i < 12; i++) if (ms[i] != null) pnlMonths.add(ym(r.getYear(), i + 1));

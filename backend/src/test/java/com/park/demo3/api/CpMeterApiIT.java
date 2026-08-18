@@ -385,6 +385,11 @@ class CpMeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0]").value(2023))
                 .andExpect(jsonPath("$.data[1]").value(2026));
+        // 同两条记录看 /months:本表按日记条无 ym 列,date_format 必须补零 —— 06 不能出成 6,
+        // 否则前端取 max 会把 '2026-1' 排到 '2026-12' 之后。containsExactly 一口气把格式/升序/无重复都钉住。
+        List<String> months = JsonPath.read(utf8(mvc.perform(get("/api/cp-meter/months").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)).andReturn()), "$.data");
+        assertThat(months).containsExactly("2023-06", "2026-01");
     }
 
     // ── ENERGY-ANALYSIS §4:readings/power-usage month 可空=全年(各月并集);power-usage 行含 month,

@@ -17,7 +17,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health        # 仅健康探针，移除 metrics/prometheus/info 的匿名暴露
+        # health(匿名可达，只回 UP/DOWN) + metrics(排障要看 http.server.requests 分位数)。
+        # metrics 并非匿名开放：SecurityConfig 里 /actuator/** 的 GET 要求已登录、非 GET 要 ADMIN，
+        # 只有 /actuator/health 在 permitAll 名单里——加 metrics 不动这条口径。
+        # 仍不放 prometheus/info：前者无抓取端，后者会漏构建信息。
+        include: health,metrics
   endpoint:
     health:
       show-details: never

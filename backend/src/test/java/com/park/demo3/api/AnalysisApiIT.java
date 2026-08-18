@@ -27,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AnalysisApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired com.park.demo3.mapper.PnlRowMapper pnlRows;   // pnl 无造数写 API,覆盖判据用例直接插行(@Transactional 回滚)
     private String token;
 
     @BeforeEach
@@ -129,6 +130,37 @@ class AnalysisApiIT extends AbstractMysqlIT {
         assertThat(sources.keySet()).containsExactly(
                 "pnl", "s10", "ledger", "pv", "elec", "charging", "office", "report");
         assertThat(sources.get("s10")).contains("2025-08");
+    }
+
+    // ── months.pnl 覆盖判据只认园区底带行(§1.1):明细行有数≠该月有损益 ──
+    // 库里 2026 年只有 9 行 s2 光伏明细,旧判据「任一行非 null」把 2026-01 判成覆盖月,
+    // 驾驶舱默认期落过去、营收/成本/利润全 —— 这条锁死判据与前端 extractPnlBand 同尺。
+    @Test
+    void months_pnlCoverageCountsOnlyBandRows() throws Exception {
+        // s1~s4:底带 total 还须 label 含「收入/成本」——与前端 extractPnlBand 同尺。
+        // 真实库里 group_label='' 的 s1~s4 total 行 label 全部含收入或成本(园区总租金收入/园区用电总成本…),
+        // 故这条 label 判据对真实数据零影响,只挡住「有个总计行但不是收入/成本带」这类取不到数的行。
+        insertPnlProbe("s2", 2097, "光伏发电", "total", "二期光伏发电小计");   // 有分组=明细带,不算覆盖
+        insertPnlProbe("s2", 2096, "", "total", "口径IT探针");                 // 底带但非收入/成本行,前端取不到→不算覆盖
+        insertPnlProbe("s2", 2098, "", "total", "园区用电总收入");             // 底带收入行,算覆盖
+        // s5 单列一支:前端只认「运营费用总计」。库里 group_label='' 的 s5 total 另有
+        // 「修缮、改造费用」「管理费用总计：」「财务费用合计：」三行 —— 按它们判覆盖,
+        // 默认期就会落到一个前端底带取不到数的月(= 立档 bug 换个位置复发)。
+        insertPnlProbe("s5", 2095, "", "total", "管理费用总计：");   // 非大合计行:不算覆盖
+        insertPnlProbe("s5", 2094, "", "total", "运营费用总计");     // 大合计行:算覆盖
+
+        Map<String, List<String>> sources = JsonPath.read(getOk("/api/analysis/months"), "$.data.sources");
+        assertThat(sources.get("pnl"))
+                .doesNotContain("2097-01", "2096-01", "2095-01")
+                .contains("2098-01", "2094-01");
+    }
+
+    private void insertPnlProbe(String schedule, int year, String groupLabel, String kind, String label) {
+        com.park.demo3.entity.PnlRow r = new com.park.demo3.entity.PnlRow();
+        r.setSchedule(schedule); r.setYear(year); r.setRowKey("r1"); r.setGroupLabel(groupLabel);
+        r.setLabel(label); r.setKind(kind); r.setSortOrder(1);
+        r.setM1(java.math.BigDecimal.ONE);
+        pnlRows.insert(r);
     }
 
     @Test

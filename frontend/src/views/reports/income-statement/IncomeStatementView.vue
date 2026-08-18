@@ -240,7 +240,8 @@ async function onExport() {
   if (!period.value || month.value == null) return
   try {
     const { exportIncomeStatement } = await import('@/utils/incomeStatementExcel')
-    exportIncomeStatement(
+    // 必须 await:出流改 exceljs 后写文件是异步的,裸调用的 rejection 会逃出这个 try/catch 变 unhandled
+    await exportIncomeStatement(
       flatRows.value, valueOf,
       companyName.value ?? '全部汇总', year.value, month.value,
     )

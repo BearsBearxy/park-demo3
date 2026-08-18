@@ -70,6 +70,8 @@ export const pvMeterApi = {
     http.put(`/pv-meter/stations/${id}`, req),
   // 有抄表记录的年份升序;空表=[](年选择器数据驱动)
   years: (): Promise<number[]> => http.get('/pv-meter/years'),
+  // 有抄表记录的账期全集('YYYY-MM' 升序);默认月取 max,替代逐月探测
+  months: (): Promise<string[]> => http.get('/pv-meter/months'),
   // 有抄表记录的站 409 守卫;不存在 404
   deleteStation: (id: number): Promise<void> => http.delete(`/pv-meter/stations/${id}`),
   readings: (year: number, month: number, stationId?: number): Promise<PvReadingDTO[]> =>

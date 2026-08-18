@@ -309,19 +309,17 @@ async function onImport(recs: ImportRec[], fileName: string) {
   }
 }
 
-// ── 导出 xlsx(懒加载 SheetJS,列序对齐屏表:分组|科目细分|12月|本年合计|备注) ──
+// ── 导出 xlsx(适配层内部懒加载 exceljs,列序对齐屏表:分组|科目细分|12月|本年合计|备注) ──
 async function onExport() {
   if (!data.value || year.value == null) return
   try {
-    const XLSX = await import('xlsx')
+    const { writeAoaWorkbook } = await import('@/utils/sheet')
     const header = [config.groupCol, '科目细分', ...Array.from({ length: 12 }, (_, i) => `${i + 1}月`), '本年合计', '备注']
     const body = displayRows.value.map(r => [
       r.groupLabel, r.label, ...r.m.map(v => v ?? ''), rowYearTotal(r.m) ?? '', r.note ?? '',
     ])
-    const ws = XLSX.utils.aoa_to_sheet([header, ...body])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `${year.value}年`)
-    XLSX.writeFile(wb, `${config.title.replace(/\s*·\s*/, '-')}-${year.value}年.xlsx`)
+    await writeAoaWorkbook(`${config.title.replace(/\s*·\s*/, '-')}-${year.value}年.xlsx`,
+      [{ name: `${year.value}年`, aoa: [header, ...body] }])
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导出失败')
   }

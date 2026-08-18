@@ -121,6 +121,19 @@ class AllocApiIT extends AbstractMysqlIT {
         // 年份数据驱动含 2099
         mvc.perform(get("/api/alloc/years").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[?(@==2099)]").exists());
+        // 账期数据驱动:池屏默认月靠这个取 max —— 不能拿 /pools 的 rows 判有无(config 左连,任何月都非空)
+        assertMonths("/api/alloc/pool-months", "2099-01");
+    }
+
+    // /months 系列的三条通用断言:格式 YYYY-MM、升序、无重复(去重排序后须与原样等长同序),外加本例月在内
+    private void assertMonths(String path, String mustContain) throws Exception {
+        java.util.List<String> ms = JsonPath.read(mvc.perform(get(path).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)).andReturn().getResponse().getContentAsString(), "$.data");
+        org.junit.jupiter.api.Assertions.assertEquals(ms.stream().distinct().sorted().toList(), ms,
+                "账期须升序无重复: " + ms);
+        org.junit.jupiter.api.Assertions.assertTrue(ms.stream().allMatch(m -> m.matches("\\d{4}-\\d{2}")),
+                "账期格式须 YYYY-MM: " + ms);
+        org.junit.jupiter.api.Assertions.assertTrue(ms.contains(mustContain), path + " 应含 " + mustContain + ": " + ms);
     }
 
     // ── 三态挂零:绑定表本月全部停用 → 池行空、无"缺读数/缺抄"假警报(原册对停用表=挂零陈列);
@@ -781,6 +794,8 @@ class AllocApiIT extends AbstractMysqlIT {
         org.junit.jupiter.api.Assertions.assertNull(rate.get(0));
         mvc.perform(get("/api/alloc/result").param("ym", "2099-10").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[?(@.feeKey=='share_elec_loss')]").isEmpty());
+        // 损耗屏默认月:查 alloc_loss_result 自己的账期,不借 /alloc/years(那是抄表年∪结果年)
+        assertMonths("/api/alloc/loss-months", "2099-10");
     }
 
     // ══ V69 池定位化(用户 2026-07-30 拍板:池名自动生成/受益人勾选+按月留痕/已分摊盈亏首次落库) ══

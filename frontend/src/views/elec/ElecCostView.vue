@@ -24,6 +24,7 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
 import { buildYearOptions } from '@/utils/yearGate'
+import { latestPeriodOf } from '@/utils/defaultPeriod'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
@@ -37,7 +38,8 @@ const pad2 = (n: number) => String(n).padStart(2, '0')
 const fq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// ── 年月选择(years 数据驱动,同 PvMeterView):选项=有数据年∪当前年,初值=最新有数据年 ──
+// ── 年月选择(整体数据驱动,同 PvMeterView):选项=有数据年∪当前年,初值=最后一个有费项行的账期 ──
+// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
 const today = new Date()
 const year = ref(today.getFullYear())
 const month = ref(today.getMonth() + 1)
@@ -56,6 +58,7 @@ const cfgs = ref<ElecPriceCfgDTO[] | null>(null)
 
 async function loadMeters() { meters.value = await elecCostApi.meters() }
 async function loadYears() {
+  // 只刷年下拉(导入后调用);默认账期由 onMounted 定,这里不碰 year/month
   try { dataYears.value = await elecCostApi.years() } catch { /* 选项由 ∪ 当前年兜底 */ }
 }
 // 竞态守卫:快速切年月只接受最新一次请求(防乱序落表)
@@ -76,11 +79,17 @@ async function reloadMetrics() {
 }
 onMounted(async () => {
   loadMeters()
-  // 先拉数据年份定位初始年:最新有数据年;改年经 watch 触发 loadMonth,未改则本函数兜底首载
+  // 先拉数据年份定位初始账期:§4 要求 year 与 month 一起 snap 到最后一个有费项行的账期
+  // (原来只 snap year、month 留系统当月,拼出的账期一行费项都没有,进来整表是空格)。
+  // 改了年月经 watch 触发 loadMonth,未改则本函数兜底首载。
   try {
-    dataYears.value = await elecCostApi.years()
-    const latest = dataYears.value[dataYears.value.length - 1]
-    if (latest && latest !== year.value) { year.value = latest; return }
+    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
+    const [ys, months] = await Promise.all([elecCostApi.years(), elecCostApi.months()])
+    dataYears.value = ys
+    const p = latestPeriodOf(months)
+    if (p && (p.year !== year.value || p.month !== month.value)) {
+      year.value = p.year; month.value = p.month; return
+    }
   } catch { /* years 失败不阻断 */ }
   loadMonth()
 })

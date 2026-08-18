@@ -167,6 +167,10 @@ class ElecCostApiIT extends AbstractMysqlIT {
         // 年份数据驱动
         mvc.perform(get("/api/elec-cost/years").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[0]").value(2099));
+        // 账期数据驱动(前端默认月取 max,顶掉 12→1 逐月试探):账期列是 acct_month 不是 ym
+        List<String> months = JsonPath.read(utf8(mvc.perform(get("/api/elec-cost/months").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0)).andReturn()), "$.data");
+        assertThat(months).containsExactly("2099-01").allMatch(m -> m.matches("\\d{4}-\\d{2}"));
 
         // 值域校验:费项不适用类型 / 费项不支持拆分 → 400
         mvc.perform(put("/api/elec-cost/entries").header("Authorization", auth())

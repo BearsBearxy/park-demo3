@@ -1131,6 +1131,10 @@ public class BillNoticeService {
     }
 
     // ══════════ 读侧 ══════════
+
+    // 有单的账期升序,空表=[](前端默认月直接取 max,不再拿 /meters/years 的年再逐月试探 —— 抄表年≠出单年)
+    public List<String> months() { return notices.selectDistinctYms(); }
+
     public List<BillNoticeDTO> list(String ym) {
         requireYm(ym);
         List<BillNotice> ns = notices.selectByYm(ym);
@@ -1148,7 +1152,7 @@ public class BillNoticeService {
     public BillNoticeDetailDTO detail(Integer id) {
         BillNotice n = notices.selectById(id);
         if (n == null) throw new BizException(ResultCode.NOT_FOUND, "催缴单不存在");
-        Names names = names();
+        Names names = names(n.getTenantId(), n.getPayCompanyId());
         List<BillNoticeLine> raw = noticeLines.selectByNotice(id);
         // 池名 join(S5 §3.2):share 行行名=「费项·池名」;池已删则 null 原样降级
         Set<Integer> rids = raw.stream().map(BillNoticeLine::getPoolRuleId)
@@ -1257,8 +1261,18 @@ public class BillNoticeService {
             "void".equals(to) ? "该单已作废" : "仅草稿单可签发,当前状态=" + n.getStatus());
         n.setStatus(to);
         notices.updateById(n);
-        return toDTO(n, names(), (int) (long) noticeLines.selectCount(
+        return toDTO(n, names(n.getTenantId(), n.getPayCompanyId()), (int) (long) noticeLines.selectCount(
             new QueryWrapper<BillNoticeLine>().eq("notice_id", id)));
+    }
+
+    /** 单据路径(detail/transition)只渲染一张单,names 的两个 map 只被 get(n.getTenantId())/
+     *  get(n.getPayCompanyId()) 读一次 —— 点查两条即可,不必为一张单把租户表+公司表整表拉回来。
+     *  查无(租户被删/未指定收款公司)给空表,与全表字典 miss 同为 null。 */
+    private Names names(Integer tenantId, Integer companyId) {
+        Tenant t = tenantId == null ? null : tenants.selectById(tenantId);
+        ManagementCompany c = companyId == null ? null : companies.selectById(companyId);
+        return new Names(t == null ? Map.of() : Map.of(t.getId(), t.getCompanyName()),
+                         c == null ? Map.of() : Map.of(c.getId(), c.getName()));
     }
 
     private record Names(Map<Integer, String> tenant, Map<Integer, String> company) {}

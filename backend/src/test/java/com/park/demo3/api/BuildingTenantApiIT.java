@@ -35,7 +35,7 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void buildings_returnsListAndStoppedBuildingHasZeroOccRate() throws Exception {
+    void buildings_returnsListAndStoppedBuildingHasNullOccRate() throws Exception {
         String body = mvc.perform(get("/api/buildings")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -45,10 +45,10 @@ class BuildingTenantApiIT extends AbstractMysqlIT {
         List<Object> data = JsonPath.read(body, "$.data");
         assertThat(data.size()).isGreaterThanOrEqualTo(6);
 
-        // 停用楼栋 (status=0) occRate 必须为 0
+        // 停用楼栋 (status=0) occRate 必须为 null(§3:算不出来要说算不出来,不能拿 0 冒充「真的 0%」)
         List<Double> occRates = JsonPath.read(body, "$.data[?(@.status==0)].occRate");
         assertThat(occRates).isNotEmpty();
-        assertThat(occRates.get(0)).isEqualTo(0.0);
+        assertThat(occRates).containsOnlyNulls();
     }
 
     @Test

@@ -10,7 +10,7 @@ import Button from '@/components/ds/Button.vue'
 import ContractNewDialog from '@/views/contracts/ContractNewDialog.vue'
 import { buildingApi } from '@/api/building'
 import { fpMoney, fpWan } from '@/utils/money'
-import { leasedAreaShow } from '@/types/building'
+import { leasedAreaShow, occPct, OCC_NULL_WHY } from '@/types/building'
 import type { BuildingDTO, BuildingDetailDTO, BuildingUpdateReq, UnitDTO } from '@/types/building'
 import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
 
@@ -207,11 +207,12 @@ async function onContractCreated() {
 
     <!-- A: 6 FPStat grid -->
     <div v-if="b" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-      <!-- 在租面积回落合同派生汇总(S15 服务刀字段):单元面积Σ恒0不再显示 0 / 可租 -->
+      <!-- 在租面积回落合同派生汇总(S15 服务刀字段):单元面积Σ恒0不再显示 0 / 可租
+           出租率算不出来时(§3)副标让位给缺因:此时分母本就缺失,面积口径会显示成「x / 0 ㎡」,更没信息量 -->
       <FPStat
         label="出租率" tint="blue"
-        :value="b.status === 0 ? '停用' : b.occRate + '%'"
-        :sub="`${leasedAreaShow(b).toLocaleString('en-US')} / ${b.rentableArea.toLocaleString('en-US')} ㎡`"
+        :value="b.status === 0 ? '停用' : occPct(b.occRate)"
+        :sub="b.occRate == null ? OCC_NULL_WHY : `${leasedAreaShow(b).toLocaleString('en-US')} / ${b.rentableArea.toLocaleString('en-US')} ㎡`"
       />
       <FPStat
         label="在租单元" tint="slate"

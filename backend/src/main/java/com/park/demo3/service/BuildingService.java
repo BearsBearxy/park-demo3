@@ -36,7 +36,8 @@ public class BuildingService {
     static String kind(int phase) { return phase == 4 ? "宿舍" : "厂房"; }
     static final Set<String> RENT = Set.of("active","expiring");            // 计租相关
 
-    /** 单元派生状态: 取该单元合同的展示态(§5.1 日期派生,到期不再占用),active→occupied/expiring→expiring/draft→reserved,无→vacant */
+    /** 单元占用态的**唯一判据**(METRIC-SOURCE-SPEC §1.1 登记册):
+     *  取该单元合同的展示态(§5.1 日期派生,到期不再占用),active→occupied/expiring→expiring/draft→reserved,无→vacant */
     static String unitStatus(Integer unitId, List<Contract> cs, Map<Integer, Set<Integer>> links) {
         String best = "vacant";
         for (Contract c : cs) {
@@ -118,6 +119,16 @@ public class BuildingService {
         return area;
     }
 
+    /** 出租率的唯一判据(METRIC-SOURCE-SPEC §1/§3):分母缺失或 ≤0、分子>分母(数据自相矛盾)→ null=「算不出来」。
+     *  禁止用 0 兼表「真的 0%」与「没法算」;更禁止 Math.min 钳位——原来全园分子>分母被钳成 100%,
+     *  同屏并存「全园 100%」与「每栋 0%」与「空置 173/373」,钳出来的假数比报错难发现得多。 */
+    static Double occRateOf(BigDecimal leased, BigDecimal rentable) {
+        if (rentable == null || rentable.signum() <= 0) return null;
+        if (leased == null || leased.compareTo(rentable) > 0) return null;
+        return leased.divide(rentable, 4, RoundingMode.HALF_UP)
+            .multiply(BigDecimal.valueOf(1000)).setScale(0, RoundingMode.HALF_UP).doubleValue() / 10.0;
+    }
+
     BuildingDTO toDTO(Building b, List<Unit> us, List<Contract> cs, Map<Integer, Set<Integer>> links,
                       Map<Integer, BigDecimal> unitAreas) {
         boolean stopped = b.getStatus() == 0;
@@ -133,9 +144,7 @@ public class BuildingService {
                 default: vac++;
             }
         }
-        double occRate = stopped || b.getRentableArea().signum()==0 ? 0.0
-            : Math.min(100.0, leased.divide(b.getRentableArea(), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(1000)).setScale(0, RoundingMode.HALF_UP).doubleValue() / 10.0);
+        Double occRate = stopped ? null : occRateOf(leased, b.getRentableArea());   // 停用栋前端渲染「停用」,不需要百分比
         // V59:整体承租(master_lease)与散户空间重叠 → 楼栋卡月租金/户数/面积汇总均排除,防双算
         // 状态取展示态(日期派生):到期合同不再计入在租金额/户数
         // S15:金额/户数/面积汇总仍按主栋合同(跨栋附加单元只在目标栋显示占用,不得双算钱)
@@ -347,13 +356,11 @@ public class BuildingService {
         List<BuildingDTO> all = list();
         int stopped = (int) all.stream().filter(d -> d.status()==0).count();
         BigDecimal rentable = all.stream().map(BuildingDTO::rentableArea).reduce(BigDecimal.ZERO, BigDecimal::add);
-        // 占用率仅按启用楼栋(status!=0)计：与单楼栋 toDTO「停用即 occRate=0」口径一致，
+        // 占用率仅按启用楼栋(status!=0)计：与单楼栋 toDTO「停用即 occRate=null」口径一致，
         // 否则停用楼栋的已租面积会进入全局分子分母，造成全局与单楼栋口径不一致
         BigDecimal occRentable = all.stream().filter(d -> d.status()!=0).map(BuildingDTO::rentableArea).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal occLeased = all.stream().filter(d -> d.status()!=0).map(BuildingDTO::leasedArea).reduce(BigDecimal.ZERO, BigDecimal::add);
-        double occ = occRentable.signum()==0 ? 0.0
-            : Math.min(100.0, occLeased.divide(occRentable,4,RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(1000))
-                .setScale(0,RoundingMode.HALF_UP).doubleValue()/10.0);
+        Double occ = occRateOf(occLeased, occRentable);   // 与单栋同一函数,不再各写一遍公式
         int vacant = all.stream().mapToInt(BuildingDTO::vacantCount).sum();
         int unitCount = all.stream().mapToInt(BuildingDTO::unitCount).sum();
         return new BuildingSummaryDTO(all.size(), stopped, rentable, occ, vacant, unitCount);

@@ -25,6 +25,13 @@ public interface MeterReadingMapper extends BaseMapper<MeterReading> {
         return selectObjs(new QueryWrapper<MeterReading>().select("distinct left(ym,4)"))
             .stream().map(o -> Integer.parseInt(String.valueOf(o))).sorted().toList();
     }
+    // 有读数的 distinct 账期升序('YYYY-MM')。前端「最新有数月」原先靠 12→1 逐月试探,
+    // 本表最新只到 2024-02 时首载要空打 11 次;这里一次给全集,前端取 max 即可。
+    // ym 是零补 CHAR(7),Java 串排序与 SQL ORDER BY 结果一致;走 uk(meter_id,ym) 的松散索引扫描。
+    default List<String> selectDistinctYms() {
+        return selectObjs(new QueryWrapper<MeterReading>().select("distinct ym"))
+            .stream().map(String::valueOf).sorted().toList();
+    }
 
     // 导入攒批 upsert(2026-08-11 审计 P3 纯 I/O 优化):走 uk_meter_reading(meter_id,ym),
     // 一行一条顶掉原先「先 DELETE 再 INSERT」两条单发 —— 整册 1134 行 = 2268 条往返、

@@ -1,4 +1,5 @@
 package com.park.demo3.service;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.AutoLinkResultDTO;
@@ -187,9 +188,11 @@ public class MeterBindingService {
             for (String n : TenantService.matchNames(t))
                 byName.computeIfAbsent(n, k -> new ArrayList<>()).add(t);
         int linked = 0, skipped = 0;
-        for (Meter m : meters.selectList(null)) {
-            if (!"tenant".equals(m.getOwnership()) || m.getTenantId() != null
-                || meaningless(m.getTenantName())) continue;   // 仅待核表
+        // 收敛下推:前两个 continue 条件即 WHERE(被它们跳过的行既不进 linked 也不进 skipped,计数不变);
+        // meaningless() 含占位名集合判断,留在 Java 侧不下推
+        for (Meter m : meters.selectList(new QueryWrapper<Meter>()
+                .eq("ownership", "tenant").isNull("tenant_id"))) {
+            if (meaningless(m.getTenantName())) continue;   // 仅待核表
             List<Tenant> hit = byName.get(m.getTenantName().trim());
             if (hit != null && hit.size() == 1) {
                 m.setTenantId(hit.get(0).getId());

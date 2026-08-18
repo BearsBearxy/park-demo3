@@ -498,6 +498,10 @@ public class AllocService {
         return new ArrayList<>(ys);
     }
 
+    // ── 账期全集:两屏各查自己的快照表,不像 years() 那样并起来 —— 池屏与损耗屏的「最新有数月」可以不同月 ──
+    public List<String> poolMonths() { return poolResults.selectDistinctYms(); }
+    public List<String> lossMonths() { return lossResults.selectDistinctYms(); }
+
     // ── 规则 CRUD(整体保存:rule+meterIds+members 随行覆盖) ──
     // S21 §2.4:DTO 的 coefficient/extraQty 回传 alloc_cfg rule:{id} 版本链站在 ym 的生效值(ym 空=初始版本 '' 行,
     // 即旧「默认列」语义);两列不再存 alloc_rule。

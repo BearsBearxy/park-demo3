@@ -30,6 +30,10 @@ public class BillNoticeController {
         return svc.generate(ym);
     }
 
+    // 放在 /{id} 之前只是为了读起来顺:Spring 的路径匹配字面段优先于模板段,顺序不影响解析
+    @Operation(summary = "有单的账期('YYYY-MM' 升序;空表=[],默认月数据驱动)") @GetMapping("/months")
+    public List<String> months() { return svc.months(); }
+
     @Operation(summary = "某月催缴单列表(全状态;含租户/收款公司名与行数)") @GetMapping
     public List<BillNoticeDTO> list(@RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym) {
         return svc.list(ym);

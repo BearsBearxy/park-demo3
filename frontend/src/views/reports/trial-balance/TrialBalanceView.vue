@@ -219,17 +219,15 @@ function bulkRemove() {
 async function onExport() {
   if (!period.value || month.value == null) return
   try {
-    const XLSX = await import('xlsx')
+    const { writeAoaWorkbook } = await import('@/utils/sheet')
     const header = ['科目代码', '科目名称', ...TB_FIELDS.map(f => `${f.group}(${f.side})`)]
     const body = accounts.value.map(a => [
       a.code ?? '', a.label,
       ...TB_FIELDS.map(f => getLeaf(a.rowKey, f.key)),
     ])
     const foot = ['', '合计', ...TB_FIELDS.map(f => totals.value[f.key])]
-    const ws = XLSX.utils.aoa_to_sheet([header, ...body, foot])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `${year.value}年${month.value}月`)
-    XLSX.writeFile(wb, `科目余额表-${companyName.value ?? '全部汇总'}-${year.value}年${month.value}月.xlsx`)
+    await writeAoaWorkbook(`科目余额表-${companyName.value ?? '全部汇总'}-${year.value}年${month.value}月.xlsx`,
+      [{ name: `${year.value}年${month.value}月`, aoa: [header, ...body, foot] }])
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导出失败')
   }
