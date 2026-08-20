@@ -219,7 +219,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="t">{{ sel?.name ?? '—' }} · 电/水费逐月</span>
             <span class="hint">红点 = 环比突变 >±{{ anaSettings.spikeTh }}%(相邻有数月)· 灰带 = 园区租户电费 P25~P75</span>
           </div>
-          <AnaEChart v-if="energyOption" :option="energyOption" :height="252" />
+          <AnaEChart v-if="energyOption" :option="energyOption" :height="250" />
           <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
         </div>
 
@@ -228,7 +228,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="t">应收 vs 实收</span>
             <span class="hint">台账覆盖 {{ ledBars?.yms.length ?? 0 }} 期 · 跨公司求和</span>
           </div>
-          <AnaEChart v-if="ledgerOption" :option="ledgerOption" :height="188" />
+          <AnaEChart v-if="ledgerOption" :option="ledgerOption" :height="200" />
           <AnaEmpty v-else label="该租户无台账记录" hint="应收/实收来自月度台账" to="/ledger" to-text="去台账录入" />
         </div>
 

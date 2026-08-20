@@ -173,7 +173,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">月度费用构成 · {{ year }}年</span>
             <span class="hint">覆盖 {{ covered.length }} 期(万元)· 环比=总计上月虚线</span>
           </div>
-          <AnaEChart :option="mainOpt" :height="298" />
+          <AnaEChart :option="mainOpt" :height="300" />
         </div>
 
         <!-- s4:本期费用结构环 -->
@@ -182,7 +182,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">费用结构 · {{ isMonth ? '本月' : '本年' }}</span>
             <span class="hint">合计 {{ money(total) }}</span>
           </div>
-          <AnaEChart v-if="structItems.length" :option="donutOpt" :height="298" />
+          <AnaEChart v-if="structItems.length" :option="donutOpt" :height="300" />
           <AnaEmpty v-else label="当期无费用数据" />
         </div>
 
@@ -192,7 +192,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">科目 Top10</span>
             <span class="hint">本期金额降序 · 条色随组 · 万元</span>
           </div>
-          <AnaEChart v-if="tops.length" :option="topOpt" :height="260" />
+          <AnaEChart v-if="tops.length" :option="topOpt" :height="250" />
           <AnaEmpty v-else label="当期无费用科目明细" />
         </div>
 

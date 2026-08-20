@@ -17,7 +17,20 @@ interface ChartInst {
   on(event: string, handler: (params: unknown) => void): void
 }
 
-const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 260 })
+/** height 只能取这 5 档(2026-08-20 立)。改前 59 张图用了 **24 种**高度(286/290/298/300/304
+ *  这样 18px 内挤 5 个值),每屏各自目测拍数;`.av2-grid` 会把同一行的卡拉成等高,于是高度不同
+ *  变成「图下方空白不均」——并排两张卡,一张图填满、一张图上面飘着下面一大块空。
+ *
+ *    xs 170  全宽条带(能耗板块损益 / 板块月度趋势)
+ *    sm 200  小环 / 仪表 / 集中度
+ *    md 250  常规单图
+ *    lg 300  主图 / 瀑布 / 帕累托 / 散点
+ *    xl 440  多行横条(Top20)与需要纵向空间的散点
+ *
+ *  ⚠ 真正的约束是**同一行**,不是同一栅格类 —— s8 与 s4 会并排在一行(8+4=12),
+ *    这两张的高度必须相等。加新图时按「它和谁并排」选档,别按「它是几列宽」选。
+ *  自查:scratchpad/row_check.py 模拟 12 列换行,逐行比高度,应输出 0。 */
+const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 250 })
 const emit = defineEmits<{ 'chart-click': [params: unknown] }>()
 
 const el = ref<HTMLDivElement | null>(null)

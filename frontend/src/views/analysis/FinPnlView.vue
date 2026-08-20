@@ -249,7 +249,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">利润形成瀑布 · {{ year || '—' }} 全年累计</span>
             <span class="hint">园区口径 · 蓝＝加项 / 红＝减项 · 点击柱→右侧科目 12 月趋势</span></div>
-          <AnaEChart v-if="wf.length" :option="wfOpt" :height="286" @chart-click="onWfClick" />
+          <AnaEChart v-if="wf.length" :option="wfOpt" :height="300" @chart-click="onWfClick" />
           <AnaEmpty v-else-if="ready" label="该年度无损益附表数据" hint="录入附表1-5(租金/用电/用水/运管/费用)后呈现利润拆解"
             to="/rent-pnl" toText="去录入损益附表" />
         </div>
@@ -259,7 +259,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
           <div class="av2-card-h"><span class="t">{{ subject }} · 12 月趋势</span>
             <span class="hint">覆盖 {{ mLabels.length }} 期 · 万元</span></div>
           <template v-if="mLabels.length">
-            <AnaEChart :option="trendOpt" :height="286" />
+            <AnaEChart :option="trendOpt" :height="300" />
             <AnaMethodNote v-if="cmp.mode.value === 'budget' && budgetWan == null">
               「{{ subject }}」无年度预算基准(budget_row 关键行仅收入/利润级)→ 预算虚线不出。</AnaMethodNote>
             <AnaMethodNote v-else-if="cmp.mode.value === 'budget'">预算虚线＝budget_row {{ year }} 年值 ÷ 12(月均基准)。</AnaMethodNote>
@@ -272,7 +272,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
         <div v-if="mLabels.length" class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">收入结构</span>
             <span class="hint">园区口径 · 附表1-4 收入构成 · 万元</span></div>
-          <AnaEChart :option="structOpt" :height="236" />
+          <AnaEChart :option="structOpt" :height="250" />
         </div>
 
         <!-- 科目占比 s4(法人口径,SVG 条形原语保留) -->

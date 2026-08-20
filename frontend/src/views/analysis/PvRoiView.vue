@@ -316,7 +316,7 @@ const revOpt = computed<object>(() => ({
           <!-- 第二排 span8:分期收益柱(点柱→明细卡) -->
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint">点击柱子查看该期月度明细</span></div>
-            <AnaEChart :option="phaseOpt" :height="272" @chart-click="onPhaseClick" />
+            <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
           </div>
 
           <!-- span4:选中期月度明细卡 -->
@@ -388,7 +388,7 @@ const revOpt = computed<object>(() => ({
               <span class="hint">{{ mYear }} 年累计 · {{ eff.capN }}/{{ mStations.length }} 站已录装机容量</span>
             </div>
             <template v-if="eff.rows.length">
-              <AnaEChart :option="effOpt" :height="252" />
+              <AnaEChart :option="effOpt" :height="250" />
               <p v-if="eff.noCap.length" class="roi2-nocap">未录装机容量不入图:{{ eff.noCap.join('、') }}</p>
             </template>
             <AnaEmpty v-else label="装机容量未录" hint="效率 = 发电总量 ÷ 装机容量,请在分栋抄表屏行内维护各站容量"
@@ -405,7 +405,7 @@ const revOpt = computed<object>(() => ({
                   @update:model-value="selStation = +$event" />
               </div>
             </div>
-            <AnaEChart v-if="trendHasData" :option="trendOpt" :height="252" />
+            <AnaEChart v-if="trendHasData" :option="trendOpt" :height="250" />
             <AnaEmpty v-else label="装机容量未录" hint="加权效率需至少一站录有装机容量"
               to="/pv-income" to-text="去维护装机容量" />
           </div>
@@ -419,7 +419,7 @@ const revOpt = computed<object>(() => ({
                 <button :class="{ on: consBy === 'station' }" @click="consBy = 'station'">按站</button>
               </span>
             </div>
-            <AnaEChart :option="consOpt" :height="240" />
+            <AnaEChart :option="consOpt" :height="250" />
           </div>
 
           <!-- 消纳收益:快照单价口径 vs 上网参数价 -->
@@ -428,7 +428,7 @@ const revOpt = computed<object>(() => ({
               <span class="t">各站消纳收益 vs 上网收益</span>
               <span class="hint">万元 · 快照单价口径 · 上网 ×{{ gridPrice }} 元</span>
             </div>
-            <AnaEChart :option="revOpt" :height="240" />
+            <AnaEChart :option="revOpt" :height="250" />
           </div>
         </div>
 

@@ -237,7 +237,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">运营商收益占比</span>
               <span class="hint">全年收益 元 · 点图深链分桩明细</span>
             </div>
-            <AnaEChart v-if="donutRows.length" :option="donutOpt" :height="232" @chart-click="goDetail" />
+            <AnaEChart v-if="donutRows.length" :option="donutOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年收益均为 0" hint="有充电记录但收益未填,先到分桩明细补录" :to="'/' + navValue" to-text="去补录" />
           </div>
 
@@ -247,7 +247,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">运营商手续费率</span>
               <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
             </div>
-            <AnaEChart v-if="feeRows.length" :option="feeOpt" :height="232" @chart-click="goDetail" />
+            <AnaEChart v-if="feeRows.length" :option="feeOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年无可算费率" hint="收益与手续费全为 0,费率不可算" />
           </div>
 
@@ -257,7 +257,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">电表损耗率趋势 · 每运营商</span>
               <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
             </div>
-            <AnaEChart v-if="hasLoss" :option="lossOpt" :height="216" @chart-click="goDetail" />
+            <AnaEChart v-if="hasLoss" :option="lossOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年电表用电量未录入" hint="到分桩明细「电表与损耗」小节按运营商按月录入电表量后可算损耗率"
               :to="'/' + navValue" to-text="去录电表量" />
           </div>

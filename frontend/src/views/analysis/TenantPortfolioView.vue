@@ -263,7 +263,7 @@ const listRows = computed(() => {
         <!-- 期区结构环(点扇区→下方清单过滤) -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金 · 点扇区过滤下方清单</span></div>
-          <AnaEChart :option="donutOption" :height="190" @chart-click="onDonutClick" />
+          <AnaEChart :option="donutOption" :height="300" @chart-click="onDonutClick" />
           <div class="tp2-dl">
             <button v-for="d in donutData" :key="d.label" class="ak-dl tp2-dlbtn" :class="{ on: phaseFilter === d.phase }" @click="phaseFilter = phaseFilter === d.phase ? null : d.phase">
               <span class="dot" :style="{ background: d.color }"></span>
@@ -287,7 +287,7 @@ const listRows = computed(() => {
               生效合同 · 点=每份合同(悬停看租户) · 横线=中位 · 对数轴
             </span>
           </div>
-          <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="240" />
+          <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="250" />
           <AnaEmpty v-else
             label="合同租赁面积未录入(rent_area 全部为 0)"
             hint="补录合同面积后,此处按期区呈现面积分布散点带"

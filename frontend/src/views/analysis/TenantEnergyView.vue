@@ -348,7 +348,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
               <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录{{ byFamily ? ' · 趋势为主租户本户' : '' }}</span>
             </div>
-            <AnaEChart :option="trendOption" :height="280" />
+            <AnaEChart :option="trendOption" :height="300" />
             <AnaMethodNote>
               口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
@@ -368,7 +368,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <!-- §五策略2:所选期无台账 → 台账期回退,卡顶横幅(禁静默) -->
               <AnaPeriodBanner v-if="ledgerFallback" :selected="selPeriodLabel" :used="ledgerYm" source="台账" style="margin-bottom: 8px" />
               <template v-if="selPay.length">
-                <AnaEChart :option="payOption" :height="190" />
+                <AnaEChart :option="payOption" :height="200" />
                 <div v-if="selPayRow" class="te2-payline">
                   {{ ledgerYm }} 收缴率 <b :style="{ color: selPayRow.rate < anaSettings.collectTarget ? 'var(--hue-orange)' : 'var(--hue-blue)' }">{{ selPayRow.rate }}%</b>
                   <span> · 期末结余 </span><b :style="{ color: selPayRow.bal > 0.005 ? 'var(--hue-red)' : 'var(--text-primary)' }">¥{{ (selPayRow.bal / 10000).toFixed(1) }}万</b>
@@ -384,7 +384,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
         <!-- 下方:Top20 榜(点击选中)+ 费额 vs 月租散点(点点选中) -->
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint">点击条形选中租户</span></div>
-          <AnaEChart :option="topOption" :height="470" @chart-click="onTopClick" />
+          <AnaEChart :option="topOption" :height="440" @chart-click="onTopClick" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
@@ -397,7 +397,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               </span>
             </span>
           </div>
-          <AnaEChart :option="scatterOption" :height="400" @chart-click="onScatterClick" />
+          <AnaEChart :option="scatterOption" :height="440" @chart-click="onScatterClick" />
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>
           </div>

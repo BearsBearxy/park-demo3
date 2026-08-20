@@ -110,7 +110,7 @@ function onParetoClick(p: unknown) {
             <span class="hint">{{ wall.totalCount > 0
               ? `未来8季到期 ${wall.totalCount} 份 · ¥${wan(wallRentSum)}万/月`
               : '按季到期月租金 + 续约概率(需合同起止日期)' }}</span></div>
-          <AnaEChart v-if="wall.totalCount > 0" :option="wallOpt" :height="240" />
+          <AnaEChart v-if="wall.totalCount > 0" :option="wallOpt" :height="250" />
           <AnaEmpty v-else :label="'到期时间轴暂不可用:' + stats.dateMissing + ' 份合同的起止/签订日期均未录入'"
             hint="补录合同起止日期后,此处将展示未来 8 季到期租金墙、临期清单与续约预测"
             to="/contracts" toText="去合同屏补录日期" />
@@ -143,7 +143,7 @@ function onParetoClick(p: unknown) {
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
           <div style="position: relative">
-            <AnaEChart :option="concOpt" :height="188" />
+            <AnaEChart :option="concOpt" :height="200" />
             <div class="exp-ring-c">
               <b>{{ stats.top10Pct }}%</b><span>Top10 集中度</span>
             </div>

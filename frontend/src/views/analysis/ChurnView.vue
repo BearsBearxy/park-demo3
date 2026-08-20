@@ -95,7 +95,7 @@ function onScatterClick(p: unknown) {
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">风险象限散点</span><span class="hint">环比 × 收款率 · 气泡=月应收 · 虚线=均值 · 点点→台账 · 超±范围的点钉在边缘(悬停看真值)</span></div>
-          <AnaEChart :option="scatterOpt" :height="310" @chart-click="onScatterClick" />
+          <AnaEChart :option="scatterOpt" :height="300" @chart-click="onScatterClick" />
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="t in (['high', 'mid', 'low'] as const)" :key="t" class="cz-leg">
               <span class="sw" :style="{ background: TIER_ECOLOR[t] }"></span>{{ tierZh(t) }}风险</span>
@@ -147,7 +147,7 @@ function onScatterClick(p: unknown) {
 
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">s10 逐月出现/消失</span><span class="hint">相邻有数月名单对比 · 上=新出现 下=消失(户)</span></div>
-          <AnaEChart :option="flowOpt" :height="260" />
+          <AnaEChart :option="flowOpt" :height="300" />
         </div>
       </div>
     </div>

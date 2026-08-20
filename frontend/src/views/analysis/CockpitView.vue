@@ -305,7 +305,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入与利润 · {{ year }}年</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)· 点击月柱切换期间 · 拖选缩放 · 紫虚线=预算月均</span>
         </div>
-        <AnaEChart v-if="mainOption" :option="mainOption" :height="304" @chart-click="onMainClick" />
+        <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
 
@@ -315,7 +315,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
           <span class="hint">合计 {{ money(compoTotal || null) }} · 点击扇区看趋势</span>
         </div>
-        <AnaEChart v-if="compo.length" :option="donutOption" :height="304" @chart-click="onDonutClick" />
+        <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
 
@@ -325,7 +325,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">分期收入堆叠</span>
           <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期 · 点击深链附表10</span>
         </div>
-        <AnaEChart v-if="phaseOption" :option="phaseOption" :height="248" @chart-click="onPhaseClick" />
+        <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
       </div>
 
@@ -334,7 +334,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收缴率 vs 目标</span>
           <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)· 点击看欠费清单</span>
         </div>
-        <AnaEChart v-if="collectOption" :option="collectOption" :height="248" @chart-click="onCollectClick" />
+        <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
       </div>
 
@@ -370,7 +370,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">{{ segModal.label }}收入 · {{ year }}年 12 月趋势</span>
           <button class="x" @click="segModal = null"><component :is="iconFor('x')" :size="15" /></button>
         </div>
-        <AnaEChart v-if="segTrendOption" :option="segTrendOption" :height="240" />
+        <AnaEChart v-if="segTrendOption" :option="segTrendOption" :height="250" />
         <AnaEmpty v-else :label="year + ' 年该板块无月度数据'" />
       </div>
     </div>

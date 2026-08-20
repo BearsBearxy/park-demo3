@@ -200,7 +200,7 @@ const areaBarOption = computed(() => ({
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期 · 点击下钻右侧明细</span></div>
-          <AnaEChart :option="treemapOption" :height="320" @chart-click="onTreeClick" />
+          <AnaEChart :option="treemapOption" :height="300" @chart-click="onTreeClick" />
           <div class="pk-legend">
             <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
           </div>
@@ -229,7 +229,7 @@ const areaBarOption = computed(() => ({
 
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
-          <AnaEChart :option="donutOption" :height="252" />
+          <AnaEChart :option="donutOption" :height="300" />
         </div>
 
         <div class="av2-card av2-s6">
@@ -243,7 +243,7 @@ const areaBarOption = computed(() => ({
               </span>
             </span>
           </div>
-          <AnaEChart :option="scatterOption" :height="252" />
+          <AnaEChart :option="scatterOption" :height="250" />
         </div>
 
         <div class="av2-card pk-s2">
@@ -274,7 +274,7 @@ const areaBarOption = computed(() => ({
               </div>
             </div>
             <div class="pk-area-chart">
-              <AnaEChart :option="areaBarOption" :height="220" />
+              <AnaEChart :option="areaBarOption" :height="250" />
               <div class="pk-legend">
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.building }"></span>建筑面积</span>
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.rent }"></span>租赁面积</span>

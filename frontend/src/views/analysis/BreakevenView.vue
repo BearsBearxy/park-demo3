@@ -151,7 +151,7 @@ function onFr(e: Event) {
           <!-- §五策略2:口径月无 s10 数据回退最新 s10 月 → 卡顶横幅(相等不渲染) -->
           <AnaPeriodBanner v-if="s10Used && ymUsed && s10Used.ym !== ymUsed"
             :selected="ymUsed" :used="s10Used.ym" source="附表10 " style="margin-bottom: 8px" />
-          <AnaEChart :option="torOpt" :height="252" />
+          <AnaEChart :option="torOpt" :height="300" />
           <AnaMethodNote>各驱动单独 ±10% 对月净利的影响(其余不变);红=下行、蓝=上行。基于固定/变动成本
             {{ (be.fr * 100).toFixed(0) }}/{{ (100 - be.fr * 100).toFixed(0) }} 拆分假设(滑杆或顶栏「目标与阈值」可调),仅供敏感性排序。</AnaMethodNote>
         </div>
@@ -159,7 +159,7 @@ function onFr(e: Event) {
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">固定/变动成本拆分 · 逐月</span>
             <span class="hint">{{ summary!.year }}年覆盖 {{ split.periods.length }} 期 · 万元(预算数据未录入,替代原型预算视图)</span></div>
-          <AnaEChart :option="splitOpt" :height="240" />
+          <AnaEChart :option="splitOpt" :height="250" />
         </div>
       </div>
     </div>

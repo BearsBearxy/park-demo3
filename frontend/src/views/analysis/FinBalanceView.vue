@@ -230,7 +230,7 @@ const bsTable = computed<BsTblRow[]>(() => {
         <!-- 双环 s4×2 -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">资产构成</span><span class="hint">期末 · 占资产总计 · 点扇区定位全表</span></div>
-          <AnaEChart :option="assetOpt" :height="190" @chart-click="locateRow" />
+          <AnaEChart :option="assetOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
             <div v-for="(d, i) in assetDonut" :key="d.label" class="ak-dl" style="font-size: 11.5px">
               <span class="dot" :style="{ background: sliceColor(i) }"></span><span class="nm">{{ d.label }}</span>
@@ -240,7 +240,7 @@ const bsTable = computed<BsTblRow[]>(() => {
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">负债与所有者权益</span><span class="hint">负债率 {{ R.debtRatio.toFixed(1) }}% · 点扇区定位全表</span></div>
-          <AnaEChart :option="leOpt" :height="190" @chart-click="locateRow" />
+          <AnaEChart :option="leOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
             <div v-for="(d, i) in leDonut" :key="d.label" class="ak-dl" style="font-size: 11.5px">
               <span class="dot" :style="{ background: sliceColor(i) }"></span><span class="nm">{{ d.label }}</span>
@@ -253,7 +253,7 @@ const bsTable = computed<BsTblRow[]>(() => {
         <!-- 比率仪表 s4(spec:gauge ≤2;其余比率见 KPI 条与副行) -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">关键比率仪表</span><span class="hint">偿债 · 杠杆</span></div>
-          <AnaEChart :option="gaugeOpt" :height="190" />
+          <AnaEChart :option="gaugeOpt" :height="200" />
           <div class="fin-gsub">
             权益乘数 {{ R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×' }} ·
             非流动资产占比 {{ R.ncShare.toFixed(0) }}% ·

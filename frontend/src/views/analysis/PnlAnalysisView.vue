@@ -185,12 +185,12 @@ const structOpt = computed<object>(() => {
             <span class="t">{{ selCard?.no }} {{ selCard?.name }} · 12 月组合</span>
             <span class="hint">点上方卡片切换 · 环比=上月虚线 · 万元</span>
           </div>
-          <AnaEChart :option="mainOpt" :height="298" />
+          <AnaEChart :option="mainOpt" :height="300" />
         </div>
         <!-- 次图 span4:收入结构堆叠 -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">收入结构堆叠</span><span class="hint">附表1-4 · 万元</span></div>
-          <AnaEChart :option="structOpt" :height="298" />
+          <AnaEChart :option="structOpt" :height="300" />
         </div>
       </div>
 
