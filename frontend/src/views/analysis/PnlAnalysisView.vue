@@ -207,7 +207,7 @@ const structOpt = computed<object>(() => {
 
 /* 迷你趋势卡条(5 卡等分,窄屏折行) */
 .pa2-minis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-.pa2-mini { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; box-sizing: border-box; text-align: left; background: var(--surface-white); border: 0.5px solid var(--border-subtle); border-radius: 8px; cursor: pointer; font-family: var(--font-sans); transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+.pa2-mini { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; box-sizing: border-box; text-align: left; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; cursor: pointer; font-family: var(--font-sans); transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
 .pa2-mini:hover { border-color: var(--border-strong); }
 .pa2-mini.on { border-color: var(--hue-blue); box-shadow: 0 0 0 1px var(--hue-blue) inset; }
 .pa2-mini.empty { cursor: default; background: transparent; border-style: dashed; }

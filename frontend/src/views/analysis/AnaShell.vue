@@ -205,14 +205,16 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
 .anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
 .anx-seg button:disabled { opacity: .4; cursor: default; }
-/* min-height = 12(本容器 padding-top)+ 81.2(一行 .av2-kpi 瓦片实高)≈ 93,取整向下,
+/* min-height = 12(本容器 padding-top)+ 82.9(一行 .av2-kpi 瓦片实高)≈ 94,取整向下,
    保证「常驻空条 → 瓦片填入」零位移,且加载完成后 min-height 永不生效(不多占一个像素)。
-   瓦片 81.2 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):
+   瓦片 82.9 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):
    padding 10+10 + .l 20(line-height 继承 --lh-snug:20px)+ gap 3 + .vr 20(.v 行盒 20 / .spk 20 取大)
-   + gap 3 + .d 14.2(10.5px × line-height 1.35)+ 边框 0.5×2 = 81.2。
+   + gap 3 + .d 14.85(11px × line-height 1.35)+ 边框 1×2 = 82.85。
    ⚠ 改瓦片 padding / 字号 / 行高时必须回来同步这个数,否则重新出现撑开或多余留白。
-   窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。 */
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 93px; }
+   窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。
+   2026-08-20 同步过一次:边框 0.5→1px(0.5px 在非整数 DPR 下渲染不稳)、副行 10.5→11px
+   (中文可读性下限),两项合计 +1.65px,故 93 → 94。 */
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 94px; }
 .anx-selw { flex: 0 0 auto; }
 .anx-nav { display: inline-flex; gap: 2px; }
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }

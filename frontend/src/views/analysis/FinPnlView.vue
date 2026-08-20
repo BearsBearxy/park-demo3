@@ -319,7 +319,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 .fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
 
 /* §C 迷你利润表链条(贴 av2-kpi 观感:白底细边圆角卡;.av2-kpis 单子项自然占满整行) */
-.fin-chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-white); border: 0.5px solid var(--border-subtle); border-radius: 8px; padding: 9px 14px; }
+.fin-chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 9px 14px; }
 .fin-chain .node { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fin-chain .nl { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .fin-chain .nv { font-size: 16px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }

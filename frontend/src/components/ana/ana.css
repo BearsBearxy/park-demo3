@@ -92,7 +92,11 @@
 /* T2 1280 中间档(spec 2026-07-12):s8 满排、s4 两列;更窄的 1100 全堆叠须写在其后以层叠覆盖 */
 @media (max-width:1280px){ .av2-s8 { grid-column:span 12; } .av2-s4 { grid-column:span 6; } }
 @media (max-width:1100px){ .av2-s4,.av2-s6,.av2-s8 { grid-column:span 12; } }
-.av2-card { background:var(--surface-white); border:0.5px solid var(--border-subtle); border-radius:8px; padding:10px 12px; box-sizing:border-box; min-width:0; }
+/* 边框 1px:改前是 0.5px —— 全站其余 193 处卡片都是 1px,只有分析层这一处例外;
+   且 0.5px 在非整数缩放(实测 DPR 1.14)下会被舍成「有的边看得见、有的边没有」。 */
+.av2-card { background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; box-sizing:border-box; min-width:0; }
 .av2-card-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
-.av2-card-h .t { font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.av2-card-h .hint { font-size:10.5px; color:var(--text-muted); white-space:nowrap; }
+/* 卡片标题 14px:改前 12.5px(半像素、且比全站正文还小一号)。这是用户识别「这张图是什么」
+   的唯一入口,不该比正文小。加 min-width:0+省略号,防标题变长后把右侧 hint 挤出卡外。 */
+.av2-card-h .t { font-size:var(--fs-body); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); white-space:nowrap; }

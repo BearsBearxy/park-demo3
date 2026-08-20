@@ -220,7 +220,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
       </div>
       <div class="im-actions">
         <Button variant="outline" size="sm" disabled>
-          <template #leading><component :is="iconFor('download')" :size="15" /></template>下载模板
+          <template #leading><component :is="iconFor('download')" :size="14" /></template>下载模板
         </Button>
       </div>
     </div>

@@ -1124,7 +1124,7 @@ async function delPool() {
           <div class="pl-bindhead">
             <span class="pl-sectitle" style="flex:1">⑤ 折入链(links,本池 ← 源池)· {{ form.links.length }} 条</span>
             <Button variant="outline" size="sm" @click="addLink">
-              <template #leading><component :is="iconFor('plus')" :size="13" /></template>
+              <template #leading><component :is="iconFor('plus')" :size="14" /></template>
               加一条
             </Button>
           </div>

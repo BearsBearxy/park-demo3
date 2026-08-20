@@ -36,13 +36,13 @@ const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : '')
 </template>
 
 <style scoped>
-.av2-kpi { background: var(--surface-white); border: 0.5px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.av2-kpi { background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .av2-kpi .l { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .av2-kpi .vr { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 /* min-width:0 + 省略号:窄屏(≤1366px)瓦片挤到 ~110px 时长数值原本会溢出瓦片右边框,只能截断而非撑破 */
-.av2-kpi .v { font-size: 17px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.av2-kpi .v { font-size: 17px; font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* sparkline 可压缩(0 1 56px):形状展示,窄屏让位给数值比保持 56px 宽更重要 */
 .av2-kpi .spk { width: 56px; height: 20px; flex: 0 1 56px; opacity: 0.75; }
 /* 副行允许换行:nowrap 会把「−14.7pt vs 目标96% · 取 2025-10」在瓦片边界切成「取 202…」 */
-.av2-kpi .d { font-size: 10.5px; font-family: var(--font-mono); line-height: 1.35; overflow-wrap: anywhere; }
+.av2-kpi .d { font-size: var(--fs-micro); font-family: var(--font-mono); line-height: 1.35; overflow-wrap: anywhere; }
 </style>

@@ -688,7 +688,7 @@ async function submit() {
                 <!-- 添加标的段:选物业类型 → 钉死组自动出现;其他费用=独立单行标的 -->
                 <div class="ct-seg-add" ref="segAddRef">
                   <Button variant="gray" size="sm" @click="showTypeMenu = !showTypeMenu">
-                    <template #leading><component :is="iconFor('plus')" :size="13" /></template>
+                    <template #leading><component :is="iconFor('plus')" :size="14" /></template>
                     添加标的段
                   </Button>
                   <div v-if="showTypeMenu" class="ct-seg-menu">
@@ -748,7 +748,7 @@ async function submit() {
                 </div>
                 <div>
                   <Button variant="gray" size="sm" :disabled="rentFreeRows.length >= 24" @click="addRentFreeRow">
-                    <template #leading><component :is="iconFor('plus')" :size="13" /></template>
+                    <template #leading><component :is="iconFor('plus')" :size="14" /></template>
                     添加免租期
                   </Button>
                 </div>
