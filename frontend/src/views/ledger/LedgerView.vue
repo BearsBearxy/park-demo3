@@ -132,6 +132,10 @@ function goGate() {
 }
 async function setYear(y: number) {
   year.value = y
+  // 同 pickYear:切年先清旧年数据,否则请求在途期间月历拿上一年的数字配新年标题。
+  // monthDto 也必须清:只清 overview 的话月历分支(需 overview)失效,v-if 链会穿透到
+  // 下面的宽表分支(只查 monthDto),渲染出上一年遗留的宽表且 month-no 为 null。
+  overview.value = null; monthDto.value = null
   await loadOverview()
 }
 // ① 年份门卡片(数据年∪当前年连续区间;区间外年份走门内「新增年份」)
@@ -139,6 +143,9 @@ const yearCards = computed<YearCard[]>(() => yearCardsOf(gateYears.value, '已�
 const gateCurrent = computed(() => gateCurrentOf(yearCards.value))
 async function pickMonth(m: number) {
   month.value = m; edit.value = false; drawerTenantId.value = null
+  // 先清上月快照,让兜底 v-else 的转圈接管:否则新月请求在途期间宽表标题已是新月、
+  // 金额还是上月的,财务屏上用户会照着这个错配的截图对数。
+  monthDto.value = null
   await loadMonth()
 }
 function backToMonths() {

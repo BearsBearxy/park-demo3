@@ -21,6 +21,7 @@ import {
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Segmented from '@/components/ds/Segmented.vue'
+import Select from '@/components/ds/Select.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
@@ -391,24 +392,22 @@ async function doBind(contractId: number | null) {
         <label :title="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
           楼层{{ locPinned(m, 'floorLabel') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
-        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.floorLabel ?? ''"
+        <Select v-if="editMode" size="sm" :model-value="m.floorLabel ?? ''"
+                :style="{ width: '100%' }"
                 title="稳定位置主数据,决定抄表屏排序与公摊按层分份;留空=跨层或不适用"
-                @change="commitField(m, 'floorLabel', ($event.target as HTMLSelectElement).value)">
-          <option value="">—(跨层/不适用)</option>
-          <option v-for="f in floorOpts" :key="f" :value="f">{{ f }}</option>
-        </select>
+                :options="[{ value: '', label: '—(跨层/不适用)' }, ...floorOpts.map(f => ({ value: f, label: f }))]"
+                @update:model-value="commitField(m, 'floorLabel', $event)" />
         <span v-else :class="{ dim: !m.floorLabel }">{{ m.floorLabel ?? '跨层/未录' }}</span>
       </div>
       <div class="md-fld">
         <label :title="locPinned(m, 'side') ? LOC_MANUAL_TITLE : undefined">
           方位{{ locPinned(m, 'side') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
-        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.side ?? ''"
+        <Select v-if="editMode" size="sm" :model-value="m.side ?? ''"
+                :style="{ width: '100%' }"
                 title="同层东西侧分栏的依据;留空=整层不分侧"
-                @change="commitField(m, 'side', ($event.target as HTMLSelectElement).value)">
-          <option value="">—(不分侧)</option>
-          <option v-for="s in sideOpts" :key="s" :value="s">{{ s }}</option>
-        </select>
+                :options="[{ value: '', label: '—(不分侧)' }, ...sideOpts.map(s => ({ value: s, label: s }))]"
+                @update:model-value="commitField(m, 'side', $event)" />
         <span v-else :class="{ dim: !m.side }">{{ m.side ?? '—' }}</span>
       </div>
       <div class="md-fld">
@@ -437,11 +436,10 @@ async function doBind(contractId: number | null) {
 
       <div class="md-fld">
         <label>楼栋</label>
-        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.buildingId ?? ''"
-                @change="commitBuilding(m, ($event.target as HTMLSelectElement).value)">
-          <option value="">—(未关联)</option>
-          <option v-for="bd in buildings" :key="bd.id" :value="bd.id">{{ bd.phaseName }} · {{ bd.name }}</option>
-        </select>
+        <Select v-if="editMode" size="sm" :model-value="m.buildingId != null ? String(m.buildingId) : ''"
+                :style="{ width: '100%' }"
+                :options="[{ value: '', label: '—(未关联)' }, ...buildings.map(bd => ({ value: String(bd.id), label: `${bd.phaseName} · ${bd.name}` }))]"
+                @update:model-value="commitBuilding(m, $event)" />
         <span v-else>{{ m.buildingId != null ? buildingById.get(m.buildingId)?.name ?? '—' : '—' }}</span>
       </div>
       <div class="md-fld pick">
@@ -456,10 +454,10 @@ async function doBind(contractId: number | null) {
       </div>
       <div class="md-fld">
         <label>归属</label>
-        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.ownership"
-                @change="commitOwnership(m, ($event.target as HTMLSelectElement).value)">
-          <option v-for="o in OWN_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
+        <Select v-if="editMode" size="sm" :model-value="m.ownership"
+                :style="{ width: '100%' }"
+                :options="OWN_OPTS"
+                @update:model-value="commitOwnership(m, $event)" />
         <span v-else class="mt-own" :class="'own-' + m.ownership">{{ ownershipLabel(m.ownership, m.kind) }}</span>
       </div>
       <div class="md-fld">
@@ -479,11 +477,10 @@ async function doBind(contractId: number | null) {
       <!-- 表类型=电表概念(单相/三相/需量…),水表不适用不显示(2026-08-04 报障) -->
       <div v-if="m.kind === 'elec'" class="md-fld">
         <label>表类型</label>
-        <select v-if="editMode" class="mt-edit l sel md-in" :value="m.deviceType ?? ''"
-                @change="commitDeviceType(m, ($event.target as HTMLSelectElement).value)">
-          <option value="">未录</option>
-          <option v-for="(lab, k) in DEVICE_TYPE_LABEL" :key="k" :value="k">{{ lab }}</option>
-        </select>
+        <Select v-if="editMode" size="sm" :model-value="m.deviceType ?? ''"
+                :style="{ width: '100%' }"
+                :options="[{ value: '', label: '未录' }, ...Object.entries(DEVICE_TYPE_LABEL).map(([k, lab]) => ({ value: k, label: lab as string }))]"
+                @update:model-value="commitDeviceType(m, $event)" />
         <span v-else :class="{ dim: !m.deviceType }">{{ m.deviceType ? DEVICE_TYPE_LABEL[m.deviceType] : '未录' }}</span>
       </div>
       <div class="md-fld">

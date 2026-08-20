@@ -6,6 +6,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import { phaseTint } from '@/components/sched/tints'
 import type { PvPhaseDTO, PvRecordReq } from '@/types/pv'
 
@@ -29,6 +30,8 @@ const gKwh = ref('')
 const gAmt = ref('')
 
 const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
+const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
+const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const gen = computed(() => num(sKwh.value) + num(gKwh.value))
@@ -80,15 +83,15 @@ function save() {
       <div class="s6-fgrp">
         <span class="s6-flabel">记账月份</span>
         <div class="s6-frow">
-          <select class="s6-select" v-model="acctY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="s6-select" v-model="acctM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="acctY" />
+          <Select :options="monthOpts" v-model="acctM" />
         </div>
       </div>
       <div class="s6-fgrp">
         <span class="s6-flabel">发生月份</span>
         <div class="s6-frow">
-          <select class="s6-select" v-model="occY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="s6-select" v-model="occM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="occY" />
+          <Select :options="monthOpts" v-model="occM" />
         </div>
       </div>
     </div>
@@ -141,9 +144,9 @@ function save() {
 .s6-chip:hover { background:var(--surface-card); }
 .s6-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
 .s6-cdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
-.s6-input, .s6-select { height:38px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:13.5px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+.s6-input { height:38px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .s6-input.mono { font-family:var(--font-mono); text-align:right; }
-.s6-input:focus, .s6-select:focus { border-color:var(--border-strong); }
+.s6-input:focus { border-color:var(--border-strong); }
 .s6-input::placeholder { color:var(--text-disabled); }
 .s6-sub2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .s6-sub2 .k { font-size:11px; color:var(--text-muted); }

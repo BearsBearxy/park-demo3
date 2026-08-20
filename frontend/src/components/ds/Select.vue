@@ -15,6 +15,9 @@ export interface SelectProps {
   placeholder?: string;
   size?: "sm" | "md" | "lg";
   disabled?: boolean;
+  /** 红框错误态。与 fp/FPTenantPicker 的 invalid 同语义同色(--status-danger) ——
+   *  合同弹窗「请选择楼栋/租户」两个必填项并排,一个有红框一个没有会读成「只有那个错了」。 */
+  invalid?: boolean;
   defaultOpen?: boolean;
   id?: string;
   style?: string | Record<string, string>;
@@ -24,6 +27,7 @@ const props = withDefaults(defineProps<SelectProps>(), {
   options: () => [],
   size: "md",
   disabled: false,
+  invalid: false,
   defaultOpen: false,
 });
 
@@ -139,7 +143,7 @@ onUnmounted(() => {
         height: height + 'px',
         padding: '0 12px',
         background: disabled ? 'var(--bg-sunken)' : 'var(--surface-white)',
-        border: `1px solid ${open ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
+        border: `1px solid ${props.invalid ? 'var(--status-danger)' : open ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
         borderRadius: 'var(--radius-sm)',
         fontFamily: 'var(--font-sans)',
         fontSize: 'var(--fs-body)',
@@ -186,7 +190,7 @@ onUnmounted(() => {
         minWidth: '100%',
         width: 'max-content',
         maxWidth: '280px',
-        zIndex: '60',
+        zIndex: 'var(--z-popover)',   /* 改前是字面量 60(DESIGN-FIDELITY §八:新增覆盖层一律用令牌) */
         background: 'var(--surface-white)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-md)',

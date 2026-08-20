@@ -215,7 +215,9 @@ const unitOption = computed(() => ({
     markLine: {
       silent: true, symbol: 'none',
       lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)' },
-      label: { fontSize: 10.5, formatter: '均值 ' + unitAvg.value.toFixed(2) },
+      // 默认 end 位置把标签画在线尾右侧,grid.right 只有 14px → 「均值 x.xx」被绘图区右缘裁掉一半;
+      // 改 insideEndTop 让标签落在线内上方,读得出阈值
+      label: { position: 'insideEndTop', fontSize: 10.5, formatter: '均值 ' + unitAvg.value.toFixed(2) },
       data: [{ yAxis: +unitAvg.value.toFixed(4) }],
     },
   }],

@@ -11,6 +11,7 @@ import Segmented from '@/components/ds/Segmented.vue'
 import Badge from '@/components/ds/Badge.vue'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
+import Select from '@/components/ds/Select.vue'
 
 const router = useRouter()
 const view = ref('目录')
@@ -33,7 +34,9 @@ onMounted(async () => {
 })
 
 function setYear(y: number) { year.value = y; load() }
-function onMonth(e: Event) { month.value = Number((e.target as HTMLSelectElement).value); load() }
+// ds/Select 只吃字符串值,进出各转一次
+const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 月` }))
+function onMonth(v: string) { month.value = +v; load() }
 // 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
 const tabsStore = useTabsStore()
 function go(v: string) { tabsStore.openFresh(v); router.push('/' + v) }
@@ -79,9 +82,10 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
         <span class="v">{{ year }}</span>
         <button title="下一年" @click="setYear(year + 1)"><component :is="iconFor('chevron-right')" :size="15" /></button>
       </span>
-      <select class="rh-msel" :value="month" @change="onMonth">
-        <option v-for="m in 12" :key="m" :value="m">{{ m }} 月</option>
-      </select>
+      <!-- 期间选择器定宽:LIST-PAGE-SPEC §2 月 92px(触发器 width:100%,宽度全靠外层) -->
+      <div style="width:92px">
+        <Select size="sm" :options="monthOpts" :model-value="String(month)" @update:model-value="onMonth" />
+      </div>
       <div class="rh-toolbar-right">
         <Segmented v-model="view" :options="['目录', '期间']" size="sm" />
       </div>
@@ -259,8 +263,4 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .fin-ypill button:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
 .fin-ypill button:disabled { opacity:.4; cursor:not-allowed; }
 .fin-ypill .v { font-size:13.5px; font-weight:var(--fw-semibold); color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; padding:0 8px; white-space:nowrap; }
-
-/* 月下拉(fin-in 样式复刻,高度对齐年胶囊) */
-.rh-msel { height:34px; padding:0 10px; font-size:13px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--surface-white); font-family:var(--font-sans); outline:none; cursor:pointer; transition:border-color var(--dur-fast) var(--ease-standard); }
-.rh-msel:focus { border-color:var(--hue-blue); }
 </style>

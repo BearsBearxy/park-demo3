@@ -161,8 +161,14 @@ const areaBarOption = computed(() => ({
         + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
     },
   },
-  grid: { left: 56, right: 18, top: 12, bottom: 26 },
-  xAxis: { type: 'category', data: areaRows.value.map((r) => r.name), axisLabel: { fontSize: 10.5 } },
+  // 斜排标签比平排吃更多下边距,bottom 不跟着放大会把楼栋名切掉下半截
+  grid: { left: 56, right: 18, top: 12, bottom: areaRows.value.length > 8 ? 48 : 26 },
+  // 楼栋名多到一定数量后 ECharts 会自作主张隔一个隐一个,柱子无名可对 → interval:0 强制全画、斜排避让;
+  // 楼栋少时不倾斜(平排更好读),阈值 8 是本屏宽度下横排放得下的上限
+  xAxis: {
+    type: 'category', data: areaRows.value.map((r) => r.name),
+    axisLabel: { fontSize: 10.5, interval: 0, rotate: areaRows.value.length > 8 ? 30 : 0, hideOverlap: true },
+  },
   yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 10.5 } },
   series: [
     { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },

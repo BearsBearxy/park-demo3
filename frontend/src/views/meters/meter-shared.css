@@ -20,7 +20,6 @@
 .mt-edit:hover { border-color: var(--border-subtle); background: var(--surface-white); }
 .mt-edit:focus { outline: none; border-color: var(--hue-blue); background: var(--surface-white); }
 .mt-edit.l { text-align: left; font-family: var(--font-sans); }
-.mt-edit.sel { appearance: auto; -moz-appearance: auto; cursor: pointer; }
 
 /* 行内小操作按钮(删除/保存/取消) */
 .mt-iop { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }

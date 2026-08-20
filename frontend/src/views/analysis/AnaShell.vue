@@ -15,6 +15,7 @@ import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSe
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import '@/components/ana/ana.css'
+import Select from '@/components/ds/Select.vue'
 
 const props = defineProps<{
   compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
@@ -102,17 +103,21 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           <button :class="{ on: period.sel.value.gran === 'month' }" @click="period.setGran('month')">按月</button>
           <button :class="{ on: period.sel.value.gran === 'year' }" @click="period.setGran('year')">按年</button>
         </div>
-        <div class="anx-sel">
-          <select :value="period.sel.value.year" :disabled="!period.years.value.length" @change="period.setYear(+($event.target as HTMLSelectElement).value)">
-            <option v-for="y in period.years.value" :key="y" :value="y">{{ y }}年</option>
-          </select>
-          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        <!-- 期间年/月:ds/Select。改前是原生 <select> 把**触发器**画成了药丸+自绘箭头,
+             但点开的**面板由操作系统渲染**,CSS 管不到 —— 用户从抄表屏(ds/Select,白底圆角浮层带对勾)
+             切到任一分析屏,同样是「选年月」却是两个控件。本组件被 18 个分析屏共用,故改这一处 = 18 屏受益。
+             宽度按 LIST-PAGE-SPEC §2 的 110 / 92px(给窄了会把「2024年」截成「202…」)。 -->
+        <div class="anx-selw" style="width: 110px">
+          <Select size="sm" :disabled="!period.years.value.length"
+                  :options="period.years.value.map(y => ({ value: String(y), label: `${y}年` }))"
+                  :model-value="String(period.sel.value.year)"
+                  @update:model-value="period.setYear(+$event)" />
         </div>
-        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-sel">
-          <select :value="period.sel.value.month" :disabled="!period.years.value.length" @change="period.setMonth(+($event.target as HTMLSelectElement).value)">
-            <option v-for="m in period.monthNumsOf(period.sel.value.year)" :key="m" :value="m">{{ m }}月</option>
-          </select>
-          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-selw" style="width: 92px">
+          <Select size="sm" :disabled="!period.years.value.length"
+                  :options="period.monthNumsOf(period.sel.value.year).map(m => ({ value: String(m), label: `${m}月` }))"
+                  :model-value="String(period.sel.value.month)"
+                  @update:model-value="period.setMonth(+$event)" />
         </div>
         <div class="anx-nav">
           <button :disabled="pmode === 'year' ? yAtStart : period.atStart.value"
@@ -208,11 +213,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
    ⚠ 改瓦片 padding / 字号 / 行高时必须回来同步这个数,否则重新出现撑开或多余留白。
    窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。 */
 .anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 93px; }
-.anx-sel { position: relative; }
-.anx-sel select { appearance: none; -webkit-appearance: none; font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 6px 28px 6px 13px; cursor: pointer; outline: none; }
-.anx-sel select:hover:not(:disabled) { background: var(--bg-hover); }
-.anx-sel select:disabled { opacity: .5; cursor: default; }
-.anx-sel .cv { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); display: inline-flex; }
+.anx-selw { flex: 0 0 auto; }
 .anx-nav { display: inline-flex; gap: 2px; }
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }

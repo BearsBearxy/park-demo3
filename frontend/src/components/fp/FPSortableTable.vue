@@ -193,6 +193,10 @@ function renderSortHeader(col: SortableColumn) {
               font: 'var(--type-body)',
               color: 'var(--text-primary)',
               whiteSpace: c.wrap ? 'normal' : 'nowrap',
+              /* 超长内容截断而不是把列撑宽(LIST-PAGE-SPEC §4):table-layout 保持 auto,
+                 列宽被 width:100% 压缩时才生效;全文靠上面的 :title 悬浮看 */
+              overflow: c.wrap ? undefined : 'hidden',
+              textOverflow: c.wrap ? undefined : 'ellipsis',
               fontVariantNumeric: c.mono ? 'tabular-nums' : 'normal',
               fontFamily: c.mono ? 'var(--font-mono)' : 'var(--font-sans)',
             }"

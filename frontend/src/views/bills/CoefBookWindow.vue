@@ -315,10 +315,11 @@ function onClose() {
           <Select :options="coefOpts" :model-value="coefId" size="sm" @update:model-value="setCoef" />
         </div>
         <span class="cb-lbl">生效月</span>
-        <div style="width:96px">
+        <!-- 期间选择器宽度按 LIST-PAGE-SPEC §2:年 110 / 月 92。96/84 会把「2024年」截成「202…」 -->
+        <div style="width:110px">
           <Select :options="yearOpts" :model-value="String(effYear)" size="sm" @update:model-value="setEffYear" />
         </div>
-        <div style="width:84px">
+        <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(effMonth)" size="sm" @update:model-value="setEffMonth" />
         </div>
       </div>

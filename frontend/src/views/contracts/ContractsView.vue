@@ -363,11 +363,11 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
               <Avatar :name="c.tenantName" :size="30" />
               <div class="cl-main">
                 <div class="cl-l1">
-                  <span class="cl-name">{{ c.tenantName }}</span>
+                  <span class="cl-name" :title="c.tenantName">{{ c.tenantName }}</span>
                   <span class="cl-money">{{ fpMoney(c.monthlyRent) }}</span>
                 </div>
                 <div class="cl-l2">
-                  <span class="cl-no">{{ c.contractNo }}</span>
+                  <span class="cl-no" :title="c.contractNo">{{ c.contractNo }}</span>
                   <span v-if="c.kind === 'master_lease'" class="cl-master" title="整体承租,不计出租率与月租金KPI">整租</span>
                   <FPContractStatus :status="c.status" />
                 </div>

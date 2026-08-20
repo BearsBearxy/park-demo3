@@ -9,6 +9,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPUnitPicker from '@/components/fp/FPUnitPicker.vue'
 import { selectedAreaSums, prefillRentArea } from '@/components/fp/fpUnitPicker'
@@ -38,10 +39,24 @@ const emit = defineEmits<{ close: []; created: []; saved: [ContractDTO] }>()
 const mode = computed<'new' | 'edit' | 'renew'>(() =>
   props.renewFrom ? 'renew' : props.initial ? 'edit' : 'new')
 
+// 下拉候选(ds/Select):值一律字符串,数字字段进出各转一道
 const STATUS_OPTS = [
   { value: 'draft', label: 'draft · 草稿' },
   { value: 'active', label: 'active · 执行中' },
   { value: 'terminated', label: 'terminated · 已终止' },
+]
+const POWER_TYPE_OPTS = [
+  { value: '', label: '待录' },
+  { value: 'industrial', label: '大工业' },
+  { value: 'commercial', label: '商业(办公室类)' },
+  { value: 'resident', label: '居民(宿舍类)' },
+]
+const TERM_TYPE_OPTS = [
+  { value: '', label: '—' },
+  { value: 'explicit', label: 'explicit · 明确起止' },
+  { value: 'multiple', label: 'multiple · 多段' },
+  { value: 'relative', label: 'relative · 相对表述' },
+  { value: 'none', label: 'none · 无' },
 ]
 
 const tenants = ref<TenantDTO[]>([])
@@ -49,6 +64,7 @@ const tenants = ref<TenantDTO[]>([])
 const tenantOptions = computed(() =>
   tenants.value.map(t => ({ id: t.id, name: t.companyName, phase: t.phase, parentName: t.parentName })))
 const buildings = ref<BuildingDTO[]>([])
+const buildingOpts = computed(() => buildings.value.map(b => ({ value: String(b.id), label: b.name })))
 
 const contractNo = ref('')
 const tenantId = ref<number | null>(null)
@@ -501,9 +517,9 @@ async function submit() {
             </div>
             <div class="ct-field">
               <div class="lab">状态 <i>*</i></div>
-              <select class="ct-in" v-model="status" :disabled="mode === 'renew'">
-                <option v-for="o in STATUS_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
-              </select>
+              <!-- ds/Select 的选项是 button,不派发原生 change,收不进上面的 @change.capture → dirty 手动置位 -->
+              <Select :options="STATUS_OPTS" :model-value="status" :disabled="mode === 'renew'"
+                      @update:model-value="status = $event; dirty = true" />
             </div>
             <div class="ct-field">
               <div class="lab">租户 <i>*</i></div>
@@ -514,11 +530,11 @@ async function submit() {
             <div class="ct-field">
               <div class="lab">楼栋 <i>*</i></div>
               <input v-if="mode === 'renew'" class="ct-in" :value="renewFrom?.buildingName" disabled />
-              <select v-else class="ct-in" :class="{ err: err === '请选择楼栋' }" v-model="buildingId"
-                      :disabled="mode === 'new' && presetBuildingId != null" @change="onBuildingChange()">
-                <option :value="null" disabled>请选择楼栋</option>
-                <option v-for="b in buildings" :key="b.id" :value="b.id">{{ b.name }}</option>
-              </select>
+              <Select v-else :options="buildingOpts" placeholder="请选择楼栋"
+                      :invalid="err === '请选择楼栋'"
+                      :model-value="buildingId == null ? '' : String(buildingId)"
+                      :disabled="mode === 'new' && presetBuildingId != null"
+                      @update:model-value="buildingId = +$event; onBuildingChange(); dirty = true" />
             </div>
             <!-- 单元多选(S15 §2 FPUnitPicker):全楼栋分组候选,跨栋可选;首个=主单元(★可换主),其余=附加单元 -->
             <div class="ct-field ct-field-wide">
@@ -564,12 +580,8 @@ async function submit() {
             <template v-if="mode !== 'renew'">
               <div class="ct-field">
                 <div class="lab">用电分类</div>
-                <select class="ct-in" v-model="powerType" @change="onPowerTypeChange">
-                  <option value="">待录</option>
-                  <option value="industrial">大工业</option>
-                  <option value="commercial">商业(办公室类)</option>
-                  <option value="resident">居民(宿舍类)</option>
-                </select>
+                <Select :options="POWER_TYPE_OPTS" :model-value="powerType"
+                        @update:model-value="powerType = $event; onPowerTypeChange(); dirty = true" />
               </div>
               <div class="ct-field">
                 <div class="lab">配电容量 KVA</div>
@@ -709,13 +721,8 @@ async function submit() {
               </div>
               <div class="ct-field">
                 <div class="lab">期限类型</div>
-                <select class="ct-in" v-model="termType" @change="err = ''">
-                  <option value="">—</option>
-                  <option value="explicit">explicit · 明确起止</option>
-                  <option value="multiple">multiple · 多段</option>
-                  <option value="relative">relative · 相对表述</option>
-                  <option value="none">none · 无</option>
-                </select>
+                <Select :options="TERM_TYPE_OPTS" :model-value="termType"
+                        @update:model-value="termType = $event; err = ''; dirty = true" />
               </div>
               <div class="ct-field">
                 <div class="lab">分年阶梯价(原文留档)</div>
@@ -784,11 +791,10 @@ async function submit() {
 .ct-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .ct-field .lab i { color:var(--hue-red); font-style:normal; }
 .ct-field-wide { grid-column:1 / -1; }
-.ct-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+.ct-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .ct-in:focus { border-color:var(--hue-blue); }
 .ct-in.err { border-color:var(--hue-red); }
 .ct-in:disabled { background:var(--bg-sunken); color:var(--text-disabled); cursor:not-allowed; }
-select.ct-in { appearance:auto; }
 /* 期限原文/阶梯价留档:多行输入,.ct-in 的固定行高在此放开 */
 .ct-ta { height:auto; padding:8px 12px; line-height:1.5; resize:vertical; }
 /* 标的段编辑(§6.2):段头=类型徽标+位置+段面积;钉死行=费用名(固定)+数值+月单价;条件/可选=checkbox+月额 */
@@ -820,7 +826,7 @@ select.ct-in { appearance:auto; }
 .ct-bl-mo { flex:0 0 88px; text-align:right; font-family:var(--font-mono); font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .ct-bl-mo.pending { color:var(--text-disabled); font-family:var(--font-sans); font-weight:var(--fw-regular); }
 .ct-seg-add { position:relative; }
-.ct-seg-menu { position:absolute; top:100%; left:0; margin-top:4px; z-index:2; display:flex; flex-direction:column; min-width:120px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.18); overflow:hidden; }
+.ct-seg-menu { position:absolute; top:100%; left:0; margin-top:4px; z-index:var(--z-popover); display:flex; flex-direction:column; min-width:120px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.18); overflow:hidden; }
 .ct-seg-menu-item { padding:8px 12px; border:none; background:none; text-align:left; font-size:12.5px; color:var(--text-primary); cursor:pointer; }
 .ct-seg-menu-item:hover { background:var(--bg-hover); color:var(--hue-blue); }
 /* F2 免租期行式编辑 */
