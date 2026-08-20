@@ -98,8 +98,15 @@
 /* 边框 1px:改前是 0.5px —— 全站其余 193 处卡片都是 1px,只有分析层这一处例外;
    且 0.5px 在非整数缩放(实测 DPR 1.14)下会被舍成「有的边看得见、有的边没有」。 */
 .av2-card { background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; box-sizing:border-box; min-width:0; }
-.av2-card-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
+/* flex-wrap:标题与 hint 一行放不下时 hint 整条换到第二行,而不是被截。
+   为什么不「截断+加 title」:hint 是「这张图怎么读」的说明(如「FIFO 冲抵 · 距 2025-11 的账龄」),
+   截了等于没说;而给全站约 40 处 hint 逐个补 :title,里面多是模板表达式,成本与出错面都更大。
+   代价是窄栏卡片头部可能占两行、该行整体变高 —— 信息完整优先于一行排满。 */
+.av2-card-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
 /* 卡片标题 14px:改前 12.5px(半像素、且比全站正文还小一号)。这是用户识别「这张图是什么」
-   的唯一入口,不该比正文小。加 min-width:0+省略号,防标题变长后把右侧 hint 挤出卡外。 */
-.av2-card-h .t { font-size:var(--fs-body); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); white-space:nowrap; }
+   的唯一入口,不该比正文小。
+   ⚠ 2026-08-20 修正一次自己的方向错误:先前给 .t 加了 min-width:0 + 省略号「防标题挤走 hint」,
+   结果被截的是**标题**本身(实测「收缴率 vs 目标」57/93px、「楼栋×租户散点」84/95px 等 4 处)。
+   优先级反了 —— 标题是这张图的身份,hint 是补充说明。改为:标题永不收缩,hint 先让位。 */
+.av2-card-h .t { font-size:var(--fs-body); flex:0 0 auto; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); min-width:0; }

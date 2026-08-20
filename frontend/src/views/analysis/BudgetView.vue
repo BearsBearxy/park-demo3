@@ -237,7 +237,8 @@ const kpiOutlook = computed(() => {
                   <td class="n">{{ d.rate != null ? d.rate.toFixed(1) + '%' : '—' }}</td>
                   <td class="n" :style="d.diff != null && d.diff < 0 ? { color: 'var(--hue-red)' } : undefined">
                     {{ d.diff != null ? (d.diff < 0 ? '−' : '+') + finFmt(Math.abs(d.diff)) : '—' }}</td>
-                  <td class="note">{{ d.note ?? '' }}</td>
+                  <!-- 预算备注常写整段说明(如「包括除四害、绿化、消防维护…」),截断后看不到口径 -->
+                  <td class="note" :title="d.note ?? undefined">{{ d.note ?? '' }}</td>
                 </tr>
               </tbody>
             </table>

@@ -200,7 +200,9 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           <button v-for="t in list" :key="t.name" class="mn-row" :class="{ on: t.name === selName }" @click="selName = t.name">
             <span class="score" :style="{ color: tierColor(t.tier) }">{{ t.score }}</span>
             <span class="body">
-              <span class="nm">{{ t.name }}</span>
+              <!-- 租户名常是长公司名(实测「采研企业管理(佛山)有限公司,颐美青科…」660px 被截到 222px),
+                   截断后认不出是哪一户 —— 补 title 出全文 -->
+              <span class="nm" :title="t.name">{{ t.name }}</span>
               <span class="sub">
                 {{ t.arrears > 0.005 ? '欠费 ¥' + fint(t.arrears) : (t.payRate != null ? '收缴 ' + t.payRate.toFixed(0) + '%' : '无台账') }}
                 · {{ t.spikes.length ? '突变 ' + t.spikes.length + ' 处' : (t.gone ? '计费中断' : '能耗平稳') }}
