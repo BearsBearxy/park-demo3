@@ -174,10 +174,6 @@ const onExport = () => guard('导出失败', async () => {
               删除选中 ({{ selectedIds.size }})
             </Button>
           </template>
-          <!-- 导入常驻非编辑态(spec 2026-07-11 §1:导入独立落库,不依赖编辑草稿) -->
-              导入 Excel
-            </Button>
-          </template>
           <template #static-actions>
             <Button variant="outline" size="sm" @click="onExport">
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
