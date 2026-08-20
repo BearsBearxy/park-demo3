@@ -184,7 +184,7 @@ export function churnScatterOption(list: ChurnRow[], overallRate: number): objec
       markLine: {
         silent: true, symbol: 'none',
         lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)', width: 1.2 },
-        label: { fontSize: 10, color: 'rgba(28,28,28,.62)' },
+        label: { fontSize: 11, color: 'rgba(28,28,28,.62)' },
         // 标签画在图内防裁切:x 均值线(竖)insideStartTop 避开顶部轴名;y 均值线(横)insideEndTop 不贴右缘
         data: [
           { xAxis: xMean, label: { position: 'insideStartTop', formatter: `均值 ${xMean >= 0 ? '+' : ''}${xMean}%` } },

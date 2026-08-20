@@ -112,8 +112,8 @@ const scatterOption = computed(() => ({
     },
   },
   grid: { left: 48, right: 18, top: 16, bottom: 34 },
-  xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 10.5 } },
-  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 10.5 } },
+  xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 11 } },
+  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 11 } },
   series: [{
     type: 'scatter',
     data: pkScatter.value.shown.map((r) => ({
@@ -167,9 +167,9 @@ const areaBarOption = computed(() => ({
   // 楼栋少时不倾斜(平排更好读),阈值 8 是本屏宽度下横排放得下的上限
   xAxis: {
     type: 'category', data: areaRows.value.map((r) => r.name),
-    axisLabel: { fontSize: 10.5, interval: 0, rotate: areaRows.value.length > 8 ? 30 : 0, hideOverlap: true },
+    axisLabel: { fontSize: 11, interval: 0, rotate: areaRows.value.length > 8 ? 30 : 0, hideOverlap: true },
   },
-  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 10.5 } },
+  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 11 } },
   series: [
     { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
     { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },

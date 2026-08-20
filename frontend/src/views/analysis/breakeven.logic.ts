@@ -105,13 +105,13 @@ export function cvpOption(be: BeModel): object {
         markLine: {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)', width: 1 },
-          label: { fontSize: 10, color: 'rgba(28,28,28,.62)', formatter: '当前 100%' },
+          label: { fontSize: 11, color: 'rgba(28,28,28,.62)', formatter: '当前 100%' },
           data: [{ xAxis: 100 }],
         },
         ...(showBe ? {
           markPoint: {
             symbol: 'pin', symbolSize: 44, itemStyle: { color: WARN },
-            label: { fontSize: 9.5, color: '#fff', formatter: `保本\n${be.bePct!.toFixed(0)}%` },
+            label: { fontSize: 11, color: '#fff', formatter: `保本\n${be.bePct!.toFixed(0)}%` },
             data: [{ coord: [be.bePct, be.beRev] }],
           },
           markArea: {
@@ -141,7 +141,7 @@ export function tornadoOption(items: TornadoItem[]): object {
       { name: '净利 ↓(−10%)', type: 'bar', stack: 'tor', barWidth: '52%', itemStyle: { color: RED, borderRadius: [3, 0, 0, 3] }, data: rev.map((i) => -+i.delta.toFixed(1)) },
       {
         name: '净利 ↑(+10%)', type: 'bar', stack: 'tor', itemStyle: { color: BLUE, borderRadius: [0, 3, 3, 0] },
-        label: { show: true, position: 'right', fontSize: 9.5, color: 'rgba(28,28,28,.62)', formatter: (p: { value: number }) => '¥' + p.value.toFixed(1) + '万' },
+        label: { show: true, position: 'right', fontSize: 11, color: 'rgba(28,28,28,.62)', formatter: (p: { value: number }) => '¥' + p.value.toFixed(1) + '万' },
         data: rev.map((i) => +i.delta.toFixed(1)),
       },
     ],

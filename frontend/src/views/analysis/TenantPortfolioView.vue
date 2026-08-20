@@ -70,7 +70,7 @@ const paretoOption = computed<object>(() => {
     grid: { left: 46, right: 46, top: 30, bottom: 64 },
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '—' : (v as number).toFixed(1) + '%') },
-    xAxis: { type: 'category', data: p.names, axisLabel: { rotate: 38, fontSize: 10, width: 72, overflow: 'truncate' } },
+    xAxis: { type: 'category', data: p.names, axisLabel: { rotate: 38, fontSize: 11, width: 72, overflow: 'truncate' } },
     yAxis: [
       { type: 'value', axisLabel: { formatter: '{value}%' } },
       { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
@@ -83,7 +83,7 @@ const paretoOption = computed<object>(() => {
         markLine: p.names.length >= 5 ? {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#EF9F27' },
-          label: { formatter: `Top5 ${top5Share.value}%`, color: '#EF9F27', fontSize: 10 },
+          label: { formatter: `Top5 ${top5Share.value}%`, color: '#EF9F27', fontSize: 11 },
           data: [{ xAxis: p.names[4] }],
         } : undefined,
       },

@@ -237,7 +237,7 @@ const scatterOption = computed<object>(() => {
       markLine: {
         silent: true, symbol: 'none',
         lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.4)' },
-        label: { formatter: '户均', color: 'rgba(28,28,28,.4)', fontSize: 10 },
+        label: { formatter: '户均', color: 'rgba(28,28,28,.4)', fontSize: 11 },
         data: [{ yAxis: +crossMean.value.toFixed(0) }],
       },
     }],

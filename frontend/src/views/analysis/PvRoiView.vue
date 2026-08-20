@@ -71,7 +71,7 @@ const rampOpt = computed<object>(() => {
   const markPoint = r.hitIdx != null
     ? {
         symbol: 'pin', symbolSize: 42, itemStyle: { color: '#185FA5' },
-        label: { formatter: '回收', color: '#fff', fontSize: 10 },
+        label: { formatter: '回收', color: '#fff', fontSize: 11 },
         data: [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }],
       }
     : undefined
@@ -90,7 +90,7 @@ const rampOpt = computed<object>(() => {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#E24B4A', width: 1.5 },
           // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)
-          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 10, color: '#E24B4A' },
+          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
           data: [{ yAxis: investW }],
         },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] != null ? markPoint : undefined,
@@ -168,7 +168,7 @@ const eff = computed(() => stationEfficiency(mStations.value, mReadings.value))
 const effOpt = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? fnum(v, 0) + ' kWh/kWp' : '—') },
   grid: { left: 48, right: 14, top: 14, bottom: 48 },
-  xAxis: { type: 'category', data: eff.value.rows.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 10.5 } },
+  xAxis: { type: 'category', data: eff.value.rows.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 11 } },
   yAxis: { type: 'value' },
   series: [{
     name: '发电效率', type: 'bar', barMaxWidth: 26,
@@ -228,10 +228,10 @@ const consOpt = computed<object>(() => {
     xAxis: {
       type: 'category',
       data: rows.map((r) => (consBy.value === 'month' ? +r.key.slice(5, 7) + '月' : r.key)),
-      axisLabel: consBy.value === 'station' ? { rotate: 32, fontSize: 10.5 } : undefined,
+      axisLabel: consBy.value === 'station' ? { rotate: 32, fontSize: 11 } : undefined,
     },
     yAxis: [
-      { type: 'value', name: '万kWh', nameTextStyle: { fontSize: 10 } },
+      { type: 'value', name: '万kWh', nameTextStyle: { fontSize: 11 } },
       { type: 'value', axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
     ],
     series: [
@@ -257,7 +257,7 @@ const revOpt = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 2) + '万' : '—') },
   legend: { top: 0 },
   grid: { left: 52, right: 14, top: 30, bottom: 48 },
-  xAxis: { type: 'category', data: rev.value.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 10.5 } },
+  xAxis: { type: 'category', data: rev.value.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 11 } },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
   series: [
     { name: '消纳收益', type: 'bar', barMaxWidth: 20, data: rev.value.map((r) => +(r.selfRev / 1e4).toFixed(2)), itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] } },

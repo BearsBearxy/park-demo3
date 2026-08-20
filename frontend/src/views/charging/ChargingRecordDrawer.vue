@@ -145,7 +145,10 @@ function save() {
 .ch-chip:hover { background:var(--surface-card); }
 .ch-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
 .ch-cdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
-.ch-input { height:38px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.ch-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .ch-input.mono { font-family:var(--font-mono); text-align:right; }
 .ch-input:focus { border-color:var(--border-strong); }
 .ch-input::placeholder { color:var(--text-disabled); }

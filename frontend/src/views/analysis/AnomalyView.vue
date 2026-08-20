@@ -80,7 +80,7 @@ const energyOption = computed<object | null>(() => {
           `<br/>${p.marker ?? ''}${p.seriesName} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
       },
     },
-    xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 10 } },
+    xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
       // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)

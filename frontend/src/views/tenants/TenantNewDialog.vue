@@ -198,7 +198,10 @@ async function submit() {
 .fin-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .fin-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .fin-field .req { color:var(--hue-red); font-weight:var(--fw-medium); }
-.fin-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }

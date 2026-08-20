@@ -110,7 +110,7 @@ const mainOption = computed<object | null>(() => {
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
-        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: CMP_BUDGET },
+        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
         data: [{ yAxis: d.budgetAvgWan }],
       } : undefined,
     },
@@ -191,7 +191,7 @@ const phaseOption = computed<object | null>(() => {
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
     /* 月标签缩短「2025-01」→「1月」防 10+ 期挤爆(tooltip/点击深链仍用完整 YM) */
-    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 10, formatter: (v: string) => `${+v.slice(5)}月` } },
+    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 11, formatter: (v: string) => `${+v.slice(5)}月` } },
     yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
     series: d.series.map((s) => ({ name: s.name, type: 'bar', stack: 'ph', data: s.data, barMaxWidth: 30 })),
   }
@@ -219,8 +219,8 @@ const collectOption = computed<object | null>(() => {
     series: [{
       name: '收缴率', type: 'bar', barMaxWidth: 20,
       data: collShown.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
-      label: { show: true, position: 'right', fontSize: 10, formatter: '{c}%' },
-      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 10 }, data: [{ xAxis: target }] },
+      label: { show: true, position: 'right', fontSize: 11, formatter: '{c}%' },
+      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 11 }, data: [{ xAxis: target }] },
     }],
   }
 })

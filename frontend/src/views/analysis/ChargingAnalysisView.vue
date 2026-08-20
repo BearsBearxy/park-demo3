@@ -115,8 +115,8 @@ const chart1Opt = computed<object>(() => ({
   grid: { left: 56, right: 56, top: 32, bottom: 26 },
   xAxis: { type: 'category', data: M_LABELS },
   yAxis: [
-    { type: 'value', name: 'kWh', nameTextStyle: { fontSize: 10 } },
-    { type: 'value', name: '元', nameTextStyle: { fontSize: 10 }, splitLine: { show: false } },
+    { type: 'value', name: 'kWh', nameTextStyle: { fontSize: 11 } },
+    { type: 'value', name: '元', nameTextStyle: { fontSize: 11 }, splitLine: { show: false } },
   ],
   series: [
     ...sm.value.stations.map((s) => ({

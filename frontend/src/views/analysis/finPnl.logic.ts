@@ -58,7 +58,7 @@ export function waterfallOption(items: WfItem[], height?: { barWidth?: string })
           itemStyle: { color: items[i].type === 'dec' ? C_NEG : items[i].type === 'end' ? C_END : C_POS, borderRadius: 3 },
         })),
         label: {
-          show: true, position: 'top', fontSize: 10, color: 'rgba(28,28,28,.62)',
+          show: true, position: 'top', fontSize: 11, color: 'rgba(28,28,28,.62)',
           formatter: (p: { dataIndex: number }) => {
             const it = items[p.dataIndex]
             return (it.value < 0 ? '−' : '') + fnum(Math.abs(it.value), 0)
@@ -131,7 +131,7 @@ export function subjectTrendOption(
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: CMP_BUDGET, width: 1.5 },
           // 图表清晰化 §1:insideEndTop 画图内防裁切;文案/色与驾驶舱主图同规则
-          label: { position: 'insideEndTop', formatter: '预算月均 ' + fnum(cmp.budget, 0) + '万', fontSize: 10, color: CMP_BUDGET },
+          label: { position: 'insideEndTop', formatter: '预算月均 ' + fnum(cmp.budget, 0) + '万', fontSize: 11, color: CMP_BUDGET },
           data: [{ yAxis: cmp.budget }],
         }
       : undefined,

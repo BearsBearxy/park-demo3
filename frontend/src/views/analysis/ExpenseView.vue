@@ -128,11 +128,11 @@ const topOpt = computed<object>(() => {
     grid: { left: 8, right: 52, top: 6, bottom: 6, containLabel: true },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => '¥' + fnum(v) + '万' },
     xAxis: { type: 'value', axisLabel: { show: false }, splitLine: { show: false } },
-    yAxis: { type: 'category', data: items.map((d) => d.label), axisLabel: { fontSize: 10, width: 108, overflow: 'truncate' } },
+    yAxis: { type: 'category', data: items.map((d) => d.label), axisLabel: { fontSize: 11, width: 108, overflow: 'truncate' } },
     series: [{
       type: 'bar', barMaxWidth: 13,
       data: items.map((d) => ({ value: +(d.value / 10000).toFixed(2), itemStyle: { color: GROUP_COLOR[d.group] ?? '#B5D4F4', borderRadius: [0, 3, 3, 0] } })),
-      label: { show: true, position: 'right', fontSize: 10, formatter: '{c}万' },
+      label: { show: true, position: 'right', fontSize: 11, formatter: '{c}万' },
     }],
   }
 })
