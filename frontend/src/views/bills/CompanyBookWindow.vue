@@ -367,7 +367,7 @@ function onClose() {
 .cw-table thead th { height: 30px; color: var(--text-muted); font-size: 11.5px; font-weight: var(--fw-semibold); text-align: left; white-space: nowrap; }
 .cw-table th.ct, .cw-table td.ct { text-align: center; }
 .cw-table tbody td { height: 34px; vertical-align: middle; }
-.cw-noro { text-align: center !important; padding: 22px 12px !important; color: var(--text-disabled); font-size: 11.5px; }
+.cw-noro { text-align: center !important; padding: 22px 12px !important; color: var(--text-muted); font-size: 11.5px; }
 .cw-txt { display: block; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-txt.dim { color: var(--text-muted); }
 .cw-txt.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

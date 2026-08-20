@@ -331,7 +331,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
 .im-tile-top { display:flex; align-items:flex-start; gap:10px; }
 .im-tile-icon { width:36px; height:36px; border-radius:var(--radius-sm); background:var(--accent-slate); display:grid; place-items:center; color:var(--ink-900); flex:0 0 auto; }
 .im-tile-name { font-size:var(--fs-body); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.im-tile-tag { font-size:11px; color:var(--text-disabled); }
+.im-tile-tag { font-size:11px; color:var(--text-muted); }
 .im-pill { font-size:11px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); white-space:nowrap; margin-left:auto; flex:0 0 auto; height:fit-content; }
 .im-tile-meta { display:flex; align-items:center; justify-content:space-between; font-size:var(--fs-label); color:var(--text-muted); }
 .im-tile-meta b { color:var(--text-secondary); font-family:var(--font-mono); font-weight:var(--fw-semibold); }

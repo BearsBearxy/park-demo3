@@ -333,7 +333,7 @@ const groups = computed(() =>
 .e11-table thead th { position:sticky; top:0; z-index:3; height:44px; background:var(--surface-white); border-bottom:1px solid var(--border-subtle); vertical-align:middle; }
 .e11-th { display:flex; flex-direction:column; gap:1px; align-items:flex-end; }
 .e11-th-name { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
-.e11-th-unit { font-size:10px; color:var(--text-disabled); }
+.e11-th-unit { font-size: var(--fs-micro); color:var(--text-muted); }
 .e11-h-act { width:46px; }
 
 .e11-table tbody td { height:37px; border-bottom:1px solid var(--divider); }

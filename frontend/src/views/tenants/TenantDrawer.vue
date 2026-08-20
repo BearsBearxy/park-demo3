@@ -125,35 +125,35 @@ const subtitle = computed(() => {
       <div style="display:flex;align-items:center;gap:9px">
         <component :is="iconFor('user')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
         <div>
-          <div style="font-size:10.5px;color:var(--text-disabled)">联系人</div>
+          <div style="font-size:10.5px;color:var(--text-muted)">联系人</div>
           <div style="font-size:13px;font-weight:var(--fw-medium)">{{ tenant.contactName }}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:9px">
         <component :is="iconFor('phone')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
         <div>
-          <div style="font-size:10.5px;color:var(--text-disabled)">联系电话</div>
+          <div style="font-size:10.5px;color:var(--text-muted)">联系电话</div>
           <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ tenant.contactPhone }}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:9px">
         <component :is="iconFor('briefcase')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
         <div>
-          <div style="font-size:10.5px;color:var(--text-disabled)">所属分类</div>
+          <div style="font-size:10.5px;color:var(--text-muted)">所属分类</div>
           <div style="font-size:13px;font-weight:var(--fw-medium)">{{ categoryName }}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:9px">
         <component :is="iconFor('map-pin')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
         <div>
-          <div style="font-size:10.5px;color:var(--text-disabled)">主要单元</div>
+          <div style="font-size:10.5px;color:var(--text-muted)">主要单元</div>
           <div style="font-size:13px;font-weight:var(--fw-medium)">{{ tenant.primaryBuilding ?? '—' }}</div>
         </div>
       </div>
       <div v-if="tenant.parentName" style="display:flex;align-items:center;gap:9px;grid-column:1/-1">
         <component :is="iconFor('corner-down-right')" :size="15" style="color:var(--text-muted);flex:0 0 auto" />
         <div>
-          <div style="font-size:10.5px;color:var(--text-disabled)">关联主租户</div>
+          <div style="font-size:10.5px;color:var(--text-muted)">关联主租户</div>
           <div style="font-size:13px;font-weight:var(--fw-medium)">{{ tenant.parentName }}</div>
         </div>
       </div>

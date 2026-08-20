@@ -139,5 +139,5 @@ function save() {
 .ut-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .ut-sub2 .k { font-size:11px; color:var(--text-muted); }
 .ut-sub2 .v { font-size:14px; font-weight:var(--fw-semibold); font-family:var(--font-mono); margin-top:2px; color:var(--text-primary); }
-.ut-hint { font-size:11px; color:var(--text-disabled); }
+.ut-hint { font-size:11px; color:var(--text-muted); }
 </style>

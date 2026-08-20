@@ -158,8 +158,15 @@ export function useFinStatementScreen(opts: {
   function enterEdit() {
     draft.value = {}; opts.resetLocal(); edit.value = true
   }
+  // 裸丢弃。内部调用方(save 成功后、onImport 整期替换后)已确认过或本就该无声丢,
+  // 所以确认对话框不放这儿 —— 放这儿会让那两条路径二次弹窗。UI 按钮走下面的 requestCancel。
   function cancelEdit() {
     edit.value = false; draft.value = {}; opts.resetLocal()
+  }
+  /** 「取消」按钮:有草稿先问。改前一点即弃,整期录入无声消失。 */
+  function requestCancel() {
+    if (dirty.value > 0 && !window.confirm(`放弃本期 ${dirty.value} 处未保存的修改?`)) return
+    cancelEdit()
   }
   // 退出编辑:有改动先弹保存确认,无改动直接退。
   const saveConfirm = ref(false)
@@ -227,6 +234,14 @@ export function useFinStatementScreen(opts: {
   const importing = ref(false)
   const importResult = ref<ImportResultDTO | null>(null)
   const importSummary = ref('')
+  /** 「导入」按钮:草稿会在导入后被整期替换掉(见下方 onImport 里的 cancelEdit),
+   *  所以确认必须前移到**打开弹窗之前** —— 原先那句丢弃发生在文件已解析、导入已落库之后,
+   *  用户走到那一步已经没有回头路了,等于无声吞掉整期录入。 */
+  function requestImport() {
+    if (dirty.value > 0 &&
+        !window.confirm(`本期有 ${dirty.value} 处修改尚未保存。\n导入会整期替换本期数据,这些修改将丢失。\n\n仍要导入?`)) return
+    importing.value = true
+  }
   async function onImport(picks: { label?: string; records: ImportRec[] }[], fileName: string) {
     importing.value = false
     if (month.value == null) return
@@ -249,8 +264,8 @@ export function useFinStatementScreen(opts: {
     yearGated, gateYears, yearCards, gateCurrent,
     pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
     loadYear, loadPeriod,
-    enterEdit, cancelEdit, saveConfirm, finishEdit, save, onDiscard,
+    enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
     onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
-    importing, importResult, importSummary, onImport,
+    importing, importResult, importSummary, onImport, requestImport,
   }
 }

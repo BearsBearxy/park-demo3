@@ -186,7 +186,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :edit="edit"
           @back="goGate"
           @toggle-edit="edit = !edit"
-        >
+         :show-import="true" @import="importing = true">
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
@@ -202,9 +202,6 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
             </Button>
           </template>
           <!-- 导入常驻非编辑态(spec 2026-07-11 §1:导入独立落库,不依赖编辑草稿) -->
-          <template #idle-actions>
-            <Button variant="outline" size="sm" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
               导入 Excel
             </Button>
           </template>

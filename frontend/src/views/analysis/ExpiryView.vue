@@ -15,6 +15,7 @@ import { iconFor } from '@/components/ds/icon'
 import { fnum } from '@/components/ana/anaFmt'
 import { fetchContracts } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
+import { contractStatusOf } from '@/components/fp/contractStatus'
 import { buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, concentrationOption, paretoOption, wallOption } from './expiry.logic'
 
 const router = useRouter()
@@ -30,7 +31,9 @@ onMounted(async () => {
 })
 
 const wan = (v: number) => fnum(v / 10000, 1)
-const statusZh: Record<string, string> = { draft: '草稿', active: '在租', expiring: '临期', expired: '到期', terminated: '终止' }
+// 文案取权威表(contractStatus.ts):此前本屏是同一批状态的第三套叫法(在租/临期/到期/终止),
+// 合同管理是「执行中/即将到期/已到期/已终止」,租户组合分析又是第二套。
+const statusZh = (s: string) => contractStatusOf(s).label
 
 const stats = computed(() => buildExpiryStats(contracts.value))
 const pareto = computed(() => buildPareto(contracts.value))
@@ -167,7 +170,7 @@ function onParetoClick(p: unknown) {
                     <td class="mut">{{ c.floorInfo || '—' }}</td>
                     <td class="mono">{{ wan(c.monthlyRent) }}</td>
                     <td><span class="ak-inbar"><i :style="{ width: (c.monthlyRent / maxRent * 100) + '%' }"></i></span></td>
-                    <td class="mut">{{ statusZh[c.status] ?? c.status }}</td>
+                    <td class="mut">{{ statusZh(c.status) }}</td>
                   </tr>
                   <tr v-if="expandedId === c.id" class="exp-detail">
                     <td colspan="7">
@@ -180,7 +183,7 @@ function onParetoClick(p: unknown) {
                         <span>押金 {{ tc.deposit > 0 ? '¥' + wan(tc.deposit) + '万' : '—' }}</span>
                         <span>起止 {{ tc.startDate || '—' }} ~ {{ tc.endDate || '—' }}</span>
                         <span class="mono" style="font-weight: 600">¥{{ wan(tc.monthlyRent) }}万/月</span>
-                        <span>{{ statusZh[tc.status] ?? tc.status }}</span>
+                        <span>{{ statusZh(tc.status) }}</span>
                       </div>
                     </td>
                   </tr>

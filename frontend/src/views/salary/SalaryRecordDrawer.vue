@@ -150,7 +150,7 @@ function save() {
 
 <style scoped>
 /* 1:1 from screen-schedule12.jsx WStyles(.w12-fgrp / .w12-input / .w12-sub2 段,115-126) */
-.s12-sec { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-disabled); letter-spacing:.02em; }
+.s12-sec { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-muted); letter-spacing:.02em; }
 .s12-fgrp { display:flex; flex-direction:column; gap:6px; }
 .s12-flabel { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); }
 .s12-frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }

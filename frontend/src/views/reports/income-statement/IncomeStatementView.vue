@@ -36,9 +36,9 @@ const {
   yearGated, gateYears, yearCards, gateCurrent,
   pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
   loadPeriod,
-  enterEdit, cancelEdit, saveConfirm, finishEdit, save, onDiscard,
+  enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
-  importing, importResult, importSummary, onImport,
+  importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
   resetLocal: () => { selected.value = new Set() },
@@ -309,8 +309,12 @@ async function onExport() {
         </div>
         <div class="fin-actions">
           <span v-if="isAll" class="fin-tag ro"><component :is="iconFor('lock')" :size="13" />汇总只读</span>
-          <template v-else-if="!edit">
-            <Button variant="outline" size="sm" @click="importing = true">
+          <!-- 三段(EDIT-MODE-SPEC v2):写操作仅编辑态 / 只读操作两态常驻 / 右端主控件。
+               改前导入在**两态都有**(浏览态也能点,违反 v2「浏览态一切写入口隐藏」),
+               而导出被关在浏览态分支里 —— 一进编辑模式导出就消失,可导出恰恰是 v2 明列的只读操作。 -->
+          <template v-else>
+            <span v-if="edit" class="fin-tag edit">编辑中 · {{ company?.name }}</span>
+            <Button v-if="edit" variant="outline" size="sm" :disabled="saving" @click="requestImport">
               <template #leading><component :is="iconFor('upload')" :size="14" /></template>
               导入
             </Button>
@@ -318,22 +322,17 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button variant="filled" size="sm" @click="enterEdit">
+            <Button v-if="!edit" variant="outline" size="sm" @click="enterEdit">
               <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-              编辑
+              编辑模式
             </Button>
-          </template>
-          <template v-else>
-            <span class="fin-tag edit">编辑中 · {{ company?.name }}</span>
-            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-              导入
-            </Button>
-            <Button variant="gray" size="sm" :disabled="saving" @click="cancelEdit">取消</Button>
-            <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
-              <template #leading><component :is="iconFor('check')" :size="14" /></template>
-              保存
-            </Button>
+            <template v-else>
+              <Button variant="gray" size="sm" :disabled="saving" @click="requestCancel">取消</Button>
+              <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
+                <template #leading><component :is="iconFor('check')" :size="14" /></template>
+                保存
+              </Button>
+            </template>
           </template>
         </div>
       </div>

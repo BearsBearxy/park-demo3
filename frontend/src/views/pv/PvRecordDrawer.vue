@@ -149,5 +149,5 @@ function save() {
 .s6-sub2 .k { font-size:11px; color:var(--text-muted); }
 .s6-sub2 .v { font-size:15px; font-weight:var(--fw-semibold); font-family:var(--font-mono); color:var(--text-primary); margin-top:2px; }
 .s6-sub2 .v .u { font-size:11px; color:var(--text-muted); font-family:var(--font-sans); }
-.s6-hint { font-size:11px; color:var(--text-disabled); }
+.s6-hint { font-size:11px; color:var(--text-muted); }
 </style>

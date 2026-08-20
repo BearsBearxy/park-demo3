@@ -283,7 +283,7 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
           :edit="edit"
           @back="goGate"
           @toggle-edit="finishEdit"
-        >
+         :show-import="true" @import="importing = true" :dirty="dirty.size">
           <template #edit-actions>
             <Button variant="outline" size="sm" @click="drawer = true">
               <template #leading><component :is="iconFor('plus')" :size="14" /></template>
@@ -299,9 +299,6 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
             </Button>
           </template>
           <!-- 导入常驻非编辑态(spec 2026-07-11 §1:导入独立落库,不依赖编辑草稿) -->
-          <template #idle-actions>
-            <Button variant="outline" size="sm" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
               导入 Excel
             </Button>
           </template>

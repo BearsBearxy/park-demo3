@@ -172,5 +172,5 @@ function save() {
 .e11-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .e11-sub2 .k { font-size:11px; color:var(--text-muted); }
 .e11-sub2 .v { font-size:14px; font-weight:var(--fw-semibold); font-family:var(--font-mono); margin-top:2px; color:var(--text-primary); }
-.e11-hint { font-size:11px; color:var(--text-disabled); }
+.e11-hint { font-size:11px; color:var(--text-muted); }
 </style>

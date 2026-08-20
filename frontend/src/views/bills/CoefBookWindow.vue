@@ -488,7 +488,7 @@ function onClose() {
 /* 当前生效值:值 + 生效自 + 例外徽标;继承默认灰体 */
 .cb-val { display: block; text-align: right; font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .cb-val.dim { color: var(--text-muted); }
-.cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-disabled); margin-left: 4px; font-family: var(--font-sans); }
+.cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-muted); margin-left: 4px; font-family: var(--font-sans); }
 .cb-ex { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-style: normal; font-size: 10.5px; color: rgb(178, 100, 0); font-family: var(--font-sans); }
 
 /* 暂存新值(只读)+单行撤销 */

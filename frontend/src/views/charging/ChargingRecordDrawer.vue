@@ -149,5 +149,5 @@ function save() {
 .ch-sub2 { display:grid; grid-template-columns:1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .ch-sub2 .k { font-size:11px; color:var(--text-muted); }
 .ch-sub2 .v { font-size:17px; font-weight:var(--fw-semibold); font-family:var(--font-mono); margin-top:2px; }
-.ch-hint { font-size:11px; color:var(--text-disabled); }
+.ch-hint { font-size:11px; color:var(--text-muted); }
 </style>

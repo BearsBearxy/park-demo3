@@ -284,7 +284,7 @@ const bsTable = computed<BsTblRow[]>(() => {
               <div style="flex: 1 1 120px; min-width: 110px; text-align: center; padding: 14px 16px; background: var(--surface-card); border-radius: 14px">
                 <div style="font-size: 11.5px; color: var(--text-muted)">{{ f.k }}</div>
                 <div style="font-size: 22px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
-                <div style="font-size: 10.5px; color: var(--text-disabled)">{{ f.note }}</div>
+                <div style="font-size: 10.5px; color: var(--text-muted)">{{ f.note }}</div>
               </div>
               <span v-if="i < 2" style="font-size: 22px; color: var(--text-disabled)">×</span>
             </template>

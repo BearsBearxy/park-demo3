@@ -131,7 +131,7 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-table tbody tr:hover .fin-rowlabel .addchild { display:grid; }
 .fin-rowlabel .addchild:hover { background:var(--accent-blue); color:var(--hue-blue); }
 .fin-rowlabel .chip { flex:0 0 auto; font-size:10px; font-weight:var(--fw-medium); color:var(--hue-blue); background:var(--accent-blue); border-radius:var(--radius-full); padding:1px 7px; }
-.fin-no { display:block; text-align:center; font-size:11px; color:var(--text-disabled); font-family:var(--font-mono); }
+.fin-no { display:block; text-align:center; font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }
 .fin-ckcell { text-align:center; }
 .fin-ck { display:block; margin:0 auto; width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; }
 .fin-nv { display:block; text-align:right; font-size:12px; padding:0 12px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }

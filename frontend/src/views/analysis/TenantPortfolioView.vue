@@ -15,6 +15,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { PHASES } from '@/views/sales-income/layout'
+import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
 
 const loaded = ref(false)
@@ -189,15 +190,15 @@ const boxOption = computed<object>(() => ({
 }))
 
 // ── 合同生命周期(真实状态计数,v1 保留) ──
+// 色与文案一律取自 contractStatus.ts 权威表,不再本地写。此前本地那套把 expired 给了灰、
+// terminated 给了红,与合同管理屏**正好对调** —— 用户会读成「已终止那批出了问题」。
 const lifeCounts = computed(() => {
   const n = (s: string) => contracts.value.filter((c) => c.status === s).length
-  return [
-    { label: '生效中', value: n('active'), tone: 'var(--fill-blue)' },
-    { label: '临期', value: n('expiring'), tone: 'var(--hue-orange)' },
-    { label: '待入驻', value: n('draft'), tone: 'var(--hue-cyan)' },
-    { label: '已到期', value: n('expired'), tone: 'var(--text-muted)' },
-    { label: '已终止', value: n('terminated'), tone: 'var(--hue-red)' },
-  ]
+  return (['active', 'expiring', 'draft', 'expired', 'terminated'] as const).map((s) => ({
+    label: contractStatusOf(s).label,
+    value: n(s),
+    tone: contractStatusColor(s),
+  }))
 })
 const lifeMax = computed(() => Math.max(...lifeCounts.value.map((l) => l.value), 1))
 

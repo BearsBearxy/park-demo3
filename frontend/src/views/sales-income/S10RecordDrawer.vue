@@ -77,5 +77,5 @@ function save() {
 .s10d-chip { flex:1 1 0; min-width:72px; height:38px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:8px; cursor:pointer; font-family:var(--font-sans); font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:center; gap:6px; transition:all var(--dur-fast); }
 .s10d-chip:hover { background:var(--surface-card); }
 .s10d-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
-.s10d-hint { font-size:11.5px; color:var(--text-disabled); line-height:1.5; }
+.s10d-hint { font-size:11.5px; color:var(--text-muted); line-height:1.5; }
 </style>

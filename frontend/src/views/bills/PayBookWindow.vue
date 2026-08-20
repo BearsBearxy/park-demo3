@@ -402,7 +402,7 @@ function onClose() {
 .pb-val { display: block; text-align: right; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-val.dim { color: var(--text-muted); }
 .pb-val.none { color: rgb(178, 100, 0); }
-.pb-val em { font-style: normal; margin-left: 5px; font-size: 10.5px; color: var(--text-disabled); }
+.pb-val em { font-style: normal; margin-left: 5px; font-size: 10.5px; color: var(--text-muted); }
 .pb-stash { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .pb-stash b { font-size: 12px; color: var(--hue-blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-undo { flex: 0 0 auto; display: inline-grid; place-items: center; width: 18px; height: 18px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; }

@@ -1146,9 +1146,9 @@ const drawerSub = computed(() => {
 /* 筛选行;批量模式下整条改蓝底操作条(视觉上宣告"你在选择态",退出即恢复) */
 .bn-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bn-toolbar.bulk { padding: 7px 12px; border-radius: var(--radius-md); background: rgb(238, 244, 255); border: 1px solid rgb(206, 223, 252); }
-.bn-toolbar.bulk .bn-selc { color: var(--accent); }
+.bn-toolbar.bulk .bn-selc { color: var(--hue-blue); }
 .bn-bulkb { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
-.bn-bulkb:hover { border-color: var(--accent); color: var(--accent); }
+.bn-bulkb:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .bn-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-chk input { accent-color: var(--hue-blue); }
 .bn-search { width: 230px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
@@ -1188,24 +1188,24 @@ const drawerSub = computed(() => {
 .bn-txt.help:hover { color: var(--hue-blue); }
 .bn-nv { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-nv.empty, .bn-nv.dim { color: var(--text-disabled); }
-.bn-u { font-style: normal; font-size: 10px; color: var(--text-disabled); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
+.bn-u { font-style: normal; font-size: var(--fs-micro); color: var(--text-muted); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
 .bn-sumc { display: block; text-align: right; font-weight: var(--fw-semibold); color: var(--hue-blue); font-size: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bn-sumc.neg { color: var(--hue-red); }
 
 /* 警告角标(悬停显原文) */
 /* S20 交付链:勾选列/状态徽标/收款缺口橙点/行内确认按钮 */
 .bn-ckc { width: 34px; }
-.bn-ckc input { width: 15px; height: 15px; accent-color: var(--accent); vertical-align: -2px; }
-.bn-selc { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-secondary); }
+.bn-ckc input { width: 15px; height: 15px; accent-color: var(--hue-blue); vertical-align: -2px; }
+.bn-selc { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-secondary); }
 .bn-stc { white-space: nowrap; }
 .bn-st { display: inline-block; padding: 1px 9px; border-radius: var(--radius-full); font-size: 11.5px; font-weight: var(--fw-semibold); }
-.bn-st.draft { background: var(--surface-sunken); color: var(--text-tertiary); }
-.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--accent); }
+.bn-st.draft { background: var(--surface-sunken); color: var(--text-muted); }
+.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--hue-blue); }
 .bn-st.exported { background: rgb(220, 242, 227); color: rgb(17, 99, 41); }
 .bn-st.partial { background: rgb(255, 242, 207); color: rgb(125, 92, 0); }
 .bn-gapdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-orange, #e8912d); margin-left: 5px; vertical-align: 1px; cursor: help; }
-.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
-.bn-cfm:hover { border-color: var(--accent); color: var(--accent); }
+.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border-subtle); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
+.bn-cfm:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 tbody tr:hover .bn-cfm { visibility: visible; }
 .bn-warn { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); background: rgb(255, 238, 237); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); cursor: help; }
 

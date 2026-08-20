@@ -237,7 +237,7 @@ async function onContractCreated() {
         楼层单元图
         <template #right>
           <span style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;color:var(--text-disabled)">点击单元查看租户</span>
+            <span style="font-size:11px;color:var(--text-muted)">点击单元查看租户</span>
             <Button variant="outline" size="sm" @click="addFloor">添加楼层</Button>
             <Button
               variant="outline" size="sm"

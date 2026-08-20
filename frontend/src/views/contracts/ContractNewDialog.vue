@@ -810,7 +810,7 @@ select.ct-in { appearance:auto; }
 .ct-bl-row, .ct-bl-cond { display:flex; align-items:center; gap:6px; }
 .ct-bl-row .ct-in, .ct-bl-cond .ct-in { height:34px; font-size:12.5px; padding:0 8px; }
 .ct-bl-feename { flex:0 0 148px; font-size:12.5px; color:var(--text-primary); }
-.ct-bl-feename em { font-style:normal; font-size:10.5px; color:var(--text-disabled); }
+.ct-bl-feename em { font-style:normal; font-size:10.5px; color:var(--text-muted); }
 .ct-bl-n { flex:1 1 0; min-width:0; }
 /* 标的面积预填提示:来自单元档案的自动填充短暂高亮(title 注明「来自单元档案,可改」),用户改动即清 */
 .ct-bl-n.auto-area { border-color:var(--hue-blue); animation:ctAutoFill 1.8s var(--ease-standard); }
