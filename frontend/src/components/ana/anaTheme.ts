@@ -14,7 +14,18 @@ const GRID_LINE = 'rgba(28,28,28,.1)'     // var(--divider) 观感
 const AXIS_LINE = 'rgba(28,28,28,.15)'
 const AXIS_LABEL = 'rgba(28,28,28,.62)'   // var(--text-muted) 观感
 
+/** 分类色板 —— 色相互不相同,给「各充电桩 / 各运营商 / 各费项」这类**无序类目**用。
+ *
+ *  为什么不能用下面主题默认的 color:它前 4 位是蓝族渐变(#378ADD→#85B7EB→#B5D4F4→#185FA5),
+ *  那是**顺序色板**,给「期区 1/2/3」这类有序量用的 —— 实测这 4 个蓝两两对比度最低只有 1.37
+ *  (#85B7EB vs #B5D4F4),堆在一起勉强能看出分界,但用来区分互不相干的类目就读不出谁是谁。
+ *  首位仍是 #378ADD,与主题同起点,单系列图换不换色板外观一致。
+ *  取色全部来自主题既有 8 色,不引入新色相,只是**重排成色相优先**。 */
+export const CAT_COLORS = ['#378ADD', '#EF9F27', '#5DCAA5', '#E24B4A', '#F0997B', '#185FA5', '#85B7EB', '#B5D4F4']
+
 export const FP_ANA_THEME = {
+  // ⚠ 前 4 位是蓝族**渐变**(顺序色板),只适合有序量(期区 1/2/3、档位高低)。
+  //   互不相干的类目请显式传 CAT_COLORS,别吃这个默认值。
   color: ['#378ADD', '#85B7EB', '#B5D4F4', '#185FA5', '#5DCAA5', '#F0997B', '#EF9F27', '#E24B4A'],
   backgroundColor: 'transparent',
   textStyle: { fontFamily: FONT_SANS },

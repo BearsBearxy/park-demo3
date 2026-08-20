@@ -14,6 +14,7 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
+import { CAT_COLORS } from '@/components/ana/anaTheme'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
 import { buildYearOptions } from '@/utils/yearGate'
 import { feeRate, lossSeries, operatorTotals, stationMonthly, yearSummary } from './chargingAnalysis.logic'
@@ -119,13 +120,18 @@ const chart1Opt = computed<object>(() => ({
     { type: 'value', name: '元', nameTextStyle: { fontSize: 11 }, splitLine: { show: false } },
   ],
   series: [
-    ...sm.value.stations.map((s) => ({
+    // 桩是**无序类目**(彼此不相干的站点),必须显式走分类色板 —— 吃主题默认色板会拿到
+    // 前 4 位的蓝族渐变(顺序色板),三根柱子全是深浅不同的蓝,读不出哪根是哪个桩。
+    ...sm.value.stations.map((s, i) => ({
       name: s.name, type: 'bar', stack: 'chg', barMaxWidth: 30,
+      itemStyle: { color: CAT_COLORS[i % CAT_COLORS.length] },
       data: s.charge.map((v) => +v.toFixed(1)),
     })),
     {
+      // 收益线走中性深灰:它是与柱子**不同量纲**的第二轴,不该混进桩的类目色里。
+      // 改前写死 #185FA5,正是色板第 4 位 —— 站点数一旦到 4,第四根柱会与收益线同色。
       name: '收益', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5,
-      itemStyle: { color: '#185FA5' }, lineStyle: { width: 2, color: '#185FA5' },
+      itemStyle: { color: '#334155' }, lineStyle: { width: 2, color: '#334155' },
       data: sm.value.revenue.map((v) => +v.toFixed(0)),
     },
   ],

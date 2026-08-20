@@ -178,7 +178,7 @@ const SEGS: Seg[] = [
   { name: '运营净额', color: '#F0997B', of: opsNet },
   // 抵减段(负向):录入为正金额,展示取负 — 奖励与上网收益冲减当月总表电费
   { name: '功率因数奖励(抵减)', color: '#94A3B8', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pf_reward')) },
-  { name: '光伏上网收益(抵减)', color: '#B5D4F4', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
+  { name: '光伏上网收益(抵减)', color: '#CBD5E1', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
 ]
 const structOption = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
