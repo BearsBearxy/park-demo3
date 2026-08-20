@@ -243,7 +243,7 @@ const areaBarOption = computed(() => ({
               </span>
             </span>
           </div>
-          <AnaEChart :option="scatterOption" :height="250" />
+          <AnaEChart :option="scatterOption" :height="300" />
         </div>
 
         <div class="av2-card pk-s2">

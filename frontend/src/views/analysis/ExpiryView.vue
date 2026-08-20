@@ -143,7 +143,7 @@ function onParetoClick(p: unknown) {
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
           <div style="position: relative">
-            <AnaEChart :option="concOpt" :height="200" />
+            <AnaEChart :option="concOpt" :height="300" />
             <div class="exp-ring-c">
               <b>{{ stats.top10Pct }}%</b><span>Top10 集中度</span>
             </div>

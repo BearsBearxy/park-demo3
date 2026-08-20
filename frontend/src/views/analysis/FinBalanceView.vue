@@ -275,7 +275,7 @@ const bsTable = computed<BsTblRow[]>(() => {
               <div style="font-size: 34px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); letter-spacing: -0.02em">{{ (R.roe * 100).toFixed(1) }}%</div>
               <div style="font-size: 11px; color: var(--text-muted)">ROA {{ R.roa == null ? '—' : R.roa.toFixed(1) + '%' }}</div>
             </div>
-            <span style="font-size: 22px; color: var(--text-disabled)">=</span>
+            <span style="font-size: 22px; color: var(--text-muted)">=</span>
             <template v-for="(f, i) in [
               { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '赚钱能力' },
               { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '资产效率' },
@@ -283,10 +283,10 @@ const bsTable = computed<BsTblRow[]>(() => {
             ]" :key="f.k">
               <div style="flex: 1 1 120px; min-width: 110px; text-align: center; padding: 14px 16px; background: var(--surface-card); border-radius: 14px">
                 <div style="font-size: 11.5px; color: var(--text-muted)">{{ f.k }}</div>
-                <div style="font-size: 22px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
+                <div style="font-size: 22px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
                 <div style="font-size: 10.5px; color: var(--text-muted)">{{ f.note }}</div>
               </div>
-              <span v-if="i < 2" style="font-size: 22px; color: var(--text-disabled)">×</span>
+              <span v-if="i < 2" style="font-size: 22px; color: var(--text-muted)">×</span>
             </template>
           </div>
           <AnaEmpty v-else label="杜邦拆解不可算"
