@@ -8,13 +8,13 @@
 
 /* ── ana-charts.jsx ChartStyles(cz-*) ── */
 .cz-grid { display:grid; gap:16px; }
-.cz-tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size:11.5px; }
-.cz-tip .h { opacity:.62; font-size:10.5px; margin-bottom:5px; }
+.cz-tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size: var(--fs-micro); }
+.cz-tip .h { opacity:.62; font-size:var(--fs-micro); margin-bottom:5px; }
 .cz-tip .r { display:flex; align-items:center; gap:8px; margin-top:3px; white-space:nowrap; }
 .cz-tip .r .nm { opacity:.82; }
 .cz-tip .r .vv { font-family:var(--font-mono); font-weight:600; margin-left:auto; }
 .cz-legend { display:flex; flex-wrap:wrap; gap:7px 16px; justify-content:center; }
-.cz-leg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-secondary); }
+.cz-leg { display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-micro); color:var(--text-secondary); }
 .cz-leg .sw { width:11px; height:11px; border-radius:3px; flex:0 0 auto; }
 /* ── ana-kit.jsx AnaKitStyles(ak-*) ── */
 .ak-page { display:flex; flex-direction:column; gap:18px; width:100%; max-width:1640px; margin:0 auto; box-sizing:border-box; }
@@ -36,12 +36,12 @@
 /* ── 通用进度条行 ── */
 .ak-bar-rows { display:flex; flex-direction:column; gap:14px; }
 .ak-bar-row { display:flex; align-items:center; gap:12px; }
-.ak-bar-name { width:84px; flex:0 0 auto; font-size:13px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ak-bar-name { width:84px; flex:0 0 auto; font-size:var(--fs-label); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ak-bar-track { flex:1; height:8px; border-radius:4px; background:var(--ink-050); overflow:hidden; position:relative; }
 .ak-bar-fill { height:100%; border-radius:4px; transition:width .7s var(--ease-standard); }
 .ak-bar-target { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text-muted); }
-.ak-bar-val { width:58px; flex:0 0 auto; text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ak-bar-delta { width:62px; flex:0 0 auto; text-align:right; font-size:11.5px; font-family:var(--font-mono); }
+.ak-bar-val { width:58px; flex:0 0 auto; text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:var(--fs-label); font-weight:var(--fw-semibold); color:var(--text-primary); }
+.ak-bar-delta { width:62px; flex:0 0 auto; text-align:right; font-size:var(--fs-micro); font-family:var(--font-mono); }
 
 /* ── 图例 ── */
 .ak-legend { display:flex; flex-wrap:wrap; gap:8px 18px; }
@@ -50,7 +50,7 @@
 .ak-leg .ln { width:16px; height:0; flex:0 0 auto; }
 
 /* ── donut 图例行 ── */
-.ak-dl { display:flex; align-items:center; gap:9px; font-size:12.5px; }
+.ak-dl { display:flex; align-items:center; gap:9px; font-size:var(--fs-label); }
 .ak-dl .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 .ak-dl .nm { color:var(--text-secondary); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ak-dl .pc { font-variant-numeric:tabular-nums; color:var(--text-primary); font-weight:var(--fw-semibold); }
@@ -60,13 +60,16 @@
 .ak-tbl { width:100%; border-collapse:separate; border-spacing:0; font-family:var(--font-sans); }
 .ak-tbl th { text-align:right; font-size:11px; font-weight:var(--fw-semibold); color:var(--text-muted); padding:0 12px 9px; white-space:nowrap; border-bottom:1px solid var(--divider); }
 .ak-tbl th:first-child { text-align:left; }
-.ak-tbl td { padding:0 12px; height:38px; font-size:12.5px; border-bottom:1px solid var(--divider); text-align:right; white-space:nowrap; }
+/* 表格正文 12px(--fs-label)。改前 12.5px —— 半像素在非整数 DPR 下按设备像素取整,
+   同一列在不同缩放下渲染成 12 或 13,字重看着忽轻忽重。单元格内的 .mut/.mono span
+   都继承这一行,故这一条覆盖分析层约 4000 个文本元素。 */
+.ak-tbl td { padding:0 12px; height:38px; font-size:var(--fs-label); border-bottom:1px solid var(--divider); text-align:right; white-space:nowrap; }
 .ak-tbl td:first-child { text-align:left; color:var(--text-primary); }
 .ak-tbl tbody tr:hover td { background:var(--surface-card); }
 .ak-tbl .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
 .ak-tbl .mut { color:var(--text-muted); }
 .ak-tbl .nm2 { display:flex; align-items:center; gap:9px; }
-.ak-tbl .rk { width:18px; height:18px; flex:0 0 auto; border-radius:6px; background:var(--surface-sunken); display:grid; place-items:center; font-size:10px; font-weight:var(--fw-semibold); color:var(--text-muted); font-family:var(--font-mono); }
+.ak-tbl .rk { width:18px; height:18px; flex:0 0 auto; border-radius:6px; background:var(--surface-sunken); display:grid; place-items:center; font-size: var(--fs-micro); font-weight:var(--fw-semibold); color:var(--text-muted); font-family:var(--font-mono); }
 .ak-inbar { display:inline-block; width:54px; height:6px; border-radius:3px; background:var(--ink-050); overflow:hidden; vertical-align:middle; margin-right:8px; }
 .ak-inbar i { display:block; height:100%; border-radius:3px; background:var(--fill-slate); }
 

@@ -196,8 +196,8 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-shell { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100%; }
 .anx-tools { position: sticky; top: 0; z-index: 20; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 9px 18px; border-bottom: 1px solid var(--divider); flex-wrap: wrap; background: var(--surface-overlay); backdrop-filter: blur(8px); }
 .anx-body { flex: 1; min-height: 0; padding: 24px; box-sizing: border-box; }
-.anx-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.anx-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 3px; }
+.anx-lbl { font-size: var(--fs-micro); color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.anx-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 3px; }
 .anx-icobtn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-fast), color var(--dur-fast); position: relative; }
 .anx-icobtn:hover, .anx-icobtn.on { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -221,10 +221,10 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .anx-nav button:disabled { opacity: .4; cursor: default; }
 .anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px; }
-.anx-pop h4 { margin: 0 0 12px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.anx-pop h4 { margin: 0 0 12px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .anx-fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }
-.anx-fld input { width: 74px; font-family: var(--font-mono); font-size: 12.5px; text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
+.anx-fld input { width: 74px; font-family: var(--font-mono); font-size: var(--fs-label); text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
 .anx-fld input:focus { border-color: var(--border-strong); }
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>

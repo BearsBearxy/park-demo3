@@ -203,7 +203,7 @@ function onParetoClick(p: unknown) {
 </template>
 
 <style scoped>
-.exp-kv { display: flex; justify-content: space-between; font-size: 12.5px; }
+.exp-kv { display: flex; justify-content: space-between; font-size: var(--fs-label); }
 .exp-kv .k { color: var(--text-muted); }
 .exp-kv .v { font-family: var(--font-mono); font-weight: 600; }
 .exp-scroll { max-height: 480px; overflow: auto; }
@@ -212,8 +212,8 @@ function onParetoClick(p: unknown) {
 .exp-row:hover td, .exp-row.on td { background: var(--bg-hover); }
 .exp-detail td { background: var(--surface-sunken); padding: 10px 12px; }
 .exp-det-h { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-.exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-secondary); padding: 3px 0; }
+.exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-secondary); padding: 3px 0; }
 .exp-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 2px; }
 .exp-ring-c b { font-size: 20px; font-family: var(--font-mono); color: var(--text-primary); }
-.exp-ring-c span { font-size: 10.5px; color: var(--text-muted); }
+.exp-ring-c span { font-size: var(--fs-micro); color: var(--text-muted); }
 </style>

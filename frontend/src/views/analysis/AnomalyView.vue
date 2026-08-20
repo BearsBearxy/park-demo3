@@ -316,20 +316,20 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 </template>
 
 <style scoped>
-.mn-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+.mn-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 /* 左列清单 */
 .mn-listcard { display: flex; flex-direction: column; }
 .mn-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-subtle); border-radius: 9px; padding: 6px 10px; margin-bottom: 8px; color: var(--text-muted); }
-.mn-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.mn-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .mn-list { flex: 1; min-height: 0; overflow-y: auto; max-height: 560px; display: flex; flex-direction: column; gap: 4px; }
 .mn-row { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; border-radius: 9px; padding: 8px 9px; cursor: pointer; font-family: var(--font-sans); text-align: left; }
 .mn-row:hover { background: var(--bg-hover); }
 .mn-row.on { background: var(--accent-blue); }
 .mn-row .score { flex: 0 0 34px; font-size: 15px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .mn-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mn-row .nm { font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mn-row .sub { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
-.mn-row .tier { flex: 0 0 auto; font-size: 10px; font-weight: var(--fw-semibold); border: 1px solid; border-radius: var(--radius-full); padding: 1px 7px; }
+.mn-row .nm { font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn-row .sub { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+.mn-row .tier { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); border: 1px solid; border-radius: var(--radius-full); padding: 1px 7px; }
 /* 右面板 */
 .mn-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* 规则行 */
@@ -337,12 +337,12 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 .mn-rule { display: flex; align-items: flex-start; gap: 10px; background: var(--surface-card); border-radius: 10px; padding: 9px 11px; }
 .mn-rule .ic { width: 26px; height: 26px; flex: 0 0 auto; border-radius: 8px; display: grid; place-items: center; }
 .mn-rule .bd { flex: 1; min-width: 0; }
-.mn-rule .tt { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.mn-rule .tt .tag { font-size: 10px; font-weight: var(--fw-medium); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
-.mn-rule .dt { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+.mn-rule .tt { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mn-rule .tt .tag { font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
+.mn-rule .dt { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
 .mn-rule .ops { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .mn-st-seg { display: inline-flex; background: var(--surface-sunken); border-radius: 999px; padding: 2px; }
-.mn-st-seg button { border: none; cursor: pointer; font-family: var(--font-sans); font-size: 10.5px; padding: 2px 9px; border-radius: 999px; transition: background var(--dur-fast), color var(--dur-fast); }
+.mn-st-seg button { border: none; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-micro); padding: 2px 9px; border-radius: 999px; transition: background var(--dur-fast), color var(--dur-fast); }
 .mn-link { border: none; background: transparent; color: var(--text-link); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .mn-link:hover { text-decoration: underline; }
 /* 深链按钮 */

@@ -446,23 +446,23 @@ const revOpt = computed<object>(() => ({
 .roi2-page { display: flex; flex-direction: column; gap: 10px; width: 100%; min-height: 0; box-sizing: border-box; }
 
 /* 回收进度卡 */
-.roi2-big { font-size: 30px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
+.roi2-big { font-size: var(--fs-display); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
 .roi2-bar { height: 8px; border-radius: var(--radius-full); background: var(--ink-100); overflow: hidden; margin: 10px 0 14px; }
 .roi2-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--hue-blue); }
 .roi2-rows { display: flex; flex-direction: column; gap: 8px; }
 .roi2-rows .r { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.roi2-rows .k { font-size: 11.5px; color: var(--text-muted); }
-.roi2-rows .v { font-size: 13px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); }
+.roi2-rows .k { font-size: var(--fs-micro); color: var(--text-muted); }
+.roi2-rows .v { font-size: var(--fs-label); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); }
 
 /* 选中期摘要 + 明细表 */
-.roi2-sel { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; }
+.roi2-sel { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 8px; }
 .roi2-sel b { font-family: var(--font-mono); color: var(--text-primary); font-weight: var(--fw-semibold); }
 .roi2-tblwrap { max-height: 210px; overflow: auto; }
 
 /* ── 分栋抄表分析区(ENERGY-ANALYSIS-SPEC §2) ── */
 .roi2-sect { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .roi2-sect .t { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.roi2-sect .hint { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
+.roi2-sect .hint { margin-left: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
 .roi2-ysel { font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
 .roi2-nocap { margin: 6px 0 0; font-size: 11px; color: var(--text-muted); }
 /* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 TenantEnergyView 惯例) */

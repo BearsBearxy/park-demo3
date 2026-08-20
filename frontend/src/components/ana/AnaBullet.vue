@@ -46,5 +46,5 @@ const INK_ = INK
 </template>
 
 <style scoped>
-.ana-bullet-target { font-size: 10.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.ana-bullet-target { font-size: var(--fs-micro); color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 </style>

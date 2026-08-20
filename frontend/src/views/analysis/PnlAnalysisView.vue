@@ -214,17 +214,17 @@ const structOpt = computed<object>(() => {
 .pa2-mini .hd { display: flex; align-items: center; gap: 8px; }
 .pa2-mini .ic { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; background: var(--accent-blue); color: var(--hue-blue); display: grid; place-items: center; }
 .pa2-mini .ic.dim { background: var(--surface-card); color: var(--text-disabled); }
-.pa2-mini .no { font-size: 10px; font-weight: var(--fw-semibold); color: var(--text-muted); font-family: var(--font-mono); }
-.pa2-mini .nm { font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.pa2-mini .no { font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted); font-family: var(--font-mono); }
+.pa2-mini .nm { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .pa2-mini .rate { margin-left: auto; font-size: 11px; font-weight: var(--fw-semibold); font-family: var(--font-mono); padding: 2px 8px; border-radius: var(--radius-full); background: var(--accent-sky); color: var(--hue-blue); white-space: nowrap; }
 .pa2-mini .rate.neg { background: rgb(252, 235, 233); color: var(--hue-red); }
 .pa2-mini .ft { display: flex; align-items: baseline; gap: 6px; }
-.pa2-mini .ft .l { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
-.pa2-mini .ft .v { font-size: 13px; font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pa2-mini .ft .l { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; }
+.pa2-mini .ft .v { font-size: var(--fs-label); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pa2-mini .ft .v.neg { color: var(--hue-red); }
 .pa2-mini .ft .lnk { margin-left: auto; color: var(--text-disabled); display: inline-flex; cursor: pointer; }
 .pa2-mini .ft .lnk:hover { color: var(--text-primary); }
 .pa2-mini .emp { display: flex; align-items: center; gap: 6px; color: var(--text-disabled); font-size: 12px; padding: 4px 0; }
-.pa2-mini .emp .go { margin-left: auto; border: none; background: transparent; font-size: 11.5px; color: var(--text-link); cursor: pointer; font-family: var(--font-sans); padding: 0; }
+.pa2-mini .emp .go { margin-left: auto; border: none; background: transparent; font-size: var(--fs-micro); color: var(--text-link); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 .pa2-mini .emp .go:hover { text-decoration: underline; }
 </style>

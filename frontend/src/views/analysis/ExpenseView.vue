@@ -252,11 +252,11 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 .ex-movers { display: flex; flex-direction: column; gap: 7px; }
 .ex-mv { display: flex; align-items: center; gap: 8px; }
 .ex-mv .lb { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-mv .amt { flex: 0 0 auto; font-size: 11.5px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-.ex-mv .pct { flex: 0 0 auto; width: 64px; text-align: right; font-size: 11.5px; font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ex-mv .amt { flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.ex-mv .pct { flex: 0 0 auto; width: 64px; text-align: right; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 /* 报销专区合计行 */
 .ex-reim-sum { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
 .ex-reim-more { margin: 8px 0 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-.ex-reim-sum .v { font-size: 17px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ex-reim-sum .v { font-size: var(--fs-h3); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .ex-reim-sum .s { font-size: 11px; color: var(--text-muted); }
 </style>

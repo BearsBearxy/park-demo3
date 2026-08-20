@@ -406,10 +406,10 @@ const conclusion = computed(() => buildConclusion(
 
 <style scoped>
 /* 工具条屏名(order:-1 置于期间控件前,不改 AnaShell) */
-.cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+.cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 /* §A 经营结论条(av2-card 观感,单行 flex wrap;位于回退横幅后、grid 前) */
 .cv2-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
-.cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .cv2-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .cv2-cs.lk { cursor: pointer; }
 .cv2-cs.lk:hover { text-decoration: underline; }
@@ -419,18 +419,18 @@ const conclusion = computed(() => buildConclusion(
 .cv2-anom:hover { background: var(--bg-hover); }
 .cv2-anom .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .cv2-anom .tt { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv2-anom .vv { flex: 0 0 auto; font-size: 11.5px; font-weight: var(--fw-semibold); font-family: var(--font-mono); }
-.cv2-all { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
+.cv2-anom .vv { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); }
+.cv2-all { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
 .cv2-all:hover { text-decoration: underline; }
 /* 弹层 */
 /* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
 .cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; }
 .cv2-modal { background: var(--surface-white); border-radius: 14px; box-shadow: 0 12px 40px rgba(28, 28, 28, 0.22); padding: 16px 18px; width: min(620px, 92vw); max-height: 80vh; overflow: auto; }
 .cv2-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.cv2-modal-h .t { font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.cv2-modal-h .t { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cv2-modal-h .x { border: none; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; padding: 4px; border-radius: 6px; }
 .cv2-modal-h .x:hover { background: var(--bg-hover); color: var(--text-primary); }
-.cv2-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); }
+.cv2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .cv2-link:hover { text-decoration: underline; }
 .cv2-arr-sum { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
 </style>

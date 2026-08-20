@@ -282,7 +282,7 @@ const lossOpt = computed<object>(() => ({
 <style scoped>
 /* 结论条:CockpitView .cv2-concl 同观感(av2-card 分句 flex wrap;末句=深链按钮) */
 .ca-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; }
-.ca-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.ca-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .ca-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .ca-cs.lk { cursor: pointer; color: var(--text-link); }
 .ca-cs.lk:hover { text-decoration: underline; }

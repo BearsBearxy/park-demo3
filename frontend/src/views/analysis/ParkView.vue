@@ -308,9 +308,9 @@ const areaBarOption = computed(() => ({
 .pk-cov { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
-.pk-am .v { font-size: 22px; font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pk-am .l { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-.pk-am .s { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+.pk-am .s { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; }
 .pk-area-chart { flex: 1 1 auto; min-width: 0; }
 @media (max-width: 900px) {
   .pk-area-body { flex-direction: column; }

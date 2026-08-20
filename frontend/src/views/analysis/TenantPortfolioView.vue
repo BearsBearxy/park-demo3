@@ -358,5 +358,5 @@ const listRows = computed(() => {
 .tp2-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px 8px; }
 .tp2-chip .x { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 0; line-height: 1; }
 .tp2-chip .x:hover { color: var(--text-primary); }
-.tp2-none { text-align: center; color: var(--text-disabled); font-size: 12.5px; padding: 18px 0; }
+.tp2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 18px 0; }
 </style>

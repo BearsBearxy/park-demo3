@@ -312,18 +312,18 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 
 <style scoped>
 /* 工具条口径标签 + v2 紧凑页头(复刻 AnaShell .anx-lbl 观感) */
-.fin-name { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.fin-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fin-name { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fin-lbl { font-size: var(--fs-micro); color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .fin-page { display: flex; flex-direction: column; gap: 10px; max-width: 1640px; margin: 0 auto; }
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
+.fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 
 /* §C 迷你利润表链条(贴 av2-kpi 观感:白底细边圆角卡;.av2-kpis 单子项自然占满整行) */
 .fin-chain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 9px 14px; }
 .fin-chain .node { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fin-chain .nl { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .fin-chain .nv { font-size: 16px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }
-.fin-chain .np { font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); }
+.fin-chain .np { font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
 .fin-chain .op { font-size: 15px; color: var(--text-muted); padding: 0 2px; user-select: none; }
-.fin-chain .tail { margin-left: auto; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
+.fin-chain .tail { margin-left: auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
 </style>

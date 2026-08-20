@@ -321,11 +321,11 @@ const spreadOption = computed<object>(() => ({
 
 <style scoped>
 /* simulated 说明条(仿 ana-pbanner,灰标口径用中性色) */
-.ea-simbar { display: flex; align-items: center; gap: 6px; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 8px; padding: 7px 12px; font-size: 11.5px; line-height: 1.4; margin-bottom: 12px; }
+.ea-simbar { display: flex; align-items: center; gap: 6px; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 8px; padding: 7px 12px; font-size: var(--fs-micro); line-height: 1.4; margin-bottom: 12px; }
 .ea-simbar svg { flex: 0 0 auto; }
 /* 结论条(仿驾驶舱 cv2-concl:分句圆点,整句可点深链) */
 .ea-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
-.ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); cursor: pointer; }
+.ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
 .ea-cs:hover { text-decoration: underline; }
 .ea-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 </style>

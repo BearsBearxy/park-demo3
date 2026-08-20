@@ -168,10 +168,10 @@ function onFr(e: Event) {
 
 <style scoped>
 /* §C4 人话结论行(仿驾驶舱 cv2-concl 简化版:单句单圆点) */
-.bev-concl { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; font-size: 12.5px; color: var(--text-primary); }
+.bev-concl { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; font-size: var(--fs-label); color: var(--text-primary); }
 .bev-concl .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .bev-slider { display: flex; align-items: center; gap: 8px; margin: 8px 2px 2px; }
-.bev-slider .k { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.bev-slider .k { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; }
 .bev-slider .v { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .bev-slider input[type='range'] { flex: 1; min-width: 80px; max-width: 240px; accent-color: var(--fill-blue); }
 </style>

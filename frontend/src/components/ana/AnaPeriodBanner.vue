@@ -14,6 +14,6 @@ defineProps<{ selected: string; used: string; source?: string }>()
 </template>
 
 <style scoped>
-.ana-pbanner { display: flex; align-items: center; gap: 6px; background: #faeeda; color: #854f0b; border-radius: 8px; padding: 7px 12px; font-size: 11.5px; line-height: 1.4; }
+.ana-pbanner { display: flex; align-items: center; gap: 6px; background: #faeeda; color: #854f0b; border-radius: 8px; padding: 7px 12px; font-size: var(--fs-micro); line-height: 1.4; }
 .ana-pbanner svg { flex: 0 0 auto; }
 </style>
