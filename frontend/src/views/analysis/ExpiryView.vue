@@ -15,6 +15,7 @@ import { iconFor } from '@/components/ds/icon'
 import { fnum } from '@/components/ana/anaFmt'
 import { fetchContracts } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
+import { contractStatusOf } from '@/components/fp/contractStatus'
 import { buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, concentrationOption, paretoOption, wallOption } from './expiry.logic'
 
 const router = useRouter()
@@ -30,7 +31,9 @@ onMounted(async () => {
 })
 
 const wan = (v: number) => fnum(v / 10000, 1)
-const statusZh: Record<string, string> = { draft: '草稿', active: '在租', expiring: '临期', expired: '到期', terminated: '终止' }
+// 文案取权威表(contractStatus.ts):此前本屏是同一批状态的第三套叫法(在租/临期/到期/终止),
+// 合同管理是「执行中/即将到期/已到期/已终止」,租户组合分析又是第二套。
+const statusZh = (s: string) => contractStatusOf(s).label
 
 const stats = computed(() => buildExpiryStats(contracts.value))
 const pareto = computed(() => buildPareto(contracts.value))
@@ -107,7 +110,7 @@ function onParetoClick(p: unknown) {
             <span class="hint">{{ wall.totalCount > 0
               ? `未来8季到期 ${wall.totalCount} 份 · ¥${wan(wallRentSum)}万/月`
               : '按季到期月租金 + 续约概率(需合同起止日期)' }}</span></div>
-          <AnaEChart v-if="wall.totalCount > 0" :option="wallOpt" :height="240" />
+          <AnaEChart v-if="wall.totalCount > 0" :option="wallOpt" :height="250" />
           <AnaEmpty v-else :label="'到期时间轴暂不可用:' + stats.dateMissing + ' 份合同的起止/签订日期均未录入'"
             hint="补录合同起止日期后,此处将展示未来 8 季到期租金墙、临期清单与续约预测"
             to="/contracts" toText="去合同屏补录日期" />
@@ -140,7 +143,7 @@ function onParetoClick(p: unknown) {
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
           <div style="position: relative">
-            <AnaEChart :option="concOpt" :height="188" />
+            <AnaEChart :option="concOpt" :height="300" />
             <div class="exp-ring-c">
               <b>{{ stats.top10Pct }}%</b><span>Top10 集中度</span>
             </div>
@@ -167,7 +170,7 @@ function onParetoClick(p: unknown) {
                     <td class="mut">{{ c.floorInfo || '—' }}</td>
                     <td class="mono">{{ wan(c.monthlyRent) }}</td>
                     <td><span class="ak-inbar"><i :style="{ width: (c.monthlyRent / maxRent * 100) + '%' }"></i></span></td>
-                    <td class="mut">{{ statusZh[c.status] ?? c.status }}</td>
+                    <td class="mut">{{ statusZh(c.status) }}</td>
                   </tr>
                   <tr v-if="expandedId === c.id" class="exp-detail">
                     <td colspan="7">
@@ -180,7 +183,7 @@ function onParetoClick(p: unknown) {
                         <span>押金 {{ tc.deposit > 0 ? '¥' + wan(tc.deposit) + '万' : '—' }}</span>
                         <span>起止 {{ tc.startDate || '—' }} ~ {{ tc.endDate || '—' }}</span>
                         <span class="mono" style="font-weight: 600">¥{{ wan(tc.monthlyRent) }}万/月</span>
-                        <span>{{ statusZh[tc.status] ?? tc.status }}</span>
+                        <span>{{ statusZh(tc.status) }}</span>
                       </div>
                     </td>
                   </tr>
@@ -200,7 +203,7 @@ function onParetoClick(p: unknown) {
 </template>
 
 <style scoped>
-.exp-kv { display: flex; justify-content: space-between; font-size: 12.5px; }
+.exp-kv { display: flex; justify-content: space-between; font-size: var(--fs-label); }
 .exp-kv .k { color: var(--text-muted); }
 .exp-kv .v { font-family: var(--font-mono); font-weight: 600; }
 .exp-scroll { max-height: 480px; overflow: auto; }
@@ -209,8 +212,8 @@ function onParetoClick(p: unknown) {
 .exp-row:hover td, .exp-row.on td { background: var(--bg-hover); }
 .exp-detail td { background: var(--surface-sunken); padding: 10px 12px; }
 .exp-det-h { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-.exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-secondary); padding: 3px 0; }
+.exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-secondary); padding: 3px 0; }
 .exp-ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 2px; }
 .exp-ring-c b { font-size: 20px; font-family: var(--font-mono); color: var(--text-primary); }
-.exp-ring-c span { font-size: 10.5px; color: var(--text-muted); }
+.exp-ring-c span { font-size: var(--fs-micro); color: var(--text-muted); }
 </style>

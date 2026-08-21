@@ -237,7 +237,7 @@ const scatterOption = computed<object>(() => {
       markLine: {
         silent: true, symbol: 'none',
         lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.4)' },
-        label: { formatter: '户均', color: 'rgba(28,28,28,.4)', fontSize: 10 },
+        label: { formatter: '户均', color: 'rgba(28,28,28,.4)', fontSize: 11 },
         data: [{ yAxis: +crossMean.value.toFixed(0) }],
       },
     }],
@@ -348,7 +348,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
               <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录{{ byFamily ? ' · 趋势为主租户本户' : '' }}</span>
             </div>
-            <AnaEChart :option="trendOption" :height="280" />
+            <AnaEChart :option="trendOption" :height="300" />
             <AnaMethodNote>
               口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
@@ -368,7 +368,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <!-- §五策略2:所选期无台账 → 台账期回退,卡顶横幅(禁静默) -->
               <AnaPeriodBanner v-if="ledgerFallback" :selected="selPeriodLabel" :used="ledgerYm" source="台账" style="margin-bottom: 8px" />
               <template v-if="selPay.length">
-                <AnaEChart :option="payOption" :height="190" />
+                <AnaEChart :option="payOption" :height="200" />
                 <div v-if="selPayRow" class="te2-payline">
                   {{ ledgerYm }} 收缴率 <b :style="{ color: selPayRow.rate < anaSettings.collectTarget ? 'var(--hue-orange)' : 'var(--hue-blue)' }">{{ selPayRow.rate }}%</b>
                   <span> · 期末结余 </span><b :style="{ color: selPayRow.bal > 0.005 ? 'var(--hue-red)' : 'var(--text-primary)' }">¥{{ (selPayRow.bal / 10000).toFixed(1) }}万</b>
@@ -384,7 +384,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
         <!-- 下方:Top20 榜(点击选中)+ 费额 vs 月租散点(点点选中) -->
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint">点击条形选中租户</span></div>
-          <AnaEChart :option="topOption" :height="470" @chart-click="onTopClick" />
+          <AnaEChart :option="topOption" :height="440" @chart-click="onTopClick" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
@@ -397,7 +397,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               </span>
             </span>
           </div>
-          <AnaEChart :option="scatterOption" :height="400" @chart-click="onScatterClick" />
+          <AnaEChart :option="scatterOption" :height="440" @chart-click="onScatterClick" />
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>
           </div>
@@ -416,22 +416,22 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 .te2-fam-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }
 .te2-fam-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 10px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
 .te2-fam-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28, 28, 28, .1); }
-.te2-item .fam { margin-left: 6px; font-size: 10px; color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
-.te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: 12.5px; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
+.te2-item .fam { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
+.te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }
 .te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; }
 .te2-item:hover { background: var(--bg-hover); }
 .te2-item.on { background: var(--accent-blue); }
-.te2-item .rk { width: 20px; flex: 0 0 auto; font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); }
-.te2-item .nm { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.te2-item .ph { flex: 0 0 auto; font-size: 10.5px; color: var(--text-muted); }
+.te2-item .rk { width: 20px; flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
+.te2-item .nm { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.te2-item .ph { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); }
 .te2-item .amt { flex: 0 0 auto; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .te2-item .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
-.te2-none { text-align: center; color: var(--text-disabled); font-size: 12.5px; padding: 16px 0; }
+.te2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 16px 0; }
 .te2-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .te2-links { display: inline-flex; gap: 10px; }
-.te2-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 0; }
+.te2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 .te2-link:hover { text-decoration: underline; }
 .te2-link:disabled { color: var(--text-disabled); cursor: default; text-decoration: none; }
 .te2-payline { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }

@@ -315,10 +315,11 @@ function onClose() {
           <Select :options="coefOpts" :model-value="coefId" size="sm" @update:model-value="setCoef" />
         </div>
         <span class="cb-lbl">生效月</span>
-        <div style="width:96px">
+        <!-- 期间选择器宽度按 LIST-PAGE-SPEC §2:年 110 / 月 92。96/84 会把「2024年」截成「202…」 -->
+        <div style="width:110px">
           <Select :options="yearOpts" :model-value="String(effYear)" size="sm" @update:model-value="setEffYear" />
         </div>
-        <div style="width:84px">
+        <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(effMonth)" size="sm" @update:model-value="setEffMonth" />
         </div>
       </div>
@@ -488,7 +489,7 @@ function onClose() {
 /* 当前生效值:值 + 生效自 + 例外徽标;继承默认灰体 */
 .cb-val { display: block; text-align: right; font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .cb-val.dim { color: var(--text-muted); }
-.cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-disabled); margin-left: 4px; font-family: var(--font-sans); }
+.cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-muted); margin-left: 4px; font-family: var(--font-sans); }
 .cb-ex { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-style: normal; font-size: 10.5px; color: rgb(178, 100, 0); font-family: var(--font-sans); }
 
 /* 暂存新值(只读)+单行撤销 */

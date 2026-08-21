@@ -112,8 +112,8 @@ const scatterOption = computed(() => ({
     },
   },
   grid: { left: 48, right: 18, top: 16, bottom: 34 },
-  xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 10.5 } },
-  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 10.5 } },
+  xAxis: { type: 'value', name: '租户数(户)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { fontSize: 11 } },
+  yAxis: { type: yLog.value ? 'log' : 'value', name: '月租(万)', nameTextStyle: { fontSize: 11 } },
   series: [{
     type: 'scatter',
     data: pkScatter.value.shown.map((r) => ({
@@ -161,9 +161,15 @@ const areaBarOption = computed(() => ({
         + (r && r.rent > 0 ? `<br/>换算系数 ${fnum(r.building / r.rent, 2)}` : '')
     },
   },
-  grid: { left: 56, right: 18, top: 12, bottom: 26 },
-  xAxis: { type: 'category', data: areaRows.value.map((r) => r.name), axisLabel: { fontSize: 10.5 } },
-  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 10.5 } },
+  // 斜排标签比平排吃更多下边距,bottom 不跟着放大会把楼栋名切掉下半截
+  grid: { left: 56, right: 18, top: 12, bottom: areaRows.value.length > 8 ? 48 : 26 },
+  // 楼栋名多到一定数量后 ECharts 会自作主张隔一个隐一个,柱子无名可对 → interval:0 强制全画、斜排避让;
+  // 楼栋少时不倾斜(平排更好读),阈值 8 是本屏宽度下横排放得下的上限
+  xAxis: {
+    type: 'category', data: areaRows.value.map((r) => r.name),
+    axisLabel: { fontSize: 11, interval: 0, rotate: areaRows.value.length > 8 ? 30 : 0, hideOverlap: true },
+  },
+  yAxis: { type: 'value', name: '面积(㎡)', nameTextStyle: { fontSize: 11 } },
   series: [
     { name: '建筑面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.building, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.building.toFixed(2)) },
     { name: '租赁面积', type: 'bar', barMaxWidth: 26, itemStyle: { color: AREA_COLOR.rent, borderRadius: [3, 3, 0, 0] }, data: areaRows.value.map((r) => +r.rent.toFixed(2)) },
@@ -194,7 +200,7 @@ const areaBarOption = computed(() => ({
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期 · 点击下钻右侧明细</span></div>
-          <AnaEChart :option="treemapOption" :height="320" @chart-click="onTreeClick" />
+          <AnaEChart :option="treemapOption" :height="300" @chart-click="onTreeClick" />
           <div class="pk-legend">
             <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
           </div>
@@ -223,7 +229,7 @@ const areaBarOption = computed(() => ({
 
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
-          <AnaEChart :option="donutOption" :height="252" />
+          <AnaEChart :option="donutOption" :height="300" />
         </div>
 
         <div class="av2-card av2-s6">
@@ -237,7 +243,7 @@ const areaBarOption = computed(() => ({
               </span>
             </span>
           </div>
-          <AnaEChart :option="scatterOption" :height="252" />
+          <AnaEChart :option="scatterOption" :height="300" />
         </div>
 
         <div class="av2-card pk-s2">
@@ -268,7 +274,7 @@ const areaBarOption = computed(() => ({
               </div>
             </div>
             <div class="pk-area-chart">
-              <AnaEChart :option="areaBarOption" :height="220" />
+              <AnaEChart :option="areaBarOption" :height="250" />
               <div class="pk-legend">
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.building }"></span>建筑面积</span>
                 <span class="pk-leg"><span class="sw" :style="{ background: AREA_COLOR.rent }"></span>租赁面积</span>
@@ -302,9 +308,9 @@ const areaBarOption = computed(() => ({
 .pk-cov { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
-.pk-am .v { font-size: 22px; font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pk-am .l { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-.pk-am .s { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+.pk-am .s { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; }
 .pk-area-chart { flex: 1 1 auto; min-width: 0; }
 @media (max-width: 900px) {
   .pk-area-body { flex-direction: column; }

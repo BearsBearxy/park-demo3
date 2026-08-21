@@ -66,7 +66,7 @@ export function paretoOption(p: ParetoData): object {
     legend: { top: 0, data: ['月租金', '累计占比'] },
     xAxis: {
       type: 'category', data: p.tenants,
-      axisLabel: { rotate: 38, fontSize: 10, formatter: (v: string) => (v.length > 6 ? v.slice(0, 6) + '…' : v) },
+      axisLabel: { rotate: 38, fontSize: 11, formatter: (v: string) => (v.length > 6 ? v.slice(0, 6) + '…' : v) },
     },
     yAxis: [
       { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
@@ -150,7 +150,7 @@ export function wallOption(w: ExpiryWall): object {
       formatter: (ps: { name: string; value: number; dataIndex: number }[]) =>
         `${ps[0].name}<br/>¥${ps[0].value}万 · ${w.quarters[ps[0].dataIndex].count} 份合同`,
     },
-    xAxis: { type: 'category', data: w.quarters.map((q) => q.label), axisLabel: { fontSize: 10 } },
+    xAxis: { type: 'category', data: w.quarters.map((q) => q.label), axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
     series: [{
       name: '到期月租', type: 'bar', barWidth: '55%',

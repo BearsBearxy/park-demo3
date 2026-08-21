@@ -212,7 +212,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">收款实现瀑布 · {{ cur.ym }}</span>
               <span class="hint">期初欠费 → 本期应收 → 本期实收 → 期末欠费 · 蓝＝加项 / 红＝减项</span></div>
-            <AnaEChart :option="wfOpt" :height="256" />
+            <AnaEChart :option="wfOpt" :height="250" />
             <AnaMethodNote>欠费结余口径:期末＝期初＋本期应收(21费合计)−本期实收;实收＞应收表示收回历史欠费。</AnaMethodNote>
           </div>
 
@@ -232,7 +232,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">应收 vs 实收 · 分期对比</span>
               <span class="hint">台账仅 {{ ledgerPeriods.length }} 期(稀疏覆盖) · 点柱→该期欠费租户清单</span></div>
-            <AnaEChart :option="rcOpt" :height="236" @chart-click="onRcClick" />
+            <AnaEChart :option="rcOpt" :height="250" @chart-click="onRcClick" />
           </div>
         </template>
         <div v-else-if="ready" class="av2-card av2-s8">
@@ -329,24 +329,24 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 
 <style scoped>
 /* 工具条标签 + v2 紧凑页头(复刻 AnaShell .anx-lbl 观感) */
-.fin-name { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.fin-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fin-name { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fin-lbl { font-size: var(--fs-micro); color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .fin-page { display: flex; flex-direction: column; gap: 10px; max-width: 1640px; margin: 0 auto; }
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
-.fin-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 0; }
+.fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
+.fin-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 
 /* 家族口径开关(spec §B/W2,仿 AnaShell .anx-seg 的 mini 版)+「含 N 户」徽标 */
 .fin-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; flex: none; }
 .fin-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 9px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); white-space: nowrap; }
 .fin-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
-.fin-fam { display: inline-block; margin-left: 6px; font-size: 10.5px; color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; white-space: nowrap; }
+.fin-fam { display: inline-block; margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; white-space: nowrap; }
 
 /* 账龄卡:横向单条堆叠(段宽∝金额)+ 图例行(桶色浅→深红,金额 mono) */
 .fin-age-bar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; margin-top: 10px; background: var(--surface-sunken); }
 .fin-age-bar .seg { min-width: 2px; }
 .fin-age-legend { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
-.fin-age-legend .row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.fin-age-legend .row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-micro); }
 .fin-age-legend .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .fin-age-legend .lbl { color: var(--text-muted); }
 .fin-age-legend .amt { margin-left: auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); color: var(--text-primary); }
@@ -360,6 +360,6 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 .fin-modal-h .t { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-modal-h .x { width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; }
 .fin-modal-h .x:hover { background: var(--bg-hover); color: var(--text-primary); }
-.fin-modal-sub { font-size: 11.5px; color: var(--text-muted); margin: 4px 0 10px; }
+.fin-modal-sub { font-size: var(--fs-micro); color: var(--text-muted); margin: 4px 0 10px; }
 .fin-modal-body { overflow: auto; min-height: 0; }
 </style>

@@ -6,6 +6,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import type { SalaryRecordReq } from '@/types/salary'
 
 const props = defineProps<{
@@ -28,6 +29,8 @@ const f = ref({
 })
 
 const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
+const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
+const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 
@@ -73,8 +76,8 @@ function save() {
       <div class="s12-fgrp">
         <span class="s12-flabel">所属月份</span>
         <div class="s12-frow">
-          <select class="s12-select" v-model="acctY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="s12-select" v-model="acctM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="acctY" />
+          <Select :options="monthOpts" v-model="acctM" />
         </div>
       </div>
       <div class="s12-fgrp">
@@ -150,14 +153,17 @@ function save() {
 
 <style scoped>
 /* 1:1 from screen-schedule12.jsx WStyles(.w12-fgrp / .w12-input / .w12-sub2 段,115-126) */
-.s12-sec { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-disabled); letter-spacing:.02em; }
+.s12-sec { font-size:11.5px; font-weight:var(--fw-semibold); color:var(--text-muted); letter-spacing:.02em; }
 .s12-fgrp { display:flex; flex-direction:column; gap:6px; }
 .s12-flabel { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); }
 .s12-frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .s12-frow3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-.s12-input, .s12-select { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 11px; font-family:var(--font-sans); font-size:13px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.s12-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .s12-input.mono { font-family:var(--font-mono); text-align:right; }
-.s12-input:focus, .s12-select:focus { border-color:var(--border-strong); }
+.s12-input:focus { border-color:var(--border-strong); }
 .s12-input::placeholder { color:var(--text-disabled); }
 .s12-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .s12-sub2 .k { font-size:11px; color:var(--text-muted); }

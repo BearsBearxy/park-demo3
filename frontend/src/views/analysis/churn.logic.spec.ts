@@ -122,7 +122,9 @@ describe('ECharts option 构建', () => {
     // 防裁切:x 均值线标签 insideStartTop(避顶部轴名)、y 均值线标签 insideEndTop(不贴右缘),字号 10
     expect(opt.series[0].markLine.data[0].label.position).toBe('insideStartTop')
     expect(opt.series[0].markLine.data[1].label.position).toBe('insideEndTop')
-    expect(opt.series[0].markLine.label.fontSize).toBe(10)
+    // 2026-08-20:图内标签字号下限统一到 11(canvas 里 10px 中文叠加非整数 DPR 已糊,
+// 见 UI-CONSISTENCY-SPEC §2「中文可读性下限 11px」)
+    expect(opt.series[0].markLine.label.fontSize).toBe(11)
   })
 
   it('超界点钉边:value 用钉边值、rawMom 存真值、symbol 换三角', () => {

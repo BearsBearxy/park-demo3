@@ -131,6 +131,25 @@ async function onExport() {
   }
 }
 
+// draft 是 month.rows 的浅拷贝(LedgerView.vue:181),所以直接 JSON 比对即可判脏。
+// 不另立 dirty 计数器 —— 计数器要在 onCellEdit / 添加行 / 批删三处同步维护,漏一处就骗人。
+const isDirty = computed(() =>
+  props.edit && JSON.stringify(props.draft) !== JSON.stringify(props.month.rows))
+
+// 导入会重拉整月数据,握在手里的 draft 会被静默冲掉 —— 这正是改前把导入关在浏览态所规避的东西。
+// 现在导入收进了编辑态,守卫必须补上,否则等于把那个坑挪到了编辑态里。
+function onImport() {
+  if (isDirty.value &&
+      !window.confirm('本月台账有修改尚未保存。\n导入会重新载入本月数据,这些修改将丢失。\n\n仍要导入?')) return
+  emit('import')
+}
+
+// 取消 = 丢弃整月草稿(LedgerView.vue:221-223 直接清空 draft),此前一点即弃、零提示。
+function onCancel() {
+  if (isDirty.value && !window.confirm('放弃本月未保存的修改?')) return
+  emit('cancel')
+}
+
 // 从上月复制:先 confirm()(覆盖本月已有行,spec §4.2)
 function onCopyPrev() {
   if (window.confirm(`从 ${props.month.prevMonth} 月复制将覆盖本月已录入的行,确认继续?`)) {
@@ -150,24 +169,20 @@ function onCopyPrev() {
         </div>
       </div>
       <div class="lg-head-actions">
+        <!-- 工具栏三段(EDIT-MODE-SPEC v2):① 态标识 ② 写操作(仅编辑态) ③ 只读操作常驻 + 右端主控件。
+             改前是「浏览态一整块 / 编辑态一整块」二选一,导致**导出被关在浏览态分支里**——
+             一进编辑模式导出就消失,用户得先点「取消/保存」退出才能导出。而导出是只读操作,
+             v2 §1 明列「只读操作不受管:查看、展开、搜索、切期、模板下载、导出、打印」。 -->
         <LedgerCompanyBadge v-if="!edit" :name="companyName" :short="companyShort" @switch="emit('switch-company')" />
-        <template v-if="!edit">
-          <span class="lg-tag">{{ activeTenants }} 户记账</span>
-          <Button variant="outline" size="sm" @click="emit('import')">
+        <span v-if="!edit" class="lg-tag">{{ activeTenants }} 户记账</span>
+        <span v-else class="lg-tag edit">编辑中 · {{ companyName }}</span>
+
+        <template v-if="edit">
+          <!-- 导入 = 写操作,收进编辑态(与附表 8 屏、抄表 4 屏同一口径) -->
+          <Button variant="outline" size="sm" :disabled="saving" @click="onImport">
             <template #leading><component :is="iconFor('upload')" :size="14" /></template>
             导入 Excel
           </Button>
-          <Button variant="outline" size="sm" @click="onExport">
-            <template #leading><component :is="iconFor('download')" :size="14" /></template>
-            导出 Excel
-          </Button>
-          <Button variant="filled" size="sm" @click="emit('enter-edit')">
-            <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-            编辑
-          </Button>
-        </template>
-        <template v-else>
-          <span class="lg-tag edit">编辑中 · {{ companyName }}</span>
           <!-- 添加租户行:宽表只显示有数据的租户,新租户入账从这里挑(候选=在租且本月尚无行) -->
           <span class="lg-addrow">
             <FPTenantPicker
@@ -187,7 +202,20 @@ function onCopyPrev() {
             <template #leading><component :is="iconFor('copy')" :size="14" /></template>
             从上月复制
           </Button>
-          <Button variant="gray" size="sm" :disabled="saving" @click="emit('cancel')">取消</Button>
+        </template>
+
+        <!-- 导出:只读,两态常驻 -->
+        <Button variant="outline" size="sm" @click="onExport">
+          <template #leading><component :is="iconFor('download')" :size="14" /></template>
+          导出 Excel
+        </Button>
+
+        <Button v-if="!edit" variant="outline" size="sm" @click="emit('enter-edit')">
+          <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
+          编辑模式
+        </Button>
+        <template v-else>
+          <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
             保存

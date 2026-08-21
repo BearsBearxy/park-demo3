@@ -14,8 +14,10 @@ defineProps<{ label?: string; hint?: string; to?: string; toText?: string }>()
 </template>
 
 <style scoped>
-.ana-empty { padding: 44px 0; text-align: center; color: var(--text-disabled); }
-.lb { font-size: 13.5px; color: var(--text-muted); }
+/* 空态里的提示文字正是「该去哪儿录数据」的引导 —— 改前继承 --text-disabled(1.51:1),
+   等于把最该看清的那句话涂成最看不清的。--text-disabled 只给真正禁用的控件。 */
+.ana-empty { padding: 44px 0; text-align: center; color: var(--text-muted); }
+.lb { font-size: var(--fs-body); color: var(--text-muted); }
 .ht { font-size: 12px; margin-top: 4px; }
 .go { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--text-link); text-decoration: none; }
 .go:hover { text-decoration: underline; }

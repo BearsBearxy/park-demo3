@@ -163,7 +163,7 @@ const num = (n: number, d = 2) =>
 .ut-th { display:flex; flex-direction:column; gap:1px; align-items:flex-end; }
 .ut-th.l { align-items:flex-start; }
 .ut-th-name { font-size:12px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
-.ut-th-unit { font-size:10px; color:var(--text-disabled); }
+.ut-th-unit { font-size: var(--fs-micro); color:var(--text-muted); }
 .ut-grp-elec { background:var(--accent-blue) !important; color:var(--hue-blue) !important; }
 .ut-grp-water { background:var(--accent-cyan) !important; color:var(--hue-cyan) !important; }
 .ut-cap { box-shadow:none; }

@@ -19,6 +19,7 @@ import { matchByHeader, type ColumnMapEntry } from '@/utils/importHeaderMatch'
 import { splitSections, type PhaseLayouts, type Section } from '@/utils/importSections'
 import { splitSalarySections } from '@/utils/importSalarySections'
 import ImportSummary from './ImportSummary.vue'
+import Select from '@/components/ds/Select.vue'
 
 export interface ImportRec { __preview?: unknown[]; [k: string]: unknown }
 
@@ -271,8 +272,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
           <div class="fpimp-fb-t"><component :is="iconFor('alert-triangle')" :size="15" />{{ notice }}</div>
           <div class="fpimp-fb-r">
             <label>账期<input type="month" v-model="fb.ym" /></label>
-            <label>分区<select v-model="fb.zone"><option v-for="o in fallbackPicker.zones" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
-            <label>类别<select v-model="fb.kind"><option v-for="o in fallbackPicker.kinds" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
+            <label>分区<Select size="sm" :options="fallbackPicker.zones" v-model="fb.zone" /></label>
+            <label>类别<Select size="sm" :options="fallbackPicker.kinds" v-model="fb.kind" /></label>
           </div>
         </div>
 
@@ -378,8 +379,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-fb-t { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; color:var(--hue-orange); }
 .fpimp-fb-r { display:flex; gap:10px; }
 .fpimp-fb-r label { flex:1; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--text-secondary); }
-.fpimp-fb-r input, .fpimp-fb-r select { height:32px; border:1px solid var(--border-subtle); border-radius:7px; padding:0 8px; font-size:12.5px; font-family:var(--font-sans); color:var(--text-primary); background:var(--surface-white); outline:none; }
-.fpimp-fb-r input:focus, .fpimp-fb-r select:focus { border-color:var(--border-strong); }
+.fpimp-fb-r input { height:32px; border:1px solid var(--border-subtle); border-radius:7px; padding:0 8px; font-size:12.5px; font-family:var(--font-sans); color:var(--text-primary); background:var(--surface-white); outline:none; }
+.fpimp-fb-r input:focus { border-color:var(--border-strong); }
 
 .fpimp-preview { border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
 .fpimp-preview-h { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--surface-card); border-bottom:1px solid var(--divider); font-size:12px; color:var(--text-muted); }

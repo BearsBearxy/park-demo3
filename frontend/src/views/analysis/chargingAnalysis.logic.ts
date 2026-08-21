@@ -32,19 +32,26 @@ export function yearSummary(
 }
 
 // ── 图1 桩月度量收:各桩充电量 12 月分桶(堆叠柱)+ 全部桩月收益合计(线) ──
-export interface StationMonthly { stations: { name: string; charge: number[] }[]; revenue: number[] }
+// 无抄表记录的月 = null,不是 0。
+// 0 与 null 在这张图上是两个业务事实:0 = 「这个月这根桩没人充电」,null = 「这个月没抄表」。
+// 改前一律 fill(0),于是没抄表的 1-9 月被画成一条贴地零线 + 一排零高柱,用户读成「上半年没生意」。
+// 本文件所属屏的头注释本就写着「禁止渲染 0 假数据」—— 那条规则原先只管到「整屏为空」,
+// 这里把它延伸到「逐月为空」。ECharts 对 null:柱不画、线断点(connectNulls 默认 false)。
+export interface StationMonthly { stations: { name: string; charge: (number | null)[] }[]; revenue: (number | null)[] }
 export function stationMonthly(
   stations: Pick<CpStationDTO, 'id' | 'name' | 'sortNo'>[],
   readings: Pick<CpReadingDTO, 'stationId' | 'readDate' | 'chargeKwh' | 'revenue'>[],
 ): StationMonthly {
-  const by = new Map<number, number[]>()
-  const revenue = Array<number>(12).fill(0)
+  const by = new Map<number, (number | null)[]>()
+  const revenue = Array<number | null>(12).fill(null)
   for (const r of readings) {
     const m = monthOf(r.readDate) - 1
-    const arr = by.get(r.stationId) ?? Array<number>(12).fill(0)
-    arr[m] += r.chargeKwh
+    const arr = by.get(r.stationId) ?? Array<number | null>(12).fill(null)
+    // ?? 0 只在「本月首条记录」时把 null 抬成 0 再累加 —— 有记录的月即使读数为 0 也保持 0(真实的零),
+    // 没记录的月一直是 null(画不出来)。两者由此区分开。
+    arr[m] = (arr[m] ?? 0) + r.chargeKwh
     by.set(r.stationId, arr)
-    revenue[m] += r.revenue
+    revenue[m] = (revenue[m] ?? 0) + r.revenue
   }
   // 只画有记录的桩(空桩不进图例),按桩库 sort 序
   return {

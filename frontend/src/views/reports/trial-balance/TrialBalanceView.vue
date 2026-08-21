@@ -40,9 +40,9 @@ const {
   isAll, company, companyName, finCompanies,
   yearGated, gateYears, yearCards, gateCurrent,
   pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
-  enterEdit, cancelEdit, saveConfirm, finishEdit, save, onDiscard,
+  enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
-  importing, importResult, importSummary, onImport,
+  importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
   // tb 无 'cur' 字段,后端 netPreview(行1 cur)恒 0,月卡显 ¥0.00 是误导 → 只标「已录入」
@@ -292,8 +292,12 @@ async function onExport() {
         </div>
         <div class="fin-actions">
           <span v-if="isAll" class="fin-tag ro"><component :is="iconFor('lock')" :size="13" />汇总只读 · 仅一级科目合并</span>
-          <template v-else-if="!edit">
-            <Button variant="outline" size="sm" @click="importing = true">
+          <!-- 三段(EDIT-MODE-SPEC v2):写操作仅编辑态 / 只读操作两态常驻 / 右端主控件。
+               改前导入在**两态都有**(浏览态也能点,违反 v2「浏览态一切写入口隐藏」),
+               而导出被关在浏览态分支里 —— 一进编辑模式导出就消失,可导出恰恰是 v2 明列的只读操作。 -->
+          <template v-else>
+            <span v-if="edit" class="fin-tag edit">编辑中 · {{ company?.name }}</span>
+            <Button v-if="edit" variant="outline" size="sm" :disabled="saving" @click="requestImport">
               <template #leading><component :is="iconFor('upload')" :size="14" /></template>
               导入
             </Button>
@@ -301,26 +305,17 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button variant="filled" size="sm" @click="enterEdit">
+            <Button v-if="!edit" variant="outline" size="sm" @click="enterEdit">
               <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-              编辑
+              编辑模式
             </Button>
-          </template>
-          <template v-else>
-            <span class="fin-tag edit">编辑中 · {{ company?.name }}</span>
-            <Button variant="outline" size="sm" :disabled="saving" @click="importing = true">
-              <template #leading><component :is="iconFor('upload')" :size="14" /></template>
-              导入
-            </Button>
-            <Button variant="outline" size="sm" :disabled="saving" @click="openAdd">
-              <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-              新增科目
-            </Button>
-            <Button variant="gray" size="sm" :disabled="saving" @click="cancelEdit">取消</Button>
-            <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
-              <template #leading><component :is="iconFor('check')" :size="14" /></template>
-              保存
-            </Button>
+            <template v-else>
+              <Button variant="gray" size="sm" :disabled="saving" @click="requestCancel">取消</Button>
+              <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
+                <template #leading><component :is="iconFor('check')" :size="14" /></template>
+                保存
+              </Button>
+            </template>
           </template>
         </div>
       </div>
@@ -489,7 +484,10 @@ async function onExport() {
 .fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
 .fin-dlg-b { padding:18px 22px 4px; display:flex; flex-direction:column; gap:14px; }
 .fin-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
-.fin-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }

@@ -10,6 +10,7 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
+import Select from '@/components/ds/Select.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { anaSettings } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
@@ -70,7 +71,7 @@ const rampOpt = computed<object>(() => {
   const markPoint = r.hitIdx != null
     ? {
         symbol: 'pin', symbolSize: 42, itemStyle: { color: '#185FA5' },
-        label: { formatter: '回收', color: '#fff', fontSize: 10 },
+        label: { formatter: '回收', color: '#fff', fontSize: 11 },
         data: [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }],
       }
     : undefined
@@ -89,7 +90,7 @@ const rampOpt = computed<object>(() => {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#E24B4A', width: 1.5 },
           // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)
-          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 10, color: '#E24B4A' },
+          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
           data: [{ yAxis: investW }],
         },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] != null ? markPoint : undefined,
@@ -137,6 +138,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 // ══ 分栋抄表分析(ENERGY-ANALYSIS-SPEC §2):效率 / 消纳结构 / 消纳收益 ══
 const mYears = ref<number[]>([])
 const mYear = ref<number | null>(null)
+// ds/Select 只吃字符串值,年/站 id 进出各转一次
+const mYearOpts = computed(() => mYears.value.map((y) => String(y)))
 const mStations = ref<PvStationDTO[]>([])
 const mReadings = ref<PvReadingDTO[]>([])
 const mLoading = ref(false)
@@ -165,7 +168,7 @@ const eff = computed(() => stationEfficiency(mStations.value, mReadings.value))
 const effOpt = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? fnum(v, 0) + ' kWh/kWp' : '—') },
   grid: { left: 48, right: 14, top: 14, bottom: 48 },
-  xAxis: { type: 'category', data: eff.value.rows.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 10.5 } },
+  xAxis: { type: 'category', data: eff.value.rows.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 11 } },
   yAxis: { type: 'value' },
   series: [{
     name: '发电效率', type: 'bar', barMaxWidth: 26,
@@ -177,6 +180,10 @@ const effOpt = computed<object>(() => ({
 // ── 图B:效率月度趋势(全园加权 + 可选单站) ──
 const selStation = ref(0)   // 0 = 仅全园加权
 const capStations = computed(() => mStations.value.filter((s) => s.capacityKwp != null && s.capacityKwp > 0))
+const stationOpts = computed(() => [
+  { value: '0', label: '全园加权' },
+  ...capStations.value.map((s) => ({ value: String(s.id), label: s.name })),
+])
 const trend = computed(() => monthlyEfficiency(mStations.value, mReadings.value, selStation.value || undefined))
 const trendHasData = computed(() => trend.value.park.some((v) => v != null))
 const trendOpt = computed<object>(() => {
@@ -221,10 +228,10 @@ const consOpt = computed<object>(() => {
     xAxis: {
       type: 'category',
       data: rows.map((r) => (consBy.value === 'month' ? +r.key.slice(5, 7) + '月' : r.key)),
-      axisLabel: consBy.value === 'station' ? { rotate: 32, fontSize: 10.5 } : undefined,
+      axisLabel: consBy.value === 'station' ? { rotate: 32, fontSize: 11 } : undefined,
     },
     yAxis: [
-      { type: 'value', name: '万kWh', nameTextStyle: { fontSize: 10 } },
+      { type: 'value', name: '万kWh', nameTextStyle: { fontSize: 11 } },
       { type: 'value', axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
     ],
     series: [
@@ -250,7 +257,7 @@ const revOpt = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 2) + '万' : '—') },
   legend: { top: 0 },
   grid: { left: 52, right: 14, top: 30, bottom: 48 },
-  xAxis: { type: 'category', data: rev.value.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 10.5 } },
+  xAxis: { type: 'category', data: rev.value.map((r) => r.name), axisLabel: { rotate: 32, fontSize: 11 } },
   yAxis: { type: 'value', axisLabel: { formatter: '{value} 万' } },
   series: [
     { name: '消纳收益', type: 'bar', barMaxWidth: 20, data: rev.value.map((r) => +(r.selfRev / 1e4).toFixed(2)), itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] } },
@@ -309,7 +316,7 @@ const revOpt = computed<object>(() => ({
           <!-- 第二排 span8:分期收益柱(点柱→明细卡) -->
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint">点击柱子查看该期月度明细</span></div>
-            <AnaEChart :option="phaseOpt" :height="272" @chart-click="onPhaseClick" />
+            <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
           </div>
 
           <!-- span4:选中期月度明细卡 -->
@@ -356,9 +363,10 @@ const revOpt = computed<object>(() => ({
           <span class="hint">逐站逐日抄表 · 发电效率 / 消纳结构 / 消纳收益</span>
         </div>
         <label v-if="mYears.length" class="roi2-ysel">年份
-          <select v-model.number="mYear">
-            <option v-for="y in mYears" :key="y" :value="y">{{ y }}</option>
-          </select>
+          <span style="width:92px">
+            <Select size="sm" :options="mYearOpts" :model-value="mYear == null ? '' : String(mYear)"
+              @update:model-value="mYear = +$event" />
+          </span>
         </label>
       </div>
 
@@ -380,7 +388,7 @@ const revOpt = computed<object>(() => ({
               <span class="hint">{{ mYear }} 年累计 · {{ eff.capN }}/{{ mStations.length }} 站已录装机容量</span>
             </div>
             <template v-if="eff.rows.length">
-              <AnaEChart :option="effOpt" :height="252" />
+              <AnaEChart :option="effOpt" :height="250" />
               <p v-if="eff.noCap.length" class="roi2-nocap">未录装机容量不入图:{{ eff.noCap.join('、') }}</p>
             </template>
             <AnaEmpty v-else label="装机容量未录" hint="效率 = 发电总量 ÷ 装机容量,请在分栋抄表屏行内维护各站容量"
@@ -391,12 +399,13 @@ const revOpt = computed<object>(() => ({
           <div class="av2-card av2-s4">
             <div class="av2-card-h">
               <span class="t">效率月度趋势</span>
-              <select v-model.number="selStation" class="roi2-stsel" aria-label="单站叠加">
-                <option :value="0">全园加权</option>
-                <option v-for="s in capStations" :key="s.id" :value="s.id">{{ s.name }}</option>
-              </select>
+              <!-- role=group 承载 aria-label:ds/Select 的透传 attr 落在根 div 上,裸 div 读屏不报 -->
+              <div style="width:132px;flex:0 0 auto" role="group" aria-label="单站叠加">
+                <Select size="sm" :options="stationOpts" :model-value="String(selStation)"
+                  @update:model-value="selStation = +$event" />
+              </div>
             </div>
-            <AnaEChart v-if="trendHasData" :option="trendOpt" :height="252" />
+            <AnaEChart v-if="trendHasData" :option="trendOpt" :height="250" />
             <AnaEmpty v-else label="装机容量未录" hint="加权效率需至少一站录有装机容量"
               to="/pv-income" to-text="去维护装机容量" />
           </div>
@@ -410,7 +419,7 @@ const revOpt = computed<object>(() => ({
                 <button :class="{ on: consBy === 'station' }" @click="consBy = 'station'">按站</button>
               </span>
             </div>
-            <AnaEChart :option="consOpt" :height="240" />
+            <AnaEChart :option="consOpt" :height="250" />
           </div>
 
           <!-- 消纳收益:快照单价口径 vs 上网参数价 -->
@@ -419,7 +428,7 @@ const revOpt = computed<object>(() => ({
               <span class="t">各站消纳收益 vs 上网收益</span>
               <span class="hint">万元 · 快照单价口径 · 上网 ×{{ gridPrice }} 元</span>
             </div>
-            <AnaEChart :option="revOpt" :height="240" />
+            <AnaEChart :option="revOpt" :height="250" />
           </div>
         </div>
 
@@ -437,26 +446,24 @@ const revOpt = computed<object>(() => ({
 .roi2-page { display: flex; flex-direction: column; gap: 10px; width: 100%; min-height: 0; box-sizing: border-box; }
 
 /* 回收进度卡 */
-.roi2-big { font-size: 30px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
+.roi2-big { font-size: var(--fs-display); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
 .roi2-bar { height: 8px; border-radius: var(--radius-full); background: var(--ink-100); overflow: hidden; margin: 10px 0 14px; }
 .roi2-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--hue-blue); }
 .roi2-rows { display: flex; flex-direction: column; gap: 8px; }
 .roi2-rows .r { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.roi2-rows .k { font-size: 11.5px; color: var(--text-muted); }
-.roi2-rows .v { font-size: 13px; font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); }
+.roi2-rows .k { font-size: var(--fs-micro); color: var(--text-muted); }
+.roi2-rows .v { font-size: var(--fs-label); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary); }
 
 /* 选中期摘要 + 明细表 */
-.roi2-sel { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; }
+.roi2-sel { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 8px; }
 .roi2-sel b { font-family: var(--font-mono); color: var(--text-primary); font-weight: var(--fw-semibold); }
 .roi2-tblwrap { max-height: 210px; overflow: auto; }
 
 /* ── 分栋抄表分析区(ENERGY-ANALYSIS-SPEC §2) ── */
 .roi2-sect { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .roi2-sect .t { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.roi2-sect .hint { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
+.roi2-sect .hint { margin-left: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
 .roi2-ysel { font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
-.roi2-ysel select, .roi2-stsel { font-family: var(--font-sans); font-size: 12px; color: var(--text-primary); background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px 8px; outline: none; cursor: pointer; }
-.roi2-ysel select:focus, .roi2-stsel:focus { border-color: var(--border-strong); }
 .roi2-nocap { margin: 6px 0 0; font-size: 11px; color: var(--text-muted); }
 /* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 TenantEnergyView 惯例) */
 .roi2-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }

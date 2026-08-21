@@ -14,6 +14,7 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
+import { CAT_COLORS } from '@/components/ana/anaTheme'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
 import { buildYearOptions } from '@/utils/yearGate'
 import { feeRate, lossSeries, operatorTotals, stationMonthly, yearSummary } from './chargingAnalysis.logic'
@@ -110,23 +111,31 @@ const conclusion = computed<{ text: string; tone: AnaStatusLevel }[]>(() => {
 const M_LABELS = Array.from({ length: 12 }, (_, i) => `${i + 1}月`)
 const sm = computed(() => stationMonthly(myStations.value, myReadings.value))
 const chart1Opt = computed<object>(() => ({
-  tooltip: { trigger: 'axis' },
+  // null 显「未抄表」而不是 0 —— tooltip 是用户求证「这月到底是 0 还是没数」的地方
+  tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '未抄表' : String(v)) },
   legend: { top: 0, type: 'scroll' },
   grid: { left: 56, right: 56, top: 32, bottom: 26 },
   xAxis: { type: 'category', data: M_LABELS },
   yAxis: [
-    { type: 'value', name: 'kWh', nameTextStyle: { fontSize: 10 } },
-    { type: 'value', name: '元', nameTextStyle: { fontSize: 10 }, splitLine: { show: false } },
+    { type: 'value', name: 'kWh', nameTextStyle: { fontSize: 11 } },
+    { type: 'value', name: '元', nameTextStyle: { fontSize: 11 }, splitLine: { show: false } },
   ],
   series: [
-    ...sm.value.stations.map((s) => ({
+    // 桩是**无序类目**(彼此不相干的站点),必须显式走分类色板 —— 吃主题默认色板会拿到
+    // 前 4 位的蓝族渐变(顺序色板),三根柱子全是深浅不同的蓝,读不出哪根是哪个桩。
+    ...sm.value.stations.map((s, i) => ({
       name: s.name, type: 'bar', stack: 'chg', barMaxWidth: 30,
-      data: s.charge.map((v) => +v.toFixed(1)),
+      itemStyle: { color: CAT_COLORS[i % CAT_COLORS.length] },
+      data: s.charge.map((v) => (v == null ? null : +v.toFixed(1))),   // null 保持 null:该月没抄表,柱子不画
     })),
     {
+      // 收益线走中性深灰:它是与柱子**不同量纲**的第二轴,不该混进桩的类目色里。
+      // 改前写死 #185FA5,正是色板第 4 位 —— 站点数一旦到 4,第四根柱会与收益线同色。
       name: '收益', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5,
-      itemStyle: { color: '#185FA5' }, lineStyle: { width: 2, color: '#185FA5' },
-      data: sm.value.revenue.map((v) => +v.toFixed(0)),
+      itemStyle: { color: '#334155' }, lineStyle: { width: 2, color: '#334155' },
+      // connectNulls 默认 false → 没抄表的月线断开,而不是掉到 0 再拉回来
+      connectNulls: false,
+      data: sm.value.revenue.map((v) => (v == null ? null : +v.toFixed(0))),
     },
   ],
 }))
@@ -237,7 +246,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">运营商收益占比</span>
               <span class="hint">全年收益 元 · 点图深链分桩明细</span>
             </div>
-            <AnaEChart v-if="donutRows.length" :option="donutOpt" :height="232" @chart-click="goDetail" />
+            <AnaEChart v-if="donutRows.length" :option="donutOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年收益均为 0" hint="有充电记录但收益未填,先到分桩明细补录" :to="'/' + navValue" to-text="去补录" />
           </div>
 
@@ -247,7 +256,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">运营商手续费率</span>
               <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
             </div>
-            <AnaEChart v-if="feeRows.length" :option="feeOpt" :height="232" @chart-click="goDetail" />
+            <AnaEChart v-if="feeRows.length" :option="feeOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年无可算费率" hint="收益与手续费全为 0,费率不可算" />
           </div>
 
@@ -257,7 +266,7 @@ const lossOpt = computed<object>(() => ({
               <span class="t">电表损耗率趋势 · 每运营商</span>
               <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
             </div>
-            <AnaEChart v-if="hasLoss" :option="lossOpt" :height="216" @chart-click="goDetail" />
+            <AnaEChart v-if="hasLoss" :option="lossOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年电表用电量未录入" hint="到分桩明细「电表与损耗」小节按运营商按月录入电表量后可算损耗率"
               :to="'/' + navValue" to-text="去录电表量" />
           </div>
@@ -276,7 +285,7 @@ const lossOpt = computed<object>(() => ({
 <style scoped>
 /* 结论条:CockpitView .cv2-concl 同观感(av2-card 分句 flex wrap;末句=深链按钮) */
 .ca-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; }
-.ca-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.ca-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .ca-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .ca-cs.lk { cursor: pointer; color: var(--text-link); }
 .ca-cs.lk:hover { text-decoration: underline; }

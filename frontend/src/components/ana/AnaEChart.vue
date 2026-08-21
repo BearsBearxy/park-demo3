@@ -17,7 +17,20 @@ interface ChartInst {
   on(event: string, handler: (params: unknown) => void): void
 }
 
-const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 260 })
+/** height 只能取这 5 档(2026-08-20 立)。改前 59 张图用了 **24 种**高度(286/290/298/300/304
+ *  这样 18px 内挤 5 个值),每屏各自目测拍数;`.av2-grid` 会把同一行的卡拉成等高,于是高度不同
+ *  变成「图下方空白不均」——并排两张卡,一张图填满、一张图上面飘着下面一大块空。
+ *
+ *    xs 170  全宽条带(能耗板块损益 / 板块月度趋势)
+ *    sm 200  小环 / 仪表 / 集中度
+ *    md 250  常规单图
+ *    lg 300  主图 / 瀑布 / 帕累托 / 散点
+ *    xl 440  多行横条(Top20)与需要纵向空间的散点
+ *
+ *  ⚠ 真正的约束是**同一行**,不是同一栅格类 —— s8 与 s4 会并排在一行(8+4=12),
+ *    这两张的高度必须相等。加新图时按「它和谁并排」选档,别按「它是几列宽」选。
+ *  自查:scratchpad/row_check.py 模拟 12 列换行,逐行比高度,应输出 0。 */
+const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 250 })
 const emit = defineEmits<{ 'chart-click': [params: unknown] }>()
 
 const el = ref<HTMLDivElement | null>(null)
@@ -31,7 +44,20 @@ onMounted(async () => {
   const ec = await import('./echartsBundle')
   registerFpAnaTheme(ec)
   if (!el.value) return   // 懒加载期间已卸载
-  chart = ec.init(el.value, 'fpAnaTheme') as unknown as ChartInst
+  // devicePixelRatio 向上取整、且不低于 2(2026-08-20 用户报障「每个图都很糊,像素不高」)。
+  //
+  // 根因是**非整数缩放**:Windows 显示缩放 125% 时 window.devicePixelRatio = 1.14(实测本机值)。
+  // ECharts 默认拿这个值当倍率,于是 canvas 背景缓冲 = CSS 宽 × 1.14。而 CSS 宽本身常是
+  // flex/grid 算出来的小数(如 613.33px),两个小数相乘几乎必然不是整数像素 → 整张 canvas 被
+  // 浏览器重采样一次,坐标轴线、网格线、刻度文字全被反锯齿摊开成灰边。
+  // 周围的 DOM 文字由排版引擎按物理像素渲染、不受影响,一对比图就显得"糊"。
+  //
+  // 取 ceil 且下限 2:等于用 2 倍超采样再缩回去,重采样误差被摊薄到看不出来。
+  // 代价是显存 —— 背景缓冲面积从 1.14²≈1.3 倍涨到 4 倍(单张 600×300 的图约 2.8MB)。
+  // 一屏最多 7 张图(PvRoiView),约 20MB,可接受;真嫌重的话下一步是换 SVGRenderer
+  // (矢量,任何 DPR 都锐利,且文字走浏览器排版引擎),但那要动 echartsBundle 的渲染器装配。
+  const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
+  chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
   chart.setOption(props.option, { notMerge: true })
   chart.on('click', (params) => emit('chart-click', params))
   ro = new ResizeObserver(() => chart?.resize())

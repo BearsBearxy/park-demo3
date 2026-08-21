@@ -6,6 +6,7 @@ import { tenantApi } from '@/api/tenant'
 import type { TenantCategoryDTO, TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
 const props = defineProps<{ initial?: TenantDTO | null }>()
@@ -35,6 +36,16 @@ onMounted(async () => {
   try { categories.value = await tenantApi.categories() } catch { /* 下拉仅剩「未分类」,不阻断新增 */ }
   try { allTenants.value = await tenantApi.list() } catch { /* 关联下拉仅剩「不关联」,不阻断新增 */ }
 })
+
+// 下拉候选(ds/Select):值一律字符串,''=未分类,进出各转一道
+const categoryOpts = computed(() =>
+  [{ value: '', label: '未分类' }, ...categories.value.map(c => ({ value: String(c.id), label: c.name }))],
+)
+const STATUS_OPTS = [
+  { value: '1', label: '在租' },
+  { value: '2', label: '已退租' },
+  { value: '0', label: '黑名单' },
+]
 
 // 关联主租户候选:在租且自身无 parent(仅一级关联)且 ≠ 正在编辑的租户
 const parentOptions = computed(() =>
@@ -108,10 +119,8 @@ async function submit() {
             </div>
             <div class="fin-field">
               <div class="lab">租户分类</div>
-              <select class="fin-in" v-model="categoryId">
-                <option value="">未分类</option>
-                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
+              <Select :options="categoryOpts" :model-value="categoryId === '' ? '' : String(categoryId)"
+                      @update:model-value="categoryId = $event === '' ? '' : +$event" />
             </div>
           </div>
           <div class="fin-row">
@@ -138,11 +147,8 @@ async function submit() {
           <div class="fin-row" v-if="isEdit">
             <div class="fin-field">
               <div class="lab">状态</div>
-              <select class="fin-in" v-model.number="status">
-                <option :value="1">在租</option>
-                <option :value="2">已退租</option>
-                <option :value="0">黑名单</option>
-              </select>
+              <Select :options="STATUS_OPTS" :model-value="String(status)"
+                      @update:model-value="status = +$event" />
             </div>
             <div></div>
           </div>
@@ -192,7 +198,10 @@ async function submit() {
 .fin-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .fin-field .lab { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); margin-bottom:7px; }
 .fin-field .req { color:var(--hue-red); font-weight:var(--fw-medium); }
-.fin-in { width:100%; box-sizing:border-box; height:40px; padding:0 12px; font-size:13.5px; color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.fin-in { width:100%; box-sizing:border-box; height:36px; padding:0 12px; font-size:var(--fs-body); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white); font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
 .fin-in:focus { border-color:var(--hue-blue); }
 .fin-in.err { border-color:var(--hue-red); }
 .fin-erm { font-size:11.5px; color:var(--hue-red); margin-top:-6px; min-height:14px; }

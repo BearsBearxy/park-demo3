@@ -230,9 +230,9 @@ const bsTable = computed<BsTblRow[]>(() => {
         <!-- 双环 s4×2 -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">资产构成</span><span class="hint">期末 · 占资产总计 · 点扇区定位全表</span></div>
-          <AnaEChart :option="assetOpt" :height="190" @chart-click="locateRow" />
+          <AnaEChart :option="assetOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
-            <div v-for="(d, i) in assetDonut" :key="d.label" class="ak-dl" style="font-size: 11.5px">
+            <div v-for="(d, i) in assetDonut" :key="d.label" class="ak-dl" style="font-size: var(--fs-micro)">
               <span class="dot" :style="{ background: sliceColor(i) }"></span><span class="nm">{{ d.label }}</span>
               <span class="pc">{{ ((d.value / T.totalAssets) * 100).toFixed(0) }}%</span>
             </div>
@@ -240,9 +240,9 @@ const bsTable = computed<BsTblRow[]>(() => {
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">负债与所有者权益</span><span class="hint">负债率 {{ R.debtRatio.toFixed(1) }}% · 点扇区定位全表</span></div>
-          <AnaEChart :option="leOpt" :height="190" @chart-click="locateRow" />
+          <AnaEChart :option="leOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
-            <div v-for="(d, i) in leDonut" :key="d.label" class="ak-dl" style="font-size: 11.5px">
+            <div v-for="(d, i) in leDonut" :key="d.label" class="ak-dl" style="font-size: var(--fs-micro)">
               <span class="dot" :style="{ background: sliceColor(i) }"></span><span class="nm">{{ d.label }}</span>
               <span class="pc">{{ ((d.value / T.totalAssets) * 100).toFixed(0) }}%</span>
             </div>
@@ -253,7 +253,7 @@ const bsTable = computed<BsTblRow[]>(() => {
         <!-- 比率仪表 s4(spec:gauge ≤2;其余比率见 KPI 条与副行) -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">关键比率仪表</span><span class="hint">偿债 · 杠杆</span></div>
-          <AnaEChart :option="gaugeOpt" :height="190" />
+          <AnaEChart :option="gaugeOpt" :height="200" />
           <div class="fin-gsub">
             权益乘数 {{ R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×' }} ·
             非流动资产占比 {{ R.ncShare.toFixed(0) }}% ·
@@ -272,21 +272,21 @@ const bsTable = computed<BsTblRow[]>(() => {
           <div v-if="R.roe != null && R.netMargin != null" style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
             <div style="flex: 0 0 auto; text-align: center; padding: 14px 22px; background: var(--accent-blue); border-radius: 16px">
               <div style="font-size: 12px; color: var(--text-muted)">净资产收益率 ROE</div>
-              <div style="font-size: 34px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); letter-spacing: -0.02em">{{ (R.roe * 100).toFixed(1) }}%</div>
+              <div style="font-size: var(--fs-display); font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); letter-spacing: -0.02em">{{ (R.roe * 100).toFixed(1) }}%</div>
               <div style="font-size: 11px; color: var(--text-muted)">ROA {{ R.roa == null ? '—' : R.roa.toFixed(1) + '%' }}</div>
             </div>
-            <span style="font-size: 22px; color: var(--text-disabled)">=</span>
+            <span style="font-size: var(--fs-h2); color: var(--text-muted)">=</span>
             <template v-for="(f, i) in [
               { k: '净利率', v: R.netMargin.toFixed(1) + '%', note: '赚钱能力' },
               { k: '总资产周转率', v: (R.assetTurn ?? 0).toFixed(2) + '次', note: '资产效率' },
               { k: '权益乘数', v: R.equityMult == null ? '—' : R.equityMult.toFixed(1) + '×', note: '杠杆倍数' },
             ]" :key="f.k">
               <div style="flex: 1 1 120px; min-width: 110px; text-align: center; padding: 14px 16px; background: var(--surface-card); border-radius: 14px">
-                <div style="font-size: 11.5px; color: var(--text-muted)">{{ f.k }}</div>
-                <div style="font-size: 22px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
-                <div style="font-size: 10.5px; color: var(--text-disabled)">{{ f.note }}</div>
+                <div style="font-size: var(--fs-micro); color: var(--text-muted)">{{ f.k }}</div>
+                <div style="font-size: var(--fs-h2); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--text-primary)">{{ f.v }}</div>
+                <div style="font-size: var(--fs-micro); color: var(--text-muted)">{{ f.note }}</div>
               </div>
-              <span v-if="i < 2" style="font-size: 22px; color: var(--text-disabled)">×</span>
+              <span v-if="i < 2" style="font-size: var(--fs-h2); color: var(--text-muted)">×</span>
             </template>
           </div>
           <AnaEmpty v-else label="杜邦拆解不可算"
@@ -339,11 +339,11 @@ const bsTable = computed<BsTblRow[]>(() => {
 @keyframes fbflash { 0% { background: var(--accent-blue); } 100% { background: transparent; } }
 
 /* 工具条标签 + v2 紧凑页头/图例(复刻 AnaShell .anx-lbl 观感) */
-.fin-name { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.fin-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fin-name { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fin-lbl { font-size: var(--fs-micro); color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .fin-page { display: flex; flex-direction: column; gap: 10px; max-width: 1640px; margin: 0 auto; }
 .fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.fin-head .sub { font-size: 11.5px; color: var(--text-muted); }
+.fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 .fin-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 10px; }
-.fin-gsub { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
+.fin-gsub { margin-top: 8px; font-size: var(--fs-micro); color: var(--text-muted); text-align: center; font-variant-numeric: tabular-nums; }
 </style>

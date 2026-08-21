@@ -7,6 +7,7 @@ import FPSectionLabel from '@/components/fp/FPSectionLabel.vue'
 import FPUnitMap from '@/components/fp/FPUnitMap.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import ContractNewDialog from '@/views/contracts/ContractNewDialog.vue'
 import { buildingApi } from '@/api/building'
 import { fpMoney, fpWan } from '@/utils/money'
@@ -68,7 +69,9 @@ function resetSel() { selUnit.value = null }
 
 // ─── 楼层/单元管理 ─────────────────────────────────────────
 const errMsg = (e: unknown) => (e as { message?: string })?.message ?? '操作失败'
-const floorOpts = computed(() => Array.from({ length: b.value?.floorCount ?? 0 }, (_, i) => i + 1))
+// ds/Select 的 value 一律字符串,楼层号进出各转一次
+const floorOpts = computed(() =>
+  Array.from({ length: b.value?.floorCount ?? 0 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}F` })))
 
 // 所有写操作成功后:重拉 detail、同步已选单元、emit 让 BuildingsView 重拉 list+summary
 async function refresh() {
@@ -89,19 +92,18 @@ async function onAddUnit(floor: number) {
 async function moveUnitToFloor(u: UnitDTO, floor: number) {
   await buildingApi.updateUnit(u.id, { floor, unitNo: u.unitNo, area: u.area ?? 0 })
 }
-async function onMoveFloor(e: Event) {
-  const sel = e.target as HTMLSelectElement
+// 下拉是受控的(值来自 selUnit.floor),失败时不必手工回滚:状态没动,显示自然还是原楼层
+async function onMoveFloor(v: string) {
   const u = selUnit.value
-  const f = Number(sel.value)
+  const f = +v
   if (!u || f === u.floor) return
   try { await moveUnitToFloor(u, f); await refresh() }
-  catch (err) { alert(errMsg(err)); sel.value = String(u.floor) }
+  catch (err) { alert(errMsg(err)) }
 }
 // 在租租户行「换层」快捷:对该租户在本栋的全部单元执行换层
-async function onTenantMove(tUnits: UnitDTO[], e: Event) {
-  const sel = e.target as HTMLSelectElement
-  const f = Number(sel.value)
-  sel.value = ''
+// model-value 恒为 ''(纯动作触发器),选完自动回到 placeholder「换层」
+async function onTenantMove(tUnits: UnitDTO[], v: string) {
+  const f = +v
   if (!f) return
   try {
     for (const u of tUnits) if (u.floor !== f) await moveUnitToFloor(u, f)
@@ -191,7 +193,9 @@ async function onContractCreated() {
     </template>
 
     <template #footer>
-      <Button variant="gray" size="sm" @click="delConfirm = true">
+      <!-- 危险态跟全站多数派(TenantDrawer/ContractDrawer 页脚删除)统一走 danger:
+           原来和旁边「编辑楼栋」同为 gray,一眼分不出,误点即连带删掉栋内全部单元 -->
+      <Button variant="danger" size="sm" @click="delConfirm = true">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></template>
         删除
       </Button>
@@ -237,7 +241,7 @@ async function onContractCreated() {
         楼层单元图
         <template #right>
           <span style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;color:var(--text-disabled)">点击单元查看租户</span>
+            <span style="font-size:11px;color:var(--text-muted)">点击单元查看租户</span>
             <Button variant="outline" size="sm" @click="addFloor">添加楼层</Button>
             <Button
               variant="outline" size="sm"
@@ -303,9 +307,10 @@ async function onContractCreated() {
       <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle)">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)">
           换层
-          <select class="bd-sel" :value="selUnit.floor" @change="onMoveFloor">
-            <option v-for="f in floorOpts" :key="f" :value="f">{{ f }}F</option>
-          </select>
+          <Select
+            size="sm" :options="floorOpts" :model-value="String(selUnit.floor)"
+            :style="{ width: '84px' }" @update:model-value="onMoveFloor"
+          />
         </label>
         <span style="flex:1"></span>
         <Button variant="outline" size="sm" @click="openUnitDlg">编辑单元</Button>
@@ -331,10 +336,12 @@ async function onContractCreated() {
             </div>
           </div>
           <span style="font-family:var(--font-mono);font-size:12.5px;font-weight:var(--fw-semibold)">{{ fpMoney(t.rent) }}</span>
-          <select class="bd-sel" title="将该租户单元移至目标楼层" @change="onTenantMove(t.units, $event)">
-            <option value="">换层</option>
-            <option v-for="f in floorOpts" :key="f" :value="f">{{ f }}F</option>
-          </select>
+          <Select
+            size="sm" placeholder="换层" title="将该租户单元移至目标楼层"
+            :options="floorOpts" :model-value="''"
+            :style="{ width: '84px', flex: '0 0 auto' }"
+            @update:model-value="onTenantMove(t.units, $event)"
+          />
         </div>
       </div>
     </div>
@@ -439,7 +446,4 @@ async function onContractCreated() {
 /* 楼层单元图加载骨架(高度由内联 min-height 给,按楼层数估) */
 .bd-mapskel { background:var(--bg-sunken); border-radius:var(--radius-lg); }
 
-/* 换层小下拉(单元面板 / 租户行) */
-.bd-sel { height:26px; padding:0 6px; font-size:12px; font-family:var(--font-sans); color:var(--text-primary); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); background:var(--surface-white); outline:none; cursor:pointer; }
-.bd-sel:focus { border-color:var(--hue-blue); }
 </style>

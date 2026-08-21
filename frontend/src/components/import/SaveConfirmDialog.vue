@@ -22,7 +22,7 @@ const emit = defineEmits<{
       <p class="scd-body">本次编辑有 <b>{{ count }}</b> 处改动。退出前要保存吗？</p>
       <div class="scd-f">
         <Button variant="gray" @click="emit('discard')">
-          <template #leading><component :is="iconFor('rotate-ccw')" :size="15" /></template>
+          <template #leading><component :is="iconFor('rotate-ccw')" :size="16" /></template>
           放弃修改
         </Button>
         <Button variant="filled" @click="emit('save')">

@@ -110,7 +110,7 @@ const mainOption = computed<object | null>(() => {
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
-        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 10, color: CMP_BUDGET },
+        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
         data: [{ yAxis: d.budgetAvgWan }],
       } : undefined,
     },
@@ -191,7 +191,7 @@ const phaseOption = computed<object | null>(() => {
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
     /* 月标签缩短「2025-01」→「1月」防 10+ 期挤爆(tooltip/点击深链仍用完整 YM) */
-    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 10, formatter: (v: string) => `${+v.slice(5)}月` } },
+    xAxis: { type: 'category', data: d.months, axisLabel: { fontSize: 11, formatter: (v: string) => `${+v.slice(5)}月` } },
     yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
     series: d.series.map((s) => ({ name: s.name, type: 'bar', stack: 'ph', data: s.data, barMaxWidth: 30 })),
   }
@@ -219,8 +219,8 @@ const collectOption = computed<object | null>(() => {
     series: [{
       name: '收缴率', type: 'bar', barMaxWidth: 20,
       data: collShown.value.map((c) => ({ value: +c.rate.toFixed(1), itemStyle: { color: c.rate >= target ? '#378ADD' : '#EF9F27', borderRadius: [0, 3, 3, 0] } })),
-      label: { show: true, position: 'right', fontSize: 10, formatter: '{c}%' },
-      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 10 }, data: [{ xAxis: target }] },
+      label: { show: true, position: 'right', fontSize: 11, formatter: '{c}%' },
+      markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)' }, label: { position: 'insideEndTop', formatter: `目标 ${target}%`, fontSize: 11 }, data: [{ xAxis: target }] },
     }],
   }
 })
@@ -305,7 +305,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入与利润 · {{ year }}年</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)· 点击月柱切换期间 · 拖选缩放 · 紫虚线=预算月均</span>
         </div>
-        <AnaEChart v-if="mainOption" :option="mainOption" :height="304" @chart-click="onMainClick" />
+        <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
 
@@ -315,7 +315,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
           <span class="hint">合计 {{ money(compoTotal || null) }} · 点击扇区看趋势</span>
         </div>
-        <AnaEChart v-if="compo.length" :option="donutOption" :height="304" @chart-click="onDonutClick" />
+        <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
 
@@ -325,7 +325,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">分期收入堆叠</span>
           <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期 · 点击深链附表10</span>
         </div>
-        <AnaEChart v-if="phaseOption" :option="phaseOption" :height="248" @chart-click="onPhaseClick" />
+        <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
       </div>
 
@@ -334,7 +334,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收缴率 vs 目标</span>
           <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)· 点击看欠费清单</span>
         </div>
-        <AnaEChart v-if="collectOption" :option="collectOption" :height="248" @chart-click="onCollectClick" />
+        <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
       </div>
 
@@ -370,7 +370,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">{{ segModal.label }}收入 · {{ year }}年 12 月趋势</span>
           <button class="x" @click="segModal = null"><component :is="iconFor('x')" :size="15" /></button>
         </div>
-        <AnaEChart v-if="segTrendOption" :option="segTrendOption" :height="240" />
+        <AnaEChart v-if="segTrendOption" :option="segTrendOption" :height="250" />
         <AnaEmpty v-else :label="year + ' 年该板块无月度数据'" />
       </div>
     </div>
@@ -406,10 +406,10 @@ const conclusion = computed(() => buildConclusion(
 
 <style scoped>
 /* 工具条屏名(order:-1 置于期间控件前,不改 AnaShell) */
-.cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+.cv2-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 /* §A 经营结论条(av2-card 观感,单行 flex wrap;位于回退横幅后、grid 前) */
 .cv2-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
-.cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.cv2-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .cv2-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .cv2-cs.lk { cursor: pointer; }
 .cv2-cs.lk:hover { text-decoration: underline; }
@@ -419,18 +419,18 @@ const conclusion = computed(() => buildConclusion(
 .cv2-anom:hover { background: var(--bg-hover); }
 .cv2-anom .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .cv2-anom .tt { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv2-anom .vv { flex: 0 0 auto; font-size: 11.5px; font-weight: var(--fw-semibold); font-family: var(--font-mono); }
-.cv2-all { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
+.cv2-anom .vv { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); }
+.cv2-all { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 4px 0 0; text-align: center; }
 .cv2-all:hover { text-decoration: underline; }
 /* 弹层 */
 /* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
 .cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; }
 .cv2-modal { background: var(--surface-white); border-radius: 14px; box-shadow: 0 12px 40px rgba(28, 28, 28, 0.22); padding: 16px 18px; width: min(620px, 92vw); max-height: 80vh; overflow: auto; }
 .cv2-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.cv2-modal-h .t { font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.cv2-modal-h .t { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cv2-modal-h .x { border: none; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; padding: 4px; border-radius: 6px; }
 .cv2-modal-h .x:hover { background: var(--bg-hover); color: var(--text-primary); }
-.cv2-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); }
+.cv2-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); }
 .cv2-link:hover { text-decoration: underline; }
 .cv2-arr-sum { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); }
 </style>

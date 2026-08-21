@@ -6,6 +6,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import type { OfficeRecordReq } from '@/types/utilities'
 
 const props = defineProps<{
@@ -30,6 +31,8 @@ const waterPrice = ref(isOffice ? '4.15' : '3.85')
 const note = ref('')
 
 const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
+const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
+const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const elecAmt = computed(() => num(elecQty.value) * num(elecPrice.value))
@@ -68,15 +71,15 @@ function save() {
       <div class="ut-fgrp">
         <span class="ut-flabel">月份（记账）</span>
         <div class="ut-frow">
-          <select class="ut-select" v-model="acctY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="ut-select" v-model="acctM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="acctY" />
+          <Select :options="monthOpts" v-model="acctM" />
         </div>
       </div>
       <div class="ut-fgrp">
         <span class="ut-flabel">所属月份</span>
         <div class="ut-frow">
-          <select class="ut-select" v-model="belongY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="ut-select" v-model="belongM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="belongY" />
+          <Select :options="monthOpts" v-model="belongM" />
         </div>
       </div>
     </div>
@@ -132,12 +135,15 @@ function save() {
 .ut-flabel { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
 .ut-flabel .dot { width:8px; height:8px; border-radius:50%; }
 .ut-frow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.ut-input, .ut-select { height:38px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:13.5px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.ut-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .ut-input.mono { font-family:var(--font-mono); text-align:right; }
-.ut-input:focus, .ut-select:focus { border-color:var(--border-strong); }
+.ut-input:focus { border-color:var(--border-strong); }
 .ut-input::placeholder { color:var(--text-disabled); }
 .ut-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .ut-sub2 .k { font-size:11px; color:var(--text-muted); }
 .ut-sub2 .v { font-size:14px; font-weight:var(--fw-semibold); font-family:var(--font-mono); margin-top:2px; color:var(--text-primary); }
-.ut-hint { font-size:11px; color:var(--text-disabled); }
+.ut-hint { font-size:11px; color:var(--text-muted); }
 </style>

@@ -4,6 +4,7 @@
 // CSS 全本组件 scoped,不复用别组件 class。
 import { reactive, computed } from 'vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import type { Section } from '@/utils/importSections'
 import type { ImportRec } from '@/utils/importHeaderMatch'
@@ -25,11 +26,12 @@ const emit = defineEmits<{
   labelConfirm: [picks: { label: string; records: ImportRec[] }[]]
 }>()
 
+// ds/Select 只吃字符串值,期号进出各转一次(rowValid 仍按数字校验)
 const PHASE_OPTS = [
-  { value: 1, label: '一期' },
-  { value: 2, label: '二期' },
-  { value: 3, label: '三期' },
-  { value: 4, label: '宿舍' },
+  { value: '1', label: '一期' },
+  { value: '2', label: '二期' },
+  { value: '3', label: '三期' },
+  { value: '4', label: '宿舍' },
 ]
 
 interface Row {
@@ -166,9 +168,14 @@ function confirm() {
           />
         </span>
         <span v-if="!hidePhase" class="isum-col-p">
-          <select class="isum-sel" :class="{ bad: !validPhase(r.phase) }" v-model.number="r.phase">
-            <option v-for="o in PHASE_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
+          <!-- 校验红框走 ds/Select 的 invalid(2026-08-20 新增),与旁边两个 .isum-in.bad
+               输入框同一种红边表现;不再用外层 box-shadow 画红圈 -->
+          <span class="isum-sel">
+            <Select size="sm" :options="PHASE_OPTS" placeholder="期"
+              :invalid="!validPhase(r.phase)"
+              :model-value="r.phase == null ? '' : String(r.phase)"
+              @update:model-value="r.phase = +$event" />
+          </span>
         </span>
         <span class="isum-col-n">
           <b :class="{ empty: r.records.length === 0 }">{{ r.records.length }}</b> 户
@@ -207,9 +214,13 @@ function confirm() {
 .isum-cb { width:16px; height:16px; cursor:pointer; accent-color:var(--ink-900); }
 .isum-cb:disabled { cursor:not-allowed; opacity:.5; }
 
-.isum-in, .isum-sel { width:100%; box-sizing:border-box; height:30px; border:1px solid var(--border-subtle); border-radius:6px; padding:0 8px; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); background:var(--surface-white); outline:none; }
-.isum-in:focus, .isum-sel:focus { border-color:var(--hue-blue); }
-.isum-in.bad, .isum-sel.bad { border-color:var(--hue-red); background:rgb(252,235,233); }
+/* 年/月输入框跟 ds/Select size="sm" 同高,否则一行里三个控件参差 */
+.isum-in { width:100%; box-sizing:border-box; height:32px; border:1px solid var(--border-subtle); border-radius:6px; padding:0 8px; font-family:var(--font-sans); font-size:12.5px; color:var(--text-primary); background:var(--surface-white); outline:none; }
+.isum-in:focus { border-color:var(--hue-blue); }
+.isum-in.bad { border-color:var(--hue-red); background:rgb(252,235,233); }
+/* 期非法(未识别到)照样要标红,但 ds/Select 的边框写在内部按钮的 inline style 上、CSS 覆不掉,
+   所以红环画在外层包裹上 —— 少了这圈,缺期的段跟合法段长得一样,用户会直接点「全部导入」 */
+.isum-sel { display:block; }
 
 .isum-foot { display:flex; justify-content:flex-end; }
 </style>

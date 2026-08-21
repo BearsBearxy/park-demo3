@@ -80,7 +80,7 @@ const energyOption = computed<object | null>(() => {
           `<br/>${p.marker ?? ''}${p.seriesName} <b>¥${fint(Number(p.value ?? 0))}</b>`).join('')
       },
     },
-    xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 10 } },
+    xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
       // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)
@@ -200,7 +200,9 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           <button v-for="t in list" :key="t.name" class="mn-row" :class="{ on: t.name === selName }" @click="selName = t.name">
             <span class="score" :style="{ color: tierColor(t.tier) }">{{ t.score }}</span>
             <span class="body">
-              <span class="nm">{{ t.name }}</span>
+              <!-- 租户名常是长公司名(实测「采研企业管理(佛山)有限公司,颐美青科…」660px 被截到 222px),
+                   截断后认不出是哪一户 —— 补 title 出全文 -->
+              <span class="nm" :title="t.name">{{ t.name }}</span>
               <span class="sub">
                 {{ t.arrears > 0.005 ? '欠费 ¥' + fint(t.arrears) : (t.payRate != null ? '收缴 ' + t.payRate.toFixed(0) + '%' : '无台账') }}
                 · {{ t.spikes.length ? '突变 ' + t.spikes.length + ' 处' : (t.gone ? '计费中断' : '能耗平稳') }}
@@ -219,7 +221,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="t">{{ sel?.name ?? '—' }} · 电/水费逐月</span>
             <span class="hint">红点 = 环比突变 >±{{ anaSettings.spikeTh }}%(相邻有数月)· 灰带 = 园区租户电费 P25~P75</span>
           </div>
-          <AnaEChart v-if="energyOption" :option="energyOption" :height="252" />
+          <AnaEChart v-if="energyOption" :option="energyOption" :height="250" />
           <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
         </div>
 
@@ -228,7 +230,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="t">应收 vs 实收</span>
             <span class="hint">台账覆盖 {{ ledBars?.yms.length ?? 0 }} 期 · 跨公司求和</span>
           </div>
-          <AnaEChart v-if="ledgerOption" :option="ledgerOption" :height="188" />
+          <AnaEChart v-if="ledgerOption" :option="ledgerOption" :height="200" />
           <AnaEmpty v-else label="该租户无台账记录" hint="应收/实收来自月度台账" to="/ledger" to-text="去台账录入" />
         </div>
 
@@ -316,20 +318,20 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 </template>
 
 <style scoped>
-.mn-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+.mn-name { order: -1; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 /* 左列清单 */
 .mn-listcard { display: flex; flex-direction: column; }
 .mn-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-subtle); border-radius: 9px; padding: 6px 10px; margin-bottom: 8px; color: var(--text-muted); }
-.mn-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); }
+.mn-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .mn-list { flex: 1; min-height: 0; overflow-y: auto; max-height: 560px; display: flex; flex-direction: column; gap: 4px; }
 .mn-row { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; border-radius: 9px; padding: 8px 9px; cursor: pointer; font-family: var(--font-sans); text-align: left; }
 .mn-row:hover { background: var(--bg-hover); }
 .mn-row.on { background: var(--accent-blue); }
 .mn-row .score { flex: 0 0 34px; font-size: 15px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .mn-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.mn-row .nm { font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mn-row .sub { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
-.mn-row .tier { flex: 0 0 auto; font-size: 10px; font-weight: var(--fw-semibold); border: 1px solid; border-radius: var(--radius-full); padding: 1px 7px; }
+.mn-row .nm { font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn-row .sub { font-size: var(--fs-micro); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+.mn-row .tier { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); border: 1px solid; border-radius: var(--radius-full); padding: 1px 7px; }
 /* 右面板 */
 .mn-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* 规则行 */
@@ -337,12 +339,12 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 .mn-rule { display: flex; align-items: flex-start; gap: 10px; background: var(--surface-card); border-radius: 10px; padding: 9px 11px; }
 .mn-rule .ic { width: 26px; height: 26px; flex: 0 0 auto; border-radius: 8px; display: grid; place-items: center; }
 .mn-rule .bd { flex: 1; min-width: 0; }
-.mn-rule .tt { font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.mn-rule .tt .tag { font-size: 10px; font-weight: var(--fw-medium); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
-.mn-rule .dt { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+.mn-rule .tt { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mn-rule .tt .tag { font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
+.mn-rule .dt { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
 .mn-rule .ops { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .mn-st-seg { display: inline-flex; background: var(--surface-sunken); border-radius: 999px; padding: 2px; }
-.mn-st-seg button { border: none; cursor: pointer; font-family: var(--font-sans); font-size: 10.5px; padding: 2px 9px; border-radius: 999px; transition: background var(--dur-fast), color var(--dur-fast); }
+.mn-st-seg button { border: none; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-micro); padding: 2px 9px; border-radius: 999px; transition: background var(--dur-fast), color var(--dur-fast); }
 .mn-link { border: none; background: transparent; color: var(--text-link); font-size: 11px; cursor: pointer; font-family: var(--font-sans); }
 .mn-link:hover { text-decoration: underline; }
 /* 深链按钮 */

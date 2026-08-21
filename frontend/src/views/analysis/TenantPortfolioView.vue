@@ -15,6 +15,7 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { PHASES } from '@/views/sales-income/layout'
+import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
 
 const loaded = ref(false)
@@ -69,7 +70,7 @@ const paretoOption = computed<object>(() => {
     grid: { left: 46, right: 46, top: 30, bottom: 64 },
     legend: { top: 0 },
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '—' : (v as number).toFixed(1) + '%') },
-    xAxis: { type: 'category', data: p.names, axisLabel: { rotate: 38, fontSize: 10, width: 72, overflow: 'truncate' } },
+    xAxis: { type: 'category', data: p.names, axisLabel: { rotate: 38, fontSize: 11, width: 72, overflow: 'truncate' } },
     yAxis: [
       { type: 'value', axisLabel: { formatter: '{value}%' } },
       { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { show: false } },
@@ -82,7 +83,7 @@ const paretoOption = computed<object>(() => {
         markLine: p.names.length >= 5 ? {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#EF9F27' },
-          label: { formatter: `Top5 ${top5Share.value}%`, color: '#EF9F27', fontSize: 10 },
+          label: { formatter: `Top5 ${top5Share.value}%`, color: '#EF9F27', fontSize: 11 },
           data: [{ xAxis: p.names[4] }],
         } : undefined,
       },
@@ -149,6 +150,22 @@ const boxGroups = computed(() => {
     .map((p) => ({ name: phaseName(p), items: g.get(p) as { v: number; tenant: string }[] }))
 })
 const hasArea = computed(() => contracts.value.some((c) => c.rentArea > 0))
+// 对数轴取不到 ≤0,上面 boxGroups 直接 continue 掉了这些合同 —— 但屏上不能一声不吭:
+// 实测「租赁面积」模式下会静默略去相当一部分合同(面积未录/为 0),整个期区都可能从图上消失,
+// 而用户看到的是一张完整的图,会以为这就是全部。缺失必须能表达(METRIC-SOURCE-SPEC §3 同精神)。
+const boxDropped = computed(() => {
+  let n = 0, phases = new Set<number>()
+  for (const c of contracts.value) {
+    if (c.status !== 'active') continue
+    const v = boxMode.value === 'rent' ? c.monthlyRent : c.rentArea
+    if (v > 0) continue
+    n++
+    phases.add(phaseByTenantId.value.get(c.tenantId) ?? 0)
+  }
+  const shown = new Set(boxGroups.value.map((g) => g.name))
+  const gonePhases = [...phases].map(phaseName).filter((nm) => !shown.has(nm))
+  return { n, total: contracts.value.filter((c) => c.status === 'active').length, gonePhases }
+})
 const boxDiv = computed(() => (boxMode.value === 'rent' ? 10000 : 1))
 const boxRows = computed<BoxRow[]>(() =>
   buildBoxRows(boxGroups.value.map((g) => ({ name: g.name, values: g.items.map((i) => i.v) })), boxDiv.value))
@@ -189,15 +206,15 @@ const boxOption = computed<object>(() => ({
 }))
 
 // ── 合同生命周期(真实状态计数,v1 保留) ──
+// 色与文案一律取自 contractStatus.ts 权威表,不再本地写。此前本地那套把 expired 给了灰、
+// terminated 给了红,与合同管理屏**正好对调** —— 用户会读成「已终止那批出了问题」。
 const lifeCounts = computed(() => {
   const n = (s: string) => contracts.value.filter((c) => c.status === s).length
-  return [
-    { label: '生效中', value: n('active'), tone: 'var(--fill-blue)' },
-    { label: '临期', value: n('expiring'), tone: 'var(--hue-orange)' },
-    { label: '待入驻', value: n('draft'), tone: 'var(--hue-cyan)' },
-    { label: '已到期', value: n('expired'), tone: 'var(--text-muted)' },
-    { label: '已终止', value: n('terminated'), tone: 'var(--hue-red)' },
-  ]
+  return (['active', 'expiring', 'draft', 'expired', 'terminated'] as const).map((s) => ({
+    label: contractStatusOf(s).label,
+    value: n(s),
+    tone: contractStatusColor(s),
+  }))
 })
 const lifeMax = computed(() => Math.max(...lifeCounts.value.map((l) => l.value), 1))
 
@@ -262,7 +279,7 @@ const listRows = computed(() => {
         <!-- 期区结构环(点扇区→下方清单过滤) -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金 · 点扇区过滤下方清单</span></div>
-          <AnaEChart :option="donutOption" :height="190" @chart-click="onDonutClick" />
+          <AnaEChart :option="donutOption" :height="300" @chart-click="onDonutClick" />
           <div class="tp2-dl">
             <button v-for="d in donutData" :key="d.label" class="ak-dl tp2-dlbtn" :class="{ on: phaseFilter === d.phase }" @click="phaseFilter = phaseFilter === d.phase ? null : d.phase">
               <span class="dot" :style="{ background: d.color }"></span>
@@ -284,9 +301,13 @@ const listRows = computed(() => {
                 <button :class="{ on: boxMode === 'area' }" @click="boxMode = 'area'">租赁面积</button>
               </span>
               生效合同 · 点=每份合同(悬停看租户) · 横线=中位 · 对数轴
+              <template v-if="boxDropped.n > 0">
+                · <span class="tp-drop">已略去 {{ boxDropped.n }}/{{ boxDropped.total }} 份({{ boxMode === 'rent' ? '月租金' : '面积' }}为 0 或未录,对数轴取不到){{
+                  boxDropped.gonePhases.length ? '，' + boxDropped.gonePhases.join('、') + ' 整期不可见' : '' }}</span>
+              </template>
             </span>
           </div>
-          <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="240" />
+          <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="250" />
           <AnaEmpty v-else
             label="合同租赁面积未录入(rent_area 全部为 0)"
             hint="补录合同面积后,此处按期区呈现面积分布散点带"
@@ -349,6 +370,8 @@ const listRows = computed(() => {
 
 <style scoped>
 .tp-link { color: var(--text-link); text-decoration: none; }
+/* 略去份数走告警橙:它是「这张图不完整」的提示,不是普通补充说明 */
+.tp-drop { color: var(--status-warning); font-weight: var(--fw-medium); }
 .tp-link:hover { text-decoration: underline; }
 .tp2-dl { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .tp2-dlbtn { width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 5px 6px; border-radius: 8px; }
@@ -357,5 +380,5 @@ const listRows = computed(() => {
 .tp2-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px 8px; }
 .tp2-chip .x { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 0; line-height: 1; }
 .tp2-chip .x:hover { color: var(--text-primary); }
-.tp2-none { text-align: center; color: var(--text-disabled); font-size: 12.5px; padding: 18px 0; }
+.tp2-none { text-align: center; color: var(--text-disabled); font-size: var(--fs-label); padding: 18px 0; }
 </style>

@@ -19,8 +19,11 @@ export const WARN = 'var(--hue-orange)'
 // ── 对比开关叠加线语义色(spec 2026-07-11 §E) ──
 // 曾用 #185FA5 画预算线(与利润线同色不可分)、#85B7EB 画上月线(与数据柱同蓝族难辨)。
 // ECharts option 为纯 JSON 不能引用 CSS 变量 → 字面值。仅用于「对比参照线」,数据系列不用。
-export const CMP_BUDGET = '#A78BFA'     // 预算基准(紫)
-export const CMP_BASELINE = '#94A3B8'   // 环比上月/同期基线(灰)
+// 对比线语义色。2026-08-20 压暗:原 #A78BFA 对白底仅 2.72:1、#94A3B8 仅 2.56:1 ——
+// 连图形元素的 3:1 都不到,而它们还要给 markLine 标签当**文字色**(那档要 4.5:1)。
+// 用户原话「这个紫色的线看不清楚」。同色系下压到达标,「紫=预算 / 灰=基线」的语义区分不变。
+export const CMP_BUDGET = '#7C3AED'     // 预算基准(紫) 5.70:1
+export const CMP_BASELINE = '#64748B'   // 环比上月/同期基线(灰) 4.76:1
 
 // ── 动态标签(峰值/趋势,由序列算出) ──
 export type AnaTone = 'good' | 'risk' | 'warn' | 'neutral'

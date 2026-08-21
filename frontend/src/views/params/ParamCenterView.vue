@@ -577,7 +577,7 @@ const FIXED_RULES = [
                 <Button variant="outline" size="sm" @click="addExcl = null">取消</Button>
               </template>
               <Button v-else variant="outline" size="sm" @click="addExcl = { bid: g.bid, meterId: '' }">
-                <template #leading><component :is="iconFor('plus')" :size="13" /></template>添加
+                <template #leading><component :is="iconFor('plus')" :size="14" /></template>添加
               </Button>
             </template>
           </div>

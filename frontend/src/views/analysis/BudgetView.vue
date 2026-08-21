@@ -237,7 +237,8 @@ const kpiOutlook = computed(() => {
                   <td class="n">{{ d.rate != null ? d.rate.toFixed(1) + '%' : '—' }}</td>
                   <td class="n" :style="d.diff != null && d.diff < 0 ? { color: 'var(--hue-red)' } : undefined">
                     {{ d.diff != null ? (d.diff < 0 ? '−' : '+') + finFmt(Math.abs(d.diff)) : '—' }}</td>
-                  <td class="note">{{ d.note ?? '' }}</td>
+                  <!-- 预算备注常写整段说明(如「包括除四害、绿化、消防维护…」),截断后看不到口径 -->
+                  <td class="note" :title="d.note ?? undefined">{{ d.note ?? '' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -293,7 +294,7 @@ const kpiOutlook = computed(() => {
 
 /* 总表明细 */
 .bv2-tbl-wrap { overflow: auto; max-height: 420px; }
-.bv2-tbl { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
+.bv2-tbl { border-collapse: separate; border-spacing: 0; width: 100%; font-size: var(--fs-label); }
 .bv2-tbl th, .bv2-tbl td { padding: 8px 12px; border-bottom: 1px solid var(--divider); text-align: left; white-space: nowrap; }
 .bv2-tbl th { font-size: 11px; color: var(--text-muted); font-weight: var(--fw-semibold); position: sticky; top: 0; background: var(--surface-white); }
 .bv2-tbl th.n, .bv2-tbl td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -301,7 +302,7 @@ const kpiOutlook = computed(() => {
 .bv2-tbl tr.key td { font-weight: var(--fw-semibold); background: var(--surface-card); }
 .bv2-tbl tr.lk { cursor: pointer; }
 .bv2-tbl tr.lk:hover td { background: var(--bg-hover); }
-.bv2-tbl .pnl-tag { margin-left: 8px; font-size: 10px; font-weight: var(--fw-semibold); color: var(--hue-blue); background: var(--accent-sky); border-radius: var(--radius-full); padding: 1px 7px; }
+.bv2-tbl .pnl-tag { margin-left: 8px; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--hue-blue); background: var(--accent-sky); border-radius: var(--radius-full); padding: 1px 7px; }
 .bv2-tbl .go-ic { margin-left: 6px; color: var(--text-disabled); vertical-align: middle; }
-.bv2-tbl .note { max-width: 340px; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); font-size: 11.5px; }
+.bv2-tbl .note { max-width: 340px; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); font-size: var(--fs-micro); }
 </style>

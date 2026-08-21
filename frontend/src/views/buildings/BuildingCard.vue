@@ -61,15 +61,15 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
       <!-- 在租面积:单元面积Σ恒0时回落合同派生汇总(S15 服务刀字段);可租面积移入 tooltip -->
       <div :title="`可租面积 ${building.rentableArea.toLocaleString('en-US')} ㎡`">
-        <div style="font-size:10.5px;color:var(--text-disabled)">在租面积</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">在租面积</div>
         <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ leasedAreaShow(building).toLocaleString('en-US') }}</div>
       </div>
       <div>
-        <div style="font-size:10.5px;color:var(--text-disabled)">在租 / 空置</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">在租 / 空置</div>
         <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ building.occupiedCount }} / {{ building.vacantCount }}</div>
       </div>
       <div>
-        <div style="font-size:10.5px;color:var(--text-disabled)">月租金</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">月租金</div>
         <div style="font-size:13px;font-weight:var(--fw-medium);font-family:var(--font-mono)">{{ fpWan(building.monthlyRent) }}</div>
       </div>
     </div>
@@ -96,7 +96,7 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         {{ building.expiringCount }} 单元即将到期
       </span>
-      <span v-else style="font-size:11.5px;color:var(--text-disabled)">{{ building.tenantIds.length }} 户在租</span>
+      <span v-else style="font-size:11.5px;color:var(--text-muted)">{{ building.tenantIds.length }} 户在租</span>
     </div>
   </div>
 </template>

@@ -128,11 +128,11 @@ const topOpt = computed<object>(() => {
     grid: { left: 8, right: 52, top: 6, bottom: 6, containLabel: true },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => '¥' + fnum(v) + '万' },
     xAxis: { type: 'value', axisLabel: { show: false }, splitLine: { show: false } },
-    yAxis: { type: 'category', data: items.map((d) => d.label), axisLabel: { fontSize: 10, width: 108, overflow: 'truncate' } },
+    yAxis: { type: 'category', data: items.map((d) => d.label), axisLabel: { fontSize: 11, width: 108, overflow: 'truncate' } },
     series: [{
       type: 'bar', barMaxWidth: 13,
       data: items.map((d) => ({ value: +(d.value / 10000).toFixed(2), itemStyle: { color: GROUP_COLOR[d.group] ?? '#B5D4F4', borderRadius: [0, 3, 3, 0] } })),
-      label: { show: true, position: 'right', fontSize: 10, formatter: '{c}万' },
+      label: { show: true, position: 'right', fontSize: 11, formatter: '{c}万' },
     }],
   }
 })
@@ -173,7 +173,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">月度费用构成 · {{ year }}年</span>
             <span class="hint">覆盖 {{ covered.length }} 期(万元)· 环比=总计上月虚线</span>
           </div>
-          <AnaEChart :option="mainOpt" :height="298" />
+          <AnaEChart :option="mainOpt" :height="300" />
         </div>
 
         <!-- s4:本期费用结构环 -->
@@ -182,7 +182,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">费用结构 · {{ isMonth ? '本月' : '本年' }}</span>
             <span class="hint">合计 {{ money(total) }}</span>
           </div>
-          <AnaEChart v-if="structItems.length" :option="donutOpt" :height="298" />
+          <AnaEChart v-if="structItems.length" :option="donutOpt" :height="300" />
           <AnaEmpty v-else label="当期无费用数据" />
         </div>
 
@@ -192,7 +192,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
             <span class="t">科目 Top10</span>
             <span class="hint">本期金额降序 · 条色随组 · 万元</span>
           </div>
-          <AnaEChart v-if="tops.length" :option="topOpt" :height="260" />
+          <AnaEChart v-if="tops.length" :option="topOpt" :height="250" />
           <AnaEmpty v-else label="当期无费用科目明细" />
         </div>
 
@@ -252,11 +252,11 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 .ex-movers { display: flex; flex-direction: column; gap: 7px; }
 .ex-mv { display: flex; align-items: center; gap: 8px; }
 .ex-mv .lb { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-mv .amt { flex: 0 0 auto; font-size: 11.5px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-.ex-mv .pct { flex: 0 0 auto; width: 64px; text-align: right; font-size: 11.5px; font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ex-mv .amt { flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.ex-mv .pct { flex: 0 0 auto; width: 64px; text-align: right; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 /* 报销专区合计行 */
 .ex-reim-sum { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
 .ex-reim-more { margin: 8px 0 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-.ex-reim-sum .v { font-size: 17px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ex-reim-sum .v { font-size: var(--fs-h3); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .ex-reim-sum .s { font-size: 11px; color: var(--text-muted); }
 </style>

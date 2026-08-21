@@ -90,6 +90,6 @@ function onMove(e: MouseEvent) {
 .ana-trend-tip .lb { font-size: 11px; opacity: 0.65; margin-bottom: 6px; }
 .ana-trend-tip .row { display: flex; align-items: center; gap: 8px; }
 .ana-trend-tip .sw { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.ana-trend-tip .nm { font-size: 11.5px; opacity: 0.8; flex: 1; }
-.ana-trend-tip .vv { font-family: var(--font-mono); font-weight: 600; font-size: 12.5px; }
+.ana-trend-tip .nm { font-size: var(--fs-micro); opacity: 0.8; flex: 1; }
+.ana-trend-tip .vv { font-family: var(--font-mono); font-weight: 600; font-size: var(--fs-label); }
 </style>

@@ -15,6 +15,7 @@ import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSe
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import '@/components/ana/ana.css'
+import Select from '@/components/ds/Select.vue'
 
 const props = defineProps<{
   compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
@@ -102,17 +103,21 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
           <button :class="{ on: period.sel.value.gran === 'month' }" @click="period.setGran('month')">按月</button>
           <button :class="{ on: period.sel.value.gran === 'year' }" @click="period.setGran('year')">按年</button>
         </div>
-        <div class="anx-sel">
-          <select :value="period.sel.value.year" :disabled="!period.years.value.length" @change="period.setYear(+($event.target as HTMLSelectElement).value)">
-            <option v-for="y in period.years.value" :key="y" :value="y">{{ y }}年</option>
-          </select>
-          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        <!-- 期间年/月:ds/Select。改前是原生 <select> 把**触发器**画成了药丸+自绘箭头,
+             但点开的**面板由操作系统渲染**,CSS 管不到 —— 用户从抄表屏(ds/Select,白底圆角浮层带对勾)
+             切到任一分析屏,同样是「选年月」却是两个控件。本组件被 18 个分析屏共用,故改这一处 = 18 屏受益。
+             宽度按 LIST-PAGE-SPEC §2 的 110 / 92px(给窄了会把「2024年」截成「202…」)。 -->
+        <div class="anx-selw" style="width: 110px">
+          <Select size="sm" :disabled="!period.years.value.length"
+                  :options="period.years.value.map(y => ({ value: String(y), label: `${y}年` }))"
+                  :model-value="String(period.sel.value.year)"
+                  @update:model-value="period.setYear(+$event)" />
         </div>
-        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-sel">
-          <select :value="period.sel.value.month" :disabled="!period.years.value.length" @change="period.setMonth(+($event.target as HTMLSelectElement).value)">
-            <option v-for="m in period.monthNumsOf(period.sel.value.year)" :key="m" :value="m">{{ m }}月</option>
-          </select>
-          <span class="cv"><component :is="iconFor('chevron-down')" :size="13" /></span>
+        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-selw" style="width: 92px">
+          <Select size="sm" :disabled="!period.years.value.length"
+                  :options="period.monthNumsOf(period.sel.value.year).map(m => ({ value: String(m), label: `${m}月` }))"
+                  :model-value="String(period.sel.value.month)"
+                  @update:model-value="period.setMonth(+$event)" />
         </div>
         <div class="anx-nav">
           <button :disabled="pmode === 'year' ? yAtStart : period.atStart.value"
@@ -191,8 +196,8 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-shell { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100%; }
 .anx-tools { position: sticky; top: 0; z-index: 20; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 9px 18px; border-bottom: 1px solid var(--divider); flex-wrap: wrap; background: var(--surface-overlay); backdrop-filter: blur(8px); }
 .anx-body { flex: 1; min-height: 0; padding: 24px; box-sizing: border-box; }
-.anx-lbl { font-size: 11.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.anx-link { border: none; background: transparent; color: var(--text-link); font-size: 11.5px; cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 3px; }
+.anx-lbl { font-size: var(--fs-micro); color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.anx-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 3px; }
 .anx-icobtn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-fast), color var(--dur-fast); position: relative; }
 .anx-icobtn:hover, .anx-icobtn.on { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -200,28 +205,26 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
 .anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
 .anx-seg button:disabled { opacity: .4; cursor: default; }
-/* min-height = 12(本容器 padding-top)+ 81.2(一行 .av2-kpi 瓦片实高)≈ 93,取整向下,
+/* min-height = 12(本容器 padding-top)+ 82.9(一行 .av2-kpi 瓦片实高)≈ 94,取整向下,
    保证「常驻空条 → 瓦片填入」零位移,且加载完成后 min-height 永不生效(不多占一个像素)。
-   瓦片 81.2 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):
+   瓦片 82.9 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):
    padding 10+10 + .l 20(line-height 继承 --lh-snug:20px)+ gap 3 + .vr 20(.v 行盒 20 / .spk 20 取大)
-   + gap 3 + .d 14.2(10.5px × line-height 1.35)+ 边框 0.5×2 = 81.2。
+   + gap 3 + .d 14.85(11px × line-height 1.35)+ 边框 1×2 = 82.85。
    ⚠ 改瓦片 padding / 字号 / 行高时必须回来同步这个数,否则重新出现撑开或多余留白。
-   窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。 */
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 93px; }
-.anx-sel { position: relative; }
-.anx-sel select { appearance: none; -webkit-appearance: none; font-family: var(--font-sans); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--text-primary); background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); padding: 6px 28px 6px 13px; cursor: pointer; outline: none; }
-.anx-sel select:hover:not(:disabled) { background: var(--bg-hover); }
-.anx-sel select:disabled { opacity: .5; cursor: default; }
-.anx-sel .cv { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); display: inline-flex; }
+   窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。
+   2026-08-20 同步过一次:边框 0.5→1px(0.5px 在非整数 DPR 下渲染不稳)、副行 10.5→11px
+   (中文可读性下限),两项合计 +1.65px,故 93 → 94。 */
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 94px; }
+.anx-selw { flex: 0 0 auto; }
 .anx-nav { display: inline-flex; gap: 2px; }
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .anx-nav button:disabled { opacity: .4; cursor: default; }
 .anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px; }
-.anx-pop h4 { margin: 0 0 12px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.anx-pop h4 { margin: 0 0 12px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .anx-fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }
-.anx-fld input { width: 74px; font-family: var(--font-mono); font-size: 12.5px; text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
+.anx-fld input { width: 74px; font-family: var(--font-mono); font-size: var(--fs-label); text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
 .anx-fld input:focus { border-color: var(--border-strong); }
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>

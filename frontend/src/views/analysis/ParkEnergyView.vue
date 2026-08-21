@@ -215,7 +215,9 @@ const unitOption = computed(() => ({
     markLine: {
       silent: true, symbol: 'none',
       lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.35)' },
-      label: { fontSize: 10.5, formatter: '均值 ' + unitAvg.value.toFixed(2) },
+      // 默认 end 位置把标签画在线尾右侧,grid.right 只有 14px → 「均值 x.xx」被绘图区右缘裁掉一半;
+      // 改 insideEndTop 让标签落在线内上方,读得出阈值
+      label: { position: 'insideEndTop', fontSize: 11, formatter: '均值 ' + unitAvg.value.toFixed(2) },
       data: [{ yAxis: +unitAvg.value.toFixed(4) }],
     },
   }],
@@ -275,7 +277,7 @@ const segsOption = computed(() => ({
           <!-- §五策略2:所选月无售电 → 桑基锚定最近 s10 覆盖月,卡顶横幅(禁静默) -->
           <AnaPeriodBanner v-if="sankeyUsedYm && sankeyUsedYm !== curYm" :selected="curYm" :used="sankeyUsedYm"
             source="售电(附表10)" style="margin-bottom: 8px" />
-          <AnaEChart v-if="sankeyOption" :option="sankeyOption" :height="290" @chart-click="onSankeyClick" />
+          <AnaEChart v-if="sankeyOption" :option="sankeyOption" :height="300" @chart-click="onSankeyClick" />
           <!-- 该期间售电(附表10)未录 → 空态引导深链,不画假图 -->
           <AnaEmpty v-else label="该期间售电(附表10)未录入" hint="s10 为稀疏月度表,金额口径能量流暂不可算" to="/sales-income" to-text="去录入销售收入" />
           <!-- C6:生成式人话句(数据模板);守恒口径原句退下方 AnaMethodNote 保留 -->
@@ -297,18 +299,18 @@ const segsOption = computed(() => ({
 
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">购售电月度组合</span><span class="hint">万元 · 售电仅 s10 覆盖月有数 · 环比线仅购电(售电稀疏不适用)</span></div>
-          <AnaEChart :option="comboOption" :height="224" />
+          <AnaEChart :option="comboOption" :height="250" />
         </div>
 
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">单位购电成本趋势</span><span class="hint">元/kWh · 当期较窗口均值 {{ unitVsAvg != null ? sgn(unitVsAvg) : '—' }}</span></div>
-          <AnaEChart v-if="unitSeries.length" :option="unitOption" :height="224" />
+          <AnaEChart v-if="unitSeries.length" :option="unitOption" :height="250" />
           <AnaEmpty v-else label="本年无购电数据" to="/elec-cost" to-text="去录入电费成本" />
         </div>
 
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">能耗板块损益</span><span class="hint">{{ isMonth ? '本月' : '本年' }} · 净额万元(红＝亏损)</span></div>
-          <AnaEChart v-if="segs.length" :option="segsOption" :height="150" />
+          <AnaEChart v-if="segs.length" :option="segsOption" :height="170" />
           <AnaEmpty v-else label="本期无可算板块" hint="电力转供需同月购电(附表11)与售电(附表10)同时在库" />
           <AnaMethodNote>电力转供＝售电(s10 电费)−购电成本(仅 s10 覆盖月同口径);光伏＝消纳+上网收益;充电＝服务费−成本。</AnaMethodNote>
         </div>

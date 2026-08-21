@@ -7,7 +7,7 @@
 // 改造三:维护费块公摊按纸单合并成一行(五项,多池加总,构成进费项名悬浮),金额一分不改。
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
@@ -57,6 +57,13 @@ import {
 
 const auth = useAuthStore()
 const canEdit = computed(() => !auth.isReadonly)
+// EDIT-MODE-SPEC v2 §1:浏览态完全只读——重新生成(覆盖整月)、确认(不可逆单向流转)、批量、
+// 抽屉里的备注改写与收款公司指定,全部收进编辑态;导出/筛选/切期/展开是只读操作,不受管。
+// canWrite = 有权限 且 在编辑态,凡写入口与写函数守卫一律走它(单点开关,漏一个就是裸写入口)。
+const editMode = ref(false)
+const canWrite = computed(() => canEdit.value && editMode.value)
+// 编辑态不跨会话(spec §1):切走页签回来即回浏览态
+onDeactivated(() => { editMode.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
@@ -229,10 +236,12 @@ const ST_LABEL: Record<TenantStatus, string> = {
   draft: '待核对', partial: '部分确认', confirmed: '已确认', exported: '已导出',
 }
 
-const bulk = computed(() => canEdit.value && bulkMode.value)
+const bulk = computed(() => canWrite.value && bulkMode.value)
 function exitBulk() { bulkMode.value = false; selected.value = new Set() }
 // 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
+// 退出编辑态同理:选择态是编辑态的产物,留着回浏览态会有"看不见的选中"
 watch([phase, year, month], exitBulk)
+watch(editMode, v => { if (!v) exitBulk() })
 const selCount = computed(() => filtered.value.filter(r => selected.value.has(r.tenantId)).length)
 const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every(r => selected.value.has(r.tenantId)))
 function toggleAll() {
@@ -247,7 +256,7 @@ function toggleOne(tid: number) {
 
 // 确认:未设收款公司只提示不阻断(§2.2);单向流转,已确认/已导出户重新生成自动跳过
 async function confirmTenants(tids: number[]) {
-  if (!canEdit.value || confirming.value || !tids.length) return
+  if (!canWrite.value || confirming.value || !tids.length) return
   const gaps = tids.filter(gapOf)
   if (gaps.length) {
     const names = gaps.slice(0, 5)
@@ -357,7 +366,7 @@ const slotCells = computed<SlotCell[]>(() => {
     payMap.value, companies.value)
 })
 async function onSlotSave(p: { colIds: string[]; companyId: number }) {
-  if (!canEdit.value || slotSaving.value || !dlgRow.value) return
+  if (!canWrite.value || slotSaving.value || !dlgRow.value) return
   const tid = dlgRow.value.tenantId
   slotSaving.value = true
   try {
@@ -377,7 +386,7 @@ function flashOk(msg: string) {
   okTimer = setTimeout(() => { okMsg.value = '' }, 5000)
 }
 async function onGenerate() {
-  if (generating.value) return
+  if (!canWrite.value || generating.value) return
   if (!confirm(`重新生成 ${ym.value} 催缴单:先删后插覆盖本月草稿/作废单,按当前读数与价目重派;已签发单跳过不覆盖(须先作废)。确认?`)) return
   generating.value = true
   try {
@@ -432,9 +441,9 @@ const noteDraft = ref('')
 const noteSaving = ref(false)
 const noteCell = (k: NoteKey, engine: string | null) => noteDisplay(noteMap.value, k, engine)
 const noteDotTitle = (engine: string | null) =>
-  `手写备注(引擎原文:${engine || '无'})${canEdit.value ? ';点击恢复引擎备注' : ''}`
+  `手写备注(引擎原文:${engine || '无'})${canWrite.value ? ';点击恢复引擎备注' : ''}`
 function startNoteEdit(k: NoteKey, current: string) {
-  if (!canEdit.value) return
+  if (!canWrite.value) return
   noteEditKey.value = noteKeyId(k)
   noteDraft.value = current
 }
@@ -455,7 +464,7 @@ async function saveNoteEdit(k: NoteKey) {
   } catch (e) { alert(errMsg(e, '备注保存失败')) } finally { noteSaving.value = false }
 }
 async function restoreNote(k: NoteKey, engine: string | null) {
-  if (!canEdit.value || noteSaving.value || !dlgRow.value) return
+  if (!canWrite.value || noteSaving.value || !dlgRow.value) return
   if (!confirm(`恢复引擎备注${engine ? `「${engine}」` : '(该行引擎无备注)'}?手写内容将被清除。`)) return
   noteSaving.value = true
   try {
@@ -573,9 +582,16 @@ const drawerSub = computed(() => {
           <template #leading><component :is="iconFor('table')" :size="14" /></template>
           导出对账表
         </Button>
-        <Button v-if="canEdit" variant="outline" size="sm" :disabled="generating" @click="onGenerate">
+        <!-- 生成:编辑态才出(EDIT-MODE-SPEC v2)。已有单的「重新生成」= 先删后插覆盖整月 ⇒ danger;
+             空月的「生成本月」无可覆盖对象,是本屏的起点动作 ⇒ filled(此时页头唯一实义主动作) -->
+        <Button v-if="canWrite" :variant="rows.length ? 'danger' : 'filled'" size="sm"
+                :disabled="generating" @click="onGenerate">
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
+        </Button>
+        <Button v-if="canEdit" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
+          {{ editMode ? '完成' : '编辑模式' }}
         </Button>
       </div>
     </div>
@@ -605,7 +621,7 @@ const drawerSub = computed(() => {
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月暂无催缴单。
-        <template v-if="canEdit">点右上「生成本月」按当月读数、价目与公摊快照派生。</template>
+        <template v-if="canEdit">点右上「编辑模式」→「生成本月」,按当月读数、价目与公摊快照派生。</template>
         <template v-else>请管理员生成。</template>
       </span>
     </div>
@@ -633,7 +649,7 @@ const drawerSub = computed(() => {
           仅看有警告
         </label>
         <span style="flex:1"></span>
-        <Button v-if="canEdit && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
+        <Button v-if="canWrite && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
           <template #leading><component :is="iconFor('list-todo')" :size="14" /></template>
           批量确认
         </Button>
@@ -697,7 +713,7 @@ const drawerSub = computed(() => {
               <td class="l bn-stc">
                 <span class="bn-st" :class="statusOf(r.tenantId)">{{ ST_LABEL[statusOf(r.tenantId)] }}</span>
                 <span v-if="gapOf(r.tenantId)" class="bn-gapdot" title="该户有费用未指定收款公司(提示,不阻断导出)"></span>
-                <button v-if="canEdit && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
+                <button v-if="canWrite && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
                         :disabled="confirming" title="核对无误,确认该户" @click.stop="confirmTenants([r.tenantId])">确认</button>
               </td>
               <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
@@ -749,7 +765,7 @@ const drawerSub = computed(() => {
 
         <!-- S20 收款方分段:按收款槽出方格(同槽多费项共用一家公司),多选后指定公司 -->
         <PaySlotGrid v-if="slotCells.length" :cells="slotCells" :companies="companies"
-                     :can-edit="canEdit" :saving="slotSaving" @save="onSlotSave" />
+                     :can-edit="canWrite" :saving="slotSaving" @save="onSlotSave" />
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
@@ -799,8 +815,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(lineNoteKey(l), l.note).text || undefined">{{ noteCell(lineNoteKey(l), l.note).text }}</span>
-                          <span v-if="noteCell(lineNoteKey(l), l.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(l.note)" @click="restoreNote(lineNoteKey(l), l.note)"></span>
-                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(lineNoteKey(l), noteCell(lineNoteKey(l), l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(lineNoteKey(l), l.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(l.note)" @click="restoreNote(lineNoteKey(l), l.note)"></span>
+                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(lineNoteKey(l), noteCell(lineNoteKey(l), l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>
@@ -898,8 +914,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(r0.nk, r0.l.note).text || undefined">{{ noteCell(r0.nk, r0.l.note).text }}</span>
-                          <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
-                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
+                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>
@@ -936,8 +952,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(r0.nk, r0.m.note).text || undefined">{{ noteCell(r0.nk, r0.m.note).text }}</span>
-                          <span v-if="noteCell(r0.nk, r0.m.note).overridden" class="bn-ndot" :class="{ act: canEdit }" :title="noteDotTitle(r0.m.note)" @click="restoreNote(r0.nk, r0.m.note)"></span>
-                          <button v-if="canEdit" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.m.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(r0.nk, r0.m.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(r0.m.note)" @click="restoreNote(r0.nk, r0.m.note)"></span>
+                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.m.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>
@@ -1146,9 +1162,9 @@ const drawerSub = computed(() => {
 /* 筛选行;批量模式下整条改蓝底操作条(视觉上宣告"你在选择态",退出即恢复) */
 .bn-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bn-toolbar.bulk { padding: 7px 12px; border-radius: var(--radius-md); background: rgb(238, 244, 255); border: 1px solid rgb(206, 223, 252); }
-.bn-toolbar.bulk .bn-selc { color: var(--accent); }
+.bn-toolbar.bulk .bn-selc { color: var(--hue-blue); }
 .bn-bulkb { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
-.bn-bulkb:hover { border-color: var(--accent); color: var(--accent); }
+.bn-bulkb:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .bn-chk { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .bn-chk input { accent-color: var(--hue-blue); }
 .bn-search { width: 230px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
@@ -1188,24 +1204,24 @@ const drawerSub = computed(() => {
 .bn-txt.help:hover { color: var(--hue-blue); }
 .bn-nv { display: block; text-align: right; font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bn-nv.empty, .bn-nv.dim { color: var(--text-disabled); }
-.bn-u { font-style: normal; font-size: 10px; color: var(--text-disabled); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
+.bn-u { font-style: normal; font-size: var(--fs-micro); color: var(--text-muted); margin-left: 2px; }   /* 刀D 乘数单位后缀 */
 .bn-sumc { display: block; text-align: right; font-weight: var(--fw-semibold); color: var(--hue-blue); font-size: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bn-sumc.neg { color: var(--hue-red); }
 
 /* 警告角标(悬停显原文) */
 /* S20 交付链:勾选列/状态徽标/收款缺口橙点/行内确认按钮 */
 .bn-ckc { width: 34px; }
-.bn-ckc input { width: 15px; height: 15px; accent-color: var(--accent); vertical-align: -2px; }
-.bn-selc { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-secondary); }
+.bn-ckc input { width: 15px; height: 15px; accent-color: var(--hue-blue); vertical-align: -2px; }
+.bn-selc { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-secondary); }
 .bn-stc { white-space: nowrap; }
 .bn-st { display: inline-block; padding: 1px 9px; border-radius: var(--radius-full); font-size: 11.5px; font-weight: var(--fw-semibold); }
-.bn-st.draft { background: var(--surface-sunken); color: var(--text-tertiary); }
-.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--accent); }
+.bn-st.draft { background: var(--surface-sunken); color: var(--text-muted); }
+.bn-st.confirmed { background: rgb(230, 239, 255); color: var(--hue-blue); }
 .bn-st.exported { background: rgb(220, 242, 227); color: rgb(17, 99, 41); }
 .bn-st.partial { background: rgb(255, 242, 207); color: rgb(125, 92, 0); }
 .bn-gapdot { display: inline-block; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-orange, #e8912d); margin-left: 5px; vertical-align: 1px; cursor: help; }
-.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
-.bn-cfm:hover { border-color: var(--accent); color: var(--accent); }
+.bn-cfm { visibility: hidden; margin-left: 8px; border: 1px solid var(--border-subtle); background: var(--surface-card); border-radius: var(--radius-sm); padding: 1px 8px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
+.bn-cfm:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 tbody tr:hover .bn-cfm { visibility: visible; }
 .bn-warn { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-full); background: rgb(255, 238, 237); color: var(--hue-red); font-size: 11px; font-weight: var(--fw-semibold); cursor: help; }
 

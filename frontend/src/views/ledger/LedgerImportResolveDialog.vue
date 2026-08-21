@@ -4,6 +4,7 @@
 import { ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 
 export interface ResolveItem { name: string; suggest: { id: number; companyName: string } | null }
 export interface ResolveDecision { name: string; action: 'link' | 'create' | 'skip'; parentId?: number }
@@ -13,6 +14,17 @@ const emit = defineEmits<{ confirm: [decisions: ResolveDecision[]]; close: [] }>
 
 // 每行动作:有推荐默认 link,无推荐默认 create
 const actions = ref<('link' | 'create' | 'skip')[]>(props.items.map(it => (it.suggest ? 'link' : 'create')))
+
+// 无推荐的行不出「创建并关联」档:选了也没有 parentId,submit 会退化成独立建档,选项形同虚设
+function optsFor(it: ResolveItem) {
+  return [
+    ...(it.suggest ? [{ value: 'link', label: `创建并关联到 ${it.suggest.companyName}` }] : []),
+    { value: 'create', label: '新建独立租户' },
+    { value: 'skip', label: '跳过该行' },
+  ]
+}
+// ds/Select 只吐字符串,窄回联合类型(值域由 optsFor 保证)
+function setAction(i: number, v: string) { actions.value[i] = v as 'link' | 'create' | 'skip' }
 
 function submit() {
   emit('confirm', props.items.map((it, i) => {
@@ -34,11 +46,10 @@ function submit() {
       <div class="lg-dlg-b">
         <div v-for="(it, i) in items" :key="it.name" class="lg-rs-row">
           <span class="lg-rs-name">{{ it.name }}</span>
-          <select class="lg-rs-sel" v-model="actions[i]">
-            <option v-if="it.suggest" value="link">创建并关联到 {{ it.suggest.companyName }}</option>
-            <option value="create">新建独立租户</option>
-            <option value="skip">跳过该行</option>
-          </select>
+          <div class="lg-rs-sel">
+            <Select size="sm" :options="optsFor(it)" :model-value="actions[i]"
+              @update:model-value="setAction(i, $event)" />
+          </div>
         </div>
       </div>
       <div class="lg-dlg-f">
@@ -66,9 +77,7 @@ function submit() {
 .lg-rs-row { display:flex; align-items:center; gap:12px; }
 .lg-rs-name { flex:1; min-width:0; font-size:13px; font-weight:var(--fw-medium); color:var(--text-primary);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.lg-rs-sel { flex:0 0 232px; box-sizing:border-box; height:34px; padding:0 10px; font-size:12.5px; color:var(--text-primary);
-  border:1px solid var(--border-subtle); border-radius:var(--radius-md); outline:none; background:var(--surface-white);
-  font-family:var(--font-sans); transition:border-color var(--dur-fast) var(--ease-standard); }
-.lg-rs-sel:focus { border-color:var(--hue-blue); }
+/* 动作列只管定宽,外观归 ds/Select */
+.lg-rs-sel { flex:0 0 232px; }
 .lg-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

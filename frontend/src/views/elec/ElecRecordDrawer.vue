@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Button from '@/components/ds/Button.vue'
+import Select from '@/components/ds/Select.vue'
 import { phaseTint } from '@/components/sched/tints'
 import type { ElecPhaseDTO, ElecRecordReq } from '@/types/elec'
 
@@ -35,6 +36,8 @@ const demand = ref('')
 const rate = ref(DEFAULT_RATE)
 
 const months = Array.from({ length: 12 }, (_, i) => String(i + 1))
+const yearOpts = computed(() => props.years.map(y => ({ value: String(y), label: y + '年' })))
+const monthOpts = months.map(m => ({ value: m, label: m + '月' }))
 
 const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? 0 : n }
 const fee = computed(() => type.value === 'energy' ? num(qty.value) * num(price.value) : num(demand.value) * num(price.value))
@@ -97,8 +100,8 @@ function save() {
       <div class="e11-fgrp">
         <span class="e11-flabel">记账月份</span>
         <div class="e11-frow">
-          <select class="e11-select" v-model="acctY"><option v-for="y in years" :key="y" :value="String(y)">{{ y }}年</option></select>
-          <select class="e11-select" v-model="acctM"><option v-for="m in months" :key="m" :value="m">{{ m }}月</option></select>
+          <Select :options="yearOpts" v-model="acctY" />
+          <Select :options="monthOpts" v-model="acctM" />
         </div>
       </div>
       <div class="e11-fgrp">
@@ -112,11 +115,11 @@ function save() {
       <div class="e11-frow">
         <div class="e11-fgrp">
           <span class="e11-flabel">用电时段</span>
-          <select class="e11-select" v-model="period"><option v-for="p in PERIODS" :key="p" :value="p">{{ p }}</option></select>
+          <Select :options="PERIODS" v-model="period" />
         </div>
         <div class="e11-fgrp">
           <span class="e11-flabel">用电类别</span>
-          <select class="e11-select" v-model="cat"><option v-for="c in CATS" :key="c" :value="c">{{ c }}</option></select>
+          <Select :options="CATS" v-model="cat" />
         </div>
       </div>
       <div class="e11-frow3">
@@ -165,12 +168,15 @@ function save() {
 .e11-chip:hover { background:var(--surface-card); }
 .e11-chip.on { border-color:var(--ink-900); background:var(--ink-900); color:#fff; }
 .e11-cdot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
-.e11-input, .e11-select { height:38px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:13.5px; color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
+/* 高度对齐设计系统 md=36(ds/Input 与 ds/Select 同档):此前 38/40px,而同一表单网格里的
+   下拉已是 ds/Select 的 36px,并排就差 2~4px。改这里而不是改 Select —— 36 是三个 ds 控件
+   (Button/Input/Select)共同的 md 档,38/40 才是各表单自己发明的。 */
+.e11-input { height:36px; width:100%; box-sizing:border-box; border:1px solid var(--border-subtle); border-radius:8px; padding:0 12px; font-family:var(--font-sans); font-size:var(--fs-body); color:var(--text-primary); background:var(--surface-white); outline:none; transition:border-color var(--dur-fast); }
 .e11-input.mono { font-family:var(--font-mono); text-align:right; }
-.e11-input:focus, .e11-select:focus { border-color:var(--border-strong); }
+.e11-input:focus { border-color:var(--border-strong); }
 .e11-input::placeholder { color:var(--text-disabled); }
 .e11-sub2 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:13px 14px; background:var(--surface-card); border-radius:var(--radius-md); }
 .e11-sub2 .k { font-size:11px; color:var(--text-muted); }
 .e11-sub2 .v { font-size:14px; font-weight:var(--fw-semibold); font-family:var(--font-mono); margin-top:2px; color:var(--text-primary); }
-.e11-hint { font-size:11px; color:var(--text-disabled); }
+.e11-hint { font-size:11px; color:var(--text-muted); }
 </style>

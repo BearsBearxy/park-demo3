@@ -5,6 +5,7 @@ import { ref, onMounted, computed, h } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
+import Select from '@/components/ds/Select.vue'
 import FPSortableTable, { type SortableColumn } from '@/components/fp/FPSortableTable.vue'
 import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
@@ -33,6 +34,9 @@ const companies = ref<CompanyDTO[]>([])
 // 默认会计期 = 当前年月(不硬编码,跨年自适应)
 const now = new Date()
 const lf = ref<{ companyId: number | null; year: number; month: number }>({ companyId: null, year: now.getFullYear(), month: now.getMonth() + 1 })
+// ds/Select 只吃字符串值,数字进出各转一次(ElecCostView 同款)
+const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
+const companyOpts = computed(() => companies.value.map(c => ({ value: String(c.id), label: c.name })))
 
 onMounted(reload)
 async function reload() { overview.value = await importLogApi.overview() }
@@ -216,7 +220,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
       </div>
       <div class="im-actions">
         <Button variant="outline" size="sm" disabled>
-          <template #leading><component :is="iconFor('download')" :size="15" /></template>下载模板
+          <template #leading><component :is="iconFor('download')" :size="14" /></template>下载模板
         </Button>
       </div>
     </div>
@@ -275,14 +279,13 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     <div class="im-ctx" @mousedown.stop>
       <h3>导入 月度台账 · 选择目标</h3>
       <label>记账公司
-        <select v-model.number="lf.companyId">
-          <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
+        <Select size="sm" :options="companyOpts" :model-value="lf.companyId == null ? '' : String(lf.companyId)"
+          placeholder="请选择公司" @update:model-value="lf.companyId = +$event" />
       </label>
       <div class="im-ctx-ym">
         <label>年<input type="number" v-model.number="lf.year" /></label>
         <label>月
-          <select v-model.number="lf.month"><option v-for="m in 12" :key="m" :value="m">{{ m }}</option></select>
+          <Select size="sm" :options="monthOpts" :model-value="String(lf.month)" @update:model-value="lf.month = +$event" />
         </label>
       </div>
       <div class="im-ctx-foot">
@@ -331,7 +334,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
 .im-tile-top { display:flex; align-items:flex-start; gap:10px; }
 .im-tile-icon { width:36px; height:36px; border-radius:var(--radius-sm); background:var(--accent-slate); display:grid; place-items:center; color:var(--ink-900); flex:0 0 auto; }
 .im-tile-name { font-size:var(--fs-body); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.im-tile-tag { font-size:11px; color:var(--text-disabled); }
+.im-tile-tag { font-size:11px; color:var(--text-muted); }
 .im-pill { font-size:11px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); white-space:nowrap; margin-left:auto; flex:0 0 auto; height:fit-content; }
 .im-tile-meta { display:flex; align-items:center; justify-content:space-between; font-size:var(--fs-label); color:var(--text-muted); }
 .im-tile-meta b { color:var(--text-secondary); font-family:var(--font-mono); font-weight:var(--fw-semibold); }
@@ -344,8 +347,9 @@ const cols: SortableColumn<ImportLogDTO>[] = [
 .im-ctx { width:min(380px,92vw); background:var(--surface-white); border-radius:var(--radius-lg); padding:20px 22px; display:flex; flex-direction:column; gap:14px; box-shadow:0 12px 40px rgba(28,28,28,.18); }
 .im-ctx h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .im-ctx label { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--text-secondary); }
-.im-ctx select, .im-ctx input { height:34px; border:1px solid var(--border-subtle); border-radius:8px; padding:0 10px; font-size:13px; color:var(--text-primary); background:var(--surface-white); outline:none; }
-.im-ctx select:focus, .im-ctx input:focus { border-color:var(--border-strong); }
+/* 年输入框 32px = ds/Select size="sm" 的高度,不然同一行「年/月」两个控件高低差一截 */
+.im-ctx input { height:32px; border:1px solid var(--border-subtle); border-radius:8px; padding:0 10px; font-size:13px; color:var(--text-primary); background:var(--surface-white); outline:none; }
+.im-ctx input:focus { border-color:var(--border-strong); }
 .im-ctx-ym { display:flex; gap:12px; }
 .im-ctx-ym label { flex:1; }
 .im-ctx-foot { display:flex; gap:10px; justify-content:flex-end; margin-top:4px; }

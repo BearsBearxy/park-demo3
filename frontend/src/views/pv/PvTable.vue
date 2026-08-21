@@ -241,7 +241,7 @@ const k = computed(() => {
 .s6-table thead th { position:sticky; top:0; z-index:3; height:44px; background:var(--surface-white); border-bottom:1px solid var(--border-subtle); vertical-align:middle; }
 .s6-th { display:flex; flex-direction:column; gap:1px; align-items:flex-end; }
 .s6-th-name { font-size:12px; font-weight:var(--fw-semibold); color:var(--text-secondary); }
-.s6-th-unit { font-size:10px; color:var(--text-disabled); }
+.s6-th-unit { font-size: var(--fs-micro); color:var(--text-muted); }
 .s6-h-act { width:54px; }
 
 .s6-table tbody td { height:38px; border-bottom:1px solid var(--divider); }

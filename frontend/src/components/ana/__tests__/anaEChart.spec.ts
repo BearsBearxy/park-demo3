@@ -33,7 +33,14 @@ describe('AnaEChart', () => {
     const w = mount(AnaEChart, { props: { option: { series: [{ type: 'bar' }] } } })
     expect(w.classes()).toContain('loading')   // 加载中占位
     await flushPromises()
-    expect(h.init).toHaveBeenCalledWith(w.element, 'fpAnaTheme')
+    // 第三参是 2026-08-20 修「每个图都很糊」的核心:非整数 DPR(Windows 125% 缩放 → 1.14)
+    // 会让 canvas 背景缓冲落在小数像素上、整张被重采样。ceil 且下限 2 = 2 倍超采样。
+    // 断言 ≥2 而不是断言等于某个数:CI 与本机 devicePixelRatio 不同,写死会随环境红。
+    expect(h.init).toHaveBeenCalledWith(w.element, 'fpAnaTheme',
+      expect.objectContaining({ devicePixelRatio: expect.any(Number) }))
+    const dpr = (h.init.mock.calls[0] as unknown[])[2] as { devicePixelRatio: number }
+    expect(dpr.devicePixelRatio).toBeGreaterThanOrEqual(2)
+    expect(Number.isInteger(dpr.devicePixelRatio)).toBe(true)
     expect(h.chart.setOption).toHaveBeenCalledWith({ series: [{ type: 'bar' }] }, { notMerge: true })
     expect(w.classes()).not.toContain('loading')
     const before = h.registerTheme.mock.calls.length   // 首个用例 1 次;跨用例幂等(anaTheme 模块级守卫)

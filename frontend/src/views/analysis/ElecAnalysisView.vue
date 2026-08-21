@@ -178,7 +178,7 @@ const SEGS: Seg[] = [
   { name: '运营净额', color: '#F0997B', of: opsNet },
   // 抵减段(负向):录入为正金额,展示取负 — 奖励与上网收益冲减当月总表电费
   { name: '功率因数奖励(抵减)', color: '#94A3B8', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pf_reward')) },
-  { name: '光伏上网收益(抵减)', color: '#B5D4F4', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
+  { name: '光伏上网收益(抵减)', color: '#CBD5E1', of: (rows) => neg(feeAmt(rows, (r) => r.feeKey === 'pv_grid_income')) },
 ]
 const structOption = computed<object>(() => ({
   tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
@@ -284,7 +284,7 @@ const spreadOption = computed<object>(() => ({
               <span class="t">收益四指标月度趋势 · {{ year }}年</span>
               <span class="hint">万元 · 缺源月断点不补 0 · 点击深链成本总览对应月</span>
             </div>
-            <AnaEChart v-if="trendHasData" :option="trendOption" :height="290" @chart-click="onChartClick" />
+            <AnaEChart v-if="trendHasData" :option="trendOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else :label="year + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />
           </div>
 
@@ -294,7 +294,7 @@ const spreadOption = computed<object>(() => ({
               <span class="t">总表电费结构</span>
               <span class="hint">万元 · 奖励/上网收益为负向抵减段</span>
             </div>
-            <AnaEChart :option="structOption" :height="286" @chart-click="onChartClick" />
+            <AnaEChart :option="structOption" :height="300" @chart-click="onChartClick" />
           </div>
 
           <!-- 图3 s6:购售价差双轴 -->
@@ -303,7 +303,7 @@ const spreadOption = computed<object>(() => ({
               <span class="t">购售价差</span>
               <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
             </div>
-            <AnaEChart v-if="spreadHasData" :option="spreadOption" :height="286" @chart-click="onChartClick" />
+            <AnaEChart v-if="spreadHasData" :option="spreadOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else label="双价参数未录" hint="公告价/执行价按月录于成本总览电价参数(或模拟填充)" to="/elec-cost" to-text="去电费成本总览" />
           </div>
         </div>
@@ -321,11 +321,11 @@ const spreadOption = computed<object>(() => ({
 
 <style scoped>
 /* simulated 说明条(仿 ana-pbanner,灰标口径用中性色) */
-.ea-simbar { display: flex; align-items: center; gap: 6px; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 8px; padding: 7px 12px; font-size: 11.5px; line-height: 1.4; margin-bottom: 12px; }
+.ea-simbar { display: flex; align-items: center; gap: 6px; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 8px; padding: 7px 12px; font-size: var(--fs-micro); line-height: 1.4; margin-bottom: 12px; }
 .ea-simbar svg { flex: 0 0 auto; }
 /* 结论条(仿驾驶舱 cv2-concl:分句圆点,整句可点深链) */
 .ea-concl { display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; row-gap: 6px; margin-bottom: 12px; }
-.ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); cursor: pointer; }
+.ea-cs { display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent; padding: 0; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); cursor: pointer; }
 .ea-cs:hover { text-decoration: underline; }
 .ea-cs .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 </style>
