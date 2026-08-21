@@ -56,12 +56,15 @@ import {
 } from '@/utils/billNoticeExcel'
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:本屏两类写权分开 —— 派生(生成/备注)归 billing-run,对外闸门(确认/收款槽)归 billing-issue
+const mayRun = computed(() => auth.can('billing-run:edit'))
+const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // EDIT-MODE-SPEC v2 §1:浏览态完全只读——重新生成(覆盖整月)、确认(不可逆单向流转)、批量、
 // 抽屉里的备注改写与收款公司指定,全部收进编辑态;导出/筛选/切期/展开是只读操作,不受管。
-// canWrite = 有权限 且 在编辑态,凡写入口与写函数守卫一律走它(单点开关,漏一个就是裸写入口)。
+// canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
 const editMode = ref(false)
-const canWrite = computed(() => canEdit.value && editMode.value)
+const canRun = computed(() => mayRun.value && editMode.value)
+const canIssue = computed(() => mayIssue.value && editMode.value)
 // 编辑态不跨会话(spec §1):切走页签回来即回浏览态
 onDeactivated(() => { editMode.value = false })
 
@@ -194,7 +197,7 @@ const footLines = computed(() => filtered.value.reduce((s, r) => s + r.lineCount
 const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmount ?? 0), 0))
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
 
-// ── 系数簿窗口(S14):批量改系数;viewer 也可打开只读查看(窗口内编辑模式走 canEdit) ──
+// ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 param-policy:edit) ──
 const coefOpen = ref(false)
 
 // ── S20 交付链:三个新窗口 + 户级状态/收款缺口(状态单据级存储、户级展示) ──
@@ -236,7 +239,7 @@ const ST_LABEL: Record<TenantStatus, string> = {
   draft: '待核对', partial: '部分确认', confirmed: '已确认', exported: '已导出',
 }
 
-const bulk = computed(() => canWrite.value && bulkMode.value)
+const bulk = computed(() => canIssue.value && bulkMode.value)
 function exitBulk() { bulkMode.value = false; selected.value = new Set() }
 // 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
 // 退出编辑态同理:选择态是编辑态的产物,留着回浏览态会有"看不见的选中"
@@ -256,7 +259,7 @@ function toggleOne(tid: number) {
 
 // 确认:未设收款公司只提示不阻断(§2.2);单向流转,已确认/已导出户重新生成自动跳过
 async function confirmTenants(tids: number[]) {
-  if (!canWrite.value || confirming.value || !tids.length) return
+  if (!canIssue.value || confirming.value || !tids.length) return
   const gaps = tids.filter(gapOf)
   if (gaps.length) {
     const names = gaps.slice(0, 5)
@@ -310,10 +313,13 @@ async function onExportNotice(req: ExportNoticeReq) {
     for (const tid of req.tenantIds) items.push(await buildExportItem(tid, req.ym))
     const res = await exportNoticeZip(items, req.ym,
       accountResolver(req.accountByCompany), companyResolver())
-    await billDeliveryApi.markExported(req.ym, req.tenantIds).catch(() => { /* 标记失败不影响已下载文件 */ })
+    // 标记失败不影响已下载的文件,但**必须说出来**:最常见的失败是无 billing-issue 权限(403),
+    // 静默吞掉的话用户拿到了文件、单据状态却还是「未导出」,下次还会被当成没导过。
+    const marked = await billDeliveryApi.markExported(req.ym, req.tenantIds).then(() => true).catch(() => false)
     const noAcct = req.tenantIds.filter(gapOf).length
     exportResult.value = `已导出 ${res.files} 个租户文件 / ${res.sheets} 张通知单`
       + (noAcct ? ` · 其中 ${noAcct} 户无收款账户` : '')
+      + (marked ? '' : ' · 未能标记为「已导出」(需签发权限),单据状态不变')
     flashOk(exportResult.value)
     expNoticeOpen.value = false
     await loadMonth()
@@ -330,8 +336,9 @@ async function onExportTenant() {
     const item = await buildExportItem(r.tenantId, dlgYm.value)
     const res = await exportTenantNotice(item, dlgYm.value, accountResolver(), companyResolver())
     if (!res.sheets) { alert('该户本月没有可导出的费用行'); return }
-    await billDeliveryApi.markExported(dlgYm.value, [r.tenantId]).catch(() => { /* 标记失败不影响已下载文件 */ })
-    flashOk(`已导出 ${r.tenantName ?? '#' + r.tenantId}${res.sheets > 1 ? ` · ${res.sheets} 家收款公司分 sheet` : ''}`)
+    const marked = await billDeliveryApi.markExported(dlgYm.value, [r.tenantId]).then(() => true).catch(() => false)
+    flashOk(`已导出 ${r.tenantName ?? '#' + r.tenantId}${res.sheets > 1 ? ` · ${res.sheets} 家收款公司分 sheet` : ''}`
+      + (marked ? '' : ' · 未能标记为「已导出」(需签发权限)'))
     await loadMonth()
   } catch (e) { alert(errMsg(e, '导出失败')) } finally { cardBusy.value = false }
 }
@@ -366,7 +373,7 @@ const slotCells = computed<SlotCell[]>(() => {
     payMap.value, companies.value)
 })
 async function onSlotSave(p: { colIds: string[]; companyId: number }) {
-  if (!canWrite.value || slotSaving.value || !dlgRow.value) return
+  if (!canIssue.value || slotSaving.value || !dlgRow.value) return
   const tid = dlgRow.value.tenantId
   slotSaving.value = true
   try {
@@ -386,7 +393,7 @@ function flashOk(msg: string) {
   okTimer = setTimeout(() => { okMsg.value = '' }, 5000)
 }
 async function onGenerate() {
-  if (!canWrite.value || generating.value) return
+  if (!canRun.value || generating.value) return
   if (!confirm(`重新生成 ${ym.value} 催缴单:先删后插覆盖本月草稿/作废单,按当前读数与价目重派;已签发单跳过不覆盖(须先作废)。确认?`)) return
   generating.value = true
   try {
@@ -441,9 +448,9 @@ const noteDraft = ref('')
 const noteSaving = ref(false)
 const noteCell = (k: NoteKey, engine: string | null) => noteDisplay(noteMap.value, k, engine)
 const noteDotTitle = (engine: string | null) =>
-  `手写备注(引擎原文:${engine || '无'})${canWrite.value ? ';点击恢复引擎备注' : ''}`
+  `手写备注(引擎原文:${engine || '无'})${canRun.value ? ';点击恢复引擎备注' : ''}`
 function startNoteEdit(k: NoteKey, current: string) {
-  if (!canWrite.value) return
+  if (!canRun.value) return
   noteEditKey.value = noteKeyId(k)
   noteDraft.value = current
 }
@@ -464,7 +471,7 @@ async function saveNoteEdit(k: NoteKey) {
   } catch (e) { alert(errMsg(e, '备注保存失败')) } finally { noteSaving.value = false }
 }
 async function restoreNote(k: NoteKey, engine: string | null) {
-  if (!canWrite.value || noteSaving.value || !dlgRow.value) return
+  if (!canRun.value || noteSaving.value || !dlgRow.value) return
   if (!confirm(`恢复引擎备注${engine ? `「${engine}」` : '(该行引擎无备注)'}?手写内容将被清除。`)) return
   noteSaving.value = true
   try {
@@ -584,12 +591,12 @@ const drawerSub = computed(() => {
         </Button>
         <!-- 生成:编辑态才出(EDIT-MODE-SPEC v2)。已有单的「重新生成」= 先删后插覆盖整月 ⇒ danger;
              空月的「生成本月」无可覆盖对象,是本屏的起点动作 ⇒ filled(此时页头唯一实义主动作) -->
-        <Button v-if="canWrite" :variant="rows.length ? 'danger' : 'filled'" size="sm"
+        <Button v-if="canRun" :variant="rows.length ? 'danger' : 'filled'" size="sm"
                 :disabled="generating" @click="onGenerate">
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
-        <Button v-if="canEdit" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="mayRun || mayIssue" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -621,7 +628,7 @@ const drawerSub = computed(() => {
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月暂无催缴单。
-        <template v-if="canEdit">点右上「编辑模式」→「生成本月」,按当月读数、价目与公摊快照派生。</template>
+        <template v-if="mayRun">点右上「编辑模式」→「生成本月」,按当月读数、价目与公摊快照派生。</template>
         <template v-else>请管理员生成。</template>
       </span>
     </div>
@@ -649,7 +656,7 @@ const drawerSub = computed(() => {
           仅看有警告
         </label>
         <span style="flex:1"></span>
-        <Button v-if="canWrite && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
+        <Button v-if="canIssue && filtered.length" variant="outline" size="sm" @click="bulkMode = true">
           <template #leading><component :is="iconFor('list-todo')" :size="14" /></template>
           批量确认
         </Button>
@@ -713,7 +720,7 @@ const drawerSub = computed(() => {
               <td class="l bn-stc">
                 <span class="bn-st" :class="statusOf(r.tenantId)">{{ ST_LABEL[statusOf(r.tenantId)] }}</span>
                 <span v-if="gapOf(r.tenantId)" class="bn-gapdot" title="该户有费用未指定收款公司(提示,不阻断导出)"></span>
-                <button v-if="canWrite && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
+                <button v-if="canIssue && !bulk && statusOf(r.tenantId) === 'draft'" class="bn-cfm" type="button"
                         :disabled="confirming" title="核对无误,确认该户" @click.stop="confirmTenants([r.tenantId])">确认</button>
               </td>
               <td class="ct"><span v-if="r.warn" class="bn-warn" :title="r.warn">!</span></td>
@@ -765,7 +772,7 @@ const drawerSub = computed(() => {
 
         <!-- S20 收款方分段:按收款槽出方格(同槽多费项共用一家公司),多选后指定公司 -->
         <PaySlotGrid v-if="slotCells.length" :cells="slotCells" :companies="companies"
-                     :can-edit="canWrite" :saving="slotSaving" @save="onSlotSave" />
+                     :can-edit="canIssue" :saving="slotSaving" @save="onSlotSave" />
 
         <Segmented :options="DLG_TABS" v-model="dlgTab" size="sm" />
 
@@ -815,8 +822,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(lineNoteKey(l), l.note).text || undefined">{{ noteCell(lineNoteKey(l), l.note).text }}</span>
-                          <span v-if="noteCell(lineNoteKey(l), l.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(l.note)" @click="restoreNote(lineNoteKey(l), l.note)"></span>
-                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(lineNoteKey(l), noteCell(lineNoteKey(l), l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(lineNoteKey(l), l.note).overridden" class="bn-ndot" :class="{ act: canRun }" :title="noteDotTitle(l.note)" @click="restoreNote(lineNoteKey(l), l.note)"></span>
+                          <button v-if="canRun" class="bn-npen" title="编辑备注" @click="startNoteEdit(lineNoteKey(l), noteCell(lineNoteKey(l), l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>
@@ -914,8 +921,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(r0.nk, r0.l.note).text || undefined">{{ noteCell(r0.nk, r0.l.note).text }}</span>
-                          <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
-                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(r0.nk, r0.l.note).overridden" class="bn-ndot" :class="{ act: canRun }" :title="noteDotTitle(r0.l.note)" @click="restoreNote(r0.nk, r0.l.note)"></span>
+                          <button v-if="canRun" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.l.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>
@@ -952,8 +959,8 @@ const drawerSub = computed(() => {
                         </template>
                         <template v-else>
                           <span class="bn-txt dim" :title="noteCell(r0.nk, r0.m.note).text || undefined">{{ noteCell(r0.nk, r0.m.note).text }}</span>
-                          <span v-if="noteCell(r0.nk, r0.m.note).overridden" class="bn-ndot" :class="{ act: canWrite }" :title="noteDotTitle(r0.m.note)" @click="restoreNote(r0.nk, r0.m.note)"></span>
-                          <button v-if="canWrite" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.m.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
+                          <span v-if="noteCell(r0.nk, r0.m.note).overridden" class="bn-ndot" :class="{ act: canRun }" :title="noteDotTitle(r0.m.note)" @click="restoreNote(r0.nk, r0.m.note)"></span>
+                          <button v-if="canRun" class="bn-npen" title="编辑备注" @click="startNoteEdit(r0.nk, noteCell(r0.nk, r0.m.note).text)"><component :is="iconFor('pencil')" :size="12" /></button>
                         </template>
                       </div>
                     </td>

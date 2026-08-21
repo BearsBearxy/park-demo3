@@ -55,7 +55,9 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:本屏两扇门不同权 —— 生成快照是「跑一次出账」,池配置是「改计费口径」
+const canGen = computed(() => auth.can('billing-run:edit'))
+const canCfg = computed(() => auth.can('param-policy:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态 ──
 const editMode = ref(false)
@@ -152,7 +154,8 @@ const route = useRoute()
 function applyHandoff(): boolean {
   const q = route.query
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
-  if (q.generate === '1') editMode.value = true
+  // 同 ParamCenterView:深链也要过权限闸
+  if (q.generate === '1' && (canGen.value || canCfg.value)) editMode.value = true
   if (!m) return false
   year.value = +m[1]; month.value = +m[2]
   return true
@@ -200,7 +203,7 @@ const diffOpen = ref(false)
 const rowById = computed(() => new Map((pools.value?.rows ?? []).map(r => [r.ruleId, r])))
 function gotoDiff(ruleId: number) {
   const r = rowById.value.get(ruleId)
-  if (!r || !canEdit.value) return
+  if (!r || !canCfg.value) return
   editMode.value = true
   openPoolDlg(r)
 }
@@ -671,17 +674,17 @@ async function delPool() {
           导出当月
         </Button>
         <!-- 加载失败时禁生成:generate 是按月先删后插,读不到本月现状就按下去等于蒙着眼覆盖快照 -->
-        <Button v-if="editMode" variant="outline" size="sm" :disabled="generating || !!loadErr"
+        <Button v-if="editMode && canGen" variant="outline" size="sm" :disabled="generating || !!loadErr"
                 :title="loadErr ? '本月数据没加载出来 —— 先重试,否则生成会覆盖看不见的快照' : undefined"
                 @click="onGenerate">
           <template #leading><component :is="iconFor(generated ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generated ? '重新生成' : '生成本月' }}
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" @click="openPoolDlg()">
+        <Button v-if="editMode && canCfg" variant="outline" size="sm" @click="openPoolDlg()">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增池
         </Button>
-        <Button v-if="canEdit" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canGen || canCfg" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -706,8 +709,8 @@ async function delPool() {
     <div v-if="!generated && !loadErr" class="pl-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月未生成 —— 池配置照常展示,数值列为'–'。
-        <template v-if="editMode">点「生成本月」按当月读数与价目落快照。</template>
-        <template v-else-if="canEdit">进入右上角「编辑模式」可生成。</template>
+        <template v-if="editMode && canGen">点「生成本月」按当月读数与价目落快照。</template>
+        <template v-else-if="canGen">进入右上角「编辑模式」可生成。</template>
       </span>
     </div>
     <!-- WRITE-KEEP-CONTEXT-SPEC 铁律三:这条是**写出来的**提示条 —— 改一格系数它就冒出来,
@@ -752,7 +755,7 @@ async function delPool() {
       <button class="pl-barlink" @click="diffOpen = !diffOpen">{{ diffOpen ? '收起' : '展开' }}</button>
       <div v-if="diffOpen" class="pl-difflist">
         <div v-for="d in zoneDiffs" :key="d.ruleId" class="pl-diffrow">
-          <span class="nm" :class="{ click: canEdit }" @click="gotoDiff(d.ruleId)">
+          <span class="nm" :class="{ click: canCfg }" @click="gotoDiff(d.ruleId)">
             {{ rowById.get(d.ruleId)?.autoName || d.poolName }}
           </span>
           <span v-if="d.added.length" class="tag add" :title="d.added.map(t => t.tenantName).join('、')">
@@ -826,9 +829,9 @@ async function delPool() {
               </td>
               <!-- §I3:池名称=**本行电表**的用途(原册 D 列);池级自然键(A 列)退到首行副标题 -->
               <td class="pl-fix" :style="fixName">
-                <span class="pl-pname" :class="{ click: editMode }"
+                <span class="pl-pname" :class="{ click: editMode && canCfg }"
                       :title="r.warn ?? r.autoName ?? r.name"
-                      @click="editMode && openPoolDlg(r)">
+                      @click="editMode && canCfg && openPoolDlg(r)">
                   <span class="nm">{{ rowName(r, ln) }}</span>
                   <span v-if="r.warn" class="pl-warn" :title="r.warn">!</span>
                   <span v-if="r.links.length" class="pl-linkchip"
@@ -913,7 +916,7 @@ async function delPool() {
           <tr v-if="bands.length === 0">
             <td class="pl-noro" :colspan="colCount">
               <template v-if="loadErr">数据未加载 —— 请点上方「重试」</template>
-              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}</template>
+              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode && canCfg ? ',点右上「新增池」开始录入' : '' }}</template>
             </td>
           </tr>
         </tbody>

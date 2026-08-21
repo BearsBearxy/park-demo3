@@ -1,0 +1,158 @@
+package com.park.demo3.security;
+
+import org.springframework.http.HttpMethod;
+import org.springframework.http.server.PathContainer;
+import org.springframework.stereotype.Component;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 「写端点 → 权限点」映射表(RBAC-SPEC v2 §5.2)。只管非 GET —— 读全开。
+ *
+ * 三条铁律(每条都是查证过会踩的坑,改这个文件前先读 RBAC-SPEC §5.2):
+ *  1. **按 path segment 匹配,不是字符串前缀**。用 PathPattern,不是 startsWith。
+ *     若写成 startsWith("/api/elec"),PUT /api/elec-cost/price-cfg 会落到 entry —— 录入员
+ *     直接拿到四个电价键的写权限。同型隐患:/api/pv ⊂ /api/pv-meter、/api/bills 与
+ *     /api/bill-notices、/api/salary/import 与 /api/salary/imported。
+ *  2. **最长字面前缀优先**:表是有序的,首个命中生效,具体规则必须排在 catch-all 之前。
+ *  3. **默认拒绝**:表里没有的写路径一律 403(resolve 返回 null → SecurityConfig 拒)。
+ *
+ * ⚠ 唯一一条 URL 判不了的规则:PUT /api/params 的 13 个 monthlyCheck 月度键归 param-monthly,
+ *   其余键归 param-policy。URL 层放行「两者任一」,细分在 ParamService 里按 cfg_key 判。
+ */
+@Component
+public class PermissionRegistry {
+
+    /** 命中但不要求任何权限点 —— 任何已登录账号可写。目前只有 POST /api/import-log。 */
+    public static final String ANY_AUTHENTICATED = "*";
+
+    private record Rule(HttpMethod method, PathPattern pattern, List<String> anyOf) {}
+
+    private final List<Rule> rules = new ArrayList<>();
+    private final PathPatternParser parser = PathPatternParser.defaultInstance;
+
+    public PermissionRegistry() {
+        // ═══ 任意已登录可写 ═══
+        // 9 个导入屏共用这一个端点(importRegistry.ts 在每次导入成功后统一调)。挂 entry:edit 的话,
+        // 只有 meter-reading:edit 的人导完表会被 403 —— 而前端是 catch+console.warn 吞掉的,
+        // 用户毫无感知,审计痕迹静默丢失。
+        add(HttpMethod.POST, "/api/import-log", ANY_AUTHENTICATED);
+        // 本人改密:任何已登录账号都能改自己的。不登记的话按「默认拒绝」会 403 ——
+        // 首次强制改密的账号会被卡死在改密页(它是他唯一能去的地方,却提交不了)。
+        add(HttpMethod.POST, "/api/auth/change-password", ANY_AUTHENTICATED);
+
+        // ═══ 出账链:同一 controller 前缀下混着口径与运行两档 ═══
+        add(null, "/api/alloc/rules",        Perm.PARAM_POLICY_EDIT);
+        add(null, "/api/alloc/rules/**",     Perm.PARAM_POLICY_EDIT);
+        add(null, "/api/alloc/cfg",          Perm.PARAM_POLICY_EDIT);
+        add(null, "/api/alloc/**",           Perm.BILLING_RUN_EDIT);
+
+        // recalc 不写任何参数表:ParamService.recalc() 内部就是 alloc.generate + billNotice.generate,
+        // 语义与 /alloc/generate 完全同级。按 controller 归 param 会让专员重算不了,出账链断在这步。
+        add(HttpMethod.POST, "/api/params/recalc", Perm.BILLING_RUN_EDIT);
+        add(null, "/api/params",     Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT);
+        add(null, "/api/params/**",  Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT);
+        add(null, "/api/price-cfg",    Perm.PARAM_POLICY_EDIT);
+        add(null, "/api/price-cfg/**", Perm.PARAM_POLICY_EDIT);
+
+        // ═══ 电费成本:price-cfg 是口径,其余是录入 ═══
+        add(null, "/api/elec-cost/price-cfg", Perm.PARAM_POLICY_EDIT);
+        // simulate 里 insertCfgIfAbsent() 会往 elec_price_cfg 插行 —— 只收紧 price-cfg
+        // 而放开 simulate,param 门形同虚设。
+        add(HttpMethod.POST, "/api/elec-cost/simulate", Perm.PARAM_POLICY_EDIT);
+        add(null, "/api/elec-cost/**", Perm.ENTRY_EDIT);
+
+        // ═══ 账单 / 催缴单:生成与签发两档 ═══
+        add(null, "/api/bills/paymap", Perm.BILLING_ISSUE_EDIT);
+        add(null, "/api/bills/**",     Perm.BILLING_RUN_EDIT);
+        add(null, "/api/bill-notices/confirm",        Perm.BILLING_ISSUE_EDIT);
+        add(null, "/api/bill-notices/mark-exported",  Perm.BILLING_ISSUE_EDIT);
+        add(null, "/api/bill-notices/{id}/issue",     Perm.BILLING_ISSUE_EDIT);
+        add(null, "/api/bill-notices/{id}/void",      Perm.BILLING_ISSUE_EDIT);
+        add(null, "/api/bill-notices/**",             Perm.BILLING_RUN_EDIT);
+
+        // ═══ 抄表:读数与表档案两档 ═══
+        // ⚠ DELETE /api/meters/readings 默认 cascade=true + dropEmptyMeters=true,会顺手删该月
+        //   alloc_pool_result / alloc_pool_meter_result / alloc_loss_result / alloc_result 派生快照
+        //   并删空表档案。它落 meter-reading 是刻意的(抄表员重导当月要用),破坏力已在 SPEC §5.3-④ 记明。
+        add(null, "/api/meters/readings",    Perm.METER_READING_EDIT);
+        add(null, "/api/meters/readings/**", Perm.METER_READING_EDIT);
+        // ⚠ 抄表导入必须显式排在 /api/meters/** 之前,否则被 meter-master 吃掉 ——
+        //   财务专员在导入中心看得见「园区抄表」磁贴、点下去 403(RBAC-SPEC §2:导入属 meter-reading)
+        add(HttpMethod.POST, "/api/meters/import", Perm.METER_READING_EDIT);
+        add(null, "/api/meters",    Perm.METER_MASTER_EDIT);
+        add(null, "/api/meters/**", Perm.METER_MASTER_EDIT);
+
+        // 电站档案含单价字段,改它直接决定此后所有 pv_reading 的 price_snap 计价快照
+        add(null, "/api/pv-meter/stations",    Perm.METER_MASTER_EDIT);
+        add(null, "/api/pv-meter/stations/**", Perm.METER_MASTER_EDIT);
+        // simulate 会给单价为空的电站反推写入 price_yuan —— 与 elec-cost/simulate 同型的写旁路
+        add(HttpMethod.POST, "/api/pv-meter/simulate", Perm.METER_MASTER_EDIT);
+        add(null, "/api/pv-meter/**", Perm.METER_READING_EDIT);
+
+        // 桩库档案改运营商/车型会迁移甚至删除历史 cp_power_usage 行
+        add(null, "/api/cp-meter/stations",    Perm.METER_MASTER_EDIT);
+        add(null, "/api/cp-meter/stations/**", Perm.METER_MASTER_EDIT);
+        // cp 的 simulate 是「读附表7/8 整年批量派生」,等同跑一次出结果,不是录一条抄表
+        add(HttpMethod.POST, "/api/cp-meter/simulate", Perm.BILLING_RUN_EDIT);
+        add(null, "/api/cp-meter/**", Perm.METER_READING_EDIT);
+
+        // ═══ 预算:数据域属分析,但挂在导入中心由录入岗执行(拍板 #9) ═══
+        add(HttpMethod.POST, "/api/budget/import", Perm.ENTRY_EDIT);
+
+        // ═══ 主数据 ═══
+        for (String p : new String[]{"/api/buildings", "/api/units", "/api/tenants",
+                                     "/api/tenant-categories", "/api/companies", "/api/company-accounts"}) {
+            add(null, p, Perm.MASTER_EDIT);
+            add(null, p + "/**", Perm.MASTER_EDIT);
+        }
+
+        // ═══ 合同(含 contract_billing_term 租金单价 —— 催缴单租金金额直接取该表) ═══
+        add(null, "/api/contracts",    Perm.CONTRACT_EDIT);
+        add(null, "/api/contracts/**", Perm.CONTRACT_EDIT);
+
+        // ═══ 事后录入:台账 + 附表6/7/8/10/11/12 + 办公三期水电 ═══
+        for (String p : new String[]{"/api/ledger", "/api/s10", "/api/pv", "/api/charging",
+                                     "/api/elec", "/api/salary", "/api/utilities"}) {
+            add(null, p, Perm.ENTRY_EDIT);
+            add(null, p + "/**", Perm.ENTRY_EDIT);
+        }
+
+        // ═══ 账簿与报表 ═══
+        // ⚠ /api/pnl 是损益附表 1-5(pnl_row)归 report,/api/pv 是附表6 光伏(pv_record)归 entry。
+        //   两者都叫「附表」,路径上没有任何相似度提示,按名字归类必错。
+        for (String p : new String[]{"/api/reports", "/api/pnl", "/api/recon"}) {
+            add(null, p, Perm.REPORT_EDIT);
+            add(null, p + "/**", Perm.REPORT_EDIT);
+        }
+
+        // ═══ 系统管理(P1 才有实体端点,先把规则占住,免得将来裸奔) ═══
+        add(null, "/api/system",    Perm.SYSTEM_EDIT);
+        add(null, "/api/system/**", Perm.SYSTEM_EDIT);
+    }
+
+    private void add(HttpMethod method, String pattern, String... anyOf) {
+        rules.add(new Rule(method, parser.parse(pattern), List.of(anyOf)));
+    }
+
+    /**
+     * 解析一个**写请求**需要的权限。
+     *
+     * @return 满足其一即可的权限点列表;{@code [ANY_AUTHENTICATED]} = 任何已登录账号可写;
+     *         {@code null} = 表里没这条路径 → **拒绝**(默认拒绝,不是放行)
+     */
+    public List<String> resolve(HttpMethod method, String path) {
+        PathContainer pc = PathContainer.parsePath(path);
+        for (Rule r : rules) {
+            if (r.method() != null && !r.method().equals(method)) continue;
+            if (r.pattern().matches(pc)) return r.anyOf();
+        }
+        return null;
+    }
+
+    /** 覆盖率测试用:这张表一共几条规则。 */
+    public int size() { return rules.size(); }
+}

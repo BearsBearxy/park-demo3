@@ -28,10 +28,15 @@ import { latestPeriodOf } from '@/utils/defaultPeriod'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)   // 编辑模式按钮仅 admin 可见;viewer 永远浏览态
+// RBAC:费项/表名录入是 entry;电价参数是计费口径,归 param-policy(simulate 会写 price-cfg,同门)
+const canEntry = computed(() => auth.can('entry:edit'))
+const canPrice = computed(() => auth.can('param-policy:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 const editMode = ref(false)
+// 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
+const editE = computed(() => editMode.value && canEntry.value)
+const editC = computed(() => editMode.value && canPrice.value)
 onDeactivated(() => { editMode.value = false; meterDlg.value = false; importing.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -378,7 +383,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </div>
       </div>
       <!-- 电表增删=写入口,仅编辑态(EDIT-MODE-SPEC v2) -->
-      <Button v-if="editMode" variant="outline" size="sm" @click="openMeterDlg">
+      <Button v-if="editE" variant="outline" size="sm" @click="openMeterDlg">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增电表
       </Button>
@@ -398,15 +403,16 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <!-- 导入/模拟填充=写入口,收编辑态(EDIT-MODE-SPEC v2) -->
-        <Button v-if="editMode" variant="outline" size="sm" @click="openImport">
+        <Button v-if="editE" variant="outline" size="sm" @click="openImport">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- simulate 会给缺配置的月份写 price-cfg(RBAC-SPEC §5.3 ③),故判电价那扇门 -->
+        <Button v-if="editC" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充 2025
         </Button>
-        <Button v-if="canEdit" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEntry || canPrice" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -418,8 +424,8 @@ function fmtMetric(mt: ElecMetricDTO): string {
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无费项数据 ——
-        <template v-if="editMode">可直接在下方清单行内录入金额,或「导入」长表 Excel,或「模拟填充 2025」按附表真实数据推导。</template>
-        <template v-else-if="canEdit">进入右上角「编辑模式」可录入金额、导入或模拟填充。</template>
+        <template v-if="editE">可直接在下方清单行内录入金额,或「导入」长表 Excel,或「模拟填充 2025」按附表真实数据推导。</template>
+        <template v-else-if="canEntry">进入右上角「编辑模式」可录入金额、导入或模拟填充。</template>
         <template v-else>各费项显示为「—」。</template>
       </span>
     </div>
@@ -443,12 +449,12 @@ function fmtMetric(mt: ElecMetricDTO): string {
             <!-- 电表分组行:表名+类型徽标+该表小计,底色区分;编辑态名称行内改+删 -->
             <template v-if="r.t === 'group'">
               <td class="lbl g">
-                <input v-if="editMode" class="ec-nameedit" type="text" :value="r.m.name"
+                <input v-if="editE" class="ec-nameedit" type="text" :value="r.m.name"
                        title="电表名,回车/失焦保存(需唯一)"
                        @change="commitMeterName(r.m, ($event.target as HTMLInputElement).value)" />
                 <span v-else class="ec-gname">{{ r.m.name }}</span>
                 <span class="ec-kind">{{ KIND_LABEL[r.m.kind] }}</span>
-                <button v-if="editMode" class="ec-del" title="删除电表(有费项数据不可删)" @click="delMeter(r.m)">
+                <button v-if="editE" class="ec-del" title="删除电表(有费项数据不可删)" @click="delMeter(r.m)">
                   <component :is="iconFor('trash-2')" :size="14" />
                 </button>
               </td>
@@ -473,7 +479,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
               <td class="num">
                 <!-- 有拆分行:金额=Σ拆分读时派生(只读),展开子行修改;其余行编辑态行内输入,浏览态纯文本 -->
                 <span v-if="r.derived" class="ec-derived" title="由楼栋拆分行求和派生;展开子行修改">{{ fy(r.dAmount ?? 0) }}</span>
-                <input v-else-if="editMode" class="ec-in" type="number" min="0" step="0.01"
+                <input v-else-if="editE" class="ec-in" type="number" min="0" step="0.01"
                        :value="r.e?.amount ?? ''" placeholder="—"
                        title="金额(元),回车/失焦保存;清空=删除该费项行"
                        @change="commitAmount(r.m.id, r.feeKey, r.subKey, ($event.target as HTMLInputElement).value)" />
@@ -485,7 +491,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
                 <span v-else-if="r.e" class="ec-srctxt">{{ SRC_LABEL[r.e.source] }}</span>
               </td>
               <td class="note">
-                <input v-if="editMode && r.e && !r.derived" class="ec-in txt" type="text"
+                <input v-if="editE && r.e && !r.derived" class="ec-in txt" type="text"
                        :value="r.e.note ?? ''" placeholder="—" title="备注,回车/失焦保存"
                        @change="commitNote(r.e, ($event.target as HTMLInputElement).value)" />
                 <span v-else-if="r.e?.note" class="ec-notetxt" :title="r.e.note">{{ r.e.note }}</span>
@@ -521,7 +527,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
     </Card>
 
     <!-- ③ 电价参数小节(仅编辑态,指标表下方):列表行内编辑 -->
-    <Card v-if="editMode" surface="white" :padding="0" class="ec-listcard">
+    <Card v-if="editC" surface="white" :padding="0" class="ec-listcard">
       <div class="ec-cardhead">
         <div class="ec-cardtitles">
           <span class="ec-cardtitle"><component :is="iconFor('sliders-horizontal')" :size="15" style="vertical-align:-2px;margin-right:6px" />电价参数</span>

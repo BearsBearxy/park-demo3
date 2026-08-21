@@ -9,6 +9,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { landingPath } from '@/nav/navAccess'
 import { User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-vue-next'
 // 粒子 logo 素材:换 logo 直接替换这个 svg 文件(或改这里的 import 指向任意 png/svg)。
 // 引擎按「alpha>140 的像素」采样、颜色取自像素本身,任何形状/配色都能直接成粒子。
@@ -39,7 +40,13 @@ async function submit() {
   loading.value = true
   try {
     await auth.login({ username: username.value.trim(), password: password.value }, remember.value)
-    const redirect = (route.query.redirect as string) || '/data-home'
+    // 强制改密优先于一切落点(含 redirect):初始密码没改掉之前哪儿都不该进
+    if (auth.mustChangePassword) {
+      router.push('/change-password')
+      return
+    }
+    // 落地页按 navLayers 定(与 router 守卫共用 landingPath):园区股东看不到数据层,落驾驶舱
+    const redirect = (route.query.redirect as string) || landingPath(auth.navLayers, auth.can('system:view'))
     router.push(redirect)
   } catch (e: any) {
     errorMsg.value = e?.msg || e?.message || '登录失败，请检查账号和密码'

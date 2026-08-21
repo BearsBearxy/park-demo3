@@ -5,11 +5,17 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { useAuthStore } from '@/stores/auth'
 
 export interface Tab { value: string }
 
 const MAX_RECENT = 8
-const BASE_HOME = 'data-home'
+// 固定标签第一格。data-home 属「数据中心」层,园区股东看不到那一层 ——
+// 恒给他一个通向不可见层的入口,是他登录后第一眼就看见的坏。按导航可见层取首页。
+// logout() 会清 fp-app-tabs,换人登录不会继承上一个人的标签。
+function baseHome(): string {
+  return useAuthStore().navLayers.includes('data') ? 'data-home' : 'cockpit'
+}
 
 function loadJSON<T>(key: string, fallback: T): T {
   try {
@@ -25,7 +31,7 @@ export const useTabsStore = defineStore('tabs', () => {
 
   // ── initial state (mirrors app.jsx init logic) ──
   const rawTabs: string[] = (loadJSON<string[]>('fp-app-tabs', []) || []).filter(v => ROUTES[v])
-  const initTabs: Tab[] = (rawTabs.length ? rawTabs : [BASE_HOME]).map(v => ({ value: v }))
+  const initTabs: Tab[] = (rawTabs.length ? rawTabs : [baseHome()]).map(v => ({ value: v }))
 
   let rawPreview = localStorage.getItem('fp-app-preview') ?? ''
   // preview only valid if it's a known route AND not already pinned

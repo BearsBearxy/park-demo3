@@ -241,9 +241,14 @@ export interface ImportCtx {
   _bfReport?: BillingReportRow[]   // 计费字段导入:解析期到户报告,导入成功后落 CSV(裁定⑤)
   _cfReport?: ContractReportRow[]  // 合同汇总册导入:解析期到户报告(与 rows 同序),导入后并入后端匹配结果落 CSV
 }
+// 该类导入实际写进哪个模块(RBAC-SPEC §5.6:权限挂在 import kind 上,不挂导入中心这个屏)。
+// 取值须与后端 §5.2 写端点映射表对同一条 path 的判定一致 —— 前端只管磁贴显不显示,后端才是边界。
+export type ImportModule = 'entry:edit' | 'report:edit' | 'contract:edit' | 'meter-reading:edit'
+
 export interface ImportTypeEntry {
   key: string; label: string; tag: string; icon: string
   context: 'none' | 'ledger'
+  module: ImportModule
   // title/templateCols 为 FpImportModal 必填项,收紧类型让 v-bind 展开处可静态校验
   modalProps: (ctx: ImportCtx) => { title: string; templateCols: string[] } & Record<string, unknown>
   run: (payload: ImportRec[] | Pick[], ctx: ImportCtx) => Promise<ImportResultDTO>
@@ -331,7 +336,7 @@ function downloadCsv(name: string, text: string): void {
 
 export const IMPORT_TYPES: ImportTypeEntry[] = [
   {
-    key: 'ledger', label: '月度台账', tag: '凭证', icon: 'book-open', context: 'ledger',
+    key: 'ledger', label: '月度台账', tag: '凭证', icon: 'book-open', context: 'ledger', module: 'entry:edit',
     modalProps: (ctx) => {
       const prev = ctx.month ? (ctx.month === 1 ? 12 : ctx.month - 1) : null
       const columnMap = ledgerColumnMap(prev)
@@ -396,7 +401,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · ${ctx.companyName ?? ''}`,
   },
   {
-    key: 's10', label: '销售收入', tag: '附表10', icon: 'coins', context: 'none',
+    key: 's10', label: '销售收入', tag: '附表10', icon: 'coins', context: 'none', module: 'entry:edit',
     modalProps: () => ({
       title: '导入 附表10 · 智能整表',
       sub: '上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入',
@@ -419,7 +424,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: () => null,
   },
   {
-    key: 'pv', label: '光伏发电', tag: '附表6', icon: 'sun', context: 'none',
+    key: 'pv', label: '光伏发电', tag: '附表6', icon: 'sun', context: 'none', module: 'entry:edit',
     modalProps: () => ({
       title: '导入 附表6 · 光伏发电',
       sub: '上传/粘贴多段堆叠的光伏发电明细(一期/二期/三期),系统按段切期、按表头识别列,逐段核对后导入',
@@ -436,7 +441,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   },
   // ── 光伏分栋抄表(PV-METER-SPEC §3):长表一行=一站一日,(电站,日期)幂等 upsert ──
   {
-    key: 'pvMeter', label: '光伏抄表', tag: '抄表', icon: 'gauge', context: 'none',
+    key: 'pvMeter', label: '光伏抄表', tag: '抄表', icon: 'gauge', context: 'none', module: 'meter-reading:edit',
     modalProps: (ctx) => ({
       title: '导入 光伏抄表 · 分栋明细',
       sub: '上传/粘贴分栋抄表长表(一行=一站一日),按表头识别列;(电站,日期)重复导入自动覆盖,未知站名/非法日期逐行报告不整批拦',
@@ -462,7 +467,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   },
   // ── 充电桩分桩明细(CP-METER-SPEC §3):长表一行=一桩一日,(桩,日)幂等 upsert;与附表7/8 月度汇总完全独立 ──
   {
-    key: 'cpMeter', label: '充电桩明细', tag: '抄表', icon: 'plug', context: 'none',
+    key: 'cpMeter', label: '充电桩明细', tag: '抄表', icon: 'plug', context: 'none', module: 'meter-reading:edit',
     modalProps: (ctx) => ({
       title: '导入 充电桩明细 · 分桩抄表',
       sub: '上传/粘贴分桩充电长表(一行=一桩一日),按表头识别列;(桩,日期)重复导入自动覆盖,未知桩名/非法日期逐行报告不整批拦',
@@ -489,7 +494,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   // ── 园区抄表(METER-SPEC §4):整册多 sheet(一期/二期/宿舍×电/水),每 sheet 月份自理;
   //    表按 (分区,类别,标识) 自动建档,读数按 (表,月) 幂等覆盖;未识别 sheet(租户缴费单等)静默跳过 ──
   {
-    key: 'meter', label: '园区抄表', tag: '抄表', icon: 'gauge', context: 'none',
+    key: 'meter', label: '园区抄表', tag: '抄表', icon: 'gauge', context: 'none', module: 'meter-reading:edit',
     modalProps: (ctx) => {
       // v2 拆分(§6.2/§6.3)要租户库(带 id 才能挂 tenantId)+楼栋清单:打开弹窗即预取进模块缓存
       // (同 budget 预取模式,解析在用户选完文件后通常已就绪);视图喂的 ctx.tenantNames/ctx.buildings 作后备。
@@ -534,7 +539,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   //    无合同户报「须先建合同」;须手录 sheet 逐条报告不整批拦;后端按 source 覆盖(manual 保留,import 覆盖);
   //    导入成功自动落「到户报告」CSV(282 户逐户有名) ──
   {
-    key: 'billingTerms', label: '合同计费行', tag: '合同', icon: 'file-text', context: 'none',
+    key: 'billingTerms', label: '合同计费行', tag: '合同', icon: 'file-text', context: 'none', module: 'contract:edit',
     modalProps: (ctx) => {
       prefetchBillingContracts()
       return {
@@ -576,7 +581,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   //    明细长表出计费行(1:1,按位置聚段)、汇总宽表出期限四件套与 AB 对账;租户匹配/合同新建在后端(全称优先,简称+期兜底);
   //    导入后自动下载到户报告 CSV(逐户:费项数/位置段数/期限/AB 差异/问题 + 后端匹配还是新建) ──
   {
-    key: 'contractFull', label: '合同期限+计费行', tag: '合同', icon: 'file-text', context: 'none',
+    key: 'contractFull', label: '合同期限+计费行', tag: '合同', icon: 'file-text', context: 'none', module: 'contract:edit',
     modalProps: (ctx) => ({
       title: '导入 合同汇总册 · 期限 + 计费行',
       sub: '上传「园区租户租金合同明细汇总」整册(明细/汇总两表):明细表逐费项出计费行,汇总表出租赁期限起止/类型/原文/阶梯价并对账月费用合计;一户一份合同,在册的匹配、不在册的自动建档;期限缺失户标「待人工补」;导入后自动下载到户报告',
@@ -621,7 +626,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   },
   ...([7, 8] as const).map(no => ({
     key: `charging_${no}`, label: no === 7 ? '汽车充电桩' : '电动车充电桩',
-    tag: `附表${no}`, icon: no === 7 ? 'car' : 'bike', context: 'none' as const,
+    tag: `附表${no}`, icon: no === 7 ? 'car' : 'bike', context: 'none' as const, module: 'entry:edit' as const,
     modalProps: (ctx: ImportCtx) => ({
       title: `导入 附表${no} · 充电桩`,
       sub: '上传/粘贴充电桩损益明细,系统按运营商、按月份识别行,核对后导入',
@@ -643,7 +648,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: () => null,
   })),
   {
-    key: 'elec', label: '电费成本', tag: '附表11', icon: 'zap', context: 'none',
+    key: 'elec', label: '电费成本', tag: '附表11', icon: 'zap', context: 'none', module: 'entry:edit',
     modalProps: () => ({
       title: '导入 附表11 · 电费成本',
       sub: '上传/粘贴电费成本附表(两行表头),系统按(记账期,期)切分,产电量电费 + 大工业基本电费记录,核对后导入',
@@ -659,7 +664,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   // ── 园区电费成本模型(ELEC-COST-SPEC §5):长表一行=一表一费项一月,(表,月,费项,拆分)幂等 upsert;
   //    与附表11(上一条 elec)完全独立零改动 ──
   {
-    key: 'elecCost', label: '电费成本', tag: '录入', icon: 'zap', context: 'none',
+    key: 'elecCost', label: '电费成本', tag: '录入', icon: 'zap', context: 'none', module: 'entry:edit',
     modalProps: (ctx) => ({
       title: '导入 电费成本 · 总表费项',
       sub: '上传/粘贴电费成本长表(一行=一表一费项一月),按表头识别列;(电表,月份,费项,拆分)重复导入自动覆盖,未知电表/费项逐行报告不整批拦',
@@ -684,7 +689,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: () => null,
   },
   {
-    key: 'salary', label: '工资明细', tag: '附表12', icon: 'wallet', context: 'none',
+    key: 'salary', label: '工资明细', tag: '附表12', icon: 'wallet', context: 'none', module: 'entry:edit',
     modalProps: (ctx) => ({
       title: '导入 附表12 · 工资明细',
       sub: '上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入',
@@ -706,7 +711,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   },
   ...([13, 14] as const).map(no => ({
     key: `office_${no}`, label: no === 13 ? '办公水电' : '三期水电',
-    tag: `附表${no}`, icon: 'plug', context: 'none' as const,
+    tag: `附表${no}`, icon: 'plug', context: 'none' as const, module: 'entry:edit' as const,
     modalProps: () => ({
       title: `导入 附表${no} · ${no === 13 ? '办公水电' : '三期水电'}`,
       sub: '上传/粘贴逐月水电表,系统按表头名字识别列、按月份识别行,核对后导入',
@@ -739,7 +744,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: () => null,
   })),
   {
-    key: 'report_is', label: '利润表', tag: '报表', icon: 'trending-up', context: 'ledger',
+    key: 'report_is', label: '利润表', tag: '报表', icon: 'trending-up', context: 'ledger', module: 'report:edit',
     modalProps: (ctx) => ({
       title: '导入 利润表',
       sub: `上传/粘贴合并多公司的利润表(两行表头,每公司本月/本年累计两列),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
@@ -774,7 +779,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)}`,
   },
   {
-    key: 'report_bs', label: '资产负债表', tag: '报表', icon: 'scale', context: 'ledger',
+    key: 'report_bs', label: '资产负债表', tag: '报表', icon: 'scale', context: 'ledger', module: 'report:edit',
     modalProps: (ctx) => ({
       title: '导入 资产负债表',
       sub: `上传/粘贴两栏合并多公司的资产负债表(资产‖负债和所有者权益,每公司一列期末余额),按公司拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
@@ -806,7 +811,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     target: (ctx) => `${ctx.year}-${pad2(ctx.month!)} · 资产负债表`,
   },
   {
-    key: 'report_tb', label: '科目余额表', tag: '报表', icon: 'table-2', context: 'ledger',
+    key: 'report_tb', label: '科目余额表', tag: '报表', icon: 'table-2', context: 'ledger', module: 'report:edit',
     modalProps: (ctx) => ({
       title: '导入 科目余额表',
       sub: `上传整本工作簿(每张「余额表」sheet=一家公司,缩进型/代码型版式均可),按 sheet 拆段、未匹配公司自动新建,导入到 ${ctx.year} 年 ${ctx.month} 月`,
@@ -847,7 +852,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   // ── 损益附表 1–5(P2-D):5 条同构由 PNL_SCHEDULES 生成;年从标题自动识,识别失败回退屏当前年槽(ctx.year) ──
   ...PNL_SCHEDULES.map((config, i) => ({
     key: `pnl_${config.schedule}`, label: config.title, tag: '报表',
-    icon: ['trending-up', 'zap', 'droplets', 'wrench', 'banknote'][i], context: 'none' as const,
+    // 损益附表 1–5 落 /api/pnl/**,与三大报表同归 report(RBAC §2 明列「三大报表、损益附表 1–5」)
+    icon: ['trending-up', 'zap', 'droplets', 'wrench', 'banknote'][i], context: 'none' as const, module: 'report:edit' as const,
     modalProps: () => ({
       title: '导入 ' + config.title,
       sub: '从年度统计母册导入该附表(整年替换);上传含该 sheet 的工作簿或粘贴该表,年份从标题自动识别',
@@ -877,7 +883,8 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   })),
   // ── 年度预算(P3-P1 预算对比):解析规则见 importBudget.ts 头注释;确认屏按年分段,run 聚合整包一次导入 ──
   {
-    key: 'budget', label: '年度预算', tag: '预算', icon: 'target', context: 'none',
+    // 年度预算归 entry(拍板 #9);分析层本身无权限点,它唯一的落库写就是这条
+    key: 'budget', label: '年度预算', tag: '预算', icon: 'target', context: 'none', module: 'entry:edit',
     modalProps: () => {
       prefetchBudgetPnlRevenue()
       return {

@@ -18,6 +18,7 @@ import {
   BIND_STATUS_NOTE, BIND_BUCKET_LABEL, bindQueueBucket, bindReason,
   type WorkbenchRow,
 } from '@/composables/useMeterWorkbench'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -37,6 +38,13 @@ const props = defineProps<{
   sideOpts: string[]
 }>()
 const emit = defineEmits<{ close: []; reload: [] }>()
+
+// RBAC v2:一个编辑模式,两把权限(RBAC-SPEC §6 点名本文件)——
+// 档案页与合同绑定(倍率/位置/归属/绑定/删表)= meter-master:edit;历史读数增删改 = meter-reading:edit。
+// 无权那半边照常显示全部数据,只是不出编辑控件。
+const auth = useAuthStore()
+const editProfile = computed(() => props.editMode && auth.can('meter-master:edit'))
+const editReading = computed(() => props.editMode && auth.can('meter-reading:edit'))
 
 const m = computed(() => props.row?.m ?? null)
 
@@ -368,31 +376,31 @@ async function doBind(contractId: number | null) {
 
       <div class="md-fld">
         <label>标识名(内部键)</label>
-        <input v-if="editMode" class="mt-edit l md-in mono" type="text" :value="m.name"
+        <input v-if="editProfile" class="mt-edit l md-in mono" type="text" :value="m.name"
                title="同分区同类唯一(kind,zone,name);与已有表重名保存会被后端拒绝并回滚"
                @change="commitField(m, 'name', ($event.target as HTMLInputElement).value)" />
         <span v-else class="mono">{{ m.name }}</span>
       </div>
       <div class="md-fld">
         <label>表编码</label>
-        <input v-if="editMode" class="mt-edit l md-in mono" type="text" :value="m.code ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in mono" type="text" :value="m.code ?? ''"
                title="导入的首选身份键:补上它可解掉「同位置多块表歧义」的导入报错。留空=清除"
                @change="commitField(m, 'code', ($event.target as HTMLInputElement).value)" />
         <span v-else class="mono">{{ m.code ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>区域(楼栋/车间)</label>
-        <input v-if="editMode" class="mt-edit l md-in" type="text" list="md-area-list" :value="m.area ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in" type="text" list="md-area-list" :value="m.area ?? ''"
                title="抄表屏区块带头,同时进导入位置索引;可从库内既有区域中选,也可直接输入。留空=清除"
                @change="commitField(m, 'area', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.area ?? '—' }}</span>
-        <datalist v-if="editMode" id="md-area-list"><option v-for="a in areaOpts" :key="a" :value="a" /></datalist>
+        <datalist v-if="editProfile" id="md-area-list"><option v-for="a in areaOpts" :key="a" :value="a" /></datalist>
       </div>
       <div class="md-fld">
         <label :title="locPinned(m, 'floorLabel') ? LOC_MANUAL_TITLE : undefined">
           楼层{{ locPinned(m, 'floorLabel') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
-        <Select v-if="editMode" size="sm" :model-value="m.floorLabel ?? ''"
+        <Select v-if="editProfile" size="sm" :model-value="m.floorLabel ?? ''"
                 :style="{ width: '100%' }"
                 title="稳定位置主数据,决定抄表屏排序与公摊按层分份;留空=跨层或不适用"
                 :options="[{ value: '', label: '—(跨层/不适用)' }, ...floorOpts.map(f => ({ value: f, label: f }))]"
@@ -403,7 +411,7 @@ async function doBind(contractId: number | null) {
         <label :title="locPinned(m, 'side') ? LOC_MANUAL_TITLE : undefined">
           方位{{ locPinned(m, 'side') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
-        <Select v-if="editMode" size="sm" :model-value="m.side ?? ''"
+        <Select v-if="editProfile" size="sm" :model-value="m.side ?? ''"
                 :style="{ width: '100%' }"
                 title="同层东西侧分栏的依据;留空=整层不分侧"
                 :options="[{ value: '', label: '—(不分侧)' }, ...sideOpts.map(s => ({ value: s, label: s }))]"
@@ -414,21 +422,21 @@ async function doBind(contractId: number | null) {
         <label :title="locPinned(m, 'roomNo') ? LOC_MANUAL_TITLE : undefined">
           房号{{ locPinned(m, 'roomNo') ? ' · 人工设定(导入不覆盖)' : '' }}
         </label>
-        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.roomNo ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in" type="text" :value="m.roomNo ?? ''"
                title="单元/房号(如 101室);跨多间的表宁可留空。留空=清除"
                @change="commitField(m, 'roomNo', ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.roomNo }">{{ m.roomNo ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>位置原文(导入匹配键)</label>
-        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.spot ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in" type="text" :value="m.spot ?? ''"
                :title="SPOT_TITLE"
                @change="commitField(m, 'spot', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.spot ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>企业名称原文</label>
-        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.tenantName ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in" type="text" :value="m.tenantName ?? ''"
                title="账册「企业名称」列原文;公摊/基础设施表这里存的是用途描述。留空=清除"
                @change="commitField(m, 'tenantName', ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.tenantName ?? '—' }}<span v-if="row?.pending" class="md-warn">待核</span></span>
@@ -436,7 +444,7 @@ async function doBind(contractId: number | null) {
 
       <div class="md-fld">
         <label>楼栋</label>
-        <Select v-if="editMode" size="sm" :model-value="m.buildingId != null ? String(m.buildingId) : ''"
+        <Select v-if="editProfile" size="sm" :model-value="m.buildingId != null ? String(m.buildingId) : ''"
                 :style="{ width: '100%' }"
                 :options="[{ value: '', label: '—(未关联)' }, ...buildings.map(bd => ({ value: String(bd.id), label: `${bd.phaseName} · ${bd.name}` }))]"
                 @update:model-value="commitBuilding(m, $event)" />
@@ -445,7 +453,7 @@ async function doBind(contractId: number | null) {
       <div class="md-fld pick">
         <label>租户(选定即归属「租户」)</label>
         <FPTenantPicker
-          v-if="editMode"
+          v-if="editProfile"
           :tenants="tenantOpts" :model-value="m.tenantId"
           :placeholder="m.tenantName ?? '选择租户'"
           @update:model-value="commitTenant(m, $event)"
@@ -454,7 +462,7 @@ async function doBind(contractId: number | null) {
       </div>
       <div class="md-fld">
         <label>归属</label>
-        <Select v-if="editMode" size="sm" :model-value="m.ownership"
+        <Select v-if="editProfile" size="sm" :model-value="m.ownership"
                 :style="{ width: '100%' }"
                 :options="OWN_OPTS"
                 @update:model-value="commitOwnership(m, $event)" />
@@ -462,14 +470,14 @@ async function doBind(contractId: number | null) {
       </div>
       <div class="md-fld">
         <label>表名称</label>
-        <input v-if="editMode" class="mt-edit l md-in" type="text" :value="m.subName ?? ''"
+        <input v-if="editProfile" class="mt-edit l md-in" type="text" :value="m.subName ?? ''"
                title="表名称(如 电表①),回车/失焦保存;留空=清除"
                @change="commitSubName(m, ($event.target as HTMLInputElement).value)" />
         <span v-else>{{ m.subName ?? '—' }}</span>
       </div>
       <div class="md-fld">
         <label>倍率</label>
-        <input v-if="editMode" class="mt-edit md-in" type="number" min="0" step="0.01" :value="m.factor"
+        <input v-if="editProfile" class="mt-edit md-in" type="number" min="0" step="0.01" :value="m.factor"
                :title="FACTOR_TITLE"
                @change="commitFactor(m, ($event.target as HTMLInputElement).value)" />
         <span v-else class="mono">{{ m.factor }}</span>
@@ -477,7 +485,7 @@ async function doBind(contractId: number | null) {
       <!-- 表类型=电表概念(单相/三相/需量…),水表不适用不显示(2026-08-04 报障) -->
       <div v-if="m.kind === 'elec'" class="md-fld">
         <label>表类型</label>
-        <Select v-if="editMode" size="sm" :model-value="m.deviceType ?? ''"
+        <Select v-if="editProfile" size="sm" :model-value="m.deviceType ?? ''"
                 :style="{ width: '100%' }"
                 :options="[{ value: '', label: '未录' }, ...Object.entries(DEVICE_TYPE_LABEL).map(([k, lab]) => ({ value: k, label: lab as string }))]"
                 @update:model-value="commitDeviceType(m, $event)" />
@@ -485,21 +493,21 @@ async function doBind(contractId: number | null) {
       </div>
       <div class="md-fld">
         <label>停用账期</label>
-        <input v-if="editMode" class="mt-edit md-in" type="month" :value="m.retiredYm ?? ''"
+        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.retiredYm ?? ''"
                title="自该账期起停用(含当月不计):不进抄表进度、不进公摊/损耗分母、不参与合同绑定。留空=在用"
                @change="commitRetiredYm(m, ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.retiredYm }">{{ m.retiredYm ? `${m.retiredYm} 起停用` : '在用' }}</span>
       </div>
       <div class="md-fld">
         <label>退场账期</label>
-        <input v-if="editMode" class="mt-edit md-in" type="month" :value="m.removedYm ?? ''"
+        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.removedYm ?? ''"
                title="退租/拆表:自该账期起(含当月)不再显示在任何月份视图;历史月照常显示与计账。留空=未退场"
                @change="commitRemovedYm(m, ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.removedYm }">{{ m.removedYm ? `${m.removedYm} 起退场` : '未退场' }}</span>
       </div>
       <div class="md-fld">
         <label>启用账期</label>
-        <input v-if="editMode" class="mt-edit md-in" type="month" :value="m.activeFromYm ?? ''"
+        <input v-if="editProfile" class="mt-edit md-in" type="month" :value="m.activeFromYm ?? ''"
                title="该账期前不在服务中(某月导入才出现的表不回溯早月);导入更早月份源册含此表时自动放宽。留空=一直在册"
                @change="commitActiveFromYm(m, ($event.target as HTMLInputElement).value)" />
         <span v-else :class="{ dim: !m.activeFromYm }">{{ m.activeFromYm ? `${m.activeFromYm} 起在册` : '一直在册' }}</span>
@@ -508,7 +516,7 @@ async function doBind(contractId: number | null) {
       <div v-if="m.suspect" class="md-fld span2">
         <label>档案状态</label>
         <span class="md-susp" :class="m.suspect" :title="SUSPECT_TITLE[m.suspect ?? '']">{{ SUSPECT_LABEL[m.suspect ?? ''] }}</span>
-        <Button v-if="editMode" variant="outline" size="sm" @click="clearSuspect(m)">
+        <Button v-if="editProfile" variant="outline" size="sm" @click="clearSuspect(m)">
           认领为独立表(解除存疑)
         </Button>
         <span v-else class="md-dim susp-hint">进入编辑模式后可解除。</span>
@@ -524,7 +532,7 @@ async function doBind(contractId: number | null) {
       </div>
       <div v-else-if="!history" class="md-empty">加载中…</div>
       <div v-else-if="drawerRows.length === 0 && !adding" class="md-empty">
-        该表暂无读数{{ editMode ? ',点下方「新增读数」补录历史月,或在表格里直接录当月。' : ',进入编辑模式后可补录。' }}
+        该表暂无读数{{ editReading ? ',点下方「新增读数」补录历史月,或在表格里直接录当月。' : ',进入编辑模式后可补录。' }}
       </div>
       <div v-else class="md-hwrap">
         <table class="md-htable">
@@ -536,7 +544,7 @@ async function doBind(contractId: number | null) {
             <col style="width:96px" />
             <col style="width:84px" />
             <col /><!-- 备注:唯一弹性列(截断走 title) -->
-            <col v-if="editMode" style="width:70px" />
+            <col v-if="editReading" style="width:70px" />
           </colgroup>
           <thead>
             <tr>
@@ -546,7 +554,7 @@ async function doBind(contractId: number | null) {
               <th>用量</th>
               <th class="l">状态</th>
               <th class="l">备注</th>
-              <th v-if="editMode"></th>
+              <th v-if="editReading"></th>
             </tr>
           </thead>
           <tbody>
@@ -595,7 +603,7 @@ async function doBind(contractId: number | null) {
                   <span v-if="readingFlags(r).touMismatch" class="mt-flag bad" title="尖峰平谷用量之和与总用量不符">时段不符</span>
                 </td>
                 <td class="l note" :title="r.note ?? undefined">{{ r.note || '—' }}</td>
-                <td v-if="editMode" class="ops">
+                <td v-if="editReading" class="ops">
                   <button class="mt-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
                   <button class="mt-iop danger" title="删除" @click="delReading(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
@@ -662,7 +670,7 @@ async function doBind(contractId: number | null) {
 
         <!-- 待核:先挂租户(编辑态) -->
         <div v-if="qb === 'pending'" class="md-bpend">
-          <template v-if="editMode">
+          <template v-if="editProfile">
             <span class="lab">挂租户后自动进入合同归属:</span>
             <div class="pick">
               <FPTenantPicker
@@ -679,14 +687,14 @@ async function doBind(contractId: number | null) {
         <div v-if="(bind.candidates?.length ?? 0) > 0" class="md-bcands">
           <span class="lab">候选合同({{ bind.candidates!.length }})</span>
           <Button
-            v-if="editMode && uniqDateMissing" variant="filled" size="sm"
+            v-if="editProfile && uniqDateMissing" variant="filled" size="sm"
             @click="doBind(uniqDateMissing.contractId)"
           >一键确认绑定 {{ uniqDateMissing.contractNo }}</Button>
           <button
             v-for="c in bind.candidates" :key="c.contractId"
             class="bc-item" :class="{ on: c.contractId === bind.contractId }"
-            :disabled="!editMode"
-            @click="editMode && doBind(c.contractId)"
+            :disabled="!editProfile"
+            @click="editProfile && doBind(c.contractId)"
           >
             <span class="no">{{ c.contractNo }}</span>
             <span class="sub">{{ c.buildingName ?? '—' }} · {{ c.startDate ?? '?' }} ~ {{ c.endDate ?? '?' }}</span>
@@ -696,14 +704,14 @@ async function doBind(contractId: number | null) {
         <div v-else-if="qb && qb !== 'pending'" class="md-dim" style="font-size:var(--fs-label)">该户无候选合同。</div>
 
         <!-- 解绑(人工绑定/过期时) -->
-        <div v-if="editMode && (bind.status === 'override' || bind.status === 'override_stale')">
+        <div v-if="editProfile && (bind.status === 'override' || bind.status === 'override_stale')">
           <Button variant="outline" size="sm" @click="doBind(null)">解绑(回自动归属)</Button>
         </div>
-        <div v-if="!editMode && qb && qb !== 'pending'" class="md-dim" style="font-size:var(--fs-label)">进入编辑模式后可选定/解绑。</div>
+        <div v-if="!editProfile && qb && qb !== 'pending'" class="md-dim" style="font-size:var(--fs-label)">进入编辑模式后可选定/解绑。</div>
       </template>
     </template>
 
-    <template v-if="editMode && (tab === 'history' || tab === 'profile')" #footer>
+    <template v-if="(tab === 'history' && editReading) || (tab === 'profile' && editProfile)" #footer>
       <Button v-if="tab === 'history'" variant="filled" size="sm" :disabled="adding || !history" @click="startAdd">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增读数

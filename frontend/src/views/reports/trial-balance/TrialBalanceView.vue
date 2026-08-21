@@ -35,6 +35,7 @@ const expanded = ref(new Set<string>())
 const query = ref('')
 
 const {
+  canEdit,
   companyId, year, month, edit, saving, maxYear,
   companiesLoaded, yearMonths, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
@@ -305,7 +306,7 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button v-if="!edit" variant="outline" size="sm" @click="enterEdit">
+            <Button v-if="!edit && canEdit" variant="outline" size="sm" @click="enterEdit">
               <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
               编辑模式
             </Button>

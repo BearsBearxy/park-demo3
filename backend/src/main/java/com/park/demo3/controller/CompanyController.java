@@ -25,8 +25,10 @@ public class CompanyController {
         return svc.update(id, req);
     }
 
-    @Operation(summary = "删除公司（级联删除其全部台账与报表数据）") @DeleteMapping("/{id}")
-    public void delete(@PathVariable Integer id) { svc.delete(id); }
+    @Operation(summary = "删除公司（名下有台账/报表数据时先 409 报行数，force=true 才连数据一起删）") @DeleteMapping("/{id}")
+    // force=true 才连数据一起删;缺省先 409 把影响行数报出来(见 CompanyService.delete 注释)
+    public void delete(@PathVariable Integer id,
+                       @RequestParam(defaultValue = "false") boolean force) { svc.delete(id, force); }
 
     @Operation(summary = "新增收款账户") @PostMapping("/{id}/accounts")
     public CompanyAccountDTO addAccount(@PathVariable Integer id, @Valid @RequestBody CompanyAccountReq req) {

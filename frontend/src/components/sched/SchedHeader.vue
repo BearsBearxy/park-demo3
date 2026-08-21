@@ -11,6 +11,9 @@ const props = withDefaults(defineProps<{
   sub?: string
   year: number
   edit: boolean
+  /** 本屏写权限键(RBAC-SPEC)。无此权限时编辑与导入按钮不渲染,数据照常显示。
+   *  必填 —— 7 个消费屏各传各的(附表族 entry:edit,损益附表 report:edit)。 */
+  perm: string
   /** 本屏是否有导入能力。导入按钮由本组件统一渲染 —— 此前 7 屏各自往 #idle-actions 里
    *  塞了逐字相同的 5 行按钮,门控也就散成 7 份。 */
   showImport?: boolean
@@ -23,7 +26,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ back: []; 'toggle-edit': []; import: [] }>()
 
-// viewer 只读:编辑与导入按钮一律不渲染(EDIT-MODE-SPEC v2 §1 末条)。
+// 无写权限:编辑与导入按钮一律不渲染(EDIT-MODE-SPEC v2 §1 末条)。数据本身照常显示。
 // 放这里而不是放 7 个消费屏 —— 那 7 屏原本一个都没引 auth,门是整体缺失的,不是漏了某屏。
 const auth = useAuthStore()
 
@@ -54,7 +57,7 @@ function onImport() {
            与 07-20 定稿的 v2 直接冲突 —— 表现为本系统两套互斥的肌肉记忆:这 8 屏「退出编辑才能导入」,
            抄表/光伏/充电桩/电费成本 4 屏「进编辑才能导入」。按较新的 v2 收敛。
            顺带堵掉:浏览态暴露导入 = 任何看数据的人误点两下就覆盖整月台账。 -->
-      <Button v-if="edit && showImport && !auth.isReadonly" variant="outline" size="sm"
+      <Button v-if="edit && showImport && auth.can(perm)" variant="outline" size="sm"
               :disabled="importDisabled" @click="onImport">
         <template #leading><component :is="iconFor('upload')" :size="14" /></template>
         导入 Excel
@@ -63,7 +66,7 @@ function onImport() {
       <!-- 文案与形态对齐 EDIT-MODE-SPEC §2 与抄表屏样板(MeterView.vue:583):
            浏览态 outline(编辑是次要动作) → 编辑态 filled(完成是主要动作)。
            改前这里恒 filled + 文案「编辑表格」,与 6 个抄表族屏的 outline +「编辑模式」两派并存。 -->
-      <Button v-if="!auth.isReadonly" :variant="edit ? 'filled' : 'outline'" size="sm" @click="emit('toggle-edit')">
+      <Button v-if="auth.can(perm)" :variant="edit ? 'filled' : 'outline'" size="sm" @click="emit('toggle-edit')">
         <template #leading><component :is="iconFor(edit ? 'check' : 'pencil')" :size="14" /></template>
         {{ edit ? '完成' : '编辑模式' }}
       </Button>

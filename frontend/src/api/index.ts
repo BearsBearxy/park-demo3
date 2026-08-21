@@ -32,7 +32,9 @@ http.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
-      for (const k of ['token', 'displayName', 'role']) {
+      // permissions/navLayers/mustChangePassword 必须一起清:留在 storage 里,
+      // 同一台机器下一个人登录会继承前一个人的权限(或被前一个人的改密标志拦住)
+      for (const k of ['token', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) {
         localStorage.removeItem(k)
         sessionStorage.removeItem(k)
       }

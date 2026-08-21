@@ -3,6 +3,11 @@
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import type { CompanyDTO } from '@/types/ledger'
+import { useAuthStore } from '@/stores/auth'
+
+// 建/删管理公司是 master 的活,不跟台账的 entry 走(RBAC §5.6:删公司会级联毁该公司台账+报表)。
+// 无权只藏这三个写入口,公司卡与统计照常显示。
+const auth = useAuthStore()
 
 defineProps<{
   companies: CompanyDTO[]
@@ -29,7 +34,7 @@ function lgWan(v: number): string {
         </div>
       </div>
       <div class="lg-head-actions">
-        <Button variant="filled" size="sm" @click="emit('new-company')">
+        <Button v-if="auth.can('master:edit')" variant="filled" size="sm" @click="emit('new-company')">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新建公司
         </Button>
@@ -52,12 +57,12 @@ function lgWan(v: number): string {
             <div class="l">{{ curMonth }} 月应收</div>
             <div class="v muted">{{ lgWan(statsById[c.id]?.recv ?? 0) }}</div>
           </div>
-          <button class="lg-pc-del" title="删除公司" @click.stop="emit('delete-company', c)">
+          <button v-if="auth.can('master:edit')" class="lg-pc-del" title="删除公司" @click.stop="emit('delete-company', c)">
             <component :is="iconFor('trash-2')" :size="14" />
           </button>
         </div>
       </div>
-      <div class="lg-picknew" @click="emit('new-company')">
+      <div v-if="auth.can('master:edit')" class="lg-picknew" @click="emit('new-company')">
         <span class="ic"><component :is="iconFor('plus')" :size="22" /></span>
         <span class="t">新建管理公司</span>
       </div>

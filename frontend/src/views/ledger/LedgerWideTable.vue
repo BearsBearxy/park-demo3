@@ -14,6 +14,10 @@ import type { ColumnKey } from '@/utils/ledgerColumns'
 import { lgRecalc } from '@/utils/lgRecalc'
 import { exportLedgerMonth } from '@/utils/ledgerExcel'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
+import { useAuthStore } from '@/stores/auth'
+
+// 台账录入 = entry(RBAC §2)。无权时表格与合计照常显示,只是没有「编辑模式」入口。
+const auth = useAuthStore()
 
 const props = defineProps<{
   month: LedgerMonthDTO            // server snapshot (read state / cancel source)
@@ -210,7 +214,7 @@ function onCopyPrev() {
           导出 Excel
         </Button>
 
-        <Button v-if="!edit" variant="outline" size="sm" @click="emit('enter-edit')">
+        <Button v-if="!edit && auth.can('entry:edit')" variant="outline" size="sm" @click="emit('enter-edit')">
           <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
           编辑模式
         </Button>
@@ -247,7 +251,7 @@ function onCopyPrev() {
           删除所选 ({{ selected.size }})
         </Button>
       </div>
-      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : '只读 · 点击「编辑」录入 · 点击租户名查看明细' }}</span>
+      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
     </div>
 
     <FPLedgerTable

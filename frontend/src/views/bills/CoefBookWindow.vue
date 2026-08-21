@@ -34,7 +34,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:系数簿改的是计费口径,不能沿用宿主催缴单页的 billing 权(那是 billing 直通 param 的漏洞)
+const canEdit = computed(() => auth.can('param-policy:edit'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const today = new Date()

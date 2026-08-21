@@ -38,12 +38,18 @@ import ParamHistoryDrawer from './ParamHistoryDrawer.vue'
 import ParamChangesDrawer from './ParamChangesDrawer.vue'
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:① 区是月度录入(每月照抄供电局账单),②③④ 区是长期计费口径,重算是跑一次出账 —— 三扇门
+const canMonthly = computed(() => auth.can('param-monthly:edit'))
+const canPolicy = computed(() => auth.can('param-policy:edit'))
+const canRun = computed(() => auth.can('billing-run:edit'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态,浮层一并关 ──
 const editMode = ref(false)
+// 编辑态 × 分区权限:① 区写入口走 editM,②③④ 区走 editP
+const editM = computed(() => editMode.value && canMonthly.value)
+const editP = computed(() => editMode.value && canPolicy.value)
 onDeactivated(() => {
   editMode.value = false; editRow.value = null; exOpen.value = false; addExcl.value = null
   histRow.value = null; changesOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
@@ -110,7 +116,8 @@ function applyHandoff(): boolean {
   if (typeof q.zone === 'string' && ZONE_OPTS.some(o => o.value === q.zone)) zone.value = q.zone as ParamZone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
-  if (q.edit === '1') editMode.value = true
+  // 深链也要过权限闸:无权时进编辑态只会得到一个亮着但什么都改不了的空壳
+  if (q.edit === '1' && (canMonthly.value || canPolicy.value || canRun.value)) editMode.value = true
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
   if (!m) return false
   year.value = +m[1]; month.value = +m[2]
@@ -399,7 +406,7 @@ const FIXED_RULES = [
           <template #leading><component :is="iconFor('history')" :size="14" /></template>
           变更记录
         </Button>
-        <Button v-if="canEdit" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canMonthly || canPolicy || canRun" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -417,7 +424,7 @@ const FIXED_RULES = [
       <span class="pm-status-text">{{ summary || '状态未知（状态接口不可用）' }}</span>
       <span v-if="flash" class="pm-flash">{{ flash }}</span>
       <!-- 重算=池/损耗/催缴单三表先删后插,是写操作:只在编辑态出(EDIT-MODE v2);三屏 [去重算] 深链带 edit=1 直接进编辑态 -->
-      <Button v-if="canEdit && editMode" variant="outline" size="sm" :disabled="busy" @click="onRecalc">
+      <Button v-if="canRun && editMode" variant="outline" size="sm" :disabled="busy" @click="onRecalc">
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
         重算本月
       </Button>
@@ -434,7 +441,7 @@ const FIXED_RULES = [
           <button v-if="monthly.hidden" class="pm-link" @click="showEmpty.monthly = !showEmpty.monthly">
             {{ showEmpty.monthly ? '收起未设置项' : `显示未设置项（${monthly.hidden}）` }}
           </button>
-          <Button v-if="editMode" variant="outline" size="sm" :disabled="busy" @click="onCopy">
+          <Button v-if="editM" variant="outline" size="sm" :disabled="busy" @click="onCopy">
             <template #leading><component :is="iconFor('copy')" :size="14" /></template>
             复制上月电价
           </Button>
@@ -474,7 +481,7 @@ const FIXED_RULES = [
                 <template v-else>{{ sourceLabel(r) }}</template>
               </td>
               <td class="mut formula" :title="r.formula ?? undefined"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
+              <td class="ops"><Button v-if="editM && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
             </tr>
           </tbody>
@@ -516,7 +523,7 @@ const FIXED_RULES = [
                 <template v-else>{{ sourceLabel(r) }}</template>
               </td>
               <td class="mut formula" :title="r.formula ?? undefined"><span class="pm-clamp">{{ r.formula ?? '' }}</span></td>
-              <td class="ops"><Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
+              <td class="ops"><Button v-if="editP && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button></td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
             </tr>
           </tbody>
@@ -545,7 +552,7 @@ const FIXED_RULES = [
             <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" :title="chainTitle(r)">{{ sourceLabel(r) }}</span>
             <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
+              <Button v-if="editP && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
@@ -558,7 +565,7 @@ const FIXED_RULES = [
             <span v-if="hasHit(r) && r.rowId == null" class="pm-rnote" :title="chainTitle(r)">{{ sourceLabel(r) }}</span>
             <span v-else-if="!hasHit(r)" class="pm-rnote">默认（未单独设置）</span>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
+              <Button v-if="editP && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
@@ -567,10 +574,10 @@ const FIXED_RULES = [
             <span v-if="!g.excludes.length" class="pm-rnote">（无）</span>
             <span v-for="r in g.excludes" :key="rowKey(r)" class="pm-chip" :class="{ off: !r.value }" :title="`${r.valueText} · ${r.rangeText}`">
               {{ r.scopeLabel.replace(/（表）$/, '') }}<template v-if="!r.value">（本月计入）</template>
-              <button v-if="editMode" class="pm-chipx" title="修改" @click="editRow = r"><component :is="iconFor('pencil')" :size="11" /></button>
+              <button v-if="editP" class="pm-chipx" title="修改" @click="editRow = r"><component :is="iconFor('pencil')" :size="11" /></button>
               <button v-else class="pm-chipx" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="11" /></button>
             </span>
-            <template v-if="editMode">
+            <template v-if="editP">
               <template v-if="addExcl?.bid === g.bid">
                 <div style="width:240px"><Select :options="exclCandidates(g)" :model-value="addExcl.meterId" size="sm" placeholder="选择该栋的表" @update:model-value="addExcl.meterId = $event" /></div>
                 <Button variant="filled" size="sm" :disabled="!addExcl.meterId" @click="submitExcl">设为不计入</Button>
@@ -588,7 +595,7 @@ const FIXED_RULES = [
             <span class="pm-rtxt" :title="r.formula ?? undefined">{{ r.label }}：{{ r.valueText }}</span>
             <Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge>
             <span class="pm-rops">
-              <Button v-if="editMode && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
+              <Button v-if="editP && r.editable" variant="outline" size="sm" @click="editRow = r">修改</Button>
               <button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button>
             </span>
           </div>
@@ -604,7 +611,7 @@ const FIXED_RULES = [
           <span class="pm-cardtitle">④ 户级例外</span>
           <span class="pm-cardsub">单户覆盖期 / 全园默认值；批量改到催缴单 → 系数簿</span>
         </div>
-        <div v-if="editMode" class="pm-cardops">
+        <div v-if="editP" class="pm-cardops">
           <Button variant="outline" size="sm" @click="openEx">
             <template #leading><component :is="iconFor('plus')" :size="14" /></template>
             新增例外
@@ -633,8 +640,8 @@ const FIXED_RULES = [
               <td class="rng"><Badge v-if="rangeBadge(r).text" :tone="RANGE_TONE[rangeBadge(r).tone]" :dot="false">{{ rangeBadge(r).text }}</Badge></td>
               <td class="mut src" :title="chainTitle(r)">{{ r.sourceChain[1] ? r.sourceChain[1].replace(':', ' ') : '（无默认值）' }}</td>
               <td class="ops">
-                <Button v-if="editMode" variant="outline" size="sm" @click="editRow = r">修改</Button>
-                <button v-if="editMode" class="pm-ib danger" title="删除例外" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
+                <Button v-if="editP" variant="outline" size="sm" @click="editRow = r">修改</Button>
+                <button v-if="editP" class="pm-ib danger" title="删除例外" @click="delTenantRow(r)"><component :is="iconFor('trash-2')" :size="14" /></button>
               </td>
               <td class="ops"><button class="pm-ib" title="历史" @click="histRow = r"><component :is="iconFor('history')" :size="14" /></button></td>
             </tr>

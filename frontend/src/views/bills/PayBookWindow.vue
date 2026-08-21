@@ -33,7 +33,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:收款簿改的是单据的收款公司归属 —— 与催缴单的收款槽同一扇门
+const canEdit = computed(() => auth.can('billing-issue:edit'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 // ── 窗口态 ──

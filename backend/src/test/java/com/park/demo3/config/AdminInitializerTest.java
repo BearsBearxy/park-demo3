@@ -1,6 +1,11 @@
 package com.park.demo3.config;
+import com.park.demo3.entity.AuthRole;
 import com.park.demo3.entity.AuthUser;
+import com.park.demo3.entity.AuthUserRole;
+import com.park.demo3.mapper.AuthRoleMapper;
 import com.park.demo3.mapper.AuthUserMapper;
+import com.park.demo3.mapper.AuthUserRoleMapper;
+import com.park.demo3.security.UserPermissionCache;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,9 +18,19 @@ import static org.mockito.Mockito.*;
 class AdminInitializerTest {
     private final PasswordEncoder enc = new BCryptPasswordEncoder();
     private final AuthUserMapper users = mock(AuthUserMapper.class);
+    private final AuthUserRoleMapper userRoles = mock(AuthUserRoleMapper.class);
+    private final AuthRoleMapper roles = mock(AuthRoleMapper.class);
+    private final UserPermissionCache cache = mock(UserPermissionCache.class);
 
     private AdminInitializer init(String viewerPassword) {
-        return new AdminInitializer(users, enc, "admin", "", viewerPassword);
+        return new AdminInitializer(users, userRoles, roles, cache, enc, "admin", "", viewerPassword);
+    }
+
+    /** 角色表里有 viewer 角色时的桩;不打这个桩 = 模拟角色缺失(ensureRole 只告警不抛)。 */
+    private void stubViewerRole(int roleId) {
+        AuthRole r = new AuthRole();
+        r.setId(roleId); r.setCode("viewer");
+        when(roles.selectOne(any())).thenReturn(r);
     }
 
     private AuthUser viewer(String password) {
@@ -29,6 +44,7 @@ class AdminInitializerTest {
     void blankPasswordCreatesNothing() {
         init("").run(null);
         verifyNoInteractions(users);
+        verify(cache).reload();   // 不建账号也要 reload:V101 迁移刚挂上的角色要进快照
     }
 
     @Test
@@ -46,6 +62,38 @@ class AdminInitializerTest {
         init("viewer123").run(null);
         verify(users, never()).updateById(any(AuthUser.class));
         verify(users, never()).insert(any(AuthUser.class));
+    }
+
+    // ── V101 新增的两项职责 ──
+
+    @Test
+    void newViewerIsAssignedViewerRole() {
+        when(users.selectOne(any())).thenReturn(null);
+        stubViewerRole(7);
+        when(userRoles.selectCount(any())).thenReturn(0L);
+        init("viewer123").run(null);
+        verify(userRoles).insert(org.mockito.ArgumentMatchers.<AuthUserRole>argThat(
+                ur -> ur.getRoleId() == 7));
+    }
+
+    @Test
+    void existingRoleLinkIsNotDuplicated() {
+        when(users.selectOne(any())).thenReturn(viewer("viewer123"));
+        stubViewerRole(7);
+        when(userRoles.selectCount(any())).thenReturn(1L);
+        init("viewer123").run(null);
+        verify(userRoles, never()).insert(any(AuthUserRole.class));
+    }
+
+    @Test
+    void cacheIsAlwaysReloadedLast() {
+        // 不 reload 的话:缓存的 @PostConstruct 早于 ApplicationRunner 跑完,
+        // 这里新建的 viewer 不在快照里,它带着有效令牌也会被 JwtAuthFilter 判成停用 → 401
+        when(users.selectOne(any())).thenReturn(null);
+        stubViewerRole(7);
+        when(userRoles.selectCount(any())).thenReturn(0L);
+        init("viewer123").run(null);
+        verify(cache).reload();
     }
 
     @Test

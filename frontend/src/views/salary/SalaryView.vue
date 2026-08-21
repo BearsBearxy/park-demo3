@@ -158,6 +158,7 @@ const onExport = () => guard('导出失败', async () => {
           sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 金额单位 元"
           :year="year"
           :edit="edit"
+          perm="entry:edit"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

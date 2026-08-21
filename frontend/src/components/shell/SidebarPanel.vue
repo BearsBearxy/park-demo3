@@ -3,17 +3,25 @@ import { computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { fpFindLayer } from '@/nav/fpNav'
+import { visibleLayers } from '@/nav/navAccess'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import SidebarNav from '@/components/ds/SidebarNav.vue'
 
 const route = useRoute()
 const router = useRouter()
 const tabs = useTabsStore()
+const auth = useAuthStore()
 
-// ponytail: route-derived, same pattern as IconRail — no store needed
-const activeLayer = computed(() =>
-  fpFindLayer((route.meta as Record<string, string>).value ?? '')
-)
+// 与 IconRail 同口径:按角色的 navLayers 过滤('system' 层不进 navLayers,按 system:view 判)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+
+// ponytail: route-derived, same pattern as IconRail
+// 当前屏属于不可见层时(读全开,深链能进)不展开那一层的目录,退回第一个可见层
+const activeLayer = computed(() => {
+  const L = fpFindLayer((route.meta as Record<string, string>).value ?? '')
+  return layers.value.includes(L) ? L : (layers.value[0] ?? L)
+})
 
 const activeValue = computed(() =>
   (route.meta as Record<string, string>).value ?? ''

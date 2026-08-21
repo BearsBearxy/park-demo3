@@ -17,6 +17,7 @@ export interface UnitDTO {
 interface Props {
   building: { units: UnitDTO[]; floorCount: number }
   selectedNo?: string | null
+  canAdd?: boolean   // 行尾「+」新增单元是写操作,由宿主按权限传入(默认给,老调用点行为不变)
 }
 
 const props = defineProps<Props>()
@@ -81,7 +82,7 @@ const floors = computed(() => {
             </span>
           </div>
           <div v-if="!byFloor[f]?.length" class="fp-flr-empty">本层暂无单元</div>
-          <button class="fp-add" type="button" :title="`在 ${f}F 添加单元`" @click="emit('add-unit', f)">
+          <button v-if="canAdd !== false" class="fp-add" type="button" :title="`在 ${f}F 添加单元`" @click="emit('add-unit', f)">
             <Plus :size="14" />
           </button>
         </div>

@@ -19,7 +19,7 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+const canEdit = computed(() => auth.can('master:edit'))   // 收款公司/账户属主数据(RBAC-SPEC §2)
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 const loading = ref(false)

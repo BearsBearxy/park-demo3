@@ -3,8 +3,13 @@
 // 全部汇总卡 + 各公司卡(重命名/删除) + 新增公司卡。
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
+import { useAuthStore } from '@/stores/auth'
 
 export interface FinCompany { id: number | string; name: string; short?: string }
+
+// 新增/重命名/删除公司写的是 management_company,归 master 不归 report(RBAC §5.6:
+// 删公司同事务级联删该公司 monthly_ledger + report_*)。公司卡本身照常显示,只藏这三个写入口。
+const auth = useAuthStore()
 
 const props = defineProps<{
   title: string
@@ -36,7 +41,7 @@ function shortOf(c: FinCompany) {
         </div>
       </div>
       <div class="fin-actions">
-        <Button variant="filled" size="sm" @click="emit('new')">
+        <Button v-if="auth.can('master:edit')" variant="filled" size="sm" @click="emit('new')">
           <template #leading><component :is="iconFor('plus')" /></template>
           新增公司
         </Button>
@@ -67,13 +72,13 @@ function shortOf(c: FinCompany) {
             <div class="fin-pc-desc">{{ summaryOf ? summaryOf(c) : '独立报表' }}</div>
           </div>
         </div>
-        <div class="fin-pc-foot" @click.stop>
+        <div v-if="auth.can('master:edit')" class="fin-pc-foot" @click.stop>
           <button class="fin-pc-act" title="重命名" @click="emit('edit', c)"><component :is="iconFor('pencil')" :size="14" /></button>
           <button class="fin-pc-act danger" title="删除公司" @click="emit('delete', c)"><component :is="iconFor('trash-2')" :size="14" /></button>
         </div>
       </div>
 
-      <div class="fin-picknew" @click="emit('new')">
+      <div v-if="auth.can('master:edit')" class="fin-picknew" @click="emit('new')">
         <span class="ic"><component :is="iconFor('plus')" :size="22" /></span>
         <span class="t">新增管理公司</span>
       </div>

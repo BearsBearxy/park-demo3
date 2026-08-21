@@ -17,6 +17,7 @@ import { useReportYearGate } from '@/components/fin/useReportYearGate'
 import { maxSelectableYear } from '@/utils/yearGate'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
+import { useAuthStore } from '@/stores/auth'
 
 export function useFinStatementScreen(opts: {
   stmt: 'is' | 'bs' | 'tb'
@@ -32,6 +33,11 @@ export function useFinStatementScreen(opts: {
   extraDirty?: Ref<number>
 }) {
   const { stmt } = opts
+
+  // 三大报表的录入 = report(RBAC §2)。无权时 L3 正文与 KPI 照常显示,只是没有「编辑模式」入口。
+  // 公司增删改是 master 的活,不在这里判 —— 那三个按钮在 FinCompanyPicker 内按 master:edit 自判。
+  const auth = useAuthStore()
+  const canEdit = computed(() => auth.can('report:edit'))
 
   // ── 状态机 ───────────────────────────────────────────────
   const companyId = ref<number | 'all' | null>(null)  // null → L1 选公司;'all' → 全部汇总(只读)
@@ -258,6 +264,7 @@ export function useFinStatementScreen(opts: {
   }
 
   return {
+    canEdit,
     companyId, year, month, edit, saving, maxYear,
     companies, companiesLoaded, yearMonths, period, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,

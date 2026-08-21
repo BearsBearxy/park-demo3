@@ -45,6 +45,11 @@ import MeterDetailDrawer from './MeterDetailDrawer.vue'
 import './meter-shared.css'
 
 const auth = useAuthStore()
+// RBAC v2(读全开写分权):抄读数与改表档案是两把权限,别一刀切 ——
+// 读数(录入/导入/批量删本期)= meter-reading:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meter-master:edit。
+// 无权只是不出写按钮,数据照常全显。
+const canReading = computed(() => auth.can('meter-reading:edit'))
+const canMaster = computed(() => auth.can('meter-master:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态(draft 一并丢弃) ──
 const editMode = ref(false)
@@ -109,7 +114,8 @@ async function loadReadings() {
   }
 }
 // 失败态锁录入:此刻「本月」列空着不是「没抄」而是「没读到」,在上面录=覆盖旧月或凭空补条
-const editable = computed(() => editMode.value && !readErr.value)
+// 无 meter-reading:edit 的人即使进了编辑模式(靠 meter-master)也不许录格子:格子写的是读数
+const editable = computed(() => editMode.value && !readErr.value && canReading.value)
 function retryLoad() {
   if (metersErr.value) loadMeters()
   if (readErr.value) loadReadings()
@@ -365,8 +371,9 @@ const openRow = computed(() =>
 watch(openRow, r => { if (openId.value != null && !r) openId.value = null })
 
 // ── 「按名精确匹配一键挂」(待核卡激活时工具栏侧出现,编辑态) ──
+// 一键挂改的是表档案的 tenantId(POST /meters/auto-link → /api/meters/**),故判 meter-master
 const showAutoLink = computed(() =>
-  editMode.value && (status.value === 'attention' || status.value === 'pending'))
+  editMode.value && canMaster.value && (status.value === 'attention' || status.value === 'pending'))
 const linking = ref(false)
 const linkEstimate = computed(() =>
   autoLinkEstimate((meters.value ?? []).filter(isPendingMeter).map(m => m.tenantName), tenants.value.flatMap(t => tenantMatchNames(t))))
@@ -562,25 +569,27 @@ const emptyText = computed(() => {
           导出当月
         </Button>
         <!-- 导入/新增表收编辑态(EDIT-MODE-SPEC);模板/导出=只读操作常驻 -->
-        <Button v-if="editMode" variant="outline" size="sm" @click="importing = true">
+        <!-- 导入写的是读数(表顺带建档)→ meter-reading;新增表是纯档案 → meter-master -->
+        <Button v-if="editMode && canReading" variant="outline" size="sm" @click="importing = true">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" @click="openMeterDlg">
+        <Button v-if="editMode && canMaster" variant="outline" size="sm" @click="openMeterDlg">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增表
         </Button>
-        <!-- §H5 批量删除本期(整月,不可逆):编辑态才出现;viewer 进不了编辑态,入口天然不可见 -->
+        <!-- §H5 批量删除本期(整月,不可逆):编辑态 + meter-reading:edit(DELETE /api/meters/readings) -->
         <Button
-          v-if="editMode" variant="danger" size="sm" :disabled="delBusy"
+          v-if="editMode && canReading" variant="danger" size="sm" :disabled="delBusy"
           title="删除本账期全部读数,并级联删除该月派生快照与删完零读数的表档案(池成员表跳过);执行前会先给出预览数字并要求手打账期确认"
           @click="openDelDlg"
         >
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           批量删除本期
         </Button>
+        <!-- 编辑模式:读数/档案两把权限任一有即可进,进去后各按钮再各判各的 -->
         <Button
-          v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm"
+          v-if="canReading || canMaster" :variant="editMode ? 'filled' : 'outline'" size="sm"
           :disabled="saving || !!readErr"
           :title="readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
           @click="onEditBtn"
@@ -620,8 +629,8 @@ const emptyText = computed(() => {
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无抄表数据 ——
-        <template v-if="editMode">可<button class="mt-link" @click="importing = true">导入</button>整册抄表工作簿(自动建档),或行内直接录入本月示数。</template>
-        <template v-else-if="!auth.isReadonly">进入右上角「编辑模式」后可录入或导入。</template>
+        <template v-if="editMode && canReading">可<button class="mt-link" @click="importing = true">导入</button>整册抄表工作簿(自动建档),或行内直接录入本月示数。</template>
+        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
         <template v-else>各表读数列为空。</template>
       </span>
     </div>
