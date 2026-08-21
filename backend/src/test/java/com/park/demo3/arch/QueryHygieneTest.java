@@ -56,6 +56,23 @@ class QueryHygieneTest {
         entry("SalaryService.java", 1),
         entry("TenantService.java", 6));
 
+    // ── 有界配置表:与 LEGACY 是**两回事**,不要往上面那张表里塞 ──
+    //
+    // 本门禁防的是「返回行数只涨不跌」(见类注释):meter_reading / alloc_result / monthly_ledger
+    // 这类逐月累积表,今天 1135 行,明年同一句就是两万行。
+    //
+    // auth_role / auth_role_perm / auth_user_role 不是那种表:它们的行数由**人数与角色数**封顶,
+    // 不随时间累积。全量装内存正是 UserPermissionCache 的设计(RBAC-SPEC §5.5:每请求零 DB 查询,
+    // 权限改完立刻生效),按 id 收敛反而要 N+1 次查询。
+    //
+    // 边界写在这里好让人质疑:auth_role_perm ≤ 角色数 × 13,auth_user_role ≤ 账号数 × 角色数。
+    // 园区场景下账号是几十个量级。**哪天这个前提不成立了(比如接了几千个租户自助账号),
+    // 这一段就该推翻重做,而不是把数字调大。**
+    //
+    // 语义与 LEGACY 完全一致:全等断言,清理了也要回来改数字。
+    static final Map<String, Integer> BOUNDED = Map.ofEntries(
+        entry("SystemService.java", 4));   // 2026-08-22 P1:角色列表 2 处 + 账号列表 2 处
+
     @Test
     void noNewFullTableSelects() throws IOException {
         Map<String, Integer> actual = scan();
@@ -65,14 +82,16 @@ class QueryHygieneTest {
 
         TreeSet<String> files = new TreeSet<>(actual.keySet());
         files.addAll(LEGACY.keySet());
+        files.addAll(BOUNDED.keySet());
 
         List<String> drift = new ArrayList<>();
         for (String f : files) {
-            int was = LEGACY.getOrDefault(f, 0);
+            int was = LEGACY.getOrDefault(f, 0) + BOUNDED.getOrDefault(f, 0);
             int now = actual.getOrDefault(f, 0);
             if (now > was) {
                 drift.add(f + ": " + was + " → " + now + " ——【新增 " + (now - was)
-                    + " 处全表查,不许】改用 selectList(wrapper) 按 ym/年份/id 集合收敛");
+                    + " 处全表查,不许】改用 selectList(wrapper) 按 ym/年份/id 集合收敛"
+                    + (BOUNDED.containsKey(f) ? ";若确属有界配置表(见 BOUNDED 注释的边界),改那张表的数字并说明理由" : ""));
             } else if (now < was) {
                 drift.add(f + ": " + was + " → " + now + " ——【已清理 " + (was - now)
                     + " 处,请把 LEGACY 改成 " + now + (now == 0 ? " 或直接删掉这一行】" : "】"));

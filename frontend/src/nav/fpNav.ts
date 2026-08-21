@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(48屏×3层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊)。
+// src/nav/fpNav.ts — 导航单一事实源(49屏×4层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊/系统管理)。
 // 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→计费参数→园区抄表→公共电核算→楼栋损耗→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
 // S21:「价目管理」/price-cfg 退役,由「计费参数」/params 取代(router 里 /price-cfg 重定向)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
@@ -67,6 +67,13 @@ export const FP_NAV: NavLayer[] = [
       { value: 'elec-analysis', label: '电费成本分析', icon: 'zap', kind: 'ana' },
       { value: 'charging-analysis', label: '充电桩分析', icon: 'plug', kind: 'ana' } ] },
     { title: '监控', items: [{ value: 'anomaly', label: '异常提醒中心', icon: 'bell-ring', kind: 'ana' }] },
+  ] },
+  // 第 4 层不进 navLayers:可见性直接跟 system:view 走(RBAC-SPEC §4),无权即整层不显示。
+  // 「操作日志」是 P2,本轮不建屏也不放导航项 —— 放了就是个必然 404 的入口。
+  { id: 'system', label: '系统管理', short: '系统', icon: 'settings', caption: '账号与权限 · 仅管理员可见', home: 'sys-users', sections: [
+    { items: [
+      { value: 'sys-users', label: '用户管理', icon: 'users', kind: 'system' },
+      { value: 'sys-roles', label: '角色权限', icon: 'shield-check', kind: 'system' } ] },
   ] },
 ]
 
