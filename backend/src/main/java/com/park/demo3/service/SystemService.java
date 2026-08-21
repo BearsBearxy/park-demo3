@@ -3,9 +3,12 @@ package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.dto.AuditRowDTO;
 import com.park.demo3.dto.SystemDtos.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import com.park.demo3.security.Perm;
 import com.park.demo3.security.UserPermissionCache;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,12 +39,39 @@ public class SystemService {
     private final PasswordEncoder enc;
     private final UserPermissionCache cache;
     private final AuditLogService audit;
+    private final AuditQueryMapper auditQuery;
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
-                         UserPermissionCache cache, AuditLogService audit) {
+                         UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
-        this.userRoles = userRoles; this.enc = enc; this.cache = cache; this.audit = audit;
+        this.userRoles = userRoles; this.enc = enc; this.cache = cache;
+        this.audit = audit; this.auditQuery = auditQuery;
+    }
+
+    // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
+
+    /**
+     * 三张来源表 union 后按时间倒序。**分页在 SQL 里做** —— param_change_log 随每次
+     * 改参数增长，全捞进内存再切正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
+     *
+     * @param src  param / import / auth，null=全部
+     * @param to   传日期时按「当天含全天」处理（前端给的是 2026-08-22，用户的意思是含这一天）
+     */
+    public AuditPageDTO auditLogs(String src, String actor, LocalDate from, LocalDate to,
+                                  int page, int size) {
+        String s = (src == null || src.isBlank()) ? null : src.trim();
+        if (s != null && !List.of("param", "import", "auth").contains(s))
+            throw new BizException(ResultCode.BAD_REQUEST, "未知的日志来源：" + s);
+        String a = (actor == null || actor.isBlank()) ? null : actor.trim();
+        LocalDateTime f = from == null ? null : from.atStartOfDay();
+        LocalDateTime t = to == null ? null : to.plusDays(1).atStartOfDay();   // 含结束当天
+
+        int p = Math.max(1, page);
+        int sz = Math.min(200, Math.max(1, size));
+        long total = auditQuery.count(s, a, f, t);
+        List<AuditRowDTO> rows = auditQuery.page(s, a, f, t, sz, (p - 1) * sz);
+        return new AuditPageDTO(rows, total, p, sz, auditQuery.actors());
     }
 
     // ══════════ 字典 ══════════

@@ -70,6 +70,7 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   // 系统管理(整层按 system:view 显隐,见 nav/navAccess.ts)
   'sys-users': () => import('@/views/system/SystemUsersView.vue'),
   'sys-roles': () => import('@/views/system/SystemRolesView.vue'),
+  'sys-logs': () => import('@/views/system/SystemLogsView.vue'),
 }
 
 const navRoutes = fpBuildRoutes()

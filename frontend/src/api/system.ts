@@ -1,5 +1,6 @@
 import http from './index'
 import type {
+  AuditPageDTO, AuditQuery,
   PermsMetaDTO, RoleDTO, RoleReq, UserCreateReq, UserDTO, UserQuery, UserUpdateReq,
 } from '@/types/system'
 
@@ -28,6 +29,13 @@ export const systemApi = {
   /** POST /api/system/users/{id}/password —— 管理员重置他人密码,该账号下次登录须改密 */
   resetPassword: (id: number, password: string): Promise<void> =>
     http.post(`/system/users/${id}/password`, { password }),
+
+  /**
+   * GET /api/system/logs —— 三张来源表 union 的操作日志时间线(RBAC-SPEC §7)。
+   * ⚠ **服务端分页**:换页/改筛选都要重新请求,不是前端切片(param_change_log 只涨不跌)。
+   * to 传 YYYY-MM-DD 时后端按「含结束当天全天」处理。
+   */
+  logs: (query: AuditQuery = {}): Promise<AuditPageDTO> => http.get('/system/logs', { params: query }),
 
   /** POST /api/auth/change-password —— 改自己的密码(首次登录强制改密走同一个端点) */
   changeOwnPassword: (currentPassword: string, newPassword: string): Promise<void> =>

@@ -542,6 +542,8 @@ public class AllocService {
             saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"));
         if (req.extraQty() != null && req.extraQty().signum() != 0)
             saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"));
+        params.logRuleChange("set", r.getId(), r.getName(), "新建池 · 方法 " + r.getMethod()
+            + " · 费项 " + r.getFeeKey() + " · 受益人 " + (req.members() == null ? 0 : req.members().size()) + " 户");
         return ruleById(r.getId());
     }
 
@@ -550,19 +552,39 @@ public class AllocService {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
         validateRule(req, id);
+        // ⚠ 旧值必须**在先删后插之前**抓下来(RBAC-SPEC §7.1):下面 deleteByRuleMonth + saveChildren
+        // 一走,层份/成员的旧值就再也查不回来了。系数簿改层份走的正是这条路径,
+        // 之前一行日志都没写 —— 同一个窗口里改管理费有痕、改层份无痕。
+        String month = memberMonth(req);
+        int wasMembers = (int) ruleMembers.selectByRule(id).stream()
+            .filter(m -> month.equals(m.getAcctMonth() == null ? "" : m.getAcctMonth())).count();
+        String wasMethod = r.getMethod();
+        String wasFee = r.getFeeKey();
+
         apply(r, req);   // 既有池:coefficient/extraQty 入参忽略,分母/加度只在参数页按版本改
         rules.updateById(r);
         ruleMeters.deleteByRule(id);
-        ruleMembers.deleteByRuleMonth(id, memberMonth(req));   // 只覆盖目标月,其他月已出账口径不动
+        ruleMembers.deleteByRuleMonth(id, month);   // 只覆盖目标月,其他月已出账口径不动
         saveChildren(id, req);
+
+        int nowMembers = req.members() == null ? 0 : req.members().size();
+        StringBuilder note = new StringBuilder("改池");
+        if (!month.isEmpty()) note.append("(").append(month).append(")");
+        if (wasMembers != nowMembers) note.append(" · 受益人 ").append(wasMembers).append("→").append(nowMembers).append(" 户");
+        if (!java.util.Objects.equals(wasMethod, r.getMethod())) note.append(" · 方法 ").append(wasMethod).append("→").append(r.getMethod());
+        if (!java.util.Objects.equals(wasFee, r.getFeeKey())) note.append(" · 费项 ").append(wasFee).append("→").append(r.getFeeKey());
+        params.logRuleChange("set", id, r.getName(), note.toString());
         return ruleById(id);
     }
 
     public void deleteRule(Integer id) {
-        if (rules.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
+        AllocRule r = rules.selectById(id);
+        if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
         if (results.countByRule(id) > 0)
             throw new BizException(ResultCode.CONFLICT, "该规则已有分摊结果,不可删除(历史月已快照)");
+        int members = ruleMembers.selectByRule(id).size();
         rules.deleteById(id);   // 绑定表/受益人 FK 级联删
+        params.logRuleChange("delete", id, r.getName(), "删池 · 连带受益人 " + members + " 条");
     }
 
     private void validateRule(AllocRuleReq req, Integer existingId) {

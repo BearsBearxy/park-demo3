@@ -78,3 +78,48 @@ export interface UserQuery {
   status?: number
   roleId?: number
 }
+
+// ── 操作日志(RBAC-SPEC §7 P2) ─────────────────────────────────────────
+// 三张来源表(param_change_log / import_log / auth_audit_log)**不合并**:各有各的专用字段,
+// 合进通用表就得塞 JSON,那两屏的历史查询反而难写。归一只发生在**展示层**,即下面这个形状。
+
+/** 日志来源:param=计费参数 · import=导入 · auth=账号与角色。后端只认这三个值,别的返 400 */
+export type AuditSource = 'param' | 'import' | 'auth'
+
+export interface AuditRowDTO {
+  source: AuditSource
+  ts: string
+  actor: string
+  /** 来源各有各的取值:param=set/delete/recalc/migrate · import=complete/partial/rejected · auth=user.create/role.update/… */
+  action: string
+  target: string
+  detail: string
+  /** 只有「代他人执行」的动作有值(主管授权别人接管编辑锁)。
+   *  ⚠ 有值必须显示出来 —— 审计要记两个人,只显示操作人的话「谁批准的」就白记了 */
+  authorizer?: string | null
+}
+
+/** GET /api/system/logs —— 服务端分页 */
+export interface AuditPageDTO {
+  rows: AuditRowDTO[]
+  total: number
+  page: number
+  size: number
+  /** 三表出现过的操作人并集,给筛选下拉用 */
+  actors: string[]
+}
+
+export interface AuditQuery {
+  /** 空 = 全部 */
+  src?: string
+  /** 操作人用户名,空 = 全部 */
+  actor?: string
+  /** YYYY-MM-DD,含当天 00:00 */
+  from?: string
+  /** YYYY-MM-DD,**含结束当天全天**(后端按 to+1 天处理) */
+  to?: string
+  /** 从 1 起 */
+  page?: number
+  /** 默认 50,上限 200 */
+  size?: number
+}

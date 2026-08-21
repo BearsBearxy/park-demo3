@@ -69,11 +69,12 @@ export const FP_NAV: NavLayer[] = [
     { title: '监控', items: [{ value: 'anomaly', label: '异常提醒中心', icon: 'bell-ring', kind: 'ana' }] },
   ] },
   // 第 4 层不进 navLayers:可见性直接跟 system:view 走(RBAC-SPEC §4),无权即整层不显示。
-  // 「操作日志」是 P2,本轮不建屏也不放导航项 —— 放了就是个必然 404 的入口。
   { id: 'system', label: '系统管理', short: '系统', icon: 'settings', caption: '账号与权限 · 仅管理员可见', home: 'sys-users', sections: [
     { items: [
       { value: 'sys-users', label: '用户管理', icon: 'users', kind: 'system' },
-      { value: 'sys-roles', label: '角色权限', icon: 'shield-check', kind: 'system' } ] },
+      { value: 'sys-roles', label: '角色权限', icon: 'shield-check', kind: 'system' },
+      // P2:计费参数 / 导入 / 账号与角色三张来源表 union 的只读时间线(RBAC-SPEC §7)
+      { value: 'sys-logs', label: '操作日志', icon: 'scroll-text', kind: 'system' } ] },
   ] },
 ]
 

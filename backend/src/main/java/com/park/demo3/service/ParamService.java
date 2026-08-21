@@ -481,6 +481,36 @@ public class ParamService {
 
     public record CopyResult(int copied, int skipped) {}
 
+    /**
+     * 公摊规则本体的变更日志（RBAC-SPEC §7.1 补的留痕缺口）。
+     *
+     * 缺口是这样的：系数簿窗口里改「管理费」走 PUT /params → 有痕；改「层份」走
+     * PUT /alloc/rules/{id} → **一行日志都没有**。同一个窗口两个操作，一有一无。
+     * 而 updateRule 内部是 deleteByRuleMonth + saveChildren（先删后插），
+     * 层份改了之后旧值连查都查不回来。
+     *
+     * 落在 param_change_log 而不是 auth_audit_log：它是计费口径的变更，
+     * 参数历史页读的就是这张表，改规则和改参数本来就该在同一条时间线上。
+     * 规则不是数值，所以 old/new 走 note 记文字描述。
+     */
+    public void logRuleChange(String action, Integer ruleId, String ruleName, String note) {
+        log(action, false, "rule:" + ruleId, "", "", "from", null, null,
+            (ruleName == null ? "" : ruleName + " ") + (note == null ? "" : note), null);
+    }
+
+    /**
+     * 单元面积变更（RBAC-SPEC §7.1 的第二个留痕缺口）。
+     *
+     * unit.area 不只是档案字段：它同时是 per_sqm_month 租金计费行的面积来源、
+     * 与 area 法公摊池的分摊基数。档案岗"顺手修一个录错的面积"，下个月该户租金与
+     * 公摊金额一起变，而参数中心看不到任何变更 —— 「面积污染」已经炸过一次。
+     * 数值型变更，所以走 old/new 两列而不是 note。
+     */
+    public void logUnitAreaChange(Integer unitId, String unitNo, BigDecimal oldArea, BigDecimal newArea) {
+        log("set", false, "unit:" + unitId, "area", "", "from", oldArea, newArea,
+            "单元 " + unitNo + " 面积变更（影响租金与 area 法公摊基数）", null);
+    }
+
     private void log(String action, boolean price, String scope, String key, String month, String mode,
                      BigDecimal oldV, BigDecimal newV, String note, String ym) {
         ParamChangeLog l = new ParamChangeLog();

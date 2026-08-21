@@ -47,6 +47,21 @@ public class SystemController {
     @DeleteMapping("/roles/{id}")
     public void deleteRole(@PathVariable Integer id) { svc.deleteRole(id); }
 
+    @Operation(summary = "操作日志时间线（三表 union，按时间倒序；src=param|import|auth）")
+    @GetMapping("/logs")
+    public AuditPageDTO logs(@RequestParam(required = false) String src,
+                            @RequestParam(required = false) String actor,
+                            @RequestParam(required = false)
+                            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                            java.time.LocalDate from,
+                            @RequestParam(required = false)
+                            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE)
+                            java.time.LocalDate to,
+                            @RequestParam(defaultValue = "1") int page,
+                            @RequestParam(defaultValue = "50") int size) {
+        return svc.auditLogs(src, actor, from, to, page, size);
+    }
+
     // ── 用户 ──
     @Operation(summary = "账号列表（q 搜用户名/显示名；status 0停用 1启用；roleId 按角色筛）")
     @GetMapping("/users")

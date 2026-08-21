@@ -1,5 +1,6 @@
 package com.park.demo3.dto;
 import java.time.LocalDateTime;
+import com.park.demo3.dto.AuditRowDTO;
 import java.util.List;
 import jakarta.validation.constraints.*;
 
@@ -50,6 +51,10 @@ public final class SystemDtos {
 
     public record PasswordResetReq(
         @NotBlank @Size(min = 8, max = 72, message = "密码至少 8 位") String password) {}
+
+    // ── 操作日志时间线 ──
+    public record AuditPageDTO(List<AuditRowDTO> rows, long total, int page, int size,
+                               List<String> actors) {}
 
     // ── 本人改密 ──
     public record ChangePasswordReq(

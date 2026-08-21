@@ -401,7 +401,31 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 |----|------|
 | **P0** | 建表 · 灌 6 个预置角色 · **126 条写端点映射表** + 覆盖率测试 + 6 条回归断言 · 内存权限缓存 · 前端 `can()` 替换 `isReadonly`（含 `api/index.ts` 那个洞）· §5.6 五条 service 守卫 |
 | **P1** ✅ | 2026-08-22 完成。第 4 层「系统管理」+ 用户管理屏 + 角色权限矩阵屏 + 首次强制改密 + `V102` 审计表与写入 |
-| **P2** | 操作日志统一时间线（三表 union）+ §7.1 两个留痕缺口 |
+| **P2** ✅ | 2026-08-22 完成。操作日志统一时间线（三表 union）+ §7.1 两个留痕缺口 |
+
+### 10.2 P2 实施记录（2026-08-22）
+
+`GET /api/system/logs?src=&actor=&from=&to=&page=&size=` —— 三张来源表 UNION 后按时间倒序。
+**分页与筛选都在 SQL 里做**：`param_change_log` 随每次改参数增长，全捞进内存再切正是
+`QueryHygieneTest` 防的那种「返回行数只涨不跌」。
+
+写这段 union SQL 踩到两个坑，都被 `AuditLogApiIT` 抓到了，值得记下来：
+
+1. **每个分支都要写全列别名。** UNION 的结果列名取自**第一个** SELECT ——
+   只在 param 分支写别名的话，`src=import` 单独跑时外层 `ORDER BY u.ts` 直接
+   「Unknown column」500。别名不是美观问题。
+2. **ORDER BY 必须是全序。** 只按 `(ts, source)` 排不够：种子日志是批量插的，
+   一秒里几十行，MySQL 对并列行的顺序不保证 —— LIMIT/OFFSET 翻页时同一行可能
+   在两页都出现、另一行谁也见不着。所以带上来源表 id 做末位键。
+
+两个留痕缺口都补了，而且测试断言的是**旧值有没有被留住**，不是"写了一条"：
+
+| 缺口 | 补法 |
+|------|------|
+| 公摊规则（系数簿改层份走这条） | `createRule`/`updateRule`/`deleteRule` 写 `param_change_log`（`scope=rule:{id}`）。⚠ `updateRule` 内部是 `deleteByRuleMonth` + `saveChildren`，**旧成员数必须在删之前抓**，否则再也查不回来 |
+| 单元面积 | `updateUnit` 面积变化时写 `param_change_log`（`scope=unit:{id}`，`cfg_key=area`，走 old/new 两列）。`unit.area` 同时是 `per_sqm_month` 租金的面积来源与 area 法公摊的分摊基数 —— 「面积污染」已经炸过一次。面积没变则不写，免得日志被噪声淹掉 |
+
+**留下的**：改密后旧令牌不失效（内网 + 令牌 2 小时过期；要做需引入令牌版本号）。
 
 ### 10.1 P1 实施记录（2026-08-22）
 
