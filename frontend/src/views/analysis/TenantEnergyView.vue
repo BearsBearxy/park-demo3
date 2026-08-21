@@ -322,7 +322,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
             <span class="t">租户列表</span>
             <span class="te2-lh">
               <span class="hint">{{ byFamily ? '家族合计降序 · 点击看主租户' : `按本期${metricLabel}降序 · 点击选中` }}</span>
-              <span class="te2-fam-seg" role="group" aria-label="榜单口径">
+              <span class="anx-seg mini" role="group" aria-label="榜单口径">
                 <button :class="{ on: !byFamily }" @click="byFamily = false">按户</button>
                 <button :class="{ on: byFamily }" @click="byFamily = true">按家族</button>
               </span>
@@ -391,7 +391,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
             <span class="t">{{ metricLabel }} vs 月租金</span>
             <span class="te2-lh">
               <span class="hint">点点选中 · 气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template><template v-if="xLog && scatterSplit.hidden"> · 0租金户 {{ scatterSplit.hidden }} 户未显示</template></span>
-              <span class="te2-fam-seg" role="group" aria-label="横轴刻度">
+              <span class="anx-seg mini" role="group" aria-label="横轴刻度">
                 <button :class="{ on: xLog }" @click="xLog = true">对数</button>
                 <button :class="{ on: !xLog }" @click="xLog = false">线性</button>
               </span>
@@ -411,11 +411,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 <style scoped>
 .te2-seg button { padding: 5px 14px; }
 .te2-left { display: flex; flex-direction: column; }
-/* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 AnomalyView 惯例) */
 .te2-lh { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.te2-fam-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }
-.te2-fam-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 10px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
-.te2-fam-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28, 28, 28, .1); }
 .te2-item .fam { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
 .te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }

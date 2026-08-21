@@ -201,10 +201,8 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-icobtn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; transition: background var(--dur-fast), color var(--dur-fast); position: relative; }
 .anx-icobtn:hover, .anx-icobtn.on { background: var(--bg-hover); color: var(--text-primary); }
 
-.anx-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 3px; gap: 2px; }
-.anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
-.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
-.anx-seg button:disabled { opacity: .4; cursor: default; }
+/* .anx-seg 已迁往全局 components/ana/ana.css:它同时被 #tools 插槽里的子屏用,
+   scoped 样式不透传插槽内容(插槽带的是宿主屏的 data-v),留在这里子屏那份会变成裸原生按钮。 */
 /* min-height = 12(本容器 padding-top)+ 82.9(一行 .av2-kpi 瓦片实高)≈ 94,取整向下,
    保证「常驻空条 → 瓦片填入」零位移,且加载完成后 min-height 永不生效(不多占一个像素)。
    瓦片 82.9 的来源(AnaKpiTile.vue,box-sizing:border-box 但高度 auto 故边框外加):

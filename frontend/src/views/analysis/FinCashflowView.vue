@@ -254,7 +254,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
             <span class="t">欠费账龄</span>
             <span style="display: inline-flex; align-items: center; gap: 8px">
               <span class="hint">FIFO 冲抵 · 距 {{ allLedgerYms[allLedgerYms.length - 1] }}</span>
-              <div class="fin-seg" role="group" aria-label="欠费口径切换">
+              <div class="anx-seg mini" role="group" aria-label="欠费口径切换">
                 <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
                 <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
               </div>
@@ -295,7 +295,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
         <div class="fin-modal-h">
           <span class="t">{{ drillYm }} 欠费租户清单 · {{ companyLabel }}</span>
           <span style="display: inline-flex; align-items: center; gap: 10px">
-            <div class="fin-seg" role="group" aria-label="欠费口径切换">
+            <div class="anx-seg mini" role="group" aria-label="欠费口径切换">
               <button :class="{ on: !famOn }" @click="famOn = false">按户</button>
               <button :class="{ on: famOn }" @click="famOn = true">按家族</button>
             </div>
@@ -336,10 +336,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 .fin-head .sub { font-size: var(--fs-micro); color: var(--text-muted); }
 .fin-link { border: none; background: transparent; color: var(--text-link); font-size: var(--fs-micro); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 
-/* 家族口径开关(spec §B/W2,仿 AnaShell .anx-seg 的 mini 版)+「含 N 户」徽标 */
-.fin-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; flex: none; }
-.fin-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 9px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); white-space: nowrap; }
-.fin-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+/* 「含 N 户」徽标(开关本体已改用全局 .anx-seg.mini) */
 .fin-fam { display: inline-block; margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 7px; white-space: nowrap; }
 
 /* 账龄卡:横向单条堆叠(段宽∝金额)+ 图例行(桶色浅→深红,金额 mono) */
