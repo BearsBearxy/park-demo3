@@ -111,7 +111,8 @@ const conclusion = computed<{ text: string; tone: AnaStatusLevel }[]>(() => {
 const M_LABELS = Array.from({ length: 12 }, (_, i) => `${i + 1}月`)
 const sm = computed(() => stationMonthly(myStations.value, myReadings.value))
 const chart1Opt = computed<object>(() => ({
-  tooltip: { trigger: 'axis' },
+  // null 显「未抄表」而不是 0 —— tooltip 是用户求证「这月到底是 0 还是没数」的地方
+  tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (v == null ? '未抄表' : String(v)) },
   legend: { top: 0, type: 'scroll' },
   grid: { left: 56, right: 56, top: 32, bottom: 26 },
   xAxis: { type: 'category', data: M_LABELS },
@@ -125,14 +126,16 @@ const chart1Opt = computed<object>(() => ({
     ...sm.value.stations.map((s, i) => ({
       name: s.name, type: 'bar', stack: 'chg', barMaxWidth: 30,
       itemStyle: { color: CAT_COLORS[i % CAT_COLORS.length] },
-      data: s.charge.map((v) => +v.toFixed(1)),
+      data: s.charge.map((v) => (v == null ? null : +v.toFixed(1))),   // null 保持 null:该月没抄表,柱子不画
     })),
     {
       // 收益线走中性深灰:它是与柱子**不同量纲**的第二轴,不该混进桩的类目色里。
       // 改前写死 #185FA5,正是色板第 4 位 —— 站点数一旦到 4,第四根柱会与收益线同色。
       name: '收益', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5,
       itemStyle: { color: '#334155' }, lineStyle: { width: 2, color: '#334155' },
-      data: sm.value.revenue.map((v) => +v.toFixed(0)),
+      // connectNulls 默认 false → 没抄表的月线断开,而不是掉到 0 再拉回来
+      connectNulls: false,
+      data: sm.value.revenue.map((v) => (v == null ? null : +v.toFixed(0))),
     },
   ],
 }))

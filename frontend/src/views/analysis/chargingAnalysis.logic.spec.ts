@@ -48,6 +48,21 @@ describe('stationMonthly(图1:桩×12月充电分桶 + 月收益合计)', () => 
     expect(out.revenue[2]).toBe(18)
     expect(monthOf('2025-12-31')).toBe(12)
   })
+
+  // 2026-08-20:无抄表记录的月必须是 null 而不是 0。
+  // 0 与 null 在图上是两个业务事实:0=「这月这根桩没人充电」,null=「这月没抄表」。
+  // 改前一律 fill(0) → 没抄表的 1-9 月被画成贴地零线 + 一排零高柱,用户读成「上半年没生意」。
+  it('无抄表记录的月 = null(不补 0);当月有记录但读数为 0 则保持 0', () => {
+    const out = stationMonthly(
+      [st(1, '快充1', '小桔', 1)],
+      [rd(1, '2025-03-01', 20, 2, 18), rd(1, '2025-04-01', 0, 0, 0)],
+    )
+    expect(out.stations[0].charge[2]).toBe(20)     // 3月:有记录
+    expect(out.stations[0].charge[3]).toBe(0)      // 4月:有记录、读数真的是 0 → 保持 0
+    expect(out.stations[0].charge[0]).toBeNull()   // 1月:无记录 → null,不是 0
+    expect(out.revenue[0]).toBeNull()
+    expect(out.revenue[11]).toBeNull()
+  })
 })
 
 describe('operatorTotals(图2:运营商聚合 + 手续费率,收益降序)', () => {

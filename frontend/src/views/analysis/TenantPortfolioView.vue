@@ -150,6 +150,22 @@ const boxGroups = computed(() => {
     .map((p) => ({ name: phaseName(p), items: g.get(p) as { v: number; tenant: string }[] }))
 })
 const hasArea = computed(() => contracts.value.some((c) => c.rentArea > 0))
+// 对数轴取不到 ≤0,上面 boxGroups 直接 continue 掉了这些合同 —— 但屏上不能一声不吭:
+// 实测「租赁面积」模式下会静默略去相当一部分合同(面积未录/为 0),整个期区都可能从图上消失,
+// 而用户看到的是一张完整的图,会以为这就是全部。缺失必须能表达(METRIC-SOURCE-SPEC §3 同精神)。
+const boxDropped = computed(() => {
+  let n = 0, phases = new Set<number>()
+  for (const c of contracts.value) {
+    if (c.status !== 'active') continue
+    const v = boxMode.value === 'rent' ? c.monthlyRent : c.rentArea
+    if (v > 0) continue
+    n++
+    phases.add(phaseByTenantId.value.get(c.tenantId) ?? 0)
+  }
+  const shown = new Set(boxGroups.value.map((g) => g.name))
+  const gonePhases = [...phases].map(phaseName).filter((nm) => !shown.has(nm))
+  return { n, total: contracts.value.filter((c) => c.status === 'active').length, gonePhases }
+})
 const boxDiv = computed(() => (boxMode.value === 'rent' ? 10000 : 1))
 const boxRows = computed<BoxRow[]>(() =>
   buildBoxRows(boxGroups.value.map((g) => ({ name: g.name, values: g.items.map((i) => i.v) })), boxDiv.value))
@@ -285,6 +301,10 @@ const listRows = computed(() => {
                 <button :class="{ on: boxMode === 'area' }" @click="boxMode = 'area'">租赁面积</button>
               </span>
               生效合同 · 点=每份合同(悬停看租户) · 横线=中位 · 对数轴
+              <template v-if="boxDropped.n > 0">
+                · <span class="tp-drop">已略去 {{ boxDropped.n }}/{{ boxDropped.total }} 份({{ boxMode === 'rent' ? '月租金' : '面积' }}为 0 或未录,对数轴取不到){{
+                  boxDropped.gonePhases.length ? '，' + boxDropped.gonePhases.join('、') + ' 整期不可见' : '' }}</span>
+              </template>
             </span>
           </div>
           <AnaEChart v-if="boxMode === 'rent' || hasArea" :option="boxOption" :height="250" />
@@ -350,6 +370,8 @@ const listRows = computed(() => {
 
 <style scoped>
 .tp-link { color: var(--text-link); text-decoration: none; }
+/* 略去份数走告警橙:它是「这张图不完整」的提示,不是普通补充说明 */
+.tp-drop { color: var(--status-warning); font-weight: var(--fw-medium); }
 .tp-link:hover { text-decoration: underline; }
 .tp2-dl { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .tp2-dlbtn { width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 5px 6px; border-radius: 8px; }
