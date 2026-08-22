@@ -50,7 +50,7 @@ class RoleApiIT extends AbstractMysqlIT {
 
     @Test
     void adminRoleHoldsEveryPermission() {
-        // **这条防的是一类会静默烂掉的东西**:将来往 Perm.ALL 加第 14 个权限点,
+        // **这条防的是一类会静默烂掉的东西**:将来往 Perm.ALL 加第 15 个权限点,
         // 却忘了同步 V101 的 admin 种子 —— 系统管理员会安静地做不了那件新事,没有任何报错。
         assertThat(permsOf("admin"))
             .as("系统管理员必须持有 Perm.ALL 的全部权限点;新增权限点时记得补种子迁移")
@@ -61,22 +61,34 @@ class RoleApiIT extends AbstractMysqlIT {
     void presetRolesMatchSpec() {
         // 钉住 RBAC-SPEC §3 的角色矩阵。改这里之前先改规范,别让代码和文档对不上。
         assertThat(permsOf("finance_manager"))
-            .as("财务主管 = 除 system 外的业务全部 + 授权接管")
+            .as("财务主管 = 除 system 外的业务全部 + 授权接管 + 可请求提权")
             .containsExactlyInAnyOrder(
                 Perm.MASTER_EDIT, Perm.CONTRACT_EDIT, Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT,
                 Perm.METER_MASTER_EDIT, Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
-                Perm.BILLING_ISSUE_EDIT, Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.LOCK_TAKEOVER);
+                Perm.BILLING_ISSUE_EDIT, Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.LOCK_TAKEOVER,
+                Perm.ELEVATE_REQUEST);
 
         assertThat(permsOf("finance_clerk"))
-            .as("财务专员 = 录入/抄读数/出账运行;不含 master/contract/param-policy/meter-master/billing-issue。"
-              + "param-monthly 必须在里面 —— 没有它他出不了催缴单(RBAC-SPEC §2.1)")
+            .as("财务专员 = 抄读数/台账附表录入/出账运行/报表。"
+              + "⚠ V104 起**不含 param-monthly**:月度电价决定每一户的账单,收归主管级,"
+              + "专员每月请主管当场授权一次(ELEVATION-SPEC 让这条从'不可行'变成'可行')")
             .containsExactlyInAnyOrder(
-                Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
-                Perm.ENTRY_EDIT, Perm.REPORT_EDIT);
+                Perm.METER_READING_EDIT, Perm.BILLING_RUN_EDIT,
+                Perm.ENTRY_EDIT, Perm.REPORT_EDIT, Perm.ELEVATE_REQUEST);
+        assertThat(permsOf("finance_clerk"))
+            .as("电价与计费口径都必须在专员手上之外 —— 这两项一起构成'账单数字'那道门")
+            .doesNotContain(Perm.PARAM_MONTHLY_EDIT, Perm.PARAM_POLICY_EDIT);
 
-        // 三个只读角色权限完全相同,差别只在 nav_layers —— 读全开之后本就该如此
-        for (String code : List.of("gm", "shareholder", "viewer")) {
-            assertThat(permsOf(code)).as("%s 应为零 edit 权限", code).isEmpty();
+        // ── 三个只读角色不再完全相同(2026-08-22 用户拍板,ELEVATION-SPEC §1) ──
+        // 总经理是做业务的人,遇到要改的东西可以请主管当场授权;
+        // 只读账号与园区股东**连问都不能问** —— 他们连编辑模式按钮都不该看见。
+        assertThat(permsOf("gm"))
+            .as("总经理:零写权限,但可请求提权")
+            .containsExactly(Perm.ELEVATE_REQUEST);
+        for (String code : List.of("shareholder", "viewer")) {
+            assertThat(permsOf(code))
+                .as("%s 必须**一个权限都没有** —— 有 elevate:request 就等于给了他们编辑模式入口", code)
+                .isEmpty();
         }
         assertThat(roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, "shareholder"))
                 .getNavLayers()).as("园区股东只看经营分析层").isEqualTo("analysis");

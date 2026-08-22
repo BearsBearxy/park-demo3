@@ -14,6 +14,8 @@ import {
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -33,11 +35,14 @@ const canEntry = computed(() => auth.can('entry:edit'))
 const canPrice = computed(() => auth.can('param-policy:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
-const editMode = ref(false)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['entry:edit', 'param-policy:edit'])
 // 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
 const editE = computed(() => editMode.value && canEntry.value)
 const editC = computed(() => editMode.value && canPrice.value)
-onDeactivated(() => { editMode.value = false; meterDlg.value = false; importing.value = false })
+onDeactivated(() => { meterDlg.value = false; importing.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
@@ -412,7 +417,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充 2025
         </Button>
-        <Button v-if="canEntry || canPrice" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -598,6 +603,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPElevateDialog :perms="asking" what="修改电价口径" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 

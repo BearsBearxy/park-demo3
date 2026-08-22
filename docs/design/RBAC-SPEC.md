@@ -61,16 +61,18 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 ---
 
-## 2. 权限点（13 个）
+## 2. 权限点（14 个）
 
-**11 个业务模块的 `edit` + `system:view` + `lock:takeover`。**
+**11 个业务模块的 `edit` + `system:view` + `lock:takeover` + `elevate:request`。**
+
+> 2026-08-22 新增第 14 个 `elevate:request`（ELEVATION-SPEC）。
 
 | 权限点 | 管什么 |
 |--------|--------|
 | `master:edit` | 楼栋、单元、租户、租户分类、管理公司、收款账户的增删改 |
 | `contract:edit` | 合同的**新增 / 编辑 / 续签 / 终止 / 删除**，含计费行（租金单价口径） |
 | `param-policy:edit` | 计费口径：常量/规则/户级例外键、公摊规则与配置、电价配置、收款指引、**系数簿** |
-| `param-monthly:edit` | 月度计费录入：`paramRegistry` 里 `monthlyCheck=true` 的 13 个键 + 复制上月电价 |
+| `param-monthly:edit` | 月度计费录入：`paramRegistry` 里 `monthlyCheck=true` 的 **14** 个键 + 复制上月电价。**V104 起不再给财务专员**（电价决定每一户账单，收归主管级；专员每月请主管当场授权一次，见 ELEVATION-SPEC §5.1） |
 | `meter-master:edit` | 表档案：表倍率、表↔合同绑定、删表、光伏电站档案、充电桩桩库 |
 | `meter-reading:edit` | 抄表读数增删改、导入、按年 simulate |
 | `billing-run:edit` | 公摊生成、损耗、分摊结果、`params/recalc`、催缴单生成、单据备注 |
@@ -80,6 +82,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `system:edit` | 用户、角色、日志的管理 |
 | `system:view` | **唯一的读权限点**：能不能看到用户列表、角色配置、操作日志 |
 | `lock:takeover` | **能授权别人接管**编辑锁（不是能自己接管），见 CONCURRENCY-SPEC §4.3 |
+| `elevate:request` | **能不能请主管当场授权**。没有这项的账号（`viewer` / `shareholder`）连编辑模式按钮都看不到，见 ELEVATION-SPEC |
 
 `analysis` **没有权限点** —— 分析层是纯只读层。它唯一落库的写是年度预算导入，按拍板 #9 归 `entry:edit`；
 另一个「写」是 `anaSettings.ts` 的目标与阈值，存 localStorage 不落库（文件头注释明写）。
@@ -88,7 +91,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 | 拆分 | 触发它的事实 |
 |------|-------------|
-| `param` → `policy` + `monthly` | 拍板 #2 说催缴单生成归专员。生成的前置是 13 个 `monthlyCheck` 键（每月照抄供电局账单）+ `recalc`。不拆，专员出不了账 |
+| `param` → `policy` + `monthly` | 拍板 #2 说催缴单生成归专员。~~生成的前置是 14 个 `monthlyCheck` 键 + `recalc`，不拆专员出不了账~~ → **2026-08-22 修正**：拆仍然要拆（两者语义不同），但 `param-monthly` 已不给专员 —— 提权提供了每月一次的授权通道，原来那个「不给他就出不了账」的前提不再成立 |
 | `meter` → `master` + `reading` | 表倍率是直接乘进度数的计费系数，表↔合同绑定决定这块表的电算到谁头上 —— 属口径，不是抄表 |
 | `billing` → `run` + `issue` | 拍板 #2 只说了「生成」。签发/作废是对外不可逆闸门（生成时已签发单跳过不覆盖，须先作废） |
 | `alloc` 归入 `billing-run`，规则归入 `param-policy` | 公共电核算与楼栋损耗两屏在初版划分里**根本没有归属**，而它们含分摊规则增删改 |
@@ -239,9 +242,19 @@ analysis  经营分析
 不写任何参数表，落的是 `alloc_pool_result` / `alloc_loss_result` / `bill_notice`。
 语义与 `/alloc/generate` 完全同级。按 controller 归 `param` 会让专员重算不了，出账链断在这一步。
 
-② **13 个月度键的 PUT 归 `param-monthly`。**
-键清单以 `frontend/src/utils/paramRegistry.ts` 里 `monthlyCheck=true` 为准。
-后端需按 `cfg_key` 判 —— 这是表里**唯一一条要看请求体**的规则。
+② **月度键（`monthlyCheck=true`，现为 14 个）的 PUT 归 `param-monthly`。**
+键清单以 `ParamRegistry` 里 `monthlyCheck=true` 为准，与前端 ① 区的 `Group.MONTHLY` 分组
+**一一对应**（`ParamPermissionSplitTest` 钉死；不对齐就会出现「界面有按钮点下去 403」或
+「界面藏了按钮 API 却放行」）。后端按 `cfg_key` 判 —— 这是表里**唯一一条要看请求体**的规则。
+
+> ⚠ **2026-08-22 修复**：这条规则此前**只写在注释里没有实现**。`PermissionRegistry` 给
+> `PUT /api/params` 登记的是「policy 或 monthly 任一」，而 `ParamService` 里没有细分判定 ——
+> 只有 `param-monthly:edit` 的财务专员绕开前端直接调 API 就能改**任何一个计费口径键**。
+> 前端把按钮藏了，后端的门是开的。现由 `PermissionGuard` 在 `ParamService.write()` 里落实。
+
+④ **`POST /api/price-cfg/copy`（复制上月电价）归 `param-monthly`，不是 `param-policy`。**
+它只搬 `ELEC_KEYS` 六个月变电价键，是月度录入的活。挂 policy 的话财务专员在计费参数页
+① 区看得到按钮、点下去 403 —— 而那正是他每月的活。必须排在 `/api/price-cfg/**` 之前。
 
 ③ **`POST /api/elec-cost/simulate` 必须提到 `param-policy`。**
 `ElecCostService.insertCfgIfAbsent()`（第 387–398 行）被 simulate 调用，

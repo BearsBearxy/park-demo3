@@ -54,15 +54,17 @@ public class ParamService {
     private final PriceCfgService priceCfg;      // 价目缓存失效
     private final AllocService alloc;            // @Lazy:AllocService 写参数走本类,本类重算又调它 —— 懒代理断环
     private final BillNoticeService billNotice;
+    private final com.park.demo3.security.PermissionGuard guard;   // 按 cfg_key 分月度/口径两档
 
     public ParamService(AllocCfgMapper allocCfgs, TenantPriceCfgMapper priceCfgs, ParamChangeLogMapper logs,
                         AllocPoolResultMapper poolResults, AllocLossResultMapper lossResults, BillNoticeMapper notices,
                         BuildingMapper buildings, AllocRuleMapper rules, MeterMapper meters, TenantMapper tenants,
-                        PriceCfgService priceCfg, @Lazy AllocService alloc, @Lazy BillNoticeService billNotice) {
+                        PriceCfgService priceCfg, @Lazy AllocService alloc, @Lazy BillNoticeService billNotice,
+                        com.park.demo3.security.PermissionGuard guard) {
         this.allocCfgs = allocCfgs; this.priceCfgs = priceCfgs; this.logs = logs;
         this.poolResults = poolResults; this.lossResults = lossResults; this.notices = notices;
         this.buildings = buildings; this.rules = rules; this.meters = meters; this.tenants = tenants;
-        this.priceCfg = priceCfg; this.alloc = alloc; this.billNotice = billNotice;
+        this.priceCfg = priceCfg; this.alloc = alloc; this.billNotice = billNotice; this.guard = guard;
     }
 
     // ══════════ 读:站在 ym 看的全部生效参数行 ══════════
@@ -370,6 +372,7 @@ public class ParamService {
         if (!ParamRegistry.allowed(key, scope))
             throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + (scope.isEmpty() ? "" : "@" + scope));
         Def d = ParamRegistry.get(key);
+        requireWritePerm(d);
         boolean price = d.table() == Table.PRICE;
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? d.defaultMode() : req.mode().trim();
@@ -511,10 +514,29 @@ public class ParamService {
             "单元 " + unitNo + " 面积变更（影响租金与 area 法公摊基数）", null);
     }
 
+    /**
+     * 唯一一处 URL 判不了的权限细分(PermissionRegistry 铁律外的那条例外)。
+     *
+     * ① 区月度录入(每月照抄供电局账单的 14 个键)= param-monthly:edit,财务专员有;
+     * ②③④ 区长期计费口径 = param-policy:edit,要主管级。
+     *
+     * **判据用 monthlyCheck,与前端 ① 区的分组(Group.MONTHLY)一一对应** —— 两者已由
+     * ParamPermissionSplitTest 钉死。不对齐的话会出现「界面上有[修改]按钮,点下去 403」
+     * 或者反过来「界面藏了按钮,API 却放行」(后者正是本次修掉的洞)。
+     */
+    private void requireWritePerm(Def d) {
+        guard.require(d.monthlyCheck() ? com.park.demo3.security.Perm.PARAM_MONTHLY_EDIT
+                                       : com.park.demo3.security.Perm.PARAM_POLICY_EDIT,
+                      d.monthlyCheck() ? "月度计费录入" : "计费口径");
+    }
+
     private void log(String action, boolean price, String scope, String key, String month, String mode,
                      BigDecimal oldV, BigDecimal newV, String note, String ym) {
         ParamChangeLog l = new ParamChangeLog();
         l.setTs(LocalDateTime.now()); l.setActor(actor()); l.setTbl(price ? "price" : "alloc");
+        // 提权改口径是这个功能最典型的场景，而口径日志走的是本表不是 auth_audit_log ——
+        // 这一句缺了，「谁授权的」就查不到，整套提权的审计价值落空。
+        l.setAuthorizer(com.park.demo3.security.ElevationStore.currentAuthorizer());
         l.setScope(scope); l.setCfgKey(key); l.setAcctMonth(month); l.setMode(mode);
         l.setOldValue(oldV); l.setNewValue(newV); l.setNote(note); l.setAction(action); l.setYm(ym);
         logs.insert(l);

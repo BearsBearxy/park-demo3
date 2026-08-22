@@ -26,16 +26,31 @@ public final class Perm {
     public static final String SYSTEM_VIEW         = "system:view";
     public static final String SYSTEM_EDIT         = "system:edit";
     public static final String LOCK_TAKEOVER       = "lock:takeover";
+    public static final String ELEVATE_REQUEST     = "elevate:request";
 
-    /** 全部 13 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
+    /** 全部 14 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
     public static final List<String> ALL = List.of(
         MASTER_EDIT, CONTRACT_EDIT, PARAM_POLICY_EDIT, PARAM_MONTHLY_EDIT,
         METER_MASTER_EDIT, METER_READING_EDIT, BILLING_RUN_EDIT, BILLING_ISSUE_EDIT,
-        ENTRY_EDIT, REPORT_EDIT, SYSTEM_VIEW, SYSTEM_EDIT, LOCK_TAKEOVER);
+        ENTRY_EDIT, REPORT_EDIT, SYSTEM_VIEW, SYSTEM_EDIT, LOCK_TAKEOVER, ELEVATE_REQUEST);
 
     private static final Set<String> ALL_SET = Set.copyOf(ALL);
 
     public static boolean exists(String perm) { return ALL_SET.contains(perm); }
+
+    /**
+     * **不可提权的权限点**（用户拍板 2026-08-22）。
+     *
+     * system:* 必须留在名单里:能当场授权自己去建账号 / 改角色的话,提权就成了权限系统的后门 ——
+     * 一次 30 分钟的授权可以换来一个永久的管理员账号,整套 RBAC 当场作废。
+     * 系统管理只能主管自己登录进去改。
+     *
+     * elevate:request 与 lock:takeover 同理列入:提权这两项只会让提权机制自我授权,毫无业务意义。
+     */
+    private static final Set<String> NOT_ELEVATABLE = Set.of(
+        SYSTEM_VIEW, SYSTEM_EDIT, ELEVATE_REQUEST, LOCK_TAKEOVER);
+
+    public static boolean elevatable(String perm) { return exists(perm) && !NOT_ELEVATABLE.contains(perm); }
 
     /** 角色权限矩阵屏用的人话名 + 一句说明。**前端不许硬编码这 13 项** —— 加第 14 个时它要自动出现。 */
     public record Meta(String key, String label, String hint) {}
@@ -53,5 +68,6 @@ public final class Perm {
         new Meta(REPORT_EDIT,        "账簿报表",        "三大报表、损益附表 1–5、收入核对的处置标记"),
         new Meta(SYSTEM_VIEW,        "系统管理 · 查看", "能看到用户列表、角色配置与操作日志"),
         new Meta(SYSTEM_EDIT,        "系统管理 · 管理", "新建/停用账号、配置角色权限"),
-        new Meta(LOCK_TAKEOVER,      "编辑锁 · 授权",   "别人正在编辑时，授权他人接管（不是自己接管）"));
+        new Meta(LOCK_TAKEOVER,      "编辑锁 · 授权",   "别人正在编辑时，授权他人接管（不是自己接管）"),
+        new Meta(ELEVATE_REQUEST,    "可请求提权",      "遇到没权限的操作时，能请主管当场输密码授权 30 分钟；不给这项的账号连编辑模式按钮都看不到"));
 }

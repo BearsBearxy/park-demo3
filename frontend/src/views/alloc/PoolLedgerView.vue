@@ -53,15 +53,21 @@ import Input from '@/components/ds/Input.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
+import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
-// RBAC:本屏两扇门不同权 —— 生成快照是「跑一次出账」,池配置是「改计费口径」
+// RBAC:本屏两扇门不同权 —— 生成快照是「跑一次出账」,池配置是「改计费口径」。
+// 2026-08-22 起铁律改为「进得了编辑模式 ⇒ 本页权限一定齐」(EDIT-MODE-SPEC v3):编辑态里不再有
+// 点不动的控件,也不再有「点了转成授权请求」的包装。这两个只用来画**浏览态**的文案与可点态。
 const canGen = computed(() => auth.can('billing-run:edit'))
 const canCfg = computed(() => auth.can('param-policy:edit'))
 
-// ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态 ──
-const editMode = ref(false)
-onDeactivated(() => { editMode.value = false; poolDlg.value = false })
+// ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['billing-run:edit', 'param-policy:edit'])
+onDeactivated(() => { poolDlg.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
@@ -154,8 +160,9 @@ const route = useRoute()
 function applyHandoff(): boolean {
   const q = route.query
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
-  // 同 ParamCenterView:深链也要过权限闸
-  if (q.generate === '1' && (canGen.value || canCfg.value)) editMode.value = true
+  // 同 ParamCenterView:深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
+  // (裸写在权限不齐时会被守卫下一个 tick 静默弹回浏览态;toggle 会弹授权窗)
+  if (q.generate === '1' && canEnter.value) toggleEdit()
   if (!m) return false
   year.value = +m[1]; month.value = +m[2]
   return true
@@ -203,8 +210,9 @@ const diffOpen = ref(false)
 const rowById = computed(() => new Map((pools.value?.rows ?? []).map(r => [r.ruleId, r])))
 function gotoDiff(ruleId: number) {
   const r = rowById.value.get(ruleId)
-  if (!r || !canCfg.value) return
+  if (!r) return
   editMode.value = true
+  // 没有 param-policy 也让他进来看:池配置弹窗内部自会按权限决定能不能改/给授权入口
   openPoolDlg(r)
 }
 
@@ -319,12 +327,8 @@ const poolErr = ref('')
 const saving = ref(false)
 // 保存/删除成功的轻提示(3s 自淡出);抽屉关了才看得见,故挂在页面提示条区
 const okMsg = ref('')
-let okTimer: ReturnType<typeof setTimeout> | undefined
-function flashOk(msg: string) {
-  okMsg.value = msg
-  clearTimeout(okTimer)
-  okTimer = setTimeout(() => { okMsg.value = '' }, 3000)
-}
+// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
+function flashOk(msg: string) { okMsg.value = msg }
 interface PoolForm {
   id: number | null; zone: AllocZone
   buildingId: number | null; floorLabel: string; side: string; feeName: string
@@ -680,22 +684,17 @@ async function delPool() {
           <template #leading><component :is="iconFor(generated ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generated ? '重新生成' : '生成本月' }}
         </Button>
-        <Button v-if="editMode && canCfg" variant="outline" size="sm" @click="openPoolDlg()">
+        <Button v-if="editMode" variant="outline" size="sm" @click="openPoolDlg()">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增池
         </Button>
-        <Button v-if="canGen || canCfg" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
       </div>
     </div>
 
-    <!-- 保存/删除成功轻提示(3s 自消) -->
-    <div v-if="okMsg" class="pl-bar ok">
-      <component :is="iconFor('check')" :size="14" />
-      <span>{{ okMsg }}</span>
-    </div>
     <!-- 加载失败条(与下面「本月未生成」的灰条分属两态:那条是「读到了,本月没快照」,
          这条是「压根没读到」)。失败时 pools 已清空 —— 屏上不留上个月的行,
          行内月度参数(系数/加度)随行一起消失,生成按钮也已禁用,写不进当前月份 -->
@@ -717,6 +716,11 @@ async function delPool() {
          下面 flex:1 的表格容器当场矮一截、内容整体上移、底部行被切掉,用户刚改的那行可能滑出视口。
          故编辑态常驻占位:始终渲染、始终占高,只切 visibility,写前写后表格高度分毫不变。
          浏览态没有写入口,不占位(白占一条空条难看);已经脏了则照常显示。 -->
+    <!-- LAYOUT-STABILITY-SPEC §4:原来这里有条「本页有 N 项需要更高权限」的流内提示条,
+         点一次「编辑模式」再取消整页就被它撑得下移 —— 2026-08-22 用户要求删掉。
+         信息由下面的授权弹窗给到了,不需要第二遍;且现在进得了编辑模式就一定权限齐,本就无话可说 -->
+    <FPElevateDialog :perms="asking" what="修改公摊池配置" @close="cancelAsk" @elevated="onElevated" />
+
     <div v-if="editMode || cfgDirty" class="pl-bar warn" :class="{ ghost: !cfgDirty }">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
@@ -829,9 +833,9 @@ async function delPool() {
               </td>
               <!-- §I3:池名称=**本行电表**的用途(原册 D 列);池级自然键(A 列)退到首行副标题 -->
               <td class="pl-fix" :style="fixName">
-                <span class="pl-pname" :class="{ click: editMode && canCfg }"
+                <span class="pl-pname" :class="{ click: editMode }"
                       :title="r.warn ?? r.autoName ?? r.name"
-                      @click="editMode && canCfg && openPoolDlg(r)">
+                      @click="editMode && openPoolDlg(r)">
                   <span class="nm">{{ rowName(r, ln) }}</span>
                   <span v-if="r.warn" class="pl-warn" :title="r.warn">!</span>
                   <span v-if="r.links.length" class="pl-linkchip"
@@ -916,7 +920,7 @@ async function delPool() {
           <tr v-if="bands.length === 0">
             <td class="pl-noro" :colspan="colCount">
               <template v-if="loadErr">数据未加载 —— 请点上方「重试」</template>
-              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode && canCfg ? ',点右上「新增池」开始录入' : '' }}</template>
+              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}</template>
             </td>
           </tr>
         </tbody>
@@ -938,7 +942,9 @@ async function delPool() {
         </tfoot>
       </table>
       </div>
-    </div><!-- /pl-tablearea:浮层告警条的定位上下文,见上方 pl-float -->
+      <!-- 保存/删除成功提示(3s 自消)。贴表格区**底**边:顶上是 pl-float 告警条,一上一下不叠 -->
+      <FPToast v-model="okMsg" :duration="3000" />
+    </div><!-- /pl-tablearea:浮层告警条与成功 toast 的定位上下文 -->
 
     <!-- 池配置抽屉(编辑态;迁自旧屏规则弹窗+S3-B1 增量字段) -->
     <FPDrawer :open="poolDlg" :title="form.id == null ? '新增池' : '编辑池 · ' + formAutoName"
@@ -1180,7 +1186,6 @@ async function delPool() {
 /* 提示条 */
 .pl-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
-.pl-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 .pl-bar.err { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 /* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
 .pl-bar.ghost { visibility: hidden; }

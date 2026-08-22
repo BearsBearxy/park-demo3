@@ -11,6 +11,9 @@ import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -30,14 +33,17 @@ const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
-const editMode = ref(false)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['meter-master:edit', 'meter-reading:edit'])
 // RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
 const canMaster = computed(() => auth.can('meter-master:edit'))
 const canReading = computed(() => auth.can('meter-reading:edit'))
 const editStation = computed(() => editMode.value && canMaster.value)
 const editReading = computed(() => editMode.value && canReading.value)
-onDeactivated(() => { editMode.value = false; stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const num = (s: string) => { const n = Number(s); return isFinite(n) ? n : 0 }
@@ -131,7 +137,9 @@ function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw
   pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
     .then(() => {
       // 错价修正回路(P0-3):改价只影响之后新录,提示历史修正路径(导出「明细」sheet 改后重导即按新价重新快照)
-      if (field === 'priceYuan') alert('已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。')
+      // 这条不是「已保存」而是一段**操作指引**(历史记录怎么修),用户可能要照着做 ——
+      // 所以 duration=0 不自动消失,由他读完自己关。
+      if (field === 'priceYuan') okMsg.value = '已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。'
     })
     .catch((e) => {
       st[field] = prev
@@ -252,6 +260,7 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
+const okMsg = ref('')
 const importResult = ref<ImportResultDTO | null>(null)
 // charging/pvMeter 模式:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
 // parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
@@ -350,7 +359,7 @@ async function onTemplate() {
           导出
         </Button>
         <!-- 编辑模式:档案/读数两把权限任一有即可进,进去后各按钮再各判各的 -->
-        <Button v-if="canMaster || canReading" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -575,6 +584,8 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPElevateDialog :perms="asking" what="维护光伏表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />
   </div>
 </template>
 

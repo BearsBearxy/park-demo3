@@ -12,6 +12,8 @@ import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMet
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -38,7 +40,10 @@ const fq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 }
 const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
-const editMode = ref(false)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'])
 // RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
 // 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
 const canMaster = computed(() => auth.can('meter-master:edit'))
@@ -46,7 +51,7 @@ const canReading = computed(() => auth.can('meter-reading:edit'))
 const canRun = computed(() => auth.can('billing-run:edit'))
 const editStation = computed(() => editMode.value && canMaster.value)
 const editReading = computed(() => editMode.value && canReading.value)
-onDeactivated(() => { editMode.value = false; stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
 
 // ── 期间(年月 Select,同 PvMeterView) ──
 const today = new Date()
@@ -357,7 +362,7 @@ async function onTemplate() {
           导出
         </Button>
         <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
-        <Button v-if="canMaster || canReading || canRun" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -592,6 +597,7 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPElevateDialog :perms="asking" what="维护充电桩表档案" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 

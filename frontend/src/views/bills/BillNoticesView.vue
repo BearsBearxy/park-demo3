@@ -31,6 +31,8 @@ import {
   type CrossMark, type NoteKey, type QtyCell, type ShareMergeRow, type TenantBuildings, type TenantNoticeRow,
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -44,6 +46,7 @@ import PayBookWindow from './PayBookWindow.vue'
 import ExportNoticeWindow from './ExportNoticeWindow.vue'
 import ExportReconWindow from './ExportReconWindow.vue'
 import PaySlotGrid from '@/components/fp/PaySlotGrid.vue'
+import FPToast from '@/components/fp/FPToast.vue'
 import { billDeliveryApi, companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import { billsApi } from '@/api/bills'
 import {
@@ -62,11 +65,14 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // EDIT-MODE-SPEC v2 §1:浏览态完全只读——重新生成(覆盖整月)、确认(不可逆单向流转)、批量、
 // 抽屉里的备注改写与收款公司指定,全部收进编辑态;导出/筛选/切期/展开是只读操作,不受管。
 // canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
-const editMode = ref(false)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['billing-run:edit', 'billing-issue:edit'])
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
 // 编辑态不跨会话(spec §1):切走页签回来即回浏览态
-onDeactivated(() => { editMode.value = false })
+onDeactivated(() => { asking.value = null })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
@@ -386,12 +392,8 @@ async function onSlotSave(p: { colIds: string[]; companyId: number }) {
 // ── 重新生成(admin;confirm 后 POST generate,轻提示显摘要,完成刷新) ──
 const generating = ref(false)
 const okMsg = ref('')
-let okTimer: ReturnType<typeof setTimeout> | undefined
-function flashOk(msg: string) {
-  okMsg.value = msg
-  clearTimeout(okTimer)
-  okTimer = setTimeout(() => { okMsg.value = '' }, 5000)
-}
+// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
+function flashOk(msg: string) { okMsg.value = msg }
 async function onGenerate() {
   if (!canRun.value || generating.value) return
   if (!confirm(`重新生成 ${ym.value} 催缴单:先删后插覆盖本月草稿/作废单,按当前读数与价目重派;已签发单跳过不覆盖(须先作废)。确认?`)) return
@@ -596,7 +598,7 @@ const drawerSub = computed(() => {
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
-        <Button v-if="mayRun || mayIssue" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -611,11 +613,8 @@ const drawerSub = computed(() => {
       <FPStat label="警告户数" :value="String(kpis.warned)" :sub="kpis.warned ? '悬停行尾「!」看原文' : undefined" />
     </div>
 
-    <!-- 生成摘要轻提示(5s 自消) -->
-    <div v-if="okMsg" class="bn-bar ok">
-      <component :is="iconFor('check')" :size="14" />
-      <span>{{ okMsg }}</span>
-    </div>
+    <!-- 生成摘要提示(5s 自消)。page 模式:本屏无 relative 容器,且 --z-toast 最高不被遮 -->
+    <FPToast v-model="okMsg" placement="page" :duration="5000" />
     <!-- S21 stale 条:计费参数改过而本月催缴单批次没重生成(判据 spec §6.3);[去重算] 送到参数页(池 → 损耗 → 催缴单一起重算) -->
     <div v-if="staleMsg" class="bn-bar warn">
       <component :is="iconFor('alert-triangle')" :size="14" />
@@ -1139,10 +1138,11 @@ const drawerSub = computed(() => {
                    @close="payBookOpen = false" @saved="loadPayMap(); loadMonth()" />
     <ExportNoticeWindow :open="expNoticeOpen" :ym="ym" :phase="phase" :notices="rows"
                         :contracts="contracts" :buildings="buildings"
-                        :busy="exportBusy" :result="exportResult"
+                        :busy="exportBusy"
                         @close="expNoticeOpen = false" @export="onExportNotice" />
     <ExportReconWindow :open="expReconOpen" :ym="ym" :notices="rows" :busy="exportBusy"
                        @close="expReconOpen = false" @export="onExportRecon" />
+    <FPElevateDialog :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 
@@ -1162,7 +1162,6 @@ const drawerSub = computed(() => {
 /* 提示条(pl-bar 家族) */
 .bn-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .bn-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
-.bn-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 /* 各单 warn 换行合并后逐行显示 */
 .bn-warn-multi { white-space: pre-line; }
 

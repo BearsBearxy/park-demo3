@@ -34,7 +34,7 @@ public interface AuditQueryMapper {
                         IF(acct_month='', '', CONCAT(' · ', acct_month))) AS target,
                  CONCAT(IFNULL(CONCAT(old_value, ' → '), ''), IFNULL(new_value, ''),
                         IFNULL(CONCAT('  ', note), '')) AS detail,
-                 NULL AS authorizer
+                 authorizer AS authorizer
           FROM param_change_log
           <where>
             <if test="actor != null and actor != ''">actor = #{actor}</if>

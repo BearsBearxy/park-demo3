@@ -7,6 +7,11 @@ vi.mock('@/api', () => ({
   default: {
     post: vi.fn(),
   },
+  // 跨标签页身份漂移守卫的两个具名导出:store 在 login/logout 收尾会调它们。
+  // 漏 mock 会让本文件所有用例报「No "bindSession" export is defined」——
+  // vi.mock 是整模块替换,不是部分 mock。
+  bindSession: vi.fn(),
+  sessionDrifted: vi.fn(() => false),
 }))
 
 import api from '@/api'

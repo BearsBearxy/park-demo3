@@ -43,6 +43,12 @@ public class PermissionRegistry {
         // 本人改密:任何已登录账号都能改自己的。不登记的话按「默认拒绝」会 403 ——
         // 首次强制改密的账号会被卡死在改密页(它是他唯一能去的地方,却提交不了)。
         add(HttpMethod.POST, "/api/auth/change-password", ANY_AUTHENTICATED);
+        // 结束自己的提权授权:幂等、只影响自己,任何人可调。放在 POST /elevate 之前 —— 方法不同不冲突,
+        // 但顺序表读起来要一眼看出这两条是一对。
+        add(HttpMethod.DELETE, "/api/auth/elevate", ANY_AUTHENTICATED);
+        // 请求提权本身是一道门:viewer / 园区股东没有 elevate:request,连问都不能问。
+        // 具体授权哪些权限点由 ElevationService 校验(不可提权名单见 Perm.elevatable)。
+        add(HttpMethod.POST, "/api/auth/elevate", Perm.ELEVATE_REQUEST);
 
         // ═══ 出账链:同一 controller 前缀下混着口径与运行两档 ═══
         add(null, "/api/alloc/rules",        Perm.PARAM_POLICY_EDIT);
@@ -55,6 +61,10 @@ public class PermissionRegistry {
         add(HttpMethod.POST, "/api/params/recalc", Perm.BILLING_RUN_EDIT);
         add(null, "/api/params",     Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT);
         add(null, "/api/params/**",  Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT);
+        // 「复制上月电价」只搬 ELEC_KEYS 六个月变电价键 —— 是月度录入的活,不是改口径。
+        // 挂 policy 的话财务专员在计费参数页 ① 区看得到按钮、点下去 403(前端按 param-monthly 画的按钮)。
+        // ⚠ 必须排在 /api/price-cfg/** 之前:首个命中生效(本文件铁律 2)。
+        add(HttpMethod.POST, "/api/price-cfg/copy", Perm.PARAM_MONTHLY_EDIT);
         add(null, "/api/price-cfg",    Perm.PARAM_POLICY_EDIT);
         add(null, "/api/price-cfg/**", Perm.PARAM_POLICY_EDIT);
 
@@ -132,6 +142,20 @@ public class PermissionRegistry {
         // ═══ 系统管理(P1 才有实体端点,先把规则占住,免得将来裸奔) ═══
         add(null, "/api/system",    Perm.SYSTEM_EDIT);
         add(null, "/api/system/**", Perm.SYSTEM_EDIT);
+    }
+
+    /**
+     * ANY_AUTHENTICATED 的全部端点,形如 "POST /api/import-log"。
+     *
+     * 只给测试用:这几条是**唯一**不要求任何权限点的写端点,所以「必须挡住匿名」这条
+     * 全靠它们身上的断言。自动枚举而不是在测试里手抄一份 —— 手抄的那份加第四条时必忘,
+     * 而那正是 2026-08-22 那个匿名绕过能存活的原因。
+     */
+    public List<String> anyAuthenticatedEndpoints() {
+        return rules.stream()
+            .filter(r -> r.anyOf().contains(ANY_AUTHENTICATED))
+            .map(r -> (r.method() == null ? "ANY" : r.method().name()) + " " + r.pattern().getPatternString())
+            .toList();
     }
 
     private void add(HttpMethod method, String pattern, String... anyOf) {

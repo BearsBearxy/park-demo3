@@ -31,11 +31,15 @@ public class UserPermissionCache {
     private final AuthRoleMapper roles;
     private final AuthRolePermMapper rolePerms;
 
+    private final ElevationStore elevations;
+
     private volatile Map<String, UserAuth> snapshot = Map.of();
 
     public UserPermissionCache(AuthUserMapper users, AuthUserRoleMapper userRoles,
-                               AuthRoleMapper roles, AuthRolePermMapper rolePerms) {
+                               AuthRoleMapper roles, AuthRolePermMapper rolePerms,
+                               ElevationStore elevations) {
         this.users = users; this.userRoles = userRoles; this.roles = roles; this.rolePerms = rolePerms;
+        this.elevations = elevations;
     }
 
     @PostConstruct
@@ -43,6 +47,11 @@ public class UserPermissionCache {
 
     /** 任何 auth_user / auth_role / auth_role_perm / auth_user_role 的写操作之后必须调。 */
     public synchronized void reload() {
+        // 提权授权一并清空。不清的话「停用立刻踢」这条就有个 30 分钟的洞:
+        // 被停用的账号仍能靠手上的授权继续写 —— 那正是这份缓存存在的理由。
+        // 粗粒度(清所有人)是故意的:reload 不知道是谁变了,而角色变更本就罕见,
+        // 代价只是重新叫主管点一次头。
+        elevations.revokeAllUsers();
         // 只装 status=1 的账号:停用的查不到 → 下一个请求就 401,不必等令牌过期
         List<AuthUser> active = users.selectList(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getStatus, 1));
         if (active.isEmpty()) { snapshot = Map.of(); return; }

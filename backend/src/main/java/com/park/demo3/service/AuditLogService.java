@@ -2,6 +2,7 @@ package com.park.demo3.service;
 
 import com.park.demo3.entity.AuthAuditLog;
 import com.park.demo3.mapper.AuthAuditLogMapper;
+import com.park.demo3.security.ElevationStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,9 @@ public class AuditLogService {
             l.setActor(actor());
             l.setAction(action);
             l.setTarget(target);
-            l.setAuthorizer(authorizer);
+            // 显式传的授权人优先；没传就看本次请求是不是靠提权放行的（WriteAccessManager 塞的）。
+            // 这一句让所有现存调用点自动记上授权人，一处都不用改。
+            l.setAuthorizer(authorizer != null ? authorizer : ElevationStore.currentAuthorizer());
             l.setDetail(detail);
             logs.insert(l);
         } catch (Exception e) {
