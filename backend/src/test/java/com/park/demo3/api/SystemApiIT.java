@@ -64,7 +64,7 @@ class SystemApiIT extends AbstractMysqlIT {
         String body = utf8(mvc.perform(get("/api/system/perms").header("Authorization", hdr(admin())))
                 .andExpect(status().isOk()).andReturn());
         List<String> keys = JsonPath.read(body, "$.data.perms[*].key");
-        assertThat(keys).as("字典必须覆盖 Perm.ALL 全部 13 项").containsExactlyElementsOf(Perm.ALL);
+        assertThat(keys).as("字典必须覆盖 Perm.ALL 全部 14 项").containsExactlyElementsOf(Perm.ALL);
         List<String> labels = JsonPath.read(body, "$.data.perms[*].label");
         assertThat(labels).allSatisfy(l -> assertThat(l).isNotBlank());
         List<String> layers = JsonPath.read(body, "$.data.navLayers[*].id");
@@ -89,14 +89,37 @@ class SystemApiIT extends AbstractMysqlIT {
     @Test
     @Transactional
     void cannotEditOwnRoles() throws Exception {
+        // 只拦**角色**：清空自己的角色 = 当场把自己关在门外
         String t = admin();
         int meId = adminId(t);
         String body = utf8(mvc.perform(put("/api/system/users/" + meId)
                 .header("Authorization", hdr(t)).contentType("application/json")
-                .content("{\"displayName\":\"改个名\",\"roleIds\":[]}")
+                .content("{\"displayName\":\"周明\",\"roleIds\":[]}")
         ).andExpect(status().isOk()).andReturn());
         assertThat((int) JsonPath.read(body, "$.code")).isEqualTo(409);
         assertThat((String) JsonPath.read(body, "$.message")).contains("不能修改自己的角色");
+    }
+
+    @Test
+    @Transactional
+    void canRenameSelf() throws Exception {
+        // 改自己的显示名是无害的，不该被自锁守卫一起拦掉（初版一刀切拦了整个 updateUser，
+        // 结果管理员连自己的名字都改不了 —— 2026-08-22 用户反馈）。
+        String t = admin();
+        int meId = adminId(t);
+        List<Integer> myRoles = JsonPath.read(utf8(mvc.perform(get("/api/system/users").param("q", "admin")
+                .header("Authorization", hdr(t))).andReturn()), "$.data[?(@.username=='admin')].roles[*].id");
+
+        String body = utf8(mvc.perform(put("/api/system/users/" + meId)
+                .header("Authorization", hdr(t)).contentType("application/json")
+                .content("{\"displayName\":\"我\",\"roleIds\":" + myRoles + "}")
+        ).andExpect(status().isOk()).andReturn());
+        assertThat((int) JsonPath.read(body, "$.code")).as("角色没变、只改名 → 放行").isEqualTo(0);
+        assertThat((String) JsonPath.read(body, "$.data.displayName")).isEqualTo("我");
+
+        // 名字改了，角色一个没少 —— 别把「不动角色」实现成「清空角色」
+        List<Integer> after = JsonPath.read(body, "$.data.roles[*].id");
+        assertThat(after).containsExactlyInAnyOrderElementsOf(myRoles);
     }
 
     @Test

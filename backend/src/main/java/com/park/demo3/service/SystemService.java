@@ -198,14 +198,31 @@ public class SystemService {
     @Transactional
     public UserDTO updateUser(Integer id, UserUpdateReq req) {
         AuthUser u = mustUser(id);
-        guardNotSelf(u, "不能修改自己的角色。请让另一位管理员来改 —— 万一改错把自己关在门外，"
-                      + "这个系统没有第二条进门的路。");
+        boolean self = u.getUsername().equals(currentUsername());
+
+        // 自锁防护只针对**角色**：改错角色会把自己关在门外，而这系统没有第二条进门的路。
+        // 改自己的显示名是无害的，不该一起拦 —— 初版守卫一刀切拦掉整个 updateUser，
+        // 结果管理员连自己的名字都改不了（2026-08-22 用户反馈）。
+        if (self && rolesChanged(id, req.roleIds()))
+            throw new BizException(ResultCode.CONFLICT,
+                "不能修改自己的角色。显示名可以改，角色请让另一位管理员来改 —— "
+              + "万一改错把自己关在门外，这个系统没有第二条进门的路。");
+
         u.setDisplayName(req.displayName());
         users.updateById(u);
-        replaceRoles(id, req.roleIds());
-        audit.log("user.update", "user:" + u.getUsername(), "角色 " + safe(req.roleIds()).size() + " 个");
+        if (!self) replaceRoles(id, req.roleIds());   // 自己那行角色原样不动
+        audit.log("user.update", "user:" + u.getUsername(),
+            self ? "改显示名" : "角色 " + safe(req.roleIds()).size() + " 个");
         cache.reload();
         return oneUser(id);
+    }
+
+    /** 传进来的角色集合与库里现有的是否不同（顺序无关；null 视为空集）。 */
+    private boolean rolesChanged(Integer userId, List<Integer> incoming) {
+        Set<Integer> now = userRoles.selectList(Wrappers.<AuthUserRole>lambdaQuery()
+                .eq(AuthUserRole::getUserId, userId))
+            .stream().map(AuthUserRole::getRoleId).collect(Collectors.toSet());
+        return !now.equals(new HashSet<>(safe(incoming)));
     }
 
     @Transactional

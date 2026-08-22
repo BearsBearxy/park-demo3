@@ -218,7 +218,10 @@ function onCopyPrev() {
           <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
           编辑模式
         </Button>
-        <template v-else>
+        <!-- ⚠ 这里必须写 v-if="edit"，不能用 v-else。上面的 v-if 是「!edit && 有权限」，
+             v-else 就等于「在编辑态 **或** 没权限」—— 无权账号会看到「保存/取消」
+             （2026-08-22 用户截图抓到；P0 给 v-if 加权限判断时把 v-else 的语义带偏了）。 -->
+        <template v-if="edit">
           <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
