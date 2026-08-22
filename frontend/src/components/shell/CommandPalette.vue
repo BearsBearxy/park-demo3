@@ -3,6 +3,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import { Search, CornerDownLeft, ArrowUp, ArrowDown } from 'lucide-vue-next'
 import { filterPages, buildAllPages } from './paletteFilter'
@@ -15,16 +16,17 @@ const emit = defineEmits<{ close: [] }>()
 
 const router = useRouter()
 const tabs = useTabsStore()
+const auth = useAuthStore()
 
 const query = ref('')
 const idx = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-// ponytail: build once (FP_NAV is static)
-const allPages = buildAllPages()
+// 不可见层的屏不进面板;跟着 navLayers 走(换账号后重算,不能只 build 一次)
+const allPages = computed(() => buildAllPages(auth.navLayers, auth.can('system:view')))
 
 const groups = computed(() =>
-  filterPages(query.value, allPages, tabs.recent)
+  filterPages(query.value, allPages.value, tabs.recent)
 )
 const flat = computed(() => groups.value.flatMap(g => g.items))
 const safeIdx = computed(() => Math.min(idx.value, Math.max(0, flat.value.length - 1)))

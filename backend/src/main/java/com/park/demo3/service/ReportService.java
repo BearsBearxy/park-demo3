@@ -221,6 +221,7 @@ public class ReportService {
             .collect(Collectors.toMap(ManagementCompany::getName, ManagementCompany::getId, (a, b) -> a));
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
+        List<ImportError> notices = new ArrayList<>();
         List<ReportImportRequest.CompanySection> sections = req == null || req.sections() == null ? List.of() : req.sections();
         for (int i = 0; i < sections.size(); i++) {
             ReportImportRequest.CompanySection sec = sections.get(i);
@@ -230,7 +231,14 @@ public class ReportService {
                 continue;
             }
             Integer companyId = byName.get(name);
-            if (companyId == null) companyId = createCompany(name, byName);
+            if (companyId == null) {
+                // RBAC-SPEC §5.6:自动建档是既有能力(报表里出现新公司是正常业务),问题在于它**是静默的** ——
+                // 公司名多打一个空格或写了简称,就凭空多出一条管理公司档案,绕过 master:edit,
+                // 而且它随后会出现在台账公司下拉、收款账户簿、催缴单收款指引里,档案岗不知道它哪来的。
+                // 所以不禁止,只是让它出声:落 notices(不是 errors —— 导入本身是成功的)。
+                companyId = createCompany(name, byName);
+                notices.add(new ImportError(i, name, "库里没有这家公司,已自动建档。若是公司名写错,请去主数据删掉它"));
+            }
             clearPeriod(companyId, statement, year, month);
             List<ReportImportRequest.Cell> cells = sec.cells() == null ? List.of() : sec.cells();
             for (ReportImportRequest.Cell c : cells) {
@@ -245,7 +253,7 @@ public class ReportService {
                         a.rowKey(), a.parentKey(), a.code(), a.label(), a.level(), a.sortOrder());
             }
         }
-        return new ImportResultDTO(imported, errors.size(), errors);
+        return new ImportResultDTO(imported, errors.size(), errors, notices);
     }
 
     // ── helpers ──

@@ -277,8 +277,11 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
           </div>
         </div>
 
-        <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
-        <div v-if="warn" class="fpimp-msg warn"><component :is="iconFor('alert-triangle')" :size="15" />{{ warn }}</div>
+        <!-- 错误/告警位常驻(LAYOUT-STABILITY-SPEC §4.2):槽恒占一条消息高,解析失败时不把下面的汇总/预览顶走 -->
+        <div class="fpimp-msgs">
+          <div v-if="err" class="fpimp-msg err"><component :is="iconFor('alert-triangle')" :size="15" />{{ err }}</div>
+          <div v-if="warn" class="fpimp-msg warn"><component :is="iconFor('alert-triangle')" :size="15" />{{ warn }}</div>
+        </div>
 
         <!-- 智能整表/工资分段:汇总确认屏(替代模板列/预览区);工资模式隐期列与期选择 -->
         <ImportSummary
@@ -368,7 +371,9 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 .fpimp-col { font-size:11px; font-family:var(--font-mono); color:var(--text-muted); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-full); padding:2px 9px; white-space:nowrap; }
 .fpimp-col b { color:var(--text-secondary); font-weight:var(--fw-semibold); margin-right:3px; }
 
-.fpimp-msg { display:flex; align-items:center; gap:8px; font-size:12.5px; padding:10px 12px; border-radius:8px; }
+/* 常驻消息槽:min-height = 一条消息的整高(line-height 18 + 上下 padding 10) */
+.fpimp-msgs { display:flex; flex-direction:column; gap:8px; min-height:18px; }
+.fpimp-msg { display:flex; align-items:center; gap:8px; font-size:12.5px; line-height:18px; padding:10px 12px; border-radius:8px; }
 .fpimp-msg.ok { background:var(--accent-sky); color:var(--hue-blue); }
 .fpimp-msg.ok b { margin:0 3px; font-family:var(--font-mono); }
 .fpimp-msg.err { background:rgb(252,235,233); color:var(--hue-red); }

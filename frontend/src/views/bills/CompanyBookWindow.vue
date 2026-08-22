@@ -14,12 +14,13 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPToast from '@/components/fp/FPToast.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+const canEdit = computed(() => auth.can('master:edit'))   // 收款公司/账户属主数据(RBAC-SPEC §2)
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 const loading = ref(false)
@@ -28,12 +29,8 @@ const companies = ref<CompanyFullDTO[]>([])
 const selId = ref<number | null>(null)        // null + creating=false → 未选中
 const creating = ref(false)
 const okMsg = ref('')
-let okTimer: ReturnType<typeof setTimeout> | undefined
-function flashOk(msg: string) {
-  okMsg.value = msg
-  clearTimeout(okTimer)
-  okTimer = setTimeout(() => { okMsg.value = '' }, 4000)
-}
+// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
+function flashOk(msg: string) { okMsg.value = msg }
 
 // ── 公司表单 ──
 const form = ref({ name: '', short: '', fullName: '', status: 1 })
@@ -185,10 +182,9 @@ function onClose() {
             @close="onClose">
     <div v-if="loading" class="cw-empty">加载中…</div>
     <template v-else>
-      <div v-if="okMsg" class="cw-bar ok">
-        <component :is="iconFor('check')" :size="14" />
-        <span>{{ okMsg }}</span>
-      </div>
+      <!-- 成功提示(4s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
+           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
+      <FPToast v-model="okMsg" placement="page" :duration="4000" />
 
       <div class="cw-split">
         <!-- 左:公司列表 -->
@@ -332,7 +328,6 @@ function onClose() {
 
 <style scoped>
 .cw-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
-.cw-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--hue-green); border-radius: var(--radius-md); background: rgb(240, 251, 244); font-size: var(--fs-label); color: rgb(21, 108, 60); }
 
 .cw-split { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 216px 1fr; gap: 14px; }
 .cw-list { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 2px; }

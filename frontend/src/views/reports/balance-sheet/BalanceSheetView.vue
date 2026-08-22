@@ -33,6 +33,7 @@ const STRONG_NOS = new Set([30, 47, 53])
 const selected = ref(new Set<string | number>())
 
 const {
+  canEdit,
   companyId, year, month, edit, saving, maxYear,
   companiesLoaded, yearMonths, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
@@ -338,11 +339,13 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button v-if="!edit" variant="outline" size="sm" @click="enterEdit">
+            <Button v-if="!edit && canEdit" variant="outline" size="sm" @click="enterEdit">
               <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
               编辑模式
             </Button>
-            <template v-else>
+            <!-- ⚠ 必须 v-if="edit"，不能 v-else：上面是「!edit && canEdit」，
+                 v-else 会把「没权限」也算进去，无权账号将看到「保存/取消」。 -->
+            <template v-if="edit">
               <Button variant="gray" size="sm" :disabled="saving" @click="requestCancel">取消</Button>
               <Button variant="filled" size="sm" :disabled="saving" @click="finishEdit">
                 <template #leading><component :is="iconFor('check')" :size="14" /></template>
@@ -371,7 +374,7 @@ async function onExport() {
             删除所选 ({{ selected.size }})
           </Button>
         </div>
-        <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入期末余额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : '只读 · 点击「编辑」录入 · 深色行为公式自动计算,资产 = 负债 + 所有者权益应试算平衡' }}</span>
+        <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,如需录入请在公司选择页进入单家公司' : edit ? '点击单元格录入期末余额;悬停明细行可「+」添加子类,父项自动汇总;空项留空即可' : canEdit ? '只读 · 点击「编辑」录入 · 深色行为公式自动计算,资产 = 负债 + 所有者权益应试算平衡' : '只读 · 深色行为公式自动计算,资产 = 负债 + 所有者权益应试算平衡' }}</span>
       </div>
 
       <div class="fin-two">

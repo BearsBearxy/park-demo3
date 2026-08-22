@@ -14,6 +14,9 @@ import { fpMoney, fpWan } from '@/utils/money'
 import { leasedAreaShow, occPct, OCC_NULL_WHY } from '@/types/building'
 import type { BuildingDTO, BuildingDetailDTO, BuildingUpdateReq, UnitDTO } from '@/types/building'
 import type { UnitDTO as MapUnit } from '@/components/fp/FPUnitMap.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const props = defineProps<{
   open: boolean
@@ -195,15 +198,16 @@ async function onContractCreated() {
     <template #footer>
       <!-- 危险态跟全站多数派(TenantDrawer/ContractDrawer 页脚删除)统一走 danger:
            原来和旁边「编辑楼栋」同为 gray,一眼分不出,误点即连带删掉栋内全部单元 -->
-      <Button variant="danger" size="sm" @click="delConfirm = true">
+      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" @click="delConfirm = true">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></template>
         删除
       </Button>
-      <Button variant="gray" size="sm" @click="emit('edit')">
+      <Button v-if="auth.can('master:edit')" variant="gray" size="sm" @click="emit('edit')">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></template>
         编辑楼栋
       </Button>
-      <Button variant="filled" size="sm" @click="contractDlg = true">
+      <!-- 新增合同=合同写(contract:edit),与楼栋/单元的 master:edit 分属两个权限点 -->
+      <Button v-if="auth.can('contract:edit')" variant="filled" size="sm" @click="contractDlg = true">
         <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
         新增合同
       </Button>
@@ -242,8 +246,9 @@ async function onContractCreated() {
         <template #right>
           <span style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;color:var(--text-muted)">点击单元查看租户</span>
-            <Button variant="outline" size="sm" @click="addFloor">添加楼层</Button>
+            <Button v-if="auth.can('master:edit')" variant="outline" size="sm" @click="addFloor">添加楼层</Button>
             <Button
+              v-if="auth.can('master:edit')"
               variant="outline" size="sm"
               :disabled="!canRemoveTop"
               :title="topHasUnits ? '顶层存在单元,不可删除' : ((b?.floorCount ?? 0) <= 1 ? '至少保留一层' : undefined)"
@@ -255,6 +260,7 @@ async function onContractCreated() {
       <FPUnitMap
         :building="{ units, floorCount: b?.floorCount ?? 0 }"
         :selectedNo="selUnit?.unitNo ?? null"
+        :can-add="auth.can('master:edit')"
         @pick="onPick"
         @add-unit="onAddUnit"
       />
@@ -303,8 +309,8 @@ async function onContractCreated() {
       <div v-else style="font-size:12.5px;color:var(--text-muted)">
         该单元当前{{ STATUS_LABEL[selUnit.status] }}，可发起招商或新增合同。
       </div>
-      <!-- 单元操作区:换层 / 编辑 / 删除 -->
-      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle)">
+      <!-- 单元操作区:换层 / 编辑 / 删除(整条=单元写操作,无 master:edit 不出现;上方单元信息照常显示) -->
+      <div v-if="auth.can('master:edit')" style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle)">
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)">
           换层
           <Select
@@ -337,6 +343,7 @@ async function onContractCreated() {
           </div>
           <span style="font-family:var(--font-mono);font-size:12.5px;font-weight:var(--fw-semibold)">{{ fpMoney(t.rent) }}</span>
           <Select
+            v-if="auth.can('master:edit')"
             size="sm" placeholder="换层" title="将该租户单元移至目标楼层"
             :options="floorOpts" :model-value="''"
             :style="{ width: '84px', flex: '0 0 auto' }"

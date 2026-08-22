@@ -414,7 +414,7 @@ const revOpt = computed<object>(() => ({
           <div class="av2-card av2-s6">
             <div class="av2-card-h">
               <span class="t">消纳结构 · 自消纳 / 上网 / 损耗</span>
-              <span class="roi2-seg" role="group" aria-label="消纳结构视角">
+              <span class="anx-seg mini" role="group" aria-label="消纳结构视角">
                 <button :class="{ on: consBy === 'month' }" @click="consBy = 'month'">按月</button>
                 <button :class="{ on: consBy === 'station' }" @click="consBy = 'station'">按站</button>
               </span>
@@ -465,8 +465,4 @@ const revOpt = computed<object>(() => ({
 .roi2-sect .hint { margin-left: 8px; font-size: var(--fs-micro); color: var(--text-muted); }
 .roi2-ysel { font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
 .roi2-nocap { margin: 6px 0 0; font-size: 11px; color: var(--text-muted); }
-/* 卡头 mini seg(仿 AnaShell .anx-seg;scoped 不透传 → 本地复刻,同 TenantEnergyView 惯例) */
-.roi2-seg { display: inline-flex; flex: 0 0 auto; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 2px; gap: 2px; }
-.roi2-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); padding: 3px 10px; border-radius: var(--radius-full); transition: background var(--dur-fast), color var(--dur-fast); }
-.roi2-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28, 28, 28, .1); }
 </style>

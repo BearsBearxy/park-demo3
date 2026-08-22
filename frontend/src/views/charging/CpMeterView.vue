@@ -12,6 +12,8 @@ import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMet
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -38,8 +40,18 @@ const fq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 }
 const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
-const editMode = ref(false)
-onDeactivated(() => { editMode.value = false; stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'])
+// RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
+// 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
+const canMaster = computed(() => auth.can('meter-master:edit'))
+const canReading = computed(() => auth.can('meter-reading:edit'))
+const canRun = computed(() => auth.can('billing-run:edit'))
+const editStation = computed(() => editMode.value && canMaster.value)
+const editReading = computed(() => editMode.value && canReading.value)
+onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
 
 // ── 期间(年月 Select,同 PvMeterView) ──
 const today = new Date()
@@ -315,7 +327,8 @@ async function onTemplate() {
           <p class="cm-sub">逐桩按日期记条,自动汇月 · 充电量/手续费/收益从平台对账单抄录 · 电量 kWh / 金额 元</p>
         </div>
       </div>
-      <Button v-if="editMode" variant="outline" size="sm" @click="openStationDlg">
+      <!-- 桩增删=桩库档案(EDIT-MODE-SPEC + meter-master:edit) -->
+      <Button v-if="editStation" variant="outline" size="sm" @click="openStationDlg">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增充电桩
       </Button>
@@ -335,11 +348,12 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('file-spreadsheet')" :size="14" /></template>
           下载模板
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" @click="importing = true">
+        <Button v-if="editReading" variant="outline" size="sm" @click="importing = true">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- 模拟填充=读附表7/8 整年批量派生(§5.3-⑥)→ billing-run,不是抄表权 -->
+        <Button v-if="editMode && canRun" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
@@ -347,7 +361,8 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
         </Button>
-        <Button v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -359,8 +374,8 @@ async function onTemplate() {
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无充电记录 ——
-        <template v-if="editMode">可<button class="cm-link" @click="importing = true">导入</button>整月充电明细 Excel,或点击任意桩行进入抽屉手动录入。</template>
-        <template v-else-if="!auth.isReadonly">进入右上角「编辑模式」后可录入或导入。</template>
+        <template v-if="editReading">可<button class="cm-link" @click="importing = true">导入</button>整月充电明细 Excel,或点击任意桩行进入抽屉手动录入。</template>
+        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
         <template v-else>各桩显示零值。</template>
       </span>
     </div>
@@ -391,14 +406,14 @@ async function onTemplate() {
             <tr v-for="r in rows" :key="r.st.id" @click="openSt = r.st">
               <!-- 桩名/运营商=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本 -->
               <td class="name" :title="r.st.name">
-                <input v-if="editMode" class="cm-edit l" type="text"
+                <input v-if="editStation" class="cm-edit l" type="text"
                        :value="r.st.name" title="桩名,回车/失焦保存(需唯一)"
                        @click.stop
                        @change="commitStation(r.st, 'name', ($event.target as HTMLInputElement).value)" />
                 <span v-else class="nm">{{ r.st.name }}</span>
               </td>
               <td :title="r.st.operator">
-                <input v-if="editMode" class="cm-edit l" type="text"
+                <input v-if="editStation" class="cm-edit l" type="text"
                        :value="r.st.operator" title="运营商,回车/失焦保存"
                        @click.stop
                        @change="commitStation(r.st, 'operator', ($event.target as HTMLInputElement).value)" />
@@ -418,7 +433,7 @@ async function onTemplate() {
     <Card v-if="myUsage.length" surface="white" :padding="0" class="cm-usage">
       <div class="cm-usage-head">
         <span class="t"><component :is="iconFor('zap')" :size="14" />电表与损耗</span>
-        <span class="s">每运营商每月一条电表用电量 · 损耗 = 电表 − Σ充电量(读时派生,负值黄警示不阻断){{ !auth.isReadonly && !editMode ? ' · 编辑模式下可录改电表值' : '' }}</span>
+        <span class="s">每运营商每月一条电表用电量 · 损耗 = 电表 − Σ充电量(读时派生,负值黄警示不阻断){{ canReading && !editMode ? ' · 编辑模式下可录改电表值' : '' }}</span>
       </div>
       <table class="cm-utable">
         <colgroup>
@@ -439,7 +454,7 @@ async function onTemplate() {
           <tr v-for="u in myUsage" :key="u.operator">
             <td>{{ u.operator }}</td>
             <td class="num">
-              <input v-if="editMode" class="cm-edit" type="number" min="0" step="0.01"
+              <input v-if="editReading" class="cm-edit" type="number" min="0" step="0.01"
                      :value="u.meterKwh ?? ''" placeholder="未录" title="电表用电量,回车/失焦保存"
                      @change="commitMeter(u, ($event.target as HTMLInputElement).value)" />
               <span v-else>{{ u.meterKwh != null ? fq(u.meterKwh) : '—' }}</span>
@@ -465,7 +480,7 @@ async function onTemplate() {
       @close="openSt = null"
     >
       <div v-if="drawerRows.length === 0 && !adding" class="cm-dempty">
-        该桩本月暂无充电记录{{ editMode ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : auth.isReadonly ? '。' : ',进入编辑模式后可录入或导入。' }}
+        该桩本月暂无充电记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
       </div>
       <div v-else class="cm-dwrap">
         <table class="cm-dtable">
@@ -476,7 +491,7 @@ async function onTemplate() {
             <col style="width:106px" />
             <col style="width:106px" />
             <col /><!-- 备注:唯一弹性列(截断走 title) -->
-            <col v-if="editMode" style="width:70px" />
+            <col v-if="editReading" style="width:70px" />
           </colgroup>
           <thead>
             <tr>
@@ -485,7 +500,7 @@ async function onTemplate() {
               <th>手续费 (元)</th>
               <th>收益 (元)</th>
               <th class="l">备注</th>
-              <th v-if="editMode"></th>
+              <th v-if="editReading"></th>
             </tr>
           </thead>
           <tbody>
@@ -509,7 +524,7 @@ async function onTemplate() {
                 <td>{{ fy(r.revenue) }}</td>
                 <!-- simulated 灰「模拟」徽标随备注列(挤日期列会撑爆列宽;模拟 note 本就以「模拟:」开头同列语义顺),录改后转 manual 自动消失 -->
                 <td class="l note" :title="r.note ?? undefined"><span v-if="r.source === 'simulated'" class="cm-sim" :title="r.note ?? '模拟数据'">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
-                <td v-if="editMode" class="ops">
+                <td v-if="editReading" class="ops">
                   <button class="cm-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
                   <button class="cm-iop danger" title="删除" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
@@ -531,13 +546,13 @@ async function onTemplate() {
         </table>
       </div>
 
-      <template v-if="editMode" #footer>
-        <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除桩与新增记录同收 -->
-        <Button variant="outline" size="sm" style="margin-right:auto;color:var(--hue-red)" @click="delStation">
+      <template v-if="editStation || editReading" #footer>
+        <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除桩=桩库档案权,新增记录=读数权 -->
+        <Button v-if="editStation" variant="outline" size="sm" style="margin-right:auto;color:var(--hue-red)" @click="delStation">
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           删除充电桩
         </Button>
-        <Button variant="filled" size="sm" :disabled="adding" @click="startAdd">
+        <Button v-if="editReading" variant="filled" size="sm" :disabled="adding" @click="startAdd">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增记录
         </Button>
@@ -582,6 +597,7 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPElevateDialog :perms="asking" what="维护充电桩表档案" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 

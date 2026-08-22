@@ -1,8 +1,9 @@
 <script lang="ts">
 /**
- * SidebarNav — 1:1 Vue 3 port of the Factory Park Design System SidebarNav.jsx
+ * SidebarNav — 本文件即标准。
  *
- * Prop names / defaults / behaviour match the React source exactly.
+ * 源于 2026-06 对设计包 SidebarNav.jsx 的 1:1 移植；那份 jsx 已冻结为
+ * 2026-06 基线（.claude/skills/factory-park-design/），不再跟随本文件更新。
  * v-model support added: modelValue mirrors `active`; emits "update:modelValue".
  */
 import { defineComponent, h, ref, computed, Fragment } from "vue";

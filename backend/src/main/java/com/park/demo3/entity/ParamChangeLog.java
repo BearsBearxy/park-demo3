@@ -9,6 +9,7 @@ public class ParamChangeLog {
     @TableId(type = IdType.AUTO) private Long id;
     private LocalDateTime ts;
     private String actor;
+    private String authorizer;   // 提权授权人；NULL = 本人有权
     private String tbl;
     private String scope;
     private String cfgKey;

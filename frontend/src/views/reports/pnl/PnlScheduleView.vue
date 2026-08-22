@@ -351,6 +351,7 @@ async function onExport() {
           :sub="sub"
           :year="year"
           :edit="edit"
+          perm="report:edit"
           @back="goGate"
           @toggle-edit="toggleEdit"
          :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty">

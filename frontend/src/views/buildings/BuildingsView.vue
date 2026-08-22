@@ -22,6 +22,9 @@ import BuildingCard from './BuildingCard.vue'
 import BuildingDrawer from './BuildingDrawer.vue'
 import BuildingNewDialog from './BuildingNewDialog.vue'
 import { iconFor } from '@/components/ds/icon'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 // ─── state ───────────────────────────────────────────────
 const buildings = ref<BuildingDTO[]>([])
@@ -219,7 +222,7 @@ const occSub = computed(() => {
             导入
           </Button>
         </span>
-        <Button variant="filled" size="sm" @click="newDlg = true">
+        <Button v-if="auth.can('master:edit')" variant="filled" size="sm" @click="newDlg = true">
           <template #leading><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></template>
           新增楼栋
         </Button>

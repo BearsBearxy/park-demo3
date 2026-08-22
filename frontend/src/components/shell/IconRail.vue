@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogOut } from 'lucide-vue-next'
-import { FP_NAV, fpFindLayer } from '@/nav/fpNav'
+import { fpFindLayer } from '@/nav/fpNav'
+import { visibleLayers } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
@@ -27,6 +28,9 @@ const activeLayer = computed(() =>
   fpFindLayer((route.meta as Record<string, string>).value ?? '')
 )
 
+// 导航层可见性按角色的 navLayers,不按权限点(读全开:看不到入口 ≠ 进不去)
+const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
+
 // 层切换=侧边栏级显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
 const tabsStore = useTabsStore()
 function goLayer(home: string) {
@@ -47,7 +51,7 @@ function goLayer(home: string) {
 
     <!-- layer buttons -->
     <button
-      v-for="layer in FP_NAV"
+      v-for="layer in layers"
       :key="layer.id"
       class="fp-rail-btn"
       :class="{ on: layer.id === activeLayer.id }"

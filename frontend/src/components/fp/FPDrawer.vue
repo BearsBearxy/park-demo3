@@ -17,14 +17,34 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ close: [] }>()
 
+// Esc 只关**最上面那个**抽屉。
+//
+// 原来每个 FPDrawer 都无条件监听 window 的 keydown，抽屉套抽屉时(如催缴单页 → 系数簿 →
+// 主管授权窗)按一次 Esc 会把它们全关掉 —— 用户只想退掉授权窗，结果连系数簿里的暂存
+// 一起没了。提权功能让「抽屉上再开一个抽屉」变成常态，所以这里要一个栈。
+//
+// ponytail: 模块级数组，不引 focus-trap 库。同一时刻打开的抽屉个位数，push/splice 足够。
+const stack: symbol[] = []
+const meId = Symbol('fp-drawer')
+
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key !== 'Escape') return
+  if (stack[stack.length - 1] !== meId) return   // 不是最上面那个，交给它处理
+  emit('close')
 }
 
+watch(() => props.open, (open) => {
+  const i = stack.indexOf(meId)
+  if (open && i < 0) stack.push(meId)
+  else if (!open && i >= 0) stack.splice(i, 1)
+}, { immediate: true })
+
 onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
-// re-register on open change so handler is always live
-watch(() => props.open, () => {})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
+  const i = stack.indexOf(meId)
+  if (i >= 0) stack.splice(i, 1)     // 未关闭就被卸载(路由切走)也要出栈,否则栈顶永远是个死抽屉
+})
 </script>
 
 <template>

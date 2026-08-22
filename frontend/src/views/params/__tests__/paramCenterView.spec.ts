@@ -4,8 +4,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ParamRowDTO, ParamStatusDTO } from '@/api/params'
 import { forbiddenText } from '@/utils/paramCenterLogic'
+import { useAuthStore } from '@/stores/auth'
 
-beforeEach(() => setActivePinia(createPinia()))
+// RBAC:本屏三扇门(① param-monthly / ②③④ param-policy / 重算 billing-run),空权限进来是浏览态没有写入口
+beforeEach(() => {
+  setActivePinia(createPinia())
+  useAuthStore().permissions = ['param-monthly:edit', 'param-policy:edit', 'billing-run:edit']
+})
 
 const push = vi.fn()
 const query: Record<string, string> = { ym: '2024-02', zone: 'p1' }   // 深链;单测里可临时加 edit=1

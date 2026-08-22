@@ -11,6 +11,9 @@ import FPTenantStatus from '@/components/fp/FPTenantStatus.vue'
 import Badge from '@/components/ds/Badge.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const props = defineProps<{
   open: boolean
@@ -100,19 +103,20 @@ const subtitle = computed(() => {
     </template>
 
     <template #footer>
-      <Button variant="danger" size="sm" @click="delOpen = true">
+      <Button v-if="auth.can('master:edit')" variant="danger" size="sm" @click="delOpen = true">
         <template #leading>
           <component :is="iconFor('trash-2')" :size="14" />
         </template>
         删除
       </Button>
-      <Button variant="gray" size="sm" @click="emit('edit')">
+      <Button v-if="auth.can('master:edit')" variant="gray" size="sm" @click="emit('edit')">
         <template #leading>
           <component :is="iconFor('pencil')" :size="14" />
         </template>
         编辑
       </Button>
-      <Button variant="filled" size="sm">
+      <!-- 新增合同=合同写(contract:edit),与租户档案的 master:edit 分属两个权限点 -->
+      <Button v-if="auth.can('contract:edit')" variant="filled" size="sm">
         <template #leading>
           <component :is="iconFor('plus')" :size="14" />
         </template>

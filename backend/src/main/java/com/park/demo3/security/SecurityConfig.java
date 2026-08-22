@@ -11,23 +11,39 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * RBAC-SPEC v2「读全开,写分权」。
+ *
+ * 读:GET /api/** 任何已登录账号放行 —— 与 V32 之前的现状完全一致,这一行没变。
+ *    分析层是纯只读派生层,它的数据天然来自全站;给读分权挡住的不是坏人,是它自己
+ *    (v1 曾按模块拦读,结果总经理打不开充电桩分析、股东账号是空壳、12 处深链撞墙)。
+ * 写:非 GET /api/** 交 {@link WriteAccessManager} 查映射表,**默认拒绝**。
+ * 唯一读也管的是 /api/system/**(用户列表/角色配置/操作日志)。
+ */
 @Configuration
 public class SecurityConfig {
     private final JwtAuthFilter jwtFilter;
-    public SecurityConfig(JwtAuthFilter jwtFilter) { this.jwtFilter = jwtFilter; }
+    private final WriteAccessManager writeAccess;
+    public SecurityConfig(JwtAuthFilter jwtFilter, WriteAccessManager writeAccess) {
+        this.jwtFilter = jwtFilter; this.writeAccess = writeAccess;
+    }
 
     @Bean SecurityFilterChain chain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
             .cors(c -> {})
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
-                // 仅放行存活/就绪探针；/actuator/metrics、/prometheus、health 详情不再匿名可见
-                .requestMatchers("/api/auth/login", "/actuator/health", "/actuator/health/**",
-                                 "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                // 只读角色(V32):GET=读,任意已登录角色;非 GET=写,仅 admin。
-                // 全部 POST/PUT/PATCH/DELETE 端点语义均为写(导入/标记/复制/保存都是 POST 写),GET-only 即只读成立
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/**", "/actuator/**").authenticated()
-                .requestMatchers("/api/**", "/actuator/**").hasRole("ADMIN")
+                // ── 放行段:必须在最前。/actuator/health 是 Dockerfile 的 HEALTHCHECK 探针
+                //    (wget -qO- http://localhost:8080/actuator/health),拿 401 的话容器永远 unhealthy。
+                .requestMatchers(SecurityPaths.PERMIT_ALL).permitAll()
+                // ── 系统管理:全站唯一「读也管」的一段(RBAC-SPEC §5.1)
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/system/**").hasAuthority(Perm.SYSTEM_VIEW)
+                .requestMatchers("/api/system/**").hasAuthority(Perm.SYSTEM_EDIT)
+                .requestMatchers("/actuator/**").hasAuthority(Perm.SYSTEM_VIEW)
+                // ── 读全开
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/**").authenticated()
+                // ── 写分权
+                .requestMatchers("/api/**").access(writeAccess)
                 .anyRequest().permitAll())
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> {
@@ -36,11 +52,16 @@ public class SecurityConfig {
                 objectMapper.writeValue(res.getWriter(),
                     Result.error(ResultCode.UNAUTHORIZED.code, ResultCode.UNAUTHORIZED.message));
             }).accessDeniedHandler((req, res, ex) -> {
-                // viewer 触发写操作 → HTTP 403 + Result 信封(前端既有 catch→alert 直接显示中文)
                 res.setStatus(403);
                 res.setContentType("application/json;charset=UTF-8");
-                objectMapper.writeValue(res.getWriter(),
-                    Result.error(ResultCode.FORBIDDEN.code, ResultCode.FORBIDDEN.message));
+                // 通用 403 文案是「不能改，但可查看」—— 那对 /api/system/** 是**反的**:
+                // 它是全站唯一"读也管"的一段,被拦的人恰恰是不该看到这些内容。
+                // 套通用文案会告诉他"你可以查看",而他点开只会得到又一个 403。
+                boolean system = req.getRequestURI() != null && req.getRequestURI().contains("/api/system/");
+                String msg = system
+                    ? "无访问权限：账号与角色管理仅对系统管理员开放"
+                    : ResultCode.FORBIDDEN.message;
+                objectMapper.writeValue(res.getWriter(), Result.error(ResultCode.FORBIDDEN.code, msg));
             }));
         return http.build();
     }

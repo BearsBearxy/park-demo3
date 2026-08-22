@@ -15,7 +15,9 @@ class BuildingServiceTest {
     com.park.demo3.mapper.ContractUnitMapper cum = Mockito.mock(com.park.demo3.mapper.ContractUnitMapper.class);
     ContractBillingTermMapper btm = Mockito.mock(ContractBillingTermMapper.class);
     BillingTermUnitMapper btum = Mockito.mock(BillingTermUnitMapper.class);
-    BuildingService svc = new BuildingService(bm, um, cm, tm, cum, btm, btum);
+    // V102/P2:改单元面积要写变更日志(面积是计费口径,不只是档案字段)。本类不测那条路径,给个 mock 即可。
+    ParamService params = Mockito.mock(ParamService.class);
+    BuildingService svc = new BuildingService(bm, um, cm, tm, cum, btm, btum, params);
 
     Building b(int id,int phase,int status,double rentable){ Building x=new Building();
         x.setId(id);x.setName("B"+id);x.setPhase(phase);x.setFloorCount(1);

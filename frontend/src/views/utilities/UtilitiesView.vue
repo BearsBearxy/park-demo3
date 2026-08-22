@@ -157,6 +157,7 @@ const onExport = () => guard('导出失败', async () => {
           :sub="meta.sub"
           :year="year"
           :edit="edit"
+          perm="entry:edit"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

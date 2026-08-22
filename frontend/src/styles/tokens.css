@@ -1,6 +1,8 @@
 /* ============================================================
    Factory Park Design System — Design Tokens
-   Copied verbatim from Factory Park Design System/tokens/*.css
+   ⚠ 本文件即令牌标准（2026-08 起）。改令牌先改这里，再同步镜像：
+   .claude/skills/factory-park-design/tokens/*.css。
+   历史：2026-06 反方向，由设计包逐字复制而来。
    ============================================================ */
 
 /* Roboto Mono 自托管(2026-08-13)。

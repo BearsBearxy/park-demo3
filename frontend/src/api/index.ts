@@ -13,9 +13,46 @@ declare module 'axios' {
 
 const http = axios.create({ baseURL: '/api' })
 
+export function readToken(): string | null {
+  return localStorage.getItem('token') ?? sessionStorage.getItem('token')
+}
+
+// ── 跨标签页身份漂移守卫 ─────────────────────────────────────────────
+//
+// localStorage 是**按域名共享、不分标签页**的。同一台机器上：同事甲登着、走开了，
+// 同事乙在新标签页登自己的账号 —— 甲那个标签页的界面还是甲的（Pinia 内存里的权限没变），
+// 但请求拦截器每次都现读 storage，于是**甲后续做的每件事都带着乙的令牌发出去，记在乙头上**。
+//
+// 这正好把审计体系作废：它的全部意义就是「谁做的」。
+//
+// 所以守在这里 —— 请求拦截器是唯一的咽喉。页面加载/登录时把当前令牌「绑定」到本标签页，
+// 之后每个请求比一次；对不上就**拒发**，而不是替另一个人把事做了。
+// 只做拒发不做自动刷新：CONCURRENCY-SPEC 的铁律是「永远不刷新用户正在编辑的表格」，
+// 由 AppShell 出一条横幅让用户自己点。
+let boundToken: string | null = readToken()
+
+/** 本标签页登录/登出后重新绑定（同标签页内的正常切换不该被守卫误伤）。 */
+export function bindSession(token: string | null): void {
+  boundToken = token
+}
+
+/** 令牌在别处被换掉了 —— 本标签页的界面已经不代表当前身份。 */
+export function sessionDrifted(): boolean {
+  return readToken() !== boundToken
+}
+
+export class SessionDriftError extends Error {
+  constructor() {
+    super('此浏览器已在别处登录为另一个账号，本页面的会话已失效。请重新载入页面。')
+    this.name = 'SessionDriftError'
+  }
+}
+
 // Attach token if present:localStorage(记住登录)优先,sessionStorage(不记住)兜底,口径同 stores/auth.ts
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token') ?? sessionStorage.getItem('token')
+  const token = readToken()
+  // ⚠ 拒发要在附带令牌之前 —— 不能「先发出去再说」，那一发就已经记在别人头上了
+  if (token !== boundToken) return Promise.reject(new SessionDriftError())
   if (token) config.headers['Authorization'] = `Bearer ${token}`
   return config
 })
@@ -32,10 +69,13 @@ http.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
-      for (const k of ['token', 'displayName', 'role']) {
+      // permissions/navLayers/mustChangePassword 必须一起清:留在 storage 里,
+      // 同一台机器下一个人登录会继承前一个人的权限(或被前一个人的改密标志拦住)
+      for (const k of ['token', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) {
         localStorage.removeItem(k)
         sessionStorage.removeItem(k)
       }
+      bindSession(null)   // 同步解绑,否则跳登录页后守卫还拿着已作废的旧令牌比对
       // 整页跳转让 Pinia auth store 从（已清空的）localStorage 重新初始化为 null；
       // 带 redirect 以便登录后回到原页，且避免在登录页自身重复跳转
       if (!location.pathname.startsWith('/login')) {

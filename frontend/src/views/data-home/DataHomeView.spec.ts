@@ -53,9 +53,14 @@ function overview(patch: Partial<DataHomeOverviewDTO> = {}): DataHomeOverviewDTO
   }
 }
 
-async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { role?: string } = {}) {
-  if (opts.role) localStorage.setItem('role', opts.role)
-  else localStorage.removeItem('role')
+// RBAC v2 起 isReadonly = 「一个 :edit 权限都没有」,不再是 role === 'viewer'。
+// 这屏用它决定 CTA 文案(「去处理」vs「查看」)与写按钮是否渲染,所以默认给一个有写权限的
+// 登录态 —— 否则版面用例会被权限态带偏(空 pinia 在 v2 下就是只读)。传 perms: [] 模拟只读账号。
+// 必须在 setActivePinia 之前写 storage:auth store 是初始化时读它的。
+const EDITOR_PERMS = ['entry:edit', 'billing-run:edit', 'meter-reading:edit', 'report:edit']
+
+async function mountWith(patch: Partial<DataHomeOverviewDTO> = {}, opts: { perms?: string[] } = {}) {
+  localStorage.setItem('permissions', JSON.stringify(opts.perms ?? EDITOR_PERMS))
   setActivePinia(createPinia())
   getOverview.mockResolvedValue(overview(patch))
   const w = mount(DataHomeView)
@@ -97,8 +102,8 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(w.find('.dh-steps').exists()).toBe(false)   // 空库不摆流水线空架子
   })
 
-  it('viewer 只读:主 CTA 改「查看」,前置条的写操作按钮隐藏', async () => {
-    const w = await mountWith({ blockers: [BLOCKER_CONTRACT] }, { role: 'viewer' })
+  it('零写权限:主 CTA 改「查看」,前置条的写操作按钮隐藏', async () => {
+    const w = await mountWith({ blockers: [BLOCKER_CONTRACT] }, { perms: [] })
     expect(w.text()).toContain('查看')
     expect(w.text()).not.toContain('去处理')
     // 前置条文案照出(他该知道有缺口),但「去补档」是写操作,不给点

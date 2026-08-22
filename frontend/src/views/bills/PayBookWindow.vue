@@ -4,7 +4,7 @@
 // 暂存-保存两段/切换与关闭前二次确认):同一个页面的两个簿,手法不一致会让用户重新学一遍。
 // 收款槽=附表10 colId(不是催缴单 fee_key):一个槽承接多个费项,注册表与继承口径在 payBookLogic。
 // 写=PUT /bills/paymap 单格 upsert 序列(与账单屏徽标同一张表);viewer 只读查看。
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { billsApi } from '@/api/bills'
 import { companyBookApi, type CompanyFullDTO } from '@/api/billDelivery'
 import type { S10ColId } from '@/types/s10'
@@ -21,6 +21,8 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
 
 const props = defineProps<{
   open: boolean
@@ -33,7 +35,11 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; saved: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:收款簿改的是单据的收款公司归属 —— 与催缴单的收款槽同一扇门
+const canEdit = computed(() => auth.can('billing-issue:edit'))
+// 无权账号也看得到「编辑模式」,点了弹主管授权窗(ELEVATION-SPEC)
+const asking = ref<string[] | null>(null)
+const canAsk = computed(() => canEdit.value || auth.can('elevate:request'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
 // ── 窗口态 ──
@@ -45,6 +51,12 @@ const q = ref('')
 const colId = ref<string>(COL_SLOTS[0].colId)
 const unsetOnly = ref(false)
 const editMode = ref(false)
+// ⚠ 本窗口不走 useEditMode(有自己的退出语义),但必须登记进 auth.editors ——
+//   不登记的话守卫两头都失效:别的页面退出编辑时会把本窗口正用着的授权一起结束掉,
+//   而本窗口退出时又会被别的页面挡住结束不了。
+const meId = Symbol('pay-book')
+watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<PayStash>(new Map())
 const selected = ref(new Set<number>())
 const uniCo = ref('')
@@ -170,12 +182,8 @@ function setSlot(v: string) {
 // ── 保存:逐条 PUT(后端单格 upsert);失败中断报错并把已提交部分落到本地缓存 ──
 const saving = ref(false)
 const okMsg = ref('')
-let okTimer: ReturnType<typeof setTimeout> | undefined
-function flashOk(msg: string) {
-  okMsg.value = msg
-  clearTimeout(okTimer)
-  okTimer = setTimeout(() => { okMsg.value = '' }, 5000)
-}
+// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
+function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
   if (saving.value || stash.value.size === 0) return
   const plan = buildPayPlan(stash.value)
@@ -214,6 +222,8 @@ async function exitEdit() {
   }
   editMode.value = false
   selected.value = new Set()
+  auth.closeEditor(meId)        // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
+  void auth.endElevation()      // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
 function onClose() {
   if (saving.value) return
@@ -230,10 +240,9 @@ function onClose() {
             @close="onClose">
     <div v-if="loading" class="pb-empty">加载中…</div>
     <template v-else>
-      <div v-if="okMsg" class="pb-bar ok">
-        <component :is="iconFor('check')" :size="14" />
-        <span>{{ okMsg }}</span>
-      </div>
+      <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
+           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
+      <FPToast v-model="okMsg" placement="page" :duration="5000" />
 
       <!-- 控制行:期页签+搜索+只看未设置 | 收款槽下拉 -->
       <div class="pb-controls">
@@ -351,19 +360,21 @@ function onClose() {
           {{ saving ? '保存中…' : `保存(${stash.size})` }}
         </Button>
       </template>
-      <Button v-else-if="canEdit && !loading" variant="outline" size="sm" @click="editMode = true">
+      <Button v-else-if="canAsk && !loading" variant="outline" size="sm"
+              @click="canEdit ? (editMode = true) : (asking = ['billing-issue:edit'])">
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑模式
       </Button>
       <Button variant="outline" size="sm" @click="onClose">关闭</Button>
     </template>
+    <FPElevateDialog :perms="asking" what="改收款公司槽"
+                     @close="asking = null" @elevated="asking = null; editMode = true" />
   </FPDrawer>
 </template>
 
 <style scoped>
 .pb-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 .pb-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.pb-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 
 .pb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pb-lbl { font-size: 12px; color: var(--text-muted); }

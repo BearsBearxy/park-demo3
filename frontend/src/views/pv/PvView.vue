@@ -160,6 +160,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           sub="逐月发电台账 · 自发自用、余电上网 · 电量 kWh / 金额 元"
           :year="year"
           :edit="edit"
+          perm="entry:edit"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

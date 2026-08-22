@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
+import { landingPath } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
@@ -7,6 +8,7 @@ import { useUiStore } from '@/stores/ui'
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
 const LoginView = () => import('@/views/LoginView.vue')
+const ChangePasswordView = () => import('@/views/ChangePasswordView.vue')
 // 充电桩两屏(汽车/电动车)共用同一参数化 View
 const ChargingView = () => import('@/views/charging/ChargingView.vue')
 // 损益附表 1–5:5 条路由共用同一参数化 View(P2-D spec D4)
@@ -65,6 +67,10 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'anomaly': () => import('@/views/analysis/AnomalyView.vue'),
   'elec-analysis': () => import('@/views/analysis/ElecAnalysisView.vue'),
   'charging-analysis': () => import('@/views/analysis/ChargingAnalysisView.vue'),
+  // 系统管理(整层按 system:view 显隐,见 nav/navAccess.ts)
+  'sys-users': () => import('@/views/system/SystemUsersView.vue'),
+  'sys-roles': () => import('@/views/system/SystemRolesView.vue'),
+  'sys-logs': () => import('@/views/system/SystemLogsView.vue'),
 }
 
 const navRoutes = fpBuildRoutes()
@@ -79,10 +85,13 @@ if (import.meta.env.DEV) {
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/data-home' },
+    // 落地页按 navLayers 定(园区股东看不到数据层,落驾驶舱);pinia 先于 router 安装,守卫期取 store 安全
+    { path: '/', redirect: () => landingPath(useAuthStore().navLayers, useAuthStore().can('system:view')) },
     // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
     { path: '/price-cfg', redirect: '/params' },
     { path: '/login', component: LoginView },
+    // 不进导航:首次登录强制改密的落点,也可自行访问改密
+    { path: '/change-password', component: ChangePasswordView },
     { path: '/_gallery', component: Gallery },
     ...Object.values(navRoutes).map((meta): RouteRecordRaw => ({
       path: `/${meta.value}`,
@@ -93,7 +102,7 @@ const router = createRouter({
     // 撤下的屏(如 2026-08-13 的 /bills 账单管理)与手打错的地址都落这里。
     // 没有兜底时 vue-router 匹配不到会渲染空 router-view —— 外壳在、内容区全白,像页面崩了。
     // 标签页/最近访问的残留项由 tabs store 的 ROUTES 过滤自动丢弃,不必在此处理。
-    { path: '/:pathMatch(.*)*', redirect: '/data-home' },
+    { path: '/:pathMatch(.*)*', redirect: () => landingPath(useAuthStore().navLayers, useAuthStore().can('system:view')) },
   ],
 })
 
@@ -105,8 +114,19 @@ router.beforeEach((to) => {
   if (!auth.isAuthed && to.path !== '/login') {
     return { path: '/login', query: { redirect: to.path } }
   }
+  // 首次登录强制改密:除改密页与登录页外一律拦回改密页。
+  // 目标本就是 /change-password 时必须放行,否则守卫自己把自己拦成死循环
+  if (auth.isAuthed && auth.mustChangePassword && to.path !== '/change-password' && to.path !== '/login') {
+    return { path: '/change-password' }
+  }
   if (auth.isAuthed && to.path === '/login') {
-    return { path: '/data-home' }
+    return { path: landingPath(auth.navLayers, auth.can('system:view')) }
+  }
+  // 系统管理层是**全站唯一读也管的一段**(RBAC-SPEC §4/§5.1):无 system:view 一律兜回首页。
+  // 其余 47 屏刻意不拦 —— 读全开,无权也进得去、数据照显,只是没有写入口。
+  // 不拦的话手打地址能进到一个「后端 403、页面只剩报错」的屏,看着像系统坏了。
+  if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'system' && !auth.can('system:view')) {
+    return { path: landingPath(auth.navLayers, false) }
   }
 })
 

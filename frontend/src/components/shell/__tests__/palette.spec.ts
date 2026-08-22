@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { filterPages, buildAllPages, type PageEntry } from '../paletteFilter'
 import { fpAllPages } from '@/nav/fpNav'
 
-const allPages = buildAllPages()
+const allPages = buildAllPages(['data', 'reports', 'analysis'])
 
 describe('filterPages', () => {
   it('empty query yields 最近 group (≤5) + per-layer groups', () => {

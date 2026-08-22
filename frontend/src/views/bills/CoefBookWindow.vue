@@ -5,7 +5,7 @@
 // (=当前筛选可见行)/统一修改条唯一改值入口(表格无逐行输入框)/暂存-提交模型(保存一次性顺序提交,
 // 失败中断报错并刷新已提交部分)。层份键仅二期页签开放;viewer 只读查看(编辑模式按钮走 canEdit)。
 // S21:价目键源=计费参数注册表(coefBookLogic.COEF_KEYS),读 GET /params?ym&key= 写 PUT /params;值控件按 valueKind(enum→Select)。
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { paramsApi, type ParamRowDTO } from '@/api/params'
 import { allocApi, type AllocPoolRowDTO, type AllocRuleDTO } from '@/api/alloc'
 import type { ContractDTO } from '@/types/contract'
@@ -22,6 +22,8 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
 
 const props = defineProps<{
   open: boolean
@@ -34,7 +36,12 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const auth = useAuthStore()
-const canEdit = computed(() => !auth.isReadonly)
+// RBAC:系数簿改的是计费口径,不能沿用宿主催缴单页的 billing 权(那是 billing 直通 param 的漏洞)
+const canEdit = computed(() => auth.can('param-policy:edit'))
+// 无权的账号也看得到「编辑模式」按钮(只要能请求提权),点了弹主管授权窗 —— ELEVATION-SPEC。
+// 藏掉的话财务专员只会以为系数簿是只读的。
+const asking = ref<string[] | null>(null)
+const canAsk = computed(() => canEdit.value || auth.can('elevate:request'))
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const today = new Date()
@@ -50,6 +57,12 @@ const effYear = ref(today.getFullYear())
 const effMonth = ref(today.getMonth() + 1)
 const effYm = computed(() => `${effYear.value}-${pad2(effMonth.value)}`)
 const editMode = ref(false)
+// ⚠ 本窗口不走 useEditMode(有自己的退出语义),但必须登记进 auth.editors ——
+//   不登记的话守卫两头都失效:别的页面退出编辑时会把本窗口正用着的授权一起结束掉,
+//   而本窗口退出时又会被别的页面挡住结束不了。
+const meId = Symbol('coef-book')
+watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
 const selected = ref(new Set<number>())
 const uni = ref('')
@@ -219,12 +232,8 @@ function setEffMonth(v: string) {
 //    整组月版本);失败中断报错并刷新已提交部分;成功 toast+重拉 ──
 const saving = ref(false)
 const okMsg = ref('')
-let okTimer: ReturnType<typeof setTimeout> | undefined
-function flashOk(msg: string) {
-  okMsg.value = msg
-  clearTimeout(okTimer)
-  okTimer = setTimeout(() => { okMsg.value = '' }, 5000)
-}
+// 自动消失与关闭按钮由 FPToast 内部管（LAYOUT-STABILITY-SPEC §2 优先级 2：浮层，不进文档流）
+function flashOk(msg: string) { okMsg.value = msg }
 async function onSave() {
   if (saving.value || stash.value.size === 0) return
   const meta = curMeta.value
@@ -284,6 +293,8 @@ async function exitEdit() {
   }
   editMode.value = false
   selected.value.clear()
+  auth.closeEditor(meId)        // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
+  void auth.endElevation()      // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
 function onClose() {
   if (saving.value) return
@@ -300,10 +311,9 @@ function onClose() {
             @close="onClose">
     <div v-if="loading" class="cb-empty">加载中…</div>
     <template v-else>
-      <div v-if="okMsg" class="cb-bar ok">
-        <component :is="iconFor('check')" :size="14" />
-        <span>{{ okMsg }}</span>
-      </div>
+      <!-- 成功提示(5s 自消)。page 模式贴屏幕底部:弹窗 body 是 overflow:auto 滚动容器,
+           absolute 贴底会跟着内容滚走;且 --z-toast(400) > --z-modal-2(320),不被弹窗遮住 -->
+      <FPToast v-model="okMsg" placement="page" :duration="5000" />
 
       <!-- 控制行:期页签+搜索 | 系数下拉+生效月 -->
       <div class="cb-controls">
@@ -323,7 +333,8 @@ function onClose() {
           <Select :options="monthOpts" :model-value="String(effMonth)" size="sm" @update:model-value="setEffMonth" />
         </div>
       </div>
-      <div v-if="curMeta.hint" class="cb-hint">{{ curMeta.hint }}</div>
+      <!-- 位置常驻(LAYOUT-STABILITY-SPEC §4.2):切系数时提示有无都占一行,不许把下面的表格顶走 -->
+      <div class="cb-hint"><template v-if="curMeta.hint">{{ curMeta.hint }}</template></div>
 
       <!-- 层份键在一期/三期页签禁用:提示条让位表格 -->
       <div v-if="floorLocked" class="cb-bar">
@@ -431,12 +442,15 @@ function onClose() {
           {{ saving ? '保存中…' : `保存(${stash.size})` }}
         </Button>
       </template>
-      <Button v-else-if="canEdit && !floorLocked && !loading" variant="outline" size="sm" @click="editMode = true">
+      <Button v-else-if="canAsk && !floorLocked && !loading" variant="outline" size="sm"
+              @click="canEdit ? (editMode = true) : (asking = ['param-policy:edit'])">
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑模式
       </Button>
       <Button variant="outline" size="sm" @click="onClose">关闭</Button>
     </template>
+    <FPElevateDialog :perms="asking" what="修改系数簿(计费口径)"
+                     @close="asking = null" @elevated="asking = null; editMode = true" />
   </FPDrawer>
 </template>
 
@@ -445,14 +459,13 @@ function onClose() {
 
 /* 提示/成功条(bn-bar 家族) */
 .cb-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.cb-bar.ok { border-style: solid; border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 
 /* 控制行 */
 .cb-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cb-lbl { font-size: 12px; color: var(--text-muted); }
 .cb-search { width: 180px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-search:focus { outline: none; border-color: var(--hue-blue); }
-.cb-hint { flex: 0 0 auto; margin-top: -14px; font-size: 11.5px; color: var(--text-muted); }
+.cb-hint { flex: 0 0 auto; margin-top: -14px; min-height: 16px; line-height: 16px; font-size: 11.5px; color: var(--text-muted); }
 
 /* 统一修改条(v3 唯一改值入口) */
 .cb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }

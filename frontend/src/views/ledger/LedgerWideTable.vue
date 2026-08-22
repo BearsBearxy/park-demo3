@@ -14,6 +14,10 @@ import type { ColumnKey } from '@/utils/ledgerColumns'
 import { lgRecalc } from '@/utils/lgRecalc'
 import { exportLedgerMonth } from '@/utils/ledgerExcel'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
+import { useAuthStore } from '@/stores/auth'
+
+// 台账录入 = entry(RBAC §2)。无权时表格与合计照常显示,只是没有「编辑模式」入口。
+const auth = useAuthStore()
 
 const props = defineProps<{
   month: LedgerMonthDTO            // server snapshot (read state / cancel source)
@@ -210,11 +214,14 @@ function onCopyPrev() {
           导出 Excel
         </Button>
 
-        <Button v-if="!edit" variant="outline" size="sm" @click="emit('enter-edit')">
+        <Button v-if="!edit && auth.can('entry:edit')" variant="outline" size="sm" @click="emit('enter-edit')">
           <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
           编辑模式
         </Button>
-        <template v-else>
+        <!-- ⚠ 这里必须写 v-if="edit"，不能用 v-else。上面的 v-if 是「!edit && 有权限」，
+             v-else 就等于「在编辑态 **或** 没权限」—— 无权账号会看到「保存/取消」
+             （2026-08-22 用户截图抓到；P0 给 v-if 加权限判断时把 v-else 的语义带偏了）。 -->
+        <template v-if="edit">
           <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
             <template #leading><component :is="iconFor('check')" :size="14" /></template>
@@ -247,7 +254,7 @@ function onCopyPrev() {
           删除所选 ({{ selected.size }})
         </Button>
       </div>
-      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : '只读 · 点击「编辑」录入 · 点击租户名查看明细' }}</span>
+      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
     </div>
 
     <FPLedgerTable

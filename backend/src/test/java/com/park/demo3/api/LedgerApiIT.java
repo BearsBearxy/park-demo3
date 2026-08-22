@@ -94,7 +94,13 @@ class LedgerApiIT extends AbstractMysqlIT {
     @Test
     @Transactional
     void company_deleteWithData_cascadesLedgerAndReports() throws Exception {
+        // RBAC-SPEC §5.6:名下有数据时**先拦一次**,把影响行数报出来,不带 force 删不掉
         mvc.perform(delete("/api/companies/1").header("Authorization", auth()))
+                .andExpect(status().isOk())          // BizException → HTTP 200, code in body
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("月度台账")));
+        // 确认后才连数据一起删
+        mvc.perform(delete("/api/companies/1").param("force", "true").header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
         // 公司消失,其台账/报表读接口回 404(数据已级联清除)

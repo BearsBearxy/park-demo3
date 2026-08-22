@@ -11,6 +11,7 @@ import type { SortState } from '@/components/fp/fpSort'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
+import { useAuthStore } from '@/stores/auth'
 import { tenantApi } from '@/api/tenant'
 import { suggestParent } from '@/utils/tenantSuggest'
 import LedgerImportResolveDialog, { type ResolveItem, type ResolveDecision } from '@/views/ledger/LedgerImportResolveDialog.vue'
@@ -20,6 +21,11 @@ import { chargingApi } from '@/api/charging'
 import type { ImportLogOverviewDTO, ImportLogDTO } from '@/types/importLog'
 import type { ImportResultDTO } from '@/types/import'
 import type { CompanyDTO } from '@/types/ledger'
+
+// 权限挂在 import kind 上而非本屏(RBAC §5.6):无该模块写权限的磁贴不显示。
+// 下方「导入记录」表不过滤 —— 读全开,谁都能看谁导了什么。
+const auth = useAuthStore()
+const visibleTypes = computed(() => IMPORT_TYPES.filter(t => auth.can(t.module)))
 
 const overview = ref<ImportLogOverviewDTO | null>(null)   // §6 加载信号
 const importing = ref(false)
@@ -237,8 +243,9 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     <div>
       <h3 class="im-section-t">按数据类型导入</h3>
       <p class="im-sub" style="margin:0 0 14px">每类数据对应一张模板,卡片显示最近导入状态</p>
-      <div class="im-grid">
-        <div v-for="t in IMPORT_TYPES" :key="t.key" class="im-tile">
+      <p v-if="!visibleTypes.length" class="im-sub" style="margin:0">当前账号没有任何导入权限,下方仍可查看全部导入记录。</p>
+      <div v-else class="im-grid">
+        <div v-for="t in visibleTypes" :key="t.key" class="im-tile">
           <div class="im-tile-top">
             <span class="im-tile-icon"><component :is="iconFor(t.icon)" :size="19" /></span>
             <span style="min-width:0">

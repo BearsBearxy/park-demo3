@@ -11,6 +11,9 @@ import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -30,8 +33,17 @@ const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
-const editMode = ref(false)
-onDeactivated(() => { editMode.value = false; stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+// 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
+// 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+  useEditMode(['meter-master:edit', 'meter-reading:edit'])
+// RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
+// 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
+const canMaster = computed(() => auth.can('meter-master:edit'))
+const canReading = computed(() => auth.can('meter-reading:edit'))
+const editStation = computed(() => editMode.value && canMaster.value)
+const editReading = computed(() => editMode.value && canReading.value)
+onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const num = (s: string) => { const n = Number(s); return isFinite(n) ? n : 0 }
@@ -125,7 +137,9 @@ function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw
   pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
     .then(() => {
       // 错价修正回路(P0-3):改价只影响之后新录,提示历史修正路径(导出「明细」sheet 改后重导即按新价重新快照)
-      if (field === 'priceYuan') alert('已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。')
+      // 这条不是「已保存」而是一段**操作指引**(历史记录怎么修),用户可能要照着做 ——
+      // 所以 duration=0 不自动消失,由他读完自己关。
+      if (field === 'priceYuan') okMsg.value = '已保存。历史抄表记录仍按录入时单价计收益；如需按新价修正本月，请导出明细修改后重导，或删除记录重录。'
     })
     .catch((e) => {
       st[field] = prev
@@ -162,7 +176,7 @@ const editId = ref<number | null>(null)     // 非空=行编辑中
 const adding = ref(false)                   // 新增行展开
 const form = ref({ readDate: '', genTotal: '', selfUse: '', gridFeed: '', note: '' })
 // 操作列仅编辑态存在(EDIT-MODE-SPEC v2)
-const opCols = computed(() => (editMode.value ? 7 : 6))
+const opCols = computed(() => (editReading.value ? 7 : 6))
 // 自消纳+上网 > 发电总量 → 黄警示不阻断(spec §1:抄表现实有损耗差)
 const formWarn = computed(() =>
   num(form.value.selfUse) + num(form.value.gridFeed) > num(form.value.genTotal)
@@ -246,6 +260,7 @@ async function submitStation() {
 
 // ── 导入(registry 闭环:解析→预览→确认→入库→import_log)/模板/导出 ──
 const importing = ref(false)
+const okMsg = ref('')
 const importResult = ref<ImportResultDTO | null>(null)
 // charging/pvMeter 模式:解析期行级错误暂存 ctx._parseErrors,run 时并入结果——
 // parserProps 与 runImport 必须同一 ctx 引用;每次解析整体覆写,无陈旧残留
@@ -308,8 +323,8 @@ async function onTemplate() {
           <p class="pm-sub">按日期逐条抄表,自动汇月 · 电量 kWh / 收益 元 · 收益 = 自消纳 × 录入时单价快照</p>
         </div>
       </div>
-      <!-- 电站增删=配置操作,仅编辑态(EDIT-MODE-SPEC) -->
-      <Button v-if="editMode" variant="outline" size="sm" @click="openStationDlg">
+      <!-- 电站增删=配置操作,仅编辑态(EDIT-MODE-SPEC)+ meter-master:edit -->
+      <Button v-if="editStation" variant="outline" size="sm" @click="openStationDlg">
         <template #leading><component :is="iconFor('plus')" :size="14" /></template>
         新增电站
       </Button>
@@ -330,11 +345,12 @@ async function onTemplate() {
           下载模板
         </Button>
         <!-- 导入入口收编辑态(EDIT-MODE-SPEC);模板/导出=只读操作常驻 -->
-        <Button v-if="editMode" variant="outline" size="sm" @click="importing = true">
+        <Button v-if="editReading" variant="outline" size="sm" @click="importing = true">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
+        <!-- 模拟填充会反写电站单价(§5.3-⑤)→ 判 meter-master,不是 meter-reading -->
+        <Button v-if="editStation" variant="outline" size="sm" :disabled="simulating" @click="onSimulate">
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
@@ -342,7 +358,8 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
         </Button>
-        <Button v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="editMode = !editMode">
+        <!-- 编辑模式:档案/读数两把权限任一有即可进,进去后各按钮再各判各的 -->
+        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
           <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
           {{ editMode ? '完成' : '编辑模式' }}
         </Button>
@@ -354,8 +371,8 @@ async function onTemplate() {
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无抄表记录 ——
-        <template v-if="editMode">可<button class="pm-link" @click="importing = true">导入</button>整月抄表 Excel,或点击任意电站行进入抽屉手动录入。</template>
-        <template v-else-if="!auth.isReadonly">进入右上角「编辑模式」后可录入或导入。</template>
+        <template v-if="editReading">可<button class="pm-link" @click="importing = true">导入</button>整月抄表 Excel,或点击任意电站行进入抽屉手动录入。</template>
+        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
         <template v-else>各站显示零值。</template>
       </span>
     </div>
@@ -390,7 +407,7 @@ async function onTemplate() {
             <tr v-for="r in rows" :key="r.st.id" @click="openSt = r.st">
               <!-- 电站名=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="name" :title="r.st.name">
-                <input v-if="editMode" class="pm-edit l" type="text"
+                <input v-if="editStation" class="pm-edit l" type="text"
                        :value="r.st.name" title="电站名,回车/失焦保存(需唯一)"
                        @click.stop
                        @change="commitStationName(r.st, ($event.target as HTMLInputElement).value)" />
@@ -401,14 +418,14 @@ async function onTemplate() {
               </td>
               <!-- 容量/单价=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="num">
-                <input v-if="editMode" class="pm-edit" type="number" min="0" step="0.01"
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.01"
                        :value="r.st.capacityKwp ?? ''" placeholder="—" title="装机容量,回车/失焦保存"
                        @click.stop
                        @change="commitStation(r.st, 'capacityKwp', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.capacityKwp != null ? fq(r.st.capacityKwp) : '—' }}</span>
               </td>
               <td class="num">
-                <input v-if="editMode" class="pm-edit" type="number" min="0" step="0.0001"
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.0001"
                        :value="r.st.priceYuan ?? ''" placeholder="—" title="消纳综合单价,只影响之后新录记录"
                        @click.stop
                        @change="commitStation(r.st, 'priceYuan', ($event.target as HTMLInputElement).value)" />
@@ -436,7 +453,7 @@ async function onTemplate() {
       @close="openSt = null"
     >
       <div v-if="drawerRows.length === 0 && !adding" class="pm-dempty">
-        该站本月暂无抄表记录{{ editMode ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : auth.isReadonly ? '。' : ',进入编辑模式后可录入或导入。' }}
+        该站本月暂无抄表记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
       </div>
       <div v-else class="pm-dwrap">
         <table class="pm-dtable">
@@ -448,7 +465,7 @@ async function onTemplate() {
             <col style="width:106px" />
             <col style="width:108px" />
             <col /><!-- 备注:唯一弹性列(截断走 title) -->
-            <col v-if="editMode" style="width:70px" />
+            <col v-if="editReading" style="width:70px" />
           </colgroup>
           <thead>
             <tr>
@@ -458,7 +475,7 @@ async function onTemplate() {
               <th>上网</th>
               <th>收益</th>
               <th class="l">备注</th>
-              <th v-if="editMode"></th>
+              <th v-if="editReading"></th>
             </tr>
           </thead>
           <tbody>
@@ -484,13 +501,14 @@ async function onTemplate() {
                 <td :title="r.priceSnap != null ? `快照单价 ${r.priceSnap} 元/kWh` : '录入时站未配单价,收益按 0'">{{ fy(r.revenue) }}</td>
                 <!-- simulated 灰「模拟」徽标随备注列(徽标挤日期列会撑爆列宽预算;模拟记录 note 本就以「模拟:」开头,同列语义顺),录改后转 manual 自动消失 -->
                 <td class="l note" :title="r.note ?? undefined"><span v-if="r.source === 'simulated'" class="pm-sim" :title="r.note ?? '模拟数据'">模拟</span>{{ (r.source === 'simulated' ? (r.note ?? '').replace(/^模拟[:：]/, '') : r.note) || '—' }}</td>
-                <td v-if="editMode" class="ops">
+                <td v-if="editReading" class="ops">
                   <button class="pm-iop" title="编辑" @click="startEdit(r)"><component :is="iconFor('pencil')" :size="14" /></button>
                   <button class="pm-iop danger" title="删除" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
               </tr>
-              <tr v-if="editId === r.id && formWarn" class="warnrow">
-                <td :colspan="opCols" class="l">{{ formWarn }}</td>
+              <!-- 警示位常驻(LAYOUT-STABILITY-SPEC §4.2):编辑态一进来就占好这一行,内容才是条件的 -->
+              <tr v-if="editId === r.id" class="warnrow">
+                <td :colspan="opCols" class="l"><template v-if="formWarn">{{ formWarn }}</template></td>
               </tr>
             </template>
             <!-- 新增行:新录将快照当前站单价 -->
@@ -507,21 +525,21 @@ async function onTemplate() {
                   <button class="pm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
-              <tr v-if="formWarn" class="warnrow">
-                <td :colspan="opCols" class="l">{{ formWarn }}</td>
+              <tr class="warnrow">
+                <td :colspan="opCols" class="l"><template v-if="formWarn">{{ formWarn }}</template></td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
 
-      <template v-if="editMode" #footer>
-        <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除电站与新增记录同收 -->
-        <Button variant="outline" size="sm" style="margin-right:auto;color:var(--hue-red)" @click="delStation">
+      <template v-if="editStation || editReading" #footer>
+        <!-- 一切修改仅编辑态(EDIT-MODE-SPEC v2):删除电站=档案权,新增记录=读数权 -->
+        <Button v-if="editStation" variant="outline" size="sm" style="margin-right:auto;color:var(--hue-red)" @click="delStation">
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           删除电站
         </Button>
-        <Button variant="filled" size="sm" :disabled="adding" @click="startAdd">
+        <Button v-if="editReading" variant="filled" size="sm" :disabled="adding" @click="startAdd">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增记录
         </Button>
@@ -567,6 +585,8 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPElevateDialog :perms="asking" what="维护光伏表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />
   </div>
 </template>
 
@@ -624,7 +644,8 @@ async function onTemplate() {
 .pm-sim { margin-right: 6px; font-family: var(--font-sans); font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .pm-dtable td.ro { color: var(--text-secondary); }
 .pm-dtable tr.editing td { background: var(--surface-card); }
-.pm-dtable tr.warnrow td { font-family: var(--font-sans); font-size: 11.5px; color: var(--hue-orange); background: var(--surface-card); padding-top: 0; }
+/* height 在表格单元格上即最小高度:空着也占恰好一行,警示进出不顶行(LAYOUT-STABILITY-SPEC §4.2) */
+.pm-dtable tr.warnrow td { font-family: var(--font-sans); font-size: 11.5px; color: var(--hue-orange); background: var(--surface-card); padding-top: 0; height: 16px; line-height: 16px; }
 .pm-dtable td.ops { white-space: nowrap; }
 .pm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .pm-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }

@@ -87,9 +87,30 @@ public class CompanyService {
     // 级联删除:公司连同其全部台账与报表数据一并删除(前端删除确认弹窗已明示不可恢复);
     // 不级联则 report_* 的 FK 会让 deleteById 直接 500(company_account 走 DB 级 ON DELETE CASCADE)
     @Transactional
-    public void delete(Integer id) {
+    public void delete(Integer id) { delete(id, false); }
+
+    /**
+     * RBAC-SPEC §5.6 守卫:删公司会连带清掉该公司**所有年份**的月度台账与三大报表数据,
+     * 且没有软删可恢复。档案岗删一个"重复建的公司",entry 与 report 两个模块的人既拦不住也收不到通知。
+     *
+     * 所以不是禁止,是**要求显式确认**:名下有数据时先 409 把行数报出来,
+     * 调用方看清楚了再带 force=true 重来。能力保留,但毁数据这件事必须是睁着眼做的。
+     *
+     * 修法是加守卫而不是发明更高的权限档 —— 这是缺守卫不是缺权限:
+     * 就算只有主管能删,主管也不该在不知情的情况下毁掉几年的台账。
+     */
+    public void delete(Integer id, boolean force) {
         ManagementCompany c = companies.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        if (!force) {
+            long ledgerRows = ledger.selectCount(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
+            long reportRows = reportAmounts.selectCount(new QueryWrapper<ReportAmount>().eq("company_id", id));
+            if (ledgerRows > 0 || reportRows > 0) {
+                throw new BizException(ResultCode.CONFLICT, String.format(
+                    "「%s」名下还有 %d 行月度台账、%d 行报表金额,删除会连同清空且不可恢复。确认请再删一次。",
+                    c.getName(), ledgerRows, reportRows));
+            }
+        }
         ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
         reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));

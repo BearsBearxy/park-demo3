@@ -1,6 +1,7 @@
 // src/components/shell/paletteFilter.ts — pure filter for CommandPalette.
 // Ported from app/shell.jsx CommandPalette grouping logic.
 import { fpAllPages, FP_NAV } from '@/nav/fpNav'
+import { isLayerVisible } from '@/nav/navAccess'
 
 export interface PageEntry {
   value: string
@@ -46,9 +47,10 @@ export function filterPages(query: string, allPages: PageEntry[], recent: string
   return groups
 }
 
-/** Convenience: build allPages from fpNav for use in CommandPalette */
-export function buildAllPages(): PageEntry[] {
-  return fpAllPages().map(p => ({
+/** Convenience: build allPages from fpNav for use in CommandPalette.
+ *  navLayers = 角色可见的导航层:不可见层的屏不进面板(空层在 filterPages 里自然不出组)。 */
+export function buildAllPages(navLayers: string[], canSystemView = false): PageEntry[] {
+  return fpAllPages().filter(p => isLayerVisible(p.layer, navLayers, canSystemView)).map(p => ({
     value: p.value,
     label: p.label,
     icon: p.icon,

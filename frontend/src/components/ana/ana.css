@@ -6,6 +6,20 @@
    只在分析外壳作用域覆盖,不动全局令牌(其余层沿用仓库绿,复审裁决)。 */
 .anx-shell { --delta-up: var(--hue-blue); }
 
+/* 分段开关(期间切换 / 电费-水费 / 家族口径…)。必须留在全局:
+   AnaShell 的 #tools、#kpis 插槽内容由各分析屏提供,插槽元素带的是**该屏**的 data-v,
+   AnaShell 的 scoped 样式选不中 → 一旦放 scoped 里,插槽里那份会退化成浏览器默认按钮
+   (2026-08-21 租户用能页「电费/水费」正是这么变成灰边原生按钮的)。 */
+.anx-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 3px; gap: 2px; }
+.anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); white-space: nowrap; transition: background var(--dur-fast), color var(--dur-fast); }
+.anx-seg button:hover:not(.on):not(:disabled) { color: var(--text-primary); }
+.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+.anx-seg button:disabled { opacity: .4; cursor: default; }
+/* mini:卡头里的分段开关(比外壳那条小一档)。原先 4 个屏各抄一份,
+   抄着抄着 padding 就漂成了 3px 10px / 3px 9px / 2px 9px 三种 —— 收成这一份。 */
+.anx-seg.mini { padding: 2px; flex: 0 0 auto; }
+.anx-seg.mini button { font-size: var(--fs-micro); padding: 3px 10px; }
+
 /* ── ana-charts.jsx ChartStyles(cz-*) ── */
 .cz-grid { display:grid; gap:16px; }
 .cz-tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size: var(--fs-micro); }

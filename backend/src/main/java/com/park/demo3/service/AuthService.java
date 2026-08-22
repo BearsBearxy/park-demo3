@@ -5,6 +5,8 @@ import com.park.demo3.dto.*;
 import com.park.demo3.entity.AuthUser;
 import com.park.demo3.mapper.AuthUserMapper;
 import com.park.demo3.security.JwtUtil;
+import com.park.demo3.security.UserPermissionCache;
+import java.util.List;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,9 +19,11 @@ public class AuthService {
 
     private final AuthUserMapper users; private final PasswordEncoder enc; private final JwtUtil jwt;
     private final LoginRateLimiter limiter; private final HttpServletRequest request;
+    private final UserPermissionCache perms;
     public AuthService(AuthUserMapper users, PasswordEncoder enc, JwtUtil jwt,
-                       LoginRateLimiter limiter, HttpServletRequest request) {
-        this.users = users; this.enc = enc; this.jwt = jwt; this.limiter = limiter; this.request = request;
+                       LoginRateLimiter limiter, HttpServletRequest request, UserPermissionCache perms) {
+        this.users = users; this.enc = enc; this.jwt = jwt; this.limiter = limiter;
+        this.request = request; this.perms = perms;
     }
     public LoginResp login(LoginReq req) {
         String key = LoginRateLimiter.key(clientIp(), req.username());
@@ -31,7 +35,13 @@ public class AuthService {
             throw new BizException(ResultCode.UNAUTHORIZED, "用户名或密码错误");
         }
         limiter.reset(key);
-        return new LoginResp(jwt.generate(u.getUsername(), u.getRole()), u.getDisplayName(), u.getRole());
+        // 权限与导航层从内存快照取(与 JwtAuthFilter 同一份),不烤进令牌 —— 停用要立刻生效。
+        // 缓存里没有 = 账号刚建还没 reload,按零权限返回,重登一次即恢复(不 500)。
+        UserPermissionCache.UserAuth ua = perms.get(u.getUsername());
+        List<String> ps = ua == null ? List.of() : List.copyOf(ua.perms());
+        List<String> nl = ua == null ? List.of("data", "reports", "analysis") : ua.navLayers();
+        return new LoginResp(jwt.generate(u.getUsername(), u.getRole()), u.getUsername(), u.getDisplayName(), u.getRole(),
+                             ps, nl, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
     }
     // 取 XFF 首段(nginx 用 $proxy_add_x_forwarded_for 透传)。首段是客户端自报值、可伪造,
     // 所以 IP 只是尽力而为的分桶维度,不是身份。

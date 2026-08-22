@@ -281,6 +281,7 @@ const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }
           sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"
           :year="year"
           :edit="edit"
+          perm="entry:edit"
           @back="goGate"
           @toggle-edit="finishEdit"
          :show-import="true" @import="importing = true" :dirty="dirty.size">

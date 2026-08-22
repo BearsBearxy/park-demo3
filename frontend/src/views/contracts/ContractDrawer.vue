@@ -12,6 +12,9 @@ import FPContractChain from './FPContractChain.vue'
 import Avatar from '@/components/ds/Avatar.vue'
 import Button from '@/components/ds/Button.vue'
 import { iconFor } from '@/components/ds/icon'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const props = defineProps<{
   contract: ContractDTO | null
@@ -193,7 +196,8 @@ const contactLine = computed(() =>
         </div>
         <FPContractStatus :status="contract.status" />
       </div>
-      <div class="cd-inline-actions">
+      <!-- 终止/删除/编辑/续签 四个写按钮同一权限点(RBAC-SPEC §2 contract:edit);无权时整条操作区不出现,详情照常显示 -->
+      <div v-if="auth.can('contract:edit')" class="cd-inline-actions">
         <Button variant="borderless" size="sm" :disabled="!canTerminate" @click="askTerminate = true">
           <template #leading><component :is="iconFor('x-circle')" :size="14" /></template>
           终止

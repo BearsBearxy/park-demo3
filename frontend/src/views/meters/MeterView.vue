@@ -31,6 +31,9 @@ import { latestPeriodOf } from '@/utils/defaultPeriod'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPToast from '@/components/fp/FPToast.vue'
+import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
@@ -45,14 +48,24 @@ import MeterDetailDrawer from './MeterDetailDrawer.vue'
 import './meter-shared.css'
 
 const auth = useAuthStore()
+// RBAC v2(读全开写分权):抄读数与改表档案是两把权限,别一刀切 ——
+// 读数(录入/导入/批量删本期)= meter-reading:edit;表档案(新增表/一键挂/抽屉里的倍率绑定删表)= meter-master:edit。
+// 无权只是不出写按钮,数据照常全显。
+const canReading = computed(() => auth.can('meter-reading:edit'))
+const canMaster = computed(() => auth.can('meter-master:edit'))
 
-// ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话;KeepAlive 切页签回来也回浏览态(draft 一并丢弃) ──
-const editMode = ref(false)
+// ── 编辑模式(EDIT-MODE-SPEC v3):切页签**保留**编辑态与草稿,只关浮层 ──
+// v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
+// 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
+const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit } =
+  useEditMode(['meter-reading:edit', 'meter-master:edit'])
 const importing = ref(false)
+const okMsg = ref('')
+const toastTone = ref<'success' | 'warning'>('success')
 const openId = ref<number | null>(null)
 onDeactivated(() => {
-  editMode.value = false; importing.value = false; openId.value = null
-  saveConfirm.value = false; draft.clear(); delPreview.value = null
+  importing.value = false; openId.value = null
+  saveConfirm.value = false; delPreview.value = null; asking.value = null
 })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -109,7 +122,8 @@ async function loadReadings() {
   }
 }
 // 失败态锁录入:此刻「本月」列空着不是「没抄」而是「没读到」,在上面录=覆盖旧月或凭空补条
-const editable = computed(() => editMode.value && !readErr.value)
+// 无 meter-reading:edit 的人即使进了编辑模式(靠 meter-master)也不许录格子:格子写的是读数
+const editable = computed(() => editMode.value && !readErr.value && canReading.value)
 function retryLoad() {
   if (metersErr.value) loadMeters()
   if (readErr.value) loadReadings()
@@ -141,9 +155,14 @@ function onCellEdit(p: { meterId: number; field: CurrField; value: string }) {
 }
 // 编辑模式按钮:进=开编辑;编辑中点「完成」dirty>0 弹确认,无改动直接退出
 function onEditBtn() {
-  if (!editMode.value) { editMode.value = true; return }
+  if (!editMode.value) {
+    // 缺任何一项就当场弹授权窗;取消 = 什么都没发生,留在浏览态(useEditMode 铁律 ①)
+    if (lockedPerms.value.length) { askFor(); return }
+    editMode.value = true
+    return
+  }
   if (dirtyIds.value.length > 0) { saveConfirm.value = true; return }
-  editMode.value = false
+  exitEdit()          // 退出编辑 = 结束授权(ELEVATION-SPEC)
 }
 // 保存修改:逐变更表 POST(无读数)/PUT(有);行级失败收集 alert 并保留该行 dirty
 async function onSaveChanges() {
@@ -166,13 +185,16 @@ async function onSaveChanges() {
   saving.value = false
   reloadAll()
   if (fails.length > 0) alert(`${fails.length} 块表保存失败(改动已保留,可重试):\n${fails.join('\n')}`)
-  else editMode.value = false
+  // ⚠ 走 exitEdit() 而不是直接置 false:退出编辑必须同时结束授权。
+  //   直接改 ref 的话,主管刚授权的 30 分钟会在保存成功后继续挂着
+  //   (本页三条退出路径,只有这条曾经漏了)。
+  else exitEdit()
 }
 // 放弃修改:丢 draft 回浏览态
 function onDiscardChanges() {
   saveConfirm.value = false
   draft.clear()
-  editMode.value = false
+  exitEdit()
 }
 
 // 主数据清单拉取失败不阻断:租户/楼栋列显 '—',picker 候选空
@@ -365,8 +387,9 @@ const openRow = computed(() =>
 watch(openRow, r => { if (openId.value != null && !r) openId.value = null })
 
 // ── 「按名精确匹配一键挂」(待核卡激活时工具栏侧出现,编辑态) ──
+// 一键挂改的是表档案的 tenantId(POST /meters/auto-link → /api/meters/**),故判 meter-master
 const showAutoLink = computed(() =>
-  editMode.value && (status.value === 'attention' || status.value === 'pending'))
+  editMode.value && canMaster.value && (status.value === 'attention' || status.value === 'pending'))
 const linking = ref(false)
 const linkEstimate = computed(() =>
   autoLinkEstimate((meters.value ?? []).filter(isPendingMeter).map(m => m.tenantName), tenants.value.flatMap(t => tenantMatchNames(t))))
@@ -426,8 +449,12 @@ async function confirmDelete() {
   try {
     const r = await metersApi.batchDelete(p.ym, delOpt.value)
     delPreview.value = null
-    alert(`已删除 ${r.readings} 条读数、${r.meterDeleted.length} 份表档案、${r.derived} 条派生快照。`
-      + (r.meterBlocked.length > 0 ? `\n${r.meterBlocked.length} 份表档案因已被池绑定跳过未删。` : ''))
+    // 「有表被跳过未删」是用户必须看到的 —— 那几块表他以为删了、其实还在。
+    // 所以有跳过时走 warning 且**不自动消失**(duration=0,组件给关闭按钮),干净时才自动收。
+    const blocked = r.meterBlocked.length
+    toastTone.value = blocked > 0 ? 'warning' : 'success'
+    okMsg.value = `已删除 ${r.readings} 条读数、${r.meterDeleted.length} 份表档案、${r.derived} 条派生快照。`
+      + (blocked > 0 ? ` 另有 ${blocked} 份表档案因已被池绑定跳过未删。` : '')
     reloadAll()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '批量删除失败')
@@ -562,25 +589,27 @@ const emptyText = computed(() => {
           导出当月
         </Button>
         <!-- 导入/新增表收编辑态(EDIT-MODE-SPEC);模板/导出=只读操作常驻 -->
-        <Button v-if="editMode" variant="outline" size="sm" @click="importing = true">
+        <!-- 导入写的是读数(表顺带建档)→ meter-reading;新增表是纯档案 → meter-master -->
+        <Button v-if="editMode && canReading" variant="outline" size="sm" @click="importing = true">
           <template #leading><component :is="iconFor('upload')" :size="14" /></template>
           导入
         </Button>
-        <Button v-if="editMode" variant="outline" size="sm" @click="openMeterDlg">
+        <Button v-if="editMode && canMaster" variant="outline" size="sm" @click="openMeterDlg">
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增表
         </Button>
-        <!-- §H5 批量删除本期(整月,不可逆):编辑态才出现;viewer 进不了编辑态,入口天然不可见 -->
+        <!-- §H5 批量删除本期(整月,不可逆):编辑态 + meter-reading:edit(DELETE /api/meters/readings) -->
         <Button
-          v-if="editMode" variant="danger" size="sm" :disabled="delBusy"
+          v-if="editMode && canReading" variant="danger" size="sm" :disabled="delBusy"
           title="删除本账期全部读数,并级联删除该月派生快照与删完零读数的表档案(池成员表跳过);执行前会先给出预览数字并要求手打账期确认"
           @click="openDelDlg"
         >
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           批量删除本期
         </Button>
+        <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
         <Button
-          v-if="!auth.isReadonly" :variant="editMode ? 'filled' : 'outline'" size="sm"
+          v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm"
           :disabled="saving || !!readErr"
           :title="readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
           @click="onEditBtn"
@@ -620,8 +649,8 @@ const emptyText = computed(() => {
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无抄表数据 ——
-        <template v-if="editMode">可<button class="mt-link" @click="importing = true">导入</button>整册抄表工作簿(自动建档),或行内直接录入本月示数。</template>
-        <template v-else-if="!auth.isReadonly">进入右上角「编辑模式」后可录入或导入。</template>
+        <template v-if="editMode && canReading">可<button class="mt-link" @click="importing = true">导入</button>整册抄表工作簿(自动建档),或行内直接录入本月示数。</template>
+        <template v-else-if="canReading">进入右上角「编辑模式」后可录入或导入。</template>
         <template v-else>各表读数列为空。</template>
       </span>
     </div>
@@ -800,6 +829,8 @@ const emptyText = computed(() => {
         </div>
       </div>
     </div>
+    <FPElevateDialog :perms="asking" what="录入抄表读数或改表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 6000" />
   </div>
 </template>
 

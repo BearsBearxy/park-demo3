@@ -17,9 +17,12 @@ public class BuildingService {
     private final ContractUnitMapper contractUnits;   // V58 附加单元关联(主单元在 contract.unit_id)
     private final ContractBillingTermMapper terms;    // S15 面积派生:unit.area 全库为 0,面积改由计费行派生
     private final BillingTermUnitMapper termUnits;    // S15 面积派生:行级绑定优先口径(V91)
+    private final ParamService params;   // 面积是计费口径,改它要留痕(RBAC-SPEC §7.1)
+
     public BuildingService(BuildingMapper b, UnitMapper u, ContractMapper c, TenantMapper t, ContractUnitMapper cu,
-                           ContractBillingTermMapper tm, BillingTermUnitMapper btu) {
+                           ContractBillingTermMapper tm, BillingTermUnitMapper btu, ParamService params) {
         buildings=b; units=u; contracts=c; tenantMapper=t; contractUnits=cu; terms=tm; termUnits=btu;
+        this.params = params;
     }
 
     /** unit_id → 关联合同 id 集(附加单元);占用判定=主单元 ∪ 附加关联(V58)。 */
@@ -337,8 +340,17 @@ public class BuildingService {
         if (u == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
         requireFloorInRange(req.floor(), buildings.selectById(u.getBuildingId()));
         requireUniqueUnitNo(u.getBuildingId(), req.unitNo(), id);
+        // ⚠ 面积是计费口径,不只是档案字段(RBAC-SPEC §5.6/§7.1):unit.area 同时是
+        // per_sqm_month 租金计费行的面积来源、以及 area 法公摊池的分摊基数。档案岗"顺手修一个
+        // 录错的面积",下个月该户租金与公摊金额一起变,而参数中心看不到任何变更 ——
+        // 「面积污染」已经炸过一次(见 demo3_s15_fixes)。所以改面积要留痕。
+        java.math.BigDecimal wasArea = u.getArea();
         u.setFloor(req.floor()); u.setUnitNo(req.unitNo()); u.setArea(req.area());
         units.updateById(u);
+        boolean areaChanged = wasArea == null
+            ? req.area() != null
+            : req.area() == null || wasArea.compareTo(req.area()) != 0;
+        if (areaChanged) params.logUnitAreaChange(id, u.getUnitNo(), wasArea, req.area());
         Map<Integer, Set<Integer>> links = linksByUnit();
         return toUnitDTO(u, contracts.selectByBuildingId(u.getBuildingId()), links,
             derivedUnitAreas(contracts.selectList(null), links));

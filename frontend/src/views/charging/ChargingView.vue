@@ -184,6 +184,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :sub="sub"
           :year="year"
           :edit="edit"
+          perm="entry:edit"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

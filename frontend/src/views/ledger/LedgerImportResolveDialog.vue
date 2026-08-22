@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import { useAuthStore } from '@/stores/auth'
 
 export interface ResolveItem { name: string; suggest: { id: number; companyName: string } | null }
 export interface ResolveDecision { name: string; action: 'link' | 'create' | 'skip'; parentId?: number }
@@ -12,11 +13,18 @@ export interface ResolveDecision { name: string; action: 'link' | 'create' | 'sk
 const props = defineProps<{ items: ResolveItem[] }>()
 const emit = defineEmits<{ confirm: [decisions: ResolveDecision[]]; close: [] }>()
 
-// 每行动作:有推荐默认 link,无推荐默认 create
-const actions = ref<('link' | 'create' | 'skip')[]>(props.items.map(it => (it.suggest ? 'link' : 'create')))
+// 建档 = master(RBAC §5.6:台账导入不得成为建租户档案的旁路)。
+// link 与 create 两档都会 tenantApi.create(link 只是多带一个 parentId),故无权时两档一起收,只剩「跳过」。
+const auth = useAuthStore()
+const canCreate = auth.can('master:edit')
+
+// 每行动作:有推荐默认 link,无推荐默认 create;无建档权则一律 skip
+const actions = ref<('link' | 'create' | 'skip')[]>(
+  props.items.map(it => (!canCreate ? 'skip' : it.suggest ? 'link' : 'create')))
 
 // 无推荐的行不出「创建并关联」档:选了也没有 parentId,submit 会退化成独立建档,选项形同虚设
 function optsFor(it: ResolveItem) {
+  if (!canCreate) return [{ value: 'skip', label: '跳过该行' }]
   return [
     ...(it.suggest ? [{ value: 'link', label: `创建并关联到 ${it.suggest.companyName}` }] : []),
     { value: 'create', label: '新建独立租户' },
@@ -41,7 +49,8 @@ function submit() {
     <div class="lg-dlg" @click.stop>
       <div class="lg-dlg-h">
         <h3>导入前确认 · {{ items.length }} 个未登记租户</h3>
-        <p>下列租户名在租户表中不存在。选择「创建并关联」或「新建独立租户」将以业务类型「未分类」自动建档;选择「跳过该行」则该租户的台账行不导入。</p>
+        <p v-if="canCreate">下列租户名在租户表中不存在。选择「创建并关联」或「新建独立租户」将以业务类型「未分类」自动建档;选择「跳过该行」则该租户的台账行不导入。</p>
+        <p v-else>下列租户名在租户表中不存在。当前账号没有建租户档案的权限,这些行只能跳过(其余行照常导入);需要建档请联系有主数据权限的同事先在「租户管理」登记。</p>
       </div>
       <div class="lg-dlg-b">
         <div v-for="(it, i) in items" :key="it.name" class="lg-rs-row">
