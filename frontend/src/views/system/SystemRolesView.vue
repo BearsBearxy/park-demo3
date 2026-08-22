@@ -9,6 +9,7 @@ import { systemApi } from '@/api/system'
 import type { NavLayerDTO, PermDTO, RoleDTO } from '@/types/system'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
+import FPToast from '@/components/fp/FPToast.vue'
 import Button from '@/components/ds/Button.vue'
 import Badge from '@/components/ds/Badge.vue'
 
@@ -172,10 +173,11 @@ async function remove(r: RoleDTO) {
       <span>{{ loadErr }}</span>
       <Button variant="outline" size="sm" @click="load()">重试</Button>
     </div>
-    <div v-else-if="msg" class="sr-bar" :class="msg.tone">
-      <component :is="iconFor(msg.tone === 'ok' ? 'check' : 'alert-triangle')" :size="14" />
-      <span>{{ msg.text }}</span>
-    </div>
+    <!-- 保存成功/失败走 toast(浮层,不顶下面的角色矩阵)。上面的 loadErr 条**不动** ——
+         它带「重试」按钮、要一直看得见,属持久错误态,不是短暂反馈。 -->
+    <FPToast :model-value="msg?.text ?? ''" :tone="msg?.tone === 'ok' ? 'success' : 'error'"
+             placement="page" :duration="msg?.tone === 'ok' ? 4000 : 0"
+             @update:model-value="msg = null" />
 
     <div v-if="!loaded" class="sr-empty">加载中…</div>
     <div v-else-if="!roles.length && loadErr" class="sr-empty">角色数据不可用</div>
@@ -290,7 +292,6 @@ async function remove(r: RoleDTO) {
 
 .sr-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .sr-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
-.sr-bar.ok { border-color: var(--hue-green); background: rgb(240, 251, 244); color: rgb(21, 108, 60); }
 .sr-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .sr-split { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 16px; align-items: start; }

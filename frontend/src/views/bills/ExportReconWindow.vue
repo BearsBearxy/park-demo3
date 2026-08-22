@@ -13,7 +13,6 @@ const props = defineProps<{
   ym: string
   notices: PayNoticeIn[]
   busy?: boolean
-  result?: string
 }>()
 const emit = defineEmits<{ close: []; export: [ExportReconReq] }>()
 
@@ -47,10 +46,6 @@ function onExport() {
   <FPDrawer :open="open" title="导出对账表" icon="file-spreadsheet" :width="760"
             :subtitle="`发财务 · ${ym} · 单文件多 sheet,每家收款公司一张 + 总表`"
             @close="emit('close')">
-    <div v-if="result" class="er-bar ok">
-      <component :is="iconFor('check')" :size="14" />
-      <span>{{ result }}</span>
-    </div>
 
     <table class="er-table">
       <colgroup>
@@ -98,7 +93,6 @@ function onExport() {
 </template>
 
 <style scoped>
-.er-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--hue-green); border-radius: var(--radius-md); background: rgb(240, 251, 244); font-size: var(--fs-label); color: rgb(21, 108, 60); }
 .er-table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; font-family: var(--font-sans); }
 .er-table th, .er-table td { border-bottom: 1px solid var(--divider); box-sizing: border-box; padding: 0 8px; overflow: hidden; }
 .er-table thead th { height: 32px; background: var(--surface-card); color: var(--text-muted); font-size: 11.5px; font-weight: var(--fw-semibold); text-align: right; white-space: nowrap; }

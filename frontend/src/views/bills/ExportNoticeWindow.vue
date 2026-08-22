@@ -26,7 +26,6 @@ const props = defineProps<{
   contracts: PayContractIn[]
   buildings: BuildingDTO[]
   busy?: boolean          // 宿主导出中
-  result?: string         // 宿主回填的导出结果条(「已导出 42 户 / 68 张通知单 · 其中 5 户无收款账户」)
 }>()
 const emit = defineEmits<{ close: []; export: [ExportNoticeReq] }>()
 
@@ -129,10 +128,6 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
   <FPDrawer :open="open" title="导出通知单" icon="download" :width="1040" :fixed-height="true"
             :subtitle="`发租户 · ${ym} · 一户一个 Excel(上表租金、下表水电),跨收款公司在文件内分 sheet,打包 zip`"
             @close="emit('close')">
-    <div v-if="result" class="ex-bar ok">
-      <component :is="iconFor('check')" :size="14" />
-      <span>{{ result }}</span>
-    </div>
 
     <div class="ex-controls">
       <Segmented :options="PHASE_OPTS" :model-value="phase" size="sm" @update:model-value="setPhase" />
@@ -220,7 +215,6 @@ const statusOf = (r: PayTenantRow) => STATUS_LABEL[r.status]
 </template>
 
 <style scoped>
-.ex-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--hue-green); border-radius: var(--radius-md); background: rgb(240, 251, 244); font-size: var(--fs-label); color: rgb(21, 108, 60); }
 .ex-warn { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); font-size: 11.5px; color: var(--text-secondary); }
 
 .ex-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
