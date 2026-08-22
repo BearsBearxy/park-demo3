@@ -333,7 +333,8 @@ function onClose() {
           <Select :options="monthOpts" :model-value="String(effMonth)" size="sm" @update:model-value="setEffMonth" />
         </div>
       </div>
-      <div v-if="curMeta.hint" class="cb-hint">{{ curMeta.hint }}</div>
+      <!-- 位置常驻(LAYOUT-STABILITY-SPEC §4.2):切系数时提示有无都占一行,不许把下面的表格顶走 -->
+      <div class="cb-hint"><template v-if="curMeta.hint">{{ curMeta.hint }}</template></div>
 
       <!-- 层份键在一期/三期页签禁用:提示条让位表格 -->
       <div v-if="floorLocked" class="cb-bar">
@@ -464,7 +465,7 @@ function onClose() {
 .cb-lbl { font-size: 12px; color: var(--text-muted); }
 .cb-search { width: 180px; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 12.5px; background: var(--surface-white); color: var(--text-primary); }
 .cb-search:focus { outline: none; border-color: var(--hue-blue); }
-.cb-hint { flex: 0 0 auto; margin-top: -14px; font-size: 11.5px; color: var(--text-muted); }
+.cb-hint { flex: 0 0 auto; margin-top: -14px; min-height: 16px; line-height: 16px; font-size: 11.5px; color: var(--text-muted); }
 
 /* 统一修改条(v3 唯一改值入口) */
 .cb-unibar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: 12.5px; color: var(--text-secondary); flex-wrap: wrap; }

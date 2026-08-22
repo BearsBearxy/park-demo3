@@ -1072,9 +1072,12 @@ async function delPool() {
               <template v-if="formDiff.removed.length">已退租 {{ formDiff.removed.map(t => t.tenantName).join('、') }}</template>
             </span>
           </div>
-          <div v-if="formNoDate.length" class="pl-innerwarn">
-            <component :is="iconFor('alert-triangle')" :size="13" />
-            <span>{{ formNoDate.map(m => m.tenantName).join('、') }} 合同缺日期,判不了在租 —— 补齐合同起止日期后才能判定</span>
+          <!-- LAYOUT-STABILITY §4.2:勾选缺日期租户才冒出来,位置必须常驻,否则把下面的名单顶走 -->
+          <div class="pl-innerwarn pl-nodatewarn" :class="{ blank: !formNoDate.length }">
+            <template v-if="formNoDate.length">
+              <component :is="iconFor('alert-triangle')" :size="13" />
+              <span>{{ formNoDate.map(m => m.tenantName).join('、') }} 合同缺日期,判不了在租 —— 补齐合同起止日期后才能判定</span>
+            </template>
           </div>
           <!-- §E6 户对户:候选名单为空(后端 tenantNote 已说明),受益户从全库租户里挑 -->
           <div v-if="form.method === 'direct'" class="pl-directpick">
@@ -1326,6 +1329,9 @@ td.ct { text-align: center; }
 .pl-wi::-webkit-outer-spin-button, .pl-wi::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pl-wi::placeholder { color: var(--text-disabled); }
 .pl-innerwarn { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-sm); background: rgb(255, 250, 235); color: rgb(138, 97, 0); font-size: 11.5px; }
+/* 常驻一行:18px 文字行 + 上下 7px padding = 32px(border-box);无内容时只留位置不显黄底 */
+.pl-nodatewarn { min-height: 32px; line-height: 18px; font-size: var(--fs-micro); }
+.pl-nodatewarn.blank { background: transparent; }
 .pl-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--hue-blue); font-size: 12px; cursor: pointer; padding: 0; }
 .pl-otherbox { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--border-subtle); padding-top: 8px; }
 .pl-directpick { display: flex; align-items: center; gap: 8px; }

@@ -744,7 +744,8 @@ async function submit() {
                       <component :is="iconFor('x')" :size="14" />
                     </button>
                   </div>
-                  <div v-if="rowWarn(r)" class="ct-rf-warn">⚠ {{ rowWarn(r) }}</div>
+                  <!-- 提示位常驻(LAYOUT-STABILITY §4.2):改日期时红字不得把「添加免租期」按钮顶走 -->
+                  <div class="ct-rf-warn"><template v-if="rowWarn(r)">⚠ {{ rowWarn(r) }}</template></div>
                 </div>
                 <div>
                   <Button variant="gray" size="sm" :disabled="rentFreeRows.length >= 24" @click="addRentFreeRow">
@@ -841,7 +842,7 @@ async function submit() {
 .ct-rf-note { flex:1 1 auto; min-width:0; }
 .ct-rf-del { flex:0 0 auto; display:grid; place-items:center; width:28px; height:28px; border:none; background:none; border-radius:var(--radius-sm); color:var(--text-muted); cursor:pointer; }
 .ct-rf-del:hover { background:var(--bg-hover); color:var(--hue-red); }
-.ct-rf-warn { font-size:11.5px; color:rgb(168,98,0); margin-top:3px; }
+.ct-rf-warn { font-size:11.5px; line-height:14px; min-height:14px; color:rgb(168,98,0); margin-top:3px; }
 .ct-erm { font-size:11.5px; color:var(--hue-red); margin-top:8px; min-height:14px; }
 .ct-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
 </style>

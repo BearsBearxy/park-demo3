@@ -506,8 +506,9 @@ async function onTemplate() {
                   <button class="pm-iop danger" title="删除" @click="delRow(r.id, r.readDate)"><component :is="iconFor('trash-2')" :size="14" /></button>
                 </td>
               </tr>
-              <tr v-if="editId === r.id && formWarn" class="warnrow">
-                <td :colspan="opCols" class="l">{{ formWarn }}</td>
+              <!-- 警示位常驻(LAYOUT-STABILITY-SPEC §4.2):编辑态一进来就占好这一行,内容才是条件的 -->
+              <tr v-if="editId === r.id" class="warnrow">
+                <td :colspan="opCols" class="l"><template v-if="formWarn">{{ formWarn }}</template></td>
               </tr>
             </template>
             <!-- 新增行:新录将快照当前站单价 -->
@@ -524,8 +525,8 @@ async function onTemplate() {
                   <button class="pm-iop" title="取消" @click="cancelForm"><component :is="iconFor('x')" :size="15" /></button>
                 </td>
               </tr>
-              <tr v-if="formWarn" class="warnrow">
-                <td :colspan="opCols" class="l">{{ formWarn }}</td>
+              <tr class="warnrow">
+                <td :colspan="opCols" class="l"><template v-if="formWarn">{{ formWarn }}</template></td>
               </tr>
             </template>
           </tbody>
@@ -643,7 +644,8 @@ async function onTemplate() {
 .pm-sim { margin-right: 6px; font-family: var(--font-sans); font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; cursor: help; }
 .pm-dtable td.ro { color: var(--text-secondary); }
 .pm-dtable tr.editing td { background: var(--surface-card); }
-.pm-dtable tr.warnrow td { font-family: var(--font-sans); font-size: 11.5px; color: var(--hue-orange); background: var(--surface-card); padding-top: 0; }
+/* height 在表格单元格上即最小高度:空着也占恰好一行,警示进出不顶行(LAYOUT-STABILITY-SPEC §4.2) */
+.pm-dtable tr.warnrow td { font-family: var(--font-sans); font-size: 11.5px; color: var(--hue-orange); background: var(--surface-card); padding-top: 0; height: 16px; line-height: 16px; }
 .pm-dtable td.ops { white-space: nowrap; }
 .pm-din { width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-white); font-family: var(--font-sans); font-size: 12.5px; color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard); }
 .pm-din.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }

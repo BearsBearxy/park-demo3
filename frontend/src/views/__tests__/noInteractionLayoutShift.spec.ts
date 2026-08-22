@@ -82,6 +82,33 @@ function positionedSelectors(src: string): string[][] {
 }
 
 /**
+ * 本文件 <style> 里所有带 `min-height` 的规则涉及的 class（同样只取选择器最右一段）。
+ * §4.2 的「常驻提示位」就是靠 min-height 把那一行的高度占住的。
+ *
+ * ⚠ 已知天花板：只认元素**自己**的 class。真正的合规写法是元素根本不带 v-if
+ *   （`<p class="x-err"><template v-if="err">…</template></p>`），那种压根不会进这个扫描；
+ *   父容器占位（FpImportModal 的 `.fpimp-msgs`）也认不出来，只能走白名单。
+ *   要根治得解析 DOM 层级 —— 真漏到第二次再说。
+ */
+function minHeightClasses(src: string): Set<string> {
+  const out = new Set<string>()
+  const styles = src.slice(src.indexOf('<style'))
+  const rule = /([^{}]+)\{([^{}]*)\}/g
+  let m: RegExpExecArray | null
+  while ((m = rule.exec(styles))) {
+    if (!/min-height/.test(m[2])) continue
+    for (const sel of m[1].split(',')) {
+      const last = sel.trim().split(/[\s>+~]+/).pop() ?? ''
+      for (const c of last.match(/\.[-\w]+/g) ?? []) out.add(c.slice(1))
+    }
+  }
+  return out
+}
+
+/** 「这是个错误/提示位」的判据：class 名里带 err / error */
+const ERR_CLASS = /err|error/i
+
+/**
  * 豁免条目的 key。三种写法，越靠后越精确，按需要挑一个：
  *   `路径 .class`          单个 class
  *   `路径 .a.b`            整串 class（同屏同前缀的两条条要分开豁免时用，如 .pl-bar.warn 与 .pl-bar.ok）
@@ -145,6 +172,87 @@ const KNOWN_DEBT: Record<string, string> = {
   //    **这张表现在是空的，请保持空的。** 新写的代码一律不准进。
 }
 
+/**
+ * §4.2「表单的错误/提示位必须常驻」的白名单。
+ *
+ * 起因（2026-08-22 用户实测）：主管授权弹窗密码输错，红字凭空长出一行，把下面的说明和
+ * 「确认授权」按钮一起顶下去 —— 用户正要重点一次的按钮在他手指底下跑掉了。
+ *
+ * 只收两类，每条写明为什么它不算「顶走按钮」：
+ *   A. **加载失败态** —— 它替换的是整块内容区（往往还带 v-else 兜底的「加载中/空态」），
+ *      显隐只由首次数据加载的结果决定，用户还没开始交互就已经是那个样子。属规范 §3 例外。
+ *   B. **父容器已经占好位** —— 元素自己带 v-if，但外层槽是常驻的且有 min-height。
+ *      本扫描只认元素自己的 class，认不出父容器，所以走白名单。
+ *
+ * 用户点了按钮/提交了表单**之后**才冒出来的校验错误，一律不许进这张表 —— 那正是要抓的东西。
+ */
+const ERR_SLOT_WHITELIST: Record<string, string> = {
+  // ── A. 加载失败态（§3）：整块内容区的替换，不是长在表单字段底下的校验红字 ──────
+  'views/alloc/PoolLedgerView.vue .pl-bar.err':
+    'A 加载失败态：`loadErr` 只由 loadMonth() 的结果决定；失败时 pools 已清空，这条替换的是整块池列表，不是顶在按钮上方的校验提示',
+  'views/params/ParamCenterView.vue .pm-bar.err':
+    'A 加载失败态：`loadErr` 只由 load() 结果决定，带「重试」按钮的持久错误条，非表单校验',
+  'views/params/ParamChangesDrawer.vue .pc-err':
+    'A 加载失败态：抽屉打开即拉数据，err / 加载中 / 空态 / 表格是一条 v-if→v-else 链，任何时刻恰好渲染一个',
+  'views/params/ParamHistoryDrawer.vue .ph-err':
+    'A 加载失败态：同 ParamChangesDrawer，err / 加载中 / 内容 三选一的 v-else 链',
+  'views/system/SystemLogsView.vue .lg-bar.err':
+    'A 加载失败态：空态 / loadErr / 加载中 三选一的 v-else 链，替换的是整个日志表区域',
+  'views/system/SystemRolesView.vue .sr-bar.err':
+    'A 加载失败态：带「重试」按钮要一直看得见（该文件里保存成功/失败已经走 FPToast 浮层，这条是刻意留的持久错误态）',
+  'views/system/SystemUsersView.vue .su-bar.err':
+    'A 加载失败态：账号列表 / loadErr / 加载中 三选一的 v-else 链，替换的是整块列表',
+
+  // ── B. 父容器已占位 ───────────────────────────────────────────────────────
+  'components/import/FpImportModal.vue .fpimp-msg.err':
+    'B 父容器已占位：外层 `.fpimp-msgs` 常驻且 min-height:38px，错误/告警进出都在这个恒高槽里，下面的汇总/预览一格不动',
+
+  // ── B′. 弹窗里的结果清单，不是字段校验 ─────────────────────────────────────
+  // 宿主 .ir-scrim 是 position:fixed 的浮层弹窗，整块盖在页面上；它列的是「导入结果里有几行没进」，
+  // 属结果内容本身，展开/收起是用户主动要看的详情，不是「你得改这里」的字段校验。
+  'components/import/ImportResultToast.vue .ir-errs':
+    'B′ 结果清单：导入结果弹窗（.ir-scrim 是 fixed 浮层）内的「N 条提示」与「N 行未导入」两个区块，是结果内容不是字段校验',
+  'components/import/ImportResultToast.vue .ir-errs-list':
+    'B′ 结果清单：上面两个区块的明细展开体，用户点 toggle 主动展开，顶的是它自己下面的「知道了」按钮，属预期的展开/收起',
+}
+
+/**
+ * §4.2 扫描：带 v-if / v-else-if 且 class 名匹配 /err|error/ 的元素，
+ * 若这些 class 在本文件 <style> 里都没有 min-height，判违规。
+ */
+function scanErrSlots() {
+  const bad: string[] = []
+  const usedKeys = new Set<string>()
+
+  for (const root of ROOTS) {
+    for (const file of vueFiles(root)) {
+      const src = readFileSync(file, 'utf8')
+      const head = src.indexOf('<template>')
+      if (head < 0) continue
+      const tpl = src.slice(head, src.lastIndexOf('</template>') + 11)
+      const minH = minHeightClasses(src)
+      const path = rel(file)
+
+      VIF_TAG.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = VIF_TAG.exec(tpl))) {
+        const [, tag, pre, cond, post] = m
+        const classes = ((pre + post).match(/\sclass="([^"]*)"/)?.[1] ?? '').split(/\s+/).filter(Boolean)
+        const errClasses = classes.filter(c => ERR_CLASS.test(c))
+        if (!errClasses.length) continue
+        if (errClasses.some(c => minH.has(c))) continue
+
+        const hit = keysOf(path, classes, cond).find(k => ERR_SLOT_WHITELIST[k])
+        if (hit) { usedKeys.add(hit); continue }
+
+        const line = src.slice(0, head + m.index).split('\n').length
+        bad.push(`${path}:${line}  <${tag} class="${classes.join(' ')}">  v-if="${cond.trim()}"`)
+      }
+    }
+  }
+  return { bad, usedKeys }
+}
+
 /** 扫一遍全部 .vue，返回违规清单 + 实际命中过的豁免 key（后者用来揪已经过期的豁免条目） */
 function scan() {
   const bad: string[] = []
@@ -190,6 +298,7 @@ function scan() {
 }
 
 const RESULT = scan()
+const ERR_RESULT = scanErrSlots()
 
 describe('交互不得改变已渲染内容的位置（LAYOUT-STABILITY-SPEC）', () => {
   it('v-if 引用交互态的流内块级元素，必须是浮层（或列入白名单）', () => {
@@ -208,15 +317,38 @@ describe('交互不得改变已渲染内容的位置（LAYOUT-STABILITY-SPEC）'
     ).toEqual([])
   })
 
+  it('错误/提示位必须常驻，不许 v-if 掉整行（LAYOUT-STABILITY-SPEC §4.2）', () => {
+    const bad = ERR_RESULT.bad
+    expect(
+      bad,
+      '这些错误/提示行整条挂在 v-if 上：出错时凭空长出一行，把它下面的说明和按钮一起顶下去 —— '
+        + '用户正要点的那个按钮会在手指底下跑掉（2026-08-22 主管授权弹窗实测）。\n'
+        + 'LAYOUT-STABILITY-SPEC §4.2：**任何可能出现校验错误或提示的字段，那一行的位置在常态下就要占好。**\n'
+        + '改法（把 v-if 从元素挪到内容上，元素自己常驻）：\n'
+        + '  ❌  <p v-if="err" class="x-err">{{ err }}</p>\n'
+        + '  ✅  <p class="x-err"><template v-if="err">{{ err }}</template></p>\n'
+        + '      .x-err { min-height: 18px; line-height: 18px; }   /* 恰好一行 */\n'
+        + '字号只取阶梯值：var(--fs-micro)=11px / var(--fs-label)=12px，禁小数（UI-CONSISTENCY-SPEC）。\n'
+        + '用 ds/Input.vue 的地方不必自己处理，它内置了 .ds-in-msg 常驻位。\n'
+        + '手写的可抄 MeterView / PvMeterView / ElecCostView 的 .*-dlg-err { min-height:14px }。\n'
+        + '这类提示**不走 toast**：toast 是「做完了」的事后反馈，校验错误是「你得改这里」，得贴着字段留到改好。\n'
+        + '若它确属「加载失败态 / 空态」（显隐只由首次加载结果决定，替换的是整块内容区，§3 例外），'
+        + '加进本文件 ERR_SLOT_WHITELIST 并写明理由。\n\n'
+        + bad.join('\n'),
+    ).toEqual([])
+  })
+
   // 豁免表会烂：class 改名、条子删掉，条目留在这里就成了一张糊住门禁的贴纸。
   // 拿「本轮扫描真的命中过谁」对一遍，没命中的一律清掉。
   it('豁免表不许留过期条目，且每条都得写理由', () => {
-    const stale = [...Object.keys(WHITELIST), ...Object.keys(KNOWN_DEBT)]
-      .filter(k => !RESULT.usedKeys.has(k))
+    const stale = [
+      ...[...Object.keys(WHITELIST), ...Object.keys(KNOWN_DEBT)].filter(k => !RESULT.usedKeys.has(k)),
+      ...Object.keys(ERR_SLOT_WHITELIST).filter(k => !ERR_RESULT.usedKeys.has(k)),
+    ]
     expect(stale, '这些豁免条目本轮一个都没命中（class 改名了？条子已经删了？）请从表里清掉：\n'
       + stale.join('\n')).toEqual([])
 
-    for (const [key, why] of Object.entries({ ...WHITELIST, ...KNOWN_DEBT })) {
+    for (const [key, why] of Object.entries({ ...WHITELIST, ...KNOWN_DEBT, ...ERR_SLOT_WHITELIST })) {
       expect(why.length, `豁免条目 ${key} 没写理由`).toBeGreaterThan(10)
     }
   })

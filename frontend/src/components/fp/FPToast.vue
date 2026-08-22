@@ -12,9 +12,9 @@
  *
  * 为什么贴**底部**：屏幕/卡片顶部已经被「生成告警」这类 .pl-float 占着（那是要读的清单，
  * 不是短暂反馈）。一上一下各司其职，两者同时出现也不会叠在一起。
- * SnowUI 原始文档也写着 "Toast appear at the bottom." / "Recedes from the bottom"。
+ * jfen 原始文档也写着 "Toast appear at the bottom." / "Recedes from the bottom"。
  *
- * 视觉规格 = SnowUI Figma 的 Toast 组件（Dev Mode 实测：Height Hug 36 / Radius 16 /
+ * 视觉规格 = jfen Figma 的 Toast 组件（Dev Mode 实测：Height Hug 36 / Radius 16 /
  * Padding 8·12·8·12 / Gap 8 / Colors Black-80%）。**语气只由图标区分，底色恒定深色** ——
  * 这与本仓已有的 AppShell `.fp-net-toast`（--ink-900 深底白字）是同一套语言。
  * 首版曾沿用被收编那 5 处绿条的浅色语义底，属偏离设计系统，2026-08-22 按设计稿纠正。
@@ -78,7 +78,7 @@ function close() { clear(); emit('update:modelValue', '') }
   margin: 0 auto;
   z-index: var(--z-popover);
 
-  /* SnowUI Toast 规格（Figma Dev Mode 实测）：
+  /* jfen Toast 规格（Figma Dev Mode 实测）：
      Height Hug 36 · Radius 16 · Padding 8/12/8/12 · Gap 8 · Colors Black/80%
      36 = 8(上) + 20(图标与行高) + 8(下)；87(「Done」态宽) = 12 + 20 + 8 + 35 + 12。
      Black/80% 在本仓的语言里就是 --ink-700 = rgba(28,28,28,.8)
@@ -112,7 +112,7 @@ function close() { clear(); emit('update:modelValue', '') }
 }
 .fpt-x:hover { opacity: 1; background: rgba(255, 255, 255, .14); }
 
-/* 语气只由图标区分，底色恒定 —— 这是与 SnowUI 一致的地方，也是与旧版浅色语义底最大的差别。
+/* 语气只由图标区分，底色恒定 —— 这是与 jfen 设计稿一致的地方，也是与旧版浅色语义底最大的差别。
    CSS 的 fill 会覆盖 lucide 根 svg 的 presentation attribute fill="none"（作者样式表优先级更高），
    子 path 无自身 fill 故继承；stroke 仍是 currentColor，由下面的 color 控制。
 

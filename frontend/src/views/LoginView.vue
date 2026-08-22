@@ -387,7 +387,8 @@ onBeforeUnmount(() => {
             </button>
           </label>
 
-          <p v-if="errorMsg" class="lg-err"><AlertCircle :size="14" />{{ errorMsg }}</p>
+          <!-- 错误位常驻(LAYOUT-STABILITY-SPEC §4.2):红字长出来不许把「登录」按钮顶走 -->
+          <p class="lg-err"><template v-if="errorMsg"><AlertCircle :size="14" />{{ errorMsg }}</template></p>
 
           <div class="lg-row">
             <label class="lg-remember">
@@ -399,7 +400,7 @@ onBeforeUnmount(() => {
             </label>
             <button type="button" class="lg-forgot" @click="forgotHint = !forgotHint">忘记密码?</button>
           </div>
-          <p v-if="forgotHint" class="lg-forgothint">账号密码由园区统一分配，请联系管理员重置。</p>
+          <p class="lg-forgothint"><template v-if="forgotHint">账号密码由园区统一分配，请联系管理员重置。</template></p>
 
           <button type="submit" class="lg-submit" :disabled="loading">
             {{ loading ? '登录中…' : '登录' }}
@@ -512,7 +513,8 @@ onBeforeUnmount(() => {
 }
 .lg-eye:hover { color: rgba(15, 20, 32, 0.7); background: rgba(15, 20, 32, 0.05); }
 
-.lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 13px; color: var(--hue-red, #e5484d); }
+/* min-height=line-height=恰好一行:空着也占位,出错不位移 */
+.lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; min-height: 18px; line-height: 18px; font-size: 13px; color: var(--hue-red, #e5484d); }
 
 .lg-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 26px; }
 .lg-remember { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: #2a3040; cursor: pointer; user-select: none; }
@@ -529,7 +531,7 @@ onBeforeUnmount(() => {
 .lg-cb:focus-visible + .lg-cbbox { box-shadow: 0 0 0 3px rgba(76, 152, 253, 0.3); }
 .lg-forgot { border: 0; background: none; padding: 0; font-size: 13.5px; color: var(--lg-blue); cursor: pointer; font-family: var(--font-sans); }
 .lg-forgot:hover { text-decoration: underline; }
-.lg-forgothint { margin: -16px 0 18px; font-size: 12.5px; color: rgba(15, 20, 32, 0.5); }
+.lg-forgothint { margin: -16px 0 18px; min-height: 16px; line-height: 16px; font-size: 12.5px; color: rgba(15, 20, 32, 0.5); }
 
 .lg-submit {
   height: 54px; border: 0; border-radius: 15px;

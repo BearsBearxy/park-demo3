@@ -73,7 +73,8 @@ function onLogout() {
         <input v-model="confirm" type="password" autocomplete="new-password" :disabled="loading">
       </label>
 
-      <p v-if="errorMsg" class="cp-err"><AlertCircle :size="14" />{{ errorMsg }}</p>
+      <!-- 提示位常驻(LAYOUT-STABILITY-SPEC §4.2):红字冒出来不许把「确认修改」顶走 -->
+      <p class="cp-err"><template v-if="errorMsg"><AlertCircle :size="14" />{{ errorMsg }}</template></p>
 
       <button type="submit" class="cp-submit" :disabled="loading">{{ loading ? '提交中…' : '确认修改' }}</button>
       <button type="button" class="cp-logout" @click="onLogout">退出登录</button>
@@ -130,7 +131,8 @@ function onLogout() {
 .cp-field input:focus { outline: none; border-color: var(--border-strong); }
 .cp-field input:disabled { background: var(--bg-sunken); opacity: 0.6; }
 
-.cp-err { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-label); color: var(--hue-red); }
+/* 常驻一行:空着也占位,错误出现时下面的按钮不动 */
+.cp-err { display: flex; align-items: center; gap: 6px; margin: 0; min-height: 18px; line-height: 18px; font-size: var(--fs-label); color: var(--hue-red); }
 
 .cp-submit {
   height: 40px;

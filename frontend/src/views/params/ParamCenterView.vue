@@ -691,7 +691,8 @@ const FIXED_RULES = [
           <Select v-if="exPickable" :options="exValOpts" :model-value="ex.val" size="sm" placeholder="请选择" @update:model-value="ex.val = $event" />
           <input v-else :value="ex.val" class="pm-exin" type="number" step="any" placeholder="请输入数字"
                  @input="ex.val = ($event.target as HTMLInputElement).value" />
-          <span v-if="exDef?.hint" class="pm-exhint">{{ exDef.hint }}</span>
+          <!-- 提示位常驻:换参数键时有无 hint 都不许顶走下面的「生效方式」和页脚按钮(LAYOUT-STABILITY-SPEC §4.2) -->
+          <span class="pm-exhint"><template v-if="exDef?.hint">{{ exDef.hint }}</template></span>
         </label>
         <label class="pm-exfield"><span class="k">生效方式</span><Segmented :options="exModeOpts" :model-value="ex.mode" size="sm" @update:model-value="ex.mode = $event as ParamMode" /></label>
         <label class="pm-exfield"><span class="k">备注</span><input v-model="ex.note" class="pm-exin txt" type="text" placeholder="来源 / 依据" /></label>
@@ -797,5 +798,5 @@ const FIXED_RULES = [
 .pm-exin.txt { font-family: var(--font-sans); }
 .pm-exin:focus { border-color: var(--hue-blue); }
 .pm-exin::-webkit-outer-spin-button, .pm-exin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.pm-exhint { margin: 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.5; }
+.pm-exhint { margin: 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 16px; min-height: 16px; }
 </style>

@@ -569,8 +569,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
             <p v-else>
               确认启用「{{ tgTarget.displayName }}({{ tgTarget.username }})」?启用后该账号可以立即登录,权限按其当前角色生效。
             </p>
-            <!-- 内联色:.fin-dlg-h p 的 muted 特异性高于 .su-erm,不写死这里会把红字染灰 -->
-            <p v-if="tgErr" style="margin-top:10px;color:var(--hue-red)">{{ tgErr }}</p>
+            <!-- 错误位常驻(LAYOUT-STABILITY-SPEC §4.2):红字凭空长一行会把「确认停用」顶到手指底下跑掉。
+                 选择器带 .fin-dlg-h 前缀:.fin-dlg-h p 的 muted 色特异性高于单类名,压不住会把红字染灰 -->
+            <p class="tg-err"><template v-if="tgErr">{{ tgErr }}</template></p>
           </div>
           <div class="fin-dlg-f" style="padding-top:20px">
             <Button variant="gray" size="sm" @click="tgTarget = null">取消</Button>
@@ -624,6 +625,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 .fin-dlg-h { padding: 20px 22px 0; }
 .fin-dlg-h h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-dlg-h p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
+/* 停用/启用弹窗的错误位:恒定一行高,空着也占位 */
+.fin-dlg-h .tg-err { margin-top: 10px; font-size: var(--fs-label); color: var(--hue-red); min-height: 18px; line-height: 18px; }
 .fin-dlg-b { padding: 18px 22px 4px; display: flex; flex-direction: column; gap: 14px; }
 .fin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .fin-erm { font-size: var(--fs-label); color: var(--hue-red); margin-top: -6px; min-height: 16px; line-height: 1.5; }

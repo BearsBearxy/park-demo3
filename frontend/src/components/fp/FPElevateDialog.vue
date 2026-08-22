@@ -28,10 +28,53 @@ const password = ref('')
 const err = ref('')
 const busy = ref(false)
 
+// ── 反浏览器自动填充 ──
+//
+// 这个弹窗的**全部意义**是「主管本人走过来，亲手输一次自己的密码」。
+// 浏览器把本机存的账号密码自动填进去，这个动作就被架空了 —— 专员不用叫人，
+// 直接点「确认授权」就过。2026-08-22 用户实测截图抓到：两个框都被填满了。
+//
+// 两道防线，缺一不可：
+//   ① autocomplete —— Chrome 对普通登录框会**无视 autocomplete="off"**，
+//      但对密码框认 "new-password"（它理解成"设新密码"，不填旧的）。
+//   ② readonly 直到聚焦 —— 自动填充跳过 readonly 字段。用户点进来才解锁，
+//      这一条挡得住 autocomplete 挡不住的情况。
+//
+// 字段 name 也不用 username/password 这种词：Chrome 的启发式认名字。
+const acctRO = ref(true)
+const pwdRO = ref(true)
+
+/**
+ * ⚠ **第三道防线,而且是唯一真正管用的那道。**
+ *
+ * 前两道（autocomplete / readonly）挡住了「页面一加载就自动填好」，但挡不住
+ * 「点进密码框，浏览器弹出一列存好的账号让你挑」——用户 2026-08-23 截图正是这个：
+ * 弹出 admin / caiwu111 / viewer 三个候选，点一下就填进去了；提交后浏览器还问
+ * 「要保存密码吗」。
+ *
+ * 根因是 <input type="password"> 本身：只要页面上有密码框，Chrome 的密码管理器就
+ * 无条件介入，autocomplete 写什么都没用。
+ *
+ * 所以这里**不用 type="password"**，改用 type="text" + CSS 遮罩（-webkit-text-security）。
+ * 浏览器认不出这是登录表单 → 不弹候选、不问保存。视觉上仍是圆点。
+ *
+ * ⚠ 兜底很重要:遮罩要靠 CSS 支持。不支持的浏览器上明文显示密码是**更严重**的问题,
+ *   所以先 feature-detect,不支持就退回 type="password"（宁可被自动填充,不可明文）。
+ */
+const maskOk = typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+  && CSS.supports('-webkit-text-security', 'disc')
+const pwdType = maskOk ? 'text' : 'password'
+
 const permNames = computed(() => (props.perms ?? []).map(permLabel))
 
-// 每次打开都重置：上一次残留的账号/密码/报错留在框里，主管会以为自己已经输过了
-watch(open, (o) => { if (o) { account.value = ''; password.value = ''; err.value = ''; void loadPermDict() } })
+// 每次打开都重置：上一次残留的账号/密码/报错留在框里，主管会以为自己已经输过了。
+// readonly 也要重新上锁 —— 否则第二次打开时字段是解锁状态，自动填充又能进来。
+watch(open, (o) => {
+  if (!o) return
+  account.value = ''; password.value = ''; err.value = ''
+  acctRO.value = true; pwdRO.value = true
+  void loadPermDict()
+})
 
 async function submit() {
   if (!account.value.trim() || !password.value || busy.value) return
@@ -65,14 +108,25 @@ async function submit() {
         </div>
       </div>
 
-      <Input v-model="account" label="授权人账号" placeholder="主管 / 管理员的登录账号" autocomplete="off"
-             @keyup.enter="submit" />
-      <Input v-model="password" label="授权人密码" type="password" placeholder="请授权人本人输入" autocomplete="new-password"
-             @keyup.enter="submit" />
+      <Input v-model="account" label="授权人账号" placeholder="主管 / 管理员的登录账号"
+             name="fp-grantor-id" autocomplete="off" :readonly="acctRO"
+             @focus="acctRO = false" @keyup.enter="submit" />
+      <!-- ⚠ 包一层是为了让 :deep(input) 够得着 —— 遮罩样式要落在 Input 组件**内部**那个
+           <input> 上,而父组件的 scoped 选择器只作用到子组件的根元素(本仓踩过这个坑)。 -->
+      <div :class="{ 'ev-mask': maskOk }">
+        <Input v-model="password" label="授权人密码" :type="pwdType" placeholder="请授权人本人输入"
+               name="fp-grantor-secret" autocomplete="off" :readonly="pwdRO"
+               @focus="pwdRO = false" @keyup.enter="submit" />
+      </div>
 
-      <p v-if="err" class="ev-err">
-        <component :is="iconFor('alert-triangle')" :size="14" />
-        {{ err }}
+      <!-- ⚠ 错误位**常驻**(LAYOUT-STABILITY-SPEC §7)。写成 v-if 的话密码输错时
+           这行凭空长出来,把下面的说明和「确认授权」按钮一起顶下去 ——
+           用户正要重点一次的按钮在他手指底下跑掉。2026-08-22 用户截图指出。 -->
+      <p class="ev-err">
+        <template v-if="err">
+          <component :is="iconFor('alert-triangle')" :size="14" />
+          {{ err }}
+        </template>
       </p>
 
       <p class="ev-note">
@@ -99,9 +153,16 @@ async function submit() {
   font-size: var(--fs-label); padding: 2px 9px; border-radius: 999px;
   background: var(--surface-white); border: 1px solid var(--border-strong); color: var(--text-primary);
 }
+/* 遮罩:用 text 型输入 + CSS 打点,避开浏览器密码管理器。见上方 maskOk 注释 */
+.ev-mask :deep(input) {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
 .ev-err {
-  margin: 0; display: flex; align-items: center; gap: 6px;
-  font-size: var(--fs-label); color: var(--status-danger);
+  /* 常驻占位：min-height 恰好一行，空着时不可见但占着地方 */
+  margin: 0; min-height: 18px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-label); line-height: 18px; color: var(--status-danger);
 }
 .ev-note { margin: 0; font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
 </style>
