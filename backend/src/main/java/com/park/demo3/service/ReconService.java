@@ -117,10 +117,12 @@ public class ReconService {
             .eq("period_year", year).eq("period_month", month));
         List<S10Record> sRows = s10.selectList(new QueryWrapper<S10Record>().eq("acct_month", acctMonth));
 
-        // 台账按 tenant_id → 公司名归组(FK 保证可解析)
+        // 台账归并键:tenant_id 优先 → 档案名;V105 起未绑定行(tenant_id=null)用账面名(与 s10 软引用同款)
         Map<String, List<MonthlyLedger>> lByName = new HashMap<>();
         for (MonthlyLedger l : lRows) {
-            String name = ctx.nameById().getOrDefault(l.getTenantId(), "#" + l.getTenantId());
+            String name = l.getTenantId() != null
+                ? ctx.nameById().getOrDefault(l.getTenantId(), "#" + l.getTenantId())
+                : (l.getTenantName() != null ? l.getTenantName() : "（未命名）");
             lByName.computeIfAbsent(name, k -> new ArrayList<>()).add(l);
         }
         // s10 软引用归并键(E1):tenant_id 优先 → tenant.company_name;null 用 tenant_name(同名自然归并,否则独立实体)

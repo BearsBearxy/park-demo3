@@ -186,4 +186,26 @@ public class TenantService {
                 if (!a.isBlank()) names.add(a.trim());
         return new ArrayList<>(names);
     }
+
+    /** 软引用解析索引:账面名 → 唯一可判定的租户 id(台账/附表10 导入与改名自动配档共用)。
+     *  含全部状态(退租户也算——导入月当时可能还在租,这正是"只配在租"老规则的病根);
+     *  同名冲突:在租唯一者胜;仍不唯一则不入表 → 该名留未绑定,由问题面板人工选(绝不瞎猜)。 */
+    public static Map<String, Integer> softIndex(List<Tenant> all) {
+        Map<String, List<Tenant>> byName = new HashMap<>();
+        for (Tenant t : all)
+            for (String n : matchNames(t)) {
+                String key = n == null ? "" : n.trim();   // 评审A6:档案名可能带首尾空白,查询侧全是 trim 过的
+                if (!key.isEmpty()) byName.computeIfAbsent(key, k -> new ArrayList<>()).add(t);
+            }
+        Map<String, Integer> idx = new HashMap<>();
+        for (var e : byName.entrySet()) {
+            List<Tenant> cands = e.getValue();
+            List<Tenant> active = cands.stream()
+                .filter(t -> t.getStatus() != null && t.getStatus() == 1).toList();
+            Tenant pick = active.size() == 1 ? active.get(0)
+                        : (active.isEmpty() && cands.size() == 1 ? cands.get(0) : null);
+            if (pick != null) idx.put(e.getKey(), pick.getId());
+        }
+        return idx;
+    }
 }

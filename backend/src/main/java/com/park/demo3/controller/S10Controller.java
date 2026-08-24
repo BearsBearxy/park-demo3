@@ -58,4 +58,20 @@ public class S10Controller {
     public DeleteResultDTO batchDelete(@Valid @RequestBody S10BatchDeleteReq req) {
         return svc.batchDelete(req.ids());
     }
+
+    @Operation(summary = "按账面名批量绑定档案（跨期跨月挂未绑定行）")
+    @PutMapping("/bind-tenant")
+    public BindResultDTO bindTenant(@Valid @RequestBody TenantBindReq req) { return svc.bindTenant(req); }
+
+    @Operation(summary = "行级绑定/换绑/解绑（tenantId=null 即解绑）")
+    @PatchMapping("/{id}/tenant")
+    public S10RecordDTO bindRow(@PathVariable Long id, @RequestBody RowTenantBindReq req) {
+        return svc.bindRow(id, req.tenantId());
+    }
+
+    @Operation(summary = "行级改账面名（只动快照；未绑定行改对名字自动配档；同槽同名 409）")
+    @PatchMapping("/{id}/tenant-name")
+    public S10RecordDTO renameRow(@PathVariable Long id, @Valid @RequestBody RowTenantRenameReq req) {
+        return svc.renameRow(id, req.tenantName());
+    }
 }

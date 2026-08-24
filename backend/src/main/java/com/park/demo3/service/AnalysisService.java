@@ -134,7 +134,10 @@ public class AnalysisService {
                 return new AnalysisLedgerRowDTO(
                     l.getCompanyId(), companyNames.getOrDefault(l.getCompanyId(), "（未知公司）"),
                     l.getPeriodYear(), l.getPeriodMonth(),
-                    l.getTenantId(), tenantNames.getOrDefault(l.getTenantId(), "（已删除租户）"),
+                    l.getTenantId(),
+                    l.getTenantId() != null
+                        ? tenantNames.getOrDefault(l.getTenantId(), "（已删除租户）")
+                        : (l.getTenantName() != null ? l.getTenantName() : "（未命名）"),   // V105 未绑定行走账面名
                     r2(l.getBalancePrev()), derived[0], r2(l.getTotalCollected()), derived[1]);
             })
             .toList();
