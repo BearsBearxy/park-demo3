@@ -24,6 +24,18 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ---- 贴附浮层入场（下拉、Popover）----
+   与上面的弹窗入场是两回事,区别不在好看,在**频率**:
+   下拉一天开几十次,一次筛选可能连开三四个 —— 每次多等 80ms 都是实打实的等待,
+   所以走 --dur-fast(120ms) 与 4px 位移;弹窗一天开几次且承载重要决策,才值 200ms/8px。
+
+   位移方向朝下 4px→0(起点略高于终点)= 「从触发器里长出来」;
+   反过来会读成「从下面飘上来」,与触发关系不符。 */
+@keyframes fp-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ---- 减少动态效果 ----
    系统设置里开了「减少动态效果」的用户。此前只有 scrollbar.css 与登录页响应，其余屏无视该设置。
 

@@ -148,19 +148,15 @@ export default defineComponent({
           ...ROW_BASE,
           paddingLeft:  `${12 + depth * 16}px`,
           paddingRight: "12px",
-          background:   on ? "var(--bg-hover)" : "transparent",
+          background:   "var(--fp-sbnav-bg)",
           color:        on ? "var(--text-primary)" : "var(--text-secondary)",
         };
 
         const btn = h("button", {
+          class: "fp-sbnav-row",
+          "data-on": on ? "" : undefined,
           style: rowStyle,
           onClick: () => isDir ? toggle(it.value) : select(it.value),
-          onMouseenter: (e: MouseEvent) => {
-            if (!on) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
-          },
-          onMouseleave: (e: MouseEvent) => {
-            if (!on) (e.currentTarget as HTMLElement).style.background = "transparent";
-          },
         }, [
           // active accent bar
           on ? h("span", { style: { position: "absolute", left: "0", top: "8px", bottom: "8px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,
@@ -212,15 +208,15 @@ export default defineComponent({
                     style: {
                       width: "40px", height: "40px", display: "inline-flex", alignItems: "center", justifyContent: "center",
                       border: "none", borderRadius: "var(--radius-sm)", position: "relative",
-                      background: lit ? "var(--bg-hover)" : "transparent",
+                      background: "var(--fp-sbnav-bg)",
                       color:      lit ? "var(--text-primary)" : "var(--text-secondary)",
                       cursor: "pointer", transition: "background var(--dur-fast) var(--ease-standard)",
                     },
+                    class: "fp-sbnav-row",
+                    "data-on": lit ? "" : undefined,
                     onClick: () => isDir
                       ? (flyout.value = flyout.value === it.value ? null : it.value)
                       : select(it.value),
-                    onMouseenter: (e: MouseEvent) => { if (!lit) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"; },
-                    onMouseleave: (e: MouseEvent) => { if (!lit) (e.currentTarget as HTMLElement).style.background = "transparent"; },
                   }, [
                     // icon or first-letter fallback
                     it.icon
@@ -233,11 +229,12 @@ export default defineComponent({
                   // hover tooltip (hidden while flyout is open for this item)
                   hoverVal.value === it.value && !isFly
                     ? h("div", {
+                        class: "fp-sbnav-tip",
                         style: {
                           position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)",
                           background: "var(--ink-900)", color: "#fff", borderRadius: "var(--radius-sm)", padding: "6px 10px",
                           fontFamily: "var(--font-sans)", fontSize: "var(--fs-label)", whiteSpace: "nowrap",
-                          boxShadow: "var(--shadow-pop)", pointerEvents: "none", zIndex: "40",
+                          boxShadow: "var(--shadow-pop)", pointerEvents: "none", zIndex: "var(--z-popover)",
                           display: "flex", alignItems: "center", gap: "8px",
                         },
                       }, [
@@ -251,11 +248,12 @@ export default defineComponent({
                   // directory flyout — one level, one open at a time
                   isDir && isFly
                     ? h("div", {
+                        class: "fp-sbnav-flyout",
                         style: {
                           position: "absolute", left: "calc(100% + 10px)", top: "-4px", minWidth: "184px",
                           background: "var(--surface-white)", border: "1px solid var(--border-subtle)",
                           borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-pop)", padding: "6px",
-                          display: "flex", flexDirection: "column", gap: "2px", zIndex: "40",
+                          display: "flex", flexDirection: "column", gap: "2px", zIndex: "var(--z-popover)",
                         },
                       }, [
                         h("div", { style: { font: "var(--type-label)", color: "var(--text-muted)", padding: "4px 10px" } }, [it.label]),
@@ -263,10 +261,10 @@ export default defineComponent({
                           const con = c.value === activeValue.value;
                           return h("button", {
                             key: c.value,
-                            style: { ...ROW_BASE, padding: "0 10px", height: "32px", color: con ? "var(--text-primary)" : "var(--text-secondary)", background: con ? "var(--bg-hover)" : "transparent" },
+                            class: "fp-sbnav-row",
+                            "data-on": con ? "" : undefined,
+                            style: { ...ROW_BASE, padding: "0 10px", height: "32px", color: con ? "var(--text-primary)" : "var(--text-secondary)", background: "var(--fp-sbnav-bg)" },
                             onClick: () => select(c.value),
-                            onMouseenter: (e: MouseEvent) => { if (!con) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)"; },
-                            onMouseleave: (e: MouseEvent) => { if (!con) (e.currentTarget as HTMLElement).style.background = "transparent"; },
                           }, [
                             c.icon ? h("span", { style: { display: "inline-flex", flex: "0 0 auto" } }, [typeof c.icon === "object" && c.icon.render ? h(c.icon) : c.icon]) : null,
                             h("span", { style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, [c.label]),
@@ -301,3 +299,33 @@ export default defineComponent({
   },
 });
 </script>
+
+<!-- ⚠ 刻意不用 scoped:本组件是 render 函数(h())而非模板,Vue 只把 scopeId 加到根
+     vnode 上,h() 创建的深层元素拿不到 data-v-*,scoped 规则会全部落空。
+     改用 .fp-sbnav-* 前缀做隔离。 -->
+<style>
+/* 行的悬停与选中。
+   改前写的是 onMouseenter 里 e.currentTarget.style.background = ... —— 手写 DOM、
+   绕过 Vue 响应式,任何触发重渲染的状态变化都会把它冲掉;而且为了不让 hover 盖掉选中行,
+   还得在两个回调里各写一次 if (!on) 守卫。现在背景走 --fp-sbnav-bg,
+   选中与悬停各一条 CSS 规则,守卫也不需要了。 */
+.fp-sbnav-row { --fp-sbnav-bg: transparent; }
+.fp-sbnav-row:hover { --fp-sbnav-bg: var(--bg-hover); }
+.fp-sbnav-row[data-on] { --fp-sbnav-bg: var(--bg-hover); }
+
+/* 折叠轨道的悬停提示:**延迟 400ms 才出现**。
+   轨道上四个图标竖排,鼠标从顶滑到底会依次经过每一个 —— 没有延迟的话一次滑动
+   就连闪四个黑色提示框,那不是提示是干扰。延迟意味着「停下来看」才出提示、
+   「路过」不出;消失不延迟,鼠标一走立刻收。
+   ⚠ 用 opacity:0 + forwards 而不是 both:fp-fade-in 只有 to 帧,
+   both 会在延迟期间就把 opacity 应用成 1,提示框立刻可见,延迟等于白设。
+   reduced-motion 下时长被压到 1ms 但 delay 不受影响 —— 这是对的,
+   400ms 是交互设计(区分「停下看」与「路过」),不是动效。 */
+.fp-sbnav-tip {
+  opacity: 0;
+  animation: fp-fade-in var(--dur-fast) var(--ease-out) 400ms forwards;
+}
+
+/* 目录浮出层:与下拉面板同规格(见 motion.css 的 fp-pop-in)。 */
+.fp-sbnav-flyout { animation: fp-pop-in var(--dur-fast) var(--ease-out); }
+</style>
