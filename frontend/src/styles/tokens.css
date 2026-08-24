@@ -182,12 +182,17 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
   --control-solid:      var(--ink-900);
   --control-solid-text: rgb(255, 255, 255);
   --control-soft:       var(--ink-040);
+  /* 2026-08-24 令牌化。原先硬编码在 components/ds/Button.vue 的 VARIANTS 表里,
+     因为那张表由 JS 手动合并 rest/hover 两套值,没走 CSS 就不需要令牌。
+     现在 hover 交回 :hover 伪类,值必须先有令牌可引。 */
+  --control-solid-hover: rgb(58, 58, 58);
 
   --status-success: var(--hue-green);   /* 区别于 info(蓝)：已缴清/生效中/已完成 */
   --status-info:    var(--hue-blue);
   --status-pending: var(--hue-cyan);
   --status-warning: var(--hue-orange);
   --status-danger:  var(--hue-red);
+  --status-danger-hover: rgb(224, 49, 39);   /* 同上,原硬编码于 Button.vue */
   --status-neutral: var(--ink-500);
 
   --delta-up:   var(--hue-green);        /* 涨跌走红绿直觉，而非红蓝 */
