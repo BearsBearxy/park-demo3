@@ -75,7 +75,7 @@ const pillBase = {
   minWidth: "32px",
   height: "32px",
   padding: "0 10px",
-  border: "1px solid var(--border-subtle)",
+  border: "1px solid var(--ds-pg-border)",
   borderRadius: "var(--radius-full)",
   fontFamily: "var(--font-sans)",
   fontSize: "var(--fs-body)",
@@ -84,6 +84,9 @@ const pillBase = {
   justifyContent: "center",
 };
 
+// ⚠ hover 不在这里:pillStyle 只能产出内联样式,而内联装不下 :hover ——
+// 这正是改前 pillStyle(on, dis) 只有这两个分支、页码上根本没有悬停反馈的原因。
+// hover 改由下方 <style scoped> 的 .ds-pg-pill:hover 负责。
 function pillStyle(on: boolean, dis: boolean) {
   return {
     ...pillBase,
@@ -140,6 +143,7 @@ const ellipsisStyle = {
     <!-- Prev -->
     <button
       aria-label="Previous"
+      class="ds-pg-pill"
       :disabled="currentPage <= 1"
       :style="pillStyle(false, currentPage <= 1)"
       @click="goToPage(currentPage - 1)"
@@ -150,6 +154,7 @@ const ellipsisStyle = {
       <span v-if="p === '…'" :style="ellipsisStyle">…</span>
       <button
         v-else
+        class="ds-pg-pill"
         :style="pillStyle(p === currentPage, false)"
         @click="goToPage(p as number)"
       >{{ p }}</button>
@@ -158,9 +163,24 @@ const ellipsisStyle = {
     <!-- Next -->
     <button
       aria-label="Next"
+      class="ds-pg-pill"
       :disabled="currentPage >= pageCount"
       :style="pillStyle(false, currentPage >= pageCount)"
       @click="goToPage(currentPage + 1)"
     >›</button>
   </div>
 </template>
+
+<style scoped>
+/* 页码胶囊的悬停。改前 pillStyle(on, dis) 只有「当前页」与「禁用」两个分支,
+   鼠标移到页码上毫无反馈 —— 用户不确定这个数字能不能点。
+
+   ⚠ 悬停改的是**边框**不是底色:--bg-hover(ink 5%)与当前页的 --bg-sunken
+   在白底上几乎同色,用底色区分会让「悬停」和「当前页」看起来一样。 */
+.ds-pg-pill {
+  --ds-pg-border: var(--border-subtle);
+  transition: border-color var(--dur-fast) var(--ease-standard),
+              background var(--dur-fast) var(--ease-standard);
+}
+.ds-pg-pill:hover:not(:disabled) { --ds-pg-border: var(--border-strong); }
+</style>

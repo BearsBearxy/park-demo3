@@ -42,6 +42,10 @@ const spanStyle = computed(() => ({
   fontWeight: "var(--fw-medium)",
   lineHeight: "1",
   whiteSpace: "nowrap",
+  // 徽标唯一的动效场景是「状态变了」(如一条记录从「进行中」跳到「已缴清」),
+  // 改前没有 transition,是硬跳。只过渡颜色,不碰尺寸 —— 徽标常在表格行里,
+  // 任何尺寸变化都会推动同行其它列(LAYOUT-STABILITY-SPEC)。
+  transition: "background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard)",
 }));
 
 const dotStyle = computed(() => ({
@@ -50,6 +54,7 @@ const dotStyle = computed(() => ({
   borderRadius: "50%",
   background: t.value.dot,
   flex: "0 0 auto",
+  transition: "background var(--dur-fast) var(--ease-standard)",
 }));
 </script>
 
