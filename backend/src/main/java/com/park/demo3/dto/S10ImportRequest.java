@@ -38,6 +38,7 @@ public record S10ImportRequest(
         BigDecimal elecMaint,
         BigDecimal waterStd,
         BigDecimal waterMaint,
-        BigDecimal guaranteeRent
+        BigDecimal guaranteeRent,
+        java.util.Map<String, BigDecimal> extraFees   // 自定义列(键=列固定id;未知 id 该行报错)
     ) {}
 }

@@ -58,13 +58,15 @@ export interface LedgerFees {
 }
 
 export interface LedgerRowDTO extends LedgerFees {
-  tenantId: number
-  tenantName: string
+  id: number | null       // 行 id(服务端行必有;编辑态本地新增行为 null,保存后获得)
+  tenantId: number | null // null = 未绑定档案(V105 软引用)
+  tenantName: string      // 账面名快照,与档案名可不一致
   balancePrev: number
   totalCollected: number
   note: string | null
   totalReceivable: number // derived
   balanceEnd: number      // derived
+  extraFees?: Record<string, number | null>  // 自定义列口袋(键=列固定id c_xxx,方案A;后端恒下发,本地新增行可缺省)
 }
 
 export interface LedgerFooter extends LedgerFees {
@@ -85,11 +87,20 @@ export interface LedgerMonthDTO {
 
 // PUT save body (spec §4.2): derived columns omitted, backend recomputes.
 export interface LedgerSaveRow extends LedgerFees {
-  tenantId: number
+  id?: number | null        // 既有行身份(未绑定行必带;绑定行可省走 tenantId)
+  tenantId: number | null
+  tenantName?: string       // 提供即改账面名快照(未绑定行改名后后端自动按新名配档)
   balancePrev: number
   totalCollected: number
   note: string | null
+  extraFees?: Record<string, number | null> | null  // 非空=整包替换;缺省=不动
 }
+
+// 行稳定键:服务端行用 id;编辑态本地新增行(尚无 id)用 -tenantId 负数命名空间,保存后自然换正
+export const ledgerRowKey = (r: { id?: number | null; tenantId?: number | null }): number =>
+  r.id ?? -(r.tenantId ?? 0)
+
+export interface BindResultDTO { bound: number; conflicts: number }
 
 export interface LedgerSaveRequest {
   rows: LedgerSaveRow[]
@@ -102,6 +113,7 @@ export interface LedgerImportRow extends Partial<LedgerFees> {
   balancePrev?: number
   totalCollected?: number
   note?: string
+  extraFees?: Record<string, number | null>   // 自定义列:按键合并(键出现=覆盖含0;缺席=不动)
 }
 
 export interface LedgerImportRequest {

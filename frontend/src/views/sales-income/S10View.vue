@@ -1,51 +1,73 @@
 <script setup lang="ts">
-// 附表10 · 销售收入 — 4 级动线状态机。
-// 1:1 from screen-schedule10.jsx Schedule10Screen:
-// ⓪ SchedYearGate(store-key 's10') → ① 月份 SchedMonthPills(已录月高亮) → ② 期 Segmented(一期/二期/三期/宿舍) → ③ 宽表。
-// §6 加载门:overview 未就绪显 .page-loading,不假空态。编辑态单元格即时重算,完成时把改动 upsert 回后端。
-// 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
-import { ref, computed, onMounted, reactive } from 'vue'
+// 附表10 · 销售收入 — 账册工作台三态动线(BOOK-WORKBENCH-SPEC §5/§7/§8)。
+// 左轨四册(一期/二期/三期/宿舍区,期区 tabs 退场) + 选期矩阵 v3(§8:年份 tab 退场,
+// 全年份纵排一屏,手工年可增删) → 点月卡进宽表;宽表内「换期」回矩阵。
+// 版面由所选账册现行版模板驱动(toS10Layout,§3 现行版全局生效);自定义列 extra_fees
+// 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
+// §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
+import { ref, computed, onMounted, onDeactivated, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
+import { booksApi } from '@/api/books'
 import { parseS10DeepLink } from '@/utils/deepLink'
 import { exportS10Month } from '@/utils/s10Excel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
-import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq, S10ImportRow } from '@/types/s10'
-import { PHASES, PHASE_LAYOUT, leavesOf } from './layout'
+import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
+import type { Book, BookDef, TemplateVersion } from '@/types/book'
+import { flattenCols, customColIds } from '@/types/book'
+import { toS10Layout, mergeExtras, extractExtras } from '@/utils/bookTemplate'
+import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
+import { PHASE_LAYOUT, leavesOf, type Group, type LayoutId } from './layout'
 import { parserProps, runImport } from '@/utils/importRegistry'
+import { tenantApi } from '@/api/tenant'
+import type { TenantDTO } from '@/types/tenant'
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
+import FPSideDrawer from '@/components/fp/FPSideDrawer.vue'
+import FPTenantIssuePanel, { type IssueGroup } from '@/components/fp/FPTenantIssuePanel.vue'
+import { groupUnbound } from '@/utils/tenantSuggest'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import KpiCard from '@/components/ds/KpiCard.vue'
-import Segmented from '@/components/ds/Segmented.vue'
-import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
+import FPMoreMenu from '@/components/fp/FPMoreMenu.vue'
+import BookRail from '@/components/fp/BookRail.vue'
+import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
+import TemplateEditorPanel from '@/components/fp/TemplateEditorPanel.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
-import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import S10Table from './S10Table.vue'
 import S10RecordDrawer from './S10RecordDrawer.vue'
+import S10BindDrawer from './S10BindDrawer.vue'
+import { toBindOptions } from '@/components/fp/fpTenantPicker'
 
-// ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
+// ── 账册(左轨)状态:四册期区,phase 由所选账册派生 ─────────────
+const books = ref<Book[]>([])
+const activeBookId = ref<number | null>(null)
+const activeBook = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
+const phase = computed(() => activeBook.value?.phase ?? 1)
+const bookDef = computed<BookDef | null>(() => activeBook.value?.definition ?? null)
+// 模板 → 宽表版面(可见列);合计口径 = 模板全列含隐藏(与后端 recalc 全口袋一致)
+const layoutGroups = computed<Group[]>(() => (bookDef.value ? toS10Layout(bookDef.value) : []))
+const allColIds = computed(() => (bookDef.value ? flattenCols(bookDef.value).map(c => c.id) : []))
+// 新增租户抽屉 profile 选项仍按期区二分(office/factory)——租户类型不属于列模板
+const drawerLayout = computed<LayoutId>(() => PHASE_LAYOUT[phase.value] ?? 'office')
+
 const month = ref(1)
-const phase = ref(1)
-
 const overview = ref<S10OverviewDTO | null>(null)  // §6 加载信号
 const monthData = ref<S10MonthDTO | null>(null)
 // 编辑态改动集（行 id → 已改）；完成时 upsert
 const dirty = reactive(new Set<number>())
 
-const meta = computed(() => PHASES.find(p => p.phase === phase.value)!)
-const layout = computed(() => PHASE_LAYOUT[phase.value])
-const leaves = computed(() => leavesOf(layout.value))
-
-// 竞态守卫:快速切月/期时只接受最新一次请求的结果(防乱序落表)
+// 竞态守卫:快速切月/册时只接受最新一次请求的结果(防乱序落表)
 let monthSeq = 0
 async function loadMonth(y: number) {
   const seq = ++monthSeq
   const data = await s10Api.getMonth(phase.value, y, month.value)
   if (seq !== monthSeq) return
-  monthData.value = data
+  // extra_fees 口袋平铺进行顶层:宽表/合计按列 key 直取(BOOK-WORKBENCH §1 方案A)
+  monthData.value = { ...data, rows: data.rows.map(r => mergeExtras(r)) }
   dirty.clear()
 }
 async function reloadOverview() {
@@ -60,7 +82,6 @@ const {
   reloadOverview,
   rows: () => monthData.value?.rows ?? [],
   clearData: () => { monthData.value = null },
-  onPickYear: () => { phase.value = 1 },
   // seed 行不可删 → 既不进全选,也不响应单勾
   selectAllFilter: (r: S10RecordDTO) => r.source !== 'seed',
   canSelect: (r: S10RecordDTO) => r.source !== 'seed',
@@ -73,72 +94,107 @@ const {
   },
 })
 
-// ⓪ overview.summaries → YearCard
-const yearCards = computed<YearCard[]>(() => {
+// ── 矩阵态(选期矩阵 v3,§8):全年份纵排,数据年∪当前年∪手工年连续补满 ──
+// overview 无分月行数 → hasData 沿用月 pills 的已录月口径(过去年整年、当年到 currentMonth)
+function hasYearData(y: number): boolean {
+  const s = overview.value?.summaries.find(x => x.year === y)
+  return !!s && (s.recordedMonths > 0 || s.tenantCount > 0)
+}
+function recordedFor(y: number, m: number): boolean {
   const ov = overview.value
-  if (!ov) return []
-  const byYear = new Map(ov.summaries.map(s => [s.year, s]))
-  return ov.years.map(y => {
-    const s = byYear.get(y)
-    const has = !!s && (s.recordedMonths > 0 || s.tenantCount > 0)
-    return {
-      year: y,
-      hasData: has,
-      metric: has ? s!.recordedMonths + ' 个月' : '',
-      label: has ? '本年已录入 · ' + s!.tenantCount + ' 户' : '',
-    }
-  })
-})
-
-const yearRange = computed(() => overview.value?.years ?? [])
-
-// 已录月高亮:依据 summary.recordedMonths（当前年取 currentMonth 截止）
-const recordedMonth = (m: number) => {
-  const ov = overview.value
-  if (!ov || year.value == null) return false
-  if (year.value < ov.currentYear) return true
-  if (year.value === ov.currentYear) return m <= ov.currentMonth
+  if (!ov) return false
+  if (y < ov.currentYear) return hasYearData(y)
+  if (y === ov.currentYear) return m <= ov.currentMonth
   return false
 }
+// 手工年落本机(bw-extra-years:s10:{phase});bump 让 localStorage 写入驱动重组
+const extraBump = ref(0)
+const extraYears = computed(() => { void extraBump.value; return loadExtraYears('s10', phase.value) })
+const matrixYears = computed(() => {
+  const ov = overview.value
+  if (!ov) return []
+  const extra = extraYears.value
+  const dataYears = ov.years.filter(y => hasYearData(y))
+  // ⚠ ov.currentYear = 最大数据年,不是自然年:范围与「当前年」标签都按自然年(SPEC §5 v3 口径:
+  // 数据年∪当前自然年∪手工年);cur 月标记才用 ov.currentYear/currentMonth(=最近有数据月)
+  const natural = new Date().getFullYear()
+  return buildYearRows(dataYears, natural, extra).map(({ year: y, manual }) => ({
+    year: y,
+    // 当前年优先:当前自然年无数据时 manual 也为真,不得标成「手工年」
+    sub: y === natural ? '当前年' : (manual ? '手工年' : undefined),
+    // 数据年不可移除;手工年录入数据即转正(dataYears 接住后 manual 变假)
+    removable: manual && extra.includes(y) && !hasYearData(y),
+    months: Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1
+      const hasData = recordedFor(y, m)
+      // cur = 该册最近有数据月 = 当年 currentMonth(currentMonth=0 即全空,无 cur)
+      return { month: m, hasData, cur: hasData && y === ov.currentYear && m === ov.currentMonth }
+    }),
+  }))
+})
 
-// ── 进入屏:overview（§6 取数前不渲染）;核对跳转深链则直接进明细并定位租户行 ──
-// 深链(spec 2026-07-07 §一):query y/m/phase/tenant → 设 refs → 加载月表 → S10Table 定位高亮。
+// 增删手工年:本机便利动作,无权限门、无确认(§8)
+function onAddEarlier() {
+  const first = matrixYears.value[0]
+  if (!first) return
+  saveExtraYears('s10', phase.value, [...extraYears.value, first.year - 1])
+  extraBump.value++
+}
+function onAddLater() {
+  const last = matrixYears.value[matrixYears.value.length - 1]
+  if (!last) return
+  saveExtraYears('s10', phase.value, [...extraYears.value, last.year + 1])
+  extraBump.value++
+}
+function onRemoveYear(y: number) {
+  saveExtraYears('s10', phase.value, extraYears.value.filter(x => x !== y))
+  extraBump.value++
+}
+
+// 点月卡 → 表格态(空月卡可点,进空月录入);换期清勾选——旧版 switchMonth 即清,
+// 勾选行 id 跨月残留会让「删除选中」删掉别的月的行(审查#12)
+async function pickCell(y: number, m: number) {
+  selectedIds.value = new Set()
+  month.value = m
+  await pickYear(y)
+}
+
+// 左轨切册:一键切换,回该册矩阵(§5 进宽表必点月卡)
+function selectBook(id: number) {
+  if (id === activeBookId.value) return
+  // 编辑态有脏改动:切册=丢弃,先确认(与台账屏 selectBook 同款,审查#18)
+  if (edit.value && dirty.size > 0 && !window.confirm('正在编辑本期附表,切换账册将丢弃未保存的修改,继续?')) return
+  edit.value = false
+  selectedIds.value = new Set()
+  activeBookId.value = id
+  bindRowId.value = null
+  issuesOpen.value = false
+  if (year.value != null) goGate()
+}
+
+// ── 进入屏:overview + 四册并取(§6 取数前不渲染);核对深链直落表格态并定位租户行 ──
+// 深链(spec 2026-07-07 §一):query y/m/phase/tenant → 选中该期账册 → 加载月表 → S10Table 定位高亮。
 const route = useRoute()
 const focusTenant = ref('')   // 一次性:S10Table 定位完成后清空
 onMounted(async () => {
-  overview.value = await s10Api.getOverview()
-  month.value = overview.value.currentMonth || 1
+  const [ov, bs] = await Promise.all([s10Api.getOverview(), booksApi.list('s10')])
+  overview.value = ov
+  books.value = bs
+  month.value = ov.currentMonth || 1
+  activeBookId.value = bs.find(b => b.phase === 1)?.id ?? bs[0]?.id ?? null
   const dl = parseS10DeepLink(route.query)
   if (!dl) return
+  const b = bs.find(x => x.phase === dl.phase)
+  if (b) activeBookId.value = b.id
   year.value = dl.y
   month.value = dl.m
-  phase.value = dl.phase
   await loadMonth(dl.y)
   focusTenant.value = dl.tenant
 })
 
-// ── 状态迁移(切月 / 切期:不清空 monthData,旧表保留到新数据落位,避免整屏闪烁) ──
-async function switchMonth(m: number) {
-  if (m === month.value) return
-  month.value = m
-  selectedIds.value = new Set()
-  if (year.value != null) await loadMonth(year.value)
-}
-async function switchPhase(v: string) {
-  const p = parseInt(v, 10)
-  if (p === phase.value) return
-  phase.value = p
-  selectedIds.value = new Set()
-  if (year.value != null) await loadMonth(year.value)
-}
-
-// ── 编辑态:单元格 / 备注 / 名称 即时写回本地行（触发表内重算）+ 标脏 ──
+// ── 编辑态:单元格 / 备注 即时写回本地行（触发表内重算）+ 标脏 ──
 function onCell(row: S10RecordDTO, colId: S10ColId, value: number) {
   ;(row as unknown as Record<string, unknown>)[colId] = value
-  dirty.add(row.id)
-}
-function onNameEdit(row: S10RecordDTO, value: string) {
-  row.tenantName = value
   dirty.add(row.id)
 }
 function onNoteEdit(row: S10RecordDTO, value: string) {
@@ -146,9 +202,13 @@ function onNoteEdit(row: S10RecordDTO, value: string) {
   dirty.add(row.id)
 }
 
-// 把一行打成 upsert 请求体
+// 25 物理列全集(office∪factory):后端 save 对缺省键 r2(null)=清零而非"不动",
+// 必须无条件全键逐发——只发模板内标准列会把模板外(如 factory 册的 5 个 office 列)
+// 或隐藏列的既有值静默清零(审查#9/#17/#26);值取自平铺行,服务端 DTO 带全列不丢。
+const PHYS_IDS = [...new Set([...leavesOf('office'), ...leavesOf('factory')].map(l => l.colId as string))]
 function toReq(row: S10RecordDTO): S10RecordReq {
   const req: S10RecordReq = {
+    id: row.id,
     tenantId: row.tenantId,
     tenantName: row.tenantName,
     phase: phase.value,
@@ -156,7 +216,11 @@ function toReq(row: S10RecordDTO): S10RecordReq {
     profile: row.profile,
     note: row.note,
   }
-  leaves.value.forEach(l => { req[l.colId] = Number(row[l.colId]) || 0 })
+  const bag = req as unknown as Record<string, number>
+  const src = row as unknown as Record<string, unknown>
+  for (const id of PHYS_IDS) bag[id] = Number(src[id]) || 0
+  const def = bookDef.value
+  if (def) req.extraFees = extractExtras(src, customColIds(def))   // 自定义列(含隐藏)整包收回
   return req
 }
 
@@ -168,16 +232,17 @@ function finishEdit() {
   edit.value = false
 }
 
-// 保存修改:脏行逐个 upsert + 退出
+// 保存修改:脏行逐个 upsert;成功才退出编辑(失败保留编辑态与脏标记,
+// 否则浏览态显示未落库的改值、KPI 却是后端旧数,像保存成功了一样——审查#8)
 async function onSaveChanges() {
   saveConfirm.value = false
-  edit.value = false
-  selectedIds.value = new Set()
-  if (dirty.size === 0 || !monthData.value) return
+  if (dirty.size === 0 || !monthData.value) { edit.value = false; selectedIds.value = new Set(); return }
   const rows = monthData.value.rows.filter(r => dirty.has(r.id))
   await guard('保存失败', async () => {
     for (const r of rows) await s10Api.saveRecord(toReq(r))
     await refresh()
+    edit.value = false
+    selectedIds.value = new Set()
   })
 }
 
@@ -208,18 +273,55 @@ const onDelete = (row: S10RecordDTO) => guard('删除失败', async () => {   //
 
 const onExport = () => guard('导出失败', async () => {
   if (!monthData.value) return
-  await exportS10Month(monthData.value, '附表10 · 销售收入')
+  await exportS10Month(monthData.value, '附表10 · 销售收入', bookDef.value)
 })
 
-// ── 智能整表导入 Excel ──────────────────────────────────
+// ── 模板编辑(§3):编辑模式门内入口,当前左轨选中的那一册 ─────────
+const tplOpen = ref(false)
+const tplVersions = ref<TemplateVersion[]>([])
+const tplSaving = ref(false)
+async function loadVersions(bookId: number) {
+  tplVersions.value = (await booksApi.versions(bookId)).versions
+}
+function openTpl() {
+  const b = activeBook.value
+  if (!b) return
+  tplOpen.value = true
+  tplVersions.value = []
+  void guard('加载模板版本失败', () => loadVersions(b.id))
+}
+function applyBook(b: Book) {
+  books.value = books.value.map(x => (x.id === b.id ? b : x))   // 版面/导入词典即时随现行版重算
+}
+async function onTplSave(def: BookDef, note: string) {
+  const b = activeBook.value
+  if (!b) return
+  tplSaving.value = true
+  await guard('保存模板失败', async () => {
+    const res = await booksApi.saveTemplate(b.id, def, note || undefined)
+    applyBook(res.book)
+    await loadVersions(b.id)
+    tplOpen.value = false
+  })
+  tplSaving.value = false
+}
+async function onTplRollback(ver: number) {
+  const b = activeBook.value
+  if (!b) return
+  await guard('回滚失败', async () => {
+    const nb = await booksApi.rollback(b.id, ver)
+    applyBook(nb)          // 编辑器草稿随 book 变化自动重拷
+    await loadVersions(b.id)
+  })
+}
+
+// ── 智能整表导入 Excel:词典 = 四册现行版模板(§4,office=1∪4/factory=2∪3 并集在 registry) ──
 const importSummary = ref('')   // 各段年月期·导入/跳过/错误 文本
-// 模板列(仅展示用,智能模式由 ImportSummary 替代):租户名称 + 当前版面叶子 label
-const importCols = computed(() => ['租户名称', ...leaves.value.map(l => l.label)])
-// 两套版面 columnMap(office/factory)— 供 splitSections 按版面取列
-const phaseLayoutsCol = computed(() => ({
-  office: leavesOf('office').map(l => ({ label: l.label, key: l.colId })),
-  factory: leavesOf('factory').map(l => ({ label: l.label, key: l.colId })),
-}))
+const bookDefs = computed<Partial<Record<number, BookDef>>>(() => {
+  const m: Partial<Record<number, BookDef>> = {}
+  for (const b of books.value) if (b.phase != null) m[b.phase] = b.definition
+  return m
+})
 
 const ZH_PHASE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
 
@@ -231,191 +333,367 @@ async function onSmartImport(
 ) {
   importing.value = false
   await guard('导入失败', async () => {
-    importResult.value = await runImport('s10', picks, {}, fileName)
+    importResult.value = await runImport('s10', picks, { bookDefs: bookDefs.value }, fileName)
     importSummary.value = picks
       .map(p => `${p.year}年${p.month}月·${ZH_PHASE[p.phase!]}:${p.records.length} 条`)
       .join('\n')
     const first = picks[0]
     if (first) {
+      const b = books.value.find(x => x.phase === first.phase)
+      if (b) activeBookId.value = b.id
       year.value = first.year!
       month.value = first.month!
-      phase.value = first.phase!
       await reloadOverview()
       await loadMonth(first.year!)
+    }
+    ensureTenantsLoaded()
+    if ((monthData.value?.rows ?? []).some(r => r.tenantId == null)) issuesOpen.value = true
+  })
+}
+
+// ── 未绑定问题抽屉(V105):附表10 与台账同一套语义 ─────────────
+const auth = useAuthStore()
+const router = useRouter()
+const tabs = useTabsStore()
+const issuesOpen = ref(false)
+const allTenants = ref<TenantDTO[]>([])
+// KeepAlive 停用时关掉 Teleport 浮层(绑定弹窗/问题抽屉/模板编辑器),防浮到别的页签(审计 VUE-03 范式)
+onDeactivated(() => {
+  bindRowId.value = null; issuesOpen.value = false; tplOpen.value = false
+  drawer.value = false; importing.value = false   // Teleport 到 body 的弹层不随页签 DOM 摘除(审查#16)
+})
+let tenantsInflight: Promise<void> | null = null
+function ensureTenantsLoaded() {
+  if (tenantsInflight) return   // in-flight 去重(评审E3)
+  tenantsInflight = tenantApi.list()
+    .then(v => { allTenants.value = v })
+    .catch(() => {})
+    .finally(() => { tenantsInflight = null })
+}
+
+const ZH_PHASE_ISSUE: Record<number, string> = { 1: '一期', 2: '二期', 3: '三期', 4: '宿舍' }
+// 行合计口径 = rowTotal 同一函数(评审R2:并存两份迟早分叉)
+const issueGroups = computed<IssueGroup[]>(() => groupUnbound(
+  monthData.value?.rows ?? [],
+  r => rowTotal(r),
+  `${year.value}年${month.value}月 · ${ZH_PHASE_ISSUE[phase.value]}`,
+))
+const issueCount = computed(() => issueGroups.value.reduce((n, g) => n + g.count, 0))
+
+// 绑定 = 立即写库;编辑态不整页 refresh(会冲掉 dirty 改动),就地补 tenantId
+async function onBindIssue(name: string, tenantId: number) {
+  await guard('绑定失败', async () => {
+    await s10Api.bindTenant(name, tenantId)
+    if (edit.value && dirty.size > 0) {
+      for (const r of monthData.value?.rows ?? [])
+        if (r.tenantId == null && r.tenantName === name) r.tenantId = tenantId
+    } else if (year.value != null) {
+      await loadMonth(year.value)
     }
   })
 }
 
-// ── KPI（本月总收款 / 户数 / 户均 / 已修改处）— 编辑态从本地行即时算 ──
-const rowTotal = (r: S10RecordDTO) => leaves.value.reduce((a, l) => a + (Number(r[l.colId]) || 0), 0)
-const monthTotal = computed(() => (monthData.value?.rows ?? []).reduce((a, r) => a + rowTotal(r), 0))
-const tenantCount = computed(() => monthData.value?.rows.length ?? 0)
-const avg = computed(() => tenantCount.value ? monthTotal.value / tenantCount.value : 0)
-const wan = (n: number) => '¥' + (n / 10000).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '万'
+function gotoTenants() {
+  issuesOpen.value = false
+  tabs.open('tenants')
+  router.push('/tenants')
+}
 
-const phaseOptions = PHASES.map(p => ({ value: String(p.phase), label: p.short }))
+// ── 行级绑定弹窗(抄表「表档案·租户」同款:点开一条,绑/解/换) ──
+const bindRowId = ref<number | null>(null)
+const bindRowTarget = computed(() =>
+  bindRowId.value == null ? null : (monthData.value?.rows.find(r => r.id === bindRowId.value) ?? null))
+const bindOptions = computed(() => toBindOptions(allTenants.value))
+function openBindRow(r: S10RecordDTO) {
+  bindRowId.value = r.id
+  ensureTenantsLoaded()
+}
+async function onBindRowCommit(id: number, tenantId: number | null) {
+  await guard('绑定失败', async () => {
+    const updated = await s10Api.bindRow(id, tenantId)
+    // 就地更新该行(不整页 refresh:编辑态 dirty 改动不能被冲掉)
+    const row = monthData.value?.rows.find(r => r.id === id)
+    if (row) row.tenantId = updated.tenantId
+  })
+}
+async function onRenameRowCommit(id: number, tenantName: string) {
+  await guard('改名失败', async () => {
+    const updated = await s10Api.renameRow(id, tenantName)
+    const row = monthData.value?.rows.find(r => r.id === id)
+    if (row) { row.tenantName = updated.tenantName; row.tenantId = updated.tenantId }
+  })
+}
+
+// ── 行合计(问题面板挂账金额用;KPI 卡整排已取消 2026-08-24,合计看表内 footer)──
+// 浏览态信后端派生(total 已含口袋);编辑态本地即时算,口径=模板全列含隐藏(含 c_ 列)。
+const localRowTotal = (r: S10RecordDTO) => {
+  const bag = r as unknown as Record<string, unknown>
+  return allColIds.value.reduce((a, id) => a + (Number(bag[id]) || 0), 0)
+}
+const rowTotal = (r: S10RecordDTO) => (edit.value ? localRowTotal(r) : Number(r.total) || 0)
+const tenantCount = computed(() => monthData.value?.rows.length ?? 0)
+
+// 导入入口按 §5 移进 #edit-actions 首位(SchedHeader 自带导入按钮排在槽后,顺序不合规,不用);
+// 脏草稿确认沿用 SchedHeader.onImport 同款文案 —— 导入落库后重拉数据会静默冲掉草稿。
+function onImportClick() {
+  if (dirty.size > 0 &&
+      !window.confirm(`当前有 ${dirty.size} 处修改尚未保存。\n导入会重新载入本期数据,这些修改将丢失。\n\n仍要导入?`)) return
+  importing.value = true
+}
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
+  <!-- §6 加载门:overview/books 到达前显转圈,不闪空态 -->
   <template v-if="overview">
-    <!-- ⓪ 年份选择层 -->
-    <SchedYearGate
-      v-if="year === null"
-      icon="coins"
-      title="附表10 · 销售收入"
-      sub="逐月、按期 / 宿舍汇总的租户总收款 · 先选择年份,再选择月份与期进入明细表"
-      :years="yearCards"
-      :current="overview.currentYear"
-      store-key="s10"
-      footer="每个年份按月 × 期维护租户收款;进入后在编辑模式下新增租户或导入。"
-      @pick="pickYear"
-    />
+    <div class="s10-wb">
+      <!-- 左轨:本屏四册(期区),入口常驻(§7-3) -->
+      <aside class="s10-rail">
+        <div class="s10-rail-cap">账册</div>
+        <!-- 附表10 四册固定:公司管理入口(company:manage)恒关,不接 create/remove -->
+        <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="selectBook" />
+      </aside>
 
-    <!-- 明细 -->
-    <template v-else-if="monthData">
-      <div class="s10-page">
-        <SchedHeader
-          icon="coins"
-          title="附表10 · 销售收入"
-          sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"
-          :year="year"
-          :edit="edit"
-          perm="entry:edit"
-          @back="goGate"
-          @toggle-edit="finishEdit"
-         :show-import="true" @import="importing = true" :dirty="dirty.size">
-          <template #edit-actions>
-            <Button variant="outline" size="sm" @click="drawer = true">
-              <template #leading><component :is="iconFor('plus')" :size="14" /></template>
-              新增租户
-            </Button>
-            <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
-              <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
-              清空本期导入 ({{ importedCount }})
-            </Button>
-            <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
-              <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
-              删除选中 ({{ selectedIds.size }})
-            </Button>
-          </template>
-          <template #static-actions>
-            <Button variant="outline" size="sm" @click="onExport">
-              <template #leading><component :is="iconFor('download')" :size="14" /></template>
-              导出
-            </Button>
-          </template>
-        </SchedHeader>
-
-        <!-- KPI 4 枚 -->
-        <div class="s10-kpis">
-          <KpiCard tint="blue" :label="month + ' 月总收款'" :value="wan(monthTotal)">
-            <template #icon><component :is="iconFor('coins')" :size="18" /></template>
-          </KpiCard>
-          <KpiCard tint="slate" label="本月户数" :value="tenantCount + ' 户'">
-            <template #icon><component :is="iconFor('users')" :size="18" /></template>
-          </KpiCard>
-          <KpiCard tint="sky" label="户均收款" :value="wan(avg)">
-            <template #icon><component :is="iconFor('wallet')" :size="18" /></template>
-          </KpiCard>
-          <KpiCard tint="cyan" label="已修改处" :value="dirty.size + ' 处'">
-            <template #icon><component :is="iconFor('pencil')" :size="18" /></template>
-          </KpiCard>
-        </div>
-
-        <!-- ① 月份选择 -->
-        <div class="s10-pick">
-          <span class="s10-pick-lbl">月份</span>
-          <SchedMonthPills :value="month" :has="recordedMonth" @change="switchMonth" />
-        </div>
-
-        <!-- ② 期选择 + 户数/修改提示 -->
-        <div class="s10-toolbar">
-          <Segmented :options="phaseOptions" :value="String(phase)" size="sm" @change="switchPhase" />
-          <div class="s10-toolbar-r">
-            <span v-if="edit" class="s10-editflag">
-              <component :is="iconFor('pencil')" :size="13" />已修改 <b>{{ dirty.size }}</b> 处
-            </span>
-            <span v-else class="s10-count">{{ meta.name }} · 本月 <b>{{ tenantCount }}</b> 户</span>
+      <div class="s10-main">
+        <!-- ⓪ 矩阵态(选期矩阵 v3):全年份纵排 12 月卡,必点月卡进宽表 -->
+        <template v-if="year === null">
+          <div class="s10-gate">
+            <div class="s10-gate-head">
+              <div>
+                <h2 class="s10-gate-title"><component :is="iconFor('coins')" :size="20" />附表10 · 销售收入</h2>
+                <p class="s10-gate-sub">逐月、按期 / 宿舍汇总的租户总收款 · 左侧切换账册,点击月份卡进入宽表(空月卡可进入录入)</p>
+              </div>
+              <div v-if="activeBook" class="s10-gate-book">
+                <span class="s10-gate-bookname">{{ activeBook.name }}</span>
+                <span class="s10-gate-ver">v{{ activeBook.ver }}</span>
+              </div>
+            </div>
+            <BookMonthMatrix
+              :book="activeBook"
+              :years="matrixYears"
+              @pick="pickCell"
+              @add-earlier="onAddEarlier"
+              @add-later="onAddLater"
+              @remove-year="onRemoveYear"
+            />
           </div>
-        </div>
+        </template>
 
-        <!-- ③ 宽表 -->
-        <S10Table
-          :layout="layout"
-          :phase-name="meta.name"
-          :year="year"
-          :month="month"
-          :rows="monthData.rows"
-          :edit="edit"
-          :selected-ids="selectedIds"
-          :focus-tenant="focusTenant"
-          @focus-done="focusTenant = ''"
-          @add="drawer = true"
-          @edit="edit = true"
-          @delete="onDelete"
-          @cell="onCell"
-          @note="onNoteEdit"
-          @name="onNameEdit"
-          @toggle-select="toggleSelect"
-          @select-all="selectAll"
-        />
+        <!-- ① 表格态 -->
+        <template v-else-if="monthData">
+          <div class="s10-page">
+            <SchedHeader
+              icon="coins"
+              title="附表10 · 销售收入"
+              sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"
+              :year="year"
+              :edit="edit"
+              perm="entry:edit"
+              @back="goGate"
+              @toggle-edit="finishEdit">
+              <!-- 工具条 §5 五段定序:录入(导入>批量>单行添加) | 配置 | ⋯溢出 | 主控恒右。
+                   导入用自绘按钮抢首位(SchedHeader 自带的排槽后),脏确认在 onImportClick。 -->
+              <template #edit-actions>
+                <Button variant="outline" size="sm" @click="onImportClick">
+                  <template #leading><component :is="iconFor('upload')" :size="14" /></template>
+                  导入 Excel
+                </Button>
+                <Button v-if="importedCount > 0" variant="outline" size="sm" @click="onClearImported">
+                  <template #leading><component :is="iconFor('rotate-ccw')" :size="14" /></template>
+                  清空本期导入 ({{ importedCount }})
+                </Button>
+                <Button v-if="selectedIds.size > 0" variant="danger" size="sm" @click="onBatchDelete">
+                  <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
+                  删除选中 ({{ selectedIds.size }})
+                </Button>
+                <Button variant="outline" size="sm" @click="drawer = true">
+                  <template #leading><component :is="iconFor('plus')" :size="14" /></template>
+                  新增租户
+                </Button>
+                <span class="s10-tbsep" aria-hidden="true" />
+                <Button variant="outline" size="sm" @click="openTpl">
+                  <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
+                  编辑模板
+                </Button>
+                <span class="s10-tbsep" aria-hidden="true" />
+                <!-- 只读动作编辑态降级不消失(§5-3):导出收进 ⋯ -->
+                <FPMoreMenu :items="[{ key: 'export', label: '导出', icon: 'download' }]" @select="onExport" />
+              </template>
+              <template #static-actions>
+                <Button v-if="!edit" variant="outline" size="sm" @click="onExport">
+                  <template #leading><component :is="iconFor('download')" :size="14" /></template>
+                  导出
+                </Button>
+              </template>
+            </SchedHeader>
+
+            <!-- 期区条:账册名·vN + 年月 + 换期(回矩阵,§5) + 户数/修改提示 -->
+            <div class="s10-toolbar">
+              <div class="s10-period">
+                <span class="s10-period-book">
+                  {{ activeBook?.name }}
+                  <b class="s10-period-ver">v{{ activeBook?.ver }}</b>
+                </span>
+                <span class="s10-period-ym">{{ year }}年{{ month }}月</span>
+                <!-- 导航类编辑态隐藏(§5-2):编辑中换期=丢草稿风险,退出编辑再换 -->
+                <Button v-if="!edit" variant="outline" size="sm" @click="goGate">
+                  <template #leading><component :is="iconFor('calendar')" :size="14" /></template>
+                  换期
+                </Button>
+              </div>
+              <div class="s10-toolbar-r">
+                <!-- 常驻入口(0 时置灰;用户反馈「入口找不到」,且随数据出现/消失会挪动工具条) -->
+                <button class="s10-issues" :class="{ quiet: issueCount === 0 }"
+                        @click="issuesOpen = true; ensureTenantsLoaded()">
+                  <component :is="iconFor('alert-triangle')" :size="13" />
+                  未绑定 {{ issueCount }}
+                </button>
+                <span v-if="edit" class="s10-editflag">
+                  <component :is="iconFor('pencil')" :size="13" />已修改 <b>{{ dirty.size }}</b> 处
+                </span>
+                <span v-else class="s10-count">{{ activeBook?.name }} · 本月 <b>{{ tenantCount }}</b> 户</span>
+              </div>
+            </div>
+
+            <!-- ② 宽表:版面由现行版模板驱动 -->
+            <S10Table
+              :groups="layoutGroups"
+              :sum-ids="allColIds"
+              :column-totals="monthData.columnTotals"
+              :grand-total="monthData.grandTotal"
+              :phase-name="activeBook?.name ?? ''"
+              :year="year"
+              :month="month"
+              :rows="monthData.rows"
+              :edit="edit"
+              :selected-ids="selectedIds"
+              :focus-tenant="focusTenant"
+              @focus-done="focusTenant = ''"
+              @add="drawer = true"
+              @edit="edit = true"
+              @delete="onDelete"
+              @cell="onCell"
+              @note="onNoteEdit"
+              @toggle-select="toggleSelect"
+              @select-all="selectAll"
+              @bind-row="openBindRow"
+            />
+          </div>
+
+          <S10RecordDrawer
+            v-if="drawer"
+            :phase-name="activeBook?.name ?? ''"
+            :layout="drawerLayout"
+            @close="drawer = false"
+            @save="onCreate"
+          />
+
+          <FpImportModal
+            v-if="importing"
+            :title="'导入 附表10 · 智能整表'"
+            :sub="'上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入'"
+            v-bind="parserProps('s10', { bookDefs })"
+            :default-year="year"
+            :default-month="month"
+            :default-phase="phase"
+            @close="importing = false"
+            @import-sections="onSmartImport"
+          />
+
+          <SaveConfirmDialog
+            v-if="saveConfirm"
+            :count="dirty.size"
+            @save="onSaveChanges"
+            @discard="onDiscardChanges"
+            @close="saveConfirm = false"
+          />
+        </template>
+
+        <!-- 切期/切册过渡兜底转圈 -->
+        <div v-else class="page-loading"><span class="page-spin" /></div>
       </div>
-
-      <S10RecordDrawer
-        v-if="drawer"
-        :phase-name="meta.name"
-        :layout="layout"
-        @close="drawer = false"
-        @save="onCreate"
-      />
-
-      <FpImportModal
-        v-if="importing"
-        :title="'导入 附表10 · 智能整表'"
-        :sub="'上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入'"
-        v-bind="parserProps('s10')"
-        :default-year="year"
-        :default-month="month"
-        :default-phase="phase"
-        @close="importing = false"
-        @import-sections="onSmartImport"
-      />
-
-      <SaveConfirmDialog
-        v-if="saveConfirm"
-        :count="dirty.size"
-        @save="onSaveChanges"
-        @discard="onDiscardChanges"
-        @close="saveConfirm = false"
-      />
-    </template>
-
-    <!-- 切年/月/期过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    </div>
 
     <ImportResultToast v-if="importResult" :result="importResult" :summary="importSummary" @close="importResult = null; importSummary = ''" />
+
+    <!-- 行级绑定弹窗(点行名/未绑定标签打开) -->
+    <S10BindDrawer
+      :row="bindRowTarget"
+      :slot-label="`${year}年${month}月 · ${ZH_PHASE_ISSUE[phase]}`"
+      :tenants="bindOptions"
+      :can-bind="edit && auth.can('entry:edit')"
+      :on-bind="onBindRowCommit"
+      :on-rename="onRenameRowCommit"
+      @close="bindRowId = null"
+    />
+
+    <!-- 未绑定租户问题抽屉(V105) -->
+    <FPSideDrawer :open="issuesOpen" title="未绑定的租户行" @close="issuesOpen = false">
+      <FPTenantIssuePanel
+        :groups="issueGroups"
+        :tenants="allTenants"
+        :can-act="edit && auth.can('entry:edit')"
+        act-hint="进入「编辑」模式后可在此绑定;浏览态仅查看。"
+        :on-bind="onBindIssue"
+        @goto-tenants="gotoTenants"
+      />
+    </FPSideDrawer>
+
+    <!-- 模板编辑器(编辑模式入口,当前左轨选中的那一册) -->
+    <TemplateEditorPanel
+      :open="tplOpen"
+      :book="activeBook"
+      :versions="tplVersions"
+      :saving="tplSaving"
+      @save="onTplSave"
+      @rollback="onTplRollback"
+      @close="tplOpen = false"
+    />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
-/* 1:1 from screen-schedule10.jsx S10Styles(.s10-page / .s10-kpis / .s10-pick / .s10-toolbar 段) */
+/* 账册工作台外框:左轨 + 主区(BOOK-WORKBENCH-SPEC §5 版式) */
+.s10-wb { display:flex; gap:14px; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
+.s10-rail { flex:0 0 200px; min-height:0; display:flex; flex-direction:column; gap:8px; padding:12px 10px; background:var(--surface-card); border-radius:var(--radius-lg); }
+.s10-rail-cap { flex:0 0 auto; font-size:11px; font-weight:var(--fw-semibold); color:var(--text-muted); letter-spacing:.05em; padding:0 6px; }
+.s10-main { flex:1 1 auto; min-width:0; min-height:0; display:flex; flex-direction:column; }
+
+/* 矩阵态(选期门) */
+.s10-gate { display:flex; flex-direction:column; gap:16px; min-height:0; overflow:auto; padding:4px 2px; }
+.s10-gate-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.s10-gate-title { margin:0; font-size:20px; font-weight:var(--fw-semibold); color:var(--text-primary); display:flex; align-items:center; gap:10px; }
+.s10-gate-sub { margin:4px 0 0; font-size:12px; color:var(--text-muted); }
+.s10-gate-book { display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 14px; border-radius:var(--radius-full); background:var(--accent-blue); }
+.s10-gate-bookname { font-size:14px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.s10-gate-ver { font-family:var(--font-mono); font-size:11px; font-weight:var(--fw-semibold); color:var(--hue-blue); background:var(--surface-white); border-radius:var(--radius-full); padding:1px 8px; }
+
+/* 1:1 from screen-schedule10.jsx S10Styles(.s10-page / .s10-kpis / .s10-toolbar 段) */
 .s10-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 
-.s10-kpis { flex:0 0 auto; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
-
-/* 月份选择条 */
-.s10-pick { flex:0 0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:11px 16px; background:var(--surface-card); border-radius:var(--radius-lg); }
-.s10-pick-lbl { font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); flex:0 0 auto; white-space:nowrap; }
-.s10-pick :deep(.lc-mpills) { flex:1 1 380px; min-width:0; }
+/* 工具条分隔符(§5:录入区|配置区|溢出区 之间的断档) */
+.s10-tbsep { flex:none; width:1px; height:18px; background:var(--border-subtle); }
 
 /* 工具栏 — 固定高度,编辑/只读切换不改布局 */
 .s10-toolbar { flex:0 0 auto; min-height:30px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .s10-toolbar-r { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+/* 期区条:账册·版本 + 年月 + 换期 */
+.s10-period { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.s10-period-book { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:var(--fw-semibold); color:var(--text-primary); }
+.s10-period-ver { font-family:var(--font-mono); font-size:11px; font-weight:var(--fw-semibold); color:var(--hue-blue); background:var(--accent-blue); border-radius:var(--radius-full); padding:1px 8px; }
+.s10-period-ym { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); }
 .s10-count { font-size:12px; color:var(--text-muted); }
 .s10-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
 .s10-editflag { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--hue-orange); background:rgb(255,243,230); padding:5px 11px; border-radius:var(--radius-full); }
+.s10-issues {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--status-warning); background: transparent;
+  color: var(--status-warning); font-size: 12px; font-weight: var(--fw-medium);
+  cursor: pointer; white-space: nowrap;
+}
+.s10-issues:hover { background: var(--bg-hover); }
+.s10-issues.quiet { border-color: var(--border-subtle); color: var(--text-muted); }
 .s10-editflag b { font-family:var(--font-mono); margin:0 2px; }
 </style>

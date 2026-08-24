@@ -4,7 +4,7 @@ import type { LedgerRowDTO } from '../types/ledger'
 
 function blankRow(over: Partial<LedgerRowDTO> = {}): LedgerRowDTO {
   return {
-    tenantId: 1, tenantName: 'T', balancePrev: 0, totalCollected: 0, note: null,
+    id: 1, tenantId: 1, tenantName: 'T', balancePrev: 0, totalCollected: 0, note: null,
     totalReceivable: 0, balanceEnd: 0,
     factoryRent: 0, factoryMgmtFee: 0, shopRent: 0, dormRent: 0, dormFacilitiesFee: 0, shopMgmtFee: 0,
     factoryInfraMaint: 0, shopInfraMaint: 0, dormInfraMaint: 0,

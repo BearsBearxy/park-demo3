@@ -21,6 +21,7 @@ public record LedgerImportRequest(
         BigDecimal electricityMaint,
         BigDecimal standardWater, BigDecimal waterMaint,
         // 可导入的非费用列:上月结余 / 本月收款 / 备注(null=文件没这列)
-        BigDecimal balancePrev, BigDecimal totalCollected, String note
+        BigDecimal balancePrev, BigDecimal totalCollected, String note,
+        java.util.Map<String, BigDecimal> extraFees   // 自定义列:按键合并(方案A §4)
     ) {}
 }

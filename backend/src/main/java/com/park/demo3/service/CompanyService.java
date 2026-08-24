@@ -39,13 +39,15 @@ public class CompanyService {
     private final ReportCustomRowMapper reportCustomRows;
     private final ReportAccountMapper reportAccounts;
 
+    private final BookService bookService;
+
     public CompanyService(ManagementCompanyMapper companies, CompanyAccountMapper accounts,
                           MonthlyLedgerMapper ledger,
                           ReportAmountMapper reportAmounts, ReportCustomRowMapper reportCustomRows,
-                          ReportAccountMapper reportAccounts) {
+                          ReportAccountMapper reportAccounts, BookService bookService) {
         this.companies = companies; this.accounts = accounts; this.ledger = ledger;
         this.reportAmounts = reportAmounts; this.reportCustomRows = reportCustomRows;
-        this.reportAccounts = reportAccounts;
+        this.reportAccounts = reportAccounts; this.bookService = bookService;
     }
 
     public List<CompanyDTO> list() {
@@ -68,6 +70,8 @@ public class CompanyService {
         c.setStatus(req.status() == null ? 1 : req.status());
         c.setSortNo(0);
         companies.insert(c);
+        // §9:新增账册=建司附带动作(自动建册 v1=标准 21 列模板)
+        bookService.createLedgerBook(companies.selectById(c.getId()), "系统");
         return toDTO(companies.selectById(c.getId()), List.of());
     }
 
@@ -81,6 +85,7 @@ public class CompanyService {
         if (req.fullName() != null) c.setFullName(blankToNull(req.fullName()));
         if (req.status() != null) c.setStatus(req.status());
         companies.updateById(c);
+        bookService.renameLedgerBook(id, c.getName());   // 账册即公司(§9):名字同步,不分叉
         return toDTO(companies.selectById(id), accountsOf(id));
     }
 
@@ -111,6 +116,7 @@ public class CompanyService {
                     c.getName(), ledgerRows, reportRows));
             }
         }
+        bookService.dropLedgerBook(id);   // 册与模板版本随司退场(版本表 CASCADE)
         ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
         reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));

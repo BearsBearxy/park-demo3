@@ -1,20 +1,26 @@
 <script setup lang="ts">
 // 附表10 销售收入宽表 — 1:1 from screen-schedule10.jsx 表体(376-428)。一行一租户。
-// 双版面两级表头（组/叶子，按当前 phase 的 layout 渲染）;左『租户』sticky + 右『合计』sticky;
-// tfoot 列合计 + 总计;编辑态单元格 input 即时重算（行合计/列合计/总计纯前端从 props.rows 算）;
+// 两级表头(组/叶子)由账册现行版模板供给(toS10Layout(book.definition) → props.groups,
+// BOOK-WORKBENCH-SPEC §3 现行版全局生效;自定义列 c_ 与标准列同权渲染/编辑);
+// 左『租户』sticky + 右『合计』sticky;tfoot 列合计 + 总计;
+// 合计口径:浏览态信后端派生(r.total / columnTotals / grandTotal 已含 extra_fees 口袋),
+// 编辑态本地即时算,行/总计按 sumIds(模板全列含隐藏,含 c_ 列),列合计只算可见叶子。
 // 撑高 filler 行把合计顶到卡底。CSS 全在本组件 <style scoped>，不复用别组件 scoped class。
 import { ref, computed, watch, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
-import { LAYOUTS, leavesOf, type LayoutId } from './layout'
+import type { Group } from './layout'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
 
 const props = defineProps<{
-  layout: LayoutId
+  groups: Group[]        // 模板驱动版面(可见列;来自 toS10Layout)
   phaseName: string
   year: number
   month: number
   rows: S10RecordDTO[]
   edit: boolean
+  sumIds?: string[]                       // 编辑态行/总合计口径(含隐藏列);缺省=可见叶子
+  columnTotals?: Record<string, number>   // 浏览态后端列合计;缺省时本地算(兜底)
+  grandTotal?: number                     // 浏览态后端总计
   selectedIds?: Set<number>
   focusTenant?: string   // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focusDone 由父层清空)
 }>()
@@ -25,11 +31,11 @@ const emit = defineEmits<{
   // 单元格金额改动（即时写回父级 row，触发重算）
   cell: [row: S10RecordDTO, colId: S10ColId, value: number]
   note: [row: S10RecordDTO, value: string]
-  name: [row: S10RecordDTO, value: string]
   // 批量删除选择(种子行不可选)
   toggleSelect: [row: S10RecordDTO]
   selectAll: [checked: boolean]
   focusDone: []
+  bindRow: [row: S10RecordDTO]
 }>()
 
 // ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐 ──
@@ -56,29 +62,50 @@ const allSelected = computed(() =>
   selectableRows.value.every(r => props.selectedIds?.has(r.id)),
 )
 
-// 组（带 MON→月份替换）+ 展平叶子（顺序 = 列序）
-const groups = computed(() => LAYOUTS[props.layout])
-const leaves = computed(() => leavesOf(props.layout))
+// 展平叶子（顺序 = 列序;组结构直接用 props.groups）
+const leaves = computed(() => props.groups.flatMap(g => g.leaves))
 const grpLabel = (label?: string) => (label ?? '').replace('MON', props.month + '月')
 
 const fmt = (v: number) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const s10Num = (x: string) => { const v = parseFloat(String(x).replace(/[, ¥%]/g, '')); return isNaN(v) ? 0 : v }
 
-// 行合计 / 列合计 / 总计 —— 一次 N×列 遍历同时产出三者（编辑态随单元格写回即时重算）。
+// 行合计 / 列合计 / 总计:
+// · 浏览态且后端给了 columnTotals → 直接信后端派生(r.total/columnTotals/grandTotal 含口袋全量,
+//   包括归档列等前端版面看不见的值),前端零自算(§2 派生口径唯一事实源)。
+// · 编辑态(或无后端派生兜底)→ 一次 N×列 遍历同时产出三者(随单元格写回即时重算);
+//   行/总计按 sumIds(模板全列含隐藏,含 c_ 平铺列),列合计只累可见叶子。
 // 为什么不写成三个模板内函数:模板里逐格调用会跑 N次行合计 + 25次列合计(各N行) + 总计再一遍 N×25
 // ≈ 75×N 次乘加,且每次编辑输入都整表重跑;合成一个 computed 后压到 1×N,并有缓存不随无关重渲染重算。
 const totals = computed(() => {
+  if (!props.edit && props.columnTotals) {
+    const byRow = new Map<number, number>()
+    for (const r of props.rows) byRow.set(r.id, Number(r.total) || 0)
+    // 后端 columnTotals 只算 25 物理列:可见自定义列(c_)缺键会显 0.00,本地Σ兜底(审查#7)
+    const byCol: Record<string, number> = { ...props.columnTotals }
+    for (const l of leaves.value) {
+      const id = l.colId as string
+      if (byCol[id] == null) {
+        let sum = 0
+        for (const r of props.rows) sum += Number((r as unknown as Record<string, unknown>)[id]) || 0
+        byCol[id] = sum
+      }
+    }
+    return { byRow, byCol, grand: props.grandTotal ?? 0 }
+  }
   const cols = leaves.value
+  const ids = props.sumIds ?? cols.map(l => l.colId as string)
+  const visible = new Set<string>(cols.map(l => l.colId as string))
   const byRow = new Map<number, number>()   // 键 = r.id（模板 v-for 也用它,唯一）
   const byCol: Record<string, number> = {}
   for (const l of cols) byCol[l.colId] = 0
   let grand = 0
   for (const r of props.rows) {
+    const bag = r as unknown as Record<string, unknown>
     let sum = 0
-    for (const l of cols) {
-      const v = Number(r[l.colId]) || 0
+    for (const id of ids) {
+      const v = Number(bag[id]) || 0
       sum += v
-      byCol[l.colId] += v
+      if (visible.has(id)) byCol[id] += v
     }
     byRow.set(r.id, sum)
     grand += sum
@@ -97,7 +124,7 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
     <div v-if="props.rows.length === 0" class="s10-empty">
       <div class="s10-empty-ic"><component :is="iconFor('receipt')" :size="24" /></div>
       <div class="s10-empty-t">{{ year }} 年 {{ month }} 月 · {{ phaseName }} 暂无收款记录</div>
-      <div class="s10-empty-s">该月尚未录入。可在非编辑态导入 Excel,或进入编辑模式手动新增租户。</div>
+      <div class="s10-empty-s">该月尚未录入。进入编辑模式后可导入 Excel,或手动新增租户。</div>
       <div v-if="edit"><button class="s10-emptybtn" @click="emit('add')">
         <component :is="iconFor('plus')" :size="16" />新增租户
       </button></div>
@@ -162,13 +189,12 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
                 title="选中以批量删除"
                 @change="emit('toggleSelect', r)"
               />
-              <input
-                v-if="edit && r.source !== 'seed'"
-                class="s10-input name"
-                :value="r.tenantName"
-                @input="emit('name', r, ($event.target as HTMLInputElement).value)"
-              />
-              <span v-else class="s10-tname" :title="r.tenantName">{{ r.tenantName }}</span>
+              <!-- 名字两态统一为可点击文本:账面名/绑定都在行抽屉里改(与园区抄表同一动线,
+                   用户 2026-08-23 拍板「不在表格上直接修改」) -->
+              <span class="s10-tname act" :title="r.tenantName + ' · 点击查看/绑定租户'"
+                    @click="emit('bindRow', r)">{{ r.tenantName }}</span>
+              <span v-if="r.tenantId == null" class="s10-unbound act" title="点击绑定租户"
+                    @click="emit('bindRow', r)">未绑定</span>
               <span v-if="r.source !== 'seed'" class="s10-userbadge">手动</span>
               <button
                 v-if="edit && r.source !== 'seed'"
@@ -270,6 +296,13 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; }
 .s10-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); flex:0 0 auto; }
+.s10-unbound {
+  flex: 0 0 auto; font-size: 11px; font-weight: var(--fw-medium); line-height: 1;
+  padding: 2px 6px; border-radius: var(--radius-full);
+  color: var(--status-warning); border: 1px solid var(--status-warning); background: transparent;
+}
+.s10-unbound.act, .s10-tname.act { cursor: pointer; }
+.s10-tname.act:hover { color: var(--hue-blue); }
 .s10-del { width:24px; height:24px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; flex:0 0 auto; margin-left:auto; opacity:0; }
 .s10-row:hover .s10-del { opacity:1; }
 .s10-del:hover { background:rgba(255,59,48,.1); color:var(--hue-red); }

@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
+import com.park.demo3.common.ExtraFees;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
@@ -14,6 +15,10 @@ import com.park.demo3.dto.S10YearSummaryDTO;
 import com.park.demo3.entity.S10Record;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.mapper.S10RecordMapper;
+import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.dto.TenantBindReq;
+import com.park.demo3.dto.BindResultDTO;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -21,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -29,8 +35,13 @@ import java.util.stream.Collectors;
 public class S10Service {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final S10RecordMapper records;
+    private final TenantMapper tenants;
+    private final BookService bookService;
 
-    public S10Service(S10RecordMapper records) { this.records = records; }
+    public S10Service(S10RecordMapper records, TenantMapper tenants, BookService bookService) {
+        this.bookService = bookService;
+        this.records = records; this.tenants = tenants;
+    }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
     private static BigDecimal r2(BigDecimal v) { return nz(v).setScale(2, RoundingMode.HALF_UP); }
@@ -67,9 +78,10 @@ public class S10Service {
         new Col("waterMaint",       S10Record::getWaterMaint,       S10Record::setWaterMaint,       S10RecordReq::waterMaint,       S10ImportRequest.Row::waterMaint),
         new Col("guaranteeRent",    S10Record::getGuaranteeRent,    S10Record::setGuaranteeRent,    S10RecordReq::guaranteeRent,    S10ImportRequest.Row::guaranteeRent));
 
-    // 行合计 = 该行 25 列之和(派生,不落库;包内可见供 AnalysisService 复用)
+    // 行合计 = 该行 25 列 + extra_fees 口袋之和(派生,不落库;包内可见供 AnalysisService 复用)。
+    // 方案A(SPEC §2/§6):合计口径全站唯一,消费方禁止自算。
     static BigDecimal rowTotal(S10Record r) {
-        BigDecimal t = BigDecimal.ZERO;
+        BigDecimal t = ExtraFees.sum(r.getExtraFees());
         for (Col c : COLS) t = t.add(nz(c.get().apply(r)));
         return r2(t);
     }
@@ -158,34 +170,105 @@ public class S10Service {
             columnTotals.put(c.name(), r2(sum));
             grandTotal = grandTotal.add(sum);
         }
+        for (S10Record r : rows) grandTotal = grandTotal.add(ExtraFees.sum(r.getExtraFees()));
         return new S10MonthDTO(phase, year, month, !rows.isEmpty(), dtos, columnTotals, r2(grandTotal));
     }
 
-    // ── save:按 (phase,acctMonth,tenantName) upsert(source=manual,既有行保留其 source) ──
+    // ── save:req.id 非空=按行更新(可改名——修「改名走按新名 upsert 会复制一行」的老坑);
+    //         id 空=按 (phase,acctMonth,tenantName) upsert(source=manual,既有行保留其 source)。
+    //         tenantId 空时按账面名自动配档(softIndex:唯一可判定才配,含退租户)。 ──
     public S10RecordDTO save(S10RecordReq req) {
-        S10Record r = records.selectBySlotTenant(req.phase(), req.acctMonth(), req.tenantName());
-        boolean isNew = r == null;
-        if (isNew) {
-            r = new S10Record();
-            r.setPhase(req.phase());
-            r.setAcctMonth(req.acctMonth());
-            r.setTenantName(req.tenantName());
-            r.setSource("manual");
+        String name = req.tenantName().trim();
+        S10Record r;
+        boolean isNew = false;
+        if (req.id() != null) {
+            r = records.selectById(req.id());
+            if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+            // 改名撞 uk_s10(同期同月已有同名行)→ 409,提示合并须人工
+            S10Record clash = records.selectBySlotTenant(r.getPhase(), r.getAcctMonth(), name);
+            if (clash != null && !clash.getId().equals(r.getId()))
+                throw new BizException(ResultCode.CONFLICT, "该期该月已有同名行「" + name + "」,请先处理重复行");
+            r.setTenantName(name);
+        } else {
+            r = records.selectBySlotTenant(req.phase(), req.acctMonth(), name);
+            isNew = r == null;
+            if (isNew) {
+                r = new S10Record();
+                r.setPhase(req.phase());
+                r.setAcctMonth(req.acctMonth());
+                r.setTenantName(name);
+                r.setSource("manual");
+            }
         }
-        r.setTenantId(req.tenantId());
+        // 绑定解析顺序(评审A5/E2):显式传入 > 行上既有绑定(手工绑过的绝不静默抹掉) > 按名自动配档
+        // (只有前两者都空才扫租户表,避免逐行保存时反复全表构建索引)
+        Integer tid = req.tenantId() != null ? req.tenantId() : r.getTenantId();
+        if (tid == null) tid = TenantService.softIndex(tenants.selectList(null)).get(name);
+        r.setTenantId(tid);
         r.setProfile(req.profile());
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note());
         for (Col c : COLS) c.set().accept(r, r2(c.req().apply(req)));
+        // 保存语义:extraFees 非空=整包替换;null=不动(兼容不带口袋的调用方)。
+        // 键校验(审查#10):归档(hidden)列在册可写;已删除列的 c_ 键拒收,防幽灵钱直写
+        if (req.extraFees() != null && !req.extraFees().isEmpty()) {
+            java.util.Set<String> allowed = bookService.customIdsByPhase(r.getPhase());
+            var bad = req.extraFees().keySet().stream().filter(k -> !allowed.contains(k)).toList();
+            if (!bad.isEmpty())
+                throw new BizException(ResultCode.BAD_REQUEST,
+                    "「" + name + "」含未知自定义列 id:" + String.join(",", bad) + "(列已删除或不属于本期账册)");
+        }
+        if (req.extraFees() != null) r.setExtraFees(ExtraFees.write(req.extraFees()));
         if (isNew) records.insert(r); else records.updateById(r);
         return toRecordDTO(records.selectById(r.getId()));
+    }
+
+    // ── 按账面名批量绑定档案(问题面板;跨期跨月,同名未绑定行一次挂齐。uk 按名不受影响,无冲突分支) ──
+    @org.springframework.transaction.annotation.Transactional
+    public BindResultDTO bindTenant(TenantBindReq req) {
+        if (tenants.selectById(req.tenantId()) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        int bound = records.update(null, new UpdateWrapper<S10Record>()
+            .isNull("tenant_id").eq("tenant_name", req.tenantName().trim())
+            .set("tenant_id", req.tenantId()));
+        return new BindResultDTO(bound, 0);
+    }
+
+    // ── 行级绑定/换绑/解绑(tenantId=null 即解绑;uk_s10 按名不受影响,无冲突分支) ──
+    public S10RecordDTO bindRow(Long id, Integer tenantId) {
+        S10Record r = records.selectById(id);
+        if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        if (tenantId != null && tenants.selectById(tenantId) == null)
+            throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
+        // 解绑要显式置 NULL(updateById 跳过 null 字段)
+        records.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<S10Record>()
+            .eq("id", id).set("tenant_id", tenantId));
+        return toRecordDTO(records.selectById(id));
     }
 
     // ── import:重导=替换本槽导入行 —— 先删该 (phase,acctMonth) 的 source='import' 行,再把 rows 全部 insert ──
     //          (source='manual'/'seed' 手动行不动;新行 source='import'、tenant_id=null 软引用) ──
     @org.springframework.transaction.annotation.Transactional
     public ImportResultDTO importRows(S10ImportRequest req) {
+        // 重导前记住本槽既有导入行的绑定(评审A3:问题面板手工绑好的行不能因重导蒸发)。
+        // 既有绑定优先于本次自动解析——手工纠正过的口径比 softIndex 更可信;
+        // ponytail: 档案别名后改指别家时旧绑定会粘住,重绑走问题面板,不为此加"绑定来源"字段。
+        Map<String, Integer> prevBind = new HashMap<>();
+        for (S10Record old0 : records.selectList(new QueryWrapper<S10Record>()
+                .eq("phase", req.phase()).eq("acct_month", req.acctMonth())
+                .eq("source", "import").isNotNull("tenant_id")))
+            if (old0.getTenantName() != null)
+                prevBind.putIfAbsent(old0.getTenantName().trim(), old0.getTenantId());
         records.deleteImported(req.phase(), req.acctMonth());
+        // 撞名防线(审查#3):uk_s10 不含 source,幸存的 manual/seed 同名行会让裸 insert 撞唯一键
+        // → DuplicateKeyException 整批回滚且无行级定位;预取幸存名单 + 批内已插名单,命中转行级错误
+        java.util.Set<String> takenNames = new java.util.HashSet<>();
+        for (S10Record keep : records.selectBySlot(req.phase(), req.acctMonth()))
+            if (keep.getTenantName() != null) takenNames.add(keep.getTenantName().trim());
+        // V105:导入即按账面名自动配档(全部状态+别名,唯一可判定才配);配不上留 null=未绑定,问题面板处理
+        Map<String, Integer> byName = TenantService.softIndex(tenants.selectList(null));
+        java.util.Set<String> allowedCustomIds = bookService.customIdsByPhase(req.phase());
         int imported = 0;
+        java.util.LinkedHashSet<String> unboundNames = new java.util.LinkedHashSet<>();
         List<ImportError> errors = new ArrayList<>();
         List<S10ImportRequest.Row> rows = req.rows();
         for (int i = 0; i < rows.size(); i++) {
@@ -195,18 +278,56 @@ public class S10Service {
                 errors.add(new ImportError(i, row.tenantName(), "租户名称为空"));
                 continue;
             }
+            if (!takenNames.add(name)) {   // 幸存手工/种子行同名,或文件内重名(add 返回 false=已占)
+                errors.add(new ImportError(i, name, "与本槽已有手工/种子行或文件内前行同名,已跳过——请在页面处理该行"));
+                continue;
+            }
             S10Record r = new S10Record();
             r.setPhase(req.phase());
             r.setAcctMonth(req.acctMonth());
             r.setTenantName(name);
-            r.setTenantId(null);          // 软引用:导入不解析 FK
+            Integer bind = prevBind.get(name);
+            if (bind == null) bind = byName.get(name);   // 软引用:既有绑定 > 自动解析 > null 待人工
+            r.setTenantId(bind);
             r.setSource("import");
             r.setProfile(row.profile());
             for (Col c : COLS) c.set().accept(r, r2(c.imp().apply(row)));
+            // 自定义列(§4):未知列 id 该行报错不静默吞;重导=整槽替换,插入路径直接落口袋
+            if (row.extraFees() != null && !row.extraFees().isEmpty()) {
+                var bad = row.extraFees().keySet().stream()
+                    .filter(k -> !allowedCustomIds.contains(k)).toList();
+                if (!bad.isEmpty()) {
+                    errors.add(new ImportError(i, name, "未知自定义列 id:" + String.join(",", bad)));
+                    continue;
+                }
+                r.setExtraFees(ExtraFees.write(row.extraFees()));
+            }
             records.insert(r);
+            if (r.getTenantId() == null) unboundNames.add(name);
             imported++;
         }
-        return new ImportResultDTO(imported, errors.size(), errors);
+        List<ImportError> notices = new ArrayList<>();
+        if (!unboundNames.isEmpty())
+            notices.add(new ImportError(-1, "未绑定租户", unboundNames.size() + " 个账面名未匹配租户档案,已作为未绑定行导入 —— 到「附表10」该期该月的问题面板绑定/改名/建档"));
+        return new ImportResultDTO(imported, errors.size(), errors, notices);
+    }
+
+    // ── 行级改账面名(抽屉内即时提交):只动名字与自动配档,不碰 25 费用列(save 会把缺省列落零,不能借用) ──
+    public S10RecordDTO renameRow(Long id, String tenantName) {
+        S10Record r = records.selectById(id);
+        if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        String newName = tenantName.trim();
+        if (newName.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "账面名不能为空");
+        if (!newName.equals(r.getTenantName())) {
+            S10Record clash = records.selectBySlotTenant(r.getPhase(), r.getAcctMonth(), newName);
+            if (clash != null && !clash.getId().equals(r.getId()))
+                throw new BizException(ResultCode.CONFLICT, "该期该月已有同名行「" + newName + "」,请先处理重复行");
+            r.setTenantName(newName);
+            if (r.getTenantId() == null)
+                r.setTenantId(TenantService.softIndex(tenants.selectList(null)).get(newName));
+            records.updateById(r);
+        }
+        return toRecordDTO(records.selectById(id));
     }
 
     // ── clearImported(phase,acctMonth):删本槽 source='import' 行,返回删除计数 ──
@@ -257,6 +378,6 @@ public class S10Service {
             r2(r.getInfraDorm()), r2(r.getElevatorMaint()), r2(r.getTransformerMaint()), r2(r.getLandUseTax()),
             r2(r.getNetworkFee()), r2(r.getAccessMaint()), r2(r.getOtherFee()), r2(r.getElecBasic()),
             r2(r.getElecStd()), r2(r.getElecMaint()), r2(r.getWaterStd()), r2(r.getWaterMaint()),
-            r2(r.getGuaranteeRent()), rowTotal(r));
+            r2(r.getGuaranteeRent()), rowTotal(r), ExtraFees.parse(r.getExtraFees()));
     }
 }
