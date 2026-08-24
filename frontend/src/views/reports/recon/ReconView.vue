@@ -159,7 +159,7 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
 
 .rc-mlabel { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .rc-month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.rc-mcard { position: relative; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 18px 18px 16px; cursor: pointer; background: var(--surface-white); transition: transform .16s, box-shadow .16s, border-color .16s; overflow: hidden; }
+.rc-mcard { position: relative; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 18px 18px 16px; cursor: pointer; background: var(--surface-white); transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); overflow: hidden; }
 .rc-mcard:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-strong); }
 .rc-mcard.empty { cursor: default; color: var(--text-muted); background: var(--surface-card); }
 .rc-mcard.empty:hover { transform: none; box-shadow: none; border-color: var(--border-subtle); }

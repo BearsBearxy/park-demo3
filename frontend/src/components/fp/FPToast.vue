@@ -135,6 +135,14 @@ function close() { clear(); emit('update:modelValue', '') }
 .fpt--info    .fpt-i { fill: var(--fpt-info);    color: var(--ink-900); }
 
 /* 只动 opacity/transform，不动尺寸 —— 进出场都不得引起任何重排 */
-.fpt-enter-active, .fpt-leave-active { transition: opacity .18s ease, transform .18s ease; }
-.fpt-enter-from, .fpt-leave-to { opacity: 0; transform: translateY(6px); }
+
+/* 进出场分开。改前两向同为 .18s ease:时长不在 120/200/320 三档里,缓动是浏览器
+   默认曲线,两者都没走令牌。
+   现在入场 --dur-base + --ease-out(急起缓收,像东西飞进来然后停住),要把注意力引
+   过去,值得慢一点;出场 --dur-fast + --ease-standard,且**不带位移** ——
+   用户已经不看它了,再让它一边淡出一边挪动只会拖住下一步操作。 */
+.fpt-enter-active { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.fpt-leave-active { transition: opacity var(--dur-fast) var(--ease-standard); }
+.fpt-enter-from { opacity: 0; transform: translateY(6px); }
+.fpt-leave-to { opacity: 0; }
 </style>

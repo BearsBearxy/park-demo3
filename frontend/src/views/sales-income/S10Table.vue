@@ -299,6 +299,6 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-emptybtn:hover { background:rgb(58,58,58); }
 
 /* 深链定位行:2s 高亮渐隐(结束后还原表格自身背景) */
-tr.row-flash td { animation: s10-row-flash 2s var(--ease-standard); }
+tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-standard); }
 @keyframes s10-row-flash { from { background: var(--accent-blue); } to { background: var(--surface-white); } }
 </style>

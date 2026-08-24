@@ -96,7 +96,7 @@
 .ak-seg2 button.on { background:var(--surface-white); color:var(--text-primary); font-weight:var(--fw-semibold); box-shadow:0 1px 3px rgba(28,28,28,.10); }
 
 /* analyst-only 区块淡入 */
-.ak-analyst { animation:akFade .3s var(--ease-standard); }
+.ak-analyst { animation:akFade var(--dur-slow) var(--ease-standard); }
 @keyframes akFade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 
 /* ── v2 紧凑仪表盘布局(av2-*,2026-07-08 分析层 v2 阶段1 追加;排版基准=已确认示意图,屏组照抄) ── */

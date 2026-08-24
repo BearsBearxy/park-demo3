@@ -329,6 +329,6 @@ function onCopyPrev() {
 .lg-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
 
 /* 深链定位行:2s 高亮渐隐(行在子组件 FPLedgerTable 内,须 :deep;结束后还原表格自身背景) */
-:deep(tr.row-flash > td) { animation: lg-row-flash 2s var(--ease-standard); }
+:deep(tr.row-flash > td) { animation: lg-row-flash var(--dur-highlight) var(--ease-standard); }
 @keyframes lg-row-flash { from { background: var(--accent-blue); } to { background: var(--surface-white); } }
 </style>

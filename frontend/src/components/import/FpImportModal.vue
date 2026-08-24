@@ -341,7 +341,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 /* 1:1 from import-excel.jsx FPImportStyles */
 /* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 DESIGN-FIDELITY §7。 */
 .fpimp-scrim { position:fixed; inset:0; z-index:320; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
-.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin .2s var(--ease-standard); }
+.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin var(--dur-base) var(--ease-standard); }
 @keyframes fpimpin { from { transform:translateY(8px) scale(.985); opacity:.4; } to { transform:none; opacity:1; } }
 .fpimp-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 22px 16px; border-bottom:1px solid var(--divider); }
 .fpimp-h h3 { margin:0; font-size:17px; font-weight:var(--fw-semibold); color:var(--text-primary); }
