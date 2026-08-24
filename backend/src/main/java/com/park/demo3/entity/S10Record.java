@@ -10,7 +10,9 @@ public class S10Record {
     private Integer phase;          // 1 一期 / 2 二期 / 3 三期 / 4 宿舍
     private String acctMonth;       // YYYY-MM 记账月
     private String profile;         // office/factory/shop/dorm/land/guarantee(列门控,仅 UI 提示)
-    private String note;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS) private String note;   // 清备注要能落 NULL(MP 缺省跳过)
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String extraFees;   // 方案A 口袋:自定义列 JSON(键=列固定id),NULL=无;整包清空要能落 NULL
     private String source;          // seed / manual / import
     // ── 25 费用列(camelCase ↔ snake_case 由 map-underscore-to-camel-case 映射) ──
     private BigDecimal officeRent;

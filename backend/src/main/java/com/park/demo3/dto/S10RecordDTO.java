@@ -34,5 +34,6 @@ public record S10RecordDTO(
     BigDecimal waterStd,
     BigDecimal waterMaint,
     BigDecimal guaranteeRent,
-    BigDecimal total       // 派生 = 25 列之和
+    BigDecimal total,      // 派生 = 25 列 + 自定义列之和
+    java.util.Map<String, BigDecimal> extraFees   // 自定义列(键=列固定id,方案A)
 ) {}

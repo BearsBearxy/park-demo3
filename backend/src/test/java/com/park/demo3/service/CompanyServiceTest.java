@@ -22,7 +22,8 @@ class CompanyServiceTest {
     ReportAmountMapper ram = Mockito.mock(ReportAmountMapper.class);
     ReportCustomRowMapper rcm = Mockito.mock(ReportCustomRowMapper.class);
     ReportAccountMapper racm = Mockito.mock(ReportAccountMapper.class);
-    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm);
+    BookService bm = Mockito.mock(BookService.class);
+    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, bm);
 
     ManagementCompany co(int id, String name) {
         ManagementCompany c = new ManagementCompany();

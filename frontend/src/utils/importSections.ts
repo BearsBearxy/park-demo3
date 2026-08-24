@@ -12,6 +12,7 @@ export interface Section {
   records: ImportRec[]
   rowCount: number            // 该段数据行数(标题行下到下个标题前)
   error?: string
+  unmatched?: { header: string; colIndex: number }[]   // §4:本段未匹配表头(记录上的 __unmatched 已剥,只留段级清单)
 }
 
 // 标题行:某行各单元格 join 后含「YYYY年M月…(一期|二期|三期|宿舍)」
@@ -49,12 +50,14 @@ function parseBlock(
   block: string[][],
   phaseLayouts: PhaseLayouts,
   nameLabels: string[],
-): { layout: 'office' | 'factory'; records: ImportRec[]; error?: string } {
+): { layout: 'office' | 'factory'; records: ImportRec[]; error?: string; unmatched?: { header: string; colIndex: number }[] } {
   const layout = detectLayout(block)
   if (!block.length) return { layout, records: [] }
   // 垃圾行过滤(规范§九 v4):段尾未标「合计」的合计行(如「202510二期」)与「0」伪租户行,入库会使段金额翻倍
-  const { records, error } = matchByHeader(block, phaseLayouts[layout], nameLabels, undefined, { skipName: isGarbageTenantName })
-  return { layout, records, error }
+  const { records, error, unmatched } = matchByHeader(block, phaseLayouts[layout], nameLabels, undefined,
+    { skipName: isGarbageTenantName, keepUnmatched: true })   // §4:未匹配列上浮段级
+  for (const r of records) delete r.__unmatched   // 值层不携带:防 run 展开进 POST body
+  return { layout, records, error, unmatched }
 }
 
 export function splitSections(
@@ -71,7 +74,7 @@ export function splitSections(
   // 0 标题行 → 整表当 1 段(年/月/期 undefined,版面识别),供汇总屏用当前槽默认填。
   if (titles.length === 0) {
     const r = parseBlock(matrix, phaseLayouts, nameLabels)
-    return [{ layout: r.layout, records: r.records, rowCount: matrix.length, error: r.error }]
+    return [{ layout: r.layout, records: r.records, rowCount: matrix.length, error: r.error, unmatched: r.unmatched }]
   }
 
   const sections: Section[] = []
@@ -81,7 +84,7 @@ export function splitSections(
     const lead = matrix.slice(0, titles[0].rowIndex)
     if (lead.some(row => row.some(c => String(c ?? '').trim() !== ''))) {
       const r = parseBlock(lead, phaseLayouts, nameLabels)
-      sections.push({ layout: r.layout, records: r.records, rowCount: lead.length, error: r.error })
+      sections.push({ layout: r.layout, records: r.records, rowCount: lead.length, error: r.error, unmatched: r.unmatched })
     }
   }
 
@@ -99,6 +102,7 @@ export function splitSections(
       records: r.records,
       rowCount: block.length,
       error: r.error,
+      unmatched: r.unmatched,
     })
   })
 

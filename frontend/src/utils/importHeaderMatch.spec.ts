@@ -238,3 +238,74 @@ describe('matchByHeader — 真实 Excel 容错(二期结构)', () => {
     expect(records[0].base).toBe(33000)
   })
 })
+
+// ── keepUnmatched(BOOK-WORKBENCH-SPEC §4 禁静默丢列):默认关闭零破坏,开启回传 unmatched + 每行 __unmatched ──
+describe('matchByHeader — keepUnmatched 未匹配列', () => {
+  const cols = (a: (string | number)[]) => a.map(String)
+  const COLS: ColumnMapEntry[] = [
+    { label: '厂房租金', key: 'factoryRent' },
+    { label: '企业管理服务费', key: 'factoryMgmtFee' },
+  ]
+  const NAME = ['租户']
+
+  // 29 万事故原型:模板没有「宿舍区租金」,旧行为整列静默蒸发
+  const m: string[][] = [
+    cols(['租户', '厂房租金', '宿舍区租金', '企业管理服务费']),
+    cols(['甲', '100', '290000', '10']),
+    cols(['乙', '200', '', '20']),
+  ]
+
+  it('默认关闭:返回值无 unmatched,记录无 __unmatched(零破坏)', () => {
+    const res = matchByHeader(m, COLS, NAME)
+    expect(res).not.toHaveProperty('unmatched')
+    expect(res.records[0].__unmatched).toBeUndefined()
+    expect(res.records.map(r => r.tenantName)).toEqual(['甲', '乙'])
+  })
+
+  it('开启:未匹配表头列表 + 每行 表头→原值', () => {
+    const res = matchByHeader(m, COLS, NAME, undefined, { keepUnmatched: true })
+    expect(res.error).toBeUndefined()
+    expect(res.unmatched).toEqual([{ header: '宿舍区租金', colIndex: 2 }])
+    expect(res.records[0].__unmatched).toEqual({ 宿舍区租金: '290000' })
+    expect(res.records[1].__unmatched).toEqual({ 宿舍区租金: '' })
+    // 已匹配列不受影响
+    expect(res.records[0].factoryRent).toBe(100)
+  })
+
+  it('开启但全部匹配:unmatched=[] 且各行 __unmatched={}', () => {
+    const allMatched: string[][] = [
+      cols(['租户', '厂房租金', '企业管理服务费']),
+      cols(['甲', '1', '2']),
+    ]
+    const res = matchByHeader(allMatched, COLS, NAME, undefined, { keepUnmatched: true })
+    expect(res.unmatched).toEqual([])
+    expect(res.records[0].__unmatched).toEqual({})
+  })
+
+  it('多行表头:未匹配列表头取表头块最后一个非空格(叶子行优先于分组行)', () => {
+    const multi: string[][] = [
+      cols(['租户', '项目', '租金', '', '']),                            // r0:分组行,col2=租金(组名)
+      cols(['', '厂房租金', '宿舍区租金', '企业管理服务费', '合计']),        // r1:叶子行
+      cols(['甲', '100', '290000', '10', '290110']),
+    ]
+    const res = matchByHeader(multi, COLS, NAME, undefined, { keepUnmatched: true })
+    expect(res.error).toBeUndefined()
+    expect(res.unmatched).toEqual([
+      { header: '宿舍区租金', colIndex: 2 },   // 叶子标签,不是 r0 的组名「租金」
+      { header: '合计', colIndex: 4 },
+    ])
+  })
+
+  it('同名表头多列:列表里双双可见,__unmatched 首列优先不静默盖值', () => {
+    const dup: string[][] = [
+      cols(['租户', '厂房租金', '企业管理服务费', '备注', '备注']),
+      cols(['甲', '1', '2', 'x', 'y']),
+    ]
+    const res = matchByHeader(dup, COLS, NAME, undefined, { keepUnmatched: true })
+    expect(res.unmatched).toEqual([
+      { header: '备注', colIndex: 3 },
+      { header: '备注', colIndex: 4 },
+    ])
+    expect(res.records[0].__unmatched).toEqual({ 备注: 'x' })
+  })
+})

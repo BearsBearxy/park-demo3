@@ -12,11 +12,10 @@ import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
 import { useAuthStore } from '@/stores/auth'
-import { tenantApi } from '@/api/tenant'
-import { suggestParent } from '@/utils/tenantSuggest'
-import LedgerImportResolveDialog, { type ResolveItem, type ResolveDecision } from '@/views/ledger/LedgerImportResolveDialog.vue'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
+import { booksApi } from '@/api/books'
+import type { Book } from '@/types/book'
 import { chargingApi } from '@/api/charging'
 import type { ImportLogOverviewDTO, ImportLogDTO } from '@/types/importLog'
 import type { ImportResultDTO } from '@/types/import'
@@ -75,9 +74,18 @@ function fmtTime(iso?: string): string {
 }
 
 // ── 打开某类型导入 ──────────────────────────────────────────
+// 账册模板缓存(§3 现行版全局生效:导入中心的列匹配也必须跟现行版,不退静态种子表——审查#25/#29)
+let ledgerBooks: Book[] | null = null
+let s10Books: Book[] | null = null
+
 async function openImport(entry: ImportTypeEntry) {
   activeKey.value = entry.key
   ctx.value = {}
+  if (entry.key === 's10') {
+    if (!s10Books) s10Books = await booksApi.list('s10').catch(() => null)
+    if (s10Books) ctx.value = { bookDefs: Object.fromEntries(
+      s10Books.filter(b => b.phase != null).map(b => [b.phase!, b.definition])) }
+  }
   if (entry.context === 'ledger') {
     if (!companies.value.length) companies.value = await companyApi.list()
     lf.value = { companyId: companies.value[0]?.id ?? null, year: now.getFullYear(), month: now.getMonth() + 1 }
@@ -90,11 +98,16 @@ async function openImport(entry: ImportTypeEntry) {
   }
   importing.value = true
 }
-function confirmLedger() {
+async function confirmLedger() {
   const c = companies.value.find(x => x.id === lf.value.companyId)
   if (!c) return
+  if (activeKey.value === 'ledger' && !ledgerBooks)
+    ledgerBooks = await booksApi.list('ledger').catch(() => null)
   ctx.value = { companyId: c.id, companyName: c.name, year: lf.value.year, month: lf.value.month,
-    companyNames: companies.value.map(x => x.name) }   // 整册拆段的 sheet 名识别用
+    companyNames: companies.value.map(x => x.name),   // 整册拆段的 sheet 名识别用
+    // 现行版模板(§3):列匹配与模板列跟账册;导入中心无列映射面板宿主,
+    // 未匹配列由 registry 整批拦并指去台账页处置(§4 兜底口径)
+    bookDef: ledgerBooks?.find(b => b.companyId === c.id)?.definition }
   ledgerForm.value = false
   importing.value = true
 }
@@ -107,71 +120,14 @@ async function handleImport(recs: ImportRec[], fileName: string) {
     const ym = recs[0]?.__ymDetected as { year: number; month: number } | undefined
     if (ym && (ym.year !== ctx.value.year || ym.month !== ctx.value.month)
       && !window.confirm(`文件标题识别为 ${ym.year}年${ym.month}月,当前导入目标是 ${ctx.value.year}年${ctx.value.month}月,仍导入到当前目标吗?`)) return
-    await ledgerPrecheck(recs, fileName)
-    return
   }
   await doRun(recs, fileName)
 }
 
-// ── 台账未登记租户预检(hub 版;确认建档/跳过后继续 doRun) ─────
-// recs=平铺单表;picks=整册拆段,二者互斥
-type SectionPick = { label?: string; year?: number; month?: number; phase?: number; records: ImportRec[] }
-const resolveItems = ref<ResolveItem[] | null>(null)
-const pendingLedger = ref<{ recs?: ImportRec[]; picks?: SectionPick[]; fileName: string } | null>(null)
-let tenantCache: { id: number; companyName: string; parentId?: number | null }[] = []
-async function ledgerPrecheck(recs: ImportRec[], fileName: string) {
-  try { tenantCache = await tenantApi.list() }
-  catch { await doRun(recs, fileName); return }   // 拉不到租户表则直接导入,由后端逐行报错
-  const known = new Set(tenantCache.map(t => t.companyName))
-  const unknown = [...new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
-  if (!unknown.length) { await doRun(recs, fileName); return }
-  resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, tenantCache) }))
-  pendingLedger.value = { recs, fileName }
-}
-async function onResolveConfirm(decisions: ResolveDecision[]) {
-  const pending = pendingLedger.value
-  resolveItems.value = null
-  pendingLedger.value = null
-  if (!pending) return
-  for (const d of decisions) {
-    if (d.action === 'skip') continue
-    try {
-      await tenantApi.create({
-        companyName: d.name, businessType: '未分类',
-        parentId: d.action === 'link' ? d.parentId : undefined,
-        remark: '台账导入时自动创建',
-      })
-    } catch (e) { alert((e as { message?: string })?.message ?? '创建租户失败'); return }
-  }
-  const skipNames = new Set(decisions.filter(d => d.action === 'skip').map(d => d.name))
-  const drop = (rs: ImportRec[]) => rs.filter(r => !skipNames.has(String(r.tenantName ?? '').trim()))
-  if (pending.picks) {
-    // 段模式:skip 名字从各段过滤,清空的段丢弃
-    const picks = pending.picks.map(p => ({ ...p, records: drop(p.records) })).filter(p => p.records.length)
-    if (!picks.length) { alert('全部行都被跳过,未执行导入。'); return }
-    await doRun(picks, pending.fileName)
-    return
-  }
-  const recs = drop(pending.recs!)
-  // 全部行都被跳过 → 不发空请求、不落误导性 rejected 日志(复审:空 payload 边界)
-  if (!recs.length) { alert('全部行都被跳过,未执行导入。'); return }
-  await doRun(recs, pending.fileName)
-}
-function onResolveCancel() { resolveItems.value = null; pendingLedger.value = null }
+// V105:台账未登记租户不再预检拦截/自动建档 —— 配不上的名字照常入库为未绑定行,
+// 到「月度台账」页的问题抽屉里绑定/改名/建档(与页内导入同一套语义)。
 async function handleSections(picks: unknown[], fileName: string) {
   importing.value = false
-  // 台账整册拆段:平铺各段收集未登记租户 → 复用 ResolveDialog;段流程不做覆盖/年月 confirm(规范 v1 边界)
-  if (activeKey.value === 'ledger') {
-    const lp = picks as SectionPick[]
-    try { tenantCache = await tenantApi.list() }
-    catch { await doRun(lp, fileName); return }
-    const known = new Set(tenantCache.map(t => t.companyName))
-    const unknown = [...new Set(lp.flatMap(p => p.records).map(r => String(r.tenantName ?? '').trim()).filter(n => n && !known.has(n)))]
-    if (!unknown.length) { await doRun(lp, fileName); return }
-    resolveItems.value = unknown.map(name => ({ name, suggest: suggestParent(name, tenantCache) }))
-    pendingLedger.value = { picks: lp, fileName }
-    return
-  }
   await doRun(picks as Parameters<typeof runImport>[1], fileName)
 }
 // 台账②覆盖预检:目标月已有 N 家重叠租户行 → 确认后才导(拉不到本月数据则不拦,同租户表预检策略)
@@ -310,12 +266,6 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     @import-sections="handleSections"
   />
   <!-- 台账未登记租户预检(自管显隐,放最后不打断状态链) -->
-  <LedgerImportResolveDialog
-    v-if="resolveItems"
-    :items="resolveItems"
-    @confirm="onResolveConfirm"
-    @close="onResolveCancel"
-  />
   <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
 </template>
 

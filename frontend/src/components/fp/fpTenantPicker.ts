@@ -16,3 +16,16 @@ export function filterTenants(list: FPTenantOption[], q: string): FPTenantOption
   const hits = kw ? list.filter((t) => norm(t.name).includes(kw)) : [...list]
   return hits.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
 }
+
+// 绑定场景的候选构造(台账/附表10 行级绑定 + 问题面板共用):
+// 全部档案入选(退租户也算——账期当时可能在租),非在租(status≠1;2退租/3黑名单)名字后缀标注
+export function toBindOptions(
+  ts: { id: number; companyName: string; status?: number; phase?: number | null; parentName?: string | null }[],
+): FPTenantOption[] {
+  return ts.map(t => ({
+    id: t.id,
+    name: t.status != null && t.status !== 1 ? `${t.companyName}(已退租)` : t.companyName,
+    phase: t.phase ?? null,
+    parentName: t.parentName ?? null,
+  }))
+}

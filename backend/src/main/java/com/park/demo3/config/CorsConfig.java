@@ -13,7 +13,9 @@ public class CorsConfig {
     @Bean CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
         c.setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(",")).map(String::trim).toList());
-        c.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
+        // PATCH 一度缺席:浏览器发起的全部 @PatchMapping(改备注/行级绑定等 8 个端点)都被 CORS 拒成
+        // 403「Invalid CORS request」,curl/测试(无 Origin 头)却全绿 —— 2026-08-23 行级绑定联调时引爆
+        c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         c.setAllowedHeaders(List.of("*"));
         c.setExposedHeaders(List.of("X-Trace-Id"));
         UrlBasedCorsConfigurationSource s = new UrlBasedCorsConfigurationSource();

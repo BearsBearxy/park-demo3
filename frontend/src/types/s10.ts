@@ -41,7 +41,8 @@ export interface S10RecordDTO extends S10Fees {
   profile: string
   note: string | null
   source: 'seed' | 'manual' | 'import'
-  total: number   // 派生:25 列之和
+  total: number   // 派生:25 列 + 自定义列之和
+  extraFees?: Record<string, number | null>  // 自定义列口袋(键=列固定id c_xxx,方案A;后端恒下发,本地新增行可缺省)
 }
 
 // 年摘要（overview.summaries 元素）
@@ -77,12 +78,14 @@ export interface S10YearSummaryDTO {
 
 // POST /api/s10 body — 新增/upsert 一行（source 由后端定:manual）。25 费用列可空。
 export interface S10RecordReq extends Partial<S10Fees> {
+  id?: number                 // 非空=按行更新(允许改名,修「改名 upsert 复制一行」老坑);空=按槽+名 upsert
   tenantId?: number | null
   tenantName: string
   phase: number
   acctMonth: string   // YYYY-MM
   profile: string
   note?: string | null
+  extraFees?: Record<string, number | null> | null  // 非空=整包替换;缺省=不动
 }
 
 export interface S10NoteReq {
@@ -93,6 +96,7 @@ export interface S10NoteReq {
 export interface S10ImportRow extends Partial<S10Fees> {
   tenantName: string
   profile: string
+  extraFees?: Record<string, number | null>   // 自定义列:未知 id 该行报错
 }
 
 export interface S10ImportRequest {

@@ -113,6 +113,11 @@ public class PermissionRegistry {
         // ═══ 预算:数据域属分析,但挂在导入中心由录入岗执行(拍板 #9) ═══
         add(HttpMethod.POST, "/api/budget/import", Perm.ENTRY_EDIT);
 
+        // ═══ 公司建/删 = 建删账册(第15点 company:manage,2026-08-24 拍板):
+        //     必须排在主数据 catch-all 之前(铁律2:首个命中);改名 PUT 与收款账户仍落 master:edit ═══
+        add(HttpMethod.POST,   "/api/companies",    Perm.COMPANY_MANAGE);
+        add(HttpMethod.DELETE, "/api/companies/**", Perm.COMPANY_MANAGE);
+
         // ═══ 主数据 ═══
         for (String p : new String[]{"/api/buildings", "/api/units", "/api/tenants",
                                      "/api/tenant-categories", "/api/companies", "/api/company-accounts"}) {
@@ -126,7 +131,8 @@ public class PermissionRegistry {
 
         // ═══ 事后录入:台账 + 附表6/7/8/10/11/12 + 办公三期水电 ═══
         for (String p : new String[]{"/api/ledger", "/api/s10", "/api/pv", "/api/charging",
-                                     "/api/elec", "/api/salary", "/api/utilities"}) {
+                                     "/api/elec", "/api/salary", "/api/utilities",
+                                     "/api/books"}) {   // 账册模板=录入域配置(BOOK-WORKBENCH-SPEC §3)
             add(null, p, Perm.ENTRY_EDIT);
             add(null, p + "/**", Perm.ENTRY_EDIT);
         }

@@ -10,8 +10,9 @@ public record LedgerMonthDTO(
     LedgerFooter footer
 ) {
     public record LedgerRowDTO(
-        Integer tenantId,
-        String  tenantName,
+        Integer id,           // 台账行 id(V105 起为行身份;未绑定行 tenantId 为 null 时前端靠它定位)
+        Integer tenantId,     // null = 未绑定档案(软引用)
+        String  tenantName,   // 账面名快照,与档案名可不一致
         BigDecimal balancePrev,
         // 21 费用列(顺序同 §3.1)
         BigDecimal factoryRent, BigDecimal factoryMgmtFee,
@@ -29,7 +30,8 @@ public record LedgerMonthDTO(
         BigDecimal totalCollected,
         String  note,
         BigDecimal totalReceivable,   // 派生
-        BigDecimal balanceEnd         // 派生
+        BigDecimal balanceEnd,        // 派生
+        java.util.Map<String, BigDecimal> extraFees   // 自定义列(键=列固定id,方案A)
     ) {}
 
     public record LedgerFooter(

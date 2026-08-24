@@ -46,7 +46,8 @@ public class BillsService {
     public List<BillRowDTO> bills(int year, int month) {
         List<MonthlyLedger> rows = new ArrayList<>(ledger.selectPeriod(year, month));
         rows.sort(Comparator.comparing(MonthlyLedger::getCompanyId)
-                .thenComparing(MonthlyLedger::getTenantId));
+                .thenComparing(MonthlyLedger::getTenantId,
+                    Comparator.nullsLast(Comparator.naturalOrder())));   // V105:未绑定行垫底
 
         Map<Integer, String> cName = companies.selectList(null).stream()
             .collect(Collectors.toMap(ManagementCompany::getId, ManagementCompany::getName));
@@ -56,14 +57,16 @@ public class BillsService {
 
         List<BillRowDTO> out = new ArrayList<>(rows.size());
         for (MonthlyLedger l : rows) {
-            Tenant t = tMap.get(l.getTenantId());
+            Tenant t = l.getTenantId() != null ? tMap.get(l.getTenantId()) : null;
             Integer parentId = t != null ? t.getParentId() : null;
             Tenant p = parentId != null ? tMap.get(parentId) : null;
             // 口径铁律:应收合计/期末结余复用 LedgerService.recalc,绝不另算一套
             BigDecimal[] d = LedgerService.recalc(l);
             out.add(new BillRowDTO(
                 l.getCompanyId(), cName.getOrDefault(l.getCompanyId(), ""),
-                l.getTenantId(), t != null ? t.getCompanyName() : "（已删除租户）",
+                l.getTenantId(),
+                t != null ? t.getCompanyName()
+                          : (l.getTenantName() != null ? l.getTenantName() : "（已删除租户）"),
                 parentId, p != null ? p.getCompanyName() : null,
                 r2(l.getBalancePrev()),
                 r2(l.getFactoryRent()), r2(l.getFactoryMgmtFee()),

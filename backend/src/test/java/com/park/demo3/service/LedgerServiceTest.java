@@ -21,7 +21,8 @@ class LedgerServiceTest {
     MonthlyLedgerMapper lm = Mockito.mock(MonthlyLedgerMapper.class);
     ManagementCompanyMapper cm = Mockito.mock(ManagementCompanyMapper.class);
     TenantMapper tm = Mockito.mock(TenantMapper.class);
-    LedgerService svc = new LedgerService(lm, cm, tm);
+    BookService bm = Mockito.mock(BookService.class);   // customIdsByCompany 默认空集
+    LedgerService svc = new LedgerService(lm, cm, tm, bm);
 
     // --- fixtures ---
     Tenant tenant(int id, int status) {
@@ -86,7 +87,7 @@ class LedgerServiceTest {
         assertThat(m.footer().totalReceivable()).isEqualByComparingTo("180560.00");
     }
 
-    @Test void save_insertsNewUpdatesExistingDeletesBlankSkipsInactive() {
+    @Test void save_insertsNewUpdatesExistingDeletesBlank_acceptsInactive_skipsUnknown() {
         Mockito.when(cm.selectById(1)).thenReturn(company(1));
         Mockito.when(tm.selectList(null)).thenReturn(allTenants());
         MonthlyLedger existing1 = row(1, 1, 2026, 5, bd(100000), bd(0), bd(100000));
@@ -100,7 +101,8 @@ class LedgerServiceTest {
             saveRow(1, bd(120000), bd(120000)),   // update existing tenant 1
             saveRow(3, bd(70000),  bd(70000)),    // insert new tenant 3
             blankRow(2),                          // blank existing tenant 2 → delete
-            saveRow(14, bd(5000),  bd(5000))));   // inactive → skipped
+            saveRow(14, bd(5000),  bd(5000)),     // V105:退租户不再跳过——历史月台账必须可编辑
+            saveRow(999, bd(1),    bd(1))));      // 档案不存在 → 跳过
 
         svc.save(1, 2026, 5, req);
 
@@ -108,8 +110,9 @@ class LedgerServiceTest {
             && l.getFactoryRent().compareTo(bd(120000)) == 0));
         Mockito.verify(lm).insert(ArgumentMatchers.<MonthlyLedger>argThat(l -> l.getTenantId() == 3));
         Mockito.verify(lm).deleteById(502);
-        // inactive tenant 14 never inserted/updated
-        Mockito.verify(lm, Mockito.never()).insert(ArgumentMatchers.<MonthlyLedger>argThat(l -> l.getTenantId() == 14));
+        // V105:退租户(14)照常落库;档案不存在(999)才跳过
+        Mockito.verify(lm).insert(ArgumentMatchers.<MonthlyLedger>argThat(l -> l.getTenantId() == 14));
+        Mockito.verify(lm, Mockito.never()).insert(ArgumentMatchers.<MonthlyLedger>argThat(l -> l.getTenantId() == 999));
     }
 
     @Test void copyFromPrev_carriesFeesAndRollsBalanceEndIntoBalancePrev_resetsCollectedAndNote() {
@@ -161,17 +164,17 @@ class LedgerServiceTest {
     }
     // Row with only factoryRent set (other 20 fees null → zero)
     LedgerSaveRequest.Row saveRow(int tenantId, BigDecimal factoryRent, BigDecimal collected) {
-        return new LedgerSaveRequest.Row(tenantId, BigDecimal.ZERO,
+        return new LedgerSaveRequest.Row(null, tenantId, null, BigDecimal.ZERO,
             factoryRent, null, null, null, null, null, null, null, null,
             null, null, null, null, null, null, null,
             null, null, null, null, null,
-            collected, null);
+            collected, null, null);
     }
     LedgerSaveRequest.Row blankRow(int tenantId) {
-        return new LedgerSaveRequest.Row(tenantId, null,
+        return new LedgerSaveRequest.Row(null, tenantId, null, null,
             null, null, null, null, null, null, null, null, null,
             null, null, null, null, null, null, null,
             null, null, null, null, null,
-            null, null);
+            null, null, null);
     }
 }
