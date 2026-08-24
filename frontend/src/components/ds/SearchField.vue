@@ -44,13 +44,14 @@ const wrapperStyle = computed(() => ({
   width: props.width + "px",
   padding: "0 10px",
   background: "var(--bg-panel)",
-  border: "1px solid var(--border-subtle)",
+  border: "1px solid var(--ds-sf-border)",
   borderRadius: "var(--radius-sm)",
+  transition: "border-color var(--dur-fast) var(--ease-standard)",
 }));
 </script>
 
 <template>
-  <div :style="wrapperStyle">
+  <div class="ds-searchfield" :style="wrapperStyle">
     <!-- Magnifier icon — inline SVG verbatim from SearchField.jsx -->
     <svg
       width="16"
@@ -93,3 +94,12 @@ const wrapperStyle = computed(() => ({
     >{{ shortcut }}</kbd>
   </div>
 </template>
+
+<style scoped>
+/* 改前这个搜索框**完全没有聚焦态**:外框边框写死 --border-subtle 从不改变,
+   内部 <input> 又是 outline:none —— 用键盘 Tab 进来时屏幕上没有任何变化,
+   键盘用户无法知道自己停在哪。焦点环不能直接画在 input 上(会套在外框里成为
+   「框中框」),故改由外框响应。 */
+.ds-searchfield { --ds-sf-border: var(--border-subtle); }
+.ds-searchfield:has(:focus-visible) { --ds-sf-border: var(--status-info); }
+</style>
