@@ -474,8 +474,7 @@ async function confirmMark() {
 .rc-balance .verdict { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); font-weight: var(--fw-semibold); }
 
 /* 处置浮层:居中弹窗(§7,FinDialogs .fin-mask 范式) */
-.rc-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: var(--z-modal); display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: rcfade .16s forwards; }
-@keyframes rcfade { to { opacity: 1; } }
+.rc-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: var(--z-modal); display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: fp-fade-in .16s forwards; }
 .rc-pop { width: min(320px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border-radius: 14px; box-shadow: var(--shadow-md), 0 8px 28px rgba(28,28,28,.14); border: 1px solid var(--border-subtle); padding: 16px; box-sizing: border-box; font-size: var(--fs-body); color: var(--text-primary); font-family: var(--font-sans); animation: rcpop .14s cubic-bezier(.16,1,.3,1) both; }
 @keyframes rcpop { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .rc-pop-title { font-size: var(--fs-body); font-weight: var(--fw-bold); margin-bottom: 11px; display: flex; align-items: center; gap: 7px; }

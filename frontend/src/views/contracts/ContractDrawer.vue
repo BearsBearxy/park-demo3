@@ -437,10 +437,8 @@ const contactLine = computed(() =>
 .fp-tl-m { font-size:var(--fs-label); color:var(--text-muted); margin-top:2px; }
 
 /* 确认弹窗:z-index 320 压过 FPDrawer(300/301) */
-.cd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:cdfade .16s forwards; }
-@keyframes cdfade { to { opacity:1; } }
-.cd-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:cdrise .2s var(--ease-standard) both; }
-@keyframes cdrise { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+.cd-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in .16s forwards; }
+.cd-dlg { width:min(420px,92vw); background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in .2s var(--ease-standard) both; }
 .cd-dlg-h { padding:20px 22px 0; }
 .cd-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .cd-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }

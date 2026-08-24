@@ -5,6 +5,7 @@ import App from './App.vue'
 
 import './styles/tokens.css'
 import './styles/base.css'
+import './styles/motion.css'
 import './styles/scrollbar.css'
 import './styles/mx-list.css'
 

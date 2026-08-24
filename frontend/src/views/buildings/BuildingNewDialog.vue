@@ -111,16 +111,14 @@ function submit() {
 
 <style scoped>
 /* 1:1 from ledger/LedgerNewCompanyDialog.vue */
-.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:lgfade .16s forwards; }
+.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:fp-fade-in .16s forwards; }
 /* 嵌套态(编辑楼栋从抽屉里打开)升一档,与同场景的 ContractNewDialog .ct-mask 同档。
    层级是结构问题不是实例问题,故用 class 切档,不用内联 :style 打补丁(见 DESIGN-FIDELITY §八)。
    与 BuildingDrawer 的 .bd-mask(同 320)不会同屏:那三个小弹窗都由抽屉内按钮触发,
    而任一遮罩铺开后抽屉页脚的「编辑楼栋」已点不到,两者互斥;真同屏也由 DOM 后序取胜。 */
 .lg-dlg-mask.nested { z-index:var(--z-modal-2); }
-@keyframes lgfade { to { opacity:1; } }
 .lg-dlg { width:min(480px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22);
-  overflow:hidden; animation:lgrise .2s var(--ease-standard) both; }
-@keyframes lgrise { from { opacity:0; transform:translateY(10px) scale(.99); } to { opacity:1; transform:translateY(0) scale(1); } }
+  overflow:hidden; animation:fp-rise-in .2s var(--ease-standard) both; }
 .lg-dlg-h { padding:20px 22px 0; }
 .lg-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .lg-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }

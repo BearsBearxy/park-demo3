@@ -74,11 +74,9 @@ function submit() {
 
 <style scoped>
 /* 1:1 LedgerNewCompanyDialog .lg-dlg(宽放到 560px 容纳「名字 + 动作」两列) */
-.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:80; display:grid; place-items:center; opacity:0; animation:lgfade .16s forwards; }
-@keyframes lgfade { to { opacity:1; } }
+.lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:80; display:grid; place-items:center; opacity:0; animation:fp-fade-in .16s forwards; }
 .lg-dlg { width:min(560px,90vw); background:var(--surface-white); border-radius:var(--radius-xl); box-shadow:0 16px 48px rgba(28,28,28,.22);
-  overflow:hidden; animation:lgrise .2s var(--ease-standard) both; }
-@keyframes lgrise { from { opacity:0; transform:translateY(10px) scale(.99); } to { opacity:1; transform:translateY(0) scale(1); } }
+  overflow:hidden; animation:fp-rise-in .2s var(--ease-standard) both; }
 .lg-dlg-h { padding:20px 22px 0; }
 .lg-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .lg-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }

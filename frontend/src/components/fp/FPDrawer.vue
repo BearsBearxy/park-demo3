@@ -91,9 +91,8 @@ onBeforeUnmount(() => {
   padding: 24px;
   box-sizing: border-box;
   opacity: 0;
-  animation: fpDwrFade .18s var(--ease-standard, ease) forwards;
+  animation: fp-fade-in .18s var(--ease-standard, ease) forwards;
 }
-@keyframes fpDwrFade { to { opacity: 1; } }
 
 .fp-dwr {
   z-index: 301;
@@ -107,9 +106,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   transform: translateY(8px) scale(.985);
   opacity: 0;
-  animation: fpDwrIn .2s var(--ease-standard, ease) forwards;
+  animation: fp-rise-in .2s var(--ease-standard, ease) forwards;
 }
-@keyframes fpDwrIn { to { transform: none; opacity: 1; } }
 /* 恒定高度档:高度钉在 max-height 上限,内容少不塌缩(fixedHeight prop) */
 .fp-dwr--fixed { height: min(85vh, 760px); }
 /* 全屏档:worksheet 级长表用,尺寸压过 fixed 与 width */

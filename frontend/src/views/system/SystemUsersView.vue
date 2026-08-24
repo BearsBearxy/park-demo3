@@ -618,10 +618,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 .su-role-r { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 弹窗外壳 1:1 TenantNewDialog .fin-mask/.fin-dlg(DESIGN-FIDELITY §7) */
-.fin-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: 320; display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: sufade .16s forwards; }
-@keyframes sufade { to { opacity: 1; } }
-.fin-dlg { width: min(480px,92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 64px rgba(28,28,28,.28); animation: surise .2s var(--ease-standard) both; }
-@keyframes surise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.fin-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: 320; display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: fp-fade-in .16s forwards; }
+.fin-dlg { width: min(480px,92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 64px rgba(28,28,28,.28); animation: fp-rise-in .2s var(--ease-standard) both; }
 .fin-dlg-h { padding: 20px 22px 0; }
 .fin-dlg-h h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-dlg-h p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
