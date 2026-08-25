@@ -223,9 +223,78 @@ describe('ParamCenterView 计费参数页', () => {
     expect(put).toHaveBeenCalledWith(expect.objectContaining({ key: 'loss_adj_qty', scope: 'building:13', value: -1400 }), '2024-02')
     expect(w.text()).toContain('-1,400 度')
     expect(w.text()).not.toContain('-1,500 度')
-    expect(w.text()).toContain('参数已改 1 项')
+    // 「参数已改 N 项」不再挂在状态条上(§6 收进告警 chip):写一行 → chip 由「无待处理」翻成「待处理 1」
+    expect(w.find('button.fac').text()).toContain('待处理 1')
     // 只 patch 一行:list 不重拉
     expect(listCalls()).toBe(before + 1)
+    w.unmount()
+  })
+})
+
+// ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6)——
+//    过期/跨月受影响不再是状态条上的橙字,且跨月那条必须给得出一键清除的路径(§6-3) ──
+describe('ParamCenterView 告警 chip + 抽屉', () => {
+  const STALE = {
+    ...STATUS, stale: true, pendingChanges: 2, lastChangeAt: '2026-08-18T09:20:00',
+    otherMonthsAffected: ['2023-08', '2023-10'],
+  }
+  const drawer = () => document.querySelector('.fp-sdw')
+  const openChip = async (w: Awaited<ReturnType<typeof mountPage>>) => {
+    await w.find('button.fac').trigger('click')
+    await flushPromises()
+  }
+
+  it('状态条只留中性事实;过期 + 其他月份受影响进 chip(3)与抽屉分组', async () => {
+    const { paramsApi } = await import('@/api/params')
+    ;(paramsApi.status as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...STALE })
+    const w = await mountPage()
+    // 状态条:电价事实 + 无橙字(旧文案「参数已改 N 项…请切到该月重算」全部移走)
+    const bar = w.find('.pm-bar.status').text()
+    expect(bar).toContain('本月电价 6/6')
+    expect(bar).not.toContain('旧快照')
+    expect(bar).not.toContain('请切到该月重算')
+    expect(w.find('.pm-bar.warn').exists()).toBe(false)
+    // chip 常驻,计数 = 本月过期 1 + 其他月份 2
+    expect(w.find('button.fac').text()).toContain('待处理 3')
+    expect(drawer()).toBeNull()
+    await openChip(w)
+    const t = drawer()!.textContent ?? ''
+    expect(t).toContain('本月快照过期')
+    expect(t).toContain('自上次重算起改了 2 项参数')
+    expect(t).toContain('其他月份受影响')
+    expect(t).toContain('2023-08')
+    expect(t).toContain('2023-10')
+    w.unmount()
+  })
+
+  it('无告警时 chip 仍渲染(quiet 态),抽屉是空态', async () => {
+    const w = await mountPage()
+    const chip = w.find('button.fac')
+    expect(chip.text()).toContain('无待处理')
+    expect(chip.classes()).toContain('quiet')
+    await openChip(w)
+    expect(drawer()!.textContent).toContain('本月没有待处理事项')
+    w.unmount()
+  })
+
+  it('一键重算这 2 个月:逐月调 recalc → 刷新 status → chip 归零(§6-3 可清除性)', async () => {
+    const { paramsApi } = await import('@/api/params')
+    const recalc = paramsApi.recalc as ReturnType<typeof vi.fn>
+    recalc.mockResolvedValue({ pools: 1, lossUnits: 1, notices: 1, skippedConfirmed: 0, warnings: [] })
+    ;(paramsApi.status as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...STALE })
+    const w = await mountPage()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    await openChip(w)
+    const btn = [...drawer()!.querySelectorAll('button')].find(b => b.textContent?.includes('一键重算这 2 个月'))!
+    expect(btn, '跨月告警必须给一键批量,不许只写「请切到该月重算」').toBeTruthy()
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    btn.click()
+    await flushPromises()
+    expect(recalc.mock.calls.map(c => c[0])).toEqual(['2023-08', '2023-10'])
+    // 重算后重拉的 status 不再 stale → chip 归零,抽屉留开显空态
+    expect(w.find('button.fac').text()).toContain('无待处理')
+    expect(drawer()!.textContent).toContain('本月没有待处理事项')
+    recalc.mockReset()
     w.unmount()
   })
 })

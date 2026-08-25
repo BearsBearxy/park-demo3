@@ -5,10 +5,12 @@
 // 编辑态(EDIT-MODE-SPEC v2):池配置抽屉(FPDrawer,迁自旧 AllocView 规则弹窗)→ 改完提示重新生成。
 // S21(S21-PARAM-CENTER-SPEC §2.4/§5.6):池的分母 T/加度只有 alloc_cfg rule:{id} 一条版本链,写入口收敛到「计费参数」页 ——
 // 编辑态「分母/加度」两列与抽屉「③怎么摊」改为**只读镜像**(当月生效值 + 仅本月/长期徽标 + 点击跳参数页);
-// 仅新建池保留「初始分母」;头部 stale 条(参数晚于池快照 → 去重算)。
+// 仅新建池保留「初始分母」;快照过期(参数晚于池快照 → 去重算)进告警抽屉。
 // V69(用户 2026-07-30 拍板):池=楼栋+楼层+侧向+费项四级定位,池名自动生成不手写;组成电表与受益人
 // 一律勾选(候选来自 /pool-candidates,标签用位置不用内部标识);
-// 顶部 /member-diff 提醒条=本月在租租户与池受益人的差集。
+// /member-diff=本月在租租户与池受益人的差集。
+// LAYOUT-STABILITY-SPEC §6(2026-08-25 用户拍板):快照过期 / 本次生成告警 / 池成员变动三条流内橙条
+// 撤出页面 —— 工具条常驻 chip(FPAlertChip,两态都渲染)+ 右侧抽屉(FPAlertPanel)。判定逻辑未动,只换呈现。
 // 刀3(用户 2026-07-30 报障):①分带只按楼栋(四级分带带头比数据行还多),楼层+方位与费项名各自成列;
 // ②摊出/差额两列已撤(用户 2026-08-02 拍板:A座天面等池的户级收取有协议户/一楼不收等例外,
 // 屏上按面积正向试算不成立,摆着是误导);引擎仍算 allocated/gap 落库,供生成告警与未来 bill 对账,
@@ -51,6 +53,8 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import Segmented from '@/components/ds/Segmented.vue'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
@@ -60,9 +64,9 @@ import { useEditMode } from '@/composables/useEditMode'
 const auth = useAuthStore()
 // RBAC:本屏两扇门不同权 —— 生成快照是「跑一次出账」,池配置是「改计费口径」。
 // 2026-08-22 起铁律改为「进得了编辑模式 ⇒ 本页权限一定齐」(EDIT-MODE-SPEC v3):编辑态里不再有
-// 点不动的控件,也不再有「点了转成授权请求」的包装。这两个只用来画**浏览态**的文案与可点态。
+// 点不动的控件,也不再有「点了转成授权请求」的包装。这个只用来画**浏览态**的文案与可点态
+// (param-policy:edit 仍由下面 useEditMode 的权限组把门,只是屏上不再单独取用)。
 const canGen = computed(() => auth.can('billing-run:edit'))
-const canCfg = computed(() => auth.can('param-policy:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
@@ -202,11 +206,10 @@ const bands = computed(() => groupPoolsByBookBlock(pools.value?.rows ?? [], zone
 const foot = computed(() => poolFooter(bands.value))
 const generated = computed(() => pools.value?.generated ?? false)
 
-// ── 受益人变动提醒条:只提示本 zone 的池;点池名进配置面板定位 ──
+// ── 受益人变动(告警抽屉「池成员变动」组):只提示本 zone 的池;点条目进配置面板定位 ──
 const zoneRuleIds = computed(() =>
   new Set((pools.value?.rows ?? []).filter(r => r.zone === zone.value).map(r => r.ruleId)))
 const zoneDiffs = computed(() => diffs.value.filter(d => zoneRuleIds.value.has(d.ruleId)))
-const diffOpen = ref(false)
 const rowById = computed(() => new Map((pools.value?.rows ?? []).map(r => [r.ruleId, r])))
 function gotoDiff(ruleId: number) {
   const r = rowById.value.get(ruleId)
@@ -244,7 +247,6 @@ const generating = ref(false)
 // 生成告警(AllocGenerateResultDTO.warnings):引擎的「静默吞钱防线」——无受益人未摊到户 N 元/
 // 摊出超应分摊/缺起止日期户未入名册/缺参。全期别一份,不随 zone 页签过滤;换账期清空。
 const genWarnings = ref<string[]>([])
-const warnOpen = ref(false)
 async function onGenerate() {
   if (generating.value) return
   if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
@@ -253,7 +255,6 @@ async function onGenerate() {
     const res = await allocApi.generate(ym.value)
     cfgDirty.value = false
     genWarnings.value = res.warnings ?? []
-    warnOpen.value = false
     await loadMonth()
   } catch (e) { alert(errMsg(e, '生成失败')) } finally { generating.value = false }
 }
@@ -320,6 +321,48 @@ function gotoParams(ruleId?: number, key: 'coefficient' | 'extra_qty' | null = n
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section,
     ...(ruleId != null ? { rule: String(ruleId) } : {}), ...(edit ? { edit: '1' } : {}) } })
 }
+
+// ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6,2026-08-25 用户拍板)──
+// 原来这三条(stale / 生成告警 / 受益人变动)各占一条橙色流内提示条,本屏一度并存 5 条:
+// 顶动表格、清除条件苛刻 → 变成永久噪音。判定逻辑一个字没改,只换呈现:三组收进抽屉,
+// 工具条上留一个位置固定的 chip(有告警=实底计数,无告警=quiet 静默态仍渲染)。
+const alertOpen = ref(false)
+const nameList = (ts: { tenantName: string | null }[]) =>
+  ts.slice(0, 3).map(t => t.tenantName || '未命名').join('、') + (ts.length > 3 ? ` 等 ${ts.length} 户` : '')
+const alertGroups = computed<AlertGroup[]>(() => {
+  const gs: AlertGroup[] = []
+  if (staleMsg.value) gs.push({
+    key: 'stale', title: '快照过期',
+    desc: '计费参数(电价/系数/加减度数)在本月快照生成之后又改过 —— 屏上数字仍是改参前算的。'
+      + '不重算,公共电核算 / 楼栋损耗 / 催缴单三处都停在旧口径,出账就按旧数走。',
+    items: [{ text: staleMsg.value }],
+    action: { label: '去计费参数页重算', icon: 'refresh-cw',
+      run: () => { alertOpen.value = false; gotoParams(undefined, null, true) } },
+  })
+  if (genWarnings.value.length) gs.push({
+    key: 'gen', title: '本次生成告警',
+    desc: '引擎生成时报的静默吞钱防线:池没有受益人(应分摊的钱没摊到任何一户)、缺读数、缺参数。'
+      + '不管它,这笔钱就在账上消失、谁也不会被收。全期别一份,不随一期/二期页签过滤;'
+      + '逐条核对源头后重新生成即清空(换账期也会清)。',
+    items: genWarnings.value.map(text => ({ text })),
+  })
+  if (zoneDiffs.value.length) gs.push({
+    key: 'diff', title: '池成员变动',
+    desc: '本月在租的租户与池里勾选的受益人对不上:新在租的还没勾进池(他那份公摊没人分担),'
+      + '已退租的还挂在池里(会摊到走掉的户头上)。首次配置为全新带出,配置后只提示增减。'
+      + '点一条打开池配置勾选修正,改完重新生成。',
+    items: zoneDiffs.value.map(d => ({
+      text: `${rowById.value.get(d.ruleId)?.autoName || d.poolName}　`
+        + [d.added.length ? `+${d.added.length} 新在租` : '', d.removed.length ? `−${d.removed.length} 已退租` : '']
+          .filter(Boolean).join(' / '),
+      hint: [d.added.length ? `新:${nameList(d.added)}` : '', d.removed.length ? `退:${nameList(d.removed)}` : '']
+        .filter(Boolean).join('　'),
+      onClick: () => { alertOpen.value = false; gotoDiff(d.ruleId) },
+    })),
+  })
+  return gs
+})
+const alertCount = computed(() => alertGroups.value.reduce((s, g) => s + g.items.length, 0))
 
 // ── 池配置抽屉(V69 勾选式):四级定位→池名自动生成;组成电表/受益人按定位候选勾选 ──
 const poolDlg = ref(false)
@@ -673,6 +716,8 @@ async function delPool() {
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="pl-actions">
+        <!-- §6 屏级告警入口:位置固定,有没有告警都渲染(quiet 态) —— 工具条不因告警增减挪一像素 -->
+        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
         <Button variant="outline" size="sm" :disabled="bands.length === 0" @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出当月
@@ -725,53 +770,8 @@ async function delPool() {
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
     </div>
-    <!-- S21 stale 条:计费参数改过而池快照没重生成(判据 spec §6.3);[去重算] 送到参数页(池 → 损耗 → 催缴单一起重算) -->
-    <div v-if="staleMsg" class="pl-bar warn">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>{{ staleMsg }} —— 屏上数字仍是改参前生成的,去计费参数页「重算本月」后生效。</span>
-      <Button variant="outline" size="sm" @click="gotoParams(undefined, null, true)">
-        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
-        去重算
-      </Button>
-    </div>
-    <!-- 生成告警清单:引擎在 generate 时报的「未摊到户/缺读数/缺参」,过去被前端整个丢弃。
-         WRITE-KEEP-CONTEXT-SPEC 铁律三:这条也是**写出来的**(点生成才有),但它高度不定
-         (文案会折行 + 可展开几十条),做不了 cfgDirty 那样的常驻占位 —— 常驻等于永久留两行空白。
-         故改浮层:绝对定位在表格区顶上,完全不参与 flex 高度计算,出现/消失时表格一格都不动。
-         展开时盖住表格顶部几行是可接受的 —— 那一刻用户正在读告警,不在看数字;给 × 随手关掉。 -->
+    <!-- §6:stale / 生成告警 / 受益人变动三条流内提示条已撤 —— 收进工具条 chip + 右侧抽屉(见页尾 FPAlertPanel) -->
     <div class="pl-tablearea">
-      <div v-if="genWarnings.length" class="pl-bar warn pl-float">
-        <component :is="iconFor('alert-triangle')" :size="14" />
-        <span>本次生成有 {{ genWarnings.length }} 条告警(全期别一份,不随上方一期/二期页签过滤)
-          —— 常见为「池无受益人,应分摊 N 元未摊到户」「缺读数」「缺参数」,逐条核对后重新生成。</span>
-        <button class="pl-barlink" @click="warnOpen = !warnOpen">{{ warnOpen ? '收起' : '展开' }}</button>
-        <button class="pl-barx" title="关闭(重新生成后会再出现)" @click="genWarnings = []">
-          <component :is="iconFor('x')" :size="14" />
-        </button>
-        <div v-if="warnOpen" class="pl-difflist">
-          <div v-for="(wrn, i) in genWarnings" :key="i" class="pl-warnrow">{{ wrn }}</div>
-        </div>
-      </div>
-    <!-- V69 受益人变动提醒条:该定位本月在租租户 vs 池受益人的差集 -->
-    <div v-if="zoneDiffs.length" class="pl-bar warn">
-      <component :is="iconFor('users')" :size="14" />
-      <span>本月 {{ zoneDiffs.length }} 个池的在租租户有变动 —— 首次配置为全新带出,配置后只提示增减。</span>
-      <button class="pl-barlink" @click="diffOpen = !diffOpen">{{ diffOpen ? '收起' : '展开' }}</button>
-      <div v-if="diffOpen" class="pl-difflist">
-        <div v-for="d in zoneDiffs" :key="d.ruleId" class="pl-diffrow">
-          <span class="nm" :class="{ click: canCfg }" @click="gotoDiff(d.ruleId)">
-            {{ rowById.get(d.ruleId)?.autoName || d.poolName }}
-          </span>
-          <span v-if="d.added.length" class="tag add" :title="d.added.map(t => t.tenantName).join('、')">
-            +{{ d.added.length }} 新在租
-          </span>
-          <span v-if="d.removed.length" class="tag del" :title="d.removed.map(t => t.tenantName).join('、')">
-            −{{ d.removed.length }} 已退租
-          </span>
-        </div>
-      </div>
-    </div>
-
     <!-- 台账式宽表:分带(Excel 式分隔带)+tfoot 合计(ref 行不计) -->
     <div class="pl-wrap">
       <table class="pl-table">
@@ -942,9 +942,9 @@ async function delPool() {
         </tfoot>
       </table>
       </div>
-      <!-- 保存/删除成功提示(3s 自消)。贴表格区**底**边:顶上是 pl-float 告警条,一上一下不叠 -->
+      <!-- 保存/删除成功提示(3s 自消)。贴表格区**底**边(card 模式,靠 .pl-tablearea 的 relative 定位) -->
       <FPToast v-model="okMsg" :duration="3000" />
-    </div><!-- /pl-tablearea:浮层告警条与成功 toast 的定位上下文 -->
+    </div><!-- /pl-tablearea:成功 toast 的定位上下文 -->
 
     <!-- 池配置抽屉(编辑态;迁自旧屏规则弹窗+S3-B1 增量字段) -->
     <FPDrawer :open="poolDlg" :title="form.id == null ? '新增池' : '编辑池 · ' + formAutoName"
@@ -1173,6 +1173,9 @@ async function delPool() {
         </Button>
       </template>
     </FPDrawer>
+
+    <!-- §6 屏级告警抽屉:快照过期 / 本次生成告警 / 池成员变动 -->
+    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
   </div>
 </template>
 
@@ -1192,9 +1195,6 @@ async function delPool() {
 .pl-bar.err { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 /* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
 .pl-bar.ghost { visibility: hidden; }
-.pl-barlink { border: none; background: transparent; color: var(--hue-blue); font-size: var(--fs-label); cursor: pointer; text-decoration: underline; padding: 0; }
-.pl-difflist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; margin-top: 2px; }
-.pl-warnrow { font-size: 12px; line-height: 1.55; color: inherit; }
 /* V73 逐表行:表行左对齐可换行;§F10 虚线画在池**首行**上边框=池间分隔,池内续行不画(否则分组信号正好相反) */
 .pl-mname { text-align: left; font-size: 12px; color: var(--text-primary); white-space: normal; line-height: 1.35; }
 .pl-ptop > td { border-top: 1px dashed var(--border-subtle); }
@@ -1203,19 +1203,8 @@ async function delPool() {
 /* Σ 副标题:§E1 去 rowspan 后这格只剩单行高,数字大了会折行把首行撑高 → 一行到底 + 省略号 */
 .pl-sub-sum { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-linkchip { margin-left: 4px; font-size: 11px; border-radius: var(--radius-full); padding: 0 6px; background: var(--surface-subtle); color: var(--text-secondary); cursor: help; }
-.pl-diffrow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.pl-diffrow .nm { color: var(--text-primary); font-weight: var(--fw-medium); }
-.pl-diffrow .nm.click { cursor: pointer; text-decoration: underline dotted; }
-.pl-diffrow .nm.click:hover { color: var(--hue-blue); }
-.pl-diffrow .tag { font-size: 11px; border-radius: var(--radius-full); padding: 0 7px; cursor: help; }
-.pl-diffrow .tag.add { background: rgb(222, 244, 229); color: rgb(21, 128, 61); }
-.pl-diffrow .tag.del { background: rgb(255, 238, 237); color: var(--hue-red); }
-
-/* 表格区:浮层告警条的定位上下文(铁律三——那条不占 flex 高度,出现/消失时表格纹丝不动) */
+/* 表格区:成功 toast 的定位上下文(告警条已改 chip+抽屉,不再有浮层条) */
 .pl-tablearea { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
-.pl-bar.pl-float { position: absolute; top: 0; left: 0; right: 0; z-index: 9; box-shadow: var(--shadow-md, 0 4px 14px rgba(0,0,0,.10)); }
-.pl-barx { display: inline-grid; place-items: center; width: 22px; height: 22px; border: none; background: none; border-radius: var(--radius-sm); color: inherit; opacity: .65; cursor: pointer; }
-.pl-barx:hover { opacity: 1; background: rgba(0, 0, 0, .06); }
 
 /* ── 宽表(FPLedgerTable 1:1 手法自 MeterLedgerGrid) ── */
 .pl-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }

@@ -4,7 +4,9 @@
 // units=楼栋损耗快照;对账区两行=读时派生(供电局总表 vs 各栋总表合计 / 各栋分表合计),单元行后接续渲染。
 // S21(S21-PARAM-CENTER-SPEC §5.6):本屏**零写入口** —— 原「本月口径」面板与行内 损耗调整度数/损耗率加点/G调整 三格编辑
 // 全部收敛到「计费参数」页(/params);这里只读:损耗调整度数/损耗率加点两格带「仅本月/长期」徽标、点击跳参数页;
-// G 格悬浮给分解式「(a + b + …) ÷ 6 = G」;手工率覆盖时收取率并排显公式率;头部 stale 条(参数晚于池快照 → 去重算)。
+// G 格悬浮给分解式「(a + b + …) ÷ 6 = G」;手工率覆盖时收取率并排显公式率。
+// 屏级告警(LAYOUT-STABILITY-SPEC §6,2026-08-25):「快照过期」原为头部流内橙条(顶动表格且清不掉),
+// 改为工具条上的常驻 chip + 右侧抽屉;判定逻辑不变,仍是 staleText(status,'pool')。
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allocApi, type AllocLossDTO, type AllocLossUnitDTO } from '@/api/alloc'
@@ -16,6 +18,8 @@ import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -128,11 +132,23 @@ const rateTitle = (u: AllocLossUnitDTO) => u.manualRate != null
 // ── 跳参数页(深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh) ──
 const router = useRouter()
 const tabs = useTabsStore()
+const alertOpen = ref(false)
 // edit=1:[去重算] 落地直接进编辑态(重算按钮只在编辑态出)
 function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
+  alertOpen.value = false   // 抽屉里点走的:本屏被 KeepAlive 缓存,不关的话切回来抽屉还盖着
   tabs.openFresh('params', { pin: true })
   router.push({ path: '/params', query: { ym: ym.value, zone: zone.value, section, ...(edit ? { edit: '1' } : {}) } })
 }
+
+// ── 屏级告警(§6):本屏只有「快照过期」一类;chip 两态常驻,详情与动作都在抽屉里 ──
+const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
+  key: 'stale',
+  title: '快照过期',
+  desc: '计费参数改过之后没有重算 —— 本屏的损耗量、损耗率还是改参前那份快照算出来的。'
+      + '不处理的话,按这些率出的催缴单会一直沿用旧数。去计费参数页「重算本月」即可清除。',
+  items: [{ text: staleMsg.value, hint: `${year.value}年${month.value}月`, onClick: () => gotoParams('monthly', true) }],
+  action: { label: '去计费参数页重算', icon: 'refresh-cw', run: () => gotoParams('monthly', true) },
+}] : [])
 </script>
 
 <template>
@@ -152,6 +168,8 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="ll-actions">
+        <!-- §6:屏级告警入口,位置固定;无告警时 quiet 态仍占位 -->
+        <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
         <!-- 本屏零写入口:口径(损耗核算方式/归组/总表取数/不计入的表)、损耗调整度数/损耗率加点/手工指定率全在计费参数页 ③ 核算口径 -->
         <Button variant="outline" size="sm" title="本月对本期生效的损耗核算口径与人工参数,去计费参数页看 / 改" @click="gotoParams('rule')">
           <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
@@ -160,18 +178,10 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
       </div>
     </div>
 
-    <!-- 提示条:本月未生成 / 参数晚于快照(改参后没重算) -->
+    <!-- 提示条:只剩「本月未生成」(首屏加载期,§3 允许);「快照过期」已改走 chip + 抽屉 -->
     <div v-if="!generated" class="ll-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月未生成 —— 损耗快照为空;在「公共电核算」屏点「生成本月」或在「计费参数」页「重算本月」后此处落数。</span>
-    </div>
-    <div v-if="staleMsg" class="ll-bar warn">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>{{ staleMsg }} —— 屏上数字仍是改参前生成的,去计费参数页「重算本月」后生效。</span>
-      <Button variant="outline" size="sm" @click="gotoParams('monthly', true)">
-        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
-        去重算
-      </Button>
     </div>
 
     <!-- 台账式宽表:单元行 + 对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计) + tfoot 合计 -->
@@ -264,6 +274,8 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
         </tfoot>
       </table>
     </div>
+
+    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
   </div>
 </template>
 
@@ -277,7 +289,6 @@ function gotoParams(section: 'monthly' | 'constant' | 'rule', edit = false) {
 .ll-actions { display: flex; align-items: center; gap: 8px; }
 
 .ll-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
-.ll-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
 
 /* ── 宽表(FPLedgerTable 手法) ── */
 .ll-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-white); }

@@ -166,7 +166,7 @@ const WHITELIST: Record<string, string> = {
 const KNOWN_DEBT: Record<string, string> = {
   // ✅ 2026-08-22 清空：原有 5 条「保存成功」okMsg 流内绿条已全部收编进 `fp/FPToast.vue`。
   //    组件是浮层（absolute/fixed），门禁本就不看组件标签，故自然合规。
-  //    PoolLedgerView 走 card 模式贴 .pl-tablearea **底**边（顶上是 .pl-float 告警条，一上一下不叠）；
+  //    PoolLedgerView 走 card 模式贴 .pl-tablearea **底**边（顶上原有 .pl-float 告警条，2026-08-25 已收进告警抽屉）；
   //    另外 4 处走 page 模式贴屏幕底部 —— 它们要么没有 relative 容器（BillNoticesView），
   //    要么宿主是 overflow:auto 的弹窗 body（三个 Window），absolute 贴底会跟着内容滚走。
   //    **这张表现在是空的，请保持空的。** 新写的代码一律不准进。
@@ -309,7 +309,7 @@ describe('交互不得改变已渲染内容的位置（LAYOUT-STABILITY-SPEC）'
         + 'LAYOUT-STABILITY-SPEC §1 铁律禁止。\n'
         + '按 §2 优先级表挑一个做法（从上往下选，越靠上越好）：\n'
         + '  1. 不加：塞进已有位置（徽标 / 按钮文案 / tooltip / 工具栏 chip）。绝大多数提示条其实不必存在\n'
-        + '  2. 浮层：position:absolute 覆在内容上（照抄 PoolLedgerView 的 .pl-float），容器给 position:relative\n'
+        + '  2. 浮层：position:absolute 覆在内容上（照抄 FPToast 的 card 模式），容器给 position:relative\n'
         + '  3. 预留位：容器恒定高度，空着也占位。只在「几乎总会出现、只是内容变」时用\n'
         + '  4. 流内条：仅限首屏加载期（§3），显隐只由首次加载结果决定，不由任何用户动作决定\n'
         + '如果它确属 §5「编辑态主体工作区」，加进本文件 WHITELIST 并写明理由。\n\n'
