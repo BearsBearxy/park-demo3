@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jayway.jsonpath.JsonPath;
 import com.park.demo3.AbstractMysqlIT;
+import com.park.demo3.entity.BookTemplateVersion;
+import com.park.demo3.entity.LedgerBook;
+import com.park.demo3.mapper.BookTemplateVersionMapper;
+import com.park.demo3.mapper.LedgerBookMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +32,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired LedgerBookMapper booksMapper;
+    @Autowired BookTemplateVersionMapper versionsMapper;
     private static final ObjectMapper M = new ObjectMapper();
     private String token;
 
@@ -288,5 +294,131 @@ class BookApiIT extends AbstractMysqlIT {
         List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
         int i = ids.indexOf(newBookId);
         assertThat(vers.get(i)).as("新册没有历史,没有理由落后于链尾").isEqualTo(latest.get(i));
+    }
+
+    // ── 链尾编辑规则 R3/R4 与跨公司归档守卫(2026-08-25 全局链) ──
+
+    private static String utf8(org.springframework.test.web.servlet.MvcResult r) {
+        return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private String ledgerBooks() throws Exception {
+        return utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+    }
+
+    /** 在指定册上加一个自定义列并保存(结构改动 → 升版)。 */
+    @SuppressWarnings("unchecked")
+    private void addCustomColAtTip(int bookId, String colId, String label) throws Exception {
+        String body = ledgerBooks();
+        int idx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(bookId);
+        JsonNode d = M.readTree(M.writeValueAsString(JsonPath.read(body, "$.data[" + idx + "].definition")));
+        ObjectNode col = ((ArrayNode) d.get("groups").get(0).get("cols")).addObject();
+        col.put("id", colId); col.put("std", false); col.put("label", label);
+        col.put("slot", "other"); col.put("hidden", false); col.putNull("w"); col.putArray("aliases");
+        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
+                .contentType("application/json").content("{\"definition\":" + d + ",\"note\":\"" + label + "\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.structural").value(true));
+    }
+
+    /** 把某册的版本指针按回旧版 —— 造前置状态用。
+     *  切版接口 /template/adopt 属 Task 4,尚未落地;这里直接改指针,R3/R4 的断言一字不动。 */
+    private void pinTo(int bookId, int ver) {
+        Integer host = booksMapper.lineageHost().getId();
+        BookTemplateVersion target = versionsMapper.byBook(host).stream()
+                .filter(v -> v.getVer() == ver).findFirst().orElseThrow();
+        LedgerBook b = booksMapper.selectById(bookId);
+        b.setCurrentVersionId(target.getId());
+        booksMapper.updateById(b);
+    }
+
+    /** 造出「有落后册」的状态:链尾升一版,除首册外全部停在链尾,首册按回 v1。
+     *  链尾必须留下**多册** —— 只留一册时 R4 与「只移动被编辑的那册」结果相同,用例分辨不出。
+     *  返回 {落后册 id, 链尾册 id, 链尾版本号}。 */
+    @SuppressWarnings("unchecked")
+    private int[] makeLaggingState(String probeColId) throws Exception {
+        List<Integer> ids = JsonPath.read(ledgerBooks(), "$.data[*].id");
+        int lagging = ids.get(0), tip = ids.get(1);
+        addCustomColAtTip(tip, probeColId, "计划探针");
+        int latest = ((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0);
+        for (Integer id : ids) pinTo(id, id == lagging ? 1 : latest);
+        return new int[]{ lagging, tip, latest };
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void saveTemplate_fromNonTipVersion_isRejected() throws Exception {
+        int[] s = makeLaggingState("c_probe_r3");
+        int lagging = s[0];
+        String body = ledgerBooks();
+        int idx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(lagging);
+        Object d = JsonPath.read(body, "$.data[" + idx + "].definition");
+        assertThat((int) (Integer) JsonPath.read(body, "$.data[" + idx + "].ver")).isEqualTo(1);   // 确认真的落后了
+        mvc.perform(put("/api/books/" + lagging + "/template").header("Authorization", auth())
+                .contentType("application/json").content("{\"definition\":" + M.writeValueAsString(d) + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("先升")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void saveTemplate_structural_movesOnlyTipPinnedCompanies() throws Exception {
+        int[] s = makeLaggingState("c_probe_r4a");
+        int lagging = s[0], tip = s[1];
+
+        String before = ledgerBooks();
+        List<Integer> ids = JsonPath.read(before, "$.data[*].id");
+        List<Integer> vers = JsonPath.read(before, "$.data[*].ver");
+        int latest = ((List<Integer>) JsonPath.read(before, "$.data[*].latestVer")).get(0);
+        assertThat(vers.get(ids.indexOf(lagging))).as("前置:落后册在 v1").isEqualTo(1);
+
+        addCustomColAtTip(tip, "c_probe_r4b", "计划探针二");
+
+        String after = ledgerBooks();
+        List<Integer> vers2 = JsonPath.read(after, "$.data[*].ver");
+        int latest2 = ((List<Integer>) JsonPath.read(after, "$.data[*].latestVer")).get(0);
+        assertThat(latest2).isEqualTo(latest + 1);
+        for (int i = 0; i < ids.size(); i++) {
+            if (vers.get(i) == latest) assertThat(vers2.get(i)).as("链尾册跟进").isEqualTo(latest2);
+            else assertThat(vers2.get(i)).as("落后册原地不动").isEqualTo(vers.get(i));
+        }
+        assertThat(vers2.get(ids.indexOf(lagging))).as("落后册仍在 v1").isEqualTo(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void tipEdit_removingCustomCol_blockedByAnotherCompanysData() throws Exception {
+        // ① 链尾加一列(所有在链尾的册跟进,含 company 1 与另一家)
+        String body0 = ledgerBooks();
+        List<Integer> ids = JsonPath.read(body0, "$.data[*].id");
+        List<Integer> cids = JsonPath.read(body0, "$.data[*].companyId");
+        int bookOfC1 = ids.get(cids.indexOf(1));
+        int otherBook = ids.get(cids.indexOf(1) == 0 ? 1 : 0);      // 另一家公司的册
+        addCustomColAtTip(bookOfC1, "c_xcheck", "跨司探针");
+
+        // ② 只给 company 1 的台账写这列的数据
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "11")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"跨司探针户\",\"extraFees\":{\"c_xcheck\":50}}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.imported").value(1));
+
+        // ③ 从**另一家公司**的册发起删列 → 必须被 company 1 的数据拦下(§7 跨公司检查)
+        String body = ledgerBooks();
+        int oIdx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(otherBook);
+        JsonNode d = M.readTree(M.writeValueAsString(JsonPath.read(body, "$.data[" + oIdx + "].definition")));
+        for (JsonNode g : d.get("groups")) {
+            ArrayNode cols = (ArrayNode) g.get("cols");
+            for (int i = cols.size() - 1; i >= 0; i--)
+                if ("c_xcheck".equals(cols.get(i).get("id").asText())) cols.remove(i);
+        }
+        mvc.perform(put("/api/books/" + otherBook + "/template").header("Authorization", auth())
+                .contentType("application/json").content("{\"definition\":" + d + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不能删除")));
+        // 类上 @Transactional,用例结束整体回滚 —— 不需要计划里那段手工清理
     }
 }

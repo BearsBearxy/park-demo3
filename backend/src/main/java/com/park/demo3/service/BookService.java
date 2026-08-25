@@ -213,33 +213,56 @@ public class BookService {
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
         Integer chainId = chainBookId(b);
         BookTemplateVersion cur = currentVersion(b);
+        int tipVer = versions.maxVer(chainId);
+        // R3 只能在链尾编辑:允许从非链尾分叉,链就不再是一条线,"全局唯一模板"当场失效
+        if (cur.getVer() != tipVer)
+            throw new BizException(ResultCode.CONFLICT,
+                "本册在 v" + cur.getVer() + ",最新是 v" + tipVer + " —— 请先升到 v" + tipVer + " 再改");
 
         String newJson = req.definition().toString();
         TemplateDef.Def oldDef = TemplateDef.parse(cur.getDefinition());
         TemplateDef.Def newDef = TemplateDef.parse(newJson);
         TemplateDef.assertStdKept(oldDef, newDef);
-        assertNoDataLossOnCustomRemoval(b, oldDef, newDef);
+        // 台账模板全司共用,删列要查所有公司(§7):传宿主行(companyId=null)即放开公司范围
+        assertNoDataLossOnCustomRemoval(
+            "ledger".equals(b.getScreen()) ? books.lineageHost() : b, oldDef, newDef);
 
         boolean structural = TemplateDef.structuralChange(oldDef, newDef);
         String summary = TemplateDef.diffSummary(oldDef, newDef);
         if (structural) {
             BookTemplateVersion nv = new BookTemplateVersion();
             // 版本落在链上,号取链尾+1:写回 bookId 会给公司册另起私链,写 cur.getVer()+1 会撞 uk_tpl
-            nv.setBookId(chainId); nv.setVer(versions.maxVer(chainId) + 1);
+            nv.setBookId(chainId); nv.setVer(tipVer + 1);
             nv.setDefinition(newJson);
             nv.setNote(req.note() == null || req.note().isBlank() ? summary : req.note());
             nv.setCreatedBy(actor());
             versions.insert(nv);
-            b.setCurrentVersionId(nv.getId());
-            books.updateById(b);
+            movePinsAtTip(b, cur.getId(), nv.getId());
             audit.log("模板修改", bookLabel(b),
                 "v" + cur.getVer() + "→v" + nv.getVer() + "(结构): " + summary);
         } else {
-            cur.setDefinition(newJson);
+            cur.setDefinition(newJson);          // 轻改动就地更新:只影响指向该版的册
             versions.updateById(cur);
             audit.log("模板修改", bookLabel(b), "v" + cur.getVer() + "(轻改动): " + summary);
         }
         return new TemplateSaveResultDTO(toDTO(books.selectById(bookId)), structural, summary);
+    }
+
+    // R4 编辑只带走链尾上的册:原本就指着旧链尾的(含宿主)跟进新版,落后的原地不动 —— 这是"不强制升级"的落点
+    private void movePinsAtTip(LedgerBook edited, Long oldTipId, Long newTipId) {
+        if (!"ledger".equals(edited.getScreen())) {          // s10:一册一链,只动自己
+            edited.setCurrentVersionId(newTipId);
+            books.updateById(edited);
+            return;
+        }
+        List<LedgerBook> all = new ArrayList<>(books.ledgerCompanyBooks());
+        LedgerBook host = books.lineageHost();
+        if (host != null) all.add(host);
+        for (LedgerBook x : all)
+            if (oldTipId.equals(x.getCurrentVersionId())) {
+                x.setCurrentVersionId(newTipId);
+                books.updateById(x);
+            }
     }
 
     /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 读全开,无权限门)。 */
@@ -297,28 +320,33 @@ public class BookService {
         return b == null ? Set.of() : TemplateDef.customIds(TemplateDef.parse(currentVersion(b).getDefinition()));
     }
 
-    // ── 归档守卫(SPEC §3):自定义列名下有历史数据 → 只许隐藏(归档),不许从模板移除 ──
+    // ── 归档守卫(SPEC §3 + 全局化 §7):自定义列名下有历史数据 → 只许隐藏(归档),不许从模板移除 ──
     // 否则:行保存的 extraFees 整包替换会抹值(前端按现行版收包),或口袋残值变成合计里看不见的钱。
+    // 全局化后台账模板是所有公司共用的 —— 删列要查所有公司,任一家有数据就拒绝。
     private void assertNoDataLossOnCustomRemoval(LedgerBook b, TemplateDef.Def oldDef, TemplateDef.Def newDef) {
         Set<String> keep = TemplateDef.customIds(newDef);
         for (String id : TemplateDef.customIds(oldDef)) {
             if (keep.contains(id)) continue;
-            if (customColHasData(b, id))
+            long n = customColRowCount(b, id);
+            if (n > 0)
                 throw new BizException(ResultCode.CONFLICT,
-                    "自定义列「" + id + "」名下已有数据,不能删除——请改用隐藏(归档);确需清列先清数据");
+                    "自定义列「" + id + "」名下已有 " + n + " 行数据,不能删除——请改用隐藏(归档);确需清列先清数据");
         }
     }
 
-    private boolean customColHasData(LedgerBook b, String colId) {
+    /** 该列名下的数据行数。台账屏:companyId 为 null(宿主行=全局编辑)时查所有公司。 */
+    private long customColRowCount(LedgerBook b, String colId) {
         String jsonPath = "$.\"" + colId + "\"";
         // JSON_TYPE 而非 IS NOT NULL:{"c_x":null} 的 JSON null 不是 SQL NULL,
         // IS NOT NULL 会把空值键误判成"有数据"拦住删除;键缺席时 JSON_TYPE(SQL NULL)=NULL 不计
         String cond = "JSON_TYPE(JSON_EXTRACT(extra_fees, {0})) NOT IN ('NULL')";
-        if ("ledger".equals(b.getScreen()))
-            return ledgerRows.selectCount(new QueryWrapper<MonthlyLedger>()
-                .eq("company_id", b.getCompanyId()).apply(cond, jsonPath)) > 0;
+        if ("ledger".equals(b.getScreen())) {
+            QueryWrapper<MonthlyLedger> q = new QueryWrapper<MonthlyLedger>().apply(cond, jsonPath);
+            if (b.getCompanyId() != null) q.eq("company_id", b.getCompanyId());
+            return ledgerRows.selectCount(q);
+        }
         return s10Rows.selectCount(new QueryWrapper<S10Record>()
-            .eq("phase", b.getPhase()).apply(cond, jsonPath)) > 0;
+            .eq("phase", b.getPhase()).apply(cond, jsonPath));
     }
 
     private static String bookLabel(LedgerBook b) {
