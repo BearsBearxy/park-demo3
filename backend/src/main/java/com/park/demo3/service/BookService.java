@@ -214,8 +214,11 @@ public class BookService {
         Integer chainId = chainBookId(b);
         BookTemplateVersion cur = currentVersion(b);
         int tipVer = versions.maxVer(chainId);
-        // R3 只能在链尾编辑:允许从非链尾分叉,链就不再是一条线,"全局唯一模板"当场失效
-        if (cur.getVer() != tipVer)
+        // R3 只能在链尾编辑:允许从非链尾分叉,链就不再是一条线,"全局唯一模板"当场失效。
+        // ⚠ 只管台账屏。s10 是一册一链(design §4 恒等变换),没有"别家公司"可分叉,这道门对它没有意义;
+        //   而 rollback 改成 adopt 之后 s10 也能停在非链尾了,门若不限屏,用户切回旧版就再也改不了模板
+        //   (前端 TemplateEditorPanel 的 globalChain 也只认 ledger,不限屏会前后端打架:能进编辑态、保存吃 409)
+        if ("ledger".equals(b.getScreen()) && cur.getVer() != tipVer)
             throw new BizException(ResultCode.CONFLICT,
                 "本册在 v" + cur.getVer() + ",最新是 v" + tipVer + " —— 请先升到 v" + tipVer + " 再改");
 

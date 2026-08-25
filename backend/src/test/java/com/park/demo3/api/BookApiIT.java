@@ -322,8 +322,7 @@ class BookApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.structural").value(true));
     }
 
-    /** 把某册的版本指针按回旧版 —— 造前置状态用。
-     *  切版接口 /template/adopt 属 Task 4,尚未落地;这里直接改指针,R3/R4 的断言一字不动。 */
+    /** 把某台账册的版本指针按回旧版 —— 造前置状态用(绕开 adopt 的归档守卫,纯 fixture)。 */
     private void pinTo(int bookId, int ver) {
         Integer host = booksMapper.lineageHost().getId();
         BookTemplateVersion target = versionsMapper.byBook(host).stream()
@@ -493,5 +492,59 @@ class BookApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content("{\"ver\":1}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
+    }
+    // ── s10 回归(design §4「s10 恒等变换」):一册一链,链尾门对它不适用 ──
+    // rollback 改 adopt 之前 s10 永远停在链尾(回滚会把历史版复制成新链尾),门从不触发;
+    // 改成只挪指针后 s10 也能停在非链尾 —— 门若不限屏,用户切回旧版就再也改不了模板。
+    // 而前端 TemplateEditorPanel 的 globalChain 只认 ledger,不限屏则前后端打架:
+    // 能进编辑态、改完保存才吃 409。这条用例就是钉死这个缺口的。
+    @Test
+    void s10_adoptToOlderVersion_thenEditStillAllowed() throws Exception {
+        JsonNode book = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
+        int id = book.path("id").asInt();
+
+        // 结构改动升到 v2
+        ObjectNode d = book.path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) d.path("groups").get(0).path("cols")).addObject();
+        col.put("id", "c_s10probe"); col.put("std", false); col.put("label", "s10 探针");
+        col.put("slot", "other"); col.put("hidden", false); col.putNull("w"); col.putArray("aliases");
+        putOk("/api/books/" + id + "/template", "{\"definition\":" + d + "}");
+        int tip = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0).path("ver").asInt();
+        assertThat(tip).isGreaterThan(1);
+
+        // 切回 v1:s10 也能停在非链尾了
+        mvc.perform(post("/api/books/" + id + "/template/adopt").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ver").value(1));
+
+        // 停在非链尾仍可编辑 —— 限屏之前这里是 409
+        JsonNode back = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
+        ObjectNode d2 = back.path("definition").deepCopy();
+        ObjectNode first = (ObjectNode) d2.path("groups").get(0).path("cols").get(0);
+        first.put("label", first.path("label").asText() + "·改");
+        putOk("/api/books/" + id + "/template", "{\"definition\":" + d2 + "}");
+    }
+
+    // ── 导入词典跟着指针走(spec §8):customIdsByCompany 取的是该公司**现行版**的自定义列 ──
+    // 册退回不含某自定义列的旧版后,源册里那一列就是未知 id,该行记名跳过而不是静默吞钱。
+    @Test
+    void customIds_followThePin_importRejectsColumnFromNewerVersion() throws Exception {
+        Object[] made = createCompanyWithBook();
+        int companyId = (int) made[0];
+        int bookId = ((JsonNode) made[1]).path("id").asInt();
+
+        addCustomColAtTip(bookId, "c_pinprobe", "指针探针");
+        pinTo(bookId, 1);                       // 退回不含该列的 v1(无数据,纯 fixture)
+
+        mvc.perform(post("/api/ledger/companies/" + companyId + "/import")
+                .param("year", "2026").param("month", "9")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"指针探针户\",\"extraFees\":{\"c_pinprobe\":10}}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andExpect(jsonPath("$.data.errors[0].reason")
+                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
     }
 }
