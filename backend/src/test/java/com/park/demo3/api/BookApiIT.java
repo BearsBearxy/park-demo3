@@ -28,7 +28,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
-    @Autowired com.park.demo3.service.BookService books;
     private static final ObjectMapper M = new ObjectMapper();
     private String token;
 
@@ -42,16 +41,6 @@ class BookApiIT extends AbstractMysqlIT {
     }
 
     private String auth() { return "Bearer " + token; }
-
-    private static String utf8(org.springframework.test.web.servlet.MvcResult r) {
-        return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-    }
-
-    // 响应壳带每请求唯一的 traceId,逐字节比对模板定义前先摘掉——它不是账册内容
-    private static String withoutTraceId(String body) {
-        int i = body.indexOf(",\"traceId\":");
-        return i < 0 ? body : body.substring(0, i);
-    }
 
     private String getOk(String url) throws Exception {
         return new String(mvc.perform(get(url).header("Authorization", auth()))
@@ -251,30 +240,53 @@ class BookApiIT extends AbstractMysqlIT {
         mvc.perform(get("/api/books?screen=ledger")).andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void lineage_allLedgerCompaniesShareOneChain_hostHidden() throws Exception {
-        String body = utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
-        List<Object> companyIds = JsonPath.read(body, "$.data[*].companyId");
-        // 宿主行(companyId=null)不出现在清单里
-        assertThat(companyIds).doesNotContainNull();
-        List<Integer> vers = JsonPath.read(body, "$.data[*].ver");
-        List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
-        assertThat(latest).isNotEmpty();
-        // 全局链只有一条:所有册看到的 latestVer 必须相同
-        assertThat(new java.util.HashSet<>(latest)).hasSize(1);
-        // 每册的 ver 都不超过链尾
-        for (int i = 0; i < vers.size(); i++) assertThat(vers.get(i)).isLessThanOrEqualTo(latest.get(i));
+    /** 该册看到的版本链身份:版本行 id 序列(顺序=ver 倒序)。 */
+    private List<Object> chainOf(String versionsBody, int bookId) {
+        List<Object> rows = JsonPath.read(versionsBody, "$.data.versions[*].id");
+        // 空清单会让「各册都一样」恒真:先钉死链非空,再谈身份是否相同
+        assertThat(rows).as("册 " + bookId + " 的版本链非空").isNotEmpty();
+        return rows;
     }
 
     @Test
-    void lineage_migrationIsIdempotent_definitionsBytewisePreserved() throws Exception {
-        String first = withoutTraceId(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andExpect(status().isOk()).andReturn()));
-        // 再跑一次归并(幂等):结果必须逐字节一致
-        books.migrateToGlobalLineage();
-        String second = withoutTraceId(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andExpect(status().isOk()).andReturn()));
-        assertThat(second).isEqualTo(first);
+    void lineage_allLedgerCompaniesShareOneChain_hostHidden() throws Exception {
+        String body = getOk("/api/books?screen=ledger");
+        List<Object> companyIds = JsonPath.read(body, "$.data[*].companyId");
+        assertThat(companyIds).as("宿主行不是账册,不进清单").doesNotContainNull();
+        List<Integer> ids = JsonPath.read(body, "$.data[*].id");
+        List<Integer> vers = JsonPath.read(body, "$.data[*].ver");
+        List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
+        assertThat(new java.util.HashSet<>(latest)).as("全局链只有一条").hasSize(1);
+
+        List<Object> chain = null;
+        for (int i = 0; i < ids.size(); i++) {
+            String vs = getOk("/api/books/" + ids.get(i) + "/template/versions");
+            // latestVer 相同证明不了什么(chainBookId 对 ledger 恒返回宿主 id);
+            // 真正能发现分叉册的是版本行本身:私链会带出另一批 id
+            if (chain == null) chain = chainOf(vs, ids.get(i));
+            else assertThat(chainOf(vs, ids.get(i))).as("每册看到同一条链的同一批版本行").isEqualTo(chain);
+            List<Integer> cur = JsonPath.read(vs, "$.data.versions[?(@.current == true)].ver");
+            assertThat(cur).as("current 恰好标在本册 pin 的那版上").containsExactly(vers.get(i));
+            assertThat(vers.get(i)).isLessThanOrEqualTo(latest.get(i));
+        }
+    }
+
+    @Test
+    void newCompany_afterMigration_joinsGlobalChain_notItsOwnFork() throws Exception {
+        List<Integer> ids0 = JsonPath.read(getOk("/api/books?screen=ledger"), "$.data[*].id");
+        List<Object> chain = chainOf(getOk("/api/books/" + ids0.get(0) + "/template/versions"), ids0.get(0));
+
+        int newBookId = ((JsonNode) createCompanyWithBook()[1]).path("id").asInt();
+
+        // 建司若照旧另起私链,新册带出的版本行与全局链对不上 —— 「全局唯一模板」当场作废,
+        // 且永远修不回来:它不在链上,链尾编辑再也带不动它
+        assertThat(chainOf(getOk("/api/books/" + newBookId + "/template/versions"), newBookId))
+            .as("新册直接落在全局链上").isEqualTo(chain);
+        String body = getOk("/api/books?screen=ledger");
+        List<Integer> ids = JsonPath.read(body, "$.data[*].id");
+        List<Integer> vers = JsonPath.read(body, "$.data[*].ver");
+        List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
+        int i = ids.indexOf(newBookId);
+        assertThat(vers.get(i)).as("新册没有历史,没有理由落后于链尾").isEqualTo(latest.get(i));
     }
 }

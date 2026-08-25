@@ -8,9 +8,13 @@ public interface BookTemplateVersionMapper extends BaseMapper<BookTemplateVersio
         return selectList(new QueryWrapper<BookTemplateVersion>()
             .eq("book_id", bookId).orderByDesc("ver"));
     }
-    default Integer maxVer(Integer bookId) {
-        BookTemplateVersion top = selectOne(new QueryWrapper<BookTemplateVersion>()
+    /** 链尾版本行;空链返回 null。 */
+    default BookTemplateVersion tip(Integer bookId) {
+        return selectOne(new QueryWrapper<BookTemplateVersion>()
             .eq("book_id", bookId).orderByDesc("ver").last("LIMIT 1"));
+    }
+    default Integer maxVer(Integer bookId) {
+        BookTemplateVersion top = tip(bookId);
         return top == null ? 0 : top.getVer();
     }
 }
