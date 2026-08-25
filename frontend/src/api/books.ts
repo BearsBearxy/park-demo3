@@ -13,7 +13,7 @@ export const booksApi = {
   // 历史版本定义(只读预览列名与布局;GET 读全开,查看不需要 book-template:edit)
   versionDefinition: (bookId: number, ver: number): Promise<BookDef> =>
     http.get(`/books/${bookId}/template/versions/${ver}`),
-  // 回滚=复制历史版为新版本(版本号只前进)
-  rollback: (bookId: number, ver: number): Promise<Book> =>
-    http.post(`/books/${bookId}/template/rollback`, { ver }),
+  // 切本册的模板版本指针(不造新版本;缺列且该册有数据 → 409)
+  adopt: (bookId: number, ver: number): Promise<Book> =>
+    http.post(`/books/${bookId}/template/adopt`, { ver }),
 }

@@ -312,11 +312,11 @@ async function onTplSave(def: BookDef, note: string) {
   })
   tplSaving.value = false
 }
-async function onTplRollback(ver: number) {
+async function onTplAdopt(ver: number) {
   const b = activeBook.value
   if (!b) return
-  await guard('回滚失败', async () => {
-    const nb = await booksApi.rollback(b.id, ver)
+  await guard('切换模板版本失败', async () => {
+    const nb = await booksApi.adopt(b.id, ver)
     applyBook(nb)          // 编辑器草稿随 book 变化自动重拷
     await loadVersions(b.id)
   })
@@ -656,7 +656,7 @@ function onImportClick() {
       :saving="tplSaving"
       :can-edit="auth.can('book-template:edit')"
       @save="onTplSave"
-      @rollback="onTplRollback"
+      @adopt="onTplAdopt"
       @close="tplOpen = false"
     />
   </template>

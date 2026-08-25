@@ -49,6 +49,9 @@ const emit = defineEmits<{
   'focus-done': []
 }>()
 
+// R5 角标:落后于链尾时在「账册模板」按钮上点一个点(不改按钮尺寸,有无新版都不挪版)
+const tplBehind = computed(() => !!props.book && props.book.ver < props.book.latestVer)
+
 // ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐(行在 FPLedgerTable 内,DOM 查找按租户名) ──
 const pageEl = ref<HTMLElement | null>(null)
 watch(() => props.focusTenant, flashFocusRow, { immediate: true })
@@ -239,7 +242,7 @@ function onBack() {
           <!-- 账册模板(BOOK-WORKBENCH §3):两态常驻,浏览态主行;编辑权限门在面板内(book-template:edit) -->
           <Button variant="outline" size="sm" @click="emit('edit-template')">
             <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
-            账册模板
+            账册模板<span v-if="tplBehind" class="lg-tpldot" title="有新版模板可升级"></span>
           </Button>
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <Button v-if="auth.can('entry:edit')" variant="outline" size="sm" @click="emit('enter-edit')">
@@ -305,6 +308,8 @@ function onBack() {
 </template>
 
 <style scoped>
+/* 角标:不改变按钮尺寸,只在文字后加一个点 —— 有无新版都不挪版 */
+.lg-tpldot { display:inline-block; width:6px; height:6px; margin-left:5px; border-radius:50%; background:var(--status-warning); }
 /* 1:1 from screen-ledger.jsx LgStyles 70-81, 140-141, 149-151, 175-178, 217-218 */
 .lg-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .lg-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }

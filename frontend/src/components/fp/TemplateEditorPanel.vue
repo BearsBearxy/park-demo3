@@ -2,7 +2,7 @@
 // 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:
 //  · 只读查看(默认):分组/列名/别名 chips/隐藏徽标/列宽纯展示;右栏版本链每项可点,
 //    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(顶部横幅 + 一键回现行版)。
-//    唯一的读请求,其余仍纯受控:保存/回滚全部 emit 给宿主。
+//    唯一的读请求,其余仍纯受控:保存/切版全部 emit 给宿主。
 //  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
 //    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
 //
@@ -37,9 +37,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'save', def: BookDef, note: string): void
-  (e: 'rollback', ver: number): void
+  (e: 'adopt', ver: number): void
   (e: 'close'): void
 }>()
+
+// R5 升级提示:落后于链尾时给一条状态 + 一个按钮,链尾时只给一句"已是最新"(同高,不塌陷)
+const behind = computed(() => !!props.book && props.book.ver < props.book.latestVer)
 
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
@@ -72,6 +75,7 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
 // ── 模式切换 ──
 function enterEdit() {
   if (!props.book || !props.canEdit) return
+  if (behind.value) return   // R3:只能在链尾编辑,落后版先升级
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
   draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
   note.value = ''
@@ -207,7 +211,13 @@ function fmtTime(s: string): string {
             <p v-if="mode === 'edit'">现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
             <p v-else>现行 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
-          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm" @click="enterEdit">编辑模式</Button>
+          <div class="te-lineage">
+            <span v-if="behind">当前 v{{ book.ver }} · 最新 v{{ book.latestVer }}</span>
+            <span v-else>当前 v{{ book.ver }} · 已是最新</span>
+            <button v-if="behind" class="te-upgrade" type="button" :disabled="!canEdit"
+                    @click="emit('adopt', book.latestVer)">升到 v{{ book.latestVer }}</button>
+          </div>
+          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm" :disabled="behind" @click="enterEdit">编辑模式</Button>
           <Button v-if="mode === 'edit'" class="te-donebtn" variant="outline" size="sm" @click="exitEdit">完成</Button>
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -279,7 +289,7 @@ function fmtTime(s: string): string {
             </template>
           </div>
 
-          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出回滚按钮(回滚=复制历史版为新版本,版本号只前进) -->
+          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出切版按钮(切的是本册版本指针,链只追加不改写) -->
           <aside class="te-vers">
             <div class="te-vtitle">版本链</div>
             <div v-for="v in versions" :key="v.id" class="te-vitem"
@@ -291,7 +301,7 @@ function fmtTime(s: string): string {
               </div>
               <div class="te-vnote">{{ v.note || '—' }}</div>
               <div class="te-vmeta">{{ v.createdBy }} · {{ fmtTime(v.createdAt) }}</div>
-              <button v-if="mode === 'edit' && !v.current" class="te-rollback" @click.stop="emit('rollback', v.ver)">回滚为新版本</button>
+              <button v-if="mode === 'edit' && !v.current" class="te-adopt" @click.stop="emit('adopt', v.ver)">切到此版</button>
             </div>
             <div v-if="!versions.length" class="te-vempty">暂无版本记录</div>
           </aside>
@@ -336,6 +346,13 @@ function fmtTime(s: string): string {
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
+/* 升级提示:两态同高,有没有新版都不挪版(LAYOUT-STABILITY §2 优先级 1) */
+.te-lineage { display:flex; align-items:center; gap:8px; min-height:26px; font-size:var(--fs-label); color:var(--text-muted); }
+.te-upgrade {
+  padding:2px 10px; border:1px solid var(--status-warning); border-radius:var(--radius-full);
+  background:transparent; color:var(--status-warning); cursor:pointer; font-size:var(--fs-micro);
+}
+.te-upgrade:disabled { border-color:var(--border-subtle); color:var(--text-disabled); cursor:not-allowed; }
 .te-x {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm);
@@ -501,13 +518,13 @@ function fmtTime(s: string): string {
 }
 .te-vnote { font-size: var(--fs-label); color: var(--text-secondary); word-break: break-all; }
 .te-vmeta { font-size: var(--fs-micro); color: var(--text-muted); }
-.te-rollback {
+.te-adopt {
   align-self: flex-start; margin-top: 3px; height: 24px; padding: 0 10px;
   border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-white);
   font-size: var(--fs-micro); color: var(--text-secondary); cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease-standard);
 }
-.te-rollback:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
+.te-adopt:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .te-vempty { font-size: var(--fs-label); color: var(--text-muted); }
 
 /* 升版提示:恒占一行(空着不可见但占位),避免出现时顶动脚部按钮 */

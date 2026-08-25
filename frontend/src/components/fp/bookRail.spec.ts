@@ -5,7 +5,7 @@ import BookMonthMatrix from './BookMonthMatrix.vue'
 import type { Book } from '@/types/book'
 
 const book = (id: number, name: string, ver = 1): Book => ({
-  id, screen: 'ledger', companyId: id, phase: null, name, ver, definition: { groups: [] },
+  id, screen: 'ledger', companyId: id, phase: null, name, ver, latestVer: ver, definition: { groups: [] },
 })
 
 const books = [book(1, '一泽台账', 3), book(2, '积前台账')]

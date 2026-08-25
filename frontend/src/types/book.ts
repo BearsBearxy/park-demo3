@@ -34,6 +34,7 @@ export interface Book {
   phase: number | null       // s10 屏:期区 1-4
   name: string
   ver: number                // 现行版本号
+  latestVer: number          // 全局链链尾版本号(§R5:ver < latestVer 即有新版可升)
   definition: BookDef        // 现行版定义(§3:现行版全局生效)
 }
 

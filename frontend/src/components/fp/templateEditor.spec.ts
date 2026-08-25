@@ -29,8 +29,11 @@ const makeDef = (): BookDef => ({
 
 const makeBook = (): Book => ({
   id: 1, screen: 'ledger', companyId: 1, phase: null,
-  name: '公司A台账', ver: 3, definition: makeDef(),
+  name: '公司A台账', ver: 3, latestVer: 3, definition: makeDef(),
 })
+
+// 链尾态的基准册,升级态用例在它上面覆写 ver/latestVer
+const baseBook = makeBook()
 
 const versions: TemplateVersion[] = [
   { id: 31, ver: 3, note: '加停车费', createdBy: 'admin', createdAt: '2026-08-20T10:00:00', current: true },
@@ -49,9 +52,14 @@ const histDef: BookDef = {
   ],
 }
 
-function mountPanel(canEdit = true) {
+function mountPanel(over: { canEdit?: boolean; book?: Book } = {}) {
   return mount(TemplateEditorPanel, {
-    props: { open: true, book: makeBook(), versions, saving: false, canEdit },
+    props: {
+      open: true,
+      book: over.book ?? makeBook(),
+      versions, saving: false,
+      canEdit: over.canEdit ?? true,
+    },
     // Teleport 落到组件树内,便于 DOM 查询
     global: { stubs: { teleport: true } },
   })
@@ -77,7 +85,7 @@ describe('TemplateEditorPanel · 双模式', () => {
     expect(w.find('input.te-name').exists()).toBe(false)
     expect(w.find('button.te-save').exists()).toBe(false)
     expect(w.find('button.te-addcol').exists()).toBe(false)
-    expect(w.find('.te-rollback').exists()).toBe(false) // 回滚也是编辑态控件
+    expect(w.find('.te-adopt').exists()).toBe(false) // 切版也是编辑态控件
     // 别名 chip 纯展示,无删除钮
     const chip = w.find('.te-chip')
     expect(chip.text()).toBe('厂房租金')
@@ -90,7 +98,7 @@ describe('TemplateEditorPanel · 双模式', () => {
   })
 
   it('canEdit=false:不渲染「编辑模式」按钮', () => {
-    const w = mountPanel(false)
+    const w = mountPanel({ canEdit: false })
     expect(w.find('button.te-editbtn').exists()).toBe(false)
     w.unmount()
   })
@@ -99,7 +107,7 @@ describe('TemplateEditorPanel · 双模式', () => {
     const w = await mountEdit()
     expect(w.find('input.te-name').exists()).toBe(true)
     expect(w.find('button.te-save').exists()).toBe(true)
-    expect(w.find('.te-rollback').exists()).toBe(true) // 编辑态才出回滚
+    expect(w.find('.te-adopt').exists()).toBe(true) // 编辑态才出切版
     await w.find('button.te-donebtn').trigger('click')
     expect(w.find('input.te-name').exists()).toBe(false)
     expect(w.find('button.te-editbtn').exists()).toBe(true)
@@ -185,10 +193,10 @@ describe('TemplateEditorPanel · 编辑态', () => {
     w.unmount()
   })
 
-  it('回滚按钮 emit rollback(ver),不动草稿', async () => {
+  it('切版按钮 emit adopt(ver),不动草稿', async () => {
     const w = await mountEdit()
-    await w.find('.te-rollback').trigger('click')
-    expect(w.emitted('rollback')![0]).toEqual([2])
+    await w.find('.te-adopt').trigger('click')
+    expect(w.emitted('adopt')![0]).toEqual([2])
     expect(w.emitted('save')).toBeUndefined()
     w.unmount()
   })
@@ -236,5 +244,29 @@ describe('TemplateEditorPanel · 别名录入', () => {
     expect(w.findAll('.te-colrow')[0].findAll('.te-chip').map(c => c.text()))
       .toEqual(['厂房租金', '别名甲', '别名乙'])
     w.unmount()
+  })
+})
+
+// 全局链:本册版本指针落后于链尾时,只给升级入口,不给编辑(§R3 只能在链尾编辑)
+describe('TemplateEditorPanel · 升级态', () => {
+  it('落后版:显示当前/最新与升级按钮,编辑门关闭', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 } })
+    expect(w.text()).toContain('当前 v2')
+    expect(w.text()).toContain('最新 v4')
+    expect(w.find('.te-upgrade').exists()).toBe(true)
+    expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
+  })
+
+  it('链尾:显示已是最新,无升级按钮,编辑门开着', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 4, latestVer: 4 } })
+    expect(w.text()).toContain('已是最新')
+    expect(w.find('.te-upgrade').exists()).toBe(false)
+    expect(w.find('.te-editbtn').attributes('disabled')).toBeUndefined()
+  })
+
+  it('点升级按钮 emit adopt(链尾版本号)', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 } })
+    await w.find('.te-upgrade').trigger('click')
+    expect(w.emitted('adopt')?.[0]).toEqual([4])
   })
 })

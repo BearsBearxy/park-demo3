@@ -260,7 +260,7 @@ async function removeCompany(bookId: number) {
   }
 }
 
-// ── 模板编辑(§3:轻改动不升版,结构改动升版;versions 懒加载;rollback=复制历史版为新版) ──
+// ── 模板编辑(§3:轻改动不升版,结构改动升版;versions 懒加载;adopt=切本册版本指针) ──
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
@@ -293,15 +293,15 @@ async function onTplSave(def: BookDef, note: string) {
     tplSaving.value = false
   }
 }
-async function onTplRollback(ver: number) {
+async function onTplAdopt(ver: number) {
   if (!book.value) return
   try {
-    const b = await booksApi.rollback(book.value.id, ver)
+    const b = await booksApi.adopt(book.value.id, ver)
     patchBook(b)
-    toastVer(`已回滚为新版本 v${b.ver}`)
+    toastVer(`已切到模板 v${b.ver}`)
     tplVersions.value = (await booksApi.versions(b.id)).versions
   } catch (e) {
-    alert((e as { message?: string })?.message ?? '回滚失败')
+    alert((e as { message?: string })?.message ?? '切换模板版本失败')
   }
 }
 
@@ -696,7 +696,7 @@ function gotoTenants() {
     </div>
   </div>
 
-  <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/rollback 结果就地更新 book,列即时重算;
+  <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/adopt 结果就地更新 book,列即时重算;
        写权限走第16权限点 book-template:edit,无权时面板只读预览) -->
   <TemplateEditorPanel
     :open="tplOpen"
@@ -705,7 +705,7 @@ function gotoTenants() {
     :saving="tplSaving"
     :can-edit="auth.can('book-template:edit')"
     @save="onTplSave"
-    @rollback="onTplRollback"
+    @adopt="onTplAdopt"
     @close="tplOpen = false"
   />
 
