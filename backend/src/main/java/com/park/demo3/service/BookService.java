@@ -22,9 +22,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 账册与模板版本(BOOK-WORKBENCH-SPEC §1-§3)。
@@ -67,6 +69,68 @@ public class BookService {
             }
     }
 
+    // ── 全局链归并(2026-08-25;幂等,BookSeeder 启动调用) ──
+    // 台账屏的所有模板版本收进一条链,每司只留 current_version_id 作指针。
+    // 遇到互不包含的变体 fail-fast 报名 —— 强行排成线性链会丢掉某些公司的定制。
+    @Transactional
+    public void migrateToGlobalLineage() {
+        if (books.lineageHost() != null) return;                 // 已迁移
+        List<LedgerBook> comps = books.ledgerCompanyBooks();
+
+        LedgerBook host = new LedgerBook();
+        host.setScreen("ledger"); host.setCompanyId(null); host.setName("台账通用模板");
+        books.insert(host);
+
+        if (comps.isEmpty()) {                                    // 空库:直接建出厂 v1
+            initVersion(host, BookTemplates.ledgerStandard(), "建链(标准 21 列模板)", "系统");
+            return;
+        }
+
+        TemplateDef.Def base = TemplateDef.parse(BookTemplates.ledgerStandard());
+        // 去重:同一份定义只落一个版本(键=定义原文)
+        Map<String, List<LedgerBook>> byDef = new LinkedHashMap<>();
+        for (LedgerBook b : comps)
+            byDef.computeIfAbsent(currentVersion(b).getDefinition(), k -> new ArrayList<>()).add(b);
+
+        List<String> defs = new ArrayList<>(byDef.keySet());
+        if (!TemplateDef.chainOrdered(defs.stream().map(TemplateDef::parse).toList(), base)) {
+            String who = byDef.values().stream()
+                .map(l -> l.stream().map(LedgerBook::getName).collect(Collectors.joining("/")))
+                .collect(Collectors.joining(" | "));
+            throw new IllegalStateException(
+                "账册模板存在互不包含的变体,无法归并成一条链,请先人工归并后再启动。分组:" + who);
+        }
+        defs.sort(java.util.Comparator.comparingInt(d -> TemplateDef.changeSet(base, TemplateDef.parse(d)).size()));
+
+        BookTemplateVersion tip = null;
+        for (int i = 0; i < defs.size(); i++) {
+            String def = defs.get(i);
+            BookTemplateVersion v = new BookTemplateVersion();
+            v.setBookId(host.getId()); v.setVer(i + 1); v.setDefinition(def);
+            v.setNote("迁移自「" + byDef.get(def).stream().map(LedgerBook::getName)
+                .collect(Collectors.joining("、")) + "」的现行版");
+            v.setCreatedBy("系统");
+            versions.insert(v);
+            for (LedgerBook b : byDef.get(def)) {                 // 各司指针指向自己那一版
+                Integer oldChain = b.getId();
+                b.setCurrentVersionId(v.getId());
+                books.updateById(b);
+                versions.delete(new QueryWrapper<BookTemplateVersion>().eq("book_id", oldChain));
+            }
+            tip = v;
+        }
+        host.setCurrentVersionId(tip.getId());                    // 宿主停在链尾
+        books.updateById(host);
+    }
+
+    /** 版本链宿主:台账屏一律走全局宿主行;s10 屏一册一链,宿主就是自己。 */
+    Integer chainBookId(LedgerBook b) {
+        if (!"ledger".equals(b.getScreen())) return b.getId();
+        LedgerBook host = books.lineageHost();
+        if (host == null) throw new IllegalStateException("台账全局模板链未初始化");
+        return host.getId();
+    }
+
     /** 建司挂钩(§9:新增账册=建司流程的附带动作)。 */
     @Transactional
     public void createLedgerBook(ManagementCompany c, String by) {
@@ -102,14 +166,17 @@ public class BookService {
     // ── 读 ──
     public List<BookDTO> list(String screen) {
         List<BookDTO> out = new ArrayList<>();
-        for (LedgerBook b : books.byScreen(screen)) out.add(toDTO(b));
+        for (LedgerBook b : books.byScreen(screen)) {
+            if ("ledger".equals(screen) && b.getCompanyId() == null) continue;   // 宿主行不是账册,不进清单
+            out.add(toDTO(b));
+        }
         return out;
     }
 
     private BookDTO toDTO(LedgerBook b) {
         BookTemplateVersion v = currentVersion(b);
         return new BookDTO(b.getId(), b.getScreen(), b.getCompanyId(), b.getPhase(),
-            b.getName(), v.getVer(), readTree(v.getDefinition()));
+            b.getName(), v.getVer(), versions.maxVer(chainBookId(b)), readTree(v.getDefinition()));
     }
 
     private BookTemplateVersion currentVersion(LedgerBook b) {

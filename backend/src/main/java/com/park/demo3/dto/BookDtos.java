@@ -10,7 +10,7 @@ public final class BookDtos {
     private BookDtos() {}
 
     public record BookDTO(Integer id, String screen, Integer companyId, Integer phase,
-                          String name, int ver, JsonNode definition) {}
+                          String name, int ver, int latestVer, JsonNode definition) {}
 
     public record TemplateSaveReq(@NotNull JsonNode definition, String note) {}
 

@@ -11,5 +11,8 @@ import org.springframework.stereotype.Component;
 public class BookSeeder implements ApplicationRunner {
     private final BookService books;
     public BookSeeder(BookService books) { this.books = books; }
-    @Override public void run(ApplicationArguments args) { books.seedMissing(); }
+    @Override public void run(ApplicationArguments args) {
+        books.seedMissing();
+        books.migrateToGlobalLineage();
+    }
 }

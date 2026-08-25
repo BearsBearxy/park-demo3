@@ -13,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
+    @Autowired com.park.demo3.service.BookService books;
     private static final ObjectMapper M = new ObjectMapper();
     private String token;
 
@@ -40,6 +42,16 @@ class BookApiIT extends AbstractMysqlIT {
     }
 
     private String auth() { return "Bearer " + token; }
+
+    private static String utf8(org.springframework.test.web.servlet.MvcResult r) {
+        return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    // 响应壳带每请求唯一的 traceId,逐字节比对模板定义前先摘掉——它不是账册内容
+    private static String withoutTraceId(String body) {
+        int i = body.indexOf(",\"traceId\":");
+        return i < 0 ? body : body.substring(0, i);
+    }
 
     private String getOk(String url) throws Exception {
         return new String(mvc.perform(get(url).header("Authorization", auth()))
@@ -237,5 +249,32 @@ class BookApiIT extends AbstractMysqlIT {
     @Test
     void booksEndpoint_requiresAuth() throws Exception {
         mvc.perform(get("/api/books?screen=ledger")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void lineage_allLedgerCompaniesShareOneChain_hostHidden() throws Exception {
+        String body = utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        List<Object> companyIds = JsonPath.read(body, "$.data[*].companyId");
+        // 宿主行(companyId=null)不出现在清单里
+        assertThat(companyIds).doesNotContainNull();
+        List<Integer> vers = JsonPath.read(body, "$.data[*].ver");
+        List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
+        assertThat(latest).isNotEmpty();
+        // 全局链只有一条:所有册看到的 latestVer 必须相同
+        assertThat(new java.util.HashSet<>(latest)).hasSize(1);
+        // 每册的 ver 都不超过链尾
+        for (int i = 0; i < vers.size(); i++) assertThat(vers.get(i)).isLessThanOrEqualTo(latest.get(i));
+    }
+
+    @Test
+    void lineage_migrationIsIdempotent_definitionsBytewisePreserved() throws Exception {
+        String first = withoutTraceId(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn()));
+        // 再跑一次归并(幂等):结果必须逐字节一致
+        books.migrateToGlobalLineage();
+        String second = withoutTraceId(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn()));
+        assertThat(second).isEqualTo(first);
     }
 }
