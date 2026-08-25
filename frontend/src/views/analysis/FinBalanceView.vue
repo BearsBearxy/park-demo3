@@ -335,7 +335,7 @@ const bsTable = computed<BsTblRow[]>(() => {
 
 <style scoped>
 /* 点环扇区定位行:2s 高亮渐隐(样式同深链 row-flash 观感) */
-.fb-flash td { animation: fbflash 2s ease-out; }
+.fb-flash td { animation: fbflash var(--dur-highlight) var(--ease-standard); }
 @keyframes fbflash { 0% { background: var(--accent-blue); } 100% { background: transparent; } }
 
 /* 工具条标签 + v2 紧凑页头/图例(复刻 AnaShell .anx-lbl 观感) */

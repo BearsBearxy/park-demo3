@@ -3,7 +3,9 @@
 // 站在账期看的全部生效参数分四区(① 本月参数 ② 长期常数 ③ 核算口径 ④ 户级例外)+ ⑤ 固定规则只读区;
 // 每行=人话(作用范围/值/生效区间/来自 = 命中链尾)由后端 GET /api/params 解析,本页只分组渲染(utils/paramCenterLogic)。
 // 编辑态(EDIT-MODE-SPEC v2:浏览态零写入口;onDeactivated 复位)每行 [修改] → ParamEditPopover(值 | 生效方式 | 备注)→ PUT /api/params
-// → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二)+ 状态条「参数已改 N 项」→ [重算本月](池 → 损耗 → 催缴单)闭环(spec §5.5)。
+// → 成功只 patch 该行(WRITE-KEEP-CONTEXT 铁律二)→ [重算本月](池 → 损耗 → 催缴单)闭环(spec §5.5)。
+// 状态条只报中性事实(电价 n/6 · 快照生成时间);「快照过期 / 其他月份受影响」走工具条上的常驻告警 chip + 右侧抽屉
+// (LAYOUT-STABILITY-SPEC §6),抽屉里给「重算本月」与跨月「一键重算这 N 个月」两条清除路径。
 // ①② 无命中的对象级行(栋/池/表,未设置)默认折叠(一期 2024-02 有 480+ 行,只 60 来行有值),按区展开;全园/期级月核对项常显并标「缺」;
 // ③ 口径行无命中=默认语义,始终全列;④ 只列该户自己的版本行(rowId 非空,继承上级的不算例外)。
 // 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px;表格 table-layout:auto —— 用户可见文字一律不截断
@@ -18,7 +20,7 @@ import type { BuildingDTO } from '@/types/building'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import {
-  baseRefLabel, groupRows, pendingSummary, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
+  baseRefLabel, groupRows, rangeBadge, sourceLabel, tenantExceptionDelReqs, tenantExceptionReqs,
   type ParamRow, type RuleGroup,
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
@@ -31,6 +33,8 @@ import Card from '@/components/ds/Card.vue'
 import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import Badge from '@/components/ds/Badge.vue'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import ParamEditPopover, { type RefOption } from './ParamEditPopover.vue'
@@ -54,7 +58,7 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } 
   useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'])
 onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
-  histRow.value = null; changesOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
+  histRow.value = null; changesOpen.value = false; alertOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
 })
 
 // ── 账期(整体数据驱动)+ 期区(全园 | 一期 | 二期 | 宿舍) ──
@@ -78,6 +82,7 @@ const rows = ref<ParamRowDTO[] | null>(null)
 const status = ref<ParamStatusDTO | null>(null)
 const loadErr = ref('')
 const flash = ref('')            // 重算 / 复制上月电价 的一次性摘要
+const batchErr = ref('')         // 跨月批量重算的失败断点(error toast,不自动关)
 let seq = 0
 async function load() {
   const my = ++seq
@@ -219,8 +224,21 @@ function gotoBaseRow(r: ParamRow) {
   nextTick(() => document.getElementById(`pm-row-${hlRow.value}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }))
 }
 const isHl = (r: ParamRow) => (!!hlScope.value && r.scope === hlScope.value) || hlRow.value === rowKey(r)
-const summary = computed(() => (status.value ? pendingSummary(status.value) : ''))
 const stale = computed(() => !!status.value?.stale)
+const otherMonths = computed(() => status.value?.otherMonthsAffected ?? [])   // from 版本波及、快照更早的其它已生成月
+// 'YYYY-MM-DDTHH:mm:ss' → 'MM-DD HH:mm'(同 paramCenterLogic 里那份格式,不值得为一行导出)
+const hhmm = (iso: string) => iso.slice(5, 16).replace('T', ' ')
+// 状态条只留**中性事实**(LAYOUT-STABILITY-SPEC §6):电价 n/6 + 快照生成时间(一致时)。
+// 「参数已改 N 项 / 旧快照 / 另有 X 月受影响」这些橙字全部搬进 chip + 抽屉,不再顶动下面四张卡。
+const statusText = computed(() => {
+  const s = status.value
+  if (!s) return '状态未知（状态接口不可用）'
+  const missing = s.priceTotal - s.priceOk
+  const parts = [`本月电价 ${s.priceOk}/${s.priceTotal}${missing > 0 ? `（缺 ${missing} 项）` : ' ✓'}`]
+  if (!s.poolSnapshotAt) parts.push('本月尚未生成池核算')
+  else if (!s.stale) parts.push(`快照与参数一致 ✓ 生成于 ${hhmm(s.poolSnapshotAt)}`)
+  return parts.join(' · ')
+})
 
 // ── 写:弹窗组装 ParamPutReq → PUT → 只 patch 该行(铁律二)+ 状态条计数 ──
 const editRow = ref<ParamRowDTO | null>(null)
@@ -366,6 +384,29 @@ async function onRecalc() {
     status.value = await paramsApi.status(ym.value)
   } catch (e) { alert(errMsg(e, '重算失败')) } finally { busy.value = false }
 }
+// 跨月一键重算(§6-3:告警必须给得出一条点得到的清除路径,不许只写「请切到该月重算」让用户手工切几十次)。
+// 纯前端编排:按月串行调已有 recalc,没有新后端口。任一月失败即停,已成功的月保留并在 toast 里报出断点。
+const batchDone = ref(0)
+const batchTotal = ref(0)
+async function onRecalcOthers() {
+  const list = otherMonths.value.slice()
+  if (!list.length || busy.value) return
+  if (!confirm(`确认重算这 ${list.length} 个月（${list.join('、')}）？将逐月按当前参数重新生成 池核算 / 楼栋损耗 / 催缴单（已确认、已导出的户照旧跳过）。`)) return
+  busy.value = true; batchTotal.value = list.length; batchDone.value = 0
+  let failed = ''
+  try {
+    for (const m of list) {
+      try { await paramsApi.recalc(m) } catch (e) { failed = `${m}（${errMsg(e, '重算失败')}）`; break }
+      batchDone.value++
+    }
+  } finally {
+    busy.value = false; batchTotal.value = 0
+    await load()        // 刷新本月列表 + status —— 清干净的告警随之从 chip 上消失
+  }
+  // load() 成功时会清 flash,所以摘要放它后面。失败走单独的 error toast(§4.1:不自动关,让用户读完失败月份)
+  if (failed) batchErr.value = `重算中断于 ${failed}${batchDone.value ? `；已完成 ${batchDone.value} 个月` : ''}`
+  else flash.value = `已重算 ${batchDone.value} 个月：${list.join('、')}`
+}
 async function onCopy() {
   if (!confirm(`确认复制上月电价 → ${ym.value}？仅复制电价 6 个月变键的上月版本,目标月已有版本的键跳过不覆盖。`)) return
   busy.value = true
@@ -375,6 +416,54 @@ async function onCopy() {
     flash.value = `复制完成：新增 ${r.copied} 行，跳过已存在 ${r.skipped} 行。`
   } catch (e) { alert(errMsg(e, '复制失败')) } finally { busy.value = false }
 }
+
+// ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6,2026-08-25 用户拍板) ──
+// 原来这些橙字全挤在状态条里(「参数已改 N 项…另有 2023-08、2023-10 也受影响,请切到该月重算」):
+// 顶动下面四张卡,而且只报不给路 —— 跨月那条得用户手工切几十次月才清得掉,于是变成永久噪音。
+// 判定逻辑不动(后端 status.stale / otherMonthsAffected),这里只搬呈现形态 + 给出清除动作。
+const alertOpen = ref(false)
+const alertCount = computed(() => (stale.value ? 1 : 0) + otherMonths.value.length)
+// 重算是写操作(EDIT-MODE-SPEC v2:浏览态零写入口)→ 浏览态抽屉里只说去哪开,不放按钮
+const canRecalc = computed(() => canRun.value && editMode.value)
+function gotoMonth(m: string) {
+  const [y, mo] = m.split('-').map(Number)
+  year.value = y; month.value = mo      // watch([year, month, zone]) → load()
+  alertOpen.value = false
+}
+const alertGroups = computed<AlertGroup[]>(() => {
+  const s = status.value
+  if (!s) return []
+  const gs: AlertGroup[] = []
+  if (s.stale) gs.push({
+    key: 'stale',
+    title: '本月快照过期',
+    desc: '计费参数改过，但池核算 / 楼栋损耗 / 催缴单还是改参之前生成的 —— 屏上那些金额不会自己跟着变，'
+      + '重算一次才对得上（已确认、已导出的户照旧跳过）。',
+    items: [
+      { text: `自上次重算起改了 ${s.pendingChanges} 项参数`, hint: s.lastChangeAt ? `最近改动 ${hhmm(s.lastChangeAt)}` : undefined },
+      ...(canRecalc.value ? [] : [{ text: '重算是写操作，先点右上「编辑模式」' }]),
+    ],
+    action: canRecalc.value ? { label: '重算本月', icon: 'refresh-cw', busy: busy.value, run: onRecalc } : undefined,
+  })
+  if (otherMonths.value.length) gs.push({
+    key: 'others',
+    title: '其他月份受影响',
+    desc: '这些月的快照也早于最近一次参数改动。「自某月起长期」的参数改一次会波及其后所有月份，'
+      + '不重算的话那几个月的池核算 / 催缴单还是老金额。',
+    items: otherMonths.value.map((m, i) => ({
+      text: m,
+      // 批量跑起来后每行报进度(共享件的 busy 只会把按钮文案换成「处理中…」,进度只能落在这儿)
+      hint: batchTotal.value
+        ? (i < batchDone.value ? '已重算' : i === batchDone.value ? '重算中…' : '等待中')
+        : '切到该月',
+      onClick: batchTotal.value ? undefined : () => gotoMonth(m),
+    })),
+    action: canRecalc.value
+      ? { label: `一键重算这 ${otherMonths.value.length} 个月`, icon: 'refresh-cw', busy: busy.value, run: onRecalcOthers }
+      : undefined,
+  })
+  return gs
+})
 
 // ⑤ 固定规则(spec §3.5,只读折叠;改它要改代码)—— 人话句子,不出现 Σ / ROUND
 const FIXED_RULES = [
@@ -402,6 +491,8 @@ const FIXED_RULES = [
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event as ParamZone" />
+        <!-- 屏级告警入口(§6):位置固定在主控区尾,有无告警都渲染(无 → quiet 态),不挪版 -->
+        <FPAlertChip :count="alertCount" @open="alertOpen = true" />
       </div>
       <div class="pm-actions">
         <Button variant="outline" size="sm" @click="changesOpen = true">
@@ -415,15 +506,16 @@ const FIXED_RULES = [
       </div>
     </div>
 
-    <!-- 状态条(spec §5.1 / §5.5):电价 n/6 · 快照一致 / 参数已改 N 项 + [重算本月] -->
+    <!-- 状态条(spec §5.1 / §5.5):只报中性事实 —— 电价 n/6 · 快照生成时间;
+         过期 / 其他月份受影响那些橙字归工具条上的告警 chip 管(LAYOUT-STABILITY-SPEC §6) -->
     <div v-if="loadErr" class="pm-bar err">
       <component :is="iconFor('alert-triangle')" :size="14" />
       <span>{{ loadErr }}</span>
       <Button variant="outline" size="sm" @click="load">重试</Button>
     </div>
-    <div class="pm-bar status" :class="{ warn: stale }">
-      <component :is="iconFor(stale ? 'alert-triangle' : 'info')" :size="14" />
-      <span class="pm-status-text">{{ summary || '状态未知（状态接口不可用）' }}</span>
+    <div class="pm-bar status">
+      <component :is="iconFor('info')" :size="14" />
+      <span class="pm-status-text">{{ statusText }}</span>
       <!-- 重算=池/损耗/催缴单三表先删后插,是写操作:只在编辑态出(EDIT-MODE v2);三屏 [去重算] 深链带 edit=1 直接进编辑态 -->
       <Button v-if="canRun && editMode" variant="outline" size="sm" :disabled="busy" @click="onRecalc">
         <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
@@ -672,7 +764,9 @@ const FIXED_RULES = [
     <!-- 重算/复制上月电价的摘要。原来是 .pm-actions 里 flex:1 1 100% 的一个 span ——
          它一出现就换行,把整条工具栏撑高一行,下面全部内容跟着往下跳(LAYOUT-STABILITY-SPEC §4)。 -->
     <FPToast v-model="flash" placement="page" :duration="6000" />
+    <FPToast v-model="batchErr" tone="error" placement="page" :duration="0" />
 
+    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
     <ParamEditPopover :open="!!editRow" :row="editRow" :ym="ym" :ref-options="refOptions" @close="editRow = null" @save="onSave" />
     <ParamHistoryDrawer :open="!!histRow" :row="histRow" @close="histRow = null" />
     <ParamChangesDrawer :open="changesOpen" :ym="ym" @close="changesOpen = false" />
@@ -715,9 +809,8 @@ const FIXED_RULES = [
 .pm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .pm-actions { display: flex; align-items: center; gap: 8px; }
 
-/* 状态条:中性 / 过期橙 / 加载失败红 */
+/* 状态条:中性事实 / 加载失败红(过期橙条已废,§6 改走告警 chip + 抽屉) */
 .pm-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.pm-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
 .pm-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 .pm-status-text { flex: 1 1 auto; min-width: 200px; }
 

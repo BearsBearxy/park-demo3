@@ -5,24 +5,27 @@ import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import type { ColumnModel, LeafColumn, ColumnKey } from '@/utils/ledgerColumns'
 import type { LedgerRowDTO } from '@/types/ledger'
+import { ledgerRowKey } from '@/types/ledger'
 
 const props = defineProps<{
   columns: ColumnModel
   rows: LedgerRowDTO[]
   edit: boolean
-  selected?: Set<number>   // 传入即启用编辑态选择列(勾选 tenantId,批量删除用)
+  selected?: Set<number>   // 传入即启用编辑态选择列(勾选 ledgerRowKey,批量删除用)
 }>()
 
+// V105:行身份从 tenantId 换 ledgerRowKey(id ?? -tenantId)——未绑定行 tenantId 为 null,
+// 选择/编辑/点名全部走 rowKey;tenant-click 直接给整行(父层按绑定态分流:明细抽屉 vs 问题面板)
 const emit = defineEmits<{
-  'cell-edit': [payload: { tenantId: number; key: ColumnKey; value: string }]
-  'tenant-click': [tenantId: number]
-  'toggle-select': [tenantId: number]
+  'cell-edit': [payload: { rowKey: number; key: ColumnKey; value: string }]
+  'tenant-click': [row: LedgerRowDTO]
+  'toggle-select': [rowKey: number]
   'toggle-select-all': []
 }>()
 
 const selectable = computed(() => props.edit && !!props.selected)
 const allChecked = computed(() =>
-  props.rows.length > 0 && props.rows.every(r => props.selected?.has(r.tenantId)))
+  props.rows.length > 0 && props.rows.every(r => props.selected?.has(ledgerRowKey(r))))
 
 const ChevronRight = iconFor('chevron-right')
 
@@ -108,8 +111,8 @@ const sums = computed<Record<string, number>>(() => {
 })
 const sumEnd = computed(() => sums.value.balanceEnd)
 
-function onInput(tenantId: number, key: ColumnKey, e: Event) {
-  emit('cell-edit', { tenantId, key, value: (e.target as HTMLInputElement).value })
+function onInput(rowKey: number, key: ColumnKey, e: Event) {
+  emit('cell-edit', { rowKey, key, value: (e.target as HTMLInputElement).value })
 }
 </script>
 
@@ -133,16 +136,23 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in view" :key="row.tenantId">
+        <tr v-for="row in view" :key="ledgerRowKey(row)">
           <td v-if="selectable" class="lg-fix lg-selc" :style="SEL_TD_STYLE">
-            <input type="checkbox" class="lg-cb" :checked="selected!.has(row.tenantId)"
-                   @change="emit('toggle-select', row.tenantId)" />
+            <input type="checkbox" class="lg-cb" :checked="selected!.has(ledgerRowKey(row))"
+                   @change="emit('toggle-select', ledgerRowKey(row))" />
           </td>
           <td v-for="c in allCols" :key="c.key"
               :class="fixedKeys.has(c.key) ? 'lg-fix' : undefined" :style="cellStyles[c.key]">
-            <!-- 租户名 (text) -->
-            <span v-if="c.kind === 'text'" class="lg-tname" :title="row.tenantName" @click="emit('tenant-click', row.tenantId)">
-              {{ row.tenantName }}<component :is="ChevronRight" :size="13" class="ch" />
+            <!-- 租户名 (text):两态统一为可点击文本,点开行明细抽屉(账面名/绑定都在抽屉里改——
+                 与园区抄表同一动线:表格不做行内改名,用户 2026-08-23 拍板)。
+                 名字独立 span:深链 flashFocusRow 按 .lg-tname-txt 精确匹配,徽章文本不得混进名字 -->
+            <span v-if="c.kind === 'text'" class="lg-tname"
+                  :title="row.tenantName + (row.carried ? ' · 上月结转,本月未记账' : ' · 点击查看明细/绑定')"
+                  @click="emit('tenant-click', row)">
+              <span class="lg-tname-txt" :class="{ carried: row.carried }">{{ row.tenantName }}</span>
+              <!-- 未绑定:紧凑圆点(文字胶囊会把长租户名挤到看不见,用户 2026-08-24 拍板);语义进 title -->
+              <span v-if="row.tenantId == null" class="lg-unbound-dot" title="未绑定租户档案 · 点击行名处理"></span>
+              <component :is="ChevronRight" :size="13" class="ch" />
             </span>
             <!-- 应收合计 (sum, 派生只读) -->
             <span v-else-if="c.kind === 'sum'" class="lg-sumc" :title="lgFmt(row.totalReceivable)">{{ lgFmt(row.totalReceivable) }}</span>
@@ -152,16 +162,22 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
             <!-- 备注 (note) -->
             <template v-else-if="c.kind === 'note'">
               <input v-if="edit" class="lg-ni l" type="text" :value="row.note ?? ''" placeholder="—"
-                     @input="onInput(row.tenantId, 'note', $event)" />
+                     @input="onInput(ledgerRowKey(row), 'note', $event)" />
               <span v-else class="lg-note" :title="row.note ?? ''">{{ row.note || '' }}</span>
             </template>
-            <!-- balancePrev (num, 只读) -->
-            <span v-else-if="c.key === 'balancePrev'" class="lg-nv" :class="{ empty: !row.balancePrev }" :title="lgFmt(row.balancePrev)">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            <!-- balancePrev:结余链派生位只读(=上月期末);首次出现月=期初,编辑态可录(全链唯一人工位) -->
+            <template v-else-if="c.key === 'balancePrev'">
+              <input v-if="edit && !row.balancePrevDerived" class="lg-ni" type="number"
+                     :value="row.balancePrev === 0 ? '' : row.balancePrev" placeholder="期初"
+                     @input="onInput(ledgerRowKey(row), 'balancePrev', $event)" />
+              <span v-else class="lg-nv" :class="{ empty: !row.balancePrev }"
+                    :title="lgFmt(row.balancePrev) + (row.balancePrevDerived ? ' · 自动=上月期末' : '')">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            </template>
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入) -->
             <template v-else>
               <input v-if="edit" class="lg-ni" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
-                     @input="onInput(row.tenantId, c.key, $event)" />
+                     @input="onInput(ledgerRowKey(row), c.key, $event)" />
               <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }" :title="lgFmt((row as any)[c.key])">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>
             </template>
           </td>
@@ -213,6 +229,14 @@ function onInput(tenantId: number, key: ColumnKey, e: Event) {
 .lg-selc { width:32px; min-width:32px; max-width:32px; text-align:center; padding:0 !important; }
 .lg-cb { width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; vertical-align:middle; }
 .lg-tname:hover { color:var(--hue-blue); }
+/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title */
+.lg-unbound-dot {
+  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
+  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
+}
+.lg-tname-txt { overflow:hidden; text-overflow:ellipsis; }
+/* 结转虚行:名字弱化提示「未记账」(结余列仍正常显示,费用列本就留空) */
+.lg-tname-txt.carried { color:var(--text-muted); font-style:normal; }
 .lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .lg-table tbody tr:hover .lg-tname .ch { opacity:1; }
 /* .lg-nv/.lg-sumc 保留 ellipsis(spec §W4 降级取舍):费用列已随内容撑宽,永不触发;

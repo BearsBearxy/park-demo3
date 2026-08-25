@@ -131,6 +131,9 @@ onUnmounted(() => {
     <button
       :id="selectId"
       type="button"
+      class="ds-sel-trigger"
+      :data-open="open ? '' : undefined"
+      :data-invalid="invalid ? '' : undefined"
       :disabled="disabled"
       aria-haspopup="listbox"
       :aria-expanded="open"
@@ -143,7 +146,7 @@ onUnmounted(() => {
         height: height + 'px',
         padding: '0 12px',
         background: disabled ? 'var(--bg-sunken)' : 'var(--surface-white)',
-        border: `1px solid ${props.invalid ? 'var(--status-danger)' : open ? 'var(--border-strong)' : 'var(--border-subtle)'}`,
+        border: '1px solid var(--ds-sel-border)',
         borderRadius: 'var(--radius-sm)',
         fontFamily: 'var(--font-sans)',
         fontSize: 'var(--fs-body)',
@@ -181,6 +184,7 @@ onUnmounted(() => {
 
     <div
       v-if="open"
+      class="ds-sel-panel"
       role="listbox"
       :style="{
         position: 'absolute',
@@ -207,10 +211,9 @@ onUnmounted(() => {
         :key="it.value"
         type="button"
         role="option"
+        class="ds-sel-opt"
         :aria-selected="it.value === val"
         @click="pick(it.value)"
-        @mouseenter="($event.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'"
-        @mouseleave="($event.currentTarget as HTMLElement).style.background = 'transparent'"
         :style="{
           display: 'flex',
           alignItems: 'center',
@@ -220,7 +223,6 @@ onUnmounted(() => {
           padding: '8px 10px',
           border: 'none',
           borderRadius: 'var(--radius-sm)',
-          background: 'transparent',
           color: 'var(--text-primary)',
           fontFamily: 'var(--font-sans)',
           fontSize: 'var(--fs-body)',
@@ -251,3 +253,23 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 触发器边框走变量桥:展开态要区别于默认态,而内联 :style 写不了状态选择器,
+   改前只能把三种情况塞进一个三元表达式。
+   ⚠ 展开态原本用 --border-strong,与默认的 --border-subtle 实测只有 1.24:1 ——
+   WCAG 2.4.11 要求 3:1,等于展开时边框几乎没变化(同 Input 的老问题)。
+   现改 --status-info(对默认态 3.96:1)。invalid 规则放在最后,红框优先于展开蓝框。 */
+.ds-sel-trigger { --ds-sel-border: var(--border-subtle); }
+.ds-sel-trigger[data-open] { --ds-sel-border: var(--status-info); }
+.ds-sel-trigger[data-invalid] { --ds-sel-border: var(--status-danger); }
+
+/* 面板入场。改前是 v-if 硬切,面板凭空出现。 */
+.ds-sel-panel { animation: fp-pop-in var(--dur-fast) var(--ease-out); }
+
+/* 选项 hover。改前写的是 $event.currentTarget.style.background —— 手写 DOM,
+   绕过 Vue 响应式,任何重渲染都会把它冲掉;而且为此选项的内联 style 里还得写死
+   background:'transparent',那条现已移除,否则内联优先级会压过这里的 :hover。 */
+.ds-sel-opt { background: transparent; }
+.ds-sel-opt:hover { background: var(--bg-hover); }
+</style>

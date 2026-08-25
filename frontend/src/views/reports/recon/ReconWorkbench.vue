@@ -383,7 +383,7 @@ async function confirmMark() {
 .rc-search { height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--surface-sunken); border-radius: var(--radius-full); color: var(--text-muted); margin-bottom: 10px; }
 .rc-search input { flex: 1; border: 0; background: transparent; font: inherit; font-size: var(--fs-label); color: var(--text-primary); outline: none; min-width: 0; }
 .rc-seg { display: flex; gap: 4px; background: var(--surface-sunken); border-radius: 9px; padding: 3px; }
-.rc-seg button { flex: 1; height: 28px; border: 0; cursor: pointer; border-radius: 7px; background: transparent; font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: all .12s; }
+.rc-seg button { flex: 1; height: 28px; border: 0; cursor: pointer; border-radius: 7px; background: transparent; font: inherit; font-size: var(--fs-micro); font-weight: var(--fw-medium); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: all var(--dur-fast) var(--ease-standard); }
 .rc-seg button .n { font-size: var(--fs-micro); padding: 0 5px; height: 15px; line-height: 15px; border-radius: var(--radius-full); background: var(--border-subtle); color: var(--text-muted); }
 .rc-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: var(--shadow-sm); }
 .rc-seg button.on[data-f="all"] .n { background: var(--ink-900); color: #fff; }
@@ -391,7 +391,7 @@ async function confirmMark() {
 .rc-seg button.on[data-f="miss"] .n { background: var(--hue-red); color: #fff; }
 .rc-seg button.on[data-f="ok"] .n { background: var(--hue-blue); color: #fff; }
 .rc-list { flex: 1; min-height: 0; overflow-y: auto; padding: 7px; }
-.rc-li { position: relative; padding: 11px 12px 11px 14px; border-radius: 11px; cursor: pointer; transition: background .12s; display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+.rc-li { position: relative; padding: 11px 12px 11px 14px; border-radius: 11px; cursor: pointer; transition: background var(--dur-fast) var(--ease-standard); display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
 .rc-li:hover { background: var(--surface-card); }
 .rc-li.on { background: var(--accent-blue); }
 .rc-li.on::before { content: ''; position: absolute; left: 1px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--ink-900); }
@@ -474,9 +474,8 @@ async function confirmMark() {
 .rc-balance .verdict { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); font-weight: var(--fw-semibold); }
 
 /* 处置浮层:居中弹窗(§7,FinDialogs .fin-mask 范式) */
-.rc-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: var(--z-modal); display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: rcfade .16s forwards; }
-@keyframes rcfade { to { opacity: 1; } }
-.rc-pop { width: min(320px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border-radius: 14px; box-shadow: var(--shadow-md), 0 8px 28px rgba(28,28,28,.14); border: 1px solid var(--border-subtle); padding: 16px; box-sizing: border-box; font-size: var(--fs-body); color: var(--text-primary); font-family: var(--font-sans); animation: rcpop .14s cubic-bezier(.16,1,.3,1) both; }
+.rc-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: var(--z-modal); display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: fp-fade-in var(--dur-base) forwards; }
+.rc-pop { width: min(320px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border-radius: 14px; box-shadow: var(--shadow-md), 0 8px 28px rgba(28,28,28,.14); border: 1px solid var(--border-subtle); padding: 16px; box-sizing: border-box; font-size: var(--fs-body); color: var(--text-primary); font-family: var(--font-sans); animation: rcpop var(--dur-fast) var(--ease-out) both; }
 @keyframes rcpop { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .rc-pop-title { font-size: var(--fs-body); font-weight: var(--fw-bold); margin-bottom: 11px; display: flex; align-items: center; gap: 7px; }
 .rc-pop-amts { display: flex; flex-direction: column; gap: 7px; padding-bottom: 11px; margin-bottom: 11px; border-bottom: 1px solid var(--border-subtle); }

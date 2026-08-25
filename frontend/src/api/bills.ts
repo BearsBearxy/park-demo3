@@ -7,7 +7,7 @@ import type { S10Fees, S10ColId } from '../types/s10'
 export interface BillRowDTO extends LedgerFees {
   companyId: number
   companyName: string
-  tenantId: number
+  tenantId: number | null   // V105:未绑定台账行为 null(账面名在 tenantName)
   tenantName: string
   parentId: number | null
   parentName: string | null

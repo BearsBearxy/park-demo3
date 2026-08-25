@@ -82,14 +82,14 @@ const octMatrix: string[][] = [
 
 // ── 台账 parseWorkbook 平铺回归(创显 1月样例,原 customParse 用例原样保留) ──
 describe('ledger parseWorkbook (创显 1月样例)', () => {
-  it('解析出 3 条记录,空名行/合计行被丢弃', () => {
-    const res = parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix)
+  it('解析出 3 条记录,空名行/合计行被丢弃', async () => {
+    const res = await parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix)
     expect(res.error).toBeUndefined()
     expect(res.records!.map(r => r.tenantName)).toEqual(['成吉', '戎合', '丁天伦（天域）'])
   })
 
-  it('成吉:按表头对位取值,派生列/文件没有的宿舍 4 列不出现', () => {
-    const [r] = parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix).records!
+  it('成吉:按表头对位取值,派生列/文件没有的宿舍 4 列不出现', async () => {
+    const [r] = (await parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix)).records!
     expect(r).toMatchObject({
       tenantName: '成吉', balancePrev: 102.94, factoryRent: 12588.8, factoryInfraMaint: 892.8,
       elevatorMaint: 159, transformerMaint: 159, officeOtherFee: 0,
@@ -99,12 +99,13 @@ describe('ledger parseWorkbook (创显 1月样例)', () => {
     // 旧位置映射 bug 特征反断言:水维护费/基准电费绝不能吃到错位列的值
     expect(r.waterMaint).toBe(8.87)             // 而不是 102.94(本月结余)
     expect(r.standardElectricity).toBe(464.98)  // 而不是水维护费错位值
+    // 结余链(2026-08-25):balancePrev 照常解析上送(吃不吃由后端按链上位置定);派生列仍不吃
     for (const k of ['totalReceivable', 'balanceEnd', 'dormRent', 'dormFacilitiesFee', 'dormInfraMaint', 'dormOtherFee'])
       expect(r).not.toHaveProperty(k)
   })
 
-  it('戎合:balancePrev 带千分位解析,17 个费用列全为 0', () => {
-    const r = parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix).records![1]
+  it('戎合:balancePrev 带千分位解析(首现月作期初,由后端定夺),17 个费用列全为 0', async () => {
+    const r = (await parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix)).records![1]
     expect(r.balancePrev).toBe(2499022.41)
     const feeKeys = ['factoryRent', 'factoryMgmtFee', 'shopRent', 'shopMgmtFee', 'factoryInfraMaint', 'shopInfraMaint',
       'elevatorMaint', 'transformerMaint', 'landUseTax', 'networkFee', 'accessCtrlMaint', 'officeOtherFee',
@@ -112,8 +113,8 @@ describe('ledger parseWorkbook (创显 1月样例)', () => {
     for (const k of feeKeys) expect(r[k]).toBe(0)
   })
 
-  it('每条记录带标题识别的 __ymDetected', () => {
-    const recs = parse(parserProps('ledger', { year: 2026, month: 3 }))(janMatrix).records!
+  it('每条记录带标题识别的 __ymDetected', async () => {
+    const recs = (await parse(parserProps('ledger', { year: 2026, month: 3 }))(janMatrix)).records!
     for (const r of recs) expect(r.__ymDetected).toEqual({ year: 2025, month: 1 })
   })
 
@@ -121,8 +122,8 @@ describe('ledger parseWorkbook (创显 1月样例)', () => {
     expect(parserProps('ledger', { year: 2025, month: 2 }).templateCols).toContain('1月结余')
   })
 
-  it('无表头矩阵(只给数据行)→ 返回 error', () => {
-    const res = parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix.slice(4, 7))
+  it('无表头矩阵(只给数据行)→ 返回 error', async () => {
+    const res = await parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix.slice(4, 7))
     expect(res.error).toBeTruthy()
   })
 })
@@ -131,15 +132,15 @@ describe('ledger parseWorkbook (创显 1月样例)', () => {
 describe('ledger parseWorkbook (10月 26 列样例)', () => {
   const P = () => parse(parserProps('ledger', { year: 2025, month: 10 }))
 
-  it('4 条记录,合计行丢弃;无标题行 → 无 __ymDetected', () => {
-    const res = P()(octMatrix)
+  it('4 条记录,合计行丢弃;无标题行 → 无 __ymDetected', async () => {
+    const res = await P()(octMatrix)
     expect(res.error).toBeUndefined()
     expect(res.records!.map(r => r.tenantName)).toEqual(['张丽莉（建杭）', '传齐商铺', '戎合', '康建清（鼎瑞）'])
     for (const r of res.records!) expect(r.__ymDetected).toBeUndefined()
   })
 
-  it('张丽莉:别名列(商铺租金/商铺基础设施维护费)与电水费按表头对位,派生列不出现', () => {
-    const [r] = P()(octMatrix).records!
+  it('张丽莉:别名列(商铺租金/商铺基础设施维护费)与电水费按表头对位,派生列不出现', async () => {
+    const [r] = (await P()(octMatrix)).records!
     expect(r).toMatchObject({
       shopRent: 5459.33, shopInfraMaint: 859.8, standardElectricity: 791.79,
       electricityMaint: 64.04, waterMaint: 1.67, totalCollected: 7176.63,
@@ -147,25 +148,25 @@ describe('ledger parseWorkbook (10月 26 列样例)', () => {
     for (const k of ['totalReceivable', 'balanceEnd']) expect(r).not.toHaveProperty(k)
   })
 
-  it('传齐商铺:修复前该行全零被跳,现 shopRent=19620', () => {
-    expect(P()(octMatrix).records![1].shopRent).toBe(19620)
+  it('传齐商铺:修复前该行全零被跳,现 shopRent=19620', async () => {
+    expect((await P()(octMatrix)).records![1].shopRent).toBe(19620)
   })
 
-  it('戎合:balancePrev 捕获(9月结余列)', () => {
-    expect(P()(octMatrix).records![2].balancePrev).toBe(2499022.41)
+  it('戎合:balancePrev 捕获(9月结余列)', async () => {
+    expect((await P()(octMatrix)).records![2].balancePrev).toBe(2499022.41)
   })
 
-  it('康建清:宿舍租金主 label + 宿舍配套设施费别名', () => {
-    const r = P()(octMatrix).records![3]
+  it('康建清:宿舍租金主 label + 宿舍配套设施费别名', async () => {
+    const r = (await P()(octMatrix)).records![3]
     expect(r).toMatchObject({ dormRent: 1253.75, dormFacilitiesFee: 147.5, basicElectricity: 1069.52, standardWater: 80.98 })
   })
 
-  it('跨月 sheet:标题 2025年11月 + 表头「10月结余」→ balancePrev 按 sheet 年月动态标签捕获(复审②)', () => {
+  it('跨月 sheet:标题 2025年11月 + 表头「10月结余」→ balancePrev 按 sheet 年月动态标签捕获(复审②)', async () => {
     const nov = [
       ['2025年11月园区费用明细表', ...pad(25)],
       ...octMatrix.map(row => row.map(c => (c === '9月结余' ? '10月结余' : c))),
     ]
-    const res = P()(nov)   // 屏上下文 2025年10月(prev=9),不得影响该 sheet 的结余列
+    const res = await P()(nov)   // 屏上下文 2025年10月(prev=9),不得影响该 sheet 的结余列
     const rong = res.records!.find(r => r.tenantName === '戎合')!
     expect(rong.balancePrev).toBe(2499022.41)
     expect(rong.__ymDetected).toEqual({ year: 2025, month: 11 })
@@ -186,12 +187,12 @@ describe('ledger 段内同名合并与垃圾行过滤 (v4)', () => {
     [' 合计： ', '-2,082.41', '721.01', '73.06', '131.50', '-1,046.70', ''],
   ]
 
-  it('万众宿舍双行 → 单条:数值逐列相加,note 拼接,单行租户不受影响', () => {
-    const res = P()(dupMatrix)
+  it('万众宿舍双行 → 单条:数值逐列相加,note 拼接,单行租户不受影响', async () => {
+    const res = await P()(dupMatrix)
     expect(res.error).toBeUndefined()
     expect(res.records!.map(r => r.tenantName)).toEqual(['万众宿舍', '单行户'])   // 首现位置保序
     const [wz, single] = res.records!
-    expect(wz.balancePrev).toBe(-2082.41)
+    expect(wz.balancePrev).toBe(-2082.41)   // 同名合并:结余列逐列相加
     expect(wz.totalCollected).toBeCloseTo(-1146.7, 2)   // = -2082.41 + 935.71
     expect(wz).toMatchObject({ shopRent: 621.01, shopMgmtFee: 73.06, standardElectricity: 131.5 })   // 费用 = 行2 值(行1 空=0)
     expect(wz.note).toBe('结余调整；陆续退租')
@@ -199,26 +200,26 @@ describe('ledger 段内同名合并与垃圾行过滤 (v4)', () => {
     expect(single).toMatchObject({ tenantName: '单行户', shopRent: 100, totalCollected: 100 })
   })
 
-  it('三行同名逐列加总', () => {
+  it('三行同名逐列加总', async () => {
     const m: string[][] = [
       ['租户', '商铺、宿舍租金', '本月收款'],
       ['甲', '1', '10'],
       ['甲', '2', '20'],
       ['甲', '3', '30'],
     ]
-    const res = P()(m)
+    const res = await P()(m)
     expect(res.records!.length).toBe(1)
     expect(res.records![0]).toMatchObject({ tenantName: '甲', shopRent: 6, totalCollected: 60 })
   })
 
-  it('台账垃圾行被跳(「0」伪租户/「202510二期」合计行)', () => {
+  it('台账垃圾行被跳(「0」伪租户/「202510二期」合计行)', async () => {
     const m: string[][] = [
       ['租户', '商铺、宿舍租金', '本月收款'],
       ['甲', '1', '10'],
       ['0', '0', '0'],
       ['202510二期', '1', '10'],
     ]
-    expect(P()(m).records!.map(r => r.tenantName)).toEqual(['甲'])
+    expect((await P()(m)).records!.map(r => r.tenantName)).toEqual(['甲'])
   })
 })
 
@@ -226,8 +227,8 @@ describe('ledger 段内同名合并与垃圾行过滤 (v4)', () => {
 describe('ledger parseWorkbook 整册拆段', () => {
   const ctx = { year: 2025, month: 1, companyName: '创显', companyNames: ['创显', '一泽'] }
 
-  it('双 sheet → 两段:A 公司=创显(标记列)+__ym,B 公司=一泽(sheet名)+年月未识别标注', () => {
-    const res = parseWB(parserProps('ledger', ctx))([
+  it('双 sheet → 两段:A 公司=创显(标记列)+__ym,B 公司=一泽(sheet名)+年月未识别标注', async () => {
+    const res = await parseWB(parserProps('ledger', ctx))([
       { name: '①', matrix: janMatrix },
       { name: '一泽', matrix: octMatrix },
     ])
@@ -248,8 +249,8 @@ describe('ledger parseWorkbook 整册拆段', () => {
     }
   })
 
-  it('单 sheet(有记录的仅 1 个)→ 平铺 records,无 __company', () => {
-    const res = parseWB(parserProps('ledger', { year: 2025, month: 10, companyNames: ['创显', '一泽'] }))([
+  it('单 sheet(有记录的仅 1 个)→ 平铺 records,无 __company', async () => {
+    const res = await parseWB(parserProps('ledger', { year: 2025, month: 10, companyNames: ['创显', '一泽'] }))([
       { name: '一泽', matrix: octMatrix },
     ])
     expect(res.sections).toBeUndefined()
@@ -257,12 +258,12 @@ describe('ledger parseWorkbook 整册拆段', () => {
     expect(res.records![0]).not.toHaveProperty('__company')
   })
 
-  it('公司识别只扫租户列左侧:备注整列同文本不会被误判成公司(复审①)', () => {
+  it('公司识别只扫租户列左侧:备注整列同文本不会被误判成公司(复审①)', async () => {
     const noted = octMatrix.map((row, i) => {
       if (i < 3 || i > 6) return [...row]
       const r = [...row]; r[25] = '欠费'; return r   // 4 条数据行备注全同文本
     })
-    const res = parseWB(parserProps('ledger', ctx))([
+    const res = await parseWB(parserProps('ledger', ctx))([
       { name: '①', matrix: janMatrix },
       { name: 'x', matrix: noted },
     ])
@@ -286,8 +287,8 @@ describe('ledger parseWorkbook 同 sheet 多月堆叠', () => {
     ['', ' 合计： ', '100.50', '2,000.00', ...pad(20)],
   ]
 
-  it('单 sheet 双块(1月+2月堆叠)→ 2 段,2月段 balancePrev 按块年月从「1月结余」捕获', () => {
-    const res = parse(parserProps('ledger', { year: 2025, month: 1, companyName: '创显' }))([...janMatrix, ...febBlock])
+  it('单 sheet 双块(1月+2月堆叠)→ 2 段,2月段 balancePrev 按块年月从「1月结余」捕获', async () => {
+    const res = await parse(parserProps('ledger', { year: 2025, month: 1, companyName: '创显' }))([...janMatrix, ...febBlock])
     expect(res.error).toBeUndefined()
     expect(res.records).toBeUndefined()
     expect(res.sections!.length).toBe(2)
@@ -301,14 +302,14 @@ describe('ledger parseWorkbook 同 sheet 多月堆叠', () => {
     for (const r of b.records) expect(r.__ym).toEqual({ year: 2025, month: 2 })
   })
 
-  it('数据行备注引用「…明细表」不误切块(复审:标题式锚+行非空数≤3 双保险)', () => {
+  it('数据行备注引用「…明细表」不误切块(复审:标题式锚+行非空数≤3 双保险)', async () => {
     // 变体1:备注有前缀(不以年月开头)→ 锚① 拦;变体2:备注以年月开头 → 行非空数>3 的守卫② 拦
     for (const note of ['费用参见2024年12月园区费用明细表附页', '2024年12月园区费用明细表欠费']) {
       const noted = octMatrix.map((row, i) => {
         if (i !== 4) return [...row]              // 传齐商铺行(中部数据行)
         const r = [...row]; r[25] = note; return r
       })
-      const res = parse(parserProps('ledger', { year: 2025, month: 10 }))(noted)
+      const res = await parse(parserProps('ledger', { year: 2025, month: 10 }))(noted)
       expect(res.error).toBeUndefined()
       expect(res.records!.length).toBe(4)         // 不被切块,零丢行
       expect(res.sections).toBeUndefined()
@@ -318,14 +319,14 @@ describe('ledger parseWorkbook 同 sheet 多月堆叠', () => {
   // 真实文件集成回归(事故三原件):单 sheet 873 行,实测结构 = 6 公司块 × 2 个月(2025年1月/10月)
   // 纵向堆叠共 12 块(公司名取自各块前置标记列);修复前 matchByHeader 只解析最后一段 22 行,余者无告警丢弃
   const REAL_FILE = 'C:/financial_dashboard/2025全年发生额、预算对比/台账测试.xlsx'
-  it.skipIf(!fs.existsSync(REAL_FILE))('真实文件 台账测试.xlsx → 12 块全解析、无丢段', () => {
+  it.skipIf(!fs.existsSync(REAL_FILE))('真实文件 台账测试.xlsx → 12 块全解析、无丢段', async () => {
     // 与 FpImportModal 同参读取(cellDates + header:1/blankrows:false/defval:''/raw:false/dateNF)
     const wb = XLSX.read(fs.readFileSync(REAL_FILE), { cellDates: true })
     const sheets = wb.SheetNames.map(name => ({
       name,
       matrix: XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, blankrows: false, defval: '', raw: false, dateNF: 'yyyy-mm-dd' }) as string[][],
     }))
-    const res = parseWB(parserProps('ledger', { year: 2025, month: 1 }))(sheets)
+    const res = await parseWB(parserProps('ledger', { year: 2025, month: 1 }))(sheets)
     expect(res.error).toBeUndefined()
     expect(res.sections!.length).toBe(12)
     for (const s of res.sections!) expect(s.label).toMatch(/^(创显|B2|帮管好|一泽|积前|创燊高) · 2025年(1|10)月$/)

@@ -40,13 +40,14 @@ const props = withDefaults(defineProps<{
   //   返回 records → 复用现有预览表 + 「导入 N 条」按钮,emit import
   //   返回 sections → 复用 ImportSummary 纯标签段模式(每段 label+N条+勾选),emit importSections({label,records}[])
   //   可选 warning:非阻断提示(如预算导入的发生额与系统推算差异),与结果并排显示
-  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }
+  customParse?: (matrix: string[][]) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string } | Promise<{ records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string }>
   // 文件上传按 sheet 名挑表(命中即取,未命中回退第一个);粘贴路径不受影响
   sheetMatch?: RegExp
   // 给了 parseWorkbook 即走多 sheet 解析(优先级最高,先于 customParse):
   //   文件路径解析全部 sheet 传入;粘贴路径包装 [{name:'', matrix}]。返回值语义同 customParse。
   //   第二实参 = 下方补录条的当前值(仅 fallbackPicker 存在时有意义,其余导入器的解析器少收一个参数即可)
-  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[], fallback?: { ym: string; zone: string; kind: string }) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string; notice?: string }
+  // 可返回 Promise:台账通路解析中会 await ctx.resolveUnmatched 弹「列匹配面板」(BOOK-WORKBENCH-SPEC §4)
+  parseWorkbook?: (sheets: { name: string; matrix: string[][] }[], fallback?: { ym: string; zone: string; kind: string }) => { records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string; notice?: string } | Promise<{ records?: ImportRec[]; sections?: { label: string; records: ImportRec[]; checked?: boolean }[]; error?: string; warning?: string; notice?: string }>
   // 给了 fallbackPicker 才渲染「补录条」(账期/分区/类别),且只在解析结果带 notice(= 真用上了补录值)时露出;
   // 不传 = 一行 UI 都不多,其余 20 个导入器零影响。目前仅园区抄表用(账期无法从数据推断,只能问人)。
   fallbackPicker?: { ym: string; zone: string; kind: string; zones: { value: string; label: string }[]; kinds: { value: string; label: string }[] }
@@ -88,9 +89,9 @@ const inputRef = ref<HTMLInputElement | null>(null)
 // 补录条状态 + 已解析的 sheets(改选项即用新值重解析,不用重新选文件)
 const fb = ref({ ym: props.fallbackPicker?.ym ?? '', zone: props.fallbackPicker?.zone ?? '', kind: props.fallbackPicker?.kind ?? '' })
 const lastSheets = ref<{ name: string; matrix: string[][] }[] | null>(null)
-function runWorkbook(sheets: { name: string; matrix: string[][] }[]) {
+async function runWorkbook(sheets: { name: string; matrix: string[][] }[]) {
   lastSheets.value = sheets
-  applyResult(props.parseWorkbook!(sheets, fb.value))
+  applyResult(await props.parseWorkbook!(sheets, fb.value))
 }
 watch(fb, () => { if (lastSheets.value) runWorkbook(lastSheets.value) }, { deep: true })
 
@@ -113,17 +114,21 @@ function applyResult(res: { records?: ImportRec[]; sections?: { label: string; r
 }
 
 // 二维单元格数组 → 业务记录
-function mapMatrix(matrix: string[][]) {
+async function mapMatrix(matrix: string[][]) {
   if (!matrix || !matrix.length) { err.value = '没有读到任何数据行。'; warn.value = ''; records.value = null; sections.value = null; labelSections.value = null; return }
   // 多 sheet 解析模式(优先级最高):粘贴路径包装为单 sheet;文件路径在 handleFile 已直走 parseWorkbook
-  if (props.parseWorkbook) { runWorkbook([{ name: '', matrix }]); return }
+  if (props.parseWorkbook) { await runWorkbook([{ name: '', matrix }]); return }
   // 自定义解析模式:各屏自带解析器
-  if (props.customParse) { applyResult(props.customParse(matrix)); return }
+  if (props.customParse) { applyResult(await props.customParse(matrix)); return }
   // 智能整表模式:拆段 + 识别年月期 + 版面 → 汇总确认屏
   if (props.phaseLayouts) {
     const secs = splitSections(matrix, props.phaseLayouts, props.nameLabels ?? ['租户名称', '租户'])
     const hasData = secs.some(s => s.records.length > 0)
     if (!hasData) { err.value = '已读取数据,但没识别到任何租户行。请确认含表头与租户名列。'; sections.value = null; return }
+    // §4 禁静默丢列:段级未匹配表头(剔除派生/合计类)显式亮警告——附表10 通路先警告不阻断,处置走模板编辑器
+    const un = [...new Set(secs.flatMap(x => (x.unmatched ?? []).map(u => u.header)))]
+      .filter(h => !/应收合计|本月结余|^序号|合计|^小计|^总计/.test(h))
+    warn.value = un.length ? `未匹配列本次已忽略:${un.join('、')} —— 打开「账册模板」为其添加别名或自定义列后重导` : ''
     err.value = ''; sections.value = secs; records.value = null; return
   }
   // 工资多月分段模式:按标题切月 → 每段 matchByHeader → 汇总确认屏(隐期),复用 sections 状态
@@ -169,7 +174,7 @@ function handleFile(file: File | undefined) {
         const { readAoaWorkbook } = await import('@/utils/sheet')
         const sheets = await readAoaWorkbook(fr.result as ArrayBuffer)
         // parseWorkbook:全部 sheet 一并传入(多 sheet 分段);否则 sheetMatch 按名挑单表(未命中回退第一个)
-        if (props.parseWorkbook) { runWorkbook(sheets); return }
+        if (props.parseWorkbook) { await runWorkbook(sheets); return }   // 不 await 会让解析异常逃出 try(审查#24)
         const pick = pickSheet(sheets.map(s => s.name), props.sheetMatch)
         mapMatrix(sheets.find(s => s.name === pick)?.matrix ?? [])
       } catch (e) { err.value = '文件解析失败:' + (e as Error).message }
@@ -341,7 +346,7 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 /* 1:1 from import-excel.jsx FPImportStyles */
 /* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 DESIGN-FIDELITY §7。 */
 .fpimp-scrim { position:fixed; inset:0; z-index:320; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
-.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin .2s var(--ease-standard); }
+.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin var(--dur-base) var(--ease-standard); }
 @keyframes fpimpin { from { transform:translateY(8px) scale(.985); opacity:.4; } to { transform:none; opacity:1; } }
 .fpimp-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 22px 16px; border-bottom:1px solid var(--divider); }
 .fpimp-h h3 { margin:0; font-size:17px; font-weight:var(--fw-semibold); color:var(--text-primary); }

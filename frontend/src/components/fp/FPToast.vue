@@ -10,7 +10,7 @@
  *   1 不加 > 2 浮层 > 3 预留位 > 4 流内条（流内条只许出现在首屏加载期）。
  * toast 属于「交互触发」，只能走 2。
  *
- * 为什么贴**底部**：屏幕/卡片顶部已经被「生成告警」这类 .pl-float 占着（那是要读的清单，
+ * 为什么贴**底部**：屏幕/卡片顶部留给要读的清单类内容（「生成告警」等已于 2026-08-25 收进告警抽屉，
  * 不是短暂反馈）。一上一下各司其职，两者同时出现也不会叠在一起。
  * jfen 原始文档也写着 "Toast appear at the bottom." / "Recedes from the bottom"。
  *
@@ -135,6 +135,14 @@ function close() { clear(); emit('update:modelValue', '') }
 .fpt--info    .fpt-i { fill: var(--fpt-info);    color: var(--ink-900); }
 
 /* 只动 opacity/transform，不动尺寸 —— 进出场都不得引起任何重排 */
-.fpt-enter-active, .fpt-leave-active { transition: opacity .18s ease, transform .18s ease; }
-.fpt-enter-from, .fpt-leave-to { opacity: 0; transform: translateY(6px); }
+
+/* 进出场分开。改前两向同为 .18s ease:时长不在 120/200/320 三档里,缓动是浏览器
+   默认曲线,两者都没走令牌。
+   现在入场 --dur-base + --ease-out(急起缓收,像东西飞进来然后停住),要把注意力引
+   过去,值得慢一点;出场 --dur-fast + --ease-standard,且**不带位移** ——
+   用户已经不看它了,再让它一边淡出一边挪动只会拖住下一步操作。 */
+.fpt-enter-active { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.fpt-leave-active { transition: opacity var(--dur-fast) var(--ease-standard); }
+.fpt-enter-from { opacity: 0; transform: translateY(6px); }
+.fpt-leave-to { opacity: 0; }
 </style>

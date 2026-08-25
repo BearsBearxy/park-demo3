@@ -6,6 +6,7 @@ import com.park.demo3.dto.S10RecordDTO;
 import com.park.demo3.dto.S10RecordReq;
 import com.park.demo3.entity.S10Record;
 import com.park.demo3.mapper.S10RecordMapper;
+import com.park.demo3.mapper.TenantMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -16,7 +17,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class S10ServiceTest {
     S10RecordMapper records = Mockito.mock(S10RecordMapper.class);
-    S10Service svc = new S10Service(records);
+    TenantMapper tenants = Mockito.mock(TenantMapper.class);   // selectList(null) 默认空表 → softIndex 空,配档不干扰既有用例
+    BookService bm = Mockito.mock(BookService.class);   // customIdsByPhase 默认空集
+    S10Service svc = new S10Service(records, tenants, bm);
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 
@@ -151,8 +154,51 @@ class S10ServiceTest {
 
     // factoryRent 单列填值的 req(其余 24 列 null)
     private static S10RecordReq reqWithFactoryRent(Integer tenantId, String name, int phase, String acct, double factoryRent) {
-        return new S10RecordReq(tenantId, name, phase, acct, "factory", null,
+        return reqWithId(null, tenantId, name, phase, acct, factoryRent);
+    }
+    private static S10RecordReq reqWithId(Long id, Integer tenantId, String name, int phase, String acct, double factoryRent) {
+        return new S10RecordReq(id, tenantId, name, phase, acct, "factory", null,
             null, null, bd(factoryRent), null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
+            null, null, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    // ── V105 按行更新(req.id 非空):改名走 update 不复制新行;撞同槽同名 → 409 ──
+    @Test void save_withId_renamesInPlace_withoutDuplicating() {
+        S10Record existing = rec(9L, null, "黄路升", 1, "2026-12", "import", 0, 100, 0);
+        Mockito.when(records.selectById(9L)).thenReturn(existing);
+        // 新名字在该槽无冲突
+        Mockito.when(records.selectBySlotTenant(1, "2026-12", "黄路生")).thenReturn(null);
+
+        svc.save(reqWithId(9L, null, "黄路生", 1, "2026-12", 100));
+
+        Mockito.verify(records).updateById(Mockito.<S10Record>argThat(r ->
+            r.getId() == 9L && "黄路生".equals(r.getTenantName())));
+        Mockito.verify(records, Mockito.never()).insert(Mockito.<S10Record>any());
+    }
+
+    // renameRow(抽屉即时改名):同槽撞名 409;改对名字自动配档(softIndex 空表 → 保持 null)
+    @Test void renameRow_updatesNameOnly_withDupGuard() {
+        S10Record existing = rec(9L, null, "黄路升", 1, "2026-12", "import", 0, 100, 0);
+        Mockito.when(records.selectById(9L)).thenReturn(existing);
+        Mockito.when(records.selectBySlotTenant(1, "2026-12", "黄路生")).thenReturn(null);
+        svc.renameRow(9L, "黄路生");
+        Mockito.verify(records).updateById(Mockito.<S10Record>argThat(r ->
+            "黄路生".equals(r.getTenantName())));
+
+        S10Record other = rec(10L, null, "占位", 1, "2026-12", "manual", 0, 50, 0);
+        Mockito.when(records.selectBySlotTenant(1, "2026-12", "占位")).thenReturn(other);
+        assertThatThrownBy(() -> svc.renameRow(9L, "占位"))
+            .isInstanceOf(BizException.class).hasMessageContaining("同名行");
+    }
+
+    @Test void save_withId_renameCollidesWithSlotName_throws409() {
+        S10Record existing = rec(9L, null, "黄路升", 1, "2026-12", "import", 0, 100, 0);
+        S10Record other = rec(10L, null, "黄路生", 1, "2026-12", "manual", 0, 50, 0);
+        Mockito.when(records.selectById(9L)).thenReturn(existing);
+        Mockito.when(records.selectBySlotTenant(1, "2026-12", "黄路生")).thenReturn(other);
+
+        assertThatThrownBy(() -> svc.save(reqWithId(9L, null, "黄路生", 1, "2026-12", 100)))
+            .isInstanceOf(BizException.class)
+            .hasMessageContaining("同名行");
     }
 }

@@ -78,7 +78,7 @@ const panelStyle = computed(() => ({
   position: "absolute" as const,
   top: "calc(100% + 8px)",
   ...(props.align === "end" ? { right: "0" } : { left: "0" }),
-  zIndex: 60,
+  zIndex: 'var(--z-popover)',
   width: props.width + "px",
   background: "var(--surface-white)",
   border: "1px solid var(--border-subtle)",
@@ -94,8 +94,15 @@ const panelStyle = computed(() => ({
     <span style="display: inline-flex" @click="setOpen(!isOpen)">
       <slot name="trigger" />
     </span>
-    <div v-if="isOpen" role="dialog" :style="panelStyle">
+    <div v-if="isOpen" class="ds-popover-panel" role="dialog" :style="panelStyle">
       <slot />
     </div>
   </span>
 </template>
+
+<style scoped>
+/* 面板入场。改前是 v-if 硬切,面板凭空出现。与 Select 的下拉同规格
+   (见 motion.css 的 fp-pop-in):120ms / 4px —— 贴附浮层是高频操作,
+   时长按频率定而不是按重要性定。 */
+.ds-popover-panel { animation: fp-pop-in var(--dur-fast) var(--ease-out); }
+</style>

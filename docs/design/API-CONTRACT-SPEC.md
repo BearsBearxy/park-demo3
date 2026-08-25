@@ -60,6 +60,7 @@ public record Result<T>(int code, String message, T data, String traceId) {}
 | `PUT` kv/config upsert | 返回 `void` | ⚠ 与上一行同类却分两派，需按业务语义二选一并写进本表 |
 | `DELETE` | **返回 `DeleteResultDTO(int deleted, int skipped)`**；确无可跳过语义时才 `void` | ⚠ 37 个里 24 `void` / 12 合规 / 1 个自定义 9 字段 `MeterDeleteDTO`（批量删预览，允许保留） |
 | 导入 | **返回 `ImportResultDTO(int imported, int skipped, List<ImportError> errors)`** | ⚠ 16 个里 14 合规 / 2 自定义 |
+| `PUT` 批量绑定 | **返回 `BindResultDTO(int bound, int conflicts)`**(台账/附表10 的 bind-tenant 共用;与 `DeleteResultDTO` 同构但语义不同,刻意分开命名) | ✅ 2/2(V105 新增) |
 | 行级错误 | **跳过不整批拦**，收进 `errors`（`ImportError(int row, String key, String msg)`） | ✅ 已统一 |
 
 ### 5.1 同构 record 必须收敛到 dto 包

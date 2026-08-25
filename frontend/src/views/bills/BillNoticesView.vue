@@ -39,6 +39,8 @@ import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPStat from '@/components/fp/FPStat.vue'
+import FPAlertChip from '@/components/fp/FPAlertChip.vue'
+import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import CoefBookWindow from './CoefBookWindow.vue'
 // ── S20 交付链:收款公司/收款簿/两个导出窗口 + 抽屉方格 + 状态流 ──
 import CompanyBookWindow from './CompanyBookWindow.vue'
@@ -120,6 +122,25 @@ function gotoParams() {
   tabs.openFresh('params', { pin: true })
   router.push({ path: '/params', query: { ym: ym.value, edit: '1' } })
 }
+
+// ── 屏级告警:常驻 chip + 右侧抽屉(LAYOUT-STABILITY-SPEC §6,2026-08-25) ──
+// 原来这条「本屏为旧快照」是页头的橙色流内条,顶动下面整张表且只要没重算就永远挂着;
+// 现在收进抽屉,工具条上只留一枚位置固定的 chip(无告警时 quiet 态仍渲染)。判定逻辑不动(staleText)。
+const alertOpen = ref(false)
+// 时间格式同 staleText 的 MM-DD HH:mm('YYYY-MM-DDTHH:mm:ss' → 'MM-DD HH:mm')
+const lastChangeText = computed(() => (status.value?.lastChangeAt ?? '').slice(5, 16).replace('T', ' '))
+const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
+  key: 'stale',
+  title: '本屏为旧快照',
+  desc: '计费参数在本月催缴单生成之后改过 —— 单上金额仍是改参前派生的。'
+    + '去计费参数页「重算本月」重出一遍(池核算 → 楼栋损耗 → 催缴单一起走),已确认 / 已导出的户会自动跳过、金额照旧。',
+  items: lastChangeText.value ? [{ text: `参数最后更新 ${lastChangeText.value}` }] : [],
+  action: {
+    label: '去计费参数页重算',
+    icon: 'refresh-cw',
+    run: () => { alertOpen.value = false; gotoParams() },
+  },
+}] : [])
 // 页签切回:参数页那边可能刚重算过 —— 批次时间变了就整月重拉(单与 stale 条一起变新),没变只刷状态
 // (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
@@ -569,6 +590,8 @@ const drawerSub = computed(() => {
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
         <Segmented :options="PHASE_OPTS" v-model="phase" size="sm" />
+        <!-- 屏级告警入口(§6):位置固定在主控区尾,不随有无告警/批量态变化 -->
+        <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
       </div>
       <div class="bn-actions">
         <Button variant="outline" size="sm" @click="companyOpen = true">
@@ -615,15 +638,6 @@ const drawerSub = computed(() => {
 
     <!-- 生成摘要提示(5s 自消)。page 模式:本屏无 relative 容器,且 --z-toast 最高不被遮 -->
     <FPToast v-model="okMsg" placement="page" :duration="5000" />
-    <!-- S21 stale 条:计费参数改过而本月催缴单批次没重生成(判据 spec §6.3);[去重算] 送到参数页(池 → 损耗 → 催缴单一起重算) -->
-    <div v-if="staleMsg" class="bn-bar warn">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>{{ staleMsg }} —— 单上金额仍是改参前派生的,去计费参数页「重算本月」后生效(已确认 / 已导出的户照旧跳过)。</span>
-      <Button variant="outline" size="sm" @click="gotoParams">
-        <template #leading><component :is="iconFor('refresh-cw')" :size="14" /></template>
-        去重算
-      </Button>
-    </div>
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月暂无催缴单。
@@ -1143,6 +1157,9 @@ const drawerSub = computed(() => {
     <ExportReconWindow :open="expReconOpen" :ym="ym" :notices="rows" :busy="exportBusy"
                        @close="expReconOpen = false" @export="onExportRecon" />
     <FPElevateDialog :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
+
+    <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->
+    <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
   </div>
 </template>
 

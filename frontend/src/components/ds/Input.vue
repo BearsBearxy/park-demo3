@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, useId } from 'vue'
+import { computed, useId } from 'vue'
 
 // ⚠ 透传属性必须落到 <input> 上,不能落在根 div。
 //
@@ -33,7 +33,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const focus = ref(false)
 const inputId = props.id ?? useId()
 
 const HEIGHT: Record<InputSize, number> = { sm: 32, md: 36, lg: 44 }
@@ -51,10 +50,16 @@ const HEIGHT: Record<InputSize, number> = { sm: 32, md: 36, lg: 44 }
  */
 const reserveMsg = computed(() => props.error !== undefined || props.hint !== undefined)
 
-const borderColor = computed(() =>
-  props.error ? 'var(--hue-red)' : focus.value ? 'var(--border-strong)' : 'var(--border-subtle)'
-)
-
+/**
+ * 边框色不再由 JS 算。
+ *
+ * 聚焦态要用 :has(:focus-visible),而内联 :style 装不下伪类 —— 这正是改前只能拿一个
+ * focus ref 配 @focus/@blur 手动切换的原因。而它切出来的 --border-strong 与默认的
+ * --border-subtle **实测只有 1.24:1**,WCAG 2.4.11 要求焦点指示器达到 3:1,
+ * 等于聚焦时屏幕上几乎没有变化。改用 --status-info 后是 3.96:1。
+ *
+ * ⚠ 只换色不加粗:1px→1.5px 会让框内内容位移半像素,违反 LAYOUT-STABILITY-SPEC。
+ */
 const wrapStyle = computed(() => ({
   display: 'flex',
   alignItems: 'center',
@@ -62,7 +67,7 @@ const wrapStyle = computed(() => ({
   height: `${HEIGHT[props.size]}px`,
   padding: '0 12px',
   background: props.disabled ? 'var(--bg-sunken)' : 'var(--surface-white)',
-  border: `1px solid ${borderColor.value}`,
+  border: '1px solid var(--ds-in-border)',
   borderRadius: 'var(--radius-sm)',
   transition: 'border-color var(--dur-fast) var(--ease-standard)',
   opacity: props.disabled ? 0.6 : 1,
@@ -77,7 +82,7 @@ const wrapStyle = computed(() => ({
       style="font:var(--type-label);color:var(--text-secondary);font-weight:var(--fw-medium)"
     >{{ label }}</label>
 
-    <div :style="wrapStyle">
+    <div class="ds-in-field" :data-error="error ? '' : undefined" :style="wrapStyle">
       <span v-if="$slots.leadingIcon" style="display:inline-flex;color:var(--text-muted)">
         <slot name="leadingIcon" />
       </span>
@@ -89,8 +94,6 @@ const wrapStyle = computed(() => ({
         :placeholder="placeholder"
         v-bind="$attrs"
         style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:var(--fs-body);color:var(--text-primary)"
-        @focus="focus = true"
-        @blur="focus = false"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
       <span v-if="$slots.trailingIcon" style="display:inline-flex;color:var(--text-muted)">
@@ -111,6 +114,15 @@ const wrapStyle = computed(() => ({
 </template>
 
 <style scoped>
+/* 聚焦态。<input> 自身**保留** outline:none —— base.css 的全局焦点环画在 input 上会
+   套进外框里变成「框中框」,这正是当初写 outline:none 的原因。改为让外框响应聚焦:
+   :has(:focus-visible) 同样只在键盘聚焦时命中,鼠标点击不触发,与全局环行为一致。 */
+.ds-in-field { --ds-in-border: var(--border-subtle); }
+.ds-in-field[data-error] { --ds-in-border: var(--hue-red); }
+.ds-in-field:has(:focus-visible) { --ds-in-border: var(--status-info); }
+/* 错误态优先:红框在时聚焦不把它盖成蓝的,否则用户一点进去就看不见自己错在哪。 */
+.ds-in-field[data-error]:has(:focus-visible) { --ds-in-border: var(--hue-red); }
+
 /* 常驻提示位:高度恰好一行,空着时不可见但占位。**不多留一分** —— 见 reserveMsg 注释 */
 .ds-in-msg {
   display: block;

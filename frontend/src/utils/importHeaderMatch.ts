@@ -8,9 +8,16 @@
 // 仅供 columnMap 模式;位置映射仍走各屏 parseRow。
 
 export interface ColumnMapEntry { label: string; key: string; text?: boolean; aliases?: string[] }
-export interface ImportRec { __preview?: unknown[]; __groups?: Record<string, string>; [k: string]: unknown }
+// __unmatched:opts.keepUnmatched 开启时,该行未匹配列的 表头→原值(BOOK-WORKBENCH-SPEC §4 禁静默丢列)
+export interface ImportRec { __preview?: unknown[]; __groups?: Record<string, string>; __unmatched?: Record<string, unknown>; [k: string]: unknown }
 // meta:成功时回传 关键列/表头块末行 位置,供调用方(台账拆段公司识别)定位数据行;纯增量,现有调用方不受影响
-export interface MatchResult { records: ImportRec[]; error?: string; meta?: { nameCol: number; headerEnd: number } }
+// unmatched:opts.keepUnmatched 开启时,本 sheet 匹配不上的表头列表(仅有表头文本的列;默认关闭不出现)
+export interface MatchResult {
+  records: ImportRec[]
+  error?: string
+  meta?: { nameCol: number; headerEnd: number }
+  unmatched?: { header: string; colIndex: number }[]
+}
 
 // 去空格 + 常见分隔/括号标点(不改字符本体),便于宽松匹配。
 export function normalizeHeader(s: unknown): string {
@@ -41,7 +48,10 @@ export function matchByHeader(
   columnMap: ColumnMapEntry[],
   nameLabels: string[],
   groupLabels?: string[],   // 「填充型分组列」(合并/稀疏):按表头名定位,值向下填充,附 rec.__groups[原标签]
-  opts?: { skipName?: (name: string) => boolean },   // 收行过滤:数据行 name 命中即跳;缺省 = 零行为变化
+  opts?: {
+    skipName?: (name: string) => boolean,   // 收行过滤:数据行 name 命中即跳;缺省 = 零行为变化
+    keepUnmatched?: boolean,                // 开启:回传未匹配列(unmatched)+ 每行 __unmatched;缺省 = 零行为变化(SPEC §4)
+  },
 ): MatchResult {
   // 标签按 normalize 后长度降序:前缀命中时「最长匹配标签优先」,防短标签(如 基本)吞掉长列头。
   // aliases(列名别名,如 商铺租金)与主 label 全体参与匹配;模板/预览列仍只用主 label(一条目一列)。
@@ -128,6 +138,22 @@ export function matchByHeader(
     return { records: [], error: '未找到关键列(租户/姓名/月份):请确认表头含该列、且其下有数据。' }
   }
 
+  // 3b) 未匹配列(opts.keepUnmatched,SPEC §4 禁静默丢列):有表头文本、又没被认成
+  //     费用列/关键列/分组列的列。表头取表头块内**最后一个**非空单元格 —— 叶子行标签
+  //     优先于分组行(「宿舍区租金」不被上层「租金」组名盖掉)。
+  const unmatchedCols: { header: string; colIndex: number }[] = []
+  if (opts?.keepUnmatched) {
+    for (let c = 0; c < width; c++) {
+      if (colKey.has(c) || groupCol.has(c) || c === nameCol) continue
+      let header = ''
+      for (let r = headerEnd; r >= 0; r--) {
+        const v = String(matrix[r]?.[c] ?? '').trim()
+        if (v) { header = v; break }
+      }
+      if (header) unmatchedCols.push({ header, colIndex: c })
+    }
+  }
+
   // 4) 数据行 → 记录(跳过租户列空/小计行;未命中列忽略)
   //    分组列向下填充:遍历全部数据行(含小计行也吃其组值更新载体),组首有值则更新,空则沿用上一值。
   const records: ImportRec[] = []
@@ -148,10 +174,21 @@ export function matchByHeader(
       rec.__groups = groups
     }
     rec.__preview = [name, ...columnMap.map(c => (c.text ? rec[c.key] : (rec[c.key] as number)) || '')]
+    if (opts?.keepUnmatched) {
+      const um: Record<string, unknown> = {}
+      for (const u of unmatchedCols) {
+        // 同名表头多列:首列优先(unmatched 列表里两列都可见,值层面不让后列静默盖前列)
+        if (u.header in um) continue
+        um[u.header] = String(row[u.colIndex] ?? '').trim()
+      }
+      rec.__unmatched = um
+    }
     records.push(rec)
   }
   if (!records.length) {
     return { records: [], error: '已读取数据,但没识别到租户行。请确认含租户名一列。' }
   }
-  return { records, meta: { nameCol, headerEnd } }
+  const result: MatchResult = { records, meta: { nameCol, headerEnd } }
+  if (opts?.keepUnmatched) result.unmatched = unmatchedCols
+  return result
 }

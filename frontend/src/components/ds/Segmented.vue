@@ -71,6 +71,8 @@ function handleClick(val: string) {
       v-for="it in items"
       :key="it.value"
       role="tab"
+      class="ds-seg-item"
+      :data-on="it.value === active ? '' : undefined"
       :aria-selected="it.value === active"
       :style="{
         display: 'inline-flex',
@@ -80,8 +82,8 @@ function handleClick(val: string) {
         padding: '0 14px',
         border: 'none',
         borderRadius: 'var(--radius-full)',
-        background: it.value === active ? 'var(--surface-white)' : 'transparent',
-        color: it.value === active ? 'var(--text-primary)' : 'var(--text-muted)',
+        background: 'var(--ds-seg-bg)',
+        color: 'var(--ds-seg-fg)',
         fontFamily: 'var(--font-sans)',
         fontSize: 'var(--fs-body)',
         fontWeight: 'var(--fw-medium)',
@@ -98,3 +100,12 @@ function handleClick(val: string) {
     </button>
   </div>
 </template>
+
+<style scoped>
+/* 未选中项此前没有任何悬停反馈,鼠标移上去毫无变化。
+   ⚠ 悬停只提文字色(--text-muted → --text-secondary),不加底色:
+   加底色会和「选中态的白底」撞在一起,读成两个都被选中了。 */
+.ds-seg-item { --ds-seg-bg: transparent; --ds-seg-fg: var(--text-muted); }
+.ds-seg-item[data-on] { --ds-seg-bg: var(--surface-white); --ds-seg-fg: var(--text-primary); }
+.ds-seg-item:hover:not([data-on]) { --ds-seg-fg: var(--text-secondary); }
+</style>

@@ -13,7 +13,9 @@ const props = withDefaults(defineProps<{
   fixedHeight?: boolean
   // 全屏档(催缴单 worksheet 级长表):96vw×94vh,压过 width/fixedHeight 的尺寸约束
   full?: boolean
-}>(), { width: 640, fixedHeight: false, full: false })
+  // 层级档位(DESIGN-FIDELITY z 七级):从别的弹窗里再开本抽屉时传 'modal-2'/'confirm',默认 modal 零回归
+  tier?: 'modal' | 'modal-2' | 'confirm'
+}>(), { width: 640, fixedHeight: false, full: false, tier: 'modal' })
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -49,7 +51,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="fp-dwr-backdrop" @mousedown="emit('close')">
+    <div v-if="open" class="fp-dwr-backdrop" :style="{ '--fp-dwr-z': `var(--z-${tier})` }" @mousedown="emit('close')">
     <div class="fp-dwr" :class="{ 'fp-dwr--fixed': fixedHeight, 'fp-dwr--full': full }" :style="full ? undefined : { width: `min(${width}px, 94vw)` }" role="dialog" aria-modal="true" @mousedown.stop>
       <div class="fp-dwr-hd">
         <span v-if="icon" class="fp-dwr-icon">
@@ -82,7 +84,7 @@ onBeforeUnmount(() => {
 .fp-dwr-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: var(--fp-dwr-z, var(--z-modal));
   background: rgba(28, 28, 28, .34);
   backdrop-filter: blur(2px);
   display: flex;
@@ -91,9 +93,8 @@ onBeforeUnmount(() => {
   padding: 24px;
   box-sizing: border-box;
   opacity: 0;
-  animation: fpDwrFade .18s var(--ease-standard, ease) forwards;
+  animation: fp-fade-in var(--dur-base) var(--ease-standard, ease) forwards;
 }
-@keyframes fpDwrFade { to { opacity: 1; } }
 
 .fp-dwr {
   z-index: 301;
@@ -107,9 +108,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   transform: translateY(8px) scale(.985);
   opacity: 0;
-  animation: fpDwrIn .2s var(--ease-standard, ease) forwards;
+  animation: fp-rise-in var(--dur-base) var(--ease-standard, ease) forwards;
 }
-@keyframes fpDwrIn { to { transform: none; opacity: 1; } }
 /* 恒定高度档:高度钉在 max-height 上限,内容少不塌缩(fixedHeight prop) */
 .fp-dwr--fixed { height: min(85vh, 760px); }
 /* 全屏档:worksheet 级长表用,尺寸压过 fixed 与 width */

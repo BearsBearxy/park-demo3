@@ -1,6 +1,8 @@
 // 导入类型单一事实源(registry)+ runImport 记录链。
-// 各屏与导入中心 hub 都从这里取「解析配置(modalProps/parserProps) + 执行(runImport)」,导入后统一上报 import_log。
-// T5 已完成(45cf8bf):全部原屏均经 parserProps()/runImport() 消费本 registry,屏内不再有重复列映射。
+// 各屏与导入中心 hub 都从这里取「解析配置(modalProps/parserProps) + 执行(runImport)」,导入后统一上报 import_log;
+// 全部屏均经 parserProps()/runImport() 消费本 registry,屏内不得再写列映射。
+// 台账/附表10 列匹配已模板化(BOOK-WORKBENCH-SPEC):ctx.bookDef/bookDefs 给定即以账册现行版为准,静态表仅作回退。
+import { flattenCols, type BookDef } from '../types/book'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 // 各域「导入行」契约:以前 run() 一律 `as never` 上抛,后端契约的键名一次都没被编译器对过(P5-5)
@@ -93,13 +95,40 @@ const LEDGER_ALIASES: Partial<Record<string, string[]>> = {
   dormFacilitiesFee: ['宿舍配套设施费'],
   shopInfraMaint: ['商铺基础设施维护费'],
 }
+// 上月结余列的别名全集:源册跨月/跨公司写法不一(「9月结余」「上月应收结余」…),
+// 而列语义恒为 balancePrev。主 label 用当月动态标签,其余 11 个月份写法与文字变体全进别名——
+// 靠忽略清单绕过会让期初值静默丢失(历史月未补时那是唯一入口,2026-08-25 拍板)。
+function balancePrevEntry(prevMonth: number | null): ColumnMapEntry {
+  const label = prevMonth != null ? prevMonth + '月结余' : '上月结余'
+  const aliases = ['上月结余', '上月应收结余', '上期结余', '期初余额', '上月余额']
+  for (let m = 1; m <= 12; m++) {
+    aliases.push(`${m}月结余`, `${m}月应收结余`)
+  }
+  return { label, key: 'balancePrev', aliases: aliases.filter(a => a !== label) }
+}
+
+// 模板驱动词典(§3 现行版全局生效):列=模板全列(含 hidden,导入仍认),别名随模板;结余/收款/备注照旧追加。
+// 结余链(2026-08-25 修订):上月结余照常匹配上送——**吃不吃由后端按链上位置定**
+// (租户首现月=期初照收;非首现=派生位忽略)。前端不做业务判定,否则历史月没补时结余全空。
+function ledgerColumnMapFromDef(def: BookDef, prevMonth: number | null): ColumnMapEntry[] {
+  return [
+    ...flattenCols(def).map(c => ({ label: c.label, key: c.id, aliases: c.aliases.length ? c.aliases : undefined })),
+    balancePrevEntry(prevMonth),
+    { label: '本月收款', key: 'totalCollected' },
+    { label: '备注', key: 'note', text: true },
+  ]
+}
+// 派生/装饰列:未匹配也不值得打扰用户(应收合计/本月结余/本月应收款是系统算的,序号/合计是装饰;
+// 数字样表头是脏单元格)。注意「N月结余」不在此列——它是 balancePrev 的动态标签,要匹配不要忽略。
+const LEDGER_UNMATCHED_IGNORE_RE = /应收合计|本月结余|本月应收款|^序号|合计|^小计|^总计/
+
 function ledgerColumnMap(prevMonth: number | null): ColumnMapEntry[] {
   const labelByKey: Record<string, string> = {}
   for (const g of lgColumns(0).groups) for (const c of g.cols) labelByKey[c.key] = c.label
   return [
     ...FEE_KEYS.map(k => ({ label: labelByKey[k], key: k as string, aliases: LEDGER_ALIASES[k] })),
-    // balancePrev 主 label 仍动态单标签(模板列不双列诱导,复审①);「上月结余」走别名只参与匹配
-    { label: prevMonth != null ? prevMonth + '月结余' : '上月结余', key: 'balancePrev', aliases: ['上月结余'] },
+    // balancePrev 主 label 动态单标签(模板列不双列诱导,复审①);变体走别名只参与匹配
+    balancePrevEntry(prevMonth),
     { label: '本月收款', key: 'totalCollected' },
     { label: '备注', key: 'note', text: true },
   ]
@@ -161,7 +190,7 @@ function mergeSameNameRecords(records: ImportRec[]): ImportRec[] {
 //    (如整列「创显」)→ 该文本即公司名。租户列右侧的备注/费用列天然出局,不会被误判成公司(复审①)。
 // ② sheet 名等于/包含某已有管理公司名 → 该公司
 // ③ 都没有 → undefined,调用方回退屏/表单上下文公司
-function parseLedgerSheet(matrix: string[][], ctxPrev: number | null, sheetName: string, companyNames?: string[]) {
+function parseLedgerSheet(matrix: string[][], ctxPrev: number | null, sheetName: string, companyNames?: string[], def?: BookDef | null) {
   let ym: { year: number; month: number } | undefined
   for (const row of matrix.slice(0, 3)) {
     for (const c of row) {
@@ -170,9 +199,11 @@ function parseLedgerSheet(matrix: string[][], ctxPrev: number | null, sheetName:
     }
     if (ym) break
   }
-  const columnMap = ledgerColumnMap(ym ? (ym.month === 1 ? 12 : ym.month - 1) : ctxPrev)
-  const res = matchByHeader(matrix, columnMap, ['租户'], undefined, { skipName: isGarbageTenantName })   // 垃圾行过滤(规范§九 v4)
-  if (res.error || !res.records.length) return { records: [] as ImportRec[], error: res.error, ym, company: undefined as string | undefined }
+  const prevOfSheet = ym ? (ym.month === 1 ? 12 : ym.month - 1) : ctxPrev
+  const columnMap = def ? ledgerColumnMapFromDef(def, prevOfSheet) : ledgerColumnMap(prevOfSheet)
+  const res = matchByHeader(matrix, columnMap, ['租户'], undefined,
+    { skipName: isGarbageTenantName, keepUnmatched: true })   // 垃圾行过滤(规范§九 v4);§4 未匹配列上浮
+  if (res.error || !res.records.length) return { records: [] as ImportRec[], error: res.error, ym, company: undefined as string | undefined, unmatched: res.unmatched ?? [] }
   const { nameCol, headerEnd } = res.meta!
   // 分母与 records 同口径:垃圾行也剔除,否则垃圾行占比≥10% 时 90% 标记列规则失效(复审)
   const dataRows = matrix.slice(headerEnd + 1).filter(r => { const n = String(r[nameCol] ?? '').trim(); return n !== '' && !/合计|小计|总计/.test(n) && !isGarbageTenantName(n) })
@@ -186,7 +217,7 @@ function parseLedgerSheet(matrix: string[][], ctxPrev: number | null, sheetName:
   const records = mergeSameNameRecords(res.records)
   // 合并后重建 __preview:否则确认屏预览表对被合并租户显示首行未合并金额(复审:预览口径失真)
   for (const r of records) r.__preview = [r.tenantName, ...columnMap.map(c => (c.text ? r[c.key] : r[c.key] as number) || '')]
-  return { records, error: undefined as string | undefined, ym, company }
+  return { records, error: undefined as string | undefined, ym, company, unmatched: res.unmatched ?? [] }
 }
 
 // budget 导入:2025 起发生额列以 pnl 实时推算为单一事实源(spec「导入」节)。解析器是同步的,
@@ -238,6 +269,13 @@ export interface ImportCtx {
   buildings?: { id: number; name: string }[]  // 楼栋清单(meter §6.3 区域→楼栋映射;视图填,BuildingDTO 结构兼容)
   cats?: ChargingCatLite[]   // 充电桩运营商字典(视图填 ChargingCatDTO[],结构兼容)
   _parseErrors?: { rowIndex: number; label: string; reason: string }[]
+  // ── 账册模板(BOOK-WORKBENCH-SPEC):视图填,缺省走静态 lgColumns/layout.ts 回退 ──
+  bookDef?: BookDef                            // 台账:当前账册现行版定义(列匹配以它为准,含 hidden)
+  bookDefs?: Partial<Record<number, BookDef>>  // 附表10:phase→现行版定义(office=1∪4,factory=2∪3 取并集)
+  // §4 禁静默丢列:台账通路发现未匹配列时回调视图弹「列匹配面板」;
+  // 视图负责持久化决策(加别名/新建列走 saveTemplate)后返回更新后的 def 与本次忽略清单;null=用户取消。
+  // 不给回调(导入中心等无面板宿主)→ 未匹配列直接整批拦,报错指去台账页处置。
+  resolveUnmatched?: (unmatched: { header: string; sample?: string }[]) => Promise<{ def: BookDef; ignore: string[] } | null>
   _bfReport?: BillingReportRow[]   // 计费字段导入:解析期到户报告,导入成功后落 CSV(裁定⑤)
   _cfReport?: ContractReportRow[]  // 合同汇总册导入:解析期到户报告(与 rows 同序),导入后并入后端匹配结果落 CSV
 }
@@ -276,9 +314,14 @@ const zero = (): ImportResultDTO => ({ imported: 0, skipped: 0, errors: [] })
 const toLedgerRow = (r: ImportRec): LedgerImportRow => {
   const row: LedgerImportRow = { tenantName: String(r.tenantName) }
   for (const k of FEE_KEYS) if (r[k] !== undefined) row[k] = r[k] as number
+  // 结余:照常上送——后端按链上位置定夺(首现月=期初收下,非首现=派生位忽略)
   if (r.balancePrev !== undefined) row.balancePrev = r.balancePrev as number
   if (r.totalCollected !== undefined) row.totalCollected = r.totalCollected as number
   if (r.note !== undefined) row.note = r.note as string
+  // 自定义列(方案A §4):c_ 键收进口袋,键出现=覆盖(含显式0),缺席=不动
+  const extras: Record<string, number> = {}
+  for (const k of Object.keys(r)) if (k.startsWith('c_') && r[k] !== undefined) extras[k] = r[k] as number
+  if (Object.keys(extras).length) row.extraFees = extras
   return row
 }
 
@@ -339,26 +382,64 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
     key: 'ledger', label: '月度台账', tag: '凭证', icon: 'book-open', context: 'ledger', module: 'entry:edit',
     modalProps: (ctx) => {
       const prev = ctx.month ? (ctx.month === 1 ? 12 : ctx.month - 1) : null
-      const columnMap = ledgerColumnMap(prev)
+      // §3 现行版全局生效:弹窗「模板列顺序」与确认屏预览列序都跟账册现行版;无 def 才退静态种子表
+      const columnMap = ctx.bookDef ? ledgerColumnMapFromDef(ctx.bookDef, prev) : ledgerColumnMap(prev)
       return {
         title: '导入 月度台账' + (ctx.companyName ? ' · ' + ctx.companyName : ''),
         sub: `按表头名字自动识别列,需包含表头;可整表粘贴(前置公司列/合计行/应收结余列自动忽略),导入到 ${ctx.year} 年 ${ctx.month} 月`,
         templateCols: ['租户', ...columnMap.map(c => c.label)],
         // 整册多 sheet 拆段(规范§二;粘贴路径被 FpImportModal 包装为单 sheet,语义同旧 customParse)
         // v3:每 sheet 先按块起点切分(同 sheet 多月纵向堆叠,规范§五),每块作虚拟 sheet 原样解析
-        parseWorkbook: (sheets: { name: string; matrix: string[][] }[]) => {
-          const parsed = sheets.flatMap(s =>
-            splitLedgerBlocks(s.matrix).map(block => parseLedgerSheet(block, prev, s.name, ctx.companyNames)))
+        parseWorkbook: async (sheets: { name: string; matrix: string[][] }[]) => {
+          const parseAll = (def: BookDef | null) => sheets.flatMap(s =>
+            splitLedgerBlocks(s.matrix).map(block => parseLedgerSheet(block, prev, s.name, ctx.companyNames, def)))
+          let def = ctx.bookDef ?? null
+          let parsed = parseAll(def)
+          // §4 禁静默丢列:全册未匹配表头并集(剔除派生/装饰列)→ 有面板宿主就地处置,没有则整批拦
+          const collect = (ps: typeof parsed) => {
+            const seen = new Map<string, string | undefined>()
+            for (const p of ps) for (const u of p.unmatched)
+              if (!LEDGER_UNMATCHED_IGNORE_RE.test(u.header) && !isNumericLike(u.header) && !seen.has(u.header))
+                seen.set(u.header, undefined)
+            return [...seen.keys()]
+          }
+          let warning: string | undefined
+          const pending = collect(parsed)
+          if (pending.length) {
+            if (!ctx.resolveUnmatched) return { error: `${pending.length} 个表头未匹配任何列:${pending.join('、')}。台账导入不丢列——请到「月度台账」页导入以当场处置,或先在打开「账册模板」为这些表头添加别名/自定义列。` }
+            const dec = await ctx.resolveUnmatched(pending.map(h => ({ header: h })))
+            if (!dec) return { error: '导入已取消:存在未处置的未匹配列。' }
+            def = dec.def
+            parsed = parseAll(def)
+            // §4 出口③:显式忽略的列必须留痕,不许就地蒸发(审查#23)
+            const notes: string[] = []
+            if (dec.ignore.length) notes.push(`按「忽略」处理未导入:${dec.ignore.join('、')}`)
+            const left = collect(parsed).filter(h => !dec.ignore.includes(h))
+            if (left.length) notes.push(`仍未匹配已跳过:${left.join('、')}`)
+            if (notes.length) warning = notes.join(';')
+          }
+          // §3:命中隐藏列要提示(值入库但表格不显示,不静默——审查#20/#27)
+          if (def) {
+            const hiddenById = new Map(flattenCols(def).filter(c => c.hidden).map(c => [c.id, c.label]))
+            if (hiddenById.size) {
+              const hit = new Set<string>()
+              for (const p of parsed) for (const r of p.records)
+                for (const id of hiddenById.keys()) if (r[id] !== undefined) hit.add(hiddenById.get(id)!)
+              if (hit.size) warning = (warning ? warning + ';' : '')
+                + `命中隐藏列:${[...hit].join('、')} —— 值已入库,当前表格不显示(编辑模板可取消隐藏)`
+            }
+          }
           const withRecords = parsed.filter(p => p.records.length)
           if (!withRecords.length) return { error: parsed.find(p => p.error)?.error ?? '已读取数据,但没识别到任何有效记录。' }
           // 有记录的 sheet 仅 1 个 → 平铺(现有预检/双 confirm 流程不变),识别年月照旧挂行
           if (withRecords.length === 1) {
             const p = withRecords[0]
             if (p.ym) for (const r of p.records) r.__ymDetected = p.ym
-            return { records: p.records }
+            return { records: p.records, warning }
           }
           // ≥2 个 → 拆段:records 各自携带 __company/__ym(run 逐段落库),label 供确认屏勾选
           return {
+            warning,
             sections: withRecords.map(p => ({
               label: `${p.company ?? ctx.companyName ?? '当前公司'} · ` +
                 (p.ym ? `${p.ym.year}年${p.ym.month}月` : `${ctx.year}年${ctx.month}月(未识别,用当前)`),
@@ -402,20 +483,46 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
   },
   {
     key: 's10', label: '销售收入', tag: '附表10', icon: 'coins', context: 'none', module: 'entry:edit',
-    modalProps: () => ({
-      title: '导入 附表10 · 智能整表',
-      sub: '上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入',
-      templateCols: phaseLayoutsCol.factory.map(c => c.label),
-      phaseLayouts: phaseLayoutsCol, nameLabels: ['租户名称', '租户'],
-    }),
+    modalProps: (ctx) => {
+      // 模板驱动版面:office=一期∪宿舍册并集,factory=二期∪三期并集(解析期 phase 未知只能并集;
+      // 某期册没有的 c_ 列,后端按期册校验会逐行报错,不会静默入错册)。def 缺省 → 静态 layout.ts 回退。
+      const union = (defs: (BookDef | undefined)[]): ColumnMapEntry[] => {
+        const byId = new Map<string, ColumnMapEntry>()
+        for (const d of defs) if (d) for (const c of flattenCols(d)) {
+          const prev0 = byId.get(c.id)
+          if (!prev0) byId.set(c.id, { label: c.label, key: c.id, aliases: c.aliases.length ? [...c.aliases] : undefined })
+          else if (c.aliases.length) prev0.aliases = [...new Set([...(prev0.aliases ?? []), ...c.aliases])]
+        }
+        return [...byId.values()]
+      }
+      const layouts = ctx.bookDefs
+        ? { office: union([ctx.bookDefs[1], ctx.bookDefs[4]]), factory: union([ctx.bookDefs[2], ctx.bookDefs[3]]) }
+        : phaseLayoutsCol
+      return {
+        title: '导入 附表10 · 智能整表',
+        sub: '上传/粘贴整张多段 Excel,系统按标题行自动拆段、识别年/月/期与版面,核对后逐段导入',
+        templateCols: layouts.factory.map(c => c.label),
+        phaseLayouts: layouts, nameLabels: ['租户名称', '租户'],
+      }
+    },
     run: async (payload) => {
       const picks = payload as Pick[]
       const agg = zero()
       for (const p of picks) {
         const acctMonth = `${p.year}-${pad2(p.month!)}`
         // r 的运行时形状 = tenantName + 该版面 colId(colId 即 keyof S10Fees,见 layout.ts)
-        const rows: S10ImportRow[] = p.records.map(r =>
-          ({ profile: PHASE_LAYOUT[p.phase!], ...(r as Partial<S10Fees> & { tenantName: string }) }))
+        const rows: S10ImportRow[] = p.records.map(r => {
+          // __ 内部键挡在 POST 外;c_ 自定义列收进口袋(方案A)
+          const row: Record<string, unknown> = { profile: PHASE_LAYOUT[p.phase!] }
+          const extras: Record<string, number> = {}
+          for (const [k, v] of Object.entries(r)) {
+            if (k.startsWith('__') || v === undefined) continue
+            if (k.startsWith('c_')) { extras[k] = v as number; continue }
+            row[k] = v
+          }
+          if (Object.keys(extras).length) row.extraFees = extras
+          return row as unknown as S10ImportRow
+        })
         const res = await s10Api.importRows({ phase: p.phase!, acctMonth, rows })
         agg.imported += res.imported; agg.skipped += res.skipped; agg.errors.push(...res.errors)
       }
