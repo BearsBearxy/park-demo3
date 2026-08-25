@@ -480,6 +480,7 @@ async function runLedgerImport(recs: ImportRec[], fileName: string) {
     importResult.value = await runImport('ledger', recs,
       { companyId: companyId.value!, companyName: companyName.value, year: year.value, month: month.value! }, fileName)
     await loadMonth()
+    refreshDraftAfterImport()
     await afterImportIssues()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -491,10 +492,19 @@ async function runSectionsImport(picks: SectionPick[], fileName: string) {
     importResult.value = await runImport('ledger', picks,
       { companyId: companyId.value!, companyName: companyName.value, year: year.value, month: month.value! }, fileName)
     await loadMonth()
+    refreshDraftAfterImport()
     await afterImportIssues()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
   }
+}
+
+// 导入落库后编辑态渲染的是 draft:不重建就一直空表到点保存(2026-08-24 用户点名 bug)。
+// 沿用进入编辑时的构建逻辑重建、清删除记账;导入前 LedgerWideTable 已做脏确认,这里直接重建不再问。
+function refreshDraftAfterImport() {
+  if (!edit.value) return
+  snapshotDraft()
+  deletedKeys.value = new Set()
 }
 
 // ── 未绑定问题抽屉(V105) ─────────────────────────────────
@@ -686,12 +696,14 @@ function gotoTenants() {
     </div>
   </div>
 
-  <!-- 模板编辑器(编辑模式入口在宽表工具栏;save/rollback 结果就地更新 book,列即时重算) -->
+  <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/rollback 结果就地更新 book,列即时重算;
+       写权限走第16权限点 book-template:edit,无权时面板只读预览) -->
   <TemplateEditorPanel
     :open="tplOpen"
     :book="book"
     :versions="tplVersions"
     :saving="tplSaving"
+    :can-edit="auth.can('book-template:edit')"
     @save="onTplSave"
     @rollback="onTplRollback"
     @close="tplOpen = false"

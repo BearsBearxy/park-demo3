@@ -146,10 +146,12 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
             <!-- 租户名 (text):两态统一为可点击文本,点开行明细抽屉(账面名/绑定都在抽屉里改——
                  与园区抄表同一动线:表格不做行内改名,用户 2026-08-23 拍板)。
                  名字独立 span:深链 flashFocusRow 按 .lg-tname-txt 精确匹配,徽章文本不得混进名字 -->
-            <span v-if="c.kind === 'text'" class="lg-tname" :title="row.tenantName + ' · 点击查看明细/绑定'"
+            <span v-if="c.kind === 'text'" class="lg-tname"
+                  :title="row.tenantName + (row.carried ? ' · 上月结转,本月未记账' : ' · 点击查看明细/绑定')"
                   @click="emit('tenant-click', row)">
-              <span class="lg-tname-txt">{{ row.tenantName }}</span>
-              <span v-if="row.tenantId == null" class="lg-unbound">未绑定</span>
+              <span class="lg-tname-txt" :class="{ carried: row.carried }">{{ row.tenantName }}</span>
+              <!-- 未绑定:紧凑圆点(文字胶囊会把长租户名挤到看不见,用户 2026-08-24 拍板);语义进 title -->
+              <span v-if="row.tenantId == null" class="lg-unbound-dot" title="未绑定租户档案 · 点击行名处理"></span>
               <component :is="ChevronRight" :size="13" class="ch" />
             </span>
             <!-- 应收合计 (sum, 派生只读) -->
@@ -163,8 +165,14 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
                      @input="onInput(ledgerRowKey(row), 'note', $event)" />
               <span v-else class="lg-note" :title="row.note ?? ''">{{ row.note || '' }}</span>
             </template>
-            <!-- balancePrev (num, 只读) -->
-            <span v-else-if="c.key === 'balancePrev'" class="lg-nv" :class="{ empty: !row.balancePrev }" :title="lgFmt(row.balancePrev)">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            <!-- balancePrev:结余链派生位只读(=上月期末);首次出现月=期初,编辑态可录(全链唯一人工位) -->
+            <template v-else-if="c.key === 'balancePrev'">
+              <input v-if="edit && !row.balancePrevDerived" class="lg-ni" type="number"
+                     :value="row.balancePrev === 0 ? '' : row.balancePrev" placeholder="期初"
+                     @input="onInput(ledgerRowKey(row), 'balancePrev', $event)" />
+              <span v-else class="lg-nv" :class="{ empty: !row.balancePrev }"
+                    :title="lgFmt(row.balancePrev) + (row.balancePrevDerived ? ' · 自动=上月期末' : '')">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
+            </template>
             <!-- totalCollected + 21 费用列 (number, 编辑态可输入) -->
             <template v-else>
               <input v-if="edit" class="lg-ni" type="number"
@@ -221,14 +229,14 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
 .lg-selc { width:32px; min-width:32px; max-width:32px; text-align:center; padding:0 !important; }
 .lg-cb { width:14px; height:14px; accent-color:var(--hue-blue); cursor:pointer; vertical-align:middle; }
 .lg-tname:hover { color:var(--hue-blue); }
-/* 未绑定标签:琥珀小胶囊(语义=警示,非禁用) */
-.lg-unbound {
-  flex:0 0 auto; font-size:11px; font-weight:var(--fw-medium); line-height:1;
-  padding:2px 6px; border-radius:var(--radius-full);
-  color:var(--status-warning); background:transparent;
-  border:1px solid var(--status-warning);
+/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title */
+.lg-unbound-dot {
+  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
+  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
 }
 .lg-tname-txt { overflow:hidden; text-overflow:ellipsis; }
+/* 结转虚行:名字弱化提示「未记账」(结余列仍正常显示,费用列本就留空) */
+.lg-tname-txt.carried { color:var(--text-muted); font-style:normal; }
 .lg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .lg-table tbody tr:hover .lg-tname .ch { opacity:1; }
 /* .lg-nv/.lg-sumc 保留 ellipsis(spec §W4 降级取舍):费用列已随内容撑宽,永不触发;

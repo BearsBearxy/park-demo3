@@ -193,8 +193,10 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
                    用户 2026-08-23 拍板「不在表格上直接修改」) -->
               <span class="s10-tname act" :title="r.tenantName + ' · 点击查看/绑定租户'"
                     @click="emit('bindRow', r)">{{ r.tenantName }}</span>
-              <span v-if="r.tenantId == null" class="s10-unbound act" title="点击绑定租户"
-                    @click="emit('bindRow', r)">未绑定</span>
+              <!-- 未绑定:紧凑圆点(文字胶囊会挤长租户名,与台账 .lg-unbound-dot 对齐,2026-08-24 拍板);
+                   语义进 title,点击仍触发 bindRow -->
+              <span v-if="r.tenantId == null" class="s10-unbound-dot" title="未绑定租户档案 · 点击处理"
+                    @click="emit('bindRow', r)"></span>
               <span v-if="r.source !== 'seed'" class="s10-userbadge">手动</span>
               <button
                 v-if="edit && r.source !== 'seed'"
@@ -296,12 +298,13 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 .s10-cb:disabled { cursor:not-allowed; opacity:.4; }
 .s10-tname { font-weight:var(--fw-medium); color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; }
 .s10-userbadge { display:inline-flex; align-items:center; height:17px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-sky); color:var(--hue-blue); font-size:10px; font-weight:var(--fw-semibold); flex:0 0 auto; }
-.s10-unbound {
-  flex: 0 0 auto; font-size: 11px; font-weight: var(--fw-medium); line-height: 1;
-  padding: 2px 6px; border-radius: var(--radius-full);
-  color: var(--status-warning); border: 1px solid var(--status-warning); background: transparent;
+/* 未绑定:紧凑圆点(琥珀描边,warning 语义);完整提示走 title(对齐台账 .lg-unbound-dot) */
+.s10-unbound-dot {
+  flex:0 0 auto; width:8px; height:8px; border-radius:50%;
+  border:2px solid var(--status-warning); background:transparent; box-sizing:border-box;
+  cursor:pointer;
 }
-.s10-unbound.act, .s10-tname.act { cursor: pointer; }
+.s10-tname.act { cursor: pointer; }
 .s10-tname.act:hover { color: var(--hue-blue); }
 .s10-del { width:24px; height:24px; border:none; background:transparent; border-radius:6px; color:var(--text-disabled); cursor:pointer; display:grid; place-items:center; flex:0 0 auto; margin-left:auto; opacity:0; }
 .s10-row:hover .s10-del { opacity:1; }

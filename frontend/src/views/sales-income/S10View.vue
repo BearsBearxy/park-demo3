@@ -276,7 +276,14 @@ const onExport = () => guard('导出失败', async () => {
   await exportS10Month(monthData.value, '附表10 · 销售收入', bookDef.value)
 })
 
-// ── 模板编辑(§3):编辑模式门内入口,当前左轨选中的那一册 ─────────
+// 编辑态 ⋯ 溢出菜单分发(账册模板/导出)
+function onMoreSelect(key: string) {
+  if (key === 'tpl') openTpl()
+  else if (key === 'export') void onExport()
+}
+
+// ── 模板编辑(§3):两态常驻「账册模板」入口(浏览态主行/编辑态⋯,同台账口径),
+//    当前左轨选中的那一册;写权限由第16权限点 book-template:edit 门内控(canEdit 传面板) ──
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
@@ -510,15 +517,18 @@ function onImportClick() {
                   新增租户
                 </Button>
                 <span class="s10-tbsep" aria-hidden="true" />
-                <Button variant="outline" size="sm" @click="openTpl">
-                  <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
-                  编辑模板
-                </Button>
-                <span class="s10-tbsep" aria-hidden="true" />
-                <!-- 只读动作编辑态降级不消失(§5-3):导出收进 ⋯ -->
-                <FPMoreMenu :items="[{ key: 'export', label: '导出', icon: 'download' }]" @select="onExport" />
+                <!-- 编辑态降级不消失(§5-3):账册模板/导出收进 ⋯ -->
+                <FPMoreMenu :items="[
+                  { key: 'tpl', label: '账册模板', icon: 'sliders-horizontal' },
+                  { key: 'export', label: '导出', icon: 'download' },
+                ]" @select="onMoreSelect" />
               </template>
               <template #static-actions>
+                <!-- 账册模板两态常驻(同台账口径):浏览态主行,编辑态收进上面的 ⋯ -->
+                <Button v-if="!edit" variant="outline" size="sm" @click="openTpl">
+                  <template #leading><component :is="iconFor('sliders-horizontal')" :size="14" /></template>
+                  账册模板
+                </Button>
                 <Button v-if="!edit" variant="outline" size="sm" @click="onExport">
                   <template #leading><component :is="iconFor('download')" :size="14" /></template>
                   导出
@@ -638,12 +648,13 @@ function onImportClick() {
       />
     </FPSideDrawer>
 
-    <!-- 模板编辑器(编辑模式入口,当前左轨选中的那一册) -->
+    <!-- 模板编辑器(两态常驻入口,当前左轨选中的那一册;写权限 book-template:edit) -->
     <TemplateEditorPanel
       :open="tplOpen"
       :book="activeBook"
       :versions="tplVersions"
       :saving="tplSaving"
+      :can-edit="auth.can('book-template:edit')"
       @save="onTplSave"
       @rollback="onTplRollback"
       @close="tplOpen = false"

@@ -128,7 +128,7 @@ async function mapMatrix(matrix: string[][]) {
     // §4 禁静默丢列:段级未匹配表头(剔除派生/合计类)显式亮警告——附表10 通路先警告不阻断,处置走模板编辑器
     const un = [...new Set(secs.flatMap(x => (x.unmatched ?? []).map(u => u.header)))]
       .filter(h => !/应收合计|本月结余|^序号|合计|^小计|^总计/.test(h))
-    warn.value = un.length ? `未匹配列本次已忽略:${un.join('、')} —— 编辑模式打开「编辑模板」为其添加别名或自定义列后重导` : ''
+    warn.value = un.length ? `未匹配列本次已忽略:${un.join('、')} —— 打开「账册模板」为其添加别名或自定义列后重导` : ''
     err.value = ''; sections.value = secs; records.value = null; return
   }
   // 工资多月分段模式:按标题切月 → 每段 matchByHeader → 汇总确认屏(隐期),复用 sections 状态

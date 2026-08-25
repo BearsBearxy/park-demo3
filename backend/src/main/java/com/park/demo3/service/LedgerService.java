@@ -122,6 +122,57 @@ public class LedgerService {
             .toList();
     }
 
+    // ── 结余链写时归一(2026-08-24 拍板;2026-08-25 修订为**严格相邻**) ──
+    // 「上月结余」只能是**上一个自然月**的期末:某户在 (y,m) 的 balance_prev,
+    // 仅当该户在 (y,m-1) 有记录时才强制派生;上一自然月没记录 → 该月是链起点,
+    // 保留存量 balance_prev(期初,人工/导入唯一可录的位置)。
+    // ⚠ 早期版本按「上一个有据月」跨空洞前滚 —— 零散补录历史月会把后面月份的期初改坏
+    //   (实例:B2 只补了 2024-01,2025-01 的期初被它的期末覆盖,跳过 2024 年 11 个月)。
+    // 任何写入(保存/导入/复制上月/绑定/改名)后调用;读路径与 recalc 口径零改动。
+    @Transactional
+    public void rechain(Integer companyId) {
+        List<MonthlyLedger> all = ledger.selectList(new QueryWrapper<MonthlyLedger>()
+            .eq("company_id", companyId)
+            .orderByAsc("period_year").orderByAsc("period_month"));
+        // key → [上次出现的 ym 序号, 该月期末];ym 序号 = year*12 + (month-1),相邻即差 1
+        Map<String, long[]> last = new HashMap<>();
+        Map<String, BigDecimal> lastEnd = new HashMap<>();
+        for (MonthlyLedger l : all) {
+            String key = chainKey(l);
+            long ym = ymIndex(l.getPeriodYear(), l.getPeriodMonth());
+            long[] prev = last.get(key);
+            if (prev != null && prev[0] == ym - 1) {          // 紧邻上月有记录 → 派生位
+                BigDecimal expect = lastEnd.get(key);
+                if (r2(nz(l.getBalancePrev())).compareTo(expect) != 0) {
+                    l.setBalancePrev(expect);
+                    ledger.updateById(l);
+                } else {
+                    l.setBalancePrev(expect);                 // 仅 scale 差:内存对齐不落库
+                }
+            }                                                  // 否则:链起点,期初原样保留
+            last.put(key, new long[]{ ym });
+            lastEnd.put(key, recalc(l)[1]);
+        }
+    }
+
+    private static long ymIndex(int year, int month) { return (long) year * 12 + (month - 1); }
+
+    private static String chainKey(MonthlyLedger l) {
+        return l.getTenantId() != null ? "t:" + l.getTenantId() : "n:" + nzs(l.getTenantName()).trim();
+    }
+
+    /** **上一个自然月**的链上状态:键 → 该月期末与身份(严格相邻,不跨空洞)。
+     *  month() 用它标派生位并生成结转虚行;save()/importRows 用键集判定结余是否为派生位。
+     *  上一自然月没这户 = 本月是链起点 → 结余是期初,可人工录/可导入。 */
+    private record Prior(Integer tenantId, String tenantName, BigDecimal end) {}
+    private Map<String, Prior> prevMonthChain(Integer companyId, int year, int month) {
+        int pm = prevMonth(month), py = month == 1 ? year - 1 : year;
+        Map<String, Prior> out = new HashMap<>();
+        for (MonthlyLedger l : ledger.selectMonth(companyId, py, pm))
+            out.put(chainKey(l), new Prior(l.getTenantId(), l.getTenantName(), recalc(l)[1]));
+        return out;
+    }
+
     // ── overview ──
     public LedgerOverviewDTO overview(Integer companyId, int year) {
         ManagementCompany company = companies.selectById(companyId);
@@ -173,13 +224,35 @@ public class LedgerService {
         stored.sort(Comparator.comparing(MonthlyLedger::getTenantId,
                 Comparator.nullsLast(Comparator.naturalOrder()))
             .thenComparing(l -> nzs(l.getTenantName())));
-        List<Integer> boundIds = stored.stream().map(MonthlyLedger::getTenantId).filter(Objects::nonNull).toList();
+        Map<String, Prior> prior = prevMonthChain(companyId, year, month);
+        Set<String> present = stored.stream().map(LedgerService::chainKey).collect(Collectors.toSet());
+        // 结转虚行(2026-08-24 拍板):**上月**期末≠0 且本月无存储行的键 → 只带结余的虚行
+        // (不落库,费用列留空);编辑态在虚行录数,保存即落成真行。期末=0 的老户自然消失。
+        // 严格相邻:上月没账就不结转——中间断月时不拿更早的期末冒充「上月结余」。
+        List<MonthlyLedger> carried = new ArrayList<>();
+        for (Map.Entry<String, Prior> e : prior.entrySet()) {
+            if (present.contains(e.getKey()) || e.getValue().end().signum() == 0) continue;
+            MonthlyLedger v = zeroRow(companyId, e.getValue().tenantId(), year, month);
+            v.setTenantName(e.getValue().tenantName());
+            v.setBalancePrev(e.getValue().end());
+            carried.add(v);
+        }
+        List<MonthlyLedger> all = new ArrayList<>(stored);
+        all.addAll(carried);
+        all.sort(Comparator.comparing(MonthlyLedger::getTenantId,
+                Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(l -> nzs(l.getTenantName())));
+        Set<MonthlyLedger> carriedSet = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        carriedSet.addAll(carried);
+
+        List<Integer> boundIds = all.stream().map(MonthlyLedger::getTenantId).filter(Objects::nonNull).toList();
         Map<Integer, String> names = boundIds.isEmpty() ? Map.of()
             : tenants.selectBatchIds(boundIds).stream()
                 .collect(Collectors.toMap(Tenant::getId, Tenant::getCompanyName));
 
-        List<LedgerRowDTO> rows = new ArrayList<>(stored.size());
-        for (MonthlyLedger l : stored) rows.add(toRowDTO(l, displayName(l, names)));
+        List<LedgerRowDTO> rows = new ArrayList<>(all.size());
+        for (MonthlyLedger l : all)
+            rows.add(toRowDTO(l, displayName(l, names), prior.containsKey(chainKey(l)), carriedSet.contains(l)));
         return new LedgerMonthDTO(company.getName(), year, month, prevMonth(month), rows, footer(rows));
     }
 
@@ -209,11 +282,23 @@ public class LedgerService {
             .filter(l -> l.getTenantId() != null)
             .collect(Collectors.toMap(MonthlyLedger::getTenantId, l -> l, (a, b) -> a));
 
+        // 未绑定行按账面名的身份索引(结转虚行/软引用行的第三径)
+        Map<String, MonthlyLedger> byName = new HashMap<>();
+        for (MonthlyLedger l : storedRows)
+            if (l.getTenantId() == null && l.getTenantName() != null)
+                byName.putIfAbsent(l.getTenantName().trim(), l);
+        // 结余链键集(上一自然月):空行判定里「派生结余」不算内容(结转虚行原样送回不落库)
+        Set<String> priorKeys = prevMonthChain(companyId, year, month).keySet();
+
         // 懒构建(评审E4):最高频的「纯改数保存」不碰租户表;出现新增行或改名的未绑定行才拉
         boolean needTenants = false;
         for (LedgerSaveRequest.Row row : req.rows()) {
-            if (row.id() == null && row.tenantId() == null)
-                throw new BizException(ResultCode.BAD_REQUEST, "台账行缺少身份(tenantId 或 id)");
+            if (row.id() == null && row.tenantId() == null) {
+                String nm = row.tenantName() == null ? "" : row.tenantName().trim();
+                if (nm.isEmpty())
+                    throw new BizException(ResultCode.BAD_REQUEST, "台账行缺少身份(tenantId / id / 账面名)");
+                needTenants = true; break;   // 名径可能落新未绑定行,softIdx 配档要租户表
+            }
             if (row.id() == null && byTenant.get(row.tenantId()) == null) { needTenants = true; break; }
             MonthlyLedger ex = row.id() != null ? byId.get(row.id()) : null;
             if (ex != null && ex.getTenantId() == null
@@ -233,12 +318,33 @@ public class LedgerService {
         }
 
         for (LedgerSaveRequest.Row row : req.rows()) {
+            String rowKey = row.tenantId() != null ? "t:" + row.tenantId()
+                : "n:" + (row.tenantName() == null ? "" : row.tenantName().trim());
+            // 空判定:费用/收款/备注/口袋全空,且结余要么为 0 要么是链上派生位(不算人工内容)。
+            // 结转虚行原样送回 → 空 → 不落库;真行清空 → 删除,下月自然回虚行。
+            boolean blank = isBlankContent(row)
+                && (priorKeys.contains(rowKey) || nz(row.balancePrev()).signum() == 0);
             MonthlyLedger existing = row.id() != null ? byId.get(row.id())
-                : (row.tenantId() != null ? byTenant.get(row.tenantId()) : null);
+                : (row.tenantId() != null ? byTenant.get(row.tenantId())
+                    : byName.get(row.tenantName().trim()));
             if (row.id() != null && existing == null) continue;             // 行已被并发删除:静默跳过
+            if (existing == null && row.tenantId() == null) {                // 名径新行(结转虚行落地/软引用新行)
+                if (blank) continue;
+                String nm = row.tenantName().trim();
+                MonthlyLedger l = zeroRow(companyId, null, year, month);
+                l.setTenantName(nm);
+                // 同 import 语义:能唯一配档且该租户本月无行 → 顺手绑上;否则保持未绑定
+                Integer hit = softIdx.get(nm);
+                if (hit != null && !byTenant.containsKey(hit)) { l.setTenantId(hit); byTenant.put(hit, l); }
+                assertKnownExtraKeys(allowedExtra, row, nm);
+                applyRow(l, row);
+                ledger.insert(l);
+                byName.put(nm, l);
+                continue;
+            }
             if (existing == null) {                                          // 新增行:必须带可用租户
                 if (!knownIds.contains(row.tenantId())) continue;
-                if (isBlank(row)) continue;
+                if (blank) continue;
                 MonthlyLedger l = zeroRow(companyId, row.tenantId(), year, month);
                 l.setTenantName(row.tenantName() != null && !row.tenantName().isBlank()
                     ? row.tenantName().trim() : archive.get(row.tenantId()));
@@ -248,7 +354,7 @@ public class LedgerService {
                 byTenant.put(l.getTenantId(), l);
                 continue;
             }
-            if (isBlank(row)) { ledger.deleteById(existing.getId()); continue; }
+            if (blank) { ledger.deleteById(existing.getId()); continue; }
             // 改名(账面名快照;绑定行只改快照不动身份 —— 账面名与档案名允许不一致)
             String newName = row.tenantName() != null && !row.tenantName().isBlank()
                 ? row.tenantName().trim() : null;
@@ -266,6 +372,7 @@ public class LedgerService {
             applyRow(existing, row);
             ledger.updateById(existing);
         }
+        rechain(companyId);   // 结余链:保存后前滚归一(派生位强制=上月期末;首次出现月保留人工期初)
         return month(companyId, year, month);
     }
 
@@ -294,6 +401,8 @@ public class LedgerService {
             occupied.add(slot);
             bound++;
         }
+        // 绑定改写租户键(n:名 → t:id),结余链按新键重挂:重链所有涉及公司
+        unbound.stream().map(MonthlyLedger::getCompanyId).distinct().forEach(this::rechain);
         return new BindResultDTO(bound, conflicts);
     }
 
@@ -325,6 +434,7 @@ public class LedgerService {
         // 解绑必须显式置 NULL:updateById 跳过 null 字段,tenant_id 会保持原值(强填坑,同 MP null 不更新前例)
         ledger.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<MonthlyLedger>()
             .eq("id", rowId).set("tenant_id", tenantId));
+        rechain(l.getCompanyId());   // 绑定/解绑改写租户键,结余链重挂
         MonthlyLedger fresh = ledger.selectById(rowId);
         return toRowDTO(fresh, displayName(fresh, archiveNameOf(fresh.getTenantId())));
     }
@@ -359,6 +469,7 @@ public class LedgerService {
                 }
             }
             ledger.updateById(l);
+            rechain(l.getCompanyId());   // 未绑定行改名=改租户键(n:名),结余链重挂
         }
         return toRowDTO(l, displayName(l, archiveNameOf(l.getTenantId())));
     }
@@ -381,6 +492,9 @@ public class LedgerService {
 
         Map<String, Integer> byName = TenantService.softIndex(tenants.selectList(null));
         java.util.Set<String> allowedCustomIds = bookService.customIdsByCompany(companyId);
+        // 结余链:上一自然月已有该户记录 → 该月 balance_prev 是派生位,文件值忽略(以链为准);
+        // 上一自然月没有 = 本月是链起点 → 文件里的「上月结余」就是期初,照收(历史月未补时的唯一入口)
+        Set<String> priorKeys = prevMonthChain(companyId, year, month).keySet();
         List<MonthlyLedger> storedRows = ledger.selectMonth(companyId, year, month);
         Map<Integer, MonthlyLedger> stored = storedRows.stream()
             .filter(l -> l.getTenantId() != null)
@@ -426,8 +540,11 @@ public class LedgerService {
                 BigDecimal v = g.apply(row);
                 if (v != null && v.signum() != 0) { hasValue = true; break; }
             }
-            if (!hasValue && row.balancePrev() != null && row.balancePrev().signum() != 0) hasValue = true;
             if (!hasValue && row.totalCollected() != null && row.totalCollected().signum() != 0) hasValue = true;
+            // 期初也是内容:首现户只有一笔挂账结余(如戎合 249 万)的行必须入库;
+            // 派生位上的结余不算内容(源册带着它,但库里以链为准,不能靠它把空行救活)
+            boolean seedable = !priorKeys.contains(tenantId != null ? "t:" + tenantId : "n:" + name);
+            if (!hasValue && seedable && row.balancePrev() != null && row.balancePrev().signum() != 0) hasValue = true;
             // 口袋列也是内容:只带自定义列值的行不是全零行(否则静默跳过,§4 未知 id 检查也到不了)
             if (!hasValue && row.extraFees() != null)
                 for (BigDecimal v : row.extraFees().values())
@@ -456,7 +573,9 @@ public class LedgerService {
                 BigDecimal v = IMP_GET.get(f).apply(row);
                 if (v != null) FEE_SET.get(f).accept(l, r2(v));
             }
-            if (row.balancePrev() != null) l.setBalancePrev(r2(row.balancePrev()));
+            // 结余链:首现月吃文件里的「上月结余」当期初;非首现月是派生位,忽略文件值
+            // (rechain 随后会把它前滚归一;补齐历史月后本月自动从派生位接上,无需返工)
+            if (seedable && row.balancePrev() != null) l.setBalancePrev(r2(row.balancePrev()));
             if (row.totalCollected() != null) l.setTotalCollected(r2(row.totalCollected()));
             if (row.note() != null && !row.note().isBlank()) l.setNote(row.note().trim());
             // 自定义列:按键合并(§4;未知 id 已在实体写入前拦下)
@@ -475,6 +594,7 @@ public class LedgerService {
             imported++;
         }
         // 未绑定落库不是错误(照常入库),但必须知会(评审B2:导入中心 hub 此前对未绑定零信号)
+        rechain(companyId);   // 结余链:导入落库后前滚归一(含跨月空洞)
         List<ImportError> notices = new ArrayList<>();
         if (!unboundNow.isEmpty())
             notices.add(new ImportError(-1, "未绑定租户", unboundNow.size() + " 个账面名未匹配租户档案,已作为未绑定行导入 —— 到「月度台账」对应月份的问题面板绑定/改名/建档"));
@@ -510,6 +630,7 @@ public class LedgerService {
             l.setExtraFees(src.getExtraFees());   // 自定义列照搬(与 21 费用列同语义)
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
         }
+        rechain(companyId);   // 结余链:复制上月后前滚归一
         return month(companyId, year, month);
     }
 
@@ -539,9 +660,9 @@ public class LedgerService {
         return l;
     }
 
-    private static boolean isBlank(LedgerSaveRequest.Row row) {
+    /** 行内容是否全空(费用/收款/备注/口袋)。结余不在此判:是否算内容取决于链上派生与否,由调用处定。 */
+    private static boolean isBlankContent(LedgerSaveRequest.Row row) {
         for (var g : REQ_GET) if (nz(g.apply(row)).signum() != 0) return false;
-        if (nz(row.balancePrev()).signum() != 0) return false;
         if (nz(row.totalCollected()).signum() != 0) return false;
         if (row.extraFees() != null)
             for (BigDecimal v : row.extraFees().values())
@@ -568,9 +689,14 @@ public class LedgerService {
     }
 
     private static LedgerRowDTO toRowDTO(MonthlyLedger l, String tenantName) {
+        return toRowDTO(l, tenantName, false, false);   // 行级端点(绑定/改名)不带派生标记:前端只用它刷身份
+    }
+
+    private static LedgerRowDTO toRowDTO(MonthlyLedger l, String tenantName,
+                                         boolean balancePrevDerived, boolean carried) {
         BigDecimal[] d = recalc(l);
         return new LedgerRowDTO(
-            l.getId(), l.getTenantId(), tenantName, r2(l.getBalancePrev()),
+            l.getId(), l.getTenantId(), tenantName, r2(l.getBalancePrev()), balancePrevDerived, carried,
             r2(l.getFactoryRent()), r2(l.getFactoryMgmtFee()),
             r2(l.getShopRent()), r2(l.getDormRent()),
             r2(l.getDormFacilitiesFee()), r2(l.getShopMgmtFee()),

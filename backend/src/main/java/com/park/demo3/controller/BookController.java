@@ -32,6 +32,13 @@ public class BookController {
     @Operation(summary = "模板版本链") @GetMapping("/{id}/template/versions")
     public VersionListDTO versions(@PathVariable Integer id) { return svc.versionList(id); }
 
+    @Operation(summary = "历史版本定义(只读预览列名与布局)")
+    @GetMapping("/{id}/template/versions/{ver}")
+    public com.fasterxml.jackson.databind.JsonNode versionDefinition(
+            @PathVariable Integer id, @PathVariable Integer ver) {
+        return svc.versionDefinition(id, ver);
+    }
+
     @Operation(summary = "回滚=复制历史版为新版本(版本号只前进)")
     @PostMapping("/{id}/template/rollback")
     public BookDTO rollback(@PathVariable Integer id, @Valid @RequestBody RollbackReq req) {

@@ -108,8 +108,9 @@ const view = computed(() =>
 )
 
 // KPI 卡整排已取消(EDIT-MODE-SPEC §5.3,2026-08-24 拍板):合计一律看表内 tfoot。
-// 记账租户数保留 —— 浏览态工具条「N 户记账」chip 还在用。
-const activeTenants = computed(() => rows.value.filter(r => (Number(r.totalReceivable) || 0) > 0).length)
+// 记账/结转两计数(结转虚行=只带上月结余的未记账户,2026-08-24 拍板)
+const activeTenants = computed(() => rows.value.filter(r => !r.carried && (Number(r.totalReceivable) || 0) > 0).length)
+const carriedTenants = computed(() => rows.value.filter(r => r.carried).length)
 
 // cell-edit → mutate draft row + recalc derived (jsx onEdit 422-426)
 function onCellEdit(p: { rowKey: number; key: ColumnKey; value: string }) {
@@ -129,6 +130,12 @@ async function onExport() {
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导出失败')
   }
+}
+
+// 编辑态 ⋯ 溢出菜单分发(导出 / 账册模板)
+function onMore(key: string) {
+  if (key === 'export') void onExport()
+  else if (key === 'template') emit('edit-template')
 }
 
 // draft 是 month.rows 的浅拷贝(LedgerView.vue:181),所以直接 JSON 比对即可判脏。
@@ -179,9 +186,10 @@ function onBack() {
         <!-- 工具条五段定序(EDIT-MODE-SPEC §5,v5 2026-08-24 对齐基准):
              ① 态区(返回箭头在左侧 lg-head-l,两态常驻走脏确认;这里是态 chip)
              ② 录入动作区(仅编辑态,频率降序:导入 > 从上月复制 > 添加租户)
-             ③ 配置区(编辑模板) ④ 溢出 ⋯(只读动作编辑态降级不消失) ⑤ 主控区恒右。
-             换期文本按钮编辑态隐藏(§5.2-2 导航类);导出浏览态主行常驻、编辑态进 ⋯(§5.2-3)。 -->
-        <span v-if="!edit" class="lg-tag">{{ activeTenants }} 户记账</span>
+             ④ 溢出 ⋯(只读动作编辑态降级不消失) ⑤ 主控区恒右。
+             换期文本按钮编辑态隐藏(§5.2-2 导航类);导出浏览态主行常驻、编辑态进 ⋯(§5.2-3)。
+             「账册模板」两态常驻(2026-08-24 拍板移出编辑模式动作区):浏览态主行,编辑态收进 ⋯。 -->
+        <span v-if="!edit" class="lg-tag">{{ activeTenants }} 户记账<template v-if="carriedTenants"> · {{ carriedTenants }} 户结转</template></span>
         <span v-else class="lg-tag edit">编辑中 · {{ companyName }}</span>
 
         <template v-if="edit">
@@ -205,14 +213,11 @@ function onBack() {
             @update:model-value="onAddTenant"
           />
           <span class="lg-sep" aria-hidden="true" />
-          <!-- ③ 配置区:编辑模板(BOOK-WORKBENCH §3) -->
-          <Button variant="outline" size="sm" :disabled="saving" @click="emit('edit-template')">
-            <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
-            编辑模板
-          </Button>
-          <span class="lg-sep" aria-hidden="true" />
-          <!-- ④ 溢出:导出是只读动作,编辑态收进 ⋯ 不消失 -->
-          <FPMoreMenu :items="[{ key: 'export', label: '导出 Excel', icon: 'download' }]" @select="onExport" />
+          <!-- ④ 溢出:导出/账册模板编辑态收进 ⋯ 不消失 -->
+          <FPMoreMenu
+            :items="[{ key: 'export', label: '导出 Excel', icon: 'download' }, { key: 'template', label: '账册模板', icon: 'table-2' }]"
+            @select="onMore"
+          />
           <!-- ⑤ 主控区(恒右):取消紧邻保存,保存 filled 恒最右 -->
           <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
           <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
@@ -230,6 +235,11 @@ function onBack() {
           <Button variant="outline" size="sm" @click="onExport">
             <template #leading><component :is="iconFor('download')" :size="14" /></template>
             导出 Excel
+          </Button>
+          <!-- 账册模板(BOOK-WORKBENCH §3):两态常驻,浏览态主行;编辑权限门在面板内(book-template:edit) -->
+          <Button variant="outline" size="sm" @click="emit('edit-template')">
+            <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
+            账册模板
           </Button>
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <Button v-if="auth.can('entry:edit')" variant="outline" size="sm" @click="emit('enter-edit')">
@@ -254,7 +264,7 @@ function onBack() {
           删除所选 ({{ selected.size }})
         </Button>
       </div>
-      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
+      <span class="lg-toolbar-note">{{ edit ? '点击单元格编辑数值,不收的费用列留空即可,应收/结余自动计算;勾选行可批量删除' : auth.can('entry:edit') ? '只读 · 点击「编辑模式」录入 · 点击租户名查看明细' : '只读 · 点击租户名查看明细' }}</span>
     </div>
 
     <FPLedgerTable

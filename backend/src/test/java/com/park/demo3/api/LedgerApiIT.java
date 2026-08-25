@@ -39,6 +39,14 @@ class LedgerApiIT extends AbstractMysqlIT {
 
     // MockHttpServletResponse.getContentAsString() defaults to ISO-8859-1; decode bytes as UTF-8
     // so seeded 中文 (company names / notes) compare correctly.
+
+    /** 结转虚行(carried=true)是读层附赠,断言存储行时按它过滤。 */
+    @SuppressWarnings("unchecked")
+    private static List<java.util.Map<String, Object>> storedRows(String monthBody) {
+        List<java.util.Map<String, Object>> rows = JsonPath.read(monthBody, "$.data.rows[*]");
+        return rows.stream().filter(r -> !Boolean.TRUE.equals(r.get("carried"))).toList();
+    }
+
     private static String utf8(MvcResult r) {
         return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
@@ -168,37 +176,76 @@ class LedgerApiIT extends AbstractMysqlIT {
         assertThat((Object) JsonPath.read(body, "$.data.footer.totalReceivable")).isNotNull();
     }
 
-    // ── save round-trip ───────────────────────────────────────
+    // ── save round-trip(结余链 2026-08-25 改为**严格相邻**:2026-09 的上一自然月 08 无账 →
+    //    09 是链起点,人工填的 balancePrev 就是期初,rechain 不得跨 6-8 月空洞去接 05 的期末。
+    //    跨空洞前滚正是 docs/data-fix/prevfix_20260825.sql 那批坏数据的成因,这里端到端钉住) ──
     @Test
     void save_roundTrip_persistsAndRecomputesDerived() throws Exception {
         // write a single tenant row into a clean future month (2026/9, no seed there)
         String saveBody = "{\"rows\":[{\"tenantId\":1,\"balancePrev\":1000,\"factoryRent\":50000,"
                 + "\"totalCollected\":40000,\"note\":\"集成测试\"}]}";
-        mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
+        String saved = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
                 .contentType("application/json").content(saveBody))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.rows.length()").value(1)); // stored only
+                .andExpect(jsonPath("$.code").value(0)).andReturn());
+        assertThat(storedRows(saved)).hasSize(1);   // 存储行 1 条(其余为结转虚行)
 
-        // read back: tenant 1 has the saved values + derived totals (唯一存储行)
         String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/9")
                 .header("Authorization", auth()))
                 .andExpect(status().isOk())
                 .andReturn());
-        Number recv = JsonPath.read(body, "$.data.rows[0].totalReceivable");
-        Number end  = JsonPath.read(body, "$.data.rows[0].balanceEnd");
-        String note = JsonPath.read(body, "$.data.rows[0].note");
-        assertThat(recv.doubleValue()).isEqualTo(50000.0);          // sum of fees
-        assertThat(end.doubleValue()).isEqualTo(11000.0);           // 1000 + 50000 - 40000
+        java.util.Map<String, Object> r0 = storedRows(body).get(0);
+        Number recv = (Number) r0.get("totalReceivable");
+        Number prev = (Number) r0.get("balancePrev");
+        Number end  = (Number) r0.get("balanceEnd");
+        Boolean derived = (Boolean) r0.get("balancePrevDerived");
+        String note = (String) r0.get("note");
+        assertThat(recv.doubleValue()).isEqualTo(50000.0);                    // sum of fees
+        assertThat(derived).isFalse();                                         // 上月(08)无账 → 链起点
+        assertThat(prev.doubleValue()).isEqualTo(1000.0);                      // 人工期初原样保留
+        assertThat(end.doubleValue()).isEqualTo(1000.0 + 50000.0 - 40000.0);
         assertThat(note).isEqualTo("集成测试");
 
-        // blank that row → deleted → month has no stored rows
-        mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
+        // blank that row → deleted → month has no stored rows(结转虚行是读层附赠,不算)
+        String cleared = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
                 .contentType("application/json")
                 .content("{\"rows\":[{\"tenantId\":1}]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.rows.length()").value(0));
+                .andExpect(jsonPath("$.code").value(0)).andReturn());
+        assertThat(storedRows(cleared)).isEmpty();
+    }
+
+    // ── save:相邻月 = 派生位(与上一个用例互为反面;两条一起把 2026-08-25 的严格相邻口径夹住) ──
+    @Test
+    void save_adjacentMonth_forcesBalancePrevFromChain() throws Exception {
+        // 2026-06 的上一自然月 05 有种子 → 06 是派生位:人工填多少都被 05 的期末覆盖
+        String may = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/5")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        List<Integer> mayIds = JsonPath.read(may, "$.data.rows[*].tenantId");
+        double chainPrev = ((Number) JsonPath.read(may,
+                "$.data.rows[" + mayIds.indexOf(1) + "].balanceEnd")).doubleValue();
+
+        mvc.perform(put("/api/ledger/companies/1/months/2026/6").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantId\":1,\"balancePrev\":1000,\"factoryRent\":50000,"
+                        + "\"totalCollected\":40000}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+
+        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        java.util.Map<String, Object> r0 = storedRows(body).get(0);      // 唯一存储行(其余为结转虚行)
+        assertThat(((Number) r0.get("tenantId")).intValue()).isEqualTo(1);
+        assertThat((Boolean) r0.get("balancePrevDerived")).isTrue();
+        assertThat(((Number) r0.get("balancePrev")).doubleValue()).isEqualTo(chainPrev);  // 人工 1000 被覆盖
+        assertThat(((Number) r0.get("balanceEnd")).doubleValue())
+                .isEqualTo(chainPrev + 50000.0 - 40000.0);
+
+        // 清理:删空该行,06 月回到全结转虚行(copyFromPrev / carriedRows 两个用例也用 06 月)
+        String cleared = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantId\":1}]}"))
+                .andExpect(status().isOk()).andReturn());
+        assertThat(storedRows(cleared)).isEmpty();
     }
 
     // ── copy-from-prev ────────────────────────────────────────
@@ -236,11 +283,12 @@ class LedgerApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409));
     }
 
-    // ── import:列级定向 upsert(balancePrev/totalCollected/note + null不覆盖/0清零) ──
+    // ── import:列级定向 upsert;结余链 2026-08-25 起 balancePrev 按链上位置定夺
+    //    (上一自然月无账=链起点,期初照收;有账=派生位,文件值忽略) ──
     @Test
     void import_balancePrevCollectedNote_roundTripWithDerived() throws Exception {
-        // 创显样例「成吉」行:9 个费用 + 上月结余/本月收款/备注,导入干净未来月 2026/7
-        String importBody = "{\"rows\":[{\"tenantName\":\"中誉机械重工\","
+        // 首现户(不在种子租户表 → 未绑定行,真·首次出现月):9 个费用 + 结余(将被屏蔽)/收款/备注
+        String importBody = "{\"rows\":[{\"tenantName\":\"结余链首现户\","
                 + "\"factoryRent\":12588.80,\"factoryInfraMaint\":892.80,"
                 + "\"elevatorMaint\":159,\"transformerMaint\":159,\"officeOtherFee\":0,"
                 + "\"standardElectricity\":464.98,\"electricityMaint\":305.73,"
@@ -258,18 +306,23 @@ class LedgerApiIT extends AbstractMysqlIT {
         String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/7")
                 .header("Authorization", auth()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.rows.length()").value(1))
                 .andReturn());
-        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].balancePrev")).doubleValue()).isEqualTo(102.94);
-        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].totalCollected")).doubleValue()).isEqualTo(14627.98);
-        assertThat((String) JsonPath.read(body, "$.data.rows[0].note")).isEqualTo("电梯费用未支付");
-        // totalReceivable = 21 费用和;balanceEnd = balancePrev + 应收 - 收款
-        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].totalReceivable")).doubleValue()).isEqualTo(14627.98);
-        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].balanceEnd")).doubleValue()).isEqualTo(102.94);
+        List<java.util.Map<String, Object>> st = storedRows(body);
+        assertThat(st).hasSize(1);
+        java.util.Map<String, Object> r0 = st.get(0);
+        // 结余链:「结余链首现户」2026-07 为首次出现月 → 文件里的 102.94 作期初照收(非派生位)
+        assertThat(((Number) r0.get("balancePrev")).doubleValue()).isEqualTo(102.94);
+        assertThat((Boolean) r0.get("balancePrevDerived")).isFalse();
+        assertThat(((Number) r0.get("totalCollected")).doubleValue()).isEqualTo(14627.98);
+        assertThat((String) r0.get("note")).isEqualTo("电梯费用未支付");
+        // totalReceivable = 21 费用和;balanceEnd = 期初 + 应收 - 收款
+        assertThat(((Number) r0.get("totalReceivable")).doubleValue()).isEqualTo(14627.98);
+        assertThat(((Number) r0.get("balanceEnd")).doubleValue()).isEqualTo(102.94);
 
-        // 清理:blank 该行让重跑确定性
+        // 清理:未绑定行按行 id 删空,让重跑与后续用例确定性
+        Number rowId = (Number) r0.get("id");
         mvc.perform(put("/api/ledger/companies/1/months/2026/7").header("Authorization", auth())
-                .contentType("application/json").content("{\"rows\":[{\"tenantId\":1}]}"))
+                .contentType("application/json").content("{\"rows\":[{\"id\":" + rowId + "}]}"))
                 .andExpect(status().isOk());
     }
 
@@ -290,28 +343,112 @@ class LedgerApiIT extends AbstractMysqlIT {
         assertThat((String) JsonPath.read(res, "$.data.errors[0].reason")).contains("跳过");
     }
 
+    // ── 结转虚行(2026-08-24 拍板):有上月账的空月,默认显示上月期末≠0 的户,费用列留空 ──
+    @SuppressWarnings("unchecked")
     @Test
-    void import_balancePrevOnly_notSkipped() throws Exception {
-        // 创显样例「戎合」行:只有上月结余(如 249 万挂账),绝不能被全零防线跳过
+    void carriedRows_showInEmptyMonth_materializeOnSave_revertOnBlank() throws Exception {
+        // 2026-06 无存储行 → 全部行为结转虚行(仅链上期末≠0 的户,种子里未必 13 户全有)
+        String jun = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        List<java.util.Map<String, Object>> junRows = JsonPath.read(jun, "$.data.rows[*]");
+        assertThat(junRows).isNotEmpty()
+                .allMatch(r -> Boolean.TRUE.equals(r.get("carried")) && r.get("id") == null);
+        // 取样第一条虚行:balancePrev 必须 = 该户 2026-05 的期末(链上派生)
+        java.util.Map<String, Object> sample = junRows.get(0);
+        int tid = ((Number) sample.get("tenantId")).intValue();
+        double prev = ((Number) sample.get("balancePrev")).doubleValue();
+        assertThat(prev).isNotZero();
+        String may = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/5")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        List<java.util.Map<String, Object>> mayRows = JsonPath.read(may, "$.data.rows[*]");
+        double mayEnd = mayRows.stream()
+                .filter(r -> r.get("tenantId") != null && ((Number) r.get("tenantId")).intValue() == tid)
+                .mapToDouble(r -> ((Number) r.get("balanceEnd")).doubleValue()).findFirst().orElseThrow();
+        assertThat(prev).isEqualTo(mayEnd);
+
+        // 原样送回全部虚行(前端保存草稿含虚行)→ 不落库:月仍全虚
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < junRows.size(); i++) {
+            if (i > 0) rows.append(',');
+            rows.append("{\"tenantId\":").append(((Number) junRows.get(i).get("tenantId")).intValue())
+                .append(",\"balancePrev\":").append(junRows.get(i).get("balancePrev"))
+                .append(",\"totalCollected\":0,\"note\":null}");
+        }
+        String echo = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[" + rows + "]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andReturn());
+        assertThat(storedRows(echo)).isEmpty();
+
+        // 在取样虚行上录一笔费用 → 落成真行(carried=false,id 非空)
+        String one = "{\"rows\":[{\"tenantId\":" + tid + ",\"balancePrev\":" + prev
+                + ",\"factoryRent\":777,\"totalCollected\":0,\"note\":null}]}";
+        String after = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth()).contentType("application/json").content(one))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andReturn());
+        List<java.util.Map<String, Object>> st2 = storedRows(after);
+        assertThat(st2).hasSize(1);
+        assertThat(((Number) st2.get(0).get("tenantId")).intValue()).isEqualTo(tid);
+        assertThat(st2.get(0).get("id")).isNotNull();
+        assertThat(((Number) st2.get(0).get("totalReceivable")).doubleValue()).isEqualTo(777.0);
+
+        // 清空该行(派生结余不算内容)→ 真行删除,回结转虚行
+        String blank = "{\"rows\":[{\"tenantId\":" + tid + ",\"balancePrev\":" + prev
+                + ",\"totalCollected\":0,\"note\":null}]}";
+        String back = utf8(mvc.perform(put("/api/ledger/companies/1/months/2026/6")
+                .header("Authorization", auth()).contentType("application/json").content(blank))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andReturn());
+        assertThat(storedRows(back)).isEmpty();
+        List<java.util.Map<String, Object>> backRows = JsonPath.read(back, "$.data.rows[*]");
+        assertThat(backRows.stream().anyMatch(r ->
+                r.get("tenantId") != null && ((Number) r.get("tenantId")).intValue() == tid
+                && Boolean.TRUE.equals(r.get("carried")))).isTrue();
+    }
+
+    @Test
+    void import_balancePrevOnly_seedsFirstMonth_ignoredWhenDerived() throws Exception {
+        // 结余链(2026-08-25):历史月未补时,源册「上月结余」是唯一期初入口
+        // ① 首现户只有一笔挂账结余(戎合 249 万那种)照样入库,且是可改的期初位
+        String fresh = "挂账首现户";
         mvc.perform(post("/api/ledger/companies/1/import")
-                .param("year", "2026").param("month", "7")
+                .param("year", "2026").param("month", "8")
                 .header("Authorization", auth())
                 .contentType("application/json")
-                .content("{\"rows\":[{\"tenantName\":\"康泽生物\",\"balancePrev\":2499022.41}]}"))
+                .content("{\"rows\":[{\"tenantName\":\"" + fresh + "\",\"balancePrev\":2499022.41}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.imported").value(1))
                 .andExpect(jsonPath("$.data.skipped").value(0));
-
-        String body = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/7")
-                .header("Authorization", auth()))
+        String aug = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/8").header("Authorization", auth()))
                 .andExpect(status().isOk()).andReturn());
-        List<Integer> ids = JsonPath.read(body, "$.data.rows[*].tenantId");
-        int idx = ids.indexOf(3);
-        assertThat(((Number) JsonPath.read(body, "$.data.rows[" + idx + "].balancePrev")).doubleValue())
-                .isEqualTo(2499022.41);
+        java.util.Map<String, Object> seeded = storedRows(aug).stream()
+                .filter(r -> fresh.equals(r.get("tenantName"))).findFirst().orElseThrow();
+        assertThat(((Number) seeded.get("balancePrev")).doubleValue()).isEqualTo(2499022.41);
+        assertThat((Boolean) seeded.get("balancePrevDerived")).isFalse();
 
-        mvc.perform(put("/api/ledger/companies/1/months/2026/7").header("Authorization", auth())
-                .contentType("application/json").content("{\"rows\":[{\"tenantId\":3}]}"))
+        // ② 派生位:同一户 08 月刚落了账 → 09 月的**上一自然月**有记录 → 文件里的结余被忽略,以链为准
+        //    (刻意拿同一户接着往下个月导:严格相邻口径下,只有紧邻才派生)
+        double chainEnd = 2499022.41;              // 08 月期末 = 期初 2499022.41 + 应收 0 - 收款 0
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "9")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"" + fresh + "\",\"balancePrev\":999999,\"factoryRent\":10}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1));
+        String sep = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/9").header("Authorization", auth()))
+                .andExpect(status().isOk()).andReturn());
+        java.util.Map<String, Object> derived = storedRows(sep).stream()
+                .filter(r -> fresh.equals(r.get("tenantName"))).findFirst().orElseThrow();
+        assertThat(((Number) derived.get("balancePrev")).doubleValue()).isEqualTo(chainEnd);   // 不是 999999
+        assertThat((Boolean) derived.get("balancePrevDerived")).isTrue();
+        assertThat(((Number) derived.get("balanceEnd")).doubleValue()).isEqualTo(2499032.41);  // + 应收 10
+
+        // 清理:两行删空,保持重跑确定性
+        mvc.perform(put("/api/ledger/companies/1/months/2026/8").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"id\":" + seeded.get("id") + "}]}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/ledger/companies/1/months/2026/9").header("Authorization", auth())
+                .contentType("application/json").content("{\"rows\":[{\"id\":" + derived.get("id") + "}]}"))
                 .andExpect(status().isOk());
     }
 

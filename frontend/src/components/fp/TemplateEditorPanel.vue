@@ -1,8 +1,13 @@
 <script setup lang="ts">
-// 账册模板编辑器(BOOK-WORKBENCH-SPEC §3)。纯受控:不发请求,保存/回滚全部 emit 给宿主。
+// 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:
+//  · 只读查看(默认):分组/列名/别名 chips/隐藏徽标/列宽纯展示;右栏版本链每项可点,
+//    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(顶部横幅 + 一键回现行版)。
+//    唯一的读请求,其余仍纯受控:保存/回滚全部 emit 给宿主。
+//  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
+//    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
 //
 // 版式:居中弹窗(DESIGN-FIDELITY §7,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
-// 主体=分组卡片(组名可改 + 组内列行),右侧窄栏=版本链;底部=变更说明 + 保存。
+// 主体=分组卡片(组名 + 组内列行),右侧窄栏=版本链;编辑态底部=变更说明 + 保存。
 //
 // 轻/结构改动语义(§3)在 UI 里讲清楚:
 //  · 轻改动(显示名/别名/列宽)→ 不升版,原版就地更新
@@ -11,12 +16,14 @@
 //    出现/消失不得顶动保存按钮,故 min-height 恒占一行)。
 //
 // 浮层纪律(UI-OVERLAY-SPEC):本组件是宿主弹窗,Esc 挂 document **冒泡**阶段且只在
-// open 时拦截 —— 内层浮层(ds/Select 下拉)在元素级 stopPropagation 先赢,Esc 才能
-// 只收下拉不关弹窗。不用 Vue <Transition>(repo 禁令:后台标签页 rAF 不跑会卡遮罩)。
+// open 时拦截 —— 内层浮层(ds/Select 下拉、别名输入框)在元素级 stopPropagation 先赢,
+// Esc 才能只收内层不关弹窗。不用 Vue <Transition>(repo 禁令:后台标签页 rAF 不跑会卡遮罩)。
 import { ref, computed, watch, onUnmounted } from 'vue'
+import type { Directive } from 'vue'
 import { X, Plus, ChevronUp, ChevronDown, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import { booksApi } from '@/api/books'
 import { BOOK_SLOTS, SLOT_LABELS, flattenCols, newCustomColId } from '@/types/book'
 import type { Book, BookDef, BookGroup, BookCol, BookSlot, TemplateVersion } from '@/types/book'
 
@@ -25,6 +32,7 @@ const props = defineProps<{
   book: Book | null
   versions: TemplateVersion[]
   saving: boolean
+  canEdit: boolean   // 宿主传 auth.can('book-template:edit')
 }>()
 
 const emit = defineEmits<{
@@ -33,16 +41,67 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
 const note = ref('')
 
-// open 时把现行定义深拷贝成草稿(纯数据,JSON 拷贝够用);关了不清,避免关帧闪空
+// 历史版预览(只读):previewVer 非空=正在看历史版;previewDef 为空=在加载
+const previewVer = ref<number | null>(null)
+const previewDef = ref<BookDef | null>(null)
+
+// 别名录入态:当前显示输入框的列 id(声明须在 immediate watcher 之前)
+const aliasEditId = ref<string | null>(null)
+
+// 只读主区展示的定义:历史版预览优先,否则现行版
+const shownDef = computed<BookDef | null>(() =>
+  previewVer.value != null ? previewDef.value : props.book?.definition ?? null)
+
+// open(或宿主保存后换 book)时回到只读查看态;draft 深拷贝备着(纯数据,JSON 拷贝够用)。
+// 关了不清,避免关帧闪空。
 watch(() => [props.open, props.book] as const, ([o, b]) => {
   if (o && b) {
     draft.value = JSON.parse(JSON.stringify(b.definition)) as BookDef
     note.value = ''
+    mode.value = 'view'
+    previewVer.value = null
+    previewDef.value = null
+    aliasEditId.value = null
   }
 }, { immediate: true })
+
+// ── 模式切换 ──
+function enterEdit() {
+  if (!props.book || !props.canEdit) return
+  backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
+  draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
+  note.value = ''
+  aliasEditId.value = null
+  mode.value = 'edit'
+}
+
+function exitEdit() {
+  mode.value = 'view'
+  aliasEditId.value = null
+}
+
+// ── 历史版预览 ──
+async function viewVersion(v: TemplateVersion) {
+  if (mode.value === 'edit' || !props.book) return
+  if (v.current) { backToCurrent(); return }
+  previewVer.value = v.ver
+  previewDef.value = null
+  try {
+    const def = await booksApi.versionDefinition(props.book.id, v.ver)
+    if (previewVer.value === v.ver) previewDef.value = def   // 竞态守卫:只收最后点的那版
+  } catch {
+    if (previewVer.value === v.ver) backToCurrent()
+  }
+}
+
+function backToCurrent() {
+  previewVer.value = null
+  previewDef.value = null
+}
 
 // ── 结构改动判定(§3):列的 增删/顺序/换槽/隐藏 + 组增删,任一变即结构 ──
 // 签名只含结构位(id/slot/hidden/列序/组序),显示名/别名/列宽不参与 → 轻改动不触发
@@ -52,18 +111,36 @@ function structSig(def: BookDef): string {
     .join(';')
 }
 const structural = computed(() =>
-  !!(draft.value && props.book) && structSig(draft.value) !== structSig(props.book.definition))
+  mode.value === 'edit' && !!(draft.value && props.book)
+  && structSig(draft.value!) !== structSig(props.book!.definition))
 
 const slotOpts = BOOK_SLOTS.map(s => ({ value: s, label: SLOT_LABELS[s] }))
 
-// ── 草稿编辑 ──
-function addAlias(c: BookCol, e: Event) {
-  const el = e.target as HTMLInputElement
+// ── 别名录入:「+ 别名」按钮原地变输入框;Enter/blur 都提交,Esc/空值失焦取消 ──
+// blur 提交是硬要求:输完不按回车直接点「保存」,blur 先于 click 落进 draft,不丢。
+const vFocus: Directive<HTMLInputElement> = { mounted: (el) => el.focus() }
+
+function commitAlias(c: BookCol, el: HTMLInputElement) {
   const v = el.value.trim()
   if (v && !c.aliases.includes(v)) c.aliases.push(v)
-  el.value = ''
+  el.value = ''   // 先清值再收输入框:收起若触发 blur 也不会二次提交
+}
+function onAliasEnter(c: BookCol, e: KeyboardEvent) {
+  if (e.isComposing) return   // IME 守卫:拼音候选确认的 Enter 不提交半截
+  e.preventDefault()
+  commitAlias(c, e.target as HTMLInputElement)
+  aliasEditId.value = null    // 提交成 chip 后原位回到「+ 别名」按钮
+}
+function onAliasBlur(c: BookCol, e: Event) {
+  commitAlias(c, e.target as HTMLInputElement)
+  aliasEditId.value = null
+}
+function cancelAlias(e: KeyboardEvent) {
+  ;(e.target as HTMLInputElement).value = ''
+  aliasEditId.value = null
 }
 
+// ── 草稿编辑 ──
 function addCol(g: BookGroup) {
   if (!draft.value) return
   const existing = new Set(flattenCols(draft.value).map(c => c.id))
@@ -126,74 +203,114 @@ function fmtTime(s: string): string {
       <div class="te-dlg" role="dialog" aria-modal="true" @mousedown.stop>
         <header class="te-head">
           <div class="te-head-txt">
-            <h3>模板编辑 — {{ book.name }}</h3>
-            <p>现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
+            <h3>账册模板 — {{ book.name }}</h3>
+            <p v-if="mode === 'edit'">现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
+            <p v-else>现行 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
+          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm" @click="enterEdit">编辑模式</Button>
+          <Button v-if="mode === 'edit'" class="te-donebtn" variant="outline" size="sm" @click="exitEdit">完成</Button>
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
 
         <div class="te-body">
-          <!-- 主区:分组卡片列表 -->
+          <!-- 主区 -->
           <div class="te-main">
-            <section v-for="g in draft.groups" :key="g.id" class="te-group">
-              <input v-model="g.label" class="te-gname" placeholder="(无一级表头)" />
-              <div v-for="(c, ci) in g.cols" :key="c.id" class="te-colrow" :class="{ hidden: c.hidden }">
-                <input v-model="c.label" class="te-name" placeholder="显示名" />
-                <div class="te-aliases">
-                  <span v-for="(a, ai) in c.aliases" :key="a" class="te-chip">
-                    {{ a }}
-                    <button class="te-chip-x" :aria-label="`删除别名 ${a}`" @click="c.aliases.splice(ai, 1)"><X :size="10" /></button>
-                  </span>
-                  <input class="te-aliasin" placeholder="+别名" @keydown.enter.prevent="addAlias(c, $event)" />
-                </div>
-                <!-- 语义槽:标准列的槽只读(§6 分析层契约);自定义列可换槽(结构改动) -->
-                <span v-if="c.std" class="te-slotro" title="标准列的语义槽固定,不可更换">{{ SLOT_LABELS[c.slot] }}</span>
-                <Select v-else class="te-slotsel" size="sm" :options="slotOpts"
-                        :model-value="c.slot" @update:model-value="c.slot = $event as BookSlot" />
-                <label class="te-hidewrap" title="隐藏列不出现在宽表与导入模板中">
-                  <input v-model="c.hidden" type="checkbox" class="te-hide" />隐藏
-                </label>
-                <input v-model.number="c.w" type="number" class="te-w" placeholder="宽" title="列宽(px),留空自动" />
-                <div class="te-moves">
-                  <button class="te-mv" aria-label="上移" :disabled="ci === 0" @click="moveCol(g, ci, -1)"><ChevronUp :size="14" /></button>
-                  <button class="te-mv" aria-label="下移" :disabled="ci === g.cols.length - 1" @click="moveCol(g, ci, 1)"><ChevronDown :size="14" /></button>
-                </div>
-                <!-- 删除:仅自定义列;标准列不可删(§3),给「可隐藏」占位保持行宽一致 -->
-                <button v-if="!c.std" class="te-del" aria-label="删除该列" @click="removeCol(g, ci)"><Trash2 :size="14" /></button>
-                <span v-else class="te-nodel" title="标准列不可删除,可改名/加别名/隐藏">可隐藏</span>
+            <!-- 只读查看(默认;含历史版预览) -->
+            <template v-if="mode === 'view'">
+              <div v-if="previewVer != null" class="te-histbar">
+                <span>正在查看 v{{ previewVer }}(历史版)</span>
+                <button class="te-histback" @click="backToCurrent">回到现行版</button>
               </div>
-              <button class="te-addcol" @click="addCol(g)"><Plus :size="14" /> 添加自定义列</button>
-            </section>
+              <div v-if="previewVer != null && !previewDef" class="te-loading">加载历史版定义…</div>
+              <template v-else-if="shownDef">
+                <section v-for="g in shownDef.groups" :key="g.id" class="te-group">
+                  <div class="te-gname-ro" :class="{ none: !g.label }">{{ g.label || '(无一级表头)' }}</div>
+                  <div v-for="c in g.cols" :key="c.id" class="te-colrow ro" :class="{ hidden: c.hidden }">
+                    <span class="te-roname">
+                      {{ c.label }}
+                      <span v-if="c.hidden" class="te-hidebadge">隐藏</span>
+                    </span>
+                    <div class="te-aliases">
+                      <span v-for="a in c.aliases" :key="a" class="te-chip">{{ a }}</span>
+                      <span v-if="!c.aliases.length" class="te-noalias">—</span>
+                    </div>
+                    <span class="te-slotro">{{ SLOT_LABELS[c.slot] }}</span>
+                    <span class="te-wro" title="列宽(px)">{{ c.w ?? '自动' }}</span>
+                  </div>
+                </section>
+              </template>
+            </template>
+
+            <!-- 编辑态(仅现行版) -->
+            <template v-else>
+              <section v-for="g in draft.groups" :key="g.id" class="te-group">
+                <input v-model="g.label" class="te-gname" placeholder="(无一级表头)" />
+                <div v-for="(c, ci) in g.cols" :key="c.id" class="te-colrow" :class="{ hidden: c.hidden }">
+                  <input v-model="c.label" class="te-name" placeholder="显示名" />
+                  <div class="te-aliases">
+                    <span v-for="(a, ai) in c.aliases" :key="a" class="te-chip">
+                      {{ a }}
+                      <button class="te-chip-x" :aria-label="`删除别名 ${a}`" @click="c.aliases.splice(ai, 1)"><X :size="10" /></button>
+                    </span>
+                    <input v-if="aliasEditId === c.id" v-focus class="te-aliasin" placeholder="别名"
+                           @keydown.enter="onAliasEnter(c, $event)"
+                           @keydown.esc.stop="cancelAlias"
+                           @blur="onAliasBlur(c, $event)" />
+                    <button v-else type="button" class="te-aliasadd" @click="aliasEditId = c.id">+ 别名</button>
+                  </div>
+                  <!-- 语义槽:标准列的槽只读(§6 分析层契约);自定义列可换槽(结构改动) -->
+                  <span v-if="c.std" class="te-slotro" title="标准列的语义槽固定,不可更换">{{ SLOT_LABELS[c.slot] }}</span>
+                  <Select v-else class="te-slotsel" size="sm" :options="slotOpts"
+                          :model-value="c.slot" @update:model-value="c.slot = $event as BookSlot" />
+                  <label class="te-hidewrap" title="隐藏列不出现在宽表与导入模板中">
+                    <input v-model="c.hidden" type="checkbox" class="te-hide" />隐藏
+                  </label>
+                  <input v-model.number="c.w" type="number" class="te-w" placeholder="宽" title="列宽(px),留空自动" />
+                  <div class="te-moves">
+                    <button class="te-mv" aria-label="上移" :disabled="ci === 0" @click="moveCol(g, ci, -1)"><ChevronUp :size="14" /></button>
+                    <button class="te-mv" aria-label="下移" :disabled="ci === g.cols.length - 1" @click="moveCol(g, ci, 1)"><ChevronDown :size="14" /></button>
+                  </div>
+                  <!-- 删除:仅自定义列;标准列不可删(§3),给「可隐藏」占位保持行宽一致 -->
+                  <button v-if="!c.std" class="te-del" aria-label="删除该列" @click="removeCol(g, ci)"><Trash2 :size="14" /></button>
+                  <span v-else class="te-nodel" title="标准列不可删除,可改名/加别名/隐藏">可隐藏</span>
+                </div>
+                <button class="te-addcol" @click="addCol(g)"><Plus :size="14" /> 添加自定义列</button>
+              </section>
+            </template>
           </div>
 
-          <!-- 右侧窄栏:版本链(回滚=复制历史版为新版本,版本号只前进) -->
+          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出回滚按钮(回滚=复制历史版为新版本,版本号只前进) -->
           <aside class="te-vers">
             <div class="te-vtitle">版本链</div>
-            <div v-for="v in versions" :key="v.id" class="te-vitem" :class="{ cur: v.current }">
+            <div v-for="v in versions" :key="v.id" class="te-vitem"
+                 :class="{ cur: v.current, clickable: mode === 'view', viewing: previewVer === v.ver }"
+                 @click="viewVersion(v)">
               <div class="te-vline">
                 <b>v{{ v.ver }}</b>
                 <span v-if="v.current" class="te-curbadge">现行</span>
               </div>
               <div class="te-vnote">{{ v.note || '—' }}</div>
               <div class="te-vmeta">{{ v.createdBy }} · {{ fmtTime(v.createdAt) }}</div>
-              <button v-if="!v.current" class="te-rollback" @click="emit('rollback', v.ver)">回滚为新版本</button>
+              <button v-if="mode === 'edit' && !v.current" class="te-rollback" @click.stop="emit('rollback', v.ver)">回滚为新版本</button>
             </div>
             <div v-if="!versions.length" class="te-vempty">暂无版本记录</div>
           </aside>
         </div>
 
-        <!-- 升版提示:常驻占位一行(LAYOUT-STABILITY),结构改动时才显字 -->
-        <p class="te-verbumpline">
-          <span v-if="structural" class="te-verbump">本次将升版 v{{ book.ver + 1 }},历史月份同样按新版显示</span>
-        </p>
+        <template v-if="mode === 'edit'">
+          <!-- 升版提示:常驻占位一行(LAYOUT-STABILITY),结构改动时才显字 -->
+          <p class="te-verbumpline">
+            <span v-if="structural" class="te-verbump">本次将升版 v{{ book.ver + 1 }},历史月份同样按新版显示</span>
+          </p>
 
-        <footer class="te-foot">
-          <input v-model="note" class="te-note" placeholder="变更说明(记入版本与操作日志)" />
-          <Button class="te-cancel" variant="outline" size="sm" @click="emit('close')">取消</Button>
-          <Button class="te-save" variant="filled" size="sm" :disabled="saving" @click="save">
-            {{ saving ? '保存中…' : '保存' }}
-          </Button>
-        </footer>
+          <footer class="te-foot">
+            <input v-model="note" class="te-note" placeholder="变更说明(记入版本与操作日志)" />
+            <Button class="te-cancel" variant="outline" size="sm" @click="exitEdit">取消</Button>
+            <Button class="te-save" variant="filled" size="sm" :disabled="saving" @click="save">
+              {{ saving ? '保存中…' : '保存' }}
+            </Button>
+          </footer>
+        </template>
       </div>
     </div>
   </Teleport>
@@ -218,6 +335,7 @@ function fmtTime(s: string): string {
 .te-head-txt { flex: 1; min-width: 0; }
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
+.te-editbtn, .te-donebtn { flex: 0 0 auto; }
 .te-x {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm);
@@ -227,6 +345,22 @@ function fmtTime(s: string): string {
 
 .te-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle); }
 .te-main { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 22px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+/* 历史版预览横幅 */
+.te-histbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--accent-blue); color: var(--brand-deep);
+  font-size: var(--fs-label);
+}
+.te-histback {
+  margin-left: auto; height: 24px; padding: 0 10px;
+  border: 1px solid var(--brand-blue); border-radius: 999px;
+  background: var(--surface-white); font-size: var(--fs-micro);
+  color: var(--brand-deep); cursor: pointer;
+}
+.te-histback:hover { background: var(--surface-card); }
+.te-loading { font-size: var(--fs-label); color: var(--text-muted); padding: 8px 2px; }
 
 /* 分组卡片 */
 .te-group {
@@ -242,15 +376,34 @@ function fmtTime(s: string): string {
   transition: border-color var(--dur-fast) var(--ease-standard);
 }
 .te-gname:focus { border-color: var(--hue-blue); }
+/* 组名只读展示 */
+.te-gname-ro {
+  height: 30px; line-height: 30px;
+  font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary);
+}
+.te-gname-ro.none { color: var(--text-muted); font-weight: var(--fw-regular); }
 
-/* 列行:显示名 | 别名chips | 槽 | 隐藏 | 宽 | 移动 | 删除 */
+/* 列行(编辑):显示名 | 别名chips | 槽 | 隐藏 | 宽 | 移动 | 删除 */
 .te-colrow {
   display: grid; grid-template-columns: 150px 1fr 110px auto 64px auto 60px;
   align-items: center; gap: 8px;
   padding: 5px 6px; border-radius: var(--radius-sm); background: var(--surface-white);
   border: 1px solid var(--border-subtle);
 }
+/* 列行(只读):显示名 | 别名chips | 槽 | 宽 */
+.te-colrow.ro { grid-template-columns: 170px 1fr 110px 64px; }
 .te-colrow.hidden { opacity: 0.55; }
+.te-roname {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--fs-label); color: var(--text-primary); overflow: hidden; white-space: nowrap;
+}
+.te-hidebadge {
+  flex: 0 0 auto; font-size: var(--fs-micro); line-height: 1; padding: 3px 7px; border-radius: 999px;
+  background: var(--surface-sunken); border: 1px solid var(--border-subtle); color: var(--text-muted);
+}
+.te-noalias { font-size: var(--fs-micro); color: var(--text-disabled); }
+.te-wro { font-size: var(--fs-micro); color: var(--text-muted); text-align: center; }
+
 .te-name, .te-w, .te-aliasin, .te-note {
   box-sizing: border-box; height: 28px; padding: 0 8px;
   font-size: var(--fs-label); font-family: var(--font-sans); color: var(--text-primary);
@@ -277,7 +430,16 @@ function fmtTime(s: string): string {
   background: transparent; color: var(--text-muted); cursor: pointer;
 }
 .te-chip-x:hover { background: var(--ink-100); color: var(--text-primary); }
-.te-aliasin { width: 72px; flex: 0 0 auto; }
+.te-aliasin { width: 88px; flex: 0 0 auto; }
+/* 「+ 别名」按钮:与 chip 同高同形,点击原地变输入框 */
+.te-aliasadd {
+  display: inline-flex; align-items: center;
+  height: 22px; padding: 0 8px; border: 1px dashed var(--border-strong);
+  border-radius: 999px; background: transparent;
+  font-size: var(--fs-micro); color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.te-aliasadd:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 
 .te-slotro {
   font-size: var(--fs-micro); color: var(--text-muted); text-align: center;
@@ -325,8 +487,12 @@ function fmtTime(s: string): string {
   border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
   background: var(--surface-white); padding: 8px 10px;
   display: flex; flex-direction: column; gap: 3px;
+  transition: border-color var(--dur-fast) var(--ease-standard);
 }
 .te-vitem.cur { border-color: var(--brand-blue); }
+.te-vitem.clickable { cursor: pointer; }
+.te-vitem.clickable:hover { border-color: var(--border-strong); }
+.te-vitem.viewing { border-color: var(--hue-blue); background: var(--accent-blue); }
 .te-vline { display: flex; align-items: center; gap: 6px; }
 .te-vline b { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-curbadge {

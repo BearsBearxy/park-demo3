@@ -99,11 +99,12 @@ describe('ledger parseWorkbook (创显 1月样例)', () => {
     // 旧位置映射 bug 特征反断言:水维护费/基准电费绝不能吃到错位列的值
     expect(r.waterMaint).toBe(8.87)             // 而不是 102.94(本月结余)
     expect(r.standardElectricity).toBe(464.98)  // 而不是水维护费错位值
+    // 结余链(2026-08-25):balancePrev 照常解析上送(吃不吃由后端按链上位置定);派生列仍不吃
     for (const k of ['totalReceivable', 'balanceEnd', 'dormRent', 'dormFacilitiesFee', 'dormInfraMaint', 'dormOtherFee'])
       expect(r).not.toHaveProperty(k)
   })
 
-  it('戎合:balancePrev 带千分位解析,17 个费用列全为 0', async () => {
+  it('戎合:balancePrev 带千分位解析(首现月作期初,由后端定夺),17 个费用列全为 0', async () => {
     const r = (await parse(parserProps('ledger', { year: 2025, month: 1 }))(janMatrix)).records![1]
     expect(r.balancePrev).toBe(2499022.41)
     const feeKeys = ['factoryRent', 'factoryMgmtFee', 'shopRent', 'shopMgmtFee', 'factoryInfraMaint', 'shopInfraMaint',
@@ -191,7 +192,7 @@ describe('ledger 段内同名合并与垃圾行过滤 (v4)', () => {
     expect(res.error).toBeUndefined()
     expect(res.records!.map(r => r.tenantName)).toEqual(['万众宿舍', '单行户'])   // 首现位置保序
     const [wz, single] = res.records!
-    expect(wz.balancePrev).toBe(-2082.41)
+    expect(wz.balancePrev).toBe(-2082.41)   // 同名合并:结余列逐列相加
     expect(wz.totalCollected).toBeCloseTo(-1146.7, 2)   // = -2082.41 + 935.71
     expect(wz).toMatchObject({ shopRent: 621.01, shopMgmtFee: 73.06, standardElectricity: 131.5 })   // 费用 = 行2 值(行1 空=0)
     expect(wz.note).toBe('结余调整；陆续退租')

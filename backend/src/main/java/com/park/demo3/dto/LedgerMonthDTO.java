@@ -14,6 +14,8 @@ public record LedgerMonthDTO(
         Integer tenantId,     // null = 未绑定档案(软引用)
         String  tenantName,   // 账面名快照,与档案名可不一致
         BigDecimal balancePrev,
+        boolean balancePrevDerived,   // true=链上派生(上月期末,前端禁编辑);false=首次出现月期初(可录)
+        boolean carried,              // true=结转虚行(本月无存储行,只带上月结余;录数保存即落成真行)
         // 21 费用列(顺序同 §3.1)
         BigDecimal factoryRent, BigDecimal factoryMgmtFee,
         BigDecimal shopRent, BigDecimal dormRent,

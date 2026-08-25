@@ -113,6 +113,11 @@ public class PermissionRegistry {
         // ═══ 预算:数据域属分析,但挂在导入中心由录入岗执行(拍板 #9) ═══
         add(HttpMethod.POST, "/api/budget/import", Perm.ENTRY_EDIT);
 
+        // ═══ 账册模板写端点(第16点 book-template:edit,2026-08-24 拍板):
+        //     模板改动独立于事后录入——录入员没这点就只能看不能改模板;GET 读全开 ═══
+        add(HttpMethod.PUT,  "/api/books/*/template",          Perm.BOOK_TEMPLATE_EDIT);
+        add(HttpMethod.POST, "/api/books/*/template/rollback", Perm.BOOK_TEMPLATE_EDIT);
+
         // ═══ 公司建/删 = 建删账册(第15点 company:manage,2026-08-24 拍板):
         //     必须排在主数据 catch-all 之前(铁律2:首个命中);改名 PUT 与收款账户仍落 master:edit ═══
         add(HttpMethod.POST,   "/api/companies",    Perm.COMPANY_MANAGE);
@@ -131,8 +136,8 @@ public class PermissionRegistry {
 
         // ═══ 事后录入:台账 + 附表6/7/8/10/11/12 + 办公三期水电 ═══
         for (String p : new String[]{"/api/ledger", "/api/s10", "/api/pv", "/api/charging",
-                                     "/api/elec", "/api/salary", "/api/utilities",
-                                     "/api/books"}) {   // 账册模板=录入域配置(BOOK-WORKBENCH-SPEC §3)
+                                     "/api/elec", "/api/salary", "/api/utilities"}) {
+                                     // /api/books 已摘除:模板写走第16点(上方方法级规则),其余写默认拒
             add(null, p, Perm.ENTRY_EDIT);
             add(null, p + "/**", Perm.ENTRY_EDIT);
         }

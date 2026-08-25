@@ -95,26 +95,40 @@ const LEDGER_ALIASES: Partial<Record<string, string[]>> = {
   dormFacilitiesFee: ['宿舍配套设施费'],
   shopInfraMaint: ['商铺基础设施维护费'],
 }
-// 模板驱动词典(§3 现行版全局生效):列=模板全列(含 hidden,导入仍认),别名随模板;非费用三列照旧追加
+// 上月结余列的别名全集:源册跨月/跨公司写法不一(「9月结余」「上月应收结余」…),
+// 而列语义恒为 balancePrev。主 label 用当月动态标签,其余 11 个月份写法与文字变体全进别名——
+// 靠忽略清单绕过会让期初值静默丢失(历史月未补时那是唯一入口,2026-08-25 拍板)。
+function balancePrevEntry(prevMonth: number | null): ColumnMapEntry {
+  const label = prevMonth != null ? prevMonth + '月结余' : '上月结余'
+  const aliases = ['上月结余', '上月应收结余', '上期结余', '期初余额', '上月余额']
+  for (let m = 1; m <= 12; m++) {
+    aliases.push(`${m}月结余`, `${m}月应收结余`)
+  }
+  return { label, key: 'balancePrev', aliases: aliases.filter(a => a !== label) }
+}
+
+// 模板驱动词典(§3 现行版全局生效):列=模板全列(含 hidden,导入仍认),别名随模板;结余/收款/备注照旧追加。
+// 结余链(2026-08-25 修订):上月结余照常匹配上送——**吃不吃由后端按链上位置定**
+// (租户首现月=期初照收;非首现=派生位忽略)。前端不做业务判定,否则历史月没补时结余全空。
 function ledgerColumnMapFromDef(def: BookDef, prevMonth: number | null): ColumnMapEntry[] {
   return [
     ...flattenCols(def).map(c => ({ label: c.label, key: c.id, aliases: c.aliases.length ? c.aliases : undefined })),
-    { label: prevMonth != null ? prevMonth + '月结余' : '上月结余', key: 'balancePrev', aliases: ['上月结余'] },
+    balancePrevEntry(prevMonth),
     { label: '本月收款', key: 'totalCollected' },
     { label: '备注', key: 'note', text: true },
   ]
 }
-// 派生/装饰列:未匹配也不值得打扰用户(应收合计/本月结余是系统算的,序号/合计是装饰;
-// 「N月结余」= balancePrev 的跨月变体,月份对不上时按复审②规约本就不吃,不算丢列;数字样表头是脏单元格)
-const LEDGER_UNMATCHED_IGNORE_RE = /应收合计|本月结余|^序号|合计|^小计|^总计|^\d+月结余$/
+// 派生/装饰列:未匹配也不值得打扰用户(应收合计/本月结余/本月应收款是系统算的,序号/合计是装饰;
+// 数字样表头是脏单元格)。注意「N月结余」不在此列——它是 balancePrev 的动态标签,要匹配不要忽略。
+const LEDGER_UNMATCHED_IGNORE_RE = /应收合计|本月结余|本月应收款|^序号|合计|^小计|^总计/
 
 function ledgerColumnMap(prevMonth: number | null): ColumnMapEntry[] {
   const labelByKey: Record<string, string> = {}
   for (const g of lgColumns(0).groups) for (const c of g.cols) labelByKey[c.key] = c.label
   return [
     ...FEE_KEYS.map(k => ({ label: labelByKey[k], key: k as string, aliases: LEDGER_ALIASES[k] })),
-    // balancePrev 主 label 仍动态单标签(模板列不双列诱导,复审①);「上月结余」走别名只参与匹配
-    { label: prevMonth != null ? prevMonth + '月结余' : '上月结余', key: 'balancePrev', aliases: ['上月结余'] },
+    // balancePrev 主 label 动态单标签(模板列不双列诱导,复审①);变体走别名只参与匹配
+    balancePrevEntry(prevMonth),
     { label: '本月收款', key: 'totalCollected' },
     { label: '备注', key: 'note', text: true },
   ]
@@ -300,6 +314,7 @@ const zero = (): ImportResultDTO => ({ imported: 0, skipped: 0, errors: [] })
 const toLedgerRow = (r: ImportRec): LedgerImportRow => {
   const row: LedgerImportRow = { tenantName: String(r.tenantName) }
   for (const k of FEE_KEYS) if (r[k] !== undefined) row[k] = r[k] as number
+  // 结余:照常上送——后端按链上位置定夺(首现月=期初收下,非首现=派生位忽略)
   if (r.balancePrev !== undefined) row.balancePrev = r.balancePrev as number
   if (r.totalCollected !== undefined) row.totalCollected = r.totalCollected as number
   if (r.note !== undefined) row.note = r.note as string
@@ -391,7 +406,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
           let warning: string | undefined
           const pending = collect(parsed)
           if (pending.length) {
-            if (!ctx.resolveUnmatched) return { error: `${pending.length} 个表头未匹配任何列:${pending.join('、')}。台账导入不丢列——请到「月度台账」页导入以当场处置,或先在编辑模式打开「编辑模板」为这些表头添加别名/自定义列。` }
+            if (!ctx.resolveUnmatched) return { error: `${pending.length} 个表头未匹配任何列:${pending.join('、')}。台账导入不丢列——请到「月度台账」页导入以当场处置,或先在打开「账册模板」为这些表头添加别名/自定义列。` }
             const dec = await ctx.resolveUnmatched(pending.map(h => ({ header: h })))
             if (!dec) return { error: '导入已取消:存在未处置的未匹配列。' }
             def = dec.def

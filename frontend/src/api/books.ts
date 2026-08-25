@@ -10,6 +10,9 @@ export const booksApi = {
     http.put(`/books/${bookId}/template`, { definition, note }),
   versions: (bookId: number): Promise<{ versions: TemplateVersion[] }> =>
     http.get(`/books/${bookId}/template/versions`),
+  // 历史版本定义(只读预览列名与布局;GET 读全开,查看不需要 book-template:edit)
+  versionDefinition: (bookId: number, ver: number): Promise<BookDef> =>
+    http.get(`/books/${bookId}/template/versions/${ver}`),
   // 回滚=复制历史版为新版本(版本号只前进)
   rollback: (bookId: number, ver: number): Promise<Book> =>
     http.post(`/books/${bookId}/template/rollback`, { ver }),

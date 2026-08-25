@@ -158,6 +158,15 @@ public class BookService {
         return new TemplateSaveResultDTO(toDTO(books.selectById(bookId)), structural, summary);
     }
 
+    /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 读全开,无权限门)。 */
+    public com.fasterxml.jackson.databind.JsonNode versionDefinition(Integer bookId, int ver) {
+        if (books.selectById(bookId) == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        BookTemplateVersion v = versions.byBook(bookId).stream()
+            .filter(x -> x.getVer() == ver).findFirst()
+            .orElseThrow(() -> new BizException(ResultCode.NOT_FOUND, "版本不存在"));
+        return readTree(v.getDefinition());
+    }
+
     public VersionListDTO versionList(Integer bookId) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
