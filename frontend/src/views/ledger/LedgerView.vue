@@ -269,7 +269,10 @@ function toastVer(msg: string) {
   verToast.value = msg
 }
 function patchBook(b: Book) {
-  books.value = books.value.map(x => (x.id === b.id ? b : x))   // book computed 换新 → 列即时重算
+  // 全局链是一条:本册升出新版后,同屏其他公司册的 latestVer 也跟着抬,
+  // 否则落后册的 R5 角标要刷新整页才亮。定义/指针只动被操作的那一册。
+  books.value = books.value.map(x =>
+    x.id === b.id ? b : { ...x, latestVer: Math.max(x.latestVer, b.latestVer) })   // book computed 换新 → 列即时重算
 }
 async function openTemplate() {
   if (!book.value) return

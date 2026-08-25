@@ -41,8 +41,20 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+// 全局链只覆盖台账屏:附表10 按期区一册一链,它的册也带 latestVer 且可以落后于自己那条链的链尾,
+// 但整套"升级/链尾编辑"规则不适用(design §s10 恒等变换),升级态整块不出现。
+const globalChain = computed(() => props.book?.screen === 'ledger')
+
 // R5 升级提示:落后于链尾时给一条状态 + 一个按钮,链尾时只给一句"已是最新"(同高,不塌陷)
-const behind = computed(() => !!props.book && props.book.ver < props.book.latestVer)
+const behind = computed(() => globalChain.value && props.book!.ver < props.book!.latestVer)
+
+// R3 编辑门关闭时的说明:一个没解释的灰按钮等于没提示
+const gateHint = computed(() => behind.value ? `先升到 v${props.book!.latestVer} 才能改` : undefined)
+
+// R5 待升各版:升级前得看得见这几版改了什么,不然"升到 v4"只能盲点
+const pending = computed(() => behind.value
+  ? props.versions.filter(v => v.ver > props.book!.ver).sort((a, b) => a.ver - b.ver)
+  : [])
 
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
@@ -75,7 +87,6 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
 // ── 模式切换 ──
 function enterEdit() {
   if (!props.book || !props.canEdit) return
-  if (behind.value) return   // R3:只能在链尾编辑,落后版先升级
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
   draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
   note.value = ''
@@ -211,13 +222,22 @@ function fmtTime(s: string): string {
             <p v-if="mode === 'edit'">现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
             <p v-else>现行 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
-          <div class="te-lineage">
-            <span v-if="behind">当前 v{{ book.ver }} · 最新 v{{ book.latestVer }}</span>
-            <span v-else>当前 v{{ book.ver }} · 已是最新</span>
-            <button v-if="behind" class="te-upgrade" type="button" :disabled="!canEdit"
-                    @click="emit('adopt', book.latestVer)">升到 v{{ book.latestVer }}</button>
+          <div v-if="globalChain" class="te-lineage">
+            <div class="te-lineage-row">
+              <span v-if="behind">当前 v{{ book.ver }} · 最新 v{{ book.latestVer }}</span>
+              <span v-else>当前 v{{ book.ver }} · 已是最新</span>
+              <button v-if="behind" class="te-upgrade" type="button" :disabled="!canEdit"
+                      @click="emit('adopt', book.latestVer)">升到 v{{ book.latestVer }}</button>
+            </div>
+            <template v-if="behind">
+              <div class="te-gate">{{ gateHint }}</div>
+              <ul class="te-pending">
+                <li v-for="v in pending" :key="v.id">v{{ v.ver }} · {{ v.note || '—' }}</li>
+              </ul>
+            </template>
           </div>
-          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm" :disabled="behind" @click="enterEdit">编辑模式</Button>
+          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm"
+                  :disabled="behind" :title="gateHint" @click="enterEdit">编辑模式</Button>
           <Button v-if="mode === 'edit'" class="te-donebtn" variant="outline" size="sm" @click="exitEdit">完成</Button>
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -346,8 +366,15 @@ function fmtTime(s: string): string {
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
-/* 升级提示:两态同高,有没有新版都不挪版(LAYOUT-STABILITY §2 优先级 1) */
-.te-lineage { display:flex; align-items:center; gap:8px; min-height:26px; font-size:var(--fs-label); color:var(--text-muted); }
+/* 升级提示:状态行两态同高(min-height 占住一行,没有新版也不塌陷)。
+   落后时其下多出「为什么不能改」与待升 note —— 它只在点「升到 vN」那一下消失,
+   而那一下整块模板定义都换了版,属 LAYOUT-STABILITY §5 的模式切换,不是凭空顶走已渲染内容 */
+.te-lineage { display:flex; flex-direction:column; align-items:flex-end; gap:2px; max-width:280px; font-size:var(--fs-label); color:var(--text-muted); }
+.te-lineage-row { display:flex; align-items:center; gap:8px; min-height:26px; }
+.te-gate { font-size:var(--fs-micro); color:var(--status-warning); }
+/* 待升各版的 note:升级前看得见改了什么(R5),长了就截断,不把头部撑开 */
+.te-pending { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:1px; max-width:100%; }
+.te-pending li { font-size:var(--fs-micro); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .te-upgrade {
   padding:2px 10px; border:1px solid var(--status-warning); border-radius:var(--radius-full);
   background:transparent; color:var(--status-warning); cursor:pointer; font-size:var(--fs-micro);

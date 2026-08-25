@@ -240,7 +240,7 @@ function onBack() {
             导出 Excel
           </Button>
           <!-- 账册模板(BOOK-WORKBENCH §3):两态常驻,浏览态主行;编辑权限门在面板内(book-template:edit) -->
-          <Button variant="outline" size="sm" @click="emit('edit-template')">
+          <Button class="lg-tplbtn" variant="outline" size="sm" @click="emit('edit-template')">
             <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
             账册模板<span v-if="tplBehind" class="lg-tpldot" title="有新版模板可升级"></span>
           </Button>
@@ -308,8 +308,10 @@ function onBack() {
 </template>
 
 <style scoped>
-/* 角标:不改变按钮尺寸,只在文字后加一个点 —— 有无新版都不挪版 */
-.lg-tpldot { display:inline-block; width:6px; height:6px; margin-left:5px; border-radius:50%; background:var(--status-warning); }
+/* 角标:绝对定位贴按钮右上角,不进文档流 —— 出现/消失都不改按钮尺寸,右边的按钮不挪版。
+   (行内 inline-block 会把按钮撑宽约 11px,整条工具条跟着右移) */
+.lg-tplbtn { position:relative; }
+.lg-tpldot { position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--status-warning); }
 /* 1:1 from screen-ledger.jsx LgStyles 70-81, 140-141, 149-151, 175-178, 217-218 */
 .lg-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .lg-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
