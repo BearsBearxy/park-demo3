@@ -116,7 +116,7 @@ public class PermissionRegistry {
         // ═══ 账册模板写端点(第16点 book-template:edit,2026-08-24 拍板):
         //     模板改动独立于事后录入——录入员没这点就只能看不能改模板;GET 读全开 ═══
         add(HttpMethod.PUT,  "/api/books/*/template",          Perm.BOOK_TEMPLATE_EDIT);
-        add(HttpMethod.POST, "/api/books/*/template/rollback", Perm.BOOK_TEMPLATE_EDIT);
+        add(HttpMethod.POST, "/api/books/*/template/adopt",    Perm.BOOK_TEMPLATE_EDIT);
 
         // ═══ 公司建/删 = 建删账册(第15点 company:manage,2026-08-24 拍板):
         //     必须排在主数据 catch-all 之前(铁律2:首个命中);改名 PUT 与收款账户仍落 master:edit ═══

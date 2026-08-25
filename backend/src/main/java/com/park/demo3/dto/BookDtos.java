@@ -20,7 +20,7 @@ public final class BookDtos {
     public record TemplateVersionDTO(long id, int ver, String note, String createdBy,
                                      LocalDateTime createdAt, boolean current) {}
 
-    public record RollbackReq(@NotNull Integer ver) {}
+    public record AdoptReq(@NotNull Integer ver) {}
 
     public record VersionListDTO(List<TemplateVersionDTO> versions) {}
 }

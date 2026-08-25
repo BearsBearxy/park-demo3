@@ -39,9 +39,9 @@ public class BookController {
         return svc.versionDefinition(id, ver);
     }
 
-    @Operation(summary = "回滚=复制历史版为新版本(版本号只前进)")
-    @PostMapping("/{id}/template/rollback")
-    public BookDTO rollback(@PathVariable Integer id, @Valid @RequestBody RollbackReq req) {
-        return svc.rollback(id, req.ver());
+    @Operation(summary = "切本册的模板版本指针(不造新版本;缺列且有数据 409)")
+    @PostMapping("/{id}/template/adopt")
+    public BookDTO adopt(@PathVariable Integer id, @Valid @RequestBody AdoptReq req) {
+        return svc.adopt(id, req.ver());
     }
 }

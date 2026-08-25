@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // 账册与模板(BOOK-WORKBENCH-SPEC):建司即建册(§9)/轻改动不升版·结构改动升版(§3)/
-// 标准列不可删(§3)/回滚版本号只前进(§3)/自定义列口袋走导入与合计(§2/§4)。
+// 标准列不可删(§3)/切版不造版本(R7)/自定义列口袋走导入与合计(§2/§4)。
 // @Transactional 回滚;断言只圈本用例自建的公司(种子册不碰),名字带 nanoTime 防并跑撞唯一键。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
@@ -108,7 +108,7 @@ class BookApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void saveTemplate_lightChange_keepsVersion_structuralBumps_rollbackForwards() throws Exception {
+    void saveTemplate_lightChange_keepsVersion_structuralBumps_adoptSwitchesPin() throws Exception {
         Object[] cb = createCompanyWithBook();
         JsonNode book = (JsonNode) cb[1];
         int bookId = book.path("id").asInt();
@@ -138,16 +138,16 @@ class BookApiIT extends AbstractMysqlIT {
         String vs = getOk("/api/books/" + bookId + "/template/versions");
         assertThat((Integer) JsonPath.read(vs, "$.data.versions.length()")).isEqualTo(2);
 
-        // 回滚 v1 → 复制为 v3(版本号只前进),定义回到 21 列
-        String r3 = new String(mvc.perform(post("/api/books/" + bookId + "/template/rollback")
-                .header("Authorization", auth()).contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(jsonPath("$.code").value(0))
-                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-        assertThat((Integer) JsonPath.read(r3, "$.data.ver")).isEqualTo(3);
-        JsonNode rolled = M.readTree(r3).path("data").path("definition");
-        int cols = 0;
-        for (JsonNode g : rolled.path("groups")) cols += g.path("cols").size();
-        assertThat(cols).isEqualTo(21);
+        // adopt 切指针:本册 ver 变成目标版,链尾 latestVer 不变(R7:切指针不造版本)
+        int tipBefore = JsonPath.read(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andReturn()), "$.data[0].latestVer");
+        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ver").value(1));
+        int tipAfter = JsonPath.read(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andReturn()), "$.data[0].latestVer");
+        assertThat(tipAfter).isEqualTo(tipBefore);
     }
 
     @Test
@@ -203,7 +203,7 @@ class BookApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void customColWithData_cannotBeRemoved_hideAllowed_rollbackGuardedToo() throws Exception {
+    void customColWithData_cannotBeRemoved_hideAllowed_adoptGuardedToo() throws Exception {
         Object[] cb = createCompanyWithBook();
         int companyId = (Integer) cb[0];
         int bookId = ((JsonNode) cb[1]).path("id").asInt();
@@ -227,8 +227,8 @@ class BookApiIT extends AbstractMysqlIT {
                 .contentType("application/json").content("{\"definition\":" + M.writeValueAsString(dropped) + "}"))
                 .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
 
-        // 回滚到没有该列的 v1 → 同样被守卫拦下
-        mvc.perform(post("/api/books/" + bookId + "/template/rollback").header("Authorization", auth())
+        // 切到没有该列的 v1 → 同样被守卫拦下
+        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
                 .contentType("application/json").content("{\"ver\":1}"))
                 .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
 
@@ -420,5 +420,78 @@ class BookApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不能删除")));
         // 类上 @Transactional,用例结束整体回滚 —— 不需要计划里那段手工清理
+    }
+
+    // ── 切版指针 adopt(R6/R7/R8):切指针不造版本,跨版可一步到位,缺列且有数据被守卫拦下 ──
+    // 探针列 id 必须与其他用例各不相同 —— 链只追加,重名会撞 TemplateDef.validate 的「列 id 重复」
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adopt_crossVersionJumpToTip_doesNotCreateVersion() throws Exception {
+        // 造出三版链:v1(种子) → v2 → v3
+        List<Integer> ids0 = JsonPath.read(ledgerBooks(), "$.data[*].id");
+        int book = ids0.get(0), other = ids0.get(1);
+        addCustomColAtTip(other, "c_jump_a", "跳版探针A");
+        addCustomColAtTip(other, "c_jump_b", "跳版探针B");
+        int latest = ((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0);
+        assertThat(latest).isEqualTo(3);
+
+        // 先退到 v1,再一步跳到链尾(R8:不必逐版爬)
+        mvc.perform(post("/api/books/" + book + "/template/adopt").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.ver").value(1));
+        mvc.perform(post("/api/books/" + book + "/template/adopt").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":" + latest + "}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ver").value(latest));
+
+        // R7:切指针不造新版本 —— 链尾纹丝不动
+        assertThat(((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0))
+                .isEqualTo(latest);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adopt_downgradeBlockedWhenCustomColumnHasData() throws Exception {
+        // ① 链尾加一列并升版(所有在链尾的册跟进)
+        String body0 = ledgerBooks();
+        List<Integer> ids = JsonPath.read(body0, "$.data[*].id");
+        List<Integer> cids = JsonPath.read(body0, "$.data[*].companyId");
+        int cIdx = cids.indexOf(1);                       // 用 companyId=1 的册,种子必有
+        int bookId = ids.get(cIdx);
+        addCustomColAtTip(bookId, "c_guard_probe", "守卫探针");
+
+        // ② 往该列导一行钱进去 —— 有数据才谈得上"降级会藏钱"
+        mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "12")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"守卫探针户\",\"extraFees\":{\"c_guard_probe\":100}}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1));
+
+        // ③ 降到不含该列的 v1 → 被守卫拦下(R6)
+        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已有")));
+        // 类上 @Transactional,用例结束整体回滚 —— 不需要计划里那段手工清理
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adopt_requiresBookTemplateEditPerm() throws Exception {
+        String vt = JsonPath.read(mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"viewer\",\"password\":\"viewer123\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
+                "$.data.token");
+        String body = utf8(mvc.perform(get("/api/books").param("screen", "ledger")
+                .header("Authorization", auth())).andReturn());
+        int id = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).get(0);
+        // 路径改名后权限门若没跟着挪,这条规则匹配不上任何端点 → 新端点对任何登录账号敞开
+        mvc.perform(post("/api/books/" + id + "/template/adopt").header("Authorization", "Bearer " + vt)
+                .contentType("application/json").content("{\"ver\":1}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 }

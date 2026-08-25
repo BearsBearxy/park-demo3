@@ -285,27 +285,23 @@ public class BookService {
         return new VersionListDTO(out);
     }
 
-    /** 回滚 = 复制历史版为新版本(§3:版本号只前进)。 */
+    /** 切本公司的版本指针(R7:取代旧「回滚=复制历史版为新版本」)。链只追加,切指针不造版本。 */
     @Transactional
-    public BookDTO rollback(Integer bookId, int ver) {
+    public BookDTO adopt(Integer bookId, int ver) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
-        Integer chainId = chainBookId(b);
-        BookTemplateVersion src = versions.byBook(chainId).stream()
+        BookTemplateVersion target = versions.byBook(chainBookId(b)).stream()
             .filter(v -> v.getVer() == ver).findFirst()
             .orElseThrow(() -> new BizException(ResultCode.NOT_FOUND, "版本不存在"));
         BookTemplateVersion cur = currentVersion(b);
-        // 回滚到缺列的历史版同样受归档守卫:名下有数据的自定义列不许因回滚蒸发(口袋值会变成合计里的幽灵钱)
-        assertNoDataLossOnCustomRemoval(b, TemplateDef.parse(cur.getDefinition()), TemplateDef.parse(src.getDefinition()));
-        BookTemplateVersion nv = new BookTemplateVersion();
-        nv.setBookId(chainId); nv.setVer(versions.maxVer(chainId) + 1);
-        nv.setDefinition(src.getDefinition());
-        nv.setNote("回滚自 v" + ver);
-        nv.setCreatedBy(actor());
-        versions.insert(nv);
-        b.setCurrentVersionId(nv.getId());
+        if (target.getId().equals(cur.getId())) return toDTO(b);          // 已在该版:幂等
+        // R6 切到缺列的版本同样受归档守卫:名下有数据的自定义列不许因切版蒸发
+        // (口袋残值仍进 recalc 应收合计,列却不显示 → 合计永远对不上明细)
+        assertNoDataLossOnCustomRemoval(b, TemplateDef.parse(cur.getDefinition()),
+                                           TemplateDef.parse(target.getDefinition()));
+        b.setCurrentVersionId(target.getId());
         books.updateById(b);
-        audit.log("模板修改", bookLabel(b), "v" + cur.getVer() + "→v" + nv.getVer() + ": 回滚自 v" + ver);
+        audit.log("模板切版", bookLabel(b), "v" + cur.getVer() + "→v" + ver);
         return toDTO(books.selectById(bookId));
     }
 
