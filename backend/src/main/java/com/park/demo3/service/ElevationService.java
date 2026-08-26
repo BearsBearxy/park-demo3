@@ -66,20 +66,45 @@ public class ElevationService {
             }
         }
 
-        // ── 2. 失败锁定:按 ip|授权人 计数(防的是猜某个主管的密码) ──
-        String key = LoginRateLimiter.key(clientIp(), req.authorizer());
+        // ── 2~4. 授权人是谁、密码对不对、他本人有没有这些权限 ──
+        AuthUser boss = verifyAuthorizer(req.authorizer(), req.password(), perms, "elevate");
+
+        // ── 5. 发放 ──
+        store.grant(me, perms, boss.getUsername());
+        audit.logAuthorized("elevate.grant", "perm:" + String.join(",", perms), boss.getUsername(),
+            "授权 " + (ElevationStore.TTL_SECONDS / 60) + " 分钟:"
+            + String.join("、", perms.stream().map(ElevationService::label).toList()));
+        return current();
+    }
+
+    /**
+     * 「某位同事当场在这台电脑上，用自己的账号密码，为一件他有权做的事背书」——
+     * 提权与**编辑锁接管**共用这一套校验。返回授权人；不通过直接抛。
+     *
+     * ⚠ **两处必须共用，不能各写一份。** 这里面有三样东西是一旦漏抄就静默失效的：
+     *   · 与登录同一套失败锁定（这个端点让任何已登录账号都能猜主管的密码）
+     *   · 授权人不存在/已停用时空跑一次 BCrypt —— 否则靠响应快慢就能枚举用户名
+     *   · 失败也进审计 ——「有人在反复试主管密码」必须查得出来
+     * 复制一份的结果不是两份一样的防护，是其中一份先烂掉而没人发现。
+     *
+     * @param auditAction 审计动作前缀（elevate / lock.takeover），失败时记 {前缀}.deny / .locked
+     */
+    public AuthUser verifyAuthorizer(String account, String password, List<String> mustHave, String auditAction) {
+        String me = currentUsername();
+
+        // 失败锁定:按 ip|授权人 计数(防的是猜某个主管的密码)
+        String key = LoginRateLimiter.key(clientIp(), account);
         if (limiter.isLocked(key)) {
-            audit.log("elevate.locked", "user:" + req.authorizer(), "授权失败次数过多,已锁定");
+            audit.log(auditAction + ".locked", "user:" + account, "授权失败次数过多,已锁定");
             throw new BizException(ResultCode.TOO_MANY_REQUESTS, "授权失败次数过多,请 15 分钟后再试");
         }
 
-        // ── 3. 授权人身份 ──
-        AuthUser boss = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.authorizer()));
+        AuthUser boss = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, account));
         boolean active = boss != null && boss.getStatus() == 1;
-        boolean ok = enc.matches(req.password(), active ? boss.getPasswordHash() : DUMMY_HASH) && active;
+        boolean ok = enc.matches(password, active ? boss.getPasswordHash() : DUMMY_HASH) && active;
         if (!ok) {
             limiter.recordFailure(key);
-            audit.log("elevate.deny", "user:" + req.authorizer(), "授权账号或密码错误");
+            audit.log(auditAction + ".deny", "user:" + account, "授权账号或密码错误");
             throw new BizException(ResultCode.UNAUTHORIZED, "授权人账号或密码错误");
         }
         limiter.reset(key);
@@ -90,23 +115,17 @@ public class ElevationService {
             throw new BizException(ResultCode.CONFLICT, "不能给自己授权:请找一位有该权限的同事。");
         }
 
-        // ── 4. 授权人得真有这些权限 ──
+        // 授权人得真有这些权限
         UserPermissionCache.UserAuth ua = cache.get(boss.getUsername());
-        List<String> lacking = perms.stream().filter(p -> ua == null || !ua.perms().contains(p)).toList();
+        List<String> lacking = mustHave.stream().filter(p -> ua == null || !ua.perms().contains(p)).toList();
         if (!lacking.isEmpty()) {
             String names = String.join("、", lacking.stream().map(ElevationService::label).toList());
-            audit.log("elevate.deny", "user:" + boss.getUsername(), "授权人本人无此权限:" + names);
+            audit.log(auditAction + ".deny", "user:" + boss.getUsername(), "授权人本人无此权限:" + names);
             throw new BizException(ResultCode.FORBIDDEN,
                 (boss.getDisplayName() == null ? boss.getUsername() : boss.getDisplayName())
                 + " 本人也没有「" + names + "」的权限,授权不了。请找系统管理员或财务主管。");
         }
-
-        // ── 5. 发放 ──
-        store.grant(me, perms, boss.getUsername());
-        audit.logAuthorized("elevate.grant", "perm:" + String.join(",", perms), boss.getUsername(),
-            "授权 " + (ElevationStore.TTL_SECONDS / 60) + " 分钟:"
-            + String.join("、", perms.stream().map(ElevationService::label).toList()));
-        return current();
+        return boss;
     }
 
     /** 退出编辑模式 / 登出 / 主动结束。幂等。 */
