@@ -300,6 +300,107 @@ class BookPinApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
+    // ── 复核补丁(2026-08-26 Task 3 复核):Integer 引用比较、s10 导入侧零覆盖、保存路径白名单仍走链尾 ──
+
+    // ver 是 Integer,`v.getVer() == req.ver()` 是引用比较,只在 -128..127 的 Integer 缓存里碰巧成立。
+    // 台账全屏共用一条全局链、ver 全系统累加,过了 127 之后会对**存在的**版本报「版本不存在」。
+    @Test
+    void pin_findsVersionByValue_notByIdentity_aboveTheIntegerCache() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+        long v200 = addVersion(booksMapper.lineageHost().getId(), 200, "c_bigver");
+
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":200,\"year\":2026,\"month\":7}"))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(pins.at("ledger", companyId, 2026, 7))
+                .as("ver=200 是链上真实存在的版本,必须钉得上").isNotNull();
+        assertThat(pins.at("ledger", companyId, 2026, 7).getVersionId()).isEqualTo(v200);
+    }
+
+    // 台账 import_alsoMaterializesPin 的附表10 镜像:导入是与手工保存并列的另一条写路径,
+    // 只测台账的话,固化钩子在 s10 侧只挂一半也能全绿收尾(计划全局约束「两屏同做」)。
+    @Test
+    void s10Import_alsoMaterializesPin() throws Exception {
+        // 2026-10 是空月(V18 种子止于 2026-06)
+        assertThat(pins.at("s10", 1, 2026, 10)).as("前置:该月还没被钉过").isNull();
+        mvc.perform(post("/api/s10/import").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"phase\":1,\"acctMonth\":\"2026-10\",\"rows\":[{\"tenantName\":\"附10导入固化户\","
+                        + "\"profile\":\"factory\",\"factoryRent\":100}]}"))
+                .andExpect(jsonPath("$.data.imported").value(1));
+        assertThat(pins.at("s10", 1, 2026, 10)).as("附表10 导入落库同样要固化 pin").isNotNull();
+    }
+
+    // 台账 importDictionary_followsTheMonthsPin_notTheCompanys 的附表10 镜像(owner=phase)。
+    @Test
+    void s10ImportDictionary_followsTheMonthsPin_notThePhases() throws Exception {
+        int bookId = s10BookId(1);
+        // 前置:2026-06 有 V18 种子数据,回填时已钉在当时那一版
+        assertThat(pins.at("s10", 1, 2026, 6)).as("种子月必须已有 pin,否则下面测的是链尾恒真").isNotNull();
+
+        // 9 月(空月)加一个自定义列 → 新版只属于 9 月及其之后的空月
+        addCustomCol(bookId, "c_s10dictprobe", 2026, 9);
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/9")).toString())
+                .as("9 月认得新列").contains("c_s10dictprobe");
+
+        // 往 2026-06(钉在旧版)导该列 → 未知 id,记名跳过
+        mvc.perform(post("/api/s10/import").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"phase\":1,\"acctMonth\":\"2026-06\",\"rows\":[{\"tenantName\":\"附10词典户\","
+                        + "\"profile\":\"factory\",\"extraFees\":{\"c_s10dictprobe\":10}}]}"))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andExpect(jsonPath("$.data.errors[0].reason")
+                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+    }
+
+    // 保存路径的口袋键白名单也必须按月(spec §6 那张「逐个确认无漏网」的表里,「新月份首次落库」
+    // 一行给的安全理由就是「数据本身经 customIdsAt 校验过」)。走链尾的话,钉在旧版的月份能被写进
+    // 该版根本没有的 c_ 列 —— 正是那张表声称已堵死的洞。
+    @Test
+    void save_extraFeeWhitelist_followsTheMonthsPin_notTheChainTip() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 1 月(空月)加列 → v2;随即往这列落钱 → 1 月钉死在 v2
+        addCustomCol(bookId, "c_janknown", 2026, 1);
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/1",
+              "{\"rows\":[{\"tenantName\":\"口袋户\",\"extraFees\":{\"c_janknown\":5}}]}");
+        assertThat(M.readTree(getOk("/api/ledger/companies/" + companyId + "/months/2026/1")).toString())
+                .as("本月认得的列必须写得进去 —— 否则下面那条 400 可能只是「一律拒收」").contains("口袋户");
+
+        // 11 月(空月)再加一列 → 链尾 v3,1 月不认得
+        addCustomCol(bookId, "c_novprobe", 2026, 11);
+        mvc.perform(put("/api/ledger/companies/" + companyId + "/months/2026/1")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"幽灵钱户\",\"extraFees\":{\"c_novprobe\":10}}]}"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+    }
+
+    // 同上,附表10 侧(owner=phase;acctMonth 'YYYY-MM' 要拆对)。
+    @Test
+    void s10Save_extraFeeWhitelist_followsTheMonthsPin_notTheChainTip() throws Exception {
+        int bookId = s10BookId(1);
+
+        // 2026-07(空月)加列 → v2;随即往这列落钱 → 7 月钉死在 v2
+        addCustomCol(bookId, "c_s10known", 2026, 7);
+        mvc.perform(post("/api/s10").header("Authorization", auth()).contentType("application/json")
+                .content("{\"tenantName\":\"附10口袋户\",\"phase\":1,\"acctMonth\":\"2026-07\","
+                        + "\"profile\":\"factory\",\"extraFees\":{\"c_s10known\":5}}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 9 月(空月)再加一列 → 链尾 v3,7 月不认得
+        addCustomCol(bookId, "c_s10later", 2026, 9);
+        mvc.perform(post("/api/s10").header("Authorization", auth()).contentType("application/json")
+                .content("{\"tenantName\":\"附10幽灵钱户\",\"phase\":1,\"acctMonth\":\"2026-07\","
+                        + "\"profile\":\"factory\",\"extraFees\":{\"c_s10later\":9}}"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+    }
+
     // ── MockMvc 脚手架(照 BookApiIT) ──
 
     private String auth() { return "Bearer " + token; }
@@ -373,6 +474,11 @@ class BookPinApiIT extends AbstractMysqlIT {
 
     /** 在某条链上追加一版(链尾+1),定义 = 链尾版加一个探针自定义列。 */
     private long addVersion(Integer chainBookId, String probeColId) {
+        return addVersion(chainBookId, versionsMapper.tip(chainBookId).getVer() + 1, probeColId);
+    }
+
+    /** 同上,但版本号指定 —— 造「ver 超出 Integer 缓存」这种要跑一百多次保存才碰得到的前置状态。 */
+    private long addVersion(Integer chainBookId, int ver, String probeColId) {
         try {
             BookTemplateVersion tip = versionsMapper.tip(chainBookId);
             ObjectNode def = (ObjectNode) M.readTree(tip.getDefinition());
@@ -381,7 +487,7 @@ class BookPinApiIT extends AbstractMysqlIT {
                .put("slot", "other").put("hidden", false).putNull("w");
             col.set("aliases", def.arrayNode());
             BookTemplateVersion v = new BookTemplateVersion();
-            v.setBookId(chainBookId); v.setVer(tip.getVer() + 1);
+            v.setBookId(chainBookId); v.setVer(ver);
             v.setDefinition(def.toString()); v.setNote("IT 造的前置状态"); v.setCreatedBy("IT");
             versionsMapper.insert(v);
             return v.getId();

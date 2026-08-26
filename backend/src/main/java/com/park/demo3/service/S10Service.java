@@ -223,7 +223,9 @@ public class S10Service {
         // 保存语义:extraFees 非空=整包替换;null=不动(兼容不带口袋的调用方)。
         // 键校验(审查#10):归档(hidden)列在册可写;已删除列的 c_ 键拒收,防幽灵钱直写
         if (req.extraFees() != null && !req.extraFees().isEmpty()) {
-            java.util.Set<String> allowed = bookService.customIdsByPhase(r.getPhase());
+            // 词典跟着月份走(spec §6),与导入同一口径;acctMonth 是 'YYYY-MM',在这里拆
+            java.util.Set<String> allowed = bookService.customIdsAt("s10", r.getPhase(),
+                yearOf(r.getAcctMonth()), monthOf(r.getAcctMonth()));
             var bad = req.extraFees().keySet().stream().filter(k -> !allowed.contains(k)).toList();
             if (!bad.isEmpty())
                 throw new BizException(ResultCode.BAD_REQUEST,

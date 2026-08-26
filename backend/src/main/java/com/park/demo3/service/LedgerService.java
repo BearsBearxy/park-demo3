@@ -314,8 +314,9 @@ public class LedgerService {
             if (ex != null && ex.getTenantId() == null
                 && row.tenantName() != null && !row.tenantName().isBlank()) { needTenants = true; break; }
         }
-        // 保存路径口袋键校验(审查#10):归档(hidden)列在册可写;已删除列的 c_ 键拒收
-        Set<String> allowedExtra = bookService.customIdsByCompany(companyId);
+        // 保存路径口袋键校验(审查#10):归档(hidden)列在册可写;已删除列的 c_ 键拒收。
+        // 词典跟着月份走(spec §6),与导入同一口径:走链尾的话,钉在旧版的月份能被写进该版没有的 c_ 列
+        Set<String> allowedExtra = bookService.customIdsAt("ledger", companyId, year, month);
         Set<Integer> knownIds = Set.of();
         Map<Integer, String> archive = Map.of();
         Map<String, Integer> softIdx = Map.of();

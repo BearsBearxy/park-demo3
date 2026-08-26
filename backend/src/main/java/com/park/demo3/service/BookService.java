@@ -204,7 +204,7 @@ public class BookService {
         // 宿主行不存在只有一种情形:全新库首次种子(紧随其后的 migrateToGlobalLineage 会把它归并进去)
         // ⚠ current_version_id 不再写:spec §5 宣告台账公司册的这一列作废(迁移已把老册置 NULL),
         //   版本改由 book_month_pin 按月持有。写了它,新司的"不带月份读"会永远停在建司当刻那一版
-        //   ——导入白名单(customIdsByCompany)跟着停,新加的自定义列导不进来。
+        //   ——版本清单里的"当前版"标记跟着停在建司当刻那一版。
         LedgerBook host = books.lineageHost();
         BookTemplateVersion tip = host == null ? null : versions.tip(host.getId());
         if (tip == null) initVersion(b, BookTemplates.ledgerStandard(), "建册(标准 21 列模板)", by);
@@ -348,7 +348,9 @@ public class BookService {
         Integer owner = ownerIdOf(b);
         assertMonthEditable(b, owner, req.year(), req.month());
         BookTemplateVersion target = versions.byBook(chainBookId(b)).stream()
-            .filter(v -> v.getVer() == req.ver()).findFirst()
+            // ⚠ 两个 Integer 必须 equals:== 是引用比较,只在 -128..127 的 Integer 缓存里碰巧成立。
+            //   ver 是全系统累加的(每改一次模板 +1),链一过百就会对存在的版本报「版本不存在」
+            .filter(v -> req.ver().equals(v.getVer())).findFirst()
             .orElseThrow(() -> new BizException(ResultCode.NOT_FOUND, "版本不存在"));
         pinSvc.pin(b.getScreen(), owner, req.year(), req.month(), target.getId());
         audit.log("模板切版", bookLabel(b), req.year() + "-" + req.month() + " → v" + req.ver());
@@ -376,18 +378,9 @@ public class BookService {
         return new VersionListDTO(out);
     }
 
-    // ── 导入校验用:该账册现行版的自定义列 id 集(§4:未知 id 该行报错不静默吞) ──
-    public Set<String> customIdsByCompany(Integer companyId) {
-        LedgerBook b = books.byCompany(companyId);
-        return b == null ? Set.of() : TemplateDef.customIds(TemplateDef.parse(currentVersion(b).getDefinition()));
-    }
-
-    public Set<String> customIdsByPhase(Integer phase) {
-        LedgerBook b = books.byPhase(phase);
-        return b == null ? Set.of() : TemplateDef.customIds(TemplateDef.parse(currentVersion(b).getDefinition()));
-    }
-
-    /** 导入词典按 (册, 月) 取(spec §6):跟着月份走,不是跟着公司走 ——
+    // ── 写入校验用(§4:未知 id 该行报错不静默吞)。按册取的两个旧版本(customIdsByCompany /
+    //    customIdsByPhase)已删:它们走链尾,会让钉在旧版的月份写进该版没有的 c_ 列 ──
+    /** 词典按 (册, 月) 取(spec §6):跟着月份走,不是跟着公司走 ——
      *  钉在旧版的月份不该认得后来才加进链尾的列。 */
     public Set<String> customIdsAt(String screen, Integer ownerId, int year, int month) {
         LedgerBook b = "ledger".equals(screen) ? books.byCompany(ownerId) : books.byPhase(ownerId);
