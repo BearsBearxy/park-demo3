@@ -5,6 +5,7 @@
 // 两类型共一表用 type 区分:energy(电量电费)/ basic(基本电费),切 type 重新取数。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { elecApi } from '@/api/elec'
 import { exportElecYear } from '@/utils/elecExcel'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -154,6 +155,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      :scope-of="(y) => S.elecSched(y)"
       v-if="year === null"
       icon="zap"
       title="附表11 · 电费成本"
@@ -171,6 +173,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
     <template v-else-if="yearData">
       <div class="e11-page">
         <SchedHeader
+          :scope="S.elecSched(year)"
           icon="zap"
           title="附表11 · 电费成本"
           sub="对外电费进项 · 电量电费(分时)+ 基本电费 · 一期 / 二期 / 三期 · 金额单位 元"

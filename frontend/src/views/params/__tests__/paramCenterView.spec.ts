@@ -63,6 +63,19 @@ const STATUS: ParamStatusDTO = {
   poolSnapshotAt: '2026-08-16T16:37:51', billBatchAt: '2026-08-12T13:41:34', stale: false, otherMonthsAffected: [],
 }
 const put = vi.fn()
+// 计费参数页自 P3 起要先占到编辑锁才进得了编辑态（CONCURRENCY-SPEC §3.2：
+// 它与公共电核算 / 催缴单 / 系数簿共占 billing-chain 那把月锁）。
+// 不 mock 的话 locksApi 走真 axios，jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
+vi.mock('@/api/locks', () => ({
+  locksApi: {
+    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    release: () => Promise.resolve(),
+    heartbeat: () => Promise.resolve({ evicted: null }),
+    takeover: () => Promise.resolve({ granted: true, holder: null }),
+    releaseOnUnload: () => {},
+  },
+}))
+
 vi.mock('@/api/params', () => ({
   paramsApi: {
     list: vi.fn(() => Promise.resolve(ROWS.map(r => ({ ...r })))),

@@ -23,6 +23,8 @@ import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import IncomeStatementTable from './IncomeStatementTable.vue'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
 const STMT = 'is'
 
@@ -37,7 +39,7 @@ const {
   yearGated, gateYears, yearCards, gateCurrent,
   pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
   loadPeriod,
-  enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
+  enterEdit, onTaken, lockedBy, evictedBy, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
@@ -435,6 +437,12 @@ async function onExport() {
       </div>
     </div>
   </Teleport>
+  <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope() ?? ''"
+                    :what="`利润表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
+                    @close="lockedBy = null" @taken="onTaken" />
+  <FPEvictedDialog :eviction="evictedBy"
+                   :what="`利润表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
+                   :dirty-count="dirty" @close="evictedBy = null" />
 </template>
 
 <style scoped>

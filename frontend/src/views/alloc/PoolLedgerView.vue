@@ -59,6 +59,7 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
@@ -70,7 +71,7 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['billing-run:edit', 'param-policy:edit'])
+  useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
 onDeactivated(() => { poolDlg.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')

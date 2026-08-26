@@ -23,6 +23,10 @@ import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import { useEditLock } from '@/composables/useEditLock'
+import { S } from '@/utils/lockScopes'
 import FPToast from '@/components/fp/FPToast.vue'
 
 const props = defineProps<{
@@ -57,6 +61,23 @@ const effYear = ref(today.getFullYear())
 const effMonth = ref(today.getMonth() + 1)
 const effYm = computed(() => `${effYear.value}-${pad2(effMonth.value)}`)
 const editMode = ref(false)
+
+// ── 编辑锁(CONCURRENCY-SPEC §3.2) ──
+// ⚠ 键取**生效月 effYm**,不是催缴单页当前的 ym —— 生效月由本窗口内独立选择,两者可以不同。
+//   取错了会锁住一个没人在改的月,而真正在改的那个月毫无保护(§3.1 E 段点名的坑)。
+// 这把锁与计费参数 / 公共电核算 / 催缴单三屏**共占同一把**:它们打的是同一批快照表。
+const lock = useEditLock(() => { editMode.value = false })
+const { lockedBy, evictedBy } = lock
+watch(editMode, (on) => { if (!on) lock.release() })
+
+async function onEditBtn() {
+  if (!canEdit.value) { asking.value = ['param-policy:edit']; return }
+  if (await lock.acquire(S.coefBook(effYear.value, effMonth.value))) editMode.value = true
+}
+async function onTaken() {
+  lockedBy.value = null
+  if (await lock.acquire(S.coefBook(effYear.value, effMonth.value))) editMode.value = true
+}
 // ⚠ 本窗口不走 useEditMode(有自己的退出语义),但必须登记进 auth.editors ——
 //   不登记的话守卫两头都失效:别的页面退出编辑时会把本窗口正用着的授权一起结束掉,
 //   而本窗口退出时又会被别的页面挡住结束不了。
@@ -443,14 +464,19 @@ function onClose() {
         </Button>
       </template>
       <Button v-else-if="canAsk && !floorLocked && !loading" variant="outline" size="sm"
-              @click="canEdit ? (editMode = true) : (asking = ['param-policy:edit'])">
+              @click="onEditBtn">
         <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
         编辑模式
       </Button>
       <Button variant="outline" size="sm" @click="onClose">关闭</Button>
     </template>
     <FPElevateDialog :perms="asking" what="修改系数簿(计费口径)"
-                     @close="asking = null" @elevated="asking = null; editMode = true" />
+                     @close="asking = null" @elevated="asking = null; void onEditBtn()" />
+    <FPTakeoverDrawer :holder="lockedBy" :scope="S.coefBook(effYear, effMonth)"
+                      :what="`系数簿 · 自 ${effYm} 起生效`"
+                      @close="lockedBy = null" @taken="onTaken" />
+    <FPEvictedDialog :eviction="evictedBy" :what="`系数簿 · 自 ${effYm} 起生效`"
+                     @close="evictedBy = null" />
   </FPDrawer>
 </template>
 

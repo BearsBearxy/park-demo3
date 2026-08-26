@@ -13,6 +13,7 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -36,7 +37,7 @@ const auth = useAuthStore()
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit'])
+  useEditMode(['meter-master:edit', 'meter-reading:edit'], { scope: () => S.pvMeter(year.value) })
 // RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
 const canMaster = computed(() => auth.can('meter-master:edit'))

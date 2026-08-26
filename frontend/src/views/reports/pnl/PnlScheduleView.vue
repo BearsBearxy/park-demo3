@@ -11,6 +11,7 @@
 // 派生生成(P2-G2):进年两侧就绪(loadYear+loadDerive)后 tryGenerate 补缺失映射行并 PUT 落库;
 // 每年会话内只试一次(generatedYears,成败都记);导入路径不触发(H6:下次进年补回)。
 import { ref, computed, onMounted } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { pnlApi } from '@/api/pnl'
 import { PNL_SCHEDULES, detectKind, rowYearTotal } from '@/reports/pnlSchedules'
@@ -331,6 +332,7 @@ async function onExport() {
   <template v-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      :scope-of="(y) => S.pnl(config.schedule, y)"
       v-if="year === null"
       :icon="icon"
       :title="config.title"
@@ -346,6 +348,7 @@ async function onExport() {
     <template v-else-if="data && data.year === year">
       <div class="pnl-page">
         <SchedHeader
+          :scope="S.pnl(config.schedule, year)"
           :icon="icon"
           :title="config.title"
           :sub="sub"

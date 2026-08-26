@@ -5,6 +5,7 @@
 //   进表后顶部 Segmented 切「附表13·办公水电 / 附表14·三期水电」(切 tab → 用对应 no 重载 records)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { utilitiesApi } from '@/api/utilities'
 import { exportUtilitiesYear } from '@/utils/utilitiesExcel'
 import { parseYearMonth } from '@/utils/parseYearMonth'
@@ -137,6 +138,7 @@ const onExport = () => guard('导出失败', async () => {
   <template v-if="overview">
     <!-- ⓪ 年份选择层(合并 13+14;store-key 固定 'utilities') -->
     <SchedYearGate
+      :scope-of="(y) => S.utilities(no, y)"
       v-if="year === null"
       icon="plug"
       title="办公 · 三期水电"
@@ -152,6 +154,7 @@ const onExport = () => guard('导出失败', async () => {
     <template v-else-if="yearData">
       <div class="ut-page">
         <SchedHeader
+          :scope="S.utilities(no, year)"
           icon="plug"
           title="办公 · 三期水电"
           :sub="meta.sub"

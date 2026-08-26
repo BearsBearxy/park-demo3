@@ -15,6 +15,7 @@ import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -38,7 +39,7 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['entry:edit', 'param-policy:edit'])
+  useEditMode(['entry:edit', 'param-policy:edit'], { scope: () => S.elecCost(year.value, month.value) })
 // 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
 const editE = computed(() => editMode.value && canEntry.value)
 const editC = computed(() => editMode.value && canPrice.value)

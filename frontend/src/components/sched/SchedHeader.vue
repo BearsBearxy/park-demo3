@@ -5,7 +5,10 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useEditLock } from '@/composables/useEditLock'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
 const props = withDefaults(defineProps<{
   icon: string
@@ -24,7 +27,10 @@ const props = withDefaults(defineProps<{
   /** 未保存的草稿处数。>0 时导入前二次确认 —— 导入落库后要重拉数据,会静默冲掉草稿。
    *  只有附表10 与母册附表有草稿(其余 5 屏是抽屉即时落库),它们传,别的屏不用管。 */
   dirty?: number
-}>(), { showImport: false, importDisabled: false, dirty: 0 })
+  /** 本期的编辑锁作用域(CONCURRENCY-SPEC §3.1),如 `sched:pv:2025`。
+   *  **不传 = 这一屏不上锁**,行为与加锁之前一个字不差。 */
+  scope?: string | null
+}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': []; import: [] }>()
 
@@ -43,13 +49,38 @@ const meId = Symbol('sched-header')
 watch(() => props.edit, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 
-function onToggleEdit() {
+// ── 编辑锁(CONCURRENCY-SPEC §4) ──
+// 与 useEditMode 共用同一份机制(useEditLock)。本组件不走 useEditMode —— 编辑态由 7 个消费屏
+// 各自持有 —— 所以锁也得在这儿自己接一次,但接的是同一个 composable,不是另抄一份。
+const lock = useEditLock(() => { if (props.edit) emit('toggle-edit') })
+const { lockedBy, evictedBy } = lock
+
+/**
+ * 锁按钮三态(设计稿 C-1/C-2/C-3):同一个物理位置、min-width 定死,换文案不换宽度。
+ *
+ * 取自**在场表**而不是「点了被拒」的结果 —— 不点也能看见谁占着(C-2 画的就是这个)。
+ */
+const heldByOther = lock.watchScope(() => props.scope)
+
+async function onToggleEdit() {
   if (!props.edit && !auth.can(props.perm)) { asking.value = [props.perm]; return }
   if (props.edit) {
     auth.closeEditor(meId)      // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
     void auth.endElevation()
+    lock.release()
+    emit('toggle-edit')
+    return
   }
+  // 权限齐 ≠ 进得去:没传 scope 的屏原样直接进;传了的必须先占到锁
+  if (props.scope && !(await lock.acquire(props.scope))) return
   emit('toggle-edit')
+}
+
+/** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
+async function onTaken() {
+  lockedBy.value = null
+  if (props.scope) await lock.acquire(props.scope)   // 重入拿回 held 与心跳
+  if (!props.edit) emit('toggle-edit')
 }
 
 function onImport() {
@@ -88,13 +119,26 @@ function onImport() {
       <!-- 文案与形态对齐 EDIT-MODE-SPEC §2 与抄表屏样板(MeterView.vue:583):
            浏览态 outline(编辑是次要动作) → 编辑态 filled(完成是主要动作)。
            改前这里恒 filled + 文案「编辑表格」,与 6 个抄表族屏的 outline +「编辑模式」两派并存。 -->
-      <Button v-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm" @click="onToggleEdit">
-        <template #leading><component :is="iconFor(edit ? 'check' : 'pencil')" :size="14" /></template>
-        {{ edit ? '完成' : '编辑模式' }}
+      <!-- 锁位就长在编辑模式按钮上(设计稿 §05):不另加 chip —— 那是你的手本来就要去的地方。
+           min-width 定死,三态换文案不换宽度,工具条不挪一个像素(LAYOUT-STABILITY)。 -->
+      <Button v-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm"
+              class="lc-lockbtn" :class="{ held: !!heldByOther }" @click="onToggleEdit">
+        <template #leading>
+          <span v-if="heldByOther && !edit" class="lc-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
+          <component v-else :is="iconFor(edit ? 'check' : 'pencil')" :size="14" />
+        </template>
+        <template v-if="edit">完成</template>
+        <template v-else-if="heldByOther">
+          {{ heldByOther.displayName }} {{ heldByOther.idle ? `空闲 ${Math.floor(heldByOther.idleMs / 60000)} 分` : '编辑中' }}
+        </template>
+        <template v-else>编辑模式</template>
       </Button>
     </div>
     <FPElevateDialog :perms="asking" :what="`修改${title}`"
                      @close="asking = null" @elevated="asking = null; emit('toggle-edit')" />
+    <FPTakeoverDrawer :holder="lockedBy" :scope="scope ?? ''" :what="`${title} ${year} 年`"
+                      @close="lockedBy = null" @taken="onTaken" />
+    <FPEvictedDialog :eviction="evictedBy" :what="`${title} ${year} 年`" @close="evictedBy = null" />
   </div>
 </template>
 
@@ -109,4 +153,9 @@ function onImport() {
 .lc-head-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .lc-yearbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:var(--accent-blue); color:var(--hue-blue); font-size:12.5px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lc-editbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:rgb(255,243,230); color:var(--hue-orange); font-size:12.5px; font-weight:var(--fw-medium); white-space:nowrap; }
+/* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」/「完成」换文案不挪版 */
+.lc-lockbtn { min-width:150px; justify-content:center; }
+.lc-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
+.lc-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
+.lc-lockav.dim { opacity:.55; }
 </style>

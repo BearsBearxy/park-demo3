@@ -32,6 +32,7 @@ import {
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -70,7 +71,7 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['billing-run:edit', 'billing-issue:edit'])
+  useEditMode(['billing-run:edit', 'billing-issue:edit'], { scope: () => S.billNotices(year.value, month.value) })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
 // 编辑态不跨会话(spec §1):切走页签回来即回浏览态

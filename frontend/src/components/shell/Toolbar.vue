@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import IconButton from '@/components/ds/IconButton.vue'
+import FPPresenceBar from '@/components/fp/FPPresenceBar.vue'
 import { PanelLeft, Star, Search, Sun, History, Bell } from 'lucide-vue-next'
 
 const emit = defineEmits<{ 'open-command': [mode: string] }>()
@@ -35,6 +36,8 @@ const crumbPage  = computed(() => meta.value.page ?? '')
 
     <!-- right: search + utility icons -->
     <div class="fp-toolbar-right">
+      <!-- 在场头像组(PRESENCE §03):右区最左,紧挨搜索框。宽度按满员算死,人数变化不挪版。 -->
+      <FPPresenceBar />
       <button class="fp-search-btn" @click="emit('open-command', 'jump')">
         <Search :size="15" />
         <span>搜索页面 / 租户 / 凭证…</span>

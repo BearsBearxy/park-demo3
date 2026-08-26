@@ -33,6 +33,7 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -58,7 +59,7 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
 const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit } =
-  useEditMode(['meter-reading:edit', 'meter-master:edit'])
+  useEditMode(['meter-reading:edit', 'meter-master:edit'], { scope: () => S.meters(year.value) })
 const importing = ref(false)
 const okMsg = ref('')
 const toastTone = ref<'success' | 'warning'>('success')

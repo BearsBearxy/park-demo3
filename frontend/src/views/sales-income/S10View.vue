@@ -6,6 +6,7 @@
 // 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
 // §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
 import { ref, computed, onMounted, onDeactivated, reactive } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
 import { booksApi } from '@/api/books'
@@ -489,6 +490,7 @@ function onImportClick() {
         <template v-else-if="monthData">
           <div class="s10-page">
             <SchedHeader
+              :scope="S.s10(phase, year, month)"
               icon="coins"
               title="附表10 · 销售收入"
               sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"

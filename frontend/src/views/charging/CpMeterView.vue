@@ -13,6 +13,7 @@ import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -43,7 +44,7 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'])
+  useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], { scope: () => S.cpMeter(props.vehicleType, year.value) })
 // RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
 // 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
 const canMaster = computed(() => auth.can('meter-master:edit'))

@@ -5,6 +5,7 @@
 // 进宽表必点月卡(§7-1 明确选期门,pick 自带年份);表格态「换期」回矩阵。
 // 旧动线(公司picker→年份门→月历)已废,LedgerCompanyPicker/LedgerMonthGrid 不再引用(文件保留待主线拍板)。
 import { ref, computed, onMounted, onDeactivated } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -64,6 +65,15 @@ const draft = ref<LedgerRowDTO[]>([])               // 编辑态工作副本
 
 const company = computed(() => companies.value.find(c => c.id === companyId.value) ?? null)
 const companyName = computed(() => company.value?.name ?? book.value?.name ?? '')
+// 编辑锁作用域(CONCURRENCY-SPEC §3.1 / 拍板 #1:按公司 + 年月)。
+// 公司或月份没定下来就没有期可锁 → null,LedgerWideTable 据此不上锁。
+/** 矩阵每一格的作用域 —— 与进去之后那把锁必须是同一个键。 */
+const cellScope = (y: number, m: number) =>
+  companyId.value == null ? null : S.ledger(companyId.value, y, m)
+const lockScope = computed(() =>
+  companyId.value != null && month.value != null
+    ? S.ledger(companyId.value, year.value, month.value)
+    : null)
 
 // 行数据进表格前 extra_fees 口袋平铺(c_xxx 上顶层,表格/抽屉/合计按列 key 直取)
 function flatMonth(dto: LedgerMonthDTO): LedgerMonthDTO {
@@ -614,6 +624,7 @@ function gotoTenants() {
         </div>
         <div v-if="gateYears" class="lgw-matrix">
           <BookMonthMatrix
+            :scope-of="cellScope"
             :book="book"
             :years="matrixYears"
             @pick="pickCell"
@@ -639,6 +650,7 @@ function gotoTenants() {
           :addable-tenants="addableTenants"
           :issue-count="issueGroups.reduce((n, g) => n + g.count, 0)"
           :focus-tenant="focusTenant"
+          :lock-scope="lockScope"
           @focus-done="focusTenant = ''"
           @back="backToMonths"
           @enter-edit="enterEdit"
