@@ -6,10 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jayway.jsonpath.JsonPath;
 import com.park.demo3.AbstractMysqlIT;
-import com.park.demo3.entity.BookTemplateVersion;
-import com.park.demo3.entity.LedgerBook;
-import com.park.demo3.mapper.BookTemplateVersionMapper;
-import com.park.demo3.mapper.LedgerBookMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,8 +28,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
-    @Autowired LedgerBookMapper booksMapper;
-    @Autowired BookTemplateVersionMapper versionsMapper;
     private static final ObjectMapper M = new ObjectMapper();
     private String token;
 
@@ -157,10 +151,11 @@ class BookApiIT extends AbstractMysqlIT {
                 "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}");
         assertThat((Integer) JsonPath.read(res, "$.data.book.ver")).isEqualTo(2);
 
-        // 旧版本逐字节不变(永不改写)
-        String v1After = M.readTree(getOk("/api/books/" + bookId + "/template/versions/1")).toString();
-        assertThat(v1After).contains(M.readTree(v1Def).path("groups").path(0).path("cols").path(0)
-                .path("label").asText());
+        // 旧版本逐字节不变(永不改写 —— P5 的存在理由,也是本用例唯一守得住它的断言)
+        // ⚠ 不能只 contains(原 label):新 label 就是"原 label·改",就地改写 v1 之后 contains 照样为真,
+        //   等于空跑。整棵定义树相等才挡得住"升了版还顺手改写旧版"这类回归。
+        JsonNode v1After = M.readTree(getOk("/api/books/" + bookId + "/template/versions/1")).path("data");
+        assertThat(v1After).as("v1 的定义在保存前后必须一模一样").isEqualTo(M.readTree(v1Def));
     }
 
     @Test
@@ -203,6 +198,20 @@ class BookApiIT extends AbstractMysqlIT {
                 .contentType("application/json")
                 .content("{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}"))
                 .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
+    }
+
+    // 月份既是 book_month_pin.period_month(TINYINT),又是 P3「往前找最近一版」的排序键 ——
+    // 13 月会原样落库、排到 12 月后面,把解析顺序搅乱。@NotNull 只挡缺失,区间得另守。
+    @Test
+    void saveTemplate_monthOutOfRange_isRejected() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+        String def = M.writeValueAsString(((JsonNode) cb[1]).path("definition"));
+        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"definition\":" + def + ",\"year\":2026,\"month\":13}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
     }
 
     @Test
@@ -278,7 +287,8 @@ class BookApiIT extends AbstractMysqlIT {
             else assertThat(chainOf(vs, ids.get(i))).as("每册看到同一条链的同一批版本行").isEqualTo(chain);
             List<Integer> cur = JsonPath.read(vs, "$.data.versions[?(@.current == true)].ver");
             assertThat(cur).as("current 恰好标在本册 pin 的那版上").containsExactly(vers.get(i));
-            assertThat(vers.get(i)).isLessThanOrEqualTo(latest.get(i));
+            // 这里原先还有一句 ver <= latestVer:spec §6 之后不带月份的清单两个字段同取链尾,
+            // 它已恒真、零检出力。真正的 ver < latestVer 由按月接口守(见 s10_monthPinnedToOlderVersion)
         }
     }
 
@@ -293,12 +303,11 @@ class BookApiIT extends AbstractMysqlIT {
         // 且永远修不回来:它不在链上,链尾编辑再也带不动它
         assertThat(chainOf(getOk("/api/books/" + newBookId + "/template/versions"), newBookId))
             .as("新册直接落在全局链上").isEqualTo(chain);
-        String body = getOk("/api/books?screen=ledger");
-        List<Integer> ids = JsonPath.read(body, "$.data[*].id");
-        List<Integer> vers = JsonPath.read(body, "$.data[*].ver");
-        List<Integer> latest = JsonPath.read(body, "$.data[*].latestVer");
-        int i = ids.indexOf(newBookId);
-        assertThat(vers.get(i)).as("新册没有历史,没有理由落后于链尾").isEqualTo(latest.get(i));
+        // 新册一个 pin 都没有 → 按 P3 第 3 步落到链尾。这条从按月接口读才有检出力:
+        // 清单接口的 ver 与 latestVer 自 spec §6 起同取链尾,在那儿断言 ver==latestVer 是恒真
+        JsonNode at = M.readTree(getOk("/api/books/" + newBookId + "/template/at/2026/3")).path("data");
+        assertThat(at.path("ver").asInt()).as("新册没有历史,该月落到链尾")
+            .isEqualTo(at.path("latestVer").asInt());
     }
 
     private static String utf8(org.springframework.test.web.servlet.MvcResult r) {
@@ -326,36 +335,23 @@ class BookApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.structural").value(true));
     }
 
-    /** 把某台账册的版本指针按回旧版 —— 造前置状态用的纯 fixture(不走任何端点)。 */
-    private void pinTo(int bookId, int ver) {
-        Integer host = booksMapper.lineageHost().getId();
-        BookTemplateVersion target = versionsMapper.byBook(host).stream()
-                .filter(v -> v.getVer() == ver).findFirst().orElseThrow();
-        LedgerBook b = booksMapper.selectById(bookId);
-        b.setCurrentVersionId(target.getId());
-        booksMapper.updateById(b);
-    }
-
-    // ── 导入词典跟着指针走(spec §8):customIdsByCompany 取的是该公司**现行版**的自定义列 ──
-    // 册退回不含某自定义列的旧版后,源册里那一列就是未知 id,该行记名跳过而不是静默吞钱。
+    // ── 建司不再写 current_version_id(spec §5:台账公司册的那一列作废) ──
+    // 写了它,新司的导入白名单(customIdsByCompany → 现行版)会永远停在建司当刻那一版:
+    // 此后别人给链尾加的自定义列,这家公司永远导不进来。该列已无任何生产路径去写,
+    // 所以只能从可观察的后果上钉:建司在先、别的册把链尾推走在后,这家司导入照样认新列。
     @Test
-    void customIds_followThePin_importRejectsColumnFromNewerVersion() throws Exception {
-        Object[] made = createCompanyWithBook();
-        int companyId = (int) made[0];
-        int bookId = ((JsonNode) made[1]).path("id").asInt();
-
-        addCustomColAtTip(bookId, "c_pinprobe", "指针探针", 2026, 9);
-        pinTo(bookId, 1);                       // 退回不含该列的 v1(无数据,纯 fixture)
+    void newCompany_importWhitelist_followsChainTip_notTheVersionAtCreation() throws Exception {
+        int companyId = (int) createCompanyWithBook()[0];                       // 先建司
+        int otherBookId = ((JsonNode) createCompanyWithBook()[1]).path("id").asInt();
+        addCustomColAtTip(otherBookId, "c_afterbirth", "建司之后加的列", 2026, 9);   // 再由别人推链尾
 
         mvc.perform(post("/api/ledger/companies/" + companyId + "/import")
                 .param("year", "2026").param("month", "9")
                 .header("Authorization", auth()).contentType("application/json")
-                .content("{\"rows\":[{\"tenantName\":\"指针探针户\",\"extraFees\":{\"c_pinprobe\":10}}]}"))
+                .content("{\"rows\":[{\"tenantName\":\"新司户\",\"extraFees\":{\"c_afterbirth\":10}}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.imported").value(0))
-                .andExpect(jsonPath("$.data.errors[0].reason")
-                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+                .andExpect(jsonPath("$.data.imported").value(1));   // 白名单跟着链尾走
     }
     // ── s10 回归(design §4「s10 恒等变换」):停在非链尾的月份仍然可编辑 ──
     // 08-25 的 R3「只能在链尾编辑」已随 2026-08-26 spec §4 删除。删掉一道门之后最容易悄悄回归的

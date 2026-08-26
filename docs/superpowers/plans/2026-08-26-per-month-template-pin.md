@@ -430,9 +430,11 @@ git commit -m "feat(book): 模板 pin 按月独立——建表、解析规则与
         assertThat((Integer) JsonPath.read(res, "$.data.book.ver")).isEqualTo(2);
 
         // 旧版本逐字节不变(永不改写)
-        String v1After = M.readTree(getOk("/api/books/" + bookId + "/template/versions/1")).toString();
-        assertThat(v1After).contains(M.readTree(v1Def).path("groups").path(0).path("cols").path(0)
-                .path("label").asText());
+        // ⚠ 这里**不能**写成 contains(原 label):新 label 就是"原 label·改",实现若就地改写了 v1,
+        //   v1 里存的是"厂房租金·改",contains("厂房租金") 照样为真 → 断言空跑,P5 无人守。
+        //   整棵定义树相等才挡得住(2026-08-26 复核发现,原稿即为此洞)。
+        JsonNode v1After = M.readTree(getOk("/api/books/" + bookId + "/template/versions/1")).path("data");
+        assertThat(v1After).as("v1 的定义在保存前后必须一模一样").isEqualTo(M.readTree(v1Def));
     }
 
     @Test
@@ -713,6 +715,47 @@ git commit -m "feat(book): 版本不可变、模板按月编辑——保存只�
 `bookService.customIdsByCompany(companyId)`，**必须改成按月取**
 `customIdsAt("ledger", companyId, year, month)`，否则这条测试过不了。
 `S10Service.importRows` 同理（owner=phase）。
+
+> **2026-08-26 Task 2 复核补记(必做,别省)：**
+> 上面这条 `importDictionary_followsTheMonthsPin_notTheCompanys` 同时是 `BookApiIT`
+> 旧用例 `customIds_followThePin_importRejectsColumnFromNewerVersion` 的**继任者**。
+> 旧用例的前置直接往台账公司册写 `current_version_id`，而 Task 2 之后没有任何生产路径再写这一列
+> （spec §5 宣告作废），它测的是生产到不了的状态 —— 已在 Task 2 复核轮删除，覆盖由这条接。
+> 顺带：`PinReq.month` 的 `@Min(1) @Max(12)` 守卫已在复核轮随 `TemplateSaveReq` 一起补进 `BookDtos`。
+
+再追加一条 R7/R8 的回归 —— **这两条是 spec §4 表格里明写「保留」的规则**，
+旧用例 `adopt_crossVersionJumpToTip_doesNotCreateVersion` 随 `adopt` 端点在 Task 2 一并退场，
+计划里一度无人接手，照原稿走完六个 Task 它俩会以零覆盖收尾：
+
+```java
+    // R7 切指针不造版本 / R8 可跨版跳(spec §4 保留项)。pin 只写 book_month_pin,不碰版本链。
+    @Test
+    void pin_crossVersionJumpToTip_doesNotCreateVersion() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 造链:三次保存 → v2(钉 4 月)、v3(钉 6 月)、v4(钉 8 月,链尾)。都是空月,不撞 P6 冻结
+        addCustomCol(bookId, "c_jump2", 2026, 4);        // 照 BookApiIT.addCustomColAtTip 抄一份
+        addCustomCol(bookId, "c_jump3", 2026, 6);
+        addCustomCol(bookId, "c_jump4", 2026, 8);
+        int chainLen = M.readTree(getOk("/api/books/" + bookId + "/template/versions"))
+                .path("data").path("versions").size();
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/4"))
+                .path("data").path("ver").asInt()).isEqualTo(2);
+
+        // 4 月从 v2 直接跳到 v4(跳过 v3)
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":4,\"year\":2026,\"month\":4}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/4"))
+                .path("data").path("ver").asInt()).as("R8:能从旧版跨过中间版直接跳到链尾").isEqualTo(4);
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/versions"))
+                .path("data").path("versions").size()).as("R7:切指针不造版本").isEqualTo(chainLen);
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/6"))
+                .path("data").path("ver").asInt()).as("只钉这一个月,6 月不动").isEqualTo(3);
+    }
+```
 
 - [ ] **Step 2: 跑测试确认失败**
 
