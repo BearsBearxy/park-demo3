@@ -7,7 +7,9 @@ public record LedgerMonthDTO(
     int     month,
     int     prevMonth,
     List<LedgerRowDTO> rows,
-    LedgerFooter footer
+    LedgerFooter footer,
+    // 归档列(spec §2):本月有钱但生效模板不渲染的自定义列,前端追加为只读列
+    List<BookDtos.ArchivedColDTO> archivedCols
 ) {
     public record LedgerRowDTO(
         Integer id,           // 台账行 id(V105 起为行身份;未绑定行 tenantId 为 null 时前端靠它定位)

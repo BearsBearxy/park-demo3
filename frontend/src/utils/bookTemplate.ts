@@ -11,12 +11,15 @@ export const extraColIds = customColIds
 
 const DEFAULT_W = 96
 
+/** 归档列:该月有钱但模板不渲染的自定义列(spec §2)。只读,不接受录入。 */
+export interface ArchivedCol { id: string; label: string }
+
 /**
  * 模板 → 台账 ColumnModel。费用列来自 def.groups(hidden 跳过,整组隐藏则丢组);
  * fixedLeft(tenantName/balancePrev)与 fixedRight(totalReceivable/totalCollected/balanceEnd/note)
  * 不在模板里,照抄 lgColumns 现状。组名中的 MON 占位替换为 `${prev}月`(与 layout.ts 约定一致)。
  */
-export function toLedgerColumns(def: BookDef, prev: number): ColumnModel {
+export function toLedgerColumns(def: BookDef, prev: number, archived: ArchivedCol[] = []): ColumnModel {
   const groups: ColumnGroup[] = []
   for (const g of def.groups) {
     const cols: LeafColumn[] = g.cols.filter(c => !c.hidden).map(c => ({
@@ -27,6 +30,14 @@ export function toLedgerColumns(def: BookDef, prev: number): ColumnModel {
     }))
     if (cols.length === 0) continue
     groups.push({ name: (g.label ?? '').replace('MON', prev + '月'), cols })
+  }
+  // hidden 的语义是「不再接受新录入」,不是「藏起已经发生的钱」——
+  // 藏起来会让屏上的应收合计永远对不上明细(recalc 全口袋照加,见 spec §2)
+  if (archived.length) {
+    groups.push({
+      name: '已归档',
+      cols: archived.map(a => ({ key: a.id as ColumnKey, label: a.label, w: DEFAULT_W, readonly: true })),
+    })
   }
   return {
     fixedLeft: [

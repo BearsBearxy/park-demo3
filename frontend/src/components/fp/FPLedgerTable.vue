@@ -173,9 +173,10 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
               <span v-else class="lg-nv" :class="{ empty: !row.balancePrev }"
                     :title="lgFmt(row.balancePrev) + (row.balancePrevDerived ? ' · 自动=上月期末' : '')">{{ row.balancePrev ? lgFmt(row.balancePrev) : '–' }}</span>
             </template>
-            <!-- totalCollected + 21 费用列 (number, 编辑态可输入) -->
+            <!-- totalCollected + 21 费用列 (number, 编辑态可输入);
+                 归档列(readonly)只显示已发生的钱,不接受新录入——同 balancePrevDerived 那套写法 -->
             <template v-else>
-              <input v-if="edit" class="lg-ni" type="number"
+              <input v-if="edit && !c.readonly" class="lg-ni" type="number"
                      :value="(row as any)[c.key] === 0 ? '' : (row as any)[c.key]"
                      @input="onInput(ledgerRowKey(row), c.key, $event)" />
               <span v-else class="lg-nv" :class="{ empty: !(row as any)[c.key] }" :title="lgFmt((row as any)[c.key])">{{ (row as any)[c.key] ? lgFmt((row as any)[c.key]) : '–' }}</span>

@@ -2,6 +2,7 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.common.ExtraFees;
+import com.park.demo3.dto.BookDtos.ArchivedColDTO;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
@@ -183,7 +184,14 @@ public class S10Service {
             grandTotal = grandTotal.add(sum);
         }
         for (S10Record r : rows) grandTotal = grandTotal.add(ExtraFees.sum(r.getExtraFees()));
-        return new S10MonthDTO(phase, year, month, !rows.isEmpty(), dtos, columnTotals, r2(grandTotal));
+        // 归档列(spec §2):本月有非零值、但生效模板不渲染的自定义列(台账同款,两屏同修)
+        java.util.Set<String> keysWithData = new java.util.LinkedHashSet<>();
+        for (S10Record r : rows)
+            for (Map.Entry<String, BigDecimal> e : ExtraFees.parse(r.getExtraFees()).entrySet())
+                if (e.getValue() != null && e.getValue().signum() != 0) keysWithData.add(e.getKey());
+        List<ArchivedColDTO> archived = bookService.archivedColsAt(
+            bookService.bookOfPhase(phase), year, month, keysWithData);
+        return new S10MonthDTO(phase, year, month, !rows.isEmpty(), dtos, columnTotals, r2(grandTotal), archived);
     }
 
     // ── save:req.id 非空=按行更新(可改名——修「改名走按新名 upsert 会复制一行」的老坑);

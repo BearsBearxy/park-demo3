@@ -2,6 +2,7 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.common.ExtraFees;
+import com.park.demo3.dto.BookDtos.ArchivedColDTO;
 import com.park.demo3.dto.LedgerMonthDTO;
 import com.park.demo3.dto.LedgerMonthDTO.LedgerFooter;
 import com.park.demo3.dto.LedgerMonthDTO.LedgerRowDTO;
@@ -263,7 +264,15 @@ public class LedgerService {
         List<LedgerRowDTO> rows = new ArrayList<>(all.size());
         for (MonthlyLedger l : all)
             rows.add(toRowDTO(l, displayName(l, names), prior.containsKey(chainKey(l)), carriedSet.contains(l)));
-        return new LedgerMonthDTO(company.getName(), year, month, prevMonth(month), rows, footer(rows));
+        // 归档列(spec §2):本月有非零值、但生效模板不渲染的自定义列。
+        // hidden 只该表示"不再接受新录入",不该表示"藏起已经发生的钱" —— 藏了合计就对不上明细
+        Set<String> keysWithData = new LinkedHashSet<>();
+        for (MonthlyLedger l : all)
+            for (Map.Entry<String, BigDecimal> e : ExtraFees.parse(l.getExtraFees()).entrySet())
+                if (e.getValue() != null && e.getValue().signum() != 0) keysWithData.add(e.getKey());
+        List<ArchivedColDTO> archived = bookService.archivedColsAt(
+            bookService.bookOfCompany(companyId), year, month, keysWithData);
+        return new LedgerMonthDTO(company.getName(), year, month, prevMonth(month), rows, footer(rows), archived);
     }
 
     // 展示名:账面名快照优先(V105 起总有);快照缺失回退档案名(存量兜底),再退「已删除租户」

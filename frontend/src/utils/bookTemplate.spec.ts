@@ -61,6 +61,19 @@ describe('toLedgerColumns', () => {
     expect(m.groups).toHaveLength(5)
   })
 
+  // spec §2:hidden 只往显示侧修——该月有钱的列一律显示且只读,否则屏上合计永远对不上明细
+  it('归档列追加成只读的「已归档」组', () => {
+    const m = toLedgerColumns(stdDef(), 12, [{ id: 'c_arch', label: '待归档费' }])
+    const g = m.groups.find(x => x.name === '已归档')
+    expect(g).toBeTruthy()
+    expect(g!.cols[0]).toMatchObject({ key: 'c_arch', label: '待归档费', readonly: true })
+  })
+
+  it('没有归档列时不出现「已归档」组', () => {
+    const m = toLedgerColumns(stdDef(), 12, [])
+    expect(m.groups.find(x => x.name === '已归档')).toBeUndefined()
+  })
+
   it('自定义列出现在所属分组,w 缺省 96,label 来自模板', () => {
     const def = stdDef()
     def.groups[0].cols.push(col({ id: 'c_parking', std: false, label: '停车费', slot: 'misc' }))

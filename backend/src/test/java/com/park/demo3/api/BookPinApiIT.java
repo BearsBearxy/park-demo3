@@ -425,6 +425,98 @@ class BookPinApiIT extends AbstractMysqlIT {
             .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
     }
 
+    // ── 归档列显示(Task 5;spec §2)──
+    // hidden 只该表示「不再接受新录入」,不该表示「藏起已经发生的钱」——
+    // 藏了合计就对不上明细(recalc 与 ExtraFees.sum 一行不动,全口袋照加)。
+    @Test
+    void archivedColumn_stillListedWhenThatMonthHasMoney() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 空月加一个自定义列 → v2
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/8"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", "c_arch").put("std", false).put("label", "待归档费")
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":8}");
+
+        // 往这列写钱(此举同时冻结 8 月)
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/8",
+              "{\"rows\":[{\"tenantName\":\"归档户\",\"extraFees\":{\"c_arch\":250}}]}");
+
+        String body = getOk("/api/ledger/companies/" + companyId + "/months/2026/8");
+        // 应收合计含这笔(recalc 一行没动)
+        assertThat(((Number) JsonPath.read(body, "$.data.rows[0].totalReceivable")).doubleValue())
+                .isEqualTo(250.0);
+        // 归档列清单为空:此刻该列还在模板里、正常渲染
+        assertThat((List<?>) JsonPath.read(body, "$.data.archivedCols")).isEmpty();
+
+        // 9 月(空月,沿用 8 月 pin)把该列隐藏 → v3,只影响 9 月
+        ObjectNode d9 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/9"))
+                .path("data").path("definition").deepCopy();
+        for (JsonNode g : d9.path("groups"))
+            for (JsonNode c : g.path("cols"))
+                if ("c_arch".equals(c.path("id").asText())) ((ObjectNode) c).put("hidden", true);
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(d9) + ",\"year\":2026,\"month\":9}");
+
+        // 9 月写一笔到这个已隐藏的列(模拟历史遗留),它必须出现在 archivedCols 里
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/9",
+              "{\"rows\":[{\"tenantName\":\"归档户9\",\"extraFees\":{\"c_arch\":30}}]}");
+        String b9 = getOk("/api/ledger/companies/" + companyId + "/months/2026/9");
+        assertThat((String) JsonPath.read(b9, "$.data.archivedCols[0].id")).isEqualTo("c_arch");
+        assertThat((String) JsonPath.read(b9, "$.data.archivedCols[0].label")).isEqualTo("待归档费");
+        // 9 月还带着 8 月「归档户」的结转虚行(期末 250≠0),它按名排在前面 ——
+        // 按下标取会取到那一行(合计 0),这里按账面名定位本月这行
+        JsonNode r9 = null;
+        for (JsonNode r : M.readTree(b9).path("data").path("rows"))
+            if ("归档户9".equals(r.path("tenantName").asText())) r9 = r;
+        assertThat(r9).as("9 月那一行必须在表里").isNotNull();
+        assertThat(r9.path("totalReceivable").asDouble())
+                .as("recalc 口径不变:隐藏列的钱照样进合计").isEqualTo(30.0);
+    }
+
+    // 两屏同做(计划全局约束第二条):附表10 走同一个 ExtraFees.sum,显示侧也必须同修。
+    @Test
+    void archivedColumn_alsoSurfacesOnS10() throws Exception {
+        JsonNode s10 = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
+        int bookId = s10.path("id").asInt(), phase = s10.path("phase").asInt();
+
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/8"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", "c_s10arch").put("std", false).put("label", "附10归档费")
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":8}");
+
+        // ⚠ 路径以 S10Controller 实际路由为准:POST /api/s10、GET /api/s10/{phase}/{year}/{month}
+        mvc.perform(post("/api/s10").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"phase\":" + phase + ",\"acctMonth\":\"2026-08\",\"tenantName\":\"附10归档户\",\"profile\":\"factory\","
+                       + "\"extraFees\":{\"c_s10arch\":88}}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 9 月把它隐藏,再看 9 月的 archivedCols
+        ObjectNode d9 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/9"))
+                .path("data").path("definition").deepCopy();
+        for (JsonNode g : d9.path("groups"))
+            for (JsonNode c : g.path("cols"))
+                if ("c_s10arch".equals(c.path("id").asText())) ((ObjectNode) c).put("hidden", true);
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(d9) + ",\"year\":2026,\"month\":9}");
+        mvc.perform(post("/api/s10").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"phase\":" + phase + ",\"acctMonth\":\"2026-09\",\"tenantName\":\"附10归档户9\",\"profile\":\"factory\","
+                       + "\"extraFees\":{\"c_s10arch\":9}}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        String b9 = getOk("/api/s10/" + phase + "/2026/9");
+        assertThat((String) JsonPath.read(b9, "$.data.archivedCols[0].id")).isEqualTo("c_s10arch");
+    }
+
     // ── MockMvc 脚手架(照 BookApiIT) ──
 
     private String auth() { return "Bearer " + token; }

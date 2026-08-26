@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -387,6 +388,31 @@ public class BookService {
         if (b == null) return Set.of();
         Long verId = pinSvc.resolve(screen, ownerId, year, month, chainBookId(b));
         return TemplateDef.customIds(TemplateDef.parse(versions.selectById(verId).getDefinition()));
+    }
+
+    // ── 归档列(spec §2:hidden 只往显示侧修) ──
+
+    /** 该月有钱、但生效模板不渲染(缺席或 hidden)的自定义列。label 取链上最近一版对它的命名。 */
+    public List<ArchivedColDTO> archivedColsAt(LedgerBook b, int year, int month, Set<String> keysWithData) {
+        if (keysWithData.isEmpty()) return List.of();
+        TemplateDef.Def def = TemplateDef.parse(versions.selectById(
+            pinSvc.resolve(b.getScreen(), ownerIdOf(b), year, month, chainBookId(b))).getDefinition());
+        Set<String> rendered = new LinkedHashSet<>();
+        for (TemplateDef.Col c : TemplateDef.flatten(def)) if (!c.hidden()) rendered.add(c.id());
+        List<ArchivedColDTO> out = new ArrayList<>();
+        for (String id : keysWithData) {
+            if (rendered.contains(id)) continue;
+            out.add(new ArchivedColDTO(id, labelOf(chainBookId(b), id)));
+        }
+        return out;
+    }
+
+    /** 链上最近一版对该列的命名;全链都没有则退回 id(不臆造名字)。 */
+    private String labelOf(Integer chainId, String colId) {
+        for (BookTemplateVersion v : versions.byBook(chainId))       // byBook 已按 ver 倒序
+            for (TemplateDef.Col c : TemplateDef.flatten(TemplateDef.parse(v.getDefinition())))
+                if (c.id().equals(colId)) return c.label();
+        return colId;
     }
 
     private static String bookLabel(LedgerBook b) {
