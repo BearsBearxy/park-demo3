@@ -9,8 +9,9 @@ export const booksApi = {
   // 标准列删除 → 409;该月已录入 → 409(P6 冻结)
   saveTemplate: (bookId: number, definition: BookDef, year: number, month: number, note?: string): Promise<TemplateSaveResult> =>
     http.put(`/books/${bookId}/template`, { definition, note, year, month }),
-  versions: (bookId: number): Promise<{ versions: TemplateVersion[] }> =>
-    http.get(`/books/${bookId}/template/versions`),
+  // 带 year/month:current 标的是该月生效版,而不是链尾(否则面板头部下拉与右侧列表互相矛盾)
+  versions: (bookId: number, year?: number, month?: number): Promise<{ versions: TemplateVersion[] }> =>
+    http.get(`/books/${bookId}/template/versions`, { params: { year, month } }),
   // 历史版本定义(只读预览列名与布局;GET 读全开,查看不需要 book-template:edit)
   versionDefinition: (bookId: number, ver: number): Promise<BookDef> =>
     http.get(`/books/${bookId}/template/versions/${ver}`),

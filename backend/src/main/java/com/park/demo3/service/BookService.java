@@ -305,7 +305,7 @@ public class BookService {
         int year = req.year(), month = req.month();
         Integer chainId = chainBookId(b);
         Integer owner = ownerIdOf(b);
-        assertMonthEditable(b, owner, year, month);          // P6 冻结,Task 3 填实现
+        assertMonthEditable(b, owner, year, month);          // P6 录入即冻结
 
         Long curVerId = pinSvc.resolve(b.getScreen(), owner, year, month, chainId);
         BookTemplateVersion cur = versions.selectById(curVerId);
@@ -368,11 +368,16 @@ public class BookService {
         return readTree(v.getDefinition());
     }
 
-    public VersionListDTO versionList(Integer bookId) {
+    /** 版本链。带 year/month 则按该月生效版标 current(spec §6);不带则标链尾。
+     *  不带月份标链尾会让面板自相矛盾:头部下拉显示本月真正用的 v2,右侧列表却把 v5 标「现行」,
+     *  「切到此版」按钮还对已生效的 v2 显示、对 v5 隐藏。 */
+    public VersionListDTO versionList(Integer bookId, Integer year, Integer month) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
         List<TemplateVersionDTO> out = new ArrayList<>();
-        Long curId = currentVersion(b).getId();      // 裸字段可能是 NULL(spec §5),不带月份则标链尾(spec §6)
+        Long curId = (year != null && month != null)
+            ? pinSvc.resolve(b.getScreen(), ownerIdOf(b), year, month, chainBookId(b))
+            : currentVersion(b).getId();             // 裸字段可能是 NULL(spec §5),退回链尾
         for (BookTemplateVersion v : versions.byBook(chainBookId(b)))
             out.add(new TemplateVersionDTO(v.getId(), v.getVer(), v.getNote(), v.getCreatedBy(),
                 v.getCreatedAt(), v.getId().equals(curId)));

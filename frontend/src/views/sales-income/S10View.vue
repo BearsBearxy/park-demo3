@@ -319,7 +319,7 @@ const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
 async function loadVersions(bookId: number) {
-  tplVersions.value = (await booksApi.versions(bookId)).versions
+  tplVersions.value = (await booksApi.versions(bookId, year.value, month.value)).versions
 }
 function openTpl() {
   const b = activeBook.value

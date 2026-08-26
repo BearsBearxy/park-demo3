@@ -41,8 +41,13 @@ public class BookController {
         return svc.templateAt(id, year, month);
     }
 
-    @Operation(summary = "模板版本链") @GetMapping("/{id}/template/versions")
-    public VersionListDTO versions(@PathVariable Integer id) { return svc.versionList(id); }
+    @Operation(summary = "模板版本链(带 year/month 则按该月生效版标 current)")
+    @GetMapping("/{id}/template/versions")
+    public VersionListDTO versions(@PathVariable Integer id,
+                                   @RequestParam(required = false) Integer year,
+                                   @RequestParam(required = false) Integer month) {
+        return svc.versionList(id, year, month);
+    }
 
     @Operation(summary = "历史版本定义(只读预览列名与布局)")
     @GetMapping("/{id}/template/versions/{ver}")

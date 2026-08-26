@@ -307,7 +307,7 @@ async function openTemplate() {
   tplOpen.value = true
   tplVersions.value = []
   try {
-    tplVersions.value = (await booksApi.versions(book.value.id)).versions
+    tplVersions.value = (await booksApi.versions(book.value.id, year.value, month.value ?? undefined)).versions
   } catch { /* 版本链拉失败面板显「暂无版本记录」,不阻断编辑 */ }
 }
 async function onTplSave(def: BookDef, note: string) {
