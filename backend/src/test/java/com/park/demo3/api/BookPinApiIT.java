@@ -1,8 +1,10 @@
 package com.park.demo3.api;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jayway.jsonpath.JsonPath;
 import com.park.demo3.AbstractMysqlIT;
 import com.park.demo3.entity.BookMonthPin;
 import com.park.demo3.entity.BookTemplateVersion;
@@ -12,13 +14,18 @@ import com.park.demo3.mapper.BookTemplateVersionMapper;
 import com.park.demo3.mapper.LedgerBookMapper;
 import com.park.demo3.service.BookPinService;
 import com.park.demo3.service.BookService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 /**
  * V111 按月 pin 的回填(spec §7)。
@@ -38,6 +45,17 @@ class BookPinApiIT extends AbstractMysqlIT {
     @Autowired LedgerBookMapper booksMapper;
     @Autowired BookTemplateVersionMapper versionsMapper;
     @Autowired BookService bookSvc;
+    @Autowired MockMvc mvc;
+    private String token;
+
+    @BeforeEach
+    void login() throws Exception {
+        String body = mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"admin\",\"password\":\"admin123\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        token = JsonPath.read(body, "$.data.token");
+    }
 
     // 种子事实(改种子这些数字就该红):V5 台账 3 公司 × 2026-01..05;
     // V18 附表10 phase1..3 各 30 月(2024 全年 + 2025 全年 + 2026-01..06),phase4 无租户不插行
@@ -116,6 +134,219 @@ class BookPinApiIT extends AbstractMysqlIT {
         pinSvc.migrateExisting();
         assertThat(count("ledger")).as("重跑不产生第二批台账 pin").isEqualTo(ledger);
         assertThat(count("s10")).as("重跑不产生第二批附表10 pin").isEqualTo(s10);
+    }
+
+    // ── P6 录入即冻结(Task 3) ──
+
+    @Test
+    void firstDataWrite_materializesPin_andEarlierMonthChangesNoLongerLeak() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 2026-05 落一行数据 → pin 被固化
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/5",
+              "{\"rows\":[{\"tenantName\":\"冻结测试户\",\"factoryRent\":100}]}");
+        assertThat(pins.at("ledger", companyId, 2026, 5)).as("首次落库必须固化 pin").isNotNull();
+        int verAt5 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/5"))
+                .path("data").path("ver").asInt();
+        assertThat(verAt5).as("读不出版本号的话下面那句 isEqualTo 就是 0==0,等于没测").isPositive();
+
+        // 改更早月份(2026-02,空月)的模板 → 5 月不受影响(本次的核心诉求)
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/2"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", "c_leakprobe").put("std", false).put("label", "泄漏探针")
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":2}");
+
+        String at5 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/5")).toString();
+        assertThat(at5).as("已录入月份不受更早月份改动影响").doesNotContain("c_leakprobe");
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/5"))
+                .path("data").path("ver").asInt()).isEqualTo(verAt5);
+    }
+
+    @Test
+    void recordedMonth_isFrozen_forBothPinAndEdit_thawsWhenDataCleared() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/6",
+              "{\"rows\":[{\"tenantName\":\"冻结户\",\"factoryRent\":100}]}");
+
+        // 切版本 → 409
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1,\"year\":2026,\"month\":6}"))
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已录入")));
+
+        // 编辑模板 → 409
+        String def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/6"))
+                .path("data").path("definition").toString();
+        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"definition\":" + def + ",\"year\":2026,\"month\":6}"))
+                .andExpect(jsonPath("$.code").value(409));
+
+        // 删光数据 → 解冻。⚠ 空 rows 数组不是「删光」:save 只遍历 body 里送来的行,没送回的行原样留着。
+        //   清空的口径是把那一行以全空内容送回去(LedgerService.save 的 blank 分支 → deleteById)
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/6",
+              "{\"rows\":[{\"tenantName\":\"冻结户\"}]}");
+        assertThat(M.readTree(getOk("/api/ledger/companies/" + companyId + "/months/2026/6"))
+                .path("data").path("rows").toString())
+                .as("解冻的前提是数据真的没了").doesNotContain("冻结户");
+        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"definition\":" + def + ",\"year\":2026,\"month\":6}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    void import_alsoMaterializesPin() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0];
+        mvc.perform(post("/api/ledger/companies/" + companyId + "/import")
+                .param("year", "2026").param("month", "10")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"导入固化户\",\"factoryRent\":100}]}"))
+                .andExpect(jsonPath("$.data.imported").value(1));
+        assertThat(pins.at("ledger", companyId, 2026, 10)).as("导入落库同样要固化 pin").isNotNull();
+    }
+
+    @Test
+    void importDictionary_followsTheMonthsPin_notTheCompanys() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int companyId = (int) cb[0], bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 前置:1 月先落一行 → pin 固化在当下这版。没有它,1 月按 P3 第 3 步落到**链尾**,
+        // 而链尾正是下面这次编辑要产出的新版 —— 「词典跟着月份走」当场变成恒真,用例自证不了
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/1",
+              "{\"rows\":[{\"tenantName\":\"占位户\",\"factoryRent\":100}]}");
+
+        // 11 月(空月)加一个自定义列 → 只有 11 月及其之后的空月认得它
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/11"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", "c_dictprobe").put("std", false).put("label", "词典探针")
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":11}");
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/11")).toString())
+                .as("11 月认得新列").contains("c_dictprobe");
+
+        // 往 1 月(钉在旧版,解析不到这个新版)导该列 → 未知 id,记名跳过
+        mvc.perform(post("/api/ledger/companies/" + companyId + "/import")
+                .param("year", "2026").param("month", "1")
+                .header("Authorization", auth()).contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"词典户\",\"extraFees\":{\"c_dictprobe\":10}}]}"))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andExpect(jsonPath("$.data.errors[0].reason")
+                        .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+    }
+
+    // R7 切指针不造版本 / R8 可跨版跳(spec §4 保留项)。pin 只写 book_month_pin,不碰版本链。
+    @Test
+    void pin_crossVersionJumpToTip_doesNotCreateVersion() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 造链:三次保存 → v2(钉 4 月)、v3(钉 6 月)、v4(钉 8 月,链尾)。都是空月,不撞 P6 冻结
+        addCustomCol(bookId, "c_jump2", 2026, 4);
+        addCustomCol(bookId, "c_jump3", 2026, 6);
+        addCustomCol(bookId, "c_jump4", 2026, 8);
+        int chainLen = M.readTree(getOk("/api/books/" + bookId + "/template/versions"))
+                .path("data").path("versions").size();
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/4"))
+                .path("data").path("ver").asInt()).isEqualTo(2);
+
+        // 4 月从 v2 直接跳到 v4(跳过 v3)
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":4,\"year\":2026,\"month\":4}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/4"))
+                .path("data").path("ver").asInt()).as("R8:能从旧版跨过中间版直接跳到链尾").isEqualTo(4);
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/versions"))
+                .path("data").path("versions").size()).as("R7:切指针不造版本").isEqualTo(chainLen);
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/6"))
+                .path("data").path("ver").asInt()).as("只钉这一个月,6 月不动").isEqualTo(3);
+    }
+
+    // 附表10 同一条规则(计划全局约束「两屏同做」):owner=phase,acct_month 的 'YYYY-MM' 要拆对。
+    // 只测台账的话,固化钩子只挂了一半、或冻结判定的 s10 分支写错,都能全绿收尾。
+    @Test
+    void s10_recordSave_materializesPin_andFreezesThatMonth() throws Exception {
+        int bookId = s10BookId(1);
+        // 2026-08 是空月(V18 种子止于 2026-06)
+        mvc.perform(post("/api/s10").header("Authorization", auth()).contentType("application/json")
+                .content("{\"tenantName\":\"附表10冻结户\",\"phase\":1,\"acctMonth\":\"2026-08\","
+                        + "\"profile\":\"factory\",\"factoryRent\":100}"))
+                .andExpect(jsonPath("$.code").value(0));
+        assertThat(pins.at("s10", 1, 2026, 8)).as("附表10 落库同样要固化 pin").isNotNull();
+
+        String def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/8"))
+                .path("data").path("definition").toString();
+        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"definition\":" + def + ",\"year\":2026,\"month\":8}"))
+                .andExpect(jsonPath("$.code").value(409));
+
+        // 种子月(2026-06 有 V18 数据)同样冻结 —— 不靠本用例刚写的那一行
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1,\"year\":2026,\"month\":6}"))
+                .andExpect(jsonPath("$.code").value(409));
+        // 空月照旧放行(冻结不能变成「s10 一律不许改」)
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", auth())
+                .contentType("application/json").content("{\"ver\":1,\"year\":2026,\"month\":9}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    // ── MockMvc 脚手架(照 BookApiIT) ──
+
+    private String auth() { return "Bearer " + token; }
+
+    private String getOk(String url) throws Exception {
+        return new String(mvc.perform(get(url).header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private String putOk(String url, String body) throws Exception {
+        return new String(mvc.perform(put(url).header("Authorization", auth())
+                .contentType("application/json").content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    /** 建司 → 附带建册(§9);返回 [companyId, bookNode]。 */
+    private Object[] createCompanyWithBook() throws Exception {
+        String name = "钉测" + Long.toString(System.nanoTime(), 36);
+        String created = new String(mvc.perform(post("/api/companies").header("Authorization", auth())
+                .contentType("application/json").content("{\"name\":\"" + name + "\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+        int companyId = JsonPath.read(created, "$.data.id");
+        JsonNode all = M.readTree(getOk("/api/books?screen=ledger")).path("data");
+        JsonNode mine = null;
+        for (JsonNode b : all) if (b.path("companyId").asInt() == companyId) mine = b;
+        assertThat(mine).as("建司必须附带建台账册").isNotNull();
+        return new Object[]{ companyId, mine };
+    }
+
+    /** 在某月的生效版上加一个自定义列并保存(P4:升版 + 只把该月切过去)。 */
+    private void addCustomCol(int bookId, String colId, int year, int month) throws Exception {
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/" + year + "/" + month))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", colId).put("std", false).put("label", colId)
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+              "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":" + year + ",\"month\":" + month + "}");
+    }
+
+    private int s10BookId(int phase) throws Exception {
+        for (JsonNode b : M.readTree(getOk("/api/books?screen=s10")).path("data"))
+            if (b.path("phase").asInt() == phase) return b.path("id").asInt();
+        throw new IllegalStateException("附表10 期区册不存在:phase=" + phase);
     }
 
     // ── 前置状态 ──

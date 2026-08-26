@@ -15,6 +15,7 @@ import com.park.demo3.dto.TenantBindReq;
 import com.park.demo3.dto.BindResultDTO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.dto.YearMonthsDTO;
+import com.park.demo3.entity.LedgerBook;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.entity.MonthlyLedger;
 import com.park.demo3.entity.Tenant;
@@ -36,11 +37,20 @@ public class LedgerService {
     private final ManagementCompanyMapper companies;
     private final TenantMapper tenants;
     private final BookService bookService;
+    private final BookPinService pinService;
 
     public LedgerService(MonthlyLedgerMapper ledger, ManagementCompanyMapper companies,
-                         TenantMapper tenants, BookService bookService) {
+                         TenantMapper tenants, BookService bookService, BookPinService pinService) {
         this.ledger = ledger; this.companies = companies; this.tenants = tenants;
-        this.bookService = bookService;
+        this.bookService = bookService; this.pinService = pinService;
+    }
+
+    // P6:该月第一次落库数据时固化 pin。不固化的话,日后改更早月份的 pin 会顺着解析规则把本月一起改掉。
+    private void materializePin(Integer companyId, int year, int month) {
+        LedgerBook b = bookService.bookOfCompany(companyId);
+        if (b == null) return;
+        pinService.materialize("ledger", companyId, year, month,
+            pinService.resolve("ledger", companyId, year, month, bookService.chainBookId(b)));
     }
 
     // 21 费用列读取器(顺序同 §3.1)
@@ -373,6 +383,7 @@ public class LedgerService {
             ledger.updateById(existing);
         }
         rechain(companyId);   // 结余链:保存后前滚归一(派生位强制=上月期末;首次出现月保留人工期初)
+        materializePin(companyId, year, month);
         return month(companyId, year, month);
     }
 
@@ -491,7 +502,8 @@ public class LedgerService {
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
 
         Map<String, Integer> byName = TenantService.softIndex(tenants.selectList(null));
-        java.util.Set<String> allowedCustomIds = bookService.customIdsByCompany(companyId);
+        // 词典跟着月份走(spec §6):钉在旧版的月份不认得后来才加进链尾的列
+        java.util.Set<String> allowedCustomIds = bookService.customIdsAt("ledger", companyId, year, month);
         // 结余链:上一自然月已有该户记录 → 该月 balance_prev 是派生位,文件值忽略(以链为准);
         // 上一自然月没有 = 本月是链起点 → 文件里的「上月结余」就是期初,照收(历史月未补时的唯一入口)
         Set<String> priorKeys = prevMonthChain(companyId, year, month).keySet();
@@ -595,6 +607,7 @@ public class LedgerService {
         }
         // 未绑定落库不是错误(照常入库),但必须知会(评审B2:导入中心 hub 此前对未绑定零信号)
         rechain(companyId);   // 结余链:导入落库后前滚归一(含跨月空洞)
+        materializePin(companyId, year, month);
         List<ImportError> notices = new ArrayList<>();
         if (!unboundNow.isEmpty())
             notices.add(new ImportError(-1, "未绑定租户", unboundNow.size() + " 个账面名未匹配租户档案,已作为未绑定行导入 —— 到「月度台账」对应月份的问题面板绑定/改名/建档"));
@@ -631,6 +644,7 @@ public class LedgerService {
             if (existing != null) ledger.updateById(l); else ledger.insert(l);
         }
         rechain(companyId);   // 结余链:复制上月后前滚归一
+        materializePin(companyId, year, month);
         return month(companyId, year, month);
     }
 

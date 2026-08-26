@@ -1,7 +1,12 @@
 package com.park.demo3.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.entity.BookMonthPin;
+import com.park.demo3.entity.MonthlyLedger;
+import com.park.demo3.entity.S10Record;
 import com.park.demo3.mapper.BookMonthPinMapper;
+import com.park.demo3.mapper.MonthlyLedgerMapper;
+import com.park.demo3.mapper.S10RecordMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,11 +18,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class BookPinService {
     private final BookMonthPinMapper pins;
     private final BookService books;
+    private final MonthlyLedgerMapper ledgerRows;
+    private final S10RecordMapper s10Rows;
 
     // @Lazy 打破循环:BookService 也注入本类(它要按月解析版本),两边构造器互等会启动失败
     public BookPinService(BookMonthPinMapper pins,
-                          @org.springframework.context.annotation.Lazy BookService books) {
+                          @org.springframework.context.annotation.Lazy BookService books,
+                          MonthlyLedgerMapper ledgerRows, S10RecordMapper s10Rows) {
         this.pins = pins; this.books = books;
+        this.ledgerRows = ledgerRows; this.s10Rows = s10Rows;
+    }
+
+    /** 该月是否已录入(看当前有无数据行,不看 pin 在不在 —— 删光数据即自动解冻)。 */
+    public boolean hasData(String screen, Integer ownerId, int year, int month) {
+        if ("ledger".equals(screen))
+            return ledgerRows.selectCount(new QueryWrapper<MonthlyLedger>()
+                .eq("company_id", ownerId).eq("period_year", year).eq("period_month", month)) > 0;
+        String ym = String.format("%04d-%02d", year, month);
+        return s10Rows.selectCount(new QueryWrapper<S10Record>()
+            .eq("phase", ownerId).eq("acct_month", ym)) > 0;
     }
 
     /** P3 解析:本月 pin → 最近一个更早月份的 pin(跨空月) → 该册链尾。 */

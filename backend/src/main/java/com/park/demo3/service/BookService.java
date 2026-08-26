@@ -170,8 +170,13 @@ public class BookService {
                 .eq("id", b.getId()).set("current_version_id", null));
     }
 
+    /** 写路径固化 pin 用:公司 → 台账册 / 期区 → 附表10 册。 */
+    public LedgerBook bookOfCompany(Integer companyId) { return books.byCompany(companyId); }
+
+    public LedgerBook bookOfPhase(int phase) { return books.byPhase(phase); }
+
     /** 版本链宿主:台账屏一律走全局宿主行;s10 屏一册一链,宿主就是自己。 */
-    Integer chainBookId(LedgerBook b) {
+    public Integer chainBookId(LedgerBook b) {
         return "ledger".equals(b.getScreen()) ? lineageHostId() : b.getId();
     }
 
@@ -328,8 +333,27 @@ public class BookService {
         return new TemplateSaveResultDTO(toDTOAt(b, year, month), true, summary);
     }
 
-    /** P6 录入即冻结 —— Task 3 填实现。此处留桩,避免 Task 2 的测试依赖尚未存在的行为。 */
-    void assertMonthEditable(LedgerBook b, Integer owner, int year, int month) { }
+    /** P6 录入即冻结:已录入的月份既不许切版本,也不许从它编辑模板 —— 两条路都会改变该月的列。 */
+    void assertMonthEditable(LedgerBook b, Integer owner, int year, int month) {
+        if (pinSvc.hasData(b.getScreen(), owner, year, month))
+            throw new BizException(ResultCode.CONFLICT,
+                year + "-" + month + " 已录入数据,模板已定稿;清空本月数据后可改");
+    }
+
+    /** 显式钉版(选择器)。已录入的月份拒绝(P6)。 */
+    @Transactional
+    public BookDTO pinVersion(Integer bookId, PinReq req) {
+        LedgerBook b = books.selectById(bookId);
+        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        Integer owner = ownerIdOf(b);
+        assertMonthEditable(b, owner, req.year(), req.month());
+        BookTemplateVersion target = versions.byBook(chainBookId(b)).stream()
+            .filter(v -> v.getVer() == req.ver()).findFirst()
+            .orElseThrow(() -> new BizException(ResultCode.NOT_FOUND, "版本不存在"));
+        pinSvc.pin(b.getScreen(), owner, req.year(), req.month(), target.getId());
+        audit.log("模板切版", bookLabel(b), req.year() + "-" + req.month() + " → v" + req.ver());
+        return toDTOAt(b, req.year(), req.month());
+    }
 
     /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 读全开,无权限门)。 */
     public com.fasterxml.jackson.databind.JsonNode versionDefinition(Integer bookId, int ver) {
@@ -361,6 +385,15 @@ public class BookService {
     public Set<String> customIdsByPhase(Integer phase) {
         LedgerBook b = books.byPhase(phase);
         return b == null ? Set.of() : TemplateDef.customIds(TemplateDef.parse(currentVersion(b).getDefinition()));
+    }
+
+    /** 导入词典按 (册, 月) 取(spec §6):跟着月份走,不是跟着公司走 ——
+     *  钉在旧版的月份不该认得后来才加进链尾的列。 */
+    public Set<String> customIdsAt(String screen, Integer ownerId, int year, int month) {
+        LedgerBook b = "ledger".equals(screen) ? books.byCompany(ownerId) : books.byPhase(ownerId);
+        if (b == null) return Set.of();
+        Long verId = pinSvc.resolve(screen, ownerId, year, month, chainBookId(b));
+        return TemplateDef.customIds(TemplateDef.parse(versions.selectById(verId).getDefinition()));
     }
 
     private static String bookLabel(LedgerBook b) {

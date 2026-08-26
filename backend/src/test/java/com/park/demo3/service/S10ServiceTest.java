@@ -18,8 +18,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class S10ServiceTest {
     S10RecordMapper records = Mockito.mock(S10RecordMapper.class);
     TenantMapper tenants = Mockito.mock(TenantMapper.class);   // selectList(null) 默认空表 → softIndex 空,配档不干扰既有用例
-    BookService bm = Mockito.mock(BookService.class);   // customIdsByPhase 默认空集
-    S10Service svc = new S10Service(records, tenants, bm);
+    BookService bm = Mockito.mock(BookService.class);   // customIdsAt 默认空集
+    BookPinService pm = Mockito.mock(BookPinService.class);   // bookOfPhase 默认 null → 固化 pin 空转
+    S10Service svc = new S10Service(records, tenants, bm, pm);
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 

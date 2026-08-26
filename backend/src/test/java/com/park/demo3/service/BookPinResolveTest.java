@@ -1,6 +1,8 @@
 package com.park.demo3.service;
 import com.park.demo3.entity.BookMonthPin;
 import com.park.demo3.mapper.BookMonthPinMapper;
+import com.park.demo3.mapper.MonthlyLedgerMapper;
+import com.park.demo3.mapper.S10RecordMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -10,7 +12,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BookPinResolveTest {
     BookMonthPinMapper pins = Mockito.mock(BookMonthPinMapper.class);
     BookService bookSvc = Mockito.mock(BookService.class);
-    BookPinService svc = new BookPinService(pins, bookSvc);
+    BookPinService svc = new BookPinService(pins, bookSvc,
+        Mockito.mock(MonthlyLedgerMapper.class), Mockito.mock(S10RecordMapper.class));
 
     static BookMonthPin pin(long verId) { BookMonthPin p = new BookMonthPin(); p.setVersionId(verId); return p; }
 

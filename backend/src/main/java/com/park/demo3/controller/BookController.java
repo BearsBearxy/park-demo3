@@ -29,6 +29,12 @@ public class BookController {
         return svc.saveTemplate(id, req);
     }
 
+    @Operation(summary = "钉本月的模板版本(不造版本;该月已录入 409)")
+    @PostMapping("/{id}/template/pin")
+    public BookDTO pin(@PathVariable Integer id, @Valid @RequestBody PinReq req) {
+        return svc.pinVersion(id, req);
+    }
+
     @Operation(summary = "某月生效的模板(按 pin 解析:本月→最近更早月→链尾)")
     @GetMapping("/{id}/template/at/{year}/{month}")
     public BookDTO templateAt(@PathVariable Integer id, @PathVariable int year, @PathVariable int month) {
