@@ -177,8 +177,7 @@ public class BookService {
 
     /** 某条链的链尾版本 id。 */
     public Long tipVersionId(Integer chainBookId) {
-        BookTemplateVersion top = versions.selectOne(new QueryWrapper<BookTemplateVersion>()
-            .eq("book_id", chainBookId).orderByDesc("ver").last("LIMIT 1"));
+        BookTemplateVersion top = versions.tip(chainBookId);
         if (top == null) throw new IllegalStateException("账册链没有任何版本:" + chainBookId);
         return top.getId();
     }
@@ -269,8 +268,13 @@ public class BookService {
         return toDTOAt(b, year, month);
     }
 
+    /** 不带月份时的"现行版"。⚠ 台账公司册的 current_version_id 已被 V111 回填置 NULL(spec §5)——
+     *  那不是"缺版本",是"该列作废了,版本改由 book_month_pin 按月持有"。这里一律退回链尾版
+     *  (spec §6:不带月份的读语义 = 链尾版)。本方法是 toDTO / saveTemplate / adopt /
+     *  customIdsBy* / versionList 共同的入口,守卫放这里,六个调用点一次修完。 */
     private BookTemplateVersion currentVersion(LedgerBook b) {
-        BookTemplateVersion v = b.getCurrentVersionId() == null ? null
+        BookTemplateVersion v = b.getCurrentVersionId() == null
+            ? versions.tip(chainBookId(b))
             : versions.selectById(b.getCurrentVersionId());
         if (v == null) throw new BizException(ResultCode.NOT_FOUND, "账册缺少模板版本");
         return v;
@@ -357,9 +361,10 @@ public class BookService {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
         List<TemplateVersionDTO> out = new ArrayList<>();
+        Long curId = currentVersion(b).getId();      // 裸字段可能是 NULL(spec §5),不带月份则标链尾(spec §6)
         for (BookTemplateVersion v : versions.byBook(chainBookId(b)))
             out.add(new TemplateVersionDTO(v.getId(), v.getVer(), v.getNote(), v.getCreatedBy(),
-                v.getCreatedAt(), v.getId().equals(b.getCurrentVersionId())));
+                v.getCreatedAt(), v.getId().equals(curId)));
         return new VersionListDTO(out);
     }
 
