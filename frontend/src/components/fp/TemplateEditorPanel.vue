@@ -9,11 +9,9 @@
 // 版式:居中弹窗(DESIGN-FIDELITY §7,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
 // 主体=分组卡片(组名 + 组内列行),右侧窄栏=版本链;编辑态底部=变更说明 + 保存。
 //
-// 轻/结构改动语义(§3)在 UI 里讲清楚:
-//  · 轻改动(显示名/别名/列宽)→ 不升版,原版就地更新
-//  · 结构改动(增删列/换槽/隐藏切换/列序/组增删)→ 升版 v+1,且现行版全局生效
-//    (历史月份同样按新版显示)—— 保存前本地判断,提示条常驻占位(LAYOUT-STABILITY:
-//    出现/消失不得顶动保存按钮,故 min-height 恒占一行)。
+// 按月独立(2026-08-26 spec P4/P7):打开的是**当前月**生效的那一版,保存产出链尾+1 并只把当前月切过去;
+// 编辑按钮旁的版本选择器列出全链、选中即钉本月。红点/「升到 vN」/链尾编辑门全部退场。
+// 本月已录入(monthHasData)则模板定稿:选择器与编辑门一起置灰,清空该月数据即自动解冻(P6)。
 //
 // 浮层纪律(UI-OVERLAY-SPEC):本组件是宿主弹窗,Esc 挂 document **冒泡**阶段且只在
 // open 时拦截 —— 内层浮层(ds/Select 下拉、别名输入框)在元素级 stopPropagation 先赢,
@@ -32,29 +30,19 @@ const props = defineProps<{
   book: Book | null
   versions: TemplateVersion[]
   saving: boolean
-  canEdit: boolean   // 宿主传 auth.can('book-template:edit')
+  canEdit: boolean       // 宿主传 auth.can('book-template:edit')
+  canSwitch: boolean     // 宿主传 auth.can('book-template:switch')(第17权限点)
+  monthHasData: boolean  // 本月已录入 → 模板定稿(P6 冻结:不许切版、不许编辑)
 }>()
 
 const emit = defineEmits<{
   (e: 'save', def: BookDef, note: string): void
-  (e: 'adopt', ver: number): void
+  (e: 'pin', ver: number): void
   (e: 'close'): void
 }>()
 
-// 全局链只覆盖台账屏:附表10 按期区一册一链,它的册也带 latestVer 且可以落后于自己那条链的链尾,
-// 但整套"升级/链尾编辑"规则不适用(design §s10 恒等变换),升级态整块不出现。
-const globalChain = computed(() => props.book?.screen === 'ledger')
-
-// R5 升级提示:落后于链尾时给一条状态 + 一个按钮,链尾时只给一句"已是最新"(同高,不塌陷)
-const behind = computed(() => globalChain.value && props.book!.ver < props.book!.latestVer)
-
-// R3 编辑门关闭时的说明:一个没解释的灰按钮等于没提示
-const gateHint = computed(() => behind.value ? `先升到 v${props.book!.latestVer} 才能改` : undefined)
-
-// R5 待升各版:升级前得看得见这几版改了什么,不然"升到 v4"只能盲点
-const pending = computed(() => behind.value
-  ? props.versions.filter(v => v.ver > props.book!.ver).sort((a, b) => a.ver - b.ver)
-  : [])
+// 冻结说明:一个没解释的灰控件等于没提示
+const frozenHint = '本月已录入,模板已定稿;清空本月数据后可改'
 
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
@@ -86,7 +74,7 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
 
 // ── 模式切换 ──
 function enterEdit() {
-  if (!props.book || !props.canEdit) return
+  if (!props.book || !props.canEdit || props.monthHasData) return
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
   draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
   note.value = ''
@@ -219,25 +207,21 @@ function fmtTime(s: string): string {
         <header class="te-head">
           <div class="te-head-txt">
             <h3>账册模板 — {{ book.name }}</h3>
-            <p v-if="mode === 'edit'">现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
-            <p v-else>现行 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
+            <p v-if="mode === 'edit'">本月生效 v{{ book.ver }} · 保存将存成新版本(任何改动都升版),并只把本月切到新版;同册其他月份不动</p>
+            <p v-else>本月生效 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
-          <div v-if="globalChain" class="te-lineage">
-            <div class="te-lineage-row">
-              <span v-if="behind">当前 v{{ book.ver }} · 最新 v{{ book.latestVer }}</span>
-              <span v-else>当前 v{{ book.ver }} · 已是最新</span>
-              <button v-if="behind" class="te-upgrade" type="button" :disabled="!canEdit"
-                      @click="emit('adopt', book.latestVer)">升到 v{{ book.latestVer }}</button>
-            </div>
-            <template v-if="behind">
-              <div class="te-gate">{{ gateHint }}</div>
-              <ul class="te-pending">
-                <li v-for="v in pending" :key="v.id">v{{ v.ver }} · {{ v.note || '—' }}</li>
-              </ul>
-            </template>
-          </div>
+          <select class="te-verpick" :disabled="monthHasData || !canSwitch"
+                  :value="String(book.ver)"
+                  :title="monthHasData ? frozenHint : '选择本月使用的账册版本'"
+                  @change="emit('pin', Number(($event.target as HTMLSelectElement).value))">
+            <option v-for="v in versions" :key="v.id" :value="String(v.ver)">
+              v{{ v.ver }}{{ v.ver === book.latestVer ? ' · 最新' : '' }}{{ v.note ? ' — ' + v.note : '' }}
+            </option>
+          </select>
+          <span v-if="monthHasData" class="te-frozen">本月已录入,模板已定稿</span>
           <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm"
-                  :disabled="behind" :title="gateHint" @click="enterEdit">编辑模式</Button>
+                  :disabled="monthHasData" :title="monthHasData ? frozenHint : undefined"
+                  @click="enterEdit">编辑模式</Button>
           <Button v-if="mode === 'edit'" class="te-donebtn" variant="outline" size="sm" @click="exitEdit">完成</Button>
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -309,7 +293,7 @@ function fmtTime(s: string): string {
             </template>
           </div>
 
-          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出切版按钮(切的是本册版本指针,链只追加不改写) -->
+          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出切版按钮(钉的是本月的版本,链只追加不改写) -->
           <aside class="te-vers">
             <div class="te-vtitle">版本链</div>
             <div v-for="v in versions" :key="v.id" class="te-vitem"
@@ -321,7 +305,7 @@ function fmtTime(s: string): string {
               </div>
               <div class="te-vnote">{{ v.note || '—' }}</div>
               <div class="te-vmeta">{{ v.createdBy }} · {{ fmtTime(v.createdAt) }}</div>
-              <button v-if="mode === 'edit' && !v.current" class="te-adopt" @click.stop="emit('adopt', v.ver)">切到此版</button>
+              <button v-if="mode === 'edit' && !v.current && canSwitch" class="te-adopt" @click.stop="emit('pin', v.ver)">切到此版</button>
             </div>
             <div v-if="!versions.length" class="te-vempty">暂无版本记录</div>
           </aside>
@@ -366,20 +350,17 @@ function fmtTime(s: string): string {
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
-/* 升级提示:状态行两态同高(min-height 占住一行,没有新版也不塌陷)。
-   落后时其下多出「为什么不能改」与待升 note —— 它只在点「升到 vN」那一下消失,
-   而那一下整块模板定义都换了版,属 LAYOUT-STABILITY §5 的模式切换,不是凭空顶走已渲染内容 */
-.te-lineage { display:flex; flex-direction:column; align-items:flex-end; gap:2px; max-width:280px; font-size:var(--fs-label); color:var(--text-muted); }
-.te-lineage-row { display:flex; align-items:center; gap:8px; min-height:26px; }
-.te-gate { font-size:var(--fs-micro); color:var(--status-warning); }
-/* 待升各版的 note:升级前看得见改了什么(R5),长了就截断,不把头部撑开 */
-.te-pending { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:1px; max-width:100%; }
-.te-pending li { font-size:var(--fs-micro); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.te-upgrade {
-  padding:2px 10px; border:1px solid var(--status-warning); border-radius:var(--radius-full);
-  background:transparent; color:var(--status-warning); cursor:pointer; font-size:var(--fs-micro);
+/* 版本选择器(P7):恒在编辑按钮左边,两态同款;本月已录入时置灰,旁边一句为什么 */
+.te-verpick {
+  flex: 0 0 auto; max-width: 220px; height: 28px; padding: 0 8px;
+  font-size: var(--fs-label); font-family: var(--font-sans); color: var(--text-primary);
+  background: var(--surface-white); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard);
 }
-.te-upgrade:disabled { border-color:var(--border-subtle); color:var(--text-disabled); cursor:not-allowed; }
+.te-verpick:hover:not(:disabled) { border-color: var(--border-strong); }
+.te-verpick:disabled { color: var(--text-disabled); background: var(--surface-sunken); cursor: not-allowed; }
+.te-frozen { flex: 0 0 auto; align-self: center; font-size: var(--fs-micro); color: var(--text-muted); }
 .te-x {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm);

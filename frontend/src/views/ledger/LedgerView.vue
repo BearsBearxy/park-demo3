@@ -4,7 +4,7 @@
 // 左轨 BookRail 常驻(账册即公司,§7-2 实体切换在左栏);年份范围=数据年∪当前年∪手工年(utils/matrixYears);
 // 进宽表必点月卡(§7-1 明确选期门,pick 自带年份);表格态「换期」回矩阵。
 // 旧动线(公司picker→年份门→月历)已废,LedgerCompanyPicker/LedgerMonthGrid 不再引用(文件保留待主线拍板)。
-import { ref, computed, onMounted, onDeactivated } from 'vue'
+import { ref, computed, watch, onMounted, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -51,7 +51,13 @@ const edit = ref(false)
 const newDlg = ref(false)
 const saving = ref(false)
 
-const book = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
+// 册清单里的那一行(定义=链尾版):矩阵态/未选月时用它
+const chainBook = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
+// 表格态的册按 (册,年,月) 解析(spec P2/P3):列定义与导入词典都跟着月份走,不再是「每册一个现行版」
+const monthBook = ref<Book | null>(null)
+const book = computed(() => (month.value != null && monthBook.value?.id === activeBookId.value)
+  ? monthBook.value
+  : chainBook.value)
 const companyId = computed(() => book.value?.companyId ?? null)
 
 // ── 数据 ─────────────────────────────────────────────────
@@ -130,6 +136,16 @@ async function loadOverviews() {
   res.forEach((dto, i) => { if (dto) next.set(`${cid}:${dataYears[i]}`, dto) })
   overviews.value = next
 }
+let tplReq = 0
+async function loadMonthBook() {
+  const id = activeBookId.value
+  if (id == null || month.value == null) return
+  const reqId = ++tplReq
+  const b = await booksApi.templateAt(id, year.value, month.value).catch(() => null)
+  if (reqId === tplReq && b) monthBook.value = b
+}
+watch([activeBookId, year, month], loadMonthBook)
+
 let monthReq = 0
 async function loadMonth() {
   if (companyId.value == null || month.value == null) return
@@ -260,7 +276,7 @@ async function removeCompany(bookId: number) {
   }
 }
 
-// ── 模板编辑(§3:轻改动不升版,结构改动升版;versions 懒加载;adopt=切本册版本指针) ──
+// ── 模板编辑(spec P4/P5:从本月那版改起,存成链尾+1 只把本月切过去;versions 懒加载;pin=钉本月的版本) ──
 const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
@@ -269,10 +285,13 @@ function toastVer(msg: string) {
   verToast.value = msg
 }
 function patchBook(b: Book) {
-  // 全局链是一条:本册升出新版后,同屏其他公司册的 latestVer 也跟着抬,
-  // 否则落后册的 R5 角标要刷新整页才亮。定义/指针只动被操作的那一册。
+  monthBook.value = b   // 保存/钉版回的是**本月生效**的那一版 → 列即时重算
+  // 册清单里的行恒是链尾版。保存产出的新版就是链尾,顺手换上;钉旧版只抬 latestVer。
+  // 全局链是一条:同屏其他公司册的链尾一起抬,别处的版本选择器不必刷新整页才看得见这一版。
   books.value = books.value.map(x =>
-    x.id === b.id ? b : { ...x, latestVer: Math.max(x.latestVer, b.latestVer) })   // book computed 换新 → 列即时重算
+    x.id === b.id && b.ver === b.latestVer
+      ? b
+      : { ...x, latestVer: Math.max(x.latestVer, b.latestVer) })
 }
 async function openTemplate() {
   if (!book.value) return
@@ -283,26 +302,28 @@ async function openTemplate() {
   } catch { /* 版本链拉失败面板显「暂无版本记录」,不阻断编辑 */ }
 }
 async function onTplSave(def: BookDef, note: string) {
-  if (!book.value || tplSaving.value) return
+  if (!book.value || month.value == null || tplSaving.value) return
   tplSaving.value = true
   try {
-    const res = await booksApi.saveTemplate(book.value.id, def, note || undefined)
+    const res = await booksApi.saveTemplate(book.value.id, def, year.value, month.value, note || undefined)
     patchBook(res.book)
-    if (res.structural) toastVer(`模板已升版 v${res.book.ver}`)
+    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
     tplOpen.value = false
+    await loadMonth()   // 归档列/合计按新版重算
   } catch (e) {
     alert((e as { message?: string })?.message ?? '模板保存失败')
   } finally {
     tplSaving.value = false
   }
 }
-async function onTplAdopt(ver: number) {
-  if (!book.value) return
+// P7 选择器:只钉本月(不造版本);该月已录入后端 409(P6 冻结,面板那边已置灰,这里兜底提示)
+async function onTplPin(ver: number) {
+  if (!book.value || month.value == null) return
   try {
-    const b = await booksApi.adopt(book.value.id, ver)
+    const b = await booksApi.pin(book.value.id, ver, year.value, month.value)
     patchBook(b)
-    toastVer(`已切到模板 v${b.ver}`)
-    tplVersions.value = (await booksApi.versions(b.id)).versions
+    toastVer(`本月已切到模板 v${b.ver}`)
+    await loadMonth()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '切换模板版本失败')
   }
@@ -329,14 +350,15 @@ function finishMap(r: { def: BookDef; ignore: string[] } | null) {
 }
 async function onMapApply(decisions: ColDecision[]) {
   const b = book.value
-  if (!b) { finishMap(null); return }
+  const m = month.value
+  if (!b || m == null) { finishMap(null); return }
   const { def, ignore, changed } = applyColDecisions(b.definition, decisions)
   if (!changed) { finishMap({ def: b.definition, ignore }); return }   // 全忽略/别名已有:模板不动
   try {
-    // map+create 合成一次 saveTemplate 持久化(轻改动就地更新,结构改动升版)
-    const res = await booksApi.saveTemplate(b.id, def, '导入列映射')
+    // map+create 合成一次 saveTemplate 持久化(P5:任何保存都升版,只把本月切过去)
+    const res = await booksApi.saveTemplate(b.id, def, year.value, m, '导入列映射')
     patchBook(res.book)
-    if (res.structural) toastVer(`模板已升版 v${res.book.ver}`)
+    toastVer(`模板已升版 v${res.book.ver}(仅本月)`)
     finishMap({ def: res.book.definition, ignore })
   } catch (e) {
     // 面板留着:用户可改决策重试或取消(取消 → resolve null → 导入按取消收场)
@@ -701,16 +723,19 @@ function gotoTenants() {
     </div>
   </div>
 
-  <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/adopt 结果就地更新 book,列即时重算;
-       写权限走第16权限点 book-template:edit,无权时面板只读预览) -->
+  <!-- 模板编辑器(「账册模板」两态常驻入口在宽表工具栏;save/pin 结果就地更新 book,列即时重算;
+       编辑走第16权限点 book-template:edit、换版走第17点 book-template:switch,无权时面板只读预览;
+       本月已录入(有非结转行)→ 模板定稿,面板置灰) -->
   <TemplateEditorPanel
     :open="tplOpen"
     :book="book"
     :versions="tplVersions"
     :saving="tplSaving"
     :can-edit="auth.can('book-template:edit')"
+    :can-switch="auth.can('book-template:switch')"
+    :month-has-data="(monthDto?.rows ?? []).some(r => !r.carried)"
     @save="onTplSave"
-    @adopt="onTplAdopt"
+    @pin="onTplPin"
     @close="tplOpen = false"
   />
 

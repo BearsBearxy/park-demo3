@@ -112,7 +112,11 @@ vi.mock('@/api/s10', () => ({
     clearImported: () => Promise.resolve({ deleted: 0 }),
   },
 }))
-vi.mock('@/api/books', () => ({ booksApi: { list: () => Promise.resolve([s10Book]) } }))
+vi.mock('@/api/books', () => ({ booksApi: {
+  list: () => Promise.resolve([s10Book]),
+  // 版面按 (册,月) 取(spec P3):本月生效的就是这一版
+  templateAt: () => Promise.resolve(s10Book),
+} }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: () => Promise.resolve([]) } }))
 vi.mock('vue-router', () => ({
   // 深链直落表格态:绕开选期矩阵,省得在测试里点月卡

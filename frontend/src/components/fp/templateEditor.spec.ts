@@ -32,7 +32,7 @@ const makeBook = (): Book => ({
   name: '公司A台账', ver: 3, latestVer: 3, definition: makeDef(),
 })
 
-// 链尾态的基准册,升级态用例在它上面覆写 ver/latestVer
+// 基准册,版本选择器用例在它上面覆写 ver/latestVer
 const baseBook = makeBook()
 
 const versions: TemplateVersion[] = [
@@ -52,20 +52,23 @@ const histDef: BookDef = {
   ],
 }
 
-// 全局链:链尾 v4,落后册 pin 在 v2 —— 待升的是 v3/v4
+// 全链 v2..v4:链尾 v4(标「最新」),本月钉在 v2
 const chain: TemplateVersion[] = [
   { id: 41, ver: 4, note: '加税费列', createdBy: 'admin', createdAt: '2026-08-24T10:00:00', current: false },
   { id: 31, ver: 3, note: '拆开维护费', createdBy: 'admin', createdAt: '2026-08-20T10:00:00', current: false },
   { id: 21, ver: 2, note: null, createdBy: 'admin', createdAt: '2026-08-10T09:00:00', current: true },
 ]
 
-function mountPanel(over: { canEdit?: boolean; book?: Book; versions?: TemplateVersion[] } = {}) {
+function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData?: boolean;
+                           book?: Book; versions?: TemplateVersion[] } = {}) {
   return mount(TemplateEditorPanel, {
     props: {
       open: true,
       book: over.book ?? makeBook(),
       versions: over.versions ?? versions, saving: false,
       canEdit: over.canEdit ?? true,
+      canSwitch: over.canSwitch ?? true,
+      monthHasData: over.monthHasData ?? false,
     },
     // Teleport 落到组件树内,便于 DOM 查询
     global: { stubs: { teleport: true } },
@@ -200,10 +203,10 @@ describe('TemplateEditorPanel · 编辑态', () => {
     w.unmount()
   })
 
-  it('切版按钮 emit adopt(ver),不动草稿', async () => {
+  it('切版按钮 emit pin(ver),不动草稿', async () => {
     const w = await mountEdit()
     await w.find('.te-adopt').trigger('click')
-    expect(w.emitted('adopt')![0]).toEqual([2])
+    expect(w.emitted('pin')![0]).toEqual([2])
     expect(w.emitted('save')).toBeUndefined()
     w.unmount()
   })
@@ -254,45 +257,26 @@ describe('TemplateEditorPanel · 别名录入', () => {
   })
 })
 
-// 全局链:本册版本指针落后于链尾时,只给升级入口,不给编辑(§R3 只能在链尾编辑)
-describe('TemplateEditorPanel · 升级态', () => {
-  it('落后版:显示当前/最新与升级按钮,编辑门关闭', async () => {
-    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 } })
-    expect(w.text()).toContain('当前 v2')
-    expect(w.text()).toContain('最新 v4')
-    expect(w.find('.te-upgrade').exists()).toBe(true)
-    expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
-  })
-
-  it('链尾:显示已是最新,无升级按钮,编辑门开着', async () => {
-    const w = mountPanel({ book: { ...baseBook, ver: 4, latestVer: 4 } })
-    expect(w.text()).toContain('已是最新')
-    expect(w.find('.te-upgrade').exists()).toBe(false)
-    expect(w.find('.te-editbtn').attributes('disabled')).toBeUndefined()
-  })
-
-  it('点升级按钮 emit adopt(链尾版本号)', async () => {
-    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 } })
-    await w.find('.te-upgrade').trigger('click')
-    expect(w.emitted('adopt')?.[0]).toEqual([4])
-  })
-
-  // §R3 原文:编辑门关闭要「提示『先升到 vN 才能改』」—— 灰按钮得自己说清为什么灰
-  it('落后版:说明为什么不能改,并列出待升各版的 note', () => {
+// 版本选择器(spec P7):编辑按钮旁一个下拉,列全链、选中即钉本月;红点/升级按钮/链尾编辑门全部退场
+describe('TemplateEditorPanel · 版本选择器', () => {
+  it('版本选择器列出全链,最新那版带「最新」标记', async () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
-    expect(w.text()).toContain('先升到 v4 才能改')
-    expect(w.find('.te-editbtn').attributes('title')).toBe('先升到 v4 才能改')
-    // §R5:点「升到 v4」之前要看得见这几版改了什么
-    expect(w.findAll('.te-pending li').map(li => li.text())).toEqual(['v3 · 拆开维护费', 'v4 · 加税费列'])
+    const opts = w.findAll('.te-verpick option')
+    expect(opts.length).toBe(chain.length)
+    expect(opts.map(o => o.text()).join(' ')).toContain('最新')
+    expect((w.find('.te-verpick').element as HTMLSelectElement).value).toBe('2')
   })
 
-  // 附表10 一册一链(design §s10 恒等变换):它的册也带 latestVer,但不参与全局链升级态
-  it('附表10 册:落后也不出升级态,编辑门照开', async () => {
-    const w = mountPanel({ book: { ...baseBook, screen: 's10', ver: 2, latestVer: 4 }, versions: chain })
-    expect(w.find('.te-lineage').exists()).toBe(false)
-    expect(w.find('.te-upgrade').exists()).toBe(false)
-    expect(w.find('.te-editbtn').attributes('disabled')).toBeUndefined()
-    await w.find('button.te-editbtn').trigger('click')
-    expect(w.find('.te-name').exists()).toBe(true)   // 真的进了编辑态
+  it('选一个版本 emit pin(该版本号)', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await w.find('.te-verpick').setValue('3')
+    expect(w.emitted('pin')?.[0]).toEqual([3])
+  })
+
+  it('已录入月份:选择器与编辑门都置灰,并说明为什么', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain, monthHasData: true })
+    expect(w.find('.te-verpick').attributes('disabled')).toBeDefined()
+    expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
+    expect(w.text()).toContain('已录入')
   })
 })

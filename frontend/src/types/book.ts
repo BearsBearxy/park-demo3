@@ -37,9 +37,9 @@ export interface Book {
   companyId: number | null   // ledger 屏:所属公司
   phase: number | null       // s10 屏:期区 1-4
   name: string
-  ver: number                // 现行版本号
-  latestVer: number          // 全局链链尾版本号(§R5:ver < latestVer 即有新版可升)
-  definition: BookDef        // 现行版定义(§3:现行版全局生效)
+  ver: number                // 本月生效版本号(templateAt 按 pin 解析;册清单里是链尾版)
+  latestVer: number          // 链尾版本号(版本选择器据此标「最新」;不再有落后/升级态)
+  definition: BookDef        // 上面那版的定义
 }
 
 export interface TemplateSaveResult {
