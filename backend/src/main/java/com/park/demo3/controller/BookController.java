@@ -22,11 +22,17 @@ public class BookController {
         return svc.list(screen);
     }
 
-    @Operation(summary = "保存模板(轻改动原版就地更新;结构改动升版;标准列不可删 409)")
+    @Operation(summary = "保存模板(任何保存都升版;只把 body 里的 year/month 那个月切到新版;标准列不可删 409)")
     @PutMapping("/{id}/template")
     public TemplateSaveResultDTO saveTemplate(@PathVariable Integer id,
                                               @Valid @RequestBody TemplateSaveReq req) {
         return svc.saveTemplate(id, req);
+    }
+
+    @Operation(summary = "某月生效的模板(按 pin 解析:本月→最近更早月→链尾)")
+    @GetMapping("/{id}/template/at/{year}/{month}")
+    public BookDTO templateAt(@PathVariable Integer id, @PathVariable int year, @PathVariable int month) {
+        return svc.templateAt(id, year, month);
     }
 
     @Operation(summary = "模板版本链") @GetMapping("/{id}/template/versions")
@@ -39,9 +45,4 @@ public class BookController {
         return svc.versionDefinition(id, ver);
     }
 
-    @Operation(summary = "切本册的模板版本指针(不造新版本;缺列且有数据 409)")
-    @PostMapping("/{id}/template/adopt")
-    public BookDTO adopt(@PathVariable Integer id, @Valid @RequestBody AdoptReq req) {
-        return svc.adopt(id, req.ver());
-    }
 }

@@ -24,8 +24,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 账册与模板(BOOK-WORKBENCH-SPEC):建司即建册(§9)/轻改动不升版·结构改动升版(§3)/
-// 标准列不可删(§3)/切版不造版本(R7)/自定义列口袋走导入与合计(§2/§4)。
+// 账册与模板(BOOK-WORKBENCH-SPEC):建司即建册(§9)/版本不可变、任何保存都升版(2026-08-26 P5)/
+// 编辑只带走 body 里那个月(P4)/标准列不可删(§3)/自定义列口袋走导入与合计(§2/§4)。
 // @Transactional 回滚;断言只圈本用例自建的公司(种子册不碰),名字带 nanoTime 防并跑撞唯一键。
 @AutoConfigureMockMvc
 @org.springframework.transaction.annotation.Transactional
@@ -108,46 +108,89 @@ class BookApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void saveTemplate_lightChange_keepsVersion_structuralBumps_adoptSwitchesPin() throws Exception {
+    void saveTemplate_everySaveAppendsAVersion_summaryNamesTheChange() throws Exception {
         Object[] cb = createCompanyWithBook();
         JsonNode book = (JsonNode) cb[1];
         int bookId = book.path("id").asInt();
         ObjectNode def = (ObjectNode) book.path("definition").deepCopy();
 
-        // 轻改动:第一列改显示名 → structural=false,版本号不动(§3)
+        // 改显示名 —— 旧口径的"轻改动"。spec P5 之后一样升版,structural 恒 true
         ObjectNode firstCol = (ObjectNode) def.path("groups").path(0).path("cols").path(0);
         firstCol.put("label", firstCol.path("label").asText() + "·改");
         String r1 = putOk("/api/books/" + bookId + "/template",
-                "{\"definition\":" + M.writeValueAsString(def) + ",\"note\":\"改名\"}");
-        assertThat((Boolean) JsonPath.read(r1, "$.data.structural")).isFalse();
-        assertThat((Integer) JsonPath.read(r1, "$.data.book.ver")).isEqualTo(1);
+                "{\"definition\":" + M.writeValueAsString(def) + ",\"note\":\"改名\",\"year\":2026,\"month\":3}");
+        assertThat((Boolean) JsonPath.read(r1, "$.data.structural")).isTrue();
+        assertThat((Integer) JsonPath.read(r1, "$.data.book.ver")).isEqualTo(2);
 
-        // 结构改动:追加自定义列 → structural=true,升版 v2(§3)
+        // 追加自定义列 → 再升一版,摘要点名新列
         ObjectNode custom = def.objectNode();
         custom.put("id", "c_it_test").put("std", false).put("label", "IT自定义列")
               .put("slot", "other").put("hidden", false).put("w", 96)
               .set("aliases", def.arrayNode());
         ((ArrayNode) def.path("groups").path(0).path("cols")).add(custom);
         String r2 = putOk("/api/books/" + bookId + "/template",
-                "{\"definition\":" + M.writeValueAsString(def) + "}");
+                "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}");
         assertThat((Boolean) JsonPath.read(r2, "$.data.structural")).isTrue();
-        assertThat((Integer) JsonPath.read(r2, "$.data.book.ver")).isEqualTo(2);
+        assertThat((Integer) JsonPath.read(r2, "$.data.book.ver")).isEqualTo(3);
         assertThat((String) JsonPath.read(r2, "$.data.changeSummary")).contains("IT自定义列");
 
-        // 版本链:2 版,current 指 v2
+        // 链只追加:两次保存 = 两个新版本
         String vs = getOk("/api/books/" + bookId + "/template/versions");
-        assertThat((Integer) JsonPath.read(vs, "$.data.versions.length()")).isEqualTo(2);
+        assertThat((Integer) JsonPath.read(vs, "$.data.versions.length()")).isEqualTo(3);
+    }
 
-        // adopt 切指针:本册 ver 变成目标版,链尾 latestVer 不变(R7:切指针不造版本)
-        int tipBefore = JsonPath.read(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andReturn()), "$.data[0].latestVer");
-        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.ver").value(1));
-        int tipAfter = JsonPath.read(utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andReturn()), "$.data[0].latestVer");
-        assertThat(tipAfter).isEqualTo(tipBefore);
+    // ── 版本不可变 + 按月编辑(2026-08-26 spec P4/P5) ──
+
+    @Test
+    void saveTemplate_isAlwaysImmutable_lightChangeAlsoBumpsVersion() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        String v1Def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/3"))
+                .path("data").path("definition").toString();
+
+        // 只改一个列名 —— 旧口径的"轻改动",现在也必须升版
+        ObjectNode def = (ObjectNode) M.readTree(v1Def).deepCopy();
+        ObjectNode first = (ObjectNode) def.path("groups").path(0).path("cols").path(0);
+        first.put("label", first.path("label").asText() + "·改");
+        String res = putOk("/api/books/" + bookId + "/template",
+                "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}");
+        assertThat((Integer) JsonPath.read(res, "$.data.book.ver")).isEqualTo(2);
+
+        // 旧版本逐字节不变(永不改写)
+        String v1After = M.readTree(getOk("/api/books/" + bookId + "/template/versions/1")).toString();
+        assertThat(v1After).contains(M.readTree(v1Def).path("groups").path(0).path("cols").path(0)
+                .path("label").asText());
+    }
+
+    @Test
+    void saveTemplate_movesOnlyThatMonth() throws Exception {
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+
+        // 前置:先原样保存一次 2 月 —— 给 2 月一个自己的 pin。没有它,2 月按 P3 第 3 步落到链尾,
+        // 而链尾正是下面这次保存要产出的新版,"更早月份不受影响"就成了一句空话(用例自证不了)
+        putOk("/api/books/" + bookId + "/template",
+                "{\"definition\":" + M.writeValueAsString(
+                        M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/2"))
+                                .path("data").path("definition"))
+                        + ",\"year\":2026,\"month\":2}");
+
+        ObjectNode def = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/3"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) def.path("groups").path(0).path("cols")).addObject();
+        col.put("id", "c_m3only").put("std", false).put("label", "只给3月")
+           .put("slot", "other").put("hidden", false).putNull("w").set("aliases", def.arrayNode());
+        putOk("/api/books/" + bookId + "/template",
+                "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}");
+
+        // 3 月用新版
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/3"))
+                .path("data").path("definition").toString()).contains("c_m3only");
+        // 4 月(空月,沿用最近更早的 pin = 3 月那条)也会看到 —— 这是 P3 的规定行为
+        // 但 2 月(更早)必须不受影响
+        assertThat(M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/2"))
+                .path("data").path("definition").toString()).doesNotContain("c_m3only");
     }
 
     @Test
@@ -158,7 +201,7 @@ class BookApiIT extends AbstractMysqlIT {
         ((ArrayNode) def.path("groups").path(0).path("cols")).remove(0);   // 删标准列
         mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
                 .contentType("application/json")
-                .content("{\"definition\":" + M.writeValueAsString(def) + "}"))
+                .content("{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2026,\"month\":3}"))
                 .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
     }
 
@@ -174,7 +217,8 @@ class BookApiIT extends AbstractMysqlIT {
               .put("slot", "other").put("hidden", false).put("w", 96)
               .set("aliases", def.arrayNode());
         ((ArrayNode) def.path("groups").path(0).path("cols")).add(custom);
-        putOk("/api/books/" + bookId + "/template", "{\"definition\":" + M.writeValueAsString(def) + "}");
+        putOk("/api/books/" + bookId + "/template",
+                "{\"definition\":" + M.writeValueAsString(def) + ",\"year\":2031,\"month\":5}");
 
         // 导入:已知 c_pv 落袋;未知 c_ghost 该行报错不静默吞(§4)
         String imp = new String(mvc.perform(post("/api/ledger/companies/" + companyId + "/import?year=2031&month=5")
@@ -200,45 +244,6 @@ class BookApiIT extends AbstractMysqlIT {
         String month2 = getOk("/api/ledger/companies/" + companyId + "/months/2031/5");
         assertThat(((Number) JsonPath.read(month2, "$.data.rows[0].totalReceivable")).doubleValue()).isEqualTo(250.0);
         assertThat(((Number) JsonPath.read(month2, "$.data.rows[0].extraFees.c_pv")).doubleValue()).isEqualTo(50.0);
-    }
-
-    @Test
-    void customColWithData_cannotBeRemoved_hideAllowed_adoptGuardedToo() throws Exception {
-        Object[] cb = createCompanyWithBook();
-        int companyId = (Integer) cb[0];
-        int bookId = ((JsonNode) cb[1]).path("id").asInt();
-        ObjectNode def = (ObjectNode) ((JsonNode) cb[1]).path("definition").deepCopy();
-        ObjectNode custom = def.objectNode();
-        custom.put("id", "c_keep").put("std", false).put("label", "有数据列")
-              .put("slot", "other").put("hidden", false).put("w", 96)
-              .set("aliases", def.arrayNode());
-        ((ArrayNode) def.path("groups").path(0).path("cols")).add(custom);
-        putOk("/api/books/" + bookId + "/template", "{\"definition\":" + M.writeValueAsString(def) + "}");   // v2
-        mvc.perform(post("/api/ledger/companies/" + companyId + "/import?year=2032&month=1")
-                .header("Authorization", auth()).contentType("application/json")
-                .content("{\"rows\":[{\"tenantName\":\"归档户\",\"extraFees\":{\"c_keep\":9}}]}"))
-                .andExpect(jsonPath("$.data.imported").value(1));
-
-        // 删除有数据的自定义列 → 409(§3 归档守卫)
-        ObjectNode dropped = def.deepCopy();
-        ArrayNode cols = (ArrayNode) dropped.path("groups").path(0).path("cols");
-        cols.remove(cols.size() - 1);
-        mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
-                .contentType("application/json").content("{\"definition\":" + M.writeValueAsString(dropped) + "}"))
-                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
-
-        // 切到没有该列的 v1 → 同样被守卫拦下
-        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.not(0)));
-
-        // 隐藏(归档)→ 放行,升版
-        ObjectNode hidden = def.deepCopy();
-        ((ObjectNode) hidden.path("groups").path(0).path("cols").path(hidden.path("groups").path(0).path("cols").size() - 1))
-                .put("hidden", true);
-        String r = putOk("/api/books/" + bookId + "/template",
-                "{\"definition\":" + M.writeValueAsString(hidden) + "}");
-        assertThat((Boolean) JsonPath.read(r, "$.data.structural")).isTrue();
     }
 
     @Test
@@ -296,8 +301,6 @@ class BookApiIT extends AbstractMysqlIT {
         assertThat(vers.get(i)).as("新册没有历史,没有理由落后于链尾").isEqualTo(latest.get(i));
     }
 
-    // ── 链尾编辑规则 R3/R4 与跨公司归档守卫(2026-08-25 全局链) ──
-
     private static String utf8(org.springframework.test.web.servlet.MvcResult r) {
         return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
@@ -307,9 +310,9 @@ class BookApiIT extends AbstractMysqlIT {
                 .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
     }
 
-    /** 在指定册上加一个自定义列并保存(结构改动 → 升版)。 */
+    /** 在指定册的某个月上加一个自定义列并保存(spec P4:升版 + 只把该月切过去)。 */
     @SuppressWarnings("unchecked")
-    private void addCustomColAtTip(int bookId, String colId, String label) throws Exception {
+    private void addCustomColAtTip(int bookId, String colId, String label, int year, int month) throws Exception {
         String body = ledgerBooks();
         int idx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(bookId);
         JsonNode d = M.readTree(M.writeValueAsString(JsonPath.read(body, "$.data[" + idx + "].definition")));
@@ -317,12 +320,13 @@ class BookApiIT extends AbstractMysqlIT {
         col.put("id", colId); col.put("std", false); col.put("label", label);
         col.put("slot", "other"); col.put("hidden", false); col.putNull("w"); col.putArray("aliases");
         mvc.perform(put("/api/books/" + bookId + "/template").header("Authorization", auth())
-                .contentType("application/json").content("{\"definition\":" + d + ",\"note\":\"" + label + "\"}"))
+                .contentType("application/json").content("{\"definition\":" + d + ",\"note\":\"" + label
+                        + "\",\"year\":" + year + ",\"month\":" + month + "}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.structural").value(true));
     }
 
-    /** 把某台账册的版本指针按回旧版 —— 造前置状态用(绕开 adopt 的归档守卫,纯 fixture)。 */
+    /** 把某台账册的版本指针按回旧版 —— 造前置状态用的纯 fixture(不走任何端点)。 */
     private void pinTo(int bookId, int ver) {
         Integer host = booksMapper.lineageHost().getId();
         BookTemplateVersion target = versionsMapper.byBook(host).stream()
@@ -330,200 +334,6 @@ class BookApiIT extends AbstractMysqlIT {
         LedgerBook b = booksMapper.selectById(bookId);
         b.setCurrentVersionId(target.getId());
         booksMapper.updateById(b);
-    }
-
-    /** 造出「有落后册」的状态:链尾升一版,除首册外全部停在链尾,首册按回 v1。
-     *  链尾必须留下**多册** —— 只留一册时 R4 与「只移动被编辑的那册」结果相同,用例分辨不出。
-     *  返回 {落后册 id, 链尾册 id, 链尾版本号}。 */
-    @SuppressWarnings("unchecked")
-    private int[] makeLaggingState(String probeColId) throws Exception {
-        List<Integer> ids = JsonPath.read(ledgerBooks(), "$.data[*].id");
-        int lagging = ids.get(0), tip = ids.get(1);
-        addCustomColAtTip(tip, probeColId, "计划探针");
-        int latest = ((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0);
-        for (Integer id : ids) pinTo(id, id == lagging ? 1 : latest);
-        return new int[]{ lagging, tip, latest };
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void saveTemplate_fromNonTipVersion_isRejected() throws Exception {
-        int[] s = makeLaggingState("c_probe_r3");
-        int lagging = s[0];
-        String body = ledgerBooks();
-        int idx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(lagging);
-        Object d = JsonPath.read(body, "$.data[" + idx + "].definition");
-        assertThat((int) (Integer) JsonPath.read(body, "$.data[" + idx + "].ver")).isEqualTo(1);   // 确认真的落后了
-        mvc.perform(put("/api/books/" + lagging + "/template").header("Authorization", auth())
-                .contentType("application/json").content("{\"definition\":" + M.writeValueAsString(d) + "}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(409))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("先升")));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void saveTemplate_structural_movesOnlyTipPinnedCompanies() throws Exception {
-        int[] s = makeLaggingState("c_probe_r4a");
-        int lagging = s[0], tip = s[1];
-
-        String before = ledgerBooks();
-        List<Integer> ids = JsonPath.read(before, "$.data[*].id");
-        List<Integer> vers = JsonPath.read(before, "$.data[*].ver");
-        int latest = ((List<Integer>) JsonPath.read(before, "$.data[*].latestVer")).get(0);
-        assertThat(vers.get(ids.indexOf(lagging))).as("前置:落后册在 v1").isEqualTo(1);
-
-        addCustomColAtTip(tip, "c_probe_r4b", "计划探针二");
-
-        String after = ledgerBooks();
-        List<Integer> vers2 = JsonPath.read(after, "$.data[*].ver");
-        int latest2 = ((List<Integer>) JsonPath.read(after, "$.data[*].latestVer")).get(0);
-        assertThat(latest2).isEqualTo(latest + 1);
-        for (int i = 0; i < ids.size(); i++) {
-            if (vers.get(i) == latest) assertThat(vers2.get(i)).as("链尾册跟进").isEqualTo(latest2);
-            else assertThat(vers2.get(i)).as("落后册原地不动").isEqualTo(vers.get(i));
-        }
-        assertThat(vers2.get(ids.indexOf(lagging))).as("落后册仍在 v1").isEqualTo(1);
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void tipEdit_removingCustomCol_blockedByAnotherCompanysData() throws Exception {
-        // ① 链尾加一列(所有在链尾的册跟进,含 company 1 与另一家)
-        String body0 = ledgerBooks();
-        List<Integer> ids = JsonPath.read(body0, "$.data[*].id");
-        List<Integer> cids = JsonPath.read(body0, "$.data[*].companyId");
-        int bookOfC1 = ids.get(cids.indexOf(1));
-        int otherBook = ids.get(cids.indexOf(1) == 0 ? 1 : 0);      // 另一家公司的册
-        addCustomColAtTip(bookOfC1, "c_xcheck", "跨司探针");
-
-        // ② 只给 company 1 的台账写这列的数据
-        mvc.perform(post("/api/ledger/companies/1/import")
-                .param("year", "2026").param("month", "11")
-                .header("Authorization", auth()).contentType("application/json")
-                .content("{\"rows\":[{\"tenantName\":\"跨司探针户\",\"extraFees\":{\"c_xcheck\":50}}]}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.imported").value(1));
-
-        // ③ 从**另一家公司**的册发起删列 → 必须被 company 1 的数据拦下(§7 跨公司检查)
-        String body = ledgerBooks();
-        int oIdx = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).indexOf(otherBook);
-        JsonNode d = M.readTree(M.writeValueAsString(JsonPath.read(body, "$.data[" + oIdx + "].definition")));
-        for (JsonNode g : d.get("groups")) {
-            ArrayNode cols = (ArrayNode) g.get("cols");
-            for (int i = cols.size() - 1; i >= 0; i--)
-                if ("c_xcheck".equals(cols.get(i).get("id").asText())) cols.remove(i);
-        }
-        mvc.perform(put("/api/books/" + otherBook + "/template").header("Authorization", auth())
-                .contentType("application/json").content("{\"definition\":" + d + "}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(409))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不能删除")));
-        // 类上 @Transactional,用例结束整体回滚 —— 不需要计划里那段手工清理
-    }
-
-    // ── 切版指针 adopt(R6/R7/R8):切指针不造版本,跨版可一步到位,缺列且有数据被守卫拦下 ──
-    // 探针列 id 必须与其他用例各不相同 —— 链只追加,重名会撞 TemplateDef.validate 的「列 id 重复」
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void adopt_crossVersionJumpToTip_doesNotCreateVersion() throws Exception {
-        // 造出三版链:v1(种子) → v2 → v3
-        List<Integer> ids0 = JsonPath.read(ledgerBooks(), "$.data[*].id");
-        int book = ids0.get(0), other = ids0.get(1);
-        addCustomColAtTip(other, "c_jump_a", "跳版探针A");
-        addCustomColAtTip(other, "c_jump_b", "跳版探针B");
-        int latest = ((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0);
-        assertThat(latest).isEqualTo(3);
-
-        // 先退到 v1,再一步跳到链尾(R8:不必逐版爬)
-        mvc.perform(post("/api/books/" + book + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.ver").value(1));
-        mvc.perform(post("/api/books/" + book + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":" + latest + "}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.ver").value(latest));
-
-        // R7:切指针不造新版本 —— 链尾纹丝不动
-        assertThat(((List<Integer>) JsonPath.read(ledgerBooks(), "$.data[*].latestVer")).get(0))
-                .isEqualTo(latest);
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void adopt_downgradeBlockedWhenCustomColumnHasData() throws Exception {
-        // ① 链尾加一列并升版(所有在链尾的册跟进)
-        String body0 = ledgerBooks();
-        List<Integer> ids = JsonPath.read(body0, "$.data[*].id");
-        List<Integer> cids = JsonPath.read(body0, "$.data[*].companyId");
-        int cIdx = cids.indexOf(1);                       // 用 companyId=1 的册,种子必有
-        int bookId = ids.get(cIdx);
-        addCustomColAtTip(bookId, "c_guard_probe", "守卫探针");
-
-        // ② 往该列导一行钱进去 —— 有数据才谈得上"降级会藏钱"
-        mvc.perform(post("/api/ledger/companies/1/import")
-                .param("year", "2026").param("month", "12")
-                .header("Authorization", auth()).contentType("application/json")
-                .content("{\"rows\":[{\"tenantName\":\"守卫探针户\",\"extraFees\":{\"c_guard_probe\":100}}]}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.imported").value(1));
-
-        // ③ 降到不含该列的 v1 → 被守卫拦下(R6)
-        mvc.perform(post("/api/books/" + bookId + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(409))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已有")));
-        // 类上 @Transactional,用例结束整体回滚 —— 不需要计划里那段手工清理
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void adopt_requiresBookTemplateEditPerm() throws Exception {
-        String vt = JsonPath.read(mvc.perform(post("/api/auth/login").contentType("application/json")
-                .content("{\"username\":\"viewer\",\"password\":\"viewer123\"}"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
-                "$.data.token");
-        String body = utf8(mvc.perform(get("/api/books").param("screen", "ledger")
-                .header("Authorization", auth())).andReturn());
-        int id = ((List<Integer>) JsonPath.read(body, "$.data[*].id")).get(0);
-        // 路径改名后权限门若没跟着挪,这条规则匹配不上任何端点 → 新端点对任何登录账号敞开
-        mvc.perform(post("/api/books/" + id + "/template/adopt").header("Authorization", "Bearer " + vt)
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(403));
-    }
-    // ── s10 回归(design §4「s10 恒等变换」):一册一链,链尾门对它不适用 ──
-    // rollback 改 adopt 之前 s10 永远停在链尾(回滚会把历史版复制成新链尾),门从不触发;
-    // 改成只挪指针后 s10 也能停在非链尾 —— 门若不限屏,用户切回旧版就再也改不了模板。
-    // 而前端 TemplateEditorPanel 的 globalChain 只认 ledger,不限屏则前后端打架:
-    // 能进编辑态、改完保存才吃 409。这条用例就是钉死这个缺口的。
-    @Test
-    void s10_adoptToOlderVersion_thenEditStillAllowed() throws Exception {
-        JsonNode book = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
-        int id = book.path("id").asInt();
-
-        // 结构改动升到 v2
-        ObjectNode d = book.path("definition").deepCopy();
-        ObjectNode col = ((ArrayNode) d.path("groups").get(0).path("cols")).addObject();
-        col.put("id", "c_s10probe"); col.put("std", false); col.put("label", "s10 探针");
-        col.put("slot", "other"); col.put("hidden", false); col.putNull("w"); col.putArray("aliases");
-        putOk("/api/books/" + id + "/template", "{\"definition\":" + d + "}");
-        int tip = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0).path("ver").asInt();
-        assertThat(tip).isGreaterThan(1);
-
-        // 切回 v1:s10 也能停在非链尾了
-        mvc.perform(post("/api/books/" + id + "/template/adopt").header("Authorization", auth())
-                .contentType("application/json").content("{\"ver\":1}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.ver").value(1));
-
-        // 停在非链尾仍可编辑 —— 限屏之前这里是 409
-        JsonNode back = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
-        ObjectNode d2 = back.path("definition").deepCopy();
-        ObjectNode first = (ObjectNode) d2.path("groups").get(0).path("cols").get(0);
-        first.put("label", first.path("label").asText() + "·改");
-        putOk("/api/books/" + id + "/template", "{\"definition\":" + d2 + "}");
     }
 
     // ── 导入词典跟着指针走(spec §8):customIdsByCompany 取的是该公司**现行版**的自定义列 ──
@@ -534,7 +344,7 @@ class BookApiIT extends AbstractMysqlIT {
         int companyId = (int) made[0];
         int bookId = ((JsonNode) made[1]).path("id").asInt();
 
-        addCustomColAtTip(bookId, "c_pinprobe", "指针探针");
+        addCustomColAtTip(bookId, "c_pinprobe", "指针探针", 2026, 9);
         pinTo(bookId, 1);                       // 退回不含该列的 v1(无数据,纯 fixture)
 
         mvc.perform(post("/api/ledger/companies/" + companyId + "/import")
@@ -546,5 +356,34 @@ class BookApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.imported").value(0))
                 .andExpect(jsonPath("$.data.errors[0].reason")
                         .value(org.hamcrest.Matchers.containsString("未知自定义列")));
+    }
+    // ── s10 回归(design §4「s10 恒等变换」):停在非链尾的月份仍然可编辑 ──
+    // 08-25 的 R3「只能在链尾编辑」已随 2026-08-26 spec §4 删除。删掉一道门之后最容易悄悄回归的
+    // 就是它,所以这条用例改写口径继续留着:历史月钉在 v1、链尾早已走远,从那个月编辑必须放行。
+    @Test
+    void s10_monthPinnedToOlderVersion_isStillEditable() throws Exception {
+        JsonNode book = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0);
+        int id = book.path("id").asInt();
+
+        // 在空月 2026-09 加一列 → 链尾升到 v2,但只带走 2026-09
+        ObjectNode d = M.readTree(getOk("/api/books/" + id + "/template/at/2026/9"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode col = ((ArrayNode) d.path("groups").get(0).path("cols")).addObject();
+        col.put("id", "c_s10probe"); col.put("std", false); col.put("label", "s10 探针");
+        col.put("slot", "other"); col.put("hidden", false); col.putNull("w"); col.putArray("aliases");
+        putOk("/api/books/" + id + "/template", "{\"definition\":" + d + ",\"year\":2026,\"month\":9}");
+        int tip = M.readTree(getOk("/api/books?screen=s10")).path("data").get(0).path("ver").asInt();
+        assertThat(tip).isGreaterThan(1);
+
+        // 2026-07 沿用最近一个更早月份的 pin(种子数据止于 2026-06)→ 停在 v1,不在链尾
+        assertThat(M.readTree(getOk("/api/books/" + id + "/template/at/2026/7"))
+                .path("data").path("ver").asInt()).as("空月沿用更早的 pin,停在非链尾").isEqualTo(1);
+
+        // 停在非链尾仍可编辑 —— R3 删除之前这里是 409
+        ObjectNode d2 = M.readTree(getOk("/api/books/" + id + "/template/at/2026/7"))
+                .path("data").path("definition").deepCopy();
+        ObjectNode first = (ObjectNode) d2.path("groups").get(0).path("cols").get(0);
+        first.put("label", first.path("label").asText() + "·改");
+        putOk("/api/books/" + id + "/template", "{\"definition\":" + d2 + ",\"year\":2026,\"month\":7}");
     }
 }

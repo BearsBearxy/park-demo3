@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 
 /**
  * 账册与模板版本(BOOK-WORKBENCH-SPEC §1-§3)。
- * 建册 = INSERT(红线:不触发 DDL);现行版全局生效;轻改动原版就地更新,结构改动升版;
+ * 建册 = INSERT(红线:不触发 DDL);模板版本按 (册, 月) 生效(spec 2026-08-26);版本不可变,任何保存都升版;
  * 全部改动经 AuditLogService 落操作日志。
  */
 @Service
@@ -197,11 +197,12 @@ public class BookService {
         // 台账模板是全局一条链:新司的指针直接指到链尾,不另起私链 ——
         // 私链上的册再也接不到链尾编辑,"全局唯一模板"当场作废且无法自愈。
         // 宿主行不存在只有一种情形:全新库首次种子(紧随其后的 migrateToGlobalLineage 会把它归并进去)
+        // ⚠ current_version_id 不再写:spec §5 宣告台账公司册的这一列作废(迁移已把老册置 NULL),
+        //   版本改由 book_month_pin 按月持有。写了它,新司的"不带月份读"会永远停在建司当刻那一版
+        //   ——导入白名单(customIdsByCompany)跟着停,新加的自定义列导不进来。
         LedgerBook host = books.lineageHost();
         BookTemplateVersion tip = host == null ? null : versions.tip(host.getId());
-        if (tip == null) { initVersion(b, BookTemplates.ledgerStandard(), "建册(标准 21 列模板)", by); return; }
-        b.setCurrentVersionId(tip.getId());
-        books.updateById(b);
+        if (tip == null) initVersion(b, BookTemplates.ledgerStandard(), "建册(标准 21 列模板)", by);
     }
 
     /** 改司名挂钩(审查#22):账册即公司(§9),名字跟着走,不分叉。 */
@@ -242,10 +243,13 @@ public class BookService {
 
     private BookDTO toDTO(LedgerBook b) { return toDTO(b, chainBookId(b)); }
 
+    // 不带月份的清单:definition 给链尾版(编辑器与导入中心的兜底用)。
+    // 不能再走 currentVersion(b) —— 台账公司册的那一列已在迁移中置 NULL(spec §5),
+    // 而"本册现在用哪版"已经不是一个册级问题:它按月份各不相同(spec §6)。
     private BookDTO toDTO(LedgerBook b, Integer chainId) {
-        BookTemplateVersion v = currentVersion(b);
+        BookTemplateVersion v = versions.selectById(tipVersionId(chainId));
         return new BookDTO(b.getId(), b.getScreen(), b.getCompanyId(), b.getPhase(),
-            b.getName(), v.getVer(), versions.maxVer(chainId), readTree(v.getDefinition()));
+            b.getName(), v.getVer(), v.getVer(), readTree(v.getDefinition()));
     }
 
     /** 册 → owner_id:台账取 company_id,附表10 取 phase。 */
@@ -270,8 +274,8 @@ public class BookService {
 
     /** 不带月份时的"现行版"。⚠ 台账公司册的 current_version_id 已被 V111 回填置 NULL(spec §5)——
      *  那不是"缺版本",是"该列作废了,版本改由 book_month_pin 按月持有"。这里一律退回链尾版
-     *  (spec §6:不带月份的读语义 = 链尾版)。本方法是 toDTO / saveTemplate / adopt /
-     *  customIdsBy* / versionList 共同的入口,守卫放这里,六个调用点一次修完。 */
+     *  (spec §6:不带月份的读语义 = 链尾版)。剩下的调用点是 migrateToGlobalLineage /
+     *  customIdsBy* / versionList —— saveTemplate 与 toDTO 已改走按月解析。 */
     private BookTemplateVersion currentVersion(LedgerBook b) {
         BookTemplateVersion v = b.getCurrentVersionId() == null
             ? versions.tip(chainBookId(b))
@@ -285,67 +289,47 @@ public class BookService {
         catch (Exception e) { throw new IllegalStateException("模板定义损坏", e); }
     }
 
-    // ── 模板保存(§3:轻改动原版就地更新;结构改动升版并移指针;标准列不可删) ──
+    // ── 模板保存(spec P4/P5:版本不可变,任何保存都升版;编辑从本月那版长出新版,只带走本月) ──
+    // 按月独立之后,原地改写会把所有钉在该版的月份一起改掉 ——「只带走当前月」当场沦为谎话,
+    // 所以旧的「轻改动就地更新」整条路废除,structural 恒 true。
     @Transactional
     public TemplateSaveResultDTO saveTemplate(Integer bookId, TemplateSaveReq req) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        int year = req.year(), month = req.month();
         Integer chainId = chainBookId(b);
-        BookTemplateVersion cur = currentVersion(b);
-        int tipVer = versions.maxVer(chainId);
-        // R3 只能在链尾编辑:允许从非链尾分叉,链就不再是一条线,"全局唯一模板"当场失效。
-        // ⚠ 只管台账屏。s10 是一册一链(design §4 恒等变换),没有"别家公司"可分叉,这道门对它没有意义;
-        //   而 rollback 改成 adopt 之后 s10 也能停在非链尾了,门若不限屏,用户切回旧版就再也改不了模板
-        //   (前端 TemplateEditorPanel 的 globalChain 也只认 ledger,不限屏会前后端打架:能进编辑态、保存吃 409)
-        if ("ledger".equals(b.getScreen()) && cur.getVer() != tipVer)
-            throw new BizException(ResultCode.CONFLICT,
-                "本册在 v" + cur.getVer() + ",最新是 v" + tipVer + " —— 请先升到 v" + tipVer + " 再改");
+        Integer owner = ownerIdOf(b);
+        assertMonthEditable(b, owner, year, month);          // P6 冻结,Task 3 填实现
 
+        Long curVerId = pinSvc.resolve(b.getScreen(), owner, year, month, chainId);
+        BookTemplateVersion cur = versions.selectById(curVerId);
         String newJson = req.definition().toString();
         TemplateDef.Def oldDef = TemplateDef.parse(cur.getDefinition());
         TemplateDef.Def newDef = TemplateDef.parse(newJson);
         TemplateDef.assertStdKept(oldDef, newDef);
-        // 台账模板全司共用,删列要查所有公司(§7):传宿主行(companyId=null)即放开公司范围
-        assertNoDataLossOnCustomRemoval(
-            "ledger".equals(b.getScreen()) ? books.lineageHost() : b, oldDef, newDef);
+        // 删列守卫已删除(spec §4):P6 之后编辑只可能发生在空月,守卫恒为真 ——
+        // 一个永远为真的守卫比没有守卫更糟,它让人以为有保护。
+        // 真正在防"导入进来一个模板里没有的列"的是 assertKnownExtraKeys,那是另一段代码,不动。
 
-        boolean structural = TemplateDef.structuralChange(oldDef, newDef);
         String summary = TemplateDef.diffSummary(oldDef, newDef);
-        if (structural) {
-            BookTemplateVersion nv = new BookTemplateVersion();
-            // 版本落在链上,号取链尾+1:写回 bookId 会给公司册另起私链,写 cur.getVer()+1 会撞 uk_tpl
-            nv.setBookId(chainId); nv.setVer(tipVer + 1);
-            nv.setDefinition(newJson);
-            nv.setNote(req.note() == null || req.note().isBlank() ? summary : req.note());
-            nv.setCreatedBy(actor());
-            versions.insert(nv);
-            movePinsAtTip(b, cur.getId(), nv.getId());
-            audit.log("模板修改", bookLabel(b),
-                "v" + cur.getVer() + "→v" + nv.getVer() + "(结构): " + summary);
-        } else {
-            cur.setDefinition(newJson);          // 轻改动就地更新:只影响指向该版的册
-            versions.updateById(cur);
-            audit.log("模板修改", bookLabel(b), "v" + cur.getVer() + "(轻改动): " + summary);
+        BookTemplateVersion nv = new BookTemplateVersion();
+        nv.setBookId(chainId);
+        nv.setVer(versions.maxVer(chainId) + 1);
+        nv.setDefinition(newJson);
+        nv.setNote(req.note() == null || req.note().isBlank() ? summary : req.note());
+        nv.setCreatedBy(actor());
+        versions.insert(nv);
+        pinSvc.pin(b.getScreen(), owner, year, month, nv.getId());        // 只带走当前月
+        if ("s10".equals(b.getScreen()) || b.getCompanyId() == null) {    // 链尾指针跟进(latestVer 来源)
+            b.setCurrentVersionId(nv.getId()); books.updateById(b);
         }
-        return new TemplateSaveResultDTO(toDTO(books.selectById(bookId)), structural, summary);
+        audit.log("模板修改", bookLabel(b),
+            year + "-" + month + " v" + cur.getVer() + "→v" + nv.getVer() + ": " + summary);
+        return new TemplateSaveResultDTO(toDTOAt(b, year, month), true, summary);
     }
 
-    // R4 编辑只带走链尾上的册:原本就指着旧链尾的(含宿主)跟进新版,落后的原地不动 —— 这是"不强制升级"的落点
-    private void movePinsAtTip(LedgerBook edited, Long oldTipId, Long newTipId) {
-        if (!"ledger".equals(edited.getScreen())) {          // s10:一册一链,只动自己
-            edited.setCurrentVersionId(newTipId);
-            books.updateById(edited);
-            return;
-        }
-        List<LedgerBook> all = new ArrayList<>(books.ledgerCompanyBooks());
-        LedgerBook host = books.lineageHost();
-        if (host != null) all.add(host);
-        for (LedgerBook x : all)
-            if (oldTipId.equals(x.getCurrentVersionId())) {
-                x.setCurrentVersionId(newTipId);
-                books.updateById(x);
-            }
-    }
+    /** P6 录入即冻结 —— Task 3 填实现。此处留桩,避免 Task 2 的测试依赖尚未存在的行为。 */
+    void assertMonthEditable(LedgerBook b, Integer owner, int year, int month) { }
 
     /** 历史版本定义(只读预览:非编辑态点版本看当时的列名与布局;GET 读全开,无权限门)。 */
     public com.fasterxml.jackson.databind.JsonNode versionDefinition(Integer bookId, int ver) {
@@ -368,26 +352,6 @@ public class BookService {
         return new VersionListDTO(out);
     }
 
-    /** 切本公司的版本指针(R7:取代旧「回滚=复制历史版为新版本」)。链只追加,切指针不造版本。 */
-    @Transactional
-    public BookDTO adopt(Integer bookId, int ver) {
-        LedgerBook b = books.selectById(bookId);
-        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
-        BookTemplateVersion target = versions.byBook(chainBookId(b)).stream()
-            .filter(v -> v.getVer() == ver).findFirst()
-            .orElseThrow(() -> new BizException(ResultCode.NOT_FOUND, "版本不存在"));
-        BookTemplateVersion cur = currentVersion(b);
-        if (target.getId().equals(cur.getId())) return toDTO(b);          // 已在该版:幂等
-        // R6 切到缺列的版本同样受归档守卫:名下有数据的自定义列不许因切版蒸发
-        // (口袋残值仍进 recalc 应收合计,列却不显示 → 合计永远对不上明细)
-        assertNoDataLossOnCustomRemoval(b, TemplateDef.parse(cur.getDefinition()),
-                                           TemplateDef.parse(target.getDefinition()));
-        b.setCurrentVersionId(target.getId());
-        books.updateById(b);
-        audit.log("模板切版", bookLabel(b), "v" + cur.getVer() + "→v" + ver);
-        return toDTO(books.selectById(bookId));
-    }
-
     // ── 导入校验用:该账册现行版的自定义列 id 集(§4:未知 id 该行报错不静默吞) ──
     public Set<String> customIdsByCompany(Integer companyId) {
         LedgerBook b = books.byCompany(companyId);
@@ -397,35 +361,6 @@ public class BookService {
     public Set<String> customIdsByPhase(Integer phase) {
         LedgerBook b = books.byPhase(phase);
         return b == null ? Set.of() : TemplateDef.customIds(TemplateDef.parse(currentVersion(b).getDefinition()));
-    }
-
-    // ── 归档守卫(SPEC §3 + 全局化 §7):自定义列名下有历史数据 → 只许隐藏(归档),不许从模板移除 ──
-    // 否则:行保存的 extraFees 整包替换会抹值(前端按现行版收包),或口袋残值变成合计里看不见的钱。
-    // 全局化后台账模板是所有公司共用的 —— 删列要查所有公司,任一家有数据就拒绝。
-    private void assertNoDataLossOnCustomRemoval(LedgerBook b, TemplateDef.Def oldDef, TemplateDef.Def newDef) {
-        Set<String> keep = TemplateDef.customIds(newDef);
-        for (String id : TemplateDef.customIds(oldDef)) {
-            if (keep.contains(id)) continue;
-            long n = customColRowCount(b, id);
-            if (n > 0)
-                throw new BizException(ResultCode.CONFLICT,
-                    "自定义列「" + id + "」名下已有 " + n + " 行数据,不能删除——请改用隐藏(归档);确需清列先清数据");
-        }
-    }
-
-    /** 该列名下的数据行数。台账屏:companyId 为 null(宿主行=全局编辑)时查所有公司。 */
-    private long customColRowCount(LedgerBook b, String colId) {
-        String jsonPath = "$.\"" + colId + "\"";
-        // JSON_TYPE 而非 IS NOT NULL:{"c_x":null} 的 JSON null 不是 SQL NULL,
-        // IS NOT NULL 会把空值键误判成"有数据"拦住删除;键缺席时 JSON_TYPE(SQL NULL)=NULL 不计
-        String cond = "JSON_TYPE(JSON_EXTRACT(extra_fees, {0})) NOT IN ('NULL')";
-        if ("ledger".equals(b.getScreen())) {
-            QueryWrapper<MonthlyLedger> q = new QueryWrapper<MonthlyLedger>().apply(cond, jsonPath);
-            if (b.getCompanyId() != null) q.eq("company_id", b.getCompanyId());
-            return ledgerRows.selectCount(q);
-        }
-        return s10Rows.selectCount(new QueryWrapper<S10Record>()
-            .eq("phase", b.getPhase()).apply(cond, jsonPath));
     }
 
     private static String bookLabel(LedgerBook b) {
