@@ -49,6 +49,24 @@ public class PermissionRegistry {
         // 请求提权本身是一道门:viewer / 园区股东没有 elevate:request,连问都不能问。
         // 具体授权哪些权限点由 ElevationService 校验(不可提权名单见 Perm.elevatable)。
         add(HttpMethod.POST, "/api/auth/elevate", Perm.ELEVATE_REQUEST);
+        // 远程授权(设计稿 §07)。发起请求与当场授权同一道门:viewer / 园区股东连问都不能问。
+        // ⚠ 必须排在 /api/auth/elevate 之后、但两条 POST 路径不同,互不遮挡;
+        //   「批准」那一下不挂 elevate:request —— 批准人凭的是他**本人真有那几个权限**
+        //   (ApprovalService 逐条校验),而不是「能不能请求提权」。
+        add(HttpMethod.POST, "/api/auth/approvals", Perm.ELEVATE_REQUEST);
+        add(HttpMethod.POST, "/api/auth/approvals/**", ANY_AUTHENTICATED);
+
+        // 编辑锁(CONCURRENCY-SPEC §4.4)。这里放行到「任何已登录账号」,具体的门在 LockService:
+        // 一个 :edit 权都没有的账号占锁毫无意义,只会变成谁都解不开的堵。
+        //
+        // ⚠ 为什么不在这里按 scope 映射权限点:scope 是 `模块:标识:期` 的自由字符串,
+        //   URL 层解不出它对应哪一档权限。而**锁不是安全边界** —— 126 个写端点仍由
+        //   WriteAccessManager 逐个把守,拿到锁也写不了自己没权限的东西。
+        add(null, "/api/locks/**", ANY_AUTHENTICATED);
+
+        // 在场心跳(PRESENCE §02)。任何已登录账号都要发 —— 浏览态也发,顶栏头像组靠它。
+        // 只读账号也在场:他在看哪一屏是有用信息(「赵总在看经营分析」),而他本来就写不了任何东西。
+        add(null, "/api/presence/**", ANY_AUTHENTICATED);
 
         // ═══ 出账链:同一 controller 前缀下混着口径与运行两档 ═══
         add(null, "/api/alloc/rules",        Perm.PARAM_POLICY_EDIT);

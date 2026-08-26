@@ -7,6 +7,7 @@
 // 编辑模式(EDIT-MODE-SPEC v2):浏览态=完全只读,一切纯文本(DOM 无输入框);金额/备注行内输入、
 // 电表增删改、电价参数小节、导入、模拟填充全部收编辑态。viewer 永远浏览态。年月选择 years 数据驱动(同 PvMeterView)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import {
   elecCostApi,
   type ElecMeterDTO, type ElecMeterKind, type ElecCostEntryDTO, type ElecPriceCfgDTO, type ElecMetricDTO,
@@ -15,6 +16,7 @@ import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -37,8 +39,8 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['entry:edit', 'param-policy:edit'])
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+  useEditMode(['entry:edit', 'param-policy:edit'], { scope: () => S.elecCost(year.value, month.value) })
 // 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
 const editE = computed(() => editMode.value && canEntry.value)
 const editC = computed(() => editMode.value && canPrice.value)
@@ -417,10 +419,8 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充 2025
         </Button>
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -603,7 +603,8 @@ function fmtMetric(mt: ElecMetricDTO): string {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
-    <FPElevateDialog :perms="asking" what="修改电价口径" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`电费成本总览 · ${year}-${String(month).padStart(2, '0')}`" :action="'录入费项金额 / 改电价口径'" :perms="asking" what="修改电价口径" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 

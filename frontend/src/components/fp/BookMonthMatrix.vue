@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import Avatar from '@/components/ds/Avatar.vue'
+import { usePresenceStore } from '@/stores/presence'
+
 // 明确选期门 v3(BOOK-WORKBENCH-SPEC §5,2026-08-24 拍板):年份 tab 退场,
 // 全部年份纵排一屏——每年一行 12 张月卡,点月卡才进宽表(§7-1 不变)。
 // 年份增删:「＋ 补更早年份」(右上)向前补一年,「＋ 添加 {次年} 年」(底行)向后补;
@@ -17,9 +20,19 @@ interface YearRow {
 }
 
 const props = defineProps<{
+  /** 这一格的锁作用域（如 (y,m) => S.ledger(companyId, y, m)）。不传 = 不显示在场标记。 */
+  scopeOf?: (year: number, month: number) => string | null
   book: Book | null
   years: YearRow[]      // 升序;上层负责连续补满
 }>()
+
+// 只标编辑态(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
+const presence = usePresenceStore()
+function editorOf(year: number, month: number) {
+  const sc = props.scopeOf?.(year, month)
+  if (!sc) return null
+  return presence.editorsUnder(sc).find((e) => !e.self) ?? null
+}
 
 const emit = defineEmits<{
   (e: 'pick', year: number, month: number): void
@@ -55,6 +68,13 @@ const nextYear = computed(() =>
             @click="emit('pick', y.year, m.month)"
           >
             <span class="bmm-month">{{ m.month }}月</span>
+            <!-- 在场标记(PRESENCE §04)。**绝对定位** —— 有人在编辑和没人在编辑,格子尺寸完全一样。
+                 这里是「选哪个月进去」的决策点,也是最该标的地方。 -->
+            <span v-if="editorOf(y.year, m.month)" class="bmm-who"
+                  :title="`${editorOf(y.year, m.month)!.displayName} 正在编辑`">
+              <Avatar :uid="editorOf(y.year, m.month)!.user"
+                      :name="editorOf(y.year, m.month)!.displayName" :size="20" class="bmm-av" />
+            </span>
             <span v-if="m.hasData && m.rowCount != null" class="bmm-count">{{ m.rowCount }} 行</span>
             <span v-else-if="!m.hasData" class="bmm-none">空</span>
           </button>
@@ -141,7 +161,10 @@ const nextYear = computed(() =>
   gap: var(--space-2);
 }
 
+.bmm-who { position:absolute; top:6px; right:6px; z-index:2; pointer-events:none; display:flex; }
+.bmm-av { box-shadow:0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--hue-orange); }
 .bmm-card {
+  position: relative;   /* 在场角标绝对定位的参照 */
   min-height: 62px;
   display: flex;
   flex-direction: column;

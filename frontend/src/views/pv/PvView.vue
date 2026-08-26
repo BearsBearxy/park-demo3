@@ -5,6 +5,7 @@
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { pvApi } from '@/api/pv'
 import { exportPvYear } from '@/utils/pvExcel'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -138,6 +139,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      :scope-of="(y) => S.pv(y)"
       v-if="year === null"
       icon="sun"
       title="附表6 · 光伏发电"
@@ -155,6 +157,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
     <template v-else-if="yearData">
       <div class="s6-page">
         <SchedHeader
+          :scope="S.pv(year)"
           icon="sun"
           title="附表6 · 光伏发电"
           sub="逐月发电台账 · 自发自用、余电上网 · 电量 kWh / 金额 元"

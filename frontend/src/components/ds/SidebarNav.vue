@@ -7,6 +7,8 @@
  * v-model support added: modelValue mirrors `active`; emits "update:modelValue".
  */
 import { defineComponent, h, ref, computed, Fragment } from "vue";
+import { usePresenceStore } from '@/stores/presence'
+import { NAV_SCOPE_PREFIX, scopeNote } from '@/utils/lockScopes'
 
 // ---- shared types ---------------------------------------------------------
 
@@ -117,6 +119,7 @@ export default defineComponent({
     );
 
     // expanded-tree open state
+    const presence = usePresenceStore();
     const allItems = computed(() => props.sections.flatMap((s) => s.items || []));
     const openSet = ref<Set<string>>(collectDefaultOpen(allItems.value, new Set()));
 
@@ -137,6 +140,24 @@ export default defineComponent({
     }
 
     // ---- expanded tree (recursive) ----------------------------------------
+
+    /**
+     * 这个导航项底下有没有人在编辑 —— 有则返回提示文案，无则返回 null。
+     *
+     * **只标编辑态**（设计稿 §04）：标记要回答的只有「我点进去改得了吗」，
+     * 别人在看不挡你。全标上的话侧栏常年一片点，一周之内就没人看了。
+     */
+    function editingHere(navValue: string): string | null {
+      const prefix = NAV_SCOPE_PREFIX[navValue];
+      if (!prefix) return null;
+      const who = presence.editorsUnder(prefix);
+      if (!who.length) return null;
+      const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
+      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼
+      const note = scopeNote(who[0].scope);
+      return note ? `${names}
+${note}` : names;
+    }
 
     function renderTree(items: SidebarItem[], depth: number): any[] {
       return items.map((it) => {
@@ -168,6 +189,18 @@ export default defineComponent({
           h("span", { style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, [it.label]),
           // trailing
           it.trailing ? h("span", {}, [it.trailing]) : null,
+          // 在场标记(PRESENCE §04):有人正在这一屏的某一期编辑。
+          // **绝对定位** —— 出现与消失都不改变行的尺寸(LAYOUT-STABILITY)。
+          editingHere(it.value)
+            ? h("span", {
+                title: editingHere(it.value),
+                style: {
+                  position: "absolute", right: "10px", top: "50%", marginTop: "-3px",
+                  width: "6px", height: "6px", borderRadius: "50%",
+                  background: "var(--hue-orange)",
+                },
+              })
+            : null,
         ]);
 
         return h(Fragment, { key: it.value }, [

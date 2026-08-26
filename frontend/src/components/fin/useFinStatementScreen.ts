@@ -3,7 +3,7 @@
 // 一个竞态/加载门的修法要改三处,漏一处就出现「利润表修好了、资产负债表还闪旧数据」。
 // 这里只收敛「搬运」部分:公司增删改、年历/本期加载(含竞态守卫)、状态迁移、编辑草稿与 dirty、
 // 保存外壳、导入接线。行定义/取值口径/KPI/表格/保存载荷/导出仍留在各屏——数值计算一格都不在这里。
-import { ref, computed, onMounted, type Ref } from 'vue'
+import { ref, computed, watch, onMounted, type Ref } from 'vue'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import type { CompanyDTO } from '@/types/ledger'
@@ -15,6 +15,8 @@ import type { FinDialog } from '@/components/fin/FinDialogs.vue'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useReportYearGate } from '@/components/fin/useReportYearGate'
 import { maxSelectableYear } from '@/utils/yearGate'
+import { S } from '@/utils/lockScopes'
+import { useEditLock } from '@/composables/useEditLock'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { useAuthStore } from '@/stores/auth'
@@ -160,8 +162,29 @@ export function useFinStatementScreen(opts: {
     month.value = null
   }
 
+  // ── 编辑锁(CONCURRENCY-SPEC §3.1 B) ──
+  // ⚠ 「全部汇总」视图不可写(save() 第一行就 return),S.report 对它返回 null → 不上锁。
+  //   给一个存不了盘的视图上锁,只会平白挡住别人。
+  const lockScope = () => S.report(stmt, companyId.value, year.value, month.value)
+  // 被接管时**只退编辑态,不清草稿** —— 他还要把没保存的东西复制走。
+  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value)
+  const { lockedBy, evictedBy } = lock
+  /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门（设计稿 C-2）。 */
+  const heldByOther = lock.watchScope(lockScope)
+  // 退出编辑的路有四条(取消/完成/保存成功/换期),用 watch 兜住 —— 漏一条就是一把没人认领的锁。
+  watch(edit, (on) => { if (!on) lock.release() })
+
   // ── 编辑流 ───────────────────────────────────────────────
-  function enterEdit() {
+  async function enterEdit() {
+    const sc = lockScope()
+    if (sc && !(await lock.acquire(sc))) return
+    draft.value = {}; opts.resetLocal(); edit.value = true
+  }
+  /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
+  async function onTaken() {
+    lockedBy.value = null
+    const sc = lockScope()
+    if (sc) await lock.acquire(sc)
     draft.value = {}; opts.resetLocal(); edit.value = true
   }
   // 裸丢弃。内部调用方(save 成功后、onImport 整期替换后)已确认过或本就该无声丢,
@@ -271,7 +294,7 @@ export function useFinStatementScreen(opts: {
     yearGated, gateYears, yearCards, gateCurrent,
     pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
     loadYear, loadPeriod,
-    enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
+    enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
     onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
     importing, importResult, importSummary, onImport, requestImport,
   }
