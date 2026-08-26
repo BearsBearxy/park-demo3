@@ -45,6 +45,8 @@ class BookPinApiIT extends AbstractMysqlIT {
     @Autowired LedgerBookMapper booksMapper;
     @Autowired BookTemplateVersionMapper versionsMapper;
     @Autowired BookService bookSvc;
+    @Autowired com.park.demo3.mapper.MonthlyLedgerMapper ledgerMapper;
+    @Autowired com.park.demo3.mapper.S10RecordMapper s10Mapper;
     @Autowired MockMvc mvc;
     private String token;
 
@@ -91,8 +93,17 @@ class BookPinApiIT extends AbstractMysqlIT {
         assertThat(pins.at("s10", 4, 2026, 6)).as("phase4 没有数据行,不建 pin").isNull();
 
         // ── 条数:少转几圈就该红(V18 一行都不回填时,上面 by-phase 的断言会先炸,这里兜住整体规模)──
-        assertThat(count("ledger")).isEqualTo((long) booksMapper.ledgerCompanyBooks().size() * LEDGER_MONTHS);
-        assertThat(count("s10")).isEqualTo((long) S10_PHASES_WITH_DATA * S10_MONTHS);
+        // 逐册对账,不量全库总数:总数会被两件事带偏 —— 别的用例遗留的公司(册数变多)、
+        // 以及 testcontainers 复用容器时跨运行累积的 pin。而「每册的 pin 数 == 该册有数据的月份数」
+        // 是真不变量,与库里还有谁无关。用全库总数的话,往种子里加一家公司也会把它弄红。
+        for (LedgerBook b : booksMapper.ledgerCompanyBooks())
+            assertThat(pinCountOf("ledger", b.getCompanyId()))
+                .as("台账册 %s 的 pin 数应等于它有数据的月份数", b.getName())
+                .isEqualTo(dataMonthsOfCompany(b.getCompanyId()));
+        for (int phase = 1; phase <= 4; phase++)
+            assertThat(pinCountOf("s10", phase))
+                .as("期区 %d 的 pin 数应等于它有数据的月份数", phase)
+                .isEqualTo(dataMonthsOfPhase(phase));
 
         // ── 收尾:台账公司册的指针作废置 NULL;宿主行与期区册的仍是链尾标记,不许被顺手清掉 ──
         for (LedgerBook b : booksMapper.ledgerCompanyBooks())
@@ -661,6 +672,22 @@ class BookPinApiIT extends AbstractMysqlIT {
 
     private long count(String screen) {
         return pins.selectCount(new QueryWrapper<BookMonthPin>().eq("screen", screen));
+    }
+
+    private long pinCountOf(String screen, Integer ownerId) {
+        return pins.selectCount(new QueryWrapper<BookMonthPin>().eq("screen", screen).eq("owner_id", ownerId));
+    }
+
+    /** 该公司有台账数据的月份数(去重)。 */
+    private long dataMonthsOfCompany(Integer companyId) {
+        return ledgerMapper.selectMaps(new QueryWrapper<com.park.demo3.entity.MonthlyLedger>()
+                .select("DISTINCT period_year, period_month").eq("company_id", companyId)).size();
+    }
+
+    /** 该期区有附表10 数据的月份数(去重)。 */
+    private long dataMonthsOfPhase(int phase) {
+        return s10Mapper.selectMaps(new QueryWrapper<com.park.demo3.entity.S10Record>()
+                .select("DISTINCT acct_month").eq("phase", phase)).size();
     }
 
     /** 版本行里存的定义(过一遍 Jackson,与读接口的序列化口径对齐)。 */
