@@ -45,12 +45,14 @@ public class BookService {
     private final MonthlyLedgerMapper ledgerRows;
     private final S10RecordMapper s10Rows;
     private final AuditLogService audit;
+    private final BookPinService pinSvc;
 
     public BookService(LedgerBookMapper books, BookTemplateVersionMapper versions,
                        ManagementCompanyMapper companies, MonthlyLedgerMapper ledgerRows,
-                       S10RecordMapper s10Rows, AuditLogService audit) {
+                       S10RecordMapper s10Rows, AuditLogService audit, BookPinService pinSvc) {
         this.books = books; this.versions = versions; this.companies = companies;
         this.ledgerRows = ledgerRows; this.s10Rows = s10Rows; this.audit = audit;
+        this.pinSvc = pinSvc;
     }
 
     // ── 种子(BookSeeder 启动调用,幂等):每公司一台账册,附表10 四期区册(§8) ──
@@ -123,9 +125,62 @@ public class BookService {
         books.updateById(host);
     }
 
+    // ── 按月 pin 回填的取数(2026-08-26;BookPinService.migrateExisting 调用) ──
+
+    /** 已有台账数据的 (公司, 年, 月) 及该公司册当时的现行版 id。 */
+    public List<Object[]> existingLedgerMonths() {
+        List<Object[]> out = new ArrayList<>();
+        for (LedgerBook b : books.ledgerCompanyBooks()) {
+            Long ver = b.getCurrentVersionId() != null ? b.getCurrentVersionId()
+                     : tipVersionId(chainBookId(b));
+            for (Map<String, Object> m : ledgerRows.selectMaps(new QueryWrapper<MonthlyLedger>()
+                    .select("DISTINCT period_year, period_month").eq("company_id", b.getCompanyId())))
+                out.add(new Object[]{ b.getCompanyId(),
+                    ((Number) m.get("period_year")).intValue(),
+                    ((Number) m.get("period_month")).intValue(), ver });
+        }
+        return out;
+    }
+
+    /** 已有附表10 数据的 (期区, 年, 月) 及该期区册当时的现行版 id。acct_month 是 'YYYY-MM',这里拆。 */
+    public List<Object[]> existingS10Months() {
+        List<Object[]> out = new ArrayList<>();
+        for (int phase = 1; phase <= 4; phase++) {
+            LedgerBook b = books.byPhase(phase);
+            if (b == null) continue;
+            Long ver = b.getCurrentVersionId() != null ? b.getCurrentVersionId() : tipVersionId(b.getId());
+            for (Map<String, Object> m : s10Rows.selectMaps(new QueryWrapper<S10Record>()
+                    .select("DISTINCT acct_month").eq("phase", phase))) {
+                String ym = String.valueOf(m.get("acct_month"));          // 'YYYY-MM'
+                out.add(new Object[]{ phase, Integer.parseInt(ym.substring(0, 4)),
+                                      Integer.parseInt(ym.substring(5, 7)), ver });
+            }
+        }
+        return out;
+    }
+
+    /** 迁移收尾(spec §5):台账公司册的 current_version_id 就此作废 —— 版本改由 book_month_pin 持有。
+     *  留一个半死不活的字段,迟早有人拿它当"当前版"用。宿主行与 s10 期区册的那一列仍是链尾标记,不动。 */
+    @Transactional
+    public void clearLedgerCompanyPointers() {
+        // ⚠ 必须 UpdateWrapper.set(...) 显式置 NULL:MP 的 updateById 跳过 null 字段
+        //   (同款坑见 LedgerService.bindRow 的解绑注释)
+        for (LedgerBook b : books.ledgerCompanyBooks())
+            books.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<LedgerBook>()
+                .eq("id", b.getId()).set("current_version_id", null));
+    }
+
     /** 版本链宿主:台账屏一律走全局宿主行;s10 屏一册一链,宿主就是自己。 */
     Integer chainBookId(LedgerBook b) {
         return "ledger".equals(b.getScreen()) ? lineageHostId() : b.getId();
+    }
+
+    /** 某条链的链尾版本 id。 */
+    public Long tipVersionId(Integer chainBookId) {
+        BookTemplateVersion top = versions.selectOne(new QueryWrapper<BookTemplateVersion>()
+            .eq("book_id", chainBookId).orderByDesc("ver").last("LIMIT 1"));
+        if (top == null) throw new IllegalStateException("账册链没有任何版本:" + chainBookId);
+        return top.getId();
     }
 
     private Integer lineageHostId() {
@@ -192,6 +247,26 @@ public class BookService {
         BookTemplateVersion v = currentVersion(b);
         return new BookDTO(b.getId(), b.getScreen(), b.getCompanyId(), b.getPhase(),
             b.getName(), v.getVer(), versions.maxVer(chainId), readTree(v.getDefinition()));
+    }
+
+    /** 册 → owner_id:台账取 company_id,附表10 取 phase。 */
+    Integer ownerIdOf(LedgerBook b) {
+        return "ledger".equals(b.getScreen()) ? b.getCompanyId() : b.getPhase();
+    }
+
+    /** 某月生效的 BookDTO。 */
+    public BookDTO toDTOAt(LedgerBook b, int year, int month) {
+        Integer chainId = chainBookId(b);
+        Long verId = pinSvc.resolve(b.getScreen(), ownerIdOf(b), year, month, chainId);
+        BookTemplateVersion v = versions.selectById(verId);
+        return new BookDTO(b.getId(), b.getScreen(), b.getCompanyId(), b.getPhase(),
+            b.getName(), v.getVer(), versions.maxVer(chainId), readTree(v.getDefinition()));
+    }
+
+    public BookDTO templateAt(Integer bookId, int year, int month) {
+        LedgerBook b = books.selectById(bookId);
+        if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
+        return toDTOAt(b, year, month);
     }
 
     private BookTemplateVersion currentVersion(LedgerBook b) {

@@ -29,7 +29,8 @@ class BookLineageMergeTest {
     private final BookTemplateVersionMapper versions = Mockito.mock(BookTemplateVersionMapper.class);
     private final BookService svc = new BookService(books, versions,
             Mockito.mock(ManagementCompanyMapper.class), Mockito.mock(MonthlyLedgerMapper.class),
-            Mockito.mock(S10RecordMapper.class), Mockito.mock(AuditLogService.class));
+            Mockito.mock(S10RecordMapper.class), Mockito.mock(AuditLogService.class),
+            Mockito.mock(BookPinService.class));
 
     private final Map<Long, BookTemplateVersion> stored = new HashMap<>();
     private final List<BookTemplateVersion> inserted = new ArrayList<>();
