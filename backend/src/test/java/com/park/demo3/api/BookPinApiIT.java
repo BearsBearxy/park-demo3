@@ -401,6 +401,30 @@ class BookPinApiIT extends AbstractMysqlIT {
                         .value(org.hamcrest.Matchers.containsString("未知自定义列")));
     }
 
+    // ── 第 17 权限点 book-template:switch(Task 4) ──
+    // 换一套别人的列(切版)与在本月微调列名(第16点)是两种风险,故分权。
+    @Test
+    void pin_requiresSwitchPerm_notEditPerm() throws Exception {
+        // viewer 只读 → 403(口令在 application-dev.yml 钉死 viewer123)
+        String vt = JsonPath.read(mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"username\":\"viewer\",\"password\":\"viewer123\"}"))
+                .andReturn().getResponse().getContentAsString(), "$.data.token");
+        Object[] cb = createCompanyWithBook();
+        int bookId = ((JsonNode) cb[1]).path("id").asInt();
+        mvc.perform(post("/api/books/" + bookId + "/template/pin").header("Authorization", "Bearer " + vt)
+                .contentType("application/json").content("{\"ver\":1,\"year\":2026,\"month\":7}"))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
+    void perm17_isRegisteredAndRenderedInMatrix() {
+        assertThat(com.park.demo3.security.Perm.ALL).hasSize(17)
+            .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
+        assertThat(com.park.demo3.security.Perm.META.stream()
+            .map(com.park.demo3.security.Perm.Meta::key))
+            .contains(com.park.demo3.security.Perm.BOOK_TEMPLATE_SWITCH);
+    }
+
     // ── MockMvc 脚手架(照 BookApiIT) ──
 
     private String auth() { return "Bearer " + token; }
