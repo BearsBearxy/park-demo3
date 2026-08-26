@@ -7,6 +7,7 @@
 // POST(无读数)/PUT(有),行级失败收集 alert 并保留 dirty;放弃=丢 draft 回浏览态。
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
@@ -58,7 +59,7 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签**保留**编辑态与草稿,只关浮层 ──
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
-const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit } =
+const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle } =
   useEditMode(['meter-reading:edit', 'meter-master:edit'], { scope: () => S.meters(year.value) })
 const importing = ref(false)
 const okMsg = ref('')
@@ -155,11 +156,14 @@ function onCellEdit(p: { meterId: number; field: CurrField; value: string }) {
   draft.set(p.meterId, { ...draft.get(p.meterId), [p.field]: p.value })
 }
 // 编辑模式按钮:进=开编辑;编辑中点「完成」dirty>0 弹确认,无改动直接退出
-function onEditBtn() {
+async function onEditBtn() {
   if (!editMode.value) {
     // 缺任何一项就当场弹授权窗;取消 = 什么都没发生,留在浏览态(useEditMode 铁律 ①)
     if (lockedPerms.value.length) { askFor(); return }
-    editMode.value = true
+    // ⚠ 这里以前是裸的 `editMode.value = true` —— **绕过了占锁**。
+    //   表现:两个人能同时进本屏的编辑态,而且谁也看不到对方(锁根本没占,在场表里也没有)。
+    //   必须走 toggle()，它才是「权限齐 → 占锁 → 进」那条唯一的路。
+    await toggle()
     return
   }
   if (dirtyIds.value.length > 0) { saveConfirm.value = true; return }
@@ -609,15 +613,12 @@ const emptyText = computed(() => {
           批量删除本期
         </Button>
         <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
-        <Button
-          v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm"
+        <FPEditModeButton
+          :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
           :disabled="saving || !!readErr"
           :title="readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
-          @click="onEditBtn"
-        >
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+          @toggle="onEditBtn"
+        />
       </div>
     </div>
 
@@ -830,7 +831,8 @@ const emptyText = computed(() => {
         </div>
       </div>
     </div>
-    <FPElevateDialog :perms="asking" what="录入抄表读数或改表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`园区抄表 · ${year} 年`" :action="'修改表档案 / 抄表读数'" :perms="asking" what="录入抄表读数或改表档案" @close="cancelAsk" @elevated="onElevated" />
     <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 6000" />
   </div>
 </template>

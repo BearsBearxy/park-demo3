@@ -8,7 +8,7 @@
  */
 import { defineComponent, h, ref, computed, Fragment } from "vue";
 import { usePresenceStore } from '@/stores/presence'
-import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
+import { NAV_SCOPE_PREFIX, scopeNote } from '@/utils/lockScopes'
 
 // ---- shared types ---------------------------------------------------------
 
@@ -151,7 +151,12 @@ export default defineComponent({
       const prefix = NAV_SCOPE_PREFIX[navValue];
       if (!prefix) return null;
       const who = presence.editorsUnder(prefix);
-      return who.length ? who.map((e) => `${e.displayName} 正在编辑`).join("、") : null;
+      if (!who.length) return null;
+      const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
+      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼
+      const note = scopeNote(who[0].scope);
+      return note ? `${names}
+${note}` : names;
     }
 
     function renderTree(items: SidebarItem[], depth: number): any[] {

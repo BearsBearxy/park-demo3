@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '@/api'
+import api, { readToken } from '@/api'
 import type { Eviction } from '@/api/locks'
+import type { Pending, Outcome } from '@/api/approvals'
 
 /** 在线的一个人（服务端算好时长与排序）。 */
 export interface Seat {
@@ -31,7 +32,19 @@ export interface Seat {
  * 不必为了可测性在生产代码里留一个 `__reset()` 后门。
  */
 export const usePresenceStore = defineStore('presence', () => {
-  const PING_MS = 20_000
+  /**
+   * 轮询周期。**3 秒**，不是 20 —— 用户拍板 2026-08-26：「我要的是实时更新的结果，
+   * 最多几秒钟的延迟」。20 秒时的实测体感是「一直不动，只好去刷新页面」。
+   *
+   * 3 秒在这个规模上很便宜：几十个账号 ≈ 10 req/s，服务端一拍是几次内存 Map 读
+   * （身份只在会话第一拍查一次库，见 PresenceService）。
+   *
+   * ⚠ 服务端两个 TTL **不跟着缩**：
+   *   · 锁 3 分钟 = 60 拍容错，网络抖动完全掉不了锁
+   *   · 在场 60 秒 —— 浏览器把后台标签页节流到约 1 分钟一拍，缩了的话切到后台的人
+   *     会从在线名单消失，而他手上的锁还在，别人的按钮就不再显示「李四 编辑中」
+   */
+  const PING_MS = 3_000
 
   /** 本标签页的会话 id。**按会话不按人** —— 一个人开两个标签页看两个屏是常态。 */
   const sid = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -75,6 +88,24 @@ export const usePresenceStore = defineStore('presence', () => {
   let lastActivityAt = Date.now()
   let timer: ReturnType<typeof setInterval> | null = null
 
+  /**
+   * 等我批的授权请求（设计稿 §07）。顶栏 Bell 的红点数就是它的长度。
+   *
+   * 走同一条 ping —— 「要做通知机制」是当初否掉远程授权的两条理由之一，
+   * 心跳建好之后它的边际成本就只是响应体多两个字段。
+   */
+  const approvals = ref<Pending[]>([])
+
+  /**
+   * 我请的那次批了没有。
+   *
+   * ⚠ **必须是 ref，不能是单槽回调。** FPElevateDialog 在每个可编辑屏都有一个实例，
+   *   写成 `onOutcome = fn` 时最后挂载的那个赢，结果就派发给了一个根本没打开的弹窗 ——
+   *   表现是「主管批了，请求者那边窗口关掉了却没进编辑模式」。
+   *   放成 ref，由**发起请求的那个弹窗**按 id 自己认领。
+   */
+  const outcome = ref<Outcome | null>(null)
+
   /** 被接管的回调 —— 由 useEditLock 注册，ping 带回来时当场喊停。 */
   let onEvicted: ((e: Eviction) => void) | null = null
   function handleEviction(fn: ((e: Eviction) => void) | null) { onEvicted = fn }
@@ -117,10 +148,14 @@ export const usePresenceStore = defineStore('presence', () => {
 
   async function ping() {
     try {
-      const r = await api.put<{ users: Seat[]; evicted: Eviction | null }>('/presence/ping',
-        { sid, scope, label, mode, lastActivityAt })
+      const r = await api.put<{
+        users: Seat[]; evicted: Eviction | null
+        approvals: Pending[]; outcome: Outcome | null
+      }>('/presence/ping', { sid, scope, label, mode, lastActivityAt })
       users.value = r?.users ?? []
+      approvals.value = r?.approvals ?? []
       if (r?.evicted) onEvicted?.(r.evicted)
+      if (r?.outcome) outcome.value = r.outcome
     } catch {
       // 抖一下不算数,下一拍再说。服务端 60 秒才判离线 = 3 拍容错。
     }
@@ -137,6 +172,33 @@ export const usePresenceStore = defineStore('presence', () => {
     timer = setInterval(() => void ping(), PING_MS)
   }
 
+  /**
+   * 关浏览器 / 关标签页时**主动销号**。
+   *
+   * 不做的话:卸载路径上只还了锁,座位却要挂满 PRESENCE_TTL=60 秒 ——
+   * 而别人的「XX 编辑中」按钮和侧栏红点读的都是**座位**,不是锁。
+   * 于是出现用户 2026-08-26 实测的那个自相矛盾的状态:
+   * 「按钮显示 admin 在编辑中,但是又能打开编辑模式,并且过了很久才更新下线」
+   * —— 锁没了(所以进得去),座位还在(所以还显示他)。两个登记只拆了一个。
+   *
+   * ⚠ 必须 fetch keepalive:卸载路径上普通 XHR 会被浏览器连同页面一起掐掉。
+   *   不用 sendBeacon —— 它带不了自定义头,令牌只能塞查询串,而查询串会进 nginx
+   *   访问日志、也会随 Referer 外泄(同 api/locks.ts releaseOnUnload 的理由)。
+   *
+   * ⚠ 挂 pagehide:beforeunload 会被「未保存」二次确认拦住并可能被取消,
+   *   那时页面还活着,销号就销错了。
+   */
+  function leaveOnUnload() {
+    const t = readToken()
+    if (!t) return
+    void fetch(`/api/presence/${sid}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${t}` },
+      keepalive: true,
+    }).catch(() => { /* 兜底:60 秒 TTL */ })
+  }
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', leaveOnUnload)
+
   function stop() {
     if (timer) { clearInterval(timer); timer = null }
     users.value = []
@@ -144,5 +206,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, editorsByScope, editorsUnder, enter, setMode, touch, handleEviction, stop, ping }
+  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, enter, setMode, touch, handleEviction, stop, ping }
 })

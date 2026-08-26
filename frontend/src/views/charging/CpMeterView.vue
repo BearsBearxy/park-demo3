@@ -8,6 +8,7 @@
 // 实现骨架与 PvMeterView 同构对齐(乐观更新/竞态守卫/抽屉行式编辑同款)。
 // ponytail: 桩数个位数,不上分页机;短窗时卡片内滚动兜底,桩数破 30 再上
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
@@ -43,7 +44,7 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
   useEditMode(['meter-master:edit', 'meter-reading:edit', 'billing-run:edit'], { scope: () => S.cpMeter(props.vehicleType, year.value) })
 // RBAC v2:桩库档案(桩名/运营商/增删)= meter-master:edit;充电记录/电表用电量/导入 = meter-reading:edit;
 // 模拟填充在本屏是「读附表7/8 整年批量派生」,属出账运行 = billing-run:edit(RBAC-SPEC §5.3-⑥)。
@@ -363,10 +364,8 @@ async function onTemplate() {
           导出
         </Button>
         <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -598,7 +597,8 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
-    <FPElevateDialog :perms="asking" what="维护充电桩表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`充电桩分桩明细 · ${year} 年`" :action="'修改桩库档案 / 抄表记录'" :perms="asking" what="维护充电桩表档案" @close="cancelAsk" @elevated="onElevated" />
   </div>
 </template>
 

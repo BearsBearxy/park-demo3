@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { defineComponent } from 'vue'
+import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useEditMode } from '@/composables/useEditMode'
+import { useEditLock } from '@/composables/useEditLock'
 import { usePresenceStore } from '@/stores/presence'
 import api from '@/api'
 
@@ -12,6 +15,7 @@ vi.mock('@/api', () => ({
     put: vi.fn(() => Promise.resolve({})),
     delete: vi.fn(() => Promise.resolve()),
   },
+  readToken: vi.fn(() => 'test-token'),
   bindSession: vi.fn(),
   sessionDrifted: vi.fn(() => false),
 }))
@@ -159,6 +163,86 @@ describe('编辑模式 × 编辑锁', () => {
     const { heldByOther } = useEditMode(PERMS, { scope: () => SCOPE })
 
     expect(heldByOther.value).toBeNull()
+  })
+
+  it('走授权进来的人也必须占到锁', async () => {
+    // 之前 onElevated() 直接 editMode = true，绕过了 enter() 里的占锁 ——
+    // 叫主管授权进来的人手上没有锁，第二个人照样进得去，P1 那道闸在这条路上等于不存在。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+
+    const { editMode, onElevated } = useEditMode(PERMS, { scope: () => SCOPE })
+    await onElevated()
+
+    expect(api.post).toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    expect(editMode.value).toBe(true)
+  })
+
+  it('授权进来时锁被别人占着 → 一样进不去', async () => {
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValueOnce(HELD_BY_ZHANG as never)
+
+    const { editMode, onElevated, lockedBy } = useEditMode(PERMS, { scope: () => SCOPE })
+    await onElevated()
+
+    expect(editMode.value, '权限齐了也不等于进得去').toBe(false)
+    expect(lockedBy.value?.displayName).toBe('张三')
+  })
+
+  it('组件卸载时锁自己还回去 —— 不指望每个消费方都记得写', async () => {
+    // useEditLock 有六个消费方,其中四个(SchedHeader / LedgerWideTable /
+    // useFinStatementScreen / CoefBookWindow)的还锁只挂在「宿主把 edit 翻假」上。
+    // 宿主要是没翻(路由切走、抽屉关掉、v-if 撤掉),锁就**留在服务端并被 ping 一直续着** ——
+    // 连 3 分钟心跳自愈都等不到,下一个人只能干等 20 分钟空闲或者走接管。
+    //
+    // 这种「每处都要记得写一遍」的约定迟早烂掉,而且烂掉的表现是「锁没放」不是报错。
+    // 兜底放在 useEditLock 自己身上:它总是在 setup() 里被调用,onUnmounted 天然绑到宿主。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+
+    let acquire!: (s: string) => Promise<boolean>
+    const Host = defineComponent({
+      setup() {
+        acquire = useEditLock().acquire
+        return () => null
+      },
+    })
+    const w = mount(Host)
+    await acquire(SCOPE)
+    expect(api.post).toHaveBeenCalledWith(`/locks/${SCOPE}`)
+
+    w.unmount()
+
+    expect(api.delete, '卸载即还锁').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+  })
+
+  it('取消关闭浏览器不能把锁弄丢 —— 还锁挂 pagehide,不挂 beforeunload', async () => {
+    // 加了「关页面二次确认」之后,beforeunload 就**可能被取消**(用户点「留在此页」)。
+    // 还锁要是还挂在 beforeunload 上,那一下已经发出去了:人留在编辑态,锁却没了,
+    // 别人随时能进来盖掉他正在改的东西 —— 比不加确认框更糟。
+    // pagehide 只在页面真的要走时才触发,正是该放释放动作的地方。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal('fetch', f)
+
+    // ⚠ 用**本用例专属**的 scope:前面几条用例留下的 useEditLock 实例监听器还挂在
+    //   同一个 jsdom window 上(它们没退出编辑态,stop() 没跑过),按 '/locks/' 数会数到它们。
+    const MINE = 'ledger:99:2099-12'
+    const mine = () => f.mock.calls.filter((c) => String(c[0]).includes(MINE))
+    const Host = defineComponent({
+      setup() { const l = useEditLock(); void l.acquire(MINE); return () => null },
+    })
+    mount(Host)
+    await Promise.resolve()
+
+    window.dispatchEvent(new Event('beforeunload'))
+    expect(mine(), '只是问一句要不要走,锁一步都不能动').toHaveLength(0)
+
+    window.dispatchEvent(new Event('pagehide'))
+    expect(mine(), '真的要走了才还锁').toHaveLength(1)
+    vi.unstubAllGlobals()
   })
 
   it('没传 scope 的屏一切照旧，不占锁', async () => {

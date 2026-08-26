@@ -128,6 +128,33 @@ public class ElevationService {
         return boss;
     }
 
+    /**
+     * 校验**当前登录者本人**的密码。远程授权用（设计稿 §07）：
+     * 主管在**自己的电脑上**批，输的是自己的密码 —— 那正是这条路径比当场授权更安全的地方。
+     *
+     * 与 verifyAuthorizer 共用同一套护栏（失败锁定 / 空跑 BCrypt / 失败进审计）：
+     * 这同样是个口令试错口，只不过试的是自己的。
+     * 不复用 verifyAuthorizer 是因为它带「不能给自己授权」那道守卫，而这里授权人就是当前登录者
+     * —— 被授权的是**请求者**，不是他自己，所以那道守卫在这条路径上是错的。
+     */
+    public void verifyOwnPassword(String password, String auditAction) {
+        String me = currentUsername();
+        String key = LoginRateLimiter.key(clientIp(), me);
+        if (limiter.isLocked(key)) {
+            audit.log(auditAction + ".locked", "user:" + me, "密码失败次数过多,已锁定");
+            throw new BizException(ResultCode.TOO_MANY_REQUESTS, "密码错误次数过多,请 15 分钟后再试");
+        }
+        AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
+        boolean active = u != null && u.getStatus() == 1;
+        boolean ok = enc.matches(password, active ? u.getPasswordHash() : DUMMY_HASH) && active;
+        if (!ok) {
+            limiter.recordFailure(key);
+            audit.log(auditAction + ".deny", "user:" + me, "密码错误");
+            throw new BizException(ResultCode.UNAUTHORIZED, "密码错误");
+        }
+        limiter.reset(key);
+    }
+
     /** 退出编辑模式 / 登出 / 主动结束。幂等。 */
     public void revoke() {
         String me = currentUsername();

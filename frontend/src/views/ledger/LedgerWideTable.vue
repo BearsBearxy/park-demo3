@@ -61,7 +61,11 @@ const emit = defineEmits<{
 // 所以锁的进出挂在两个地方:进 = 拦住 enter-edit 直到占到锁;出 = watch(edit) 归假即还。
 // 用 watch 而不是在每个退出口各加一行 —— 父层有 4 条路会把 edit 置回 false
 // (取消/保存/换期/切册),漏一条就是一把没人认领的锁。
-const lock = useEditLock(() => { if (props.edit) emit('cancel') })
+// ⚠ 第二个参数是权限守卫。宿主 LedgerView 是裸的 `const edit = ref(false)`,**不走 useEditMode** ——
+//   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
+//   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。
+const lock = useEditLock(() => { if (props.edit) emit('cancel') },
+                          () => auth.can('entry:edit'))
 const { lockedBy, evictedBy } = lock
 /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门(设计稿 C-2)。 */
 const heldByOther = lock.watchScope(() => props.lockScope ?? null)

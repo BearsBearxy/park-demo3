@@ -49,6 +49,12 @@ public class PermissionRegistry {
         // 请求提权本身是一道门:viewer / 园区股东没有 elevate:request,连问都不能问。
         // 具体授权哪些权限点由 ElevationService 校验(不可提权名单见 Perm.elevatable)。
         add(HttpMethod.POST, "/api/auth/elevate", Perm.ELEVATE_REQUEST);
+        // 远程授权(设计稿 §07)。发起请求与当场授权同一道门:viewer / 园区股东连问都不能问。
+        // ⚠ 必须排在 /api/auth/elevate 之后、但两条 POST 路径不同,互不遮挡;
+        //   「批准」那一下不挂 elevate:request —— 批准人凭的是他**本人真有那几个权限**
+        //   (ApprovalService 逐条校验),而不是「能不能请求提权」。
+        add(HttpMethod.POST, "/api/auth/approvals", Perm.ELEVATE_REQUEST);
+        add(HttpMethod.POST, "/api/auth/approvals/**", ANY_AUTHENTICATED);
 
         // 编辑锁(CONCURRENCY-SPEC §4.4)。这里放行到「任何已登录账号」,具体的门在 LockService:
         // 一个 :edit 权都没有的账号占锁毫无意义,只会变成谁都解不开的堵。

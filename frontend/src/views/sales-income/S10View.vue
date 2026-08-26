@@ -262,7 +262,9 @@ async function onCreate(name: string, profile: string) {
   await guard('新增租户失败', async () => {
     await s10Api.saveRecord({ tenantId: null, tenantName: name, phase: phase.value, acctMonth, profile })
     drawer.value = false
-    edit.value = true
+    // ⚠ 不再裸置 edit = true：那会在没占锁的情况下把人送进编辑态。
+    //   新增租户这条路只有编辑态里才走得到（按钮收在编辑态），所以这里本就该已经是 true；
+    //   保险起见不动它，由用户自己点「编辑模式」——权限与锁在那道门上一次说清。
     await refresh()
   })
 }

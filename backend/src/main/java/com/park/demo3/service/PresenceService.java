@@ -26,19 +26,28 @@ public class PresenceService {
 
     private final PresenceStore store;
     private final AuthUserMapper users;
+    private final ApprovalService approvals;
 
-    public PresenceService(PresenceStore store, AuthUserMapper users) {
-        this.store = store; this.users = users;
+    public PresenceService(PresenceStore store, AuthUserMapper users, ApprovalService approvals) {
+        this.store = store; this.users = users; this.approvals = approvals;
     }
 
     public PingResp ping(PingReq req) {
         String me = me();
         // ⚠ 身份从令牌取，不从请求体取。让客户端报自己是谁，头像组就成了谁都能冒名的地方。
-        // ponytail: 每 20 秒一次唯一索引点查。几十个账号 = 约 90 次/分钟，不值得为它加缓存；
-        //           而且这样改了显示名 20 秒内就生效。
-        AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
-        String name = u == null || u.getDisplayName() == null ? me : u.getDisplayName();
-        String role = u == null ? null : u.getRole();
+        //
+        // 只在这个会话的**第一拍**查库。轮询从 20 秒收到 3 秒之后，每拍都查等于把这条点查
+        // 放大 7 倍（30 个账号约 600 次/分钟）—— 而显示名几个月才改一次。
+        // 代价写明：改了显示名，已开着的标签页要到下次开页才更新。
+        PresenceStore.Seat known = store.seatOf(req.sid());
+        String name, role;
+        if (known != null) {
+            name = known.displayName(); role = known.role();
+        } else {
+            AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
+            name = u == null || u.getDisplayName() == null ? me : u.getDisplayName();
+            role = u == null ? null : u.getRole();
+        }
 
         Instant touched = req.lastActivityAt() == null
             ? Instant.now() : Instant.ofEpochMilli(req.lastActivityAt());
@@ -46,8 +55,12 @@ public class PresenceService {
         PresenceStore.Eviction e = store.ping(
             req.sid(), me, name, role, req.scope(), clamp(req.label()), req.mode(), touched);
 
-        return new PingResp(seats(me), e == null ? null
-            : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()));
+        // 远程授权顺着同一条通道回来（设计稿 §07）——「要做通知机制」当初是否掉它的理由之一，
+        // 而心跳建好之后，它的边际成本就只是响应体多两个字段。
+        var out = approvals.pollOutcome();
+        return new PingResp(seats(me),
+            e == null ? null : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()),
+            approvals.inbox(), out);
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */

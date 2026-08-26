@@ -46,6 +46,15 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
     })
   })
 
+  describe('账册模板（第 16 权限点，§3.1 立表时还没有它）', () => {
+    it('锁到账册，不锁到期 —— 模板是跨期的', () => {
+      // 改模板会改动这本账册**所有月份**的列结构（TemplateDef 有版本与回滚）。
+      // 锁到某一个月的话，另一个人在别的月改同一份模板，照样对撞。
+      expect(S.bookTemplate(7)).toBe('book-template:7')
+      expect(S.bookTemplate(7)).not.toBe(S.bookTemplate(8))
+    })
+  })
+
   describe('导航项 → 作用域前缀（侧栏圆点用）', () => {
     it('表里每个前缀都真的是某个作用域构造器会产出的', () => {
       // 这张表**会烂**：谁改了作用域模板却忘了改它，圆点就永远不亮 ——
@@ -67,6 +76,7 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
         S.salary(2025, 6), S.s10(1, 2025, 6),
         S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
         S.pnl('ops', 2025), S.pnl('expense', 2025),
+        S.bookTemplate(7),
       ]
       const covers = (prefix: string) => produced.some(
         (sc) => sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-'))

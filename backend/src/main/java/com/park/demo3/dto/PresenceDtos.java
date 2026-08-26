@@ -22,6 +22,16 @@ public final class PresenceDtos {
                           String scope, String label, String mode,
                           long sinceMs, long idleMs, boolean self) {}
 
-    /** ping 的回答：谁在线 + 你是不是被接管了。一条通道两件事。 */
-    public record PingResp(java.util.List<SeatDTO> users, LockDtos.EvictionDTO evicted) {}
+    /**
+     * ping 的回答。**一条通道四件事** —— 全站唯一的轮询：
+     *   users     谁在线、在哪一屏
+     *   evicted   你的编辑权被接管了（当面提示）
+     *   approvals 等你批的授权请求（顶栏通知的红点靠它）
+     *   outcome   你请的那次远程授权批了没有
+     *
+     * 每加一条通道就多一份「谁跟谁不同步」的可能，所以宁可让这个响应体宽一点。
+     */
+    public record PingResp(java.util.List<SeatDTO> users, LockDtos.EvictionDTO evicted,
+                           java.util.List<ApprovalDtos.PendingDTO> approvals,
+                           ApprovalDtos.OutcomeDTO outcome) {}
 }

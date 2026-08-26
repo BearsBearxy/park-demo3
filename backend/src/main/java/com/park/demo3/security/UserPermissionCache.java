@@ -93,4 +93,19 @@ public class UserPermissionCache {
 
     /** 找不到 = 账号不存在或已停用。 */
     public UserAuth get(String username) { return username == null ? null : snapshot.get(username); }
+
+    /**
+     * 持有全部这些权限点的启用账号 —— 远程授权的候选人名单（设计稿 §07）。
+     *
+     * 快照本来就在内存里，这里只是给它开一个**收窄的**出口：
+     * 只按传入的权限点筛，不返回全量用户表。它是个信息泄露口（谁都能拿它枚举「谁是主管」），
+     * 内部系统可接受，但不要放宽成「列出所有人」。
+     */
+    public java.util.List<String> holdersOf(java.util.List<String> perms) {
+        return snapshot.values().stream()
+            .filter(u -> u.perms().containsAll(perms))
+            .map(UserAuth::username)
+            .sorted()
+            .toList();
+    }
 }

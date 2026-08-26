@@ -25,6 +25,14 @@ export const S = {
     `ledger:${companyId}:${year}-${pad2(month)}`,
   elecCost: (year: number, month: number) => `elec-cost:${year}-${pad2(month)}`,
 
+  /**
+   * 账册模板（第 16 权限点 book-template:edit，V107/V109 加的 —— §3.1 立表时还没有它）。
+   *
+   * **锁到账册，不锁到期**：改模板会改动这本账册**所有月份**的列结构（TemplateDef 带版本与回滚）。
+   * 锁到某一个月的话，另一个人在别的月改同一份模板照样对撞。
+   */
+  bookTemplate: (bookId: number) => `book-template:${bookId}`,
+
   // ── 按年锁（§3.1 D：表档案全局无期，抽屉可任意补录历史月，锁到月挡不住串写） ──
   meters: (year: number) => `meters:${year}`,
   pvMeter: (year: number) => `pv-meter:${year}`,
@@ -91,4 +99,20 @@ export const NAV_SCOPE_PREFIX: Record<string, string> = {
   'water-pnl': 'pnl:water',
   'ops-pnl': 'pnl:ops',
   'expense-pnl': 'pnl:expense',
+}
+
+/**
+ * 这把锁为什么会同时锁住好几个屏 —— 给用户看的一句话。
+ *
+ * 出账链那把 `billing-chain` 一锁锁三屏（§3.2：它们打的是同一批快照表）。
+ * 不解释的话用户会看到「计费参数 / 公共电核算 / 催缴单 同时亮红点」而莫名其妙 ——
+ * 用户 2026-08-26 原话：「莫名其妙」。
+ */
+export function scopeNote(scope: string | null | undefined): string | null {
+  if (!scope) return null
+  if (scope.startsWith('billing-chain:')) {
+    return '出账链三屏（计费参数 · 公共电核算 · 催缴单）与系数簿共用同一把月锁 —— '
+         + '它们改的是同一批出账快照，锁住一个就是锁住四个'
+  }
+  return null
 }

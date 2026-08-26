@@ -167,8 +167,10 @@ export function useFinStatementScreen(opts: {
   //   给一个存不了盘的视图上锁,只会平白挡住别人。
   const lockScope = () => S.report(stmt, companyId.value, year.value, month.value)
   // 被接管时**只退编辑态,不清草稿** —— 他还要把没保存的东西复制走。
-  const lock = useEditLock(() => { edit.value = false })
+  const lock = useEditLock(() => { edit.value = false }, () => canEdit.value)
   const { lockedBy, evictedBy } = lock
+  /** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门（设计稿 C-2）。 */
+  const heldByOther = lock.watchScope(lockScope)
   // 退出编辑的路有四条(取消/完成/保存成功/换期),用 watch 兜住 —— 漏一条就是一把没人认领的锁。
   watch(edit, (on) => { if (!on) lock.release() })
 
@@ -292,7 +294,7 @@ export function useFinStatementScreen(opts: {
     yearGated, gateYears, yearCards, gateCurrent,
     pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
     loadYear, loadPeriod,
-    enterEdit, onTaken, lockedBy, evictedBy, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
+    enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
     onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
     importing, importResult, importSummary, onImport, requestImport,
   }

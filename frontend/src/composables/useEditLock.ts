@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue'
 import { locksApi, type LockHolder, type Eviction } from '@/api/locks'
 import { usePresenceStore } from '@/stores/presence'
 
@@ -13,7 +13,7 @@ import { usePresenceStore } from '@/stores/presence'
  * 谁进得来的判定全在服务端（PresenceStore，有单测钉死）。这里只负责：
  * 把答案接住、按 20 秒续、被接管时当场喊停。
  */
-export function useEditLock(onEvicted?: () => void) {
+export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
   /** 这一期被谁占着。非空 = 刚才想进但被挡下了，页面据此开接管抽屉。 */
   const lockedBy = ref<LockHolder | null>(null)
   /** 被谁接管了。非空 = 当场弹提示。 */
@@ -56,6 +56,14 @@ export function useEditLock(onEvicted?: () => void) {
   // 键鼠事件刷新活动时间戳，随 ping 报上去。
   const ACTIVITY = ['keydown', 'mousedown', 'input', 'change'] as const
   const touch = () => presence.touch()
+  /**
+   * 关页面时还锁。**挂 pagehide,不挂 beforeunload。**
+   *
+   * beforeunload 现在会被「未保存,确定要离开吗」的二次确认拦住(auth store 那道),
+   * 而它**可能被取消** —— 用户点「留在此页」。还锁要是挂在那儿,那一下已经发出去了:
+   * 人留在编辑态,锁却没了,别人随时能进来盖掉他正在改的东西 —— 比不加确认框更糟。
+   * pagehide 只在页面**真的要走**时才触发,正是该放释放动作的地方。
+   */
   const onUnload = () => { if (held.value) locksApi.releaseOnUnload(held.value) }
 
   /** 拿到锁返回 true；被别人占着返回 false 并填好 lockedBy。 */
@@ -86,7 +94,7 @@ export function useEditLock(onEvicted?: () => void) {
 
   function start() {
     ACTIVITY.forEach((e) => window.addEventListener(e, touch, true))
-    window.addEventListener('beforeunload', onUnload)
+    window.addEventListener('pagehide', onUnload)
     presence.handleEviction((e) => {
       // 被接管：锁已经不是我们的了 —— 先清 held，免得 release() 再发一个注定无效的请求
       evictedBy.value = e
@@ -94,17 +102,42 @@ export function useEditLock(onEvicted?: () => void) {
       release()
       // 锁没了，编辑态也必须当场退 —— 让他继续改一个已经不归他的期，
       // 只会在他点保存时撞一个 403，而那时草稿已经又多了十几处。
-      onEvicted?.()
+      onExit?.()
     })
     presence.setMode('edit', held.value)
   }
 
   function stop() {
     ACTIVITY.forEach((e) => window.removeEventListener(e, touch, true))
-    window.removeEventListener('beforeunload', onUnload)
+    window.removeEventListener('pagehide', onUnload)
     presence.handleEviction(null)
     presence.setMode('view')
   }
+
+  /**
+   * 铁律①(EDIT-MODE-SPEC v4)「进得了编辑模式 ⇒ 本页权限一定齐」的**兜底**。
+   *
+   * 两条路会走到这里:授权 30 分钟到期,或者用户点了横幅上的「结束授权」。
+   * useEditMode 早就有这道守卫(它那份 `watch([editMode, missing])`),可它只管得住走它的
+   * 那 19 屏 —— 系数簿 / 账册模板 / 附表页头 / 三大报表**都不走 useEditMode**,
+   * 于是四处各自都没有。
+   *
+   * 漏掉的表现不是报错,是:授权结束了人还留在编辑态,**锁还被那条 3 秒 ping 一直续着** ——
+   * 连 3 分钟心跳自愈都等不到,别人只能干等 20 分钟空闲、或者去走接管。
+   * (用户 2026-08-26 实测:「张三退出系数簿编辑模式后,别的账号依旧保持编辑中,
+   *  侧边栏也在红点显示」。)
+   *
+   * 放在这里 = 六个消费方一次到位。让每一处都记得写一遍的约定,迟早有一处忘掉。
+   */
+  if (canEdit) watch(canEdit, (ok) => { if (!ok && held.value) { release(); onExit?.() } })
+
+  /**
+   * 宿主卸载(路由切走 / v-if 撤掉 / 抽屉整个销毁)时锁自己还回去。
+   * 同上:六个消费方里只有 useEditMode 记得写,其余四个都指望「宿主会把 edit 翻假」——
+   * 宿主没翻的时候,那把锁就没人认领了。
+   * 组件外调用(单测)时没有实例可挂,Vue 会 warn —— 与 useEditMode 同一套处理。
+   */
+  if (getCurrentInstance()) onUnmounted(() => release())
 
   return { lockedBy, evictedBy, held, acquire, release, watchScope }
 }

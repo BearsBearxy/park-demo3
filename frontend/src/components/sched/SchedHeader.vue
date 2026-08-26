@@ -52,7 +52,8 @@ onUnmounted(() => auth.closeEditor(meId))
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
 // 与 useEditMode 共用同一份机制(useEditLock)。本组件不走 useEditMode —— 编辑态由 7 个消费屏
 // 各自持有 —— 所以锁也得在这儿自己接一次,但接的是同一个 composable,不是另抄一份。
-const lock = useEditLock(() => { if (props.edit) emit('toggle-edit') })
+const lock = useEditLock(() => { if (props.edit) emit('toggle-edit') },
+                          () => auth.can(props.perm))
 const { lockedBy, evictedBy } = lock
 
 /**
@@ -135,7 +136,8 @@ function onImport() {
       </Button>
     </div>
     <FPElevateDialog :perms="asking" :what="`修改${title}`"
-                     @close="asking = null" @elevated="asking = null; emit('toggle-edit')" />
+                     :page="`${title} · ${year} 年`" :action="`修改${title}`"
+                     @close="asking = null" @elevated="asking = null; void onToggleEdit()" />
     <FPTakeoverDrawer :holder="lockedBy" :scope="scope ?? ''" :what="`${title} ${year} 年`"
                       @close="lockedBy = null" @taken="onTaken" />
     <FPEvictedDialog :eviction="evictedBy" :what="`${title} ${year} 年`" @close="evictedBy = null" />

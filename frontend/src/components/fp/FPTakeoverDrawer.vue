@@ -11,6 +11,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { locksApi, type LockHolder } from '@/api/locks'
+import { scopeNote } from '@/utils/lockScopes'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
@@ -35,6 +36,8 @@ const busy = ref(false)
 
 // 空闲 = 免授权那条路。判定在服务端算好（客户端的钟不可信，也不该各算各的）
 const idle = computed(() => !!props.holder?.idle)
+/** 共占锁的屏解释一句 —— 一把锁管四个写面这件事必须说出来。 */
+const note = computed(() => scopeNote(props.scope))
 
 const heldText = computed(() => fmt(props.holder?.heldMs ?? 0))
 const idleText = computed(() => fmtLoose(props.holder?.idleMs ?? 0))
@@ -135,6 +138,10 @@ async function submit() {
         </p>
       </template>
 
+      <p v-if="note" class="tk-shared">
+        <component :is="iconFor('info')" :size="13" />{{ note }}
+      </p>
+
       <!-- ⚠ 错误位常驻（LAYOUT-STABILITY §7）：写成 v-if 的话输错时这行凭空长出来，
            把「确认接管」按钮从用户指头底下顶走。 -->
       <p class="tk-err">
@@ -171,6 +178,8 @@ async function submit() {
 .tk-note.strong { color: var(--text-primary); }
 .tk-note b, .tk-lead b { font-weight: var(--fw-semibold); color: var(--text-primary); }
 .tk-mask :deep(input) { -webkit-text-security: disc; text-security: disc; }
+.tk-shared { margin: 0; display: flex; align-items: flex-start; gap: 6px;
+             font-size: var(--fs-micro); line-height: 1.6; color: var(--text-muted); }
 .tk-err { margin: 0; min-height: 18px; display: flex; align-items: center; gap: 6px;
           font-size: var(--fs-label); line-height: 18px; color: var(--status-danger); }
 </style>

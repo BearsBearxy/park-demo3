@@ -5,6 +5,7 @@
 //   · 常驻行(IS_ROWS)无数据留空;明细行下可加自定义子类(父项自动汇总);小计行(21/30/32)按公式算。
 // 本屏只留利润表特有部分:双列取值、行树、公式/KPI、保存载荷、自定义子类与批量删除、导出。
 import { ref, computed } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { reportApi } from '@/api/report'
 import type { ReportCell, ReportCustomRowDTO } from '@/types/report'
 import { IS_ROWS, computeRow } from '@/reports/incomeStatement'
@@ -39,7 +40,7 @@ const {
   yearGated, gateYears, yearCards, gateCurrent,
   pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
   loadPeriod,
-  enterEdit, onTaken, lockedBy, evictedBy, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
+  enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
@@ -325,10 +326,10 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button v-if="!edit && canEdit" variant="outline" size="sm" @click="enterEdit">
-              <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-              编辑模式
-            </Button>
+            <!-- 草稿型屏:编辑态走下面的 [取消][保存]，所以这里只负责浏览态那三态
+                 (编辑模式 / 张三 编辑中 / 张三 空闲 23 分) —— 设计稿 §05 -->
+            <FPEditModeButton v-if="!edit" :edit="false" :held-by-other="heldByOther"
+                              :can-enter="canEdit" @toggle="enterEdit" />
             <!-- ⚠ 必须 v-if="edit"，不能 v-else：上面是「!edit && canEdit」，
                  v-else 会把「没权限」也算进去，无权账号将看到「保存/取消」。 -->
             <template v-if="edit">

@@ -129,10 +129,16 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     if (list.length) asking.value = list
   }
 
-  /** 授权成功：权限已进 auth store，missing 自动变空。 */
-  function onElevated() {
+  /**
+   * 授权成功：权限已进 auth store，missing 自动变空。
+   *
+   * ⚠ **必须走 enter()，不能直接置 editMode。** 直接置的话，叫主管授权进来的人
+   *   手上没有锁 —— 第二个人照样进得去，P1 那道闸在这条路上等于不存在。
+   *   权限齐 ≠ 进得去，这条对哪条路径都成立。
+   */
+  async function onElevated() {
     asking.value = null
-    editMode.value = true
+    await enter()
   }
 
   /**
