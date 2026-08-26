@@ -106,17 +106,6 @@ function backToCurrent() {
   previewDef.value = null
 }
 
-// ── 结构改动判定(§3):列的 增删/顺序/换槽/隐藏 + 组增删,任一变即结构 ──
-// 签名只含结构位(id/slot/hidden/列序/组序),显示名/别名/列宽不参与 → 轻改动不触发
-function structSig(def: BookDef): string {
-  return def.groups
-    .map(g => `${g.id}[${g.cols.map(c => `${c.id}:${c.slot}:${c.hidden ? 1 : 0}`).join(',')}]`)
-    .join(';')
-}
-const structural = computed(() =>
-  mode.value === 'edit' && !!(draft.value && props.book)
-  && structSig(draft.value!) !== structSig(props.book!.definition))
-
 const slotOpts = BOOK_SLOTS.map(s => ({ value: s, label: SLOT_LABELS[s] }))
 
 // ── 别名录入:「+ 别名」按钮原地变输入框;Enter/blur 都提交,Esc/空值失焦取消 ──
@@ -312,9 +301,10 @@ function fmtTime(s: string): string {
         </div>
 
         <template v-if="mode === 'edit'">
-          <!-- 升版提示:常驻占位一行(LAYOUT-STABILITY),结构改动时才显字 -->
+          <!-- 升版提示:恒显一行(P5 任何保存都升版,轻/重改动的区分已废除,所以不再随改动种类闪现)。
+               版本号是**链尾+1**(后端 maxVer+1),不是本月生效版+1 —— 本月钉在旧版时两者不是一回事 -->
           <p class="te-verbumpline">
-            <span v-if="structural" class="te-verbump">本次将升版 v{{ book.ver + 1 }},历史月份同样按新版显示</span>
+            <span class="te-verbump">本次保存将存成新版 v{{ book.latestVer + 1 }},只把本月切过去;同册其他月份不动</span>
           </p>
 
           <footer class="te-foot">
@@ -535,13 +525,13 @@ function fmtTime(s: string): string {
 .te-adopt:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .te-vempty { font-size: var(--fs-label); color: var(--text-muted); }
 
-/* 升版提示:恒占一行(空着不可见但占位),避免出现时顶动脚部按钮 */
+/* 升版提示:恒占一行 */
 .te-verbumpline {
   margin: 0; min-height: 20px; padding: 4px 22px 0;
   display: flex; align-items: center;
   border-top: 1px solid var(--border-subtle);
 }
-.te-verbump { font-size: var(--fs-label); line-height: 20px; color: var(--status-warning); }
+.te-verbump { font-size: var(--fs-label); line-height: 20px; color: var(--text-secondary); }
 
 .te-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 18px; }
 .te-note { flex: 1; height: 28px; }

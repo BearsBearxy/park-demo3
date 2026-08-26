@@ -49,7 +49,6 @@ const emit = defineEmits<{
   'focus-done': []
 }>()
 
-
 // ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐(行在 FPLedgerTable 内,DOM 查找按租户名) ──
 const pageEl = ref<HTMLElement | null>(null)
 watch(() => props.focusTenant, flashFocusRow, { immediate: true })
@@ -309,8 +308,6 @@ function onBack() {
 </template>
 
 <style scoped>
-/* 角标:绝对定位贴按钮右上角,不进文档流 —— 出现/消失都不改按钮尺寸,右边的按钮不挪版。
-   (行内 inline-block 会把按钮撑宽约 11px,整条工具条跟着右移) */
 /* 1:1 from screen-ledger.jsx LgStyles 70-81, 140-141, 149-151, 175-178, 217-218 */
 .lg-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .lg-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }

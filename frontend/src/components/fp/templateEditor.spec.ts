@@ -154,10 +154,9 @@ describe('TemplateEditorPanel · 历史版预览', () => {
 })
 
 describe('TemplateEditorPanel · 编辑态', () => {
-  it('改显示名(轻改动)后保存:emit 的 def 带新 label,且不出升版提示', async () => {
+  it('改显示名后保存:emit 的 def 带新 label', async () => {
     const w = await mountEdit()
     await w.findAll('input.te-name')[0].setValue('厂房租金合计')
-    expect(w.find('.te-verbump').exists()).toBe(false) // 轻改动不升版
     await w.find('input.te-note').setValue('统一显示名口径')
     await w.find('button.te-save').trigger('click')
     const [def, note] = w.emitted('save')![0] as [BookDef, string]
@@ -192,14 +191,33 @@ describe('TemplateEditorPanel · 编辑态', () => {
     w.unmount()
   })
 
-  it('结构改动(隐藏切换)出现升版提示条 v{n+1}', async () => {
+  it('隐藏勾选落进 draft,保存时 emit 出去', async () => {
     const w = await mountEdit()
-    expect(w.find('.te-verbump').exists()).toBe(false)
     await w.find('input.te-hide').setValue(true)
-    expect(w.find('.te-verbump').text()).toContain('升版 v4')
-    // 切回去提示消失(与原定义无结构差异)
-    await w.find('input.te-hide').setValue(false)
-    expect(w.find('.te-verbump').exists()).toBe(false)
+    await w.find('button.te-save').trigger('click')
+    const [def] = w.emitted('save')![0] as [BookDef, string]
+    expect(def.groups[0].cols[0].hidden).toBe(true)
+    w.unmount()
+  })
+
+  // P5 版本不可变:轻/重改动的区分已废除,提示条不许再随改动种类变脸;
+  // P4 只带走当前月:旧文案「历史月份同样按新版显示」与它恰好相反,不许回潮
+  it('升版提示恒在,写明存成「链尾+1」且只带走本月(P4/P5)', async () => {
+    const w = await mountEdit()
+    // 什么都没改就已经说清楚(任何保存都升版);版本号是链尾+1,不是本月生效版+1
+    expect(w.find('.te-verbump').text()).toContain('v4')
+    expect(w.find('.te-verbump').text()).toContain('只把本月切过去')
+    // 旧口径的「轻改动」:提示条一字不变
+    await w.findAll('input.te-name')[0].setValue('厂房租金合计')
+    expect(w.find('.te-verbump').text()).toContain('v4')
+    expect(w.text()).not.toContain('历史月份')
+    w.unmount()
+  })
+
+  it('本月生效版落后于链尾时,提示条按链尾+1 报数', async () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await w.find('button.te-editbtn').trigger('click')
+    expect(w.find('.te-verbump').text()).toContain('v5')
     w.unmount()
   })
 
@@ -271,6 +289,22 @@ describe('TemplateEditorPanel · 版本选择器', () => {
     const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
     await w.find('.te-verpick').setValue('3')
     expect(w.emitted('pin')?.[0]).toEqual([3])
+  })
+
+  // 第17权限点 book-template:switch。与第16点互不代替(spec P8):无换版权仍可编辑模板
+  it('canSwitch=false:选择器置灰、编辑态不出「切到此版」,但编辑门照开', async () => {
+    const w = mountPanel({ canSwitch: false, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    expect(w.find('.te-verpick').attributes('disabled')).toBeDefined()
+    await w.find('button.te-editbtn').trigger('click')
+    expect(w.find('input.te-name').exists()).toBe(true)   // 第16点没被第17点连坐
+    expect(w.find('.te-adopt').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('canSwitch=true:选择器可用(与上一条对照,置灰不是恒真)', () => {
+    const w = mountPanel({ book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    expect(w.find('.te-verpick').attributes('disabled')).toBeUndefined()
+    w.unmount()
   })
 
   it('已录入月份:选择器与编辑门都置灰,并说明为什么', async () => {

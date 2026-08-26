@@ -112,10 +112,16 @@ const {
 let tplSeq = 0
 async function loadMonthBook() {
   const id = activeBookId.value
-  if (id == null || year.value == null) return
+  const y = year.value, m = month.value
+  if (id == null || y == null) return
   const seq = ++tplSeq
-  const b = await booksApi.templateAt(id, year.value, month.value).catch(() => null)
-  if (seq === tplSeq && b) monthBook.value = b
+  // 与台账同款:在途期间退回左轨那行(链尾版),不许上个月那版顶着(activeBook 是带回退的 computed);
+  // 失败也不静默 —— 本屏报错口径是 guard 的 alert
+  monthBook.value = null
+  await guard(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`, async () => {
+    const b = await booksApi.templateAt(id, y, m)
+    if (seq === tplSeq) monthBook.value = b
+  })
 }
 watch([activeBookId, year, month], loadMonthBook)
 

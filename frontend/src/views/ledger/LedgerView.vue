@@ -139,10 +139,19 @@ async function loadOverviews() {
 let tplReq = 0
 async function loadMonthBook() {
   const id = activeBookId.value
-  if (id == null || month.value == null) return
+  const y = year.value, m = month.value
+  if (id == null || m == null) return
   const reqId = ++tplReq
-  const b = await booksApi.templateAt(id, year.value, month.value).catch(() => null)
-  if (reqId === tplReq && b) monthBook.value = b
+  // 先清:请求在途期间宁可退回册清单那行(链尾版),也不许把**上个月**那版模板顶在新月份上 ——
+  // book 是带回退的 computed(矩阵态没有月份),只比册 id 的话同册切月会留一个显示上月版本的窗口
+  monthBook.value = null
+  try {
+    const b = await booksApi.templateAt(id, y, m)
+    if (reqId === tplReq) monthBook.value = b
+  } catch {
+    // 失败不静默:列会退回链尾版,可能与本月的钱(archivedCols)对不上,得让人知道
+    if (reqId === tplReq) toastVer(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`)
+  }
 }
 watch([activeBookId, year, month], loadMonthBook)
 
