@@ -18,6 +18,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+// @Transactional 回滚:本类的导入用例会建公司(某全新导入公司IT / 某全新TB公司IT),
+// 不回滚就留在库里。以前每次新起容器把这层泄漏掩盖了,容器复用后它会随运行次数堆积。
+@org.springframework.transaction.annotation.Transactional
 class ReportApiIT extends AbstractMysqlIT {
 
     @Autowired MockMvc mvc;
