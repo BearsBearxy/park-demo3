@@ -212,8 +212,9 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
             :key="l.colId"
             :class="['s10-c-num', { zero: !Number(r[l.colId]) }]"
           >
+            <!-- 归档列(readonly)只显示已发生的钱,不接受新录入(spec §2) -->
             <input
-              v-if="edit"
+              v-if="edit && !l.readonly"
               class="s10-input"
               inputmode="decimal"
               :value="Number(r[l.colId]) ? String(r[l.colId]) : ''"

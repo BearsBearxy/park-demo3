@@ -476,6 +476,26 @@ class BookPinApiIT extends AbstractMysqlIT {
         assertThat(r9).as("9 月那一行必须在表里").isNotNull();
         assertThat(r9.path("totalReceivable").asDouble())
                 .as("recalc 口径不变:隐藏列的钱照样进合计").isEqualTo(30.0);
+
+        // 10 月(空月,沿用 9 月的 pin → c_arch 仍是 hidden),但这个月这列没有钱:
+        // 归档清单必须为空 —— 归档列只在有钱的月份现身,不是「一旦 hidden 就永远挂着」(spec §8)
+        putOk("/api/ledger/companies/" + companyId + "/months/2026/10",
+              "{\"rows\":[{\"tenantName\":\"归档户10\",\"factoryRent\":5,\"extraFees\":{\"c_arch\":0}}]}");
+        JsonNode d10 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/10"))
+                .path("data").path("definition");
+        boolean hidden10 = false;
+        for (JsonNode g : d10.path("groups"))
+            for (JsonNode c : g.path("cols"))
+                if ("c_arch".equals(c.path("id").asText())) hidden10 = c.path("hidden").asBoolean();
+        assertThat(hidden10).as("10 月沿用 9 月那版,c_arch 确实还是 hidden(否则本条断言不成立)").isTrue();
+        String b10 = getOk("/api/ledger/companies/" + companyId + "/months/2026/10");
+        JsonNode r10 = null;
+        for (JsonNode r : M.readTree(b10).path("data").path("rows"))
+            if ("归档户10".equals(r.path("tenantName").asText())) r10 = r;
+        assertThat(r10).as("10 月有真行,不是空月空跑").isNotNull();
+        assertThat(r10.path("totalReceivable").asDouble()).isEqualTo(5.0);
+        assertThat((List<?>) JsonPath.read(b10, "$.data.archivedCols"))
+                .as("hidden 但本月没钱 → 不显示").isEmpty();
     }
 
     // 两屏同做(计划全局约束第二条):附表10 走同一个 ExtraFees.sum,显示侧也必须同修。
@@ -515,6 +535,24 @@ class BookPinApiIT extends AbstractMysqlIT {
 
         String b9 = getOk("/api/s10/" + phase + "/2026/9");
         assertThat((String) JsonPath.read(b9, "$.data.archivedCols[0].id")).isEqualTo("c_s10arch");
+
+        // 10 月沿用 9 月那版(仍 hidden),但这列没钱 → 不显示(台账同款,两屏同测)
+        mvc.perform(post("/api/s10").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"phase\":" + phase + ",\"acctMonth\":\"2026-10\",\"tenantName\":\"附10归档户10\",\"profile\":\"factory\","
+                       + "\"factoryRent\":5,\"extraFees\":{\"c_s10arch\":0}}"))
+                .andExpect(jsonPath("$.code").value(0));
+        JsonNode d10 = M.readTree(getOk("/api/books/" + bookId + "/template/at/2026/10"))
+                .path("data").path("definition");
+        boolean hidden10 = false;
+        for (JsonNode g : d10.path("groups"))
+            for (JsonNode c : g.path("cols"))
+                if ("c_s10arch".equals(c.path("id").asText())) hidden10 = c.path("hidden").asBoolean();
+        assertThat(hidden10).as("10 月沿用 9 月那版,c_s10arch 确实还是 hidden").isTrue();
+        String b10 = getOk("/api/s10/" + phase + "/2026/10");
+        assertThat((List<?>) JsonPath.read(b10, "$.data.rows")).as("10 月有真行,不是空月空跑").isNotEmpty();
+        assertThat((List<?>) JsonPath.read(b10, "$.data.archivedCols"))
+                .as("hidden 但本月没钱 → 不显示").isEmpty();
     }
 
     // ── MockMvc 脚手架(照 BookApiIT) ──

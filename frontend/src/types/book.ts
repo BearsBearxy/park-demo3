@@ -27,6 +27,10 @@ export interface BookGroup {
 
 export interface BookDef { groups: BookGroup[] }
 
+/** 归档列(spec §2):该月有钱、但本月生效模板不渲染(缺席或 hidden)的自定义列。
+ *  后端在月度 DTO 里下发,前端追加成只读列——藏起来会让屏上合计永远对不上明细。 */
+export interface ArchivedCol { id: string; label: string }
+
 export interface Book {
   id: number
   screen: 'ledger' | 's10'

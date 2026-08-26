@@ -14,8 +14,8 @@ import { exportS10Month } from '@/utils/s10Excel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
 import type { Book, BookDef, TemplateVersion } from '@/types/book'
-import { flattenCols, customColIds } from '@/types/book'
-import { toS10Layout, mergeExtras, extractExtras } from '@/utils/bookTemplate'
+import { flattenCols } from '@/types/book'
+import { toS10Layout, mergeExtras, extractExtras, extraColIds } from '@/utils/bookTemplate'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 import { PHASE_LAYOUT, leavesOf, type Group, type LayoutId } from './layout'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -48,9 +48,15 @@ const activeBookId = ref<number | null>(null)
 const activeBook = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
 const phase = computed(() => activeBook.value?.phase ?? 1)
 const bookDef = computed<BookDef | null>(() => activeBook.value?.definition ?? null)
-// 模板 → 宽表版面(可见列);合计口径 = 模板全列含隐藏(与后端 recalc 全口袋一致)
-const layoutGroups = computed<Group[]>(() => (bookDef.value ? toS10Layout(bookDef.value) : []))
-const allColIds = computed(() => (bookDef.value ? flattenCols(bookDef.value).map(c => c.id) : []))
+// 模板 → 宽表版面(可见列);合计口径 = 模板全列含隐藏(与后端 recalc 全口袋一致)。
+// 归档列(后端下发:本月有钱但模板不渲染的列)追加成只读列,并计入合计与保存口径 ——
+// 它可能已被从模板里删掉,漏掉就是「合计对不上明细」+ 保存把这笔历史钱清成 null(spec §2)
+const archivedCols = computed(() => monthData.value?.archivedCols ?? [])
+const layoutGroups = computed<Group[]>(() =>
+  (bookDef.value ? toS10Layout(bookDef.value, archivedCols.value) : []))
+const allColIds = computed(() => (bookDef.value
+  ? [...new Set([...flattenCols(bookDef.value).map(c => c.id), ...archivedCols.value.map(a => a.id)])]
+  : []))
 // 新增租户抽屉 profile 选项仍按期区二分(office/factory)——租户类型不属于列模板
 const drawerLayout = computed<LayoutId>(() => PHASE_LAYOUT[phase.value] ?? 'office')
 
@@ -220,7 +226,7 @@ function toReq(row: S10RecordDTO): S10RecordReq {
   const src = row as unknown as Record<string, unknown>
   for (const id of PHYS_IDS) bag[id] = Number(src[id]) || 0
   const def = bookDef.value
-  if (def) req.extraFees = extractExtras(src, customColIds(def))   // 自定义列(含隐藏)整包收回
+  if (def) req.extraFees = extractExtras(src, extraColIds(def, archivedCols.value))   // 自定义列(含隐藏/归档)整包收回
   return req
 }
 

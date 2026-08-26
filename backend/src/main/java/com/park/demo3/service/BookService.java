@@ -394,7 +394,9 @@ public class BookService {
 
     /** 该月有钱、但生效模板不渲染(缺席或 hidden)的自定义列。label 取链上最近一版对它的命名。 */
     public List<ArchivedColDTO> archivedColsAt(LedgerBook b, int year, int month, Set<String> keysWithData) {
-        if (keysWithData.isEmpty()) return List.of();
+        // 无册 = 没有模板可比,谈不上"归档"(与 LedgerService.materializePin 的守卫同款);
+        // 月度接口每次都调这里,少这一句就是把整屏 500 掉
+        if (b == null || keysWithData.isEmpty()) return List.of();
         TemplateDef.Def def = TemplateDef.parse(versions.selectById(
             pinSvc.resolve(b.getScreen(), ownerIdOf(b), year, month, chainBookId(b))).getDefinition());
         Set<String> rendered = new LinkedHashSet<>();

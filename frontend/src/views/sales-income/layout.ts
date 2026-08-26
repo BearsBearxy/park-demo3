@@ -4,7 +4,8 @@
 // 纯 TS 常量,不引重型库。表头/单元格列序 = 各组叶子展平顺序。
 import type { S10ColId } from '@/types/s10'
 
-export interface Leaf { colId: S10ColId; label: string; aliases?: string[] }
+// readonly:归档列——只显示已发生的钱,不接受新录入(bookTemplate.ts §2)
+export interface Leaf { colId: S10ColId; label: string; aliases?: string[]; readonly?: boolean }
 // 组:有 label 即两级表头分组（leaves 多叶子）；无 label（leaf 单列）= 跨两行的独立叶子列。
 export interface Group { label?: string; elec?: boolean; water?: boolean; leaves: Leaf[] }
 

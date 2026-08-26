@@ -397,8 +397,9 @@ async function save() {
   if (companyId.value == null || month.value == null) return
   saving.value = true
   try {
-    // PUT body:派生列省略后端重算;自定义列走 extraFees 整包替换(extractExtras 全键输出,缺失→null)
-    const extraIds = book.value ? extraColIds(book.value.definition) : []
+    // PUT body:派生列省略后端重算;自定义列走 extraFees 整包替换(extractExtras 全键输出,缺失→null)。
+    // 归档列必须一起收回:它可能已被从模板里删掉,漏掉这一键整包替换就把这笔历史钱清成 null(spec §2)
+    const extraIds = book.value ? extraColIds(book.value.definition, monthDto.value?.archivedCols) : []
     const rows: LedgerSaveRow[] = draft.value.map(r => {
       const fees = Object.fromEntries(FEE_KEYS.map(k => [k, r[k]]))
       const row = { id: r.id ?? undefined, tenantId: r.tenantId,
@@ -662,6 +663,7 @@ function gotoTenants() {
           :year="year"
           :month-no="month!"
           :prev-month="monthDto.prevMonth"
+          :archived="monthDto.archivedCols"
           :tenants="bindOptions"
           :can-bind="edit && auth.can('entry:edit')"
           :on-bind="onBindRow"
