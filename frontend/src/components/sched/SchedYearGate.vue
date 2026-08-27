@@ -5,6 +5,8 @@
 // 样式 1:1 移植 sched-common.jsx SchedYearGate(.sm-gate/.sm-ycard/.sm-ynew/.sm-ydlg)。
 import { ref, computed, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
+import Avatar from '@/components/ds/Avatar.vue'
+import { usePresenceStore } from '@/stores/presence'
 
 export interface YearCard {
   year: number
@@ -22,6 +24,8 @@ const props = defineProps<{
   footer?: string
   storeKey: string         // localStorage 受管年份键(每附表/实例唯一,如 'pv' / 'charging-7')
   backLabel?: string       // 传入即显示返回按钮(台账/报表把门放在公司之后,需回上一层;附表不传,原样)
+  /** 这一年的锁作用域(如 y => `sched:pv:${y}`)。不传 = 不显示在场标记。 */
+  scopeOf?: (year: number) => string
 }>()
 const emit = defineEmits<{ pick: [year: number]; back: [] }>()
 
@@ -50,6 +54,14 @@ const removable = (year: number) => managed.value.includes(year) && !dataYears.v
 function removeYear(year: number) { managed.value = managed.value.filter((y) => y !== year); persist() }
 
 // ── 新增年份弹窗 ──
+// ── 在场标记(PRESENCE §04) ──
+// **只标编辑态**:标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
+// 全标上的话卡片常年一片头像,一周之内就没人看了。
+const presence = usePresenceStore()
+// 前缀匹配:年锁的屏(光伏/电费)精确命中,月锁的屏(工资/附表10)命中该年任一月
+const editorsOf = (year: number) =>
+  props.scopeOf ? presence.editorsUnder(props.scopeOf(year)) : []
+
 const dlg = ref(false)
 const input = ref('')
 const err = ref('')
@@ -101,6 +113,13 @@ function submit() {
         ><component :is="iconFor('trash-2')" :size="14" /></button>
         <!-- hover 进入箭头:仅非当前年显示;当前年右上角是「最新」角标,不再叠箭头(避免重叠冲突) -->
         <span v-else-if="y.year !== current" class="sm-yc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
+        <!-- 绝对定位:有人在编辑和没人在编辑,卡片尺寸完全一样(LAYOUT-STABILITY) -->
+        <div v-if="editorsOf(y.year).length" class="sm-yc-who"
+             :title="editorsOf(y.year).map(e => e.displayName + ' 正在编辑').join('、')">
+          <Avatar v-for="e in editorsOf(y.year).slice(0, 3)" :key="e.sid"
+                  :uid="e.user" :name="e.displayName" :size="22" class="sm-yc-av" />
+          <span v-if="editorsOf(y.year).length > 3" class="sm-yc-more">+{{ editorsOf(y.year).length - 3 }}</span>
+        </div>
         <div class="sm-yc-head">
           <div class="sm-yc-year">{{ y.year }}<span class="u">年</span></div>
           <span v-if="y.year === current" class="sm-yc-tag">最新</span>
@@ -170,6 +189,11 @@ function submit() {
 .sm-yc-tag { font-size:10.5px; font-weight:var(--fw-semibold); padding:2px 9px; border-radius:var(--radius-full); background:var(--ink-900); color:#fff; }
 .sm-yc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .sm-ycard:hover .sm-yc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
+.sm-yc-who { position:absolute; top:15px; right:15px; z-index:3; display:flex; pointer-events:none; }
+.sm-yc-who > * { margin-left:-6px; }
+.sm-yc-who > *:first-child { margin-left:0; }
+.sm-yc-av { box-shadow:0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--hue-orange); }
+.sm-yc-more { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--surface-sunken); color:var(--text-muted); font-family:var(--font-mono); font-size:9.5px; font-weight:var(--fw-semibold); box-shadow:0 0 0 2px var(--surface-white); }
 .sm-yc-del { position:absolute; top:16px; right:16px; z-index:4; width:30px; height:30px; border:1px solid var(--border-subtle); border-radius:50%; background:var(--surface-white); color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; opacity:0; transition:opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
 .sm-ycard:hover .sm-yc-del { opacity:1; }
 .sm-yc-del:hover { background:rgb(255,238,237); color:var(--hue-red); border-color:rgb(255,210,206); }

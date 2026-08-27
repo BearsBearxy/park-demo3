@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
+import { usePresenceStore } from '@/stores/presence'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
@@ -31,6 +33,18 @@ function onGlobalKey(e: KeyboardEvent) {
 
 onMounted(() => window.addEventListener('keydown', onGlobalKey))
 onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
+
+// ── 在场(PRESENCE §02) ──
+// 全站唯一的轮询挂在外壳上:登录后一直跑,浏览态也发 —— 顶栏头像组靠它。
+// 「在哪一屏」直接取面包屑那两段,不必让 20 个屏各自登记一次。
+const route = useRoute()
+const presence = usePresenceStore()
+watch(() => route.path, () => {
+  const m = route.meta as Record<string, string>
+  const label = [m.layerLabel, m.page].filter(Boolean).join(' · ')
+  presence.enter(null, label || null)
+}, { immediate: true })
+onUnmounted(() => presence.stop())
 </script>
 
 <template>

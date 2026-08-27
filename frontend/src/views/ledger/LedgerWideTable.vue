@@ -17,6 +17,9 @@ import { exportLedgerMonth } from '@/utils/ledgerExcel'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
 import { useAuthStore } from '@/stores/auth'
+import { useEditLock } from '@/composables/useEditLock'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
 // 台账录入 = entry(RBAC §2)。无权时表格与合计照常显示,只是没有「编辑模式」入口。
 const auth = useAuthStore()
@@ -33,6 +36,9 @@ const props = defineProps<{
   addableTenants?: FPTenantOption[]   // 编辑态「添加租户行」候选(在租且本月尚无行;含 phase/parentName 供徽章)
   issueCount?: number              // 本月未绑定租户行数(>0 时工具条显琥珀入口,点开问题抽屉)
   focusTenant?: string             // 核对跳转深链:定位并高亮该租户行(一次性,完成后 emit focus-done 由父层清空)
+  /** 本期编辑锁的作用域(CONCURRENCY-SPEC §3.1):ledger:{companyId}:{year}-{month}。
+   *  不传 = 不上锁,行为与加锁之前一个字不差。 */
+  lockScope?: string | null
 }>()
 const emit = defineEmits<{
   back: []
@@ -50,6 +56,53 @@ const emit = defineEmits<{
 }>()
 
 // ── 深链定位:渲染后滚动到 focusTenant 行 + .row-flash 高亮渐隐(行在 FPLedgerTable 内,DOM 查找按租户名) ──
+// ── 编辑锁(CONCURRENCY-SPEC §4) ──
+// 与附表族页头共用同一份机制(useEditLock)。这一屏的编辑态由父层 LedgerView 持有,
+// 所以锁的进出挂在两个地方:进 = 拦住 enter-edit 直到占到锁;出 = watch(edit) 归假即还。
+// 用 watch 而不是在每个退出口各加一行 —— 父层有 4 条路会把 edit 置回 false
+// (取消/保存/换期/切册),漏一条就是一把没人认领的锁。
+// ⚠ 第二个参数是权限守卫。宿主 LedgerView 是裸的 `const edit = ref(false)`,**不走 useEditMode** ——
+//   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
+//   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。
+const lock = useEditLock(() => { if (props.edit) emit('cancel') },
+                          () => auth.can('entry:edit'))
+const { lockedBy, evictedBy } = lock
+/** 这一期此刻被谁占着 —— 取自在场表，不用点按钮撞门(设计稿 C-2)。 */
+const heldByOther = lock.watchScope(() => props.lockScope ?? null)
+watch(() => props.edit, (on) => { if (!on) lock.release() })
+
+async function onEnterEdit() {
+  if (props.lockScope && !(await lock.acquire(props.lockScope))) return
+  emit('enter-edit')
+}
+/**
+ * 被接管时把草稿序列化成 TSV，直接粘进 Excel。
+ *
+ * 系统不替他保存（锁已经不是他的了，写回去就是又一次静默覆盖），但不能让他白干 ——
+ * 「给一个数字却不给出路」等于告诉他「你丢了 14 处改动」然后关门。
+ */
+function draftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const leaves = [
+    ...cols.value.fixedLeft,
+    ...cols.value.groups.flatMap(g => g.cols),
+    ...cols.value.fixedRight,
+  ]
+  const head = leaves.map(c => c.label).join(TAB)
+  const body = props.draft.map(r =>
+    leaves.map(c => {
+      const v = (r as unknown as Record<string, unknown>)[c.key]
+      return v == null ? '' : String(v)
+    }).join(TAB))
+  return [head, ...body].join(NL)
+}
+
+async function onTaken() {
+  lockedBy.value = null
+  if (props.lockScope) await lock.acquire(props.lockScope)
+  emit('enter-edit')
+}
+
 const pageEl = ref<HTMLElement | null>(null)
 watch(() => props.focusTenant, flashFocusRow, { immediate: true })
 async function flashFocusRow() {
@@ -193,7 +246,10 @@ function onBack() {
              换期文本按钮编辑态隐藏(§5.2-2 导航类);导出浏览态主行常驻、编辑态进 ⋯(§5.2-3)。
              「账册模板」两态常驻(2026-08-24 拍板移出编辑模式动作区):浏览态主行,编辑态收进 ⋯。 -->
         <span v-if="!edit" class="lg-tag">{{ activeTenants }} 户记账<template v-if="carriedTenants"> · {{ carriedTenants }} 户结转</template></span>
-        <span v-else class="lg-tag edit">编辑中 · {{ companyName }}</span>
+        <!-- 锁的最重要一次沟通是对**持有人**说的:让他知道自己受保护、别人进不来。 -->
+        <span v-else class="lg-tag edit">
+          <component :is="iconFor('lock')" :size="12" />{{ lockScope ? '本期已锁定 · 仅你可改' : `编辑中 · ${companyName}` }}
+        </span>
 
         <template v-if="edit">
           <!-- ② 录入动作区 -->
@@ -245,13 +301,29 @@ function onBack() {
             账册模板
           </Button>
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
-          <Button v-if="auth.can('entry:edit')" variant="outline" size="sm" @click="emit('enter-edit')">
-            <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-            编辑模式
+          <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
+          <Button v-if="auth.can('entry:edit')" variant="outline" size="sm"
+                  class="lg-lockbtn" :class="{ held: !!heldByOther }" @click="onEnterEdit">
+            <template #leading>
+              <span v-if="heldByOther" class="lg-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
+              <component v-else :is="iconFor('pencil')" :size="14" />
+            </template>
+            <template v-if="heldByOther">
+              {{ heldByOther.displayName }} {{ heldByOther.idle ? `空闲 ${Math.floor(heldByOther.idleMs / 60000)} 分` : '编辑中' }}
+            </template>
+            <template v-else>编辑模式</template>
           </Button>
         </template>
       </div>
     </div>
+
+    <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope ?? ''"
+                      :what="`${companyName} ${year}-${String(monthNo).padStart(2, '0')} 月度台账`"
+                      @close="lockedBy = null" @taken="onTaken" />
+    <FPEvictedDialog :eviction="evictedBy"
+                     :what="`${companyName} ${year}-${String(monthNo).padStart(2, '0')} 月度台账`"
+                     :dirty-count="draft.length" :copy-text="draftAsTsv"
+                     @close="evictedBy = null" />
 
     <div class="lg-toolbar">
       <div class="lg-toolbar-l">
@@ -308,6 +380,12 @@ function onBack() {
 </template>
 
 <style scoped>
+/* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」换文案不挪版 */
+.lg-lockbtn { min-width:150px; justify-content:center; }
+.lg-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
+.lg-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
+.lg-lockav.dim { opacity:.55; }
+
 /* 1:1 from screen-ledger.jsx LgStyles 70-81, 140-141, 149-151, 175-178, 217-218 */
 .lg-page { display:flex; flex-direction:column; gap:16px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
 .lg-head { flex:0 0 auto; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }

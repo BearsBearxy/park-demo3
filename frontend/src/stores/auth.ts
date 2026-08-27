@@ -151,6 +151,31 @@ export const useAuthStore = defineStore('auth', () => {
   function closeEditor(id: symbol) { editors.value.delete(id) }
 
   /**
+   * 关页面前的二次确认(用户拍板 2026-08-26:「和所有别的网页一样,开着编辑模式没保存
+   * 要关浏览器先阻止,弹窗二次确认才能关」)。
+   *
+   * 挂在这里而不是挂在屏上:editors 是**全站唯一**的编辑态登记表,六个编辑器
+   * (useEditMode 那 19 屏 / 系数簿 / 收款簿 / 附表页头 / 账册模板 / 三大报表)
+   * 都已经往里登记。挂在屏上就要挂六遍,而且漏一处不报错、没人发现。
+   *
+   * ⚠ 文案不由我们决定 —— 浏览器只认「有没有 preventDefault」,一律显示它自己那句
+   *   「系统可能不会保存您所做的更改」。自定义文案在 2016 年后被各家统一移除了
+   *   (钓鱼页面拿它冒充系统弹窗)。returnValue 是给老 Chrome 的,新标准只看 preventDefault。
+   *
+   * ⚠ 判据是「在不在编辑态」,不是「改没改过」。全站没有统一的脏标记
+   *   (附表页头有 dirty、台账有 draft、系数簿有 stash,各是各的),
+   *   而在编辑态里本来就攥着一把锁 —— 直接关掉不只丢草稿,还让那把锁走 3 分钟超时。
+   *   宁可多问一句。
+   */
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', (e: BeforeUnloadEvent) => {
+      if (editors.value.size === 0) return
+      e.preventDefault()
+      e.returnValue = ''
+    })
+  }
+
+  /**
    * 结束授权。退出编辑模式 / 主动点「结束授权」/ 登出都走这里。
    * force=true 跳过「还有别的编辑页开着」的判断 —— 用户在横幅上主动点的那一下就是 force。
    */

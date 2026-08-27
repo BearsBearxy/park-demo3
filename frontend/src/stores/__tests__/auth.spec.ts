@@ -170,3 +170,46 @@ describe('auth store', () => {
     expect(localStorage.getItem('role')).toBeNull()
   })
 })
+
+describe('关页面前的二次确认', () => {
+  // 用户 2026-08-26:「全局增加二次弹窗确认,和所有别的网页一样如果开着编辑模式没保存
+  // 要关浏览器先阻止,弹窗二次确认才能关」。
+  //
+  // 挂在 auth 而不是某个屏:editors 是**全站唯一**的编辑态登记表,六个编辑器
+  // (useEditMode / 系数簿 / 收款簿 / 附表页头 / 账册模板 / 三大报表)都已经往里登记。
+  // 挂在屏上就要挂六遍,而且漏一处不报错。
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); sessionStorage.clear() })
+
+  it('编辑态里关页面 → 拦下来,让浏览器弹二次确认', () => {
+    const auth = useAuthStore()
+    const id = Symbol('screen')
+    auth.openEditor(id)
+
+    const e = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(e)
+
+    expect(e.defaultPrevented, 'preventDefault 是浏览器弹确认框的开关').toBe(true)
+    // ⚠ 收尾:store 注册的监听器活得比本用例长(同一个 jsdom window)。
+    //   不关掉的话它会一直认为「有人在编辑」,把后面那条「不该拦」的用例污染成假失败。
+    auth.closeEditor(id)
+  })
+
+  it('不在编辑态就不要拦 —— 无谓的挽留比不挽留更烦', () => {
+    useAuthStore()
+    const e = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(false)
+  })
+
+  it('退出编辑态之后就不再拦', () => {
+    const auth = useAuthStore()
+    const id = Symbol('screen')
+    auth.openEditor(id)
+    auth.closeEditor(id)
+
+    const e = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(e)
+
+    expect(e.defaultPrevented).toBe(false)
+  })
+})

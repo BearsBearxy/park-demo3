@@ -1,8 +1,13 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import BookRail from './BookRail.vue'
 import BookMonthMatrix from './BookMonthMatrix.vue'
 import type { Book } from '@/types/book'
+
+// 月卡上要显示「这一期有人在编辑」的角标（PRESENCE §04），组件因此要读在场 store。
+// 没有 activePinia 的话 usePresenceStore() 直接抛。
+beforeEach(() => { setActivePinia(createPinia()) })
 
 const book = (id: number, name: string, ver = 1): Book => ({
   id, screen: 'ledger', companyId: id, phase: null, name, ver, latestVer: ver, definition: { groups: [] },

@@ -8,6 +8,7 @@
 // 列表照 PoolLedgerView 手法(sticky 表头/34px 行/tfoot 钉底/zone Segmented)+LIST-PAGE-SPEC 列宽铁律;
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
@@ -32,6 +33,7 @@ import {
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -69,8 +71,8 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['billing-run:edit', 'billing-issue:edit'])
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+  useEditMode(['billing-run:edit', 'billing-issue:edit'], { scope: () => S.billNotices(year.value, month.value) })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
 // 编辑态不跨会话(spec §1):切走页签回来即回浏览态
@@ -621,10 +623,8 @@ const drawerSub = computed(() => {
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -1156,7 +1156,8 @@ const drawerSub = computed(() => {
                         @close="expNoticeOpen = false" @export="onExportNotice" />
     <ExportReconWindow :open="expReconOpen" :ym="ym" :notices="rows" :busy="exportBusy"
                        @close="expReconOpen = false" @export="onExportRecon" />
-    <FPElevateDialog :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`催缴单 · ${ym}`" :action="'生成本月催缴单 / 确认签发'" :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
 
     <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->
     <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />

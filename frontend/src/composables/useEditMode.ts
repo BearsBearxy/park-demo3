@@ -1,5 +1,17 @@
 import { ref, computed, watch, onDeactivated, onUnmounted, getCurrentInstance } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useEditLock } from '@/composables/useEditLock'
+
+export interface EditModeOpts {
+  /**
+   * 本屏当前这一期的锁作用域（CONCURRENCY-SPEC §3.1），如 `ledger:3:2025-06`。
+   *
+   * 传函数而不是字符串：作用域跟着公司/年月变，进编辑态那一刻才算得准。
+   * **不传（或返回 null）= 这一屏不上锁**，toggle 行为与加锁之前一个字不差 ——
+   * P1 只铺台账 + 附表族，其余十几屏原样不动。
+   */
+  scope?: () => string | null
+}
 
 /**
  * 编辑模式 + 提权入口（EDIT-MODE-SPEC v3 / ELEVATION-SPEC）。
@@ -42,9 +54,21 @@ import { useAuthStore } from '@/stores/auth'
  *
  * 授权的作废点因此收敛成两个：**主动点「完成」** 和 **30 分钟到期**。切页面不作废。
  */
-export function useEditMode(perms: string[]) {
+export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   const auth = useAuthStore()
   const meId = Symbol('edit-mode')
+
+  /**
+   * 编辑锁（CONCURRENCY-SPEC §4）。占 / 续 / 还 / 被接管的机制在 useEditLock，
+   * 与附表族页头（SchedHeader）共用同一份。
+   *
+   * ⚠ 权限齐 ≠ 进得去。这是 P1 加的第二道闸 —— 在它之前，两个都有 entry:edit 的人
+   *   同一秒进同一期，两边都成功，后保存的整片覆盖前一个，且两边都提示「保存成功」。
+   */
+  const lock = useEditLock(() => exit())
+  const { lockedBy, evictedBy } = lock
+  /** 这一期此刻被谁占着（不用点按钮就知道）。自己不算。 */
+  const heldByOther = lock.watchScope(() => opts.scope?.() ?? null)
 
   const editMode = ref(false)
   // 用 watch 而不是在 toggle() 里加减：深链(?edit=1 / gotoDiff)会直接写 editMode.value = true，
@@ -64,11 +88,22 @@ export function useEditMode(perms: string[]) {
   /** 编辑模式按钮画不画。 */
   const canEnter = computed(() => hasAny.value || auth.can('elevate:request'))
 
-  function toggle() {
+  async function toggle() {
     if (editMode.value) { exit(); return }
     // 缺任何一项就当场弹授权窗 —— 不进去之后再用提示条告诉他
     if (missing.value.length) { asking.value = [...missing.value]; return }
-    editMode.value = true
+    await enter()
+  }
+
+  /**
+   * 权限齐之后的第二道闸：占锁。
+   *
+   * 不上锁的屏（没传 scope）直接进，行为与加锁之前完全一致。
+   */
+  async function enter() {
+    const scope = opts.scope?.() ?? null
+    if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
+    if (await lock.acquire(scope)) editMode.value = true
   }
 
   /**
@@ -94,10 +129,16 @@ export function useEditMode(perms: string[]) {
     if (list.length) asking.value = list
   }
 
-  /** 授权成功：权限已进 auth store，missing 自动变空。 */
-  function onElevated() {
+  /**
+   * 授权成功：权限已进 auth store，missing 自动变空。
+   *
+   * ⚠ **必须走 enter()，不能直接置 editMode。** 直接置的话，叫主管授权进来的人
+   *   手上没有锁 —— 第二个人照样进得去，P1 那道闸在这条路上等于不存在。
+   *   权限齐 ≠ 进得去，这条对哪条路径都成立。
+   */
+  async function onElevated() {
     asking.value = null
-    editMode.value = true
+    await enter()
   }
 
   /**
@@ -107,6 +148,7 @@ export function useEditMode(perms: string[]) {
   function exit() {
     editMode.value = false
     asking.value = null
+    lock.release()
     // ⚠ 必须**显式**出集合，不能指望上面那个 watch —— watch 默认 pre flush，
     //    要到下一个微任务才跑，而 endElevation() 就在下一行同步执行：
     //    那时集合里还躺着自己，size>0，守卫会让它不作为，授权永远结束不了。
@@ -128,8 +170,12 @@ export function useEditMode(perms: string[]) {
     onDeactivated(() => { asking.value = null })
     // 页面实例被销毁(关标签页 / KeepAlive 淘汰)也要出集合,否则里面
     // 永远躺着一个死页面,size 再也回不到 0 —— 授权就再也不会自动结束了
-    onUnmounted(() => { auth.closeEditor(meId) })
+    onUnmounted(() => {
+      auth.closeEditor(meId)
+      // 同理:实例没了还留着一个每 20 秒发一次的定时器,和一把没人认领的锁。
+      lock.release()
+    })
   }
 
-  return { editMode, canEnter, missing, asking, toggle, askFor, cancelAsk, onElevated, exit }
+  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, toggle, askFor, cancelAsk, onElevated, exit }
 }

@@ -11,6 +11,7 @@
 // 首载加载门 + ++seq 竞态守卫;LIST-PAGE-SPEC 行高 --mx-row-h 56px;表格 table-layout:auto —— 用户可见文字一律不截断
 // (参数 / 作用范围 / 来自 三列两行内换行且给 min-width、单位另起小灰字;值 / 区间 nowrap 按内容撑开;说明列三行 line-clamp + 完整 title;宽了横向滚动)。
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
@@ -42,6 +43,7 @@ import ParamHistoryDrawer from './ParamHistoryDrawer.vue'
 import ParamChangesDrawer from './ParamChangesDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
@@ -54,8 +56,8 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 // ① 区月度录入(照抄供电局账单)、②③④ 区长期计费口径、重算 —— 三档权限在点「编辑模式」时一次要齐:
 // 缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
 // 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'])
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+  useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], { scope: () => S.paramCenter(year.value, month.value) })
 onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
   histRow.value = null; changesOpen.value = false; alertOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
@@ -499,10 +501,8 @@ const FIXED_RULES = [
           <template #leading><component :is="iconFor('history')" :size="14" /></template>
           变更记录
         </Button>
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -759,7 +759,8 @@ const FIXED_RULES = [
       </details>
     </Card>
 
-    <FPElevateDialog :perms="asking" what="修改计费口径" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`计费参数 · ${ym}`" :action="'修改计费口径 / 月度录入'" :perms="asking" what="修改计费口径" @close="cancelAsk" @elevated="onElevated" />
 
     <!-- 重算/复制上月电价的摘要。原来是 .pm-actions 里 flex:1 1 100% 的一个 span ——
          它一出现就换行,把整条工具栏撑高一行,下面全部内容跟着往下跳(LAYOUT-STABILITY-SPEC §4)。 -->

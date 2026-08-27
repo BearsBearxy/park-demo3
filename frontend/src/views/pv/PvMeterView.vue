@@ -7,12 +7,14 @@
 // 布局遵 LIST-PAGE-SPEC 列宽铁律(定宽列+唯一弹性列,fixed 布局);
 // ponytail: 13 站固定量级,不上 useFitRows/FPPager 分页机(短窗时卡片内滚动兜底),站数破 30 再上。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -35,8 +37,8 @@ const auth = useAuthStore()
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['meter-master:edit', 'meter-reading:edit'])
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+  useEditMode(['meter-master:edit', 'meter-reading:edit'], { scope: () => S.pvMeter(year.value) })
 // RBAC v2:电站档案(名称/容量/单价/增删)= meter-master:edit;抄表记录与导入 = meter-reading:edit。
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
 const canMaster = computed(() => auth.can('meter-master:edit'))
@@ -359,10 +361,8 @@ async function onTemplate() {
           导出
         </Button>
         <!-- 编辑模式:档案/读数两把权限任一有即可进,进去后各按钮再各判各的 -->
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -585,7 +585,8 @@ async function onTemplate() {
       @import-sections="onImport"
     />
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
-    <FPElevateDialog :perms="asking" what="维护光伏表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`光伏分栋抄表 · ${year} 年`" :action="'修改电站档案 / 抄表记录'" :perms="asking" what="维护光伏表档案" @close="cancelAsk" @elevated="onElevated" />
     <FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />
   </div>
 </template>

@@ -56,6 +56,11 @@ const editMode = ref(false)
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('pay-book')
 watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+// 铁律①(EDIT-MODE-SPEC v4):授权到期 / 点了「结束授权」→ 当场退回浏览态。
+// 本窗口不走 useEditMode,也没有编辑锁(收款簿改的是 bill_pay_company,不进出账链快照),
+// 所以那道守卫既不在 useEditMode 里、也不在 useEditLock 里 —— 只能在这儿补一条。
+// 不补的表现:授权没了人还留在编辑态,控件点得动但保存时才 403。
+watch(canEdit, (ok) => { if (!ok) editMode.value = false })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<PayStash>(new Map())
 const selected = ref(new Set<number>())
@@ -83,7 +88,8 @@ async function load() {
   } finally { if (my === seq) loading.value = false }
 }
 watch(() => props.open, o => {
-  if (!o) return
+  // 关窗 = 退出编辑态。本组件永远挂载着(只切 open),不这么写 editMode 会停在 true。
+  if (!o) { editMode.value = false; return }
   phase.value = props.phase
   q.value = ''
   colId.value = COL_SLOTS[0].colId

@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import TemplateEditorPanel from './TemplateEditorPanel.vue'
 import { booksApi } from '@/api/books'
 import type { Book, BookDef, TemplateVersion } from '../../types/book'
@@ -8,6 +9,20 @@ import type { Book, BookDef, TemplateVersion } from '../../types/book'
 // 除历史版预览走 booksApi.versionDefinition(此处 mock)外仍纯受控:props in / emit out。
 
 vi.mock('@/api/books', () => ({ booksApi: { versionDefinition: vi.fn() } }))
+
+// 账册模板自 P4 起也上编辑锁(锁到账册,不锁到期 —— 模板改动影响这本账册所有月份)。
+// 不 mock 的话 locksApi 走真 axios,jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
+vi.mock('@/api/locks', () => ({
+  locksApi: {
+    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    release: () => Promise.resolve(),
+    heartbeat: () => Promise.resolve({ evicted: null }),
+    takeover: () => Promise.resolve({ granted: true, holder: null }),
+    releaseOnUnload: () => {},
+  },
+}))
+// 面板通过 useEditLock 用到在场 store(Pinia)
+beforeEach(() => { setActivePinia(createPinia()) })
 
 const makeDef = (): BookDef => ({
   groups: [

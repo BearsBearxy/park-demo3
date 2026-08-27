@@ -26,6 +26,11 @@ public final class Perm {
     public static final String SYSTEM_VIEW         = "system:view";
     public static final String SYSTEM_EDIT         = "system:edit";
     public static final String LOCK_TAKEOVER       = "lock:takeover";
+
+    /** 权限点的人话名。给人看的地方一律走它 —— 弹窗里出现 `param-policy:edit` 等于没说。 */
+    public static String label(String perm) {
+        return META.stream().filter(m -> m.key().equals(perm)).map(Meta::label).findFirst().orElse(perm);
+    }
     public static final String ELEVATE_REQUEST     = "elevate:request";
     // 第 15 点(2026-08-24 用户拍板):新增/删除记账公司=建删账册(BOOK-WORKBENCH §9 对偶动作),
     // 独立于 master:edit —— 公司改名/收款账户仍归主数据,建司删司是更重的动作单独放权

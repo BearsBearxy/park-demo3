@@ -1,6 +1,142 @@
 # 并发编辑规范（CONCURRENCY-SPEC）v1
 
-> 状态：**设计定稿，未实现**。2026-08-21 立。
+> 状态：**P1–P4 已实现**（2026-08-25 ~ 08-27）。设计 2026-08-21 立。
+>
+> | 期 | 状态 | 落点 |
+> |----|------|------|
+> | P1 悲观锁 | ✅ 已实现，铺**月度台账 + 附表族 7 屏** | 见下方「P1 实现落点」 |
+> | P3 铺满剩下的写面 | ✅ 已实现（2026-08-26） | 见下方「P3 实现落点」 |
+> | 乐观锁（9 张表 `version`） | 未实现 | §5 |
+> | 在场层（顶栏头像 / 入口标记） | ✅ 已实现（P2，2026-08-26） | 见下方「P2 实现落点」 |
+> | 远程授权（挑一个在线主管弹请求过去） | ✅ 已实现（P4，2026-08-26） | 见下方「P4 实现落点」 |
+> | 编辑态的**被动退出**（授权结束 / 关窗 / 关浏览器） | ✅ 已实现（2026-08-27） | 见下方「被动退出审计」 |
+>
+> ### P1 实现落点
+>
+> | 层 | 文件 | 说明 |
+> |----|------|------|
+> | 互斥语义 | `security/PresenceStore.java` | 纯内存 `ConcurrentHashMap`，**零迁移**。`putIfAbsent`/`compute` 的原子性就是那把「唯一索引」 |
+> | 语义测试 | `security/PresenceStoreTest.java` | 10 条，不起容器。互斥 / 本人重入 / 非持有人不能 release / 心跳自愈 / 心跳续锁 / 接管转给请求者 / 当面通知 / 授权人留名 / 空闲判定 |
+> | 账号与审计 | `service/LockService.java` | 谁有资格占锁、接管走哪条路、审计记谁 |
+> | 端点 | `controller/LockController.java` + `PermissionRegistry` 里 `/api/locks/**` | 四个端点，登记为「任何已登录账号」，具体门在 LockService |
+> | 端到端测试 | `api/LockApiIT.java` | 4 条：第二人被挡 / 活跃持有人须授权 / 授权接管后锁归请求者且审计记两人 / 只读账号不能占锁 |
+> | 客户端机制 | `composables/useEditLock.ts` | 占·续（20s）·还·被接管。`useEditMode` 与 `SchedHeader` **共用同一份** |
+> | 编辑模式挂钩 | `composables/useEditMode.ts` | `toggle()` 里权限齐之后多一步 `acquire(scope)`；不传 scope 的屏行为一个字不变 |
+> | 界面 | `fp/FPTakeoverDrawer.vue` · `fp/FPEvictedDialog.vue` | 接管两条路径 / 被接管的当面提示 |
+> | 三态按钮 | `sched/SchedHeader.vue` · `ledger/LedgerWideTable.vue` | 锁位就长在「编辑模式」按钮上，`min-width:150px` 定死，换文案不换宽度 |
+>
+> **共用校验**：`ElevationService.verifyAuthorizer()` 从 `elevate()` 里抽出，
+> 提权与接管共用同一套（失败锁定 / 空跑 BCrypt 防用户名枚举 / 失败进审计）。
+> 抄两份的结果不是两份一样的防护，是其中一份先烂掉而没人发现。
+>
+> **P1 未覆盖**（已由 P3 补齐）：抄表三屏、电费成本、三大报表、两个窗口，
+> 以及 §3.2 的 `billing-chain:{ym}` 共占锁。
+>
+> ### P3 实现落点（铺满 + 出账链共占锁）
+>
+> | 层 | 文件 | 说明 |
+> |----|------|------|
+> | **作用域表** | `utils/lockScopes.ts` + `.spec.ts` | §3.1 的整张表**收进一处**。此前 7 个附表屏各把模板写了两遍（页头 `:scope` + 年份门 `:scope-of`），迟早不同步，而不同步的表现是「锁没生效」不是报错 |
+> | 7 个自持编辑态的屏 | 抄表 / 光伏分栋 / 充电桩分桩 / 电费成本 / 公共电核算 / 催缴单 / 计费参数 | 全都已在用 `useEditMode`，各加一行 `{ scope: () => ... }` |
+> | 三大报表 | `components/fin/useFinStatementScreen.ts` + 3 个 View | 「全部汇总」视图 `S.report()` 返回 null → **不上锁**（它 `save()` 第一行就 return，给它上锁只会平白挡人） |
+> | 系数簿窗口 | `views/bills/CoefBookWindow.vue` | ⚠ 键取**生效月 effYm**，不是催缴单页当前账期 |
+> | 侧栏圆点 | `ds/SidebarNav.vue` + `NAV_SCOPE_PREFIX` | 绝对定位，出现消失不改行高 |
+>
+> **§3.2 出账链共占锁**：计费参数 / 公共电核算 / 催缴单 / 系数簿四个写面共用
+> `S.paramCenter === S.poolLedger === S.billNotices === S.coefBook`，由
+> `lockScopes.spec.ts` 断言它们**恒等**。靠四处字面量恰好写得一样来维持，
+> 是迟早会烂的约定 —— 变成两把锁时不会报错，只会安静地失效。
+>
+> **一处对 §3.1 的有意偏离**：附表键改成统一的冒号分段
+> （`sched:utilities:{no}:{year}`，原文是 `sched:utilities{no}:{year}`）。
+> 数字与名字粘着时「按模块前缀找人」做不了 —— `sched:utilities` 匹配不上
+> `sched:utilities13:...`，除非放宽边界，而放宽会让 `sched:pv:2025` 误伤 `sched:pv:20251`。
+> 键是内存态标识符、不落库，改成分段零迁移。
+>
+> **P3 顺手修掉的一个 P1 遗留**：`FPEvictedDialog` 原文案「你改的还在屏幕上，可以先核对再复制」
+> 是**假的** —— 退出编辑态后表格渲染的是服务端数据，草稿不在屏幕上；而且那个
+> 「复制我的改动」按钮 emit 出去**没有任何地方接**。现在：台账实现了草稿转 TSV 的真复制，
+> 没有提供复制能力的屏则不显示该块（给一个数字却不给出路，等于告诉他「你丢了 14 处改动」然后关门）。
+>
+> ### P2 实现落点（在场层）
+>
+> **核心约束：不开第二条通道。** 在场与锁是同一份数据的两个视图，共用一条 20 秒的 ping。
+> P1 那条 `PUT /locks/{scope}/heartbeat` 已被 `PUT /api/presence/ping` **取代**（不是并存）——
+> 分成两条的话编辑态每 20 秒发两个请求，而且两边的「最后一次活动」各记各的，
+> 空闲判定就会有两个不一致的答案，而它决定接管要不要叫主管。
+>
+> | 层 | 文件 | 说明 |
+> |----|------|------|
+> | 在场台账 | `security/PresenceStore.java` | 与锁同一个 store、同一个时钟。`ping()` 登记座位并在 `mode=edit` 时续锁 |
+> | 端点 | `controller/PresenceController.java` · `service/PresenceService.java` | `PUT /presence/ping` · `DELETE /presence/{sid}` |
+> | 客户端 | `stores/presence.ts` | 全站唯一的轮询。做成 Pinia store 而非模块单例 —— 单测靠 `createPinia()` 天然隔离，不必在生产代码里留 `__reset()` 后门 |
+> | 顶栏 | `fp/FPPresenceBar.vue` → `shell/Toolbar.vue` | 头像组 + 浮层。**宽度写死 130px**，人数变化不挪版 |
+> | 入口标记 | `sched/SchedYearGate.vue`（年份卡角标）· `sched/SchedMonthPills.vue`（6px 点） | 一律 `position:absolute`，尺寸不受影响 |
+> | 头像配色 | `ds/Avatar.vue` | 改取**账号名** hash（原为显示名首字 `charCodeAt % 6`，中文名同姓必撞）；色板 6 → 8，去掉配白字对比度不足的 `--fill-cyan` |
+>
+> **两条 TTL 不同、各有理由**：锁 3 分钟（掉了代价是重占，宽容）；在场 60 秒
+> （错了代价是有人按错误信息做决定 —— 白等一个已经下班的人，从紧）。
+>
+> **P2 两个 TDD 抓出来的真 bug**：
+> 1. `presence.start()` 的「立刻发一拍」会让「你被接管了」在 `acquire()` 返回前送达，
+>    于是 `exit()` 跑在 `editMode = true` 之前被它盖掉 —— 表现为「刚拿到锁就被接管、
+>    人却照样进了编辑模式」。改为 `setMode` 不立刻发拍（刚占的锁有 3 分钟，下一拍绰绰有余）。
+> 2. 切页签时 `enter()` 会把 scope 清成 null、mode 降回 view，**锁就停止续期** ——
+>    而 EDIT-MODE-SPEC v3 明确允许编辑态跨页签存活。改为编辑态下只换文案、不动 scope/mode。
+>
+> **P2 未覆盖**：
+> - **侧栏 / 页签的小圆点**：需要一张「scope 前缀 → 导航项」的映射表，本仓还没有。留到 P3 与铺开一起做
+> - **附表10（S10View）**：它不用 `SchedYearGate` / `SchedMonthPills`（自带布局），入口标记没接上；锁本身正常
+> - 台账的月份矩阵（`BookMonthMatrix`）同理未接标记
+
+> ### P4 实现落点（远程授权）
+>
+> 「要做通知机制」曾是当初否掉远程授权的两条理由之一。P2 的心跳建好之后，
+> 它的边际成本就只剩「响应体多两个字段」——**不开第二条通道**。
+>
+> | 层 | 文件 | 说明 |
+> |----|------|------|
+> | 存储 | `security/ApprovalStore.java` | 内存待批表，TTL 2 分钟。按「请求人+授权人+权限点」去重 |
+> | 服务 | `service/ApprovalService.java` | `peek → 验密 → take` 三步。**顺序不能换** |
+> | 端点 | `controller/ApprovalController.java` | `POST/GET /api/auth/approvals`、`POST .../{id}/decide` |
+> | 通道 | `PUT /api/presence/ping` | 响应体带 `approvals[]`（我要批的）与 `outcome`（我请的批了没） |
+> | 请求端 | `FPElevateDialog.vue` | 第二个页签「远程请求授权」+ SVG 等待环（gap 在底部、头像在环心） |
+> | 批准端 | `FPApprovalDrawer.vue` + `Toolbar.vue` | 顶栏 Bell 红点 —— 那个「写了但没实际作用的死组件」终于有用了 |
+>
+> **P4 三个 TDD / 实测抓出来的真 bug**：
+> 1. `decide()` 原本先 `take()` 再验密码 —— 授权人打错一次密码，请求就被销毁了。改成 `peek → 验密 → take`
+> 2. `outcome` 原本是单槽回调，而 `FPElevateDialog` **每个可编辑屏都挂着一个实例** ——
+>    最后挂载的那个赢，结果派发给了一个根本没打开的弹窗。改成 store 上的 ref，由发起方按 id 认领
+> 3. **「批准了却进不去编辑模式」**：远程这条路从没更新过客户端的 `auth.grants`，
+>    `auth.can()` 一直是 false，`useEditMode` 那道「权限不齐就退出」的守卫当场把人弹回浏览态。
+>    修法：`emit('elevated')` 之前先 `await auth.refreshElevation()`
+>
+> ### 被动退出审计（2026-08-27）
+>
+> EDIT-MODE-SPEC v4 铁律①「进得了编辑模式 ⇒ 本页权限一定齐」**只在 `useEditMode` 里实现过一次**，
+> 而它自己的注释写着「不必让 7 个页面各自记得」。问题是**另外六个编辑器根本不走 `useEditMode`**：
+> 系数簿 / 收款簿 / 附表页头 / 账册模板 / 三大报表 / 月度台账（`LedgerView` 是裸的 `ref(false)`）。
+> 于是六处各自都没有这道守卫。
+>
+> | 被动退出的触发 | 原状 | 修法 |
+> |---|---|---|
+> | 点「结束授权」/ 授权 30 分钟到期 | 六处全无守卫：人留在编辑态，**锁还被 3 秒 ping 一直续着**，连 3 分钟心跳自愈都等不到 | `useEditLock(onExit, canEdit)` 第二个参数 —— 守卫放进 composable，六处一次到位 |
+> | 关掉抽屉式编辑器 | 系数簿 / 收款簿的重置 watcher 第一行是 `if (!o) return`，**只在开窗时跑**；组件又是常挂载的，`onUnmounted` 永不触发 | 改成 `if (!o) { editMode.value = false; return }` |
+> | 组件卸载（路由切走 / `v-if` 撤掉） | 只有 `useEditMode` 记得写 | `useEditLock` 内 `onUnmounted(release)` |
+> | **关浏览器 / 关标签页** | 只还了锁，**在场座位什么都没发** → 挂满 `PRESENCE_TTL` 60 秒。而按钮与红点读的是**座位**不是锁，于是「显示 admin 在编辑中，却又进得去」 | `presence.leaveOnUnload()`：`fetch keepalive` 的 `DELETE /presence/{sid}` |
+>
+> **关页面二次确认**（用户拍板 2026-08-26）：挂在 `auth` store 上，判据是 `editors.size > 0` ——
+> 那是全站唯一的编辑态登记表，六个编辑器都已往里登记。
+>
+> ⚠ 它逼出了一个**必须同时做的改动**：还锁从 `beforeunload` 挪到 `pagehide`。
+> 确认框让 `beforeunload` **可能被取消**（用户点「留在此页」），而还锁若仍挂在那儿，
+> 那一下已经发出去了 —— 人留在编辑态、锁却没了，别人随时能进来盖掉他正在改的东西，
+> **比不加确认框更糟**。`pagehide` 只在页面真的要走时触发。这条是测试拦下来的，不是想出来的。
+>
+> ⚠ 判据是「在不在编辑态」而**不是「改没改过」**：全站没有统一脏标记
+> （附表页头是 `dirty`、台账是 `draft`、系数簿是 `stash`，各是各的）；
+> 而在编辑态里本就攥着一把锁，直接关掉不只丢草稿，还让那把锁走 3 分钟超时。
+>
 > 配套：[RBAC-SPEC.md](RBAC-SPEC.md)（权限决定谁能进编辑态，本规范决定进去之后互相不打架）。
 > 依赖：[EDIT-MODE-SPEC.md](EDIT-MODE-SPEC.md) —— 锁挂在「编辑模式」这个已有闸门上。
 

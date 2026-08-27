@@ -17,6 +17,11 @@
 // open 时拦截 —— 内层浮层(ds/Select 下拉、别名输入框)在元素级 stopPropagation 先赢,
 // Esc 才能只收内层不关弹窗。不用 Vue <Transition>(repo 禁令:后台标签页 rAF 不跑会卡遮罩)。
 import { ref, computed, watch, onUnmounted } from 'vue'
+import { useEditLock } from '@/composables/useEditLock'
+import { S } from '@/utils/lockScopes'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import type { Directive } from 'vue'
 import { X, Plus, ChevronUp, ChevronDown, Trash2 } from 'lucide-vue-next'
 import Button from '@/components/ds/Button.vue'
@@ -72,14 +77,35 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
   }
 }, { immediate: true })
 
+// ── 编辑锁(CONCURRENCY-SPEC §4) ──
+// 这个面板此前**完全没有锁** —— 两个人能同时改同一本账册的模板，后保存的整份覆盖，
+// 而模板决定这本账册所有月份的列结构，覆盖掉的代价比一个月的台账还大。
+// 作用域锁到**账册**不锁到期,理由同上。
+const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
+                          () => props.canEdit)
+const { lockedBy, evictedBy } = lock
+const heldByOther = lock.watchScope(() => (props.book ? S.bookTemplate(props.book.id) : null))
+// 退出的路不止一条(点完成/取消/关面板/换账册),用 watch 兜住 —— 漏一条就是一把没人认领的锁
+watch(() => mode.value, (m) => { if (m !== 'edit') lock.release() })
+watch(() => props.open, (o) => { if (!o) lock.release() })
+
 // ── 模式切换 ──
-function enterEdit() {
+async function enterEdit() {
+  // 冻结先判:本地判断不花钱,已录入的月份连锁都不必去占 —— 占到了也进不去(spec 2026-08-26 P6)
   if (!props.book || !props.canEdit || props.monthHasData) return
+  // 权限齐 ≠ 进得去:先占到锁才进(与全站其余 19 个写面同一条规矩)
+  if (!(await lock.acquire(S.bookTemplate(props.book.id)))) return
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
   draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
   note.value = ''
   aliasEditId.value = null
   mode.value = 'edit'
+}
+
+/** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
+async function onTaken() {
+  lockedBy.value = null
+  await enterEdit()
 }
 
 function exitEdit() {
@@ -208,10 +234,14 @@ function fmtTime(s: string): string {
             </option>
           </select>
           <span v-if="monthHasData" class="te-frozen">本月已录入,模板已定稿</span>
-          <Button v-if="mode === 'view' && canEdit" class="te-editbtn" variant="outline" size="sm"
-                  :disabled="monthHasData" :title="monthHasData ? frozenHint : undefined"
-                  @click="enterEdit">编辑模式</Button>
-          <Button v-if="mode === 'edit'" class="te-donebtn" variant="outline" size="sm" @click="exitEdit">完成</Button>
+          <!-- 与全站同一颗按钮:四态定宽 + 锁态显示。
+               作用域锁到**账册**不锁到期 —— 模板改动影响这本账册所有月份。
+               冻结走 disabled 而不是 can-enter:can-enter=false 是**不画按钮**,
+               按钮忽隐忽现会挪版(LAYOUT-STABILITY §2 优先级 1);画出来禁用掉,旁边那句提示才说得清为什么。 -->
+          <FPEditModeButton v-if="mode !== 'edit'" class="te-editbtn" :edit="false"
+                            :held-by-other="heldByOther" :can-enter="canEdit"
+                            :disabled="monthHasData" @toggle="enterEdit" />
+          <FPEditModeButton v-else class="te-donebtn" :edit="true" @toggle="exitEdit" />
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
 
@@ -318,6 +348,11 @@ function fmtTime(s: string): string {
       </div>
     </div>
   </Teleport>
+  <FPTakeoverDrawer :holder="lockedBy" :scope="book ? S.bookTemplate(book.id) : ''"
+                    :what="`${book?.name ?? ''} 账册模板`"
+                    @close="lockedBy = null" @taken="onTaken" />
+  <FPEvictedDialog :eviction="evictedBy" :what="`${book?.name ?? ''} 账册模板`"
+                   @close="evictedBy = null" />
 </template>
 
 <style scoped>

@@ -20,7 +20,8 @@
 // ③「楼层·方位」列归一为一格 floor_label(side 不再拼);④带尾出块合计行(口径同原册 SUM 区间)。
 // §H3:用了 2023 冻结参数的池(V83 的 alloc_cfg frozen_2023 默认行),「分摊标准」格加 ❄ 并在 title 里
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
-import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onDeactivated, watch } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import {
@@ -59,6 +60,7 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
+import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 
 const auth = useAuthStore()
@@ -69,8 +71,8 @@ const auth = useAuthStore()
 const canGen = computed(() => auth.can('billing-run:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated } =
-  useEditMode(['billing-run:edit', 'param-policy:edit'])
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+  useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
 onDeactivated(() => { poolDlg.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -211,12 +213,30 @@ const zoneRuleIds = computed(() =>
   new Set((pools.value?.rows ?? []).filter(r => r.zone === zone.value).map(r => r.ruleId)))
 const zoneDiffs = computed(() => diffs.value.filter(d => zoneRuleIds.value.has(d.ruleId)))
 const rowById = computed(() => new Map((pools.value?.rows ?? []).map(r => [r.ruleId, r])))
+/**
+ * 从「待处理」抽屉点一条 → **只定位，不进编辑态**（用户拍板 2026-08-26）。
+ *
+ * ⚠ 这里以前是 `editMode.value = true` + 直接开编辑池弹窗 —— 权限门和编辑锁**两道全绕**。
+ *   原注释写「没有 param-policy 也让他进来看，弹窗内部自会按权限决定能不能改」，
+ *   那是 EDIT-MODE-SPEC **v4 已经推翻的旧思路**：v4 的铁律是
+ *   「进得了编辑模式 ⇒ 本页权限一定齐」「编辑态里不再存在点不动的控件」。
+ *   实际表现也印证了：用户点进去能打开编辑池、改完保存才被告知「无操作权限」。
+ *
+ * 现在只把那个池**高亮定位**出来。要改就自己点右上的「编辑模式」——
+ * 权限与锁在那一道门上一次说清。
+ */
+/** 从待处理抽屉跳过来时高亮的那个池。仅视觉定位,不改任何数据、不进编辑态。 */
+const focusRuleId = ref<number | null>(null)
+
 function gotoDiff(ruleId: number) {
   const r = rowById.value.get(ruleId)
   if (!r) return
-  editMode.value = true
-  // 没有 param-policy 也让他进来看:池配置弹窗内部自会按权限决定能不能改/给授权入口
-  openPoolDlg(r)
+  focusRuleId.value = ruleId
+  // 让那一行滚进视野。DOM 由 v-for 渲染，等一帧再找。
+  void nextTick(() => {
+    document.querySelector(`[data-rule-id="${ruleId}"]`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  })
 }
 
 // 列模型:p2 分时 5 列(总/尖/峰/平/谷),p1/dorm 只显总列
@@ -733,10 +753,8 @@ async function delPool() {
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增池
         </Button>
-        <Button v-if="canEnter" :variant="editMode ? 'filled' : 'outline'" size="sm" @click="toggleEdit()">
-          <template #leading><component :is="iconFor(editMode ? 'check' : 'pencil')" :size="14" /></template>
-          {{ editMode ? '完成' : '编辑模式' }}
-        </Button>
+        <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          @toggle="toggleEdit()" />
       </div>
     </div>
 
@@ -764,7 +782,8 @@ async function delPool() {
     <!-- LAYOUT-STABILITY-SPEC §4:原来这里有条「本页有 N 项需要更高权限」的流内提示条,
          点一次「编辑模式」再取消整页就被它撑得下移 —— 2026-08-22 用户要求删掉。
          信息由下面的授权弹窗给到了,不需要第二遍;且现在进得了编辑模式就一定权限齐,本就无话可说 -->
-    <FPElevateDialog :perms="asking" what="修改公摊池配置" @close="cancelAsk" @elevated="onElevated" />
+    <FPElevateDialog
+      :page="`公共电核算 · ${ym}`" :action="'生成本月公摊 / 改计费口径'" :perms="asking" what="修改公摊池配置" @close="cancelAsk" @elevated="onElevated" />
 
     <div v-if="editMode || cfgDirty" class="pl-bar warn" :class="{ ghost: !cfgDirty }">
       <component :is="iconFor('alert-triangle')" :size="14" />
@@ -820,7 +839,8 @@ async function delPool() {
                  续行淡显 + 池**首行**虚线上边框(§F10:虚线是池与池之间的分隔,池内续行不画线)。 -->
             <template v-for="r in b.rows" :key="r.ruleId">
             <tr v-for="(ln, li) in (r.lines.length ? r.lines : [null])"
-                :key="ln ? ln.meterId : 'p' + r.ruleId" :class="{ 'pl-ptop': li === 0 }">
+                :key="ln ? ln.meterId : 'p' + r.ruleId" :data-rule-id="li === 0 ? r.ruleId : undefined"
+                :class="{ 'pl-ptop': li === 0, 'pl-focus': focusRuleId === r.ruleId }">
               <!-- §I3:楼层=**本行电表**的楼层,回落池级(=原册 C 列一格,含方位如「四楼西侧」);
                    挂栋没录的显橙色「(未录)」 -->
               <!-- 原册 B 列:区域=本行电表的 area(招商中心行就写「招商中心」),回落池的楼栋名并剥期数前缀 -->

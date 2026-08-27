@@ -4,6 +4,7 @@
 //   · 合计行(15/20/29/30/41/46/47/52/53)按 BS_SUBTOTAL 客端重算不落库;其中明细(10–13)为信息行不入 15。
 //   · 单公司可编辑;companyId==='all' 跨公司只读求和。KPI:资产总计/负债合计/权益合计/平衡差(30−53,非 0 显红)。
 import { ref, computed } from 'vue'
+import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { reportApi } from '@/api/report'
 import type { ReportCell, ReportCustomRowDTO } from '@/types/report'
 import { BS_ROWS, computeBsRow } from '@/reports/balanceSheet'
@@ -21,6 +22,8 @@ import FinReportTable, { type FinTableRow, type FinTableColumn } from '@/compone
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
+import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
 const STMT = 'bs'
 const FIELD = 'end'
@@ -40,7 +43,7 @@ const {
   yearGated, gateYears, yearCards, gateCurrent,
   pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
   loadPeriod,
-  enterEdit, requestCancel, saveConfirm, finishEdit, save, onDiscard,
+  enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
@@ -339,10 +342,10 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
-            <Button v-if="!edit && canEdit" variant="outline" size="sm" @click="enterEdit">
-              <template #leading><component :is="iconFor('pencil')" :size="14" /></template>
-              编辑模式
-            </Button>
+            <!-- 草稿型屏:编辑态走下面的 [取消][保存]，所以这里只负责浏览态那三态
+                 (编辑模式 / 张三 编辑中 / 张三 空闲 23 分) —— 设计稿 §05 -->
+            <FPEditModeButton v-if="!edit" :edit="false" :held-by-other="heldByOther"
+                              :can-enter="canEdit" @toggle="enterEdit" />
             <!-- ⚠ 必须 v-if="edit"，不能 v-else：上面是「!edit && canEdit」，
                  v-else 会把「没权限」也算进去，无权账号将看到「保存/取消」。 -->
             <template v-if="edit">
@@ -476,6 +479,12 @@ async function onExport() {
       </div>
     </div>
   </Teleport>
+  <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope() ?? ''"
+                    :what="`资产负债表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
+                    @close="lockedBy = null" @taken="onTaken" />
+  <FPEvictedDialog :eviction="evictedBy"
+                   :what="`资产负债表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
+                   :dirty-count="dirty" @close="evictedBy = null" />
 </template>
 
 <style scoped>

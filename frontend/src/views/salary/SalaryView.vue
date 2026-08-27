@@ -5,6 +5,7 @@
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
+import { S } from '@/utils/lockScopes'
 import { salaryApi } from '@/api/salary'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
@@ -138,6 +139,7 @@ const onExport = () => guard('导出失败', async () => {
   <template v-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      :scope-of="(y) => S.salaryYear(y)"
       v-if="year === null"
       icon="wallet"
       title="附表12 · 工资明细"
@@ -153,6 +155,7 @@ const onExport = () => guard('导出失败', async () => {
     <template v-else-if="monthData">
       <div class="s12-page">
         <SchedHeader
+          :scope="S.salary(year, month)"
           icon="wallet"
           title="附表12 · 工资明细"
           sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 金额单位 元"
@@ -187,7 +190,8 @@ const onExport = () => guard('导出失败', async () => {
         <!-- 月份胶囊 + 本月人数 -->
         <div class="s12-toolbar">
           <div class="s12-toolbar-l">
-            <SchedMonthPills :value="month" :has="hasMonth" @change="pickMonth" />
+            <SchedMonthPills
+              :scope-of="(m) => (year == null ? null : S.salary(year, m))" :value="month" :has="hasMonth" @change="pickMonth" />
           </div>
           <div class="s12-toolbar-r">
             <span class="s12-count">{{ year }}年{{ month }}月 <b>{{ monthData.rows.length }}</b> 人</span>
