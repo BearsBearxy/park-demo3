@@ -13,7 +13,7 @@
   <artifactId>demo3-backend</artifactId>
   <!-- 与 frontend/package.json 和 git tag 同步。Dockerfile 用 target/*.jar 通配拷贝,
        不钉文件名,故改版本号不影响镜像构建(2026-08-15 核实)。 -->
-  <version>0.11.0</version>
+  <version>0.12.0</version>
   <properties>
     <java.version>17</java.version>
     <mybatis-plus.version>3.5.7</mybatis-plus.version>
