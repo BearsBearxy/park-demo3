@@ -148,11 +148,14 @@ function bulkRemove() {
   selected.value = new Set()
 }
 
-// 模板驱动列(BOOK-WORKBENCH §3 现行版全局生效);自定义列 id 全集供 lgRecalc 合计口径
+// 模板驱动列(BOOK-WORKBENCH §3 现行版全局生效);自定义列 id 全集供 lgRecalc 合计口径。
+// 归档列(后端下发:本月有钱但模板不渲染的列)追加成只读列并计入合计口径 ——
+// 少算它,编辑态的应收合计就比后端的少一截(spec §2)
+const archived = computed(() => props.month.archivedCols ?? [])
 const cols = computed(() => props.book
-  ? toLedgerColumns(props.book.definition, props.month.prevMonth)
+  ? toLedgerColumns(props.book.definition, props.month.prevMonth, archived.value)
   : lgColumns(props.month.prevMonth))
-const extraIds = computed(() => (props.book ? extraColIds(props.book.definition) : []))
+const extraIds = computed(() => (props.book ? extraColIds(props.book.definition, archived.value) : []))
 
 // active rows = draft in edit, server rows in read. search filter on tenantName (jsx 418).
 const rows = computed(() => (props.edit ? props.draft : props.month.rows))

@@ -20,7 +20,8 @@ class LedgerRechainTest {
     ManagementCompanyMapper cm = Mockito.mock(ManagementCompanyMapper.class);
     TenantMapper tm = Mockito.mock(TenantMapper.class);
     BookService bm = Mockito.mock(BookService.class);
-    LedgerService svc = new LedgerService(lm, cm, tm, bm);
+    BookPinService pm = Mockito.mock(BookPinService.class);
+    LedgerService svc = new LedgerService(lm, cm, tm, bm, pm);
 
     static BigDecimal bd(String v) { return new BigDecimal(v); }
 

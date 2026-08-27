@@ -22,15 +22,32 @@ public class BookController {
         return svc.list(screen);
     }
 
-    @Operation(summary = "保存模板(轻改动原版就地更新;结构改动升版;标准列不可删 409)")
+    @Operation(summary = "保存模板(任何保存都升版;只把 body 里的 year/month 那个月切到新版;标准列不可删 409)")
     @PutMapping("/{id}/template")
     public TemplateSaveResultDTO saveTemplate(@PathVariable Integer id,
                                               @Valid @RequestBody TemplateSaveReq req) {
         return svc.saveTemplate(id, req);
     }
 
-    @Operation(summary = "模板版本链") @GetMapping("/{id}/template/versions")
-    public VersionListDTO versions(@PathVariable Integer id) { return svc.versionList(id); }
+    @Operation(summary = "钉本月的模板版本(不造版本;该月已录入 409)")
+    @PostMapping("/{id}/template/pin")
+    public BookDTO pin(@PathVariable Integer id, @Valid @RequestBody PinReq req) {
+        return svc.pinVersion(id, req);
+    }
+
+    @Operation(summary = "某月生效的模板(按 pin 解析:本月→最近更早月→链尾)")
+    @GetMapping("/{id}/template/at/{year}/{month}")
+    public BookDTO templateAt(@PathVariable Integer id, @PathVariable int year, @PathVariable int month) {
+        return svc.templateAt(id, year, month);
+    }
+
+    @Operation(summary = "模板版本链(带 year/month 则按该月生效版标 current)")
+    @GetMapping("/{id}/template/versions")
+    public VersionListDTO versions(@PathVariable Integer id,
+                                   @RequestParam(required = false) Integer year,
+                                   @RequestParam(required = false) Integer month) {
+        return svc.versionList(id, year, month);
+    }
 
     @Operation(summary = "历史版本定义(只读预览列名与布局)")
     @GetMapping("/{id}/template/versions/{ver}")
@@ -39,9 +56,4 @@ public class BookController {
         return svc.versionDefinition(id, ver);
     }
 
-    @Operation(summary = "回滚=复制历史版为新版本(版本号只前进)")
-    @PostMapping("/{id}/template/rollback")
-    public BookDTO rollback(@PathVariable Integer id, @Valid @RequestBody RollbackReq req) {
-        return svc.rollback(id, req.ver());
-    }
 }

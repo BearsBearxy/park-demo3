@@ -116,7 +116,7 @@ public class CompanyService {
                     c.getName(), ledgerRows, reportRows));
             }
         }
-        bookService.dropLedgerBook(id);   // 册与模板版本随司退场(版本表 CASCADE)
+        bookService.dropLedgerBook(id);   // 册随司退场;模板版本在全局链上,不跟着走
         ledger.delete(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
         reportAmounts.delete(new QueryWrapper<ReportAmount>().eq("company_id", id));
         reportCustomRows.delete(new QueryWrapper<ReportCustomRow>().eq("company_id", id));

@@ -179,4 +179,17 @@ class PermissionCoverageTest {
         PermissionRegistry reg = new PermissionRegistry();
         assertThat(reg.resolve(HttpMethod.POST, "/api/brand-new-endpoint")).isNull();
     }
+    // 第 16/17 点互不代替(spec 2026-08-26 §8):换一套别人的列、和在本月微调列名,是两种风险。
+    // 只用 viewer 打 403 证不了这一点 —— 就算把 pin 错映射成 book-template:edit,那种用例照样绿。
+    // 路径改名时权限门不跟着挪、或两个点被合并,都在这里当场红。
+    @Test
+    @DisplayName("账册模板:编辑与切版映射到两个不同的权限点")
+    void bookTemplate_editAndSwitch_mapToDistinctPerms() {
+        PermissionRegistry reg = new PermissionRegistry();
+        assertThat(reg.resolve(HttpMethod.PUT, "/api/books/7/template"))
+                .containsExactly(Perm.BOOK_TEMPLATE_EDIT);
+        assertThat(reg.resolve(HttpMethod.POST, "/api/books/7/template/pin"))
+                .containsExactly(Perm.BOOK_TEMPLATE_SWITCH);
+        assertThat(Perm.BOOK_TEMPLATE_EDIT).isNotEqualTo(Perm.BOOK_TEMPLATE_SWITCH);
+    }
 }

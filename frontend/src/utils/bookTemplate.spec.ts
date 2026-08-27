@@ -61,6 +61,19 @@ describe('toLedgerColumns', () => {
     expect(m.groups).toHaveLength(5)
   })
 
+  // spec §2:hidden 只往显示侧修——该月有钱的列一律显示且只读,否则屏上合计永远对不上明细
+  it('归档列追加成只读的「已归档」组', () => {
+    const m = toLedgerColumns(stdDef(), 12, [{ id: 'c_arch', label: '待归档费' }])
+    const g = m.groups.find(x => x.name === '已归档')
+    expect(g).toBeTruthy()
+    expect(g!.cols[0]).toMatchObject({ key: 'c_arch', label: '待归档费', readonly: true })
+  })
+
+  it('没有归档列时不出现「已归档」组', () => {
+    const m = toLedgerColumns(stdDef(), 12, [])
+    expect(m.groups.find(x => x.name === '已归档')).toBeUndefined()
+  })
+
   it('自定义列出现在所属分组,w 缺省 96,label 来自模板', () => {
     const def = stdDef()
     def.groups[0].cols.push(col({ id: 'c_parking', std: false, label: '停车费', slot: 'misc' }))
@@ -109,6 +122,18 @@ describe('toS10Layout', () => {
       leaves: [{ colId: 'elecBasic', label: '基本用电费' }, { colId: 'elecStd', label: '基准电费' }],
     })
   })
+
+  // spec §2 两屏同做:附表10 走同一个 ExtraFees.sum,归档列也必须显示且只读
+  it('归档列追加成只读的「已归档」组', () => {
+    const out = toS10Layout(def, [{ id: 'c_arch', label: '待归档费' }])
+    const g = out.find(x => x.label === '已归档')
+    expect(g).toBeTruthy()
+    expect(g!.leaves[0]).toMatchObject({ colId: 'c_arch', label: '待归档费', readonly: true })
+  })
+
+  it('没有归档列时不出现「已归档」组', () => {
+    expect(toS10Layout(def, []).find(x => x.label === '已归档')).toBeUndefined()
+  })
 })
 
 // ---------- extraColIds / mergeExtras / extractExtras ----------
@@ -121,6 +146,19 @@ describe('口袋列', () => {
       col({ id: 'c_b', std: false, label: 'B', slot: 'misc', hidden: true }),
     ] }] }
     expect(extraColIds(def)).toEqual(['c_a', 'c_b'])
+  })
+
+  // 归档列可能已被从模板里删掉(P5 删列守卫已废),它不在 def 里 ——
+  // 保存走 extraFees 整包替换,漏掉它这笔历史钱会被清成 null(spec §2 要防的正是这类事故);
+  // 同时在 def 与归档清单里的 hidden 列只能出现一次,重复会让 lgRecalc 把它双算
+  it('extraColIds 并入本月归档列并去重', () => {
+    const def: BookDef = { groups: [{ id: 'g', label: null, cols: [
+      col({ id: 'factoryRent', label: '厂房租金', slot: 'rent' }),
+      col({ id: 'c_a', std: false, label: 'A', slot: 'misc' }),
+      col({ id: 'c_b', std: false, label: 'B', slot: 'misc', hidden: true }),
+    ] }] }
+    expect(extraColIds(def, [{ id: 'c_b', label: 'B' }, { id: 'c_gone', label: '已删列' }]))
+      .toEqual(['c_a', 'c_b', 'c_gone'])
   })
 
   it('mergeExtras 平铺 c_xxx 且返回新对象;无口袋时为浅拷贝', () => {

@@ -2,10 +2,10 @@
 // 附表10 · 销售收入 — 账册工作台三态动线(BOOK-WORKBENCH-SPEC §5/§7/§8)。
 // 左轨四册(一期/二期/三期/宿舍区,期区 tabs 退场) + 选期矩阵 v3(§8:年份 tab 退场,
 // 全年份纵排一屏,手工年可增删) → 点月卡进宽表;宽表内「换期」回矩阵。
-// 版面由所选账册现行版模板驱动(toS10Layout,§3 现行版全局生效);自定义列 extra_fees
+// 版面由所选账册**本月生效**那版模板驱动(toS10Layout;版本按 (册,年,月) 解析,spec P3);自定义列 extra_fees
 // 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
 // §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
-import { ref, computed, onMounted, onDeactivated, reactive } from 'vue'
+import { ref, computed, watch, onMounted, onDeactivated, reactive } from 'vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
@@ -15,8 +15,8 @@ import { exportS10Month } from '@/utils/s10Excel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
 import type { Book, BookDef, TemplateVersion } from '@/types/book'
-import { flattenCols, customColIds } from '@/types/book'
-import { toS10Layout, mergeExtras, extractExtras } from '@/utils/bookTemplate'
+import { flattenCols } from '@/types/book'
+import { toS10Layout, mergeExtras, extractExtras, extraColIds } from '@/utils/bookTemplate'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 import { PHASE_LAYOUT, leavesOf, type Group, type LayoutId } from './layout'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -46,12 +46,25 @@ import { toBindOptions } from '@/components/fp/fpTenantPicker'
 // ── 账册(左轨)状态:四册期区,phase 由所选账册派生 ─────────────
 const books = ref<Book[]>([])
 const activeBookId = ref<number | null>(null)
-const activeBook = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
-const phase = computed(() => activeBook.value?.phase ?? 1)
+// 左轨选中的那一册(定义=本期区链尾版);期区号只认它,取模板失败也不许把 phase 带歪
+const railBook = computed(() => books.value.find(b => b.id === activeBookId.value) ?? null)
+// 表格态的册按 (册,年,月) 解析(spec P2/P3):版面与导入词典都跟着月份走。
+// year 由下面的 useSchedScreen 给出(computed 惰性求值,这里只是引用)
+const monthBook = ref<Book | null>(null)
+const activeBook = computed(() => (year.value != null && monthBook.value?.id === activeBookId.value)
+  ? monthBook.value
+  : railBook.value)
+const phase = computed(() => railBook.value?.phase ?? 1)
 const bookDef = computed<BookDef | null>(() => activeBook.value?.definition ?? null)
-// 模板 → 宽表版面(可见列);合计口径 = 模板全列含隐藏(与后端 recalc 全口袋一致)
-const layoutGroups = computed<Group[]>(() => (bookDef.value ? toS10Layout(bookDef.value) : []))
-const allColIds = computed(() => (bookDef.value ? flattenCols(bookDef.value).map(c => c.id) : []))
+// 模板 → 宽表版面(可见列);合计口径 = 模板全列含隐藏(与后端 recalc 全口袋一致)。
+// 归档列(后端下发:本月有钱但模板不渲染的列)追加成只读列,并计入合计与保存口径 ——
+// 它可能已被从模板里删掉,漏掉就是「合计对不上明细」+ 保存把这笔历史钱清成 null(spec §2)
+const archivedCols = computed(() => monthData.value?.archivedCols ?? [])
+const layoutGroups = computed<Group[]>(() =>
+  (bookDef.value ? toS10Layout(bookDef.value, archivedCols.value) : []))
+const allColIds = computed(() => (bookDef.value
+  ? [...new Set([...flattenCols(bookDef.value).map(c => c.id), ...archivedCols.value.map(a => a.id)])]
+  : []))
 // 新增租户抽屉 profile 选项仍按期区二分(office/factory)——租户类型不属于列模板
 const drawerLayout = computed<LayoutId>(() => PHASE_LAYOUT[phase.value] ?? 'office')
 
@@ -94,6 +107,24 @@ const {
     confirm: clearConfirm('本期', '手动行不受影响。'),
   },
 })
+
+// 按月取模板(spec P3):切册/切年/切月都重取;竞态守卫同 loadMonth。
+// ⚠ 必须放在 useSchedScreen 之后 —— watch 的源是**立即**求值的,year 在上面还没初始化
+let tplSeq = 0
+async function loadMonthBook() {
+  const id = activeBookId.value
+  const y = year.value, m = month.value
+  if (id == null || y == null) return
+  const seq = ++tplSeq
+  // 与台账同款:在途期间退回左轨那行(链尾版),不许上个月那版顶着(activeBook 是带回退的 computed);
+  // 失败也不静默 —— 本屏报错口径是 guard 的 alert
+  monthBook.value = null
+  await guard(`${y} 年 ${m} 月的模板版本没取到,当前按链尾版显示;请刷新重试`, async () => {
+    const b = await booksApi.templateAt(id, y, m)
+    if (seq === tplSeq) monthBook.value = b
+  })
+}
+watch([activeBookId, year, month], loadMonthBook)
 
 // ── 矩阵态(选期矩阵 v3,§8):全年份纵排,数据年∪当前年∪手工年连续补满 ──
 // overview 无分月行数 → hasData 沿用月 pills 的已录月口径(过去年整年、当年到 currentMonth)
@@ -221,7 +252,7 @@ function toReq(row: S10RecordDTO): S10RecordReq {
   const src = row as unknown as Record<string, unknown>
   for (const id of PHYS_IDS) bag[id] = Number(src[id]) || 0
   const def = bookDef.value
-  if (def) req.extraFees = extractExtras(src, customColIds(def))   // 自定义列(含隐藏)整包收回
+  if (def) req.extraFees = extractExtras(src, extraColIds(def, archivedCols.value))   // 自定义列(含隐藏/归档)整包收回
   return req
 }
 
@@ -291,7 +322,8 @@ const tplOpen = ref(false)
 const tplVersions = ref<TemplateVersion[]>([])
 const tplSaving = ref(false)
 async function loadVersions(bookId: number) {
-  tplVersions.value = (await booksApi.versions(bookId)).versions
+  // year 来自 useSchedScreen,可能为 null;传不出年月时后端退回链尾标 current,不影响功能
+  tplVersions.value = (await booksApi.versions(bookId, year.value ?? undefined, month.value)).versions
 }
 function openTpl() {
   const b = activeBook.value
@@ -301,27 +333,34 @@ function openTpl() {
   void guard('加载模板版本失败', () => loadVersions(b.id))
 }
 function applyBook(b: Book) {
-  books.value = books.value.map(x => (x.id === b.id ? b : x))   // 版面/导入词典即时随现行版重算
+  monthBook.value = b   // 本月生效的那一版 → 版面即时重算
+  // 册清单里的行恒是链尾版(整表导入词典按它取):保存产出的新版即链尾,顺手换上;钉旧版只抬 latestVer
+  books.value = books.value.map(x => x.id !== b.id ? x
+    : (b.ver === b.latestVer ? b : { ...x, latestVer: Math.max(x.latestVer, b.latestVer) }))
 }
 async function onTplSave(def: BookDef, note: string) {
   const b = activeBook.value
-  if (!b) return
+  const y = year.value
+  if (!b || y == null) return
   tplSaving.value = true
   await guard('保存模板失败', async () => {
-    const res = await booksApi.saveTemplate(b.id, def, note || undefined)
+    const res = await booksApi.saveTemplate(b.id, def, y, month.value, note || undefined)
     applyBook(res.book)
     await loadVersions(b.id)
     tplOpen.value = false
+    await loadMonth(y)     // 归档列/合计按新版重算
   })
   tplSaving.value = false
 }
-async function onTplRollback(ver: number) {
+// P7 选择器:只钉本月(不造版本);该月已录入后端 409(P6 冻结,面板那边已置灰,这里兜底提示)
+async function onTplPin(ver: number) {
   const b = activeBook.value
-  if (!b) return
-  await guard('回滚失败', async () => {
-    const nb = await booksApi.rollback(b.id, ver)
+  const y = year.value
+  if (!b || y == null) return
+  await guard('切换模板版本失败', async () => {
+    const nb = await booksApi.pin(b.id, ver, y, month.value)
     applyBook(nb)          // 编辑器草稿随 book 变化自动重拷
-    await loadVersions(b.id)
+    await loadMonth(y)
   })
 }
 
@@ -652,15 +691,18 @@ function onImportClick() {
       />
     </FPSideDrawer>
 
-    <!-- 模板编辑器(两态常驻入口,当前左轨选中的那一册;写权限 book-template:edit) -->
+    <!-- 模板编辑器(表格态入口,当前左轨选中的那一册的**本月**那版;编辑走 book-template:edit、
+         换版走第17点 book-template:switch;本月已录入 → 模板定稿,面板置灰) -->
     <TemplateEditorPanel
       :open="tplOpen"
       :book="activeBook"
       :versions="tplVersions"
       :saving="tplSaving"
       :can-edit="auth.can('book-template:edit')"
+      :can-switch="auth.can('book-template:switch')"
+      :month-has-data="monthData?.recorded === true"
       @save="onTplSave"
-      @rollback="onTplRollback"
+      @pin="onTplPin"
       @close="tplOpen = false"
     />
   </template>

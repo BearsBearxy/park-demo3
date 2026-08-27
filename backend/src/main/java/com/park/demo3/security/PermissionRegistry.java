@@ -134,7 +134,9 @@ public class PermissionRegistry {
         // ═══ 账册模板写端点(第16点 book-template:edit,2026-08-24 拍板):
         //     模板改动独立于事后录入——录入员没这点就只能看不能改模板;GET 读全开 ═══
         add(HttpMethod.PUT,  "/api/books/*/template",          Perm.BOOK_TEMPLATE_EDIT);
-        add(HttpMethod.POST, "/api/books/*/template/rollback", Perm.BOOK_TEMPLATE_EDIT);
+        // 换版本走第17点 book-template:switch(2026-08-26 拍板):换一套别人的列、和在本月微调列名,
+        // 是两种风险,故分权。第16点不蕴含第17点 —— 只勾模板编辑的人切不了版。
+        add(HttpMethod.POST, "/api/books/*/template/pin",      Perm.BOOK_TEMPLATE_SWITCH);
 
         // ═══ 公司建/删 = 建删账册(第15点 company:manage,2026-08-24 拍板):
         //     必须排在主数据 catch-all 之前(铁律2:首个命中);改名 PUT 与收款账户仍落 master:edit ═══

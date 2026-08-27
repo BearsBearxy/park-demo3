@@ -1,6 +1,7 @@
 // 附表10 销售收入 DTOs — 逐字对齐契约/后端 dto/S10*.java。JSON camelCase ⇄ Java record。
 // 25 费用列 camelCase（顺序即列展示顺序，与后端种子完全一致）。
 // 派生（行合计 total / 列合计 columnTotals / 总计 grandTotal）后端算好下发，前端编辑态自行即时重算；不落库。
+import type { ArchivedCol } from './book'
 
 // 25 费用列字段名（camelCase）— 仅类型用途，与 layout.ts 的 colId 一一对应。
 export interface S10Fees {
@@ -67,6 +68,7 @@ export interface S10MonthDTO {
   rows: S10RecordDTO[]
   columnTotals: Record<string, number>   // colId → 列合计
   grandTotal: number
+  archivedCols?: ArchivedCol[]           // 归档列(spec §2):台账同款,两屏同做
 }
 
 // 年聚合（镜像后端 S10YearSummaryDTO,供损益附表派生）:phase(1-4) → colId → 长度 12 月Σ

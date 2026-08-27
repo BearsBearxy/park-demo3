@@ -2,6 +2,7 @@ package com.park.demo3.service;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.common.ExtraFees;
+import com.park.demo3.dto.BookDtos.ArchivedColDTO;
 import com.park.demo3.dto.DeleteResultDTO;
 import com.park.demo3.dto.ImportError;
 import com.park.demo3.dto.ImportResultDTO;
@@ -12,6 +13,7 @@ import com.park.demo3.dto.S10RecordDTO;
 import com.park.demo3.dto.S10RecordReq;
 import com.park.demo3.dto.S10YearDTO;
 import com.park.demo3.dto.S10YearSummaryDTO;
+import com.park.demo3.entity.LedgerBook;
 import com.park.demo3.entity.S10Record;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.mapper.S10RecordMapper;
@@ -37,10 +39,21 @@ public class S10Service {
     private final S10RecordMapper records;
     private final TenantMapper tenants;
     private final BookService bookService;
+    private final BookPinService pinService;
 
-    public S10Service(S10RecordMapper records, TenantMapper tenants, BookService bookService) {
-        this.bookService = bookService;
+    public S10Service(S10RecordMapper records, TenantMapper tenants, BookService bookService,
+                      BookPinService pinService) {
+        this.bookService = bookService; this.pinService = pinService;
         this.records = records; this.tenants = tenants;
+    }
+
+    // P6:与台账同一条规则。owner=phase;acctMonth 是 'YYYY-MM',在这里拆成年月两个整数
+    private void materializePin(int phase, String acctMonth) {
+        LedgerBook b = bookService.bookOfPhase(phase);
+        if (b == null) return;
+        int y = yearOf(acctMonth), m = monthOf(acctMonth);
+        pinService.materialize("s10", phase, y, m,
+            pinService.resolve("s10", phase, y, m, bookService.chainBookId(b)));
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -171,7 +184,14 @@ public class S10Service {
             grandTotal = grandTotal.add(sum);
         }
         for (S10Record r : rows) grandTotal = grandTotal.add(ExtraFees.sum(r.getExtraFees()));
-        return new S10MonthDTO(phase, year, month, !rows.isEmpty(), dtos, columnTotals, r2(grandTotal));
+        // 归档列(spec §2):本月有非零值、但生效模板不渲染的自定义列(台账同款,两屏同修)
+        java.util.Set<String> keysWithData = new java.util.LinkedHashSet<>();
+        for (S10Record r : rows)
+            for (Map.Entry<String, BigDecimal> e : ExtraFees.parse(r.getExtraFees()).entrySet())
+                if (e.getValue() != null && e.getValue().signum() != 0) keysWithData.add(e.getKey());
+        List<ArchivedColDTO> archived = bookService.archivedColsAt(
+            bookService.bookOfPhase(phase), year, month, keysWithData);
+        return new S10MonthDTO(phase, year, month, !rows.isEmpty(), dtos, columnTotals, r2(grandTotal), archived);
     }
 
     // ── save:req.id 非空=按行更新(可改名——修「改名走按新名 upsert 会复制一行」的老坑);
@@ -211,7 +231,9 @@ public class S10Service {
         // 保存语义:extraFees 非空=整包替换;null=不动(兼容不带口袋的调用方)。
         // 键校验(审查#10):归档(hidden)列在册可写;已删除列的 c_ 键拒收,防幽灵钱直写
         if (req.extraFees() != null && !req.extraFees().isEmpty()) {
-            java.util.Set<String> allowed = bookService.customIdsByPhase(r.getPhase());
+            // 词典跟着月份走(spec §6),与导入同一口径;acctMonth 是 'YYYY-MM',在这里拆
+            java.util.Set<String> allowed = bookService.customIdsAt("s10", r.getPhase(),
+                yearOf(r.getAcctMonth()), monthOf(r.getAcctMonth()));
             var bad = req.extraFees().keySet().stream().filter(k -> !allowed.contains(k)).toList();
             if (!bad.isEmpty())
                 throw new BizException(ResultCode.BAD_REQUEST,
@@ -219,6 +241,7 @@ public class S10Service {
         }
         if (req.extraFees() != null) r.setExtraFees(ExtraFees.write(req.extraFees()));
         if (isNew) records.insert(r); else records.updateById(r);
+        materializePin(r.getPhase(), r.getAcctMonth());
         return toRecordDTO(records.selectById(r.getId()));
     }
 
@@ -266,7 +289,9 @@ public class S10Service {
             if (keep.getTenantName() != null) takenNames.add(keep.getTenantName().trim());
         // V105:导入即按账面名自动配档(全部状态+别名,唯一可判定才配);配不上留 null=未绑定,问题面板处理
         Map<String, Integer> byName = TenantService.softIndex(tenants.selectList(null));
-        java.util.Set<String> allowedCustomIds = bookService.customIdsByPhase(req.phase());
+        // 词典跟着月份走(spec §6):钉在旧版的月份不认得后来才加进链尾的列
+        java.util.Set<String> allowedCustomIds =
+            bookService.customIdsAt("s10", req.phase(), yearOf(req.acctMonth()), monthOf(req.acctMonth()));
         int imported = 0;
         java.util.LinkedHashSet<String> unboundNames = new java.util.LinkedHashSet<>();
         List<ImportError> errors = new ArrayList<>();
@@ -306,6 +331,7 @@ public class S10Service {
             if (r.getTenantId() == null) unboundNames.add(name);
             imported++;
         }
+        materializePin(req.phase(), req.acctMonth());
         List<ImportError> notices = new ArrayList<>();
         if (!unboundNames.isEmpty())
             notices.add(new ImportError(-1, "未绑定租户", unboundNames.size() + " 个账面名未匹配租户档案,已作为未绑定行导入 —— 到「附表10」该期该月的问题面板绑定/改名/建档"));

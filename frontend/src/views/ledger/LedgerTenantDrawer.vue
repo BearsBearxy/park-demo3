@@ -10,7 +10,7 @@ import type { FPTenantOption } from '@/components/fp/fpTenantPicker'
 import Button from '@/components/ds/Button.vue'
 import { lgColumns } from '@/utils/ledgerColumns'
 import { toLedgerColumns } from '@/utils/bookTemplate'
-import type { Book } from '@/types/book'
+import type { ArchivedCol, Book } from '@/types/book'
 import type { LedgerRowDTO } from '@/types/ledger'
 
 const props = defineProps<{
@@ -21,6 +21,8 @@ const props = defineProps<{
   year: number
   monthNo: number
   prevMonth: number
+  /** 本月归档列(spec §2):有钱但模板不渲染的自定义列,同样进费用明细,否则明细之和对不上应收合计 */
+  archived?: ArchivedCol[]
   /** 绑定候选(全部档案,退租户带标注);行级绑定字段有它才渲染选择器 */
   tenants?: FPTenantOption[]
   /** 编辑模式 + entry:edit 才能绑/解/换(EDIT-MODE §1:浏览态只显示状态) */
@@ -62,7 +64,7 @@ function lgFmt(v: number | null | undefined): string {
 const fmt0 = (v: number | null | undefined) => lgFmt(v) || '0.00'
 
 const groups = computed(() =>
-  (props.book ? toLedgerColumns(props.book.definition, props.prevMonth) : lgColumns(props.prevMonth)).groups)
+  (props.book ? toLedgerColumns(props.book.definition, props.prevMonth, props.archived) : lgColumns(props.prevMonth)).groups)
 
 // 仅非零费用,按组分组并算组内小计 (jsx 693-705)
 const feeGroups = computed(() => {

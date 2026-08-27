@@ -21,8 +21,9 @@ class LedgerServiceTest {
     MonthlyLedgerMapper lm = Mockito.mock(MonthlyLedgerMapper.class);
     ManagementCompanyMapper cm = Mockito.mock(ManagementCompanyMapper.class);
     TenantMapper tm = Mockito.mock(TenantMapper.class);
-    BookService bm = Mockito.mock(BookService.class);   // customIdsByCompany 默认空集
-    LedgerService svc = new LedgerService(lm, cm, tm, bm);
+    BookService bm = Mockito.mock(BookService.class);   // customIdsAt 默认空集
+    BookPinService pm = Mockito.mock(BookPinService.class);   // bookOfCompany 默认 null → 固化 pin 空转
+    LedgerService svc = new LedgerService(lm, cm, tm, bm, pm);
 
     // --- fixtures ---
     Tenant tenant(int id, int status) {

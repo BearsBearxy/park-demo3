@@ -2,18 +2,16 @@
 // 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:
 //  · 只读查看(默认):分组/列名/别名 chips/隐藏徽标/列宽纯展示;右栏版本链每项可点,
 //    点历史版 → booksApi.versionDefinition 取该版定义做只读预览(顶部横幅 + 一键回现行版)。
-//    唯一的读请求,其余仍纯受控:保存/回滚全部 emit 给宿主。
+//    唯一的读请求,其余仍纯受控:保存/切版全部 emit 给宿主。
 //  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
 //    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
 //
 // 版式:居中弹窗(DESIGN-FIDELITY §7,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
 // 主体=分组卡片(组名 + 组内列行),右侧窄栏=版本链;编辑态底部=变更说明 + 保存。
 //
-// 轻/结构改动语义(§3)在 UI 里讲清楚:
-//  · 轻改动(显示名/别名/列宽)→ 不升版,原版就地更新
-//  · 结构改动(增删列/换槽/隐藏切换/列序/组增删)→ 升版 v+1,且现行版全局生效
-//    (历史月份同样按新版显示)—— 保存前本地判断,提示条常驻占位(LAYOUT-STABILITY:
-//    出现/消失不得顶动保存按钮,故 min-height 恒占一行)。
+// 按月独立(2026-08-26 spec P4/P7):打开的是**当前月**生效的那一版,保存产出链尾+1 并只把当前月切过去;
+// 编辑按钮旁的版本选择器列出全链、选中即钉本月。红点/「升到 vN」/链尾编辑门全部退场。
+// 本月已录入(monthHasData)则模板定稿:选择器与编辑门一起置灰,清空该月数据即自动解冻(P6)。
 //
 // 浮层纪律(UI-OVERLAY-SPEC):本组件是宿主弹窗,Esc 挂 document **冒泡**阶段且只在
 // open 时拦截 —— 内层浮层(ds/Select 下拉、别名输入框)在元素级 stopPropagation 先赢,
@@ -37,14 +35,19 @@ const props = defineProps<{
   book: Book | null
   versions: TemplateVersion[]
   saving: boolean
-  canEdit: boolean   // 宿主传 auth.can('book-template:edit')
+  canEdit: boolean       // 宿主传 auth.can('book-template:edit')
+  canSwitch: boolean     // 宿主传 auth.can('book-template:switch')(第17权限点)
+  monthHasData: boolean  // 本月已录入 → 模板定稿(P6 冻结:不许切版、不许编辑)
 }>()
 
 const emit = defineEmits<{
   (e: 'save', def: BookDef, note: string): void
-  (e: 'rollback', ver: number): void
+  (e: 'pin', ver: number): void
   (e: 'close'): void
 }>()
+
+// 冻结说明:一个没解释的灰控件等于没提示
+const frozenHint = '本月已录入,模板已定稿;清空本月数据后可改'
 
 const mode = ref<'view' | 'edit'>('view')
 const draft = ref<BookDef | null>(null)
@@ -88,7 +91,8 @@ watch(() => props.open, (o) => { if (!o) lock.release() })
 
 // ── 模式切换 ──
 async function enterEdit() {
-  if (!props.book || !props.canEdit) return
+  // 冻结先判:本地判断不花钱,已录入的月份连锁都不必去占 —— 占到了也进不去(spec 2026-08-26 P6)
+  if (!props.book || !props.canEdit || props.monthHasData) return
   // 权限齐 ≠ 进得去:先占到锁才进(与全站其余 19 个写面同一条规矩)
   if (!(await lock.acquire(S.bookTemplate(props.book.id)))) return
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
@@ -127,17 +131,6 @@ function backToCurrent() {
   previewVer.value = null
   previewDef.value = null
 }
-
-// ── 结构改动判定(§3):列的 增删/顺序/换槽/隐藏 + 组增删,任一变即结构 ──
-// 签名只含结构位(id/slot/hidden/列序/组序),显示名/别名/列宽不参与 → 轻改动不触发
-function structSig(def: BookDef): string {
-  return def.groups
-    .map(g => `${g.id}[${g.cols.map(c => `${c.id}:${c.slot}:${c.hidden ? 1 : 0}`).join(',')}]`)
-    .join(';')
-}
-const structural = computed(() =>
-  mode.value === 'edit' && !!(draft.value && props.book)
-  && structSig(draft.value!) !== structSig(props.book!.definition))
 
 const slotOpts = BOOK_SLOTS.map(s => ({ value: s, label: SLOT_LABELS[s] }))
 
@@ -229,13 +222,25 @@ function fmtTime(s: string): string {
         <header class="te-head">
           <div class="te-head-txt">
             <h3>账册模板 — {{ book.name }}</h3>
-            <p v-if="mode === 'edit'">现行 v{{ book.ver }} · 改显示名/别名/列宽为轻改动不升版;增删列、换语义槽、隐藏切换、调列序将升新版,并对所有账期(含历史月)生效</p>
-            <p v-else>现行 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
+            <p v-if="mode === 'edit'">本月生效 v{{ book.ver }} · 保存将存成新版本(任何改动都升版),并只把本月切到新版;同册其他月份不动</p>
+            <p v-else>本月生效 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
+          <select class="te-verpick" :disabled="monthHasData || !canSwitch"
+                  :value="String(book.ver)"
+                  :title="monthHasData ? frozenHint : '选择本月使用的账册版本'"
+                  @change="emit('pin', Number(($event.target as HTMLSelectElement).value))">
+            <option v-for="v in versions" :key="v.id" :value="String(v.ver)">
+              v{{ v.ver }}{{ v.ver === book.latestVer ? ' · 最新' : '' }}{{ v.note ? ' — ' + v.note : '' }}
+            </option>
+          </select>
+          <span v-if="monthHasData" class="te-frozen">本月已录入,模板已定稿</span>
           <!-- 与全站同一颗按钮:四态定宽 + 锁态显示。
-               作用域锁到**账册**不锁到期 —— 模板改动影响这本账册所有月份。 -->
+               作用域锁到**账册**不锁到期 —— 模板改动影响这本账册所有月份。
+               冻结走 disabled 而不是 can-enter:can-enter=false 是**不画按钮**,
+               按钮忽隐忽现会挪版(LAYOUT-STABILITY §2 优先级 1);画出来禁用掉,旁边那句提示才说得清为什么。 -->
           <FPEditModeButton v-if="mode !== 'edit'" class="te-editbtn" :edit="false"
-                            :held-by-other="heldByOther" :can-enter="canEdit" @toggle="enterEdit" />
+                            :held-by-other="heldByOther" :can-enter="canEdit"
+                            :disabled="monthHasData" @toggle="enterEdit" />
           <FPEditModeButton v-else class="te-donebtn" :edit="true" @toggle="exitEdit" />
           <button class="te-x" aria-label="关闭" @click="emit('close')"><X :size="16" /></button>
         </header>
@@ -307,7 +312,7 @@ function fmtTime(s: string): string {
             </template>
           </div>
 
-          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出回滚按钮(回滚=复制历史版为新版本,版本号只前进) -->
+          <!-- 右侧窄栏:版本链。只读态每项可点做历史预览;编辑态出切版按钮(钉的是本月的版本,链只追加不改写) -->
           <aside class="te-vers">
             <div class="te-vtitle">版本链</div>
             <div v-for="v in versions" :key="v.id" class="te-vitem"
@@ -319,16 +324,17 @@ function fmtTime(s: string): string {
               </div>
               <div class="te-vnote">{{ v.note || '—' }}</div>
               <div class="te-vmeta">{{ v.createdBy }} · {{ fmtTime(v.createdAt) }}</div>
-              <button v-if="mode === 'edit' && !v.current" class="te-rollback" @click.stop="emit('rollback', v.ver)">回滚为新版本</button>
+              <button v-if="mode === 'edit' && !v.current && canSwitch" class="te-adopt" @click.stop="emit('pin', v.ver)">切到此版</button>
             </div>
             <div v-if="!versions.length" class="te-vempty">暂无版本记录</div>
           </aside>
         </div>
 
         <template v-if="mode === 'edit'">
-          <!-- 升版提示:常驻占位一行(LAYOUT-STABILITY),结构改动时才显字 -->
+          <!-- 升版提示:恒显一行(P5 任何保存都升版,轻/重改动的区分已废除,所以不再随改动种类闪现)。
+               版本号是**链尾+1**(后端 maxVer+1),不是本月生效版+1 —— 本月钉在旧版时两者不是一回事 -->
           <p class="te-verbumpline">
-            <span v-if="structural" class="te-verbump">本次将升版 v{{ book.ver + 1 }},历史月份同样按新版显示</span>
+            <span class="te-verbump">本次保存将存成新版 v{{ book.latestVer + 1 }},只把本月切过去;同册其他月份不动</span>
           </p>
 
           <footer class="te-foot">
@@ -369,6 +375,17 @@ function fmtTime(s: string): string {
 .te-head h3 { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .te-head p { margin: 6px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--text-muted); }
 .te-editbtn, .te-donebtn { flex: 0 0 auto; }
+/* 版本选择器(P7):恒在编辑按钮左边,两态同款;本月已录入时置灰,旁边一句为什么 */
+.te-verpick {
+  flex: 0 0 auto; max-width: 220px; height: 28px; padding: 0 8px;
+  font-size: var(--fs-label); font-family: var(--font-sans); color: var(--text-primary);
+  background: var(--surface-white); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.te-verpick:hover:not(:disabled) { border-color: var(--border-strong); }
+.te-verpick:disabled { color: var(--text-disabled); background: var(--surface-sunken); cursor: not-allowed; }
+.te-frozen { flex: 0 0 auto; align-self: center; font-size: var(--fs-micro); color: var(--text-muted); }
 .te-x {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm);
@@ -534,22 +551,22 @@ function fmtTime(s: string): string {
 }
 .te-vnote { font-size: var(--fs-label); color: var(--text-secondary); word-break: break-all; }
 .te-vmeta { font-size: var(--fs-micro); color: var(--text-muted); }
-.te-rollback {
+.te-adopt {
   align-self: flex-start; margin-top: 3px; height: 24px; padding: 0 10px;
   border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-white);
   font-size: var(--fs-micro); color: var(--text-secondary); cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease-standard);
 }
-.te-rollback:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
+.te-adopt:hover { border-color: var(--hue-blue); color: var(--hue-blue); }
 .te-vempty { font-size: var(--fs-label); color: var(--text-muted); }
 
-/* 升版提示:恒占一行(空着不可见但占位),避免出现时顶动脚部按钮 */
+/* 升版提示:恒占一行 */
 .te-verbumpline {
   margin: 0; min-height: 20px; padding: 4px 22px 0;
   display: flex; align-items: center;
   border-top: 1px solid var(--border-subtle);
 }
-.te-verbump { font-size: var(--fs-label); line-height: 20px; color: var(--status-warning); }
+.te-verbump { font-size: var(--fs-label); line-height: 20px; color: var(--text-secondary); }
 
 .te-foot { display: flex; align-items: center; gap: 8px; padding: 10px 22px 18px; }
 .te-note { flex: 1; height: 28px; }

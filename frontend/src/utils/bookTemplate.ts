@@ -1,22 +1,32 @@
 // 模板(BookDef) → 现有列结构的映射 + extra_fees 口袋列平铺/收回(BOOK-WORKBENCH-SPEC §1/§3)。
 // 目标形状:台账 = ledgerColumns.ts 的 ColumnModel;附表10 = sales-income/layout.ts 的 Group/Leaf。
-import type { BookDef } from '../types/book'
+import type { ArchivedCol, BookDef } from '../types/book'
 import { customColIds } from '../types/book'
 import type { ColumnModel, ColumnGroup, ColumnKey, LeafColumn } from './ledgerColumns'
 import type { Group, Leaf } from '../views/sales-income/layout'
 import type { S10ColId } from '../types/s10'
 
-/** 自定义列 id 全集(含 hidden——合计口径含隐藏列,与后端 ExtraFees.sum 全口袋一致)。 */
-export const extraColIds = customColIds
+/**
+ * 自定义列 id 全集(含 hidden——合计口径含隐藏列,与后端 ExtraFees.sum 全口袋一致)。
+ * archived = 本月归档列:它可能已被从模板里删掉(P5 之后删列不再有守卫),不在 def 里。
+ * 合计与保存两处口径都得带上它——保存走 extraFees 整包替换,漏掉就把这笔历史钱清成 null(spec §2)。
+ */
+export function extraColIds(def: BookDef, archived: ArchivedCol[] = []): string[] {
+  const ids = customColIds(def)
+  const missing = archived.map(a => a.id).filter(id => !ids.includes(id))
+  return missing.length ? [...ids, ...missing] : ids
+}
 
 const DEFAULT_W = 96
+
+const ARCHIVED_GROUP = '已归档'
 
 /**
  * 模板 → 台账 ColumnModel。费用列来自 def.groups(hidden 跳过,整组隐藏则丢组);
  * fixedLeft(tenantName/balancePrev)与 fixedRight(totalReceivable/totalCollected/balanceEnd/note)
  * 不在模板里,照抄 lgColumns 现状。组名中的 MON 占位替换为 `${prev}月`(与 layout.ts 约定一致)。
  */
-export function toLedgerColumns(def: BookDef, prev: number): ColumnModel {
+export function toLedgerColumns(def: BookDef, prev: number, archived: ArchivedCol[] = []): ColumnModel {
   const groups: ColumnGroup[] = []
   for (const g of def.groups) {
     const cols: LeafColumn[] = g.cols.filter(c => !c.hidden).map(c => ({
@@ -27,6 +37,14 @@ export function toLedgerColumns(def: BookDef, prev: number): ColumnModel {
     }))
     if (cols.length === 0) continue
     groups.push({ name: (g.label ?? '').replace('MON', prev + '月'), cols })
+  }
+  // hidden 的语义是「不再接受新录入」,不是「藏起已经发生的钱」——
+  // 藏起来会让屏上的应收合计永远对不上明细(recalc 全口袋照加,见 spec §2)
+  if (archived.length) {
+    groups.push({
+      name: ARCHIVED_GROUP,
+      cols: archived.map(a => ({ key: a.id as ColumnKey, label: a.label, w: DEFAULT_W, readonly: true })),
+    })
   }
   return {
     fixedLeft: [
@@ -48,7 +66,7 @@ export function toLedgerColumns(def: BookDef, prev: number): ColumnModel {
  * (= layout.ts「无一级表头直通列」写法);elec/water 表头着色由语义槽推导(整组同槽才标);
  * MON 占位由 S10Table 渲染时自行替换,此处保留原样。
  */
-export function toS10Layout(def: BookDef): Group[] {
+export function toS10Layout(def: BookDef, archived: ArchivedCol[] = []): Group[] {
   const out: Group[] = []
   for (const g of def.groups) {
     const visible = g.cols.filter(c => !c.hidden)
@@ -69,6 +87,13 @@ export function toS10Layout(def: BookDef): Group[] {
     if (visible.every(c => c.slot === 'elec')) grp.elec = true
     if (visible.every(c => c.slot === 'water')) grp.water = true
     out.push(grp)
+  }
+  // 归档列同台账那一组:两屏共用 ExtraFees.sum,显示侧也得同修(spec §2)
+  if (archived.length) {
+    out.push({
+      label: ARCHIVED_GROUP,
+      leaves: archived.map(a => ({ colId: a.id as S10ColId, label: a.label, readonly: true })),
+    })
   }
   return out
 }

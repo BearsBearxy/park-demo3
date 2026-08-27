@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -121,5 +122,58 @@ class TemplateDefTest {
         TemplateDef.Col shopRent = TemplateDef.flatten(ledger).stream()
             .filter(c -> c.id().equals("shopRent")).findFirst().orElseThrow();
         assertThat(shopRent.aliases()).contains("宿舍区租金");
+    }
+
+    private static TemplateDef.Def defOf(String json) { return TemplateDef.parse(json); }
+
+    /** 三列基准:两个标准列 + 一个自定义列,足够覆盖 新增/改名/别名/隐藏/换槽 五类改动 */
+    private static String base3() {
+        return "{\"groups\":[{\"id\":\"g1\",\"label\":\"组一\",\"cols\":["
+            + "{\"id\":\"factoryRent\",\"std\":true,\"label\":\"厂房租金\",\"aliases\":[],\"slot\":\"rent\",\"hidden\":false,\"w\":null},"
+            + "{\"id\":\"shopRent\",\"std\":true,\"label\":\"商铺、宿舍租金\",\"aliases\":[],\"slot\":\"rent\",\"hidden\":false,\"w\":null}"
+            + "]}]}";
+    }
+
+    @Test
+    void changeSet_emptyForIdenticalDefs() {
+        assertThat(TemplateDef.changeSet(defOf(base3()), defOf(base3()))).isEmpty();
+    }
+
+    @Test
+    void changeSet_ignoresColumnWidth() {
+        String widened = base3().replace("\"label\":\"厂房租金\",\"aliases\":[],\"slot\":\"rent\",\"hidden\":false,\"w\":null",
+                                         "\"label\":\"厂房租金\",\"aliases\":[],\"slot\":\"rent\",\"hidden\":false,\"w\":180");
+        assertThat(TemplateDef.changeSet(defOf(base3()), defOf(widened))).isEmpty();
+    }
+
+    @Test
+    void changeSet_catchesLabelAliasHiddenSlotAndNewColumn() {
+        String changed = "{\"groups\":[{\"id\":\"g1\",\"label\":\"组一\",\"cols\":["
+            + "{\"id\":\"factoryRent\",\"std\":true,\"label\":\"厂房租金\",\"aliases\":[\"厂租\"],\"slot\":\"rent\",\"hidden\":true,\"w\":null},"
+            + "{\"id\":\"shopRent\",\"std\":true,\"label\":\"商铺租金\",\"aliases\":[],\"slot\":\"misc\",\"hidden\":false,\"w\":null},"
+            + "{\"id\":\"c_tax\",\"std\":false,\"label\":\"税费\",\"aliases\":[],\"slot\":\"other\",\"hidden\":false,\"w\":null}"
+            + "]}]}";
+        Set<String> cs = TemplateDef.changeSet(defOf(base3()), defOf(changed));
+        assertThat(cs).hasSize(5);   // 别名 + 隐藏 + 改名 + 换槽 + 新增列
+    }
+
+    @Test
+    void chainOrdered_trueWhenStrictlyNested_falseWhenSiblingsDiverge() {
+        // v1=base, v2=base+改名, v3=v2+新增列 → 严格包含
+        String v2 = base3().replace("商铺、宿舍租金", "商铺租金");
+        String v3 = v2.replace("\"hidden\":false,\"w\":null}"
+                + "]}]}",
+              "\"hidden\":false,\"w\":null},"
+                + "{\"id\":\"c_tax\",\"std\":false,\"label\":\"税费\",\"aliases\":[],\"slot\":\"other\",\"hidden\":false,\"w\":null}"
+                + "]}]}");
+        TemplateDef.Def base = defOf(base3());
+        assertThat(TemplateDef.chainOrdered(List.of(defOf(base3()), defOf(v2), defOf(v3)), base)).isTrue();
+
+        // 互不包含:一个改名、一个换槽,谁也不含谁
+        String sibA = base3().replace("商铺、宿舍租金", "商铺租金");
+        String sibB = base3().replace("\"slot\":\"rent\",\"hidden\":false,\"w\":null},"
+                + "{\"id\":\"shopRent\"", "\"slot\":\"misc\",\"hidden\":false,\"w\":null},"
+                + "{\"id\":\"shopRent\"");
+        assertThat(TemplateDef.chainOrdered(List.of(defOf(base3()), defOf(sibA), defOf(sibB)), base)).isFalse();
     }
 }

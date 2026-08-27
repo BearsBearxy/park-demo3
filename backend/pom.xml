@@ -62,15 +62,16 @@
         </configuration>
       </plugin>
       <!-- ponytail: api.version=1.44 required on Docker Desktop 29.x + Windows
-           (docker-java shaded in Testcontainers defaults to 1.32, rejected with 400).
-           forkedProcessTimeoutInSeconds=900 allows Testcontainers' ~3.5 min MySQL startup
-           on slow Windows/Docker cold-start while restoring CI kill ceiling -->
+           (docker-java shaded in Testcontainers defaults to 1.32, rejected with 400). -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <argLine>-Dapi.version=1.44</argLine>
-          <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
+          <!-- 冷启动一次全量:testcontainers 拉起 MySQL 8 + 跑完 110 个 Flyway 迁移,
+               Windows/WSL2 上实测 15+ min。900s 会在 0 失败的情况下把构建判成超时失败,
+               让"全量绿"这道门永远合不上 —— 给足余量,真卡死仍有兜底 -->
+          <forkedProcessTimeoutInSeconds>2400</forkedProcessTimeoutInSeconds>
           <includes>
             <include>**/*Test.java</include>
             <include>**/*Tests.java</include>

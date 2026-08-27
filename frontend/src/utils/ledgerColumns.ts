@@ -11,6 +11,7 @@ export interface LeafColumn {
   label: string
   w: number
   kind?: 'text' | 'num' | 'sum' | 'bal' | 'note'
+  readonly?: boolean          // 归档列:只显示已发生的钱,不接受新录入(bookTemplate.ts §2)
 }
 export interface ColumnGroup {
   name: string

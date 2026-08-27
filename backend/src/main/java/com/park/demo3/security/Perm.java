@@ -38,10 +38,14 @@ public final class Perm {
     // 第 16 点(2026-08-24 用户拍板):账册模板编辑(改列名/别名/增删列/升版/回滚)——
     // 模板入口移出页面编辑模式独立成配置面板,面板内有自己的编辑门走本权限;查看历史版本全员可看
     public static final String BOOK_TEMPLATE_EDIT  = "book-template:edit";
+    // 第 17 点(2026-08-26 用户拍板):更换账册版本 —— 换一套别人的列,与第 16 点「在本月微调列名」
+    // 是两种风险,故分权。已录入的月份两者都拒(录入即冻结),这个点只对空月有意义
+    public static final String BOOK_TEMPLATE_SWITCH = "book-template:switch";
 
-    /** 全部 16 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
+    /** 全部 17 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
     public static final List<String> ALL = List.of(
-        MASTER_EDIT, COMPANY_MANAGE, BOOK_TEMPLATE_EDIT, CONTRACT_EDIT, PARAM_POLICY_EDIT, PARAM_MONTHLY_EDIT,
+        MASTER_EDIT, COMPANY_MANAGE, BOOK_TEMPLATE_EDIT, BOOK_TEMPLATE_SWITCH,
+        CONTRACT_EDIT, PARAM_POLICY_EDIT, PARAM_MONTHLY_EDIT,
         METER_MASTER_EDIT, METER_READING_EDIT, BILLING_RUN_EDIT, BILLING_ISSUE_EDIT,
         ENTRY_EDIT, REPORT_EDIT, SYSTEM_VIEW, SYSTEM_EDIT, LOCK_TAKEOVER, ELEVATE_REQUEST);
 
@@ -70,6 +74,7 @@ public final class Perm {
         new Meta(MASTER_EDIT,        "主数据",          "楼栋、单元、租户、公司改名与收款账户的档案维护"),
         new Meta(COMPANY_MANAGE,     "公司/账册管理",   "新增与删除记账公司（建司即建台账册；删除连同其全部台账、报表数据，不可恢复）"),
         new Meta(BOOK_TEMPLATE_EDIT, "账册模板编辑",     "改列名/别名/列宽、增删自定义列、隐藏与列序（升版）、回滚版本；查看历史版本不需此权限"),
+        new Meta(BOOK_TEMPLATE_SWITCH, "更换账册版本", "为某个月份切换使用哪一版账册模板;已录入数据的月份不可切"),
         new Meta(CONTRACT_EDIT,      "合同",            "新增、编辑、续签、终止、删除；含租金计费行（单价口径）"),
         new Meta(PARAM_POLICY_EDIT,  "计费口径",        "常量与规则参数、公摊规则、电价配置、收款指引、催缴单系数簿"),
         new Meta(PARAM_MONTHLY_EDIT, "月度计费录入",    "每月照抄供电局账单的 13 项电价与调整量；不给这项，催缴单出不了账"),

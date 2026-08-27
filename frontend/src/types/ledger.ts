@@ -1,5 +1,6 @@
 // Ledger DTOs — shapes mirror backend records (spec §4.1/§4.2). JSON camelCase ⇄ Java record.
 // 21 fee columns are flattened onto LedgerRowDTO/LedgerFooter as BigDecimal→number.
+import type { ArchivedCol } from './book'
 
 export interface CompanyDTO {
   id: number
@@ -85,6 +86,7 @@ export interface LedgerMonthDTO {
   prevMonth: number
   rows: LedgerRowDTO[]
   footer: LedgerFooter
+  archivedCols?: ArchivedCol[]   // 归档列(spec §2):本月有钱但模板不渲染的自定义列,追加成只读列
 }
 
 // PUT save body (spec §4.2): derived columns omitted, backend recomputes.
