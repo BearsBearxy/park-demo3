@@ -31,8 +31,10 @@ export const ledgerApi = {
   bindTenant: (tenantName: string, tenantId: number): Promise<BindResultDTO> =>
     http.put('/ledger/bind-tenant', { tenantName, tenantId }),
   // 行级绑定/换绑/解绑(tenantId=null 即解绑;同月撞车 409)
-  bindRow: (rowId: number, tenantId: number | null): Promise<LedgerRowDTO> =>
-    http.patch(`/ledger/rows/${rowId}/tenant`, { tenantId }),
+  // addAlias:把本行账面名记进该租户别名,今后导入自动认。**默认不记** ——
+  // 自动记会把源册里的错别字固化成系统认可的写法,必须由用户显式勾选
+  bindRow: (rowId: number, tenantId: number | null, addAlias = false): Promise<LedgerRowDTO> =>
+    http.patch(`/ledger/rows/${rowId}/tenant`, { tenantId, addAlias }),
   // 行级改账面名(只动快照;未绑定行改对名字自动配档)
   renameRow: (rowId: number, tenantName: string): Promise<LedgerRowDTO> =>
     http.patch(`/ledger/rows/${rowId}/tenant-name`, { tenantName }),

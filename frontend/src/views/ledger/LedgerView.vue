@@ -597,9 +597,9 @@ async function refreshRowIdentity() {
       }
   }
 }
-async function onBindRow(rowId: number, tenantId: number | null) {
+async function onBindRow(rowId: number, tenantId: number | null, addAlias = false) {
   try {
-    await ledgerApi.bindRow(rowId, tenantId)
+    await ledgerApi.bindRow(rowId, tenantId, addAlias)
     await refreshRowIdentity()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '绑定失败')

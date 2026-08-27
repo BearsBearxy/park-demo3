@@ -28,12 +28,14 @@ const props = defineProps<{
   /** 编辑模式 + entry:edit 才能绑/解/换(EDIT-MODE §1:浏览态只显示状态) */
   canBind?: boolean
   /** 行级绑定动作(抄表 commitTenant 同款:选中即提交,失败由父层回滚提示) */
-  onBind?: (rowId: number, tenantId: number | null) => Promise<void>
+  onBind?: (rowId: number, tenantId: number | null, addAlias?: boolean) => Promise<void>
   /** 行级改账面名(抄表「企业名称原文」同款:change 即提交;未绑定行改对名字自动配档) */
   onRename?: (rowId: number, tenantName: string) => Promise<void>
 }>()
 const emit = defineEmits<{ close: [] }>()
 
+// 勾了才把账面名记进租户别名(默认关);每次提交后复位,不跨行残留
+const rememberName = ref(false)
 // 绑定中防重(评审A4同款:锁住整个请求在途期)
 const binding = ref(false)
 const boundName = computed(() =>
@@ -45,7 +47,9 @@ async function commitBind(tenantId: number | null) {
   if (!r || r.id == null || !props.onBind || binding.value) return
   if (tenantId === r.tenantId) return
   binding.value = true
-  try { await props.onBind(r.id, tenantId) } finally { binding.value = false }
+  // 只有"绑上去"才谈得上记名字;解绑不记
+  try { await props.onBind(r.id, tenantId, tenantId != null && rememberName.value) }
+  finally { binding.value = false; rememberName.value = false }
 }
 async function commitRename(e: Event) {
   const r = props.row
@@ -127,6 +131,14 @@ const balTone = computed(() => {
           <Button v-if="row.tenantId != null" size="sm" variant="ghost" :disabled="binding"
                   @click="commitBind(null)">解绑</Button>
         </div>
+        <!-- 默认不勾(2026-08-27 拍板):自动记会把源册的错别字固化成系统认可的写法。
+             这一下点击就是让人分辨「老板名/曾用名」(该记)与「这次打错了」(该去改源册)。 -->
+        <label v-if="canBind && tenants && row.tenantId == null" class="lg-dw-remember">
+          <input type="checkbox" v-model="rememberName" :disabled="binding" />
+          <span>今后源册里写「{{ row.tenantName }}」都认到所选租户
+            <em>会写入该租户别名,影响所有公司、所有月份的导入</em>
+          </span>
+        </label>
         <div v-else class="lg-dw-bind-ro">
           <template v-if="row.tenantId != null">
             已绑定:<b>{{ boundName ?? '…' }}</b>
@@ -190,4 +202,8 @@ const balTone = computed(() => {
 .lg-dw-row:last-child { border-bottom:none; }
 .lg-dw-row .fee { color:var(--text-secondary); }
 .lg-dw-row .amt { font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); font-weight:var(--fw-medium); }
+/* 记住账面名:默认不勾。说明文字压小压灰 —— 它是后果告知,不是招徕 */
+.lg-dw-remember { display:flex; align-items:flex-start; gap:7px; margin-top:8px; cursor:pointer; font-size:var(--fs-label); color:var(--text-secondary); }
+.lg-dw-remember input { margin-top:2px; flex:0 0 auto; accent-color:var(--hue-blue); cursor:pointer; }
+.lg-dw-remember em { display:block; font-style:normal; font-size:var(--fs-micro); color:var(--text-disabled); margin-top:2px; }
 </style>
