@@ -5,6 +5,7 @@
 // 进宽表必点月卡(§7-1 明确选期门,pick 自带年份);表格态「换期」回矩阵。
 // 旧动线(公司picker→年份门→月历)已废,LedgerCompanyPicker/LedgerMonthGrid 不再引用(文件保留待主线拍板)。
 import { ref, computed, watch, onMounted, onDeactivated } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
@@ -94,11 +95,24 @@ const focusTenant = ref('')
 // KeepAlive 停用时关掉全部 Teleport 浮层(行明细抽屉/问题抽屉/模板编辑器/列映射面板):
 // 它们挂在 body 上,不随页面实例停用移出,会浮到别的页签上(审计 VUE-03 补丁范式)。
 // 列映射面板还挂着导入解析的 pending Promise,必须 resolve(null) 让导入按取消收场。
+// 停用时必须关(上面 VUE-03 的理由),但**关掉不等于忘掉**:去租户管理加个别名再回来,
+// 抽屉该还在原处,而不是把人丢回月份列表重新翻一遍(2026-08-28 用户拍板)。
+const resume = { rowKey: null as number | null, issues: false }
 onDeactivated(() => {
+  resume.rowKey = drawerRowKey.value
+  resume.issues = issuesOpen.value
   drawerRowKey.value = null
   issuesOpen.value = false
+  // 模板面板**故意不恢复**:它的编辑锁在面板内部随 open 释放(watch props.open → lock.release),
+  // 恢复只会把面板开在无锁状态 —— 这期间锁可能已被别人拿走。要改模板重新点一次即可。
   tplOpen.value = false
+  // 列映射面板同样不恢复:它挂着导入解析的 pending Promise,已按取消 resolve(null) 收场,
+  // 那次导入就此结束,再开一个空面板只会让人以为还能继续。
   if (mapOpen.value) finishMap(null)
+})
+onReactivated(() => {
+  drawerRowKey.value = resume.rowKey
+  issuesOpen.value = resume.issues
 })
 onMounted(async () => {
   await Promise.all([loadBooks(), loadCompanies()])
@@ -617,8 +631,11 @@ async function onRenameRow(rowId: number, tenantName: string) {
 const bindOptions = computed(() => toBindOptions(allTenants.value))
 
 function gotoTenants() {
-  issuesOpen.value = false
-  tabs.open('tenants')
+  // pin 打开 = 真开一个新页签。不带 pin 会进**预览槽**,而预览槽全局只有一个 ——
+  // 去加个别名就把台账那页顶没了,回来还得重新翻到这个月(2026-08-28 用户拍板)。
+  // 也不能用 openFresh:那会 bump epoch 让 KeepAlive 丢掉台账实例,抽屉与月份一起没。
+  // 这里不再关抽屉 —— onDeactivated 会关,并且记下来等回来复原。
+  tabs.open('tenants', { pin: true })
   router.push('/tenants')
 }
 </script>
