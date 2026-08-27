@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import TemplateEditorPanel from './TemplateEditorPanel.vue'
 import { booksApi } from '@/api/books'
+import { locksApi } from '@/api/locks'
+import { usePresenceStore } from '@/stores/presence'
 import type { Book, BookDef, TemplateVersion } from '../../types/book'
 
 // 账册模板面板(BOOK-WORKBENCH-SPEC §3)。双模式:默认只读查看,canEdit 才能进编辑态。
@@ -14,15 +16,15 @@ vi.mock('@/api/books', () => ({ booksApi: { versionDefinition: vi.fn() } }))
 // 不 mock 的话 locksApi 走真 axios,jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
 vi.mock('@/api/locks', () => ({
   locksApi: {
-    acquire: () => Promise.resolve({ granted: true, holder: null }),
-    release: () => Promise.resolve(),
-    heartbeat: () => Promise.resolve({ evicted: null }),
-    takeover: () => Promise.resolve({ granted: true, holder: null }),
-    releaseOnUnload: () => {},
+    acquire: vi.fn(() => Promise.resolve({ granted: true, holder: null })),
+    release: vi.fn(() => Promise.resolve()),
+    heartbeat: vi.fn(() => Promise.resolve({ evicted: null })),
+    takeover: vi.fn(() => Promise.resolve({ granted: true, holder: null })),
+    releaseOnUnload: vi.fn(),
   },
 }))
 // 面板通过 useEditLock 用到在场 store(Pinia)
-beforeEach(() => { setActivePinia(createPinia()) })
+beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
 
 const makeDef = (): BookDef => ({
   groups: [
@@ -75,7 +77,8 @@ const chain: TemplateVersion[] = [
 ]
 
 function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData?: boolean;
-                           book?: Book; versions?: TemplateVersion[] } = {}) {
+                           book?: Book; versions?: TemplateVersion[];
+                           year?: number; month?: number } = {}) {
   return mount(TemplateEditorPanel, {
     props: {
       open: true,
@@ -84,6 +87,10 @@ function mountPanel(over: { canEdit?: boolean; canSwitch?: boolean; monthHasData
       canEdit: over.canEdit ?? true,
       canSwitch: over.canSwitch ?? true,
       monthHasData: over.monthHasData ?? false,
+      // 锁键 = pin 键 = (册, 年, 月)。面板此前不知道自己在哪个月,锁只好按册加 ——
+      // 而 saveTemplate / pin 两个写口带的都是 (bookId, year, month)。
+      year: over.year ?? 2026,
+      month: over.month ?? 3,
     },
     // Teleport 落到组件树内,便于 DOM 查询
     global: { stubs: { teleport: true } },
@@ -286,6 +293,55 @@ describe('TemplateEditorPanel · 别名录入', () => {
     await add('别名乙')
     expect(w.findAll('.te-colrow')[0].findAll('.te-chip').map(c => c.text()))
       .toEqual(['厂房租金', '别名甲', '别名乙'])
+    w.unmount()
+  })
+})
+
+describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
+  it('占的是本月那把锁,不是整本册的', async () => {
+    // PR #9 之后写入单位是 (册,年,月):saveTemplate / pin 带的都是这三个。
+    // 锁到册会平白挡住别人改同一册的别的月份 —— 而设计 P4 明说「同册其他月份不动」。
+    const acquire = vi.mocked(locksApi.acquire)
+    const w = mountPanel({ year: 2026, month: 3 })
+    await w.find('button.te-editbtn').trigger('click')
+    await flushPromises()
+
+    expect(acquire).toHaveBeenCalledWith('book-template:1:2026-03')
+    w.unmount()
+  })
+
+  it('别人正改本月模板时,版本选择器要锁上 —— 它是编辑态外的写入口', async () => {
+    // te-verpick 的 @change → emit('pin') → booksApi.pin(bookId, ver, year, month),
+    // **真写服务端**。可它只看 monthHasData / canSwitch,不看 mode==='edit'、也不看锁。
+    // 于是 A 握着本月模板锁在编辑时,B 能同时把这个月切到另一个版本 ——
+    // 和「公共电核算待处理入口直通编辑池」是同一类旁路(EDIT-MODE-SPEC v4)。
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
+      scope: 'book-template:1:2026-03', label: '账册模板', mode: 'edit',
+      sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await flushPromises()
+
+    expect(w.find('.te-verpick').attributes('disabled'),
+           '别人在改本月模板,不许绕过锁切版本').toBeDefined()
+    w.unmount()
+  })
+
+  it('别人改的是**别的月份** → 本月的选择器照常可用(上一条不是恒真)', async () => {
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
+      scope: 'book-template:1:2026-07', label: '账册模板', mode: 'edit',
+      sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    const w = mountPanel({ year: 2026, month: 3, book: { ...baseBook, ver: 2, latestVer: 4 }, versions: chain })
+    await flushPromises()
+
+    expect(w.find('.te-verpick').attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 })

@@ -46,12 +46,24 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
     })
   })
 
-  describe('账册模板（第 16 权限点，§3.1 立表时还没有它）', () => {
-    it('锁到账册，不锁到期 —— 模板是跨期的', () => {
-      // 改模板会改动这本账册**所有月份**的列结构（TemplateDef 有版本与回滚）。
-      // 锁到某一个月的话，另一个人在别的月改同一份模板，照样对撞。
-      expect(S.bookTemplate(7)).toBe('book-template:7')
-      expect(S.bookTemplate(7)).not.toBe(S.bookTemplate(8))
+  describe('账册模板（第 16/17 权限点）', () => {
+    it('锁到 (册, 年, 月) —— 跟着 pin 键走', () => {
+      // ⚠ 这条 2026-08-27 改过口径。初版锁到**账册**，理由写的是
+      //   「改模板会改动这本账册所有月份的列结构」——
+      //   那在 PR #9（一条全局链 + pin 按月独立）之后**不再成立**：
+      //   设计 P4 白纸黑字「改完存成新版本，只把当前月切到新版；同册其他月份、其他册一律不动」。
+      //
+      //   真正会被两个人抢的是**那一个月的 pin**（saveTemplate / pin 两个写口
+      //   带的都是 (bookId, year, month)）。锁到册就多锁了：
+      //   A 改 3 月模板会平白挡住 B 改 7 月，而它们根本不碰同一份东西。
+      expect(S.bookTemplate(7, 2026, 3)).toBe('book-template:7:2026-03')
+      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(7, 2026, 7))
+      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(8, 2026, 3))
+    })
+
+    it('月份补零 —— 不补的话 2026-3 与 2026-03 是两把锁', () => {
+      expect(S.bookTemplate(7, 2026, 3)).toBe(S.bookTemplate(7, 2026, 3))
+      expect(S.bookTemplate(7, 2026, 12)).toBe('book-template:7:2026-12')
     })
   })
 
@@ -76,7 +88,7 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
         S.salary(2025, 6), S.s10(1, 2025, 6),
         S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
         S.pnl('ops', 2025), S.pnl('expense', 2025),
-        S.bookTemplate(7),
+        S.bookTemplate(7, 2026, 3),
       ]
       const covers = (prefix: string) => produced.some(
         (sc) => sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-'))

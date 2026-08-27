@@ -38,6 +38,10 @@ const props = defineProps<{
   canEdit: boolean       // 宿主传 auth.can('book-template:edit')
   canSwitch: boolean     // 宿主传 auth.can('book-template:switch')(第17权限点)
   monthHasData: boolean  // 本月已录入 → 模板定稿(P6 冻结:不许切版、不许编辑)
+  // 锁键 = pin 键 = (册, 年, 月)。面板此前不知道自己在哪个月,锁只好按册加 ——
+  // 而 saveTemplate / pin 两个写口带的都是这三个。台账屏矩阵态下 month 为 null。
+  year: number | null
+  month: number | null
 }>()
 
 const emit = defineEmits<{
@@ -78,13 +82,16 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
 }, { immediate: true })
 
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
-// 这个面板此前**完全没有锁** —— 两个人能同时改同一本账册的模板，后保存的整份覆盖，
-// 而模板决定这本账册所有月份的列结构，覆盖掉的代价比一个月的台账还大。
-// 作用域锁到**账册**不锁到期,理由同上。
+// 这个面板此前**完全没有锁** —— 两个人能同时改同一份模板,后保存的整份覆盖。
+// 作用域锁到 **(册, 年, 月)**,与 saveTemplate / pin 两个写口的键一致(理由见 lockScopes.ts)。
+const lockScope = computed(() =>
+  props.book && props.year != null && props.month != null
+    ? S.bookTemplate(props.book.id, props.year, props.month)
+    : null)
 const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
                           () => props.canEdit)
 const { lockedBy, evictedBy } = lock
-const heldByOther = lock.watchScope(() => (props.book ? S.bookTemplate(props.book.id) : null))
+const heldByOther = lock.watchScope(() => lockScope.value)
 // 退出的路不止一条(点完成/取消/关面板/换账册),用 watch 兜住 —— 漏一条就是一把没人认领的锁
 watch(() => mode.value, (m) => { if (m !== 'edit') lock.release() })
 watch(() => props.open, (o) => { if (!o) lock.release() })
@@ -94,7 +101,8 @@ async function enterEdit() {
   // 冻结先判:本地判断不花钱,已录入的月份连锁都不必去占 —— 占到了也进不去(spec 2026-08-26 P6)
   if (!props.book || !props.canEdit || props.monthHasData) return
   // 权限齐 ≠ 进得去:先占到锁才进(与全站其余 19 个写面同一条规矩)
-  if (!(await lock.acquire(S.bookTemplate(props.book.id)))) return
+  if (!lockScope.value) return          // 没定到月就没有可锁的东西,也就不该进编辑态
+  if (!(await lock.acquire(lockScope.value))) return
   backToCurrent()   // 正在看历史版:先切回现行版(编辑只对现行版)
   draft.value = JSON.parse(JSON.stringify(props.book.definition)) as BookDef
   note.value = ''
@@ -225,9 +233,14 @@ function fmtTime(s: string): string {
             <p v-if="mode === 'edit'">本月生效 v{{ book.ver }} · 保存将存成新版本(任何改动都升版),并只把本月切到新版;同册其他月份不动</p>
             <p v-else>本月生效 v{{ book.ver }} · 点右侧版本项可查看历史版定义(只读)</p>
           </div>
-          <select class="te-verpick" :disabled="monthHasData || !canSwitch"
+          <!-- ⚠ heldByOther 也要挡:这个下拉的 @change 会走 booksApi.pin(册,版本,年,月),
+               是**真写服务端**,而它长在编辑态之外 —— 不挡的话 A 正握着本月模板锁在编辑,
+               B 能同时把这个月切到别的版本,锁形同虚设(EDIT-MODE-SPEC v4:写入口不许绕过编辑态)。 -->
+          <select class="te-verpick" :disabled="monthHasData || !canSwitch || !!heldByOther"
                   :value="String(book.ver)"
-                  :title="monthHasData ? frozenHint : '选择本月使用的账册版本'"
+                  :title="monthHasData ? frozenHint
+                          : heldByOther ? `${heldByOther.displayName} 正在改本月模板,改完才能切版本`
+                          : '选择本月使用的账册版本'"
                   @change="emit('pin', Number(($event.target as HTMLSelectElement).value))">
             <option v-for="v in versions" :key="v.id" :value="String(v.ver)">
               v{{ v.ver }}{{ v.ver === book.latestVer ? ' · 最新' : '' }}{{ v.note ? ' — ' + v.note : '' }}
@@ -348,7 +361,7 @@ function fmtTime(s: string): string {
       </div>
     </div>
   </Teleport>
-  <FPTakeoverDrawer :holder="lockedBy" :scope="book ? S.bookTemplate(book.id) : ''"
+  <FPTakeoverDrawer :holder="lockedBy" :scope="lockScope ?? ''"
                     :what="`${book?.name ?? ''} 账册模板`"
                     @close="lockedBy = null" @taken="onTaken" />
   <FPEvictedDialog :eviction="evictedBy" :what="`${book?.name ?? ''} 账册模板`"

@@ -701,6 +701,8 @@ function onImportClick() {
       :can-edit="auth.can('book-template:edit')"
       :can-switch="auth.can('book-template:switch')"
       :month-has-data="monthData?.recorded === true"
+      :year="year"
+      :month="month"
       @save="onTplSave"
       @pin="onTplPin"
       @close="tplOpen = false"

@@ -26,12 +26,24 @@ export const S = {
   elecCost: (year: number, month: number) => `elec-cost:${year}-${pad2(month)}`,
 
   /**
-   * 账册模板（第 16 权限点 book-template:edit，V107/V109 加的 —— §3.1 立表时还没有它）。
+   * 账册模板（第 16/17 权限点 book-template:edit / :switch）。
    *
-   * **锁到账册，不锁到期**：改模板会改动这本账册**所有月份**的列结构（TemplateDef 带版本与回滚）。
-   * 锁到某一个月的话，另一个人在别的月改同一份模板照样对撞。
+   * **锁到 (册, 年, 月)** —— 跟着 pin 键走。
+   *
+   * ⚠ 2026-08-27 改过口径。初版锁到**账册**，理由写的是「改模板会改动这本账册所有月份的
+   *   列结构」。那句话在 PR #9（模板归并成一条全局链 + pin 按月独立，V110/V111/V112）之后
+   *   **不再成立**：设计 P4 白纸黑字「改完存成新版本，只把当前月切到新版；
+   *   同册其他月份、其他册一律不动」，面板自己的头部文案也是这么写的。
+   *
+   *   真正会被两个人抢的是**那一个月的 pin**：`booksApi.saveTemplate(bookId, def, y, m)`
+   *   与 `booksApi.pin(bookId, ver, y, m)` 两个写口带的都是这三个键。
+   *   继续锁到册就是多锁 —— A 改 3 月模板会平白挡住 B 改 7 月，而它们根本不碰同一份东西。
+   *
+   *   链本身（版本号 链尾+1、只追加不改写）不进锁：P4 明说版本就是「一套列的快照」，
+   *   两条并行的快照是**有意允许**的，不是丢失更新。
    */
-  bookTemplate: (bookId: number) => `book-template:${bookId}`,
+  bookTemplate: (bookId: number, year: number, month: number) =>
+    `book-template:${bookId}:${year}-${pad2(month)}`,
 
   // ── 按年锁（§3.1 D：表档案全局无期，抽屉可任意补录历史月，锁到月挡不住串写） ──
   meters: (year: number) => `meters:${year}`,

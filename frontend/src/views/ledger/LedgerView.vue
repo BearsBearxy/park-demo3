@@ -755,6 +755,8 @@ function gotoTenants() {
     :can-edit="auth.can('book-template:edit')"
     :can-switch="auth.can('book-template:switch')"
     :month-has-data="(monthDto?.rows ?? []).some(r => !r.carried)"
+    :year="year"
+    :month="month"
     @save="onTplSave"
     @pin="onTplPin"
     @close="tplOpen = false"
