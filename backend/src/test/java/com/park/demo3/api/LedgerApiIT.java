@@ -341,6 +341,35 @@ class LedgerApiIT extends AbstractMysqlIT {
                 .andReturn());
         assertThat((String) JsonPath.read(res, "$.data.errors[0].label")).isEqualTo("锐通电子");
         assertThat((String) JsonPath.read(res, "$.data.errors[0].reason")).contains("跳过");
+        assertThat((String) JsonPath.read(res, "$.data.errors[0].reason"))
+                .as("真全空的行,措辞照旧").contains("无费用/结余/收款/备注");
+    }
+
+    // 2026-08-27 用户反馈:整行只有上月结余的被跳过,提示却说「无…结余」—— 话说反了。
+    // 数据是对的(上月有该户 → 本月结余由上月期末派生,文件里那个值本就该忽略),
+    // 但这条提示让用户以为系统没看见他填的结余。跳过的理由要说成派生,不能说成"没有"。
+    @Test
+    void import_onlyBalancePrev_onDerivedSlot_skipReasonSaysDerivedNotEmpty() throws Exception {
+        // tenant 1 在 2026-05 有种子 → 06 月是派生位(上一自然月有账)
+        String res = utf8(mvc.perform(post("/api/ledger/companies/1/import")
+                .param("year", "2026").param("month", "6")
+                .header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":[{\"tenantName\":\"" + seededTenantName() + "\",\"balancePrev\":8888}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.imported").value(0))
+                .andReturn());
+        String reason = JsonPath.read(res, "$.data.errors[0].reason");
+        assertThat(reason).as("要说清是「派生」").contains("派生");
+        assertThat(reason).as("不能再说「无…结余」——这行明明有结余").doesNotContain("无费用/结余/收款/备注");
+    }
+
+    /** 2026-05 有种子的那个租户的账面名(派生位用例的前置)。 */
+    private String seededTenantName() throws Exception {
+        String may = utf8(mvc.perform(get("/api/ledger/companies/1/months/2026/5")
+                .header("Authorization", auth())).andExpect(status().isOk()).andReturn());
+        return JsonPath.read(may, "$.data.rows[0].tenantName");
     }
 
     // ── 结转虚行(2026-08-24 拍板):有上月账的空月,默认显示上月期末≠0 的户,费用列留空 ──

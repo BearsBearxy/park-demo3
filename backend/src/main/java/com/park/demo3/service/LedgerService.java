@@ -572,7 +572,14 @@ public class LedgerService {
                 for (BigDecimal v : row.extraFees().values())
                     if (v != null && v.signum() != 0) { hasValue = true; break; }
             if (!hasValue && existing == null) {
-                errors.add(new ImportError(i, name, "全零行(无费用/结余/收款/备注),已跳过"));
+                // 两种跳过要分开说(2026-08-27 用户反馈):整行只有上月结余、且落在派生位时,
+                // 沿用「无费用/结余/收款/备注」等于告诉用户"系统没看见你填的结余"——
+                // 实际是看见了、但本月结余以上月期末为准,文件里那个值本就不该采信。
+                boolean onlyDerivedBalance = !seedable
+                    && row.balancePrev() != null && row.balancePrev().signum() != 0;
+                errors.add(new ImportError(i, name, onlyDerivedBalance
+                    ? "本行只有上月结余,而本月结余由上月期末自动派生(以结余链为准),文件值不采信;无其他可导入内容,已跳过"
+                    : "全零行(无费用/结余/收款/备注),已跳过"));
                 continue;
             }
             // 未知自定义列 id 检查必须在任何实体写入之前(§4):existing 是 stored/storedSoft

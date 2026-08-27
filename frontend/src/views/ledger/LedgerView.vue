@@ -16,6 +16,7 @@ import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYea
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
 import type { CompanyDTO, YearMonthsDTO, LedgerOverviewDTO, LedgerMonthDTO, LedgerRowDTO, LedgerSaveRow } from '@/types/ledger'
+import { saveRowIdentity, overwriteTargets } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
 import type { Book, BookDef, TemplateVersion } from '@/types/book'
 import { flattenCols } from '@/types/book'
@@ -443,7 +444,7 @@ async function save() {
     const extraIds = book.value ? extraColIds(book.value.definition, monthDto.value?.archivedCols) : []
     const rows: LedgerSaveRow[] = draft.value.map(r => {
       const fees = Object.fromEntries(FEE_KEYS.map(k => [k, r[k]]))
-      const row = { id: r.id ?? undefined, tenantId: r.tenantId,
+      const row = { ...saveRowIdentity(r),
                     balancePrev: r.balancePrev, totalCollected: r.totalCollected, note: r.note, ...fees } as LedgerSaveRow
       if (extraIds.length) row.extraFees = extractExtras(r as unknown as Record<string, unknown>, extraIds)
       return row
@@ -455,7 +456,7 @@ async function save() {
       const orig = (monthDto.value?.rows ?? []).find(r => ledgerRowKey(r) === k)
       if (!orig) continue
       const zeros = Object.fromEntries(FEE_KEYS.map(kk => [kk, 0]))
-      const row = { id: orig.id ?? undefined, tenantId: orig.tenantId,
+      const row = { ...saveRowIdentity(orig),
                     balancePrev: 0, totalCollected: 0, note: null, ...zeros } as LedgerSaveRow
       if (extraIds.length) row.extraFees = Object.fromEntries(extraIds.map(id => [id, null]))
       rows.push(row)
@@ -518,8 +519,7 @@ async function onImportSections(picks: SectionPick[], fileName: string) {
 }
 
 async function runLedgerImport(recs: ImportRec[], fileName: string) {
-  const existing = new Set((monthDto.value?.rows ?? []).map(r => r.tenantName))
-  const n = new Set(recs.map(r => String(r.tenantName ?? '').trim()).filter(name => existing.has(name))).size
+  const n = overwriteTargets(monthDto.value?.rows ?? [], recs.map(r => r.tenantName as string | null | undefined))
   if (n > 0 && !window.confirm(`本月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)) return
   try {
     importResult.value = await runImport('ledger', recs,
