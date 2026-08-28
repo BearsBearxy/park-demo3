@@ -56,6 +56,9 @@ public final class AllocPoolDTOs {
     public record MemberDiff(Integer ruleId, String poolName,
                              List<TenantCand> added, List<TenantCand> removed) {}
 
+    // 未入池的公摊表提醒(meter-diff):ownership=share + 当月有读数 + 未被任何池绑定
+    public record MeterDiff(Integer meterId, String label, Integer buildingId, String buildingName, String zone) {}
+
     public record PoolRow(
         Integer ruleId, String zone, String name,
         // V80 原册锚点:bookBlock=分带用的原册块名(逐字原文),bookKey=原册 A 列自然键(屏上池名称列优先显它)。

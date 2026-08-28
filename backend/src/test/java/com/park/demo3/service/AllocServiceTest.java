@@ -910,4 +910,15 @@ class AllocServiceTest {
         assertNull(AllocService.calcKind("p3", java.util.Map.of()));   // 没配 → null,不猜
         assertNull(AllocService.calcKind("dorm", flat));               // 别的期区的配置不串味
     }
+
+    // 「该摊没摊」只有 share 一种:tenant 户表自己付、park 园区自担本就不摊、
+    // infra 是总表、ops/register 不计费。报错了会天天弹,弹到没人看。
+    @Test
+    void needsPool_onlyUnboundShareMetersWithReading() {
+        assertTrue(AllocService.needsPool("share", true, false));    // 公摊表 + 有读数 + 没入池 → 报
+        assertFalse(AllocService.needsPool("share", true, true));    // 已入池 → 不报
+        assertFalse(AllocService.needsPool("share", false, false));  // 当月没读数 → 不报(还没抄到)
+        for (String o : java.util.List.of("tenant", "park", "infra", "ops", "register"))
+            assertFalse(AllocService.needsPool(o, true, false), o + " 不该进提醒条");
+    }
 }

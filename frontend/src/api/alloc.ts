@@ -272,6 +272,14 @@ export interface AllocMemberDiffDTO {
   added: AllocTenantCandDTO[]
   removed: AllocTenantCandDTO[]
 }
+// GET /api/alloc/meter-diff:未入池的公摊表(ownership=share + 当月有读数 + 未被任何池绑定)
+export interface AllocMeterDiffDTO {
+  meterId: number
+  label: string
+  buildingId: number | null
+  buildingName: string | null
+  zone: string
+}
 export interface AllocPoolRowDTO {
   ruleId: number
   zone: AllocZone
@@ -394,5 +402,7 @@ export const allocApi = {
     http.get('/alloc/pool-candidates', { params: { ym, buildingId, floor, side, method } }),
   memberDiff: (ym: string): Promise<AllocMemberDiffDTO[]> =>
     http.get('/alloc/member-diff', { params: { ym } }),
+  meterDiff: (ym: string): Promise<AllocMeterDiffDTO[]> =>
+    http.get('/alloc/meter-diff', { params: { ym } }),
   loss: (ym: string): Promise<AllocLossDTO> => http.get('/alloc/loss', { params: { ym } }),
 }

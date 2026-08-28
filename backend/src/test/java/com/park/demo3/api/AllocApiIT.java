@@ -1167,6 +1167,25 @@ class AllocApiIT extends AbstractMysqlIT {
                         org.hamcrest.Matchers.containsString("户因合同缺起止日期无法判定是否在租,未进入自动在租名册参与分摊"))));
     }
 
+    // 未入池的公摊表:只报 share 且当月有读数且没被任何池绑定的
+    @Test
+    void meterDiff_reportsUnboundShareMeterOnly() throws Exception {
+        int bid = building("IT三期创业大厦");
+        int lonely = locMeter("IT孤儿公摊表", bid, "四楼", "电表①");   // kind=elec zone=p1 ownership=share
+        reading(lonely, "2099-11", "0", "100");
+        String my = "$.data[?(@.meterId==" + lonely + ")]";
+        mvc.perform(get("/api/alloc/meter-diff").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath(my).isNotEmpty());
+        // 绑进一个池之后就不再报
+        int rule = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT池\",\"buildingId\":" + bid
+                + ",\"method\":\"floor\",\"coefficient\":1,\"feeKey\":\"share_elec_floor\",\"feeName\":\"走廊灯\","
+                + "\"meterIds\":[" + lonely + "],\"members\":[]}");
+        org.junit.jupiter.api.Assertions.assertTrue(rule > 0);
+        mvc.perform(get("/api/alloc/meter-diff").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath(my).isEmpty());
+    }
+
     // ── 园区级池受益人 fallback(用户 2026-07-30 拍板):不勾人=该期全园在租名册自动摊 ──
     // 此前 building_id IS NULL 的池 members=0 → area 分支 for 空转,全额静默挂亏(实测 9 池 11194 元无声无息)。
     // 锚点:AB=1.11416875;cost=r2(100×AB)=111.42;std=ROUND(100/1000×AB,2)=0.11;两户各 500㎡ → 55.00×2,盈亏 −1.42

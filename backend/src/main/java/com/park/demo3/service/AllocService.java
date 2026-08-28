@@ -2058,6 +2058,11 @@ public class AllocService {
     // 池可组成的表口径:公摊/园区自担/运营/基础设施(infra 由前端标注不预勾,契约已注明)
     private static final Set<String> POOL_OWNERSHIP = Set.of("share", "park", "ops", "infra");
 
+    /** 公摊表该进池却没进 = 这笔电费没人摊,且屏上不会有任何提示。只判 share。 */
+    static boolean needsPool(String ownership, boolean hasReading, boolean bound) {
+        return "share".equals(ownership) && hasReading && !bound;
+    }
+
     // 位置化表标签:「四楼西侧·电表①」——不再露内部标识名(用户 2026-07-30 拍板)
     // 电表标签(V73 补全)。原实现 head=spot?:name 只取「位置·表号」,B座天面 4 块表全变成「天面·电表①」,
     // 用户 2026-07-30 报障「给用户选择池里有哪些电表,全都是一个名字」—— 最能区分的三个字段都被扔了。
@@ -2301,6 +2306,23 @@ public class AllocService {
             if (added.isEmpty() && removed.isEmpty()) continue;
             out.add(new AllocPoolDTOs.MemberDiff(r.getId(), r.getName(), added, removed));
         }
+        return out;
+    }
+
+    // 未入池的公摊表提醒:ownership=share + 当月有读数 + 未被任何池绑定(§needsPool)
+    public List<AllocPoolDTOs.MeterDiff> meterDiff(String ym) {
+        requireYm(ym);
+        Ctx ctx = loadCtx(ym);                                 // 已按 outOfService(m, ym) 过滤停用表
+        Set<Integer> bound = new HashSet<>();
+        for (List<AllocRuleMeter> bs : ctx.bindsByRule().values())
+            for (AllocRuleMeter b : bs) bound.add(b.getMeterId());
+        List<AllocPoolDTOs.MeterDiff> out = new ArrayList<>();
+        for (Meter m : ctx.meterById().values())
+            if (needsPool(m.getOwnership(), ctx.readingByMeter().containsKey(m.getId()), bound.contains(m.getId())))
+                out.add(new AllocPoolDTOs.MeterDiff(m.getId(), meterLabel(m), m.getBuildingId(),
+                        ctx.buildingById().containsKey(m.getBuildingId())
+                            ? ctx.buildingById().get(m.getBuildingId()).getName() : null,
+                        m.getZone()));
         return out;
     }
 

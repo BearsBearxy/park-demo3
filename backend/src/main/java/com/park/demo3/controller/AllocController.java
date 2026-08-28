@@ -60,6 +60,13 @@ public class AllocController {
         return svc.memberDiff(ym);
     }
 
+    @Operation(summary = "未入池的公摊表(ownership=share + 当月有读数 + 未被任何池绑定)")
+    @GetMapping("/meter-diff")
+    public List<AllocPoolDTOs.MeterDiff> meterDiff(
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.meterDiff(ym);
+    }
+
     @Operation(summary = "楼栋损耗表(units=快照;recon=读时派生:供电侧总表 vs 单元合计)") @GetMapping("/loss")
     public AllocPoolDTOs.Loss loss(@RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
         return svc.loss(ym);

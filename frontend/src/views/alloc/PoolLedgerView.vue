@@ -30,7 +30,7 @@ import FPLoadError from '@/components/fp/FPLoadError.vue'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
-  type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolRowDTO,
+  type AllocMeterDiffDTO, type AllocMethod, type AllocMethodEditable, type AllocPoolLineDTO, type AllocPoolRowDTO,
   type AllocPoolsDTO, type AllocRuleDTO, type AllocStdKind, type AllocZone,
 } from '@/api/alloc'
 import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
@@ -48,7 +48,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
 import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, bandFooter, buildPoolExportAoa,
-  costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
+  costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, meterDiffGroup, netSummary,
   poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
   poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
@@ -113,6 +113,7 @@ const buildings = ref<BuildingDTO[]>([])
 const meters = ref<MeterDTO[]>([])
 const tenants = ref<TenantDTO[]>([])           // §E6:direct 池的全库租户选择器候选
 const diffs = ref<AllocMemberDiffDTO[]>([])
+const meterDiffs = ref<AllocMeterDiffDTO[]>([])
 // P1-6:三条 Promise 里唯独主数据 pools 过去没兜底 —— /alloc/pools 一挂,pools 恒为 null,
 // 整页就停在转圈骨架上(没有一个字、没有重试入口,只能刷浏览器);换月失败更险:上个月的行
 // 留在屏上,而行内月度参数写的是**新**月份。故失败=清空本月三份数据 + 记 loadErr,
@@ -134,18 +135,19 @@ async function loadMonth() {
   reloading.value = true
   loadErr.value = ''                 // 先清:重试点下去立刻回落转圈骨架,不然按钮像没反应
   try {
-    const [ps, pr, df, st] = await Promise.all([
+    const [ps, pr, df, md, st] = await Promise.all([
       allocApi.pools(ym.value),
       paramsApi.list(ym.value, 'all', { scope: 'rule:', key: 'coefficient,extra_qty,frozen_2023' })
         .catch(() => [] as ParamRowDTO[]),
       allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
+      allocApi.meterDiff(ym.value).catch(() => [] as AllocMeterDiffDTO[]),
       paramsApi.status(ym.value).catch(() => null),
     ])
     if (my !== seq) return
-    pools.value = ps; paramRows.value = pr; diffs.value = df; status.value = st
+    pools.value = ps; paramRows.value = pr; diffs.value = df; meterDiffs.value = md; status.value = st
   } catch (e) {
     if (my !== seq) return           // 更晚的一次请求已在路上,别用旧的失败盖掉它的结果
-    pools.value = null; paramRows.value = []; diffs.value = []
+    pools.value = null; paramRows.value = []; diffs.value = []; meterDiffs.value = []
     loadErr.value = errMsg(e, '服务异常')
   } finally {
     // ⚠ 只有最新那一趟有资格熄灯:被顶掉的旧请求先返回时若把它清了,
@@ -399,6 +401,8 @@ const alertGroups = computed<AlertGroup[]>(() => {
       onClick: () => { alertOpen.value = false; gotoDiff(d.ruleId) },
     })),
   })
+  const mg = meterDiffGroup(meterDiffs.value, zone.value)
+  if (mg) gs.push(mg)
   return gs
 })
 const alertCount = computed(() => alertGroups.value.reduce((s, g) => s + g.items.length, 0))
