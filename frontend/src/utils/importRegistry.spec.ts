@@ -447,6 +447,28 @@ describe('meter v2 主数据接线', () => {
     await new Promise(r => setTimeout(r, 0))   // flush 预取微任务
     expect(parseWB(props)([sheet]).records![0]).toMatchObject({ tenantId: 11, buildingId: 2, ownership: 'tenant' })
   })
+
+  // ── 端到端接线钉子(T8 fix round 1):ctx.zones 必须真的走到 parseMeterWorkbook,不能只是 meterExcel.ts
+  //    自己的纯函数支持它——之前的漏洞正是「函数认得三期,但从没被喂过三期清单」。视图侧(MeterView/
+  //    ImportCenterView)如何填 ctx.zones 各走各的 API,这里只钉 registry 这一段:ctx.zones 进→sheet 识别出。
+  it('ctx.zones 透传到 parseMeterWorkbook:三期清单一给,三期 sheet 就认得出', () => {
+    const t3Sheet = { name: '三期园区电', matrix: [
+      ['', '2026年3月三期园区电表抄表记录'],
+      ['', '区域', '', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '', '', '', '', '本月行至', '', '', '', '', '备注'],
+      ['', '', '', '', '', '', '', '', '总', '尖', '峰', '平', '谷', '总', '尖', '峰', '平', '谷', ''],
+      ['三期总电', '三车间', '', '', '总电表', '总电表', '230828010021', '80', '10', '', '', '', '', '12', '', '', '', '', ''],
+    ] }
+    const ctx: ImportCtx = { zones: [
+      { code: 'p1', name: '一期' }, { code: 'p2', name: '二期' }, { code: 'p3', name: '三期' }, { code: 'dorm', name: '宿舍' },
+    ] }
+    const res = parseWB(parserProps('meter', ctx))([t3Sheet])
+    expect(res.records![0]).toMatchObject({ zone: 'p3', kind: 'elec', ym: '2026-03' })
+  })
+
+  it('ctx.zones 不给(未注入)/给空数组(接口拉取失败)都回落写死三区:一期/二期/宿舍零回归', () => {
+    expect(parseWB(parserProps('meter', {}))([sheet]).records![0]).toMatchObject({ zone: 'p1', kind: 'water', ym: '2025-03' })
+    expect(parseWB(parserProps('meter', { zones: [] }))([sheet]).records![0]).toMatchObject({ zone: 'p1', kind: 'water', ym: '2025-03' })
+  })
 })
 
 // ── pvMeter:customParse 行级错误暂存 + run 契约(解析纯函数单测见 pvMeterExcel.spec.ts) ──

@@ -268,6 +268,7 @@ export interface ImportCtx {
   companyNames?: string[]   // 已有管理公司名单(台账整册拆段的 sheet 名识别用)
   tenantNames?: string[]                      // 租户库 companyName 全量(meter §6.2 拆分;视图填,同 companyNames 机制)
   buildings?: { id: number; name: string }[]  // 楼栋清单(meter §6.3 区域→楼栋映射;视图填,BuildingDTO 结构兼容)
+  zones?: { code: string; name: string }[]    // 期区清单(meter sheet 名反查用;视图填,ZoneDTO 结构兼容;缺省回落 meterExcel 写死三区)
   cats?: ChargingCatLite[]   // 充电桩运营商字典(视图填 ChargingCatDTO[],结构兼容)
   _parseErrors?: { rowIndex: number; label: string; reason: string }[]
   // ── 账册模板(BOOK-WORKBENCH-SPEC):视图填,缺省走静态 lgColumns/layout.ts 回退 ──
@@ -631,7 +632,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
           parseMeterWorkbook(sheets, {
             tenants: meterTenants ?? ctx.tenantNames?.map(n => ({ companyName: n })),
             buildings: meterBuildings ?? ctx.buildings,
-          }, fb),
+          }, fb, ctx.zones),
       }
     },
     // sections 勾选段与单段平铺两种 payload 形态都可能到达(parseWorkbook 契约)

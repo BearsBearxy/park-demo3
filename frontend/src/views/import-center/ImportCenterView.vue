@@ -12,6 +12,7 @@ import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { IMPORT_TYPES, runImport, type ImportCtx, type ImportTypeEntry } from '@/utils/importRegistry'
 import { useAuthStore } from '@/stores/auth'
+import { useZonesStore } from '@/stores/zones'
 import { importLogApi } from '@/api/importLog'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { booksApi } from '@/api/books'
@@ -25,6 +26,7 @@ import type { CompanyDTO } from '@/types/ledger'
 // 下方「导入记录」表不过滤 —— 读全开,谁都能看谁导了什么。
 const auth = useAuthStore()
 const visibleTypes = computed(() => IMPORT_TYPES.filter(t => auth.can(t.module)))
+const zones = useZonesStore()
 
 const overview = ref<ImportLogOverviewDTO | null>(null)   // §6 加载信号
 const importing = ref(false)
@@ -85,6 +87,11 @@ async function openImport(entry: ImportTypeEntry) {
     if (!s10Books) s10Books = await booksApi.list('s10').catch(() => null)
     if (s10Books) ctx.value = { bookDefs: Object.fromEntries(
       s10Books.filter(b => b.phase != null).map(b => [b.phase!, b.definition])) }
+  }
+  // 期区清单喂 meter sheet 名反查(与 MeterView 页内导入同一份 store,拉不到留空数组 → meterExcel 回落写死三区)
+  if (entry.key === 'meter') {
+    await zones.ensure()
+    ctx.value = { zones: zones.list }
   }
   if (entry.context === 'ledger') {
     if (!companies.value.length) companies.value = await companyApi.list()

@@ -208,6 +208,8 @@ function onDiscardChanges() {
 function loadMasters() {
   tenantApi.list().then(v => { tenants.value = v; importCtx.tenantNames = v.flatMap(t => tenantMatchNames(t)) }).catch(() => {})
   buildingApi.list().then(v => { buildings.value = v; importCtx.buildings = v }).catch(() => {})
+  // 期区清单喂导入(meter sheet 名反查用);ensure() 拉不到留空数组,importCtx.zones 也就留空 → meterExcel 回落写死三区
+  zones.ensure().then(() => { importCtx.zones = zones.list })
 }
 // 页签切回:租户改名/楼栋变更后清单回拉,合同增删改后绑定候选回拉(浏览状态保留)
 onReactivated(() => { loadMasters(); loadBinding() })

@@ -203,9 +203,9 @@ export function parseMeterSheet(
 
 // ── 整册解析(parseWorkbook 契约):识别 sheet → sections 勾选段;仅 1 段平铺为 records ──
 export function parseMeterWorkbook(
-  sheets: { name: string; matrix: string[][] }[], master: MeterMasterCtx = {}, fb: MeterFallback = {},
+  sheets: { name: string; matrix: string[][] }[], master: MeterMasterCtx = {}, fb: MeterFallback = {}, zones?: ZoneLite[],
 ): { records?: ImportRec[]; sections?: MeterSheetSection[]; error?: string; warning?: string; notice?: string } {
-  const sections = sheets.map(s => parseMeterSheet(s.name, s.matrix, master, fb)).filter((s): s is MeterSheetSection => !!s)
+  const sections = sheets.map(s => parseMeterSheet(s.name, s.matrix, master, fb, zones)).filter((s): s is MeterSheetSection => !!s)
   if (!sections.length)
     return { error: sheets.some(s => headerRow(s.matrix) >= 0)
       // 表头认出来了,缺的是账期/分区/类别 → 给可操作提示(裸粘贴数据块走这条)
