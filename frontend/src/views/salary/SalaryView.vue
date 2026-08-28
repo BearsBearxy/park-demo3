@@ -1,10 +1,20 @@
 <script setup lang="ts">
 // 附表12 工资明细 — 年度台账状态机。
 // 动线 1:1 from screen-schedule12.jsx Schedule12Screen(274-516):
-// ⓪ 年份选择层(SchedYearGate) → ① 月份矩阵(BookMonthMatrix) → ② 该月宽表(SchedHeader + SalaryTable + 抽屉)。
-// 月门是 2026-08-29 补的(设计稿 §3.4):改前进年后 onPickYear 自动落到最后一个有数据的月,
-// 用户没显式选过月就进了某月宽表 —— 附表10 改造前的同款毛病,BOOK-WORKBENCH-SPEC §7-1 明令禁止。
+// ⓪ 选期矩阵(BookMonthMatrix:全年份纵排,每年一行 12 月卡)→ ① 该月宽表(SchedHeader + SalaryTable + 抽屉)。
+//
+// **一层门**,与月度台账、附表10 同形(2026-08-29「两本账」设计稿 §④)。演进两步:
+//   一、改前进年后 onPickYear 自动落到「该年有数据的最大月」,用户没显式选过月就进了某月宽表
+//      —— §7-1 明令禁止的「顺手落进某个期」。于是补了月门。
+//   二、那道月门加错了:BookMonthMatrix 的设计意图是「全部年份纵排一屏」,**一层就够**,
+//      我却退化成「年份门 + 单年一行」两层,连带把矩阵的「补更早年份 / 添加次年」变成死按钮
+//      (只接了 @pick)。现在收回成一层,年份增删归矩阵自己管(utils/matrixYears 的手工年)。
+//
+// 工资**没有第二本账**(没有对内逐日口径),所以不要左栏 —— 见设计稿 §① 的两本账模型。
 // 进表后的月份胶囊保留:那是**表内快速换月**,不是进表的门,两者不冲突。
+//
+// 代价写明:年卡上「¥48.0万 · 117 人次」的年度指标随年份门一起退场,换成「哪几个月录了」
+// 一眼可见 —— 对按月录入的屏后者更有用(用户 2026-08-29 拍板)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted } from 'vue'
@@ -17,10 +27,10 @@ import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq, SalaryImportRow } from '@/types/salary'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SchedMonthPills from '@/components/sched/SchedMonthPills.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
+import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 import FpImportModal, { type ImportRec } from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport } from '@/utils/importRegistry'
@@ -62,30 +72,20 @@ async function reloadOverview() {
 
 const {
   year, edit, drawer, importing, importResult, selectedIds, importedCount,
-  guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
+  guard, refresh, pickYear, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   load: loadMonth,
   reloadOverview,
   rows: () => monthData.value?.rows ?? [],
   clearData: () => { monthData.value = null },
-  // 进年落到**月份矩阵**,不替用户挑月(改前是「该年有数据的最大月」)
-  onPickYear: () => { month.value = null },
+  // 年由 pickCell 与月一起定,这里不再动 month —— 替用户挑月的老逻辑随年份门一起退场
+  onPickYear: () => {},
   batchDelete: salaryApi.batchDelete,
   clear: {
     call: y => salaryApi.clearImported(y, month.value!),
     confirm: clearConfirm('本月', '手动行不受影响。'),
   },
 })
-
-// ⓪ overview.years → YearCard(metric=「¥X万」label=「全年实发·N人次」)
-const yearCards = computed<YearCard[]>(() =>
-  (overview.value?.years ?? []).map(y => ({
-    year: y.year,
-    hasData: y.hasData,
-    metric: '¥' + (Number(y.netTotal) / 10000).toFixed(1) + '万',
-    label: '全年实发 · ' + y.count + ' 人次',
-  })),
-)
 
 // 当前年的有数据月份(给月份胶囊淡显)
 const yearMonths = computed<Set<number>>(() =>
@@ -106,29 +106,58 @@ async function pickMonth(m: number) {
   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
   if (year.value != null) await loadMonth(year.value)
 }
-/** 宽表「换期」回月份矩阵。 */
+/** 矩阵点格:年与月一起定(§7-1 明确选期门,pick 自带年份)。 */
+async function pickCell(y: number, m: number) {
+  month.value = m
+  await pickYear(y)   // 置年 + 退编辑态 + 清数据与勾选 + 拉本月(loadMonth 读上面刚置的 month)
+}
+/** 宽表「换期」回矩阵。 */
 function backToMonths() {
   month.value = null
   edit.value = false
   monthData.value = null
 }
 
-// ── ① 月份矩阵:单年一行 12 格,格上标本月人数 ──────────────
+// ── ⓪ 选期矩阵:全年份纵排(数据年 ∪ 当前年 ∪ 手工年,连续补满),每年一行 12 月卡 ──
+// 手工年按「屏+册」记本机;工资无分册,册键固定 'all'。
+const EXTRA_KEY = ['salary', 'all'] as const
+const extraYears = ref<number[]>(loadExtraYears(...EXTRA_KEY))
+
+interface Cell { month: number; hasData: boolean; cur?: boolean }
 const matrixYears = computed(() => {
-  const y = year.value
-  if (y == null) return []
-  const ov = overview.value?.years.find(yr => yr.year === y)
-  const has = new Set(ov?.months ?? [])
-  const months = Array.from({ length: 12 }, (_, i) => ({
-    month: i + 1,
-    hasData: has.has(i + 1),
+  const ov = overview.value
+  if (!ov) return []
+  const cur = new Date().getFullYear()
+  const hasByYear = new Map(ov.years.map(y => [y.year, new Set(y.months)]))
+  const dataYears = ov.years.filter(y => y.hasData).map(y => y.year)
+  const out = buildYearRows(dataYears, cur, extraYears.value).map(r => {
+    const has = hasByYear.get(r.year) ?? new Set<number>()
     // 人数按月拆分 overview 里没有,徽标留空 —— 编不出来的数字不如不显
-    cur: false,
-  }))
-  const last = months.map(m => m.hasData).lastIndexOf(true)
-  if (last >= 0) months[last].cur = true
-  return [{ year: y, months }]
+    const months: Cell[] = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, hasData: has.has(i + 1) }))
+    return {
+      year: r.year,
+      months,
+      // 当前年优先:当前自然年无数据时 manual 也为真,不得标成「手工年」(它不可移除、非手工添加)
+      sub: r.year === cur ? '当前年' : r.manual ? '手工年' : undefined,
+      removable: r.manual && extraYears.value.includes(r.year) && months.every(m => !m.hasData),
+    }
+  })
+  // 全年份范围内最近有数据的那一个月描边
+  for (let i = out.length - 1; i >= 0; i--) {
+    const j = out[i].months.map(m => m.hasData).lastIndexOf(true)
+    if (j >= 0) { out[i].months[j].cur = true; break }
+  }
+  return out
 })
+function setExtra(years: number[]) {
+  saveExtraYears(...EXTRA_KEY, years)
+  extraYears.value = loadExtraYears(...EXTRA_KEY)   // 回读取归一化(去重排序)
+}
+const edge = (first: boolean) => {
+  const r = matrixYears.value
+  if (!r.length) return new Date().getFullYear()
+  return first ? r[0].year - 1 : r[r.length - 1].year + 1
+}
 
 // ── 导入 Excel(按表头名字匹配,行身份=姓名) ──────────────
 // columnMap:真实工资表叶子标签 → SalaryRecord 字段 key(姓名走 nameLabels;派生/未建模列不入)。
@@ -180,46 +209,39 @@ const onExport = () => guard('导出失败', async () => {
 <template>
   <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
-    <!-- ⓪ 年份选择层 -->
-    <SchedYearGate
-      :scope-of="(y) => S.salaryYear(y)"
-      v-if="year === null"
-      icon="wallet"
-      title="附表12 · 工资明细"
-      sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 先选择年份,再进入对应年度的逐月明细表"
-      :years="yearCards"
-      :current="overview.currentYear"
-      store-key="salary"
-      footer="每个年份是一份独立的逐月工资台账;进入后在编辑模式下新增或导入。"
-      @pick="pickYear"
-    />
-
-    <!-- ① 月份矩阵(§7-1 明确选期门):进年不替用户挑月,点月格才进宽表 -->
-    <div v-else-if="month === null" class="s12-gate">
+    <!-- ⓪ 选期矩阵(§7-1 明确选期门):全年份纵排一屏,点月格才进宽表。
+         没有上一层了 —— 所以没有返回键(年份增删归矩阵自己的两个按钮管)。 -->
+    <div v-if="month === null" class="s12-gate">
       <div class="s12-gate-head">
-        <button class="s12-gate-back" title="返回年份选择" @click="goGate">
-          <component :is="iconFor('arrow-left')" :size="16" />
-        </button>
         <div>
           <h2 class="s12-gate-title">
-            <span class="ic"><component :is="iconFor('wallet')" :size="18" /></span>附表12 · 工资明细 · {{ year }} 年
+            <span class="ic"><component :is="iconFor('wallet')" :size="18" /></span>附表12 · 工资明细
           </h2>
           <p class="s12-gate-sub">选择月份进入该月宽表 · 空月可直接进入录入 / 导入</p>
         </div>
       </div>
-      <BookMonthMatrix :scope-of="(y, m) => S.salary(y, m)" :book="{}" :years="matrixYears" @pick="(_y, m) => pickMonth(m)" />
+      <BookMonthMatrix
+        :scope-of="(y, m) => S.salary(y, m)"
+        :book="{}"
+        :years="matrixYears"
+        @pick="pickCell"
+        @add-earlier="setExtra([...extraYears, edge(true)])"
+        @add-later="setExtra([...extraYears, edge(false)])"
+        @remove-year="(y) => setExtra(extraYears.filter(x => x !== y))"
+      />
     </div>
 
-    <!-- ② 该月宽表 -->
+    <!-- ① 该月宽表。这一支里 year 与 month 必然非空 —— pickCell 把两者一起置,
+         矩阵态由上面的 v-if 接走,所以下面的 `!` 不是图省事。 -->
     <template v-else-if="monthData">
       <div class="s12-page">
         <FPLoadBar :on="veil" />
         <SchedHeader
-          :scope="S.salary(year, month!)"
+          :scope="S.salary(year!, month!)"
           icon="wallet"
           title="附表12 · 工资明细"
           sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 金额单位 元"
-          :year="year"
+          :year="year!"
           :edit="edit"
           perm="entry:edit"
           @back="backToMonths"
@@ -259,8 +281,8 @@ const onExport = () => guard('导出失败', async () => {
         </div>
 
         <SalaryTable
-          :year="year"
-          :month="month"
+          :year="year!"
+          :month="month!"
           :rows="monthData.rows"
           :total="monthData.total"
           :edit="edit"
@@ -275,8 +297,8 @@ const onExport = () => guard('导出失败', async () => {
 
       <SalaryRecordDrawer
         v-if="drawer"
-        :init-year="year"
-        :init-month="month"
+        :init-year="year!"
+        :init-month="month!"
         :years="monthOptions"
         @close="drawer = false"
         @save="onCreate"
@@ -287,8 +309,8 @@ const onExport = () => guard('导出失败', async () => {
         :title="'导入 附表12 · 工资明细'"
         sub="上传/粘贴整张多月工资表,系统按标题行自动拆月、按姓名识别行,核对年/月后逐月导入"
         v-bind="parserProps('salary')"
-        :default-year="year"
-        :default-month="month"
+        :default-year="year!"
+        :default-month="month!"
         @close="importing = false"
         @import-sections="onImportSections"
       />
@@ -316,13 +338,6 @@ const onExport = () => guard('导出失败', async () => {
 .s12-gate { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; height: 100%;
             min-height: 0; overflow-y: auto; box-sizing: border-box; }
 .s12-gate-head { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
-.s12-gate-back {
-  flex: none; width: 30px; height: 30px; display: grid; place-items: center;
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
-  background: var(--surface-white); cursor: pointer; color: var(--text-muted);
-  transition: color var(--dur-fast), border-color var(--dur-fast);
-}
-.s12-gate-back:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
 .s12-gate-title { margin: 0; font: var(--type-h2); display: flex; align-items: center; gap: var(--space-2); }
 .s12-gate-title .ic {
   width: 26px; height: 26px; border-radius: var(--radius-sm);

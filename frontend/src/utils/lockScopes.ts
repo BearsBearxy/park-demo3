@@ -66,7 +66,6 @@ export const S = {
   charging: (no: number, year: number) => `sched:charging:${no}:${year}`,
   utilities: (no: number, year: number) => `sched:utilities:${no}:${year}`,
   salary: (year: number, month: number) => `sched:salary:${year}-${pad2(month)}`,
-  salaryYear: (year: number) => `sched:salary:${year}`,
   s10: (phase: number | string, year: number, month: number) =>
     `sched:s10:${phase}:${year}-${pad2(month)}`,
   s10Year: (phase: number | string, year: number) => `sched:s10:${phase}:${year}`,
