@@ -1477,16 +1477,18 @@ public class AllocService {
     // 用户 2026-08-16 拍板开的统一入口,与源册火炬园「高压用电分配」单价同源)+管理费,缺当月值回退 平段裸价+管理费。
     // 价目簿缺当月电价 → null(生成路径已被 priceGate 拦下;读时派生 recon 跳过并 warn 一次)。
     private BigDecimal lossPrice(String zone, Ctx ctx) {
-        boolean p2 = "p2".equals(zone);
-        String elecKey = p2 ? "elec_flat" : "elec_commercial";
-        BigDecimal elec = p2 ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
+        // 按口径不按名字:tou → grid_avg(回退 elec_flat)+mgmt_fee;flat/未配口径(如 dorm,V114 故意不写)→ 商业价+商业维护费。
+        // 未配口径落 flat 分支是刻意的 —— dorm 与任何还没配 zone_calc_kind 的 zone 必须原样保持旧行为(旧代码就是 !p2 即走这支)。
+        boolean tou = KIND_TOU.equals(calcKind(zone, ctx.cfg()));
+        String elecKey = tou ? "elec_flat" : "elec_commercial";
+        BigDecimal elec = tou ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
         if (elec == null) elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
         if (elec == null) {
             String w = zone + " 缺 " + ctx.ym() + " 电价(" + elecKey + "),损耗费/对账价未算";
             if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
             return null;
         }
-        return elec.add(nz(priceCfg.resolve(p2 ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
+        return elec.add(nz(priceCfg.resolve(tou ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
     }
 
     private List<Contribution> lossContributions(Ctx ctx) {
