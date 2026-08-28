@@ -1,5 +1,5 @@
 export interface BuildingDTO {
-  id: number; name: string; phase: number; phaseName: string; kind: string
+  id: number; name: string; phase: number; phaseName: string; zone: string | null; kind: string
   floorCount: number; totalArea: number; rentableArea: number; status: number
   unitCount: number; occupiedCount: number; vacantCount: number
   expiringCount: number; reservedCount: number; leasedArea: number
@@ -21,14 +21,14 @@ export const OCC_NULL_WHY = '缺可租面积数据'
 export interface BuildingCreateReq {
   name: string; phase: number; floorCount: number
   totalArea: number; rentableArea: number
-  perFloor: number; remark?: string
+  perFloor: number; remark?: string; zone?: string | null
 }
 
 // 编辑专用:比 CreateReq 多 status、无 perFloor(单元仅创建时生成,编辑不增删单元)
 export interface BuildingUpdateReq {
   name: string; phase: number; floorCount: number
   totalArea: number; rentableArea: number
-  status: number; remark?: string
+  status: number; remark?: string; zone?: string | null
 }
 
 export interface BuildingSummaryDTO {

@@ -1,14 +1,23 @@
 <script setup lang="ts">
 // 新建/编辑楼栋弹窗 — 样式 1:1 参考 ledger/LedgerNewCompanyDialog.vue
 // 传 initial=编辑态(隐藏每层单元数、加状态下拉、提交走 update);不传=新增态(原流程不变)
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import type { BuildingDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
+import { useZonesStore } from '@/stores/zones'
 
 const props = defineProps<{ existingNames: string[]; initial?: BuildingDTO }>()
 const emit = defineEmits<{ close: []; create: [req: BuildingCreateReq]; update: [req: BuildingUpdateReq] }>()
+
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+// 期区决定这栋楼的电表/公摊池/损耗归到哪一期,与「期数」不是一回事(宿舍楼期数是 1 但期区是宿舍)。
+// ''=未标注,提交时转 null(Select modelValue 只能是 string)。
+const zoneOpts = computed(() => [{ value: '', label: '(未标注)' },
+  ...zones.list.map(z => ({ value: z.code, label: z.name }))])
+const zone = ref(props.initial?.zone ?? '')
 
 const isEdit = !!props.initial
 const name = ref(props.initial?.name ?? '')
@@ -37,7 +46,7 @@ function submit() {
   const base = {
     name: v, phase: phase.value, floorCount: floorCount.value,
     totalArea: totalArea.value, rentableArea: rentableArea.value,
-    remark: remark.value.trim() || undefined,
+    remark: remark.value.trim() || undefined, zone: zone.value || null,
   }
   if (isEdit) emit('update', { ...base, status: statusLabel.value === '停用' ? 0 : 1 })
   else emit('create', { ...base, perFloor: perFloor.value! })
@@ -64,6 +73,10 @@ function submit() {
               <div class="lg-dlg-lab">期数</div>
               <input class="lg-dlg-in" type="number" min="1" v-model.number="phase"
                      @input="err = ''" @keydown.enter="submit" />
+            </div>
+            <div>
+              <Select v-model="zone" label="期区" :options="zoneOpts" size="sm"
+                      title="期区决定这栋楼的电表、公摊池、损耗归到哪一期。与「期数」不是一回事——宿舍楼期数是 1 但期区是宿舍" />
             </div>
             <div>
               <div class="lg-dlg-lab">层数</div>

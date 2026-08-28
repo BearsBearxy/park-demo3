@@ -157,7 +157,7 @@ function updBody(floorCount: number): BuildingUpdateReq {
   return {
     name: x.name, phase: x.phase, floorCount,
     totalArea: x.totalArea, rentableArea: x.rentableArea,
-    status: x.status, remark: x.remark ?? undefined,
+    status: x.status, remark: x.remark ?? undefined, zone: x.zone,
   }
 }
 const topHasUnits = computed(() => units.value.some(u => u.floor === (b.value?.floorCount ?? 0)))
