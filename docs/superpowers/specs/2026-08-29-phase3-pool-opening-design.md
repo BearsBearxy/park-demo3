@@ -166,6 +166,7 @@ if (!"p1".equals(zone) && !"p2".equals(zone)) return null;   // ← p3 的应分
 | `1702` | `perMeterCost = !"p2".equals(zone)` | `kind != tou` |
 | `1748` | `keys = p2 ? … : …` 价目键选择 | 按 `kind` 选 |
 | `1861` | `stdKind` 默认 `p2 ? amount_over_base : qty_price_over_base` | 按 `kind` 选 |
+| `lossPrice` | `boolean p2 = "p2".equals(zone)` 选价目键组 | 按 `kind` 选。**初稿漏了这一处**（2026-08-29 实现期由 T5 实现者发现）：它被 `ruleCostAmount` 调用，漏改会让 p3 配成 `tou` 时走分时分支、却用平价制的键取价——模式与价目互相矛盾且不报错。⚠ 未配 `zone_calc_kind` 的期区（`dorm`）在此必须保持现状，不能跟着 `ruleCostAmount` 返回 null |
 
 **明确不改**的 zone 字面量——它们是**机制**不是**口径**，三期没有就是没有：
 
