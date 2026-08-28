@@ -21,6 +21,11 @@ interface MonthCell {
    * 台账 / 附表10 / 三大报表不传，走原来的行数徽标。
    */
   pips?: boolean[]
+  /**
+   * 徽标自由文案（三大报表在这个位置显本期净额）。给了就压过 rowCount ——
+   * "N 行" 只是它的一个特例，没理由让别的屏为了显一句话去凑一个行数。
+   */
+  badge?: string
   /** 参数改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
   stale?: boolean
 }
@@ -97,6 +102,7 @@ const nextYear = computed(() =>
             <span v-if="m.hasData && m.pips" class="bmm-pips">
               <i v-for="(p, i) in m.pips" :key="i" class="bmm-pip" :class="{ on: p }" />
             </span>
+            <span v-else-if="m.hasData && m.badge" class="bmm-count">{{ m.badge }}</span>
             <span v-else-if="m.hasData && m.rowCount != null" class="bmm-count">{{ m.rowCount }} 行</span>
             <span v-else-if="!m.hasData" class="bmm-none">空</span>
           </button>

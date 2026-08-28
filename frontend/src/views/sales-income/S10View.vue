@@ -499,7 +499,7 @@ function onImportClick() {
       <aside class="s10-rail">
         <div class="s10-rail-cap">账册</div>
         <!-- 附表10 四册固定:公司管理入口(company:manage)恒关,不接 create/remove -->
-        <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="selectBook" />
+        <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="(id) => selectBook(Number(id))" />
       </aside>
 
       <div class="s10-main">

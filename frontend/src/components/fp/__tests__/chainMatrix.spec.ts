@@ -62,6 +62,17 @@ describe('选期矩阵 · 工序点', () => {
     expect(card.classes()).not.toContain('stale')
   })
 
+  it('badge 是自由文案 —— 三大报表要在同一个位置显本期净额,不是「N 行」', () => {
+    const w = mk(months({ 3: { hasData: true, badge: '141,255' } }))
+    const card = w.findAll('.bmm-card')[2]
+    expect(card.find('.bmm-count').text()).toBe('141,255')
+  })
+
+  it('badge 压过 rowCount —— 传了就用它,不拼「行」字', () => {
+    const w = mk(months({ 3: { hasData: true, rowCount: 12, badge: '¥0.00' } }))
+    expect(w.findAll('.bmm-card')[2].find('.bmm-count').text()).toBe('¥0.00')
+  })
+
   it('pips 与行数不并存 —— 一个格子只讲一件事', () => {
     const w = mk(months({ 3: { hasData: true, rowCount: 12, pips: [true, false, false, false] } }))
     const card = w.findAll('.bmm-card')[2]

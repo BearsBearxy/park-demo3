@@ -649,7 +649,7 @@ function gotoTenants() {
         :books="books"
         :active-id="activeBookId"
         :can-manage="auth.can('company:manage')"
-        @select="selectBook"
+        @select="(id) => selectBook(Number(id))"
         @create="newDlg = true"
         @delete="delOpen = true"
       />

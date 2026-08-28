@@ -56,6 +56,40 @@ describe('BookRail 账册栏', () => {
     expect(w.emitted('delete')).toHaveLength(1)
     expect(w.emitted('select')).toBeUndefined()
   })
+
+  // ── 三大报表复用(2026-08-29,设计稿 §3.2a):左栏挂的是管理公司,不是账册 ──
+  it('tag 覆盖版本徽标 —— 公司没有「版本」这回事', () => {
+    const w = mk({ books: [{ id: 'all', name: '全部汇总', tag: '3 家' }, { id: 1, name: '物业公司' }] })
+    const items = w.findAll('.br-item')
+    expect(items[0].text()).toContain('3 家')
+    expect(items[0].text()).not.toContain('v')
+    expect(items[1].find('.br-ver').exists(), '既无 tag 又无 ver 就不画徽标,不留 vundefined').toBe(false)
+  })
+
+  it('id 可以是字符串 —— 「全部汇总」那一项没有数字 id', async () => {
+    const w = mk({ books: [{ id: 'all', name: '全部汇总' }], activeId: 'all' })
+    expect(w.find('.br-item').classes()).toContain('on')
+    await w.find('.br-item').trigger('click')
+    expect(w.emitted('select')).toEqual([['all']])
+  })
+
+  it('manage 插槽接管底部管理区 —— 报表要三个动作(新增/重命名/删除公司)', () => {
+    const w = mount(BookRail, {
+      props: { books, activeId: 1, canManage: true },
+      slots: { manage: '<button class="mine">重命名</button>' },
+    })
+    expect(w.find('.mine').exists()).toBe(true)
+    expect(w.find('.br-create').exists(), '插槽替换默认两钮,不并存').toBe(false)
+    expect(w.find('.br-delete').exists()).toBe(false)
+  })
+
+  it('插槽同样受 canManage 门管 —— 无权时整块不出现', () => {
+    const w = mount(BookRail, {
+      props: { books, activeId: 1, canManage: false },
+      slots: { manage: '<button class="mine">重命名</button>' },
+    })
+    expect(w.find('.mine').exists()).toBe(false)
+  })
 })
 
 describe('BookMonthMatrix 选期矩阵 v3(多年纵排)', () => {

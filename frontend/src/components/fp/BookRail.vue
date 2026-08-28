@@ -4,16 +4,27 @@
 // 删除不放行内(用户拍板 2026-08-24:hover 删除钮夹在选册点击目标中间,易误触且与新增分家);
 // 点「删除账册」只发 delete 事件,选哪一册在宿主的两步弹窗里定。
 import { Plus, Trash2 } from 'lucide-vue-next'
-import type { Book } from '@/types/book'
+
+/**
+ * 左轨的一项。台账/附表10 直接喂 `Book`（结构上兼容）；
+ * 三大报表喂管理公司（设计稿 §3.2a）—— 公司没有「版本」这回事，用 `tag` 说别的。
+ */
+export interface RailItem {
+  id: number | string   // 'all' = 三大报表的「全部汇总」
+  name: string
+  ver?: number
+  /** 覆盖版本徽标。给了就显它，两个都没有就不画徽标（不留 vundefined）。 */
+  tag?: string
+}
 
 defineProps<{
-  books: Book[]
-  activeId: number | null
+  books: RailItem[]
+  activeId: number | string | null
   canManage: boolean
 }>()
 
 defineEmits<{
-  (e: 'select', id: number): void
+  (e: 'select', id: number | string): void
   (e: 'create'): void
   (e: 'delete'): void
 }>()
@@ -33,11 +44,13 @@ defineEmits<{
         @keydown.enter="$emit('select', b.id)"
       >
         <span class="br-name">{{ b.name }}</span>
-        <span class="br-ver">v{{ b.ver }}</span>
+        <span v-if="b.tag || b.ver != null" class="br-ver">{{ b.tag ?? 'v' + b.ver }}</span>
       </div>
     </div>
-    <!-- 底部管理区(company:manage 门):新增与删除并排,与选册行为分离 -->
+    <!-- 底部管理区(company:manage 门):新增与删除并排,与选册行为分离。
+         宿主要别的动作组合(三大报表要三个:新增/重命名/删除公司)就传 #manage 整块接管。 -->
     <div v-if="canManage" class="br-manage">
+      <slot name="manage">
       <button class="br-create" @click="$emit('create')">
         <Plus :size="14" />
         新增账册
@@ -46,6 +59,7 @@ defineEmits<{
         <Trash2 :size="13" />
         删除账册
       </button>
+      </slot>
     </div>
   </div>
 </template>
