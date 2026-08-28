@@ -113,6 +113,15 @@ describe('FPStepStrip', () => {
     expect(w.find('.fss-step').attributes('title')).toBe('附表1 租金损益')
   })
 
+  it('hideBack:上面本来就没有一层时不画返回钮 —— 一个点了不动的按钮比没有按钮更坏', () => {
+    const w = mount(FPStepStrip, {
+      props: { steps: STEPS, current: 'alloc', period: '2025 年', hideBack: true },
+    })
+    expect(w.find('.fss-back').exists()).toBe(false)
+    expect(w.findAll('.fss-step'), '步骤照常').toHaveLength(5)
+    expect(w.find('.fss-period').text(), '期标照常').toBe('2025 年')
+  })
+
   it('返回按钮文案可换 —— 出账链叫「换出账月」,报表层叫「换期」', () => {
     const w = mount(FPStepStrip, {
       props: { steps: STEPS, current: 'alloc', period: '2025-03', backLabel: '换期' },

@@ -13,6 +13,7 @@
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -135,6 +136,7 @@ function loadMasters() {
 // edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
 const route = useRoute()
 const router = useRouter()
+const tabs = useTabsStore()
 const hlScope = ref('')
 let pendingSection = ''
 function applyHandoff(): boolean {
@@ -370,7 +372,12 @@ async function submitEx() {
   const reqs = tenantExceptionReqs({ tenantId: t.tenantId, key: d.key, bid: t.bid ? Number(t.bid) : null, value: v, mode: t.mode, note: t.note.trim() || null }, ym.value)
   if (await putAll(reqs)) exOpen.value = false
 }
-function gotoCoefBook() { router.push({ path: '/bill-notices', query: { ym: ym.value, coef: '1' } }) }
+// 深链协议同 gotoParams:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到 ——
+// 缺了这半边,催缴单屏若已在页签里缓存着,点过去只是切页签,系数簿窗口不会开。
+function gotoCoefBook() {
+  tabs.openFresh('bill-notices', { pin: true })
+  router.push({ path: '/bill-notices', query: { ym: ym.value, coef: '1' } })
+}
 
 // ── 闭环:重算本月(池 → 损耗 → 催缴单)/ 复制上月电价 ──
 const busy = ref(false)

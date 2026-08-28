@@ -9,7 +9,7 @@
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
@@ -235,7 +235,9 @@ const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmo
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
 
 // ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 param-policy:edit) ──
-const coefOpen = ref(false)
+// ?coef=1(计费参数页的「系数簿」按钮)——本屏此前从不读 route,那个按钮从 b6ff7e6 起
+// 一直只是跳过来、窗口不开。账期不用从 query 取:出账链五屏共读一份组级期,本来就是同一个月。
+const coefOpen = ref(useRoute().query.coef === '1')
 
 // ── S20 交付链:三个新窗口 + 户级状态/收款缺口(状态单据级存储、户级展示) ──
 const companyOpen = ref(false)

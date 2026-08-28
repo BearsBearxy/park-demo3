@@ -37,6 +37,11 @@ const props = defineProps<{
   period: string
   backLabel?: string
   /**
+   * 不画返回钮。用在**上面本来就没有一层**的屏（收入核对的月份层就是它自己的门）——
+   * 那里放一个点了不动的「换年」，比没有按钮更坏。
+   */
+  hideBack?: boolean
+  /**
    * 跟着导航一起走的期（报表层）。目标屏**认得几个用几个，不认的原样传回来** ——
    * 三大报表吃 y/m/co，损益附表只吃 y，收入核对吃 y/m；靠这一包，
    * 从利润表跳到附表1 再跳回来，月份和公司都还在。
@@ -59,7 +64,7 @@ function go(s: Step) {
 
 <template>
   <div class="fss">
-    <button class="fss-back" @click="emit('back')">
+    <button v-if="!hideBack" class="fss-back" @click="emit('back')">
       <component :is="iconFor('arrow-left')" :size="13" />{{ backLabel ?? '换出账月' }}
     </button>
     <span class="fss-period">{{ period }}</span>
