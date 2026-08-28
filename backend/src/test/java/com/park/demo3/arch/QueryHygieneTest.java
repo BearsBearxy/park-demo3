@@ -54,7 +54,8 @@ class QueryHygieneTest {
         entry("ReportService.java", 1),
         entry("S10Service.java", 1),
         entry("SalaryService.java", 1),
-        entry("TenantService.java", 6));
+        entry("TenantService.java", 6),
+        entry("ZoneService.java", 1));    // T2:list() 读全部 building 取 zone 众数候选;building ~30 行且非逐月累积表,天然要求全量
 
     // ── 有界配置表:与 LEGACY 是**两回事**,不要往上面那张表里塞 ──
     //
