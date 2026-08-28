@@ -8,6 +8,7 @@
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
@@ -558,11 +559,9 @@ const emptyText = computed(() => {
   <!-- 首载 gate:表档案/当月读数未落位不闪空表(v-else 紧邻,LIST-PAGE 加载门) -->
   <!-- 表档案首载失败:整页无内容可显,骨架屏会一直转 —— 换成提示+重试,别让用户干等 -->
   <div v-if="!meters && metersErr" class="mt-gate-fail">
-    <div class="mt-empty bad">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <FPLoadError @retry="loadMeters">
       <span>{{ metersErr }}</span>
-      <Button variant="outline" size="sm" @click="loadMeters">重试</Button>
-    </div>
+    </FPLoadError>
   </div>
   <div v-else-if="!meters || !readings" class="page-loading"><span class="page-spin" /></div>
 
@@ -637,14 +636,13 @@ const emptyText = computed(() => {
     </div>
 
     <!-- 加载失败条:两条各自成行(同 PoolLedgerView §F11,别让一条盖掉另一条的原因) -->
-    <div v-if="readErr || metersErr" class="mt-empty bad">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <FPLoadError v-if="readErr || metersErr" @retry="retryLoad">
+      <!-- .msg 由 FPLoadError 用 :deep 接住:两条各自成行,别让一条盖掉另一条的原因 -->
       <div class="msg">
         <div v-if="readErr">{{ readErr }} —— 读数列一律置空(不拿上月数据顶替),编辑模式已锁,重试成功后再录入</div>
         <div v-if="metersErr">{{ metersErr }} —— 表档案停留在上次拉到的版本</div>
       </div>
-      <Button variant="outline" size="sm" @click="retryLoad">重试</Button>
-    </div>
+    </FPLoadError>
 
     <!-- 月度空态引导(三分支:编辑态/可编辑/只读);读数没拉到不是「本月无数据」,让位给失败条 -->
     <div v-if="!readErr && readings.length === 0" class="mt-empty">
@@ -877,7 +875,6 @@ const emptyText = computed(() => {
 .mt-link:hover { text-decoration: underline; }
 
 /* 加载失败条(借空态条骨架换红):提示 + 重试入口 */
-.mt-empty.bad { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 /* 隐藏表出口说明条:蓝调=这不是错误,是「你正在看平时不显示的那批」 */
 .mt-hidbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgb(206, 223, 252); border-radius: var(--radius-md); background: rgb(238, 244, 255); font-size: 12px; color: rgb(28, 84, 168); }
 .mt-hidbar-em { font-weight: var(--fw-semibold); }

@@ -203,26 +203,29 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
       </div>
     </div>
 
-    <!-- data body: gated on first load so we never flash empty KPIs / 共0户 / 没有匹配 -->
-    <template v-if="summary">
+    <!-- 数据体**不再整屏 v-if** —— 外壳常驻，只在叶子上放骨架（加载态设计稿 §07「精确占位」）。
+         零位移是这么保证的：KPI 轨、工具条、定高卡片、分页条从头到尾就在那儿，
+         没有「转圈 → 撑开」这一下。骨架行数取 pageSize（useFitRows 按卡片高算出来的），
+         所以真数据落进来时几何完全一致。实测这一屏原本要跳 183px。 -->
     <!-- 2. KPI 左栏 + 主内容(spec 表格溢出治理 §3,三屏统一样式) -->
     <div class="mx-body">
     <aside class="mx-kpirail">
-      <KpiCard label="在租租户" :value="String(summary.tenantActive)" tint="slate" :style="{ padding: '20px' }">
+      <KpiCard label="在租租户" :value="summary ? String(summary.tenantActive) : ''" :loading="!summary" tint="slate" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('users')" :size="16" /></template>
       </KpiCard>
       <!-- 算不出来只给缺因:TenantSummaryDTO 没有 unitCount/vacantCount,楼栋屏那句「按单元 x/y」这里给不了。
            ponytail: 为一句副标多发一次 /api/buildings/summary 不划算 -->
       <KpiCard
-        label="园区出租率" :value="occPct(summary.occRate)" :sub="summary.occRate == null ? OCC_NULL_WHY : undefined"
-        :title="summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky" :style="{ padding: '20px' }"
+        label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary"
+        :sub="summary && summary.occRate == null ? OCC_NULL_WHY : undefined"
+        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" tint="sky" :style="{ padding: '20px' }"
       >
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="月租金合计" :value="fpWan(summary.monthlyRent)" tint="blue" :style="{ padding: '20px' }">
+      <KpiCard label="月租金合计" :value="summary ? fpWan(summary.monthlyRent) : ''" :loading="!summary" tint="blue" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('coins')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="合同将到期" :value="String(summary.expiringTenants)" delta="户需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
+      <KpiCard label="合同将到期" :value="summary ? String(summary.expiringTenants) : ''" :loading="!summary" delta="户需续签" trend="down" tint="cyan" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('clock')" :size="16" /></template>
       </KpiCard>
     </aside>
@@ -253,13 +256,15 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
           rowKey="id"
           :sort="sort"
           :rowHover="true"
+          :skeleton-rows="summary ? 0 : pageSize"
           @sortChange="sort = $event"
           @rowClick="openTenant = $event"
         />
       </div>
-      <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的租户</div>
+      <!-- ⚠ 必须带 summary:数据没到时 filtered 也是空的,不挡的话会先闪一下「没有匹配的租户」 -->
+      <div v-if="summary && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的租户</div>
       <!-- 5. Pager(spec §5:.mx-pagerbar 贴卡片底边;0 行时整条隐藏,不留孤立分隔线) -->
-      <div v-if="filtered.length > 0" class="mx-pagerbar">
+      <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">
         <FPPager
           :page="safePage"
           :pageCount="pageCount"
@@ -270,8 +275,6 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
     </Card>
     </div>
     </div>
-    </template>
-    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 6. Drawer -->
     <TenantDrawer

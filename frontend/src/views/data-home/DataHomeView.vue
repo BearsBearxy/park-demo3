@@ -56,8 +56,49 @@ const sortedItems = computed(() =>
 </script>
 
 <template>
-  <!-- 加载门:overview 到达前不渲染,避免闪一下空态 -->
-  <div v-if="ov" class="dh">
+  <!-- ⚠ 根节点 .dh **不再吊在 ov 上** —— 它此前是整页 v-if,数据到达前是一整块白屏,
+       而这是登录后第一眼看到的屏(加载态设计稿 §03)。
+       骨架能画准是因为两个数都是常量:出账链恒 4 步,附表恒 9 项
+       (后端 DataHomeService 写死 `new Schedules(done, 9, items)`)。
+       静态文案(本月工作 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
+       糊成微光条反而是把已知的东西藏起来。 -->
+  <div class="dh">
+    <template v-if="!ov">
+      <div class="dh-head">
+        <div class="dh-period">
+          <span class="dh-title">本月工作</span>
+          <div class="dh-msel"><span class="fp-shim" style="display:block;height:28px;border-radius:8px"></span></div>
+        </div>
+        <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
+      </div>
+      <section class="dh-sec">
+        <h3 class="dh-h3">出账链</h3>
+        <ol class="dh-steps">
+          <li v-for="i in 4" :key="i" class="dh-step" style="cursor:default">
+            <span class="fp-shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span>
+            <span class="fp-shim" style="display:block;width:64px;height:12px"></span>
+          </li>
+        </ol>
+        <Card surface="white" class="dh-cur">
+          <div class="dh-curmain">
+            <span class="fp-shim" style="display:block;width:128px;height:16px"></span>
+            <span class="fp-shim" style="display:block;width:196px;height:12px"></span>
+          </div>
+          <span class="fp-shim" style="display:block;width:104px;height:34px;border-radius:8px"></span>
+        </Card>
+      </section>
+      <section class="dh-sec">
+        <h3 class="dh-h3">附表录入</h3>
+        <ul class="dh-items">
+          <li v-for="i in 9" :key="i" class="dh-item" style="cursor:default">
+            <span class="fp-shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span>
+            <span class="fp-shim" style="display:block;width:76px;height:11px"></span>
+          </li>
+        </ul>
+      </section>
+    </template>
+
+    <template v-else>
     <!-- 顶部唯一总览行:月份 + 两个进度数字。改版前这里是 4 个 KPI 卡,其中 3 个与下方重复 -->
     <div class="dh-head">
       <div class="dh-period">
@@ -131,6 +172,7 @@ const sortedItems = computed(() =>
           </li>
         </ul>
       </section>
+    </template>
     </template>
   </div>
 </template>

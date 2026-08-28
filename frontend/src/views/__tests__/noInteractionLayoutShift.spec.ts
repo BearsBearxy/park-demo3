@@ -188,20 +188,19 @@ const KNOWN_DEBT: Record<string, string> = {
  */
 const ERR_SLOT_WHITELIST: Record<string, string> = {
   // ── A. 加载失败态（§3）：整块内容区的替换，不是长在表单字段底下的校验红字 ──────
-  'views/alloc/PoolLedgerView.vue .pl-bar.err':
-    'A 加载失败态：`loadErr` 只由 loadMonth() 的结果决定；失败时 pools 已清空，这条替换的是整块池列表，不是顶在按钮上方的校验提示',
-  'views/params/ParamCenterView.vue .pm-bar.err':
-    'A 加载失败态：`loadErr` 只由 load() 结果决定，带「重试」按钮的持久错误条，非表单校验',
+  // ⚠ 2026-08-28：原来这里有 5 条各屏自写的加载失败条（.pl-bar.err / .pm-bar.err /
+  //   .lg-bar.err / .sr-bar.err / .su-bar.err）。它们的样式逐字节相同，已统一收编成
+  //   `components/fp/FPLoadError.vue`（抄表屏的 .mt-empty.bad 同批，它本就不在表里）。
+  //
+  //   收编之后**不需要新条目**：本扫描找的是「带 v-if 且 class 像错误条」的元素，
+  //   而 FPLoadError 的根节点自己没有 v-if —— v-if 在宿主那侧、且挂在组件标签上，
+  //   标签本身没有错误类名，所以扫描根本不会命中。
+  //   （护栏没有变弱：这条扫描管的是 §4.2「表单校验位要常驻」，
+  //    而加载失败是 §6 明确允许的流内条，本来就是靠豁免过关的。）
   'views/params/ParamChangesDrawer.vue .pc-err':
     'A 加载失败态：抽屉打开即拉数据，err / 加载中 / 空态 / 表格是一条 v-if→v-else 链，任何时刻恰好渲染一个',
   'views/params/ParamHistoryDrawer.vue .ph-err':
     'A 加载失败态：同 ParamChangesDrawer，err / 加载中 / 内容 三选一的 v-else 链',
-  'views/system/SystemLogsView.vue .lg-bar.err':
-    'A 加载失败态：空态 / loadErr / 加载中 三选一的 v-else 链，替换的是整个日志表区域',
-  'views/system/SystemRolesView.vue .sr-bar.err':
-    'A 加载失败态：带「重试」按钮要一直看得见（该文件里保存成功/失败已经走 FPToast 浮层，这条是刻意留的持久错误态）',
-  'views/system/SystemUsersView.vue .su-bar.err':
-    'A 加载失败态：账号列表 / loadErr / 加载中 三选一的 v-else 链，替换的是整块列表',
 
   // ── B. 父容器已占位 ───────────────────────────────────────────────────────
   'components/import/FpImportModal.vue .fpimp-msg.err':

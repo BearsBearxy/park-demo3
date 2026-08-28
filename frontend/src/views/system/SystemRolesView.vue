@@ -168,11 +168,9 @@ async function remove(r: RoleDTO) {
       </div>
     </div>
 
-    <div v-if="loadErr" class="sr-bar err">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <FPLoadError v-if="loadErr" @retry="load()">
       <span>{{ loadErr }}</span>
-      <Button variant="outline" size="sm" @click="load()">重试</Button>
-    </div>
+    </FPLoadError>
     <!-- 保存成功/失败走 toast(浮层,不顶下面的角色矩阵)。上面的 loadErr 条**不动** ——
          它带「重试」按钮、要一直看得见,属持久错误态,不是短暂反馈。 -->
     <FPToast :model-value="msg?.text ?? ''" :tone="msg?.tone === 'ok' ? 'success' : 'error'"
@@ -290,8 +288,6 @@ async function remove(r: RoleDTO) {
 .sr-title { margin: 0; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .sr-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
 
-.sr-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.sr-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 .sr-empty { padding: 40px 12px; text-align: center; color: var(--text-disabled); font-size: var(--fs-label); }
 
 .sr-split { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 16px; align-items: start; }

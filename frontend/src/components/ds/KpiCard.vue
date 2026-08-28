@@ -11,6 +11,12 @@ export interface KpiCardProps {
   tint?: "slate" | "sky" | "blue" | "cyan" | "plain";
   icon?: unknown;
   style?: Record<string, string>;
+  /**
+   * 数据未到。**卡片盒子一模一样，只有数值位换成微光条** —— 零位移的关键在这儿：
+   * 外层 padding / gap / label 行 / 副标行全部照常渲染，唯一变的是那个数字。
+   * 高度用 1.1em（em = --fs-h1），正好等于数值那行的行盒高，换成条也不会差一像素。
+   */
+  loading?: boolean;
 }
 
 // 重设计:扁平白卡 + 色点标签(不再整卡上底色);tint 现映射为标签色点色
@@ -68,7 +74,9 @@ const rootStyle = computed(() => ({
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px">
       <span style="flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:flex-end">
         <span style="font-family:var(--font-mono);font-size:var(--fs-h1);font-weight:var(--fw-semibold);line-height:1.1;color:var(--text-primary);letter-spacing:var(--ls-tight)">
-          <slot>{{ value }}</slot>
+          <span v-if="loading" class="fp-shim" aria-hidden="true"
+                style="display:block;width:3.2em;height:1.1em;border-radius:5px"></span>
+          <slot v-else>{{ value }}</slot>
         </span>
       </span>
 

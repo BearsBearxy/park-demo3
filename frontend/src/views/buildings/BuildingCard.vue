@@ -7,7 +7,16 @@ import { fpWan } from '@/utils/money'
 import { leasedAreaShow, occPct, OCC_NULL_WHY } from '@/types/building'
 import type { BuildingDTO } from '@/types/building'
 
-const props = defineProps<{ building: BuildingDTO }>()
+const props = defineProps<{
+  building: BuildingDTO
+  /**
+   * 骨架态（加载态设计稿 §07）。**复用同一个 .bd-card 根盒子** ——
+   * padding / gap / 四行结构一模一样，只有内容换成微光条，
+   * 所以真数据落进来时几何一致。不在外面另画一个「像卡片的东西」：
+   * .bd-card 是 scoped 的，外面照抄迟早跟这里漂开。
+   */
+  loading?: boolean
+}>()
 const emit = defineEmits<{ open: [b: BuildingDTO] }>()
 
 const IconComp = computed(() => iconFor(props.building.phase === 4 ? 'bed-double' : 'building-2'))
@@ -30,6 +39,34 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
     @mouseleave="($event.currentTarget as HTMLElement).style.cssText = ($event.currentTarget as HTMLElement).style.cssText.replace(/box-shadow:[^;]+;/,'').replace(/transform:[^;]+;/,'')"
   >
     <!-- Row 1: name + icon -->
+    <template v-if="loading">
+      <!-- 四行与真卡逐行对齐:38px 图标行 / 出租率行 / 三列统计 / 带上边框的页脚 -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+        <div style="min-width:0;flex:1 1 auto">
+          <span class="fp-shim" style="display:block;width:56%;height:16px"></span>
+          <span class="fp-shim" style="display:block;width:74%;height:12px;margin-top:9px"></span>
+        </div>
+        <span class="fp-shim" style="width:38px;height:38px;border-radius:11px;flex:0 0 auto"></span>
+      </div>
+      <div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">
+          <span class="fp-shim" style="display:block;width:34px;height:12px"></span>
+          <span class="fp-shim" style="display:block;width:44px;height:15px"></span>
+        </div>
+        <div style="height:6px;border-radius:999px;background:var(--ink-040)"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div v-for="i in 3" :key="i">
+          <span class="fp-shim" style="display:block;width:70%;height:10.5px"></span>
+          <span class="fp-shim" style="display:block;width:52%;height:13px;margin-top:4px"></span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:12px;border-top:1px solid var(--divider)">
+        <span class="fp-shim" style="display:block;width:88px;height:26px;border-radius:999px"></span>
+        <span class="fp-shim" style="display:block;width:64px;height:20px;border-radius:999px"></span>
+      </div>
+    </template>
+    <template v-else>
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
       <div style="min-width:0">
         <div style="font-size:16px;font-weight:var(--fw-semibold);color:var(--text-primary)">{{ building.name }}</div>
@@ -98,6 +135,7 @@ const extraCount = computed(() => Math.max(0, props.building.tenantIds.length - 
       </span>
       <span v-else style="font-size:11.5px;color:var(--text-muted)">{{ building.tenantIds.length }} 户在租</span>
     </div>
+    </template>
   </div>
 </template>
 

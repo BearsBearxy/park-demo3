@@ -24,6 +24,9 @@ import { ref, computed, nextTick, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import {
   allocApi,
   type AllocCandidatesDTO, type AllocFeeKey, type AllocInForce, type AllocLinkType, type AllocMemberDiffDTO,
@@ -114,9 +117,18 @@ const diffs = ref<AllocMemberDiffDTO[]>([])
 // 兜底放 loadMonth 内部,五个调用点(onMounted/watch/onGenerate/submitPool/delPool)
 // 就都不必各自 catch。
 const loadErr = ref('')
+/**
+ * 换期重取时的退让（加载态设计稿 §06 第一档）。旧数据留在原地不闪，
+ * 但必须退一步并**停止接受交互** —— 它还是上一期的。顶边那条线是唯一的「在忙」信号。
+ */
+const reloading = ref(false)
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来，闪一下比不显示更晃眼 */
+const veil = useDeferredFlag(reloading)
+
 let seq = 0
 async function loadMonth() {
   const my = ++seq
+  reloading.value = true
   loadErr.value = ''                 // 先清:重试点下去立刻回落转圈骨架,不然按钮像没反应
   try {
     const [ps, pr, df, st] = await Promise.all([
@@ -132,6 +144,10 @@ async function loadMonth() {
     if (my !== seq) return           // 更晚的一次请求已在路上,别用旧的失败盖掉它的结果
     pools.value = null; paramRows.value = []; diffs.value = []
     loadErr.value = errMsg(e, '服务异常')
+  } finally {
+    // ⚠ 只有最新那一趟有资格熄灯:被顶掉的旧请求先返回时若把它清了,
+    //   新请求还在路上,退让却已经撤掉 —— 用户会以为数据到了。
+    if (my === seq) reloading.value = false
   }
 }
 // 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
@@ -723,6 +739,7 @@ async function delPool() {
   <div v-if="!pools && !loadErr" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="pl-page">
+    <FPLoadBar :on="veil" />
     <!-- 标题行:h2+账期;右=导出(常驻)+生成/新增池(编辑态)+编辑模式 -->
     <div class="pl-head">
       <div class="pl-head-l">
@@ -761,12 +778,10 @@ async function delPool() {
     <!-- 加载失败条(与下面「本月未生成」的灰条分属两态:那条是「读到了,本月没快照」,
          这条是「压根没读到」)。失败时 pools 已清空 —— 屏上不留上个月的行,
          行内月度参数(系数/加度)随行一起消失,生成按钮也已禁用,写不进当前月份 -->
-    <div v-if="loadErr" class="pl-bar err">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <FPLoadError v-if="loadErr" @retry="loadMonth()">
       <span>{{ year }}年{{ month }}月池数据加载失败:{{ loadErr }}
         —— 屏上已清空(不显示上个月的数字),重试成功前不能生成或改月度参数。</span>
-      <Button variant="outline" size="sm" @click="loadMonth()">重试</Button>
-    </div>
+    </FPLoadError>
     <!-- 提示条:本月未生成 / 配置已变请重新生成(加载失败时不出「未生成」——没读到就不知道生没生) -->
     <div v-if="!generated && !loadErr" class="pl-bar">
       <component :is="iconFor('info')" :size="14" />
@@ -790,7 +805,8 @@ async function delPool() {
       <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
     </div>
     <!-- §6:stale / 生成告警 / 受益人变动三条流内提示条已撤 —— 收进工具条 chip + 右侧抽屉(见页尾 FPAlertPanel) -->
-    <div class="pl-tablearea">
+    <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
+    <div class="pl-tablearea" :class="{ 'fp-stale': veil }" :aria-busy="veil">
     <!-- 台账式宽表:分带(Excel 式分隔带)+tfoot 合计(ref 行不计) -->
     <div class="pl-wrap">
       <table class="pl-table">
@@ -1200,7 +1216,7 @@ async function delPool() {
 </template>
 
 <style scoped>
-.pl-page { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
+.pl-page { position: relative; display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* 标题行(mt-head 家族) */
 .pl-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -1212,7 +1228,6 @@ async function delPool() {
 /* 提示条 */
 .pl-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
 .pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
-.pl-bar.err { border-style: solid; border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 /* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
 .pl-bar.ghost { visibility: hidden; }
 /* V73 逐表行:表行左对齐可换行;§F10 虚线画在池**首行**上边框=池间分隔,池内续行不画(否则分组信号正好相反) */

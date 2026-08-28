@@ -7,6 +7,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { S } from '@/utils/lockScopes'
 import { salaryApi } from '@/api/salary'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq, SalaryImportRow } from '@/types/salary'
@@ -28,11 +30,25 @@ const monthData = ref<SalaryYearMonthDTO | null>(null)
 
 // 竞态守卫:快速切月时只接受最新一次请求的结果(防乱序落表)
 let monthSeq = 0
+/**
+ * 换期重取时的退让（加载态设计稿 §06 第一档）。旧数据留在原地不闪，
+ * 但必须退一步并**停止接受交互** —— 它还是上一期的。顶边那条线是唯一的「在忙」信号。
+ */
+const reloading = ref(false)
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来，闪一下比不显示更晃眼 */
+const veil = useDeferredFlag(reloading)
+
 async function loadMonth(y: number) {
   const seq = ++monthSeq
-  const data = await salaryApi.records(y, month.value)
-  if (seq !== monthSeq) return
-  monthData.value = data
+  reloading.value = true
+  try {
+    const data = await salaryApi.records(y, month.value)
+    if (seq !== monthSeq) return
+    monthData.value = data
+  } finally {
+    // ⚠ 只有最新那一趟有资格熄灯(理由同催缴单)
+    if (seq === monthSeq) reloading.value = false
+  }
 }
 async function reloadOverview() {
   overview.value = await salaryApi.overview()
@@ -154,6 +170,7 @@ const onExport = () => guard('导出失败', async () => {
     <!-- 年度明细表 -->
     <template v-else-if="monthData">
       <div class="s12-page">
+        <FPLoadBar :on="veil" />
         <SchedHeader
           :scope="S.salary(year, month)"
           icon="wallet"
@@ -245,7 +262,7 @@ const onExport = () => guard('导出失败', async () => {
 
 <style scoped>
 /* 1:1 from screen-schedule12.jsx WStyles(.w12-page / .w12-toolbar 段) */
-.s12-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
+.s12-page { position:relative; display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 .s12-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .s12-toolbar-l { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; flex:1 1 auto; }
 .s12-toolbar-r { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }

@@ -230,23 +230,24 @@ const occSub = computed(() => {
     </div>
 
     <!-- data body: gated on first load so we never flash empty KPIs / 共0栋 / 没有匹配 -->
-    <template v-if="summary">
+    <!-- 数据体**不再整屏 v-if** —— 外壳常驻，只在叶子上放骨架（加载态设计稿 §07「精确占位」）。
+         零位移由「外壳从不卸载」这个结构保证，不是靠两份版式对齐出来的。 -->
     <div class="mx-body">
     <!-- 2. KPI 左栏(§3 统一样式) -->
     <aside class="mx-kpirail">
-      <KpiCard label="楼栋总数" :value="String(summary.buildingCount)" :delta="`${stoppedCount} 栋停用`" tint="slate" :style="{ padding: '20px' }">
+      <KpiCard label="楼栋总数" :value="summary ? String(summary.buildingCount) : ''" :loading="!summary" :delta="`${stoppedCount} 栋停用`" tint="slate" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('building-2')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="可租面积" :value="`${(summary.rentableArea / 10000).toFixed(2)} 万㎡`" tint="sky" :style="{ padding: '20px' }">
+      <KpiCard label="可租面积" :value="summary ? `${(summary.rentableArea / 10000).toFixed(2)} 万㎡` : ''" :loading="!summary" tint="sky" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('ruler')" :size="16" /></template>
       </KpiCard>
       <KpiCard
-        label="园区出租率" :value="occPct(summary.occRate)" :sub="occSub" tint="blue"
-        :title="summary.occRate == null ? OCC_NULL_WHY : undefined" :style="{ padding: '20px' }"
+        label="园区出租率" :value="summary ? occPct(summary.occRate) : ''" :loading="!summary" :sub="occSub" tint="blue"
+        :title="summary && summary.occRate == null ? OCC_NULL_WHY : undefined" :style="{ padding: '20px' }"
       >
         <template #icon><component :is="iconFor('trending-up')" :size="16" /></template>
       </KpiCard>
-      <KpiCard label="空置单元" :value="String(summary.vacantCount)" delta="待招商" trend="down" tint="cyan" :style="{ padding: '20px' }">
+      <KpiCard label="空置单元" :value="summary ? String(summary.vacantCount) : ''" :loading="!summary" delta="待招商" trend="down" tint="cyan" :style="{ padding: '20px' }">
         <template #icon><component :is="iconFor('door-open')" :size="16" /></template>
       </KpiCard>
     </aside>
@@ -277,7 +278,10 @@ const occSub = computed(() => {
         :building="b"
         @open="onOpenBuilding"
       />
-      <div v-if="filtered.length === 0" style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-disabled)">没有匹配的楼栋</div>
+      <!-- 卡片墙的骨架:复用 BuildingCard 自己的 .bd-card 盒子(它是 scoped 的,外面照抄迟早漂开)。
+           8 张 = 卡片墙模式下的 pageSize 常量,与真数据落位后的张数一致。 -->
+      <BuildingCard v-for="i in (summary ? 0 : 8)" :key="'sk-' + i" loading :building="({} as never)" />
+      <div v-if="summary && filtered.length === 0" style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-disabled)">没有匹配的楼栋</div>
     </div>
     <Card v-else surface="white" :padding="0" class="mx-listcard">
       <div ref="tableWrapEl" class="mx-tablewrap">
@@ -287,13 +291,14 @@ const occSub = computed(() => {
           rowKey="id"
           :sort="sort"
           :rowHover="true"
+          :skeleton-rows="summary ? 0 : pageSize"
           @sortChange="sort = $event"
           @rowClick="onTableRowClick"
         />
-        <div v-if="filtered.length === 0" style="padding:40px;text-align:center;color:var(--text-disabled)">没有匹配的楼栋</div>
+        <div v-if="summary && filtered.length === 0" style="padding:40px;text-align:center;color:var(--text-disabled)">没有匹配的楼栋</div>
       </div>
       <!-- 分页器停靠卡片底部(spec §5) -->
-      <div v-if="filtered.length > 0" class="mx-pagerbar">
+      <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">
         <FPPager
           :page="safePage"
           :pageCount="pageCount"
@@ -316,8 +321,6 @@ const occSub = computed(() => {
     />
     </div>
     </div>
-    </template>
-    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 7. Drawer -->
     <!-- 定高:本抽屉是「先打开、再 await detail」,不定高的话 detail 到达会把抽屉从 260px 撑到 760px
