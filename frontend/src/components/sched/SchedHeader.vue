@@ -63,19 +63,37 @@ const { lockedBy, evictedBy } = lock
  */
 const heldByOther = lock.watchScope(() => props.scope)
 
+/** 退出编辑态的四件事。`edit` 是 prop,组件自己改不了 —— 只能发事件请上层翻。 */
+function exitEdit() {
+  auth.closeEditor(meId)      // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
+  void auth.endElevation()
+  lock.release()              // 还的是 held 那把,也就是**进编辑态时**占的那个 scope
+  emit('toggle-edit')
+}
+
 async function onToggleEdit() {
   if (!props.edit && !auth.can(props.perm)) { asking.value = [props.perm]; return }
-  if (props.edit) {
-    auth.closeEditor(meId)      // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
-    void auth.endElevation()
-    lock.release()
-    emit('toggle-edit')
-    return
-  }
+  if (props.edit) { exitEdit(); return }
   // 权限齐 ≠ 进得去:没传 scope 的屏原样直接进;传了的必须先占到锁
   if (props.scope && !(await lock.acquire(props.scope))) return
   emit('toggle-edit')
 }
+
+/**
+ * 编辑态里 scope 变了 → 还旧锁 + 退出编辑态(CONCURRENCY-SPEC §3)。
+ *
+ * 锁只在 onToggleEdit 那一刻 acquire 一次,之后就固化了。而这 7 屏**都能在编辑态里就地换期**:
+ * 附表13/14 顶部 Segmented 切子表、附表12 月胶囊换月、四屏「新增记账」存别的年时屏会静默跳年。
+ * 不还的话人在 5 月编辑却握着 3 月的锁 —— 5 月对别人显示「无人编辑」,两个人同时改,后保存的赢。
+ * 这是**会丢数据**的那一档,不是体验问题。
+ *
+ * 同一根因在 `useEditMode` 里已修(2026-08-29);SchedHeader 是第二套锁实现,覆盖不到,故此处再补。
+ * 选「退出」而不是「换锁续编」:新期的锁可能被别人占着,悄悄让人在没有锁的期上继续编辑更坏。
+ */
+watch(() => props.scope, (now, before) => {
+  if (!props.edit || before == null || now === before) return
+  exitEdit()
+})
 
 /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
 async function onTaken() {
