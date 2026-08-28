@@ -175,7 +175,9 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
+  <!-- 根收编 .mx-page(迁移①):内联 height:100% 媒体查询盖不住,S 档高度链三件套要在类上生效;
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板(通过 §9 验收的标志) -->
+  <div class="mx-page fp-fluid">
     <!-- 1. Title row -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -259,7 +261,21 @@ watch([phase, q, statusFilter, sort], () => { page.value = 1 })
           :skeleton-rows="summary ? 0 : pageSize"
           @sortChange="sort = $event"
           @rowClick="openTenant = $event"
-        />
+        >
+          <!-- S 档行卡映射(迁移②,spec §5.1:主字段 + ≤2 次级 + 状态胶囊,72px 内):
+               不映射的话兜底用第一列——它是头像+双行的 VNode,塞行卡浪费高度还挤掉次级字段 -->
+          <template #card="{ row }">
+            <div class="mx-rowcard-main">{{ row.parentName ? '└ ' : '' }}{{ row.companyName }}</div>
+            <div class="mx-rowcard-sub">
+              <span>{{ row.primaryBuilding ?? '—' }}</span>
+              <span>{{ fpMoney(row.monthlyRent) }}</span>
+              <!-- flex:0 0 auto 豁免 .mx-rowcard-sub > * 的 min-width:0,胶囊不被截字 -->
+              <span style="margin-left:auto;flex:0 0 auto">
+                <FPTenantStatus :status="row.status" />
+              </span>
+            </div>
+          </template>
+        </FPSortableTable>
       </div>
       <!-- ⚠ 必须带 summary:数据没到时 filtered 也是空的,不挡的话会先闪一下「没有匹配的租户」 -->
       <div v-if="summary && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的租户</div>

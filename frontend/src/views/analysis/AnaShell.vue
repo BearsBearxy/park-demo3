@@ -94,10 +94,12 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 </script>
 
 <template>
-  <div class="anx-shell">
+  <!-- fp-fluid:分析层已按 RESPONSIVE-LAYOUT-SPEC §5.2 迁移(av2 两列 KPI/工具条两行/图高降档),
+       在屏根摘掉 base.css 的 800px 屏级地板;18+1 屏全部以本壳为根,一处摘全层。 -->
+  <div class="anx-shell fp-fluid">
     <div class="anx-tools">
       <!-- 期间控制('none' 整体隐藏,改显 scopeChip 口径徽章;'year' 隐藏粒度切换与月下拉) -->
-      <div v-if="pmode !== 'none'" style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap">
+      <div v-if="pmode !== 'none'" class="anx-period">
         <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />期间</span>
         <div v-if="pmode === 'full'" class="anx-seg">
           <button :class="{ on: period.sel.value.gran === 'month' }" @click="period.setGran('month')">按月</button>
@@ -134,9 +136,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
       <!-- 屏自定工具扩展位 -->
       <slot name="tools" />
 
-      <div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+      <div class="anx-right">
         <!-- v2 对比开关(仅屏声明支持集时显示;不支持项禁用+title 说明) -->
-        <div v-if="cmp" style="display: inline-flex; align-items: center; gap: 8px">
+        <div v-if="cmp" class="anx-cmp">
           <span class="anx-lbl">对比</span>
           <div class="anx-seg" role="group" aria-label="对比开关">
             <button
@@ -211,9 +213,15 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
    ⚠ 改瓦片 padding / 字号 / 行高时必须回来同步这个数,否则重新出现撑开或多余留白。
    窄屏 auto-fit 换行成两行属响应式,不算抖动,故只保一行的量。
    2026-08-20 同步过一次:边框 0.5→1px(0.5px 在非整数 DPR 下渲染不稳)、副行 10.5→11px
-   (中文可读性下限),两项合计 +1.65px,故 93 → 94。 */
+   (中文可读性下限),两项合计 +1.65px,故 93 → 94。
+   S 档 .av2-kpis 定两列(ana.css §5.2 块)与 auto-fit 换行同理:行数是「视口档 × 瓦片数」的
+   静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。 */
 .anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 94px; }
 .anx-selw { flex: 0 0 auto; }
+/* 工具条三个分组(改前是内联 style——媒体查询盖不住内联,M/S 收纳只能先收编成类;数值照抄零变化) */
+.anx-period { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anx-cmp { display: inline-flex; align-items: center; gap: 8px; }
+.anx-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .anx-nav { display: inline-flex; gap: 2px; }
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
@@ -224,5 +232,25 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }
 .anx-fld input { width: 74px; font-family: var(--font-mono); font-size: var(--fs-label); text-align: right; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 5px 8px; outline: none; }
 .anx-fld input:focus { border-color: var(--border-strong); }
+/* M/S(≤960,§5.2):工具条收进两行,且行组成静态确定——右侧组 flex-basis:100% 恒占第二行,
+   不靠内容宽度自然换行(那会随 asof 文案/对比开关有无在一行两行间跳,sticky 条高度也跟着跳)。
+   右对齐由 justify-content 接手(占满整行后 margin-left:auto 失效)。 */
+@media (max-width: 960px) {
+  .anx-tools { gap: 6px 8px; }
+  .anx-period { gap: 6px; }
+  .anx-right { flex-basis: 100%; justify-content: flex-end; gap: 8px; }
+}
+/* S(≤600):期间行按 390 视口做减法(可用宽 390−12×2=366)。定宽项全是确定值:
+   seg 88(CJK 24×2+padding 16×2+缝 2+框 6)+ 年 110 + 月 92(LIST-PAGE-SPEC §2 下限,
+   ≤600 下 Select 字号升 16px 防 iOS 聚焦缩放,再窄必截)+ 步进 58 + 缝 15 = 363。
+   为此隐掉「期间/对比」字样(控件自明)——「数据截至」是数据信息,保留。
+   seg 收窄只动本组件模板里的两条(scoped 带 data-v),#tools 插槽/卡头 mini seg 不受影响。 */
+@media (max-width: 600px) {
+  .anx-tools { padding: 9px 12px; }
+  .anx-period { gap: 5px; }
+  .anx-period > .anx-lbl, .anx-cmp > .anx-lbl { display: none; }
+  .anx-tools .anx-seg button { padding: 5px 8px; }
+  .anx-right { gap: 6px; }
+}
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>

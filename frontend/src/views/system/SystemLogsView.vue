@@ -133,7 +133,9 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
+  <!-- 根收编 .mx-page(迁移①):内联 height:100% 媒体查询盖不住,S 档高度链三件套要在类上生效;
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板(通过 §9 验收的标志) -->
+  <div class="mx-page fp-fluid">
     <!-- 1. 标题行 -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -247,4 +249,37 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 .lg-auth { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.12); color: rgb(190, 110, 0); font-size: var(--fs-label); font-weight: var(--fw-medium); white-space: nowrap; }
 
 .lg-empty { margin: auto 0; text-align: center; padding: 40px; color: var(--text-disabled); font-size: var(--fs-body); }
+
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.1 迁移③/②)——宽档在前窄档在后 ── */
+/* M(≤960):工具栏两行收纳 —— 右组(两 Select + 日期范围)~590px,601px 附近一行放不下。
+   行的定宽列合计也 ~590px:M 档改卡内横滚(同 §5.3 宽表口径),行高/每页行数的 56px 口径不动 */
+@media (max-width: 960px) {
+  .mx-toolbar-right { flex-wrap: wrap; justify-content: flex-end; }
+  .lg-wrap { overflow-x: auto; }
+  .lg-row { min-width: 640px; }
+}
+/* S(≤600):行转两行卡 —— 72px 定高与 .mx-rowcard 同节奏(本屏不走 FPSortableTable,
+   卡片几何只能在此对齐)。第一行 谁·做了什么·对什么,第二行 来源徽标·时间·授权人;
+   时间线竖轴是装饰,窄屏收掉。grid 布局下上面 flex 定宽自动失效,无需逐列重置 */
+@media (max-width: 600px) {
+  .lg-wrap { overflow: visible; }               /* 高度链三件套③的本屏对应物(容器不是 .mx-tablewrap) */
+  .lg-rail { display: none; }
+  .lg-row {
+    height: 72px;
+    box-sizing: border-box;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-areas: 'actor act what' 'badge ts auth';
+    align-content: center;
+    column-gap: 10px;
+    row-gap: 4px;
+  }
+  .lg-actor { grid-area: actor; max-width: 40vw; }  /* 超长操作人名不许把 390 撑破,截断走 title */
+  .lg-act { grid-area: act; }
+  .lg-what { grid-area: what; }
+  .lg-badge { grid-area: badge; }
+  .lg-ts { grid-area: ts; }
+  .lg-auth { grid-area: auth; justify-self: end; }
+}
 </style>

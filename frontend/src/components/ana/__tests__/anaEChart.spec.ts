@@ -1,5 +1,5 @@
 // AnaEChart 薄封装单测(jsdom 无 canvas → 整体 mock ./echartsBundle;屏组组件测试沿用此规约):
-// init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose。
+// init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose / S 档图高降档。
 // ⚠ 桩掉的是整个装配模块,所以「注册清单是否漏项」本测试**零覆盖** —— 只能在浏览器里看控制台。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -68,6 +68,21 @@ describe('AnaEChart', () => {
     ;(call![1] as (p: unknown) => void)({ name: '3月', value: 42 })
     expect(w.emitted('chart-click')![0]).toEqual([{ name: '3月', value: 42 }])
     w.unmount()
+  })
+
+  it('S 档(matchMedia ≤600 命中)图高降档:lg300→260;挂载时一次初判,不挂 resize 监听', async () => {
+    // jsdom 的 matchMedia 一律 matches:false(等于非 S 档),既有用例的 height 直传就是这么保住的;
+    // 这里桩成命中来走降档分支。断言映射一档即可——映射表是纯查表,五档全列是重复自己。
+    const orig = window.matchMedia
+    window.matchMedia = vi.fn(() => ({ matches: true }) as MediaQueryList)
+    try {
+      const w = mount(AnaEChart, { props: { option: {}, height: 300 } })
+      await flushPromises()
+      expect(w.attributes('style')).toContain('height: 260px')
+      w.unmount()
+    } finally {
+      window.matchMedia = orig
+    }
   })
 
   it('ResizeObserver 触发 resize;卸载 dispose + 断开观察', async () => {

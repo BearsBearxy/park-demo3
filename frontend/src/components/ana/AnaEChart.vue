@@ -6,7 +6,7 @@
 // 把 themeRiver/sunburst/candlestick/registerMap 这些一个没用到的全拖进首屏。
 // ⚠ 新增图表类型要改的是 echartsBundle.ts,不是这里。
 // jsdom 无 canvas:组件测试 vi.mock('../echartsBundle')(见 __tests__/anaEChart.spec.ts 契约)。
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { registerFpAnaTheme } from './anaTheme'
 
 // 最小实例形状(不顶层 import echarts 类型,保住懒加载;mock 也按此契约)
@@ -33,6 +33,15 @@ interface ChartInst {
 const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 250 })
 const emit = defineEmits<{ 'chart-click': [params: unknown] }>()
 
+// S 档(视口 ≤600)图高降档:xl/lg→260、md→220、sm→180、xs→150(RESPONSIVE-LAYOUT-SPEC §5.2)。
+// matchMedia 挂载时初判一次即可,不跟随 resize——手机不改窗宽,旋屏走整页重挂载;
+// 也因此零响应式重排,同一视口内高度即终态(LAYOUT-STABILITY §1)。
+// 上面五档注释里「同一行卡等高」的约束,在 S 档随单列堆叠自然失效——一行只有一张卡,
+// 没有并排可对齐;降档只需整组同改(xl 与 lg 合并到 260 正是这个意思),无需逐行核对。
+const S_HEIGHT: Record<number, number> = { 440: 260, 300: 260, 250: 220, 200: 180, 170: 150 }
+const isS = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
+const chartHeight = computed(() => (isS ? S_HEIGHT[props.height] ?? props.height : props.height))
+
 const el = ref<HTMLDivElement | null>(null)
 const ready = ref(false)
 let chart: ChartInst | null = null
@@ -56,6 +65,8 @@ onMounted(async () => {
   // 代价是显存 —— 背景缓冲面积从 1.14²≈1.3 倍涨到 4 倍(单张 600×300 的图约 2.8MB)。
   // 一屏最多 7 张图(PvRoiView),约 20MB,可接受;真嫌重的话下一步是换 SVGRenderer
   // (矢量,任何 DPR 都锐利,且文字走浏览器排版引擎),但那要动 echartsBundle 的渲染器装配。
+  // —— S 档(≤600)已走这条出路:echartsBundle 按档装配 SVG(DPR 照传不降,SVG 根本不看它),
+  //    canvas 路径(>600)零变化。选择收口在 echartsBundle,这里不用感知。
   const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
   chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
   chart.setOption(props.option, { notMerge: true })
@@ -74,7 +85,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: height + 'px' }" />
+  <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: chartHeight + 'px' }" />
 </template>
 
 <style scoped>

@@ -13,8 +13,9 @@
 //
 // 清单来源：2026-08-11 审计静态全扫（src/views/analysis + src/components/ana）。
 //   axisPointer 全站都嵌在 tooltip 里 → TooltipComponent 覆盖；log 轴 → GridComponent 覆盖。
-//   全站无 visualMap/toolbox/graphic/geo/timeline/brush/polar/radar/calendar/dataset/parallel，无 SVGRenderer。
-import { init, registerTheme, use } from 'echarts/core'
+//   全站无 visualMap/toolbox/graphic/geo/timeline/brush/polar/radar/calendar/dataset/parallel，无 SVGRenderer——
+//   后者 2026-08-29 起在装配层按档启用（见文末），审计结论仍成立：option 层无人依赖它。
+import { init as ecInit, registerTheme, use } from 'echarts/core'
 import {
   BarChart,        // 49 处
   LineChart,       // 34 处
@@ -28,13 +29,26 @@ import {
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   MarkLineComponent, MarkPointComponent, MarkAreaComponent, DataZoomComponent,
 } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
+
+// S 档(视口 ≤600)换 SVGRenderer(RESPONSIVE-LAYOUT-SPEC §5.2;AnaEChart DPR 注释预留的出路):
+// 矢量在任何 DPR 都锐利、文字走浏览器排版引擎,省掉 canvas「ceil 且下限 2」带来的 4 倍背景缓冲显存
+// ——手机上这份显存最金贵。DPR 不降:AnaEChart 照传,SVG 根本不看它。
+// matchMedia 只在模块求值时判一次:本模块随分析 chunk 每页只加载一次,手机不改窗宽,
+// 旋屏走整页重挂载(重新求值),不必也不该跟随 resize。
+// canvas 路径(>600)装配与行为原样零变化;两个渲染器都进包是代价——按档是运行时才知道的,摇不掉。
+const useSvg = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
 
 use([
   BarChart, LineChart, PieChart, ScatterChart, TreemapChart, SankeyChart, GaugeChart,
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   MarkLineComponent, MarkPointComponent, MarkAreaComponent, DataZoomComponent,
-  CanvasRenderer,
+  useSvg ? SVGRenderer : CanvasRenderer,
 ])
+
+// 渲染器选择收口在这里:S 档只注册了 SVG,init 不注入 renderer:'svg' 会按默认 canvas 找不到渲染器。
+// 导出名与形状不变(init/registerTheme),AnaEChart 的动态 import 契约与单测 mock 都不用动。
+const init: typeof ecInit = (dom, theme, opts) =>
+  useSvg ? ecInit(dom, theme, { ...opts, renderer: 'svg' }) : ecInit(dom, theme, opts)
 
 export { init, registerTheme }
