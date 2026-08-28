@@ -15,6 +15,8 @@ import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { metersApi, type MeterDTO } from '@/api/meters'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
@@ -85,9 +87,18 @@ const status = ref<ParamStatusDTO | null>(null)
 const loadErr = ref('')
 const flash = ref('')            // 重算 / 复制上月电价 的一次性摘要
 const batchErr = ref('')         // 跨月批量重算的失败断点(error toast,不自动关)
+/**
+ * 换期重取时的退让（加载态设计稿 §06 第一档）。旧数据留在原地不闪，
+ * 但必须退一步并**停止接受交互** —— 它还是上一期的。顶边那条线是唯一的「在忙」信号。
+ */
+const reloading = ref(false)   // ⚠ 不叫 busy:本屏下面已有一个 busy(批量重算用)
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来，闪一下比不显示更晃眼 */
+const veil = useDeferredFlag(reloading)
+
 let seq = 0
 async function load() {
   const my = ++seq
+  reloading.value = true
   loadErr.value = ''
   try {
     const [rs, st] = await Promise.all([
@@ -101,6 +112,10 @@ async function load() {
     if (my !== seq) return
     rows.value = rows.value ?? []
     loadErr.value = errMsg(e, '参数加载失败')
+  } finally {
+    // ⚠ 只有最新那一趟有资格熄灯:被顶掉的旧请求先返回时若把它清了,
+    //   新请求还在路上,退让却已经撤掉 —— 用户会以为数据到了。
+    if (my === seq) reloading.value = false
   }
 }
 // 主数据(名字表 / 选择器候选;失败降级为不出对应控件,不阻断页面)
@@ -482,6 +497,7 @@ const FIXED_RULES = [
   <div v-if="!rows" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="pm-page">
+    <FPLoadBar :on="veil" />
     <!-- 标题行:年月 + 期区 | 变更记录 + 编辑模式 -->
     <div class="pm-head">
       <div class="pm-head-l">
@@ -508,11 +524,9 @@ const FIXED_RULES = [
 
     <!-- 状态条(spec §5.1 / §5.5):只报中性事实 —— 电价 n/6 · 快照生成时间;
          过期 / 其他月份受影响那些橙字归工具条上的告警 chip 管(LAYOUT-STABILITY-SPEC §6) -->
-    <div v-if="loadErr" class="pm-bar err">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <FPLoadError v-if="loadErr" @retry="load">
       <span>{{ loadErr }}</span>
-      <Button variant="outline" size="sm" @click="load">重试</Button>
-    </div>
+    </FPLoadError>
     <div class="pm-bar status">
       <component :is="iconFor('info')" :size="14" />
       <span class="pm-status-text">{{ statusText }}</span>
@@ -543,7 +557,7 @@ const FIXED_RULES = [
           </Button>
         </div>
       </div>
-      <div class="pm-tablewrap">
+      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
@@ -598,7 +612,7 @@ const FIXED_RULES = [
           </button>
         </div>
       </div>
-      <div class="pm-tablewrap">
+      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
@@ -718,7 +732,7 @@ const FIXED_RULES = [
           </Button>
         </div>
       </div>
-      <div class="pm-tablewrap">
+      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:200px" /><col style="width:170px" /><col style="width:130px" /><col />
@@ -802,7 +816,7 @@ const FIXED_RULES = [
 </template>
 
 <style scoped>
-.pm-page { display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; max-width: 1500px; margin: 0 auto; width: 100%; }
+.pm-page { position: relative; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; max-width: 1500px; margin: 0 auto; width: 100%; }
 
 .pm-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .pm-head-l { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -812,7 +826,6 @@ const FIXED_RULES = [
 
 /* 状态条:中性事实 / 加载失败红(过期橙条已废,§6 改走告警 chip + 抽屉) */
 .pm-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.pm-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
 .pm-status-text { flex: 1 1 auto; min-width: 200px; }
 
 /* 区卡(LIST-PAGE-SPEC 列表卡形态) */

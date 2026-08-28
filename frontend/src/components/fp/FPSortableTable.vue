@@ -29,12 +29,23 @@ const props = withDefaults(defineProps<{
   fixedLayout?: boolean
   // master-detail 选中高亮:命中行(rowKey===selectedKey)加背景色;null=无选中(向后兼容)。
   selectedKey?: string | number | null
+  /**
+   * 数据未到时先画几行骨架(加载态设计稿 §07「精确占位」)。0 = 不画。
+   *
+   * ⚠ 行数由调用方给 —— 那几屏用 useFitRows 算得出「本卡片放得下几行」,
+   *   骨架照那个数画,真数据落进来时**几何完全一致**。
+   *   这里若自作主张定一个数,零位移就断了。
+   * 骨架行与数据行**共用同一套 tr/td 样式**(--mx-row-h 定高、同一 borderBottom、同一 padding),
+   *   不是另画一张表 —— 两份版式迟早会漂。
+   */
+  skeletonRows?: number
 }>(), {
   rowKey: 'id',
   sort: null,
   rowHover: true,
   fixedLayout: false,
   selectedKey: null,
+  skeletonRows: 0,
 })
 
 const isSel = (r: any) => props.selectedKey != null && r[props.rowKey] === props.selectedKey
@@ -166,6 +177,19 @@ function renderSortHeader(col: SortableColumn) {
         </tr>
       </thead>
       <tbody>
+        <!-- 骨架行:与下面的数据行共用 tr 定高与 td padding,换的只是格子里的内容 -->
+        <tr
+          v-for="i in (skeletonRows || 0)"
+          :key="'sk-' + i"
+          :style="{ height: 'var(--mx-row-h, 56px)', borderBottom: '1px solid var(--divider)' }"
+        >
+          <td v-for="(c, ci) in columns" :key="c.key"
+              :style="{ padding: '0 16px', verticalAlign: 'middle', textAlign: c.align || 'left' }">
+            <span class="fp-shim" aria-hidden="true"
+                  :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
+                            width: [62, 44, 54, 38, 48, 58][(ci + i) % 6] + '%' }"></span>
+          </td>
+        </tr>
         <tr
           v-for="r in sortedRows"
           :key="(r as any)[rowKey]"

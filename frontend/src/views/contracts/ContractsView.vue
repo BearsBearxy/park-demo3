@@ -313,8 +313,8 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
       </div>
     </div>
 
-    <!-- data body: gated on first load so we never flash empty KPIs / 共0份 / 没有匹配 -->
-    <template v-if="summary">
+    <!-- 数据体**不再整屏 v-if** —— 外壳常驻，只在叶子上放骨架（加载态设计稿 §07「精确占位」）。
+         零位移由「外壳从不卸载」这个结构保证，不是靠两份版式对齐出来的。 -->
     <!-- KPI 顶条已去除(用户要求:让左侧列表更宽显示更多列);状态计数仍在生命周期 tabs 上 -->
     <!-- 筛选/搜索:全宽置顶(sidebar 列表太窄放不下这排控件) -->
     <div class="mx-toolbar mx-toolbar-top">
@@ -373,9 +373,17 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
                 </div>
               </div>
             </button>
-            <div v-if="filtered.length === 0" class="cl-empty">没有匹配的合同</div>
+            <!-- 骨架复用 .cl-item：盒子与真行完全一致，换的只是里面的内容 -->
+            <div v-for="i in (summary ? 0 : pageSize)" :key="'sk-' + i" class="cl-item" aria-hidden="true">
+              <span class="fp-shim" style="width:30px;height:30px;border-radius:50%;flex:0 0 auto"></span>
+              <div class="cl-main">
+                <div class="cl-l1"><span class="fp-shim" style="display:block;width:52%;height:11px"></span></div>
+                <div class="cl-l2"><span class="fp-shim" style="display:block;width:38%;height:10px"></span></div>
+              </div>
+            </div>
+            <div v-if="summary && filtered.length === 0" class="cl-empty">没有匹配的合同</div>
           </div>
-          <div v-if="filtered.length > 0" class="mx-pagerbar">
+          <div v-if="!summary || filtered.length > 0" class="mx-pagerbar">
             <FPPager compact :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
           </div>
         </Card>
@@ -399,8 +407,6 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
         </div>
       </div>
     </div>
-    </template>
-    <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <!-- 5.5 计费字段导入(registry key 'billingTerms':整册 parseWorkbook → 每户一段勾选;多合同户人选其一) -->
     <FpImportModal

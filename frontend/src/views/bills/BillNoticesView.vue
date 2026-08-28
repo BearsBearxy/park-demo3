@@ -11,6 +11,8 @@ import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { useTabsStore } from '@/stores/tabs'
 import {
   billNoticesApi, type BillNoteOverrideDTO, type BillNoticeDTO, type BillNoticeDetailDTO, type BillNoticeLineDTO,
@@ -103,17 +105,33 @@ const contracts = ref<ContractDTO[]>([])
 const buildings = ref<BuildingDTO[]>([])
 const status = ref<ParamStatusDTO | null>(null)   // S21:计费参数状态(参数晚于本月批次 → stale 条)
 let seq = 0
+/**
+ * 换期重取。**不清空 rows** —— 旧表留到新数据落位（加载态设计稿 §06 第一档）。
+ * 但留着不等于可以装作无事发生：`veil` 一亮，旧内容退让并**停止接受交互**，
+ * 顶边那条进度线是「正在重取」的唯一信号。
+ */
+const busy = ref(false)
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来，闪一下比不显示更晃眼 */
+const veil = useDeferredFlag(busy)
+
 async function loadMonth() {
   const my = ++seq
-  const [ns, cs, st] = await Promise.all([
-    billNoticesApi.list(ym.value).catch(() => [] as BillNoticeDTO[]),
-    contractApi.list(`${ym.value}-15`).catch(() => [] as ContractDTO[]),
-    paramsApi.status(ym.value).catch(() => null),
-  ])
-  if (my !== seq) return
-  rows.value = ns
-  contracts.value = cs
-  status.value = st
+  busy.value = true
+  try {
+    const [ns, cs, st] = await Promise.all([
+      billNoticesApi.list(ym.value).catch(() => [] as BillNoticeDTO[]),
+      contractApi.list(`${ym.value}-15`).catch(() => [] as ContractDTO[]),
+      paramsApi.status(ym.value).catch(() => null),
+    ])
+    if (my !== seq) return
+    rows.value = ns
+    contracts.value = cs
+    status.value = st
+  } finally {
+    // ⚠ 只有最新那一趟才有资格熄灯:被顶掉的旧请求先返回时若把 busy 清了,
+    //   新请求还在路上,退让却已经撤掉 —— 用户会以为数据到了。
+    if (my === seq) busy.value = false
+  }
 }
 const staleMsg = computed(() => staleText(status.value, 'bill'))
 // 深链协议:KeepAlive 缓存实例只在 setup 消费 query,必须 openFresh
@@ -581,6 +599,7 @@ const drawerSub = computed(() => {
   <div v-if="!rows" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="bn-page">
+    <FPLoadBar :on="veil" />
     <!-- 标题行:h2+账期+期页签;右=重新生成(admin) -->
     <div class="bn-head">
       <div class="bn-head-l">
@@ -629,7 +648,7 @@ const drawerSub = computed(() => {
     </div>
 
     <!-- KPI 条(随当前期 tab 联动) -->
-    <div class="bn-kpis">
+    <div class="bn-kpis" :class="{ 'fp-stale': veil }">
       <FPStat label="户数" :value="String(kpis.count)" tint="blue" />
       <FPStat label="本期总额(元)" :value="fmt2(kpis.total)" tint="sky" sub="S5 起含租金板块" />
       <FPStat label="月租金合计(参考,元)" :value="fmt2(kpis.rent)" sub="整月口径,未含免租期/按天折" />
@@ -678,7 +697,8 @@ const drawerSub = computed(() => {
     </div>
 
     <!-- 一行一户(pl-table 手法:sticky 表头/34px 行/tfoot 钉底合计) -->
-    <div class="bn-wrap">
+    <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
+    <div class="bn-wrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <table class="bn-table">
         <!-- table-layout:fixed ⇒ col 必须与列数逐一对齐,缺一个后面全体串位。
              S20 加「勾选/状态」两列时漏补,导致月租金列拿到 52px(表头「月租金(参考)」被截成「月租金(参」)。 -->
@@ -1165,7 +1185,7 @@ const drawerSub = computed(() => {
 </template>
 
 <style scoped>
-.bn-page { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
+.bn-page { position: relative; display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* 标题行(pl-head 家族) */
 .bn-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }

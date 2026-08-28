@@ -195,11 +195,9 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
         <div v-if="rows && view.length === 0" class="lg-empty">
           {{ hasFilter ? '这个筛选条件下没有操作记录 —— 换个来源、操作人或日期范围试试。' : '还没有任何操作记录。' }}
         </div>
-        <div v-else-if="loadErr" class="lg-bar err">
-          <component :is="iconFor('alert-triangle')" :size="14" />
+        <FPLoadError v-else-if="loadErr" class="lg-center" @retry="load">
           <span>操作日志没加载出来:{{ loadErr }} —— 屏上不显示任何记录,重试成功前查不到留痕。</span>
-          <Button variant="outline" size="sm" @click="load">重试</Button>
-        </div>
+        </FPLoadError>
         <div v-else-if="!rows" class="page-loading"><span class="page-spin" /></div>
       </div>
       <div v-if="view.length > 0" class="mx-pagerbar">
@@ -211,9 +209,9 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 
 <style scoped>
 /* 加载失败条(1:1 SystemUsersView .su-bar.err);margin:auto 0 让它在卡片里竖向居中 */
-.lg-bar { flex: 0 0 auto; margin: auto 0; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.lg-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
-
+/* 失败条在定高卡片里垂直居中 —— 原 .lg-bar 靠 `margin: auto 0` 做到,
+   换成 FPLoadError 之后由这一条接手(组件只管自己的样子,不管宿主怎么摆)。 */
+.lg-center { margin: auto 0; }
 /* 日期范围(1:1 ContractsView .mx-asof,贴合工具栏其它控件高度) */
 .lg-range { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-white); color: var(--text-muted); cursor: pointer; }
 .lg-range.on { border-color: var(--hue-blue); color: var(--hue-blue); }
@@ -221,7 +219,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.va
 .lg-range-sep { font-size: var(--fs-label); color: var(--text-muted); }
 
 /* 时间线容器:高度由布局链撑满,禁止滚动条 —— 每页行数由 useFitRows 保证恰好放满(LIST-PAGE-SPEC §6)。
-   竖向 flex 是为了首载/失败态(.page-loading / .lg-bar 都靠 flex:1)在卡片里居中 */
+   竖向 flex 是为了首载/失败态(.page-loading / FPLoadError 都靠 flex 与 auto margin)在卡片里居中 */
 .lg-wrap { flex: 1 1 auto; overflow: hidden; padding: 10px 16px 0; display: flex; flex-direction: column; }
 
 /* 行:等高铁律(--mx-row-h),内容一律 nowrap + ellipsis,全文走 title。

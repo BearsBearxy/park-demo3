@@ -123,3 +123,54 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(getOverview).toHaveBeenCalledWith(undefined)
   })
 })
+
+describe('数据中心首页 · 首载骨架', () => {
+  // 这屏此前是整页 `v-if="ov"` —— 数据到达前一整块白屏，而它是登录后第一眼看到的屏。
+  //
+  // ⚠ 它的骨架**是另画的一份版式**（不像列表屏那样能在叶子上放骨架），所以有漂移风险：
+  //   谁改了真版式的条数却忘了改骨架，界面就会在数据落位时跳一下，而且不报错。
+  //   下面两条就是钉这件事的 —— 出账链恒 4 步、附表恒 9 项
+  //   （后端 DataHomeService 写死 `new Schedules(done, 9, items)`）。
+
+  /** 让接口停在「在途」，好在数据到达前观察 DOM。 */
+  function pending() {
+    let resolve!: (v: DataHomeOverviewDTO) => void
+    getOverview.mockReturnValue(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
+    return { resolve }
+  }
+
+  it('数据没到时不是白屏，骨架条数与真版式一致', async () => {
+    localStorage.setItem('permissions', JSON.stringify(EDITOR_PERMS))
+    setActivePinia(createPinia())
+    const gate = pending()
+    const w = mount(DataHomeView)
+    await flushPromises()
+
+    expect(w.find('.dh').exists(), '根节点必须常驻 —— 它是零位移的锚点').toBe(true)
+    expect(w.findAll('.fp-shim').length, '要有骨架，不是白屏').toBeGreaterThan(0)
+    expect(w.findAll('.dh-step').length, '出账链恒 4 步').toBe(4)
+    expect(w.findAll('.dh-item').length, '附表恒 9 项(后端写死 total=9)').toBe(9)
+    // 静态文案不该被糊掉:它们不依赖数据,糊成微光条等于把已知的东西藏起来
+    expect(w.text()).toContain('本月工作')
+    expect(w.text()).toContain('出账链')
+
+    gate.resolve(overview())
+    await flushPromises()
+    expect(w.findAll('.fp-shim').length, '数据到了就不该再有骨架').toBe(0)
+    expect(w.findAll('.dh-step').length, '真版式也是 4 步 —— 对不上就会跳').toBe(4)
+  })
+
+  it('根节点在数据到达前后是同一个 DOM 节点', async () => {
+    localStorage.setItem('permissions', JSON.stringify(EDITOR_PERMS))
+    setActivePinia(createPinia())
+    const gate = pending()
+    const w = mount(DataHomeView)
+    await flushPromises()
+
+    const before = w.find('.dh').element
+    gate.resolve(overview())
+    await flushPromises()
+
+    expect(w.find('.dh').element, '根节点被重建了 —— 那就是原来那种整页 v-if 的写法').toBe(before)
+  })
+})

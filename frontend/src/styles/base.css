@@ -64,3 +64,43 @@ img, svg {
 @keyframes page-spin {
   to { transform: rotate(360deg); }
 }
+
+/* 骨架占位的微光条（加载态设计稿 §07）。
+   与 .page-loading 的分工：**版式已知就用骨架，未知才用转圈**。
+   骨架把真实版式先占住，数据到了原地替换 —— 零位移；转圈是先塌到 240px 再撑开。
+   ⚠ 尺寸一律由调用方给（宽百分比、高跟着所在行的行高），这里只管质感，
+     免得把「多高」这件事从版式里偷走。 */
+.fp-shim {
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+    var(--surface-sunken) 0%, var(--border-subtle) 50%, var(--surface-sunken) 100%);
+  background-size: 200% 100%;
+  animation: fp-shim 1.4s linear infinite;
+}
+@keyframes fp-shim {
+  to { background-position: -200% 0; }
+}
+
+/* 换期重取时的「退让」（加载态设计稿 §06 第一档）。
+   旧内容**留在原地**（高度不变、不闪），但必须明确地退一步 —— 它还是上一期的数据。
+   三件事缺一不可：
+     · opacity + blur —— 模糊是关键，它把「两块内容在换」糊成「一块在变」；
+       只降透明度的话，眼睛仍会把它当成一份可读的、当前的数据
+     · pointer-events: none —— **这条是安全项，不是观感项**。抄表屏的注释写过：
+       旧数组还挂着时用户在那些行上录一格，保存走的是旧行 id 的 PUT，
+       直接覆盖上个账期的读数。留旧内容而不禁交互，等于把那条路重新打开
+   进 140ms / 出 200ms：进场是系统在响应要快，出场略慢让眼睛跟得上落位。
+   用法：把 .fp-stale 加在**已有的**容器上，不要为它新插一层 div ——
+   本仓的定高链（.mx-listcard flex:1 → useFitRows 量高）经不起中间多一个盒子。 */
+.fp-stale {
+  opacity: 0.42;
+  filter: blur(1.5px);
+  pointer-events: none;
+  transition-duration: 140ms;
+}
+.fp-stale,
+[data-stale-host] {
+  transition-property: opacity, filter;
+  transition-duration: 200ms;
+  transition-timing-function: var(--ease-out);
+}

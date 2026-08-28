@@ -171,6 +171,26 @@ const subtitle = computed(() => {
     </div>
 
     <!-- 合同历史 -->
+    <!-- 详情在途:先按**已知条数**占位（加载态设计稿 §07）。
+         tenant.contractCount 随列表行一起到，比 detail 早 —— 所以这里能画准，
+         详情落位时抽屉不长高。区间守卫是防脏数据把抽屉撑爆／占不满。 -->
+    <div v-if="!detail && tenant">
+      <FPSectionLabel icon="file-text">合同历史</FPSectionLabel>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div
+          v-for="i in Math.min(6, Math.max(1, tenant.contractCount))"
+          :key="'sk-' + i"
+          aria-hidden="true"
+          style="display:flex;align-items:center;gap:11px;padding:10px 12px;background:var(--surface-card);border-radius:var(--radius-md)"
+        >
+          <div style="flex:1;min-width:0">
+            <span class="fp-shim" style="display:block;width:44%;height:12.5px"></span>
+            <span class="fp-shim" style="display:block;width:68%;height:11.5px;margin-top:5px"></span>
+          </div>
+          <span class="fp-shim" style="display:block;width:62px;height:12.5px"></span>
+        </div>
+      </div>
+    </div>
     <div v-if="detail">
       <FPSectionLabel icon="file-text">合同历史 · {{ contracts.length }}</FPSectionLabel>
       <div style="display:flex;flex-direction:column;gap:6px">

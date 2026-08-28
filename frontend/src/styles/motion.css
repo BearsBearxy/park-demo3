@@ -60,6 +60,9 @@
     animation-duration: 0.7s !important;      /* 同 base.css */
     animation-iteration-count: infinite !important;
   }
+  /* 骨架微光**不在**上面那条例外里:转圈停下会被读成「卡死」,
+     而骨架即使不动,它的形状本身就说明了「这块还没到」。 */
+  .fp-shim { animation: none; }
   .fp-nav-bar::after {
     animation-duration: 1.1s !important;      /* 同 AppShell.vue */
     animation-iteration-count: infinite !important;

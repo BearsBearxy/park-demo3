@@ -337,7 +337,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
     </div>
 
     <!-- 数据区:首载完成前只转圈,失败给人话 + 重试,不闪空表 -->
-    <template v-if="users">
+    <!-- 数据体**不再整屏 v-if** —— 外壳常驻，只在叶子上放骨架（加载态设计稿 §07「精确占位」）。
+         零位移由「外壳从不卸载」这个结构保证，不是靠两份版式对齐出来的。 -->
       <div class="mx-body">
         <aside class="mx-kpirail">
           <KpiCard label="账号总数" :value="String(kpi.total)" tint="slate" :style="{ padding: '20px' }">
@@ -384,24 +385,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
                 rowKey="id"
                 :sort="sort"
                 :rowHover="true"
+                :skeleton-rows="users || loadErr ? 0 : pageSize"
                 @sortChange="sort = $event"
                 @rowClick="openEdit($event)"
               />
             </div>
-            <div v-if="filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的账号</div>
-            <div v-if="filtered.length > 0" class="mx-pagerbar">
+            <div v-if="users && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的账号</div>
+            <div v-if="!users || filtered.length > 0" class="mx-pagerbar">
               <FPPager :page="safePage" :pageCount="pageCount" :total="filtered.length" @page="page = $event" />
             </div>
           </Card>
         </div>
       </div>
-    </template>
-    <div v-else-if="loadErr" class="su-bar err">
-      <component :is="iconFor('alert-triangle')" :size="14" />
+    <!-- 失败态仍是流内条:阻断性错误本就该打断流程(LAYOUT-STABILITY §6) -->
+    <FPLoadError v-if="loadErr" @retry="reload">
       <span>账号列表没加载出来:{{ loadErr }} —— 屏上不显示任何账号,重试成功前无法管理。</span>
-      <Button variant="outline" size="sm" @click="reload">重试</Button>
-    </div>
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    </FPLoadError>
 
     <!-- 4. 编辑抽屉(用户名不可改) -->
     <FPDrawer
@@ -588,9 +587,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 
 <style scoped>
 /* 加载失败条(1:1 PoolLedgerView .pl-bar.err) */
-.su-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.su-bar.err { border-color: var(--hue-red); background: rgb(255, 238, 237); color: var(--hue-red); }
-
 /* 表单(1:1 TenantNewDialog .fin-field/.fin-in:md=36 与 ds/Select 同档) */
 .su-field { display: flex; flex-direction: column; }
 /* 多个字段竖排间距走容器 gap,不用 `+` 相邻选择器 —— 弹窗体本身已是 flex gap:14,

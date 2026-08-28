@@ -250,6 +250,12 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
 
   /* ---- Motion ---- */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Material 那条标准曲线用在「元素进出场」上偏软 —— 起手太慢，而进场那一刻正是用户盯得最紧的时候。
+     补两条更有劲的（加载态设计稿 §08）：
+       --ease-out  进场/退场：起手快，手感跟手
+       --ease-both 屏上位移：两头缓、中间快，像真东西在移动 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 120ms;
   --dur-base: 200ms;
