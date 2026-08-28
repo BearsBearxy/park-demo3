@@ -141,4 +141,10 @@ function inputVal(r: FinTableRow, field: string): string {
 .fin-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 8px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
 .fin-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
 .fin-ni::-webkit-outer-spin-button, .fin-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+
+/* 触屏无 hover(RESPONSIVE-LAYOUT-SPEC §6.1):行 hover 显形的 +/× 按钮常显,
+   半透明弱化不抢视线——hover 显形在触屏等于不可达,编辑入口不得只藏在 hover 里。 */
+@media (hover: none) {
+  .fin-rowlabel .custom-x, .fin-rowlabel .addchild { display:grid; opacity:.6; }
+}
 </style>

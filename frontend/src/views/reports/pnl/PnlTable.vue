@@ -215,6 +215,25 @@ function onCell(rowKey: string, monthIdx: number, e: Event) {
 .pt-fillbtn { height:24px; padding:0 9px; border:1px solid var(--border-subtle); background:var(--surface-white); border-radius:var(--radius-full); font-family:var(--font-sans); font-size:11.5px; font-weight:var(--fw-medium); color:var(--hue-blue); cursor:pointer; transition:background var(--dur-fast) var(--ease-standard); }
 .pt-fillbtn:hover { background:var(--accent-blue); }
 
+/* ── S 档(≤600):sticky 收敛为「科目细分」单列(RESPONSIVE-LAYOUT-SPEC §5.3)──
+   桌面左三根 36+118+216=370px 在 390px 视口会占满屏(spec 点名的实测教训);S 档分组列与
+   右侧 合计/备注/填入 全部**原位退成普通列**——列序/列宽零变动,只去 sticky,随表横滚。
+   科目细分收到最左(编辑态 36px 复选列照旧 sticky,细分列贴其右);边缘描边本就长在
+   .pt-c-sub 上,不用挪。FPLedgerTable 同题走 useViewport+JS 是因它的 sticky offset 是
+   内联 style、媒体块盖不住;本表 sticky 全在类上,CSS 媒体块就够,不引 JS
+   (jsdom 不评估媒体查询,桌面/测试口径天然零变化)。 */
+@media (max-width: 600px) { /* S */
+  /* 表头格的 position 由更高特异性的 .pt-table thead th 钉着(顶部 sticky 要保留),
+     故退级列必须连 left/right 一起归 auto,表头才跟表体一起横滚;
+     选择器并上编辑态复合写法,盖过基准段里同特异性的 offset 规则 */
+  .pt-c-grp, .pt-editmode .pt-c-grp { position:static; left:auto; }
+  .pt-c-sub { left:0; }
+  .pt-editmode .pt-c-sub { left:36px; }
+  .pt-c-ann, .pt-c-note, .pt-c-fill,
+  .pt-editmode .pt-c-ann, .pt-hasfill .pt-c-note,
+  .pt-editmode.pt-hasfill .pt-c-ann { position:static; right:auto; box-shadow:none; }
+}
+
 /* 空态 */
 .pt-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; height:100%; min-height:240px; padding:40px; text-align:center; }
 .pt-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }

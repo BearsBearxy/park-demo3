@@ -123,3 +123,34 @@ img, svg {
 @media (max-width: 960px) { /* M↓ */
   .fp-content > :first-child:not(.fp-fluid) { min-width: 800px; }
 }
+
+/* ── 全局打印样式(RESPONSIVE-LAYOUT-SPEC §5.3/§10-P3⑤:打印 = 一种 media,规则同源)──
+   目标:Ctrl+P 打出「内容本身」。两件事:
+   ① 铬边(轨卡/浮层侧栏/页签条/工具栏/进度条/手机三件套)不是内容,整块隐掉;
+   ② 屏内滚动容器在纸上没有滚动条——overflow 放开、定高链改自然高,表格才能跨页分页,
+     否则永远只打出「第一屏」。
+   !important 的理由:外壳(AppShell)与各屏样式都是 scoped([data-v] 属性选择器抬高特异性,
+   全局单类压不过),不加整块失效——先例:mx-list.css S 档块压 ds 内联同样只能 !important。
+   AnaShell 既有 @media print(.anx-tools 隐/.anx-body 去 padding)与本块叠加互不覆盖:
+   本块不碰任何 .anx-* 选择器。 */
+@media print {
+  /* ① 外壳铬边:桌面四件 + 手机三件套(顶栏 .mtb/底栏 .mbn/导航抽屉遮罩 .mnav-backdrop) */
+  .fp-nav-card, .fp-sb-float, .fp-tabstrip, .fp-toolbar, .fp-nav-bar,
+  .mtb, .mbn, .mnav-backdrop { display: none !important; }
+  /* ② 定高/溢出链放开:html→#app→stage→main-card→content 全是 100% + hidden/auto。
+     stage/main-card 顺带去 padding 边框圆角(纸上不需要「画布上的浮卡」隐喻) */
+  html, body, #app { height: auto !important; }
+  .fp-stage { display: block !important; height: auto !important; padding: 0 !important; overflow: visible !important; }
+  .fp-main-card { display: block !important; border: none !important; border-radius: 0 !important; overflow: visible !important; }
+  .fp-content { overflow: visible !important; padding: 0 !important; }
+  /* 迁移期屏级地板不进纸面:A4 纵向页盒 ~794px 会命中上面的 M↓ 块,800px 地板把纸撑出右裁切 */
+  .fp-content > :first-child:not(.fp-fluid) { min-width: 0 !important; }
+
+  /* ── 报表三大表(fin 屏,P3⑤)──:表格完整分页,工具行/操作钮不进纸面。
+     sticky 还原 static:分页时 sticky 表头/合计尾行在部分引擎会重复叠印或悬空。
+     TbTable min-width:1240 在 A4 纵向必超宽属已知——值宽表走横向纸打印,
+     不硬缩:缩列即缩放,违反「分级重排绝不缩放」(spec §2)。 */
+  .fin-wrap { overflow: visible !important; }
+  .fin-table thead th, .fin-table tfoot td { position: static !important; }
+  .fin-toolbar, .fin-actions, .fin-back { display: none !important; }
+}

@@ -156,7 +156,9 @@ async function confirmMark() {
 </script>
 
 <template>
-  <div class="rc3 rc-wb">
+  <!-- fp-fluid:工作台已按 RESPONSIVE-LAYOUT-SPEC 迁移(≤960 清单/对照上下堆叠、
+       ≤600 对照双栏降单列),摘掉 base.css 的 800px 屏级地板 -->
+  <div class="rc3 rc-wb fp-fluid">
     <!-- 顶栏 -->
     <div class="rc-top">
       <div class="rc-top-row">
@@ -493,4 +495,27 @@ async function confirmMark() {
 .rc-pop-confirm:disabled { opacity: .55; cursor: not-allowed; }
 .rc-pop-confirm.undo { background: var(--surface-white); color: var(--text-primary); border: 1px solid var(--border-strong); }
 .rc-pop-confirm.undo:hover { background: var(--surface-card); }
+
+/* ── 窄档(RESPONSIVE-LAYOUT-SPEC §1,宽档规则在前) ── */
+@media (max-width: 960px) { /* M↓ */
+  /* 左清单 286px 定宽会把右侧对照挤到不可用(M 档内容区最窄 ~475px,余 ~170px 摆不下双栏)。
+     §5.6 精神是「左轨收顶部」,但本清单带搜索/分段过滤,收成 chips 会丢过滤能力——
+     改上下堆叠:清单定高内滚(rc-list 本就 overflow-y:auto),对照占余下高度 */
+  .rc-body { flex-direction: column; }
+  .rc-master { flex: 0 0 300px; }
+}
+@media (max-width: 600px) { /* S */
+  .rc-master { flex-basis: 220px; }   /* 手机竖屏高度紧,清单再收一档,详情多留空间 */
+  /* 对照双栏 1fr 60px 1fr:S 档改上下堆叠;中轴列(装饰性连线+状态节点,配平结论
+     在 banner 与配平条各有一份)随之隐藏,不丢信息 */
+  .rc-cwrap { grid-template-columns: 1fr; padding: 14px 14px 16px; }
+  .rc-axis { display: none; }
+  /* 同名科目对照 3×120px 定列收窄:字号降一档(fs-micro)后 ¥ 千分位金额 ~12 字符
+     即 ~80px 放得下;ponytail:亿级金额会溢出串列,真出现再改横滚 */
+  .rc-fee-row { grid-template-columns: minmax(0, 1fr) 82px 82px 88px; gap: 6px; padding: 9px 10px; font-size: var(--fs-micro); }
+  /* 配平条允许折行:S 档宽度放不下「合计 = 合计 + 结论」一行;折行按档静态确定 */
+  .rc-balance { flex-wrap: wrap; gap: 8px 14px; }
+  /* iOS 聚焦不缩放(§6.5):S 档输入控件 16px */
+  .rc-search input { font-size: var(--fs-input-m); }
+}
 </style>

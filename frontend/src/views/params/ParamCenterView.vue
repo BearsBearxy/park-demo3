@@ -494,9 +494,12 @@ const FIXED_RULES = [
 </script>
 
 <template>
-  <div v-if="!rows" class="page-loading"><span class="page-spin" /></div>
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移查看态(参数速查),摘 base.css 的
+       800px 屏级地板。三张 colgroup 表列永不增删,窄了在 .pm-tablewrap(overflow-x:auto)内横滚;
+       参数批量编辑不优化(§11.1),单条修改走 Popover/Drawer,S 档由组件内部全屏化 -->
+  <div v-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <div v-else class="pm-page">
+  <div v-else class="pm-page fp-fluid">
     <FPLoadBar :on="veil" />
     <!-- 标题行:年月 + 期区 | 变更记录 + 编辑模式 -->
     <div class="pm-head">
@@ -906,4 +909,11 @@ const FIXED_RULES = [
 .pm-exin:focus { border-color: var(--hue-blue); }
 .pm-exin::-webkit-outer-spin-button, .pm-exin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .pm-exhint { margin: 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 16px; min-height: 16px; }
+
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 P3 查看态):只用 960,宽档规则在前 ──
+   卡头收纳:标题句 + 右侧操作组窄档挤不进一行,允许折两行(§2 修订;组成按档静态确定,
+   .pm-cardops 随编辑态进出已在 noInteractionLayoutShift 白名单)。表本身列不动,pm-tablewrap 横滚 */
+@media (max-width: 960px) { /* M↓ */
+  .pm-cardhead { flex-wrap: wrap; }
+}
 </style>

@@ -257,9 +257,13 @@ async function onExport() {
 
 <template>
   <!-- L1 选择公司 -->
+  <!-- fp-fluid(各分支根都挂):本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移,摘掉 base.css 的
+       800px 屏级地板。L1/L1.5/L2 选择层是卡片墙/月历(§5.5 天然自适应),透传 class 一并摘——
+       屏根随状态机换分支,漏挂任一分支该状态就会退回横滚。 -->
   <template v-if="companyId === null">
     <FinCompanyPicker
       v-if="companiesLoaded"
+      class="fp-fluid"
       title="利润表"
       sub="选择管理公司录入损益数据,或查看全部公司汇总 · 按年 / 月分期"
       :companies="finCompanies"
@@ -269,12 +273,13 @@ async function onExport() {
       @edit="onEditCompany"
       @delete="onDeleteCompany"
     />
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
   </template>
 
   <!-- L1.5 年份门(同附表 SchedYearGate) -->
   <SchedYearGate
     v-else-if="!yearGated && gateYears"
+    class="fp-fluid"
     icon="bar-chart-3"
     :title="'利润表 · ' + (companyName ?? '全部汇总')"
     sub="先选择年份,再进入该年的月历与利润表 · 每个年月是一期独立报表"
@@ -290,6 +295,7 @@ async function onExport() {
   <!-- L2 月历 -->
   <FinMonthGrid
     v-else-if="yearGated && month === null && yearMonths"
+    class="fp-fluid"
     :company-name="companyName"
     :year="year"
     :months="yearMonths"
@@ -302,7 +308,7 @@ async function onExport() {
 
   <!-- L3 利润表正文 -->
   <template v-else-if="period">
-    <div class="fin-page">
+    <div class="fin-page fp-fluid">
       <div class="fin-head">
         <div class="fin-head-l">
           <button class="fin-back" title="返回月份选择" @click="backToMonths"><component :is="iconFor('arrow-left')" :size="16" /></button>
@@ -397,7 +403,7 @@ async function onExport() {
 
   <!-- 过渡中(切公司/年/月,数据加载)兜底转圈,不闪空白。
        ⚠️ v-else 必须紧邻上方 L1/L2/L3 状态链;不可被自带 v-if 的弹窗隔在中间(见 DESIGN-FIDELITY §6.2)。 -->
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
   <!-- 公司/子类弹窗(居中,自管 v-if),放最后 -->
   <FinDialogs
@@ -467,6 +473,12 @@ async function onExport() {
 .fin-toolbar-l { display:flex; align-items:center; gap:8px; }
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):KPI repeat(4) 在 390 上每格 <90px,
+   金额放不下——定两列(挂载即终态,不随内容抖)。表格窄了走 .fin-wrap 内横滚,列宽不动 ── */
+@media (max-width: 600px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
 /* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 §7) */
 .fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
