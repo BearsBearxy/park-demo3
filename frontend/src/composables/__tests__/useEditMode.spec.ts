@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useEditMode } from '@/composables/useEditMode'
@@ -242,5 +242,56 @@ describe('system 权限永远不进 can() 的提权那一侧', () => {
     auth.permissions = ['elevate:request', 'billing-run:edit']
     expect(auth.can('system:view')).toBe(false)
     expect(auth.can('system:edit')).toBe(false)
+  })
+})
+
+describe('编辑模式 × 换期', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  // ── 换期(2026-08-29):作用域一变,旧锁就不该再握着 ──
+  //
+  // 出账链改造给了「换出账月」一个专门的按钮,这条路比原来的顶栏下拉显眼得多。
+  // 但洞是既有的:改前用下拉换年月,editMode 与锁同样原地不动 ——
+  // 于是能拿着 3 月的锁去改 5 月,正是 CONCURRENCY-SPEC 要防的那件事。
+  // 修在共享的这一处,不在七个调用方各写一遍(漏一个就是一把没人认领的锁)。
+  async function enterAt(scope: () => string | null) {
+    asRole(['entry:edit'])
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
+    const m = useEditMode(['entry:edit'], { scope })
+    await m.toggle()
+    return m
+  }
+
+  it('❗编辑态下换期 → 自动退出并还锁,不许拿着 3 月的锁改 5 月', async () => {
+    const ym = ref('2025-03')
+    const m = await enterAt(() => `billing-chain:${ym.value}`)
+    expect(m.editMode.value).toBe(true)
+    expect(api.post).toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+
+    ym.value = '2025-05'
+    await nextTick()
+    expect(m.editMode.value, '换期必须退出编辑态').toBe(false)
+    expect(api.delete, '旧锁必须还回去(还的是旧的那把)')
+      .toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+  })
+
+  it('作用域没变就不动 —— 别把无关的重渲当成换期', async () => {
+    const ym = ref('2025-03')
+    const m = await enterAt(() => `billing-chain:${ym.value}`)
+    ym.value = '2025-03'
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
+  })
+
+  it('不上锁的屏(没传 scope)不受影响 —— 它本来就没有期这回事', async () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'])
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
   })
 })

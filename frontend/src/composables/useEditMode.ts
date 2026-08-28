@@ -165,6 +165,21 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   // 不会自激:exit() 把 editMode 置 false,再次触发时被 on 挡掉。
   watch([editMode, missing], ([on, m]) => { if (on && m.length) exit() })
 
+  // 期一换,旧锁就不该再握着(CONCURRENCY-SPEC §3)。
+  // 没有这一条时:编辑模式开着 → 换年月(顶栏下拉,或出账链的「换出账月」)→ editMode 与锁原地不动,
+  // 于是**拿着 3 月的锁去改 5 月** —— 而表现是「锁没生效」,不是报错,没人会发现。
+  // 修在这一处而不是七个调用方各写一遍:漏一个就是一把没人认领的锁。
+  // before == null 时不管:那是首次求值(还没进过编辑态),不是换期。
+  //
+  // ⚠ 求值必须**关在编辑态里**。watch 的 getter 在 setup 期就会跑一遍,而多数调用方把
+  //   useEditMode(...) 写在 `const year = ...` **之前**(scope 闭包当时还没初始化)——
+  //   直接求值会撞 TDZ「Cannot access 'year' before initialization」。
+  //   旁边那个 heldByOther 没这问题是因为 watchScope 返回的是惰性 computed,没人读就不算。
+  const scopeWhileEditing = () => (editMode.value ? opts.scope?.() ?? null : null)
+  watch(scopeWhileEditing, (now, before) => {
+    if (editMode.value && before != null && now !== before) exit()
+  })
+
   // 组件外调用(单测)时没有实例可挂,Vue 会 warn。这两个钩子是收尾动作,不是核心语义。
   if (getCurrentInstance()) {
     onDeactivated(() => { asking.value = null })
