@@ -40,6 +40,9 @@ public final class ParamRegistry {
         0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点）",
         1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）",
         2, "不核算（只列示用量）");
+    private static final Map<Integer, String> ZONE_CALC_KIND_OPTS = Map.of(
+        0, "平价制（单一商业价 × 用量）",
+        1, "分时制（尖峰平谷四段 + 管理费）");
     private static final Map<Integer, String> LOSS_BASE_FORM_OPTS = Map.of(
         1, "A：电费 + 公摊 + 电力管理费",
         2, "B：电费 + 公摊（默认）",
@@ -126,6 +129,9 @@ public final class ParamRegistry {
         alloc("loss_variant", "损耗核算方式", "", Group.RULE, S_BUILDING, "from", false, ValueKind.ENUM, LOSS_VARIANT_OPTS,
             "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分母 + 加点；不核算：只列示用量",
             "B座 / C座 2023-11 起仅按公摊分摊度数；G座 不核算", null);
+        alloc("zone_calc_kind", "计费口径", "", Group.RULE, S_ZONE, "from", false, ValueKind.ENUM, ZONE_CALC_KIND_OPTS,
+            "决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费",
+            "没配的期区，池建得出来但应分摊是空的，须在计费参数页显式选", null);
         alloc("loss_head", "损耗核算归组", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_BUILDING, null,
             "并入所指楼栋一组核算、共用一块总表；未指定或指向自身 = 独立核算", "二期 二 / 四车间并入三车间；一车间 2023-08、09 并入五车间", null);
         alloc("loss_c_meter", "总表取数", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_METER, null,

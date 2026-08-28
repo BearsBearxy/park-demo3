@@ -895,4 +895,19 @@ class AllocServiceTest {
         var ms2 = java.util.List.of(meterOn(31, "p2"), meterOn(31, "p1"), meterOn(31, "dorm"));
         assertEquals("p2", AllocService.zoneOfBuilding(bs, ms2).get(31));
     }
+
+    // 口径按参数取,不按期区名字。p1→0(flat) / p2→1(tou) 是回填值;p3 由用户配。
+    // 取不到 = 该期区还没配 → 必须返回 null,让 ruleCostAmount return null,
+    // 而不是默认成 flat 静默算出一个数来(那正是「算错了还不报错」)。
+    @Test
+    void calcKind_resolvesFromParamNotZoneName() {
+        var flat = java.util.Map.of("p1|zone_calc_kind", new java.math.BigDecimal("0"));
+        var tou  = java.util.Map.of("p2|zone_calc_kind", new java.math.BigDecimal("1"));
+        var p3tou = java.util.Map.of("p3|zone_calc_kind", new java.math.BigDecimal("1"));
+        assertEquals(AllocService.KIND_FLAT, AllocService.calcKind("p1", flat));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p2", tou));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p3", p3tou));
+        assertNull(AllocService.calcKind("p3", java.util.Map.of()));   // 没配 → null,不猜
+        assertNull(AllocService.calcKind("dorm", flat));               // 别的期区的配置不串味
+    }
 }

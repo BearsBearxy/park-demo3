@@ -926,14 +926,18 @@ public class AllocService {
                 u.qty(), price, cost, allocated, allocated.subtract(cost)));
         }
         // 损耗组行:成本量=残差E(负),成本额=|E|×price_loss;已分摊=share_elec_loss 户级Σ
-        for (String zone : List.of("p1", "p2")) {
+        // 期区遍历改按「配了 zone_calc_kind 的期区」而不是硬编码 p1/p2,否则三期配了口径也不出对账行。
+        Set<String> lossZones = new TreeSet<>();
+        for (String k : ctx.cfg().keySet())
+            if (k.endsWith("|zone_calc_kind")) lossZones.add(k.substring(0, k.length() - "|zone_calc_kind".length()));
+        for (String zone : lossZones) {
             BigDecimal lossQty = lossRows.stream().filter(l -> zone.equals(l.zone()))
                 .map(AllocLossRowDTO::lossQty).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
             if (lossQty.signum() == 0) continue;
             BigDecimal priceLoss = lossPrice(zone, ctx);
             BigDecimal cost = priceLoss == null ? null : r2(lossQty.abs().multiply(priceLoss));
             BigDecimal allocated = r2(zoneLossAllocated(zone, ctx));
-            rows.add(new AllocReconRowDTO(null, ("p1".equals(zone) ? "一期" : "二期") + "损耗", zone, FEE_LOSS,
+            rows.add(new AllocReconRowDTO(null, ZoneService.label(zone) + "损耗", zone, FEE_LOSS,
                 lossQty, priceLoss, cost, allocated, cost == null ? null : allocated.subtract(cost)));
         }
         // 互认提示:本月分摊合计 vs 电费成本模型 allocated 费项Σ(单向读,不强拦)
@@ -1085,6 +1089,18 @@ public class AllocService {
 
     private static BigDecimal cfgVal(Ctx ctx, String scope, String key) { return ctx.cfg().get(scope + "|" + key); }
 
+    static final String KIND_FLAT = "flat", KIND_TOU = "tou";
+
+    /**
+     * 期区计费口径。alloc_cfg 只有 DECIMAL 值列,故 0=flat / 1=tou(同 loss_variant 的编码方式)。
+     * null = 该期区还没配 —— 不猜,让 ruleCostAmount return null。
+     * 默认成 flat 会让没配口径的期区静默算出一个数来,那正是「算错了还不报错」。
+     */
+    static String calcKind(String zone, Map<String, BigDecimal> cfg) {
+        BigDecimal v = cfg.get(zone + "|zone_calc_kind");
+        return v == null ? null : (v.signum() == 0 ? KIND_FLAT : KIND_TOU);
+    }
+
     private RuleUsage ruleUsage(AllocRule rule, Ctx ctx) {
         BigDecimal qty = BigDecimal.ZERO, sharp = BigDecimal.ZERO, peak = BigDecimal.ZERO,
             flat = BigDecimal.ZERO, valley = BigDecimal.ZERO;
@@ -1121,10 +1137,11 @@ public class AllocService {
     // dorm 规则一如既往不出对账行(旧实现读不到 p2.price_norm 即跳过)。
     private BigDecimal ruleCostAmount(AllocRule rule, RuleUsage u, Ctx ctx) {
         String zone = rule.getZone();
-        if (!"p1".equals(zone) && !"p2".equals(zone)) return null;
+        String kind = calcKind(zone, ctx.cfg());
+        if (kind == null) return null;                    // 该期区未配口径 → 不算(而不是算成 0)
         BigDecimal price = lossPrice(zone, ctx);   // p1 商业价 / p2 平段价(含管理费)
         if (price == null) return null;
-        if ("p1".equals(zone)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
+        if (KIND_FLAT.equals(kind)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
         boolean hasTou = u.sharp().signum() != 0 || u.peak().signum() != 0
             || u.flat().signum() != 0 || u.valley().signum() != 0;
         if (hasTou) {
@@ -1260,7 +1277,7 @@ public class AllocService {
                 if (perFloor == null) break;
                 // S13 §7 二期车间池守卫(仅 p2;一期分桶是常态不警):全员显式层份时 Σweight 偏离系数 T>0.01
                 // → warn(不封顶不阻断);出现 weight=null 成员 → warn(防楼层分桶与手工层份两路叠加)。
-                if ("p2".equals(rule.getZone())) {
+                if (KIND_TOU.equals(calcKind(rule.getZone(), ctx.cfg()))) {
                     long nullW = mems.stream().filter(m -> m.getWeight() == null).count();
                     if (nullW > 0)
                         ctx.warnings().add("池「" + rule.getName() + "」有 " + nullW
@@ -1714,7 +1731,7 @@ public class AllocService {
         // 原册 1 行撑成 2 行、且显 697.60/444.80 而不是净额 152.06,正是本刀要治的病。
         // 构成明细(含硬编码扣度 −670)改走 PoolRow.netParts 进 hover,见 §I2 与 netParts()。
         if (isNetPool(rule, ctx)) return List.of();
-        boolean perMeterCost = !"p2".equals(rule.getZone())
+        boolean perMeterCost = !KIND_TOU.equals(calcKind(rule.getZone(), ctx.cfg()))
             && !"ref".equals(rule.getMethod()) && !"carrier".equals(rule.getMethod())
             && !isNetPool(rule, ctx)
             && cfgVal(ctx, "rule:" + rule.getId(), "manual_qty") == null;
@@ -1760,7 +1777,7 @@ public class AllocService {
         Set<String> zones = new TreeSet<>();
         for (AllocRule r : ctx.ruleList()) if (!"share_water".equals(r.getFeeKey())) zones.add(r.getZone());
         for (String zone : zones) {
-            List<String> keys = "p2".equals(zone)
+            List<String> keys = KIND_TOU.equals(calcKind(zone, ctx.cfg()))
                 ? List.of("elec_sharp", "elec_peak", "elec_flat", "elec_valley")
                 : List.of("elec_commercial");
             List<String> missing = new ArrayList<>();
@@ -1813,7 +1830,7 @@ public class AllocService {
 
         BigDecimal cost = null, unrounded = null, price = null;
         if (q.any()) {
-            if ("p2".equals(zone)) {
+            if (KIND_TOU.equals(calcKind(zone, ctx.cfg()))) {
                 BigDecimal mgmt = nz(priceCfg.resolve("mgmt_fee", ym, null, zone));
                 BigDecimal pSharp = nz(priceCfg.resolve("elec_sharp", ym, null, zone)).add(mgmt);
                 BigDecimal pPeak = nz(priceCfg.resolve("elec_peak", ym, null, zone)).add(mgmt);
@@ -1873,7 +1890,7 @@ public class AllocService {
             int scale = rule.getRoundScale() == null ? 2 : rule.getRoundScale();
             BigDecimal stdAdd = cfgVal(ctx, "rule:" + rule.getId(), "std_add");
             String kind = rule.getStdKind() != null ? rule.getStdKind()
-                : ("p2".equals(zone) ? "amount_over_base" : "qty_price_over_base");
+                : (KIND_TOU.equals(calcKind(zone, ctx.cfg())) ? "amount_over_base" : "qty_price_over_base");
             std = switch (rule.getMethod()) {
                 case "direct" -> cost;
                 case "none" -> null;
