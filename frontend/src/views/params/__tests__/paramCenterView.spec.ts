@@ -49,6 +49,8 @@ const ROWS: ParamRowDTO[] = [
     valueText: '参与', mode: null, acctMonth: '', rangeText: '', sourceChain: [], rowId: null }),
   row({ key: 'loss_exclude', label: '不计入楼栋合计的电表', group: 'rule', scope: 'meter:307', scopeLabel: '力美C201电（表）', value: 1, valueText: '不计入' }),
   row({ key: 'loss_supply_meter', label: '供电局对账总表', group: 'rule', scope: 'p1', scopeLabel: '一期', value: 5, valueText: 'B-G座总电' }),
+  // 回归钉:P7 fix-round 1 —— ref_meter 候选过滤曾按 p1/p2/dorm 枚举漏了 p3,编辑三期这一行会退到全园所有表
+  row({ key: 'loss_supply_meter', label: '供电局对账总表', group: 'rule', scope: 'p3', scopeLabel: '三期', value: 400, valueText: '三期总电' }),
   row({ key: 'mgmt_fee', label: '电力管理费', unit: '元/度', group: 'constant', scope: 'tenant:5', scopeLabel: '力灏（户）', value: 0.15,
     valueText: '0.15 元/度', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }),
   // 户级版本起点晚于 ym:后端出的是继承全园的行(rowId 空)—— 不是例外,④ 不列
@@ -96,7 +98,10 @@ vi.mock('@/api/alloc', () => ({
   },
 }))
 vi.mock('@/api/meters', () => ({
-  metersApi: { list: () => Promise.resolve([{ id: 307, name: '力美C201电', buildingId: 20, zone: 'p1', kind: 'elec', tenantId: null, subName: null }]) },
+  metersApi: { list: () => Promise.resolve([
+    { id: 307, name: '力美C201电', buildingId: 20, zone: 'p1', kind: 'elec', tenantId: null, subName: null },
+    { id: 400, name: '三期总电', buildingId: null, zone: 'p3', kind: 'elec', tenantId: null, subName: null },
+  ]) },
 }))
 vi.mock('@/api/building', () => ({
   buildingApi: { list: () => Promise.resolve([{ id: 13, name: '一期 A座', phase: 1 }, { id: 20, name: '一期 B座', phase: 1 }]) },
@@ -246,6 +251,21 @@ describe('ParamCenterView 计费参数页', () => {
     expect(w.find('button.fac').text()).toContain('待处理 1')
     // 只 patch 一行:list 不重拉
     expect(listCalls()).toBe(before + 1)
+    w.unmount()
+  })
+
+  // 回归钉(P7 fix-round 1):ref_meter 候选过滤曾按 scope === 'p1'/'p2'/'dorm' 枚举,漏了 p3 ——
+  // 编辑三期的「供电局对账总表」会退到 else 分支(meters.value,全园所有表都能选),
+  // 而不是只给三期的表。改用形状校验(isZoneCode)后应该只剩三期总电一个候选。
+  it('③ 核算口径 ref_meter 候选按期区过滤到 p3:不再退化成全园所有表', async () => {
+    const w = await mountPage()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    const tr = w.findAll('.pm-rgroup').find(g => g.text().includes('三期'))!
+      .findAll('.pm-rrow').find(x => x.text().includes('供电局对账总表'))!
+    await tr.findAll('button').find(b => b.text() === '修改')!.trigger('click')
+    const pop = w.findComponent(ParamEditPopover)
+    expect(pop.props('row')?.scope).toBe('p3')
+    expect(pop.props('refOptions')).toEqual([{ value: '400', label: '三期总电' }])
     w.unmount()
   })
 })
