@@ -85,6 +85,34 @@ describe('FPStepStrip', () => {
     expect(w.findAll('.fss-step')).toHaveLength(2)
   })
 
+  // ── 报表层复用(P3):期靠 query 随导航一起走 ──
+  it('带 query 时把整包期一起带过去 —— 目标屏认得几个用几个,不认的原样传回来', async () => {
+    const w = mount(FPStepStrip, {
+      props: {
+        steps: STEPS, current: 'alloc', period: '2025-09',
+        query: { y: '2025', m: '9', co: '1' },
+      },
+    })
+    await w.findAll('.fss-step')[1].trigger('click')
+    expect(push).toHaveBeenCalledWith({ path: '/meters', query: { y: '2025', m: '9', co: '1' } })
+  })
+
+  it('不带 query 就走裸路径 —— 出账链的期在 store 里,不进地址栏', async () => {
+    const w = mk('alloc')
+    await w.findAll('.fss-step')[1].trigger('click')
+    expect(push).toHaveBeenCalledWith('/meters')
+  })
+
+  it('步骤可带 title —— 条上写「附表1」,悬停看全名', () => {
+    const w = mount(FPStepStrip, {
+      props: {
+        steps: [{ value: 'rent-pnl', label: '附表1', title: '附表1 租金损益' }],
+        current: 'x', period: '2025',
+      },
+    })
+    expect(w.find('.fss-step').attributes('title')).toBe('附表1 租金损益')
+  })
+
   it('返回按钮文案可换 —— 出账链叫「换出账月」,报表层叫「换期」', () => {
     const w = mount(FPStepStrip, {
       props: { steps: STEPS, current: 'alloc', period: '2025-03', backLabel: '换期' },

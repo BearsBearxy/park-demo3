@@ -25,7 +25,9 @@ vi.mock('@/api/ledger', () => ({
 vi.mock('@/api/report', () => ({
   reportApi: { years: vi.fn(), year: vi.fn(), period: vi.fn(), allPeriod: vi.fn(), save: vi.fn() },
 }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ push: vi.fn() }) }))
+const query: Record<string, string> = {}          // 深链;单测里临时塞 y/m/co
+const push = vi.fn()
+vi.mock('vue-router', () => ({ useRoute: () => ({ query }), useRouter: () => ({ push }) }))
 
 const COMPANIES = [
   { id: 1, name: '物业公司', short: '物业' },
@@ -66,6 +68,7 @@ describe('三大报表工作台 · 利润表', () => {
     useAuthStore().permissions = ['master:edit', 'report:edit']
     vi.clearAllMocks()
     localStorage.clear()
+    for (const k of Object.keys(query)) delete query[k]
     vi.setSystemTime(new Date('2025-06-15T00:00:00'))
     wire()
   })
@@ -148,5 +151,63 @@ describe('三大报表工作台 · 利润表', () => {
     expect(btns[1].attributes('disabled')).toBeDefined()
     expect(btns[2].attributes('disabled')).toBeDefined()
     expect(btns[0].attributes('disabled'), '「新增」与选中项无关,照常可点').toBeUndefined()
+  })
+
+  // ── P3:报表中心带期跳转 + 期间条(设计稿 §3.2b/c) ──
+  describe('带期深链', () => {
+    it('❗从报表中心带期过来 → 直落那一期,跳过矩阵', async () => {
+      Object.assign(query, { y: '2025', m: '3', co: '1' })
+      const w = await open()
+      expect(reportApi.period).toHaveBeenCalledWith('is', 1, 2025, 3)
+      expect(w.findAll('.bmm-card').length, '矩阵该被跳过').toBe(0)
+    })
+
+    it('带期里的公司也认 —— 落到它说的那家,不是默认第一家', async () => {
+      Object.assign(query, { y: '2024', m: '1', co: '2' })
+      const w = await open()
+      expect(reportApi.period).toHaveBeenCalledWith('is', 2, 2024, 1)
+      expect(w.findAll('.br-item')[2].classes(), '左栏高亮资产公司').toContain('on')
+    })
+
+    it('只有年没有月(从损益附表跳回来)→ 停在矩阵,年份照它说的', async () => {
+      Object.assign(query, { y: '2025', co: '1' })
+      const w = await open()
+      expect(reportApi.period, '没有月就不该直接拉某一期').not.toHaveBeenCalled()
+      expect(w.findAll('.bmm-card').length).toBeGreaterThan(0)
+    })
+
+    it('地址栏里的垃圾一律不信 —— 照常走默认动线', async () => {
+      Object.assign(query, { y: '1999', m: '99' })
+      const w = await open()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.findAll('.br-item')[1].classes(), '退回默认第一家').toContain('on')
+    })
+  })
+
+  describe('期间条', () => {
+    it('九张报表都在条上,当前屏标出来', async () => {
+      const w = await open()
+      await w.findAll('.bmm-card')[1].trigger('click')
+      await flushPromises()
+      const steps = w.findAll('.fss-step')
+      expect(steps).toHaveLength(9)
+      expect(steps.filter(s => s.classes('on')).map(s => s.text())).toEqual(['利润表'])
+    })
+
+    it('❗跳去别的报表时把整包期带上 —— 月份与公司都不丢', async () => {
+      const w = await open()
+      await w.findAll('.bmm-card')[1].trigger('click')   // 2025-02
+      await flushPromises()
+      await w.findAll('.fss-step')[3].trigger('click')   // 附表1
+      expect(push).toHaveBeenCalledWith({
+        path: '/rent-pnl',
+        query: { y: '2025', m: '2', co: '1' },
+      })
+    })
+
+    it('矩阵态没有条 —— 还没选期,没有期可写', async () => {
+      const w = await open()
+      expect(w.findAll('.fss-step')).toHaveLength(0)
+    })
   })
 })

@@ -16,6 +16,7 @@ import KpiCard from '@/components/ds/KpiCard.vue'
 import SearchField from '@/components/ds/SearchField.vue'
 import Select from '@/components/ds/Select.vue'
 import BookRail from '@/components/fp/BookRail.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
@@ -43,6 +44,7 @@ const {
   companiesLoaded, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
   railItems, matrixYears, matrixBook, gateYears,
+  periodSteps, stripLabel, stripQuery,
   pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
@@ -305,6 +307,9 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
   <!-- 正文态(下面这一块整体位于 .finw-main 内,缩进保持原样以免冲淡 diff) -->
   <template v-else-if="period">
     <div class="fin-page">
+      <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。与出账链链路条同一个组件 -->
+      <FPStepStrip :steps="periodSteps" current="trial-balance" :period="stripLabel"
+                   :query="stripQuery" back-label="换期" @back="backToMatrix" />
       <div class="fin-head">
         <div class="fin-head-l">
           <button class="fin-back" title="返回选期矩阵" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>

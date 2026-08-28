@@ -4,6 +4,9 @@
 // overview 仅 counts 无金额字段 → 指标条按户数口径聚合(不硬造总额)。
 // §6 加载门 + v-else 紧邻链;切月不清 data(避免闪加载门),竞态守卫换数据。
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
+import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
 import { reconApi } from '@/api/recon'
 import type { ReconMonth, ReconMonthMeta, ReconOverview } from '@/types/recon'
 import { iconFor } from '@/components/ds/icon'
@@ -15,11 +18,19 @@ const maxYear = ref(0)                       // 默认年=两本账有数据的�
 const month = ref<number | null>(null)       // null → ①月份层
 const data = ref<ReconMonth | null>(null)    // ②工作台整月对照
 
+// 期间条(设计稿 §3.2c)。本屏认 y/m,co 不认但原样带回去 —— 否则跳回利润表就丢了公司。
+const route = useRoute()
+const carry = parsePeriodQuery(route.query as Record<string, unknown>)
+const stripLabel = computed(() => periodLabel(year.value, month.value, null))
+const stripQuery = computed(() => periodQuery(year.value, month.value, carry?.companyId ?? null))
+
 onMounted(async () => {
-  const o = await reconApi.overview()
+  // 深链(报表中心 / 期间条)优先:它说哪一年就取哪一年
+  const o = await reconApi.overview(carry?.year)
   overview.value = o
-  year.value = o.year
+  year.value = carry?.year ?? o.year
   maxYear.value = o.year
+  if (carry?.month != null) await pickMonth(carry.month)
 })
 
 // 切年不清 overview(同「切月不清 data」口径),竞态守卫
@@ -78,6 +89,9 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
   <!-- ① 月份层 -->
   <template v-if="month === null">
     <div v-if="overview" class="rc3 rc-page">
+      <!-- 期间条:九张报表横跳不换期 -->
+      <FPStepStrip :steps="REPORT_STEPS" current="reconciliation" :period="stripLabel"
+                   :query="stripQuery" back-label="换年" @back="setYear(year)" />
       <div class="rc-months-head">
         <div>
           <h2 class="rc-ptitle">收入核对</h2>

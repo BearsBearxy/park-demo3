@@ -24,15 +24,26 @@ export interface Step {
   label: string
   /** 省略 = 这组步骤没有「做没做」的概念（报表层）。 */
   state?: 'done' | 'stale' | 'todo'
+  /** 悬停全名。条上写得下的就别用它 —— 报表层九个步骤挤不下全称，标签缩成「附表1」，全名放这里。 */
+  title?: string
 }
 
 const props = defineProps<{
-  steps: Step[]
+  /** readonly:步骤表都是模块级常量(CHAIN / REPORT_STEPS),组件从不改它 */
+  steps: readonly Step[]
   /** 当前屏的路由值。命中的那一步高亮且不可点。 */
   current: string
   /** 期标，如 '2025-03' 或 '2025-09 · 物业公司'。 */
   period: string
   backLabel?: string
+  /**
+   * 跟着导航一起走的期（报表层）。目标屏**认得几个用几个，不认的原样传回来** ——
+   * 三大报表吃 y/m/co，损益附表只吃 y，收入核对吃 y/m；靠这一包，
+   * 从利润表跳到附表1 再跳回来，月份和公司都还在。
+   *
+   * 出账链不传：它的期在 `stores/billingPeriod`（只记会话内，不进地址栏）。
+   */
+  query?: Record<string, string>
 }>()
 
 const emit = defineEmits<{ back: [] }>()
@@ -42,7 +53,7 @@ const router = useRouter()
 function go(s: Step) {
   // 点当前屏什么都不做：再 push 一次自己只会把浏览状态（筛选、滚动位置）冲掉
   if (s.value === props.current) return
-  router.push('/' + s.value)
+  router.push(props.query ? { path: '/' + s.value, query: props.query } : '/' + s.value)
 }
 </script>
 
@@ -60,6 +71,7 @@ function go(s: Step) {
           class="fss-step"
           :class="[s.state, { on: s.value === current }]"
           :aria-current="s.value === current ? 'page' : undefined"
+          :title="s.title"
           @click="go(s)"
         >
           <i v-if="s.state" class="fss-pip" :class="s.state" />{{ s.label }}

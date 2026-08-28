@@ -23,6 +23,8 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
+import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
@@ -59,10 +61,17 @@ const currentYear = computed(() => {
   return (withData.length ? withData[withData.length - 1] : ys[ys.length - 1])?.year ?? 0
 })
 
-// ── 进入屏:overview(§6 取数前不渲染);分析层深链 ?y= 直落该年(复审:budget/pnl-analysis 跳转带年) ──
+// 期间条(设计稿 §3.2c)。本屏是**园区全局整年一张表**,没有月与公司维度 ——
+// 但从三大报表跳过来时那两样在 query 里,得原样带回去,否则跳回利润表就丢了月份。
+const carry = parsePeriodQuery(route.query as Record<string, unknown>)
+const stripLabel = computed(() => periodLabel(year.value ?? 0, null, null))
+const stripQuery = computed(() =>
+  periodQuery(year.value ?? 0, carry?.month ?? null, carry?.companyId ?? null))
+
+// ── 进入屏:overview(§6 取数前不渲染);深链 ?y= 直落该年(分析层 budget/pnl-analysis 与报表中心都带年) ──
 onMounted(async () => {
   overview.value = await pnlApi.overview(config.schedule)
-  const y = Number(route.query.y)
+  const y = carry?.year ?? Number(route.query.y)
   if (Number.isInteger(y) && y >= 2000 && y <= 2100) await pickYear(y)
 })
 async function reloadOverview() {
@@ -347,6 +356,9 @@ async function onExport() {
     <!-- 年度矩阵(切年不清 data:按 data.year===year 把关,不显旧年数据) -->
     <template v-else-if="data && data.year === year">
       <div class="pnl-page">
+        <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。本屏是整年一张表,条上只写年份 -->
+        <FPStepStrip :steps="REPORT_STEPS" :current="config.route" :period="stripLabel"
+                     :query="stripQuery" back-label="换年" @back="goGate" />
         <SchedHeader
           :scope="S.pnl(config.schedule, year)"
           :icon="icon"
