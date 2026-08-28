@@ -23,6 +23,7 @@ import {
   Share2, PenLine, Play, RefreshCw, // P-B 公摊分摊
   Tags, // 价目管理
   Settings, ScrollText, // 系统管理层
+  Sigma, Table, CreditCard, // 利润表合计 / 账单通知单
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -134,6 +135,9 @@ const MAP: Record<string, Component> = {
   'tags': Tags,
   'settings': Settings,
   'scroll-text': ScrollText,
+  'sigma': Sigma,
+  'table': Table,
+  'credit-card': CreditCard,
 }
 
 export function iconFor(name: string): Component {
