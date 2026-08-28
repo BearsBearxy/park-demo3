@@ -49,13 +49,16 @@
 
 ```
 T1 (building.zone 迁移)
- ├─→ T2 (GET /api/zones) ─┬─→ T6 (楼栋管理字段)
- │                        └─→ T7 (前端接口化) ─→ T8 (抄表 Excel)
+ ├─→ T2 (GET /api/zones) ─→ T7 (前端接口化) ─┬─→ T6  (楼栋管理字段)
+ │                                          ├─→ T8  (抄表 Excel)
+ │                                          └─→ T10 (楼层/方位)
  ├─→ T4 (zoneOfBuilding 读列)
  └─→ T3 (值域放宽 + 夹具) ─→ T5 (P7 计费口径)
 
-T9  (meter-diff)     ← 与以上全部无依赖，任何时候可做
-T10 (楼层/方位)      ← 只依赖 T7 抽出的 cnNumeral
+T9 (meter-diff) ← 与以上全部无依赖，任何时候可做
+
+⚠ T6 排在 T7 之后（编号顺序 ≠ 执行顺序）：楼栋管理的期区下拉要用
+   T7 Step 7 建的 `api/zones.ts` + `stores/zones.ts`。
 ```
 
 ---
@@ -951,7 +954,7 @@ git commit -m "feat(alloc): 计费口径改成期级参数 zone_calc_kind,不再
 - Test: `backend/src/test/java/com/park/demo3/api/BuildingWriteApiIT.java`
 
 **Interfaces:**
-- Consumes: `Building.getZone()` (T1)、`GET /api/zones` (T2)
+- Consumes: `Building.getZone()` (T1)、`useZonesStore()` (**T7 Step 7** —— 本任务必须排在 T7 之后)
 - Produces: `BuildingDTO.zone`；`BuildingCreateReq.zone` / `BuildingUpdateReq.zone`(可空)
 
 > **尾追加零风险**(已核)：`new BuildingDTO` 全仓只有 `BuildingService.java:165` 一个构造点；`BuildingServiceTest` / `MetricConsistencyIT` 只消费不构造；`BuildingWriteApiIT` / `BuildingTenantApiIT` 全是逐字段 `jsonPath` 断言、不数字段个数；`BuildingSummaryDTO` 不含逐栋字段所以 KPI 汇总一行不用改；`detail()` 经 `toDTO(:209)` 自动跟上。
