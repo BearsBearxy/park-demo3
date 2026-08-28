@@ -30,7 +30,7 @@ public class AllocController {
     public List<String> lossMonths() { return svc.lossMonths(); }
 
     @Operation(summary = "规则列表(携 meterIds+members+meters(sign)+links;可选 zone 过滤;S21:coefficient/extraQty=站在 ym 的生效值,ym 空=初始版本)") @GetMapping("/rules")
-    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone,
+    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
                                     @RequestParam(required = false) @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
         return svc.ruleList(zone, ym);
     }

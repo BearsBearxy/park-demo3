@@ -148,7 +148,7 @@ class MeterApiIT extends AbstractMysqlIT {
                 + "\"area\":\"二期园区变压器\",\"meterType\":\"总电表\",\"factor\":12000,"
                 + "\"prevTotal\":459.21,\"currTotal\":508.85},"
                 + "{\"kind\":\"water\",\"zone\":\"dorm\",\"name\":\"IT宿舍总水\",\"ym\":\"2099-05\",\"prevTotal\":1567,\"currTotal\":2137},"
-                + "{\"kind\":\"elec\",\"zone\":\"p9\",\"name\":\"IT坏分区\",\"ym\":\"2099-05\"},"
+                + "{\"kind\":\"elec\",\"zone\":\"px\",\"name\":\"IT坏分区\",\"ym\":\"2099-05\"},"
                 + "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"\",\"ym\":\"2099-05\"},"
                 + "{\"kind\":\"elec\",\"zone\":\"p1\",\"name\":\"IT坏月份\",\"ym\":\"2099/05\"}"
                 + "]}";
@@ -869,5 +869,30 @@ class MeterApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data[?(@.code=='p3')].name").value("三期"))
                 .andExpect(jsonPath("$.data[?(@.code=='p1')].name").value("一期"))
                 .andExpect(jsonPath("$.data[-1:].code").value("dorm"));
+    }
+
+    // ── 三期:zone=p3 建档/过滤/导入全通(值域 p1|p2|dorm → p\d+|dorm) ──
+    @Test
+    void zone_p3_createListImport() throws Exception {
+        String res = mvc.perform(post("/api/meters").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"kind\":\"elec\",\"zone\":\"p3\",\"name\":\"IT三期总电\",\"factor\":1}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.zone").value("p3"))
+                .andReturn().getResponse().getContentAsString();
+        int id = JsonPath.read(res, "$.data.id");
+        // 列表 zone 过滤参数不再 400
+        mvc.perform(get("/api/meters").param("kind", "elec").param("zone", "p3").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.name=='IT三期总电')].zone").value("p3"));
+        // 导入:p3 行进(MeterService.validZone 也放宽了),形态非法行仍跳
+        mvc.perform(post("/api/meters/import").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"rows\":["
+                        + "{\"kind\":\"elec\",\"zone\":\"p3\",\"name\":\"IT三期总电\",\"ym\":\"2099-05\",\"prevTotal\":10,\"currTotal\":20},"
+                        + "{\"kind\":\"elec\",\"zone\":\"px\",\"name\":\"IT坏分区\",\"ym\":\"2099-05\"}]}"))
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.skipped").value(1));
+        org.junit.jupiter.api.Assertions.assertEquals("p3", meterMapper.selectById(id).getZone());
     }
 }

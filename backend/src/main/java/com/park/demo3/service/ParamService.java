@@ -170,12 +170,7 @@ public class ParamService {
 
     static String scopeLabel(String scope, Names n) {
         if (scope == null || scope.isEmpty()) return "全园";
-        switch (scope) {
-            case "p1": return "一期";
-            case "p2": return "二期";
-            case "dorm": return "宿舍";
-            default: break;
-        }
+        if (scope.matches(ZoneService.ZONE_REGEX)) return ZoneService.label(scope);
         int id = idOf(scope);
         if (scope.startsWith("building:")) return n.building.getOrDefault(id, "楼栋#" + id);
         if (scope.startsWith("rule:")) return n.rule.getOrDefault(id, "池#" + id) + "（池）";
@@ -291,10 +286,10 @@ public class ParamService {
     }
 
     private static long scopeId(String scope) {
-        return switch (scope) {
-            case "", "p1" -> 1; case "p2" -> 2; case "dorm" -> 3;
-            default -> idOf(scope);
-        };
+        if (scope.isEmpty()) return 1;
+        if ("dorm".equals(scope)) return Integer.MAX_VALUE;          // 恒排最后,不再与 p3 撞
+        if (scope.matches("p\\d+")) return Integer.parseInt(scope.substring(1));
+        return idOf(scope);
     }
 
     static int idOf(String scope) { return Integer.parseInt(scope.substring(scope.indexOf(':') + 1)); }
@@ -323,7 +318,9 @@ public class ParamService {
             if (m.getBuildingId() != null && m.getZone() != null) n.zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
             if (m.getTenantId() != null && m.getZone() != null)
                 n.zonesOfTenant.computeIfAbsent(m.getTenantId(), k -> new HashSet<>()).add(m.getZone());
-            if (m.getBuildingId() != null && "elec".equals(m.getKind()) && ("p1".equals(m.getZone()) || "p2".equals(m.getZone())))
+            // 与 AllocService.lossGroups(:1361) 同口径:只排 dorm。写死 p1/p2 会造出不对称 ——
+            // p3 楼栋进得了损耗组算钱,参数中心里却一行损耗参数都不出现,用户改不了也不报错。
+            if (m.getBuildingId() != null && "elec".equals(m.getKind()) && !"dorm".equals(m.getZone()))
                 n.lossBuildings.add(m.getBuildingId());
         }
         // 楼栋期别以挂表的 zone 为准(宿舍楼 phase=1 但 zone=dorm);还没挂表的楼栋退回 building.phase

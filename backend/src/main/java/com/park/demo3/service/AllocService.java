@@ -78,11 +78,16 @@ public class AllocService {
     // ⚠楼栋空(园区级池)前缀必须取 **zone 期别** 而不是统一写"园区级":二期/一期/宿舍区各有一个「路灯」池,
     //   统一前缀会让三个池撞成同一个名字(V70 加期别前缀正是为此)。与 derive_pool_location.py 同源。
     // 例:poolName("一期 A座","四楼","西侧","走廊灯")="一期 A座·四楼西侧·走廊灯";poolName(null,…,"路灯",zone=p1)="一期园区·路灯"
-    private static final Map<String, String> ZONE_POOL_PREFIX =
-        Map.of("p1", "一期园区", "p2", "二期园区", "dorm", "宿舍区");
+    // 按期区码生成,不再写死三元组。p3 园区级池若塌成统一的「园区级」,
+    // 会与 p4 的同费项池撞成同一个名字 —— 正是 :78-79 注释里 V70 加期别前缀要防的事故。
+    private static String zonePoolPrefix(String zone) {
+        return "dorm".equals(zone) ? "宿舍区"
+             : zone != null && zone.matches("p\\d+") ? ZoneService.label(zone) + "园区"
+             : "园区级";
+    }
     public static String poolName(String zone, String buildingName, String floorLabel, String side, String feeName) {
         StringBuilder sb = new StringBuilder(blank(buildingName)
-            ? ZONE_POOL_PREFIX.getOrDefault(zone, "园区级") : buildingName.trim());
+            ? zonePoolPrefix(zone) : buildingName.trim());
         String loc = (blank(floorLabel) ? "" : floorLabel.trim()) + (blank(side) ? "" : side.trim());
         if (!loc.isEmpty()) sb.append('·').append(loc);
         if (!blank(feeName)) sb.append('·').append(feeName.trim());

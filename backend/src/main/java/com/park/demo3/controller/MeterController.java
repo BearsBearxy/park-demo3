@@ -21,7 +21,7 @@ public class MeterController {
 
     @Operation(summary = "表档案列表(可选 kind/zone 过滤;含读数条数)") @GetMapping
     public List<MeterDTO> list(@RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
-                               @RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone) {
+                               @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone) {
         return svc.list(kind, zone);
     }
 
@@ -68,7 +68,7 @@ public class MeterController {
     public MeterDeleteDTO deletePreview(
             @RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym,
             @RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
-            @RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone,
+            @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
             @RequestParam(defaultValue = "true") boolean cascade,
             @RequestParam(defaultValue = "true") boolean dropEmptyMeters) {
         return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, false);
@@ -79,7 +79,7 @@ public class MeterController {
     public MeterDeleteDTO deleteByYm(
             @RequestParam @Pattern(regexp = "\\d{4}-\\d{2}") String ym,
             @RequestParam(required = false) @Pattern(regexp = "elec|water") String kind,
-            @RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone,
+            @RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
             @RequestParam(defaultValue = "true") boolean cascade,
             @RequestParam(defaultValue = "true") boolean dropEmptyMeters) {
         return svc.batchDelete(ym, kind, zone, cascade, dropEmptyMeters, true);

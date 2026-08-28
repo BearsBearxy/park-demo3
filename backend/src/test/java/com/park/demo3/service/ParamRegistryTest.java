@@ -68,10 +68,12 @@ class ParamRegistryTest {
         assertTrue(ParamRegistry.allowed("loss_denom_cable", "p2"));
         assertTrue(ParamRegistry.allowed("loss_denom_cable", "building:30"));
         assertTrue(ParamRegistry.allowed("loss_base_form_b32", "tenant:9"));
-        assertFalse(ParamRegistry.allowed("elec_peak", "p9"));          // 非法 scope
+        assertFalse(ParamRegistry.allowed("elec_peak", "px"));          // 非法 scope(p\d+ 会收下 p9,只能用非数字后缀)
+        assertTrue(ParamRegistry.allowed("elec_peak", "p3"));           // 三期:放宽后必须通过
         assertFalse(ParamRegistry.allowed("elec_peak", "building:x"));  // 非数字 id
         assertFalse(ParamRegistry.allowed("no_such_key", ""));
-        assertNull(ParamRegistry.scopeKind("p9"));
+        assertNull(ParamRegistry.scopeKind("px"));
+        assertEquals(ScopeKind.ZONE, ParamRegistry.scopeKind("p3"));
         assertEquals(ScopeKind.GLOBAL, ParamRegistry.scopeKind(null));
     }
 

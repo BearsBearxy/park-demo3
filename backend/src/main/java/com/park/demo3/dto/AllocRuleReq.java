@@ -6,7 +6,7 @@ import java.util.List;
 // 规则整体保存(meterIds+members 随行覆盖);loss 规则无 member(受益人生成时动态取)。
 // V64 扩:meters(携 sign,优先于 meterIds)/roundScale/stdKind/baseKey/links(入向折入链整体覆盖)
 public record AllocRuleReq(
-    @NotBlank @Pattern(regexp = "p1|p2|dorm") String zone,
+    @NotBlank @Pattern(regexp = "p\\d+|dorm") String zone,
     String name,                   // V69 忽略:后端按定位自动生成并覆盖(前端只读展示)
     Integer buildingId,
     @NotBlank @Pattern(regexp = "direct|area|floor|loss|none|ref") String method,

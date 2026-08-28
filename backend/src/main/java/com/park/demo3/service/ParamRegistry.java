@@ -172,7 +172,7 @@ public final class ParamRegistry {
 
     public static Collection<Def> all() { return Collections.unmodifiableCollection(DEFS.values()); }
 
-    /** 键存在且 scope 形态允许('' 全园 / p1|p2|dorm 期 / building:{id} / meter:{id} / rule:{id} / tenant:{id}) */
+    /** 键存在且 scope 形态允许('' 全园 / p{n}|dorm 期 / building:{id} / meter:{id} / rule:{id} / tenant:{id}) */
     public static boolean allowed(String key, String scope) {
         Def d = get(key);
         if (d == null) return false;
@@ -197,10 +197,10 @@ public final class ParamRegistry {
         return out;
     }
 
-    /** scope 字符串 → 形态;非法(如 'p9'、'building:x')→ null */
+    /** scope 字符串 → 形态;非法(如 'px'、'building:x')→ null */
     public static ScopeKind scopeKind(String scope) {
         if (scope == null || scope.isEmpty()) return ScopeKind.GLOBAL;
-        if (scope.equals("p1") || scope.equals("p2") || scope.equals("dorm")) return ScopeKind.ZONE;
+        if (scope.matches(ZoneService.ZONE_REGEX)) return ScopeKind.ZONE;
         int i = scope.indexOf(':');
         if (i <= 0 || !scope.substring(i + 1).matches("\\d+")) return null;
         return switch (scope.substring(0, i)) {

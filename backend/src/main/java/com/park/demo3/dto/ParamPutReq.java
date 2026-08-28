@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 // 返回行站在 ?ym=(缺省 acctMonth)。
 public record ParamPutReq(
     @NotBlank String key,
-    @Pattern(regexp = "^(|p1|p2|dorm|(building|meter|rule|tenant):\\d+)$") String scope,
+    @Pattern(regexp = "^(|p\\d+|dorm|(building|meter|rule|tenant):\\d+)$") String scope,
     @Pattern(regexp = "(\\d{4}-(0[1-9]|1[0-2]))?") String acctMonth,
     @Pattern(regexp = "(from|month)?") String mode,
     BigDecimal value,

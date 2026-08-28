@@ -205,7 +205,7 @@ class PriceCfgApiIT extends AbstractMysqlIT {
     void validationErrors_http400() throws Exception {
         mvc.perform(put("/api/price-cfg").header("Authorization", auth())
                 .contentType("application/json")
-                .content("{\"scope\":\"p9\",\"cfgKey\":\"water\",\"value\":1}"))
+                .content("{\"scope\":\"px\",\"cfgKey\":\"water\",\"value\":1}"))
                 .andExpect(status().isBadRequest());
         mvc.perform(put("/api/price-cfg").header("Authorization", auth())
                 .contentType("application/json")
