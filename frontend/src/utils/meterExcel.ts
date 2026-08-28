@@ -10,6 +10,7 @@ import { writeAoaWorkbook } from './sheet'
 import type { ImportRec } from './importHeaderMatch'
 import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
 import { tenantMatchNames } from './tenantAlias'
+import { zoneLabel } from './zoneLabel'
 
 export interface MeterSheetSection {
   label: string; records: ImportRec[]; sciCodes?: number
@@ -27,7 +28,6 @@ export interface MeterMasterCtx {
   buildings?: { id: number; name: string }[]
 }
 
-export const METER_ZONE_LABEL: Record<string, string> = { p1: '一期', p2: '二期', dorm: '宿舍' }
 export const METER_KIND_LABEL: Record<string, string> = { elec: '电表', water: '水表' }
 
 // FpImportModal 预览表列(__preview 与此对齐,§6.4 拆分结果);模板是 6-sheet 骨架另走 buildMeterTemplate
@@ -173,7 +173,7 @@ export function parseMeterSheet(
       tenantId, buildingId, ownership,
       note: noteCol >= 0 ? cellStr(row, noteCol) || undefined : undefined,
       // §6.4 导入预览列:期数|楼栋|方位|租户(或待核原文)|归属|倍率|上月总|本月总|表列用量
-      __preview: [METER_ZONE_LABEL[det.zone], buildings.find(b => b.id === buildingId)?.name ?? '',
+      __preview: [zoneLabel(det.zone), buildings.find(b => b.id === buildingId)?.name ?? '',
         spot, ownership === 'tenant' ? (split.tenant ?? (rawTenant ? `${rawTenant}(待核)` : '')) : rawTenant,
         OWNERSHIP_LABEL[ownership], factor ?? '', prevTotal ?? '', currTotal ?? '',
         stated == null ? '' : gap ? `${stated}⚠` : stated],
@@ -188,7 +188,7 @@ export function parseMeterSheet(
   }
   if (!records.length) return null
   const [y, mo] = det.ym.split('-')
-  const label = `${METER_ZONE_LABEL[det.zone]}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
+  const label = `${zoneLabel(det.zone)}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
     + (det.ymSource === 'fallback' ? '(按所选账期)' : '')
   return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource, noNameCol: nameCol < 0 }
 }
@@ -220,7 +220,7 @@ export function parseMeterWorkbook(
 // ── 模板:6-sheet 骨架(标题行含年月+真实版式表头+示例行),与解析器互认 ──
 export function buildMeterTemplateAoa(zone: string, kind: string, ym: string): (string | number)[][] {
   const [y, mo] = ym.split('-')
-  const title = `${y}年${+mo}月${METER_ZONE_LABEL[zone]}${zone === 'dorm' ? '' : '园区'}${METER_KIND_LABEL[kind]}抄表记录`
+  const title = `${y}年${+mo}月${zoneLabel(zone)}${zone === 'dorm' ? '' : '园区'}${METER_KIND_LABEL[kind]}抄表记录`
   if (kind === 'elec') {
     return [
       ['', title],

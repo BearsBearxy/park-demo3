@@ -30,6 +30,7 @@ import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamM
 import { buildYearOptions } from '@/utils/yearGate'
 import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { useAuthStore } from '@/stores/auth'
+import { useZonesStore } from '@/stores/zones'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -77,9 +78,9 @@ const yearOpts = computed(() =>
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const ym = computed(() => `${year.value}-${pad2(month.value)}`)
 const zone = ref<ParamZone>('all')
-const ZONE_OPTS = [
-  { value: 'all', label: '全园' }, { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
-]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+const ZONE_OPTS = computed(() => [{ value: 'all', label: '全园' }, ...zones.list.map(z => ({ value: z.code, label: z.name }))])
 
 // ── 数据(首载加载门;++seq 竞态守卫:快速切年月/期区只接受最新一次) ──
 const rows = ref<ParamRowDTO[] | null>(null)
@@ -137,7 +138,11 @@ const hlScope = ref('')
 let pendingSection = ''
 function applyHandoff(): boolean {
   const q = route.query
-  if (typeof q.zone === 'string' && ZONE_OPTS.some(o => o.value === q.zone)) zone.value = q.zone as ParamZone
+  // 不用 ZONE_OPTS 校验:这里在 setup 期同步跑,比 onMounted 里的 zones.ensure() 更早 ——
+  // 深链落地时 zones store 十有八九还是空的,拿 ZONE_OPTS.some(...) 校验会把合法的
+  // ?zone=p2 当非法丢弃(白白落回 'all')。改按后端值域(p\d+|dorm)+页面自己的 'all' 做形状校验,
+  // 不依赖 store 是否已拉到。
+  if (typeof q.zone === 'string' && (q.zone === 'all' || /^p\d+$/.test(q.zone) || q.zone === 'dorm')) zone.value = q.zone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
   // 深链也走 toggle:缺权限时弹授权窗(裸写 editMode 会被守卫静默弹回浏览态,用户不知道为什么)
@@ -215,7 +220,7 @@ const ruleGroups = computed(() => {
 })
 // 一期公摊分摊度数 G(只读披露,spec §3.3):成员 = fee_key 园区公摊池,÷ 均摊栋数(park_share_div)
 const gLine = computed(() => {
-  if (zone.value === 'p2' || zone.value === 'dorm') return ''
+  if (zone.value !== 'p1') return ''      // 白名单:园区公摊分母是一期独有机制
   const names = rules.value.filter(r => r.zone === 'p1' && r.feeKey === 'park_loss_pool').map(r => r.name)
   const div = (rows.value ?? []).find(r => r.key === 'park_share_div' && (r.scope === 'p1' || r.scope === ''))
   const d = div?.value == null ? '均摊栋数' : `${div.value} 栋`
@@ -508,7 +513,7 @@ const FIXED_RULES = [
         <div style="width:92px">
           <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
         </div>
-        <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event as ParamZone" />
+        <Segmented :options="ZONE_OPTS" :model-value="zone" size="sm" @update:model-value="zone = $event" />
         <!-- 屏级告警入口(§6):位置固定在主控区尾,有无告警都渲染(无 → quiet 态),不挪版 -->
         <FPAlertChip :count="alertCount" @open="alertOpen = true" />
       </div>

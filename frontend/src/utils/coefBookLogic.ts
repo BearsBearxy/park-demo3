@@ -123,7 +123,8 @@ export interface CoefRuleIn { id: number; feeKey: AllocFeeKey; coefficient: numb
 
 export function poolsOfFeeKey(pools: CoefPoolIn[], rules: CoefRuleIn[], feeKey: string): CoefPoolIn[] {
   const ids = new Set(rules.filter(r => r.feeKey === feeKey).map(r => r.id))
-  return pools.filter(p => p.zone === 'p2' && ids.has(p.ruleId))   // 层份仅二期开放(spec §3)
+  // 层份仅二期开放(spec §3);另两份拷贝见 CoefBookWindow.vue 的 floorLocked 与 allocApi.rules('p2') 调用
+  return pools.filter(p => p.zone === 'p2' && ids.has(p.ruleId))
 }
 export interface FloorMembership { ruleId: number; poolName: string; weight: number | null; src: 'month' | 'default' }
 export function floorMemberships(feePools: CoefPoolIn[], tenantId: number): FloorMembership[] {

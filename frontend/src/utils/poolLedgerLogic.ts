@@ -7,8 +7,6 @@ import type { AllocLossReconDTO, AllocLossUnitDTO, AllocMethod, AllocPoolLineDTO
 import { ALLOC_METHOD_LABEL } from '@/utils/allocLogic'
 import { floorRank } from '@/composables/useMeterWorkbench'
 
-export const POOL_ZONE_LABEL: Record<string, string> = { p1: '一期', p2: '二期', dorm: '宿舍' }
-
 const r2 = (v: number) => Math.round(v * 100) / 100
 // 浮点噪音清理后的紧凑数字串(0.0050000 → '0.005')
 const trimNum = (v: number) => String(Number(v.toFixed(8)))

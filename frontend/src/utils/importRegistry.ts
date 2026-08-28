@@ -41,7 +41,8 @@ import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows, type ChargingCatLite } from '@/utils/importChargingRows'
 import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
 import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
-import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_ZONE_LABEL, METER_KIND_LABEL } from '@/utils/meterExcel'
+import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_KIND_LABEL } from '@/utils/meterExcel'
+import { zoneLabel } from '@/utils/zoneLabel'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
 import { contractApi } from '@/api/contract'
@@ -377,6 +378,11 @@ function downloadCsv(name: string, text: string): void {
   URL.revokeObjectURL(url)
 }
 
+// 抄表导入补录条的分区兜底清单(§4 fallbackPicker):静态基础集(与后端 /api/zones 保证的
+// {p1,p2,p3,dorm} 基础集一致),不接 zones store —— 本文件是纯注册表模块,
+// importRegistry.spec.ts 没搭 Pinia,店内取 store 会在无 active Pinia 时直接抛错。
+const METER_FALLBACK_ZONES = ['p1', 'p2', 'p3', 'dorm']
+
 export const IMPORT_TYPES: ImportTypeEntry[] = [
   {
     key: 'ledger', label: '月度台账', tag: '凭证', icon: 'book-open', context: 'ledger', module: 'entry:edit',
@@ -618,7 +624,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         // 标题缺年月/分区/类别时的补录值(默认取抄表页当前年月);弹窗只在真用上时才把这条露出来
         fallbackPicker: {
           ym, zone: 'p1', kind: 'elec',
-          zones: Object.entries(METER_ZONE_LABEL).map(([value, label]) => ({ value, label })),
+          zones: METER_FALLBACK_ZONES.map(value => ({ value, label: zoneLabel(value) })),
           kinds: Object.entries(METER_KIND_LABEL).map(([value, label]) => ({ value, label })),
         },
         parseWorkbook: (sheets: { name: string; matrix: string[][] }[], fb?: { ym: string; zone: string; kind: string }) =>

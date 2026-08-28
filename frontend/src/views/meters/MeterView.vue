@@ -13,7 +13,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
-  type MeterDeleteDTO, type MeterKind, type MeterZone,
+  type MeterDeleteDTO, type MeterKind,
 } from '@/api/meters'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
@@ -33,6 +33,7 @@ import { latestPeriodOf } from '@/utils/defaultPeriod'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useZonesStore } from '@/stores/zones'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
@@ -250,9 +251,9 @@ const own = ref('all')
 const status = ref<StatusFilter>('all')
 const q = ref('')
 const KIND_OPTS = [{ value: 'elec', label: '电表' }, { value: 'water', label: '水表' }]
-const ZONE_OPTS = [
-  { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
-]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+const ZONE_OPTS = computed(() => zones.list.map(z => ({ value: z.code, label: z.name })))
 const OWN_OPTS = computed(() => [
   { value: 'all', label: '全部归属' },
   ...Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, kind.value) })),
@@ -501,7 +502,6 @@ const mForm = ref({
   area: '', floorLabel: '', side: '', roomNo: '',
 })
 const mErr = ref('')
-const DLG_ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' }]
 const DLG_OWN_OPTS = computed(() =>
   Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, mForm.value.kind) })))
 const dlgBuildingOpts = computed(() => [
@@ -527,7 +527,7 @@ async function submitMeter() {
   if (!Number.isFinite(factor) || factor <= 0) { mErr.value = '倍率需为正数(留空=1)'; return }
   try {
     await metersApi.create({
-      kind: mForm.value.kind as MeterKind, zone: mForm.value.zone as MeterZone, name, factor,
+      kind: mForm.value.kind as MeterKind, zone: mForm.value.zone, name, factor,
       subName: trimOrNull(mForm.value.subName),
       spot: trimOrNull(mForm.value.spot), code: trimOrNull(mForm.value.code),
       area: trimOrNull(mForm.value.area),
@@ -742,7 +742,7 @@ const emptyText = computed(() => {
         <div class="mt-dlg-b">
           <div class="mt-dlg-row">
             <Select v-model="mForm.kind" label="类别" :options="KIND_OPTS" size="sm" />
-            <Select v-model="mForm.zone" label="分区" :options="DLG_ZONE_OPTS" size="sm" />
+            <Select v-model="mForm.zone" label="分区" :options="ZONE_OPTS" size="sm" />
           </div>
           <div class="mt-dlg-row">
             <Select v-model="mForm.building" label="期数·楼栋(可空)" :options="dlgBuildingOpts" size="sm" />

@@ -94,6 +94,7 @@ const clearMode = ref(false)
 
 const curMeta = computed(() => coefMeta(coefId.value))
 // 层份键仅二期开放:一期/三期页签下禁用编辑并提示(表格让位提示条)
+// 「层份仅二期」同一条规则的三份拷贝之一,另两份:本文件下方 allocApi.rules('p2') 调用、coefBookLogic.ts poolsOfFeeKey 的 p.zone === 'p2' 过滤
 const floorLocked = computed(() => curMeta.value.floorShare && phase.value !== '2')
 const coefOpts = COEF_KEYS.map(k => ({
   value: k.id, label: k.floorShare ? `${k.label}(仅二期)` : k.unit ? `${k.label}(${k.unit})` : k.label,
@@ -120,6 +121,7 @@ async function load() {
     const [ps, pl, rs] = await Promise.all([
       paramsApi.list(effYm.value, 'all', { key: PRICE_KEY_PARAM }),
       allocApi.pools(effYm.value).catch(() => ({ generated: false, rows: [] as AllocPoolRowDTO[] })),
+      // 层份仅二期开放,写死 'p2':另两份拷贝见本文件 floorLocked、coefBookLogic.ts poolsOfFeeKey
       allocApi.rules('p2').catch(() => [] as AllocRuleDTO[]),
     ])
     if (my !== seq) return
@@ -169,7 +171,14 @@ watch(q, () => {
 
 // ── 当前生效值:价目键=GET /params 行按 户→期→全园 找(例外徽标=户级行命中自身版本),值/区间用后端人话;
 //    层份键=当月池成员行(weight+src),hover 明示逐池构成(spec §4 改前披露) ──
-const zone = computed(() => phase.value === '1' ? 'p1' : phase.value === '2' ? 'p2' : null)
+// 期区本该取楼栋上的字段,不由 phase 猜 —— phase 3 以前落 null,会让 resolveCoefPrice 的级联跳过
+// 整条期级作用域,静默按全园价显示。理想修法是查 props.buildings 里对应楼栋的 zone 字段,但
+// buildingApi.list() 返回的 BuildingDTO(backend dto/BuildingDTO.java)目前不透出 zone 列
+// (Building 实体有 zone 字段,DTO 没有转出来)——这是本任务(前端-only)文件清单外的后端改动,
+// 留给后续任务补(BuildingDTO 加一个 zone 字段 + toDTO() 里带上 b.getZone() 即可,改动很小)。
+// 这里先按本窗口页签本就只有 1/2/3(无宿舍页签)的事实,把同一条推断延到三期,
+// 至少堵住「三期租户静默按全园价」这个直接症状,不比一期/二期现状更差。
+const zone = computed(() => `p${phase.value}`)
 interface CurCell { text: string; eff: string; exception: boolean; title?: string }
 const curMap = computed<Map<number, CurCell>>(() => {
   const meta = curMeta.value

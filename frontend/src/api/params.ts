@@ -6,7 +6,8 @@ import { prevYm } from '@/utils/paramCenterLogic'
 // GET=已登录可读,写/重算=ADMIN。列表是「站在 ym 看的全部生效参数行」(四区),后端已做人话解析
 // (scopeLabel/valueText/rangeText/sourceChain),前端只分组与渲染(utils/paramCenterLogic)。
 
-export type ParamZone = 'all' | 'p1' | 'p2' | 'dorm'
+// 值域由后端 /api/zones 数据驱动(p\d+|dorm),不再写死;'all' 是前端页面自己的语义(全园)。
+export type ParamZone = 'all' | string
 
 // = 后端 ParamRowDTO
 export interface ParamRowDTO {

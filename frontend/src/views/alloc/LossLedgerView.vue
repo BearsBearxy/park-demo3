@@ -10,13 +10,15 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allocApi, type AllocLossDTO, type AllocLossUnitDTO } from '@/api/alloc'
-import { paramsApi, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
-import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
+import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
+import { buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
+import { zoneLabel } from '@/utils/zoneLabel'
 import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
+import { useZonesStore } from '@/stores/zones'
 import { iconFor } from '@/components/ds/icon'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
@@ -40,7 +42,13 @@ const yearOpts = computed(() =>
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const ym = computed(() => `${year.value}-${pad2(month.value)}`)
 const zone = ref<string>('p1')
-const ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+// 宿舍无损耗单元(后端 AllocService.lossGroups() 第一道过滤就排 dorm,行号随改动漂移故不写死)。
+// 期区清单接口化之后必须在这里主动排掉,否则会多出一个恒空的宿舍 tab,
+// 把一个刻意的设计读成一个 bug。
+const ZONE_OPTS = computed(() => zones.list.filter(z => z.code !== 'dorm')
+  .map(z => ({ value: z.code, label: z.name })))
 
 // ── 数据(竞态守卫):损耗快照 + 本 zone 栋级参数(只读徽标用,只拉三个键几十行)+ 参数状态(stale 条) ──
 const loss = ref<AllocLossDTO | null>(null)
@@ -51,7 +59,7 @@ async function loadMonth() {
   const my = ++seq
   const [ls, ps, st] = await Promise.all([
     allocApi.loss(ym.value),
-    paramsApi.list(ym.value, zone.value as ParamZone, { scope: 'building:', key: 'loss_adj_qty,loss_adj_rate,loss_rate_manual' })
+    paramsApi.list(ym.value, zone.value, { scope: 'building:', key: 'loss_adj_qty,loss_adj_rate,loss_rate_manual' })
       .catch(() => [] as ParamRowDTO[]),
     paramsApi.status(ym.value).catch(() => null),
   ])
@@ -248,7 +256,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
             <td><span class="ll-txt" :title="u.note ?? undefined">{{ u.note ?? '–' }}</span></td>
           </tr>
           <tr v-if="units.length === 0">
-            <td class="ll-noro" :colspan="colCount">{{ POOL_ZONE_LABEL[zone] }}本月无损耗单元（需生成快照）</td>
+            <td class="ll-noro" :colspan="colCount">{{ zoneLabel(zone) }}本月无损耗单元（需生成快照）</td>
           </tr>
           <!-- 对账区两行(读时派生;一期的合计排除 供电局对账=不参与 的 A座):供电局读数落「总表用电量」列,各栋合计落「分表用电量」列 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon">

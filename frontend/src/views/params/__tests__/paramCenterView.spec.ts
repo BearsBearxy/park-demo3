@@ -102,6 +102,12 @@ vi.mock('@/api/building', () => ({
   buildingApi: { list: () => Promise.resolve([{ id: 13, name: '一期 A座', phase: 1 }, { id: 20, name: '一期 B座', phase: 1 }]) },
 }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: () => Promise.resolve([{ id: 5, companyName: '力灏', phase: 1, parentName: null }]) } }))
+vi.mock('@/api/zones', () => ({ zonesApi: { list: () => Promise.resolve([
+  { code: 'p1', name: '一期', sortNo: 0 },
+  { code: 'p2', name: '二期', sortNo: 1 },
+  { code: 'p3', name: '三期', sortNo: 2 },
+  { code: 'dorm', name: '宿舍', sortNo: 3 },
+]) } }))
 
 import ParamCenterView from '../ParamCenterView.vue'
 import ParamEditPopover from '../ParamEditPopover.vue'

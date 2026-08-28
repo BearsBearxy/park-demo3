@@ -3,7 +3,9 @@ import http from './index'
 // 公摊分摊(PB-ALLOCATION-SPEC)DTO — 逐字对齐后端 dto/Alloc*。
 // GET=viewer 可读,写=admin。用量唯一来源=P-A meter_reading 派生;本域出口=alloc_result(P-C 契约)。
 
-export type AllocZone = 'p1' | 'p2' | 'dorm'
+// 值域由后端 /api/zones 数据驱动(p\d+|dorm),不再写死。放宽后编译器不再帮忙查
+// 字典下标 —— 所有 label 取值必须走 zoneLabel() 的兜底。
+export type AllocZone = string
 // none=不分摊全额挂亏;ref=纯标准行(只出std不出应分摊,不入合计)— POOL-ENGINE-SPEC §2
 // carrier(V73)=冲减载体:表已在别池以 sign=-1 冲减,本行只陈列用量不出应分摊、不入金额合计(账册 W89 为空)
 // V81 起后端还会返回 'manual'(§H4.2e 原册 r12/r47-49 四个无电表行,qty/cost 恒 null)。

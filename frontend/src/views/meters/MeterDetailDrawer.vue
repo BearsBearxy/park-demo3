@@ -12,7 +12,8 @@ import {
 import type { TenantDTO } from '@/types/tenant'
 import type { BuildingDTO } from '@/types/building'
 import { readingFlags } from '@/utils/meterLogic'
-import { METER_ZONE_LABEL, METER_KIND_LABEL } from '@/utils/meterExcel'
+import { METER_KIND_LABEL } from '@/utils/meterExcel'
+import { zoneLabel } from '@/utils/zoneLabel'
 import { ownershipLabel } from '@/utils/meterSplit'
 import {
   BIND_STATUS_NOTE, BIND_BUCKET_LABEL, bindQueueBucket, bindReason,
@@ -79,7 +80,7 @@ const tenantOpts = computed(() =>
 const drawerSub = computed(() => {
   const mm = m.value
   if (!mm) return ''
-  const parts = [`${METER_ZONE_LABEL[mm.zone]}${METER_KIND_LABEL[mm.kind]}`]
+  const parts = [`${zoneLabel(mm.zone)}${METER_KIND_LABEL[mm.kind]}`]
   if (props.row?.tenantLabel) parts.push(props.row.tenantLabel)
   else if (mm.ownership !== 'tenant') parts.push(ownershipLabel(mm.ownership, mm.kind))
   parts.push(`共 ${history.value?.length ?? mm.readingCount} 条读数`)
@@ -371,7 +372,7 @@ async function doBind(contractId: number | null) {
 
     <!-- ── 表档案 ── -->
     <div v-if="tab === 'profile' && m" class="md-grid">
-      <div class="md-fld ro"><label>类别 / 分区</label><span>{{ METER_KIND_LABEL[m.kind] }} · {{ METER_ZONE_LABEL[m.zone] }}</span></div>
+      <div class="md-fld ro"><label>类别 / 分区</label><span>{{ METER_KIND_LABEL[m.kind] }} · {{ zoneLabel(m.zone) }}</span></div>
       <div class="md-fld ro"><label>读数条数</label><span class="mono">{{ history?.length ?? m.readingCount }}</span></div>
 
       <div class="md-fld">

@@ -45,12 +45,14 @@ import { PARAM_DEFS } from '@/utils/paramRegistry'
 import { buildYearOptions } from '@/utils/yearGate'
 import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { useTabsStore } from '@/stores/tabs'
+import { useZonesStore } from '@/stores/zones'
 import {
-  FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, POOL_ZONE_LABEL, bandFooter, buildPoolExportAoa,
+  FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, bandFooter, buildPoolExportAoa,
   costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, netSummary,
   poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
   poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
+import { zoneLabel } from '@/utils/zoneLabel'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -96,9 +98,9 @@ const yearOpts = computed(() =>
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const ym = computed(() => `${year.value}-${pad2(month.value)}`)
 const zone = ref<string>('p1')
-const ZONE_OPTS = [
-  { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
-]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+const ZONE_OPTS = computed(() => zones.list.map(z => ({ value: z.code, label: z.name })))
 
 // ── 数据(竞态守卫:快速切年月只接受最新一次请求) ──
 const pools = ref<AllocPoolsDTO | null>(null)
@@ -298,8 +300,8 @@ async function onGenerate() {
 // ── 导出当月(纯函数 buildPoolExportAoa) ──
 async function onExport() {
   const { writeAoaWorkbook } = await import('@/utils/sheet')
-  const aoa = buildPoolExportAoa(bands.value, ym.value, POOL_ZONE_LABEL[zone.value])
-  await writeAoaWorkbook(`公共电核算-${ym.value}-${POOL_ZONE_LABEL[zone.value]}.xlsx`,
+  const aoa = buildPoolExportAoa(bands.value, ym.value, zoneLabel(zone.value))
+  await writeAoaWorkbook(`公共电核算-${ym.value}-${zoneLabel(zone.value)}.xlsx`,
     [{ name: '公共电核算', aoa }])
 }
 
@@ -422,7 +424,7 @@ interface PoolForm {
 }
 const form = ref<PoolForm>(emptyForm())
 function emptyForm(): PoolForm {
-  return { id: null, zone: zone.value as AllocZone, buildingId: null, floorLabel: '', side: '', feeName: '',
+  return { id: null, zone: zone.value, buildingId: null, floorLabel: '', side: '', feeName: '',
     method: 'floor', feeKey: 'share_elec_floor', coefficient: '', note: '',
     roundScale: 2, stdKind: '', baseKey: '', meters: [], links: [], members: [], monthOnly: false,
     oldName: '' }
@@ -956,7 +958,7 @@ async function delPool() {
           <tr v-if="bands.length === 0">
             <td class="pl-noro" :colspan="colCount">
               <template v-if="loadErr">数据未加载 —— 请点上方「重试」</template>
-              <template v-else>{{ POOL_ZONE_LABEL[zone] }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}</template>
+              <template v-else>{{ zoneLabel(zone) }}暂无池配置{{ editMode ? ',点右上「新增池」开始录入' : '' }}</template>
             </td>
           </tr>
         </tbody>
