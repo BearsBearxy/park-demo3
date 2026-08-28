@@ -347,6 +347,14 @@ if (!"p1".equals(zone) && !"p2".equals(zone)) return null;   // ← p3 的应分
 |---|---|---|
 | F1 | `AllocService` + `AllocController` + `api/alloc.ts` + `PoolLedgerView` 告警抽屉 | 照抄 `member-diff` 整条链。**端点必须 GET** |
 
+### H. 楼层派生 / 方位自由（P5）
+
+| # | 位置 | 改什么 |
+|---|---|---|
+| H1 | `PoolLedgerView.vue:454` `FLOOR_BASE` | 写死「负一层…十楼+天面」→ 按 `building.floorCount` 生成 ∪ `{天面, 负一层}` ∪ 库里已有。⚠ **不能改自由输入**：`floor_label` 参与 `poolCandidates` 与楼层分桶的**字符串匹配**，「四楼」写成「4楼」会静默摊不到人 |
+| H2 | `PoolLedgerView.vue:455` `SIDE_BASE` | 五个方位的 `Select` → `<input list=>`（同「费项名」现成写法）。方位无数据源可派生，且不参与上述匹配，放开无静默失败风险 |
+
+
 ### G. 测试夹具连带（**不改就变红**）
 
 | # | 位置 | 改什么 |
