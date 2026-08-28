@@ -814,7 +814,7 @@ git commit -m "feat(zone): zoneOfBuilding 改读 building.zone 列,NULL 回退�
 ### Task 5: 计费口径改成期级参数(P7)
 
 **Files:**
-- Create: `backend/src/main/resources/db/migration/V114__zone_calc_kind.sql`
+- Create: `backend/src/main/resources/db/migration/V114__zone_calc_kind.sql`(表是 **`alloc_cfg`**,数值编码 0=flat/1=tou)
 - Modify: `frontend/src/utils/paramRegistry.ts`(注册表加键)
 - Modify: `backend/src/main/java/com/park/demo3/service/ParamRegistry.java`(注册表加键)
 - Modify: `backend/src/main/java/com/park/demo3/service/AllocService.java:913,920,1109,1112,1248,1702,1748,1801,1861`
@@ -840,34 +840,53 @@ git commit -m "feat(zone): zoneOfBuilding 改读 building.zone 列,NULL 回退�
 -- 背景:AllocService 里 7 处 `"p2".equals(zone) ? 分时 : 平价`,新期区一律静默落平价分支,
 -- 而 ruleCostAmount(:1109) 干脆 `if (!p1 && !p2) return null` —— p3 池的应分摊恒 null,
 -- 池建得出来、算不出钱、不报任何错。
--- flat = 单一商业价 ×(用量 + 加减度数);tou = 尖/峰/平/谷分时四段 + 管理费。
+--
+-- ⚠ 参数表是 alloc_cfg,且**只有 DECIMAL 值列**(cfg_value DECIMAL(14,8),无文本列),
+--   故用数值编码 —— 与 loss_variant(0=net/1=share_only/2=陈列不出率)完全同款。
+--     0 = flat 单一商业价 ×(用量 + 加减度数)
+--     1 = tou  尖/峰/平/谷分时四段 + 管理费
+-- acct_month='' + mode='from' = 初始版本、向后前滚(同 alloc_cfg 既有约定)。
 
-INSERT INTO param_cfg (scope, cfg_key, cfg_value_text, acct_month, mode, note) VALUES
-  ('p1', 'zone_calc_kind', 'flat', '', 'from', '一期:单一商业价制(供电局月均+0.16)'),
-  ('p2', 'zone_calc_kind', 'tou',  '', 'from', '二期:尖峰平谷分时四段 + 管理费');
--- dorm 不写:它本来就不出对账行(ruleCostAmount 旧实现读不到 p2.price_norm 即跳过)。
--- 三期由用户在计费参数页选,不预设 —— 猜错等于三期整年电费收错。
+INSERT INTO alloc_cfg (scope, cfg_key, cfg_value, acct_month, mode, note) VALUES
+  ('p1', 'zone_calc_kind', 0, '', 'from', '一期:0=平价制(单一商业价=供电局月均+0.16)'),
+  ('p2', 'zone_calc_kind', 1, '', 'from', '二期:1=分时制(尖峰平谷四段 + 管理费)');
+-- dorm 不写:它本来就不出对账行(ruleCostAmount 旧实现读不到 p2.price_norm 即跳过),
+--            写了反而会让宿舍开始出对账行,是行为变更。
+-- 三期不预设:猜错等于三期整年电费收错,必须由用户在计费参数页显式选。
 ```
 
-> ⚠ 实现前先核对 `param_cfg` 的真实列名与是否有文本值列：
-> ```bash
-> docker exec demo3-mysql mysql -uroot -proot park_demo3 -e "SHOW CREATE TABLE param_cfg\G"
-> ```
-> 若只有 `DECIMAL` 值列(`alloc_cfg` 就是这样)，改用数值编码 `0=flat / 1=tou`，并在注册表里把 `valueKind` 设成 `enum` 带 label 映射 —— 与 `loss_variant`(`0=net/1=share_only/2=陈列不出率`)完全同款，照抄它。
+同时在参数注册表两侧注册这个键(否则 `ParamRegistry.allowed` 不通过、计费参数页也看不到它)：
+
+- 后端 `ParamRegistry.java` —— 照 `loss_variant` 那条加一行，`ScopeKind.ZONE`
+- 前端 `frontend/src/utils/paramRegistry.ts` —— 照 `loss_variant` 那条加：
+
+```ts
+  { key: 'zone_calc_kind', label: '计费口径', unit: '', group: 'rule', defaultMode: 'from',
+    monthlyCheck: false, valueKind: 'enum',
+    enumLabels: { 0: '平价制(单一商业价 × 用量)', 1: '分时制(尖峰平谷四段 + 管理费)' },
+    hint: '决定该期区的公摊池怎么算钱。没配的期区,池建得出来但应分摊是空的' },
+```
+
+> ⚠ `enumLabels` 的字段名照抄 `loss_variant` 那条的实际写法，不要凭这里的示例发明字段名。
 
 - [ ] **Step 2: 写失败的纯单测**
 
 追加到 `AllocServiceTest.java`：
 
 ```java
-    // 口径按参数取,不按期区名字。p1→flat / p2→tou 是回填值;p3 由用户配。
-    // 取不到口径 = 这个期区还没配 → 应分摊必须是 null(不能默认成 flat 静默算出个数来)
+    // 口径按参数取,不按期区名字。p1→0(flat) / p2→1(tou) 是回填值;p3 由用户配。
+    // 取不到 = 该期区还没配 → 必须返回 null,让 ruleCostAmount return null,
+    // 而不是默认成 flat 静默算出一个数来(那正是「算错了还不报错」)。
     @Test
     void calcKind_resolvesFromParamNotZoneName() {
-        assertEquals("flat", AllocService.calcKind("p1", java.util.Map.of("p1|zone_calc_kind", "flat")));
-        assertEquals("tou",  AllocService.calcKind("p2", java.util.Map.of("p2|zone_calc_kind", "tou")));
-        assertEquals("tou",  AllocService.calcKind("p3", java.util.Map.of("p3|zone_calc_kind", "tou")));
+        var flat = java.util.Map.of("p1|zone_calc_kind", new java.math.BigDecimal("0"));
+        var tou  = java.util.Map.of("p2|zone_calc_kind", new java.math.BigDecimal("1"));
+        var p3tou = java.util.Map.of("p3|zone_calc_kind", new java.math.BigDecimal("1"));
+        assertEquals(AllocService.KIND_FLAT, AllocService.calcKind("p1", flat));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p2", tou));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p3", p3tou));
         assertNull(AllocService.calcKind("p3", java.util.Map.of()));   // 没配 → null,不猜
+        assertNull(AllocService.calcKind("dorm", flat));               // 别的期区的配置不串味
     }
 ```
 
@@ -884,9 +903,14 @@ Expected: FAIL —— `cannot find symbol: method calcKind`。
 ```java
     static final String KIND_FLAT = "flat", KIND_TOU = "tou";
 
-    /** 期区计费口径。null = 该期区还没配 —— 不猜,让上游 return null。 */
-    static String calcKind(String zone, Map<String, String> cfgText) {
-        return cfgText.get(zone + "|zone_calc_kind");
+    /**
+     * 期区计费口径。alloc_cfg 只有 DECIMAL 值列,故 0=flat / 1=tou(同 loss_variant 的编码方式)。
+     * null = 该期区还没配 —— 不猜,让 ruleCostAmount return null。
+     * 默认成 flat 会让没配口径的期区静默算出一个数来,那正是「算错了还不报错」。
+     */
+    static String calcKind(String zone, Map<String, BigDecimal> cfg) {
+        BigDecimal v = cfg.get(zone + "|zone_calc_kind");
+        return v == null ? null : (v.signum() == 0 ? KIND_FLAT : KIND_TOU);
     }
 ```
 
@@ -902,14 +926,14 @@ Expected: FAIL —— `cannot find symbol: method calcKind`。
 →
 ```java
         String zone = rule.getZone();
-        String kind = calcKind(zone, ctx.cfgText());
+        String kind = calcKind(zone, ctx.cfg());
         if (kind == null) return null;                    // 该期区未配口径 → 不算(而不是算成 0)
         BigDecimal price = lossPrice(zone, ctx);
         if (price == null) return null;
         if (KIND_FLAT.equals(kind)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
 ```
 
-其余 5 处把 `"p2".equals(zone)` / `"p2".equals(rule.getZone())` 换成 `KIND_TOU.equals(calcKind(zone, ctx.cfgText()))`：
+其余 5 处把 `"p2".equals(zone)` / `"p2".equals(rule.getZone())` 换成 `KIND_TOU.equals(calcKind(zone, ctx.cfg()))`：
 `:1248`、`:1702`(`perMeterCost = !p2` → `= !KIND_TOU.equals(kind)`)、`:1748`、`:1801`、`:1861`。
 
 **不要动**这些 —— 它们是**机制**不是口径，三期没有就是没有：
