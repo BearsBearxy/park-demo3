@@ -107,8 +107,15 @@ describe('resolveCoefPrice 作用域找行', () => {
       sourceChain: ['甲（户）:0.1 元/度', '全园:0.16 元/度'] })]
     expect(resolveCoefPrice(rows, 'mgmt_fee', 7, 'p2')).toEqual({
       value: 0.1, valueText: '0.1 元/度', rangeText: '2026-03 起长期', exception: true,
-      chain: ['甲（户）:0.1 元/度', '全园:0.16 元/度'],
+      chain: ['甲（户）:0.1 元/度', '全园:0.16 元/度'], scope: 'tenant:7',
     })
+  })
+  // 回归钉(fix-round 1):户级行命中时 scope 必须是 'tenant:{id}',不是传入的 zone ——
+  // CoefBookWindow 靠这个字段判断「是不是真的靠期区兜底落的全园价」,不能只看 zone 参数是否为空。
+  it('户级行命中时即便传了 zone,scope 也报户级(不是 zone 本身)', () => {
+    const rows = [row('', 'mgmt_fee', 0.16), row('tenant:7', 'mgmt_fee', 0.1, { rowId: 99 })]
+    expect(resolveCoefPrice(rows, 'mgmt_fee', 7, 'p2')?.scope).toBe('tenant:7')
+    expect(resolveCoefPrice(rows, 'mgmt_fee', 7, null)?.scope).toBe('tenant:7')
   })
   it('户级行存在但值继承上级(rowId 空)→ 非例外', () => {
     const rows = [row('', 'water', 3.95), row('tenant:7', 'water', 3.95, { rowId: null })]

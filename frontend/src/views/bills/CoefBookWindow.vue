@@ -175,6 +175,15 @@ watch(q, () => {
 // 三期楼栋在手工标注前 zone=NULL(V113 迁移故意留空,见 ParamService.java:328 同款顾虑)。
 // 找不到楼栋 / 楼栋期区未标注时返回 null——resolveCoefPrice 据此跳过期级作用域直接落全园价,
 // 这本就是「期区未定」应有的行为;下方渲染处补一个「未标注期区」角标,不让这次全园价落得无声无息。
+//
+// ⚠ 有意不镜像 AllocService.zoneOfBuilding(backend AllocService.java:142)的表兜底:引擎口径是
+// 「building.zone 优先,NULL 才回退该栋首块表的 zone」,给「新建楼栋忘了填期区但已经录了表」兜底。
+// 这里只认 building.zone。两者只在一种情况下会分歧:一栋已经挂表计费的楼栋,期区被手工清成
+// 「(未标注)」——引擎仍按表的 zone 正常出账(账单不受影响),但本窗口会显示全园价 + 「未标注期区」
+// 角标,直到期区被重新标注。即「系数簿这里看到的当前生效值」暂时对不上「即将计费的口径」,是纯展示
+// 口径分歧,不是算错账。没有镜像是因为镜像需要本组件目前不取的表数据(props 没有、pools() 只覆盖
+// 配了电梯/消防层份池的楼栋,不是全量表注册表)——为这个理论上少发生的编辑序列(先录表、后清期区)
+// 专门加一趟 /api/meters 全量拉取,不值得。真出现这个分歧,把期区重新标注上就消失了。
 const zoneOf = (r: CoefTenantRow): string | null =>
   props.buildings.find(b => b.id === r.bld.main?.id)?.zone ?? null
 interface CurCell { text: string; eff: string; exception: boolean; zoneUnset?: boolean; title?: string }
@@ -198,13 +207,17 @@ const curMap = computed<Map<number, CurCell>>(() => {
       const z = zoneOf(r)
       const hit = resolveCoefPrice(priceRows.value, meta.writes[0].key, r.tenantId, z)
       if (!hit) { m.set(r.tenantId, { text: '—', eff: '', exception: false, title: '整链无版本(按引擎默认)' }); continue }
+      // 「未标注期区」角标只在期区未标注**且真的因此落到全园价**时才点亮:resolveCoefPrice 先试户级
+      // (tenant:{id}),户级命中时压根没问过 zone,z==null 与本次命中无关,点了角标就是撒谎
+      // (fix-round 1 review 抓到:户级命中时角标 + 「例外」徽标同框互相矛盾)。
+      const zoneCausedFallback = z == null && hit.scope === ''
       m.set(r.tenantId, {
         text: hit.valueText || String(hit.value),
         eff: hit.rangeText,
         exception: hit.exception,
-        zoneUnset: z == null,
+        zoneUnset: zoneCausedFallback,
         title: `命中链: ${hit.chain.join(' → ')};非户级=继承默认价(灰体)`
-          + (z == null ? ';该楼期区未标注,已跳过期级作用域按全园价命中(非本期专属价)' : ''),
+          + (zoneCausedFallback ? ';该楼期区未标注,已跳过期级作用域按全园价命中(非本期专属价)' : ''),
       })
     }
   }

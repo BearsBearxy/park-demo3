@@ -108,4 +108,27 @@ describe('系数簿 · 期区取楼栋真实字段', () => {
     expect(cell?.text).toBe('0.30 元/度')
     expect(cell?.zoneUnset).toBeFalsy()
   })
+
+  // 回归钉(fix-round 1 review):resolveCoefPrice 先试户级(tenant:{id}),命中时压根没问过 zone。
+  // 楼栋期区未标注不代表这次命中就是靠全园价兜底的——户级专属价这次赢了,角标点上就是撒谎,
+  // 而且会跟旁边真正的「例外」徽标互相矛盾(一个说"全园价",一个说"户级例外")。
+  it('未标注期区的楼栋,户级有专属价时户级行胜出,不点「未标注期区」(不能诬赖 zone 兜底了这次命中)', async () => {
+    priceRows.push(prow({
+      scope: 'tenant:1', scopeLabel: '甲租户（户）', value: 0.1, valueText: '0.1 元/度', rowId: 99,
+      sourceChain: ['甲租户（户）:0.1 元/度'],
+    }))
+    const w = mount(CoefBookWindow, {
+      props: {
+        open: false, ym: '2026-07', phase: '3',
+        contracts: [ct({})], buildings: [bld({ phase: 3, zone: null })], years: [2026],
+      },
+      global: { stubs: { Teleport: true } },
+    })
+    await w.setProps({ open: true })
+    await settle(w)
+
+    const cell = (w.vm as unknown as Vm).curMap.get(1)
+    expect(cell?.text, '户级行胜出——resolveCoefPrice 压根没问过 zone').toBe('0.1 元/度')
+    expect(cell?.zoneUnset, '户级命中时角标必须是假的,不能宣称这是全园价兜底').toBeFalsy()
+  })
 })
