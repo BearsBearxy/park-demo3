@@ -53,6 +53,7 @@ import {
   poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
+import { floorLabels } from '@/utils/floorLabels'
 import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -452,16 +453,18 @@ const methodRadios = computed(() => {
 const FEE_OPTS = ([...ALLOC_FEE_KEYS, 'park_loss_pool'] as AllocFeeKey[])
   .map(k => ({ value: k, label: ALLOC_FEE_LABEL[k] }))
 // 楼层/侧向/费项候选:静态常用值 ∪ 库里已有值(不建配置表)
-// ponytail: 楼层清单写死够用,真要按楼栋取实际楼层再接 /units
-const FLOOR_BASE = ['负一层', '一楼', '二楼', '三楼', '四楼', '五楼', '六楼', '七楼', '八楼', '九楼', '十楼', '天面']
 const SIDE_BASE = ['东侧', '西侧', '南侧', '北侧', '中间']
 const FEENAME_BASE = ['消防', '走廊灯', '楼层照明', '货梯', '电梯', '路灯', '公共电', '水泵', '空调', '绿化水']
 const uniq = (base: string[], from: (string | null)[]) =>
   [...new Set([...base, ...from.filter((s): s is string => !!s && s.trim() !== '')])]
-const floorOpts = computed(() => [{ value: '', label: '(整栋,不分层)' },
-  ...uniq(FLOOR_BASE, (pools.value?.rows ?? []).map(r => r.floorLabel)).map(f => ({ value: f, label: f }))])
-const sideOpts = computed(() => [{ value: '', label: '(整层,不分侧)' },
-  ...uniq(SIDE_BASE, (pools.value?.rows ?? []).map(r => r.side)).map(s => ({ value: s, label: s }))])
+// 楼层候选跟着**当前选中的楼栋**走 —— 换楼栋要重算(十二层的楼选完再换回三层的,
+// 不重算会留着十二个选项)
+const floorOpts = computed(() => {
+  const fc = buildings.value.find(b => b.id === form.value.buildingId)?.floorCount ?? 0
+  return [{ value: '', label: '(整栋,不分层)' },
+    ...floorLabels(fc, (pools.value?.rows ?? []).map(r => r.floorLabel)).map(f => ({ value: f, label: f }))]
+})
+const sideOpts = computed(() => uniq(SIDE_BASE, (pools.value?.rows ?? []).map(r => r.side)))
 const feeNameOpts = computed(() => uniq(FEENAME_BASE, (pools.value?.rows ?? []).map(r => r.feeName)))
 const buildingNameOf = (id: number | null) =>
   id == null ? null : (buildings.value.find(b => b.id === id)?.name ?? null)
@@ -1001,7 +1004,13 @@ async function delPool() {
                     :options="buildingOpts" size="sm"
                     @update:model-value="form.buildingId = $event === '' ? null : +$event" />
             <Select v-model="form.floorLabel" label="楼层" :options="floorOpts" size="sm" />
-            <Select v-model="form.side" label="侧向" :options="sideOpts" size="sm" />
+            <div>
+              <label class="pl-lbl" for="pl-side">侧向</label>
+              <!-- 侧向不参与 poolCandidates/楼层分桶的字符串匹配(那是 floor_label 的事),放开自由输入 -->
+              <input id="pl-side" v-model="form.side" class="pl-txti" type="text" list="pl-sides"
+                     placeholder="(整层,不分侧)" />
+              <datalist id="pl-sides"><option v-for="s in sideOpts" :key="s" :value="s" /></datalist>
+            </div>
           </div>
           <div class="pl-formrow">
             <div style="flex:0 0 220px">
