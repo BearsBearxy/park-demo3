@@ -104,3 +104,22 @@ img, svg {
   transition-duration: 200ms;
   transition-timing-function: var(--ease-out);
 }
+
+/* ── 迁移期屏级地板(RESPONSIVE-LAYOUT-SPEC §8)──
+   旧 T3 全局地板(.fp-stage min-width:960px)拆掉后由这里接手:存量屏在窄档保 800px
+   最小宽,横滚发生在 .fp-content 内部——外壳(轨/页签/顶栏/底栏)任何档位完整可用。
+   800 的来历(逐项算,不是拍的):存量屏是在旧 T3 地板下设计的,960 视口 · L 档铬边 =
+   stage padding 24 + 轨 66 + 卡边框 4 + gap 12 + content padding 48 + 滚动条 gutter 0–34
+   ≈ 154–188,即内容区实测 772–806px——全部存量屏已被证明在 ~800px 内容宽下成立。
+   M 档铬边 126–160,960 视口内容区 800–834 ≥ 800:恰好无滚,更窄才滚。
+   ⚠ 必须限定 M↓:L/XL 档铬边更宽(961–1100 视口下内容区只有 ~773–807px),无条件挂 floor
+   会让今天不横滚的 L 档区间开始横滚——零差异回归,且 §9 四宽(1180/768)恰好夹不住这个波段。
+   选择器直选 .fp-content 的子元素、不让各屏包 wrapper:本仓定高链(.mx-listcard flex:1 →
+   useFitRows 量高)经不起中间多一个盒子(.fp-stale 注释的教训)。
+   限定 :first-child 是因为部分屏(如 LedgerView)根是多节点 Fragment,主体后面跟着
+   position:fixed 的弹窗遮罩/toast 兄弟节点——floor 套上 fixed 遮罩会把居中弹卡按 800px
+   宽去居中、挤出手机屏;各屏主体恒为首个元素,fixed 兄弟天然豁免。
+   已按 §5 迁移完成的屏在根上挂 .fp-fluid 摘掉地板(= 通过 §9 验收)。 */
+@media (max-width: 960px) { /* M↓ */
+  .fp-content > :first-child:not(.fp-fluid) { min-width: 800px; }
+}

@@ -40,6 +40,8 @@ function mmss(ms: number): string {
                   :class="['pb-av', u.mode === 'edit' ? 'edit' : 'view', { fade: fading(u) }]" />
           <span v-if="overflow" class="pb-more">+{{ overflow }}</span>
         </span>
+        <!-- L 以下的化身:纯计数。CSS 按档显隐,不走 JS(RESPONSIVE-LAYOUT-SPEC §3.2) -->
+        <span class="pb-count">+{{ presence.others.length }}</span>
       </button>
     </template>
 
@@ -89,6 +91,20 @@ function mmss(ms: number): string {
   background: var(--surface-sunken); color: var(--text-muted);
   font-family: var(--font-mono); font-size: 10px; font-weight: var(--fw-semibold);
   box-shadow: 0 0 0 2px var(--surface-white);
+}
+
+/* L 以下（RESPONSIVE-LAYOUT-SPEC §3.2）：130px 头像组收成「+N」计数徽记——
+   对 PRESENCE §03 的规范内修订（RESPONSIVE-LAYOUT-SPEC §2）。徽记同样定宽：
+   人数只换字不换宽,顶栏不挪一个像素;点开浮层看名单的入口不变。 */
+.pb-count { display: none; }
+@media (max-width: 1280px) { /* L↓ */
+  .pb { width: 44px; padding: 0; justify-content: center; }
+  .pb-stack { display: none; }
+  .pb-count {
+    display: inline-flex;
+    font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-semibold);
+    color: var(--text-muted);
+  }
 }
 
 .pp-h {

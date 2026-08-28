@@ -1,16 +1,50 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
+import { useViewport } from '@/composables/useViewport'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
 import CommandPalette from '@/components/shell/CommandPalette.vue'
+// 手机三件套静态引入:它们是 S 档首帧就要在的铬边,懒加载会让内容区在块到达时
+// 重新量高——「容器尺寸挂载即终态」在手机首屏同样成立。
+import MobileTopBar from '@/components/shell/mobile/MobileTopBar.vue'
+import MobileBottomNav from '@/components/shell/mobile/MobileBottomNav.vue'
+import MobileNavDrawer from '@/components/shell/mobile/MobileNavDrawer.vue'
 
 const ui = useUiStore()
 const reloadPage = () => window.location.reload()
+
+// ── 档位(RESPONSIVE-LAYOUT-SPEC §3/§4)──
+// 只用来切四周铬边;主内容(.fp-content 及 slot)永不因档位卸载——
+// 外壳从不卸载是加载零位移的前提(LAYOUT-STABILITY §7.3)。
+const { tier } = useViewport()
+
+// ── L/M 浮层侧栏(spec §3.2)──
+// 窄档内联展开会把主卡压得比不展开更糟,展开是「临时看一眼导航」:
+// 面板改贴轨浮层,无遮罩,点外关/Esc 关走 closeTransient(不写 fp-app-sb,
+// 不污染用户的宽屏偏好)。XL 档保持内联,一个像素不动。
+const floatEl = ref<HTMLElement | null>(null)
+const floatActive = computed(() => tier.value !== 'xl' && tier.value !== 's' && ui.sbOpen)
+
+// 点外关:UI-OVERLAY-SPEC 的 capture mousedown 写法。
+function onDocMousedown(e: MouseEvent) {
+  if (!floatActive.value) return
+  const t = e.target instanceof Element ? e.target : null
+  if (!t || floatEl.value?.contains(t)) return
+  // 折叠触发钮必须排除:capture mousedown 先关面板,click 再 toggleSidebar 会立即重开
+  // (开关竞态,spec §3.2)。Toolbar 不在本组件手里,按 aria-label 认钮。
+  if (t.closest('button[aria-label="折叠侧边栏"]')) return
+  ui.closeTransient()
+}
+onMounted(() => document.addEventListener('mousedown', onDocMousedown, true))
+onUnmounted(() => document.removeEventListener('mousedown', onDocMousedown, true))
+
+// ── S 档手机壳(spec §4.1)──
+const mnavOpen = ref(false)
 
 const paletteOpen = ref(false)
 const paletteMode = ref<'jump' | 'new'>('jump')
@@ -29,6 +63,8 @@ function onGlobalKey(e: KeyboardEvent) {
       openPalette('jump')
     }
   }
+  // 浮层侧栏 Esc 关(spec §3.2,同样不落盘);命令面板开着时 Esc 归它,别一键双关
+  if (e.key === 'Escape' && floatActive.value && !paletteOpen.value) ui.closeTransient()
 }
 
 onMounted(() => window.addEventListener('keydown', onGlobalKey))
@@ -45,32 +81,51 @@ watch(() => route.path, () => {
   presence.enter(null, label || null)
 }, { immediate: true })
 onUnmounted(() => presence.stop())
+
+// 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
+// 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
+watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 </script>
 
 <template>
   <!-- root stage: flex row, padding 12px, gap 12px -->
   <div class="fp-stage">
-    <!-- nav card: IconRail + optional vertical divider + optional SidebarPanel -->
-    <div class="fp-nav-card">
+    <!-- nav card: IconRail + optional vertical divider + optional SidebarPanel。
+         S 档整卡不渲染(铬边不是内容,可卸载);L/M 档面板改浮层,只有 XL 内联 -->
+    <div v-if="tier !== 's'" class="fp-nav-card">
       <IconRail @open-command="openPalette('jump')" />
-      <!-- vertical divider: only shown when sidebar is open -->
-      <div v-if="ui.sbOpen" class="fp-vdiv" />
-      <!-- SidebarPanel: only shown when sidebar is open -->
-      <SidebarPanel v-if="ui.sbOpen" />
+      <template v-if="ui.sbOpen && tier === 'xl'">
+        <!-- vertical divider: only shown when sidebar is open -->
+        <div class="fp-vdiv" />
+        <!-- SidebarPanel: only shown when sidebar is open -->
+        <SidebarPanel />
+      </template>
+    </div>
+
+    <!-- L/M 浮层侧栏:挂 stage 不挂 .fp-nav-card——nav 卡 overflow:hidden 会裁掉它(spec §3.2 暗礁①) -->
+    <div v-if="floatActive" ref="floatEl" class="fp-sb-float">
+      <SidebarPanel />
     </div>
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
       <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(DESIGN-FIDELITY §6.5) -->
       <div v-if="ui.navigating" class="fp-nav-bar" aria-hidden="true" />
-      <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
-      <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
-      <!-- content area -->
+      <template v-if="tier !== 's'">
+        <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
+        <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
+      </template>
+      <!-- S 档换手机顶栏(§4.1);tabs store 照常运转,只是不渲染 TabStrip -->
+      <MobileTopBar v-else @open-drawer="mnavOpen = true" @open-command="openPalette('jump')" />
+      <!-- content area:永不进 v-if——档位切换只换四周铬边(LAYOUT-STABILITY §7.3) -->
       <main class="fp-content">
         <slot />
       </main>
+      <MobileBottomNav v-if="tier === 's'" />
     </div>
   </div>
+
+  <MobileNavDrawer v-if="tier === 's'" :open="mnavOpen" @close="mnavOpen = false" />
 
   <CommandPalette
     :open="paletteOpen"
@@ -96,10 +151,10 @@ onUnmounted(() => presence.stop())
   padding: 12px;
   gap: 12px;
   box-sizing: border-box;
-  /* T3 全局地板(spec 2026-07-12):<960px 视口不再挤压,由文档视口出横向滚动。
-     stage 是块级 flex 容器,宽度恒=父(#app)100%,子项 fp-main-card min-width:0
-     不会把地板顶穿;≥960 视口时 min-width 不生效 → 无常驻横滚 */
-  min-width: 960px;
+  /* L/M 浮层侧栏的定位参照(spec §3.2)。
+     旧 T3 全局地板(min-width:960px,spec 2026-07-12)已由 RESPONSIVE-LAYOUT-SPEC §8
+     的屏级地板取代:横滚下沉到 .fp-content 内部(base.css M↓ 块),外壳各档完整可用。 */
+  position: relative;
 }
 
 /* ── 全局网络错误 toast ── */
@@ -129,6 +184,23 @@ onUnmounted(() => presence.stop())
   flex: 0 0 1px;
   width: 1px;
   background: var(--border-subtle);
+}
+
+/* ── L/M 浮层侧栏(spec §3.2) ── */
+/* 窄档内联展开在 1000px 视口会把主卡压到 663px,比不展开更糟——展开是临时看导航,
+   贴轨盖在内容上,无遮罩(popover 档,不是模态)。 */
+.fp-sb-float {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: calc(12px + 68px + 4px); /* stage padding + 轨卡(66 轨 + 2 边框) + 4 间隙 */
+  z-index: var(--z-popover);
+  display: flex;
+  background: var(--surface-white);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
 }
 
 /* ── main card ── */
@@ -172,5 +244,21 @@ onUnmounted(() => presence.stop())
   scrollbar-gutter: stable both-edges;
   padding: 24px;
   box-sizing: border-box;
+}
+
+/* M 档铬边收窄(RESPONSIVE-LAYOUT-SPEC §3.3)。宽档规则在窄档之前,靠层叠覆盖 */
+@media (max-width: 960px) { /* M↓ */
+  .fp-stage { padding: 8px; gap: 8px; }
+  .fp-sb-float { top: 8px; bottom: 8px; left: calc(8px + 68px + 4px); }
+  /* overflow-x:auto 承接 §8 屏级地板:横滚发生在内容区内部,外壳完整可用 */
+  .fp-content { padding: 16px; overflow-x: auto; }
+}
+
+/* S 档手机壳(RESPONSIVE-LAYOUT-SPEC §4.1):放弃「画布上浮卡片」隐喻,内容通栏 */
+@media (max-width: 600px) { /* S */
+  .fp-stage { padding: 0; gap: 0; }
+  .fp-main-card { border: none; border-radius: 0; }
+  /* toast 抬到底栏之上(§4.5):56px 底栏 + 20px 呼吸 + safe-area,不被底栏遮住 */
+  .fp-net-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
 }
 </style>

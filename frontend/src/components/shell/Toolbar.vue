@@ -55,7 +55,9 @@ const crumbPage  = computed(() => meta.value.page ?? '')
     <div class="fp-toolbar-right">
       <!-- 在场头像组(PRESENCE §03):右区最左,紧挨搜索框。宽度按满员算死,人数变化不挪版。 -->
       <FPPresenceBar />
-      <button class="fp-search-btn" @click="emit('open-command', 'jump')">
+      <!-- title 常挂:M 档收纳后文字与 kbd 藏进 CSS,提示只剩这里(§3.3) -->
+      <button class="fp-search-btn" title="搜索页面 / 租户 / 凭证（Ctrl K）"
+              @click="emit('open-command', 'jump')">
         <Search :size="15" />
         <span>搜索页面 / 租户 / 凭证…</span>
         <kbd class="fp-kbd">Ctrl K</kbd>
@@ -172,5 +174,22 @@ const crumbPage  = computed(() => meta.value.page ?? '')
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 2px 7px;
+}
+
+/* M 档收纳（RESPONSIVE-LAYOUT-SPEC §3.3）：960 以下容不下 200px 搜索框。
+   收成 40px 图标钮——占位文字与 Ctrl K 藏掉,提示转入按钮 title;
+   面包屑只留屏名段,层名由图标轨高亮承担。
+   各按钮在本档内尺寸恒定,铃铛红点仍 absolute 贴在定宽按钮上,机制不动。 */
+@media (max-width: 960px) { /* M↓ */
+  .fp-search-btn {
+    min-width: 40px;
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+  .fp-search-btn span,
+  .fp-search-btn .fp-kbd { display: none; }
+  .fp-crumb-grp,
+  .fp-crumb-sep { display: none; }
 }
 </style>

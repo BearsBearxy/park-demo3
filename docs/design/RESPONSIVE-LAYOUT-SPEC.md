@@ -258,9 +258,17 @@ LAYOUT-STABILITY §1**——那条铁律管的是「用户的一次交互不得�
       无条件挂 floor 会让今天不横滚的 L 档区间开始横滚——零差异回归，
       且 §9 四宽(1180/768)恰好夹不住这个波段。 */
    @media (max-width: 960px) {
-     .fp-legacy-floor { min-width: 800px; }
+     .fp-content > :first-child:not(.fp-fluid) { min-width: 800px; }
    }
    ```
+
+   实现落点是 base.css 的全局选择器而非逐屏挂类（P1 实测定稿）：
+   - 用 `> :first-child` 而不是 `> *`：LedgerView 等屏的根是多节点 Fragment，
+     主体后面跟着 `position:fixed` 的弹窗遮罩兄弟节点，`> *` 会给遮罩套上
+     800px 最小宽、把居中弹卡在 390px 视口挤出屏；主体恒为首个元素，
+     fixed 兄弟天然豁免。⚠ 由此得出一条屏结构约束：**屏根 Fragment 的首个
+     元素必须是主体**——在主体前插流内兄弟节点会让它丢地板。
+   - 迁移完的屏在根元素加 `.fp-fluid` 类退出地板（= 通过 §9 验收的标志）。
 
    **800 的来历（逐项算，不是拍的）**：存量屏是在旧 T3 地板下设计的，
    960 视口 · L 档铬边 = stage padding 24 + 轨 66 + 卡边框 4 + gap 12 +

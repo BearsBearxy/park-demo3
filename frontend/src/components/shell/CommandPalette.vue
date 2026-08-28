@@ -123,6 +123,8 @@ function onQueryInput(e: Event) {
   inset: 0;
   z-index: 200;
   background: rgba(28, 28, 28, 0.32);
+  /* iOS ≤17 只认带前缀的写法,无前缀在真机上等于没有模糊 */
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-start;
@@ -263,5 +265,19 @@ function onQueryInput(e: Event) {
 .fp-pal-foot-hint {
   margin-left: auto;
   color: var(--text-disabled);
+}
+
+/* 触屏没有 Esc/方向键/回车可按,快捷键提示留着只会让人找键盘(RESPONSIVE-LAYOUT-SPEC §4.3) */
+@media (hover: none) {
+  .fp-kbd-esc,
+  .fp-pal-foot .sp { display: none; }
+}
+
+/* S 档全屏接管(RESPONSIVE-LAYOUT-SPEC §4.3):去 11vh 让搜索行贴顶,结果列表照旧内滚,
+   脚部贴底给 iOS 手势条让位 */
+@media (max-width: 600px) {
+  .fp-pal-backdrop { padding-top: 0; }
+  .fp-pal { width: 100%; height: 100%; max-height: none; border: none; border-radius: 0; }
+  .fp-pal-foot { padding-bottom: calc(9px + env(safe-area-inset-bottom)); }
 }
 </style>
