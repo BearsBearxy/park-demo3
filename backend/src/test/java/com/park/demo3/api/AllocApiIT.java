@@ -1225,6 +1225,25 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data[?(@.ruleId==" + rAuto + ")].added[?(@.tenantId==" + tA + ")]").isNotEmpty());
     }
 
+    // P7 fix round 2:未配「计费口径」(zone_calc_kind)的新期区不是算不出钱——computePool 仍会按平价制(商业电价)把该池算出成本并摊到户。
+    // 这正是本任务要消除的「算错了还不报错」——没人能从对账行中发现(p3 池不配口径就不出对账行),所以必须在生成阶段点名。
+    // p1/p2 已回填口径(V114),不应该多出这条新警告——同一条断言里一并验证。
+    @Test
+    void computePool_warnsUnconfiguredZoneCalcKind_configuredZonesStayQuiet() throws Exception {
+        int m = createMeter("IT-P7-p9表", "p9", "share", null, null);   // 园区级:不挂栋,直接试新期区
+        reading(m, "2099-12", "0", "100");
+        postId("/api/alloc/rules", "{\"zone\":\"p9\",\"method\":\"area\",\"coefficient\":1000,"
+                + "\"feeKey\":\"share_elec_light\",\"meterIds\":[" + m + "],\"feeName\":\"IT-P7-p9池\"}");
+        price("elec_commercial", "2099-12", "0.79416875");
+        p2Prices("2099-12");   // p2 规则常驻,任意月生成都要过分时门禁
+        mvc.perform(post("/api/alloc/generate").param("ym", "2099-12").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.warnings", org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.containsString("p9 未配「计费口径」"))))
+                .andExpect(jsonPath("$.data.warnings[?(@ =~ /.*p1 未配「计费口径」.*/)]").isEmpty())
+                .andExpect(jsonPath("$.data.warnings[?(@ =~ /.*p2 未配「计费口径」.*/)]").isEmpty());
+    }
+
     // ── §H4.2 b/d/f(V80):原册块与自然键 —— 分带与块内序按原册,不按 building_id ──
     //    锚点全部来自 BOOK-STRUCTURE-2024-02.md §1 与直读原册,块名与 B11/B31/B45/B62/B74/B85/B97 逐字相同。
     @Test

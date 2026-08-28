@@ -124,7 +124,7 @@ export const PARAM_DEFS: ParamDef[] = [
   { key: 'zone_calc_kind', label: '计费口径', unit: '', group: 'rule', defaultMode: 'from', monthlyCheck: false, valueKind: 'enum',
     enumOptions: { 0: '平价制（单一商业价 × 用量）', 1: '分时制（尖峰平谷四段 + 管理费）' },
     formula: '决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费',
-    hint: '没配的期区，池建得出来但应分摊是空的，须在计费参数页显式选' },
+    hint: '没配口径的期区不会不出钱——池会先按平价制(商业电价)计费,请到本页显式选口径,避免分时期区被错收平价' },
   { key: 'loss_head', label: '损耗核算归组', unit: '', group: 'rule', defaultMode: 'from', monthlyCheck: false, valueKind: 'ref_building',
     formula: '并入所指楼栋一组核算、共用一块总表；未指定或指向自身 = 独立核算',
     hint: '二期 二 / 四车间并入三车间；一车间 2023-08、09 并入五车间' },

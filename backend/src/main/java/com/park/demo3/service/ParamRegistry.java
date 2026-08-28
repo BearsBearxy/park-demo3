@@ -131,7 +131,7 @@ public final class ParamRegistry {
             "B座 / C座 2023-11 起仅按公摊分摊度数；G座 不核算", null);
         alloc("zone_calc_kind", "计费口径", "", Group.RULE, S_ZONE, "from", false, ValueKind.ENUM, ZONE_CALC_KIND_OPTS,
             "决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费",
-            "没配的期区，池建得出来但应分摊是空的，须在计费参数页显式选", null);
+            "没配口径的期区不会不出钱——池会先按平价制(商业电价)计费,请到本页显式选口径,避免分时期区被错收平价", null);
         alloc("loss_head", "损耗核算归组", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_BUILDING, null,
             "并入所指楼栋一组核算、共用一块总表；未指定或指向自身 = 独立核算", "二期 二 / 四车间并入三车间；一车间 2023-08、09 并入五车间", null);
         alloc("loss_c_meter", "总表取数", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_METER, null,

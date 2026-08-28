@@ -1832,6 +1832,14 @@ public class AllocService {
 
         BigDecimal cost = null, unrounded = null, price = null;
         if (q.any()) {
+            // 未配口径不是「不算」——旧代码对非 p2 一律落平价制,calcKind 未配置(null)时同样落这支,
+            // 静默按商业价出钱到户。dorm 结构上不算 p\d+,本就没有「口径」概念,不在此列(V114 故意不给它写行)。
+            // loss 方法走独立的损耗链核算,这里的应分摊池不使用,不算「该期区在收钱」,同样不点名。
+            if (!"loss".equals(rule.getMethod()) && zone != null && zone.matches("p\\d+")
+                    && calcKind(zone, ctx.cfg()) == null) {
+                String w = zone + " 未配「计费口径」(zone_calc_kind),暂按平价制(商业电价)计费,请到计费参数页为该期区选口径";
+                if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
+            }
             if (KIND_TOU.equals(calcKind(zone, ctx.cfg()))) {
                 BigDecimal mgmt = nz(priceCfg.resolve("mgmt_fee", ym, null, zone));
                 BigDecimal pSharp = nz(priceCfg.resolve("elec_sharp", ym, null, zone)).add(mgmt);
