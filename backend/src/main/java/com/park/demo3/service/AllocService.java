@@ -137,6 +137,17 @@ public class AllocService {
             && ("area".equals(r.getMethod()) || "floor".equals(r.getMethod()));
     }
 
+    // 楼栋期区:building.zone 是唯一事实来源;列为 NULL 才回退「该栋首块表的 zone」。
+    // 回退分支保留是给「新建楼栋忘了填期区但已经录了表」兜底 —— 不能因此整月算不出来。
+    static Map<Integer, String> zoneOfBuilding(Collection<Building> buildings, List<Meter> meters) {
+        Map<Integer, String> out = new HashMap<>();
+        for (Building b : buildings)
+            if (b.getZone() != null && !b.getZone().isBlank()) out.put(b.getId(), b.getZone().trim());
+        for (Meter m : meters)
+            if (m.getBuildingId() != null && m.getZone() != null) out.putIfAbsent(m.getBuildingId(), m.getZone());
+        return out;
+    }
+
     // zone → 当月在租租户(在租语义=Roster,即 MeterBindingService.covers,不另写一份)。
     // 户的期别取「在租合同挂的楼栋」的 zone,zone 由该栋的表定 —— 宿舍楼 phase=1 但 zone=dorm,用 phase 会把宿舍归进一期。
     // 多场地户(仁恒/碳紫型)可同时入两期名册,各期池各摊一次。
@@ -970,13 +981,14 @@ public class AllocService {
 
     private Ctx loadCtx(String ym) {
         Map<Integer, Meter> meterById = new HashMap<>();
+        Map<Integer, Building> buildingById = new HashMap<>();
+        for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
         // V68:当月已停用表整体不进计算体——池绑定遍历(ruleUsage/poolSegQty/isNetPool/逐表行ROUND)
         // 与损耗组 C/D 统计都只看 ctx.meterById/bindsByRule,故在此一处过滤即全覆盖。
-        Map<Integer, String> zoneOfBuilding = new HashMap<>();   // 楼栋期别=该栋表的 zone(园区级池 fallback 用)
-        for (Meter m : meters.selectList(null)) {
-            if (m.getBuildingId() != null && m.getZone() != null) zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
+        List<Meter> allMeters = meters.selectList(null);
+        Map<Integer, String> zoneOfBuilding = zoneOfBuilding(buildingById.values(), allMeters);   // 楼栋期别:列优先,回退该栋首块表的 zone(园区级池 fallback 用)
+        for (Meter m : allMeters)
             if (!MeterService.outOfService(m, ym)) meterById.put(m.getId(), m);
-        }
         Map<Integer, MeterReading> readingByMeter = new HashMap<>();
         for (MeterReading r : readings.selectByYm(ym)) readingByMeter.put(r.getMeterId(), r);
         // 参数解析(S21 §2.2):整表载入,站在 ym 按行 mode 取值 —— month 仅当月优先,from 取 acct_month<=ym 最大者前滚
@@ -1031,8 +1043,6 @@ public class AllocService {
         Map<Integer, List<AllocRuleMember>> membersByRule = new HashMap<>();
         ruleMembers.selectList(null).stream().collect(groupingBy(AllocRuleMember::getRuleId))
             .forEach((rid, rows) -> membersByRule.put(rid, pickMembers(rows, ym)));
-        Map<Integer, Building> buildingById = new HashMap<>();
-        for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
         Map<String, Map<Integer, BigDecimal>> areaByZone =
             areaByZoneTenant(ro.covering(), ro.unitsByContract(), zoneOfBuilding, rentLineArea, dormLineArea, areaFallback);
         // 刀2:层定位 area 池的楼层面积口径(covering 合同的租金行 × billing_term_unit 绑定 × unit 楼层)

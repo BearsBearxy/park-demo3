@@ -862,4 +862,37 @@ class AllocServiceTest {
         assertFalse(AllocService.atLocation(west, 21, "四楼西侧", null));
         assertTrue(AllocService.atLocation(west, null, null, null));
     }
+
+    private static com.park.demo3.entity.Building building(int id, String zone) {
+        var b = new com.park.demo3.entity.Building(); b.setId(id); b.setZone(zone); return b;
+    }
+
+    private static com.park.demo3.entity.Meter meterOn(int buildingId, String zone) {
+        var m = new com.park.demo3.entity.Meter();
+        m.setBuildingId(buildingId); m.setZone(zone); m.setKind("elec"); return m;
+    }
+
+    // building.zone 是唯一事实来源;列为 NULL 才回退「该栋首块表的 zone」。
+    // 三期 0 块表 —— 靠列才有期区,这正是本次改动的目的。
+    @Test
+    void zoneOfBuilding_columnWinsOverMeterFallback() {
+        var bs = java.util.List.of(building(30, "p2"), building(40, null), building(50, "p3"));
+        var ms = java.util.List.of(meterOn(30, "dorm"), meterOn(40, "p1"));
+        var z = AllocService.zoneOfBuilding(bs, ms);
+        assertEquals("p2", z.get(30));    // 读列优先:30 号栋挂着 dorm 表也不许翻案
+        assertEquals("p1", z.get(40));    // 列 NULL → 回退首块表
+        assertEquals("p3", z.get(50));    // 无表,靠列才有期区
+    }
+
+    // 二期二车间实测挂着 p2:20 / p1:1 / dorm:1 三种表。回填后列是 p2,
+    // 读列就不再依赖遍历顺序 —— 这是顺手修掉的那个不确定性。
+    @Test
+    void zoneOfBuilding_mixedMeterBuildingIsDeterministic() {
+        var bs = java.util.List.of(building(31, "p2"));
+        var ms = java.util.List.of(meterOn(31, "dorm"), meterOn(31, "p1"), meterOn(31, "p2"));
+        assertEquals("p2", AllocService.zoneOfBuilding(bs, ms).get(31));
+        // 表顺序反过来,结果必须一样
+        var ms2 = java.util.List.of(meterOn(31, "p2"), meterOn(31, "p1"), meterOn(31, "dorm"));
+        assertEquals("p2", AllocService.zoneOfBuilding(bs, ms2).get(31));
+    }
 }
