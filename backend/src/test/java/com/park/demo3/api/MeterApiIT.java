@@ -860,4 +860,14 @@ class MeterApiIT extends AbstractMysqlIT {
                 .header("Authorization", "Bearer " + viewer))
                 .andExpect(status().isForbidden());
     }
+
+    // ── 期区候选接口:三期即使一栋楼都没标注,也必须选得出来(破鸡生蛋) ──
+    @Test
+    void zones_listIncludesP3AndDormLast() throws Exception {
+        mvc.perform(get("/api/zones").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.code=='p3')].name").value("三期"))
+                .andExpect(jsonPath("$.data[?(@.code=='p1')].name").value("一期"))
+                .andExpect(jsonPath("$.data[-1:].code").value("dorm"));
+    }
 }
