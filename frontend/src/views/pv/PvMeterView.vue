@@ -16,6 +16,8 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useMonthGate } from '@/composables/useMonthGate'
+import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -28,8 +30,6 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // Wave2-B 并行契约:registry key 'pvMeter' + 模板/月度导出(buildPvMeterTemplate/exportPvMeterMonth)
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 
 const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
@@ -53,17 +53,23 @@ const num = (s: string) => { const n = Number(s); return isFinite(n) ? n : 0 }
 const fq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// ── 期间(spec §2:月份 1-12 全开,无数据月显示零值不置灰) ──
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-// 年份数据驱动(P0 审计):选项 = 有记录年份 ∪ 当前年,升序;
-// 初值 = 最后一个有抄表记录的账期(§4:年月一起 snap;全系统无记录才留当年当月)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
-)
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
+// ── 期间:选期矩阵门(2026-08-29「两本账」设计稿 §③) ──
+// 顶栏那对年月 Select 已撤 —— 改前点完功能卡直接落表,系统按 latestPeriodOf 自己 snap 到
+// 最后一个有数据的月,用户从没被问过要看哪个月:BOOK-WORKBENCH-SPEC §7-1 一字不差禁止的
+// 「顺手落进某个期」。出账链五屏 2026-08-28/29 刚从这个形状迁走,这屏跟上。
+// 期存 store 不存屏内 ref:侧栏点击走 openFresh 会重建组件,屏内 ref 每次被清掉。
+const dataMonths = ref<string[]>([])
+const monthsErr = ref<string | null>(null)
+const gate = useMonthGate({
+  key: 'pv-meter',
+  store: ['pv-meter', 'all'],
+  months: () => dataMonths.value,
+})
+const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPeriod,
+        rows: gateRows, addEarlier, addLater, removeYear } = gate
+const year = computed(() => gy.value ?? 0)
+const month = computed(() => gm.value ?? 0)
+
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 
@@ -79,23 +85,22 @@ async function loadReadings() {
   const data = await pvMeterApi.readings(year.value, month.value)
   if (my === seq) readings.value = data
 }
-onMounted(async () => {
+/** 矩阵点格:年月一起定,再拉该月读数。 */
+async function onPickCell(y: number, m: number) {
+  pickCell(y, m)
+  await loadReadings()
+}
+async function loadMonths() {
+  monthsErr.value = null
+  try { dataMonths.value = await pvMeterApi.months() }
+  catch (e) { monthsErr.value = (e as { message?: string })?.message ?? '账期清单加载失败' }
+}
+onMounted(() => {
   loadStations()
-  // 先拉数据年份定位初始账期:§4 要求 year 与 month 一起 snap 到最后一个有抄表记录的账期
-  // (原来只 snap year、month 留系统当月,拼出的账期一条记录都没有,进来是空表)。
-  // 改了年月会经 watch 触发 loadReadings,未改则本函数兜底首载。
-  try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([pvMeterApi.years(), pvMeterApi.months()])
-    dataYears.value = ys
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return
-    }
-  } catch { /* years 拉取失败不阻断:保持当前年,选项由 ∪ 当前年兜底 */ }
-  loadReadings()
+  loadMonths()
+  if (picked.value) loadReadings()   // 会话内选过期 → 直落表,不再撞矩阵
 })
-watch([year, month], loadReadings)
+watch(gateYm, () => { if (picked.value) loadReadings() })
 
 // ── 期数 tabs(FPPhaseTabs tabs prop 自定义:无宿舍档) ──
 const PV_TABS = [
@@ -188,7 +193,9 @@ const formWarn = computed(() =>
 
 function startAdd() {
   editId.value = null; adding.value = true
-  // 默认日期:当前月=今天(日抄顺手);历史月=月末(月抄建议月末)
+  // 默认日期:当前月=今天(日抄顺手);历史月=月末(月抄建议月末)。
+  // today 就地取:期间块退场后没有模块级 today 了,这里本来也只用一次。
+  const today = new Date()
   const isCur = year.value === today.getFullYear() && month.value === today.getMonth() + 1
   const d = isCur ? `${year.value}-${pad2(month.value)}-${pad2(today.getDate())}` : monthLast.value
   form.value = { readDate: d, genTotal: '', selfUse: '', gridFeed: '', note: '' }
@@ -287,7 +294,7 @@ async function onSimulate() {
     const r = await pvMeterApi.simulate(year.value)
     alert(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位、值未变或缺站）。`)
     await Promise.all([loadStations(), loadReadings()])
-    dataYears.value = await pvMeterApi.years()   // 新写入年份进选项(数据驱动)
+    await loadMonths()   // 新写入的月要在选期矩阵上亮起来
   } catch (e) {
     alert((e as { message?: string })?.message ?? '模拟填充失败')
   } finally {
@@ -311,7 +318,24 @@ async function onTemplate() {
 
 <template>
   <!-- 首载 gate:站/记录未落位不闪空表 -->
-  <div v-if="!stations || !readings" class="page-loading"><span class="page-spin" /></div>
+  <!-- ⓪ 没有期 → 选期矩阵(§7-1 明确选期门)。会话内选过一次之后不再出现 -->
+  <FPMonthGate
+    v-if="!picked"
+    title="分栋抄表明细"
+    icon="gauge"
+    sub="选择月份进入该月逐站抄表 · 空月可直接进入录入 / 导入"
+    :rows="gateRows"
+    :scope-of="(y) => S.pvMeter(y)"
+    :loading="!dataMonths.length && !monthsErr"
+    :error="monthsErr"
+    @pick="onPickCell"
+    @add-earlier="addEarlier"
+    @add-later="addLater"
+    @remove-year="removeYear"
+    @retry="loadMonths"
+  />
+
+  <div v-else-if="!stations || !readings" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="pm-page">
     <!-- 标题行 -->
@@ -336,12 +360,11 @@ async function onTemplate() {
     <div class="mx-toolbar">
       <FPPhaseTabs v-model="phase" :tabs="PV_TABS" :counts="tabCounts" />
       <div class="mx-toolbar-right">
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
+        <!-- 年月下拉已撤:期由选期矩阵一处选定(§7-1),这里只显示是几月 + 回矩阵的口 -->
+        <button class="pm-permonth" @click="clearPeriod">
+          <component :is="iconFor('arrow-left')" :size="13" />换月
+        </button>
+        <span class="pm-per">{{ gateYm }}</span>
         <Button variant="outline" size="sm" @click="onTemplate">
           <template #leading><component :is="iconFor('file-spreadsheet')" :size="14" /></template>
           下载模板
@@ -597,6 +620,16 @@ async function onTemplate() {
 /* ── 标题行(样式同 BillsView 月历层 fin-head 家族) ── */
 .pm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .pm-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pm-permonth {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--surface-white); cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-muted);
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.pm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
+.pm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
+
 .pm-back { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-md); cursor: pointer; display: grid; place-items: center; color: var(--text-secondary); transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .pm-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .pm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }

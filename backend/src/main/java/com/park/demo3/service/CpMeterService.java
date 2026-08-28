@@ -125,8 +125,13 @@ public class CpMeterService {
     // ── 充电记录 ──
     // 年份数据驱动:有记录的年份升序,空表=[](前端年选择器数据源)
     public List<Integer> years() { return readings.selectDistinctYears(); }
-    // 有记录的账期升序,空表=[](前端默认月直接取 max,不再 12→1 逐月试探)
-    public List<String> months() { return readings.selectDistinctYms(); }
+    // 有记录的账期升序,空表=[]。
+    // vehicleType 非空=只数该车型的桩 —— 附表7(汽车)与附表8(电动车)是两个独立的屏,
+    // 拿全集会让汽车屏的选期矩阵把电动车录过的月画成「有数据」(改前默认月也因此被拖走)。
+    public List<String> months(String vehicleType) {
+        return readings.selectDistinctYms(
+            vehicleType == null ? null : stations.selectIdsByType(vehicleType));
+    }
 
     public List<CpReadingDTO> readingList(int year, Integer month, Integer stationId) {   // month null=全年
         Map<Integer, String> names = stations.selectList(null).stream()
