@@ -1,0 +1,229 @@
+# 三期公摊池开放：期区从「猜」变成「记」
+
+> 2026-08-29 拍板。交付标准：**用户自己能把三期的公共电核算从零建起来，不用再找开发改代码。**
+> 本次不做实现，只定规则。实现计划另出。
+
+## 1. 为什么改
+
+三期不是「没数据」，是**系统里根本没有 `p3` 这个值**。
+
+库里实测：
+
+```
+building  phase=3   3 栋      contract  三期 16 份      unit  15 个      bill_notice  9 张（租金侧已在跑）
+meter     zone=p3   0 块
+alloc_rule zone=p3  0 个
+```
+
+`zone` 被钉死成 `p1|p2|dorm`——后端 **9 处** `@Pattern` 正则（7 处期区值 + 2 处 scope 形态）、
+前端 **11 处**常量数组。
+用户在三期建一块电表，后端 400；建一个池，后端 400；看损耗屏，`ZONE_OPTS` 里压根没有三期。
+
+**所以「开放窗口后期靠用户自己手动添加」这个方案，窗口本身现在不存在。**
+
+### 更深一层：期区从来没有被记录过
+
+`AllocService.loadCtx` 的 `zoneOfBuilding` 是**遍历电表、取碰到的第一块表的 zone**
+（`AllocService.java:972`，`putIfAbsent`）。也就是说「这栋楼属于哪个期区」这件事，
+系统一直在从电表反推。
+
+三期没有电表 → 三期没有期区 → 建不了三期的表。**鸡生蛋。**
+
+这个反推还有两处已经在冒烟的地方：
+
+| 楼栋 | `building.phase` | 表的 zone | 说明 |
+|---|---|---|---|
+| 一期 宿舍一~四栋 | 1 | `dorm` | 期数 ≠ 期区，`phase→zone` 派生不成立 |
+| 散租宿舍 / 保障房 / 饭堂 | 4 | 0 块表 | 按 phase 派生会造出不存在的「四期」 |
+| 二期 二车间 | 2 | `dorm, p1, p2` | 该栋 zone 取决于遍历顺序 |
+
+**所以本次不是「加一个枚举值」，是把期区落成一个显式字段。**
+
+---
+
+## 2. 核心规则
+
+### P1 期区存在楼栋上
+
+`building` 加一列 `zone VARCHAR(8) NULL`。它是「这栋楼属于哪个期区」的**唯一事实来源**。
+
+**回填**：按该栋电表的**众数** zone——不是第一块。全库只有一栋是混的：
+二期二车间 `p2:20 / p1:1 / dorm:1` → `p2`，无平局。平局时按 `p1 < p2 < … < dorm` 取最小，
+保证回填可复现（同一份数据跑两次结果相同）。这顺手修掉那个「取决于遍历顺序」的不确定性。
+
+无表的 **9 栋**留 NULL，由用户在楼栋管理里选：
+三期 3 栋、phase=4 三栋（散租宿舍/保障房/饭堂）、二期两栋旧合并栋、一期空地。
+
+**读取**：`zoneOfBuilding` 改成读这一列。列为空时**回退**现有的「取该栋首块表」逻辑——
+新建楼栋忘了填期区但已经录了表，不能因此整月算不出来。
+
+**为什么不是 `building.phase`**：上表已证明两者是不同的东西。phase 是产权/建设批次，
+zone 是**计费与抄表的分区**，宿舍横跨 phase 1 和 4。强行合并会同时弄错宿舍和四期。
+
+### P2 期区候选来自数据，不来自代码
+
+新端点 **`GET /api/zones`**，返回：
+
+```
+候选 = distinct(building.zone) ∪ 基础清单 {p1, p2, p3, dorm}
+```
+
+- label 由 `p{n}` → 中文数字 + 「期」生成；`dorm` → 「宿舍」
+- 排序：`p1, p2, p3, …` 升序，`dorm` 恒排最后
+- 基础清单保证**鸡生蛋能破**：三期一栋楼都没标之前，下拉里也得有「三期」可选
+
+后端 7 处期区值正则 `p1|p2|dorm` → **`p\d+|dorm`**；前端 11 处写死常量 → 一律拉这个接口。
+
+**以后加四期 = 建栋楼选个期区，不改代码。** 这是本 spec 的交付标准本身。
+
+⚠ `ParamPutReq` / `PriceCfgReq` 的 scope 正则是 `^(|p1|p2|dorm|(building|meter|rule|tenant):\d+)$`，
+同步放宽成 `^(|p\d+|dorm|(building|meter|rule|tenant):\d+)$`——否则三期的期级参数（电价、
+`loss_supply_meter`）填不进去，池能建但算不出钱。
+
+### P3 抄表 Excel 认得三期
+
+`meterExcel.ts:68` 现在是 `/一期/→p1 : /二期/→p2 : /宿舍/→dorm : fallback`。
+改成**按 `/api/zones` 返回的 label 反查**——「2026年9月三期园区电表抄表记录」匹配到「三期」得 p3。
+
+`TEMPLATE_SHEETS` 那 6 个写死的 sheet 改成按 `zones × {elec, water}` 生成，
+导入模板与导出自动带上三期。
+
+### P4 损耗屏加三期，但**不加宿舍**
+
+`LossLedgerView.vue:43` 的 `ZONE_OPTS` 改成拉接口，**并显式排掉 `dorm`**。
+
+宿舍无损耗单元是**故意**的，前后端两处都写明了：
+
+- `AllocService.java:1361`——`lossGroups()` 第一道过滤就 `|| "dorm".equals(m.getZone()) continue`
+- `LossLedgerView.vue:32`——注释原文「只有一期/二期；宿舍无损耗单元」
+
+前端从接口拉 zone 之后，**必须主动排掉 dorm**，否则会多出一个恒空的宿舍 tab，
+把一个刻意的设计读成一个 bug。
+
+后端 `lossGroups` **一行不动**：它排的是 dorm，p3 天然走进来。
+
+### P5 楼层派生、方位自由
+
+**楼层仍是下拉**，候选改成：
+
+```
+1..building.floorCount 生成中文（一楼/二楼/…） ∪ {天面, 负一层} ∪ 库里已有 floorLabel
+```
+
+用 `floorCount` 而不是 `unit` 表：三期那 3 栋现在 0 单元，但可以先设层数；
+且 `BuildingDTO.floorCount` 已经在 `PoolLedgerView` 的 `buildings` 里，**不用新接口**。
+
+**楼层不能改成自由输入**：`floor_label` 会被 `poolCandidates` 和楼层分桶逻辑
+拿去做**字符串匹配**（`rentAreaByBuildingFloorTenant` 按 `poolFloor` 取桶）。
+「四楼」写成「4楼」或带个尾空格，池会静默摊不到任何人，且不报错。
+
+**方位改成自由输入 + 建议列表**，跟「费项名」现成的写法一致（`<input list=>`）。
+方位没有任何数据源可派生（`unit` 表无侧向字段），且它不参与上述字符串匹配，
+放开没有静默失败的风险。
+
+### P6 新表未入池提醒条
+
+新端点 **`GET /api/alloc/meter-diff?ym=`**，口径：
+
+> `ownership='share'` + 当月未停用（`MeterService.outOfService`）+ 当月有读数
+> + 不在任何 `alloc_rule_meter` 里
+
+**只报 `share`**。其余四种 ownership 都不是「该摊没摊」：
+`tenant` 户表自己付、`park` 园区自担本就不摊、`infra` 是总表、`ops`/`register` 不计费。
+
+屏上复用现有告警抽屉（`zoneDiffs` 那套分组），加一组「未入池的公摊表」，点条目定位到配置面板。
+**不自动勾人，只告诉。**
+
+**为什么要有它**：租户变动有 `member-diff` 提醒条（新进/退租都会弹），**电表变动没有对应物**。
+新装一块走廊灯表，抄表照录、一切正常，但它没进任何池 → 这笔电费没人摊，屏上一个字都不会说。
+三期从零建池、没人有肌肉记忆，这是唯一的安全网。一期二期同样生效。
+
+---
+
+## 3. 不改代码就自动跑通的部分
+
+设计成立的证据——三期建好池之后，下面这些**零改动**：
+
+| 环节 | 为什么自动 |
+|---|---|
+| **楼栋损耗组** | `lossGroups()` 按 `building_id` + `ownership` 每月现算，加一块表下月自动进组 |
+| **损耗口径** | `loss_variant` / `loss_head` / `loss_c_meter` / `loss_exclude` / `loss_denom_cable` / `loss_adj_qty` / `loss_adj_rate` / `loss_rate_manual` 全在参数注册表里，带正确 `valueKind`，计费参数页可改 |
+| **池受益人** | `poolCandidates` 按 (楼栋, 楼层, 方位) 预勾在租租户；`member-diff` 每月提醒进出 |
+| **份额** | floor 法留空 = 所在层各 1 份、层内按面积拆；填数 = 显式覆盖（1 / 0.5）。整层一户与多户共层都覆盖 |
+| **催缴单** | `poolContributions` 读池快照 → 落公摊行 → `BillFeeMap` 那 6 个费项键都已映射到附表10 收款列 |
+
+### 新费种不用开口子
+
+催缴单公摊行印的**来源名就是池名**（`billNoticeLogic.ts:313`，`l.poolName ?? …`），
+而池名末段的「费项名」是**自由文本**。
+
+所以「三期中央空调冷却塔电费」这类新费种，建一个费项名叫「中央空调冷却塔」的池、
+出口费项选一个现有电类键当载体即可——催缴单上原样显示池名。
+
+`fee_key` 只决定两件事：催缴单板块分组（elec / water），以及附表10 的收款列。
+**只有「需要单独一列收款」的新费种才真的装不下**，那时再单开。
+
+---
+
+## 4. 明确不做
+
+| 条目 | 理由 |
+|---|---|
+| **ref / carrier 可新建** | 二期那 3 个 `ref` + 1 个 `carrier` 是复刻旧 Excel 账册的产物（广告字档 / 冲减载体）。三期从零起，不复刻旧册。存量池照常显示与编辑，只是新建时不给选 |
+| **自定义出口费项 + 收款列** | 见上，池名已经能承载费种名称。真需要独立收款列时另开 spec，改动会牵到催缴单拆单与对账 |
+| **area 法按户加权** | 要给某户打折，改用 floor 法填 0.5 份即可绕过 |
+| **后端 `lossGroups` 支持 dorm** | 宿舍无损耗单元是刻意设计，不是缺口 |
+
+---
+
+## 5. 前置数据活（不是代码，但不做则本 spec 全部失效）
+
+1. **三期 3 栋楼要设期区 + 真实层数 + 单元。**
+   「创业大厦」「工业大厦」现在 `floor_count=1` 且 0 单元。楼层下拉按 `floorCount` 派生，
+   不改层数就只有「一楼」一个选项。
+
+2. **三期 16 份合同里 14 份缺 `start_date`/`end_date`。**
+   判不了在租 → `inForce='unknown'` → 不进自动名册、不进 `member-diff` 的 `removed`。
+   **不补这个，P6 的提醒条和 §3 的受益人自动派生一条都不会生效**，池建出来是空的。
+
+---
+
+## 6. 测试
+
+**后端**
+
+- `GET /api/zones`：回填后 distinct 正确；基础清单并入；`dorm` 恒排尾；label 生成（p3→三期）
+- `p\d+|dorm` 正则边界：`p3` 过、`p10` 过、`p` 不过、`px` 不过、`dorm` 过
+- 众数回填：二期二车间（`dorm,p1,p2` 三种表）落到 `p2`，且不再依赖遍历顺序
+- `zoneOfBuilding`：读列优先；列为 NULL 时回退首块表逻辑
+- `meter-diff`：`share` 未绑 → 出；`share` 已绑 → 不出；`tenant`/`park`/`infra`/`ops` → 一律不出；
+  当月停用 → 不出；当月无读数 → 不出
+- 参数 scope 正则放宽后 `p3` 期级参数可写入
+- **端到端**：建三期楼（设 zone/层数/单元）→ 建三期电表 → 录读数 → 建池 → `generate` → 催缴单出公摊行
+
+**前端**
+
+- zone 下拉来自接口（mock `/api/zones`），三处屏（抄表 / 公共电核算 / 计费参数）一致
+- 损耗屏 zone **不含 dorm**（回归护栏：这条被改错过一次）
+- 楼层候选随 `floorCount` 变；`floorCount=12` 出十二个选项
+- 方位自由输入落库并回显
+- `parseMeterSheet('三期园区电', …)` 识别出 `zone: 'p3'`
+- 导入模板 sheet 数随 zones 数量变
+
+---
+
+## 7. 改动清单
+
+| # | 位置 | 改什么 |
+|---|---|---|
+| 1 | 新迁移 | `building` 加 `zone`；按众数回填 |
+| 2 | `BuildingDTO` / `BuildingCreateReq` / `BuildingUpdateReq` + 楼栋管理屏 | 期区字段（下拉，候选来自 `/api/zones`） |
+| 3 | 新 `ZoneController` | `GET /api/zones` |
+| 4 | 7 处期区值正则：`AllocController:33` / `MeterController:24,71,82` / `ParamController:28` / `AllocRuleReq:9` / `MeterReq:8` | → `p\d+\|dorm`（`ParamController` 是 `all\|p\d+\|dorm`） |
+| 5 | 2 处 scope 形态正则：`ParamPutReq:11` / `PriceCfgReq:8` | 同步放宽 |
+| 6 | `AllocService.loadCtx` | `zoneOfBuilding` 读列，NULL 回退 |
+| 7 | `MeterService:305` | 错误文案里的 `zone=p1\|p2\|dorm` 改成动态 |
+| 8 | 前端 11 处 zone 常量 | 改拉 `/api/zones`；损耗屏排掉 dorm |
+| 9 | `meterExcel.ts` | sheet 名按 label 反查；`TEMPLATE_SHEETS` 生成 |
+| 10 | `PoolLedgerView.vue:454-455` | 楼层按 `floorCount` 派生；方位改 `<input list=>` |
+| 11 | `AllocService` + `AllocController` + `api/alloc.ts` + `PoolLedgerView` | `meter-diff` 端点与提醒条 |
