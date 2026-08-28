@@ -429,7 +429,11 @@ public class LedgerService {
 
     // ── 行级绑定/换绑/解绑(抄表屏「表档案·租户」同款交互的台账版;tenantId=null 即解绑) ──
     @Transactional
-    public LedgerRowDTO bindRow(Integer rowId, Integer tenantId) {
+    public LedgerRowDTO bindRow(Integer rowId, Integer tenantId) { return bindRow(rowId, tenantId, false); }
+
+    /** addAlias=true:顺手把本行账面名记进该租户的别名,今后 softIndex 自动认(2026-08-27 拍板)。
+     *  默认 false —— 见 RowTenantBindReq 上的说明。 */
+    public LedgerRowDTO bindRow(Integer rowId, Integer tenantId, boolean addAlias) {
         MonthlyLedger l = ledger.selectById(rowId);
         if (l == null) throw new BizException(ResultCode.NOT_FOUND, "台账行不存在");
         if (Objects.equals(l.getTenantId(), tenantId))
@@ -455,9 +459,30 @@ public class LedgerService {
         // 解绑必须显式置 NULL:updateById 跳过 null 字段,tenant_id 会保持原值(强填坑,同 MP null 不更新前例)
         ledger.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<MonthlyLedger>()
             .eq("id", rowId).set("tenant_id", tenantId));
+        if (addAlias && tenantId != null) rememberBookName(tenantId, l.getTenantName());
         rechain(l.getCompanyId());   // 绑定/解绑改写租户键,结余链重挂
         MonthlyLedger fresh = ledger.selectById(rowId);
         return toRowDTO(fresh, displayName(fresh, archiveNameOf(fresh.getTenantId())));
+    }
+
+    /** 把账面名记进该租户的别名,今后 TenantService.softIndex 自动认(2026-08-27 拍板)。
+     *  三种情况不记:名字为空、与档案名相同(无异名可记)、已在别名里(不重复堆)。
+     *
+     *  ⚠ 别名是全局的:记一条会影响所有公司、所有月份的导入,而且 softIndex 的规则是
+     *    「同名候选里在租唯一者胜,仍不唯一就不入表」—— 别名堆多了会制造同名碰撞,
+     *    反过来让本来能自动配上的名字变成判不定。所以只能由用户显式勾选触发,
+     *    绝不可由绑定动作自动带上:自动记会把源册里的错别字(实测已有「诺玲/诺铃」一例)
+     *    固化成系统认可的写法,从此再没人发现它错了。 */
+    private void rememberBookName(Integer tenantId, String bookName) {
+        String name = nzs(bookName).trim();
+        if (name.isEmpty()) return;
+        Tenant t = tenants.selectById(tenantId);
+        if (t == null || name.equals(nzs(t.getCompanyName()).trim())) return;
+        for (String a : nzs(t.getAliases()).split("[,，]"))
+            if (name.equals(a.trim())) return;
+        String cur = nzs(t.getAliases()).trim();
+        t.setAliases(cur.isEmpty() ? name : cur + "," + name);
+        tenants.updateById(t);
     }
 
     // ── 行级改账面名(抽屉内即时提交,抄表「企业名称原文」同款):
@@ -572,7 +597,14 @@ public class LedgerService {
                 for (BigDecimal v : row.extraFees().values())
                     if (v != null && v.signum() != 0) { hasValue = true; break; }
             if (!hasValue && existing == null) {
-                errors.add(new ImportError(i, name, "全零行(无费用/结余/收款/备注),已跳过"));
+                // 两种跳过要分开说(2026-08-27 用户反馈):整行只有上月结余、且落在派生位时,
+                // 沿用「无费用/结余/收款/备注」等于告诉用户"系统没看见你填的结余"——
+                // 实际是看见了、但本月结余以上月期末为准,文件里那个值本就不该采信。
+                boolean onlyDerivedBalance = !seedable
+                    && row.balancePrev() != null && row.balancePrev().signum() != 0;
+                errors.add(new ImportError(i, name, onlyDerivedBalance
+                    ? "本行只有上月结余,而本月结余由上月期末自动派生(以结余链为准),文件值不采信;无其他可导入内容,已跳过"
+                    : "全零行(无费用/结余/收款/备注),已跳过"));
                 continue;
             }
             // 未知自定义列 id 检查必须在任何实体写入之前(§4):existing 是 stored/storedSoft

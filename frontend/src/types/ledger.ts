@@ -110,6 +110,26 @@ const nameKey = (s: string): number => {
 export const ledgerRowKey = (r: { id?: number | null; tenantId?: number | null; tenantName?: string }): number =>
   r.id ?? (r.tenantId != null ? -r.tenantId : nameKey(r.tenantName ?? ''))
 
+/** 保存包的身份三件套。**未绑定的结转虚行 id 与 tenantId 双空,只能靠账面名认领** ——
+ *  漏掉 tenantName 后端会以「台账行缺少身份」把整包拒收(2026-08-27 线上撞到:
+ *  导入落下未绑定行 → 下月显示成结转虚行 → 进编辑态保存即炸)。
+ *  与 ledgerRowKey 同源:那边也是 id → tenantId → 账面名 三级取身份。 */
+export const saveRowIdentity = (r: { id?: number | null; tenantId?: number | null; tenantName?: string }) => ({
+  id: r.id ?? undefined,
+  tenantId: r.tenantId ?? null,
+  tenantName: r.tenantName,
+})
+
+/** 导入前的「会覆盖几家」计数。**结转虚行不算**:它是读层为显示合成的行,库里没有数据,
+ *  算进去会让任何上月有余额的户都触发覆盖确认 —— 每次导入都弹,弹到没人看(2026-08-27 线上撞到)。 */
+export const overwriteTargets = (
+  rows: { tenantName: string; carried?: boolean }[],
+  incoming: (string | null | undefined)[],
+): number => {
+  const stored = new Set(rows.filter(r => !r.carried).map(r => r.tenantName))
+  return new Set(incoming.map(n => String(n ?? '').trim()).filter(n => n !== '' && stored.has(n))).size
+}
+
 export interface BindResultDTO { bound: number; conflicts: number }
 
 export interface LedgerSaveRequest {

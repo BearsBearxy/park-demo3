@@ -59,7 +59,7 @@ public class LedgerController {
     @PatchMapping("/rows/{rowId}/tenant")
     public LedgerMonthDTO.LedgerRowDTO bindRow(@PathVariable Integer rowId,
                                                @RequestBody RowTenantBindReq req) {
-        return svc.bindRow(rowId, req.tenantId());
+        return svc.bindRow(rowId, req.tenantId(), Boolean.TRUE.equals(req.addAlias()));
     }
 
     @Operation(summary = "行级改账面名（只动快照；未绑定行改对名字自动配档）")
