@@ -313,9 +313,9 @@ public class ParamService {
             n.baseKeyOfRule.put(r.getId(), r.getBaseKey());
         }
         for (Tenant t : tenants.selectList(null)) n.tenant.put(t.getId(), t.getCompanyName());
-        for (Meter m : meters.selectList(null)) {
+        List<Meter> ms = meters.selectList(null);
+        for (Meter m : ms) {
             n.meter.put(m.getId(), m.getName()); n.zoneOfMeter.put(m.getId(), m.getZone());
-            if (m.getBuildingId() != null && m.getZone() != null) n.zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
             if (m.getTenantId() != null && m.getZone() != null)
                 n.zonesOfTenant.computeIfAbsent(m.getTenantId(), k -> new HashSet<>()).add(m.getZone());
             // 与 AllocService.lossGroups(:1361) 同口径:只排 dorm。写死 p1/p2 会造出不对称 ——
@@ -323,7 +323,13 @@ public class ParamService {
             if (m.getBuildingId() != null && "elec".equals(m.getKind()) && !"dorm".equals(m.getZone()))
                 n.lossBuildings.add(m.getBuildingId());
         }
-        // 楼栋期别以挂表的 zone 为准(宿舍楼 phase=1 但 zone=dorm);还没挂表的楼栋退回 building.phase
+        // 楼栋期区:先走 AllocService.zoneOfBuilding 同一份解析(列优先,回退首块表 zone)——Finding 1,
+        // 两套解析器分歧会让 ParamCenter 的期区 tab 跟楼栋管理里改的 building.zone 对不上,列有值就必须
+        // 听列的(哪怕跟表不一致),p3 零表楼栋也靠列才有期区。
+        // "p"+phase 猜测降格成兜底,只补列和表都给不出答案的楼栋(实测有:一期 B座——phase=1、zone 列
+        // NULL、0 块表,ParamApiIT 靠它出现在 p1 视图里),不能整个删掉,否则这批楼栋会从期区 tab 里
+        // 消失(级联退到全园 ""),而不是「保留现状去等用户在楼栋管理里补标注」。
+        n.zoneOfBuilding.putAll(AllocService.zoneOfBuilding(bs, ms));
         for (Building b : bs)
             if (b.getPhase() != null && (b.getPhase() == 1 || b.getPhase() == 2)) n.zoneOfBuilding.putIfAbsent(b.getId(), "p" + b.getPhase());
         return n;

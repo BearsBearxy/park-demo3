@@ -896,6 +896,18 @@ class AllocServiceTest {
         assertEquals("p2", AllocService.zoneOfBuilding(bs, ms2).get(31));
     }
 
+    // Finding 1(整分支复检):ParamService.names() 以前另有第三套猜法——building.phase 是 1/2 就猜
+    // "p"+phase,且压根不读 building.zone 列;BillNoticeService.generate() 则只认首块表。三处各算
+    // 各的,楼栋管理(本分支新功能)一改 zone 列,三者就能当场分歧。现在 ParamService 也改调这同一个
+    // 方法,这条 pin 住「列优先解析器不做 phase 猜测」——不许把 phase 猜测悄悄加回共享解析器,
+    // 那样又会跟用户在楼栋管理里显式改掉/清空的 zone 打架。
+    @Test
+    void zoneOfBuilding_noPhaseGuess() {
+        var b = building(60, null); b.setPhase(1);   // 一期楼栋,zone 列还没标注(或被清空)
+        var z = AllocService.zoneOfBuilding(java.util.List.of(b), java.util.List.of());
+        assertNull(z.get(60));   // 不许因为 phase=1 就猜成 "p1"
+    }
+
     // 口径按参数取,不按期区名字。p1→0(flat) / p2→1(tou) 是回填值;p3 由用户配。
     // 取不到 = 该期区还没配 → 必须返回 null,让 ruleCostAmount return null,
     // 而不是默认成 flat 静默算出一个数来(那正是「算错了还不报错」)。

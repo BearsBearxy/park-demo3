@@ -726,7 +726,7 @@ const emptyText = computed(() => {
     <FpImportModal
       v-if="importing"
       title="导入 园区抄表 · 水电表读数"
-      sub="上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
+      sub="上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
       v-bind="parserProps('meter', { ...importCtx, year, month })"
       @close="importing = false"
       @import="onImport"

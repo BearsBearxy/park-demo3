@@ -7,6 +7,7 @@
 // 期区 sums = Σ区块 sums。usageOf 缺省(表档案段)= 各列 null,只用分组不用汇总。
 
 import { inSubSigma } from './meterSplit'
+import { zoneOrder } from './zoneLabel'
 
 // V74 位置结构化字段(楼栋→楼层→方位→房号)。存量约 449 块表 floorLabel 为空,
 // 排序取不到结构化字段时逐项回退 spot 原文解析,不因此塌掉。
@@ -54,7 +55,6 @@ export interface MeterZoneGroup<T extends GroupableMeter> {
   sums: BlockSums       // 期区汇总条
 }
 
-const ZONE_ORDER: Record<string, number> = { p1: 0, p2: 1, dorm: 2 }
 const SUM_KEYS = ['usageTotal', 'usageSharp', 'usagePeak', 'usageFlat', 'usageValley'] as const
 
 // 区块名:「连接X车间」馈线表随 X车间(标识名或企业名称原文判定);否则 = area 原文;area 空 = 未分区域
@@ -141,7 +141,7 @@ export function groupMeterBlocks<T extends GroupableMeter>(
     if (arr) arr.push(m)
     else zm.set(bn, [m])
   }
-  const zones = [...byZone.keys()].sort((a, b) => (ZONE_ORDER[a] ?? 9) - (ZONE_ORDER[b] ?? 9))
+  const zones = [...byZone.keys()].sort((a, b) => zoneOrder(a) - zoneOrder(b))
   return zones.map(zone => {
     const zm = byZone.get(zone)!
     const blocks = [...zm.entries()]

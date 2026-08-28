@@ -16,3 +16,11 @@ export const zoneLabel = (code: string): string => {
   const m = /^p(\d+)$/.exec(code ?? '')
   return m ? cnNumeral(+m[1]) + '期' : (code ?? '')
 }
+
+/** 排序键:p{n}→n;dorm→恒最后;认不出的排 dorm 前一位。与 ZoneService.order 同口径
+ *  (ParamService.scopeId 同一条不变式:dorm 恒排最后,不再与 p3+ 撞)。 */
+export const zoneOrder = (code: string): number => {
+  if (code === 'dorm') return Number.MAX_SAFE_INTEGER
+  const m = /^p(\d+)$/.exec(code ?? '')
+  return m ? +m[1] : Number.MAX_SAFE_INTEGER - 1
+}

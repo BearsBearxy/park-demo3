@@ -161,6 +161,15 @@ public class BillNoticeService {
 
         // ── 语境 ──
         Map<Integer, Meter> meterById = new HashMap<>();
+        // Finding 1(白盒复检):这里仍是「首块表」猜期区,跟 AllocService.zoneOfBuilding(列优先,
+        // building.zone 为唯一事实来源)不是同一份解析——本服务没有注入 BuildingMapper/Building 集合,
+        // 直接改调 AllocService.zoneOfBuilding 得新开一条 building 全表查询,与本轮「复用现有加载、
+        // 不加查询」的约束冲突(QueryHygieneTest 对 selectList(null) 是全等断言,新增一律不许进
+        // LEGACY 表)。已确认没有能白嫖到 Building.zone 的现成集合,不强上,留作后续任务:注入
+        // BuildingMapper + 补一条有界全表查(building ~30 行不逐月累积,同 ZoneService.java 的口径),
+        // 同步把 QueryHygieneTest 的 BillNoticeService.java 计数从 10 改成 11。
+        // 现状影响:building.zone 与首块表 zone 冲突,或楼栋已标 zone 但还没挂表时,催缴单的
+        // splitShare 可能按错的/缺的期区分账(合计金额不受影响,只影响场地拆分呈现)。
         Map<Integer, String> zoneOfBuilding = new HashMap<>();
         for (Meter m : meters.selectList(null)) {
             meterById.put(m.getId(), m);

@@ -382,6 +382,8 @@ function downloadCsv(name: string, text: string): void {
 // 抄表导入补录条的分区兜底清单(§4 fallbackPicker):静态基础集(与后端 /api/zones 保证的
 // {p1,p2,p3,dorm} 基础集一致),不接 zones store —— 本文件是纯注册表模块,
 // importRegistry.spec.ts 没搭 Pinia,店内取 store 会在无 active Pinia 时直接抛错。
+// Finding 5:meterExcel.ts 的 DEFAULT_ZONES 故意比这里窄一区(没有 p3)——那份 fallback 复刻的是
+// 三期开工前的抄表导入原样行为,这份是手动分区选择器,两处不同是刻意的,不要合并。
 const METER_FALLBACK_ZONES = ['p1', 'p2', 'p3', 'dorm']
 
 export const IMPORT_TYPES: ImportTypeEntry[] = [
@@ -620,7 +622,7 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
         : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       return {
         title: '导入 园区抄表 · 水电表读数',
-        sub: '上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」。直接粘数据块(没有标题行)也行——账期在弹窗里选。',
+        sub: '上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档,同表同月重复导入自动覆盖;缺本月读数照收并标「漏抄」。直接粘数据块(没有标题行)也行——账期在弹窗里选。',
         templateCols: METER_TEMPLATE_COLS,
         // 标题缺年月/分区/类别时的补录值(默认取抄表页当前年月);弹窗只在真用上时才把这条露出来
         fallbackPicker: {

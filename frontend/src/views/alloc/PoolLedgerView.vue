@@ -50,7 +50,7 @@ import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, bandFooter, buildPoolExportAoa,
   costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, meterDiffGroup, netSummary,
   poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
-  poolSpan, poolSubtitle, stdDisplay,
+  poolSpan, poolSubtitle, stdDisplay, zoneCalcKind,
 } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
 import { floorLabels } from '@/utils/floorLabels'
@@ -137,7 +137,10 @@ async function loadMonth() {
   try {
     const [ps, pr, df, md, st] = await Promise.all([
       allocApi.pools(ym.value),
-      paramsApi.list(ym.value, 'all', { scope: 'rule:', key: 'coefficient,extra_qty,frozen_2023' })
+      // key 里加了 zone_calc_kind(S_ZONE 作用域,scope=期区名而非 rule:)喂 segDefs 判分时/平价——
+      // 连带去掉 scope:'rule:' 前缀过滤:三个原 key 本就只在 rule: 作用域出现(注册表 S_RULE),
+      // 过滤是防御性的从没筛掉过东西,留着反而会把 zone_calc_kind 的期区级行也筛没。
+      paramsApi.list(ym.value, 'all', { key: 'coefficient,extra_qty,frozen_2023,zone_calc_kind' })
         .catch(() => [] as ParamRowDTO[]),
       allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
       allocApi.meterDiff(ym.value).catch(() => [] as AllocMeterDiffDTO[]),
@@ -260,13 +263,15 @@ function gotoDiff(ruleId: number) {
   })
 }
 
-// 列模型:p2 分时 5 列(总/尖/峰/平/谷),p1/dorm 只显总列
+// 列模型:分时制(zone_calc_kind=1)5 列(总/尖/峰/平/谷),平价制(=0 或未配,按 flat 默认)只显总列——
+// Finding 3:以前按 zone.value === 'p2' 硬判,三期就算配成分时制也只会照旧只出总列。
+// 口径按参数取,不按期区名字(与 AllocService.ruleCostAmount 同一条不变式:未配 = 按 flat 兜底)。
 interface SegDef { lab: string; k: 'qtyTotal' | 'qtySharp' | 'qtyPeak' | 'qtyFlat' | 'qtyValley' }
 const ALL_SEGS: SegDef[] = [
   { lab: '总', k: 'qtyTotal' }, { lab: '尖', k: 'qtySharp' }, { lab: '峰', k: 'qtyPeak' },
   { lab: '平', k: 'qtyFlat' }, { lab: '谷', k: 'qtyValley' },
 ]
-const segDefs = computed(() => (zone.value === 'p2' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
+const segDefs = computed(() => (zoneCalcKind(paramRows.value, zone.value) === 1 ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
 // V73 列模型:楼层+池名称(2) + 逐表列 电表/倍率/上月/本月(4) + 用量段
 // + 应分摊/语义/标准(3) + 编辑态月参(2) + 实收/盈亏/备注(3)
 const colCount = computed(() => 7 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 3)

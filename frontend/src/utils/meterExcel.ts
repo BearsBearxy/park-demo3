@@ -60,6 +60,9 @@ const dropTrailingZeros = (s: string): string => (/^\d+\.0+$/.test(s) ? s.replac
 
 // 期区清单(T7 GET /api/zones 的形状,取 code+name 即够用)。清单不可用(未注入或接口拉取失败
 // 留了个空数组)时回落这写死的三区 —— 保证老流程(一期/二期/宿舍)在接口挂掉时照常可用。
+// Finding 5:故意比 importRegistry.ts 的 METER_FALLBACK_ZONES({p1,p2,p3,dorm})窄一区 ——
+// 这条 fallback 复刻的是三期开工前的抄表导入原样行为,不是「/api/zones 挂了该给哪些期区」的通用答案;
+// 加 p3 会让接口一挂就悄悄改变这条老路径的识别结果,与「原样保留」的初衷相反。两处不同是刻意的,不要合并。
 export interface ZoneLite { code: string; name: string }
 const DEFAULT_ZONES: ZoneLite[] = [{ code: 'p1', name: '一期' }, { code: 'p2', name: '二期' }, { code: 'dorm', name: '宿舍' }]
 const resolveZones = (zones?: ZoneLite[]): ZoneLite[] => (zones && zones.length ? zones : DEFAULT_ZONES)
