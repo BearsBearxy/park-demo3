@@ -28,8 +28,6 @@ import {
 import { buildMeterTemplate, exportMeterMonth } from '@/utils/meterExcel'
 import { OWNERSHIP_LABEL, ownershipLabel } from '@/utils/meterSplit'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -37,6 +35,10 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { chainStepsOf } from '@/nav/billingChain'
+import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
@@ -73,17 +75,17 @@ onDeactivated(() => {
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-// ── 期间(整体数据驱动:选项=有数据年∪当前年,初值=最后一个有读数的账期) ──
-// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
-)
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
-const ym = computed(() => `${year.value}-${pad2(month.value)}`)
+// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
+// 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读一份,不可能再各落各的
+// (它们抢的本来就是同一把 billing-chain 月锁)。「默认账期」那一整套
+// (xxxApi.years() + /months + latestPeriodOf 的 snap)随之退场:期一定是用户在矩阵上点出来的,
+// 没有「系统替你猜一个月」这回事 —— 那正是 §7-1 禁的「顺手落进某个期」。
+const period = useBillingPeriodStore()
+const year = computed(() => period.year ?? 0)
+const month = computed(() => period.month ?? 0)
+const ym = computed(() => period.ym ?? '')
+// 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
+const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 const prevYm = computed(() =>
   month.value === 1 ? `${year.value - 1}-12` : `${year.value}-${pad2(month.value - 1)}`)
 
@@ -211,34 +213,22 @@ function loadMasters() {
 // 页签切回:租户改名/楼栋变更后清单回拉,合同增删改后绑定候选回拉(浏览状态保留)
 onReactivated(() => { loadMasters(); loadBinding() })
 
-onMounted(async () => {
+onMounted(() => {
   loadMeters()
   loadMasters()
-  // 先拉数据年份定位初始账期:§4 要求 year 与 month 一起 snap 到最后一个有读数的账期
-  // (原来只 snap year、month 留系统当月,2024 年 + 8 月 = 一个没抄过表的账期,进来满屏空格)。
-  // 改了年月经 watch 触发装载,未改则本函数兜底首载。
-  try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([metersApi.years(), metersApi.months()])
-    dataYears.value = ys
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return
-    }
-  } catch { /* years 拉取失败不阻断:选项由 ∪ 当前年兜底 */ }
-  loadReadings()
-  loadBinding()
+  if (period.picked) { loadReadings(); loadBinding() }
 })
 // 换账期:上月基准/读数全变,草稿随之作废(ponytail: 静默丢弃,需保留请先「完成」保存)
 // 换账期同时关掉批删弹窗:里面复述的是旧账期的数字,留着就是张过期确认单
-watch([year, month], () => { draft.clear(); delPreview.value = null; loadReadings(); loadBinding() })
+watch(ym, () => { draft.clear(); delPreview.value = null; if (period.picked) { loadReadings(); loadBinding() } })
 
-// 写后统一重载(读数/档案/绑定/数据年份)
+// 写后统一重载(读数/档案/绑定/出账月矩阵)
 function reloadAll() {
   loadMeters()
   loadReadings()
   loadBinding()
-  metersApi.years().then(ys => { dataYears.value = ys }).catch(() => { /* 年份刷新失败不阻断 */ })
+  // 抄了原本空的月 → 矩阵上那一格的「抄表」点要亮起来(换出账月时立刻看得见)
+  void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
 }
 
 // ── 筛选状态(§1 筛选条)+统计卡(点卡=状态筛选互斥切换) ──
@@ -558,7 +548,10 @@ const emptyText = computed(() => {
 <template>
   <!-- 首载 gate:表档案/当月读数未落位不闪空表(v-else 紧邻,LIST-PAGE 加载门) -->
   <!-- 表档案首载失败:整页无内容可显,骨架屏会一直转 —— 换成提示+重试,别让用户干等 -->
-  <div v-if="!meters && metersErr" class="mt-gate-fail">
+  <!-- ⓪ 没有期 → 出账月矩阵(五屏共用一张)。选过一次之后本会话不再出现,直落表格 -->
+  <ChainMonthGate v-if="!period.picked" title="园区抄表" icon="gauge" />
+
+  <div v-else-if="!meters && metersErr" class="mt-gate-fail">
     <FPLoadError @retry="loadMeters">
       <span>{{ metersErr }}</span>
     </FPLoadError>
@@ -566,16 +559,13 @@ const emptyText = computed(() => {
   <div v-else-if="!meters || !readings" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="mt-page">
+    <!-- 链路条:期写在这里,五道工序横跳不换期 -->
+    <FPStepStrip :steps="chainSteps" current="meters" :period="ym" @back="period.clear()" />
+
     <!-- 标题行:h2+账期+抄表进度条;右=模板/导出(常驻)+导入/新增表(编辑态)+编辑模式(最右) -->
     <div class="mt-head">
       <div class="mt-head-l">
         <h2 class="mt-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>园区抄表</h2>
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
         <div class="mt5-prog" :title="`抄表进度(随电水/分区筛选):已抄 ${cards.read} / 租户表 ${cards.tenant}`">
           <div class="bar"><span :style="{ width: progressPct + '%' }" /></div>
           <span class="txt">{{ cards.read }}/{{ cards.tenant }} · {{ progressPct }}%</span>

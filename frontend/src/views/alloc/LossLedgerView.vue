@@ -13,32 +13,30 @@ import { allocApi, type AllocLossDTO, type AllocLossUnitDTO } from '@/api/alloc'
 import { paramsApi, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { chainStepsOf } from '@/nav/billingChain'
 import { iconFor } from '@/components/ds/icon'
 import FPAlertChip from '@/components/fp/FPAlertChip.vue'
 import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
+import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import Button from '@/components/ds/Button.vue'
-import Select from '@/components/ds/Select.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 
-const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: 2 })
 const fpct = (r: number | null | undefined) => (r == null ? '–' : (r * 100).toFixed(2) + '%')
 
-// ── 账期(整体数据驱动)+ zone Segmented(只有一期/二期;宿舍无损耗单元) ──
-// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })))
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
-const ym = computed(() => `${year.value}-${pad2(month.value)}`)
+// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
+// 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读。本屏只在选过期后渲染表格。
+const period = useBillingPeriodStore()
+const year = computed(() => period.year ?? 0)
+const month = computed(() => period.month ?? 0)
+const ym = computed(() => period.ym ?? '')
+// 链路条:本月各道工序走到哪(格子与条上同一份数据)
+const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 const zone = ref<string>('p1')
 const ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }]
 
@@ -58,21 +56,10 @@ async function loadMonth() {
   if (my !== seq) return
   loss.value = ls; params.value = ps; status.value = st
 }
-onMounted(async () => {
-  try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([allocApi.years(), allocApi.lossMonths()])
-    dataYears.value = ys
-    // §4:year 与 month 一起 snap 到最后一个**有损耗快照**的账期(原来只 snap year、month 留系统当月,
-    // 拼出的账期没快照,一进来就是「本月未生成」的灰条)。判据走 /alloc/loss-months 直查快照表。
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
-    }
-  } catch { /* 年份失败不阻断 */ }
-  loadMonth()
-})
-watch([year, month, zone], loadMonth)
+// 默认账期那一整套(years + /loss-months + latestPeriodOf 的 snap)随年月下拉一起退场:
+// 现在期一定是用户在矩阵上点出来的,没有「系统替你猜一个月」这回事。
+onMounted(() => { if (period.picked) loadMonth() })
+watch([ym, zone], () => { if (period.picked) loadMonth() })
 // 页签切回:参数页那边可能刚重算过 —— 池快照时间变了就整月重拉(数字与 stale 条一起变新),没变只刷状态
 // (回包前若已换月(seq 变了)就丢弃,别让旧月 status 盖住新月的 stale 条)
 onReactivated(async () => {
@@ -152,19 +139,19 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 </script>
 
 <template>
-  <div v-if="!loss" class="page-loading"><span class="page-spin" /></div>
+  <!-- ⓪ 没有期 → 出账月矩阵(五屏共用)。选过一次之后本会话不再出现,直落表格 -->
+  <ChainMonthGate v-if="!period.picked" title="楼栋损耗" icon="trending-down" />
+
+  <div v-else-if="!loss" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="ll-page">
+    <!-- 链路条:期写在这里,五道工序横跳不换期 -->
+    <FPStepStrip :steps="chainSteps" current="alloc-loss" :period="ym" @back="period.clear()" />
+
     <!-- 标题行 -->
     <div class="ll-head">
       <div class="ll-head-l">
         <h2 class="ll-title"><span class="ic"><component :is="iconFor('trending-down')" :size="18" /></span>楼栋损耗</h2>
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="ll-actions">

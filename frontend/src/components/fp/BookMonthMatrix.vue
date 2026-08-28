@@ -9,9 +9,21 @@ import { usePresenceStore } from '@/stores/presence'
 // 纯展示组件,不发请求;年份范围与 removable 判定由上层用 utils/matrixYears 组好传入。
 import { computed } from 'vue'
 import { Plus, X } from 'lucide-vue-next'
-import type { Book } from '@/types/book'
 
-interface MonthCell { month: number; hasData: boolean; rowCount?: number; cur?: boolean }
+interface MonthCell {
+  month: number
+  hasData: boolean
+  rowCount?: number
+  cur?: boolean
+  /**
+   * 出账链专用（设计稿 §①）：这个月几道工序各自做没做。传了就取代行数徽标 ——
+   * 一个格子只讲一件事，「12 行」和「四道工序」挤在一起谁都读不清。
+   * 台账 / 附表10 / 三大报表不传，走原来的行数徽标。
+   */
+  pips?: boolean[]
+  /** 参数改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
+  stale?: boolean
+}
 interface YearRow {
   year: number
   months: MonthCell[]
@@ -22,7 +34,12 @@ interface YearRow {
 const props = defineProps<{
   /** 这一格的锁作用域（如 (y,m) => S.ledger(companyId, y, m)）。不传 = 不显示在场标记。 */
   scopeOf?: (year: number, month: number) => string | null
-  book: Book | null
+  /**
+   * 「有没有选中的东西」这一个比特 —— 组件不读它任何字段，只拿来决定
+   * 渲染矩阵还是渲染「请选择账册」占位。台账/附表10 传 Book，
+   * 出账链没有册的概念，传个非空对象即可（ChainMonthGate）。
+   */
+  book: object | null
   years: YearRow[]      // 升序;上层负责连续补满
 }>()
 
@@ -64,7 +81,8 @@ const nextYear = computed(() =>
             v-for="m in y.months"
             :key="m.month"
             class="bmm-card"
-            :class="[m.hasData ? 'has' : 'blank', { cur: m.cur }]"
+            :class="[m.hasData ? 'has' : 'blank', { cur: m.cur, stale: m.hasData && m.stale }]"
+            :title="m.hasData && m.stale ? '参数改动晚于快照 —— 屏上数字是旧的，需重算' : undefined"
             @click="emit('pick', y.year, m.month)"
           >
             <span class="bmm-month">{{ m.month }}月</span>
@@ -75,7 +93,11 @@ const nextYear = computed(() =>
               <Avatar :uid="editorOf(y.year, m.month)!.user"
                       :name="editorOf(y.year, m.month)!.displayName" :size="20" class="bmm-av" />
             </span>
-            <span v-if="m.hasData && m.rowCount != null" class="bmm-count">{{ m.rowCount }} 行</span>
+            <!-- 出账链:四道工序点。空月不画点 —— 它本来就是一张「空」的虚线卡 -->
+            <span v-if="m.hasData && m.pips" class="bmm-pips">
+              <i v-for="(p, i) in m.pips" :key="i" class="bmm-pip" :class="{ on: p }" />
+            </span>
+            <span v-else-if="m.hasData && m.rowCount != null" class="bmm-count">{{ m.rowCount }} 行</span>
             <span v-else-if="!m.hasData" class="bmm-none">空</span>
           </button>
         </div>
@@ -218,6 +240,22 @@ const nextYear = computed(() =>
   font-size: var(--fs-micro);
   color: var(--text-disabled);
 }
+
+/* 出账链:四道工序点。未做的点位照样占宽 —— 做没做,格子一样大 */
+.bmm-pips { display: flex; gap: 3px; align-items: center; }
+.bmm-pip {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.bmm-pip.on { background: var(--hue-blue); }
+
+/* 需重算:只换底色。加边框会让格子跳 1px,加角标会和在场头像抢右上角 */
+.bmm-card.has.stale { background: rgb(255, 247, 235); }
+.bmm-card.has.stale:hover { background: rgb(253, 240, 220); }
+.bmm-card.has.stale .bmm-pip.on { background: var(--hue-orange); }
 
 /* 移除槽:常驻 44px 占位;hover 行才显按钮 */
 .bmm-rm-slot { flex: 0 0 44px; display: flex; align-items: center; }
