@@ -51,6 +51,9 @@ const ROWS: ParamRowDTO[] = [
   row({ key: 'loss_supply_meter', label: '供电局对账总表', group: 'rule', scope: 'p1', scopeLabel: '一期', value: 5, valueText: 'B-G座总电' }),
   // 回归钉:P7 fix-round 1 —— ref_meter 候选过滤曾按 p1/p2/dorm 枚举漏了 p3,编辑三期这一行会退到全园所有表
   row({ key: 'loss_supply_meter', label: '供电局对账总表', group: 'rule', scope: 'p3', scopeLabel: '三期', value: 400, valueText: '三期总电' }),
+  // 回归钉靶子:三期 G栋(id 30)zone 未标注,ref_building 候选不该按 phase 猜成「p1 桶」
+  row({ key: 'loss_head', label: '损耗核算归组', group: 'rule', scope: 'building:30', scopeLabel: '三期 G栋', value: null,
+    valueText: '未设置', mode: null, acctMonth: '', rangeText: '', sourceChain: [], rowId: null }),
   row({ key: 'mgmt_fee', label: '电力管理费', unit: '元/度', group: 'constant', scope: 'tenant:5', scopeLabel: '力灏（户）', value: 0.15,
     valueText: '0.15 元/度', sourceChain: ['力灏（户）:0.15 元/度', '全园:0.16 元/度'] }),
   // 户级版本起点晚于 ym:后端出的是继承全园的行(rowId 空)—— 不是例外,④ 不列
@@ -104,7 +107,12 @@ vi.mock('@/api/meters', () => ({
   ]) },
 }))
 vi.mock('@/api/building', () => ({
-  buildingApi: { list: () => Promise.resolve([{ id: 13, name: '一期 A座', phase: 1 }, { id: 20, name: '一期 B座', phase: 1 }]) },
+  buildingApi: { list: () => Promise.resolve([
+    { id: 13, name: '一期 A座', phase: 1, zone: 'p1' },
+    { id: 20, name: '一期 B座', phase: 1, zone: 'p1' },
+    // 三期楼栋在手工标注前 zone=null(V113 迁移故意留空)——回归钉要靠它撑住
+    { id: 30, name: '三期 G栋', phase: 3, zone: null },
+  ]) },
 }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: () => Promise.resolve([{ id: 5, companyName: '力灏', phase: 1, parentName: null }]) } }))
 vi.mock('@/api/zones', () => ({ zonesApi: { list: () => Promise.resolve([
@@ -266,6 +274,21 @@ describe('ParamCenterView 计费参数页', () => {
     const pop = w.findComponent(ParamEditPopover)
     expect(pop.props('row')?.scope).toBe('p3')
     expect(pop.props('refOptions')).toEqual([{ value: '400', label: '三期总电' }])
+    w.unmount()
+  })
+
+  // 回归钉:zoneOfBuilding 曾按 b.phase === 2 ? 'p2' : 'p1' 猜期区,phase 3(以及宿舍 phase 1)
+  // 一律落进 'p1' 桶,与真正的一期楼栋混在一起当「同期区」候选。改读 b.zone 真实字段后,
+  // 三期 G栋(zone 未标注 = null)只该跟别的「未标注」楼栋同桶,不能把一期 A/B座也算进来。
+  it('③ 核算口径 ref_building 候选按真实 zone 分桶:三期未标注楼栋不再混入一期候选', async () => {
+    const w = await mountPage()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    const tr = w.findAll('.pm-rgroup').find(g => g.text().includes('三期 G栋'))!
+      .findAll('.pm-rrow').find(x => x.text().includes('损耗核算归组'))!
+    await tr.findAll('button').find(b => b.text() === '修改')!.trigger('click')
+    const pop = w.findComponent(ParamEditPopover)
+    expect(pop.props('row')?.scope).toBe('building:30')
+    expect(pop.props('refOptions')).toEqual([{ value: '30', label: '三期 G栋' }])
     w.unmount()
   })
 })

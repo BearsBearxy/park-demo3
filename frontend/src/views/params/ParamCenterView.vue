@@ -309,8 +309,10 @@ function delTenantRow(r: ParamRow) {
   putAll(tenantExceptionDelReqs(r))
 }
 
-// 弹窗引用型值的候选:并入他栋 → 同期楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
-const zoneOfBuilding = (b: BuildingDTO) => (b.phase === 2 ? 'p2' : 'p1')
+// 弹窗引用型值的候选:并入他栋 → 同期区楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
+// 期区读楼栋真实字段,不按 phase 猜——phase 只有 1/2/3,猜法会把三期(以及宿舍)楼栋都错落进 p1 桶。
+// 三期楼栋在手工标注前 zone=null:候选按 null 分桶,只会跟别的未标注楼栋算同桶,不再混入一期楼栋。
+const zoneOfBuilding = (b: BuildingDTO) => b.zone
 const meterOpt = (m: MeterDTO): RefOption => ({ value: String(m.id), label: m.subName ? `${m.name} · ${m.subName}` : m.name })
 const refOptions = computed<RefOption[]>(() => {
   const r = editRow.value

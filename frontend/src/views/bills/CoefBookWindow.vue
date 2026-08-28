@@ -171,15 +171,13 @@ watch(q, () => {
 
 // ── 当前生效值:价目键=GET /params 行按 户→期→全园 找(例外徽标=户级行命中自身版本),值/区间用后端人话;
 //    层份键=当月池成员行(weight+src),hover 明示逐池构成(spec §4 改前披露) ──
-// 期区本该取楼栋上的字段,不由 phase 猜 —— phase 3 以前落 null,会让 resolveCoefPrice 的级联跳过
-// 整条期级作用域,静默按全园价显示。理想修法是查 props.buildings 里对应楼栋的 zone 字段,但
-// buildingApi.list() 返回的 BuildingDTO(backend dto/BuildingDTO.java)目前不透出 zone 列
-// (Building 实体有 zone 字段,DTO 没有转出来)——这是本任务(前端-only)文件清单外的后端改动,
-// 留给后续任务补(BuildingDTO 加一个 zone 字段 + toDTO() 里带上 b.getZone() 即可,改动很小)。
-// 这里先按本窗口页签本就只有 1/2/3(无宿舍页签)的事实,把同一条推断延到三期,
-// 至少堵住「三期租户静默按全园价」这个直接症状,不比一期/二期现状更差。
-const zone = computed(() => `p${phase.value}`)
-interface CurCell { text: string; eff: string; exception: boolean; title?: string }
+// 期区取该户主楼栋上的真实 zone 字段,不由 phase 猜:宿舍楼 phase=1 但 zone=dorm,
+// 三期楼栋在手工标注前 zone=NULL(V113 迁移故意留空,见 ParamService.java:328 同款顾虑)。
+// 找不到楼栋 / 楼栋期区未标注时返回 null——resolveCoefPrice 据此跳过期级作用域直接落全园价,
+// 这本就是「期区未定」应有的行为;下方渲染处补一个「未标注期区」角标,不让这次全园价落得无声无息。
+const zoneOf = (r: CoefTenantRow): string | null =>
+  props.buildings.find(b => b.id === r.bld.main?.id)?.zone ?? null
+interface CurCell { text: string; eff: string; exception: boolean; zoneUnset?: boolean; title?: string }
 const curMap = computed<Map<number, CurCell>>(() => {
   const meta = curMeta.value
   const m = new Map<number, CurCell>()
@@ -197,13 +195,16 @@ const curMap = computed<Map<number, CurCell>>(() => {
     }
   } else {
     for (const r of filtered.value) {
-      const hit = resolveCoefPrice(priceRows.value, meta.writes[0].key, r.tenantId, zone.value)
+      const z = zoneOf(r)
+      const hit = resolveCoefPrice(priceRows.value, meta.writes[0].key, r.tenantId, z)
       if (!hit) { m.set(r.tenantId, { text: '—', eff: '', exception: false, title: '整链无版本(按引擎默认)' }); continue }
       m.set(r.tenantId, {
         text: hit.valueText || String(hit.value),
         eff: hit.rangeText,
         exception: hit.exception,
-        title: `命中链: ${hit.chain.join(' → ')};非户级=继承默认价(灰体)`,
+        zoneUnset: z == null,
+        title: `命中链: ${hit.chain.join(' → ')};非户级=继承默认价(灰体)`
+          + (z == null ? ';该楼期区未标注,已跳过期级作用域按全园价命中(非本期专属价)' : ''),
       })
     }
   }
@@ -448,6 +449,8 @@ function onClose() {
                       {{ curMap.get(r.tenantId)?.text ?? '—' }}
                       <em v-if="curMap.get(r.tenantId)?.eff" class="cb-eff">{{ curMap.get(r.tenantId)?.eff }}</em>
                       <em v-if="curMap.get(r.tenantId)?.exception" class="cb-ex">例外</em>
+                      <em v-if="curMap.get(r.tenantId)?.zoneUnset" class="cb-zwarn"
+                          title="该楼期区未标注,以上是全园价,不是本期专属价">未标注期区</em>
                     </span>
                   </td>
                   <td v-if="editMode">
@@ -547,6 +550,7 @@ function onClose() {
 .cb-val.dim { color: var(--text-muted); }
 .cb-eff { font-style: normal; font-size: 10.5px; color: var(--text-muted); margin-left: 4px; font-family: var(--font-sans); }
 .cb-ex { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(255, 149, 0, 0.14); font-style: normal; font-size: 10.5px; color: rgb(178, 100, 0); font-family: var(--font-sans); }
+.cb-zwarn { margin-left: 5px; padding: 1px 5px; border-radius: var(--radius-full); background: rgba(120, 120, 120, 0.14); font-style: normal; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-sans); }
 
 /* 暂存新值(只读)+单行撤销 */
 .cb-stash { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
