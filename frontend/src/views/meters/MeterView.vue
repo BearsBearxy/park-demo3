@@ -481,14 +481,14 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
   }
 }
 async function onTemplate() {
-  try { await buildMeterTemplate(ym.value) }
+  try { await buildMeterTemplate(ym.value, zones.list) }
   catch (e) { alert((e as { message?: string })?.message ?? '模板下载失败') }
 }
 const exporting = ref(false)
 async function onExport() {
   if (exporting.value) return
   exporting.value = true
-  try { await exportMeterMonth(ym.value, meters.value ?? [], readings.value ?? []) }
+  try { await exportMeterMonth(ym.value, meters.value ?? [], readings.value ?? [], zones.list) }
   catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
   finally { exporting.value = false }
 }
