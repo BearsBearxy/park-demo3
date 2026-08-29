@@ -353,3 +353,54 @@ LAYOUT-STABILITY §1**——那条铁律管的是「用户的一次交互不得�
 - **提权审批 sheet + 异常提醒处理动作**（推送驱动）——2026-08-30 拍板
   「放到有市场推出的真正手机 App 再实现」。网页版铃铛红点保留（P1 已随迁
   手机顶栏），审批操作继续走桌面。
+
+## 12. 并行开发交接（给同仓其他分支/智能体，合并前必读）
+
+> 响应式分支（claude/page-layout-worktree-cb3e10，PR 见 git 记录）动了大量共享
+> 文件。多条分支并行开发时，**合并/变基遇到冲突按本节解，解完必须过 §12.3
+> 红线**——不要用「整块保留一边」了事，那是最常见的改错方式。
+
+### 12.1 冲突解法
+
+- **共享高危文件**（本分支重改过，别的分支也常动）：`AppShell.vue`、`base.css`、
+  `tokens.css`、`index.html`、`ana.css`、`mx-list.css`、`useFitRows.ts`、
+  `FPSortableTable.vue`、`FPDrawer / FPSideDrawer / FpImportModal / CommandPalette`、
+  `TabStrip.vue / Toolbar.vue`、`stores/ui.ts`。冲突原则：**两边功能都保留、
+  手工合段**；样式冲突尤其如此——两个 feature 的规则几乎总能共存。
+- **@media 块冲突**：层叠序恒为「宽档在前窄档在后」（1280→1100→960→600→print）；
+  断点值只许 600/960/1280（§1，存量豁免见该节）；不要把两边的规则合并进同一个
+  媒体条件里打乱层叠，也不要移动既有块的相对位置。
+- **解冲突时绝对禁止**（每一条都会引发已修复缺陷的回归）：
+  - 恢复 `.fp-stage` 的 `min-width:960px`（T3 地板已由 §8 屏级地板取代）
+  - 删除/放宽 base.css 的 `.fp-content > :first-child:not(.fp-fluid)` 地板规则
+  - 把 index.html 的 `body overflow-x:auto` 改回 `hidden`，或去掉
+    `viewport-fit=cover` / S 档 100dvh 链
+  - 增删任何表格的 `<col>`（colgroup 串位是修过的事故类）
+  - 把 z-index 令牌换回字面量；或把表内 sticky 的 3/8/7 阶梯「顺手」令牌化
+    （它是审计备案的例外，见 §2 表注）
+  - 删掉 ui.spec.ts 的第七条测试或改动前六条口径
+
+### 12.2 本分支立下的契约（新代码必须遵守）
+
+- **类名契约**（跨文件协作靠它们，改名=全断）：`fp-fluid`（摘地板，屏根挂）、
+  `.fp-legacy-floor` 机制（§8）、`mx-page`（列表屏根收编）、`hint-desk`
+  （桌面交互话术，S 档隐藏）、`av2-core` / `av2-lead`（分析层阅读序）、
+  `.lgw-s-hint` 形态的荐桌面预留位提示行。
+- **机制契约**：`ui.closeTransient()` 不落盘（浮层临时关，勿改走 toggleSidebar）；
+  `useFitRows` S 档固定 10 跳过测量；`FPSortableTable` S 档 `#card` 分支；
+  `AnaEChart.mobilizeOption` 注入集（屏侧显式值永远优先，新图别依赖注入行为）；
+  覆盖层 S 档全屏分支在组件内部（调用方零改动，别在调用方再包一层）。
+- **新屏**：先认领 §5 六类模式，走 §9 验收清单；屏根 Fragment 的首个元素必须是
+  主体（§8 的 :first-child 前提）。
+
+### 12.3 合并后红线（三道门禁 + 抽查）
+
+```bash
+cd frontend && npx vue-tsc --noEmit -p tsconfig.app.json && npx vitest run && node scripts/token-check.mjs
+```
+
+全部门禁挂在 `npm run build` 里，绿了才算解完冲突；再按 §9 做四宽
+（1440/1180/768/390）+ 961/1000 边界抽查。1440 与合并前零差异是硬标准。
+
+附：`.claude/launch.json` 的 `frontend-wt`（端口 5273）是给 worktree 并行开发用的
+第二前端入口——主仓 5173 被占时用它，别删。
