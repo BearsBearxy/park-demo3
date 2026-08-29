@@ -620,3 +620,176 @@ describe('充电桩分桩明细 · 写完要刷账期清单', () => {
     expect(cpMeterApi.months, '保存后要刷账期清单').toHaveBeenCalled()
   })
 })
+
+/** 复查第二轮坐实的测试空档(2 HIGH + 3 MEDIUM)+ 本轮新守卫。 */
+describe('分桩充电明细 · 复查补钉', () => {
+  async function toCar() {
+    const w = await open('car')
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('❗car 屏只画汽车桩 —— vehicleType 过滤是附表7/8 唯一的数据隔离', async () => {
+    // 删掉 myStations/myReadings/myUsage 的 .filter(vehicleType) 时:
+    // 附表7 渲染出电动车桩,月汇总把电动车的量加进汽车账,导出的政府报表两本账串一张表。
+    // 此前注释声称钉了行数,实际零断言(复查抓到:测试文件对自身覆盖面说了假话)。
+    const w = await toCar()
+    const names = w.findAll('.cm-table tbody tr').map(r => r.text())
+    expect(names.length, 'car 屏只有 2 台汽车桩').toBe(2)
+    expect(w.find('.cm-table').text(), '电动车桩不许出现在汽车屏').not.toContain('叮叮充')
+  })
+
+  it('❗编辑态里 commitMeter 的整条路径:空串不动 / 载荷对月 / 失败回滚', async () => {
+    // 此前只测了浏览态自守 —— 删掉空串守卫后,清空输入框失焦(change 带 ''),
+    // Number('')=0 过非负校验,upsert 把真实电表读数覆写成 0:数据被销毁,测试全绿。
+    const w = await toCar()
+    const vm = w.vm as unknown as {
+      editMode: boolean
+      myUsage: { operator: string; meterKwh: number | null; id: number | null }[]
+      commitMeter: (u: object, raw: string) => void
+    }
+    vm.editMode = true
+    await flushPromises()
+    const u = { id: 1, operator: '万城万', vehicleType: 'car', year: 2025, month: 3,
+                meterKwh: 100, sumChargeKwh: 95, lossKwh: 5, note: null }
+
+    vm.commitMeter(u as never, '')                 // 空串=不动(后端无删除口)
+    expect(cpMeterApi.upsertPowerUsage, '空串不许打出去 —— 那会把真值覆写成 0').not.toHaveBeenCalled()
+
+    vm.commitMeter(u as never, '-3')               // 负数拦下
+    expect(cpMeterApi.upsertPowerUsage).not.toHaveBeenCalled()
+
+    vi.mocked(cpMeterApi.upsertPowerUsage).mockResolvedValue({ ...u, meterKwh: 120 } as never)
+    vm.commitMeter(u as never, '120')
+    await flushPromises()
+    expect(cpMeterApi.upsertPowerUsage, '载荷必须带对的运营商与年月').toHaveBeenCalledWith(
+      expect.objectContaining({ operator: '万城万', year: 2025, month: 3, meterKwh: 120 }))
+
+    // 失败回滚:乐观更新写上去的值要退回去
+    vi.mocked(cpMeterApi.upsertPowerUsage).mockRejectedValue(new Error('挂了'))
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const live = { ...u, meterKwh: 120 }
+    vm.commitMeter(live as never, '999')
+    expect((live as { meterKwh: number }).meterKwh, '乐观更新先写上').toBe(999)
+    await flushPromises()
+    expect((live as { meterKwh: number }).meterKwh, '失败要回滚').toBe(120)
+  })
+
+  it('❗换期在途时 commitMeter 打不出去 —— fp-stale 挡不住已聚焦输入框的键盘提交', async () => {
+    const w = await toCar()
+    const vm = w.vm as unknown as {
+      editMode: boolean; reloading: boolean
+      commitMeter: (u: object, raw: string) => void
+    }
+    vm.editMode = true
+    vm.reloading = true            // 换期在途
+    await flushPromises()
+    vm.commitMeter({ id: 1, operator: '万城万', vehicleType: 'car', year: 2025, month: 3,
+                     meterKwh: 100, sumChargeKwh: 95, lossKwh: 5, note: null } as never, '120')
+    expect(cpMeterApi.upsertPowerUsage, '在途时按的是新期标、写的是旧语境的数').not.toHaveBeenCalled()
+  })
+
+  it('❗换期在途时「电表与损耗」卡要退一步(fp-stale)', async () => {
+    const w = await toCar()
+    // 卡挂在 v-if="myUsage.length" 上 —— 先喂一行,否则卡不渲染断言落空
+    ;(w.vm as unknown as { usageRows: object[] }).usageRows = [
+      { id: 1, operator: '万城万', vehicleType: 'car', year: 2025, month: 3,
+        meterKwh: 100, sumChargeKwh: 95, lossKwh: 5, note: null },
+    ]
+    ;(w.vm as unknown as { reloading: boolean }).reloading = true
+    await new Promise(r => setTimeout(r, 260))    // useDeferredFlag 熬 200ms
+    await flushPromises()
+    expect(w.find('.cm-usage').classes(), '第二张带写入口的卡也要盖').toContain('fp-stale')
+  })
+
+  it('❗真点按钮进编辑态 —— FPEditModeButton 的 toggle 接线不许断', async () => {
+    // 此前 28 条全用 vm.editMode 直写,@toggle="toggleEdit()" 的接线删掉照样全绿。
+    const w = await toCar()
+    const btn = w.findAll('button').find(b => b.text().includes('编辑模式'))
+    expect(btn, '按钮在').toBeTruthy()
+    await btn!.trigger('click')
+    await flushPromises()
+    expect(w.findAll('button').some(b => b.text() === '完成'), '点了要真进得去').toBe(true)
+  })
+
+  it('❗onImport / submitStation / delStation 写完也要刷清单(五个调用点逐个钉)', async () => {
+    const w = await toCar()
+    const vm = w.vm as unknown as Record<string, (...a: never[]) => Promise<void>> & {
+      editMode: boolean; openSt: object | null
+      stForm: { name: string; operator: string; vehicleType: string }
+    }
+    vm.editMode = true
+    await flushPromises()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    // onImport(走 importRegistry 的 http.post)
+    const api = (await import('@/api')).default
+    vi.spyOn(api, 'post').mockResolvedValue({ imported: 1, skipped: 0, errors: [] } as never)
+    vi.mocked(cpMeterApi.months).mockClear()
+    await vm.onImport([{ 桩名: '快充1', 日期: '2025-03-09', 充电量: 1, 手续费: 0, 收益: 1 }] as never, 'x.xlsx' as never)
+    await flushPromises()
+    expect(cpMeterApi.months, 'onImport 后要刷清单').toHaveBeenCalled()
+
+    // submitStation
+    vm.stForm = { name: '新桩X', operator: '新商', vehicleType: 'car' }
+    vi.mocked(cpMeterApi.createStation).mockResolvedValue({} as never)
+    vi.mocked(cpMeterApi.months).mockClear()
+    await vm.submitStation()
+    await flushPromises()
+    expect(cpMeterApi.months, 'submitStation 后要刷清单').toHaveBeenCalled()
+
+    // delStation
+    vm.openSt = STATIONS[0] as never
+    vi.mocked(cpMeterApi.deleteStation).mockResolvedValue(undefined as never)
+    vi.mocked(cpMeterApi.months).mockClear()
+    await vm.delStation()
+    await flushPromises()
+    expect(cpMeterApi.months, 'delStation 后要刷清单').toHaveBeenCalled()
+  })
+
+  it('❗切页签回来要重拉桩库与清单 —— 双实例对跨型写入不许失明', async () => {
+    // 附表7/8 是两个 KeepAlive 实例,桩库共享:在另一屏跨型建桩/点模拟填充后,
+    // 本实例的 stations/dataMonths 全部陈旧 —— 新桩不见 → 重建撞 409 却满屏找不到;
+    // 矩阵把 simulate 刚写的月画成空 → 用户对着假空表手工补录 → 双计。
+    // 房内解药 onReactivated 已用在 6 屏,本屏是移植时漏接的(复查坐实)。
+    const Host = defineComponent({
+      components: { CpMeterView },
+      props: { on: { type: Boolean, default: true } },
+      template: '<KeepAlive><CpMeterView v-if="on" vehicle-type="car" /></KeepAlive>',
+    })
+    const w = mount(Host, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    vi.mocked(cpMeterApi.stations).mockClear()
+    vi.mocked(cpMeterApi.months).mockClear()
+
+    await w.setProps({ on: false })   // 切走
+    await flushPromises()
+    await w.setProps({ on: true })    // 切回来
+    await flushPromises()
+
+    expect(cpMeterApi.stations, '切回来要重拉共享桩库').toHaveBeenCalled()
+    expect(cpMeterApi.months, '切回来要重拉账期清单').toHaveBeenCalled()
+  })
+
+  it('❗对面车型同年有人在编辑 → 模拟填充不许跑(simulate 是全类型写)', async () => {
+    const w = await toCar()
+    const vm = w.vm as unknown as { editMode: boolean; onSimulate: () => Promise<void> }
+    vm.editMode = true
+    await flushPromises()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    // 对面(ebike)同年有人在编辑 —— 在场表直接喂
+    const { usePresenceStore } = await import('@/stores/presence')
+    usePresenceStore().users = [{
+      sid: 's9', user: 'lisi', displayName: '李四', role: null, scope: null, label: '附表8',
+      mode: 'edit', editScopes: ['cp-meter:ebike:2025'], sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    await vm.onSimulate()
+    expect(cpMeterApi.simulate, 'simulate 会写对面的账,对面有锁就不许跑').not.toHaveBeenCalled()
+    expect(alert).toHaveBeenCalled()
+    expect(String(alert.mock.calls[0][0])).toContain('李四')
+  })
+})

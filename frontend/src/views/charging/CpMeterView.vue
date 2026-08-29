@@ -28,6 +28,8 @@ import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { onReactivated } from '@/composables/onReactivated'
+import { usePresenceStore } from '@/stores/presence'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
@@ -168,6 +170,16 @@ onMounted(() => {
   loadMonths()
   if (picked.value) loadMonth()   // 会话内选过期 → 直落表,不再撞矩阵
 })
+// ⚠ 附表7/8 是两个 KeepAlive 实例,桩库共享(全站派生审计「病根 A」的本屏变体):
+//   在另一屏跨型建桩/删桩、或点模拟填充(simulate 一次写两型),本实例的
+//   stations/dataMonths/本月数据全部陈旧 —— 新桩不见 → 重建撞 409 却满屏找不到;
+//   矩阵把 simulate 刚写的月画成空 → 用户对着假空表手工补录 → 与 simulated 行双计。
+//   样板 PvMeterView 单实例没有这根轴,移植时该补未补。解药与其它 6 屏同款。
+onReactivated(() => {
+  loadStations()
+  loadMonths()
+  if (picked.value) loadMonth()
+})
 watch(gateYm, () => { if (picked.value) loadMonth() })
 
 // 本屏桩集合(按路由类型过滤共享桩库)
@@ -230,6 +242,9 @@ function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string
 // ── 电表用电量(录入收编辑模式,EDIT-MODE-SPEC 2026-07-18 用户修订;乐观更新+PUT 回包校正) ──
 function commitMeter(u: CpPowerUsageDTO, raw: string) {
   if (!editReading.value) return
+  // 在途自守:fp-stale 的 pointer-events 挡不住**已聚焦**输入框的回车/失焦提交 ——
+  // 那一下按的是新 year/month,写的却是旧期语境下的数
+  if (reloading.value) return
   // ponytail: 后端无删除口(uk upsert),留空视为不动;录 0 表达"本月无用电"
   if (raw.trim() === '') return
   const v = Number(raw)
@@ -368,9 +383,19 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 
 // ── 模拟填充(编辑态;照 ElecCostView:confirm→POST→alert→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
 const simulating = ref(false)
+const presence = usePresenceStore()
 async function onSimulate() {
   if (!editMode.value || !canRun.value) return   // 模拟填充=整年批量派生,billing-run 权
   if (simulating.value) return
+  // ⚠ simulate(year) 是**全类型**的:后端同时读附表7+8、写 car 与 ebike 两型的记录与电表行,
+  //   而本屏只持 S.cpMeter(当前型, year) 一把锁 —— 不查对面就是绕过另一屏的期锁写对方的账。
+  //   查在场表(presence 早就带回来了,同 watchScope 的判法),对面有人就不跑。
+  const other = props.vehicleType === 'car' ? 'ebike' : 'car'
+  const otherEditor = presence.editorsUnder(S.cpMeter(other, year.value)).find(e => !e.self)
+  if (otherEditor) {
+    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${otherEditor.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    return
+  }
   if (!confirm(`模拟填充 ${year.value} 全年：按附表7/8 充电汇总(万城万/小桔/叮叮充/电信)推导各桩月末充电记录与电表用电量(小桔按 60/40 拆快充1/慢充1,通道费=收益×5%,均为假设口径)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
   simulating.value = true
   try {
@@ -554,7 +579,11 @@ async function onTemplate() {
     </Card>
 
     <!-- 电表与损耗小节(spec §2):每运营商一行;电表量录入收编辑模式(EDIT-MODE-SPEC 2026-07-18 用户修订) -->
-    <Card v-if="myUsage.length" surface="white" :padding="0" class="cm-usage">
+    <!-- ⚠ fp-stale 必须跟上(复查坐实的移植错位):换期在途窗口里这张卡不变灰不禁点,
+         commitMeter 按新 year/month upsert —— 把旧期语境下敲的电表数写进新期的行,
+         损耗派生跟着全错。样板只有一张卡,本屏第二张带写入口的卡当初忘了盖。 -->
+    <Card v-if="myUsage.length" surface="white" :padding="0" class="cm-usage"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="cm-usage-head">
         <span class="t"><component :is="iconFor('zap')" :size="14" />电表与损耗</span>
         <span class="s">每运营商每月一条电表用电量 · 损耗 = 电表 − Σ充电量(读时派生,负值黄警示不阻断){{ canReading && !editMode ? ' · 编辑模式下可录改电表值' : '' }}</span>
