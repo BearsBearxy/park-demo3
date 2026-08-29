@@ -773,6 +773,77 @@ describe('分桩充电明细 · 复查补钉', () => {
     expect(cpMeterApi.months, '切回来要重拉账期清单').toHaveBeenCalled()
   })
 
+  it('❗confirm 期间对面才进编辑 → 复查要拦住(TOCTOU)', async () => {
+    // confirm() 同步阻塞事件循环:对话框开着期间 ping 一拍都发不出,弹框前的检查
+    // 读的是冻结名单,窗口宽度 = 用户读文案的时长。服务端对 /simulate 不查锁,
+    // 前端这道闸是唯一防线 —— confirm 返回后必须再复查一次。
+    const w = await toCar()
+    const vm = w.vm as unknown as { editMode: boolean; onSimulate: () => Promise<void> }
+    vm.editMode = true
+    await flushPromises()
+    const { usePresenceStore } = await import('@/stores/presence')
+    const pres = usePresenceStore()
+    pres.users = []                                  // 弹框前:对面没人
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.spyOn(window, 'confirm').mockImplementation(() => {
+      // 用户读文案的这段时间里,李四在对面进了编辑态
+      pres.users = [{
+        sid: 's9', user: 'lisi', displayName: '李四', role: null, scope: null, label: '附表8',
+        mode: 'edit', editScopes: ['cp-meter:ebike:2025'], sinceMs: 1, idleMs: 0, self: false,
+      }]
+      return true
+    })
+
+    await vm.onSimulate()
+    expect(cpMeterApi.simulate, 'confirm 之后不复查就写穿对面的锁').not.toHaveBeenCalled()
+  })
+
+  it('❗电表卡与空态横幅也要吃车型过滤 —— myUsage/myIds 各自钉死', async () => {
+    // 上一条过滤测试只钉了 myStations(注释声称钉三处,又一次对覆盖面说假话)。
+    // myUsage 不过滤:car 屏的电表卡渲染出 ebike 运营商行,commitMeter 载荷带 u.vehicleType
+    // —— 在汽车屏上录数写进电动车的账。myIds 不过滤:只有 ebike 记录的月,car 屏的
+    // 「暂无记录」横幅会消失 —— 把别人的账当成自己的有数月。
+    vi.mocked(cpMeterApi.readings).mockResolvedValue([
+      { id: 9, stationId: 9, stationName: '单车棚A', readDate: '2025-03-05',
+        chargeKwh: 50, fee: 2, revenue: 20, note: null, source: 'manual' },
+    ] as never)                                       // 只有 ebike 桩的记录
+    vi.mocked(cpMeterApi.powerUsage).mockResolvedValue([
+      { id: 1, operator: '万城万', vehicleType: 'car', year: 2025, month: 3,
+        meterKwh: 100, sumChargeKwh: 95, lossKwh: 5, note: null },
+      { id: 2, operator: '叮叮充', vehicleType: 'ebike', year: 2025, month: 3,
+        meterKwh: 60, sumChargeKwh: 55, lossKwh: 5, note: null },
+    ] as never)
+    const w = await toCar()
+
+    expect(w.find('.cm-utable').text(), 'ebike 运营商行不许出现在汽车屏的电表卡').not.toContain('叮叮充')
+    expect(w.find('.cm-empty').exists(), '本型没有记录就该亮「暂无」—— ebike 的记录不算数').toBe(true)
+  })
+
+  it('❗切回来时已选的月也要重取 —— 双计剧本的后半段', async () => {
+    // onReactivated 的第三支 `if (picked) loadMonth()`:另一屏跑完 simulate 切回来,
+    // 矩阵经 loadMonths 亮了,可当前打开的月的表体仍是 simulate 前的旧数据 ——
+    // 用户对着缺行的表在别的日期补录,与 simulated 行双计。
+    const Host = defineComponent({
+      components: { CpMeterView },
+      props: { on: { type: Boolean, default: true } },
+      template: '<KeepAlive><CpMeterView v-if="on" vehicle-type="car" /></KeepAlive>',
+    })
+    const w = mount(Host, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    await w.findAll('.bmm-card')[2].trigger('click')   // 选 2025-03
+    await flushPromises()
+    vi.mocked(cpMeterApi.readings).mockClear()
+    vi.mocked(cpMeterApi.powerUsage).mockClear()
+
+    await w.setProps({ on: false })
+    await flushPromises()
+    await w.setProps({ on: true })
+    await flushPromises()
+
+    expect(cpMeterApi.readings, '切回来要重取当前月').toHaveBeenCalledWith(2025, 3)
+    expect(cpMeterApi.powerUsage, '电表行同理').toHaveBeenCalledWith(2025, 3)
+  })
+
   it('❗对面车型同年有人在编辑 → 模拟填充不许跑(simulate 是全类型写)', async () => {
     const w = await toCar()
     const vm = w.vm as unknown as { editMode: boolean; onSimulate: () => Promise<void> }

@@ -391,12 +391,23 @@ async function onSimulate() {
   //   而本屏只持 S.cpMeter(当前型, year) 一把锁 —— 不查对面就是绕过另一屏的期锁写对方的账。
   //   查在场表(presence 早就带回来了,同 watchScope 的判法),对面有人就不跑。
   const other = props.vehicleType === 'car' ? 'ebike' : 'car'
-  const otherEditor = presence.editorsUnder(S.cpMeter(other, year.value)).find(e => !e.self)
+  const busyOn = () => presence.editorsUnder(S.cpMeter(other, year.value)).find(e => !e.self)
+  const otherEditor = busyOn()
   if (otherEditor) {
     alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${otherEditor.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
     return
   }
   if (!confirm(`模拟填充 ${year.value} 全年：按附表7/8 充电汇总(万城万/小桔/叮叮充/电信)推导各桩月末充电记录与电表用电量(小桔按 60/40 拆快充1/慢充1,通道费=收益×5%,均为假设口径)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
+  // ⚠ confirm() 同步阻塞事件循环 —— 对话框开着期间 ping 一拍都发不出,上面那次检查读的
+  //   名单冻结在弹框**前**,窗口宽度 = 用户读文案的时长(TOCTOU,复查坐实)。返回后强制
+  //   刷一拍再复查,把窗口收窄到一个往返 + 3 秒传播。残余窗口如实说明:服务端对 /simulate
+  //   不查锁(锁在本仓是协作信号,scope 对服务端不透明,明写的架构取向)—— 这道闸是唯一防线。
+  await presence.ping()
+  const late = busyOn()
+  if (late) {
+    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${late.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    return
+  }
   simulating.value = true
   try {
     const r = await cpMeterApi.simulate(year.value)
