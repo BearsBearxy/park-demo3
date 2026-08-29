@@ -396,11 +396,15 @@ LAYOUT-STABILITY §1**——那条铁律管的是「用户的一次交互不得�
 ### 12.3 合并后红线（三道门禁 + 抽查）
 
 ```bash
-cd frontend && npx vue-tsc --noEmit -p tsconfig.app.json && npx vitest run && node scripts/token-check.mjs
+cd frontend && npm run build && npx vitest run
 ```
 
-全部门禁挂在 `npm run build` 里，绿了才算解完冲突；再按 §9 做四宽
-（1440/1180/768/390）+ 961/1000 边界抽查。1440 与合并前零差异是硬标准。
+**必须跑 `npm run build` 而不是只跑 vue-tsc/token-check**——size-check（包体
+预算门禁）只在 build 里跑，本分支 CI 第一次红就是验证时漏了它（手机三件套
+静态引入把 index 压破预算,后改懒加载 + 定高占位壳）。新增首屏常驻代码前先看
+`scripts/size-check.mjs` 的预算表；上调预算必须签字注释。
+门禁绿了才算解完冲突；再按 §9 做四宽（1440/1180/768/390）+ 961/1000 边界抽查。
+1440 与合并前零差异是硬标准。
 
 附：`.claude/launch.json` 的 `frontend-wt`（端口 5273）是给 worktree 并行开发用的
 第二前端入口——主仓 5173 被占时用它，别删。

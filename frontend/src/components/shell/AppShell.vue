@@ -9,11 +9,16 @@ import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
 import CommandPalette from '@/components/shell/CommandPalette.vue'
-// 手机三件套静态引入:它们是 S 档首帧就要在的铬边,懒加载会让内容区在块到达时
-// 重新量高——「容器尺寸挂载即终态」在手机首屏同样成立。
-import MobileTopBar from '@/components/shell/mobile/MobileTopBar.vue'
-import MobileBottomNav from '@/components/shell/mobile/MobileBottomNav.vue'
-import MobileNavDrawer from '@/components/shell/mobile/MobileNavDrawer.vue'
+import { defineAsyncComponent } from 'vue'
+// 手机三件套懒加载(size-check 门禁:index 预算 185KB,静态引入把它压破到 197.3——
+// 桌面用户永远用不到的代码不该进首屏包,FPApprovalDrawer 同一条铁律)。
+// 「容器尺寸挂载即终态」靠模板里的定高占位壳保证:壳首帧就把 52/56px(+safe-area)
+// 钉死,异步块到达后在壳内填充,内容区不重新量高——零位移与包体两全。
+// ⚠ 占位壳高度公式必须与组件自身的 height 逐字一致(MobileTopBar.vue:48 /
+//   MobileBottomNav.vue:49),改一边必须同步另一边。
+const MobileTopBar = defineAsyncComponent(() => import('@/components/shell/mobile/MobileTopBar.vue'))
+const MobileBottomNav = defineAsyncComponent(() => import('@/components/shell/mobile/MobileBottomNav.vue'))
+const MobileNavDrawer = defineAsyncComponent(() => import('@/components/shell/mobile/MobileNavDrawer.vue'))
 
 const ui = useUiStore()
 const reloadPage = () => window.location.reload()
@@ -45,6 +50,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocMousedown, true
 
 // ── S 档手机壳(spec §4.1)──
 const mnavOpen = ref(false)
+// 首次打开才挂抽屉(懒 chunk 的 v-if 门,见模板注释);之后保持挂载走进出场动效
+const mnavEverOpened = ref(false)
+watch(mnavOpen, (v) => { if (v) mnavEverOpened.value = true })
 
 const paletteOpen = ref(false)
 const paletteMode = ref<'jump' | 'new'>('jump')
@@ -115,17 +123,20 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
         <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
         <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
       </template>
-      <!-- S 档换手机顶栏(§4.1);tabs store 照常运转,只是不渲染 TabStrip -->
-      <MobileTopBar v-else @open-drawer="mnavOpen = true" @open-command="openPalette('jump')" />
+      <!-- S 档换手机顶栏(§4.1);tabs store 照常运转,只是不渲染 TabStrip。
+           定高占位壳:异步组件到达前高度已终态,内容区首帧即不再变(见 script 注释) -->
+      <div v-else class="fp-mtb-slot"><MobileTopBar @open-drawer="mnavOpen = true" @open-command="openPalette('jump')" /></div>
       <!-- content area:永不进 v-if——档位切换只换四周铬边(LAYOUT-STABILITY §7.3) -->
       <main class="fp-content">
         <slot />
       </main>
-      <MobileBottomNav v-if="tier === 's'" />
+      <div v-if="tier === 's'" class="fp-mbn-slot"><MobileBottomNav /></div>
     </div>
   </div>
 
-  <MobileNavDrawer v-if="tier === 's'" :open="mnavOpen" @close="mnavOpen = false" />
+  <!-- 抽屉是点按才出现的覆盖层,chunk 推迟到首次打开(FPApprovalDrawer 同款:
+       defineAsyncComponent + 外层 v-if,首开多一拍加载换首屏不背它) -->
+  <MobileNavDrawer v-if="tier === 's' && mnavEverOpened" :open="mnavOpen" @close="mnavOpen = false" />
 
   <CommandPalette
     :open="paletteOpen"
@@ -261,4 +272,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   /* toast 抬到底栏之上(§4.5):56px 底栏 + 20px 呼吸 + safe-area,不被底栏遮住 */
   .fp-net-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
 }
+/* 手机栏的定高占位壳:异步 chunk 到达前高度即终态,内容区不因铬边迟到重新量高
+   (LAYOUT-STABILITY 容器尺寸挂载即终态)。高度公式与组件自身 height 逐字同步:
+   MobileTopBar.vue:48 / MobileBottomNav.vue:49——改一边必须同步另一边。 */
+.fp-mtb-slot { flex: 0 0 auto; height: calc(52px + env(safe-area-inset-top)); }
+.fp-mbn-slot { flex: 0 0 auto; height: calc(56px + env(safe-area-inset-bottom)); }
 </style>
