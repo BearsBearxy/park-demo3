@@ -56,45 +56,143 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
       //   真正会被两个人抢的是**那一个月的 pin**（saveTemplate / pin 两个写口
       //   带的都是 (bookId, year, month)）。锁到册就多锁了：
       //   A 改 3 月模板会平白挡住 B 改 7 月，而它们根本不碰同一份东西。
-      expect(S.bookTemplate(7, 2026, 3)).toBe('book-template:7:2026-03')
-      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(7, 2026, 7))
-      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(8, 2026, 3))
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).toBe('book-template:ledger:7:2026-03')
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).not.toBe(S.bookTemplate('ledger', 7, 2026, 7))
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).not.toBe(S.bookTemplate('ledger', 8, 2026, 3))
+    })
+
+    it('屏进键 —— 两屏各自的模板面板不共占一把锁,侧栏圆点也才分得开', () => {
+      // 2026-08-29:反向护栏抓到 book-template:* 一条 NAV_SCOPE_PREFIX 都没有。
+      // 兜底登记成裸 'book-template' 之后精度不足 —— 台账某公司的模板被改,
+      // 附表10 的圆点也跟着亮。screen 进键之后两屏各注册各的前缀,互不误伤。
+      // 键是内存态标识符、不落库(见 lockScopes.ts 顶部),改分段零迁移。
+      expect(S.bookTemplate('s10', 7, 2026, 3)).toBe('book-template:s10:7:2026-03')
+      expect(S.bookTemplate('ledger', 7, 2026, 3))
+        .not.toBe(S.bookTemplate('s10', 7, 2026, 3))
+      // 前缀边界:ledger 那把不许被 s10 的前缀捞走(反之亦然)
+      expect(S.bookTemplate('s10', 7, 2026, 3).startsWith('book-template:ledger')).toBe(false)
     })
 
     it('月份补零 —— 不补的话 2026-3 与 2026-03 是两把锁', () => {
-      expect(S.bookTemplate(7, 2026, 3)).toBe(S.bookTemplate(7, 2026, 3))
-      expect(S.bookTemplate(7, 2026, 12)).toBe('book-template:7:2026-12')
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).toBe(S.bookTemplate('ledger', 7, 2026, 3))
+      expect(S.bookTemplate('ledger', 7, 2026, 12)).toBe('book-template:ledger:7:2026-12')
     })
   })
 
   describe('导航项 → 作用域前缀（侧栏圆点用）', () => {
+    /**
+     * S 的**每个**构造器 → 它产出的样例 + 该被哪些导航项认领。
+     *
+     * ⚠ 由 Object.keys(S) 完整性断言驱动(下面第一条):新增构造器不来这里登记当场红 ——
+     *   旧版是手写数组,漏登记的前提恰恰是有人忘了回来改这个文件,那时数组里也不会有它,
+     *   反向循环根本遍历不到,「下一个漏登记当场红」并不成立(2026-08-29 复查坐实)。
+     * ⚠ navs 是**精确认领集**,不是「有人认领就行」:把锁根挂到无关导航项上,
+     *   旧版两条护栏照样绿,而侧栏一个熄一个乱亮。出账链四屏共一把锁 → 三个导航项
+     *   同时认领是设计内的,所以这里是集合相等,不是「恰好一个」。
+     */
+    const SAMPLES: Record<string, { scopes: string[]; navs: string[] }> = {
+      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
+      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'bill-notices'] },
+      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
+      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'bill-notices'] },
+      ledger:      { scopes: [S.ledger(3, 2025, 6)],   navs: ['ledger'] },
+      elecCost:    { scopes: [S.elecCost(2025, 6)],    navs: ['elec-cost'] },
+      bookTemplate: {
+        scopes: [S.bookTemplate('ledger', 7, 2026, 3), S.bookTemplate('s10', 2, 2026, 3)],
+        navs: ['ledger', 'sales-income'],   // 按 screen 各归各屏 —— 精度由下面那条点名断言另钉
+      },
+      meters:   { scopes: [S.meters(2025)],  navs: ['meters'] },
+      pvMeter:  { scopes: [S.pvMeter(2025)], navs: ['pv-income'] },
+      cpMeter:  { scopes: [S.cpMeter('car', 2025), S.cpMeter('ebike', 2025)],
+                  navs: ['car-charging', 'ebike-charging'] },
+      pv:       { scopes: [S.pv(2025)],       navs: ['pv-income'] },
+      elecSched: { scopes: [S.elecSched(2025)], navs: ['elec-cost'] },
+      charging: { scopes: [S.charging(7, 2025), S.charging(8, 2025)],
+                  navs: ['car-charging', 'ebike-charging'] },
+      utilities: { scopes: [S.utilities(13, 2025), S.utilities(14, 2025)], navs: ['utilities'] },
+      salary:   { scopes: [S.salary(2025, 6)], navs: ['salary'] },
+      s10:      { scopes: [S.s10(1, 2025, 6)], navs: ['sales-income'] },
+      s10Year:  { scopes: [S.s10Year(1, 2025)], navs: ['sales-income'] },
+      pnl: {
+        scopes: [S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
+                 S.pnl('ops', 2025), S.pnl('expense', 2025)],
+        navs: ['rent-pnl', 'elec-pnl', 'water-pnl', 'ops-pnl', 'expense-pnl'],
+      },
+      report: {
+        scopes: [S.report('is', 3, 2025, 6)!, S.report('bs', 3, 2025, 6)!, S.report('tb', 3, 2025, 6)!],
+        navs: ['income-statement', 'balance-sheet', 'trial-balance'],
+      },
+    }
+
+    it('❗S 的每个构造器都进了样例表 —— 新构造器不登记这里当场红', () => {
+      expect(Object.keys(SAMPLES).sort()).toEqual(Object.keys(S).sort())
+    })
+
+    const produced = Object.values(SAMPLES).flatMap((v) => v.scopes)
+
+    it('❗每个构造器的认领集 = 声明的那组导航项 —— 挂错 nav / 多挂 / 漏挂当场红', () => {
+      // 旧版两条护栏只问「有没有人认领」:把锁根登记到无关导航项上照样绿,
+      // 而侧栏是一个熄一个乱亮(db0805e 只给 book-template 点名钉过,普遍性质没人守)。
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+      for (const [ctor, { scopes, navs }] of Object.entries(SAMPLES)) {
+        const claimed = new Set<string>()
+        for (const sc of scopes) {
+          for (const [nav, p] of Object.entries(NAV_SCOPE_PREFIX)) {
+            if ((Array.isArray(p) ? p : [p]).some((prefix) => hit(prefix, sc))) claimed.add(nav)
+          }
+        }
+        expect([...claimed].sort(), `构造器 ${ctor} 的认领集`).toEqual([...navs].sort())
+      }
+    })
+
     it('表里每个前缀都真的是某个作用域构造器会产出的', () => {
       // 这张表**会烂**：谁改了作用域模板却忘了改它，圆点就永远不亮 ——
-      // 而且不报错、没人发现。这条测试是它唯一的护栏。
-      const produced = [
-        S.ledger(3, 2025, 6),
-        S.paramCenter(2025, 6),
-        S.meters(2025),
-        S.pvMeter(2025),
-        S.cpMeter('car', 2025),
-        S.cpMeter('ebike', 2025),
-        S.elecCost(2025, 6),
-        S.report('is', 3, 2025, 6)!,
-        S.report('bs', 3, 2025, 6)!,
-        S.report('tb', 3, 2025, 6)!,
-        S.pv(2025), S.elecSched(2025),
-        S.charging(7, 2025), S.charging(8, 2025),
-        S.utilities(13, 2025), S.utilities(14, 2025),
-        S.salary(2025, 6), S.s10(1, 2025, 6),
-        S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
-        S.pnl('ops', 2025), S.pnl('expense', 2025),
-        S.bookTemplate(7, 2026, 3),
-      ]
-      const covers = (prefix: string) => produced.some(
-        (sc) => sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-'))
+      // 而且不报错、没人发现。
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+      const flat = Object.entries(NAV_SCOPE_PREFIX)
+        .flatMap(([nav, p]) => (Array.isArray(p) ? p : [p]).map((prefix) => [nav, prefix] as const))
 
-      for (const [nav, prefix] of Object.entries(NAV_SCOPE_PREFIX)) {
-        expect(covers(prefix), `导航项「${nav}」的前缀 ${prefix} 已对不上任何作用域构造器`).toBe(true)
+      for (const [nav, prefix] of flat) {
+        expect(produced.some((sc) => hit(prefix, sc)),
+               `导航项「${nav}」的前缀 ${prefix} 已对不上任何作用域构造器`).toBe(true)
+      }
+    })
+
+    it('两屏的模板锁互不误亮 —— 这条才是 screen 进键要保的东西', () => {
+      // ⚠ 上面那条反向断言**保不住精度**:退回裸 `book-template` 前缀它照样绿
+      //   (裸前缀把两屏都覆盖了)。真正要钉的是「台账那把不被附表10 的前缀捞走」。
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+      const of = (nav: string) => {
+        const p = NAV_SCOPE_PREFIX[nav]
+        return Array.isArray(p) ? p : [p]
+      }
+      const ledgerTpl = S.bookTemplate('ledger', 7, 2026, 3)
+      const s10Tpl = S.bookTemplate('s10', 2, 2026, 3)
+
+      expect(of('ledger').some((p) => hit(p, ledgerTpl)), '台账的模板锁该被台账认领').toBe(true)
+      expect(of('ledger').some((p) => hit(p, s10Tpl)),
+             '附表10 的模板锁不该点亮台账的圆点').toBe(false)
+      expect(of('sales-income').some((p) => hit(p, s10Tpl))).toBe(true)
+      expect(of('sales-income').some((p) => hit(p, ledgerTpl)),
+             '台账的模板锁不该点亮附表10 的圆点').toBe(false)
+    })
+
+    it('反过来也要成立:每个作用域构造器都被某个前缀覆盖', () => {
+      // 上面那条只查单向。**漏的那一半才是真出过事的一半**:
+      // 功能门让四个导航项底下各多出一套锁根(pv-meter / cp-meter / elec-cost),
+      // 它们从 2026-07-20 起就没有任何 nav 指向 —— 有人正在改分栋抄表,侧栏圆点永远不亮,
+      // 而这三个构造器**明明白白列在上面的 produced 数组里当「覆盖源」用**,测试照样绿。
+      // 2026-08-29 放开一对多 + 补上这条反向断言,下一个漏登记的构造器当场红。
+      const prefixes = Object.values(NAV_SCOPE_PREFIX).flatMap((p) => (Array.isArray(p) ? p : [p]))
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+
+      for (const sc of produced) {
+        expect(prefixes.some((prefix) => hit(prefix, sc)),
+               `作用域 ${sc} 没有任何导航项登记 —— 有人在这里编辑,侧栏圆点不会亮`).toBe(true)
       }
     })
   })

@@ -90,8 +90,11 @@ export const cpMeterApi = {
   deleteStation: (id: number): Promise<void> => http.delete(`/cp-meter/stations/${id}`),
   // 有充电记录的年份升序;空表=[](年选择器数据驱动)
   years: (): Promise<number[]> => http.get('/cp-meter/years'),
-  // 有充电记录的账期全集('YYYY-MM' 升序);默认月取 max,替代逐月探测
-  months: (): Promise<string[]> => http.get('/cp-meter/months'),
+  // 有充电记录的账期全集('YYYY-MM' 升序)。
+  // vehicleType 非空=只数该车型的桩 —— 附表7(汽车)与附表8(电动车)是两个独立的屏,
+  // 拿全集会让汽车屏的选期矩阵把电动车录过的月画成「有数据」。
+  months: (vehicleType?: string): Promise<string[]> =>
+    http.get('/cp-meter/months', { params: { vehicleType } }),
   // month 可空=全年(ENERGY-ANALYSIS-SPEC §4,充电桩分析屏年视角;传值行为不变)
   readings: (year: number, month?: number, stationId?: number): Promise<CpReadingDTO[]> =>
     http.get('/cp-meter/readings', { params: { year, month, stationId } }),

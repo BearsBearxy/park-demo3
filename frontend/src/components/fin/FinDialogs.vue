@@ -5,7 +5,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
-import type { FinCompany } from './FinCompanyPicker.vue'
+import type { FinCompany } from './useFinStatementScreen'
 
 // 单一 dlg 描述符,null = 不显示。company: 新建/重命名;delco: 确认删除;addrow: 加子类。
 export type FinDialog =

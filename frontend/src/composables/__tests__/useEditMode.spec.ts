@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useEditMode } from '@/composables/useEditMode'
@@ -242,5 +242,140 @@ describe('system 权限永远不进 can() 的提权那一侧', () => {
     auth.permissions = ['elevate:request', 'billing-run:edit']
     expect(auth.can('system:view')).toBe(false)
     expect(auth.can('system:edit')).toBe(false)
+  })
+})
+
+describe('编辑模式 × 换期', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  // ── 换期(2026-08-29):作用域一变,旧锁就不该再握着 ──
+  //
+  // 出账链改造给了「换出账月」一个专门的按钮,这条路比原来的顶栏下拉显眼得多。
+  // 但洞是既有的:改前用下拉换年月,editMode 与锁同样原地不动 ——
+  // 于是能拿着 3 月的锁去改 5 月,正是 CONCURRENCY-SPEC 要防的那件事。
+  // 修在共享的这一处,不在七个调用方各写一遍(漏一个就是一把没人认领的锁)。
+  async function enterAt(scope: () => string | null) {
+    asRole(['entry:edit'])
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
+    const m = useEditMode(['entry:edit'], { scope })
+    await m.toggle()
+    return m
+  }
+
+  it('❗编辑态下换期 → 自动退出并还锁,不许拿着 3 月的锁改 5 月', async () => {
+    const ym = ref('2025-03')
+    const m = await enterAt(() => `billing-chain:${ym.value}`)
+    expect(m.editMode.value).toBe(true)
+    expect(api.post).toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+
+    ym.value = '2025-05'
+    await nextTick()
+    expect(m.editMode.value, '换期必须退出编辑态').toBe(false)
+    expect(api.delete, '旧锁必须还回去(还的是旧的那把)')
+      .toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+  })
+
+  it('作用域没变就不动 —— 别把无关的重渲当成换期', async () => {
+    const ym = ref('2025-03')
+    const m = await enterAt(() => `billing-chain:${ym.value}`)
+    ym.value = '2025-03'
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
+  })
+
+  it('❗占锁在途时期变了 → 不进编辑态,并把刚拿到的锁还回去', async () => {
+    // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门。
+    // 上面那条 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
+    // (发起时还没进过编辑态),条件里 `before != null` 当场把它放过去。
+    // 后果在带选期门的屏上最狠(光伏分栋抄表/分桩明细/电费成本总览):
+    // 退回矩阵后 editMode 仍为真,而唯一的「完成」按钮长在 v-else 的表格页里、已经不渲染
+    // —— 锁握着、没有写入口、也没有出口,别人还被挡在外面。
+    asRole(['entry:edit'])
+    const ym = ref('2025-03')
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(
+      new Promise(r => { settle = r }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+
+    const pending = m.toggle()
+    ym.value = '2025-05'                      // ← 往返期间换了期
+    settle({ granted: true, holder: null })
+    await pending
+
+    expect(m.editMode.value, '锁的已经不是他要编的那一期了').toBe(false)
+    expect(api.delete, '刚拿到的那把锁要立刻还回去')
+      .toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+  })
+
+  it('❗占锁在途时不许再发一趟 —— 两趟重叠会互相拆台', async () => {
+    // 上一版只做了"回来复核一次期",没挡住重叠。两趟交错结算时(先发的后回,
+    // 正是链路抖一下再恢复的常态):迟到的那趟把 useEditLock 里共享的 `held`
+    // 覆写回旧 scope、再 start() 一遍,然后复核发现期变了就 release() ——
+    // stop() 无条件撤掉键鼠监听、把 handleEviction 置 null、presence 降回 view。
+    // 终态:人留在新期的编辑态,而新期那把锁服务端还挂着却再没有心跳,
+    // 3 分钟 TTL 一到别人 acquire 直接 granted,两人同改同保存互相整片覆盖,
+    // 且接管回调已是 null,这一侧连「你被接管了」都不会弹。
+    asRole(['entry:edit'])
+    const ym = ref('2025-03')
+    const settlers: ((v: unknown) => void)[] = []
+    vi.mocked(api.post).mockImplementation(
+      () => new Promise(r => { settlers.push(r as (v: unknown) => void) }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+
+    const first = m.toggle()          // 第一趟:占 2025-03,卡住
+    ym.value = '2025-05'
+    const second = m.toggle()         // 第二趟:在途时又点了一下
+    expect(settlers, '在途时不该再发一趟 acquire').toHaveLength(1)
+
+    settlers[0]({ granted: true, holder: null })
+    await Promise.all([first, second])
+    expect(m.editMode.value, '期已经变了,不该进编辑态').toBe(false)
+    expect(api.delete, '还的必须是自己占的那把').toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+    expect(vi.mocked(api.delete).mock.calls, '只该还一次').toHaveLength(1)
+  })
+
+  it('在途那趟结束之后还能再进 —— 别把闸门永久关上', async () => {
+    asRole(['entry:edit'])
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockImplementationOnce(
+      () => new Promise(r => { settle = r as (v: unknown) => void }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const p1 = m.toggle()
+    settle({ granted: true, holder: null })
+    await p1
+    expect(m.editMode.value).toBe(true)
+    m.exit()
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
+    await m.toggle()
+    expect(m.editMode.value, 'entering 没复位 → 从此再也进不去').toBe(true)
+  })
+
+  it('占锁在途但期没变 → 照常进编辑态(别把正常路径也拦了)', async () => {
+    asRole(['entry:edit'])
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(
+      new Promise(r => { settle = r }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const pending = m.toggle()
+    settle({ granted: true, holder: null })
+    await pending
+    expect(m.editMode.value).toBe(true)
+    expect(api.delete).not.toHaveBeenCalled()
+  })
+
+  it('不上锁的屏(没传 scope)不受影响 —— 它本来就没有期这回事', async () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'])
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
   })
 })

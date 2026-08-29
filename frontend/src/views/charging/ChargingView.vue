@@ -5,7 +5,7 @@
 // schedule no 从路由 meta.kind 取(schedule7→7 汽车 / schedule8→8 电动车);两路由共用本 View。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted , watch} from 'vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { chargingApi } from '@/api/charging'
@@ -16,6 +16,8 @@ import type {
   ChargingCatDTO, ChargingOverviewDTO, ChargingYearDTO, ChargingRecordDTO, ChargingRecordReq,
   ChargingImportRow,
 } from '@/types/charging'
+import { loadViewMode, saveViewMode } from '@/utils/viewMode'
+import BookRailShell from '@/components/fp/BookRailShell.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -40,9 +42,21 @@ const sub = computed(() =>
 const gateTitle = computed(() => (no.value === 8 ? '电动车充电桩' : '汽车充电桩'))
 const vehicleType = computed<'car' | 'ebike'>(() => (no.value === 8 ? 'ebike' : 'car'))
 
-// ── 功能门(CP-METER-SPEC §2,模式 1:1 照 PvView):进入先选「月度汇总(原附表)/分桩充电明细(新)」──
+// ── 一屏两本账(2026-08-29 设计稿 §②):左栏常驻「报送台账 / 分桩运营账」,记住上次 ──
+//    原 CP-METER-SPEC §2 的功能门(整屏两卡)已退场,理由同 PvView。
 // 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表7/8 流程零行为变化,整体包进 v-else。
-const mode = ref<'summary' | 'meter' | null>(null)
+// 一屏两本账(2026-08-29「两本账」设计稿 §②):左栏常驻,记住上次看的是哪一本。
+// 改前是一道**整屏拦住**的功能门,而且 mode 是纯本地 ref —— 侧栏点击走 openFresh
+// 会重建组件,每次进来都得重答一遍这道选择题。三份规范本来就写着「会话内记住选择」,
+// 实现从落笔那天起就没做到(openFresh 的语义比那三份规范早 11 天)。
+const MODES = [
+  { id: 'summary', name: '报送台账', desc: '按运营商 · 按月' },
+  { id: 'meter', name: '分桩运营账', desc: '按桩 · 按日' },
+] as const
+type Mode = (typeof MODES)[number]['id']
+const MODE_SCREEN = no.value === 7 ? 'car-charging' : 'ebike-charging'
+const mode = ref<Mode>(loadViewMode(MODE_SCREEN, MODES.map(m => m.id), 'summary'))
+watch(mode, (m) => saveViewMode(MODE_SCREEN, m))
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const cat = ref('all')
@@ -74,6 +88,15 @@ const {
   },
 })
 
+// ⚠ 切账本必须退出编辑态。`edit` 由本层持有(useSchedScreen),锁却由子组件 SchedHeader 持有,
+//   还锁挂在 useEditLock 的 onUnmounted 上 —— 切走时 SchedHeader 卸载,**锁真的还了**,
+//   而 edit 仍是 true。切回来 SchedHeader 重新挂载,props.edit 已是 true:它的 scope 守卫有
+//   `before == null` 前提不会触发,也没有 onMounted 重新 acquire —— 于是表格以编辑态渲染
+//   却一把锁都没有,两个人能同时改同一期,后写静默盖先写(CONCURRENCY-SPEC §1.1 那个事故)。
+//   改前离开只有 SchedHeader 的 @back → goGate,而 goGate 第一件事就是 edit=false;
+//   左栏是这一刀新开的、绕过 goGate 的退出路径,得自己补上这一句。
+watch(mode, () => { edit.value = false })
+
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年利润·N条」)
 const yearCards = computed<YearCard[]>(() =>
   (overview.value?.years ?? []).map(y => ({
@@ -98,6 +121,7 @@ onMounted(async () => {
 // 确认导入 → runImport(共享 registry:customParse 已把解析期跳过暂存到 importCtx._parseErrors,run 合并 + 记录 import_log)。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await guard('导入失败', async () => {
     importResult.value = await runImport('charging_' + no.value, recs, importCtx, fileName)
     await refresh()
@@ -105,6 +129,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
 }
 
 const onCreate = (req: ChargingRecordReq) => guard('新增记账失败', async () => {
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await chargingApi.create(no.value, req)
   drawer.value = false
   // 提交后归入对应年份(可能与当前选中年不同)
@@ -131,36 +156,15 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <!-- ⓪ 功能门(CP-METER-SPEC §2):两卡分叉,文案随屏;卡片风格同 SchedYearGate 年卡。
-       fp-fluid = 摘掉 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8):本屏查看态已按
-       §5.4/§5.5/§6 迁移——卡片墙防溢出、表在 .ch-tablewrap 内横滚、hover 显形控件触屏常显。
-       各状态根(功能门/年份门/年表/转圈)逐一挂;CpMeterView 未迁移,不挂、保地板。 -->
-  <div v-if="mode === null" class="ch-fngate fp-fluid">
-    <div class="ch-fngate-head">
-      <h2 class="ch-fngate-title">
-        <span class="ic"><component :is="iconFor(icon)" :size="18" /></span>{{ gateTitle }}
-      </h2>
-      <p class="ch-fngate-sub">选择进入方式 · 月度汇总 = 附表{{ no }} 原年度台账;分桩明细 = 逐桩逐日充电明细</p>
-    </div>
-    <div class="ch-fngate-grid">
-      <div class="ch-fncard" @click="mode = 'summary'">
-        <span class="ch-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
-        <div class="ch-fnc-ic"><component :is="iconFor(icon)" :size="20" /></div>
-        <div class="ch-fnc-name">附表{{ no }} · 月度汇总</div>
-        <div class="ch-fnc-desc">按运营商逐月记账的手续费及服务费、充电成本与利润台账,含导入与年度合计 —— 原有流程。</div>
-      </div>
-      <div class="ch-fncard" @click="mode = 'meter'">
-        <span class="ch-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
-        <div class="ch-fnc-ic"><component :is="iconFor('plug')" :size="20" /></div>
-        <div class="ch-fnc-name">分桩充电明细</div>
-        <div class="ch-fnc-desc">逐桩按日期记录充电量、手续费与收益,自动汇月;并按运营商核对电表用电量与损耗。</div>
-      </div>
-    </div>
-    <p class="ch-fngate-foot"><component :is="iconFor('info')" :size="13" />两种视图数据相互独立;分桩汇总与附表{{ no }} 的对账功能后续提供。</p>
-  </div>
-
+  <!-- 外壳收敛(第 5 步共享件):三屏此前各抄一份同字节的 aside+CSS,现在共用 BookRailShell -->
+  <BookRailShell title="充电桩" :books="MODES" :active-id="mode"
+                 @select="(id) => (mode = id as Mode)"
+                 :class="{ 'fp-fluid': mode !== 'meter' }">
+  <!-- fp-fluid 条件挂(RESPONSIVE-LAYOUT-SPEC §8):master 侧给旧功能门逐状态挂的摘地板意图,
+       随功能门消亡移植到壳根 —— 报送台账各态已迁移,摘 800px 地板;分桩运营账(CpMeterView) 未迁移,
+       渲染在壳内,那本账保地板(响应式侧原话「不挂、保地板」)。迁移完那屏后把条件拆掉。 -->
   <!-- 分桩充电明细(新屏,附表7/8 共享组件按类型过滤桩) -->
-  <CpMeterView v-else-if="mode === 'meter'" :vehicle-type="vehicleType" @back="mode = null" />
+  <CpMeterView v-if="mode === 'meter'" :vehicle-type="vehicleType" />
 
   <!-- 附表7/8 · 月度汇总:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
   <template v-else-if="overview">
@@ -176,10 +180,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       :current="overview.currentYear"
       :store-key="'charging-' + no"
       footer="每个年份是一份独立的逐月台账;进入后在编辑模式下新增或导入。"
-      back-label="返回功能选择"
       @pick="pickYear"
-      @back="mode = null"
-    /><!-- back=功能门回退口(组件既有 prop);附表7/8 年内流程零改动 -->
+    />
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
@@ -264,30 +266,12 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
-  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
+  <div v-else class="page-loading"><span class="page-spin" /></div>
+  </BookRailShell>
 </template>
 
 <style scoped>
 /* 1:1 from screen-charging.jsx ChStyles(.ch-page,24) */
 .ch-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 
-/* ── 功能门(CP-METER-SPEC §2):样式 1:1 同 PvView pv-fngate 家族 ── */
-.ch-fngate { display:flex; flex-direction:column; gap:18px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
-.ch-fngate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ch-fngate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
-.ch-fngate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
-/* minmax 内层 min(100%,280px):容器比 280 还窄(390px 视口减铬边)时列宽退让到容器宽,防横向溢出(spec §5.5;照 BuildingsView) */
-.ch-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%,280px),1fr)); gap:16px; max-width:720px; }
-.ch-fncard { position:relative; display:flex; flex-direction:column; gap:10px; min-height:152px; padding:21px 23px; box-sizing:border-box; cursor:pointer; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
-.ch-fncard:hover { border-color:var(--border-strong); box-shadow:0 8px 24px rgba(28,28,28,.10); transform:translateY(-2px); }
-.ch-fnc-ic { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
-.ch-fnc-name { font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.ch-fnc-desc { font-size:12.5px; line-height:1.55; color:var(--text-muted); }
-.ch-fnc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.ch-fncard:hover .ch-fnc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
-.ch-fngate-foot { margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
-
-@media (hover: none) { /* 触屏(§6.1):hover 显形的卡片跳转箭头常显(整卡可点,箭头是可供性提示) */
-  .ch-fnc-go { opacity:1; transform:translateX(0); }
-}
 </style>

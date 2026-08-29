@@ -41,9 +41,16 @@ export const S = {
    *
    *   链本身（版本号 链尾+1、只追加不改写）不进锁：P4 明说版本就是「一套列的快照」，
    *   两条并行的快照是**有意允许**的，不是丢失更新。
+   *
+   * ⚠ 2026-08-29 再改一次:**screen 进键**。面板长在两屏里（月度台账 / 附表10），
+   *   而 `NAV_SCOPE_PREFIX` 要靠前缀把「谁在这屏里编辑」分开。裸 `book-template` 前缀
+   *   跨两屏 —— 台账某公司的模板被改，附表10 的圆点也跟着亮。
+   *   分段之后两屏各注册各的（`book-template:ledger` / `book-template:s10`），互不误伤。
+   *   键是内存态标识符、不落库（见本文件顶部），后端把 scope 当不透明字符串（LockService
+   *   只拿它当 map 键，不解析），所以改分段**零迁移**。
    */
-  bookTemplate: (bookId: number, year: number, month: number) =>
-    `book-template:${bookId}:${year}-${pad2(month)}`,
+  bookTemplate: (screen: 'ledger' | 's10', bookId: number, year: number, month: number) =>
+    `book-template:${screen}:${bookId}:${year}-${pad2(month)}`,
 
   // ── 按年锁（§3.1 D：表档案全局无期，抽屉可任意补录历史月，锁到月挡不住串写） ──
   meters: (year: number) => `meters:${year}`,
@@ -66,7 +73,6 @@ export const S = {
   charging: (no: number, year: number) => `sched:charging:${no}:${year}`,
   utilities: (no: number, year: number) => `sched:utilities:${no}:${year}`,
   salary: (year: number, month: number) => `sched:salary:${year}-${pad2(month)}`,
-  salaryYear: (year: number) => `sched:salary:${year}`,
   s10: (phase: number | string, year: number, month: number) =>
     `sched:s10:${phase}:${year}-${pad2(month)}`,
   s10Year: (phase: number | string, year: number) => `sched:s10:${phase}:${year}`,
@@ -87,20 +93,29 @@ export const S = {
  * 导航项 → 作用域前缀（侧栏 / 页签的小圆点用）。
  *
  * ⚠ 这张表**会烂**：谁改了上面的作用域模板却忘了改它，圆点就永远不亮 ——
- *   而且不报错、没人发现。lockScopes.spec.ts 里那条「每个前缀都对得上某个构造器」
- *   是它唯一的护栏。
+ *   而且不报错、没人发现。lockScopes.spec.ts 里那两条护栏（正向：每个前缀都对得上某个
+ *   构造器；反向：每个构造器都被某个前缀覆盖）是它仅有的保障。
+ *
+ * ⚠ **一个导航项可以有多个锁根**（2026-08-29 放开）。四个屏底下各装着两本账
+ *   （报送台账走 `sched:*`，运营账走 `pv-meter:*` / `cp-meter:*` / `elec-cost:*`），
+ *   改前这里是 `Record<string, string>`，一对一，那三条**没有任何办法登记进去** ——
+ *   于是有人正在改分栋抄表，侧栏圆点永远不亮。这不是有人忘了填，是类型表达不了。
+ *   反向护栏就是为了让下一个漏登记的构造器当场变红。
  */
-export const NAV_SCOPE_PREFIX: Record<string, string> = {
-  'ledger': 'ledger',
+export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
+  // 账册模板面板长在这两屏里,自带第 16 权限点与独立的锁 —— 只握模板锁的人
+  // (没进屏的编辑模式)改前不会让圆点亮。反向护栏 2026-08-29 抓到的。
+  // 键里带 screen,所以两屏各注册各的,不会互相误亮。
+  'ledger': ['ledger', 'book-template:ledger'],
   'params': 'billing-chain',
   'alloc': 'billing-chain',
   'bill-notices': 'billing-chain',
   'meters': 'meters',
-  'pv-income': 'sched:pv',
-  'car-charging': 'sched:charging:7',
-  'ebike-charging': 'sched:charging:8',
-  'sales-income': 'sched:s10',
-  'elec-cost': 'sched:elec',
+  'pv-income': ['sched:pv', 'pv-meter'],
+  'car-charging': ['sched:charging:7', 'cp-meter:car'],
+  'ebike-charging': ['sched:charging:8', 'cp-meter:ebike'],
+  'sales-income': ['sched:s10', 'book-template:s10'],
+  'elec-cost': ['sched:elec', 'elec-cost'],
   'salary': 'sched:salary',
   'utilities': 'sched:utilities',
   'income-statement': 'report:is',

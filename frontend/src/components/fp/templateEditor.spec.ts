@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -306,7 +308,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     await w.find('button.te-editbtn').trigger('click')
     await flushPromises()
 
-    expect(acquire).toHaveBeenCalledWith('book-template:1:2026-03')
+    expect(acquire).toHaveBeenCalledWith('book-template:ledger:1:2026-03')
     w.unmount()
   })
 
@@ -318,7 +320,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const presence = usePresenceStore()
     presence.users = [{
       sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-      scope: 'book-template:1:2026-03', label: '账册模板', mode: 'edit',
+      scope: 'book-template:ledger:1:2026-03', label: '账册模板', mode: 'edit', editScopes: ['book-template:ledger:1:2026-03'],
       sinceMs: 1000, idleMs: 0, self: false,
     }]
 
@@ -334,7 +336,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const presence = usePresenceStore()
     presence.users = [{
       sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-      scope: 'book-template:1:2026-07', label: '账册模板', mode: 'edit',
+      scope: 'book-template:ledger:1:2026-07', label: '账册模板', mode: 'edit', editScopes: ['book-template:ledger:1:2026-07'],
       sinceMs: 1000, idleMs: 0, self: false,
     }]
 
@@ -383,5 +385,41 @@ describe('TemplateEditorPanel · 版本选择器', () => {
     expect(w.find('.te-verpick').attributes('disabled')).toBeDefined()
     expect(w.find('.te-editbtn').attributes('disabled')).toBeDefined()
     expect(w.text()).toContain('已录入')
+  })
+})
+
+describe('模板面板 · 被接管时复制我的改动', () => {
+  it('❗草稿与原定义的差(新增/改动/删除)进 TSV,dirty 数与差行数一致', async () => {
+    // draft 是整份深拷贝,重进编辑态整份重新快照 —— 被踢后不复制就是白改。
+    const w = await mountEdit()
+    await flushPromises()
+    const vm = w.vm as unknown as {
+      draft: { groups: { id: string; label: string | null; cols: Record<string, unknown>[] }[] } | null
+      templateDirty: number
+      templateDraftAsTsv: () => string
+    }
+    expect(vm.templateDirty, '刚快照完,零差异').toBe(0)
+
+    // 改一列名 + 加一列 + 删一列
+    const g = vm.draft!.groups[0]
+    ;(g.cols[0] as { label: string }).label = '改了的名字'
+    g.cols.push({ id: 'c_new1', std: false, label: '新列', aliases: [], slot: g.cols[0].slot, hidden: false })
+    const removed = g.cols.splice(1, 1)[0]
+    await Promise.resolve()
+
+    expect(vm.templateDirty).toBe(3)
+    const tsv = vm.templateDraftAsTsv()
+    expect(tsv).toContain('改动\t')
+    expect(tsv).toContain('改了的名字')
+    expect(tsv).toContain('新增\t')
+    expect(tsv).toContain('新列')
+    expect(tsv).toContain('删除\t')
+    expect(tsv).toContain(String((removed as { label: string }).label))
+  })
+
+  it('❗序列化器真的绑在被接管弹窗上 —— 只有函数没有绑定等于没接', () => {
+    const src = readFileSync(join(__dirname, 'TemplateEditorPanel.vue'), 'utf8')
+    expect(src.includes(':copy-text="templateDraftAsTsv"'), '弹窗断线,被踢的人拿不到复制的路').toBe(true)
+    expect(src.includes(':dirty-count="templateDirty"')).toBe(true)
   })
 })
