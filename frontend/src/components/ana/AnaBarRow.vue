@@ -23,12 +23,23 @@ const valText = computed(() => props.value.toFixed(props.value % 1 ? 1 : 0))
 <template>
   <div class="ak-bar-row">
     <span class="ak-bar-name">{{ name }}</span>
-    <div class="ak-bar-track">
-      <div class="ak-bar-fill" :style="{ width: wPct + '%', background: fill }"></div>
-      <span v-if="tPct != null" class="ak-bar-target" :style="{ left: tPct + '%' }" :title="'目标 ' + target + suffix"></span>
+    <!-- 定位壳:track 有 overflow:hidden 会裁掉出界文字,目标小字只能挂壳上 -->
+    <div class="ak-bar-twrap">
+      <div class="ak-bar-track">
+        <div class="ak-bar-fill" :style="{ width: wPct + '%', background: fill }"></div>
+        <span v-if="tPct != null" class="ak-bar-target" :style="{ left: tPct + '%' }"></span>
+      </div>
+      <!-- 触屏无 hover 取不到 title → 改常驻小字贴目标线;绝对定位不占行高(LAYOUT-STABILITY:等高) -->
+      <span v-if="tPct != null" class="ak-bar-tlabel" :style="{ left: tPct + '%' }">目标 {{ target }}{{ suffix }}</span>
     </div>
     <span class="ak-bar-val">{{ valText }}{{ suffix }}</span>
     <span v-if="delta != null" class="ak-bar-delta" :style="{ color: deltaColor(delta, deltaInvert) }">
       {{ delta >= 0 ? '+' : '−' }}{{ Math.abs(delta).toFixed(1) }}</span>
   </div>
 </template>
+
+<style scoped>
+/* 壳接管 track 原来的 flex:1;自身高度仍由 8px track 撑起 → 行高与加字前完全一致 */
+.ak-bar-twrap { flex: 1; position: relative; }
+.ak-bar-tlabel { position: absolute; top: calc(100% + 1px); transform: translateX(-50%); font-size: var(--fs-micro); line-height: 1; color: var(--text-muted); white-space: nowrap; pointer-events: none; }
+</style>

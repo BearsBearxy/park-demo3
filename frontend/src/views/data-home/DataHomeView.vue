@@ -61,8 +61,10 @@ const sortedItems = computed(() =>
        骨架能画准是因为两个数都是常量:出账链恒 4 步,附表恒 9 项
        (后端 DataHomeService 写死 `new Schedules(done, 9, items)`)。
        静态文案(本月工作 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
-       糊成微光条反而是把已知的东西藏起来。 -->
-  <div class="dh">
+       糊成微光条反而是把已知的东西藏起来。
+       fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
+       出账链/附表本就是 flex-wrap 胶囊行,横幅/大卡 S 档允许换行即可,无定宽结构。 -->
+  <div class="dh fp-fluid">
     <template v-if="!ov">
       <div class="dh-head">
         <div class="dh-period">
@@ -232,4 +234,16 @@ const sortedItems = computed(() =>
 .dh-idot { font-size: 11px; color: var(--hue-blue); }
 .dh-iname { color: var(--text-primary); }
 .dh-itag { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-secondary); }
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5;宽档规则在前)──
+   出账链 .dh-steps / 附表 .dh-items 天生 flex-wrap,窄档自动换行,不用另写;
+   横幅 .dh-bt(flex:1 无 nowrap)中文逐字换行,也不用另写。
+   只有三个 space-between 行在 390 视口(内容区 ~310)会被撑破,放开换行:
+   - head:标题+月份选择(~218px)+ 进度数字(~150px)装不进一行 → 数字落到第二行;
+   - cur 大卡:骨架 shim 定宽 196px + 按钮 104px > 卡内宽 → 按钮落下一行(数据态同理);
+   - empty 空态:文案 + CTA 同题。
+   换行由视口宽度决定、同一视口内确定不变——不违反同视口交互零位移(§7)。 */
+@media (max-width: 600px) {
+  .dh-head, .dh-cur, .dh-empty { flex-wrap: wrap; }
+}
 </style>

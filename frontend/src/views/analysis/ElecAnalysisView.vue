@@ -278,11 +278,11 @@ const spreadOption = computed<object>(() => ({
         </div>
 
         <div class="av2-grid">
-          <!-- 图1 s12:收益四指标月度趋势 -->
-          <div class="av2-card av2-s12">
+          <!-- 图1 s12:收益四指标月度趋势;本屏无 s8 屏,av2-core 人工点名——结论条总结的正是这四指标,首图即主叙事 -->
+          <div class="av2-card av2-s12 av2-core">
             <div class="av2-card-h">
               <span class="t">收益四指标月度趋势 · {{ year }}年</span>
-              <span class="hint">万元 · 缺源月断点不补 0 · 点击深链成本总览对应月</span>
+              <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
             </div>
             <AnaEChart v-if="trendHasData" :option="trendOption" :height="300" @chart-click="onChartClick" />
             <AnaEmpty v-else :label="year + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />

@@ -291,7 +291,10 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
+  <!-- 根收编 .mx-page(迁移①):内联 height:100% 媒体查询盖不住,S 档高度链三件套要在类上生效;
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板。列表区本就是流式 .cl-item 卡(320px sidebar 出身),
+       S 档单列(mx-list.css ≤1100)天然成立,无需 FPSortableTable #card -->
+  <div class="mx-page fp-fluid">
     <!-- 1. Header -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -449,4 +452,17 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 .mx-gapchip.on { background:var(--hue-orange); border-color:var(--hue-orange); color:#fff; }
 .mx-gapchip b { font-variant-numeric:tabular-nums; }
 .mx-gaphint { color:var(--text-muted); font-size:11.5px; }
+
+/* M/S 档(≤960)工具条收纳(spec §5.1 M 行):与 BuildingsView 同一屏侧收纳块。
+   不进全局 mx-list.css 的理由同——租户/系统用户两屏未迁、仍垫着地板,全局改会波及未验收屏。 */
+@media (max-width: 960px) {
+  .mx-toolbar-right { flex-wrap: wrap; }
+  .mx-search { flex: 1 1 160px; width: auto; }
+  .fp-phasetabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .fp-phasetabs::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 600px) { /* S */
+  /* iOS 聚焦缩放三件套之一(spec §6.5):S 档输入 16px。裸 input 屏侧自扛(ds 组件已各自处理) */
+  .mx-search input, .mx-asof input[type="date"] { font-size: var(--fs-input-m); }
+}
 </style>

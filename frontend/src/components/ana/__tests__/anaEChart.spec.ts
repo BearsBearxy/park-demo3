@@ -1,5 +1,5 @@
 // AnaEChart 薄封装单测(jsdom 无 canvas → 整体 mock ./echartsBundle;屏组组件测试沿用此规约):
-// init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose。
+// init('fpAnaTheme') / 主题注册 / setOption(notMerge) / option 更新 / click 透传 / resize / dispose / S 档图高降档。
 // ⚠ 桩掉的是整个装配模块,所以「注册清单是否漏项」本测试**零覆盖** —— 只能在浏览器里看控制台。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -21,7 +21,7 @@ class ROStub {
 }
 ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = ROStub
 
-import AnaEChart from '../AnaEChart.vue'
+import AnaEChart, { mobilizeOption } from '../AnaEChart.vue'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -70,6 +70,21 @@ describe('AnaEChart', () => {
     w.unmount()
   })
 
+  it('S 档(matchMedia ≤600 命中)图高降档:lg300→260;挂载时一次初判,不挂 resize 监听', async () => {
+    // jsdom 的 matchMedia 一律 matches:false(等于非 S 档),既有用例的 height 直传就是这么保住的;
+    // 这里桩成命中来走降档分支。断言映射一档即可——映射表是纯查表,五档全列是重复自己。
+    const orig = window.matchMedia
+    window.matchMedia = vi.fn(() => ({ matches: true }) as MediaQueryList)
+    try {
+      const w = mount(AnaEChart, { props: { option: {}, height: 300 } })
+      await flushPromises()
+      expect(w.attributes('style')).toContain('height: 260px')
+      w.unmount()
+    } finally {
+      window.matchMedia = orig
+    }
+  })
+
   it('ResizeObserver 触发 resize;卸载 dispose + 断开观察', async () => {
     const w = mount(AnaEChart, { props: { option: {}, height: 180 } })
     await flushPromises()
@@ -80,5 +95,75 @@ describe('AnaEChart', () => {
     w.unmount()
     expect(h.chart.dispose).toHaveBeenCalled()
     expect(lastRO!.disconnect).toHaveBeenCalled()
+  })
+})
+
+// mobilizeOption 纯函数(设计稿 §03 移动化注入)。原则:只补屏侧没写的键,显式设置一律尊重。
+// 结果按整键 toEqual 断言 —— 顺带锁住「没让它改的兄弟键一根毛都没动」。
+describe('mobilizeOption', () => {
+  const m = (o: object, isS: boolean) => mobilizeOption(o, isS) as Record<string, unknown>
+
+  it('全档注入 tooltip.confine:true;显式 confine:false 尊重;数组形态跳过;无键不凭空造', () => {
+    expect(m({ tooltip: { trigger: 'axis' } }, false).tooltip).toEqual({ trigger: 'axis', confine: true })
+    expect(m({ tooltip: { confine: false } }, true).tooltip).toEqual({ confine: false })
+    expect(m({ tooltip: [{ trigger: 'axis' }] }, true).tooltip).toEqual([{ trigger: 'axis' }])
+    expect(m({}, true)).toEqual({})
+  })
+
+  it('isS:dataZoom 剔 slider 保 inside;剔空删键(数组与对象形态同);legend 未设 type 改 scroll', () => {
+    expect(m({ dataZoom: [{ type: 'inside' }, { type: 'slider' }] }, true).dataZoom).toEqual([{ type: 'inside' }])
+    expect('dataZoom' in m({ dataZoom: [{ type: 'slider' }] }, true)).toBe(false)
+    expect('dataZoom' in m({ dataZoom: { type: 'slider' } }, true)).toBe(false)
+    expect(m({ legend: {} }, true).legend).toEqual({ type: 'scroll' })
+    expect(m({ legend: { type: 'plain' } }, true).legend).toEqual({ type: 'plain' })
+  })
+
+  it('isS:xAxis/yAxis(对象或数组)axisLabel 补 hideOverlap:true;已显式设不碰', () => {
+    const r = m({ xAxis: { type: 'category' }, yAxis: [{ axisLabel: { hideOverlap: false } }, {}] }, true)
+    expect(r.xAxis).toEqual({ type: 'category', axisLabel: { hideOverlap: true } })
+    expect(r.yAxis).toEqual([{ axisLabel: { hideOverlap: false } }, { axisLabel: { hideOverlap: true } }])
+  })
+
+  it('isS:line/scatter symbolSize 三态 —— 数字+2、未设给 6、函数跳过;symbol:none 与非目标系列不碰', () => {
+    const fn = (): number => 4
+    const r = m({ series: [
+      { type: 'line', symbolSize: 4 },
+      { type: 'scatter' },
+      { type: 'line', symbolSize: fn },
+      { type: 'line', symbol: 'none' },
+      { type: 'bar', symbolSize: 4 },
+    ] }, true)
+    expect(r.series).toEqual([
+      { type: 'line', symbolSize: 6 },
+      { type: 'scatter', symbolSize: 6 },
+      { type: 'line', symbolSize: fn },
+      { type: 'line', symbol: 'none' },
+      { type: 'bar', symbolSize: 4 },
+    ])
+  })
+
+  it('入参不被原地突变(option 来自屏侧 computed,突变会污染响应式源)', () => {
+    const input = {
+      tooltip: { trigger: 'axis' },
+      legend: {},
+      dataZoom: [{ type: 'inside' }, { type: 'slider' }],
+      xAxis: { type: 'category' },
+      yAxis: [{}],
+      series: [{ type: 'line' }],
+    }
+    const snap = JSON.parse(JSON.stringify(input))
+    m(input, true)
+    expect(input).toEqual(snap)
+  })
+
+  it('isS=false:除 tooltip.confine 外零改动(桌面零视觉差异)', () => {
+    const input = {
+      tooltip: { trigger: 'axis' },
+      legend: {},
+      dataZoom: [{ type: 'slider' }],
+      xAxis: { type: 'category' },
+      series: [{ type: 'line', symbolSize: 4 }],
+    }
+    expect(m(input, false)).toEqual({ ...input, tooltip: { trigger: 'axis', confine: true } })
   })
 })

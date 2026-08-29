@@ -35,7 +35,9 @@ const prevPath = computed(() => (props.prev && props.prev.length ? smoothPath(co
 const areaPath = computed(() =>
   curPath.value + ' L ' + w.value.toFixed(1) + ' ' + (props.height - padB) + ' L 0 ' + (props.height - padB) + ' Z')
 
-function onMove(e: MouseEvent) {
+// 取数单入口:mouse/touch/pen 统一走 pointer 事件族——触屏靠 pointerdown 立即定位、
+// pointermove 跟随;鼠标同路,桌面行为与原 mousemove 等价(换算逻辑不变)。
+function onMove(e: PointerEvent) {
   const node = el.value
   if (!node) return
   const r = node.getBoundingClientRect()
@@ -46,8 +48,9 @@ function onMove(e: MouseEvent) {
 
 <template>
   <div>
-    <div ref="el" :style="{ position: 'relative', width: '100%', height: height + 'px', cursor: 'crosshair' }"
-      @mousemove="onMove" @mouseleave="hi = null">
+    <!-- touch-action:pan-y——横向划归十字线取数、纵向滚动放行;不加这条,触屏一划就滚页取不了数 -->
+    <div ref="el" :style="{ position: 'relative', width: '100%', height: height + 'px', cursor: 'crosshair', touchAction: 'pan-y' }"
+      @pointerdown="onMove" @pointermove="onMove" @pointerleave="hi = null" @pointercancel="hi = null">
       <svg :width="w" :height="height" style="display: block; overflow: visible">
         <defs>
           <linearGradient id="akTrendGrad" x1="0" y1="0" x2="0" y2="1">

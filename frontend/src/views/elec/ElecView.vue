@@ -123,8 +123,11 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <!-- ⓪ 功能门(ELEC-COST-SPEC §4):两卡分叉,卡片风格同 SchedYearGate 年卡 -->
-  <div v-if="mode === null" class="e11-fngate">
+  <!-- ⓪ 功能门(ELEC-COST-SPEC §4):两卡分叉,卡片风格同 SchedYearGate 年卡。
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8):本屏查看态已按
+       §5.4/§5.5/§6 迁移——卡片墙防溢出、表在 .e11-tablewrap 内横滚、hover 显形控件触屏常显。
+       各状态根(功能门/年份门/年表/转圈)逐一挂;ElecCostView 未迁移,不挂、保地板。 -->
+  <div v-if="mode === null" class="e11-fngate fp-fluid">
     <div class="e11-fngate-head">
       <h2 class="e11-fngate-title">
         <span class="ic"><component :is="iconFor('zap')" :size="18" /></span>电费
@@ -155,6 +158,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      class="fp-fluid"
       :scope-of="(y) => S.elecSched(y)"
       v-if="year === null"
       icon="zap"
@@ -171,7 +175,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
-      <div class="e11-page">
+      <div class="e11-page fp-fluid">
         <SchedHeader
           :scope="S.elecSched(year)"
           icon="zap"
@@ -243,13 +247,13 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       />
     </template>
 
-    <!-- 切年/切类过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <!-- 切年/切类过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -261,7 +265,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 .e11-fngate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .e11-fngate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
 .e11-fngate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
-.e11-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; max-width:720px; }
+/* minmax 内层 min(100%,280px):容器比 280 还窄(390px 视口减铬边)时列宽退让到容器宽,防横向溢出(spec §5.5;照 BuildingsView) */
+.e11-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%,280px),1fr)); gap:16px; max-width:720px; }
 .e11-fncard { position:relative; display:flex; flex-direction:column; gap:10px; min-height:152px; padding:21px 23px; box-sizing:border-box; cursor:pointer; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
 .e11-fncard:hover { border-color:var(--border-strong); box-shadow:0 8px 24px rgba(28,28,28,.10); transform:translateY(-2px); }
 .e11-fnc-ic { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
@@ -270,4 +275,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 .e11-fnc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
 .e11-fncard:hover .e11-fnc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
 .e11-fngate-foot { margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+@media (hover: none) { /* 触屏(§6.1):hover 显形的卡片跳转箭头常显(整卡可点,箭头是可供性提示) */
+  .e11-fnc-go { opacity:1; transform:translateX(0); }
+}
 </style>

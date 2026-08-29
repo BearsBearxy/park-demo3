@@ -183,7 +183,8 @@ const structOpt = computed<object>(() => {
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
             <span class="t">{{ selCard?.no }} {{ selCard?.name }} · 12 月组合</span>
-            <span class="hint">点上方卡片切换 · 环比=上月虚线 · 万元</span>
+            <!-- 移动稿:首段是交互话术,S 档收走时连尾部「· 」一起,余文不残分隔符 -->
+            <span class="hint"><span class="hint-desk">点上方卡片切换 · </span>环比=上月虚线 · 万元</span>
           </div>
           <AnaEChart :option="mainOpt" :height="300" />
         </div>

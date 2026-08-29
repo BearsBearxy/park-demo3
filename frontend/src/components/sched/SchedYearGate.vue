@@ -197,6 +197,13 @@ function submit() {
 .sm-yc-del { position:absolute; top:16px; right:16px; z-index:4; width:30px; height:30px; border:1px solid var(--border-subtle); border-radius:50%; background:var(--surface-white); color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; opacity:0; transition:opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
 .sm-ycard:hover .sm-yc-del { opacity:1; }
 .sm-yc-del:hover { background:rgb(255,238,237); color:var(--hue-red); border-color:rgb(255,210,206); }
+/* 触屏无 hover:两个 hover 显形入口常显(RESPONSIVE-LAYOUT-SPEC §6.1)。
+   删除钮是「移除空年」唯一入口,不常显在触屏就是功能丢失;箭头弱化到 .55 只作可点暗示。
+   本组件被 6 个附表屏共享,P3 年账迁移时两个屏组都点名此处,一处修全收益。 */
+@media (hover: none) {
+  .sm-yc-go { opacity:.55; transform:none; }
+  .sm-yc-del { opacity:1; }
+}
 .sm-yc-foot { margin-top:auto; }
 .sm-yc-metric { font-size:19px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); letter-spacing:-0.01em; white-space:nowrap; }
 .sm-yc-mlabel { font-size:11.5px; color:var(--text-muted); margin-top:5px; }

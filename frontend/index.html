@@ -2,7 +2,9 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover:没有它 iOS 上 env(safe-area-inset-*) 恒为 0,
+         S 档顶/底栏与全屏 sheet 的 safe-area 方案整套失效(RESPONSIVE-LAYOUT-SPEC §10) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Factory Park</title>
     <!-- 远程 webfont 已从 tokens.css 移除(境内不可达,一直走回退字体),preconnect 随之删除。
          改为自托管 Roboto Mono,这里 preload 它:浏览器默认要等 CSS 解析完、并且发现有文字真的
@@ -15,8 +17,12 @@
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html { width: 100%; height: 100%; overflow: hidden; }
-      /* 横向放开:视口 < 960px 地板(fp-stage min-width)时 body 出横滚保内容不被切;≥960 无溢出自然无滚条。纵向仍由外壳内部卡片滚动。 */
+      /* 横向放开:存量兜底(旧 T3 地板已由 RESPONSIVE-LAYOUT-SPEC §8 屏级地板取代,
+         横滚下沉到 .fp-content 内部,正常情况下这里不再触发)。纵向仍由外壳内部卡片滚动。 */
       body { width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden; }
+      /* S 档高度基准改 dvh(RESPONSIVE-LAYOUT-SPEC §10):iOS 地址栏收起时 100% 链按旧视口算,
+         body overflow-y:hidden 会把超出的底栏裁掉;dvh 跟随视觉视口。#app 的 100% 继承自 body 即可。 */
+      @media (max-width: 600px) { /* S */ html, body { height: 100dvh; } }
     </style>
   </head>
   <body>

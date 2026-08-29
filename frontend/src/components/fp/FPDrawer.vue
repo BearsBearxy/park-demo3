@@ -86,6 +86,8 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: var(--fp-dwr-z, var(--z-modal));
   background: rgba(28, 28, 28, .34);
+  /* iOS ≤17 只认带前缀的写法,无前缀在真机上等于没有模糊 */
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -175,5 +177,21 @@ onBeforeUnmount(() => {
   padding: 14px 22px;
   border-top: 1px solid var(--divider);
   background: var(--surface-card);
+}
+
+/* S 档全屏接管(RESPONSIVE-LAYOUT-SPEC §4.4):居中弹卡是桌面隐喻,≤600 改全屏 sheet,
+   体区照旧内滚。分支全在组件内部,调用方零改动——width 是调用方经 :style 内联传进来的,
+   组件内只有 !important 盖得住内联,这是「零改动」的代价,不是偷懒。 */
+@media (max-width: 600px) {
+  .fp-dwr-backdrop { padding: 0; }
+  .fp-dwr {
+    width: 100% !important;
+    height: 100%;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+  }
+  /* 脚部贴底,给 iOS 手势条让位 */
+  .fp-dwr-ft { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 }
 </style>

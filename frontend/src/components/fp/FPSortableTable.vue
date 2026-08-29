@@ -5,6 +5,7 @@ import Popover from '@/components/ds/Popover.vue'
 import PopoverItem from '@/components/ds/PopoverItem.vue'
 import { fpSortRows } from './fpSort'
 import type { SortState, SortValue } from './fpSort'
+import { useViewport } from '@/composables/useViewport'
 
 // 列定义（原从已删除的 ds/DataTable.vue 导入；FPSortableTable 是唯一使用方，内联于此）
 export interface SortableColumn<Row = any> {
@@ -49,6 +50,16 @@ const props = withDefaults(defineProps<{
 })
 
 const isSel = (r: any) => props.selectedKey != null && r[props.rowKey] === props.selectedKey
+
+// S 档(≤600)行转卡片(RESPONSIVE-LAYOUT-SPEC §5.1):不渲染 <table>,改渲染 72px 定高卡列。
+// useViewport 自带 jsdom/SSR guard(无 matchMedia → tier 恒 'xl'),既有测试走表格分支不变。
+const { tier } = useViewport()
+
+// S 档兜底卡取列内容:与 td 同一取值路径(render 优先,否则按 key 取),列不够时给 null
+function cellNode(r: any, i: number) {
+  const c = props.columns[i]
+  return c ? (c.render ? c.render(r) : r[c.key]) : null
+}
 
 const emit = defineEmits<{
   sortChange: [sort: SortState | null]
@@ -154,8 +165,9 @@ function renderSortHeader(col: SortableColumn) {
 </script>
 
 <template>
-  <!-- Mirrors DataTable layout exactly; headers replaced with Popover sort triggers -->
-  <div style="width:100%;overflow-x:auto">
+  <!-- Mirrors DataTable layout exactly; headers replaced with Popover sort triggers.
+       宽档分支写在前(与 CSS「宽档在前窄档在后」同序);S 档见下方 v-else 卡片分支 -->
+  <div v-if="tier !== 's'" style="width:100%;overflow-x:auto">
     <table :style="{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-sans)', tableLayout: fixedLayout ? 'fixed' : undefined }">
       <thead>
         <tr style="border-bottom:1px solid var(--divider)">
@@ -230,5 +242,37 @@ function renderSortHeader(col: SortableColumn) {
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <!-- S 档(≤600)卡片分支(RESPONSIVE-LAYOUT-SPEC §5.1):每行一张 72px 定高卡,
+       几何统一在 mx-list.css 的 .mx-rowcard(不逐屏手写)。排序照常作用于 sortedRows;
+       行点击与选中态语义与表格分支一致(同 emit、同 is-selected 判定)。 -->
+  <div v-else>
+    <!-- 骨架卡:与真卡同 .mx-rowcard 定高同结构,只是格子换成微光条——
+         与表格骨架互斥按档出,exactPlaceholder「精确占位」口径在 S 档同样成立 -->
+    <div v-for="i in (skeletonRows || 0)" :key="'skc-' + i" class="mx-rowcard" aria-hidden="true">
+      <span class="fp-shim"
+            :style="{ display: 'inline-block', height: '13px', borderRadius: '3px',
+                      width: [46, 58, 40, 52][i % 4] + '%' }"></span>
+      <span class="fp-shim"
+            :style="{ display: 'inline-block', height: '11px', borderRadius: '3px',
+                      width: [68, 60, 74, 56][i % 4] + '%' }"></span>
+    </div>
+    <div
+      v-for="r in sortedRows"
+      :key="(r as any)[rowKey]"
+      class="mx-rowcard"
+      :class="{ 'is-selected': isSel(r) }"
+      @click="$emit('rowClick', r)"
+    >
+      <!-- 调用方给 #card 时按屏映射;不给时兜底:第一列 = 主字段,第二三列 = 次级行 -->
+      <slot name="card" :row="r">
+        <div class="mx-rowcard-main"><Cell :node="cellNode(r, 0)" /></div>
+        <div class="mx-rowcard-sub">
+          <span v-if="columns[1]"><Cell :node="cellNode(r, 1)" /></span>
+          <span v-if="columns[2]"><Cell :node="cellNode(r, 2)" /></span>
+        </div>
+      </slot>
+    </div>
   </div>
 </template>

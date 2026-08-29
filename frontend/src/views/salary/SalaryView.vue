@@ -154,7 +154,10 @@ const onExport = () => guard('导出失败', async () => {
   <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
     <!-- ⓪ 年份选择层 -->
+    <!-- fp-fluid:年份门是屏根 Fragment 的一种首元素形态,卡片墙 auto-fill 天然自适应,
+         不摘地板会让 390 视口平白横滚(RESPONSIVE-LAYOUT-SPEC §8) -->
     <SchedYearGate
+      class="fp-fluid"
       :scope-of="(y) => S.salaryYear(y)"
       v-if="year === null"
       icon="wallet"
@@ -169,7 +172,9 @@ const onExport = () => guard('导出失败', async () => {
 
     <!-- 年度明细表 -->
     <template v-else-if="monthData">
-      <div class="s12-page">
+      <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移(宽表 S 档单 sticky + 表内横滚,
+           工具行 flex-wrap 自收纳),摘掉 base.css 的 M↓ 屏级地板 -->
+      <div class="s12-page fp-fluid">
         <FPLoadBar :on="veil" />
         <SchedHeader
           :scope="S.salary(year, month)"
@@ -215,6 +220,12 @@ const onExport = () => guard('导出失败', async () => {
           </div>
         </div>
 
+        <!-- ≤600 重编辑提示(§5.3/§11.2):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
+             (LAYOUT-STABILITY §2-3)。备注直编/批删照常可用,不拦不藏 -->
+        <div class="s12-s-hint">
+          <span v-if="edit">编辑模式 · 小屏可操作,建议在桌面端操作</span>
+        </div>
+
         <SalaryTable
           :year="year"
           :month="month"
@@ -251,13 +262,13 @@ const onExport = () => guard('导出失败', async () => {
       />
     </template>
 
-    <!-- 切年/切月过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <!-- 切年/切月过渡兜底转圈(fp-fluid:转圈形态也是屏根首元素,不摘会让窄档平白横滚) -->
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -268,4 +279,12 @@ const onExport = () => guard('导出失败', async () => {
 .s12-toolbar-r { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .s12-count { font-size:12px; color:var(--text-muted); }
 .s12-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
+
+/* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+.s12-s-hint { display:none; }
+
+/* ── S 档(≤600):编辑不拦不藏,常驻预留提示行(§5.3/§11.2;LAYOUT-STABILITY §2-3 预留位) ── */
+@media (max-width: 600px) {
+  .s12-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 </style>

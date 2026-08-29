@@ -3,6 +3,7 @@
 // thead 实高(样式常量)。与渲染内容零耦合:严禁测量 tbody 行高,否则形成
 // 「pageSize→内容→尺寸→pageSize」反馈回路(2026-07-15 深页码抽搐闪烁 bug 的根因)。
 import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { useViewport } from '@/composables/useViewport'
 
 /** 纯计算:可用高÷行高向下取整,钳位 [min,max](单测锁定)。 */
 export const fitRows = (availH: number, theadH: number, rowH: number, min = 6, max = 30): number =>
@@ -10,7 +11,13 @@ export const fitRows = (availH: number, theadH: number, rowH: number, min = 6, m
 
 export function useFitRows(wrap: Ref<HTMLElement | null>, rowH = 56, fallback = 10): Ref<number> {
   const pageSize = ref(fallback)
+  // S 档(≤600)停用 fitRows(RESPONSIVE-LAYOUT-SPEC §2「仅 S 档停用」/§5.1):手机拆掉
+  // 高度驱动布局链后 clientHeight 量出来的是内容高——恰是上面严禁的反馈回路,故固定每页
+  // 10、整个测量跳过。useViewport 自带 jsdom/SSR guard(无 matchMedia → tier 恒 'xl'),
+  // 既有测试与桌面路径零变化。
+  const { tier } = useViewport()
   const measure = () => {
+    if (tier.value === 's') { pageSize.value = 10; return }
     const el = wrap.value
     if (!el || !el.clientHeight) return                         // 未布局(jsdom/未挂载)时保持 fallback
     const cs = getComputedStyle(el)
@@ -26,6 +33,9 @@ export function useFitRows(wrap: Ref<HTMLElement | null>, rowH = 56, fallback = 
     if (el && ro) ro.observe(el)                                // 首次挂载/布局尺寸变 → 重算
     measure()
   })
+  // 跨档切换(旋屏/拖窗过 600px):resize 事件与 matchMedia change 的先后无保证,
+  // 只靠 resize 里读 tier 可能读到旧值——这条不吃顺序,进出 S 档都能落到正确分支
+  watch(tier, measure)
   onMounted(() => {
     measure()
     if (ro) ro.observe(document.documentElement)                // 100vh 变化(改窗口高)也触发

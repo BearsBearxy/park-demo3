@@ -4,7 +4,7 @@
 // 左轨 BookRail 常驻(账册即公司,§7-2 实体切换在左栏);年份范围=数据年∪当前年∪手工年(utils/matrixYears);
 // 进宽表必点月卡(§7-1 明确选期门,pick 自带年份);表格态「换期」回矩阵。
 // 旧动线(公司picker→年份门→月历)已废,LedgerCompanyPicker/LedgerMonthGrid 不再引用(文件保留待主线拍板)。
-import { ref, computed, watch, onMounted, onDeactivated } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onDeactivated } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
@@ -187,6 +187,15 @@ async function loadMonth() {
   const data = await ledgerApi.month(companyId.value, year.value, month.value)
   if (reqId === monthReq) monthDto.value = flatMonth(data)
 }
+
+// ≤960 顶部账册 chips(RESPONSIVE-LAYOUT-SPEC §5.6):选中项常显——深链/切册后选中 chip
+// 可能在横滚区外,滚到可见。jsdom 无 scrollIntoView,可选调用兜底;桌面档 chips display:none,
+// scrollIntoView 对不可见元素是空操作,不必按档跳过。
+const chipsEl = ref<HTMLElement | null>(null)
+watch(activeBookId, async () => {
+  await nextTick()
+  chipsEl.value?.querySelector('.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+})
 
 // ── 状态迁移 ─────────────────────────────────────────────
 async function selectBook(id: number) {
@@ -641,7 +650,9 @@ function gotoTenants() {
 </script>
 
 <template>
-  <div class="lgw">
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3/§5.6 迁移(左轨收 chips、宽表 S 档单 sticky、
+       矩阵横滚圈在 .lgw-matrix 内),摘掉 base.css 的 M↓ 屏级地板——表内自滚,屏根不再触发双重横滚 -->
+  <div class="lgw fp-fluid">
     <!-- 左轨:本屏账册(账册即公司)常驻,一键切换;新增/删除公司入口走 company:manage(第15权限点) -->
     <aside class="lgw-rail">
       <div class="lgw-rail-t">台账账册</div>
@@ -654,6 +665,17 @@ function gotoTenants() {
         @delete="delOpen = true"
       />
     </aside>
+
+    <!-- ≤960 左轨收成顶部横向 chips(§5.6):选择语义与轨内点击同源 selectBook(含编辑态脏确认);
+         ≥961 隐藏、桌面零变化。新增/删除入口同一权限门,不因收轨而消失(弹窗本就是全档覆盖层) -->
+    <div ref="chipsEl" class="lgw-chips">
+      <button v-for="b in books" :key="b.id" class="lgw-chip" :class="{ on: b.id === activeBookId }"
+              @click="selectBook(b.id)">{{ b.name }}</button>
+      <template v-if="auth.can('company:manage')">
+        <button class="lgw-chip mng" @click="newDlg = true">＋ 新增</button>
+        <button class="lgw-chip mng" @click="delOpen = true">删除</button>
+      </template>
+    </div>
 
     <div class="lgw-main">
       <!-- 载入中 -->
@@ -690,6 +712,11 @@ function gotoTenants() {
 
       <!-- 表格态 + 行明细抽屉 -->
       <template v-else-if="monthDto">
+        <!-- ≤600 重编辑提示(§5.3):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
+             (LAYOUT-STABILITY §2-3;条件挂在行内 span 上,不进流内块门禁)。编辑不拦不藏 -->
+        <div class="lgw-s-hint">
+          <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+        </div>
         <LedgerWideTable
           :month="monthDto"
           :draft="draft"
@@ -839,6 +866,36 @@ function gotoTenants() {
 .lgw-sub { margin:4px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
 .lgw-matrix { flex:0 0 auto; }
 
+/* 顶部 chips 与 S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+.lgw-chips { display:none; }
+.lgw-s-hint { display:none; }
+
+/* ── M/S 档(≤960):左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6) ── */
+@media (max-width: 960px) {
+  .lgw { flex-direction:column; gap:12px; }
+  .lgw-rail { display:none; }
+  .lgw-chips { flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:2px; }
+  .lgw-chip {
+    flex:0 0 auto; display:inline-flex; align-items:center;
+    height:36px; padding:0 14px; border-radius:var(--radius-full);
+    border:1px solid var(--border-subtle); background:var(--surface-white);
+    color:var(--text-secondary); font-family:var(--font-sans);
+    font-size:var(--fs-label); font-weight:var(--fw-medium);
+    cursor:pointer; white-space:nowrap;
+  }
+  /* 选中态只换色不改尺寸(布局稳定铁律,同 BookRail .br-item.on 语义) */
+  .lgw-chip.on { border-color:var(--hue-blue); background:var(--accent-blue); color:var(--text-primary); }
+  .lgw-chip.mng { border-style:dashed; color:var(--text-muted); }
+  /* 矩阵 12 月卡窄档装不下:横滚圈在矩阵块内,账册头/主区其余内容不跟着滚 */
+  .lgw-matrix { overflow-x:auto; }
+}
+
+/* ── S 档(≤600):台账录入不拦不藏,常驻预留提示行(§5.3;LAYOUT-STABILITY §2-3 预留位) ── */
+@media (max-width: 600px) {
+  .lgw-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+  /* 宽表主体(LedgerWideTable 根)从 height:100% 改弹性填充:给提示行让位,整屏不多滚一截 */
+  .lgw-s-hint + .lg-page { height:auto; flex:1 1 auto; }
+}
 </style>
 
 <style>

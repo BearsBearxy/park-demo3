@@ -338,4 +338,21 @@ function onCellInput(r: S10RecordDTO, colId: S10ColId, raw: string) {
 /* 深链定位行:2s 高亮渐隐(结束后还原表格自身背景) */
 tr.row-flash td { animation: s10-row-flash var(--dur-highlight) var(--ease-standard); }
 @keyframes s10-row-flash { from { background: var(--accent-blue); } to { background: var(--surface-white); } }
+
+/* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内删除钮常显(半透明弱化,不可达=功能丢失) */
+@media (hover: none) {
+  .s10-del { opacity:.55; }
+}
+
+/* ── S 档(≤600,§5.3 查看优先):sticky 收敛只留首列(租户名)+表头——桌面左右双 sticky
+   共 316px(188+128)在 390px 视口会占满可视区(实测教训)。合计列**原位退成普通列**:
+   列序/列宽不动,只摘横向钉扎;表头/表脚的纵向 sticky(top/bottom)照旧。
+   本表 sticky 全写在 CSS 类上(非内联 style),媒体块直接盖得住,
+   不必像 FPLedgerTable(offset 内联)那样进 JS 走 useViewport——jsdom/桌面档零变化同样成立。
+   z-index 一并退回本表非固定同级的阶梯(thead/tfoot 3),否则横滚时会盖住仅存的 sticky 首列。 */
+@media (max-width: 600px) {
+  .s10-h-total { right:auto; z-index:3 !important; box-shadow:none; }
+  .s10-c-total { position:static; box-shadow:none; }
+  .s10-table tfoot .s10-foot-total { right:auto; z-index:3; box-shadow:none; }
+}
 </style>

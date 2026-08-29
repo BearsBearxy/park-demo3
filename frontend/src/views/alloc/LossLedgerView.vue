@@ -152,9 +152,11 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 </script>
 
 <template>
-  <div v-if="!loss" class="page-loading"><span class="page-spin" /></div>
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移查看态,摘 base.css 的 800px 屏级地板。
+       本表 sticky 本就只有首列(位置)一根,S 档无需收敛;宽表在 .ll-wrap 内横滚(§5.3 现状) -->
+  <div v-if="!loss" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <div v-else class="ll-page">
+  <div v-else class="ll-page fp-fluid">
     <!-- 标题行 -->
     <div class="ll-head">
       <div class="ll-head-l">
@@ -286,7 +288,8 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
 .ll-head-l { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ll-title { margin: 0 6px 0 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ll-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
-.ll-actions { display: flex; align-items: center; gap: 8px; }
+/* flex-wrap:M/S 档工具行收纳成两行(§2 修订,宽档单行不受影响——不溢出就不换行) */
+.ll-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .ll-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); }
 

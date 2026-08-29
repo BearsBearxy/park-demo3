@@ -93,7 +93,7 @@ const wrapStyle = computed(() => ({
         :disabled="disabled"
         :placeholder="placeholder"
         v-bind="$attrs"
-        style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:var(--fs-body);color:var(--text-primary)"
+        style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:var(--ds-in-fs);color:var(--text-primary)"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
       <span v-if="$slots.trailingIcon" style="display:inline-flex;color:var(--text-muted)">
@@ -117,7 +117,11 @@ const wrapStyle = computed(() => ({
 /* 聚焦态。<input> 自身**保留** outline:none —— base.css 的全局焦点环画在 input 上会
    套进外框里变成「框中框」,这正是当初写 outline:none 的原因。改为让外框响应聚焦:
    :has(:focus-visible) 同样只在键盘聚焦时命中,鼠标点击不触发,与全局环行为一致。 */
-.ds-in-field { --ds-in-border: var(--border-subtle); }
+.ds-in-field { --ds-in-border: var(--border-subtle); --ds-in-fs: var(--fs-body); }
+/* iOS 对 <16px 的输入框聚焦会自动放大整页;字号走变量桥,因为媒体查询盖不住内联 style */
+@media (max-width: 600px) {
+  .ds-in-field { --ds-in-fs: var(--fs-input-m); }
+}
 .ds-in-field[data-error] { --ds-in-border: var(--hue-red); }
 .ds-in-field:has(:focus-visible) { --ds-in-border: var(--status-info); }
 /* 错误态优先:红框在时聚焦不把它盖成蓝的,否则用户一点进去就看不见自己错在哪。 */

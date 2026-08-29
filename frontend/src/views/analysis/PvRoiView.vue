@@ -315,7 +315,7 @@ const revOpt = computed<object>(() => ({
 
           <!-- 第二排 span8:分期收益柱(点柱→明细卡) -->
           <div class="av2-card av2-s8">
-            <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint">点击柱子查看该期月度明细</span></div>
+            <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span></span></div>
             <AnaEChart :option="phaseOpt" :height="300" @chart-click="onPhaseClick" />
           </div>
 
