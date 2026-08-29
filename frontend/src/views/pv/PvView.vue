@@ -4,7 +4,7 @@
 // ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + PvTable + 抽屉)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted , watch} from 'vue'
 import { S } from '@/utils/lockScopes'
 import { pvApi } from '@/api/pv'
 import { exportPvYear } from '@/utils/pvExcel'
@@ -12,6 +12,8 @@ import { parserProps, runImport } from '@/utils/importRegistry'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { PvPhaseDTO, PvOverviewDTO, PvYearDTO, PvRecordDTO, PvRecordReq, PvImportRow } from '@/types/pv'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
+import { loadViewMode, saveViewMode } from '@/utils/viewMode'
+import BookRail from '@/components/fp/BookRail.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -22,9 +24,22 @@ import PvTable from './PvTable.vue'
 import PvRecordDrawer from './PvRecordDrawer.vue'
 import PvMeterView from './PvMeterView.vue'
 
-// ── 功能门(PV-METER-SPEC §2):进入先选「月度汇总(原附表6)/分栋抄表明细(新)」──
+// ── 一屏两本账(2026-08-29 设计稿 §②):左栏常驻「报送台账 / 分栋运营账」,记住上次 ──
+//    原 PV-METER-SPEC §2 的**功能门**(整屏两卡)已退场 —— 它给的理由是「原功能保持原样不动」,
+//    即不动老屏的实现成本,不在那份规范的「用户确认决策」清单里。
 // 组件内 ref 即会话记忆(KeepAlive 自然保持),刷新重进重选;原附表6流程零行为变化,整体包进 v-else。
-const mode = ref<'summary' | 'meter' | null>(null)
+// 一屏两本账(2026-08-29「两本账」设计稿 §②):左栏常驻,记住上次看的是哪一本。
+// 改前是一道**整屏拦住**的功能门,而且 mode 是纯本地 ref —— 侧栏点击走 openFresh
+// 会重建组件,每次进来都得重答一遍这道选择题。三份规范本来就写着「会话内记住选择」,
+// 实现从落笔那天起就没做到(openFresh 的语义比那三份规范早 11 天)。
+const MODES = [
+  { id: 'summary', name: '报送台账', desc: '按期 · 按月' },
+  { id: 'meter', name: '分栋运营账', desc: '按栋 · 按日' },
+] as const
+type Mode = (typeof MODES)[number]['id']
+const MODE_SCREEN = 'pv-income'
+const mode = ref<Mode>(loadViewMode(MODE_SCREEN, MODES.map(m => m.id), 'summary'))
+watch(mode, (m) => saveViewMode(MODE_SCREEN, m))
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
 const phase = ref('all')
@@ -107,33 +122,18 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <!-- ⓪ 功能门(PV-METER-SPEC §2):两卡分叉,卡片风格同 SchedYearGate 年卡 -->
-  <div v-if="mode === null" class="pv-fngate">
-    <div class="pv-fngate-head">
-      <h2 class="pv-fngate-title">
-        <span class="ic"><component :is="iconFor('sun')" :size="18" /></span>光伏发电
-      </h2>
-      <p class="pv-fngate-sub">选择进入方式 · 月度汇总 = 附表6 原年度台账;分栋抄表 = 逐站逐日抄表明细</p>
-    </div>
-    <div class="pv-fngate-grid">
-      <div class="pv-fncard" @click="mode = 'summary'">
-        <span class="pv-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
-        <div class="pv-fnc-ic"><component :is="iconFor('sun')" :size="20" /></div>
-        <div class="pv-fnc-name">附表6 · 月度汇总</div>
-        <div class="pv-fnc-desc">按期(一/二/三期)逐月记账的发电台账,含导入与年度合计 —— 原有流程。</div>
-      </div>
-      <div class="pv-fncard" @click="mode = 'meter'">
-        <span class="pv-fnc-go"><component :is="iconFor('arrow-right')" :size="16" /></span>
-        <div class="pv-fnc-ic"><component :is="iconFor('gauge')" :size="20" /></div>
-        <div class="pv-fnc-name">分栋抄表明细</div>
-        <div class="pv-fnc-desc">13 个电站按日期逐条抄表、自动汇月;行内维护装机容量与消纳单价。</div>
-      </div>
-    </div>
-    <p class="pv-fngate-foot"><component :is="iconFor('info')" :size="13" />两种视图数据相互独立;抄表汇总与附表6 的对账功能后续提供。</p>
-  </div>
+  <div class="pvw">
+    <!-- 左栏:两本账一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
+         改前这是一道整屏拦住的功能门,而且不记得你上次选了哪本 —— 每次进来重答一遍。 -->
+    <aside class="pvw-rail">
+      <div class="pvw-rail-t">光伏发电</div>
+      <BookRail :books="MODES" :active-id="mode" :can-manage="false"
+                @select="(id) => (mode = id as Mode)" />
+    </aside>
 
+    <div class="pvw-main">
   <!-- 分栋抄表明细(新屏) -->
-  <PvMeterView v-else-if="mode === 'meter'" @back="mode = null" />
+  <PvMeterView v-if="mode === 'meter'" />
 
   <!-- 附表6 · 月度汇总:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
   <template v-else-if="overview">
@@ -148,10 +148,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       :current="overview.currentYear"
       store-key="pv"
       footer="每个年份是一份独立的逐月发电台账;进入后在编辑模式下新增或导入。"
-      back-label="返回功能选择"
       @pick="pickYear"
-      @back="mode = null"
-    /><!-- back=功能门回退口(组件既有 prop);附表6 年内流程零改动 -->
+    />
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
@@ -233,24 +231,22 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
 /* 1:1 from screen-schedule6.jsx S6Styles(.s6-page,26) */
 .s6-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 
-/* ── 功能门(PV-METER-SPEC §2):卡片风格同 SchedYearGate .sm-ycard 家族 ── */
-.pv-fngate { display:flex; flex-direction:column; gap:18px; width:100%; height:100%; min-height:0; box-sizing:border-box; font-family:var(--font-sans); color:var(--text-primary); }
-.pv-fngate-title { margin:0; display:flex; align-items:center; gap:11px; font-size:var(--fs-h2); font-weight:var(--fw-semibold); color:var(--text-primary); }
-.pv-fngate-title .ic { width:34px; height:34px; border-radius:10px; background:var(--surface-sunken); display:grid; place-items:center; color:var(--text-secondary); flex:0 0 auto; }
-.pv-fngate-sub { margin:6px 0 0; font-size:var(--fs-label); color:var(--text-muted); }
-.pv-fngate-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; max-width:720px; }
-.pv-fncard { position:relative; display:flex; flex-direction:column; gap:10px; min-height:152px; padding:21px 23px; box-sizing:border-box; cursor:pointer; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); transition:border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
-.pv-fncard:hover { border-color:var(--border-strong); box-shadow:0 8px 24px rgba(28,28,28,.10); transform:translateY(-2px); }
-.pv-fnc-ic { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
-.pv-fnc-name { font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
-.pv-fnc-desc { font-size:12.5px; line-height:1.55; color:var(--text-muted); }
-.pv-fnc-go { position:absolute; top:21px; right:21px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--text-disabled); background:var(--surface-card); opacity:0; transform:translateX(-4px); transition:opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.pv-fncard:hover .pv-fnc-go { opacity:1; transform:translateX(0); background:var(--ink-900); color:#fff; }
-.pv-fngate-foot { margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+/* ── 一屏两本账的外壳(2026-08-29 设计稿 §②):左栏常驻 + 主区。与月度台账 .lgw 家族同形 ── */
+.pvw { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
+        font-family: var(--font-sans); color: var(--text-primary); }
+.pvw-rail {
+  flex: 0 0 176px; min-height: 0; display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 12px; box-sizing: border-box;
+  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+}
+.pvw-rail-t { font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); padding: 0 4px; }
+.pvw-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 </style>

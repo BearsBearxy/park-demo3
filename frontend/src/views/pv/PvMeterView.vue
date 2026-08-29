@@ -31,7 +31,6 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // Wave2-B 并行契约:registry key 'pvMeter' + 模板/月度导出(buildPvMeterTemplate/exportPvMeterMonth)
 import { buildPvMeterTemplate, exportPvMeterMonth } from '@/utils/pvMeterExcel'
 
-const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 
 // ── 编辑模式(EDIT-MODE-SPEC):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
@@ -341,9 +340,6 @@ async function onTemplate() {
     <!-- 标题行 -->
     <div class="pm-head">
       <div class="pm-headl">
-        <button class="pm-back" title="返回功能选择" @click="emit('back')">
-          <component :is="iconFor('arrow-left')" :size="16" />
-        </button>
         <div>
           <h2 class="pm-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>分栋抄表明细</h2>
           <p class="pm-sub">按日期逐条抄表,自动汇月 · 电量 kWh / 收益 元 · 收益 = 自消纳 × 录入时单价快照</p>
@@ -630,8 +626,6 @@ async function onTemplate() {
 .pm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
 .pm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
 
-.pm-back { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-md); cursor: pointer; display: grid; place-items: center; color: var(--text-secondary); transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.pm-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .pm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .pm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .pm-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }

@@ -32,7 +32,6 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
-const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -347,9 +346,6 @@ async function onTemplate() {
     <!-- 标题行 -->
     <div class="cm-head">
       <div class="cm-headl">
-        <button class="cm-back" title="返回功能选择" @click="emit('back')">
-          <component :is="iconFor('arrow-left')" :size="16" />
-        </button>
         <div>
           <h2 class="cm-title"><span class="ic"><component :is="iconFor('plug')" :size="18" /></span>分桩充电明细</h2>
           <p class="cm-sub">逐桩按日期记条,自动汇月 · 充电量/手续费/收益从平台对账单抄录 · 电量 kWh / 金额 元</p>
@@ -644,8 +640,6 @@ async function onTemplate() {
 /* ── 标题行 ── */
 .cm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .cm-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.cm-back { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-md); cursor: pointer; display: grid; place-items: center; color: var(--text-secondary); transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.cm-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .cm-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }

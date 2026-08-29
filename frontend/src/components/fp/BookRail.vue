@@ -12,13 +12,16 @@ import { Plus, Trash2 } from 'lucide-vue-next'
 export interface RailItem {
   id: number | string   // 'all' = 三大报表的「全部汇总」
   name: string
+  /** 名字下面那行小字。说的是「你要按什么口径看」（按期·按月 / 按栋·按日），不是功能名。 */
+  desc?: string
   ver?: number
   /** 覆盖版本徽标。给了就显它，两个都没有就不画徽标（不留 vundefined）。 */
   tag?: string
 }
 
 defineProps<{
-  books: RailItem[]
+  /** readonly:两本账那种固定表是模块级常量,组件从不改它 */
+  books: readonly RailItem[]
   activeId: number | string | null
   canManage: boolean
 }>()
@@ -43,7 +46,10 @@ defineEmits<{
         @click="$emit('select', b.id)"
         @keydown.enter="$emit('select', b.id)"
       >
-        <span class="br-name">{{ b.name }}</span>
+        <span class="br-txt">
+          <span class="br-name">{{ b.name }}</span>
+          <span v-if="b.desc" class="br-desc">{{ b.desc }}</span>
+        </span>
         <span v-if="b.tag || b.ver != null" class="br-ver">{{ b.tag ?? 'v' + b.ver }}</span>
       </div>
     </div>
@@ -106,6 +112,16 @@ defineEmits<{
   border-left-color: var(--hue-blue);
   background: var(--accent-blue);
 }
+
+.br-txt { min-width: 0; display: flex; flex-direction: column; }
+.br-desc {
+  font-size: var(--fs-micro);
+  color: var(--text-disabled);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.br-item.on .br-desc { color: var(--hue-blue); }
 
 .br-name {
   font-size: var(--fs-body);

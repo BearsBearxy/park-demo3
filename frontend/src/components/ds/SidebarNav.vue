@@ -148,9 +148,10 @@ export default defineComponent({
      * 别人在看不挡你。全标上的话侧栏常年一片点，一周之内就没人看了。
      */
     function editingHere(navValue: string): string | null {
+      // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
       const prefix = NAV_SCOPE_PREFIX[navValue];
       if (!prefix) return null;
-      const who = presence.editorsUnder(prefix);
+      const who = (Array.isArray(prefix) ? prefix : [prefix]).flatMap((p) => presence.editorsUnder(p));
       if (!who.length) return null;
       const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
       // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼

@@ -68,10 +68,8 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
   })
 
   describe('导航项 → 作用域前缀（侧栏圆点用）', () => {
-    it('表里每个前缀都真的是某个作用域构造器会产出的', () => {
-      // 这张表**会烂**：谁改了作用域模板却忘了改它，圆点就永远不亮 ——
-      // 而且不报错、没人发现。这条测试是它唯一的护栏。
-      const produced = [
+    // 全部会真的出现在服务端锁表里的作用域。两条护栏都读它。
+    const produced = [
         S.ledger(3, 2025, 6),
         S.paramCenter(2025, 6),
         S.meters(2025),
@@ -89,12 +87,35 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
         S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
         S.pnl('ops', 2025), S.pnl('expense', 2025),
         S.bookTemplate(7, 2026, 3),
-      ]
-      const covers = (prefix: string) => produced.some(
-        (sc) => sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-'))
+    ]
 
-      for (const [nav, prefix] of Object.entries(NAV_SCOPE_PREFIX)) {
-        expect(covers(prefix), `导航项「${nav}」的前缀 ${prefix} 已对不上任何作用域构造器`).toBe(true)
+    it('表里每个前缀都真的是某个作用域构造器会产出的', () => {
+      // 这张表**会烂**：谁改了作用域模板却忘了改它，圆点就永远不亮 ——
+      // 而且不报错、没人发现。
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+      const flat = Object.entries(NAV_SCOPE_PREFIX)
+        .flatMap(([nav, p]) => (Array.isArray(p) ? p : [p]).map((prefix) => [nav, prefix] as const))
+
+      for (const [nav, prefix] of flat) {
+        expect(produced.some((sc) => hit(prefix, sc)),
+               `导航项「${nav}」的前缀 ${prefix} 已对不上任何作用域构造器`).toBe(true)
+      }
+    })
+
+    it('反过来也要成立:每个作用域构造器都被某个前缀覆盖', () => {
+      // 上面那条只查单向。**漏的那一半才是真出过事的一半**:
+      // 功能门让四个导航项底下各多出一套锁根(pv-meter / cp-meter / elec-cost),
+      // 它们从 2026-07-20 起就没有任何 nav 指向 —— 有人正在改分栋抄表,侧栏圆点永远不亮,
+      // 而这三个构造器**明明白白列在上面的 produced 数组里当「覆盖源」用**,测试照样绿。
+      // 2026-08-29 放开一对多 + 补上这条反向断言,下一个漏登记的构造器当场红。
+      const prefixes = Object.values(NAV_SCOPE_PREFIX).flatMap((p) => (Array.isArray(p) ? p : [p]))
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+
+      for (const sc of produced) {
+        expect(prefixes.some((prefix) => hit(prefix, sc)),
+               `作用域 ${sc} 没有任何导航项登记 —— 有人在这里编辑,侧栏圆点不会亮`).toBe(true)
       }
     })
   })

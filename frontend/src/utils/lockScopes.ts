@@ -86,20 +86,31 @@ export const S = {
  * 导航项 → 作用域前缀（侧栏 / 页签的小圆点用）。
  *
  * ⚠ 这张表**会烂**：谁改了上面的作用域模板却忘了改它，圆点就永远不亮 ——
- *   而且不报错、没人发现。lockScopes.spec.ts 里那条「每个前缀都对得上某个构造器」
- *   是它唯一的护栏。
+ *   而且不报错、没人发现。lockScopes.spec.ts 里那两条护栏（正向：每个前缀都对得上某个
+ *   构造器；反向：每个构造器都被某个前缀覆盖）是它仅有的保障。
+ *
+ * ⚠ **一个导航项可以有多个锁根**（2026-08-29 放开）。四个屏底下各装着两本账
+ *   （报送台账走 `sched:*`，运营账走 `pv-meter:*` / `cp-meter:*` / `elec-cost:*`），
+ *   改前这里是 `Record<string, string>`，一对一，那三条**没有任何办法登记进去** ——
+ *   于是有人正在改分栋抄表，侧栏圆点永远不亮。这不是有人忘了填，是类型表达不了。
+ *   反向护栏就是为了让下一个漏登记的构造器当场变红。
  */
-export const NAV_SCOPE_PREFIX: Record<string, string> = {
-  'ledger': 'ledger',
+export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
+  // 账册模板面板长在这两屏里,自带第 16 权限点与独立的锁 —— 只握模板锁的人
+  // (没进屏的编辑模式)改前不会让圆点亮。反向护栏 2026-08-29 抓到的。
+  // ⚠ 精度不足:`book-template` 前缀跨两屏,甲公司的模板被改时附表10 也会亮。
+  //   要分开得把 screen 编进键(`book-template:ledger:7:...`),键是内存态、零迁移,
+  //   但那是另一刀,已单开任务。宁可先多亮,也好过一直不亮。
+  'ledger': ['ledger', 'book-template'],
   'params': 'billing-chain',
   'alloc': 'billing-chain',
   'bill-notices': 'billing-chain',
   'meters': 'meters',
-  'pv-income': 'sched:pv',
-  'car-charging': 'sched:charging:7',
-  'ebike-charging': 'sched:charging:8',
-  'sales-income': 'sched:s10',
-  'elec-cost': 'sched:elec',
+  'pv-income': ['sched:pv', 'pv-meter'],
+  'car-charging': ['sched:charging:7', 'cp-meter:car'],
+  'ebike-charging': ['sched:charging:8', 'cp-meter:ebike'],
+  'sales-income': ['sched:s10', 'book-template'],
+  'elec-cost': ['sched:elec', 'elec-cost'],
   'salary': 'sched:salary',
   'utilities': 'sched:utilities',
   'income-statement': 'report:is',

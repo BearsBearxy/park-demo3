@@ -30,7 +30,6 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import { ELEC_FEE_LABEL, ELEC_SUB_LABEL, elecFeeLabel } from '@/utils/elecCostExcel'
 
-const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 // RBAC:费项/表名录入是 entry;电价参数是计费口径,归 param-policy(simulate 会写 price-cfg,同门)
 const canEntry = computed(() => auth.can('entry:edit'))
@@ -403,9 +402,6 @@ function fmtMetric(mt: ElecMetricDTO): string {
     <!-- 标题行 -->
     <div class="ec-head">
       <div class="ec-headl">
-        <button class="ec-back" title="返回功能选择" @click="emit('back')">
-          <component :is="iconFor('arrow-left')" :size="16" />
-        </button>
         <div>
           <h2 class="ec-title"><span class="ic"><component :is="iconFor('gauge')" :size="18" /></span>电费成本总览</h2>
           <p class="ec-sub">园区电费物理模型 · 总表/宿舍/运营电表按费项逐月录入 · 派生收益指标 · 金额单位 元</p>
@@ -646,8 +642,6 @@ function fmtMetric(mt: ElecMetricDTO): string {
 /* ── 标题行(同 PvMeterView .pm-head 家族) ── */
 .ec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .ec-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.ec-back { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-md); cursor: pointer; display: grid; place-items: center; color: var(--text-secondary); transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.ec-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .ec-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .ec-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .ec-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
