@@ -155,25 +155,29 @@ class AllocApiIT extends AbstractMysqlIT {
     @Test
     void directException_parkLossZeroMembers_existingZeroMembers_twoAlwaysRejected() throws Exception {
         // 例外一:park_loss_pool + 0 户,新建直接 200(不是"已存在"例外,是语义例外)
-        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\",\"members\":[]}");
+        // ⚠ feeName 必须给且互不相同:两个池都不给定位时 poolName 会一律塌成"一期园区"
+        // (F4b 撞名校验落地后,同名的第二个 postId 会被拦 400,而不是本用例要测的 direct 校验)。
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\","
+                + "\"feeName\":\"IT恰一户损耗\",\"members\":[]}");
 
         // 例外二:已存在的 direct 池编辑为 0 户 → 200(既成事实,不该逼用户先指定受益户才能改备注)
         int t1 = createTenant("IT恰一户甲");
         int rDirect = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
-                + "\"members\":[{\"tenantId\":" + t1 + "}]}");
+                + "\"feeName\":\"IT恰一户\",\"members\":[{\"tenantId\":" + t1 + "}]}");
         mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
-                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\",\"members\":[]}"))
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                        + "\"feeName\":\"IT恰一户\",\"members\":[]}"))
                 .andExpect(jsonPath("$.code").value(0));
 
         // n>1 恒非法:两个例外都不放行 2 户
         int t2 = createTenant("IT恰一户乙");
         mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
                 .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\","
-                        + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                        + "\"feeName\":\"IT恰一户损耗乙\",\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
                 .andExpect(jsonPath("$.code").value(400));
         mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
                 .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
-                        + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                        + "\"feeName\":\"IT恰一户\",\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
                 .andExpect(jsonPath("$.code").value(400));
 
         // 新建 direct + 0 户(非 park_loss_pool)仍被拦 —— 配置错误当场拦住,不靠事后告警
@@ -181,6 +185,25 @@ class AllocApiIT extends AbstractMysqlIT {
         mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
                 .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\",\"members\":[]}"))
                 .andExpect(jsonPath("$.code").value(400));
+    }
+
+    // ── F4b:保存时拦撞名——alloc_rule.name 无唯一键,88 保存一次就和 89 逐字同名不报错。
+    //    在 apply() 算出 auto 名之后、写库之前查重名(排除自身 id)。 ──
+    @Test
+    void applyDuplicateName_rejected() throws Exception {
+        int rA = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"none\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}");
+        int rB = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"none\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试乙\"}");
+        // 把 B 的 feeName 改成与 A 重算出同名 → 400,文案含被占用的名字
+        mvc.perform(put("/api/alloc/rules/" + rB).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("一期园区·IT撞名测试")));
+        // A 自己原样保存(排除自身 id)不该被自己的名字挡住 → 200
+        mvc.perform(put("/api/alloc/rules/" + rA).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}"))
+                .andExpect(jsonPath("$.code").value(0));
     }
 
     // /months 系列的三条通用断言:格式 YYYY-MM、升序、无重复(去重排序后须与原样等长同序),外加本例月在内

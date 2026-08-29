@@ -645,8 +645,17 @@ public class AllocService {
         Building b = req.buildingId() == null ? null : buildings.selectById(req.buildingId());
         String auto = poolName(req.zone(), b == null ? null : b.getName(), req.floorLabel(), req.side(), req.feeName());
         boolean noLocation = blank(req.floorLabel()) && blank(req.side()) && blank(req.feeName());
-        r.setName(noLocation && !blank(r.getName()) ? r.getName()
-            : noLocation && !blank(req.name()) ? req.name().trim() : auto);
+        String finalName = noLocation && !blank(r.getName()) ? r.getName()
+            : noLocation && !blank(req.name()) ? req.name().trim() : auto;
+        // F4b:池名是屏上/账册/告警里认池的唯一可读标识,重名后人分不出谁是谁(88 保存一次就与既有的 89 同名)。
+        // 不加 DB 唯一键:存量已有同名行(89 显然被这条路径改过一次),加约束会让迁移失败。
+        // r.getId():新建时(insert 前)是 null,自然不排除任何行;编辑时已经是目标行自身的 id,排除自己。
+        Long dup = rules.selectCount(new QueryWrapper<AllocRule>()
+            .eq("name", finalName).ne(r.getId() != null, "id", r.getId()));
+        if (dup != null && dup > 0)
+            throw new BizException(ResultCode.BAD_REQUEST,
+                "池名「" + finalName + "」已被占用 —— 请补上侧向或改费项名,让两个池分得开");
+        r.setName(finalName);
         r.setMethod(req.method()); r.setFeeKey(req.feeKey());   // S21:coefficient/extraQty 两列退出引擎,不再写(恒 NULL/0)
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
         r.setRoundScale(req.roundScale() == null ? 2 : req.roundScale());
