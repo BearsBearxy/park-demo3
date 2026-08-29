@@ -125,6 +125,29 @@ class AllocApiIT extends AbstractMysqlIT {
         assertMonths("/api/alloc/pool-months", "2099-01");
     }
 
+    // ── F1:@Pattern 值域漏 carrier(V73 冲减载体)/manual(V81 无表人工指定行)——
+    //    库里 5 个存量池(17/92-95)打开抽屉什么都没改、点保存就被 400。
+    //    不依赖生产库具体 id(本类"探针"模式,自建自证无顺序依赖):自建 carrier/manual 池验证同一条校验。 ──
+    @Test
+    void carrierAndManualMethod_savableViaApi() throws Exception {
+        int rCarrier = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"carrier\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT冲减载体\"}");
+        int rManual = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"manual\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT人工指定\"}");
+        // 原样 PUT 回去 → 200,字段一字未变
+        mvc.perform(put("/api/alloc/rules/" + rCarrier).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"carrier\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT冲减载体\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.method").value("carrier"))
+                .andExpect(jsonPath("$.data.feeKey").value("share_elec_floor"))
+                .andExpect(jsonPath("$.data.name").value("一期园区·IT冲减载体"));
+        mvc.perform(put("/api/alloc/rules/" + rManual).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"manual\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT人工指定\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.method").value("manual"))
+                .andExpect(jsonPath("$.data.name").value("一期园区·IT人工指定"));
+    }
+
     // /months 系列的三条通用断言:格式 YYYY-MM、升序、无重复(去重排序后须与原样等长同序),外加本例月在内
     private void assertMonths(String path, String mustContain) throws Exception {
         java.util.List<String> ms = JsonPath.read(mvc.perform(get(path).header("Authorization", auth()))
