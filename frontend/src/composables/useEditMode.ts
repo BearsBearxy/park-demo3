@@ -100,10 +100,24 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    *
    * 不上锁的屏（没传 scope）直接进，行为与加锁之前完全一致。
    */
+  // 占锁在途时不许再发一趟。两趟重叠的后果不是"多占一把",是**互相拆台**:
+  //   lock.release() 还的是 useEditLock 里那个共享的 `held`,不是本次 enter() 占的那把;
+  //   两趟交错结算时(先发的后回是链路抖一下的常态),迟到的那趟会把 held 覆写回旧 scope、
+  //   再 start() 一遍,然后下面的复核发现期变了就 release() —— stop() 无条件拆掉键鼠监听、
+  //   把 handleEviction 置 null、presence 降回 view。
+  //   终态:人留在新期的编辑态,而新期那把锁服务端还挂着却再没有心跳,3 分钟 TTL 一到
+  //   别人 acquire 直接 granted,两人同改同保存互相整片覆盖,且接管回调已是 null,
+  //   这一侧连「你被接管了」都不会弹。
+  // 挡在源头比事后分辨哪一趟是自己的便宜得多 —— 按钮上本来也不该能连点两次。
+  let entering = false
   async function enter() {
+    if (entering) return
     const scope = opts.scope?.() ?? null
     if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
-    if (!(await lock.acquire(scope))) return
+    entering = true
+    let got = false
+    try { got = await lock.acquire(scope) } finally { entering = false }
+    if (!got) return
     // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门 ——
     // 回来时这把锁锁的已经不是他要编的东西了。
     // 下面那个 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null

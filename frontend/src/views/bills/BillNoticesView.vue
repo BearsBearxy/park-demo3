@@ -283,7 +283,9 @@ function exitBulk() { bulkMode.value = false; selected.value = new Set() }
 // 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
 // 退出编辑态同理:选择态是编辑态的产物,留着回浏览态会有"看不见的选中"
 watch([phase, year, month], exitBulk)
-watch(editMode, v => { if (!v) exitBulk() })
+// 兄弟们(startNoteEdit/restoreNote)都判了 canRun,备注编辑行本身也得随编辑态收起 ——
+// 否则已展开的那一行在编辑态就地转假(接管/提权到期)后继续留在抽屉里可写。
+watch(editMode, v => { if (!v) { exitBulk(); noteEditKey.value = null } })
 const selCount = computed(() => filtered.value.filter(r => selected.value.has(r.tenantId)).length)
 const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every(r => selected.value.has(r.tenantId)))
 function toggleAll() {
@@ -492,6 +494,8 @@ function startNoteEdit(k: NoteKey, current: string) {
   noteDraft.value = current
 }
 async function saveNoteEdit(k: NoteKey) {
+  // 本文件唯一漏判的写函数 —— 兄弟的 startNoteEdit(:490)/restoreNote(:511) 都判了 canRun。
+  if (!canRun.value) return
   if (noteSaving.value || !dlgRow.value) return
   const base = { ym: dlgYm.value, tenantId: dlgRow.value.tenantId, ...k }
   const text = noteDraft.value.trim()

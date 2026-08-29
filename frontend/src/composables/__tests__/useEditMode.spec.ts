@@ -312,6 +312,51 @@ describe('编辑模式 × 换期', () => {
       .toHaveBeenCalledWith('/locks/billing-chain:2025-03')
   })
 
+  it('❗占锁在途时不许再发一趟 —— 两趟重叠会互相拆台', async () => {
+    // 上一版只做了"回来复核一次期",没挡住重叠。两趟交错结算时(先发的后回,
+    // 正是链路抖一下再恢复的常态):迟到的那趟把 useEditLock 里共享的 `held`
+    // 覆写回旧 scope、再 start() 一遍,然后复核发现期变了就 release() ——
+    // stop() 无条件撤掉键鼠监听、把 handleEviction 置 null、presence 降回 view。
+    // 终态:人留在新期的编辑态,而新期那把锁服务端还挂着却再没有心跳,
+    // 3 分钟 TTL 一到别人 acquire 直接 granted,两人同改同保存互相整片覆盖,
+    // 且接管回调已是 null,这一侧连「你被接管了」都不会弹。
+    asRole(['entry:edit'])
+    const ym = ref('2025-03')
+    const settlers: ((v: unknown) => void)[] = []
+    vi.mocked(api.post).mockImplementation(
+      () => new Promise(r => { settlers.push(r as (v: unknown) => void) }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+
+    const first = m.toggle()          // 第一趟:占 2025-03,卡住
+    ym.value = '2025-05'
+    const second = m.toggle()         // 第二趟:在途时又点了一下
+    expect(settlers, '在途时不该再发一趟 acquire').toHaveLength(1)
+
+    settlers[0]({ granted: true, holder: null })
+    await Promise.all([first, second])
+    expect(m.editMode.value, '期已经变了,不该进编辑态').toBe(false)
+    expect(api.delete, '还的必须是自己占的那把').toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+    expect(vi.mocked(api.delete).mock.calls, '只该还一次').toHaveLength(1)
+  })
+
+  it('在途那趟结束之后还能再进 —— 别把闸门永久关上', async () => {
+    asRole(['entry:edit'])
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockImplementationOnce(
+      () => new Promise(r => { settle = r as (v: unknown) => void }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const p1 = m.toggle()
+    settle({ granted: true, holder: null })
+    await p1
+    expect(m.editMode.value).toBe(true)
+    m.exit()
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null } as never)
+    await m.toggle()
+    expect(m.editMode.value, 'entering 没复位 → 从此再也进不去').toBe(true)
+  })
+
   it('占锁在途但期没变 → 照常进编辑态(别把正常路径也拦了)', async () => {
     asRole(['entry:edit'])
     let settle!: (v: unknown) => void

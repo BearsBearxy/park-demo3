@@ -101,9 +101,20 @@ const stationsErr = ref('')
  *   合用时:电站清单挂了 → 用户点月格 → loadReadings 开头 `readErr = null` 把它抹掉 →
  *   读数拉成功 → 一张没有任何解释的空表(站没了,行就没了)。
  */
+// 竞态守卫同 loadReadings。没有它:双击重试 → 两趟并发 → 先发的那趟后失败结算,
+// stationsErr 被写回,而 stations 已经是新的、完全正确的那份。
+// 上一轮把 stationsErr 并进 loadErr 之后这条就不只是"文案陈旧"了 ——
+// 写入口、导出、编辑按钮全按 loadErr 判,一屏正确的数据被锁成永久只读,
+// 还配一句「电站档案停留在上次拉到的版本」的假话。
+let stSeq = 0
 async function loadStations() {
-  try { stations.value = await pvMeterApi.stations(); stationsErr.value = '' }
-  catch { stationsErr.value = '电站档案加载失败,请重试' }
+  const my = ++stSeq
+  try {
+    const data = await pvMeterApi.stations()
+    if (my === stSeq) { stations.value = data; stationsErr.value = '' }
+  } catch {
+    if (my === stSeq) stationsErr.value = '电站档案加载失败,请重试'
+  }
 }
 /** 失败条上的「重试」:只重来挂掉的那一份(照 MeterView.vue:133-134)。 */
 function retryLoad() {
@@ -497,9 +508,13 @@ async function onTemplate() {
         <!-- 失败态禁进(照 MeterView.vue:607-608):进得去也占得到 pv-meter:<year> 那把锁,
              可 editStation/editReading 都被 loadErr 判假,一个写控件都不会出现 ——
              把别人挡在外面,自己什么也做不了。 -->
+        <!-- ⚠ 必须带 `!editMode`。FPEditModeButton 的 :disabled 不分编辑态(组件 43 行),
+             `:disabled="!!loadErr"` 会把**编辑态里的那颗「完成」**一起禁掉 ——
+             正在编辑时取数挂一次就退不出去,锁也交不回去,别人只能干等 3 分钟或走接管。
+             禁的只该是"进",不该是"出"。 -->
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-                          :disabled="!!loadErr"
-                          :title="loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
+                          :disabled="!editMode && !!loadErr"
+                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
                           @toggle="toggleEdit()" />
       </div>
     </div>

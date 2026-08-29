@@ -153,7 +153,20 @@ const saving = ref(false)
 const dirtyIds = computed(() => draftDirtyIds(rowsAll.value, draft))
 const rowById = computed(() => new Map(rowsAll.value.map(x => [x.m.id, x])))
 // 退出编辑(保存成功/无改动/放弃)统一丢草稿:等值残留也不带回浏览态
-watch(editMode, v => { if (!v) { draft.clear(); saveConfirm.value = false } })
+// 退出编辑模式收起一切写入口。
+// ⚠ 三个弹窗必须一起关。它们的 v-if 只判自己那个 ref,不判编辑态,而 editMode 会**就地**转假
+//   (别人走接管 → presence.handleEviction → exit();或 30 分钟提权到期)。
+//   最狠的是 delPreview:「批量删除本期」的确认框连账期都已经打好,接管之后按钮照样可点,
+//   一下打出整月读数 + 该月派生快照 + 删完零读数的表档案的不可逆删除 ——
+//   而那个月正握在刚接管的人手里。后端写口不校验锁,拦不住。
+watch(editMode, v => {
+  if (v) return
+  draft.clear()
+  saveConfirm.value = false
+  importing.value = false
+  meterDlg.value = false
+  delPreview.value = null
+})
 
 function onCellEdit(p: { meterId: number; field: CurrField; value: string }) {
   draft.set(p.meterId, { ...draft.get(p.meterId), [p.field]: p.value })
@@ -390,6 +403,7 @@ const linking = ref(false)
 const linkEstimate = computed(() =>
   autoLinkEstimate((meters.value ?? []).filter(isPendingMeter).map(m => m.tenantName), tenants.value.flatMap(t => tenantMatchNames(t))))
 async function autoLink() {
+  if (!editMode.value || !canMaster.value) return
   if (linking.value) return
   if (!confirm(`按企业名称原文与租户档案精确匹配,预计可挂 ${linkEstimate.value} 块待核表。继续?`)) return
   linking.value = true
@@ -439,6 +453,9 @@ async function openDelDlg() {
 watch([delCascade, delDropMeters], () => { if (delPreview.value) loadDelPreview() })
 
 async function confirmDelete() {
+  // 写口自守(同 BillNoticesView 的既有写法):关弹窗只挡已知那条入口,
+  // 守在发请求这一层才不漏。这一条尤其不能省 —— 它是整月不可逆删除。
+  if (!editMode.value || !canReading.value) return
   const p = delPreview.value
   if (!p || delBusy.value || delTyped.value.trim() !== p.ym) return
   delBusy.value = true
@@ -462,6 +479,7 @@ const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
 async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
   importing.value = false
+  if (!editMode.value || !canReading.value) return
   try {
     importResult.value = await runImport('meter', payload as never, importCtx, fileName)
     reloadAll()
@@ -511,6 +529,7 @@ function openMeterDlg() {
 }
 const trimOrNull = (s: string) => s.trim() || null
 async function submitMeter() {
+  if (!editMode.value || !canMaster.value) return
   const name = mForm.value.name.trim()
   if (!name) { mErr.value = '请输入标识名'; return }
   const factor = mForm.value.factor.trim() === '' ? 1 : Number(mForm.value.factor)
@@ -604,8 +623,8 @@ const emptyText = computed(() => {
         <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
         <FPEditModeButton
           :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
-          :disabled="saving || !!readErr"
-          :title="readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
+          :disabled="saving || (!editMode && !!readErr)"
+          :title="!editMode && readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
           @toggle="onEditBtn"
         />
       </div>

@@ -438,6 +438,54 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
       .not.toContain('/pv-meter/import')
   })
 
+  it('❗老的一趟失败结算在新的成功之后,不许把整屏锁成只读', async () => {
+    // loadStations 改前没有竞态守卫。双击重试 → 两趟并发 → 先发的那趟后失败结算,
+    // stationsErr 被写回,而 stations 已经是新的、完全正确的那份。
+    // 上一轮把 stationsErr 并进 loadErr 之后,这就不只是"文案陈旧":
+    // 写入口、导出、编辑按钮全按 loadErr 判 —— 一屏正确的数据被永久锁成只读,
+    // 还配一句「电站档案停留在上次拉到的版本」的假话。
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+
+    const vm = w.vm as unknown as { loadStations: () => Promise<void> }
+    let failLate!: (e: unknown) => void
+    vi.mocked(pvMeterApi.stations).mockImplementationOnce(
+      () => new Promise((_, rej) => { failLate = rej }) as never,
+    )
+    const stale = vm.loadStations()                    // 第一趟:会失败,但结算得晚
+    vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS as never)
+    await vm.loadStations()                            // 第二趟:成功,先结算
+    failLate(new Error('档案挂了'))
+    await stale
+    await flushPromises()
+
+    expect(w.text(), '成功之后不该再冒出失败文案').not.toContain('电站档案加载失败')
+    expect(w.findAll('.pm-edit').length, '数据是对的却被锁成只读').toBeGreaterThan(0)
+  })
+
+  it('❗编辑态里取数挂掉时,「完成」必须还能点 —— 否则锁交不回去', async () => {
+    // FPEditModeButton 的 :disabled 不分编辑态(组件 43 行)。写成 `:disabled="!!loadErr"`
+    // 会把编辑态里的那颗「完成」一起禁掉:人退不出去,pv-meter:<year> 那把锁也交不回去,
+    // 别人只能干等 3 分钟心跳超时,或去走接管。禁的只该是"进",不该是"出"。
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    const done = () => w.findAll('button').find(b => b.text().includes('完成'))
+    expect(done(), '前提:此刻是「完成」态').toBeTruthy()
+
+    vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    await w.find('.pm-permonth').trigger('click')
+    await flushPromises()
+    await w.findAll('.bmm-card')[6].trigger('click')
+    await flushPromises()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true   // 换期守卫会退出,这里只测按钮
+    await flushPromises()
+
+    expect(w.find('.fp-lderr').exists(), '前提:确实是失败态').toBe(true)
+    expect(done()?.attributes('disabled'), '编辑态里的「完成」被禁掉了 —— 退不出去').toBeUndefined()
+  })
+
   it('❗切页签要收掉抽屉 —— 它是 Teleport to body,子树没了它不会没', async () => {
     const Host = defineComponent({
       components: { PvMeterView },
