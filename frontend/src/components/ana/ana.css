@@ -133,4 +133,17 @@
   .av2-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .av2-grid { gap:6px; }
   .av2-card { padding:8px 10px; }
+  /* S 档阅读序(移动阅读设计稿 §02):结论 → 核心图 → 长尾。断点内 order 重排属规范 §7 豁免。
+     公约类(跨智能体契约,勿改名):
+       .av2-lead — 结论条,排最前;
+       .av2-s8   — 有 8 栏大图的屏,大图即核心图;
+       .av2-core — 无 s8 的屏由人工点名的核心图。
+     av2-grid 是 grid 容器,order 只作用于其**直接子项**——嵌套一层就失效,标记必须打在
+     格子元素本身。此块必须保持在 1280→1100→600「宽先窄后」层叠链的最末,插前面会被
+     宽档规则按源序压回。>600 不写 order,DOM 序即视觉序,桌面零差异。 */
+  .av2-lead { order:-2; }
+  .av2-s8, .av2-core { order:-1; }
+  /* 桌面交互话术(「悬停查看」「点击下钻」类,含分隔符一起包在 .hint-desk 里):
+     S 档无 hover 无光标,话术失真,整段隐藏。 */
+  .hint-desk { display:none; }
 }

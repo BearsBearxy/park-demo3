@@ -150,7 +150,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
             >{{ CMP_LABEL[m] }}</button>
           </div>
         </div>
-        <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" />数据截至 {{ asof }}</span>
+        <!-- ≤600 缩「数据截至」为「截至」:CSS 藏前缀 span,不引 JS 档位分支(jsdom 无
+             matchMedia,模板换词要么恒桌面要么加分支;藏字则测试 text() 口径不变)。 -->
+        <span class="anx-lbl"><component :is="iconFor('clock')" :size="12" /><span class="anx-asof-prefix">数据</span>截至 {{ asof }}</span>
         <div ref="popRoot" style="position: relative">
           <button class="anx-icobtn" :class="{ on: pop }" title="目标与阈值" @click.stop="pop = !pop">
             <component :is="iconFor('sliders-horizontal')" :size="16" />
@@ -251,6 +253,13 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
   .anx-period > .anx-lbl, .anx-cmp > .anx-lbl { display: none; }
   .anx-tools .anx-seg button { padding: 5px 8px; }
   .anx-right { gap: 6px; }
+  /* §06 第二行(.anx-right,≤960 已定死 flex-basis:100%)组成固定:对比 seg + 截至 + 设置钮。
+     「数据」二字藏掉省 ~22px(390 预算下对比四钮 + 截至 + 34 钮 ≈ 300,留余量);
+     行高由行内 34px 设置钮恒定撑住,文案增减不改行数、不跳高度。 */
+  .anx-asof-prefix { display: none; }
+  /* §06 弹层钳视口:锚点(设置钮)右缘距视口右 ≥12(工具条 padding),右对齐 + 宽不超
+     min(268px,92vw) ⇒ 左缘在 ≥280px 视口内恒 ≥0,无需 JS 测溢出改位。top:42 沿用基档。 */
+  .anx-pop { width: min(268px, 92vw); }
 }
 @media print { .anx-tools { display: none !important; } .anx-body { padding: 0; } }
 </style>

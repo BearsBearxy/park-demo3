@@ -287,8 +287,8 @@ const conclusion = computed(() => buildConclusion(
       <!-- 收缴率取期回退同样横幅显式(复审:原仅 KPI 小字披露,与其他屏不一致) -->
       <AnaPeriodBanner v-if="cp && period.ym.value && cp.ym !== period.ym.value" :selected="period.ym.value" :used="cp.ym"
         source="台账" style="margin-bottom: 12px" />
-      <!-- §A 经营结论条(spec 2026-07-11):数据模板分句,缺数据省句;句前圆点按 tone,异常句可点击深链 -->
-      <div v-if="conclusion.length" class="av2-card cv2-concl">
+      <!-- §A 经营结论条(spec 2026-07-11):数据模板分句,缺数据省句;句前圆点按 tone,异常句可点击深链;av2-lead=S 档排最前(结论先行) -->
+      <div v-if="conclusion.length" class="av2-card cv2-concl av2-lead">
         <template v-for="(c, i) in conclusion" :key="i">
           <button v-if="c.link" class="cv2-cs lk" @click="go(c.link)">
             <span class="dot" :style="{ background: STATUS[c.tone].color }"></span>{{ c.text }}
@@ -303,7 +303,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s8">
         <div class="av2-card-h">
           <span class="t">收入与利润 · {{ year }}年</span>
-          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)· 点击月柱切换期间 · 拖选缩放 · 紫虚线=预算月均</span>
+          <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
@@ -313,7 +313,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
-          <span class="hint">合计 {{ money(compoTotal || null) }} · 点击扇区看趋势</span>
+          <span class="hint">合计 {{ money(compoTotal || null) }}<span class="hint-desk"> · 点击扇区看趋势</span></span>
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
@@ -323,7 +323,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">分期收入堆叠</span>
-          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期 · 点击深链附表10</span>
+          <span class="hint">附表10 覆盖 {{ ps?.months.length ?? 0 }} 期<span class="hint-desk"> · 点击深链附表10</span></span>
         </div>
         <AnaEChart v-if="phaseOption" :option="phaseOption" :height="250" @chart-click="onPhaseClick" />
         <AnaEmpty v-else label="附表10 无计费数据" hint="分期收入来自附表10 租户×月计费" to="/sales-income" to-text="去录入附表10" />
@@ -332,7 +332,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">收缴率 vs 目标</span>
-          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)· 点击看欠费清单</span>
+          <span class="hint">{{ year }}年近 6 期(台账共 {{ collects.length }} 期,趋势见 KPI)<span class="hint-desk">· 点击看欠费清单</span></span>
         </div>
         <AnaEChart v-if="collectOption" :option="collectOption" :height="250" @chart-click="onCollectClick" />
         <AnaEmpty v-else label="台账数据未录入" hint="收缴率 = 台账 Σ实收 / Σ应收" to="/ledger" to-text="去台账录入" />
@@ -341,7 +341,7 @@ const conclusion = computed(() => buildConclusion(
       <div class="av2-card av2-s4">
         <div class="av2-card-h">
           <span class="t">异常速览</span>
-          <span class="hint">规则引擎跑真数据 · 点击查看</span>
+          <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span></span>
         </div>
         <div v-if="anomTop.length" class="cv2-anoms">
           <button v-for="a in anomTop" :key="a.id" class="cv2-anom" @click="go(a.link)">

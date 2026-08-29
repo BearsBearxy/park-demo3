@@ -1,3 +1,60 @@
+<script lang="ts">
+// mobilizeOption —— setOption 前的移动化注入(移动阅读设计稿 §03),抽成纯函数便测。
+// 原则:只补屏侧**没写**的键,显式设置一律尊重;不原地突变入参 —— option 来自屏侧
+// computed,原地改会写回响应式源(还会让 deep watch 空转),触碰到的路径全部浅拷贝。
+type Rec = Record<string, unknown>
+const isObj = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+// 轴:axisLabel 未设 hideOverlap 补 true(S 档类目密时标签互相叠死)。已显式设(或奇形值)不碰。
+function mobAxis(ax: unknown): unknown {
+  if (!isObj(ax)) return ax
+  const lbl = ax.axisLabel
+  if (lbl !== undefined && !isObj(lbl)) return ax
+  if (isObj(lbl) && lbl.hideOverlap !== undefined) return ax
+  return { ...ax, axisLabel: { ...(lbl as Rec | undefined), hideOverlap: true } }
+}
+
+// line/scatter 触点加粗:手指命中面积比鼠标粗。数字 +2、未设给 6;函数/数组形态不猜,跳过。
+function mobSeries(s: unknown): unknown {
+  if (!isObj(s) || (s.type !== 'line' && s.type !== 'scatter') || s.symbol === 'none') return s
+  if (typeof s.symbolSize === 'number') return { ...s, symbolSize: s.symbolSize + 2 }
+  if (s.symbolSize === undefined) return { ...s, symbolSize: 6 }
+  return s
+}
+
+export function mobilizeOption(option: object, isS: boolean): object {
+  const o: Rec = { ...(option as Rec) }
+  // 全档注入 confine:贴边数据点的 tooltip 会溢出视口/容器(设计稿 §03 明示全档)。
+  // 数组形态(多 tooltip)不逐项猜,跳过;没有 tooltip 键也不凭空造。
+  if (isObj(o.tooltip) && o.tooltip.confine === undefined) o.tooltip = { ...o.tooltip, confine: true }
+  if (!isS) return o
+
+  // 图例改滚动:S 档窄幅下 plain 图例换行会吃掉图高
+  if (isObj(o.legend) && o.legend.type === undefined) o.legend = { ...o.legend, type: 'scroll' }
+
+  // dataZoom:slider 是拖把手交互,S 档又占高又难点 → 剔除;inside(捏合/平移)保留。
+  // 只认显式 type==='slider',别的形态不猜;剔成空数组则整键删掉。
+  const dz = o.dataZoom
+  if (Array.isArray(dz)) {
+    const kept = dz.filter((z: unknown) => !(isObj(z) && z.type === 'slider'))
+    if (kept.length === 0) delete o.dataZoom
+    else if (kept.length !== dz.length) o.dataZoom = kept
+  } else if (isObj(dz) && dz.type === 'slider') {
+    delete o.dataZoom
+  }
+
+  for (const k of ['xAxis', 'yAxis'] as const) {
+    const ax = o[k]
+    if (Array.isArray(ax)) o[k] = ax.map(mobAxis)
+    else if (isObj(ax)) o[k] = mobAxis(ax)
+  }
+
+  if (Array.isArray(o.series)) o.series = o.series.map(mobSeries)
+  else if (isObj(o.series)) o.series = mobSeries(o.series)
+  return o
+}
+</script>
+
 <script setup lang="ts">
 // ECharts 薄封装(spec §一):init(el,'fpAnaTheme') / option 深比较 setOption(notMerge) /
 // ResizeObserver resize / onUnmounted dispose / 'click' 透传为 chart-click。
@@ -69,14 +126,15 @@ onMounted(async () => {
   //    canvas 路径(>600)零变化。选择收口在 echartsBundle,这里不用感知。
   const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
   chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
-  chart.setOption(props.option, { notMerge: true })
+  // setOption 前过 mobilizeOption(onMounted 与 watch 同一通道,别只改一处)
+  chart.setOption(mobilizeOption(props.option, isS), { notMerge: true })
   chart.on('click', (params) => emit('chart-click', params))
   ro = new ResizeObserver(() => chart?.resize())
   ro.observe(el.value)
   ready.value = true
 })
 
-watch(() => props.option, (o) => { chart?.setOption(o, { notMerge: true }) }, { deep: true })
+watch(() => props.option, (o) => { chart?.setOption(mobilizeOption(o, isS), { notMerge: true }) }, { deep: true })
 
 onBeforeUnmount(() => {
   ro?.disconnect(); ro = null

@@ -21,7 +21,7 @@ class ROStub {
 }
 ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = ROStub
 
-import AnaEChart from '../AnaEChart.vue'
+import AnaEChart, { mobilizeOption } from '../AnaEChart.vue'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -95,5 +95,75 @@ describe('AnaEChart', () => {
     w.unmount()
     expect(h.chart.dispose).toHaveBeenCalled()
     expect(lastRO!.disconnect).toHaveBeenCalled()
+  })
+})
+
+// mobilizeOption 纯函数(设计稿 §03 移动化注入)。原则:只补屏侧没写的键,显式设置一律尊重。
+// 结果按整键 toEqual 断言 —— 顺带锁住「没让它改的兄弟键一根毛都没动」。
+describe('mobilizeOption', () => {
+  const m = (o: object, isS: boolean) => mobilizeOption(o, isS) as Record<string, unknown>
+
+  it('全档注入 tooltip.confine:true;显式 confine:false 尊重;数组形态跳过;无键不凭空造', () => {
+    expect(m({ tooltip: { trigger: 'axis' } }, false).tooltip).toEqual({ trigger: 'axis', confine: true })
+    expect(m({ tooltip: { confine: false } }, true).tooltip).toEqual({ confine: false })
+    expect(m({ tooltip: [{ trigger: 'axis' }] }, true).tooltip).toEqual([{ trigger: 'axis' }])
+    expect(m({}, true)).toEqual({})
+  })
+
+  it('isS:dataZoom 剔 slider 保 inside;剔空删键(数组与对象形态同);legend 未设 type 改 scroll', () => {
+    expect(m({ dataZoom: [{ type: 'inside' }, { type: 'slider' }] }, true).dataZoom).toEqual([{ type: 'inside' }])
+    expect('dataZoom' in m({ dataZoom: [{ type: 'slider' }] }, true)).toBe(false)
+    expect('dataZoom' in m({ dataZoom: { type: 'slider' } }, true)).toBe(false)
+    expect(m({ legend: {} }, true).legend).toEqual({ type: 'scroll' })
+    expect(m({ legend: { type: 'plain' } }, true).legend).toEqual({ type: 'plain' })
+  })
+
+  it('isS:xAxis/yAxis(对象或数组)axisLabel 补 hideOverlap:true;已显式设不碰', () => {
+    const r = m({ xAxis: { type: 'category' }, yAxis: [{ axisLabel: { hideOverlap: false } }, {}] }, true)
+    expect(r.xAxis).toEqual({ type: 'category', axisLabel: { hideOverlap: true } })
+    expect(r.yAxis).toEqual([{ axisLabel: { hideOverlap: false } }, { axisLabel: { hideOverlap: true } }])
+  })
+
+  it('isS:line/scatter symbolSize 三态 —— 数字+2、未设给 6、函数跳过;symbol:none 与非目标系列不碰', () => {
+    const fn = (): number => 4
+    const r = m({ series: [
+      { type: 'line', symbolSize: 4 },
+      { type: 'scatter' },
+      { type: 'line', symbolSize: fn },
+      { type: 'line', symbol: 'none' },
+      { type: 'bar', symbolSize: 4 },
+    ] }, true)
+    expect(r.series).toEqual([
+      { type: 'line', symbolSize: 6 },
+      { type: 'scatter', symbolSize: 6 },
+      { type: 'line', symbolSize: fn },
+      { type: 'line', symbol: 'none' },
+      { type: 'bar', symbolSize: 4 },
+    ])
+  })
+
+  it('入参不被原地突变(option 来自屏侧 computed,突变会污染响应式源)', () => {
+    const input = {
+      tooltip: { trigger: 'axis' },
+      legend: {},
+      dataZoom: [{ type: 'inside' }, { type: 'slider' }],
+      xAxis: { type: 'category' },
+      yAxis: [{}],
+      series: [{ type: 'line' }],
+    }
+    const snap = JSON.parse(JSON.stringify(input))
+    m(input, true)
+    expect(input).toEqual(snap)
+  })
+
+  it('isS=false:除 tooltip.confine 外零改动(桌面零视觉差异)', () => {
+    const input = {
+      tooltip: { trigger: 'axis' },
+      legend: {},
+      dataZoom: [{ type: 'slider' }],
+      xAxis: { type: 'category' },
+      series: [{ type: 'line', symbolSize: 4 }],
+    }
+    expect(m(input, false)).toEqual({ ...input, tooltip: { trigger: 'axis', confine: true } })
   })
 })

@@ -228,8 +228,9 @@ const bsTable = computed<BsTblRow[]>(() => {
 
       <div v-if="hasBs && T && R" class="av2-grid">
         <!-- 双环 s4×2 -->
-        <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">资产构成</span><span class="hint">期末 · 占资产总计 · 点扇区定位全表</span></div>
+        <!-- av2-core:本屏无 s8,人工指定核心图——资产构成环是本屏第一主题(结构占比),环+图例覆盖全部科目,且不像杜邦那样依赖利润表快照(缺 is 会整卡空态) -->
+        <div class="av2-card av2-s4 av2-core">
+          <div class="av2-card-h"><span class="t">资产构成</span><span class="hint">期末 · 占资产总计<span class="hint-desk"> · 点扇区定位全表</span></span></div>
           <AnaEChart :option="assetOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
             <div v-for="(d, i) in assetDonut" :key="d.label" class="ak-dl" style="font-size: var(--fs-micro)">
@@ -239,7 +240,7 @@ const bsTable = computed<BsTblRow[]>(() => {
           </div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">负债与所有者权益</span><span class="hint">负债率 {{ R.debtRatio.toFixed(1) }}% · 点扇区定位全表</span></div>
+          <div class="av2-card-h"><span class="t">负债与所有者权益</span><span class="hint">负债率 {{ R.debtRatio.toFixed(1) }}%<span class="hint-desk"> · 点扇区定位全表</span></span></div>
           <AnaEChart :option="leOpt" :height="200" @chart-click="locateRow" />
           <div class="fin-legend">
             <div v-for="(d, i) in leDonut" :key="d.label" class="ak-dl" style="font-size: var(--fs-micro)">

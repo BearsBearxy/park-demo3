@@ -199,7 +199,7 @@ const areaBarOption = computed(() => ({
 
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期 · 点击下钻右侧明细</span></div>
+          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span></span></div>
           <AnaEChart :option="treemapOption" :height="300" @chart-click="onTreeClick" />
           <div class="pk-legend">
             <span v-for="p in phases" :key="p.phase" class="pk-leg"><span class="sw" :style="{ background: phaseColor(p.phase) }"></span>{{ p.name }}</span>
@@ -210,7 +210,8 @@ const areaBarOption = computed(() => ({
           <div class="av2-card-h">
             <span class="t">租户明细 · {{ selected ?? '全园区' }}</span>
             <button v-if="selected" class="pk-clear" @click="selected = null">× 取消过滤</button>
-            <span v-else class="hint">点左图楼栋块过滤</span>
+            <!-- 整句都是桌面指点话术,S 档整体隐藏(无分隔符残留) -->
+          <span v-else class="hint"><span class="hint-desk">点左图楼栋块过滤</span></span>
           </div>
           <div class="pk-tbl-wrap">
             <table class="ak-tbl">
