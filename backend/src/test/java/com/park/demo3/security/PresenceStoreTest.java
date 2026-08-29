@@ -156,7 +156,7 @@ class PresenceStoreTest {
     @Test
     void pingPutsSomeoneOnTheOnlineList() {
         store.ping("sess-a", "zhangsan", "张三", "finance_clerk",
-                   SCOPE, "月度台账 · 一泽 2025-06", "view", clock.instant());
+                   SCOPE, "月度台账 · 一泽 2025-06", java.util.List.of(), clock.instant());
 
         var online = store.online();
 
@@ -171,8 +171,8 @@ class PresenceStoreTest {
     void oneSessionPerTabNotOnePerUser() {
         // 同一个人开两个标签页看两个屏 —— 顶栏头像组按人去重，但在场表按会话记，
         // 否则后开的那个标签页会把前一个的位置覆盖掉。
-        store.ping("sess-1", "zhangsan", "张三", "finance_clerk", "a:1", "台账", "view", clock.instant());
-        store.ping("sess-2", "zhangsan", "张三", "finance_clerk", "b:1", "抄表", "view", clock.instant());
+        store.ping("sess-1", "zhangsan", "张三", "finance_clerk", "a:1", "台账", java.util.List.of(), clock.instant());
+        store.ping("sess-2", "zhangsan", "张三", "finance_clerk", "b:1", "抄表", java.util.List.of(), clock.instant());
 
         assertThat(store.online()).hasSize(2);
     }
@@ -182,7 +182,7 @@ class PresenceStoreTest {
         // 陈旧的在场是**错误信息**：显示「李四在线」而他两分钟前就关了页面，
         // 会让人白等一个不在的人。所以在场的 TTL 比锁短得多 ——
         // 锁掉了代价是重新占，在场错了代价是有人按错误信息做决定。
-        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", "view", clock.instant());
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", java.util.List.of(), clock.instant());
 
         clock.advance(Duration.ofSeconds(61));
 
@@ -196,12 +196,62 @@ class PresenceStoreTest {
         store.acquire(SCOPE, "zhangsan", "张三");
 
         clock.advance(Duration.ofMinutes(2));
-        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", "edit", clock.instant());
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", java.util.List.of(SCOPE), clock.instant());
         clock.advance(Duration.ofMinutes(2));
 
         assertThat(store.acquire(SCOPE, "lisi", "李四"))
             .as("编辑态的 ping 必须同时续锁，否则第 3 分钟锁自己掉了")
             .isNotNull();
+    }
+
+    @Test
+    void aPingRenewsEveryLockTheSessionHolds_notJustOne() {
+        // 被修掉的洞:续期键原是会话级单槽 scope,同一标签页第二个屏进编辑态时
+        // 把第一个屏的锁顶出心跳 —— 3 分钟后被当陈旧锁静默让给别人,且那条路不写 eviction,
+        // 两边零提示。而「同时两个页面在编辑态」是明写的设计(EDIT-MODE-SPEC v3)。
+        store.acquire("meters:2025", "zhangsan", "张三");
+        store.acquire("pv-meter:2025", "zhangsan", "张三");
+
+        clock.advance(Duration.ofMinutes(2));
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "pv:screen", "分栋抄表",
+                   java.util.List.of("meters:2025", "pv-meter:2025"), clock.instant());
+        clock.advance(Duration.ofMinutes(2));   // 距 acquire 已 4 分钟 > TTL,距 ping 2 分钟 < TTL
+
+        assertThat(store.acquire("meters:2025", "lisi", "李四"))
+            .as("第一把锁也被续着 —— 只续一把正是那个静默丢锁的洞").isNotNull();
+        assertThat(store.acquire("pv-meter:2025", "lisi", "李四"))
+            .as("第二把锁照常续着").isNotNull();
+    }
+
+    @Test
+    void evictionsForEveryHeldScopeComeBackInOnePing() {
+        // 两把锁在两拍之间都被接管(极端但可达):通知必须一把一条全部带回,
+        // 吞掉任何一条,「当面提示」对那一把就失效了。
+        store.acquire("meters:2025", "zhangsan", "张三");
+        store.acquire("pv-meter:2025", "zhangsan", "张三");
+        store.takeover("meters:2025", "lisi", "李四", "张主管");
+        store.takeover("pv-meter:2025", "wangwu", "王五", null);
+
+        var notices = store.ping("sess-a", "zhangsan", "张三", "finance_clerk", null, null,
+                                 java.util.List.of("meters:2025", "pv-meter:2025"), clock.instant());
+
+        assertThat(notices).hasSize(2);
+        assertThat(notices).extracting(PresenceStore.Eviction::scope)
+            .containsExactlyInAnyOrder("meters:2025", "pv-meter:2025");
+    }
+
+    @Test
+    void seatModeIsDerivedFromHeldLocks_notClientClaim() {
+        // mode 由服务端从 editScopes 派生 —— 一个坏客户端不带锁就标不成「编辑中」,
+        // 徽标与排序读的都是它,不能信申报。
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "a:1", "台账",
+                   java.util.List.of(), clock.instant());
+        assertThat(store.online().get(0).mode()).isEqualTo("view");
+
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "a:1", "台账",
+                   java.util.List.of("ledger:3:2025-06"), clock.instant());
+        assertThat(store.online().get(0).mode()).isEqualTo("edit");
+        assertThat(store.online().get(0).editScopes()).containsExactly("ledger:3:2025-06");
     }
 
     @Test

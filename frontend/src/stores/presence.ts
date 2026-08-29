@@ -14,6 +14,8 @@ export interface Seat {
   /** 人话的「在哪一屏」，如「月度台账 · 一泽 2025-06」 */
   label: string | null
   mode: 'view' | 'edit'
+  /** 这个会话握着的**全部**锁。徽标逐把匹配它,不再看单槽 scope。 */
+  editScopes: string[]
   /** 在这一屏待了多久 */
   sinceMs: number
   /** 距上次心跳多久 —— 用来淡显「快掉线」的人 */
@@ -58,10 +60,12 @@ export const usePresenceStore = defineStore('presence', () => {
   const editorsByScope = computed(() => {
     const m = new Map<string, Seat[]>()
     for (const u of users.value) {
-      if (u.mode !== 'edit' || !u.scope) continue
-      const list = m.get(u.scope) ?? []
-      list.push(u)
-      m.set(u.scope, list)
+      // 逐把锁登记 —— 一个会话可以同时握多把(多屏编辑态是明写的设计),单槽 scope 只剩「在哪一屏」
+      for (const sc of u.editScopes ?? []) {
+        const list = m.get(sc) ?? []
+        list.push(u)
+        m.set(sc, list)
+      }
     }
     return m
   })
@@ -76,15 +80,13 @@ export const usePresenceStore = defineStore('presence', () => {
    * 边界必须是分隔符或结尾，否则 `sched:pv:2025` 会误伤 `sched:pv:20251`。
    */
   function editorsUnder(prefix: string): Seat[] {
-    return users.value.filter((u) =>
-      u.mode === 'edit' && u.scope != null &&
-      (u.scope === prefix || u.scope.startsWith(prefix + ':') || u.scope.startsWith(prefix + '-')))
+    return users.value.filter((u) => (u.editScopes ?? []).some((sc) =>
+      sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')))
   }
 
-  // 我此刻在哪一屏。屏进来时登记，锁拿到时把 mode 翻成 edit。
+  // 我此刻在哪一屏。屏进来时登记。锁**不再**挤在这个单槽里 —— 见下面 editCallbacks。
   let scope: string | null = null
   let label: string | null = null
-  let mode: 'view' | 'edit' = 'view'
   let lastActivityAt = Date.now()
   let timer: ReturnType<typeof setInterval> | null = null
 
@@ -106,9 +108,33 @@ export const usePresenceStore = defineStore('presence', () => {
    */
   const outcome = ref<Outcome | null>(null)
 
-  /** 被接管的回调 —— 由 useEditLock 注册，ping 带回来时当场喊停。 */
-  let onEvicted: ((e: Eviction) => void) | null = null
-  function handleEviction(fn: ((e: Eviction) => void) | null) { onEvicted = fn }
+  /**
+   * 本会话此刻握着的锁 → 各自的被接管回调。
+   *
+   * ⚠ **按 scope 一把一槽,不是单槽。** 旧版是 `let onEvicted` 单槽 + scope/mode 单槽:
+   *   同一标签页第二个屏进编辑态时,setMode('edit', held) 把第一个屏的锁**顶出心跳** ——
+   *   服务端 3 分钟后当它陈旧,别人 acquire 直接拿走,且那条路不写 eviction,两边零提示。
+   *   而「同时两个页面在编辑态」是明写的设计(auth.ts「同时两个页面在编辑态是常态」)。
+   *   现在 ping 带全量 editScopes、服务端逐把续;通知按 scope 派回它自己的回调,
+   *   不再谁后注册谁赢 —— 旧版连别把锁的通知都会派给唯一那个回调。
+   */
+  const editCallbacks = new Map<string, (e: Eviction) => void>()
+
+  /**
+   * 拿到一把锁:登记续期 + 被接管回调。
+   *
+   * ⚠ **不立刻发一拍**(原 setMode 的理由,原样成立):立刻发会让「你被接管了」在 acquire()
+   *   还没返回时就送达,exit() 跑在 enter() 里那句 `editMode = true` 之前、被它盖掉 ——
+   *   表现为「刚拿到锁就被接管,人却照样进了编辑模式」。
+   *   续锁也不需要立刻:刚占的锁有整整 3 分钟,下一拍(≤20 秒)绰绰有余。
+   */
+  function holdLock(sc: string, onEvicted: (e: Eviction) => void) {
+    editCallbacks.set(sc, onEvicted)
+    lastActivityAt = Date.now()
+    ensureTimer()
+  }
+  /** 还了一把锁:只摘自己这把,别的屏的锁照续。 */
+  function dropLock(sc: string) { editCallbacks.delete(sc) }
 
   /** 键鼠活动。**不能用「最后一次写请求」代替** —— 用户在表格里录了 10 分钟还没点保存，那不是空闲。 */
   function touch() { lastActivityAt = Date.now() }
@@ -116,15 +142,13 @@ export const usePresenceStore = defineStore('presence', () => {
   /**
    * 进了某一屏（浏览态）。label 是给人看的一句话。
    *
-   * ⚠ **编辑态下只换文案，不动 scope/mode。** EDIT-MODE-SPEC v3 允许编辑态跨页签存活
-   *   （「切去别的页面核对一眼回来，编辑态全没了，等于逼人一口气改完」）。
-   *   这里若把 scope 清成 null、mode 降回 view，锁就**停止续期** ——
-   *   人还在编辑态里，3 分钟后锁自己掉，别人直接进得来。
-   *   顶栏那句「在哪一屏」照常跟着走：锁归锁，他现在确实在看别的屏。
+   * scope 无条件跟着屏走 —— 它现在**只是**「在哪一屏」。旧版编辑态下不许动它,
+   * 因为它兼任锁的续期键;续期改走 editScopes 之后那层顾虑不存在了,
+   * 顶栏那句「在哪一屏」也终于在编辑态下跟得上人。
    */
   function enter(s: string | null, l: string | null) {
     label = l
-    if (mode !== 'edit') { scope = s; mode = 'view' }
+    scope = s
     ensureTimer()
     // ⚠ **每次换屏都补一拍**，不能交给 ensureTimer —— 它在轮询已跑时会直接返回，
     //   于是第一次之后就再也不立刻发了：你切到别的页面，自己的「在哪一屏」和别人的名单
@@ -132,29 +156,17 @@ export const usePresenceStore = defineStore('presence', () => {
     void ping()
   }
 
-  /**
-   * 拿到锁 / 还了锁。
-   *
-   * ⚠ **不立刻发一拍。** 立刻发会让「你被接管了」在 acquire() 还没返回时就送达，
-   *   于是 exit() 跑在 enter() 里那句 `editMode = true` 之前、被它盖掉 ——
-   *   表现为「刚拿到锁就被接管，人却照样进了编辑模式」。
-   *   续锁也不需要立刻：刚占的锁有整整 3 分钟，下一拍（≤20 秒）绰绰有余。
-   */
-  function setMode(m: 'view' | 'edit', s?: string | null) {
-    mode = m
-    if (s !== undefined) scope = s
-    if (m === 'edit') { lastActivityAt = Date.now(); ensureTimer() }
-  }
-
   async function ping() {
     try {
+      const editScopes = [...editCallbacks.keys()]
       const r = await api.put<{
-        users: Seat[]; evicted: Eviction | null
+        users: Seat[]; evictions: Eviction[] | null
         approvals: Pending[]; outcome: Outcome | null
-      }>('/presence/ping', { sid, scope, label, mode, lastActivityAt })
+      }>('/presence/ping', { sid, scope, label, lastActivityAt, editScopes })
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
-      if (r?.evicted) onEvicted?.(r.evicted)
+      // 通知按 scope 派回**它自己**的回调 —— 派给全部回调的话,一次接管会把别的屏也踢出编辑态
+      for (const e of r?.evictions ?? []) editCallbacks.get(e.scope)?.(e)
       if (r?.outcome) outcome.value = r.outcome
     } catch {
       // 抖一下不算数,下一拍再说。服务端 60 秒才判离线 = 3 拍容错。
@@ -206,5 +218,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, enter, setMode, touch, handleEviction, stop, ping }
+  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, enter, holdLock, dropLock, touch, stop, ping }
 })

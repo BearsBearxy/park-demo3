@@ -66,6 +66,9 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
    */
   const onUnload = () => { if (held.value) locksApi.releaseOnUnload(held.value) }
 
+  /** 在 presence 登记过续期的那把锁。stop() 要摘的就是它 —— 那时 held 可能已被清掉(被接管路径)。 */
+  let registered: string | null = null
+
   /** 拿到锁返回 true；被别人占着返回 false 并填好 lockedBy。 */
   async function acquire(scope: string): Promise<boolean> {
     let r
@@ -95,7 +98,10 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
   function start() {
     ACTIVITY.forEach((e) => window.addEventListener(e, touch, true))
     window.addEventListener('pagehide', onUnload)
-    presence.handleEviction((e) => {
+    // 防御:同一实例不还锁直接换 scope 重占(现有调用方都不会,但漏网一次就是一把幽灵续期)
+    if (registered && registered !== held.value) presence.dropLock(registered)
+    registered = held.value
+    presence.holdLock(registered!, (e) => {
       // 被接管：锁已经不是我们的了 —— 先清 held，免得 release() 再发一个注定无效的请求
       evictedBy.value = e
       held.value = null
@@ -104,14 +110,14 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
       // 只会在他点保存时撞一个 403，而那时草稿已经又多了十几处。
       onExit?.()
     })
-    presence.setMode('edit', held.value)
   }
 
   function stop() {
     ACTIVITY.forEach((e) => window.removeEventListener(e, touch, true))
     window.removeEventListener('pagehide', onUnload)
-    presence.handleEviction(null)
-    presence.setMode('view')
+    // 只摘自己这把 —— 旧版 setMode('view') 会把整个会话降回浏览态,
+    // 别的屏正握着的锁当场停续、座位也不再显示「编辑中」。
+    if (registered) { presence.dropLock(registered); registered = null }
   }
 
   /**

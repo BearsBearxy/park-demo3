@@ -24,6 +24,9 @@ public class PresenceService {
     /** label 是客户端供给的展示文本 —— 截断，不解释。不截的话一个坏客户端能把内存撑大。 */
     private static final int LABEL_MAX = 60;
 
+    /** 一个会话同时握的锁数上限。真实上限是「开着的编辑态屏数」(个位数);超出的只能是坏客户端。 */
+    private static final int EDIT_SCOPES_MAX = 16;
+
     private final PresenceStore store;
     private final AuthUserMapper users;
     private final ApprovalService approvals;
@@ -52,14 +55,17 @@ public class PresenceService {
         Instant touched = req.lastActivityAt() == null
             ? Instant.now() : Instant.ofEpochMilli(req.lastActivityAt());
 
-        PresenceStore.Eviction e = store.ping(
-            req.sid(), me, name, role, req.scope(), clamp(req.label()), req.mode(), touched);
+        List<String> editScopes = req.editScopes() == null ? List.of()
+            : req.editScopes().stream().limit(EDIT_SCOPES_MAX).toList();
+        List<PresenceStore.Eviction> es = store.ping(
+            req.sid(), me, name, role, req.scope(), clamp(req.label()), editScopes, touched);
 
         // 远程授权顺着同一条通道回来（设计稿 §07）——「要做通知机制」当初是否掉它的理由之一，
         // 而心跳建好之后，它的边际成本就只是响应体多两个字段。
         var out = approvals.pollOutcome();
         return new PingResp(seats(me),
-            e == null ? null : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()),
+            es.stream().map(e -> new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()))
+                .toList(),
             approvals.inbox(), out);
     }
 
@@ -76,7 +82,7 @@ public class PresenceService {
         Instant now = Instant.now();
         return store.online().stream()
             .map(s -> new SeatDTO(s.sid(), s.user(), s.displayName(), s.role(),
-                s.scope(), s.label(), s.mode(),
+                s.scope(), s.label(), s.mode(), s.editScopes(),
                 Duration.between(s.since(), now).toMillis(),
                 Duration.between(s.heartbeatAt(), now).toMillis(),
                 s.user().equals(me)))

@@ -318,7 +318,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const presence = usePresenceStore()
     presence.users = [{
       sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-      scope: 'book-template:ledger:1:2026-03', label: '账册模板', mode: 'edit',
+      scope: 'book-template:ledger:1:2026-03', label: '账册模板', mode: 'edit', editScopes: ['book-template:ledger:1:2026-03'],
       sinceMs: 1000, idleMs: 0, self: false,
     }]
 
@@ -334,7 +334,7 @@ describe('TemplateEditorPanel · 编辑锁的作用域与旁路', () => {
     const presence = usePresenceStore()
     presence.users = [{
       sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-      scope: 'book-template:ledger:1:2026-07', label: '账册模板', mode: 'edit',
+      scope: 'book-template:ledger:1:2026-07', label: '账册模板', mode: 'edit', editScopes: ['book-template:ledger:1:2026-07'],
       sinceMs: 1000, idleMs: 0, self: false,
     }]
 

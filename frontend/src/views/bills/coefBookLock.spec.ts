@@ -104,15 +104,16 @@ describe('系数簿 · 编辑态的被动退出', () => {
 
     await (w.vm as unknown as Vm).onEditBtn()
     await presence.ping()
+    // mode 已不由客户端申报(服务端从 editScopes 派生)—— 同一语义现在看锁列表
     expect(api.put).toHaveBeenLastCalledWith('/presence/ping',
-      expect.objectContaining({ scope: SCOPE, mode: 'edit' }))
+      expect.objectContaining({ editScopes: [SCOPE] }))
 
     await auth.endElevation(true)
     await settle(w)
     await presence.ping()
 
     expect(api.put).toHaveBeenLastCalledWith('/presence/ping',
-      expect.objectContaining({ mode: 'view' }))
+      expect.objectContaining({ editScopes: [] }))
   })
 
   it('关掉窗口也要还锁', async () => {

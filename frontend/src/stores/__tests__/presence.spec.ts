@@ -27,30 +27,51 @@ describe('在场', () => {
     vi.clearAllMocks()
   })
 
-  it('切到别的页签不会把编辑态的锁作用域清掉', async () => {
-    // EDIT-MODE-SPEC v3：编辑态跨页签存活（「专员切去别的页面核对一眼回来，
-    // 编辑态和刚拿到的授权全没了，等于逼人一口气改完」）。
-    // 那么切页签时 enter() 若把 scope 清成 null、mode 降回 view，
-    // 锁就**停止续期**了 —— 人还在编辑态里，3 分钟后锁自己掉，别人直接进得来。
+  it('切到别的页签,锁照续 —— 续期跟着 editScopes,不跟「在哪一屏」', async () => {
+    // EDIT-MODE-SPEC v3：编辑态跨页签存活。旧版靠「编辑态下不许动 scope 单槽」保这条,
+    // 代价是第二个屏进编辑态就把第一把顶出心跳(2026-08-30 修掉的洞)。
+    // 现在续期键是 editScopes 列表,scope 只剩「在哪一屏」,可以放心跟人走。
     const p = usePresenceStore()
     p.enter('ledger:3:2025-06', '月度台账')
-    p.setMode('edit', 'ledger:3:2025-06')
+    p.holdLock('ledger:3:2025-06', () => {})
 
     p.enter(null, '租户档案')          // 切到另一个页签
     await p.ping()
 
-    expect(lastPing()).toMatchObject({ scope: 'ledger:3:2025-06', mode: 'edit' })
+    expect(lastPing()).toMatchObject({ editScopes: ['ledger:3:2025-06'], label: '租户档案' })
   })
 
-  it('切页签仍然更新「在哪一屏」的文案', async () => {
-    // 上一条不能矫枉过正:锁要跟着，但顶栏该显示他现在真正在看的那一屏。
+  it('❗第二个屏进编辑态,第一把锁不许被顶出心跳', async () => {
+    // 被修掉的洞本体:旧版 setMode('edit', held) 是单槽,后来的覆盖先来的 ——
+    // 第一把锁 3 分钟后被服务端当陈旧锁静默让给别人,且那条路不写 eviction,两边零提示。
+    // 而「同时两个页面在编辑态」是明写的设计(auth.ts:142)。
     const p = usePresenceStore()
-    p.setMode('edit', 'ledger:3:2025-06')
-
-    p.enter(null, '租户档案')
+    p.holdLock('meters:2025', () => {})
+    p.holdLock('pv-meter:2025', () => {})
     await p.ping()
 
-    expect(lastPing()).toMatchObject({ label: '租户档案' })
+    expect(lastPing()!.editScopes, '两把都要在心跳里')
+      .toEqual(expect.arrayContaining(['meters:2025', 'pv-meter:2025']))
+
+    p.dropLock('pv-meter:2025')       // 第二个屏退出编辑态
+    await p.ping()
+    expect(lastPing()!.editScopes, '只摘自己那把,第一把照续').toEqual(['meters:2025'])
+  })
+
+  it('❗被接管的通知只派给它自己那把锁的回调', async () => {
+    // 旧版单槽回调连**别把锁**的通知都会派过去 —— 一次接管把无关的屏也踢出编辑态。
+    const p = usePresenceStore()
+    const hits: string[] = []
+    p.holdLock('meters:2025', () => hits.push('meters'))
+    p.holdLock('pv-meter:2025', () => hits.push('pv'))
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'pv-meter:2025', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+
+    await p.ping()
+
+    expect(hits, '只有被接管那把的回调该响').toEqual(['pv'])
   })
 
   it('年份卡按前缀找人:这一年里任何一个月有人在改都要标出来', async () => {
@@ -60,7 +81,7 @@ describe('在场', () => {
     p.users = [
       { sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
         scope: 'sched:salary:2025-06', label: '工资', mode: 'edit',
-        sinceMs: 1000, idleMs: 0, self: false },
+        editScopes: ['sched:salary:2025-06'], sinceMs: 1000, idleMs: 0, self: false },
     ]
 
     expect(p.editorsUnder('sched:salary:2025').map(e => e.displayName)).toEqual(['张三'])
@@ -73,7 +94,7 @@ describe('在场', () => {
     const p = usePresenceStore()
     p.users = [
       { sid: 's1', user: 'a', displayName: '甲', role: null, scope: 'sched:pv:20251',
-        label: '', mode: 'edit', sinceMs: 1, idleMs: 0, self: false },
+        label: '', mode: 'edit', editScopes: ['sched:pv:20251'], sinceMs: 1, idleMs: 0, self: false },
     ]
 
     expect(p.editorsUnder('sched:pv:2025')).toEqual([])
@@ -149,7 +170,8 @@ describe('在场', () => {
     p.enter('b:1', '乙屏')
     await p.ping()
 
-    expect(lastPing()).toMatchObject({ scope: 'b:1', label: '乙屏', mode: 'view' })
+    // mode 不再由客户端申报(服务端从 editScopes 派生),体里只有屏与空锁表
+    expect(lastPing()).toMatchObject({ scope: 'b:1', label: '乙屏', editScopes: [] })
   })
 })
 

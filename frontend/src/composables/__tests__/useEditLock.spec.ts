@@ -89,9 +89,34 @@ describe('编辑模式 × 编辑锁', () => {
       // 一条通道两件事：登记在场 + 编辑态续锁。分成两条的话编辑态每 20 秒发两个请求，
       // 而且两边的「最后一次活动」各记各的 —— 空闲判定就有两个不一致的答案。
       expect(api.put).toHaveBeenCalledWith('/presence/ping',
-        expect.objectContaining({ scope: SCOPE, mode: 'edit' }))
+        expect.objectContaining({ editScopes: [SCOPE] }))
       expect(api.put).not.toHaveBeenCalledWith(
         expect.stringContaining('/heartbeat'), expect.anything())
+    } finally { vi.useRealTimers() }
+  })
+
+  it('❗退出编辑之后心跳不再带这把锁 —— 否则还回去的锁又被自己续活', async () => {
+    // stop() 若忘了把自己从 editScopes 摘掉,下一拍 ping 会带着已还的锁再续一次:
+    // 服务端 heartbeat 对不存在的锁是无害的,但若别人恰在两拍之间占了它,
+    // 这个幽灵续期会把**别人的锁**的 lastActivity 打乱(同名 scope、不同持有人时无害,
+    // 但自己若因竞态重新拿回,就成了一把没人认领的续期)。摘干净是唯一不用想的写法。
+    vi.useFakeTimers()
+    try {
+      useAuthStore().permissions = PERMS
+      vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+      vi.mocked(api.put).mockResolvedValue({ users: [], evictions: [] } as never)
+
+      const { toggle } = useEditMode(PERMS, { scope: () => SCOPE })
+      await toggle()          // 进
+      await toggle()          // 出(还锁)
+      vi.mocked(api.put).mockClear()
+      await vi.advanceTimersByTimeAsync(20_000)
+
+      const pings = vi.mocked(api.put).mock.calls.filter(c => c[0] === '/presence/ping')
+      expect(pings.length).toBeGreaterThan(0)
+      for (const c of pings) {
+        expect((c[1] as { editScopes: string[] }).editScopes, '还了的锁不许再出现在心跳里').toEqual([])
+      }
     } finally { vi.useRealTimers() }
   })
 
@@ -104,7 +129,7 @@ describe('编辑模式 × 编辑锁', () => {
       vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
       vi.mocked(api.put).mockResolvedValue({
         users: [],
-        evicted: { scope: SCOPE, by: 'lisi', byDisplayName: '李四', authorizerName: '张主管' },
+        evictions: [{ scope: SCOPE, by: 'lisi', byDisplayName: '李四', authorizerName: '张主管' }],
       } as never)
 
       const { editMode, toggle, evictedBy } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -127,7 +152,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'zhangsan', displayName: '张三', role: 'finance_clerk',
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 761_000, idleMs: 5_000, self: false },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 761_000, idleMs: 5_000, self: false },
     ]
 
     const { heldByOther } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -143,7 +168,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 1000, idleMs: 0, self: false },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 1000, idleMs: 0, self: false },
     ]
 
     const { heldByOther, lockedBy } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -157,7 +182,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'me', displayName: '我', role: null,
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 1000, idleMs: 0, self: true },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 1000, idleMs: 0, self: true },
     ]
 
     const { heldByOther } = useEditMode(PERMS, { scope: () => SCOPE })
