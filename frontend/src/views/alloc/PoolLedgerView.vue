@@ -55,6 +55,7 @@ import {
 import { zoneLabel } from '@/utils/zoneLabel'
 import { floorLabels } from '@/utils/floorLabels'
 import { useAuthStore } from '@/stores/auth'
+import { useViewport } from '@/composables/useViewport'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -283,9 +284,22 @@ const AREA_W = 76
 const FLOOR_W = 96
 const NAME_W = 150
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixArea = { ...w(AREA_W), left: '0px' }
-const fixFloor = { ...w(FLOOR_W), left: AREA_W + 'px' }
-const fixName = { ...w(NAME_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }
+// RESPONSIVE-LAYOUT-SPEC §5.3 S 档查看优先:sticky 收敛到首列(区域 76)+表头——左三根合计 322px
+// 在 390 视口占 82%;楼层/池名称**原位退成普通列**(列宽/列序一根不动,只去 sticky)。
+// offset 是内联 style,CSS 媒体块盖不住,档位判定走 useViewport 单例派生 computed
+// (FPLedgerTable/MeterLedgerGrid 同范式;jsdom 无 matchMedia 恒 xl → 桌面档与既有测试零变化)。
+const { tier } = useViewport()
+const sTier = computed(() => tier.value === 's')
+// 退级列 class 一起摘:.pl-fix 带 z-index:3 + 不透明背景,留着会盖住仅存的 sticky 首列
+const fixCls = computed(() => (sTier.value ? undefined : 'pl-fix'))
+const fixThCls = computed(() => (sTier.value ? undefined : 'pl-fix-th pl-fix'))
+// S 档分隔线挪到仅存 sticky 内沿(区域右缘),内沿以 sticky 集合为准
+const fixArea = computed(() => (sTier.value
+  ? { ...w(AREA_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
+  : { ...w(AREA_W), left: '0px' }))
+const fixFloor = computed(() => (sTier.value ? w(FLOOR_W) : { ...w(FLOOR_W), left: AREA_W + 'px' }))
+const fixName = computed(() => (sTier.value ? w(NAME_W)
+  : { ...w(NAME_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }))
 const fixBand = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
 // ── 生成本月/重新生成(编辑态;POST generate 后刷新) ──
@@ -790,9 +804,11 @@ async function delPool() {
 <template>
   <!-- 加载失败不走骨架:骨架下面没有任何文字与出口。失败时照常出页壳,账期选择器要留着
        —— 否则用户被锁在失败的那个月上,连切回上个月都做不到 -->
-  <div v-if="!pools && !loadErr" class="page-loading"><span class="page-spin" /></div>
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移查看态(S 档 sticky 收敛留首列),
+       摘 base.css 的 800px 屏级地板;两个 v-if 根分支同挂 -->
+  <div v-if="!pools && !loadErr" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <div v-else class="pl-page">
+  <div v-else class="pl-page fp-fluid">
     <FPLoadBar :on="veil" />
     <!-- 标题行:h2+账期;右=导出(常驻)+生成/新增池(编辑态)+编辑模式 -->
     <div class="pl-head">
@@ -862,10 +878,11 @@ async function delPool() {
           <tr>
             <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixArea"
                 title="原册 B 列:楼栋/车间(不带期数)。招商中心那几行原册写的就是「招商中心」,不是「A座」">区域</th>
-            <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixFloor"
+            <!-- S 档退级列(§5.3):class 随 fixThCls/fixCls 走,区域列恒 sticky -->
+            <th rowspan="2" class="pl-grp-th" :class="fixThCls" :style="fixFloor"
                 title="原册 C 列那一格(楼层+方位写在一起,如「四楼西侧」);
 橙色「(未录)」=挂了楼栋却没录楼层,点开池名在抽屉里补;按层份池楼层空=整栋、园区级池不挂楼栋,均留空">楼层</th>
-            <th rowspan="2" class="pl-grp-th pl-fix-th pl-fix" :style="fixName"
+            <th rowspan="2" class="pl-grp-th" :class="fixThCls" :style="fixName"
                 title="原册 A 列自然键(如「A4西侧走廊灯」);无自然键的显费项名。悬停行内池名可看系统全名">池名称</th>
             <th rowspan="2" class="pl-grp-th" :style="w(230)"
                 title="一表一行(原册结构):区域·位置·用途·表号;「−」=以 sign=-1 从本池冲减">电表</th>
@@ -911,12 +928,12 @@ async function delPool() {
               <td class="pl-fix" :style="fixArea">
                 <span class="pl-txt">{{ rowArea(r, ln) }}</span>
               </td>
-              <td class="pl-fix" :style="fixFloor">
+              <td :class="fixCls" :style="fixFloor">
                 <span class="pl-txt" :title="rowFloor(r, ln) === POOL_LOC_UNSET ? POOL_LOC_HINT.todo ?? undefined : undefined"
                       :class="{ 'pl-loc-todo': rowFloor(r, ln) === POOL_LOC_UNSET }">{{ rowFloor(r, ln) }}</span>
               </td>
               <!-- §I3:池名称=**本行电表**的用途(原册 D 列);池级自然键(A 列)退到首行副标题 -->
-              <td class="pl-fix" :style="fixName">
+              <td :class="fixCls" :style="fixName">
                 <span class="pl-pname" :class="{ click: editMode }"
                       :title="r.warn ?? r.autoName ?? r.name"
                       @click="editMode && openPoolDlg(r)">
@@ -989,8 +1006,8 @@ async function delPool() {
             <!-- 带尾合计(原册每块一行合计行,标签就是块名);列位与 tfoot 全期合计对齐 -->
             <tr class="pl-bfoot">
               <td class="pl-fix" :style="fixArea"><span class="pl-foot-lbl">小　计</span></td>
-              <td class="pl-fix" :style="fixFloor"></td>
-              <td class="pl-fix" :style="fixName"><span class="pl-txt dim">{{ b.label }}</span></td>
+              <td :class="fixCls" :style="fixFloor"></td>
+              <td :class="fixCls" :style="fixName"><span class="pl-txt dim">{{ b.label }}</span></td>
               <td colspan="4"></td>
               <td><span class="pl-foot-v">{{ fmt(bandFooter(b.rows).qty) }}</span></td>
               <td v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></td>
@@ -1015,8 +1032,8 @@ async function delPool() {
         <tfoot>
           <tr>
             <th class="pl-fix" :style="fixArea"><span class="pl-foot-lbl">合　计</span></th>
-            <th class="pl-fix" :style="fixFloor"></th>
-            <th class="pl-fix" :style="fixName"></th>
+            <th :class="fixCls" :style="fixFloor"></th>
+            <th :class="fixCls" :style="fixName"></th>
             <th colspan="4"></th>
             <th><span class="pl-foot-v">{{ fmt(foot.qty) }}</span></th>
             <th v-if="segDefs.length > 1" :colspan="segDefs.length - 1"></th>

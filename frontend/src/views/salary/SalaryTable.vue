@@ -269,4 +269,18 @@ const allSelected = computed(() =>
 .s12-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
 .s12-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .s12-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+
+/* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内删除钮常显(半透明弱化,不可达=功能丢失) */
+@media (hover: none) {
+  .s12-acts { opacity:.55; }
+}
+
+/* ── S 档(≤600,§5.3 查看优先):左 sticky 收敛只留姓名一根+表头——序号列**原位退成普通列**
+   (列序/列宽不动,只摘横向钉扎),姓名 offset 从 48 归 0,序号随横滚滚入其下;
+   双级表头 top:0/28 与表脚纵向 sticky 不动。本表 sticky 全写在 CSS 类上(非内联 style),
+   媒体块直接盖得住,不必像 FPLedgerTable(offset 内联)那样进 JS 走 useViewport。 */
+@media (max-width: 600px) {
+  .s12-sticky1 { left:auto; }
+  .s12-sticky2 { left:0; }
+}
 </style>

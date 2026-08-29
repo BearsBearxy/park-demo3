@@ -76,8 +76,10 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
 
 <template>
   <!-- ① 月份层 -->
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC 迁移(月卡/指标条定列 grid 窄档降列,
+       工作台见 ReconWorkbench),摘掉 base.css 的 800px 屏级地板 -->
   <template v-if="month === null">
-    <div v-if="overview" class="rc3 rc-page">
+    <div v-if="overview" class="rc3 rc-page fp-fluid">
       <div class="rc-months-head">
         <div>
           <h2 class="rc-ptitle">收入核对</h2>
@@ -114,7 +116,7 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
         </template>
       </div>
     </div>
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
   </template>
 
   <!-- ② 工作台 -->
@@ -128,7 +130,7 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
   />
 
   <!-- §6 加载门:v-else 紧邻上方状态链(DESIGN-FIDELITY §6.2) -->
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -166,4 +168,15 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
 .rc-mcard .mn { font-size: 20px; font-weight: 700; }
 .rc-mcard .mstate { font-size: 12px; margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; }
 .rc-mcard .mfig { font-size: 11.5px; color: var(--text-muted); margin-top: 9px; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+/* ── 窄档(RESPONSIVE-LAYOUT-SPEC §1,宽档规则在前):定列 grid 按档降列 ──
+   指标条 4 定列在 M 档(内容区最窄 ~475px)每格只剩 ~100px,数字与说明会互相挤;
+   月卡同理:「N 户差异 · N 户缺记」一行放不下。降列是静态按档,不随内容抖动 */
+@media (max-width: 960px) { /* M↓ */
+  .rc-metric-strip { grid-template-columns: repeat(2, 1fr); gap: 16px 28px; }
+  .rc-month-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) { /* S */
+  .rc-month-grid { grid-template-columns: repeat(2, 1fr); }
+}
 </style>

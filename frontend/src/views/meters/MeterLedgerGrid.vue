@@ -13,6 +13,7 @@
 // 键盘流(§7.3):Tab 走原生 DOM 序(tbody 内仅本月行至有 input=行内横向),Enter 显式跳下一格,行尾进下一行首格。
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { iconFor } from '@/components/ds/icon'
+import { useViewport } from '@/composables/useViewport'
 import {
   STATUS_META, statusDims, effCurr, rowUsage, draftRowIssues, gridFooter, groupByBuilding, groupUsage,
   flattenGroups, buildWindow, offsetOf,
@@ -87,13 +88,28 @@ const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px
 const tableW = computed(() =>
   AREA_W + FLOOR_W + USE_W + ROOM_W + TEN_W + SUB_W + CODE_W + FAC_W
   + segDefs.value.length * 2 * SEG_W + USAGE_W + ST_W)
+// RESPONSIVE-LAYOUT-SPEC §5.3 S 档查看优先:sticky 收敛到首列(区域)+表头——左三右二共 5 根
+// sticky 合计 540px,在 390px 视口比屏还宽;其余四根**原位退成普通列**(colgroup/列宽/列序一根不动)。
+// sticky 是内联 style(offset 按列宽常量累加),CSS 媒体块盖不住内联,档位判定只能进 JS:
+// 走 useViewport 单例派生 computed(FPLedgerTable 同范式;jsdom/SSR 无 matchMedia 恒 xl → 桌面档与既有测试零变化)。
+const { tier } = useViewport()
+const sTier = computed(() => tier.value === 's')
+// 退级列的 class 也要一起摘:.mlg-fix 带 z-index:3 + 不透明背景,留着会盖住仅存的 sticky 首列
+// (FPLedgerTable 模板同注);S 档表头/表脚退级格回落各自基础规则,竖向 sticky 不受影响。
+const fixCls = computed(() => (sTier.value ? undefined : 'mlg-fix'))
+const fixThCls = computed(() => (sTier.value ? undefined : 'mlg-fix-th mlg-fix'))
 // 区域(原册 B 列)在最左:区块带头虽然也是楼栋名,但原册每行都写,逐行显才能跟原册一行一行对
-const fixArea = { ...w(AREA_W), left: '0px' }
-const fixFloor = { ...w(FLOOR_W), left: AREA_W + 'px' }
+// S 档分隔线挪到仅存 sticky 内沿(区域右缘)——内沿以 sticky 集合为准(FPLedgerTable 同款)
+const fixArea = computed(() => (sTier.value
+  ? { ...w(AREA_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
+  : { ...w(AREA_W), left: '0px' }))
+const fixFloor = computed(() => (sTier.value ? w(FLOOR_W) : { ...w(FLOOR_W), left: AREA_W + 'px' }))
 // 分隔线落在最外侧固定列(用途)右缘
-const fixUse = { ...w(USE_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }
-const fixUsage = { ...w(USAGE_W), right: ST_W + 'px', borderLeft: '1px solid var(--border-subtle)' }
-const fixSt = { ...w(ST_W), right: '0px' }
+const fixUse = computed(() => (sTier.value ? w(USE_W)
+  : { ...w(USE_W), left: AREA_W + FLOOR_W + 'px', borderRight: '1px solid var(--border-subtle)' }))
+const fixUsage = computed(() => (sTier.value ? w(USAGE_W)
+  : { ...w(USAGE_W), right: ST_W + 'px', borderLeft: '1px solid var(--border-subtle)' }))
+const fixSt = computed(() => (sTier.value ? w(ST_W) : { ...w(ST_W), right: '0px' }))
 // 汇总行标签格 colspan 跨 区域~倍率 8 列:sticky left 但不锁宽(列宽由表头定)
 const fixGrpLbl = { left: '0px', borderRight: '1px solid var(--border-subtle)' }
 
@@ -291,8 +307,9 @@ function onEnter(e: KeyboardEvent) {
         <tr>
           <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixArea"
               title="原册 B 列:楼栋/车间(不带期数)">区域</th>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixFloor">楼层·方位</th>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixUse">用途</th>
+          <!-- S 档退级列(§5.3):class 随 fixThCls/fixCls 走,区域列恒 sticky -->
+          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixFloor">楼层·方位</th>
+          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixUse">用途</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(ROOM_W)">{{ zone === 'dorm' ? '宿舍单元' : '房号' }}</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(TEN_W)">租户</th>
           <th rowspan="2" class="mlg-grp-th" :style="w(SUB_W)">表号</th>
@@ -300,8 +317,8 @@ function onEnter(e: KeyboardEvent) {
           <th rowspan="2" class="mlg-grp-th" :style="w(FAC_W)" :title="FACTOR_TITLE">倍率</th>
           <th :colspan="segDefs.length" class="mlg-grp-th">上月行至</th>
           <th :colspan="segDefs.length" class="mlg-grp-th">本月行至</th>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixUsage">用量</th>
-          <th rowspan="2" class="mlg-grp-th mlg-fix-th mlg-fix" :style="fixSt">状态</th>
+          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixUsage">用量</th>
+          <th rowspan="2" class="mlg-grp-th" :class="fixThCls" :style="fixSt">状态</th>
         </tr>
         <tr>
           <th v-for="s in segDefs" :key="'p' + s.c" class="mlg-leaf-th" :style="w(SEG_W)">{{ s.lab }}</th>
@@ -321,13 +338,13 @@ function onEnter(e: KeyboardEvent) {
           <td class="mlg-fix" :style="fixArea">
             <span class="mlg-txt" :class="{ dim: !areaLabel(v.x) }">{{ areaLabel(v.x) || '–' }}</span>
           </td>
-          <td class="mlg-fix" :style="fixFloor">
+          <td :class="fixCls" :style="fixFloor">
             <span
               class="mlg-txt" :class="{ dim: floorSide(v.x) === '–' || floorSide(v.x) === LOC_TODO }"
               :title="floorSide(v.x) === LOC_TODO ? '这块表有区域但没录楼层方位,点开租户列的抽屉补「楼层/方位/房号」三格' : (v.x.m.spot ?? undefined)"
             >{{ floorSide(v.x) }}</span>
           </td>
-          <td class="mlg-fix" :style="fixUse">
+          <td :class="fixCls" :style="fixUse">
             <span class="mlg-txt" :title="useLabel(v.x)">{{ useLabel(v.x) }}</span>
           </td>
           <td><span class="mlg-txt" :class="{ dim: roomNo(v.x) === '–' }">{{ roomNo(v.x) }}</span></td>
@@ -373,13 +390,13 @@ function onEnter(e: KeyboardEvent) {
             <span v-else class="mlg-nv" :class="{ empty: currOf(v.x, s) == null }">{{ fmt(currOf(v.x, s)) }}</span>
           </td>
           <!-- 用量(sticky 右,派生蓝):校验红显+title(倒走/时段不符,§7.4) -->
-          <td class="mlg-fix" :style="fixUsage">
+          <td :class="fixCls" :style="fixUsage">
             <span
               class="mlg-sumc" :class="{ bad: drv.get(v.x.m.id)!.issues.length > 0 }"
               :title="drv.get(v.x.m.id)!.issues.join(' · ') || undefined"
             >{{ fmt(drv.get(v.x.m.id)!.usage) }}</span>
           </td>
-          <td class="mlg-fix ct" :style="fixSt">
+          <td class="ct" :class="fixCls" :style="fixSt">
             <span class="mlg-st" :class="STATUS_META[v.x.status].cls" :title="statusDims(v.x)">{{ STATUS_META[v.x.status].label }}</span>
           </td>
         </tr>
@@ -389,10 +406,10 @@ function onEnter(e: KeyboardEvent) {
             <span class="mlg-bsum-lbl" :title="grpLabel(v.g!)">{{ grpLabel(v.g!) }}</span>
           </td>
           <td :colspan="segDefs.length * 2"></td>
-          <td class="mlg-fix" :style="fixUsage">
+          <td :class="fixCls" :style="fixUsage">
             <span class="mlg-bsum-v" :title="grpSegTitle(v.g!)">{{ fmt(usageOf(v.g!).total) }}</span>
           </td>
-          <td class="mlg-fix" :style="fixSt"></td>
+          <td :class="fixCls" :style="fixSt"></td>
         </tr>
         </template>
         <tr v-if="win.bottomPad > 0" class="mlg-spacer" aria-hidden="true">
@@ -406,14 +423,14 @@ function onEnter(e: KeyboardEvent) {
       <tfoot>
         <tr>
           <th class="mlg-fix" :style="fixArea"><span class="mlg-foot-lbl">合　计</span></th>
-          <th class="mlg-fix" :style="fixFloor"></th>
+          <th :class="fixCls" :style="fixFloor"></th>
           <!-- 用途列也是 sticky:tfoot 同样要给它固定格,否则横滚时页脚露出下层内容 -->
-          <th class="mlg-fix" :style="fixUse"></th>
+          <th :class="fixCls" :style="fixUse"></th>
           <th colspan="5"></th>
           <th :colspan="segDefs.length"></th>
           <th :colspan="segDefs.length"><span class="mlg-foot-rd">已抄 {{ foot.read }} / 未抄 {{ foot.missing }}</span></th>
-          <th class="mlg-fix" :style="fixUsage"><span class="mlg-foot-v">{{ fmt(foot.usageSum) }}</span></th>
-          <th class="mlg-fix" :style="fixSt"></th>
+          <th :class="fixCls" :style="fixUsage"><span class="mlg-foot-v">{{ fmt(foot.usageSum) }}</span></th>
+          <th :class="fixCls" :style="fixSt"></th>
         </tr>
       </tfoot>
     </table>
@@ -453,6 +470,11 @@ td.ct { text-align:center; }
 .mlg-tname.dim .nm { color:var(--text-disabled); font-weight:var(--fw-regular); }
 .mlg-tname .ch { opacity:0; flex:0 0 auto; color:var(--text-disabled); transition:opacity var(--dur-fast); }
 .mlg-table tbody tr:hover .mlg-tname .ch { opacity:1; }
+/* 触屏(RESPONSIVE-LAYOUT-SPEC §6.1):hover 显形的行内箭头常显(半透明弱化,不可不可达);
+   iPad 外接鼠标 hover:hover 恢复显形,由媒体查询自动跟随 */
+@media (hover: none) {
+  .mlg-tname .ch { opacity:.55; }
+}
 
 /* mono 右对齐数值(空值'–' dim)/左对齐文本 */
 .mlg-nv { display:block; text-align:right; font-size:12px; padding:0 8px; color:var(--text-secondary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

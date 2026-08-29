@@ -560,14 +560,16 @@ const emptyText = computed(() => {
 <template>
   <!-- 首载 gate:表档案/当月读数未落位不闪空表(v-else 紧邻,LIST-PAGE 加载门) -->
   <!-- 表档案首载失败:整页无内容可显,骨架屏会一直转 —— 换成提示+重试,别让用户干等 -->
-  <div v-if="!meters && metersErr" class="mt-gate-fail">
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移查看态(统计卡降列/宽表 S 档单 sticky/
+       录入荐桌面预留位提示),摘 base.css 的 800px 屏级地板;三个 v-if 根分支同挂,谁渲染谁是首子 -->
+  <div v-if="!meters && metersErr" class="mt-gate-fail fp-fluid">
     <FPLoadError @retry="loadMeters">
       <span>{{ metersErr }}</span>
     </FPLoadError>
   </div>
-  <div v-else-if="!meters || !readings" class="page-loading"><span class="page-spin" /></div>
+  <div v-else-if="!meters || !readings" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <div v-else class="mt-page">
+  <div v-else class="mt-page fp-fluid">
     <!-- 标题行:h2+账期+抄表进度条;右=模板/导出(常驻)+导入/新增表(编辑态)+编辑模式(最右) -->
     <div class="mt-head">
       <div class="mt-head-l">
@@ -701,6 +703,12 @@ const emptyText = computed(() => {
       <span v-if="!editMode" class="mt-hidbar-em">先点右上「编辑模式」才能改这两格。</span>
     </div>
 
+    <!-- ≤600 重编辑提示(RESPONSIVE-LAYOUT-SPEC §5.3/§11.2):抄表录入是宽表行内编辑,荐桌面但
+         不禁止、不隐藏、不优化。预留位——行常驻定高,文案仅编辑态显,显隐不挪表格(LAYOUT-STABILITY §2-3;
+         条件挂在行内 span 上,不进流内块门禁;LedgerView .lgw-s-hint 同款) -->
+    <div class="mt5-s-hint">
+      <span v-if="editMode">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+    </div>
     <!-- 台账同款电子表格(§7 v5.1):分时列常驻,无分页,草稿式编辑 -->
     <MeterLedgerGrid
       :rows="gridRows" :view-key="viewKey" :edit-mode="editable" :kind="kind" :zone="zone" :draft="draft"
@@ -903,4 +911,20 @@ const emptyText = computed(() => {
 .mt5-del-list .keep { color: var(--text-muted); }
 .mt5-del-ck { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .mt-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
+
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.3 P3 查看态):只用 960/600,宽档规则在前 ──
+   S 档荐桌面提示行:桌面档不存在(display:none),≤600 才占位(常驻定高,文案随编辑态) */
+.mt5-s-hint { display: none; }
+@media (max-width: 960px) { /* M↓ */
+  /* 统计卡 6 列在窄档挤成一字条(val 21px + sub 会溢出):M 降三列两行,组成按档静态确定 */
+  .mt5-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) { /* S */
+  .mt5-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 工具行收纳:搜索框放弃 230px 定宽改弹性(mx-list §5.1 同手法),390 视口不撑破筛选行;
+     16px 免 iOS 聚焦缩放(§6.5,仅 S 档引用 token) */
+  .mt5-filters .mx-search { flex: 1 1 160px; width: auto; min-width: 0; }
+  .mt5-filters .mx-search input { font-size: var(--fs-input-m); }
+  .mt5-s-hint { display: flex; align-items: center; flex: 0 0 20px; height: 20px; font-size: 12px; color: var(--hue-orange); }
+}
 </style>

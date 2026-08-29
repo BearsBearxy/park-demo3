@@ -205,7 +205,9 @@ const occSub = computed(() => {
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
+  <!-- 根收编 .mx-page(迁移①):内联 height:100% 媒体查询盖不住,S 档高度链三件套要在类上生效;
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板(通过 §9 验收的标志) -->
+  <div class="mx-page fp-fluid">
     <!-- 1. Title row -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -271,7 +273,8 @@ const occSub = computed(() => {
     </div>
 
     <!-- 5. Content area -->
-    <div v-if="layout === '卡片墙'" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(296px,1fr));gap:16px">
+    <!-- minmax 内层 min(100%,296px):容器比 296 还窄(390px 视口减去卡内边距)时列宽退让到容器宽,防横向溢出(spec §5.5) -->
+    <div v-if="layout === '卡片墙'" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,296px),1fr));gap:16px">
       <BuildingCard
         v-for="b in paged"
         :key="b.id"
@@ -294,7 +297,21 @@ const occSub = computed(() => {
           :skeleton-rows="summary ? 0 : pageSize"
           @sortChange="sort = $event"
           @rowClick="onTableRowClick"
-        />
+        >
+          <!-- S 档行卡映射(迁移②,spec §5.1:主字段 + ≤2 次级 + 状态胶囊,72px 内):
+               不映射的话兜底用第一列——它是 30px 图标+双行的 VNode,塞行卡浪费高度还挤掉次级字段 -->
+          <template #card="{ row }">
+            <div class="mx-rowcard-main">{{ row.name }}</div>
+            <div class="mx-rowcard-sub">
+              <span>{{ row.phaseName }} · 在租 {{ row.occupiedCount }}/{{ row.unitCount }}</span>
+              <span>出租率 {{ occPct(row.occRate) }}</span>
+              <!-- flex:0 0 auto 豁免 .mx-rowcard-sub > * 的 min-width:0,胶囊不被截字 -->
+              <span style="margin-left:auto;flex:0 0 auto">
+                <FPContractStatus :status="row.status === 1 ? 'active' : 'terminated'" />
+              </span>
+            </div>
+          </template>
+        </FPSortableTable>
         <div v-if="summary && filtered.length === 0" style="padding:40px;text-align:center;color:var(--text-disabled)">没有匹配的楼栋</div>
       </div>
       <!-- 分页器停靠卡片底部(spec §5) -->
@@ -354,3 +371,21 @@ const occSub = computed(() => {
     />
   </div>
 </template>
+
+<style scoped>
+/* M/S 档(≤960)工具条收纳(spec §5.1 M 行):摘掉 800px 地板后工具条要自己在窄容器里活——
+   右组允许换行、搜索框放弃 230 定宽改吃满余宽;tabs 胶囊排不下时行内横滑
+   (隐滚动条留触屏拖动,照抄 mx-list.css 的 .mx-kpirail 手法)。
+   不进全局 mx-list.css:租户/系统用户两屏还没迁、仍垫着地板,全局改会动未验收屏的 M/S 档。 */
+@media (max-width: 960px) {
+  .mx-toolbar-right { flex-wrap: wrap; }
+  .mx-search { flex: 1 1 160px; width: auto; }
+  .fp-phasetabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .fp-phasetabs::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 600px) { /* S */
+  /* iOS 聚焦缩放三件套之一(spec §6.5):S 档输入 16px。ds/Input、Select 已在组件内处理,
+     .mx-search 是裸 input,屏侧自扛 */
+  .mx-search input { font-size: var(--fs-input-m); }
+}
+</style>

@@ -203,4 +203,13 @@ const num = (n: number, d = 2) =>
 .ut-empty-ic { width:52px; height:52px; border-radius:16px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-muted); }
 .ut-empty-t { font-size:15px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .ut-empty-s { font-size:13px; color:var(--text-muted); max-width:400px; line-height:1.5; }
+
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 定宽表):列/min-width 一根不动,
+   窄了在 .ut-tablewrap(overflow:auto,现成)内横滚;查看态迁移只动触屏可达性 ── */
+@media (hover: none) { /* 触屏(§6.1):hover 显形的行内删除钮常显,不可达=功能丢失 */
+  .ut-acts { opacity:1; }
+  /* 触达热区 ≥36(§6.2):视觉 26px 不变,伪元素向外扩 5px;只在触屏生效,桌面 hover 语义零变化 */
+  .ut-actbtn { position:relative; }
+  .ut-actbtn::after { content:''; position:absolute; inset:-5px; }
+}
 </style>

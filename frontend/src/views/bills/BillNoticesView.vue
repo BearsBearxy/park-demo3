@@ -596,9 +596,12 @@ const drawerSub = computed(() => {
 </script>
 
 <template>
-  <div v-if="!rows" class="page-loading"><span class="page-spin" /></div>
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移(KPI 降列/主表 .bn-wrap 内横滚+首列锚),
+       摘掉 base.css 的 800px 屏级地板。v-if 两分支谁渲染谁就是 .fp-content 的首子,都要挂——
+       只挂 v-else 的话,首载转圈那一屏仍被地板撑到 800px,手机上圈会跑到屏外去居中。 -->
+  <div v-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <div v-else class="bn-page">
+  <div v-else class="bn-page fp-fluid">
     <FPLoadBar :on="veil" />
     <!-- 标题行:h2+账期+期页签;右=重新生成(admin) -->
     <div class="bn-head">
@@ -699,7 +702,8 @@ const drawerSub = computed(() => {
     <!-- 一行一户(pl-table 手法:sticky 表头/34px 行/tfoot 钉底合计) -->
     <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
     <div class="bn-wrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
-      <table class="bn-table">
+      <!-- .bulk 挂到表上:S 档首列 sticky 的 left 偏移随勾选列进出而不同(0 / 36px),CSS 要认得出模式 -->
+      <table class="bn-table" :class="{ bulk }">
         <!-- table-layout:fixed ⇒ col 必须与列数逐一对齐,缺一个后面全体串位。
              S20 加「勾选/状态」两列时漏补,导致月租金列拿到 52px(表头「月租金(参考)」被截成「月租金(参」)。 -->
         <colgroup>
@@ -715,7 +719,8 @@ const drawerSub = computed(() => {
         <thead>
           <tr>
             <th v-if="bulk" class="ct bn-ckc"><input type="checkbox" :checked="allChecked" @change="toggleAll" /></th>
-            <th class="l">租户</th>
+            <!-- bn-c1:S 档横滚时的定位锚列(§5.3 只钉一根;楼栋组头是 colspan 宽格,钉住会盖滚进来的列,不钉) -->
+            <th class="l bn-c1">租户</th>
             <th class="l" title="该户全部单据场地去重合并,明细内按场地分段小计">位置</th>
             <th>行数</th>
             <th title="该户全部单据本期合计之和(租金+水电,含宿舍单);账外户降淡不入应收">本期合计(元)</th>
@@ -741,7 +746,7 @@ const drawerSub = computed(() => {
               <td v-if="bulk" class="ct bn-ckc" @click.stop>
                 <input type="checkbox" :checked="selected.has(r.tenantId)" @change="toggleOne(r.tenantId)" />
               </td>
-              <td class="l">
+              <td class="l bn-c1">
                 <span class="bn-tname" :title="r.tenantName ?? undefined">{{ r.tenantName ?? '#' + r.tenantId
                   }}<em v-if="r.mark" class="bn-xb" :title="r.mark.tip">{{ r.mark.badge }}</em></span>
               </td>
@@ -768,7 +773,7 @@ const drawerSub = computed(() => {
         <tfoot>
           <tr>
             <th v-if="bulk" class="bn-ckc"></th>
-            <th class="l"><span class="bn-foot-lbl">合　计 · {{ filtered.length }} 户</span></th>
+            <th class="l bn-c1"><span class="bn-foot-lbl">合　计 · {{ filtered.length }} 户</span></th>
             <th></th>
             <th><span class="bn-foot-v">{{ footLines }}</span></th>
             <th><span class="bn-foot-v">{{ fmt2(footTotal) }}</span></th>
@@ -1326,4 +1331,36 @@ tbody tr:hover .bn-cfm { visibility: visible; }
 .bn-nop:hover { background: var(--surface-sunken); color: var(--text-primary); }
 .bn-nop.ok { color: var(--hue-green); }
 .bn-nop:disabled { opacity: .5; cursor: default; }
+
+/* ── 响应式(RESPONSIVE-LAYOUT-SPEC §5.4 colgroup 定宽表:列一根不动,窄了在 .bn-wrap 内横滚)──
+   宽档规则在前窄档在后(§1)。根挂 fp-fluid 摘地板后,窄档兜底从「整屏 800px」换成
+   「KPI/工具行流式收纳 + 只有表自己保底横滚」。 */
+@media (max-width: 960px) { /* M↓ */
+  /* KPI 四列在 M 档就已经挤不下:4×150(minmax 下限)+3×12(gap)=636px,
+     而 M 档内容区最窄 601−(126–160 铬边)≈441px,768 验收宽也只有 ≈608–642px——
+     多数区间四列必溢出 → M 起即降两列;S 档沿层叠继承同一条,不另写 600 块。 */
+  .bn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 主表保底:table-layout:fixed + width:100% 下,容器窄于定宽列合计(770,批量态+36=806)时
+     唯一弹性的「位置」列会被压到 0px。给表 920px 兜底,位置列至少 114–150px,
+     多出的宽度由 .bn-wrap(overflow:auto)横滚消化。限 M↓:961–1100 视口的 L 档
+     今天就不横滚,无条件写会造出 §8 点名的那种 L 档回归。 */
+  .bn-table { min-width: 920px; }
+}
+@media (max-width: 600px) { /* S */
+  /* 搜索框弹性收窄(照 mx-list 搜索框手法),390 视口不撑破工具行 */
+  .bn-search { flex: 1 1 160px; width: auto; min-width: 0; }
+  /* 横滚定位锚:首列(租户;批量态连同 36px 勾选列)sticky left,表头/tfoot 同步钉住。
+     z 值照 PoolLedgerView .pl-fix 阶梯(体 3 / 头 8 / 脚 7)——表内 sticky 的平级冲突,
+     不属于七级阶梯的覆盖层令牌档。§5.3:390 视口只钉一根,多钉会占满屏。 */
+  .bn-table th.bn-c1, .bn-table td.bn-c1,
+  .bn-table th.bn-ckc, .bn-table td.bn-ckc { position: sticky; left: 0; z-index: 3; }
+  .bn-table thead th.bn-c1, .bn-table thead th.bn-ckc { z-index: 8; }
+  .bn-table tfoot th.bn-c1, .bn-table tfoot th.bn-ckc { z-index: 7; }
+  /* 批量态勾选列钉最左,租户列按勾选列 col 宽(36px)顺移 */
+  .bn-table.bulk th.bn-c1, .bn-table.bulk td.bn-c1 { left: 36px; }
+}
+@media (hover: none) { /* 触屏(§6.1):hover 显形控件常显,不可达=功能丢失 */
+  .bn-cfm { visibility: visible; }
+  .bn-npen { visibility: visible; }
+}
 </style>

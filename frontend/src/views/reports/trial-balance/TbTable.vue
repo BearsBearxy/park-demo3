@@ -130,4 +130,25 @@ function inputVal(r: TbAccount, field: TbFieldKey): string {
 .fin-ni { width:100%; box-sizing:border-box; border:1px solid transparent; background:transparent; text-align:right; font-size:12px; padding:3px 8px; outline:none; color:var(--text-primary); font-family:var(--font-mono); border-radius:var(--radius-sm); }
 .fin-ni:focus { background:var(--accent-blue); border-color:var(--hue-blue); }
 .fin-ni::-webkit-outer-spin-button, .fin-ni::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+
+/* 触屏无 hover(RESPONSIVE-LAYOUT-SPEC §6.1):行 hover 显形的删科目 × 常显,半透明弱化 */
+@media (hover: none) {
+  .tb-x { display:grid; opacity:.6; }
+}
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3):查看优先,sticky 只留一根首列当锚 ──
+   首列 = colgroup 第一根(科目代码 96px)——colgroup/列宽一根不动,只给这列加 sticky。
+   为什么没照 FPLedgerTable 走 useViewport+computed:那边 sticky offset 是「列宽累加」的
+   内联 style,媒体块盖不住内联才被迫进 JS;本表首列 offset 恒为 0,纯 CSS 媒体块即可,
+   jsdom(无 matchMedia)天然不命中、桌面档零变化,与 JS 方案验收等价。
+   z-index 沿全仓表内 sticky 阶梯(FPLedgerTable 口径,已备案例外):
+   thead 4 / 双轴(顶+左)表头格 8 / 体内 sticky 列 3 / tfoot 5 / tfoot sticky 列 7。
+   桌面档不进本块(thead 3 / tfoot 2 现状不动),抬阶只发生在多了一根竖向 sticky 的 S 档。 */
+@media (max-width: 600px) {
+  .fin-table thead th { z-index:4; }
+  .fin-table thead th.h1:first-child { left:0; z-index:8; }
+  .fin-table tbody td:first-child { position:sticky; left:0; z-index:3; }
+  .fin-table tfoot td { z-index:5; }
+  .fin-table tfoot td:first-child { left:0; z-index:7; }
+}
 </style>

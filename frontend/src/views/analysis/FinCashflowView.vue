@@ -231,7 +231,7 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <!-- 应收 vs 实收 分组柱 s8(点柱→该期欠费租户清单) -->
           <div class="av2-card av2-s8">
             <div class="av2-card-h"><span class="t">应收 vs 实收 · 分期对比</span>
-              <span class="hint">台账仅 {{ ledgerPeriods.length }} 期(稀疏覆盖) · 点柱→该期欠费租户清单</span></div>
+              <span class="hint">台账仅 {{ ledgerPeriods.length }} 期(稀疏覆盖)<span class="hint-desk"> · 点柱→该期欠费租户清单</span></span></div>
             <AnaEChart :option="rcOpt" :height="250" @chart-click="onRcClick" />
           </div>
         </template>

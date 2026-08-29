@@ -124,3 +124,26 @@
    优先级反了 —— 标题是这张图的身份,hint 是补充说明。改为:标题永不收缩,hint 先让位。 */
 .av2-card-h .t { font-size:var(--fs-body); flex:0 0 auto; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); min-width:0; }
+/* S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.2):KPI 定两列——auto-fit minmax(120px) 在 390px
+   视口会挤成三列,主数值互相顶到截断;两列下瓦片约 170px,数值+delta 都放得下。
+   栅格 gap 与卡内边距各微收一档,省下的宽度还给图表。
+   须写在上面 1100 块之后(宽档在前窄档在后),且在 .av2-card 基础规则之后——
+   同特异度靠源序覆盖,插到前面 padding 会被基础规则压回去。 */
+@media (max-width:600px){
+  .av2-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .av2-grid { gap:6px; }
+  .av2-card { padding:8px 10px; }
+  /* S 档阅读序(移动阅读设计稿 §02):结论 → 核心图 → 长尾。断点内 order 重排属规范 §7 豁免。
+     公约类(跨智能体契约,勿改名):
+       .av2-lead — 结论条,排最前;
+       .av2-s8   — 有 8 栏大图的屏,大图即核心图;
+       .av2-core — 无 s8 的屏由人工点名的核心图。
+     av2-grid 是 grid 容器,order 只作用于其**直接子项**——嵌套一层就失效,标记必须打在
+     格子元素本身。此块必须保持在 1280→1100→600「宽先窄后」层叠链的最末,插前面会被
+     宽档规则按源序压回。>600 不写 order,DOM 序即视觉序,桌面零差异。 */
+  .av2-lead { order:-2; }
+  .av2-s8, .av2-core { order:-1; }
+  /* 桌面交互话术(「悬停查看」「点击下钻」类,含分隔符一起包在 .hint-desk 里):
+     S 档无 hover 无光标,话术失真,整段隐藏。 */
+  .hint-desk { display:none; }
+}

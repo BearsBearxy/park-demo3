@@ -269,10 +269,11 @@ const segsOption = computed(() => ({
       </div>
 
       <div class="av2-grid">
-        <div class="av2-card av2-s12">
+        <!-- av2-core:本屏无 s8,人工指定核心图——桑基是全屏信息密度最高的主图(四源金额流+守恒口径),且驱动下方板块趋势联动 -->
+        <div class="av2-card av2-s12 av2-core">
           <div class="av2-card-h">
             <span class="t">能量流桑基 · {{ isMonth ? '本月' : 's10 覆盖月同口径(' + coveredYms.length + ' 期)' }}</span>
-            <span class="hint">金额(元)· 点边/节点切换下方板块趋势</span>
+            <span class="hint">金额(元)<span class="hint-desk">· 点边/节点切换下方板块趋势</span></span>
           </div>
           <!-- §五策略2:所选月无售电 → 桑基锚定最近 s10 覆盖月,卡顶横幅(禁静默) -->
           <AnaPeriodBanner v-if="sankeyUsedYm && sankeyUsedYm !== curYm" :selected="curYm" :used="sankeyUsedYm"
@@ -291,7 +292,7 @@ const segsOption = computed(() => ({
         <div class="av2-card av2-s12">
           <div class="av2-card-h">
             <span class="t">板块月度趋势 · {{ BOARD_ZH[board] }}</span>
-            <span class="hint">万元 · 点上方桑基切换板块</span>
+            <span class="hint">万元<span class="hint-desk"> · 点上方桑基切换板块</span></span>
           </div>
           <AnaEChart v-if="boardTrend.yms.length" :option="trendOption" :height="170" />
           <AnaEmpty v-else label="该板块本年无数据" hint="换个板块或期间再看" />

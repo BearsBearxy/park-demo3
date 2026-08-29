@@ -11,6 +11,12 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem('fp-app-sb', sbOpen.value ? '1' : '0')
   }
 
+  // 浮层侧栏的点外关/Esc 关(spec §3.2):用户触发但不是偏好——「临时看一眼」结束。
+  // 不能走 toggleSidebar:它无条件写 fp-app-sb,会把 '0' 落盘污染用户的宽屏偏好。
+  function closeTransient() {
+    sbOpen.value = false
+  }
+
   // ── T1 侧栏自动折叠(spec 2026-07-12 responsive-shrink)──
   // ≤1280px 进窄档自动收起、回宽档自动展开;窄档内手动 toggle 照常(仅跨断点时覆盖)。
   // 挂在 store 初始化:pinia store 为单例,真实应用中 addEventListener 只执行一次。
@@ -38,5 +44,5 @@ export const useUiStore = defineStore('ui', () => {
   function startNav() { navigating.value = true }
   function endNav() { navigating.value = false }
 
-  return { sbOpen, toggleSidebar, netError, reportNetError, dismissNetError, navigating, startNav, endNav }
+  return { sbOpen, toggleSidebar, closeTransient, netError, reportNetError, dismissNetError, navigating, startNav, endNav }
 })

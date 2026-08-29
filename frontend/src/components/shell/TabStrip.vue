@@ -309,6 +309,14 @@ function onNewTab() {
   color: var(--text-primary);
 }
 
+/* 触屏无 hover:关闭/固定钮常显(RESPONSIVE-LAYOUT-SPEC §6.1)——
+   否则非激活签无法关闭,双击固定又与缩放手势冲突,Pin 钮是唯一入口 */
+@media (hover: none) {
+  .fp-tab-btn { opacity: 0.55; }
+  .fp-tab.on .fp-tab-btn,
+  .fp-tab-btn:active { opacity: 1; }
+}
+
 .fp-tab-actions {
   flex: 0 0 auto;
   display: flex;
@@ -365,7 +373,8 @@ function onNewTab() {
   top: 43px;
   right: 6px;
   z-index: 60;
-  width: 288px;
+  /* 视口 <300px 时防左缘溢出(RESPONSIVE-LAYOUT-SPEC §6) */
+  width: min(288px, 92vw);
   max-height: 60vh;
   overflow-y: auto;
   padding: 6px;

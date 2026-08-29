@@ -231,11 +231,11 @@ const lossOpt = computed<object>(() => ({
         </div>
 
         <div class="av2-grid">
-          <!-- 图1 s12:桩月度量收(充电量堆叠柱 + 收益线,双轴) -->
-          <div class="av2-card av2-s12">
+          <!-- 图1 s12:桩月度量收(充电量堆叠柱 + 收益线,双轴);本屏无 s8 屏,av2-core 人工点名——量收双轴承载结论条的量/收主指标,首图即主叙事 -->
+          <div class="av2-card av2-s12 av2-core">
             <div class="av2-card-h">
               <span class="t">桩月度量收 · {{ year }}年</span>
-              <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元 · 点图深链分桩明细</span>
+              <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
             </div>
             <AnaEChart :option="chart1Opt" :height="300" @chart-click="goDetail" />
           </div>
@@ -244,7 +244,7 @@ const lossOpt = computed<object>(() => ({
           <div class="av2-card av2-s6">
             <div class="av2-card-h">
               <span class="t">运营商收益占比</span>
-              <span class="hint">全年收益 元 · 点图深链分桩明细</span>
+              <span class="hint">全年收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
             </div>
             <AnaEChart v-if="donutRows.length" :option="donutOpt" :height="250" @chart-click="goDetail" />
             <AnaEmpty v-else label="本年收益均为 0" hint="有充电记录但收益未填,先到分桩明细补录" :to="'/' + navValue" to-text="去补录" />

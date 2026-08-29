@@ -321,7 +321,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="av2-card-h">
             <span class="t">租户列表</span>
             <span class="te2-lh">
-              <span class="hint">{{ byFamily ? '家族合计降序 · 点击看主租户' : `按本期${metricLabel}降序 · 点击选中` }}</span>
+              <!-- 拆开三元:排序口径留守,「点击…」指点话术进 hint-desk(S 档隐藏后不悬空分隔符) -->
+              <span class="hint">{{ byFamily ? '家族合计降序' : `按本期${metricLabel}降序` }}<span class="hint-desk">{{ byFamily ? ' · 点击看主租户' : ' · 点击选中' }}</span></span>
               <span class="anx-seg mini" role="group" aria-label="榜单口径">
                 <button :class="{ on: !byFamily }" @click="byFamily = false">按户</button>
                 <button :class="{ on: byFamily }" @click="byFamily = true">按家族</button>
@@ -383,14 +384,15 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 
         <!-- 下方:Top20 榜(点击选中)+ 费额 vs 月租散点(点点选中) -->
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint">点击条形选中租户</span></div>
+          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint"><span class="hint-desk">点击条形选中租户</span></span></div>
           <AnaEChart :option="topOption" :height="440" @chart-click="onTopClick" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h">
             <span class="t">{{ metricLabel }} vs 月租金</span>
             <span class="te2-lh">
-              <span class="hint">点点选中 · 气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template><template v-if="xLog && scatterSplit.hidden"> · 0租金户 {{ scatterSplit.hidden }} 户未显示</template></span>
+              <!-- 指点话术在句首:连同后随「· 」一起包,S 档隐藏后图例句仍完整 -->
+              <span class="hint"><span class="hint-desk">点点选中 · </span>气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template><template v-if="xLog && scatterSplit.hidden"> · 0租金户 {{ scatterSplit.hidden }} 户未显示</template></span>
               <span class="anx-seg mini" role="group" aria-label="横轴刻度">
                 <button :class="{ on: xLog }" @click="xLog = true">对数</button>
                 <button :class="{ on: !xLog }" @click="xLog = false">线性</button>

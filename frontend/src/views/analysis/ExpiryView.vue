@@ -118,7 +118,7 @@ function onParetoClick(p: unknown) {
 
         <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏) -->
         <div v-if="soon.length > 0" class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序 · 点行去合同屏</span></div>
+          <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序<span class="hint-desk"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>租户</th><th>合同号</th><th>月租金(万)</th><th>到期日</th><th>剩余天数</th></tr></thead>
@@ -136,7 +136,7 @@ function onParetoClick(p: unknown) {
         </div>
 
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比 · 点柱→清单展开</span></div>
+          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span></span></div>
           <AnaEChart :option="paretoOpt" :height="300" @chart-click="onParetoClick" />
         </div>
 
@@ -157,7 +157,7 @@ function onParetoClick(p: unknown) {
         </div>
 
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 {{ listed.length }} 份 · 按月租金降序 · 点行展开该租户合同详情</span></div>
+          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 {{ listed.length }} 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>合同号</th><th>租户</th><th>楼栋</th><th>楼层</th><th>月租金(万)</th><th>占最高</th><th>状态</th></tr></thead>

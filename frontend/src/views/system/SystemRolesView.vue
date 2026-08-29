@@ -157,7 +157,9 @@ async function remove(r: RoleDTO) {
 </script>
 
 <template>
-  <div class="sr-page">
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §11.1 迁移查看态(≤960 双栏降单列、矩阵外框横滚),
+       摘掉 base.css 的 M↓ 屏级地板。配置操作按 §11.1「系统管理配置明确不做」:不禁不藏不优化 -->
+  <div class="sr-page fp-fluid">
     <!-- 页头 -->
     <div class="sr-head">
       <div>
@@ -340,4 +342,12 @@ p.sr-remark.ro { margin: 0; border: none; padding: 0; height: auto; color: var(-
 
 .sr-act { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); }
 .sr-ro { margin: 0; padding-top: 12px; border-top: 1px solid var(--divider); font-size: var(--fs-micro); color: var(--text-muted); }
+
+/* ── M/S 档(≤960):双栏降单列——角色列表在上、权限矩阵在下(DOM 序即视觉序,无需重排)。
+   矩阵行(勾选+说明+key 胶囊)窄屏可能超宽:外框显式横滚不裁内容(§5.4 口径)。
+   配置操作不优化(§11.1 系统管理配置明确不做),查看/勾选可用即可 ── */
+@media (max-width: 960px) {
+  .sr-split { grid-template-columns: 1fr; }
+  .sr-pane { overflow-x: auto; }
+}
 </style>

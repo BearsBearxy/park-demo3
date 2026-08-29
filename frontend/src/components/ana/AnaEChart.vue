@@ -1,3 +1,60 @@
+<script lang="ts">
+// mobilizeOption —— setOption 前的移动化注入(移动阅读设计稿 §03),抽成纯函数便测。
+// 原则:只补屏侧**没写**的键,显式设置一律尊重;不原地突变入参 —— option 来自屏侧
+// computed,原地改会写回响应式源(还会让 deep watch 空转),触碰到的路径全部浅拷贝。
+type Rec = Record<string, unknown>
+const isObj = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+// 轴:axisLabel 未设 hideOverlap 补 true(S 档类目密时标签互相叠死)。已显式设(或奇形值)不碰。
+function mobAxis(ax: unknown): unknown {
+  if (!isObj(ax)) return ax
+  const lbl = ax.axisLabel
+  if (lbl !== undefined && !isObj(lbl)) return ax
+  if (isObj(lbl) && lbl.hideOverlap !== undefined) return ax
+  return { ...ax, axisLabel: { ...(lbl as Rec | undefined), hideOverlap: true } }
+}
+
+// line/scatter 触点加粗:手指命中面积比鼠标粗。数字 +2、未设给 6;函数/数组形态不猜,跳过。
+function mobSeries(s: unknown): unknown {
+  if (!isObj(s) || (s.type !== 'line' && s.type !== 'scatter') || s.symbol === 'none') return s
+  if (typeof s.symbolSize === 'number') return { ...s, symbolSize: s.symbolSize + 2 }
+  if (s.symbolSize === undefined) return { ...s, symbolSize: 6 }
+  return s
+}
+
+export function mobilizeOption(option: object, isS: boolean): object {
+  const o: Rec = { ...(option as Rec) }
+  // 全档注入 confine:贴边数据点的 tooltip 会溢出视口/容器(设计稿 §03 明示全档)。
+  // 数组形态(多 tooltip)不逐项猜,跳过;没有 tooltip 键也不凭空造。
+  if (isObj(o.tooltip) && o.tooltip.confine === undefined) o.tooltip = { ...o.tooltip, confine: true }
+  if (!isS) return o
+
+  // 图例改滚动:S 档窄幅下 plain 图例换行会吃掉图高
+  if (isObj(o.legend) && o.legend.type === undefined) o.legend = { ...o.legend, type: 'scroll' }
+
+  // dataZoom:slider 是拖把手交互,S 档又占高又难点 → 剔除;inside(捏合/平移)保留。
+  // 只认显式 type==='slider',别的形态不猜;剔成空数组则整键删掉。
+  const dz = o.dataZoom
+  if (Array.isArray(dz)) {
+    const kept = dz.filter((z: unknown) => !(isObj(z) && z.type === 'slider'))
+    if (kept.length === 0) delete o.dataZoom
+    else if (kept.length !== dz.length) o.dataZoom = kept
+  } else if (isObj(dz) && dz.type === 'slider') {
+    delete o.dataZoom
+  }
+
+  for (const k of ['xAxis', 'yAxis'] as const) {
+    const ax = o[k]
+    if (Array.isArray(ax)) o[k] = ax.map(mobAxis)
+    else if (isObj(ax)) o[k] = mobAxis(ax)
+  }
+
+  if (Array.isArray(o.series)) o.series = o.series.map(mobSeries)
+  else if (isObj(o.series)) o.series = mobSeries(o.series)
+  return o
+}
+</script>
+
 <script setup lang="ts">
 // ECharts 薄封装(spec §一):init(el,'fpAnaTheme') / option 深比较 setOption(notMerge) /
 // ResizeObserver resize / onUnmounted dispose / 'click' 透传为 chart-click。
@@ -6,7 +63,7 @@
 // 把 themeRiver/sunburst/candlestick/registerMap 这些一个没用到的全拖进首屏。
 // ⚠ 新增图表类型要改的是 echartsBundle.ts,不是这里。
 // jsdom 无 canvas:组件测试 vi.mock('../echartsBundle')(见 __tests__/anaEChart.spec.ts 契约)。
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { registerFpAnaTheme } from './anaTheme'
 
 // 最小实例形状(不顶层 import echarts 类型,保住懒加载;mock 也按此契约)
@@ -33,6 +90,15 @@ interface ChartInst {
 const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 250 })
 const emit = defineEmits<{ 'chart-click': [params: unknown] }>()
 
+// S 档(视口 ≤600)图高降档:xl/lg→260、md→220、sm→180、xs→150(RESPONSIVE-LAYOUT-SPEC §5.2)。
+// matchMedia 挂载时初判一次即可,不跟随 resize——手机不改窗宽,旋屏走整页重挂载;
+// 也因此零响应式重排,同一视口内高度即终态(LAYOUT-STABILITY §1)。
+// 上面五档注释里「同一行卡等高」的约束,在 S 档随单列堆叠自然失效——一行只有一张卡,
+// 没有并排可对齐;降档只需整组同改(xl 与 lg 合并到 260 正是这个意思),无需逐行核对。
+const S_HEIGHT: Record<number, number> = { 440: 260, 300: 260, 250: 220, 200: 180, 170: 150 }
+const isS = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
+const chartHeight = computed(() => (isS ? S_HEIGHT[props.height] ?? props.height : props.height))
+
 const el = ref<HTMLDivElement | null>(null)
 const ready = ref(false)
 let chart: ChartInst | null = null
@@ -56,16 +122,19 @@ onMounted(async () => {
   // 代价是显存 —— 背景缓冲面积从 1.14²≈1.3 倍涨到 4 倍(单张 600×300 的图约 2.8MB)。
   // 一屏最多 7 张图(PvRoiView),约 20MB,可接受;真嫌重的话下一步是换 SVGRenderer
   // (矢量,任何 DPR 都锐利,且文字走浏览器排版引擎),但那要动 echartsBundle 的渲染器装配。
+  // —— S 档(≤600)已走这条出路:echartsBundle 按档装配 SVG(DPR 照传不降,SVG 根本不看它),
+  //    canvas 路径(>600)零变化。选择收口在 echartsBundle,这里不用感知。
   const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
   chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
-  chart.setOption(props.option, { notMerge: true })
+  // setOption 前过 mobilizeOption(onMounted 与 watch 同一通道,别只改一处)
+  chart.setOption(mobilizeOption(props.option, isS), { notMerge: true })
   chart.on('click', (params) => emit('chart-click', params))
   ro = new ResizeObserver(() => chart?.resize())
   ro.observe(el.value)
   ready.value = true
 })
 
-watch(() => props.option, (o) => { chart?.setOption(o, { notMerge: true }) }, { deep: true })
+watch(() => props.option, (o) => { chart?.setOption(mobilizeOption(o, isS), { notMerge: true }) }, { deep: true })
 
 onBeforeUnmount(() => {
   ro?.disconnect(); ro = null
@@ -74,7 +143,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: height + 'px' }" />
+  <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: chartHeight + 'px' }" />
 </template>
 
 <style scoped>
