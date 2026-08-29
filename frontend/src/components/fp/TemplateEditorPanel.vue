@@ -83,10 +83,11 @@ watch(() => [props.open, props.book] as const, ([o, b]) => {
 
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
 // 这个面板此前**完全没有锁** —— 两个人能同时改同一份模板,后保存的整份覆盖。
-// 作用域锁到 **(册, 年, 月)**,与 saveTemplate / pin 两个写口的键一致(理由见 lockScopes.ts)。
+// 作用域锁到 **(屏, 册, 年, 月)**,与 saveTemplate / pin 两个写口的键一致(理由见 lockScopes.ts)。
+// screen 进键是为了让侧栏圆点分得开两屏 —— 台账某公司的模板被改,不该让附表10 也亮。
 const lockScope = computed(() =>
   props.book && props.year != null && props.month != null
-    ? S.bookTemplate(props.book.id, props.year, props.month)
+    ? S.bookTemplate(props.book.screen, props.book.id, props.year, props.month)
     : null)
 const lock = useEditLock(() => { mode.value = 'view'; aliasEditId.value = null },
                           () => props.canEdit)

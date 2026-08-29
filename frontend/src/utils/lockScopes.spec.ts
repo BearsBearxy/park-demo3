@@ -56,14 +56,26 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
       //   真正会被两个人抢的是**那一个月的 pin**（saveTemplate / pin 两个写口
       //   带的都是 (bookId, year, month)）。锁到册就多锁了：
       //   A 改 3 月模板会平白挡住 B 改 7 月，而它们根本不碰同一份东西。
-      expect(S.bookTemplate(7, 2026, 3)).toBe('book-template:7:2026-03')
-      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(7, 2026, 7))
-      expect(S.bookTemplate(7, 2026, 3)).not.toBe(S.bookTemplate(8, 2026, 3))
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).toBe('book-template:ledger:7:2026-03')
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).not.toBe(S.bookTemplate('ledger', 7, 2026, 7))
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).not.toBe(S.bookTemplate('ledger', 8, 2026, 3))
+    })
+
+    it('屏进键 —— 两屏各自的模板面板不共占一把锁,侧栏圆点也才分得开', () => {
+      // 2026-08-29:反向护栏抓到 book-template:* 一条 NAV_SCOPE_PREFIX 都没有。
+      // 兜底登记成裸 'book-template' 之后精度不足 —— 台账某公司的模板被改,
+      // 附表10 的圆点也跟着亮。screen 进键之后两屏各注册各的前缀,互不误伤。
+      // 键是内存态标识符、不落库(见 lockScopes.ts 顶部),改分段零迁移。
+      expect(S.bookTemplate('s10', 7, 2026, 3)).toBe('book-template:s10:7:2026-03')
+      expect(S.bookTemplate('ledger', 7, 2026, 3))
+        .not.toBe(S.bookTemplate('s10', 7, 2026, 3))
+      // 前缀边界:ledger 那把不许被 s10 的前缀捞走(反之亦然)
+      expect(S.bookTemplate('s10', 7, 2026, 3).startsWith('book-template:ledger')).toBe(false)
     })
 
     it('月份补零 —— 不补的话 2026-3 与 2026-03 是两把锁', () => {
-      expect(S.bookTemplate(7, 2026, 3)).toBe(S.bookTemplate(7, 2026, 3))
-      expect(S.bookTemplate(7, 2026, 12)).toBe('book-template:7:2026-12')
+      expect(S.bookTemplate('ledger', 7, 2026, 3)).toBe(S.bookTemplate('ledger', 7, 2026, 3))
+      expect(S.bookTemplate('ledger', 7, 2026, 12)).toBe('book-template:ledger:7:2026-12')
     })
   })
 
@@ -86,7 +98,8 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
         S.salary(2025, 6), S.s10(1, 2025, 6),
         S.pnl('rent', 2025), S.pnl('elec', 2025), S.pnl('water', 2025),
         S.pnl('ops', 2025), S.pnl('expense', 2025),
-        S.bookTemplate(7, 2026, 3),
+        S.bookTemplate('ledger', 7, 2026, 3),
+        S.bookTemplate('s10', 2, 2026, 3),
     ]
 
     it('表里每个前缀都真的是某个作用域构造器会产出的', () => {
@@ -101,6 +114,26 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
         expect(produced.some((sc) => hit(prefix, sc)),
                `导航项「${nav}」的前缀 ${prefix} 已对不上任何作用域构造器`).toBe(true)
       }
+    })
+
+    it('两屏的模板锁互不误亮 —— 这条才是 screen 进键要保的东西', () => {
+      // ⚠ 上面那条反向断言**保不住精度**:退回裸 `book-template` 前缀它照样绿
+      //   (裸前缀把两屏都覆盖了)。真正要钉的是「台账那把不被附表10 的前缀捞走」。
+      const hit = (prefix: string, sc: string) =>
+        sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')
+      const of = (nav: string) => {
+        const p = NAV_SCOPE_PREFIX[nav]
+        return Array.isArray(p) ? p : [p]
+      }
+      const ledgerTpl = S.bookTemplate('ledger', 7, 2026, 3)
+      const s10Tpl = S.bookTemplate('s10', 2, 2026, 3)
+
+      expect(of('ledger').some((p) => hit(p, ledgerTpl)), '台账的模板锁该被台账认领').toBe(true)
+      expect(of('ledger').some((p) => hit(p, s10Tpl)),
+             '附表10 的模板锁不该点亮台账的圆点').toBe(false)
+      expect(of('sales-income').some((p) => hit(p, s10Tpl))).toBe(true)
+      expect(of('sales-income').some((p) => hit(p, ledgerTpl)),
+             '台账的模板锁不该点亮附表10 的圆点').toBe(false)
     })
 
     it('反过来也要成立:每个作用域构造器都被某个前缀覆盖', () => {
