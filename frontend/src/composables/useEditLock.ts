@@ -68,6 +68,10 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
 
   /** 在 presence 登记过续期的那把锁。stop() 要摘的就是它 —— 那时 held 可能已被清掉(被接管路径)。 */
   let registered: string | null = null
+  /** 登记进 presence 的那个回调 —— dropLock 按引用摘,必须是同一个。 */
+  let registeredCb: ((e: Eviction) => void) | null = null
+  /** 宿主已卸载。acquire 的 await 在途时组件可能没了 —— 迟到的 granted 不许再挂监听、占着锁。 */
+  let dead = false
 
   /** 拿到锁返回 true；被别人占着返回 false 并填好 lockedBy。 */
   async function acquire(scope: string): Promise<boolean> {
@@ -79,6 +83,9 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
       return false
     }
     if (!r.granted) { lockedBy.value = r.holder; return false }
+    // 宿主在 await 期间被卸载(路由切走/v-if 撤掉):这把刚批下来的锁没人认领了 ——
+    // 不还的话它被那条 3 秒 ping 之外的任何路径都够不着,别人要干等 3 分钟。
+    if (dead) { locksApi.release(scope).catch(() => {}); return false }
     lockedBy.value = null
     held.value = scope
     start()
@@ -87,11 +94,17 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
 
   /** 还锁。不还的话下一个人要么等 3 分钟心跳超时，要么去走接管 —— 都是白受的摩擦。 */
   function release() {
-    stop()
+    const remaining = stop()
     lockedBy.value = null
     if (!held.value) return
-    // 不 await：退出编辑不该被一个网络请求卡住，服务端超时兜得住。
-    locksApi.release(held.value).catch(() => { /* 心跳超时兜底 */ })
+    // ⚠ 出账链四屏共一把锁(S.paramCenter/poolLedger/billNotices/coefBook 全是 billing-chain):
+    //   催缴单编辑态里开系数簿再进编辑,关窗还锁时若无这一判,DELETE 把**宿主屏还在用的**
+    //   服务端锁当场删掉(服务端只认 user 不认屏)—— 李四随手 acquire 直接 granted,
+    //   两人同改同一月快照,后保存整片覆盖,双方零提示。末位登记者才真还。
+    if (remaining === 0) {
+      // 不 await：退出编辑不该被一个网络请求卡住，服务端超时兜得住。
+      locksApi.release(held.value).catch(() => { /* 心跳超时兜底 */ })
+    }
     held.value = null
   }
 
@@ -99,9 +112,9 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
     ACTIVITY.forEach((e) => window.addEventListener(e, touch, true))
     window.addEventListener('pagehide', onUnload)
     // 防御:同一实例不还锁直接换 scope 重占(现有调用方都不会,但漏网一次就是一把幽灵续期)
-    if (registered && registered !== held.value) presence.dropLock(registered)
+    if (registered && registeredCb && registered !== held.value) presence.dropLock(registered, registeredCb)
     registered = held.value
-    presence.holdLock(registered!, (e) => {
+    registeredCb = (e: Eviction) => {
       // 被接管：锁已经不是我们的了 —— 先清 held，免得 release() 再发一个注定无效的请求
       evictedBy.value = e
       held.value = null
@@ -109,15 +122,21 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
       // 锁没了，编辑态也必须当场退 —— 让他继续改一个已经不归他的期，
       // 只会在他点保存时撞一个 403，而那时草稿已经又多了十几处。
       onExit?.()
-    })
+    }
+    presence.holdLock(registered!, registeredCb)
   }
 
   function stop() {
     ACTIVITY.forEach((e) => window.removeEventListener(e, touch, true))
     window.removeEventListener('pagehide', onUnload)
-    // 只摘自己这把 —— 旧版 setMode('view') 会把整个会话降回浏览态,
+    // 只摘自己的登记 —— 旧版 setMode('view') 会把整个会话降回浏览态,
     // 别的屏正握着的锁当场停续、座位也不再显示「编辑中」。
-    if (registered) { presence.dropLock(registered); registered = null }
+    // 返回同名 scope 剩几个登记者:release() 据此决定能不能真把服务端的锁还掉。
+    let remaining = 0
+    if (registered && registeredCb) { remaining = presence.dropLock(registered, registeredCb) }
+    registered = null
+    registeredCb = null
+    return remaining
   }
 
   /**
@@ -143,7 +162,7 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
    * 宿主没翻的时候,那把锁就没人认领了。
    * 组件外调用(单测)时没有实例可挂,Vue 会 warn —— 与 useEditMode 同一套处理。
    */
-  if (getCurrentInstance()) onUnmounted(() => release())
+  if (getCurrentInstance()) onUnmounted(() => { dead = true; release() })
 
   return { lockedBy, evictedBy, held, acquire, release, watchScope }
 }

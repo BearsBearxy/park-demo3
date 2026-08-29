@@ -15,8 +15,9 @@ public final class PresenceDtos {
      * @param label 给人看的一句话（「月度台账 · 一泽 2025-06」）。**客户端供给的展示文本**，
      *              服务端不解释它、只截断长度；渲染侧靠 Vue 的默认转义
      */
+    /** mode 是旧页签(发布前已打开的 SPA)还在发的旧字段 —— 只喂给垫层,新客户端不发。 */
     public record PingReq(String sid, String scope, String label, Long lastActivityAt,
-                          java.util.List<String> editScopes) {}
+                          java.util.List<String> editScopes, String mode) {}
 
     /** 在线的一个人。heldMs 之类由服务端算，客户端的钟不可信。editScopes = 这个会话握着的全部锁。 */
     public record SeatDTO(String sid, String user, String displayName, String role,
@@ -32,8 +33,10 @@ public final class PresenceDtos {
      *
      * 每加一条通道就多一份「谁跟谁不同步」的可能，所以宁可让这个响应体宽一点。
      */
+    /** evicted 是给旧页签的兼容投递(它们只读这个单数字段)—— 取 evictions 的第一条。 */
     public record PingResp(java.util.List<SeatDTO> users,
                            java.util.List<LockDtos.EvictionDTO> evictions,
+                           LockDtos.EvictionDTO evicted,
                            java.util.List<ApprovalDtos.PendingDTO> approvals,
                            ApprovalDtos.OutcomeDTO outcome) {}
 }

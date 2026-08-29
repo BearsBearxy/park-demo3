@@ -46,16 +46,54 @@ describe('在场', () => {
     // 第一把锁 3 分钟后被服务端当陈旧锁静默让给别人,且那条路不写 eviction,两边零提示。
     // 而「同时两个页面在编辑态」是明写的设计(auth.ts:142)。
     const p = usePresenceStore()
-    p.holdLock('meters:2025', () => {})
-    p.holdLock('pv-meter:2025', () => {})
+    const cbA = () => {}
+    const cbB = () => {}
+    p.holdLock('meters:2025', cbA)
+    p.holdLock('pv-meter:2025', cbB)
     await p.ping()
 
     expect(lastPing()!.editScopes, '两把都要在心跳里')
       .toEqual(expect.arrayContaining(['meters:2025', 'pv-meter:2025']))
 
-    p.dropLock('pv-meter:2025')       // 第二个屏退出编辑态
+    p.dropLock('pv-meter:2025', cbB)  // 第二个屏退出编辑态
     await p.ping()
     expect(lastPing()!.editScopes, '只摘自己那把,第一把照续').toEqual(['meters:2025'])
+  })
+
+  it('❗同名 scope 两个屏各自登记 —— 一方退出不许把共用的续期摘掉', async () => {
+    // 出账链四屏共一把 billing-chain 锁:催缴单编辑态里开系数簿再进编辑,
+    // 就是两个 useEditLock 实例握同名 scope。单值 Map 时后来的覆盖先来的,
+    // 任一方退出把共用续期整个摘掉 —— 宿主屏的锁静默停续,3 分钟后被人直接拿走。
+    const p = usePresenceStore()
+    const host = vi.fn()
+    const inner = vi.fn()
+    p.holdLock('billing-chain:2026-08', host)     // 催缴单
+    p.holdLock('billing-chain:2026-08', inner)    // 系数簿(同一把)
+
+    expect(p.dropLock('billing-chain:2026-08', inner), '还剩宿主一个登记者').toBe(1)
+    await p.ping()
+    expect(lastPing()!.editScopes, '宿主的续期必须还在').toEqual(['billing-chain:2026-08'])
+
+    expect(p.dropLock('billing-chain:2026-08', host), '末位退出').toBe(0)
+    await p.ping()
+    expect(lastPing()!.editScopes).toEqual([])
+  })
+
+  it('❗同名 scope 的接管通知要派给**每一个**登记者 —— 两个屏都得退', async () => {
+    const p = usePresenceStore()
+    const host = vi.fn()
+    const inner = vi.fn()
+    p.holdLock('billing-chain:2026-08', host)
+    p.holdLock('billing-chain:2026-08', inner)
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'billing-chain:2026-08', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+
+    await p.ping()
+
+    expect(host, '宿主屏也要收到 —— 漏一个就是留一个假编辑态').toHaveBeenCalledTimes(1)
+    expect(inner).toHaveBeenCalledTimes(1)
   })
 
   it('❗被接管的通知只派给它自己那把锁的回调', async () => {

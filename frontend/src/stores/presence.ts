@@ -118,7 +118,11 @@ export const usePresenceStore = defineStore('presence', () => {
    *   现在 ping 带全量 editScopes、服务端逐把续;通知按 scope 派回它自己的回调,
    *   不再谁后注册谁赢 —— 旧版连别把锁的通知都会派给唯一那个回调。
    */
-  const editCallbacks = new Map<string, (e: Eviction) => void>()
+  // ⚠ 值是 **Set,不是单个回调**(2026-08-30 复查):出账链四屏共一把 billing-chain 锁,
+  //   催缴单编辑态里打开系数簿再进编辑 = 两个 useEditLock 实例握同名 scope。
+  //   单值时后来的覆盖先来的,任一方退出就把共用的续期整个摘掉 ——
+  //   宿主屏的锁静默停续,别人的「张三 编辑中」当场消失,3 分钟后锁被直接拿走。
+  const editCallbacks = new Map<string, Set<(e: Eviction) => void>>()
 
   /**
    * 拿到一把锁:登记续期 + 被接管回调。
@@ -129,12 +133,24 @@ export const usePresenceStore = defineStore('presence', () => {
    *   续锁也不需要立刻:刚占的锁有整整 3 分钟,下一拍(≤20 秒)绰绰有余。
    */
   function holdLock(sc: string, onEvicted: (e: Eviction) => void) {
-    editCallbacks.set(sc, onEvicted)
+    const set = editCallbacks.get(sc) ?? new Set()
+    set.add(onEvicted)
+    editCallbacks.set(sc, set)
     lastActivityAt = Date.now()
     ensureTimer()
   }
-  /** 还了一把锁:只摘自己这把,别的屏的锁照续。 */
-  function dropLock(sc: string) { editCallbacks.delete(sc) }
+  /**
+   * 还了一把锁:只摘**自己的登记**,返回同名 scope 还剩几个登记者。
+   * 返回值给 useEditLock 判「服务端的锁能不能真的还」—— 共占的屏还有人在编辑时,
+   * DELETE 发出去等于替别人还锁(服务端只认 user 不认屏)。
+   */
+  function dropLock(sc: string, onEvicted: (e: Eviction) => void): number {
+    const set = editCallbacks.get(sc)
+    if (!set) return 0
+    set.delete(onEvicted)
+    if (!set.size) editCallbacks.delete(sc)
+    return set.size
+  }
 
   /** 键鼠活动。**不能用「最后一次写请求」代替** —— 用户在表格里录了 10 分钟还没点保存，那不是空闲。 */
   function touch() { lastActivityAt = Date.now() }
@@ -165,8 +181,11 @@ export const usePresenceStore = defineStore('presence', () => {
       }>('/presence/ping', { sid, scope, label, lastActivityAt, editScopes })
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
-      // 通知按 scope 派回**它自己**的回调 —— 派给全部回调的话,一次接管会把别的屏也踢出编辑态
-      for (const e of r?.evictions ?? []) editCallbacks.get(e.scope)?.(e)
+      // 通知按 scope 派回**它自己的每一个**登记者(同名 scope 可能有多个屏,都得退)。
+      // 拍快照再迭代:回调里会 dropLock,原地迭代 Set 会漏。
+      for (const e of r?.evictions ?? []) {
+        for (const fn of [...(editCallbacks.get(e.scope) ?? [])]) fn(e)
+      }
       if (r?.outcome) outcome.value = r.outcome
     } catch {
       // 抖一下不算数,下一拍再说。服务端 60 秒才判离线 = 3 拍容错。

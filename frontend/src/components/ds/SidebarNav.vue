@@ -151,11 +151,17 @@ export default defineComponent({
       // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
       const prefix = NAV_SCOPE_PREFIX[navValue];
       if (!prefix) return null;
-      const who = (Array.isArray(prefix) ? prefix : [prefix]).flatMap((p) => presence.editorsUnder(p));
+      const ps = Array.isArray(prefix) ? prefix : [prefix];
+      const who = ps.flatMap((p) => presence.editorsUnder(p));
       if (!who.length) return null;
       const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
-      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼
-      const note = scopeNote(who[0].scope);
+      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
+      // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
+      //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
+      //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
+      const lockSc = who[0].editScopes.find((sc) =>
+        ps.some((p) => sc === p || sc.startsWith(p + ":") || sc.startsWith(p + "-"))) ?? null;
+      const note = scopeNote(lockSc);
       return note ? `${names}
 ${note}` : names;
     }

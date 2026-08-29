@@ -120,6 +120,48 @@ describe('编辑模式 × 编辑锁', () => {
     } finally { vi.useRealTimers() }
   })
 
+  it('❗共占一把锁的两个屏,先退的那个不许把服务端的锁还掉', async () => {
+    // 出账链四屏同一把 billing-chain 锁。系数簿关窗还锁时若直接 DELETE,
+    // 等于替还在编辑的催缴单还锁(服务端只认 user 不认屏)——
+    // 李四随手 acquire 直接 granted,两人同改同一月,后保存整片覆盖。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue(GRANTED as never)
+
+    const host = useEditMode(PERMS, { scope: () => SCOPE })     // 催缴单
+    const inner = useEditMode(PERMS, { scope: () => SCOPE })    // 系数簿(同一把)
+    await host.toggle()
+    await inner.toggle()
+
+    await inner.toggle()   // 系数簿退出
+    expect(api.delete, '宿主还在编辑,锁不能真还').not.toHaveBeenCalled()
+
+    await host.toggle()    // 宿主也退出 —— 末位,这次要真还
+    expect(api.delete).toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    expect(vi.mocked(api.delete).mock.calls, '只还一次').toHaveLength(1)
+  })
+
+  it('❗acquire 在途时宿主卸载 → 迟到的 granted 要立刻还回去,不许挂监听', async () => {
+    // onUnmounted 的 release() 先跑(held 还是 null,直接 return),迟到的 granted
+    // 若照样 held=scope; start() —— 这把锁挂在一个已销毁的组件上,被 3 秒 ping
+    // 无限续期、activity 被全站键鼠不断刷新,直到关标签页都没有任何路径释放。
+    useAuthStore().permissions = PERMS
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(new Promise(r => { settle = r }) as never)
+
+    let m!: ReturnType<typeof useEditMode>
+    const Host = defineComponent({
+      setup() { m = useEditMode(PERMS, { scope: () => SCOPE }); return () => null },
+    })
+    const w = mount(Host)
+    const pending = m.toggle()
+    w.unmount()                            // 宿主没了
+    settle({ granted: true, holder: null })
+    await pending
+
+    expect(m.editMode.value).toBe(false)
+    expect(api.delete, '迟到批下来的锁要立刻还').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+  })
+
   it('心跳带回「你被接管了」→ 当场退出编辑态，并交出接管者是谁', async () => {
     // 「必须是当面提示，不是等他保存时才 403」(CONCURRENCY-SPEC §4.3)。
     // 心跳是现成的通道，最迟 20 秒到 —— 不需要 WebSocket。

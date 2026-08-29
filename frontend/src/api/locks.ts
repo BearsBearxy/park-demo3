@@ -20,8 +20,9 @@ export interface LockResult {
 /** 被接管的通知。authorizerName 只有「授权接管」那条路径有值。 */
 export interface Eviction {
   scope: string
-  by: string
-  byDisplayName: string
+  /** 接管者。**可空**:失锁兜底通知(锁在别处被还/后端重启/陈旧被清)没有接管者。 */
+  by: string | null
+  byDisplayName: string | null
   authorizerName: string | null
 }
 

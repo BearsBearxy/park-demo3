@@ -255,6 +255,61 @@ class PresenceStoreTest {
     }
 
     @Test
+    void aLostTakeoverNoticeIsRederivedOnTheNextPing() {
+        // 「我还持有吗」是每一拍都重新推导的真相,不是只送一次的消息:
+        // 一次性通知在响应丢包(前端 catch 吞掉)后就没了,而人留在编辑态继续录 ——
+        // 保存时整片覆盖接管者刚写的东西。派生之后丢一拍,下一拍(3 秒)自愈。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");
+
+        PresenceStore.Eviction first = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(first.authorizerName()).as("第一次拿到带授权人的完整通知").isEqualTo("张主管");
+
+        PresenceStore.Eviction again = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(again).as("响应丢了也要能再报 —— 从锁的现状推导").isNotNull();
+        assertThat(again.byDisplayName()).isEqualTo("李四");
+    }
+
+    @Test
+    void aLockReleasedInAnotherTabComesBackAsALoss() {
+        // 同一个人两个标签页共持一把锁(服务端本人重入放行,按 user 不按 sid)——
+        // A 页还锁,B 页还在编辑态。改前 B 的心跳只是静默不续;现在要当面报失锁。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.release(SCOPE, "zhangsan");
+
+        PresenceStore.Eviction e = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(e).as("锁没了必须当面说,不能让他继续对着假编辑态录入").isNotNull();
+        assertThat(e.by()).as("没有接管者,by 为空").isNull();
+    }
+
+    @Test
+    void aStaleLockGrabbedByAcquireStillNotifiesTheOldHolder() {
+        // 陈旧路径(合盖 3 分钟+)被 acquire 直接占走**从不写 eviction** ——
+        // 改前老持有人醒来后零提示继续编辑。现在第一拍就从现状推导出已易主。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        clock.advance(Duration.ofMinutes(4));
+        store.acquire(SCOPE, "lisi", "李四");   // 陈旧,直接占走
+
+        PresenceStore.Eviction e = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(e).isNotNull();
+        assertThat(e.byDisplayName()).isEqualTo("李四");
+    }
+
+    @Test
+    void pingPassesClientActivityThroughToIdleJudgment() {
+        // 空闲判定必须用**客户端上报的键鼠时间**,不是服务器收包时间:页面开着心跳一直发,
+        // 用 now 的话「空闲 20 分钟可直接接管」永远不触发,接管永远要惊动主管。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        java.time.Instant idleSince = clock.instant();
+        clock.advance(Duration.ofMinutes(25));
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账",
+                   java.util.List.of(SCOPE), idleSince);
+
+        assertThat(store.isIdle(SCOPE))
+            .as("人 25 分钟没动键鼠,页面开着 —— 必须判成空闲").isTrue();
+    }
+
+    @Test
     void anAuthorizedTakeoverTellsTheEvictedHolderWhoApprovedIt() {
         // 「你对本期的编辑权已被 李四 接管（由 张主管 授权）」——
         // 少了后半句，被接管的人只知道被谁抢了，不知道这事经过谁同意，也就无从申诉。
