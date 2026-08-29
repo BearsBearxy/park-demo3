@@ -16,6 +16,9 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { useMonthGate } from '@/composables/useMonthGate'
 import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -42,8 +45,13 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
 // 模拟填充也判 master —— 它对缺单价的电站反写 price_yuan(RBAC-SPEC §5.3-⑤),是电站单价的写旁路。
 const canMaster = computed(() => auth.can('meter-master:edit'))
 const canReading = computed(() => auth.can('meter-reading:edit'))
-const editStation = computed(() => editMode.value && canMaster.value)
-const editReading = computed(() => editMode.value && canReading.value)
+// ⚠ 三处都要 `&& !readErr` —— 逐字照兄弟屏 MeterView.vue:131 的 `editable`。
+//   本月读数没加载成功时表里是 13 行**伪造的零**(rows 按 stations 铺,aggByStation 拿不到就落 0),
+//   此时放行录入 = 让人对着假底数写真数据。对抗复查坐实的最狠一条:保存成功后 reload 撞抖动,
+//   主屏立刻变「本月暂无抄表记录」,用户判定保存失败去重录 —— 同日撞 409 一头雾水,
+//   换个日期就是一条重复的消纳收益行。
+const editStation = computed(() => editMode.value && !loadErr.value && canMaster.value)
+const editReading = computed(() => editMode.value && !loadErr.value && canReading.value)
 onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -81,18 +89,72 @@ const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 const stations = ref<PvStationDTO[] | null>(null)
 const readings = ref<Awaited<ReturnType<typeof pvMeterApi.readings>> | null>(null)
 
-async function loadStations() { stations.value = await pvMeterApi.stations() }
+const stationsErr = ref('')
+
+/**
+ * 站清单。改前是裸 await —— 一挂 stations 永远是 null,首屏永久转圈且无重试口。
+ *
+ * ⚠ 必须自带一个槽,不能与 readErr 合用(照 MeterView.vue:102-103 的 metersErr/readErr)。
+ *   合用时:电站清单挂了 → 用户点月格 → loadReadings 开头 `readErr = null` 把它抹掉 →
+ *   读数拉成功 → 一张没有任何解释的空表(站没了,行就没了)。
+ */
+async function loadStations() {
+  try { stations.value = await pvMeterApi.stations(); stationsErr.value = '' }
+  catch { stationsErr.value = '电站档案加载失败,请重试' }
+}
+/** 失败条上的「重试」:只重来挂掉的那一份(照 MeterView.vue:133-134)。 */
+function retryLoad() {
+  if (stationsErr.value) loadStations()
+  if (readErr.value) loadReadings()
+}
+/** 任一份没拿全 —— 写入口与导出都按这个判。 */
+const loadErr = computed(() => readErr.value || stationsErr.value)
+
+/**
+ * 换期重取时的退让（加载态设计稿 §06 第一档，逐字照 PoolLedgerView/SalaryView）。
+ * 旧数据留在原地不闪，但必须退一步并**停止接受交互** —— 它还是上一期的。
+ *
+ * ⚠ 没有这个信号时的后果(2026-08-29 对抗复查坐实):点「换月」那一刻 `picked` 当场变 true、
+ *   门收起、工具条上的期标与空态文案全部换成新期,而表体的 readings 是**上一期**的
+ *   —— 用户把 3 月的量当 7 月读走,零提示、不自愈。
+ */
+const reloading = ref(false)
+/** 熬过 200ms 才亮 —— 本地后端常几十毫秒回来,闪一下比不显示更晃眼 */
+const veil = useDeferredFlag(reloading)
+/** 本期取数失败的人话。改前 loadReadings 连 try/catch 都没有,失败一声不吭。 */
+const readErr = ref<string | null>(null)
+
 // 竞态守卫同 BillsView loadRows:切期保留旧数据到新数据落位,不闪 gate
 let seq = 0
 async function loadReadings() {
   const my = ++seq
-  const data = await pvMeterApi.readings(year.value, month.value)
-  if (my === seq) readings.value = data
+  reloading.value = true
+  readErr.value = null
+  try {
+    const data = await pvMeterApi.readings(year.value, month.value)
+    if (my === seq) readings.value = data
+  } catch (e) {
+    // 失败时**不留旧数据顶着新期标**:清空 → 表体让位给错误条,不给「7 月标题 + 3 月数字」
+    if (my === seq) {
+      readings.value = []
+      readErr.value = (e as { message?: string })?.message ?? '本月读数加载失败'
+    }
+  } finally {
+    // ⚠ 只有最新那一趟有资格熄灯(理由同催缴单)
+    if (my === seq) reloading.value = false
+  }
 }
 /** 矩阵点格:年月一起定,再拉该月读数。 */
 async function onPickCell(y: number, m: number) {
   pickCell(y, m)
   await loadReadings()
+}
+/** 写操作之后一起刷:读数 + 账期清单。
+ *  少了后者,刚录过数据的月在矩阵上仍画成虚线「空」,「最近有数据月」的描边也还停在旧月 ——
+ *  改前 dataMonths 只喂年下拉(有 buildYearOptions 兜底,陈旧无所谓),现在它是矩阵着色的唯一来源。 */
+async function reloadAfterWrite() {
+  await loadReadings()
+  await loadMonths()
 }
 async function loadMonths() {
   monthsErr.value = null
@@ -223,7 +285,7 @@ async function saveForm() {
     if (editId.value != null) await pvMeterApi.updateReading(editId.value, req)
     else await pvMeterApi.createReading(req)
     cancelForm()
-    await loadReadings()
+    await reloadAfterWrite()
   } catch (e) {
     // 同站同日 409 等 → 后端中文 message 直达
     alert((e as { message?: string })?.message ?? '保存失败')
@@ -232,7 +294,7 @@ async function saveForm() {
 
 async function delRow(id: number, date: string) {
   if (!confirm(`确认删除 ${date} 的抄表记录?`)) return
-  try { await pvMeterApi.deleteReading(id); await loadReadings() }
+  try { await pvMeterApi.deleteReading(id); await reloadAfterWrite() }
   catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
 }
 
@@ -282,7 +344,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
   importing.value = false
   try {
     importResult.value = await runImport('pvMeter', payload as never, importCtx, fileName)
-    await loadReadings()
+    await reloadAfterWrite()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
   }
@@ -339,9 +401,20 @@ async function onTemplate() {
     @retry="loadMonths"
   />
 
+  <!-- 站清单一次都没拿到:没有它连表头都铺不出来,只能给硬失败面(照 MeterView.vue:554)。
+       少了这句 stations 恒为 null,下面那行转圈永不停。 -->
+  <div v-else-if="!stations && stationsErr" class="pm-gate-fail">
+    <component :is="iconFor('alert-triangle')" :size="18" />
+    <span>{{ stationsErr }}</span>
+    <Button variant="outline" size="sm" @click="loadStations">重试</Button>
+  </div>
+
   <div v-else-if="!stations || !readings" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="pm-page">
+    <!-- 换期在途的唯一信号(§06 第一档):熬过 200ms 才亮 -->
+    <FPLoadBar :on="veil" />
+
     <!-- 标题行 -->
     <div class="pm-head">
       <div class="pm-headl">
@@ -380,7 +453,11 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
-        <Button variant="filled" size="sm" :disabled="exporting" @click="onExport">
+        <!-- 失败态禁导出:readings 被清成 [] 之后导出的是一份「全站全零」的月度表,
+             与一个真正零发电的月份产出**完全一致**,发出去无从分辨。文件会离开系统,不能猜。 -->
+        <Button variant="filled" size="sm" :disabled="exporting || !!loadErr"
+                :title="loadErr ? '数据未加载成功,导出会得到一份全零的表 —— 先重试' : undefined"
+                @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
         </Button>
@@ -391,7 +468,9 @@ async function onTemplate() {
     </div>
 
     <!-- 空态引导(spec §2:去导入或抽屉手录) -->
-    <div v-if="readings.length === 0" class="pm-empty">
+    <!-- ⚠ 必须排除 readErr(照 MeterView.vue:638):失败态下 readings 被清成 [],
+         不排除的话「加载失败」与「本月真的没有」同屏并列,而后者会盖过前者 —— 用户读到的是「没有」 -->
+    <div v-if="!loadErr && readings.length === 0" class="pm-empty">
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无抄表记录 ——
@@ -402,7 +481,16 @@ async function onTemplate() {
     </div>
 
     <!-- 主表:一行一电站;列宽铁律(fixed 布局,电站名=唯一弹性列) -->
-    <Card surface="white" :padding="0" class="pm-card">
+    <!-- 本期取数失败:说出来 + 给重试。改前 loadReadings 连 try/catch 都没有,
+         失败后旧数据顶着新期标继续显示,零提示、不自愈(对抗复查坐实) -->
+    <FPLoadError v-if="loadErr" @retry="retryLoad">
+      <div v-if="readErr">{{ year }}年{{ month }}月读数加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
+      <div v-if="stationsErr">{{ stationsErr }} —— 电站档案停留在上次拉到的版本。</div>
+    </FPLoadError>
+
+    <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
+    <Card surface="white" :padding="0" class="pm-card"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="pm-tablewrap">
         <table class="pm-table">
           <colgroup>
@@ -476,7 +564,9 @@ async function onTemplate() {
       :fixedHeight="true"
       @close="openSt = null"
     >
-      <div v-if="drawerRows.length === 0 && !adding" class="pm-dempty">
+      <!-- 抽屉里也要排除失败态:主屏的失败条在抽屉后面,抽屉自己说「暂无记录」就是唯一可见结论 -->
+      <div v-if="loadErr" class="pm-dempty">本月读数未加载成功 —— 关掉抽屉点失败条上的「重试」,别在这里录。</div>
+      <div v-else-if="drawerRows.length === 0 && !adding" class="pm-dempty">
         该站本月暂无抄表记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
       </div>
       <div v-else class="pm-dwrap">
@@ -616,7 +706,13 @@ async function onTemplate() {
 </template>
 
 <style scoped>
-.pm-page { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
+/* position: relative —— FPLoadBar 是 absolute 定位,宿主不给参照它会跑到最近的定位祖先
+   (AppShell 的 .fp-main-card)顶边去,横跨整个页签条。同批四屏都写了,这屏当初抄漏了。 */
+.pm-gate-fail {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  height: 100%; color: var(--hue-red); font-size: 13px;
+}
+.pm-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行(样式同 BillsView 月历层 fin-head 家族) ── */
 .pm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
