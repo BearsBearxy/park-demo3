@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
@@ -106,5 +108,40 @@ describe('SchedHeader 编辑锁', () => {
     await nextTick()
     expect(api.delete).not.toHaveBeenCalled()
     expect(w.emitted('toggle-edit')).toBeUndefined()
+  })
+})
+
+describe('SchedHeader 强制退出带 forced 标(收口复查)', () => {
+  it('❗换期强退 emit 的是 toggle-edit(true) —— 脏检查屏必须无条件退', async () => {
+    // 附表10/损益表把 @toggle-edit 绑在带脏检查的函数上:普通 emit 在 dirty>0 时
+    // 会被「保存确认」吞掉,edit 恒真 —— 而锁已经还了,确认框里的「保存」是无锁写。
+    // forced=true 是「锁没了」的信号,接收方必须放弃询问直接退。
+    const w = mk({ scope: 'sched:pv:2025' })
+    await w.find('.lc-lockbtn').trigger('click')     // 占锁进编辑
+    await flushPromises()
+    await w.setProps({ edit: true })
+    await w.setProps({ scope: 'sched:pv:2026' })     // 编辑态里换期 → 强退
+    await flushPromises()
+
+    const calls = w.emitted('toggle-edit')!
+    expect(calls.at(-1), '强制退出必须带 forced=true').toEqual([true])
+  })
+
+  it('用户自己点「完成」不是强制 —— 脏检查屏该有机会问一句', async () => {
+    const w = mk({ scope: 'sched:pv:2025' })
+    await w.find('.lc-lockbtn').trigger('click')
+    await flushPromises()
+    await w.setProps({ edit: true })
+    await w.find('.lc-lockbtn').trigger('click')     // 点「完成」
+    await flushPromises()
+    expect(w.emitted('toggle-edit')!.at(-1), '用户主动退出 forced=false').toEqual([false])
+  })
+
+  it('❗附表10/损益表的接收端真的处理 forced —— 源码钉(挂载太重,函数是组件内部的)', () => {
+    for (const rel of ['../../../views/sales-income/S10View.vue', '../../../views/reports/pnl/PnlScheduleView.vue']) {
+      const src = readFileSync(join(__dirname, rel), 'utf8')
+      expect(/(?:finishEdit|toggleEdit)\(forced = false\)/.test(src), `${rel} 的处理函数不收 forced`).toBe(true)
+      expect(src.includes('if (forced)'), `${rel} 没有 forced 直退分支 —— 强退会被脏检查吞掉`).toBe(true)
+    }
   })
 })

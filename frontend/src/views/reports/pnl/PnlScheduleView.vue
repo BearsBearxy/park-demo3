@@ -272,7 +272,9 @@ function submitAdd() {
 
 // ── 保存(PUT 整年 clear+insert;rowKey 重建 r<n> + sortOrder) / 退出确认 ──
 const saveConfirm = ref(false)
-function toggleEdit() {
+function toggleEdit(forced = false) {
+  // forced = 锁已没了(同 S10.finishEdit):脏检查确认框在失锁后只是一个无锁写入口
+  if (forced) { resetEdit(); return }
   if (!edit.value) { edit.value = true; return }
   if (dirty.value > 0) { saveConfirm.value = true; return }
   resetEdit()   // 无改动退出也走 reset:清选集(J7)

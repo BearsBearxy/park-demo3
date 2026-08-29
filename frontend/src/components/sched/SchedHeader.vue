@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
   scope?: string | null
 }>(), { showImport: false, importDisabled: false, dirty: 0, scope: null })
 
-const emit = defineEmits<{ back: []; 'toggle-edit': []; import: [] }>()
+const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
 
 // EDIT-MODE-SPEC v3 + ELEVATION-SPEC:无写权限的账号**也看得到**编辑按钮,点了弹主管授权窗。
 // 只有连提权都不能问的(只读账号 / 园区股东)才彻底不渲染。
@@ -52,7 +52,10 @@ onUnmounted(() => auth.closeEditor(meId))
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
 // 与 useEditMode 共用同一份机制(useEditLock)。本组件不走 useEditMode —— 编辑态由 7 个消费屏
 // 各自持有 —— 所以锁也得在这儿自己接一次,但接的是同一个 composable,不是另抄一份。
-const lock = useEditLock(() => { if (props.edit) emit('toggle-edit') },
+// forced=true 的 toggle-edit 是**强制退出**(被接管/提权到期/换期):锁已经没了。
+// 绑 `edit = !edit` 的屏照常翻假;做脏检查的屏(附表10/损益表)必须放弃「先问要不要保存」——
+// 那道确认在锁没了之后只剩一个无锁写的入口(收口复查坐实:dirty>0 时 emit 被吞,edit 恒真)。
+const lock = useEditLock(() => { if (props.edit) emit('toggle-edit', true) },
                           () => auth.can(props.perm))
 const { lockedBy, evictedBy } = lock
 
@@ -64,11 +67,11 @@ const { lockedBy, evictedBy } = lock
 const heldByOther = lock.watchScope(() => props.scope)
 
 /** 退出编辑态的四件事。`edit` 是 prop,组件自己改不了 —— 只能发事件请上层翻。 */
-function exitEdit() {
+function exitEdit(forced = false) {
   auth.closeEditor(meId)      // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
   void auth.endElevation()
   lock.release()              // 还的是 held 那把,也就是**进编辑态时**占的那个 scope
-  emit('toggle-edit')
+  emit('toggle-edit', forced)
 }
 
 async function onToggleEdit() {
@@ -92,7 +95,7 @@ async function onToggleEdit() {
  */
 watch(() => props.scope, (now, before) => {
   if (!props.edit || before == null || now === before) return
-  exitEdit()
+  exitEdit(true)
 })
 
 /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */

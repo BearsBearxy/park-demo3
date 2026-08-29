@@ -121,6 +121,7 @@ onMounted(async () => {
 // 确认导入 → runImport(共享 registry:customParse 已把解析期跳过暂存到 importCtx._parseErrors,run 合并 + 记录 import_log)。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await guard('导入失败', async () => {
     importResult.value = await runImport('charging_' + no.value, recs, importCtx, fileName)
     await refresh()
@@ -128,6 +129,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
 }
 
 const onCreate = (req: ChargingRecordReq) => guard('新增记账失败', async () => {
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await chargingApi.create(no.value, req)
   drawer.value = false
   // 提交后归入对应年份(可能与当前选中年不同)

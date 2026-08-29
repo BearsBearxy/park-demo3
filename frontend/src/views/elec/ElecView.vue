@@ -113,6 +113,7 @@ async function switchType(t: string) {
 // 确认后经 runImport(共享 registry 执行 + 记录 import_log)→ 刷新。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await guard('导入失败', async () => {
     importResult.value = await runImport('elec', recs, {}, fileName)
     await refresh()
@@ -120,6 +121,7 @@ async function onImport(recs: ImportRec[], fileName: string) {
 }
 
 const onCreate = (req: ElecRecordReq) => guard('新增记账失败', async () => {
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await elecApi.create(req)
   drawer.value = false
   // 提交后归入对应年份与费用类型(可能与当前选中不同)

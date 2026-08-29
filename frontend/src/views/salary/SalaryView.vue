@@ -68,6 +68,11 @@ async function loadMonth(y: number) {
     if (seq === monthSeq) {
       monthData.value = null
       readErr.value = (e as { message?: string })?.message ?? '本月工资加载失败'
+      // ⚠ 编辑态一并退(收口复查坐实):monthData 清空会把含 SchedHeader 的宽表分支**卸载**,
+      //   它的 onUnmounted 把锁还给服务端 —— 而 edit 还是 true。用户点「重试」成功后
+      //   SchedHeader 以 :edit="true" 重挂却不重新占锁:完整编辑态、没有锁,
+      //   别人 acquire 显示「无人编辑」,两人同改同月。失败面本来就该是浏览态。
+      edit.value = false
     }
   } finally {
     // ⚠ 只有最新那一趟有资格熄灯(理由同催缴单)
@@ -120,6 +125,8 @@ onDeactivated(() => { drawer.value = false; importing.value = false })
 
 async function pickMonth(m: number) {
   month.value = m
+  // 换期是新一段人生:旧期的失败不该顶着新期标继续展示(在途期间该给转圈,不是旧错误面)
+  readErr.value = null
   selectedIds.value = new Set()
   // 不清空 monthData:旧表保留到新数据落位,避免整屏闪烁
   if (year.value != null) await loadMonth(year.value)
@@ -127,6 +134,7 @@ async function pickMonth(m: number) {
 /** 矩阵点格:年与月一起定(§7-1 明确选期门,pick 自带年份)。 */
 async function pickCell(y: number, m: number) {
   month.value = m
+  readErr.value = null
   await pickYear(y)   // 置年 + 退编辑态 + 清数据与勾选 + 拉本月(loadMonth 读上面刚置的 month)
 }
 /** 宽表「换期」回矩阵。 */
@@ -134,6 +142,7 @@ function backToMonths() {
   month.value = null
   edit.value = false
   monthData.value = null
+  readErr.value = null
 }
 
 // ── ⓪ 选期矩阵:全年份纵排(数据年 ∪ 当前年 ∪ 手工年,连续补满),每年一行 12 月卡 ──

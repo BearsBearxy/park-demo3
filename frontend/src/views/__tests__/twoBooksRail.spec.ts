@@ -124,6 +124,14 @@ describe('光伏 · 一屏两本账', () => {
   })
 })
 
+  it('❗浏览态直呼 onCreate → 零 API(失锁后抽屉可能还挂着,守发请求这层)', async () => {
+    const w = await open()
+    vi.mocked(pvApi.create).mockResolvedValue({} as never)
+    await (w.vm as unknown as { onCreate: (req: object) => Promise<void> })
+      .onCreate({ acctMonth: '2026-01', amount: 1 })
+    expect(pvApi.create, '浏览态下新增被打出去了').not.toHaveBeenCalled()
+  })
+
 /** 另外两屏只做结构门禁 —— 三屏接法逐字相同，各写一份挂载测只会长歪。 */
 describe('三屏一致性门禁', () => {
   const VIEWS = join(__dirname, '..')
@@ -149,6 +157,13 @@ describe('三屏一致性门禁', () => {
     // 「返回功能选择」是功能门的回退口，门没了它也该没了
     expect(s.includes('返回功能选择'), `${rel} 还留着功能门的回退口`).toBe(false)
   })
+
+  it.each(['/pv/PvView.vue', '/charging/ChargingView.vue', '/elec/ElecView.vue', '/utilities/UtilitiesView.vue'])(
+    '%s 的 onCreate/onImport 带写口自守(收口复查:失锁后浮层是仅剩的无锁写入口)', (rel) => {
+      const src = readFileSync(join(VIEWS, rel), 'utf8')
+      const guards = (src.match(/if \(!edit\.value\) return/g) ?? []).length
+      expect(guards, `${rel} 的写函数自守少于 2 处(onCreate + onImport)`).toBeGreaterThanOrEqual(2)
+    })
 
   it.each(['/pv/PvMeterView.vue', '/charging/CpMeterView.vue', '/elec/ElecCostView.vue'])(
     '%s 的返回箭头与 back 事件一并退场', (rel) => {

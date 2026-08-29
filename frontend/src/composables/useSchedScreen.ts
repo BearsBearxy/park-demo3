@@ -5,7 +5,7 @@
 //   以及「后端 message 优先、否则兜底文案」的 alert 报错口径。
 // 各屏差异一律留成参数(子筛选重置、全选口径、可勾选门、批删/清空 API、清空文案、切槽是否保留勾选)——
 // 抽取的前提是行为零变化,哪怕只有一屏不一样也留钩子,不为了「统一」把某屏改成别人的样子。
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { ImportResultDTO } from '@/types/import'
 
 /** 台账行的共同形状:id 用于勾选/批删,source 用于「本期导入」计数 */
@@ -51,6 +51,16 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   const importing = ref(false)
   const importResult = ref<ImportResultDTO | null>(null)
   const selectedIds = ref<Set<number>>(new Set())
+
+  // ⚠ 换年一律清勾选(收口复查:四屏的 onCreate 存到别的年会静默跳年而不清 ——
+  //   残留的 id 会喂给「删除选中」批删**另一年**看不见的行,后端按 id 裸删不校年份)。
+  //   守在 year 这一处 = 现在和将来的所有跳年路径一次到位;
+  //   附表10 的 keepSelectionOnNav 是故意跨年保留,照旧尊重。
+  watch(year, () => { if (!opts.keepSelectionOnNav) selectedIds.value = new Set() })
+  // ⚠ 编辑态转假(被接管/提权到期/换期)关掉写浮层 —— 抽屉/导入窗的 v-if 只判自己的 ref,
+  //   失锁后「保存」「导入」照样落库(后端写口不校验锁)。附表12 修过的这一课,
+  //   下沉到这里让附表族全体屏一次吃上。
+  watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
 
   /** 统一报错口径:后端 message 优先,否则用兜底文案 */
   async function guard(fallback: string, fn: () => Promise<void>) {

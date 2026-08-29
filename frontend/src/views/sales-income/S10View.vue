@@ -258,7 +258,11 @@ function toReq(row: S10RecordDTO): S10RecordReq {
 
 // 退出编辑:有脏行先弹保存确认;无改动直接退出
 const saveConfirm = ref(false)
-function finishEdit() {
+function finishEdit(forced = false) {
+  // forced = 锁已经没了(被接管/提权到期/换期)。此刻再弹「要不要保存」只剩一个
+  // 无锁写的入口 —— 甲点「保存修改」会整行盖掉接管者正编辑的数据。
+  // 脏行仍在内存里,重进编辑态可继续;强制退出这一下必须无条件生效。
+  if (forced) { saveConfirm.value = false; edit.value = false; return }
   if (!edit.value) { edit.value = true; return }
   if (dirty.size > 0) { saveConfirm.value = true; return }
   edit.value = false

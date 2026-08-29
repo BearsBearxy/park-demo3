@@ -399,3 +399,43 @@ describe('附表12 · 矩阵在场角标(全仓此前零断言)', () => {
     expect(cells[1].find('.bmm-who').exists(), '自己的 2025-02 锁不标').toBe(false)
   })
 })
+
+describe('附表12 · 收口复查两洞', () => {
+  it('❗同 scope 的刷新失败也要退编辑态 —— 失败面卸载 SchedHeader 会把锁还掉', async () => {
+    // 危险路径是**不换期**的失败:删一行成功、refresh 的 records() 失败(换月路径有
+    // SchedHeader 的 scope-watch 兜底,这条没有)。monthData 清空 → 宽表分支卸载 →
+    // SchedHeader onUnmounted 还锁;edit 留 true 的话,点「重试」成功后 SchedHeader
+    // 以 :edit="true" 重挂却不重新占锁 —— 完整编辑态、没有锁,别人 acquire 显示
+    // 「无人编辑」,两人同改同月。
+    const w = await toTable()
+    await enterEdit(w)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(salaryApi.remove).mockResolvedValue(undefined as never)
+    vi.mocked(salaryApi.records).mockRejectedValue(new Error('挂了'))   // 只挂重取
+
+    await vmOf(w).onDelete(M3.rows[0])          // 删除成功 → refresh 失败,期没变
+    await flushPromises()
+
+    expect(w.find('.s12-fail').exists(), '前提:落进失败面').toBe(true)
+    expect((w.vm as unknown as { edit: boolean }).edit, '失败面必须是浏览态').toBe(false)
+  })
+
+  it('❗一次失败之后换期,在途该给转圈 —— 不许旧失败面顶着新期标', async () => {
+    const w = await toTable()
+    vi.mocked(salaryApi.records).mockRejectedValue(new Error('挂了'))
+    await (w.vm as unknown as { pickMonth: (m: number) => Promise<void> }).pickMonth(4)
+    await flushPromises()
+    expect(w.find('.s12-fail').exists(), '前提:失败面在').toBe(true)
+
+    let settle!: (v: unknown) => void
+    vi.mocked(salaryApi.records).mockReturnValueOnce(new Promise(r => { settle = r }) as never)
+    const p = (w.vm as unknown as { pickMonth: (m: number) => Promise<void> }).pickMonth(5)
+    await nextTick()
+    expect(w.find('.s12-fail').exists(), '在途不许拿 4 月的旧错误面冒充 5 月').toBe(false)
+    expect(w.find('.page-spin').exists(), '在途该给转圈').toBe(true)
+    settle(M3)
+    await p
+    await flushPromises()
+    expect(w.find('.s12-fail').exists()).toBe(false)
+  })
+})
