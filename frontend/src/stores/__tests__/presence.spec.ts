@@ -96,6 +96,59 @@ describe('在场', () => {
     expect(inner).toHaveBeenCalledTimes(1)
   })
 
+  it('❗迟到的响应不许砸在发拍之后才登记的新回调上', async () => {
+    // 剧本:B 被跨页签失锁踢出 → 按弹窗指引立刻重进 → 新锁到手、新回调登记。
+    // 此前锁空窗期发出的慢拍带着「锁没了」的合成通知这时才回来 ——
+    // 没有代次守卫就砸在新回调上:刚进的编辑态 3 秒内再次被踢,而服务端那把新锁是活的,
+    // 从此无人续也无人还,别人 acquire 被幽灵锁挡满 3 分钟。
+    const p = usePresenceStore()
+    const oldCb = vi.fn()
+    const newCb = vi.fn()
+    p.holdLock('meters:2025', oldCb)
+
+    let settle!: (v: unknown) => void
+    vi.mocked(api.put).mockReturnValueOnce(new Promise(r => { settle = r }) as never)
+    const slow = p.ping()                      // 慢拍在途(带着 meters:2025)
+
+    p.dropLock('meters:2025', oldCb)           // 被踢/退出
+    p.holdLock('meters:2025', newCb)           // 立刻重进 —— 新回调,新锁
+
+    settle({ users: [], evictions: [{ scope: 'meters:2025', by: null, byDisplayName: null, authorizerName: null }] })
+    await slow
+
+    expect(newCb, '发拍之后才登记的回调,拍里的失锁与它无关').not.toHaveBeenCalled()
+    expect(oldCb, '旧回调已摘,也不该被叫').not.toHaveBeenCalled()
+  })
+
+  it('发拍之前就登记着的回调,响应回来照常派 —— 代次守卫不许把正常投递也拦了', async () => {
+    const p = usePresenceStore()
+    const cb = vi.fn()
+    p.holdLock('meters:2025', cb)
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'meters:2025', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+
+    await p.ping()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗by=null 的合成失锁(锁蒸发/别处还掉)也必须照常派发', async () => {
+    // 有人在派发循环里加一句看似合理的 `if (!e.by) continue`,合成通知就被整个吞掉:
+    // 用户留在假编辑态继续录,保存整片覆盖接管者数据 —— 派生失锁机制原地报废。
+    const p = usePresenceStore()
+    const cb = vi.fn()
+    p.holdLock('meters:2025', cb)
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'meters:2025', by: null, byDisplayName: null, authorizerName: null }],
+    } as never)
+
+    await p.ping()
+    expect(cb, '没有接管者的失锁同样要当面报').toHaveBeenCalledTimes(1)
+    expect(cb.mock.calls[0][0]).toMatchObject({ by: null })
+  })
+
   it('❗被接管的通知只派给它自己那把锁的回调', async () => {
     // 旧版单槽回调连**别把锁**的通知都会派过去 —— 一次接管把无关的屏也踢出编辑态。
     const p = usePresenceStore()

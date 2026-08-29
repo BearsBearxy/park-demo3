@@ -15,6 +15,8 @@ export interface LockHolder {
 export interface LockResult {
   granted: boolean
   holder: LockHolder | null
+  /** granted 时服务端发的围栏(acquiredAt 毫秒)。release 带上它,晚到的 DELETE 不误删新锁。 */
+  acquiredAt?: number | null
 }
 
 /** 被接管的通知。authorizerName 只有「授权接管」那条路径有值。 */
@@ -43,7 +45,8 @@ export const locksApi = {
   heartbeat: (scope: string, lastActivityAt: number) =>
     api.put<{ evicted: Eviction | null }>(`${at(scope)}/heartbeat`, { lastActivityAt }),
 
-  release: (scope: string) => api.delete<void>(at(scope)),
+  release: (scope: string, t?: number | null) =>
+    api.delete<void>(at(scope) + (t != null ? `?t=${t}` : '')),
 
   /** 接管。空闲态免授权（两个参数都不传）；活跃态须带授权人账号 + 密码。 */
   takeover: (scope: string, authorizer?: string, password?: string) =>
@@ -60,11 +63,11 @@ export const locksApi = {
    *   `fetch` 的 `keepalive` 是同一件事的现代写法：页面卸载后照发，**且支持 Authorization 头**。
    *   顺带省掉后端一个专用的免鉴权端点，复用同一条 DELETE 路由。
    */
-  releaseOnUnload(scope: string): void {
+  releaseOnUnload(scope: string, fence?: number | null): void {
     const t = readToken()
     if (!t) return
     // 卸载路径上没人能接住 rejection,显式吞掉;掉了也有 3 分钟心跳超时兜底
-    void fetch(`/api${at(scope)}`, {
+    void fetch(`/api${at(scope)}${fence != null ? `?t=${fence}` : ''}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${t}` },
       keepalive: true,

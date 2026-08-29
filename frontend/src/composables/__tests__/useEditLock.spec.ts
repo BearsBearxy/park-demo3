@@ -120,6 +120,41 @@ describe('编辑模式 × 编辑锁', () => {
     } finally { vi.useRealTimers() }
   })
 
+  it('❗同一实例连点两次编辑(无在途闸的 5 个消费方)不许留下幽灵登记', async () => {
+    // useEditMode 之外的消费方(SchedHeader/LedgerWideTable/CoefBookWindow/...)都没有
+    // entering 闸,按钮在 acquire 往返期间可以连点 = 同一实例同 scope 两次 start()。
+    // 摘旧带 `registered !== held.value` 条件时第二次跳过,上一个回调永久遗留:
+    // refcount 虚高 → 点完成后 release 跳过 DELETE,一个已退出编辑态的页签
+    // 把锁无限续下去,别人只能等 20 分钟走接管。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue(GRANTED as never)
+    vi.mocked(api.put).mockResolvedValue({ users: [], evictions: [] } as never)
+    const presence = usePresenceStore()
+
+    const lock = useEditLock()
+    await lock.acquire(SCOPE)
+    await lock.acquire(SCOPE)     // 连点第二次(服务端本人重入放行)
+    lock.release()
+
+    expect(api.delete, '全退光了,锁必须真还').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    await presence.ping()
+    const body = vi.mocked(api.put).mock.calls.at(-1)![1] as { editScopes: string[] }
+    expect(body.editScopes, '退出后不许还有幽灵登记在续锁').toEqual([])
+  })
+
+  it('还锁要带围栏 —— 晚到的 DELETE 不许误删后来又占到的新锁', async () => {
+    // release 不 await;服务端只认 user。没有围栏时,晚到的 DELETE 会把同一用户
+    // 随后 acquire 到手的新锁删掉,3 秒内那人被派生失锁误踢一次。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null, acquiredAt: 1756500000000 } as never)
+
+    const lock = useEditLock()
+    await lock.acquire(SCOPE)
+    lock.release()
+
+    expect(api.delete).toHaveBeenCalledWith(`/locks/${SCOPE}?t=1756500000000`)
+  })
+
   it('❗共占一把锁的两个屏,先退的那个不许把服务端的锁还掉', async () => {
     // 出账链四屏同一把 billing-chain 锁。系数簿关窗还锁时若直接 DELETE,
     // 等于替还在编辑的催缴单还锁(服务端只认 user 不认屏)——

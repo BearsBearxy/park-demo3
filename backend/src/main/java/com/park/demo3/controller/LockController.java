@@ -36,7 +36,10 @@ public class LockController {
 
     @Operation(summary = "释放（点「完成」/ 离页）。非持有人调用是空操作")
     @DeleteMapping("/{scope}")
-    public void release(@PathVariable String scope) { svc.release(scope); }
+    public void release(@PathVariable String scope,
+                        @org.springframework.web.bind.annotation.RequestParam(required = false) Long t) {
+        svc.release(scope, t);
+    }
 
     @Operation(summary = "接管。持有人空闲 ≥20 分钟免授权；活跃中须带授权人账号 + 密码")
     @PostMapping("/{scope}/takeover")

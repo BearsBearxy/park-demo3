@@ -122,7 +122,13 @@ export const usePresenceStore = defineStore('presence', () => {
   //   催缴单编辑态里打开系数簿再进编辑 = 两个 useEditLock 实例握同名 scope。
   //   单值时后来的覆盖先来的,任一方退出就把共用的续期整个摘掉 ——
   //   宿主屏的锁静默停续,别人的「张三 编辑中」当场消失,3 分钟后锁被直接拿走。
-  const editCallbacks = new Map<string, Set<(e: Eviction) => void>>()
+  //   值再进一层 Map:回调 → **登记时的 ping 代次**。响应只派给「发拍之前就登记着」的回调 ——
+  //   没有代次时,迟到的响应会把锁空窗期推导出的「锁没了」砸在**响应发出之后**才合法拿到
+  //   新锁的回调上:刚进的编辑态 3 秒内再次被踢,而服务端那把新锁是活的、再无人续也无人还,
+  //   别人 acquire 要被这把幽灵锁挡满 3 分钟(2026-08-30 第三轮复查坐实)。
+  const editCallbacks = new Map<string, Map<(e: Eviction) => void, number>>()
+  /** ping 发拍代次。holdLock 记下登记时的值,响应按它分辨新旧回调。 */
+  let pingSeq = 0
 
   /**
    * 拿到一把锁:登记续期 + 被接管回调。
@@ -133,9 +139,9 @@ export const usePresenceStore = defineStore('presence', () => {
    *   续锁也不需要立刻:刚占的锁有整整 3 分钟,下一拍(≤20 秒)绰绰有余。
    */
   function holdLock(sc: string, onEvicted: (e: Eviction) => void) {
-    const set = editCallbacks.get(sc) ?? new Set()
-    set.add(onEvicted)
-    editCallbacks.set(sc, set)
+    const m = editCallbacks.get(sc) ?? new Map()
+    m.set(onEvicted, pingSeq)          // 登记在第 pingSeq 拍之后 —— 更早的拍与我无关
+    editCallbacks.set(sc, m)
     lastActivityAt = Date.now()
     ensureTimer()
   }
@@ -145,11 +151,11 @@ export const usePresenceStore = defineStore('presence', () => {
    * DELETE 发出去等于替别人还锁(服务端只认 user 不认屏)。
    */
   function dropLock(sc: string, onEvicted: (e: Eviction) => void): number {
-    const set = editCallbacks.get(sc)
-    if (!set) return 0
-    set.delete(onEvicted)
-    if (!set.size) editCallbacks.delete(sc)
-    return set.size
+    const m = editCallbacks.get(sc)
+    if (!m) return 0
+    m.delete(onEvicted)
+    if (!m.size) editCallbacks.delete(sc)
+    return m.size
   }
 
   /** 键鼠活动。**不能用「最后一次写请求」代替** —— 用户在表格里录了 10 分钟还没点保存，那不是空闲。 */
@@ -174,6 +180,7 @@ export const usePresenceStore = defineStore('presence', () => {
 
   async function ping() {
     try {
+      const myGen = ++pingSeq
       const editScopes = [...editCallbacks.keys()]
       const r = await api.put<{
         users: Seat[]; evictions: Eviction[] | null
@@ -182,9 +189,13 @@ export const usePresenceStore = defineStore('presence', () => {
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
       // 通知按 scope 派回**它自己的每一个**登记者(同名 scope 可能有多个屏,都得退)。
-      // 拍快照再迭代:回调里会 dropLock,原地迭代 Set 会漏。
+      // 拍快照再迭代:回调里会 dropLock,原地迭代会漏。
+      // ⚠ 只派给「发拍之前就登记着」的(since < myGen):这拍发出之后才登记的回调,
+      //   握的是一把比这拍**新**的锁 —— 拍里推导出的失锁与它无关,派了就是误杀。
       for (const e of r?.evictions ?? []) {
-        for (const fn of [...(editCallbacks.get(e.scope) ?? [])]) fn(e)
+        for (const [fn, since] of [...(editCallbacks.get(e.scope) ?? [])]) {
+          if (since < myGen) fn(e)
+        }
       }
       if (r?.outcome) outcome.value = r.outcome
     } catch {

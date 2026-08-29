@@ -64,12 +64,14 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
    * 人留在编辑态,锁却没了,别人随时能进来盖掉他正在改的东西 —— 比不加确认框更糟。
    * pagehide 只在页面**真的要走**时才触发,正是该放释放动作的地方。
    */
-  const onUnload = () => { if (held.value) locksApi.releaseOnUnload(held.value) }
+  const onUnload = () => { if (held.value) locksApi.releaseOnUnload(held.value, heldToken) }
 
   /** 在 presence 登记过续期的那把锁。stop() 要摘的就是它 —— 那时 held 可能已被清掉(被接管路径)。 */
   let registered: string | null = null
   /** 登记进 presence 的那个回调 —— dropLock 按引用摘,必须是同一个。 */
   let registeredCb: ((e: Eviction) => void) | null = null
+  /** 还锁围栏:acquire 时服务端发的 acquiredAt。晚到的 DELETE 只删**这一把**,不误删后来的新锁。 */
+  let heldToken: number | null = null
   /** 宿主已卸载。acquire 的 await 在途时组件可能没了 —— 迟到的 granted 不许再挂监听、占着锁。 */
   let dead = false
 
@@ -85,9 +87,10 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
     if (!r.granted) { lockedBy.value = r.holder; return false }
     // 宿主在 await 期间被卸载(路由切走/v-if 撤掉):这把刚批下来的锁没人认领了 ——
     // 不还的话它被那条 3 秒 ping 之外的任何路径都够不着,别人要干等 3 分钟。
-    if (dead) { locksApi.release(scope).catch(() => {}); return false }
+    if (dead) { locksApi.release(scope, r.acquiredAt ?? null).catch(() => {}); return false }
     lockedBy.value = null
     held.value = scope
+    heldToken = r.acquiredAt ?? null
     start()
     return true
   }
@@ -103,16 +106,24 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
     //   两人同改同一月快照,后保存整片覆盖,双方零提示。末位登记者才真还。
     if (remaining === 0) {
       // 不 await：退出编辑不该被一个网络请求卡住，服务端超时兜得住。
-      locksApi.release(held.value).catch(() => { /* 心跳超时兜底 */ })
+      // 带围栏:这个 DELETE 可能在网络上晚到 —— 没有围栏时它会把同一用户**随后又占到的
+      // 新锁**误删掉(服务端只认 user),3 秒内那人被派生失锁踢一次。
+      locksApi.release(held.value, heldToken).catch(() => { /* 心跳超时兜底 */ })
     }
     held.value = null
+    heldToken = null
   }
 
   function start() {
     ACTIVITY.forEach((e) => window.addEventListener(e, touch, true))
     window.addEventListener('pagehide', onUnload)
-    // 防御:同一实例不还锁直接换 scope 重占(现有调用方都不会,但漏网一次就是一把幽灵续期)
-    if (registered && registeredCb && registered !== held.value) presence.dropLock(registered, registeredCb)
+    // ⚠ **无条件**摘旧登记(2026-08-30 第三轮复查):useEditMode 之外的 5 个消费方都没有
+    //   在途闸,编辑按钮在 acquire 往返期间可以连点 —— 同一实例同 scope 两次 start(),
+    //   带 `registered !== held.value` 条件时第二次跳过摘旧,上一个 registeredCb 永久
+    //   遗留在 presence 里:refcount 虚高 → 点完成后 release 跳过 DELETE,一个已退出
+    //   编辑态的页签把锁无限续下去,别人只能等 20 分钟走接管;接管后每拍派生通知
+    //   还逐拍砸在遗留回调上,弹窗关一次弹一次。dropLock 按引用摘,幂等,砸不到别的实例。
+    if (registered && registeredCb) presence.dropLock(registered, registeredCb)
     registered = held.value
     registeredCb = (e: Eviction) => {
       // 被接管：锁已经不是我们的了 —— 先清 held，免得 release() 再发一个注定无效的请求

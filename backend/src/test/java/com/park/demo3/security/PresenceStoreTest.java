@@ -310,6 +310,52 @@ class PresenceStoreTest {
     }
 
     @Test
+    void aHealthyHolderGetsNoEvictionNoise() {
+        // 反方向也要钉住(复查第三轮:此前只测「必须报」,把 heartbeat 改成**每拍都报**
+        // 全部测试照样绿)—— 那样每 3 秒弹一次「已被接管」,编辑模式一秒都待不住。
+        store.acquire(SCOPE, "zhangsan", "张三");
+
+        assertThat(store.heartbeat(SCOPE, "zhangsan", clock.instant()))
+            .as("好好持有着,一个字都不该报").isNull();
+        assertThat(store.ping("sess-a", "zhangsan", "张三", "finance_clerk", null, null,
+                              java.util.List.of(SCOPE), clock.instant()))
+            .as("ping 同理 —— 自己的锁健康时通知必须为空").isEmpty();
+    }
+
+    @Test
+    void aFreshAcquireClearsAnUndeliveredStaleNotice() {
+        // 一次性通知永不过期。不清的话:几天前没送达的「已被李四接管」会在
+        // 下一次**合法**占到同一把锁后的第一拍被消费 —— 当场弹旧接管、踢出刚进的编辑态。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");   // 通知写下,但张三没 ping(没送达)
+        store.release(SCOPE, "lisi");                       // 李四改完退出
+
+        store.acquire(SCOPE, "zhangsan", "张三");           // 张三次日合法再占
+
+        assertThat(store.heartbeat(SCOPE, "zhangsan", clock.instant()))
+            .as("旧通知必须在合法占锁那一刻清掉,不许穿越到新的一代").isNull();
+    }
+
+    @Test
+    void aLateReleaseWithOldFenceCannotKillTheNewLock() {
+        // release 不 await、beacon 会补发 —— 晚到的 DELETE 带着**上一代**的围栏,
+        // 不许删掉同一用户随后又占到的新锁(服务端只认 user 时就会误删)。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        long oldFence = store.state(SCOPE).acquiredAt().toEpochMilli();
+        store.release(SCOPE, "zhangsan");
+        clock.advance(Duration.ofSeconds(1));
+        store.acquire(SCOPE, "zhangsan", "张三");           // 新的一代
+
+        store.release(SCOPE, "zhangsan", oldFence);          // 晚到的旧 DELETE
+
+        assertThat(store.state(SCOPE)).as("旧围栏删不掉新锁").isNotNull();
+
+        long newFence = store.state(SCOPE).acquiredAt().toEpochMilli();
+        store.release(SCOPE, "zhangsan", newFence);
+        assertThat(store.state(SCOPE)).as("对上代次才放行").isNull();
+    }
+
+    @Test
     void anAuthorizedTakeoverTellsTheEvictedHolderWhoApprovedIt() {
         // 「你对本期的编辑权已被 李四 接管（由 张主管 授权）」——
         // 少了后半句，被接管的人只知道被谁抢了，不知道这事经过谁同意，也就无从申诉。

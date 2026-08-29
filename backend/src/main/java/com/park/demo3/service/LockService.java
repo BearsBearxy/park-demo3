@@ -39,7 +39,9 @@ public class LockService {
     public LockDTO acquire(String scope) {
         requireSomeEditPerm();
         LockState held = store.acquire(scope, me(), myName());
-        return held == null ? LockDTO.ok() : new LockDTO(false, holderOf(scope, held));
+        if (held != null) return new LockDTO(false, holderOf(scope, held), null);
+        LockState mine = store.state(scope);   // 刚占到,必是自己的、非陈旧
+        return LockDTO.ok(mine == null ? null : mine.acquiredAt().toEpochMilli());
     }
 
     public HeartbeatDTO heartbeat(String scope, Long lastActivityAt) {
@@ -49,8 +51,8 @@ public class LockService {
             : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()));
     }
 
-    public void release(String scope) {
-        store.release(scope, me());
+    public void release(String scope, Long token) {
+        store.release(scope, me(), token);
     }
 
     /**
@@ -70,7 +72,7 @@ public class LockService {
             store.takeover(scope, me(), myName());
             audit.log("lock.takeover", "scope:" + scope,
                 "接管 " + cur.displayName() + " 的编辑锁（持有人已空闲 " + idleMin + " 分钟，免授权）");
-            return LockDTO.ok();
+            return LockDTO.ok(store.state(scope) == null ? null : store.state(scope).acquiredAt().toEpochMilli());
         }
 
         // 持有人正在操作 —— 裸接管等于给静默覆盖换了个入口，必须有人当场背书
@@ -87,7 +89,7 @@ public class LockService {
         // 审计必须记两个人:手是请求者的,责任是授权人的
         audit.logAuthorized("lock.takeover", "scope:" + scope, boss.getUsername(),
             "接管 " + cur.displayName() + " 的编辑锁（持有人活跃中，经授权）");
-        return LockDTO.ok();
+        return LockDTO.ok(store.state(scope) == null ? null : store.state(scope).acquiredAt().toEpochMilli());
     }
 
     // ══════════ 内部 ══════════
