@@ -102,6 +102,9 @@ export function useSchedScreen<R extends SchedRow>(opts: {
     const ids = [...selectedIds.value]
     if (!ids.length) return
     await guard('删除失败', async () => {
+      // 写口自守(6 屏一次到位):edit 会被 SchedHeader 就地翻假(被接管/提权到期),
+      // 而「删除选中」按钮的 v-if 到下一拍才收 —— 这一拍点下去就是浏览态批删
+      if (!edit.value) return
       await opts.batchDelete(ids)
       selectedIds.value = new Set()
       await refresh()
@@ -111,6 +114,7 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   // ── 清空本期导入 ─────────────────────────────────────────
   const importedCount = computed(() => opts.rows().filter(r => r.source === 'import').length)
   async function onClearImported() {
+    if (!edit.value) return
     if (year.value == null) return
     if (!opts.clear.confirm(importedCount.value)) return
     const y = year.value

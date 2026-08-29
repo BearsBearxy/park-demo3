@@ -17,7 +17,7 @@
 // 一眼可见 —— 对按月录入的屏后者更有用(用户 2026-08-29 拍板)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { S } from '@/utils/lockScopes'
 import { salaryApi } from '@/api/salary'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -61,13 +61,27 @@ async function loadMonth(y: number) {
     const data = await salaryApi.records(y, month.value!)
     if (seq !== monthSeq) return
     monthData.value = data
+    readErr.value = null            // 只在成功时清 —— 清在开头,重试在途整段窗口门全敞开
+  } catch (e) {
+    // 失败**不留旧行顶着新期标**(复查坐实的最狠一条):pickMonth 换月失败时胶囊/期标/
+    // 计数全是新月而行是旧月的 —— 用户进编辑批删「新月多余的人」,删的是旧月的真实记录。
+    if (seq === monthSeq) {
+      monthData.value = null
+      readErr.value = (e as { message?: string })?.message ?? '本月工资加载失败'
+    }
   } finally {
     // ⚠ 只有最新那一趟有资格熄灯(理由同催缴单)
     if (seq === monthSeq) reloading.value = false
   }
 }
+/** 本期取数失败的人话。 */
+const readErr = ref<string | null>(null)
+function retryMonth() { if (year.value != null) loadMonth(year.value) }
+const overviewErr = ref('')
+/** 总览。裸 await 一挂 overview 恒 null → 模板整屏转圈永不停,矩阵是唯一入口 —— 整本账不可达。 */
 async function reloadOverview() {
-  overview.value = await salaryApi.overview()
+  try { overview.value = await salaryApi.overview(); overviewErr.value = '' }
+  catch { overviewErr.value = '工资总览加载失败,请重试' }
 }
 
 const {
@@ -96,9 +110,13 @@ const hasMonth = (m: number) => yearMonths.value.has(m)
 const monthOptions = computed(() => (overview.value?.years ?? []).map(y => y.year))
 
 // ── 进入屏:overview(§6 取数前不渲染) ──────────────────
-onMounted(async () => {
-  overview.value = await salaryApi.overview()
-})
+onMounted(reloadOverview)
+
+// 编辑态**就地**转假(SchedHeader 被接管/提权到期/换期 exitEdit)要关写浮层 ——
+// 它们的 v-if 只判自己的 ref,留着的话失锁后「保存」「导入」照样落库(后端写口不校验锁)。
+watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
+// 抽屉是 FPDrawer(Teleport to body):KeepAlive 切页签子树停用,它留在 body 上飘在别的屏顶上
+onDeactivated(() => { drawer.value = false; importing.value = false })
 
 async function pickMonth(m: number) {
   month.value = m
@@ -169,6 +187,7 @@ async function onImportSections(
   fileName: string,
 ) {
   importing.value = false
+  if (!edit.value) return   // 写口自守(同 onCreate)
   if (year.value == null) return
   // 矩阵态导入不了(导入按钮在宽表的编辑态里),month 到这里必非空
   const ctx = { year: year.value, month: month.value ?? undefined }
@@ -176,26 +195,36 @@ async function onImportSections(
     importResult.value = await runImport('salary', picks, ctx, fileName)
     const first = picks[0]
     if (first) { year.value = first.year ?? year.value; month.value = first.month ?? month.value }
+    selectedIds.value = new Set()   // 跳期清勾选(同 onCreate)
     await refresh()
   })
 }
 
-const onCreate = (req: SalaryRecordReq) => guard('新增工资失败', async () => {
-  await salaryApi.create(req)
+const onCreate = async (req: SalaryRecordReq) => {
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
+  // ⚠ 写与刷新分开兜:包在同一个 catch 里时,create 已成功、refresh 失败会 alert
+  //   「新增工资失败」且表里看不到新行 —— 写成功被谎报为写失败,用户会重录出重复行。
+  try { await salaryApi.create(req) }
+  catch (e) { alert((e as { message?: string })?.message ?? '新增工资失败'); return }
   drawer.value = false
-  // 提交后归入对应年月(可能与当前选中不同)
+  // 提交后归入对应年月(可能与当前选中不同);跳期必须清勾选 —— 残留的 id 会喂给
+  // 「删除选中」批删另一个月的行
   const [y, m] = req.acctMonth.split('-')
   year.value = parseInt(y, 10)
   month.value = parseInt(m, 10)
-  await refresh()
-})
+  selectedIds.value = new Set()
+  try { await refresh() }
+  catch { alert('已保存成功,但刷新失败 —— 表内暂时看不到新行,点失败条上的「重试」即可。') }
+}
 
 const onDelete = (row: SalaryRecordDTO) => guard('删除失败', async () => {
+  if (!edit.value) return
   await salaryApi.remove(row.id)
   await refresh()
 })
 
 const onNote = (row: SalaryRecordDTO, text: string) => guard('保存备注失败', async () => {
+  if (!edit.value) return
   await salaryApi.updateNote(row.id, text || null)
   await refresh()
 })
@@ -280,7 +309,10 @@ const onExport = () => guard('导出失败', async () => {
           </div>
         </div>
 
+        <!-- fp-stale 带 pointer-events:none —— 换期在途旧行不许被点、被删(同族 6 屏都有,本屏漏) -->
         <SalaryTable
+          :class="{ 'fp-stale': veil }"
+          :aria-busy="veil"
           :year="year!"
           :month="month!"
           :rows="monthData.rows"
@@ -316,17 +348,37 @@ const onExport = () => guard('导出失败', async () => {
       />
     </template>
 
+    <!-- 取数失败:说出来 + 重试 + 回矩阵的口。改前失败落进下面的转圈 —— 永久转、无重试、
+         无返回口,用户被锁死(pickCell 先 clearData,monthData 恒 null) -->
+    <div v-else-if="readErr" class="s12-fail">
+      <component :is="iconFor('alert-triangle')" :size="18" />
+      <span>{{ year }}年{{ month }}月工资加载失败:{{ readErr }}</span>
+      <Button variant="outline" size="sm" @click="retryMonth">重试</Button>
+      <Button variant="ghost" size="sm" @click="backToMonths">返回选月</Button>
+    </div>
+
     <!-- 切年/切月过渡兜底转圈 -->
     <div v-else class="page-loading"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
+  <!-- overview 一次都没拿到:硬失败面 —— 矩阵是唯一入口,转圈死等 = 整本账不可达 -->
+  <div v-else-if="overviewErr" class="s12-fail">
+    <component :is="iconFor('alert-triangle')" :size="18" />
+    <span>{{ overviewErr }}</span>
+    <Button variant="outline" size="sm" @click="reloadOverview">重试</Button>
+  </div>
+
   <div v-else class="page-loading"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
 /* 1:1 from screen-schedule12.jsx WStyles(.w12-page / .w12-toolbar 段) */
+.s12-fail {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  height: 100%; color: var(--hue-red); font-size: 13px;
+}
 .s12-page { position:relative; display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 .s12-toolbar { flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .s12-toolbar-l { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; flex:1 1 auto; }
