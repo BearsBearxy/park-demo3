@@ -43,9 +43,13 @@ defineEmits<{
         :class="{ on: b.id === activeId }"
         role="button"
         tabindex="0"
+        :aria-pressed="b.id === activeId"
         @click="$emit('select', b.id)"
         @keydown.enter="$emit('select', b.id)"
+        @keydown.space.prevent="$emit('select', b.id)"
       >
+      <!-- Space 必须 prevent:role=button 的键盘契约是 Enter+Space 双触发,
+           不 prevent 的话 Space 还会滚动页面。aria-pressed 让读屏器知道当前在哪本。 -->
         <span class="br-txt">
           <span class="br-name">{{ b.name }}</span>
           <span v-if="b.desc" class="br-desc">{{ b.desc }}</span>
@@ -102,6 +106,12 @@ defineEmits<{
   font-family: var(--font-sans);
   text-align: left;
   transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+
+/* 键盘焦点要看得见 —— 鼠标点击(:focus)不画,只画键盘走到的那格 */
+.br-item:focus-visible {
+  outline: 2px solid var(--hue-blue);
+  outline-offset: -2px;
 }
 
 .br-item:hover {

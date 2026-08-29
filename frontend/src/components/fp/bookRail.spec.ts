@@ -1,4 +1,6 @@
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import BookRail from './BookRail.vue'
@@ -141,4 +143,40 @@ describe('BookMonthMatrix 选期矩阵 v3(多年纵排)', () => {
     expect(w.find('.bmm-addy').exists()).toBe(false)
     expect(w.text()).toContain('请选择账册')
   })
+})
+
+describe('BookRail 键盘可达(第 5 步共享件)', () => {
+  const BOOKS = [
+    { id: 1, name: '报送台账', desc: '按期 · 按月' },
+    { id: 2, name: '分栋运营账', desc: '按栋 · 按日' },
+  ]
+
+  it('❗Space 也要能选中 —— role=button 的键盘契约是 Enter+Space 双触发', async () => {
+    const w = mount(BookRail, { props: { books: BOOKS, activeId: 1, canManage: false } })
+    await w.findAll('.br-item')[1].trigger('keydown.space')
+    expect(w.emitted('select')?.[0], 'Space 没接线,键盘用户选不了账本').toEqual([2])
+  })
+
+  it('❗aria-pressed 标出当前那本 —— 读屏器要知道自己在哪', () => {
+    const w = mount(BookRail, { props: { books: BOOKS, activeId: 2, canManage: false } })
+    const items = w.findAll('.br-item')
+    expect(items[0].attributes('aria-pressed')).toBe('false')
+    expect(items[1].attributes('aria-pressed')).toBe('true')
+  })
+
+  it('键盘焦点画得出来 —— :focus-visible 样式在(jsdom 不跑 scoped 样式,查源码)', () => {
+    const src = readFileSync(join(__dirname, 'BookRail.vue'), 'utf8')
+    expect(src).toContain(':focus-visible')
+  })
+})
+
+describe('三屏共壳门禁(第 5 步收敛)', () => {
+  it.each(['../../views/pv/PvView.vue', '../../views/charging/ChargingView.vue', '../../views/elec/ElecView.vue'])(
+    '%s 用的是共享外壳,不是自己那份复制品', (rel) => {
+      // 收敛前三屏各抄一份同字节的 aside+CSS(pvw/chw/e11w 三个家族)——
+      // 改一处要改三处,漏一处就是三屏悄悄分叉。
+      const src = readFileSync(join(__dirname, rel), 'utf8')
+      expect(src.includes('<BookRailShell'), `${rel} 没用共享外壳`).toBe(true)
+      expect(/-rail-t">/.test(src), `${rel} 还留着自己的 aside 标题复制品`).toBe(false)
+    })
 })

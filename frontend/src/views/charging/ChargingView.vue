@@ -17,7 +17,7 @@ import type {
   ChargingImportRow,
 } from '@/types/charging'
 import { loadViewMode, saveViewMode } from '@/utils/viewMode'
-import BookRail from '@/components/fp/BookRail.vue'
+import BookRailShell from '@/components/fp/BookRailShell.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
@@ -154,16 +154,9 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 </script>
 
 <template>
-  <div class="chw">
-    <!-- 左栏:两本账一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
-         改前这是一道整屏拦住的功能门,而且不记得你上次选了哪本 —— 每次进来重答一遍。 -->
-    <aside class="chw-rail">
-      <div class="chw-rail-t">充电桩</div>
-      <BookRail :books="MODES" :active-id="mode" :can-manage="false"
-                @select="(id) => (mode = id as Mode)" />
-    </aside>
-
-    <div class="chw-main">
+  <!-- 外壳收敛(第 5 步共享件):三屏此前各抄一份同字节的 aside+CSS,现在共用 BookRailShell -->
+  <BookRailShell title="充电桩" :books="MODES" :active-id="mode"
+                 @select="(id) => (mode = id as Mode)">
   <!-- 分桩充电明细(新屏,附表7/8 共享组件按类型过滤桩) -->
   <CpMeterView v-if="mode === 'meter'" :vehicle-type="vehicleType" />
 
@@ -267,22 +260,11 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>
-    </div>
-  </div>
+  </BookRailShell>
 </template>
 
 <style scoped>
 /* 1:1 from screen-charging.jsx ChStyles(.ch-page,24) */
 .ch-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 
-/* ── 一屏两本账的外壳(2026-08-29 设计稿 §②):左栏常驻 + 主区。与月度台账 .lgw 家族同形 ── */
-.chw { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
-        font-family: var(--font-sans); color: var(--text-primary); }
-.chw-rail {
-  flex: 0 0 176px; min-height: 0; display: flex; flex-direction: column; gap: 8px;
-  padding: 14px 12px; box-sizing: border-box;
-  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
-}
-.chw-rail-t { font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); padding: 0 4px; }
-.chw-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 </style>
