@@ -103,7 +103,15 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   async function enter() {
     const scope = opts.scope?.() ?? null
     if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
-    if (await lock.acquire(scope)) editMode.value = true
+    if (!(await lock.acquire(scope))) return
+    // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门 ——
+    // 回来时这把锁锁的已经不是他要编的东西了。
+    // 下面那个 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
+    // （发起时还没进编辑态），条件里 `before != null` 当场把它放过去。
+    // 后果在带选期门的屏上最狠:退回矩阵后 editMode 仍为真,而唯一的「完成」按钮
+    // 长在 v-else 的表格页里、已经不渲染 —— 锁握着、没有写入口、也没有出口。
+    if ((opts.scope?.() ?? null) !== scope) { lock.release(); return }
+    editMode.value = true
   }
 
   /**

@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, nextTick } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
 
 import PvMeterView from '@/views/pv/PvMeterView.vue'
 import { pvMeterApi } from '@/api/pvMeter'
+import type { PvReadingDTO } from '@/api/pvMeter'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/api'
 
 /**
  * 运营账屏动线的端到端证明（2026-08-29「两本账」设计稿 §③）。
@@ -24,9 +27,16 @@ vi.mock('@/api/pvMeter', () => ({
     stations: vi.fn(), readings: vi.fn(), months: vi.fn(), years: vi.fn(),
     createReading: vi.fn(), updateReading: vi.fn(), deleteReading: vi.fn(),
     createStation: vi.fn(), updateStation: vi.fn(), deleteStation: vi.fn(),
-    simulate: vi.fn(),
+    simulate: vi.fn(), importRows: vi.fn(),
   },
 }))
+
+/** 2025-03 的一条真实形状记录。`revenue` 是后端派生字段,抽屉那一列直接 fy(r.revenue) —— 漏了就渲染崩。 */
+const MAR: readonly PvReadingDTO[] = [
+  { id: 1, stationId: 1, stationName: 'B 座', readDate: '2025-03-05',
+    genTotal: 100, selfUse: 80, gridFeed: 20, priceSnap: 0.62, revenue: 49.6,
+    note: null, source: 'manual' },
+]
 
 const STATIONS = [
   { id: 1, name: 'B 座', phase: 1, capacityKwp: 210, priceYuan: 0.62, sortNo: 1 },
@@ -100,7 +110,10 @@ describe('光伏分栋抄表 · 选期动线', () => {
     await flushPromises()
 
     expect(w.find('.pm-per').text(), '期写在工具条上').toBe('2025-03')
-    expect(w.findAll('.mx-toolbar select'), '年月下拉整个撤了').toHaveLength(0)
+    // ⚠ 选择器只能是 .ds-sel-trigger。本仓下拉一律走 ds/Select(SystemLogsView.vue:155 明写),
+    //   它渲染的是 <button class="ds-sel-trigger">,**从来不产出原生 <select>** ——
+    //   写成 findAll('select') 的话这条恒为 0,把一个 <Select> 塞回去照样绿,等于零守卫。
+    expect(w.findAll('.mx-toolbar .ds-sel-trigger'), '年月下拉整个撤了').toHaveLength(0)
 
     await w.find('.pm-permonth').trigger('click')
     await flushPromises()
@@ -128,10 +141,7 @@ describe('光伏分栋抄表 · 选期动线', () => {
     // 对抗复查坐实:点月格那一刻 picked 当场变 true、门收起、工具条期标与空态文案全换成新期,
     // 而表体的 readings 是上一期的 —— 用户把 3 月的量当 7 月读走,零提示、不自愈。
     // 更硬的一半:改前 loadReadings 连 try/catch 都没有。
-    vi.mocked(pvMeterApi.readings).mockResolvedValue([
-      { id: 1, stationId: 1, readDate: '2025-03-05', genTotal: 100, selfUse: 80, gridFeed: 20,
-        priceSnap: 0.62, note: null, source: 'manual' },
-    ] as never)
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
     const w = await open()
     await w.findAll('.bmm-card')[2].trigger('click')   // 2025-03,有数据
     await flushPromises()
@@ -153,6 +163,10 @@ describe('光伏分栋抄表 · 选期动线', () => {
     // 现在它是矩阵 hasData 着色与「最近有数据月」描边的**唯一**数据源,陈旧就是矩阵在说假话。
     const w = await open()
     await w.findAll('.bmm-card')[7].trigger('click')   // 2025-08,空月
+    await flushPromises()
+    // 写函数各自判编辑态(照 BillNoticesView),浏览态下直接 return —— 这里要测的是"写完刷清单",
+    // 所以必须先真的进编辑态,不能绕过守卫直接调。
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
     await flushPromises()
     vi.mocked(pvMeterApi.months).mockClear()
 
@@ -268,5 +282,206 @@ describe('光伏分栋抄表 · 取数失败时不许猜', () => {
     // 同批四屏都写了 relative,这屏当初抄漏了 —— jsdom 不跑 scoped 样式,只能查源码。
     const s = readFileSync(join(__dirname, '../pv/PvMeterView.vue'), 'utf8')
     expect(/\.pm-page \{[^}]*position: relative/.test(s)).toBe(true)
+  })
+})
+
+/**
+ * 第一轮修复(ac1d9b5)之后的第二轮对抗复查坐实的 6 条 —— 其中 3 条 HIGH 是**那次提交自己写进去的**。
+ *
+ * 共同的根:我加的每一道门都判 `loadErr`。于是"什么时候算失败"这一个信号
+ * 一旦在错误的时机被清掉、或被合并得太粗,所有门同时敞开。
+ */
+describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
+  const btn = (w: ReturnType<typeof mount>, t: string) =>
+    w.findAll('button').find(b => b.text().includes(t))
+  /** 一个永不结算的 promise —— 用来把"在途"这段时间钉住看。 */
+  const hang = () => new Promise(() => {})
+
+  async function toTable() {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('❗重试在途的整段时间里,门必须继续关着', async () => {
+    // readErr 若清在请求开头(我第一版就是),点重试那一刻 loadErr 当场变假:
+    // 失败条消失、导出解禁、伪造的零上冒出输入框、屏上还主动宣布「本月暂无抄表记录」。
+    // 而 readings 还是上一趟失败留下的 []。这时点导出,拿到的正是这次提交声称要挡住的全零表。
+    vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+
+    vi.mocked(pvMeterApi.readings).mockImplementation(hang as never)
+    await w.find('.fp-lderr button').trigger('click')   // 重试 —— 这一趟永不结算
+    await nextTick()
+
+    expect(w.find('.fp-lderr').exists(), '失败条不该在重试一开始就消失').toBe(true)
+    expect(btn(w, '导出')!.attributes('disabled'), '在途时导出必须仍禁用').toBeDefined()
+    expect(w.findAll('.pm-edit'), '在途时不该冒出写入口').toHaveLength(0)
+    expect(w.find('.pm-empty').exists(), '在途时不该宣布「本月暂无」').toBe(false)
+  })
+
+  it('❗重试成功之后门要重新打开 —— 光会关不会开就是把人永久锁在外面', async () => {
+    // 破坏验证抓到的空档:把成功分支里那句 `readErr.value = null` 整个删掉,
+    // 上面那批"失败时要关门"的断言**一条都不红** —— 它们只证明了会关,没证明会开。
+    // 真发生时:后端恢复了、数字也回来了,失败条却还挂着,写入口与导出永久禁用,
+    // 唯一的出路是刷新整个页面。
+    vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    expect(w.find('.fp-lderr').exists(), '前提:先失败一次').toBe(true)
+
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    await w.find('.fp-lderr button').trigger('click')       // 重试,这次成功
+    await flushPromises()
+
+    expect(w.find('.fp-lderr').exists(), '成功了失败条还挂着').toBe(false)
+    expect(btn(w, '导出')!.attributes('disabled'), '成功了导出还禁着').toBeUndefined()
+    expect(w.findAll('.pm-edit').length, '成功了写入口没回来').toBeGreaterThan(0)
+  })
+
+  it('❗换期在途时禁导出 —— 否则导出「新期文件名 + 上一期数字」', async () => {
+    // 点月格那一刻期标当场变新期,而 readings 仍是上一期的(loadReadings 故意不清旧数据)。
+    // .fp-stale 只盖 .pm-card,工具条是它兄弟,导出按钮全程可点;
+    // 而 pvMeterExcel 不按 year/month 过滤行,只拿它们做文件名/sheet 名/标题。
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    expect(btn(w, '导出')!.attributes('disabled'), '静止时导出该是可用的').toBeUndefined()
+
+    vi.mocked(pvMeterApi.readings).mockImplementation(hang as never)
+    await w.find('.pm-permonth').trigger('click')
+    await flushPromises()
+    await w.findAll('.bmm-card')[6].trigger('click')   // 换到 2025-07,取数挂在半路
+    await nextTick()
+
+    expect(w.find('.pm-per').text(), '期标已经是新期').toBe('2025-07')
+    expect(btn(w, '导出')!.attributes('disabled'), '数字还是 3 月的,不许导出').toBeDefined()
+  })
+
+  it('❗编辑态被就地打假(接管/提权到期)→ 两个写弹窗必须一起关', async () => {
+    // 弹窗的 v-if 只判自己那个 ref,不判编辑态。别人走接管
+    // (presence.handleEviction → useEditMode.exit())或 30 分钟提权到期都会**就地**把
+    // editMode 打假、不卸载不跳路由 —— 屏幕退回浏览态而弹窗还挂着,
+    // 里面的「新增」「确认导入」照样打 POST:浏览态下写库,写的还是一把已经归别人的期锁。
+    const w = await toTable()
+    const vm = w.vm as unknown as { editMode: boolean; stationDlg: boolean; importing: boolean }
+    vm.editMode = true
+    vm.stationDlg = true
+    vm.importing = true
+    await flushPromises()
+    expect(w.find('.pm-mask').exists(), '前提:弹窗确实开着').toBe(true)
+
+    vm.editMode = false            // ← 接管 / 授权到期走的正是这一句
+    await flushPromises()
+    expect(w.find('.pm-mask').exists(), '新增电站弹窗没关').toBe(false)
+    expect(vm.importing, '导入弹窗没关').toBe(false)
+  })
+
+  it('❗浏览态下每一个写函数都必须打不出去 —— 关弹窗只是 UI 补丁', async () => {
+    // 关弹窗挡住的是**已知**那条残留入口。真正不漏的守卫在发请求那一层:
+    // editMode 会就地转假(被别人接管 / 30 分钟提权到期),而这些函数的调用者
+    // (弹窗按钮、抽屉里的行、行内输入框)各有各的 v-if —— 漏一个就是一条浏览态写路径,
+    // 写的还是一把已经归别人的期锁。照 BillNoticesView.vue:301/415/431 的既有写法。
+    //
+    // ⚠ 前置状态必须做足。破坏验证抓到过:openSt 是 null / stForm 是空的时候,
+    //   delStation、submitStation、saveForm 在**自己原有的**早退分支就 return 了 ——
+    //   守卫删掉照样绿,这条断言等于没写。
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    const vm = w.vm as unknown as Record<string, never>
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    // 先在编辑态里把状态摆好(抽屉打开、新增表单填好、编辑行展开)……
+    ;(vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')     // openSt = B 座
+    await flushPromises()
+    ;(vm as unknown as { stForm: { name: string; capacity: string; price: string } }).stForm =
+      { name: '新楼', capacity: '100', price: '0.6' }
+    ;(vm as unknown as { form: Record<string, string> }).form =
+      { readDate: '2025-03-09', genTotal: '10', selfUse: '8', gridFeed: '2', note: '' }
+    ;(vm as unknown as { adding: boolean }).adding = true
+    await flushPromises()
+
+    // ……再让编辑态就地转假(= 被接管 / 提权到期走的那一句),然后逐个直呼写函数
+    ;(vm as unknown as { editMode: boolean }).editMode = false
+    await flushPromises()
+    // ⚠ 导入那条走的是 importRegistry 里的 `http.post('/pv-meter/import')`,**不经 pvMeterApi**
+    //   (registry 那行注释写明是并行期直调端点)。只断言 pvMeterApi.* 的话这个守卫删掉照样绿。
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ imported: 1, skipped: 0, errors: [] } as never)
+    const call = vm as unknown as Record<string, (...a: never[]) => unknown>
+    await call.submitStation()
+    await call.delStation()
+    await call.saveForm()
+    await call.delRow(1 as never, '2025-03-05' as never)
+    await call.onSimulate()
+    await call.onImport(
+      [{ 电站: 'B 座', 抄表日期: '2025-03-09', 发电量: 10, 自消纳: 8, 上网: 2 }] as never,
+      'x.xlsx' as never,
+    )
+    call.commitStation({ id: 1, name: 'B 座', capacityKwp: 1 } as never, 'capacityKwp' as never, '999' as never)
+    call.commitStationName({ id: 1, name: 'B 座' } as never, '改名了' as never)
+    await flushPromises()
+
+    for (const [k, fn] of [
+      ['createStation', pvMeterApi.createStation], ['updateStation', pvMeterApi.updateStation],
+      ['deleteStation', pvMeterApi.deleteStation], ['createReading', pvMeterApi.createReading],
+      ['updateReading', pvMeterApi.updateReading], ['deleteReading', pvMeterApi.deleteReading],
+      ['simulate', pvMeterApi.simulate], ['importRows', pvMeterApi.importRows],
+    ] as const) {
+      expect(fn, `浏览态下 ${k} 被打出去了`).not.toHaveBeenCalled()
+    }
+    expect(post.mock.calls.map(c => c[0]), '浏览态下整月导入被打出去了')
+      .not.toContain('/pv-meter/import')
+  })
+
+  it('❗切页签要收掉抽屉 —— 它是 Teleport to body,子树没了它不会没', async () => {
+    const Host = defineComponent({
+      components: { PvMeterView },
+      props: { on: { type: Boolean, default: true } },
+      template: '<KeepAlive><PvMeterView v-if="on" /></KeepAlive>',
+    })
+    const w = mount(Host, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    expect(w.find('.fp-dwr-backdrop').exists(), '前提:抽屉开着').toBe(true)
+
+    await w.setProps({ on: false })    // KeepAlive 停用 = 切到别的页签
+    await flushPromises()
+    await w.setProps({ on: true })
+    await flushPromises()
+    expect(w.find('.fp-dwr-backdrop').exists(), '切回来抽屉还开着').toBe(false)
+  })
+
+  it('❗失败态不许进编辑模式 —— 占得到锁却一个写控件都没有', async () => {
+    // 进得去就占住 pv-meter:<year> 那把锁,可 editStation/editReading 都被 loadErr 判假,
+    // 一个写控件都不会出现:把别人挡在外面,自己什么也做不了。
+    vi.mocked(pvMeterApi.readings).mockRejectedValue(new Error('后端挂了'))
+    const w = await toTable()
+    const b = w.findAll('button').find(x => x.text().includes('编辑'))
+    expect(b, '前提:编辑模式按钮在').toBeTruthy()
+    expect(b!.attributes('disabled'), '失败态还能进编辑模式').toBeDefined()
+  })
+
+  it('❗只有电站档案挂了时,抽屉不许藏掉这一站真实存在的记录', async () => {
+    // 抽屉那道拦截判的若是合并槽 loadErr,档案挂掉(读数好好的)也会宣布
+    // 「本月读数未加载成功…别在这里录」,并把真实记录全部藏起来 —— 说了假话还删了信息。
+    vi.mocked(pvMeterApi.readings).mockResolvedValue(MAR as never)
+    const w = await toTable()
+    vi.mocked(pvMeterApi.stations).mockRejectedValue(new Error('档案挂了'))
+    await (w.vm as unknown as { loadStations: () => Promise<void> }).loadStations()
+    await flushPromises()
+    expect(w.text(), '前提:档案的失败已经上屏').toContain('电站档案加载失败')
+
+    await w.findAll('.pm-table tbody tr')[0].trigger('click')
+    await flushPromises()
+    expect(w.text(), '读数好好的,抽屉不该说读数没加载成功').not.toContain('本月读数未加载成功')
+    expect(w.findAll('.pm-dtable tbody tr').length, '这一站的真实记录被藏了').toBeGreaterThan(0)
   })
 })

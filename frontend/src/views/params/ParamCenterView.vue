@@ -144,11 +144,16 @@ function applyHandoff(): boolean {
   if (typeof q.zone === 'string' && ZONE_OPTS.some(o => o.value === q.zone)) zone.value = q.zone as ParamZone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
-  // 深链也走 toggle:缺权限时弹授权窗(裸写 editMode 会被守卫静默弹回浏览态,用户不知道为什么)
-  if (q.edit === '1' && canEnter.value) toggleEdit()
   // 只在还没有期时认领:已经选好期的人不该被一条链接顶到别的月去。
   // 链内跳转过来的 ym 与组级期本就相同,这里是给外部深链兜底。
   period.adoptYm(typeof q.ym === 'string' ? q.ym : null)
+  // ⚠ 必须**先认领期再进编辑态**。顺序反了的话 toggleEdit() 占的是 `param-center:0-00`
+  //   (year/month 此刻还是 `period.year ?? 0`),紧接着 adoptYm 把期改成真的那个月 ——
+  //   锁与所编的期从此错位,而表现是「锁没生效」,不报错、没人会发现。
+  //   （2026-08-29 给 useEditMode.enter() 补上"占锁回来再复核一次期"之后,这条当场暴露。）
+  //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
+  // 深链也走 toggle:缺权限时弹授权窗(裸写 editMode 会被守卫静默弹回浏览态,用户不知道为什么)
+  if (q.edit === '1' && period.picked && canEnter.value) toggleEdit()
   return period.picked
 }
 function scrollToSection() {

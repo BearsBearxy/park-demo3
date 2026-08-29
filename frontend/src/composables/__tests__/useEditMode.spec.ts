@@ -287,6 +287,45 @@ describe('编辑模式 × 换期', () => {
     expect(m.editMode.value).toBe(true)
   })
 
+  it('❗占锁在途时期变了 → 不进编辑态,并把刚拿到的锁还回去', async () => {
+    // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门。
+    // 上面那条 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
+    // (发起时还没进过编辑态),条件里 `before != null` 当场把它放过去。
+    // 后果在带选期门的屏上最狠(光伏分栋抄表/分桩明细/电费成本总览):
+    // 退回矩阵后 editMode 仍为真,而唯一的「完成」按钮长在 v-else 的表格页里、已经不渲染
+    // —— 锁握着、没有写入口、也没有出口,别人还被挡在外面。
+    asRole(['entry:edit'])
+    const ym = ref('2025-03')
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(
+      new Promise(r => { settle = r }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => `billing-chain:${ym.value}` })
+
+    const pending = m.toggle()
+    ym.value = '2025-05'                      // ← 往返期间换了期
+    settle({ granted: true, holder: null })
+    await pending
+
+    expect(m.editMode.value, '锁的已经不是他要编的那一期了').toBe(false)
+    expect(api.delete, '刚拿到的那把锁要立刻还回去')
+      .toHaveBeenCalledWith('/locks/billing-chain:2025-03')
+  })
+
+  it('占锁在途但期没变 → 照常进编辑态(别把正常路径也拦了)', async () => {
+    asRole(['entry:edit'])
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(
+      new Promise(r => { settle = r }) as never,
+    )
+    const m = useEditMode(['entry:edit'], { scope: () => 'billing-chain:2025-03' })
+    const pending = m.toggle()
+    settle({ granted: true, holder: null })
+    await pending
+    expect(m.editMode.value).toBe(true)
+    expect(api.delete).not.toHaveBeenCalled()
+  })
+
   it('不上锁的屏(没传 scope)不受影响 —— 它本来就没有期这回事', async () => {
     asRole(['entry:edit'])
     const m = useEditMode(['entry:edit'])

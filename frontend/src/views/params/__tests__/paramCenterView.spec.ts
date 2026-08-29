@@ -66,9 +66,11 @@ const put = vi.fn()
 // 计费参数页自 P3 起要先占到编辑锁才进得了编辑态（CONCURRENCY-SPEC §3.2：
 // 它与公共电核算 / 催缴单 / 系数簿共占 billing-chain 那把月锁）。
 // 不 mock 的话 locksApi 走真 axios，jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
+/** 占锁请求过的 scope 全记下来 —— 深链那条要靠它证明锁的是**真的那个月**。 */
+const acquired: string[] = []
 vi.mock('@/api/locks', () => ({
   locksApi: {
-    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    acquire: (scope: string) => { acquired.push(scope); return Promise.resolve({ granted: true, holder: null }) },
     release: () => Promise.resolve(),
     heartbeat: () => Promise.resolve({ evicted: null }),
     takeover: () => Promise.resolve({ granted: true, holder: null }),
@@ -208,10 +210,19 @@ describe('ParamCenterView 计费参数页', () => {
 
   it('深链 edit=1(三屏 [去重算])直接进编辑态:重算本月可点', async () => {
     query.edit = '1'
+    acquired.length = 0
     try {
       const w = await mountPage()
       expect(w.findAll('button').some(b => b.text().includes('重算本月'))).toBe(true)
       expect(w.findAll('button').some(b => b.text() === '完成')).toBe(true)
+      // ❗锁的必须是**真的那个月**。改前是先 toggleEdit() 再 adoptYm():
+      //   占的是 `param-center:0-00`(期还没认领,year/month 都是 `?? 0`),
+      //   紧接着期被改成真的那个月 —— 锁与所编的期从此错位,而表现是「锁没生效」,不报错。
+      //   （给 useEditMode.enter() 补上"占锁回来复核一次期"之后这条当场暴露:
+      //     复核发现期变了 → 还锁不进 → 深链彻底进不去编辑态。）
+      // 出账链四屏共一把月锁 → scope 是 `billing-chain:YYYY-MM`(S.paramCenter = billingChain)
+      expect(acquired, '深链占的锁不是真期的那把').not.toContain('billing-chain:0-00')
+      expect(acquired.some(x => /^billing-chain:\d{4}-\d{2}$/.test(x)), '没占到真期的锁').toBe(true)
       w.unmount()
     } finally { delete query.edit }
   })

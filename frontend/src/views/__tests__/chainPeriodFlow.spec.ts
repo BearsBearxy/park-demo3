@@ -137,7 +137,10 @@ describe('出账链动线 · 楼栋损耗', () => {
     const w = await open()
     await w.findAll('.bmm-card')[2].trigger('click')
     await flushPromises()
-    expect(w.findAll('.ll-head select')).toHaveLength(0)
+    // ⚠ 选择器只能是 .ds-sel-trigger。本仓下拉一律走 ds/Select(SystemLogsView.vue:155 明写),
+    //   它渲染的是 <button class="ds-sel-trigger">,**从来不产出原生 <select>** ——
+    //   写成 findAll('select') 的话这条恒为 0,把一个 <Select> 塞回去照样绿,等于零守卫。
+    expect(w.findAll('.ll-head .ds-sel-trigger')).toHaveLength(0)
     expect(w.find('.ll-head').text(), '标题行只剩屏名与期区').not.toContain('年')
   })
 })
