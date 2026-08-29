@@ -386,6 +386,27 @@ const alertGroups = computed<AlertGroup[]>(() => {
     action: { label: '去计费参数页重算', icon: 'refresh-cw',
       run: () => { alertOpen.value = false; gotoParams(undefined, null, true) } },
   })
+  // 原来是独立的流内条(v-if="editMode || cfgDirty"),进编辑模式就把整张表顶下去一行 ——
+  // 顶的是整张表不是编辑区自身,不属于 §5 允许的范围,2026-08-29 收进这里。
+  // 单个布尔值,items 给 1 条:cfgDirty 只有「是/否」两态,不像 genWarnings/zoneDiffs 那样有多条明细可数,
+  // 给 1 条时 chip 计数是「待处理 1」,读起来就是「一件事没办完」,不必再拆更细的数。
+  if (cfgDirty.value) {
+    const cfgAction = editMode.value
+      // 已在编辑态:直接复用工具条同一个「重新生成」——编辑态里权限一定齐(EDIT-MODE-SPEC v3 铁律①),
+      // 且已经持有本期编辑锁(CONCURRENCY-SPEC),调用 onGenerate 和点工具条按钮完全等价。
+      ? { label: '重新生成', icon: 'refresh-cw', run: () => { alertOpen.value = false; onGenerate() } }
+      // 浏览态:不能直接调 onGenerate ——那样会绕开编辑锁,与占锁中的人冲突。只能先带他去拿锁,
+      // 拿到之后工具条自己会冒出「重新生成」按钮,由用户自己点一次(不自动帮点:拿锁可能需要先过提权弹窗)。
+      : canEnter.value
+        ? { label: '进入编辑模式', icon: 'pencil', run: () => { alertOpen.value = false; toggleEdit() } }
+        : undefined
+    gs.push({
+      key: 'cfg', title: '待重算',
+      desc: '池配置或月度参数改过,屏上数字仍是生成快照时的旧口径 —— 不重新生成,公共电核算的数字就一直按旧配置走。',
+      items: [{ text: `${ym.value} 配置已变,请重新生成` }],
+      action: cfgAction,
+    })
+  }
   if (genWarnings.value.length) gs.push({
     key: 'gen', title: '本次生成告警',
     desc: '引擎生成时报的静默吞钱防线:池没有受益人(应分摊的钱没摊到任何一户)、缺读数、缺参数。'
@@ -805,21 +826,15 @@ async function delPool() {
         <template v-else-if="canGen">进入右上角「编辑模式」可生成。</template>
       </span>
     </div>
-    <!-- WRITE-KEEP-CONTEXT-SPEC 铁律三:这条是**写出来的**提示条 —— 改一格系数它就冒出来,
-         下面 flex:1 的表格容器当场矮一截、内容整体上移、底部行被切掉,用户刚改的那行可能滑出视口。
-         故编辑态常驻占位:始终渲染、始终占高,只切 visibility,写前写后表格高度分毫不变。
-         浏览态没有写入口,不占位(白占一条空条难看);已经脏了则照常显示。 -->
     <!-- LAYOUT-STABILITY-SPEC §4:原来这里有条「本页有 N 项需要更高权限」的流内提示条,
          点一次「编辑模式」再取消整页就被它撑得下移 —— 2026-08-22 用户要求删掉。
          信息由下面的授权弹窗给到了,不需要第二遍;且现在进得了编辑模式就一定权限齐,本就无话可说 -->
     <FPElevateDialog
       :page="`公共电核算 · ${ym}`" :action="'生成本月公摊 / 改计费口径'" :perms="asking" what="修改公摊池配置" @close="cancelAsk" @elevated="onElevated" />
 
-    <div v-if="editMode || cfgDirty" class="pl-bar warn" :class="{ ghost: !cfgDirty }">
-      <component :is="iconFor('alert-triangle')" :size="14" />
-      <span>配置已变,请重新生成 —— 屏上数字仍是旧快照,点「重新生成」后生效。</span>
-    </div>
-    <!-- §6:stale / 生成告警 / 受益人变动三条流内提示条已撤 —— 收进工具条 chip + 右侧抽屉(见页尾 FPAlertPanel) -->
+    <!-- §6:stale / 待重算(cfgDirty) / 生成告警 / 受益人变动四条流内提示条已撤 —— 收进工具条 chip + 右侧抽屉(见页尾 FPAlertPanel)。
+         2026-08-29 修:「配置已变,请重新生成」原来单独留了一条 v-if="editMode || cfgDirty" 的流内条,
+         进编辑模式就把整张表顶下去一行 —— 它顶的是整张表,不是 §5 允许的「编辑区自身」,不适用那条豁免。 -->
     <!-- fp-stale 带 pointer-events:none —— 旧数据不许被点、被录(安全项,见 base.css) -->
     <div class="pl-tablearea" :class="{ 'fp-stale': veil }" :aria-busy="veil">
     <!-- 台账式宽表:分带(Excel 式分隔带)+tfoot 合计(ref 行不计) -->
@@ -1251,9 +1266,6 @@ async function delPool() {
 
 /* 提示条 */
 .pl-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--fs-label); color: var(--text-secondary); flex-wrap: wrap; }
-.pl-bar.warn { border-color: var(--hue-orange); background: rgb(255, 250, 235); color: rgb(138, 97, 0); }
-/* 铁律三占位态:仍占高、仍参与 flex 计算,只是看不见 —— 提示条出现时表格一格都不动 */
-.pl-bar.ghost { visibility: hidden; }
 /* V73 逐表行:表行左对齐可换行;§F10 虚线画在池**首行**上边框=池间分隔,池内续行不画(否则分组信号正好相反) */
 .pl-mname { text-align: left; font-size: 12px; color: var(--text-primary); white-space: normal; line-height: 1.35; }
 .pl-ptop > td { border-top: 1px dashed var(--border-subtle); }

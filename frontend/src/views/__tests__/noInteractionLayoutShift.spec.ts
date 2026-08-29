@@ -135,10 +135,6 @@ const WHITELIST: Record<string, string> = {
     '§5 编辑态批量操作条（批量确认 / 批量改收款账户）：同上，编辑态的主体工作区',
   'views/params/ParamCenterView.vue .pm-cardops':
     '§5 编辑态才出现的参数卡操作区（新增/删除行），长在卡片自己肚子里，不顶卡外的上下文',
-  'views/alloc/PoolLedgerView.vue .pl-bar.warn':
-    '§5+§2-3：`editMode || cfgDirty` 的「配置已变请重新生成」条。它已经按 §2 优先级 3 做了预留位'
-    + '（:class="{ ghost: !cfgDirty }" → visibility:hidden 占着高度），编辑态内 cfgDirty 翻转不动一格；'
-    + '只有「进/出编辑模式」这一次模式切换会带它进出，属 §5 允许',
 
   // ── 二选一，不是新增 ────────────────────────────────────────────
   // v-if / v-else 成对，任何时刻恰好渲染一个，没有「多出一条」这回事。
