@@ -35,7 +35,9 @@ describe('运营账屏选期门禁', () => {
 
   it.each(Object.entries(SCREENS))('%s 不自己猜账期', (rel) => {
     const s = src(rel)
-    expect(/^import .*latestPeriodOf.*from/m.test(s),
+    // ⚠ 折叠空白后再查 import:多行导入会从行锚正则(^import ...$)底下溜过去;
+    //   直接全文含断言又会误伤注释里的历史提及。标识符本身拆不开。
+    expect(/import[^;]*?\blatestPeriodOf\b[^;]*?from/.test(s.replace(/\s+/g, ' ')),
       `${rel} 还在 import 默认账期猜测器 —— 期只能从选期矩阵来`).toBe(false)
     expect(/\byearOpts\b/.test(s), `${rel} 又出现了年份下拉`).toBe(false)
     expect(/\bmonthOpts\b/.test(s), `${rel} 又出现了月份下拉`).toBe(false)

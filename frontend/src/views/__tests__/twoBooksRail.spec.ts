@@ -140,6 +140,12 @@ describe('三屏一致性门禁', () => {
     expect(s.includes('loadViewMode'), `${rel} 不记上次看的是哪本 —— openFresh 会把它清掉`).toBe(true)
     expect(s.includes('saveViewMode'), `${rel} 只读不写，等于没记`).toBe(true)
     expect(/mode = ref<Mode>/.test(s), `${rel} 的 mode 不是从本机读出来的`).toBe(true)
+    // ⚠ 键要各归各屏:三屏若共一个 MODE_SCREEN 键,「记住上次看哪本」会互相串台,
+    //   而旧门禁分不清三个屏 —— 键撞了照样绿(首轮复查 [132])。
+    const expectKeys = rel.includes('Charging') ? ['car-charging', 'ebike-charging'] : [FILES[rel]]
+    for (const k of expectKeys) {
+      expect(s.includes(`'${k}'`), `${rel} 的 MODE_SCREEN 键不是 ${k}`).toBe(true)
+    }
     // 「返回功能选择」是功能门的回退口，门没了它也该没了
     expect(s.includes('返回功能选择'), `${rel} 还留着功能门的回退口`).toBe(false)
   })
