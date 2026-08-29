@@ -295,7 +295,10 @@ const generating = ref(false)
 // 摊出超应分摊/缺起止日期户未入名册/缺参。全期别一份,不随 zone 页签过滤;换账期清空。
 const genWarnings = ref<string[]>([])
 async function onGenerate() {
-  if (generating.value) return
+  // 守卫放在这一处,不放在调用方(工具条按钮的 :disabled 只是照抄这条判断做视觉禁用,
+  // 真正拦下写请求的就这一行)——之前只有工具条按钮挡了 loadErr,告警抽屉那颗「重新生成」
+  // 直接调这个函数,没读到本月现状也能按下去,蒙着眼覆盖快照(2026-08-29 复审 Finding 1)。
+  if (generating.value || loadErr.value) return
   if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
   generating.value = true
   try {
@@ -394,13 +397,28 @@ const alertGroups = computed<AlertGroup[]>(() => {
     const cfgAction = editMode.value
       // 已在编辑态:直接复用工具条同一个「重新生成」——编辑态里权限一定齐(EDIT-MODE-SPEC v3 铁律①),
       // 且已经持有本期编辑锁(CONCURRENCY-SPEC),调用 onGenerate 和点工具条按钮完全等价。
-      ? { label: '重新生成', icon: 'refresh-cw', run: () => { alertOpen.value = false; onGenerate() } }
+      // 2026-08-29 复审 Finding 1:loadErr 时工具条按钮是 :disabled="generating || !!loadErr"
+      // (读不到本月现状,按下去就是蒙着眼覆盖快照),这颗抽屉按钮当初漏了同一条——真正的拦截已经
+      // 挪进 onGenerate() 本身(一处改、两个入口都跟着受益),这里的 busy 只是让按钮看起来和工具条
+      // 一样点不动,顺带把原因亮出来;busy/busyLabel 是 FPAlertPanel 已有的「禁用+换文案」字段,
+      // 不是专为「进行中」造的,借来表达「暂时点不动」不算新造字段。generating 一并挡,
+      // 避免抽屉这颗按钮在生成过程中被连点。
+      ? { label: '重新生成', icon: 'refresh-cw',
+          busy: generating.value || !!loadErr.value,
+          busyLabel: loadErr.value ? '本月数据没加载出来,不能生成' : '生成中…',
+          run: () => { alertOpen.value = false; onGenerate() } }
       // 浏览态:不能直接调 onGenerate ——那样会绕开编辑锁,与占锁中的人冲突。只能先带他去拿锁,
       // 拿到之后工具条自己会冒出「重新生成」按钮,由用户自己点一次(不自动帮点:拿锁可能需要先过提权弹窗)。
+      // canEnter 假 = 连编辑模式按钮本身都不出现(没有任何相关权限,也问不了提权)——
+      // 这种人对这条待重算真的一点办法都没有,不能塞一个「进入编辑模式」给他点了却什么都不发生。
       : canEnter.value
         ? { label: '进入编辑模式', icon: 'pencil', run: () => { alertOpen.value = false; toggleEdit() } }
         : undefined
-    gs.push({
+    // §6-3「只报不给动作的告警不许进抽屉」:canEnter 假的那一支彻底没有出路,这条就不进抽屉
+    // (2026-08-29 复审 Finding 2)。loadErr 那一支只是暂时禁用+说明,按钮还在,不算这一类。
+    // 复查过 staleMsg/genWarnings/zoneDiffs 三组:genWarnings 组和 meterDiffGroup 本来就没有
+    // action(只报不给动作),是立这条门禁之前就有的存量问题,不在这次改动范围内,这里不顺手扩大改。
+    if (cfgAction) gs.push({
       key: 'cfg', title: '待重算',
       desc: '池配置或月度参数改过,屏上数字仍是生成快照时的旧口径 —— 不重新生成,公共电核算的数字就一直按旧配置走。',
       items: [{ text: `${ym.value} 配置已变,请重新生成` }],
