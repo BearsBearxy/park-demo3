@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif; background:rgb(245,245,246); }
+    a { color:oklch(0.55 0.115 250); } a:hover { color:oklch(0.45 0.115 250); }
+    .lbl { font-size:12px; color:rgba(28,28,28,0.8); font-weight:500; margin-bottom:6px; display:block; }
+    .inp { height:32px; padding:0 12px; border:1px solid rgba(28,28,28,0.1); border-radius:8px; font-size:12.5px; background:#fff; display:flex; align-items:center; justify-content:space-between; color:rgb(28,28,28); }
+    .inp.ph { color:rgba(28,28,28,0.4); }
+    .car { color:rgba(28,28,28,0.4); font-size:10px; }
+    .card { border:1px solid rgba(28,28,28,0.1); border-radius:12px; background:#fff; overflow:hidden; }
+    .chd { padding:9px 12px; font-size:12.5px; font-weight:600; color:rgb(28,28,28); display:flex; align-items:center; gap:8px; border-bottom:1px solid rgba(28,28,28,0.1); }
+    .cbd { padding:11px 12px; display:flex; flex-direction:column; gap:10px; }
+    .chip { font-size:11px; border-radius:999px; padding:1px 7px; background:rgb(245,245,246); color:rgba(28,28,28,0.62); flex:0 0 auto; }
+    .chip.ok { background:rgb(222,244,229); color:rgb(21,128,61); }
+    .chip.warn { background:rgb(255,247,235); color:rgb(180,83,9); }
+    .seg { display:flex; border:1px solid rgba(28,28,28,0.1); border-radius:8px; overflow:hidden; background:rgb(245,245,246); }
+    .seg > div { flex:1; height:34px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:12px; color:rgba(28,28,28,0.8); border-right:1px solid rgba(28,28,28,0.1); }
+    .seg > div:last-child { border-right:none; }
+    .seg > div.on { background:#fff; color:rgb(28,28,28); font-weight:600; box-shadow:inset 0 -2px 0 rgb(28,28,28); }
+    .seg small { font-size:10px; color:rgba(28,28,28,0.4); font-weight:400; margin-top:1px; }
+    .row { display:flex; align-items:center; gap:8px; padding:6px 6px; font-size:12.5px; border-radius:8px; }
+    .row:hover { background:rgba(28,28,28,0.04); }
+    .ck { width:14px; height:14px; border:1px solid rgba(28,28,28,0.3); border-radius:4px; flex:0 0 auto; }
+    .ck.on { background:rgb(28,28,28); border-color:rgb(28,28,28); }
+    .sign { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:11.5px; border:1px solid rgba(28,28,28,0.1); border-radius:999px; padding:1px 9px; }
+    .sign.p { background:rgb(222,244,229); color:rgb(21,128,61); }
+    .sign.n { background:rgb(255,238,237); color:oklch(0.56 0.150 27); }
+    .adv { display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(28,28,28,0.62); padding:8px 12px; border-top:1px solid rgba(28,28,28,0.1); background:rgb(249,249,250); }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:oklch(0.55 0.115 250); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); }
+    .note { font-size:11.5px; line-height:1.55; color:rgb(28,28,28); }
+    .note b { color:oklch(0.45 0.115 250); }
+  </style>
+</helmet>
+
+<div style="padding:28px 24px; display:flex; gap:22px; align-items:flex-start;">
+
+  <div style="position:relative; width:392px; flex:0 0 auto;">
+    <div style="font-size:11px; font-weight:600; letter-spacing:.08em; color:rgba(28,28,28,0.62); margin-bottom:10px;">重设计</div>
+    <div style="border:1px solid rgba(28,28,28,0.1); border-radius:16px; background:rgb(249,249,250); overflow:hidden;">
+
+      <!-- 顶:名字预览常驻 -->
+      <div style="padding:13px 16px 12px; border-bottom:1px solid rgba(28,28,28,0.1); background:#fff;">
+        <div style="font-size:11px; color:rgba(28,28,28,0.62); margin-bottom:5px;">这个池叫</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="flex:1; font-size:15px; font-weight:600; color:rgb(28,28,28);">一期 C座·天面<span style="background:rgb(255,247,235); color:rgb(180,83,9); border-radius:4px; padding:0 3px;">东侧</span>·货梯</div>
+          <span class="chip warn">名字会变</span>
+        </div>
+        <div style="font-size:11px; color:rgb(180,83,9); margin-top:6px; line-height:1.5;">侧向原先没填,已按现名补上「东侧」。不补的话保存后会和「一期 C座·天面·货梯」重名。</div>
+      </div>
+
+      <div style="padding:12px; display:flex; flex-direction:column; gap:10px;">
+
+        <!-- 定位 -->
+        <div class="card">
+          <div class="chd">这个池在哪<span style="flex:1"></span><span class="chip">改这里会改名</span></div>
+          <div class="cbd">
+            <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;">
+              <div><span class="lbl">期区</span><div class="inp">一期<span class="car">▾</span></div></div>
+              <div><span class="lbl">楼栋 <span style="color:rgba(28,28,28,0.4);font-weight:400;">空=园区级</span></span><div class="inp">一期 C座<span class="car">▾</span></div></div>
+              <div><span class="lbl">楼层 <span style="color:rgba(28,28,28,0.4);font-weight:400;">空=整栋</span></span><div class="inp">天面<span class="car">▾</span></div></div>
+              <div><span class="lbl">侧向 <span style="color:rgba(28,28,28,0.4);font-weight:400;">空=整层</span></span><div class="inp" style="border-color:rgb(180,83,9);">东侧<span class="car">▾</span></div></div>
+            </div>
+            <div><span class="lbl">费项</span><div class="inp">货梯<span class="car">▾</span></div></div>
+          </div>
+        </div>
+
+        <!-- 电表 -->
+        <div class="card">
+          <div class="chd">算哪些电表<span style="flex:1"></span><span class="chip ok">2 块</span></div>
+          <div class="cbd">
+            <div class="inp ph" style="justify-content:flex-start; gap:7px;">
+              <span style="width:13px;height:13px;border:1.5px solid rgba(28,28,28,0.4);border-radius:999px;display:inline-block;"></span>搜表名 / 位置 / 表号
+            </div>
+            <div>
+              <div class="row"><span class="ck on"></span><span style="font-weight:500;">C座·天面·货梯电①</span><span style="flex:1"></span><span class="sign p">＋ 计入</span></div>
+              <div class="row"><span class="ck on"></span><span style="font-weight:500;">C座·天面·货梯电②</span><span style="flex:1"></span><span class="sign p">＋ 计入</span></div>
+              <div class="row" style="opacity:.62;"><span class="ck"></span><span>C座·天面·总电表</span><span class="chip warn">总表</span><span style="flex:1"></span></div>
+            </div>
+            <div style="font-size:11px; color:rgba(28,28,28,0.62); background:rgb(249,249,250); border-radius:8px; padding:7px 9px; line-height:1.5;">
+              默认只列这个位置的表。勾上的表点右侧标记可切「＋计入 / −冲减」——净额池(总表减子表)用得到。
+            </div>
+          </div>
+        </div>
+
+        <!-- 怎么摊 -->
+        <div class="card">
+          <div class="chd">这笔钱怎么摊</div>
+          <div class="cbd">
+            <div class="seg">
+              <div>按面积<small>按租赁面积</small></div>
+              <div class="on">按层份<small>每层一份</small></div>
+              <div>户对户<small>整笔给一户</small></div>
+              <div>园区自担<small>不摊给租户</small></div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px dashed rgba(28,28,28,0.2); border-radius:8px; background:rgb(245,245,246); font-size:12px; color:rgba(28,28,28,0.8);">
+              <span>分摊基数 <b style="font-weight:600;">4 层</b> · 加减度数 未设置</span>
+              <span style="color:oklch(0.55 0.115 250);">去计费参数页改 →</span>
+            </div>
+            <div><span class="lbl">这笔钱进催缴单的哪一项</span><div class="inp">楼层照明<span class="car">▾</span></div></div>
+          </div>
+          <div class="adv"><span class="car">›</span>高级:分摊标准算式 · 四舍五入位数 · 折入链<span style="flex:1"></span><span class="chip">按册复刻,平时不用动</span></div>
+        </div>
+
+        <!-- 分摊给谁 -->
+        <div class="card">
+          <div class="chd">摊给谁<span style="flex:1"></span><span class="chip ok">按层份 · 已选 6 户</span></div>
+          <div class="cbd">
+            <div style="font-size:11px; color:rgba(28,28,28,0.62); background:rgb(249,249,250); border-radius:8px; padding:7px 9px; line-height:1.5;">
+              系统按「一期 C座 · 天面」把在租租户勾好了。份额留空 = 所在层各摊一份,层内多户按面积拆。
+            </div>
+            <div style="display:flex; gap:8px; font-size:11px; color:rgba(28,28,28,0.62); padding:0 6px;">
+              <span style="width:14px"></span><span style="flex:1">租户</span><span style="width:52px; text-align:right;">份额</span>
+            </div>
+            <div>
+              <div class="row"><span class="ck on"></span><span style="font-weight:500;">力灏电子</span><span class="chip">C401</span><span class="chip" style="background:rgba(226,236,255,1); color:oklch(0.55 0.115 250);">四楼</span><span style="flex:1"></span><span style="width:52px;text-align:right;color:rgba(28,28,28,0.4);">自动</span></div>
+              <div class="row"><span class="ck on"></span><span style="font-weight:500;">新元材料</span><span class="chip">C403</span><span class="chip" style="background:rgba(226,236,255,1); color:oklch(0.55 0.115 250);">四楼</span><span style="flex:1"></span><span style="width:52px;text-align:right;font-weight:600;">0.5</span></div>
+              <div class="row" style="opacity:.5;"><span class="ck"></span><span style="text-decoration:line-through;">旭化成</span><span class="chip" style="background:rgb(255,238,237);color:oklch(0.56 0.150 27);">已退租</span><span style="flex:1"></span></div>
+            </div>
+            <div style="font-size:11.5px; color:oklch(0.55 0.115 250);">+ 加一个不在这个位置的租户</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 页脚 -->
+      <div style="padding:11px 16px; border-top:1px solid rgba(28,28,28,0.1); background:#fff; display:flex; gap:8px; align-items:center;">
+        <span style="height:28px;padding:0 12px;border:1px solid rgba(28,28,28,0.1);border-radius:8px;font-size:12px;display:flex;align-items:center;color:oklch(0.56 0.150 27);">删除</span>
+        <span style="flex:1"></span>
+        <span style="height:28px;padding:0 12px;border:1px solid rgba(28,28,28,0.1);border-radius:8px;font-size:12px;display:flex;align-items:center;">取消</span>
+        <span style="height:28px;padding:0 14px;border-radius:8px;font-size:12px;display:flex;align-items:center;background:rgb(28,28,28);color:#fff;font-weight:500;">保存并重算本月</span>
+      </div>
+    </div>
+
+    <div class="pin" style="left:-11px; top:46px;">1</div>
+    <div class="pin" style="left:-11px; top:196px;">2</div>
+    <div class="pin" style="left:-11px; top:352px;">3</div>
+    <div class="pin" style="left:-11px; top:588px;">4</div>
+    <div class="pin" style="left:-11px; top:668px;">5</div>
+    <div class="pin" style="left:-11px; top:812px;">6</div>
+  </div>
+
+  <div style="width:300px; flex:0 0 auto; padding-top:28px; display:flex; flex-direction:column; gap:14px;">
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">1</div><div class="note"><b>名字提到最顶,常驻。</b>改任何一格定位它实时变,变化的那一段高亮。撞名/丢方位当场说清楚,不等到保存被拒。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">2</div><div class="note"><b>去掉编号,改成一句话标题。</b>「这个池在哪 / 算哪些电表 / 这笔钱怎么摊 / 摊给谁」——用户语言,不是字段名。右上角常驻状态徽标(几块表、几户)。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">3</div><div class="note"><b>搜索框提到列表之上。</b>「从其他位置添加」不再是折叠链接——一个搜索框同时管本位置和全库,这是市面上选择器的默认预期。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">4</div><div class="note"><b>分摊方式改成分段控件,每档带一句解释。</b>四选一是这个池最重要的决定,单选圆点太轻。<br>算式/舍入/折入链收进「高级」——全库只有 4 条折入链,不该占一整段。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">5</div><div class="note"><b>选择驱动显示。</b>选「按层份」才出份额列;选「户对户」变单选 + 只留一个搜索框;选「园区自担」整段收起并说明不摊给任何人。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">6</div><div class="note"><b>保存按钮说人话。</b>「保存并重算本月」——它确实会重算,现在的文案没说。不能保存时按钮禁用并在旁边写明原因,不是点了才弹红字。</div></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,4 +1,6 @@
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import BookRail from './BookRail.vue'
@@ -56,6 +58,40 @@ describe('BookRail 账册栏', () => {
     expect(w.emitted('delete')).toHaveLength(1)
     expect(w.emitted('select')).toBeUndefined()
   })
+
+  // ── 三大报表复用(2026-08-29,设计稿 §3.2a):左栏挂的是管理公司,不是账册 ──
+  it('tag 覆盖版本徽标 —— 公司没有「版本」这回事', () => {
+    const w = mk({ books: [{ id: 'all', name: '全部汇总', tag: '3 家' }, { id: 1, name: '物业公司' }] })
+    const items = w.findAll('.br-item')
+    expect(items[0].text()).toContain('3 家')
+    expect(items[0].text()).not.toContain('v')
+    expect(items[1].find('.br-ver').exists(), '既无 tag 又无 ver 就不画徽标,不留 vundefined').toBe(false)
+  })
+
+  it('id 可以是字符串 —— 「全部汇总」那一项没有数字 id', async () => {
+    const w = mk({ books: [{ id: 'all', name: '全部汇总' }], activeId: 'all' })
+    expect(w.find('.br-item').classes()).toContain('on')
+    await w.find('.br-item').trigger('click')
+    expect(w.emitted('select')).toEqual([['all']])
+  })
+
+  it('manage 插槽接管底部管理区 —— 报表要三个动作(新增/重命名/删除公司)', () => {
+    const w = mount(BookRail, {
+      props: { books, activeId: 1, canManage: true },
+      slots: { manage: '<button class="mine">重命名</button>' },
+    })
+    expect(w.find('.mine').exists()).toBe(true)
+    expect(w.find('.br-create').exists(), '插槽替换默认两钮,不并存').toBe(false)
+    expect(w.find('.br-delete').exists()).toBe(false)
+  })
+
+  it('插槽同样受 canManage 门管 —— 无权时整块不出现', () => {
+    const w = mount(BookRail, {
+      props: { books, activeId: 1, canManage: false },
+      slots: { manage: '<button class="mine">重命名</button>' },
+    })
+    expect(w.find('.mine').exists()).toBe(false)
+  })
 })
 
 describe('BookMonthMatrix 选期矩阵 v3(多年纵排)', () => {
@@ -107,4 +143,40 @@ describe('BookMonthMatrix 选期矩阵 v3(多年纵排)', () => {
     expect(w.find('.bmm-addy').exists()).toBe(false)
     expect(w.text()).toContain('请选择账册')
   })
+})
+
+describe('BookRail 键盘可达(第 5 步共享件)', () => {
+  const BOOKS = [
+    { id: 1, name: '报送台账', desc: '按期 · 按月' },
+    { id: 2, name: '分栋运营账', desc: '按栋 · 按日' },
+  ]
+
+  it('❗Space 也要能选中 —— role=button 的键盘契约是 Enter+Space 双触发', async () => {
+    const w = mount(BookRail, { props: { books: BOOKS, activeId: 1, canManage: false } })
+    await w.findAll('.br-item')[1].trigger('keydown.space')
+    expect(w.emitted('select')?.[0], 'Space 没接线,键盘用户选不了账本').toEqual([2])
+  })
+
+  it('❗aria-pressed 标出当前那本 —— 读屏器要知道自己在哪', () => {
+    const w = mount(BookRail, { props: { books: BOOKS, activeId: 2, canManage: false } })
+    const items = w.findAll('.br-item')
+    expect(items[0].attributes('aria-pressed')).toBe('false')
+    expect(items[1].attributes('aria-pressed')).toBe('true')
+  })
+
+  it('键盘焦点画得出来 —— :focus-visible 样式在(jsdom 不跑 scoped 样式,查源码)', () => {
+    const src = readFileSync(join(__dirname, 'BookRail.vue'), 'utf8')
+    expect(src).toContain(':focus-visible')
+  })
+})
+
+describe('三屏共壳门禁(第 5 步收敛)', () => {
+  it.each(['../../views/pv/PvView.vue', '../../views/charging/ChargingView.vue', '../../views/elec/ElecView.vue'])(
+    '%s 用的是共享外壳,不是自己那份复制品', (rel) => {
+      // 收敛前三屏各抄一份同字节的 aside+CSS(pvw/chw/e11w 三个家族)——
+      // 改一处要改三处,漏一处就是三屏悄悄分叉。
+      const src = readFileSync(join(__dirname, rel), 'utf8')
+      expect(src.includes('<BookRailShell'), `${rel} 没用共享外壳`).toBe(true)
+      expect(/-rail-t">/.test(src), `${rel} 还留着自己的 aside 标题复制品`).toBe(false)
+    })
 })

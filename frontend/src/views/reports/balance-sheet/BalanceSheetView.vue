@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 资产负债表屏 — L1/L2/L3 状态机(useFinStatementScreen 三屏共用) + §6 加载门。差异(spec B1/B2):
+// 资产负债表屏 — 两层状态机(useFinStatementScreen 三屏共用) + §6 加载门。差异(spec B1/B2):
 //   · 单列 期末余额(field='end');L3 两栏 .fin-two:左=资产(side L) ‖ 右=负债和所有者权益(side R),各一个 FinReportTable。
 //   · 合计行(15/20/29/30/41/46/47/52/53)按 BS_SUBTOTAL 客端重算不落库;其中明细(10–13)为信息行不入 15。
 //   · 单公司可编辑;companyId==='all' 跨公司只读求和。KPI:资产总计/负债合计/权益合计/平衡差(30−53,非 0 显红)。
@@ -13,9 +13,10 @@ import { finMoney } from '@/utils/finFmt'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
-import FinCompanyPicker from '@/components/fin/FinCompanyPicker.vue'
-import FinMonthGrid from '@/components/fin/FinMonthGrid.vue'
-import SchedYearGate from '@/components/sched/SchedYearGate.vue'
+import BookRail from '@/components/fp/BookRail.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
+import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
 import FinDialogs from '@/components/fin/FinDialogs.vue'
 import FinReportTable, { type FinTableRow, type FinTableColumn } from '@/components/fin/FinReportTable.vue'
@@ -37,11 +38,12 @@ const selected = ref(new Set<string | number>())
 
 const {
   canEdit,
-  companyId, year, month, edit, saving, maxYear,
-  companiesLoaded, yearMonths, period, draft, dirty, dlg,
+  companyId, year, month, edit, saving,
+  companiesLoaded, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
-  yearGated, gateYears, yearCards, gateCurrent,
-  pickCompany, pickAll, goGate, setYear, pickYear, pickMonth, backToYearGate, backToMonths,
+  railItems, matrixYears, matrixBook, gateYears,
+  periodSteps, stripLabel, stripQuery,
+  pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
   loadPeriod,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
   onNewCompany, onEditCompany, onDeleteCompany, submitCompany, confirmDelete,
@@ -52,6 +54,12 @@ const {
   zeroPreviewHidden: true,
   resetLocal: () => { selected.value = new Set() },
 })
+
+
+// 新增/重命名/删除公司写的是 management_company,归 master 不归 report(RBAC §5.6:
+// 删公司同事务级联删该公司 monthly_ledger + report_*)。这条判定原先长在 FinCompanyPicker 里,
+// 那个整屏选择器随四层动线退场,门跟着搬到左栏管理区。
+const canManageCo = computed(() => useAuthStore().can('master:edit'))
 
 // ── 计算(客户端):叶子 = 录入/持久值;自定义父项 = 子类求和;合计 = BS_SUBTOTAL ──
 const customRows = computed<ReportCustomRowDTO[]>(() => period.value?.customRows ?? [])
@@ -272,62 +280,76 @@ async function onExport() {
 </script>
 
 <template>
-  <!-- L1 选择公司 -->
-  <!-- fp-fluid(各分支根都挂):本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移,摘掉 base.css 的
-       800px 屏级地板。L1/L1.5/L2 选择层是卡片墙/月历(§5.5 天然自适应),透传 class 一并摘——
-       屏根随状态机换分支,漏挂任一分支该状态就会退回横滚。 -->
-  <template v-if="companyId === null">
-    <FinCompanyPicker
-      v-if="companiesLoaded"
-      class="fp-fluid"
-      title="资产负债表"
-      sub="选择管理公司录入期末余额,或查看全部公司汇总 · 按年 / 月分期"
-      :companies="finCompanies"
-      @pick-all="pickAll"
-      @pick="pickCompany"
-      @new="onNewCompany"
-      @edit="onEditCompany"
-      @delete="onDeleteCompany"
-    />
-    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
-  </template>
+  <!-- fp-fluid:摘 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8)。
+       挂在左栏壳根上一次即可 —— 地板规则只查 .fp-content 首子,内层状态(矩阵/正文/转圈)
+       不再逐挂;照台账 .lgw 同族先例(LedgerView:655)。master 侧原对旧四层结构
+       (FinCompanyPicker/FinMonthGrid,本分支已退场)逐状态挂标,意图随新结构收敛到这一处。 -->
+  <div class="finw fp-fluid">
+    <!-- 左轨常驻:管理公司一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
+         改前这是一整屏的公司选择器,换个公司看要退回第一屏再走年份门与月历两道门。 -->
+    <aside class="finw-rail">
+      <div class="finw-rail-t">管理公司</div>
+      <BookRail :books="railItems" :active-id="companyId" :can-manage="canManageCo" @select="pickCompany">
+        <template #manage>
+          <div class="finw-manage">
+            <button class="finw-mbtn" @click="onNewCompany">
+              <component :is="iconFor('plus')" :size="13" />新增
+            </button>
+            <button class="finw-mbtn" :disabled="isAll || !company" @click="onEditCompany()">
+              <component :is="iconFor('pencil')" :size="13" />重命名
+            </button>
+            <button class="finw-mbtn del" :disabled="isAll || !company" @click="onDeleteCompany()">
+              <component :is="iconFor('trash-2')" :size="13" />删除
+            </button>
+          </div>
+        </template>
+      </BookRail>
+    </aside>
 
-  <!-- L1.5 年份门(同附表 SchedYearGate) -->
-  <SchedYearGate
-    v-else-if="!yearGated && gateYears"
-    class="fp-fluid"
-    icon="scale"
-    :title="'资产负债表 · ' + (companyName ?? '全部汇总')"
-    sub="先选择年份,再进入该年的月历与资产负债表 · 每个年月是一期独立报表"
-    :years="yearCards"
-    :current="gateCurrent"
-    :store-key="'report-bs-' + companyId"
-    back-label="返回公司选择"
-    footer="进入年份后按月查看或录入;可新增更早 / 未来年份。"
-    @pick="pickYear"
-    @back="goGate"
-  />
+    <div class="finw-main">
+      <!-- 公司清单未到位 -->
+      <div v-if="!companiesLoaded" class="page-loading"><span class="page-spin" /></div>
 
-  <!-- L2 月历 -->
-  <FinMonthGrid
-    v-else-if="yearGated && month === null && yearMonths"
-    class="fp-fluid"
-    :company-name="companyName"
-    :year="year"
-    :months="yearMonths"
-    :max-year="maxYear"
-    @pick="pickMonth"
-    @back="backToYearGate"
-    @switch="goGate"
-    @year="setYear"
-  />
+      <!-- 一家公司都没有:左栏「新增」是唯一出路,别给一屏空矩阵 -->
+      <div v-else-if="companyId === null" class="finw-empty">
+        <component :is="iconFor('scale')" :size="28" />
+        <p class="t">还没有管理公司</p>
+        <p class="s">在左栏底部「新增」建一家,资产负债表 按公司 × 年月分期</p>
+      </div>
+
+      <!-- ⓪ 选期矩阵(年份门 + 月历合成一张,2026-08-24「选期矩阵 v3」推到报表层) -->
+      <template v-else-if="month === null">
+        <div class="finw-head">
+          <div>
+            <h2 class="finw-title">
+              <span class="ic"><component :is="iconFor('scale')" :size="18" /></span>资产负债表 · {{ companyName ?? '全部汇总' }}
+            </h2>
+            <p class="finw-sub">选择月份进入该期报表 · 每个年月是一期独立报表</p>
+          </div>
+        </div>
+        <div v-if="gateYears" class="finw-matrix">
+          <BookMonthMatrix
+            :book="matrixBook"
+            :years="matrixYears"
+            @pick="pickCell"
+            @add-earlier="addEarlier"
+            @add-later="addLater"
+            @remove-year="removeYear"
+          />
+        </div>
+        <div v-else class="page-loading"><span class="page-spin" /></div>
+      </template>
+
 
   <!-- L3 资产负债表正文(两栏) -->
   <template v-else-if="period">
-    <div class="fin-page fp-fluid">
+    <div class="fin-page">
+      <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。与出账链链路条同一个组件 -->
+      <FPStepStrip :steps="periodSteps" current="balance-sheet" :period="stripLabel"
+                   :query="stripQuery" back-label="换期" @back="backToMatrix" />
       <div class="fin-head">
         <div class="fin-head-l">
-          <button class="fin-back" title="返回月份选择" @click="backToMonths"><component :is="iconFor('arrow-left')" :size="16" /></button>
+          <button class="fin-back" title="返回选期矩阵" @click="backToMatrix"><component :is="iconFor('arrow-left')" :size="16" /></button>
           <div>
             <h2 class="fin-title">资产负债表</h2>
             <p class="fin-sub">{{ isAll ? '全部汇总' : company?.name }} · <span class="mono">{{ year }} 年 {{ month }} 月</span></p>
@@ -442,9 +464,12 @@ async function onExport() {
     />
   </template>
 
-  <!-- 过渡中(切公司/年/月,数据加载)兜底转圈,不闪空白。
-       ⚠️ v-else 必须紧邻上方 L1/L2/L3 状态链;不可被自带 v-if 的弹窗隔在中间(见 DESIGN-FIDELITY §6.2)。 -->
-  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
+      <!-- 过渡中(切公司 / 点月格,数据加载)兜底转圈,不闪空白。
+           ⚠️ v-else 必须紧邻上方「矩阵态 / 正文态」状态链;不可被自带 v-if 的弹窗隔在中间
+              (见 DESIGN-FIDELITY §6.2)。 -->
+  <div v-else class="page-loading"><span class="page-spin" /></div>
+    </div>
+  </div>
 
   <!-- 公司/子类弹窗(居中,自管 v-if),放最后 -->
   <FinDialogs
@@ -538,4 +563,45 @@ async function onExport() {
 .fin-dlg-h h3 { margin:0; font-size:16px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fin-dlg-h p { margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
 .fin-dlg-f { display:flex; justify-content:flex-end; gap:8px; padding:16px 22px 20px; }
+
+/* ── 工作台外壳(2026-08-29,设计稿 §3.2a):左轨常驻 + 主区。与月度台账 .lgw 家族同形 ── */
+.finw { display: flex; gap: 16px; width: 100%; height: 100%; min-height: 0; box-sizing: border-box;
+        font-family: var(--font-sans); color: var(--text-primary); }
+.finw-rail {
+  flex: 0 0 208px; min-height: 0; display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 12px; box-sizing: border-box;
+  background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+}
+.finw-rail-t { font-size: 12px; font-weight: var(--fw-medium); color: var(--text-muted); padding: 0 4px; }
+.finw-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+
+/* 左轨底部管理区:三个动作(新增/重命名/删除),作用于当前选中那一家 */
+.finw-manage { display: flex; gap: 4px; margin-top: var(--space-2); }
+.finw-mbtn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  padding: 8px 4px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  background: transparent; cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--fs-micro); color: var(--text-muted);
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.finw-mbtn:hover:not(:disabled) { color: var(--hue-blue); border-color: var(--hue-blue); }
+.finw-mbtn.del:hover:not(:disabled) { color: var(--hue-red); border-color: var(--hue-red); }
+/* 停在「全部汇总」时无对象可改 —— 置灰不挪位(LAYOUT-STABILITY:入口常驻) */
+.finw-mbtn:disabled { color: var(--text-disabled); border-color: var(--border-subtle); cursor: default; }
+
+.finw-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.finw-title { margin: 0; font: var(--type-h2); display: flex; align-items: center; gap: var(--space-2); }
+.finw-title .ic {
+  width: 26px; height: 26px; border-radius: var(--radius-sm);
+  background: var(--accent-blue); color: var(--hue-blue); display: grid; place-items: center; flex: none;
+}
+.finw-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
+.finw-matrix { flex: 0 0 auto; }
+
+.finw-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: var(--text-disabled);
+}
+.finw-empty .t { margin: 8px 0 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); }
+.finw-empty .s { margin: 0; font-size: 12px; color: var(--text-disabled); }
 </style>

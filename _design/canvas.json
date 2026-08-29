@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Current.dc.html", "x": 0,    "y": 0,    "w": 760, "h": 1290, "title": "现状 · 六个问题" },
+    { "file": "Main.dc.html",    "x": 860,  "y": 0,    "w": 760, "h": 1290, "title": "重设计 · 主态" },
+    { "file": "States.dc.html",  "x": 1720, "y": 0,    "w": 1090, "h": 940, "title": "选择逻辑 · 四档 + 保存态" },
+    { "file": "Flow.dc.html",    "x": 1720, "y": 1080, "w": 1090, "h": 720, "title": "点击动线 · 现状 vs 重设计" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -150, "w": 760, "text": "编辑池抽屉 · 动线重设计\n\n左起:现状问题标注 → 重设计主态 → 选择逻辑与保存态 → 点击动线对比。\n所有色值/字号/圆角/控件高度取自仓库 tokens.css 与 PoolLedgerView 现有样式,可直接对照实现。" },
+    { "id": "scope", "x": 1720, "y": -150, "w": 1090, "text": "范围:只改动线与呈现,不改计算内核。\n配套修复方案见 docs/superpowers/specs/2026-08-29-pool-entry-fix-plan.md —— 那四条改的是后端校验与载入守卫,与本稿互补:后端放开「存得回去」,前端负责「不让人存错」。" }
+  ],
+  "launch": { "view": "canvas" }
+}

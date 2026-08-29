@@ -92,6 +92,7 @@ onMounted(async () => {
 // 经 runImport(共享 registry:逐行 parseYearMonth 分年 + importRows + 记录 import_log)→ 刷新。
 async function onImport(recs: ImportRec[], fileName: string) {
   importing.value = false
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   if (year.value == null) return
   await guard('导入失败', async () => {
     importResult.value = await runImport('office_' + no.value, recs, {}, fileName)
@@ -110,6 +111,7 @@ async function switchTab(t: Tab) {
 }
 
 const onCreate = (req: OfficeRecordReq) => guard('新增记账失败', async () => {
+  if (!edit.value) return   // 写口自守:editMode 会就地转假,浮层可能还挂着
   await utilitiesApi.create(no.value, req)
   drawer.value = false
   // 提交后归入对应年份(可能与当前选中年不同)

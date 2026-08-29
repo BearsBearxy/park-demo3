@@ -53,20 +53,28 @@ async function copy() {
       <div class="evd-card">
         <div class="evd-h">
           <span class="evd-ic"><component :is="iconFor('alert-triangle')" :size="16" /></span>
-          <h3>你的编辑权已被接管</h3>
+          <h3>{{ eviction?.byDisplayName ? '你的编辑权已被接管' : '你的编辑态已失效' }}</h3>
         </div>
         <div class="evd-b">
-          <p class="evd-lead">
-            <b>{{ eviction?.byDisplayName }}</b> 接管了「{{ what }}」的编辑权<template
-              v-if="eviction?.authorizerName">，由 <b>{{ eviction.authorizerName }}</b> 授权</template>。
+          <p v-if="eviction?.byDisplayName" class="evd-lead">
+            <b>{{ eviction.byDisplayName }}</b> 接管了「{{ what }}」的编辑权<template
+              v-if="eviction.authorizerName">，由 <b>{{ eviction.authorizerName }}</b> 授权</template>。
             你已退回浏览态，从现在起这一期由他负责。
+          </p>
+          <!-- 失锁兜底(by 为空):锁在别的页签被还掉、或服务端重启过 —— 没有接管者,但同样不能让他
+               对着假编辑态继续录。措辞不猜原因,只说事实与出路。 -->
+          <p v-else class="evd-lead">
+            你在「{{ what }}」的编辑锁已失效（可能在别的页签退出过，或服务端重启过），已退回浏览态。
+            <!-- ⚠ 不写「即可继续」:没接 copyText 的屏(账册模板/附表页头/系数簿)重进时草稿被
+                 整份重新快照 —— 那句指引等于把人引向静默丢草稿。说实话:改动需要重录。 -->
+            <template v-if="!canCopy">若刚才有未保存的修改，重进编辑模式后需要<b>重新录入</b> —— 屏幕上现在是服务端的数据。</template>
           </p>
 
           <div v-if="canCopy" class="evd-draft">
             <span class="evd-cnt">{{ dirty }}</span>
             <div class="evd-dtxt">
               <div class="evd-dt">处未保存的修改</div>
-              <div class="evd-dsub">复制成表格，粘进 Excel 或直接发给 {{ eviction?.byDisplayName }}</div>
+              <div class="evd-dsub">复制成表格，粘进 Excel{{ eviction?.byDisplayName ? ` 或直接发给 ${eviction.byDisplayName}` : '，重进编辑后照着补回' }}</div>
             </div>
             <Button variant="outline" size="sm" @click="copy">{{ copied ? '已复制' : '复制我的改动' }}</Button>
           </div>

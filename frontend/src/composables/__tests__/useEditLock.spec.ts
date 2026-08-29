@@ -89,10 +89,114 @@ describe('编辑模式 × 编辑锁', () => {
       // 一条通道两件事：登记在场 + 编辑态续锁。分成两条的话编辑态每 20 秒发两个请求，
       // 而且两边的「最后一次活动」各记各的 —— 空闲判定就有两个不一致的答案。
       expect(api.put).toHaveBeenCalledWith('/presence/ping',
-        expect.objectContaining({ scope: SCOPE, mode: 'edit' }))
+        expect.objectContaining({ editScopes: [SCOPE] }))
       expect(api.put).not.toHaveBeenCalledWith(
         expect.stringContaining('/heartbeat'), expect.anything())
     } finally { vi.useRealTimers() }
+  })
+
+  it('❗退出编辑之后心跳不再带这把锁 —— 否则还回去的锁又被自己续活', async () => {
+    // stop() 若忘了把自己从 editScopes 摘掉,下一拍 ping 会带着已还的锁再续一次:
+    // 服务端 heartbeat 对不存在的锁是无害的,但若别人恰在两拍之间占了它,
+    // 这个幽灵续期会把**别人的锁**的 lastActivity 打乱(同名 scope、不同持有人时无害,
+    // 但自己若因竞态重新拿回,就成了一把没人认领的续期)。摘干净是唯一不用想的写法。
+    vi.useFakeTimers()
+    try {
+      useAuthStore().permissions = PERMS
+      vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+      vi.mocked(api.put).mockResolvedValue({ users: [], evictions: [] } as never)
+
+      const { toggle } = useEditMode(PERMS, { scope: () => SCOPE })
+      await toggle()          // 进
+      await toggle()          // 出(还锁)
+      vi.mocked(api.put).mockClear()
+      await vi.advanceTimersByTimeAsync(20_000)
+
+      const pings = vi.mocked(api.put).mock.calls.filter(c => c[0] === '/presence/ping')
+      expect(pings.length).toBeGreaterThan(0)
+      for (const c of pings) {
+        expect((c[1] as { editScopes: string[] }).editScopes, '还了的锁不许再出现在心跳里').toEqual([])
+      }
+    } finally { vi.useRealTimers() }
+  })
+
+  it('❗同一实例连点两次编辑(无在途闸的 5 个消费方)不许留下幽灵登记', async () => {
+    // useEditMode 之外的消费方(SchedHeader/LedgerWideTable/CoefBookWindow/...)都没有
+    // entering 闸,按钮在 acquire 往返期间可以连点 = 同一实例同 scope 两次 start()。
+    // 摘旧带 `registered !== held.value` 条件时第二次跳过,上一个回调永久遗留:
+    // refcount 虚高 → 点完成后 release 跳过 DELETE,一个已退出编辑态的页签
+    // 把锁无限续下去,别人只能等 20 分钟走接管。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue(GRANTED as never)
+    vi.mocked(api.put).mockResolvedValue({ users: [], evictions: [] } as never)
+    const presence = usePresenceStore()
+
+    const lock = useEditLock()
+    await lock.acquire(SCOPE)
+    await lock.acquire(SCOPE)     // 连点第二次(服务端本人重入放行)
+    lock.release()
+
+    expect(api.delete, '全退光了,锁必须真还').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    await presence.ping()
+    const body = vi.mocked(api.put).mock.calls.at(-1)![1] as { editScopes: string[] }
+    expect(body.editScopes, '退出后不许还有幽灵登记在续锁').toEqual([])
+  })
+
+  it('还锁要带围栏 —— 晚到的 DELETE 不许误删后来又占到的新锁', async () => {
+    // release 不 await;服务端只认 user。没有围栏时,晚到的 DELETE 会把同一用户
+    // 随后 acquire 到手的新锁删掉,3 秒内那人被派生失锁误踢一次。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue({ granted: true, holder: null, acquiredAt: 1756500000000 } as never)
+
+    const lock = useEditLock()
+    await lock.acquire(SCOPE)
+    lock.release()
+
+    expect(api.delete).toHaveBeenCalledWith(`/locks/${SCOPE}?t=1756500000000`)
+  })
+
+  it('❗共占一把锁的两个屏,先退的那个不许把服务端的锁还掉', async () => {
+    // 出账链四屏同一把 billing-chain 锁。系数簿关窗还锁时若直接 DELETE,
+    // 等于替还在编辑的催缴单还锁(服务端只认 user 不认屏)——
+    // 李四随手 acquire 直接 granted,两人同改同一月,后保存整片覆盖。
+    useAuthStore().permissions = PERMS
+    vi.mocked(api.post).mockResolvedValue(GRANTED as never)
+
+    const host = useEditMode(PERMS, { scope: () => SCOPE })     // 催缴单
+    const inner = useEditMode(PERMS, { scope: () => SCOPE })    // 系数簿(同一把)
+    await host.toggle()
+    await inner.toggle()
+
+    await inner.toggle()   // 系数簿退出
+    expect(api.delete, '宿主还在编辑,锁不能真还').not.toHaveBeenCalled()
+
+    await host.toggle()    // 宿主也退出 —— 末位,这次要真还
+    expect(api.delete).toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    expect(vi.mocked(api.delete).mock.calls, '只还一次').toHaveLength(1)
+  })
+
+  it('❗acquire 在途时宿主卸载 → 迟到的 granted 要立刻还回去,不许挂监听', async () => {
+    // onUnmounted 的 release() 先跑(held 还是 null,直接 return),迟到的 granted
+    // 若照样 held=scope; start() —— 这把锁挂在一个已销毁的组件上,被 3 秒 ping
+    // 无限续期、activity 被全站键鼠不断刷新,直到关标签页都没有任何路径释放。
+    useAuthStore().permissions = PERMS
+    let settle!: (v: unknown) => void
+    vi.mocked(api.post).mockReturnValueOnce(new Promise(r => { settle = r }) as never)
+
+    let m!: ReturnType<typeof useEditMode>
+    const Host = defineComponent({
+      setup() { m = useEditMode(PERMS, { scope: () => SCOPE }); return () => null },
+    })
+    const w = mount(Host)
+    const pending = m.toggle()
+    w.unmount()                            // 宿主没了
+    settle({ granted: true, holder: null, acquiredAt: 1756500001000 })
+    await pending
+
+    expect(m.editMode.value).toBe(false)
+    // ⚠ 迟到归还也要带围栏(r.acquiredAt 那一支的唯一覆盖):改成裸 null 这里当场红
+    expect(api.delete, '迟到批下来的锁要立刻还,且带围栏')
+      .toHaveBeenCalledWith(`/locks/${SCOPE}?t=1756500001000`)
   })
 
   it('心跳带回「你被接管了」→ 当场退出编辑态，并交出接管者是谁', async () => {
@@ -104,7 +208,7 @@ describe('编辑模式 × 编辑锁', () => {
       vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
       vi.mocked(api.put).mockResolvedValue({
         users: [],
-        evicted: { scope: SCOPE, by: 'lisi', byDisplayName: '李四', authorizerName: '张主管' },
+        evictions: [{ scope: SCOPE, by: 'lisi', byDisplayName: '李四', authorizerName: '张主管' }],
       } as never)
 
       const { editMode, toggle, evictedBy } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -127,7 +231,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'zhangsan', displayName: '张三', role: 'finance_clerk',
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 761_000, idleMs: 5_000, self: false },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 761_000, idleMs: 5_000, self: false },
     ]
 
     const { heldByOther } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -143,7 +247,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 1000, idleMs: 0, self: false },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 1000, idleMs: 0, self: false },
     ]
 
     const { heldByOther, lockedBy } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -157,7 +261,7 @@ describe('编辑模式 × 编辑锁', () => {
     const presence = usePresenceStore()
     presence.users = [
       { sid: 's1', user: 'me', displayName: '我', role: null,
-        scope: SCOPE, label: '月度台账', mode: 'edit', sinceMs: 1000, idleMs: 0, self: true },
+        scope: SCOPE, label: '月度台账', mode: 'edit', editScopes: [SCOPE], sinceMs: 1000, idleMs: 0, self: true },
     ]
 
     const { heldByOther } = useEditMode(PERMS, { scope: () => SCOPE })
@@ -222,7 +326,9 @@ describe('编辑模式 × 编辑锁', () => {
     // 别人随时能进来盖掉他正在改的东西 —— 比不加确认框更糟。
     // pagehide 只在页面真的要走时才触发,正是该放释放动作的地方。
     useAuthStore().permissions = PERMS
-    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    // 夹具带围栏:beacon 是围栏存在的头号理由(keepalive fetch 关页后照发、会晚到 ——
+    // 用户在新页签重进占到新锁,无围栏的晚到 DELETE 会把新锁删掉,3 秒内被派生失锁踢出)。
+    vi.mocked(api.post).mockResolvedValueOnce({ granted: true, holder: null, acquiredAt: 1756500002000 } as never)
     const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
       Promise.resolve(new Response(null, { status: 204 })))
     vi.stubGlobal('fetch', f)
@@ -242,6 +348,9 @@ describe('编辑模式 × 编辑锁', () => {
 
     window.dispatchEvent(new Event('pagehide'))
     expect(mine(), '真的要走了才还锁').toHaveLength(1)
+    // ⚠ 卸载归还必须带围栏 —— useEditLock.ts 把 heldToken 传给 releaseOnUnload、
+    //   locks.ts 拼 ?t=,两头任何一头断线这里当场红(此前该路径零 URL 断言)。
+    expect(String(mine()[0][0]), '卸载归还的 URL 要带围栏').toContain('?t=1756500002000')
     vi.unstubAllGlobals()
   })
 

@@ -23,6 +23,8 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
+import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
@@ -59,10 +61,17 @@ const currentYear = computed(() => {
   return (withData.length ? withData[withData.length - 1] : ys[ys.length - 1])?.year ?? 0
 })
 
-// ── 进入屏:overview(§6 取数前不渲染);分析层深链 ?y= 直落该年(复审:budget/pnl-analysis 跳转带年) ──
+// 期间条(设计稿 §3.2c)。本屏是**园区全局整年一张表**,没有月与公司维度 ——
+// 但从三大报表跳过来时那两样在 query 里,得原样带回去,否则跳回利润表就丢了月份。
+const carry = parsePeriodQuery(route.query as Record<string, unknown>)
+const stripLabel = computed(() => periodLabel(year.value ?? 0, null, null))
+const stripQuery = computed(() =>
+  periodQuery(year.value ?? 0, carry?.month ?? null, carry?.companyId ?? null))
+
+// ── 进入屏:overview(§6 取数前不渲染);深链 ?y= 直落该年(分析层 budget/pnl-analysis 与报表中心都带年) ──
 onMounted(async () => {
   overview.value = await pnlApi.overview(config.schedule)
-  const y = Number(route.query.y)
+  const y = carry?.year ?? Number(route.query.y)
   if (Number.isInteger(y) && y >= 2000 && y <= 2100) await pickYear(y)
 })
 async function reloadOverview() {
@@ -263,7 +272,32 @@ function submitAdd() {
 
 // ── 保存(PUT 整年 clear+insert;rowKey 重建 r<n> + sortOrder) / 退出确认 ──
 const saveConfirm = ref(false)
-function toggleEdit() {
+// ── 被接管时的「复制我的改动」:改值/改备注/新增行/删除行 四类各一段 ──
+// 草稿是覆盖层(draftM/draftNote/added/removed),被踢后 resetEdit 整层清掉 —— 不复制就丢。
+function draftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const rows = data.value?.rows ?? []
+  const labelOf = (k: string) => {
+    const r = rows.find(x => x.rowKey === k) ?? added.value.find(x => x.rowKey === k)
+    return r ? `${r.groupLabel}·${r.label}` : k
+  }
+  const out: string[] = [['类别', '行', '月', '值'].join(TAB)]
+  for (const [k, v] of Object.entries(draftM.value)) {
+    const [rowKey, mi] = k.split('|')
+    out.push(['改值', labelOf(rowKey), `${Number(mi) + 1}月`, v == null ? '' : String(v)].join(TAB))
+  }
+  for (const [k, v] of Object.entries(draftNote.value))
+    out.push(['改备注', labelOf(k), '', v].join(TAB))
+  for (const r of added.value)
+    out.push(['新增行', `${r.groupLabel}·${r.label}`, '全年', r.m.map(x => x ?? '').join('、')].join(TAB))
+  for (const k of removed.value)
+    out.push(['删除行', labelOf(k), '', ''].join(TAB))
+  return out.join(NL)
+}
+
+function toggleEdit(forced = false) {
+  // forced = 锁已没了(同 S10.finishEdit):脏检查确认框在失锁后只是一个无锁写入口
+  if (forced) { resetEdit(); return }
   if (!edit.value) { edit.value = true; return }
   if (dirty.value > 0) { saveConfirm.value = true; return }
   resetEdit()   // 无改动退出也走 reset:清选集(J7)
@@ -350,6 +384,7 @@ async function onExport() {
       <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移(表内横滚 + S 档单 sticky 首列,
            编辑态按 §11.2 荐桌面),摘掉 base.css 的 800px 屏级地板 -->
       <div class="pnl-page fp-fluid">
+\1
         <SchedHeader
           :scope="S.pnl(config.schedule, year)"
           :icon="icon"
@@ -360,7 +395,8 @@ async function onExport() {
           perm="report:edit"
           @back="goGate"
           @toggle-edit="toggleEdit"
-         :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty">
+         :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty"
+         :copy-text="draftAsTsv">
           <template #edit-actions>
             <Button v-if="selected.size" variant="danger" size="sm" :disabled="saving" @click="delConfirm = true">
               <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>

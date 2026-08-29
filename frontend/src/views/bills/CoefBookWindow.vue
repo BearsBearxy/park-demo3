@@ -88,6 +88,17 @@ const meId = Symbol('coef-book')
 watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
+
+// ── 被接管时的「复制我的改动」:暂存(租户 → 新值)导 TSV ──
+// stash 在退出编辑/被踢时整个丢弃 —— 值是 null 表示「清除该户例外,回默认」。
+function stashAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const meta = curMeta.value
+  const head = ['租户', `${meta.label}${meta.unit ? `(${meta.unit})` : ''}`, '生效起'].join(TAB)
+  const body = [...stash.value.entries()].map(([tid, v]) =>
+    [nameOf(tid), v == null ? '(清除,回默认)' : String(v), effYm.value].join(TAB))
+  return [head, ...body].join(NL)
+}
 const selected = ref(new Set<number>())
 const uni = ref('')
 const clearMode = ref(false)
@@ -509,6 +520,7 @@ function onClose() {
                       :what="`系数簿 · 自 ${effYm} 起生效`"
                       @close="lockedBy = null" @taken="onTaken" />
     <FPEvictedDialog :eviction="evictedBy" :what="`系数簿 · 自 ${effYm} 起生效`"
+                     :dirty-count="stash.size" :copy-text="stashAsTsv"
                      @close="evictedBy = null" />
   </FPDrawer>
 </template>

@@ -42,8 +42,6 @@ import type { BuildingDTO } from '@/types/building'
 import { ALLOC_FEE_KEYS, ALLOC_FEE_LABEL } from '@/utils/allocLogic'
 import { baseRefLabel, rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { PARAM_DEFS } from '@/utils/paramRegistry'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
 import {
@@ -55,6 +53,10 @@ import {
 import { zoneLabel } from '@/utils/zoneLabel'
 import { floorLabels } from '@/utils/floorLabels'
 import { useAuthStore } from '@/stores/auth'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { chainStepsOf } from '@/nav/billingChain'
+import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { useViewport } from '@/composables/useViewport'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -80,7 +82,12 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
   useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
-onDeactivated(() => { poolDlg.value = false })
+// alertOpen 必须一起收:告警面板是 FPSideDrawer(Teleport to body),子树随 KeepAlive
+// 停用消失时它留在 body 上飘着,盖在下一个屏上(同 MeterView 的 openId)。
+onDeactivated(() => { poolDlg.value = false; alertOpen.value = false })
+// 编辑态就地转假(接管/提权到期)也要关池配置弹窗 —— 它的 v-if 不判编辑态,
+// 留着的话浏览态下「保存」照样 PUT 池配置(同 MeterView:162)。
+watch(editMode, v => { if (!v) poolDlg.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
@@ -89,16 +96,17 @@ const fmt2 = (v: number | null | undefined) =>
   v == null ? '–' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 
-// ── 账期(整体数据驱动)+ zone Segmented(一期/二期/宿舍,无全部;一级页签不参与重置) ──
-// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })))
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
-const ym = computed(() => `${year.value}-${pad2(month.value)}`)
+// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
+// 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读一份,不可能再各落各的
+// (它们抢的本来就是同一把 billing-chain 月锁)。「默认账期」那一整套
+// (xxxApi.years() + /months + latestPeriodOf 的 snap)随之退场:期一定是用户在矩阵上点出来的,
+// 没有「系统替你猜一个月」这回事 —— 那正是 §7-1 禁的「顺手落进某个期」。
+const period = useBillingPeriodStore()
+const year = computed(() => period.year ?? 0)
+const month = computed(() => period.month ?? 0)
+const ym = computed(() => period.ym ?? '')
+// 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
+const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 const zone = ref<string>('p1')
 const zones = useZonesStore()
 onMounted(() => zones.ensure())
@@ -191,37 +199,28 @@ const route = useRoute()
 function applyHandoff(): boolean {
   const q = route.query
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
-  // 同 ParamCenterView:深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
+  // ⚠ 先认领期,再进编辑(同 ParamCenterView 2026-08-29 的修复):顺序反了的话
+  //   toggleEdit 占的是 `billing-chain:0-00`(期未认领),随后 adoptYm 改期 ——
+  //   enter() 的占锁后复核发现期变了,还锁不进,深链彻底进不去编辑态。
+  //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
+  // 只在还没有期时认领(store.adoptYm):已经选好期的人不该被一条链接顶到别的月去。
+  if (m) period.adoptYm(q.ym as string)
+  // 深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
   // (裸写在权限不齐时会被守卫下一个 tick 静默弹回浏览态;toggle 会弹授权窗)
-  if (q.generate === '1' && canEnter.value) toggleEdit()
-  if (!m) return false
-  year.value = +m[1]; month.value = +m[2]
-  return true
+  if (q.generate === '1' && period.picked && canEnter.value) toggleEdit()
+  return !!m
 }
 
-onMounted(async () => {
+onMounted(() => {
   loadRules().catch(() => {})
   loadMasters()
-  if (applyHandoff()) { loadMonth(); return }   // 带账期来的:不再被「跳到最新年」覆盖
-  try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([allocApi.years(), allocApi.poolMonths()])
-    dataYears.value = ys
-    // §4:year 与 month 一起 snap 到最后一个**有池快照**的账期(原来只 snap year、month 留系统当月,
-    // 拼出的账期没快照,一进来就是「本月未生成」的灰条)。
-    // ⚠ 判据必须走 /alloc/pool-months(直查快照表),**不能拿 /alloc/pools 的 rows 判有无** ——
-    //   那是 alloc_rule 全表左连当月快照,任何月都非空,判出来恒为 true、默认月恒落 12 月。
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
-    }
-  } catch { /* 年份失败不阻断 */ }
-  loadMonth()
+  applyHandoff()
+  if (period.picked) loadMonth()
 })
 // 换账期:上次生成的告警不再适用;cfgDirty 同理 —— 它记的是「**这个月**改过参数还没重算」,
 // 换到别的月还亮着就是误报(在 8 月改了参数,切到 9/10 月那条橙条一路跟着,而那些月根本没动过),
 // 用户分不清哪个月真的需要重算。2026-08-15 用户点名。
-watch([year, month], () => { genWarnings.value = []; cfgDirty.value = false; loadMonth() })
+watch(ym, () => { genWarnings.value = []; cfgDirty.value = false; if (period.picked) loadMonth() })
 
 const ruleById = computed(() => new Map(rules.value.map(r => [r.id, r])))
 const buildingOpts = computed(() => [{ value: '', label: '(园区级,不挂楼栋)' },
@@ -309,9 +308,13 @@ const generating = ref(false)
 // 摊出超应分摊/缺起止日期户未入名册/缺参。全期别一份,不随 zone 页签过滤;换账期清空。
 const genWarnings = ref<string[]>([])
 async function onGenerate() {
-  // 守卫放在这一处,不放在调用方(工具条按钮的 :disabled 只是照抄这条判断做视觉禁用,
-  // 真正拦下写请求的就这一行)——之前只有工具条按钮挡了 loadErr,告警抽屉那颗「重新生成」
-  // 直接调这个函数,没读到本月现状也能按下去,蒙着眼覆盖快照(2026-08-29 复审 Finding 1)。
+  // 三条守卫都放在这一处,不放在调用方(工具条按钮的 :disabled 只是照抄这些判断做视觉禁用,
+  // 真正拦下写请求的就是这里)。两条来源不同、互不覆盖,合并时一条都不能少:
+  //  · !editMode —— 写口自守(PERIOD-CONTEXT-HANDOFF 契约 §2.2,照 BillNoticesView 口径):
+  //    生成是「先删后插」的整月覆盖,浏览态一定打不出去
+  //  · loadErr  —— 之前只有工具条按钮挡了它,告警抽屉那颗「重新生成」直接调本函数,
+  //    没读到本月现状也能按下去,蒙着眼覆盖快照(2026-08-29 复审 Finding 1)
+  if (!editMode.value) return
   if (generating.value || loadErr.value) return
   if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
   generating.value = true
@@ -320,6 +323,8 @@ async function onGenerate() {
     cfgDirty.value = false
     genWarnings.value = res.warnings ?? []
     await loadMonth()
+    // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
+    void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
   } catch (e) { alert(errMsg(e, '生成失败')) } finally { generating.value = false }
 }
 
@@ -748,6 +753,7 @@ const memberHint = computed(() => form.value.method === 'direct'
 function addLink() { form.value.links.push({ ruleId: '', type: 'fold_price' }) }
 
 async function submitPool() {
+  if (!editMode.value) return
   const f = form.value
   if (f.id == null && !f.feeName.trim()) { poolErr.value = '请填写费项(池名末段,如 走廊灯/消防/货梯)'; return }
   const num = (s: string) => (s.trim() === '' ? null : Number(s))
@@ -787,6 +793,7 @@ async function submitPool() {
   } catch (e) { poolErr.value = errMsg(e, '保存失败') } finally { saving.value = false }
 }
 async function delPool() {
+  if (!editMode.value) return
   const f = form.value
   if (f.id == null) return
   if (!confirm(`确认删除池「${formAutoName.value}」?已有核算结果的池不可删除(历史月已快照)。`)) return
@@ -804,22 +811,22 @@ async function delPool() {
 <template>
   <!-- 加载失败不走骨架:骨架下面没有任何文字与出口。失败时照常出页壳,账期选择器要留着
        —— 否则用户被锁在失败的那个月上,连切回上个月都做不到 -->
+  <!-- ⓪ 没有期 → 出账月矩阵(五屏共用一张)。选过一次之后本会话不再出现,直落表格 -->
+  <ChainMonthGate v-if="!period.picked" title="公共电核算" icon="share-2" />
+
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移查看态(S 档 sticky 收敛留首列),
-       摘 base.css 的 800px 屏级地板;两个 v-if 根分支同挂 -->
-  <div v-if="!pools && !loadErr" class="page-loading fp-fluid"><span class="page-spin" /></div>
+       摘 base.css 的 800px 屏级地板;各 v-if 根分支同挂(矩阵门在 ChainMonthGate 根上挂) -->
+  <div v-else-if="!pools && !loadErr" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
   <div v-else class="pl-page fp-fluid">
     <FPLoadBar :on="veil" />
+    <!-- 链路条:期写在这里,五道工序横跳不换期 -->
+    <FPStepStrip :steps="chainSteps" current="alloc" :period="ym" @back="period.clear()" />
+
     <!-- 标题行:h2+账期;右=导出(常驻)+生成/新增池(编辑态)+编辑模式 -->
     <div class="pl-head">
       <div class="pl-head-l">
         <h2 class="pl-title"><span class="ic"><component :is="iconFor('share-2')" :size="18" /></span>公共电核算</h2>
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
         <Segmented :options="ZONE_OPTS" v-model="zone" size="sm" />
       </div>
       <div class="pl-actions">

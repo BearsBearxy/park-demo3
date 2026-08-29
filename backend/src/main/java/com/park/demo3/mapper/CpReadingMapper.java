@@ -31,7 +31,15 @@ public interface CpReadingMapper extends BaseMapper<CpReading> {
     // ——别在 Java 侧拼 year+"-"+month,那样 '2025-2' 会排到 '2025-12' 后面。
     // 表达式吃不到松散扫描(与上面 year() 同一档),33 行亚毫秒,不为此加索引。
     default List<String> selectDistinctYms() {
-        return selectObjs(new QueryWrapper<CpReading>().select("distinct date_format(read_date,'%Y-%m')"))
+        return selectDistinctYms(null);
+    }
+    // 同上,但只数指定桩集合的记录(附表7/8 各看各的车型)。
+    // stationIds==null=全部;空集合=该车型一个桩都没有,直接返回空,别拼出 `in ()` 的语法错。
+    default List<String> selectDistinctYms(List<Integer> stationIds) {
+        if (stationIds != null && stationIds.isEmpty()) return List.of();
+        return selectObjs(new QueryWrapper<CpReading>()
+                .select("distinct date_format(read_date,'%Y-%m')")
+                .in(stationIds != null, "station_id", stationIds))
             .stream().map(String::valueOf).sorted().toList();
     }
 }

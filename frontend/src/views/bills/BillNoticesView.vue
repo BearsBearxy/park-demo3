@@ -9,7 +9,7 @@
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
@@ -23,9 +23,6 @@ import { contractApi } from '@/api/contract'
 import { PROPERTY_TYPE_LABEL, type ContractDTO, type PropertyType } from '@/types/contract'
 import { buildingApi } from '@/api/building'
 import type { BuildingDTO } from '@/types/building'
-import { metersApi } from '@/api/meters'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 import {
   aggregateByTenant, auditTitle, billFeeLabel, billFeeTitle, billQtyCell, crossBuildingMark, dormPriceCells,
   groupByBuilding, groupDormExcelStyle, groupExcelStyle, groupRentByPremise, lineNoteKey, mergeMaintRows,
@@ -37,6 +34,10 @@ import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { chainStepsOf } from '@/nav/billingChain'
+import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
+import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -88,16 +89,17 @@ const fmt2 = (v: number | null | undefined) =>
 const errMsg = (e: unknown, fallback: string) => (e as { message?: string })?.message ?? fallback
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-// ── 账期(整体数据驱动;bill-notices 无 years 端点,复用抄表年份——单随读数走,alloc 屏同手法) ──
-// today 只喂 buildYearOptions 的「∪ 当前年」窗口;年月初值由 onMounted 的 latestPeriodOf(/months 全集取 max)一起定(§4)
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })))
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
-const ym = computed(() => `${year.value}-${pad2(month.value)}`)
+// ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
+// 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读一份,不可能再各落各的
+// (它们抢的本来就是同一把 billing-chain 月锁)。「默认账期」那一整套
+// (xxxApi.years() + /months + latestPeriodOf 的 snap)随之退场:期一定是用户在矩阵上点出来的,
+// 没有「系统替你猜一个月」这回事 —— 那正是 §7-1 禁的「顺手落进某个期」。
+const period = useBillingPeriodStore()
+const year = computed(() => period.year ?? 0)
+const month = computed(() => period.month ?? 0)
+const ym = computed(() => period.ym ?? '')
+// 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
+const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 
 // ── 数据:催缴单 + 当月在租合同(期归属/月租金参考用,取月中 15 日)同拉;竞态守卫 ──
 const rows = ref<BillNoticeDTO[] | null>(null)
@@ -170,24 +172,12 @@ onReactivated(async () => {
   if (st.billBatchAt !== before) loadMonth()
   else status.value = st
 })
-onMounted(async () => {
+onMounted(() => {
   buildingApi.list().then(bs => { buildings.value = bs }).catch(() => { /* 楼栋失败按 premise 回退归期 */ })
   loadCompanies(); loadPayMap()   // S20:收款公司与映射(状态列橙点与抽屉方格用)
-  try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([metersApi.years(), billNoticesApi.months()])
-    dataYears.value = ys
-    // §4:year 与 month 一起 snap 到最后一个**有单**的账期。原来只 snap year、month 留系统当月,
-    // 拼出的 2024-08 根本没批次,用户打开就是空表(立档证据第 4 条即本屏)。
-    // 判据必须是「这个月有没有催缴单」而不是「有没有读数」—— 年列表借的是抄表年,抄了表不等于出了单。
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return   // watch 触发 loadMonth
-    }
-  } catch { /* 年份失败不阻断 */ }
-  loadMonth()
+  if (period.picked) loadMonth()
 })
-watch([year, month], loadMonth)
+watch(ym, () => { if (period.picked) loadMonth() })
 
 // ── 一户一条聚合 + 期归属 + 月租金(参考) ──
 const bById = computed(() => new Map(buildings.value.map(b => [b.id, b])))
@@ -245,7 +235,9 @@ const footTotal = computed(() => filtered.value.reduce((s, r) => s + (r.totalAmo
 const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0), 0))
 
 // ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 param-policy:edit) ──
-const coefOpen = ref(false)
+// ?coef=1(计费参数页的「系数簿」按钮)——本屏此前从不读 route,那个按钮从 b6ff7e6 起
+// 一直只是跳过来、窗口不开。账期不用从 query 取:出账链五屏共读一份组级期,本来就是同一个月。
+const coefOpen = ref(useRoute().query.coef === '1')
 
 // ── S20 交付链:三个新窗口 + 户级状态/收款缺口(状态单据级存储、户级展示) ──
 const companyOpen = ref(false)
@@ -291,7 +283,9 @@ function exitBulk() { bulkMode.value = false; selected.value = new Set() }
 // 换期/换月自动退出:选中集是 tenantId,切走后残留项不可见但仍在集里,再点「确认选中」会误伤
 // 退出编辑态同理:选择态是编辑态的产物,留着回浏览态会有"看不见的选中"
 watch([phase, year, month], exitBulk)
-watch(editMode, v => { if (!v) exitBulk() })
+// 兄弟们(startNoteEdit/restoreNote)都判了 canRun,备注编辑行本身也得随编辑态收起 ——
+// 否则已展开的那一行在编辑态就地转假(接管/提权到期)后继续留在抽屉里可写。
+watch(editMode, v => { if (!v) { exitBulk(); noteEditKey.value = null } })
 const selCount = computed(() => filtered.value.filter(r => selected.value.has(r.tenantId)).length)
 const allChecked = computed(() => filtered.value.length > 0 && filtered.value.every(r => selected.value.has(r.tenantId)))
 function toggleAll() {
@@ -443,6 +437,8 @@ async function onGenerate() {
     const res = await billNoticesApi.generate(ym.value)
     flashOk(`已生成 ${res.generated} 单 / ${res.lines} 行,${res.warned} 单带警告(含已签发跳过户)`)
     await loadMonth()
+    // 生成改的正是矩阵格子上的点(池/损耗亮起、stale 清掉)—— 换出账月时要立刻看得见
+    void period.reloadChain().catch(() => { /* 矩阵刷新失败不阻断本屏 */ })
   } catch (e) { alert(errMsg(e, '生成失败')) } finally { generating.value = false }
 }
 
@@ -498,6 +494,8 @@ function startNoteEdit(k: NoteKey, current: string) {
   noteDraft.value = current
 }
 async function saveNoteEdit(k: NoteKey) {
+  // 本文件唯一漏判的写函数 —— 兄弟的 startNoteEdit(:490)/restoreNote(:511) 都判了 canRun。
+  if (!canRun.value) return
   if (noteSaving.value || !dlgRow.value) return
   const base = { ym: dlgYm.value, tenantId: dlgRow.value.tenantId, ...k }
   const text = noteDraft.value.trim()
@@ -596,23 +594,23 @@ const drawerSub = computed(() => {
 </script>
 
 <template>
+  <!-- ⓪ 没有期 → 出账月矩阵(五屏共用一张)。选过一次之后本会话不再出现,直落表格 -->
+  <ChainMonthGate v-if="!period.picked" title="催缴单" icon="file-check-2" />
+
   <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.4 迁移(KPI 降列/主表 .bn-wrap 内横滚+首列锚),
-       摘掉 base.css 的 800px 屏级地板。v-if 两分支谁渲染谁就是 .fp-content 的首子,都要挂——
+       摘掉 base.css 的 800px 屏级地板。v-if 各分支谁渲染谁就是 .fp-content 的首子,都要挂——
        只挂 v-else 的话,首载转圈那一屏仍被地板撑到 800px,手机上圈会跑到屏外去居中。 -->
-  <div v-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
+  <div v-else-if="!rows" class="page-loading fp-fluid"><span class="page-spin" /></div>
 
   <div v-else class="bn-page fp-fluid">
     <FPLoadBar :on="veil" />
+    <!-- 链路条:期写在这里,五道工序横跳不换期 -->
+    <FPStepStrip :steps="chainSteps" current="bill-notices" :period="ym" @back="period.clear()" />
+
     <!-- 标题行:h2+账期+期页签;右=重新生成(admin) -->
     <div class="bn-head">
       <div class="bn-head-l">
         <h2 class="bn-title"><span class="ic"><component :is="iconFor('file-check-2')" :size="18" /></span>催缴单</h2>
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
         <Segmented :options="PHASE_OPTS" v-model="phase" size="sm" />
         <!-- 屏级告警入口(§6):位置固定在主控区尾,不随有无告警/批量态变化 -->
         <FPAlertChip :count="alertGroups.length" @open="alertOpen = true" />
@@ -1168,7 +1166,7 @@ const drawerSub = computed(() => {
 
     <!-- 系数簿窗口(S14):合同/楼栋/年清单与本页同源,生效月默认=当前账期 -->
     <CoefBookWindow :open="coefOpen" :ym="ym" :phase="phase" :contracts="contracts"
-                    :buildings="buildings" :years="dataYears" @close="coefOpen = false" />
+                    :buildings="buildings" :years="period.dataYears" @close="coefOpen = false" />
 
     <!-- S20 交付链四窗口:收款公司 / 收款簿 / 导出通知单 / 导出对账表 -->
     <CompanyBookWindow :open="companyOpen" @close="companyOpen = false" @saved="loadCompanies" />

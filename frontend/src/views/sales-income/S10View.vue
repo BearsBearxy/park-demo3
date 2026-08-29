@@ -267,10 +267,31 @@ function toReq(row: S10RecordDTO): S10RecordReq {
 
 // 退出编辑:有脏行先弹保存确认;无改动直接退出
 const saveConfirm = ref(false)
-function finishEdit() {
+function finishEdit(forced = false) {
+  // forced = 锁已经没了(被接管/提权到期/换期)。此刻再弹「要不要保存」只剩一个
+  // 无锁写的入口 —— 甲点「保存修改」会整行盖掉接管者正编辑的数据。
+  // 脏行仍在内存里,重进编辑态可继续;强制退出这一下必须无条件生效。
+  if (forced) { saveConfirm.value = false; edit.value = false; return }
   if (!edit.value) { edit.value = true; return }
   if (dirty.size > 0) { saveConfirm.value = true; return }
   edit.value = false
+}
+
+// ── 被接管时的「复制我的改动」:脏行按当前版面的叶子列导 TSV ──
+// S10 的编辑是**就地改行**(dirty 只记 id),被踢后 refresh 会拉回服务端旧值 —— 不复制就丢。
+function draftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const leaves = leavesOf(PHASE_LAYOUT[phase.value] ?? 'office')
+  const head = ['租户', ...leaves.map(l => l.label)].join(TAB)
+  const rows = (monthData.value?.rows ?? []).filter(r => dirty.has(r.id))
+  const body = rows.map(r => {
+    const rec = r as unknown as Record<string, unknown>
+    return [String(rec.tenantName ?? ''), ...leaves.map(l => {
+      const v = rec[l.colId as string]
+      return v == null ? '' : String(v)
+    })].join(TAB)
+  })
+  return [head, ...body].join(NL)
 }
 
 // 保存修改:脏行逐个 upsert;成功才退出编辑(失败保留编辑态与脏标记,
@@ -510,7 +531,7 @@ function onImportClick() {
       <aside class="s10-rail">
         <div class="s10-rail-cap">账册</div>
         <!-- 附表10 四册固定:公司管理入口(company:manage)恒关,不接 create/remove -->
-        <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="selectBook" />
+        <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="(id) => selectBook(Number(id))" />
       </aside>
 
       <!-- ≤960 左轨收成顶部横向 chips(§5.6):选择语义与轨内点击同源 selectBook(含编辑态脏确认);
@@ -560,6 +581,8 @@ function onImportClick() {
               :year="year"
               :edit="edit"
               perm="entry:edit"
+              :dirty="dirty.size"
+              :copy-text="draftAsTsv"
               @back="goGate"
               @toggle-edit="finishEdit">
               <!-- 工具条 §5 五段定序:录入(导入>批量>单行添加) | 配置 | ⋯溢出 | 主控恒右。

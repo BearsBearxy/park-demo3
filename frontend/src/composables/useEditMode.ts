@@ -100,10 +100,32 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    *
    * 不上锁的屏（没传 scope）直接进，行为与加锁之前完全一致。
    */
+  // 占锁在途时不许再发一趟。两趟重叠的后果不是"多占一把",是**互相拆台**:
+  //   lock.release() 还的是 useEditLock 里那个共享的 `held`,不是本次 enter() 占的那把;
+  //   两趟交错结算时(先发的后回是链路抖一下的常态),迟到的那趟会把 held 覆写回旧 scope、
+  //   再 start() 一遍,然后下面的复核发现期变了就 release() —— stop() 无条件拆掉键鼠监听、
+  //   把 handleEviction 置 null、presence 降回 view。
+  //   终态:人留在新期的编辑态,而新期那把锁服务端还挂着却再没有心跳,3 分钟 TTL 一到
+  //   别人 acquire 直接 granted,两人同改同保存互相整片覆盖,且接管回调已是 null,
+  //   这一侧连「你被接管了」都不会弹。
+  // 挡在源头比事后分辨哪一趟是自己的便宜得多 —— 按钮上本来也不该能连点两次。
+  let entering = false
   async function enter() {
+    if (entering) return
     const scope = opts.scope?.() ?? null
     if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
-    if (await lock.acquire(scope)) editMode.value = true
+    entering = true
+    let got = false
+    try { got = await lock.acquire(scope) } finally { entering = false }
+    if (!got) return
+    // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门 ——
+    // 回来时这把锁锁的已经不是他要编的东西了。
+    // 下面那个 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
+    // （发起时还没进编辑态），条件里 `before != null` 当场把它放过去。
+    // 后果在带选期门的屏上最狠:退回矩阵后 editMode 仍为真,而唯一的「完成」按钮
+    // 长在 v-else 的表格页里、已经不渲染 —— 锁握着、没有写入口、也没有出口。
+    if ((opts.scope?.() ?? null) !== scope) { lock.release(); return }
+    editMode.value = true
   }
 
   /**
@@ -164,6 +186,21 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   // 两条都由这一个守卫兜住,不必让 7 个页面各自记得。
   // 不会自激:exit() 把 editMode 置 false,再次触发时被 on 挡掉。
   watch([editMode, missing], ([on, m]) => { if (on && m.length) exit() })
+
+  // 期一换,旧锁就不该再握着(CONCURRENCY-SPEC §3)。
+  // 没有这一条时:编辑模式开着 → 换年月(顶栏下拉,或出账链的「换出账月」)→ editMode 与锁原地不动,
+  // 于是**拿着 3 月的锁去改 5 月** —— 而表现是「锁没生效」,不是报错,没人会发现。
+  // 修在这一处而不是七个调用方各写一遍:漏一个就是一把没人认领的锁。
+  // before == null 时不管:那是首次求值(还没进过编辑态),不是换期。
+  //
+  // ⚠ 求值必须**关在编辑态里**。watch 的 getter 在 setup 期就会跑一遍,而多数调用方把
+  //   useEditMode(...) 写在 `const year = ...` **之前**(scope 闭包当时还没初始化)——
+  //   直接求值会撞 TDZ「Cannot access 'year' before initialization」。
+  //   旁边那个 heldByOther 没这问题是因为 watchScope 返回的是惰性 computed,没人读就不算。
+  const scopeWhileEditing = () => (editMode.value ? opts.scope?.() ?? null : null)
+  watch(scopeWhileEditing, (now, before) => {
+    if (editMode.value && before != null && now !== before) exit()
+  })
 
   // 组件外调用(单测)时没有实例可挂,Vue 会 warn。这两个钩子是收尾动作,不是核心语义。
   if (getCurrentInstance()) {

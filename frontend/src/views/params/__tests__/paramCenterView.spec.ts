@@ -1,6 +1,7 @@
 // 计费参数页(S21-PARAM-CENTER-SPEC §5 / §8.4):挂载渲染四区 + 状态条 / 全文禁词 / 编辑态才出 [修改] / 保存只 patch 该行 + 计数。
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ParamRowDTO, ParamStatusDTO } from '@/api/params'
 import { forbiddenText } from '@/utils/paramCenterLogic'
@@ -71,9 +72,11 @@ const put = vi.fn()
 // 计费参数页自 P3 起要先占到编辑锁才进得了编辑态（CONCURRENCY-SPEC §3.2：
 // 它与公共电核算 / 催缴单 / 系数簿共占 billing-chain 那把月锁）。
 // 不 mock 的话 locksApi 走真 axios，jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
+/** 占锁请求过的 scope 全记下来 —— 深链那条要靠它证明锁的是**真的那个月**。 */
+const acquired: string[] = []
 vi.mock('@/api/locks', () => ({
   locksApi: {
-    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    acquire: (scope: string) => { acquired.push(scope); return Promise.resolve({ granted: true, holder: null }) },
     release: () => Promise.resolve(),
     heartbeat: () => Promise.resolve({ evicted: null }),
     takeover: () => Promise.resolve({ granted: true, holder: null }),
@@ -227,10 +230,19 @@ describe('ParamCenterView 计费参数页', () => {
 
   it('深链 edit=1(三屏 [去重算])直接进编辑态:重算本月可点', async () => {
     query.edit = '1'
+    acquired.length = 0
     try {
       const w = await mountPage()
       expect(w.findAll('button').some(b => b.text().includes('重算本月'))).toBe(true)
       expect(w.findAll('button').some(b => b.text() === '完成')).toBe(true)
+      // ❗锁的必须是**真的那个月**。改前是先 toggleEdit() 再 adoptYm():
+      //   占的是 `param-center:0-00`(期还没认领,year/month 都是 `?? 0`),
+      //   紧接着期被改成真的那个月 —— 锁与所编的期从此错位,而表现是「锁没生效」,不报错。
+      //   （给 useEditMode.enter() 补上"占锁回来复核一次期"之后这条当场暴露:
+      //     复核发现期变了 → 还锁不进 → 深链彻底进不去编辑态。）
+      // 出账链四屏共一把月锁 → scope 是 `billing-chain:YYYY-MM`(S.paramCenter = billingChain)
+      expect(acquired, '深链占的锁不是真期的那把').not.toContain('billing-chain:0-00')
+      expect(acquired.some(x => /^billing-chain:\d{4}-\d{2}$/.test(x)), '没占到真期的锁').toBe(true)
       w.unmount()
     } finally { delete query.edit }
   })
@@ -413,6 +425,81 @@ describe('ParamEditPopover 修改弹窗', () => {
     del.click()
     await flushPromises()
     expect(w.emitted('save')![0][0]).toEqual(expect.objectContaining({ key: 'loss_adj_qty', scope: 'building:13', acctMonth: '2024-02', mode: 'month', value: null }))
+    w.unmount()
+  })
+})
+
+/**
+ * 编辑态守卫(2026-08-30,同 MeterView/BillNoticesView 那一批):
+ * editMode 会**就地**转假(被接管 / 30 分钟提权到期),而写 UI 的 v-if 只判自己的 ref。
+ */
+describe('ParamCenterView 编辑态守卫', () => {
+  it('❗编辑态就地转假 → 修改浮层 / 新增例外抽屉 / 行内新增剔除全部收起', async () => {
+    const w = await mountPage()
+    const vm = w.vm as unknown as {
+      editMode: boolean
+      editRow: object | null; exOpen: boolean; addExcl: object | null
+    }
+    vm.editMode = true
+    await nextTick()
+    vm.editRow = { key: 'price_p1', label: '一期电价' } as never
+    vm.exOpen = true
+    vm.addExcl = { bid: 5, meterId: '' } as never
+    await nextTick()
+
+    vm.editMode = false          // ← 接管 / 提权到期走的正是这一句
+    await nextTick()
+    expect(vm.editRow, '修改浮层没关').toBeNull()
+    expect(vm.exOpen, '新增例外抽屉没关').toBe(false)
+    expect(vm.addExcl, '行内新增剔除没关').toBeNull()
+    w.unmount()
+  })
+
+  it('❗浏览态下 put 漏斗必须打不出去 —— 六个写调用方守这一处', async () => {
+    // put/putAll 是全屏参数写的唯一漏斗(onSave/submitExcl/submitEx/delTenantRow 全走它)。
+    // 前置做足:直呼 put 传一份完整合法的请求 —— 否则函数在早退分支 return,守卫删掉照样绿。
+    const w = await mountPage()
+    put.mockClear()
+    const vm = w.vm as unknown as { put: (req: object) => Promise<boolean> }
+    const ok = await vm.put({ key: 'price_p1', scope: 'zone:p1', acctMonth: '2024-02', mode: 'month', value: 1.1 })
+    expect(ok, '浏览态下要返回 false').toBe(false)
+    expect(put, '浏览态下 PUT 被打出去了').not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('❗浏览态下 重算/批量重算/复制上月电价 一个 API 都不许打出去', async () => {
+    const { paramsApi } = await import('@/api/params')
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const w = await mountPage()
+    vi.mocked(paramsApi.recalc).mockClear()
+    vi.mocked(paramsApi.copyPrev).mockClear()
+    const vm = w.vm as unknown as {
+      status: { otherMonthsAffected: string[] } | null
+      onRecalc: () => Promise<void>; onRecalcOthers: () => Promise<void>; onCopy: () => Promise<void>
+    }
+    // ⚠ 前置做足:otherMonths 为空时 onRecalcOthers 在自己的早退分支就 return,
+    //   守卫删掉照样绿(破坏验证抓到的,本仓第三次栽同一个坑)。
+    if (vm.status) vm.status.otherMonthsAffected = ['2024-01', '2023-12']
+    await vm.onRecalc()
+    await vm.onRecalcOthers()
+    await vm.onCopy()
+    expect(paramsApi.recalc, '浏览态下重算被打出去了').not.toHaveBeenCalled()
+    expect(paramsApi.copyPrev, '浏览态下复制电价被打出去了').not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('编辑态里同样的调用照常出去 —— 上面两条不是被别的早退放绿的', async () => {
+    const w = await mountPage()
+    const vm = w.vm as unknown as { editMode: boolean; put: (req: object) => Promise<boolean> }
+    vm.editMode = true
+    await nextTick()
+    put.mockClear()
+    // 回包必须是完整 ParamRowDTO(带 group)—— 写后这行会被 patch 进 rows,缺 group 会让
+    // grouped computed 在断言后异步炸成 unhandled rejection(真后端不缺;是 as never 绕过了类型)
+    put.mockResolvedValueOnce(row({ key: 'price_p1', group: 'monthly', scopeLabel: '全园', label: '一期电价',
+      scope: 'zone:p1', valueText: '1.1', rangeText: '2024-02' }) as never)
+    await vm.put({ key: 'price_p1', scope: 'zone:p1', acctMonth: '2024-02', mode: 'month', value: 1.1 })
+    expect(put).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 })

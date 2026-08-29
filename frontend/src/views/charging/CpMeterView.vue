@@ -16,6 +16,8 @@ import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useMonthGate } from '@/composables/useMonthGate'
+import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -23,16 +25,18 @@ import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { onReactivated } from '@/composables/onReactivated'
+import { usePresenceStore } from '@/stores/presence'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 // W2-B 契约:registry key 'cpMeter' + 模板/月度导出(buildCpMeterTemplate/exportCpMeterMonth)
 import { buildCpMeterTemplate, exportCpMeterMonth } from '@/utils/cpMeterExcel'
-import { buildYearOptions } from '@/utils/yearGate'
-import { latestPeriodOf } from '@/utils/defaultPeriod'
 
 const props = defineProps<{ vehicleType: 'car' | 'ebike' }>()
-const emit = defineEmits<{ back: [] }>()
 const auth = useAuthStore()
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -51,21 +55,38 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
 const canMaster = computed(() => auth.can('meter-master:edit'))
 const canReading = computed(() => auth.can('meter-reading:edit'))
 const canRun = computed(() => auth.can('billing-run:edit'))
-const editStation = computed(() => editMode.value && canMaster.value)
-const editReading = computed(() => editMode.value && canReading.value)
-onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+// ⚠ 三处都要 `&& !loadErr` —— 逐字照兄弟屏 PvMeterView(2026-08-29/30 三轮对抗复查后的形状)。
+//   本月记录没加载成功时表里是逐桩**伪造的零**(rows 按 stations 铺),放行录入 = 对着假底数写真数据。
+const editStation = computed(() => editMode.value && !loadErr.value && canMaster.value)
+const editReading = computed(() => editMode.value && !loadErr.value && canReading.value)
+// 切页签复位浮层,防浏览态残留写入口(同 ElecCostView)。
+// ⚠ openSt 必须一起收:FPDrawer 是 Teleport to body,子树随 KeepAlive 消失时它留在 body 上飘着。
+onDeactivated(() => { stationDlg.value = false; importing.value = false; openSt.value = null })
 
-// ── 期间(年月 Select,同 PvMeterView) ──
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth() + 1)
-// 年份数据驱动(P0 审计,同 PvMeterView):选项 = 有记录年份 ∪ 当前年,升序;
-// 初值 = 最后一个有充电记录的账期(§4:年月一起 snap;全系统无记录才留当年当月)
-const dataYears = ref<number[]>([])
-const yearOpts = computed(() =>
-  buildYearOptions(dataYears.value, today).map(y => ({ value: String(y), label: `${y}年` })),
-)
-const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
+// ── 期间:选期矩阵门(2026-08-29「两本账」设计稿 §③,同 PvMeterView) ──
+// 顶栏那对年月 Select 已撤 —— 改前系统按 latestPeriodOf 自己 snap 到最后一个有数据的月,
+// 用户从没被问过要看哪个月(§7-1 禁止的「顺手落进某个期」)。
+//
+// ⚠ 本屏的 snap 还多一个 bug:cpMeterApi.months() 改前**不接车型**,拿的是汽车+电动车的
+//   月份全集 —— 电动车录到 2026-03、汽车只到 2025-12 时,汽车屏一进来就落在 2026-03,
+//   满屏空、直接撞空态。现在按车型取(后端 /cp-meter/months?vehicleType=),
+//   矩阵按本车型画格,这件事本身消失。
+// ⚠ key 与手工年键都要带车型:附表7 与附表8 是两个独立的屏,各记各的期。
+// ⚠ null = **还没回来**;[] = 回来了、就是没有。
+//   这两件事必须分开:后端三个 /months 端点在空表时正常返回 [](不抛错),
+//   若用 `!dataMonths.length` 当加载中,零数据时门永久转圈、矩阵一次都不渲染,
+//   而它是进这本账的唯一入口 —— 那本账从此不可达,第一条也录不进去。
+//   出账链那道同形的门用的是真 `loaded` 布尔(stores/billingPeriod),这里对齐它。
+const dataMonths = ref<string[] | null>(null)
+const monthsErr = ref<string | null>(null)
+const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPeriod,
+        rows: gateRows, addEarlier, addLater, removeYear } = useMonthGate({
+  key: `cp-meter:${props.vehicleType}`,
+  store: ['cp-meter', props.vehicleType],
+  months: () => dataMonths.value ?? [],
+})
+const year = computed(() => gy.value ?? 0)
+const month = computed(() => gm.value ?? 0)
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 
@@ -74,34 +95,92 @@ const stations = ref<CpStationDTO[] | null>(null)
 const readings = ref<Awaited<ReturnType<typeof cpMeterApi.readings>> | null>(null)
 const usageRows = ref<CpPowerUsageDTO[] | null>(null)
 
-async function loadStations() { stations.value = await cpMeterApi.stations() }
+const stationsErr = ref('')
+/**
+ * 桩清单。裸 await 一挂 stations 恒为 null → 模板永久转圈且无重试口。
+ * ⚠ 独立错误槽 + 竞态守卫(照 PvMeterView):与 readErr 合槽会被换月的清除抹掉;
+ *   无 seq 时双击重试,老的失败结算在新的成功之后,一屏正确的数据被锁成永久只读。
+ */
+let stSeq = 0
+async function loadStations() {
+  const my = ++stSeq
+  try {
+    const data = await cpMeterApi.stations()
+    if (my === stSeq) { stations.value = data; stationsErr.value = '' }
+  } catch {
+    if (my === stSeq) stationsErr.value = '充电桩档案加载失败,请重试'
+  }
+}
+/** 失败条上的「重试」:只重来挂掉的那一份。 */
+function retryLoad() {
+  if (stationsErr.value) loadStations()
+  if (readErr.value) loadMonth()
+}
+/** 任一份没拿全 —— 写入口与导出都按这个判。 */
+const loadErr = computed(() => readErr.value || stationsErr.value)
+
+/** 换期重取的退让(§06 第一档,同 PvMeterView):旧数据留在原地但退一步、停止交互。 */
+const reloading = ref(false)
+const veil = useDeferredFlag(reloading)
+/** 本期取数失败的人话。只在**成功**时清 —— 清在请求开头的话,重试在途的整段窗口所有门重新敞开。 */
+const readErr = ref<string | null>(null)
 // 竞态守卫同 PvMeterView:切期保留旧数据到新数据落位,不闪 gate
 let seq = 0
 async function loadMonth() {
   const my = ++seq
-  const [rd, pu] = await Promise.all([
-    cpMeterApi.readings(year.value, month.value),
-    cpMeterApi.powerUsage(year.value, month.value),
-  ])
-  if (my === seq) { readings.value = rd; usageRows.value = pu }
-}
-onMounted(async () => {
-  loadStations()
-  // 先拉数据年份定位初始账期:§4 要求 year 与 month 一起 snap 到最后一个有充电记录的账期
-  // (原来只 snap year、month 留系统当月,拼出的账期一条记录都没有,进来是空表)。
-  // 改了年月会经 watch 触发 loadMonth,未改则本函数兜底首载。
+  reloading.value = true
   try {
-    // years 供年下拉、months 定默认账期,互不依赖 → 并发,一个往返拿齐
-    const [ys, months] = await Promise.all([cpMeterApi.years(), cpMeterApi.months()])
-    dataYears.value = ys
-    const p = latestPeriodOf(months)
-    if (p && (p.year !== year.value || p.month !== month.value)) {
-      year.value = p.year; month.value = p.month; return
+    const [rd, pu] = await Promise.all([
+      cpMeterApi.readings(year.value, month.value),
+      cpMeterApi.powerUsage(year.value, month.value),
+    ])
+    if (my === seq) { readings.value = rd; usageRows.value = pu; readErr.value = null }
+  } catch (e) {
+    // 失败时**不留旧数据顶着新期标**:清空 → 表体让位给错误条,不给「7 月标题 + 3 月数字」
+    if (my === seq) {
+      readings.value = []
+      usageRows.value = []
+      readErr.value = (e as { message?: string })?.message ?? '本月记录加载失败'
     }
-  } catch { /* years 拉取失败不阻断:保持当前年,选项由 ∪ 当前年兜底 */ }
-  loadMonth()
+  } finally {
+    if (my === seq) reloading.value = false
+  }
+}
+/**
+ * 写路径统一走这里(照 PvMeterView 的 reloadAfterWrite)。
+ * ⚠ dataMonths 是矩阵 hasData 着色的**唯一**数据源:写完只 loadMonth 不刷清单,
+ *   矩阵会把刚录过的月继续画成「空」(agent 写测时抓到的移植遗漏)。
+ */
+async function reloadAfterWrite() {
+  await loadMonth()
+  await loadMonths()
+}
+/** 矩阵点格:年月一起定,再拉该月记录。 */
+async function onPickCell(y: number, m: number) {
+  pickCell(y, m)
+  await loadMonth()
+}
+async function loadMonths() {
+  monthsErr.value = null
+  try { dataMonths.value = await cpMeterApi.months(props.vehicleType) }
+  catch (e) { monthsErr.value = (e as { message?: string })?.message ?? '账期清单加载失败' }
+}
+onMounted(() => {
+  loadStations()
+  loadMonths()
+  if (picked.value) loadMonth()   // 会话内选过期 → 直落表,不再撞矩阵
 })
-watch([year, month], loadMonth)
+// ⚠ 附表7/8 是两个 KeepAlive 实例,桩库共享(全站派生审计「病根 A」的本屏变体):
+//   在另一屏跨型建桩/删桩、或点模拟填充(simulate 一次写两型),本实例的
+//   stations/dataMonths/本月数据全部陈旧 —— 新桩不见 → 重建撞 409 却满屏找不到;
+//   矩阵把 simulate 刚写的月画成空 → 用户对着假空表手工补录 → 与 simulated 行双计。
+//   样板 PvMeterView 单实例没有这根轴,移植时该补未补。解药与其它 6 屏同款。
+onReactivated(() => {
+  loadStations()
+  loadMonths()
+  if (picked.value) loadMonth()
+})
+watch(gateYm, () => { if (picked.value) loadMonth() })
 
 // 本屏桩集合(按路由类型过滤共享桩库)
 const myStations = computed(() => (stations.value ?? []).filter(s => s.vehicleType === props.vehicleType))
@@ -145,6 +224,8 @@ const rows = computed(() =>
 // ── 行内编辑桩名/运营商(编辑模式;乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
 // ponytail: 类型(car/ebike)不做行内改——建桩时弹窗可选;错型桩无记录时删了重建,需要时再给桩弹窗加编辑档
 function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string) {
+  // 写口自守(照 BillNoticesView 口径):editMode 会就地转假,调用者各有各的 v-if,守发请求这层才不漏
+  if (!editStation.value) return
   const v = raw.trim()
   if (!v) { alert(field === 'name' ? '桩名不能为空' : '运营商不能为空'); return }
   if (v === st[field]) return
@@ -160,6 +241,10 @@ function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string
 
 // ── 电表用电量(录入收编辑模式,EDIT-MODE-SPEC 2026-07-18 用户修订;乐观更新+PUT 回包校正) ──
 function commitMeter(u: CpPowerUsageDTO, raw: string) {
+  if (!editReading.value) return
+  // 在途自守:fp-stale 的 pointer-events 挡不住**已聚焦**输入框的回车/失焦提交 ——
+  // 那一下按的是新 year/month,写的却是旧期语境下的数
+  if (reloading.value) return
   // ponytail: 后端无删除口(uk upsert),留空视为不动;录 0 表达"本月无用电"
   if (raw.trim() === '') return
   const v = Number(raw)
@@ -196,7 +281,9 @@ const form = ref({ readDate: '', chargeKwh: '', fee: '', revenue: '', note: '' }
 
 function startAdd() {
   editId.value = null; adding.value = true
-  // 默认日期:当前月=今天(日记条顺手);历史月=月末
+  // 默认日期:当前月=今天(日记条顺手);历史月=月末。
+  // today 就地取:期间块退场后没有模块级 today 了,这里本来也只用一次。
+  const today = new Date()
   const isCur = year.value === today.getFullYear() && month.value === today.getMonth() + 1
   const d = isCur ? `${year.value}-${pad2(month.value)}-${pad2(today.getDate())}` : monthLast.value
   form.value = { readDate: d, chargeKwh: '', fee: '', revenue: '', note: '' }
@@ -207,9 +294,19 @@ function startEdit(r: (typeof drawerRows.value)[number]) {
 }
 function cancelForm() { editId.value = null; adding.value = false }
 watch(openSt, cancelForm)   // 换桩/关抽屉时收起编辑行
-watch(editMode, v => { if (!v) cancelForm() })   // 退出编辑模式收起编辑行(v2:浏览态零写入口,含残留输入行)
+// 退出编辑模式收起一切写入口(v2:浏览态零写入口)。
+// ⚠ 两个弹窗必须一起关:它们的 v-if 只判自己那个 ref,而 editMode 会**就地**转假
+//   (被接管 / 30 分钟提权到期)—— 弹窗留着,里面的「新增」「确认导入」照样 POST,
+//   浏览态下写库,写的还是一把已归别人的期锁。
+watch(editMode, v => {
+  if (v) return
+  cancelForm()
+  stationDlg.value = false
+  importing.value = false
+})
 
 async function saveForm() {
+  if (!editReading.value) return
   if (!openSt.value) return
   if (!form.value.readDate) { alert('请选择日期'); return }
   const c = num(form.value.chargeKwh), f = num(form.value.fee), rv = num(form.value.revenue)
@@ -219,7 +316,7 @@ async function saveForm() {
     if (editId.value != null) await cpMeterApi.updateReading(editId.value, req)
     else await cpMeterApi.createReading(req)
     cancelForm()
-    await loadMonth()   // 记录变动 → Σ充电量/损耗一并刷新
+    await reloadAfterWrite()   // 记录变动 → Σ充电量/损耗 + 矩阵着色一并刷新
   } catch (e) {
     // 同桩同日 409 等 → 后端中文 message 直达
     alert((e as { message?: string })?.message ?? '保存失败')
@@ -227,16 +324,18 @@ async function saveForm() {
 }
 
 async function delRow(id: number, date: string) {
+  if (!editReading.value) return
   if (!confirm(`确认删除 ${date} 的充电记录?`)) return
-  try { await cpMeterApi.deleteReading(id); await loadMonth() }
+  try { await cpMeterApi.deleteReading(id); await reloadAfterWrite() }
   catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
 }
 
 async function delStation() {
+  if (!editStation.value) return
   const st = openSt.value
   if (!st) return
   if (!confirm(`确认删除充电桩「${st.name}」?有充电记录的桩不可删除。`)) return
-  try { await cpMeterApi.deleteStation(st.id); openSt.value = null; await loadStations(); await loadMonth() }
+  try { await cpMeterApi.deleteStation(st.id); openSt.value = null; await loadStations(); await reloadAfterWrite() }
   catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
 }
 
@@ -251,6 +350,7 @@ function openStationDlg() {
   stationDlg.value = true
 }
 async function submitStation() {
+  if (!editStation.value) return
   const name = stForm.value.name.trim()
   const operator = stForm.value.operator.trim()
   if (!name) { stErr.value = '请输入桩名'; return }
@@ -258,7 +358,7 @@ async function submitStation() {
   try {
     await cpMeterApi.createStation({ name, operator, vehicleType: stForm.value.vehicleType as 'car' | 'ebike' })
     stationDlg.value = false
-    await loadStations(); await loadMonth()   // 新运营商 → 电表小节新行
+    await loadStations(); await reloadAfterWrite()   // 新运营商 → 电表小节新行
   } catch (e) {
     stErr.value = (e as { message?: string })?.message ?? '新增充电桩失败'   // 重名 409 中文文案
   }
@@ -272,9 +372,10 @@ const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
 async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
   importing.value = false
+  if (!editReading.value) return
   try {
     importResult.value = await runImport('cpMeter', payload as never, importCtx, fileName)
-    await loadMonth()
+    await reloadAfterWrite()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
   }
@@ -282,15 +383,37 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 
 // ── 模拟填充(编辑态;照 ElecCostView:confirm→POST→alert→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
 const simulating = ref(false)
+const presence = usePresenceStore()
 async function onSimulate() {
+  if (!editMode.value || !canRun.value) return   // 模拟填充=整年批量派生,billing-run 权
   if (simulating.value) return
+  // ⚠ simulate(year) 是**全类型**的:后端同时读附表7+8、写 car 与 ebike 两型的记录与电表行,
+  //   而本屏只持 S.cpMeter(当前型, year) 一把锁 —— 不查对面就是绕过另一屏的期锁写对方的账。
+  //   查在场表(presence 早就带回来了,同 watchScope 的判法),对面有人就不跑。
+  const other = props.vehicleType === 'car' ? 'ebike' : 'car'
+  const busyOn = () => presence.editorsUnder(S.cpMeter(other, year.value)).find(e => !e.self)
+  const otherEditor = busyOn()
+  if (otherEditor) {
+    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${otherEditor.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    return
+  }
   if (!confirm(`模拟填充 ${year.value} 全年：按附表7/8 充电汇总(万城万/小桔/叮叮充/电信)推导各桩月末充电记录与电表用电量(小桔按 60/40 拆快充1/慢充1,通道费=收益×5%,均为假设口径)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
+  // ⚠ confirm() 同步阻塞事件循环 —— 对话框开着期间 ping 一拍都发不出,上面那次检查读的
+  //   名单冻结在弹框**前**,窗口宽度 = 用户读文案的时长(TOCTOU,复查坐实)。返回后强制
+  //   刷一拍再复查,把窗口收窄到一个往返 + 3 秒传播。残余窗口如实说明:服务端对 /simulate
+  //   不查锁(锁在本仓是协作信号,scope 对服务端不透明,明写的架构取向)—— 这道闸是唯一防线。
+  await presence.ping()
+  const late = busyOn()
+  if (late) {
+    alert(`模拟填充会同时写${other === 'ebike' ? '电动车' : '汽车'}侧的记录,而 ${late.displayName} 正在编辑那一侧的 ${year.value} 年 —— 等他退出编辑模式再跑。`)
+    return
+  }
   simulating.value = true
   try {
     const r = await cpMeterApi.simulate(year.value)
     alert(`模拟完成：填充 ${r.filled} 条，跳过 ${r.skipped} 条（手工/导入占位、值未变或缺桩）。`)
     await Promise.all([loadStations(), loadMonth()])
-    dataYears.value = await cpMeterApi.years()   // 新写入年份进选项(数据驱动)
+    await loadMonths()   // 新写入的月要在选期矩阵上亮起来
   } catch (e) {
     alert((e as { message?: string })?.message ?? '模拟填充失败')
   } finally {
@@ -315,15 +438,38 @@ async function onTemplate() {
 
 <template>
   <!-- 首载 gate:桩/记录/电表未落位不闪空表 -->
-  <div v-if="!stations || !readings || !usageRows" class="page-loading"><span class="page-spin" /></div>
+  <!-- ⓪ 没有期 → 选期矩阵(§7-1 明确选期门)。会话内选过一次之后不再出现 -->
+  <FPMonthGate
+    v-if="!picked"
+    :title="`${vehicleType === 'car' ? '汽车' : '电动车'}分桩充电明细`"
+    icon="plug"
+    sub="选择月份进入该月逐桩明细 · 空月可直接进入录入 / 导入"
+    :rows="gateRows"
+    :scope-of="(y) => S.cpMeter(vehicleType, y)"
+    :loading="dataMonths === null && !monthsErr"
+    :error="monthsErr"
+    @pick="onPickCell"
+    @add-earlier="addEarlier"
+    @add-later="addLater"
+    @remove-year="removeYear"
+    @retry="loadMonths"
+  />
+
+  <!-- 桩清单一次都没拿到:没有它连表都铺不出来,硬失败面(照 PvMeterView) -->
+  <div v-else-if="!stations && stationsErr" class="cm-gate-fail">
+    <component :is="iconFor('alert-triangle')" :size="18" />
+    <span>{{ stationsErr }}</span>
+    <Button variant="outline" size="sm" @click="loadStations">重试</Button>
+  </div>
+
+  <div v-else-if="!stations || !readings || !usageRows" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="cm-page">
+    <!-- 换期在途的唯一信号(§06 第一档):熬过 200ms 才亮 -->
+    <FPLoadBar :on="veil" />
     <!-- 标题行 -->
     <div class="cm-head">
       <div class="cm-headl">
-        <button class="cm-back" title="返回功能选择" @click="emit('back')">
-          <component :is="iconFor('arrow-left')" :size="16" />
-        </button>
         <div>
           <h2 class="cm-title"><span class="ic"><component :is="iconFor('plug')" :size="18" /></span>分桩充电明细</h2>
           <p class="cm-sub">逐桩按日期记条,自动汇月 · 充电量/手续费/收益从平台对账单抄录 · 电量 kWh / 金额 元</p>
@@ -340,12 +486,11 @@ async function onTemplate() {
     <div class="mx-toolbar">
       <FPPhaseTabs v-model="opTab" :tabs="opTabs" :counts="tabCounts" />
       <div class="mx-toolbar-right">
-        <div style="width:110px">
-          <Select :options="yearOpts" :model-value="String(year)" size="sm" @update:model-value="year = +$event" />
-        </div>
-        <div style="width:92px">
-          <Select :options="monthOpts" :model-value="String(month)" size="sm" @update:model-value="month = +$event" />
-        </div>
+        <!-- 年月下拉已撤:期由选期矩阵一处选定(§7-1),这里只显示是几月 + 回矩阵的口 -->
+        <button class="cm-permonth" @click="clearPeriod">
+          <component :is="iconFor('arrow-left')" :size="13" />换月
+        </button>
+        <span class="cm-per">{{ gateYm }}</span>
         <Button variant="outline" size="sm" @click="onTemplate">
           <template #leading><component :is="iconFor('file-spreadsheet')" :size="14" /></template>
           下载模板
@@ -359,18 +504,32 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
-        <Button variant="filled" size="sm" :disabled="exporting" @click="onExport">
+        <!-- 失败态/在途禁导出(照 PvMeterView):失败清成 [] 后导出的是全桩全零表,与真零月一致;
+             换期在途时期标已是新期而数字是上一期的,文件离开系统后无从分辨 -->
+        <Button variant="filled" size="sm" :disabled="exporting || !!loadErr || reloading"
+                :title="loadErr ? '数据未加载成功,导出会得到一份全零的表 —— 先重试'
+                        : reloading ? '本期记录还在路上,现在导出拿到的是上一期的数' : undefined"
+                @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
         </Button>
         <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
+        <!-- 失败态禁"进"不禁"出"(组件的 :disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :disabled="!editMode && !!loadErr"
+                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
                           @toggle="toggleEdit()" />
       </div>
     </div>
 
+    <FPLoadError v-if="loadErr" @retry="retryLoad">
+      <div v-if="readErr">{{ year }}年{{ month }}月记录加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
+      <div v-if="stationsErr">{{ stationsErr }} —— 桩档案停留在上次拉到的版本。</div>
+    </FPLoadError>
+
     <!-- 空态引导(spec §2:去导入或抽屉手录;导入入口受编辑模式管) -->
-    <div v-if="myReadings.length === 0" class="cm-empty">
+    <!-- ⚠ 排除 loadErr:失败态下 readings 被清成 [],「暂无记录」会把失败说成「真的没有」 -->
+    <div v-if="!loadErr && myReadings.length === 0" class="cm-empty">
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无充电记录 ——
@@ -380,8 +539,9 @@ async function onTemplate() {
       </span>
     </div>
 
-    <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列) -->
-    <Card surface="white" :padding="0" class="cm-card">
+    <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列)。fp-stale 带 pointer-events:none -->
+    <Card surface="white" :padding="0" class="cm-card"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="cm-tablewrap">
         <table class="cm-table">
           <colgroup>
@@ -430,7 +590,11 @@ async function onTemplate() {
     </Card>
 
     <!-- 电表与损耗小节(spec §2):每运营商一行;电表量录入收编辑模式(EDIT-MODE-SPEC 2026-07-18 用户修订) -->
-    <Card v-if="myUsage.length" surface="white" :padding="0" class="cm-usage">
+    <!-- ⚠ fp-stale 必须跟上(复查坐实的移植错位):换期在途窗口里这张卡不变灰不禁点,
+         commitMeter 按新 year/month upsert —— 把旧期语境下敲的电表数写进新期的行,
+         损耗派生跟着全错。样板只有一张卡,本屏第二张带写入口的卡当初忘了盖。 -->
+    <Card v-if="myUsage.length" surface="white" :padding="0" class="cm-usage"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="cm-usage-head">
         <span class="t"><component :is="iconFor('zap')" :size="14" />电表与损耗</span>
         <span class="s">每运营商每月一条电表用电量 · 损耗 = 电表 − Σ充电量(读时派生,负值黄警示不阻断){{ canReading && !editMode ? ' · 编辑模式下可录改电表值' : '' }}</span>
@@ -479,7 +643,9 @@ async function onTemplate() {
       :fixedHeight="true"
       @close="openSt = null"
     >
-      <div v-if="drawerRows.length === 0 && !adding" class="cm-dempty">
+      <!-- 只判 readErr 不判合并槽:桩档案挂掉时记录是好好的,拿 loadErr 拦会藏掉真实记录 -->
+      <div v-if="readErr" class="cm-dempty">本月记录未加载成功 —— 关掉抽屉点失败条上的「重试」,别在这里录。</div>
+      <div v-else-if="drawerRows.length === 0 && !adding" class="cm-dempty">
         该桩本月暂无充电记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
       </div>
       <div v-else class="cm-dwrap">
@@ -604,13 +770,26 @@ async function onTemplate() {
 
 <style scoped>
 /* 骨架与 PvMeterView pm-* 同构(cm- 前缀);差异:主表下多「电表与损耗」小节 */
-.cm-page { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
+.cm-permonth {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--surface-white); cursor: pointer;
+  font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-muted);
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.cm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
+.cm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
+
+.cm-gate-fail {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  height: 100%; color: var(--hue-red); font-size: 13px;
+}
+/* position: relative —— FPLoadBar 是 absolute,宿主不给参照它会认 AppShell 的 .fp-main-card */
+.cm-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行 ── */
 .cm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .cm-headl { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.cm-back { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--border-subtle); background: var(--surface-white); border-radius: var(--radius-md); cursor: pointer; display: grid; place-items: center; color: var(--text-secondary); transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
-.cm-back:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cm-title { margin: 0; display: flex; align-items: center; gap: 11px; font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cm-title .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex: 0 0 auto; }
 .cm-sub { margin: 5px 0 0; font-size: var(--fs-label); color: var(--text-muted); }

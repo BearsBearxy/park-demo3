@@ -466,4 +466,45 @@ class CpMeterApiIT extends AbstractMysqlIT {
         mvc.perform(get("/api/cp-meter/stations"))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── /months 按车型过滤(2026-08-29):附表7 与附表8 是两个独立的屏,各看各的账期 ──
+    // 病根:改前 months() 不接车型,拿的是两种车的月份全集 —— 电动车录到 2099-09、
+    // 汽车只到 2099-05 时,汽车屏的选期矩阵会把 2099-09 画成「有数据」,
+    // 而改前那套 latestPeriodOf 还会直接把汽车屏 snap 到 2099-09,进去满屏空。
+    @Test
+    void monthsFiltersByVehicleType() throws Exception {
+        int car = stationId("快充1");     // 小桔,car
+        int ebike = stationId("叮叮充");   // 叮叮充,ebike(V41 补种)
+
+        mvc.perform(post("/api/cp-meter/readings").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"stationId\":" + car + ",\"readDate\":\"2099-05-20\",\"chargeKwh\":10}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/cp-meter/readings").header("Authorization", auth())
+                .contentType("application/json")
+                .content("{\"stationId\":" + ebike + ",\"readDate\":\"2099-09-20\",\"chargeKwh\":10}"))
+                .andExpect(status().isOk());
+
+        List<String> all = JsonPath.read(
+                utf8(mvc.perform(get("/api/cp-meter/months").header("Authorization", auth())).andReturn()), "$.data");
+        assertThat(all).contains("2099-05", "2099-09");   // 不带参 = 全集,与改前一致
+
+        List<String> carMonths = JsonPath.read(utf8(mvc.perform(get("/api/cp-meter/months")
+                .param("vehicleType", "car").header("Authorization", auth())).andReturn()), "$.data");
+        assertThat(carMonths).contains("2099-05");
+        assertThat(carMonths).doesNotContain("2099-09");   // ← 改前这里会红:电动车的月混进汽车屏
+
+        List<String> ebikeMonths = JsonPath.read(utf8(mvc.perform(get("/api/cp-meter/months")
+                .param("vehicleType", "ebike").header("Authorization", auth())).andReturn()), "$.data");
+        assertThat(ebikeMonths).contains("2099-09");
+        assertThat(ebikeMonths).doesNotContain("2099-05");
+    }
+
+    // 该车型一个桩都没有 → 空清单,不能拼出 `in ()` 的语法错
+    @Test
+    void monthsUnknownVehicleTypeIsEmptyNotError() throws Exception {
+        List<String> none = JsonPath.read(utf8(mvc.perform(get("/api/cp-meter/months")
+                .param("vehicleType", "truck").header("Authorization", auth())).andReturn()), "$.data");
+        assertThat(none).isEmpty();
+    }
 }

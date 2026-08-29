@@ -156,7 +156,7 @@ class PresenceStoreTest {
     @Test
     void pingPutsSomeoneOnTheOnlineList() {
         store.ping("sess-a", "zhangsan", "张三", "finance_clerk",
-                   SCOPE, "月度台账 · 一泽 2025-06", "view", clock.instant());
+                   SCOPE, "月度台账 · 一泽 2025-06", java.util.List.of(), clock.instant());
 
         var online = store.online();
 
@@ -171,8 +171,8 @@ class PresenceStoreTest {
     void oneSessionPerTabNotOnePerUser() {
         // 同一个人开两个标签页看两个屏 —— 顶栏头像组按人去重，但在场表按会话记，
         // 否则后开的那个标签页会把前一个的位置覆盖掉。
-        store.ping("sess-1", "zhangsan", "张三", "finance_clerk", "a:1", "台账", "view", clock.instant());
-        store.ping("sess-2", "zhangsan", "张三", "finance_clerk", "b:1", "抄表", "view", clock.instant());
+        store.ping("sess-1", "zhangsan", "张三", "finance_clerk", "a:1", "台账", java.util.List.of(), clock.instant());
+        store.ping("sess-2", "zhangsan", "张三", "finance_clerk", "b:1", "抄表", java.util.List.of(), clock.instant());
 
         assertThat(store.online()).hasSize(2);
     }
@@ -182,7 +182,7 @@ class PresenceStoreTest {
         // 陈旧的在场是**错误信息**：显示「李四在线」而他两分钟前就关了页面，
         // 会让人白等一个不在的人。所以在场的 TTL 比锁短得多 ——
         // 锁掉了代价是重新占，在场错了代价是有人按错误信息做决定。
-        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", "view", clock.instant());
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", java.util.List.of(), clock.instant());
 
         clock.advance(Duration.ofSeconds(61));
 
@@ -196,12 +196,180 @@ class PresenceStoreTest {
         store.acquire(SCOPE, "zhangsan", "张三");
 
         clock.advance(Duration.ofMinutes(2));
-        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", "edit", clock.instant());
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账", java.util.List.of(SCOPE), clock.instant());
         clock.advance(Duration.ofMinutes(2));
 
         assertThat(store.acquire(SCOPE, "lisi", "李四"))
             .as("编辑态的 ping 必须同时续锁，否则第 3 分钟锁自己掉了")
             .isNotNull();
+    }
+
+    @Test
+    void aPingRenewsEveryLockTheSessionHolds_notJustOne() {
+        // 被修掉的洞:续期键原是会话级单槽 scope,同一标签页第二个屏进编辑态时
+        // 把第一个屏的锁顶出心跳 —— 3 分钟后被当陈旧锁静默让给别人,且那条路不写 eviction,
+        // 两边零提示。而「同时两个页面在编辑态」是明写的设计(EDIT-MODE-SPEC v3)。
+        store.acquire("meters:2025", "zhangsan", "张三");
+        store.acquire("pv-meter:2025", "zhangsan", "张三");
+
+        clock.advance(Duration.ofMinutes(2));
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "pv:screen", "分栋抄表",
+                   java.util.List.of("meters:2025", "pv-meter:2025"), clock.instant());
+        clock.advance(Duration.ofMinutes(2));   // 距 acquire 已 4 分钟 > TTL,距 ping 2 分钟 < TTL
+
+        assertThat(store.acquire("meters:2025", "lisi", "李四"))
+            .as("第一把锁也被续着 —— 只续一把正是那个静默丢锁的洞").isNotNull();
+        assertThat(store.acquire("pv-meter:2025", "lisi", "李四"))
+            .as("第二把锁照常续着").isNotNull();
+    }
+
+    @Test
+    void evictionsForEveryHeldScopeComeBackInOnePing() {
+        // 两把锁在两拍之间都被接管(极端但可达):通知必须一把一条全部带回,
+        // 吞掉任何一条,「当面提示」对那一把就失效了。
+        store.acquire("meters:2025", "zhangsan", "张三");
+        store.acquire("pv-meter:2025", "zhangsan", "张三");
+        store.takeover("meters:2025", "lisi", "李四", "张主管");
+        store.takeover("pv-meter:2025", "wangwu", "王五", null);
+
+        var notices = store.ping("sess-a", "zhangsan", "张三", "finance_clerk", null, null,
+                                 java.util.List.of("meters:2025", "pv-meter:2025"), clock.instant());
+
+        assertThat(notices).hasSize(2);
+        assertThat(notices).extracting(PresenceStore.Eviction::scope)
+            .containsExactlyInAnyOrder("meters:2025", "pv-meter:2025");
+    }
+
+    @Test
+    void seatModeIsDerivedFromHeldLocks_notClientClaim() {
+        // mode 由服务端从 editScopes 派生 —— 一个坏客户端不带锁就标不成「编辑中」,
+        // 徽标与排序读的都是它,不能信申报。
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "a:1", "台账",
+                   java.util.List.of(), clock.instant());
+        assertThat(store.online().get(0).mode()).isEqualTo("view");
+
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", "a:1", "台账",
+                   java.util.List.of("ledger:3:2025-06"), clock.instant());
+        assertThat(store.online().get(0).mode()).isEqualTo("edit");
+        assertThat(store.online().get(0).editScopes()).containsExactly("ledger:3:2025-06");
+    }
+
+    @Test
+    void aLostTakeoverNoticeIsRederivedOnTheNextPing() {
+        // 「我还持有吗」是每一拍都重新推导的真相,不是只送一次的消息:
+        // 一次性通知在响应丢包(前端 catch 吞掉)后就没了,而人留在编辑态继续录 ——
+        // 保存时整片覆盖接管者刚写的东西。派生之后丢一拍,下一拍(3 秒)自愈。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");
+
+        PresenceStore.Eviction first = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(first.authorizerName()).as("第一次拿到带授权人的完整通知").isEqualTo("张主管");
+
+        PresenceStore.Eviction again = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(again).as("响应丢了也要能再报 —— 从锁的现状推导").isNotNull();
+        assertThat(again.byDisplayName()).isEqualTo("李四");
+    }
+
+    @Test
+    void aLockReleasedInAnotherTabComesBackAsALoss() {
+        // 同一个人两个标签页共持一把锁(服务端本人重入放行,按 user 不按 sid)——
+        // A 页还锁,B 页还在编辑态。改前 B 的心跳只是静默不续;现在要当面报失锁。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.release(SCOPE, "zhangsan");
+
+        PresenceStore.Eviction e = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(e).as("锁没了必须当面说,不能让他继续对着假编辑态录入").isNotNull();
+        assertThat(e.by()).as("没有接管者,by 为空").isNull();
+    }
+
+    @Test
+    void aStaleLockGrabbedByAcquireStillNotifiesTheOldHolder() {
+        // 陈旧路径(合盖 3 分钟+)被 acquire 直接占走**从不写 eviction** ——
+        // 改前老持有人醒来后零提示继续编辑。现在第一拍就从现状推导出已易主。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        clock.advance(Duration.ofMinutes(4));
+        store.acquire(SCOPE, "lisi", "李四");   // 陈旧,直接占走
+
+        PresenceStore.Eviction e = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(e).isNotNull();
+        assertThat(e.byDisplayName()).isEqualTo("李四");
+    }
+
+    @Test
+    void pingPassesClientActivityThroughToIdleJudgment() {
+        // 空闲判定必须用**客户端上报的键鼠时间**,不是服务器收包时间:页面开着心跳一直发,
+        // 用 now 的话「空闲 20 分钟可直接接管」永远不触发,接管永远要惊动主管。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        java.time.Instant idleSince = clock.instant();
+        clock.advance(Duration.ofMinutes(25));
+        store.ping("sess-a", "zhangsan", "张三", "finance_clerk", SCOPE, "台账",
+                   java.util.List.of(SCOPE), idleSince);
+
+        assertThat(store.isIdle(SCOPE))
+            .as("人 25 分钟没动键鼠,页面开着 —— 必须判成空闲").isTrue();
+    }
+
+    @Test
+    void aHealthyHolderGetsNoEvictionNoise() {
+        // 反方向也要钉住(复查第三轮:此前只测「必须报」,把 heartbeat 改成**每拍都报**
+        // 全部测试照样绿)—— 那样每 3 秒弹一次「已被接管」,编辑模式一秒都待不住。
+        store.acquire(SCOPE, "zhangsan", "张三");
+
+        assertThat(store.heartbeat(SCOPE, "zhangsan", clock.instant()))
+            .as("好好持有着,一个字都不该报").isNull();
+        assertThat(store.ping("sess-a", "zhangsan", "张三", "finance_clerk", null, null,
+                              java.util.List.of(SCOPE), clock.instant()))
+            .as("ping 同理 —— 自己的锁健康时通知必须为空").isEmpty();
+    }
+
+    @Test
+    void aFreshAcquireClearsAnUndeliveredStaleNotice() {
+        // 一次性通知永不过期。不清的话:几天前没送达的「已被李四接管」会在
+        // 下一次**合法**占到同一把锁后的第一拍被消费 —— 当场弹旧接管、踢出刚进的编辑态。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");   // 通知写下,但张三没 ping(没送达)
+        store.release(SCOPE, "lisi");                       // 李四改完退出
+
+        store.acquire(SCOPE, "zhangsan", "张三");           // 张三次日合法再占
+
+        assertThat(store.heartbeat(SCOPE, "zhangsan", clock.instant()))
+            .as("旧通知必须在合法占锁那一刻清掉,不许穿越到新的一代").isNull();
+    }
+
+    @Test
+    void aRefusedAcquireDoesNotEatThePendingNotice() {
+        // acquire 清陈旧通知只许在**合法占到**时发生。被拒的那一下也清的话:
+        // 张三被李四(经张主管授权)接管,通知还没送达;他在另一页签点「编辑」被拒 ——
+        // 一次性通知被吃掉,下一拍只剩派生兜底,authorizerName 永久丢失,
+        // 弹窗那句「由 张主管 授权」消失 —— 而它正是被接管者申诉的依据(takeover javadoc 明写)。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");
+
+        assertThat(store.acquire(SCOPE, "zhangsan", "张三")).as("前提:被拒").isNotNull();
+
+        PresenceStore.Eviction notice = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(notice).isNotNull();
+        assertThat(notice.authorizerName())
+            .as("被拒的 acquire 不许吃掉一次性通知 —— 授权人姓名只有它里面有").isEqualTo("张主管");
+    }
+
+    @Test
+    void aLateReleaseWithOldFenceCannotKillTheNewLock() {
+        // release 不 await、beacon 会补发 —— 晚到的 DELETE 带着**上一代**的围栏,
+        // 不许删掉同一用户随后又占到的新锁(服务端只认 user 时就会误删)。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        long oldFence = store.state(SCOPE).acquiredAt().toEpochMilli();
+        store.release(SCOPE, "zhangsan");
+        clock.advance(Duration.ofSeconds(1));
+        store.acquire(SCOPE, "zhangsan", "张三");           // 新的一代
+
+        store.release(SCOPE, "zhangsan", oldFence);          // 晚到的旧 DELETE
+
+        assertThat(store.state(SCOPE)).as("旧围栏删不掉新锁").isNotNull();
+
+        long newFence = store.state(SCOPE).acquiredAt().toEpochMilli();
+        store.release(SCOPE, "zhangsan", newFence);
+        assertThat(store.state(SCOPE)).as("对上代次才放行").isNull();
     }
 
     @Test

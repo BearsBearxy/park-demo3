@@ -237,8 +237,6 @@ export const metersApi = {
   update: (id: number, req: MeterReq): Promise<MeterDTO> => http.put(`/meters/${id}`, req),
   // 有读数 409 守卫;不存在 404
   remove: (id: number): Promise<void> => http.delete(`/meters/${id}`),
-  // 有读数的年份升序;空表=[](年选择器数据驱动)
-  years: (): Promise<number[]> => http.get('/meters/years'),
   // 有读数的账期全集('YYYY-MM' 升序);默认月取 max —— 替代原来逐月拉整月读数(单月千余行)的 12 次探测
   months: (): Promise<string[]> => http.get('/meters/months'),
   readings: (ym: string): Promise<MeterReadingDTO[]> => http.get('/meters/readings', { params: { ym } }),

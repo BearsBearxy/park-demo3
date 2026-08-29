@@ -24,6 +24,9 @@ public class PresenceService {
     /** label 是客户端供给的展示文本 —— 截断，不解释。不截的话一个坏客户端能把内存撑大。 */
     private static final int LABEL_MAX = 60;
 
+    /** 一个会话同时握的锁数上限。真实上限是「开着的编辑态屏数」(个位数);超出的只能是坏客户端。 */
+    private static final int EDIT_SCOPES_MAX = 16;
+
     private final PresenceStore store;
     private final AuthUserMapper users;
     private final ApprovalService approvals;
@@ -52,14 +55,19 @@ public class PresenceService {
         Instant touched = req.lastActivityAt() == null
             ? Instant.now() : Instant.ofEpochMilli(req.lastActivityAt());
 
-        PresenceStore.Eviction e = store.ping(
-            req.sid(), me, name, role, req.scope(), clamp(req.label()), req.mode(), touched);
+        List<String> editScopes = resolveEditScopes(req);
+        List<PresenceStore.Eviction> es = store.ping(
+            req.sid(), me, name, role, req.scope(), clamp(req.label()), editScopes, touched);
 
         // 远程授权顺着同一条通道回来（设计稿 §07）——「要做通知机制」当初是否掉它的理由之一，
         // 而心跳建好之后，它的边际成本就只是响应体多两个字段。
         var out = approvals.pollOutcome();
-        return new PingResp(seats(me),
-            e == null ? null : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()),
+        List<EvictionDTO> evictions = es.stream()
+            .map(e -> new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()))
+            .toList();
+        // 单数 evicted 是给发布前就开着的旧页签的 —— 它们只读这个字段,不给的话被接管零提示
+        return new PingResp(seats(me), evictions,
+            evictions.isEmpty() ? null : evictions.get(0),
             approvals.inbox(), out);
     }
 
@@ -76,7 +84,7 @@ public class PresenceService {
         Instant now = Instant.now();
         return store.online().stream()
             .map(s -> new SeatDTO(s.sid(), s.user(), s.displayName(), s.role(),
-                s.scope(), s.label(), s.mode(),
+                s.scope(), s.label(), s.mode(), s.editScopes(),
                 Duration.between(s.since(), now).toMillis(),
                 Duration.between(s.heartbeatAt(), now).toMillis(),
                 s.user().equals(me)))
@@ -84,6 +92,21 @@ public class PresenceService {
                 .comparingInt((SeatDTO s) -> "edit".equals(s.mode()) ? 0 : 1)
                 .thenComparing(SeatDTO::sinceMs, Comparator.reverseOrder()))
             .toList();
+    }
+
+    /**
+     * 客户端报的锁清单 → 服务端认的锁清单。
+     *
+     * · null 元素过滤:List.copyOf 对 [null] 抛 NPE → 整拍 500(在场没登记、别的锁也没续)。
+     * · 限 16 把:真实上限是「开着的编辑态屏数」(个位数),超出只能是坏客户端。
+     * · **旧页签垫层**:发布前已打开的 SPA 还在发 {mode:'edit', scope},不发 editScopes ——
+     *   不认的话它们的锁静默停续,3 分钟后被人直接拿走且双方零提示(2026-08-30 复查坐实)。
+     */
+    static List<String> resolveEditScopes(PingReq req) {
+        List<String> raw = req.editScopes() == null ? List.of()
+            : req.editScopes().stream().filter(java.util.Objects::nonNull).limit(EDIT_SCOPES_MAX).toList();
+        if (!raw.isEmpty()) return raw;
+        return "edit".equals(req.mode()) && req.scope() != null ? List.of(req.scope()) : List.of();
     }
 
     private static String clamp(String label) {

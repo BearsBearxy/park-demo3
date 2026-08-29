@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodQuery } from '@/nav/reportPeriod'
 import { loadHomeData, defaultPeriod, type HomeData } from '@/reports/reportsHome'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -39,7 +40,13 @@ const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), 
 function onMonth(v: string) { month.value = +v; load() }
 // 「去做事」显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
 const tabsStore = useTabsStore()
-function go(v: string) { tabsStore.openFresh(v); router.push('/' + v) }
+// 点卡带上本屏选好的期(设计稿 §3.2b)。改前是干净的 push('/' + v),
+// 期一跳转就丢 —— 用户在这里选定 2025 年 9 月、点开利润表,要重走公司→年→月三道门回到原地。
+// openFresh 是深链协议的一半:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到。
+function go(v: string) {
+  tabsStore.openFresh(v)
+  router.push({ path: '/' + v, query: periodQuery(year.value, month.value, null) })
+}
 
 // 目录视图三区:三大报表 / 损益附表 / 收入核对(按卡 key 分组,顺序=HOME_CARDS)
 const SECTIONS = [

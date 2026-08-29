@@ -13,8 +13,9 @@ public final class LockDtos {
     public record HolderDTO(String user, String displayName, long heldMs, long idleMs, boolean idle) {}
 
     /** 占锁/接管的回答。granted=false 时 holder 必非空。 */
-    public record LockDTO(boolean granted, HolderDTO holder) {
-        public static LockDTO ok() { return new LockDTO(true, null); }
+    /** acquiredAt = granted 时的围栏毫秒值,release 带回来防晚到的 DELETE 误删新锁。 */
+    public record LockDTO(boolean granted, HolderDTO holder, Long acquiredAt) {
+        public static LockDTO ok(Long acquiredAt) { return new LockDTO(true, null, acquiredAt); }
     }
 
     /** 心跳的回答。evicted 非空 = 你被接管了，当场退回浏览态。 */

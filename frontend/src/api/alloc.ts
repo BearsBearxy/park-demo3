@@ -369,8 +369,6 @@ export interface AllocLossReconDTO {
 export interface AllocLossDTO { generated: boolean; units: AllocLossUnitDTO[]; recon: AllocLossReconDTO[] }
 
 export const allocApi = {
-  // 抄表年∪结果年升序(年下拉数据驱动)
-  years: (): Promise<number[]> => http.get('/alloc/years'),
   // 有池快照/损耗快照的账期全集('YYYY-MM' 升序)。默认月靠它一次取 max —— 不能拿 /alloc/pools 的
   // rows 判有无:那是 alloc_rule 全表左连当月快照,任何月都非空(AllocController 注释同款警告)。
   poolMonths: (): Promise<string[]> => http.get('/alloc/pool-months'),
