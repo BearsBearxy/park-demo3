@@ -30,6 +30,9 @@ const props = withDefaults(defineProps<{
   /** 本期的编辑锁作用域(CONCURRENCY-SPEC §3.1),如 `sched:pv:2025`。
    *  **不传 = 这一屏不上锁**,行为与加锁之前一个字不差。 */
   scope?: string | null
+  /** 把未保存草稿序列化成 TSV(被接管弹窗的「复制我的改动」)。草稿在各屏,页头只递话:
+   *  有草稿的屏(附表10/母册附表)传,即时落库的 5 屏不用管 —— 不传就不显示复制块。 */
+  copyText?: () => string
 }>(), { showImport: false, importDisabled: false, dirty: 0, scope: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
@@ -161,7 +164,8 @@ function onImport() {
                      @close="asking = null" @elevated="asking = null; void onToggleEdit()" />
     <FPTakeoverDrawer :holder="lockedBy" :scope="scope ?? ''" :what="`${title} ${year} 年`"
                       @close="lockedBy = null" @taken="onTaken" />
-    <FPEvictedDialog :eviction="evictedBy" :what="`${title} ${year} 年`" @close="evictedBy = null" />
+    <FPEvictedDialog :eviction="evictedBy" :what="`${title} ${year} 年`"
+                     :dirty-count="dirty" :copy-text="copyText" @close="evictedBy = null" />
   </div>
 </template>
 

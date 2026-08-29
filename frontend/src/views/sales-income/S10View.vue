@@ -268,6 +268,23 @@ function finishEdit(forced = false) {
   edit.value = false
 }
 
+// ── 被接管时的「复制我的改动」:脏行按当前版面的叶子列导 TSV ──
+// S10 的编辑是**就地改行**(dirty 只记 id),被踢后 refresh 会拉回服务端旧值 —— 不复制就丢。
+function draftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const leaves = leavesOf(PHASE_LAYOUT[phase.value] ?? 'office')
+  const head = ['租户', ...leaves.map(l => l.label)].join(TAB)
+  const rows = (monthData.value?.rows ?? []).filter(r => dirty.has(r.id))
+  const body = rows.map(r => {
+    const rec = r as unknown as Record<string, unknown>
+    return [String(rec.tenantName ?? ''), ...leaves.map(l => {
+      const v = rec[l.colId as string]
+      return v == null ? '' : String(v)
+    })].join(TAB)
+  })
+  return [head, ...body].join(NL)
+}
+
 // 保存修改:脏行逐个 upsert;成功才退出编辑(失败保留编辑态与脏标记,
 // 否则浏览态显示未落库的改值、KPI 却是后端旧数,像保存成功了一样——审查#8)
 async function onSaveChanges() {
@@ -542,6 +559,8 @@ function onImportClick() {
               :year="year"
               :edit="edit"
               perm="entry:edit"
+              :dirty="dirty.size"
+              :copy-text="draftAsTsv"
               @back="goGate"
               @toggle-edit="finishEdit">
               <!-- 工具条 §5 五段定序:录入(导入>批量>单行添加) | 配置 | ⋯溢出 | 主控恒右。

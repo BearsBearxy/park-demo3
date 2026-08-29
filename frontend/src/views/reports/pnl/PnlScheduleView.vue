@@ -272,6 +272,29 @@ function submitAdd() {
 
 // ── 保存(PUT 整年 clear+insert;rowKey 重建 r<n> + sortOrder) / 退出确认 ──
 const saveConfirm = ref(false)
+// ── 被接管时的「复制我的改动」:改值/改备注/新增行/删除行 四类各一段 ──
+// 草稿是覆盖层(draftM/draftNote/added/removed),被踢后 resetEdit 整层清掉 —— 不复制就丢。
+function draftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const rows = data.value?.rows ?? []
+  const labelOf = (k: string) => {
+    const r = rows.find(x => x.rowKey === k) ?? added.value.find(x => x.rowKey === k)
+    return r ? `${r.groupLabel}·${r.label}` : k
+  }
+  const out: string[] = [['类别', '行', '月', '值'].join(TAB)]
+  for (const [k, v] of Object.entries(draftM.value)) {
+    const [rowKey, mi] = k.split('|')
+    out.push(['改值', labelOf(rowKey), `${Number(mi) + 1}月`, v == null ? '' : String(v)].join(TAB))
+  }
+  for (const [k, v] of Object.entries(draftNote.value))
+    out.push(['改备注', labelOf(k), '', v].join(TAB))
+  for (const r of added.value)
+    out.push(['新增行', `${r.groupLabel}·${r.label}`, '全年', r.m.map(x => x ?? '').join('、')].join(TAB))
+  for (const k of removed.value)
+    out.push(['删除行', labelOf(k), '', ''].join(TAB))
+  return out.join(NL)
+}
+
 function toggleEdit(forced = false) {
   // forced = 锁已没了(同 S10.finishEdit):脏检查确认框在失锁后只是一个无锁写入口
   if (forced) { resetEdit(); return }
@@ -371,7 +394,8 @@ async function onExport() {
           perm="report:edit"
           @back="goGate"
           @toggle-edit="toggleEdit"
-         :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty">
+         :show-import="true" @import="importing = true" :import-disabled="saving" :dirty="dirty"
+         :copy-text="draftAsTsv">
           <template #edit-actions>
             <Button v-if="selected.size" variant="danger" size="sm" :disabled="saving" @click="delConfirm = true">
               <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>

@@ -145,3 +145,69 @@ describe('SchedHeader 强制退出带 forced 标(收口复查)', () => {
     }
   })
 })
+
+describe('SchedHeader copyText 透传(被接管的「复制我的改动」)', () => {
+  // FPEvictedDialog 是 Teleport to body —— 查它必须桩掉 teleport(mk 没桩,这里本地挂)
+  const mkT = (extra: Record<string, unknown> = {}) => mount(SchedHeader, {
+    props: {
+      icon: 'wallet', title: '附表12 · 工资明细', year: 2025,
+      edit: false, perm: 'entry:edit', scope: 'sched:salary:2025-03', ...extra,
+    },
+    global: { stubs: { teleport: true } },
+  })
+
+  it('❗有草稿 + 传了 copyText → 被接管弹窗给复制的路,点了真拿到序列化文本', async () => {
+    // 草稿在各屏,页头只递话:不透传的话被踢的人只看到「你丢了 N 处改动」然后关门。
+    const w = mkT({ dirty: 3, copyText: () => 'A\tB\n1\t2' })
+    await w.find('.lc-lockbtn').trigger('click')
+    await flushPromises()
+    await w.setProps({ edit: true })
+
+    // 心跳带回被接管(锁 mock 的 put 返回 evictions)
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'sched:salary:2025-03', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+    const { usePresenceStore } = await import('@/stores/presence')
+    await usePresenceStore().ping()
+    await flushPromises()
+
+    expect(w.find('.evd-scrim').exists(), '前提:被接管弹窗开了').toBe(true)
+    expect(w.find('.evd-draft').exists(), '复制块必须在 —— 只给数字不给出路等于关门').toBe(true)
+    expect(w.find('.evd-cnt').text()).toBe('3')
+
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    await w.find('.evd-draft button').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('A\tB\n1\t2')
+    vi.unstubAllGlobals()
+  })
+
+  it('没传 copyText 的屏照旧不显示复制块(即时落库的 5 屏没有草稿可复制)', async () => {
+    const w = mkT({ dirty: 0 })
+    await w.find('.lc-lockbtn').trigger('click')
+    await flushPromises()
+    await w.setProps({ edit: true })
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'sched:salary:2025-03', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+    const { usePresenceStore } = await import('@/stores/presence')
+    await usePresenceStore().ping()
+    await flushPromises()
+    expect(w.find('.evd-scrim').exists()).toBe(true)
+    expect(w.find('.evd-draft').exists()).toBe(false)
+  })
+
+  it('❗S10 与损益表真的把 copyText 绑上了(挂载太重,绑定用源码钉)', () => {
+    for (const [rel, fn] of [
+      ['../../../views/sales-income/S10View.vue', 'draftAsTsv'],
+      ['../../../views/reports/pnl/PnlScheduleView.vue', 'draftAsTsv'],
+    ] as const) {
+      const src = readFileSync(join(__dirname, rel), 'utf8')
+      expect(src.includes(`:copy-text="${fn}"`), `${rel} 没把序列化器绑给 SchedHeader`).toBe(true)
+      expect(src.includes(`function ${fn}`), `${rel} 没有序列化器`).toBe(true)
+    }
+  })
+})

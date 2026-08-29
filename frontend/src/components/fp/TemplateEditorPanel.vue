@@ -122,6 +122,39 @@ function exitEdit() {
   aliasEditId.value = null
 }
 
+// ── 被接管时的「复制我的改动」(口径照 LedgerWideTable.draftAsTsv) ──
+// draft 是整份 BookDef 深拷贝,重进编辑态会**整份重新快照**(enterEdit 那句 JSON.parse)
+// —— 被踢后不给复制的路就是让人白改。只导差异:逐列比对,新增/改动/删除各一行。
+function templateDiff(): { group: string; state: string; col: BookCol }[] {
+  if (!draft.value || !props.book) return []
+  const orig = new Map<string, { g: string; c: BookCol }>()
+  for (const g of props.book.definition.groups)
+    for (const c of g.cols) orig.set(c.id, { g: g.label ?? '', c })
+  const out: { group: string; state: string; col: BookCol }[] = []
+  const seen = new Set<string>()
+  for (const g of draft.value.groups) {
+    for (const c of g.cols) {
+      seen.add(c.id)
+      const o = orig.get(c.id)
+      if (!o) out.push({ group: g.label ?? '', state: '新增', col: c })
+      else if (JSON.stringify(c) !== JSON.stringify(o.c) || (g.label ?? '') !== o.g)
+        out.push({ group: g.label ?? '', state: '改动', col: c })
+    }
+  }
+  for (const o of orig.values()) if (!seen.has(o.c.id)) out.push({ group: o.g, state: '删除', col: o.c })
+  return out
+}
+const templateDirty = computed(() => (mode.value === 'edit' ? templateDiff().length : 0))
+function templateDraftAsTsv(): string {
+  const TAB = '\t', NL = '\n'
+  const head = ['状态', '分组', '列ID', '显示名', '档位', '隐藏', '列宽', '别名'].join(TAB)
+  const body = templateDiff().map(d => [
+    d.state, d.group, d.col.id, d.col.label, SLOT_LABELS[d.col.slot] ?? d.col.slot,
+    d.col.hidden ? '是' : '', d.col.w ?? '', (d.col.aliases ?? []).join('、'),
+  ].join(TAB))
+  return [head, ...body].join(NL)
+}
+
 // ── 历史版预览 ──
 async function viewVersion(v: TemplateVersion) {
   if (mode.value === 'edit' || !props.book) return
@@ -366,6 +399,7 @@ function fmtTime(s: string): string {
                     :what="`${book?.name ?? ''} 账册模板`"
                     @close="lockedBy = null" @taken="onTaken" />
   <FPEvictedDialog :eviction="evictedBy" :what="`${book?.name ?? ''} 账册模板`"
+                   :dirty-count="templateDirty" :copy-text="templateDraftAsTsv"
                    @close="evictedBy = null" />
 </template>
 

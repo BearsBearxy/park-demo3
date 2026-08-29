@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -132,5 +134,32 @@ describe('系数簿 · 编辑态的被动退出', () => {
     await settle(w)
 
     expect(api.delete, '关窗就得还锁').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+  })
+})
+
+describe('系数簿 · 被接管时暂存导 TSV', () => {
+  it('❗stash(租户→新值/清除)一行一条,带键名与生效月', async () => {
+    useAuthStore().permissions = [PERM]
+    const w = open()
+    await settle(w)
+    const vm = w.vm as unknown as {
+      stash: Map<number, number | null>
+      stashAsTsv: () => string
+    }
+    vm.stash.set(5, 1.2)
+    vm.stash.set(7, null)
+
+    const tsv = vm.stashAsTsv()
+    const lines = tsv.split('\n')
+    expect(lines.length, '表头 + 两条暂存').toBe(3)
+    expect(tsv).toContain('1.2')
+    expect(tsv).toContain('(清除,回默认)')
+    expect(lines[0]).toContain('生效起')
+  })
+
+  it('❗序列化器真的绑在被接管弹窗上', () => {
+    const src = readFileSync(join(__dirname, 'CoefBookWindow.vue'), 'utf8')
+    expect(src.includes(':copy-text="stashAsTsv"'), '弹窗断线,被踢的人拿不到复制的路').toBe(true)
+    expect(src.includes(':dirty-count="stash.size"')).toBe(true)
   })
 })
