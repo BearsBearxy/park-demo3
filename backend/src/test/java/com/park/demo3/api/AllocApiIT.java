@@ -148,6 +148,41 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.name").value("一期园区·IT人工指定"));
     }
 
+    // ── F3:direct 恰一户,开两个例外(理由不同,分开写)——
+    //    ①park_loss_pool:整笔挂亏池的净量喂园区损耗池 G,语义上就不该有受益人(库里 23/96-99 全是 0 户,
+    //      种子直接写入绕过了本校验);②已存在的池允许编辑为 0 户(既成事实),新建仍硬拦(配置错误当场拦住)。
+    //    n>1 无论哪个例外都不放行——整笔归户只能归一户。 ──
+    @Test
+    void directException_parkLossZeroMembers_existingZeroMembers_twoAlwaysRejected() throws Exception {
+        // 例外一:park_loss_pool + 0 户,新建直接 200(不是"已存在"例外,是语义例外)
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\",\"members\":[]}");
+
+        // 例外二:已存在的 direct 池编辑为 0 户 → 200(既成事实,不该逼用户先指定受益户才能改备注)
+        int t1 = createTenant("IT恰一户甲");
+        int rDirect = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                + "\"members\":[{\"tenantId\":" + t1 + "}]}");
+        mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\",\"members\":[]}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // n>1 恒非法:两个例外都不放行 2 户
+        int t2 = createTenant("IT恰一户乙");
+        mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\","
+                        + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                .andExpect(jsonPath("$.code").value(400));
+        mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                        + "\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                .andExpect(jsonPath("$.code").value(400));
+
+        // 新建 direct + 0 户(非 park_loss_pool)仍被拦 —— 配置错误当场拦住,不靠事后告警
+        // (回归探针:与既有 ruleCrud_generate_floorAnchor_deleteGuard 里的"IT坏整笔"用例同款断言)
+        mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\",\"members\":[]}"))
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
     // /months 系列的三条通用断言:格式 YYYY-MM、升序、无重复(去重排序后须与原样等长同序),外加本例月在内
     private void assertMonths(String path, String mustContain) throws Exception {
         java.util.List<String> ms = JsonPath.read(mvc.perform(get(path).header("Authorization", auth()))

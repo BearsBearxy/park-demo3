@@ -618,8 +618,18 @@ public class AllocService {
                 ? "按面积/按层规则必须填正的初始分母(面积Σ㎡/层数)或指定基数键"
                 : "按面积/按层规则须有分母(去计费参数页设该池的分母)或指定基数键");
         }
-        if ("direct".equals(req.method()) && (req.members() == null || req.members().size() != 1))
-            throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
+        if ("direct".equals(req.method())) {
+            int n = req.members() == null ? 0 : req.members().size();
+            // 例外一:整笔挂亏池(park_loss_pool)的净量喂「园区损耗公摊池」的 G,按语义就不该有受益人。
+            // 库里 5 个(23/96/97/98/99)全是 0 户,种子直接写入绕过了本校验。
+            boolean parkLoss = "park_loss_pool".equals(req.feeKey());
+            // 例外二:**已存在**的池允许 0 户 —— 那是它当前的状态,不该因为「想改个备注」就被逼着先指定受益户。
+            // 新建仍然硬拦:不给用户从零造一个算得出钱却摊不到人的池。
+            // 0 户的后果引擎已有告警(memberAmounts 的「无受益人,跳过」),不会静默吞钱。
+            boolean editingExisting = existingId != null && n == 0;
+            if (n > 1 || (n != 1 && !parkLoss && !editingExisting))
+                throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
+        }
     }
 
     private static String memberMonth(AllocRuleReq req) {
