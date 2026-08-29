@@ -309,13 +309,6 @@ export function meterDiffGroup(diffs: AllocMeterDiffDTO[], zone: string) {
   }
 }
 
-// ── 用量段列模型(Finding 3):分时制(zone_calc_kind=1)出尖/峰/平/谷四段,平价制(=0 或未配)只出总列。
-//    以前按 zone === 'p2' 硬判,三期配成分时制也照旧只显总列;口径要按参数取,不按期区名字
-//    (与后端 AllocService.ruleCostAmount 同一条不变式:未配 zone_calc_kind 按 flat 兜底,不报错)。──
-export function zoneCalcKind(rows: { key: string; scope: string; value: number | null }[], zone: string): number {
-  return rows.find(r => r.key === 'zone_calc_kind' && r.scope === zone)?.value ?? 0
-}
-
 // ── 损耗对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计),读时派生列落位到屏列 ──
 // 供电局读数不拼进标签,单独落「总表用电量」列;被比的合计落「分表用电量」列(从供电局总表看,各栋的表都是它的分表)
 export interface LossReconRow {

@@ -50,7 +50,7 @@ import {
   FROZEN_CFG_KEY, POOL_LOC_HINT, POOL_LOC_UNSET, bandFooter, buildPoolExportAoa,
   costPerLine, groupPoolsByBookBlock, lineArea, lineFloor, lineLabel, lineUseName, meterDiffGroup, netSummary,
   poolArea, poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
-  poolSpan, poolSubtitle, stdDisplay, zoneCalcKind,
+  poolSpan, poolSubtitle, stdDisplay,
 } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
 import { floorLabels } from '@/utils/floorLabels'
@@ -137,10 +137,10 @@ async function loadMonth() {
   try {
     const [ps, pr, df, md, st] = await Promise.all([
       allocApi.pools(ym.value),
-      // key 里加了 zone_calc_kind(S_ZONE 作用域,scope=期区名而非 rule:)喂 segDefs 判分时/平价——
-      // 连带去掉 scope:'rule:' 前缀过滤:三个原 key 本就只在 rule: 作用域出现(注册表 S_RULE),
-      // 过滤是防御性的从没筛掉过东西,留着反而会把 zone_calc_kind 的期区级行也筛没。
-      paramsApi.list(ym.value, 'all', { key: 'coefficient,extra_qty,frozen_2023,zone_calc_kind' })
+      // 三个只读镜像键(分母/加度/2023 冻结价)本就只在 rule: 作用域出现,scope 前缀过滤是防御性的
+      // 从没筛掉过东西,不加也一样(2026-08-29 撤:曾为 Finding 3 的 zoneCalcKind 加过 zone_calc_kind
+      // 键并去掉这个过滤,该用法已随「换期不许变列数」改回列常量一起删,见 poolLedgerLogic.ts)。
+      paramsApi.list(ym.value, 'all', { key: 'coefficient,extra_qty,frozen_2023' })
         .catch(() => [] as ParamRowDTO[]),
       allocApi.memberDiff(ym.value).catch(() => [] as AllocMemberDiffDTO[]),
       allocApi.meterDiff(ym.value).catch(() => [] as AllocMeterDiffDTO[]),
@@ -263,18 +263,19 @@ function gotoDiff(ruleId: number) {
   })
 }
 
-// 列模型:分时制(zone_calc_kind=1)5 列(总/尖/峰/平/谷),平价制(=0 或未配,按 flat 默认)只显总列——
-// Finding 3:以前按 zone.value === 'p2' 硬判,三期就算配成分时制也只会照旧只出总列。
-// 口径按参数取,不按期区名字(与 AllocService.ruleCostAmount 同一条不变式:未配 = 按 flat 兜底)。
+// 列模型(LAYOUT-STABILITY-SPEC §1/§3:换期/切编辑态都不许变列数):恒定 5 列(总/尖/峰/平/谷)。
+// 平价制的表尖/峰/平/谷本就是 null(逐表 segQty 缺 TOU 分段读数时不落值),跟这张表里其它 null 值
+// 一样天然显'–',不必也不许按 zone 再摘掉列。原 Finding 3 加的 zoneCalcKind()(唯一消费者就是
+// 这里)随本刀一起从 poolLedgerLogic.ts 删,poolLedgerLogic.spec.ts 对应 5 条测试同删。
 interface SegDef { lab: string; k: 'qtyTotal' | 'qtySharp' | 'qtyPeak' | 'qtyFlat' | 'qtyValley' }
-const ALL_SEGS: SegDef[] = [
+const segDefs: SegDef[] = [
   { lab: '总', k: 'qtyTotal' }, { lab: '尖', k: 'qtySharp' }, { lab: '峰', k: 'qtyPeak' },
   { lab: '平', k: 'qtyFlat' }, { lab: '谷', k: 'qtyValley' },
 ]
-const segDefs = computed(() => (zoneCalcKind(paramRows.value, zone.value) === 1 ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
 // V73 列模型:楼层+池名称(2) + 逐表列 电表/倍率/上月/本月(4) + 用量段
-// + 应分摊/语义/标准(3) + 编辑态月参(2) + 实收/盈亏/备注(3)
-const colCount = computed(() => 7 + segDefs.value.length + 3 + (editMode.value ? 2 : 0) + 3)
+// + 应分摊/语义/标准(3) + 月参只读镜像(2,常驻——LAYOUT-STABILITY-SPEC §5:只读列不应随编辑态出没)
+// + 实收/盈亏/备注(3)
+const colCount = 7 + segDefs.length + 3 + 2 + 3
 
 // sticky 左两列(FPLedgerTable 手法:offset=列宽累加)
 // sticky 左三列:区域(原册 B) + 楼层(原册 C) + 池名称(原册 D)。offset 由列宽累加,改宽必须同步改 left。
@@ -843,8 +844,8 @@ async function delPool() {
                 title="逐表金额(p1/宿舍逐表ROUND口径);二期为池级一次ROUND,逐表金额不存在→按池合并显池级合计">应分摊(元)</th>
             <th rowspan="2" class="pl-grp-th" :style="w(112)">分摊语义</th>
             <th rowspan="2" class="pl-grp-th" :style="w(110)">分摊标准</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="分摊基数（层数或面积）站在本月的生效值 + 生效方式；走面积基数的池显「面积基数」并注明取自哪一条。只读 —— 点格子去计费参数页改">分摊基数（当月）</th>
-            <th v-if="editMode" rowspan="2" class="pl-grp-th" :style="w(156)" title="公摊池加减度数（+170 / −670 …，进分摊标准分子不进应分摊）站在本月的生效值 + 生效方式。只读 —— 点格子去计费参数页改">加减度数（当月）</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(156)" title="分摊基数（层数或面积）站在本月的生效值 + 生效方式；走面积基数的池显「面积基数」并注明取自哪一条。只读 —— 点格子去计费参数页改">分摊基数（当月）</th>
+            <th rowspan="2" class="pl-grp-th" :style="w(156)" title="公摊池加减度数（+170 / −670 …，进分摊标准分子不进应分摊）站在本月的生效值 + 生效方式。只读 —— 点格子去计费参数页改">加减度数（当月）</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
                 title="租户实际缴回的公摊额 —— 待账单模块(bill_notice)落地后从账单侧回填,现全为'–'">实收</th>
             <th rowspan="2" class="pl-grp-th" :style="w(80)"
@@ -927,8 +928,10 @@ async function delPool() {
                       :title="stdCell(r).title ?? undefined">{{ stdCell(r).text
                   }}<sup v-if="frozenNote.has(r.ruleId)" class="pl-frz">❄</sup></span>
               </td>
-              <!-- S21:分摊基数/加减度数只读镜像(当月生效值 + 徽标),点格子带 ym+池高亮跳计费参数页 -->
-              <template v-if="editMode && li === 0">
+              <!-- S21:分摊基数/加减度数只读镜像(当月生效值 + 徽标),点格子带 ym+池高亮跳计费参数页。
+                   两态都只读(title 早写着「点格子去计费参数页改」),没有编辑态才出现的道理
+                   (LAYOUT-STABILITY-SPEC §5:改动局限编辑区自身,不许把只读列的进出连带顶走实收/盈亏/备注)。 -->
+              <template v-if="li === 0">
                 <td v-for="k in (['coefficient', 'extra_qty'] as const)" :key="k" :rowspan="poolSpan(r)">
                   <span class="pl-nv pl-pv" :class="{ empty: paramCell(r.ruleId, k).tone === 'inherit' }"
                         :title="paramCell(r.ruleId, k).title" role="button" tabindex="0"
@@ -961,7 +964,8 @@ async function delPool() {
               <td><span class="pl-foot-v">{{ fmt2(bandFooter(b.rows).cost) }}</span></td>
               <!-- 尾部空档 = colCount − 本行已占。已占 = 区域·楼层·池名称 3 + 电表·倍率·上月·本月 4
                    + 用量段 segDefs.length + 应分摊 1 = segDefs.length + 8(原来减 7,漏数了应分摊
-                   那一列,表格右侧多挂出一条空列)。展开即 5 + 编辑态月参 2 列 -->
+                   那一列,表格右侧多挂出一条空列)。展开即 语义/标准 2 + 月参(常驻)2 + 实收/盈亏/备注 3
+                   = 7,恒定不再随编辑态变(月参两列已改常驻,§5) -->
               <td :colspan="colCount - segDefs.length - 8"></td>
             </tr>
           </template>

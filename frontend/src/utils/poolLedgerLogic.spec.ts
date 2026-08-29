@@ -4,7 +4,7 @@ import {
   bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds,
   groupPoolsByBookBlock, lineFloor, lineLabel, lineUseName, lossFooter, meterDiffGroup, netSummary, POOL_LOC_HINT,
   poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
-  poolSpan, poolSubtitle, poolSubtotal, stdDisplay, zoneCalcKind,
+  poolSpan, poolSubtitle, poolSubtotal, stdDisplay,
 } from './poolLedgerLogic'
 import type {
   AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO,
@@ -568,23 +568,5 @@ describe('meterDiffGroup 未入池的公摊表', () => {
   it('没挂楼栋的表也要显示,不能整条吞掉', () => {
     const g = meterDiffGroup([md({ buildingId: null, buildingName: null })], 'p1')!
     expect(g.items[0].text).toContain('(未挂楼栋)')
-  })
-})
-
-describe('zoneCalcKind 用量段列口径(Finding 3:按参数取,不按期区名字)', () => {
-  it('三期配成分时制(=1)也要认,不能因为 zone !== "p2" 就当平价', () => {
-    expect(zoneCalcKind([{ key: 'zone_calc_kind', scope: 'p3', value: 1 }], 'p3')).toBe(1)
-  })
-  it('平价制(=0)按平价', () => {
-    expect(zoneCalcKind([{ key: 'zone_calc_kind', scope: 'p2', value: 0 }], 'p2')).toBe(0)
-  })
-  it('没配的期区兜底按平价(0),不是不渲染 —— 与后端未配 zone_calc_kind 落 flat 分支同一条不变式', () => {
-    expect(zoneCalcKind([], 'p3')).toBe(0)
-  })
-  it('只认自己期区的行,别的期区配了分时制不能串过来', () => {
-    expect(zoneCalcKind([{ key: 'zone_calc_kind', scope: 'p2', value: 1 }], 'p1')).toBe(0)
-  })
-  it('scope 相同但 key 不同的行不算数(别跟 coefficient/extra_qty 混)', () => {
-    expect(zoneCalcKind([{ key: 'coefficient', scope: 'p2', value: 1 }], 'p2')).toBe(0)
   })
 })
