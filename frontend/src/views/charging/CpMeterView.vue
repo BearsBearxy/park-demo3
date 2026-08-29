@@ -25,6 +25,9 @@ import Select from '@/components/ds/Select.vue'
 import Input from '@/components/ds/Input.vue'
 import FPPhaseTabs from '@/components/fp/FPPhaseTabs.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
+import FPLoadError from '@/components/fp/FPLoadError.vue'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FpImportModal from '@/components/import/FpImportModal.vue'
 import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
@@ -50,9 +53,13 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
 const canMaster = computed(() => auth.can('meter-master:edit'))
 const canReading = computed(() => auth.can('meter-reading:edit'))
 const canRun = computed(() => auth.can('billing-run:edit'))
-const editStation = computed(() => editMode.value && canMaster.value)
-const editReading = computed(() => editMode.value && canReading.value)
-onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 弹窗一并复位,防浏览态残留写入口(同 ElecCostView)
+// ⚠ 三处都要 `&& !loadErr` —— 逐字照兄弟屏 PvMeterView(2026-08-29/30 三轮对抗复查后的形状)。
+//   本月记录没加载成功时表里是逐桩**伪造的零**(rows 按 stations 铺),放行录入 = 对着假底数写真数据。
+const editStation = computed(() => editMode.value && !loadErr.value && canMaster.value)
+const editReading = computed(() => editMode.value && !loadErr.value && canReading.value)
+// 切页签复位浮层,防浏览态残留写入口(同 ElecCostView)。
+// ⚠ openSt 必须一起收:FPDrawer 是 Teleport to body,子树随 KeepAlive 消失时它留在 body 上飘着。
+onDeactivated(() => { stationDlg.value = false; importing.value = false; openSt.value = null })
 
 // ── 期间:选期矩阵门(2026-08-29「两本账」设计稿 §③,同 PvMeterView) ──
 // 顶栏那对年月 Select 已撤 —— 改前系统按 latestPeriodOf 自己 snap 到最后一个有数据的月,
@@ -86,16 +93,65 @@ const stations = ref<CpStationDTO[] | null>(null)
 const readings = ref<Awaited<ReturnType<typeof cpMeterApi.readings>> | null>(null)
 const usageRows = ref<CpPowerUsageDTO[] | null>(null)
 
-async function loadStations() { stations.value = await cpMeterApi.stations() }
+const stationsErr = ref('')
+/**
+ * 桩清单。裸 await 一挂 stations 恒为 null → 模板永久转圈且无重试口。
+ * ⚠ 独立错误槽 + 竞态守卫(照 PvMeterView):与 readErr 合槽会被换月的清除抹掉;
+ *   无 seq 时双击重试,老的失败结算在新的成功之后,一屏正确的数据被锁成永久只读。
+ */
+let stSeq = 0
+async function loadStations() {
+  const my = ++stSeq
+  try {
+    const data = await cpMeterApi.stations()
+    if (my === stSeq) { stations.value = data; stationsErr.value = '' }
+  } catch {
+    if (my === stSeq) stationsErr.value = '充电桩档案加载失败,请重试'
+  }
+}
+/** 失败条上的「重试」:只重来挂掉的那一份。 */
+function retryLoad() {
+  if (stationsErr.value) loadStations()
+  if (readErr.value) loadMonth()
+}
+/** 任一份没拿全 —— 写入口与导出都按这个判。 */
+const loadErr = computed(() => readErr.value || stationsErr.value)
+
+/** 换期重取的退让(§06 第一档,同 PvMeterView):旧数据留在原地但退一步、停止交互。 */
+const reloading = ref(false)
+const veil = useDeferredFlag(reloading)
+/** 本期取数失败的人话。只在**成功**时清 —— 清在请求开头的话,重试在途的整段窗口所有门重新敞开。 */
+const readErr = ref<string | null>(null)
 // 竞态守卫同 PvMeterView:切期保留旧数据到新数据落位,不闪 gate
 let seq = 0
 async function loadMonth() {
   const my = ++seq
-  const [rd, pu] = await Promise.all([
-    cpMeterApi.readings(year.value, month.value),
-    cpMeterApi.powerUsage(year.value, month.value),
-  ])
-  if (my === seq) { readings.value = rd; usageRows.value = pu }
+  reloading.value = true
+  try {
+    const [rd, pu] = await Promise.all([
+      cpMeterApi.readings(year.value, month.value),
+      cpMeterApi.powerUsage(year.value, month.value),
+    ])
+    if (my === seq) { readings.value = rd; usageRows.value = pu; readErr.value = null }
+  } catch (e) {
+    // 失败时**不留旧数据顶着新期标**:清空 → 表体让位给错误条,不给「7 月标题 + 3 月数字」
+    if (my === seq) {
+      readings.value = []
+      usageRows.value = []
+      readErr.value = (e as { message?: string })?.message ?? '本月记录加载失败'
+    }
+  } finally {
+    if (my === seq) reloading.value = false
+  }
+}
+/**
+ * 写路径统一走这里(照 PvMeterView 的 reloadAfterWrite)。
+ * ⚠ dataMonths 是矩阵 hasData 着色的**唯一**数据源:写完只 loadMonth 不刷清单,
+ *   矩阵会把刚录过的月继续画成「空」(agent 写测时抓到的移植遗漏)。
+ */
+async function reloadAfterWrite() {
+  await loadMonth()
+  await loadMonths()
 }
 /** 矩阵点格:年月一起定,再拉该月记录。 */
 async function onPickCell(y: number, m: number) {
@@ -156,6 +212,8 @@ const rows = computed(() =>
 // ── 行内编辑桩名/运营商(编辑模式;乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
 // ponytail: 类型(car/ebike)不做行内改——建桩时弹窗可选;错型桩无记录时删了重建,需要时再给桩弹窗加编辑档
 function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string) {
+  // 写口自守(照 BillNoticesView 口径):editMode 会就地转假,调用者各有各的 v-if,守发请求这层才不漏
+  if (!editStation.value) return
   const v = raw.trim()
   if (!v) { alert(field === 'name' ? '桩名不能为空' : '运营商不能为空'); return }
   if (v === st[field]) return
@@ -171,6 +229,7 @@ function commitStation(st: CpStationDTO, field: 'name' | 'operator', raw: string
 
 // ── 电表用电量(录入收编辑模式,EDIT-MODE-SPEC 2026-07-18 用户修订;乐观更新+PUT 回包校正) ──
 function commitMeter(u: CpPowerUsageDTO, raw: string) {
+  if (!editReading.value) return
   // ponytail: 后端无删除口(uk upsert),留空视为不动;录 0 表达"本月无用电"
   if (raw.trim() === '') return
   const v = Number(raw)
@@ -220,9 +279,19 @@ function startEdit(r: (typeof drawerRows.value)[number]) {
 }
 function cancelForm() { editId.value = null; adding.value = false }
 watch(openSt, cancelForm)   // 换桩/关抽屉时收起编辑行
-watch(editMode, v => { if (!v) cancelForm() })   // 退出编辑模式收起编辑行(v2:浏览态零写入口,含残留输入行)
+// 退出编辑模式收起一切写入口(v2:浏览态零写入口)。
+// ⚠ 两个弹窗必须一起关:它们的 v-if 只判自己那个 ref,而 editMode 会**就地**转假
+//   (被接管 / 30 分钟提权到期)—— 弹窗留着,里面的「新增」「确认导入」照样 POST,
+//   浏览态下写库,写的还是一把已归别人的期锁。
+watch(editMode, v => {
+  if (v) return
+  cancelForm()
+  stationDlg.value = false
+  importing.value = false
+})
 
 async function saveForm() {
+  if (!editReading.value) return
   if (!openSt.value) return
   if (!form.value.readDate) { alert('请选择日期'); return }
   const c = num(form.value.chargeKwh), f = num(form.value.fee), rv = num(form.value.revenue)
@@ -232,7 +301,7 @@ async function saveForm() {
     if (editId.value != null) await cpMeterApi.updateReading(editId.value, req)
     else await cpMeterApi.createReading(req)
     cancelForm()
-    await loadMonth()   // 记录变动 → Σ充电量/损耗一并刷新
+    await reloadAfterWrite()   // 记录变动 → Σ充电量/损耗 + 矩阵着色一并刷新
   } catch (e) {
     // 同桩同日 409 等 → 后端中文 message 直达
     alert((e as { message?: string })?.message ?? '保存失败')
@@ -240,16 +309,18 @@ async function saveForm() {
 }
 
 async function delRow(id: number, date: string) {
+  if (!editReading.value) return
   if (!confirm(`确认删除 ${date} 的充电记录?`)) return
-  try { await cpMeterApi.deleteReading(id); await loadMonth() }
+  try { await cpMeterApi.deleteReading(id); await reloadAfterWrite() }
   catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }
 }
 
 async function delStation() {
+  if (!editStation.value) return
   const st = openSt.value
   if (!st) return
   if (!confirm(`确认删除充电桩「${st.name}」?有充电记录的桩不可删除。`)) return
-  try { await cpMeterApi.deleteStation(st.id); openSt.value = null; await loadStations(); await loadMonth() }
+  try { await cpMeterApi.deleteStation(st.id); openSt.value = null; await loadStations(); await reloadAfterWrite() }
   catch (e) { alert((e as { message?: string })?.message ?? '删除失败') }   // 有记录 409 → 中文守卫文案
 }
 
@@ -264,6 +335,7 @@ function openStationDlg() {
   stationDlg.value = true
 }
 async function submitStation() {
+  if (!editStation.value) return
   const name = stForm.value.name.trim()
   const operator = stForm.value.operator.trim()
   if (!name) { stErr.value = '请输入桩名'; return }
@@ -271,7 +343,7 @@ async function submitStation() {
   try {
     await cpMeterApi.createStation({ name, operator, vehicleType: stForm.value.vehicleType as 'car' | 'ebike' })
     stationDlg.value = false
-    await loadStations(); await loadMonth()   // 新运营商 → 电表小节新行
+    await loadStations(); await reloadAfterWrite()   // 新运营商 → 电表小节新行
   } catch (e) {
     stErr.value = (e as { message?: string })?.message ?? '新增充电桩失败'   // 重名 409 中文文案
   }
@@ -285,9 +357,10 @@ const importResult = ref<ImportResultDTO | null>(null)
 const importCtx: ImportCtx = {}
 async function onImport(payload: ImportRec[] | { label?: string; records: ImportRec[] }[], fileName: string) {
   importing.value = false
+  if (!editReading.value) return
   try {
     importResult.value = await runImport('cpMeter', payload as never, importCtx, fileName)
-    await loadMonth()
+    await reloadAfterWrite()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
   }
@@ -296,6 +369,7 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
 // ── 模拟填充(编辑态;照 ElecCostView:confirm→POST→alert→重载):按附表7/8 充电汇总推导当前年分桩月末记录与电表 ──
 const simulating = ref(false)
 async function onSimulate() {
+  if (!editMode.value || !canRun.value) return   // 模拟填充=整年批量派生,billing-run 权
   if (simulating.value) return
   if (!confirm(`模拟填充 ${year.value} 全年：按附表7/8 充电汇总(万城万/小桔/叮叮充/电信)推导各桩月末充电记录与电表用电量(小桔按 60/40 拆快充1/慢充1,通道费=收益×5%,均为假设口径)。\n\n只填空位与既有「模拟」灰标记录，绝不覆盖手工录入/导入的数据。确认执行？`)) return
   simulating.value = true
@@ -345,9 +419,18 @@ async function onTemplate() {
     @retry="loadMonths"
   />
 
+  <!-- 桩清单一次都没拿到:没有它连表都铺不出来,硬失败面(照 PvMeterView) -->
+  <div v-else-if="!stations && stationsErr" class="cm-gate-fail">
+    <component :is="iconFor('alert-triangle')" :size="18" />
+    <span>{{ stationsErr }}</span>
+    <Button variant="outline" size="sm" @click="loadStations">重试</Button>
+  </div>
+
   <div v-else-if="!stations || !readings || !usageRows" class="page-loading"><span class="page-spin" /></div>
 
   <div v-else class="cm-page">
+    <!-- 换期在途的唯一信号(§06 第一档):熬过 200ms 才亮 -->
+    <FPLoadBar :on="veil" />
     <!-- 标题行 -->
     <div class="cm-head">
       <div class="cm-headl">
@@ -385,18 +468,32 @@ async function onTemplate() {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充
         </Button>
-        <Button variant="filled" size="sm" :disabled="exporting" @click="onExport">
+        <!-- 失败态/在途禁导出(照 PvMeterView):失败清成 [] 后导出的是全桩全零表,与真零月一致;
+             换期在途时期标已是新期而数字是上一期的,文件离开系统后无从分辨 -->
+        <Button variant="filled" size="sm" :disabled="exporting || !!loadErr || reloading"
+                :title="loadErr ? '数据未加载成功,导出会得到一份全零的表 —— 先重试'
+                        : reloading ? '本期记录还在路上,现在导出拿到的是上一期的数' : undefined"
+                @click="onExport">
           <template #leading><component :is="iconFor('download')" :size="14" /></template>
           导出
         </Button>
         <!-- 编辑模式:本屏三把写权限任一有即可进(模拟填充只需 billing-run),进去后各按钮再各判各的 -->
+        <!-- 失败态禁"进"不禁"出"(组件的 :disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :disabled="!editMode && !!loadErr"
+                          :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
                           @toggle="toggleEdit()" />
       </div>
     </div>
 
+    <FPLoadError v-if="loadErr" @retry="retryLoad">
+      <div v-if="readErr">{{ year }}年{{ month }}月记录加载失败:{{ readErr }} —— 表内为空,不拿上一期的数顶替,编辑模式已锁。</div>
+      <div v-if="stationsErr">{{ stationsErr }} —— 桩档案停留在上次拉到的版本。</div>
+    </FPLoadError>
+
     <!-- 空态引导(spec §2:去导入或抽屉手录;导入入口受编辑模式管) -->
-    <div v-if="myReadings.length === 0" class="cm-empty">
+    <!-- ⚠ 排除 loadErr:失败态下 readings 被清成 [],「暂无记录」会把失败说成「真的没有」 -->
+    <div v-if="!loadErr && myReadings.length === 0" class="cm-empty">
       <component :is="iconFor('info')" :size="14" />
       <span>
         {{ year }}年{{ month }}月暂无充电记录 ——
@@ -406,8 +503,9 @@ async function onTemplate() {
       </span>
     </div>
 
-    <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列) -->
-    <Card surface="white" :padding="0" class="cm-card">
+    <!-- 主表:一行一桩;列宽铁律(fixed 布局,桩名=唯一弹性列)。fp-stale 带 pointer-events:none -->
+    <Card surface="white" :padding="0" class="cm-card"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="cm-tablewrap">
         <table class="cm-table">
           <colgroup>
@@ -505,7 +603,9 @@ async function onTemplate() {
       :fixedHeight="true"
       @close="openSt = null"
     >
-      <div v-if="drawerRows.length === 0 && !adding" class="cm-dempty">
+      <!-- 只判 readErr 不判合并槽:桩档案挂掉时记录是好好的,拿 loadErr 拦会藏掉真实记录 -->
+      <div v-if="readErr" class="cm-dempty">本月记录未加载成功 —— 关掉抽屉点失败条上的「重试」,别在这里录。</div>
+      <div v-else-if="drawerRows.length === 0 && !adding" class="cm-dempty">
         该桩本月暂无充电记录{{ editReading ? ',点下方「新增记录」手动录入,或在列表页「导入」整月 Excel。' : canReading ? ',进入编辑模式后可录入或导入。' : '。' }}
       </div>
       <div v-else class="cm-dwrap">
@@ -640,7 +740,12 @@ async function onTemplate() {
 .cm-permonth:hover { color: var(--hue-blue); border-color: var(--hue-blue); }
 .cm-per { flex: 0 0 auto; font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-bold); }
 
-.cm-page { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
+.cm-gate-fail {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  height: 100%; color: var(--hue-red); font-size: 13px;
+}
+/* position: relative —— FPLoadBar 是 absolute,宿主不给参照它会认 AppShell 的 .fp-main-card */
+.cm-page { position: relative; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; box-sizing: border-box; max-width: 1600px; margin: 0 auto; width: 100%; }
 
 /* ── 标题行 ── */
 .cm-head { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
