@@ -337,6 +337,23 @@ class PresenceStoreTest {
     }
 
     @Test
+    void aRefusedAcquireDoesNotEatThePendingNotice() {
+        // acquire 清陈旧通知只许在**合法占到**时发生。被拒的那一下也清的话:
+        // 张三被李四(经张主管授权)接管,通知还没送达;他在另一页签点「编辑」被拒 ——
+        // 一次性通知被吃掉,下一拍只剩派生兜底,authorizerName 永久丢失,
+        // 弹窗那句「由 张主管 授权」消失 —— 而它正是被接管者申诉的依据(takeover javadoc 明写)。
+        store.acquire(SCOPE, "zhangsan", "张三");
+        store.takeover(SCOPE, "lisi", "李四", "张主管");
+
+        assertThat(store.acquire(SCOPE, "zhangsan", "张三")).as("前提:被拒").isNotNull();
+
+        PresenceStore.Eviction notice = store.heartbeat(SCOPE, "zhangsan", clock.instant());
+        assertThat(notice).isNotNull();
+        assertThat(notice.authorizerName())
+            .as("被拒的 acquire 不许吃掉一次性通知 —— 授权人姓名只有它里面有").isEqualTo("张主管");
+    }
+
+    @Test
     void aLateReleaseWithOldFenceCannotKillTheNewLock() {
         // release 不 await、beacon 会补发 —— 晚到的 DELETE 带着**上一代**的围栏,
         // 不许删掉同一用户随后又占到的新锁(服务端只认 user 时就会误删)。

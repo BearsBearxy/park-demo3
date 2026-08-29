@@ -72,7 +72,9 @@ public class LockService {
             store.takeover(scope, me(), myName());
             audit.log("lock.takeover", "scope:" + scope,
                 "接管 " + cur.displayName() + " 的编辑锁（持有人已空闲 " + idleMin + " 分钟，免授权）");
-            return LockDTO.ok(store.state(scope) == null ? null : store.state(scope).acquiredAt().toEpochMilli());
+            LockState granted = store.state(scope);   // 读一次存局部(同 acquire):两次独立读之间
+            // 一条迟到的无围栏 DELETE 恰好删掉锁时,第二次读到 null → NPE → 接管明明成了却回 500
+            return LockDTO.ok(granted == null ? null : granted.acquiredAt().toEpochMilli());
         }
 
         // 持有人正在操作 —— 裸接管等于给静默覆盖换了个入口，必须有人当场背书
@@ -89,7 +91,9 @@ public class LockService {
         // 审计必须记两个人:手是请求者的,责任是授权人的
         audit.logAuthorized("lock.takeover", "scope:" + scope, boss.getUsername(),
             "接管 " + cur.displayName() + " 的编辑锁（持有人活跃中，经授权）");
-        return LockDTO.ok(store.state(scope) == null ? null : store.state(scope).acquiredAt().toEpochMilli());
+        LockState granted = store.state(scope);   // 读一次存局部(同 acquire):两次独立读之间
+            // 一条迟到的无围栏 DELETE 恰好删掉锁时,第二次读到 null → NPE → 接管明明成了却回 500
+            return LockDTO.ok(granted == null ? null : granted.acquiredAt().toEpochMilli());
     }
 
     // ══════════ 内部 ══════════

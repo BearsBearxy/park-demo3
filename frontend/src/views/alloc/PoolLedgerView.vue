@@ -78,7 +78,12 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
   useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
-onDeactivated(() => { poolDlg.value = false })
+// alertOpen 必须一起收:告警面板是 FPSideDrawer(Teleport to body),子树随 KeepAlive
+// 停用消失时它留在 body 上飘着,盖在下一个屏上(同 MeterView 的 openId)。
+onDeactivated(() => { poolDlg.value = false; alertOpen.value = false })
+// 编辑态就地转假(接管/提权到期)也要关池配置弹窗 —— 它的 v-if 不判编辑态,
+// 留着的话浏览态下「保存」照样 PUT 池配置(同 MeterView:162)。
+watch(editMode, v => { if (!v) poolDlg.value = false })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const fmt = (v: number | null | undefined) =>
@@ -185,14 +190,16 @@ const route = useRoute()
 function applyHandoff(): boolean {
   const q = route.query
   const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
-  // 同 ParamCenterView:深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
-  // (裸写在权限不齐时会被守卫下一个 tick 静默弹回浏览态;toggle 会弹授权窗)
-  if (q.generate === '1' && canEnter.value) toggleEdit()
-  if (!m) return false
+  // ⚠ 先认领期,再进编辑(同 ParamCenterView 2026-08-29 的修复):顺序反了的话
+  //   toggleEdit 占的是 `billing-chain:0-00`(期未认领),随后 adoptYm 改期 ——
+  //   enter() 的占锁后复核发现期变了,还锁不进,深链彻底进不去编辑态。
+  //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
   // 只在还没有期时认领(store.adoptYm):已经选好期的人不该被一条链接顶到别的月去。
-  // 链内跳转过来的 ym 与组级期本就相同,这里是给外部深链兜底。
-  period.adoptYm(q.ym as string)
-  return true
+  if (m) period.adoptYm(q.ym as string)
+  // 深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
+  // (裸写在权限不齐时会被守卫下一个 tick 静默弹回浏览态;toggle 会弹授权窗)
+  if (q.generate === '1' && period.picked && canEnter.value) toggleEdit()
+  return !!m
 }
 
 onMounted(() => {
@@ -276,6 +283,8 @@ const generating = ref(false)
 // 摊出超应分摊/缺起止日期户未入名册/缺参。全期别一份,不随 zone 页签过滤;换账期清空。
 const genWarnings = ref<string[]>([])
 async function onGenerate() {
+  // 写口自守(照 BillNoticesView 口径):生成是「先删后插」的整月覆盖,浏览态一定打不出去
+  if (!editMode.value) return
   if (generating.value) return
   if (generated.value && !confirm(`重新生成 ${ym.value}:按月先删后插覆盖池/损耗快照。读数或配置已变时数字将按当前数据重算。确认?`)) return
   generating.value = true
@@ -674,6 +683,7 @@ const memberHint = computed(() => form.value.method === 'direct'
 function addLink() { form.value.links.push({ ruleId: '', type: 'fold_price' }) }
 
 async function submitPool() {
+  if (!editMode.value) return
   const f = form.value
   if (f.id == null && !f.feeName.trim()) { poolErr.value = '请填写费项(池名末段,如 走廊灯/消防/货梯)'; return }
   const num = (s: string) => (s.trim() === '' ? null : Number(s))
@@ -713,6 +723,7 @@ async function submitPool() {
   } catch (e) { poolErr.value = errMsg(e, '保存失败') } finally { saving.value = false }
 }
 async function delPool() {
+  if (!editMode.value) return
   const f = form.value
   if (f.id == null) return
   if (!confirm(`确认删除池「${formAutoName.value}」?已有核算结果的池不可删除(历史月已快照)。`)) return

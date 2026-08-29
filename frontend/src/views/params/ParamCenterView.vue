@@ -67,6 +67,14 @@ onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
   histRow.value = null; changesOpen.value = false; alertOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出
 })
+// 编辑态**就地**转假(被接管 / 30 分钟提权到期)也要关写 UI —— 它们的 v-if 只判自己的 ref,
+// 不判编辑态:改参数的浮层、新增例外的抽屉留在屏上,里面的保存照样 PUT(同 MeterView:162)。
+watch(editMode, v => {
+  if (v) return
+  editRow.value = null
+  exOpen.value = false
+  addExcl.value = null
+})
 
 // ── 账期:出账链组级(stores/billingPeriod,2026-08-28 设计稿 §3.1) ──
 // 顶栏那对年月 Select 已撤 —— 期由出账月矩阵一处选定,五屏共读一份,不可能再各落各的
@@ -271,6 +279,9 @@ function bumpPending() {
   if (s.poolSnapshotAt || s.billBatchAt) s.stale = true
 }
 async function put(req: ParamPutReq): Promise<boolean> {
+  // 写口自守:全屏参数写全走这一个漏斗,守这一处 = 六个调用方一次到位(照 BillNoticesView 口径)。
+  // editMode 会就地转假(接管/提权到期),而调用方的按钮各有各的 v-if —— 漏一个就是浏览态写库。
+  if (!editMode.value) return false
   const my = seq
   try {
     const nr = await paramsApi.put(req, ym.value)
@@ -387,6 +398,7 @@ function gotoCoefBook() {
 // ── 闭环:重算本月(池 → 损耗 → 催缴单)/ 复制上月电价 ──
 const busy = ref(false)
 async function onRecalc() {
+  if (!canRecalc.value) return
   // 从未生成过催缴单的月(spec §10.6):「重算」其实是首次生成,用户须知道会新添一批催缴单
   const first = status.value && !status.value.billBatchAt
     ? `。注意：${ym.value} 尚无催缴单，本次将首次生成该月催缴单批次。` : '（已确认、已导出的户照旧跳过）。'
@@ -408,6 +420,7 @@ async function onRecalc() {
 const batchDone = ref(0)
 const batchTotal = ref(0)
 async function onRecalcOthers() {
+  if (!canRecalc.value) return
   const list = otherMonths.value.slice()
   if (!list.length || busy.value) return
   if (!confirm(`确认重算这 ${list.length} 个月（${list.join('、')}）？将逐月按当前参数重新生成 池核算 / 楼栋损耗 / 催缴单（已确认、已导出的户照旧跳过）。`)) return
@@ -429,6 +442,7 @@ async function onRecalcOthers() {
   else flash.value = `已重算 ${batchDone.value} 个月：${list.join('、')}`
 }
 async function onCopy() {
+  if (!editMode.value) return
   if (!confirm(`确认复制上月电价 → ${ym.value}？仅复制电价 6 个月变键的上月版本,目标月已有版本的键跳过不覆盖。`)) return
   busy.value = true
   try {

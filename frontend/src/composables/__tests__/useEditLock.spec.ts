@@ -190,11 +190,13 @@ describe('编辑模式 × 编辑锁', () => {
     const w = mount(Host)
     const pending = m.toggle()
     w.unmount()                            // 宿主没了
-    settle({ granted: true, holder: null })
+    settle({ granted: true, holder: null, acquiredAt: 1756500001000 })
     await pending
 
     expect(m.editMode.value).toBe(false)
-    expect(api.delete, '迟到批下来的锁要立刻还').toHaveBeenCalledWith(`/locks/${SCOPE}`)
+    // ⚠ 迟到归还也要带围栏(r.acquiredAt 那一支的唯一覆盖):改成裸 null 这里当场红
+    expect(api.delete, '迟到批下来的锁要立刻还,且带围栏')
+      .toHaveBeenCalledWith(`/locks/${SCOPE}?t=1756500001000`)
   })
 
   it('心跳带回「你被接管了」→ 当场退出编辑态，并交出接管者是谁', async () => {
@@ -324,7 +326,9 @@ describe('编辑模式 × 编辑锁', () => {
     // 别人随时能进来盖掉他正在改的东西 —— 比不加确认框更糟。
     // pagehide 只在页面真的要走时才触发,正是该放释放动作的地方。
     useAuthStore().permissions = PERMS
-    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    // 夹具带围栏:beacon 是围栏存在的头号理由(keepalive fetch 关页后照发、会晚到 ——
+    // 用户在新页签重进占到新锁,无围栏的晚到 DELETE 会把新锁删掉,3 秒内被派生失锁踢出)。
+    vi.mocked(api.post).mockResolvedValueOnce({ granted: true, holder: null, acquiredAt: 1756500002000 } as never)
     const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
       Promise.resolve(new Response(null, { status: 204 })))
     vi.stubGlobal('fetch', f)
@@ -344,6 +348,9 @@ describe('编辑模式 × 编辑锁', () => {
 
     window.dispatchEvent(new Event('pagehide'))
     expect(mine(), '真的要走了才还锁').toHaveLength(1)
+    // ⚠ 卸载归还必须带围栏 —— useEditLock.ts 把 heldToken 传给 releaseOnUnload、
+    //   locks.ts 拼 ?t=,两头任何一头断线这里当场红(此前该路径零 URL 断言)。
+    expect(String(mine()[0][0]), '卸载归还的 URL 要带围栏').toContain('?t=1756500002000')
     vi.unstubAllGlobals()
   })
 

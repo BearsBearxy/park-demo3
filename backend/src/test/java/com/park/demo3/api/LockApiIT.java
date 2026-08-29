@@ -112,6 +112,39 @@ class LockApiIT extends AbstractMysqlIT {
             .contains("只读账号");
     }
 
+    @Test
+    void theFenceRidesTheWireBothWays() throws Exception {
+        // 围栏的机制由 PresenceStoreTest 钉死;这里钉**HTTP 两头的接线**:
+        // acquire 响应必须带 acquiredAt(LockService:44),DELETE 的 ?t 必须透传(LockController:40)。
+        // 两头任何一头断线,客户端 heldToken 恒 null → 所有 DELETE 无围栏 ——
+        // 「晚到的 DELETE 误删同一用户随后占到的新锁」整个回归,而此前零测试变红。
+        String a = admin();
+        String zhang = mkUser(a, "it-lock-fence", "finance_clerk");
+        String li    = mkUser(a, "it-lock-fence2", "finance_clerk");
+        try {
+            String zt = login(zhang, PASS), lt = login(li, PASS);
+            String scope = SCOPE + "-fence";
+
+            String first = acquire(zt, scope);
+            Number fence = JsonPath.read(first, "$.data.acquiredAt");
+            assertThat(fence).as("占锁响应必须发围栏,否则客户端永远拿不到").isNotNull();
+
+            // 带**旧代**围栏的 DELETE 打不掉现在这把锁(模拟晚到的旧 DELETE)
+            mvc.perform(delete("/api/locks/" + scope + "?t=" + (fence.longValue() - 1))
+                .header("Authorization", hdr(zt))).andExpect(status().isOk());
+            assertThat(granted(acquire(lt, scope)))
+                .as("旧围栏删不掉新锁 —— 别人仍然进不来").isFalse();
+
+            // 对上代次的 DELETE 才真还
+            mvc.perform(delete("/api/locks/" + scope + "?t=" + fence.longValue())
+                .header("Authorization", hdr(zt))).andExpect(status().isOk());
+            assertThat(granted(acquire(lt, scope)))
+                .as("正确围栏还掉之后,下一个人进得来").isTrue();
+            mvc.perform(delete("/api/locks/" + scope).header("Authorization", hdr(lt)))
+                .andExpect(status().isOk());   // 收尾:锁是 JVM 级内存态
+        } finally { release(zhang); cleanup(zhang); cleanup(li); }
+    }
+
     // ══════════ helpers ══════════
 
     private String acquire(String token, String scope) throws Exception {
