@@ -17,6 +17,7 @@ import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { buildYearOptions } from '@/utils/yearGate'
 import { latestPeriodOf } from '@/utils/defaultPeriod'
 import { onReactivated } from '@/composables/onReactivated'
+import { useViewport } from '@/composables/useViewport'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
 import { iconFor } from '@/components/ds/icon'
@@ -108,7 +109,20 @@ const colCount = 11
 // ponytail: 归组再并进一栋(4 栋一组 ≈ 430px)会再截 —— 到时按 units 里最长 label 估宽
 const LBL_W = 360
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixLbl = { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }
+// RESPONSIVE-LAYOUT-SPEC §5.3 S 档:sticky 首列 360px 在 390px 视口占 92%,锁着它等于只剩这一列
+// —— 与 PoolLedgerView「左三右二合计 540px 比屏还宽」同一个条件,照它同一个解法:
+// **原位退成普通列**(列宽/列序一根不动,只去 sticky),表在 .ll-wrap 内正常横滚。
+// ⚠ 本屏 §5.3 原注写的是「sticky 本就只有首列一根,S 档无需收敛」——那句按一期旧宽 230(59%)成立,
+//   但二期当时已是 360,故该判断本就不覆盖二期;2026-08-29 列宽两期统一到 360 后三期全落到 92%。
+// 档位判定走 useViewport(offset 是内联 style,CSS 媒体块盖不住;jsdom 无 matchMedia 恒 xl → 桌面档与既有测试零变化)
+const { tier } = useViewport()
+const sTier = computed(() => tier.value === 's')
+// 退级时 class 一起摘:.ll-fix 带不透明背景 + z-index,留着会在无 sticky 时糊住相邻格
+const fixCls = computed(() => (sTier.value ? undefined : 'll-fix'))
+const fixThCls = computed(() => (sTier.value ? undefined : 'll-fix-th ll-fix'))
+const fixLbl = computed(() => (sTier.value
+  ? w(LBL_W)
+  : { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }))
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
 // LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)
@@ -200,7 +214,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
       <table class="ll-table">
         <thead>
           <tr>
-            <th class="ll-th ll-fix-th ll-fix" :style="fixLbl">位置</th>
+            <th class="ll-th" :class="fixThCls" :style="fixLbl">位置</th>
             <th class="ll-th" :style="w(108)">总表用电量</th>
             <th class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计(仅二期有铝缆表,一期显'–')">铝缆用电量</th>
             <th class="ll-th" :style="w(108)">分表用电量</th>
@@ -215,7 +229,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         </thead>
         <tbody>
           <tr v-for="u in units" :key="u.headBuildingId">
-            <td class="ll-fix" :style="fixLbl">
+            <td :class="fixCls" :style="fixLbl">
               <span class="ll-lbl" :title="u.label">
                 {{ u.label }}
                 <span v-if="u.variant === 'share_only'" class="ll-var" title="仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分母 + 加点">仅按公摊分摊度数</span>
@@ -264,7 +278,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
           </tr>
           <!-- 对账区两行(读时派生;一期的合计排除 供电局对账=不参与 的 A座):供电局读数落「总表用电量」列,各栋合计落「分表用电量」列 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon">
-            <td class="ll-fix" :style="fixLbl"><span class="ll-lbl">{{ r.label }}</span></td>
+            <td :class="fixCls" :style="fixLbl"><span class="ll-lbl">{{ r.label }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" title="供电局总表本月读数">{{ fmt(r.supplyQty) }}</span></td>
             <td></td>
             <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" :title="i === 0 ? '各栋总表合计' : '各栋分表合计'">{{ fmt(r.sumQty) }}</span></td>
@@ -277,7 +291,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         <!-- tfoot 合计:总表/铝缆/分表/损耗量 合计(率不合计) -->
         <tfoot>
           <tr>
-            <th class="ll-fix" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
+            <th :class="fixCls" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.cQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.cableQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.dQty) }}</span></th>
