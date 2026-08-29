@@ -445,8 +445,10 @@ describe('ParamCenterView 编辑态守卫', () => {
     vm.editMode = true
     await nextTick()
     put.mockClear()
-    put.mockResolvedValueOnce({ key: 'price_p1', scopeLabel: '全园', label: '一期电价',
-      scope: 'zone:p1', zone: 'p1', valueText: '1.1', rangeText: '2024-02', editable: true } as never)
+    // 回包必须是完整 ParamRowDTO(带 group)—— 写后这行会被 patch 进 rows,缺 group 会让
+    // grouped computed 在断言后异步炸成 unhandled rejection(真后端不缺;是 as never 绕过了类型)
+    put.mockResolvedValueOnce(row({ key: 'price_p1', group: 'monthly', scopeLabel: '全园', label: '一期电价',
+      scope: 'zone:p1', valueText: '1.1', rangeText: '2024-02' }) as never)
     await vm.put({ key: 'price_p1', scope: 'zone:p1', acctMonth: '2024-02', mode: 'month', value: 1.1 })
     expect(put).toHaveBeenCalledTimes(1)
     w.unmount()
