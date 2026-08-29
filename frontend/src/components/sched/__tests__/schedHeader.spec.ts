@@ -211,3 +211,59 @@ describe('SchedHeader copyText 透传(被接管的「复制我的改动」)', ()
     }
   })
 })
+
+describe('SchedHeader 还锁时序(锁跟着 edit 状态走)', () => {
+  const press = async (w: ReturnType<typeof mk>) => {
+    await w.find('.lc-lockbtn').trigger('click')
+    await flushPromises()
+  }
+
+  it('❗用户点「完成」只递话不还锁 —— 脏检查屏的保存确认要在锁下进行', async () => {
+    // 旧时序:点「完成」先 release 再 emit。附表10/损益表 dirty>0 时不翻 edit、
+    // 先弹「保存确认」—— 锁已经没了,确认框里的「保存修改」是**无锁写**,
+    // 可能盖掉刚 acquire 到锁的另一个人正在编辑的数据。
+    const w = mk()
+    await press(w)                      // 进编辑(占锁)
+    await w.setProps({ edit: true })
+    vi.mocked(api.delete).mockClear()
+
+    await press(w)                      // 点「完成」
+    expect(w.emitted('toggle-edit')!.at(-1), '递话照发(forced=false)').toEqual([false])
+    expect(api.delete, '屏还没确认退出,锁不许还 —— 它要陪到保存确认结束').not.toHaveBeenCalled()
+  })
+
+  it('❗屏真的翻假(保存成功/放弃/简单屏直翻)→ 这时才还锁', async () => {
+    const w = mk()
+    await press(w)
+    await w.setProps({ edit: true })
+    vi.mocked(api.delete).mockClear()
+    await press(w)                      // 点「完成」,S10 式的屏此刻可能在弹确认
+    expect(api.delete).not.toHaveBeenCalled()
+
+    await w.setProps({ edit: false })   // 屏确认完(保存成功或放弃)才翻假
+    await flushPromises()
+    expect(api.delete, '收尾统一挂在 edit 翻假上').toHaveBeenCalledWith('/locks/sched:salary:2025-03')
+  })
+
+  it('被接管路径的收尾也走同一处 —— closeEditor/endElevation 不再漏(既有缺口)', async () => {
+    // 旧代码接管回调只 emit,从不跑 closeEditor/endElevation。现在屏翻假时统一收尾。
+    const w = mk()
+    await press(w)
+    await w.setProps({ edit: true })
+    const auth = useAuthStore()
+    const end = vi.spyOn(auth, 'endElevation')
+
+    vi.mocked(api.put).mockResolvedValue({
+      users: [],
+      evictions: [{ scope: 'sched:salary:2025-03', by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+    const { usePresenceStore } = await import('@/stores/presence')
+    await usePresenceStore().ping()
+    await flushPromises()
+    expect(w.emitted('toggle-edit')!.at(-1)).toEqual([true])
+
+    await w.setProps({ edit: false })   // 屏收到 forced 翻假
+    await flushPromises()
+    expect(end, '接管后授权也要结束 —— 旧路径漏跑这一步').toHaveBeenCalled()
+  })
+})

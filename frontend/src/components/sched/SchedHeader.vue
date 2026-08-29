@@ -69,17 +69,36 @@ const { lockedBy, evictedBy } = lock
  */
 const heldByOther = lock.watchScope(() => props.scope)
 
-/** 退出编辑态的四件事。`edit` 是 prop,组件自己改不了 —— 只能发事件请上层翻。 */
-function exitEdit(forced = false) {
+/**
+ * edit 真正退下来时的统一收尾。**锁跟着 edit 状态走**:屏什么时候真的翻假,什么时候才还。
+ *
+ * ⚠ 用户点「完成」不再先还锁(2026-08-30 复查的后半):脏检查屏(附表10/损益表)在
+ *   dirty>0 时不翻 edit、先弹「保存确认」—— 旧时序下锁已经还了,确认框里的「保存」
+ *   是**无锁写**,可能盖掉刚 acquire 到锁的另一个人正在编辑的数据。
+ *   现在锁一直握到屏确认退出(保存成功或放弃 → edit 翻假)为止。
+ *
+ * 所有退出路径都汇到这里:用户点完成 / 脏确认后 / 被接管 / 提权到期 / 换期。
+ * 三件事都幂等(被接管路径 held 已清,release 是空操作)——
+ * 顺带修掉一个既有缺口:接管路径此前只 emit,从不跑 closeEditor/endElevation。
+ */
+function exitCleanup() {
   auth.closeEditor(meId)      // 显式出集合:watch 是 pre flush,下一行同步就要用到结果
   void auth.endElevation()
   lock.release()              // 还的是 held 那把,也就是**进编辑态时**占的那个 scope
+}
+watch(() => props.edit, (on) => { if (!on) exitCleanup() })
+
+/** 强制退出(被接管/提权到期/换期):锁**立即**还(scope 要变/权限已失,等不得屏翻),再请屏翻。 */
+function exitEdit(forced = false) {
+  exitCleanup()
   emit('toggle-edit', forced)
 }
 
 async function onToggleEdit() {
   if (!props.edit && !auth.can(props.perm)) { asking.value = [props.perm]; return }
-  if (props.edit) { exitEdit(); return }
+  // 用户点「完成」:**只递话,不还锁** —— 屏可能还要问一句「有 N 处未保存」,
+  // 锁要陪到那道确认结束(edit 翻假时上面的 watch 才收尾)。
+  if (props.edit) { emit('toggle-edit', false); return }
   // 权限齐 ≠ 进得去:没传 scope 的屏原样直接进;传了的必须先占到锁
   if (props.scope && !(await lock.acquire(props.scope))) return
   emit('toggle-edit')
