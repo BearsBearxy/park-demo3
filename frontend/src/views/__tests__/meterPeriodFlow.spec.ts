@@ -105,6 +105,23 @@ describe('光伏分栋抄表 · 选期动线', () => {
     expect(w.find('.fmg').exists()).toBe(true)
   })
 
+  it('❗一条数据都没有时照样画得出矩阵 —— 否则这本账彻底进不去', async () => {
+    // 后端三个 /months 在空表时**正常返回 []**,不抛错。
+    // 曾经用 `!dataMonths.length` 当加载中,于是零数据 → 门永久转圈 → 矩阵一次不渲染,
+    // 而它是进这本账的唯一入口(功能门与返回箭头都已随重设计撤掉)。
+    // 全新部署、或某车型一条抄表都没有时,那本账从此不可达,第一条也录不进去。
+    vi.mocked(pvMeterApi.months).mockResolvedValue([])
+    const w = await open()
+    expect(w.find('.page-spin').exists(), '空数据不是「加载中」').toBe(false)
+    expect(w.findAll('.bmm-card'), '当前年一行 12 张空卡').toHaveLength(12)
+    expect(w.findAll('.bmm-card.blank')).toHaveLength(12)
+
+    // 而且点得进去 —— 那正是要去录第一笔的地方
+    await w.findAll('.bmm-card')[6].trigger('click')
+    await flushPromises()
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 7)
+  })
+
   it('账期清单拉不到 → 说出来 + 给重试，不给半张矩阵', async () => {
     vi.mocked(pvMeterApi.months).mockRejectedValue(new Error('后端挂了'))
     const w = await open()

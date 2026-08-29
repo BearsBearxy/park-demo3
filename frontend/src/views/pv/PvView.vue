@@ -69,6 +69,15 @@ const {
   clear: { call: pvApi.clearImported, confirm: clearConfirm('本年', '手动/种子行不受影响。') },
 })
 
+// ⚠ 切账本必须退出编辑态。`edit` 由本层持有(useSchedScreen),锁却由子组件 SchedHeader 持有,
+//   还锁挂在 useEditLock 的 onUnmounted 上 —— 切走时 SchedHeader 卸载,**锁真的还了**,
+//   而 edit 仍是 true。切回来 SchedHeader 重新挂载,props.edit 已是 true:它的 scope 守卫有
+//   `before == null` 前提不会触发,也没有 onMounted 重新 acquire —— 于是表格以编辑态渲染
+//   却一把锁都没有,两个人能同时改同一期,后写静默盖先写(CONCURRENCY-SPEC §1.1 那个事故)。
+//   改前离开只有 SchedHeader 的 @back → goGate,而 goGate 第一件事就是 edit=false;
+//   左栏是这一刀新开的、绕过 goGate 的退出路径,得自己补上这一句。
+watch(mode, () => { edit.value = false })
+
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年电费收益·N条」)
 const yearCards = computed<YearCard[]>(() =>
   (overview.value?.years ?? []).map(y => ({

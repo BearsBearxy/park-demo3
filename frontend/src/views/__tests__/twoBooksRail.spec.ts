@@ -76,7 +76,9 @@ describe('光伏 · 一屏两本账', () => {
     const w = await open()
     await w.findAll('.br-item')[1].trigger('click')
     await flushPromises()
-    expect(w.find('.fmg').exists(), '运营账那支自己的选期矩阵').toBe(true)
+    // ⚠ 判据必须是**矩阵真的画出来了**。`.fmg` 是 FPMonthGate 的根 div,
+    //   转圈那一支也挂在它下面 —— 用它当判据,门永久转圈时测试照样绿(这条曾经真的绿过)。
+    expect(w.findAll('.bmm-card').length, '零数据也该给出当前年一行 12 张空月卡').toBe(12)
     expect(w.findAll('.br-item'), '左栏常驻').toHaveLength(2)
     expect(w.findAll('.br-item')[1].classes()).toContain('on')
   })
@@ -89,7 +91,21 @@ describe('光伏 · 一屏两本账', () => {
 
     const again = await open()
     expect(again.findAll('.br-item')[1].classes(), '不该退回默认那本').toContain('on')
-    expect(again.find('.fmg').exists()).toBe(true)
+    expect(again.findAll('.bmm-card').length).toBe(12)
+  })
+
+  it('❗切账本必须退出编辑态 —— 否则切回来就是「有编辑态、没有锁」', async () => {
+    // 锁挂在子组件 SchedHeader 的 onUnmounted 上,切走时**真的还了**;
+    // 而 edit 由本层持有,不归零的话切回来表格以编辑态渲染却一把锁都没有,
+    // 别人同时也能占到同一期 —— 两人各改各的,后写静默盖先写。
+    const w = await open()
+    const vm = w.vm as unknown as { edit: boolean; mode: string }
+    vm.edit = true
+    await flushPromises()
+
+    await w.findAll('.br-item')[1].trigger('click')   // 切到运营账
+    await flushPromises()
+    expect(vm.edit, '切账本没退出编辑态').toBe(false)
   })
 
   it('本机存的值被人改坏了就退回默认，不白屏', async () => {

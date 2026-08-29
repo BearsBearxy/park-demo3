@@ -57,12 +57,17 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 // 最后一个有数据的月,用户从没被问过要看哪个月:BOOK-WORKBENCH-SPEC §7-1 一字不差禁止的
 // 「顺手落进某个期」。出账链五屏 2026-08-28/29 刚从这个形状迁走,这屏跟上。
 // 期存 store 不存屏内 ref:侧栏点击走 openFresh 会重建组件,屏内 ref 每次被清掉。
-const dataMonths = ref<string[]>([])
+// ⚠ null = **还没回来**;[] = 回来了、就是没有。
+//   这两件事必须分开:后端三个 /months 端点在空表时正常返回 [](不抛错),
+//   若用 `!dataMonths.length` 当加载中,零数据时门永久转圈、矩阵一次都不渲染,
+//   而它是进这本账的唯一入口 —— 那本账从此不可达,第一条也录不进去。
+//   出账链那道同形的门用的是真 `loaded` 布尔(stores/billingPeriod),这里对齐它。
+const dataMonths = ref<string[] | null>(null)
 const monthsErr = ref<string | null>(null)
 const gate = useMonthGate({
   key: 'pv-meter',
   store: ['pv-meter', 'all'],
-  months: () => dataMonths.value,
+  months: () => dataMonths.value ?? [],
 })
 const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPeriod,
         rows: gateRows, addEarlier, addLater, removeYear } = gate
@@ -325,7 +330,7 @@ async function onTemplate() {
     sub="选择月份进入该月逐站抄表 · 空月可直接进入录入 / 导入"
     :rows="gateRows"
     :scope-of="(y) => S.pvMeter(y)"
-    :loading="!dataMonths.length && !monthsErr"
+    :loading="dataMonths === null && !monthsErr"
     :error="monthsErr"
     @pick="onPickCell"
     @add-earlier="addEarlier"

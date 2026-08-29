@@ -63,13 +63,18 @@ onDeactivated(() => { stationDlg.value = false; importing.value = false })   // 
 //   满屏空、直接撞空态。现在按车型取(后端 /cp-meter/months?vehicleType=),
 //   矩阵按本车型画格,这件事本身消失。
 // ⚠ key 与手工年键都要带车型:附表7 与附表8 是两个独立的屏,各记各的期。
-const dataMonths = ref<string[]>([])
+// ⚠ null = **还没回来**;[] = 回来了、就是没有。
+//   这两件事必须分开:后端三个 /months 端点在空表时正常返回 [](不抛错),
+//   若用 `!dataMonths.length` 当加载中,零数据时门永久转圈、矩阵一次都不渲染,
+//   而它是进这本账的唯一入口 —— 那本账从此不可达,第一条也录不进去。
+//   出账链那道同形的门用的是真 `loaded` 布尔(stores/billingPeriod),这里对齐它。
+const dataMonths = ref<string[] | null>(null)
 const monthsErr = ref<string | null>(null)
 const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPeriod,
         rows: gateRows, addEarlier, addLater, removeYear } = useMonthGate({
   key: `cp-meter:${props.vehicleType}`,
   store: ['cp-meter', props.vehicleType],
-  months: () => dataMonths.value,
+  months: () => dataMonths.value ?? [],
 })
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
@@ -331,7 +336,7 @@ async function onTemplate() {
     sub="选择月份进入该月逐桩明细 · 空月可直接进入录入 / 导入"
     :rows="gateRows"
     :scope-of="(y) => S.cpMeter(vehicleType, y)"
-    :loading="!dataMonths.length && !monthsErr"
+    :loading="dataMonths === null && !monthsErr"
     :error="monthsErr"
     @pick="onPickCell"
     @add-earlier="addEarlier"
