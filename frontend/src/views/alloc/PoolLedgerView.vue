@@ -181,9 +181,15 @@ const staleMsg = computed(() => staleText(status.value, 'pool'))
 // feeKey/coefficient/extraQty,拿不到就静默回落默认值,保存即把这三项冲掉。改为记失败标记,
 // 抽屉据此禁用保存并给重试(不改调用方的 catch:那只是别让加载失败炸掉整页)。
 const rulesFailed = ref(false)
+// F2:loadRules() 是 fire-and-forget(:onMounted 里 .catch(()=>{}))——「还在飞」的窗口里
+// rulesFailed 还是 false,openPoolDlg 从 ruleById 取 feeKey 拿不到值,静默落回默认键。
+// rulesLoading 补上这段窗口;rulesNotReady 合并两种「不能存」的原因(载入中/载入失败)。
+const rulesLoading = ref(true)
+const rulesNotReady = computed(() => rulesLoading.value || rulesFailed.value)
 async function loadRules() {
   try { rules.value = await allocApi.rules(); rulesFailed.value = false }
   catch (e) { rulesFailed.value = true; throw e }
+  finally { rulesLoading.value = false }
 }
 // 主数据清单(页签切回回拉:租户改名/楼栋单元/抄表建档后不显旧清单)
 function loadMasters() {
@@ -1279,12 +1285,13 @@ async function delPool() {
              400 的红字落在视口外,看起来就是「保存无反应」 -->
         <!-- §F11:两条各自成行 —— 原来是三元式,池参数加载失败时把后端 400 的原因整条盖掉 -->
         <div class="pl-dlg-err">
-          <div v-if="rulesFailed">池参数(出口费项)未加载成功 —— 此时保存会把它冲成默认值,请先重试</div>
+          <div v-if="rulesLoading">池参数(出口费项)正在载入…请稍候再保存</div>
+          <div v-else-if="rulesFailed">池参数(出口费项)未加载成功 —— 此时保存会把它冲成默认值,请先重试</div>
           <div v-if="poolErr">{{ poolErr }}</div>
         </div>
         <Button v-if="rulesFailed" variant="outline" size="sm" @click="loadRules().catch(() => {})">重试</Button>
         <Button variant="gray" size="sm" @click="poolDlg = false">取消</Button>
-        <Button variant="filled" size="sm" :disabled="saving || rulesFailed" @click="submitPool">
+        <Button variant="filled" size="sm" :disabled="saving || rulesNotReady" @click="submitPool">
           <template #leading><component :is="iconFor('check')" :size="14" /></template>
           {{ saving ? '保存中…' : '保存并重新生成' }}
         </Button>
