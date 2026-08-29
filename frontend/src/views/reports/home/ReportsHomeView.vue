@@ -64,7 +64,11 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 </script>
 
 <template>
-  <div v-if="data" class="rh">
+  <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 800px 屏级地板——
+       头部/工具条本就 flex-wrap,卡墙 minmax 收 min(100%,·) 防窄溢(§5.5),
+       勾稽表圈在 .rh-tie-wrap 内横滚(§5.4)。加载门同挂(BillNoticesView 先例):
+       两个根都是 .fp-content 首子,漏一个就在加载瞬间闪 800px 横滚。 -->
+  <div v-if="data" class="rh fp-fluid">
     <div class="rh-head">
       <div>
         <h2 class="rh-title">报表中心</h2>
@@ -159,6 +163,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 
       <Card surface="white" :padding="0">
         <div class="rh-card-h">勾稽检查</div>
+        <!-- §5.4:窄了不动列,在包裹层内横滚(列结构任何档位不变) -->
+        <div class="rh-tie-wrap">
         <table class="rh-tie-table">
           <thead>
             <tr>
@@ -184,6 +190,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
             </tr>
           </tbody>
         </table>
+        </div>
       </Card>
 
       <Card surface="white" :padding="0">
@@ -203,7 +210,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
   </div>
 
   <!-- §6 加载门:v-else 紧邻上方状态链(DESIGN-FIDELITY §6.2) -->
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -218,7 +225,9 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 
 .rh-section-t { font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); margin:0 0 12px; display:flex; align-items:center; gap:8px; }
 .rh-section-cap { margin-left:4px; font-size:var(--fs-label); font-weight:var(--fw-regular); color:var(--text-muted); }
-.rh-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+/* minmax 下限包 min(100%,·):容器窄于 280 时(390 视口内容区)降为撑满单列而不是溢出(§5.5);
+   容器 ≥280 时 min() 取 280,与原写法逐像素一致——桌面零变化 */
+.rh-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:14px; }
 .rh-rc { display:flex; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); cursor:pointer; transition:box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard); }
 .rh-rc:hover { box-shadow:0 6px 20px rgba(28,28,28,.08); transform:translateY(-1px); }
 .rh-rc-top { display:flex; align-items:flex-start; gap:11px; }
@@ -237,6 +246,8 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-hero-ic { width:46px; height:46px; border-radius:var(--radius-md); background:var(--surface-white); border:1px solid var(--border-subtle); display:grid; place-items:center; color:var(--hue-blue); flex:0 0 auto; }
 .rh-hero-t { font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .rh-card-h { padding:14px 16px; border-bottom:1px solid var(--divider); font-size:var(--fs-h4); font-weight:var(--fw-semibold); color:var(--text-primary); }
+/* 勾稽表横滚外框(§5.4):桌面表宽 ≤ 容器时不产生滚动条,零变化;窄档滚它不滚整页 */
+.rh-tie-wrap { overflow-x:auto; }
 .rh-tie-table { width:100%; border-collapse:separate; border-spacing:0; font-family:var(--font-sans); font-size:13px; }
 .rh-tie-table th { text-align:left; font-size:12px; font-weight:var(--fw-semibold); color:var(--text-muted); padding:10px 14px; border-bottom:1px solid var(--border-subtle); }
 .rh-tie-table td { padding:12px 14px; border-bottom:1px solid var(--divider); color:var(--text-secondary); }
@@ -257,7 +268,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .rh-row-pend { width:70px; text-align:right; color:var(--text-disabled); font-size:12.5px; }
 
 /* 目录视图底部:本期勾稽健康条(复用 tieout 数据,与「期间」视图同源) */
-.rh-tie-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:14px; }
+.rh-tie-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,196px),1fr)); gap:14px; } /* min(100%,·) 同 .rh-grid,防窄溢(§5.5) */
 .rh-tie-tile { display:flex; flex-direction:column; gap:10px; padding:16px 18px; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--surface-white); }
 .rh-tie-tile-l { font-size:var(--fs-label); color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rh-tie-tile-v { font-size:20px; font-weight:var(--fw-semibold); font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-primary); }
@@ -270,4 +281,13 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
 .fin-ypill button:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
 .fin-ypill button:disabled { opacity:.4; cursor:not-allowed; }
 .fin-ypill .v { font-size:13.5px; font-weight:var(--fw-semibold); color:var(--text-primary); font-family:var(--font-mono); font-variant-numeric:tabular-nums; padding:0 8px; white-space:nowrap; }
+
+/* ── S 档(≤600,宽档规则在前)──
+   勾稽表 6 列 + nowrap 胶囊的自然宽 ~600px(最长胶囊「利润表·营业收入(本月)」~170px)。
+   width:100% 的 auto 表在 390 视口(内容区 ~358)会先把中文列往竖里压再溢出——
+   给表保底宽,多出的由 .rh-tie-wrap 横滚消化(BillNoticesView .bn-table 同一手法)。
+   限 S 档:M 档内容区 608–642 ≥ 600 本就装得下,无条件写会给 M 档凭空造滚动条。 */
+@media (max-width: 600px) {
+  .rh-tie-table { min-width: 600px; }
+}
 </style>

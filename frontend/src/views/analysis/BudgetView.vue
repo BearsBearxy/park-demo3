@@ -192,7 +192,7 @@ const kpiOutlook = computed(() => {
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
             <span class="t">五年对比 · 实际 vs 预算目标</span>
-            <span class="hint">柱=实际 · 紫杠=预算目标 · 悬停看达成率</span>
+            <span class="hint">柱=实际 · 紫杠=预算目标<span class="hint-desk"> · 悬停看达成率</span></span>
           </div>
           <AnaEChart :option="comboOpt" :height="300" />
         </div>
@@ -220,7 +220,7 @@ const kpiOutlook = computed(() => {
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
             <span class="t">{{ year }} 年总表明细</span>
-            <span class="hint">关键行实际=损益推算(系统标记) · 点击关键行 → 对应损益附表</span>
+            <span class="hint">关键行实际=损益推算(系统标记)<span class="hint-desk"> · 点击关键行 → 对应损益附表</span></span>
           </div>
           <div v-if="detail.length" class="bv2-tbl-wrap">
             <table class="bv2-tbl">

@@ -66,6 +66,15 @@ describe('ui store — 侧栏自动折叠(≤1280px)', () => {
     delete (window as any).matchMedia
     expect(useUiStore().sbOpen).toBe(true)
   })
+
+  it('closeTransient 关闭但不写 localStorage(临时看一眼不是偏好)', () => {
+    mockMatchMedia(false)
+    const ui = useUiStore()
+    expect(ui.sbOpen).toBe(true)
+    ui.closeTransient()
+    expect(ui.sbOpen).toBe(false)
+    expect(localStorage.getItem('fp-app-sb')).toBeNull()
+  })
 })
 
 describe('ui store — 导航进度(P2-3)', () => {

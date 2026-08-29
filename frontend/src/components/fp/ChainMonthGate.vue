@@ -85,7 +85,10 @@ const edge = (first: boolean) => {
 </script>
 
 <template>
-  <div class="cmg">
+  <!-- fp-fluid:矩阵门也是 .fp-content 的首子形态(RESPONSIVE-LAYOUT-SPEC §8「谁渲染谁是首子,都要挂」)。
+       挂在组件根上而不是五个消费屏:出账链五屏已全部迁移(P2),月卡墙 auto-fill 天然自适应,
+       不摘的话手机上矩阵那一屏仍被 800px 地板撑出横滚。 -->
+  <div class="cmg fp-fluid">
     <div class="cmg-head">
       <div>
         <h2 class="cmg-title">

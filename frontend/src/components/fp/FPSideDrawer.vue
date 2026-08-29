@@ -80,4 +80,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .fp-sdw-x:hover { background: var(--bg-hover); color: var(--text-primary); }
 .fp-sdw-body { flex: 1 1 auto; overflow-y: auto; padding: 14px 18px; }
 .fp-sdw-foot { flex: 0 0 auto; padding: 12px 18px; border-top: 1px solid var(--border-subtle); }
+
+/* S 档全屏接管(RESPONSIVE-LAYOUT-SPEC §4.4):390 视口塞 440px 侧板必然截断,「不挡主内容」
+   的持续参考语义在手机上本就不成立,直接全屏。width 是 :style 内联传入,组件内只有
+   !important 盖得住——调用方零改动的代价。 */
+@media (max-width: 600px) {
+  .fp-sdw { width: 100% !important; max-width: none; }
+  /* 脚部贴底,给 iOS 手势条让位 */
+  .fp-sdw-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+}
 </style>

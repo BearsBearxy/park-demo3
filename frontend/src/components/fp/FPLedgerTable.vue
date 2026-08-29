@@ -3,6 +3,7 @@
 // body cell 532-558, footer 646-661). Pure presentation; all CSS in this file's scoped block.
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
+import { useViewport } from '@/composables/useViewport'
 import type { ColumnModel, LeafColumn, ColumnKey } from '@/utils/ledgerColumns'
 import type { LedgerRowDTO } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
@@ -43,22 +44,30 @@ const FIXED_NUM_W = 128
 function effW(c: LeafColumn): number {
   return c.kind === 'num' || c.kind === 'sum' || c.kind === 'bal' ? Math.max(c.w, FIXED_NUM_W) : c.w
 }
+// RESPONSIVE-LAYOUT-SPEC §5.3 S 档查看优先:sticky 只留首根数据列(编辑态选择列照旧)与表头,
+// 其余固定列**原位退成普通列**(列序/列宽不动,只去 sticky——多根 sticky 在 390px 会占满视口)。
+// sticky 是内联 style(offset 按列宽常量累加),CSS 媒体块盖不住内联,档位判定只能进 JS:
+// 走 useViewport 单例(jsdom/SSR 无 matchMedia 恒 xl → 桌面档与既有测试零变化)。
+const { tier } = useViewport()
+const stickyLeft = computed(() => tier.value === 's' ? props.columns.fixedLeft.slice(0, 1) : props.columns.fixedLeft)
+const stickyRight = computed(() => tier.value === 's' ? [] : props.columns.fixedRight)
 const leftOff = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {}; let lo = selectable.value ? SEL_W : 0
-  props.columns.fixedLeft.forEach(c => { m[c.key] = lo; lo += effW(c) })
+  stickyLeft.value.forEach(c => { m[c.key] = lo; lo += effW(c) })
   return m
 })
 const rightOff = computed<Record<string, number>>(() => {
   const m: Record<string, number> = {}; let ro = 0
-  ;[...props.columns.fixedRight].reverse().forEach(c => { m[c.key] = ro; ro += effW(c) })
+  ;[...stickyRight.value].reverse().forEach(c => { m[c.key] = ro; ro += effW(c) })
   return m
 })
 const isFixed = (c: LeafColumn) => c.key in leftOff.value || c.key in rightOff.value
 
 // jsx 525-530: sticky left/right + edge boxShadow on inner-most fixed col.
+// 内沿以 sticky 集合为准(S 档只剩首列,描边跟着挪到它身上)
 function fixStyle(c: LeafColumn): Record<string, string> {
-  const fl = props.columns.fixedLeft
-  const fr = props.columns.fixedRight
+  const fl = stickyLeft.value
+  const fr = stickyRight.value
   if (c.key in leftOff.value) {
     return {
       position: 'sticky',
@@ -124,12 +133,13 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
           <th v-if="selectable" rowspan="2" class="lg-grp-th lg-fix-th lg-fix lg-selc" :style="{ left: '0px' }">
             <input type="checkbox" class="lg-cb" :checked="allChecked" title="全选/清空" @change="emit('toggle-select-all')" />
           </th>
+          <!-- lg-fix 系 class 跟 fixedKeys 走(S 档退级列若保留会以高 z-index 盖住仅存的 sticky 首列) -->
           <th v-for="c in columns.fixedLeft" :key="c.key" rowspan="2"
-              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyles[c.key]">{{ c.label }}</th>
+              class="lg-grp-th" :class="fixedKeys.has(c.key) && 'lg-fix-th lg-fix'" :style="cellStyles[c.key]">{{ c.label }}</th>
           <th v-for="g in columns.groups" :key="g.name" :colspan="g.cols.length"
               class="lg-grp-th">{{ g.name }}</th>
           <th v-for="c in columns.fixedRight" :key="c.key" rowspan="2"
-              class="lg-grp-th lg-fix-th lg-fix" :style="cellStyles[c.key]">{{ c.label }}</th>
+              class="lg-grp-th" :class="fixedKeys.has(c.key) && 'lg-fix-th lg-fix'" :style="cellStyles[c.key]">{{ c.label }}</th>
         </tr>
         <tr>
           <th v-for="c in leaves" :key="c.key" class="lg-leaf-th" :style="cellStyles[c.key]">{{ c.label }}</th>
@@ -188,14 +198,14 @@ function onInput(rowKey: number, key: ColumnKey, e: Event) {
       <tfoot>
         <tr>
           <th v-if="selectable" class="lg-fix lg-selc" :style="{ position: 'sticky', left: '0px' }"></th>
-          <th v-for="(c, i) in columns.fixedLeft" :key="c.key" class="lg-fix" :style="cellStyles[c.key]">
+          <th v-for="(c, i) in columns.fixedLeft" :key="c.key" :class="fixedKeys.has(c.key) && 'lg-fix'" :style="cellStyles[c.key]">
             <span v-if="i === 0" class="lg-foot-lbl">合　计</span>
             <span v-else class="lg-foot-v">{{ lgFmt(sums[c.key]) }}</span>
           </th>
           <th v-for="c in leaves" :key="c.key" :style="cellStyles[c.key]">
             <span class="lg-foot-v">{{ lgFmt(sums[c.key]) }}</span>
           </th>
-          <th v-for="c in columns.fixedRight" :key="c.key" class="lg-fix" :style="cellStyles[c.key]">
+          <th v-for="c in columns.fixedRight" :key="c.key" :class="fixedKeys.has(c.key) && 'lg-fix'" :style="cellStyles[c.key]">
             <span v-if="c.kind === 'note'"></span>
             <span v-else class="lg-foot-v"
                   :style="c.key === 'totalReceivable' ? { color: 'var(--brand-deep)' }

@@ -248,7 +248,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
         <!-- 主图 s8:利润形成瀑布(园区口径,点级→右侧科目趋势) -->
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><span class="t">利润形成瀑布 · {{ year || '—' }} 全年累计</span>
-            <span class="hint">园区口径 · 蓝＝加项 / 红＝减项 · 点击柱→右侧科目 12 月趋势</span></div>
+            <span class="hint">园区口径 · 蓝＝加项 / 红＝减项<span class="hint-desk"> · 点击柱→右侧科目 12 月趋势</span></span></div>
           <AnaEChart v-if="wf.length" :option="wfOpt" :height="300" @chart-click="onWfClick" />
           <AnaEmpty v-else-if="ready" label="该年度无损益附表数据" hint="录入附表1-5(租金/用电/用水/运管/费用)后呈现利润拆解"
             to="/rent-pnl" toText="去录入损益附表" />

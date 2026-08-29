@@ -85,6 +85,9 @@ U+2190-21FF,U+2200-22FF,U+0391-03A9,U+03B1-03C9 \
   --fs-body:    14px;
   --fs-label:   12px;
   --fs-micro:   11px;
+  /* iOS 对 <16px 的输入框聚焦会自动放大整页,S 档输入控件取此值(仅 ≤600 媒体块引用)。
+     不加 maximum-scale——禁缩放换观感是拿无障碍换,不做。 */
+  --fs-input-m: 16px;
 
   /* ---- Line heights ---- */
   --lh-tight:  1.2;

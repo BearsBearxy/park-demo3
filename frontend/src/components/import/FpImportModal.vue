@@ -345,7 +345,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 <style scoped>
 /* 1:1 from import-excel.jsx FPImportStyles */
 /* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 DESIGN-FIDELITY §7。 */
-.fpimp-scrim { position:fixed; inset:0; z-index:320; background:rgba(28,28,28,.32); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
+/* -webkit- 前缀:iOS ≤17 无前缀不识别 backdrop-filter,真机上等于没有模糊 */
+.fpimp-scrim { position:fixed; inset:0; z-index:var(--z-modal-2); background:rgba(28,28,28,.32); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
 .fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin var(--dur-base) var(--ease-standard); }
 @keyframes fpimpin { from { transform:translateY(8px) scale(.985); opacity:.4; } to { transform:none; opacity:1; } }
 .fpimp-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 22px 16px; border-bottom:1px solid var(--divider); }
@@ -403,4 +404,12 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 
 .fpimp-f { display:flex; gap:10px; padding:16px 22px; border-top:1px solid var(--divider); }
 .fpimp-f > * { flex:1; }
+
+/* S 档全屏接管(RESPONSIVE-LAYOUT-SPEC §4.4):居中弹卡是桌面隐喻,≤600 改全屏 sheet,
+   体区照旧内滚;脚部贴底给 iOS 手势条让位。分支全在组件内部,8 处调用方零改动。 */
+@media (max-width: 600px) {
+  .fpimp-scrim { padding: 0; }
+  .fpimp { width: 100%; height: 100%; max-height: none; border: none; border-radius: 0; }
+  .fpimp-f { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
 </style>

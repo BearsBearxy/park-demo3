@@ -280,7 +280,11 @@ async function onExport() {
 </script>
 
 <template>
-  <div class="finw">
+  <!-- fp-fluid:摘 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8)。
+       挂在左栏壳根上一次即可 —— 地板规则只查 .fp-content 首子,内层状态(矩阵/正文/转圈)
+       不再逐挂;照台账 .lgw 同族先例(LedgerView:655)。master 侧原对旧四层结构
+       (FinCompanyPicker/FinMonthGrid,本分支已退场)逐状态挂标,意图随新结构收敛到这一处。 -->
+  <div class="finw fp-fluid">
     <!-- 左轨常驻:管理公司一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
          改前这是一整屏的公司选择器,换个公司看要退回第一屏再走年份门与月历两道门。 -->
     <aside class="finw-rail">
@@ -540,6 +544,18 @@ async function onExport() {
 .fin-side-h { flex:0 0 auto; display:flex; align-items:center; gap:7px; height:38px; padding:0 14px; background:var(--ink-900); color:#fff; font-size:12.5px; font-weight:var(--fw-semibold); border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
 .fin-side :deep(.fin-wrap) { border-radius:0 0 var(--radius-lg) var(--radius-lg); border-top:none; }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* ── M/S 档(≤960,RESPONSIVE-LAYOUT-SPEC §5.3 明文):双表并排是报表层最先坏的点——
+   降单列上下堆叠。.fin-side 放开 height:100%:单列后行高由内容定,定高会把两张表
+   挤进同一屏各自内滚;改自然流整页滚动(查看态可用优先)。宽档规则在前(§1)。 ── */
+@media (max-width: 960px) {
+  .fin-two { grid-template-columns:1fr; }
+  .fin-side { height:auto; }
+}
+/* ── S 档(≤600):KPI repeat(4) 在 390 上每格 <90px,金额放不下——定两列 ── */
+@media (max-width: 600px) {
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
 /* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 §7) */
 .fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }

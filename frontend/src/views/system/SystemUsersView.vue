@@ -101,6 +101,8 @@ const kpi = computed(() => {
 // 停用行灰化(数据照常显示,只是视觉降一档);启用行正常色
 const nameColor = (u: UserDTO) => (u.status === 1 ? 'var(--text-primary)' : 'var(--text-muted)')
 const fmtTime = (s: string) => (s ? s.replace('T', ' ').slice(0, 16) : '—')
+// S 档行卡次级字段:角色拼一串,口径与角色列的 title 一致(不另造格式)
+const roleText = (u: UserDTO) => (u.roles.length ? u.roles.map(r => r.name).join(' · ') : '未分配角色')
 
 const columns = computed<SortableColumn<UserDTO>[]>(() => {
   const cols: SortableColumn<UserDTO>[] = [
@@ -319,7 +321,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 </script>
 
 <template>
-  <div style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%">
+  <!-- 根收编 .mx-page(迁移①):内联 height:100% 媒体查询盖不住,S 档高度链三件套要在类上生效;
+       fp-fluid = 摘掉 base.css 的 800px 屏级地板(通过 §9 验收的标志) -->
+  <div class="mx-page fp-fluid">
     <!-- 1. 标题行 -->
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
       <div>
@@ -388,7 +392,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
                 :skeleton-rows="users || loadErr ? 0 : pageSize"
                 @sortChange="sort = $event"
                 @rowClick="openEdit($event)"
-              />
+              >
+                <!-- S 档行卡映射(迁移②,spec §5.1:主字段 + ≤2 次级 + 状态胶囊,72px 内);
+                     点卡=点行,仍走 @rowClick 开编辑抽屉。重置密码/停用只在桌面表格的操作列,
+                     手机入口属屏组后续自决(与 S 档无排序入口同一口径) -->
+                <template #card="{ row }">
+                  <div class="mx-rowcard-main">{{ row.displayName }}</div>
+                  <div class="mx-rowcard-sub">
+                    <span style="font-family:var(--font-mono)">{{ row.username }}</span>
+                    <span>{{ roleText(row) }}</span>
+                    <!-- flex:0 0 auto 豁免 .mx-rowcard-sub > * 的 min-width:0,胶囊不被截字 -->
+                    <span style="margin-left:auto;flex:0 0 auto">
+                      <Badge :tone="row.status === 1 ? 'blue' : 'neutral'" variant="subtle">
+                        {{ row.status === 1 ? '启用' : '停用' }}
+                      </Badge>
+                    </span>
+                  </div>
+                </template>
+              </FPSortableTable>
             </div>
             <div v-if="users && filtered.length === 0" style="text-align:center;padding:40px;color:var(--text-disabled)">没有匹配的账号</div>
             <div v-if="!users || filtered.length > 0" class="mx-pagerbar">
@@ -625,4 +646,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 .fin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .fin-erm { font-size: var(--fs-label); color: var(--hue-red); margin-top: -6px; min-height: 16px; line-height: 1.5; }
 .fin-dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px 20px; }
+
+/* S 档工具栏(RESPONSIVE-LAYOUT-SPEC §5.1 迁移③):右组 搜索230+角色150+状态130 ≈530px,
+   390 视口一行塞不下 —— 搜索独占一行、两个 Select 落第二行。mx-infra 未覆盖搜索收窄,屏内补 */
+@media (max-width: 600px) {
+  .mx-toolbar-right { flex: 1 1 auto; flex-wrap: wrap; }
+  .mx-search { flex: 1 1 100%; width: auto; }
+}
 </style>

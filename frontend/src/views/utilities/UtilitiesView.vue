@@ -138,8 +138,11 @@ const onExport = () => guard('导出失败', async () => {
 <template>
   <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
-    <!-- ⓪ 年份选择层(合并 13+14;store-key 固定 'utilities') -->
+    <!-- ⓪ 年份选择层(合并 13+14;store-key 固定 'utilities')。
+         fp-fluid = 摘掉 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8):本屏查看态已按
+         §5.4/§6 迁移——表在 .ut-tablewrap 内横滚、hover 显形控件触屏常显;各状态根逐一挂。 -->
     <SchedYearGate
+      class="fp-fluid"
       :scope-of="(y) => S.utilities(no, y)"
       v-if="year === null"
       icon="plug"
@@ -154,7 +157,7 @@ const onExport = () => guard('导出失败', async () => {
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
-      <div class="ut-page">
+      <div class="ut-page fp-fluid">
         <SchedHeader
           :scope="S.utilities(no, year)"
           icon="plug"
@@ -243,13 +246,13 @@ const onExport = () => guard('导出失败', async () => {
       />
     </template>
 
-    <!-- 切年 / 切子表过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <!-- 切年 / 切子表过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -267,4 +270,10 @@ const onExport = () => guard('导出失败', async () => {
 .ut-toolbar-r { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .ut-count { font-size:12px; color:var(--text-muted); }
 .ut-count b { color:var(--text-secondary); font-weight:var(--fw-semibold); font-family:var(--font-mono); }
+
+@media (max-width: 600px) { /* S */
+  /* 工具行收纳(RESPONSIVE-LAYOUT-SPEC §3.3 修订:允许两行):子表分段与计数各自成行;
+     .ut-seg2(width:max-content,两钮 ≈330px)比 390 视口还宽时段内横滚兜底,不撑破页宽 */
+  .ut-toolbar-l { overflow-x:auto; }
+}
 </style>

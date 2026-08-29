@@ -102,3 +102,54 @@
 @media (max-width: 1100px) {
   .mx-md { grid-template-columns: 1fr; }
 }
+
+/* ── S 档基建(≤600,RESPONSIVE-LAYOUT-SPEC §5.1):行转卡片 + 拆高度驱动布局链 ────
+   .mx-body 单列**无需另写**:上面的 ≤1100 块在 ≤600 同样命中,层叠已盖住。 */
+
+/* .mx-page:屏根收编类。各 mx 屏根节点现在是一段内联
+   style="display:flex;flex-direction:column;gap:20px;max-width:1600px;margin:0 auto;width:100%;height:100%"
+   ——媒体查询盖不住内联样式,S 档要把 height:100% 改自然高(高度链三件套之①)就必须先收编成类。
+   用法(屏组迁移第①步):根节点删掉整段内联 style,换 class="mx-page"。此处只备落点,改屏根是屏组任务。 */
+.mx-page { display: flex; flex-direction: column; gap: 20px; max-width: 1600px; margin: 0 auto; width: 100%; height: 100%; }
+
+/* S 档行卡(FPSortableTable ≤600 卡片分支;组件出结构,几何统一在此,不逐屏手写):
+   72px 定高——骨架卡与真卡同几何(exactPlaceholder 口径),每页固定 10 张恰 720px 自然流。
+   media 外定义无妨:类只在组件的 S 档分支里才会进 DOM。 */
+.mx-rowcard {
+  height: 72px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--divider);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.mx-rowcard:active { background: var(--bg-panel); }              /* 触屏无 hover,点按反馈用 :active */
+.mx-rowcard.is-selected { background: rgba(24,134,254,0.10); }   /* 与表格分支选中底色同值 */
+.mx-rowcard-main { font: var(--type-body); font-weight: var(--fw-medium); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-rowcard-sub { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.mx-rowcard-sub > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 600px) { /* S */
+  /* 高度链三件套(§5.1 明文):10×72 的卡列塞不进「flex:1 + overflow:hidden」定高链,
+     溢出卡会被静默裁掉、分页器够不着——S 档改内容驱动自然流。 */
+  .mx-page { height: auto; }                                     /* ① 根自然高(挂类后生效) */
+  .mx-listcard { flex: 0 0 auto; min-height: 0; }                /* ② 卡片不再撑满/压底 */
+  .mx-tablewrap { overflow: visible; }                           /* ③ 放开裁切,行卡全出 */
+
+  /* KPI 轨收成横向滑动胶囊行:定宽卡不换行,隐滚动条但留触屏拖动 */
+  .mx-kpirail { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .mx-kpirail::-webkit-scrollbar { display: none; }
+  .mx-kpirail > * { flex: 0 0 140px; }
+
+  /* 分页条保底部,内容收窄不溢出(390px 视口):跳页钮放弃 116px 下限、pill 收窄。
+     选择器叠三层类是为压过 FPPager 的 scoped 样式(同 0-2-0 会输给后注入的组件样式); */
+  .mx-pagerbar { padding: 8px 10px; }
+  .mx-pagerbar .fp-pager .fp-jump-wrap { min-width: 0; }
+  /* pill 尺寸是 ds/Pagination 内联 pillStyle 写死的(该组件不在本次改动范围),
+     只能 !important 压过内联——作用域锁死在 .mx-pagerbar 内,不外溢到其他分页场景 */
+  .mx-pagerbar .ds-pg-pill { min-width: 26px !important; padding: 0 6px !important; }
+}

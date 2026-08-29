@@ -364,8 +364,9 @@ async function onExport() {
 <template>
   <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
-    <!-- ⓪ 年份选择层 -->
+    <!-- ⓪ 年份选择层(class 透传到 .sm-gate 根:年卡是 auto-fill 卡片墙,天然流式,可摘地板) -->
     <SchedYearGate
+      class="fp-fluid"
       :scope-of="(y) => S.pnl(config.schedule, y)"
       v-if="year === null"
       :icon="icon"
@@ -380,10 +381,10 @@ async function onExport() {
 
     <!-- 年度矩阵(切年不清 data:按 data.year===year 把关,不显旧年数据) -->
     <template v-else-if="data && data.year === year">
-      <div class="pnl-page">
-        <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。本屏是整年一张表,条上只写年份 -->
-        <FPStepStrip :steps="REPORT_STEPS" :current="config.route" :period="stripLabel"
-                     :query="stripQuery" back-label="换年" @back="goGate" />
+      <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移(表内横滚 + S 档单 sticky 首列,
+           编辑态按 §11.2 荐桌面),摘掉 base.css 的 800px 屏级地板 -->
+      <div class="pnl-page fp-fluid">
+\1
         <SchedHeader
           :scope="S.pnl(config.schedule, year)"
           :icon="icon"
@@ -421,6 +422,13 @@ async function onExport() {
           </template>
         </SchedHeader>
 
+        <!-- ≤600 宽表行内编辑提示(§5.3/§11.2 荐桌面):预留位——行常驻定高,文案仅编辑态显,
+             显隐不挪表格(LAYOUT-STABILITY §2;条件挂行内 span,不进流内块门禁;
+             参照 LedgerView .lgw-s-hint)。编辑不拦不藏 -->
+        <div class="pnl-s-hint">
+          <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+        </div>
+
         <PnlTable
           :year="year"
           :rows="displayRows"
@@ -444,10 +452,10 @@ async function onExport() {
     </template>
 
     <!-- 切年过渡兜底转圈(§6.2 v-else 紧邻状态链) -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
   </template>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
   <!-- 弹窗一律放状态链之后(§6.2) -->
   <!-- 新增行(居中弹窗 §7,样式基准 SchedYearGate .sm-ydlg) -->
@@ -519,6 +527,13 @@ async function onExport() {
 <style scoped>
 .pnl-page { display:flex; flex-direction:column; gap:14px; height:100%; min-height:0; box-sizing:border-box; }
 .pnl-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* S 档编辑提示行:桌面档不存在(display:none 不占位不占 gap),窄档媒体块内再显——
+   宽档规则在前(§1);定高 20px 常驻 = 预留位,进出编辑只换文案不挪表格 */
+.pnl-s-hint { display:none; }
+@media (max-width: 600px) { /* S */
+  .pnl-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 
 /* 新增行弹窗(基准 SchedYearGate .sm-ymask/.sm-ydlg) */
 .pnl-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:140; display:grid; place-items:center; }

@@ -247,7 +247,11 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 </script>
 
 <template>
-  <div class="finw">
+  <!-- fp-fluid:摘 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8)。
+       挂在左栏壳根上一次即可 —— 地板规则只查 .fp-content 首子,内层状态(矩阵/正文/转圈)
+       不再逐挂;照台账 .lgw 同族先例(LedgerView:655)。master 侧原对旧四层结构
+       (FinCompanyPicker/FinMonthGrid,本分支已退场)逐状态挂标,意图随新结构收敛到这一处。 -->
+  <div class="finw fp-fluid">
     <!-- 左轨常驻:管理公司一键切换(BOOK-WORKBENCH-SPEC §7-2 实体切换在左栏)。
          改前这是一整屏的公司选择器,换个公司看要退回第一屏再走年份门与月历两道门。 -->
     <aside class="finw-rail">
@@ -372,6 +376,12 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
         <span class="fin-toolbar-note">{{ isAll ? '全部汇总为跨公司只读求和,仅按一级科目(代码优先)合并平铺,明细不合并' : edit ? '点击单元格录入金额;悬停行可 × 删除科目(级联下级);「新增科目」可挂任意父级,保存时整期覆盖' : '只读 · 默认折叠到一级科目,点击 ▸ 展开下级;搜索命中自动展开到命中行' }}</span>
       </div>
 
+      <!-- ≤600 宽表行内批量编辑提示(§5.3/§11.2 裁定:录入不禁止、不隐藏、不优化,只荐桌面):
+           预留位——行在 S 档常驻定高,文案仅编辑态显,显隐不挪表格(LAYOUT-STABILITY §2-3;
+           照抄 LedgerView .lgw-s-hint)。单条弹窗编辑的屏不加,本屏是 8 列行内批量录入才有 -->
+      <div class="tb-s-hint">
+        <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
+      </div>
       <TbTable
         :rows="rows"
         :expanded="expanded"
@@ -512,6 +522,22 @@ const canManageCo = computed(() => useAuthStore().can('master:edit'))
 .fin-toolbar-note { font-size:12px; color:var(--text-muted); }
 .tb-tools { display:flex; align-items:center; gap:10px; }
 .fin-foot { flex:0 0 auto; margin:0; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+
+/* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前(§1) */
+.tb-s-hint { display:none; }
+
+/* ── S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.3)── */
+@media (max-width: 600px) {
+  /* KPI repeat(4) 在 390 上每格 <90px,金额放不下——定两列(挂载即终态,不随内容抖) */
+  .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
+  /* 工具行弹性收窄:搜索框吃剩余宽、可被挤压。SearchField 宽度是 ds 组件内联 style 写死
+     (该组件不在本次改动范围),只能 !important 压过内联——作用域锁死 .tb-tools 内,
+     不外溢到其他搜索场景(先例:mx-list.css .mx-pagerbar 压 ds-pg-pill 内联) */
+  .tb-tools { flex:1 1 auto; min-width:0; }
+  .tb-tools :deep(.ds-searchfield) { width:auto !important; flex:1 1 120px; min-width:0; }
+  /* 宽表编辑荐桌面提示(§11.2 预留位):行常驻定高 20px,进出编辑只换文案不挪版 */
+  .tb-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 
 /* 新增科目弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 §7) */
 .fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }

@@ -249,7 +249,9 @@ const onExport = () => guard('导出失败', async () => {
   <template v-if="overview">
     <!-- ⓪ 选期矩阵(§7-1 明确选期门):全年份纵排一屏,点月格才进宽表。
          没有上一层了 —— 所以没有返回键(年份增删归矩阵自己的两个按钮管)。 -->
-    <div v-if="month === null" class="s12-gate">
+    <!-- fp-fluid:矩阵门是屏根 Fragment 的一种首元素形态(master 原挂在已消亡的年份门上,
+         意图移植),月卡墙天然自适应,不摘地板 390 视口平白横滚(RESPONSIVE-LAYOUT-SPEC §8) -->
+    <div v-if="month === null" class="s12-gate fp-fluid">
       <div class="s12-gate-head">
         <div>
           <h2 class="s12-gate-title">
@@ -272,7 +274,9 @@ const onExport = () => guard('导出失败', async () => {
     <!-- ① 该月宽表。这一支里 year 与 month 必然非空 —— pickCell 把两者一起置,
          矩阵态由上面的 v-if 接走,所以下面的 `!` 不是图省事。 -->
     <template v-else-if="monthData">
-      <div class="s12-page">
+      <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移(宽表 S 档单 sticky + 表内横滚,
+           工具行 flex-wrap 自收纳),摘掉 base.css 的 M↓ 屏级地板 -->
+      <div class="s12-page fp-fluid">
         <FPLoadBar :on="veil" />
         <SchedHeader
           :scope="S.salary(year!, month!)"
@@ -318,6 +322,12 @@ const onExport = () => guard('导出失败', async () => {
           </div>
         </div>
 
+        <!-- ≤600 重编辑提示(§5.3/§11.2):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
+             (LAYOUT-STABILITY §2-3)。备注直编/批删照常可用,不拦不藏 -->
+        <div class="s12-s-hint">
+          <span v-if="edit">编辑模式 · 小屏可操作,建议在桌面端操作</span>
+        </div>
+
         <!-- fp-stale 带 pointer-events:none —— 换期在途旧行不许被点、被删(同族 6 屏都有,本屏漏) -->
         <SalaryTable
           :class="{ 'fp-stale': veil }"
@@ -358,8 +368,9 @@ const onExport = () => guard('导出失败', async () => {
     </template>
 
     <!-- 取数失败:说出来 + 重试 + 回矩阵的口。改前失败落进下面的转圈 —— 永久转、无重试、
-         无返回口,用户被锁死(pickCell 先 clearData,monthData 恒 null) -->
-    <div v-else-if="readErr" class="s12-fail">
+         无返回口,用户被锁死(pickCell 先 clearData,monthData 恒 null)。
+         fp-fluid:失败面/转圈也是屏根首元素形态,同挂(§8) -->
+    <div v-else-if="readErr" class="s12-fail fp-fluid">
       <component :is="iconFor('alert-triangle')" :size="18" />
       <span>{{ year }}年{{ month }}月工资加载失败:{{ readErr }}</span>
       <Button variant="outline" size="sm" @click="retryMonth">重试</Button>
@@ -367,19 +378,19 @@ const onExport = () => guard('导出失败', async () => {
     </div>
 
     <!-- 切年/切月过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
 
-  <!-- overview 一次都没拿到:硬失败面 —— 矩阵是唯一入口,转圈死等 = 整本账不可达 -->
-  <div v-else-if="overviewErr" class="s12-fail">
+  <!-- overview 一次都没拿到:硬失败面 —— 矩阵是唯一入口,转圈死等 = 整本账不可达(fp-fluid 同挂) -->
+  <div v-else-if="overviewErr" class="s12-fail fp-fluid">
     <component :is="iconFor('alert-triangle')" :size="18" />
     <span>{{ overviewErr }}</span>
     <Button variant="outline" size="sm" @click="reloadOverview">重试</Button>
   </div>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -405,4 +416,12 @@ const onExport = () => guard('导出失败', async () => {
   background: var(--accent-blue); color: var(--hue-blue); display: grid; place-items: center; flex: none;
 }
 .s12-gate-sub { margin: 4px 0 0; font-size: var(--fs-label); color: var(--text-muted); }
+
+/* S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+.s12-s-hint { display:none; }
+
+/* ── S 档(≤600):编辑不拦不藏,常驻预留提示行(§5.3/§11.2;LAYOUT-STABILITY §2-3 预留位) ── */
+@media (max-width: 600px) {
+  .s12-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 </style>

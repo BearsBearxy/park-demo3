@@ -5,7 +5,7 @@
 // 版面由所选账册**本月生效**那版模板驱动(toS10Layout;版本按 (册,年,月) 解析,spec P3);自定义列 extra_fees
 // 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
 // §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
-import { ref, computed, watch, onMounted, onDeactivated, reactive } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onDeactivated, reactive } from 'vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
@@ -203,6 +203,15 @@ function selectBook(id: number) {
   issuesOpen.value = false
   if (year.value != null) goGate()
 }
+
+// ≤960 顶部账册 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏范式):选中项常显——
+// 深链/切册后选中 chip 可能在横滚区外,滚到可见。jsdom 无 scrollIntoView,可选调用兜底;
+// 桌面档 chips display:none,scrollIntoView 对不可见元素是空操作,不必按档跳过。
+const chipsEl = ref<HTMLElement | null>(null)
+watch(activeBookId, async () => {
+  await nextTick()
+  chipsEl.value?.querySelector('.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+})
 
 // ── 进入屏:overview + 四册并取(§6 取数前不渲染);核对深链直落表格态并定位租户行 ──
 // 深链(spec 2026-07-07 §一):query y/m/phase/tenant → 选中该期账册 → 加载月表 → S10Table 定位高亮。
@@ -515,13 +524,22 @@ function onImportClick() {
 <template>
   <!-- §6 加载门:overview/books 到达前显转圈,不闪空态 -->
   <template v-if="overview">
-    <div class="s10-wb">
+    <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3/§5.6 迁移(左轨收 chips、宽表 S 档单 sticky、
+         矩阵横滚圈在 .s10-matrix 内),摘掉 base.css 的 M↓ 屏级地板——表内自滚,屏根不再触发双重横滚 -->
+    <div class="s10-wb fp-fluid">
       <!-- 左轨:本屏四册(期区),入口常驻(§7-3) -->
       <aside class="s10-rail">
         <div class="s10-rail-cap">账册</div>
         <!-- 附表10 四册固定:公司管理入口(company:manage)恒关,不接 create/remove -->
         <BookRail :books="books" :active-id="activeBookId" :can-manage="false" @select="(id) => selectBook(Number(id))" />
       </aside>
+
+      <!-- ≤960 左轨收成顶部横向 chips(§5.6):选择语义与轨内点击同源 selectBook(含编辑态脏确认);
+           ≥961 隐藏、桌面零变化。四册固定,无新增/删除入口(can-manage 本就恒关) -->
+      <div ref="chipsEl" class="s10-chips">
+        <button v-for="b in books" :key="b.id" class="s10-chip" :class="{ on: b.id === activeBookId }"
+                @click="selectBook(b.id)">{{ b.name }}</button>
+      </div>
 
       <div class="s10-main">
         <!-- ⓪ 矩阵态(选期矩阵 v3):全年份纵排 12 月卡,必点月卡进宽表 -->
@@ -537,14 +555,18 @@ function onImportClick() {
                 <span class="s10-gate-ver">v{{ activeBook.ver }}</span>
               </div>
             </div>
-            <BookMonthMatrix
-              :book="activeBook"
-              :years="matrixYears"
-              @pick="pickCell"
-              @add-earlier="onAddEarlier"
-              @add-later="onAddLater"
-              @remove-year="onRemoveYear"
-            />
+            <!-- 矩阵 12 月卡窄档装不下:横滚圈在矩阵块内(照台账 .lgw-matrix 范式),
+                 账册头/主区其余内容不跟着滚 -->
+            <div class="s10-matrix">
+              <BookMonthMatrix
+                :book="activeBook"
+                :years="matrixYears"
+                @pick="pickCell"
+                @add-earlier="onAddEarlier"
+                @add-later="onAddLater"
+                @remove-year="onRemoveYear"
+              />
+            </div>
           </div>
         </template>
 
@@ -628,6 +650,12 @@ function onImportClick() {
                 </span>
                 <span v-else class="s10-count">{{ activeBook?.name }} · 本月 <b>{{ tenantCount }}</b> 户</span>
               </div>
+            </div>
+
+            <!-- ≤600 重编辑提示(§5.3/§11.2):预留位——行常驻定高,文案仅编辑态显,显隐不挪表格
+                 (LAYOUT-STABILITY §2-3;条件挂在行内 span 上,不进流内块门禁)。填报不拦不藏 -->
+            <div class="s10-s-hint">
+              <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
             </div>
 
             <!-- ② 宽表:版面由现行版模板驱动 -->
@@ -732,7 +760,8 @@ function onImportClick() {
     />
   </template>
 
-  <div v-else class="page-loading"><span class="page-spin" /></div>
+  <!-- 首载转圈也挂 fp-fluid:它是屏根 Fragment 的另一形态首元素,不摘会让 390 视口为一个居中转圈横滚 -->
+  <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 
 <style scoped>
@@ -778,4 +807,34 @@ function onImportClick() {
 .s10-issues:hover { background: var(--bg-hover); }
 .s10-issues.quiet { border-color: var(--border-subtle); color: var(--text-muted); }
 .s10-editflag b { font-family:var(--font-mono); margin:0 2px; }
+
+/* 矩阵块:桌面无横滚(占位类,窄档媒体块内加 overflow) */
+.s10-matrix { flex:0 0 auto; }
+/* 顶部 chips 与 S 档提示行:桌面档不存在(display:none),窄档媒体块内再显——宽档规则在前 */
+.s10-chips { display:none; }
+.s10-s-hint { display:none; }
+
+/* ── M/S 档(≤960):左轨收成顶部横向 chips(RESPONSIVE-LAYOUT-SPEC §5.6,照台账屏范式) ── */
+@media (max-width: 960px) {
+  .s10-wb { flex-direction:column; gap:12px; }
+  .s10-rail { display:none; }
+  .s10-chips { flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:2px; }
+  .s10-chip {
+    flex:0 0 auto; display:inline-flex; align-items:center;
+    height:36px; padding:0 14px; border-radius:var(--radius-full);
+    border:1px solid var(--border-subtle); background:var(--surface-white);
+    color:var(--text-secondary); font-family:var(--font-sans);
+    font-size:var(--fs-label); font-weight:var(--fw-medium);
+    cursor:pointer; white-space:nowrap;
+  }
+  /* 选中态只换色不改尺寸(布局稳定铁律,同 BookRail .br-item.on 语义) */
+  .s10-chip.on { border-color:var(--hue-blue); background:var(--accent-blue); color:var(--text-primary); }
+  /* 矩阵 12 月卡窄档装不下:横滚圈在矩阵块内,账册头不跟着滚 */
+  .s10-matrix { overflow-x:auto; }
+}
+
+/* ── S 档(≤600):填报不拦不藏,常驻预留提示行(§5.3/§11.2;LAYOUT-STABILITY §2-3 预留位) ── */
+@media (max-width: 600px) {
+  .s10-s-hint { display:flex; align-items:center; flex:0 0 20px; height:20px; font-size:12px; color:var(--hue-orange); }
+}
 </style>

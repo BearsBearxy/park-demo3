@@ -151,7 +151,11 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 <template>
   <!-- 外壳收敛(第 5 步共享件):三屏此前各抄一份同字节的 aside+CSS,现在共用 BookRailShell -->
   <BookRailShell title="电费" :books="MODES" :active-id="mode"
-                 @select="(id) => (mode = id as Mode)">
+                 @select="(id) => (mode = id as Mode)"
+                 :class="{ 'fp-fluid': mode !== 'cost' }">
+  <!-- fp-fluid 条件挂(RESPONSIVE-LAYOUT-SPEC §8):master 侧给旧功能门逐状态挂的摘地板意图,
+       随功能门消亡移植到壳根 —— 报送台账各态已迁移,摘 800px 地板;园区电费模型(ElecCostView) 未迁移,
+       渲染在壳内,那本账保地板(响应式侧原话「不挂、保地板」)。迁移完那屏后把条件拆掉。 -->
   <!-- 电费成本总览(新屏) -->
   <ElecCostView v-if="mode === 'cost'" />
 
@@ -159,6 +163,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate
+      class="fp-fluid"
       :scope-of="(y) => S.elecSched(y)"
       v-if="year === null"
       icon="zap"
@@ -173,7 +178,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
 
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
-      <div class="e11-page">
+      <div class="e11-page fp-fluid">
         <SchedHeader
           :scope="S.elecSched(year)"
           icon="zap"
@@ -245,8 +250,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
       />
     </template>
 
-    <!-- 切年/切类过渡兜底转圈 -->
-    <div v-else class="page-loading"><span class="page-spin" /></div>
+    <!-- 切年/切类过渡兜底转圈(fp-fluid:转圈不该被 800px 地板逼出横滚) -->
+    <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
   </template>
