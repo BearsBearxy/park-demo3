@@ -17,10 +17,9 @@ import api from '@/api'
  *
  * 每条用例的注释都写明:production(ElecCostView.vue)改哪一行会让它红。
  *
- * ⚠ 本屏特有的一个坑(写测时坐实,production 未修,只能绕):loadMonth 的失败分支
- *   (:133-138)清 entries/metrics 但**不碰 cfgs** —— 第一次选期就失败时 cfgs 恒 null,
- *   :474 的 `!cfgs` 让整屏停在 page-spin 上,失败条一次都不渲染。
- *   所以所有失败态用例都先成功进一个月(cfgs 落位),再换月触发失败 —— 同真实换月剧本。
+ * (写测时抓到的坑 —— loadMonth 失败分支不碰 cfgs,首败整屏停转圈 —— 已在 4a61a1a 修掉:
+ *   catch 里 `cfgs.value = cfgs.value ?? []`;「首败不转圈」那条就是它的钉。
+ *   早期用例仍走"先成功进一个月再换月触发失败",与真实换月剧本同形,保留不改。)
  */
 
 vi.mock('@/api/elecCost', () => ({
@@ -444,3 +443,178 @@ describe('电费成本总览 · 首败不转圈', () => {
   })
 })
 
+
+describe('电费成本总览 · 复查第二轮补钉', () => {
+  async function toTable() {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+  // ⚠ subKey 用 ''(不是 null):entryMap 的键是模板串 `${e.subKey}`,null 会串成字面量 "null",
+  //   entryOf(mid, fee, '') 永远查不中 —— 破坏验证抓到删行支整条没执行过。
+  const ENTRY = { id: 7, meterId: 1, meterName: '总表', acctMonth: '2025-03', feeKey: 'industrial',
+                  subKey: '', amount: 100, qty: null, note: null, source: 'manual' }
+
+  async function toEdit() {
+    const w = await toTable()
+    ;(w.vm as unknown as { editMode: boolean }).editMode = true
+    await flushPromises()
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    return w
+  }
+
+  it('❗upsert 失败回滚撞上换期 → 不许把旧期整表盖进新期', async () => {
+    // 本屏的乐观回滚是**整数组置换**(样板是改行对象,换期后天然免疫)。
+    // 无围栏时:7 月改一笔在途 → 换到 8 月落表 → 7 月那笔失败,catch 把 7 月整表赋回 ——
+    // 「2025年8月」标题下渲染的全是 7 月费项,之后每笔录入按 acctMonth=8 写 7 月语境的数。
+    const { elecCostApi } = await import('@/api/elecCost')
+    vi.mocked(elecCostApi.entries).mockResolvedValue([ENTRY] as never)
+    const w = await toEdit()
+    const vm = w.vm as unknown as {
+      entries: object[] | null
+      commitAmount: (mid: number, fk: string, sk: string, raw: string) => void
+    }
+    let fail!: (e: unknown) => void
+    vi.mocked(elecCostApi.upsertEntry).mockReturnValueOnce(new Promise((_, rj) => { fail = rj }) as never)
+    vm.commitAmount(1, 'industrial', '', '999')     // 7 月那笔,在途
+
+    // 换到 8 月(空月),新表落位
+    vi.mocked(elecCostApi.entries).mockResolvedValue([] as never)
+    await w.find('.ec-permonth').trigger('click')
+    await flushPromises()
+    await w.findAll('.bmm-card')[6].trigger('click')
+    await flushPromises()
+    expect((vm.entries ?? []).length, '前提:8 月是空表').toBe(0)
+
+    fail(new Error('挂了'))                          // 7 月那笔迟到失败
+    await flushPromises()
+    expect((vm.entries ?? []).length, '7 月整表被回滚盖进了 8 月').toBe(0)
+  })
+
+  it('❗清空=删行那支同病:迟到失败不许把旧期表盖回', async () => {
+    const { elecCostApi } = await import('@/api/elecCost')
+    vi.mocked(elecCostApi.entries).mockResolvedValue([ENTRY] as never)
+    const w = await toEdit()
+    const vm = w.vm as unknown as {
+      entries: object[] | null
+      commitAmount: (mid: number, fk: string, sk: string, raw: string) => void
+    }
+    let fail!: (e: unknown) => void
+    vi.mocked(elecCostApi.deleteEntry).mockReturnValueOnce(new Promise((_, rj) => { fail = rj }) as never)
+    vm.commitAmount(1, 'industrial', '', '')        // 清空=删行,在途
+    expect(elecCostApi.deleteEntry, '前提:删行请求真的发出去了').toHaveBeenCalled()
+
+    vi.mocked(elecCostApi.entries).mockResolvedValue([] as never)
+    await w.find('.ec-permonth').trigger('click')
+    await flushPromises()
+    await w.findAll('.bmm-card')[6].trigger('click')
+    await flushPromises()
+
+    fail(new Error('挂了'))
+    await flushPromises()
+    expect((vm.entries ?? []).length, '删行失败的回滚穿越了期').toBe(0)
+  })
+
+  it('❗commitCfg 失败回滚同病 —— 旧月电价参数不许盖进新月', async () => {
+    const { elecCostApi } = await import('@/api/elecCost')
+    const CFG = { cfgKey: 'pv_price', label: '光伏上网电价', unit: '元/kWh',
+                  monthValue: 0.4, defaultValue: 0.35, value: 0.4, source: 'month', note: null }
+    vi.mocked(elecCostApi.priceCfg).mockResolvedValue([CFG] as never)
+    const w = await toEdit()
+    const vm = w.vm as unknown as {
+      cfgs: { monthValue: number | null }[] | null
+      commitCfg: (c: object, scope: string, raw: string) => void
+    }
+    let fail!: (e: unknown) => void
+    vi.mocked(elecCostApi.savePriceCfg).mockReturnValueOnce(new Promise((_, rj) => { fail = rj }) as never)
+    vm.commitCfg(CFG as never, 'month' as never, '0.5')
+
+    vi.mocked(elecCostApi.priceCfg).mockResolvedValue([{ ...CFG, monthValue: null, value: 0.35, source: 'default' }] as never)
+    await w.find('.ec-permonth').trigger('click')
+    await flushPromises()
+    await w.findAll('.bmm-card')[6].trigger('click')
+    await flushPromises()
+
+    fail(new Error('挂了'))
+    await flushPromises()
+    expect(vm.cfgs?.[0]?.monthValue, '旧月参数被回滚盖进新月').toBeNull()
+  })
+
+  it('❗换期在途时 commitAmount/commitCfg 打不出去(已聚焦输入框的键盘提交)', async () => {
+    const { elecCostApi } = await import('@/api/elecCost')
+    vi.mocked(elecCostApi.entries).mockResolvedValue([ENTRY] as never)
+    const w = await toEdit()
+    const vm = w.vm as unknown as {
+      reloading: boolean
+      commitAmount: (mid: number, fk: string, sk: string, raw: string) => void
+      commitCfg: (c: object, scope: string, raw: string) => void
+    }
+    vm.reloading = true
+    vm.commitAmount(1, 'industrial', '', '999')
+    vm.commitCfg({ cfgKey: 'pv_price', monthValue: 0.4, defaultValue: null, value: 0.4, source: 'month', note: null } as never, 'month' as never, '0.5')
+    expect(elecCostApi.upsertEntry).not.toHaveBeenCalled()
+    expect(elecCostApi.savePriceCfg).not.toHaveBeenCalled()
+  })
+
+  it('❗第二写面(电价参数卡)与指标卡都要盖 fp-stale', async () => {
+    const w = await toEdit()
+    ;(w.vm as unknown as { reloading: boolean }).reloading = true
+    await new Promise(r => setTimeout(r, 260))
+    await flushPromises()
+    const staled = w.findAll('.ec-listcard').filter(c => c.classes().includes('fp-stale'))
+    expect(staled.length, '三张卡(费项/指标/参数)都要退一步').toBe(3)
+  })
+
+  it('❗2025 任一月有人在编辑 → 模拟填充不许跑;confirm 期间才进来的也要拦', async () => {
+    // simulate 写 2025 全年,本屏只持当月的月锁;服务端不查锁,这道闸是唯一防线。
+    const { elecCostApi } = await import('@/api/elecCost')
+    const { usePresenceStore } = await import('@/stores/presence')
+    const w = await toEdit()
+    const vm = w.vm as unknown as { onSimulate: () => Promise<void> }
+    const pres = usePresenceStore()
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+
+    // 弹框前就有人 → 直接拦
+    pres.users = [{
+      sid: 's9', user: 'lisi', displayName: '李四', role: null, scope: null, label: '电费',
+      mode: 'edit', editScopes: ['elec-cost:2025-03'], sinceMs: 1, idleMs: 0, self: false,
+    }]
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await vm.onSimulate()
+    expect(elecCostApi.simulate).not.toHaveBeenCalled()
+    expect(String(alert.mock.calls.at(-1)![0])).toContain('李四')
+    // 预检的独有可观察量:人早就在,confirm 根本不该弹(只靠复检的话这里会弹一次)
+    expect(confirmSpy, '弹框前就该拦下,不该让用户白读一遍确认文案').not.toHaveBeenCalled()
+
+    // TOCTOU:弹框前没人,confirm 期间进来 → 复检拦
+    pres.users = []
+    vi.spyOn(window, 'confirm').mockImplementation(() => {
+      pres.users = [{
+        sid: 's9', user: 'wangwu', displayName: '王五', role: null, scope: null, label: '电费',
+        mode: 'edit', editScopes: ['elec-cost:2025-07'], sinceMs: 1, idleMs: 0, self: false,
+      }]
+      return true
+    })
+    await vm.onSimulate()
+    expect(elecCostApi.simulate, 'confirm 之后不复查就写穿别人的月').not.toHaveBeenCalled()
+  })
+
+  it('同期两笔连改的指标乱序回包 —— 后发的那笔要赢', async () => {
+    // reloadMetrics 的 seq 只防换期串台;同期两趟持同一个 seq,无 mSeq 时先发后到的旧指标
+    // 会盖掉后发先到的新指标。
+    const { elecCostApi } = await import('@/api/elecCost')
+    const w = await toEdit()
+    const vm = w.vm as unknown as { metrics: { value: number }[] | null; reloadMetrics: () => Promise<void> }
+    let slow!: (v: unknown) => void
+    vi.mocked(elecCostApi.metrics)
+      .mockReturnValueOnce(new Promise(r => { slow = r }) as never)   // 第一笔:慢
+      .mockResolvedValueOnce([{ key: 'k', label: 'x', value: 222, formula: '', missing: [] }] as never)
+    const p1 = vm.reloadMetrics()
+    const p2 = vm.reloadMetrics()                                     // 第二笔:快,先落位
+    await p2
+    slow([{ key: 'k', label: 'x', value: 111, formula: '', missing: [] }])
+    await p1
+    expect((vm.metrics?.[0] as { value: number } | undefined)?.value, '旧回包盖了新指标').toBe(222)
+  })
+})

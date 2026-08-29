@@ -23,6 +23,7 @@ import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { usePresenceStore } from '@/stores/presence'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -146,11 +147,15 @@ async function loadMonth() {
 // 金额/参数编辑后指标口径变化,静默重取指标表(entries 已乐观落位,不整月重拉)
 // ⚠ 必须挂 seq(复查计划里点名的竞态):无守卫时两笔连着改 → 两趟并发乱序落表,
 //   或换期后旧期的指标回包盖进新期 —— 「7 月标题 + 3 月指标」。
+let mSeq = 0
 async function reloadMetrics() {
+  // 两道围栏:seq 防换期串台;mSeq 防**同期两笔连改**的两趟乱序回包(它们持同一个 seq,
+  // 只看 seq 时后到者赢 —— 第一笔的旧指标盖掉第二笔的新指标)。
   const my = seq
+  const mine = ++mSeq
   try {
     const ms = await elecCostApi.metrics(year.value, month.value)
-    if (my === seq) metrics.value = ms
+    if (my === seq && mine === mSeq) metrics.value = ms
   } catch { /* 保留旧值:指标是派生的展示面,失败不值得打断录入 */ }
 }
 /** 矩阵点格:年月一起定,再拉该月费项。 */
@@ -282,7 +287,14 @@ const simCount = computed(() => (entries.value ?? []).filter(e => e.source === '
 function commitAmount(meterId: number, feeKey: string, subKey: string, raw: string) {
   // 写口自守:editMode 会就地转假(接管/提权到期),调用者各有各的 v-if,守发请求这层才不漏
   if (!editE.value) return
+  // 在途自守(照 CpMeter.commitMeter):fp-stale 的 pointer-events 挡不住已聚焦输入框的回车提交
+  if (reloading.value) return
   if (!entries.value) return
+  // ⚠ 回滚围栏(复查坐实的最狠一条):本屏的乐观回滚是**整数组置换**(prev = 整份 entries),
+  //   样板是改行对象 —— 换期后旧行对象已出渲染树,天然免疫;整数组置换把免疫丢了:
+  //   在途换期后失败回滚会把旧期整表盖进新期,「8 月标题 + 7 月费项」,
+  //   之后每笔录入都按 acctMonth=8 月把 7 月语境的数写成 8 月真数据。
+  const my = seq
   const t = raw.trim()
   const cur = entryOf(meterId, feeKey, subKey)
   const prev = entries.value
@@ -291,7 +303,10 @@ function commitAmount(meterId: number, feeKey: string, subKey: string, raw: stri
     entries.value = prev.filter(e => e.id !== cur.id)   // 清空=删行;拆分删净后合计口径自动回落
     elecCostApi.deleteEntry(cur.id)
       .then(reloadMetrics)
-      .catch(e => { entries.value = prev; alert((e as { message?: string })?.message ?? '删除失败，请重试') })
+      .catch(e => {
+        if (my === seq) entries.value = prev   // 期没换才有资格回滚;换过了 loadMonth 已重取真值
+        alert((e as { message?: string })?.message ?? '删除失败，请重试')
+      })
     return
   }
   const v = Number(t)
@@ -310,13 +325,18 @@ function commitAmount(meterId: number, feeKey: string, subKey: string, raw: stri
       // 空月录第一笔 → 矩阵那格要亮(dataMonths 是着色唯一数据源;同 CpMeter 的移植教训)
       void loadYears()
     })
-    .catch(e => { entries.value = prev; alert((e as { message?: string })?.message ?? '保存失败，请重试') })
+    .catch(e => {
+      if (my === seq) entries.value = prev
+      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+    })
 }
 
 // ── 备注提交(编辑态;仅已有费项行可改——备注随金额行存储,无行无备注) ──
 function commitNote(e: ElecCostEntryDTO | undefined, raw: string) {
   if (!editE.value) return
+  if (reloading.value) return
   if (!e || !entries.value) return
+  const my = seq
   const note = raw.trim() || null
   if (note === e.note) return
   const prev = entries.value
@@ -325,7 +345,10 @@ function commitNote(e: ElecCostEntryDTO | undefined, raw: string) {
   entries.value = prev.map(x => (x.id === e.id ? optimistic : x))
   elecCostApi.upsertEntry({ meterId: e.meterId, acctMonth: e.acctMonth, feeKey: e.feeKey, subKey: e.subKey || null, amount: e.amount, qty: e.qty, note })
     .then(dto => { entries.value = (entries.value ?? []).map(x => (x.id === e.id ? dto : x)) })
-    .catch(err => { entries.value = prev; alert((err as { message?: string })?.message ?? '保存失败，请重试') })
+    .catch(err => {
+      if (my === seq) entries.value = prev
+      alert((err as { message?: string })?.message ?? '保存失败，请重试')
+    })
 }
 
 // ── 电表增删改(编辑态;1:1 照 PvMeterView commitStationName/delStation 模式) ──
@@ -382,6 +405,8 @@ const CFG_META: Record<string, { label: string; unit: string }> = {
 }
 function commitCfg(c: ElecPriceCfgDTO, scope: 'month' | 'default', raw: string) {
   if (!editC.value) return
+  if (reloading.value) return   // 在途窗口里表头已是新月、行还是旧月的
+  const my = seq
   const t = raw.trim()
   const v = t === '' ? null : Number(t)
   if (v != null && (!isFinite(v) || v < 0)) { alert('请输入非负数字'); return }
@@ -394,15 +419,41 @@ function commitCfg(c: ElecPriceCfgDTO, scope: 'month' | 'default', raw: string) 
   // value=null 删行回退默认(后端语义);note 原样保留不覆写
   elecCostApi.savePriceCfg({ acctMonth: scope === 'month' ? acctMonth.value : '', cfgKey: c.cfgKey, value: v, note: c.note })
     .then(reloadMetrics)
-    .catch(e => { cfgs.value = prev; alert((e as { message?: string })?.message ?? '保存失败，请重试') })
+    .catch(e => {
+      if (my === seq) cfgs.value = prev
+      alert((e as { message?: string })?.message ?? '保存失败，请重试')
+    })
 }
 
 // ── 模拟填充 2025(编辑态):确认弹窗→POST simulate→结果 alert→重载并跳 2025 ──
 const simulating = ref(false)
+const presence = usePresenceStore()
 async function onSimulate() {
   if (!editC.value) return   // simulate 会写 price-cfg,判电价那扇门(同按钮)
   if (simulating.value) return
+  // ⚠ simulate 写 **2025 全年**(费项+电价参数),而本屏只持当前月的 S.elecCost(year, month)
+  //   月锁 —— 不查其它月就是绕过别人的期锁写别人的账。服务端对 /simulate 不查锁,
+  //   这道闸是唯一防线(照 CpMeterView.onSimulate 的整套:先扫、confirm 后 ping 复检)。
+  const busyOn = () => {
+    for (let m = 1; m <= 12; m++) {
+      const who = presence.editorsUnder(S.elecCost(2025, m)).find(e => !e.self)
+      if (who) return { who, m }
+    }
+    return null
+  }
+  const pre = busyOn()
+  if (pre) {
+    alert(`模拟填充会写 2025 全年,而 ${pre.who.displayName} 正在编辑 2025年${pre.m}月 —— 等他退出编辑模式再跑。`)
+    return
+  }
   if (!confirm('模拟填充 2025 全年：按附表11/附表6/附表13 等真实数据推导本模型的空缺费项与电价参数。\n\n只写空位与既有「模拟」灰标行，绝不覆盖手工录入/导入的数据。确认执行？')) return
+  // confirm() 阻塞事件循环,名单冻结在弹框前 —— 返回后刷一拍复检(TOCTOU,同 CpMeter)
+  await presence.ping()
+  const late = busyOn()
+  if (late) {
+    alert(`模拟填充会写 2025 全年,而 ${late.who.displayName} 正在编辑 2025年${late.m}月 —— 等他退出编辑模式再跑。`)
+    return
+  }
   simulating.value = true
   try {
     const r = await elecCostApi.simulate(2025)
@@ -613,8 +664,10 @@ function fmtMetric(mt: ElecMetricDTO): string {
       </table>
     </Card>
 
-    <!-- ② 派生指标表:一行一指标;缺源行置灰,值列「—」 -->
-    <Card surface="white" :padding="0" class="ec-listcard">
+    <!-- ② 派生指标表:一行一指标;缺源行置灰,值列「—」。
+         纯读面,但换期在途旧值顶新表头同样是错话 —— 整屏退让口径一致 -->
+    <Card surface="white" :padding="0" class="ec-listcard"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="ec-cardhead">
         <div class="ec-cardtitles">
           <span class="ec-cardtitle">派生指标 · {{ year }}年{{ month }}月</span>
@@ -637,8 +690,10 @@ function fmtMetric(mt: ElecMetricDTO): string {
       </table>
     </Card>
 
-    <!-- ③ 电价参数小节(仅编辑态,指标表下方):列表行内编辑 -->
-    <Card v-if="editC" surface="white" :padding="0" class="ec-listcard">
+    <!-- ⚠ 第二写面必须盖 veil(CpMeter 电表卡的同款教训,这屏又漏了一次):
+         在途窗口里表头已是新月「{{ month }}月值」,行还是旧月的 —— 不盖就完全可点可录 -->
+    <Card v-if="editC" surface="white" :padding="0" class="ec-listcard"
+          :class="{ 'fp-stale': veil }" :aria-busy="veil">
       <div class="ec-cardhead">
         <div class="ec-cardtitles">
           <span class="ec-cardtitle"><component :is="iconFor('sliders-horizontal')" :size="15" style="vertical-align:-2px;margin-right:6px" />电价参数</span>
