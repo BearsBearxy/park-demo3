@@ -137,12 +137,16 @@ jobs:
             docker logout ghcr.io
             docker image prune -f          # 换版后的悬空层,2C4G 机器磁盘也不宽裕
           EOF
+      # 查 https://<域名>/ 而不是 http://<DEPLOY_HOST>/(2026-08-30 上 Caddy 后改)。
+      # DEPLOY_HOST 是 IP,只用于 SSH —— SSH 不该依赖 DNS。但健康检查必须走域名:
+      # Caddy 的自动跳转层对所有 Host 生效,裸 IP 会拿到 308 跳 https://<IP>,
+      # 而证书只签了域名,握手直接失败。查 http://<IP> 永远等不到 200。
+      # 这里同时也验了证书有效(curl 默认校验),等于顺带看住了续期。
+      # ⚠ 域名改了要同步改 deploy/Caddyfile(全仓库就这两处写死域名)。
       - name: Health check (public)
-        env:
-          HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "http://$HOST/" || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://atrilink.com/" || true)
             [ "$code" = "200" ] && echo "site healthy" && exit 0
             sleep 5
           done
