@@ -9,6 +9,9 @@ import PvMeterView from '@/views/pv/PvMeterView.vue'
 import { pvMeterApi } from '@/api/pvMeter'
 import type { PvReadingDTO } from '@/api/pvMeter'
 import { useAuthStore } from '@/stores/auth'
+import { usePresenceStore } from '@/stores/presence'
+import { locksApi } from '@/api/locks'
+import { S } from '@/utils/lockScopes'
 import api from '@/api'
 
 /**
@@ -28,6 +31,16 @@ vi.mock('@/api/pvMeter', () => ({
     createReading: vi.fn(), updateReading: vi.fn(), deleteReading: vi.fn(),
     createStation: vi.fn(), updateStation: vi.fn(), deleteStation: vi.fn(),
     simulate: vi.fn(), importRows: vi.fn(),
+  },
+}))
+
+// 锁 mock 照 cpMeterFlow.spec.ts:34-44。不 mock 的话 locksApi 走真 axios,jsdom 里抛错 →
+// 被 useEditLock「拿不准就不进」兜住 → 一切走 toggle/enter 的路径全挂。
+// 这里全用 vi.fn()(cpMeter 那份是写死的箭头函数),因为下面两条要逐条改 acquire 的答案。
+vi.mock('@/api/locks', () => ({
+  locksApi: {
+    acquire: vi.fn(), release: vi.fn(), heartbeat: vi.fn(),
+    takeover: vi.fn(), releaseOnUnload: vi.fn(),
   },
 }))
 
@@ -531,5 +544,67 @@ describe('光伏分栋抄表 · 门不许在错误的时机敞开', () => {
     await flushPromises()
     expect(w.text(), '读数好好的,抽屉不该说读数没加载成功').not.toContain('本月读数未加载成功')
     expect(w.findAll('.pm-dtable tbody tr').length, '这一站的真实记录被藏了').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 锁弹窗接线(C1/C2)—— 7 屏同一改法的**唯一行为证明**。
+ *
+ * 其余 6 屏只有 lockDialogsCoverage.spec.ts 的源码结构断言(那七屏各要十几个 API mock,
+ * 七份堆一起没法维护)。「按下去到底会怎样」只在这一屏真跑一遍:
+ *   C1 acquire 被拒 → lockedBy 非空 → 接管抽屉自动开(改前 7 屏没人接这个 ref,点了没反应)
+ *   C2 心跳带回 eviction → evictedBy 非空 → 失锁弹窗自动开(改前编辑态就地消失,零提示)
+ *
+ * 破坏验证:把 PvMeterView 里那一行 <FPLockDialogs> 注释掉 → 只有这两条转红。
+ */
+describe('光伏分栋抄表 · 锁弹窗接线(C1/C2)', () => {
+  beforeEach(() => {
+    // 默认拿得到锁;要测「被别人占着」的那条自己覆盖。
+    // ⚠ release 必须返回 promise —— useEditLock 对它 `.catch(...)`,返回 undefined 当场 TypeError。
+    vi.mocked(locksApi.acquire).mockResolvedValue({ granted: true, holder: null, acquiredAt: 1 } as never)
+    vi.mocked(locksApi.release).mockResolvedValue(undefined as never)
+  })
+
+  /** 进到表格页 —— 编辑按钮长在工具条上,选期矩阵那一屏没有它。 */
+  async function toTable() {
+    const w = await open()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('❗别人占着锁时点编辑 → 接管抽屉出现(改前:点了什么都不发生)', async () => {
+    vi.mocked(locksApi.acquire).mockResolvedValue({
+      granted: false,
+      holder: { user: 'lisi', displayName: '李四', heldMs: 60_000, idleMs: 1_000, idle: false },
+    } as never)
+    const w = await toTable()
+    expect(w.find('.fp-emb').exists(), '前提:编辑按钮在,且本来就该可点(spec §2)').toBe(true)
+
+    await w.find('.fp-emb').trigger('click')
+    await flushPromises()
+
+    expect((w.vm as unknown as { editMode: boolean }).editMode, '锁没拿到就不该进编辑态').toBe(false)
+    expect(w.find('.tk-body').exists(), '接管抽屉必须开 —— 没有它这颗按钮就是死的').toBe(true)
+  })
+
+  it('❗编辑中被接管 → 失锁弹窗出现(改前:编辑态就地消失,一个字都不说)', async () => {
+    const w = await toTable()
+    await w.find('.fp-emb').trigger('click')
+    await flushPromises()
+    expect((w.vm as unknown as { editMode: boolean }).editMode, '前提:先真的进了编辑态').toBe(true)
+
+    // ⚠ scope 按本屏此刻的 year 现算。写死 'pv-meter:2025' 的话,夹具的年份一改
+    //   通知就按 scope 派不回来,而这条会**静静地永远绿**下去 —— 等于零守卫。
+    const scope = S.pvMeter((w.vm as unknown as { year: number }).year)
+    vi.spyOn(api, 'put').mockResolvedValue({
+      users: [], approvals: [], outcome: null,
+      evictions: [{ scope, by: 'lisi', byDisplayName: '李四', authorizerName: null }],
+    } as never)
+    await usePresenceStore().ping()
+    await flushPromises()
+
+    expect((w.vm as unknown as { editMode: boolean }).editMode, '被踢了要当场退出编辑态').toBe(false)
+    expect(w.find('.evd-scrim').exists(), '被踢了必须说一声').toBe(true)
   })
 })
