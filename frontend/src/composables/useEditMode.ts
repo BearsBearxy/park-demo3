@@ -128,6 +128,24 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     editMode.value = true
   }
 
+  /** 本屏这一期的锁作用域。暴露出去是为了让接管抽屉接同一把锁 ——
+   *  让屏自己再写一遍 `S.pvMeter(year.value)` 必然漂移,漂移的后果是去接一把别的锁。 */
+  const lockScope = () => opts.scope?.() ?? null
+
+  /**
+   * 接管成功后的闭环(语义照 SchedHeader.vue:124-128)。
+   *
+   * ⚠ 必须复用私有的 `enter()`,不要另写一段 acquire —— `enter()` 里的
+   *   `entering` 重入闸与「占锁往返期间换了期就还锁」这两道守卫,另写一段就等于
+   *   把它们从接管这条路上摘掉。
+   *   FPTakeoverDrawer 在 emit `taken` 前已经调过 locksApi.takeover(),
+   *   所以这里的 acquire 是重入(幂等,拿回 held 与心跳),与 SchedHeader 同形。
+   */
+  async function onTaken() {
+    lockedBy.value = null
+    await enter()
+  }
+
   /**
    * 关掉授权窗（用户点了取消，或点了窗外）。
    *
@@ -214,5 +232,5 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     })
   }
 
-  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, toggle, askFor, cancelAsk, onElevated, exit }
+  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, toggle, askFor, cancelAsk, onElevated, exit, lockScope, onTaken }
 }

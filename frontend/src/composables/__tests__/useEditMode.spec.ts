@@ -379,3 +379,33 @@ describe('编辑模式 × 换期', () => {
     expect(m.editMode.value).toBe(true)
   })
 })
+
+describe('lockScope / onTaken(接管闭环)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it('❗lockScope() 与传入的 opts.scope() 逐字相同 —— 屏不必再写一遍表达式', () => {
+    const year = ref(2025)
+    const em = useEditMode(['meter-reading:edit'], { scope: () => `pv-meter:${year.value}` })
+    expect(em.lockScope()).toBe('pv-meter:2025')
+    year.value = 2026
+    expect(em.lockScope(), '期变了要跟着变 —— 固化就会去接一把不是本屏握着的锁').toBe('pv-meter:2026')
+  })
+
+  it('❗onTaken() 走 enter():占锁往返中期变了 → 还锁且不进编辑态', async () => {
+    // 这条守的是「复用 enter() 而不是另写一段 acquire」。另写一段就把换期复核摘掉了。
+    asRole(['meter-reading:edit'])
+    const year = ref(2025)
+    const em = useEditMode(['meter-reading:edit'], { scope: () => `pv-meter:${year.value}` })
+    vi.mocked(api.post).mockImplementation(async () => {
+      year.value = 2026                      // 往返途中用户换了期
+      return { granted: true, holder: null, acquiredAt: 1 } as never
+    })
+    await em.onTaken()
+    expect(em.editMode.value, '期已经变了,不该留在编辑态').toBe(false)
+    expect(api.delete, '刚拿到的那把锁要还回去').toHaveBeenCalledWith('/locks/pv-meter:2025?t=1')
+  })
+})

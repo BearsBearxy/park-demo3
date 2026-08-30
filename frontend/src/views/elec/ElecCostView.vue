@@ -16,6 +16,7 @@ import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useMonthGate } from '@/composables/useMonthGate'
@@ -42,7 +43,8 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
+        lockedBy, evictedBy, lockScope, onTaken } =
   useEditMode(['entry:edit', 'param-policy:edit'], { scope: () => S.elecCost(year.value, month.value) })
 // 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
 // ⚠ 两扇门都要 `&& !loadErr`(照 PvMeterView 三轮复查后的形状):本月费项没加载成功时
@@ -766,6 +768,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
     <FPElevateDialog
       :page="`电费成本总览 · ${year}-${String(month).padStart(2, '0')}`" :action="'录入费项金额 / 改电价口径'" :perms="asking" what="修改电价口径" @close="cancelAsk" @elevated="onElevated" />
+    <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
+                   :what="`电费成本总览 ${year}-${String(month).padStart(2, '0')}`"
+                   @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
   </div>
 </template>
 

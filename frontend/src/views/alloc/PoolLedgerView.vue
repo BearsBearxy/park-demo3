@@ -68,6 +68,7 @@ import FPAlertPanel, { type AlertGroup } from '@/components/fp/FPAlertPanel.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
@@ -80,7 +81,8 @@ const auth = useAuthStore()
 const canGen = computed(() => auth.can('billing-run:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
+        lockedBy, evictedBy, lockScope, onTaken } =
   useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
 // alertOpen 必须一起收:告警面板是 FPSideDrawer(Teleport to body),子树随 KeepAlive
 // 停用消失时它留在 body 上飘着,盖在下一个屏上(同 MeterView 的 openId)。
@@ -933,6 +935,9 @@ async function delPool() {
          信息由下面的授权弹窗给到了,不需要第二遍;且现在进得了编辑模式就一定权限齐,本就无话可说 -->
     <FPElevateDialog
       :page="`公共电核算 · ${ym}`" :action="'生成本月公摊 / 改计费口径'" :perms="asking" what="修改公摊池配置" @close="cancelAsk" @elevated="onElevated" />
+    <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
+                   :what="`公共电核算 ${ym}`"
+                   @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
     <!-- §6:stale / 待重算(cfgDirty) / 生成告警 / 受益人变动四条流内提示条已撤 —— 收进工具条 chip + 右侧抽屉(见页尾 FPAlertPanel)。
          2026-08-29 修:「配置已变,请重新生成」原来单独留了一条 v-if="editMode || cfgDirty" 的流内条,
