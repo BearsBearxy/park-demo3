@@ -161,21 +161,31 @@ const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, h
                @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 ```
 
-`what` 每屏一句，粒度**跟本屏 scope 对齐**（scope 带月的就写到月）。
-月份补零**用本屏已有的写法** —— ElecCost / PoolLedger / BillNotices 三屏本地已有 `pad2`，
-ParamCenter 没有就直接内联 `String(month).padStart(2, '0')`。
-**不要为这个新建共享 util**：`pad2` 在本仓一直是各文件本地定义（`usePeriod.ts:10`、
-`useMonthGate.ts:14`、`reportPeriod.ts:19` 三处各写各的），收编它不属于本次范围。
+`what` 每屏一句。**取值规则：照本屏 `FPElevateDialog` 的 `:page` 措辞**（去掉中间的 `·`）。
+这样期粒度天然与 scope 对齐，用词也与同一文件里已有的提权窗一致，不必另发明一套。
 
-| 屏 | `what` |
-|---|---|
-| PvMeterView | `` `光伏抄表 ${year} 年` `` |
-| CpMeterView | `` `${vehicleTypeLabel}充电桩抄表 ${year} 年` `` |
-| ElecCostView | `` `电费成本 ${year}-${pad2(month)}` `` |
-| MeterView | `` `园区抄表 ${year} 年` `` |
-| PoolLedgerView | `` `公共电核算 ${year}-${pad2(month)}` `` |
-| BillNoticesView | `` `催缴单 ${year}-${pad2(month)}` `` |
-| ParamCenterView | `` `计费参数 ${year}-${pad2(month)}` `` |
+| 屏 | `what` | 来源（本屏 FPElevateDialog `:page`） |
+|---|---|---|
+| PvMeterView | `` `光伏分栋抄表 ${year} 年` `` | :756 |
+| CpMeterView | `` `充电桩分桩明细 ${year} 年` `` | :767 |
+| ElecCostView | `` `电费成本总览 ${year}-${String(month).padStart(2, '0')}` `` | :768（本屏就是这么写的，不引 `pad2`） |
+| MeterView | `` `园区抄表 ${year} 年` `` | :852 |
+| PoolLedgerView | `` `公共电核算 ${ym}` `` | :935（本屏已有 `ym` computed） |
+| BillNoticesView | `` `催缴单 ${ym}` `` | :1183（已有 `ym`） |
+| ParamCenterView | `` `计费参数 ${ym}` `` | :812（已有 `ym`） |
+
+> 因此**不需要**任何新的补零工具：三个月粒度屏已有 `ym`，ElecCost 已有内联 `padStart`。
+
+### 4.4 ⚠ MeterView 的解构与其余六屏不同
+
+六屏是 `toggle: toggleEdit`；`MeterView.vue:66` 是：
+
+```js
+const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated,
+        exit: exitEdit, heldByOther, toggle } = useEditMode(...)
+```
+
+**不要盲替换**。这屏只在既有解构尾部追加 `lockedBy, evictedBy, lockScope, onTaken` 四项即可。
 
 ## §5 测试
 
