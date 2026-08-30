@@ -48,6 +48,7 @@ import ParamEditPopover, { type RefOption } from './ParamEditPopover.vue'
 import ParamHistoryDrawer from './ParamHistoryDrawer.vue'
 import ParamChangesDrawer from './ParamChangesDrawer.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
@@ -62,7 +63,8 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 // ① 区月度录入(照抄供电局账单)、②③④ 区长期计费口径、重算 —— 三档权限在点「编辑模式」时一次要齐:
 // 缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
 // 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
+        lockedBy, evictedBy, lockScope, onTaken } =
   useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], { scope: () => S.paramCenter(year.value, month.value) })
 onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
@@ -810,6 +812,9 @@ const FIXED_RULES = [
 
     <FPElevateDialog
       :page="`计费参数 · ${ym}`" :action="'修改计费口径 / 月度录入'" :perms="asking" what="修改计费口径" @close="cancelAsk" @elevated="onElevated" />
+    <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
+                   :what="`计费参数 ${ym}`"
+                   @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
     <!-- 重算/复制上月电价的摘要。原来是 .pm-actions 里 flex:1 1 100% 的一个 span ——
          它一出现就换行,把整条工具栏撑高一行,下面全部内容跟着往下跳(LAYOUT-STABILITY-SPEC §4)。 -->

@@ -33,6 +33,7 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
@@ -63,7 +64,8 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签**保留**编辑态与草稿,只关浮层 ──
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
-const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle } =
+const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle,
+        lockedBy, evictedBy, lockScope, onTaken } =
   useEditMode(['meter-reading:edit', 'meter-master:edit'], { scope: () => S.meters(year.value) })
 const importing = ref(false)
 const okMsg = ref('')
@@ -850,6 +852,9 @@ const emptyText = computed(() => {
     </div>
     <FPElevateDialog
       :page="`园区抄表 · ${year} 年`" :action="'修改表档案 / 抄表读数'" :perms="asking" what="录入抄表读数或改表档案" @close="cancelAsk" @elevated="onElevated" />
+    <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
+                   :what="`园区抄表 ${year} 年`"
+                   @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
     <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 6000" />
   </div>
 </template>

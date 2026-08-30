@@ -32,6 +32,7 @@ import {
 } from '@/utils/billNoticeLogic'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
+import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
@@ -74,7 +75,8 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
-const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther } =
+const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
+        lockedBy, evictedBy, lockScope, onTaken } =
   useEditMode(['billing-run:edit', 'billing-issue:edit'], { scope: () => S.billNotices(year.value, month.value) })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
@@ -1181,6 +1183,9 @@ const drawerSub = computed(() => {
                        @close="expReconOpen = false" @export="onExportRecon" />
     <FPElevateDialog
       :page="`催缴单 · ${ym}`" :action="'生成本月催缴单 / 确认签发'" :perms="asking" what="签发催缴单" @close="cancelAsk" @elevated="onElevated" />
+    <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
+                   :what="`催缴单 ${ym}`"
+                   @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
 
     <!-- 屏级告警抽屉(§6):原「本屏为旧快照」流内条搬到这里,带人话说明与「去重算」动作 -->
     <FPAlertPanel :open="alertOpen" :groups="alertGroups" @close="alertOpen = false" />
