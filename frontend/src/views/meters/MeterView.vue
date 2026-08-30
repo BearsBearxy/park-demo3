@@ -13,7 +13,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
-  type MeterDeleteDTO, type MeterKind, type MeterZone,
+  type MeterDeleteDTO, type MeterKind,
 } from '@/api/meters'
 import { tenantApi } from '@/api/tenant'
 import { buildingApi } from '@/api/building'
@@ -31,6 +31,7 @@ import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
 import type { ImportResultDTO } from '@/types/import'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useZonesStore } from '@/stores/zones'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
@@ -222,6 +223,8 @@ function onDiscardChanges() {
 function loadMasters() {
   tenantApi.list().then(v => { tenants.value = v; importCtx.tenantNames = v.flatMap(t => tenantMatchNames(t)) }).catch(() => {})
   buildingApi.list().then(v => { buildings.value = v; importCtx.buildings = v }).catch(() => {})
+  // 期区清单喂导入(meter sheet 名反查用);ensure() 拉不到留空数组,importCtx.zones 也就留空 → meterExcel 回落写死三区
+  zones.ensure().then(() => { importCtx.zones = zones.list })
 }
 // 页签切回:租户改名/楼栋变更后清单回拉,合同增删改后绑定候选回拉(浏览状态保留)
 onReactivated(() => { loadMasters(); loadBinding() })
@@ -253,9 +256,9 @@ const own = ref('all')
 const status = ref<StatusFilter>('all')
 const q = ref('')
 const KIND_OPTS = [{ value: 'elec', label: '电表' }, { value: 'water', label: '水表' }]
-const ZONE_OPTS = [
-  { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
-]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+const ZONE_OPTS = computed(() => zones.list.map(z => ({ value: z.code, label: z.name })))
 const OWN_OPTS = computed(() => [
   { value: 'all', label: '全部归属' },
   ...Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, kind.value) })),
@@ -488,14 +491,14 @@ async function onImport(payload: ImportRec[] | { label?: string; records: Import
   }
 }
 async function onTemplate() {
-  try { await buildMeterTemplate(ym.value) }
+  try { await buildMeterTemplate(ym.value, zones.list) }
   catch (e) { alert((e as { message?: string })?.message ?? '模板下载失败') }
 }
 const exporting = ref(false)
 async function onExport() {
   if (exporting.value) return
   exporting.value = true
-  try { await exportMeterMonth(ym.value, meters.value ?? [], readings.value ?? []) }
+  try { await exportMeterMonth(ym.value, meters.value ?? [], readings.value ?? [], zones.list) }
   catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
   finally { exporting.value = false }
 }
@@ -509,7 +512,6 @@ const mForm = ref({
   area: '', floorLabel: '', side: '', roomNo: '',
 })
 const mErr = ref('')
-const DLG_ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' }]
 const DLG_OWN_OPTS = computed(() =>
   Object.keys(OWNERSHIP_LABEL).map(value => ({ value, label: ownershipLabel(value, mForm.value.kind) })))
 const dlgBuildingOpts = computed(() => [
@@ -536,7 +538,7 @@ async function submitMeter() {
   if (!Number.isFinite(factor) || factor <= 0) { mErr.value = '倍率需为正数(留空=1)'; return }
   try {
     await metersApi.create({
-      kind: mForm.value.kind as MeterKind, zone: mForm.value.zone as MeterZone, name, factor,
+      kind: mForm.value.kind as MeterKind, zone: mForm.value.zone, name, factor,
       subName: trimOrNull(mForm.value.subName),
       spot: trimOrNull(mForm.value.spot), code: trimOrNull(mForm.value.code),
       area: trimOrNull(mForm.value.area),
@@ -741,7 +743,7 @@ const emptyText = computed(() => {
     <FpImportModal
       v-if="importing"
       title="导入 园区抄表 · 水电表读数"
-      sub="上传整册抄表工作簿(一期/二期/宿舍×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
+      sub="上传整册抄表工作簿(各期区×电/水 sheet,标题行含年月),识别 sheet 逐段勾选;表自动建档并按企业名称匹配租户/楼栋/归属,同表同月重复导入自动覆盖;缺本月读数照收并标「未抄」"
       v-bind="parserProps('meter', { ...importCtx, year, month })"
       @close="importing = false"
       @import="onImport"
@@ -759,7 +761,7 @@ const emptyText = computed(() => {
         <div class="mt-dlg-b">
           <div class="mt-dlg-row">
             <Select v-model="mForm.kind" label="类别" :options="KIND_OPTS" size="sm" />
-            <Select v-model="mForm.zone" label="分区" :options="DLG_ZONE_OPTS" size="sm" />
+            <Select v-model="mForm.zone" label="分区" :options="ZONE_OPTS" size="sm" />
           </div>
           <div class="mt-dlg-row">
             <Select v-model="mForm.building" label="期数·楼栋(可空)" :options="dlgBuildingOpts" size="sm" />

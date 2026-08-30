@@ -10,6 +10,7 @@ import { writeAoaWorkbook } from './sheet'
 import type { ImportRec } from './importHeaderMatch'
 import { splitTenantSpot, classifyOwnership, buildingIdFor, OWNERSHIP_LABEL, SPOT_DIR_RE } from './meterSplit'
 import { tenantMatchNames } from './tenantAlias'
+import { zoneLabel } from './zoneLabel'
 
 export interface MeterSheetSection {
   label: string; records: ImportRec[]; sciCodes?: number
@@ -27,7 +28,6 @@ export interface MeterMasterCtx {
   buildings?: { id: number; name: string }[]
 }
 
-export const METER_ZONE_LABEL: Record<string, string> = { p1: '一期', p2: '二期', dorm: '宿舍' }
 export const METER_KIND_LABEL: Record<string, string> = { elec: '电表', water: '水表' }
 
 // FpImportModal 预览表列(__preview 与此对齐,§6.4 拆分结果);模板是 6-sheet 骨架另走 buildMeterTemplate
@@ -58,14 +58,25 @@ const SCI_RE = /^\d(\.\d+)?E\+\d+$/i
 // 数值化的标识/编码(101 → 101.00):261 块宿舍影子表的直接成因
 const dropTrailingZeros = (s: string): string => (/^\d+\.0+$/.test(s) ? s.replace(/\.0+$/, '') : s)
 
+// 期区清单(T7 GET /api/zones 的形状,取 code+name 即够用)。清单不可用(未注入或接口拉取失败
+// 留了个空数组)时回落这写死的三区 —— 保证老流程(一期/二期/宿舍)在接口挂掉时照常可用。
+// Finding 5:故意比 importRegistry.ts 的 METER_FALLBACK_ZONES({p1,p2,p3,dorm})窄一区 ——
+// 这条 fallback 复刻的是三期开工前的抄表导入原样行为,不是「/api/zones 挂了该给哪些期区」的通用答案;
+// 加 p3 会让接口一挂就悄悄改变这条老路径的识别结果,与「原样保留」的初衷相反。两处不同是刻意的,不要合并。
+export interface ZoneLite { code: string; name: string }
+const DEFAULT_ZONES: ZoneLite[] = [{ code: 'p1', name: '一期' }, { code: 'p2', name: '二期' }, { code: 'dorm', name: '宿舍' }]
+const resolveZones = (zones?: ZoneLite[]): ZoneLite[] => (zones && zones.length ? zones : DEFAULT_ZONES)
+
 // ── sheet 识别(分级降级):标题(前4行含「抄表记录」的单元格)+ sheet 名 取 月份/分区/类别;
 //    取不到的那几项落到 fallback(用户在导入弹窗里选的账期/分区/类别)——账期无法从数据推断,只能问人。
-function detectSheet(name: string, matrix: string[][], fb: MeterFallback = {}):
+function detectSheet(name: string, matrix: string[][], fb: MeterFallback = {}, zones?: ZoneLite[]):
     { zone: string; kind: string; ym: string; ymSource: 'title' | 'fallback' } | null {
   const src = [...matrix.slice(0, 4).flat().map(c => String(c ?? '')).filter(s => s.includes('抄表记录')), name].join('|')
   const m = src.match(/(\d{4})年(\d{1,2})月/)
   const ym = m ? `${m[1]}-${String(+m[2]).padStart(2, '0')}` : fb.ym
-  const zone = /一期/.test(src) ? 'p1' : /二期/.test(src) ? 'p2' : /宿舍/.test(src) ? 'dorm' : fb.zone
+  // 按 label 长度降序反查,防「三期」这类子串被更短的 label 误命中(清单里 label 互不为前缀时无所谓,但排序成本很低)
+  const zone = [...resolveZones(zones)].sort((a, b) => b.name.length - a.name.length)
+    .find(z => src.includes(z.name))?.code ?? fb.zone
   const kind = /电表/.test(src) ? 'elec' : /水表/.test(src) ? 'water' : fb.kind
   return ym && zone && kind ? { zone, kind, ym, ymSource: m ? 'title' : 'fallback' } : null
 }
@@ -83,9 +94,9 @@ function headerRow(matrix: string[][]): number {
 
 // ── 单 sheet 解析(纯函数,spec 锁定) ──
 export function parseMeterSheet(
-  name: string, matrix: string[][], master: MeterMasterCtx = {}, fb: MeterFallback = {},
+  name: string, matrix: string[][], master: MeterMasterCtx = {}, fb: MeterFallback = {}, zones?: ZoneLite[],
 ): MeterSheetSection | null {
-  const det = detectSheet(name, matrix, fb)
+  const det = detectSheet(name, matrix, fb, zones)
   if (!det) return null
   const h = headerRow(matrix)
   if (h < 0) return null
@@ -173,7 +184,7 @@ export function parseMeterSheet(
       tenantId, buildingId, ownership,
       note: noteCol >= 0 ? cellStr(row, noteCol) || undefined : undefined,
       // §6.4 导入预览列:期数|楼栋|方位|租户(或待核原文)|归属|倍率|上月总|本月总|表列用量
-      __preview: [METER_ZONE_LABEL[det.zone], buildings.find(b => b.id === buildingId)?.name ?? '',
+      __preview: [zoneLabel(det.zone), buildings.find(b => b.id === buildingId)?.name ?? '',
         spot, ownership === 'tenant' ? (split.tenant ?? (rawTenant ? `${rawTenant}(待核)` : '')) : rawTenant,
         OWNERSHIP_LABEL[ownership], factor ?? '', prevTotal ?? '', currTotal ?? '',
         stated == null ? '' : gap ? `${stated}⚠` : stated],
@@ -188,16 +199,16 @@ export function parseMeterSheet(
   }
   if (!records.length) return null
   const [y, mo] = det.ym.split('-')
-  const label = `${METER_ZONE_LABEL[det.zone]}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
+  const label = `${zoneLabel(det.zone)}${METER_KIND_LABEL[det.kind]} · ${y}年${+mo}月 · ${records.length}块表`
     + (det.ymSource === 'fallback' ? '(按所选账期)' : '')
   return { label, records, sciCodes, ym: det.ym, ymSource: det.ymSource, noNameCol: nameCol < 0 }
 }
 
 // ── 整册解析(parseWorkbook 契约):识别 sheet → sections 勾选段;仅 1 段平铺为 records ──
 export function parseMeterWorkbook(
-  sheets: { name: string; matrix: string[][] }[], master: MeterMasterCtx = {}, fb: MeterFallback = {},
+  sheets: { name: string; matrix: string[][] }[], master: MeterMasterCtx = {}, fb: MeterFallback = {}, zones?: ZoneLite[],
 ): { records?: ImportRec[]; sections?: MeterSheetSection[]; error?: string; warning?: string; notice?: string } {
-  const sections = sheets.map(s => parseMeterSheet(s.name, s.matrix, master, fb)).filter((s): s is MeterSheetSection => !!s)
+  const sections = sheets.map(s => parseMeterSheet(s.name, s.matrix, master, fb, zones)).filter((s): s is MeterSheetSection => !!s)
   if (!sections.length)
     return { error: sheets.some(s => headerRow(s.matrix) >= 0)
       // 表头认出来了,缺的是账期/分区/类别 → 给可操作提示(裸粘贴数据块走这条)
@@ -220,7 +231,7 @@ export function parseMeterWorkbook(
 // ── 模板:6-sheet 骨架(标题行含年月+真实版式表头+示例行),与解析器互认 ──
 export function buildMeterTemplateAoa(zone: string, kind: string, ym: string): (string | number)[][] {
   const [y, mo] = ym.split('-')
-  const title = `${y}年${+mo}月${METER_ZONE_LABEL[zone]}${zone === 'dorm' ? '' : '园区'}${METER_KIND_LABEL[kind]}抄表记录`
+  const title = `${y}年${+mo}月${zoneLabel(zone)}${zone === 'dorm' ? '' : '园区'}${METER_KIND_LABEL[kind]}抄表记录`
   if (kind === 'elec') {
     return [
       ['', title],
@@ -236,15 +247,15 @@ export function buildMeterTemplateAoa(zone: string, kind: string, ym: string): (
   ]
 }
 
-const TEMPLATE_SHEETS: [string, string, string][] = [
-  ['一期园区电', 'p1', 'elec'], ['一期园区水', 'p1', 'water'],
-  ['二期园区电', 'p2', 'elec'], ['二期园区水', 'p2', 'water'],
-  ['宿舍电', 'dorm', 'elec'], ['宿舍水', 'dorm', 'water'],
-]
+// sheet 清单随期区清单生成(期区不可用时回落写死三区,见 resolveZones)。
+// buildMeterTemplate 与 exportMeterMonth 共用这一个来源 —— 不共用则新期区能建能导入,却永远不出现在模板/导出里。
+export const templateSheets = (zones?: ZoneLite[]): [string, string, string][] =>
+  resolveZones(zones).flatMap(z => (['elec', 'water'] as const).map(k =>
+    [`${z.name}${z.code === 'dorm' ? '' : '园区'}${k === 'elec' ? '电' : '水'}`, z.code, k] as [string, string, string]))
 
-export async function buildMeterTemplate(ym: string): Promise<void> {
+export async function buildMeterTemplate(ym: string, zones?: ZoneLite[]): Promise<void> {
   await writeAoaWorkbook(`园区抄表导入模板-${ym}.xlsx`,
-    TEMPLATE_SHEETS.map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterTemplateAoa(zone, kind, ym) })))
+    templateSheets(zones).map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterTemplateAoa(zone, kind, ym) })))
 }
 
 // ── 当月导出:6 sheet 同构真实版式,可改后直接重导(修正回路,同 PV 导出口径) ──
@@ -279,7 +290,9 @@ export function buildMeterExportAoa(
   return aoa
 }
 
-export async function exportMeterMonth(ym: string, meters: MeterLite[], readings: MeterReadingLite[]): Promise<void> {
+export async function exportMeterMonth(
+  ym: string, meters: MeterLite[], readings: MeterReadingLite[], zones?: ZoneLite[],
+): Promise<void> {
   await writeAoaWorkbook(`园区抄表-${ym}.xlsx`,
-    TEMPLATE_SHEETS.map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterExportAoa(zone, kind, ym, meters, readings) })))
+    templateSheets(zones).map(([sheet, zone, kind]) => ({ name: sheet, aoa: buildMeterExportAoa(zone, kind, ym, meters, readings) })))
 }

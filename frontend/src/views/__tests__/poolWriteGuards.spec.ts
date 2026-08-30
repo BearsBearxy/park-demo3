@@ -1,4 +1,4 @@
-// 公共电核算(PoolLedgerView)写口守卫 —— 钉住 2026-08-29 落地的 5 处:
+// 公共电核算(PoolLedgerView)写口守卫 —— 钉住 2026-08-29 落地的 5 处 + F2(载入竞态)一处:
 //   ① watch(editMode) 转假 → 池配置抽屉(FPDrawer)跟着关(:86)
 //   ② onDeactivated 收 alertOpen —— FPAlertPanel 是 FPSideDrawer(Teleport to body),
 //     子树随 KeepAlive 停用消失时它会留在 body 上飘着(:83)
@@ -6,6 +6,7 @@
 //   ④ submitPool(:686) / delPool(:726) 开头同款守卫
 //   ⑤ applyHandoff(:190):先 adoptYm 再 toggleEdit,且 period.picked 才进 ——
 //     锁 scope 必须是真期的 `billing-chain:YYYY-MM`,不是 `billing-chain:0-00`
+//   ⑥ F2:loadRules() 还在飞时禁用保存(rulesLoading/rulesNotReady)——否则 feeKey 静默冲成默认值
 //
 // ⚠ 浏览态直呼写函数的用例(③④),前置状态必须做足(form 填好、generated/confirm 都不拦路),
 //   否则函数在自己原有的早退分支就 return,守卫删掉照样绿 —— 本仓已经栽过两次的坑。
@@ -73,7 +74,7 @@ vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn(() => Promise.resolve(
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn(() => Promise.resolve([])) } }))
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
-import { allocApi } from '@/api/alloc'
+import { allocApi, type AllocRuleDTO } from '@/api/alloc'
 
 /** vm 直呼写函数用(script setup 的顶层绑定在 dev 构建里挂在实例代理上,meterPeriodFlow 同款) */
 interface Vm {
@@ -210,6 +211,33 @@ describe('PoolLedgerView 写口守卫', () => {
     // production 删掉 :201 里的 `period.picked` 条件 → toggleEdit 照进,
     // 摸到 `billing-chain:0-00`(year/month 都是 `?? 0`)→ 这里长度非 0 → 红
     expect(acquired).toHaveLength(0)
+    w.unmount()
+  })
+
+  // ⑥ F2·loadRules() 载入竞态:onMounted 是 fire-and-forget,「还在飞」的窗口里
+  //   openPoolDlg 从 ruleById 取 feeKey 拿不到值,静默落回默认键。禁用保存按钮直到
+  //   rules 落地(成功或失败)才是唯一不会静默改数的解法 —— 见 rulesLoading/rulesNotReady。
+  it('⑥ rules 未返回时保存按钮禁用且提示正在载入,返回后自动可用', async () => {
+    let resolveRules!: (v: AllocRuleDTO[]) => void
+    const pending = new Promise<AllocRuleDTO[]>(res => { resolveRules = res })
+    vi.mocked(allocApi.rules).mockReturnValueOnce(pending)
+    useBillingPeriodStore().pick(2025, 3)
+    const w = mount(PoolLedgerView, { attachTo: document.body })
+    await flushPromises()
+    await w.findAll('button').find(b => b.text().includes('编辑模式'))!.trigger('click')
+    await flushPromises()
+    await w.findAll('button').find(b => b.text().includes('新增池'))!.trigger('click')
+    await flushPromises()
+    // FPDrawer 是 Teleport to body:抽屉里的内容不在 w 的渲染子树里,得从真实 DOM 找
+    // (同文件①用 document.querySelector('.fp-dwr-backdrop') 同一手法)。
+    const saveBtn = () => Array.from(document.querySelectorAll('button'))
+        .find(b => b.textContent?.includes('保存')) as HTMLButtonElement
+    // production 删掉 rulesLoading 守卫(只留 rulesFailed)→ 还在飞的窗口里两者都是 false → 这里未禁用 → 红
+    expect(saveBtn()?.disabled, '前置:rules 还没落地,保存必须禁用').toBe(true)
+    expect(document.body.textContent).toContain('正在载入')
+    resolveRules([])
+    await flushPromises()
+    expect(saveBtn()?.disabled, 'rules 落地后按钮应自动可用').toBe(false)
     w.unmount()
   })
 })

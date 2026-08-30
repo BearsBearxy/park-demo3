@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 // 档案新增/编辑共用;PUT 带全量。kind/zone 白名单校验,factor 空=1。
 public record MeterReq(
     @NotBlank @Pattern(regexp = "elec|water") String kind,
-    @NotBlank @Pattern(regexp = "p1|p2|dorm") String zone,
+    @NotBlank @Pattern(regexp = "p\\d+|dorm") String zone,
     @NotBlank String name,
     String area, String spot, String tenantName,
     // V74/§E8 三态:不传(null)=按 spot 自动解析;""=显式清除(跨层/不分侧,不再被 spot 解析回来);有值=人工覆盖

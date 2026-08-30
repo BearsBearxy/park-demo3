@@ -31,7 +31,7 @@ class ParamRegistryTest {
         "coefficient", "std_add", "price_override",
         // ③
         "loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_exclude", "loss_denom_cable",
-        "loss_supply_meter", "frozen_2023",
+        "loss_supply_meter", "frozen_2023", "zone_calc_kind",
         // ④
         "elec_package", "share_elec_fixed", "share_water_fixed", "green_rate", "lamp_rate", "fire_amount_fixed",
         "loss_base_form", "loss_base_form_b{bid}", "loss_base_form_b32", "loss_base_park_meter");
@@ -68,10 +68,12 @@ class ParamRegistryTest {
         assertTrue(ParamRegistry.allowed("loss_denom_cable", "p2"));
         assertTrue(ParamRegistry.allowed("loss_denom_cable", "building:30"));
         assertTrue(ParamRegistry.allowed("loss_base_form_b32", "tenant:9"));
-        assertFalse(ParamRegistry.allowed("elec_peak", "p9"));          // 非法 scope
+        assertFalse(ParamRegistry.allowed("elec_peak", "px"));          // 非法 scope(p\d+ 会收下 p9,只能用非数字后缀)
+        assertTrue(ParamRegistry.allowed("elec_peak", "p3"));           // 三期:放宽后必须通过
         assertFalse(ParamRegistry.allowed("elec_peak", "building:x"));  // 非数字 id
         assertFalse(ParamRegistry.allowed("no_such_key", ""));
-        assertNull(ParamRegistry.scopeKind("p9"));
+        assertNull(ParamRegistry.scopeKind("px"));
+        assertEquals(ScopeKind.ZONE, ParamRegistry.scopeKind("p3"));
         assertEquals(ScopeKind.GLOBAL, ParamRegistry.scopeKind(null));
     }
 

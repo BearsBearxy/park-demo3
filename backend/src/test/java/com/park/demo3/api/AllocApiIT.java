@@ -125,6 +125,87 @@ class AllocApiIT extends AbstractMysqlIT {
         assertMonths("/api/alloc/pool-months", "2099-01");
     }
 
+    // ── F1:@Pattern 值域漏 carrier(V73 冲减载体)/manual(V81 无表人工指定行)——
+    //    库里 5 个存量池(17/92-95)打开抽屉什么都没改、点保存就被 400。
+    //    不依赖生产库具体 id(本类"探针"模式,自建自证无顺序依赖):自建 carrier/manual 池验证同一条校验。 ──
+    @Test
+    void carrierAndManualMethod_savableViaApi() throws Exception {
+        int rCarrier = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"carrier\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT冲减载体\"}");
+        int rManual = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"manual\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT人工指定\"}");
+        // 原样 PUT 回去 → 200,字段一字未变
+        mvc.perform(put("/api/alloc/rules/" + rCarrier).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"carrier\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT冲减载体\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.method").value("carrier"))
+                .andExpect(jsonPath("$.data.feeKey").value("share_elec_floor"))
+                .andExpect(jsonPath("$.data.name").value("一期园区·IT冲减载体"));
+        mvc.perform(put("/api/alloc/rules/" + rManual).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"manual\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT人工指定\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.method").value("manual"))
+                .andExpect(jsonPath("$.data.name").value("一期园区·IT人工指定"));
+    }
+
+    // ── F3:direct 恰一户,开两个例外(理由不同,分开写)——
+    //    ①park_loss_pool:整笔挂亏池的净量喂园区损耗池 G,语义上就不该有受益人(库里 23/96-99 全是 0 户,
+    //      种子直接写入绕过了本校验);②已存在的池允许编辑为 0 户(既成事实),新建仍硬拦(配置错误当场拦住)。
+    //    n>1 无论哪个例外都不放行——整笔归户只能归一户。 ──
+    @Test
+    void directException_parkLossZeroMembers_existingZeroMembers_twoAlwaysRejected() throws Exception {
+        // 例外一:park_loss_pool + 0 户,新建直接 200(不是"已存在"例外,是语义例外)
+        // ⚠ feeName 必须给且互不相同:两个池都不给定位时 poolName 会一律塌成"一期园区"
+        // (F4b 撞名校验落地后,同名的第二个 postId 会被拦 400,而不是本用例要测的 direct 校验)。
+        postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\","
+                + "\"feeName\":\"IT恰一户损耗\",\"members\":[]}");
+
+        // 例外二:已存在的 direct 池编辑为 0 户 → 200(既成事实,不该逼用户先指定受益户才能改备注)
+        int t1 = createTenant("IT恰一户甲");
+        int rDirect = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                + "\"feeName\":\"IT恰一户\",\"members\":[{\"tenantId\":" + t1 + "}]}");
+        mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                        + "\"feeName\":\"IT恰一户\",\"members\":[]}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // n>1 恒非法:两个例外都不放行 2 户
+        int t2 = createTenant("IT恰一户乙");
+        mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"park_loss_pool\","
+                        + "\"feeName\":\"IT恰一户损耗乙\",\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                .andExpect(jsonPath("$.code").value(400));
+        mvc.perform(put("/api/alloc/rules/" + rDirect).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\","
+                        + "\"feeName\":\"IT恰一户\",\"members\":[{\"tenantId\":" + t1 + "},{\"tenantId\":" + t2 + "}]}"))
+                .andExpect(jsonPath("$.code").value(400));
+
+        // 新建 direct + 0 户(非 park_loss_pool)仍被拦 —— 配置错误当场拦住,不靠事后告警
+        // (回归探针:与既有 ruleCrud_generate_floorAnchor_deleteGuard 里的"IT坏整笔"用例同款断言)
+        mvc.perform(post("/api/alloc/rules").header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"direct\",\"feeKey\":\"share_elec_fire\",\"members\":[]}"))
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    // ── F4b:保存时拦撞名——alloc_rule.name 无唯一键,88 保存一次就和 89 逐字同名不报错。
+    //    在 apply() 算出 auto 名之后、写库之前查重名(排除自身 id)。 ──
+    @Test
+    void applyDuplicateName_rejected() throws Exception {
+        int rA = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"none\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}");
+        int rB = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"method\":\"none\","
+                + "\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试乙\"}");
+        // 把 B 的 feeName 改成与 A 重算出同名 → 400,文案含被占用的名字
+        mvc.perform(put("/api/alloc/rules/" + rB).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("一期园区·IT撞名测试")));
+        // A 自己原样保存(排除自身 id)不该被自己的名字挡住 → 200
+        mvc.perform(put("/api/alloc/rules/" + rA).header("Authorization", auth()).contentType("application/json")
+                .content("{\"zone\":\"p1\",\"method\":\"none\",\"feeKey\":\"share_elec_floor\",\"feeName\":\"IT撞名测试\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
     // /months 系列的三条通用断言:格式 YYYY-MM、升序、无重复(去重排序后须与原样等长同序),外加本例月在内
     private void assertMonths(String path, String mustContain) throws Exception {
         java.util.List<String> ms = JsonPath.read(mvc.perform(get(path).header("Authorization", auth()))
@@ -1167,6 +1248,25 @@ class AllocApiIT extends AbstractMysqlIT {
                         org.hamcrest.Matchers.containsString("户因合同缺起止日期无法判定是否在租,未进入自动在租名册参与分摊"))));
     }
 
+    // 未入池的公摊表:只报 share 且当月有读数且没被任何池绑定的
+    @Test
+    void meterDiff_reportsUnboundShareMeterOnly() throws Exception {
+        int bid = building("IT三期创业大厦");
+        int lonely = locMeter("IT孤儿公摊表", bid, "四楼", "电表①");   // kind=elec zone=p1 ownership=share
+        reading(lonely, "2099-11", "0", "100");
+        String my = "$.data[?(@.meterId==" + lonely + ")]";
+        mvc.perform(get("/api/alloc/meter-diff").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath(my).isNotEmpty());
+        // 绑进一个池之后就不再报
+        int rule = postId("/api/alloc/rules", "{\"zone\":\"p1\",\"name\":\"IT池\",\"buildingId\":" + bid
+                + ",\"method\":\"floor\",\"coefficient\":1,\"feeKey\":\"share_elec_floor\",\"feeName\":\"走廊灯\","
+                + "\"meterIds\":[" + lonely + "],\"members\":[]}");
+        org.junit.jupiter.api.Assertions.assertTrue(rule > 0);
+        mvc.perform(get("/api/alloc/meter-diff").param("ym", "2099-11").header("Authorization", auth()))
+                .andExpect(jsonPath(my).isEmpty());
+    }
+
     // ── 园区级池受益人 fallback(用户 2026-07-30 拍板):不勾人=该期全园在租名册自动摊 ──
     // 此前 building_id IS NULL 的池 members=0 → area 分支 for 空转,全额静默挂亏(实测 9 池 11194 元无声无息)。
     // 锚点:AB=1.11416875;cost=r2(100×AB)=111.42;std=ROUND(100/1000×AB,2)=0.11;两户各 500㎡ → 55.00×2,盈亏 −1.42
@@ -1223,6 +1323,25 @@ class AllocApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath(my + ".allocatedAmount").value(55.0));
         mvc.perform(get("/api/alloc/member-diff").param("ym", "2099-11").header("Authorization", auth()))
                 .andExpect(jsonPath("$.data[?(@.ruleId==" + rAuto + ")].added[?(@.tenantId==" + tA + ")]").isNotEmpty());
+    }
+
+    // P7 fix round 2:未配「计费口径」(zone_calc_kind)的新期区不是算不出钱——computePool 仍会按平价制(商业电价)把该池算出成本并摊到户。
+    // 这正是本任务要消除的「算错了还不报错」——没人能从对账行中发现(p3 池不配口径就不出对账行),所以必须在生成阶段点名。
+    // p1/p2 已回填口径(V114),不应该多出这条新警告——同一条断言里一并验证。
+    @Test
+    void computePool_warnsUnconfiguredZoneCalcKind_configuredZonesStayQuiet() throws Exception {
+        int m = createMeter("IT-P7-p9表", "p9", "share", null, null);   // 园区级:不挂栋,直接试新期区
+        reading(m, "2099-12", "0", "100");
+        postId("/api/alloc/rules", "{\"zone\":\"p9\",\"method\":\"area\",\"coefficient\":1000,"
+                + "\"feeKey\":\"share_elec_light\",\"meterIds\":[" + m + "],\"feeName\":\"IT-P7-p9池\"}");
+        price("elec_commercial", "2099-12", "0.79416875");
+        p2Prices("2099-12");   // p2 规则常驻,任意月生成都要过分时门禁
+        mvc.perform(post("/api/alloc/generate").param("ym", "2099-12").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.warnings", org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.containsString("p9 未配「计费口径」"))))
+                .andExpect(jsonPath("$.data.warnings[?(@ =~ /.*p1 未配「计费口径」.*/)]").isEmpty())
+                .andExpect(jsonPath("$.data.warnings[?(@ =~ /.*p2 未配「计费口径」.*/)]").isEmpty());
     }
 
     // ── §H4.2 b/d/f(V80):原册块与自然键 —— 分带与块内序按原册,不按 building_id ──

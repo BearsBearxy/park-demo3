@@ -75,14 +75,15 @@ describe('locKey — 结构化位置排序键', () => {
 })
 
 describe('groupMeterBlocks — 排序', () => {
-  it('期区序 p1→p2→dorm;区块序 = 区块内最小 sortNo(Excel 原序)', () => {
+  it('期区序 p1→p2→p3→dorm(dorm 恒最后,同 ZoneService.order);区块序 = 区块内最小 sortNo(Excel 原序)', () => {
     const g = groupMeterBlocks([
       mk({ zone: 'dorm', area: '一栋', sortNo: 900 }),
       mk({ zone: 'p2', area: '二车间', sortNo: 30 }),
+      mk({ zone: 'p3', area: '创业大厦', sortNo: 700 }),   // Finding 4:以前没在 ZONE_ORDER 表里,会排到 dorm 后面
       mk({ zone: 'p2', area: '一车间', sortNo: 10 }),
       mk({ zone: 'p1', area: 'A座', sortNo: 500 }),
     ])
-    expect(g.map(z => z.zone)).toEqual(['p1', 'p2', 'dorm'])
+    expect(g.map(z => z.zone)).toEqual(['p1', 'p2', 'p3', 'dorm'])
     expect(g[1].blocks.map(b => b.name)).toEqual(['一车间', '二车间'])
     expect(g[1].blocks[0].key).toBe('p2|一车间')
   })

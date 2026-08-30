@@ -10,11 +10,14 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { allocApi, type AllocLossDTO, type AllocLossUnitDTO } from '@/api/alloc'
-import { paramsApi, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
-import { POOL_ZONE_LABEL, buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
+import { paramsApi, type ParamRowDTO, type ParamStatusDTO } from '@/api/params'
+import { buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
+import { zoneLabel } from '@/utils/zoneLabel'
 import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { onReactivated } from '@/composables/onReactivated'
+import { useViewport } from '@/composables/useViewport'
 import { useTabsStore } from '@/stores/tabs'
+import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf } from '@/nav/billingChain'
 import { iconFor } from '@/components/ds/icon'
@@ -38,7 +41,13 @@ const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(格子与条上同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
 const zone = ref<string>('p1')
-const ZONE_OPTS = [{ value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+// 宿舍无损耗单元(后端 AllocService.lossGroups() 第一道过滤就排 dorm,行号随改动漂移故不写死)。
+// 期区清单接口化之后必须在这里主动排掉,否则会多出一个恒空的宿舍 tab,
+// 把一个刻意的设计读成一个 bug。
+const ZONE_OPTS = computed(() => zones.list.filter(z => z.code !== 'dorm')
+  .map(z => ({ value: z.code, label: z.name })))
 
 // ── 数据(竞态守卫):损耗快照 + 本 zone 栋级参数(只读徽标用,只拉三个键几十行)+ 参数状态(stale 条) ──
 const loss = ref<AllocLossDTO | null>(null)
@@ -49,7 +58,7 @@ async function loadMonth() {
   const my = ++seq
   const [ls, ps, st] = await Promise.all([
     allocApi.loss(ym.value),
-    paramsApi.list(ym.value, zone.value as ParamZone, { scope: 'building:', key: 'loss_adj_qty,loss_adj_rate,loss_rate_manual' })
+    paramsApi.list(ym.value, zone.value, { scope: 'building:', key: 'loss_adj_qty,loss_adj_rate,loss_rate_manual' })
       .catch(() => [] as ParamRowDTO[]),
     paramsApi.status(ym.value).catch(() => null),
   ])
@@ -77,16 +86,30 @@ const reconRows = computed(() =>
 const foot = computed(() => lossFooter(units.value))
 const staleMsg = computed(() => staleText(status.value, 'pool'))
 
-// 列模型:铝缆列仅 p2,公摊分摊度数列仅 p1
-const isP2 = computed(() => zone.value === 'p2')
-// 基础 9 列(位置/总表/分表/损耗量/原率/调整度/调整损/收租率/备注)+铝缆(p2)+公摊度数(p1)
-const colCount = computed(() => 9 + (isP2.value ? 1 : 0) + (zone.value === 'p1' ? 1 : 0))
-// 「位置」列定宽按期别取:一期是单栋名(+「仅按公摊分摊度数」徽标)230 够;二期共用总表的归组标签
-// 「二期 二车间/二期 三车间/二期 四车间(二期 三车间供电)」实测 331px,给 360 不截(用户可见文字一律不截断)
+// 列模型(LAYOUT-STABILITY-SPEC §1/§3:切筛选/换期不许变列数):铝缆、公摊分摊度数两列常驻两期,
+// 不适用的期区显'–'(与 .ll-nv 已有的 null 处理一致)——不再按 isP2 / zone==='p1' 摘列。
+// 基础 9 列(位置/总表/分表/损耗量/原率/调整度/调整损/收租率/备注)+ 铝缆(常驻)+ 公摊度数(常驻)
+const colCount = 11
+// 「位置」列定宽:二期共用总表的归组标签「二期 二车间/二期 三车间/二期 四车间(二期 三车间供电)」
+// 实测 331px,给 360 不截(用户可见文字一律不截断)。一期单栋名用不到这么宽,但列宽两期不许变
+// (同一铁律),故两期都用 360,不再按 isP2 分 230/360。
 // ponytail: 归组再并进一栋(4 栋一组 ≈ 430px)会再截 —— 到时按 units 里最长 label 估宽
-const LBL_W = computed(() => (isP2.value ? 360 : 230))
+const LBL_W = 360
 const w = (px: number) => ({ width: px + 'px', minWidth: px + 'px', maxWidth: px + 'px' })
-const fixLbl = computed(() => ({ ...w(LBL_W.value), left: '0px', borderRight: '1px solid var(--border-subtle)' }))
+// RESPONSIVE-LAYOUT-SPEC §5.3 S 档:sticky 首列 360px 在 390px 视口占 92%,锁着它等于只剩这一列
+// —— 与 PoolLedgerView「左三右二合计 540px 比屏还宽」同一个条件,照它同一个解法:
+// **原位退成普通列**(列宽/列序一根不动,只去 sticky),表在 .ll-wrap 内正常横滚。
+// ⚠ 本屏 §5.3 原注写的是「sticky 本就只有首列一根,S 档无需收敛」——那句按一期旧宽 230(59%)成立,
+//   但二期当时已是 360,故该判断本就不覆盖二期;2026-08-29 列宽两期统一到 360 后三期全落到 92%。
+// 档位判定走 useViewport(offset 是内联 style,CSS 媒体块盖不住;jsdom 无 matchMedia 恒 xl → 桌面档与既有测试零变化)
+const { tier } = useViewport()
+const sTier = computed(() => tier.value === 's')
+// 退级时 class 一起摘:.ll-fix 带不透明背景 + z-index,留着会在无 sticky 时糊住相邻格
+const fixCls = computed(() => (sTier.value ? undefined : 'll-fix'))
+const fixThCls = computed(() => (sTier.value ? undefined : 'll-fix-th ll-fix'))
+const fixLbl = computed(() => (sTier.value
+  ? w(LBL_W)
+  : { ...w(LBL_W), left: '0px', borderRight: '1px solid var(--border-subtle)' }))
 
 // ── 只读镜像:格里的数是快照(生成时用的值),徽标是**当前生效**参数的生效方式(仅本月 / 长期);两者不一致时 stale 条会亮 ──
 // LIST-PAGE-SPEC §8:模板里每格 4 次调用,徽标对象按 (栋,键) 在 computed 里建一次 Map,模板只 get(不在渲染里线性 find + new 对象)
@@ -179,13 +202,13 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
       <table class="ll-table">
         <thead>
           <tr>
-            <th class="ll-th ll-fix-th ll-fix" :style="fixLbl">位置</th>
+            <th class="ll-th" :class="fixThCls" :style="fixLbl">位置</th>
             <th class="ll-th" :style="w(108)">总表用电量</th>
-            <th v-if="isP2" class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计">铝缆用电量</th>
+            <th class="ll-th" :style="w(104)" title="仅列示,不计入总表 / 分表合计(仅二期有铝缆表,一期显'–')">铝缆用电量</th>
             <th class="ll-th" :style="w(108)">分表用电量</th>
             <th class="ll-th" :style="w(100)">损耗量</th>
             <th class="ll-th" :style="w(92)">原损耗率</th>
-            <th v-if="zone === 'p1'" class="ll-th" :style="w(116)" title="一期:园区公共电池本月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式">公摊分摊度数</th>
+            <th class="ll-th" :style="w(116)" title="一期:园区公共电池本月净量合计 ÷ 均摊栋数（四舍五入到 2 位），各栋同值；悬停格子看分解式。二期不适用,显'–'">公摊分摊度数</th>
             <th class="ll-th" :style="w(116)" title="损耗调整度数（正数多收 / 负数少收），按楼栋按月；在计费参数页 ① 本月参数改">损耗调整度数</th>
             <th class="ll-th" :style="w(104)" title="损耗率加点（如 0.3%），按楼栋长期；在计费参数页 ② 长期常数改">损耗率加点</th>
             <th class="ll-th" :style="w(160)" title="按损耗核算方式算出的率；填了「损耗率（手工指定）」则以它为准并并排显示公式算出的率">收取损耗率</th>
@@ -194,7 +217,7 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
         </thead>
         <tbody>
           <tr v-for="u in units" :key="u.headBuildingId">
-            <td class="ll-fix" :style="fixLbl">
+            <td :class="fixCls" :style="fixLbl">
               <span class="ll-lbl" :title="u.label">
                 {{ u.label }}
                 <span v-if="u.variant === 'share_only'" class="ll-var" title="仅按公摊分摊度数核算：率 = 公摊分摊度数 ÷ 分母 + 加点">仅按公摊分摊度数</span>
@@ -202,12 +225,13 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
               </span>
             </td>
             <td><span class="ll-nv" :class="{ empty: u.cQty == null }">{{ fmt(u.cQty) }}</span></td>
-            <td v-if="isP2"><span class="ll-nv" :class="{ empty: u.cableQty == null }">{{ fmt(u.cableQty) }}</span></td>
+            <td><span class="ll-nv" :class="{ empty: u.cableQty == null }">{{ fmt(u.cableQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: u.dQty == null }">{{ fmt(u.dQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: u.eQty == null, neg: (u.eQty ?? 0) < 0 }">{{ fmt(u.eQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: u.rawRate == null }">{{ fpct(u.rawRate) }}</span></td>
-            <!-- G:只读派生值,悬浮给分解式(池名+净量逐项 ÷ 均摊栋数);分栋差异不再走 G调整,走「调整度数」 -->
-            <td v-if="zone === 'p1'">
+            <!-- G:只读派生值,悬浮给分解式(池名+净量逐项 ÷ 均摊栋数);分栋差异不再走 G调整,走「调整度数」。
+                 二期 gQty 恒 null(该指标只在一期核算,见 gTitle),显'–'同其它空值 -->
+            <td>
               <span class="ll-nv help" :class="{ empty: u.gQty == null }" :title="gTitle(u)">{{ fmt(u.gQty) }}</span>
             </td>
             <!-- 损耗调整度数 / 损耗率加点:格里是快照值,徽标是当前生效参数的生效方式;点击去参数页改 -->
@@ -238,28 +262,30 @@ const alertGroups = computed<AlertGroup[]>(() => staleMsg.value ? [{
             <td><span class="ll-txt" :title="u.note ?? undefined">{{ u.note ?? '–' }}</span></td>
           </tr>
           <tr v-if="units.length === 0">
-            <td class="ll-noro" :colspan="colCount">{{ POOL_ZONE_LABEL[zone] }}本月无损耗单元（需生成快照）</td>
+            <td class="ll-noro" :colspan="colCount">{{ zoneLabel(zone) }}本月无损耗单元（需生成快照）</td>
           </tr>
           <!-- 对账区两行(读时派生;一期的合计排除 供电局对账=不参与 的 A座):供电局读数落「总表用电量」列,各栋合计落「分表用电量」列 -->
           <tr v-for="(r, i) in reconRows" :key="'rc' + i" class="ll-recon">
-            <td class="ll-fix" :style="fixLbl"><span class="ll-lbl">{{ r.label }}</span></td>
+            <td :class="fixCls" :style="fixLbl"><span class="ll-lbl">{{ r.label }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.supplyQty == null }" title="供电局总表本月读数">{{ fmt(r.supplyQty) }}</span></td>
-            <td v-if="isP2"></td>
+            <td></td>
             <td><span class="ll-nv" :class="{ empty: r.sumQty == null }" :title="i === 0 ? '各栋总表合计' : '各栋分表合计'">{{ fmt(r.sumQty) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.loss == null, neg: (r.loss ?? 0) < 0 }">{{ fmt(r.loss) }}</span></td>
             <td><span class="ll-nv" :class="{ empty: r.rate == null }">{{ fpct(r.rate) }}</span></td>
-            <td :colspan="colCount - 5 - (isP2 ? 1 : 0)"></td>
+            <!-- 已占 6(位置/总表/铝缆占位/分表/损耗量/原损耗率),铝缆列常驻两期,不再按 isP2 加减 -->
+            <td :colspan="colCount - 6"></td>
           </tr>
         </tbody>
         <!-- tfoot 合计:总表/铝缆/分表/损耗量 合计(率不合计) -->
         <tfoot>
           <tr>
-            <th class="ll-fix" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
+            <th :class="fixCls" :style="fixLbl"><span class="ll-foot-lbl">合　计</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.cQty) }}</span></th>
-            <th v-if="isP2"><span class="ll-foot-v">{{ fmt(foot.cableQty) }}</span></th>
+            <th><span class="ll-foot-v">{{ fmt(foot.cableQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.dQty) }}</span></th>
             <th><span class="ll-foot-v">{{ fmt(foot.eQty) }}</span></th>
-            <th :colspan="colCount - 4 - (isP2 ? 1 : 0)"></th>
+            <!-- 已占 5(位置/总表/铝缆/分表/损耗量),铝缆列常驻两期,不再按 isP2 加减 -->
+            <th :colspan="colCount - 5"></th>
           </tr>
         </tfoot>
       </table>

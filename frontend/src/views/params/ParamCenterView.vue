@@ -29,6 +29,7 @@ import {
 } from '@/utils/paramCenterLogic'
 import { LOSS_BASE_FORM_B_TEMPLATE, PARAM_DEFS, paramDef, writePlan, type ParamMode } from '@/utils/paramRegistry'
 import { useAuthStore } from '@/stores/auth'
+import { useZonesStore } from '@/stores/zones'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
@@ -87,10 +88,14 @@ const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
+// 期区值域按后端 p\d+|dorm 的形状判断,不枚举具体代码 —— p4 出现时不用改这里。
+// applyHandoff 的深链校验与 refOptions 的 ref_meter 候选过滤共用同一条,
+// 避免两处各写一份、drift 出两种拼法。(本分支增量,随出账链期结构一起保留)
+const isZoneCode = (s: string) => /^p\d+$/.test(s) || s === 'dorm'
 const zone = ref<ParamZone>('all')
-const ZONE_OPTS = [
-  { value: 'all', label: '全园' }, { value: 'p1', label: '一期' }, { value: 'p2', label: '二期' }, { value: 'dorm', label: '宿舍' },
-]
+const zones = useZonesStore()
+onMounted(() => zones.ensure())
+const ZONE_OPTS = computed(() => [{ value: 'all', label: '全园' }, ...zones.list.map(z => ({ value: z.code, label: z.name }))])
 
 // ── 数据(首载加载门;++seq 竞态守卫:快速切年月/期区只接受最新一次) ──
 const rows = ref<ParamRowDTO[] | null>(null)
@@ -149,7 +154,11 @@ const hlScope = ref('')
 let pendingSection = ''
 function applyHandoff(): boolean {
   const q = route.query
-  if (typeof q.zone === 'string' && ZONE_OPTS.some(o => o.value === q.zone)) zone.value = q.zone as ParamZone
+  // 不用 ZONE_OPTS 校验:这里在 setup 期同步跑,比 onMounted 里的 zones.ensure() 更早 ——
+  // 深链落地时 zones store 十有八九还是空的,拿 ZONE_OPTS.some(...) 校验会把合法的
+  // ?zone=p2 当非法丢弃(白白落回 'all')。改按后端值域(isZoneCode)+页面自己的 'all' 做形状校验,
+  // 不依赖 store 是否已拉到。
+  if (typeof q.zone === 'string' && (q.zone === 'all' || isZoneCode(q.zone))) zone.value = q.zone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
   // 只在还没有期时认领:已经选好期的人不该被一条链接顶到别的月去。
@@ -218,7 +227,7 @@ const ruleGroups = computed(() => {
 })
 // 一期公摊分摊度数 G(只读披露,spec §3.3):成员 = fee_key 园区公摊池,÷ 均摊栋数(park_share_div)
 const gLine = computed(() => {
-  if (zone.value === 'p2' || zone.value === 'dorm') return ''
+  if (zone.value !== 'p1') return ''      // 白名单:园区公摊分母是一期独有机制
   const names = rules.value.filter(r => r.zone === 'p1' && r.feeKey === 'park_loss_pool').map(r => r.name)
   const div = (rows.value ?? []).find(r => r.key === 'park_share_div' && (r.scope === 'p1' || r.scope === ''))
   const d = div?.value == null ? '均摊栋数' : `${div.value} 栋`
@@ -307,8 +316,10 @@ function delTenantRow(r: ParamRow) {
   putAll(tenantExceptionDelReqs(r))
 }
 
-// 弹窗引用型值的候选:并入他栋 → 同期楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
-const zoneOfBuilding = (b: BuildingDTO) => (b.phase === 2 ? 'p2' : 'p1')
+// 弹窗引用型值的候选:并入他栋 → 同期区楼栋;总表 / 供电侧对账总表 → 该栋 / 该期电表;户级园区表 → 该户挂的表
+// 期区读楼栋真实字段,不按 phase 猜——phase 只有 1/2/3,猜法会把三期(以及宿舍)楼栋都错落进 p1 桶。
+// 三期楼栋在手工标注前 zone=null:候选按 null 分桶,只会跟别的未标注楼栋算同桶,不再混入一期楼栋。
+const zoneOfBuilding = (b: BuildingDTO) => b.zone
 const meterOpt = (m: MeterDTO): RefOption => ({ value: String(m.id), label: m.subName ? `${m.name} · ${m.subName}` : m.name })
 const refOptions = computed<RefOption[]>(() => {
   const r = editRow.value
@@ -319,9 +330,11 @@ const refOptions = computed<RefOption[]>(() => {
     return buildings.value.filter(b => !self || zoneOfBuilding(b) === zoneOfBuilding(self)).map(b => ({ value: String(b.id), label: b.name }))
   }
   if (d.valueKind === 'ref_meter') {
+    // scope 是裸期区码(如 loss_supply_meter/供电局对账总表)时按该期区过滤候选表;
+    // 之前枚举 p1/p2/dorm 漏了 p3,编辑三期这个引用型参数会退到 meters.value(全园所有表都能选)
     const ms = r.scope.startsWith('building:') ? meters.value.filter(m => m.buildingId === idOf(r.scope))
       : r.scope.startsWith('tenant:') ? meters.value.filter(m => m.tenantId === idOf(r.scope))
-      : r.scope === 'p1' || r.scope === 'p2' || r.scope === 'dorm' ? meters.value.filter(m => m.zone === r.scope)
+      : isZoneCode(r.scope) ? meters.value.filter(m => m.zone === r.scope)
       : meters.value
     return ms.map(meterOpt)
   }

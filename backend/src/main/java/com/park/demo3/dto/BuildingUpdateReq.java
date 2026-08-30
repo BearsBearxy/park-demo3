@@ -9,4 +9,5 @@ public record BuildingUpdateReq(
     @NotNull @DecimalMin("0") BigDecimal totalArea,
     @NotNull @DecimalMin("0") BigDecimal rentableArea,
     @NotNull @Min(0) @Max(1) Integer status,
-    String remark) {}
+    String remark,
+    @Pattern(regexp = "p\\d+|dorm") String zone) {}

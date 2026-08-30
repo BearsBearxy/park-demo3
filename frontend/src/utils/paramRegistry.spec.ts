@@ -21,7 +21,7 @@ describe('paramRegistry 与后端注册表镜像一致(fixture = ParamRegistryTe
   it('键集合与顺序逐一相同', () => {
     expect(PARAM_DEFS.map(d => d.key)).toEqual(FIX.map(f => f.key))
     expect(new Set(PARAM_DEFS.map(d => d.key)).size).toBe(PARAM_DEFS.length)
-    expect(PARAM_DEFS.length).toBe(44)   // 43 + elec_grid_avg(M1 拍板 2026-08-16)
+    expect(PARAM_DEFS.length).toBe(45)   // 43 + elec_grid_avg(M1 拍板 2026-08-16) + zone_calc_kind(P7)
   })
   it('逐键 label/unit/group/defaultMode/monthlyCheck/valueKind/enumOptions/formula/hint/tenantEditable/pairedWith/monthOnly 相同', () => {
     for (const f of FIX) {

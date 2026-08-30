@@ -21,11 +21,11 @@ public class ParamController {
     private final ParamService svc;
     public ParamController(ParamService svc) { this.svc = svc; }
 
-    @Operation(summary = "站在 ym 看的全部生效参数行(四区;人话作用域/值/区间/命中链);zone=all|p1|p2|dorm;"
+    @Operation(summary = "站在 ym 看的全部生效参数行(人话作用域/值/区间/命中链);zone=all|p{n}|dorm;"
         + "scope=作用域前缀过滤(如 rule:/building:),key=逗号分隔键名过滤 —— 其它屏只读镜像用,少拉几百行")
     @GetMapping
     public List<ParamRowDTO> list(@RequestParam @Pattern(regexp = YM) String ym,
-                                  @RequestParam(defaultValue = "all") @Pattern(regexp = "all|p1|p2|dorm") String zone,
+                                  @RequestParam(defaultValue = "all") @Pattern(regexp = "all|p\\d+|dorm") String zone,
                                   @RequestParam(required = false) String scope,
                                   @RequestParam(required = false) String key) {
         List<ParamRowDTO> rows = svc.list(ym, zone);

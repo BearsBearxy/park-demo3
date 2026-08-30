@@ -862,4 +862,75 @@ class AllocServiceTest {
         assertFalse(AllocService.atLocation(west, 21, "四楼西侧", null));
         assertTrue(AllocService.atLocation(west, null, null, null));
     }
+
+    private static com.park.demo3.entity.Building building(int id, String zone) {
+        var b = new com.park.demo3.entity.Building(); b.setId(id); b.setZone(zone); return b;
+    }
+
+    private static com.park.demo3.entity.Meter meterOn(int buildingId, String zone) {
+        var m = new com.park.demo3.entity.Meter();
+        m.setBuildingId(buildingId); m.setZone(zone); m.setKind("elec"); return m;
+    }
+
+    // building.zone 是唯一事实来源;列为 NULL 才回退「该栋首块表的 zone」。
+    // 三期 0 块表 —— 靠列才有期区,这正是本次改动的目的。
+    @Test
+    void zoneOfBuilding_columnWinsOverMeterFallback() {
+        var bs = java.util.List.of(building(30, "p2"), building(40, null), building(50, "p3"));
+        var ms = java.util.List.of(meterOn(30, "dorm"), meterOn(40, "p1"));
+        var z = AllocService.zoneOfBuilding(bs, ms);
+        assertEquals("p2", z.get(30));    // 读列优先:30 号栋挂着 dorm 表也不许翻案
+        assertEquals("p1", z.get(40));    // 列 NULL → 回退首块表
+        assertEquals("p3", z.get(50));    // 无表,靠列才有期区
+    }
+
+    // 二期二车间实测挂着 p2:20 / p1:1 / dorm:1 三种表。回填后列是 p2,
+    // 读列就不再依赖遍历顺序 —— 这是顺手修掉的那个不确定性。
+    @Test
+    void zoneOfBuilding_mixedMeterBuildingIsDeterministic() {
+        var bs = java.util.List.of(building(31, "p2"));
+        var ms = java.util.List.of(meterOn(31, "dorm"), meterOn(31, "p1"), meterOn(31, "p2"));
+        assertEquals("p2", AllocService.zoneOfBuilding(bs, ms).get(31));
+        // 表顺序反过来,结果必须一样
+        var ms2 = java.util.List.of(meterOn(31, "p2"), meterOn(31, "p1"), meterOn(31, "dorm"));
+        assertEquals("p2", AllocService.zoneOfBuilding(bs, ms2).get(31));
+    }
+
+    // Finding 1(整分支复检):ParamService.names() 以前另有第三套猜法——building.phase 是 1/2 就猜
+    // "p"+phase,且压根不读 building.zone 列;BillNoticeService.generate() 则只认首块表。三处各算
+    // 各的,楼栋管理(本分支新功能)一改 zone 列,三者就能当场分歧。现在 ParamService 也改调这同一个
+    // 方法,这条 pin 住「列优先解析器不做 phase 猜测」——不许把 phase 猜测悄悄加回共享解析器,
+    // 那样又会跟用户在楼栋管理里显式改掉/清空的 zone 打架。
+    @Test
+    void zoneOfBuilding_noPhaseGuess() {
+        var b = building(60, null); b.setPhase(1);   // 一期楼栋,zone 列还没标注(或被清空)
+        var z = AllocService.zoneOfBuilding(java.util.List.of(b), java.util.List.of());
+        assertNull(z.get(60));   // 不许因为 phase=1 就猜成 "p1"
+    }
+
+    // 口径按参数取,不按期区名字。p1→0(flat) / p2→1(tou) 是回填值;p3 由用户配。
+    // 取不到 = 该期区还没配 → 必须返回 null,让 ruleCostAmount return null,
+    // 而不是默认成 flat 静默算出一个数来(那正是「算错了还不报错」)。
+    @Test
+    void calcKind_resolvesFromParamNotZoneName() {
+        var flat = java.util.Map.of("p1|zone_calc_kind", new java.math.BigDecimal("0"));
+        var tou  = java.util.Map.of("p2|zone_calc_kind", new java.math.BigDecimal("1"));
+        var p3tou = java.util.Map.of("p3|zone_calc_kind", new java.math.BigDecimal("1"));
+        assertEquals(AllocService.KIND_FLAT, AllocService.calcKind("p1", flat));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p2", tou));
+        assertEquals(AllocService.KIND_TOU,  AllocService.calcKind("p3", p3tou));
+        assertNull(AllocService.calcKind("p3", java.util.Map.of()));   // 没配 → null,不猜
+        assertNull(AllocService.calcKind("dorm", flat));               // 别的期区的配置不串味
+    }
+
+    // 「该摊没摊」只有 share 一种:tenant 户表自己付、park 园区自担本就不摊、
+    // infra 是总表、ops/register 不计费。报错了会天天弹,弹到没人看。
+    @Test
+    void needsPool_onlyUnboundShareMetersWithReading() {
+        assertTrue(AllocService.needsPool("share", true, false));    // 公摊表 + 有读数 + 没入池 → 报
+        assertFalse(AllocService.needsPool("share", true, true));    // 已入池 → 不报
+        assertFalse(AllocService.needsPool("share", false, false));  // 当月没读数 → 不报(还没抄到)
+        for (String o : java.util.List.of("tenant", "park", "infra", "ops", "register"))
+            assertFalse(AllocService.needsPool(o, true, false), o + " 不该进提醒条");
+    }
 }

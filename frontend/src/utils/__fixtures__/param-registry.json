@@ -423,6 +423,24 @@
   "tenantEditable" : false,
   "pairedWith" : null
 }, {
+  "key" : "zone_calc_kind",
+  "table" : "alloc",
+  "label" : "计费口径",
+  "unit" : "",
+  "group" : "rule",
+  "scopes" : [ "zone" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "enum",
+  "enumOptions" : {
+    "0" : "平价制（单一商业价 × 用量）",
+    "1" : "分时制（尖峰平谷四段 + 管理费）"
+  },
+  "formula" : "决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费",
+  "hint" : "没配口径的期区不会不出钱——池会先按平价制(商业电价)计费,请到本页显式选口径,避免分时期区被错收平价",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
   "key" : "loss_head",
   "table" : "alloc",
   "label" : "损耗核算归组",

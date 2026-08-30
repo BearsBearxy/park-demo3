@@ -30,7 +30,7 @@ public class AllocController {
     public List<String> lossMonths() { return svc.lossMonths(); }
 
     @Operation(summary = "规则列表(携 meterIds+members+meters(sign)+links;可选 zone 过滤;S21:coefficient/extraQty=站在 ym 的生效值,ym 空=初始版本)") @GetMapping("/rules")
-    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p1|p2|dorm") String zone,
+    public List<AllocRuleDTO> rules(@RequestParam(required = false) @Pattern(regexp = "p\\d+|dorm") String zone,
                                     @RequestParam(required = false) @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
         return svc.ruleList(zone, ym);
     }
@@ -58,6 +58,13 @@ public class AllocController {
     public List<AllocPoolDTOs.MemberDiff> memberDiff(
             @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
         return svc.memberDiff(ym);
+    }
+
+    @Operation(summary = "未入池的公摊表(ownership=share + 当月有读数 + 未被任何池绑定)")
+    @GetMapping("/meter-diff")
+    public List<AllocPoolDTOs.MeterDiff> meterDiff(
+            @RequestParam @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String ym) {
+        return svc.meterDiff(ym);
     }
 
     @Operation(summary = "楼栋损耗表(units=快照;recon=读时派生:供电侧总表 vs 单元合计)") @GetMapping("/loss")

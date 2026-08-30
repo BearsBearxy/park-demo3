@@ -219,7 +219,7 @@ class ParamApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.data.poolSnapshotAt").isEmpty());
         mvc.perform(get("/api/params").param("ym", "2024-2").header("Authorization", auth()))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/api/params").param("ym", "2024-02").param("zone", "p9").header("Authorization", auth()))
+        mvc.perform(get("/api/params").param("ym", "2024-02").param("zone", "px").header("Authorization", auth()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -315,7 +315,7 @@ class ParamApiIT extends AbstractMysqlIT {
         put400("{\"key\":\"loss_head\",\"scope\":\"" + b + "\",\"value\":1.5}");
         // 校验错 HTTP 400:scope 形态非法 / 月份格式
         mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json")
-                .content("{\"key\":\"water\",\"scope\":\"p9\",\"value\":1}")).andExpect(status().isBadRequest());
+                .content("{\"key\":\"water\",\"scope\":\"px\",\"value\":1}")).andExpect(status().isBadRequest());
         mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json")
                 .content("{\"key\":\"water\",\"scope\":\"\",\"acctMonth\":\"2099/01\",\"value\":1}")).andExpect(status().isBadRequest());
     }
@@ -414,5 +414,17 @@ class ParamApiIT extends AbstractMysqlIT {
         List<Map<String, Object>> ch2 = JsonPath.read(h2, "$.data.changes");
         assertEquals("month", ch2.get(0).get("mode"));
         assertEquals(-1.0, num(ch2.get(0).get("newValue")));
+    }
+
+    // p3 期级参数:@Pattern 放行只是第一关,ParamRegistry.allowed 是第二关。
+    // 漏改 ParamRegistry:203 时,这里会拿到 body code=400「参数键不在注册表:water@p3」
+    @Test
+    void put_p3ZoneScope_accepted() throws Exception {
+        mvc.perform(put("/api/params").header("Authorization", auth()).contentType("application/json")
+                .content("{\"key\":\"water\",\"scope\":\"p3\",\"acctMonth\":\"2099-05\",\"value\":3.5}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        // 且能读回来 —— 漏改 ParamService:173/293 时这一句会 HTTP 500
+        mvc.perform(get("/api/params").param("ym", "2099-05").param("zone", "p3").header("Authorization", auth()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
     }
 }

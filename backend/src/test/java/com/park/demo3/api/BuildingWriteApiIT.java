@@ -187,6 +187,55 @@ class BuildingWriteApiIT extends AbstractMysqlIT {
                 .andExpect(jsonPath("$.code").value(404));
     }
 
+    // 期区:PUT 之后必须再 GET 回读 —— 只断响应体测不出 FieldStrategy 那个坑
+    @Test
+    void update_setZone_readsBack() throws Exception {
+        int id = createBuilding("IT三期创业大厦");
+        mvc.perform(put("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"name\":\"IT三期创业大厦\",\"phase\":3,\"zone\":\"p3\",\"floorCount\":12," +
+                        "\"totalArea\":1000,\"rentableArea\":900,\"status\":1}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.building.zone").value("p3"))
+                .andExpect(jsonPath("$.data.building.floorCount").value(12));
+    }
+
+    // 期区可空:老数据与没标注的楼栋照常读写
+    @Test
+    void create_withoutZone_isAllowed() throws Exception {
+        int id = createBuilding("IT无期区栋");
+        mvc.perform(get("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.building.zone").doesNotExist());
+    }
+
+    // FieldStrategy 坑位:MyBatis-Plus 默认 update-strategy=NOT_NULL 会让「清空 zone」的 PUT 静默不落库。
+    // 产品要求能改回未标注(三期楼栋允许先标错再纠正),所以 zone 用 FieldStrategy.IGNORED——
+    // 这条锁的就是「先写值、再清空、回读必须是 null」这条链路,不能只测「写值」那一半。
+    @Test
+    void update_clearZone_readsBackNull() throws Exception {
+        int id = createBuilding("IT期区清空栋");
+        mvc.perform(put("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"name\":\"IT期区清空栋\",\"phase\":3,\"zone\":\"p3\",\"floorCount\":2," +
+                        "\"totalArea\":1000,\"rentableArea\":900,\"status\":1}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(put("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token)
+                .contentType("application/json")
+                .content("{\"name\":\"IT期区清空栋\",\"phase\":3,\"zone\":null,\"floorCount\":2," +
+                        "\"totalArea\":1000,\"rentableArea\":900,\"status\":1}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mvc.perform(get("/api/buildings/" + id)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.building.zone").doesNotExist());
+    }
+
     @Test
     void create_zeroFloorCount_returnsHttp400() throws Exception {
         // 校验错口径: HTTP 400 + body.code=400

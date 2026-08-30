@@ -162,7 +162,7 @@ public class BuildingService {
         // 栋内租户建筑面积汇总=在租合同 building_area 求和(V33 字段,空按 0;只读展示)
         BigDecimal tenantBArea = retail.stream()
             .map(Contract::getBuildingArea).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new BuildingDTO(b.getId(), b.getName(), b.getPhase(), PHASE.get(b.getPhase()), kind(b.getPhase()),
+        return new BuildingDTO(b.getId(), b.getName(), b.getPhase(), PHASE.get(b.getPhase()), b.getZone(), kind(b.getPhase()),
             b.getFloorCount(), b.getTotalArea(), b.getRentableArea(), b.getStatus(),
             us.size(), occ, vac, exp, rsv, leased, occRate, monthly, tenantIds, tenantBArea);
     }
@@ -250,7 +250,7 @@ public class BuildingService {
         Building b = new Building();
         b.setName(req.name()); b.setPhase(req.phase()); b.setFloorCount(req.floorCount());
         b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
-        b.setStatus(1); b.setPerFloor(perFloor); b.setRemark(req.remark());
+        b.setStatus(1); b.setPerFloor(perFloor); b.setRemark(req.remark()); b.setZone(req.zone());
         buildings.insert(b);
         if (perFloor > 0) {
             // unit_no 沿用 V2__seed 惯例: floor*100+seq(101/102…);面积=可租面积均摊 2 位小数,末个单元补差额使合计精确
@@ -282,7 +282,7 @@ public class BuildingService {
             throw new BizException(ResultCode.CONFLICT, "层数不能小于现有单元的最高楼层");
         b.setName(req.name()); b.setPhase(req.phase()); b.setFloorCount(req.floorCount());
         b.setTotalArea(req.totalArea()); b.setRentableArea(req.rentableArea());
-        b.setStatus(req.status()); b.setRemark(req.remark());
+        b.setStatus(req.status()); b.setRemark(req.remark()); b.setZone(req.zone());
         buildings.updateById(b);
         Map<Integer, Set<Integer>> links = linksByUnit();
         return toDTO(buildings.selectById(id), units.selectByBuildingId(id), contracts.selectByBuildingId(id),

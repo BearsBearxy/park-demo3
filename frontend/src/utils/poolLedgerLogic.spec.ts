@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   FROZEN_HINT,
   bandFooter, buildLossReconRows, buildPoolExportAoa, costPerLine, foldQtySrcIds,
-  groupPoolsByBookBlock, lineFloor, lineLabel, lineUseName, lossFooter, netSummary, POOL_LOC_HINT,
+  groupPoolsByBookBlock, lineFloor, lineLabel, lineUseName, lossFooter, meterDiffGroup, netSummary, POOL_LOC_HINT,
   poolAutoName, poolFeeLabel, poolFloor, poolFooter, poolLocKind, poolNote, poolSemantics,
   poolSpan, poolSubtitle, poolSubtotal, stdDisplay,
 } from './poolLedgerLogic'
 import type {
-  AllocLossReconDTO, AllocLossUnitDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO,
+  AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO,
 } from '@/api/alloc'
 
 const pool = (p: Partial<AllocPoolRowDTO>): AllocPoolRowDTO => ({
@@ -552,4 +552,21 @@ describe('lossFooter 单元合计', () => {
   })
   it('空集=全 null', () =>
     expect(lossFooter([])).toEqual({ cQty: null, cableQty: null, dQty: null, eQty: null }))
+})
+
+const md = (p: Partial<AllocMeterDiffDTO>): AllocMeterDiffDTO =>
+  ({ meterId: 1, label: '电表①', buildingId: 13, buildingName: '一期 A座', zone: 'p1', ...p })
+
+describe('meterDiffGroup 未入池的公摊表', () => {
+  it('空表返回 null —— 没有事就不占抽屉一格', () => {
+    expect(meterDiffGroup([], 'p1')).toBeNull()
+  })
+  it('只提示本期区的(与 zoneDiffs 同口径)', () => {
+    expect(meterDiffGroup([md({ zone: 'p2' })], 'p1')).toBeNull()
+    expect(meterDiffGroup([md({ zone: 'p1' })], 'p1')!.items).toHaveLength(1)
+  })
+  it('没挂楼栋的表也要显示,不能整条吞掉', () => {
+    const g = meterDiffGroup([md({ buildingId: null, buildingName: null })], 'p1')!
+    expect(g.items[0].text).toContain('(未挂楼栋)')
+  })
 })

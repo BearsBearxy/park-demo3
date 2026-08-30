@@ -95,7 +95,9 @@ export function buildCoefRows(
 
 // ── 价目键当前生效值:GET /params?ym&key= 每行已站在 ym 级联解析(值/人话/区间/命中链);本函数只按作用域找行
 //    tenant:{id} → 期 → 全园,首个有值者;例外徽标 = 户级行且命中本户自己的版本(rowId 非空,而非继承上级) ──
-export interface CoefPriceHit { value: number; valueText: string; rangeText: string; exception: boolean; chain: string[] }
+// scope=命中的作用域('tenant:{id}'|zone 传入值|'')——调用方据此判断「是不是真的靠期区兜底」,
+// 不能只看 zone 参数是否为空:户级行会抢在期级之前命中,此时期区未标注与否根本没被问过。
+export interface CoefPriceHit { value: number; valueText: string; rangeText: string; exception: boolean; chain: string[]; scope: string }
 export function resolveCoefPrice(
   rows: ParamRowDTO[], key: string, tenantId: number, zone: string | null,
 ): CoefPriceHit | null {
@@ -104,7 +106,7 @@ export function resolveCoefPrice(
     const r = rows.find(x => x.key === key && x.scope === s)
     if (r && r.value != null)
       return { value: r.value, valueText: r.valueText, rangeText: r.rangeText,
-               exception: s.startsWith('tenant:') && r.rowId != null, chain: r.sourceChain }
+               exception: s.startsWith('tenant:') && r.rowId != null, chain: r.sourceChain, scope: s }
   }
   return null
 }
@@ -123,7 +125,8 @@ export interface CoefRuleIn { id: number; feeKey: AllocFeeKey; coefficient: numb
 
 export function poolsOfFeeKey(pools: CoefPoolIn[], rules: CoefRuleIn[], feeKey: string): CoefPoolIn[] {
   const ids = new Set(rules.filter(r => r.feeKey === feeKey).map(r => r.id))
-  return pools.filter(p => p.zone === 'p2' && ids.has(p.ruleId))   // 层份仅二期开放(spec §3)
+  // 层份仅二期开放(spec §3);另两份拷贝见 CoefBookWindow.vue 的 floorLocked 与 allocApi.rules('p2') 调用
+  return pools.filter(p => p.zone === 'p2' && ids.has(p.ruleId))
 }
 export interface FloorMembership { ruleId: number; poolName: string; weight: number | null; src: 'month' | 'default' }
 export function floorMemberships(feePools: CoefPoolIn[], tenantId: number): FloorMembership[] {

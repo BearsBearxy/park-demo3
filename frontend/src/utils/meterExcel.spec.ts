@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMeterSheet, parseMeterWorkbook, buildMeterTemplateAoa, buildMeterExportAoa } from './meterExcel'
+import { parseMeterSheet, parseMeterWorkbook, buildMeterTemplateAoa, buildMeterExportAoa, templateSheets } from './meterExcel'
 import { readingFlags } from './meterLogic'
 
 // 夹具 = 审计实测真实版式(202405水电表数据表.xlsx):标题行+双行表头(电)/单行表头(水)+脏数据
@@ -280,6 +280,45 @@ describe('缺标识列预检(§J3)与模板/导出标识列(§J4)', () => {
     const sec = parseMeterSheet('一期园区电', aoa.map(r => r.map(String)))!
     expect(sec.noNameCol).toBe(false)
     expect(sec.records[0].name).toBe('B东侧楼梯间')   // 回读拿到标识名 → L3 标识层可命中,不再撞位置歧义
+  })
+})
+
+// ── 期区清单驱动(T8):sheet 名带清单里的 label 就能认出期区,不再局限于写死的三区 ──
+describe('期区清单驱动 — 三期识别 & 模板/导出随清单变', () => {
+  const T3_ELEC: string[][] = [
+    ['', '2026年3月三期园区电表抄表记录'],
+    ['', '区域', '', '企业名称', '表类', '电表名称', '电表编码', '电表倍率', '上月行至', '', '', '', '', '本月行至', '', '', '', '', '备注'],
+    ['', '', '', '', '', '', '', '', '总', '尖', '峰', '平', '谷', '总', '尖', '峰', '平', '谷', ''],
+    ['三期总电', '三车间', '', '', '总电表', '总电表', '230828010021', '80', '10', '', '', '', '', '12', '', '', '', '', ''],
+  ]
+
+  const ZONES = [
+    { code: 'p1', name: '一期', sortNo: 0 }, { code: 'p2', name: '二期', sortNo: 1 },
+    { code: 'p3', name: '三期', sortNo: 2 }, { code: 'dorm', name: '宿舍', sortNo: 3 },
+  ]
+
+  it('三期园区电:sheet 名带期区清单标签即识别', () => {
+    const sec = parseMeterSheet('三期园区电', T3_ELEC, undefined, undefined, ZONES)!
+    expect(sec.records[0]).toMatchObject({ zone: 'p3', kind: 'elec', ym: '2026-03', name: '三期总电', factor: 80 })
+    expect(sec.label).toBe('三期电表 · 2026年3月 · 1块表')
+  })
+
+  it('模板 sheet 数随期区数变,且新期区模板能被解析器读回(互认回路)', () => {
+    expect(templateSheets(ZONES)).toHaveLength(8)                    // 4 期区 × 2 类别
+    const sec = parseMeterSheet('三期园区电',
+      buildMeterTemplateAoa('p3', 'elec', '2026-07').map(r => r.map(String)), undefined, undefined, ZONES)!
+    expect(sec.records[0]).toMatchObject({ zone: 'p3', kind: 'elec', ym: '2026-07' })
+  })
+
+  it('清单不传(未注入)时回落写死三区:老流程(一期/二期/宿舍)零回归', () => {
+    expect(templateSheets()).toHaveLength(6)
+    expect(parseMeterSheet('二期园区电', ELEC_SHEET)!.records[0]).toMatchObject({ zone: 'p2' })
+  })
+
+  it('清单为空数组(接口拉取失败)同样回落写死三区,而不是"什么都识别不出"', () => {
+    const sec = parseMeterSheet('二期园区电', ELEC_SHEET, undefined, undefined, [])!
+    expect(sec).not.toBeNull()
+    expect(sec.records[0]).toMatchObject({ zone: 'p2' })
   })
 })
 

@@ -70,7 +70,8 @@ public class MeterService {
     private static BigDecimal one(BigDecimal v) { return v == null ? BigDecimal.ONE : v; }
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s.trim(); }
     private static boolean validKind(String s) { return "elec".equals(s) || "water".equals(s); }
-    private static boolean validZone(String s) { return "p1".equals(s) || "p2".equals(s) || "dorm".equals(s); }
+    private static final java.util.regex.Pattern ZONE_RE = java.util.regex.Pattern.compile(ZoneService.ZONE_REGEX);
+    private static boolean validZone(String s) { return s != null && ZONE_RE.matcher(s).matches(); }
     private static boolean validOwnership(String s) {
         return "tenant".equals(s) || "share".equals(s) || "ops".equals(s) || "infra".equals(s)
             || "park".equals(s)        // V68 园区自担
@@ -302,7 +303,7 @@ public class MeterService {
                 errors.add(new ImportError(i, "", "无法识别表标识(标识/区域/位置/表名/编码全空)")); continue;
             }
             if (!validKind(row.kind()) || !validZone(row.zone())) {
-                errors.add(new ImportError(i, name, "分区/类别非法(kind=elec|water,zone=p1|p2|dorm)")); continue;
+                errors.add(new ImportError(i, name, "分区/类别非法(kind=elec|water,zone=p1/p2/p3…或 dorm)")); continue;
             }
             if (row.ym() == null || !YM.matcher(row.ym()).matches()) {
                 errors.add(new ImportError(i, name, "月份格式非法(应为 YYYY-MM)")); continue;

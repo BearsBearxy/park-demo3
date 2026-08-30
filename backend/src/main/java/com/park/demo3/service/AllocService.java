@@ -78,11 +78,16 @@ public class AllocService {
     // ⚠楼栋空(园区级池)前缀必须取 **zone 期别** 而不是统一写"园区级":二期/一期/宿舍区各有一个「路灯」池,
     //   统一前缀会让三个池撞成同一个名字(V70 加期别前缀正是为此)。与 derive_pool_location.py 同源。
     // 例:poolName("一期 A座","四楼","西侧","走廊灯")="一期 A座·四楼西侧·走廊灯";poolName(null,…,"路灯",zone=p1)="一期园区·路灯"
-    private static final Map<String, String> ZONE_POOL_PREFIX =
-        Map.of("p1", "一期园区", "p2", "二期园区", "dorm", "宿舍区");
+    // 按期区码生成,不再写死三元组。p3 园区级池若塌成统一的「园区级」,
+    // 会与 p4 的同费项池撞成同一个名字 —— 正是 :78-79 注释里 V70 加期别前缀要防的事故。
+    private static String zonePoolPrefix(String zone) {
+        return "dorm".equals(zone) ? "宿舍区"
+             : zone != null && zone.matches("p\\d+") ? ZoneService.label(zone) + "园区"
+             : "园区级";
+    }
     public static String poolName(String zone, String buildingName, String floorLabel, String side, String feeName) {
         StringBuilder sb = new StringBuilder(blank(buildingName)
-            ? ZONE_POOL_PREFIX.getOrDefault(zone, "园区级") : buildingName.trim());
+            ? zonePoolPrefix(zone) : buildingName.trim());
         String loc = (blank(floorLabel) ? "" : floorLabel.trim()) + (blank(side) ? "" : side.trim());
         if (!loc.isEmpty()) sb.append('·').append(loc);
         if (!blank(feeName)) sb.append('·').append(feeName.trim());
@@ -130,6 +135,17 @@ public class AllocService {
     static boolean autoMembers(AllocRule r, boolean noExplicitMember) {
         return noExplicitMember && r.getBuildingId() == null
             && ("area".equals(r.getMethod()) || "floor".equals(r.getMethod()));
+    }
+
+    // 楼栋期区:building.zone 是唯一事实来源;列为 NULL 才回退「该栋首块表的 zone」。
+    // 回退分支保留是给「新建楼栋忘了填期区但已经录了表」兜底 —— 不能因此整月算不出来。
+    static Map<Integer, String> zoneOfBuilding(Collection<Building> buildings, List<Meter> meters) {
+        Map<Integer, String> out = new HashMap<>();
+        for (Building b : buildings)
+            if (b.getZone() != null && !b.getZone().isBlank()) out.put(b.getId(), b.getZone().trim());
+        for (Meter m : meters)
+            if (m.getBuildingId() != null && m.getZone() != null) out.putIfAbsent(m.getBuildingId(), m.getZone());
+        return out;
     }
 
     // zone → 当月在租租户(在租语义=Roster,即 MeterBindingService.covers,不另写一份)。
@@ -602,8 +618,18 @@ public class AllocService {
                 ? "按面积/按层规则必须填正的初始分母(面积Σ㎡/层数)或指定基数键"
                 : "按面积/按层规则须有分母(去计费参数页设该池的分母)或指定基数键");
         }
-        if ("direct".equals(req.method()) && (req.members() == null || req.members().size() != 1))
-            throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
+        if ("direct".equals(req.method())) {
+            int n = req.members() == null ? 0 : req.members().size();
+            // 例外一:整笔挂亏池(park_loss_pool)的净量喂「园区损耗公摊池」的 G,按语义就不该有受益人。
+            // 库里 5 个(23/96/97/98/99)全是 0 户,种子直接写入绕过了本校验。
+            boolean parkLoss = "park_loss_pool".equals(req.feeKey());
+            // 例外二:**已存在**的池允许 0 户 —— 那是它当前的状态,不该因为「想改个备注」就被逼着先指定受益户。
+            // 新建仍然硬拦:不给用户从零造一个算得出钱却摊不到人的池。
+            // 0 户的后果引擎已有告警(memberAmounts 的「无受益人,跳过」),不会静默吞钱。
+            boolean editingExisting = existingId != null && n == 0;
+            if (n > 1 || (n != 1 && !parkLoss && !editingExisting))
+                throw new BizException(ResultCode.BAD_REQUEST, "整笔归户规则受益人必须恰好一户");
+        }
     }
 
     private static String memberMonth(AllocRuleReq req) {
@@ -619,8 +645,17 @@ public class AllocService {
         Building b = req.buildingId() == null ? null : buildings.selectById(req.buildingId());
         String auto = poolName(req.zone(), b == null ? null : b.getName(), req.floorLabel(), req.side(), req.feeName());
         boolean noLocation = blank(req.floorLabel()) && blank(req.side()) && blank(req.feeName());
-        r.setName(noLocation && !blank(r.getName()) ? r.getName()
-            : noLocation && !blank(req.name()) ? req.name().trim() : auto);
+        String finalName = noLocation && !blank(r.getName()) ? r.getName()
+            : noLocation && !blank(req.name()) ? req.name().trim() : auto;
+        // F4b:池名是屏上/账册/告警里认池的唯一可读标识,重名后人分不出谁是谁(88 保存一次就与既有的 89 同名)。
+        // 不加 DB 唯一键:存量已有同名行(89 显然被这条路径改过一次),加约束会让迁移失败。
+        // r.getId():新建时(insert 前)是 null,自然不排除任何行;编辑时已经是目标行自身的 id,排除自己。
+        Long dup = rules.selectCount(new QueryWrapper<AllocRule>()
+            .eq("name", finalName).ne(r.getId() != null, "id", r.getId()));
+        if (dup != null && dup > 0)
+            throw new BizException(ResultCode.BAD_REQUEST,
+                "池名「" + finalName + "」已被占用 —— 请补上侧向或改费项名,让两个池分得开");
+        r.setName(finalName);
         r.setMethod(req.method()); r.setFeeKey(req.feeKey());   // S21:coefficient/extraQty 两列退出引擎,不再写(恒 NULL/0)
         r.setNote(req.note() == null || req.note().isBlank() ? null : req.note().trim());
         r.setRoundScale(req.roundScale() == null ? 2 : req.roundScale());
@@ -910,14 +945,18 @@ public class AllocService {
                 u.qty(), price, cost, allocated, allocated.subtract(cost)));
         }
         // 损耗组行:成本量=残差E(负),成本额=|E|×price_loss;已分摊=share_elec_loss 户级Σ
-        for (String zone : List.of("p1", "p2")) {
+        // 期区遍历改按「配了 zone_calc_kind 的期区」而不是硬编码 p1/p2,否则三期配了口径也不出对账行。
+        Set<String> lossZones = new TreeSet<>();
+        for (String k : ctx.cfg().keySet())
+            if (k.endsWith("|zone_calc_kind")) lossZones.add(k.substring(0, k.length() - "|zone_calc_kind".length()));
+        for (String zone : lossZones) {
             BigDecimal lossQty = lossRows.stream().filter(l -> zone.equals(l.zone()))
                 .map(AllocLossRowDTO::lossQty).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
             if (lossQty.signum() == 0) continue;
             BigDecimal priceLoss = lossPrice(zone, ctx);
             BigDecimal cost = priceLoss == null ? null : r2(lossQty.abs().multiply(priceLoss));
             BigDecimal allocated = r2(zoneLossAllocated(zone, ctx));
-            rows.add(new AllocReconRowDTO(null, ("p1".equals(zone) ? "一期" : "二期") + "损耗", zone, FEE_LOSS,
+            rows.add(new AllocReconRowDTO(null, ZoneService.label(zone) + "损耗", zone, FEE_LOSS,
                 lossQty, priceLoss, cost, allocated, cost == null ? null : allocated.subtract(cost)));
         }
         // 互认提示:本月分摊合计 vs 电费成本模型 allocated 费项Σ(单向读,不强拦)
@@ -965,13 +1004,14 @@ public class AllocService {
 
     private Ctx loadCtx(String ym) {
         Map<Integer, Meter> meterById = new HashMap<>();
+        Map<Integer, Building> buildingById = new HashMap<>();
+        for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
         // V68:当月已停用表整体不进计算体——池绑定遍历(ruleUsage/poolSegQty/isNetPool/逐表行ROUND)
         // 与损耗组 C/D 统计都只看 ctx.meterById/bindsByRule,故在此一处过滤即全覆盖。
-        Map<Integer, String> zoneOfBuilding = new HashMap<>();   // 楼栋期别=该栋表的 zone(园区级池 fallback 用)
-        for (Meter m : meters.selectList(null)) {
-            if (m.getBuildingId() != null && m.getZone() != null) zoneOfBuilding.putIfAbsent(m.getBuildingId(), m.getZone());
+        List<Meter> allMeters = meters.selectList(null);
+        Map<Integer, String> zoneOfBuilding = zoneOfBuilding(buildingById.values(), allMeters);   // 楼栋期别:列优先,回退该栋首块表的 zone(园区级池 fallback 用)
+        for (Meter m : allMeters)
             if (!MeterService.outOfService(m, ym)) meterById.put(m.getId(), m);
-        }
         Map<Integer, MeterReading> readingByMeter = new HashMap<>();
         for (MeterReading r : readings.selectByYm(ym)) readingByMeter.put(r.getMeterId(), r);
         // 参数解析(S21 §2.2):整表载入,站在 ym 按行 mode 取值 —— month 仅当月优先,from 取 acct_month<=ym 最大者前滚
@@ -1026,8 +1066,6 @@ public class AllocService {
         Map<Integer, List<AllocRuleMember>> membersByRule = new HashMap<>();
         ruleMembers.selectList(null).stream().collect(groupingBy(AllocRuleMember::getRuleId))
             .forEach((rid, rows) -> membersByRule.put(rid, pickMembers(rows, ym)));
-        Map<Integer, Building> buildingById = new HashMap<>();
-        for (Building b : buildings.selectList(null)) buildingById.put(b.getId(), b);
         Map<String, Map<Integer, BigDecimal>> areaByZone =
             areaByZoneTenant(ro.covering(), ro.unitsByContract(), zoneOfBuilding, rentLineArea, dormLineArea, areaFallback);
         // 刀2:层定位 area 池的楼层面积口径(covering 合同的租金行 × billing_term_unit 绑定 × unit 楼层)
@@ -1070,6 +1108,18 @@ public class AllocService {
 
     private static BigDecimal cfgVal(Ctx ctx, String scope, String key) { return ctx.cfg().get(scope + "|" + key); }
 
+    static final String KIND_FLAT = "flat", KIND_TOU = "tou";
+
+    /**
+     * 期区计费口径。alloc_cfg 只有 DECIMAL 值列,故 0=flat / 1=tou(同 loss_variant 的编码方式)。
+     * null = 该期区还没配 —— 不猜,让 ruleCostAmount return null。
+     * 默认成 flat 会让没配口径的期区静默算出一个数来,那正是「算错了还不报错」。
+     */
+    static String calcKind(String zone, Map<String, BigDecimal> cfg) {
+        BigDecimal v = cfg.get(zone + "|zone_calc_kind");
+        return v == null ? null : (v.signum() == 0 ? KIND_FLAT : KIND_TOU);
+    }
+
     private RuleUsage ruleUsage(AllocRule rule, Ctx ctx) {
         BigDecimal qty = BigDecimal.ZERO, sharp = BigDecimal.ZERO, peak = BigDecimal.ZERO,
             flat = BigDecimal.ZERO, valley = BigDecimal.ZERO;
@@ -1106,10 +1156,11 @@ public class AllocService {
     // dorm 规则一如既往不出对账行(旧实现读不到 p2.price_norm 即跳过)。
     private BigDecimal ruleCostAmount(AllocRule rule, RuleUsage u, Ctx ctx) {
         String zone = rule.getZone();
-        if (!"p1".equals(zone) && !"p2".equals(zone)) return null;
+        String kind = calcKind(zone, ctx.cfg());
+        if (kind == null) return null;                    // 该期区未配口径 → 不算(而不是算成 0)
         BigDecimal price = lossPrice(zone, ctx);   // p1 商业价 / p2 平段价(含管理费)
         if (price == null) return null;
-        if ("p1".equals(zone)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
+        if (KIND_FLAT.equals(kind)) return r2(u.qty().add(poolExtra(rule, ctx)).multiply(price));
         boolean hasTou = u.sharp().signum() != 0 || u.peak().signum() != 0
             || u.flat().signum() != 0 || u.valley().signum() != 0;
         if (hasTou) {
@@ -1245,7 +1296,7 @@ public class AllocService {
                 if (perFloor == null) break;
                 // S13 §7 二期车间池守卫(仅 p2;一期分桶是常态不警):全员显式层份时 Σweight 偏离系数 T>0.01
                 // → warn(不封顶不阻断);出现 weight=null 成员 → warn(防楼层分桶与手工层份两路叠加)。
-                if ("p2".equals(rule.getZone())) {
+                if (KIND_TOU.equals(calcKind(rule.getZone(), ctx.cfg()))) {
                     long nullW = mems.stream().filter(m -> m.getWeight() == null).count();
                     if (nullW > 0)
                         ctx.warnings().add("池「" + rule.getName() + "」有 " + nullW
@@ -1445,16 +1496,18 @@ public class AllocService {
     // 用户 2026-08-16 拍板开的统一入口,与源册火炬园「高压用电分配」单价同源)+管理费,缺当月值回退 平段裸价+管理费。
     // 价目簿缺当月电价 → null(生成路径已被 priceGate 拦下;读时派生 recon 跳过并 warn 一次)。
     private BigDecimal lossPrice(String zone, Ctx ctx) {
-        boolean p2 = "p2".equals(zone);
-        String elecKey = p2 ? "elec_flat" : "elec_commercial";
-        BigDecimal elec = p2 ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
+        // 按口径不按名字:tou → grid_avg(回退 elec_flat)+mgmt_fee;flat/未配口径(如 dorm,V114 故意不写)→ 商业价+商业维护费。
+        // 未配口径落 flat 分支是刻意的 —— dorm 与任何还没配 zone_calc_kind 的 zone 必须原样保持旧行为(旧代码就是 !p2 即走这支)。
+        boolean tou = KIND_TOU.equals(calcKind(zone, ctx.cfg()));
+        String elecKey = tou ? "elec_flat" : "elec_commercial";
+        BigDecimal elec = tou ? priceCfg.resolve("elec_grid_avg", ctx.ym(), null, zone) : null;
         if (elec == null) elec = priceCfg.resolve(elecKey, ctx.ym(), null, zone);
         if (elec == null) {
             String w = zone + " 缺 " + ctx.ym() + " 电价(" + elecKey + "),损耗费/对账价未算";
             if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
             return null;
         }
-        return elec.add(nz(priceCfg.resolve(p2 ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
+        return elec.add(nz(priceCfg.resolve(tou ? "mgmt_fee" : "mgmt_fee_commercial", ctx.ym(), null, zone)));
     }
 
     private List<Contribution> lossContributions(Ctx ctx) {
@@ -1699,7 +1752,7 @@ public class AllocService {
         // 原册 1 行撑成 2 行、且显 697.60/444.80 而不是净额 152.06,正是本刀要治的病。
         // 构成明细(含硬编码扣度 −670)改走 PoolRow.netParts 进 hover,见 §I2 与 netParts()。
         if (isNetPool(rule, ctx)) return List.of();
-        boolean perMeterCost = !"p2".equals(rule.getZone())
+        boolean perMeterCost = !KIND_TOU.equals(calcKind(rule.getZone(), ctx.cfg()))
             && !"ref".equals(rule.getMethod()) && !"carrier".equals(rule.getMethod())
             && !isNetPool(rule, ctx)
             && cfgVal(ctx, "rule:" + rule.getId(), "manual_qty") == null;
@@ -1745,7 +1798,7 @@ public class AllocService {
         Set<String> zones = new TreeSet<>();
         for (AllocRule r : ctx.ruleList()) if (!"share_water".equals(r.getFeeKey())) zones.add(r.getZone());
         for (String zone : zones) {
-            List<String> keys = "p2".equals(zone)
+            List<String> keys = KIND_TOU.equals(calcKind(zone, ctx.cfg()))
                 ? List.of("elec_sharp", "elec_peak", "elec_flat", "elec_valley")
                 : List.of("elec_commercial");
             List<String> missing = new ArrayList<>();
@@ -1798,7 +1851,15 @@ public class AllocService {
 
         BigDecimal cost = null, unrounded = null, price = null;
         if (q.any()) {
-            if ("p2".equals(zone)) {
+            // 未配口径不是「不算」——旧代码对非 p2 一律落平价制,calcKind 未配置(null)时同样落这支,
+            // 静默按商业价出钱到户。dorm 结构上不算 p\d+,本就没有「口径」概念,不在此列(V114 故意不给它写行)。
+            // loss 方法走独立的损耗链核算,这里的应分摊池不使用,不算「该期区在收钱」,同样不点名。
+            if (!"loss".equals(rule.getMethod()) && zone != null && zone.matches("p\\d+")
+                    && calcKind(zone, ctx.cfg()) == null) {
+                String w = zone + " 未配「计费口径」(zone_calc_kind),暂按平价制(商业电价)计费,请到计费参数页为该期区选口径";
+                if (!ctx.warnings().contains(w)) ctx.warnings().add(w);
+            }
+            if (KIND_TOU.equals(calcKind(zone, ctx.cfg()))) {
                 BigDecimal mgmt = nz(priceCfg.resolve("mgmt_fee", ym, null, zone));
                 BigDecimal pSharp = nz(priceCfg.resolve("elec_sharp", ym, null, zone)).add(mgmt);
                 BigDecimal pPeak = nz(priceCfg.resolve("elec_peak", ym, null, zone)).add(mgmt);
@@ -1858,7 +1919,7 @@ public class AllocService {
             int scale = rule.getRoundScale() == null ? 2 : rule.getRoundScale();
             BigDecimal stdAdd = cfgVal(ctx, "rule:" + rule.getId(), "std_add");
             String kind = rule.getStdKind() != null ? rule.getStdKind()
-                : ("p2".equals(zone) ? "amount_over_base" : "qty_price_over_base");
+                : (KIND_TOU.equals(calcKind(zone, ctx.cfg())) ? "amount_over_base" : "qty_price_over_base");
             std = switch (rule.getMethod()) {
                 case "direct" -> cost;
                 case "none" -> null;
@@ -2015,6 +2076,11 @@ public class AllocService {
     // ══════════ V69 定位化候选与受益人变动(pool-candidates / member-diff) ══════════
     // 池可组成的表口径:公摊/园区自担/运营/基础设施(infra 由前端标注不预勾,契约已注明)
     private static final Set<String> POOL_OWNERSHIP = Set.of("share", "park", "ops", "infra");
+
+    /** 公摊表该进池却没进 = 这笔电费没人摊,且屏上不会有任何提示。只判 share。 */
+    static boolean needsPool(String ownership, boolean hasReading, boolean bound) {
+        return "share".equals(ownership) && hasReading && !bound;
+    }
 
     // 位置化表标签:「四楼西侧·电表①」——不再露内部标识名(用户 2026-07-30 拍板)
     // 电表标签(V73 补全)。原实现 head=spot?:name 只取「位置·表号」,B座天面 4 块表全变成「天面·电表①」,
@@ -2259,6 +2325,23 @@ public class AllocService {
             if (added.isEmpty() && removed.isEmpty()) continue;
             out.add(new AllocPoolDTOs.MemberDiff(r.getId(), r.getName(), added, removed));
         }
+        return out;
+    }
+
+    // 未入池的公摊表提醒:ownership=share + 当月有读数 + 未被任何池绑定(§needsPool)
+    public List<AllocPoolDTOs.MeterDiff> meterDiff(String ym) {
+        requireYm(ym);
+        Ctx ctx = loadCtx(ym);                                 // 已按 outOfService(m, ym) 过滤停用表
+        Set<Integer> bound = new HashSet<>();
+        for (List<AllocRuleMeter> bs : ctx.bindsByRule().values())
+            for (AllocRuleMeter b : bs) bound.add(b.getMeterId());
+        List<AllocPoolDTOs.MeterDiff> out = new ArrayList<>();
+        for (Meter m : ctx.meterById().values())
+            if (needsPool(m.getOwnership(), ctx.readingByMeter().containsKey(m.getId()), bound.contains(m.getId())))
+                out.add(new AllocPoolDTOs.MeterDiff(m.getId(), meterLabel(m), m.getBuildingId(),
+                        ctx.buildingById().containsKey(m.getBuildingId())
+                            ? ctx.buildingById().get(m.getBuildingId()).getName() : null,
+                        m.getZone()));
         return out;
     }
 

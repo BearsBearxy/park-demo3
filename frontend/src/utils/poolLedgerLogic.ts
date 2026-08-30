@@ -3,11 +3,9 @@
 // BOOK-REBUILD-SPEC §H4 前端:分带改原册块(不再按楼栋)、池名称优先原册自然键 book_key、
 // 「楼层」列归一为一格 floor_label、带尾按原册 SUM 区间出合计行。
 // §H3:二期 2023 冻结参数在「分摊标准」列 title 里披露(stdDisplay 的 frozenNote 参数)。
-import type { AllocLossReconDTO, AllocLossUnitDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO } from '@/api/alloc'
+import type { AllocLossReconDTO, AllocLossUnitDTO, AllocMeterDiffDTO, AllocMethod, AllocPoolLineDTO, AllocPoolRowDTO } from '@/api/alloc'
 import { ALLOC_METHOD_LABEL } from '@/utils/allocLogic'
 import { floorRank } from '@/composables/useMeterWorkbench'
-
-export const POOL_ZONE_LABEL: Record<string, string> = { p1: '一期', p2: '二期', dorm: '宿舍' }
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 // 浮点噪音清理后的紧凑数字串(0.0050000 → '0.005')
@@ -295,6 +293,20 @@ export function buildPoolExportAoa(bands: PoolBand[], ym: string, zoneLabel: str
   aoa.push(['合计', '', '', '', '', '', '', '', '', c(foot.qty), '', '', '', '',
     c(foot.cost), '', '', '', '', 'ref 行不计;carrier 只计度数不计金额'])
   return aoa
+}
+
+// ── 未入池的公摊表 → 告警抽屉一组(V.9)。zone 过滤与 zoneDiffs 同口径(只提示本期区的)。
+// desc/items 字段名对齐 FPAlertPanel 的 AlertGroup(key/title/desc/items{text}),
+// PoolLedgerView 可以直接 gs.push(mg) 不用再转一层。──
+export function meterDiffGroup(diffs: AllocMeterDiffDTO[], zone: string) {
+  const mine = diffs.filter(d => d.zone === zone)
+  if (!mine.length) return null
+  return {
+    key: 'meter-unpooled',
+    title: `${mine.length} 块公摊表没进任何池`,
+    desc: '这些表本月有读数,但没被任何池绑定 —— 它们的电费不会摊给任何人,也不会出现在催缴单上',
+    items: mine.map(d => ({ text: `${d.buildingName ?? '(未挂楼栋)'} ${d.label}` })),
+  }
 }
 
 // ── 损耗对账区两行(供电局总表 vs 各栋总表合计 / 各栋分表合计),读时派生列落位到屏列 ──

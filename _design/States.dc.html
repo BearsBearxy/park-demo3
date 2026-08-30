@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif; background:rgb(245,245,246); }
+    a { color:oklch(0.55 0.115 250); } a:hover { color:oklch(0.45 0.115 250); }
+    .col { width:326px; flex:0 0 auto; display:flex; flex-direction:column; gap:9px; }
+    .cap { font-size:11px; font-weight:600; letter-spacing:.06em; color:rgba(28,28,28,0.62); }
+    .card { border:1px solid rgba(28,28,28,0.1); border-radius:12px; background:#fff; overflow:hidden; }
+    .chd { padding:9px 12px; font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:8px; border-bottom:1px solid rgba(28,28,28,0.1); }
+    .cbd { padding:11px 12px; display:flex; flex-direction:column; gap:9px; }
+    .chip { font-size:11px; border-radius:999px; padding:1px 7px; background:rgb(245,245,246); color:rgba(28,28,28,0.62); flex:0 0 auto; }
+    .chip.ok { background:rgb(222,244,229); color:rgb(21,128,61); }
+    .chip.warn { background:rgb(255,247,235); color:rgb(180,83,9); }
+    .chip.bad { background:rgb(255,238,237); color:oklch(0.56 0.150 27); }
+    .seg { display:flex; border:1px solid rgba(28,28,28,0.1); border-radius:8px; overflow:hidden; background:rgb(245,245,246); }
+    .seg > div { flex:1; height:30px; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:rgba(28,28,28,0.62); border-right:1px solid rgba(28,28,28,0.1); }
+    .seg > div:last-child { border-right:none; }
+    .seg > div.on { background:#fff; color:rgb(28,28,28); font-weight:600; box-shadow:inset 0 -2px 0 rgb(28,28,28); }
+    .row { display:flex; align-items:center; gap:8px; padding:6px 6px; font-size:12.5px; }
+    .ck { width:14px; height:14px; border:1px solid rgba(28,28,28,0.3); border-radius:4px; flex:0 0 auto; }
+    .ck.on { background:rgb(28,28,28); border-color:rgb(28,28,28); }
+    .rd { width:14px; height:14px; border:1px solid rgba(28,28,28,0.3); border-radius:999px; flex:0 0 auto; }
+    .rd.on { border:4px solid rgb(28,28,28); }
+    .inp { height:32px; padding:0 12px; border:1px solid rgba(28,28,28,0.1); border-radius:8px; font-size:12.5px; background:#fff; display:flex; align-items:center; gap:7px; }
+    .inp.ph { color:rgba(28,28,28,0.4); }
+    .hint { font-size:11px; color:rgba(28,28,28,0.62); background:rgb(249,249,250); border-radius:8px; padding:7px 9px; line-height:1.5; }
+    .btn { height:28px; padding:0 14px; border-radius:8px; font-size:12px; display:flex; align-items:center; background:rgb(28,28,28); color:#fff; font-weight:500; }
+    .btn.off { background:rgba(28,28,28,0.12); color:rgba(28,28,28,0.4); }
+    .foot { padding:10px 12px; border-top:1px solid rgba(28,28,28,0.1); background:rgb(249,249,250); display:flex; align-items:center; gap:9px; }
+    .why { font-size:11px; line-height:1.5; flex:1; }
+  </style>
+</helmet>
+
+<div style="padding:26px 24px;">
+  <div style="font-size:16px; font-weight:600; margin-bottom:4px;">选择逻辑:选了哪种摊法,下面就只显示这种摊法要填的东西</div>
+  <div style="font-size:12px; color:rgba(28,28,28,0.62); margin-bottom:20px;">现状是四种摊法共用同一套受益人列表 —— 户对户其实只能选一户、园区自担根本不该有受益人,界面却一模一样。</div>
+
+  <div style="display:flex; gap:16px; align-items:flex-start; margin-bottom:26px;">
+
+    <div class="col">
+      <div class="cap">选「按层份」</div>
+      <div class="card">
+        <div class="chd">这笔钱怎么摊</div>
+        <div class="cbd"><div class="seg"><div>按面积</div><div class="on">按层份</div><div>户对户</div><div>园区自担</div></div></div>
+      </div>
+      <div class="card">
+        <div class="chd">摊给谁<span style="flex:1"></span><span class="chip ok">已选 6 户</span></div>
+        <div class="cbd">
+          <div class="hint">按定位勾好在租租户。份额留空 = 所在层各摊一份,层内多户按面积拆。</div>
+          <div style="display:flex; gap:8px; font-size:11px; color:rgba(28,28,28,0.62); padding:0 6px;"><span style="width:14px"></span><span style="flex:1">租户</span><span style="width:48px;text-align:right;">份额</span></div>
+          <div>
+            <div class="row"><span class="ck on"></span><span style="font-weight:500;">力灏电子</span><span class="chip">四楼</span><span style="flex:1"></span><span style="width:48px;text-align:right;color:rgba(28,28,28,0.4);">自动</span></div>
+            <div class="row"><span class="ck on"></span><span style="font-weight:500;">新元材料</span><span class="chip">四楼</span><span style="flex:1"></span><span style="width:48px;text-align:right;font-weight:600;">0.5</span></div>
+            <div class="row"><span class="ck on"></span><span style="font-weight:500;">碳紫科技</span><span class="chip bad">未定层</span><span style="flex:1"></span><span style="width:48px;text-align:right;color:rgba(28,28,28,0.4);">自动</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:rgba(28,28,28,0.62);line-height:1.55;padding:0 2px;">只有这一档出<b style="color:rgb(28,28,28);">份额列</b>。「未定层」标红——它们会被合摊成一份,是漏摊的源头。</div>
+    </div>
+
+    <div class="col">
+      <div class="cap">选「户对户」</div>
+      <div class="card">
+        <div class="chd">这笔钱怎么摊</div>
+        <div class="cbd"><div class="seg"><div>按面积</div><div>按层份</div><div class="on">户对户</div><div>园区自担</div></div></div>
+      </div>
+      <div class="card">
+        <div class="chd">摊给谁<span style="flex:1"></span><span class="chip warn">整笔归一户</span></div>
+        <div class="cbd">
+          <div class="hint">整笔钱只给一户。换一户直接搜索选中即可,不必先取消。</div>
+          <div class="inp"><span style="width:13px;height:13px;border:1.5px solid rgba(28,28,28,0.4);border-radius:999px;"></span><span style="color:rgba(28,28,28,0.4);">搜全库租户</span></div>
+          <div class="row" style="background:rgba(226,236,255,.55); border-radius:8px;"><span class="rd on"></span><span style="font-weight:600;">联塑精铟</span><span class="chip">A102</span><span style="flex:1"></span><span style="font-size:11px;color:oklch(0.55 0.115 250);">已选中</span></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:rgba(28,28,28,0.62);line-height:1.55;padding:0 2px;">列表变<b style="color:rgb(28,28,28);">单选</b>、去掉份额列、去掉批量勾选。选择方式本身就说明了「只能一户」,不必等保存时弹红字。</div>
+    </div>
+
+    <div class="col">
+      <div class="cap">选「园区自担」</div>
+      <div class="card">
+        <div class="chd">这笔钱怎么摊</div>
+        <div class="cbd"><div class="seg"><div>按面积</div><div>按层份</div><div>户对户</div><div class="on">园区自担</div></div></div>
+      </div>
+      <div class="card">
+        <div class="chd" style="color:rgba(28,28,28,0.62);">摊给谁<span style="flex:1"></span><span class="chip">不适用</span></div>
+        <div class="cbd">
+          <div class="hint" style="background:rgb(255,250,235); color:rgb(138,97,0);">这个池的钱全额挂园区亏,不摊给任何租户 —— 所以这里没有受益人可选。<br>用量仍会算,并按配置进「园区损耗公摊池」。</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:rgba(28,28,28,0.62);line-height:1.55;padding:0 2px;">整段<b style="color:rgb(28,28,28);">收起并解释</b>。招商中心净电那类池就是这一档 —— 现状逼你指定一个不该存在的受益人。</div>
+    </div>
+  </div>
+
+  <div style="font-size:16px; font-weight:600; margin-bottom:4px;">保存按钮:不能存的时候就是禁用的,并且写明为什么</div>
+  <div style="font-size:12px; color:rgba(28,28,28,0.62); margin-bottom:16px;">现状是按钮永远可点,点下去才知道被后端拒了 —— 而有一种情况点下去不但没拒、还会静默改坏数据。</div>
+
+  <div style="display:flex; gap:16px; align-items:flex-start;">
+    <div class="col"><div class="cap">可以保存</div><div class="card"><div class="foot"><span class="why" style="color:rgba(28,28,28,0.62);">改动会立即重算本月快照</span><span class="btn">保存并重算本月</span></div></div></div>
+    <div class="col"><div class="cap">还在载入</div><div class="card"><div class="foot"><span class="why" style="color:rgb(180,83,9);">正在载入池参数…此时保存会把「进催缴单的哪一项」冲成默认值</span><span class="btn off">保存并重算本月</span></div></div></div>
+    <div class="col"><div class="cap">名字会撞</div><div class="card"><div class="foot"><span class="why" style="color:oklch(0.56 0.150 27);">「一期 F座·天面·货梯」已被另一个池占用 —— 补上侧向或改费项名</span><span class="btn off">保存并重算本月</span></div></div></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

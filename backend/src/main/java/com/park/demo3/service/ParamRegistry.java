@@ -40,6 +40,9 @@ public final class ParamRegistry {
         0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点）",
         1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）",
         2, "不核算（只列示用量）");
+    private static final Map<Integer, String> ZONE_CALC_KIND_OPTS = Map.of(
+        0, "平价制（单一商业价 × 用量）",
+        1, "分时制（尖峰平谷四段 + 管理费）");
     private static final Map<Integer, String> LOSS_BASE_FORM_OPTS = Map.of(
         1, "A：电费 + 公摊 + 电力管理费",
         2, "B：电费 + 公摊（默认）",
@@ -126,6 +129,9 @@ public final class ParamRegistry {
         alloc("loss_variant", "损耗核算方式", "", Group.RULE, S_BUILDING, "from", false, ValueKind.ENUM, LOSS_VARIANT_OPTS,
             "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分母 + 加点；不核算：只列示用量",
             "B座 / C座 2023-11 起仅按公摊分摊度数；G座 不核算", null);
+        alloc("zone_calc_kind", "计费口径", "", Group.RULE, S_ZONE, "from", false, ValueKind.ENUM, ZONE_CALC_KIND_OPTS,
+            "决定该期区的公摊池怎么算钱：平价制 = (用量 + 加减度数) × 单一商业价；分时制 = 尖峰平谷四段电价 + 管理费",
+            "没配口径的期区不会不出钱——池会先按平价制(商业电价)计费,请到本页显式选口径,避免分时期区被错收平价", null);
         alloc("loss_head", "损耗核算归组", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_BUILDING, null,
             "并入所指楼栋一组核算、共用一块总表；未指定或指向自身 = 独立核算", "二期 二 / 四车间并入三车间；一车间 2023-08、09 并入五车间", null);
         alloc("loss_c_meter", "总表取数", "", Group.RULE, S_BUILDING, "from", false, ValueKind.REF_METER, null,
@@ -172,7 +178,7 @@ public final class ParamRegistry {
 
     public static Collection<Def> all() { return Collections.unmodifiableCollection(DEFS.values()); }
 
-    /** 键存在且 scope 形态允许('' 全园 / p1|p2|dorm 期 / building:{id} / meter:{id} / rule:{id} / tenant:{id}) */
+    /** 键存在且 scope 形态允许('' 全园 / p{n}|dorm 期 / building:{id} / meter:{id} / rule:{id} / tenant:{id}) */
     public static boolean allowed(String key, String scope) {
         Def d = get(key);
         if (d == null) return false;
@@ -197,10 +203,10 @@ public final class ParamRegistry {
         return out;
     }
 
-    /** scope 字符串 → 形态;非法(如 'p9'、'building:x')→ null */
+    /** scope 字符串 → 形态;非法(如 'px'、'building:x')→ null */
     public static ScopeKind scopeKind(String scope) {
         if (scope == null || scope.isEmpty()) return ScopeKind.GLOBAL;
-        if (scope.equals("p1") || scope.equals("p2") || scope.equals("dorm")) return ScopeKind.ZONE;
+        if (scope.matches(ZoneService.ZONE_REGEX)) return ScopeKind.ZONE;
         int i = scope.indexOf(':');
         if (i <= 0 || !scope.substring(i + 1).matches("\\d+")) return null;
         return switch (scope.substring(0, i)) {

@@ -44,3 +44,7 @@ backend/scripts/backups/
 # 命令见 frontend/src/styles/tokens.css 的 @font-face 注释。
 Roboto_Mono/
 Roboto_Mono.zip
+
+# 设计画布的产物(2.5MB 编辑器载荷,非内容);源文件 _design/*.dc.html 照常入库
+_design/*.html
+!_design/*.dc.html

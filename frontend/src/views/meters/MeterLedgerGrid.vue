@@ -50,6 +50,15 @@ const ALL_SEGS: SegDef[] = [
   { lab: '平', c: 'currFlat', p: 'flat' },
   { lab: '谷', c: 'currValley', p: 'valley' },
 ]
+// ⚠ 这里的列数随 kind 变,**不是** LAYOUT-STABILITY-SPEC §1 要治的那种位移,别照 2026-08-29
+//   PoolLedgerView/LossLedgerView 那次(切期区改列数)的修法套过来 —— 已经有人提过一次了。
+//   三条理由:
+//   ① METER-SPEC §69 明文「水表仅 总 两列」、§7「水表单行表头」,源工作簿本身就是这个形状;
+//   ② 水没有分时费率。给水表加尖/峰/平/谷是**量纲错误**,不是「有列无数据」——
+//      与「一期是平价制的电、四段同量纲只是没分段计量」根本不同,那种才该显「–」;
+//   ③ 表格在 .mlg-wrap(flex + overflow:auto)里,盒子尺寸由布局定、与表宽无关:
+//      左右 sticky 列位置不动,变的只有中间可滚动区;且切 kind 本就是「另一张表」
+//      (见 MeterView 筛选维度处的注释),没有共同的行要用户重新找。
 const segDefs = computed(() => (props.kind === 'elec' ? ALL_SEGS : ALL_SEGS.slice(0, 1)))
 // 非分时列 9 列:楼层·方位/用途/房号/租户/表号/编码/倍率 + 用量/状态
 const colCount = computed(() => 10 + segDefs.value.length * 2)

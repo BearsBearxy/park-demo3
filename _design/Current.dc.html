@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif; background:rgb(245,245,246); }
+    a { color:oklch(0.55 0.115 250); } a:hover { color:oklch(0.45 0.115 250); }
+    .sec { border:1px solid rgba(28,28,28,0.1); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:10px; background:#fff; }
+    .st { font-size:12.5px; font-weight:600; color:rgb(28,28,28); display:flex; align-items:center; gap:8px; }
+    .lbl { font-size:12px; color:rgba(28,28,28,0.8); font-weight:500; margin-bottom:6px; display:block; }
+    .inp { height:32px; padding:0 12px; border:1px solid rgba(28,28,28,0.1); border-radius:8px; font-size:12.5px; background:#fff; display:flex; align-items:center; color:rgb(28,28,28); }
+    .inp.ph { color:rgba(28,28,28,0.4); }
+    .chip { font-size:11px; border-radius:999px; padding:1px 7px; background:rgb(245,245,246); color:rgba(28,28,28,0.62); }
+    .chip.warn { background:rgb(255,247,235); color:rgb(180,83,9); }
+    .chip.infra { background:rgb(255,250,235); color:rgb(138,97,0); }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:oklch(0.56 0.150 27); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); }
+    .note { font-size:11.5px; line-height:1.55; color:rgb(28,28,28); }
+    .note b { color:oklch(0.50 0.150 27); }
+  </style>
+</helmet>
+
+<div style="padding:28px 24px; display:flex; gap:22px; align-items:flex-start;">
+
+  <!-- 现状抽屉 -->
+  <div style="position:relative; width:392px; flex:0 0 auto;">
+    <div style="font-size:11px; font-weight:600; letter-spacing:.08em; color:rgba(28,28,28,0.62); margin-bottom:10px;">现状</div>
+    <div style="border:1px solid rgba(28,28,28,0.1); border-radius:16px; background:rgb(249,249,250); overflow:hidden;">
+
+      <div style="padding:14px 16px; border-bottom:1px solid rgba(28,28,28,0.1); background:#fff;">
+        <div style="font-size:15px; font-weight:600; color:rgb(28,28,28);">编辑池 · 一期 C座·天面·货梯</div>
+        <div style="font-size:11px; color:rgba(28,28,28,0.62); margin-top:4px;">池=楼栋+楼层+侧向+费项四级定位…改完保存即重算</div>
+      </div>
+
+      <div style="padding:12px; display:flex; flex-direction:column; gap:10px;">
+        <div class="sec">
+          <div class="st">① 池在哪(定位)· 层级留空即上一级</div>
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;">
+            <div><span class="lbl">期区</span><div class="inp">一期</div></div>
+            <div><span class="lbl">楼栋</span><div class="inp">一期 C座</div></div>
+            <div><span class="lbl">楼层</span><div class="inp">天面</div></div>
+            <div><span class="lbl">侧向</span><div class="inp ph">(整层,不分侧)</div></div>
+          </div>
+          <div><span class="lbl">费项(池名末段)</span><div class="inp">货梯</div></div>
+          <div><span class="lbl">池名称(自动生成,不可手写)</span>
+            <div style="height:32px; display:flex; align-items:center; padding:0 12px; border:1px dashed rgba(28,28,28,0.2); border-radius:8px; background:rgb(245,245,246); font-size:13px; font-weight:600;">一期 C座·天面·货梯</div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="st">② 池里有哪些电表 · 已选 1</div>
+          <div style="border:1px solid rgba(28,28,28,0.1); border-radius:8px; padding:4px;">
+            <div style="display:flex; align-items:center; gap:8px; padding:5px 4px; font-size:12.5px;"><span style="width:13px;height:13px;border:1px solid rgba(28,28,28,0.3);border-radius:3px;"></span><span style="font-weight:500;">C座·天面·货梯电</span><span style="flex:1"></span><span style="font-family:ui-monospace,monospace;font-size:11.5px;border:1px solid rgba(28,28,28,0.1);background:rgb(222,244,229);color:rgb(21,128,61);border-radius:999px;padding:1px 9px;">＋</span></div>
+            <div style="display:flex; align-items:center; gap:8px; padding:5px 4px; font-size:12.5px; color:rgba(28,28,28,0.62);"><span style="width:13px;height:13px;border:1px solid rgba(28,28,28,0.3);border-radius:3px;"></span><span>C座·天面·总电表</span><span class="chip infra">总表 · 一般不入池</span></div>
+          </div>
+          <div style="font-size:11.5px; color:oklch(0.55 0.115 250);">› 从其他位置添加表(货梯/招商子表/广告字分表)</div>
+        </div>
+
+        <div class="sec">
+          <div class="st">③ 怎么摊</div>
+          <div style="display:flex; gap:14px; font-size:12.5px;">
+            <span>○ 按面积</span><span>● 按层份</span><span>○ 户对户</span><span>○ 园区自担</span>
+          </div>
+          <div><span class="lbl">面积基数来源</span><div class="inp">用本池分摊基数</div></div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 10px; border:1px dashed rgba(28,28,28,0.2); border-radius:8px; background:rgb(245,245,246); font-size:12px; color:rgba(28,28,28,0.8);">
+            <span>分摊基数 4 层 · 加减度数 未设置</span><span style="color:oklch(0.55 0.115 250);">→ 去计费参数页改</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+            <div><span class="lbl">出口费项(入账用)</span><div class="inp">楼层照明</div></div>
+            <div><span class="lbl">分摊标准算式</span><div class="inp">按期别默认</div></div>
+            <div><span class="lbl">四舍五入位数</span><div class="inp">2 位</div></div>
+          </div>
+          <div><span class="lbl">备注</span><div class="inp ph">如:电梯用电加170度</div></div>
+        </div>
+
+        <div class="sec">
+          <div class="st">④ 分摊给谁 · 已勾 6 户</div>
+          <div style="border:1px solid rgba(28,28,28,0.1); border-radius:8px; padding:4px; font-size:12.5px;">
+            <div style="display:flex;gap:8px;padding:5px 4px;align-items:center;"><span style="width:13px;height:13px;border:1px solid rgba(28,28,28,0.3);border-radius:3px;background:rgb(28,28,28);"></span><span style="font-weight:500;">力灏电子</span><span class="chip">C401</span><span style="flex:1"></span><span style="color:rgba(28,28,28,0.4);">自动</span></div>
+            <div style="display:flex;gap:8px;padding:5px 4px;align-items:center;"><span style="width:13px;height:13px;border:1px solid rgba(28,28,28,0.3);border-radius:3px;background:rgb(28,28,28);"></span><span style="font-weight:500;">新元材料</span><span class="chip">C403</span><span style="flex:1"></span><span style="color:rgba(28,28,28,0.4);">0.5</span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="st">⑤ 折入链(links,本池 ← 源池)· 0 条</div>
+          <div style="font-size:11.5px;color:rgba(28,28,28,0.4);text-align:center;padding:8px 0;">暂无</div>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px; border-top:1px solid rgba(28,28,28,0.1); background:#fff;">
+        <div style="font-size:11.5px; color:oklch(0.56 0.150 27); margin-bottom:8px;">整笔归户规则受益人必须恰好一户</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="height:28px;padding:0 12px;border:1px solid rgba(28,28,28,0.1);border-radius:8px;font-size:12px;display:flex;align-items:center;color:oklch(0.56 0.150 27);">删除池</span>
+          <span style="flex:1"></span>
+          <span style="height:28px;padding:0 12px;border:1px solid rgba(28,28,28,0.1);border-radius:8px;font-size:12px;display:flex;align-items:center;">取消</span>
+          <span style="height:28px;padding:0 14px;border-radius:8px;font-size:12px;display:flex;align-items:center;background:rgb(28,28,28);color:#fff;">保存并重新生成</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pin" style="left:-11px; top:96px;">1</div>
+    <div class="pin" style="left:-11px; top:236px;">2</div>
+    <div class="pin" style="left:-11px; top:470px;">3</div>
+    <div class="pin" style="left:-11px; top:700px;">4</div>
+    <div class="pin" style="left:-11px; top:960px;">5</div>
+    <div class="pin" style="left:-11px; top:1042px;">6</div>
+  </div>
+
+  <!-- 问题清单 -->
+  <div style="width:300px; flex:0 0 auto; padding-top:28px; display:flex; flex-direction:column; gap:14px;">
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">1</div><div class="note"><b>名字埋在第一段底部。</b>改楼层/侧向会改名,但要滚到①的最后一格才看得见。池 88 保存一次就和既有的 89 同名,全程无预警。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">2</div><div class="note"><b>侧向读的是 side 列,不是名字。</b>一期历史池把「东侧」写在名字里、side 列是空的,所以这一格显示「(整层,不分侧)」——保存即抹掉方位。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">3</div><div class="note"><b>③ 段塞了 7 个控件。</b>分摊方式(高频)和算式/舍入位数(几乎不动)平铺在一起,还夹着一条只读镜像。找不到重点。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">4</div><div class="note"><b>选择不驱动显示。</b>无论选哪种分摊方式,④ 段都长一样——户对户其实只能选一户,按层份才有份额列,园区自担根本不该有受益人。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">5</div><div class="note"><b>专家功能常驻。</b>折入链全库只有 4 条,却占着一整段,把页脚推到屏幕外。</div></div>
+    <div style="display:flex; gap:9px;"><div class="pin" style="position:relative;left:0;top:0;flex:0 0 auto;">6</div><div class="note"><b>校验在页脚,点了才知道。</b>「必须恰好一户」离 ④ 段几百像素远;而载入未完成时保存会把出口费项冲成默认值——守卫写了,条件漏了在飞的窗口。</div></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

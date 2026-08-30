@@ -8,4 +8,5 @@ public record BuildingCreateReq(
     @NotNull @DecimalMin("0") BigDecimal totalArea,
     @NotNull @DecimalMin("0") BigDecimal rentableArea,
     @Min(0) Integer perFloor,
-    String remark) {}
+    String remark,
+    @Pattern(regexp = "p\\d+|dorm") String zone) {}

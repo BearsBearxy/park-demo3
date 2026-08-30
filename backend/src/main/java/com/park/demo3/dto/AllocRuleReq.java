@@ -6,10 +6,14 @@ import java.util.List;
 // 规则整体保存(meterIds+members 随行覆盖);loss 规则无 member(受益人生成时动态取)。
 // V64 扩:meters(携 sign,优先于 meterIds)/roundScale/stdKind/baseKey/links(入向折入链整体覆盖)
 public record AllocRuleReq(
-    @NotBlank @Pattern(regexp = "p1|p2|dorm") String zone,
+    @NotBlank @Pattern(regexp = "p\\d+|dorm") String zone,
     String name,                   // V69 忽略:后端按定位自动生成并覆盖(前端只读展示)
     Integer buildingId,
-    @NotBlank @Pattern(regexp = "direct|area|floor|loss|none|ref") String method,
+    // 值域 = 引擎真实支持的全集。carrier(V73 冲减载体)与 manual(V81 §H4.2e 人工指定行)
+    // 库里正式在用却漏在值域外,导致这类池"打开抽屉什么都没改、点保存被 400"。
+    // ⚠ 只放开回传:抽屉仍不把 carrier/manual 放进新建池的单选组(PoolLedgerView 的 methodRadios
+    // 只列 area/floor/direct/none,非该值时才把当前值补进去),这条不放开新建,只让存量池存得回去。
+    @NotBlank @Pattern(regexp = "direct|area|floor|loss|none|ref|carrier|manual") String method,
     BigDecimal coefficient,
     BigDecimal extraQty,           // 空=0
     // share_green_water=绿化水公摊(dorm 宿舍绿化水 / p2 园区绿化水泵,V65 起在库);share_water 是占位键不生成

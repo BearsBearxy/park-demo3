@@ -6,7 +6,9 @@ import type { MeterOwnership } from '../utils/meterSplit'
 // GET=viewer 可读,写=admin。与办公室水电 /api/office 零共享。
 
 export type MeterKind = 'elec' | 'water'
-export type MeterZone = 'p1' | 'p2' | 'dorm'
+// 值域由后端 /api/zones 数据驱动(p\d+|dorm),不再写死。放宽后编译器不再帮忙查
+// 字典下标 —— 所有 label 取值必须走 zoneLabel() 的兜底。
+export type MeterZone = string
 export type { MeterOwnership }
 
 // 表类型(S2-BIND-SPEC §1 device_type;meter_type 列已被「表类」原文占用故另立):null=未录
