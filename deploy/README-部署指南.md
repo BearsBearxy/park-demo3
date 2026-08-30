@@ -15,7 +15,7 @@
 
 ## 2. 买完后做两件事
 
-1. **防火墙/安全组放行端口**：控制台 → 防火墙 → 添加规则，放行 **22（SSH）** 和 **80（网站）**。其余一律不开（MySQL 3306 不对外，compose 内网互通）。
+1. **防火墙/安全组放行端口**：控制台 → 防火墙 → 添加规则，放行 **22（SSH）**、**80**、**443**（80 不能省：Caddy 申请证书走 HTTP-01 验证，关了签不出来）。其余一律不开 —— MySQL 3306 不对外（compose 内网互通），**frontend 的 8081 也绝不能放行**（见 §8）。
 2. 记下 **公网 IP** 和 **root 密码**（轻量服务器控制台可重置密码）。
 
 到这里你的部分就完成了。把 IP 和密码交给 Claude 即可；以下为执行记录/手工步骤。
@@ -63,11 +63,12 @@ curl -sI http://localhost/ | grep -iE "x-frame-options|x-content-type|referrer-p
 
 若首次 up 偶发 backend 启动失败（与 MySQL 首次初始化竞速），再执行一次 `docker compose up -d` 即可（restart 策略平时会自动拉起）。
 
-浏览器打开 `http://<IP>`：
+浏览器打开 `https://atrilink.com`（2026-08-30 起走 HTTPS，见 §8）：
 - **admin / gen-env 生成的 ADMIN_PASSWORD**：管理员（可写），自己留用
 - **viewer / 生成的 VIEWER_PASSWORD**：只读账号，**发这个给测试者**（任何编辑/导入/删除会被拦截并提示）
 
-⚠️ 测试期为**明文 HTTP**：口令在网络上未加密传输。口令一对一私发（勿群发群聊），admin 避免在公共 WiFi 登录；正式使用前按第 7 节上 HTTPS。
+~~⚠️ 测试期为明文 HTTP~~ —— 2026-08-30 已上 HTTPS（§8）。口令不再明文过网，`http://` 与裸 IP 均已关闭。
+仍建议口令一对一私发：HTTPS 保护的是传输链路，保护不了发错人。
 
 数据说明：全新库由 Flyway 自动建表并灌入**演示数据**（演示楼栋/租户/合同/台账），测试者开箱即有数据可点。
 不是你本机的真实数据——真实数据涉及 313 户租户财务明细，放公网前需单独决策（见第 7 节）。
@@ -112,10 +113,76 @@ docker compose exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" park_
 按顺序：
 1. **拆 Flyway 演示种子**（审计已立项：seed 与 schema 同目录，正式库会混入演示数据）——上真实数据前必修
 2. 真实数据迁移：本机 `mysqldump` → scp → 导入（此时不再走演示种子）
-3. 域名 + HTTPS：买域名 → 国内地域办 ICP 备案（或迁香港）→ 前置 Caddy 自动签发 TLS 证书。
-   上了 TLS 之后再回头给 `frontend/nginx.conf` 补 `Strict-Transport-Security`（明文 HTTP 下发 HSTS 无意义，
-   所以现在故意不加）。注意 nginx 子 `location` 不继承父级 `add_header`，本文件里安全头一共写了 3 处，改要一起改。
+3. ~~域名 + HTTPS~~ —— **2026-08-30 已完成，见 §8**。实际与当初设想有两处不同：
+   本机在香港地域，**免 ICP 备案**，买完域名当天就切完；HSTS 最终下在 Caddy 而非 `frontend/nginx.conf`
+   （nginx 子 `location` 不继承父级 `add_header`，那边要写 3 处，Caddy 一处覆盖全站 —— TLS 在哪终止，
+   HSTS 就该在哪下发）。`nginx.conf` 里那条"将来补 HSTS"的注释因此作废。
    ~~CSP 收紧远程 webfont~~ —— 2026-08-11 已完成（远程 Google Fonts 已从 `tokens.css` 移除，CSP 三处同步收紧为 `'self'`）
 4. 定期备份：第 6 节备份命令进 crontab（每日一份 + 异地留存）
 5. 服务器加固：SSH 改密钥登录禁密码、fail2ban
 6. 多用户/角色扩展视使用反馈再说（当前 admin+viewer 两级已够测试与汇报）
+
+## 8. HTTPS（2026-08-30 上线）
+
+`https://atrilink.com` / `https://www.atrilink.com`。证书 Let's Encrypt，90 天有效期，**Caddy 自动续期，无需人工干预**。
+
+架构：公网 → `caddy:80/443`（终止 TLS）→ `frontend:80`（nginx 静态 + /api 反代）→ `backend:8080`。
+
+配置在 [`deploy/Caddyfile`](Caddyfile)。选 Caddy 而非 certbot 的唯一理由：证书申请与续期内置，
+不用自己维护 cron、也不用续期后 reload nginx，少两个会坏的零件。
+
+### 开关在 .env，不在 compose
+
+`caddy` 服务挂了 `profiles: ["https"]`，**只有 `.env` 里写了 `COMPOSE_PROFILES=https` 才启动**。
+本地开发与纯 IP 明文部署因此完全不受影响，`docker compose up -d` 一行不用改（CD 也就不用动）。
+
+服务器 `.env` 相对 `gen-env.sh` 的产物多改了三项：
+
+```
+WEB_PORT=8081                                                        # 80 让给 caddy
+CORS_ALLOWED_ORIGINS=https://atrilink.com,https://www.atrilink.com   # 原为 http://<IP>
+COMPOSE_PROFILES=https                                               # 新增,开关
+```
+
+⚠️ `gen-env.sh` 仍按明文 HTTP 生成（`WEB_PORT=80`、`CORS` 走 `http://`）。**换机器重建时这三项要手工补**，
+否则 caddy 起不来（80 被 frontend 占）。
+
+⚠️ **8081 绝不能在安全组放行**。compose 的 `ports` 没法被 profile 摘掉，frontend 仍发布在宿主机
+8081 上，靠安全组挡住。放行了就等于绕过 TLS 还能明文访问全站。
+
+⚠️ **`caddy-data` 卷不能删**：证书存在里面。删了每次部署重新签发，Let's Encrypt 限额是同一组域名
+每周 5 张重复证书，撞上就是一周签不出来。
+
+### 增删域名的顺序
+
+加 = 先配 DNS 并确认生效 → 再写进 `Caddyfile` 站点行 → push。
+删 = 先从站点行拿掉 → 再动 DNS。
+
+站点行里每多写一个域名，那个域名就必须已解析到本机 —— 否则它的 ACME challenge 失败会拖垮**整张**证书，
+不是只少一个名字。
+
+域名写死在两处：`deploy/Caddyfile` 与 `.github/workflows/ci.yml` 的健康检查 URL，改要一起改。
+
+### 排障
+
+```bash
+docker compose logs -f caddy                    # 签发/续期日志,关键字 certificate obtained successfully
+docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile   # 改完先验语法再 up
+curl -sI https://atrilink.com/ | grep -i strict  # 确认 HSTS 在
+```
+
+回滚到明文（应急，几十秒）：
+
+```bash
+cd /opt/demo3 && cp .env.bak .env && docker compose --profile https rm -sf caddy && docker compose up -d
+```
+
+### 已知行为
+
+- `http://` 一律 `308` 跳 `https://`，路径与查询串保留。
+- 裸 IP（`http://47.76.99.211/`）同样吃 `308` 跳 `https://<IP>/`，随后握手失败 —— 证书只签了域名。
+  明文入口就此关死。
+- HSTS 为 `max-age=31536000`，**不带** `includeSubDomains` / `preload`：那是不可撤销的承诺，
+  跑稳几周后再考虑。
+- CD 的健康检查（`ci.yml`）查 `https://atrilink.com/`，`curl` 默认校验证书，因此顺带看住了续期 ——
+  续期挂了会在下次部署暴露，而不是等用户报错。
