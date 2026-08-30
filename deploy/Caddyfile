@@ -20,5 +20,6 @@ atrilink.com, www.atrilink.com {
 	header Strict-Transport-Security "max-age=31536000"
 }
 
-# 没有 :80 catch-all —— 用 http://<IP>/ 直接访问会落到 Caddy 默认的 404(空响应)。
-# 这是想要的结果:裸 IP 不再以明文提供本站,也不回显任何信息。
+# 裸 IP 访问的实际结果(2026-08-30 实测,不是当初以为的 404):Caddy 的自动跳转层对**所有**
+# Host 生效,http://<IP>/ 拿到 308 跳 https://<IP>/,而证书只签了域名,握手随即失败。
+# 结论不变 —— 明文入口关死,只是机制是"跳转后握手失败"而非"匹配不到站点返 404"。
