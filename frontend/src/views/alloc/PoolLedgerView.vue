@@ -548,6 +548,46 @@ const formAutoName = computed(() => poolAutoName(
 // 存量池(定位三项全空)后端保留原名不改 —— 与 AllocService.poolName 的唯一例外对齐
 const keepsOldName = computed(() => form.value.id != null && form.value.oldName !== ''
   && !form.value.floorLabel.trim() && !form.value.side.trim() && !form.value.feeName.trim())
+
+// ── 顶部常驻名字条(变更 1,2026-08-30 用户拍板):今天自动名藏在①段底部,改楼层/侧向会
+// 改名却看不见;移到抽屉顶部实时跟随。origLoc = 打开抽屉那一刻的四个定位字段快照,逐字段
+// (不是整串比较)判断"这一格从打开到现在改过没有",用来高亮名字里对应变化的那一段。
+// ⚠ 本次提交只加计算属性,尚未接入模板(下一次提交把模板换成新设计并接线)。
+const origLoc = ref({ buildingId: null as number | null, floorLabel: '', side: '', feeName: '' })
+const proposedName = computed(() => (keepsOldName.value ? form.value.oldName : formAutoName.value))
+// 撞名前端预判(镜像 AllocService.apply 的查重:按 finalName 全库查重,不分 zone,排除自身 id)——
+// 用已经拉到手的 pools.rows 抢先算一遍拦在保存前;算漏了后端仍是最后一道闸,不是安全问题只是体验差一点。
+const nameConflictRow = computed(() => {
+  const proposed = proposedName.value
+  if (!proposed) return null
+  return (pools.value?.rows ?? []).find(r => r.ruleId !== form.value.id && r.name === proposed) ?? null
+})
+const nameConflictHint = computed(() => nameConflictRow.value
+  ? `池名「${proposedName.value}」已被另一个池占用 —— 请补上侧向或改费项名,让两个池分得开` : '')
+const nameChanged = computed(() => form.value.id != null && !keepsOldName.value && proposedName.value !== form.value.oldName)
+const locFieldChanged = computed(() => ({
+  building: form.value.id != null && form.value.buildingId !== origLoc.value.buildingId,
+  floor: form.value.id != null && form.value.floorLabel !== origLoc.value.floorLabel,
+  side: form.value.id != null && form.value.side !== origLoc.value.side,
+  fee: form.value.id != null && form.value.feeName !== origLoc.value.feeName,
+}))
+const changedFieldLabels = computed(() => {
+  const c = locFieldChanged.value
+  return [c.building && '楼栋', c.floor && '楼层', c.side && '侧向', c.fee && '费项'].filter((s): s is string => !!s)
+})
+// 名字分段高亮:哪一段的来源字段变了就标哪一段,不是整条变色
+interface NameSeg { text: string; hi: boolean }
+const nameSegs = computed<NameSeg[]>(() => {
+  const proposed = proposedName.value
+  if (!nameChanged.value) return [{ text: proposed, hi: false }]
+  const floor = form.value.floorLabel.trim(), side = form.value.side.trim(), fee = form.value.feeName.trim()
+  const loc = floor + side
+  const segs: NameSeg[] = [{ text: proposed.split('·')[0] ?? proposed, hi: locFieldChanged.value.building }]
+  if (loc) segs.push({ text: loc, hi: locFieldChanged.value.floor || locFieldChanged.value.side })
+  if (fee) segs.push({ text: fee, hi: locFieldChanged.value.fee })
+  return segs
+})
+
 const formDiff = computed(() => diffs.value.find(d => d.ruleId === form.value.id))
 // 缺起止日期的受益人:判不了在租 → 不进 member-diff 的 removed,单列一条提醒催补日期
 const formNoDate = computed(() => form.value.members.filter(m => m.inForce === 'unknown'))
@@ -578,6 +618,9 @@ const floorByTenant = ref(new Map<number, string | null>())
 const weightStash = new Map<number, number | null>()
 // §G4 抽屉打开时定位三格是否高亮(该池被判为「待补定位」)
 const locTodo = ref(false)
+// 「高级」disclosure(变更 6):算式/舍入位数/折入链默认收起,全库只有 4 条折入链,不该占一整段
+// ⚠ 同批:本次提交先加 ref,模板接线随下一次提交的整体重排一起落地
+const advOpen = ref(false)
 
 function openPoolDlg(r?: AllocPoolRowDTO) {
   poolErr.value = ''
@@ -601,10 +644,14 @@ function openPoolDlg(r?: AllocPoolRowDTO) {
       oldName: r.name,
     }
   } else form.value = emptyForm()
+  // 顶部名字条(变更 1)的基准快照:抽屉打开这一刻的四个定位字段,后续逐字段比对判断改没改
+  origLoc.value = { buildingId: form.value.buildingId, floorLabel: form.value.floorLabel,
+    side: form.value.side, feeName: form.value.feeName }
   // 名单快照按池重置(与 cands 同理:不清就还挂着上一个池的受益人),再把本池已存受益人全部记进去
   seenMembers.value = new Map()
   for (const m of form.value.members) rememberMember(m)
   otherOpen.value = false; otherQ.value = ''
+  meterQ.value = ''; advOpen.value = false   // 新搜索框/高级 disclosure 的重置,随下次提交接线
   // 候选先清空再取:抽屉是同一份 state,不清就还挂着**上一个池**的候选表/受益人,
   // 新候选回来前那半秒里勾中的是别的池的表,保存即写进当前池
   cands.value = { meters: [], tenants: [], tenantNote: null }
@@ -663,6 +710,8 @@ function toggleSign(id: number) {
   if (m) m.sign = m.sign < 0 ? 1 : -1
 }
 // 「从其他位置添加表」:全库搜索(货梯/招商子表/广告字分表这类跨位置口子)
+// ⚠ V116(变更 3)落地后这一段(otherOpen/otherQ/otherList)会被 meterQ/meterSearchRows 取代
+// 并整段删除 —— 本次提交先加新的一份,不动旧的,模板还没换线
 const otherOpen = ref(false)
 const otherQ = ref('')
 // 与后端 AllocService.meterLabel 同规则(V73):区域·位置·用途·表号。
@@ -679,6 +728,21 @@ const otherList = computed(() => {
     && (kw === '' || m.name.includes(kw) || (m.subName ?? '').includes(kw)
       || (m.spot ?? '').includes(kw) || (m.area ?? '').includes(kw)
       || (m.tenantName ?? '').includes(kw) || (m.code ?? '').includes(kw))).slice(0, 40)
+})
+const meterQ = ref('')
+// 无搜索词:只显本定位候选(meterRows)。有搜索词:候选按标签过滤 + 并入全库匹配
+// (货梯/招商子表这类不在本定位候选里的表),两段拼一份列表,同一个搜索框、同一份勾选状态。
+const meterSearchRows = computed<MeterRow[]>(() => {
+  const kw = meterQ.value.trim()
+  const base = meterRows.value.filter(r => !kw || r.label.includes(kw))
+  if (!kw) return base
+  const has = new Set(meterRows.value.map(r => r.meterId))
+  const extra = meters.value.filter(m => !has.has(m.id)
+      && (m.name.includes(kw) || (m.subName ?? '').includes(kw) || (m.spot ?? '').includes(kw)
+        || (m.area ?? '').includes(kw) || (m.tenantName ?? '').includes(kw) || (m.code ?? '').includes(kw)))
+    .slice(0, 40)
+    .map((m): MeterRow => ({ meterId: m.id, label: meterLabelOf(m), meterType: m.meterType, ownership: '', other: true }))
+  return [...base, ...extra]
 })
 
 // 受益人勾选行=候选(在租) ∪ 本次会话出现过的受益人(退租的灰显标注,缺日期的橙标「判不了」)
@@ -740,18 +804,24 @@ function commitWeight(id: number, raw: string) {
   weightStash.set(id, v)
 }
 // 改成户对户时只留第一个受益人(§D.4 整笔归一户,免存出一个 13 户的 direct 池);
-// 只在用户点分摊方式时触发,不在打开抽屉时静默改动既有名单
+// 改成园区自担时清空受益人(变更 5:选择驱动显示,这里没有受益人可选,留着旧名单会在
+// UI 说"不摊给任何人"的同时把它悄悄存回去)。只在用户点分摊方式时触发,不在打开抽屉时
+// 静默改动既有名单。
 function setMethod(m: AllocMethodEditable) {
   form.value.method = m
   if (m === 'direct') form.value.members = form.value.members.slice(0, 1)
+  if (m === 'none') form.value.members = []
   // §E6:候选口径随 method 变(direct 不推在租名单)。不用 watch:打开抽屉时 method 也在变,
   // 会与 openPoolDlg 里那次 loadCands 抢 candSeq 把新增池的预勾吃掉。这里只走用户点击这一条路。
   loadCands(false)
 }
-// ④ 段抬头:direct=户对户单选(§D.4)/园区级未勾人=自动全园/其余=勾选计数
-const memberSummary = computed(() => form.value.method === 'direct'
+// ④ 段抬头:none=不适用(变更 5)/direct=户对户单选(§D.4)/园区级未勾人=自动全园/其余=勾选计数
+const memberSummary = computed(() => form.value.method === 'none' ? '不适用'
+  : form.value.method === 'direct'
   ? `整笔归 ${form.value.members[0]?.tenantName ?? '(未指定)'}`
   : formAutoMembers.value ? '自动=全园在租' : `已选 ${form.value.members.length} 户`)
+// 摊给谁 段抬头 chip 的色阶(变更 5);模板接线随下次提交的整体重排一起落地
+const memberChipTone = computed(() => (form.value.method === 'none' ? '' : form.value.method === 'direct' ? 'warn' : 'ok'))
 const memberHint = computed(() => form.value.method === 'direct'
   ? (cands.value.tenantNote ?? '户对户池只摊给一户,不按定位推在租名单 —— 选中一户即替换原有的')
   : formAutoMembers.value ? '园区级池不勾人=按该期全园在租租户自动摊(勾了就以勾选为准)'
