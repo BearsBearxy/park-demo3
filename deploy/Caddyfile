@@ -1,0 +1,24 @@
+# HTTPS 入口(2026-08-30)。只做三件事:终止 TLS、80 自动 301 到 443、反代给 frontend。
+# 证书由 Caddy 自己向 Let's Encrypt 申请并续期,无 cron 无 reload —— 这是选它而不是
+# certbot 的唯一理由(certbot 要自己维护续期任务 + 续期后 reload nginx,多两个会坏的零件)。
+#
+# ⚠ caddy-data 卷不能删:证书存在里面。删了每次部署都重新签发,Let's Encrypt 限额是
+#   同一组域名每周 5 张重复证书,撞上就是一周签不出来 —— 站点直接没 HTTPS。
+# ⚠ 域名改了要同步改 .github/workflows/ci.yml 的健康检查 URL(全仓库就这两处写死域名)。
+# ⚠ 站点行里每多写一个域名,那个域名就必须已解析到本机 —— 否则它的 ACME challenge 失败会
+#   拖垮**整张**证书(不是只少一个名字)。增删域名的顺序因此是:
+#   加 = 先配 DNS 并确认生效 → 再写进下面这行;删 = 先从这行拿掉 → 再动 DNS。
+#   www 已于 2026-08-30 配为 CNAME → atrilink.com。
+atrilink.com, www.atrilink.com {
+	reverse_proxy frontend:80
+
+	# HSTS:告诉浏览器今后一年本站只走 HTTPS,连第一跳明文 http 都不发(挡降级攻击)。
+	# 放这里而不是 frontend/nginx.conf:nginx 子 location 不继承父级 add_header,那边要写 3 处;
+	# Caddy 这个 header 对本站全部响应生效,1 处。TLS 在哪终止,HSTS 就该在哪下发。
+	# 不加 includeSubDomains / preload:那是不可撤销的承诺(preload 进了浏览器源码,撤销要等几个月),
+	# 先让 HTTPS 跑稳几周再考虑。
+	header Strict-Transport-Security "max-age=31536000"
+}
+
+# 没有 :80 catch-all —— 用 http://<IP>/ 直接访问会落到 Caddy 默认的 404(空响应)。
+# 这是想要的结果:裸 IP 不再以明文提供本站,也不回显任何信息。
