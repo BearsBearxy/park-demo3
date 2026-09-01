@@ -3,9 +3,9 @@
 // 第一层:四张卡 + 楼栋明细表 + 一张近 13 个月图。主体是**表不是图** ——
 // 非专业者多对象比较正确率:彩色圆点 84.3% ≫ 条形图 54.2%(§01)。
 //
-// 铁律(§06.4):**一份数据、一次计算、一个 snapshot id**。整屏只跑一次 buildSnapshot,
-// 第一层渲染它的摘要面,工作台(Task 12)渲染同一个对象的完整面,页脚都显示同一个 id。
-// 工作台永远不是另一次计算 —— 对不上时要能 30 秒定位到是哪一层渲染错了,而不是怀疑模型。
+// 铁律:**一份数据、一次计算、一个 snapshot id**。整屏只跑一次 buildSnapshot,
+// 各层渲染同一个对象的不同面,页脚显示那个 id —— 对不上时要能 30 秒定位到是哪一层渲染错了,
+// 而不是怀疑模型。
 //
 // 期间语义:AnaShell periodMode='year'(整年数据喂模型,统计要一年才站得住),
 // 但门面数是**该年最后一个有抄表的月**(snapshot.ym)—— 财务问的是「这个月挣了多少」。
@@ -26,7 +26,7 @@ import { iconFor } from '@/components/ds/icon'
 import { fnum, fint } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import {
-  buildLab, buildSnapshot, cpPhrase, RISK_ANNUAL_GAP, WATCH_ANNUAL_GAP,
+  buildSnapshot, cpPhrase, RISK_ANNUAL_GAP, WATCH_ANNUAL_GAP,
   type AnaSnapshot, type SnapshotInput, type StationResult,
 } from './pvMeterAna.logic'
 
@@ -91,7 +91,7 @@ watch(year, (y) => { void load(y) })
 watch(cmp.mode, (m) => { if (m === 'yoy' && prevReadings.value === undefined) void loadPrev(year.value, seq) })
 
 // ── 唯一的一次计算 ────────────────────────────────────────────────────
-const labInput = computed<SnapshotInput | null>(() => {
+const snapInput = computed<SnapshotInput | null>(() => {
   if (!readings.value.length) return null
   return {
     year: year.value,
@@ -109,7 +109,7 @@ const labInput = computed<SnapshotInput | null>(() => {
     gridPrice: GRID_PRICE,
   }
 })
-const snap = computed<AnaSnapshot | null>(() => labInput.value ? buildSnapshot(labInput.value) : null)
+const snap = computed<AnaSnapshot | null>(() => snapInput.value ? buildSnapshot(snapInput.value) : null)
 
 const ymLabel = computed(() => {
   const ym = snap.value?.ym ?? ''
@@ -196,8 +196,6 @@ watch(snap, () => { if (sel.value == null) selId.value = null })
 onMounted(() => {
   const m = /^#s(\d+)$/.exec(location.hash)
   if (m) selId.value = Number(m[1])
-  // §06.4:工作台也可直达。刻意不给第一层放显眼入口,但知道路的人能直接来
-  if (location.hash === '#lab') layer3.value = 'lab'
   if (location.hash === '#method') layer3.value = 'method'
 })
 
@@ -292,110 +290,9 @@ const selMonthly = computed(() => {
   return [...acc.entries()].map(([ym, v]) => ({ ym, gen: v.gen, gap: v.gap }))
 })
 
-// ── 第三层 · 方法与口径页 / 分析工作台(§06.3、§06.4)────────────────────
-// 工作台**刻意不在第一层露面**:财务主管一进去看见 z 值和 ACF 图,
-// 会认定「这屏不是给我用的」,连第一层也不再打开。入口在方法页之后,或 #lab 直达。
-const layer3 = ref<'none' | 'method' | 'lab'>('none')
-const lab = computed(() => {
-  if (layer3.value !== 'lab' || !snap.value || !labInput.value) return null
-  return buildLab(snap.value, labInput.value)
-})
-const labStation = ref<number | null>(null)
-const labAcf = computed(() =>
-  lab.value?.acf.find(a => a.id === (labStation.value ?? lab.value?.acf[0]?.id)) ?? null)
-const labDoy = computed(() =>
-  lab.value?.doy.find(a => a.id === (labStation.value ?? lab.value?.doy[0]?.id)) ?? null)
-
-const acfOpt = computed<object>(() => {
-  const a = labAcf.value
-  if (!a) return {}
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 46, right: 14, top: 24, bottom: 26 },
-    xAxis: { type: 'category', data: a.rho.map((_, k) => k), name: 'lag(天)', nameLocation: 'middle', nameGap: 20, nameTextStyle: { fontSize: 10 } },
-    yAxis: { type: 'value', min: -0.4, max: 1 },
-    series: [{ type: 'bar', data: a.rho.map(v => +v.toFixed(3)), itemStyle: { color: '#4C98FD' } }],
-  }
-})
-
-const doyOpt = computed<object>(() => {
-  const d = labDoy.value
-  if (!d) return {}
-  return {
-    tooltip: { trigger: 'item' },
-    grid: { left: 52, right: 14, top: 24, bottom: 30 },
-    xAxis: { type: 'value', min: 1, max: 366, name: '年积日', nameLocation: 'middle', nameGap: 20, nameTextStyle: { fontSize: 10 } },
-    yAxis: { type: 'value', name: '残差(log)', nameTextStyle: { fontSize: 10 } },
-    series: [{ type: 'scatter', symbolSize: 3, itemStyle: { color: '#8CBBFF' }, data: d.pts.map(p => [p.doy, +p.v.toFixed(4)]) }],
-  }
-})
-
-const nullOpt = computed<object>(() => {
-  const n = lab.value?.nullDist
-  if (!n) return {}
-  const lo = Math.min(...n.dist, n.obs), hi = Math.max(...n.dist, n.obs)
-  const bins = 40, w = (hi - lo) / bins || 1
-  const hist = new Array(bins).fill(0)
-  for (const v of n.dist) hist[Math.min(bins - 1, Math.floor((v - lo) / w))]++
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 46, right: 14, top: 24, bottom: 26 },
-    xAxis: { type: 'category', data: hist.map((_, k) => (lo + k * w).toFixed(3)) },
-    yAxis: { type: 'value' },
-    series: [{
-      type: 'bar', data: hist, itemStyle: { color: '#C7D2DE' },
-      markLine: {
-        silent: true, symbol: 'none',
-        label: { formatter: '观测值', fontSize: 11, color: '#BF3735' },
-        lineStyle: { color: '#BF3735', width: 2 },
-        data: [{ xAxis: Math.min(bins - 1, Math.max(0, Math.floor((n.obs - lo) / w))) }],
-      },
-    }],
-  }
-})
-
-const alphaOpt = computed<object>(() => {
-  const rows = lab.value?.alphaRows ?? []
-  if (!rows.length) return {}
-  return {
-    tooltip: { trigger: 'item', formatter: (p: { name: string; value: number[] }) => `${p.name}: ${p.value[0].toFixed(1)}%` },
-    grid: { left: 76, right: 30, top: 24, bottom: 30 },
-    // 轴范围要**把区间也算进去**:markLine 不参与坐标轴自动范围,
-    // 区间下沿一旦落到散点范围之外就被裁掉 —— 实测真数据上有阶跃的站区间宽约 10 个百分点,
-    // 五栋的误差棒整根消失,只剩孤零零的点(而这张图的全部意义就是那根棒)
-    xAxis: {
-      type: 'value', name: '相对园区中位 %', nameLocation: 'middle', nameGap: 20,
-      nameTextStyle: { fontSize: 10 },
-      min: Math.floor(Math.min(...rows.map(r => r.ciLo), ...rows.map(r => r.alphaPct)) - 2),
-      max: Math.ceil(Math.max(...rows.map(r => r.ciHi), ...rows.map(r => r.alphaPct)) + 2),
-    },
-    yAxis: { type: 'category', data: rows.map(r => r.name) },
-    series: [
-      // 误差棒用 markLine 的两点线段画。
-      // **不能用两段堆叠柱**:ECharts 正负值分开堆,ciLo 为负时那根透明柱推不动可见柱 ——
-      //   实测所有区间都从 0 往右伸,与左边的点断开,这张图就白做了。
-      // **也没用 custom**:那要往 echartsBundle 里加 CustomChart(见那个文件开头的警告 ——
-      //   漏注册单测测不出来,只有浏览器控制台会喊)。为一根误差棒加一个图表类型不划算,
-      //   而 MarkLineComponent 本来就注册着,同样的线段零打包成本。
-      {
-        type: 'scatter', data: [], silent: true,
-        markLine: {
-          silent: true, symbol: ['none', 'none'],
-          label: { show: false },
-          lineStyle: { color: '#7FA9D8', width: 1.6 },
-          data: rows.map((r, i) => [
-            { coord: [+r.ciLo.toFixed(2), i] },
-            { coord: [+r.ciHi.toFixed(2), i] },
-          ]),
-        },
-      },
-      { type: 'scatter', symbolSize: 9, itemStyle: { color: '#1F5FBF' }, data: rows.map((r, i) => [+r.alphaPct.toFixed(2), i]) },
-    ],
-  }
-})
-
-// 质量矩阵:站 × 日。**没有「补齐」这一档,因为本实现从不补齐**
-const QUALITY_COLOR: Record<string, string> = { ok: '#B5D4F4', missing: '#E8B4B3', dropped: '#D8D8D4' }
+// ── 第三层 · 方法与口径页(§06.3)────────────────────────────────────────
+// 不暴露这一层,所有数字不可审计,财务不会认。它给的是口径与剔除记录,不是统计课。
+const layer3 = ref<'none' | 'method'>('none')
 
 function goMeter(): void {
   tabs.openFresh('pv-income', { pin: true })
@@ -654,12 +551,7 @@ function goMeter(): void {
                 {{ layer3 === 'method' ? '▾' : '▸' }} 方法与口径
               </button>
             </span>
-            <span class="hint">
-              这些数字是怎么算出来的、剔了哪些天、什么情况下不出结论
-              <button class="pma-lk" style="margin-left:12px" @click="layer3 = layer3 === 'lab' ? 'none' : 'lab'">
-                分析工作台 ›
-              </button>
-            </span>
+            <span class="hint">这些数字是怎么算出来的、剔了哪些天、什么情况下不出结论</span>
           </div>
 
           <div v-if="layer3 === 'method'" class="pma-method">
@@ -701,137 +593,10 @@ function goMeter(): void {
               <template v-if="snap.quality.noMeter.length">未装表不入分析：{{ snap.quality.noMeter.join('、') }}。</template>
               <template v-if="snap.quality.noCapacity.length">未录装机容量不入分析：{{ snap.quality.noCapacity.join('、') }}。</template>
             </p>
-            <p class="mut">数据快照 <code>{{ snap.id }}</code> —— 工作台与本页用的是同一次计算。</p>
+            <p class="mut">数据快照 <code>{{ snap.id }}</code>。</p>
           </div>
         </div>
 
-        <!-- ── 分析工作台(§06.4)。受众是系统所有者、审计、承包商 —— 不为可读性做任何妥协 ── -->
-        <template v-if="layer3 === 'lab' && lab">
-          <div class="av2-card av2-s12">
-            <div class="av2-card-h">
-              <span class="t">分析工作台</span>
-              <span class="hint">
-                与第一层同一次计算 · 快照 {{ lab.snapshotId }}
-                <button class="pma-lk" style="margin-left:10px" @click="layer3 = 'none'">收起 ✕</button>
-              </span>
-            </div>
-            <div class="pma-links">
-              <span class="mut" style="font-size:12px">看哪一栋：</span>
-              <button
-                v-for="a in lab.acf" :key="a.id" class="pma-lk"
-                :style="{ fontWeight: (labStation ?? lab.acf[0].id) === a.id ? 600 : 400 }"
-                @click="labStation = a.id"
-              >{{ a.name }}</button>
-            </div>
-          </div>
-
-          <!-- A · 模型输出 -->
-          <div class="av2-card av2-s6">
-            <div class="av2-card-h">
-              <span class="t">A · α 排序（相对园区中位）</span>
-              <span class="hint">
-                区间是块自助算的，比 naive SE 宽得多 —— 互相重叠才是正常的
-                <template v-if="lab.alphaExcluded.length">
-                  · 已排除 {{ lab.alphaExcluded.join('、') }}（容量台账存疑，不是性能）
-                </template>
-              </span>
-            </div>
-            <AnaEChart :option="alphaOpt" :height="300" />
-          </div>
-
-          <div class="av2-card av2-s6">
-            <div class="av2-card-h">
-              <span class="t">B · 残差自相关 ACF</span>
-              <span class="hint">ρ₁ 非零即独立假设不成立；N_eff 就是「√N 错了多少」的答案</span>
-            </div>
-            <AnaEChart :option="acfOpt" :height="300" />
-          </div>
-
-          <div class="av2-card av2-s6">
-            <div class="av2-card-h">
-              <span class="t">B · 残差 vs 年积日<span class="pma-must">上线前必做</span></span>
-              <span class="hint">
-                有稳定年周期 = 模型缺项（季节性遮挡），<b>不是故障</b>；本栋振幅
-                {{ labDoy ? (labDoy.amp * 100).toFixed(1) : '—' }}%
-              </span>
-            </div>
-            <AnaEChart :option="doyOpt" :height="300" />
-          </div>
-
-          <div class="av2-card av2-s6">
-            <div class="av2-card-h">
-              <span class="t">B · 块自助零分布 + 观测值</span>
-              <span class="hint">{{ lab.nullDist ? lab.nullDist.name : '—' }} · 让 p 值看得见，比一个 p=0.003 可信</span>
-            </div>
-            <AnaEChart :option="nullOpt" :height="300" />
-          </div>
-
-          <div class="av2-card av2-s12">
-            <div class="av2-card-h">
-              <span class="t">B · 抛光收敛诊断</span>
-              <span class="hint">行优先 / 列优先各跑一次 · <b>排名翻转 = 该结论不稳，不上报</b></span>
-            </div>
-            <div class="pma-conv" :class="{ bad: lab.convergence.flipped.length }">
-              <template v-if="lab.convergence.flipped.length">
-                排名不稳：{{ lab.convergence.flipped.join('、') }} —— 这几栋的结论不要上报。
-              </template>
-              <template v-else>两种扫描顺序给出同一排名，结论稳定。</template>
-            </div>
-          </div>
-
-          <div class="av2-card av2-s12">
-            <div class="av2-card-h">
-              <span class="t">B · 数据质量矩阵</span>
-              <span class="hint">
-                <span class="pma-sw" :style="{ background: QUALITY_COLOR.ok }" />正常
-                <span class="pma-sw" :style="{ background: QUALITY_COLOR.missing }" />缺失
-                <span class="pma-sw" :style="{ background: QUALITY_COLOR.dropped }" />整日剔除
-                · <b>没有「补齐」这一档 —— 本实现从不补齐</b>
-              </span>
-            </div>
-            <div class="pma-scroll">
-              <div v-for="r in lab.quality.rows" :key="r.id" class="pma-qrow">
-                <span class="nm">{{ r.name }}</span>
-                <span
-                  v-for="(st, k) in r.states" :key="k" class="cell"
-                  :style="{ background: QUALITY_COLOR[st] }" :title="lab.quality.dates[k] + ' ' + st"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="av2-card av2-s12">
-            <div class="av2-card-h">
-              <span class="t">A · 完整检验表</span>
-              <span class="hint">z 用 N_eff；zₙ 是按天数算的同一个数，摆在旁边看差多少</span>
-            </div>
-            <div class="pma-scroll">
-              <table class="ak-tbl">
-                <thead>
-                  <tr>
-                    <th>楼栋</th><th>α%</th><th>z</th><th>zₙ(按天数)</th><th>p</th><th>q</th>
-                    <th>N_eff</th><th>有效日</th><th>形状</th><th>变点区间</th><th>σ 怎么估的</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="t in lab.tests" :key="t.id">
-                    <td style="text-align:left">{{ t.name }}</td>
-                    <td class="mono">{{ t.alphaPct.toFixed(1) }}</td>
-                    <td class="mono">{{ t.z == null ? '—' : t.z.toFixed(2) }}</td>
-                    <td class="mono mut">{{ t.zNaive == null ? '—' : t.zNaive.toFixed(2) }}</td>
-                    <td class="mono">{{ t.p.toFixed(3) }}</td>
-                    <td class="mono">{{ t.q.toFixed(3) }}</td>
-                    <td class="mono">{{ Math.round(t.nEff) }}</td>
-                    <td class="mono">{{ t.days }}</td>
-                    <td class="mut">{{ t.shape ?? '—' }}</td>
-                    <td class="mono mut">{{ t.cpRange }}</td>
-                    <td class="mut" style="text-align:left">{{ t.sigmaHow }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </template>
       </div>
 
       <!-- 页脚:snapshot id。工作台渲染同一个对象、显示同一个 id ——
@@ -889,16 +654,6 @@ function goMeter(): void {
 .pma-method h4:first-child { margin-top: 0; }
 .pma-method p { margin: 0 0 8px; color: var(--text-muted); }
 .pma-method code { font-family: var(--font-mono); font-size: 12px; }
-.pma-must {
-  font-size: 10.5px; margin-left: 6px; padding: 1px 6px; border-radius: 99px;
-  background: color-mix(in srgb, var(--hue-red) 12%, transparent); color: var(--hue-red);
-}
-.pma-conv { font-size: 13px; color: var(--text-muted); padding: 6px 0; }
-.pma-conv.bad { color: var(--hue-red); font-weight: var(--fw-semibold); }
-.pma-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
-.pma-qrow { display: flex; align-items: center; gap: 1px; margin-bottom: 2px; white-space: nowrap; }
-.pma-qrow .nm { flex: 0 0 68px; font-size: 11px; color: var(--text-muted); }
-.pma-qrow .cell { display: inline-block; width: 2px; height: 11px; }
 .pma-foot {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline;
   margin-top: 12px; font-size: 11.5px; color: var(--text-muted);

@@ -105,8 +105,8 @@ describe('光伏分栋分析 · 第一层', () => {
     expect(w.find('.stub-chart').exists()).toBe(true)
   })
 
-  // §06.4 铁律:页脚必须显示 snapshot id —— 工作台渲染同一个对象、显示同一个 id,
-  // 两边对不上时先看是不是同一次计算,而不是先怀疑模型
+  // 铁律:一份数据、一次计算、一个 snapshot id,并且**显示在页脚** ——
+  // 数字对不上时先看是不是同一次计算,而不是先怀疑模型
   it('页脚显示 snapshot id 与有效日数', async () => {
     const w = await mountScreen()
     expect(w.text()).toContain('本页数据快照')
@@ -324,7 +324,7 @@ describe('光伏分栋分析 · 第二层', () => {
   })
 })
 
-// ── 第三层 · 方法页 + 工作台(§06.3、§06.4)────────────────────────────
+// ── 第三层 · 方法与口径页(§06.3)────────────────────────────────────
 describe('光伏分栋分析 · 第三层', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -333,27 +333,12 @@ describe('光伏分栋分析 · 第三层', () => {
     location.hash = ''
   })
 
-  // 工作台**刻意不在第一层露面**:财务主管一进去看见 z 值和 ACF,
-  // 会认定「这屏不是给我用的」,连第一层也不再打开
-  // ⚠ 断的是工作台**内容**没渲染,不是入口链接不在 —— 「分析工作台 ›」那个链接
-  //   本来就该一直可见(它是入口)。第一版断成 not.toContain('分析工作台') 是断错了对象。
-  it('默认既不展开方法页也不展开工作台的内容', async () => {
+  // 方法页默认收起:财务主管一进来先看第一层,口径是要主动点开的那一层
+  it('默认不展开方法页', async () => {
     const w = await mountScreen(fixture(4))
     expect(w.find('.pma-method').exists()).toBe(false)
-    expect(w.text()).not.toContain('N_eff')
-    expect(w.text()).not.toContain('残差自相关')
-    expect(w.text()).not.toContain('α 排序')
   })
 
-  // §06.4:「或直接 /pv-meter-analysis#lab」
-  it('#lab 深链直达工作台', async () => {
-    location.hash = '#lab'
-    const w = await mountScreen(fixture(4))
-    expect(w.text()).toContain('残差自相关')
-    expect(w.text()).toContain('N_eff')
-  })
-
-  // 不暴露方法页,所有数字不可审计,财务不会认
   it('方法页给出模型、显著性、三重门槛与本期数据质量', async () => {
     const w = await mountScreen(fixture(4))
     await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
@@ -373,77 +358,6 @@ describe('光伏分栋分析 · 第三层', () => {
     const t = w.find('.pma-method').text()
     expect(t).toContain(RISK_ANNUAL_GAP.toLocaleString('en-US'))
     expect(t).toContain(WATCH_ANNUAL_GAP.toLocaleString('en-US'))
-  })
-
-  it('工作台展开后 A/B 两组都在', async () => {
-    const w = await mountScreen(fixture(4))
-    await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-    await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-    const t = w.text()
-    expect(t).toContain('α 排序')
-    expect(t).toContain('残差自相关')
-    expect(t).toContain('残差 vs 年积日')
-    expect(t).toContain('块自助零分布')
-    expect(t).toContain('抛光收敛诊断')
-    expect(t).toContain('数据质量矩阵')
-    expect(t).toContain('完整检验表')
-  })
-
-  // §06.4 铁律:工作台与第一层共用同一个 snapshot id 并**都显示在页脚**
-  it('工作台显示的快照 id 与第一层页脚同一个', async () => {
-    const w = await mountScreen(fixture(4))
-    const footId = w.find('.pma-foot code').text()
-    await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-    await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-    expect(w.text()).toContain(footId)
-  })
-
-  // 上线前必做那张的标记不能掉
-  it('残差 vs 年积日带「上线前必做」标记', async () => {
-    const w = await mountScreen(fixture(4))
-    await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-    await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-    expect(w.find('.pma-must').text()).toContain('上线前必做')
-  })
-
-  // 完整检验表把 z 与 zₙ 并排放 —— 让人一眼看见 √N 错多少
-  it('完整检验表并排给出 z 与按天数算的 z', async () => {
-    const w = await mountScreen(fixture(4))
-    await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-    await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-    const heads = w.findAll('thead th').map(e => e.text())
-    expect(heads).toContain('z')
-    expect(heads).toContain('zₙ(按天数)')
-    expect(heads).toContain('N_eff')
-  })
-
-  // 实测撞到的:误差棒用两段堆叠柱画,在 **ciLo 为负** 时全都从 0 往右伸,与点断开。
-  // ECharts 的正负值分开堆,堆叠柱这个技巧在负区不成立 —— 必须 custom 真画。
-  it('α 排序的误差棒不是堆叠柱', () => {
-    const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
-    return flushPromises().then(async () => {
-      providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
-      usePeriod().setYear(2026)
-      await flushPromises()
-      await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-      await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-      const chart = w.findAllComponents({ name: 'AnaEChart' })
-        .map(c => c.props('option') as { series?: { type: string; stack?: string }[] })
-        .find(o => JSON.stringify(o).includes('相对园区中位'))!
-      // 不用堆叠柱(负区画不对),也不用 custom(那要往 echartsBundle 加图表类型)
-      expect(chart.series!.some(x => x.stack)).toBe(false)
-      expect(chart.series!.some(x => x.type === 'custom')).toBe(false)
-      expect(JSON.stringify(chart)).toContain('markLine')
-      // 轴范围必须盖住区间:markLine 不参与自动范围,漏了就整根误差棒被裁掉
-      const opt = chart as unknown as {
-        xAxis: { min: number; max: number }
-        series: { markLine?: { data: { coord: number[] }[][] } }[]
-      }
-      const coords = opt.series.flatMap(x => x.markLine?.data ?? []).flat().map(c => c.coord[0])
-      expect(coords.length).toBeGreaterThan(0)
-      expect(opt.xAxis.min).toBeLessThanOrEqual(Math.min(...coords))
-      expect(opt.xAxis.max).toBeGreaterThanOrEqual(Math.max(...coords))
-    })
   })
 
 })

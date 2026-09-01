@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildLab, buildSnapshot,
+  buildSnapshot,
   type ReadingRow, type SnapshotInput, type StationCfg,
 } from './pvMeterAna.logic'
 
@@ -91,7 +91,6 @@ function simulate(opts: { dropStation?: string; dropMonth?: number; dropDays?: n
 
 const INPUT = simulate()
 const SNAP = buildSnapshot(INPUT)
-const LAB = buildLab(SNAP, INPUT)
 
 describe('§08 验收', () => {
   // ① 种入故障能被检出。变点日期落在种入日 **±3 周**内即算通过 ——
@@ -124,7 +123,7 @@ describe('§08 验收', () => {
     expect(noisy.map(s => `${s.name}:${s.status}`).length).toBeLessThanOrEqual(1)
   })
 
-  // ④ ACF 画得出来。
+  // ④ 共享天气因子到底生效没有。
   //
   // ⚠ 规格原文是「ρ₁ 非零,否则说明模拟器的共享天气因子没生效」—— **这条对着模拟数据不成立**,
   //   而且方向反了:共享天气因子**生效**时,β 恰好把它整个吸走,剩下的残差就是站内那份
@@ -136,15 +135,6 @@ describe('§08 验收', () => {
   //   β 的方差应当**远大于**残差方差 —— 天气那份被 β 拿走了。
   //   种子若含站 id(改造前),各站各晒各的太阳,β 是一堆独立序列的中位数、趋近常数,
   //   天气就留在残差里,两者方差会拉平。
-  it('④ 残差 ACF 画得出来,每栋 lag 0–30', () => {
-    expect(LAB.acf.length).toBe(NAMES.length)
-    for (const a of LAB.acf) {
-      expect(a.rho, a.name).toHaveLength(31)
-      expect(a.rho[0], a.name).toBeCloseTo(1, 9)
-      expect(a.nEff, a.name).toBeGreaterThan(0)
-    }
-  })
-
   it('④ 共享天气因子确实生效:β 的方差远大于残差方差', () => {
     const v = (xs: number[]) => {
       const m = xs.reduce((a, b) => a + b, 0) / xs.length
@@ -161,10 +151,6 @@ describe('§08 验收', () => {
     const sum = SNAP.stations.reduce((a, r) => a + r.gapMoney, 0)
     expect(SNAP.park.gap).toBeCloseTo(sum, 9)
     expect(SNAP.park.gap).toBeGreaterThan(0)
-  })
-
-  it('⑤ 工作台与第一层同一个 snapshot id', () => {
-    expect(LAB.snapshotId).toBe(SNAP.id)
   })
 
   it('⑤ 同一份数据两次算,id 与缺口都一样(确定性)', () => {
