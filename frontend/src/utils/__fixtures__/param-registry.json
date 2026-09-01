@@ -404,6 +404,55 @@
   "tenantEditable" : false,
   "pairedWith" : null
 }, {
+  "key" : "weather_api_enabled",
+  "table" : "alloc",
+  "label" : "外部天气API 总开关",
+  "unit" : "",
+  "group" : "constant",
+  "scopes" : [ "global" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "bool",
+  "enumOptions" : null,
+  "formula" : null,
+  "hint" : "关闭后立即停止一切外部请求，分析屏自动回落相对口径（园区内部互相当基准）",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
+  "key" : "weather_api_monthly_cap",
+  "table" : "alloc",
+  "label" : "外部天气API 月调用上限",
+  "unit" : "次",
+  "group" : "constant",
+  "scopes" : [ "global" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "int",
+  "enumOptions" : null,
+  "formula" : "本月调用数达到上限自动关闭总开关并记日志",
+  "hint" : "防的是「忘了关」，不是「想关」",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
+  "key" : "weather_source",
+  "table" : "alloc",
+  "label" : "天气数据源",
+  "unit" : "",
+  "group" : "constant",
+  "scopes" : [ "global" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "enum",
+  "enumOptions" : {
+    "0" : "导入（不发外部请求）",
+    "1" : "和风天气 API",
+    "2" : "datashareclub API"
+  },
+  "formula" : null,
+  "hint" : "默认走导入中心，不产生任何费用",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
   "key" : "loss_variant",
   "table" : "alloc",
   "label" : "损耗核算方式",

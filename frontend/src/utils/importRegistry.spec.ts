@@ -25,11 +25,11 @@ describe('deriveStatus', () => {
 })
 
 describe('IMPORT_TYPES catalog', () => {
-  it('has the 24 expected keys', () => {
+  it('has the 25 expected keys', () => {
     expect(IMPORT_TYPES.map(t => t.key).sort()).toEqual(
       ['billingTerms', 'budget', 'contractFull', 'charging_7', 'charging_8', 'cpMeter', 'elec', 'elecCost', 'ledger', 'meter', 'office_13', 'office_14',
        'pnl_s1', 'pnl_s2', 'pnl_s3', 'pnl_s4', 'pnl_s5',
-       'pv', 'pvMeter', 'report_bs', 'report_is', 'report_tb', 's10', 'salary'].sort())
+       'pv', 'pvMeter', 'report_bs', 'report_is', 'report_tb', 's10', 'salary', 'weather'].sort())
   })
   it('ledger + report_bs + report_is + report_tb need context (year/month)', () => {
     expect(IMPORT_TYPES.filter(t => t.context === 'ledger').map(t => t.key).sort()).toEqual(['ledger', 'report_bs', 'report_is', 'report_tb'])

@@ -64,6 +64,7 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'pnl-analysis': () => import('@/views/analysis/PnlAnalysisView.vue'),
   'budget': () => import('@/views/analysis/BudgetView.vue'),
   'pv-roi': () => import('@/views/analysis/PvRoiView.vue'),
+  'pv-meter-analysis': () => import('@/views/analysis/PvMeterAnaView.vue'),
   'anomaly': () => import('@/views/analysis/AnomalyView.vue'),
   'elec-analysis': () => import('@/views/analysis/ElecAnalysisView.vue'),
   'charging-analysis': () => import('@/views/analysis/ChargingAnalysisView.vue'),

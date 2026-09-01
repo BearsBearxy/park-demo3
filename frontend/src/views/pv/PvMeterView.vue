@@ -570,7 +570,15 @@ async function onTemplate() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.st.id" @click="openSt = r.st">
+            <!-- 未装表(metered=0)与「装了表但这个月漏抄」是两回事:前者永久不用管,后者要催人补录。
+                 只靠「有没有抄表记录」判定会把两者显示成同一种灰,该催的和不用催的混在一起,
+                 三周之内就没人看那盏灰灯了(PV-ANALYSIS-SPEC §07 第一行)。
+                 所以未装表的行:灰徽标 + 容量/单价禁编 + 点了不开抽屉。 -->
+            <tr
+              v-for="r in rows" :key="r.st.id"
+              :class="{ 'pm-nometer': !r.st.metered }"
+              @click="r.st.metered ? (openSt = r.st) : null"
+            >
               <!-- 电站名=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="name" :title="r.st.name">
                 <input v-if="editStation" class="pm-edit l" type="text"
@@ -580,19 +588,24 @@ async function onTemplate() {
                 <template v-else>
                   <span class="nm">{{ r.st.name }}</span>
                   <span v-if="phase === 'all'" class="pm-badge">{{ PHASE_LABEL[r.st.phase] }}</span>
+                  <span v-if="!r.st.metered" class="pm-badge mut" title="该栋未安装光伏计量表，不入分析，也无需催录入">未装表</span>
                 </template>
               </td>
               <!-- 容量/单价=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="num">
                 <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.01"
-                       :value="r.st.capacityKwp ?? ''" placeholder="—" title="装机容量,回车/失焦保存"
+                       :disabled="!r.st.metered"
+                       :value="r.st.capacityKwp ?? ''" placeholder="—"
+                       :title="r.st.metered ? '装机容量,回车/失焦保存' : '该栋未装表，容量无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'capacityKwp', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.capacityKwp != null ? fq(r.st.capacityKwp) : '—' }}</span>
               </td>
               <td class="num">
                 <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.0001"
-                       :value="r.st.priceYuan ?? ''" placeholder="—" title="消纳综合单价,只影响之后新录记录"
+                       :disabled="!r.st.metered"
+                       :value="r.st.priceYuan ?? ''" placeholder="—"
+                       :title="r.st.metered ? '消纳综合单价,只影响之后新录记录' : '该栋未装表，单价无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'priceYuan', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.priceYuan != null ? r.st.priceYuan : '—' }}</span>
@@ -809,6 +822,11 @@ async function onTemplate() {
 .pm-table td.zero { color: var(--text-disabled); font-weight: var(--fw-regular); }
 .pm-table td.name .nm { font-weight: var(--fw-medium); }
 .pm-badge { margin-left: 8px; font-size: var(--fs-micro); color: var(--text-secondary); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
+/* 未装表:整行压灰 + 不给手型 —— 点了也不开抽屉(PV-ANALYSIS-SPEC §07 第一行) */
+.pm-badge.mut { color: var(--text-muted); }
+.pm-table tbody tr.pm-nometer { cursor: default; }
+.pm-table tbody tr.pm-nometer:hover { background: transparent; }
+.pm-nometer .nm, .pm-nometer .num { color: var(--text-muted); }
 
 /* 行内编辑输入:静默融入单元格,hover/聚焦显边框 */
 .pm-edit { width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
