@@ -496,16 +496,23 @@ function goMeter(): void {
           </span>
         </div>
         <div v-if="dailyRows.length" class="pma-board">
-          <div v-for="b in dailyRows" :key="b.id" class="pma-brow" @click="pick(b.id)">
+          <div
+            v-for="b in dailyRows" :key="b.id"
+            class="pma-brow" :class="{ unborn: !b.bornBySeg }" @click="pick(b.id)"
+          >
             <div class="nm" :title="b.name">{{ b.name }}</div>
+            <!-- 未投产的段不画带也不画中心线:画了就成了「有范围但一天没抄」,
+                 而那时候它还没建。留白与漏抄必须是两种视觉 -->
             <svg :viewBox="`0 0 ${BD.w} ${BD.h}`" preserveAspectRatio="none">
-              <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BD.w" :height="bd(b).band!.h" class="band" />
-              <line v-if="bd(b).center != null" x1="0" :y1="bd(b).center!" :x2="BD.w" :y2="bd(b).center!" class="ctr" />
-              <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
-              <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.2"
-                      :class="p.out < 0 ? 'lo' : 'hi'" />
+              <template v-if="b.bornBySeg">
+                <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BD.w" :height="bd(b).band!.h" class="band" />
+                <line v-if="bd(b).center != null" x1="0" :y1="bd(b).center!" :x2="BD.w" :y2="bd(b).center!" class="ctr" />
+                <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
+                <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.2"
+                        :class="p.out < 0 ? 'lo' : 'hi'" />
+              </template>
             </svg>
-            <div class="tail">{{ bd(b).n }}/{{ snap.ticks.length }}</div>
+            <div class="tail">{{ b.bornBySeg ? bd(b).n + '/' + snap.ticks.length : '未投产' }}</div>
           </div>
           <div class="pma-bax">
             <span v-for="(l, i) in snap.tickLabels" :key="i">{{ i % (gran === 'month' ? 5 : 1) === 0 ? l : '' }}</span>
@@ -543,7 +550,9 @@ function goMeter(): void {
             <span class="tx">{{ f.text }}</span>
           </li>
         </ul>
-        <div v-else class="pma-note-line">这一段没有出范围的{{ unit }}，台账也对得上。</div>
+        <div v-else class="pma-note-line">
+          这一段没有出正常范围的{{ unit }}。<template v-if="snap.quality.noPanel.length === snap.stations.filter(x => x.metered).length">台账这一项还对不了，见下面 T1。</template>
+        </div>
         <div class="pma-foot-note">
           未列出 ≠ 没问题：这屏看不见遮挡、朝向、倾角造成的先天差异。
           当前几条线 —— 正常范围半宽 {{ snap.crit.bandSigma }} 倍稳健波动
@@ -719,6 +728,8 @@ function goMeter(): void {
   font-size: var(--fs-micro); color: var(--text-muted);
   font-family: var(--font-mono); text-align: right;
 }
+.pma-brow.unborn { cursor: default; }
+.pma-brow.unborn .nm, .pma-brow.unborn .tail { color: var(--text-muted); opacity: 0.6; }
 .pma-brow .band { fill: var(--hue-blue); opacity: 0.10; }
 .pma-brow .ctr { stroke: var(--hue-blue); stroke-width: 0.6; stroke-dasharray: 3 3; opacity: 0.7; }
 .pma-brow .ln { fill: none; stroke: var(--text-secondary); stroke-width: 1.2; }

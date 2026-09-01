@@ -622,6 +622,11 @@ export interface BoardRow {
   /** 每刻度:0 在范围内,−1 在范围下方,+1 在范围上方;null = 没抄或范围估不出 */
   out: (number | null)[]
   baseNote: string                // 范围是拿哪一段估的 —— 要写在屏上
+  /** 这栋第一条抄表的日期;null = 整年都没有。**未投产与漏抄必须分得开**:
+   *  首条抄表晚于本段结束 = 那时候它还没投产,不该催人;本段之内缺的才是漏抄。 */
+  firstDate: string | null
+  /** 本段结束时它投产了没有 */
+  bornBySeg: boolean
 }
 
 /** F1 的一行:一句**事实**。日期与天数,没有判词、没有建议、没有金额。 */
@@ -751,8 +756,18 @@ export function buildBoard(
     ? '范围取自当月之外的逐日数据'
     : `范围取自这 ${ticks.length} 个月自身`
 
+  const firstOf = new Map<number, string>()
+  for (const r of rows) {
+    const cur = firstOf.get(r.stationId)
+    if (cur == null || r.date < cur) firstOf.set(r.stationId, r.date)
+  }
+  const segEnd = ticks[ticks.length - 1] ?? ''
+
   return stations.filter(s => s.metered).map(s => {
     const all = series.get(s.id) ?? new Map<string, number>()
+    const firstDate = firstOf.get(s.id) ?? null
+    // 段末键是 'YYYY-MM-DD' 或 'YYYY-MM';首条抄表日取同样长度再比,避免拿日期比月份
+    const bornBySeg = firstDate != null && firstDate.slice(0, segEnd.length) <= segEnd
     const inSeg = ticks.map(t => all.get(t) ?? null)
     // 月段:基线 = 段外的日比值;年段:基线 = 段内这些点自己
     const base = gran === 'month'
@@ -778,6 +793,7 @@ export function buildBoard(
       center, lo, hi,
       out: inSeg.map(v => (v == null || lo == null || hi == null ? null : v < lo ? -1 : v > hi ? 1 : 0)),
       baseNote,
+      firstDate, bornBySeg,
     }
   })
 }
@@ -824,8 +840,13 @@ export function buildFacts(
   const label = gran === 'month' ? dLabel : mLabel
   const unit = gran === 'month' ? '天' : '个月'
   const byId = new Map(stationRows.map(s => [s.id, s]))
+  // 「板数未录」对全园都成立时**不逐栋重复** —— 一句话说 13 遍会把真信号淹掉。
+  // 这时它是项目状态不是逐栋缺口,T1 的脚注与横幅已经各说了一次。
+  const noPanelAtAll = stationRows.filter(s => s.metered).every(s => s.theoKwp == null)
 
   for (const b of board) {
+    // 本段还没投产的栋:整段没话可说。报「一天都没抄」会把「那时候还没建」说成「该催人」
+    if (!b.bornBySeg) continue
     const s = byId.get(b.id)
     const push = (kind: Fact['kind'], text: string) =>
       facts.push({ stationId: b.id, station: b.name, kind, text })
@@ -868,7 +889,7 @@ export function buildFacts(
       if (Math.abs(s.ledgerDiff) > crit.ledger) {
         push('ledger', `台账 ${s.capKwp.toFixed(1)} kWp，板数×单块标称功率算出来是 ${s.theoKwp.toFixed(1)} kWp`)
       }
-    } else if (s && s.days > 0) {
+    } else if (s && s.days > 0 && !noPanelAtAll) {
       push('ledger', '板数或单块标称功率未录，台账对不了')
     }
 

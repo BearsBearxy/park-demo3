@@ -50,6 +50,7 @@ const WATT = 500
 interface Opts {
   fault?: boolean          // 默认种;false = 零故障园区(阴性对照)
   noPanel?: boolean
+  noPanelOn?: string       // 只有这一栋没录板数
   badLedgerOn?: string
   jitterOn?: string        // 该栋 8 月逐日上下乱跳(散在两侧,不是断崖)
 }
@@ -57,12 +58,13 @@ interface Opts {
 function simulate(o: Opts = {}, gran: 'month' | 'year' = 'month', month = 8): SnapshotInput {
   const on = o.fault !== false
   const stations: StationCfg[] = NAMES.map((name, i) => {
-    const theo = o.noPanel ? null : CAPS[i]
+    const blank = o.noPanel || o.noPanelOn === name
+    const theo = blank ? null : CAPS[i]
     return {
       id: i + 1, name, phase: PHASE[i], metered: true,
       capKwp: o.badLedgerOn === name && theo != null ? theo * 1.5 : CAPS[i],
-      panelCount: o.noPanel ? null : Math.round((CAPS[i] * 1000) / WATT),
-      panelWatt: o.noPanel ? null : WATT,
+      panelCount: blank ? null : Math.round((CAPS[i] * 1000) / WATT),
+      panelWatt: blank ? null : WATT,
     }
   })
   const rows: ReadingRow[] = []
@@ -221,10 +223,16 @@ describe('§08 台账差是纯算术 —— 不依赖任何统计,也不依赖�
     expect(f[0].text).toContain('585.0')      // 390 × 1.5
     expect(f[0].text).toContain('390.0')
   })
-  it('板数没录 → 说「对不了」,不是说没问题', () => {
+  // 「板数未录」对全园都成立时**不逐栋重复** —— 实测:13 栋各报一遍同一句话,
+  // 把真信号全淹了,而 T1 的脚注与横幅已经各说过一次
+  it('全园都没录板数 → 不逐栋刷屏', () => {
     const np = buildSnapshot(simulate({ noPanel: true }))
-    const f = factsOf(np, 'B座', 'ledger')
-    expect(f.length).toBe(1)
+    expect(np.facts.filter(f => f.kind === 'ledger')).toEqual([])
+  })
+  it('只有个别栋没录 → 那几栋要报,因为这时它是逐栋缺口不是项目状态', () => {
+    const one = buildSnapshot(simulate({ noPanelOn: 'E座' }))
+    const f = one.facts.filter(x => x.kind === 'ledger')
+    expect(f.map(x => x.station)).toEqual(['E座'])
     expect(f[0].text).toContain('未录')
   })
 })
