@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   acf, nEffOf, buildLab, buildSnapshot,
-  type ReadingRow, type StationCfg, type WeatherDay, type SnapshotInput,
+  type ReadingRow, type StationCfg, type SnapshotInput,
 } from './pvMeterAna.logic'
 
 // 分析工作台(PV-ANALYSIS-SPEC §06.4)。每一张图都在防一个具体的错,
@@ -19,7 +19,6 @@ interface Opts {
   rho?: number                                   // 站内残差自相关
   season?: number                                // 年周期振幅(模拟季节性遮挡)
   gen?: (i: number, m: number, d: number) => number
-  weather?: boolean
 }
 
 function makeInput(o: Opts = {}): SnapshotInput {
@@ -29,7 +28,6 @@ function makeInput(o: Opts = {}): SnapshotInput {
     id: i + 1, name: `S${i + 1}`, capKwp: 100, metered: true,
   }))
   const rows: ReadingRow[] = []
-  const weather: WeatherDay[] = []
   const rnd = lcg(20260831)
   const g = () => Math.sqrt(-2 * Math.log(rnd() || 1e-12)) * Math.cos(2 * Math.PI * rnd())
   const state = new Map<number, number>()
@@ -39,7 +37,6 @@ function makeInput(o: Opts = {}): SnapshotInput {
     for (let d = 1; d <= dim; d++) {
       doy++
       const date = `2026-${pad(m)}-${pad(d)}`
-      weather.push({ date, ghiKwh: 4 + (d % 5) * 0.4, rainMm: 0, isRain: d % 10 === 0, hours: 24 })
       for (let i = 0; i < n; i++) {
         let gen = o.gen ? o.gen(i, m, d) : 400 * (1 + (d % 5) * 0.1)
         if (gen <= 0) continue
@@ -57,11 +54,7 @@ function makeInput(o: Opts = {}): SnapshotInput {
       }
     }
   }
-  return {
-    year: 2026, stations, rows,
-    weather: o.weather === false ? [] : weather,
-    gridPrice: 0.391,
-  }
+  return { year: 2026, stations, rows, gridPrice: 0.391 }
 }
 
 const lab = (o: Opts = {}) => {
@@ -212,7 +205,7 @@ describe('B · 模型诊断(必做)', () => {
         rows.push({ stationId: i + 1, date, gen, selfUse: gen * 0.7, gridFeed: gen * 0.3, revenue: gen * 0.7 * 0.86, priceSnap: 0.86 })
       }
     }
-    const input: SnapshotInput = { year: 2026, stations, rows, weather: [], gridPrice: 0.391, minStations: 2 }
+    const input: SnapshotInput = { year: 2026, stations, rows, gridPrice: 0.391, minStations: 2 }
     const l = buildLab(buildSnapshot(input), input)
     expect(l.convergence.rowRank).not.toEqual(l.convergence.colRank)
     expect(l.convergence.flipped.length).toBeGreaterThan(0)
@@ -237,20 +230,6 @@ describe('B · 模型诊断(必做)', () => {
     const l = lab({ rho: 0.4 })
     expect(l.acf).toHaveLength(9)
     for (const a of l.acf) expect(a.rho).toHaveLength(31)
-  })
-})
-
-describe('C · 外部锚', () => {
-  it('有天气时 logH 与 kt 自检都给得出来', () => {
-    const l = lab({ rho: 0.2 })
-    expect(l.health.length).toBeGreaterThan(300)
-    expect(typeof l.kt.suspect).toBe('boolean')
-  })
-
-  // 没有天气数据时不能假装有 —— 空着,让屏上说明白
-  it('没有天气数据时 logH 为空,不编一条出来', () => {
-    const l = lab({ weather: false })
-    expect(l.health).toEqual([])
   })
 })
 

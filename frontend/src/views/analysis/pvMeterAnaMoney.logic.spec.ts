@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  parkHealth, clearSkyCheck, congenitalCheck, gapMoney, alertLevel,
-  medianPolish, type DayRow, type StationCfg, type WeatherDay,
+  congenitalCheck, gapMoney, alertLevel,
+  medianPolish, type DayRow, type StationCfg,
 } from './pvMeterAna.logic'
 
 /** 确定性 LCG —— 不用 Math.random,测试必须可复现 */
@@ -10,11 +10,9 @@ function lcg(seed: number): () => number {
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296 }
 }
 
-// 外部锚 / 先天缺陷 / 换算成钱(PV-ANALYSIS-SPEC §5.5–5.7)。
+// 先天缺陷 / 换算成钱(PV-ANALYSIS-SPEC §5.6–5.7)。
 
 const day = (d: number) => `2026-03-${String(d + 1).padStart(2, '0')}`
-const w = (date: string, ghiKwh: number): WeatherDay =>
-  ({ date, ghiKwh, rainMm: 0, isRain: false, hours: 24 })
 
 /** eff = α(s)·β(d) 的无噪声矩阵;β 可外部给定,便于造「全园一起变差」 */
 function grid(alphas: number[], betas: number[]): { rows: DayRow[]; stations: StationCfg[] } {
@@ -29,75 +27,6 @@ function grid(alphas: number[], betas: number[]): { rows: DayRow[]; stations: St
 }
 
 const A9 = [0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2]
-
-describe('parkHealth —— 唯一能看见「大家一起在变差」的通道', () => {
-  // §5.5:β(d) 是从 13 栋自己算出来的,全园同步劣化时基准跟着一起掉,残差纹丝不动。
-  it('全园每天一起降 —— 残差看不见,但 logH 有显著负趋势', () => {
-    const n = 60
-    const decay = Array.from({ length: n }, (_, d) => 1 - d * 0.002)   // 每天降 0.2%
-    const sun = Array.from({ length: n }, (_, d) => 4 + (d % 5) * 0.5) // 天气本身没趋势
-    const betas = sun.map((s, d) => s * decay[d])
-    const { rows, stations } = grid(A9, betas)
-    const polish = medianPolish(rows, stations, null)
-
-    // ① 残差确实看不见 —— 这本身要断言,证明盲区是真的存在
-    for (const byDate of polish.resid.values()) {
-      for (const v of byDate.values()) expect(Math.abs(v)).toBeLessThan(1e-9)
-    }
-
-    // ② logH 看得见
-    const weather = sun.map((s, d) => w(day(d), s))
-    const h = parkHealth(polish, weather)
-    expect(h).toHaveLength(n)
-    const first = h.slice(0, 10).reduce((a, x) => a + x.logH, 0) / 10
-    const last = h.slice(-10).reduce((a, x) => a + x.logH, 0) / 10
-    expect(last).toBeLessThan(first)
-    // logH 是 log 域,期望值 = 两段 log(decay) 的均值差(不是线性的 0.002×50)
-    const mLog = (from: number, to: number) =>
-      decay.slice(from, to).reduce((a, v) => a + Math.log(v), 0) / (to - from)
-    expect(first - last).toBeCloseTo(mLog(0, 10) - mLog(n - 10, n), 9)
-  })
-
-  // §5.5:必须在 log 域做差,不是比值 —— 比值分母趋零时 Cauchy 化,没有有限矩。
-  it('GHI 趋零的日子不进 —— log 域不出 −Infinity', () => {
-    const betas = Array.from({ length: 10 }, () => 4)
-    const { rows, stations } = grid(A9, betas)
-    const polish = medianPolish(rows, stations, null)
-    const weather = Array.from({ length: 10 }, (_, d) => w(day(d), d === 3 ? 0 : 4))
-    const h = parkHealth(polish, weather)
-    expect(h).toHaveLength(9)
-    for (const x of h) expect(Number.isFinite(x.logH)).toBe(true)
-  })
-})
-
-describe('clearSkyCheck —— 辐照源自检', () => {
-  // §5.5:kt 的 95 分位健康时稳定贴近 1.0;逐月下滑 = **数据源脏了不是电站坏了**。
-  it('kt 上包络稳定 → 源可信', () => {
-    const weather: WeatherDay[] = []
-    for (let m = 3; m <= 8; m++) {
-      for (let d = 1; d <= 28; d++) {
-        const date = `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-        weather.push(w(date, 6 * (0.5 + (d % 20) / 40)))   // 晴天贴近上限
-      }
-    }
-    const r = clearSkyCheck(weather, () => 6)
-    expect(r.suspect).toBe(false)
-  })
-
-  it('kt 上包络逐月下滑 → 判「源可疑」,不判电站坏', () => {
-    const weather: WeatherDay[] = []
-    for (let m = 3; m <= 8; m++) {
-      const fade = 1 - (m - 3) * 0.06
-      for (let d = 1; d <= 28; d++) {
-        const date = `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-        weather.push(w(date, 6 * fade * (0.5 + (d % 20) / 40)))
-      }
-    }
-    const r = clearSkyCheck(weather, () => 6)
-    expect(r.suspect).toBe(true)
-    expect(r.reason).toContain('数据源')
-  })
-})
 
 describe('congenitalCheck —— 先天缺陷通道', () => {
   it('α 长期垫底的站被标 suspect,建议是核对容量台账不是现场检查', () => {
@@ -204,36 +133,5 @@ describe('congenitalCheck 的区间必须自洽', () => {
       expect(row.ciLo, `${row.name} ciLo`).toBeLessThanOrEqual(row.alphaPct + 1e-9)
       expect(row.ciHi, `${row.name} ciHi`).toBeGreaterThanOrEqual(row.alphaPct - 1e-9)
     }
-  })
-})
-
-// okDaySet 改成判连续性时,clearSkyCheck 里同一条 `hours !== 24` 漏改过一次。
-// 漏了的表现是**静默失效**:真实源永远不满 24 行 → 一天都进不来 → 永远返回「月份不足」,
-// 一条永不报警的自检比没有还坏。
-describe('clearSkyCheck 的完整性口径与 okDaySet 一致', () => {
-  const span = (from: number, to: number) =>
-    Array.from({ length: to - from + 1 }, (_, k) => 1 << (k + from)).reduce((a, b) => a | b, 0)
-  const days = (months: number[], ghi: (m: number) => number): WeatherDay[] =>
-    months.flatMap(m => Array.from({ length: 28 }, (_, k) => ({
-      date: `2026-${String(m).padStart(2, '0')}-${String(k + 1).padStart(2, '0')}`,
-      ghiKwh: ghi(m) * (0.5 + (k % 20) / 40), rainMm: 0, isRain: false,
-      hours: 13, hourMask: span(6, 18),          // 只给白天,不是 24 行
-    })))
-
-  it('白天 13 行的真实形态进得来 —— 不是「月份不足」', () => {
-    const r = clearSkyCheck(days([3, 4, 5, 6, 7, 8], () => 6), () => 6)
-    expect(r.reason).not.toContain('月份不足')
-    expect(r.byMonth).toHaveLength(6)
-  })
-
-  it('这种形态下 kt 逐月下滑照样报「源可疑」', () => {
-    const r = clearSkyCheck(days([3, 4, 5, 6, 7, 8], m => 6 * (1 - (m - 3) * 0.06)), () => 6)
-    expect(r.suspect).toBe(true)
-    expect(r.reason).toContain('数据源')
-  })
-
-  it('中间有空洞的日子不进 kt 统计', () => {
-    const bad = days([3, 4, 5], () => 6).map(d => ({ ...d, hourMask: span(6, 18) & ~(1 << 12), hours: 12 }))
-    expect(clearSkyCheck(bad, () => 6).byMonth).toEqual([])
   })
 })

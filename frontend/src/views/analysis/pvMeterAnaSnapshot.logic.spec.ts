@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adviceOf, buildSnapshot, cpPhrase, type ReadingRow, type StationCfg, type WeatherDay } from './pvMeterAna.logic'
+import { adviceOf, buildSnapshot, cpPhrase, type ReadingRow, type StationCfg } from './pvMeterAna.logic'
 
 // 快照(PV-ANALYSIS-SPEC §06.4 铁律 + §07 护栏)。
 // 这一层是「一份数据、一次计算」的落点,护栏也全在这里 —— 不测就是假绿。
@@ -14,7 +14,6 @@ interface Opts {
   cap?: (i: number) => number | null
   metered?: (i: number) => boolean
   gen?: (i: number, m: number, d: number) => number   // 返回 0 = 该日无记录
-  weather?: boolean
 }
 
 function make(o: Opts = {}) {
@@ -28,16 +27,10 @@ function make(o: Opts = {}) {
     metered: o.metered ? o.metered(i) : true,
   }))
   const rows: ReadingRow[] = []
-  const weather: WeatherDay[] = []
-  const seen = new Set<string>()
   for (const m of months) {
     const dim = new Date(y, m, 0).getDate()
     for (let d = 1; d <= dim; d++) {
       const date = dateOf(y, m, d)
-      if (!seen.has(date)) {
-        seen.add(date)
-        weather.push({ date, ghiKwh: 4 + (d % 5) * 0.4, rainMm: 0, isRain: d % 10 === 0, hours: 24 })
-      }
       for (let i = 0; i < n; i++) {
         const g = o.gen ? o.gen(i, m, d) : 400 * (1 + (i - 4) * 0.01) * (1 + (d % 5) * 0.1)
         if (g <= 0) continue
@@ -48,12 +41,12 @@ function make(o: Opts = {}) {
       }
     }
   }
-  return { stations, rows, weather: o.weather === false ? [] : weather }
+  return { stations, rows }
 }
 
 const snap = (o: Opts = {}) => {
-  const { stations, rows, weather } = make(o)
-  return buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
+  const { stations, rows } = make(o)
+  return buildSnapshot({ year: 2026, stations, rows, gridPrice: 0.391 })
 }
 
 describe('snapshot id —— 页脚拿它对账', () => {
@@ -119,23 +112,6 @@ describe('§07 护栏', () => {
     expect(s.quality.degraded).toBe(false)
   })
 
-  // 天气 hours<24 的日子剔除,且**剔了几天要报出来**
-  it('天气缺小时的日子被剔除并计数', () => {
-    const { stations, rows, weather } = make()
-    weather[3].hours = 20
-    weather[7].hours = 18
-    const s = buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
-    expect(s.quality.droppedHours).toBe(2)
-    expect(s.polish.beta.has(weather[3].date)).toBe(false)
-  })
-
-  // 没有天气数据时不做天气过滤,但要在质量记录里说清楚 —— 不能把空集合当「全过」
-  it('没有天气数据 → hasWeather=false,但分析照跑(不做天气过滤)', () => {
-    const s = snap({ weather: false })
-    expect(s.quality.hasWeather).toBe(false)
-    expect(s.health).toEqual([])
-    expect(s.polish.alpha.size).toBe(9)
-  })
 })
 
 describe('第一层输出', () => {
@@ -277,30 +253,7 @@ const GUARDS: GuardCase[] = [
     },
   },
   {
-    no: 4, what: '天气 hours < 24:该日剔除并报出剔除天数',
-    build: () => {
-      const { stations, rows, weather } = make()
-      weather[2].hours = 19
-      return buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
-    },
-    check: s => expect(s.quality.droppedHours).toBe(1),
-  },
-  {
-    no: 5, what: '低出力日:阈值只打 GHI,剔除天数报出',
-    build: () => {
-      const { stations, rows, weather } = make()
-      weather[4].ghiKwh = 0.2
-      weather[5].ghiKwh = 0.3
-      return buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
-    },
-    check: s => {
-      expect(s.quality.droppedLowGhi).toBe(2)
-      // 被剔的是**天气弱**的那天,不是发电低的那天 —— 打在 gen 上等于优先删除故障楼的故障日
-      expect(s.polish.beta.size).toBe(s.quality.okDays)
-    },
-  },
-  {
-    no: 6, what: '某站有效日 < 20:显「数据不全」,不出结论',
+    no: 4, what: '某站有效日 < 20:显「数据不全」,不出结论',
     build: () => snap({ gen: (i, m, d) => (i === 4 && d > 5 ? 0 : 400 * (1 + (i - 4) * 0.01) * (1 + (d % 5) * 0.1)) }),
     check: s => {
       const r = s.stations.find(x => x.name === 'S5')!
@@ -309,7 +262,7 @@ const GUARDS: GuardCase[] = [
     },
   },
   {
-    no: 7, what: '只有月抄的站:降级月频卡,不与日频站混排',
+    no: 5, what: '只有月抄的站:降级月频卡,不与日频站混排',
     build: () => snap({ gen: (i, m, d) => (i === 5 && d !== 15 ? 0 : 400 * (1 + (i - 4) * 0.01) * (1 + (d % 5) * 0.1)), months: [3, 4, 5, 6, 7] }),
     check: s => {
       const r = s.stations.find(x => x.name === 'S6')!
@@ -318,10 +271,10 @@ const GUARDS: GuardCase[] = [
     },
   },
   {
-    no: 8, what: '上一年无抄表:同比显「—」不显「0%」',
+    no: 6, what: '上一年无抄表:同比显「—」不显「0%」',
     build: () => {
-      const { stations, rows, weather } = make()
-      return buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391, prevRows: [] })
+      const { stations, rows } = make()
+      return buildSnapshot({ year: 2026, stations, rows, gridPrice: 0.391, prevRows: [] })
     },
     check: s => {
       expect(s.yoy.monthPct).toBeNull()
@@ -330,12 +283,12 @@ const GUARDS: GuardCase[] = [
     },
   },
   {
-    no: 9, what: '同比跨年月份不齐:按两年都有抄表的月对齐,报出参与月数',
+    no: 7, what: '同比跨年月份不齐:按两年都有抄表的月对齐,报出参与月数',
     build: () => {
       const cur = make({ months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] })
       const prev = make({ months: [1, 2, 3], year: 2025 })
       return buildSnapshot({
-        year: 2026, stations: cur.stations, rows: cur.rows, weather: cur.weather,
+        year: 2026, stations: cur.stations, rows: cur.rows,
         gridPrice: 0.391, prevRows: prev.rows,
       })
     },
@@ -347,7 +300,7 @@ const GUARDS: GuardCase[] = [
     },
   },
   {
-    no: 10, what: '整年无抄表:整屏空态,不画假图',
+    no: 8, what: '整年无抄表:整屏空态,不画假图',
     build: () => snap({ gen: () => 0 }),
     check: s => {
       expect(s.stations.every(r => r.status === 'mute')).toBe(true)
@@ -362,7 +315,7 @@ describe('§07 十条护栏 —— 表驱动(以后加护栏加一行)', () => {
   })
 
   it('十条一条不少', () => {
-    expect(GUARDS.map(g => g.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(GUARDS.map(g => g.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
   })
 })
 
@@ -377,7 +330,7 @@ describe('同比的两条护栏(§07 第 8、9 行)', () => {
     const cur = make({ months: [8] })
     const prev = make({ months: [8], year: 2025, gen: (i, m, d) => 400 * (1 + (d % 5) * 0.1) * 0.8 })
     const s = buildSnapshot({
-      year: 2026, stations: cur.stations, rows: cur.rows, weather: cur.weather,
+      year: 2026, stations: cur.stations, rows: cur.rows,
       gridPrice: 0.391, prevRows: prev.rows,
     })
     expect(s.yoy.monthPct).not.toBeNull()
@@ -390,7 +343,7 @@ describe('同比的两条护栏(§07 第 8、9 行)', () => {
     const cur = make({ months: [8] })
     const prev = make({ months: [3], year: 2025 })
     const s = buildSnapshot({
-      year: 2026, stations: cur.stations, rows: cur.rows, weather: cur.weather,
+      year: 2026, stations: cur.stations, rows: cur.rows,
       gridPrice: 0.391, prevRows: prev.rows,
     })
     expect(s.yoy.monthPct).toBeNull()
@@ -425,11 +378,11 @@ describe('第一层的三条一致性', () => {
   // 早先只挂横幅说「不做楼栋之间的比较」,而屏上比较照做 —— 屏在撒谎。
   // 正确做法是把那些天**整日剔除**,和低辐照日一个待遇。
   it('参与站不足的日子整日剔除,不是只挂个横幅', () => {
-    const { stations, rows, weather } = make()
+    const { stations, rows } = make()
     // 3/07、3/08 两天只留 3 个站
     const thin = new Set(['2026-07-07', '2026-07-08'])
     const kept = rows.filter(r => !thin.has(r.date) || r.stationId <= 3)
-    const s = buildSnapshot({ year: 2026, stations, rows: kept, weather, gridPrice: 0.391 })
+    const s = buildSnapshot({ year: 2026, stations, rows: kept, gridPrice: 0.391 })
     expect(s.quality.droppedThin).toBe(2)
     expect(s.polish.beta.has('2026-07-07')).toBe(false)
     expect(s.polish.beta.has('2026-07-08')).toBe(false)
@@ -528,9 +481,9 @@ describe('cpPhrase —— 宽度决定措辞', () => {
 // 损耗 = 发电 − 自消纳 − 上网,负值 = 计量异常(自用+上网比总发电还多,物理上不可能)
 describe('计量异常(自 PvRoiView 消纳结构区接管)', () => {
   it('自用+上网 超过发电总量 → 数据存疑,建议查接线', () => {
-    const { stations, rows, weather } = make()
+    const { stations, rows } = make()
     rows.filter(r => r.stationId === 6).forEach(r => { r.selfUse = r.gen * 0.8; r.gridFeed = r.gen * 0.35 })
-    const s = buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
+    const s = buildSnapshot({ year: 2026, stations, rows, gridPrice: 0.391 })
     const r = s.stations.find(x => x.name === 'S6')!
     expect(r.statusLabel).toBe('数据存疑')
     expect(r.situation).toContain('比发电总量还多')
@@ -539,63 +492,9 @@ describe('计量异常(自 PvRoiView 消纳结构区接管)', () => {
 
   // 抄表四舍五入会带出零点几个百分点的负数,那不是错 —— 容差之内不报
   it('零点几个百分点的负差不报警', () => {
-    const { stations, rows, weather } = make()
+    const { stations, rows } = make()
     rows.filter(r => r.stationId === 6).forEach(r => { r.selfUse = r.gen * 0.703; r.gridFeed = r.gen * 0.3 })
-    const s = buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
+    const s = buildSnapshot({ year: 2026, stations, rows, gridPrice: 0.391 })
     expect(s.stations.find(x => x.name === 'S6')!.statusLabel).not.toBe('数据存疑')
-  })
-})
-
-// 天气按月分批导时必然撞上:先导了上半年,下半年的抄表**不能**因此不进模型。
-// 天气只是用来筛掉坏日子的,不是模型输入 —— 没有天气行 ≠ 坏日子,只是不知道好不好。
-describe('天气只覆盖部分日子', () => {
-  const halfYear = () => {
-    const { stations, rows, weather } = make({ months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] })
-    // 只保留上半年的天气行
-    return buildSnapshot({
-      year: 2026, stations, rows, gridPrice: 0.391,
-      weather: weather.filter(w => Number(w.date.slice(5, 7)) <= 6),
-    })
-  }
-
-  it('没有天气行的日子照常进模型 —— 不为「不知道」而扔掉真数据', () => {
-    const s = halfYear()
-    // 下半年的日子必须在 β 里(它们没被筛过,但不该被丢)
-    expect(s.polish.beta.has('2026-09-15')).toBe(true)
-    expect(s.polish.beta.has('2026-12-20')).toBe(true)
-    // 每站的有效日应当覆盖到全年量级,不是只剩上半年
-    const anyStation = s.stations.find(r => r.days > 0)!
-    expect(anyStation.days).toBeGreaterThan(300)
-  })
-
-  it('未筛天数与覆盖率如实报出 —— 不确定一律显式暴露', () => {
-    const s = halfYear()
-    expect(s.quality.unscreenedDays).toBeGreaterThan(150)
-    expect(s.quality.weatherCoverage).toBeGreaterThan(0.4)
-    expect(s.quality.weatherCoverage).toBeLessThan(0.6)
-  })
-
-  it('天气全覆盖时未筛天数为 0、覆盖率为 1', () => {
-    const s = snap()
-    expect(s.quality.unscreenedDays).toBe(0)
-    expect(s.quality.weatherCoverage).toBeCloseTo(1, 9)
-  })
-
-  it('压根没有天气时覆盖率为 0,且不做任何日过滤', () => {
-    const s = snap({ weather: false })
-    expect(s.quality.hasWeather).toBe(false)
-    expect(s.quality.weatherCoverage).toBe(0)
-    expect(s.quality.unscreenedDays).toBeGreaterThan(0)
-  })
-
-  // 有天气行且**明确判定为坏**的日子照旧剔除 —— 放宽的只是「没有天气行」那一类
-  it('有天气行但辐照过弱的日子照旧剔除', () => {
-    const { stations, rows, weather } = make()
-    weather[3].ghiKwh = 0.2
-    weather[4].ghiKwh = 0.3
-    const s = buildSnapshot({ year: 2026, stations, rows, weather, gridPrice: 0.391 })
-    expect(s.polish.beta.has(weather[3].date)).toBe(false)
-    expect(s.quality.droppedLowGhi).toBe(2)
-    expect(s.quality.unscreenedDays).toBe(0)      // 它们有天气行,只是没通过 —— 不算「未筛」
   })
 })

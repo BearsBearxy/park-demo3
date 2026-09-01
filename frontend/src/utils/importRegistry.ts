@@ -40,7 +40,6 @@ import { PNL_SOT_FROM_YEAR } from '@/analysis/budget'
 import { fetchPnlSummary, invalidateAnaCache } from '@/analysis/anaData'
 import { importChargingRows, type ChargingCatLite } from '@/utils/importChargingRows'
 import { parsePvMeterRows, PV_METER_TEMPLATE_COLS } from '@/utils/pvMeterExcel'
-import { parseWeatherRows, WEATHER_TEMPLATE_COLS } from '@/utils/weatherExcel'
 import { parseCpMeterRows, CP_METER_TEMPLATE_COLS } from '@/utils/cpMeterExcel'
 import { parseMeterWorkbook, METER_TEMPLATE_COLS, METER_KIND_LABEL } from '@/utils/meterExcel'
 import { zoneLabel } from '@/utils/zoneLabel'
@@ -578,34 +577,6 @@ export const IMPORT_TYPES: ImportTypeEntry[] = [
       const pe = ctx._parseErrors ?? []
       if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
       const res = await http.post<ImportResultDTO>('/pv-meter/import', { rows })
-      return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
-    },
-    target: () => null,
-  },
-  // ── 逐小时天气与太阳辐射(PV-ANALYSIS-SPEC §04):datashareclub 导出的实测(非预报)CSV,obs_time 幂等 upsert。
-  //    光伏分栋分析靠 13 栋互相当基准,唯一看不见的是「全园同时变差」;外部辐照是补那个盲区的那条线。──
-  {
-    key: 'weather', label: '天气与辐射', tag: '天气', icon: 'sun', context: 'none', module: 'meter-reading:edit',
-    modalProps: (ctx) => ({
-      title: '导入 逐小时天气与太阳辐射',
-      sub: '上传 datashareclub 导出的逐小时 CSV;同一时刻重复导入自动覆盖,非法时间/负辐射逐行报告不整批拦',
-      templateCols: WEATHER_TEMPLATE_COLS,
-      // 行级错误(非法时间/负辐射)暂存 ctx,run 时并入结果面板(同 pvMeter 模式);表头识别失败才整批拦。
-      // _parseErrors 必须整体赋值,不能 push 追加 —— 换文件重解析时旧错误会残留
-      customParse: (matrix: string[][]) => {
-        const { records, errors } = parseWeatherRows(matrix)
-        ctx._parseErrors = errors.filter(e => e.rowIndex >= 0)
-        const headerErr = errors.find(e => e.rowIndex < 0)
-        if (headerErr) return { error: headerErr.reason }
-        return { records }
-      },
-    }),
-    // ponytail: 直调端点不经 api/weather.ts —— 与相邻的 pvMeter/cpMeter 同形;那边只留读接口
-    run: async (payload, ctx) => {
-      const rows = payload as ImportRec[]
-      const pe = ctx._parseErrors ?? []
-      if (!rows.length) return { imported: 0, skipped: pe.length, errors: pe }
-      const res = await http.post<ImportResultDTO>('/weather/import', { rows })
       return { imported: res.imported, skipped: res.skipped + pe.length, errors: [...res.errors, ...pe] }
     },
     target: () => null,

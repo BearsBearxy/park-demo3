@@ -4,7 +4,6 @@ import { setActivePinia, createPinia } from 'pinia'
 
 import PvMeterAnaView from '@/views/analysis/PvMeterAnaView.vue'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
-import { weatherApi, type WeatherDayDTO } from '@/api/weather'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
 import { useCompare, __resetCompareForTest } from '@/analysis/useCompare'
 import { RISK_ANNUAL_GAP, WATCH_ANNUAL_GAP } from '@/views/analysis/pvMeterAna.logic'
@@ -25,7 +24,6 @@ vi.mock('@/api/pvMeter', () => ({
     months: vi.fn(), years: vi.fn(), simulate: vi.fn(),
   },
 }))
-vi.mock('@/api/weather', () => ({ weatherApi: { daily: vi.fn() } }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 // AnaShell 挂载时会去 fetchAvailableMonths,不 mock 会走真 axios
@@ -40,7 +38,6 @@ vi.mock('@/components/ana/AnaEChart.vue', () => ({
 
 const pad = (n: number) => String(n).padStart(2, '0')
 /** 6–18 点各一行:真实导出的常见形态 */
-const DAYLIGHT_MASK = Array.from({ length: 13 }, (_, k) => 1 << (k + 6)).reduce((a, b) => a | b, 0)
 
 /** months 只给第三层用:那几条测的是图与文案渲染,不需要整年 —— 整年会让 buildSnapshot+buildLab
  *  在全量套件并行时超过默认 5s(实测)。分析质量由 logic 层的 spec 管,不靠屏测试 */
@@ -50,19 +47,12 @@ function fixture(monthCount = 12) {
     capacityKwp: 100, priceYuan: 0.86, sortNo: i,
   }))
   const readings: PvReadingDTO[] = []
-  const weather: WeatherDayDTO[] = []
   // 整年 —— 屏加载的就是 readingsYear(y);只给两个月的话故障会占掉 70% 观测期,
   // 抛光把那个水平整个吸进 α,变点通道反而看不见(见本文件末尾那条断言)
   for (const m of Array.from({ length: monthCount }, (_, k) => k + 1)) {
     const dim = new Date(2026, m, 0).getDate()
     for (let d = 1; d <= dim; d++) {
       const date = `2026-${pad(m)}-${pad(d)}`
-      // 真实天气源只给白天那几个小时(这里 6–18 点 13 行),不是满 24 行 ——
-      // 剔日看的是位图连不连续,不是个数
-      weather.push({
-        date, ghiKwh: 4 + (d % 5) * 0.4, rainMm: 0, tMax: 33, tMin: 26, isRain: d % 10 === 0,
-        hours: 13, hourMask: DAYLIGHT_MASK,
-      })
       for (let i = 0; i < 9; i++) {
         // S4 从 7/19 起掉 35% —— 一个屏上必须看得见的阶跃
         const bad = i === 3 && (m > 7 || (m === 7 && d > 18))
@@ -75,7 +65,7 @@ function fixture(monthCount = 12) {
       }
     }
   }
-  return { stations, readings, weather }
+  return { stations, readings }
 }
 
 // 按年份分发,不用 mockResolvedValueOnce —— 屏会因 setYear 再 load 一次,
@@ -88,7 +78,6 @@ async function mountScreen(
   vi.mocked(pvMeterApi.stations).mockResolvedValue(f.stations)
   vi.mocked(pvMeterApi.readingsYear).mockImplementation(async (y: number) =>
     y === 2026 ? f.readings : (prev ?? []))
-  vi.mocked(weatherApi.daily).mockResolvedValue(f.weather)
   const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
   await flushPromises()
   providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
@@ -166,27 +155,17 @@ describe('光伏分栋分析 · 第一层', () => {
     expect(w.find('.stub-chart').exists()).toBe(false)
   })
 
-  // 没有天气数据不该拦住分析,但**必须明说**这一版看不出「全园一起在变差」
-  it('未导入天气 → 照常出表,但明说辐照校准缺位', async () => {
-    const w = await mountScreen({ weather: [] })
-    expect(w.findAll('tbody tr')).toHaveLength(9)
-    expect(w.text()).toContain('未导入天气与辐照数据')
-  })
-
   // 四个计数塞不进 KPI 的 value 槽(实测 159px vs 338px,ellipsis 吃掉后一半)。
   // 要行动的两档在 value,其余在 note —— 这个拆分被截断过一次,钉住它
-  it('楼栋状态卡:要行动的两档在主位,其余进副行', () => {
-    const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
-    return flushPromises().then(async () => {
-      providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
-      usePeriod().setYear(2026)
-      await flushPromises()
-      const tile = w.findAll('.av2-kpis .v').find(e => /异常/.test(e.text()))
-      expect(tile, '楼栋状态卡的主位').toBeTruthy()
-      expect(tile!.text()).toMatch(/^\d+ 异常 · \d+ 需关注$/)
-      expect(tile!.text()).not.toContain('正常')      // 正常/不做判断在副行,不占主位
-      expect(w.text()).toContain('点灯可筛选')
-    })
+  // 曾经写成裸 mount,靠上一条测试残留下来的 mock 实现才跑得起来(vi.clearAllMocks 只清调用记录,
+  // 不清 mockResolvedValue)。删掉相邻那条测试就会莫名其妙地红 —— 改成自带夹具,不依赖执行顺序。
+  it('楼栋状态卡:要行动的两档在主位,其余进副行', async () => {
+    const w = await mountScreen()
+    const tile = w.findAll('.av2-kpis .v').find(e => /异常/.test(e.text()))
+    expect(tile, '楼栋状态卡的主位').toBeTruthy()
+    expect(tile!.text()).toMatch(/^\d+ 异常 · \d+ 需关注$/)
+    expect(tile!.text()).not.toContain('正常')      // 正常/不做判断在副行,不占主位
+    expect(w.text()).toContain('点灯可筛选')
   })
 
   // 投资回收要总投资额,那是电费系统那边的数,现在没有 → 诚实说缺,不填假数
@@ -396,7 +375,7 @@ describe('光伏分栋分析 · 第三层', () => {
     expect(t).toContain(WATCH_ANNUAL_GAP.toLocaleString('en-US'))
   })
 
-  it('工作台展开后 A/B/C 三组都在', async () => {
+  it('工作台展开后 A/B 两组都在', async () => {
     const w = await mountScreen(fixture(4))
     await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
     await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
@@ -407,7 +386,6 @@ describe('光伏分栋分析 · 第三层', () => {
     expect(t).toContain('块自助零分布')
     expect(t).toContain('抛光收敛诊断')
     expect(t).toContain('数据质量矩阵')
-    expect(t).toContain('全园健康度')
     expect(t).toContain('完整检验表')
   })
 
@@ -468,45 +446,15 @@ describe('光伏分栋分析 · 第三层', () => {
     })
   })
 
-  // 没有天气就没有 logH,不编一条出来
-  it('未导入天气时全园健康度诚实说没有', async () => {
-    const w = await mountScreen({ ...fixture(4), weather: [] })
-    await w.findAll('button').find(b => b.text().includes('方法与口径'))!.trigger('click')
-    await w.findAll('button').find(b => b.text().includes('分析工作台'))!.trigger('click')
-    expect(w.text()).toContain('这条线给不出来')
-  })
 })
 
-// 天气按月分批导时必然撞上。屏上不能再声称「模型用全年数据」,
-// 也不能让人以为没气象记录的日子被丢了
-describe('光伏分栋分析 · 天气部分覆盖', () => {
+// 头一行的口径:屏上写的必须是实际有效日数,不是笼统的「全年数据」
+describe('光伏分栋分析 · 有效日口径', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     __resetCompareForTest()
     location.hash = ''
-  })
-
-  it('部分覆盖:报出覆盖率与未筛天数,并说明那些天照常参与', async () => {
-    const f = fixture()
-    const w = await mountScreen({ ...f, weather: f.weather.filter(x => Number(x.date.slice(5, 7)) <= 6) })
-    const t = w.text()
-    expect(t).toMatch(/天气数据覆盖 \d+%/)
-    expect(t).toContain('天没有对应的气象记录')
-    expect(t).toContain('照常参与分析')
-  })
-
-  it('全覆盖:不出那条横幅', async () => {
-    const w = await mountScreen()
-    expect(w.text()).not.toContain('天没有对应的气象记录')
-  })
-
-  // 一天天气都没有时,要说清楚**筛选器也是关的** —— 早先只说了「全园一起变差看不出来」
-  it('一天天气都没有:要说明低辐照日也没被筛掉', async () => {
-    const w = await mountScreen({ weather: [] })
-    const t = w.text()
-    expect(t).toContain('全园是不是一起在变差')
-    expect(t).toContain('没有被筛掉')
   })
 
   // 头一行不许再声称「全年数据」—— 有效日是多少就说多少

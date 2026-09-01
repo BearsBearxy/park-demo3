@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  hoursContiguous, okDaySet, specificYield, medianPolish,
-  type DayRow, type StationCfg, type WeatherDay,
+  specificYield, medianPolish,
+  type DayRow, type StationCfg,
 } from './pvMeterAna.logic'
 
 // 光伏分栋分析公式层(PV-ANALYSIS-SPEC §05)。夹具一律**已知答案**:
@@ -42,68 +42,6 @@ describe('specificYield', () => {
 /** 位图:从 from 到 to 点(含)各一行 */
 const span = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, k) => 1 << (k + from)).reduce((a, b) => a | b, 0)
-
-describe('hoursContiguous —— 判位置不判个数', () => {
-  it('白天连续 6–18 点算连续', () => expect(hoursContiguous(span(6, 18))).toBe(true))
-  it('整天 0–23 点算连续', () => expect(hoursContiguous(span(0, 23))).toBe(true))
-  it('只有一个整点也算连续', () => expect(hoursContiguous(1 << 12)).toBe(true))
-  it('中间缺 12 点 = 有空洞', () => expect(hoursContiguous(span(6, 18) & ~(1 << 12))).toBe(false))
-  it('中间缺一段 = 有空洞', () => expect(hoursContiguous(span(6, 9) | span(14, 18))).toBe(false))
-  it('空位图不算连续', () => expect(hoursContiguous(0)).toBe(false))
-})
-
-describe('okDaySet —— 过滤器只准打在 GHI 上', () => {
-  const w = (date: string, ghiKwh: number, hours: number, hourMask?: number): WeatherDay =>
-    ({ date, ghiKwh, rainMm: 0, isRain: false, hours, hourMask })
-
-  // 真实天气源给不出全天 24 行:很多导出只给白天那几个小时,日照长度还按季节变。
-  // 「有几个小时」分不清「当天日照短」和「漏了几行」——判据必须是**位置**。
-  it('只给白天 6–18 点(13 行)照用 —— 不是「不满 24 就剔」', () => {
-    const s = okDaySet([w('2026-03-01', 5, 13, span(6, 18))], 1)
-    expect([...s]).toEqual(['2026-03-01'])
-  })
-
-  it('冬天日照短(7–17 点)照用 —— 那是短不是缺', () => {
-    const s = okDaySet([w('2026-12-01', 3, 11, span(7, 17))], 1)
-    expect([...s]).toEqual(['2026-12-01'])
-  })
-
-  // 清晨黄昏的整点太阳贴地平线、GHI 近乎 0,缺了几乎不动日累计;
-  // 中间时段缺一小时丢的是当天最强的那部分 —— 这才是要剔的
-  it('中间缺 12 点 → 整日剔除', () => {
-    const s = okDaySet([
-      w('2026-03-01', 5, 13, span(6, 18)),
-      w('2026-03-02', 5, 12, span(6, 18) & ~(1 << 12)),
-    ], 1)
-    expect([...s]).toEqual(['2026-03-01'])
-  })
-
-  it('稀疏得离谱(只有两行)照样剔,哪怕它们连续', () => {
-    const s = okDaySet([w('2026-03-01', 5, 2, span(11, 12))], 1)
-    expect([...s]).toEqual([])
-  })
-
-  // 老数据/旧夹具没有位图时**不擅自放宽**,退回原来的满 24 行口径
-  it('位图缺省 → 退回「满 24 行」,不悄悄放宽', () => {
-    const s = okDaySet([w('2026-03-01', 5, 24), w('2026-03-02', 5, 13)], 1)
-    expect([...s]).toEqual(['2026-03-01'])
-  })
-
-  it('低出力日按 GHI 阈值剔除', () => {
-    const s = okDaySet([w('2026-03-01', 5, 13, span(6, 18)), w('2026-03-02', 0.4, 13, span(6, 18))], 1)
-    expect([...s]).toEqual(['2026-03-01'])
-  })
-
-  it('入参是天气不是发电量 —— 阈值打在 gen 上等于优先删除故障楼的故障日', () => {
-    // 同一天:GHI 充足 → 必须保留,哪怕某栋当天发电为 0(那正是要检出的停机)
-    const s = okDaySet([w('2026-03-01', 6, 13, span(6, 18))], 1)
-    expect(s.has('2026-03-01')).toBe(true)
-  })
-
-  it('没有天气数据 → 空集合(调用方须传 null 表示不做天气过滤,不能拿空集当"全过")', () => {
-    expect(okDaySet([], 1).size).toBe(0)
-  })
-})
 
 describe('medianPolish', () => {
   it('无噪声矩阵上精确还原 α 与 β', () => {

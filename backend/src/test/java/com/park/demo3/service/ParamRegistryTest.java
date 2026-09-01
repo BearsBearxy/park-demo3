@@ -29,8 +29,6 @@ class ParamRegistryTest {
         "mgmt_fee", "mgmt_fee_commercial", "capacity_fee", "water", "water_pipe",
         "lamp_area_base", "green_area_base", "area_base", "park_share_div", "loss_adj_rate",
         "coefficient", "std_add", "price_override",
-        // 外部天气数据源断闸三键(PV-ANALYSIS-SPEC §02):只有全局一档,默认全关
-        "weather_api_enabled", "weather_api_monthly_cap", "weather_source",
         // ③
         "loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_exclude", "loss_denom_cable",
         "loss_supply_meter", "frozen_2023", "zone_calc_kind",
@@ -74,10 +72,6 @@ class ParamRegistryTest {
         assertTrue(ParamRegistry.allowed("elec_peak", "p3"));           // 三期:放宽后必须通过
         assertFalse(ParamRegistry.allowed("elec_peak", "building:x"));  // 非数字 id
         assertFalse(ParamRegistry.allowed("no_such_key", ""));
-        // 只有全局一档(S_GLOBAL_ONLY,本刀新形态):断闸是全园一个开关,按期区分设等于「一期发请求二期不发」
-        assertTrue(ParamRegistry.allowed("weather_api_enabled", ""));
-        assertFalse(ParamRegistry.allowed("weather_api_enabled", "p1"));
-        assertFalse(ParamRegistry.allowed("weather_source", "building:13"));
         assertNull(ParamRegistry.scopeKind("px"));
         assertEquals(ScopeKind.ZONE, ParamRegistry.scopeKind("p3"));
         assertEquals(ScopeKind.GLOBAL, ParamRegistry.scopeKind(null));

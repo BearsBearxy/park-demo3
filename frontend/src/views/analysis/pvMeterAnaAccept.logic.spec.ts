@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLab, buildSnapshot,
-  type ReadingRow, type SnapshotInput, type StationCfg, type WeatherDay,
+  type ReadingRow, type SnapshotInput, type StationCfg,
 } from './pvMeterAna.logic'
 
 /**
@@ -49,7 +49,6 @@ function simulate(opts: { dropStation?: string; dropMonth?: number; dropDays?: n
     id: i + 1, name, capKwp: CAPS[i], metered: true,
   }))
   const rows: ReadingRow[] = []
-  const weather: WeatherDay[] = []
 
   for (let m = 1; m <= 12; m++) {
     const dim = new Date(YEAR, m, 0).getDate()
@@ -65,7 +64,6 @@ function simulate(opts: { dropStation?: string; dropMonth?: number; dropDays?: n
 
     for (let d = 1; d <= dim; d++) {
       const date = `${YEAR}-${pad(m)}-${pad(d)}`
-      weather.push({ date, ghiKwh: 3 + dayW[d - 1] * 3, rainMm: 0, isRain: d % 11 === 0, hours: 24 })
     }
 
     stations.forEach((s, i) => {
@@ -88,7 +86,7 @@ function simulate(opts: { dropStation?: string; dropMonth?: number; dropDays?: n
       }
     })
   }
-  return { year: YEAR, stations, rows, weather, gridPrice: 0.391 } satisfies SnapshotInput
+  return { year: YEAR, stations, rows, gridPrice: 0.391 } satisfies SnapshotInput
 }
 
 const INPUT = simulate()

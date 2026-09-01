@@ -35,8 +35,6 @@ public final class ParamRegistry {
     private static final Set<ScopeKind> S_METER = EnumSet.of(ScopeKind.METER);
     private static final Set<ScopeKind> S_RULE = EnumSet.of(ScopeKind.RULE);
     private static final Set<ScopeKind> S_TENANT = EnumSet.of(ScopeKind.TENANT);
-    private static final Set<ScopeKind> S_GLOBAL_ONLY = EnumSet.of(ScopeKind.GLOBAL);
-
     private static final Map<Integer, String> LOSS_VARIANT_OPTS = Map.of(
         0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点）",
         1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）",
@@ -44,10 +42,6 @@ public final class ParamRegistry {
     private static final Map<Integer, String> ZONE_CALC_KIND_OPTS = Map.of(
         0, "平价制（单一商业价 × 用量）",
         1, "分时制（尖峰平谷四段 + 管理费）");
-    private static final Map<Integer, String> WEATHER_SOURCE_OPTS = Map.of(
-        0, "导入（不发外部请求）",
-        1, "和风天气 API",
-        2, "datashareclub API");
     private static final Map<Integer, String> LOSS_BASE_FORM_OPTS = Map.of(
         1, "A：电费 + 公摊 + 电力管理费",
         2, "B：电费 + 公摊（默认）",
@@ -129,16 +123,6 @@ public final class ParamRegistry {
             "分摊标准 = 算式值 + 附加金额", "广联 +100", null);
         alloc("price_override", "公摊池指定单价", "元/度", Group.CONSTANT, S_RULE, "from", false, ValueKind.MONEY, null,
             "公摊池成本 = 用量 × 指定单价（不取价目）", "宿舍路灯 1.13156875 / 绿化水 4.45", null);
-        // 外部天气数据源断闸三键(PV-ANALYSIS-SPEC §02)。本刀的天气走导入中心,这三个是给「将来真接了付费 API」
-        // 留的闸。三键都只有全局一档,且默认「关」——开启付费源要是显式动作,不是需要记得去关掉的默认行为。
-        // Group.CONSTANT 而非 MONTHLY:ParamPermissionSplitTest 钉死 group==MONTHLY ⟺ monthlyCheck==true。
-        alloc("weather_api_enabled", "外部天气API 总开关", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false, ValueKind.BOOL, null,
-            null, "关闭后立即停止一切外部请求，分析屏自动回落相对口径（园区内部互相当基准）", null);
-        alloc("weather_api_monthly_cap", "外部天气API 月调用上限", "次", Group.CONSTANT, S_GLOBAL_ONLY, "from", false, ValueKind.INT, null,
-            "本月调用数达到上限自动关闭总开关并记日志", "防的是「忘了关」，不是「想关」", null);
-        alloc("weather_source", "天气数据源", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false, ValueKind.ENUM, WEATHER_SOURCE_OPTS,
-            null, "默认走导入中心，不产生任何费用", null);
-
         // ── ③ 核算口径(结构性,默认 from;栋级人话句子) spec §3.3 ──
         alloc("loss_variant", "损耗核算方式", "", Group.RULE, S_BUILDING, "from", false, ValueKind.ENUM, LOSS_VARIANT_OPTS,
             "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分母 + 加点；不核算：只列示用量",

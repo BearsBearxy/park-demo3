@@ -9,58 +9,11 @@
 // ── 类型 ───────────────────────────────────────────────────────────────
 export interface DayRow { stationId: number; date: string; gen: number }
 export interface StationCfg { id: number; name: string; capKwp: number | null; metered: boolean }
-export interface WeatherDay {
-  date: string; ghiKwh: number; rainMm: number; isRain: boolean
-  hours: number
-  /** 24 位:第 h 位 = 该整点有记录。缺省(旧数据/夹具)时退回只看 hours */
-  hourMask?: number
-}
 
 // ── 基本量 ─────────────────────────────────────────────────────────────
 
 /** 等效小时 eff = 发电量 ÷ 装机容量(kWh/kWp)。装机容量不同的楼栋只有除掉容量才可比。 */
 export function specificYield(gen: number, capKwp: number): number { return gen / capKwp }
-
-/** 位图里的整点是否**连续**(自身首尾之间不缺一小时)。0 位 → 视为不连续。 */
-export function hoursContiguous(mask: number): boolean {
-  if (!mask) return false
-  // 把最低位那串 1 之后的部分右移掉:连续时 mask 恰好是 (2^k−1)<<first
-  const first = mask & -mask                       // 最低置位
-  const shifted = mask / first                     // 对齐到第 0 位(mask 只有 24 位,安全)
-  return (shifted & (shifted + 1)) === 0           // 全 1 才满足
-}
-
-/**
- * 可用日集合。**阈值只准打在 GHI 上** —— 这是整套方法里最容易自欺的一条:
- * 把阈值打在 gen 或 eff 上等于**优先删除故障楼的故障日**,过滤器吃掉了证据,
- * 剩下的数据当然显示一切正常。所以本函数只收 WeatherDay,连 DayRow 都不认识。
- *
- * ⚠ 完整性判的是**连续性,不是小时数**(2026-08-31 改)。原来写的是 `hours === 24`,
- *   而真实天气源根本给不出全天 24 行:很多导出只给白天那几个小时,日照长度还按季节变。
- *   「有几个小时」分不清「当天日照短」和「漏了几行」——
- *   而这两件事对日累计 GHI 的影响完全不同:
- *     · 清晨黄昏的整点,太阳贴地平线,GHI 近乎 0,缺了几乎不动日累计;
- *     · **中间时段缺一小时**,丢的是当天最强的那部分,日累计明显偏低。
- *   物理上分得清的是**位置**,所以判据是位图连不连续:有内部空洞 = 真丢数据 → 整日剔除;
- *   两头短 = 那天就是短 → 照用。
- *
- * minHours 只兜「稀疏得离谱」的日子(如整天只有两行),默认 6。
- *
- * 没有天气数据时调用方应给 medianPolish 传 null(不做天气过滤),并在屏上明说 ——
- * 返回空集合不等于「全过」。
- */
-export function okDaySet(weather: WeatherDay[], ghiMinKwh: number, minHours = 6): Set<string> {
-  return new Set(
-    weather
-      .filter(w => {
-        if (w.ghiKwh < ghiMinKwh) return false
-        if (w.hours < minHours) return false
-        // 位图缺省(旧数据/夹具):退回原来的「满 24 行」口径,不擅自放宽
-        return w.hourMask === undefined ? w.hours === 24 : hoursContiguous(w.hourMask)
-      })
-      .map(w => w.date),
-  )
-}
 
 // ── 中位数抛光 ─────────────────────────────────────────────────────────
 export interface PolishResult {
@@ -89,10 +42,11 @@ export function median(xs: number[]): number {
  * 于是所有站看起来都「高于基准」,真正的故障站反而不报警。
  *
  * 可辨识性:(mu, α+c, β−c) 是同一个解,靠 median(α)=0 / median(β)=0 锚定。
- * 迭代只跑两三轮的话这两个约束只是**近似**成立,而 §5.5 的 logH 直接吃 β ——
+ * 迭代只跑两三轮的话这两个约束只是**近似**成立,而逐月偏离矩阵直接吃 β ——
  * 锚定漂移会原样变成一条假的全园趋势。所以收敛后再显式减一次中位数。
  *
- * @param okDays 天气可用日;传 null = 不做天气过滤(没有辐照数据的部署)
+ * @param okDays 允许进矩阵的日期;传 null = 全收。**只用来剔「当日在网站数不足」的日子**,
+ *              不允许拿它做任何跟发电量有关的过滤 —— 那等于优先删掉故障楼的故障日。
  * @param order 扫描顺序。默认行优先;工作台的收敛诊断会用 'col' 再跑一次 ——
  *              两种顺序下 α 排名若翻转,说明该结论**不稳,不上报**(§06.4 B 组)
  */
@@ -100,7 +54,7 @@ export function medianPolish(
   rows: DayRow[], stations: StationCfg[], okDays: Set<string> | null,
   order: 'row' | 'col' = 'row',
 ): PolishResult {
-  // 1) 建 log(eff) 矩阵。跳过:未装表 / 未录容量 / 不在可用日 / gen<=0。
+  // 1) 建 log(eff) 矩阵。跳过:未装表 / 未录容量 / 不在允许日 / gen<=0。
   //    gen<=0 的格子**绝不补齐** —— 补了残差恒为 0,离线 10 天的楼会算出「正常」(§5.1)。
   const cap = new Map<number, number>()
   for (const s of stations) if (s.metered && s.capKwp != null && s.capKwp > 0) cap.set(s.id, s.capKwp)
@@ -471,60 +425,6 @@ export function classifyShape(r: number[], rainDays: boolean[]): { shape: Shape;
 // ── 外部锚(PV-ANALYSIS-SPEC §5.5)────────────────────────────────────────
 // 单测 pvMeterAnaMoney.logic.spec.ts。
 
-/**
- * 全园健康度。β(d) 是从 13 栋**自己**算出来的 —— 全园同步劣化(集体积灰、同批组件衰减)时
- * 基准跟着一起掉,残差纹丝不动。logH 的趋势是**唯一**能看见「大家一起在变差」的通道。
- *
- * **必须在 log 域做差,不是比值** —— 比值分母趋零时 Cauchy 化,没有有限矩,
- * 均值方差正态近似全部失效。GHI 为 0 的日子直接不进(夜间/无数据,不是电站的事)。
- */
-export function parkHealth(
-  polish: PolishResult, weather: WeatherDay[],
-): { date: string; logH: number }[] {
-  return weather
-    .filter(w => polish.beta.has(w.date) && w.ghiKwh > 0)
-    .map(w => ({ date: w.date, logH: polish.beta.get(w.date)! - Math.log(w.ghiKwh / 1000) }))
-}
-
-/**
- * 辐照源自检。晴空指数 kt = GHI / GHI_clearsky 的 **95 分位**在健康时应稳定贴近 1.0;
- * 逐月下滑 = **数据源脏了不是电站坏了**(传感器积灰、供应商换模型、单位改了)。
- *
- * 约 15 行,能挡掉全链路最丢人的一类误报:拿一个越来越低的辐照当基准,
- * 会把全园判成「一起在变差」,而实际上电站好好的。
- *
- * @param clearSky 给定日期的晴空 GHI(kWh/m2)。没有天文模型时传一个按月的经验上限即可。
- */
-export function clearSkyCheck(
-  weather: WeatherDay[], clearSky: (date: string) => number,
-): { suspect: boolean; reason: string; byMonth: { ym: string; kt95: number }[] } {
-  const byMonth = new Map<string, number[]>()
-  for (const w of weather) {
-    const cs = clearSky(w.date)
-    // 与 okDaySet 同一口径:判连续性不判个数。写 hours!==24 的话真实数据一天都进不来,
-    // kt 自检永远返回「月份不足,暂不判定」—— 一条静默失效的自检比没有还坏
-    if (!(cs > 0)) continue
-    if (w.hours < 6) continue
-    if (w.hourMask === undefined ? w.hours !== 24 : !hoursContiguous(w.hourMask)) continue
-    const ym = w.date.slice(0, 7)
-    const arr = byMonth.get(ym) ?? []
-    arr.push(w.ghiKwh / cs)
-    byMonth.set(ym, arr)
-  }
-  const rows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, kts]) => {
-      const s = [...kts].sort((a, b) => a - b)
-      return { ym, kt95: s[Math.min(s.length - 1, Math.floor(s.length * 0.95))] }
-    })
-  if (rows.length < 3) return { suspect: false, reason: '月份不足,暂不判定', byMonth: rows }
-
-  // 首月与末月的 95 分位比:掉超过 10% 就该先怀疑数据源
-  const drop = 1 - rows[rows.length - 1].kt95 / rows[0].kt95
-  return drop > 0.10
-    ? { suspect: true, reason: `晴空指数上包络逐月下滑 ${(drop * 100).toFixed(0)}% —— 先查数据源,不要当成电站衰减`, byMonth: rows }
-    : { suspect: false, reason: '晴空指数上包络稳定', byMonth: rows }
-}
-
 // ── 先天缺陷通道(PV-ANALYSIS-SPEC §5.6)──────────────────────────────────
 
 export interface CongenitalRow {
@@ -646,9 +546,7 @@ export interface SnapshotInput {
   year: number
   stations: StationCfg[]
   rows: ReadingRow[]
-  weather: WeatherDay[]
   gridPrice: number       // 上网标杆价 元/kWh
-  ghiMinKwh?: number      // 低出力日阈值,**只打在 GHI 上**
   minStations?: number    // 当日参与站下限,低于它当天整屏降级
   minDays?: number        // 某站有效日下限,低于它不出结论
   winDays?: number        // 预注册主窗口长度
@@ -688,14 +586,8 @@ export interface AnaSnapshot {
   monthly: { labels: string[]; kwh: number[]; actual: number[]; due: number[] }
   quality: {
     totalDays: number; okDays: number
-    droppedHours: number; droppedLowGhi: number
     noCapacity: string[]; noMeter: string[]
     minStationsOnDay: number; droppedThin: number; tooFewStations: boolean; degraded: boolean
-    hasWeather: boolean
-    /** 有抄表但**没有天气行**的日子数 —— 这些天照常进模型,但没被辐照筛过,要如实报出 */
-    unscreenedDays: number
-    /** 天气覆盖率 = 被筛过的抄表日 ÷ 全部抄表日 */
-    weatherCoverage: number
   }
   yoy: {
     monthPct: number | null   // 主口径月 vs 去年同月;null = 没得比
@@ -705,10 +597,9 @@ export interface AnaSnapshot {
     yearNote: string
   }
   polish: PolishResult
-  /** 抛光**真正用过**的日集合(已剔掉低辐照/缺小时/参与站不足的日子);null = 没做任何日过滤。
+  /** 抛光**真正用过**的日集合(只可能剔掉「当日在网站数不足」的日子);null = 一天没剔。
    *  工作台的收敛诊断必须拿这一份重跑,自己再算一遍会混进第二个变量,隔离不出扫描顺序。 */
   usedDays: Set<string> | null
-  health: { date: string; logH: number }[]
   congenital: CongenitalRow[]
 }
 
@@ -823,35 +714,16 @@ function monthly13(
 
 export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
   const {
-    year, stations, rows, weather, gridPrice,
-    ghiMinKwh = 1.0, minStations = 8, minDays = 20, winDays = 30, prevRows, qualityPct = 50,
+    year, stations, rows, gridPrice,
+    minStations = 8, minDays = 20, winDays = 30, prevRows, qualityPct = 50,
   } = input
 
-  // ① 可用日。**阈值只打在 GHI 上**;没有天气数据时不做天气过滤(传 null),并在质量记录里说明
-  const hasWeather = weather.length > 0
+  // ① 零剔除(PV-ANALYSIS-SPEC §01)。**没有任何按发电量或天气的日过滤。**
+  //    唯一会被剔的是「当日在网站数不足」的日子(④),那是基准算不出来,不是数据不好。
+  //    历史上这里做过按 GHI 的低辐照日筛选,连同整个气象通道一起删了:
+  //    实测关掉日筛只差 0.21pp,而它带来的是一整套外部数据依赖。
   const readDates = new Set(rows.map(r => r.date))
-  const screened = hasWeather ? okDaySet(weather, ghiMinKwh) : null
-  const weatherDates = new Set(weather.map(w => w.date))
-
-  // **天气只是用来筛掉坏日子的,不是模型输入。**
-  // 没有天气行的日子 ≠ 坏日子 —— 我们只是不知道它好不好。把它连发电数据一起丢掉,
-  // 等于为了「不知道」而扔掉真数据。实测形态:用户按月分批导天气,先导了上半年,
-  // 下半年的抄表就整整半年不进模型,而屏上还写着「模型用 2025 全年数据」。
-  //
-  // 所以进模型的是「筛过且合格」∪「压根没筛过」,被排除的只有**明确判定为坏**的那些。
-  // 代价是未筛日会混入低辐照日,噪声大一点;但**不引入偏倚** ——
-  // 筛选条件打在 GHI 上而不是 gen 上(§5.1),漏筛不会优先保留或删除故障楼的日子。
-  // 未筛天数必须报出来:§07 的文化是不确定一律显式暴露。
-  const unscreened = [...readDates].filter(d => !weatherDates.has(d))
-  const okDays = screened
-    ? new Set([...screened, ...unscreened])
-    : null
-
-  // 「当天气象数据有缺」= 有天气行但位图有空洞/稀疏得离谱,不是「不满 24 行」
-  const droppedHours = hasWeather
-    ? weather.filter(w => !screened!.has(w.date) && w.ghiKwh >= ghiMinKwh).length
-    : 0
-  const droppedLowGhi = hasWeather ? weather.filter(w => w.ghiKwh < ghiMinKwh).length : 0
+  const okDays: Set<string> | null = null
 
   // ② 分档:未装表 / 未录容量 —— 两者都不进分析,但**必须分开列名**(§07 第一、二行)
   const noMeter = stations.filter(s => !s.metered).map(s => s.name)
@@ -879,14 +751,12 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     ? []
     : [...countDay(polish0)].filter(([, n]) => n < minStations).map(([d]) => d)
   const okDays2 = thinDays.length
-    ? new Set([...(okDays ?? new Set(rows.map(r => r.date)))].filter(d => !thinDays.includes(d)))
+    ? new Set([...readDates].filter(d => !thinDays.includes(d)))
     : okDays
   const polish = thinDays.length ? medianPolish(rows, stations, okDays2) : polish0
   const perDay = countDay(polish)
   const minStationsOnDay = perDay.size ? Math.min(...perDay.values()) : 0
   const droppedThin = thinDays.length
-
-  const health = hasWeather ? parkHealth(polish, weather) : []
 
   // ⑤ 主口径月 = 该年最后一个有抄表的月
   const yms = [...new Set(rows.map(r => YM(r.date)))].sort()
@@ -1043,7 +913,9 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     }
 
 
-    const rainDays = x.resid.map(r => weather.find(w => w.date === r.date)?.isRain ?? false)
+    // 无降雨数据(气象通道已删)→ 全 false。此时 sawtooth 在 classifyShape 里**数学上不可达**
+    // (fSaw ≡ fRamp、参数个数相同、严格 < 保 ramp),慢降类一律判 ramp —— 这是有意的降级,不是漏。
+    const rainDays = x.resid.map(() => false)
     const shape = classifyShape(x.resid.map(r => r.v), rainDays).shape
     const cp = x.cp ?? { index: -1, ciLo: -1, ciHi: -1, p: 1, dropPct: 0 }
     const q = qs[i]
@@ -1142,7 +1014,7 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
 
   return {
     id: fnv1a([
-      year, ym, stations.length, rows.length, weather.length, gridPrice,
+      year, ym, stations.length, rows.length, gridPrice,
       rows.reduce((a, r) => a + r.gen, 0).toFixed(3),
       [...inPlay].sort((a, b) => a - b).join(','),
     ].join('|')),
@@ -1156,16 +1028,14 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     },
     monthly: monthly13(rows, yms, gridPrice, polish, stations),
     quality: {
-      totalDays: hasWeather ? weather.length : new Set(rows.map(r => r.date)).size,
-      okDays: okDays ? okDays.size : new Set(rows.map(r => r.date)).size,
-      droppedHours, droppedLowGhi, noCapacity, noMeter,
+      totalDays: readDates.size,
+      okDays: okDays2 ? okDays2.size : readDates.size,
+      noCapacity, noMeter,
       minStationsOnDay, droppedThin, tooFewStations,
-      degraded: droppedThin > 0 || tooFewStations, hasWeather,
-      unscreenedDays: unscreened.length,
-      weatherCoverage: readDates.size ? (readDates.size - unscreened.length) / readDates.size : 0,
+      degraded: droppedThin > 0 || tooFewStations,
     },
     yoy: yoyOf(rows, prevRows, ym, gridPrice),
-    polish, usedDays: okDays2, health, congenital,
+    polish, usedDays: okDays2, congenital,
   }
 }
 
@@ -1349,8 +1219,6 @@ export interface LabResult {
   nullDist: { id: number; name: string; dist: number[]; obs: number } | null
   convergence: { names: string[]; rowRank: number[]; colRank: number[]; flipped: string[] }
   quality: { dates: string[]; rows: { id: number; name: string; states: ('ok' | 'missing' | 'dropped')[] }[] }
-  kt: ReturnType<typeof clearSkyCheck>
-  health: { date: string; logH: number }[]
 }
 
 /** 自相关函数。ACF 是**直接体检 √N 错多少**的那张图 —— ρ₁ 非零就说明独立假设不成立。 */
@@ -1397,7 +1265,7 @@ function rankOf(pairs: { id: number; v: number }[]): Map<number, number> {
 }
 
 export function buildLab(snap: AnaSnapshot, input: SnapshotInput): LabResult {
-  const { rows, stations, weather, minStations = 8, ghiMinKwh = 1.0, winDays = 30 } = input
+  const { rows, stations, minStations = 8, winDays = 30 } = input
   const polish = snap.polish
   const nameOf = new Map(stations.map(s => [s.id, s.name]))
   const inPlay = [...polish.resid.keys()]
@@ -1511,8 +1379,5 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput): LabResult {
     alphaRows: snap.congenital.filter(c => !suspectIds.has(c.id)),
     alphaExcluded: snap.stations.filter(x => suspectIds.has(x.id)).map(x => x.name),
     tests, acf: acfRows, doy, nullDist, convergence, quality,
-    // C ── 外部锚。没有天气数据时 kt 自检与 logH 都给不出来,那就诚实空着
-    kt: clearSkyCheck(weather, () => Math.max(...weather.map(w => w.ghiKwh), 1)),
-    health: snap.health,
   }
 }

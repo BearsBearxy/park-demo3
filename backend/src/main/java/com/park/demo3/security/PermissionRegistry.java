@@ -121,9 +121,6 @@ public class PermissionRegistry {
         add(HttpMethod.POST, "/api/pv-meter/simulate", Perm.METER_MASTER_EDIT);
         add(null, "/api/pv-meter/**", Perm.METER_READING_EDIT);
 
-        // 外部天气与辐射(PV-ANALYSIS-SPEC §03):只有导入一个写端点,与抄表录入同岗
-        add(null, "/api/weather/**", Perm.METER_READING_EDIT);
-
         // 桩库档案改运营商/车型会迁移甚至删除历史 cp_power_usage 行
         add(null, "/api/cp-meter/stations",    Perm.METER_MASTER_EDIT);
         add(null, "/api/cp-meter/stations/**", Perm.METER_MASTER_EDIT);

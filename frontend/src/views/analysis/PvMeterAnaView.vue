@@ -25,7 +25,6 @@ import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, fint } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
-import { weatherApi, type WeatherDayDTO } from '@/api/weather'
 import {
   buildLab, buildSnapshot, cpPhrase, RISK_ANNUAL_GAP, WATCH_ANNUAL_GAP,
   type AnaSnapshot, type SnapshotInput, type StationResult,
@@ -54,7 +53,6 @@ const readings = ref<PvReadingDTO[]>([])
 // 上一年:只在用户真的打开同比时才取。undefined = 没取过(同比位显「未取上一年数据」),
 // [] = 取过但上一年真的没有 —— 两者措辞不同,不能混
 const prevReadings = ref<PvReadingDTO[] | undefined>(undefined)
-const weather = ref<WeatherDayDTO[]>([])
 const loading = ref(true)
 const failed = ref(false)
 let seq = 0
@@ -64,16 +62,13 @@ async function load(y: number) {
   loading.value = true
   failed.value = false
   try {
-    const [sts, rds, wx] = await Promise.all([
+    const [sts, rds] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : pvMeterApi.stations(),
       pvMeterApi.readingsYear(y),
-      // 天气是可选的:没导过就是空数组,分析照跑但不做辐照校准(质量记录里说明)
-      weatherApi.daily(y).catch(() => [] as WeatherDayDTO[]),
     ])
     if (my !== seq) return
     stations.value = sts
     readings.value = rds
-    weather.value = wx
     prevReadings.value = undefined
     if (cmp.mode.value === 'yoy') await loadPrev(y, my)
   } catch {
@@ -106,10 +101,6 @@ const labInput = computed<SnapshotInput | null>(() => {
     rows: readings.value.map(r => ({
       stationId: r.stationId, date: r.readDate, gen: r.genTotal,
       selfUse: r.selfUse, gridFeed: r.gridFeed, revenue: r.revenue, priceSnap: r.priceSnap,
-    })),
-    weather: weather.value.map(w => ({
-      date: w.date, ghiKwh: w.ghiKwh, rainMm: w.rainMm ?? 0, isRain: w.isRain,
-      hours: w.hours, hourMask: w.hourMask,
     })),
     prevRows: prevReadings.value?.map(r => ({
       stationId: r.stationId, date: r.readDate, gen: r.genTotal,
@@ -363,18 +354,6 @@ const nullOpt = computed<object>(() => {
   }
 })
 
-const healthOpt = computed<object>(() => {
-  const h = lab.value?.health ?? []
-  if (!h.length) return {}
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 56, right: 14, top: 24, bottom: 26 },
-    xAxis: { type: 'category', data: h.map(x => x.date), axisLabel: { formatter: (v: string) => v.slice(5) } },
-    yAxis: { type: 'value', name: 'log H', nameTextStyle: { fontSize: 10 }, scale: true },
-    series: [{ type: 'line', symbol: 'none', lineStyle: { width: 1.4, color: '#24785F' }, data: h.map(x => +x.logH.toFixed(4)) }],
-  }
-})
-
 const alphaOpt = computed<object>(() => {
   const rows = lab.value?.alphaRows ?? []
   if (!rows.length) return {}
@@ -500,15 +479,6 @@ function goMeter(): void {
         有 {{ snap.quality.droppedThin }} 天当天有抄表记录的楼栋不足 {{ 8 }} 栋，同类比较不可靠，
         这些天已整日剔除，不参与任何判断。
       </div>
-      <div v-if="!snap.quality.hasWeather" class="pma-warn mut">
-        本期未导入天气与辐照数据。楼栋之间的比较照常，但两件事做不了：
-        「全园是不是一起在变差」看不出来；低辐照日与气象数据不全的日子也**没有被筛掉**，原样进了模型。
-      </div>
-      <div v-else-if="snap.quality.unscreenedDays" class="pma-warn mut">
-        天气数据覆盖 {{ Math.round(snap.quality.weatherCoverage * 100) }}%（{{ snap.quality.unscreenedDays }} 天没有对应的气象记录）。
-        这些天的发电数据<b>照常参与分析</b>——没有气象记录不等于那天不好，只是没被筛过；
-        但「全园是不是一起在变差」这一项只在有气象记录的日子上成立。
-      </div>
 
       <!-- ① 这个数怎么来的 —— 整个设计的地基,一字不要改 -->
       <div class="pma-links">
@@ -525,7 +495,7 @@ function goMeter(): void {
         <p><b>这个办法的好处</b>：不需要装气象仪，也不受阴天晴天影响——天不好，各栋一起少发，不会被算成缺口。</p>
         <p>
           <b>它看不出来的</b>：如果各栋楼<b>同时</b>变差（比如全都该洗了），会被当成「天气不好」。
-          这一项我们用外部气象数据每季度校一次。
+          这一项这屏看不出来，要靠各栋自己的装机铭牌另算一条绝对基准。
         </p>
       </div>
       <div v-if="openNote === 'price'" class="pma-note">
@@ -727,12 +697,9 @@ function goMeter(): void {
             <h4>本期数据质量</h4>
             <p>
               共 {{ snap.quality.totalDays }} 天，有效 {{ snap.quality.okDays }} 天。
-              <template v-if="snap.quality.droppedHours">剔除 {{ snap.quality.droppedHours }} 天（当日气象数据不全）。</template>
-              <template v-if="snap.quality.droppedLowGhi">剔除 {{ snap.quality.droppedLowGhi }} 天（当日日照过弱）。</template>
               <template v-if="snap.quality.droppedThin">剔除 {{ snap.quality.droppedThin }} 天（当天有抄表记录的楼栋不足 8 栋）。</template>
               <template v-if="snap.quality.noMeter.length">未装表不入分析：{{ snap.quality.noMeter.join('、') }}。</template>
               <template v-if="snap.quality.noCapacity.length">未录装机容量不入分析：{{ snap.quality.noCapacity.join('、') }}。</template>
-              <template v-if="!snap.quality.hasWeather">本期未导入外部气象数据，未做辐照校准。</template>
             </p>
             <p class="mut">数据快照 <code>{{ snap.id }}</code> —— 工作台与本页用的是同一次计算。</p>
           </div>
@@ -833,21 +800,6 @@ function goMeter(): void {
             </div>
           </div>
 
-          <!-- C · 外部锚 -->
-          <div class="av2-card av2-s12">
-            <div class="av2-card-h">
-              <span class="t">C · 全园健康度 log H</span>
-              <span class="hint">
-                补的是唯一的结构性盲区：全园一起变差时，楼栋之间互相比看不出来
-              </span>
-            </div>
-            <AnaEChart v-if="lab.health.length" :option="healthOpt" :height="250" />
-            <div v-else class="pma-conv">
-              未导入外部气象数据，这条线给不出来 —— 楼栋之间的比较照常，
-              但「全园是不是一起在变差」看不出来。
-            </div>
-          </div>
-
           <div class="av2-card av2-s12">
             <div class="av2-card-h">
               <span class="t">A · 完整检验表</span>
@@ -887,8 +839,7 @@ function goMeter(): void {
       <div class="pma-foot">
         <span>本页数据快照 <code>{{ snap.id }}</code></span>
         <span>有效日 {{ snap.quality.okDays }} / {{ snap.quality.totalDays }} 天</span>
-        <span v-if="snap.quality.droppedHours">剔除 {{ snap.quality.droppedHours }} 天（当日气象数据不全）</span>
-        <span v-if="snap.quality.droppedLowGhi">剔除 {{ snap.quality.droppedLowGhi }} 天（当日日照过弱）</span>
+        <span v-if="snap.quality.droppedThin">剔除 {{ snap.quality.droppedThin }} 天（当天在网楼栋不足）</span>
         <span v-if="cmp.mode.value === 'yoy'">同比：{{ snap.yoy.yearNote }}</span>
         <button class="pma-lk" @click="goMeter">去分栋抄表 →</button>
       </div>
