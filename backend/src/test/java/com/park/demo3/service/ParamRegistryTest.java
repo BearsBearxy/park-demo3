@@ -30,7 +30,7 @@ class ParamRegistryTest {
         "lamp_area_base", "green_area_base", "area_base", "park_share_div", "loss_adj_rate",
         "coefficient", "std_add", "price_override",
         // 光伏分栋分析:年锚点 + 五条判据线(PV-ANALYSIS-SPEC §04),只有全局一档
-        "pv_yield_anchor_h", "pv_crit_resid", "pv_crit_disp_ratio",
+        "pv_yield_anchor_h", "pv_band_sigma", "pv_band_run",
         "pv_crit_cover_month", "pv_crit_ledger", "pv_crit_yield_ratio",
         // ③
         "loss_variant", "loss_head", "loss_c_meter", "loss_recon", "loss_exclude", "loss_denom_cable",
@@ -76,8 +76,8 @@ class ParamRegistryTest {
         assertFalse(ParamRegistry.allowed("elec_peak", "building:x"));  // 非数字 id
         assertFalse(ParamRegistry.allowed("no_such_key", ""));
         // 只有全局一档(S_GLOBAL_ONLY):判据线是全园一条,按期分设等于给一期二期画两条不同的线
-        assertTrue(ParamRegistry.allowed("pv_crit_resid", ""));
-        assertFalse(ParamRegistry.allowed("pv_crit_resid", "p1"));
+        assertTrue(ParamRegistry.allowed("pv_band_sigma", ""));
+        assertFalse(ParamRegistry.allowed("pv_band_sigma", "p1"));
         assertFalse(ParamRegistry.allowed("pv_yield_anchor_h", "building:13"));
         assertNull(ParamRegistry.scopeKind("px"));
         assertEquals(ScopeKind.ZONE, ParamRegistry.scopeKind("p3"));

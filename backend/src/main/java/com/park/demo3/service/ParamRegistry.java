@@ -130,10 +130,10 @@ public final class ParamRegistry {
         // group==MONTHLY ⟺ monthlyCheck==true,这六个是长期常量不是逐月填的数)。
         alloc("pv_yield_anchor_h", "光伏年等效利用小时锚点", "小时", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
             ValueKind.NUMBER, null, null, "本地实测值，已含组串损耗、逆变器效率、线损、温度与积灰", null);
-        alloc("pv_crit_resid", "分栋 月偏离判据线", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
-            ValueKind.RATE, null, null, "该栋该月比全园当日基准高或低超过这个比例，就在清单里记一行", null);
-        alloc("pv_crit_disp_ratio", "分栋 月波动判据线", "倍", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
-            ValueKind.NUMBER, null, "园区同月中位波动 × 本倍数", "不设固定百分比：波动的量纲跟园区自身规模走", null);
+        alloc("pv_band_sigma", "分栋 正常范围半宽", "倍", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.NUMBER, null, "这栋自己的稳健波动 × 本倍数", "2 倍是控制图惯例；调大范围变宽，报出来的段变少", null);
+        alloc("pv_band_run", "分栋 连续出范围的段长", "个", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.INT, null, null, "连续这么多天（或月）同一侧出范围才算一段，用来把断崖跟上下乱跳分开", null);
         alloc("pv_crit_cover_month", "分栋 月抄表覆盖下限", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
             ValueKind.RATE, null, null, "低于这个比例，该月的统计不再进判据，只在清单里记一行", null);
         alloc("pv_crit_ledger", "分栋 台账差判据线", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,

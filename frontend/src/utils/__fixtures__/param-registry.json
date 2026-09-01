@@ -419,24 +419,9 @@
   "tenantEditable" : false,
   "pairedWith" : null
 }, {
-  "key" : "pv_crit_resid",
+  "key" : "pv_band_sigma",
   "table" : "alloc",
-  "label" : "分栋 月偏离判据线",
-  "unit" : "",
-  "group" : "constant",
-  "scopes" : [ "global" ],
-  "defaultMode" : "from",
-  "monthlyCheck" : false,
-  "valueKind" : "rate",
-  "enumOptions" : null,
-  "formula" : null,
-  "hint" : "该栋该月比全园当日基准高或低超过这个比例，就在清单里记一行",
-  "tenantEditable" : false,
-  "pairedWith" : null
-}, {
-  "key" : "pv_crit_disp_ratio",
-  "table" : "alloc",
-  "label" : "分栋 月波动判据线",
+  "label" : "分栋 正常范围半宽",
   "unit" : "倍",
   "group" : "constant",
   "scopes" : [ "global" ],
@@ -444,8 +429,23 @@
   "monthlyCheck" : false,
   "valueKind" : "number",
   "enumOptions" : null,
-  "formula" : "园区同月中位波动 × 本倍数",
-  "hint" : "不设固定百分比：波动的量纲跟园区自身规模走",
+  "formula" : "这栋自己的稳健波动 × 本倍数",
+  "hint" : "2 倍是控制图惯例；调大范围变宽，报出来的段变少",
+  "tenantEditable" : false,
+  "pairedWith" : null
+}, {
+  "key" : "pv_band_run",
+  "table" : "alloc",
+  "label" : "分栋 连续出范围的段长",
+  "unit" : "个",
+  "group" : "constant",
+  "scopes" : [ "global" ],
+  "defaultMode" : "from",
+  "monthlyCheck" : false,
+  "valueKind" : "int",
+  "enumOptions" : null,
+  "formula" : null,
+  "hint" : "连续这么多天（或月）同一侧出范围才算一段，用来把断崖跟上下乱跳分开",
   "tenantEditable" : false,
   "pairedWith" : null
 }, {

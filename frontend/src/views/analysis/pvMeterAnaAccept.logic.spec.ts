@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildSnapshot, buildDetail, DEFAULT_CRITERIA,
-  type ReadingRow, type SnapshotInput, type StationCfg,
+  type AnaSnapshot, type ReadingRow, type SnapshotInput, type StationCfg,
 } from './pvMeterAna.logic'
 
 /**
  * 全刀验收(PV-ANALYSIS-SPEC §08)。这一份不测零件,测的是**整条链**:
- * 模拟器产出的数据 → 抛光 → 变点 → BH 闸门 → 命中清单。
+ * 模拟器产出的数据 → 逐段看板 → 事实清单。
  *
- * ⚠ 这里的夹具**照 `PvMeterService.simulateDays` 的结构复刻**,不是照它的数值:
+ * ⚠ 夹具**照 `PvMeterService.simulateDays` 的结构复刻**,不是照它的数值:
  *   共享的全园天气因子 + 站内小扰动 + 种入 F 座 7/18 起 −28%,
  *   站间拆分权重 = 容量 × 故障月系数(= 逐日系数的月内均值)。
- *   Java 的 `Random` 是 48 位 LCG,逐位复刻要上 BigInt,不值 —— 验收要的是**统计结构**对不对,
- *   不是两边随机数一样。真模拟器那一侧由 `PvMeterSimulateApiIT` 锁死,两头合起来才是完整的链。
+ *   Java 的 Random 是 48 位 LCG,逐位复刻要上 BigInt,不值 —— 验收要的是**统计结构**对不对。
+ *   真模拟器那一侧由 `PvMeterSimulateApiIT` 锁死,两头合起来才是完整的链。
  *
  * §08 的两条对照都在这里:
- *   **阳性** —— 种进去的靶子必须亮。一个连自带阳性对照都不亮的检测屏,「命中数为 0」说明不了任何事。
- *   **阴性** —— 零故障的园区上,命中数必须为 0。
+ *   **阳性** —— 种进去的靶子必须亮。一个连自带阳性对照都不亮的检测屏,「没有命中」说明不了任何事。
+ *   **阴性** —— 零故障的园区上,不许报出「出范围」的段。
  */
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -26,7 +26,6 @@ const FAULT_MONTH = 7
 const FAULT_DAY = 18
 const FAULT_FACTOR = 0.72
 
-/** 与后端同名同义:F 座 7/18 之后 0.72,其余 1.0 */
 const faultDay = (name: string, m: number, d: number, on: boolean) =>
   on && name === FAULT_STATION && (m > FAULT_MONTH || (m === FAULT_MONTH && d > FAULT_DAY)) ? FAULT_FACTOR : 1
 
@@ -49,13 +48,13 @@ const PHASE = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2]
 const WATT = 500
 
 interface Opts {
-  fault?: boolean                 // 默认种;false = 零故障园区(阴性对照)
-  noPanel?: boolean               // 板数与单块功率都不录 —— 绝对通道降级
-  badLedgerOn?: string            // 该栋台账容量改成理论的 1.5 倍
+  fault?: boolean          // 默认种;false = 零故障园区(阴性对照)
+  noPanel?: boolean
+  badLedgerOn?: string
+  jitterOn?: string        // 该栋 8 月逐日上下乱跳(散在两侧,不是断崖)
 }
 
-/** 复刻 simulateDays 的产出结构 */
-function simulate(o: Opts = {}): SnapshotInput {
+function simulate(o: Opts = {}, gran: 'month' | 'year' = 'month', month = 8): SnapshotInput {
   const on = o.fault !== false
   const stations: StationCfg[] = NAMES.map((name, i) => {
     const theo = o.noPanel ? null : CAPS[i]
@@ -70,10 +69,9 @@ function simulate(o: Opts = {}): SnapshotInput {
 
   for (let m = 1; m <= 12; m++) {
     const dim = new Date(YEAR, m, 0).getDate()
-    // 站间拆分:权重 = 容量 × 故障月系数(故障那份由同期其余站分掉,Σ 不变)
     const wgt = NAMES.map((name, i) => CAPS[i] * faultMonth(name, m, on))
     const wSum = wgt.reduce((a, b) => a + b, 0)
-    const monthPark = 900_000                       // phase 月量(度),对本验收只要恒定即可
+    const monthPark = 900_000
 
     // **全园共享**的天气序列:种子不含站 id
     const park = lcg(YEAR * 100 + m)
@@ -82,9 +80,13 @@ function simulate(o: Opts = {}): SnapshotInput {
 
     stations.forEach((s, i) => {
       const site = lcg(s.id * 100000 + YEAR * 100 + m)
+      const jit = lcg(s.id * 7 + m)
       const monthSelf = (monthPark * wgt[i]) / wSum
       const w: number[] = []
-      for (let d = 1; d <= dim; d++) w.push(dayW[d - 1] * (0.92 + site() * 0.16) * faultDay(s.name, m, d, on))
+      for (let d = 1; d <= dim; d++) {
+        const noisy = o.jitterOn === s.name && m === 8 ? 0.55 + jit() * 0.9 : 1
+        w.push(dayW[d - 1] * (0.92 + site() * 0.16) * faultDay(s.name, m, d, on) * noisy)
+      }
       const sum = w.reduce((a, b) => a + b, 0)
       for (let d = 1; d <= dim; d++) {
         const self = (monthSelf * w[d - 1]) / sum
@@ -97,126 +99,158 @@ function simulate(o: Opts = {}): SnapshotInput {
       }
     })
   }
-  return { year: YEAR, stations, rows, gridPrice: 0.391 }
+  return { year: YEAR, gran, month, stations, rows, gridPrice: 0.391 }
 }
 
-const SNAP = buildSnapshot(simulate())
-const hitsOf = (snap: ReturnType<typeof buildSnapshot>, name: string, k?: string) =>
-  snap.hits.filter(h => h.station === name && h.readable && (k == null || h.criterion === k))
+const AUG = buildSnapshot(simulate())                       // 月段:2025-08
+const YR = buildSnapshot(simulate({}, 'year'))              // 年段:2025 全年
+const factsOf = (s: AnaSnapshot, name: string, kind?: string) =>
+  s.facts.filter(f => f.station === name && (kind == null ? true : f.kind === kind))
+
+describe('§08 期间与刻度 —— 月段只画当月', () => {
+  it('月段的刻度是当月每一天,不是全年逐日', () => {
+    expect(AUG.gran).toBe('month')
+    expect(AUG.ym).toBe('2025-08')
+    expect(AUG.ticks).toHaveLength(31)
+    expect(AUG.ticks[0]).toBe('2025-08-01')
+    expect(AUG.ticks[30]).toBe('2025-08-31')
+    expect(AUG.tickLabels[0]).toBe('1')
+  })
+  it('年段的刻度是 12 个月', () => {
+    expect(YR.ticks).toHaveLength(12)
+    expect(YR.tickLabels[0]).toBe('1月')
+  })
+  it('**模型永远吃全年** —— 换段不改喂进去的数据量', () => {
+    expect(AUG.quality.totalDays).toBe(365)
+    expect(YR.quality.totalDays).toBe(365)
+    for (const s of AUG.stations) expect(s.days, s.name).toBe(365)
+  })
+  it('账面量跟着刻度走:月段 31 个点,年段 12 个点', () => {
+    expect(AUG.ledger.self).toHaveLength(31)
+    expect(YR.ledger.self).toHaveLength(12)
+  })
+})
 
 describe('§08 阳性对照 —— 种进去的靶子必须亮', () => {
-  // 站间拆分权重吃月系数,F 座少拿的那份由同期其余四栋分掉:
-  // 8 月 F 权重 0.15×0.72=0.108、五站权重和 0.958 → 实得 0.1127 / 应得 0.15 ≈ −25%
-  it('① F座 在月偏离这条上有命中', () => {
-    const h = hitsOf(SNAP, FAULT_STATION, 'resid')
-    expect(h.length, `F座 的命中:${JSON.stringify(SNAP.hits.filter(x => x.station === FAULT_STATION))}`).toBe(1)
-    expect(h[0].value).toMatch(/−\d+%/)
-    expect(h[0].line).toContain('q<0.05')
+  it('① F座 在 8 月的看板上整月落在正常范围下方', () => {
+    const b = AUG.board.find(x => x.name === FAULT_STATION)!
+    expect(b.lo, '范围估不出来').not.toBeNull()
+    const below = b.out.filter(v => v === -1).length
+    expect(below, `31 天里只有 ${below} 天在范围下方`).toBeGreaterThanOrEqual(25)
   })
 
-  it('① F座 故障满月的各月偏离都是负的,量级在 −15% ~ −40%', () => {
-    const f = SNAP.stations.find(s => s.name === FAULT_STATION)!
-    const dev = SNAP.grid.deviation.get(f.id)!
-    for (const c of [7, 8, 9, 10, 11]) {          // 8–12 月
-      expect(dev[c], `${SNAP.months[c]}`).not.toBeNull()
-      expect(dev[c]!, `${SNAP.months[c]} = ${dev[c]}`).toBeLessThan(-0.15)
-      expect(dev[c]!, `${SNAP.months[c]} = ${dev[c]}`).toBeGreaterThan(-0.40)
-    }
+  it('① 事实清单把它说成「连续 N 天在正常范围下方」—— 断崖,不是波动', () => {
+    const f = factsOf(AUG, FAULT_STATION, 'run')
+    expect(f.length, JSON.stringify(factsOf(AUG, FAULT_STATION))).toBe(1)
+    expect(f[0].text).toMatch(/起连续 \d+ 天在正常范围下方/)
   })
 
-  // 变点日期落在种入日 **±3 周**内即算通过 —— 不是 ±3 天,argmax 有赢家诅咒,区间本来就那么宽
-  it('① 变点落在 7/18 ±3 周', () => {
-    const f = SNAP.stations.find(s => s.name === FAULT_STATION)!
-    const d = buildDetail(SNAP, f.id)!
-    expect(d.cpDate, '未扫出变点').not.toBeNull()
+  it('① 正常范围是拿**当月之外**的数据估的 —— 否则整月都坏的栋会把带撑到把自己包进去', () => {
+    const b = AUG.board.find(x => x.name === FAULT_STATION)!
+    expect(b.baseNote).toContain('当月之外')
+    // 8 月的比值全部低于范围下沿
+    const vals = b.ratio.filter((v): v is number => v != null)
+    expect(Math.max(...vals)).toBeLessThan(b.lo!)
+  })
+
+  it('① 年段上 F座 也被说成连续几个月在范围下方', () => {
+    const f = factsOf(YR, FAULT_STATION, 'run')
+    expect(f.length).toBe(1)
+    expect(f[0].text).toMatch(/起连续 \d+ 个月在正常范围下方/)
+  })
+
+  it('① 靶子亮的同时不能满屏都亮:其余各栋在 8 月不报「出范围」', () => {
+    const others = AUG.facts.filter(f => (f.kind === 'run' || f.kind === 'scatter') && f.station !== FAULT_STATION)
+    expect(others.map(f => `${f.station}:${f.text}`)).toEqual([])
+  })
+
+  it('① 变点仍落在 7/18 ±3 周(抽屉里的通道没坏)', () => {
+    const s = AUG.stations.find(x => x.name === FAULT_STATION)!
+    const d = buildDetail(AUG, s.id)!
+    expect(d.cpDate).not.toBeNull()
     const off = Math.abs(new Date(d.cpDate!).getTime() - new Date(`${YEAR}-07-18`).getTime()) / 86400000
     expect(off, `变点 ${d.cpDate}`).toBeLessThanOrEqual(21)
   })
-
-  it('① 靶子亮的同时不能满屏都亮:其余各栋在月偏离上不命中', () => {
-    const others = SNAP.hits.filter(h => h.criterion === 'resid' && h.readable && h.station !== FAULT_STATION)
-    expect(others.map(h => h.station)).toEqual([])
-  })
 })
 
-describe('§08 阴性对照 —— 零故障园区命中数为 0', () => {
+describe('§08 阴性对照 —— 零故障园区不报「出范围」', () => {
   const clean = buildSnapshot(simulate({ fault: false }))
-  it('② 零故障合成园区上,月偏离一条都不命中', () => {
-    expect(clean.hits.filter(h => h.criterion === 'resid' && h.readable).map(h => h.station)).toEqual([])
+  it('② 8 月一条 run / scatter 都没有', () => {
+    expect(clean.facts.filter(f => f.kind === 'run' || f.kind === 'scatter').map(f => f.station)).toEqual([])
   })
-  it('② 台账与理论一致时,台账差一条都不命中', () => {
-    expect(clean.hits.filter(h => h.criterion === 'ledger' && h.readable)).toEqual([])
+  it('② 台账与理论一致时不报台账差', () => {
+    expect(clean.facts.filter(f => f.kind === 'ledger').map(f => f.text)).toEqual([])
   })
 })
 
-describe('§08 零剔除', () => {
-  it('④ 进模型的是全部 365 天,不是被筛过的子集', () => {
-    expect(SNAP.quality.totalDays).toBe(365)
-    expect(SNAP.quality.okDays).toBe(365)
-    expect(SNAP.quality.droppedThin).toBe(0)
+describe('§08 断崖与波动要分开说 —— 用户要的就是这两种感觉', () => {
+  const jit = buildSnapshot(simulate({ fault: false, jitterOn: '9栋' }))
+  it('上下乱跳的栋报的是 scatter,不是 run', () => {
+    const f = factsOf(jit, '9栋')
+    expect(f.length, JSON.stringify(f)).toBeGreaterThan(0)
+    expect(f.some(x => x.kind === 'scatter')).toBe(true)
+    expect(f.every(x => x.kind !== 'run')).toBe(true)
+    expect(f.find(x => x.kind === 'scatter')!.text).toContain('在正常范围之外')
   })
-  it('④ 每栋的在网天数都是 365 —— 没有任何按发电量或天气的日过滤', () => {
-    for (const s of SNAP.stations) expect(s.days, s.name).toBe(365)
+  it('断崖的栋报的是 run,不是 scatter', () => {
+    expect(factsOf(AUG, FAULT_STATION, 'run').length).toBe(1)
+    expect(factsOf(AUG, FAULT_STATION, 'scatter').length).toBe(0)
   })
 })
 
 describe('§08 判据线可改', () => {
-  // 参数中心改了,这张清单必须跟着变 —— 否则「线画在屏上、你能反对」是句空话
-  it('⑤ 把月偏离线放宽到 ±50%,F座 那条命中消失', () => {
-    const loose = buildSnapshot({ ...simulate(), crit: { resid: 0.5 } })
-    expect(hitsOf(loose, FAULT_STATION, 'resid')).toEqual([])
+  it('把范围放宽到 6 倍波动,F座 那条 run 消失', () => {
+    const loose = buildSnapshot({ ...simulate(), crit: { bandSigma: 6 } })
+    expect(factsOf(loose, FAULT_STATION, 'run')).toEqual([])
   })
-  it('⑤ 把台账差线收到 ±0.1%,原本不命中的栋开始命中', () => {
-    const tight = buildSnapshot({ ...simulate({ badLedgerOn: 'E座' }), crit: { ledger: 0.001 } })
-    expect(tight.hits.filter(h => h.criterion === 'ledger' && h.readable).length).toBeGreaterThan(0)
+  it('把「连续几天算一段」提到 40,断崖降级成散点描述', () => {
+    const strict = buildSnapshot({ ...simulate(), crit: { bandRun: 40 } })
+    expect(factsOf(strict, FAULT_STATION, 'run')).toEqual([])
   })
-  it('⑤ 快照上带着当前生效的判据线,屏拿它渲染,不另存一份', () => {
-    expect(SNAP.crit.resid).toBe(DEFAULT_CRITERIA.resid)
-    expect(buildSnapshot({ ...simulate(), crit: { resid: 0.33 } }).crit.resid).toBe(0.33)
+  it('快照上带着当前生效的线,屏拿它渲染,不另存一份', () => {
+    expect(AUG.crit.bandSigma).toBe(DEFAULT_CRITERIA.bandSigma)
+    expect(buildSnapshot({ ...simulate(), crit: { bandSigma: 3 } }).crit.bandSigma).toBe(3)
   })
 })
 
-describe('§08 绝对通道降级 —— 板数没录时其余块不受影响', () => {
-  const noPanel = buildSnapshot(simulate({ noPanel: true }))
-  it('⑦ 未录板数的栋进 noPanel 名单,理论装机为空', () => {
-    expect(noPanel.quality.noPanel.length).toBe(NAMES.length)
-    expect(noPanel.stations.every(s => s.theoKwp === null)).toBe(true)
+describe('§08 台账差是纯算术 —— 不依赖任何统计,也不依赖期间', () => {
+  it('台账改成理论的 1.5 倍,两个数都写在事实行上', () => {
+    const bad = buildSnapshot(simulate({ badLedgerOn: 'E座' }))
+    const f = factsOf(bad, 'E座', 'ledger')
+    expect(f.length).toBe(1)
+    expect(f[0].text).toContain('585.0')      // 390 × 1.5
+    expect(f[0].text).toContain('390.0')
   })
-  it('⑦ 分母退回台账装机,年等效小时照常算得出来', () => {
-    for (const s of noPanel.stations) {
+  it('板数没录 → 说「对不了」,不是说没问题', () => {
+    const np = buildSnapshot(simulate({ noPanel: true }))
+    const f = factsOf(np, 'B座', 'ledger')
+    expect(f.length).toBe(1)
+    expect(f[0].text).toContain('未录')
+  })
+})
+
+describe('§08 绝对通道降级 —— 板数没录时看板完全不受影响', () => {
+  const np = buildSnapshot(simulate({ noPanel: true }))
+  it('看板与有板数时逐点一致 —— 它根本不用装机容量', () => {
+    const a = AUG.board.find(x => x.name === FAULT_STATION)!
+    const b = np.board.find(x => x.name === FAULT_STATION)!
+    expect(b.ratio).toEqual(a.ratio)
+    expect(b.lo).toEqual(a.lo)
+  })
+  it('分母退回台账装机,年等效小时照常算得出来', () => {
+    for (const s of np.stations) {
       expect(s.yieldDenom, s.name).toBe('ledger')
       expect(s.yieldHours, s.name).not.toBeNull()
     }
-  })
-  it('⑦ 相对通道完全不受影响:网格与月偏离命中与有板数时一致', () => {
-    const f = NAMES.indexOf(FAULT_STATION) + 1
-    expect(noPanel.grid.deviation.get(f)).toEqual(SNAP.grid.deviation.get(f))
-    expect(hitsOf(noPanel, FAULT_STATION, 'resid').length).toBe(1)
-  })
-  it('⑦ 台账差那条降为「读不出」—— 既不是命中也不是未命中', () => {
-    const h = noPanel.hits.filter(x => x.station === 'B座' && x.criterion === 'ledger')
-    expect(h.length).toBe(1)
-    expect(h[0].readable).toBe(false)
-    expect(h[0].line).toContain('读不出')
-  })
-})
-
-describe('§08 台账差是纯算术 —— 不依赖任何统计', () => {
-  it('把某栋台账改成理论的 1.5 倍,台账差立刻命中且值可复算', () => {
-    const bad = buildSnapshot(simulate({ badLedgerOn: 'E座' }))
-    const h = bad.hits.filter(x => x.station === 'E座' && x.criterion === 'ledger')
-    expect(h.length).toBe(1)
-    expect(h[0].readable).toBe(true)
-    expect(h[0].value).toContain('+50%')
-    expect(h[0].line).toBe('判据线 ±3%')
   })
 })
 
 describe('§08 确定性', () => {
   it('同一份数据两次算,id 相同', () => {
-    expect(buildSnapshot(simulate()).id).toBe(SNAP.id)
+    expect(buildSnapshot(simulate()).id).toBe(AUG.id)
   })
-  it('判据线不同 → id 不同(屏上写的线变了,快照就不是同一次计算)', () => {
-    expect(buildSnapshot({ ...simulate(), crit: { resid: 0.2 } }).id).not.toBe(SNAP.id)
+  it('换了期间就是另一次计算,id 不同', () => {
+    expect(YR.id).not.toBe(AUG.id)
+    expect(buildSnapshot(simulate({}, 'month', 9)).id).not.toBe(AUG.id)
   })
 })

@@ -1,19 +1,20 @@
 <script setup lang="ts">
-// 光伏分栋分析(pv-meter-analysis)— PV-ANALYSIS-SPEC §06。14 块,五层:
-//   L1 相对偏离(栋跟栋比) · L2 绝对水平(跟标称比) · L3 账面量 · L4 逐栋曲线 · L5 单栋抽屉
+// 光伏分栋分析(pv-meter-analysis)— PV-ANALYSIS-SPEC §06。
 //
-// 铁律:**一份数据、一次计算、一个 snapshot id**。整屏只跑一次 buildSnapshot,
-// 各层渲染同一个对象的不同面,页脚显示那个 id —— 数字对不上时先看是不是同一次计算。
+// **一个仪器,两档缩放。** 期间切「按月 / 按年」,屏跟着换刻度:
+//   按月段 → x = 当月 1…31 日,一个点 = 当日。数据是逐日进来的,异常要在几天内看见。
+//   按年段 → x = 12 个月,一个点 = 当月。回看用。
+// **模型永远吃全年,只有「画哪一段」跟着期间变** —— 模型要历史,屏要新鲜。
+// 逐日铺满全年没人看得过来,所以月段只画当月那三十来个点。
+//
+// 铁律:一份数据、一次计算、一个 snapshot id,页脚显示那个 id。
 //
 // ⚠ 文案规范(§05):**屏只说明可视化在做什么,不输出解释性结论。**
-//   能写:图种 / 坐标轴含义与单位 / 色阶与留白的含义 / 数据来源与条数 / 判据线画在哪。
-//   不能写:诊断结论、成因归因、建议动作、严重度判词(正常/异常/需关注)、反事实金额。
-//   边界:数据里直接读得出来的是事实,可以写;要过一个模型才得出的是结论,不写。
+//   能写:图种 / 坐标轴含义与单位 / 范围是拿哪一段估的 / 数据来源与条数 / 判据线画在哪。
+//   不能写:诊断结论、成因归因、建议动作、严重度判词、反事实金额,以及 p / q 这类统计量。
 //
-// ⚠ 热力矩阵**不用 ECharts**:echartsBundle 没注册 HeatmapChart 与 VisualMapComponent,
-//   用了会得到空白图 + 一句控制台警告,而 jsdom 里测不出来。156 格用 CSS Grid 手写更划算。
-// ⚠ M3 小倍数用内联 SVG 而不是 13 个 ECharts grid:共用 y 轴是小倍数的命门,
-//   自己算刻度比配 13 套 grid 更好保证,也不用往 bundle 里加图表类型。
+// ⚠ 看板用**内联 SVG**,不用 ECharts:13 行小图要共用同一段纵轴,自己算刻度比配 13 套 grid
+//   更好保证;而且 bundle 里没注册 heatmap/custom,jsdom 又测不出漏注册,手写还能直接数节点。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
@@ -28,10 +29,9 @@ import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
 import {
   buildSnapshot, buildDetail, DEFAULT_CRITERIA,
-  type AnaSnapshot, type Criteria, type SnapshotInput, type StationRow,
+  type AnaSnapshot, type BoardRow, type Criteria, type SnapshotInput,
 } from './pvMeterAna.logic'
 
-// 支持集是**模块级常量**:传给 AnaShell 的与本屏自己读的必须同一份引用(§06 约束)
 const CMP: CompareMode[] = ['yoy']
 const GRID_PRICE = 0.391   // 上网标杆价(脱硫煤)
 
@@ -39,8 +39,10 @@ const router = useRouter()
 const tabs = useTabsStore()
 const period = usePeriod()
 const cmp = useCompare(CMP)
-// periodMode='year' 只许读 year(AnaShell.spec.ts:35 守着)
+// periodMode='full':外壳给「按月 / 按年」+ 年选 + 月选,屏只读 sel
+const gran = computed<'month' | 'year'>(() => (period.sel.value.gran === 'year' ? 'year' : 'month'))
 const year = computed(() => period.sel.value.year)
+const month = computed(() => period.sel.value.month)
 
 const stations = ref<PvStationDTO[]>([])
 const readings = ref<PvReadingDTO[]>([])
@@ -51,15 +53,11 @@ const failed = ref(false)
 let seq = 0
 
 const CRIT_KEYS = [
-  'pv_yield_anchor_h', 'pv_crit_resid', 'pv_crit_disp_ratio',
-  'pv_crit_cover_month', 'pv_crit_ledger', 'pv_crit_yield_ratio',
+  'pv_yield_anchor_h', 'pv_crit_cover_month', 'pv_crit_ledger',
+  'pv_crit_yield_ratio', 'pv_band_sigma', 'pv_band_run',
 ] as const
 
-/**
- * 判据线来自计费参数(§04.1)—— 屏上写的必须是**当前生效的那个数**,
- * 所以取失败要回落到一份确定的默认值,不能显空,也不能让整屏挂掉。
- * 六个键都是长期常数,站在哪个账期看都一样,ym 取当年 12 月即可。
- */
+/** 判据线来自计费参数 —— 屏上写的必须是**当前生效的那个数**,取不到就回落默认,不显空 */
 async function loadCrit(y: number) {
   try {
     const rows = await paramsApi.list(`${y}-12`, 'all', { key: CRIT_KEYS.join(',') })
@@ -70,16 +68,17 @@ async function loadCrit(y: number) {
     }
     crit.value = {
       anchorHours: n('pv_yield_anchor_h', DEFAULT_CRITERIA.anchorHours),
-      resid: n('pv_crit_resid', DEFAULT_CRITERIA.resid),
-      dispRatio: n('pv_crit_disp_ratio', DEFAULT_CRITERIA.dispRatio),
       coverMonth: n('pv_crit_cover_month', DEFAULT_CRITERIA.coverMonth),
       ledger: n('pv_crit_ledger', DEFAULT_CRITERIA.ledger),
       yieldRatio: n('pv_crit_yield_ratio', DEFAULT_CRITERIA.yieldRatio),
+      bandSigma: n('pv_band_sigma', DEFAULT_CRITERIA.bandSigma),
+      bandRun: n('pv_band_run', DEFAULT_CRITERIA.bandRun),
       minOnlineDays: DEFAULT_CRITERIA.minOnlineDays,
     }
   } catch { /* 用默认值,屏照常出 */ }
 }
 
+// 取的永远是**整年**:看板只画选中那段,但正常范围要拿段外的数据来估
 async function load(y: number) {
   const my = ++seq
   loading.value = true
@@ -105,10 +104,11 @@ async function loadPrev(y: number, my: number) {
     const prev = await pvMeterApi.readingsYear(y - 1)
     if (my === seq) prevReadings.value = prev
   } catch {
-    if (my === seq) prevReadings.value = undefined   // 取失败 ≠ 上一年没有
+    if (my === seq) prevReadings.value = undefined
   }
 }
 onMounted(() => { void loadCrit(year.value); void load(year.value) })
+// 只有换**年**才重新取数;切月 / 切粒度都在同一份整年数据上重算,不打接口
 watch(year, (y) => { void loadCrit(y); void load(y) })
 watch(cmp.mode, (m) => { if (m === 'yoy' && prevReadings.value === undefined) void loadPrev(year.value, seq) })
 
@@ -117,6 +117,8 @@ const snapInput = computed<SnapshotInput | null>(() => {
   if (!readings.value.length) return null
   return {
     year: year.value,
+    gran: gran.value,
+    month: month.value || undefined,
     stations: stations.value.map(s => ({
       id: s.id, name: s.name, phase: s.phase, metered: s.metered === 1,
       capKwp: s.capacityKwp, panelCount: s.panelCount, panelWatt: s.panelWatt,
@@ -135,120 +137,86 @@ const snapInput = computed<SnapshotInput | null>(() => {
 })
 const snap = computed<AnaSnapshot | null>(() => (snapInput.value ? buildSnapshot(snapInput.value) : null))
 
-const monLabel = (ym: string) => `${Number(ym.slice(5, 7))}月`
-const pct0 = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(0)}%`
+const segLabel = computed(() => (gran.value === 'year' ? `${year.value} 年` : `${year.value} 年 ${month.value} 月`))
+const unit = computed(() => (gran.value === 'month' ? '天' : '个月'))
 const wan = (v: number) => fnum(v / 10000, 1)
 
-// ── L1 三张同网格 ─────────────────────────────────────────────────────
-const gridStations = computed<StationRow[]>(() => (snap.value?.stations ?? []).filter(s => s.metered))
+// ── L1 逐段看板 ───────────────────────────────────────────────────────
+// 日抄与月抄**分开两组**:N=12 与 N=244 的可信度差一个量级,并排放会让人以为一样准
+const dailyRows = computed<BoardRow[]>(() => (snap.value?.board ?? []).filter(b => b.cadence === 'daily'))
+const monthlyRows = computed<BoardRow[]>(() => (snap.value?.board ?? []).filter(b => b.cadence === 'monthly'))
 
-/** 色阶按 ±P95 截断:一个 +500% 的格子会把其余 155 格全压成同一个白 */
-function p95(vals: number[], floor: number): number {
-  if (!vals.length) return floor
-  const a = [...vals].sort((x, y) => x - y)
-  return Math.max(floor, a[Math.min(a.length - 1, Math.floor(a.length * 0.95))])
-}
-const devScale = computed(() => {
-  const all: number[] = []
-  for (const [, arr] of snap.value?.grid.deviation ?? []) for (const v of arr) if (v != null) all.push(Math.abs(v))
-  return p95(all, 0.05)
+const BD = { w: 300, h: 42, pad: 4 }
+/** 共用同一段纵轴 —— 各自缩放就没法横着扫 */
+const bdRange = computed(() => {
+  const vs: number[] = []
+  for (const b of snap.value?.board ?? []) {
+    for (const v of b.ratio) if (v != null) vs.push(v)
+    if (b.lo != null) vs.push(b.lo)
+    if (b.hi != null) vs.push(b.hi)
+  }
+  if (!vs.length) return { lo: 0, hi: 2 }
+  const lo = Math.min(...vs), hi = Math.max(...vs)
+  const pad = Math.max(0.05, (hi - lo) * 0.1)
+  return { lo: lo - pad, hi: hi + pad }
 })
-const dispScale = computed(() => {
-  const all: number[] = []
-  for (const [, arr] of snap.value?.grid.dispersion ?? []) for (const v of arr) if (v != null) all.push(v)
-  return p95(all, 0.02)
-})
-
-type Cell = { cls: string; bg: string; tip: string }
-const NA: Cell = { cls: 'c-na', bg: '', tip: '该月尚无抄表记录（未投产）' }
-
-/** 发散配色零居中:红 = 低于基准,蓝 = 高于,白 = 贴基准。越过截断点的格描边 */
-function devCell(v: number | null | undefined, born: boolean): Cell {
-  if (!born) return NA
-  if (v == null) return { cls: 'c-nd', bg: '', tip: '该月抄表天数太少，算不出中位数' }
-  const k = Math.min(1, Math.abs(v) / devScale.value)
-  const hue = v < 0 ? 'var(--hue-red)' : 'var(--hue-blue)'
-  return {
-    cls: Math.abs(v) > devScale.value ? 'c-over' : '',
-    bg: `color-mix(in srgb, ${hue} ${Math.round(k * 82)}%, transparent)`,
-    tip: `残差中位数 ${pct0(v)}`,
-  }
-}
-/** 顺序配色单向深浅 —— 波动没有方向 */
-function dispCell(v: number | null | undefined, born: boolean): Cell {
-  if (!born) return NA
-  if (v == null) return { cls: 'c-nd', bg: '', tip: '该月抄表不足 4 天，算不出稳健波动' }
-  const k = Math.min(1, v / dispScale.value)
-  return {
-    cls: v > dispScale.value ? 'c-over' : '',
-    bg: `color-mix(in srgb, var(--hue-orange) ${Math.round(k * 82)}%, transparent)`,
-    tip: `日间波动 ${(v * 100).toFixed(0)}%`,
-  }
-}
-/** 留白(未投产)与斜纹(有该月但一天没抄)必须是两种视觉 */
-function covCell(v: number | null | undefined, born: boolean): Cell {
-  if (!born) return NA
-  if (v == null) return { cls: 'c-nd', bg: '', tip: '该月一天都没抄' }
-  return {
-    cls: '',
-    bg: `color-mix(in srgb, var(--hue-green) ${Math.round(v * 82)}%, transparent)`,
-    tip: `该月抄了 ${(v * 100).toFixed(0)}% 的天数`,
-  }
-}
-const bornAt = (id: number, c: number) => c >= (snap.value?.grid.born.get(id) ?? 0)
-
-/**
- * 「基准可能被拽偏」横幅。残差符号**按期分裂**(同期一批全正、另一期一批全负)是
- * 多数派把中位数基准拽偏的指纹 —— 中位数的崩溃点是 50%,同期栋数过半偏低时基准跟着下移,
- * 剩下正常的那批反而显示成高。这条不能只写在图注里让人自己想明白。
- */
-const skewedMonths = computed(() => {
+function bd(b: BoardRow) {
   const s = snap.value
-  if (!s) return [] as string[]
-  const out: string[] = []
-  s.months.forEach((m, c) => {
-    const byPhase = new Map<number, number[]>()
-    for (const st of gridStations.value) {
-      const v = s.grid.deviation.get(st.id)?.[c]
-      if (v == null) continue
-      const a = byPhase.get(st.phase) ?? []
-      a.push(v); byPhase.set(st.phase, a)
-    }
-    const signs = [...byPhase.values()]
-      .filter(a => a.length >= 2)
-      .map(a => (a.every(v => v > 0.05) ? 1 : a.every(v => v < -0.05) ? -1 : 0))
-      .filter(v => v !== 0)
-    if (signs.length >= 2 && new Set(signs).size > 1) out.push(m)
-  })
-  return out
-})
+  const { lo, hi } = bdRange.value
+  const n = s?.ticks.length ?? 1
+  const X = (i: number) => BD.pad + (i / Math.max(1, n - 1)) * (BD.w - BD.pad * 2)
+  const Y = (v: number) => BD.h - BD.pad - ((v - lo) / Math.max(1e-9, hi - lo)) * (BD.h - BD.pad * 2)
+  const pts = b.ratio.map((v, i) => (v == null ? null : { x: X(i), y: Y(v), out: b.out[i] ?? 0, i }))
+  const seen = pts.filter((p): p is NonNullable<typeof p> => p != null)
+  // 缺抄的刻度**断开**,不连线:插值会被当成观测
+  const segs: string[] = []
+  let cur: string[] = []
+  for (const p of pts) {
+    if (p == null) { if (cur.length > 1) segs.push(cur.join(' ')); cur = []; continue }
+    cur.push(`${cur.length ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+  }
+  if (cur.length > 1) segs.push(cur.join(' '))
+  return {
+    lines: segs,
+    band: b.lo != null && b.hi != null
+      ? { y: Y(b.hi), h: Math.max(1, Y(b.lo) - Y(b.hi)) }
+      : null,
+    center: b.center != null ? Y(b.center) : null,
+    dots: seen.filter(p => p.out !== 0),
+    n: seen.length,
+  }
+}
+const tickAt = (i: number) => snap.value?.tickLabels[i] ?? ''
 
 // ── L2 绝对水平 ───────────────────────────────────────────────────────
-// ECharts option 是纯 JSON,**不能引用 CSS 变量**,颜色只能写字面值(§06 约束④)
+// ECharts option 是纯 JSON,**不能引用 CSS 变量**,颜色只能写字面值
+const anchorPerTick = computed(() => {
+  const s = snap.value
+  if (!s) return 0
+  return +(s.crit.anchorHours / (s.gran === 'month' ? 365 : 12)).toFixed(2)
+})
 const a1Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
-  const anchorMonthly = +(s.crit.anchorHours / 12).toFixed(1)
   return {
     tooltip: { trigger: 'axis' },
     grid: { left: 52, right: 16, top: 20, bottom: 26 },
-    xAxis: { type: 'category', data: s.months.map(monLabel) },
+    xAxis: { type: 'category', data: s.tickLabels },
     yAxis: { type: 'value', name: '小时', nameTextStyle: { fontSize: 10 } },
     series: [{
-      name: '全园月等效小时', type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false,
+      type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false,
       lineStyle: { width: 2.2, color: '#1F5FBF' }, itemStyle: { color: '#1F5FBF' },
-      data: s.ledger.yieldByMonth.map(v => (v == null ? null : +v.toFixed(1))),
+      data: s.ledger.yield.map(v => (v == null ? null : +v.toFixed(2))),
       markLine: {
         silent: true, symbol: 'none',
         lineStyle: { color: '#8A8A85', type: 'dashed', width: 1.4 },
-        label: { formatter: `锚点按月均摊 ${anchorMonthly}`, fontSize: 10, position: 'insideEndTop' },
-        data: [{ yAxis: anchorMonthly }],
+        label: { formatter: `锚点摊到每${s.gran === 'month' ? '天' : '月'} ${anchorPerTick.value}`, fontSize: 10, position: 'insideEndTop' },
+        data: [{ yAxis: anchorPerTick.value }],
       },
     }],
   }
 })
 
-/** T1:x = 理论装机,y = 台账装机,实线 = 两者相等,虚线 = ±判据线 */
 const t1Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
@@ -276,29 +244,29 @@ const t1Opt = computed<object>(() => {
   }
 })
 
-// ── L3 账面量 ─────────────────────────────────────────────────────────
+// ── L3 账面量(跟着期间走) ─────────────────────────────────────────────
 const r1Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
-  const m = s.ledger.monthly
+  const k = s.gran === 'month' ? 1000 : 10000     // 日粒度用千度,月粒度用万度
   return {
     tooltip: { trigger: 'axis' },
     legend: { top: 0, data: ['自消纳', '上网', '损耗', '损耗率'] },
     grid: { left: 52, right: 46, top: 30, bottom: 26 },
-    xAxis: { type: 'category', data: m.labels.map(monLabel) },
+    xAxis: { type: 'category', data: s.tickLabels },
     yAxis: [
-      { type: 'value', name: '万度', nameTextStyle: { fontSize: 10 } },
+      { type: 'value', name: s.gran === 'month' ? '千度' : '万度', nameTextStyle: { fontSize: 10 } },
       // 副轴范围**固定** 0–3%,不随数据自适应:两个 y 轴的刻度能造出任意的视觉相关性
       { type: 'value', name: '%', min: 0, max: 3, nameTextStyle: { fontSize: 10 } },
     ],
     series: [
-      { name: '自消纳', type: 'bar', stack: 'x', barMaxWidth: 22, itemStyle: { color: '#1F5FBF' }, data: m.self.map(v => +(v / 10000).toFixed(2)) },
-      { name: '上网', type: 'bar', stack: 'x', itemStyle: { color: '#9DC3E6' }, data: m.grid.map(v => +(v / 10000).toFixed(2)) },
-      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: '#D8D8D4' }, data: m.loss.map(v => +(v / 10000).toFixed(2)) },
+      { name: '自消纳', type: 'bar', stack: 'x', barMaxWidth: 22, itemStyle: { color: '#1F5FBF' }, data: s.ledger.self.map(v => +(v / k).toFixed(2)) },
+      { name: '上网', type: 'bar', stack: 'x', itemStyle: { color: '#9DC3E6' }, data: s.ledger.grid.map(v => +(v / k).toFixed(2)) },
+      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: '#D8D8D4' }, data: s.ledger.loss.map(v => +(v / k).toFixed(2)) },
       {
-        name: '损耗率', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 5,
+        name: '损耗率', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4,
         lineStyle: { width: 1.6, color: '#8A5800' }, itemStyle: { color: '#8A5800' },
-        data: m.lossPct.map(v => +(v * 100).toFixed(2)),
+        data: s.ledger.lossPct.map(v => +(v * 100).toFixed(2)),
       },
     ],
   }
@@ -353,43 +321,40 @@ const r3Opt = computed<object>(() => {
 const r4Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
-  const m = s.ledger.monthly
+  const k = s.gran === 'month' ? 1000 : 10000
   return {
     tooltip: { trigger: 'axis' },
     grid: { left: 52, right: 16, top: 16, bottom: 26 },
-    xAxis: { type: 'category', data: m.labels.map(monLabel) },
-    yAxis: { type: 'value', name: '万度', nameTextStyle: { fontSize: 10 } },
+    xAxis: { type: 'category', data: s.tickLabels },
+    yAxis: { type: 'value', name: s.gran === 'month' ? '千度' : '万度', nameTextStyle: { fontSize: 10 } },
     series: [{
-      type: 'line', symbol: 'circle', symbolSize: 5, areaStyle: { color: '#DCE9F2' },
+      type: 'line', symbol: 'circle', symbolSize: 4, areaStyle: { color: '#DCE9F2' },
       lineStyle: { width: 2.2, color: '#1F5FBF' }, itemStyle: { color: '#1F5FBF' },
-      data: m.labels.map((_, i) => +((m.self[i] + m.grid[i] + m.loss[i]) / 10000).toFixed(2)),
+      data: s.ledger.self.map((v, i) => +((v + s.ledger.grid[i] + s.ledger.loss[i]) / k).toFixed(2)),
     }],
   }
 })
 
-// ── L4 M3 小倍数(内联 SVG,共用 y 轴) ──────────────────────────────────
+// ── L4 M3 小倍数(逐月斜率,与期间无关 —— 它本来就是逐月的) ─────────────
 const M3 = { w: 132, h: 46, pad: 4 }
 const m3Range = computed(() => {
-  const s = snap.value
   const vs: number[] = []
-  if (s) for (const [, arr] of s.slopes) for (const r of arr) if (isFinite(r.beta)) vs.push(r.beta)
+  for (const [, arr] of snap.value?.slopes ?? []) for (const r of arr) if (isFinite(r.beta)) vs.push(r.beta)
   if (!vs.length) return { lo: -0.1, hi: 2.1 }
   return { lo: Math.min(0, ...vs) - 0.1, hi: Math.max(2, ...vs) + 0.1 }
 })
-/** 共用轴是小倍数的命门:各自缩放就没法比。所有格都用 m3Range 映射 */
 function m3Path(id: number) {
   const s = snap.value
   const { lo, hi } = m3Range.value
   const Y = (v: number) => M3.h - M3.pad - ((v - lo) / Math.max(1e-9, hi - lo)) * (M3.h - M3.pad * 2)
   if (!s) return { line: '', band: '', ref: Y(1), n: 0 }
   const rows = s.slopes.get(id) ?? []
-  const cols = s.months
+  const cols = [...new Set(rows.map(r => r.key))].sort()
   const X = (c: number) => M3.pad + (c / Math.max(1, cols.length - 1)) * (M3.w - M3.pad * 2)
   const pts: { x: number; y: number; lo: number; hi: number }[] = []
   cols.forEach((m, c) => {
     const r = rows.find(x => x.key === m)
     if (!r || !isFinite(r.beta)) return
-    // 样本少的月标准误很大 —— 带子要宽到肉眼可见,把「读不出东西」也画出来
     const se = isFinite(r.se) ? Math.min(r.se, hi - lo) : hi - lo
     pts.push({ x: X(c), y: Y(r.beta), lo: Y(r.beta - se), hi: Y(r.beta + se) })
   })
@@ -424,9 +389,8 @@ const s2Opt = computed<object>(() => {
     tooltip: { trigger: 'axis' },
     grid: { left: 56, right: 16, top: 16, bottom: 26 },
     xAxis: { type: 'category', data: d.spline.map(x => x.date.slice(5)) },
-    yAxis: { type: 'value', name: '残差（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
+    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
     series: [
-      // 置信带用两层堆叠面积画:下沿透明、上沿填色 —— ECharts 没有原生 band
       { type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: d.spline.map(x => +x.lo.toFixed(4)) },
       {
         type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
@@ -447,7 +411,7 @@ const s3Opt = computed<object>(() => {
     grid: { left: 56, right: 16, top: 16, bottom: 26 },
     // markLine / markArea 不参与轴范围计算,**必须手动设 min/max**,否则超范围的会被静默裁掉
     xAxis: { type: 'category', data: cats, min: 0, max: cats.length - 1 },
-    yAxis: { type: 'value', name: '残差（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
+    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
     series: [{
       type: 'line', symbol: 'none', lineStyle: { width: 1.2, color: '#1F5FBF' },
       data: d.resid.map(v => +v.toFixed(4)),
@@ -474,7 +438,7 @@ const m4Opt = computed<object>(() => {
     tooltip: { trigger: 'axis' },
     grid: { left: 56, right: 16, top: 16, bottom: 26 },
     xAxis: { type: 'category', data: cats, min: 0, max: cats.length - 1 },
-    yAxis: { type: 'value', name: '残差（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
+    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
     series: [{
       type: 'scatter', symbolSize: 3, itemStyle: { color: '#3E4E4D' },
       data: d.resid.map(v => +v.toFixed(4)),
@@ -503,10 +467,9 @@ function goMeter(): void {
 </script>
 
 <template>
-  <AnaShell period-mode="year" :compare="CMP">
+  <AnaShell period-mode="full" :compare="CMP">
     <div v-if="loading" class="pma-hold"><span class="page-spin" /></div>
     <AnaEmpty v-else-if="failed" label="分栋抄表数据没加载成功" hint="刷新重试；仍不行就到分栋抄表屏看数据在不在" />
-    <!-- 护栏:整年无抄表 → 空态深链,不画假图 -->
     <AnaEmpty
       v-else-if="!snap"
       :label="year + ' 年暂无分栋抄表记录'"
@@ -516,88 +479,79 @@ function goMeter(): void {
     />
 
     <div v-else class="av2-grid">
-      <!-- 状态横幅:只陈述事实(§05) -->
       <div class="av2-s12 pma-banner">
-        抄表 {{ readings.length }} 条 ·
+        {{ segLabel }} · 抄表 {{ readings.length }} 条（模型吃整年，画的是这一段） ·
         {{ snap.stations.filter(s => s.metered).length }} 栋已装表 ·
         {{ snap.stations.filter(s => s.metered && s.theoKwp != null).length }} 栋已录板数与单块标称功率
-        <template v-if="snap.quality.droppedThin">
-          · {{ snap.quality.droppedThin }} 天在网栋数不足 3，该日不出基准
+      </div>
+
+      <!-- ── L1 逐段看板:这屏的重心 ──────────────────────────────── -->
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">B1 · 逐{{ gran === 'month' ? '日' : '月' }}看板</span>
+          <span class="hint">
+            每栋一行：线 = 这栋当{{ gran === 'month' ? '日' : '月' }}发电 ÷ 全园同{{ gran === 'month' ? '日' : '月' }}中位；
+            淡带 = 这栋自己的正常范围（{{ snap.board[0]?.baseNote ?? '' }}，半宽 {{ snap.crit.bandSigma }} 倍稳健波动）。
+            所有行共用同一段纵轴。缺抄的{{ unit }}断开不连线
+          </span>
+        </div>
+        <div v-if="dailyRows.length" class="pma-board">
+          <div v-for="b in dailyRows" :key="b.id" class="pma-brow" @click="pick(b.id)">
+            <div class="nm" :title="b.name">{{ b.name }}</div>
+            <svg :viewBox="`0 0 ${BD.w} ${BD.h}`" preserveAspectRatio="none">
+              <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BD.w" :height="bd(b).band!.h" class="band" />
+              <line v-if="bd(b).center != null" x1="0" :y1="bd(b).center!" :x2="BD.w" :y2="bd(b).center!" class="ctr" />
+              <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
+              <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.2"
+                      :class="p.out < 0 ? 'lo' : 'hi'" />
+            </svg>
+            <div class="tail">{{ bd(b).n }}/{{ snap.ticks.length }}</div>
+          </div>
+          <div class="pma-bax">
+            <span v-for="(l, i) in snap.tickLabels" :key="i">{{ i % (gran === 'month' ? 5 : 1) === 0 ? l : '' }}</span>
+          </div>
+        </div>
+        <div v-else class="pma-note-line">这一段没有按日抄表的楼栋。</div>
+
+        <!-- 月抄的栋单独一组:N=12 与 N=244 的可信度差一个量级,不与日抄栋并排 -->
+        <template v-if="monthlyRows.length">
+          <div class="pma-subhd">按月抄表的楼栋（口径不同，不与上面并排比）</div>
+          <div class="pma-board">
+            <div v-for="b in monthlyRows" :key="b.id" class="pma-brow" @click="pick(b.id)">
+              <div class="nm" :title="b.name">{{ b.name }}</div>
+              <svg :viewBox="`0 0 ${BD.w} ${BD.h}`" preserveAspectRatio="none">
+                <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BD.w" :height="bd(b).band!.h" class="band" />
+                <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
+                <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.2"
+                        :class="p.out < 0 ? 'lo' : 'hi'" />
+              </svg>
+              <div class="tail">{{ bd(b).n }}/{{ snap.ticks.length }}</div>
+            </div>
+          </div>
         </template>
       </div>
 
-      <!-- ── L1 相对偏离:同一张网格,三层叠看 ─────────────────────── -->
+      <!-- F1:一句一件事实 -->
       <div class="av2-card av2-s12">
         <div class="av2-card-h">
-          <span class="t">L1 · 相对偏离 —— 栋跟栋比</span>
-          <span class="hint">
-            三张共用同一套行标签与网格几何：{{ gridStations.length }} 栋 × {{ snap.months.length }} 月。
-            留白 = 该月尚无抄表记录；斜纹 = 有该月但算不出值。点格看该栋的曲线
-          </span>
+          <span class="t">F1 · {{ segLabel }}发生了什么</span>
+          <span class="hint">每行一句事实：日期、{{ unit }}数、方向。点行看该栋的曲线</span>
         </div>
-        <div v-if="skewedMonths.length" class="pma-note-line">
-          {{ skewedMonths.map(monLabel).join('、') }}：同期各栋的偏离方向整批相反。
-          基准取的是当日各栋的中位数，同期过半偏低时基准会跟着下移，剩下的栋因此显示为高。
-        </div>
-        <div class="pma-hm3">
-          <div class="hm-col hm-names">
-            <div class="hm-hd" />
-            <div v-for="s in gridStations" :key="s.id" class="hm-nm" :title="s.name">{{ s.name }}</div>
-            <div class="hm-ax" />
-          </div>
-          <div v-for="p in (['M1','M2','D2'] as const)" :key="p" class="hm-col">
-            <div class="hm-hd">
-              <b>{{ p }}</b>
-              {{ p === 'M1' ? '月度偏离' : p === 'M2' ? '月度离散度' : '数据覆盖' }}
-              <span class="mut">{{ p === 'M1' ? '红=低于基准 蓝=高于' : p === 'M2' ? '深=日间波动大' : '深=抄得全' }}</span>
-            </div>
-            <div
-              v-for="s in gridStations" :key="s.id" class="hm-row"
-              :style="{ gridTemplateColumns: `repeat(${snap.months.length}, minmax(0, 1fr))` }"
-            >
-              <i
-                v-for="(m, c) in snap.months" :key="m"
-                class="hm-c"
-                :class="(p === 'M1' ? devCell(snap.grid.deviation.get(s.id)?.[c], bornAt(s.id, c))
-                       : p === 'M2' ? dispCell(snap.grid.dispersion.get(s.id)?.[c], bornAt(s.id, c))
-                       : covCell(snap.grid.coverage.get(s.id)?.[c], bornAt(s.id, c))).cls"
-                :style="{ background: (p === 'M1' ? devCell(snap.grid.deviation.get(s.id)?.[c], bornAt(s.id, c))
-                        : p === 'M2' ? dispCell(snap.grid.dispersion.get(s.id)?.[c], bornAt(s.id, c))
-                        : covCell(snap.grid.coverage.get(s.id)?.[c], bornAt(s.id, c))).bg || undefined }"
-                :title="`${s.name} ${monLabel(m)} · ${(p === 'M1' ? devCell(snap.grid.deviation.get(s.id)?.[c], bornAt(s.id, c))
-                        : p === 'M2' ? dispCell(snap.grid.dispersion.get(s.id)?.[c], bornAt(s.id, c))
-                        : covCell(snap.grid.coverage.get(s.id)?.[c], bornAt(s.id, c))).tip}`"
-                @click="pick(s.id)"
-              />
-            </div>
-            <div class="hm-ax"><span v-for="m in snap.months" :key="m">{{ Number(m.slice(5, 7)) }}</span></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- F1:在网格下面 —— 先看图,再看索引 -->
-      <div class="av2-card av2-s12">
-        <div class="av2-card-h">
-          <span class="t">F1 · 判据命中清单</span>
-          <span class="hint">每行三段：哪个数 · 多少 · 跟什么比。按楼栋固定顺序，不按严重度排。点行看该栋的曲线</span>
-        </div>
-        <ul v-if="snap.hits.length" class="pma-hits">
-          <li v-for="(h, i) in snap.hits" :key="i" :class="{ dim: !h.readable }" @click="pick(h.stationId)">
-            <span class="st">{{ h.station }}</span>
-            <span class="cr">{{ h.what }}</span>
-            <span class="vl">{{ h.value }}</span>
-            <span class="ln">{{ h.line }}</span>
+        <ul v-if="snap.facts.length" class="pma-facts">
+          <li v-for="(f, i) in snap.facts" :key="i" :class="f.kind" @click="pick(f.stationId)">
+            <span class="st">{{ f.station }}</span>
+            <span class="tx">{{ f.text }}</span>
           </li>
         </ul>
-        <div v-else class="pma-note-line">五条判据都没有命中的行。</div>
+        <div v-else class="pma-note-line">这一段没有出范围的{{ unit }}，台账也对得上。</div>
         <div class="pma-foot-note">
           未列出 ≠ 没问题：这屏看不见遮挡、朝向、倾角造成的先天差异。
-          当前判据线 —— 月偏离 ±{{ (snap.crit.resid * 100).toFixed(0) }}%
-          · 月波动 {{ snap.crit.dispRatio }}× 园区同月中位
-          · 月抄表覆盖 ≥{{ (snap.crit.coverMonth * 100).toFixed(0) }}%
+          当前几条线 —— 正常范围半宽 {{ snap.crit.bandSigma }} 倍稳健波动
+          · 连续 {{ snap.crit.bandRun }} {{ unit }}才算一段
+          · 抄表覆盖 ≥{{ (snap.crit.coverMonth * 100).toFixed(0) }}%
           · 台账差 ±{{ (snap.crit.ledger * 100).toFixed(0) }}%
           · 年等效小时 ≥ 锚点 {{ snap.crit.anchorHours }} × {{ (snap.crit.yieldRatio * 100).toFixed(0) }}%。
-          六个数都在计费参数里，改了这张清单跟着变。
+          都在计费参数里，改了这张清单跟着变。
         </div>
       </div>
 
@@ -605,7 +559,7 @@ function goMeter(): void {
       <div class="av2-card av2-s6">
         <div class="av2-card-h">
           <span class="t">A1 · 绝对效率轨迹</span>
-          <span class="hint">纵轴 = 全园月等效小时（发电 ÷ 装机，分母优先取板数 × 单块标称功率）；虚线 = 年锚点按月均摊</span>
+          <span class="hint">纵轴 = 全园每{{ gran === 'month' ? '日' : '月' }}等效小时（发电 ÷ 装机，分母优先取板数 × 单块标称功率）；虚线 = 年锚点摊到每{{ gran === 'month' ? '天' : '月' }}</span>
         </div>
         <AnaEChart :option="a1Opt" :height="250" />
         <div class="pma-foot-note">
@@ -634,7 +588,7 @@ function goMeter(): void {
       <div class="av2-card av2-s6">
         <div class="av2-card-h">
           <span class="t">R1 · 消纳结构</span>
-          <span class="hint">堆叠柱 = 自消纳 / 上网 / 损耗（万度）；折线 = 损耗率，副轴固定 0–3%</span>
+          <span class="hint">堆叠柱 = 自消纳 / 上网 / 损耗；折线 = 损耗率，副轴固定 0–3%</span>
         </div>
         <AnaEChart :option="r1Opt" :height="250" />
       </div>
@@ -644,7 +598,7 @@ function goMeter(): void {
           <span class="t">R2 · 各站消纳收益</span>
           <span class="hint">
             并排柱，不是堆叠。深 = 消纳收益（按录入时的单价快照），浅 = 上网收益（{{ GRID_PRICE }} 元/度）。
-            柱高是绝对额，不是效率
+            柱高是全年绝对额，不是效率
           </span>
         </div>
         <AnaEChart :option="r2Opt" :height="250" />
@@ -654,7 +608,7 @@ function goMeter(): void {
         <div class="av2-card-h">
           <span class="t">R3 · 各站发电效率</span>
           <span class="hint">
-            横向条形，横轴 = 年等效小时（发电 ÷ 装机）；按期分色；虚线 = 年锚点。
+            横向条形，横轴 = 全年等效小时（发电 ÷ 装机）；按期分色；虚线 = 年锚点。
             分母优先取板数 × 单块标称功率，没录的栋退回台账装机
           </span>
         </div>
@@ -663,8 +617,8 @@ function goMeter(): void {
 
       <div class="av2-card av2-s6">
         <div class="av2-card-h">
-          <span class="t">R4 · 发电量月度趋势</span>
-          <span class="hint">纵轴 = 全园当月发电量（万度）。这是绝对量的季节形状；跟基准比看 A1</span>
+          <span class="t">R4 · 发电量趋势</span>
+          <span class="hint">纵轴 = 全园每{{ gran === 'month' ? '日' : '月' }}发电量。这是绝对量的形状；跟基准比看 A1</span>
         </div>
         <AnaEChart :option="r4Opt" :height="300" />
       </div>
@@ -675,11 +629,12 @@ function goMeter(): void {
           <span class="t">M3 · 响应斜率小倍数</span>
           <span class="hint">
             每栋一格：横轴 = 月，纵轴 = 该月对全园当日因子的回归斜率；虚线 = 斜率等于 1；
-            淡带 = ±1 个标准误。所有格共用同一段纵轴（{{ m3Range.lo.toFixed(1) }} ~ {{ m3Range.hi.toFixed(1) }}）
+            淡带 = ±1 个标准误。所有格共用同一段纵轴（{{ m3Range.lo.toFixed(1) }} ~ {{ m3Range.hi.toFixed(1) }}）。
+            这一块**始终按月**，与上面的期间无关
           </span>
         </div>
         <div class="pma-mult">
-          <div v-for="s in gridStations" :key="s.id" class="pma-mini" @click="pick(s.id)">
+          <div v-for="s in snap.stations.filter(x => x.metered)" :key="s.id" class="pma-mini" @click="pick(s.id)">
             <div class="nm">{{ s.name }}</div>
             <svg :viewBox="`0 0 ${M3.w} ${M3.h}`" preserveAspectRatio="none">
               <line x1="0" :y1="m3Path(s.id).ref" :x2="M3.w" :y2="m3Path(s.id).ref" class="ref" />
@@ -693,17 +648,17 @@ function goMeter(): void {
 
       <div class="av2-s12 pma-foot">
         <span>本页数据快照 <code>{{ snap.id }}</code></span>
-        <span>有效日 {{ snap.quality.okDays }} / {{ snap.quality.totalDays }} 天</span>
+        <span>整年有效日 {{ snap.quality.okDays }} / {{ snap.quality.totalDays }} 天</span>
         <span v-if="cmp.mode.value === 'yoy'">同比：{{ snap.yoy.yearNote }}</span>
         <button class="pma-lk" @click="goMeter">去分栋抄表 →</button>
       </div>
     </div>
 
-    <!-- ── L5 单栋抽屉:点网格的格、F1 的行、或 M3 的迷你图打开 ─────── -->
+    <!-- ── L5 单栋抽屉 ─────────────────────────────────────────────── -->
     <FPDrawer
       :open="!!sel"
       :title="sel?.name ?? ''"
-      :subtitle="sel ? `在网 ${sel.days} 天 · 年发电 ${wan(sel.genYear)} 万度` : ''"
+      :subtitle="sel ? `整年在网 ${sel.days} 天 · 年发电 ${wan(sel.genYear)} 万度` : ''"
       icon="activity"
       :width="820"
       :fixedHeight="true"
@@ -711,9 +666,10 @@ function goMeter(): void {
     >
       <div v-if="!detail" class="pma-note-line">这栋在网不足 8 天，画不出逐日曲线。</div>
       <div v-else class="pma-drawer">
+        <div class="pma-foot-note">下面三张都是**整年逐日**，与上面选的期间无关。</div>
         <div class="av2-card-h">
           <span class="t">S2 · 样条趋势</span>
-          <span class="hint">淡点 = 逐日残差；实线 = 限制性立方样条拟合；淡带 = 95% 置信带（数据稀的时段自动张开）</span>
+          <span class="hint">淡点 = 逐日相对自身水平；实线 = 限制性立方样条拟合；淡带 = 95% 置信带（数据稀的时段自动张开）</span>
         </div>
         <AnaEChart :option="s2Opt" :height="250" />
 
@@ -728,13 +684,13 @@ function goMeter(): void {
         </div>
 
         <div class="av2-card-h">
-          <span class="t">M4 · 残差控制图</span>
+          <span class="t">M4 · 控制图</span>
           <span class="hint">中心线 + ±2 / ±3 倍稳健波动的控制限；灰底 = 控制限的估计窗口（取变点之前那段）</span>
         </div>
         <AnaEChart :option="m4Opt" :height="250" />
         <div class="pma-foot-note">
           估计窗口 {{ detail.limitFrom }} ~ {{ detail.limitTo }} ·
-          中心线 {{ detail.center.toFixed(3) }} · 一倍波动 {{ detail.sigma.toFixed(3) }}（对数域）
+          中心线 {{ detail.center.toFixed(3) }} · 一倍波动 {{ detail.sigma.toFixed(3) }}
         </div>
       </div>
     </FPDrawer>
@@ -750,29 +706,32 @@ function goMeter(): void {
   border-radius: 6px; padding: 7px 12px;
 }
 
-/* ── L1 三张同网格 ── */
-.pma-hm3 { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; }
-.hm-col { min-width: 0; flex: 1 1 0; }
-.hm-names { flex: 0 0 88px; }
-.hm-hd {
-  font-size: var(--fs-micro); color: var(--text-muted);
-  height: 18px; line-height: 18px; white-space: nowrap; overflow: hidden;
-}
-.hm-hd b { color: var(--text-primary); }
-.hm-nm {
-  height: 15px; line-height: 15px; font-size: var(--fs-micro); color: var(--text-secondary);
+/* ── L1 看板 ── */
+.pma-board { display: flex; flex-direction: column; gap: 2px; }
+.pma-brow { display: grid; grid-template-columns: 84px 1fr 54px; gap: 8px; align-items: center; cursor: pointer; }
+.pma-brow:hover .nm { color: var(--hue-blue); }
+.pma-brow .nm {
+  font-size: var(--fs-micro); color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.hm-row { display: grid; gap: 1px; height: 15px; }
-.hm-c { display: block; height: 14px; border-radius: 1px; cursor: pointer; background: var(--surface-subtle); }
-/* 留白(未投产)与斜纹(有该月但算不出)必须是两种视觉 */
-.hm-c.c-na { background: transparent !important; cursor: default; }
-.hm-c.c-nd { background: repeating-linear-gradient(45deg, var(--border-subtle) 0 2px, transparent 2px 4px) !important; }
-/* 越过色阶截断点(±P95)的格描边 —— 不让一个极端值把其余全压成同一个白 */
-.hm-c.c-over { outline: 1px solid var(--text-primary); outline-offset: -1px; }
-.hm-ax {
-  display: flex; justify-content: space-between; height: 12px;
+.pma-brow svg { display: block; width: 100%; height: 42px; }
+.pma-brow .tail {
+  font-size: var(--fs-micro); color: var(--text-muted);
+  font-family: var(--font-mono); text-align: right;
+}
+.pma-brow .band { fill: var(--hue-blue); opacity: 0.10; }
+.pma-brow .ctr { stroke: var(--hue-blue); stroke-width: 0.6; stroke-dasharray: 3 3; opacity: 0.7; }
+.pma-brow .ln { fill: none; stroke: var(--text-secondary); stroke-width: 1.2; }
+.pma-brow circle.lo { fill: var(--hue-red); }
+.pma-brow circle.hi { fill: var(--hue-orange); }
+.pma-bax {
+  display: grid; grid-template-columns: 84px 1fr 54px; gap: 8px;
   font-size: 9px; color: var(--text-muted); margin-top: 2px;
+}
+.pma-bax span { display: none; }
+.pma-subhd {
+  font-size: var(--fs-micro); color: var(--text-muted);
+  margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--border-subtle);
 }
 
 .pma-note-line {
@@ -781,20 +740,18 @@ function goMeter(): void {
   padding: 6px 10px; margin-bottom: 8px; border-radius: 0 4px 4px 0;
 }
 
-/* ── F1 命中清单(列表,不是表格) ── */
-.pma-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.pma-hits li {
-  display: grid; grid-template-columns: 92px 108px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px; align-items: baseline;
+/* ── F1 事实清单(列表,不是表格) ── */
+.pma-facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.pma-facts li {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline;
   font-size: var(--fs-label); background: var(--surface-subtle);
   padding: 5px 10px; border-radius: 4px; cursor: pointer;
 }
-.pma-hits .st { font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pma-hits .cr { color: var(--text-secondary); }
-.pma-hits .vl { color: var(--hue-red); font-family: var(--font-mono); }
-.pma-hits .ln { color: var(--text-muted); font-family: var(--font-mono); }
-.pma-hits li.dim .vl { color: var(--text-muted); }
-.pma-hits span { min-width: 0; overflow-wrap: anywhere; }
+.pma-facts .st { font-weight: var(--fw-semibold); color: var(--text-primary); }
+.pma-facts .tx { color: var(--text-secondary); overflow-wrap: anywhere; }
+.pma-facts li.run .tx { color: var(--hue-red); }
+.pma-facts li.scatter .tx { color: var(--hue-orange); }
+.pma-facts li.thin .tx { color: var(--text-muted); }
 
 .pma-foot-note { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.6; margin-top: 6px; }
 
