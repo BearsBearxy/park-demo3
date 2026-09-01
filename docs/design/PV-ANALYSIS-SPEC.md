@@ -16,7 +16,7 @@ v2 定稿 2026-09-01。审计与布局定稿：Artifact `2478cb46-910d-4769-82ef
 | # | 初版 | 本版 | 为什么 |
 |---|---|---|---|
 | 1 | 接入外部逐小时天气/辐照（V117 表 + weather 后端域 + 导入类型 + 三个断闸参数 + ¥18/月付费源） | **整条删除** | 用户明确不做天气归因。实测关掉日筛只差 0.21pp |
-| 2 | 板数 / 单块 W **不排期** | **本刀就做**（V118 两列） | 它是唯一独立于发电量的输入，破「容量倒推 → 效率恒等」死循环 |
+| 2 | 板数 / 单块 W **不排期** | **本刀就做**（V119 两列） | 它是唯一独立于发电量的输入，破「容量倒推 → 效率恒等」死循环 |
 | 3 | 三重门槛 `alertLevel` 红黄灯 + `gapMoney` 缺口金额 + `classifyShape` 五标签 + 建议动作文案 | **整条链删除**，换成 **§04 五条明示判据线 + 命中清单** | 屏只做可视化，不替用户下结论。判定不消失，但要摊开、可复算、可反对 |
 | 4 | 第一层 = 可排序表 + 四盏灯 + 「情况 / 建议」列 | **无表格**。第一层 = 13×12 网格三张 + 命中清单 | 排序键、状态灯、话术模板三样都是替用户下结论；话术模板覆盖不到的情况就是误导 |
 | 5 | 效率分母 = 从发电量倒推的容量 | **分母 = 理论装机（板数 × 单块标称 W）** | 倒推容量让 `gen ÷ cap` 按构造趋近常数，实测极差只有 2.2% |
@@ -72,18 +72,22 @@ v2 定稿 2026-09-01。审计与布局定稿：Artifact `2478cb46-910d-4769-82ef
 
 三个 migration。仓库当前最大版本 **V116**（`ls backend/src/main/resources/db/migration/`）。
 
-> **先删初版留下的三个未提交 migration**（`V117__weather_hour.sql` / `V118__pv_station_metered.sql` /
-> `V119__weather_switch_params.sql`），号空出来后按下面重排。它们尚未提交，删掉零成本；
-> **合进 master 之后再删就要走 migration 了**。
+> **初版留下的两个天气 migration 已删**（`V117__weather_hour.sql` / `V119__weather_switch_params.sql`，见 f1eb293）。
+>
+> **`V118__pv_station_metered.sql` 保持原号不动，新的往后加。** 本文件早先写的是「把 metered 前移到 V117」——
+> **那条改掉了**：`application.yml` 里 `baseline-on-migrate: false` 且没开 `ignore-missing-migrations`，
+> 只要 V118 在任何一个库里跑过，改号就会同时踩两个坑 —— 那个库既报「V118 已应用但本地找不到」，
+> 又会把 V117 当成新的待应用迁移去重跑 `ADD COLUMN metered`。
+> V117 空号完全无害：Flyway 不要求连号。
 
 > **迁移目录的两条硬规矩**：`baseline-on-migrate=false`，**历史迁移不可改，只能往后加**。
 > 版本号在 SQL 和 Java 两处共用（`backend/src/main/java/db/migration/V35__Bill_pay_company_seed.java` 占了 V35），
 > 起号前先 `ls` 确认最大值没变。
 
-### V117 · pv_station.metered
+### V118 · pv_station.metered（已在 checkpoint 里，本节仅存档口径）
 
 ```sql
--- V117__pv_station_metered.sql — 该栋有没有装光伏计量表(PV-ANALYSIS-SPEC §02)。
+-- V118__pv_station_metered.sql — 该栋有没有装光伏计量表(PV-ANALYSIS-SPEC §02)。
 -- 与「装了表但这个月漏抄」是两回事：前者永久、无需催；后者是数据缺口、要催录入。
 -- 只靠「有没有抄表记录」判定会把两者显示成同一种灰，该催的和不用催的混在一起。
 ALTER TABLE pv_station ADD COLUMN metered TINYINT UNSIGNED NOT NULL DEFAULT 1
@@ -93,10 +97,10 @@ ALTER TABLE pv_station ADD COLUMN metered TINYINT UNSIGNED NOT NULL DEFAULT 1
 -- 二期 8~13栋、三期 创业/工业大厦：现场核实前保持默认 1，核实后单独 UPDATE。
 ```
 
-### V118 · pv_station 板数与单块标称 W
+### V119 · pv_station 板数与单块标称 W
 
 ```sql
--- V118__pv_station_panel.sql — 组件台账两列(PV-ANALYSIS-SPEC §02/§03.5)。
+-- V119__pv_station_panel.sql — 组件台账两列(PV-ANALYSIS-SPEC §02/§03.5)。
 -- 理论装机 kWp = panel_count × panel_watt ÷ 1000，是**唯一不从发电量倒推**的容量口径。
 -- 没有它，效率 = 发电 ÷ 倒推容量 按构造趋近常数(实测 13 站极差仅 2.2%)，横比整个是假的。
 -- 一栋一个 panel_watt：分布式屋顶一个屋面一种型号是常态，分期扩建才混装。
@@ -115,10 +119,10 @@ ALTER TABLE pv_station
 `setPriceYuan` 之后补两行 `s.setPanelCount(req.panelCount())` / `s.setPanelWatt(req.panelWatt())` 即可。
 **不新增端点，所以 `PermissionRegistry` 不用动。**
 
-### V119 · 年锚点 + 五条判据线
+### V120 · 年锚点 + 五条判据线
 
 ```sql
--- V119__pv_analysis_params.sql — 分栋分析的年锚点与五条判据线(PV-ANALYSIS-SPEC §04)。
+-- V120__pv_analysis_params.sql — 分栋分析的年锚点与五条判据线(PV-ANALYSIS-SPEC §04)。
 -- 全部进参数中心的理由：判据线是**人定的**，只有让用户看得见、改得动，
 -- 「越线了」才退回成一句可复算的事实，而不是屏替他下的结论。
 INSERT INTO alloc_cfg (scope, cfg_key, cfg_value, acct_month, mode, note) VALUES
@@ -347,7 +351,7 @@ cohortSlopeTest()                                                 // M3 共用 y
 「F座 8–12 月残差中位数 −25%，判据线 ±10%」是**摊开的**：数在这、线在这，用户不同意可以直接说线画错了。
 
 **这没有消灭判定，只是把判定变透明了。** 好处是线画在屏上、可以被反对；代价是线还在。
-五条线全部落参数中心（§02 V119），屏上写明当前值。
+五条线全部落参数中心（§02 V120），屏上写明当前值。
 
 ### 4.2 五条线的定值与依据
 
@@ -588,9 +592,8 @@ frontend/src/api/weather.ts                  frontend/src/utils/weatherExcel.ts(
 
 | 文件 | 内容 |
 |---|---|
-| `resources/db/migration/V117__pv_station_metered.sql` | §02 |
-| `resources/db/migration/V118__pv_station_panel.sql` | §02 |
-| `resources/db/migration/V119__pv_analysis_params.sql` | §02 |
+| `resources/db/migration/V119__pv_station_panel.sql` | §02 |
+| `resources/db/migration/V120__pv_analysis_params.sql` | §02 |
 | `src/views/analysis/PvMeterAnaView.vue` | §06 五层 14 块 |
 | `src/views/analysis/pvMeterAna.logic.ts` | §03 全部公式 |
 | `src/views/analysis/pvMeterAna.logic.spec.ts` | 每个函数配已知答案夹具 |

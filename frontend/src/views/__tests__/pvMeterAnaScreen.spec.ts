@@ -44,7 +44,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 function fixture(monthCount = 12) {
   const stations: PvStationDTO[] = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1, name: `S${i + 1}`, phase: 1, metered: 1,
-    capacityKwp: 100, priceYuan: 0.86, sortNo: i,
+    capacityKwp: 100, panelCount: null, panelWatt: null, priceYuan: 0.86, sortNo: i,
   }))
   const readings: PvReadingDTO[] = []
   // 整年 —— 屏加载的就是 readingsYear(y);只给两个月的话故障会占掉 70% 观测期,

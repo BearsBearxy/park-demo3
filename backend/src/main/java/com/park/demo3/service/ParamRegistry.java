@@ -35,6 +35,7 @@ public final class ParamRegistry {
     private static final Set<ScopeKind> S_METER = EnumSet.of(ScopeKind.METER);
     private static final Set<ScopeKind> S_RULE = EnumSet.of(ScopeKind.RULE);
     private static final Set<ScopeKind> S_TENANT = EnumSet.of(ScopeKind.TENANT);
+    private static final Set<ScopeKind> S_GLOBAL_ONLY = EnumSet.of(ScopeKind.GLOBAL);
     private static final Map<Integer, String> LOSS_VARIANT_OPTS = Map.of(
         0, "按损耗量核算（率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点）",
         1, "仅按公摊分摊度数（率 = 公摊分摊度数 ÷ 分母 + 加点）",
@@ -123,6 +124,23 @@ public final class ParamRegistry {
             "分摊标准 = 算式值 + 附加金额", "广联 +100", null);
         alloc("price_override", "公摊池指定单价", "元/度", Group.CONSTANT, S_RULE, "from", false, ValueKind.MONEY, null,
             "公摊池成本 = 用量 × 指定单价（不取价目）", "宿舍路灯 1.13156875 / 绿化水 4.45", null);
+        // 光伏分栋分析的年锚点与五条判据线(PV-ANALYSIS-SPEC §04)。判据线是**人定的** ——
+        // 只有让用户看得见、改得动,「越线了」才退回成一句可复算的事实,而不是屏替他下的结论。
+        // 六键都只有全局一档;Group.CONSTANT 而非 MONTHLY(ParamPermissionSplitTest 钉死
+        // group==MONTHLY ⟺ monthlyCheck==true,这六个是长期常量不是逐月填的数)。
+        alloc("pv_yield_anchor_h", "光伏年等效利用小时锚点", "小时", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.NUMBER, null, null, "本地实测值，已含组串损耗、逆变器效率、线损、温度与积灰", null);
+        alloc("pv_crit_resid", "分栋 月偏离判据线", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.RATE, null, null, "该栋该月比全园当日基准高或低超过这个比例，就在清单里记一行", null);
+        alloc("pv_crit_disp_ratio", "分栋 月波动判据线", "倍", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.NUMBER, null, "园区同月中位波动 × 本倍数", "不设固定百分比：波动的量纲跟园区自身规模走", null);
+        alloc("pv_crit_cover_month", "分栋 月抄表覆盖下限", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.RATE, null, null, "低于这个比例，该月的统计不再进判据，只在清单里记一行", null);
+        alloc("pv_crit_ledger", "分栋 台账差判据线", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.RATE, null, "台账容量 与 板数×单块标称功率 的相对差", "组件功率公差本身只有 0~+3%", null);
+        alloc("pv_crit_yield_ratio", "分栋 年等效小时下限", "", Group.CONSTANT, S_GLOBAL_ONLY, "from", false,
+            ValueKind.RATE, null, "年等效小时 ÷ 年锚点", "低于这条线，连最坏的组件质保衰减都解释不了", null);
+
         // ── ③ 核算口径(结构性,默认 from;栋级人话句子) spec §3.3 ──
         alloc("loss_variant", "损耗核算方式", "", Group.RULE, S_BUILDING, "from", false, ValueKind.ENUM, LOSS_VARIANT_OPTS,
             "按损耗量核算：率 = −(分表合计 − 总表 − 公摊分摊度数 − 调整度数) ÷ 分母 + 加点；仅按公摊分摊度数：率 = 公摊分摊度数 ÷ 分母 + 加点；不核算：只列示用量",

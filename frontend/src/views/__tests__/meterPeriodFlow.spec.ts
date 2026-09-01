@@ -52,13 +52,13 @@ const MAR: readonly PvReadingDTO[] = [
 ]
 
 const STATIONS = [
-  { id: 1, name: 'B 座', phase: 1, metered: 1, capacityKwp: 210, priceYuan: 0.62, sortNo: 1 },
-  { id: 2, name: 'C、D 座', phase: 1, metered: 1, capacityKwp: 252, priceYuan: 0.62, sortNo: 2 },
+  { id: 1, name: 'B 座', phase: 1, metered: 1, capacityKwp: 210, panelCount: 420, panelWatt: 500, priceYuan: 0.62, sortNo: 1 },
+  { id: 2, name: 'C、D 座', phase: 1, metered: 1, capacityKwp: 252, panelCount: null, panelWatt: null, priceYuan: 0.62, sortNo: 2 },
 ]
 /** 第三栋没装光伏计量表(V118 的 metered=0) */
 const STATIONS_WITH_NOMETER = [
   ...STATIONS,
-  { id: 3, name: 'E 座', phase: 1, metered: 0, capacityKwp: null, priceYuan: null, sortNo: 3 },
+  { id: 3, name: 'E 座', phase: 1, metered: 0, capacityKwp: null, panelCount: null, panelWatt: null, priceYuan: null, sortNo: 3 },
 ]
 
 beforeEach(() => {

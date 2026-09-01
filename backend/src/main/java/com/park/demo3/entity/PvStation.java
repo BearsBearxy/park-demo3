@@ -9,6 +9,8 @@ public class PvStation {
     private Integer phase;            // 期数 1/2/3
     private Integer metered;          // 1=已装光伏计量表 0=未安装(V118;与「装了表但漏抄」是两回事)
     private BigDecimal capacityKwp;   // 装机容量 kWp(可空)
+    private Integer panelCount;       // 光伏板数量(块,可空;V119)
+    private BigDecimal panelWatt;     // 单块标称功率 W(出厂铭牌,可空;理论装机=count×watt÷1000)
     private BigDecimal priceYuan;     // 消纳综合单价 元/kWh(可空)
     private Integer sortNo;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;

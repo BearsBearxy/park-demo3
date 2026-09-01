@@ -69,6 +69,8 @@ public class PvMeterService {
         s.setPhase(req.phase());
         s.setCapacityKwp(req.capacityKwp());
         s.setPriceYuan(req.priceYuan());
+        s.setPanelCount(req.panelCount());
+        s.setPanelWatt(req.panelWatt());
         s.setSortNo(stations.maxSortNo() + 1);   // 新站追加末尾
         stations.insert(s);
         return toStationDTO(stations.selectById(s.getId()));
@@ -84,6 +86,8 @@ public class PvMeterService {
         s.setPhase(req.phase());
         s.setCapacityKwp(req.capacityKwp());
         s.setPriceYuan(req.priceYuan());   // 调价只影响之后新录记录,已有记录 price_snap 不回溯
+        s.setPanelCount(req.panelCount());
+        s.setPanelWatt(req.panelWatt());
         stations.updateById(s);
         return toStationDTO(stations.selectById(id));
     }
@@ -387,7 +391,7 @@ public class PvMeterService {
 
     private static PvStationDTO toStationDTO(PvStation s) {
         return new PvStationDTO(s.getId(), s.getName(), s.getPhase(), s.getMetered(),
-            s.getCapacityKwp(), s.getPriceYuan(), s.getSortNo());
+            s.getCapacityKwp(), s.getPanelCount(), s.getPanelWatt(), s.getPriceYuan(), s.getSortNo());
     }
 
     private static PvReadingDTO toReadingDTO(PvReading r, String stationName) {

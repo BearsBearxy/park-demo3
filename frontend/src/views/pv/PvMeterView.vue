@@ -219,8 +219,17 @@ const rows = computed(() =>
     .map(s => ({ st: s, ...(aggByStation.value.get(s.id) ?? { gen: 0, self: 0, grid: 0, revenue: 0, count: 0 }) })),
 )
 
-// ── 行内编辑容量/单价(乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
-function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw: string) {
+// PUT 需要全量字段:漏一个就等于把它写成 null。收口成一个函数,加字段只改这里 ——
+// 之前两处各自内联拼 payload,改容量会把板数清空,而且是静默的。
+const stationPayload = (st: PvStationDTO) => ({
+  name: st.name, phase: st.phase,
+  capacityKwp: st.capacityKwp, priceYuan: st.priceYuan,
+  panelCount: st.panelCount, panelWatt: st.panelWatt,
+})
+
+// ── 行内编辑容量/单价/板数/单块标称功率(乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
+type StationNumField = 'capacityKwp' | 'priceYuan' | 'panelCount' | 'panelWatt'
+function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
   // 写口自守(照 BillNoticesView.vue:301/415/431 的既有写法):editMode 会**就地**转假
   // (被别人接管 / 30 分钟提权到期),而调用者各有各的 v-if —— 守在发请求这一层才不漏。
   if (!editStation.value) return
@@ -229,7 +238,7 @@ function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw
   if (v === st[field]) return
   const prev = st[field]
   st[field] = v
-  pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
+  pvMeterApi.updateStation(st.id, stationPayload(st))
     .then(() => {
       // 错价修正回路(P0-3):改价只影响之后新录,提示历史修正路径(导出「明细」sheet 改后重导即按新价重新快照)
       // 这条不是「已保存」而是一段**操作指引**(历史记录怎么修),用户可能要照着做 ——
@@ -250,7 +259,7 @@ function commitStationName(st: PvStationDTO, raw: string) {
   if (v === st.name) return
   const prev = st.name
   st.name = v
-  pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
+  pvMeterApi.updateStation(st.id, stationPayload(st))
     .catch((e) => {
       st.name = prev
       alert((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
@@ -550,6 +559,8 @@ async function onTemplate() {
           <colgroup>
             <col /><!-- 电站名:唯一弹性列吸收余宽 -->
             <col style="width:110px" />
+            <col style="width:78px" /><!-- 板数 -->
+            <col style="width:88px" /><!-- 单块 W -->
             <col style="width:120px" />
             <col style="width:120px" />
             <col style="width:120px" />
@@ -561,6 +572,8 @@ async function onTemplate() {
             <tr>
               <th>电站(楼栋)</th>
               <th class="num">装机容量 kWp</th>
+              <th class="num">板数</th>
+              <th class="num">单块 W</th>
               <th class="num">单价 元/kWh</th>
               <th class="num">本月发电总量</th>
               <th class="num">自消纳</th>
@@ -600,6 +613,26 @@ async function onTemplate() {
                        @click.stop
                        @change="commitStation(r.st, 'capacityKwp', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.capacityKwp != null ? fq(r.st.capacityKwp) : '—' }}</span>
+              </td>
+              <!-- 板数 × 单块标称功率 = 理论装机,是唯一不从发电量倒推的容量口径(PV-ANALYSIS-SPEC §03.5)。
+                   一栋一个规格:混装的栋填主力值,偏离会在分栋分析的台账对照上显出来 —— 那正是要人去看的信号 -->
+              <td class="num">
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="1"
+                       :disabled="!r.st.metered"
+                       :value="r.st.panelCount ?? ''" placeholder="—"
+                       :title="r.st.metered ? '光伏板数量(块),回车/失焦保存' : '该栋未装表，板数无意义'"
+                       @click.stop
+                       @change="commitStation(r.st, 'panelCount', ($event.target as HTMLInputElement).value)" />
+                <span v-else>{{ r.st.panelCount ?? '—' }}</span>
+              </td>
+              <td class="num">
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.1"
+                       :disabled="!r.st.metered"
+                       :value="r.st.panelWatt ?? ''" placeholder="—"
+                       :title="r.st.metered ? '单块标称功率 W(出厂铭牌),回车/失焦保存' : '该栋未装表，单块功率无意义'"
+                       @click.stop
+                       @change="commitStation(r.st, 'panelWatt', ($event.target as HTMLInputElement).value)" />
+                <span v-else>{{ r.st.panelWatt ?? '—' }}</span>
               </td>
               <td class="num">
                 <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.0001"
