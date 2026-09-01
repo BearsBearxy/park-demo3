@@ -227,4 +227,91 @@ class PvMeterSimulateApiIT extends AbstractMysqlIT {
         List<Object> rows = JsonPath.read(readingsOf(2099, 3), "$.data[*]");
         assertThat(rows).isEmpty();
     }
+
+    // ══ 检测信号(PV-ANALYSIS-SPEC §08):不满足这两条,分栋分析屏永远显示「全部正常」——
+    //    一块**无法区分「真没事」和「算错了」**的绿。 ══════════════════════════════
+
+    /** 取某站某月的逐日 genTotal(按日期升序) */
+    private List<Double> dailyGen(int year, int month, String station) throws Exception {
+        List<Number> v = JsonPath.read(readingsOf(year, month), "$.data[?(@.stationName=='" + station + "')].genTotal");
+        return v.stream().map(Number::doubleValue).toList();
+    }
+
+    private static double pearson(List<Double> a, List<Double> b) {
+        int n = Math.min(a.size(), b.size());
+        double ma = a.stream().limit(n).mapToDouble(d -> d).average().orElse(0);
+        double mb = b.stream().limit(n).mapToDouble(d -> d).average().orElse(0);
+        double cov = 0, va = 0, vb = 0;
+        for (int i = 0; i < n; i++) {
+            double da = a.get(i) - ma, db = b.get(i) - mb;
+            cov += da * db; va += da * da; vb += db * db;
+        }
+        return cov / Math.sqrt(va * vb);
+    }
+
+    // ① 全园共享天气因子 β(d):同期两站的逐日出力必须**同涨同落**。
+    //    日权重种子若含站 id(改造前),每站各晒各的太阳 → 相关系数 ≈ 0 → 抛光算不出 β(d),
+    //    残差退化成纯独立噪声,任何检验都通不过,工作台的残差 ACF 也画不出东西(§08 验收 ④)。
+    @Test
+    void simulate_同期两站逐日出力强相关_说明有共享天气因子() throws Exception {
+        pvRecord("p1", "2099-06", "30000", "19500", "15000", "6795");
+
+        mvc.perform(post("/api/pv-meter/simulate").param("year", "2099").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        List<Double> b = dailyGen(2099, 6, "B座");
+        List<Double> e = dailyGen(2099, 6, "E座");
+        assertThat(b).hasSize(30);
+        assertThat(e).hasSize(30);
+        assertThat(pearson(b, e)).isGreaterThan(0.5);
+    }
+
+    // ② 种入故障必须**持续存在**,不能被月度恒等吃掉。
+    //    只把日权重 w[d] 乘 0.72 是不够的:self_d = 月量 × w_d/Σw,整月同乘一个数分子分母对消,
+    //    8 月往后完全看不见。故障必须打在**站间拆分权重**上(F座少拿、同期其余站分掉),
+    //    这样 Σ全站 仍等于 phase 月真实值(月度恒等不破),而 F座的相对水平真的掉下来了。
+    //    用「F座 ÷ B座」而不是 F座绝对值:两站容量固定,这个比值把年度总量、容量反推全约掉了。
+    @Test
+    void simulate_种入的F座阶跃在故障后的整月里持续可见() throws Exception {
+        pvRecord("p1", "2099-06", "30000", "19500", "15000", "6795");   // 故障前
+        pvRecord("p1", "2099-08", "30000", "19500", "15000", "6795");   // 故障后(整月)
+
+        mvc.perform(post("/api/pv-meter/simulate").param("year", "2099").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        double fJun = sum(readingsOf(2099, 6), "$.data[?(@.stationName=='F座')].genTotal");
+        double bJun = sum(readingsOf(2099, 6), "$.data[?(@.stationName=='B座')].genTotal");
+        double fAug = sum(readingsOf(2099, 8), "$.data[?(@.stationName=='F座')].genTotal");
+        double bAug = sum(readingsOf(2099, 8), "$.data[?(@.stationName=='B座')].genTotal");
+
+        double rel = (fAug / bAug) / (fJun / bJun);
+        assertThat(rel).isCloseTo(0.72, org.assertj.core.data.Offset.offset(0.01));
+
+        // 月度恒等不能被故障破坏:Σ全站 = phase 月真实值(既有口径,IT 已锁 1 月,这里锁故障月)
+        assertThat(sum(readingsOf(2099, 8), "$.data[*].selfUse"))
+                .isCloseTo(30000.00, org.assertj.core.data.Offset.offset(1e-6));
+    }
+
+    // ③ 变点日期要能落在 7/18:故障当月内部也得有那一跳,否则整个 7 月只是「水平低一点」,
+    //    变点扫描找不到日子,§08 验收 ① 的「±3 周」无从谈起。
+    //    同样用「F座 ÷ B座」逐日比,把两站共享的天气因子约掉。
+    @Test
+    void simulate_故障当月内部在18日前后有阶跃() throws Exception {
+        pvRecord("p1", "2099-07", "30000", "19500", "15000", "6795");
+
+        mvc.perform(post("/api/pv-meter/simulate").param("year", "2099").header("Authorization", auth()))
+                .andExpect(jsonPath("$.code").value(0));
+
+        List<Double> f = dailyGen(2099, 7, "F座");
+        List<Double> b = dailyGen(2099, 7, "B座");
+        assertThat(f).hasSize(31);
+
+        double before = 0, after = 0;
+        for (int d = 0; d < 18; d++) before += f.get(d) / b.get(d);
+        for (int d = 18; d < 31; d++) after += f.get(d) / b.get(d);
+        before /= 18; after /= 13;
+
+        // 站内扰动 ±8%,18/13 个样本下 SE 约 3% —— 给 0.08 的容差
+        assertThat(after / before).isCloseTo(0.72, org.assertj.core.data.Offset.offset(0.08));
+    }
 }

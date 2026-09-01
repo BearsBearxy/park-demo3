@@ -1,10 +1,10 @@
-// pvRoi.logic 单测:累计序列/跨年進位/外推回收点/分期汇总(口径=v1)+ 分栋抄表效率/消纳/收益。
+// pvRoi.logic 单测:累计序列/跨年進位/外推回收点/分期汇总(口径=v1)。
+// 分栋抄表那四个函数已随抄表区一并卸掉(PV-ANALYSIS-SPEC §00/§09):
+// 新屏 pv-meter-analysis 的口径完全不同(不是搬过去,是重做),它有自己的 pvMeterAna.logic.spec.ts;
+// 其中「损耗为负 = 计量异常」这一条被接进了新屏的数据质量通道,没有随删丢掉。
 import { describe, expect, it } from 'vitest'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
-import {
-  buildRamp, consumptionRows, cumSeries, monthlyEfficiency, nextYm, phaseMonthly, phaseSummaries,
-  revenueByStation, stationEfficiency, type MeterReading, type MeterStation,
-} from './pvRoi.logic'
+import { buildRamp, cumSeries, nextYm, phaseMonthly, phaseSummaries } from './pvRoi.logic'
 
 const rec = (phase: string, ym: string, selfAmt: number, gridAmt: number): PvRecordDTO => ({
   id: 0, phase, phaseName: phase, acctMonth: ym, occurMonth: ym,
@@ -59,71 +59,5 @@ describe('phaseSummaries / phaseMonthly', () => {
     const [c] = phaseSummaries([phase('p3')], records)
     expect(c).toMatchObject({ months: 0, cum: 0, annual: 0, share: 0 })
     expect(phaseMonthly(records, 'p1').map((r) => r.ym)).toEqual(['2025-01', '2025-02'])
-  })
-})
-
-// ══ 分栋抄表分析(ENERGY-ANALYSIS-SPEC §2)══
-const st = (id: number, name: string, cap: number | null): MeterStation => ({ id, name, capacityKwp: cap })
-const rd = (stationId: number, readDate: string, gen: number, self: number, grid: number, revenue = 0): MeterReading =>
-  ({ stationId, readDate, genTotal: gen, selfUse: self, gridFeed: grid, revenue })
-
-describe('stationEfficiency', () => {
-  const stations = [st(1, 'A栋', 100), st(2, 'B栋', null), st(3, 'C栋', 200), st(4, 'D栋', 50)]
-  it('效率=Σ发电÷容量;无容量站不入图并列名;无抄表站不入;capN 含无抄表站(护栏分子)', () => {
-    const r = stationEfficiency(stations, [rd(1, '2025-01-05', 1000, 0, 0), rd(1, '2025-02-05', 500, 0, 0), rd(2, '2025-01-05', 800, 0, 0)])
-    expect(r.rows).toEqual([{ name: 'A栋', eff: 15 }])   // (1000+500)/100
-    expect(r.noCap).toEqual(['B栋'])
-    expect(r.capN).toBe(3)   // A/C/D 已录容量(C/D 无抄表仍计覆盖率)
-  })
-  it('空抄表 → rows/noCap 全空', () => {
-    expect(stationEfficiency(stations, [])).toEqual({ rows: [], noCap: [], capN: 3 })
-  })
-})
-
-describe('monthlyEfficiency', () => {
-  const stations = [st(1, 'A栋', 100), st(2, 'B栋', 300), st(3, 'C栋', null)]
-  const readings = [
-    rd(1, '2025-01-03', 1000, 0, 0), rd(1, '2025-01-20', 200, 0, 0),   // 1月 A=1200
-    rd(1, '2025-02-03', 900, 0, 0), rd(2, '2025-02-05', 3000, 0, 0),   // 2月 A+B
-    rd(3, '2025-03-05', 500, 0, 0),                                     // 3月仅无容量站
-  ]
-  it('全园加权=当月有抄表的有容量站 Σ发电÷Σ容量;仅无容量站月 → null 断点;月升序', () => {
-    const t = monthlyEfficiency(stations, readings)
-    expect(t.yms).toEqual(['2025-01', '2025-02', '2025-03'])
-    expect(t.park).toEqual([12, (900 + 3000) / 400, null])
-    expect(t.sel).toBeNull()
-  })
-  it('单站线=该站月发电÷容量,无抄表月 null;选无容量站 → 全 null', () => {
-    expect(monthlyEfficiency(stations, readings, 1).sel).toEqual([12, 9, null])
-    expect(monthlyEfficiency(stations, readings, 3).sel).toEqual([null, null, null])
-  })
-})
-
-describe('consumptionRows / revenueByStation', () => {
-  const stations = [st(1, 'A栋', 100), st(2, 'B栋', null), st(3, 'C栋', 80)]
-  const readings = [
-    rd(1, '2025-01-03', 1000, 700, 200, 350),   // 损耗 +100
-    rd(1, '2025-02-03', 800, 500, 400, 250),    // 损耗 −100(计量异常)
-    rd(2, '2025-01-05', 600, 600, 0, 0),        // 损耗 0
-    rd(3, '2025-01-02', 0, 0, 0),               // 发电 0 → lossRate null
-  ]
-  it('按月:损耗=发电−自消纳−上网,负损耗照实;损耗率=损耗÷发电;月升序', () => {
-    expect(consumptionRows(stations, readings, 'month')).toEqual([
-      { key: '2025-01', self: 1300, grid: 200, loss: 100, lossRate: 100 / 1600 },
-      { key: '2025-02', self: 500, grid: 400, loss: -100, lossRate: -100 / 800 },
-    ])
-  })
-  it('按站:站序;发电 0 站 lossRate=null;无抄表站不入', () => {
-    const rows = consumptionRows([...stations, st(9, '无数据', 50)], readings, 'station')
-    expect(rows.map((r) => r.key)).toEqual(['A栋', 'B栋', 'C栋'])
-    expect(rows[0]).toMatchObject({ self: 1200, grid: 600, loss: 0, lossRate: 0 })
-    expect(rows[2].lossRate).toBeNull()
-  })
-  it('消纳收益=Σrevenue(快照口径);上网收益=Σ上网×参数价;站序,无抄表站不入', () => {
-    expect(revenueByStation([...stations, st(9, '无数据', 50)], readings, 0.453)).toEqual([
-      { name: 'A栋', selfRev: 600, gridRev: 600 * 0.453 },
-      { name: 'B栋', selfRev: 0, gridRev: 0 },
-      { name: 'C栋', selfRev: 0, gridRev: 0 },
-    ])
   })
 })

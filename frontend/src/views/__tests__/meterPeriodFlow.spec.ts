@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, nextTick } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -52,8 +52,13 @@ const MAR: readonly PvReadingDTO[] = [
 ]
 
 const STATIONS = [
-  { id: 1, name: 'B 座', phase: 1, capacityKwp: 210, priceYuan: 0.62, sortNo: 1 },
-  { id: 2, name: 'C、D 座', phase: 1, capacityKwp: 252, priceYuan: 0.62, sortNo: 2 },
+  { id: 1, name: 'B 座', phase: 1, metered: 1, capacityKwp: 210, priceYuan: 0.62, sortNo: 1 },
+  { id: 2, name: 'C、D 座', phase: 1, metered: 1, capacityKwp: 252, priceYuan: 0.62, sortNo: 2 },
+]
+/** 第三栋没装光伏计量表(V118 的 metered=0) */
+const STATIONS_WITH_NOMETER = [
+  ...STATIONS,
+  { id: 3, name: 'E 座', phase: 1, metered: 0, capacityKwp: null, priceYuan: null, sortNo: 3 },
 ]
 
 beforeEach(() => {
@@ -606,5 +611,58 @@ describe('光伏分栋抄表 · 锁弹窗接线(C1/C2)', () => {
 
     expect((w.vm as unknown as { editMode: boolean }).editMode, '被踢了要当场退出编辑态').toBe(false)
     expect(w.find('.evd-scrim').exists(), '被踢了必须说一声').toBe(true)
+  })
+})
+
+/**
+ * 未装表行(PV-ANALYSIS-SPEC §07 第一行)。
+ *
+ * 「没装表」与「装了表但这个月漏抄」必须分开:前者永久不用管,后者要催人补录。
+ * 只靠「有没有抄表记录」判定会把两者显示成同一种灰 —— 该催的和不用催的混在一起,
+ * 三周之内就没人看那盏灰灯了。
+ *
+ * 三样缺一样都会让两者混回去,所以三条各测各的:
+ *   ① 灰徽标「未装表」  ② 容量/单价禁编  ③ 点了不开抽屉
+ */
+describe('光伏分栋抄表 · 未装表行', () => {
+  async function openWithNoMeter() {
+    vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS_WITH_NOMETER as never)
+    const w = await open()
+    // 走完选期门落到表格(同上面那些用例:点第 3 个月格)
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('未装表的行挂灰徽标,装了表的没有', async () => {
+    const w = await openWithNoMeter()
+    const trs = w.findAll('.pm-table tbody tr')
+    const noMeter = trs.find(t => t.text().includes('E 座'))!
+    expect(noMeter.text()).toContain('未装表')
+    expect(noMeter.classes()).toContain('pm-nometer')
+    const metered = trs.find(t => t.text().includes('B 座'))!
+    expect(metered.text()).not.toContain('未装表')
+    expect(metered.classes()).not.toContain('pm-nometer')
+  })
+
+  // FPDrawer 是这屏唯一 `Teleport to body` 的浮层,测试里 Teleport 被 stub 掉,
+  // DOM 上找不到它的内容 —— 断组件的 open 属性,那才是「抽屉开没开」的事实
+  const drawerOpen = (w: VueWrapper) =>
+    w.findComponent({ name: 'FPDrawer' }).props('open') === true
+
+  it('未装表的行点了不开抽屉', async () => {
+    const w = await openWithNoMeter()
+    const noMeter = w.findAll('.pm-table tbody tr').find(t => t.text().includes('E 座'))!
+    await noMeter.trigger('click')
+    await flushPromises()
+    expect(drawerOpen(w)).toBe(false)
+  })
+
+  it('装了表的行照常开抽屉 —— 别把好行一起禁了', async () => {
+    const w = await openWithNoMeter()
+    const metered = w.findAll('.pm-table tbody tr').find(t => t.text().includes('B 座'))!
+    await metered.trigger('click')
+    await flushPromises()
+    expect(drawerOpen(w)).toBe(true)
   })
 })
