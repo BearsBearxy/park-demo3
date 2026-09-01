@@ -149,7 +149,15 @@ describe('§08 阳性对照 —— 种进去的靶子必须亮', () => {
 
   it('① 正常范围是拿**当月之外**的数据估的 —— 否则整月都坏的栋会把带撑到把自己包进去', () => {
     const b = AUG.board.find(x => x.name === FAULT_STATION)!
-    expect(b.baseNote).toContain('当月之外')
+    // v3 §03.7 把 baseNote 换成了「基线取 首 ~ 末 共 N 天（生效条件）」,「当月之外」四个字没了。
+    // 但这条要钉的事没变:窗口不许碰当月。所以改成把首末日期抠出来直接比 —— 比认字符串更硬,
+    // 措辞再改也照样管用,而窗口一旦滑进 8 月就必红。
+    const m = b.baseNote.match(/基线取 (\d{4}-\d{2}-\d{2}) ~ (\d{4}-)?(\d{2}-\d{2}) 共 \d+ 天/)
+    expect(m, `baseNote 不是 §03.7 的窗口格式: ${b.baseNote}`).not.toBeNull()
+    const from = m![1]
+    const to = (m![2] ?? from.slice(0, 5)) + m![3]
+    expect(from < `${YEAR}-08-01`, `基线窗口起点 ${from} 落在当月内`).toBe(true)
+    expect(to < `${YEAR}-08-01`, `基线窗口末端 ${to} 伸进了当月`).toBe(true)
     // 8 月的比值全部低于范围下沿
     const vals = b.ratio.filter((v): v is number => v != null)
     expect(Math.max(...vals)).toBeLessThan(b.lo!)

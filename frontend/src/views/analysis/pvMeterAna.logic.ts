@@ -586,6 +586,8 @@ export interface SnapshotInput {
   crit?: Partial<Criteria>
   minStations?: number
   prevRows?: ReadingRow[]
+  /** 今天(YYYY-MM-DD)。与期末取早 = 「已过去到哪个刻度」(§03.8)。不给取系统当天 */
+  today?: string
 }
 
 /** 每栋的基础量。**全是事实,没有一个判词。** */
@@ -605,6 +607,65 @@ export interface StationRow {
   yieldRatio: number | null
 }
 
+// ── 刻度三态与游程(PV-ANALYSIS-SPEC §03.8)───────────────────────────────
+//
+// **未到的日子 ≠ 漏抄的日子。** 8/20 还没发生不是缺数据;8/07 空着而 8/15 有数才是漏抄。
+// 两者必须是两种视觉、两种算法 —— 合并成同一种灰之后,月中打开这屏会把 13 栋
+// 一股脑判成「读不出」,而这屏存在的理由恰恰是「录完几天内就能看出」。
+
+/** 刻度三态。用两条日期切开:**数据截止日**(最后一条抄表)与**已过去到哪个刻度**(今天与期末取早)。 */
+export type TickState = 'seen' | 'missing' | 'future'
+
+/** 合并后的连续段。live = 段的末端正好是数据截止日(仍在持续),不该写成闭区间。 */
+export interface Run { from: number; to: number; dir: -1 | 1; live: boolean }
+
+/**
+ * 单个刻度的三态。
+ *
+ * 两条边界比刻度长时**按刻度的长度截断** —— 年段刻度是 'YYYY-MM',而两条日期是 'YYYY-MM-DD',
+ * 直接比字符串会把当月整个判成「未到」('2025-08' > '2025-08-14')。
+ */
+export function tickState(
+  tick: string, hasValue: boolean, dataThrough: string | null, elapsed: string | null,
+): TickState {
+  const cut = (b: string | null) => (b == null ? null : b.slice(0, tick.length))
+  const e = cut(elapsed)
+  if (e == null || tick > e) return 'future'
+  const d = cut(dataThrough)
+  return hasValue && d != null && tick <= d ? 'seen' : 'missing'
+}
+
+/**
+ * 连续同向的段。段 = 连续 ≥ minRun 个**已抄**同向刻度。
+ *
+ * **跨过漏抄的一天不算断** —— 8/07 漏抄不该把 8/06 与 8/08 的同向切成两段,
+ * 那是把**记录**的缺口当成**现象**的缺口。
+ * **跨过未到必须断** —— 未到的刻度什么都不是,连过去等于替未来做主。
+ * 上越与下越不合并:方向不同就是两件事。
+ *
+ * from/to 是**已抄刻度**的下标(中间被跨过的漏抄含在 from..to 区间里,便于画底色),
+ * 所以 `live = (to === lastSeen)` 才读得出「末端正好是数据截止日」。
+ */
+export function runsOf(
+  out: (number | null)[], state: TickState[], minRun: number, lastSeen: number,
+): Run[] {
+  const res: Run[] = []
+  let i = 0
+  while (i < out.length) {
+    const dir = out[i]
+    if (state[i] !== 'seen' || (dir !== 1 && dir !== -1)) { i++; continue }
+    let last = i, n = 1, k = i + 1
+    while (k < out.length) {
+      if (state[k] === 'missing') { k++; continue }        // 记录的缺口:跨过去
+      if (state[k] !== 'seen' || out[k] !== dir) break     // 未到 / 反向 / 回到范围内:断
+      last = k; n++; k++
+    }
+    if (n >= minRun) res.push({ from: i, to: last, dir, live: last === lastSeen })
+    i = last + 1
+  }
+  return res
+}
+
 /**
  * 看板的一行(L1)。**这一行里没有任何模型** —— 分子分母都是实测度数:
  *   比值(t) = 这栋当刻度发电 ÷ 全园同刻度中位
@@ -614,14 +675,23 @@ export interface StationRow {
  * 带是这栋**自己**的历史范围,所以看的是「它离开自己没有」,规模差异被自动消掉。
  */
 export interface BoardRow {
-  id: number; name: string; phase: number
+  id: number
+  name: string
+  phase: number
   cadence: 'daily' | 'monthly'
-  ratio: (number | null)[]        // 与 snapshot.ticks 等长;null = 该刻度没抄
+  ratio: (number | null)[]        // 与 snapshot.ticks 等长;null = 该刻度没有比值
+  state: TickState[]              // 与 ticks 等长(§03.8)
   center: number | null           // 这栋自己的常态水平
   lo: number | null; hi: number | null
-  /** 每刻度:0 在范围内,−1 在范围下方,+1 在范围上方;null = 没抄或范围估不出 */
+  /** 每刻度:0 在范围内,−1 在范围下方,+1 在范围上方;
+   *  **漏抄与未到处一律 null,不是 0** —— 0 是「量过、在范围内」,那是两件事 */
   out: (number | null)[]
-  baseNote: string                // 范围是拿哪一段估的 —— 要写在屏上
+  runs: Run[]                     // 连续 ≥ bandRun 个已抄同向刻度
+  outN: number                    // 出范围的**已抄**刻度数
+  maxDev: number                  // 最大偏离 (v−center)/center,取绝对值最大的那个(带符号)
+  seenN: number                   // 已抄刻度数
+  elapsedN: number                // 已过去刻度数(= 已抄 + 漏抄)
+  baseNote: string                // 范围是拿哪一段估的 —— 要写在屏上(§03.7)
   /** 这栋第一条抄表的日期;null = 整年都没有。**未投产与漏抄必须分得开**:
    *  首条抄表晚于本段结束 = 那时候它还没投产,不该催人;本段之内缺的才是漏抄。 */
   firstDate: string | null
@@ -645,6 +715,10 @@ export interface AnaSnapshot {
   /** 当段的刻度键:gran='month' 时是 'YYYY-MM-DD',gran='year' 时是 'YYYY-MM' */
   ticks: string[]
   tickLabels: string[]            // 画在轴上的短标签
+  /** 数据截止日 = 最后一条抄表(YYYY-MM-DD);null = 整年一条都没有。B0 右侧要写它 —— */
+  dataThrough: string | null
+  /** 本段已过去的刻度数(今天与期末取早)。**覆盖率的分母是它,不是 ticks.length**(§03.8) */
+  elapsedN: number
   stations: StationRow[]
   board: BoardRow[]
   facts: Fact[]
@@ -701,6 +775,12 @@ export function bhFdrQ(pvals: number[]): number[] {
   return out
 }
 
+/** 本地当天 YYYY-MM-DD。**不能用 toISOString** —— 那是 UTC,东八区每天 08:00 之前会退回昨天。 */
+function localToday(): string {
+  const t = new Date()
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+}
+
 const dLabel = (d: string) => String(Number(d.slice(8, 10)))
 const mLabel = (ym: string) => `${Number(ym.slice(5, 7))}月`
 
@@ -733,66 +813,204 @@ function ratioSeries(
   return out
 }
 
+// ── 基线窗口(PV-ANALYSIS-SPEC §03.7)────────────────────────────────────
+//
+// **这是全屏最要紧的一个决定。** 比值的分母是「全园同刻度中位」,口径**随并网站数变**:
+// 6 月二期并网,一期 5 栋比值集体下移 9%;12 月三期两栋并网把中位拉低,二期 6 栋集体上移 14%。
+// 这几栋什么都没干。拿「整年减当月」估带 → 实测 5/11 栋误报,而种入的断崖被自己的中心吸收。
+//
+// 窗口必须同时满足三条,缺一不可:
+//   ① 同批在网 —— 与显示段相同的在网栋集合
+//   ② 同运行状态 —— 排除刚并网的爬坡期(二期 6 月只发满产的 8%,只满足①会把一期比值抬到 5–10)
+//   ③ 变点之前 —— 否则带重新定基到已经坏掉的水平上,故障被自己的中心吸收
+//
+// 样本不足时**逐条放宽,并在 baseNote 如实写明放宽到哪一步**,绝不静默回退 ——
+// 静默回退等于屏上写着「同批在网」而实际拿了整年,那比不画带更坏。
+
+/** 一次窗口挑选的结果:落在窗口里的刻度键,以及这一步实际生效/放宽了哪几条。 */
+interface WinPick { keys: string[]; trimmed: boolean; cut: boolean }
+
+/** 该刻度的在网栋集合。**用「首条抄表 ≤ 该刻度」判在网,不用「当刻度有没有抄」** ——
+ *  后者会让某栋漏抄一天就凭空多出一个批次,把整年切成几十个碎段。 */
+function cohortMap(allKeys: string[], firstKey: Map<number, string>): Map<string, string> {
+  const ids = [...firstKey.keys()].sort((a, b) => a - b)
+  const out = new Map<string, string>()
+  for (const k of allKeys) out.set(k, ids.filter(id => firstKey.get(id)! <= k).join(','))
+  return out
+}
+
+/**
+ * 某一栋的估带窗口。返回落在窗口里的比值与一句人话的窗口说明。
+ *
+ * @param vals     这栋的 刻度 → 比值(全期,不只当段)
+ * @param allKeys  全园有抄表的刻度,升序
+ * @param cohort   刻度 → 在网栋集合
+ * @param segCohort 显示段的在网栋集合
+ * @param inSeg    该刻度在不在显示段里
+ * @param opts.excludeSeg 月段要排掉当段(否则整月都坏的栋会把带撑到把自己包进去);
+ *                        年段的「段」就是全年,没有段外可用,只能拿这些点自己估
+ * @param opts.useCp      条件③。年段只有 12 个点,扫不出可信的变点,不用
+ * @param opts.minN       样本下限,低于它就往下放宽一档
+ */
+function baselineWindow(
+  vals: Map<string, number>, allKeys: string[],
+  cohort: Map<string, string>, segCohort: string, inSeg: (k: string) => boolean,
+  opts: { excludeSeg: boolean; useCp: boolean; minN: number; unit: string },
+): { vals: number[]; note: string } {
+  const own = allKeys.filter(k => vals.has(k) && !(opts.excludeSeg && inSeg(k)))
+  if (!own.length) return { vals: [], note: '这栋还没有可用的历史刻度，画不出正常范围' }
+
+  // 条件③的切点:这栋自己**全期**比值上的变点。p 不显著就不切 ——
+  // argmax 总能找到一个「最像变点」的位置,不加闸门等于每栋都被无故砍掉半条基线。
+  const series = allKeys.filter(k => vals.has(k))
+  let cutKey: string | null = null
+  if (opts.useCp && series.length >= 20) {
+    const cp = changePoint(series.map(k => vals.get(k)!), { block: 14, B: 999, seed: 20260831 })
+    if (cp.index > 0 && cp.p <= 0.05) cutKey = series[cp.index]
+  }
+
+  const pick = (byCohort: boolean, byRamp: boolean, byCp: boolean): WinPick => {
+    let ks = byCohort ? own.filter(k => cohort.get(k) === segCohort) : own
+    let trimmed = false
+    if (byRamp && ks.length) {
+      // 爬坡期:并网初期的量显著低于其后的稳定水平。稳定水平用中位数 —— 几个爬坡点撬不动它。
+      const lvl = median(ks.map(k => vals.get(k)!))
+      let i = 0
+      while (i < ks.length && vals.get(ks[i])! < 0.5 * lvl) i++
+      trimmed = i > 0
+      ks = ks.slice(i)
+    }
+    let cut = false
+    if (byCp && cutKey != null) {
+      const before = ks.filter(k => k < cutKey!)
+      cut = before.length < ks.length
+      ks = before
+    }
+    return { keys: ks, trimmed, cut }
+  }
+
+  // 逐条放宽:先松③(它是防自我吸收的refinement),再松②,最后才松①(①的偏差最大)
+  const ladder: [boolean, boolean, boolean][] = [
+    [true, true, true], [true, true, false], [true, false, false], [false, false, false],
+  ]
+  let byCohort = false, byRamp = false, byCp = false
+  let got: WinPick = pick(false, false, false)
+  for (const [c, r, p] of ladder) {
+    const t = pick(c, r, p)
+    if (t.keys.length >= opts.minN) { byCohort = c; byRamp = r; byCp = p; got = t; break }
+  }
+
+  const cond: string[] = []
+  cond.push(byCohort ? '同批在网' : '已放宽：不限同批在网')
+  if (byRamp) { if (got.trimmed) cond.push('已排除并网初期') } else cond.push('已放宽：含并网初期')
+  if (byCp) { if (got.cut) cond.push('变点之前') } else if (cutKey != null) cond.push('已放宽：不限变点之前')
+
+  const n = got.keys.length
+  if (n < opts.minN) {
+    return { vals: [], note: `可用历史刻度只有 ${n} ${opts.unit}，不足 ${opts.minN} ${opts.unit}，画不出正常范围` }
+  }
+  const short = (k: string) => k.slice(5)
+  return {
+    vals: got.keys.map(k => vals.get(k)!),
+    // 窗口不一定连续(排掉当段之后会缺一块),所以除了首末还要报条数 —— 只写区间会撒谎
+    note: `基线取 ${got.keys[0]} ~ ${short(got.keys[n - 1])} 共 ${n} ${opts.unit}（${cond.join(' · ')}）`,
+  }
+}
+
 /**
  * 看板(L1)。**这屏的重心** —— 数据是逐日进来的,异常要在几天内看见,
  * 所以默认粒度是「当月 × 逐日」,不是「全年 × 逐月」。
  *
  * 断崖 = 线掉出带并留在带外;波动变大 = 点在带内外来回跳。两种感觉同一张图给。
  *
- * 正常范围怎么估,两档不一样,差别要写到屏上:
- * · **月段** —— 拿**当月之外**的日比值估。不含被看的那段,范围不会被它自己撑宽 ——
- *   否则整月都坏的栋会把带撑到把自己包进去,检测器对最严重的资产最沉默。
- * · **年段** —— 只有 12 个月点,没有「段外」可用,就拿这 12 个点自己稳健估。
- *   一个坏月不会把带撑开(MAD 抗离群),但**全年一起差看不见** —— 那是绝对通道(A1/R3)的事。
+ * 正常范围的窗口按 §03.7 三条件挑,逐栋不同(变点位置逐栋不同),所以 `baseNote` 也逐栋一份。
+ * 两档的差别:月段拿段外估(不含被看的那段,范围不会被它自己撑宽);
+ * 年段只有 12 个月点,没有「段外」可用,就拿这些点自己稳健估 ——
+ * 一个坏月不会把带撑开(MAD 抗离群),但**全年一起差看不见**,那是绝对通道(A1/R3)的事。
+ *
+ * @param span.dataThrough 数据截止日(最后一条抄表);不给就从 rows 推
+ * @param span.elapsed     已过去到哪个刻度(今天与期末取早);不给就当整段都已过去
  */
 export function buildBoard(
   rows: ReadingRow[], stations: StationCfg[], ticks: string[], gran: Gran, crit: Criteria,
+  span: { dataThrough?: string | null; elapsed?: string | null } = {},
 ): BoardRow[] {
   const keyOf = gran === 'month' ? (d: string) => d : YM
   const series = ratioSeries(rows, keyOf)
   const tickSet = new Set(ticks)
-  // 写死「12 个月」会撒谎:只有 8 个月数据时屏上也会写 12。按实际刻度数说。
-  const baseNote = gran === 'month'
-    ? '范围取自当月之外的逐日数据'
-    : `范围取自这 ${ticks.length} 个月自身`
+  const unit = gran === 'month' ? '天' : '个月'
 
   const firstOf = new Map<number, string>()
+  let maxDate = ''
   for (const r of rows) {
     const cur = firstOf.get(r.stationId)
     if (cur == null || r.date < cur) firstOf.set(r.stationId, r.date)
+    if (r.date > maxDate) maxDate = r.date
   }
+  const dataThrough = span.dataThrough !== undefined ? span.dataThrough : (maxDate || null)
   const segEnd = ticks[ticks.length - 1] ?? ''
+  const elapsed = span.elapsed !== undefined ? span.elapsed : segEnd || null
+
+  // 全园有抄表的刻度 + 每个刻度的在网栋集合
+  const allKeys = [...new Set([...series.values()].flatMap(m => [...m.keys()]))].sort()
+  const firstKey = new Map<number, string>()
+  for (const [id, d] of firstOf) if (series.has(id)) firstKey.set(id, keyOf(d))
+  const cohort = cohortMap(allKeys, firstKey)
+  // 显示段的在网集合按段内**最后一个已过去的刻度**取 —— 比值现在就是拿那个集合的中位当分母的
+  const segKey = [...ticks].reverse().find(t => tickState(t, true, dataThrough, elapsed) !== 'future')
+    ?? ticks[0] ?? ''
+  const segCohort = cohort.get(segKey)
+    ?? [...firstKey.keys()].sort((a, b) => a - b).filter(id => firstKey.get(id)! <= segKey).join(',')
 
   return stations.filter(s => s.metered).map(s => {
     const all = series.get(s.id) ?? new Map<string, number>()
     const firstDate = firstOf.get(s.id) ?? null
     // 段末键是 'YYYY-MM-DD' 或 'YYYY-MM';首条抄表日取同样长度再比,避免拿日期比月份
     const bornBySeg = firstDate != null && firstDate.slice(0, segEnd.length) <= segEnd
-    const inSeg = ticks.map(t => all.get(t) ?? null)
-    // 月段:基线 = 段外的日比值;年段:基线 = 段内这些点自己
-    const base = gran === 'month'
-      ? [...all].filter(([k]) => !tickSet.has(k)).map(([, v]) => v)
-      : inSeg.filter((v): v is number => v != null)
+    const ratio = ticks.map(t => all.get(t) ?? null)
+    const state = ticks.map((t, i) => tickState(t, ratio[i] != null, dataThrough, elapsed))
 
-    const enough = base.length >= (gran === 'month' ? 20 : 6)
-    const center = enough ? median(base) : null
+    const win = baselineWindow(all, allKeys, cohort, segCohort, k => tickSet.has(k), {
+      excludeSeg: gran === 'month', useCp: gran === 'month',
+      minN: gran === 'month' ? 15 : 6, unit,
+    })
+    const base = win.vals
+    const center = base.length ? median(base) : null
     // 稳健尺度:年段只有 12 个点,一阶差分会把本来就该看的月度落差差掉,所以用 MAD;
     // 月段点多,用一阶差分(对阶跃与慢漂移免疫)
-    const sigma = !enough ? null
+    const sigma = center == null ? null
       : gran === 'month'
         ? robustSigma(base)
-        : 1.4826 * median(base.map(v => Math.abs(v - (center as number))))
+        : 1.4826 * median(base.map(v => Math.abs(v - center)))
     const half = sigma == null ? null : Math.max(sigma, 1e-6) * crit.bandSigma
     const lo = center != null && half != null ? center - half : null
     const hi = center != null && half != null ? center + half : null
 
+    // 漏抄与未到处 out 一律 null:0 的含义是「量过、在范围内」,与「没量」是两件事
+    const out = ratio.map((v, i) =>
+      state[i] !== 'seen' || v == null || lo == null || hi == null ? null : v < lo ? -1 : v > hi ? 1 : 0)
+    // 「仍在持续」的锚点 = **数据截止日**在本段里的下标,不是「本段最后一条抄表」——
+    // 12 月回看 8 月时 8/31 也是本段最后一条,但它早就结束了,写「仍在持续」是撒谎。
+    const lastSeen = dataThrough == null ? -1 : ticks.findIndex(t => t === dataThrough.slice(0, t.length))
+    const seenN = state.filter(v => v === 'seen').length
+    const maxDev = center != null && center !== 0
+      ? ratio.reduce<number>((m, v, i) => {
+        if (v == null || state[i] !== 'seen') return m
+        const d = (v - center) / center
+        return Math.abs(d) > Math.abs(m) ? d : m
+      }, 0)
+      : 0
+
     return {
       id: s.id, name: s.name, phase: s.phase,
       cadence: cadenceOf([...all.keys()].filter(k => k.length === 10)),
-      ratio: inSeg,
-      center, lo, hi,
-      out: inSeg.map(v => (v == null || lo == null || hi == null ? null : v < lo ? -1 : v > hi ? 1 : 0)),
-      baseNote,
+      ratio, state,
+      center, lo, hi, out,
+      runs: runsOf(out, state, crit.bandRun, lastSeen),
+      outN: out.filter(v => v === 1 || v === -1).length,
+      maxDev, seenN,
+      elapsedN: state.filter(v => v !== 'future').length,
+      baseNote: win.note,
       firstDate, bornBySeg,
     }
   })
@@ -809,21 +1027,6 @@ function scatterMin(n: number, crit: Criteria): number {
   return Math.max(crit.bandRun, Math.ceil(n * leak * 3))
 }
 
-/** 一段连续同侧出带 */
-function runsOf(out: (number | null)[]): { from: number; to: number; side: number }[] {
-  const res: { from: number; to: number; side: number }[] = []
-  let i = 0
-  while (i < out.length) {
-    const s = out[i]
-    if (s !== 1 && s !== -1) { i++; continue }
-    let j = i
-    while (j + 1 < out.length && out[j + 1] === s) j++
-    res.push({ from: i, to: j, side: s })
-    i = j + 1
-  }
-  return res
-}
-
 /**
  * F1(§04.3)。**每行一句事实:日期、天数、方向。**
  * 没有判词、没有建议动作、没有金额,也没有 p / q —— 第一层出现统计量是 v1 就定死不许的,
@@ -835,9 +1038,12 @@ function runsOf(out: (number | null)[]): { from: number; to: number; side: numbe
  */
 export function buildFacts(
   board: BoardRow[], stationRows: StationRow[], ticks: string[], gran: Gran, crit: Criteria,
+  dataThrough: string | null = null,
 ): Fact[] {
   const facts: Fact[] = []
   const label = gran === 'month' ? dLabel : mLabel
+  // 数据截止日在本段里的下标 —— 「仍在持续」只认它(§03.8),见 buildBoard 里同名的锚点
+  const cutIdx = dataThrough == null ? -1 : ticks.findIndex(t => t === dataThrough.slice(0, t.length))
   const unit = gran === 'month' ? '天' : '个月'
   const byId = new Map(stationRows.map(s => [s.id, s]))
   // 「板数未录」对全园都成立时**不逐栋重复** —— 一句话说 13 遍会把真信号淹掉。
@@ -851,36 +1057,41 @@ export function buildFacts(
     const push = (kind: Fact['kind'], text: string) =>
       facts.push({ stationId: b.id, station: b.name, kind, text })
 
-    // ── 读不出:范围估不出来,或这一段几乎没抄
-    const got = b.ratio.filter(v => v != null).length
-    if (b.lo == null) {
+    // ── 读不出:范围估不出来,或这一段几乎没抄。
+    // **覆盖率的分母是「已过去」不是「整段」**(§03.8):按整段算的话月中打开 13 栋全是 48%,
+    // 一股脑掉进「读不出」,屏上什么都不剩 —— 而这屏存在的理由恰恰是「录完几天内就能看出」。
+    const got = b.seenN
+    const seg = gran === 'month' ? '本月' : '本年'
+    // 整段都还没到 → 看板这条线没话可说,但台账差是纯算术,与期间无关,照常往下走
+    if (b.elapsedN === 0) { /* 跳过看板类事实 */ } else if (b.lo == null) {
       push('thin', `历史数据不够，画不出正常范围`)
     } else if (got === 0) {
       push('thin', gran === 'month' ? '本月一天都没抄' : '本年没有抄表记录')
-    } else if (got < ticks.length * crit.coverMonth) {
-      push('thin', `${gran === 'month' ? '本月' : '本年'}只抄了 ${got} ${unit}，共 ${ticks.length} ${unit}`)
+    } else if (got < b.elapsedN * crit.coverMonth) {
+      push('thin', `${seg}只抄了 ${got} ${unit}，已过去 ${b.elapsedN} ${unit}`)
     }
 
     if (b.lo != null && got > 0) {
       const below = b.out.filter(v => v === -1).length
       const above = b.out.filter(v => v === 1).length
       const outCount = below + above
-      const runs = runsOf(b.out).filter(r => r.to - r.from + 1 >= crit.bandRun)
       // **形态判在前,连续段判在后。** 只看「有没有连续 N 个同侧」会把剧烈上下跳的栋
       // 说成断崖 —— 实测:一栋 31 天里 22 天出带、上下各 11 天,只因中间碰巧连着 4 天同侧,
       // 就被报成「13 起连续 4 天在范围下方」。两种感觉在措辞上必须分得开。
       const oneSided = outCount > 0 && Math.max(below, above) / outCount >= 0.8
-      if (runs.length && oneSided) {
-        // 断崖:连续同侧。报最长的那段的起点与长度
-        const longest = runs.reduce((a, r) => (r.to - r.from > a.to - a.from ? r : a), runs[0])
-        const n = longest.to - longest.from + 1
-        push('run', `${label(ticks[longest.from])} 起连续 ${n} ${unit}在正常范围${longest.side < 0 ? '下方' : '上方'}`)
-      } else if (outCount >= scatterMin(ticks.length, crit)) {
+      // 段末端正好是数据截止日 = 它还没结束,写成闭区间会暗示它已经过去了(§03.8)
+      const live = (on: boolean) => (on ? '（仍在持续）' : '')
+      if (b.runs.length && oneSided) {
+        // 断崖:连续同侧。报最长的那段的起点与长度(长度按**已抄**刻度数,跨过的漏抄不计)
+        const lenOf = (r: Run) => b.out.slice(r.from, r.to + 1).filter(v => v === r.dir).length
+        const longest = b.runs.reduce((a, r) => (lenOf(r) > lenOf(a) ? r : a), b.runs[0])
+        push('run', `${label(ticks[longest.from])} 起连续 ${lenOf(longest)} ${unit}在正常范围${longest.dir < 0 ? '下方' : '上方'}${live(longest.live)}`)
+      } else if (outCount >= scatterMin(b.elapsedN, crit)) {
         // 波动变大:散在两侧
         // **多到一定程度就不逐个列日期了** —— 列 22 个数没人看
         const days = b.out.map((v, i) => (v === 1 || v === -1 ? label(ticks[i]) : null)).filter(Boolean)
-        const where = days.length <= 6 ? `${days.join('、')} 共 ` : `${gran === 'month' ? '本月' : '本年'} `
-        push('scatter', `${where}${outCount} ${unit}在正常范围之外${below && above ? '，上下都有' : ''}`)
+        const where = days.length <= 6 ? `${days.join('、')} 共 ` : `${seg} `
+        push('scatter', `${where}${outCount} ${unit}在正常范围之外${below && above ? '，上下都有' : ''}${live(cutIdx >= 0 && !!b.out[cutIdx])}`)
       }
     }
 
@@ -923,6 +1134,7 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     ? Array.from({ length: daysInYm(ym) }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`)
     : months
   const tickLabels = ticks.map(gran === 'month' ? dLabel : mLabel)
+  const segEnd = ticks[ticks.length - 1] ?? ''
 
   const noMeter = stations.filter(s => !s.metered).map(s => s.name)
   const noCapacity = stations.filter(s => s.metered && (s.capKwp == null || s.capKwp <= 0)).map(s => s.name)
@@ -973,9 +1185,14 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     }
   })
 
-  // ⑤ 看板与事实清单
-  const board = buildBoard(rows, stations, ticks, gran, crit)
-  const facts = buildFacts(board, stationRows, ticks, gran, crit)
+  // ⑤ 看板与事实清单。**两条日期先切出来**(§03.8):未到 ≠ 漏抄,
+  //    合并成同一种灰的话月中打开这屏,13 栋会一股脑掉进「读不出」。
+  const dataThrough = rows.reduce<string | null>((m, r) => (m == null || r.date > m ? r.date : m), null)
+  const todayKey = (input.today ?? localToday()).slice(0, segEnd.length)
+  const elapsed = segEnd && todayKey < segEnd ? todayKey : segEnd || null
+  const board = buildBoard(rows, stations, ticks, gran, crit, { dataThrough, elapsed })
+  const facts = buildFacts(board, stationRows, ticks, gran, crit, dataThrough)
+  const elapsedN = ticks.filter(t => tickState(t, false, dataThrough, elapsed) !== 'future').length
 
   // ⑥ 账面量,逐刻度。零容量依赖 —— 板数与铭牌都没录也照常出真数
   const tickOf = gran === 'month' ? (d: string) => d : YM
@@ -1014,6 +1231,7 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
       parkGen.toFixed(3), crit.bandSigma, crit.ledger, crit.anchorHours,
     ].join('|')),
     year, gran, ym, ticks, tickLabels,
+    dataThrough, elapsedN,
     stations: stationRows,
     board, facts,
     slopes: responseSlopes(rows.map(r => ({ stationId: r.stationId, date: r.date, gen: r.gen })), polish, stations),

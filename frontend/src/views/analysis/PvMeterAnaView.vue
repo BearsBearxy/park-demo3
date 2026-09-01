@@ -1,39 +1,45 @@
 <script setup lang="ts">
-// 光伏分栋分析(pv-meter-analysis)— PV-ANALYSIS-SPEC §06。
+// 光伏分栋分析(pv-meter-analysis)— PV-ANALYSIS-SPEC §06 全段(v3)。
 //
 // **一个仪器,两档缩放。** 期间切「按月 / 按年」,屏跟着换刻度:
-//   按月段 → x = 当月 1…31 日,一个点 = 当日。数据是逐日进来的,异常要在几天内看见。
+//   按月段 → x = 当月 1…31 日,一个点 = 当日。数据是逐日进来的,几天内就要看得见。
 //   按年段 → x = 12 个月,一个点 = 当月。回看用。
 // **模型永远吃全年,只有「画哪一段」跟着期间变** —— 模型要历史,屏要新鲜。
 //
-// **信息结构:结论 → 定位 → 佐证。** 这是监控屏不是陈列屏 —— 用户的作业是
-// 「录了数据几天内看出断崖或波动」,所以首屏必须先回答「有没有、是哪栋」,
-// 再给定位用的看板;校准图与消纳图是佐证,收进分段里,不与看板并排等权。
-//   ① 结论条:出范围的栋数(大数字)+ 可点的栋名 + 那几句事实。0 栋时整条转静音。
-//   ② 看板:出范围的栋**置顶 + 底色 + 左侧色条**;其余折叠成一行;未投产缩成一句话。
-//      突出**不靠加行高** —— 所有行共用同一段纵轴是这仪器的立身之本,
-//      行高不齐会悄悄毁掉横向可比性。
-//   ③ 三段 Segmented:异常定位(默认)/ 效率校准 / 消纳收益。九张卡不再一根直筒往下滚。
+// **四层各换掉一个可测量的物理属性**(§06.0),不靠标题文字:
+//   L0 B0 指标卡  --surface-sunken 实底 + 3px 左竖条,全屏唯一的 26px 数字
+//   L1 主卡      白底 1px 边 + 卡头;左队列(纯文字数字)+ 右单栋大图;判据脚在同一张卡里
+//   L2 两档段控   白底 + 卡头 + **坐标轴**;强调色 #9D5D17 到这里为止不再出现
+//   L3 单栋抽屉   720px 覆盖层,全屏唯一的表格
+// 四条排他规则:26px 只在 B0 / #9D5D17 只在 L0-L1 / 坐标轴只在 L2 与抽屉 / height=440 零次。
 //
-// 铁律:一份数据、一次计算、一个 snapshot id,页脚显示那个 id。
+// **v2.1 的 13 行 20px 缩略条已删**(§00 v3-1):共用纵轴 + 钳位正好吃掉最该被看见的那一行,
+// 20px × 560px 塞 31 个点也读不出日刻度,而用户的作业就是「哪几天」。
+// 判据线替用户决定了「是哪栋」—— 那是文字和数字的活;图的职责是看清那一栋。
 //
-// ⚠ 文案规范(§05):**屏只说明可视化在做什么,不输出解释性结论。**
+// 铁律:一份数据、一次计算、一个 snapshot id,页脚显示那个 id。只有换**年**才重新取数。
+//
+// ⚠ 文案(§05):**屏只说明可视化在做什么,不输出解释性结论。**
 //   能写:图种 / 坐标轴含义与单位 / 范围是拿哪一段估的 / 数据来源与条数 / 判据线画在哪。
 //   不能写:诊断结论、成因归因、建议动作、严重度判词、反事实金额,以及 p / q 这类统计量。
+//   「正常范围」是 §05 给 ±2σ 指定的替换名,不是严重度判词 —— 不要再改回「置信带」。
 //
-// ⚠ 看板用**内联 SVG**,不用 ECharts:多行小图要共用同一段纵轴,自己算刻度比配 N 套 grid
-//   更好保证;而且 bundle 里没注册 heatmap/custom,jsdom 又测不出漏注册,手写还能直接数节点。
-//   viewBox 宽取**实测像素宽**(useWidth),不用 preserveAspectRatio="none" ——
-//   非等比拉伸会把出范围的圆点抻成横条,而那些点正是这张图唯一要人看见的东西。
+// ⚠ ECharts 是裁剪打包的(echartsBundle.ts):heatmap / visualMap / custom / graph 全没注册,
+//   用了得到空白图 + 一句控制台警告,而 **jsdom 测不出来**。本屏只用 bar/line/scatter。
+//   option 是纯 JSON,拿不到 CSS 变量 → 颜色一律走 pvAnaColors.ts 的字面值。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import AnaBullet from '@/components/ana/AnaBullet.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Segmented from '@/components/ds/Segmented.vue'
-import { useWidth } from '@/components/ana/useWidth'
+import PvQueue from './PvQueue.vue'
+import PvDayChart from './PvDayChart.vue'
+import PvSlope from './PvSlope.vue'
+import { PV_COLORS as C } from './pvAnaColors'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import { fnum } from '@/components/ana/anaFmt'
@@ -44,8 +50,9 @@ import {
   type AnaSnapshot, type BoardRow, type Criteria, type SnapshotInput,
 } from './pvMeterAna.logic'
 
+// 模块级常量:传给 AnaShell 的与屏内读的必须是同一份(§06)。本屏不支持环比。
 const CMP: CompareMode[] = ['yoy']
-const GRID_PRICE = 0.391   // 上网标杆价(脱硫煤)
+const GRID_PRICE = 0.4
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -69,7 +76,7 @@ const CRIT_KEYS = [
   'pv_crit_yield_ratio', 'pv_band_sigma', 'pv_band_run',
 ] as const
 
-/** 判据线来自计费参数 —— 屏上写的必须是**当前生效的那个数**,取不到就回落默认,不显空 */
+/** 判据线来自计费参数 —— 屏上写的必须是**当前生效的那个数**,取不到就回落默认,线屏照常出 */
 async function loadCrit(y: number) {
   try {
     const rows = await paramsApi.list(`${y}-12`, 'all', { key: CRIT_KEYS.join(',') })
@@ -90,7 +97,7 @@ async function loadCrit(y: number) {
   } catch { /* 用默认值,屏照常出 */ }
 }
 
-// 取的永远是**整年**:看板只画选中那段,但正常范围要拿段外的数据来估
+// 取的永远是**整年**:看板只画选中那段,但正常范围要拿段外的数据来估(§03.7)
 async function load(y: number) {
   const my = ++seq
   loading.value = true
@@ -149,372 +156,446 @@ const snapInput = computed<SnapshotInput | null>(() => {
 })
 const snap = computed<AnaSnapshot | null>(() => (snapInput.value ? buildSnapshot(snapInput.value) : null))
 
-const segLabel = computed(() => (gran.value === 'year' ? `${year.value} 年` : `${year.value} 年 ${month.value} 月`))
 const unit = computed(() => (gran.value === 'month' ? '天' : '个月'))
+const segLabel = computed(() => (gran.value === 'year' ? `${year.value} 年` : `${year.value} 年 ${month.value} 月`))
 const wan = (v: number) => fnum(v / 10000, 1)
+const pct0 = (v: number) => `${(v * 100).toFixed(0)}%`
 
-// ── 分段:一次只看一件事 ───────────────────────────────────────────────
-// 默认停在「异常定位」—— 这屏的作业是监控,校准与消纳是佐证,不与看板并排等权
-const SECTIONS = [
-  { value: 'find', label: '异常定位' },
-  { value: 'calib', label: '效率校准' },
-  { value: 'ledger', label: '消纳收益' },
-]
-const section = ref('find')
+// ── B0 巡检指标卡(§06.2)────────────────────────────────────────────
+// 五格并排,**平行扫读,不串成句子**。主数统计**段所在的栋数**,不数点。
+const board = computed<BoardRow[]>(() => snap.value?.board ?? [])
+const bornRows = computed(() => board.value.filter(b => b.bornBySeg))
 
-// ── 看板 ─────────────────────────────────────────────────────────────
-// 日抄与月抄**分开两组**:N=12 与 N=244 的可信度差一个量级,并排放会让人以为一样准
-const dailyRows = computed<BoardRow[]>(() => (snap.value?.board ?? []).filter(b => b.cadence === 'daily'))
-const monthlyRows = computed<BoardRow[]>(() => (snap.value?.board ?? []).filter(b => b.cadence === 'monthly'))
-
-/** 这一段出范围的刻度数。**这是原始事实,不是发现** —— 见下面 hitIds */
-const outN = (b: BoardRow) => (b.bornBySeg ? b.out.reduce((n: number, v) => n + (v ? 1 : 0), 0) : 0)
-
-// 一个屏**一个门槛**:什么算「发现」由 buildFacts 那条判据线说了算,不是「出过一次带」。
-// ±2σ 天然双侧漏出 ~4.6%,31 天期望 1.4 天 —— 拿「出过带」提级,健康的栋会几乎全部标黄,
-// 一堆等权的黄行和一堆等权的灰行一样没用。图上照实标点,提级只认判据线。
-// ledger / yield 是**整年**口径的事实,不提这一段的看板行,但事实句照列。
-const SEG_KINDS = new Set(['run', 'scatter', 'thin'])
-const hitIds = computed(() => new Set(
-  (snap.value?.facts ?? []).filter(f => SEG_KINDS.has(f.kind)).map(f => f.stationId)))
-
-const bornDaily = computed(() => dailyRows.value.filter(b => b.bornBySeg))
-/** 判据线命中的置顶,按出范围的刻度数从多到少 */
-const hitRows = computed(() => bornDaily.value.filter(b => hitIds.value.has(b.id)).sort((a, b) => outN(b) - outN(a)))
-const okRows = computed(() => bornDaily.value.filter(b => !hitIds.value.has(b.id)))
-const unbornNames = computed(() => dailyRows.value.filter(b => !b.bornBySeg).map(b => b.name))
-const okOpen = ref(false)
-const monthOpen = ref(false)
-// 换段就收回折叠 —— 上一段展开过不代表这一段也想看全部
-watch([() => snap.value?.id], () => { okOpen.value = false; monthOpen.value = false })
-
-// viewBox 宽 = 实测像素宽,圆点才是圆的(见顶部注释)
-const { el: boardEl, width: boardW } = useWidth(560)
-const BOX = computed(() => ({ w: Math.max(160, Math.round(boardW.value)), h: 40, pad: 4 }))
-
-/** 共用同一段纵轴 —— 各自缩放就没法横着扫;未投产的行不参与,免得把轴撑开 */
-const bdRange = computed(() => {
-  const vs: number[] = []
-  for (const b of snap.value?.board ?? []) {
-    if (!b.bornBySeg) continue
-    for (const v of b.ratio) if (v != null) vs.push(v)
-    if (b.lo != null) vs.push(b.lo)
-    if (b.hi != null) vs.push(b.hi)
-  }
-  if (!vs.length) return { lo: 0, hi: 2 }
-  const lo = Math.min(...vs), hi = Math.max(...vs)
-  const pad = Math.max(0.05, (hi - lo) * 0.1)
-  return { lo: lo - pad, hi: hi + pad }
-})
-function bd(b: BoardRow) {
-  const s = snap.value
-  const { w, h, pad } = BOX.value
-  const { lo, hi } = bdRange.value
-  const n = s?.ticks.length ?? 1
-  const X = (i: number) => pad + (i / Math.max(1, n - 1)) * (w - pad * 2)
-  const Y = (v: number) => h - pad - ((v - lo) / Math.max(1e-9, hi - lo)) * (h - pad * 2)
-  const pts = b.ratio.map((v, i) => (v == null ? null : { x: X(i), y: Y(v), out: b.out[i] ?? 0, i }))
-  const seen = pts.filter((p): p is NonNullable<typeof p> => p != null)
-  // 缺抄的刻度**断开**,不连线:插值会被当成观测
-  const segs: string[] = []
-  let cur: string[] = []
-  for (const p of pts) {
-    if (p == null) { if (cur.length > 1) segs.push(cur.join(' ')); cur = []; continue }
-    cur.push(`${cur.length ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-  }
-  if (cur.length > 1) segs.push(cur.join(' '))
-  return {
-    lines: segs,
-    band: b.lo != null && b.hi != null
-      ? { y: Y(b.hi), h: Math.max(1, Y(b.lo) - Y(b.hi)) }
-      : null,
-    center: b.center != null ? Y(b.center) : null,
-    dots: seen.filter(p => p.out !== 0),
-    n: seen.length,
-  }
+/** 「读不出」的三种,与 PvQueue 内的同一口径:月频 / 一个刻度都没抄 / 范围估不出来 */
+function unreadable(r: BoardRow): boolean {
+  return r.cadence === 'monthly' || r.seenN === 0 || r.center == null
 }
-/** 刻度轴只标首 / 中 / 末 —— 31 个日期全铺出来就成了一条灰噪声 */
-const axisMarks = computed(() => {
-  const ls = snap.value?.tickLabels ?? []
-  if (ls.length < 2) return ls
-  return [ls[0], ls[Math.floor((ls.length - 1) / 2)], ls[ls.length - 1]]
+const hitRows = computed(() => bornRows.value.filter(r => !unreadable(r) && r.runs.length > 0))
+const thinRows = computed(() => bornRows.value.filter(r => unreadable(r)))
+const unbornNames = computed(() => board.value.filter(b => !b.bornBySeg).map(b => b.name))
+
+/** 覆盖率的分母是**已过去**,不是整段(§03.8)——写成整段的话月中打开 13 栋全掉进「读不出」 */
+const cover = computed(() => {
+  let seen = 0, elapsed = 0
+  for (const r of bornRows.value) { seen += r.seenN; elapsed += r.elapsedN }
+  return { seen, elapsed, pct: elapsed > 0 ? seen / elapsed : null }
+})
+const panelDone = computed(() => {
+  const ms = (snap.value?.stations ?? []).filter(s => s.metered)
+  return { k: ms.filter(s => s.theoKwp != null).length, n: ms.length }
+})
+const noMeterN = computed(() => (snap.value?.quality.noMeter.length ?? 0))
+
+// ── B1 队列 + 单栋大图(§06.3)───────────────────────────────────────
+// 排序键就印在队列行右边那两列,顺序可复算、可反对。抽屉的「上一栋/下一栋」走同一把尺子
+//（跨组走,不在组边界上停 —— 三个组用的是同一个排序键)。
+const cmpRow = (a: BoardRow, b: BoardRow) =>
+  b.outN - a.outN || Math.abs(b.maxDev) - Math.abs(a.maxDev) || a.id - b.id
+const queueOrder = computed(() => [...bornRows.value].sort(cmpRow))
+
+const selId = ref<number | null>(null)
+/** 默认停在队列第一行 —— 命中的栋排在最前,首屏不用点就有东西看 */
+watch([queueOrder, () => snap.value?.id], () => {
+  if (selId.value != null && bornRows.value.some(r => r.id === selId.value)) return
+  selId.value = queueOrder.value[0]?.id ?? null
+}, { immediate: true })
+const selRow = computed(() => bornRows.value.find(r => r.id === selId.value) ?? null)
+const selStation = computed(() => snap.value?.stations.find(s => s.id === selId.value) ?? null)
+
+/** 大图图头那句三段式事实。命中的栋用 buildFacts 那句;没命中的用同样三段式的计数句。 */
+const selFact = computed(() => {
+  const r = selRow.value
+  if (!r) return ''
+  const f = (snap.value?.facts ?? []).find(
+    x => x.stationId === r.id && (x.kind === 'run' || x.kind === 'scatter' || x.kind === 'thin'))
+  if (f) return f.text
+  return `已抄 ${r.seenN} / 已过去 ${r.elapsedN} ${unit.value} · 出正常范围 ${r.outN} ${unit.value}`
 })
 
-// ── L2 绝对水平 ───────────────────────────────────────────────────────
-// ECharts option 是纯 JSON,**不能引用 CSS 变量**,颜色只能写字面值
-const anchorPerTick = computed(() => {
-  const s = snap.value
-  if (!s) return 0
-  return +(s.crit.anchorHours / (s.gran === 'month' ? 365 : 12)).toFixed(2)
+function pickStation(id: number) { selId.value = id }
+function pickByName(name: string) {
+  const r = bornRows.value.find(x => x.name === name)
+  if (r) { selId.value = r.id; openDrawer() }
+}
+
+// ── B2 判据脚(§06.4)────────────────────────────────────────────────
+// 线画在越线的画面**同一张卡**里,用户才会读成「这是我画的线」。
+const critLines = computed(() => {
+  const c = snap.value?.crit ?? crit.value
+  return [
+    { key: 'sigma', text: `正常范围半宽 ${c.bandSigma} 倍波动`, off: false },
+    { key: 'run', text: `连续 ${c.bandRun} 个刻度算一段`, off: gran.value === 'year' },
+    { key: 'cover', text: `抄表覆盖 ≥${pct0(c.coverMonth)}`, off: false },
+    { key: 'ledger', text: `台账差 ±${pct0(c.ledger)}`, off: false },
+    { key: 'anchor', text: `年锚点 ${c.anchorHours} 小时`, off: false },
+    { key: 'yield', text: `年等效小时 ≥ 锚点 ${pct0(c.yieldRatio)}`, off: false },
+  ]
 })
-const a1Opt = computed<object>(() => {
+function gotoParams() {
+  tabs.openFresh('params', { pin: true })
+  void router.push({ path: '/params', query: { ym: `${year.value}-12`, section: 'constant' } })
+}
+function goMeter(): void {
+  tabs.openFresh('pv-income', { pin: true })
+  void router.push('/pv-income')
+}
+
+// ── L2 两档段控(§06.5)──────────────────────────────────────────────
+// 默认停在**账面量** —— 板数录进来之前只有这一档是全真数。
+const section = ref<'abs' | 'ledger'>('ledger')
+
+/** 每刻度每栋的等效小时。分母优先理论装机,没录退回台账 —— 口径写在图脚里。 */
+const yieldSeries = computed(() => {
+  const s = snap.value
+  if (!s || s.gran !== 'month') return []
+  const denom = new Map(s.stations.map(x =>
+    [x.id, x.theoKwp ?? (x.capKwp != null && x.capKwp > 0 ? x.capKwp : null)]))
+  const idx = new Map(s.ticks.map((t, i) => [t, i]))
+  const out: { name: string; data: (number | null)[] }[] = []
+  for (const st of s.stations) {
+    if (!st.metered || !denom.get(st.id)) continue
+    const arr: (number | null)[] = s.ticks.map(() => null)
+    out.push({ name: st.name, data: arr })
+  }
+  const byName = new Map(out.map(o => [o.name, o.data]))
+  for (const r of readings.value) {
+    const i = idx.get(r.readDate)
+    const st = s.stations.find(x => x.id === r.stationId)
+    if (i == null || !st) continue
+    const d = denom.get(r.stationId)
+    const arr = byName.get(st.name)
+    if (!d || !arr) continue
+    arr[i] = +(r.genTotal / d).toFixed(3)
+  }
+  return out
+})
+
+// B3 等效小时轨迹(月档):13 条同色细灰 + 1 条全园加权粗线。13 栋无一栋有自己的颜色。
+const b3Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
+  const thin = yieldSeries.value.map(o => ({
+    name: o.name, type: 'line', symbol: 'none', connectNulls: false, silent: true,
+    lineStyle: { width: 1, color: C.INK300 }, data: o.data,
+  }))
   return {
     tooltip: { trigger: 'axis' },
-    grid: { left: 52, right: 16, top: 20, bottom: 26 },
-    xAxis: { type: 'category', data: s.tickLabels },
-    yAxis: { type: 'value', name: '小时', nameTextStyle: { fontSize: 10 } },
-    series: [{
-      type: 'line', symbol: 'circle', symbolSize: 5, connectNulls: false,
-      lineStyle: { width: 2.2, color: '#1F5FBF' }, itemStyle: { color: '#1F5FBF' },
-      data: s.ledger.yield.map(v => (v == null ? null : +v.toFixed(2))),
-      markLine: {
-        silent: true, symbol: 'none',
-        lineStyle: { color: '#8A8A85', type: 'dashed', width: 1.4 },
-        label: { formatter: `锚点摊到每${s.gran === 'month' ? '天' : '月'} ${anchorPerTick.value}`, fontSize: 10, position: 'insideEndTop' },
-        data: [{ yAxis: anchorPerTick.value }],
+    grid: { left: 52, right: 16, top: 16, bottom: 28 },
+    xAxis: { type: 'category', data: s.tickLabels, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '等效小时', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    series: [
+      ...thin,
+      {
+        name: '全园加权', type: 'line', symbol: 'none', connectNulls: false,
+        lineStyle: { width: 2.2, color: C.INK900 },
+        data: s.ledger.yield.map(v => (v == null ? null : +v.toFixed(3))),
       },
-    }],
+    ],
   }
 })
 
-const t1Opt = computed<object>(() => {
+// B4 等效小时 去年→今年(年档,替 B3)。在网不足 90 天的栋两端置 null,由图注计数。
+const b4Points = computed(() => {
+  const s = snap.value
+  if (!s) return []
+  const gen = new Map<number, number>()
+  const days = new Map<number, Set<string>>()
+  for (const r of prevReadings.value ?? []) {
+    gen.set(r.stationId, (gen.get(r.stationId) ?? 0) + r.genTotal)
+    const set = days.get(r.stationId) ?? new Set<string>()
+    set.add(r.readDate); days.set(r.stationId, set)
+  }
+  return s.stations.filter(x => x.metered).map(x => {
+    const d = x.theoKwp ?? (x.capKwp != null && x.capKwp > 0 ? x.capKwp : null)
+    const pd = days.get(x.id)?.size ?? 0
+    return {
+      name: x.name,
+      prev: d != null && pd >= 90 ? +((gen.get(x.id) ?? 0) / d).toFixed(1) : null,
+      cur: x.days >= 90 && x.yieldHours != null ? +x.yieldHours.toFixed(1) : null,
+    }
+  })
+})
+const hasB34 = computed(() =>
+  gran.value === 'month' ? yieldSeries.value.length > 0
+    : b4Points.value.some(p => p.prev != null && p.cur != null))
+
+// B5 各站年等效小时 vs 锚点 × 判据线。**单一中性底槽**,不分三档质性灰区(§06.5)。
+const b5Target = computed(() => +((snap.value?.crit ?? crit.value).anchorHours
+  * (snap.value?.crit ?? crit.value).yieldRatio).toFixed(1))
+const b5Rows = computed(() => (snap.value?.stations ?? [])
+  .filter(x => x.metered && x.yieldHours != null && x.days >= 90)
+  .map(x => ({ name: x.name, value: +x.yieldHours!.toFixed(0), color: 'var(--ink-700)' })))
+const b5Skip = computed(() =>
+  (snap.value?.stations ?? []).filter(x => x.metered).length - b5Rows.value.length)
+
+// B6 台账装机 vs 板数×标称。**正方画布**:非等比上 y=x 不是 45°、±3% 带一侧宽一侧窄,读法失效。
+// 画布靠 .pma-sq 的 max-width 钉死 —— grid 上下 14/34、左右 46/14,绘图区正好 202×202。
+const b6Pts = computed(() => (snap.value?.stations ?? [])
+  .filter(x => x.metered && x.theoKwp != null && x.capKwp != null)
+  .map(x => ({ name: x.name, value: [+x.theoKwp!.toFixed(1), +x.capKwp!.toFixed(1)] })))
+const b6Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
-  const pts = s.stations
-    .filter(x => x.metered && x.theoKwp != null && x.capKwp != null)
-    .map(x => ({ name: x.name, value: [+x.theoKwp!.toFixed(1), +x.capKwp!.toFixed(1)] }))
+  const pts = b6Pts.value
   const hi = +(Math.max(10, ...pts.flatMap(p => p.value)) * 1.1).toFixed(0)
   const ray = (k: number) => [[0, 0], [hi, +(hi * k).toFixed(1)]]
-  const dash = { color: '#C7C7C2', width: 1, type: 'dashed' as const }
+  const dash = { color: C.INK300, width: 1, type: 'dashed' as const }
+  const ax = { type: 'value', min: 0, max: hi, nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } }
   return {
     tooltip: {
       trigger: 'item',
       formatter: (p: { data?: { name?: string; value?: number[] } }) =>
-        p.data?.name ? `${p.data.name}<br/>理论 ${p.data.value![0]} kWp<br/>台账 ${p.data.value![1]} kWp` : '',
+        p.data?.name ? `${p.data.name}<br/>板数×标称 ${p.data.value![0]} kWp<br/>台账 ${p.data.value![1]} kWp` : '',
     },
-    grid: { left: 56, right: 16, top: 16, bottom: 34 },
-    xAxis: { type: 'value', name: '理论装机 kWp', nameLocation: 'middle', nameGap: 20, nameTextStyle: { fontSize: 10 }, min: 0, max: hi },
-    yAxis: { type: 'value', name: '台账 kWp', nameTextStyle: { fontSize: 10 }, min: 0, max: hi },
+    grid: { left: 46, right: 14, top: 14, bottom: 34 },
+    xAxis: { ...ax, name: '板数×标称 kWp', nameLocation: 'middle', nameGap: 20 },
+    yAxis: { ...ax, name: '台账 kWp' },
     series: [
-      { type: 'line', symbol: 'none', silent: true, lineStyle: { color: '#1F5FBF', width: 1.4 }, data: ray(1) },
+      { type: 'line', symbol: 'none', silent: true, lineStyle: { color: C.INK700, width: 1.4 }, data: ray(1) },
       { type: 'line', symbol: 'none', silent: true, lineStyle: dash, data: ray(1 + s.crit.ledger) },
       { type: 'line', symbol: 'none', silent: true, lineStyle: dash, data: ray(1 - s.crit.ledger) },
-      { type: 'scatter', symbolSize: 11, itemStyle: { color: '#2C6A4A' }, data: pts },
+      { type: 'scatter', symbolSize: 11, itemStyle: { color: C.FILL_SLATE }, data: pts },
     ],
   }
 })
+/** 段内某块无真数则整块不渲染,换一句 11px 事实 + 入口;全部无真数才整档隐藏(§06.5) */
+const absAny = computed(() => hasB34.value || b5Rows.value.length > 0 || b6Pts.value.length > 0)
 
-// ── L3 账面量(跟着期间走) ─────────────────────────────────────────────
-const r1Opt = computed<object>(() => {
+// B7 消纳结构与损耗率。副轴**固定 0–6%**,按物理上可能的区间取,不按当前数据的区间取(§00 v3)。
+const LOSS_MAX = 6
+const b7Over = computed(() => {
   const s = snap.value
-  if (!s) return {}
-  const k = s.gran === 'month' ? 1000 : 10000     // 日粒度用千度,月粒度用万度
-  return {
-    tooltip: { trigger: 'axis' },
-    legend: { top: 0, data: ['自消纳', '上网', '损耗', '损耗率'] },
-    grid: { left: 52, right: 46, top: 30, bottom: 26 },
-    xAxis: { type: 'category', data: s.tickLabels },
-    yAxis: [
-      { type: 'value', name: s.gran === 'month' ? '千度' : '万度', nameTextStyle: { fontSize: 10 } },
-      // 副轴范围**固定** 0–3%,不随数据自适应:两个 y 轴的刻度能造出任意的视觉相关性
-      { type: 'value', name: '%', min: 0, max: 3, nameTextStyle: { fontSize: 10 } },
-    ],
-    series: [
-      { name: '自消纳', type: 'bar', stack: 'x', barMaxWidth: 22, itemStyle: { color: '#1F5FBF' }, data: s.ledger.self.map(v => +(v / k).toFixed(2)) },
-      { name: '上网', type: 'bar', stack: 'x', itemStyle: { color: '#9DC3E6' }, data: s.ledger.grid.map(v => +(v / k).toFixed(2)) },
-      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: '#D8D8D4' }, data: s.ledger.loss.map(v => +(v / k).toFixed(2)) },
-      {
-        name: '损耗率', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4,
-        lineStyle: { width: 1.6, color: '#8A5800' }, itemStyle: { color: '#8A5800' },
-        data: s.ledger.lossPct.map(v => +(v * 100).toFixed(2)),
-      },
-    ],
-  }
+  if (!s) return [] as { i: number; v: number }[]
+  return s.ledger.lossPct
+    .map((v, i) => ({ i, v: +(v * 100).toFixed(2) }))
+    .filter(x => x.v > LOSS_MAX)
 })
-
-const r2Opt = computed<object>(() => {
-  const s = snap.value
-  if (!s) return {}
-  const rs = s.stations.filter(x => x.metered)
-  return {
-    tooltip: { trigger: 'axis' },
-    legend: { top: 0, data: ['消纳收益', '上网收益'] },
-    grid: { left: 52, right: 16, top: 30, bottom: 48 },
-    xAxis: { type: 'category', data: rs.map(x => x.name), axisLabel: { interval: 0, rotate: 30, fontSize: 10 } },
-    yAxis: { type: 'value', name: '万元', nameTextStyle: { fontSize: 10 } },
-    series: [
-      { name: '消纳收益', type: 'bar', barMaxWidth: 14, itemStyle: { color: '#1F5FBF' }, data: rs.map(x => +(x.revSelf / 10000).toFixed(2)) },
-      { name: '上网收益', type: 'bar', barMaxWidth: 14, itemStyle: { color: '#9DC3E6' }, data: rs.map(x => +(x.revGrid / 10000).toFixed(2)) },
-    ],
-  }
-})
-
-const r3Rows = computed(() =>
-  (snap.value?.stations ?? [])
-    .filter(x => x.metered && x.yieldHours != null)
-    .slice().sort((a, b) => (a.yieldHours ?? 0) - (b.yieldHours ?? 0)))
-
-const r3Opt = computed<object>(() => {
-  const s = snap.value
-  if (!s) return {}
-  const rs = r3Rows.value
-  const color = (p: { dataIndex: number }) =>
-    rs[p.dataIndex].phase === 1 ? '#1F5FBF' : rs[p.dataIndex].phase === 2 ? '#4E8FD0' : '#9DC3E6'
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 88, right: 40, top: 12, bottom: 32 },
-    xAxis: { type: 'value', name: '小时', nameLocation: 'middle', nameGap: 20, nameTextStyle: { fontSize: 10 } },
-    yAxis: { type: 'category', data: rs.map(x => x.name), axisLabel: { fontSize: 10 } },
-    series: [{
-      type: 'bar', barMaxWidth: 14, itemStyle: { color },
-      data: rs.map(x => +x.yieldHours!.toFixed(0)),
-      markLine: {
-        silent: true, symbol: 'none',
-        lineStyle: { color: '#8A8A85', type: 'dashed', width: 1.4 },
-        label: { formatter: `锚点 ${s.crit.anchorHours}`, fontSize: 10 },
-        data: [{ xAxis: s.crit.anchorHours }],
-      },
-    }],
-  }
-})
-
-const r4Opt = computed<object>(() => {
+const b7Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
   const k = s.gran === 'month' ? 1000 : 10000
+  const rate = s.ledger.lossPct.map(v => {
+    const p = +(v * 100).toFixed(2)
+    return p > LOSS_MAX ? null : p          // 超出的刻度**折线断开**,不让它贴顶走成平线
+  })
   return {
     tooltip: { trigger: 'axis' },
-    grid: { left: 52, right: 16, top: 16, bottom: 26 },
-    xAxis: { type: 'category', data: s.tickLabels },
-    yAxis: { type: 'value', name: s.gran === 'month' ? '千度' : '万度', nameTextStyle: { fontSize: 10 } },
-    series: [{
-      type: 'line', symbol: 'circle', symbolSize: 4, areaStyle: { color: '#DCE9F2' },
-      lineStyle: { width: 2.2, color: '#1F5FBF' }, itemStyle: { color: '#1F5FBF' },
-      data: s.ledger.self.map((v, i) => +((v + s.ledger.grid[i] + s.ledger.loss[i]) / k).toFixed(2)),
-    }],
+    legend: { top: 0, data: ['自消纳', '上网', '损耗', '损耗率'], textStyle: { fontSize: 11 } },
+    grid: { left: 52, right: 46, top: 26, bottom: 26 },
+    xAxis: { type: 'category', data: s.tickLabels, axisLabel: { fontSize: 11 } },
+    yAxis: [
+      { type: 'value', name: s.gran === 'month' ? '千度' : '万度', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+      { type: 'value', name: '%', min: 0, max: LOSS_MAX, nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    ],
+    series: [
+      { name: '自消纳', type: 'bar', stack: 'x', barMaxWidth: 22, itemStyle: { color: C.FILL_SLATE }, data: s.ledger.self.map(v => +(v / k).toFixed(2)) },
+      { name: '上网', type: 'bar', stack: 'x', itemStyle: { color: C.FILL_CYAN }, data: s.ledger.grid.map(v => +(v / k).toFixed(2)) },
+      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: C.FILL_SKY }, data: s.ledger.loss.map(v => +(v / k).toFixed(2)) },
+      {
+        name: '损耗率', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4, connectNulls: false,
+        lineStyle: { width: 1.6, color: C.INK700 }, itemStyle: { color: C.INK700 }, data: rate,
+        // 溢出的刻度在轴外补一个三角 + 数值,不静默裁掉(§06.5)
+        markPoint: b7Over.value.length ? {
+          silent: true, symbol: 'triangle', symbolSize: 9, itemStyle: { color: C.INK700 },
+          label: { fontSize: 11, position: 'top', formatter: (p: { value?: number }) => `${p.value ?? ''}%` },
+          data: b7Over.value.map(o => ({ name: '溢出', value: o.v, xAxis: s.tickLabels[o.i], yAxis: LOSS_MAX })),
+        } : undefined,
+      },
+    ],
   }
 })
-
-// ── L4 M3 小倍数(逐月斜率,与期间无关 —— 它本来就是逐月的) ─────────────
-const M3 = { w: 132, h: 46, pad: 4 }
-const m3Range = computed(() => {
-  const vs: number[] = []
-  for (const [, arr] of snap.value?.slopes ?? []) for (const r of arr) if (isFinite(r.beta)) vs.push(r.beta)
-  if (!vs.length) return { lo: -0.1, hi: 2.1 }
-  return { lo: Math.min(0, ...vs) - 0.1, hi: Math.max(2, ...vs) + 0.1 }
-})
-function m3Path(id: number) {
+const hasB7 = computed(() => {
   const s = snap.value
-  const { lo, hi } = m3Range.value
-  const Y = (v: number) => M3.h - M3.pad - ((v - lo) / Math.max(1e-9, hi - lo)) * (M3.h - M3.pad * 2)
-  if (!s) return { line: '', band: '', ref: Y(1), n: 0 }
-  const rows = s.slopes.get(id) ?? []
-  const cols = [...new Set(rows.map(r => r.key))].sort()
-  const X = (c: number) => M3.pad + (c / Math.max(1, cols.length - 1)) * (M3.w - M3.pad * 2)
-  const pts: { x: number; y: number; lo: number; hi: number }[] = []
-  cols.forEach((m, c) => {
-    const r = rows.find(x => x.key === m)
-    if (!r || !isFinite(r.beta)) return
-    const se = isFinite(r.se) ? Math.min(r.se, hi - lo) : hi - lo
-    pts.push({ x: X(c), y: Y(r.beta), lo: Y(r.beta - se), hi: Y(r.beta + se) })
-  })
-  if (!pts.length) return { line: '', band: '', ref: Y(1), n: 0 }
-  return {
-    line: pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
-    band: [
-      ...pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.hi.toFixed(1)}`),
-      ...[...pts].reverse().map(p => `L${p.x.toFixed(1)},${p.lo.toFixed(1)}`),
-      'Z',
-    ].join(' '),
-    ref: Y(1),
-    n: pts.length,
-  }
-}
-
-// ── L5 单栋抽屉 ───────────────────────────────────────────────────────
-const selId = ref<number | null>(null)
-const sel = computed(() => snap.value?.stations.find(s => s.id === selId.value) ?? null)
-const detail = computed(() => (snap.value && selId.value != null ? buildDetail(snap.value, selId.value) : null))
-function pick(id: number) { selId.value = selId.value === id ? null : id }
-watch(snap, () => { if (!sel.value) selId.value = null })
-onMounted(() => {
-  const m = /^#s(\d+)$/.exec(location.hash)
-  if (m) selId.value = Number(m[1])
+  return !!s && s.ledger.self.some((v, i) => v + s.ledger.grid[i] + s.ledger.loss[i] > 0)
 })
 
-const s2Opt = computed<object>(() => {
+// B8 各栋消纳收益与上网收益。**横向**分组柱 —— 13 个中文栋名不斜排(§06.5)。
+const b8Rows = computed(() => (snap.value?.stations ?? [])
+  .filter(x => x.metered && (x.revSelf > 0 || x.revGrid > 0))
+  .slice().sort((a, b) => (a.revSelf + a.revGrid) - (b.revSelf + b.revGrid)))
+const b8Opt = computed<object>(() => {
+  const rs = b8Rows.value
+  if (!rs.length) return {}
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, data: ['消纳收益', '上网收益'], textStyle: { fontSize: 11 } },
+    grid: { left: 96, right: 24, top: 26, bottom: 30 },
+    xAxis: { type: 'value', name: '万元', nameLocation: 'middle', nameGap: 20, nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'category', data: rs.map(x => x.name), axisLabel: { fontSize: 11 } },
+    series: [
+      { name: '消纳收益', type: 'bar', barMaxWidth: 9, itemStyle: { color: C.FILL_SLATE }, data: rs.map(x => +(x.revSelf / 10000).toFixed(2)) },
+      { name: '上网收益', type: 'bar', barMaxWidth: 9, itemStyle: { color: C.FILL_CYAN }, data: rs.map(x => +(x.revGrid / 10000).toFixed(2)) },
+    ],
+  }
+})
+const ledgerAny = computed(() => hasB7.value || b8Rows.value.length > 0)
+
+const SECTIONS = computed(() => [
+  ...(absAny.value ? [{ value: 'abs', label: '绝对水平' }] : []),
+  ...(ledgerAny.value ? [{ value: 'ledger', label: '账面量' }] : []),
+])
+// 整档隐藏时把档位挪到还在的那一档 —— 停在一个不存在的档等于整片空白
+watch(SECTIONS, (opts) => {
+  if (opts.length && !opts.some(o => o.value === section.value)) {
+    section.value = opts[0].value as 'abs' | 'ledger'
+  }
+}, { immediate: true })
+
+// ── L3 单栋抽屉(§06.6)──────────────────────────────────────────────
+// 关抽屉时期间档位、页面滚动位置、组的展开态、段控档位一律不变 —— 这里只动 drawerOpen。
+const drawerOpen = ref(false)
+const detail = computed(() =>
+  (snap.value && selId.value != null ? buildDetail(snap.value, selId.value) : null))
+
+// URL 加 #st={id} **不换路由**(§06.6):replace 不进历史栈,路径不变,KeepAlive 不重挂,
+// 所以关抽屉时期间档位 / 滚动位置 / 组展开态 / 段控档位全都原样留着。
+function openDrawer() {
+  if (selId.value == null) return
+  drawerOpen.value = true
+  void router.replace({ hash: `#st=${selId.value}` })
+}
+function closeDrawer() {
+  drawerOpen.value = false
+  void router.replace({ hash: '' })
+}
+function stepStation(d: 1 | -1) {
+  const q = queueOrder.value
+  const i = q.findIndex(r => r.id === selId.value)
+  const nx = q[(i + d + q.length) % q.length]
+  if (nx) { selId.value = nx.id; openDrawer() }
+}
+onMounted(() => {
+  const m = /#st=(\d+)/.exec(location.hash)
+  if (m) { selId.value = Number(m[1]); drawerOpen.value = true }
+})
+
+/** 当前期间段在整年图上的底色高亮。**高亮只画到数据截止日,不画到期末**(§06.6) */
+const segBand = computed(() => {
+  const s = snap.value
+  if (!s || s.gran !== 'month' || !s.ticks.length) return null
+  const from = s.ticks[0]
+  const last = s.ticks[s.ticks.length - 1]
+  const to = s.dataThrough && s.dataThrough < last ? s.dataThrough : last
+  return to >= from ? { from: from.slice(5), to: to.slice(5) } : null
+})
+const bandArea = computed(() => (segBand.value ? {
+  silent: true, itemStyle: { color: C.INK050 },
+  data: [[{ xAxis: segBand.value.from }, { xAxis: segBand.value.to }]],
+} : undefined))
+
+// B9 这一年的偏离与水平变化:残差散点 + 样条 + 95% 估计范围(渐变透明,不描硬边)+ 变点竖线
+const b9Opt = computed<object>(() => {
   const d = detail.value
   if (!d || !d.spline.length) return {}
   return {
     tooltip: { trigger: 'axis' },
-    grid: { left: 56, right: 16, top: 16, bottom: 26 },
-    xAxis: { type: 'category', data: d.spline.map(x => x.date.slice(5)) },
-    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
+    grid: { left: 56, right: 16, top: 16, bottom: 28 },
+    xAxis: { type: 'category', data: d.spline.map(x => x.date.slice(5)), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, scale: true },
     series: [
       { type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: d.spline.map(x => +x.lo.toFixed(4)) },
       {
         type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
-        areaStyle: { color: '#DCE9F2' }, data: d.spline.map(x => +(x.hi - x.lo).toFixed(4)),
+        // 渐变透明不描硬边 —— 硬边会被读成「界限」,而它只是估计范围的边缘(§06.6)
+        areaStyle: { color: C.FILL_SKY, opacity: 0.45 },
+        data: d.spline.map(x => +(x.hi - x.lo).toFixed(4)),
       },
-      { type: 'scatter', symbolSize: 3, itemStyle: { color: '#C7C7C2' }, data: d.resid.map(v => +v.toFixed(4)) },
-      { type: 'line', symbol: 'none', lineStyle: { width: 2, color: '#1F5FBF' }, data: d.spline.map(x => +x.fit.toFixed(4)) },
+      { type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK300 }, data: d.resid.map(v => +v.toFixed(4)) },
+      {
+        type: 'line', symbol: 'none', lineStyle: { width: 2, color: C.INK900 },
+        data: d.spline.map(x => +x.fit.toFixed(4)),
+        markArea: bandArea.value,
+        markLine: d.cpDate ? {
+          silent: true, symbol: 'none',
+          lineStyle: { color: C.INK700, width: 1.4, type: 'dashed' },
+          label: { formatter: d.cpDate.slice(5), fontSize: 11 },
+          data: [{ xAxis: d.cpDate.slice(5) }],
+        } : undefined,
+      },
     ],
   }
 })
 
-const s3Opt = computed<object>(() => {
-  const d = detail.value
-  if (!d) return {}
-  const cats = d.dates.map(x => x.slice(5))
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 56, right: 16, top: 16, bottom: 26 },
-    // markLine / markArea 不参与轴范围计算,**必须手动设 min/max**,否则超范围的会被静默裁掉
-    xAxis: { type: 'category', data: cats, min: 0, max: cats.length - 1 },
-    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
-    series: [{
-      type: 'line', symbol: 'none', lineStyle: { width: 1.2, color: '#1F5FBF' },
-      data: d.resid.map(v => +v.toFixed(4)),
-      markArea: d.cpLo && d.cpHi ? {
-        silent: true, itemStyle: { color: 'rgba(31,95,191,0.10)' },
-        data: [[{ xAxis: d.cpLo.slice(5) }, { xAxis: d.cpHi.slice(5) }]],
-      } : undefined,
-      markLine: d.cpDate ? {
-        silent: true, symbol: 'none',
-        lineStyle: { color: '#A32720', width: 1.6 },
-        label: { formatter: d.cpDate.slice(5), fontSize: 10 },
-        data: [{ xAxis: d.cpDate.slice(5) }],
-      } : undefined,
-    }],
-  }
-})
-
-const m4Opt = computed<object>(() => {
+// B10 逐日偏离与两道范围线。控制限来自变点之前的历史,与本段无关 → 月中照常有限。
+const b10Opt = computed<object>(() => {
   const d = detail.value
   if (!d) return {}
   const cats = d.dates.map(x => x.slice(5))
   const lim = (k: number) => +(d.center + k * d.sigma).toFixed(4)
   return {
     tooltip: { trigger: 'axis' },
-    grid: { left: 56, right: 16, top: 16, bottom: 26 },
-    xAxis: { type: 'category', data: cats, min: 0, max: cats.length - 1 },
-    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 10 }, scale: true },
+    grid: { left: 56, right: 16, top: 16, bottom: 28 },
+    // markLine / markArea 不参与轴范围计算,**必须手动设 min/max**,否则超范围的会被静默裁掉
+    xAxis: { type: 'category', data: cats, min: 0, max: cats.length - 1, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, scale: true },
     series: [{
-      type: 'scatter', symbolSize: 3, itemStyle: { color: '#3E4E4D' },
+      type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK500 },
       data: d.resid.map(v => +v.toFixed(4)),
       markArea: d.limitFrom && d.limitTo ? {
-        silent: true, itemStyle: { color: 'rgba(138,138,133,0.10)' },
+        silent: true, itemStyle: { color: C.INK050 },
         data: [[{ xAxis: d.limitFrom.slice(5) }, { xAxis: d.limitTo.slice(5) }]],
-      } : undefined,
+      } : bandArea.value,
       markLine: {
-        silent: true, symbol: 'none', label: { fontSize: 10 },
+        silent: true, symbol: 'none', label: { fontSize: 11 },
         data: [
-          { yAxis: +d.center.toFixed(4), lineStyle: { color: '#1F5FBF', width: 1.4 } },
-          { yAxis: lim(2), lineStyle: { color: '#8A5800', type: 'dashed', width: 1 } },
-          { yAxis: lim(-2), lineStyle: { color: '#8A5800', type: 'dashed', width: 1 } },
-          { yAxis: lim(3), lineStyle: { color: '#A32720', type: 'dashed', width: 1 } },
-          { yAxis: lim(-3), lineStyle: { color: '#A32720', type: 'dashed', width: 1 } },
+          { yAxis: +d.center.toFixed(4), lineStyle: { color: C.INK700, width: 1.4 } },
+          { yAxis: lim(2), lineStyle: { color: C.INK500, type: 'dashed', width: 1 } },
+          { yAxis: lim(-2), lineStyle: { color: C.INK500, type: 'dashed', width: 1 } },
+          { yAxis: lim(3), lineStyle: { color: C.INK300, type: 'dotted', width: 1 } },
+          { yAxis: lim(-3), lineStyle: { color: C.INK300, type: 'dotted', width: 1 } },
         ],
       },
     }],
   }
 })
 
-function goMeter(): void {
-  tabs.openFresh('pv-income', { pin: true })
-  void router.push('/pv-income')
+// B11 跟全园一起涨落的程度:逐月 β + ±1SE 淡带。
+// **样本不足的月不画**(v3):满格灰带读起来像「不确定性巨大」,而不是「样本不够」。
+const b11 = computed(() => {
+  const rows = (snap.value?.slopes.get(selId.value ?? -1) ?? [])
+    .filter(r => isFinite(r.beta) && isFinite(r.se) && r.n >= 3)
+    .slice().sort((a, b) => a.key.localeCompare(b.key))
+  const all = snap.value?.slopes.get(selId.value ?? -1) ?? []
+  return { rows, skipped: all.length - rows.length }
+})
+const b11Opt = computed<object>(() => {
+  const rs = b11.value.rows
+  if (!rs.length) return {}
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 48, right: 16, top: 12, bottom: 26 },
+    xAxis: { type: 'category', data: rs.map(r => r.key.slice(5) + '月'), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, scale: true },
+    series: [
+      { type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: rs.map(r => +(r.beta - r.se).toFixed(3)) },
+      {
+        type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
+        areaStyle: { color: C.FILL_SKY, opacity: 0.45 }, data: rs.map(r => +(2 * r.se).toFixed(3)),
+      },
+      {
+        type: 'line', symbol: 'circle', symbolSize: 4,
+        lineStyle: { width: 1.6, color: C.INK900 }, itemStyle: { color: C.INK900 },
+        data: rs.map(r => +r.beta.toFixed(3)),
+        markLine: {
+          silent: true, symbol: 'none', label: { fontSize: 11, formatter: '1' },
+          lineStyle: { color: C.INK300, type: 'dashed', width: 1 },
+          data: [{ yAxis: 1 }],
+        },
+      },
+    ],
+  }
+})
+
+// B12 逐刻度明细。**未到的行不出现**;漏抄的行出现但值为空 + 标记(§06.6)
+const b12 = computed(() => {
+  const r = selRow.value, s = snap.value
+  if (!r || !s) return []
+  return s.ticks.map((t, i) => ({ t, label: s.tickLabels[i], st: r.state[i], v: r.ratio[i], o: r.out[i] }))
+    .filter(x => x.st !== 'future')
+    .reverse()
+})
+function outText(o: number | null | undefined): string {
+  return o === -1 ? '在范围下方' : o === 1 ? '在范围上方' : o === 0 ? '在范围内' : '—'
 }
 </script>
 
@@ -531,282 +612,257 @@ function goMeter(): void {
     />
 
     <div v-else class="av2-grid">
-      <!-- ══ 结论条:首屏唯一必读的东西 ══════════════════════════════ -->
-      <div class="av2-s12 pma-lede" :class="{ quiet: !hitRows.length }">
-        <div class="n">{{ hitRows.length }}</div>
-        <div class="txt">
-          <div class="hd">栋在 {{ segLabel }} 出过自己的正常范围</div>
-          <div class="sub">
-            {{ bornDaily.length }} 栋在网 · 抄表 {{ readings.length }} 条（模型吃整年，画的是这一段）
-            <template v-if="unbornNames.length"> · {{ unbornNames.length }} 栋未投产</template>
+      <!-- ══ L0 · B0 巡检指标卡(§06.2)—— 五格并排,平行扫读,不串成句子 ══ -->
+      <div class="av2-s12 av2-lead pma-b0" :class="{ quiet: !hitRows.length }">
+        <div class="k">
+          <div class="big">{{ hitRows.length }}</div>
+          <div class="lab">栋有出范围段</div>
+        </div>
+        <div class="k">
+          <div class="mid">{{ thinRows.length }}</div>
+          <div class="lab">读不出</div>
+        </div>
+        <div class="k">
+          <div class="mid">{{ noMeterN }}</div>
+          <div class="lab">未装表</div>
+        </div>
+        <div class="k">
+          <div class="mid">{{ panelDone.k }}/{{ panelDone.n }}</div>
+          <div class="lab">已录板数</div>
+        </div>
+        <!-- 这两行不能删:没有它,「0 栋触线」与「数据没更新」在屏上长得一模一样 -->
+        <div class="fresh">
+          <div>数据到 {{ snap.dataThrough ?? '—' }} · 本段已过去 {{ snap.elapsedN }}/{{ snap.ticks.length }} {{ unit }}</div>
+          <div>
+            已抄 {{ cover.seen }}/{{ cover.elapsed }} · 覆盖
+            {{ cover.pct == null ? '—' : (cover.pct * 100).toFixed(0) + '%' }}（按已过去算）· 算于 <code>{{ snap.id }}</code>
           </div>
         </div>
-        <div v-if="hitRows.length" class="chips">
-          <button v-for="b in hitRows" :key="b.id" class="chip" @click="pick(b.id)">
-            {{ b.name }}<span class="c">{{ outN(b) }}</span>
+      </div>
+
+      <!-- ══ L1 · B1 队列 + 单栋大图 / B2 判据脚(§06.3 + §06.4)══════ -->
+      <div class="av2-card av2-s12 av2-core pma-main">
+        <div class="av2-card-h">
+          <span class="t">{{ segLabel }}逐{{ gran === 'month' ? '日' : '月' }}比值</span>
+          <span class="hint">线 = 这栋当刻度发电 ÷ 全园同刻度中位；各栋规模不同，比值本身有高有低，不横着比</span>
+          <button v-if="selRow" class="pma-lk" @click="openDrawer">
+            看 {{ selRow.name }} 的整年趋势 →
           </button>
         </div>
+
+        <div class="pma-md">
+          <PvQueue :rows="board" :sel-id="selId" :unborn="unbornNames" :unit="unit" @pick="pickStation" />
+          <PvDayChart
+            v-if="selRow"
+            :row="selRow" :tick-labels="snap.tickLabels" :fact="selFact" :crit="snap.crit"
+          />
+          <div v-else class="pma-note">这一段没有已投产的楼栋，画不出逐刻度比值。</div>
+        </div>
+
+        <div class="pma-div"></div>
+
+        <!-- B2 判据脚:六个参数只读回显,线画在越线的画面同一张卡里(§06.4) -->
+        <div class="pma-b2">
+          <span v-for="c in critLines" :key="c.key" :class="{ off: c.off }">
+            {{ c.text }}<template v-if="c.off">（年档不出此判据）</template>
+          </span>
+          <button class="pma-lk" @click="gotoParams">去改</button>
+        </div>
       </div>
 
-      <!-- 事实句紧跟结论条,不再单独占一张卡 -->
-      <ul v-if="snap.facts.length" class="av2-s12 pma-facts">
-        <li v-for="(f, i) in snap.facts" :key="i" :class="f.kind" @click="pick(f.stationId)">
-          <span class="st">{{ f.station }}</span>
-          <span class="tx">{{ f.text }}</span>
-        </li>
-      </ul>
+      <!-- ══ L2 · 两档段控(§06.5)—— 切档不换卡,容器高度按最高段钉死 ══ -->
+      <template v-if="SECTIONS.length">
+        <div class="av2-s12 pma-seg">
+          <Segmented v-model="section" :options="SECTIONS" />
+        </div>
 
-      <div class="av2-s12 pma-seg">
-        <Segmented v-model="section" :options="SECTIONS" size="sm" />
-      </div>
-
-      <!-- ══ 异常定位 ═══════════════════════════════════════════════ -->
-      <template v-if="section === 'find'">
-        <div class="av2-card av2-s12">
-          <div class="av2-card-h">
-            <span class="t">逐{{ gran === 'month' ? '日' : '月' }}看板</span>
-            <span class="hint">
-              每栋一行：线 = 这栋当{{ gran === 'month' ? '日' : '月' }}发电 ÷ 全园同{{ gran === 'month' ? '日' : '月' }}中位
-            </span>
-          </div>
-
-          <div ref="boardEl" class="pma-board">
-            <template v-if="bornDaily.length">
-              <!-- 出范围的置顶。突出靠底色 + 左侧色条,**不动行高** ——
-                   所有行共用同一段纵轴,行高不齐就悄悄毁了横向可比性 -->
-              <div v-for="b in hitRows" :key="b.id" class="pma-brow hit" @click="pick(b.id)">
-                <div class="nm" :title="b.name">{{ b.name }}</div>
-                <svg :viewBox="`0 0 ${BOX.w} ${BOX.h}`">
-                  <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BOX.w" :height="bd(b).band!.h" class="band" />
-                  <line v-if="bd(b).center != null" x1="0" :y1="bd(b).center!" :x2="BOX.w" :y2="bd(b).center!" class="ctr" />
-                  <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
-                  <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.6"
-                          :class="p.out < 0 ? 'lo' : 'hi'" />
-                </svg>
-                <div class="tail">{{ outN(b) }} {{ unit }}在外</div>
-              </div>
-
-              <!-- 其余的默认折起来:12 行正常曲线和 1 行异常曲线长得一样,
-                   全铺出来等于把唯一的信号埋进 12 行噪声里 -->
-              <template v-if="okRows.length">
-                <button class="pma-fold" @click="okOpen = !okOpen">
-                  <span class="ar" :class="{ open: okOpen }">▸</span>
-                  其余 {{ okRows.length }} 栋没到判据线
-                  <span class="mini">
-                    <svg v-for="b in okRows.slice(0, 14)" :key="b.id" viewBox="0 0 40 14">
-                      <path v-for="(d, k) in [bd(b).lines.join(' ')]" :key="k"
-                            :d="d" class="ln" vector-effect="non-scaling-stroke"
-                            :transform="`scale(${40 / BOX.w},${14 / BOX.h})`" />
-                    </svg>
+        <div class="av2-s12 pma-sec">
+          <div class="av2-grid">
+            <!-- ── 绝对水平 ── -->
+            <template v-if="section === 'abs'">
+              <div class="av2-card av2-s8">
+                <div class="av2-card-h">
+                  <span class="t">{{ gran === 'month' ? '等效小时轨迹' : `等效小时 ${year - 1}→${year}` }}</span>
+                  <span class="hint">
+                    {{ gran === 'month'
+                      ? '细线 = 每栋每日发电 ÷ 装机；粗线 = 全园加权'
+                      : '两点线段 = 去年与今年的年等效小时；两端直接标数值' }}
                   </span>
-                </button>
-                <div
-                  v-for="b in (okOpen ? okRows : [])" :key="b.id"
-                  class="pma-brow" @click="pick(b.id)"
-                >
-                  <div class="nm" :title="b.name">{{ b.name }}</div>
-                  <svg :viewBox="`0 0 ${BOX.w} ${BOX.h}`">
-                    <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BOX.w" :height="bd(b).band!.h" class="band" />
-                    <line v-if="bd(b).center != null" x1="0" :y1="bd(b).center!" :x2="BOX.w" :y2="bd(b).center!" class="ctr" />
-                    <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
-                  </svg>
-                  <div class="tail">{{ bd(b).n }}/{{ snap.ticks.length }}</div>
                 </div>
-              </template>
+                <AnaEChart v-if="gran === 'month' && hasB34" :option="b3Opt" :height="250" />
+                <PvSlope v-else-if="gran === 'year' && hasB34" :points="b4Points" @pick="pickByName" />
+                <div v-else class="pma-note">
+                  没有装机分母，算不出等效小时。
+                  <button class="pma-lk" @click="goMeter">去分栋抄表录板数与单块标称功率 →</button>
+                </div>
+                <div v-if="hasB34" class="pma-fn">
+                  纵轴 = 发电 ÷ 装机，单位小时；分母优先取板数 × 单块标称功率，没录的栋退回台账装机。
+                  13 栋同色，没有任何一栋有自己的颜色。
+                </div>
+              </div>
 
-              <div class="pma-bax">
-                <span v-for="(l, i) in axisMarks" :key="i">{{ l }}</span>
+              <div class="av2-card av2-s4">
+                <div class="av2-card-h">
+                  <span class="t">各站年等效小时</span>
+                  <span class="hint">竖短线 = {{ b5Target }} h</span>
+                </div>
+                <div v-if="b5Rows.length" class="pma-scroll">
+                  <AnaBullet :rows="b5Rows" :target="b5Target" unit=" h" />
+                </div>
+                <div v-else class="pma-note">
+                  在网满 90 天且有装机分母的栋为 0，画不出条。
+                  <button class="pma-lk" @click="goMeter">去分栋抄表 →</button>
+                </div>
+                <div v-if="b5Rows.length" class="pma-fn">
+                  条 = 该站全年等效小时（零起点）；竖短线 = 年锚点 {{ snap.crit.anchorHours }} ×
+                  {{ pct0(snap.crit.yieldRatio) }}。底槽单一中性色，不分档。
+                  <template v-if="b5Skip > 0">{{ b5Skip }} 栋在网不足 90 天，不画，也不做年化。</template>
+                </div>
+              </div>
+
+              <div class="av2-card av2-s4">
+                <div class="av2-card-h">
+                  <span class="t">台账装机 vs 板数×标称</span>
+                  <span class="hint">实线 = 两者相等，虚线 = ±{{ pct0(snap.crit.ledger) }}</span>
+                </div>
+                <div v-if="b6Pts.length" class="pma-sq">
+                  <AnaEChart :option="b6Opt" :height="250" />
+                </div>
+                <div v-else class="pma-note">
+                  {{ snap.quality.noPanel.length }} 栋未录板数或单块标称功率，这一块画不出点。
+                  <button class="pma-lk" @click="goMeter">去分栋抄表录两列 →</button>
+                </div>
+                <div v-if="b6Pts.length" class="pma-fn">
+                  横轴 = 板数 × 单块标称功率 ÷ 1000，纵轴 = 台账装机，两轴同量程、画布正方，
+                  所以实线是 45°。点离实线越远，两者差得越多。
+                  <template v-if="snap.quality.noPanel.length">
+                    {{ snap.quality.noPanel.length }} 栋未录，不画点：{{ snap.quality.noPanel.join('、') }}
+                  </template>
+                </div>
               </div>
             </template>
-            <div v-else class="pma-note-line">这一段没有已投产、按日抄表的楼栋。</div>
-          </div>
 
-          <!-- 未投产的不占行:它没数据不是漏抄,是那时候还没建 -->
-          <div v-if="unbornNames.length" class="pma-foot-note">
-            {{ unbornNames.length }} 栋在这一段还没投产，不画：{{ unbornNames.join('、') }}
-          </div>
-
-          <!-- 月抄的栋另起一组:N=12 与 N=244 的可信度差一个量级,不与日抄栋并排 -->
-          <template v-if="monthlyRows.length">
-            <button class="pma-fold" @click="monthOpen = !monthOpen">
-              <span class="ar" :class="{ open: monthOpen }">▸</span>
-              {{ monthlyRows.length }} 栋按月抄表（口径不同，不与上面并排比）
-            </button>
-            <div v-if="monthOpen" class="pma-board">
-              <div v-for="b in monthlyRows" :key="b.id" class="pma-brow" @click="pick(b.id)">
-                <div class="nm" :title="b.name">{{ b.name }}</div>
-                <svg :viewBox="`0 0 ${BOX.w} ${BOX.h}`">
-                  <rect v-if="bd(b).band" x="0" :y="bd(b).band!.y" :width="BOX.w" :height="bd(b).band!.h" class="band" />
-                  <path v-for="(d, k) in bd(b).lines" :key="k" :d="d" class="ln" />
-                  <circle v-for="(p, k) in bd(b).dots" :key="'o' + k" :cx="p.x" :cy="p.y" r="2.6"
-                          :class="p.out < 0 ? 'lo' : 'hi'" />
-                </svg>
-                <div class="tail">{{ bd(b).n }}/{{ snap.ticks.length }}</div>
+            <!-- ── 账面量 ── -->
+            <template v-else>
+              <div v-if="hasB7" class="av2-card av2-s12">
+                <div class="av2-card-h">
+                  <span class="t">消纳结构与损耗率</span>
+                  <span class="hint">三段堆叠柱 = 自消纳 / 上网 / 损耗；折线 = 损耗率，副轴固定 0–{{ LOSS_MAX }}%</span>
+                </div>
+                <AnaEChart :option="b7Opt" :height="200" />
+                <div class="pma-fn">
+                  左轴 = {{ gran === 'month' ? '千度' : '万度' }}，右轴 = 损耗率百分比。
+                  副轴按物理上可能的区间固定，不随数据自适应。
+                  <template v-if="b7Over.length">
+                    {{ b7Over.length }} 个刻度超出 {{ LOSS_MAX }}%，折线在那里断开，轴外三角标出数值。
+                  </template>
+                </div>
               </div>
-            </div>
-          </template>
 
-          <div class="pma-foot-note">
-            淡带 = 这栋自己的正常范围（{{ snap.board[0]?.baseNote ?? '' }}，半宽
-            {{ snap.crit.bandSigma }} 倍稳健波动）。所有行共用同一段纵轴，缺抄的{{ unit }}断开不连线。
-            <template v-if="snap.facts.length === 0 && snap.quality.noPanel.length === snap.stations.filter(x => x.metered).length">
-              台账这一项还对不了，见「效率校准」。
+              <div v-if="b8Rows.length" class="av2-card av2-s12">
+                <div class="av2-card-h">
+                  <span class="t">各栋消纳收益与上网收益（截至 {{ snap.dataThrough ?? '—' }} 累计）</span>
+                  <span class="hint">横向分组柱，不是堆叠；这是累计量，不可与整月直接比</span>
+                </div>
+                <AnaEChart :option="b8Opt" :height="300" />
+                <div class="pma-fn">
+                  深 = 消纳收益（按录入时的单价快照），浅 = 上网收益（{{ GRID_PRICE }} 元/度）。
+                  横轴 = 万元，柱长是累计绝对额，不是效率。
+                </div>
+              </div>
             </template>
           </div>
-          <div class="pma-foot-note">
-            未列出 ≠ 没问题：这屏看不见遮挡、朝向、倾角造成的先天差异。
-            当前几条线 —— 正常范围半宽 {{ snap.crit.bandSigma }} 倍稳健波动
-            · 连续 {{ snap.crit.bandRun }} {{ unit }}才算一段
-            · 抄表覆盖 ≥{{ (snap.crit.coverMonth * 100).toFixed(0) }}%
-            · 台账差 ±{{ (snap.crit.ledger * 100).toFixed(0) }}%
-            · 年等效小时 ≥ 锚点 {{ snap.crit.anchorHours }} × {{ (snap.crit.yieldRatio * 100).toFixed(0) }}%。
-            都在计费参数里，改了这张清单跟着变。
-          </div>
-        </div>
-      </template>
-
-      <!-- ══ 效率校准 ═══════════════════════════════════════════════ -->
-      <template v-else-if="section === 'calib'">
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">A1 · 绝对效率轨迹</span>
-            <span class="hint">纵轴 = 全园每{{ gran === 'month' ? '日' : '月' }}等效小时</span>
-          </div>
-          <AnaEChart :option="a1Opt" :height="250" />
-          <div class="pma-foot-note">
-            等效小时 = 发电 ÷ 装机，分母优先取板数 × 单块标称功率；虚线 = 年锚点摊到每{{ gran === 'month' ? '天' : '月' }}。
-            全年 {{ snap.parkYieldHours == null ? '—' : snap.parkYieldHours.toFixed(0) }} 小时 ·
-            锚点 {{ snap.crit.anchorHours }} 小时 ·
-            比值 {{ snap.parkYieldRatio == null ? '—' : (snap.parkYieldRatio * 100).toFixed(0) + '%' }}。
-            月度基准要两年自有数据才画得出来，本年只画形状。
-          </div>
-        </div>
-
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">T1 · 台账 vs 理论装机</span>
-            <span class="hint">实线 = 两者相等，虚线 = ±{{ (snap.crit.ledger * 100).toFixed(0) }}%</span>
-          </div>
-          <AnaEChart :option="t1Opt" :height="250" />
-          <div class="pma-foot-note">
-            横轴 = 板数 × 单块标称功率 ÷ 1000；纵轴 = 台账装机。
-            {{ snap.quality.noPanel.length }} 栋未录板数或单块标称功率，不画点{{ snap.quality.noPanel.length ? '：' + snap.quality.noPanel.join('、') : '' }}
-          </div>
-        </div>
-
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">R3 · 各站发电效率</span>
-            <span class="hint">横轴 = 全年等效小时；虚线 = 年锚点</span>
-          </div>
-          <AnaEChart :option="r3Opt" :height="300" />
-          <div class="pma-foot-note">
-            按期分色。分母优先取板数 × 单块标称功率，没录的栋退回台账装机
-          </div>
-        </div>
-
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">M3 · 响应斜率小倍数</span>
-            <span class="hint">每栋一格；虚线 = 斜率等于 1</span>
-          </div>
-          <div class="pma-mult">
-            <div v-for="s in snap.stations.filter(x => x.metered)" :key="s.id" class="pma-mini" @click="pick(s.id)">
-              <div class="nm">{{ s.name }}</div>
-              <svg :viewBox="`0 0 ${M3.w} ${M3.h}`" preserveAspectRatio="none">
-                <line x1="0" :y1="m3Path(s.id).ref" :x2="M3.w" :y2="m3Path(s.id).ref" class="ref" />
-                <path v-if="m3Path(s.id).band" :d="m3Path(s.id).band" class="band" />
-                <path v-if="m3Path(s.id).line" :d="m3Path(s.id).line" class="ln" />
-              </svg>
-              <div v-if="!m3Path(s.id).n" class="none">无可拟合的月</div>
-            </div>
-          </div>
-          <div class="pma-foot-note">
-            横轴 = 月，纵轴 = 该月对全园当日因子的回归斜率；淡带 = ±1 个标准误。
-            所有格共用同一段纵轴（{{ m3Range.lo.toFixed(1) }} ~ {{ m3Range.hi.toFixed(1) }}）。
-            这一块**始终按月**，与上面的期间无关
-          </div>
-        </div>
-      </template>
-
-      <!-- ══ 消纳收益 ═══════════════════════════════════════════════ -->
-      <template v-else>
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">R1 · 消纳结构</span>
-            <span class="hint">堆叠柱 = 自消纳 / 上网 / 损耗</span>
-          </div>
-          <AnaEChart :option="r1Opt" :height="250" />
-          <div class="pma-foot-note">折线 = 损耗率，副轴固定 0–3%（不随数据自适应）</div>
-        </div>
-
-        <div class="av2-card av2-s6">
-          <div class="av2-card-h">
-            <span class="t">R2 · 各站消纳收益</span>
-            <span class="hint">并排柱，不是堆叠</span>
-          </div>
-          <AnaEChart :option="r2Opt" :height="250" />
-          <div class="pma-foot-note">
-            深 = 消纳收益（按录入时的单价快照），浅 = 上网收益（{{ GRID_PRICE }} 元/度）。
-            柱高是全年绝对额，不是效率
-          </div>
-        </div>
-
-        <div class="av2-card av2-s12">
-          <div class="av2-card-h">
-            <span class="t">R4 · 发电量趋势</span>
-            <span class="hint">纵轴 = 全园每{{ gran === 'month' ? '日' : '月' }}发电量</span>
-          </div>
-          <AnaEChart :option="r4Opt" :height="250" />
-          <div class="pma-foot-note">这是绝对量的形状；跟基准比看「效率校准」里的 A1</div>
         </div>
       </template>
 
       <div class="av2-s12 pma-foot">
         <span>本页数据快照 <code>{{ snap.id }}</code></span>
-        <span>整年有效日 {{ snap.quality.okDays }} / {{ snap.quality.totalDays }} 天</span>
+        <span>整年有效日 {{ snap.quality.okDays }} / {{ snap.quality.totalDays }} {{ '天' }}</span>
         <span v-if="cmp.mode.value === 'yoy'">同比：{{ snap.yoy.yearNote }}</span>
+        <span>未列出 ≠ 没问题：这屏看不见遮挡、朝向、倾角造成的先天差异。</span>
         <button class="pma-lk" @click="goMeter">去分栋抄表 →</button>
       </div>
     </div>
 
-    <!-- ── L5 单栋抽屉 ─────────────────────────────────────────────── -->
+    <!-- ── L3 单栋抽屉(§06.6)。三张图固定按年,底色高亮只画到数据截止日 ── -->
     <FPDrawer
-      :open="!!sel"
-      :title="sel?.name ?? ''"
-      :subtitle="sel ? `整年在网 ${sel.days} 天 · 年发电 ${wan(sel.genYear)} 万度` : ''"
+      :open="drawerOpen"
+      :title="selStation?.name ?? ''"
+      :subtitle="selStation ? `整年在网 ${selStation.days} 天 · 年发电 ${wan(selStation.genYear)} 万度` : ''"
       icon="activity"
-      :width="820"
+      :width="720"
       :fixedHeight="true"
-      @close="selId = null"
+      @close="closeDrawer"
     >
-      <div v-if="!detail" class="pma-note-line">这栋在网不足 8 天，画不出逐日曲线。</div>
+      <!-- 「上一栋 / 下一栋」按当前排序走队列(§06.6)。三个组用的是同一把排序尺子,
+           所以这里走排好序的扁平表,不在组边界上停 -->
+      <div class="pma-nav">
+        <button class="pma-lk" @click="stepStation(-1)">← 上一栋</button>
+        <span>按队列排序（出范围刻度数 → 最大偏离）</span>
+        <button class="pma-lk" @click="stepStation(1)">下一栋 →</button>
+      </div>
+
+      <div v-if="!detail" class="pma-note">这栋在网不足 8 天，画不出逐日曲线。</div>
       <div v-else class="pma-drawer">
-        <div class="pma-foot-note">下面三张都是**整年逐日**，与上面选的期间无关。</div>
-        <div class="av2-card-h">
-          <span class="t">S2 · 样条趋势</span>
-          <span class="hint">淡点 = 逐日相对自身水平；实线 = 限制性立方样条拟合；淡带 = 95% 置信带（数据稀的时段自动张开）</span>
-        </div>
-        <AnaEChart :option="s2Opt" :height="250" />
-
-        <div class="av2-card-h">
-          <span class="t">S3 · 变点与置信区间</span>
-          <span class="hint">竖线 = 变点位置；阴影 = 变点位置的置信区间（是一段区间，不是精确到某天）</span>
-        </div>
-        <AnaEChart :option="s3Opt" :height="250" />
-        <div class="pma-foot-note">
-          {{ detail.cpDate ? '变点 ' + detail.cpDate : '未扫出变点' }}
-          <template v-if="detail.cpLo && detail.cpHi"> · 区间 {{ detail.cpLo }} ~ {{ detail.cpHi }}</template>
+        <div class="pma-fn">
+          下面三张固定按**整年逐日**，与上面选的期间无关；灰底 = 当前期间段，只画到数据截止日。
         </div>
 
-        <div class="av2-card-h">
-          <span class="t">M4 · 控制图</span>
-          <span class="hint">中心线 + ±2 / ±3 倍稳健波动的控制限；灰底 = 控制限的估计窗口（取变点之前那段）</span>
+        <div v-if="detail.spline.length">
+          <div class="av2-card-h">
+            <span class="t">这一年的偏离与水平变化</span>
+            <span class="hint">淡点 = 逐日相对自身水平；实线 = 样条拟合；淡区 = 趋势的估计范围（数据稀的时段自然张开）</span>
+          </div>
+          <AnaEChart :option="b9Opt" :height="300" />
+          <div class="pma-fn">
+            纵轴 = 相对自身水平（对数）。虚竖线 = 这天前后水平变了
+            <template v-if="detail.cpDate">：{{ detail.cpDate }}</template>
+            <template v-else>：本年扫不出</template>
+            <template v-if="detail.cpLo && detail.cpHi">，位置区间 {{ detail.cpLo }} ~ {{ detail.cpHi }}（是一段区间，不是精确到某天）</template>
+          </div>
         </div>
-        <AnaEChart :option="m4Opt" :height="250" />
-        <div class="pma-foot-note">
-          估计窗口 {{ detail.limitFrom }} ~ {{ detail.limitTo }} ·
-          中心线 {{ detail.center.toFixed(3) }} · 一倍波动 {{ detail.sigma.toFixed(3) }}
+        <div v-else class="pma-note">这栋可用的逐日残差不够拟合样条，这一块不画。</div>
+
+        <div class="av2-card-h">
+          <span class="t">逐日偏离与两道范围线</span>
+          <span class="hint">中心线 + 2 倍波动（虚线）与 3 倍波动（点线）；灰底 = 这两道线的估计窗口</span>
+        </div>
+        <AnaEChart :option="b10Opt" :height="250" />
+        <div class="pma-fn">
+          估计窗口 {{ detail.limitFrom ?? '—' }} ~ {{ detail.limitTo ?? '—' }} ·
+          中心线 {{ detail.center.toFixed(3) }} · 一倍波动 {{ detail.sigma.toFixed(3) }}。
+          这两道线来自变点之前的历史，与本段无关，所以月中照常有线。
+        </div>
+
+        <div class="av2-card-h">
+          <span class="t">跟全园一起涨落的程度</span>
+          <span class="hint">逐月一个点，淡带 = ±1 个标准误；虚线 = 与全园同步（1）</span>
+        </div>
+        <AnaEChart v-if="b11.rows.length" :option="b11Opt" :height="170" />
+        <div v-else class="pma-note">这栋没有样本够的月，这一块不画。</div>
+        <div v-if="b11.skipped > 0" class="pma-fn">{{ b11.skipped }} 个月样本不足，不画点。</div>
+
+        <div class="av2-card-h">
+          <span class="t">逐刻度明细</span>
+          <span class="hint">未到的刻度不出现；漏抄的刻度出现但值为空</span>
+        </div>
+        <div class="pma-tw">
+          <table class="pma-tb">
+            <thead>
+              <tr><th>刻度</th><th class="n">比值</th><th class="n">偏离</th><th>位置</th><th>记录</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in b12" :key="i" :class="{ miss: r.st === 'missing' }">
+                <td>{{ r.label }}</td>
+                <td class="n">{{ r.v == null ? '' : r.v.toFixed(3) }}</td>
+                <td class="n">
+                  {{ r.v != null && selRow?.center ? ((r.v / selRow.center - 1) * 100).toFixed(1) + '%' : '' }}
+                </td>
+                <td>{{ r.st === 'missing' ? '' : outText(r.o) }}</td>
+                <td>{{ r.st === 'missing' ? '漏抄' : '已抄' }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </FPDrawer>
@@ -816,133 +872,106 @@ function goMeter(): void {
 <style scoped>
 .pma-hold { display: flex; align-items: center; justify-content: center; min-height: 240px; }
 
-/* ── 结论条 ── */
-.pma-lede {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0 14px; align-items: center;
-  background: var(--surface-white); border: 1px solid var(--border-subtle);
+/* ── L0 · B0 指标卡:--surface-sunken 实底 + 3px 左竖条,无边框无卡头。
+      0 命中时主数转灰,**高度恒 76px 不塌**,右侧新鲜度照常(§08 v3-9) ── */
+.pma-b0 {
+  height: 76px; box-sizing: border-box;
+  display: grid; grid-template-columns: auto auto auto auto minmax(0, 1fr);
+  align-items: center; gap: 0 30px;
+  background: var(--surface-sunken);
   border-left: 3px solid var(--hue-orange);
-  border-radius: 8px; padding: 10px 14px;
+  border-radius: 8px; padding: 0 16px;
 }
-.pma-lede.quiet { border-left-color: var(--border-subtle); }
-.pma-lede .n {
-  font-family: var(--font-mono); font-size: 30px; line-height: 1;
-  font-weight: var(--fw-semibold); color: var(--hue-orange);
+.pma-b0.quiet { border-left-color: var(--ink-300); }
+.pma-b0 .k { display: flex; flex-direction: column; gap: 3px; }
+.pma-b0 .lab { font-size: var(--fs-micro); color: var(--text-muted); }
+/* 全屏唯一的 26px(§06.0 排他规则) */
+.pma-b0 .big {
+  font-size: 26px; line-height: 1; font-weight: var(--fw-semibold);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--hue-orange);
 }
-.pma-lede.quiet .n { color: var(--text-muted); }
-.pma-lede .hd { font-size: var(--fs-body); color: var(--text-primary); }
-.pma-lede .sub { font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; }
-.pma-lede .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.pma-lede .chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--fs-label); color: var(--text-primary);
-  background: var(--surface-sunken); border: 1px solid var(--border-subtle);
-  border-radius: 999px; padding: 3px 5px 3px 11px; cursor: pointer;
+.pma-b0.quiet .big { color: var(--text-muted); }
+.pma-b0 .mid {
+  font-size: 17px; line-height: 1; font-weight: var(--fw-semibold);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary);
 }
-.pma-lede .chip:hover { border-color: var(--hue-orange); }
-.pma-lede .chip .c {
-  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--surface-white);
-  background: var(--hue-orange); border-radius: 999px; padding: 1px 6px;
+.pma-b0 .fresh {
+  text-align: right; font-size: 11px; line-height: 1.55;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-muted);
 }
-@media (max-width: 720px) {
-  .pma-lede { grid-template-columns: auto minmax(0, 1fr); }
-  .pma-lede .chips { grid-column: 1 / -1; justify-content: flex-start; margin-top: 8px; }
+.pma-b0 .fresh code { font-family: var(--font-mono); }
+
+/* ── L1 主卡:268px 队列 + 单栋大图 ──
+   首屏硬预算 463px(§06.1)全靠这张卡的垂直余量,所以卡壳逐项压过:
+   padding 10→8、卡头下沿 8→4、分隔线上下 8/6→5/4。压的是留白,一个内容都没删。 */
+.pma-main { padding-top: 8px; padding-bottom: 8px; }
+.pma-main .av2-card-h { margin-bottom: 4px; }
+.pma-md { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 12px; align-items: start; }
+.pma-div { border-top: 1px solid var(--divider); margin: 5px 0 4px; }
+
+/* B2 判据脚:单行只读回显,mono 11px */
+.pma-b2 {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.45; color: var(--text-muted);
 }
+.pma-b2 .off { text-decoration: line-through; color: var(--ink-300); }
 
 .pma-seg { display: flex; }
+/* 切档不换卡,容器高度按最高段钉死 —— 两段都是 250+8+250 的内容加卡壳(§06.5) */
+.pma-sec { min-height: 636px; }
 
-/* ── 看板 ── */
-.pma-board { display: flex; flex-direction: column; gap: 2px; }
-.pma-brow {
-  display: grid; grid-template-columns: 84px minmax(0, 1fr) 74px;
-  gap: 8px; align-items: center; cursor: pointer; border-radius: 4px;
+/* B5 的 13 条 bullet 一行 30px,超过卡高就在卡内滚,不撑破那一行的高度 */
+.pma-scroll { max-height: 250px; overflow-y: auto; }
+/* B6 必须正方:grid 左右 46/14、上下 14/34,250 高的画布里绘图区正好 202×202 */
+.pma-sq { max-width: 262px; }
+
+.pma-note {
+  font-size: 11px; color: var(--text-secondary);
+  background: var(--surface-sunken); border-radius: 4px;
+  padding: 8px 10px; line-height: 1.6;
 }
-.pma-brow:hover { background: var(--surface-subtle); }
-.pma-brow:hover .nm { color: var(--hue-blue); }
-.pma-brow .nm {
-  font-size: var(--fs-micro); color: var(--text-secondary); padding-left: 6px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.pma-fn { font-size: 11px; color: var(--text-muted); line-height: 1.6; margin-top: 6px; }
+
+.pma-nav {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 6px;
 }
-.pma-brow svg { display: block; width: 100%; height: 40px; }
-.pma-brow .tail {
-  font-size: var(--fs-micro); color: var(--text-muted);
-  font-family: var(--font-mono); text-align: right; padding-right: 4px;
-}
-/* 出范围的栋:置顶 + 底色 + 左侧色条。**不动行高** —— 共用纵轴是这仪器的立身之本 */
-.pma-brow.hit { background: rgb(255, 248, 240); box-shadow: inset 3px 0 0 var(--hue-orange); }
-.pma-brow.hit:hover { background: rgb(255, 243, 230); }
-.pma-brow.hit .nm { color: var(--text-primary); font-weight: var(--fw-semibold); }
-.pma-brow.hit .tail { color: var(--hue-orange); }
-.pma-brow .band { fill: var(--hue-blue); opacity: 0.10; }
-.pma-brow .ctr { stroke: var(--hue-blue); stroke-width: 0.6; stroke-dasharray: 3 3; opacity: 0.7; }
-.pma-brow .ln { fill: none; stroke: var(--text-secondary); stroke-width: 1.2; }
-.pma-brow circle.lo { fill: var(--hue-red); }
-.pma-brow circle.hi { fill: var(--hue-orange); }
-
-/* 折叠条:正常的栋收起来,留一排缩略给个「它们确实都平」的印象 */
-.pma-fold {
-  display: grid; grid-template-columns: 14px auto minmax(0, 1fr);
-  gap: 8px; align-items: center; width: 100%;
-  background: none; border: 0; border-top: 1px dashed var(--border-subtle);
-  margin-top: 4px; padding: 7px 4px 4px; cursor: pointer; text-align: left;
-  font-size: var(--fs-micro); color: var(--text-muted);
-}
-.pma-fold:hover { color: var(--text-secondary); }
-.pma-fold .ar { transition: transform 0.15s; }
-.pma-fold .ar.open { transform: rotate(90deg); }
-/* 放不下就裁掉,不换行 —— 这排缩略是「它们确实都平」的余光印象,不是要逐个看清 */
-.pma-fold .mini { display: flex; gap: 3px; justify-content: flex-end; overflow: hidden; }
-.pma-fold .mini svg { flex: 0 0 auto; }
-.pma-fold .mini svg { width: 40px; height: 14px; opacity: 0.5; }
-.pma-fold .mini .ln { fill: none; stroke: var(--text-muted); stroke-width: 1; }
-
-.pma-bax {
-  display: grid; grid-template-columns: 84px minmax(0, 1fr) 74px;
-  gap: 8px; font-size: 9px; color: var(--text-muted); margin-top: 4px;
-}
-.pma-bax span:nth-child(1) { grid-column: 2; justify-self: start; }
-.pma-bax span:nth-child(2) { grid-column: 2; justify-self: center; }
-.pma-bax span:nth-child(3) { grid-column: 2; justify-self: end; }
-.pma-bax span { grid-row: 1; }
-
-.pma-note-line {
-  font-size: var(--fs-label); color: var(--text-secondary);
-  background: var(--surface-subtle); border-left: 3px solid var(--hue-orange);
-  padding: 6px 10px; margin-bottom: 8px; border-radius: 0 4px 4px 0;
-}
-
-/* ── 事实句(列表,不是表格) ── */
-.pma-facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.pma-facts li {
-  display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline;
-  font-size: var(--fs-label); background: var(--surface-subtle);
-  padding: 5px 10px; border-radius: 4px; cursor: pointer;
-}
-.pma-facts li:hover { background: var(--surface-sunken); }
-.pma-facts .st { font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pma-facts .tx { color: var(--text-secondary); overflow-wrap: anywhere; }
-.pma-facts li.run .tx { color: var(--hue-red); }
-.pma-facts li.scatter .tx { color: var(--hue-orange); }
-.pma-facts li.thin .tx { color: var(--text-muted); }
-
-.pma-foot-note { font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.6; margin-top: 6px; }
-
-/* ── M3 小倍数 ── */
-.pma-mult { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.pma-mini { border: 1px solid var(--border-subtle); border-radius: 4px; padding: 4px 5px; cursor: pointer; }
-.pma-mini .nm { font-size: var(--fs-micro); color: var(--text-secondary); margin-bottom: 2px; }
-.pma-mini svg { display: block; width: 100%; height: 46px; }
-.pma-mini .ref { stroke: var(--text-muted); stroke-width: 0.6; stroke-dasharray: 2 2; }
-.pma-mini .band { fill: var(--hue-blue); opacity: 0.16; stroke: none; }
-.pma-mini .ln { fill: none; stroke: var(--hue-blue); stroke-width: 1.3; }
-.pma-mini .none { font-size: 9px; color: var(--text-muted); }
-
 .pma-drawer { display: flex; flex-direction: column; gap: 4px; }
+.pma-tw { max-height: 256px; overflow-y: auto; }
+.pma-tb { width: 100%; border-collapse: collapse; font-size: var(--fs-micro); }
+.pma-tb th {
+  position: sticky; top: 0; background: var(--surface-white);
+  text-align: left; font-weight: var(--fw-regular); color: var(--text-muted);
+  height: 28px; border-bottom: 1px solid var(--divider);
+}
+.pma-tb td { height: 32px; color: var(--text-primary); border-bottom: 1px solid var(--divider); }
+.pma-tb .n {
+  text-align: right; padding-right: 14px;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.pma-tb tr.miss td { color: var(--text-muted); }
 
 .pma-foot {
-  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline;
   font-size: var(--fs-micro); color: var(--text-muted); padding-top: 4px;
 }
 .pma-foot code { font-family: var(--font-mono); }
-.pma-lk { background: none; border: 0; padding: 0; cursor: pointer; color: var(--hue-blue); font-size: var(--fs-micro); }
+.pma-lk {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--hue-blue); font-size: var(--fs-micro); white-space: nowrap;
+}
+.av2-card-h .pma-lk { margin-left: auto; }
+
+/* ≤1100:队列从大图左侧改到上方(§06.7) */
+@media (max-width: 1100px) {
+  .pma-md { grid-template-columns: minmax(0, 1fr); }
+  .pma-sec { min-height: 0; }
+}
+@media (max-width: 600px) {
+  .pma-b0 {
+    height: auto; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px; padding: 12px 14px;
+  }
+  .pma-b0 .fresh { grid-column: 1 / -1; text-align: left; }
+}
 </style>
