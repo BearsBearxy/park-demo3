@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,9 +22,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // 光伏模拟填充(PV-METER simulate):附表6 真实 phase 月度汇总(pv_record)推导分栋抄表明细——
 // a) 补站配置只填空位:容量=年消纳(self+grid)÷950h×站内假设比例(一期 B0.25/C、D0.3/E·F·G各0.15)round1,
 //    单价=年自消纳均价 self_amt÷self_kwh round4;已有值的站不动。
-// b) 逐月按容量占比拆 self/grid(round2,末站补差保 Σ=真实值);再整月逐日拆分:
+// b) 逐月按**容量×逐栋先天水平(±8%,确定性)**拆 self/grid(round2,末站补差保 Σ=真实值);再整月逐日拆分:
 //    日权重=确定性伪随机(seed=站id×100000+年×100+月)晴雨波动 0.55~1.45,self_d=月量×(w_d/Σw) round2 末日补差,
-//    gen_d=(self_d+grid_d)×1.03 round2 末日以 月gen(=月消纳×1.03)−Σ前日 补差;price_snap=写入时站单价。
+//    gen_d=(self_d+grid_d)×**逐栋逐季损耗系数**(2.5~5.7%)round2 末日补差;price_snap=写入时站单价。
+// 拆分权重不含 siteEff 的话每栋严格正比于容量 → 等效小时全园一个数;损耗写死 1.03 的话 loss% ≡ 2.913%
+// 十二个月不变。两者都让分析屏上对应的通道按构造失去信息,所以这里钉的是**恒等式 + 差异存在**,
+// 不再钉某一站的精确拆分值(那正是被换掉的那条规则)。
 // 幂等(确定性权重 → 二跑 filled=0);该站该月含任何 manual/import 行 → 整月跳过;缺站记 skipped 不报错。
 // 2099 远期槽 + @Transactional 回滚,不污染共享容器;pv_station 种子容量/单价全空(V36)。
 @AutoConfigureMockMvc
@@ -110,12 +114,16 @@ class PvMeterSimulateApiIT extends AbstractMysqlIT {
         assertThat(dates).hasSize(31).doesNotHaveDuplicates();
         assertThat(dates.get(0)).isEqualTo("2099-01-01");
         assertThat(dates.get(30)).isEqualTo("2099-01-31");
-        assertThat(sum(rd1, "$.data[?(@.stationName=='B座')].selfUse"))
-                .isCloseTo(25000.00, org.assertj.core.data.Offset.offset(1e-6));
-        assertThat(sum(rd1, "$.data[?(@.stationName=='B座')].gridFeed"))
-                .isCloseTo(12500.00, org.assertj.core.data.Offset.offset(1e-6));
-        assertThat(sum(rd1, "$.data[?(@.stationName=='B座')].genTotal"))
-                .isCloseTo(38625.00, org.assertj.core.data.Offset.offset(1e-6));   // 37500×1.03
+        // self : grid 的比例照抄 phase 真实值(2:1),不受先天水平影响 —— 权重同乘分子分母对消
+        double bSelf = sum(rd1, "$.data[?(@.stationName=='B座')].selfUse");
+        double bGrid = sum(rd1, "$.data[?(@.stationName=='B座')].gridFeed");
+        double bGen  = sum(rd1, "$.data[?(@.stationName=='B座')].genTotal");
+        assertThat(bSelf / bGrid).isCloseTo(2.0, org.assertj.core.data.Offset.offset(1e-3));
+        // 拆到 B座 的份额**不等于**纯容量占比 0.25 —— 先天水平真的动了它(不动就是没接上)
+        assertThat(bSelf / 100000.0).isNotCloseTo(0.25, org.assertj.core.data.Offset.offset(1e-4));
+        assertThat(bSelf / 100000.0).isBetween(0.20, 0.30);
+        // 损耗率落在逐栋逐季区间内(1 月非夏季 → 2.5%~4.5%)
+        assertThat(bGen / (bSelf + bGrid)).isBetween(1.025, 1.045);
         // 日权重晴雨波动:31 天并非均摊(至少两种取值)
         List<Number> bSelfs = JsonPath.read(rd1, "$.data[?(@.stationName=='B座')].selfUse");
         assertThat(bSelfs.stream().map(Number::doubleValue).distinct().count()).isGreaterThan(1);
@@ -135,18 +143,39 @@ class PvMeterSimulateApiIT extends AbstractMysqlIT {
         assertThat(sources).hasSize(155).containsOnly("simulated");
         List<String> notes = JsonPath.read(rd1, "$.data[*].note");
         assertThat(notes).allMatch(n -> n != null && n.startsWith("模拟:附表6 p1 2099-01")
-                && n.contains("日拆(日照波动权重)") && n.contains("容量比例/损耗3%假设"));
+                && n.contains("日拆(日照波动权重)") && n.contains("逐栋先天水平"));
+
+        // **新性质:各栋不再一个样。** 这两条一红就说明 siteEff / genFactor 没接上,
+        // 「各站发电效率」与「损耗率」两条通道会退回按构造零信息
+        var yields = new java.util.ArrayList<Double>();
+        var losses = new java.util.ArrayList<Double>();
+        for (String n : List.of("B座", "C、D座", "E座", "F座", "G座")) {
+            double sf = sum(rd1, "$.data[?(@.stationName=='" + n + "')].selfUse");
+            double gf = sum(rd1, "$.data[?(@.stationName=='" + n + "')].gridFeed");
+            double gn = sum(rd1, "$.data[?(@.stationName=='" + n + "')].genTotal");
+            double cap = one(st, "$.data[?(@.name=='" + n + "')].capacityKwp");
+            yields.add(gn / cap);            // 等效小时 —— 全同就是排名图那堵齐平的墙
+            losses.add(gn / (sf + gf));      // 损耗系数 —— 全同就是那条水平直线
+        }
+        assertThat(java.util.Set.copyOf(yields)).hasSizeGreaterThan(1);
+        assertThat(Collections.max(yields) / Collections.min(yields)).isGreaterThan(1.05);
+        // **判跨度不判「不全等」**:末日补差的浮点尾数天然让它们不全等,
+        // Set.size()>1 测的是舍入噪声不是设计性质(破坏验证时这条没咬住 = 假绿)。
+        // 真实跨度 2.63%~5.70% ⇒ 比值 ≈1.030;写死 1.03 时比值 ≈1.000
+        assertThat(Collections.max(losses) / Collections.min(losses)).isGreaterThan(1.01);
 
         // 2 月零头:末站 G座 月 self=1000.01−850=150.01,grid=149.99;28 日拆后 Σ 恒等,Σgen=300×1.03=309
         String rd2 = readingsOf(2099, 2);
         List<String> gDates = JsonPath.read(rd2, "$.data[?(@.stationName=='G座')].readDate");
         assertThat(gDates).hasSize(28);
-        assertThat(sum(rd2, "$.data[?(@.stationName=='G座')].selfUse"))
-                .isCloseTo(150.01, org.assertj.core.data.Offset.offset(1e-6));
-        assertThat(sum(rd2, "$.data[?(@.stationName=='G座')].gridFeed"))
-                .isCloseTo(149.99, org.assertj.core.data.Offset.offset(1e-6));
-        assertThat(sum(rd2, "$.data[?(@.stationName=='G座')].genTotal"))
-                .isCloseTo(309.00, org.assertj.core.data.Offset.offset(1e-6));
+        // G座 是末站,吃站级补差 —— 拆分规则变了它的份额就变,这里钉的是「Σ 恒等」不是它的具体值。
+        // 零头 1000.01/999.99 全部落到它身上,所以 Σ全站 仍分毫不差(见下)
+        double gSelf = sum(rd2, "$.data[?(@.stationName=='G座')].selfUse");
+        double gGrid = sum(rd2, "$.data[?(@.stationName=='G座')].gridFeed");
+        assertThat(gSelf).isGreaterThan(0);
+        assertThat(gGrid).isGreaterThan(0);
+        assertThat(sum(rd2, "$.data[?(@.stationName=='G座')].genTotal") / (gSelf + gGrid))
+                .isBetween(1.025, 1.045);
         assertThat(sum(rd2, "$.data[*].selfUse"))
                 .isCloseTo(1000.01, org.assertj.core.data.Offset.offset(1e-6));
 

@@ -174,7 +174,11 @@ public class PvMeterService {
         Map.entry("11栋", SIXTH), Map.entry("12栋", SIXTH), Map.entry("13栋", SIXTH),
         Map.entry("工业大厦", new BigDecimal("0.6")), Map.entry("创业大厦", new BigDecimal("0.4")));
     private static final BigDecimal HOURS = new BigDecimal("950");        // 年等效利用小时假设(佛山行情锚点)
-    private static final BigDecimal GEN_FACTOR = new BigDecimal("1.03");  // 发电=消纳×1.03(3% 系统损耗假设)
+    // 系统损耗**不是**一个常数。写死 1.03 的话 loss% ≡ 1−1/1.03 = 2.913%,
+    // 十二个月一个数不变 —— 分析屏上那条损耗率折线就是一条水平直线,画了等于没画。
+    // 现在按栋(线损/逆变器批次)+ 按季(夏季高温多损)给出 2.5%~5.7% 的真实区间。
+    private static final double LOSS_BASE_LO = 0.025, LOSS_BASE_SPAN = 0.020;   // 逐栋基线 2.5%~4.5%
+    private static final double LOSS_SUMMER = 0.012;                            // 6~9 月再 +1.2pt
 
     // phaseId p1/p2/p3 → 1/2/3;非法(用户脏数据)= null 跳过
     private static Integer phaseNo(String phaseId) {
@@ -226,11 +230,15 @@ public class PvMeterService {
                 // self_d = 月量 × w_d/Σw,整月同乘一个数分子分母对消 —— 只改日权重的话,故障出了当月
                 // 就完全看不见,新屏 8 月起又是一片绿(PV-ANALYSIS-SPEC §08)。
                 // 打在这里则 F座 少拿的那份由同期其余站分掉,Σ全站 仍等于 phase 月真实值,月度恒等不破。
+                // 权重 = 容量 × **逐栋先天水平** × 种入故障月系数。
+                // siteEff 不加的话每栋严格正比于容量,等效小时(发电÷装机)全园一个数 ——
+                // 「各站发电效率」那条通道按构造就不可能有差异,排名图画出来是一堵齐平的墙。
                 Map<Integer, BigDecimal> splitW = phaseSts.stream().collect(Collectors.toMap(
-                    PvStation::getId, s -> s.getCapacityKwp().multiply(faultMonth(s, month1))));
+                    PvStation::getId, s -> s.getCapacityKwp()
+                        .multiply(siteEff(s)).multiply(faultMonth(s, month1))));
                 BigDecimal wSum = splitW.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
                 if (wSum.signum() == 0) { c[1]++; continue; }   // 缺站/容量全空 → 该月 skipped 不报错
-                String note = "模拟:附表6 p" + pe.getKey() + " " + me.getKey() + " 日拆(日照波动权重);容量比例/损耗3%假设";
+                String note = "模拟:附表6 p" + pe.getKey() + " " + me.getKey() + " 日拆(日照波动权重);容量比例×逐栋先天水平;损耗逐栋2.5~5.7%";
                 // 该月既有记录一次取回:站→(日→行);含任何 manual/import 的站整月跳过(部分日拆会破坏月度恒等口径)
                 Map<Integer, Map<LocalDate, PvReading>> existing =
                     readings.selectByMonth(month1.getYear(), month1.getMonthValue(), null).stream()
@@ -280,6 +288,20 @@ public class PvMeterService {
         return BigDecimal.valueOf(s / days);
     }
 
+    /** 逐栋先天水平(朝向 / 倾角 / 遮挡 / 组件批次),±8%。
+     *  确定性:同一栋每次模拟都是同一个数,幂等不破。这是**长期水平差**,
+     *  不是故障 —— 它会被每栋自己的正常范围带吸收掉,正是「这屏看不见先天差异」那句话的来源。 */
+    private static BigDecimal siteEff(PvStation st) {
+        return BigDecimal.valueOf(0.92 + new Random(st.getId() * 7919L).nextDouble() * 0.16);
+    }
+
+    /** 发电 ÷ 消纳。逐栋基线 + 夏季高温附加 —— 见 LOSS_* 常数处的说明。 */
+    private static BigDecimal genFactor(PvStation st, LocalDate month1) {
+        double base = LOSS_BASE_LO + new Random(st.getId() * 104729L).nextDouble() * LOSS_BASE_SPAN;
+        int m = month1.getMonthValue();
+        return BigDecimal.valueOf(1 + base + (m >= 6 && m <= 9 ? LOSS_SUMMER : 0));
+    }
+
     // 整月逐日拆分:日权重 = **全园共享的天气因子 × 站内小扰动 × 种入故障逐日系数**。
     // park 的种子**不含站 id** —— 含了的话每站各晒各的太阳,中位数抛光算不出共同的 β(d),
     // 残差退化成纯独立噪声,任何检验都通不过,工作台的残差 ACF 也画不出东西(§08 验收 ④)。
@@ -299,13 +321,14 @@ public class PvMeterService {
             w[d] = BigDecimal.valueOf(v);
             wSum = wSum.add(w[d]);
         }
+        BigDecimal gf = genFactor(st, month1);
         BigDecimal restSelf = monthSelf, restGrid = monthGrid,
-            restGen = r2(monthSelf.add(monthGrid).multiply(GEN_FACTOR));
+            restGen = r2(monthSelf.add(monthGrid).multiply(gf));
         for (int d = 1; d <= days; d++) {
             boolean lastDay = d == days;
             BigDecimal self = lastDay ? restSelf : monthSelf.multiply(w[d - 1]).divide(wSum, 2, RoundingMode.HALF_UP);
             BigDecimal grid = lastDay ? restGrid : monthGrid.multiply(w[d - 1]).divide(wSum, 2, RoundingMode.HALF_UP);
-            BigDecimal gen = lastDay ? restGen : r2(self.add(grid).multiply(GEN_FACTOR));
+            BigDecimal gen = lastDay ? restGen : r2(self.add(grid).multiply(gf));
             restSelf = restSelf.subtract(self); restGrid = restGrid.subtract(grid); restGen = restGen.subtract(gen);
             LocalDate date = month1.withDayOfMonth(d);
             upsertSimReading(st, date, stRows.get(date), gen, self, grid, note, c);
