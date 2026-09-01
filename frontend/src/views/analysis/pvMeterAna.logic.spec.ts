@@ -12,7 +12,8 @@ const ln = Math.log
 /** 造一个 eff = α(s)·β(d) 的无噪声矩阵。gen = eff × cap */
 function grid(alphas: number[], betas: number[]): { rows: DayRow[]; stations: StationCfg[] } {
   const stations: StationCfg[] = alphas.map((_, i) => ({
-    id: i + 1, name: `S${i + 1}`, capKwp: 10 * (i + 1), metered: true,
+    id: i + 1, name: `S${i + 1}`, phase: 1, capKwp: 10 * (i + 1),
+    panelCount: null, panelWatt: null, metered: true,
   }))
   const rows: DayRow[] = []
   alphas.forEach((a, i) => betas.forEach((b, d) => {

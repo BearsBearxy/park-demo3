@@ -8,7 +8,14 @@
 
 // ── 类型 ───────────────────────────────────────────────────────────────
 export interface DayRow { stationId: number; date: string; gen: number }
-export interface StationCfg { id: number; name: string; capKwp: number | null; metered: boolean }
+export interface StationCfg {
+  id: number; name: string
+  phase: number
+  metered: boolean
+  capKwp: number | null      // 台账装机 kWp
+  panelCount: number | null  // 板数
+  panelWatt: number | null   // 单块标称功率 W
+}
 
 // ── 基本量 ─────────────────────────────────────────────────────────────
 
@@ -361,243 +368,311 @@ export function changePoint(
   return { index: obs.at, ciLo, ciHi, p, dropPct }
 }
 
-export type Shape = 'flat' | 'step' | 'ramp' | 'sawtooth' | 'spike'
-
-/**
- * 形状判定。**别指望变点算法回答形状** —— 拟一个小形状库,同一条残差上比 BIC。
- * 五种形状对应五种完全不同的动作(§5.4 表),判错了派错人:
- *   step 现场检查 / ramp 测直流侧压降 / sawtooth 可安排清洗 / flat 先核对容量台账 / spike 对运维台账。
- *
- * sawtooth 与 ramp 只差「雨后回不回弹」这一条,所以 rainDays 是必需入参而不是可选。
- */
-export function classifyShape(r: number[], rainDays: boolean[]): { shape: Shape; bic: number } {
-  const n = r.length
-  if (n < 8) return { shape: 'flat', bic: Infinity }
-
-  const rss = (fit: number[]) => r.reduce((a, v, i) => a + (v - fit[i]) ** 2, 0)
-  const bic = (fit: number[], k: number) => n * Math.log(Math.max(rss(fit), 1e-18) / n) + k * Math.log(n)
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
-
-  // flat:一个常数
-  const m = mean(r)
-  const fFlat = new Array(n).fill(m)
-
-  // step:在最优割点处两段常数
-  const cp = changePoint(r, { B: 0, block: 14 })
-  const cut = cp.index > 0 ? cp.index : n >> 1
-  const m1 = mean(r.slice(0, cut)), m2 = mean(r.slice(cut))
-  const fStep = r.map((_, i) => (i < cut ? m1 : m2))
-
-  // ramp:最小二乘直线
-  const xs = r.map((_, i) => i)
-  const mx = mean(xs), my = m
-  let sxy = 0, sxx = 0
-  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (r[i] - my); sxx += (xs[i] - mx) ** 2 }
-  const slope = sxx ? sxy / sxx : 0
-  const fRamp = xs.map(x => my + slope * (x - mx))
-
-  // sawtooth:「距上一个雨日的天数」的线性函数 —— 灰尘累积、雨后清零
-  const since: number[] = []
-  let k = 0
-  for (let i = 0; i < n; i++) { if (i > 0 && rainDays[i - 1]) k = 0; else k++; since.push(k) }
-  const ms = mean(since)
-  let sxy2 = 0, sxx2 = 0
-  for (let i = 0; i < n; i++) { sxy2 += (since[i] - ms) * (r[i] - my); sxx2 += (since[i] - ms) ** 2 }
-  const slope2 = sxx2 ? sxy2 / sxx2 : 0
-  const fSaw = since.map(s => my + slope2 * (s - ms))
-
-  // spike:单点离群,其余为常数
-  let peak = 0
-  for (let i = 1; i < n; i++) if (Math.abs(r[i] - m) > Math.abs(r[peak] - m)) peak = i
-  const restMean = mean(r.filter((_, i) => i !== peak))
-  const fSpike = r.map((_, i) => (i === peak ? r[peak] : restMean))
-
-  const cands: { shape: Shape; bic: number }[] = [
-    { shape: 'flat', bic: bic(fFlat, 1) },
-    { shape: 'step', bic: bic(fStep, 3) },       // 两段均值 + 割点
-    { shape: 'ramp', bic: bic(fRamp, 2) },
-    { shape: 'sawtooth', bic: bic(fSaw, 2) },
-    { shape: 'spike', bic: bic(fSpike, 3) },     // 常数 + 峰位 + 峰值
-  ]
-  return cands.reduce((a, b) => (b.bic < a.bic ? b : a))
-}
-
-// ── 先天缺陷通道(PV-ANALYSIS-SPEC §5.6)──────────────────────────────────
-
-export interface CongenitalRow {
-  id: number
-  name: string
-  alphaPct: number   // 相对全园中位数的百分比偏离(+ 高 / − 低)
-  ciLo: number
-  ciHi: number
-  suspect: boolean
-  advice: string
-}
-
-/**
- * α 排序 = 一张验收检查表。持续偏低的 α 是「疑似先天缺陷」,**不是**突发故障 ——
- * 两者派给不同的人:先天缺陷派工程师核图纸,突发异常派运维上屋顶。
- *
- * ⚠ 运维一号陷阱:**α 长期垫底最常见的原因不是设备坏,是装机容量台账写错。**
- *   cap 少写 10%,α 就永远偏 10%,派人上去查三次查不出东西,第四次就没人理这系统了。
- *   所以建议文案**必须是「先核对装机容量台账」**。
- *
- * CI 用**块自助**算。naive SE 在 σ≈8%、365 天下约 0.4%,13 个点的 CI 互不重叠,
- * 图上会显示「每栋楼都显著不同」,用户第一反应是「你这系统天天报警」。
- */
-export function congenitalCheck(
-  polish: PolishResult, stations: StationCfg[],
-  opts: { block?: number; B?: number; seed?: number; suspectPct?: number } = {},
-): CongenitalRow[] {
-  const B = opts.B ?? 399
-  const block = Math.max(1, opts.block ?? 10)
-  const suspectPct = opts.suspectPct ?? 8
-  const byId = new Map(stations.map(s => [s.id, s]))
-  const rnd = lcg(opts.seed ?? 20260831)
-
-  return [...polish.alpha.entries()].map(([id, a]) => {
-    const all = [...(polish.resid.get(id)?.values() ?? [])]
-    // **先中心化**:抛光锚的是残差**中位数**为 0,不是均值。不减掉均值的话
-    // draws 会整体偏到 α + mean(resid) 上 —— 区间可能压根不包含自己的点估计
-    // (实测:某站 α=0% 而区间 −23%~−12%)。工作台的 α 排序图上那就是一眼假。
-    const m0 = all.length ? all.reduce((x, y) => x + y, 0) / all.length : 0
-    const resid = all.map(v => v - m0)
-    // 块自助 α 的抽样分布:重采样(中心化后的)残差块加回 α,取分位
-    const draws: number[] = []
-    const n = resid.length
-    for (let b = 0; b < B && n > 0; b++) {
-      let sum = 0
-      let filled = 0
-      while (filled < n) {
-        const start = Math.floor(rnd() * n)
-        const take = Math.min(block, n - filled)
-        for (let k = 0; k < take; k++) sum += resid[(start + k) % n]
-        filled += take
-      }
-      draws.push(a + sum / n)
-    }
-    draws.sort((x, y) => x - y)
-    const q = (p: number) => (draws.length ? draws[Math.min(draws.length - 1, Math.floor(draws.length * p))] : a)
-    const pct = (v: number) => (Math.exp(v) - 1) * 100
-
-    const alphaPct = pct(a)
-    const ciLo = pct(q(0.025))
-    const ciHi = pct(q(0.975))
-    // 疑似先天缺陷:整个区间都在门槛之下(不是只有点估计低)
-    const suspect = ciHi < -suspectPct
-    return {
-      id, name: byId.get(id)?.name ?? String(id), alphaPct, ciLo, ciHi, suspect,
-      advice: suspect ? '先核对装机容量台账（台账写错比设备坏常见得多）' : '',
-    }
-  }).sort((x, y) => x.alphaPct - y.alphaPct)
-}
-
-// ── 换算成钱(PV-ANALYSIS-SPEC §5.7)──────────────────────────────────────
-
-/**
- * 缺口金额 = 应发 − 实发,按**自用电价**折算 —— 少发的那度要从电网买回来,
- * 损失的是自用电价(0.7~1.2 元分时),不是上网标杆价(0.39 元)。搞错了整屏的数就是错的。
- * 实发多于应发不算「负缺口」:那属于数据质量告警,不进钱这条线。
- */
-export function gapMoney(expectedKwh: number, actualKwh: number, selfUsePrice: number): number {
-  return Math.max(0, expectedKwh - actualKwh) * selfUsePrice
-}
-
-/** 金额门槛:红灯年化 ¥5,000;黄灯 ¥2,000(见下方说明)。 */
-export const RISK_ANNUAL_GAP = 5000
-export const WATCH_ANNUAL_GAP = 2000
-
-/**
- * 亮灯的三重门槛。**显著性只是入场券,金额才是排序键,金额门槛才是过滤器。**
- *
- * 一个统计上 q=0.001 但年化只差 ¥800 的变点,**绝不该出现在屏上**。
- * 13 栋楼之间 2% 的 α 差异在一年数据下就「统计显著」,但那可能只是朝向差异。
- * 「运维平台是被误报杀死的,从来不是被漏报杀死的。」
- *
- * ⚠ 黄灯也要过金额门槛(WATCH_ANNUAL_GAP,2026-08-31 落地时补)。
- *   设计稿的判定里只有红灯带金额条件,黄灯是 `q<0.20 && days>=7` —— 于是上面那个
- *   「年化 ¥800」的例子会落到 watch,点亮「需关注」灯,**照样出现在屏上**,
- *   与它自己那句「绝不该出现在屏上」直接打架。黄灯没有金额下限,等于把
- *   「统计上看得见但没人会去管」的那一大批全放进屏里,正是这条规则要防的误报洪水。
- *   ¥2,000/年 ≈ ¥170/月:低于这个数没人会为它派工。这个数值可调,但**不能没有**。
- */
-export function alertLevel(x: { q: number; days: number; annualGap: number }): 'risk' | 'watch' | 'ok' {
-  if (x.q < 0.05 && x.days >= 14 && x.annualGap >= RISK_ANNUAL_GAP) return 'risk'
-  if (x.q < 0.20 && x.days >= 7 && x.annualGap >= WATCH_ANNUAL_GAP) return 'watch'
-  return 'ok'
-}
-
-// ── 快照:一份数据、一次计算、一个 id(PV-ANALYSIS-SPEC §06.4 铁律)────────────
+// ── 绝对基准通道(PV-ANALYSIS-SPEC §03.5)────────────────────────────────
 //
-// 整屏**只跑这一次**。第一层渲染它的摘要视图,工作台渲染它的完整视图,两边共用 id 并都显示在页脚。
-// **工作台永远不是另一次计算** —— 对不上的时候要能在 30 秒内定位到是哪一层渲染错了,而不是怀疑模型。
+// 抛光只看**相对**:α 吸走「这栋一贯的水平」,β 吸走「今天的天气」,于是两件事结构性看不见 ——
+// 全园一起变差(共模劣化被 β 整个吃掉),以及一直就差的楼(水平被 α 整个吃掉)。
+// 这条通道就是补那两个盲区的:分母不从发电量来,而从**铭牌**来。
 
-/** 抄表行(结构上兼容 DayRow,可直接喂 medianPolish) */
+/** 理论装机 kWp = 板数 × 单块标称功率 ÷ 1000。两列任一为空返回 null —— 那栋不出绝对量。 */
+export function theoreticalKwp(st: StationCfg): number | null {
+  return st.panelCount != null && st.panelWatt != null && st.panelCount > 0 && st.panelWatt > 0
+    ? (st.panelCount * st.panelWatt) / 1000
+    : null
+}
+
+/** 年等效小时 = Σ发电 ÷ 分母。分母为 0/空时返回 null,不返回 Infinity。 */
+export function annualYieldHours(genTotal: number, denomKwp: number | null): number | null {
+  return denomKwp != null && denomKwp > 0 ? genTotal / denomKwp : null
+}
+
+// ── 逐月量(PV-ANALYSIS-SPEC §03.4)──────────────────────────────────────
+
+/** Huber 稳健回归 y = a + b·x。IRLS,单点撬不动斜率。返回斜率、标准误、R²、样本数。 */
+function huberFit(x: number[], y: number[]): { a: number; b: number; se: number; r2: number; n: number } {
+  const n = x.length
+  if (n < 3) return { a: 0, b: 0, se: Infinity, r2: 0, n }
+  let w = new Array(n).fill(1)
+  let a = 0, b = 0
+  for (let iter = 0; iter < 12; iter++) {
+    let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0
+    for (let i = 0; i < n; i++) {
+      sw += w[i]; sx += w[i] * x[i]; sy += w[i] * y[i]
+      sxx += w[i] * x[i] * x[i]; sxy += w[i] * x[i] * y[i]
+    }
+    const den = sw * sxx - sx * sx
+    if (!(Math.abs(den) > 1e-12)) break
+    b = (sw * sxy - sx * sy) / den
+    a = (sy - b * sx) / sw
+    const res = x.map((xi, i) => y[i] - (a + b * xi))
+    const s = median(res.map(Math.abs)) * 1.4826 || 1e-9
+    const k = 1.345 * s
+    const nw = res.map(r => (Math.abs(r) <= k ? 1 : k / Math.abs(r)))
+    const delta = nw.reduce((t, v, i) => t + Math.abs(v - w[i]), 0)
+    w = nw
+    if (delta < 1e-8) break
+  }
+  // 标准误与 R² 用**加权**残差,与拟合同一口径
+  const res = x.map((xi, i) => y[i] - (a + b * xi))
+  let sw = 0, sx = 0, sxx = 0, sse = 0
+  for (let i = 0; i < n; i++) { sw += w[i]; sx += w[i] * x[i]; sxx += w[i] * x[i] * x[i]; sse += w[i] * res[i] * res[i] }
+  const sxxC = sxx - (sx * sx) / sw
+  const se = n > 2 && sxxC > 1e-12 ? Math.sqrt(sse / (n - 2) / sxxC) : Infinity
+  const ybar = y.reduce((t, v, i) => t + w[i] * v, 0) / sw
+  const sst = y.reduce((t, v, i) => t + w[i] * (v - ybar) ** 2, 0)
+  return { a, b, se, r2: sst > 1e-12 ? Math.max(0, 1 - sse / sst) : 0, n }
+}
+
+export interface SlopeRow { key: string; beta: number; se: number; r2: number; n: number }
+
+/**
+ * 逐栋(逐月)响应斜率:log gen = α + β·f(d) + ε,f = 全园当日 log 因子(抛光的 β)。
+ * β = 1 表示与全园同步涨落;β < 1 = 好天涨得少;β > 1 = 坏天跌得更狠。
+ *
+ * 后三个返回值(se / r2 / n)决定图上误差带画多宽 —— **样本少的月带子要宽到肉眼可见**,
+ * 把「读不出东西」也画出来,而不是画一条看起来很确定的线。
+ */
+export function responseSlopes(
+  rows: DayRow[], polish: PolishResult, stations: StationCfg[], by: 'year' | 'month' = 'month',
+): Map<number, SlopeRow[]> {
+  const out = new Map<number, SlopeRow[]>()
+  const genOf = new Map<number, Map<string, number>>()
+  for (const r of rows) {
+    if (!(r.gen > 0)) continue
+    let m = genOf.get(r.stationId)
+    if (!m) { m = new Map(); genOf.set(r.stationId, m) }
+    m.set(r.date, r.gen)
+  }
+  for (const s of stations) {
+    const g = genOf.get(s.id)
+    if (!g) { out.set(s.id, []); continue }
+    const buckets = new Map<string, { x: number[]; y: number[] }>()
+    for (const [date, gen] of g) {
+      const f = polish.beta.get(date)
+      if (f === undefined) continue
+      const key = by === 'year' ? date.slice(0, 4) : YM(date)
+      let bk = buckets.get(key)
+      if (!bk) { bk = { x: [], y: [] }; buckets.set(key, bk) }
+      bk.x.push(f)
+      bk.y.push(Math.log(gen))
+    }
+    out.set(s.id, [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, bk]) => {
+        const f = huberFit(bk.x, bk.y)
+        return { key, beta: f.b, se: f.se, r2: f.r2, n: f.n }
+      }))
+  }
+  return out
+}
+
+/**
+ * 逐栋逐月稳健离散度(给 M2 方差热力矩阵)。一阶差分 MAD ÷ √2 ——
+ * 对阶跃和慢漂移几乎免疫,量的是**抖动**不是趋势。缓慢漂移归 S2 样条与 M4 控制图管。
+ * 不足 4 天的月返回 null:三个点算不出稳健尺度,画成 0 会看起来「特别稳」。
+ */
+export function monthlyDispersion(polish: PolishResult): Map<number, Map<string, number>> {
+  const out = new Map<number, Map<string, number>>()
+  for (const [id, byDate] of polish.resid) {
+    const byYm = new Map<string, { d: string; v: number }[]>()
+    for (const [d, v] of byDate) {
+      const k = YM(d)
+      const a = byYm.get(k) ?? []
+      a.push({ d, v }); byYm.set(k, a)
+    }
+    const m = new Map<string, number>()
+    for (const [k, arr] of byYm) {
+      if (arr.length < 4) continue
+      arr.sort((a, b) => a.d.localeCompare(b.d))
+      m.set(k, robustSigma(arr.map(x => x.v)))
+    }
+    out.set(id, m)
+  }
+  return out
+}
+
+// ── 限制性立方样条(PV-ANALYSIS-SPEC §03.4)──────────────────────────────
+
+/** 解 n×n 线性方程组(高斯消元 + 部分主元)。失败返回 null。 */
+function solve(A: number[][], b: number[]): number[] | null {
+  const n = b.length
+  const M = A.map((row, i) => [...row, b[i]])
+  for (let c = 0; c < n; c++) {
+    let piv = c
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r
+    if (Math.abs(M[piv][c]) < 1e-12) return null
+    ;[M[c], M[piv]] = [M[piv], M[c]]
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue
+      const f = M[r][c] / M[c][c]
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]
+    }
+  }
+  return M.map((row, i) => row[n] / M[i][i])
+}
+
+/**
+ * 限制性立方样条趋势 + 95% 置信带。**这是 classifyShape 五标签的替代品**:
+ * BIC 五选一逼着数据挑一个标签,形状不在那五种里就被硬塞;样条不预设形状,曲线自己长出来,
+ * 由看的人自己判。节点数固定 —— 让用户拖节点等于让他调出想要的结论。
+ *
+ * 节点取时间分位数(默认 4 个:5% / 35% / 65% / 95%)。基函数 = [1, x, s1, s2](k−2 个样条项),
+ * 两端强制线性(这就是「限制性」的含义:外推不翘上天)。
+ * 置信带 = ±1.96 × sqrt(残差方差 × x'(X'X)⁻¹x),数据稀的时段自动张开。
+ */
+export function rcsTrend(
+  resid: { date: string; v: number }[], knots = 4,
+): { date: string; fit: number; lo: number; hi: number }[] {
+  const n = resid.length
+  if (n < knots + 2) return []
+  const x = resid.map((_, i) => i / Math.max(1, n - 1))
+  const y = resid.map(r => r.v)
+  const qs = [0.05, 0.35, 0.65, 0.95].slice(0, knots)
+  const sorted = [...x].sort((a, b) => a - b)
+  const t = qs.map(q => sorted[Math.min(n - 1, Math.floor(q * (n - 1)))])
+  const kEnd = t[t.length - 1], kPre = t[t.length - 2]
+  if (!(kEnd - t[0] > 1e-9)) return []
+  const cube = (u: number) => (u > 0 ? u ** 3 : 0)
+  // Harrell 的 RCS 基:第 j 项 = (x−tj)³₊ − (x−t_{k−1})³₊·(t_k−tj)/(t_k−t_{k−1})
+  //                              + (x−t_k)³₊·(t_{k−1}−tj)/(t_k−t_{k−1})
+  const basis = (u: number) => {
+    const b = [1, u]
+    for (let j = 0; j < t.length - 2; j++) {
+      const den = (kEnd - kPre) || 1e-9
+      const scale = (kEnd - t[0]) ** 2 || 1e-9
+      b.push((cube(u - t[j]) - cube(u - kPre) * (kEnd - t[j]) / den + cube(u - kEnd) * (kPre - t[j]) / den) / scale)
+    }
+    return b
+  }
+  const X = x.map(basis)
+  const p = X[0].length
+  const XtX: number[][] = Array.from({ length: p }, () => new Array(p).fill(0))
+  const Xty = new Array(p).fill(0)
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < p; a++) {
+      Xty[a] += X[i][a] * y[i]
+      for (let b = 0; b < p; b++) XtX[a][b] += X[i][a] * X[i][b]
+    }
+  }
+  const beta = solve(XtX.map(r => [...r]), [...Xty])
+  if (!beta) return []
+  const fit = X.map(row => row.reduce((t2, v, k) => t2 + v * beta[k], 0))
+  const sse = y.reduce((t2, v, i) => t2 + (v - fit[i]) ** 2, 0)
+  const s2 = n > p ? sse / (n - p) : 0
+  // (X'X)⁻¹ 逐列解出来,只为拿 x'(X'X)⁻¹x
+  const inv: number[][] = []
+  for (let c = 0; c < p; c++) {
+    const e = new Array(p).fill(0); e[c] = 1
+    const col = solve(XtX.map(r => [...r]), e)
+    if (!col) return []
+    inv.push(col)
+  }
+  return resid.map((r, i) => {
+    let q = 0
+    for (let a = 0; a < p; a++) for (let b = 0; b < p; b++) q += X[i][a] * inv[b][a] * X[i][b]
+    const half = 1.96 * Math.sqrt(Math.max(0, s2 * q))
+    return { date: r.date, fit: fit[i], lo: fit[i] - half, hi: fit[i] + half }
+  })
+}
+
+// ── 快照:一份数据、一次计算、一个 id ───────────────────────────────────
+
 export interface ReadingRow {
   stationId: number; date: string
   gen: number; selfUse: number; gridFeed: number; revenue: number
   priceSnap: number | null
 }
 
+/** 五条判据线 + 年锚点。全部来自参数中心(V120),不在代码里写死 —— 见 §04.1。 */
+export interface Criteria {
+  anchorHours: number    // pv_yield_anchor_h      950
+  resid: number          // pv_crit_resid          0.10
+  dispRatio: number      // pv_crit_disp_ratio     1.5
+  coverMonth: number     // pv_crit_cover_month    0.90
+  ledger: number         // pv_crit_ledger         0.03
+  yieldRatio: number     // pv_crit_yield_ratio    0.85
+  minOnlineDays: number  // 常量 90:在网不足这么多天,该栋一律「读不出」
+}
+
+export const DEFAULT_CRITERIA: Criteria = {
+  anchorHours: 950, resid: 0.10, dispRatio: 1.5,
+  coverMonth: 0.90, ledger: 0.03, yieldRatio: 0.85, minOnlineDays: 90,
+}
+
 export interface SnapshotInput {
   year: number
   stations: StationCfg[]
   rows: ReadingRow[]
-  gridPrice: number       // 上网标杆价 元/kWh
-  minStations?: number    // 当日参与站下限,低于它当天整屏降级
-  minDays?: number        // 某站有效日下限,低于它不出结论
-  winDays?: number        // 预注册主窗口长度
-  prevRows?: ReadingRow[] // 上一年抄表(同比用)。不传 = 没取过,同比位显「—」不显「0%」
-  qualityPct?: number     // 正侧偏离超过它 = 数据质量告警(容量台账错),不是性能好
+  gridPrice: number          // 上网标杆价 元/kWh
+  crit?: Partial<Criteria>   // 参数中心的当前值;不传 = 用默认
+  minStations?: number       // 当日在网栋数下限,低于它当天算不出基准
+  prevRows?: ReadingRow[]    // 上一年抄表(同比用)。不传 = 没取过,同比位显「—」不显「0%」
 }
 
-export interface StationResult {
-  id: number; name: string
-  status: 'ok' | 'watch' | 'risk' | 'mute'
-  statusLabel: string
-  revenue: number
-  gapMoney: number
-  gapKwh: number
-  relPct: number | null     // 相对园区中位水平 %
-  days: number              // 有效日数
-  annualGap: number
-  q: number
-  shape: Shape | null
-  cp: ChangePoint | null
-  situation: string         // 表格「情况」列 —— 人话,无统计术语
-  advice: string            // 表格「建议」列
-  detail: StationDetail | null   // 第二层逐日明细;不参与判定的站为 null
+/** 每栋的基础量。**全是事实,没有一个判词** —— 状态灯/情况/建议那一套在 v2 里整条删掉了。 */
+export interface StationRow {
+  id: number; name: string; phase: number
+  metered: boolean
+  cadence: 'daily' | 'monthly'
+  days: number                     // 在网(有抄表且进了矩阵)天数
+  capKwp: number | null            // 台账装机
+  theoKwp: number | null           // 理论装机 = 板数 × 标称 W ÷ 1000
+  ledgerDiff: number | null        // (台账 − 理论) ÷ 理论
+  genYear: number
+  selfKwh: number; gridKwh: number; lossKwh: number
+  revSelf: number; revGrid: number
+  yieldHours: number | null        // 年等效小时
+  yieldDenom: 'theoretical' | 'ledger' | null
+  yieldRatio: number | null        // 年等效小时 ÷ 锚点
+}
+
+export type CritKey = 'resid' | 'disp' | 'cover' | 'ledger' | 'yield'
+
+/** 命中清单的一行。三段式:哪个数 · 多少 · 跟什么比(§05)。 */
+export interface Hit {
+  stationId: number
+  station: string
+  criterion: CritKey
+  what: string       // 「月残差中位数」
+  value: string      // 「8–12 月 −25%」
+  line: string       // 「判据线 ±10%」
+  readable: boolean  // false = 样本不足,读不出 —— 既不是命中也不是未命中
 }
 
 export interface AnaSnapshot {
   id: string
   year: number
-  ym: string                // 主口径月(该年最后一个有抄表的月)
-  stations: StationResult[]
-  park: {
-    revenue: number; selfKwh: number; gridKwh: number
-    gap: number; gapKwh: number; gapPct: number | null
-    counts: { ok: number; watch: number; risk: number; mute: number }
-    topGaps: { name: string; gap: number }[]
+  months: string[]                                  // 该年出现过的 ym,升序 —— 网格的列
+  stations: StationRow[]
+  /** 三张同网格的 13×12:行 = stations 顺序,列 = months 顺序。null = 该月没有可算的值 */
+  grid: {
+    deviation: Map<number, (number | null)[]>       // M1 月残差中位数(比例,+高 −低)
+    dispersion: Map<number, (number | null)[]>      // M2 月稳健 σ(比例)
+    coverage: Map<number, (number | null)[]>        // D2 有抄表天数 ÷ 当月天数
+    born: Map<number, number>                       // 该栋首次出现的列下标 —— 之前是「未投产」留白,不是漏抄
   }
-  monthly: { labels: string[]; kwh: number[]; actual: number[]; due: number[] }
+  slopes: Map<number, SlopeRow[]>                   // M3
+  hits: Hit[]                                       // F1
+  ledger: {                                         // L3 账面量
+    monthly: { labels: string[]; self: number[]; grid: number[]; loss: number[]; lossPct: number[] }
+    yieldByMonth: (number | null)[]                 // R4/A1:全园加权月等效小时
+  }
+  crit: Criteria
+  parkYieldHours: number | null                     // A1 右上角:全园年等效小时
+  parkYieldRatio: number | null                     // ÷ 锚点
+  polish: PolishResult
+  usedDays: Set<string> | null
   quality: {
     totalDays: number; okDays: number
-    noCapacity: string[]; noMeter: string[]
+    noMeter: string[]; noCapacity: string[]; noPanel: string[]
     minStationsOnDay: number; droppedThin: number; tooFewStations: boolean; degraded: boolean
   }
   yoy: {
-    monthPct: number | null   // 主口径月 vs 去年同月;null = 没得比
+    monthPct: number | null
     monthNote: string
-    yearPct: number | null    // 整年,**按两年都有抄表的月对齐**后再比
-    yearMonths: number        // 对齐后参与的月数(必须报出来)
+    yearPct: number | null
+    yearMonths: number
     yearNote: string
   }
-  polish: PolishResult
-  /** 抛光**真正用过**的日集合(只可能剔掉「当日在网站数不足」的日子);null = 一天没剔。
-   *  工作台的收敛诊断必须拿这一份重跑,自己再算一遍会混进第二个变量,隔离不出扫描顺序。 */
-  usedDays: Set<string> | null
-  congenital: CongenitalRow[]
 }
 
 /** FNV-1a:内容派生的短 id。同一份数据两次算必须同一个 id —— 页脚要拿它对账。 */
@@ -605,22 +680,19 @@ function fnv1a(s: string): string {
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
-    h = Math.imul(h, 0x01000193) >>> 0
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0
   }
   return h.toString(16).padStart(8, '0')
 }
 
 const YM = (d: string) => d.slice(0, 7)
 
-const STATUS_ZH: Record<StationResult['status'], string> =
-  { ok: '正常', watch: '需关注', risk: '异常', mute: '数据不全' }
-
 function daysInYm(ym: string): number {
   const [y, m] = ym.split('-').map(Number)
   return new Date(y, m, 0).getDate()
 }
 
-/** BH 的 q 值(不是布尔),逐点用于排序与判档 */
+/** BH 的 q 值(不是布尔),逐点用于命中清单的假阳性闸门 */
 export function bhFdrQ(pvals: number[]): number[] {
   const n = pvals.length
   const out: number[] = new Array(n).fill(1)
@@ -634,416 +706,291 @@ export function bhFdrQ(pvals: number[]): number[] {
   return out
 }
 
-/** 「7 月中旬」这类说法 —— 变点给不了天级精度,文案就不要假装有 */
-function monthPhrase(date: string): string {
-  const d = Number(date.slice(8, 10))
-  const m = Number(date.slice(5, 7))
-  return `${m} 月${d <= 10 ? '上旬' : d <= 20 ? '中旬' : '下旬'}`
+const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(0)}%`
+const monLabel = (ym: string) => `${Number(ym.slice(5, 7))} 月`
+
+/** 把一串命中的月份压成「8–12 月」这样的区段文案;不连续时用顿号分开 */
+function monthSpan(yms: string[], all: string[]): string {
+  if (!yms.length) return ''
+  const idx = yms.map(m => all.indexOf(m)).sort((a, b) => a - b)
+  const parts: string[] = []
+  let start = idx[0], prev = idx[0]
+  for (let i = 1; i <= idx.length; i++) {
+    if (i < idx.length && idx[i] === prev + 1) { prev = idx[i]; continue }
+    parts.push(start === prev ? monLabel(all[start]) : `${Number(all[start].slice(5, 7))}–${monLabel(all[prev])}`)
+    if (i < idx.length) { start = idx[i]; prev = idx[i] }
+  }
+  return parts.join('、')
 }
 
 /**
- * 「情况」列文案。**第一层不出现任何统计术语** —— p / q / 正负两倍标准差 / 显著 / 残差 / 归一化
- * 一个都不许露(§06「不确定性怎么说」的黑名单)。不确定性用语言标签 + 数值区间表达。
+ * 五条判据的命中清单(PV-ANALYSIS-SPEC §04.3)。三条硬规矩都在这个函数里:
+ *   ① **只列命中的,不列「正常」的** —— 屏做不到「正常」这个保证(看不见遮挡/朝向/倾角)。
+ *   ② **按楼栋固定顺序,不按严重度排** —— 一排序就要选排序键,那是业务判断不是屏能答的。
+ *   ③ **必须有第三档「读不出」** —— 在网不足 minOnlineDays 的站,既不是命中也不是未命中。
+ *
+ * `resid` 这条**同时要幅度与闸门**:13 栋 × 12 月 = 156 个格子拿 ±10% 去比,纯噪声也会中一片
+ * (月中位数的标准误在 σ=25%、ρ=0.5 下约 8%,±10% 只有 1.25 个标准误)。所以它还要过
+ * BH-FDR:族 = 逐栋预注册的变点检验 p。两条都写在行上,用户能自己复算。
  */
-function situationOf(
-  status: StationResult['status'], shape: Shape, cp: ChangePoint, resid: { date: string; v: number }[],
-): string {
-  if (status === 'ok') return '正常'
-  const at = cp.index >= 0 && cp.index < resid.length ? resid[cp.index].date : null
-  const when = at ? monthPhrase(at) : null
-  switch (shape) {
-    case 'step': return when ? `${when}起明显下降,之前正常` : '某个时点起明显下降'
-    case 'ramp': return '一路慢慢变低,下雨之后也没回来'
-    case 'sawtooth': return '越来越低,每次下雨之后又好一些'
-    case 'spike': return '只有个别几天异常,前后都正常'
-    default: return '一直偏低,不是新问题'
-  }
-}
+export function criteriaHits(
+  stations: StationRow[], months: string[],
+  grid: AnaSnapshot['grid'], residQ: Map<number, number>, crit: Criteria,
+): Hit[] {
+  const hits: Hit[] = []
+  // 园区同月中位波动 —— disp 这条是相对园区自己的,尺度无关
+  const parkDisp = months.map((_, c) => {
+    const col: number[] = []
+    for (const [, arr] of grid.dispersion) { const v = arr[c]; if (v != null) col.push(v) }
+    return col.length ? median(col) : null
+  })
 
-/** 「建议」列。派给不同的人 —— 先天缺陷派工程师核图纸,突发异常派运维上屋顶。
- *  导出只为单测:default 分支(显著但无形状)在整链夹具里难可靠造出来,直接测这张映射表。 */
-export function adviceOf(status: StationResult['status'], shape: Shape): string {
-  if (status === 'ok') return '保持'
-  switch (shape) {
-    case 'step': return '现场检查'
-    case 'ramp': return '测直流侧压降;看现场遮挡'
-    case 'sawtooth': return '可安排清洗'
-    case 'spike': return '对运维台账,多半不是设备问题'
-    // flat + 水平偏低:**先核对装机容量台账**,不是「现场检查」。
-    // 台账写错比设备坏常见得多,派人查三次查不出东西,第四次就没人理这系统了(§5.6)。
-    default: return '先核对装机容量台账'
-  }
-}
+  for (const s of stations) {
+    if (!s.metered) continue
+    const push = (criterion: CritKey, what: string, value: string, line: string, readable = true) =>
+      hits.push({ stationId: s.id, station: s.name, criterion, what, value, line, readable })
 
-/** 近 13 个月:柱=发电量 实线=实际收益 虚线=应得收益 */
-function monthly13(
-  rows: ReadingRow[], yms: string[], gridPrice: number,
-  polish: PolishResult, stations: StationCfg[],
-): AnaSnapshot['monthly'] {
-  const take = yms.slice(-13)
-  const capOf = new Map(stations.map(s => [s.id, s.capKwp]))
-  const acc = new Map(take.map(m => [m, { kwh: 0, actual: 0, due: 0 }]))
-  for (const r of rows) {
-    const a = acc.get(YM(r.date))
-    if (!a) continue
-    const money = r.revenue + r.gridFeed * gridPrice
-    a.kwh += r.gen
-    a.actual += money
-    const cap = capOf.get(r.stationId)
-    const al = polish.alpha.get(r.stationId)
-    const be = polish.beta.get(r.date)
-    if (cap != null && al !== undefined && be !== undefined && r.gen > 0) {
-      const expected = Math.exp(polish.mu + al + be) * cap
-      // 应得收益 = 实际收益 × 应发÷实发(按同一单价结构折算,不另引一套价)
-      a.due += money * (expected / r.gen)
-    } else {
-      a.due += money
+    // ③ 读不出:在网天数不足。整栋一行,不逐条重复
+    if (s.days > 0 && s.days < crit.minOnlineDays) {
+      push('resid', '在网天数', `${s.days} / 365 天`, `判据线 ≥ ${crit.minOnlineDays} 天 · 读不出`, false)
+      continue
+    }
+
+    // 台账差:纯算术,不需要任何统计,板数一录进来就能算
+    if (s.theoKwp != null && s.capKwp != null && s.ledgerDiff != null) {
+      if (Math.abs(s.ledgerDiff) > crit.ledger) {
+        push('ledger', '台账差',
+          `${s.capKwp.toFixed(1)} vs 理论 ${s.theoKwp.toFixed(1)}（${pct(s.ledgerDiff)}）`,
+          `判据线 ±${(crit.ledger * 100).toFixed(0)}%`)
+      }
+    } else if (s.days > 0) {
+      push('ledger', '台账差', '板数或单块功率未录', '录入后可算 · 读不出', false)
+    }
+
+    // 月偏离:幅度 + BH 闸门,两条都写出来
+    const dev = grid.deviation.get(s.id) ?? []
+    const over = months.filter((_, c) => dev[c] != null && Math.abs(dev[c]!) > crit.resid)
+    const q = residQ.get(s.id) ?? 1
+    if (over.length && q < 0.05) {
+      const vals = over.map((_, i) => dev[months.indexOf(over[i])]!)
+      const worst = vals.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), vals[0])
+      push('resid', '月残差中位数', `${monthSpan(over, months)} ${pct(worst)}`,
+        `判据线 ±${(crit.resid * 100).toFixed(0)}% 且 q<0.05`)
+    }
+
+    // 月波动:相对园区同月中位
+    const dsp = grid.dispersion.get(s.id) ?? []
+    const dOver = months.filter((_, c) => dsp[c] != null && parkDisp[c] != null && dsp[c]! > parkDisp[c]! * crit.dispRatio)
+    if (dOver.length) {
+      const c0 = months.indexOf(dOver[0])
+      push('disp', '月波动', `${monthSpan(dOver, months)} ${(dsp[c0]! * 100).toFixed(0)}%`,
+        `园区同月中位 × ${crit.dispRatio} = ${(parkDisp[c0]! * crit.dispRatio * 100).toFixed(0)}%`)
+    }
+
+    // 月抄表覆盖:纯事实
+    const cov = grid.coverage.get(s.id) ?? []
+    const born = grid.born.get(s.id) ?? 0
+    const cOver = months.filter((_, c) => c >= born && cov[c] != null && cov[c]! < crit.coverMonth)
+    if (cOver.length) {
+      const c0 = months.indexOf(cOver[0])
+      push('cover', '月抄表覆盖', `${monthSpan(cOver, months)} ${(cov[c0]! * 100).toFixed(0)}%`,
+        `判据线 ≥ ${(crit.coverMonth * 100).toFixed(0)}%`)
+    }
+
+    // 年等效小时 ÷ 锚点。第一年满不了 300 天的站显「读不出」——
+    // 这条本来就是年粒度的,不满一年算出来的比值没有意义
+    if (s.yieldRatio != null && s.days >= 300) {
+      if (s.yieldRatio < crit.yieldRatio) {
+        push('yield', '年等效小时', `${s.yieldHours!.toFixed(0)} 小时（锚点的 ${(s.yieldRatio * 100).toFixed(0)}%）`,
+          `判据线 ≥ 锚点 ${crit.anchorHours} × ${(crit.yieldRatio * 100).toFixed(0)}%`)
+      }
+    } else if (s.days > 0 && s.metered) {
+      push('yield', '年等效小时', s.yieldDenom == null ? '缺分母（板数与台账都没有）' : '不满一年',
+        `判据线 ≥ 锚点 ${crit.anchorHours} × ${(crit.yieldRatio * 100).toFixed(0)}% · 读不出`, false)
     }
   }
-  return {
-    labels: take,
-    kwh: take.map(m => acc.get(m)!.kwh),
-    actual: take.map(m => acc.get(m)!.actual),
-    // 应得不可能低于实际:折算里个别日的 expected 略低会让和数掉下去,那是数值噪声不是「超额」
-    due: take.map(m => Math.max(acc.get(m)!.due, acc.get(m)!.actual)),
-  }
+  return hits
 }
 
 export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
-  const {
-    year, stations, rows, gridPrice,
-    minStations = 8, minDays = 20, winDays = 30, prevRows, qualityPct = 50,
-  } = input
+  const { year, stations, rows, gridPrice, prevRows, minStations = 3 } = input
+  const crit: Criteria = { ...DEFAULT_CRITERIA, ...input.crit }
 
-  // ① 零剔除(PV-ANALYSIS-SPEC §01)。**没有任何按发电量或天气的日过滤。**
-  //    唯一会被剔的是「当日在网站数不足」的日子(④),那是基准算不出来,不是数据不好。
-  //    历史上这里做过按 GHI 的低辐照日筛选,连同整个气象通道一起删了:
-  //    实测关掉日筛只差 0.21pp,而它带来的是一整套外部数据依赖。
+  // ① 零剔除(§01)。没有任何按发电量或天气的日过滤。
+  //    唯一会被剔的是「当日在网栋数不足」的日子 —— 那是基准算不出来,不是数据不好。
   const readDates = new Set(rows.map(r => r.date))
-  const okDays: Set<string> | null = null
+  const months = [...new Set(rows.map(r => YM(r.date)))].sort()
+  const colOf = new Map(months.map((m, i) => [m, i]))
 
-  // ② 分档:未装表 / 未录容量 —— 两者都不进分析,但**必须分开列名**(§07 第一、二行)
   const noMeter = stations.filter(s => !s.metered).map(s => s.name)
   const noCapacity = stations.filter(s => s.metered && (s.capKwp == null || s.capKwp <= 0)).map(s => s.name)
+  const noPanel = stations.filter(s => s.metered && theoreticalKwp(s) == null).map(s => s.name)
 
-  // ③ 抛光(④ 里若发现参与站不足的日子,剔掉后会重算一次)
-  const polish0 = medianPolish(rows, stations, okDays)
-
-  // ④ 当日参与站数:4 栋掉线就能污染中位数 β,导致全园当天集体误报。
-  //    **这些日子要整日剔除**,不是"横幅告知一下然后照算" —— 早先只挂了横幅说「不做楼栋之间的比较」,
-  //    而屏上「相对园区」那列照样在、比较照做,等于屏在撒谎。剔掉再重算一次抛光。
+  const polish0 = medianPolish(rows, stations, null)
   const countDay = (pr: PolishResult) => {
     const m = new Map<string, number>()
     for (const [, byDate] of pr.resid) for (const d of byDate.keys()) m.set(d, (m.get(d) ?? 0) + 1)
     return m
   }
-  // 两种情况必须分开:
-  //   · **少数日子**掉线到不足 → 剔那几天(下面 thinDays)
-  //   · **整个园区**已装表楼栋就不够 → 不是掉线,是这园区根本做不了同类比较。
-  //     这时不能按"剔天"处理 —— 那会把每一天都剔光,屏上啥都不剩且没人知道为什么。
-  //     照 §07 降级为「仅同比,不做同类比较」:逐站结论全部收起,收益与同比照给。
-  const parkStations = stations.filter(s2 => s2.metered && s2.capKwp != null && s2.capKwp > 0).length
+  // 在网栋数 < 3 的日子不出 β(中位数在 n<3 时没有意义),但那天的原始值照常进 L3 的账面图。
+  // 门槛从 v1 的 8 降到 3:8 会把只有一期五栋的 1–5 月整段剔光,而 5 栋照样能互比,只是区间更宽。
+  const parkStations = stations.filter(s => s.metered && s.capKwp != null && s.capKwp > 0).length
   const tooFewStations = parkStations > 0 && parkStations < minStations
-  const thinDays = tooFewStations
-    ? []
-    : [...countDay(polish0)].filter(([, n]) => n < minStations).map(([d]) => d)
-  const okDays2 = thinDays.length
-    ? new Set([...readDates].filter(d => !thinDays.includes(d)))
-    : okDays
-  const polish = thinDays.length ? medianPolish(rows, stations, okDays2) : polish0
+  const thinDays = tooFewStations ? [] : [...countDay(polish0)].filter(([, n]) => n < minStations).map(([d]) => d)
+  const usedDays = thinDays.length ? new Set([...readDates].filter(d => !thinDays.includes(d))) : null
+  const polish = thinDays.length ? medianPolish(rows, stations, usedDays) : polish0
   const perDay = countDay(polish)
   const minStationsOnDay = perDay.size ? Math.min(...perDay.values()) : 0
-  const droppedThin = thinDays.length
 
-  // ⑤ 主口径月 = 该年最后一个有抄表的月
-  const yms = [...new Set(rows.map(r => YM(r.date)))].sort()
-  const ym = yms[yms.length - 1] ?? `${year}-01`
-
+  // ② 逐站基础量
   const byStation = new Map<number, ReadingRow[]>()
   for (const r of rows) {
     const a = byStation.get(r.stationId) ?? []
     a.push(r); byStation.set(r.stationId, a)
   }
-  const priceOf = (rs: ReadingRow[]) => {
-    const ps = rs.map(r => r.priceSnap).filter((v): v is number => v != null && v > 0)
-    return ps.length ? median(ps) : 0
-  }
 
-  // ⑥ 逐站。**预注册的主统计量 = 变点检验**(max|t|,零分布走循环分块置换),每栋只此一个。
-  //
-  // ⚠ 为什么不是「最后 N 天的残差均值 vs 整条序列自助」——那是第一版的写法,它有一个致命形态:
-  //   故障一旦占掉大半观测期(7/19 起坏、只看到年底 = 45% 的日子),抛光会把那个水平吸进 α,
-  //   而**基线里也全是故障期**,于是观测窗口一点都不"极端",p 反而不小。
-  //   §5.3 就 σ 警告过同一个形态:「基线若含故障期 → 双杀 → 越坏的楼越不报警,
-  //   检测器对最严重的资产最沉默」。基线的选择上同样成立,规格里没写,是落地时实测出来的。
-  //   变点检验对它免疫:它一次扫遍所有切分点,不需要事先知道哪段是"正常"。
-  //   窗口自助保留为**描述性**统计量(工作台的完整检验表要并排展示),不参与判定。
-  const raw: {
-    s: StationCfg; resid: { date: string; v: number }[]; pRaw: number
-    cp: ChangePoint | null; winP: number
-    gapKwh: number; gapMoneyVal: number; revenue: number; price: number
-    detail: StationDetail
-    balPct: number     // (发电 − 自消纳 − 上网) ÷ 发电;负得离谱 = 计量异常
-    monthDays: number  // 主口径月这站有几天抄表 —— 本月那两列的可信度靠它
-  }[] = []
-
-  for (const s of stations) {
-    if (!s.metered || s.capKwp == null || s.capKwp <= 0) continue
-    const resid = [...(polish.resid.get(s.id) ?? new Map<string, number>())]
-      .map(([date, v]) => ({ date, v }))
-      .sort((a, b) => a.date.localeCompare(b.date))
+  const stationRows: StationRow[] = stations.map(s => {
     const rs = byStation.get(s.id) ?? []
-    const price = priceOf(rs)
-
-    // 应发 = exp(mu + α + β) × 容量;缺口只算**主口径月**(KPI 是本月口径)
-    let gapKwh = 0
-    let revenue = 0
-    for (const r of rs) {
-      if (YM(r.date) !== ym) continue
-      revenue += r.revenue + r.gridFeed * gridPrice
-      const b = polish.beta.get(r.date)
-      const a = polish.alpha.get(s.id)
-      if (b === undefined || a === undefined) continue
-      const expected = Math.exp(polish.mu + a + b) * s.capKwp
-      gapKwh += Math.max(0, expected - r.gen)
-    }
-
-    const base = resid.map(x => x.v)
-    // 主统计量:变点检验。**单侧** —— 只有往下掉才算性能问题,往上是数据质量告警
-    // B=999:BH 在十几个站的族里要求 p ≤ 0.05/n,B=199 的下限 0.005 够不到(见 changePoint 注释)。
-    // 提前终止让没信号的站只跑几十次,所以这里提分辨率不等于提代价。
-    const cp = base.length >= 8 ? changePoint(base, { block: 14, B: 999, seed: 20260831 }) : null
-    const dropped = cp != null && cp.index >= 0 && cp.dropPct > 0
-    const pRaw = dropped ? cp!.p : 1
-
-    // 描述性:最后 winDays 天 vs 整条序列(工作台并排展示用,不参与判定)
-    const win = resid.slice(-winDays)
-    const obs = win.length ? win.reduce((x, y) => x + y.v, 0) / win.length : 0
-    const winP = base.length >= 2 && win.length
-      ? blockBootstrapP(base, obs, win.length, { block: 14, B: 999, seed: 20260831 }).p
-      : 1
-
-    raw.push({
-      s, resid, pRaw, cp, winP, gapKwh, gapMoneyVal: gapMoney(gapKwh, 0, price), revenue, price,
-      detail: buildDetail(rs, resid, s.capKwp, price, polish, s.id, cp),
-      monthDays: rs.filter(r => YM(r.date) === ym).length,
-      balPct: (() => {
-        const g = rs.reduce((t, v) => t + v.gen, 0)
-        return g > 0 ? rs.reduce((t, v) => t + (v.gen - v.selfUse - v.gridFeed), 0) / g : 0
-      })(),
-    })
-  }
-
-  // ⑦ BH-FDR 一次算完(族 = 参与判定的站),再逐站定档
-  const qs = bhFdrQ(raw.map(x => x.pRaw))
-  const medAlpha = median([...polish.alpha.values()])
-
-  const results: StationResult[] = raw.map((x, i) => {
-    const days = x.resid.length
-    const annualGap = x.gapKwh * (365 / Math.max(1, daysInYm(ym))) * x.price
-    const a = polish.alpha.get(x.s.id)
-    const relPct = a === undefined ? null : (Math.exp(a - medAlpha) - 1) * 100
-
-    // 只有月抄的站:**降级月频卡,不与日频站混排**(§07 第 7 行)。
-    // N=12 与 N=247 的置信区间差一个量级,并排放会让人以为两者一样可信。
-    // 必须排在「有效日不足」之前 —— 它不是数据缺,是节律不同,给「补录抄表」是错的建议。
-    if (cadenceOf((byStation.get(x.s.id) ?? []).map(r => r.date)) === 'monthly') {
-      return {
-        id: x.s.id, name: x.s.name, status: 'mute' as const, statusLabel: '月频口径',
-        revenue: x.revenue, gapMoney: 0, gapKwh: 0, relPct, days, annualGap: 0,
-        q: 1, shape: null, cp: null,
-        situation: '该栋按月抄表，不与日抄楼栋放在一起比', advice: '如需逐日判断，改为按日抄表', detail: null,
-      }
-    }
-
-    // 计量异常:自消纳 + 上网 比发电总量还多,物理上不可能 —— 表接错、重复计量或录入错。
-    // (这条是从 PvRoiView 卸掉的「消纳结构」区里接过来的:那边算 损耗 = 发电 − 自消纳 − 上网,
-    //  负值标红点。整块删掉的话这个检查就没了,所以搬到这条数据质量通道上。)
-    // 容差 1%:抄表四舍五入会带出零点几个百分点的负数,不是错。
-    if (x.balPct < -0.01) {
-      return {
-        id: x.s.id, name: x.s.name, status: 'mute' as const, statusLabel: '数据存疑',
-        revenue: x.revenue, gapMoney: 0, gapKwh: 0, relPct, days, annualGap: 0,
-        q: 1, shape: null, cp: null, detail: null,
-        situation: `自用加上网比发电总量还多 ${(-x.balPct * 100).toFixed(1)}%，抄表对不上`,
-        advice: '核对电表接线与抄表录入（多半是重复计量）',
-      }
-    }
-
-    // 正侧极端偏离 = **数据质量告警**,不是性能好(§5.3)。
-    // 实测踩到:三期两栋的 α 是园区中位的 7 倍,屏上显「正常 · 高 664%」——
-    // 一栋楼不可能比同园其余楼强 7 倍,那是**容量台账写错了**(或表重复计量、镜像伪影)。
-    // 判成「正常」等于把一条明摆着的台账错误盖过去。
-    if (relPct != null && relPct > qualityPct) {
-      return {
-        id: x.s.id, name: x.s.name, status: 'mute' as const, statusLabel: '数据存疑',
-        revenue: x.revenue, gapMoney: 0, gapKwh: 0, relPct, days, annualGap: 0,
-        q: 1, shape: null, cp: null,
-        situation: `折算下来比同园其余楼高 ${Math.round(relPct)}%，这个幅度不合常理`,
-        advice: '核对装机容量台账与电表接线（多半是容量填小了）', detail: null,
-      }
-    }
-
-    // 样本不足 → **不出结论**。显「正常」就是假绿,这里最容易出(§07)
-    if (days < minDays) {
-      return {
-        id: x.s.id, name: x.s.name, status: 'mute' as const, statusLabel: '数据不全',
-        revenue: x.revenue, gapMoney: x.gapMoneyVal, gapKwh: x.gapKwh, relPct, days, annualGap,
-        q: 1, shape: null, cp: null,
-        situation: `本期有效抄表仅 ${days} 天,不做判断`, advice: '补录抄表', detail: null,
-      }
-    }
-
-    // 本月覆盖度:整年有效日够、但**主口径月**缺了一大截的站,不能照常出「本月收益/本月缺口」——
-    // 那两个数是拿二十天当整月算的。§08 验收⑥ 就是照着这个形态写的
-    // (「人为删掉某站某月 11 天抄表 → 该站必须是灰灯,不是绿灯」)。
-    // 判定看的是**主口径月的覆盖**,不是整年有效日 —— 后者删一个月的十一天还剩三百五十多天,拦不住。
-    const dim = daysInYm(ym)
-    if (x.monthDays < dim * (2 / 3)) {
-      return {
-        id: x.s.id, name: x.s.name, status: 'mute' as const, statusLabel: '数据不全',
-        revenue: x.revenue, gapMoney: 0, gapKwh: 0, relPct, days, annualGap: 0,
-        q: 1, shape: null, cp: null, detail: x.detail,
-        situation: `本月 ${dim} 天里只抄了 ${x.monthDays} 天，本月的数不做判断`,
-        advice: '补录本月抄表',
-      }
-    }
-
-
-    // 无降雨数据(气象通道已删)→ 全 false。此时 sawtooth 在 classifyShape 里**数学上不可达**
-    // (fSaw ≡ fRamp、参数个数相同、严格 < 保 ramp),慢降类一律判 ramp —— 这是有意的降级,不是漏。
-    const rainDays = x.resid.map(() => false)
-    const shape = classifyShape(x.resid.map(r => r.v), rainDays).shape
-    const cp = x.cp ?? { index: -1, ciLo: -1, ciHi: -1, p: 1, dropPct: 0 }
-    const q = qs[i]
-    // days = 变点之后持续了多少天(alertLevel 的 days>=14 问的是「坏了多久」,
-    // 不是「有多少天数据」)。没有变点时退回有效日数
-    const lasted = cp.index >= 0 ? days - cp.index : days
-    const status = alertLevel({ q, days: lasted, annualGap })
+    const resid = polish.resid.get(s.id) ?? new Map<string, number>()
+    const genYear = rs.reduce((t, r) => t + r.gen, 0)
+    const selfKwh = rs.reduce((t, r) => t + r.selfUse, 0)
+    const gridKwh = rs.reduce((t, r) => t + r.gridFeed, 0)
+    const theoKwp = theoreticalKwp(s)
+    const denomKwp = theoKwp ?? (s.capKwp != null && s.capKwp > 0 ? s.capKwp : null)
+    const yieldHours = annualYieldHours(genYear, denomKwp)
     return {
-      id: x.s.id, name: x.s.name, status, statusLabel: STATUS_ZH[status],
-      revenue: x.revenue, gapMoney: x.gapMoneyVal, gapKwh: x.gapKwh, relPct, days, annualGap, q, shape, cp,
-      situation: situationOf(status, shape, cp, x.resid),
-      advice: adviceOf(status, shape),
-      detail: x.detail,
+      id: s.id, name: s.name, phase: s.phase, metered: s.metered,
+      cadence: cadenceOf(rs.map(r => r.date)),
+      days: resid.size,
+      capKwp: s.capKwp, theoKwp,
+      ledgerDiff: theoKwp != null && s.capKwp != null && theoKwp > 0 ? (s.capKwp - theoKwp) / theoKwp : null,
+      genYear, selfKwh, gridKwh, lossKwh: genYear - selfKwh - gridKwh,
+      revSelf: rs.reduce((t, r) => t + r.revenue, 0),
+      revGrid: gridKwh * gridPrice,
+      yieldHours,
+      yieldDenom: theoKwp != null ? 'theoretical' : denomKwp != null ? 'ledger' : null,
+      yieldRatio: yieldHours != null && crit.anchorHours > 0 ? yieldHours / crit.anchorHours : null,
     }
   })
 
-  // 园区楼栋数不足:逐站结论全部收起(§07 降级为「仅同比,不做同类比较」)。
-  // 收益与同比照给 —— 那两样不依赖楼栋之间的比较
-  if (tooFewStations) {
-    for (const r of results) {
-      if (r.status === 'mute') continue
-      r.status = 'mute'
-      r.statusLabel = '不做判断'
-      r.gapMoney = 0
-      r.gapKwh = 0
-      r.relPct = null
-      r.detail = null
-      r.situation = `园区已装表楼栋只有 ${parkStations} 栋，不足以互相当基准`
-      r.advice = '本期只看收益与同比'
-    }
-  }
-
-  // ⑦b 先天缺陷通道(§5.2 盲区②/§5.6):抛光只看**变化**,看不见**水平** ——
-  //     某栋一年前就衰减 12% 并稳定至今,全部被 α(s) 吸收,残差居中,变点/显著性通道**永远检不出来**。
-  //     所以水平这条线必须独立走一遍:α 的区间整段低于门槛 = 疑似先天缺陷。
-  //     它**不覆盖**已经被变点通道判成 risk/watch 的站(那是突发,派运维上屋顶);
-  //     只把剩下那些「一直就差」的站抬成 watch,派工程师核图纸 —— 两拨人不同。
-  //     钱要按**园区中位水平**算,不能按该站自己的 α:缺口 = 应发 − 实发,而「应发」用的就是
-  //     该站自己一贯的水平 —— 一直偏低的站算出来缺口恒等于 0,这正是这条通道存在的理由。
-  //     这里问的是另一个问题:「这栋楼要是达到园区一般水平,一年能多发多少钱」。
-  //     算出来的钱同样要过黄灯门槛 —— 否则「统计上比中位低一点」的那一大批全会点灯,
-  //     就是这条规则本来要防的误报洪水(§5.7)。
-  const congenital = congenitalCheck(polish, stations)
-  const suspect = tooFewStations
-    ? new Map<number, CongenitalRow>()   // 楼栋数不足时这条线同样不可信
-    : new Map(congenital.filter(c => c.suspect).map(c => [c.id, c]))
-  for (const r of results) {
-    if (r.status !== 'ok') continue
-    const c = suspect.get(r.id)
-    if (!c) continue
-    const x = raw.find(v => v.s.id === r.id)
-    const a = polish.alpha.get(r.id)
-    if (!x || a === undefined) continue
-    const yearGen = x.resid.length ? (byStation.get(r.id) ?? []).reduce((t, v) => t + v.gen, 0) : 0
-    const shortfall = Math.max(0, Math.exp(medAlpha - a) - 1)      // 达到园区中位水平能多发的比例
-    const congenitalAnnualGap = yearGen * shortfall * x.price
-    if (congenitalAnnualGap < WATCH_ANNUAL_GAP) continue
-    r.status = 'watch'
-    r.statusLabel = STATUS_ZH.watch
-    r.annualGap = congenitalAnnualGap
-    r.gapMoney = congenitalAnnualGap * (daysInYm(ym) / 365)        // 折回本月口径,与表头一致
-    r.gapKwh = x.price > 0 ? r.gapMoney / x.price : 0
-    r.situation = '一直偏低,不是新问题'
-    r.advice = c.advice
-  }
-  results.sort((a, b) => b.gapMoney - a.gapMoney)
-
-  // 未装表 / 未录容量的站也进表,但只占一行灰,不参与任何统计。
-  // 两者文案必须分开:前者永久不用管,后者要催人补容量(§07 第一、二行)
+  // ③ 三张同网格。列 = months;born 之前留白(未投产),born 之后没有值才是漏抄
+  const deviation = new Map<number, (number | null)[]>()
+  const dispersion = new Map<number, (number | null)[]>()
+  const coverage = new Map<number, (number | null)[]>()
+  const born = new Map<number, number>()
+  const disp = monthlyDispersion(polish)
   for (const s of stations) {
-    if (s.metered && s.capKwp != null && s.capKwp > 0) continue
-    results.push({
-      id: s.id, name: s.name, status: 'mute',
-      statusLabel: s.metered ? '未录容量' : '未装表',
-      revenue: 0, gapMoney: 0, gapKwh: 0, relPct: null, days: 0, annualGap: 0,
-      q: 1, shape: null, cp: null,
-      situation: s.metered ? '未填装机容量,算不出效率' : '该栋未安装光伏计量表',
-      advice: s.metered ? '到抄表屏补填装机容量' : '无需处理', detail: null,
-    })
-  }
-  results.sort((a, b) => b.gapMoney - a.gapMoney)
+    const rs = byStation.get(s.id) ?? []
+    const firstYm = rs.length ? rs.map(r => YM(r.date)).sort()[0] : null
+    born.set(s.id, firstYm != null ? (colOf.get(firstYm) ?? 0) : months.length)
 
-  // ⑧ 园区口径(主口径月)
-  const monthRows = rows.filter(r => YM(r.date) === ym)
-  const inPlay = new Set(raw.map(x => x.s.id))
-  const selfKwh = monthRows.reduce((a, r) => a + r.selfUse, 0)
-  const gridKwh = monthRows.reduce((a, r) => a + r.gridFeed, 0)
-  const revenue = monthRows.reduce((a, r) => a + r.revenue + r.gridFeed * gridPrice, 0)
-  // **必须从 results 求和**,不能从 raw:先天缺陷通道会改写行上的 gapMoney,
-  // 从中间量求和会让 KPI 与表行对不上 —— 实测过一次 KPI ¥37,181 而表行合计 ¥137,180。
-  // §08 验收⑤ 要的就是这两个数分毫不差。
-  const gapKwh = results.reduce((a, r) => a + r.gapKwh, 0)
-  const gap = results.reduce((a, r) => a + r.gapMoney, 0)
-  const counts = { ok: 0, watch: 0, risk: 0, mute: 0 }
-  for (const r of results) counts[r.status]++
+    const residByYm = new Map<string, number[]>()
+    for (const [d, v] of polish.resid.get(s.id) ?? new Map<string, number>()) {
+      const a = residByYm.get(YM(d)) ?? []
+      a.push(v); residByYm.set(YM(d), a)
+    }
+    // log 域中位数换回比例:exp(m) − 1
+    deviation.set(s.id, months.map(m => {
+      const a = residByYm.get(m)
+      return a && a.length >= 4 ? Math.exp(median(a)) - 1 : null
+    }))
+    const d2 = disp.get(s.id) ?? new Map<string, number>()
+    dispersion.set(s.id, months.map(m => d2.get(m) ?? null))
+
+    const cntByYm = new Map<string, number>()
+    for (const r of rs) cntByYm.set(YM(r.date), (cntByYm.get(YM(r.date)) ?? 0) + 1)
+    coverage.set(s.id, months.map(m => {
+      const c = cntByYm.get(m)
+      return c == null ? null : Math.min(1, c / daysInYm(m))
+    }))
+  }
+  const grid = { deviation, dispersion, coverage, born }
+
+  // ④ 预注册主统计量 = 变点检验(单侧,零分布走循环分块置换),每栋只此一个。
+  //    它是 F1 里 resid 那条的**闸门**:156 个格子拿 ±10% 去比,纯噪声也会中一片。
+  const cpIds: number[] = []
+  const cpP: number[] = []
+  for (const s of stations) {
+    if (!s.metered) continue
+    const base = [...(polish.resid.get(s.id) ?? new Map<string, number>())]
+      .sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v)
+    if (base.length < 8) continue
+    const cp = changePoint(base, { block: 14, B: 999, seed: 20260831 })
+    cpIds.push(s.id)
+    cpP.push(cp.index >= 0 && cp.dropPct > 0 ? cp.p : 1)
+  }
+  const qs = bhFdrQ(cpP)
+  const residQ = new Map(cpIds.map((id, i) => [id, qs[i]]))
+
+  // ⑤ 账面量(L3)。零容量依赖 —— 板数与铭牌都没录进来之前,这一层照常出真数
+  const acc = new Map(months.map(m => [m, { self: 0, grid: 0, gen: 0 }]))
+  for (const r of rows) {
+    const a = acc.get(YM(r.date))
+    if (!a) continue
+    a.self += r.selfUse; a.grid += r.gridFeed; a.gen += r.gen
+  }
+  const monthly = {
+    labels: months,
+    self: months.map(m => acc.get(m)!.self),
+    grid: months.map(m => acc.get(m)!.grid),
+    loss: months.map(m => acc.get(m)!.gen - acc.get(m)!.self - acc.get(m)!.grid),
+    lossPct: months.map(m => {
+      const a = acc.get(m)!
+      return a.gen > 0 ? (a.gen - a.self - a.grid) / a.gen : 0
+    }),
+  }
+
+  // ⑥ 全园月等效小时(A1/R4)。分母 = 当月有抄表的站的容量合计(优先理论装机)
+  const denomOf = new Map(stationRows.map(s => [s.id, s.theoKwp ?? (s.capKwp && s.capKwp > 0 ? s.capKwp : null)]))
+  const yieldByMonth = months.map(m => {
+    let gen = 0, cap = 0
+    const seen = new Set<number>()
+    for (const r of rows) {
+      if (YM(r.date) !== m) continue
+      gen += r.gen
+      if (!seen.has(r.stationId)) {
+        seen.add(r.stationId)
+        cap += denomOf.get(r.stationId) ?? 0
+      }
+    }
+    return cap > 0 ? gen / cap : null
+  })
+  const parkGen = stationRows.reduce((t, s) => t + s.genYear, 0)
+  const parkCap = stationRows.reduce((t, s) => t + (denomOf.get(s.id) ?? 0), 0)
+  const parkYieldHours = parkCap > 0 ? parkGen / parkCap : null
+  const parkYieldRatio = parkYieldHours != null && crit.anchorHours > 0 ? parkYieldHours / crit.anchorHours : null
+
+  const hits = criteriaHits(stationRows, months, grid, residQ, crit)
 
   return {
     id: fnv1a([
-      year, ym, stations.length, rows.length, gridPrice,
-      rows.reduce((a, r) => a + r.gen, 0).toFixed(3),
-      [...inPlay].sort((a, b) => a - b).join(','),
+      year, stations.length, rows.length, gridPrice,
+      parkGen.toFixed(3), crit.resid, crit.ledger, crit.anchorHours,
     ].join('|')),
-    year, ym,
-    stations: results,
-    park: {
-      revenue, selfKwh, gridKwh, gap, gapKwh,
-      gapPct: revenue + gap > 0 ? (gap / (revenue + gap)) * 100 : null,
-      counts,
-      topGaps: results.filter(r => r.gapMoney > 0).slice(0, 2).map(r => ({ name: r.name, gap: r.gapMoney })),
-    },
-    monthly: monthly13(rows, yms, gridPrice, polish, stations),
+    year, months,
+    stations: stationRows,
+    grid,
+    slopes: responseSlopes(rows.map(r => ({ stationId: r.stationId, date: r.date, gen: r.gen })), polish, stations),
+    hits,
+    ledger: { monthly, yieldByMonth },
+    crit,
+    parkYieldHours, parkYieldRatio,
+    polish, usedDays,
     quality: {
       totalDays: readDates.size,
-      okDays: okDays2 ? okDays2.size : readDates.size,
-      noCapacity, noMeter,
-      minStationsOnDay, droppedThin, tooFewStations,
-      degraded: droppedThin > 0 || tooFewStations,
+      okDays: usedDays ? usedDays.size : readDates.size,
+      noMeter, noCapacity, noPanel,
+      minStationsOnDay, droppedThin: thinDays.length, tooFewStations,
+      degraded: thinDays.length > 0 || tooFewStations,
     },
-    yoy: yoyOf(rows, prevRows, ym, gridPrice),
-    polish, usedDays: okDays2, congenital,
+    yoy: yoyOf(rows, prevRows, months[months.length - 1] ?? `${year}-01`, gridPrice),
   }
 }
 
 /**
- * 同比(PV-ANALYSIS-SPEC §07 第 8、9 行)。两条护栏都在这里,都是「不许静默」:
- *
- * ① 上一年无抄表 → 显 `—`,**不显 `0%`**。0% 意味着「持平」,—— 意味着「没得比」,
- *    这两句话在财务会上是完全不同的结论。
+ * 同比(PV-ANALYSIS-SPEC §07)。两条护栏都在这里,都是「不许静默」:
+ * ① 上一年无抄表 → 显 `—`,**不显 `0%`**。0% 意味着「持平」,—— 意味着「没得比」。
  * ② 跨年月份不齐 → 按**两年都有抄表的月**对齐后再比,并**报出参与月数**。
- *    整年直接求和的话,2025 全年 vs 2024 的 5 个月会虚高 100%+ —— 屏上会写着「同比 +112%」,
- *    而实际上只是去年少记了七个月。
  */
 function moneyOf(r: ReadingRow, gridPrice: number): number {
   return r.revenue + r.gridFeed * gridPrice
@@ -1066,14 +1013,12 @@ export function yoyOf(
   const cur = sumByYm(rows, gridPrice)
   const prev = sumByYm(prevRows, gridPrice)
 
-  // ① 主口径月 vs 去年同月
   const prevYm = `${Number(ym.slice(0, 4)) - 1}-${ym.slice(5, 7)}`
   const a = cur.get(ym) ?? 0
   const b = prev.get(prevYm)
   const monthPct = b != null && b > 0 ? (a / b - 1) * 100 : null
   const monthNote = monthPct == null ? `${prevYm} 无抄表记录，没得比` : `对比 ${prevYm}`
 
-  // ② 整年:只取两年都有抄表的月
   const shared = [...cur.keys()]
     .filter(k => prev.has(`${Number(k.slice(0, 4)) - 1}-${k.slice(5, 7)}`))
     .sort()
@@ -1093,10 +1038,9 @@ export function yoyOf(
 }
 
 /**
- * 抄表节律(PV-ANALYSIS-SPEC §07 第 7 行)。只有月抄的站**不能与日频站混排** ——
+ * 抄表节律(§07)。只有月抄的站**不能与日频站混排** ——
  * N=12 与 N=247 的置信区间差一个量级,并排放会让人以为两者一样可信。
- *
- * 判定:覆盖 ≥3 个月,且平均每月 ≤1.5 条。够不上就是日频(或数据不全,那是另一条护栏)。
+ * 判定:覆盖 ≥3 个月,且平均每月 ≤1.5 条。
  */
 export function cadenceOf(dates: string[]): 'daily' | 'monthly' {
   if (dates.length < 3) return 'daily'
@@ -1105,73 +1049,46 @@ export function cadenceOf(dates: string[]): 'daily' | 'monthly' {
   return dates.length / months.size <= 1.5 ? 'monthly' : 'daily'
 }
 
-// ── 第二层:单栋逐日明细(PV-ANALYSIS-SPEC §06.2)────────────────────────
+// ── L5 单栋抽屉(PV-ANALYSIS-SPEC §06.5)─────────────────────────────────
 //
-// 挂在同一个快照对象上,不另起一次计算 —— 第二层与工作台读的都是这一份(§06.4 铁律)。
+// 挂在同一个快照上,不另起一次计算 —— 铁律:一份数据、一次计算、一个 id。
 
 export interface StationDetail {
   dates: string[]
-  gen: number[]        // 实发 kWh
-  expected: number[]   // 应发 kWh = exp(mu + α + β) × 容量
-  gapCum: number[]     // 累计缺口(元)——第二层主图的纵轴
-  resid: number[]      // log 域残差(技术细节折叠区用)
-  sigma: number        // 「正常波动范围」的半宽(log 域)
-  cpDate: string | null
-  cpLo: string | null
-  cpHi: string | null
-  slopeBefore: number  // 折点前 元/天
-  slopeAfter: number   // 折点后 元/天
+  resid: number[]                                            // log 域残差
+  spline: { date: string; fit: number; lo: number; hi: number }[]   // S2
+  cp: ChangePoint | null                                     // S3
+  cpDate: string | null; cpLo: string | null; cpHi: string | null
+  center: number                                             // M4 中心线
+  sigma: number                                              // M4 控制限半宽(1σ)
+  limitFrom: string | null; limitTo: string | null           // 控制限的估计窗口 —— 画在图上
 }
 
 /**
- * 变点的人话措辞。**宽度决定怎么写** ——
- * 窄区间(≤3 天)照实写日期;宽区间必须写成「7 月中旬 · 区间 7/11–7/26 — 不是精确到天」。
- * 固定一种写法是错的:强效应下写「中旬」丢精度,弱效应下写「7月18日」是承诺算法给不了的东西。
+ * 单栋详情。M4 的控制限**用变点前段估** —— 整期都有故障时用全期估,限本身被撑宽,
+ * 什么都不越限,检测器对最严重的资产最沉默。估计窗口要画出来,不能只给两条线。
  */
-export function cpPhrase(d: StationDetail): string {
-  if (!d.cpDate) return ''
-  const md = (s: string) => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}`
-  const span = d.cpLo && d.cpHi
-    ? (new Date(d.cpHi).getTime() - new Date(d.cpLo).getTime()) / 86400000
-    : 0
-  if (span <= 3) return `折点 · ${md(d.cpDate)}`
-  const day = Number(d.cpDate.slice(8, 10))
-  const mon = Number(d.cpDate.slice(5, 7))
-  const phase = day <= 10 ? '上旬' : day <= 20 ? '中旬' : '下旬'
-  return `折点 · ${mon} 月${phase} · 区间 ${md(d.cpLo!)}–${md(d.cpHi!)} — 不是精确到天`
-}
-
-function buildDetail(
-  rs: ReadingRow[], resid: { date: string; v: number }[], cap: number, price: number,
-  polish: PolishResult, stationId: number, cp: ChangePoint | null,
-): StationDetail {
-  const byDate = new Map(rs.map(r => [r.date, r]))
-  const dates = resid.map(r => r.date)
-  const gen: number[] = []
-  const expected: number[] = []
-  const gapCum: number[] = []
-  const a = polish.alpha.get(stationId) ?? 0
-  let cum = 0
-  for (const d of dates) {
-    const r = byDate.get(d)!
-    const b = polish.beta.get(d) ?? 0
-    const exp = Math.exp(polish.mu + a + b) * cap
-    gen.push(r.gen)
-    expected.push(exp)
-    cum += Math.max(0, exp - r.gen) * price
-    gapCum.push(cum)
-  }
-  const idx = cp && cp.index >= 0 && cp.index < dates.length ? cp.index : null
-  const slope = (from: number, to: number) =>
-    to - from > 1 ? (gapCum[to - 1] - gapCum[from]) / (to - 1 - from) : 0
+export function buildDetail(snap: AnaSnapshot, stationId: number): StationDetail | null {
+  const byDate = snap.polish.resid.get(stationId)
+  if (!byDate || byDate.size < 8) return null
+  const arr = [...byDate].sort((a, b) => a[0].localeCompare(b[0]))
+  const dates = arr.map(([d]) => d)
+  const resid = arr.map(([, v]) => v)
+  const cp = changePoint(resid, { block: 14, B: 999, seed: 20260831 })
+  const idx = cp.index >= 0 && cp.index < dates.length ? cp.index : null
+  // 变点前段:至少留 8 个点,否则退回全期并在 limitFrom/To 上如实标出来
+  const to = idx != null && idx >= 8 ? idx : resid.length
+  const base = resid.slice(0, to)
   return {
-    dates, gen, expected, gapCum,
-    resid: resid.map(r => r.v),
-    sigma: robustSigma(resid.map(r => r.v)) * 2,   // 「正常波动范围」= ±2σ,界面上不出现 σ 这个字
+    dates, resid,
+    spline: rcsTrend(arr.map(([date, v]) => ({ date, v }))),
+    cp: idx == null ? null : cp,
     cpDate: idx == null ? null : dates[idx],
-    cpLo: idx == null || cp!.ciLo < 0 ? null : dates[Math.min(cp!.ciLo, dates.length - 1)],
-    cpHi: idx == null || cp!.ciHi < 0 ? null : dates[Math.min(cp!.ciHi, dates.length - 1)],
-    slopeBefore: idx == null ? slope(0, dates.length) : slope(0, idx),
-    slopeAfter: idx == null ? 0 : slope(idx, dates.length),
+    cpLo: idx == null || cp.ciLo < 0 ? null : dates[Math.min(cp.ciLo, dates.length - 1)],
+    cpHi: idx == null || cp.ciHi < 0 ? null : dates[Math.min(cp.ciHi, dates.length - 1)],
+    center: median(base),
+    sigma: robustSigma(base),
+    limitFrom: dates[0] ?? null,
+    limitTo: dates[Math.max(0, to - 1)] ?? null,
   }
 }

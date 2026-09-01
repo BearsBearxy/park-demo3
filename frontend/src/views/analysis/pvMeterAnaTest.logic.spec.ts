@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  robustSigma, shrinkSigma, blockBootstrapP, naiveNormalP, bhFdr, changePoint, classifyShape,
+  robustSigma, shrinkSigma, blockBootstrapP, naiveNormalP, bhFdr, changePoint,
 } from './pvMeterAna.logic'
 
 // 显著性 / 变点 / 形状(PV-ANALYSIS-SPEC §5.3–5.4)。
@@ -141,43 +141,5 @@ describe('changePoint', () => {
     const r = changePoint(stepAt(300, 150, 0.30, 557), { block: 14, B: 99, seed: 3, trim: 0.15 })
     expect(r.index).toBeGreaterThanOrEqual(45)
     expect(r.index).toBeLessThanOrEqual(255)
-  })
-})
-
-describe('classifyShape', () => {
-  const noRain = (n: number) => Array.from({ length: n }, () => false)
-
-  it('flat:无趋势无变点', () => {
-    expect(classifyShape(ar1(200, 0.3, 0.03, 11), noRain(200)).shape).toBe('flat')
-  })
-
-  it('step:阶跃,变点后斜率≈0', () => {
-    const r = ar1(200, 0.3, 0.03, 12).map((v, i) => (i >= 100 ? v - 0.35 : v))
-    expect(classifyShape(r, noRain(200)).shape).toBe('step')
-  })
-
-  it('ramp:显著负趋势、雨后不回弹 → 测直流侧压降,不是清洗', () => {
-    const rain = Array.from({ length: 200 }, (_, i) => i % 20 === 0)
-    const r = ar1(200, 0.3, 0.02, 13).map((v, i) => v - i * 0.0025)
-    expect(classifyShape(r, rain).shape).toBe('ramp')
-  })
-
-  // 与 ramp 只差「雨后回不回弹」这一条,却对应完全不同的动作:
-  // sawtooth → 可安排清洗;ramp → 测直流侧压降。判错了派错人。
-  it('sawtooth:负趋势 + 降雨日之后跳升 → 可安排清洗', () => {
-    const rain = Array.from({ length: 200 }, (_, i) => i % 20 === 0)
-    const base = ar1(200, 0.3, 0.02, 14)
-    let since = 0
-    const r = base.map((v, i) => {
-      if (i > 0 && rain[i - 1]) since = 0; else since++
-      return v - since * 0.008
-    })
-    expect(classifyShape(r, rain).shape).toBe('sawtooth')
-  })
-
-  it('spike:单点极大,前后正常', () => {
-    const r = ar1(200, 0.3, 0.03, 15)
-    r[97] = -0.9
-    expect(classifyShape(r, noRain(200)).shape).toBe('spike')
   })
 })
