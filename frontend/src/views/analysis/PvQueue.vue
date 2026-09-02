@@ -62,21 +62,49 @@ const quiet = computed(() =>
 const elapsed = computed(() => Math.max(0, ...props.rows.map(r => r.elapsedN)))
 
 /** 首条抄表日期由行给,`unborn` 若已自带日期则原样出 —— 两种上游都不至于把日期丢掉。 */
-const unbornText = computed(() => {
+/**
+ * 未投产的**按首条抄表日期归并**。
+ *
+ * 逐栋各带一个「（首条抄表 2025-06-01）」的话,8 栋会把同一个日期重复 6 遍,
+ * 拼出一段 90 字的墙 —— 与 B0 横幅、大图页脚是同一个病。
+ * 同一批投产的栋本来就该被读成一批。
+ */
+const unbornGroups = computed(() => {
   const first = new Map(props.rows.filter(r => !r.bornBySeg).map(r => [r.name, r.firstDate]))
-  return props.unborn.map(n => (first.get(n) ? `${n}（首条抄表 ${first.get(n)}）` : n))
+  const by = new Map<string, string[]>()
+  for (const n of props.unborn) {
+    const d = first.get(n) ?? ''
+    const k = by.get(d)
+    if (k) k.push(n); else by.set(d, [n])
+  }
+  return [...by].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([d, names]) => ({ at: d ? d.slice(5) : '', names }))
 })
 
 const empty = computed(() => !born.value.length && !props.unborn.length)
 
-// 方向靠 ▲▼ + 位置,不靠色相 —— 上越下越共用 --hue-orange 一个色(§06.7)
-const arrow = (r: BoardRow) => (r.maxDev < 0 ? '▼' : r.maxDev > 0 ? '▲' : '')
-
-function dev(r: BoardRow): string {
-  if (!r.seenN || !Number.isFinite(r.maxDev) || r.maxDev === 0) return '—'
-  const p = r.maxDev * 100
-  return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`
+// 方向靠 ▲▼ + 位置,不靠色相 —— 上越下越共用 --hue-orange 一个色(§06.7)。
+// **只有成段的行才有方向。** 一栋 0 天出范围却挂着 ▲,方向标记在那里没有指涉物,
+// 还会让未命中行看起来像命中(实屏上 C、D座 0 天 ▲ +62.6% 就是这么来的)。
+const arrow = (r: BoardRow) => {
+  if (!r.runs.length) return ''
+  return r.runs[0].dir < 0 ? '▼' : '▲'
 }
+
+/**
+ * 数字列必须**印着分组依据**(§06.3「排序键就印在行右边那一列,顺序可复算、可反对」)。
+ *
+ * 原来印的是「天」与「最大偏离」,两个都不是分组依据 —— 分组看的是**段**
+ * (连续 ≥bandRun 个已抄刻度同向)。实屏上因此出现:
+ *   11栋 14 天 +131.8% → 进「出范围段」
+ *   10栋  8 天 **+170.9%** → 没进
+ * 偏离更大反而没命中,用户没法从行上复算出为什么。
+ *
+ * 改成印「段」与「天」:段决定进哪一组,天决定组内的先后,两个都在行上。
+ * 最大偏离挪走 —— 它对 0 天出范围的行本来就没有指涉(那是「离中心最远的那天」,
+ * 而那天在范围内),留在这里只会被读成「超了 62.6%」。选中后大图卡头写着它。
+ */
+const segN = (r: BoardRow) => (r.runs.length ? `${r.runs.length} 段` : '')
 </script>
 
 <template>
@@ -85,7 +113,7 @@ function dev(r: BoardRow): string {
       <span aria-hidden="true"></span>
       <span>楼栋</span>
       <span class="n">{{ unit }}/{{ elapsed }}</span>
-      <span class="n">最大偏离</span>
+      <span class="n">段</span>
     </div>
 
     <!-- ① 出范围段。0 命中时整组不渲染,不留一个 0 行的空标题(§08 v3-9) -->
@@ -104,7 +132,7 @@ function dev(r: BoardRow): string {
           <span class="ar2">{{ arrow(r) }}</span>
           <span class="nm" :title="r.name">{{ r.name }}</span>
           <span class="n">{{ r.outN }}</span>
-          <span class="n">{{ dev(r) }}</span>
+          <span class="n seg">{{ segN(r) }}</span>
         </button>
       </div>
     </template>
@@ -125,7 +153,7 @@ function dev(r: BoardRow): string {
           <span class="ar2">{{ arrow(r) }}</span>
           <span class="nm" :title="r.name">{{ r.name }}</span>
           <span class="n">{{ r.outN }}</span>
-          <span class="n">{{ dev(r) }}</span>
+          <span class="n seg">{{ segN(r) }}</span>
         </button>
       </div>
     </template>
@@ -151,17 +179,30 @@ function dev(r: BoardRow): string {
     </template>
 
     <!-- ④ 尚未投产:不占行。它没数据不是漏抄,是那时候还没建 -->
-    <p v-if="unbornText.length" class="pq-un">
-      {{ unbornText.length }} 栋在这一段还没投产，不画：{{ unbornText.join('、') }}
-    </p>
+    <div v-if="unbornGroups.length" class="pq-un">
+      <div class="t">{{ unborn.length }} 栋本段未投产，不画</div>
+      <div v-for="g in unbornGroups" :key="g.at" class="g">
+        <span v-if="g.at" class="at">{{ g.at }} 起</span>
+        <span class="ns">{{ g.names.join(' ') }}</span>
+      </div>
+    </div>
 
-    <p v-if="empty" class="pq-un">这一段没有已投产的楼栋。</p>
+    <div v-if="empty" class="pq-un"><div class="t">这一段没有已投产的楼栋</div></div>
   </div>
 </template>
 
 <style scoped>
-/* 268px 与右侧大图在主卡里对半分(§06.3 grid-template-columns: 268px minmax(0,1fr)) */
-.pq { width: 268px; display: flex; flex-direction: column; gap: 2px; }
+/* 268px 与右侧大图在主卡里对半分(§06.3 grid-template-columns: 268px minmax(0,1fr))
+ *
+ * **整体钉高 + 内部滚动。** 队列原来没有整体上限,只有每组各自的 ——
+ * 展开「未低于你设的线」会把主卡从 638 撑到 830(实屏量的),
+ * 段控与下面所有卡整体下移 192px。用户点一下队列,半屏跳一次。
+ * 钉在与右侧大图同高(PvDayChart 的 .pdc 实测 248px)之后,卡高由**图**决定,
+ * 展开哪一组都只在队列内部滚,版面纹丝不动。 */
+.pq {
+  width: 268px; display: flex; flex-direction: column; gap: 2px;
+  max-height: 248px; overflow-y: auto; overscroll-behavior: contain;
+}
 
 .pq-hd,
 .pq-row {
@@ -194,10 +235,8 @@ function dev(r: BoardRow): string {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
 }
 
-/* 命中 >4 栋时组内滚动,主卡高度钉死(§06.1);展开「未低于线」由页面滚动承接 */
+/* 组内**不再单独滚动** —— 外层 .pq 已经兜住卡高,套两层滚动条只会更难用 */
 .pq-body { display: flex; flex-direction: column; }
-.pq-body.cap-hit { max-height: 104px; overflow-y: auto; }
-.pq-body.cap-rest { max-height: 190px; overflow-y: auto; }
 
 .pq-row {
   height: 26px; width: 100%; padding: 0 4px 0 2px;
@@ -231,9 +270,22 @@ function dev(r: BoardRow): string {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* 「段」列:未成段的行留空(而不是写 0)—— 空白本身就说明它不在那一组 */
+.pq-row .n.seg { color: var(--text-muted); }
+.pq-row.out .n.seg { color: var(--hue-orange); }
+
+/* 未投产:按首条抄表日期归并成几行,不再逐栋各带一个括号 */
 .pq-un {
-  margin: 6px 0 0; font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.6;
+  margin: 8px 0 0; padding-top: 6px; border-top: 1px solid var(--divider);
+  font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.55;
 }
+.pq-un .t { margin-bottom: 2px; }
+.pq-un .g { display: flex; gap: 6px; align-items: baseline; }
+.pq-un .at {
+  flex: 0 0 auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  color: var(--ink-300);
+}
+.pq-un .ns { min-width: 0; }
 
 /* ≤1100 队列从大图左侧改到上方(§06.7),这时候不再钉 268px */
 @media (max-width: 1100px) { .pq { width: 100%; } }

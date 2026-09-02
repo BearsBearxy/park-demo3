@@ -291,14 +291,29 @@ describe('光伏分栋分析 · 信息结构(队列 + 一张大图)', () => {
     expect(Number(w.find('.pma-b0 .big').text())).toBe(w.findAll('.pq-row.out').length)
   })
 
-  it('排序键就印在行右边那两列:出范围刻度数 → 最大偏离', async () => {
+  // 行上印的两个数**必须能解释分组**(§06.3「排序键就印在行右边那一列,顺序可复算、可反对」)。
+  // 原来印的是「天」与「最大偏离」,两个都不是分组依据 —— 实屏上出现过
+  // 11栋 14 天 +131.8% 进组、10栋 8 天 **+170.9%** 没进,用户没法从行上复算。
+  // 现在印「天」与「段」:段决定进哪一组,天决定组内先后。
+  it('行上的两个数解释分组:命中行有段、未命中行段列留空', async () => {
     const w = await mountScreen()
-    const row = w.find('.pq-row.out')
-    const n = row.findAll('.n').map(s => s.text())
-    expect(Number(n[0])).toBeGreaterThan(0)                    // 出范围刻度数
-    expect(n[1]).toMatch(/^[+-]\d+\.\d%$/)                     // 最大偏离
-    expect(row.find('.ar2').text()).toBe('▼')                  // 方向靠 ▲▼,不靠色相
-    expect(w.find('.pq-hd').text()).toContain('最大偏离')
+    await w.findAll('.pq-gh').find(g => g.text().includes('未低于'))!.trigger('click')
+    await flushPromises()
+
+    const cols = (r: ReturnType<typeof w.find>) => r.findAll('.n').map(s => s.text())
+    for (const r of w.findAll('.pq-row.out')) {
+      const [days, seg] = cols(r)
+      expect(Number(days), '命中行的出范围刻度数应 > 0').toBeGreaterThan(0)
+      expect(seg, `命中行的段列是空的,分组依据没印在行上: ${r.text()}`).toMatch(/^\d+ 段$/)
+      expect(r.find('.ar2').text(), '命中行必须有方向标').toMatch(/^[▲▼]$/)
+    }
+    // 未命中 = 没成段。段列留空,方向标也不出现 ——
+    // 一栋 0 天出范围却挂着 ▲,方向标记没有指涉物,还会看起来像命中
+    for (const r of w.findAll('.pq-body .pq-row:not(.out)')) {
+      expect(cols(r)[1], `未命中行不该有段: ${r.text()}`).toBe('')
+      expect(r.find('.ar2').text(), `未命中行不该有方向标: ${r.text()}`).toBe('')
+    }
+    expect(w.find('.pq-hd').text()).toContain('段')
   })
 
   it('点任意一栋都能换图,包括「未低于线」的那些 —— 判据线决定谁进命中组,不决定谁能被看', async () => {
