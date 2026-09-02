@@ -1381,3 +1381,360 @@ export function buildDetail(snap: AnaSnapshot, stationId: number): StationDetail
     limitTo: dates[Math.max(0, to - 1)] ?? null,
   }
 }
+
+// ── 分析工作台(二层屏「高级分析」档)─────────────────────────────────────
+//
+// 2026-08 砍过一次,理由是「算法自检不是业务屏内容,它的位置在单测断言里」。
+// 那条对**运维用户**成立:ACF 图告诉物业「残差有 0.5 的自相关」,他既改不了算法也没法据此派人。
+// 但当时承诺顶上来的「方法与口径页」随后也被删了,于是「所有数字不可审计」这条反对意见没人接。
+// 所以它回来 —— **不回首屏**,只回二层屏的第三个分段:运维看不见,要审计的人点一下就有。
+//
+// p / q / σ / 置信区间**只在这一档出现**。§05 的禁词对 L0 / L1 / 绝对水平 / 账面量继续成立。
+//
+// 铁律没变:**工作台不是另一次计算**。α、残差、日集合全部取自传进来的快照;
+// 自己算的两处(变点、块自助)钉死同一组 opts 与种子,与抽屉 buildDetail 逐位相同。
+// 不塞进 buildSnapshot 的理由:ACF + 逐日质量矩阵 + 第二次抛光加起来不便宜,而九成的人只看第一层。
+
+/** 主窗口长度(天)。z 与零分布都看最后这一段。v3 的 Criteria 里没有窗口口径,故在此定死。 */
+const LAB_WIN = 30
+
+// ── L1 α 排序(先天水平)─────────────────────────────────────────────────
+
+export interface CongenitalRow {
+  id: number
+  name: string
+  alphaPct: number   // 相对全园中位数的百分比偏离(+ 高 / − 低)
+  ciLo: number
+  ciHi: number
+  /** 整个区间都在门槛之下(**不是**只有点估计低)。
+   *  ⚠ α 长期垫底最常见的原因不是设备坏,是**装机容量台账写错** ——
+   *  cap 少写 10%,α 就永远偏 10%,派人上去查三次查不出东西,第四次就没人理这系统了。
+   *  屏上的措辞要先说「核对台账」,别先说「设备可能坏了」。 */
+  suspect: boolean
+}
+
+/**
+ * α 排序 = 一张验收检查表。持续偏低的 α 是「先天水平低」,**不是**突发故障 ——
+ * 两者派给不同的人:前者核图纸与台账,后者上屋顶。
+ *
+ * CI 用**块自助**算。naive SE 在 σ≈8%、365 天下约 0.4%,13 个点的区间互不重叠,
+ * 图上会显示「每栋楼都显著不同」,用户第一反应是「你这系统天天报警」。
+ *
+ * v1 那版还带一个 advice 文案字段,这次没捡:判词与建议是屏的事,不是公式层的事(§01)。
+ */
+export function congenitalCheck(
+  polish: PolishResult, stations: StationCfg[],
+  opts: { block?: number; B?: number; seed?: number; suspectPct?: number } = {},
+): CongenitalRow[] {
+  const B = opts.B ?? 399
+  const block = Math.max(1, opts.block ?? 10)
+  const suspectPct = opts.suspectPct ?? 8
+  const byId = new Map(stations.map(s => [s.id, s]))
+  const rnd = lcg(opts.seed ?? 20260831)
+
+  return [...polish.alpha.entries()].map(([id, a]) => {
+    const all = [...(polish.resid.get(id)?.values() ?? [])]
+    // **先中心化**:抛光锚的是残差**中位数**为 0,不是均值。不减掉均值的话
+    // draws 会整体偏到 α + mean(resid) 上 —— 区间可能压根不包含自己的点估计
+    // (实测:某站 α=0% 而区间 −23%~−12%)。α 排序图上那就是一眼假。
+    const m0 = all.length ? all.reduce((x, y) => x + y, 0) / all.length : 0
+    const resid = all.map(v => v - m0)
+    // 块自助 α 的抽样分布:重采样(中心化后的)残差块加回 α,取分位
+    const draws: number[] = []
+    const n = resid.length
+    for (let b = 0; b < B && n > 0; b++) {
+      let sum = 0
+      let filled = 0
+      while (filled < n) {
+        const start = Math.floor(rnd() * n)
+        const take = Math.min(block, n - filled)
+        for (let k = 0; k < take; k++) sum += resid[(start + k) % n]
+        filled += take
+      }
+      draws.push(a + sum / n)
+    }
+    draws.sort((x, y) => x - y)
+    const q = (p: number) => (draws.length ? draws[Math.min(draws.length - 1, Math.floor(draws.length * p))] : a)
+    const pct = (v: number) => (Math.exp(v) - 1) * 100
+    const ciHi = pct(q(0.975))
+
+    return {
+      id, name: byId.get(id)?.name ?? String(id),
+      alphaPct: pct(a), ciLo: pct(q(0.025)), ciHi,
+      suspect: ciHi < -suspectPct,
+    }
+  }).sort((x, y) => x.alphaPct - y.alphaPct)
+}
+
+// ── L2 自相关与有效样本量 ────────────────────────────────────────────────
+
+/** 自相关函数。ACF 是**直接体检 √N 错多少**的那张图 —— ρ₁ 非零就说明独立假设不成立。 */
+export function acf(r: number[], maxLag = 30): number[] {
+  const n = r.length
+  if (n < 3) return []
+  const m = r.reduce((a, b) => a + b, 0) / n
+  let c0 = 0
+  for (const v of r) c0 += (v - m) ** 2
+  if (c0 === 0) return new Array(Math.min(maxLag, n - 1) + 1).fill(0)
+  const out: number[] = []
+  for (let k = 0; k <= Math.min(maxLag, n - 1); k++) {
+    let ck = 0
+    for (let i = k; i < n; i++) ck += (r[i] - m) * (r[i - k] - m)
+    out.push(ck / c0)
+  }
+  return out
+}
+
+/**
+ * 有效样本量 N_eff = n / (1 + 2Σρ_k)。求和**截到第一个非正 ρ** ——
+ * 全加会把纯噪声的尾巴也算进去,N_eff 反而变得不稳。
+ * 这个数是「√N 到底错了多少」的量化答案:ρ≈0.5 时 N_eff 只有 n 的三分之一。
+ */
+export function nEffOf(rho: number[], n: number): number {
+  let s = 0
+  for (let k = 1; k < rho.length; k++) {
+    if (rho[k] <= 0) break
+    s += rho[k]
+  }
+  return Math.max(1, n / (1 + 2 * s))
+}
+
+// ── 工作台的返回形状 ─────────────────────────────────────────────────────
+
+/**
+ * L7 完整检验表的一行。
+ *
+ * v1 那版还有 shape / bic(BIC 形状分类)与 status 两列,**这次没捡回来**:
+ * · classifyShape 随金额链一起从 v3 删了。「形状」这件事今天由 L1 看板的游程
+ *   (BoardRow.runs:连续同向段的方向与长度)承担 —— 但那是**当段**口径,
+ *   本表是**全年残差**口径,并排会让人以为是同一件事的两种说法,故不并进来。
+ * · status(正常/需关注/异常)在 v3 里不存在:§01 明令这一层不出判词。
+ */
+export interface TestRow {
+  id: number; name: string
+  alphaPct: number          // 相对全园中位的百分比偏离
+  z: number | null          // 主窗口残差均值 ÷ 收缩后的尺度,用 **N_eff**
+  zNaive: number | null     // 同一条数据按 **n** 算的 z —— 并排放着,让人看见 √N 错多少
+  p: number                 // 主统计量(变点检验)的 p,与抽屉里那次逐位相同
+  q: number                 // BH 之后
+  nEff: number              // 有效样本量
+  sigmaHow: string          // σ 怎么估的
+  cpRange: string           // 变点区间(不是一个点)
+  days: number              // 真正进了矩阵的天数
+}
+
+/**
+ * 质量矩阵的格子。
+ *
+ * **没有「补齐」这一档,因为本实现从不补齐** —— 补了残差恒为 0,离线 10 天的楼会算出「正常」。
+ *
+ * pre 是第四态、**不是第四种颜色**:它是「那时这栋还没投产」,画成空白或极淡即可。
+ * 把它并进 missing 就是把**未投产**当成**漏抄**(3ceefe0 在真数据上栽过的那一次),
+ * 与 §03.8「未到 ≠ 漏抄」是同一条道理。三色仍是 ok / missing / dropped。
+ */
+export type QualityState = 'ok' | 'missing' | 'dropped' | 'pre'
+
+export interface QualityRow {
+  id: number
+  name: string
+  /** 这栋进没进抛光矩阵。false = 未装表或未录容量 —— 那一整行的 missing 是「不在模型里」,
+   *  **不是**「全年没抄表」。屏上要标出来,否则这一行是一句谎话。 */
+  inMatrix: boolean
+  states: QualityState[]
+}
+
+export interface LabResult {
+  snapshotId: string
+  /** L1:α 点估计 + 块自助区间,已按 α 升序 */
+  alphaRows: CongenitalRow[]
+  /** 因**容量台账与铭牌不符**(|ledgerDiff| > crit.ledger)被踢出 α 排序的站名 ——
+   *  它们的 α 是台账错算出来的,不是性能;混一个 +750% 进去横轴就拉到 1000%,这张图直接废。
+   *  但**必须说明踢了谁**,不能静默少几行。
+   *  未装表 / 未录容量的栋压根没进抛光矩阵,不在这份名单里 —— 那两份在 snap.quality
+   *  的 noMeter / noCapacity 里,屏上一并写。 */
+  alphaExcluded: string[]
+  /** L7 */
+  tests: TestRow[]
+  /** L2 */
+  acf: { id: number; name: string; rho: number[]; nEff: number }[]
+  /** L3:残差 vs 年积日。amp = 季度均值极差,年周期振幅的粗测 */
+  doy: { id: number; name: string; pts: { doy: number; v: number }[]; amp: number }[]
+  /** L4:单栋块自助零分布 + 观测值。跟着 focusId 走;不给则取 p 最小的那栋 */
+  nullDist: { id: number; name: string; dist: number[]; obs: number } | null
+  /** L5:抛光收敛读数 + 行优先/列优先的排名对照 */
+  convergence: {
+    names: string[]; rowRank: number[]; colRank: number[]; flipped: string[]
+    iterations: number; converged: boolean
+  }
+  /** L6 */
+  quality: { dates: string[]; rows: QualityRow[] }
+}
+
+/** 一年中的第几天(1–366)。残差 vs 年积日看的是**有没有稳定年周期**。 */
+function dayOfYear(date: string): number {
+  const [y, m, d] = date.split('-').map(Number)
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000) + 1
+}
+
+/** 名次(1 = α 最低) */
+function rankOf(pairs: { id: number; v: number }[]): Map<number, number> {
+  const sorted = [...pairs].sort((a, b) => a.v - b.v)
+  return new Map(sorted.map((p, i) => [p.id, i + 1]))
+}
+
+/** 闭区间的逐日日历。质量矩阵的横轴用它,理由见 buildLab 里 L6 那一段。 */
+function dateSpan(from: string, to: string): string[] {
+  const out: string[] = []
+  const end = Date.parse(`${to}T00:00:00Z`)
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= end; t += 86400000) {
+    out.push(new Date(t).toISOString().slice(0, 10))
+  }
+  return out
+}
+
+/**
+ * 工作台的全部七块。
+ *
+ * @param focusId L4 零分布画哪一栋(跟着屏上选中走)。不给取 p 最小的那栋。
+ */
+export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: number): LabResult {
+  const { rows, stations } = input
+  const polish = snap.polish
+  // 显示顺序跟着快照的站列表走,不用 Map 的插入顺序 —— 后者取决于 rows 里谁先出现
+  const inPlay = snap.stations.filter(s => polish.resid.has(s.id))
+  // 残差 Map 是按 rows 的顺序插的,ACF 与「最后 30 天」都要求时序,所以先排一次
+  const seriesOf = new Map(inPlay.map(s => {
+    const arr = [...polish.resid.get(s.id)!].sort((a, b) => a[0].localeCompare(b[0]))
+    return [s.id, { dates: arr.map(([d]) => d), vals: arr.map(([, v]) => v) }]
+  }))
+
+  // ── L2 ACF / N_eff ────────────────────────────────────────────────────
+  const acfRows = inPlay.map(s => {
+    const r = seriesOf.get(s.id)!.vals
+    const rho = acf(r, 30)
+    return { id: s.id, name: s.name, rho, nEff: nEffOf(rho, r.length) }
+  })
+  const nEffById = new Map(acfRows.map(a => [a.id, a.nEff]))
+
+  // ── L7 完整检验表 ─────────────────────────────────────────────────────
+  const sigmaPool = robustSigma([...polish.resid.values()].flatMap(m => [...m.values()]))
+  const alphaById = new Map(congenitalCheck(polish, stations).map(c => [c.id, c]))
+  const raw = inPlay.map(s => {
+    const r = seriesOf.get(s.id)!.vals
+    const win = r.slice(-LAB_WIN)
+    const obs = win.length ? win.reduce((a, b) => a + b, 0) / win.length : 0
+    const sigma = shrinkSigma(robustSigma(r), sigmaPool, 1e-4)
+    const nEff = nEffById.get(s.id) ?? r.length
+    // 变点走抽屉那一支:同一份快照、同一组 opts、同一个种子 → 与抽屉里的 p 逐位相同
+    const detail = buildDetail(snap, s.id)
+    return {
+      id: s.id, name: s.name,
+      alphaPct: alphaById.get(s.id)?.alphaPct ?? 0,
+      // z 用 **N_eff** 不是 n —— 用 n 的话这一列就是那个「乐观 1~3 个数量级」的错数。
+      // ⚠ 不能写成 min(win.length, nEff):nEff 是**整条序列**(365 天)的有效样本量,
+      //   ρ=0.5 下约 122,min(30,122) 恒等于 30 —— 修正一次都不会生效,z 永远等于 zNaive。
+      //   要用的是**同一个膨胀系数**折算到窗口上:effWin = win.length × (nEff / n)。
+      z: win.length && sigma > 0 ? obs * Math.sqrt(win.length * (nEff / Math.max(1, r.length))) / sigma : null,
+      zNaive: win.length && sigma > 0 ? obs * Math.sqrt(win.length) / sigma : null,
+      p: detail?.cp ? detail.cp.p : 1,
+      nEff,
+      sigmaHow: '一阶差分 MAD ÷ √2，再与全园收缩各半',
+      cpRange: detail?.cpLo && detail?.cpHi ? `${detail.cpLo} ~ ${detail.cpHi}` : '—',
+      days: r.length,
+      obs, winLen: win.length,
+    }
+  })
+  const qs = bhFdrQ(raw.map(x => x.p))
+  const tests: TestRow[] = raw.map((x, i) => ({
+    id: x.id, name: x.name, alphaPct: x.alphaPct,
+    z: x.z, zNaive: x.zNaive, p: x.p, q: qs[i],
+    nEff: x.nEff, sigmaHow: x.sigmaHow, cpRange: x.cpRange, days: x.days,
+  }))
+
+  // ── L3 残差 vs 年积日 ─────────────────────────────────────────────────
+  // **上线前必做**:有稳定年周期 = 模型缺项(季节性遮挡),**不是故障**。
+  // 不做这个,春秋两季会各刷一批假变点。amp 大就该回去补模型。
+  const doy = inPlay.map(s => {
+    const { dates, vals } = seriesOf.get(s.id)!
+    const pts = dates.map((d, i) => ({ doy: dayOfYear(d), v: vals[i] }))
+    // 季度均值的极差 = 年周期振幅的粗测(够用来报警,不用拟合正弦)
+    const q4 = [0, 0, 0, 0].map((_, k) => {
+      const seg = pts.filter(p => Math.floor((p.doy - 1) / 91.5) === k)
+      return seg.length ? seg.reduce((a, b) => a + b.v, 0) / seg.length : 0
+    })
+    return { id: s.id, name: s.name, pts, amp: Math.max(...q4) - Math.min(...q4) }
+  })
+
+  // ── L4 块自助零分布 + 观测值 ──────────────────────────────────────────
+  // 让 p 值**看得见**,比一个 p=0.003 可信。一次只画一栋 —— 十三张零分布图没人看。
+  const focus = (focusId != null ? raw.find(x => x.id === focusId) : undefined)
+    ?? [...raw].sort((a, b) => a.p - b.p)[0]
+  const nullDist = focus && focus.winLen > 0
+    ? {
+        id: focus.id, name: focus.name, obs: focus.obs,
+        dist: blockBootstrapP(seriesOf.get(focus.id)!.vals, focus.obs, focus.winLen,
+          { block: 14, B: 999, seed: 20260831 }).nullDist,
+      }
+    : null
+
+  // ── L5 抛光收敛诊断 ───────────────────────────────────────────────────
+  // 行优先/列优先各跑一次。**排名翻转 = 该结论不稳,不上报**。
+  // **必须用快照那一份日集合**。自己再挑一遍日子的话,两次抛光之间就多了第二个变量,
+  //   隔离不出扫描顺序 —— 实测过:把 'col' 写成 'row'(等于没诊断)照样「排名不同」。
+  const colFirst = medianPolish(rows, stations, snap.usedDays, 'col')
+  const rowRankMap = rankOf(inPlay.map(s => ({ id: s.id, v: polish.alpha.get(s.id) ?? 0 })))
+  const colRankMap = rankOf(inPlay.map(s => ({ id: s.id, v: colFirst.alpha.get(s.id) ?? 0 })))
+  const convergence = {
+    names: inPlay.map(s => s.name),
+    rowRank: inPlay.map(s => rowRankMap.get(s.id) ?? 0),
+    colRank: inPlay.map(s => colRankMap.get(s.id) ?? 0),
+    flipped: inPlay
+      .filter(s => Math.abs((rowRankMap.get(s.id) ?? 0) - (colRankMap.get(s.id) ?? 0)) > 1)
+      .map(s => s.name),
+    iterations: polish.iterations,
+    converged: polish.converged,
+  }
+
+  // ── L6 数据质量矩阵 ───────────────────────────────────────────────────
+  // 横轴用**首末抄表日之间的整段日历**,不是「有抄表的那些日子」——
+  // 后者会让「全园一天都没抄」的日子从图上整列消失,而那正是这张图要回答的问题。
+  // 也不铺满自然年:投产前那几个月会铺出一大片假的「漏抄」。
+  const readDates = new Set(rows.map(r => r.date))
+  const firstRead = rows.reduce<string | null>((m, r) => (m == null || r.date < m ? r.date : m), null)
+  const dates = firstRead && snap.dataThrough ? dateSpan(firstRead, snap.dataThrough) : []
+  const firstOf = new Map<number, string>()
+  for (const r of rows) {
+    const cur = firstOf.get(r.stationId)
+    if (cur == null || r.date < cur) firstOf.set(r.stationId, r.date)
+  }
+  const quality = {
+    dates,
+    rows: snap.stations.map<QualityRow>(s => {
+      const resid = polish.resid.get(s.id)
+      const born = firstOf.get(s.id) ?? null
+      return {
+        id: s.id, name: s.name, inMatrix: resid != null,
+        states: dates.map<QualityState>(d =>
+          born == null || d < born ? 'pre'
+            : resid?.has(d) ? 'ok'
+              // 「整日剔除」只算真的被剔的那些日子:全园都没抄 ≠ 剔除,那是全园漏抄
+              : readDates.has(d) && snap.usedDays != null && !snap.usedDays.has(d) ? 'dropped'
+                : 'missing'),
+      }
+    }),
+  }
+
+  // 容量台账与铭牌对不上的栋不进 α 排序 —— 它们的 α 是台账错算出来的,不是性能水平。
+  // ⚠ 只有两列都录了(capKwp 与板数 × 铭牌功率)才判得出来;板数没录的栋 ledgerDiff 为 null,
+  //   这里放行,由 snap.quality.noPanel 在屏上说明「这栋的 α 没经过台账校验」。
+  const badLedger = new Set(snap.stations
+    .filter(s => s.ledgerDiff != null && Math.abs(s.ledgerDiff) > snap.crit.ledger)
+    .map(s => s.id))
+  const alphaAll = [...alphaById.values()].sort((a, b) => a.alphaPct - b.alphaPct)
+  return {
+    snapshotId: snap.id,
+    alphaRows: alphaAll.filter(c => !badLedger.has(c.id)),
+    alphaExcluded: alphaAll.filter(c => badLedger.has(c.id)).map(c => c.name),
+    tests, acf: acfRows, doy, nullDist, convergence, quality,
+  }
+}

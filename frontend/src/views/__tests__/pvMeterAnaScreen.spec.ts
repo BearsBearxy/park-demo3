@@ -3,6 +3,7 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
 import PvMeterAnaView from '@/views/analysis/PvMeterAnaView.vue'
+import { buildLab } from '@/views/analysis/pvMeterAna.logic'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
@@ -31,6 +32,12 @@ import { PV_COLORS } from '@/views/analysis/pvAnaColors'
  *
  * ⑥ **排他规则**(§06.0,可机械检查那四条里能在 jsdom 里查的):
  *    26px 只在 B0 一次 / #9D5D17 不进 L2-L3 / height=440 整屏零次。
+ *
+ * ⑦ **「高级分析」第三档**(2026-08 被砍掉的分析工作台,恢复在段控第三格)。
+ *    这一组钉的是**作用域**,不是「多了个 tab」:统计量(σ / 置信 / N_eff / zₙ / 块自助 / BH-FDR)
+ *    **只在这一档出现**,其余四处(L0 / L1 / 绝对水平 / 账面量)一个都不许有。
+ *    单向放宽禁词表等于把闸门开条缝 —— 下一次有人往首屏写个 p 值也测不出来;
+ *    双向才把作用域钉死:少了这一档也红,多漏到别处也红。
  */
 
 vi.mock('@/api/pvMeter', () => ({
@@ -40,6 +47,13 @@ vi.mock('@/api/pvMeter', () => ({
   },
 }))
 vi.mock('@/api/params', () => ({ paramsApi: { list: vi.fn() } }))
+// buildLab 原样跑,只是包一层计数器:「高级分析」是懒算的(13 次 buildDetail + 第二次抛光
+// + 两轮块自助),停在默认档时它一次都不该被调 —— 只查七块没渲染证不了这件事,
+// 七块本来就挂在 v-else-if 下面,算不算都不会出现在 DOM 里。
+vi.mock('@/views/analysis/pvMeterAna.logic', async (orig) => {
+  const a = await orig<typeof import('@/views/analysis/pvMeterAna.logic')>()
+  return { ...a, buildLab: vi.fn(a.buildLab) }
+})
 const push = vi.fn()
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
@@ -617,5 +631,133 @@ describe('光伏分栋分析 · 护栏', () => {
     expect(fresh).toContain('数据到 2026-12-31')
     expect(fresh).toContain('本段已过去 31/31 天')
     expect(fresh).toMatch(/已抄 \d+\/\d+ · 覆盖 \d+%（按已过去算）/)
+  })
+})
+
+describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,恢复在段控第三格)', () => {
+  beforeEach(boot)
+
+  it('第三档在段控里,但默认**不**选中 —— 默认仍停在「账面量」,七块一块都不算', async () => {
+    const w = await mountScreen()
+    const tabs = w.findAll('.pma-seg [role="tab"]')
+    expect(tabs.map(t => t.text())).toEqual(['绝对水平', '账面量', '高级分析'])
+    // 默认档没动:恢复一个专业档不许顺手把默认落点挪走
+    expect(tabs.find(t => t.text() === '账面量')!.attributes('aria-selected')).toBe('true')
+    expect(tabs.find(t => t.text() === '高级分析')!.attributes('aria-selected')).toBe('false')
+    expect(w.findAll('[data-lab]')).toHaveLength(0)
+    // 懒算:停在默认档时这一档的量一次都不该算
+    expect(vi.mocked(buildLab)).not.toHaveBeenCalled()
+    // 段旁那句 11px 说的是「这一档在做什么、给谁看」,不下判断(§05)
+    const hint = w.find('.pma-seghint').text()
+    expect(hint).toContain('高级分析')
+    for (const bad of ['异常', '建议', '需关注']) expect(hint).not.toContain(bad)
+  })
+
+  it('点进去才算,而且只算一次 —— 七块 L1…L7 一块不少,一块都没退成空态', async () => {
+    const w = await mountScreen()
+    await toSection(w, '高级分析')
+    expect(vi.mocked(buildLab)).toHaveBeenCalledTimes(1)
+
+    const labs = w.findAll('[data-lab]')
+    expect(labs.map(e => e.attributes('data-lab')))
+      .toEqual(['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'])
+    // 七块的**块名**:恢复的是这七件事,不是七个占位卡
+    expect(labs.map(e => e.find('.av2-card-h .t').text().split(' · ')[0])).toEqual([
+      '先天水平 α 排序', '残差自相关 ACF', '残差 vs 年积日',
+      '块自助零分布', '抛光收敛诊断', '数据质量矩阵', '完整检验表',
+    ])
+    // 每块的卡头都带常驻说明(图种 · 轴与单位 · 拿哪一段算 · 来源),不是光秃秃一个标题
+    expect(labs.every(e => e.find('.av2-card-h .hint').text().length > 20)).toBe(true)
+    // 健康夹具上七块都该出真内容:任何一块退成 .pma-note 就是这一档没真恢复
+    expect(w.findAll('[data-lab] .pma-note')).toHaveLength(0)
+    // 图/组件各就各位:L1-L4 是 ECharts,L5 是文字读数,L6 是手写 CSS Grid,L7 是表
+    expect(w.findAll('[data-lab="L1"] .stub-chart')).toHaveLength(1)
+    expect(w.findAll('[data-lab="L2"] .stub-chart')).toHaveLength(1)
+    expect(w.findAll('[data-lab="L3"] .stub-chart')).toHaveLength(1)
+    expect(w.findAll('[data-lab="L4"] .stub-chart')).toHaveLength(1)
+    expect(w.find('[data-lab="L5"] .pma-read').text()).toContain('迭代次数')
+    expect(w.findAll('[data-lab="L5"] .stub-chart')).toHaveLength(0)
+    expect(w.find('[data-lab="L6"] .pqg-cells').exists()).toBe(true)
+    expect(w.findAll('[data-lab="L6"] .stub-chart')).toHaveLength(0)  // heatmap 没注册,必须手写
+    expect(w.find('[data-lab="L7"] table.plt tbody tr').exists()).toBe(true)
+  })
+
+  // ── §05 的作用域:双向 ────────────────────────────────────────────────
+  // 「屏上不出现统计量」这条对 L0 / L1 / 绝对水平 / 账面量 继续成立;高级分析是**唯一**例外。
+  // 只把禁词表放宽的话,这一档整个删掉测试照样全绿 —— 那就等于没恢复。所以两边都断:
+  // 屏上真出现的那串字(不是 spec 里的写法)在这一档必须有,在另外四处必须没有。
+  const STAT = ['σ', '置信', 'N_eff', 'zₙ', '块自助', 'BH-FDR']
+  // §05 原文那几种写法,全屏(**含**高级分析)都不该照抄:这一档摆的是列头与口径,不是散文
+  const SPEC_WORDING = ['p 值', 'q<', '置信区间']
+
+  it('统计量只在高级分析档:L0 / L1 / 绝对水平 / 账面量 四处一个都没有', async () => {
+    const w = await mountScreen()
+    const none = (t: string, where: string) => {
+      expect(t.length, `${where} 一个字都没抓到,这条是空跑`).toBeGreaterThan(20)
+      for (const s of [...STAT, ...SPEC_WORDING]) {
+        expect(t, `${where} 出现了统计量「${s}」`).not.toContain(s)
+      }
+    }
+    none(w.find('.pma-b0').text(), 'L0 指标卡')
+    none(w.find('.pma-main').text(), 'L1 主卡')
+    none(w.find('.pma-sec').text(), '账面量档')   // 默认档
+    await toSection(w, '绝对水平')
+    none(w.find('.pma-sec').text(), '绝对水平档')
+  })
+
+  it('统计量在高级分析档**必须有** —— 少一个就是这一档没真恢复', async () => {
+    const w = await mountScreen()
+    await toSection(w, '高级分析')
+    const t = w.find('.pma-sec').text()
+    for (const s of STAT) expect(t, `高级分析档没有「${s}」`).toContain(s)
+    // 它们不是散在别处:每一个都落在七块里面
+    const inLab = w.findAll('[data-lab]').map(e => e.text()).join('\n')
+    for (const s of STAT) expect(inLab, `「${s}」不在七块里`).toContain(s)
+    // 但 §05 的原文写法照样不抄进来:摆列头和口径,不写「p 值」这种散文
+    for (const s of SPEC_WORDING) expect(t, `高级分析档照抄了 §05 的写法「${s}」`).not.toContain(s)
+    // 反面钉死:切回去统计量就该消失(证明上一条测的是作用域,不是「屏上某处有 σ」)
+    await toSection(w, '账面量')
+    expect(w.find('.pma-sec').text()).not.toContain('σ')
+  })
+
+  it('质量矩阵三态都画出来 —— 正常 / 缺抄 / 整日剔除是三个答案,不是两种颜色', async () => {
+    // 3/05 全园一天都没抄(= 缺抄);6/10 只剩两栋在网,不足 3 栋 → 那一天整日剔除。
+    // 两件事在夹具里就分开,不然「合并成一个没数据」这个 bug 测不出来。
+    const rds = readingsOf(2026, { skip: ['2026-03-05'] })
+      .filter(r => !(r.readDate === '2026-06-10' && r.stationId > 2))
+    const w = await mountScreen({ readings: rds })
+    await toSection(w, '高级分析')
+
+    const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    const n = (k: string) => cells.filter(c => c.classes(k)).length
+    expect(n('ok'), '正常格').toBeGreaterThan(0)
+    expect(n('miss'), '缺抄格 —— 3/05 全园漏抄那一列').toBe(N)
+    expect(n('dropped'), '整日剔除格 —— 6/10 在网不足 3 栋').toBe(N)
+    expect(n('ok') + n('miss') + n('dropped')).toBe(cells.length)   // 没有第四种颜色混进来
+    // 图例三句常驻,不是 hover 才出:审计得看得见这三个色各是什么
+    const lg = w.find('[data-lab="L6"] .pqg-legend').text()
+    expect(lg).toContain('缺抄')
+    expect(lg).toContain('整日剔除')
+    expect(lg).toContain('从不补齐')
+  })
+
+  it('高级分析档守排他规则:#9D5D17 零次、height 只有 200/250、图种只有 bar/line/scatter', async () => {
+    const w = await mountScreen()
+    await toSection(w, '高级分析')
+    const opt = optJson(w, '.pma-sec')
+    expect(opt.length, '一份 option 都没抓到,下面几条会空跑').toBeGreaterThan(100)
+    // 强调色按 §06.0 只在 L0-L1,这一档全走墨阶
+    expect((w.find('.pma-sec').html() + opt).toUpperCase(), '高级分析档出现了强调色')
+      .not.toContain('9D5D17')
+    // AnaEChart 的 height 白名单里本档只用两档,440 一次都不用
+    const hs = w.findAll('[data-lab] .stub-chart').map(c => c.attributes('data-h'))
+    expect([...new Set(hs)].sort()).toEqual(['200', '250'])
+    // echartsBundle 是裁剪打包的:heatmap / visualMap / custom / graph 没注册,
+    // 用了得到空白图 + 一句控制台警告,而 jsdom 测不出来 —— 只能在 option 原文上拦
+    // 白名单是穷举的:series 三种(bar/line/scatter)+ 轴两种(category/value)+ markLine 的虚线样式。
+    // 多出任何一种(heatmap / custom / graph / pie …)这条就红。
+    const types = [...opt.matchAll(/"type":"(\w+)"/g)].map(m => m[1])
+    expect([...new Set(types)].sort())
+      .toEqual(['bar', 'category', 'dashed', 'line', 'scatter', 'value'])
   })
 })

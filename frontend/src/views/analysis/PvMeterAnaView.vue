@@ -45,8 +45,10 @@ import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
+import PvQualityGrid from './PvQualityGrid.vue'
+import PvLabTable from './PvLabTable.vue'
 import {
-  buildSnapshot, buildDetail, DEFAULT_CRITERIA,
+  buildSnapshot, buildDetail, buildLab, DEFAULT_CRITERIA,
   type AnaSnapshot, type BoardRow, type Criteria, type SnapshotInput,
 } from './pvMeterAna.logic'
 
@@ -240,9 +242,9 @@ function goMeter(): void {
   void router.push('/pv-income')
 }
 
-// ── L2 两档段控(§06.5)──────────────────────────────────────────────
-// 默认停在**账面量** —— 板数录进来之前只有这一档是全真数。
-const section = ref<'abs' | 'ledger'>('ledger')
+// ── L2 三档段控(§06.5)──────────────────────────────────────────────
+// 默认停在**账面量** —— 板数录进来之前只有这一档是全真数。第三档「高级分析」要点才进得去。
+const section = ref<'abs' | 'ledger' | 'lab'>('ledger')
 
 /** 每刻度每栋的等效小时。分母优先理论装机,没录退回台账 —— 口径写在图脚里。 */
 const yieldSeries = computed(() => {
@@ -462,16 +464,212 @@ const b8Opt = computed<object>(() => {
 })
 const ledgerAny = computed(() => hasB7.value || b8Rows.value.length > 0)
 
+/** 抛光矩阵里一栋都没有 → 工作台七块全空,整档不出现(不用先跑 buildLab 才知道)。 */
+const labReady = computed(() => (snap.value?.polish.resid.size ?? 0) > 0)
+
 const SECTIONS = computed(() => [
   ...(absAny.value ? [{ value: 'abs', label: '绝对水平' }] : []),
   ...(ledgerAny.value ? [{ value: 'ledger', label: '账面量' }] : []),
+  ...(labReady.value ? [{ value: 'lab', label: '高级分析' }] : []),
 ])
 // 整档隐藏时把档位挪到还在的那一档 —— 停在一个不存在的档等于整片空白
 watch(SECTIONS, (opts) => {
   if (opts.length && !opts.some(o => o.value === section.value)) {
-    section.value = opts[0].value as 'abs' | 'ledger'
+    section.value = opts[0].value as 'abs' | 'ledger' | 'lab'
   }
 }, { immediate: true })
+
+// ── L2 第三档「高级分析」= 2026-08 被砍掉的分析工作台(§06.5)────────────
+// 当年砍它的理由(a62c60c)是「算法自检不是业务屏内容」。那条**对运维用户成立**:
+// ACF 图告诉物业「残差有 0.5 的自相关」,他既改不了算法也没法据此派人上楼。
+// 但反对的理由当年也是对的:不暴露这一层,所有数字不可审计。承诺过的「方法与口径页」
+// 下一刀(6e93317)也删了 —— 于是这些量在屏上无处可查。
+// 所以它回来了,**但不回首屏**:开在段控第三档,运维看不见,想复算的人点一下就有。
+//
+// ⚠ §05 禁止屏上出现 p / q / σ / 置信区间。那条对 L0 / L1 / 绝对水平 / 账面量 继续成立,
+//   **这一档是唯一的例外** —— 它存在的理由就是给专业的人看这些量。
+// ⚠ 强调色 #9D5D17 按 §06.0 只在 L0-L1,这一档一次都不用,全走墨阶。
+
+/**
+ * 工作台的全部七块。**只在这一档被选中时才算** —— 它比首屏那次重得多
+ * (13 次 buildDetail + 第二次抛光 + 两轮块自助),九成的人根本不点开这一档。
+ *
+ * ponytail: focusId 进了 computed,换选中(L4 零分布跟着走)会整份重算。13 栋量级下是
+ * 百毫秒级,可接受;真要更快得让 logic 把 L4 拆成单独入口,那是 logic 的接口,不在本文件。
+ */
+const lab = computed(() => {
+  if (section.value !== 'lab' || !snap.value || !snapInput.value) return null
+  return buildLab(snap.value, snapInput.value, selId.value ?? undefined)
+})
+
+/** 工作台里点栋名/表行 → 换选中。**未投产 / 不在模型里的栋挡掉**:选中它会让 L1 大图空掉。 */
+function pickLab(id: number) {
+  if (bornRows.value.some(r => r.id === id)) selId.value = id
+}
+
+// L2 ACF:一次只画一栋。跟着屏上选中走,选中那栋不在矩阵里就退回 L4 的焦点栋。
+const labAcf = computed(() => {
+  const l = lab.value
+  if (!l?.acf.length) return null
+  const a = l.acf.find(x => x.id === selId.value)
+    ?? l.acf.find(x => x.id === l.nullDist?.id)
+    ?? l.acf[0]
+  // days 只在检验表那份里,图脚要把 n 和 N_eff 并排印出来才看得见「√N 错多少」
+  return { ...a, days: l.tests.find(t => t.id === a.id)?.days ?? 0 }
+})
+
+// L1 α 排序:点 = 点估计,横线 = 块自助 95% 区间。
+// **误差棒不用 custom** —— echartsBundle 没注册 custom,画出来是空白图且 jsdom 测不出来。
+// 一条 line 系列 + null 断点就够:每栋两点一段,段间插 null 断开。13 个系列没必要。
+const labAlphaOpt = computed<object>(() => {
+  const rs = lab.value?.alphaRows ?? []
+  if (!rs.length) return {}
+  const bars: ((string | number)[] | null)[] = []
+  for (const r of rs) {
+    bars.push([+r.ciLo.toFixed(1), r.name], [+r.ciHi.toFixed(1), r.name], null)
+  }
+  return {
+    tooltip: { trigger: 'item' },
+    grid: { left: 96, right: 24, top: 10, bottom: 34 },
+    xAxis: {
+      type: 'value', name: 'α%（相对全园中位）', nameLocation: 'middle', nameGap: 22,
+      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
+    },
+    yAxis: { type: 'category', inverse: true, data: rs.map(r => r.name), axisLabel: { fontSize: 11 } },
+    series: [
+      {
+        type: 'line', silent: true, symbol: 'none', connectNulls: false,
+        lineStyle: { color: C.INK300, width: 3 }, data: bars,
+      },
+      {
+        type: 'scatter', symbolSize: 7, itemStyle: { color: C.INK900 },
+        data: rs.map(r => [+r.alphaPct.toFixed(1), r.name]),
+        markLine: {
+          silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
+          lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ xAxis: 0 }],
+        },
+      },
+    ],
+  }
+})
+
+// L2 残差自相关。这张图是「为什么不用 √N 而用块自助」的**证据**:ρ₁ 非零 = 独立假设不成立。
+const labAcfOpt = computed<object>(() => {
+  const a = labAcf.value
+  if (!a?.rho.length) return {}
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 46, right: 16, top: 10, bottom: 32 },
+    xAxis: {
+      type: 'category', data: a.rho.map((_, k) => String(k)),
+      name: '滞后（天）', nameLocation: 'middle', nameGap: 20,
+      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
+    },
+    yAxis: { type: 'value', name: 'ρ', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    series: [{ type: 'bar', barMaxWidth: 9, itemStyle: { color: C.INK700 }, data: a.rho.map(v => +v.toFixed(3)) }],
+  }
+})
+
+// L3 残差 vs 年积日。**13 栋的点汇在一起** —— 问的是「模型里还剩没剩年周期」,不是某一栋。
+const labDoyPts = computed(() =>
+  (lab.value?.doy ?? []).flatMap(d => d.pts.map(p => [p.doy, +p.v.toFixed(4)])))
+const labAmp = computed(() =>
+  [...(lab.value?.doy ?? [])].sort((a, b) => b.amp - a.amp)[0] ?? null)
+const labDoyOpt = computed<object>(() => {
+  const pts = labDoyPts.value
+  if (!pts.length) return {}
+  return {
+    grid: { left: 56, right: 16, top: 10, bottom: 32 },
+    xAxis: {
+      type: 'value', min: 1, max: 366, name: '年积日', nameLocation: 'middle', nameGap: 20,
+      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
+    },
+    yAxis: { type: 'value', scale: true, name: '残差（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'scatter', symbolSize: 2, itemStyle: { color: C.INK300 }, data: pts,
+      markLine: {
+        silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
+        lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ yAxis: 0 }],
+      },
+    }],
+  }
+})
+
+// L4 块自助零分布 + 观测竖线。让尾概率看得见,比印一个数字可信。
+// ⚠ 这里画的是 buildLab 里 nullDist 的量:**最后 30 天窗口均值**。L7 表里那列 p 是
+//    变点检验的 p,两个量不同源(实测同一栋能差两个数量级)。
+//    对策是**把这张图自己的尾概率印在竖线上**(labNullTail),不是写一句「不要互相读」——
+//    读者手里有了数才不会去对那个对不上的。别再把这个数拿掉。
+const LAB_BINS = 40
+
+/**
+ * 这张图自己的那个数 —— **必须印在图上**。
+ *
+ * 原来图脚写的是「两个量不同源,不要互相读」。那是让用户替设计的失误买单:
+ * 图上有一条竖线、表里有一列 p,读者一定会去对,而它们差两个数量级。
+ * 把尾概率就地印出来,读者手里有了数,就不会去表里找那个对不上的。
+ * 单侧:观测在中位右边就取右尾,左边取左尾 —— 与「离零假设有多远」同向。
+ */
+const labNullTail = computed(() => {
+  const nd = lab.value?.nullDist
+  if (!nd?.dist.length) return null
+  const n = nd.dist.length
+  const right = nd.dist.filter(v => v >= nd.obs).length
+  const left = nd.dist.filter(v => v <= nd.obs).length
+  return Math.min(right, left) / n
+})
+
+const labNullOpt = computed<object>(() => {
+  const nd = lab.value?.nullDist
+  if (!nd?.dist.length) return {}
+  const lo = Math.min(...nd.dist, nd.obs)
+  const hi = Math.max(...nd.dist, nd.obs)
+  const w = (hi - lo) / LAB_BINS || 1
+  const cnt = new Array<number>(LAB_BINS).fill(0)
+  for (const v of nd.dist) cnt[Math.min(LAB_BINS - 1, Math.floor((v - lo) / w))]++
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 46, right: 16, top: 10, bottom: 32 },
+    xAxis: {
+      type: 'value', min: +lo.toFixed(4), max: +hi.toFixed(4),
+      name: '窗口均值（对数）', nameLocation: 'middle', nameGap: 20,
+      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
+    },
+    yAxis: { type: 'value', name: '重采样次数', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'bar', barMaxWidth: 12, itemStyle: { color: C.INK300 },
+      data: cnt.map((c, i) => [+(lo + (i + 0.5) * w).toFixed(4), c]),
+      markLine: {
+        silent: true, symbol: 'none',
+        lineStyle: { color: C.INK900, width: 1.6 },
+        label: {
+          fontSize: 11,
+          formatter: `观测 ${nd.obs.toFixed(4)}　尾概率 ${(labNullTail.value ?? 0).toFixed(3)}`,
+        },
+        data: [{ xAxis: +nd.obs.toFixed(4) }],
+      },
+    }],
+  }
+})
+
+// L6 质量矩阵。logic 是四态,PvQualityGrid 的契约是三色三态 ——
+// 第四态 pre(未投产)故意落到「没有匹配的 CSS 类」上,画成空白:它既不是漏抄也不是正常
+// (§03.8 未到 ≠ 漏抄,3ceefe0 在真数据上栽过这一次)。下面那次 cast 就是这个约定的落点。
+const QCELL = { ok: 'ok', missing: 'miss', dropped: 'dropped', pre: 'pre' } as const
+const labQuality = computed(() => {
+  const q = lab.value?.quality
+  if (!q?.dates.length) return null
+  return {
+    dates: q.dates,
+    rows: q.rows.map(r => ({
+      id: r.id, name: r.name,
+      cells: r.states.map(s => QCELL[s]) as ('ok' | 'miss' | 'dropped')[],
+    })),
+    // 未装表 / 未录容量的栋压根没进抛光:那一整行的空**不是**「全年没抄表」,得写出来
+    outside: q.rows.filter(r => !r.inMatrix).map(r => r.name),
+    preN: q.rows.reduce((a, r) => a + r.states.filter(s => s === 'pre').length, 0),
+  }
+})
 
 // ── L3 单栋抽屉(§06.6)──────────────────────────────────────────────
 // 关抽屉时期间档位、页面滚动位置、组的展开态、段控档位一律不变 —— 这里只动 drawerOpen。
@@ -706,6 +904,10 @@ function outText(o: number | null | undefined): string {
       <template v-if="SECTIONS.length">
         <div class="av2-s12 pma-seg">
           <Segmented v-model="section" :options="SECTIONS" />
+          <!-- §05:只说这一档在做什么、给谁看,不下判断 -->
+          <span v-if="labReady" class="pma-seghint">
+            「高级分析」= 算法自检与口径核对，给要复算这屏数字的人；含 p / q / σ 等统计量，其余各档不出现。
+          </span>
         </div>
 
         <div class="av2-s12 pma-sec">
@@ -778,6 +980,151 @@ function outText(o: number | null | undefined): string {
                   </template>
                 </div>
               </div>
+            </template>
+
+            <!-- ── 高级分析(工作台七块)。全屏唯一允许出现 p / q / σ / 置信区间的地方 ── -->
+            <template v-else-if="section === 'lab'">
+              <template v-if="lab">
+                <!-- L1 α 排序 -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L1">
+                  <div class="av2-card-h">
+                    <span class="t">先天水平 α 排序</span>
+                    <span class="hint">
+                      点 = α 点估计，横线 = 块自助 95% 区间 · 横轴 α%（相对全园中位），纵轴各栋按 α 升序 ·
+                      拿全年逐日残差算 · 来源：中位数抛光的 α，区间由残差块自助 B=399 重采样
+                    </span>
+                  </div>
+                  <AnaEChart v-if="lab.alphaRows.length" :option="labAlphaOpt" :height="250" />
+                  <div v-else class="pma-note">抛光矩阵里没有可排的栋，这一块不画。</div>
+                  <div v-if="lab.alphaRows.length" class="pma-fn">
+                    α 是相对全园中位的长期水平差，不区分成因：台账装机少写 10%，α 就恒偏 10%。
+                    <template v-if="lab.alphaExcluded.length">
+                      台账差超过 ±{{ pct0(snap.crit.ledger) }} 的 {{ lab.alphaExcluded.length }} 栋不进这张图：{{ lab.alphaExcluded.join('、') }}。
+                    </template>
+                    <template v-if="snap.quality.noPanel.length">
+                      另有 {{ snap.quality.noPanel.length }} 栋未录板数，两列凑不齐，α 没经过台账校验。
+                    </template>
+                  </div>
+                </div>
+
+                <!-- L2 残差自相关 ACF -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L2">
+                  <div class="av2-card-h">
+                    <span class="t">残差自相关 ACF<template v-if="labAcf"> · {{ labAcf.name }}</template></span>
+                    <span class="hint">
+                      柱 = 各滞后的自相关系数 · 横轴滞后 0–30 天，纵轴 ρ 无量纲（−1~1） ·
+                      拿这一栋的全年逐日残差算 · 来源：抛光残差
+                    </span>
+                  </div>
+                  <AnaEChart v-if="labAcf" :option="labAcfOpt" :height="200" />
+                  <div v-else class="pma-note">没有够长的残差序列，算不出自相关。</div>
+                  <div v-if="labAcf" class="pma-fn">
+                    跟着队列选中那栋走。滞后 1 的 ρ 不为零，逐日残差就不是独立的 ——
+                    这栋有效日 n = {{ labAcf.days }}，折算后 N_eff = {{ Math.round(labAcf.nEff) }}，
+                    下面那张表的 z 用的是 N_eff，zₙ 那一列是同一条数据按 n 算的。
+                  </div>
+                </div>
+
+                <!-- L3 残差 vs 年积日 -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L3">
+                  <div class="av2-card-h">
+                    <span class="t">残差 vs 年积日</span>
+                    <span class="hint">
+                      散点，各栋的点汇在一起同色 · 横轴年积日 1–366 天，纵轴残差（对数，无量纲） ·
+                      拿全年逐日残差算 · 来源：抛光残差
+                    </span>
+                  </div>
+                  <AnaEChart v-if="labDoyPts.length" :option="labDoyOpt" :height="250" />
+                  <div v-else class="pma-note">没有可画的残差点，这一块不画。</div>
+                  <div v-if="labAmp" class="pma-fn">
+                    {{ labDoyPts.length }} 个点。这张图看的是残差里还剩不剩年周期形状；
+                    振幅粗测 = 四个季度的残差均值极差，最大的一栋是 {{ labAmp.name }}，{{ labAmp.amp.toFixed(3) }}（对数）。
+                  </div>
+                </div>
+
+                <!-- L4 块自助零分布 + 观测值 -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L4">
+                  <div class="av2-card-h">
+                    <span class="t">块自助零分布<template v-if="lab.nullDist"> · {{ lab.nullDist.name }}</template></span>
+                    <span class="hint">
+                      直方图 + 观测值竖线 · 横轴窗口均值（对数，无量纲），纵轴落入该桶的重采样次数 ·
+                      观测值取最后 30 天窗口，零分布重采样全年残差 · 来源：块自助 B=999、块长 14 天
+                    </span>
+                  </div>
+                  <AnaEChart v-if="lab.nullDist" :option="labNullOpt" :height="200" />
+                  <div v-else class="pma-note">选中的栋没有可用窗口，画不出零分布。</div>
+                  <div v-if="lab.nullDist" class="pma-fn">
+                    跟着队列选中那栋走。这张图算的是**最后 30 天窗口均值**这一个量：
+                    竖线是它的观测值，尾概率就标在竖线上（{{ (labNullTail ?? 0).toFixed(3) }}）。
+                    重采样搬的是整块 14 天，不是单日 —— 块内的自相关被原样保留。
+                    下面表里的 p 列算的是另一个量（变点检验），各有各的数。
+                  </div>
+                </div>
+
+                <!-- L5 抛光收敛诊断 -->
+                <div class="av2-card av2-s12 pma-lab" data-lab="L5">
+                  <div class="av2-card-h">
+                    <span class="t">抛光收敛诊断</span>
+                    <span class="hint">
+                      文字读数，没有图 · 迭代次数单位为次，名次差单位为位，其余为栋名 ·
+                      拿整份快照的抛光过程算 · 来源：两次中位数抛光（行优先 / 列优先），同一份有效日集合
+                    </span>
+                  </div>
+                  <div class="pma-read">
+                    <span>迭代次数 <b>{{ lab.convergence.iterations }}</b></span>
+                    <span>收敛 <b>{{ lab.convergence.converged ? '是' : '否' }}</b></span>
+                    <span>进矩阵 <b>{{ lab.convergence.names.length }}</b> 栋</span>
+                    <span>名次差 &gt;1 位的栋 <b>{{ lab.convergence.flipped.length }}</b></span>
+                    <span>σ 口径 <b>{{ lab.tests[0]?.sigmaHow ?? '—' }}</b></span>
+                    <span>快照 <b>{{ lab.snapshotId }}</b></span>
+                  </div>
+                  <div class="pma-fn">
+                    行优先与列优先各抛光一次，比同一栋的 α 名次。
+                    <template v-if="lab.convergence.flipped.length">
+                      换扫描顺序后名次挪动超过 1 位的栋：{{ lab.convergence.flipped.join('、') }}。
+                    </template>
+                    <template v-else>换扫描顺序后没有栋的名次挪动超过 1 位。</template>
+                  </div>
+                </div>
+
+                <!-- L6 数据质量矩阵。手写 CSS Grid —— echartsBundle 没注册 heatmap / visualMap -->
+                <div class="av2-card av2-s12 pma-lab" data-lab="L6">
+                  <div class="av2-card-h">
+                    <span class="t">数据质量矩阵</span>
+                    <span class="hint">
+                      网格热力，一格 = 一栋一天，三色三态 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
+                      拿 {{ labQuality?.dates.length ?? 0 }} 天 × {{ labQuality?.rows.length ?? 0 }} 栋算 ·
+                      来源：抄表记录与抛光矩阵的差集
+                    </span>
+                  </div>
+                  <PvQualityGrid
+                    v-if="labQuality"
+                    :rows="labQuality.rows" :dates="labQuality.dates" @pick="pickLab"
+                  />
+                  <div v-else class="pma-note">这一年没有抄表日历，画不出矩阵。</div>
+                  <div v-if="labQuality" class="pma-fn">
+                    投产前的格子留空白，共 {{ labQuality.preN }} 格 —— 未到不是漏抄。
+                    <template v-if="labQuality.outside.length">
+                      {{ labQuality.outside.length }} 栋未装表或未录容量，压根没进抛光矩阵：整行的空是「不在模型里」，
+                      不是「全年没抄表」——{{ labQuality.outside.join('、') }}。
+                    </template>
+                  </div>
+                </div>
+
+                <!-- L7 完整检验表 -->
+                <div class="av2-card av2-s12 pma-lab" data-lab="L7">
+                  <div class="av2-card-h">
+                    <span class="t">完整检验表</span>
+                    <span class="hint">
+                      表格，{{ lab.tests.length }} 行不分页 · 每列的单位与口径印在列头下的小字里 ·
+                      z 与零分布取最后 30 天窗口，α / N_eff / 变点取全年 · 来源：变点检验 + BH-FDR，逐栋
+                    </span>
+                  </div>
+                  <PvLabTable v-if="lab.tests.length" :rows="lab.tests" @pick="pickLab" />
+                  <div v-else class="pma-note">没有栋进入检验，这张表不画。</div>
+                </div>
+              </template>
+              <div v-else class="av2-s12 pma-note">这一档的量还没算出来。</div>
             </template>
 
             <!-- ── 账面量 ── -->
@@ -954,9 +1301,25 @@ function outText(o: number | null | undefined): string {
 }
 .pma-b2 .off { text-decoration: line-through; color: var(--ink-300); }
 
-.pma-seg { display: flex; }
-/* 切档不换卡,容器高度按最高段钉死 —— 两段都是 250+8+250 的内容加卡壳(§06.5) */
+.pma-seg { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.pma-seghint { font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+
+/* 切档不换卡,容器高度按最高段钉死 —— 绝对水平 / 账面量 两段都是 250+8+250 的内容加卡壳(§06.5)。
+   高级分析那一档七块加起来 1400px 上下,**不把 min-height 抬到它** —— 那会给另外两档垫出
+   八百像素空白,比切档时的跳动更难看。这条钉的是两个同量级的档之间不跳;
+   点进「高级分析」本来就是要更多内容,那次变高是用户自己按出来的。 */
 .pma-sec { min-height: 636px; }
+
+/* 高级分析七块的测试/定位钩子。视觉上不加任何东西 —— 卡壳走 av2-card。 */
+.pma-lab { min-width: 0; }
+
+/* L5 抛光收敛:文字读数,不是图。mono 对齐,数字提到主色。 */
+.pma-read {
+  display: flex; flex-wrap: wrap; gap: 6px 24px; align-items: baseline;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 11px; line-height: 1.5; color: var(--text-muted);
+}
+.pma-read b { font-weight: var(--fw-semibold); color: var(--text-primary); }
 
 /* B5 的 13 条 bullet 一行 30px,超过卡高就在卡内滚,不撑破那一行的高度 */
 .pma-scroll { max-height: 250px; overflow-y: auto; }
