@@ -932,6 +932,15 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
   }, 30_000)
 
 
+  // 「折成日历放得下 12 栏」是这块改版存在的理由。缺抄榜空着还占 300px 的话,
+  // 年档 53 列(要 754px)被挤到 559px,常态下反而要横滚 —— 卖点当场作废。
+  it('没有缺抄时,缺抄榜不占着一栏把日历挤到要横滚', async () => {
+    const w = await mountScreen({ gran: 'year' })
+    await toSection(w, '高级分析')
+    expect(w.findAll('[data-lab="L6"] .pqg-rank .r'), '这个夹具本来就不该有缺抄').toHaveLength(0)
+    expect(w.find('[data-lab="L6"] .pqg-rank').classes(), '空榜没让出宽度').toContain('empty')
+  }, 30_000)
+
   it('四态分得开 —— 整日剔除 ≠ 全园一栋没抄,缺抄 ≠ 未到', async () => {
     // 3/05 全园一天都没抄 → 那天是**缺抄**(miss === born),不是整日剔除;
     // 6/10 只剩两栋在网,不足 3 栋 → 那天**整日剔除**。

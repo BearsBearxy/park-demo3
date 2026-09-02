@@ -202,7 +202,9 @@ function onCellClick(e: MouseEvent) {
       </div>
 
       <!-- 缺抄榜:每栋的慢性缺抄压成两个数。最长连续把「掉线」和「偶发漏抄」分开 -->
-      <div class="pqg-rank">
+      <!-- 没有缺抄时它只有一句话,不该再占着 300px 的一栏 ——
+           年档 53 列要 754px,被挤到 559px 就得横滚,而「折成日历放得下」正是它存在的理由 -->
+      <div class="pqg-rank" :class="{ empty: !board.length }">
         <div class="hd">缺抄榜</div>
         <button v-for="r in board" :key="r.id" type="button" class="r" @click="emit('pick', r.id)">
           <span class="nm">{{ r.name }}</span>
@@ -301,6 +303,9 @@ function onCellClick(e: MouseEvent) {
 }
 
 .pqg-rank { flex: 0 1 300px; min-width: 0; }
+/* 空榜整条换行到日历下面,把宽度还给日历(.pqg-body 是 flex-wrap: wrap) */
+.pqg-rank.empty { flex: 1 1 100%; }
+.pqg-rank.empty .hd { display: inline; margin-right: 6px; }
 .pqg-rank .hd { font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 4px; }
 .pqg-rank .r {
   all: unset; box-sizing: border-box; cursor: pointer; position: relative;
