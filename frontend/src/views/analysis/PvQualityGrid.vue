@@ -246,7 +246,9 @@ function onCellClick(e: MouseEvent) {
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 1px; }
 
 .pqg-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
-.pqg-cal { flex: 1 1 420px; min-width: 0; }
+/* --cw 由内联 style 按档覆盖(年 12px / 月 32px);这里给默认值 ——
+   内联覆盖一个令牌是可以的,引用一个从没声明过的令牌不行(token-check 拦这个) */
+.pqg-cal { flex: 1 1 420px; min-width: 0; --cw: 12px; }
 .pqg-scroll { overflow-x: auto; overflow-y: hidden; }
 
 .pqg-months {
@@ -269,6 +271,7 @@ function onCellClick(e: MouseEvent) {
 .c {
   position: relative; display: block; width: var(--cw); height: var(--cw);
   font-style: normal; overflow: hidden;
+  --fill: 0%;   /* 黄脚高度,由内联 style 按当天缺抄比例覆盖 */
 }
 .c > b {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -284,7 +287,7 @@ function onCellClick(e: MouseEvent) {
    12px 格上只靠划痕这一路分不开,混了就是老 bug 换皮。 */
 .c.dropped {
   background:
-    linear-gradient(45deg, transparent 45%, var(--bg-card) 45%, var(--bg-card) 55%, transparent 55%),
+    linear-gradient(45deg, transparent 45%, var(--bg-panel) 45%, var(--bg-panel) 55%, transparent 55%),
     var(--fill-slate);
   box-shadow: inset 0 2px 0 var(--ink-700);
 }
