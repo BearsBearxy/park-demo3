@@ -1607,8 +1607,16 @@ export interface LabResult {
   tests: TestRow[]
   /** L2 */
   acf: { id: number; name: string; rho: number[]; nEff: number }[]
-  /** L3:残差 vs 年积日。amp = 季度均值极差,年周期振幅的粗测 */
-  doy: { id: number; name: string; pts: { doy: number; v: number; inSeg: boolean }[]; amp: number }[]
+  /** L3:各栋残差的年内走势(逐月中位数)。
+   *  months[i] = 第 i+1 月的残差中位数;该月有效抄表不足 MIN_MO 条为 null —— 线在那里断开,不补齐。
+   *  amp = **有效月**里月中位数的极差;有效月 < 8 时为 null(量不出,但行照列)。已按 amp 降序,null 排最后。 */
+  season: { id: number; name: string; months: (number | null)[]; amp: number | null }[]
+  /** L3 常态带:全部进图月中位数的中间一半 —— 「多大的起伏才算起伏」这把尺子。不足 24 个为 null。 */
+  seasonBand: { lo: number; hi: number } | null
+  /** L3 共用纵轴的半幅(对数)。地板 0.02:模型干净时不许把 ±0.004 的噪声自适应放大成山脉。 */
+  seasonHalf: number
+  /** L3 数据未录满的那个月 0–11;整月录满或无数据为 null。该月的点画空心圈。 */
+  seasonPartial: number | null
   /** L4:单栋块自助零分布 + 观测值。跟着 focusId 走;不给则取 p 最小的那栋 */
   nullDist: { id: number; name: string; dist: number[]; obs: number } | null
   /** L5:抛光收敛读数 + 行优先/列优先的排名对照 */
@@ -1626,10 +1634,9 @@ export interface LabResult {
   quality: { dates: string[]; rows: QualityRow[] }
 }
 
-/** 一年中的第几天(1–366)。残差 vs 年积日看的是**有没有稳定年周期**。 */
-function dayOfYear(date: string): number {
-  const [y, m, d] = date.split('-').map(Number)
-  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000) + 1
+/** 这一天是不是所在月的最后一天。**不许用 new Date('2026-09-14')** —— 本地时区解析会差一天。 */
+function isMonthEnd(d: string): boolean {
+  return new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).getUTCDate() === 1
 }
 
 /** 名次(1 = α 最低) */
@@ -1725,24 +1732,45 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
     nEff: x.nEff, sigmaHow: x.sigmaHow, cpRange: x.cpRange, days: x.days,
   }))
 
-  // ── L3 残差 vs 年积日 ─────────────────────────────────────────────────
+  // ── L3 残差的年内走势(逐栋逐月中位数) ────────────────────────────────
   // **上线前必做**:有稳定年周期 = 模型缺项(季节性遮挡),**不是故障**。
-  // 不做这个,春秋两季会各刷一批假变点。amp 大就该回去补模型。
-  // 横轴就是**年积日**,一个月只是这条轴上的一小段 —— 跟着月档走会把它变成
-  // 「30 个点的散点」,而它要回答的是「有没有年周期」,一个月里根本没有年周期可看。
-  // 所以它必须画整年,但**当段的点带 inSeg 标记**,屏上高亮 —— 跟得上期间,又不撒谎。
-  const inSegOf = (d: string) =>
-    snap.gran === 'month' && snap.ym ? d.startsWith(snap.ym) : true
-  const doy = inPlay.map(s => {
+  // 不做这个,春秋两季会各刷一批假变点。
+  //
+  // 为什么不再池化画散点:sweepCol 收敛后**每一天的跨栋残差中位数 ≡ 0**(到 TOL),
+  // 13 栋 4745 个点汇成一朵云,中心按构造永远贴着零线 —— 那张图无论季节抛没抛干净都长一个样。
+  // 抛光之后剩得下的年周期只可能是**某一栋自己的**(西侧被邻栋冬季遮挡、组件夏季高温衰减),
+  // 各栋相位不同还会互相抵消。所以分析单元必须是**栋**,一栋一行。
+  // 同一条理由否掉「逐月分箱中位数 + 四分位带」:那条池化中位线按构造是直线。
+  //
+  // **构造性盲区**:全园同相位的季节项已经被日效应 β 吸收,这一块只看得见
+  // 「某栋与全园不同步」的那部分。这句话进 hint,不进图注(它不随数据变)。
+  // 抄表节律是**逐栋**的(StationRow.cadence),园区可以混装日抄和月抄 ——
+  // 按月抄的栋一个月只有一条,拿 8 天的门槛卡它会让整行永久空白。
+  const MIN_MONTHS = 8
+  const season = inPlay.map(s => {
     const { dates, vals } = seriesOf.get(s.id)!
-    const pts = dates.map((d, i) => ({ doy: dayOfYear(d), v: vals[i], inSeg: inSegOf(d) }))
-    // 季度均值的极差 = 年周期振幅的粗测(够用来报警,不用拟合正弦)
-    const q4 = [0, 0, 0, 0].map((_, k) => {
-      const seg = pts.filter(p => Math.floor((p.doy - 1) / 91.5) === k)
-      return seg.length ? seg.reduce((a, b) => a + b.v, 0) / seg.length : 0
-    })
-    return { id: s.id, name: s.name, pts, amp: Math.max(...q4) - Math.min(...q4) }
-  })
+    const minMo = cadenceOf(dates) === 'monthly' ? 1 : 8
+    const bins: number[][] = Array.from({ length: 12 }, () => [])
+    dates.forEach((d, i) => bins[Number(d.slice(5, 7)) - 1].push(vals[i]))
+    const months = bins.map(x => (x.length >= minMo ? median(x) : null))
+    const got = months.filter((v): v is number => v != null)
+    return {
+      id: s.id, name: s.name, months,
+      // ⚠ 只在**有数据的月**里取极差。老写法 `[0,0,0,0].map` 给空季度返回 0 再进 Math.max/min,
+      //   7 月才投产的栋被两个凭空的 0 参与极差 —— 以前只是图注里一个数,
+      //   现在**按 amp 排序**,它会被顶到第一行,从「数字偏大」升级成「第一眼就是错的」。
+      amp: got.length >= MIN_MONTHS ? Math.max(...got) - Math.min(...got) : null,
+    }
+  }).sort((a, b) => (b.amp ?? -1) - (a.amp ?? -1))   // 排序在 logic,屏上不再排(同 PvDots 的规矩)
+
+  const drawn = season.flatMap(d => (d.amp == null ? [] : d.months.filter((v): v is number => v != null)))
+  const asc = [...drawn].sort((a, b) => a - b)
+  const qAt = (q: number) => asc[Math.min(asc.length - 1, Math.floor(q * asc.length))]
+  const seasonBand = asc.length >= 24 ? { lo: qAt(0.25), hi: qAt(0.75) } : null
+  // ponytail: 0.02 是要拿真数据调的旋钮 —— 它决定「多平算平」,改它 = 改屏上的形,不是自由常数
+  const seasonHalf = Math.max(0.02, ...drawn.map(Math.abs))
+  const seasonPartial = snap.dataThrough && !isMonthEnd(snap.dataThrough)
+    ? Number(snap.dataThrough.slice(5, 7)) - 1 : null
 
   // ── L4 块自助零分布 + 观测值 ──────────────────────────────────────────
   // 让 p 值**看得见**,比一个 p=0.003 可信。一次只画一栋 —— 十三张零分布图没人看。
@@ -1827,6 +1855,6 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
     window: windowInfo,
     alphaRows: alphaAll.filter(c => !badLedger.has(c.id)),
     alphaExcluded: alphaAll.filter(c => badLedger.has(c.id)).map(c => c.name),
-    tests, acf: acfRows, doy, nullDist, convergence, quality,
+    tests, acf: acfRows, season, seasonBand, seasonHalf, seasonPartial, nullDist, convergence, quality,
   }
 }

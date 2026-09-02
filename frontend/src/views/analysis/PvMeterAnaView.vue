@@ -46,6 +46,7 @@ import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
 import PvQualityGrid from './PvQualityGrid.vue'
+import PvSeasonRows from './PvSeasonRows.vue'
 import PvLabTable from './PvLabTable.vue'
 import {
   buildSnapshot, buildDetail, buildLab, DEFAULT_CRITERIA, MAX_ITER, TOL, POLISH_PRACTICAL_TOL,
@@ -593,46 +594,10 @@ const labAcfOpt = computed<object>(() => {
   }
 })
 
-// L3 残差 vs 年积日。**13 栋的点汇在一起** —— 问的是「模型里还剩没剩年周期」,不是某一栋。
-// 所以群体留墨、只有选中那栋上焦点蓝:全涂蓝等于蓝不再表示「选中」,那是装饰(§06.7)。
-const labDoyPts = computed(() =>
-  (lab.value?.doy ?? []).flatMap(d => d.pts.map(p => [p.doy, +p.v.toFixed(4)])))
-// 焦点那栋的点单独一层画在上面 —— 与墨层重叠是故意的:计数(图脚的「N 个点」)仍取全量
-// 当段的点单独一层 —— 横轴是年积日,一个月只是轴上的一小段,
-// 跟着月档「只画一个月」等于把这张图变成 30 个点的散点,而它要看的是**有没有年周期**。
-// 所以整年照画,当段的点加重:跟得上期间,又不撒谎。
-const labDoySeg = computed(() =>
-  (lab.value?.doy ?? []).flatMap(d => d.pts.filter(p => p.inSeg).map(p => [p.doy, +p.v.toFixed(4)])))
-const labDoyFocus = computed(() => {
-  const n = selRow.value?.name
-  const d = n ? (lab.value?.doy ?? []).find(x => x.name === n) : undefined
-  return d ? d.pts.map(p => [p.doy, +p.v.toFixed(4)]) : []
-})
-const labAmp = computed(() =>
-  [...(lab.value?.doy ?? [])].sort((a, b) => b.amp - a.amp)[0] ?? null)
-const labDoyOpt = computed<object>(() => {
-  const pts = labDoyPts.value
-  if (!pts.length) return {}
-  return {
-    grid: { left: 56, right: 16, top: 10, bottom: 32 },
-    xAxis: {
-      type: 'value', min: 1, max: 366, name: '年积日', nameLocation: 'middle', nameGap: 20,
-      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
-    },
-    yAxis: { type: 'value', scale: true, name: '残差（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
-    series: [
-      {
-        type: 'scatter', symbolSize: 2, itemStyle: { color: C.INK300 }, data: pts,
-        markLine: {
-          silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
-          lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ yAxis: 0 }],
-        },
-      },
-      { type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK700 }, data: labDoySeg.value },
-      { type: 'scatter', symbolSize: 2, itemStyle: { color: C.FOCUS }, data: labDoyFocus.value },
-    ],
-  }
-})
+// L3 各栋残差的年内走势。排序在 logic 里做完了(按年内极差降序),屏上不再排 ——
+// 同 PvDots 的规矩:排序是这张图的杠杆,谁排的谁负责。
+const labTop = computed(() => lab.value?.season.find(x => x.amp != null) ?? null)
+const seasonSkip = computed(() => (lab.value?.season ?? []).filter(x => x.amp == null).length)
 
 // L4 块自助零分布 + 观测竖线。让尾概率看得见,比印一个数字可信。
 // **故意留墨**:一栋、一条重采样分布,柱之间没有类别可分,观测竖线靠位置(落在尾部)说话
@@ -1145,21 +1110,22 @@ function outText(o: number | null | undefined): string {
                   </div>
                 </div>
 
-                <!-- L3 残差 vs 年积日 -->
+                <!-- L3 各栋残差的年内走势 -->
                 <div class="av2-card av2-s6 pma-lab" data-lab="L3">
                   <div class="av2-card-h">
-                    <span class="t">残差 vs 年积日</span>
-                    <span class="pma-per">整年<template v-if="gran === 'month'">（{{ segLabel }}加重）</template></span>
+                    <span class="t">各栋残差的年内走势</span>
+                    <span class="pma-per">整年 · 逐月中位<template v-if="gran === 'month'">（{{ month }} 月标出）</template></span>
                     <span class="hint">
-                      散点，各栋的点汇在一起同色 · 横轴年积日 1–366 天，纵轴残差（对数，无量纲） ·
-                      拿全年逐日残差算 · 来源：抛光残差
+                      小倍数折线，一行一栋，按年内极差降序 · 横轴 1–12 月，纵轴月残差中位数（对数，无量纲），{{ lab.season.length }} 行共用一把纵轴 ±{{ lab.seasonHalf.toFixed(3) }} ·
+                      拿全年逐日残差按月取中位数算；全园同相位的季节项已被日效应吸收，这里只看得见某栋与全园不同步的那部分 · 来源：抛光残差
                     </span>
                   </div>
-                  <AnaEChart v-if="labDoyPts.length" :option="labDoyOpt" :height="250" />
-                  <div v-else class="pma-note">没有可画的残差点，这一块不画。</div>
-                  <div v-if="labAmp" class="pma-fn">
-                    {{ labDoyPts.length }} 个点。这张图看的是残差里还剩不剩年周期形状；
-                    振幅粗测 = 四个季度的残差均值极差，最大的一栋是 {{ labAmp.name }}，{{ labAmp.amp.toFixed(3) }}（对数）。
+                  <PvSeasonRows v-if="labTop" :rows="lab.season" :band="lab.seasonBand" :half="lab.seasonHalf"
+                    :partial-mo="lab.seasonPartial" :seg-mo="gran === 'month' ? month - 1 : null"
+                    :sel-id="selId" @pick="pickLab" />
+                  <div v-else class="pma-note">没有栋满 8 个月的抄表，看不出年周期形状。</div>
+                  <div v-if="labTop" class="pma-fn">
+                    第一行就是年周期最重的那栋，{{ labTop.name }} 上下差 {{ labTop.amp!.toFixed(3) }}（对数）；一次性台阶也会把它撑大，是不是台阶看下面表的变点列。<template v-if="seasonSkip">另有 {{ seasonSkip }} 栋有效月不足 8 个，只列栋名不画线。</template><template v-if="!lab.seasonBand">进图的栋太少，画不出常态带。</template>
                   </div>
                 </div>
 

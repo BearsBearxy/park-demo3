@@ -304,11 +304,13 @@ describe('L2 · 残差自相关', () => {
   })
 })
 
-describe('L3 · 残差 vs 年积日(模型诊断,上线前必做)', () => {
+describe('L3 · 各栋残差的年内走势(模型诊断,上线前必做)', () => {
   // 有稳定年周期 = 模型缺项(季节性遮挡),**不是故障**。
   // 不做这个,春秋两季会各刷一批假变点
   it('无季节性时振幅小', () => {
-    for (const d of lab({ rho: 0.3 }).doy) expect(d.amp, d.name).toBeLessThan(0.05)
+    // 阈值比旧版(季度均值,0.05)放宽:月中位数只吃 ~30 天,季度均值吃 ~91 天,
+    // 抽样噪声按构造更大,噪声地板就是要抬。**按实测值加余量放宽,不许退回季度均值把数字做绿**。
+    for (const d of lab({ rho: 0.3 }).season) expect(d.amp ?? 0, d.name).toBeLessThan(0.09)
   })
 
   it('注入季节性后振幅量得出来,且不外溢到别的栋', () => {
@@ -318,9 +320,51 @@ describe('L3 · 残差 vs 年积日(模型诊断,上线前必做)', () => {
       gen: (i, m, d) => 400 * (1 + (d % 5) * 0.1)
         * (i === 2 ? Math.exp(0.25 * Math.sin((2 * Math.PI * doyOf(m, d)) / 365)) : 1),
     })
-    const s3 = l.doy.find(x => x.name === 'S3')!
-    expect(s3.amp).toBeGreaterThan(0.1)
-    for (const d of l.doy.filter(x => x.name !== 'S3')) expect(d.amp, d.name).toBeLessThan(s3.amp / 2)
+    const s3 = l.season.find(x => x.name === 'S3')!
+    expect(s3.amp!).toBeGreaterThan(0.1)
+    for (const d of l.season.filter(x => x.name !== 'S3')) expect(d.amp ?? 0, d.name).toBeLessThan(s3.amp! / 2)
+  })
+
+  // 排序是这张图的杠杆:13 行的扫描退化成**看第一行**。排错了,第一眼就是错的。
+  it('按年内极差降序,注入季节性那栋就是第一行', () => {
+    const l = lab({
+      rho: 0.2,
+      gen: (i, m, d) => 400 * (1 + (d % 5) * 0.1)
+        * (i === 2 ? Math.exp(0.25 * Math.sin((2 * Math.PI * doyOf(m, d)) / 365)) : 1),
+    })
+    expect(l.season[0].name, '季节性最重那栋没排在第一行').toBe('S3')
+    const amps = l.season.map(x => x.amp).filter((v): v is number => v != null)
+    expect(amps, '不是降序').toEqual([...amps].sort((a, b) => b - a))
+    // null(量不出)一律排最后,不许混在中间
+    const firstNull = l.season.findIndex(x => x.amp == null)
+    if (firstNull >= 0) expect(l.season.slice(firstNull).every(x => x.amp == null)).toBe(true)
+  })
+
+  // **这条钉的是那个真 bug**:老写法 `[0,0,0,0].map` 给空季度返回 0 再进 Math.max/min,
+  // 7 月才投产的栋拿两个凭空的 0 参与极差。以前只是图注里一个数,现在按 amp 排序会顶到第一行。
+  it('只有下半年数据的栋 amp 为 null —— 空月不许当 0 参与极差', () => {
+    const l = lab({ gen: (i, m) => (i === 0 && m < 7 ? 0 : 400) })
+    const s1 = l.season.find(x => x.name === 'S1')!
+    expect(s1.months.slice(0, 6).every(v => v == null), '上半年应该没有月中位数').toBe(true)
+    expect(s1.amp, '有效月只有 6 个,量不出年内极差,不许给个数').toBeNull()
+    // 但**行还在**:栋名照列、可点。少画一条线不许静默
+    expect(l.season.map(x => x.name)).toContain('S1')
+  })
+
+  it('某月抄表太少 → 该月无中位数,线在那里断开,不插值', () => {
+    const l = lab({ gen: (_i, m, d) => (m === 3 && d > 3 ? 0 : 400) })
+    for (const r of l.season) expect(r.months[2], `${r.name} 三月只有 3 天却给出了中位数`).toBeNull()
+  })
+
+  it('常态带 = 全部进图月中位数的中间一半,且共用纵轴有地板', () => {
+    const l = lab()
+    expect(l.seasonBand).not.toBeNull()
+    expect(l.seasonBand!.lo).toBeLessThanOrEqual(l.seasonBand!.hi)
+    // 地板 0.02:模型干净时不许把 ±0.004 的噪声自适应放大成山脉
+    expect(l.seasonHalf).toBeGreaterThanOrEqual(0.02)
+    // 半幅必须罩得住所有画出来的点,否则线会画出行外
+    const all = l.season.flatMap(r => (r.amp == null ? [] : r.months.filter((v): v is number => v != null)))
+    expect(Math.max(...all.map(Math.abs))).toBeLessThanOrEqual(l.seasonHalf)
   })
 })
 

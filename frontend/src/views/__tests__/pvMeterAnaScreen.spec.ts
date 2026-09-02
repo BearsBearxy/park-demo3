@@ -765,7 +765,7 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
       .toEqual(['L1', 'L2', 'L3', 'L4', 'L5a', 'L5b', 'L6', 'L7'])
     // 八块的**块名**:恢复的是这八件事,不是八个占位卡
     expect(labs.map(e => e.find('.av2-card-h .t').text().split(' · ')[0])).toEqual([
-      '先天水平 α 排序', '残差自相关 ACF', '残差 vs 年积日',
+      '先天水平 α 排序', '残差自相关 ACF', '各栋残差的年内走势',
       '块自助零分布', '抛光收敛轨迹', '换个扫描顺序，名次动不动', '数据质量矩阵', '完整检验表',
     ])
     // 每块的卡头都带常驻说明(图种 · 轴与单位 · 拿哪一段算 · 来源),不是光秃秃一个标题
@@ -775,7 +775,10 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     // 图/组件各就各位:L1-L4 + L5a 是 ECharts,L5b 是斜率图,L6 是手写 CSS Grid,L7 是表
     expect(w.findAll('[data-lab="L1"] .stub-chart')).toHaveLength(1)
     expect(w.findAll('[data-lab="L2"] .stub-chart')).toHaveLength(1)
-    expect(w.findAll('[data-lab="L3"] .stub-chart')).toHaveLength(1)
+    // L3 换成手写 SVG 小倍数(13 栋共轴 sparkline):ECharts 一张图画不了 13 个共轴小图,
+    // 而 boxplot / custom 在 echartsBundle 里没注册。
+    expect(w.findAll('[data-lab="L3"] .stub-chart')).toHaveLength(0)
+    expect(w.find('[data-lab="L3"] .pv-season svg').exists()).toBe(true)
     expect(w.findAll('[data-lab="L4"] .stub-chart')).toHaveLength(1)
     // L5 原来是**全屏唯一一张没有图的卡**,占满 12 栏画一堆文字 —— 拆成两张 s6:
     // 左边一条收敛轨迹(log 轴折线),右边一张行优先/列优先的名次斜率图。
