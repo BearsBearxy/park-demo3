@@ -691,7 +691,8 @@ export interface BoardRow {
   maxDev: number                  // 最大偏离 (v−center)/center,取绝对值最大的那个(带符号)
   seenN: number                   // 已抄刻度数
   elapsedN: number                // 已过去刻度数(= 已抄 + 漏抄)
-  baseNote: string                // 范围是拿哪一段估的 —— 要写在屏上(§03.7)
+  baseNote: string                // 范围是拿哪一段估的,整句版 —— 读屏与断言用(§03.7)
+  base: BaseWindow | null         // 同一件事的结构化版 —— 屏上排版用,别再拼散文
   /** 这栋第一条抄表的日期;null = 整年都没有。**未投产与漏抄必须分得开**:
    *  首条抄表晚于本段结束 = 那时候它还没投产,不该催人;本段之内缺的才是漏抄。 */
   firstDate: string | null
@@ -830,6 +831,25 @@ function ratioSeries(
 /** 一次窗口挑选的结果:落在窗口里的刻度键,以及这一步实际生效/放宽了哪几条。 */
 interface WinPick { keys: string[]; trimmed: boolean; cut: boolean }
 
+/**
+ * 基线窗口的**结构化**形态(§03.7)。
+ *
+ * `baseNote` 是同一件事的整句版本 —— 读屏与可机检的断言用它。
+ * 但屏上不能把「窗口 + 三条件放宽情况」串成一句 120 字的话丢给用户看:
+ * 那是四类不同的事实用「·」缝在一起,和 v3 推翻掉的文字横幅是同一个病。
+ * 组件拿这份结构自己排版(标签 + 值 + 放宽档数),散文留给读屏。
+ */
+export interface BaseWindow {
+  from: string
+  to: string
+  n: number
+  unit: string
+  /** 三条件里**实际生效**的那几条,人话 */
+  ok: string[]
+  /** 为了凑够样本而**放宽**掉的那几条,人话且不带「已放宽：」前缀 */
+  relaxed: string[]
+}
+
 /** 该刻度的在网栋集合。**用「首条抄表 ≤ 该刻度」判在网,不用「当刻度有没有抄」** ——
  *  后者会让某栋漏抄一天就凭空多出一个批次,把整年切成几十个碎段。 */
 function cohortMap(allKeys: string[], firstKey: Map<number, string>): Map<string, string> {
@@ -856,7 +876,7 @@ function baselineWindow(
   vals: Map<string, number>, allKeys: string[],
   cohort: Map<string, string>, segCohort: string, inSeg: (k: string) => boolean,
   opts: { excludeSeg: boolean; useCp: boolean; minN: number; unit: string },
-): { vals: number[]; note: string } {
+): { vals: number[]; note: string; base?: BaseWindow } {
   const own = allKeys.filter(k => vals.has(k) && !(opts.excludeSeg && inSeg(k)))
   if (!own.length) return { vals: [], note: '这栋还没有可用的历史刻度，画不出正常范围' }
 
@@ -900,10 +920,14 @@ function baselineWindow(
     if (t.keys.length >= opts.minN) { byCohort = c; byRamp = r; byCp = p; got = t; break }
   }
 
-  const cond: string[] = []
-  cond.push(byCohort ? '同批在网' : '已放宽：不限同批在网')
-  if (byRamp) { if (got.trimmed) cond.push('已排除并网初期') } else cond.push('已放宽：含并网初期')
-  if (byCp) { if (got.cut) cond.push('变点之前') } else if (cutKey != null) cond.push('已放宽：不限变点之前')
+  // ok = 实际生效的条件;relaxed = 为了凑够样本放宽掉的。两者分开存,
+  // 屏上才能排成「值 + 放宽 N 档」而不是三个并列的「已放宽：…」
+  const ok: string[] = []
+  const relaxed: string[] = []
+  if (byCohort) ok.push('同批在网'); else relaxed.push('不限同批在网')
+  if (byRamp) { if (got.trimmed) ok.push('已排除并网初期') } else relaxed.push('含并网初期')
+  if (byCp) { if (got.cut) ok.push('变点之前') } else if (cutKey != null) relaxed.push('不限变点之前')
+  const cond = [...ok, ...relaxed.map(r => `已放宽：${r}`)]
 
   const n = got.keys.length
   if (n < opts.minN) {
@@ -914,6 +938,7 @@ function baselineWindow(
     vals: got.keys.map(k => vals.get(k)!),
     // 窗口不一定连续(排掉当段之后会缺一块),所以除了首末还要报条数 —— 只写区间会撒谎
     note: `基线取 ${got.keys[0]} ~ ${short(got.keys[n - 1])} 共 ${n} ${opts.unit}（${cond.join(' · ')}）`,
+    base: { from: got.keys[0], to: short(got.keys[n - 1]), n, unit: opts.unit, ok, relaxed },
   }
 }
 
@@ -1011,6 +1036,7 @@ export function buildBoard(
       maxDev, seenN,
       elapsedN: state.filter(v => v !== 'future').length,
       baseNote: win.note,
+      base: win.base ?? null,
       firstDate, bornBySeg,
     }
   })

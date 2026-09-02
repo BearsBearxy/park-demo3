@@ -197,13 +197,20 @@ describe('光伏分栋分析 · 两档缩放', () => {
     const xs = w.findAll('.pdc .xt').map(t => t.text())
     expect(xs[0]).toBe('1')
     expect(xs[xs.length - 1]).toBe('31')
-    expect(w.find('.pdc-ft').text()).toContain('横轴 = 本段全部 31 天，画满不伸缩')
+    // v3 的页脚**只留基线窗口**。x 轴口径 / 判据 / 抄表进度屏上别处已经有了,
+    // 页脚再复述一遍就是把 120 字的墙糊回图下面(用户 2026-09-02 当场否掉的那版)。
+    // 「画满整段」的意图由上面那两行刻度断言承担,比匹配一句散文硬。
+    const ft = w.find('.pdc-ft').text()
+    expect(ft).toContain('基线')
+    for (const dup of ['横轴', '画满不伸缩', '已抄', '琥珀底', '连续']) {
+      expect(ft, `页脚复述了屏上别处已有的「${dup}」`).not.toContain(dup)
+    }
   })
 
   it('年段:刻度换成逐月,「连续 N 个刻度算一段」那条判据划掉', async () => {
     const w = await mountScreen({ gran: 'year', prev: true })
     expect(w.find('.pma-main .av2-card-h .t').text()).toBe('2026 年逐月比值')
-    expect(w.find('.pdc-ft').text()).toContain('横轴 = 本段全部 12 个月')
+    expect(w.find('.pdc-ft .vl').text()).toContain('个月')   // 年档单位跟着换
     const off = w.findAll('.pma-b2 .off')
     expect(off).toHaveLength(1)
     expect(off[0].text()).toContain('年档不出此判据')
@@ -219,10 +226,26 @@ describe('光伏分栋分析 · 两档缩放', () => {
   })
 
   it('范围是拿**段外**那一段估的,窗口写在屏上(§03.7)—— 别让人以为切月就只用一个月的数据', async () => {
-    const t = (await mountScreen()).find('.pdc-ft').text()
-    expect(t).toContain('基线取')
-    expect(t).toContain('同批在网')
-    expect(t).toContain('淡带 = 这栋的正常范围（2 倍波动）')
+    const w = await mountScreen()
+    // 顺便验未命中的栋页脚也照常渲染 —— 队列里点谁都得有基线
+    const ok = w.findAll('.pq-row').find(r => !r.classes('out'))
+    expect(ok, '队列里没有未命中的栋').toBeTruthy()
+    await ok!.trigger('click')
+    await flushPromises()
+    const ft = w.find('.pdc-ft')
+    // 钉**结构**不钉措辞:标签 / 值(首 ~ 末 · 条数)分开渲染,措辞再改也管用,
+    // 而窗口一旦缩成当段之内、或条数变成 0,下面两条必红
+    expect(ft.find('.lb').text()).toBe('基线')
+    const m = ft.find('.vl').text().match(/^(\d{4}-\d{2}-\d{2}) ~ ((?:\d{4}-)?\d{2}-\d{2}) · (\d+) 天$/)
+    expect(m, `页脚的基线值不是「首 ~ 末 · N 天」: ${ft.find('.vl').text()}`).not.toBeNull()
+    // 窗口塌成「只有当段」时这条会红
+    expect(Number(m![3]), '基线只取到当段之内就等于没有段外基线').toBeGreaterThan(31)
+    // ⚠ 「不含被看的那一段」**在这里断不了**:窗口是整年减当月,不连续,
+    //   首(01-01)/末(12-31)/条数都看不出中间挖没挖掉 8 月。
+    //   那条性质由 logic 层守着(pvMeterAnaSnapshot.logic.spec.ts
+    //   「月段的带取自**段外**,不含被看的那段」)—— 破坏 excludeSeg 时红的是那两条,不是这条。
+    // 「淡带 = 正常范围」不再用散文复述,改成画在带里的标签
+    expect(w.find('.bandlab').text()).toContain('正常范围（2 倍波动）')
   })
 
   it('大图画出正常范围带、中心线,出范围的点单独放大上色', async () => {

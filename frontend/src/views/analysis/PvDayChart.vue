@@ -130,16 +130,20 @@ const xTicks = computed(() => {
 
 const aria = computed(() => `${props.row.name} 逐${unit.value === '个月' ? '月' : '日'}比值图。${props.fact}`)
 
-const foot = computed(() => {
-  const u = unit.value
-  const parts = [
-    `淡带 = 这栋的正常范围（${props.crit.bandSigma} 倍波动），${props.row.baseNote}`,
-    ...(u === '天' ? [`琥珀底 = 连续 ≥${props.crit.bandRun} 个已抄刻度同向`] : []),
-    `横轴 = 本段全部 ${n.value} ${u}，画满不伸缩`,
-    `已过去 ${props.row.elapsedN} ${u}，已抄 ${props.row.seenN} ${u}`,
-  ]
-  return parts.join(' · ')
+// 页脚**只留基线窗口** —— 它是这张图上唯一看不出来的东西,而且它决定了带画在哪。
+// 删掉的三条各自在屏上别处已经有了,重复一遍只是把 120 字的墙糊到图下面:
+//   「琥珀底 = 连续 ≥N 个已抄刻度同向」→ B2 判据脚
+//   「横轴 = 本段全部 N 天，画满不伸缩」→ x 轴自己就写着 1…31
+//   「已过去 N 天，已抄 n 天」        → B0 指标卡右侧的新鲜度格
+//   「淡带 = 这栋的正常范围」          → 改成画在带里的一个标签(见模板 .bandlab)
+// 剩下这条也不串成句子:标签 + 值 + 放宽档数,与 B0 指标卡同一个排法。
+const base = computed(() => props.row.base)
+const baseVal = computed(() => {
+  const b = base.value
+  return b ? `${b.from} ~ ${b.to} · ${b.n} ${b.unit}` : ''
 })
+/** 读屏与 tooltip 用整句版 —— 结构化排版对读屏是碎的 */
+const baseFull = computed(() => props.row.baseNote)
 </script>
 
 <template>
@@ -159,8 +163,13 @@ const foot = computed(() => {
         <text v-for="(g, i) in grid" :key="'gt' + i" class="gt" :x="ML - 6" :y="g.y + 3.5">{{ g.v.toFixed(2) }}</text>
       </g>
 
-      <!-- 正常范围带:画满整宽,与本段抄了几天无关(§03.8) -->
+      <!-- 正常范围带:画满整宽,与本段抄了几天无关(§03.8)。
+           标签画在带里,替掉页脚原来那句「淡带 = 这栋的正常范围（N 倍波动）」——
+           图能自己说的事,不该再用一句话复述一遍 -->
       <rect v-if="band" class="band" :x="ML" :y="band.yHi" :width="iw" :height="band.h" />
+      <text v-if="band && band.h >= 14" class="bandlab" :x="ML + 4" :y="band.yHi + 11">
+        正常范围（{{ crit.bandSigma }} 倍波动）
+      </text>
 
       <!-- 连续段底色,夹进绘图区 -->
       <rect v-for="(r, i) in runRects" :key="'r' + i" :x="r.x" :y="MT" :width="r.w" :height="IH"
@@ -202,7 +211,17 @@ const foot = computed(() => {
         :x="t.x" :y="Y1 + 14">{{ t.t }}</text>
     </svg>
 
-    <div class="pdc-ft">{{ foot }}</div>
+    <div class="pdc-ft" :title="baseFull">
+      <template v-if="base">
+        <span class="lb">基线</span>
+        <span class="vl">{{ baseVal }}</span>
+        <template v-if="base.relaxed.length">
+          <span class="rx">放宽 {{ base.relaxed.length }} 档</span>
+          <span class="rxd">{{ base.relaxed.join(' / ') }}</span>
+        </template>
+      </template>
+      <span v-else class="vl">{{ baseFull }}</span>
+    </div>
   </div>
 </template>
 
@@ -231,5 +250,17 @@ const foot = computed(() => {
 
 .xt { font-size: 11px; font-family: var(--font-mono); fill: var(--text-muted); text-anchor: middle; }
 .xt.dim { fill: var(--ink-300); }
-.pdc-ft { margin-top: 2px; font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.4; }
+/* 页脚是**一行结构**不是一句话:标签 / 值 / 放宽档数 / 明细,四段各有各的重量 */
+.pdc-ft {
+  margin-top: 3px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px;
+  font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.5;
+}
+.pdc-ft .lb { color: var(--ink-300); flex: 0 0 auto; }
+.pdc-ft .vl { font-family: var(--font-mono); color: var(--text-secondary); flex: 0 0 auto; }
+.pdc-ft .rx {
+  flex: 0 0 auto; font-family: var(--font-mono);
+  border: 1px solid var(--border-subtle); border-radius: 3px; padding: 0 5px;
+}
+.pdc-ft .rxd { min-width: 0; }
+.bandlab { font-size: 10px; fill: var(--ink-300); }
 </style>
