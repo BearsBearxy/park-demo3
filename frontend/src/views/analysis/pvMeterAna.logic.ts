@@ -1398,6 +1398,29 @@ export function buildDetail(snap: AnaSnapshot, stationId: number): StationDetail
 /** 主窗口长度(天)。z 与零分布都看最后这一段。v3 的 Criteria 里没有窗口口径,故在此定死。 */
 const LAB_WIN = 30
 
+/**
+ * 工作台的**观测窗口**跟着显示段走。
+ *
+ * 原来写死 `r.slice(-LAB_WIN)`(最后 30 天)。数据截止在 12-31,于是
+ * **你在看 8 月、它算的是 12 月**,而屏上一个字都没说 —— 工作台里同时有三个期间
+ * (整年 / 最后 30 天 / 你选的那一段),互相不打招呼。
+ *
+ * 现在:月档取**当段**;年档没有「当段 vs 全年」可比(拿全年跟自己比),
+ * 退回最后一个自然月。当段样本不足 8 个也退回 —— 退了要在 label 上说出来。
+ */
+function labWindow(
+  snap: AnaSnapshot, dates: string[],
+): { idx: number[]; label: string; fellBack: boolean } {
+  const pick = (pre: string) =>
+    dates.reduce<number[]>((a, d, i) => (d.startsWith(pre) ? (a.push(i), a) : a), [])
+  if (snap.gran === 'month' && snap.ym) {
+    const idx = pick(snap.ym)
+    if (idx.length >= 8) return { idx, label: snap.ym, fellBack: false }
+  }
+  const last = dates.length ? dates[dates.length - 1].slice(0, 7) : ''
+  return { idx: last ? pick(last) : [], label: last, fellBack: snap.gran === 'month' }
+}
+
 // ── L1 α 排序(先天水平)─────────────────────────────────────────────────
 
 export interface CongenitalRow {
@@ -1545,6 +1568,21 @@ export interface QualityRow {
 
 export interface LabResult {
   snapshotId: string
+  /**
+   * **这份工作台各块吃的期间**,屏上必须逐块写出来 ——
+   * 工作台里同时存在两个期间(整年 / 观测窗口),不说清用户会以为都跟着期间选择器走。
+   *
+   * L1 / L2 / L3 / L5 / L6 与 L7 的 α·N_eff·变点 全部吃**整年**(模型本来就吃整年);
+   * 只有 L4 的观测值与 L7 的 z / zNaive 吃 `window`。
+   */
+  window: {
+    /** 'YYYY-MM'。月档 = 当段;年档或当段样本不足 = 最后一个自然月 */
+    label: string
+    /** true = 当段样本不足 8 个,退回了最后一个自然月 —— 屏上要说出来 */
+    fellBack: boolean
+    /** 窗口里实际有几个已抄刻度 */
+    n: number
+  }
   /** L1:α 点估计 + 块自助区间,已按 α 升序 */
   alphaRows: CongenitalRow[]
   /** 因**容量台账与铭牌不符**(|ledgerDiff| > crit.ledger)被踢出 α 排序的站名 ——
@@ -1602,7 +1640,7 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const polish = snap.polish
   // 显示顺序跟着快照的站列表走,不用 Map 的插入顺序 —— 后者取决于 rows 里谁先出现
   const inPlay = snap.stations.filter(s => polish.resid.has(s.id))
-  // 残差 Map 是按 rows 的顺序插的,ACF 与「最后 30 天」都要求时序,所以先排一次
+  // 残差 Map 是按 rows 的顺序插的,ACF 与观测窗口都要求时序,所以先排一次
   const seriesOf = new Map(inPlay.map(s => {
     const arr = [...polish.resid.get(s.id)!].sort((a, b) => a[0].localeCompare(b[0]))
     return [s.id, { dates: arr.map(([d]) => d), vals: arr.map(([, v]) => v) }]
@@ -1621,7 +1659,8 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const alphaById = new Map(congenitalCheck(polish, stations).map(c => [c.id, c]))
   const raw = inPlay.map(s => {
     const r = seriesOf.get(s.id)!.vals
-    const win = r.slice(-LAB_WIN)
+    const w = labWindow(snap, seriesOf.get(s.id)!.dates)
+    const win = w.idx.map(i => r[i])
     const obs = win.length ? win.reduce((a, b) => a + b, 0) / win.length : 0
     const sigma = shrinkSigma(robustSigma(r), sigmaPool, 1e-4)
     const nEff = nEffById.get(s.id) ?? r.length
@@ -1642,8 +1681,19 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
       cpRange: detail?.cpLo && detail?.cpHi ? `${detail.cpLo} ~ ${detail.cpHi}` : '—',
       days: r.length,
       obs, winLen: win.length,
+      // 徽标必须从**实际算 z 用的那个窗口**带出来。原来 windowInfo 另起一次
+      // labWindow 调用,于是把这里改回写死「最后 30 天」时徽标照样显示当段 ——
+      // 图上的话与图算的数分了家,断言也就咬不住(2026-09-02 破坏验证抓到)。
+      winLabel: w.label, winFellBack: w.fellBack,
     }
   })
+  // **从 raw 里带出来,不另起一次 labWindow** —— 见 raw 里 winLabel 的注释
+  const windowInfo = {
+    label: raw[0]?.winLabel ?? '',
+    fellBack: raw[0]?.winFellBack ?? false,
+    n: raw.length ? Math.max(...raw.map(x => x.winLen)) : 0,
+  }
+
   const qs = bhFdrQ(raw.map(x => x.p))
   const tests: TestRow[] = raw.map((x, i) => ({
     id: x.id, name: x.name, alphaPct: x.alphaPct,
@@ -1733,6 +1783,7 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const alphaAll = [...alphaById.values()].sort((a, b) => a.alphaPct - b.alphaPct)
   return {
     snapshotId: snap.id,
+    window: windowInfo,
     alphaRows: alphaAll.filter(c => !badLedger.has(c.id)),
     alphaExcluded: alphaAll.filter(c => badLedger.has(c.id)).map(c => c.name),
     tests, acf: acfRows, doy, nullDist, convergence, quality,

@@ -1023,6 +1023,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L1">
                   <div class="av2-card-h">
                     <span class="t">先天水平 α 排序</span>
+                    <span class="pma-per">整年</span>
                     <span class="hint">
                       点 = α 点估计，横线 = 块自助 95% 区间 · 横轴 α%（相对全园中位），纵轴各栋按 α 升序 ·
                       拿全年逐日残差算 · 来源：中位数抛光的 α，区间由残差块自助 B=399 重采样
@@ -1045,6 +1046,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L2">
                   <div class="av2-card-h">
                     <span class="t">残差自相关 ACF<template v-if="labAcf"> · {{ labAcf.name }}</template></span>
+                    <span class="pma-per">整年</span>
                     <span class="hint">
                       柱 = 各滞后的自相关系数 · 横轴滞后 0–30 天，纵轴 ρ 无量纲（−1~1） ·
                       拿这一栋的全年逐日残差算 · 来源：抛光残差
@@ -1063,6 +1065,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L3">
                   <div class="av2-card-h">
                     <span class="t">残差 vs 年积日</span>
+                    <span class="pma-per">整年</span>
                     <span class="hint">
                       散点，各栋的点汇在一起同色 · 横轴年积日 1–366 天，纵轴残差（对数，无量纲） ·
                       拿全年逐日残差算 · 来源：抛光残差
@@ -1080,6 +1083,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L4">
                   <div class="av2-card-h">
                     <span class="t">块自助零分布<template v-if="lab.nullDist"> · {{ lab.nullDist.name }}</template></span>
+                    <span class="pma-per win">窗口 {{ lab.window.label }}<template v-if="lab.window.fellBack">（当段样本不足，退回）</template></span>
                     <span class="hint">
                       直方图 + 观测值竖线 · 横轴窗口均值（对数，无量纲），纵轴落入该桶的重采样次数 ·
                       观测值取最后 30 天窗口，零分布重采样全年残差 · 来源：块自助 B=999、块长 14 天
@@ -1099,6 +1103,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s12 pma-lab" data-lab="L5">
                   <div class="av2-card-h">
                     <span class="t">抛光收敛诊断</span>
+                    <span class="pma-per">整年</span>
                     <span class="hint">
                       文字读数，没有图 · 迭代次数单位为次，名次差单位为位，其余为栋名 ·
                       拿整份快照的抛光过程算 · 来源：两次中位数抛光（行优先 / 列优先），同一份有效日集合
@@ -1125,6 +1130,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s12 pma-lab" data-lab="L6">
                   <div class="av2-card-h">
                     <span class="t">数据质量矩阵</span>
+                    <span class="pma-per">整年</span>
                     <span class="hint">
                       网格热力，一格 = 一栋一天，四态三色 + 未投产留空白 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
                       拿 {{ labQuality?.dates.length ?? 0 }} 天 × {{ labQuality?.rows.length ?? 0 }} 栋算 ·
@@ -1149,6 +1155,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s12 pma-lab" data-lab="L7">
                   <div class="av2-card-h">
                     <span class="t">完整检验表</span>
+                    <span class="pma-per">α · N_eff · 变点 = 整年</span><span class="pma-per win">z = 窗口 {{ lab.window.label }}</span>
                     <span class="hint">
                       表格，{{ lab.tests.length }} 行不分页 · 每列的单位与口径印在列头下的小字里 ·
                       z 与零分布取最后 30 天窗口，α / N_eff / 变点取全年 · 来源：变点检验 + BH-FDR，逐栋
@@ -1337,6 +1344,15 @@ function outText(o: number | null | undefined): string {
 
 .pma-seg { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .pma-seghint { font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+/* 期间徽标:工作台里同时有两个期间(整年 / 观测窗口),每块必须自己说清吃的是哪个 ——
+   spec 对抽屉三张图早有「本块固定按年」这条要求,工作台当初漏了。
+   用户看 8 月时,原来 L4/L7 的观测算的是 12 月(数据截止 12-31 的最后 30 天),屏上一个字没说。 */
+.pma-per {
+  font-family: var(--font-mono); font-size: 10px; line-height: 1.4;
+  color: var(--text-muted); border: 1px solid var(--border-subtle);
+  border-radius: 2px; padding: 0 4px; margin-left: 6px; white-space: nowrap;
+}
+.pma-per.win { color: var(--hue-blue); border-color: var(--hue-blue); }
 
 /* 切档不换卡,容器高度按最高段钉死 —— 绝对水平 / 账面量 两段都是 250+8+250 的内容加卡壳(§06.5)。
    高级分析那一档七块加起来 1400px 上下,**不把 min-height 抬到它** —— 那会给另外两档垫出

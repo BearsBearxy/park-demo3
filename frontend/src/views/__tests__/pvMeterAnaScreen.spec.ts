@@ -721,6 +721,36 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     for (const bad of ['异常', '建议', '需关注']) expect(hint).not.toContain(bad)
   })
 
+  // 工作台里同时有两个期间(整年 / 观测窗口)。原来 L4/L7 的窗口写死「最后 30 天」,
+  // 而数据截止在 12-31 —— **你看 8 月,它算 12 月**,屏上一个字都没说。
+  // 这两条钉的是:① 窗口真的跟着期间选择器走 ② 每块都把自己吃的期间说出来
+  // 挂两次 lab,buildLab 很重(13×buildDetail + 第二次抛光 + 两轮块自助),放宽超时
+  it('观测窗口跟着期间走,不是写死的「最后 30 天」', { timeout: 30_000 }, async () => {
+    const w8 = await mountScreen({ month: 8 })
+    await toSection(w8, '高级分析')
+    const win8 = w8.findAll('.pma-per.win').map(e => e.text())
+    expect(win8.length, 'L4 与 L7 都该有窗口徽标').toBeGreaterThanOrEqual(2)
+    for (const t of win8) expect(t, `窗口徽标没跟着 8 月: ${t}`).toContain('2026-08')
+
+    // 夹具的 providePeriodMonths 只放了 2026-07 / 2026-08 两个可选月,
+    // 换别的月会被外壳挡回去(不是实现问题) —— 所以这里换 7 月
+    const w7 = await mountScreen({ month: 7 })
+    await toSection(w7, '高级分析')
+    const win7 = w7.findAll('.pma-per.win').map(e => e.text())
+    expect(win7.length).toBeGreaterThanOrEqual(2)
+    for (const t of win7) expect(t, `换到 7 月窗口没跟着换: ${t}`).toContain('2026-07')
+  })
+
+  it('七块各自写明吃的是哪个期间 —— 整年还是观测窗口', { timeout: 20_000 }, async () => {
+    const w = await mountScreen()
+    await toSection(w, '高级分析')
+    // 每一块的卡头都要有期间徽标:少一个就是那一块在默默用别的期间
+    for (const card of w.findAll('[data-lab]')) {
+      const id = card.attributes('data-lab')
+      expect(card.findAll('.pma-per').length, `${id} 没写明期间`).toBeGreaterThan(0)
+    }
+  })
+
   it('点进去才算,而且只算一次 —— 七块 L1…L7 一块不少,一块都没退成空态', async () => {
     const w = await mountScreen()
     await toSection(w, '高级分析')

@@ -137,6 +137,30 @@ describe('工作台 · 铁律:一份数据、一次计算、一个 id', () => {
 
   // 当年断的是「alphaRows 的每一行都是 snap.congenital 里那个对象」。v3 没有 snap.congenital,
   // 换成两条更活的:p 与抽屉里那次**逐位相同**,天数直接取自快照的残差矩阵。
+  /**
+   * 观测窗口必须跟着**显示段**走,而且这条只能钉在**值**上。
+   *
+   * 原来窗口写死 `slice(-30)`,数据截止 12-31 → 你看 8 月它算 12 月。
+   * 屏上加了期间徽标之后我做过一次破坏验证:把窗口改回写死、**同时让徽标继续显示当段**,
+   * 屏 spec 那条基于文案的断言照样绿 —— **文案断言永远验不了计算**。
+   * 所以这条比对两个月份算出来的**数**:窗口真跟着段走,z 与观测值就必然不同。
+   */
+  it('观测窗口跟着显示段走 —— 钉在算出来的数上,不是钉在徽标文案上', () => {
+    const base = makeInput({ gen: stepGen })
+    const mk = (m: number) => {
+      const input = { ...base, gran: 'month' as const, month: m }
+      return buildLab(buildSnapshot(input), input)
+    }
+    const a = mk(3), b = mk(9)
+    expect(a.window.label).toBe('2026-03')
+    expect(b.window.label).toBe('2026-09')
+    // 钉**精确值**:三月 31 天、九月 30 天。写死 `slice(-30)` 的话三月会变成 30 ——
+    // 这是这个夹具上唯一一个不会被写死值蒙混过去的判别量。
+    // (不拿 z 做判别:抛光残差以 0 为心,这个夹具上两个月的 z 都恰好是 0,分不开。)
+    expect(a.window.n, '三月窗口不是 31 天 —— 窗口大概率还是写死的').toBe(31)
+    expect(b.window.n, '九月窗口不是 30 天').toBe(30)
+  })
+
   it('L7 的 p 与抽屉 buildDetail 那次逐位相同 —— 工作台永远不是另一次计算', () => {
     const input = makeInput({ gen: stepGen })
     const snap = buildSnapshot(input)
