@@ -33,7 +33,7 @@ import { useTabsStore } from '@/stores/tabs'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaBullet from '@/components/ana/AnaBullet.vue'
+import PvDots from './PvDots.vue'
 import FPDrawer from '@/components/fp/FPDrawer.vue'
 import Segmented from '@/components/ds/Segmented.vue'
 import PvQueue from './PvQueue.vue'
@@ -270,26 +270,58 @@ const yieldSeries = computed(() => {
   return out
 })
 
-// B3 等效小时轨迹(月档):13 条同色细灰 + 1 条全园加权粗线。13 栋无一栋有自己的颜色。
+/**
+ * B3 等效小时轨迹(月档)—— **分位带 + 平滑中位线 + 选中那栋**,不再画 13 条线。
+ *
+ * 原来是 13 条同色细灰 + 1 条粗线。同色已经是对的(13 栋无一栋有自己的颜色),
+ * 但**条数本身就是问题**:Javed 2010 实测叠加折线的可用上限压在 8 条,
+ * 13 条在学理上必然失败 —— 实屏上就是一团灰毛球,粗线也被埋在里面。
+ * 这条我在调研里写过,自己又踩了一次。
+ *
+ * 换成分布的形状:淡带 = 各栋的四分位距(p25~p75),粗线 = 全园中位。
+ * 想看某一栋就点队列 —— 选中那栋单独画一条,与毛球里挑不出的那条是两回事。
+ * 图元从 14 条降到 1 带 + 2 线。
+ */
+const b3Quant = computed(() => {
+  const s = snap.value
+  if (!s) return { p25: [], p50: [], p75: [] }
+  const n = s.ticks.length
+  const p25: (number | null)[] = [], p50: (number | null)[] = [], p75: (number | null)[] = []
+  for (let i = 0; i < n; i++) {
+    const col = yieldSeries.value
+      .map(o => o.data[i]).filter((v): v is number => v != null).sort((a, b) => a - b)
+    // 当刻度在网不足 3 栋 → 分位数没有意义,整列留空(与 §07 中位数门槛同口径)
+    if (col.length < 3) { p25.push(null); p50.push(null); p75.push(null); continue }
+    const q = (f: number) => col[Math.min(col.length - 1, Math.floor(f * (col.length - 1)))]
+    p25.push(+q(0.25).toFixed(3)); p50.push(+q(0.5).toFixed(3)); p75.push(+q(0.75).toFixed(3))
+  }
+  return { p25, p50, p75 }
+})
+
 const b3Opt = computed<object>(() => {
   const s = snap.value
   if (!s) return {}
-  const thin = yieldSeries.value.map(o => ({
-    name: o.name, type: 'line', symbol: 'none', connectNulls: false, silent: true,
-    lineStyle: { width: 1, color: C.INK300 }, data: o.data,
-  }))
+  const { p25, p50, p75 } = b3Quant.value
+  const selName = selRow.value?.name
+  const sel = selName ? yieldSeries.value.find(o => o.name === selName) : undefined
+  const L = { symbol: 'none' as const, smooth: 0.3, connectNulls: false }
   return {
     tooltip: { trigger: 'axis' },
     grid: { left: 52, right: 16, top: 16, bottom: 28 },
     xAxis: { type: 'category', data: s.tickLabels, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '等效小时', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
     series: [
-      ...thin,
-      {
-        name: '全园加权', type: 'line', symbol: 'none', connectNulls: false,
-        lineStyle: { width: 2.2, color: C.INK900 },
-        data: s.ledger.yield.map(v => (v == null ? null : +v.toFixed(3))),
-      },
+      // 带用两条堆叠线画:下沿透明,上沿只留填充 —— 不描边,免得读成两条数据线
+      { name: 'p25', type: 'line', ...L, stack: 'q', silent: true,
+        lineStyle: { opacity: 0 }, data: p25 },
+      { name: '各栋四分位距', type: 'line', ...L, stack: 'q', silent: true,
+        lineStyle: { opacity: 0 }, areaStyle: { color: C.INK100 },
+        data: p75.map((v, i) => (v == null || p25[i] == null ? null : +(v - p25[i]!).toFixed(3))) },
+      { name: '全园中位', type: 'line', ...L, lineStyle: { width: 2.2, color: C.INK500 }, data: p50 },
+      ...(sel ? [{
+        name: sel.name, type: 'line' as const, ...L,
+        lineStyle: { width: 2.2, color: C.INK900 }, data: sel.data,
+      }] : []),
     ],
   }
 })
@@ -319,12 +351,12 @@ const hasB34 = computed(() =>
   gran.value === 'month' ? yieldSeries.value.length > 0
     : b4Points.value.some(p => p.prev != null && p.cur != null))
 
-// B5 各站年等效小时 vs 锚点 × 判据线。**单一中性底槽**,不分三档质性灰区(§06.5)。
+// B5 各站年等效小时 vs 锚点 × 判据线 —— **点图,不是零起点条形**(理由见 PvDots.vue 顶注)。
 const b5Target = computed(() => +((snap.value?.crit ?? crit.value).anchorHours
   * (snap.value?.crit ?? crit.value).yieldRatio).toFixed(1))
 const b5Rows = computed(() => (snap.value?.stations ?? [])
   .filter(x => x.metered && x.yieldHours != null && x.days >= 90)
-  .map(x => ({ name: x.name, value: +x.yieldHours!.toFixed(0), color: 'var(--ink-700)' })))
+  .map(x => ({ name: x.name, value: +x.yieldHours!.toFixed(0) })))
 const b5Skip = computed(() =>
   (snap.value?.stations ?? []).filter(x => x.metered).length - b5Rows.value.length)
 
@@ -685,7 +717,7 @@ function outText(o: number | null | undefined): string {
                   <span class="t">{{ gran === 'month' ? '等效小时轨迹' : `等效小时 ${year - 1}→${year}` }}</span>
                   <span class="hint">
                     {{ gran === 'month'
-                      ? '细线 = 每栋每日发电 ÷ 装机；粗线 = 全园加权'
+                      ? '淡带 = 各栋四分位距；粗线 = 全园中位；深线 = 选中那栋'
                       : '两点线段 = 去年与今年的年等效小时；两端直接标数值' }}
                   </span>
                 </div>
@@ -697,6 +729,10 @@ function outText(o: number | null | undefined): string {
                 </div>
                 <div v-if="hasB34" class="pma-fn">
                   纵轴 = 发电 ÷ 装机，单位小时；分母优先取板数 × 单块标称功率，没录的栋退回台账装机。
+                  <template v-if="gran === 'month'">
+                    画的是分布不是每一栋：淡带取各栋当刻度的 p25~p75，在网不足 3 栋的刻度留空。
+                    要看某一栋就点左边的队列。
+                  </template>
                   13 栋同色，没有任何一栋有自己的颜色。
                 </div>
               </div>
@@ -704,18 +740,20 @@ function outText(o: number | null | undefined): string {
               <div class="av2-card av2-s4">
                 <div class="av2-card-h">
                   <span class="t">各站年等效小时</span>
-                  <span class="hint">竖短线 = {{ b5Target }} h</span>
+                  <span class="hint">竖虚线 = {{ b5Target }} h · 点按值降序</span>
                 </div>
                 <div v-if="b5Rows.length" class="pma-scroll">
-                  <AnaBullet :rows="b5Rows" :target="b5Target" unit=" h" />
+                  <PvDots :rows="b5Rows" :target="b5Target" unit=" h" @pick="pickByName" />
                 </div>
                 <div v-else class="pma-note">
-                  在网满 90 天且有装机分母的栋为 0，画不出条。
+                  在网满 90 天且有装机分母的栋为 0，画不出点。
                   <button class="pma-lk" @click="goMeter">去分栋抄表 →</button>
                 </div>
                 <div v-if="b5Rows.length" class="pma-fn">
-                  条 = 该站全年等效小时（零起点）；竖短线 = 年锚点 {{ snap.crit.anchorHours }} ×
-                  {{ pct0(snap.crit.yieldRatio) }}。底槽单一中性色，不分档。
+                  点 = 该站全年等效小时；细杆 = 它离锚点多远；竖虚线 = 年锚点
+                  {{ snap.crit.anchorHours }} × {{ pct0(snap.crit.yieldRatio) }}。
+                  横轴贴着实际值域、不从 0 起 —— 点用位置编码，不需要零基线；
+                  这些值天然聚在一条窄带里，从 0 起会把它们画成一样长。
                   <template v-if="b5Skip > 0">{{ b5Skip }} 栋在网不足 90 天，不画，也不做年化。</template>
                 </div>
               </div>
