@@ -146,6 +146,8 @@ interface MountOpt extends FxOpt {
   readings?: PvReadingDTO[]
   /** 去年的抄表:年档 B4 slopegraph 要两端都有数才画得出线段 */
   prev?: boolean
+  /** 园区只有这几栋 —— tooFewStations 那条护栏得真造一个不足 3 栋的园区才验得了 */
+  stations?: PvStationDTO[]
 }
 
 async function mountScreen(o: MountOpt = {}) {
@@ -156,7 +158,7 @@ async function mountScreen(o: MountOpt = {}) {
 
   const rds = o.readings ?? readingsOf(2026, o)
   const prev = o.prev ? readingsOf(2025, { crash: false }) : []
-  vi.mocked(pvMeterApi.stations).mockResolvedValue(stationsFx)
+  vi.mocked(pvMeterApi.stations).mockResolvedValue(o.stations ?? stationsFx)
   vi.mocked(pvMeterApi.readingsYear).mockImplementation(async (y: number) =>
     (y === 2026 ? rds : y === 2025 ? prev : []))
   vi.mocked(paramsApi.list).mockResolvedValue([])          // 取不到参数 → 回落默认线
@@ -766,7 +768,7 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     // 八块的**块名**:恢复的是这八件事,不是八个占位卡
     expect(labs.map(e => e.find('.av2-card-h .t').text().split(' · ')[0])).toEqual([
       '先天水平 α 排序', '残差自相关 ACF', '各栋残差的年内走势',
-      '块自助零分布', '抛光收敛轨迹', '换个扫描顺序，名次动不动', '数据质量矩阵', '完整检验表',
+      '块自助零分布', '抛光收敛轨迹', '换个扫描顺序，名次动不动', '数据质量日历', '完整检验表',
     ])
     // 每块的卡头都带常驻说明(图种 · 轴与单位 · 拿哪一段算 · 来源),不是光秃秃一个标题
     expect(labs.every(e => e.find('.av2-card-h .hint').text().length > 20)).toBe(true)
@@ -831,57 +833,140 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
 
   // 质量矩阵**跟着期间走**:它是记账不是估计,一格就是一天,不需要样本量 ——
   // 365 列 @2px 读不出哪格是哪天,31 列才谈得上「回答剔了哪些天」
-  it('质量矩阵跟着期间走 —— 月档只画当月那三十来列,不是铺满整年', async () => {
+  // 日历**跟着期间走**,而且月档**按自然月铺满** ——
+  // 不按 dates 铺:今天 09-03 只画 3 格的话,明天再打开整体位移,09-14 换了个位置(§03.8)。
+  it('日历跟着期间走 —— 月档铺满自然月那 31 格,不是铺整年,也不是只铺到今天', async () => {
     const w = await mountScreen({ month: 8 })
     await toSection(w, '高级分析')
-    const rows = w.findAll('[data-lab="L6"] .pqg-cells .c').length
-    const lines = w.findAll('[data-lab="L6"] .pqg-cells').length || 1
-    // 8 月 31 天 × 在网栋数;铺满整年的话列数是 365,格子数会是十倍以上
-    const perRow = rows / Math.max(1, w.findAll('[data-lab="L6"] .nm').length)
-    expect(perRow, `一行不是 31 格(月档没跟上,或者还在铺整年): ${perRow}`).toBe(31)
-    expect(lines).toBeGreaterThan(0)
+    const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    expect(cells.length, `不是 31 格(月档没跟上、还在铺整年、或者只铺到抄表末日): ${cells.length}`).toBe(31)
+    // 一格一天,日期不许重复也不许缺
+    const ds = cells.map(c => c.attributes('data-d'))
+    expect(new Set(ds).size).toBe(31)
+    expect(ds[0]).toBe('2026-08-01')
+    expect(ds[30]).toBe('2026-08-31')
+    // 折成 7 行:每一格的 grid-row 就是它的周内日,不许全挤在一行
+    const rowsUsed = new Set(cells.map(c => /grid-row:\s*(\d)/.exec(c.attributes('style') ?? '')?.[1]))
+    expect(rowsUsed.size, '没折成周内日七行 —— 那就还是一条 31 格的横条').toBe(7)
+    // 八月已录满,而整年的数据到 12-31 —— 徽标**一个「截至」都不许有**。
+    // 拿 snap.dataThrough 去标当月会印出「8 月（截至 12-31）」,屏上撒谎。
+    const per = w.find('[data-lab="L6"] .pma-per').text()
+    expect(per, `八月录满了却还印「截至」：${per}`).not.toContain('截至')
+    expect(per).not.toContain('12-31')
   }, 20_000)
 
-  it('质量矩阵四态四色 —— 缺抄与未投产必须分得开,不是两片一样的浅灰', async () => {
-    // 3/05 全园一天都没抄(= 缺抄);6/10 只剩两栋在网,不足 3 栋 → 那一天整日剔除;
-    // S9 到 3/01 才有第一条抄表 → 它前面整整两个月是未投产。
-    // 四件事在夹具里就分开,不然「合并成一个没数据」这个 bug 测不出来 ——
-    // 尤其缺抄 vs 未投产:前者**可行动**(该去补录),后者**不可行动**(那时候还没建)。
+  // ① 位置稳定(§03.8):月中打开时,当月**剩下那些还没到的天照样占格**。
+  //    按 dates 铺的话今天 09-03 只画 3 格,明天再打开 09-14 换了个位置。
+  it('月中打开 → 当月 31 格一个不少,没到的天占格留白,不是缩到 12 格', async () => {
+    // 八月只录到 12 号(月中打开的形状)。按 dates 铺的话只有 12 格,
+    // 明天补一条 08-13 整块就往后挪一格 —— 08-20 换了个位置。
+    const w = await mountScreen({ readings: readingsOf(2026).filter(r => r.readDate <= '2026-08-12'), month: 8 })
+    await toSection(w, '高级分析')
+    const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    expect(cells.length, `八月 31 天却画了 ${cells.length} 格 —— 按 dates 铺了,格位会天天挪`).toBe(31)
+    const at = (d: string) => cells.find(c => c.attributes('data-d') === d)
+    expect(at('2026-08-31'), '月末那格不在图上').toBeTruthy()
+    // 还没抄到的天是「未到」,**不是缺抄** —— 涂成黄的就是 3ceefe0 换个日期再犯
+    expect(at('2026-08-20')!.classes(), '还没到的天被当成缺抄了').toContain('pre')
+    expect(at('2026-08-20')!.classes()).not.toContain('miss')
+    expect(at('2026-08-05')!.classes(), '已经抄过的天应该是全齐').toContain('ok')
+    // 徽标要说清截到哪天,而且是**这一段**的最后一条
+    expect(w.find('[data-lab="L6"] .pma-per').text()).toContain('截至 08-12')
+  }, 30_000)
+
+  // ④ 未装表的栋不进日级分母。它每天都没记录,不滤掉整张日历恒黄。
+  it('未装表的栋不进日级分母 —— 整张日历不许因为它恒黄', async () => {
+    const sts = stationsFx.map((s, i) => (i === 0 ? { ...s, metered: 0 } : s))
+    // S1 没装表却照样有抄表记录(现实里就这样:表没登记,人还在抄)
+    const w = await mountScreen({ stations: sts, gran: 'year' })
+    await toSection(w, '高级分析')
+    const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    expect(cells.filter(c => c.classes('miss')).length,
+      '未装表的栋进了分母 —— 它天天没记录,于是每天都算缺抄').toBe(0)
+    expect(cells.filter(c => c.classes('ok')).length).toBeGreaterThan(300)
+    // 它也不该出现在缺抄榜里,但**必须在图注里披露**:那不是「全年没抄表」
+    expect(w.find('[data-lab="L6"] .pqg-rank').text()).not.toContain('S1')
+    expect(w.find('[data-lab="L6"]').text()).toContain('压根不在日历的分母里')
+  }, 30_000)
+
+
+  it('四态分得开 —— 整日剔除 ≠ 全园一栋没抄,缺抄 ≠ 未到', async () => {
+    // 3/05 全园一天都没抄 → 那天是**缺抄**(miss === born),不是整日剔除;
+    // 6/10 只剩两栋在网,不足 3 栋 → 那天**整日剔除**。
+    // 这两件事在日级上最容易被合并成「反正那天没数据」,而它们是两个不同的审计答案:
+    // 前者该去补录,后者是模型主动剔的。
     const rds = readingsOf(2026, { skip: ['2026-03-05'] })
       .filter(r => !(r.readDate === '2026-06-10' && r.stationId > 2))
       .filter(r => !(r.stationId === N && r.readDate < '2026-03-01'))
-    // **年档**看:三月的漏抄、S9 一二月的未投产都在整年这条轴上。
-    // 月档只画当月(2026-09-02 起),这里要的是四态齐全,所以走年档。
     const w = await mountScreen({ readings: rds, gran: 'year' })
     await toSection(w, '高级分析')
 
     const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    const at = (d: string) => cells.find(c => c.attributes('data-d') === d)!
     const n = (k: string) => cells.filter(c => c.classes(k)).length
-    expect(n('ok'), '正常格').toBeGreaterThan(0)
-    expect(n('miss'), '缺抄格 —— 3/05 全园漏抄那一列').toBe(N)
-    expect(n('dropped'), '整日剔除格 —— 6/10 在网不足 3 栋').toBe(N)
-    expect(n('pre'), '未投产格 —— S9 三月才投产,前面 1 月 + 2 月').toBe(31 + 28)
-    // 四态互斥且铺满。把未投产退回「碰巧没有类」(旧写法)时 n('pre') 归零,这条红
+
+    expect(at('2026-03-05').classes(), '3/05 全园漏抄,是缺抄不是整日剔除').toContain('miss')
+    expect(at('2026-03-05').classes()).not.toContain('dropped')
+    expect(at('2026-03-05').attributes('title')).toContain(`缺抄 ${N} / ${N} 栋`)
+
+    expect(at('2026-06-10').classes(), '6/10 在网不足 3 栋,是整日剔除').toContain('dropped')
+    expect(at('2026-06-10').attributes('title')).toContain('整日剔除')
+
+    expect(n('ok'), '正常格').toBeGreaterThan(300)
+    expect(n('dropped'), '只该有 6/10 这一天').toBe(1)
+    // 四态互斥且铺满,没有一格同时挂两个类
     expect(n('ok') + n('miss') + n('dropped') + n('pre')).toBe(cells.length)
-    // **缺抄 ≠ 未投产**,这是这次改动的核心。jsdom 不跑 scoped style,量不到计算出来的颜色;
-    // 能钉的是承载颜色的那个通道:两者落在**不同的类**上(.c.miss 暖黄 / .c.pre 无填充),
-    // 而且没有一格同时挂着两个类
-    expect(cells.some(c => c.classes('miss') && c.classes('pre')),
-      '缺抄与未投产挂在同一格上,两态被合并了').toBe(false)
-    // 颜色之外还得有第二个通道:格子只有 2-6px 宽,剩下的只有 title 和图例
-    const titleOf = (k: string) => cells.find(c => c.classes(k))!.attributes('title') ?? ''
-    expect(titleOf('miss')).toContain('缺抄')
-    expect(titleOf('pre')).toContain('未投产')
-    // 图例四条常驻,不是 hover 才出:审计得看得见这四个各是什么
+    expect(cells.some(c => c.classes('miss') && c.classes('pre')), '缺抄与未到挂在同一格').toBe(false)
+
+    // S9 一二月没投产,但**别的栋在抄** —— 那些天在日级上是「全齐」,不是「未到」。
+    // 这正是日历丢掉的那个维度:栋的未投产去了缺抄榜和 L7,不在这张图上。
+    expect(at('2026-01-15').classes()).toContain('ok')
+
+    // 图例四条常驻,四颗色块 = 四个不同的类。少一颗就是四态又挤回三档
     const lg = w.find('[data-lab="L6"] .pqg-legend')
-    for (const s of ['缺抄', '整日剔除', '未投产', '从不补齐']) expect(lg.text()).toContain(s)
-    // 四颗色块 = 四个不同的类。少一颗(或两颗共用一个类)就是四态又挤回三档
+    for (const s of ['缺抄', '整日剔除', '未到', '从不补齐']) expect(lg.text()).toContain(s)
     expect(lg.findAll('.sw').map(i => i.classes().filter(c => c !== 'sw').join('+')))
       .toEqual(['ok', 'miss', 'dropped', 'pre'])
-    // 读屏拿不到颜色,四个数得报出来 —— 空白格尤其
-    expect(w.find('[data-lab="L6"] .pqg-cells').attributes('aria-label'))
-      .toContain(`${31 + 28} 格未投产`)
+    // 读屏拿不到颜色,**被剔的日期要逐个念出来** —— 那正是这块要回答的问题
+    const aria = w.find('[data-lab="L6"] .pqg-cells').attributes('aria-label') ?? ''
+    expect(aria, '整日剔除的日期没念出来').toContain('2026-06-10')
+    expect(aria).toContain('整日剔除 1 天')
   }, 30_000)
+
+  // 点开一天才给名单(按需还原)。这条同时钉住 onDay:剔除日里**所有在产的在矩阵栋**
+  // 都被判成 'dropped',从 cells 里数出来的是「在产栋数」不是「当天抄了几栋」——
+  // 印后者就必须拿 snap.quality.onDay,数 cells 会印出一个手上没有的数。
+  it('点一天给名单;整日剔除那天印的是「当天抄了几栋」,不是「在产几栋」', async () => {
+    const rds = readingsOf(2026, { skip: ['2026-03-05'] })
+      .filter(r => !(r.readDate === '2026-06-10' && r.stationId > 2))
+    const w = await mountScreen({ readings: rds, gran: 'year' })
+    await toSection(w, '高级分析')
+    const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')
+    const at = (d: string) => cells.find(c => c.attributes('data-d') === d)!
+
+    expect(w.find('[data-lab="L6"] .pqg-read').text()).toContain('点日历里的一格')
+    await at('2026-06-10').trigger('click')
+    const txt = w.find('[data-lab="L6"] .pqg-read').text()
+    // 当天只有 2 栋抄了表,而在产的是全部 N 栋 —— 印成 N 就是印了个手上没有的数
+    expect(txt, `印的不是「当天抄了 2 栋」: ${txt}`).toContain('只有 2 栋抄了表')
+    expect(txt).not.toContain(`只有 ${N} 栋抄了表`)
+    expect(txt).toContain('不足 3 栋')
+
+    // 再点一次收起:同一格不该变成一次性开关
+    await at('2026-06-10').trigger('click')
+    expect(w.find('[data-lab="L6"] .pqg-read').text()).toContain('点日历里的一格')
+  }, 30_000)
+
+  // 承重墙:tooFewStations 时 thinDays 恒空 → 一格划痕都没有 →
+  // 日历会理直气壮地说「一天都没剔」。没有这句它就是在撒谎。
+  it('全园在网不足 3 栋 → 必须印出「这条规则本段没生效」', async () => {
+    const w = await mountScreen({ stations: stationsFx.slice(0, 2), readings: readingsOf(2026).filter(r => r.stationId <= 2) })
+    await toSection(w, '高级分析')
+    const t = w.find('[data-lab="L6"]').text()
+    expect(w.findAll('[data-lab="L6"] .c.dropped'), '在网不足时本来就剔不了,不该有划痕格').toHaveLength(0)
+    expect(t, '没有这句,读者会把「没有划痕」读成「数据质量很好」').toContain('这条规则本段没生效')
+  }, 30_000)
+
 
   it('高级分析档守排他规则:#9D5D17 零次、height 只有 200/250、图种只有 bar/line/scatter', async () => {
     const w = await mountScreen()

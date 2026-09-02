@@ -743,13 +743,27 @@ const labQuality = computed(() => {
   return {
     dates: q.dates,
     rows: q.rows.map(r => ({
-      id: r.id, name: r.name,
+      // inMatrix 必须透传:未装表的栋每天都没记录,不滤掉的话日级分母里它天天缺抄,
+      // 整张日历恒黄(3ceefe0「未投产被当成漏抄」的日级形态)
+      id: r.id, name: r.name, inMatrix: r.inMatrix,
       cells: r.states.map(s => QCELL[s]),
     })),
     // 未装表 / 未录容量的栋压根没进抛光:那一整行的空**不是**「全年没抄表」,得写出来
     outside: q.rows.filter(r => !r.inMatrix).map(r => r.name),
     preN: q.rows.reduce((a, r) => a + r.states.filter(s => s === 'pre').length, 0),
   }
+})
+
+// 「截至」只在**当段还没录满**时出现,而且取的是**这一段**的最后一条抄表。
+// snap.dataThrough 是整年最后一条(12-31),拿它去标 8 月会印出「8 月（截至 12-31）」—— 屏上撒谎。
+const labThrough = computed(() => {
+  const ds = labQuality.value?.dates
+  if (gran.value !== 'month' || !ds?.length) return null
+  const last = ds[ds.length - 1]
+  // 当月最后一天:UTC 走,本地时区解析会差一天
+  const [y, m] = last.split('-').map(Number)
+  const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+  return last < end ? last : null
 })
 
 // ── L3 单栋抽屉(§06.6)──────────────────────────────────────────────
@@ -1191,28 +1205,27 @@ function outText(o: number | null | undefined): string {
                   </div>
                 </div>
 
-                <!-- L6 数据质量矩阵。手写 CSS Grid —— echartsBundle 没注册 heatmap / visualMap -->
+                <!-- L6 数据质量日历。手写 CSS Grid —— echartsBundle 没注册 heatmap / visualMap / calendar -->
                 <div class="av2-card av2-s12 pma-lab" data-lab="L6">
                   <div class="av2-card-h">
-                    <span class="t">数据质量矩阵</span>
-                    <span class="pma-per win">{{ gran === 'month' ? segLabel : '整年' }}</span>
+                    <span class="t">数据质量日历</span>
+                    <span class="pma-per win">{{ gran === 'month' ? segLabel : '整年' }}<template v-if="labThrough">（截至 {{ labThrough.slice(5) }}）</template></span>
                     <span class="hint">
-                      网格热力，一格 = 一栋一天，四态三色 + 未投产留空白 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
+                      日历格，一格 = 一天，行 = 周一到周日、列 = 周 ·
+                      格里的数 = 当天缺抄的栋数（栋），黄脚高 = 缺抄栋数 ÷ 当天在产栋数 ·
                       拿 {{ labQuality?.dates.length ?? 0 }} 天 × {{ labQuality?.rows.length ?? 0 }} 栋算 ·
                       来源：抄表记录与抛光矩阵的差集
                     </span>
                   </div>
                   <PvQualityGrid
                     v-if="labQuality"
-                    :rows="labQuality.rows" :dates="labQuality.dates" @pick="pickLab"
+                    :rows="labQuality.rows" :dates="labQuality.dates" :gran="gran"
+                    :on-day="snap.quality.onDay" :min-stations="snap.quality.minStations"
+                    :too-few-stations="snap.quality.tooFewStations" @pick="pickLab"
                   />
-                  <div v-else class="pma-note">这一年没有抄表日历，画不出矩阵。</div>
-                  <div v-if="labQuality" class="pma-fn">
-                    投产前的格子留空白，共 {{ labQuality.preN }} 格 —— 未到不是漏抄。
-                    <template v-if="labQuality.outside.length">
-                      {{ labQuality.outside.length }} 栋未装表或未录容量，压根没进抛光矩阵：整行的空是「不在模型里」，
-                      不是「全年没抄表」——{{ labQuality.outside.join('、') }}。
-                    </template>
+                  <div v-else class="pma-note">这一段没有抄表记录，画不出日历。</div>
+                  <div v-if="labQuality && labQuality.outside.length" class="pma-fn">
+                    另 {{ labQuality.outside.length }} 栋未装表或未录容量，压根不在日历的分母里：{{ labQuality.outside.join('、') }}。
                   </div>
                 </div>
 

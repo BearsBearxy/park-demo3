@@ -747,6 +747,13 @@ export interface AnaSnapshot {
     totalDays: number; okDays: number
     noMeter: string[]; noCapacity: string[]; noPanel: string[]
     minStationsOnDay: number; droppedThin: number; tooFewStations: boolean; degraded: boolean
+    /** 当天**真进了抛光矩阵**的栋数(装表 + 录容量 + gen>0)。
+     *  剔除日里所有已投产的在矩阵栋一律被判成 'dropped'(不管它当天抄没抄),
+     *  所以从 quality.rows 的 cells 里数出来的是「在产栋数」,不是「当天抄了几栋」。
+     *  屏上要印「当天只有 2 栋抄了表」就必须拿这个 Map,数 cells 会印出一个手上没有的数。 */
+    onDay: Map<string, number>
+    /** 整日剔除的门槛。改它 = 改屏上点几盏灯,不许在组件里写死 */
+    minStations: number
   }
   yoy: {
     monthPct: number | null
@@ -1283,6 +1290,9 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
       noMeter, noCapacity, noPanel,
       minStationsOnDay, droppedThin: thinDays.length, tooFewStations,
       degraded: thinDays.length > 0 || tooFewStations,
+      // 复用 countDay(polish0) 而不是自己重数一遍:thinDays 的判据本身就是它(见上面),
+      // **按构造**与门槛口径逐位一致。重数一次就多一个会漂的口径(而且极易漏掉 gen>0 那一条)。
+      onDay: countDay(polish0), minStations,
     },
     yoy: yoyOf(rows, prevRows, months[months.length - 1] ?? `${year}-01`, gridPrice),
   }
