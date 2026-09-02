@@ -320,9 +320,11 @@ const b3Opt = computed<object>(() => {
         lineStyle: { opacity: 0 }, areaStyle: { color: C.INK100 },
         data: p75.map((v, i) => (v == null || p25[i] == null ? null : +(v - p25[i]!).toFixed(3))) },
       { name: '全园中位', type: 'line', ...L, lineStyle: { width: 2.2, color: C.INK500 }, data: p50 },
+      // 选中那栋走焦点色:同为 2.2px 的两条灰(中位 INK500 / 选中 INK900)在屏上分不出谁是谁。
+      // 蓝的是「你点的那一栋」,墨的是群体 —— 队列里的选择由此串成贯穿全屏的一条线索(§06.7)。
       ...(sel ? [{
         name: sel.name, type: 'line' as const, ...L,
-        lineStyle: { width: 2.2, color: C.INK900 }, data: sel.data,
+        lineStyle: { width: 2.2, color: C.FOCUS }, data: sel.data,
       }] : []),
     ],
   }
@@ -388,7 +390,13 @@ const b6Opt = computed<object>(() => {
       { type: 'line', symbol: 'none', silent: true, lineStyle: { color: C.INK700, width: 1.4 }, data: ray(1) },
       { type: 'line', symbol: 'none', silent: true, lineStyle: dash, data: ray(1 + s.crit.ledger) },
       { type: 'line', symbol: 'none', silent: true, lineStyle: dash, data: ray(1 - s.crit.ledger) },
-      { type: 'scatter', symbolSize: 11, itemStyle: { color: C.FILL_SLATE }, data: pts },
+      // 点是数据,y=x 与 ±3% 带是参照 —— 后者留在墨阶里当尺子(§06.7)。
+      // **13 点不能全上焦点蓝**:那样蓝在这张图里就不编码「选中」了,而且与 B5
+      // (同样一栋一点)的规则打架。群体墨阶 + 选中那栋焦点色,两张图同一条规则。
+      { type: 'scatter', symbolSize: 11, itemStyle: { color: C.INK300 },
+        data: pts.filter(x => x.name !== selRow.value?.name) },
+      { type: 'scatter', symbolSize: 13, itemStyle: { color: C.FOCUS },
+        data: pts.filter(x => x.name === selRow.value?.name) },
     ],
   }
 })
@@ -424,7 +432,9 @@ const b7Opt = computed<object>(() => {
     series: [
       { name: '自消纳', type: 'bar', stack: 'x', barMaxWidth: 22, itemStyle: { color: C.FILL_SLATE }, data: s.ledger.self.map(v => +(v / k).toFixed(2)) },
       { name: '上网', type: 'bar', stack: 'x', itemStyle: { color: C.FILL_CYAN }, data: s.ledger.grid.map(v => +(v / k).toFixed(2)) },
-      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: C.FILL_SKY }, data: s.ledger.loss.map(v => +(v / k).toFixed(2)) },
+      // 损耗走中性灰而不是第三档蓝:自消纳与上网是两种**有用的输出**(两支蓝),
+      // 损耗是**废掉的**,不同种;slate/cyan/sky 三档明度会被读成「有序的三档」(§06.7)
+      { name: '损耗', type: 'bar', stack: 'x', itemStyle: { color: C.INK300 }, data: s.ledger.loss.map(v => +(v / k).toFixed(2)) },
       {
         name: '损耗率', type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 4, connectNulls: false,
         lineStyle: { width: 1.6, color: C.INK700 }, itemStyle: { color: C.INK700 }, data: rate,
@@ -444,6 +454,7 @@ const hasB7 = computed(() => {
 })
 
 // B8 各栋消纳收益与上网收益。**横向**分组柱 —— 13 个中文栋名不斜排(§06.5)。
+// 两根柱与 B7 的自消纳/上网**同色**:同一件事在两张图里必须是同一个色(§06.7)。
 const b8Rows = computed(() => (snap.value?.stations ?? [])
   .filter(x => x.metered && (x.revSelf > 0 || x.revGrid > 0))
   .slice().sort((a, b) => (a.revSelf + a.revGrid) - (b.revSelf + b.revGrid)))
@@ -488,7 +499,9 @@ watch(SECTIONS, (opts) => {
 //
 // ⚠ §05 禁止屏上出现 p / q / σ / 置信区间。那条对 L0 / L1 / 绝对水平 / 账面量 继续成立,
 //   **这一档是唯一的例外** —— 它存在的理由就是给专业的人看这些量。
-// ⚠ 强调色 #9D5D17 按 §06.0 只在 L0-L1,这一档一次都不用,全走墨阶。
+// ⚠ 强调色 #9D5D17 按 §06.0 只在 L0-L1,这一档一次都不用。
+//   这里唯一的颜色是**焦点蓝**(选中那一栋):L1 的点估计、L3 里那一栋的残差。
+//   其余(ACF 柱、零分布、区间线段、零线)全走墨阶 —— 没有维度可编码的图不上色(§06.7)。
 
 /**
  * 工作台的全部七块。**只在这一档被选中时才算** —— 它比首屏那次重得多
@@ -524,6 +537,7 @@ const labAcf = computed(() => {
 const labAlphaOpt = computed<object>(() => {
   const rs = lab.value?.alphaRows ?? []
   if (!rs.length) return {}
+  const selName = selRow.value?.name
   const bars: ((string | number)[] | null)[] = []
   for (const r of rs) {
     bars.push([+r.ciLo.toFixed(1), r.name], [+r.ciHi.toFixed(1), r.name], null)
@@ -542,8 +556,12 @@ const labAlphaOpt = computed<object>(() => {
         lineStyle: { color: C.INK300, width: 3 }, data: bars,
       },
       {
-        type: 'scatter', symbolSize: 7, itemStyle: { color: C.INK900 },
-        data: rs.map(r => [+r.alphaPct.toFixed(1), r.name]),
+        // 点估计:群体墨阶,选中那栋上焦点蓝。区间线段与零线保持墨阶 —— 它们是尺子不是类别。
+        type: 'scatter', symbolSize: 7,
+        data: rs.map(r => ({
+          value: [+r.alphaPct.toFixed(1), r.name],
+          itemStyle: { color: r.name === selName ? C.FOCUS : C.INK300 },
+        })),
         markLine: {
           silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
           lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ xAxis: 0 }],
@@ -554,6 +572,8 @@ const labAlphaOpt = computed<object>(() => {
 })
 
 // L2 残差自相关。这张图是「为什么不用 √N 而用块自助」的**证据**:ρ₁ 非零 = 独立假设不成立。
+// **故意留墨**:一次只画一栋、一条序列的柱,既没有类别也没有焦点可编码(选中那栋就是这一栋
+// 本身,再上焦点色是自我指涉)。没有维度还上色就是装饰 —— 不是漏改(§06.7)。
 const labAcfOpt = computed<object>(() => {
   const a = labAcf.value
   if (!a?.rho.length) return {}
@@ -571,8 +591,15 @@ const labAcfOpt = computed<object>(() => {
 })
 
 // L3 残差 vs 年积日。**13 栋的点汇在一起** —— 问的是「模型里还剩没剩年周期」,不是某一栋。
+// 所以群体留墨、只有选中那栋上焦点蓝:全涂蓝等于蓝不再表示「选中」,那是装饰(§06.7)。
 const labDoyPts = computed(() =>
   (lab.value?.doy ?? []).flatMap(d => d.pts.map(p => [p.doy, +p.v.toFixed(4)])))
+// 焦点那栋的点单独一层画在上面 —— 与墨层重叠是故意的:计数(图脚的「N 个点」)仍取全量
+const labDoyFocus = computed(() => {
+  const n = selRow.value?.name
+  const d = n ? (lab.value?.doy ?? []).find(x => x.name === n) : undefined
+  return d ? d.pts.map(p => [p.doy, +p.v.toFixed(4)]) : []
+})
 const labAmp = computed(() =>
   [...(lab.value?.doy ?? [])].sort((a, b) => b.amp - a.amp)[0] ?? null)
 const labDoyOpt = computed<object>(() => {
@@ -585,17 +612,22 @@ const labDoyOpt = computed<object>(() => {
       nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
     },
     yAxis: { type: 'value', scale: true, name: '残差（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
-    series: [{
-      type: 'scatter', symbolSize: 2, itemStyle: { color: C.INK300 }, data: pts,
-      markLine: {
-        silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
-        lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ yAxis: 0 }],
+    series: [
+      {
+        type: 'scatter', symbolSize: 2, itemStyle: { color: C.INK300 }, data: pts,
+        markLine: {
+          silent: true, symbol: 'none', label: { fontSize: 11, formatter: '0' },
+          lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ yAxis: 0 }],
+        },
       },
-    }],
+      { type: 'scatter', symbolSize: 2, itemStyle: { color: C.FOCUS }, data: labDoyFocus.value },
+    ],
   }
 })
 
 // L4 块自助零分布 + 观测竖线。让尾概率看得见,比印一个数字可信。
+// **故意留墨**:一栋、一条重采样分布,柱之间没有类别可分,观测竖线靠位置(落在尾部)说话
+// 不靠颜色。没有维度可编码的图上色就是装饰 —— 不是漏改(§06.7)。
 // ⚠ 这里画的是 buildLab 里 nullDist 的量:**最后 30 天窗口均值**。L7 表里那列 p 是
 //    变点检验的 p,两个量不同源(实测同一栋能差两个数量级)。
 //    对策是**把这张图自己的尾概率印在竖线上**(labNullTail),不是写一句「不要互相读」——
@@ -652,9 +684,9 @@ const labNullOpt = computed<object>(() => {
   }
 })
 
-// L6 质量矩阵。logic 是四态,PvQualityGrid 的契约是三色三态 ——
-// 第四态 pre(未投产)故意落到「没有匹配的 CSS 类」上,画成空白:它既不是漏抄也不是正常
-// (§03.8 未到 ≠ 漏抄,3ceefe0 在真数据上栽过这一次)。下面那次 cast 就是这个约定的落点。
+// L6 质量矩阵。logic 与 PvQualityGrid 都是**四态**:正常 / 缺抄 / 整日剔除 / 未投产。
+// 未投产画成空白无填充 —— 它既不是漏抄也不是正常(§03.8 未到 ≠ 漏抄,3ceefe0 在真数据上栽过)。
+// 缺抄可行动(暖黄)、未投产不可行动(留白),两者不能都是浅灰(§06.7)。
 const QCELL = { ok: 'ok', missing: 'miss', dropped: 'dropped', pre: 'pre' } as const
 const labQuality = computed(() => {
   const q = lab.value?.quality
@@ -663,7 +695,7 @@ const labQuality = computed(() => {
     dates: q.dates,
     rows: q.rows.map(r => ({
       id: r.id, name: r.name,
-      cells: r.states.map(s => QCELL[s]) as ('ok' | 'miss' | 'dropped')[],
+      cells: r.states.map(s => QCELL[s]),
     })),
     // 未装表 / 未录容量的栋压根没进抛光:那一整行的空**不是**「全年没抄表」,得写出来
     outside: q.rows.filter(r => !r.inMatrix).map(r => r.name),
@@ -727,7 +759,8 @@ const b9Opt = computed<object>(() => {
       {
         type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
         // 渐变透明不描硬边 —— 硬边会被读成「界限」,而它只是估计范围的边缘(§06.6)
-        areaStyle: { color: C.FILL_SKY, opacity: 0.45 },
+        // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
+        areaStyle: { color: C.INK100 },
         data: d.spline.map(x => +(x.hi - x.lo).toFixed(4)),
       },
       { type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK300 }, data: d.resid.map(v => +v.toFixed(4)) },
@@ -800,7 +833,8 @@ const b11Opt = computed<object>(() => {
       { type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: rs.map(r => +(r.beta - r.se).toFixed(3)) },
       {
         type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
-        areaStyle: { color: C.FILL_SKY, opacity: 0.45 }, data: rs.map(r => +(2 * r.se).toFixed(3)),
+        // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
+        areaStyle: { color: C.INK100 }, data: rs.map(r => +(2 * r.se).toFixed(3)),
       },
       {
         type: 'line', symbol: 'circle', symbolSize: 4,
@@ -924,7 +958,7 @@ function outText(o: number | null | undefined): string {
                   </span>
                 </div>
                 <AnaEChart v-if="gran === 'month' && hasB34" :option="b3Opt" :height="250" />
-                <PvSlope v-else-if="gran === 'year' && hasB34" :points="b4Points" @pick="pickByName" />
+                <PvSlope v-else-if="gran === 'year' && hasB34" :points="b4Points" :sel-name="selRow?.name" @pick="pickByName" />
                 <div v-else class="pma-note">
                   没有装机分母，算不出等效小时。
                   <button class="pma-lk" @click="goMeter">去分栋抄表录板数与单块标称功率 →</button>
@@ -945,7 +979,7 @@ function outText(o: number | null | undefined): string {
                   <span class="hint">竖虚线 = {{ b5Target }} h · 点按值降序</span>
                 </div>
                 <div v-if="b5Rows.length" class="pma-scroll">
-                  <PvDots :rows="b5Rows" :target="b5Target" unit=" h" @pick="pickByName" />
+                  <PvDots :rows="b5Rows" :target="b5Target" unit=" h" :sel-name="selRow?.name" @pick="pickByName" />
                 </div>
                 <div v-else class="pma-note">
                   在网满 90 天且有装机分母的栋为 0，画不出点。
@@ -1092,7 +1126,7 @@ function outText(o: number | null | undefined): string {
                   <div class="av2-card-h">
                     <span class="t">数据质量矩阵</span>
                     <span class="hint">
-                      网格热力，一格 = 一栋一天，三色三态 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
+                      网格热力，一格 = 一栋一天，四态三色 + 未投产留空白 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
                       拿 {{ labQuality?.dates.length ?? 0 }} 天 × {{ labQuality?.rows.length ?? 0 }} 栋算 ·
                       来源：抄表记录与抛光矩阵的差集
                     </span>

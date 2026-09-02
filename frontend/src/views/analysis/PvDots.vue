@@ -19,6 +19,8 @@ const props = defineProps<{
   rows: { name: string; value: number }[]
   target: number
   unit?: string
+  /** 队列里当前选中的那一栋 —— 只有它上焦点色(§06.7)。不传则整图墨阶。 */
+  selName?: string
 }>()
 const emit = defineEmits<{ (e: 'pick', name: string): void }>()
 
@@ -59,18 +61,20 @@ const ticks = computed(() => {
   <div ref="el" class="pv-dots">
     <svg :viewBox="`0 0 ${vw} ${vh}`" :width="vw" :height="vh" role="img"
       :aria-label="`各站年等效小时点图，锚点 ${target}${unit ?? ''}。` +
+        (selName ? `当前选中 ${selName}。` : '') +
         sorted.map(r => `${r.name} ${r.value}`).join('，')">
       <!-- 锚点竖线:全图唯一的参照 -->
       <line class="tgt" :x1="tx" :x2="tx" :y1="MT - 2" :y2="MT + sorted.length * RH" />
 
       <g v-for="(r, i) in sorted" :key="r.name"
-        class="row" @click="emit('pick', r.name)">
+        class="row" :class="{ sel: r.name === selName }" @click="emit('pick', r.name)">
         <rect class="hit" :x="0" :y="MT + i * RH" :width="vw" :height="RH" />
         <text class="nm" :x="ML - 8" :y="MT + i * RH + RH / 2 + 4">{{ r.name }}</text>
         <!-- 从锚点长出去的细杆:偏离同时有长度可读 -->
         <line class="stem" :x1="tx" :x2="X(r.value)"
           :y1="MT + i * RH + RH / 2" :y2="MT + i * RH + RH / 2" />
-        <circle class="dot" :cx="X(r.value)" :cy="MT + i * RH + RH / 2" r="4" />
+        <circle class="dot" :cx="X(r.value)" :cy="MT + i * RH + RH / 2"
+          :r="r.name === selName ? 5 : 4" />
         <text class="vl" :x="vw - MR + 6" :y="MT + i * RH + RH / 2 + 4">{{ r.value }}</text>
       </g>
 
@@ -86,9 +90,14 @@ const ticks = computed(() => {
 .pv-dots { width: 100%; }
 .pv-dots svg { display: block; width: 100%; height: auto; }
 
-/* 13 栋同一支墨色,没有任何一栋有自己的颜色(§06.7) */
+/* 群体一支墨色 —— 13 栋仍然没有任何一栋拥有自己的颜色(§06.7)。
+   焦点色编码的是「当前选中」这一个状态,不是某一栋的身份:点谁谁亮,松开就还回墨阶。
+   状态不只靠颜色 —— 选中那行的点更大、栋名加重,黑白打印与色觉障碍下同样读得出。 */
 .dot { fill: var(--ink-700); }
 .stem { stroke: var(--ink-300); stroke-width: 2; }
+.row.sel .dot { fill: var(--hue-blue); }
+.row.sel .stem { stroke: var(--hue-blue); }
+.row.sel .nm { fill: var(--text-primary); font-weight: 600; }
 .tgt { stroke: var(--ink-500); stroke-width: 1.4; stroke-dasharray: 3 3; }
 .ax { stroke: var(--ink-100); }
 

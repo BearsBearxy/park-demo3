@@ -31,7 +31,14 @@ import { PV_COLORS } from '@/views/analysis/pvAnaColors'
  *    8 月 15 号打开时 13 栋全掉进「读不出」,而这屏存在的理由恰恰是「录完几天内就能看出」。
  *
  * ⑥ **排他规则**(§06.0,可机械检查那四条里能在 jsdom 里查的):
- *    26px 只在 B0 一次 / #9D5D17 不进 L2-L3 / height=440 整屏零次。
+ *    26px 只在 B0 一次 / #9D5D17 **双向**钉在 L0-L1(那边必须有、这边一个都没有)/ height=440 整屏零次。
+ *
+ * ⑧ **配色**(§06.7)。颜色只在有真实维度的地方上岗:焦点 / 类别 / 告警。这一组钉的也是**作用域**:
+ *    · 告警橙单向断言("L2/L3 没有")测不出「把 L0/L1 的橙整个删掉」—— 那边必须同时断言它在。
+ *    · 焦点蓝断言"有一条蓝线"证不了它跟着队列走 —— 得点另一栋,看那条线**换了名字**。
+ *    · 质量矩阵四态曾经挤在 2 灰 1 蓝里,缺抄(可行动)与未投产(不可行动)都是浅灰 ——
+ *      那是把 3ceefe0 修过的 bug 用颜色再犯一次,所以四态必须落在四个类上。
+ *    · 13 栋仍然没有一栋拥有自己的颜色:B3 里带颜色的只有口径线与「当前选中」这个状态。
  *
  * ⑦ **「高级分析」第三档**(2026-08 被砍掉的分析工作台,恢复在段控第三格)。
  *    这一组钉的是**作用域**,不是「多了个 tab」:统计量(σ / 置信 / N_eff / zₙ / 块自助 / BH-FDR)
@@ -191,6 +198,16 @@ const bodyText = (w: VueWrapper) =>
 /** 传进每张 ECharts 的那份 option 的原文 —— 颜色查在这里,不在渲染出来的文字里 */
 const optJson = (w: VueWrapper, sel = '') =>
   w.findAll(`${sel} .stub-chart`).map(c => c.attributes('data-opt') ?? '').join('\n')
+
+/** B3(「绝对水平」档那张 av2-s8 等效小时轨迹)传进去的 option 原文 */
+const b3Json = (w: VueWrapper) =>
+  w.find('.pma-sec .av2-s8 .stub-chart').attributes('data-opt') ?? ''
+type B3Series = { name?: string; lineStyle?: { color?: string } }
+const b3Series = (w: VueWrapper): B3Series[] =>
+  (JSON.parse(b3Json(w) || '{}') as { series?: B3Series[] }).series ?? []
+/** B3 里画成焦点色的那些序列的名字。跟着队列走的话它只有一个,而且会换名字 */
+const b3FocusNames = (w: VueWrapper) =>
+  b3Series(w).filter(s => s.lineStyle?.color === PV_COLORS.FOCUS).map(s => s.name)
 
 const boot = () => {
   setActivePinia(createPinia())
@@ -510,8 +527,22 @@ describe('光伏分栋分析 · 排他规则与首屏预算(§06.0 / §06.1 / §
     expect([...new Set(hs)].sort()).toEqual(['170', '200', '250', '300'])
   })
 
-  it('强调色 #9D5D17 只在 L0/L1 —— L2 的段与 L3 的抽屉里一次都不出现', async () => {
+  it('强调色 #9D5D17 双向钉死:L0/L1 三个岗位都在,L2 的段与 L3 的抽屉一次都不出现', async () => {
     const w = await mountScreen()
+
+    // ── 正面:L0/L1 里它**必须在**。只留反面那半是单向的 ——
+    //    把首屏的橙整个删干净(主数转墨、队列行转墨、大图的点转墨)也照样全绿。
+    // L0 与队列的橙走 CSS 令牌(var(--hue-orange) 在 scoped style 里,jsdom 拿不到计算样式),
+    // 所以查**承载它的那两个开关**:主数不是 quiet(quiet 把竖条与主数一起改成墨)、命中行有 .out。
+    expect(w.find('.pma-b0').classes(), 'L0 主数是 quiet 态 —— 告警色在指标卡上没上岗')
+      .not.toContain('quiet')
+    expect(w.findAll('.pq-row.out .n').length, 'L1 队列没有命中行的橙数字列')
+      .toBeGreaterThan(0)
+    // L1 大图的橙是**内联字面值**(出范围点的 fill / 连续段底色),原文查得到
+    expect(w.find('.pma-main').html().toUpperCase(), 'L1 大图里没有出范围色')
+      .toContain('9D5D17')
+
+    // ── 反面:L2/L3 里一个都没有。
     // 颜色写在 option 的 JSON 里,不在渲染出来的文字里 —— 先确认真抓到了 option,
     // 抓不到的话下面那句 not.toContain 就是空跑(这类假绿是这组断言唯一的翻车方式)
     const clean = (sel: string, where: string) => {
@@ -524,9 +555,6 @@ describe('光伏分栋分析 · 排他规则与首屏预算(§06.0 / §06.1 / §
     clean('.pma-sec', 'L2 绝对水平')
     await openDrawer(w)
     clean('.fp-dwr', 'L3 抽屉')
-    // 反面:L0/L1 里它必须在,否则上面三条是空跑
-    expect((w.find('.pma-b0').html() + w.find('.pma-main').html()).toUpperCase())
-      .toContain('9D5D17')
   })
 
   // jsdom 不跑样式,量不到字号;能守的是**承载 26px 的那个类只出现一次**
@@ -552,6 +580,46 @@ describe('光伏分栋分析 · 排他规则与首屏预算(§06.0 / §06.1 / §
     expect(mid.find('.pdc svg').attributes('height')).toBe('206')
     // 命中多于 4 栋时队列内滚,主卡不跟着长(§06.1)
     expect(w.find('.pq-body.cap-hit').exists()).toBe(true)
+  })
+})
+
+describe('光伏分栋分析 · 配色(§06.7 焦点 / 类别 / 告警)', () => {
+  beforeEach(boot)
+
+  // 焦点色是「**当前选中**」这一个状态,不是发给某一栋的私有颜色。
+  // 「屏上有一条蓝线」证不了这件事 —— 给 S4 硬编码一支蓝也能过。所以要点另一栋,
+  // 看那条蓝线**换成了新选中那栋的名字**;不跟着走的话下面最后一条红。
+  it('焦点蓝跟着队列的选择走 —— B3 那条深线换的是名字,不是钉给某一栋', async () => {
+    const w = await mountScreen()
+    await toSection(w, '绝对水平')
+    expect(b3Json(w).length, 'B3 的 option 没抓到,这条会空跑').toBeGreaterThan(100)
+    expect(w.find('.pdc-hd .nm').text()).toBe('S4')           // 默认停在队列第一行
+    expect(b3FocusNames(w), '选中那栋没有画成焦点色').toEqual(['S4'])
+
+    // 换一栋:展开「未低于你设的线」,点第一行
+    await w.findAll('.pq-gh').find(g => g.text().includes('未低于'))!.trigger('click')
+    await flushPromises()
+    const row = w.findAll('.pq-body.cap-rest .pq-row')[0]
+    const name = row.find('.nm').text()
+    expect(name).not.toBe('S4')
+    await row.trigger('click')
+    await flushPromises()
+
+    expect(w.find('.pdc-hd .nm').text()).toBe(name)
+    expect(b3FocusNames(w), '焦点色没跟着队列的选择走').toEqual([name])
+  })
+
+  it('B3 带颜色的只有分位带 / 全园中位 / 选中那栋 —— 13 栋没有一栋有自己的颜色', async () => {
+    const w = await mountScreen()
+    await toSection(w, '绝对水平')
+    const opt = b3Json(w)
+    expect(opt.length, 'B3 的 option 没抓到,下面两条会空跑').toBeGreaterThan(100)
+    // option 原文里的颜色恰好三处,顺序也钉住:带(墨 100)· 全园中位(墨 500)· 选中那栋(焦点蓝)。
+    // 多出任何一处 —— 比如有人给某一栋发了私有色、或把分位带也上了色 —— 这条就红
+    expect([...opt.matchAll(/"color":"([^"]+)"/g)].map(m => m[1]))
+      .toEqual([PV_COLORS.INK100, PV_COLORS.INK500, PV_COLORS.FOCUS])
+    // 序列名同理:三条口径线 + 选中那栋。13 栋各画一条(那团灰毛球)长回来的话这条红
+    expect(b3Series(w).map(s => s.name)).toEqual(['p25', '各栋四分位距', '全园中位', 'S4'])
   })
 })
 
@@ -720,11 +788,14 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     expect(w.find('.pma-sec').text()).not.toContain('σ')
   })
 
-  it('质量矩阵三态都画出来 —— 正常 / 缺抄 / 整日剔除是三个答案,不是两种颜色', async () => {
-    // 3/05 全园一天都没抄(= 缺抄);6/10 只剩两栋在网,不足 3 栋 → 那一天整日剔除。
-    // 两件事在夹具里就分开,不然「合并成一个没数据」这个 bug 测不出来。
+  it('质量矩阵四态四色 —— 缺抄与未投产必须分得开,不是两片一样的浅灰', async () => {
+    // 3/05 全园一天都没抄(= 缺抄);6/10 只剩两栋在网,不足 3 栋 → 那一天整日剔除;
+    // S9 到 3/01 才有第一条抄表 → 它前面整整两个月是未投产。
+    // 四件事在夹具里就分开,不然「合并成一个没数据」这个 bug 测不出来 ——
+    // 尤其缺抄 vs 未投产:前者**可行动**(该去补录),后者**不可行动**(那时候还没建)。
     const rds = readingsOf(2026, { skip: ['2026-03-05'] })
       .filter(r => !(r.readDate === '2026-06-10' && r.stationId > 2))
+      .filter(r => !(r.stationId === N && r.readDate < '2026-03-01'))
     const w = await mountScreen({ readings: rds })
     await toSection(w, '高级分析')
 
@@ -733,12 +804,27 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     expect(n('ok'), '正常格').toBeGreaterThan(0)
     expect(n('miss'), '缺抄格 —— 3/05 全园漏抄那一列').toBe(N)
     expect(n('dropped'), '整日剔除格 —— 6/10 在网不足 3 栋').toBe(N)
-    expect(n('ok') + n('miss') + n('dropped')).toBe(cells.length)   // 没有第四种颜色混进来
-    // 图例三句常驻,不是 hover 才出:审计得看得见这三个色各是什么
-    const lg = w.find('[data-lab="L6"] .pqg-legend').text()
-    expect(lg).toContain('缺抄')
-    expect(lg).toContain('整日剔除')
-    expect(lg).toContain('从不补齐')
+    expect(n('pre'), '未投产格 —— S9 三月才投产,前面 1 月 + 2 月').toBe(31 + 28)
+    // 四态互斥且铺满。把未投产退回「碰巧没有类」(旧写法)时 n('pre') 归零,这条红
+    expect(n('ok') + n('miss') + n('dropped') + n('pre')).toBe(cells.length)
+    // **缺抄 ≠ 未投产**,这是这次改动的核心。jsdom 不跑 scoped style,量不到计算出来的颜色;
+    // 能钉的是承载颜色的那个通道:两者落在**不同的类**上(.c.miss 暖黄 / .c.pre 无填充),
+    // 而且没有一格同时挂着两个类
+    expect(cells.some(c => c.classes('miss') && c.classes('pre')),
+      '缺抄与未投产挂在同一格上,两态被合并了').toBe(false)
+    // 颜色之外还得有第二个通道:格子只有 2-6px 宽,剩下的只有 title 和图例
+    const titleOf = (k: string) => cells.find(c => c.classes(k))!.attributes('title') ?? ''
+    expect(titleOf('miss')).toContain('缺抄')
+    expect(titleOf('pre')).toContain('未投产')
+    // 图例四条常驻,不是 hover 才出:审计得看得见这四个各是什么
+    const lg = w.find('[data-lab="L6"] .pqg-legend')
+    for (const s of ['缺抄', '整日剔除', '未投产', '从不补齐']) expect(lg.text()).toContain(s)
+    // 四颗色块 = 四个不同的类。少一颗(或两颗共用一个类)就是四态又挤回三档
+    expect(lg.findAll('.sw').map(i => i.classes().filter(c => c !== 'sw').join('+')))
+      .toEqual(['ok', 'miss', 'dropped', 'pre'])
+    // 读屏拿不到颜色,四个数得报出来 —— 空白格尤其
+    expect(w.find('[data-lab="L6"] .pqg-cells').attributes('aria-label'))
+      .toContain(`${31 + 28} 格未投产`)
   })
 
   it('高级分析档守排他规则:#9D5D17 零次、height 只有 200/250、图种只有 bar/line/scatter', async () => {

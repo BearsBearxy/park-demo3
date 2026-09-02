@@ -9,7 +9,8 @@ import { fnum } from '@/components/ana/anaFmt'
 
 export interface SlopePoint { name: string; prev: number | null; cur: number | null }
 
-const props = defineProps<{ points: SlopePoint[] }>()
+/** selName = 队列里当前选中的那一栋 —— 只有它上焦点色(§06.7)。不传则整图墨阶。 */
+const props = defineProps<{ points: SlopePoint[]; selName?: string }>()
 const emit = defineEmits<{ (e: 'pick', name: string): void }>()
 
 const { el, width: w } = useWidth(640)
@@ -31,7 +32,11 @@ const dom = computed(() => {
 })
 const Y = (v: number) => padT + (1 - (v - dom.value.lo) / dom.value.span) * (H - padT - padB)
 
-const segs = computed(() => drawn.value.map((p) => ({ ...p, y1: Y(p.prev), y2: Y(p.cur) })))
+// 选中那条排到最后画:SVG 按文档顺序涂,排在中间会被后面 12 条墨线压过去。
+// sort 是稳定的,其余各栋维持原顺序。
+const segs = computed(() => drawn.value
+  .map((p) => ({ ...p, y1: Y(p.prev), y2: Y(p.cur) }))
+  .sort((a, b) => Number(a.name === props.selName) - Number(b.name === props.selName)))
 
 // 标签防叠:按 y 排序逐个比,间距 < 12px 的那个只留栋名、隐去数值。
 // 两端同一套规则 —— 左端挤在一起时同样读不出,规则只写右端会在左端留下一堆糊字。
@@ -57,7 +62,7 @@ const fh = (v: number) => fnum(v, 0)
       <text :x="x1" y="12" class="hd" text-anchor="middle">去年</text>
       <text :x="x2" y="12" class="hd" text-anchor="middle">今年</text>
 
-      <g v-for="s in segs" :key="s.name" :class="{ on: hov === s.name }"
+      <g v-for="s in segs" :key="s.name" :class="{ on: hov === s.name, sel: s.name === selName }"
         @mouseenter="hov = s.name" @mouseleave="hov = null" @click="emit('pick', s.name)">
         <title>{{ s.name }} 去年 {{ fh(s.prev) }} → 今年 {{ fh(s.cur) }}</title>
         <line class="hit" :x1="x1" :y1="s.y1" :x2="x2" :y2="s.y2" />
@@ -79,12 +84,18 @@ const fh = (v: number) => fnum(v, 0)
 <style scoped>
 .pv-slope { position: relative; width: 100%; }
 .hd { font-size: 11px; fill: var(--text-muted); }
-/* 13 栋没有任何一栋有自己的颜色:全部同色同粗(墨色 20%),粗细只在指针悬停时临时变。 */
+/* 群体全部同色同粗(墨色 20%)—— 13 栋仍然没有任何一栋拥有自己的颜色。
+   焦点色编码的是「当前选中」这一个状态:点谁谁亮,换一栋就还回墨阶。
+   出范围不在这里上色:--hue-orange 只在 L0/L1(§06.0),L2 的区分由焦点承担。
+   状态不只靠颜色 —— 选中那条同时加粗到 2px、两端栋名加重。 */
 .seg { stroke: var(--ink-300); stroke-width: 1; fill: none; }
 .hit { stroke: transparent; stroke-width: 12; cursor: pointer; }
 .lb { font-size: 11px; fill: var(--text-secondary); pointer-events: none; }
 .vl { font-family: var(--font-mono); font-variant-numeric: tabular-nums; fill: var(--text-primary); }
 g.on .seg { stroke: var(--ink-900); stroke-width: 2; }
 g.on .lb { fill: var(--text-primary); font-weight: 600; }
+/* 排在 .on 之后:选中那条被悬停时,焦点色压过临时的墨色高亮。两端 direct label 保持墨阶。 */
+g.sel .seg { stroke: var(--hue-blue); stroke-width: 2; }
+g.sel .lb { fill: var(--text-primary); font-weight: 600; }
 .cap { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 </style>

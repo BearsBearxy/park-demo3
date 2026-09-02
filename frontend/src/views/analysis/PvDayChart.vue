@@ -20,8 +20,15 @@ import type { BoardRow, Criteria } from './pvMeterAna.logic'
 
 const props = defineProps<{ row: BoardRow; tickLabels: string[]; fact: string; crit: Criteria }>()
 
-// 结构灰走 CSS 令牌变量(内联 SVG 在 DOM 里,拿得到自定义属性);
-// 只有强调色从镜像取 —— 它同时要给同屏的 ECharts 块用,两处必须是同一个字面值。
+// 结构灰与焦点蓝走 CSS 令牌变量(内联 SVG 在 DOM 里,拿得到自定义属性);
+// 只有告警橙从镜像取 —— 它同时要给同屏的 ECharts 块用,两处必须是同一个字面值。
+//
+// 这张图上三层语义各有各的色(§06.7 颜色上岗三条):
+//   焦点 = 主折线与正常点走 --hue-blue —— 它画的就是「你在队列里点中的那一栋」,
+//          是**选中这个状态**,不是给某一栋分配的颜色(换一栋,蓝的就是新的那栋);
+//   告警 = 出范围的点 / 连续段底色 / 漏抄记号走 --hue-orange(这里是 L1,告警色的正当领地);
+//   参照 = 范围带、中心线、上下沿、轴、网格全部**保持墨阶** —— 它们是尺子不是数据,
+//          上了色就等于宣称「带本身也是一种类别」。
 const OUT = PV_COLORS.OUT
 
 // §06.3 的画布:1006×206,ML=52 MR=10 MT=10 MB=24。
@@ -198,7 +205,7 @@ const baseFull = computed(() => props.row.baseNote)
       <polyline v-for="(p, i) in segs" :key="'s' + i" class="ln" :points="p" />
 
       <circle v-for="(d, i) in dots" :key="'d' + i" :cx="d.x" :cy="d.y" :r="d.out ? 3.4 : 1.9"
-        :fill="d.out ? OUT : 'var(--ink-500)'" />
+        :fill="d.out ? OUT : 'var(--hue-blue)'" />
 
       <!-- 漏抄:缺口记号 +「漏」。断开的折线已经说了「这天没数」,记号说「这天该有数」 -->
       <g v-for="(gx, i) in gaps" :key="'m' + i">
@@ -245,7 +252,8 @@ const baseFull = computed(() => props.row.baseNote)
 .futline { stroke: var(--ink-300); stroke-width: 1; stroke-dasharray: 3 3; }
 .futlab { font-size: 11px; fill: var(--text-muted); }
 
-.ln { fill: none; stroke: var(--ink-700); stroke-width: 1.4; stroke-linejoin: round; }
+/* 焦点色:这条线画的是当前选中那一栋。出范围仍靠橙点 + 半径 3.4/1.9 两级,不只靠色 */
+.ln { fill: none; stroke: var(--hue-blue); stroke-width: 1.4; stroke-linejoin: round; }
 .gapl { font-size: 11px; }
 
 .xt { font-size: 11px; font-family: var(--font-mono); fill: var(--text-muted); text-anchor: middle; }
