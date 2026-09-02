@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  acf, nEffOf, buildLab, buildSnapshot, buildDetail,
+  acf, nEffOf, buildLab, buildSnapshot, buildDetail, MAX_ITER, TOL,
   type QualityState, type ReadingRow, type StationCfg, type SnapshotInput,
 } from './pvMeterAna.logic'
 
@@ -152,6 +152,39 @@ describe('工作台 · 铁律:一份数据、一次计算、一个 id', () => {
    * 而 lag 30 只有**一对样本**,右半条全是噪声,偏偏图还渲染得出来。惯例是 n/4。
    * 整年 365 点时 min(30, 91) 与写死 30 同值,分不开,所以这条用**短序列**测。
    */
+  // ── L5a 收敛轨迹 ──────────────────────────────────────────────────────
+  // 屏上把「20 轮撞上限但末轮只挪了 1e-10」和「20 轮还在 1e-4 上下摆」分成两种结论,
+  // 靠的就是 trace。**这两条钉的是 trace 本身,不是屏上那个词** —— 文案断言验不了计算。
+  it('trace 逐轮记满,且 trace.length === iterations', () => {
+    const pr = buildSnapshot(makeInput()).polish
+    // push 排在 iter++ 之前才成立。这一行最容易在后续重构里被挪坏 —— 挪了这条立刻红。
+    expect(pr.trace.length, `trace ${pr.trace.length} 轮 vs iterations ${pr.iterations}`)
+      .toBe(pr.iterations)
+    expect(pr.trace.length).toBeGreaterThan(0)
+    expect(pr.trace.length).toBeLessThanOrEqual(MAX_ITER)
+    // 双向,别只测一边:收敛 → 末轮真落到停机阈以下;没收敛 → 末轮必须还在阈上
+    const last = pr.trace[pr.trace.length - 1]
+    if (pr.converged) expect(last, '标了收敛,末轮却还在阈上').toBeLessThanOrEqual(TOL)
+    else expect(last, '标了没收敛,末轮却已经落到阈下').toBeGreaterThan(TOL)
+    // 抛光是往回收的:末轮的挪动量不该反而比首轮还大
+    expect(last).toBeLessThanOrEqual(pr.trace[0])
+  })
+
+  it('两种扫描顺序各有各的轨迹 —— traceCol 不是 trace 的副本', () => {
+    const l = lab()
+    expect(l.convergence.trace.length).toBe(l.convergence.iterations)
+    expect(l.convergence.traceCol.length).toBeGreaterThan(0)
+    // 列优先那次自己没收住的话,右边斜率图的「名次挪了」就是算法故障伪装成结论。
+    // 两条都要有数,且不许是同一个数组对象被塞了两遍。
+    expect(l.convergence.traceCol).not.toBe(l.convergence.trace)
+    expect(l.convergence.alphaGapPct).toBeGreaterThanOrEqual(0)
+    // 一栋都没进矩阵时 Math.max() 吐 -Infinity,会顺着 JSON 漏到屏上的图脚。
+    // 空 inPlay 得**真造一个**才咬得住 —— 健康夹具上这条永远绿。
+    const none = lab({ metered: () => false })
+    expect(none.convergence.names).toHaveLength(0)
+    expect(Number.isFinite(none.convergence.alphaGapPct), '空矩阵吐出了 -Infinity').toBe(true)
+  })
+
   it('ACF 的滞后上限由 n 定 —— 短序列不许画到 lag 30', () => {
     // 只给两个月 ≈ 59 天 → n/4 ≈ 14,写死 30 的话会吐到 30
     const l = lab({ months: [1, 2] })

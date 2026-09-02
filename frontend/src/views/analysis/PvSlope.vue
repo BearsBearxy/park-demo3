@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// PV-ANALYSIS-SPEC §06.5 B4 —— 年档等效小时 slopegraph(去年 → 今年),内联 SVG。
+// 两列 slopegraph,内联 SVG。两个调用点:
+//   B4(§06.5)  比**年等效小时**,去年 → 今年
+//   L5b(§06.5b) 比**α 名次**,行优先 → 列优先(纵轴反转,1 名在最上)
 // 两个时点比 13 个实体:两点线段 + 两端 direct label,墨迹比 13 条 12 点折线少一个量级,
 // 交叉与陡降靠位置自己暴露(Tufte 1983 p.158)。无图例、无坐标轴 —— 数值就印在两端。
 // 两端共用同一根纵轴(共一套 min/max),否则两端的高低没法比。
@@ -9,8 +11,16 @@ import { fnum } from '@/components/ana/anaFmt'
 
 export interface SlopePoint { name: string; prev: number | null; cur: number | null }
 
-/** selName = 队列里当前选中的那一栋 —— 只有它上焦点色(§06.7)。不传则整图墨阶。 */
-const props = defineProps<{ points: SlopePoint[]; selName?: string }>()
+/**
+ * selName = 队列里当前选中的那一栋 —— 只有它上焦点色(§06.7)。不传则整图墨阶。
+ * emphNames = 另一路**墨色**加重(L5b 用来标名次翻转的栋):黑白打印下靠粗细与字重,不靠颜色。
+ * invert    = 纵轴反转。名次这类「1 最好」的序数要 1 在最上,与 L1 的 yAxis.inverse 读法一致。
+ */
+const props = withDefaults(defineProps<{
+  points: SlopePoint[]; selName?: string
+  headL?: string; headR?: string; cap?: string; invert?: boolean; emphNames?: string[]
+}>(), { headL: '去年', headR: '今年', invert: false })
+const emph = computed(() => new Set(props.emphNames ?? []))
 const emit = defineEmits<{ (e: 'pick', name: string): void }>()
 
 const { el, width: w } = useWidth(640)
@@ -30,13 +40,17 @@ const dom = computed(() => {
   const lo = Math.min(...vs), hi = Math.max(...vs)
   return { lo, span: hi - lo || Math.abs(lo) || 1 }
 })
-const Y = (v: number) => padT + (1 - (v - dom.value.lo) / dom.value.span) * (H - padT - padB)
+const Y = (v: number) => {
+  const t = (v - dom.value.lo) / dom.value.span
+  return padT + (props.invert ? t : 1 - t) * (H - padT - padB)
+}
 
 // 选中那条排到最后画:SVG 按文档顺序涂,排在中间会被后面 12 条墨线压过去。
-// sort 是稳定的,其余各栋维持原顺序。
+// 被标注的(emph)压过群体,选中的再压过它 —— 权重 2:1。sort 是稳定的,同权维持原顺序。
+const wt = (n: string) => Number(n === props.selName) * 2 + Number(emph.value.has(n))
 const segs = computed(() => drawn.value
   .map((p) => ({ ...p, y1: Y(p.prev), y2: Y(p.cur) }))
-  .sort((a, b) => Number(a.name === props.selName) - Number(b.name === props.selName)))
+  .sort((a, b) => wt(a.name) - wt(b.name)))
 
 // 标签防叠:按 y 排序逐个比,间距 < 12px 的那个只留栋名、隐去数值。
 // 两端同一套规则 —— 左端挤在一起时同样读不出,规则只写右端会在左端留下一堆糊字。
@@ -54,17 +68,24 @@ const hidR = computed(() => crowd(segs.value.map((s) => ({ name: s.name, y: s.y2
 
 const hov = ref<string | null>(null)
 const fh = (v: number) => fnum(v, 0)
+
+// 读屏拿不到颜色也拿不到位置,这段就是这张图的全部内容(约束 9)。
+const aria = computed(() =>
+  `${props.headL} 到 ${props.headR} 的两列斜率图，${segs.value.length} 条线段：`
+  + segs.value.map(s => `${s.name} ${fh(s.prev)} 到 ${fh(s.cur)}`).join('；')
+  + (skipN.value ? `。另 ${skipN.value} 栋缺一端，不画线。` : '。'))
 </script>
 
 <template>
   <div ref="el" class="pv-slope">
-    <svg :width="w" :height="H" style="display: block">
-      <text :x="x1" y="12" class="hd" text-anchor="middle">去年</text>
-      <text :x="x2" y="12" class="hd" text-anchor="middle">今年</text>
+    <svg :width="w" :height="H" style="display: block" role="img" :aria-label="aria">
+      <text :x="x1" y="12" class="hd" text-anchor="middle">{{ headL }}</text>
+      <text :x="x2" y="12" class="hd" text-anchor="middle">{{ headR }}</text>
 
-      <g v-for="s in segs" :key="s.name" :class="{ on: hov === s.name, sel: s.name === selName }"
+      <g v-for="s in segs" :key="s.name"
+        :class="{ on: hov === s.name, sel: s.name === selName, emph: emph.has(s.name) }"
         @mouseenter="hov = s.name" @mouseleave="hov = null" @click="emit('pick', s.name)">
-        <title>{{ s.name }} 去年 {{ fh(s.prev) }} → 今年 {{ fh(s.cur) }}</title>
+        <title>{{ s.name }} {{ headL }} {{ fh(s.prev) }} → {{ headR }} {{ fh(s.cur) }}</title>
         <line class="hit" :x1="x1" :y1="s.y1" :x2="x2" :y2="s.y2" />
         <line class="seg" :x1="x1" :y1="s.y1" :x2="x2" :y2="s.y2" />
         <text class="lb" :x="x1 - 8" :y="s.y1 + 3.5" text-anchor="end">
@@ -76,7 +97,10 @@ const fh = (v: number) => fnum(v, 0)
       </g>
     </svg>
     <div class="cap">
-      年等效小时 kWh/kWp<template v-if="skipN">　·　去年或今年无抄表 {{ skipN }} 栋不参与</template>
+      <template v-if="cap">{{ cap }}</template>
+      <template v-else>
+        年等效小时 kWh/kWp<template v-if="skipN">　·　去年或今年无抄表 {{ skipN }} 栋不参与</template>
+      </template>
     </div>
   </div>
 </template>
@@ -92,6 +116,9 @@ const fh = (v: number) => fnum(v, 0)
 .hit { stroke: transparent; stroke-width: 12; cursor: pointer; }
 .lb { font-size: 11px; fill: var(--text-secondary); pointer-events: none; }
 .vl { font-family: var(--font-mono); font-variant-numeric: tabular-nums; fill: var(--text-primary); }
+/* 墨色加重:第二路强调,与焦点蓝正交。排在 .on/.sel 之前,让悬停与选中压得过去。 */
+g.emph .seg { stroke: var(--ink-700); stroke-width: 2; }
+g.emph .lb { fill: var(--text-primary); font-weight: 600; }
 g.on .seg { stroke: var(--ink-900); stroke-width: 2; }
 g.on .lb { fill: var(--text-primary); font-weight: 600; }
 /* 排在 .on 之后:选中那条被悬停时,焦点色压过临时的墨色高亮。两端 direct label 保持墨阶。 */

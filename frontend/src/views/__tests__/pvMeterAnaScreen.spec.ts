@@ -755,30 +755,34 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     }
   })
 
-  it('点进去才算,而且只算一次 —— 七块 L1…L7 一块不少,一块都没退成空态', async () => {
+  it('点进去才算,而且只算一次 —— 八块 L1…L7 一块不少,一块都没退成空态', async () => {
     const w = await mountScreen()
     await toSection(w, '高级分析')
     expect(vi.mocked(buildLab)).toHaveBeenCalledTimes(1)
 
     const labs = w.findAll('[data-lab]')
     expect(labs.map(e => e.attributes('data-lab')))
-      .toEqual(['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'])
-    // 七块的**块名**:恢复的是这七件事,不是七个占位卡
+      .toEqual(['L1', 'L2', 'L3', 'L4', 'L5a', 'L5b', 'L6', 'L7'])
+    // 八块的**块名**:恢复的是这八件事,不是八个占位卡
     expect(labs.map(e => e.find('.av2-card-h .t').text().split(' · ')[0])).toEqual([
       '先天水平 α 排序', '残差自相关 ACF', '残差 vs 年积日',
-      '块自助零分布', '抛光收敛诊断', '数据质量矩阵', '完整检验表',
+      '块自助零分布', '抛光收敛轨迹', '换个扫描顺序，名次动不动', '数据质量矩阵', '完整检验表',
     ])
     // 每块的卡头都带常驻说明(图种 · 轴与单位 · 拿哪一段算 · 来源),不是光秃秃一个标题
     expect(labs.every(e => e.find('.av2-card-h .hint').text().length > 20)).toBe(true)
-    // 健康夹具上七块都该出真内容:任何一块退成 .pma-note 就是这一档没真恢复
+    // 健康夹具上八块都该出真内容:任何一块退成 .pma-note 就是这一档没真恢复
     expect(w.findAll('[data-lab] .pma-note')).toHaveLength(0)
-    // 图/组件各就各位:L1-L4 是 ECharts,L5 是文字读数,L6 是手写 CSS Grid,L7 是表
+    // 图/组件各就各位:L1-L4 + L5a 是 ECharts,L5b 是斜率图,L6 是手写 CSS Grid,L7 是表
     expect(w.findAll('[data-lab="L1"] .stub-chart')).toHaveLength(1)
     expect(w.findAll('[data-lab="L2"] .stub-chart')).toHaveLength(1)
     expect(w.findAll('[data-lab="L3"] .stub-chart')).toHaveLength(1)
     expect(w.findAll('[data-lab="L4"] .stub-chart')).toHaveLength(1)
-    expect(w.find('[data-lab="L5"] .pma-read').text()).toContain('迭代次数')
-    expect(w.findAll('[data-lab="L5"] .stub-chart')).toHaveLength(0)
+    // L5 原来是**全屏唯一一张没有图的卡**,占满 12 栏画一堆文字 —— 拆成两张 s6:
+    // 左边一条收敛轨迹(log 轴折线),右边一张行优先/列优先的名次斜率图。
+    expect(w.findAll('[data-lab="L5a"] .stub-chart')).toHaveLength(1)
+    expect(w.find('[data-lab="L5a"] .pma-read').text()).toContain('结论')
+    expect(w.find('[data-lab="L5b"] .pv-slope svg').exists()).toBe(true)
+    expect(w.findAll('[data-lab="L5b"] .stub-chart')).toHaveLength(0)
     expect(w.find('[data-lab="L6"] .pqg-cells').exists()).toBe(true)
     expect(w.findAll('[data-lab="L6"] .stub-chart')).toHaveLength(0)  // heatmap 没注册,必须手写
     expect(w.find('[data-lab="L7"] table.plt tbody tr').exists()).toBe(true)
@@ -874,7 +878,7 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     // 读屏拿不到颜色,四个数得报出来 —— 空白格尤其
     expect(w.find('[data-lab="L6"] .pqg-cells').attributes('aria-label'))
       .toContain(`${31 + 28} 格未投产`)
-  })
+  }, 30_000)
 
   it('高级分析档守排他规则:#9D5D17 零次、height 只有 200/250、图种只有 bar/line/scatter', async () => {
     const w = await mountScreen()
@@ -889,10 +893,11 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     expect([...new Set(hs)].sort()).toEqual(['200', '250'])
     // echartsBundle 是裁剪打包的:heatmap / visualMap / custom / graph 没注册,
     // 用了得到空白图 + 一句控制台警告,而 jsdom 测不出来 —— 只能在 option 原文上拦
-    // 白名单是穷举的:series 三种(bar/line/scatter)+ 轴两种(category/value)+ markLine 的虚线样式。
+    // 白名单是穷举的:series 三种(bar/line/scatter)+ 轴三种(category/value/log)+ markLine 的虚线样式。
+    // log 轴(L5a 收敛轨迹)由 GridComponent 覆盖,不用往 echartsBundle 加任何东西。
     // 多出任何一种(heatmap / custom / graph / pie …)这条就红。
     const types = [...opt.matchAll(/"type":"(\w+)"/g)].map(m => m[1])
     expect([...new Set(types)].sort())
-      .toEqual(['bar', 'category', 'dashed', 'line', 'scatter', 'value'])
-  })
+      .toEqual(['bar', 'category', 'dashed', 'line', 'log', 'scatter', 'value'])
+  }, 30_000)
 })

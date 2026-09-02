@@ -30,10 +30,18 @@ export interface PolishResult {
   resid: Map<number, Map<string, number>>  // 残差(只含真正进了矩阵的格子)
   iterations: number
   converged: boolean
+  /** 逐轮 maxDelta。只留 converged 这个布尔的话,「20 轮撞上限但末轮只挪了 1e-10」
+   *  与「20 轮还在 1e-4 上下摆」在屏上长得一模一样 —— 前者够用,后者要去找算法作者。 */
+  trace: number[]
 }
 
-const MAX_ITER = 20
-const TOL = 1e-12
+export const MAX_ITER = 20
+export const TOL = 1e-12
+/** 够用线。α 在 L1 印成一位小数的百分数 → 显示分辨率对应 log 域约 1e-3;
+ *  但 maxDelta 是**单轮步长**,不是剩余误差的上界,所以再留三个数量级余量取 1e-6。
+ *  **这是一条判据线,不是自由常数**:α 哪天改成印四位小数,这条线要跟着往下挪,
+ *  否则它会替读者背书一个已经不成立的判断。屏上画成 markLine,不许在 vue 里再抄一遍字面量。 */
+export const POLISH_PRACTICAL_TOL = 1e-6
 
 export function median(xs: number[]): number {
   if (!xs.length) return 0
@@ -86,6 +94,7 @@ export function medianPolish(
 
   // 2) 行中位数 / 列中位数交替扫,直到不再动
   let iter = 0
+  const trace: number[] = []
   for (; iter < MAX_ITER; iter++) {
     let maxDelta = 0
 
@@ -120,6 +129,9 @@ export function medianPolish(
     }
     if (order === 'row') { sweepRow(); sweepCol() } else { sweepCol(); sweepRow() }
 
+    // ⚠ push 必须排在 iter++ 之前,`trace.length === iterations` 才成立。
+    //   这一行是整段最容易在后续重构里被挪坏的一处,单测第一条钉的就是它。
+    trace.push(maxDelta)
     if (maxDelta <= TOL) { iter++; break }
   }
 
@@ -136,7 +148,7 @@ export function medianPolish(
     resid.set(s, out)
   }
 
-  return { mu, alpha, beta, resid, iterations: iter, converged: iter < MAX_ITER }
+  return { mu, alpha, beta, resid, iterations: iter, converged: iter < MAX_ITER, trace }
 }
 
 // ── 显著性(PV-ANALYSIS-SPEC §5.3)──────────────────────────────────────
@@ -1603,6 +1615,12 @@ export interface LabResult {
   convergence: {
     names: string[]; rowRank: number[]; colRank: number[]; flipped: string[]
     iterations: number; converged: boolean
+    /** 两种扫描顺序各自的逐轮位移。**两条都要画** —— 只画行优先的话,
+     *  「列优先那次压根没收住」会伪装成「换个顺序名次就变」,把算法故障读成结论不稳。 */
+    trace: number[]; traceCol: number[]
+    /** 两次抛光同一栋 α 的最大差(%)。名次是序数、丢了量纲:两栋 α 差 0.001% 也能换名次,
+     *  图上却是一次醒目的交叉。这一个标量就是给那次交叉配的量纲。 */
+    alphaGapPct: number
   }
   /** L6 */
   quality: { dates: string[]; rows: QualityRow[] }
@@ -1754,6 +1772,11 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
       .map(s => s.name),
     iterations: polish.iterations,
     converged: polish.converged,
+    trace: polish.trace,
+    traceCol: colFirst.trace,
+    // Math.max(0, ...) 顺带兜住 inPlay 为空时 Math.max() 返回 -Infinity
+    alphaGapPct: Math.max(0, ...inPlay.map(s =>
+      (Math.exp(Math.abs((polish.alpha.get(s.id) ?? 0) - (colFirst.alpha.get(s.id) ?? 0))) - 1) * 100)),
   }
 
   // ── L6 数据质量矩阵 ───────────────────────────────────────────────────

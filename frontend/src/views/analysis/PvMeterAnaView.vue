@@ -48,11 +48,14 @@ import { paramsApi } from '@/api/params'
 import PvQualityGrid from './PvQualityGrid.vue'
 import PvLabTable from './PvLabTable.vue'
 import {
-  buildSnapshot, buildDetail, buildLab, DEFAULT_CRITERIA,
+  buildSnapshot, buildDetail, buildLab, DEFAULT_CRITERIA, MAX_ITER, TOL, POLISH_PRACTICAL_TOL,
   type AnaSnapshot, type BoardRow, type Criteria, type SnapshotInput,
 } from './pvMeterAna.logic'
 
 // 模块级常量:传给 AnaShell 的与屏内读的必须是同一份(§06)。本屏不支持环比。
+// hint 里的停机阈不手抄字面量 —— TOL 改了这里跟着改
+const TOL_TXT = TOL.toExponential(0)
+
 const CMP: CompareMode[] = ['yoy']
 const GRID_PRICE = 0.4
 
@@ -694,6 +697,81 @@ const labNullOpt = computed<object>(() => {
 // 未投产画成空白无填充 —— 它既不是漏抄也不是正常(§03.8 未到 ≠ 漏抄,3ceefe0 在真数据上栽过)。
 // 缺抄可行动(暖黄)、未投产不可行动(留白),两者不能都是浅灰(§06.7)。
 const QCELL = { ok: 'ok', missing: 'miss', dropped: 'dropped', pre: 'pre' } as const
+// L5a 抛光收敛轨迹。**布尔分不出「几何衰减到 1e-10 后撞上限」和「在 1e-4 上下摆」** ——
+// 前者够用,后者要去找算法作者,而两者的 converged 都是 false。形状才分得出。
+// 两条线都画:只画行优先的话,「列优先那次压根没收住」会伪装成「换个顺序名次就变」。
+// 全墨阶 —— 这张图既没有「选中哪一栋」也没有类别也没有告警,§06.7 三种维度一个都不占。
+const labConvOpt = computed<object>(() => {
+  const c = lab.value?.convergence
+  if (!c?.trace.length) return {}
+  const n = Math.max(c.trace.length, c.traceCol.length)
+  // log 轴画不了 0(会静默丢点),下推到 1e-16;tooltip 里印真值
+  const flr = (xs: number[]) => xs.map(v => Math.max(v, 1e-16))
+  const line = (name: string, xs: number[], ink: string, dash: boolean, sym: string, dy: number) => ({
+    type: 'line', name, data: flr(xs), symbol: sym, symbolSize: 4,
+    lineStyle: { color: ink, width: 1.5, ...(dash ? { type: 'dashed' } : {}) },
+    itemStyle: { color: ink },
+    endLabel: { show: true, fontSize: 11, color: ink, offset: [0, dy], formatter: name },
+  })
+  return {
+    grid: { left: 56, right: 56, top: 14, bottom: 34 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (ps: { seriesName: string; dataIndex: number }[]) =>
+        `第 ${ps[0].dataIndex + 1} 轮<br/>` + ps.map(x => {
+          const v = (x.seriesName === '行优先' ? c.trace : c.traceCol)[x.dataIndex]
+          return `${x.seriesName} ${v === 0 ? '0（完全不动）' : v.toExponential(2)}`
+        }).join('<br/>'),
+    },
+    // 轮次是**序数**:category 轴不会吐出 2.5 这种半轮刻度,早停时也不留一片空轴
+    xAxis: {
+      type: 'category', data: Array.from({ length: n }, (_, i) => i + 1),
+      name: '迭代轮次（次）', nameLocation: 'middle', nameGap: 20,
+      nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 },
+    },
+    // 不钉 min:TOL=1e-12 那条线通常到不了(曲线停在 1e-9~1e-10),
+    // 为一条到不了的线把轴多撑三个数量级空白,判读力反而下降。停机阈进 hint 的文字。
+    yAxis: {
+      type: 'log', name: '每轮最大挪动量',
+      nameTextStyle: { fontSize: 11 },
+      axisLabel: { fontSize: 11, formatter: (v: number) => v.toExponential(0) },
+    },
+    series: [
+      {
+        ...line('行优先', c.trace, C.INK900, false, 'circle', -8),
+        markLine: {
+          silent: true, symbol: 'none',
+          lineStyle: { color: C.INK500, type: 'dashed', width: 1 },
+          label: { fontSize: 11, position: 'insideEndTop', formatter: `够用线 ${POLISH_PRACTICAL_TOL.toExponential(0)}` },
+          data: [{ yAxis: POLISH_PRACTICAL_TOL }],
+        },
+      },
+      line('列优先', c.traceCol, C.INK700, true, 'rect', 8),
+    ],
+  }
+})
+// 三态,不是布尔。「够用」和「没收住」是两个不同的行动,converged=false 把它们说成同一件事。
+const labConvVerdict = computed(() => {
+  const c = lab.value?.convergence
+  if (!c) return '—'
+  if (c.converged) return '已收敛'
+  return (c.trace[c.trace.length - 1] ?? Infinity) <= POLISH_PRACTICAL_TOL ? '够用' : '没收住'
+})
+const labConvLast = computed(() => {
+  const t = lab.value?.convergence.trace ?? []
+  const v = t[t.length - 1]
+  return v == null ? '—' : v === 0 ? '0' : v.toExponential(1)
+})
+// L5b 名次对照。两端都是 α 名次(位),共用一根轴 —— PvSlope 本来就共轴。
+// **进矩阵 < 3 栋不画**:两栋时 |Δ名次| 最大就是 1,flipped 按构造恒为空,那张图永远报不出翻转。
+const l5RankPts = computed(() => {
+  const c = lab.value?.convergence
+  if (!c || c.names.length < 3) return []
+  return c.names.map((n, i) => ({ name: n, prev: c.rowRank[i], cur: c.colRank[i] }))
+})
+const l5Cap = computed(() =>
+  `α 名次（位，1 = 最低）　·　两次抛光的 α 最大差 ${(lab.value?.convergence.alphaGapPct ?? 0).toFixed(2)}%`)
+
 const labQuality = computed(() => {
   const q = lab.value?.quality
   if (!q?.dates.length) return null
@@ -1105,30 +1183,45 @@ function outText(o: number | null | undefined): string {
                   </div>
                 </div>
 
-                <!-- L5 抛光收敛诊断 -->
-                <div class="av2-card av2-s12 pma-lab" data-lab="L5">
+                <!-- L5a 抛光收敛轨迹 -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L5a">
                   <div class="av2-card-h">
-                    <span class="t">抛光收敛诊断</span>
+                    <span class="t">抛光收敛轨迹</span>
                     <span class="pma-per">整年</span>
                     <span class="hint">
-                      文字读数，没有图 · 迭代次数单位为次，名次差单位为位，其余为栋名 ·
-                      拿整份快照的抛光过程算 · 来源：两次中位数抛光（行优先 / 列优先），同一份有效日集合
+                      折线两条，一轮一点 · 横轴迭代轮次（次），纵轴每轮最大挪动量（对数域，无量纲） ·
+                      拿整份快照的抛光过程算 · 来源：中位数抛光逐轮的最大挪动量，跑满 {{ MAX_ITER }} 轮或挪动 ≤{{ TOL_TXT }} 即停
                     </span>
                   </div>
+                  <AnaEChart v-if="lab.convergence.trace.length" :option="labConvOpt" :height="200" />
+                  <div v-else class="pma-note">抛光一轮都没跑，没有轨迹可画。</div>
                   <div class="pma-read">
-                    <span>迭代次数 <b>{{ lab.convergence.iterations }}</b></span>
-                    <span>收敛 <b>{{ lab.convergence.converged ? '是' : '否' }}</b></span>
-                    <span>进矩阵 <b>{{ lab.convergence.names.length }}</b> 栋</span>
-                    <span>名次差 &gt;1 位的栋 <b>{{ lab.convergence.flipped.length }}</b></span>
-                    <span>σ 口径 <b>{{ lab.tests[0]?.sigmaHow ?? '—' }}</b></span>
-                    <span>快照 <b>{{ lab.snapshotId }}</b></span>
+                    <span>结论 <b>{{ labConvVerdict }}</b></span>
+                    <span>迭代 <b>{{ lab.convergence.iterations }}</b> 轮<template v-if="!lab.convergence.converged">（撞上限）</template></span>
+                    <span>末轮挪动 <b>{{ labConvLast }}</b><template v-if="snap.quality.okDays < 30">（有效日 {{ snap.quality.okDays }} 天，太少，收敛快慢说明不了什么）</template></span>
                   </div>
-                  <div class="pma-fn">
-                    行优先与列优先各抛光一次，比同一栋的 α 名次。
+                  <div class="pma-fn">落到够用线以下就只是撞了轮数上限；走平或来回摆才是真没收敛。</div>
+                </div>
+
+                <!-- L5b 换个扫描顺序，名次动不动 -->
+                <div class="av2-card av2-s6 pma-lab" data-lab="L5b">
+                  <div class="av2-card-h">
+                    <span class="t">换个扫描顺序，名次动不动</span>
+                    <span class="pma-per">整年</span>
+                    <span class="hint">
+                      斜率图，一栋一条 · 两端都是 α 名次（位，1 = α 最低） ·
+                      同一份有效日集合抛两次 · 来源：行优先 / 列优先
+                    </span>
+                  </div>
+                  <PvSlope v-if="l5RankPts.length" :points="l5RankPts" head-l="行优先" head-r="列优先" invert
+                    :emph-names="lab.convergence.flipped" :cap="l5Cap"
+                    :sel-name="selRow?.name" @pick="pickByName" />
+                  <div v-else class="pma-note">进矩阵不足 3 栋，名次最多差 1 位，这张图报不出翻转。</div>
+                  <div v-if="l5RankPts.length" class="pma-fn">
                     <template v-if="lab.convergence.flipped.length">
-                      换扫描顺序后名次挪动超过 1 位的栋：{{ lab.convergence.flipped.join('、') }}。
+                      加粗那 {{ lab.convergence.flipped.length }} 栋换扫描顺序后挪了 1 位以上，它们的名次别单拿去引用。
                     </template>
-                    <template v-else>换扫描顺序后没有栋的名次挪动超过 1 位。</template>
+                    <template v-else>{{ lab.convergence.names.length }} 栋名次都没挪超过 1 位，这份排名的顺序可以引用。</template>
                   </div>
                 </div>
 
