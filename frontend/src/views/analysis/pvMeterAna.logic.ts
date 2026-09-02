@@ -1596,7 +1596,7 @@ export interface LabResult {
   /** L2 */
   acf: { id: number; name: string; rho: number[]; nEff: number }[]
   /** L3:残差 vs 年积日。amp = 季度均值极差,年周期振幅的粗测 */
-  doy: { id: number; name: string; pts: { doy: number; v: number }[]; amp: number }[]
+  doy: { id: number; name: string; pts: { doy: number; v: number; inSeg: boolean }[]; amp: number }[]
   /** L4:单栋块自助零分布 + 观测值。跟着 focusId 走;不给则取 p 最小的那栋 */
   nullDist: { id: number; name: string; dist: number[]; obs: number } | null
   /** L5:抛光收敛读数 + 行优先/列优先的排名对照 */
@@ -1647,9 +1647,15 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   }))
 
   // ── L2 ACF / N_eff ────────────────────────────────────────────────────
+  // 最大滞后**由样本量定**,不写死 30。acf() 内部只按 min(maxLag, n-1) 截 ——
+  // n=31 时它照样吐到 lag 30,而 lag 30 只有 **1 对样本**,右半条全是噪声,
+  // 偏偏图还渲染得出来。惯例是 n/4:31 点只能诚实画到 lag 7。
+  // 这也正是 **L2 不能跟着月档走**的原因:块自助的块长是 14 天,
+  // 看不到 lag 14 就验证不了「块够不够长」,而一个月最多看到 7。
+  const acfMaxLag = (n: number) => Math.max(1, Math.min(30, Math.floor(n / 4)))
   const acfRows = inPlay.map(s => {
     const r = seriesOf.get(s.id)!.vals
-    const rho = acf(r, 30)
+    const rho = acf(r, acfMaxLag(r.length))
     return { id: s.id, name: s.name, rho, nEff: nEffOf(rho, r.length) }
   })
   const nEffById = new Map(acfRows.map(a => [a.id, a.nEff]))
@@ -1704,9 +1710,14 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   // ── L3 残差 vs 年积日 ─────────────────────────────────────────────────
   // **上线前必做**:有稳定年周期 = 模型缺项(季节性遮挡),**不是故障**。
   // 不做这个,春秋两季会各刷一批假变点。amp 大就该回去补模型。
+  // 横轴就是**年积日**,一个月只是这条轴上的一小段 —— 跟着月档走会把它变成
+  // 「30 个点的散点」,而它要回答的是「有没有年周期」,一个月里根本没有年周期可看。
+  // 所以它必须画整年,但**当段的点带 inSeg 标记**,屏上高亮 —— 跟得上期间,又不撒谎。
+  const inSegOf = (d: string) =>
+    snap.gran === 'month' && snap.ym ? d.startsWith(snap.ym) : true
   const doy = inPlay.map(s => {
     const { dates, vals } = seriesOf.get(s.id)!
-    const pts = dates.map((d, i) => ({ doy: dayOfYear(d), v: vals[i] }))
+    const pts = dates.map((d, i) => ({ doy: dayOfYear(d), v: vals[i], inSeg: inSegOf(d) }))
     // 季度均值的极差 = 年周期振幅的粗测(够用来报警,不用拟合正弦)
     const q4 = [0, 0, 0, 0].map((_, k) => {
       const seg = pts.filter(p => Math.floor((p.doy - 1) / 91.5) === k)
@@ -1749,9 +1760,16 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   // 横轴用**首末抄表日之间的整段日历**,不是「有抄表的那些日子」——
   // 后者会让「全园一天都没抄」的日子从图上整列消失,而那正是这张图要回答的问题。
   // 也不铺满自然年:投产前那几个月会铺出一大片假的「漏抄」。
+  //
+  // **横轴跟着显示段走**(2026-09-02):月档只画当月那三十来列,年档画首末抄表日之间的整段。
+  // 365 列 @2px 几乎读不出哪一格是哪天;31 列给到 6px 才谈得上「回答剔了哪些天」。
+  // 这一块跟期间走没有任何统计障碍 —— 它是**记账**不是估计,一格就是一天,不需要样本量。
   const readDates = new Set(rows.map(r => r.date))
   const firstRead = rows.reduce<string | null>((m, r) => (m == null || r.date < m ? r.date : m), null)
-  const dates = firstRead && snap.dataThrough ? dateSpan(firstRead, snap.dataThrough) : []
+  const spanAll = firstRead && snap.dataThrough ? dateSpan(firstRead, snap.dataThrough) : []
+  const dates = snap.gran === 'month' && snap.ym
+    ? spanAll.filter(d => d.startsWith(snap.ym!))
+    : spanAll
   const firstOf = new Map<number, string>()
   for (const r of rows) {
     const cur = firstOf.get(r.stationId)

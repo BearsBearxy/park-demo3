@@ -728,7 +728,11 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
   it('观测窗口跟着期间走,不是写死的「最后 30 天」', { timeout: 30_000 }, async () => {
     const w8 = await mountScreen({ month: 8 })
     await toSection(w8, '高级分析')
-    const win8 = w8.findAll('.pma-per.win').map(e => e.text())
+    // 只看 L4/L7 的**观测窗口**徽标。L6 现在也带 .win(它跟着显示段走),
+    // 但它标的是段本身(「2026 年 8 月」)不是窗口键,格式不同,别混在一起断言
+    const winOf = (w: VueWrapper) =>
+      ['L4', 'L7'].flatMap(k => w.findAll(`[data-lab="${k}"] .pma-per.win`).map(e => e.text()))
+    const win8 = winOf(w8)
     expect(win8.length, 'L4 与 L7 都该有窗口徽标').toBeGreaterThanOrEqual(2)
     for (const t of win8) expect(t, `窗口徽标没跟着 8 月: ${t}`).toContain('2026-08')
 
@@ -736,7 +740,7 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     // 换别的月会被外壳挡回去(不是实现问题) —— 所以这里换 7 月
     const w7 = await mountScreen({ month: 7 })
     await toSection(w7, '高级分析')
-    const win7 = w7.findAll('.pma-per.win').map(e => e.text())
+    const win7 = winOf(w7)
     expect(win7.length).toBeGreaterThanOrEqual(2)
     for (const t of win7) expect(t, `换到 7 月窗口没跟着换: ${t}`).toContain('2026-07')
   })
@@ -818,6 +822,19 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     expect(w.find('.pma-sec').text()).not.toContain('σ')
   })
 
+  // 质量矩阵**跟着期间走**:它是记账不是估计,一格就是一天,不需要样本量 ——
+  // 365 列 @2px 读不出哪格是哪天,31 列才谈得上「回答剔了哪些天」
+  it('质量矩阵跟着期间走 —— 月档只画当月那三十来列,不是铺满整年', async () => {
+    const w = await mountScreen({ month: 8 })
+    await toSection(w, '高级分析')
+    const rows = w.findAll('[data-lab="L6"] .pqg-cells .c').length
+    const lines = w.findAll('[data-lab="L6"] .pqg-cells').length || 1
+    // 8 月 31 天 × 在网栋数;铺满整年的话列数是 365,格子数会是十倍以上
+    const perRow = rows / Math.max(1, w.findAll('[data-lab="L6"] .nm').length)
+    expect(perRow, `一行不是 31 格(月档没跟上,或者还在铺整年): ${perRow}`).toBe(31)
+    expect(lines).toBeGreaterThan(0)
+  }, 20_000)
+
   it('质量矩阵四态四色 —— 缺抄与未投产必须分得开,不是两片一样的浅灰', async () => {
     // 3/05 全园一天都没抄(= 缺抄);6/10 只剩两栋在网,不足 3 栋 → 那一天整日剔除;
     // S9 到 3/01 才有第一条抄表 → 它前面整整两个月是未投产。
@@ -826,7 +843,9 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
     const rds = readingsOf(2026, { skip: ['2026-03-05'] })
       .filter(r => !(r.readDate === '2026-06-10' && r.stationId > 2))
       .filter(r => !(r.stationId === N && r.readDate < '2026-03-01'))
-    const w = await mountScreen({ readings: rds })
+    // **年档**看:三月的漏抄、S9 一二月的未投产都在整年这条轴上。
+    // 月档只画当月(2026-09-02 起),这里要的是四态齐全,所以走年档。
+    const w = await mountScreen({ readings: rds, gran: 'year' })
     await toSection(w, '高级分析')
 
     const cells = w.findAll('[data-lab="L6"] .pqg-cells .c')

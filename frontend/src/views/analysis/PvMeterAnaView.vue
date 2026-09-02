@@ -595,6 +595,11 @@ const labAcfOpt = computed<object>(() => {
 const labDoyPts = computed(() =>
   (lab.value?.doy ?? []).flatMap(d => d.pts.map(p => [p.doy, +p.v.toFixed(4)])))
 // 焦点那栋的点单独一层画在上面 —— 与墨层重叠是故意的:计数(图脚的「N 个点」)仍取全量
+// 当段的点单独一层 —— 横轴是年积日,一个月只是轴上的一小段,
+// 跟着月档「只画一个月」等于把这张图变成 30 个点的散点,而它要看的是**有没有年周期**。
+// 所以整年照画,当段的点加重:跟得上期间,又不撒谎。
+const labDoySeg = computed(() =>
+  (lab.value?.doy ?? []).flatMap(d => d.pts.filter(p => p.inSeg).map(p => [p.doy, +p.v.toFixed(4)])))
 const labDoyFocus = computed(() => {
   const n = selRow.value?.name
   const d = n ? (lab.value?.doy ?? []).find(x => x.name === n) : undefined
@@ -620,6 +625,7 @@ const labDoyOpt = computed<object>(() => {
           lineStyle: { color: C.INK500, type: 'dashed', width: 1 }, data: [{ yAxis: 0 }],
         },
       },
+      { type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK700 }, data: labDoySeg.value },
       { type: 'scatter', symbolSize: 2, itemStyle: { color: C.FOCUS }, data: labDoyFocus.value },
     ],
   }
@@ -1046,7 +1052,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L2">
                   <div class="av2-card-h">
                     <span class="t">残差自相关 ACF<template v-if="labAcf"> · {{ labAcf.name }}</template></span>
-                    <span class="pma-per">整年</span>
+                    <span class="pma-per">整年 · 滞后 0–{{ labAcf ? labAcf.rho.length - 1 : 0 }}</span>
                     <span class="hint">
                       柱 = 各滞后的自相关系数 · 横轴滞后 0–30 天，纵轴 ρ 无量纲（−1~1） ·
                       拿这一栋的全年逐日残差算 · 来源：抛光残差
@@ -1065,7 +1071,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s6 pma-lab" data-lab="L3">
                   <div class="av2-card-h">
                     <span class="t">残差 vs 年积日</span>
-                    <span class="pma-per">整年</span>
+                    <span class="pma-per">整年<template v-if="gran === 'month'">（{{ segLabel }}加重）</template></span>
                     <span class="hint">
                       散点，各栋的点汇在一起同色 · 横轴年积日 1–366 天，纵轴残差（对数，无量纲） ·
                       拿全年逐日残差算 · 来源：抛光残差
@@ -1130,7 +1136,7 @@ function outText(o: number | null | undefined): string {
                 <div class="av2-card av2-s12 pma-lab" data-lab="L6">
                   <div class="av2-card-h">
                     <span class="t">数据质量矩阵</span>
-                    <span class="pma-per">整年</span>
+                    <span class="pma-per win">{{ gran === 'month' ? segLabel : '整年' }}</span>
                     <span class="hint">
                       网格热力，一格 = 一栋一天，四态三色 + 未投产留空白 · 横轴首末抄表日之间的整段日历，纵轴各栋 ·
                       拿 {{ labQuality?.dates.length ?? 0 }} 天 × {{ labQuality?.rows.length ?? 0 }} 栋算 ·

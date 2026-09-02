@@ -145,6 +145,27 @@ describe('工作台 · 铁律:一份数据、一次计算、一个 id', () => {
    * 屏 spec 那条基于文案的断言照样绿 —— **文案断言永远验不了计算**。
    * 所以这条比对两个月份算出来的**数**:窗口真跟着段走,z 与观测值就必然不同。
    */
+  /**
+   * ACF 的最大滞后必须**由样本量定**,不写死 30。
+   *
+   * `acf()` 内部只按 `min(maxLag, n-1)` 截 —— n=31 时它照样吐到 lag 30,
+   * 而 lag 30 只有**一对样本**,右半条全是噪声,偏偏图还渲染得出来。惯例是 n/4。
+   * 整年 365 点时 min(30, 91) 与写死 30 同值,分不开,所以这条用**短序列**测。
+   */
+  it('ACF 的滞后上限由 n 定 —— 短序列不许画到 lag 30', () => {
+    // 只给两个月 ≈ 59 天 → n/4 ≈ 14,写死 30 的话会吐到 30
+    const l = lab({ months: [1, 2] })
+    expect(l.acf.length).toBeGreaterThan(0)
+    for (const a of l.acf) {
+      const n = l.tests.find(t => t.id === a.id)?.days ?? 0
+      const maxLag = a.rho.length - 1
+      expect(maxLag, `${a.name}: n=${n} 却画到 lag ${maxLag} —— 滞后上限大概率还是写死的`)
+        .toBeLessThanOrEqual(Math.max(1, Math.floor(n / 4)))
+    }
+    // 且确实比 30 短(否则这条测了个寂寞)
+    expect(Math.max(...l.acf.map(a => a.rho.length - 1))).toBeLessThan(30)
+  })
+
   it('观测窗口跟着显示段走 —— 钉在算出来的数上,不是钉在徽标文案上', () => {
     const base = makeInput({ gen: stepGen })
     const mk = (m: number) => {
