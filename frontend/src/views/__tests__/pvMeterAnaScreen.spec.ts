@@ -968,6 +968,19 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
   }, 30_000)
 
 
+  // 窗口跟着期间走之后(d3293ba),屏上仍有三处小字写着「最后 30 天」——
+  // 徽标写「窗口 2026-08」、紧挨着的小字写「取最后 30 天」,**同一张卡自相矛盾**。
+  // 这不是措辞问题:读者按小字去核对数就永远对不上。
+  // 这条守的是「口径改了,说口径的那句话必须跟着改」——改回去它立刻红。
+  it('屏上不许再出现「最后 30 天」—— 窗口已经跟着期间走了', async () => {
+    const w = await mountScreen({ month: 8 })
+    await toSection(w, '高级分析')
+    const sec = w.find('.pma-sec').text()
+    expect(sec, '窗口徽标没在说当段,这条断言的前提就不成立').toContain('窗口 2026-08')
+    expect(sec, '徽标说当段、小字说「最后 30 天」,同一张卡自相矛盾').not.toContain('最后 30 天')
+    expect(sec).not.toContain('30 天窗口')
+  }, 30_000)
+
   it('高级分析档守排他规则:#9D5D17 零次、height 只有 200/250、图种只有 bar/line/scatter', async () => {
     const w = await mountScreen()
     await toSection(w, '高级分析')

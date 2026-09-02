@@ -602,7 +602,7 @@ const seasonSkip = computed(() => (lab.value?.season ?? []).filter(x => x.amp ==
 // L4 块自助零分布 + 观测竖线。让尾概率看得见,比印一个数字可信。
 // **故意留墨**:一栋、一条重采样分布,柱之间没有类别可分,观测竖线靠位置(落在尾部)说话
 // 不靠颜色。没有维度可编码的图上色就是装饰 —— 不是漏改(§06.7)。
-// ⚠ 这里画的是 buildLab 里 nullDist 的量:**最后 30 天窗口均值**。L7 表里那列 p 是
+// ⚠ 这里画的是 buildLab 里 nullDist 的量:**观测窗口内的残差均值**。L7 表里那列 p 是
 //    变点检验的 p,两个量不同源(实测同一栋能差两个数量级)。
 //    对策是**把这张图自己的尾概率印在竖线上**(labNullTail),不是写一句「不要互相读」——
 //    读者手里有了数才不会去对那个对不上的。别再把这个数拿掉。
@@ -1150,13 +1150,13 @@ function outText(o: number | null | undefined): string {
                     <span class="pma-per win">窗口 {{ lab.window.label }}<template v-if="lab.window.fellBack">（当段样本不足，退回）</template></span>
                     <span class="hint">
                       直方图 + 观测值竖线 · 横轴窗口均值（对数，无量纲），纵轴落入该桶的重采样次数 ·
-                      观测值取最后 30 天窗口，零分布重采样全年残差 · 来源：块自助 B=999、块长 14 天
+                      观测值取当前显示段（当段不足 8 天则退回最后一个自然月），零分布重采样全年残差 · 来源：块自助 B=999、块长 14 天
                     </span>
                   </div>
                   <AnaEChart v-if="lab.nullDist" :option="labNullOpt" :height="200" />
                   <div v-else class="pma-note">选中的栋没有可用窗口，画不出零分布。</div>
                   <div v-if="lab.nullDist" class="pma-fn">
-                    跟着队列选中那栋走。这张图算的是**最后 30 天窗口均值**这一个量：
+                    跟着队列选中那栋走。这张图算的是**观测窗口内的残差均值**这一个量：
                     竖线是它的观测值，尾概率就标在竖线上（{{ (labNullTail ?? 0).toFixed(3) }}）。
                     重采样搬的是整块 14 天，不是单日 —— 块内的自相关被原样保留。
                     下面表里的 p 列算的是另一个量（变点检验），各有各的数。
@@ -1236,7 +1236,7 @@ function outText(o: number | null | undefined): string {
                     <span class="pma-per">α · N_eff · 变点 = 整年</span><span class="pma-per win">z = 窗口 {{ lab.window.label }}</span>
                     <span class="hint">
                       表格，{{ lab.tests.length }} 行不分页 · 每列的单位与口径印在列头下的小字里 ·
-                      z 与零分布取最后 30 天窗口，α / N_eff / 变点取全年 · 来源：变点检验 + BH-FDR，逐栋
+                      z 与零分布取观测窗口（跟着期间走），α / N_eff / 变点取全年 · 来源：变点检验 + BH-FDR，逐栋
                     </span>
                   </div>
                   <PvLabTable v-if="lab.tests.length" :rows="lab.tests" @pick="pickLab" />

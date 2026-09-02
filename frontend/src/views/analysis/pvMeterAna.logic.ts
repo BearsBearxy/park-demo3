@@ -1417,13 +1417,10 @@ export function buildDetail(snap: AnaSnapshot, stationId: number): StationDetail
 // 自己算的两处(变点、块自助)钉死同一组 opts 与种子,与抽屉 buildDetail 逐位相同。
 // 不塞进 buildSnapshot 的理由:ACF + 逐日质量矩阵 + 第二次抛光加起来不便宜,而九成的人只看第一层。
 
-/** 主窗口长度(天)。z 与零分布都看最后这一段。v3 的 Criteria 里没有窗口口径,故在此定死。 */
-const LAB_WIN = 30
-
 /**
  * 工作台的**观测窗口**跟着显示段走。
  *
- * 原来写死 `r.slice(-LAB_WIN)`(最后 30 天)。数据截止在 12-31,于是
+ * 原来写死「最后 30 天」(`r.slice(-30)`)。数据截止在 12-31,于是
  * **你在看 8 月、它算的是 12 月**,而屏上一个字都没说 —— 工作台里同时有三个期间
  * (整年 / 最后 30 天 / 你选的那一段),互相不打招呼。
  *
