@@ -54,8 +54,13 @@ const axY = computed(() => MT + props.rows.length * RH + 4)
 
 const X = (m: number) => ML + ((m + 0.5) / 12) * iw.value
 const top = (i: number) => MT + i * RH
-/** 行内半高 6px。共用同一把 half,13 行的形状才可比 —— 各行自适应等于每行换一把尺。 */
-const Y = (v: number, i: number) => top(i) + RH / 2 - (v / props.half) * (RH / 2 - 3)
+const HH = RH / 2 - 3          // 行内半高 6px
+/** 共用同一把 half,13 行的形状才可比 —— 各行自适应等于每行换一把尺。
+ *  half 取 90 分位(见 logic),所以**会有点超出轴** —— 一律夹到行边,由 clip 标出来。 */
+const Y = (v: number, i: number) =>
+  top(i) + RH / 2 - Math.max(-1, Math.min(1, v / props.half)) * HH
+/** 超出共用轴的点。**不静默钉在边上** —— 画成尖角,title 里给真值。 */
+const isClip = (v: number) => Math.abs(v) > props.half
 
 /** null 处 M 重起:线在那里**断开,不插值**(与 L6「看见的空就是真的空」同一条规矩) */
 function pathOf(months: (number | null)[], i: number): string {
@@ -69,6 +74,17 @@ function pathOf(months: (number | null)[], i: number): string {
 }
 
 const drawnRows = computed(() => props.rows.filter(r => r.amp != null))
+/** 尖角:超轴的点用三角代替圆,朝向就是它跑出去的那一边 */
+const caret = (v: number, m: number, i: number) => {
+  const x = X(m), y = Y(v, i), d = v > 0 ? -1 : 1
+  return `M${(x - 3).toFixed(1)} ${(y - d * 3).toFixed(1)} L${(x + 3).toFixed(1)} ${(y - d * 3).toFixed(1)} L${x.toFixed(1)} ${(y + d * 1).toFixed(1)} Z`
+}
+/** 极差是不是几乎全来自那一两个超轴的月 —— 是的话不许把它叫「年周期」 */
+const spikeOf = (r: { months: (number | null)[] }) => {
+  const out: number[] = []
+  r.months.forEach((v, m) => { if (v != null && isClip(v)) out.push(m + 1) })
+  return out
+}
 const skipN = computed(() => props.rows.length - drawnRows.value.length)
 /** 第一条「量不出」的行 —— 它的上缘画一条 hairline,把两批隔开 */
 const sepAt = computed(() => props.rows.findIndex(r => r.amp == null))
@@ -90,10 +106,12 @@ const extreme = (r: { months: (number | null)[] }, hi: boolean) => {
   })
   return best < 0 ? '—' : MON[best]
 }
-const titleOf = (r: { name: string; months: (number | null)[]; amp: number | null }) =>
-  r.amp == null
-    ? `${r.name} 有效月 ${r.months.filter(v => v != null).length} 个，量不出年内极差`
-    : `${r.name} 年内极差 ${r.amp.toFixed(3)}（对数），最高 ${extreme(r, true)} 月，最低 ${extreme(r, false)} 月`
+const titleOf = (r: { name: string; months: (number | null)[]; amp: number | null }) => {
+  if (r.amp == null) return `${r.name} 有效月 ${r.months.filter(v => v != null).length} 个，量不出年内极差`
+  const sp = spikeOf(r)
+  return `${r.name} 年内极差 ${r.amp.toFixed(3)}（对数），最高 ${extreme(r, true)} 月，最低 ${extreme(r, false)} 月`
+    + (sp.length ? `；${sp.join('、')} 月超出共用轴（画成尖角），真值 ${sp.map(m => r.months[m - 1]!.toFixed(3)).join('、')}` : '')
+}
 
 // 读屏拿不到颜色也拿不到位置,这段就是这张图的全部内容
 const aria = computed(() =>
@@ -102,7 +120,12 @@ const aria = computed(() =>
   + drawnRows.value.map(r => `${r.name} ${r.amp!.toFixed(3)}，最高 ${extreme(r, true)} 月，最低 ${extreme(r, false)} 月`).join('；')
   + '。'
   + (props.band ? `常态带 ${props.band.lo.toFixed(3)} 至 ${props.band.hi.toFixed(3)}。` : '进图的栋太少，画不出常态带。')
-  + (skipN.value ? `${skipN.value} 栋有效月不足 8 个，不画线。` : ''))
+  + (skipN.value ? `${skipN.value} 栋有效月不足 8 个，不画线。` : '')
+  + (clipN.value ? `另有 ${clipN.value} 个月的值超出共用轴，画成尖角，真值在各行的悬停里。` : ''))
+
+/** 超轴的点共几个 —— 图注要报出来,不许静默夹边 */
+const clipN = computed(() =>
+  drawnRows.value.reduce((a, r) => a + spikeOf(r).length, 0))
 
 /** 13 行不挂 13 个监听:事件委托,命中区上带 data-id */
 function onClick(e: MouseEvent) {
@@ -123,8 +146,11 @@ function onClick(e: MouseEvent) {
         <line class="zero" :x1="ML" :x2="vw - MR" :y1="Y(0, i)" :y2="Y(0, i)" />
         <path v-if="r.amp != null" class="ln" :d="pathOf(r.months, i)" />
         <template v-if="r.amp != null">
-          <circle v-for="(v, m) in r.months" v-show="v != null" :key="m" class="pt"
-            :class="{ hollow: m === partialMo }" :cx="X(m)" :cy="Y(v ?? 0, i)" :r="1.6" />
+          <template v-for="(v, m) in r.months" :key="m">
+            <path v-if="v != null && isClip(v)" class="pt cl" :d="caret(v, m, i)" />
+            <circle v-else-if="v != null" class="pt" :class="{ hollow: m === partialMo }"
+              :cx="X(m)" :cy="Y(v, i)" :r="1.6" />
+          </template>
         </template>
         <text class="nm" :x="ML - 8" :y="top(i) + RH / 2 + 3.5">{{ r.name }}</text>
         <text class="vl" :x="vw - MR + 6" :y="top(i) + RH / 2 + 3.5">
@@ -155,6 +181,8 @@ function onClick(e: MouseEvent) {
 .zero { stroke: var(--ink-100); }
 .ln { fill: none; stroke: var(--ink-700); stroke-width: 1.25; stroke-linejoin: round; }
 .pt { fill: var(--ink-700); }
+/* 超出共用轴:尖角朝它跑出去的那一边。形状通道 —— 黑白打印下也认得出「这个点在图外」 */
+.pt.cl { fill: var(--ink-900); }
 /* 月中未录全那个月:空心圈。形状通道 —— 不靠颜色,也不用再写一句话 */
 .pt.hollow { fill: none; stroke: var(--ink-700); stroke-width: 1; }
 .sep { stroke: var(--ink-100); }

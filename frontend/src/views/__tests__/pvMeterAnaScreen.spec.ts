@@ -833,6 +833,48 @@ describe('光伏分栋分析 · 高级分析档(2026-08 被砍掉的工作台,�
 
   // 质量矩阵**跟着期间走**:它是记账不是估计,一格就是一天,不需要样本量 ——
   // 365 列 @2px 读不出哪格是哪天,31 列才谈得上「回答剔了哪些天」
+  /**
+   * **2025 真数据上量到的病。** 六月一批新栋投产爬坡(11栋 当月 102~260 度、七月跳到 927~2320),
+   * 全园中位被拖垮 → 老栋六月残差冲到 +1.8,其余十一个月都在 ±0.08 内。
+   * 轴取最大值的话这一个月就把 13 行全压平 —— 正是 v3 要治的那堵「等权曲线的墙」。
+   * 轴要稳健,但超出的点**不许静默夹在边上**:画成尖角,真值进 title 与 aria。
+   */
+  it('一个离群月:轴不被撑爆,超轴的点画尖角且真值不丢', async () => {
+    // 六月只有一部分栋爬坡(×0.12)。全园一起低不行 —— 那是园区级效应,会被日效应 β 整个吸收。
+    const rds = readingsOf(2026).map(r =>
+      r.readDate.slice(5, 7) === '06' && r.stationId >= 4
+        ? { ...r, genTotal: r.genTotal * 0.12, selfUse: r.selfUse * 0.12, gridFeed: r.gridFeed * 0.12 }
+        : r)
+    const w = await mountScreen({ readings: rds, gran: 'year' })
+    await toSection(w, '高级分析')
+
+    const svg = w.find('[data-lab="L3"] .pv-season svg')
+    const carets = w.findAll('[data-lab="L3"] .pt.cl')
+    expect(carets.length, '一个尖角都没有 —— 要么轴还在被撑爆,要么超轴的点被静默夹掉了')
+      .toBeGreaterThan(0)
+
+    // 夹轴:**折线不许画出图外**。不夹的话超轴那个月会把线拉到几十倍行高之外 ——
+    // 断 circle 没用(超轴的点根本不是圆,是尖角 path),会跑的是线。
+    const H = Number(svg.attributes('height'))
+    const ys = w.findAll('[data-lab="L3"] path.ln')
+      .flatMap(pp => [...(pp.attributes('d') ?? '').matchAll(/[ML]\S+\s+(-?[\d.]+)/g)].map(m => Number(m[1])))
+    expect(ys.length, '一条折线都没抓到,下面两条会空跑').toBeGreaterThan(20)
+    expect(Math.min(...ys), `折线画到了图上边之外(最小 y=${Math.min(...ys)}，图高 ${H})`).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...ys), `折线画到了图下边之外(最大 y=${Math.max(...ys)}，图高 ${H})`).toBeLessThanOrEqual(H)
+
+    // 真值不许丢:aria 要报出「有几个月超轴」,行 title 要给那几个月的真数
+    const aria = svg.attributes('aria-label') ?? ''
+    expect(aria, '超轴的点没在 aria 里交代').toContain('超出共用轴')
+    const t = w.findAll('[data-lab="L3"] .row title').map(x => x.text()).find(x => x.includes('超出共用轴'))
+    expect(t, '行 title 里没给超轴那几个月的真值').toBeTruthy()
+    expect(t).toMatch(/真值\s*-?\d/)
+
+    // 图注不许把一次性跳变叫「年周期」
+    const fn = w.find('[data-lab="L3"] .pma-fn').text()
+    expect(fn, `极差几乎全来自一个月,却还在叫年周期: ${fn}`).not.toContain('年周期最重')
+    expect(fn).toContain('不是年周期')
+  }, 30_000)
+
   // 日历**跟着期间走**,而且月档**按自然月铺满** ——
   // 不按 dates 铺:今天 09-03 只画 3 格的话,明天再打开整体位移,09-14 换了个位置(§03.8)。
   it('日历跟着期间走 —— 月档铺满自然月那 31 格,不是铺整年,也不是只铺到今天', async () => {

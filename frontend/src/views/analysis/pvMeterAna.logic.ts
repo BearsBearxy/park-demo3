@@ -1774,8 +1774,14 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
   const asc = [...drawn].sort((a, b) => a - b)
   const qAt = (q: number) => asc[Math.min(asc.length - 1, Math.floor(q * asc.length))]
   const seasonBand = asc.length >= 24 ? { lo: qAt(0.25), hi: qAt(0.75) } : null
-  // ponytail: 0.02 是要拿真数据调的旋钮 —— 它决定「多平算平」,改它 = 改屏上的形,不是自由常数
-  const seasonHalf = Math.max(0.02, ...drawn.map(Math.abs))
+  // 共用纵轴的半幅。**取 90 分位不取最大值** —— 真数据上量到的教训:
+  // 2025 年六月一批新栋投产爬坡(11栋 当月 102~260 度,七月跳到 927~2320),
+  // 全园中位被拖垮,于是每一栋老栋六月的残差都冲到 +1.8(≈6.7 倍)。
+  // 拿最大值定轴,这**一个月**就把 13 行全压成平线 —— 正是 v3 要治的那堵「等权曲线的墙」。
+  // 90 分位保证至少九成的点在轴内;超出的点由组件画成尖角标出来,**不静默钉在边上**。
+  // ponytail: 0.02 地板与 0.90 分位都是要拿真数据调的旋钮,它们决定「多平算平」,不是自由常数。
+  const mags = drawn.map(Math.abs).sort((a, b) => a - b)
+  const seasonHalf = Math.max(0.02, mags.length ? mags[Math.floor(0.9 * (mags.length - 1))] : 0)
   const seasonPartial = snap.dataThrough && !isMonthEnd(snap.dataThrough)
     ? Number(snap.dataThrough.slice(5, 7)) - 1 : null
 

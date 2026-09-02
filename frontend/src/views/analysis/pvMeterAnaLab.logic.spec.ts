@@ -356,6 +356,28 @@ describe('L3 · 各栋残差的年内走势(模型诊断,上线前必做)', () =
     for (const r of l.season) expect(r.months[2], `${r.name} 三月只有 3 天却给出了中位数`).toBeNull()
   })
 
+  /**
+   * **2025 真数据上量到的病。** 六月一批新栋投产爬坡(11栋 当月 102~260 度、七月跳到 927~2320),
+   * 全园中位被拖垮,于是每一栋老栋六月的残差都冲到 +1.8(≈6.7 倍),其余十一个月都在 ±0.08 内。
+   * 实测分位:q75=0.009 / q90=0.074 / q95=1.802 / max=1.896。
+   * `half` 取**最大值**的话,这一个月就把 13 行全压成平线 —— 正是 v3 要治的那堵「等权曲线的墙」。
+   */
+  it('一个离群月不许把共用轴撑爆 —— 九成的点必须留在轴内', () => {
+    // **只有一部分栋**六月爬坡(砍到 12%),把全园中位拖垮;其余三栋正常 → 它们残差冲高。
+    // 全园一起低是不行的:那是园区级效应,会被日效应 β 整个吸收,残差恒 0(试过)。
+    const l = lab({ gen: (i, m, d) => 400 * (1 + (d % 5) * 0.1) * (m === 6 && i >= 3 ? 0.12 : 1) })
+    const drawn = l.season.flatMap(r => (r.amp == null ? [] : r.months.filter((v): v is number => v != null)))
+    expect(drawn.length).toBeGreaterThan(20)
+    const inAxis = drawn.filter(v => Math.abs(v) <= l.seasonHalf).length
+    expect(inAxis / drawn.length, `只有 ${inAxis}/${drawn.length} 个点在轴内 —— 轴被离群月撑爆了`)
+      .toBeGreaterThanOrEqual(0.9)
+    // 而且轴要**远小于**极差:撑爆时 half ≈ max,两者同量级
+    const mx = Math.max(...drawn.map(Math.abs))
+    expect(l.seasonHalf, `half=${l.seasonHalf} 已经被最大值 ${mx} 拖上去了`).toBeLessThan(mx / 3)
+    // 极差本身照实报,不许因为夹了轴就把数改小
+    expect(Math.max(...l.season.map(r => r.amp ?? 0))).toBeGreaterThan(l.seasonHalf * 3)
+  })
+
   it('常态带 = 全部进图月中位数的中间一半,且共用纵轴有地板', () => {
     const l = lab()
     expect(l.seasonBand).not.toBeNull()

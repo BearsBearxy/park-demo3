@@ -598,6 +598,14 @@ const labAcfOpt = computed<object>(() => {
 // 同 PvDots 的规矩:排序是这张图的杠杆,谁排的谁负责。
 const labTop = computed(() => lab.value?.season.find(x => x.amp != null) ?? null)
 const seasonSkip = computed(() => (lab.value?.season ?? []).filter(x => x.amp == null).length)
+// 第一行的极差是不是几乎全来自那一两个**超出共用轴**的月。是的话不许把它叫「年周期」——
+// 2025 年真数据上第一行就是这种:E座 十一个月都在 ±0.05 内,六月一个月冲到 +1.87
+// (那月一批新栋投产爬坡,把全园中位拖垮了)。叫它年周期是把模型缺陷说成季节性。
+const labTopSpike = computed(() => {
+  const t = labTop.value, h = lab.value?.seasonHalf
+  if (!t || h == null) return []
+  return t.months.reduce<number[]>((a, v, m) => (v != null && Math.abs(v) > h ? (a.push(m + 1), a) : a), [])
+})
 
 // L4 块自助零分布 + 观测竖线。让尾概率看得见,比印一个数字可信。
 // **故意留墨**:一栋、一条重采样分布,柱之间没有类别可分,观测竖线靠位置(落在尾部)说话
@@ -1139,7 +1147,7 @@ function outText(o: number | null | undefined): string {
                     :sel-id="selId" @pick="pickLab" />
                   <div v-else class="pma-note">没有栋满 8 个月的抄表，看不出年周期形状。</div>
                   <div v-if="labTop" class="pma-fn">
-                    第一行就是年周期最重的那栋，{{ labTop.name }} 上下差 {{ labTop.amp!.toFixed(3) }}（对数）；一次性台阶也会把它撑大，是不是台阶看下面表的变点列。<template v-if="seasonSkip">另有 {{ seasonSkip }} 栋有效月不足 8 个，只列栋名不画线。</template><template v-if="!lab.seasonBand">进图的栋太少，画不出常态带。</template>
+                    <template v-if="labTopSpike.length">第一行 {{ labTop.name }} 上下差 {{ labTop.amp!.toFixed(3) }}（对数），但几乎全来自 {{ labTopSpike.join('、') }} 月这{{ labTopSpike.length }}个月（尖角标出，已超出共用轴）—— 那是一次性跳变，不是年周期，去下面表的变点列对。</template><template v-else>第一行就是年周期最重的那栋，{{ labTop.name }} 上下差 {{ labTop.amp!.toFixed(3) }}（对数）；一次性台阶也会把它撑大，是不是台阶看下面表的变点列。</template><template v-if="seasonSkip">另有 {{ seasonSkip }} 栋有效月不足 8 个，只列栋名不画线。</template><template v-if="!lab.seasonBand">进图的栋太少，画不出常态带。</template>
                   </div>
                 </div>
 
