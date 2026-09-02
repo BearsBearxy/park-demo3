@@ -1,4 +1,4 @@
-// src/nav/fpNav.ts — 导航单一事实源(49屏×4层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊/系统管理)。
+// src/nav/fpNav.ts — 导航单一事实源(51屏×4层)。源: app/shell.jsx FP_NAV(+预算对比/能源分析/园区抄表/公摊分摊/系统管理)。
 // 数据层按业务时序三组(BILL-FORWARD 第0刀):档案(静态) → 出账链(应收派生:合同→计费参数→园区抄表→公共电核算→楼栋损耗→催缴单,新屏落此) → 实际数(事后录入,与出账链对账)。
 // S21:「价目管理」/price-cfg 退役,由「计费参数」/params 取代(router 里 /price-cfg 重定向)。
 export interface NavItem { value: string; label: string; icon: string; kind: string }
@@ -64,6 +64,8 @@ export const FP_NAV: NavLayer[] = [
       { value: 'pnl-analysis', label: '损益附表分析', icon: 'layers', kind: 'pnlAnalysis' },
       { value: 'budget', label: '预算对比', icon: 'target', kind: 'ana' },
       { value: 'pv-roi', label: '光伏投资回收', icon: 'sun', kind: 'pvRoi' },
+      // 分栋抄表分析独立成屏(PV-ANALYSIS-SPEC §01):与 pv-roi 两套数据源、两套时间维、两套期间语义
+      { value: 'pv-meter-analysis', label: '光伏分栋分析', icon: 'sun', kind: 'ana' },
       { value: 'elec-analysis', label: '电费成本分析', icon: 'zap', kind: 'ana' },
       { value: 'charging-analysis', label: '充电桩分析', icon: 'plug', kind: 'ana' } ] },
     { title: '监控', items: [{ value: 'anomaly', label: '异常提醒中心', icon: 'bell-ring', kind: 'ana' }] },

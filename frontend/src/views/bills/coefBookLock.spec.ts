@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
@@ -28,13 +28,32 @@ vi.mock('@/api/alloc', () => ({
 }))
 
 const PERM = 'param-policy:edit'
-const SCOPE = 'billing-chain:2026-08'
+
+/**
+ * **这份 spec 依赖「今天」,必须钉死。**
+ *
+ * 组件的生效月默认取当天(`CoefBookWindow.vue:52` `const today = new Date()`,
+ * 61-62 行 `effYear/effMonth`),而编辑锁的作用域又是由生效月推出来的
+ * (`S.coefBook(effYear, effMonth)`)。不钉的话这三条只在 2026-08 月内是绿的,
+ * 进入下个月就整月红,而且**每个月都会再红一次** ——
+ * 2026-09-02 系统日期一翻就这么红过。
+ *
+ * 只假 `Date`,**不假 timers**:下面 `settle()` 靠真的 `setTimeout(r, 0)` 等微任务,
+ * 整套 fake timers 会让它永远不 resolve。
+ *
+ * SCOPE 从 TODAY 推,不再手写 —— 两者手写就一定会再次漂开。
+ */
+const TODAY = new Date('2026-08-15T09:00:00+08:00')
+const YM = `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, '0')}`
+const SCOPE = `billing-chain:${YM}`
 
 type Vm = { editMode: boolean; onEditBtn: () => Promise<void> }
 
 function open() {
   return mount(CoefBookWindow, {
-    props: { open: true, ym: '2026-08', phase: '2', contracts: [], buildings: [], years: [2026] },
+    // ym 是催缴单页的期,与窗口内独立选择的生效月(effYm)本可不同;
+    // 这里让它与 TODAY 同月,复现套件写就时(2026-08 月内)的那个状态
+    props: { open: true, ym: YM, phase: '2', contracts: [], buildings: [], years: [TODAY.getFullYear()] },
     global: { stubs: { Teleport: true } },
   })
 }
@@ -65,11 +84,16 @@ async function elevatedIn() {
 
 describe('系数簿 · 编辑态的被动退出', () => {
   beforeEach(() => {
+    // 只假 Date(见 TODAY 处的说明);组件在 setup 里读 new Date(),所以必须在 mount 之前设
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(TODAY)
     localStorage.clear(); sessionStorage.clear()
     localStorage.setItem('token', 'test-token')
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
+
+  afterEach(() => { vi.useRealTimers() })
 
   it('点「结束授权」→ 退出编辑态并还锁', async () => {
     // 用户报的就是这条(2026-08-26):

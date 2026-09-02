@@ -34,11 +34,27 @@ const BUDGET_KB = {
   //   占位壳懒加载,从本块砍掉 9.3KB(197.3 → 188.0)——剩下的都是真·首屏。
   //   ⚠ 实测本块 Windows 本地 188.0 / CI(Linux)189.0,跨平台构建有 ~1KB 差:
   //   预算按 CI 口径 + 1KB 余量取 190。首次取 189 只留了 0 余量,CI 差 0.0KB 红了一轮。
-  index: 190,
+  // 2026-09-03 上调 190 → 191(+1KB)。**这是一次签字决定,理由写在这里**:
+  //   光伏分栋分析独立成屏(PV-ANALYSIS-SPEC §01)后,首屏多了两样 ——
+  //   导航单一事实源里的 1 条屏目,与 PARAM_DEFS 里 6 条光伏判据线的定义
+  //   (年锚点 / 范围半宽 / 段长 / 覆盖下限 / 台账差 / 年等效小时下限)。
+  //   实测 189.9 → 190.4。**屏本体 93.6KB 走懒加载,不在这一块里**。
+  //   没做瘦身就上调的理由:能抠的只有 PARAM_DEFS ——它经 api/params.ts 进的首屏,
+  //   摘出去是跨模块重构,风险不在本次改动范围内,为 0.4KB 不值当。记在这里,谁下次动首屏可以顺手做。
+  index: 191,
   vue: 113,
 }
 // 具名预算之外的兜底:防止胖东西从大块搬进某个屏的块里,总量没降却绕过了上面四条。
-const TOTAL_KB = 3820
+// 2026-09-03 上调 3820 → 3900(+80KB)。**这是一次签字决定,理由写在这里**:
+//   新增「光伏分栋分析」一整块屏(PV-ANALYSIS-SPEC §01,原本挤在光伏投资回收里)。
+//   构成:PvMeterAnaView 块 93.6KB(视图 + pvMeterAna.logic 的中位抛光/块自助/变点检验/
+//   样条/ACF,加 PvQueue·PvDayChart·PvSeasonRows·PvQualityGrid·PvSlope·PvDots·PvLabTable
+//   七个组件)+ 它的 CSS 13.6KB,减去 PvRoiView 搬走那部分后净 +106KB。**整块走懒加载**。
+//   ⚠ 三个重块 exceljs 917.1 / echarts 698.3 / vue 110.4 **一字节没动** ——
+//     新屏没夹带任何重库进来(heatmap/visualMap/calendar 全部手写 CSS Grid 与内联 SVG,
+//     正是为了不往 echartsBundle 里加东西)。这是这次敢签字的前提:涨的是新功能本身,不是失控。
+//   实测 3763.1 → 3869.1,取 3900 留 ~31KB 余量(跨平台构建有 ~1KB 差,见 index 那条的教训)。
+const TOTAL_KB = 3900
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

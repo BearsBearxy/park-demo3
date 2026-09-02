@@ -8,7 +8,10 @@ export interface PvStationDTO {
   id: number
   name: string
   phase: number                // 1/2/3
+  metered: number              // 1=已装光伏计量表 0=未安装(不入任何分析;与「装了表但漏抄」是两回事)
   capacityKwp: number | null   // 装机容量 kWp(可空)
+  panelCount: number | null    // 光伏板数量(块,可空)
+  panelWatt: number | null     // 单块标称功率 W(可空;理论装机 = panelCount × panelWatt ÷ 1000)
   priceYuan: number | null     // 消纳综合单价 元/kWh(可空)
   sortNo: number
 }
@@ -19,6 +22,8 @@ export interface PvStationReq {
   phase: number
   capacityKwp?: number | null
   priceYuan?: number | null
+  panelCount?: number | null
+  panelWatt?: number | null
 }
 
 export interface PvReadingDTO {

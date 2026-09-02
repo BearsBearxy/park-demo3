@@ -219,8 +219,17 @@ const rows = computed(() =>
     .map(s => ({ st: s, ...(aggByStation.value.get(s.id) ?? { gen: 0, self: 0, grid: 0, revenue: 0, count: 0 }) })),
 )
 
-// ── 行内编辑容量/单价(乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
-function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw: string) {
+// PUT 需要全量字段:漏一个就等于把它写成 null。收口成一个函数,加字段只改这里 ——
+// 之前两处各自内联拼 payload,改容量会把板数清空,而且是静默的。
+const stationPayload = (st: PvStationDTO) => ({
+  name: st.name, phase: st.phase,
+  capacityKwp: st.capacityKwp, priceYuan: st.priceYuan,
+  panelCount: st.panelCount, panelWatt: st.panelWatt,
+})
+
+// ── 行内编辑容量/单价/板数/单块标称功率(乐观更新:即时改本地,失败回滚 alert;PUT 带全量) ──
+type StationNumField = 'capacityKwp' | 'priceYuan' | 'panelCount' | 'panelWatt'
+function commitStation(st: PvStationDTO, field: StationNumField, raw: string) {
   // 写口自守(照 BillNoticesView.vue:301/415/431 的既有写法):editMode 会**就地**转假
   // (被别人接管 / 30 分钟提权到期),而调用者各有各的 v-if —— 守在发请求这一层才不漏。
   if (!editStation.value) return
@@ -229,7 +238,7 @@ function commitStation(st: PvStationDTO, field: 'capacityKwp' | 'priceYuan', raw
   if (v === st[field]) return
   const prev = st[field]
   st[field] = v
-  pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
+  pvMeterApi.updateStation(st.id, stationPayload(st))
     .then(() => {
       // 错价修正回路(P0-3):改价只影响之后新录,提示历史修正路径(导出「明细」sheet 改后重导即按新价重新快照)
       // 这条不是「已保存」而是一段**操作指引**(历史记录怎么修),用户可能要照着做 ——
@@ -250,7 +259,7 @@ function commitStationName(st: PvStationDTO, raw: string) {
   if (v === st.name) return
   const prev = st.name
   st.name = v
-  pvMeterApi.updateStation(st.id, { name: st.name, phase: st.phase, capacityKwp: st.capacityKwp, priceYuan: st.priceYuan })
+  pvMeterApi.updateStation(st.id, stationPayload(st))
     .catch((e) => {
       st.name = prev
       alert((e as { message?: string })?.message ?? '保存失败，请重试')   // 重名 409 中文文案直达
@@ -550,6 +559,8 @@ async function onTemplate() {
           <colgroup>
             <col /><!-- 电站名:唯一弹性列吸收余宽 -->
             <col style="width:110px" />
+            <col style="width:78px" /><!-- 板数 -->
+            <col style="width:88px" /><!-- 单块 W -->
             <col style="width:120px" />
             <col style="width:120px" />
             <col style="width:120px" />
@@ -561,6 +572,8 @@ async function onTemplate() {
             <tr>
               <th>电站(楼栋)</th>
               <th class="num">装机容量 kWp</th>
+              <th class="num">板数</th>
+              <th class="num">单块 W</th>
               <th class="num">单价 元/kWh</th>
               <th class="num">本月发电总量</th>
               <th class="num">自消纳</th>
@@ -570,7 +583,15 @@ async function onTemplate() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.st.id" @click="openSt = r.st">
+            <!-- 未装表(metered=0)与「装了表但这个月漏抄」是两回事:前者永久不用管,后者要催人补录。
+                 只靠「有没有抄表记录」判定会把两者显示成同一种灰,该催的和不用催的混在一起,
+                 三周之内就没人看那盏灰灯了(PV-ANALYSIS-SPEC §07 第一行)。
+                 所以未装表的行:灰徽标 + 容量/单价禁编 + 点了不开抽屉。 -->
+            <tr
+              v-for="r in rows" :key="r.st.id"
+              :class="{ 'pm-nometer': !r.st.metered }"
+              @click="r.st.metered ? (openSt = r.st) : null"
+            >
               <!-- 电站名=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="name" :title="r.st.name">
                 <input v-if="editStation" class="pm-edit l" type="text"
@@ -580,19 +601,44 @@ async function onTemplate() {
                 <template v-else>
                   <span class="nm">{{ r.st.name }}</span>
                   <span v-if="phase === 'all'" class="pm-badge">{{ PHASE_LABEL[r.st.phase] }}</span>
+                  <span v-if="!r.st.metered" class="pm-badge mut" title="该栋未安装光伏计量表，不入分析，也无需催录入">未装表</span>
                 </template>
               </td>
               <!-- 容量/单价=站点常量:编辑模式行内改(点击不冒泡开抽屉),浏览态纯文本(EDIT-MODE-SPEC) -->
               <td class="num">
                 <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.01"
-                       :value="r.st.capacityKwp ?? ''" placeholder="—" title="装机容量,回车/失焦保存"
+                       :disabled="!r.st.metered"
+                       :value="r.st.capacityKwp ?? ''" placeholder="—"
+                       :title="r.st.metered ? '装机容量,回车/失焦保存' : '该栋未装表，容量无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'capacityKwp', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.capacityKwp != null ? fq(r.st.capacityKwp) : '—' }}</span>
               </td>
+              <!-- 板数 × 单块标称功率 = 理论装机,是唯一不从发电量倒推的容量口径(PV-ANALYSIS-SPEC §03.5)。
+                   一栋一个规格:混装的栋填主力值,偏离会在分栋分析的台账对照上显出来 —— 那正是要人去看的信号 -->
+              <td class="num">
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="1"
+                       :disabled="!r.st.metered"
+                       :value="r.st.panelCount ?? ''" placeholder="—"
+                       :title="r.st.metered ? '光伏板数量(块),回车/失焦保存' : '该栋未装表，板数无意义'"
+                       @click.stop
+                       @change="commitStation(r.st, 'panelCount', ($event.target as HTMLInputElement).value)" />
+                <span v-else>{{ r.st.panelCount ?? '—' }}</span>
+              </td>
+              <td class="num">
+                <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.1"
+                       :disabled="!r.st.metered"
+                       :value="r.st.panelWatt ?? ''" placeholder="—"
+                       :title="r.st.metered ? '单块标称功率 W(出厂铭牌),回车/失焦保存' : '该栋未装表，单块功率无意义'"
+                       @click.stop
+                       @change="commitStation(r.st, 'panelWatt', ($event.target as HTMLInputElement).value)" />
+                <span v-else>{{ r.st.panelWatt ?? '—' }}</span>
+              </td>
               <td class="num">
                 <input v-if="editStation" class="pm-edit" type="number" min="0" step="0.0001"
-                       :value="r.st.priceYuan ?? ''" placeholder="—" title="消纳综合单价,只影响之后新录记录"
+                       :disabled="!r.st.metered"
+                       :value="r.st.priceYuan ?? ''" placeholder="—"
+                       :title="r.st.metered ? '消纳综合单价,只影响之后新录记录' : '该栋未装表，单价无意义'"
                        @click.stop
                        @change="commitStation(r.st, 'priceYuan', ($event.target as HTMLInputElement).value)" />
                 <span v-else>{{ r.st.priceYuan != null ? r.st.priceYuan : '—' }}</span>
@@ -809,6 +855,11 @@ async function onTemplate() {
 .pm-table td.zero { color: var(--text-disabled); font-weight: var(--fw-regular); }
 .pm-table td.name .nm { font-weight: var(--fw-medium); }
 .pm-badge { margin-left: 8px; font-size: var(--fs-micro); color: var(--text-secondary); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 7px; }
+/* 未装表:整行压灰 + 不给手型 —— 点了也不开抽屉(PV-ANALYSIS-SPEC §07 第一行) */
+.pm-badge.mut { color: var(--text-muted); }
+.pm-table tbody tr.pm-nometer { cursor: default; }
+.pm-table tbody tr.pm-nometer:hover { background: transparent; }
+.pm-nometer .nm, .pm-nometer .num { color: var(--text-muted); }
 
 /* 行内编辑输入:静默融入单元格,hover/聚焦显边框 */
 .pm-edit { width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; text-align: right; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-primary); transition: border-color var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); appearance: textfield; -moz-appearance: textfield; }
