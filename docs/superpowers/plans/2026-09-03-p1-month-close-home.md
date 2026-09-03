@@ -724,3 +724,20 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **门禁**：全量 vitest 179 files 绿；`npm run build` 绿，size-check index 190.5KB / 191；`DataHomeServiceTest` 20/20。vitest 日志两处 stderr 为既有噪音（`importRegistry.spec` 故意的失败日志、`cpMeterFlow.spec` 的 jsdom `window.alert`）。
 
 **遗留（进最终复审 / 后续期）**：`billing-chain:0-00` 哨兵若进本人锁会显示「你在 0-00 的编辑」（当前不可达）；F3 的简单规则在「编辑抄表时点同月计费参数行」会多弹一次确认（P3 侧栏改恢复现场后收窄）；对账 `?y&m` 随刚选月走（与 F2 一致）。
+
+**最终整分支复审（最强模型，范围 7cb21b9..5c84946 代码）**：1 Critical + 1 Important + 3 Minor + 1 观察。
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| 1 | Critical | `DataHomeApiIT.java:81` 仍是 4 元素 `containsExactly`（plan 漏列的第三处；本机不跑 IT，CI 必红） | 补到 5 元素；另加键序断言 `params, meters, alloc, alloc-loss, bill-notices` |
+| 2 | Important | `myChainLockPeriods` 用 `find(u => u.self)`，`self` 按用户算 → 同一用户多开标签页取错座位，确认框该弹不弹 | 改按 `sid` 取本标签页座位；+2 多标签页用例（三条既有确认用例的座位随之改 `sid: presence.sid`） |
+| 3 | Minor | `loadChain` 失败时目标屏链路条静默空（`fetchAll` 吞错） | **裁定**记入 P2（链路条宿主显示 `period.loadErr`），P1 不做——恢复路径（换出账月）存在 |
+| 4 | Minor | `go()` 注释「20 秒一拍」实为 3 秒（`PING_MS`） | 改注释；`stores/presence.ts:27` 模块头同病，不在本期文件内，留后续顺手改 |
+| 5 | Minor | 2026-08-18 spec 修订段少 `priceTotal > 0`；本 spec §4.1 「与当前期不同」与 F3 裁定不一致 | 两份 spec 文案对齐实现 |
+| 6 | 观察 | 空库分支「未配置」不可见（无 stale 也无月） | 不动 |
+
+修复提交 646472d，定向复审 5/5 通过，无新破坏。
+
+**最终门禁**：全量 vitest 179 files / 2132 tests 绿（基线 2120，+12）；`npm run build` 绿，size-check index 190.5KB / 191（合计 3870.3 / 3900）；`DataHomeServiceTest` 20/20。分支 7cb21b9..646472d 共 11 个提交，未合并未推送。
+
+**遗留（后续期）**：size 预算 index 仅余 0.5KB，P2 前先抬预算或拆块；`presence.ts:27` 注释；`loadChain` 失败提示（P2）；`0-00` 哨兵不可达不动；F3 简单规则待 P3 收窄；浏览器级人工走查（登录后点首页行 → 目标屏链路条有数据、确认框、对账 ?y&m）由用户做。
