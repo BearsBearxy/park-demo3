@@ -71,7 +71,7 @@ function onQueryInput(e: Event) {
             :value="query"
             @input="onQueryInput"
             @keydown="onKey"
-            placeholder="跳转到页面 — 输入页面名或所属模块…"
+            placeholder="跳转到页面 — 输入页面名或分组名…"
           />
           <kbd class="fp-kbd fp-kbd-esc">Esc</kbd>
         </div>

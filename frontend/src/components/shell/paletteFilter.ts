@@ -10,6 +10,8 @@ export interface PageEntry {
   layer: string
   layerLabel: string
   layerIcon: string
+  /** 所在带标题组;搜索按它也能命中 */
+  group?: string
 }
 
 export interface PaletteGroup {
@@ -19,13 +21,13 @@ export interface PaletteGroup {
 
 /** filterPages — pure function, no side-effects.
  *  Empty/blank query → 最近访问 group (max 5, deduplicated) + one group per layer.
- *  Non-empty query → single "搜索结果" group, case-insensitive substring on label or layerLabel. */
+ *  Non-empty query → single "搜索结果" group, case-insensitive substring on label / layerLabel / group. */
 export function filterPages(query: string, allPages: PageEntry[], recent: string[]): PaletteGroup[] {
   const q = query.trim()
   if (q) {
     const lo = q.toLowerCase()
     const hits = allPages.filter(p =>
-      p.label.toLowerCase().includes(lo) || p.layerLabel.toLowerCase().includes(lo)
+      p.label.toLowerCase().includes(lo) || p.layerLabel.toLowerCase().includes(lo) || (p.group ?? '').toLowerCase().includes(lo)
     )
     return [{ title: hits.length ? '搜索结果' : '无匹配', items: hits }]
   }
@@ -57,5 +59,6 @@ export function buildAllPages(navLayers: string[], canSystemView = false): PageE
     layer: p.layer,
     layerLabel: p.layerLabel,
     layerIcon: p.layerIcon,
+    group: p.group,
   }))
 }

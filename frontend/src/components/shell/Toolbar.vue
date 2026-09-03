@@ -12,9 +12,10 @@ import { useAuthStore } from '@/stores/auth'
 // 它那个 Esc 栈用的是 `{ immediate: true }` 的 watch + onBeforeUnmount,挂卸载都接得住。
 const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
 import { useUiStore } from '@/stores/ui'
+import { useTabsStore } from '@/stores/tabs'
 import IconButton from '@/components/ds/IconButton.vue'
 import FPPresenceBar from '@/components/fp/FPPresenceBar.vue'
-import { PanelLeft, Star, Search, Sun, History, Bell } from 'lucide-vue-next'
+import { PanelLeft, Star, Search, History, Bell } from 'lucide-vue-next'
 
 const emit = defineEmits<{ 'open-command': [mode: string] }>()
 
@@ -22,7 +23,7 @@ const route = useRoute()
 const ui = useUiStore()
 
 // ── 待批授权(设计稿 §07 F-3) ──
-// Bell 从此有事做了 —— 它此前是顶栏四个死按钮之一(收藏 / 主题 / 操作记录 / 通知)。
+// Bell 从此有事做了 —— 它此前是顶栏四个死按钮之一(收藏 / 主题 / 操作记录 / 通知);2026-09-03 收藏接 tabs.pin、主题钮删除,死按钮清零。
 const presence = usePresenceStore()
 const auth = useAuthStore()
 const router = useRouter()
@@ -32,6 +33,11 @@ const pendingCount = computed(() => presence.approvals.length)
 const meta = computed(() => route.meta as Record<string, string>)
 const crumbGroup = computed(() => meta.value.layerLabel ?? '')
 const crumbPage  = computed(() => meta.value.page ?? '')
+
+// ★ 从此有事做了(SIDEBAR-UX-REDESIGN §6):把当前屏从预览槽固定成常驻页签。已固定时呈激活态,再点是空操作。
+const tabs = useTabsStore()
+const activeValue = computed(() => meta.value.value ?? '')
+const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value))
 </script>
 
 <template>
@@ -40,7 +46,7 @@ const crumbPage  = computed(() => meta.value.page ?? '')
     <IconButton aria-label="折叠侧边栏" @click="ui.toggleSidebar()">
       <PanelLeft :size="16" />
     </IconButton>
-    <IconButton aria-label="收藏本页">
+    <IconButton aria-label="固定为常驻页签" :active="pinned" @click="tabs.pin(activeValue)">
       <Star :size="16" />
     </IconButton>
 
@@ -56,15 +62,12 @@ const crumbPage  = computed(() => meta.value.page ?? '')
       <!-- 在场头像组(PRESENCE §03):右区最左,紧挨搜索框。宽度按满员算死,人数变化不挪版。 -->
       <FPPresenceBar />
       <!-- title 常挂:M 档收纳后文字与 kbd 藏进 CSS,提示只剩这里(§3.3) -->
-      <button class="fp-search-btn" title="搜索页面 / 租户 / 凭证（Ctrl K）"
+      <button class="fp-search-btn" title="搜索页面 / 分组（Ctrl K）"
               @click="emit('open-command', 'jump')">
         <Search :size="15" />
-        <span>搜索页面 / 租户 / 凭证…</span>
+        <span>搜索页面 / 分组…</span>
         <kbd class="fp-kbd">Ctrl K</kbd>
       </button>
-      <IconButton aria-label="浅色/深色模式">
-        <Sun :size="16" />
-      </IconButton>
       <!-- 操作记录:SystemLogsView 早就写好了,此前只差这根线(需 system:view) -->
       <IconButton v-if="auth.can('system:view')" aria-label="操作记录" @click="router.push('/sys-logs')">
         <History :size="16" />

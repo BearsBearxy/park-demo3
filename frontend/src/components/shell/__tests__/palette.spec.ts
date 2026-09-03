@@ -70,4 +70,11 @@ describe('filterPages', () => {
     expect(groups[0].title).toBe('无匹配')
     expect(groups[0].items).toHaveLength(0)
   })
+
+  it('按分组名匹配:「档案」命中楼栋 / 租户 / 合同(§6:搜索承诺改成「页面 / 分组」,面板就得真按分组找)', () => {
+    const groups = filterPages('档案', allPages, [])
+    expect(groups[0].items.map(p => p.value)).toEqual(['buildings', 'tenants', 'contracts'])
+    expect(allPages.find(p => p.value === 'salary')!.group).toBe('记账 · 按月')
+    expect(allPages.find(p => p.value === 'data-home')!.group).toBeUndefined()   // 无标题组
+  })
 })

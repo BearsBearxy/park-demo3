@@ -89,8 +89,9 @@ export const FP_NAV: NavLayer[] = [
 ]
 
 export interface RouteMeta { value: string; layer: string; layerLabel: string; layerIcon: string; page: string; icon: string; kind: string }
-export function fpAllPages(): (NavItem & { layer: string; layerLabel: string; layerIcon: string })[] {
-  return FP_NAV.flatMap(L => L.sections.flatMap(s => s.items.map(it => ({ ...it, layer: L.id, layerLabel: L.label, layerIcon: L.icon }))))
+/** 全部屏 + 所属层;`group` 是所在带标题组的标题(无标题组为 undefined),派生字段,只给命令面板搜索用,fpBuildRoutes 不吃。 */
+export function fpAllPages(): (NavItem & { layer: string; layerLabel: string; layerIcon: string; group?: string })[] {
+  return FP_NAV.flatMap(L => L.sections.flatMap(s => s.items.map(it => ({ ...it, layer: L.id, layerLabel: L.label, layerIcon: L.icon, group: s.title }))))
 }
 export function fpFindLayer(value: string): NavLayer { return FP_NAV.find(L => L.sections.some(s => s.items.some(it => it.value === value))) ?? FP_NAV[0] }
 export function fpBuildRoutes(): Record<string, RouteMeta> {
