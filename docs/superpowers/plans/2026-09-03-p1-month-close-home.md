@@ -442,7 +442,7 @@ beforeEach(() => { setActivePinia(createPinia()); push.mockClear() })
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.users = [{
-      user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['billing-chain:2025-03'], sinceMs: 0, idleMs: 0, self: true,
     }]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -693,3 +693,34 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - 审核机制（R1/R2）。
 - `adoptYm` 语义、`billingPeriod` 持久化。
 - 登录后的浏览器实测：口令不能由 Claude 输入，P1 验收靠单测 + 破坏验证 + 复查；真机走查由你登录后按 spec §9 P1 行的两条做。
+
+---
+
+## 复查记录（2026-09-03）
+
+**任务级评审（每任务一次，独立评审员）**
+
+| 任务 | 提交 | 结果 |
+|---|---|---|
+| T1 后端 5 步 | 5a0ef80 | 通过，零发现；破坏验证 #1 多红一条（`全新库` 用例走同一 `(0,0)` 边界，同一守卫，接受） |
+| T2 契约/骨架/标题 | 1c5cf30 + c6aa059 | 1 Important（骨架注释仍写「恒 4 步 / 本月工作」）→ 修复轮 1 通过 |
+| T3 行点击带月 | 2c94940 + e994e3b | 批准；1 条计划冲突（前置条「去重算」也走 pick 分支）裁定保留并注释；补年锁豁免与对账不 pick 两条断言 |
+| T4 导航改名 | 085be42 | 通过，零发现 |
+
+**对抗复查（3 镜头：正确性 / 护栏 / 用户价值 → 每条发现一名反驳者）**：7 条发现，5 条坐实，2 条被驳。
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| F1 | HIGH | 首页预选期后 `ChainMonthGate` 不挂载，而它是 `loadChain()` 唯一调用方 → 目标屏链路条五道工序全显「未做」 | `go()` 在 `pick` 后补 `void period.loadChain()`；+2 用例 |
+| F2 | MEDIUM | `go()` 读服务端回包月而非刚选月；`load()` 无序号，回包乱序会倒退 | `loadSeq` 守卫；月取 `pickedYm ?? curYm`；+2 用例 |
+| F3 | MEDIUM | `openFresh` 重建目标屏，草稿不分同月异月都丢；确认只盖异期、同年年锁还豁免 | **裁定**改为「持任一链锁即确认」（spec D2 原文即如此）；翻 1 条 + 加 1 条同月用例 |
+| C2 | LOW | overview → buildChain 的 `priceOk/priceTotal` 接线无测试（参数换位仍绿） | +2 条 overview 级后端用例 |
+| G1 | LOW | 四处注释残留「4 步」 | 改注释 |
+| C1 | HIGH | 「同年年锁豁免会静默清空抄表草稿」 | **被驳**：根因是 `openFresh` 不是豁免逻辑；场景并入 F3 处理 |
+| F4 | LOW | 确认文案应点名正在编辑的屏 | **被驳**：锁 scope 分不出屏（billing-chain 四屏共锁）；文案列持有期 |
+
+修复提交 d83f52c（F1/F2/F3）+ 5c84946（C2/G1），定向复审通过，无新破坏。
+
+**门禁**：全量 vitest 179 files 绿；`npm run build` 绿，size-check index 190.5KB / 191；`DataHomeServiceTest` 20/20。vitest 日志两处 stderr 为既有噪音（`importRegistry.spec` 故意的失败日志、`cpMeterFlow.spec` 的 jsdom `window.alert`）。
+
+**遗留（进最终复审 / 后续期）**：`billing-chain:0-00` 哨兵若进本人锁会显示「你在 0-00 的编辑」（当前不可达）；F3 的简单规则在「编辑抄表时点同月计费参数行」会多弹一次确认（P3 侧栏改恢复现场后收窄）；对账 `?y&m` 随刚选月走（与 F2 一致）。
