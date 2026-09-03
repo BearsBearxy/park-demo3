@@ -65,7 +65,7 @@ public class DataHomeService {
 
         if (ym == null) {   // 全新库:一条数据都没有,前端出「还没开始出账」引导
             return new DataHomeOverviewDTO(null, months, List.of(),
-                buildChain(0, false, false, 0, BigDecimal.ZERO, 0),
+                buildChain(0, 0, 0, false, false, 0, BigDecimal.ZERO, 0),
                 new DataHomeOverviewDTO.Schedules(0, 9, List.of()));
         }
 
@@ -89,7 +89,8 @@ public class DataHomeService {
         // 代价:多读一遍合同+计费行(实测全表扫描 0.5~2ms 级),换口径永不漂移,值。
         int contractNoLine = (int) contractService.list(null).stream()
             .filter(c -> c.billingLineCount() == 0).count();
-        boolean paramStale = paramService.status(ym).stale();
+        ParamStatusDTO ps = paramService.status(ym);
+        boolean paramStale = ps.stale();
 
         // ── 附表 9 源:保留原有取数与**月/年粒度差异**(月度类按 acctMonth、年度类按 year),
         //    改了会让附表完成度失真 ──
@@ -103,7 +104,7 @@ public class DataHomeService {
             new DataHomeOverviewDTO.Period(year, month, year + "年" + month + "月"),
             months,
             buildBlockers(contractNoLine, paramStale),
-            buildChain(readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
+            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
             new DataHomeOverviewDTO.Schedules(done, 9, items));
     }
 
@@ -220,25 +221,30 @@ public class DataHomeService {
         return Stream.concat(chainYms.stream(), scheduleYms.stream()).distinct().sorted().toList();
     }
 
-    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════════════════════
-    // 只画 4 步不画 6 步:合同与参数**不按月完成** —— 合同的「待补档案」是全局档案缺口,
-    // 参数是版本簿 —— 塞进流水线会得到两个永远不知道该不该打勾的格子。
-    // 它们改由 buildBlockers 承担:只在有问题时渲染,没问题时整条不出现。
+    // ══ 出账链 5 步(SIDEBAR-UX-REDESIGN §5.1;2026-09-03 由 4 步补成 5 步) ═════════════════════
+    // 合同仍不进流水线(「待补档案」是全局档案缺口,不按月),留在 buildBlockers。
+    // 计费参数进了:判据是**本月电价键录齐**,这是专员每月第一道工序的可回答问题。
 
-    /** 出账链 4 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+    /** 出账链 5 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+     *  ⚠ 第 1 步不用 ParamStatusDTO.stale 当判据:stale 是「改参晚于快照,需重算」,月初池/催缴单都还没
+     *    生成时恒 false —— 拿它当 done,第 1 步会在最需要它的时候假绿。stale 继续只喂 buildBlockers。
+     *  ⚠ 三处「参数」口径各答各的问题,不是 bug:链路条 chainStepsOf 画「参数与快照一致」(stale 驱动),
+     *    这里画「电价录齐」(priceOk),矩阵格子 pipsOf 仍 4 颗点不含参数。
      *  ⚠ 催缴单 detail 给「N 张」不是「N 户」:bill_notice 一租户可有多行(按收款公司/单据类型拆单),
-     *    而催缴单屏的「户数」是 aggregateByTenant 聚合后、且只算当前期别 tab 的数(默认一期)。
-     *    首页要的是整月全期口径,屏上压根没有这个数 —— 与其重算一份聚合(METRIC-SOURCE-SPEC §1
-     *    禁止同一判定两份实现),不如老实报单据张数:口径唯一、不会和屏上的户数打架。
+     *    而催缴单屏的「户数」是 aggregateByTenant 聚合后、且只算当前期别 tab 的数。首页要的是整月全期口径,
+     *    屏上压根没有这个数 —— 与其重算一份聚合(METRIC-SOURCE-SPEC §1 禁止同一判定两份实现),
+     *    不如老实报单据张数:口径唯一、不会和屏上的户数打架。
      *  ⚠ 抄表 detail 只给「已抄 N 块」不给分母:92/94 那个比例是 MeterView 前端 cardCounts()
-     *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1
-     *    禁止同一判定两份实现)。首页只回答「做没做、做了多少」,比例留在抄表屏。 */
-    static DataHomeOverviewDTO.Chain buildChain(long readingCount, boolean poolGenerated, boolean lossGenerated,
+     *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1)。 */
+    static DataHomeOverviewDTO.Chain buildChain(int priceOk, int priceTotal,
+                                                long readingCount, boolean poolGenerated, boolean lossGenerated,
                                                 int noticeCount, BigDecimal noticeTotal, int noticeWarn) {
-        boolean[] done   = { readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
-        String[]  keys   = { "meters", "alloc", "alloc-loss", "bill-notices" };
-        String[]  labels = { "园区抄表", "公共电核算", "楼栋损耗", "催缴单" };
+        boolean paramsDone = priceTotal > 0 && priceOk == priceTotal;
+        boolean[] done   = { paramsDone, readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
+        String[]  keys   = { "params", "meters", "alloc", "alloc-loss", "bill-notices" };
+        String[]  labels = { "计费参数", "园区抄表", "公共电核算", "楼栋损耗", "催缴单" };
         String[]  details = {
+            priceTotal > 0 ? "本月电价 " + priceOk + "/" + priceTotal + " 已录" : "未配置",
             readingCount > 0 ? "已抄 " + readingCount + " 块" : "未抄表",
             poolGenerated ? "" : "未生成",
             lossGenerated ? "" : "未生成",
@@ -248,10 +254,10 @@ public class DataHomeService {
                 : "未生成",
         };
         int current = -1;
-        for (int i = 0; i < 4; i++) if (!done[i]) { current = i; break; }
+        for (int i = 0; i < done.length; i++) if (!done[i]) { current = i; break; }
 
-        List<DataHomeOverviewDTO.Step> steps = new ArrayList<>(4);
-        for (int i = 0; i < 4; i++) {
+        List<DataHomeOverviewDTO.Step> steps = new ArrayList<>(done.length);
+        for (int i = 0; i < done.length; i++) {
             String status = done[i] ? "done" : (i == current ? "current" : "todo");
             steps.add(new DataHomeOverviewDTO.Step(keys[i], labels[i], status, details[i], keys[i]));
         }
