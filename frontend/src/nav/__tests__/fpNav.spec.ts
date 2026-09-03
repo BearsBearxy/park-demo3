@@ -10,6 +10,9 @@ describe('fpNav', () => {
     const r = fpBuildRoutes()
     expect(Object.keys(r)).toHaveLength(51)
     expect(r['buildings'].layer).toBe('data')
+    // 首页改名「本月出账」(SIDEBAR-UX-REDESIGN §5.1 / D12):value 不变,页签/面包屑/面板从这里取字
+    expect(r['data-home'].page).toBe('本月出账')
+    expect(r['data-home'].icon).toBe('calendar-check')
     // 计费参数(S21-PARAM-CENTER-SPEC §5):出账链组,合同管理之后,取代价目管理(price-cfg 不再是导航项)
     expect(r['params'].layer).toBe('data')
     expect(r['params'].page).toBe('计费参数')

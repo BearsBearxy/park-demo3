@@ -7,7 +7,7 @@ export interface NavLayer { id: string; label: string; short: string; icon: stri
 
 export const FP_NAV: NavLayer[] = [
   { id: 'data', label: '数据中心', short: '数据', icon: 'database', caption: '录入与维护 · 数据进来的地方', home: 'data-home', sections: [
-    { items: [{ value: 'data-home', label: '数据中心首页', icon: 'layout-dashboard', kind: 'data-home' }] },
+    { items: [{ value: 'data-home', label: '本月出账', icon: 'calendar-check', kind: 'data-home' }] },
     { title: '主数据', items: [
       { value: 'buildings', label: '楼栋管理', icon: 'building-2', kind: 'buildings' },
       { value: 'tenants', label: '租户管理', icon: 'users', kind: 'tenants' } ] },

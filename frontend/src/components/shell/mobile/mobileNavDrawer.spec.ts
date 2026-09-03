@@ -5,7 +5,7 @@ import { useTabsStore } from '@/stores/tabs'
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ meta: { value: 'data-home', page: '数据中心首页' } }),
+  useRoute: () => ({ meta: { value: 'data-home', page: '本月出账' } }),
   useRouter: () => ({ push }),
 }))
 
