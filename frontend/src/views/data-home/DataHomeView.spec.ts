@@ -148,6 +148,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith({ chain: { currentIndex: -1, steps: STEPS_ALLDONE } })
     await w.find('[data-primary-cta]').trigger('click')
     expect(push).toHaveBeenCalledWith({ path: '/reconciliation', query: { y: '2024', m: '2' } })
+    expect(useBillingPeriodStore().picked).toBe(false)   // 收入核对不在出账链,不 pick
   })
 
   it('本人握着别的月的链锁时点出账链行先确认,取消则不切期不跳转', async () => {
@@ -162,6 +163,21 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(confirm).toHaveBeenCalledOnce()
     expect(useBillingPeriodStore().picked).toBe(false)
     expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('本人握着同年的抄表年锁时点出账链行不弹确认(meters:2024 对 2024-02)', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      editScopes: ['meters:2024'], sinceMs: 0, idleMs: 0, self: true,
+    }]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(useBillingPeriodStore().picked).toBe(true)
+    expect(push).toHaveBeenCalledWith('/meters')
     confirm.mockRestore()
   })
 })

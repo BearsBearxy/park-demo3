@@ -55,6 +55,8 @@ watch(pickedYm, load)
 // (SIDEBAR-UX-REDESIGN §4.1 / D2)。pick 覆盖会话里已选的期 —— 首页写着的月就是用户刚点的意图;
 // 本人正握着**别的月**的链锁时先确认:换期会让 useEditMode 退出编辑、清掉未保存草稿。
 // 收入核对认 ?y&m(ReconView.vue:23 parsePeriodQuery),其余屏本期不带参(P0b 再接)。
+// 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
+// 本人锁的判断读 presence.users(20 秒一拍):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
 // ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
 function go(v: string) {
   const p = ov.value?.period
