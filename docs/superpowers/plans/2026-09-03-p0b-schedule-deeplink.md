@@ -1691,3 +1691,34 @@ Expected: vitest 全绿（基线 186 files / 2181 tests → 190 files；+4 文�
 - §12 8 张附表屏补重读：附10（T4）/ 附6·7·8·11·13·14（T3）/ 附12（T2）/ 分栋抄表 · 电费成本（T1）= 8 ✓ + 台账月表（T5，裁定）；「有草稿不重读当前期」附10 / 台账 ✓。
 - 类型一致：`DeepPeriod` / `periodOf` / `periodLink`（P0a）→ 各屏 `current().p` 形状：运营账 `gateYm`（`YYYY-MM`）、年表 `periodOf(year, null)`（`YYYY`）、附10 / 附12 / 台账 `periodOf(year, month)` ✓；`periodLink.co` 是 `number | 'all'`，导入中心传 `ctx.companyId` / `first.phase`（number | undefined）✓；`ImportResultToast.go?: string` 与 `:go="viewTo ? '去查看' : undefined"` ✓；`scheduleLink` 返回 `{ path, query } | null`，`router.push(link ?? '/' + v)` ✓。
 - 无占位：每个 Step 都有代码 / 命令 / 期望；每条新断言都写了红线。
+
+## 复查记录（2026-09-04）
+
+**计划级对抗复查**（实施前，3 镜头 → 每条 3 名反驳者，opus，39 agents）：12 条发现，7 坐实（去重 4 件）、5 被驳。坐实修入计划（53a042d）：twoBooksRail 用例 4 的 pending 桩卡死 `refresh()`（先 await load 再 reloadOverview）→ 改 `mockResolvedValue(null)`（P0B-1）；附12 的 onDeactivated 切走即关浮层、dirty 探针恒 0 → 不传 dirty、删用例（P0B-2）；「年表屏 current 只报年」无靶子（fullPath 去重挡住手工确认）→ 加用例 6（变键不变期只有 refresh 一趟）；`focusTenant` 被子表即时清空 + jsdom 无 `scrollIntoView` → 改断言 `emitted('focusDone' / 'focus-done')` + 桩。顺手：size-check 的 grep 改查文案字符串（标识符被压掉）；两处行号。被驳：异步 apply 的「先改期后重读」（机制属实、一次废请求，纳入代码复查镜头）；行号偏移（锚点文本为准）；「与 Task N 同款」（复查前已内联）；ElecCostView toast 锚点（toast 随裁定撤了）。
+
+**任务级评审**（每任务一次，独立评审员 opus；实施者 sonnet）
+
+| 任务 | 提交 | 结果 |
+|---|---|---|
+| T1 运营账三屏 | 66242f9 → 修复轮 363ec37 | Spec ✅；质量首轮 not approved：分栋抄表 / 分桩明细的 dirty 闸在产品里永远 0 —— 行草稿只能在抽屉里产生，onDeactivated 清 `openSt` → `watch(openSt, cancelForm)` 清 `adding`（计划复查的反驳者漏看了这一跳；评审员 `vm.openSt = STATIONS[0]` 一行探针即红）→ 裁定与附12 同口径不传 dirty、不加提示，两条用例改钉真实行为（红线 = 删 onDeactivated 的 openSt 清理）。复审 approved（评审员删 openSt 清理 → 4 红：2 新 + 2 既有抽屉用例，重叠接受） |
+| T2 附表12 | a3d2d7c | 通过；备注：切回带新 p 拉两趟 records（apply + 重读，seq 丢弃；同 P0a 链屏形状，若收敛改在 composable 一处）；重读失败经 loadMonth catch 退编辑态 + 还锁（既有契约）；「只有年不动」用例钉的是「不许落月」（`t.month ?? 1` 即红） |
+| T3 年表四屏 | d39d13d | 通过；4 minor：切回换年双拉（同上）；ElecView 注释 `summary|meter`（→ 修复波）；四屏缺 onDeactivated 收浮层是既有缺口、dirty 闸建立在它之上（→ 遗留）；twoBooksRail 在 T1/T2 窗口红（门禁刻意排除） |
+| T4 附表10 | 03bdedb | 通过；4 minor（皆与计划冲突）：「同一拍连写 → templateAt 一次」注释与断言不符（首拍 year null 早退 → 修复波改口径）；切回换期先按旧期拉一趟（接受）；指名期区不存在静默落错册（→ 修复波加守卫 + 用例）；`current().co = phase` 与旧链 `t.co = null` 永不相同（只在变键切回多一次重载，接受） |
+| T5 台账 | 160b92f → 修复轮 8c4b15e | Spec ✅；质量首轮 not approved：用例 1 注释声称的「分两拍写 → templateAt 两次」从 null 起步钉不住（评审员插 `await nextTick` 7 条全绿）→ 加用例 8（已落定状态下切回换年，templateAt 恰一次且 (2, 2025, 3)）；`loadGateYears().then(loadOverviews)` 缺 catch → 补；`bookOf('all')` 落当前册 / 首册补注。复审 approved；info：用例 8 可用 `toHaveBeenLastCalledWith`（→ 修复波）；深链首落时 years 失败 gateYears 停 null（既有） |
+| T6 导入中心 | 718f23b | 通过；5 minor：报告 ① 因果写反（只 openImport 那处有护栏）；lf 初值只解析年月（→ 注释）；产出方须 openFresh（→ 注释）；多段导入只取第一段（brief 明文，接受）；`?p=YYYY` 拼出「深链年 + 时钟月」（→ 修复波不预填） |
+| T7 首页发链 | 64c956c | 通过；遗留：`MONTH_ROWS` / `YEAR_ROWS` 是后端 monthly / yearly 的手抄本，9 行只钉 4 行（下期表驱动断言）；tag `'附14'` 前后端字面量耦合、无后端测试钉 (name, tag, go) |
+
+**代码级对抗复查**（整分支 4cd3cf5..64c956c，3 镜头 → 每条 3 名反驳者，opus，30 agents）：9 条发现，3 坐实（全部 3/3），6 被驳。
+
+| # | 发现 | 处置 |
+|---|---|---|
+| C1 正确性 | 台账旧链 `?company=<公司名>` → 册 的字符串分支全仓零护栏：用例用的「甲公司」恰是 `books[0]`，删掉整段分支 8/8 仍绿；6 处在产发链方（分析层 5 + 收入核对）靠它落册，回归即静默落到另一家公司同月台账 | **坐实** → 修复波：用例改用非首册（乙公司 → `month(12, …)`）+ 加「册名兜底」用例（丙册 → `month(15, …)`） |
+| C2 护栏 | 附7·8 / 附11 / 附13·14 的切回重读一条红线都没有（三屏 `onReactivated` 改 `void 0`，367 条全绿） | **坐实** → 修复波：schedDeepLink 加三条 keptAlive 用例（records 必须 `mockResolvedValue(null)`，与 P0B-1 同坑） |
+| C3 用户价值 | 台账整册多段导入后「去查看」按表单里的公司 / 月发链，而各段入库的是自己识别出的公司 / 月 → 用户被送去可能一行都没有的册与期 | **坐实** → 修复波：ledger 分支加 `!first?.records`（段模式不给按钮）+ 用例 |
+| 其余 | R2 `void ensureLoaded()` 未捕获（Vue 的 async 钩子本来也不兜，applyDeep 已 catch）/ R3 换册不清 gateYears（不可达）/ R4 年表四屏无条件 refresh 与「有草稿不重读」相悖（计划已把该规则限定在附10 / 台账）/ 两条「覆盖缺口非缺陷」（mode 门未钉：同族抽样约定；附10 切回 apply 路径：开关在 composable 共用）/ R0 备查 | 被驳 |
+
+修复波 f486611（C1 / C2 / C3 + 各任务留下的小项：ElecView 注释、附10 指名期区不存在不落错册 + 用例、两处「同一拍」注释口径、导入中心 `?p=YYYY` 不预填 + 用例 + 两处注释、台账用例 8 `toHaveBeenLastCalledWith`），定向复审 approved：三条坐实项各自重做探针精确命中；实施者报告里「附10 红线只见门消失」是 fail-fast 误读，实测 `getMonth(1, 2026, 9)` 同时被调；一处用例标题笔误（`?p=2025` 应为 2024）随本记录一起改。复查纪律：反驳者的在飞探针（LedgerView / S10 / importCenter 三处）结束时均已还原；两次 EOL-only 残留（DataHomeView.vue、importCenterDeepLink.spec.ts）由控制者按 blob hash 一致确认后恢复 CRLF。
+
+**门禁**：全量 vitest 190 files / 2231 tests（基线 186 / 2181；+4 文件 / +50 = 计划 +43 + 修复波 +7）；`npm run build` 绿，size-check index 189.4KB / 191（基线 189.2），合计 3877.7 / 3900；`useDeepPeriod` 从 ChainMonthGate 块独立成 0.73KB 共享块（预判成立）。后端零改动。`useDeepPeriod.ts` / `utils/deepLink.ts` 承诺不改，零 diff。
+
+**遗留（后续期）**：P0c 迁分析层 9 处 + 收入核对旧发链后删 `utils/deepLink.ts`（零生产消费方）与 ChurnView / FinCashflowView / ReconWorkbench 三处过时注释（「LedgerView 只在 onMounted 消费 query」）；年表四屏（附6 / 7·8 / 11 / 13·14）缺 onDeactivated 收浮层（既有缺陷，dirty 闸建立在它之上 —— 决定跟 SalaryView 走还是保留）；首页 9 行 go 值的表驱动断言 + 后端 (name, tag, go) 三元组快照；切回换期「先按旧期拉一趟」若要收敛改在 `useDeepPeriod` 一处；导入中心 `?p=YYYY` 连 co 也丢（当前无产出方）；page toast 与 okMsg / FPLockDialogs 同位（P0a 遗留照旧）；浏览器人工走查（首页 9 行各落点、导入中心「去查看」、切页签回来表是否刷新）由用户做。
