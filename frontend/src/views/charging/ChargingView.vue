@@ -8,6 +8,10 @@
 import { ref, computed, onMounted , watch} from 'vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { periodOf } from '@/nav/deepLink'
+import FPToast from '@/components/fp/FPToast.vue'
 import { chargingApi } from '@/api/charging'
 import { exportChargingYear } from '@/utils/chargingExcel'
 import { parserProps, runImport, type ImportCtx } from '@/utils/importRegistry'
@@ -55,7 +59,10 @@ const MODES = [
 ] as const
 type Mode = (typeof MODES)[number]['id']
 const MODE_SCREEN = no.value === 7 ? 'car-charging' : 'ebike-charging'
-const mode = ref<Mode>(loadViewMode(MODE_SCREEN, MODES.map(m => m.id), 'summary'))
+// 深链 ?mode=summary|meter 只在首载认(首页附表行走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1):
+// 盖过本机记住的那本,但不写回 —— 下面的 watch(mode) 非 immediate,只记用户自己的切换。
+const deepMode = MODES.find(m => m.id === route.query.mode)?.id ?? null
+const mode = ref<Mode>(deepMode ?? loadViewMode(MODE_SCREEN, MODES.map(m => m.id), 'summary'))
 watch(mode, (m) => saveViewMode(MODE_SCREEN, m))
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
@@ -87,6 +94,18 @@ const {
     confirm: clearConfirm('本年', '手动行不受影响。'),
   },
 })
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):年表屏 p 只取年(current 也只报年,否则首页发 YYYY-MM 时永不相等、每次切回白拉一趟)。
+// 运营账那本开着时不拉年表 —— 它在 v-else 底下看不见;带月的 p 由子屏 CpMeterView 自己认。
+// 必须在下面的 onMounted / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 本屏唯一的草稿是开着的新增抽屉 / 导入窗(pickYear 会经 edit=false 把它们关掉);切回时有 → 不切年,只在 deepNote 里说。
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: year.value == null ? null : periodOf(year.value, null) }),
+  apply: (t) => { if (mode.value === 'summary') void pickYear(t.year).catch(() => {}) },
+  dirty: () => (drawer.value || importing.value ? 1 : 0),
+})
+// KeepAlive 切回重读(spec §12):导入中心导完切回来,年表与总览不能还是导入前的(refresh = load(year) + reloadOverview)
+onReactivated(() => { void refresh().catch(() => {}) })
 
 // ⚠ 切账本必须退出编辑态。`edit` 由本层持有(useSchedScreen),锁却由子组件 SchedHeader 持有,
 //   还锁挂在 useEditLock 的 onUnmounted 上 —— 切走时 SchedHeader 卸载,**锁真的还了**,
@@ -264,6 +283,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </template>
 
   <div v-else class="page-loading"><span class="page-spin" /></div>
