@@ -74,7 +74,7 @@ class DataHomeServiceTest {
         when(charging.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
         when(elec.selectByYearAndType(anyInt(), anyString())).thenReturn(List.of());
         when(contractService.summary()).thenReturn(summary(0));
-        // 出账链四源:空库(4 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
+        // 出账链四源:空库(5 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
         when(meterReadings.selectDistinctYms()).thenReturn(List.of());
         when(poolResults.selectDistinctYms()).thenReturn(List.of());
         when(lossResults.selectDistinctYms()).thenReturn(List.of());
@@ -144,7 +144,7 @@ class DataHomeServiceTest {
             .containsExactly("2023-08", "2024-02", "2025-01");
     }
 
-    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════
+    // ══ 出账链 5 步(SIDEBAR-UX-REDESIGN §5.1) ══════════════════════════════════════
     @Test void 出账链_当前步是第一个非done() {
         var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
         assertThat(chain.currentIndex()).isEqualTo(4);
@@ -204,6 +204,33 @@ class DataHomeServiceTest {
         var chain = DataHomeService.buildChain(0, 0, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
         assertThat(chain.steps().get(0).status()).isEqualTo("current");
         assertThat(chain.steps().get(0).detail()).isEqualTo("未配置");
+    }
+
+    // ── overview → buildChain 的接线(2026-09-03 对抗复查 C2)──
+    // buildChain 的单测都直接传数,接线本身没人看着:overview 把 ParamStatusDTO 的
+    // priceOk/priceTotal 递进去,两个 int 挨着,顺序反了编译照过、上面那组单测照绿。
+    // 下面两条走一遍 overview(用 selectDistinctYms 定锚月),把这段接线钉住。
+    @Test void overview_参数步吃priceOk与priceTotal_录齐为done() {
+        stubAllEmpty();
+        when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
+        when(paramService.status(anyString()))
+            .thenReturn(new ParamStatusDTO(6, 6, 0, null, null, null, false, List.of()));
+
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.chain().steps().get(0).status()).isEqualTo("done");
+        assertThat(o.chain().steps().get(0).detail()).isEqualTo("本月电价 6/6 已录");
+    }
+
+    @Test void overview_参数步少一键为current且是当前步() {
+        stubAllEmpty();
+        when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
+        when(paramService.status(anyString()))
+            .thenReturn(new ParamStatusDTO(5, 6, 0, null, null, null, false, List.of()));
+
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.chain().steps().get(0).status()).isEqualTo("current");
+        assertThat(o.chain().currentIndex()).isZero();
+        assertThat(o.chain().steps().get(0).detail()).isEqualTo("本月电价 5/6 已录");
     }
 
     // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════

@@ -71,7 +71,7 @@ public class DataHomeService {
 
         int year = Integer.parseInt(ym.substring(0, 4)), month = Integer.parseInt(ym.substring(5, 7));
 
-        // ── 出账链 4 步:各源按 ym 存在性判定,走现成索引(idx_meter_reading_ym / uk_pool_result 等) ──
+        // ── 出账链 5 步:各源按 ym 存在性判定,走现成索引(idx_meter_reading_ym / uk_pool_result 等) ──
         long readings = meterReadings.selectCount(new QueryWrapper<MeterReading>().eq("ym", ym));
         boolean pool = poolResults.selectCount(new QueryWrapper<AllocPoolResult>().eq("ym", ym)) > 0;
         boolean loss = lossResults.selectCount(new QueryWrapper<AllocLossResult>().eq("ym", ym)) > 0;
