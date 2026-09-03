@@ -150,7 +150,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 
 - `periodLink(value, { p: 'YYYY-MM', co?: number | 'all', extra? })` → `{ path: '/' + value, query: { p, co, ...extra } }`。
 - `parsePeriod(query)` 接受 `p`（新）| `ym`（出账链四处旧链）| `y & m`（报表层 / 台账 / 附10 旧链）；`co` 接受 id | `'all'` | 旧 `company` 名。`utils/deepLink.ts` 两个解析器与 `nav/reportPeriod.parsePeriodQuery` 各加两行委托，旧格式用例全部保留。
-- 目标屏用 `composables/useDeepPeriod(apply)`：`onMounted` 跑一次；再用**已有的** `composables/onReactivated.ts`（7 屏在用，天然跳过首次 activated）跑一次；按 `route.fullPath` 去重；`parsePeriod` 为 null 或与当前 (period, co) 相同 → 不动；目标屏有未保存改动（`dirty > 0`）→ 不切期，屏内提示「地址栏要求 X 期，本期有 N 处未保存」。
+- 目标屏用 `composables/useDeepPeriod(apply)`：**setup 期同步跑一次**（2026-09-03 P0a 裁定：赶在各屏 `watch(ym)` 注册与 `onMounted` 取数之前落期，首跑不查 dirty；原文写 `onMounted`）；再用**已有的** `composables/onReactivated.ts`（7 屏在用，天然跳过首次 activated）跑一次；按 `route.fullPath` 去重（被拒的地址在同一实例不重试）；`parsePeriod` 为 null 或与当前 (period, co) 相同 → 不动；目标屏有未保存改动（`dirty > 0`）→ 不切期，屏内提示「地址栏要求 X 期，本期有 N 处未保存」（`FPToast` warning，下一次真的 apply 时清空）。链屏 apply 后补 `loadChain`（门被深链跳过时它是唯一加载点）。分析层「去改常数」带的 `adopt=YYYY-12` 不是选月：只在没有期时认领（`billingPeriod.adoptYm` 仅剩的调用方），不覆盖已选期（P0a 复查 P0A-2）。
 - 出账链五屏：`apply` 调 `billingPeriod.pick`（不改 `adoptYm` 语义，`billingPeriod.spec:84-88` 原样）；运营账三屏 `screenPeriod.pick`；台账 `co` 落 `activeBookId` + `year/month` 直落宽表；附10 `co` = 期区 1..4，`apply` 先置期再置册（避开 `S10View.selectBook → goGate`）；年表屏 `p` 只取年；导入中心 `p` 预填表单（`ImportCenterView` 接 `useRoute`）。
 - 报表层三屏（`useFinStatementScreen` / `PnlScheduleView` / `ReconView`）接 `useDeepPeriod`，修「第二圈期不跟」；`ReportsHomeView.go()` 带 `co: 'all'`。
 - 分析层假下钻的三个目标屏（`ElecView` 读 `view/y/m`、`ChargingView` 读站、`ContractsView` 读合同号）与 `anaData.ts:379-452` 五条规则 link 一并改走 `periodLink` 带 query。
@@ -170,7 +170,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 - `fpNav.ts:10` label「本月出账」，icon `calendar-check`。
 - `DataHomeService.buildChain` 4 → 5 步：头插 `params`，`done = ps.priceTotal() > 0 && ps.priceOk() == ps.priceTotal()`，`detail = "本月电价 " + priceOk + "/" + priceTotal + " 已录"`（`paramService.status(ym)` 在 :92 已调，改为整个 DTO 传入，**不用 `stale`**——月初 pool/bill 皆 null 时 stale 恒 false 会假绿）；`stale` 继续只做 `buildBlockers` 的 `param-stale` 前置条。硬编码「恒 4 步」六处同改：`DataHomeApiIT:51`、`DataHomeView.spec.ts:151,160`、`DataHomeView.vue:79` 骨架 `v-for="i in 4"`、`DataHomeServiceTest` 六处调用与 `currentIndex` 期望 +1、service 内循环与 `new ArrayList<>(4)`、`types/dataHome.ts:32` 注释。
 - 矩阵 4 颗点不变（`billingChain.ts:40-45` 判断保留）；本 spec 明写口径差：**矩阵 4 点、清单 5 步**。
-- `DataHomeView.go(v)`：按 §4.1 首页行语义（链屏先 `period.pick` 再 push）；`reconciliation` 带 `periodQuery(y, m, null)`（`ReconView` 今天就读它）。附13/附14 的 `extra.tab = office | phase3` 与附6/7/8/11 的 `extra.mode = summary`（覆盖 localStorage 记住的运营账模式）**随 P0b 目标屏接 `useDeepPeriod` 时一起加**——目标屏读不到之前不发死参数。
+- `DataHomeView.go(v)`：按 §4.1 首页行语义（链屏先 `period.pick` 再 push）；链屏行与 `reconciliation` 行走 `periodLink(v, { p })`（P0a；`ReconView` 经 `parsePeriodQuery` 的委托认 `p`）。附13/附14 的 `extra.tab = office | phase3` 与附6/7/8/11 的 `extra.mode = summary`（覆盖 localStorage 记住的运营账模式）**随 P0b 目标屏接 `useDeepPeriod` 时一起加**——目标屏读不到之前不发死参数。
 
 ### 5.2 P2：年份条 + 两栏清单 + 主管条
 

@@ -905,3 +905,33 @@ Expected: vitest 全绿（基线 182 files / 2153 tests → 186 files；+4 文�
 - §9 P0a 破坏验证：「带 p 进屏直落」= Task 3 chainDeepLink.spec ✓；「同 fullPath 二次 activated 不重复取数」= Task 2 useDeepPeriod.spec ✓。
 - §10 新增 `deepLink.spec`（p / ym / y&m / company 名兼容、越界丢弃；pin 规则 → P3 裁定）✓、`useDeepPeriod.spec` 四条 ✓；「不变」清单：断言不变，两处桩补 useRoute ✓；`billingPeriod.spec:84-88` 不动 ✓。
 - 类型一致：`DeepPeriod`（Task 1）→ `apply: (t: DeepPeriod)`（Task 2）；`periodOf` 形状与 `current().p`（`period.ym` 是 `YYYY-MM`）一致 ✓；`periodLink` 的 `query` 是 `Record<string, string>`，与 `FPStepStrip.query` 类型兼容 ✓。
+
+## 复查记录（2026-09-03）
+
+**计划级对抗复查（实施前，3 镜头 → 每条 3 名反驳者）**：17 条发现，6 坐实、11 被驳。坐实归两件，提交前修入计划（0883a60）：`chainDeepLink.spec` 第 2 条在红阶段因门自己调 `loadChain` 而假绿 → 补「门已被跳过」前提、破坏验证改删 apply 里的 `loadChain`；骨架漏 `paramsApi / billNoticesApi / STATUS` → 改成整段复制 `chainPeriodFlow.spec:1-56` 再改三处。顺手：PoolLedgerView 替换区间 204-220、Task 6 补 spec §5.1 与 git add。
+
+**任务级评审（每任务一次，独立评审员）**
+
+| 任务 | 提交 | 结果 |
+|---|---|---|
+| T1 `deepLink.ts` + 两处委托 | 03a5e05 | 通过，零发现（14 + 7 条旧用例逐条手算） |
+| T2 `useDeepPeriod` | ffc401b（+552e9eb） | 通过；Minor：note 不清空 → 控制者顺手修（下一次 apply 清空 + 断言 + 破坏验证）；去重键先记写入注释；年份链 + dirty 假提示（链屏无年份链来源）；composable 静态 import billingPeriod store（P0c 报表屏 spec 需多 mock 四个 api） |
+| T3 计费参数 / 公共电核算 / 楼栋损耗 | e88bbcf | 通过；三屏调用顺序全文核对 ✓；Minor：三处过时注释（→ 修复波） |
+| T4 园区抄表 / 催缴单 | dcbdb0c | 通过；两屏顺序核对 ✓；破坏验证用常量 ref 替换比整行删更精准；Minor：dirty 闸屏级无断言（→ 修复波）、两只 page toast 同位 |
+| T5 报表中心 co=all + 首页 periodLink | a734140 | 通过，零发现 |
+
+**代码级对抗复查（3 镜头：正确性 / 护栏 / 用户价值 → 每条 3 名反驳者）**：13 条发现，1 坐实，12 被驳（全部 3/3）。
+
+| # | 发现 | 处置 |
+|---|---|---|
+| P0A-2 | 分析层「去改常数」的 `?ym=YYYY-12` 不是选月，改造后被当显式深链覆盖已选期（改前 `adoptYm` 只在无期时认领），四个 KeepAlive 链屏跟着变空月 | **坐实** → 修复波：键改 `adopt=`，ParamCenterView 保留一处 `adoptYm`（只认领不覆盖），+2 用例；收尾再钉 PvMeterAnaView 的 push 形状（e4726da） |
+| P0A-1（两镜头） | 组级期变化会清掉**别屏**（抄表）的未保存草稿，dirty 只护落地屏 | 被驳：spec §4.2 明写「目标屏」+ D2；P3 翻 openFresh 语义时重看 |
+| P0A-3（用户价值） | URL 的 `?p` 一次性、屏内换月不同步、F5 回到达月 | 被驳：既有一次性深链约定（报表层同款），D3 期只记会话 |
+| G1 | dirty 闸屏级无断言 | 被驳为「已排修复波」→ 修复波已补屏级用例 |
+| 其余 | G2 兜底分支无断言 / G3 co=all 无落屏用例（P0c）/ G4 年份链假提示 / G5 spec 未改（Task 6 Step 2）/ P0A-4 adoptYm 文档 / P0A-5 提示 P0a 走不到（Back 可达）/ co=all 请求顺序 / loadBinding 双拉 | 被驳 |
+
+修复波 c5e241f（`adopt=` + 三处注释 + MeterView 屏级 dirty 用例），定向复审 3/3 ADDRESSED、无新破坏；收尾 e4726da 钉「去改」push 形状（破坏验证：键改回 `ym` 即红）。复查纪律：反驳者各留过探针文件 / 在飞改动，结束时均已清；一名评审员留的 `block1/2.txt` 由控制者清掉。
+
+**门禁**：全量 vitest 186 files / 2181 tests（基线 182 / 2153，+4 文件 / +28 条 = 计划 +25 + 修复波 +3）；`npm run build` 绿，size-check index 189.2KB / 191（基线 189.1；`nav/deepLink` 成独立块），合计 3871.4 / 3900。后端零改动。
+
+**遗留（后续期）**：P3 翻 openFresh 语义时重看「组级期变化 vs 别屏草稿」（P0A-1）；P0c 报表屏接 `useDeepPeriod` 时 spec 需 mock 四个 api（composable 静态 import billingPeriod）；co=all 落屏用例随 P0c；两只 page toast 同位（`deepNote` 加 `v-if="!okMsg"`）；浏览器人工走查（首页行 → 链屏 URL 带 p 且直落、报表中心 → 利润表落「全部汇总」、分析层「去改」不改月）由用户做。
