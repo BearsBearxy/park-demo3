@@ -41,7 +41,7 @@ import type { PnlYearDTO } from '@/types/pnl'
 import type { PvRecordDTO } from '@/types/pv'
 import type { OfficeYearDTO } from '@/types/utilities'
 import { useTabsStore } from '@/stores/tabs'
-import { FP_NAV } from '@/nav/fpNav'
+import { fpAllPages } from '@/nav/fpNav'
 
 // ── 模块级 Promise 缓存(失败即删,可重试) ──
 const cache = new Map<string, Promise<unknown>>()
@@ -53,9 +53,9 @@ function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 export function __clearAnaCacheForTest(): void { cache.clear() }
 
-// 分析层全部路由 value(fpNav 单一事实源派生,勿手抄清单)
-const ANA_VALUES: string[] =
-  FP_NAV.find(l => l.id === 'analysis')?.sections.flatMap(s => s.items.map(i => i.value)) ?? []
+// 分析层全部路由 value(fpNav 单一事实源派生,勿手抄清单)。
+// 不读 sections:分组是侧栏的事,这里只要「属于分析层」,组怎么切都不该牵动缓存失效的范围。
+const ANA_VALUES: string[] = fpAllPages().filter(p => p.layer === 'analysis').map(p => p.value)
 
 // 导入成功(runImport)与 租户/合同/楼栋 写成功后调用:分析层全部缓存失效。
 // 同时作废分析页签的 KeepAlive 缓存实例(epoch++)——只清数据缓存的话,缓存实例里的 ref
