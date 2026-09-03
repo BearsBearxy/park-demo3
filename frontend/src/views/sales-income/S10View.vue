@@ -6,11 +6,14 @@
 // 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
 // §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
 import { ref, computed, watch, nextTick, onMounted, onDeactivated, reactive } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { periodOf, type DeepPeriod } from '@/nav/deepLink'
+import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { useRoute } from 'vue-router'
 import { s10Api } from '@/api/s10'
 import { booksApi } from '@/api/books'
-import { parseS10DeepLink } from '@/utils/deepLink'
 import { exportS10Month } from '@/utils/s10Excel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
@@ -213,24 +216,46 @@ watch(activeBookId, async () => {
   chipsEl.value?.querySelector('.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
 })
 
-// ── 进入屏:overview + 四册并取(§6 取数前不渲染);核对深链直落表格态并定位租户行 ──
-// 深链(spec 2026-07-07 §一):query y/m/phase/tenant → 选中该期账册 → 加载月表 → S10Table 定位高亮。
+// ── 进入屏:overview + 四册并取(§6 取数前不渲染)。深链(期间深链协议 §4.2 + 收入核对 / 分析层旧链)直落表格态并定位租户行 ──
 const route = useRoute()
 const focusTenant = ref('')   // 一次性:S10Table 定位完成后清空
-onMounted(async () => {
-  const [ov, bs] = await Promise.all([s10Api.getOverview(), booksApi.list('s10')])
-  overview.value = ov
-  books.value = bs
-  month.value = ov.currentMonth || 1
-  activeBookId.value = bs.find(b => b.phase === 1)?.id ?? bs[0]?.id ?? null
-  const dl = parseS10DeepLink(route.query)
-  if (!dl) return
-  const b = bs.find(x => x.phase === dl.phase)
+// overview / books 只拉一次:onMounted 与深链 apply 谁先到谁发起,后到的等同一个 Promise
+let loaded: Promise<void> | null = null
+function ensureLoaded() {
+  if (!loaded) loaded = (async () => {
+    const [ov, bs] = await Promise.all([s10Api.getOverview(), booksApi.list('s10')])
+    overview.value = ov
+    books.value = bs
+    month.value = ov.currentMonth || 1
+    activeBookId.value = bs.find(b => b.phase === 1)?.id ?? bs[0]?.id ?? null
+  })()
+  return loaded
+}
+onMounted(() => { void ensureLoaded() })
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<期区 1..4> 直落该期区该月的表格态;只有年的链接不动(本屏只认整月)。
+// setup 期 books 还没到 —— apply 是异步的:先等 ensureLoaded,再落册落期(与出账链五屏「同步 pick」不同,复查时别按那个口径看)。
+// 期区**直写 activeBookId,不经 selectBook** —— selectBook 在表格态末行 goGate 把人推回矩阵(spec §9 P0b 破坏验证 / §12);
+// 旧链(收入核对「去改附表10」、分析层 5 处)仍走 ?phase=,co 缺席时用它兜底;?tenant= 照旧定位高亮。
+// 三个 ref 在同一拍连写(册 → pickCell 置月置年),watch([activeBookId, year, month]) 只跑一次 templateAt。
+// 本屏草稿 = dirty 集合;切回时有 → 不切期,只在 deepNote 里说。必须在下面的 onReactivated 之前调用:先改期,后重读。
+async function applyDeep(t: DeepPeriod) {
+  if (t.month == null) return
+  await ensureLoaded()
+  const ph = typeof t.co === 'number' ? t.co : Number(route.query.phase)
+  const b = books.value.find(x => x.phase === ph)
   if (b) activeBookId.value = b.id
-  year.value = dl.y
-  month.value = dl.m
-  await loadMonth(dl.y)
-  focusTenant.value = dl.tenant
+  await pickCell(t.year, t.month)
+  focusTenant.value = typeof route.query.tenant === 'string' ? route.query.tenant : ''
+}
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), co: phase.value }),
+  apply: (t) => { void applyDeep(t).catch(() => {}) },
+  dirty: () => dirty.size,
+})
+// KeepAlive 切回重读(spec §12):导入中心导完切回来,矩阵与本月不能还是导入前的旧表;有草稿只刷总览(loadMonth 会 dirty.clear())
+onReactivated(() => {
+  void reloadOverview().catch(() => {})
+  if (year.value != null && dirty.size === 0) void loadMonth(year.value).catch(() => {})
 })
 
 // ── 编辑态:单元格 / 备注 即时写回本地行（触发表内重算）+ 标脏 ──
@@ -718,6 +743,7 @@ function onImportClick() {
     </div>
 
     <ImportResultToast v-if="importResult" :result="importResult" :summary="importSummary" @close="importResult = null; importSummary = ''" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 
     <!-- 行级绑定弹窗(点行名/未绑定标签打开) -->
     <S10BindDrawer
