@@ -89,7 +89,7 @@ const router = createRouter({
     // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
     { path: '/price-cfg', redirect: '/params' },
     // 2026-09-03(SIDEBAR-UX-REDESIGN D4):银行流水条目删除,旧地址(书签 / 最近访问)落首页。
-    // 后端从没有这块数据,占位页常驻两个月是死 UI;PlaceholderView 只留作漏配兜底(:99)。
+    // 后端从没有这块数据,占位页常驻两个月是死 UI;PlaceholderView 只留作下方 component 的漏配兜底。
     { path: '/bank-flow', redirect: '/data-home' },
     { path: '/login', component: LoginView },
     // 不进导航:首次登录强制改密的落点,也可自行访问改密
