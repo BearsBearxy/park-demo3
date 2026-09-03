@@ -70,6 +70,7 @@ function overview(patch: Partial<DataHomeOverviewDTO> = {}): DataHomeOverviewDTO
         { name: '月度台账', tag: '凭证', done: false, go: 'ledger' },
         { name: '办公水电', tag: '附13', done: true, go: 'utilities' },
         { name: '光伏发电', tag: '附6', done: true, go: 'pv-income' },
+        { name: '三期水电', tag: '附14', done: true, go: 'utilities' },
       ],
     },
     ...patch,
@@ -138,7 +139,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith()
     const names = w.findAll('.dh-item .dh-iname').map(n => n.text())
     expect(names[0]).toBe('月度台账')          // 未录
-    expect(names.slice(1)).toEqual(['办公水电', '光伏发电'])   // 已录靠后
+    expect(names.slice(1)).toEqual(['办公水电', '光伏发电', '三期水电'])   // 已录靠后
   })
 
   it('不传 ym 首载走锚定月(后端定)', async () => {
@@ -157,11 +158,27 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(push).toHaveBeenCalledWith({ path: '/meters', query: { p: '2024-02' } })
   })
 
-  it('点附表项:不动 billingPeriod', async () => {
+  it('点附表项:不动 billingPeriod;月表行带 p=YYYY-MM(SIDEBAR-UX-REDESIGN §5.1,P0b)', async () => {
     const w = await mountWith()
     await w.findAll('.dh-item')[0].trigger('click')   // 月度台账
     expect(useBillingPeriodStore().picked).toBe(false)
-    expect(push).toHaveBeenCalledWith('/ledger')
+    expect(push).toHaveBeenCalledWith({ path: '/ledger', query: { p: '2024-02' } })
+  })
+
+  it('年表行带 p=YYYY + mode=summary —— 年表屏 p 只取年,盖过本机记住的运营账', async () => {
+    // 红线:periodOf(p.year, p.month) → 目标屏 current 永不相等,每次切回白拉;mode 漏了 → 落到本机记住的运营账
+    const w = await mountWith()
+    await w.findAll('.dh-item')[2].trigger('click')   // 光伏发电(附6)
+    expect(push).toHaveBeenCalledWith({ path: '/pv-income', query: { p: '2024', mode: 'summary' } })
+  })
+
+  it('附13 / 附14 同屏异 tab —— 按行的 tag 分', async () => {
+    // 红线:模板只传 i.go → 两行都落办公水电
+    const w = await mountWith()
+    await w.findAll('.dh-item')[1].trigger('click')   // 办公水电(附13)
+    expect(push).toHaveBeenLastCalledWith({ path: '/utilities', query: { p: '2024', tab: 'office' } })
+    await w.findAll('.dh-item')[3].trigger('click')   // 三期水电(附14)
+    expect(push).toHaveBeenLastCalledWith({ path: '/utilities', query: { p: '2024', tab: 'phase3' } })
   })
 
   it('点出账链步骤后触发 loadChain:目标屏链路条不能读到空格子', async () => {
