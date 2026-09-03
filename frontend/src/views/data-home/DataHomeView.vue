@@ -44,8 +44,13 @@ const ov = ref<DataHomeOverviewDTO | null>(null)
 // 否则看过一眼历史月之后天天落在那儿(spec §2.2)。
 const pickedYm = ref<string | null>(null)
 
+// 晚到的旧回包不许覆盖新选的月(2026-09-03 对抗复查 F2)
+let loadSeq = 0
 async function load() {
-  ov.value = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+  const seq = ++loadSeq
+  const res = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+  if (seq !== loadSeq) return
+  ov.value = res
 }
 onMounted(load)
 watch(pickedYm, load)
@@ -53,18 +58,25 @@ watch(pickedYm, load)
 // 行点击 = 「去做事」显式导航 → 全新状态(openFresh;侧栏语义翻案是 P3 的事,这里不动)。
 // 出账链五屏共读 billingPeriod store:先 pick 首页当前月再 push,目标屏的选期矩阵就被前置满足
 // (SIDEBAR-UX-REDESIGN §4.1 / D2)。pick 覆盖会话里已选的期 —— 首页写着的月就是用户刚点的意图;
-// 本人正握着**别的月**的链锁时先确认:换期会让 useEditMode 退出编辑、清掉未保存草稿。
+// 本人握着任一链锁时先确认:openFresh 重建目标屏会清掉未保存草稿(不分同月异月)。
 // 收入核对认 ?y&m(ReconView.vue:23 parsePeriodQuery),其余屏本期不带参(P0b 再接)。
 // 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
 // 本人锁的判断读 presence.users(20 秒一拍):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
 // ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
 function go(v: string) {
-  const p = ov.value?.period
+  // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
+  const ym = pickedYm.value ?? curYm.value
+  const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
   if (p && CHAIN_VALUES.has(v)) {
-    const ym = `${p.year}-${String(p.month).padStart(2, '0')}`
-    const other = myChainLockPeriods().find(x => x !== ym && !ym.startsWith(x))
-    if (other && !window.confirm(`切到 ${ym} 会退出你在 ${other} 的编辑，未保存的改动会丢失。继续？`)) return
+    // 只要本人握着任一出账链/抄表锁就先确认:openFresh 会重建目标屏,编辑中的草稿不分同月异月都会丢
+    // (2026-09-03 对抗复查 F3;侧栏改「恢复现场」的 P3 落地后再收窄)。
+    const held = myChainLockPeriods()
+    if (held.length && !window.confirm(`你正在编辑出账链（${held.join('、')}）。从首页重新打开会丢失未保存的改动，继续？`)) return
     period.pick(p.year, p.month)
+    // 门被前置跳过 → ChainMonthGate 不再挂载,而它是 loadChain 的唯一调用方;不补这一句,
+    // 目标屏的链路条读到的是空格子,五道工序全显「未做」(2026-09-03 对抗复查 F1)。
+    // loadChain 幂等:已载入直接返回,在途去重。失败不阻断跳转(矩阵那边同样只标「加载失败」)。
+    void period.loadChain().catch(() => {})
   }
   tabsStore.openFresh(v)
   if (p && v === 'reconciliation') {

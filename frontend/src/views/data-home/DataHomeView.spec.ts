@@ -4,18 +4,38 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { DataHomeOverviewDTO, DataHomeStepDTO } from '@/types/dataHome'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
+import { metersApi } from '@/api/meters'
+import { allocApi } from '@/api/alloc'
+import { billNoticesApi } from '@/api/billNotices'
+import { paramsApi } from '@/api/params'
 
 // 锁 DATA-HOME-REDESIGN spec §2/§5:三级主次(总览行 → 流水线 → 当前步大卡 + 唯一主 CTA),
 // 以及「没问题的东西不占版面」(blockers 空 → 整条不渲染)。
 // 改版前这屏把同一批信息说了三遍(KPI 3/4 与下方重复、待办是完整度的子集),那组断言已随契约删除。
 
-beforeEach(() => { setActivePinia(createPinia()); push.mockClear() })
+beforeEach(() => {
+  setActivePinia(createPinia())
+  push.mockClear()
+  // go() 现在会调 period.loadChain() —— 不清空的话「不触发 loadChain」那条会被上一条的调用污染
+  vi.mocked(metersApi.months).mockClear()
+  vi.mocked(allocApi.poolMonths).mockClear()
+  vi.mocked(allocApi.lossMonths).mockClear()
+  vi.mocked(billNoticesApi.months).mockClear()
+  vi.mocked(paramsApi.status).mockClear()
+})
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 const getOverview = vi.fn()
 vi.mock('@/api/dataHome', () => ({ dataHomeApi: { getOverview: (ym?: string) => getOverview(ym) } }))
+
+// billingPeriod.loadChain 打的四个端点(照 stores/__tests__/billingPeriod.spec.ts:21-24 的写法)。
+// 不 mock 的话点一下出账链行就真发网络请求。
+vi.mock('@/api/meters', () => ({ metersApi: { months: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/api/alloc', () => ({ allocApi: { poolMonths: vi.fn().mockResolvedValue([]), lossMonths: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/api/params', () => ({ paramsApi: { status: vi.fn().mockResolvedValue({ stale: false, otherMonthsAffected: [] }) } }))
 
 import DataHomeView from './DataHomeView.vue'
 
@@ -144,6 +164,56 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(push).toHaveBeenCalledWith('/ledger')
   })
 
+  it('点出账链步骤后触发 loadChain:目标屏链路条不能读到空格子', async () => {
+    // pick() 让目标屏的 ChainMonthGate 不挂载,而它是 loadChain 的唯一调用方 ——
+    // 不补这一句,目标屏 chainStepsOf(cellOf(ym)) 读到冻结的 EMPTY 格子,五道工序全显「未做」。
+    const w = await mountWith()
+    await w.findAll('.dh-step')[1].trigger('click')
+    await flushPromises()
+    expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+  })
+
+  it('点附表项不触发 loadChain', async () => {
+    const w = await mountWith()
+    await w.findAll('.dh-item')[0].trigger('click')
+    await flushPromises()
+    expect(vi.mocked(metersApi.months)).not.toHaveBeenCalled()
+  })
+
+  // ── 刚选的月 vs 服务端回包(2026-09-03 对抗复查 F2)──
+  it('刚选的月优先:回包未到时点步骤也按新选月 pick', async () => {
+    const w = await mountWith()
+    // 第二次 getOverview 停在在途,模拟用户切月后马上点
+    let resolve!: (v: DataHomeOverviewDTO) => void
+    getOverview.mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
+    await w.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', '2025-06')
+    await flushPromises()
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect([useBillingPeriodStore().year, useBillingPeriodStore().month]).toEqual([2025, 6])
+    resolve(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+    await flushPromises()
+  })
+
+  it('晚到的旧回包不覆盖新选的月', async () => {
+    const w = await mountWith()
+    let resolveA!: (v: DataHomeOverviewDTO) => void
+    let resolveB!: (v: DataHomeOverviewDTO) => void
+    getOverview
+      .mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolveA = r }))
+      .mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolveB = r }))
+    const sel = w.findComponent({ name: 'Select' })
+    await sel.vm.$emit('update:modelValue', '2023-08')
+    await flushPromises()
+    await sel.vm.$emit('update:modelValue', '2025-06')
+    await flushPromises()
+    resolveB(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+    await flushPromises()
+    resolveA(overview({ period: { year: 2023, month: 8, label: '2023年8月' } }))
+    await flushPromises()
+    expect(w.text()).toContain('2025年6月')
+    expect(w.text()).not.toContain('2023年8月')
+  })
+
   it('全 done 的「去对账核对」带 ?y&m', async () => {
     const w = await mountWith({ chain: { currentIndex: -1, steps: STEPS_ALLDONE } })
     await w.find('[data-primary-cta]').trigger('click')
@@ -166,7 +236,9 @@ describe('数据中心首页 · 两段式工作台', () => {
     confirm.mockRestore()
   })
 
-  it('本人握着同年的抄表年锁时点出账链行不弹确认(meters:2024 对 2024-02)', async () => {
+  // openFresh 无条件重建目标屏 —— 草稿不分同月异月都会丢,所以确认框认「有没有锁」不认「哪个月」
+  // (2026-09-03 对抗复查 F3;spec D2 原文就是「链屏处于编辑态时先确认」)。
+  it('本人握着同年的抄表年锁时点出账链行也弹确认(openFresh 会重建)', async () => {
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.users = [{
@@ -175,9 +247,24 @@ describe('数据中心首页 · 两段式工作台', () => {
     }]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await w.findAll('.dh-step')[1].trigger('click')
-    expect(confirm).not.toHaveBeenCalled()
-    expect(useBillingPeriodStore().picked).toBe(true)
-    expect(push).toHaveBeenCalledWith('/meters')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(useBillingPeriodStore().picked).toBe(false)
+    expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('本人握着同月的链锁时点出账链行也弹确认(同月一样会丢草稿)', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      editScopes: ['billing-chain:2024-02'], sinceMs: 0, idleMs: 0, self: true,
+    }]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(useBillingPeriodStore().picked).toBe(false)
+    expect(push).not.toHaveBeenCalled()
     confirm.mockRestore()
   })
 })
