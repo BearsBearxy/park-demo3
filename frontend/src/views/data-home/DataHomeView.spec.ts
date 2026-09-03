@@ -2,12 +2,14 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { DataHomeOverviewDTO, DataHomeStepDTO } from '@/types/dataHome'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { usePresenceStore } from '@/stores/presence'
 
 // 锁 DATA-HOME-REDESIGN spec §2/§5:三级主次(总览行 → 流水线 → 当前步大卡 + 唯一主 CTA),
 // 以及「没问题的东西不占版面」(blockers 空 → 整条不渲染)。
 // 改版前这屏把同一批信息说了三遍(KPI 3/4 与下方重复、待办是完整度的子集),那组断言已随契约删除。
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => { setActivePinia(createPinia()); push.mockClear() })
 
 const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
@@ -122,6 +124,45 @@ describe('数据中心首页 · 两段式工作台', () => {
   it('不传 ym 首载走锚定月(后端定)', async () => {
     await mountWith()
     expect(getOverview).toHaveBeenCalledWith(undefined)
+  })
+
+  // ── 行点击带月(SIDEBAR-UX-REDESIGN §4.1 / D2):出账链五屏共读 billingPeriod store,
+  //    首页先 pick 当前月再跳,目标屏的 ChainMonthGate 因 period.picked 而不渲染 ──
+  it('点出账链步骤:先把首页当前月写进 billingPeriod 再跳转', async () => {
+    const w = await mountWith()
+    await w.findAll('.dh-step')[1].trigger('click')   // 园区抄表
+    const period = useBillingPeriodStore()
+    expect(period.picked).toBe(true)
+    expect([period.year, period.month]).toEqual([2024, 2])
+    expect(push).toHaveBeenCalledWith('/meters')
+  })
+
+  it('点附表项:不动 billingPeriod', async () => {
+    const w = await mountWith()
+    await w.findAll('.dh-item')[0].trigger('click')   // 月度台账
+    expect(useBillingPeriodStore().picked).toBe(false)
+    expect(push).toHaveBeenCalledWith('/ledger')
+  })
+
+  it('全 done 的「去对账核对」带 ?y&m', async () => {
+    const w = await mountWith({ chain: { currentIndex: -1, steps: STEPS_ALLDONE } })
+    await w.find('[data-primary-cta]').trigger('click')
+    expect(push).toHaveBeenCalledWith({ path: '/reconciliation', query: { y: '2024', m: '2' } })
+  })
+
+  it('本人握着别的月的链锁时点出账链行先确认,取消则不切期不跳转', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.users = [{
+      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      editScopes: ['billing-chain:2025-03'], sinceMs: 0, idleMs: 0, self: true,
+    }]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(useBillingPeriodStore().picked).toBe(false)
+    expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
   })
 })
 

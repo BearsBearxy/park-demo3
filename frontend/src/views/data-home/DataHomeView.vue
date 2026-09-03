@@ -19,10 +19,25 @@ import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { usePresenceStore } from '@/stores/presence'
+import { periodQuery } from '@/nav/reportPeriod'
+import { CHAIN } from '@/nav/billingChain'
 
 const router = useRouter()
 const tabsStore = useTabsStore()
 const auth = useAuthStore()
+const period = useBillingPeriodStore()
+const presence = usePresenceStore()
+const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
+
+/** 本人正握着的出账链 / 抄表锁里的期(`billing-chain:2025-03` → `2025-03`,`meters:2025` → `2025`)。 */
+function myChainLockPeriods(): string[] {
+  const me = presence.users.find(u => u.self)
+  return (me?.editScopes ?? [])
+    .filter(sc => sc.startsWith('billing-chain:') || sc.startsWith('meters:'))
+    .map(sc => sc.slice(sc.indexOf(':') + 1))
+}
 
 const ov = ref<DataHomeOverviewDTO | null>(null)
 // 用户手动选的月;null = 跟随后端锚定月。**刻意不持久化** —— 下次打开仍按锚重算,
@@ -35,9 +50,25 @@ async function load() {
 onMounted(load)
 watch(pickedYm, load)
 
-// 行点击 = 「去做事」显式导航 → 全新状态(openFresh,非侧边栏入口语义)
+// 行点击 = 「去做事」显式导航 → 全新状态(openFresh;侧栏语义翻案是 P3 的事,这里不动)。
+// 出账链五屏共读 billingPeriod store:先 pick 首页当前月再 push,目标屏的选期矩阵就被前置满足
+// (SIDEBAR-UX-REDESIGN §4.1 / D2)。pick 覆盖会话里已选的期 —— 首页写着的月就是用户刚点的意图;
+// 本人正握着**别的月**的链锁时先确认:换期会让 useEditMode 退出编辑、清掉未保存草稿。
+// 收入核对认 ?y&m(ReconView.vue:23 parsePeriodQuery),其余屏本期不带参(P0b 再接)。
+// ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
 function go(v: string) {
+  const p = ov.value?.period
+  if (p && CHAIN_VALUES.has(v)) {
+    const ym = `${p.year}-${String(p.month).padStart(2, '0')}`
+    const other = myChainLockPeriods().find(x => x !== ym && !ym.startsWith(x))
+    if (other && !window.confirm(`切到 ${ym} 会退出你在 ${other} 的编辑，未保存的改动会丢失。继续？`)) return
+    period.pick(p.year, p.month)
+  }
   tabsStore.openFresh(v)
+  if (p && v === 'reconciliation') {
+    router.push({ path: '/reconciliation', query: periodQuery(p.year, p.month, null) })
+    return
+  }
   router.push('/' + v)
 }
 
