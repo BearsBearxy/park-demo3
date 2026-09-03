@@ -92,7 +92,11 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
   <template v-if="month === null">
     <!-- fp-fluid:本屏已迁移,摘 800px 屏级地板;根级 v-if 分支挂标(§8) -->
     <div v-if="overview" class="rc3 rc-page fp-fluid">
-\1
+      <!-- 期间条:九张报表横跳不换期。
+           不画返回钮 —— 月份层就是本屏自己的门,上面没有一层可回;换年在右边那个年份胶囊上。
+           (2026-09-03 修复:合并 977af27 时 sed 反向引用把这一段写成了字面反斜杠 1,期间条随之丢失) -->
+      <FPStepStrip :steps="REPORT_STEPS" current="reconciliation" :period="stripLabel"
+                   :query="stripQuery" hide-back />
       <div class="rc-months-head">
         <div>
           <h2 class="rc-ptitle">收入核对</h2>
