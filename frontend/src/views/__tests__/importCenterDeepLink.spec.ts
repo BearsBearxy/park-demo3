@@ -89,7 +89,7 @@ describe('导入中心 · 期间深链预填', () => {
     expect(vmOf(w).lf).toEqual({ companyId: 9, year: 2025, month: 3 })
   })
 
-  it('只有年的链接(?p=2025)不预填 —— 半个期不认,退回当前年月 + 首家', async () => {
+  it('只有年的链接(?p=2024)不预填 —— 半个期不认,退回当前年月 + 首家', async () => {
     // 红线:defaultLf 直接用 parsed(不看 month) → year 变 2025、month 取时钟 → 「2025 年 6 月」这种拼出来的期
     query.p = '2024'; query.co = '12'
     const w = await open()
