@@ -57,7 +57,7 @@ vi.mock('@/api/alloc', () => ({
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: () => Promise.resolve([]) } }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: () => Promise.resolve(null) } }))
 // FPStepStrip 里点链路条要 router.push
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ query: {}, fullPath: '/meters' }) }))
 // 编辑锁不 mock 的话 locksApi 走真 axios,jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
 vi.mock('@/api/locks', () => ({
   locksApi: {

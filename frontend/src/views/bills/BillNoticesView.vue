@@ -35,6 +35,7 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { chainStepsOf } from '@/nav/billingChain'
 import ChainMonthGate from '@/components/fp/ChainMonthGate.vue'
@@ -102,6 +103,11 @@ const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain。
+// 本屏唯一的草稿是行内备注编辑(noteEditKey 非空 = 有一处没提交);切回时有草稿 → 不切期,只在 deepNote 里说。
+// dirty 是惰性求值:首跑不查(全新实例没有草稿),所以引用下面才声明的 noteEditKey 没有 TDZ 问题。
+// 必须在下面的 onReactivated / onMounted / watch(ym) 之前调用:切回时先改期,状态刷新才读到新月。
+const { note: deepNote } = useChainDeepPeriod(() => (noteEditKey.value != null ? 1 : 0))
 
 // ── 数据:催缴单 + 当月在租合同(期归属/月租金参考用,取月中 15 日)同拉;竞态守卫 ──
 const rows = ref<BillNoticeDTO[] | null>(null)
@@ -238,7 +244,7 @@ const footRent = computed(() => filtered.value.reduce((s, r) => s + (r.rent ?? 0
 
 // ── 系数簿窗口(S14):批量改系数;人人可打开只读查看(窗口内编辑模式自查 param-policy:edit) ──
 // ?coef=1(计费参数页的「系数簿」按钮)——本屏此前从不读 route,那个按钮从 b6ff7e6 起
-// 一直只是跳过来、窗口不开。账期不用从 query 取:出账链五屏共读一份组级期,本来就是同一个月。
+// 一直只是跳过来、窗口不开。账期由 useChainDeepPeriod 认(?p= 与旧 ?ym=,§4.2),落进五屏共读的组级期;本行只读 coef。
 const coefOpen = ref(useRoute().query.coef === '1')
 
 // ── S20 交付链:三个新窗口 + 户级状态/收款缺口(状态单据级存储、户级展示) ──
@@ -660,6 +666,7 @@ const drawerSub = computed(() => {
 
     <!-- 生成摘要提示(5s 自消)。page 模式:本屏无 relative 容器,且 --z-toast 最高不被遮 -->
     <FPToast v-model="okMsg" placement="page" :duration="5000" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
     <div v-if="rows.length === 0" class="bn-bar">
       <component :is="iconFor('info')" :size="14" />
       <span>{{ year }}年{{ month }}月暂无催缴单。

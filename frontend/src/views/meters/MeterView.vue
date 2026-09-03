@@ -10,6 +10,7 @@ import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { onReactivated } from '@/composables/onReactivated'
+import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { tenantMatchNames } from '@/utils/tenantAlias'
 import {
   metersApi, type MeterDTO, type MeterReadingDTO, type MeterBindingRowDTO,
@@ -154,6 +155,10 @@ const draft = reactive(new Map<number, MeterDraft>())
 const saveConfirm = ref(false)
 const saving = ref(false)
 const dirtyIds = computed(() => draftDirtyIds(rowsAll.value, draft))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月,pick + loadChain。本屏是链上唯一有草稿的屏:
+// 切回时地址栏要求别的月而草稿未保存 → 不切期,只在 deepNote 里说(换期会 draft.clear(),见下面 watch(ym))。
+// 首跑不查 dirty(全新实例没有草稿);必须在 onMounted / watch(ym) 之前调用。
+const { note: deepNote } = useChainDeepPeriod(() => dirtyIds.value.length)
 const rowById = computed(() => new Map(rowsAll.value.map(x => [x.m.id, x])))
 // 退出编辑(保存成功/无改动/放弃)统一丢草稿:等值残留也不带回浏览态
 // 退出编辑模式收起一切写入口。
@@ -856,6 +861,7 @@ const emptyText = computed(() => {
                    :what="`园区抄表 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
     <FPToast v-model="okMsg" :tone="toastTone" placement="page" :duration="toastTone === 'warning' ? 0 : 6000" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </div>
 </template>
 
