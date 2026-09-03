@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 数据中心首页 = 录入工作台(DATA-HOME-REDESIGN spec §2)。只回答一件事:现在该干什么。
+// 2026-09-03 改名「本月出账」,出账链 5 步(SIDEBAR-UX-REDESIGN §5.1)。
 //
 // 2026-08-18 重设计。改版前这屏把同一批信息说了三遍:4 个 KPI 卡里 3 个是下方栏目的重复,
 // 而「本期待办」本身是「完整度」的子集(后端直接遍历同一个 sources 生成 tasks)。
@@ -68,7 +69,7 @@ const sortedItems = computed(() =>
     <template v-if="!ov">
       <div class="dh-head">
         <div class="dh-period">
-          <span class="dh-title">本月工作</span>
+          <span class="dh-title">本月出账</span>
           <div class="dh-msel"><span class="fp-shim" style="display:block;height:28px;border-radius:8px"></span></div>
         </div>
         <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
@@ -76,7 +77,7 @@ const sortedItems = computed(() =>
       <section class="dh-sec">
         <h3 class="dh-h3">出账链</h3>
         <ol class="dh-steps">
-          <li v-for="i in 4" :key="i" class="dh-step" style="cursor:default">
+          <li v-for="i in 5" :key="i" class="dh-step" style="cursor:default">
             <span class="fp-shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span>
             <span class="fp-shim" style="display:block;width:64px;height:12px"></span>
           </li>
@@ -104,14 +105,14 @@ const sortedItems = computed(() =>
     <!-- 顶部唯一总览行:月份 + 两个进度数字。改版前这里是 4 个 KPI 卡,其中 3 个与下方重复 -->
     <div class="dh-head">
       <div class="dh-period">
-        <span class="dh-title">本月工作</span>
+        <span class="dh-title">本月出账</span>
         <div v-if="ov.period" class="dh-msel">
           <Select :options="monthOpts" :model-value="curYm" size="sm"
                   @update:model-value="pickedYm = $event" />
         </div>
       </div>
       <span v-if="ov.period" class="dh-counts">
-        出账 {{ doneSteps }}/4 · 附表 {{ ov.schedules.done }}/{{ ov.schedules.total }}
+        出账 {{ doneSteps }}/5 · 附表 {{ ov.schedules.done }}/{{ ov.schedules.total }}
       </span>
     </div>
 

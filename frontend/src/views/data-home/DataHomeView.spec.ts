@@ -20,14 +20,15 @@ import DataHomeView from './DataHomeView.vue'
 const step = (key: string, label: string, status: DataHomeStepDTO['status'], detail = ''): DataHomeStepDTO =>
   ({ key, label, status, detail, go: key })
 
-const STEPS_3DONE: DataHomeStepDTO[] = [
+const STEPS_4DONE: DataHomeStepDTO[] = [
+  step('params', '计费参数', 'done', '本月电价 6/6 已录'),
   step('meters', '园区抄表', 'done', '已抄 1088 块'),
   step('alloc', '公共电核算', 'done'),
   step('alloc-loss', '楼栋损耗', 'done'),
   step('bill-notices', '催缴单', 'current', '未生成'),
 ]
-const STEPS_ALLDONE: DataHomeStepDTO[] = STEPS_3DONE.map((s, i) =>
-  i === 3 ? step('bill-notices', '催缴单', 'done', '102 户 · ¥2474138.88 · 66 户带警告') : s)
+const STEPS_ALLDONE: DataHomeStepDTO[] = STEPS_4DONE.map((s, i) =>
+  i === 4 ? step('bill-notices', '催缴单', 'done', '102 户 · ¥2474138.88 · 66 户带警告') : s)
 
 const BLOCKER_CONTRACT = {
   kind: 'contract-gap' as const,
@@ -40,7 +41,7 @@ function overview(patch: Partial<DataHomeOverviewDTO> = {}): DataHomeOverviewDTO
     period: { year: 2024, month: 2, label: '2024年2月' },
     months: ['2023-08', '2024-02', '2025-06'],
     blockers: [],
-    chain: { currentIndex: 3, steps: STEPS_3DONE },
+    chain: { currentIndex: 4, steps: STEPS_4DONE },
     schedules: {
       done: 2, total: 9,
       items: [
@@ -83,13 +84,13 @@ describe('数据中心首页 · 两段式工作台', () => {
   })
 
   it('当前步出大卡,且全页只有一个主 CTA', async () => {
-    const w = await mountWith({ chain: { currentIndex: 3, steps: STEPS_3DONE } })
+    const w = await mountWith({ chain: { currentIndex: 4, steps: STEPS_4DONE } })
     expect(w.text()).toContain('催缴单')
     expect(w.findAll('[data-primary-cta]')).toHaveLength(1)
     expect(w.text()).toContain('去处理')
   })
 
-  it('4 步全 done 时大卡换成去对账', async () => {
+  it('5 步全 done 时大卡换成去对账', async () => {
     const w = await mountWith({ chain: { currentIndex: -1, steps: STEPS_ALLDONE } })
     expect(w.text()).toContain('本月出账已完成')
     expect(w.text()).toContain('去对账核对')
@@ -148,16 +149,16 @@ describe('数据中心首页 · 首载骨架', () => {
 
     expect(w.find('.dh').exists(), '根节点必须常驻 —— 它是零位移的锚点').toBe(true)
     expect(w.findAll('.fp-shim').length, '要有骨架，不是白屏').toBeGreaterThan(0)
-    expect(w.findAll('.dh-step').length, '出账链恒 4 步').toBe(4)
+    expect(w.findAll('.dh-step').length, '出账链恒 5 步').toBe(5)
     expect(w.findAll('.dh-item').length, '附表恒 9 项(后端写死 total=9)').toBe(9)
     // 静态文案不该被糊掉:它们不依赖数据,糊成微光条等于把已知的东西藏起来
-    expect(w.text()).toContain('本月工作')
+    expect(w.text()).toContain('本月出账')
     expect(w.text()).toContain('出账链')
 
     gate.resolve(overview())
     await flushPromises()
     expect(w.findAll('.fp-shim').length, '数据到了就不该再有骨架').toBe(0)
-    expect(w.findAll('.dh-step').length, '真版式也是 4 步 —— 对不上就会跳').toBe(4)
+    expect(w.findAll('.dh-step').length, '真版式也是 5 步 —— 对不上就会跳').toBe(5)
   })
 
   it('根节点在数据到达前后是同一个 DOM 节点', async () => {
