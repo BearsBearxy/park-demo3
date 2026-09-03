@@ -1037,3 +1037,31 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - §9 P4 破坏验证三条：塞 3 假项 `navHeight` 红（Task 3 Step 5）；`anomaly` 放回末尾 `fpNav.spec` 红（Task 1 Step 6）；DESIGN-FIDELITY 像素比对（Task 6 镜头 3）。
 - §10 改数：`fpNav.spec` 51 → 50 + 四条新断言 ✓；`routeMap.spec` ✓；`tabs.spec:80-85` 基底页签属 P5，本期不动（`:92` 的 `bank-flow` 换值是必要连带）。新增 `navHeight.spec` ✓、`sidebarPanel.spec`（本期两条：折叠追加不收回 / scrollIntoView，外加换层清空与首页默认态；当前项 no-op / open / Shift 三条留 P3）✓、`sidebarLockNote.spec` +1（折叠组聚合点；期 / aria 两条留 P2）✓、`palette.spec` +1 ✓、`toolbar.spec`（spec 未列，死钮清理的最小护栏）✓。
 - 类型一致性：`autoOpenTitles(layer: NavLayer, activeValue: string): string[]`（Task 3 定义，Task 4 消费）；`SidebarNav` `openTitles?: string[]` / `toggle(title: string)`（Task 4 内自洽）；`PageEntry.group?: string` 与 `fpAllPages()` 的 `group?: string`（Task 5 内自洽）。
+
+## 复查记录（2026-09-03）
+
+**计划级对抗复查（实施前，3 镜头 → 每条 3 名反驳者）**：19 条发现，8 坐实、11 被驳。坐实归三类，提交前修入计划（63360ae）：`sidebarLockNote.spec` 插入点差一行（会把新用例嵌进上一个 `it`）；用例计数（`navHeight` 9 条、门禁 +21）；size 超线兜底写法（注释不影响体积、grep 路径）。顺手修：DESIGN-FIDELITY 插入行、fpNav 行号改按内容定位、ENERGY-ANALYSIS-SPEC 三处组名随迁。
+
+**任务级评审（每任务一次，独立评审员）**
+
+| 任务 | 提交 | 结果 |
+|---|---|---|
+| T1 fpNav 重分组 | 8249b58 | 通过，零发现（字面量含 U+00B7 中点逐字核对） |
+| T2 路由重定向 + 护栏 | a004a76（+67e1ebc） | 通过；Minor：注释里 `:99` 行号已漂移 → 控制者改成不带行号 |
+| T3 navFold + navHeight.spec | 68804b3 | 通过；Minor：`autoOpenTitles` 不去重（home 若日后落进带标题组会双推；SidebarPanel 侧 `Set` 兜住） |
+| T4 折叠 + 删死分支 | 3818df0 | 通过；Minor ×4：`toggle` 一名两义 / chevron 悬停仍 muted / 未测「进折叠组内屏 → 展开 + 滚动」组合路径 / 标题无 ellipsis |
+| T5 死钮 + 分组搜索 | 20a551c | 通过，零发现 |
+
+**代码级对抗复查（3 镜头：正确性 / 护栏 / 像素与用户价值 → 每条 3 名反驳者）**：11 条发现，0 坐实，11 被驳（全部 3/3）。值得留痕的三条：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| C1 / G1 / L1 | 「只追加不收回」下纯导航两步即超预算：数据层 首页 → 附表12 = 556px；出账 + 按年同开 = 628；四组全开 844；分析层三组 624 | 被驳：spec §3.2 明写只追加 + 超预算面板滚动 + `scrollIntoView`；护栏范围 = spec §3.1 两列。**裁定**：spec §3.2 补一句「同层内连续导航累积同样会超预算」，可达数字记在这里不进断言 |
+| L2 | 命令面板按分组名命中，但结果行不显示分组 | 被驳：§6 逐项列的改法里没有；记入 P6（命令面板「本月」组）一并看 |
+| L6 | ★ 已固定态只有 `data-active`，读屏拿不到 | 被驳：spec 只钉 `aria-label`；记入 P3（页签 / chip 改 Toolbar 时补 `aria-pressed`） |
+
+其余被驳：C2 展开集合随面板卸载而丢（spec 「SidebarPanel 内」的形状）、C3 ★ 悬停与激活同底色（页签条同时变化）、G2 像素常量手抄（计划级 P4-SC-01 同裁定）、L3 PV-ANALYSIS-SPEC §09 / §10.3 旧句（改前已旧）、L4 RESPONSIVE 一句读感、L5 palette.spec 夹具留 `bank-flow`（计划明写）。复查纪律一处：正确性镜头留了 `zzprobe.spec.ts` 未删，被反驳者抓到；收尾时控制者核 `git status` 干净。
+
+**门禁**：全量 vitest 182 files / 2153 tests（基线 179 / 2132，+3 / +21 与计划一致）；`npm run build` 绿，size-check index 189.1KB / 191（基线 190.5，死分支删除净省 1.4KB），合计 3868.9 / 3900。后端零改动。
+
+**遗留（后续期）**：P3 改 Toolbar 时补 ★ `aria-pressed`、chevron 悬停跟标题变色、标题 ellipsis；P6 命令面板行内显示分组；浏览器级人工走查（三层首页一屏、点组标题折叠、进组内屏自动展开并滚到当前项、★ 固定）由用户做。

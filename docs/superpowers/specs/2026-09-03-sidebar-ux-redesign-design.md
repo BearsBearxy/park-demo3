@@ -1,6 +1,6 @@
 # 侧边栏与使用动线重设计 + 审核机制（SIDEBAR-UX-REDESIGN）
 
-2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**，未实施。
+2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
 上游：`docs/research/2026-09-03-sidebar-ux-research/`（01 现状动线审计 · 02 同类产品调研 · 03 综合结论 · 04 方案与拍板过程）；
 BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · DESIGN-FIDELITY · LAYOUT-STABILITY-SPEC。
 设计稿：https://claude.ai/code/artifact/521bb00c-d981-4e55-8685-5ca7fe8834f7（源文件 `_design/sidebar-redesign/`）。
@@ -117,7 +117,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 - 带标题组的标题行变 `button`，30px 不变，chevron `position:absolute; right:12px`；DESIGN-FIDELITY §2.3 补修订记录「组标题可点折叠」。
 - 展开集合 `openTitles` 是内存态（`SidebarPanel` 内），换层清空，不落盘。
 - 路由变化：**只追加**含当前屏的组，**不收回**用户手动展开的组。
-- 用户手动多开导致超预算 → 面板滚动；`SidebarPanel` 在 `activeValue` 变化后 `scrollIntoView({ block: 'nearest' })`。
+- 用户手动多开、或同层内连续导航累积（只追加不收回）导致超预算 → 面板滚动；`SidebarPanel` 在 `activeValue` 变化后 `scrollIntoView({ block: 'nearest' })`（2026-09-03 P4 复查：数据层首页 → 附表12 即 556px，接受滚动、不收回）。
 - 折叠组标题行右侧聚合子项在场点：`items.some(editingHere)` → 同款 6px 橙点，`title` 拼子项文案。
 - 删除 `SidebarNav.vue:223-320` 不可达的折叠轨道 / flyout 分支及 `.fp-sbnav-tip / .fp-sbnav-flyout` 样式（`collapsed` prop 全仓零调用点）。
 
