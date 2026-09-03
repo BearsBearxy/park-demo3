@@ -4,8 +4,8 @@
 //     子树随 KeepAlive 停用消失时它会留在 body 上飘着(:83)
 //   ③ onGenerate 开头 `if (!editMode.value) return` —— 生成是整月先删后插(:287)
 //   ④ submitPool(:686) / delPool(:726) 开头同款守卫
-//   ⑤ applyHandoff(:190):先 adoptYm 再 toggleEdit,且 period.picked 才进 ——
-//     锁 scope 必须是真期的 `billing-chain:YYYY-MM`,不是 `billing-chain:0-00`
+//   ⑤ 期由 useChainDeepPeriod 在 setup 期落定,applyHandoff 只剩 generate=1,顺序仍是先有期再进编辑,
+//     且 period.picked 才进 —— 锁 scope 必须是真期的 `billing-chain:YYYY-MM`,不是 `billing-chain:0-00`
 //   ⑥ F2:loadRules() 还在飞时禁用保存(rulesLoading/rulesNotReady)——否则 feeKey 静默冲成默认值
 //
 // ⚠ 浏览态直呼写函数的用例(③④),前置状态必须做足(form 填好、generated/confirm 都不拦路),
@@ -195,8 +195,8 @@ describe('PoolLedgerView 写口守卫', () => {
     await flushPromises()
     expect(useBillingPeriodStore().ym, '深链的期认领进 store').toBe('2024-03')
     expect(w.findAll('button').some(b => b.text() === '完成'), '深链直接进了编辑态').toBe(true)
-    // ❗锁的必须是**真的那个月**。production 把 applyHandoff(:190)的顺序换回
-    //   「先 toggleEdit 再 adoptYm」→ enter() 起手算 scope 时期还没认领,占的是
+    // ❗锁的必须是**真的那个月**。期由 useChainDeepPeriod 在 setup 期落定,applyHandoff 只剩 generate=1,
+    //   顺序仍是先有期再进编辑:反过来的话 enter() 起手算 scope 时期还没落定,占的是
     //   `billing-chain:0-00`,随后复核发现期变了还锁不进 —— 下面三条一起红。
     expect(acquired, '深链占的锁不是真期的那把').not.toContain('billing-chain:0-00')
     expect(acquired).toContain('billing-chain:2024-03')

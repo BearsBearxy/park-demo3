@@ -151,7 +151,7 @@ function loadMasters() {
   tenantApi.list().then(d => { tenants.value = d }).catch(() => {})
   allocApi.rules().then(d => { rules.value = d }).catch(() => {})
 }
-// 其它屏跳来的深链:?p=2024-02(或旧 ?ym=)&zone=p1&section=rule&rule=23 —— 期归 useChainDeepPeriod,这里消费其余四个键;
+// 其它屏跳来的深链:?p=2024-02(或旧 ?ym=)&zone=p1&section=rule&rule=23 —— 期归 useChainDeepPeriod,这里消费其余四个键;分析层来的 adopt=YYYY-12 只认领不覆盖
 // edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
 const route = useRoute()
 const router = useRouter()
@@ -167,6 +167,9 @@ function applyHandoff(): boolean {
   if (typeof q.zone === 'string' && (q.zone === 'all' || isZoneCode(q.zone))) zone.value = q.zone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
+  // 分析层「去改常数」带 adopt=YYYY-12:只在没有期时认领(billingPeriod.adoptYm 的旧语义),已选期不动。
+  // 显式深链(p= / ym=)由 useChainDeepPeriod 在 setup 更早处处理,两者互不覆盖:有 p 时期已落定,adopt 自然无事可做。
+  period.adoptYm(typeof q.adopt === 'string' ? q.adopt : null)
   // ⚠ 必须**先认领期再进编辑态**。顺序反了的话 toggleEdit() 占的是 `param-center:0-00`
   //   (year/month 此刻还是 `period.year ?? 0`)。期现在由 useChainDeepPeriod 在 setup 更早处落定(§4.2),
   //   本函数只负责 edit=1;顺序约束不变:锁与所编的期错位的表现是「锁没生效」,不报错、没人会发现。
@@ -182,7 +185,7 @@ function scrollToSection() {
   pendingSection = ''
   nextTick(() => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
 }
-applyHandoff()   // setup 期同步落深链账期(在 watch 注册之前,免得触发第二次拉取)
+applyHandoff()   // setup 期同步消费 zone/section/rule/edit/adopt(在 watch 注册之前,免得触发第二次拉取;期本身由上面的 useChainDeepPeriod 落定)
 onMounted(() => {
   loadMasters()
   if (period.picked) load()
