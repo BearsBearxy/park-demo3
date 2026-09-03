@@ -6,13 +6,14 @@
 // 旧动线(公司picker→年份门→月历)已废,LedgerCompanyPicker/LedgerMonthGrid 不再引用(文件保留待主线拍板)。
 import { ref, computed, watch, nextTick, onMounted, onDeactivated } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { periodOf, type DeepPeriod } from '@/nav/deepLink'
 import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { booksApi } from '@/api/books'
-import { parseLedgerDeepLink } from '@/utils/deepLink'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 import { tenantApi } from '@/api/tenant'
 import type { TenantDTO } from '@/types/tenant'
@@ -114,22 +115,59 @@ onReactivated(() => {
   drawerRowKey.value = resume.rowKey
   issuesOpen.value = resume.issues
 })
-onMounted(async () => {
-  await Promise.all([loadBooks(), loadCompanies()])
-  const dl = parseLedgerDeepLink(route.query)
-  if (!dl) return
-  const c = companies.value.find(x => x.name === dl.company)
-  const b = c ? books.value.find(x => x.companyId === c.id) : books.value.find(x => x.name === dl.company)
+// books / companies 只拉一次:onMounted 与深链 apply 谁先到谁发起,后到的等同一个 Promise
+let loaded: Promise<void> | null = null
+function ensureLoaded() {
+  if (!loaded) loaded = Promise.all([loadBooks(), loadCompanies()]).then(() => {})
+  return loaded
+}
+onMounted(() => { void ensureLoaded() })
+/** 深链的 co → 册:新链 co=<公司 id>;旧链 ?company=<公司名>(公司名认不到再按册名);没给 co = 当前册,还没选册就是首册。认不出 → null(不动)。 */
+function bookOf(co: DeepPeriod['co']): Book | null {
+  if (typeof co === 'number') return books.value.find(b => b.companyId === co) ?? null
+  if (typeof co === 'string' && co !== 'all') {
+    const c = companies.value.find(x => x.name === co)
+    return (c ? books.value.find(b => b.companyId === c.id) : books.value.find(b => b.name === co)) ?? null
+  }
+  return chainBook.value ?? books.value[0] ?? null
+}
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<公司 id> 直落该册该月的宽表(绕过矩阵态);只有年的链接不动(本屏只认整月)。
+// setup 期 books / companies 还没到 —— apply 是异步的:先等 ensureLoaded,再落册落期(与出账链五屏「同步 pick」不同,复查时别按那个口径看)。
+// 换期前若在编辑态先 cancelEdit:LedgerWideTable 的 watch(edit) 据此还锁,否则 lockScope 换了键、旧锁没人认领(它是第 5 条退出编辑态的路)。
+// 三个 ref(册 / 年 / 月)在同一拍连写,watch([activeBookId, year, month]) 只跑一次 templateAt。?tenant= 照旧定位高亮。
+async function applyDeep(t: DeepPeriod) {
+  if (t.month == null) return
+  await ensureLoaded()
+  const b = bookOf(t.co)
   if (!b) return
+  if (edit.value) cancelEdit()
   activeBookId.value = b.id
-  year.value = dl.y
+  year.value = t.year
   extraYears.value = b.companyId != null ? loadExtraYears('ledger', b.companyId) : []
   // 矩阵数据后台补齐:「换期」返回矩阵时已就绪
   void loadGateYears().then(loadOverviews)
-  month.value = dl.m
+  month.value = t.month
+  drawerRowKey.value = null
+  // 先清上月快照,兜底转圈接管(同 pickCell)
+  monthDto.value = null
   await loadMonth()
-  focusTenant.value = dl.tenant
+  focusTenant.value = typeof route.query.tenant === 'string' ? route.query.tenant : ''
+}
+/** 未保存改动数:编辑态下 draft 与服务端快照逐行比(含批删)。子组件 LedgerWideTable.isDirty 是同口径的布尔,它没 expose,父层自算。 */
+function dirtyCount(): number {
+  if (!edit.value) return 0
+  const base = new Map((monthDto.value?.rows ?? []).map(r => [ledgerRowKey(r), JSON.stringify(r)]))
+  let n = deletedKeys.value.size
+  for (const r of draft.value) if (base.get(ledgerRowKey(r)) !== JSON.stringify(r)) n++
+  return n
+}
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: month.value == null ? null : periodOf(year.value, month.value), co: companyId.value }),
+  apply: (t) => { void applyDeep(t).catch(() => {}) },
+  dirty: dirtyCount,
 })
+// KeepAlive 切回重读本月(spec §12 同款):导入中心导完切回来,宽表不能还是导入前的;编辑态不动(草稿在 draft 里,快照换了会把它判脏)
+onReactivated(() => { if (month.value != null && !edit.value) void loadMonth().catch(() => {}) })
 
 async function loadBooks() {
   books.value = await booksApi.list('ledger')
@@ -835,6 +873,7 @@ function gotoTenants() {
 
   <!-- 升版提示:收编进 FPToast(LAYOUT-STABILITY §4.1 反馈提示唯一组件,审查#31) -->
   <FPToast v-model="verToast" placement="page" :duration="4000" />
+  <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 </template>
 
 <style scoped>
