@@ -24,7 +24,7 @@
   - 台账：`co` 数字 → 按 `companyId` 找册；字符串（旧 `company` 名）→ 先公司名再册名；**没给 co → 当前册，还没选册就是首册**（裁定：首页台账行本期不带公司，公司 chips 是 P2 的事；「本月台账」落首册与附10 落一期同口径）；认不出 → 不动。换期前若在编辑态先 `cancelEdit()`（LedgerWideTable 的 `watch(edit)` 据此还锁）。
   - 只有年的链接（`t.month == null`）：认整月的屏（台账 / 附10 / 附12 / 运营账三屏）一律 return。
 - **extra 只读一次**：`?mode=summary|meter|cost` 在三张两本账屏的 `mode` 初值里认（`const mode = ref<Mode>(deepMode ?? loadViewMode(…))` —— 保留 `mode = ref<Mode>` 字面形状，`twoBooksRail.spec:150` 钉着）；**不写回 localStorage**（`watch(mode)` 非 immediate，只记用户自己的切换）。`?tab=office|phase3` 在 `UtilitiesView.tab` 初值里认，必须早于 `year` 落定（`loadYear` 读 `no`）。切回时不认 extra（首页行走 openFresh）。
-- **dirty 源**（惰性求值，可引用下方才声明的 ref）：附10 `() => dirty.size`；台账 `dirtyCount()`（编辑态下 draft 与快照逐行比 + `deletedKeys`，子组件 `isDirty` 同口径的计数版）；年表四屏 `() => (drawer.value || importing.value ? 1 : 0)`（开着的新增抽屉 / 导入窗；`pickYear` 会经 `edit=false` 把它们关掉；四屏都没有 onDeactivated，切走时浮层还开着）；分栋抄表 / 分桩明细 `() => (editId.value != null || adding.value ? 1 : 0)`（它们的 onDeactivated 不碰这两个 ref）；附12**不传**（`SalaryView.vue:124` 的 onDeactivated 切走即关浮层，切回时没有草稿可护 —— 计划复查 P0B-2）；电费成本总览**不传**（全部即时乐观提交，没有草稿）；导入中心不接。**没有 dirty 的屏不接 `note`、不加 FPToast**（与 P0a 的 LossLedgerView / PoolLedgerView / ParamCenterView 同口径）。
+- **dirty 源**（惰性求值，可引用下方才声明的 ref）：附10 `() => dirty.size`；台账 `dirtyCount()`（编辑态下 draft 与快照逐行比 + `deletedKeys`，子组件 `isDirty` 同口径的计数版）；年表四屏 `() => (drawer.value || importing.value ? 1 : 0)`（开着的新增抽屉 / 导入窗；`pickYear` 会经 `edit=false` 把它们关掉；四屏都没有 onDeactivated，切走时浮层还开着）；分栋抄表 / 分桩明细**不传**（行草稿只能在抽屉里产生，onDeactivated 清 `openSt` → `watch(openSt, cancelForm)` 顺手清 `adding` / `editId`，切回时没有草稿可护 —— Task 1 评审坐实，计划复查的反驳者漏看了这一跳）；附12**不传**（`SalaryView.vue:124` 的 onDeactivated 切走即关浮层，切回时没有草稿可护 —— 计划复查 P0B-2）；电费成本总览**不传**（全部即时乐观提交，没有草稿）；导入中心不接。**没有 dirty 的屏不接 `note`、不加 FPToast**（与 P0a 的 LossLedgerView / PoolLedgerView / ParamCenterView 同口径）。
 - **屏内提示只走 `FPToast`**（`<FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />`，与 MeterView.vue:864 逐字相同；变量名 `deepNote`）；不写流内 `<div v-if>`（`noInteractionLayoutShift.spec`，`KNOWN_DEBT` 保持空）。文案「地址栏要求 X 期，本期有 N 处未保存」（全角逗号）。
 - **既有 spec 只补桩不改断言**（spec §10）：`meterPeriodFlow` / `cpMeterFlow` / `elecCostFlow` / `salaryMonthGate` / `salaryGuards` / `twoBooksRail` 六份没有 vue-router 桩，屏接 useDeepPeriod 后 `useRoute()` 返回 undefined 当场炸 —— 各补「可变 query + fullPath getter」桩（照 `meterWriteGuards.spec:60-66`；fullPath 必须是 getter，否则 KeepAlive 切回读到旧地址）。`monthTemplate` / `archivedCols` / `ledgerLeaveAndReturn` 桩已有、断言不动。
 - **源码形状门禁**（改屏时会撞的）：`meterPeriodGate.spec`（三屏无 `const (year|month) = ref`、`<FPMonthGate v-if="!picked"` 逐字、CpMeter 两行字面量）；`twoBooksRail.spec:144-172`（`mode = ref<Mode>`、MODE_SCREEN 键字面量、`if (!edit.value) return` ≥ 2）；`bookRail.spec:173-182`（`<BookRailShell`）；`schedHeader.spec:140-146, 203-212`（S10View 的 `finishEdit(forced = false)` / `if (forced)` / `:copy-text="draftAsTsv"`）；`lockDialogsCoverage.spec`（三屏 FPLockDialogs 四绑定）。
@@ -41,7 +41,7 @@
 
 | 文件 | 责任 |
 |---|---|
-| `frontend/src/views/pv/PvMeterView.vue` · `charging/CpMeterView.vue` · `elec/ElecCostView.vue` | 接 `useDeepPeriod`（pick 进 screenPeriod）+ 补重读（Pv / Elec）+ `FPToast` |
+| `frontend/src/views/pv/PvMeterView.vue` · `charging/CpMeterView.vue` · `elec/ElecCostView.vue` | 接 `useDeepPeriod`（pick 进 screenPeriod，三屏都不传 dirty）+ 补重读（Pv / Elec） |
 | `frontend/src/views/__tests__/meterPeriodFlow.spec.ts` · `cpMeterFlow.spec.ts` · `elecCostFlow.spec.ts` | 补 vue-router 桩 + 深链用例 |
 | `frontend/src/views/salary/SalaryView.vue` | 接 `useDeepPeriod`（pickCell）+ 补重读 + `FPToast` |
 | `frontend/src/views/__tests__/salaryMonthGate.spec.ts` · `salaryGuards.spec.ts` | 补桩 + 深链用例 |
@@ -74,8 +74,8 @@ Expected: 全绿；记下 files / tests。全量基线：186 files / 2181 tests�
 ### Task 1: 运营账三屏（分栋抄表 / 分桩明细 / 电费成本总览）
 
 **Files:**
-- Modify: `frontend/src/views/pv/PvMeterView.vue:9, 88, 183-188, 808`
-- Modify: `frontend/src/views/charging/CpMeterView.vue:17, 91, 773`
+- Modify: `frontend/src/views/pv/PvMeterView.vue:9, 88, 183-188`
+- Modify: `frontend/src/views/charging/CpMeterView.vue:17, 91`
 - Modify: `frontend/src/views/elec/ElecCostView.vue:9, 85, 173-178`
 - Modify: `frontend/src/views/__tests__/meterPeriodFlow.spec.ts:3, 45, 63, 79`
 - Modify: `frontend/src/views/__tests__/cpMeterFlow.spec.ts:43, 71`
@@ -163,20 +163,21 @@ describe('光伏分栋抄表 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     expect(pvMeterApi.readings, '重读那趟不许还按旧月拉').not.toHaveBeenCalledWith(2025, 3)
   })
 
-  it('❗抽屉里正在新增一行时切回、地址栏换了月 → 期不动,草稿还在,deepNote 说清楚', async () => {
-    // 红线:dirty 探针改成 () => 0 → 期当场被切到 2025-04,表单默认日期跟着 monthLast 重算
+  it('抽屉里正在新增一行时切走 → 草稿随抽屉一起收掉;切回换月照换(本屏不设 dirty 闸:切回时没有草稿可护)', async () => {
+    // 红线:onDeactivated 里的 `openSt.value = null` 删掉 → watch(openSt, cancelForm) 不跑,adding 留着 → 「草稿已收」断言红
     query.p = '2025-03'
     const { w, alive } = await keptAlive()
-    const vm = w.findComponent(PvMeterView).vm as unknown as { startAdd: () => void; adding: boolean }
+    const vm = w.findComponent(PvMeterView).vm as unknown as { openSt: unknown; startAdd: () => void; adding: boolean }
+    vm.openSt = STATIONS[0]        // 走真实路径:新增行只能从抽屉里点出来
     vm.startAdd()
     await flushPromises()
     expect(vm.adding, '前提:新增行展开着').toBe(true)
     alive.value = false; await flushPromises()
+    expect(vm.adding, '切走时抽屉收掉,草稿跟着没了').toBe(false)
     query.p = '2025-04'
     alive.value = true; await flushPromises()
-    expect(w.find('.pm-per').text(), '有草稿 → 不切期').toBe('2025-03')
-    expect(vm.adding).toBe(true)
-    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有 1 处未保存')
+    expect(w.find('.pm-per').text(), '没有草稿可护 → 期照换').toBe('2025-04')
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 4)
   })
 })
 ```
@@ -195,8 +196,8 @@ describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     expect(cpMeterApi.readings).toHaveBeenCalledTimes(1)
   })
 
-  it('❗抽屉里正在新增一行时切回、地址栏换了月 → 期不动,deepNote 说清楚', async () => {
-    // 红线:dirty 探针改成 () => 0 → 期被切到 2025-04
+  it('抽屉里正在新增一行时切走 → 草稿随抽屉一起收掉;切回换月照换(本屏不设 dirty 闸:切回时没有草稿可护)', async () => {
+    // 红线:onDeactivated 里的 `openSt.value = null` 删掉 → watch(openSt, cancelForm) 不跑,adding 留着 → 「草稿已收」断言红
     query.p = '2025-03'
     const Host = defineComponent({
       components: { CpMeterView },
@@ -205,15 +206,16 @@ describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     })
     const w = mount(Host, { global: { stubs: { Teleport: true } } })
     await flushPromises()
-    const vm = w.findComponent(CpMeterView).vm as unknown as { startAdd: () => void; adding: boolean }
+    const vm = w.findComponent(CpMeterView).vm as unknown as { openSt: unknown; startAdd: () => void; adding: boolean }
+    vm.openSt = STATIONS[0]        // 走真实路径:新增行只能从抽屉里点出来
     vm.startAdd()
     await flushPromises()
+    expect(vm.adding, '前提:新增行展开着').toBe(true)
     await w.setProps({ on: false }); await flushPromises()
+    expect(vm.adding, '切走时抽屉收掉,草稿跟着没了').toBe(false)
     query.p = '2025-04'
     await w.setProps({ on: true }); await flushPromises()
-    expect(cpMeterApi.readings, '有草稿 → 不切期').not.toHaveBeenCalledWith(2025, 4)
-    expect(vm.adding).toBe(true)
-    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有 1 处未保存')
+    expect(cpMeterApi.readings, '没有草稿可护 → 期照换').toHaveBeenCalledWith(2025, 4)
   })
 })
 ```
@@ -265,11 +267,11 @@ import { useDeepPeriod } from '@/composables/useDeepPeriod'
 ```ts
 // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
 // 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
-// 只有年的链接不动(本屏只认整月)。本屏唯一的草稿是抽屉里正在编辑 / 新增的那一行;切回时有 → 不切期,只在 deepNote 里说。
-const { note: deepNote } = useDeepPeriod({
+// 只有年的链接不动(本屏只认整月)。不传 dirty、也不接 note:抽屉里的行草稿在切走时随抽屉一起收掉
+// (onDeactivated 清 openSt → watch(openSt, cancelForm)),切回时没有草稿可护。
+useDeepPeriod({
   current: () => ({ p: gateYm.value }),
   apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
-  dirty: () => (editId.value != null || adding.value ? 1 : 0),
 })
 ```
 第 183-187 行 `onMounted(() => { … })` 块之后、`watch(gateYm, …)` 之前插入：
@@ -281,9 +283,9 @@ onReactivated(() => {
   if (picked.value) loadReadings()
 })
 ```
-第 808 行 `<FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />` 之后加一行 `    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />`。
+（模板不动：没有 dirty 就不会有提示。）
 
-`CpMeterView.vue`：第 17 行 `import FPLockDialogs …` 之后加 `import FPToast from '@/components/fp/FPToast.vue'` 与 `import { useDeepPeriod } from '@/composables/useDeepPeriod'`（`onReactivated` 第 32 行已有）。第 91 行 `const month = computed(() => gm.value ?? 0)` 之后插入与 PvMeterView 逐字相同的 useDeepPeriod 块。第 773 行 `  </div>`（`<FPLockDialogs … />` 之后那个）之前加 `    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />`。
+`CpMeterView.vue`：第 17 行 `import FPLockDialogs …` 之后加 `import { useDeepPeriod } from '@/composables/useDeepPeriod'`（`onReactivated` 第 32 行已有，三支重读也已有，不再加）。第 91 行 `const month = computed(() => gm.value ?? 0)` 之后插入与 PvMeterView 逐字相同的 useDeepPeriod 块。模板不动。
 
 `ElecCostView.vue`：第 9 行 `import { ref, computed, onMounted, onDeactivated, watch } from 'vue'` 之后加 `onReactivated` / `useDeepPeriod` 两个 import（本屏不传 dirty，不接 note、不加 FPToast）。第 85 行 `const acctMonth = computed(...)` 之后插入：
 ```ts
@@ -310,7 +312,7 @@ onReactivated(() => {
 - [ ] **Step 4: 跑绿 + 门禁 + 破坏验证**
 
 Run: `cd frontend && npx vitest run src/views/__tests__/meterPeriodFlow.spec.ts src/views/__tests__/cpMeterFlow.spec.ts src/views/__tests__/elecCostFlow.spec.ts src/views/__tests__/meterPeriodGate.spec.ts src/views/__tests__/lockDialogsCoverage.spec.ts src/views/__tests__/noInteractionLayoutShift.spec.ts && npx vue-tsc --noEmit`
-Expected: 全绿。（`twoBooksRail.spec` 此刻会红：PvView 挂 PvMeterView 而它接了 useRoute、该 spec 还没桩 —— 那是 Task 3 补的，本任务不跑它。）破坏验证逐条：① 删 PvMeterView 的 useDeepPeriod 整段 → 用例 1 / 4 / 5 红；② 把它挪到 `watch(gateYm)` 之后 → 用例 1「只拉一次」红、用例 4「不按旧月拉」红；③ 删 PvMeterView / ElecCostView 新加的 onReactivated → 用例 3 / Elec 用例 2 红；④ dirty 改 `() => 0` → 用例 5 / Cp 用例 2 红。每条改坏后**字符串替换还原**，报告里逐条写红了哪条。
+Expected: 全绿。（`twoBooksRail.spec` 此刻会红：PvView 挂 PvMeterView 而它接了 useRoute、该 spec 还没桩 —— 那是 Task 3 补的，本任务不跑它。）破坏验证逐条：① 删 PvMeterView 的 useDeepPeriod 整段 → 用例 1 / 4 / 5 红；② 把它挪到 `watch(gateYm)` 之后 → 用例 1「只拉一次」红、用例 4「不按旧月拉」红；③ 删 PvMeterView / ElecCostView 新加的 onReactivated → 用例 3 / Elec 用例 2 红；④ 删 PvMeterView / CpMeterView 的 onDeactivated 里 `openSt.value = null` 那一句 → 用例 5 / Cp 用例 2「草稿已收」红。每条改坏后**字符串替换还原**，报告里逐条写红了哪条。
 
 - [ ] **Step 5: Commit**
 
