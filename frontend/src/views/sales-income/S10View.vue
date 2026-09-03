@@ -236,13 +236,15 @@ onMounted(() => { void ensureLoaded() })
 // setup 期 books 还没到 —— apply 是异步的:先等 ensureLoaded,再落册落期(与出账链五屏「同步 pick」不同,复查时别按那个口径看)。
 // 期区**直写 activeBookId,不经 selectBook** —— selectBook 在表格态末行 goGate 把人推回矩阵(spec §9 P0b 破坏验证 / §12);
 // 旧链(收入核对「去改附表10」、分析层 5 处)仍走 ?phase=,co 缺席时用它兜底;?tenant= 照旧定位高亮。
-// 三个 ref 在同一拍连写(册 → pickCell 置月置年),watch([activeBookId, year, month]) 只跑一次 templateAt。
+// 册先于 year 落定:ensureLoaded 那一拍 year 仍是 null,loadMonthBook 早退不取模板;之后 activeBookId / month / year 同一拍连写,templateAt 只按目标册取一次。
 // 本屏草稿 = dirty 集合;切回时有 → 不切期,只在 deepNote 里说。必须在下面的 onReactivated 之前调用:先改期,后重读。
 async function applyDeep(t: DeepPeriod) {
   if (t.month == null) return
   await ensureLoaded()
   const ph = typeof t.co === 'number' ? t.co : Number(route.query.phase)
   const b = books.value.find(x => x.phase === ph)
+  // 链接指名的期区不存在(co=2 而库里只有 1 / 3 期册):不落错册 —— 停在原地;co 缺席、旧 ?phase= 认不出的仍留在当前册
+  if (t.co != null && !b) return
   if (b) activeBookId.value = b.id
   await pickCell(t.year, t.month)
   focusTenant.value = typeof route.query.tenant === 'string' ? route.query.tenant : ''

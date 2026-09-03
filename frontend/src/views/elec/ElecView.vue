@@ -43,7 +43,7 @@ const MODES = [
 ] as const
 type Mode = (typeof MODES)[number]['id']
 const MODE_SCREEN = 'elec-cost'
-// 深链 ?mode=summary|meter 只在首载认(首页附表行走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1):
+// 深链 ?mode=summary|cost 只在首载认(首页附表行走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1):
 // 盖过本机记住的那本,但不写回 —— 下面的 watch(mode) 非 immediate,只记用户自己的切换。
 const route = useRoute()
 const deepMode = MODES.find(m => m.id === route.query.mode)?.id ?? null

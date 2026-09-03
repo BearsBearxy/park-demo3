@@ -3,6 +3,7 @@
 // 年表 DTO 的形状不是这里要钉的:records 一律在途(屏落在转圈分支),断言只看门与请求。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 const query: Record<string, string> = {}
@@ -46,6 +47,16 @@ async function open(C: typeof UtilitiesView | typeof ChargingView | typeof ElecV
   return w
 }
 
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回。 */
+async function keptAlive(C: typeof UtilitiesView | typeof ChargingView | typeof ElecView) {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(C) : null) }),
+  }), { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return { w, alive }
+}
+
 describe('年表屏 · 期间深链', () => {
   it('❗附13/14:?tab=phase3 先落子表再落年 —— records 只拉一次,拉的是附表14', async () => {
     // 红线:UtilitiesView.vue 的 tab 初值不读 route.query.tab → 拉的是 (13, 2025);
@@ -82,5 +93,46 @@ describe('年表屏 · 期间深链', () => {
     expect(elecApi.records).toHaveBeenCalledWith(2025, 'energy')
     expect(elecApi.records).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem('fp-view-mode:elec-cost'), '深链不改记忆').toBe('cost')
+  })
+
+  it('❗附13/14:切页签回来重读年表与总览(spec §12)', async () => {
+    // 红线:UtilitiesView.vue 的 onReactivated(() => { void refresh()… }) 删掉 → 切回零请求
+    query.p = '2025'; query.tab = 'phase3'
+    vi.mocked(utilitiesApi.records).mockResolvedValue(null as never)
+    const { alive } = await keptAlive(UtilitiesView)
+    vi.mocked(utilitiesApi.records).mockClear()
+    vi.mocked(utilitiesApi.overview).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(utilitiesApi.records, '重读按当前子表 + 当前年').toHaveBeenCalledWith(14, 2025)
+    expect(utilitiesApi.overview).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗附表8:切页签回来重读年表与总览(spec §12)', async () => {
+    // 红线:ChargingView.vue 的 onReactivated(refresh) 删掉 → 切回零请求
+    meta.kind = 'schedule8'
+    query.p = '2025'
+    vi.mocked(chargingApi.records).mockResolvedValue(null as never)
+    const { alive } = await keptAlive(ChargingView)
+    vi.mocked(chargingApi.records).mockClear()
+    vi.mocked(chargingApi.overview).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(chargingApi.records).toHaveBeenCalledWith(8, 2025)
+    expect(chargingApi.overview).toHaveBeenCalledWith(8)
+    expect(chargingApi.overview).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗附表11:切页签回来重读年表与总览(spec §12)', async () => {
+    // 红线:ElecView.vue 的 onReactivated(refresh) 删掉 → 切回零请求
+    query.p = '2025'; query.mode = 'summary'
+    vi.mocked(elecApi.records).mockResolvedValue(null as never)
+    const { alive } = await keptAlive(ElecView)
+    vi.mocked(elecApi.records).mockClear()
+    vi.mocked(elecApi.overview).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(elecApi.records).toHaveBeenCalledWith(2025, 'energy')
+    expect(elecApi.overview).toHaveBeenCalledTimes(1)
   })
 })

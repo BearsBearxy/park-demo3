@@ -14,6 +14,7 @@ const def: Book['definition'] = { groups: [{ id: 'g1', label: '租金', cols: [
 ] }] }
 const bookA: Book = { id: 1, screen: 'ledger', companyId: 9, phase: null, name: '甲公司', ver: 1, latestVer: 1, definition: def }
 const bookB: Book = { ...bookA, id: 2, companyId: 12, name: '乙公司' }
+const bookC: Book = { ...bookA, id: 3, companyId: 15, name: '丙册' }   // 公司名单里没有「丙册」:钉「公司名认不到再按册名」那半条
 const zeroFees = () => Object.fromEntries(FEE_KEYS.map(k => [k, 0])) as Record<string, number>
 const rowOf = (name: string) => ({
   ...zeroFees(), id: 5, tenantId: 5, tenantName: name, balancePrev: 0, totalCollected: 0,
@@ -59,8 +60,8 @@ beforeEach(() => {
   for (const k of Object.keys(query)) delete query[k]
   // ?tenant= 命中行会 scrollIntoView,jsdom 没实现(既有两份 spec 的 tenant 都是空串,没踩到)
   Element.prototype.scrollIntoView = vi.fn()
-  vi.mocked(booksApi.list).mockResolvedValue([bookA, bookB])
-  vi.mocked(booksApi.templateAt).mockImplementation((id: number) => Promise.resolve(id === 2 ? bookB : bookA))
+  vi.mocked(booksApi.list).mockResolvedValue([bookA, bookB, bookC])
+  vi.mocked(booksApi.templateAt).mockImplementation((id: number) => Promise.resolve(id === 2 ? bookB : id === 3 ? bookC : bookA))
   vi.mocked(companyApi.list).mockResolvedValue([
     { id: 9, name: '甲公司', short: '甲', sortNo: 1 }, { id: 12, name: '乙公司', short: '乙', sortNo: 2 },
   ])
@@ -102,12 +103,20 @@ describe('月度台账 · 期间深链', () => {
     expect(booksApi.list, 'books 只拉一次(onMounted 与 apply 共用 ensureLoaded)').toHaveBeenCalledTimes(1)
   })
 
-  it('旧链 ?y&m&company=甲公司&tenant= 照认(收入核对 / 分析层本期不改发链侧)', async () => {
-    query.y = '2026'; query.m = '9'; query.company = '甲公司'; query.tenant = '甲户'
+  it('旧链 ?y&m&company=<公司名>&tenant= 照认(收入核对 / 分析层 6 处本期不改发链侧) —— 用非首册那家,首册兜底混不进来', async () => {
+    // 红线:bookOf 的字符串分支(公司名 → companyId → 册)整段删掉 → 落首册 → 拉到 (9, …) 而不是 (12, …)
+    query.y = '2026'; query.m = '9'; query.company = '乙公司'; query.tenant = '甲户'
     const w = await open()
-    expect(ledgerApi.month).toHaveBeenCalledWith(9, 2026, 9)
+    expect(ledgerApi.month).toHaveBeenCalledWith(12, 2026, 9)
     // focusTenant 是一次性的:表渲染完就 emit focus-done、父层随即清空,所以钉「送到表里了」而不是钉父层的 ref(计划复查 P0B-2)
     expect(w.findComponent(LedgerWideTable).emitted('focus-done'), '旧链的 ?tenant= 送到表里了').toBeTruthy()
+  })
+
+  it('旧链 company 认不到公司名时按册名兜底(册名 ≠ 公司名的那本)', async () => {
+    // 红线:bookOf 里 `books.value.find(b => b.name === co)` 那半条删掉 → 认不出 → 停在选册占位,month 不被调
+    query.y = '2026'; query.m = '9'; query.company = '丙册'
+    await open()
+    expect(ledgerApi.month).toHaveBeenCalledWith(15, 2026, 9)
   })
 
   it('没给 co 落首册 —— 首页台账行本期不带公司(公司 chips 是 P2 的事)', async () => {
@@ -191,6 +200,6 @@ describe('月度台账 · 期间深链', () => {
     alive.value = true; await flushPromises()
     expect(booksApi.templateAt).toHaveBeenCalledWith(2, 2025, 3)
     expect(booksApi.templateAt, '同一拍连写,watch 只跑一次').toHaveBeenCalledTimes(1)
-    expect(ledgerApi.month).toHaveBeenCalledWith(12, 2025, 3)
+    expect(ledgerApi.month, '重读那趟按旧月先发,新月那趟最后发 —— seq 守卫以它为准').toHaveBeenLastCalledWith(12, 2025, 3)
   })
 })

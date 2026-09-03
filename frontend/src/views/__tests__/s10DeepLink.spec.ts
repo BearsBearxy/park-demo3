@@ -1,5 +1,5 @@
 // src/views/__tests__/s10DeepLink.spec.ts — 附表10 消费期间深链(SIDEBAR-UX-REDESIGN §4.2「附10 co = 期区 1..4」/ §9 P0b 破坏验证「chip 深链不撞 goGate」)。
-// 期区直写 activeBookId,不经 selectBook —— 它在表格态末行 goGate 把人推回矩阵;三个 ref 同一拍连写,templateAt 只跑一次。
+// 期区直写 activeBookId,不经 selectBook —— 它在表格态末行 goGate 把人推回矩阵;templateAt 只按目标册取一次(ensureLoaded 那拍 year 仍 null,watch 早退)。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, ref } from 'vue'
@@ -146,5 +146,13 @@ describe('附表10 · 期间深链', () => {
     expect(s10Api.getMonth, '有草稿 → 不切期、不重读本月').not.toHaveBeenCalled()
     expect(vm.dirty.size).toBe(1)
     expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2026-10 期，本期有 1 处未保存')
+  })
+
+  it('链接指名的期区不存在 → 不落错册:停在矩阵,不拉月表', async () => {
+    // 红线:applyDeep 里 `if (t.co != null && !b) return` 删掉 → 落到一期册的 2026-09,getMonth(1, 2026, 9)
+    query.p = '2026-09'; query.co = '2'
+    const w = await open()
+    expect(w.find('.s10-gate').exists()).toBe(true)
+    expect(s10Api.getMonth).not.toHaveBeenCalled()
   })
 })

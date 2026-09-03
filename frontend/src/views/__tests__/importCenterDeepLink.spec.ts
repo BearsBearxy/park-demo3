@@ -88,6 +88,15 @@ describe('导入中心 · 期间深链预填', () => {
     await flushPromises()
     expect(vmOf(w).lf).toEqual({ companyId: 9, year: 2025, month: 3 })
   })
+
+  it('只有年的链接(?p=2025)不预填 —— 半个期不认,退回当前年月 + 首家', async () => {
+    // 红线:defaultLf 直接用 parsed(不看 month) → year 变 2025、month 取时钟 → 「2025 年 6 月」这种拼出来的期
+    query.p = '2024'; query.co = '12'
+    const w = await open()
+    await uploadOf(w, '月度台账').trigger('click')
+    await flushPromises()
+    expect(vmOf(w).lf).toEqual({ companyId: 9, year: 2025, month: 6 })
+  })
 })
 
 describe('导入中心 · 导后「去查看」', () => {
@@ -131,5 +140,17 @@ describe('导入中心 · 导后「去查看」', () => {
     expect(w.find('.ir-scrim').exists()).toBe(true)
     expect(w.findAll('button').some(b => b.text() === '去查看')).toBe(false)
     expect(w.findAll('button').some(b => b.text() === '知道了')).toBe(true)
+  })
+
+  it('台账整册多段导入(段元素带 records)不给「去查看」 —— 入库的是各段自己的公司 / 月,不是表单里的', async () => {
+    // 红线:viewLink 的 ledger 分支去掉 `!first?.records` → 按表单 ctx 发链(甲公司 2025-06),而这段实际入的是乙公司 2025-03
+    const w = await open()
+    const vm = vmOf(w)
+    vm.activeKey = 'ledger'
+    vm.ctx = { companyId: 9, companyName: '甲公司', year: 2025, month: 6 }
+    await vm.doRun([{ label: '乙公司 2025-03', records: [{ tenantName: '甲户', __company: '乙公司', __ym: { year: 2025, month: 3 } }] }], 'book.xlsx')
+    await flushPromises()
+    expect(w.find('.ir-scrim').exists()).toBe(true)
+    expect(w.findAll('button').some(b => b.text() === '去查看')).toBe(false)
   })
 })
