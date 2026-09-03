@@ -90,7 +90,7 @@ interface Vm { edit: boolean; month: number | null; draft: LedgerRowDTO[]; focus
 
 describe('月度台账 · 期间深链', () => {
   it('❗p + co(公司 id) 直落该册该月宽表:矩阵不出现,月表只拉一次且是 (12, 2026, 9),模板只取一次', async () => {
-    // 红线①:useDeepPeriod 整段删掉 → 停在选册占位;红线②:册 / 年 / 月分两拍写 → templateAt 两次
+    // 红线:useDeepPeriod 整段删掉 → 停在选册占位。「册 / 年 / 月同一拍连写」由用例 8 钉 —— 首载从 null 起步时中间那拍 loadMonthBook 因 m == null 早退,这里钉不住
     query.p = '2026-09'; query.co = '12'
     const w = await open()
     expect(w.findComponent(LedgerWideTable).exists(), '直落宽表').toBe(true)
@@ -178,5 +178,19 @@ describe('月度台账 · 期间深链', () => {
     alive.value = false; await flushPromises()
     alive.value = true; await flushPromises()
     expect(ledgerApi.month, '编辑态不重读:换了快照会把 draft 判脏').not.toHaveBeenCalled()
+  })
+
+  it('❗浏览态切回换年:册 / 年 / 月同一拍连写 → 模板只取一次且是新年月', async () => {
+    // 红线:applyDeep 里 year 与 month 之间夹一个 await(分两拍写)→ watch 先按 (2, 2025, 9) 取一次模板,再按 (2, 2025, 3) 取 → 两次
+    query.p = '2026-09'; query.co = '12'
+    const { alive } = await keptAlive()
+    vi.mocked(booksApi.templateAt).mockClear()
+    vi.mocked(ledgerApi.month).mockClear()
+    alive.value = false; await flushPromises()
+    query.p = '2025-03'
+    alive.value = true; await flushPromises()
+    expect(booksApi.templateAt).toHaveBeenCalledWith(2, 2025, 3)
+    expect(booksApi.templateAt, '同一拍连写,watch 只跑一次').toHaveBeenCalledTimes(1)
+    expect(ledgerApi.month).toHaveBeenCalledWith(12, 2025, 3)
   })
 })

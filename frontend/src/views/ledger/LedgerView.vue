@@ -122,7 +122,7 @@ function ensureLoaded() {
   return loaded
 }
 onMounted(() => { void ensureLoaded() })
-/** 深链的 co → 册:新链 co=<公司 id>;旧链 ?company=<公司名>(公司名认不到再按册名);没给 co = 当前册,还没选册就是首册。认不出 → null(不动)。 */
+/** 深链的 co → 册:新链 co=<公司 id>;旧链 ?company=<公司名>(公司名认不到再按册名);没给 co 或 co='all'(台账没有「全部」视图)= 当前册,还没选册就是首册。认不出 → null(不动)。 */
 function bookOf(co: DeepPeriod['co']): Book | null {
   if (typeof co === 'number') return books.value.find(b => b.companyId === co) ?? null
   if (typeof co === 'string' && co !== 'all') {
@@ -145,7 +145,7 @@ async function applyDeep(t: DeepPeriod) {
   year.value = t.year
   extraYears.value = b.companyId != null ? loadExtraYears('ledger', b.companyId) : []
   // 矩阵数据后台补齐:「换期」返回矩阵时已就绪
-  void loadGateYears().then(loadOverviews)
+  void loadGateYears().then(loadOverviews).catch(() => { /* 拉失败保持旧值即可,不抛 unhandledrejection(同 backToMonths) */ })
   month.value = t.month
   drawerRowKey.value = null
   // 先清上月快照,兜底转圈接管(同 pickCell)
