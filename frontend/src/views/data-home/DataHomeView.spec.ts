@@ -225,7 +225,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.users = [{
-      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['billing-chain:2025-03'], sinceMs: 0, idleMs: 0, self: true,
     }]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -242,7 +242,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.users = [{
-      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['meters:2024'], sinceMs: 0, idleMs: 0, self: true,
     }]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -257,7 +257,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith()
     const presence = usePresenceStore()
     presence.users = [{
-      sid: 's1', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+      sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
       editScopes: ['billing-chain:2024-02'], sinceMs: 0, idleMs: 0, self: true,
     }]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -265,6 +265,37 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(confirm).toHaveBeenCalledOnce()
     expect(useBillingPeriodStore().picked).toBe(false)
     expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+
+  it('多标签页:只看本标签页(sid)的锁 —— 别的标签页的自己座位持链锁不算', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.users = [
+      { sid: 'other-tab', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+        editScopes: ['billing-chain:2025-03'], sinceMs: 600_000, idleMs: 0, self: true },
+      { sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'view',
+        editScopes: [], sinceMs: 0, idleMs: 0, self: true },
+    ]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(useBillingPeriodStore().picked).toBe(true)
+    confirm.mockRestore()
+  })
+  it('多标签页:本标签页(sid)持链锁即使排在后面也弹确认', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.users = [
+      { sid: 'other-tab', user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+        editScopes: ['sched:salary:2025-06'], sinceMs: 600_000, idleMs: 0, self: true },
+      { sid: presence.sid, user: 'me', displayName: '我', role: null, scope: null, label: null, mode: 'edit',
+        editScopes: ['billing-chain:2024-02'], sinceMs: 0, idleMs: 0, self: true },
+    ]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.findAll('.dh-step')[1].trigger('click')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(useBillingPeriodStore().picked).toBe(false)
     confirm.mockRestore()
   })
 })

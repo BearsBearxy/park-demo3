@@ -64,7 +64,7 @@ for (SourceData s : sources) {
 ### 2.1 出账链画 4 步，不是 6 步
 
 > **2026-09-03 修订**（SIDEBAR-UX-REDESIGN §5.1）：出账链改画 **5 步**，头插「计费参数」，
-> done = `priceOk == priceTotal`（本月电价键录齐），detail「本月电价 n/6 已录」。
+> done = `priceTotal > 0 && priceOk == priceTotal`（本月电价键录齐），detail「本月电价 priceOk/priceTotal 已录」（priceTotal 现恒为 6）。
 > 不用 `stale` 当判据（月初恒 false 会假绿）；`stale` 仍只做 `param-stale` 前置条。
 > 矩阵 4 颗点不变。下文「4 步」按此理解。
 

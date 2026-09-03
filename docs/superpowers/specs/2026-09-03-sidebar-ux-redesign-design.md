@@ -139,7 +139,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 轨层钮（`IconRail.goLayer`）/ 手机底栏（`MobileBottomNav`） | 点当前层也跳走 | `if (layer.id === activeLayer.id) return`；换层 `openFresh(layer.home)` + push |
 | 页签 / 命令面板 / 最近 / 期间条 | `open` | 不变 |
 | 关闭页签 | `dropState` | 不变（关签重开 = 全新） |
-| 首页 / 清单行 | 裸 push | `period.pick(y, m)`（若与当前期不同且有链屏处于编辑态：确认框「切到 2024-02 会退出 园区抄表 的编辑，未保存草稿丢失」）→ `tabs.open` + push(`periodLink`) |
+| 首页 / 清单行 | 裸 push | `period.pick(y, m)` 显式选月 + `periodLink`；**本人（本标签页）握着任一出账链 / 抄表锁时先确认**——`openFresh` 会重建目标屏，编辑中的草稿不分同月异月都会丢（2026-09-03 对抗复查 F3 裁定；P3 侧栏改恢复现场后再收窄） |
 | 报表中心 / 期间条 / 分析层深链 9 处 | 各自约定，`pin:true` | 统一走 `periodLink`；pin 规则见 4.3 |
 | 收入核对 → 台账 / 附10 | `openFresh({pin:true})` | 不变（spec 2026-07-07 §一） |
 | `LedgerView.gotoTenants` | `open({pin:true})` | 不变 |
@@ -168,7 +168,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 ### 5.1 P1：改名 + 5 步 + 行带期
 
 - `fpNav.ts:10` label「本月出账」，icon `calendar-check`。
-- `DataHomeService.buildChain` 4 → 5 步：头插 `params`，`done = ps.priceOk() == ps.priceTotal()`，`detail = "本月电价 " + priceOk + "/" + priceTotal + " 已录"`（`paramService.status(ym)` 在 :92 已调，改为整个 DTO 传入，**不用 `stale`**——月初 pool/bill 皆 null 时 stale 恒 false 会假绿）；`stale` 继续只做 `buildBlockers` 的 `param-stale` 前置条。硬编码「恒 4 步」六处同改：`DataHomeApiIT:51`、`DataHomeView.spec.ts:151,160`、`DataHomeView.vue:79` 骨架 `v-for="i in 4"`、`DataHomeServiceTest` 六处调用与 `currentIndex` 期望 +1、service 内循环与 `new ArrayList<>(4)`、`types/dataHome.ts:32` 注释。
+- `DataHomeService.buildChain` 4 → 5 步：头插 `params`，`done = ps.priceTotal() > 0 && ps.priceOk() == ps.priceTotal()`，`detail = "本月电价 " + priceOk + "/" + priceTotal + " 已录"`（`paramService.status(ym)` 在 :92 已调，改为整个 DTO 传入，**不用 `stale`**——月初 pool/bill 皆 null 时 stale 恒 false 会假绿）；`stale` 继续只做 `buildBlockers` 的 `param-stale` 前置条。硬编码「恒 4 步」六处同改：`DataHomeApiIT:51`、`DataHomeView.spec.ts:151,160`、`DataHomeView.vue:79` 骨架 `v-for="i in 4"`、`DataHomeServiceTest` 六处调用与 `currentIndex` 期望 +1、service 内循环与 `new ArrayList<>(4)`、`types/dataHome.ts:32` 注释。
 - 矩阵 4 颗点不变（`billingChain.ts:40-45` 判断保留）；本 spec 明写口径差：**矩阵 4 点、清单 5 步**。
 - `DataHomeView.go(v)`：按 §4.1 首页行语义（链屏先 `period.pick` 再 push）；`reconciliation` 带 `periodQuery(y, m, null)`（`ReconView` 今天就读它）。附13/附14 的 `extra.tab = office | phase3` 与附6/7/8/11 的 `extra.mode = summary`（覆盖 localStorage 记住的运营账模式）**随 P0b 目标屏接 `useDeepPeriod` 时一起加**——目标屏读不到之前不发死参数。
 

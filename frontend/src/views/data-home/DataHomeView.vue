@@ -31,9 +31,9 @@ const period = useBillingPeriodStore()
 const presence = usePresenceStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
 
-/** 本人正握着的出账链 / 抄表锁里的期(`billing-chain:2025-03` → `2025-03`,`meters:2025` → `2025`)。 */
+/** **本标签页**(按 sid,不按 self —— 同一用户多开标签页时 self 有多个)正握着的出账链 / 抄表锁里的期… */
 function myChainLockPeriods(): string[] {
-  const me = presence.users.find(u => u.self)
+  const me = presence.users.find(u => u.sid === presence.sid)
   return (me?.editScopes ?? [])
     .filter(sc => sc.startsWith('billing-chain:') || sc.startsWith('meters:'))
     .map(sc => sc.slice(sc.indexOf(':') + 1))
@@ -61,7 +61,7 @@ watch(pickedYm, load)
 // 本人握着任一链锁时先确认:openFresh 重建目标屏会清掉未保存草稿(不分同月异月)。
 // 收入核对认 ?y&m(ReconView.vue:23 parsePeriodQuery),其余屏本期不带参(P0b 再接)。
 // 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
-// 本人锁的判断读 presence.users(20 秒一拍):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
+// 本人锁的判断读 presence.users(3 秒一拍,PING_MS):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
 // ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
 function go(v: string) {
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月

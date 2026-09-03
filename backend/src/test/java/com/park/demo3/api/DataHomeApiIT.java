@@ -49,6 +49,8 @@ class DataHomeApiIT extends AbstractMysqlIT {
         List<String> months = JsonPath.read(body, "$.data.months[*]");
         assertThat(months).isSorted().allMatch(m -> m.matches("\\d{4}-\\d{2}"));
         assertThat((List<?>) JsonPath.read(body, "$.data.chain.steps")).hasSize(5);
+        assertThat((List<String>) JsonPath.read(body, "$.data.chain.steps[*].key"))
+            .containsExactly("params", "meters", "alloc", "alloc-loss", "bill-notices");
         assertThat((int) JsonPath.read(body, "$.data.schedules.total")).isEqualTo(9);
         assertThat((List<?>) JsonPath.read(body, "$.data.schedules.items")).hasSize(9);
         assertThat((List<?>) JsonPath.read(body, "$.data.blockers")).isNotNull();
@@ -78,7 +80,7 @@ class DataHomeApiIT extends AbstractMysqlIT {
         assertThat((int) JsonPath.read(body, "$.data.chain.currentIndex")).isZero();
         assertThat((int) JsonPath.read(body, "$.data.schedules.done")).isZero();
         List<String> statuses = JsonPath.read(body, "$.data.chain.steps[*].status");
-        assertThat(statuses).containsExactly("current", "todo", "todo", "todo");
+        assertThat(statuses).containsExactly("current", "todo", "todo", "todo", "todo");
     }
 
     @Test
