@@ -88,6 +88,13 @@ describe('useDeepPeriod', () => {
     await h1.back()
     expect(h1.apply).not.toHaveBeenCalled()
     expect(h1.note()).toBe('地址栏要求 2025-05 期，本期有 2 处未保存')
+    // 草稿保存完再切回来:这次真的 apply,提示随之清空(不许一句旧话挂到用户关掉为止)
+    dirty.value = 0
+    await h1.away()
+    setRoute({ p: '2025-06' })
+    await h1.back()
+    expect(h1.apply).toHaveBeenLastCalledWith({ year: 2025, month: 6, co: null })
+    expect(h1.note()).toBe('')
   })
 
   it('首跑不查 dirty —— 全新实例没有草稿,dirty 源在屏里可能还没声明', () => {

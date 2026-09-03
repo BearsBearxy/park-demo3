@@ -6,6 +6,7 @@
 // 再次:KeepAlive 切回(onReactivated,7 屏在用,天然跳过首次 activated)。
 // 去重键 = route.fullPath(单测的 route 桩多半没有 fullPath,退回 query 序列化)。
 // 三不动:parsePeriod 为 null / 与当前 (period, co) 相同 / 目标屏有未保存改动(dirty > 0 → 不切期,只在 note 里说)。
+// 去重键在判断之前就记下 —— 被拒的地址在同一实例上不再重试(用户已经看过提示);下一次真的 apply 时 note 清空。
 import { ref, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
@@ -35,6 +36,7 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
     if (cur.p === want && (cur.co ?? null) === t.co) return
     const n = initial ? 0 : (o.dirty?.() ?? 0)
     if (n > 0) { note.value = `地址栏要求 ${want} 期，本期有 ${n} 处未保存`; return }
+    note.value = ''
     o.apply(t)
   }
   run(true)
