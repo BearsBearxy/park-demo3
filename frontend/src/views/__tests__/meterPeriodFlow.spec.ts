@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { defineComponent, nextTick } from 'vue'
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
@@ -44,6 +44,14 @@ vi.mock('@/api/locks', () => ({
   },
 }))
 
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/pv-income?' + new URLSearchParams(query).toString() } }),
+}))
+
 /** 2025-03 的一条真实形状记录。`revenue` 是后端派生字段,抽屉那一列直接 fy(r.revenue) —— 漏了就渲染崩。 */
 const MAR: readonly PvReadingDTO[] = [
   { id: 1, stationId: 1, stationName: 'B 座', readDate: '2025-03-05',
@@ -66,6 +74,7 @@ beforeEach(() => {
   useAuthStore().permissions = ['meter-master:edit', 'meter-reading:edit']
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(pvMeterApi.stations).mockResolvedValue(STATIONS as never)
   vi.mocked(pvMeterApi.readings).mockResolvedValue([] as never)
@@ -76,6 +85,16 @@ async function open() {
   const w = mount(PvMeterView, { global: { stubs: { Teleport: true } } })
   await flushPromises()
   return w
+}
+
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回(照 meterWriteGuards.spec:299)。 */
+async function keptAlive() {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(PvMeterView) : null) }),
+  }), { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return { w, alive }
 }
 
 describe('光伏分栋抄表 · 选期动线', () => {
@@ -664,5 +683,69 @@ describe('光伏分栋抄表 · 未装表行', () => {
     await metered.trigger('click')
     await flushPromises()
     expect(drawerOpen(w)).toBe(true)
+  })
+})
+
+describe('光伏分栋抄表 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => {
+  it('❗带 p 进屏直落那个月:矩阵不出现,读数只拉一次、拉的就是那个月', async () => {
+    // 红线:PvMeterView.vue 的 useDeepPeriod({ apply: … pickCell }) 删掉 → 落回矩阵;
+    //      挪到 onMounted 之后 → 首载 readings 拉两次(onMounted 一次 + watch(gateYm) 一次)
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.find('.fmg').exists(), '门该被深链跳过').toBe(false)
+    expect(w.find('.pm-per').text()).toBe('2025-03')
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+    expect(pvMeterApi.readings, '首载只拉一次(期在 onMounted / watch 之前落定)').toHaveBeenCalledTimes(1)
+  })
+
+  it('只有年的链接不动 —— 本屏只认整月', async () => {
+    query.p = '2025'
+    const w = await open()
+    expect(w.find('.fmg').exists()).toBe(true)
+    expect(pvMeterApi.readings).not.toHaveBeenCalled()
+  })
+
+  it('❗切页签回来要重拉电站、账期清单与本月 —— 导入中心导完切回来不能还是旧表(spec §12)', async () => {
+    // 红线:PvMeterView.vue 的 onReactivated 三支删掉 → 切回零请求
+    const { w, alive } = await keptAlive()
+    await w.findAll('.bmm-card')[2].trigger('click')
+    await flushPromises()
+    vi.mocked(pvMeterApi.stations).mockClear()
+    vi.mocked(pvMeterApi.months).mockClear()
+    vi.mocked(pvMeterApi.readings).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(pvMeterApi.stations).toHaveBeenCalledTimes(1)
+    expect(pvMeterApi.months).toHaveBeenCalledTimes(1)
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('切回时地址栏换了月 → 先改期再重读:拉的是新月,没有一趟按旧月拉', async () => {
+    // 红线:useDeepPeriod 挪到 onReactivated 之后 → 重读那支先按 2025-03 拉一次
+    query.p = '2025-03'
+    const { w, alive } = await keptAlive()
+    vi.mocked(pvMeterApi.readings).mockClear()
+    alive.value = false; await flushPromises()
+    query.p = '2025-04'
+    alive.value = true; await flushPromises()
+    expect(w.find('.pm-per').text()).toBe('2025-04')
+    expect(pvMeterApi.readings).toHaveBeenCalledWith(2025, 4)
+    expect(pvMeterApi.readings, '重读那趟不许还按旧月拉').not.toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('❗抽屉里正在新增一行时切回、地址栏换了月 → 期不动,草稿还在,deepNote 说清楚', async () => {
+    // 红线:dirty 探针改成 () => 0 → 期当场被切到 2025-04,表单默认日期跟着 monthLast 重算
+    query.p = '2025-03'
+    const { w, alive } = await keptAlive()
+    const vm = w.findComponent(PvMeterView).vm as unknown as { startAdd: () => void; adding: boolean }
+    vm.startAdd()
+    await flushPromises()
+    expect(vm.adding, '前提:新增行展开着').toBe(true)
+    alive.value = false; await flushPromises()
+    query.p = '2025-04'
+    alive.value = true; await flushPromises()
+    expect(w.find('.pm-per').text(), '有草稿 → 不切期').toBe('2025-03')
+    expect(vm.adding).toBe(true)
+    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有 1 处未保存')
   })
 })

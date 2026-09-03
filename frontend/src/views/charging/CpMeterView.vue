@@ -15,6 +15,8 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
+import FPToast from '@/components/fp/FPToast.vue'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useMonthGate } from '@/composables/useMonthGate'
@@ -89,6 +91,16 @@ const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPer
 })
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
+// 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 只有年的链接不动(本屏只认整月)。本屏唯一的草稿是抽屉里正在编辑 / 新增的那一行;切回时有 → 不切期,只在 deepNote 里说。
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: gateYm.value }),
+  apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
+  dirty: () => (editId.value != null || adding.value ? 1 : 0),
+})
+
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 
@@ -770,6 +782,7 @@ async function onTemplate() {
     <FPLockDialogs :locked-by="lockedBy" :evicted-by="evictedBy" :scope="lockScope()"
                    :what="`充电桩分桩明细 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </div>
 </template>
 

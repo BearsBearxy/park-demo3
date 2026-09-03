@@ -42,6 +42,14 @@ vi.mock('@/api/locks', () => ({
   },
 }))
 
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/car-charging?' + new URLSearchParams(query).toString() } }),
+}))
+
 // 夹具按真实 DTO 声明(src/api/cpMeter.ts)再 as never —— 字段漏一个渲染当场崩。
 // 桩库是 car/ebike 共享表:塞一个 ebike 桩进去,car 屏的行数=2 顺带钉住类型过滤。
 const STATIONS: CpStationDTO[] = [
@@ -69,6 +77,7 @@ beforeEach(() => {
   useAuthStore().permissions = ['meter-master:edit', 'meter-reading:edit', 'billing-run:edit']
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(cpMeterApi.stations).mockResolvedValue(STATIONS as never)
   vi.mocked(cpMeterApi.readings).mockResolvedValue([] as never)
@@ -862,5 +871,38 @@ describe('分桩充电明细 · 复查补钉', () => {
     expect(cpMeterApi.simulate, 'simulate 会写对面的账,对面有锁就不许跑').not.toHaveBeenCalled()
     expect(alert).toHaveBeenCalled()
     expect(String(alert.mock.calls[0][0])).toContain('李四')
+  })
+})
+
+describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => {
+  it('❗带 p 进屏直落那个月:矩阵不出现,记录只拉一次、拉的就是那个月', async () => {
+    // 红线:CpMeterView.vue 的 useDeepPeriod 删掉 → 落回矩阵;挪到 onMounted 之后 → readings 拉两次
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.find('.fmg').exists(), '门该被深链跳过').toBe(false)
+    expect(w.find('.cm-page').exists()).toBe(true)
+    expect(cpMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+    expect(cpMeterApi.readings).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗抽屉里正在新增一行时切回、地址栏换了月 → 期不动,deepNote 说清楚', async () => {
+    // 红线:dirty 探针改成 () => 0 → 期被切到 2025-04
+    query.p = '2025-03'
+    const Host = defineComponent({
+      components: { CpMeterView },
+      props: { on: { type: Boolean, default: true } },
+      template: '<KeepAlive><CpMeterView v-if="on" vehicle-type="car" /></KeepAlive>',
+    })
+    const w = mount(Host, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    const vm = w.findComponent(CpMeterView).vm as unknown as { startAdd: () => void; adding: boolean }
+    vm.startAdd()
+    await flushPromises()
+    await w.setProps({ on: false }); await flushPromises()
+    query.p = '2025-04'
+    await w.setProps({ on: true }); await flushPromises()
+    expect(cpMeterApi.readings, '有草稿 → 不切期').not.toHaveBeenCalledWith(2025, 4)
+    expect(vm.adding).toBe(true)
+    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有 1 处未保存')
   })
 })
