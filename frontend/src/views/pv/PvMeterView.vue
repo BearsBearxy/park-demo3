@@ -91,11 +91,11 @@ const month = computed(() => gm.value ?? 0)
 
 // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
 // 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
-// 只有年的链接不动(本屏只认整月)。本屏唯一的草稿是抽屉里正在编辑 / 新增的那一行;切回时有 → 不切期,只在 deepNote 里说。
-const { note: deepNote } = useDeepPeriod({
+// 只有年的链接不动(本屏只认整月)。不传 dirty、也不接 note:抽屉里的行草稿在切走时随抽屉一起收掉
+// (onDeactivated 清 openSt → watch(openSt, cancelForm)),切回时没有草稿可护。
+useDeepPeriod({
   current: () => ({ p: gateYm.value }),
   apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
-  dirty: () => (editId.value != null || adding.value ? 1 : 0),
 })
 
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
@@ -823,7 +823,6 @@ async function onTemplate() {
                    :what="`光伏分栋抄表 ${year} 年`"
                    @taken="onTaken" @close-takeover="lockedBy = null" @close-evicted="evictedBy = null" />
     <FPToast v-model="okMsg" tone="info" placement="page" :duration="0" />
-    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </div>
 </template>
 

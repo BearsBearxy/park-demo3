@@ -885,8 +885,8 @@ describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     expect(cpMeterApi.readings).toHaveBeenCalledTimes(1)
   })
 
-  it('❗抽屉里正在新增一行时切回、地址栏换了月 → 期不动,deepNote 说清楚', async () => {
-    // 红线:dirty 探针改成 () => 0 → 期被切到 2025-04
+  it('抽屉里正在新增一行时切走 → 草稿随抽屉一起收掉;切回换月照换(本屏不设 dirty 闸:切回时没有草稿可护)', async () => {
+    // 红线:onDeactivated 里的 `openSt.value = null` 删掉 → watch(openSt, cancelForm) 不跑,adding 留着 → 「草稿已收」断言红
     query.p = '2025-03'
     const Host = defineComponent({
       components: { CpMeterView },
@@ -895,14 +895,16 @@ describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     })
     const w = mount(Host, { global: { stubs: { Teleport: true } } })
     await flushPromises()
-    const vm = w.findComponent(CpMeterView).vm as unknown as { startAdd: () => void; adding: boolean }
+    const vm = w.findComponent(CpMeterView).vm as unknown as { openSt: unknown; startAdd: () => void; adding: boolean }
+    vm.openSt = STATIONS[0]        // 走真实路径:新增行只能从抽屉里点出来
+    await flushPromises()          // 抽屉先开(watch(openSt, cancelForm) 先落定),照真实两次点击的间隔来
     vm.startAdd()
     await flushPromises()
+    expect(vm.adding, '前提:新增行展开着').toBe(true)
     await w.setProps({ on: false }); await flushPromises()
+    expect(vm.adding, '切走时抽屉收掉,草稿跟着没了').toBe(false)
     query.p = '2025-04'
     await w.setProps({ on: true }); await flushPromises()
-    expect(cpMeterApi.readings, '有草稿 → 不切期').not.toHaveBeenCalledWith(2025, 4)
-    expect(vm.adding).toBe(true)
-    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有 1 处未保存')
+    expect(cpMeterApi.readings, '没有草稿可护 → 期照换').toHaveBeenCalledWith(2025, 4)
   })
 })
