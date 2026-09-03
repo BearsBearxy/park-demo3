@@ -21,7 +21,7 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
-import { periodQuery } from '@/nav/reportPeriod'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN } from '@/nav/billingChain'
 
 const router = useRouter()
@@ -59,7 +59,7 @@ watch(pickedYm, load)
 // 出账链五屏共读 billingPeriod store:先 pick 首页当前月再 push,目标屏的选期矩阵就被前置满足
 // (SIDEBAR-UX-REDESIGN §4.1 / D2)。pick 覆盖会话里已选的期 —— 首页写着的月就是用户刚点的意图;
 // 本人握着任一链锁时先确认:openFresh 重建目标屏会清掉未保存草稿(不分同月异月)。
-// 收入核对认 ?y&m(ReconView.vue:23 parsePeriodQuery),其余屏本期不带参(P0b 再接)。
+// 链屏与收入核对带 ?p(目标屏的 parsePeriod / parsePeriodQuery 都认),附表屏本期不带参(P0b 再接)。
 // 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
 // 本人锁的判断读 presence.users(3 秒一拍,PING_MS):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
 // ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
@@ -79,8 +79,10 @@ function go(v: string) {
     void period.loadChain().catch(() => {})
   }
   tabsStore.openFresh(v)
-  if (p && v === 'reconciliation') {
-    router.push({ path: '/reconciliation', query: periodQuery(p.year, p.month, null) })
+  // 链屏与收入核对带 ?p(SIDEBAR-UX-REDESIGN §4.1「显式选月 + periodLink」):目标屏 useDeepPeriod 认得,
+  // 链屏还会与上面预 pick 的期比对(相同 → 不动);附表屏本期仍裸 push(P0b 再接,别提前发死参数)。
+  if (p && (CHAIN_VALUES.has(v) || v === 'reconciliation')) {
+    router.push(periodLink(v, { p: periodOf(p.year, p.month) }))
     return
   }
   router.push('/' + v)

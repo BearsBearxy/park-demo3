@@ -154,7 +154,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     const period = useBillingPeriodStore()
     expect(period.picked).toBe(true)
     expect([period.year, period.month]).toEqual([2024, 2])
-    expect(push).toHaveBeenCalledWith('/meters')
+    expect(push).toHaveBeenCalledWith({ path: '/meters', query: { p: '2024-02' } })
   })
 
   it('点附表项:不动 billingPeriod', async () => {
@@ -214,10 +214,10 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(w.text()).not.toContain('2023年8月')
   })
 
-  it('全 done 的「去对账核对」带 ?y&m', async () => {
+  it('全 done 的「去对账核对」带 ?p', async () => {
     const w = await mountWith({ chain: { currentIndex: -1, steps: STEPS_ALLDONE } })
     await w.find('[data-primary-cta]').trigger('click')
-    expect(push).toHaveBeenCalledWith({ path: '/reconciliation', query: { y: '2024', m: '2' } })
+    expect(push).toHaveBeenCalledWith({ path: '/reconciliation', query: { p: '2024-02' } })
     expect(useBillingPeriodStore().picked).toBe(false)   // 收入核对不在出账链,不 pick
   })
 

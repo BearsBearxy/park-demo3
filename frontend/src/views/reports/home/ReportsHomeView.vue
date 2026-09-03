@@ -5,7 +5,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
-import { periodQuery } from '@/nav/reportPeriod'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import { loadHomeData, defaultPeriod, type HomeData } from '@/reports/reportsHome'
 import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
@@ -45,7 +45,8 @@ const tabsStore = useTabsStore()
 // openFresh 是深链协议的一半:KeepAlive 缓存实例只在 setup 消费 query,不换 epoch 就读不到。
 function go(v: string) {
   tabsStore.openFresh(v)
-  router.push({ path: '/' + v, query: periodQuery(year.value, month.value, null) })
+  // 走 periodLink 带 co:'all'(SIDEBAR-UX-REDESIGN §4.2):三大报表直落「全部汇总」;损益附表 / 收入核对认得几个用几个
+  router.push(periodLink(v, { p: periodOf(year.value, month.value), co: 'all' }))
 }
 
 // 目录视图三区:三大报表 / 损益附表 / 收入核对(按卡 key 分组,顺序=HOME_CARDS)
