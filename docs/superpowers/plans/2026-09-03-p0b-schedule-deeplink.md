@@ -1096,7 +1096,7 @@ interface Vm { edit: boolean; month: number | null; draft: LedgerRowDTO[]; focus
 
 describe('月度台账 · 期间深链', () => {
   it('❗p + co(公司 id) 直落该册该月宽表:矩阵不出现,月表只拉一次且是 (12, 2026, 9),模板只取一次', async () => {
-    // 红线①:useDeepPeriod 整段删掉 → 停在选册占位;红线②:册 / 年 / 月分两拍写 → templateAt 两次
+    // 红线:useDeepPeriod 整段删掉 → 停在选册占位。「册 / 年 / 月同一拍连写」由用例 8 钉 —— 首载从 null 起步时中间那拍 loadMonthBook 因 m == null 早退,这里钉不住
     query.p = '2026-09'; query.co = '12'
     const w = await open()
     expect(w.findComponent(LedgerWideTable).exists(), '直落宽表').toBe(true)
@@ -1185,13 +1185,27 @@ describe('月度台账 · 期间深链', () => {
     alive.value = true; await flushPromises()
     expect(ledgerApi.month, '编辑态不重读:换了快照会把 draft 判脏').not.toHaveBeenCalled()
   })
+
+  it('❗浏览态切回换年:册 / 年 / 月同一拍连写 → 模板只取一次且是新年月', async () => {
+    // 红线:applyDeep 里 year 与 month 之间夹一个 await(分两拍写)→ watch 先按 (2, 2025, 9) 取一次模板,再按 (2, 2025, 3) 取 → 两次
+    query.p = '2026-09'; query.co = '12'
+    const { alive } = await keptAlive()
+    vi.mocked(booksApi.templateAt).mockClear()
+    vi.mocked(ledgerApi.month).mockClear()
+    alive.value = false; await flushPromises()
+    query.p = '2025-03'
+    alive.value = true; await flushPromises()
+    expect(booksApi.templateAt).toHaveBeenCalledWith(2, 2025, 3)
+    expect(booksApi.templateAt, '同一拍连写,watch 只跑一次').toHaveBeenCalledTimes(1)
+    expect(ledgerApi.month).toHaveBeenCalledWith(12, 2025, 3)
+  })
 })
 ```
 
 - [ ] **Step 2: 确认红**
 
 Run: `cd frontend && npx vitest run src/views/__tests__/ledgerDeepLink.spec.ts`
-Expected: 用例 1 / 3 / 5 / 6 / 7 红；用例 2 / 4 可能已绿（旧路径本来就认 y&m&company）—— 报告里写清。
+Expected: 用例 1 / 3 / 5 / 6 / 7 / 8 红；用例 2 / 4 可能已绿（旧路径本来就认 y&m&company）—— 报告里写清。
 
 - [ ] **Step 3: 接线**
 
@@ -1207,7 +1221,7 @@ function ensureLoaded() {
   return loaded
 }
 onMounted(() => { void ensureLoaded() })
-/** 深链的 co → 册:新链 co=<公司 id>;旧链 ?company=<公司名>(公司名认不到再按册名);没给 co = 当前册,还没选册就是首册。认不出 → null(不动)。 */
+/** 深链的 co → 册:新链 co=<公司 id>;旧链 ?company=<公司名>(公司名认不到再按册名);没给 co 或 co='all'(台账没有「全部」视图)= 当前册,还没选册就是首册。认不出 → null(不动)。 */
 function bookOf(co: DeepPeriod['co']): Book | null {
   if (typeof co === 'number') return books.value.find(b => b.companyId === co) ?? null
   if (typeof co === 'string' && co !== 'all') {
@@ -1230,7 +1244,7 @@ async function applyDeep(t: DeepPeriod) {
   year.value = t.year
   extraYears.value = b.companyId != null ? loadExtraYears('ledger', b.companyId) : []
   // 矩阵数据后台补齐:「换期」返回矩阵时已就绪
-  void loadGateYears().then(loadOverviews)
+  void loadGateYears().then(loadOverviews).catch(() => { /* 拉失败保持旧值即可,不抛 unhandledrejection(同 backToMonths) */ })
   month.value = t.month
   drawerRowKey.value = null
   // 先清上月快照,兜底转圈接管(同 pickCell)
@@ -1262,7 +1276,7 @@ onReactivated(() => { if (month.value != null && !edit.value) void loadMonth().c
 - [ ] **Step 4: 跑绿 + 门禁 + 破坏验证**
 
 Run: `cd frontend && npx vitest run src/views/__tests__/ledgerDeepLink.spec.ts src/views/__tests__/ledgerLeaveAndReturn.spec.ts src/views/__tests__/monthTemplate.spec.ts src/views/__tests__/archivedCols.spec.ts src/views/__tests__/noInteractionLayoutShift.spec.ts src/utils/deepLink.spec.ts && npx vue-tsc --noEmit`
-Expected: 全绿（`ledgerLeaveAndReturn` 的 query 是 `{}`，parsePeriod 为 null，首跑与切回都不动；`monthTemplate` 台账两条走常量 `y&m&company` 经 apply 落 2026-09，`mount + flushPromises` 之后仍直接是表格态）。破坏验证：① 删 useDeepPeriod 段 → 用例 1 / 3 / 5 红；② `bookOf` 末行改 `return null` → 用例 3 红；③ 删 `if (edit.value) cancelEdit()` → 用例 6 红；④ 删新加的 onReactivated → 用例 7 红；⑤ `dirty: () => 0` → 用例 5 红；⑥ 把 `month.value = t.month` 挪到 `await loadMonth()` 之后 → 用例 1「templateAt 只取一次」仍绿但月表按 null 早退 → 用例 1「month 被调」红。字符串替换还原。
+Expected: 全绿（`ledgerLeaveAndReturn` 的 query 是 `{}`，parsePeriod 为 null，首跑与切回都不动；`monthTemplate` 台账两条走常量 `y&m&company` 经 apply 落 2026-09，`mount + flushPromises` 之后仍直接是表格态）。破坏验证：① 删 useDeepPeriod 段 → 用例 1 / 3 / 5 红；② `bookOf` 末行改 `return null` → 用例 3 红；③ 删 `if (edit.value) cancelEdit()` → 用例 6 红；④ 删新加的 onReactivated → 用例 7 红；⑤ `dirty: () => 0` → 用例 5 红；⑥ 把 `month.value = t.month` 挪到 `await loadMonth()` 之后 → 用例 1「templateAt 只取一次」仍绿但月表按 null 早退 → 用例 1「month 被调」红；⑦ 在 `year.value = t.year` 之后插一行 `await Promise.resolve()`（month 落到下一拍）→ 只有用例 8 红（templateAt 两次；用例 1 从 null 起步钉不住这个）。字符串替换还原。
 
 - [ ] **Step 5: Commit**
 
@@ -1648,7 +1662,7 @@ git commit -m "feat(data-home): 附表行走 periodLink(月表 p / 年表 p+mode
 ```bash
 cd frontend && npx vitest run && npm run build
 ```
-Expected: vitest 全绿（基线 186 files / 2181 tests → 190 files；+4 文件：schedDeepLink 4、s10DeepLink 5、ledgerDeepLink 7、importCenterDeepLink 6；既有文件新增：meterPeriodFlow 5、cpMeterFlow 2、elecCostFlow 2、salaryMonthGate 3、twoBooksRail 6、DataHomeView +2 = 合计 +42 → 2223 tests）；`npm run build` 绿，size-check index ≤ 191KB（预期不变：`useDeepPeriod` 从 ChainMonthGate 块升成独立共享块，仍只被懒加载屏 import）。**若 index 超线**：先 `grep -l 地址栏要求 dist/assets/*.js`（标识符被 esbuild 压掉，文案字符串才留得住；今天它落在 `ChainMonthGate-*.js`）看 useDeepPeriod 落到了哪个块、是否进了 index，再查是哪条 index 级 import 拖进来的 —— 应当没有；仍超则停下写清原因，不签字上调。
+Expected: vitest 全绿（基线 186 files / 2181 tests → 190 files；+4 文件：schedDeepLink 4、s10DeepLink 5、ledgerDeepLink 8、importCenterDeepLink 6；既有文件新增：meterPeriodFlow 5、cpMeterFlow 2、elecCostFlow 2、salaryMonthGate 3、twoBooksRail 6、DataHomeView +2 = 合计 +43 → 2224 tests）；`npm run build` 绿，size-check index ≤ 191KB（预期不变：`useDeepPeriod` 从 ChainMonthGate 块升成独立共享块，仍只被懒加载屏 import）。**若 index 超线**：先 `grep -l 地址栏要求 dist/assets/*.js`（标识符被 esbuild 压掉，文案字符串才留得住；今天它落在 `ChainMonthGate-*.js`）看 useDeepPeriod 落到了哪个块、是否进了 index，再查是哪条 index 级 import 拖进来的 —— 应当没有；仍超则停下写清原因，不签字上调。
 
 - [ ] **Step 2: spec 口径随裁定**
 
