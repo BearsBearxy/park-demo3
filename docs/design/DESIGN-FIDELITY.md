@@ -67,6 +67,8 @@
 | color | `var(--text-muted)` |
 | padding | `6px 12px` |
 
+> **2026-09-03 修订（SIDEBAR-UX-REDESIGN §3.2）**：带标题的组可点折叠。标题行由 `div` 改为 `button.fp-sbnav-title`，**像素不变**（同 font / color / padding，高 30px = 18 行高 + 6×2）；右侧加 14px chevron（`position:absolute; right:12px`，收起朝右、展开朝下）；组收起时子项的在场点聚合到标题行（6px 橙点，`absolute; right:32px`，`title` 拼子项文案）。两者都是绝对定位，出现与消失不改变行尺寸（LAYOUT-STABILITY）。无标题组不折叠、无 chevron。悬停时标题色 `--text-muted` → `--text-secondary`。
+
 ### 2.4 导航项（Nav Item）— 正常态
 
 | 属性 | 精确值 |

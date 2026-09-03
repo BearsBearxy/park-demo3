@@ -52,4 +52,17 @@ describe('侧栏 · 共锁注解', () => {
     const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
     expect(w.find('span[title*="正在编辑"]').exists()).toBe(false)
   })
+
+  it('折叠的组把子项的编辑点聚到标题行;展开后点回到子项(SIDEBAR-UX-REDESIGN §3.2)', async () => {
+    seed()
+    const w = mount(SidebarNav, { props: { sections: [{ title: '出账', items: ITEMS }], openTitles: [] } })
+    expect(w.find('.fp-sbnav-row').exists()).toBe(false)                            // 收着
+    const title = w.find('button.fp-sbnav-title')
+    expect(title.find('span[title*="张三 正在编辑"]').exists()).toBe(true)           // 聚合点在标题行
+    await title.trigger('click')
+    expect(w.emitted('toggle')).toEqual([['出账']])                                  // 开合由外层决定
+    await w.setProps({ openTitles: ['出账'] })
+    expect(w.find('button.fp-sbnav-title span[title*="正在编辑"]').exists()).toBe(false)
+    expect(w.find('.fp-sbnav-row span[title*="张三 正在编辑"]').exists()).toBe(true)  // 点回到子项行
+  })
 })
