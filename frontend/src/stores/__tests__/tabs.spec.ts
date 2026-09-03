@@ -88,8 +88,9 @@ describe('tabs store', () => {
 
   it('recent deduplicates and caps at 8', () => {
     const store = useTabsStore()
+    // 9 个真实 value 打开 9 次 → 封顶 8。bank-flow 已删屏(open 对未知 value 直接 return),换成 alloc 保住「第 9 次才触发封顶」
     const values = ['buildings', 'tenants', 'contracts', 'ledger', 'meters',
-                    'bank-flow', 'pv-income', 'car-charging', 'ebike-charging']
+                    'alloc', 'pv-income', 'car-charging', 'ebike-charging']
     for (const v of values) store.open(v)
     expect(store.recent.length).toBeLessThanOrEqual(8)
     // last opened should be first in recent
