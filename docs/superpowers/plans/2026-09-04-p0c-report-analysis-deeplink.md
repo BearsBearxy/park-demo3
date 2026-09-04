@@ -13,8 +13,8 @@
 ## Global Constraints
 
 - **不改的模块**：`composables/useDeepPeriod.ts`、`nav/deepLink.ts`、`components/fp/FPStepStrip.vue`（query prop 是自由包，改的是三屏喂给它的形状）、`stores/tabs.ts`、`ReportsHomeView.go`（P0a 完成态，`reportsHomeGo.spec` 钉着）、`PvMeterAnaView` 的 `adopt=` 发链（P0A-2：不是选月，不能走 periodLink —— 门禁**正向**钉 `adopt:` 仍在）。
-- **注册顺序与 TDZ**：`useDeepPeriod` 首跑在 setup **同步**执行，`apply` 里同步走到第一个 `await` 之前的代码不能碰后声明的 `let` / `const`。三大报表 `applyDeep` 第一句就是 `await ensureLoaded()`（续体在 setup 结束后跑），放在 `dirty`（:80）之后即可；损益附表 `apply` 同步调 `pickYear` → `loadDerive` 读 `deriveCache`、`loadYear` 读 `yearSeq` —— **useDeepPeriod 块放在 `<script setup>` 末尾**（所有 `let` / `const` 之后）；收入核对 `applyDeep` 同步走到 `setYear` 的 `++yearReq` —— 块放在 `pickMonth` 之后。放对位置后，「期先落定再取数」照样成立（setup 同步跑完才 mount）。
-- **期的形状**：三大报表 `current: { p: periodOf(year, month), co: companyId }`（矩阵态 month=null → p 只有年，与 `?p=YYYY` 链相等 → 不动，正是「只有年停在矩阵」）；损益附表 `current: { p: year == null ? null : periodOf(year, null) }`（**只报年**；本屏无 co 而报表中心恒发 `co=all`，composable 的相等判永不成立 → **apply 自己 `if (t.year !== year.value)` 幂等**，`carry.value = t` 每次都更新）；收入核对 `current: { p: year ? periodOf(year, month) : null }`（`year` 初值 0 要护住）。
+- **注册顺序与 TDZ**：`useDeepPeriod` 首跑在 setup **同步**执行，`apply` 里同步走到第一个 `await` 之前的代码不能碰后声明的 `let` / `const`。三大报表 `applyDeep` 第一句就是 `await ensureLoaded()`（续体在 setup 结束后跑），放在 `dirty`（:80）之后即可；损益附表 `apply` 同步调 `pickYear` → `loadDerive` 读 `deriveCache`、`loadYear` 读 `yearSeq` —— **useDeepPeriod 块放在 `<script setup>` 末尾**（所有 `let` / `const` 之后）；收入核对 `applyDeep` 同步走到 `setYear` 的 `++yearReq` —— 块放在 `pickMonth` 之后。放对位置后，「期先落定再取数」照样成立（setup 同步跑完才 mount）。撞了 TDZ 的 ReferenceError 抛在 async apply 里、被 `.catch` 吞 —— 症状是「一次请求都不发」，不是控制台报错。
+- **期的形状**：三大报表 `current: { p: periodOf(year, month), co: companyId }`（矩阵态 month=null → p 只有年，与 `?p=YYYY` 链相等 → 不动，正是「只有年停在矩阵」）；损益附表 `current: { p: year == null ? null : periodOf(year, null) }`（**只报年**；本屏无 co 而报表中心恒发 `co=all`，composable 的相等判永不成立 → **apply 自己 `if (t.year !== year.value)` 幂等**，`carry.value = t` 每次都更新；**dirty 闸同样按年幂等**：`() => parsePeriod(route.query)?.year !== year.value ? dirty : 0` —— 闸排在 apply 之前，apply 内的幂等补不到它，否则有草稿时年没变也误弹提示、carry 冻在旧月）；收入核对 `current: { p: year ? periodOf(year, month) : null }`（`year` 初值 0 要护住）。
 - **co 的口径**：三大报表 `co` 数字必须在公司名单里，否则不动（与附10「指名期区不存在不落错册」同口径）；字符串（旧 `company` 名）报表层没有公司名维度 → 视同没给（用当前 / 首家）；`'all'` → 全部汇总。损益附表 / 收入核对不认 co，只原样带回：`carry.value.co` 是数字或 `'all'` 才写进 `stripQuery`。
 - **carry 不能是 computed(route.query)**：`useRoute()` 是全局当前路由，屏停用时跟着别的屏变，回来若地址没 query 会把 carry 清空 —— 直接违反「无 query 激活不重置」。只在 apply 里写。
 - **dirty**：三大报表 `dirty.value`（draft 键数 + extraDirty，切走不清）、损益附表 `dirty.value`（四类草稿之和）都是真闸 → 接 `note` + `FPToast`（`<FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />` 逐字）；收入核对无草稿 → 不传 dirty、不接 note、不加 toast。
@@ -246,11 +246,23 @@ async function keptAlive() {
       expect(w.findAll('.br-item')[1].classes(), '首家公司照常选中').toContain('on')
       expect(w.findAll('.bmm-card').length, '矩阵').toBeGreaterThan(0)
     })
+
+    it('❗只有年的链落在停在正文的缓存实例上 → 回矩阵、年落位、不拉本期 —— pickCompany 同公司早退不清 month,applyDeep 得自己回', async () => {
+      query.p = '2025-03'; query.co = '1'
+      const { w, alive } = await keptAlive()
+      vi.mocked(reportApi.period).mockClear()
+      alive.value = false; await flushPromises()
+      query.p = '2024'; delete query.co
+      alive.value = true; await flushPromises()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.findAll('.bmm-card').length, '回矩阵').toBeGreaterThan(0)
+      expect((w.findComponent(IncomeStatementView).vm as unknown as { year: number }).year).toBe(2024)
+    })
   })
 ```
 
 Run: `cd frontend && npx vitest run src/views/__tests__/reportWorkbenchFlow.spec.ts`
-Expected: 新四条红（第一条 `period` 没被 (…,2025,4) 调过；第三条找不到 `.fpt--warning`；第四条 `period` 被调了：改前 `deepLink.companyId ?? first` 直接 `pickCompany(999)`）；`❗跳去别的报表` 那条红（还是 y/m/co 形状）。其余既有用例绿。
+Expected: 新五条里四条红：第一条 `period` 没被 (…,2025,4) 调过；第三条找不到 `.fpt--warning`；第四条 `period` 被调了（改前 `deepLink.companyId ?? first` 直接 `pickCompany(999)`）；第五条停在正文（`.bmm-card` 为 0）。第二条「无 query 激活不重置」**改前即绿** —— 它钉的是 composable 的 parse-null / fullPath 去重两道不动，是本屏的回归护栏，不是本任务的新行为，本任务没有能杀它的变异。`❗跳去别的报表` 那条红（还是 y/m/co 形状）。其余既有用例绿。
 
 - [ ] **Step 2: 改 useFinStatementScreen.ts**
 
@@ -269,7 +281,7 @@ import { useDeepPeriod } from '@/composables/useDeepPeriod'
   // 不默认「全部汇总」——那一档要按公司数发 N 倍请求,当默认落点太贵;它在左栏第一项,一点即到。
   //
   // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<公司 id | all> 从报表中心 / 期间条过来时直落那一期,跳过矩阵;
-  // 只有年的链接(从损益附表跳回来就是这样)→ 停在矩阵,年份照样落到它说的那年。矩阵仍是**直接从侧栏进屏**时的门。
+  // 只有年的链接(从损益附表跳回来就是这样)→ 停在矩阵,年份照样落到它说的那年;缓存实例停在正文时回矩阵。矩阵仍是**直接从侧栏进屏**时的门。
   // 改前只在 setup 读一次 query:期间条裸 push 命中 KeepAlive 缓存实例时期纹丝不动(「第二圈期不跟」);
   // useDeepPeriod 的 onReactivated 那一跑正是对症。setup 期公司名单还没到,apply 是异步的:先等 ensureLoaded 再落公司落期。
   // co 指名的公司不存在 → 不动(与附10「指名期区不存在不落错册」同口径);co 是公司名字符串 → 报表层没有公司名维度,视同没给。
@@ -292,6 +304,9 @@ import { useDeepPeriod } from '@/composables/useDeepPeriod'
     await pickCompany(co ?? companyId.value ?? companies.value[0].id)
     year.value = t.year
     if (t.month != null) await pickCell(t.year, t.month)
+    // 只有年的链落在停在正文的缓存实例上:pickCompany 同公司早退不清 month,得自己回矩阵 ——
+    // 否则期标换了年、表里还是旧月的快照、锁域(S.report(stmt, co, year, month))指向新年旧月。首载 month 本就 null,不多拉。
+    else if (month.value != null) backToMatrix()
   }
   const { note: deepNote } = useDeepPeriod({
     current: () => ({ p: periodOf(year.value, month.value), co: companyId.value }),
@@ -330,11 +345,11 @@ return 对象（:426）`periodSteps, stripLabel, stripQuery,` → `periodSteps, 
 - [ ] **Step 4: 跑绿 + tsc + 门禁**
 
 Run: `cd frontend && npx vitest run src/views/__tests__/reportWorkbenchFlow.spec.ts src/views/__tests__/reportPeriodGate.spec.ts src/views/__tests__/lockDialogsCoverage.spec.ts src/views/__tests__/readonlyHasNoWriteButtons.spec.ts && npx vue-tsc --noEmit`
-Expected: 全绿（既有 15 + 新 4 = 19），tsc 0。`vue-tsc` 此时**会**报 `nav/reportPeriod.ts` 的 `periodQuery` 未被引用吗 —— 不会（导出函数不算未用）；它在 T3 删。
+Expected: 全绿（既有 16 + 新 5 = 21），tsc 0。`vue-tsc` 此时**会**报 `nav/reportPeriod.ts` 的 `periodQuery` 未被引用吗 —— 不会（导出函数不算未用）；它在 T3 删。
 
 - [ ] **Step 5: 破坏验证（字符串替换还原）**
 
-① `applyDeep` 里删掉 `if (typeof t.co === 'number' && !companies.value.some(…)) return` → 「co=999」红；② `dirty: () => dirty.value,` 删掉 → 「有未保存草稿」红（period 被调 + 没 toast）；③ 把 `stripQuery` 改回 `{ y: String(year.value) … }` → 「❗跳去别的报表」红；④ 把 `useDeepPeriod` 整块换回 `onMounted` 里读一次 `parsePeriod(route.query)` 的写法（只落首载）→ 「第二圈期跟随」红。每条改后单跑、还原后再跑一遍绿；结束 `git status` 只有本任务的改动。
+① `applyDeep` 里删掉 `if (typeof t.co === 'number' && !companies.value.some(…)) return` → 「co=999」红；② `dirty: () => dirty.value,` 删掉 → 「有未保存草稿」红（period 被调 + 没 toast）；③ 把 `stripQuery` 改回 `{ y: String(year.value) … }` → 「❗跳去别的报表」红；④ 把 `useDeepPeriod` 整块换回 `onMounted` 里读一次 `parsePeriod(route.query)` 的写法（只落首载）→ 「第二圈期跟随」红；⑤ 删掉 `else if (month.value != null) backToMatrix()` → 「只有年的链落在缓存实例」红（停在正文、year 已成 2024 而 period 还是 2025-03 的 —— 这正是阻断级缺陷的现场）。每条改后单跑、还原后再跑一遍绿；结束 `git status` 只有本任务的改动。
 
 - [ ] **Step 6: Commit**
 
@@ -495,6 +510,21 @@ describe('损益附表 · 期间深链', () => {
     expect(toast.text()).toContain('2024')
     expect(toast.text()).toContain('未保存')
   })
+
+  it('有草稿但年没变(利润表换了个月再跳回来)→ 不弹提示,carry 跟着换月 —— dirty 闸按年幂等', async () => {
+    query.p = '2025-06'; query.co = '1'
+    const { w, alive } = await keptAlive(PnlScheduleView)
+    const vm = w.findComponent(PnlScheduleView).vm as unknown as { draftNote: Record<string, string> }
+    vm.draftNote = { r1: '改了备注' }
+    await flushPromises()
+    alive.value = false; await flushPromises()
+    query.p = '2025-07'
+    alive.value = true; await flushPromises()
+    expect(w.find('.fpt--warning').exists(), '年没变,不该拦').toBe(false)
+    push.mockClear()
+    await w.findAll('.fss-step')[0].trigger('click')
+    expect(push).toHaveBeenCalledWith({ path: '/income-statement', query: { p: '2025-07', co: '1' } })
+  })
 })
 
 describe('收入核对 · 期间深链', () => {
@@ -542,14 +572,14 @@ describe('收入核对 · 期间深链', () => {
 ```
 
 Run: `cd frontend && npx vitest run src/views/__tests__/reportDeepLink.spec.ts`
-Expected: 损益附表五条：第 1 条红（`push` 形状还是 y/m/co）、第 2 条绿（旧 onMounted 也认 y）、第 3/5 条红、第 4 条绿；收入核对：第 1 条红（`maxYear` 2024 + `overview()` 没被无参调过）、第 2 条红（形状）、第 3 条红、第 4 条绿。
+Expected: 损益附表六条：第 1 条红（`push` 形状还是 y/m/co）、第 2 条绿（旧 onMounted 也认 y）、第 3/5 条红、第 4 条绿、第 6 条红（改前 carry 是 setup 常量，push 还是 2025-06）；收入核对：第 1 条红（`maxYear` 2024 + `overview()` 没被无参调过）、第 2 条红（形状）、第 3 条红、第 4 条绿。
 
 - [ ] **Step 2: 改 PnlScheduleView.vue**
 
 第 27 行 `import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'` 改为：
 ```ts
 import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
-import { periodOf, type DeepPeriod } from '@/nav/deepLink'
+import { periodOf, parsePeriod, type DeepPeriod } from '@/nav/deepLink'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPToast from '@/components/fp/FPToast.vue'
 ```
@@ -592,7 +622,9 @@ const { note: deepNote } = useDeepPeriod({
     carry.value = t
     if (t.year !== year.value) void pickYear(t.year).catch(() => {})
   },
-  dirty: () => dirty.value,
+  // 闸也要按年幂等:composable 的 dirty 闸排在 apply 之前,只报年的 current 与恒带月/co 的链永远判不相等 ——
+  // 不这么写,有草稿时哪怕年没变(利润表换了个月再跳回来)也会误弹「地址栏要求 X 期」,carry 还被冻在旧月。
+  dirty: () => (parsePeriod(route.query as Record<string, unknown>)?.year !== year.value ? dirty.value : 0),
 })
 ```
 
@@ -665,7 +697,7 @@ Expected: 全绿；tsc 0；grep 零命中。
 
 - [ ] **Step 6: 破坏验证（字符串替换还原）**
 
-① Pnl `apply` 里 `if (t.year !== year.value)` 去掉条件 → 「无 query 激活不重置」仍绿（fullPath 去重挡住）但「草稿」那条仍绿 —— 说明这层幂等只防 co=all 的假变化；改为破坏 ② `carry.value = t` 删掉 → 「第二圈」红（push 形状还是 2025-06/all）；③ Pnl 的 `dirty: () => dirty.value,` 删 → 「草稿」红；④ Recon onMounted 改回 `reconApi.overview(carry.value?.year)` + `maxYear.value = o.year` 无条件 → 收入核对第 1 条红；⑤ Recon `useDeepPeriod` 块搬到 `let yearReq` 之前 → 全部收入核对用例抛 `Cannot access 'yearReq' before initialization`（证明 TDZ 条不是空话）。逐条还原，结束 `git status` 只有本任务改动。
+① Pnl `apply` 里 `if (t.year !== year.value)` 去掉条件 → 「无 query 激活不重置」仍绿（fullPath 去重挡住）但「草稿」那条仍绿 —— 说明这层幂等只防 co=all 的假变化；改为破坏 ② `carry.value = t` 删掉 → 「第二圈」红（push 形状还是 2025-06/all）；③ Pnl 的 `dirty: () => dirty.value,` 删 → 「草稿」红；④ Recon onMounted 改回 `reconApi.overview(carry.value?.year)` + `maxYear.value = o.year` 无条件 → 收入核对第 1 条红；⑤ Recon `useDeepPeriod` 块搬到 `let yearReq` 之前 → 收入核对四条全红：`overview(2024)` / `month(2024,3)` 一次都不发、月份层不渲染（TDZ 的 ReferenceError 抛在 async applyDeep 里、被 apply 的 `.catch(() => {})` 吞掉，控制台看不到那句报错；想亲眼看到就临时把 `.catch(() => {})` 摘掉再搬）。逐条还原，结束 `git status` 只有本任务改动。
 
 - [ ] **Step 7: Commit**
 
@@ -784,7 +816,8 @@ function goS10(t: MonitorTenant): void {
   void router.push(periodLink('sales-income', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), co: t.phase ?? undefined, extra: { tenant: t.name } }))
 }
 const go = (link: string): void => { void router.push(link) }
-/** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。 */
+/** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
+ *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
 const goAnom = (a: AnaAnomaly): void => {
   void router.push(periodLink(a.link.slice(1), { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), extra: { company: a.company, tenant: a.tenant } }))
 }
@@ -875,8 +908,8 @@ git rm frontend/src/utils/deepLink.ts frontend/src/utils/deepLink.spec.ts
 
 - [ ] **Step 5: 跑绿 + tsc + 门禁**
 
-Run: `cd frontend && npx vue-tsc --noEmit && npx vitest run src/views/__tests__/anaDeepLink.spec.ts src/nav src/analysis src/views/__tests__/ledgerDeepLink.spec.ts src/views/__tests__/s10DeepLink.spec.ts src/views/__tests__/noInteractionLayoutShift.spec.ts && grep -rn "utils/deepLink" src`
-Expected: tsc 0（`utils/deepLink` 零引用的证明）；全绿；grep 零命中。
+Run: `cd frontend && npx vue-tsc --noEmit && npx vitest run src/views/__tests__/anaDeepLink.spec.ts src/nav src/analysis src/views/__tests__/ledgerDeepLink.spec.ts src/views/__tests__/s10DeepLink.spec.ts src/views/__tests__/noInteractionLayoutShift.spec.ts && grep -rn "from '@/utils/deepLink'\|utils/deepLink\.ts" src`
+Expected: tsc 0（`utils/deepLink` 零引用的证明）；全绿；grep 零命中（`nav/deepLink.ts:6` 注释里的「utils/deepLink 既有口径」字样不在此列，那行属「不改的模块」，不动）。
 
 - [ ] **Step 6: 破坏验证**
 
@@ -997,13 +1030,13 @@ function goDetail(p?: unknown): void {
   void router.push(periodLink(navValue.value, { p: periodOf(year.value, month), extra: { mode: 'meter', station: st?.id } }))
 }
 ```
-（模板 :240/:249/:259 的 `@chart-click="goDetail"` 已把 echarts 参数传进来，不动。）
+（模板 :230 按钮 `@click="goDetail"` 与 :240/:249/:259/:269 四张图的 `@chart-click="goDetail"` 都不动：按钮传 MouseEvent、运营商图传运营商名，都匹配不到桩 → 只发 mode + 年；只有图1 的桩柱带桩与月。）
 
 `CpMeterView.vue`：import 段加 `import { useRoute } from 'vue-router'`；`useDeepPeriod({ … })` 块（:98-101）之后加：
 ```ts
 // 「读站」(SIDEBAR-UX-REDESIGN §4.2 分析层假下钻 → 真下钻):?station=<桩 id> 桩库到手且已选月后直开该桩抽屉。
-// 只认一次(pending 用掉即清):分析屏走 openFresh 实例总是新的;onDeactivated 清 openSt 是既有约定,切回不重开。
-// 跨型(汽车屏收到电动车桩 id)在 myStations 里找不到 → 不开、也清 pending。
+// 只开一次(开过 / 找不到即清 pending):分析屏走 openFresh 实例总是新的;onDeactivated 清 openSt 是既有约定,开过的不在切回时重开。
+// 只有年的链没选月 → pending 留着,选月后的下一次 loadStations(切回)再开。跨型(汽车屏收到电动车桩 id)找不到 → 不开、也清 pending。
 const route = useRoute()
 let pendingStation: number | null = Number(route.query.station) || null
 function openDeepStation() {
@@ -1174,7 +1207,7 @@ git commit -m "feat(analysis): 三个假下钻变真下钻 —— 电费成本 m
 cd frontend && npx vitest run 2>&1 | tail -8
 npm run build 2>&1 | tail -25
 ```
-Expected: 基线 190 files / 2231 tests → 预期 193 files / ≈2247 tests（新 4 份 spec：reportPeriodGate 6、reportDeepLink 9、anaDeepLink 11、contractsDeepLink 4；改 4 份：reportWorkbenchFlow +4、schedDeepLink +1、cpMeterFlow +2；删 utils/deepLink.spec −7、reportPeriod.spec −3、nav/deepLink.spec −1），全绿。build 绿：index ≤ 191KB（预期 ≈189.4 不变：改动全在懒加载屏 chunk），合计 ≤ 3900KB。任何一项红 → 修到绿再往下，不签字上调。
+Expected: 基线 190 files / 2231 tests → 预期 193 files / ≈2264 tests（新 4 份 spec：reportPeriodGate 6、reportDeepLink 10、anaDeepLink 16（T4 建 11 + T5 加 it.each 2 与 3 条）、contractsDeepLink 4；改 4 份：reportWorkbenchFlow +5、schedDeepLink +1、cpMeterFlow +2；删 utils/deepLink.spec −7、reportPeriod.spec −3、nav/deepLink.spec −1；净 +33，以实跑为准），全绿。build 绿：index ≤ 191KB（预期 ≈189.4 不变：改动全在懒加载屏 chunk），合计 ≤ 3900KB。任何一项红 → 修到绿再往下，不签字上调。
 
 - [ ] **Step 2: spec 口径**
 
