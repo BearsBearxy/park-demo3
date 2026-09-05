@@ -243,7 +243,7 @@ const anomalies = computed<AnaAnomaly[]>(() =>
 const anomTop = computed(() => anomalies.value.slice(0, 4))
 const go = (link: string): void => { void router.push(link) }
 /** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
- *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
+ *  本屏 anomTop 含③④两条录入屏规则,extra 在那里才有值;与 AnomalyView.goAnom 逐字同形(那边那一列只有①②,今天等于原样 push)。 */
 const goAnom = (a: AnaAnomaly): void => {
   void router.push(periodLink(a.link.slice(1), { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), extra: { company: a.company, tenant: a.tenant } }))
 }

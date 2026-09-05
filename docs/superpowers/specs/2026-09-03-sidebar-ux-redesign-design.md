@@ -1,6 +1,6 @@
 # 侧边栏与使用动线重设计 + 审核机制（SIDEBAR-UX-REDESIGN）
 
-2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
+2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b、P0c 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
 上游：`docs/research/2026-09-03-sidebar-ux-research/`（01 现状动线审计 · 02 同类产品调研 · 03 综合结论 · 04 方案与拍板过程）；
 BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · DESIGN-FIDELITY · LAYOUT-STABILITY-SPEC。
 设计稿：https://claude.ai/code/artifact/521bb00c-d981-4e55-8685-5ca7fe8834f7（源文件 `_design/sidebar-redesign/`）。
@@ -149,11 +149,11 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 ### 4.2 期间深链协议（`frontend/src/nav/deepLink.ts`，唯一出口）
 
 - `periodLink(value, { p: 'YYYY-MM', co?: number | 'all', extra? })` → `{ path: '/' + value, query: { p, co, ...extra } }`。
-- `parsePeriod(query)` 接受 `p`（新）| `ym`（出账链四处旧链）| `y & m`（报表层 / 台账 / 附10 旧链）；`co` 接受 id | `'all'` | 旧 `company` 名。`utils/deepLink.ts` 两个解析器与 `nav/reportPeriod.parsePeriodQuery` 各加两行委托，旧格式用例全部保留。
+- `parsePeriod(query)` 接受 `p`（新）| `ym`（出账链四处旧链）| `y & m`（报表层 / 台账 / 附10 旧链）；`co` 接受 id | `'all'`；公司名只经 `company` 键 / `extra.company` 传。`nav/reportPeriod.parsePeriodQuery` 委托 `parsePeriod`（留作兼容层）；`utils/deepLink.ts` 两个解析器 P0c 已删（零消费方），旧格式用例由 `nav/__tests__/deepLink.spec` 与台账 / 附10 挂载测承接。
 - 目标屏用 `composables/useDeepPeriod(apply)`：**setup 期同步跑一次**（2026-09-03 P0a 裁定：赶在各屏 `watch(ym)` 注册与 `onMounted` 取数之前落期，首跑不查 dirty；原文写 `onMounted`）；再用**已有的** `composables/onReactivated.ts`（7 屏在用，天然跳过首次 activated）跑一次；按 `route.fullPath` 去重（被拒的地址在同一实例不重试）；`parsePeriod` 为 null 或与当前 (period, co) 相同 → 不动；目标屏有未保存改动（`dirty > 0`）→ 不切期，屏内提示「地址栏要求 X 期，本期有 N 处未保存」（`FPToast` warning，下一次真的 apply 时清空）。链屏 apply 后补 `loadChain`（门被深链跳过时它是唯一加载点）。分析层「去改常数」带的 `adopt=YYYY-12` 不是选月：只在没有期时认领（`billingPeriod.adoptYm` 仅剩的调用方），不覆盖已选期（P0a 复查 P0A-2）。
 - 出账链五屏：`apply` 调 `billingPeriod.pick`（不改 `adoptYm` 语义，`billingPeriod.spec:84-88` 原样）；运营账三屏 `screenPeriod.pick`（经 `useMonthGate.pick`，apply 只 pick，取数交给既有 onMounted / watch）；台账 `co` 落 `activeBookId` + `year/month` 直落宽表（没给 `co` 落当前册 / 首册 —— P0b 裁定，公司 chips 随 P2）；附10 `co` = 期区 1..4，`apply` 直写 `activeBookId` 不经 `selectBook`（P0b 实测：`selectBook` 不在深链路径上，它在表格态末行 `goGate`；`co` 缺席时旧 `?phase=` 兜底）；台账 / 附10 的 apply 是异步的（先等 books 回来）；年表屏 `p` 只取年（`current` 也只报年）；导入中心 `p` 预填表单（`ImportCenterView` 接 `useRoute`，读一次，不接 `useDeepPeriod`；台账 / 附10 / 附12 导完给「去查看」）。`extra.mode` / `extra.tab` 只在首载认（首页行走 openFresh）、不写回 localStorage。apply 后紧跟 `onReactivated` 重读（先改期后重读），有草稿不重读当前期；dirty 只在切走后草稿仍在的屏上有（附10 `dirty.size`、台账 `dirtyCount`、年表四屏开着的抽屉 / 导入窗），切走即收浮层的屏（附12、分栋抄表、分桩明细、电费成本）不传 dirty 也不加提示（P0b 复查）。
-- 报表层三屏（`useFinStatementScreen` / `PnlScheduleView` / `ReconView`）接 `useDeepPeriod`，修「第二圈期不跟」；`ReportsHomeView.go()` 带 `co: 'all'`。
-- 分析层假下钻的三个目标屏（`ElecView` 读 `view/y/m`、`ChargingView` 读站、`ContractsView` 读合同号）与 `anaData.ts:379-452` 五条规则 link 一并改走 `periodLink` 带 query。
+- 报表层三屏（`useFinStatementScreen` / `PnlScheduleView` / `ReconView`）接 `useDeepPeriod`，修「第二圈期不跟」；`ReportsHomeView.go()` 带 `co: 'all'`。（P0c 落地：三大报表一处改三屏，apply 异步先等公司名单，`co` 指名公司不存在不落、字符串 `co` 视同没给，只有年的链落在停在正文的缓存实例上显式回矩阵；损益附表 `current` 只报年、apply 与 dirty 闸都按年幂等、`carry` 改 ref 只在 apply 写；收入核对 `maxYear` 只由不带年的 overview 决定、无 dirty；期间条 query 改 `{p, co}`，`periodQuery` 删；`reportPeriodGate.spec` 钉九屏期间条。）
+- 分析层假下钻的三个目标屏与 `anaData.ts` 五条规则 link 一并改走 `periodLink` 带 query（P0c 落地）：`ElecView` 读 `mode`（P0b 的键；改前发 `view=` 键名对不上，从未生效）+ `ElecCostView` 读 `p`；`ChargingView` 读 `mode=meter` + 子屏 `CpMeterView` 读 `station`（点桩柱带月 `p=YYYY-MM`；环图 / 费率图点的是运营商，只带 mode + 年）；`ContractsView` 读 `contractNo` 预填搜索（合同无期，不走 periodLink；切回按 fullPath 去重再读，没 query 不重置）。`AnaAnomaly.link` 仍是路径，加 `company?` / `tenant?`，消费方 `goAnom` 按 ym 组链；落 `/fin-cashflow` `/park-energy` `/churn` 的三条 `p` 今天不被消费（见 §12）。分析层 / 收入核对工作台 12 处发链统一 `periodLink`：公司名走 `extra.company`，期区走 `co`（缺席不写，S10View 落当前册），`openFresh({pin:true})` 不动（pin 规则 §4.3 归 P3）。
 
 ### 4.3 页签模型
 
@@ -322,6 +322,7 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - **改数**：`fpNav.spec` 51 → 50 并加「`contracts` 在档案组 / `anomaly` 是分析层第一组第 2 项 / 经营·能源两组存在 / `bank-flow` 不存在」；`routeMap.spec` 改「无任何屏落 PlaceholderView」+ `/bank-flow` 有 redirect；`tabs.spec:80-85` 基底页签随落地页；`DataHomeView.spec:151,160` 与 `DataHomeApiIT:51` 4 → 5；`Perm` 覆盖率回归 18 点。
 - **新增**：`navHeight.spec` · `deepLink.spec`（p / ym / y&m / company 名兼容、越界丢弃、pin 规则）· `useDeepPeriod.spec`（同 fullPath 只 apply 一次；query 变更再 apply；无 p 不 apply；dirty 不切）· `sidebarPanel.spec`（当前项 no-op / open / Shift / 折叠追加不收回 / scrollIntoView）· `iconRail.spec`（当前层 guard）· `tabStripTitle.spec`（定宽、ctx 拼接、非激活签退回屏名）· `monthClose.logic.spec`（5 步与 `chainStepsOf` 同源、padlock、锁账派生、审核态映射）· `useEditMode.spec` +3（approved / submitted 不进、returned 可进）· `reviewDialog.spec`（理由必填）· `sidebarLockNote.spec` +3（期 / 折叠组聚合点 / aria）· `lockScopes.spec` +1（`scopePeriod`）· `auth.spec` +1（`roleLabel` 派生表）· 后端 `ReviewGuardCoverageTest` · `ReviewApiIT` · `V124` 迁移测试。
 - 每条新断言按 memory 节奏逐条破坏验证；子 agent 写的测试由本人独立重做破坏验证。
+- **P0c 例外**：`reportWorkbenchFlow.spec` 期间条断言由 `{y,m,co}` 改 `{p,co}`（发链形状迁移）；`reportPeriod.spec` 「期包」3 条随 `periodQuery` 删；`utils/deepLink.spec` 整份随模块删；`nav/deepLink.spec` 「utils/deepLink 两个解析器」1 条删；`ledgerDeepLink.spec` / `s10DeepLink.spec` 各一条只改标题。新增：`reportPeriodGate.spec`（九屏期间条源码门禁）· `reportDeepLink.spec`（附表 / 核对 10 条）· `anaDeepLink.spec`（发链形状 16 条）· `contractsDeepLink.spec`（4 条）· `reportWorkbenchFlow` +5 · `schedDeepLink` +1 · `cpMeterFlow` +2。
 
 ---
 
@@ -347,3 +348,7 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - 附10 期区深链直写 `activeBookId`，不经 `selectBook`，不撞 `goGate`（P0b 实测，`s10DeepLink.spec` 钉住）；chip 深链免月卡。
 - 抄表屏按年锁、审核按月：同年另一月编辑态下，已审核月的读数由后端守卫拦，前端行内提示「2024-02 已审核」并禁用该月行。
 - `review:approve` 进不可提权名单；客户若给主管勾了审核权，录审分离由客户自己负责，系统不拦。
+- `PnlScheduleView` 的期间条在 977af27 合并时被 sed `\1` 吃掉、2026-09-04 修回；`reportPeriodGate.spec` 钉九屏（`<FPStepStrip` 与 `current=` 两断言未绑定同一标签 = 已知天花板）。
+- 分析屏的期（`usePeriod`）不吃 URL：落 `/fin-cashflow` `/park-energy` `/churn` 的三条异常 `p` 暂无消费方（AnomalyView 那一列今天等于原样 push）；给 `usePeriod` 开深链入口留后期。
+- `ReconView` 深链首载发两次 overview（默认年定上限 + 深链年）：接受，上限与落年解耦的代价；`overview(y)` 失败时永久转圈与改前同款。
+- `ChargingView` 的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。
