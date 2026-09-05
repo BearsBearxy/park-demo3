@@ -48,6 +48,7 @@
   4. `DataHomeView.spec.ts:175-181` 「附13 / 附14 同屏异 tab」：合并成一行之后不可能按原样通过。**裁定：合并行带两个 chip**（「办公」/「三期」），**每个 chip 各自带自己的 `tab`** —— 这样 P0b 立的链形状（`tab=office` / `tab=phase3`）一个都不丢，spec §5.2 的 8 行也成立。该条改成断言两个 chip 各自的 tab。**附表7/8 同办**（两个 chip「汽车」/「电动车」，各自的 nav value 是 `car-charging` / `ebike-charging`）。
   5. `DataHomeView.spec.ts:161` / `:168` 的 `.dh-item` 索引位移（折行后下标变了）。
   其余 20 条**只改选择器不改期望值**。清单之外任何一条断言的期望值被改了 → **停下报告**。
+- ⚠ **类型门禁只有 `npm run typecheck` 算数**（= `vue-tsc --noEmit -p tsconfig.app.json`，也是 `npm run build` 的第一步）。**不带 `-p` 的 `npx vue-tsc --noEmit` 什么都不检查** —— 根 `tsconfig.json` 是 `files: []` + references，实测输出 0 行。2026-09-06 在 T3 收尾发现：那之前各任务报的「vue-tsc 零错」全是空的，真正验过类型的只有跑过 `npm run build` 的那几个检查点（幸好它们把问题都挡住了，T3 之后才漏出两处）。
 - **逐条破坏验证**：每条新断言改坏 production 一处 → **只有对应那条红** → 字符串替换还原，**绝不 `git checkout` / `git stash`**。这一期前面五期的评审累计抓到 13 处「改坏了却没有一条红」的假绿，写每条用例前先自问：**把我要保护的那一行删掉，这条会红吗**。
 - 提交信息末尾：`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`。前端命令在 `frontend/`，后端在 `backend/`（`./mvnw.cmd`）。**后端只跑 `-Dtest=DataHomeServiceTest,PermissionCoverageTest` 这类单测**，`*IT.java` 走 testcontainers（Windows 冷启动 15+ 分钟），只在收尾任务跑一次。
 
@@ -92,7 +93,7 @@ git rev-parse --short HEAD && git status --short
 ```bash
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run 2>&1 | tail -4
-npx vue-tsc --noEmit
+npm run typecheck
 npm run build 2>&1 | tail -2
 ```
 
@@ -227,7 +228,7 @@ List<Company> cos = companies.selectList(new QueryWrapper<ManagementCompany>()
 ```bash
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/backend
 ./mvnw.cmd -q -Dtest=DataHomeServiceTest -DfailIfNoTests=false test; cat target/surefire-reports/*DataHomeServiceTest.txt | head -4
-cd ../frontend && npx vue-tsc --noEmit && npx vitest run 2>&1 | tail -3
+cd ../frontend && npm run typecheck && npx vitest run 2>&1 | tail -3
 ```
 
 期望：后端 24 条全绿（20 + 4）；tsc 零错；前端 2331 条不动（本任务不改前端行为）。
@@ -413,7 +414,7 @@ chip 点击带自己的参数：公司 chip 带 `co`，期区 chip 带 `co`，�
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/views/data-home/
 npx vitest run 2>&1 | tail -3
-npx vue-tsc --noEmit
+npm run typecheck
 ```
 
 期望：`DataHomeView.spec` 现有 25 条（按 Step 1 处理过的除外）+ 新增 7 条全绿；全量在基线 **2372** 之上只多你新加的；tsc 零错。
@@ -571,7 +572,7 @@ function editingNote(navValue: string): string | null { … }
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/utils/lockScopes.spec.ts src/components/ds/__tests__/sidebarLockNote.spec.ts src/stores/__tests__/presence.spec.ts
 npx vitest run 2>&1 | tail -3
-npx vue-tsc --noEmit
+npm run typecheck
 ```
 
 期望：三份全绿；全量在基线 2331 之上只多你新加的 5 条；tsc 零错。**若 `navHeight.spec` 红了 —— 停下报告**（在场点是 absolute 的 6px 点，不该占行高）。
@@ -632,7 +633,7 @@ it('「谁在编辑」chips:姓名 · 屏名 · 期,点按跳到那一屏那一�
 
 ```bash
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
-npx vitest run 2>&1 | tail -4 && npx vue-tsc --noEmit && npm run build 2>&1 | tail -2
+npx vitest run 2>&1 | tail -4 && npm run typecheck && npm run build 2>&1 | tail -2
 cd ../backend && ./mvnw.cmd -q test 2>&1 | tail -20
 ```
 
