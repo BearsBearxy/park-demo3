@@ -238,6 +238,20 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(useBillingPeriodStore().picked).toBe(false)   // 收入核对不在出账链,不 pick
   })
 
+  it('握着台账的锁时点非链行也先确认 —— 首页行仍是 openFresh,改前只盖出账链五屏,附10 / 台账的草稿一律不问(P3 §4.1 收窄)', async () => {
+    const w = await mountWith()
+    const presence = usePresenceStore()
+    presence.holdLock('ledger:1:2025-03', () => {})     // 本标签页本地持锁,不等服务端回声
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const row = w.findAll('.dh-item').find(r => r.text().includes('月度台账'))
+    expect(row, '清单里没有月度台账那一行').toBeTruthy()
+    await row!.trigger('click')
+    expect(confirm, '台账的草稿也该问一句').toHaveBeenCalledOnce()
+    expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
+    presence.stop()
+  })
+
   it('本人握着别的月的链锁时点出账链行先确认,取消则不切期不跳转', async () => {
     const w = await mountWith()
     const presence = usePresenceStore()

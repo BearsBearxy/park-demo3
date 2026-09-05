@@ -1,6 +1,8 @@
 // src/composables/__tests__/useDeepPeriod.spec.ts — 目标屏消费期间深链(SIDEBAR-UX-REDESIGN §4.2)。
 // 首次在 setup 期跑(不查 dirty:全新实例没有草稿);KeepAlive 切回再跑;按 fullPath 去重;三不动。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineComponent, h, KeepAlive, nextTick, reactive, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -128,6 +130,19 @@ describe('useChainDeepPeriod(出账链五屏的接法)', () => {
   })
 })
 
+describe('useDeepPeriod · 提示的生命周期(P3:侧栏改恢复现场之后)', () => {
+  it('被 dirty 闸拒过之后,无 query 的「恢复现场」要把那条提示清掉 —— 实例不再重建,它会跟着活下来', async () => {
+    setRoute({})
+    const h = host({ current: () => ({ p: '2025-01' }), dirty: () => 3 })
+    setRoute({ p: '2025-03' })          // 地址栏要求换期,但屏里有 3 处未保存
+    await h.away(); await h.back()
+    expect(h.note()).toContain('2025-03')
+    setRoute({})                        // 侧栏点回来:没有 query
+    await h.away(); await h.back()
+    expect(h.note(), '那句话已经不成立了,还挂在屏底').toBe('')
+  })
+})
+
 describe('useDeepPeriod · 写页签上下文(P3 §4.3)', () => {
   it('首跑就把本屏的期写进 ctx(键 = route.meta.value)', () => {
     route.meta = { value: 'ledger' }
@@ -168,6 +183,23 @@ describe('useDeepPeriod · 写页签上下文(P3 §4.3)', () => {
     month.value = 7
     await nextTick()
     expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-07', coName: '一期公司' })
+  })
+
+  it('ctx() 回 null = 本屏不写 ctx(父子共用一个页签 value 时由父屏一家写)', async () => {
+    route.meta = { value: 'pv-income' }
+    const month = ref(6)
+    host({ current: () => ({ p: `2025-0${month.value}` }), ctx: () => null })
+    expect(useTabsStore().ctx['pv-income']).toBeUndefined()
+    month.value = 7
+    await nextTick()
+    expect(useTabsStore().ctx['pv-income'], '换期也不许写').toBeUndefined()
+  })
+
+  it('三个子屏与父屏共用同一个页签 value —— 它们必须交出 ctx,否则卸载后页签留着子屏的月对着父屏的年表撒谎', () => {
+    const SRC = join(__dirname, '..', '..')
+    for (const rel of ['views/pv/PvMeterView.vue', 'views/elec/ElecCostView.vue', 'views/charging/CpMeterView.vue']) {
+      expect(readFileSync(join(SRC, rel), 'utf8'), `${rel} 没交出 ctx`).toContain('ctx: () => null')
+    }
   })
 
   it('ctx() 的 p 为 null(停在选期矩阵)→ ctx 只剩空壳,页签只显屏名', () => {

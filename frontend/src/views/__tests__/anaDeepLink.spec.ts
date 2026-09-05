@@ -23,6 +23,10 @@ const SENDERS = [
   'views/analysis/ChargingAnalysisView.vue',
 ]
 
+/** pin 规则要管的分析层屏 —— 比 SENDERS 多一个 PvMeterAnaView:它的发链是 `adopt=`(不走 periodLink,
+ *  见下面那条例外),但它有两处开页签,漏掉的话改回硬编码 pin 全量照样全绿(整期复查坐实)。 */
+const PIN_SENDERS = [...SENDERS.filter(r => r.startsWith('views/analysis/')), 'views/analysis/PvMeterAnaView.vue']
+
 describe('分析层发链门禁', () => {
   it.each(SENDERS)('%s 发链走 periodLink,不再手写 y/m/view 键,不再引用 utils/deepLink', (rel) => {
     const s = src(rel)
@@ -35,7 +39,7 @@ describe('分析层发链门禁', () => {
   it('分析层不再硬编码 pin:一律 tabs.openDeep(来源在预览槽才钉住目标,规则收在 store —— P3 §4.3)', () => {
     // ⚠ 只筛分析层。SENDERS 里还有 views/reports/recon/ReconWorkbench.vue ——
     //   那两处 pin 是 spec §4.1 明写「不变」的(收入核对 → 台账 / 附10 恒钉住),断言进来会把它逼改。
-    for (const rel of SENDERS.filter(r => r.startsWith('views/analysis/'))) {
+    for (const rel of PIN_SENDERS) {
       const s = src(rel)
       if (!s.includes('tabs.')) continue          // 只发 query 不开页签的屏跳过
       expect(s.includes('.openDeep('), `${rel} 没改走 openDeep`).toBe(true)

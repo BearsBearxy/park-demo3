@@ -167,14 +167,15 @@ export const useTabsStore = defineStore('tabs', () => {
    * 来源在预览槽时若让目标也占预览槽,一跳就把来源顶没了,用户回不去 ——
    * 这正是 `LedgerView.gotoTenants` 当年硬写 `pin: true` 的理由,这里把它一般化。
    *
-   * ponytail: 来源 = `recent[0]` —— `open()` 每次都把目标推到队首,所以进本函数时队首还是上一屏,
-   * 不必再往 store 里塞一份「当前屏」或把 router 引进来(会成环)。
-   * 天花板:刷新后的第一次跳转,`recent[0]` 来自 localStorage、未必等于当前屏 ——
-   * 代价上限是多钉或少钉一个页签,不丢任何数据。
+   * 判据是「**会不会顶掉别人**」,不是 spec §4.3 字面的「来源在不在预览槽」——
+   * 后者只护得住第一跳:驾驶舱(预览槽)→ 附10(被钉住)→ 台账,第二跳的来源已是固定签,
+   * 目标就落进预览槽把**驾驶舱**顶掉,而改前 16 处恒 `pin: true` 不会(整期复查实测坐实)。
+   * 本判据是它的超集(来源坐在预览槽时必然命中),且不必知道来源是谁 ——
+   * 不用 `recent[0]` 那份「刷新后可能不准」的推断,也不用把 router 引进 store。
    */
   function openDeep(value: string) {
-    const from = recent.value[0]
-    openFresh(value, { pin: !!from && from !== value && preview.value?.value === from })
+    const out = preview.value?.value
+    openFresh(value, { pin: !!out && out !== value })
   }
 
   // 换人(登入 / 登出)清掉本次会话的内存态。auth.logout() 只清三个 localStorage 键、

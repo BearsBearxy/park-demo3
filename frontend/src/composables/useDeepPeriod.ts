@@ -27,7 +27,7 @@ export interface DeepPeriodOpts {
    *    (三大报表矩阵态 `current.p` 是光秃秃一个年份,那是「只有年的链停在矩阵」的相等条件,
    *     不是用户选了期 —— 照抄进页签会写出「利润表 · 2025」而用户没点月格)。
    */
-  ctx?: () => { p: string | null; coName?: string | null }
+  ctx?: () => { p: string | null; coName?: string | null } | null
 }
 
 export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
@@ -39,7 +39,9 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
     if (key === applied) return
     applied = key
     const t = parsePeriod(route.query as Record<string, unknown>)
-    if (!t) return
+    // 侧栏点击自 P3 起是「恢复现场」,实例不再重建 —— 被 dirty 闸拒过的那条提示会跟着实例活下来,
+    // 存完盘绕一圈回来还挂着一句已经不成立的话(改前 openFresh 连实例一起丢掉它)。
+    if (!t) { note.value = ''; return }
     const want = periodOf(t.year, t.month)
     const cur = o.current()
     if (cur.p === want && (cur.co ?? null) === t.co) return
@@ -61,7 +63,7 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
     const tabs = useTabsStore()
     watch(
       () => (o.ctx ? o.ctx() : { p: o.current().p, coName: null }),
-      (c) => tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.coName ?? undefined }),
+      (c) => { if (c) tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.coName ?? undefined }) },
       { immediate: true },
     )
   }

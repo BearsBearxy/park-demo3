@@ -352,12 +352,15 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - 分析屏的期（`usePeriod`）不吃 URL：落 `/fin-cashflow` `/park-energy` `/churn` 的三条异常 `p` 暂无消费方（AnomalyView 那一列今天等于原样 push）；给 `usePeriod` 开深链入口留后期。
 - `ReconView` 深链首载发两次 overview（默认年定上限 + 深链年）：接受，上限与落年解耦的代价；`overview(y)` 失败时永久转圈与改前同款。
 - **P3 遗留（2026-09-06）**：
-  - `tabs.openDeep` 判「来源屏在不在预览槽」取 `recent[0]`：刷新后的第一次跳转，队首来自 localStorage、未必等于当前屏 —— 代价上限是多钉或少钉一个页签，不丢数据。
+  - `tabs.openDeep` 的判据是「**会不会顶掉别人**」（`preview` 有人且不是目标本身 → 钉住目标），不是 §4.3 字面的「来源在不在预览槽」：后者只护得住第一跳，驾驶舱 → 附10 → 台账的第二跳会把驾驶舱顶没，而改前 16 处恒 `pin:true` 不会（整期复查实测坐实）。本判据是它的超集，且不必知道来源是谁。
   - `auth.logout()` 至今**不重置已实例化的 tabs store**（`tabs` / `preview` / `recent` / `epoch` 都留着，它只清三个 localStorage 键）。P3 只让 `ctx` / `evicted` 跟着 `auth.me` 变化清；整体重置留给 P5（那期本来就要动 `auth.ts`）。
   - **ctx 只写给接了 `useDeepPeriod` 的屏**：`views/analysis/` 的 11 屏与导入中心不接（分析屏的期本来就不吃 URL，见上一条），所以它们的页签标题只有屏名、顶栏 chip 恒显「—」。与「给 `usePeriod` 开深链入口」是同一件事，一并留后期。
   - **Shift 点当前项仍然重建**（不 push、只 epoch++）：偏离 §4.1 的字面次序（那里 guard 写在 Shift 之前）。理由：改前「点当前项」走的就是 `openFresh`，不放开这条出路，当前屏在本期之后再没有任何强制刷新手势。
   - **纯读屏切回重读补了 13 屏，3 屏没补**：`SystemRolesView`（`load()` 收尾 `fillForm` 重置编辑区 + 屏内有真草稿态）、`PvRoiView`（`onMounted` 无条件重置选中期）、`PvMeterAnaView`（屏头铁律「只有换年才重新取数」，且每次切回要重跑抛光 / 变点检验）。这三屏在侧栏改「恢复现场」之后没有刷新入口，用户要靠 Shift 点击或关签重开。
-  - 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— **三条以上没有排队机制**。
+  - 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— **三条以上没有排队机制**。
+  - **被顶提示会为「你没编辑过的那一屏」弹出**：出账链三屏（计费参数 / 公共电核算 / 催缴单）共用一把 `billing-chain` 月锁（§3.3 明写），`holdsEditUnder` 按锁根判，所以在计费参数编辑态时公共电核算被顶也会弹。要精确到屏得让 `holdLock` 登记时带上 `route.meta.value`。
+  - **「恢复现场」不含滚动位置**：`AppShell` 的 `.fp-content` 是各档共用、永不卸载的一个滚动容器，路由无 `scrollBehavior`、全仓没有按签存 `scrollTop`。期、公司、抽屉、编辑态都回来了，唯独位置不回来 —— 这是这句承诺里最显眼的一个洞。
+  - **★ 有 `aria-pressed` 却不可反按**：`tabs.pin()` 幂等，全站没有 unpin 入口，读屏会把它读成一个按下去就弹不起来的开关。要么给一个 unpin，要么去掉这个属性。
   - 页签定宽 148px 之后溢出下拉从「几乎不发生」变常态入口（6–7 签就撑破一行），`.fp-tab-overflow` 的 `v-if` 一进一出会挤窄 `.fp-tabs`；不算 §1 违规（开第 7 个签本来就要重排那一行），要不要给 `.fp-tab-actions` 一个恒定占位宽留下一期定。
   - `CommandPalette` 自 P3 起懒加载（`defineAsyncComponent` + `v-if="paletteEverOpened"`，index 190.8 → 184.1KB）。连带它的 reset+autofocus watch 加了 `immediate` —— 首次打开时它是**带着 open=true 挂载**的，没有 false→true 这个变化。
 - 四张年表屏（`ElecView` / `UtilitiesView` / `PvView` / `ChargingView`，dirty 闸与 `current` 逐字同形；`UtilitiesView` 的 apply 少一道 `mode === 'summary'` 门）的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。

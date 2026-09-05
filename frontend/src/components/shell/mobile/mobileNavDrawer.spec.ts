@@ -2,10 +2,14 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
+import { reactive } from 'vue'
 
 const push = vi.fn()
+// meta 可变:要造「当前屏属不可见层」那一档(股东从书签进 /ledger)
+const route = reactive({ meta: { value: 'data-home', page: '本月出账' } as Record<string, string> })
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ meta: { value: 'data-home', page: '本月出账' } }),
+  useRoute: () => route,
   useRouter: () => ({ push }),
 }))
 
@@ -17,6 +21,7 @@ beforeEach(() => {
   sessionStorage.clear()
   push.mockClear()
   setActivePinia(createPinia())
+  route.meta = { value: 'data-home', page: '本月出账' }
 })
 
 const mountDrawer = () =>
@@ -58,6 +63,15 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
     expect(tabs.epochOf('contracts')).toBe(0)   // 走 openFresh 会丢掉用户填一半的表单
     expect(push).toHaveBeenCalledWith('/contracts')
     expect(w.emitted('close')).toHaveLength(1)
+  })
+
+  it('当前屏属不可见层时,唯一那颗胶囊照样点得动 —— guard 比的是不带兜底的当前层', async () => {
+    useAuthStore().navLayers = ['analysis']
+    route.meta = { value: 'ledger', page: '月度台账' }   // 数据层的屏(读全开,深链能进),但数据层不可见
+    const w = mountDrawer()
+    push.mockClear()
+    await w.findAll('button').find(b => b.text().includes('分析'))!.trigger('click')
+    expect(push, '兜底出来的层被当成「当前层」,胶囊变成死钮').toHaveBeenCalled()
   })
 
   it('Esc 与点遮罩关闭;点面板内部不关', async () => {

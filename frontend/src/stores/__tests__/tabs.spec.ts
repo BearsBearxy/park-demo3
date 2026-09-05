@@ -245,6 +245,16 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
     expect(store.tabs.map(t => t.value)).not.toContain('ledger')
   })
 
+  it('连着两跳深链不顶掉任何屏 —— 第二跳的来源已是固定签,判据若只看「来源在不在预览槽」就会把第一跳的来源顶没', () => {
+    const store = useTabsStore()
+    store.open('cockpit')                      // 驾驶舱坐在预览槽
+    store.openDeep('sales-income')             // 第一跳:目标钉住,驾驶舱还在
+    expect(store.preview?.value).toBe('cockpit')
+    store.openDeep('ledger')                   // 第二跳:来源(附10)已是固定签
+    expect(store.preview?.value, '驾驶舱被顶掉了').toBe('cockpit')
+    expect(store.tabs.map(t => t.value)).toContain('ledger')
+  })
+
   it('openDeep 未知 value 不动任何槽', () => {
     const store = useTabsStore()
     store.open('ledger')                        // 先占住预览槽,before 才是个非 null 值

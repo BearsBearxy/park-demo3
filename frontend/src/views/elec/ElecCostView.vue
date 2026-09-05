@@ -93,6 +93,10 @@ const acctMonth = computed(() => `${year.value}-${pad2(month.value)}`)
 useDeepPeriod({
   current: () => ({ p: gateYm.value }),
   apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
+  // 本屏与父屏共用同一个页签 value(一个 value 两个组件,靠父屏的 mode 切换)——
+  // 两个 useDeepPeriod 实例会往同一格 ctx 里对写,而子屏卸载时不回滚,页签会留着子屏的月
+  // 对着父屏的年表撒谎(整期复查实测)。页签上下文由父屏一家写。
+  ctx: () => null,
 })
 
 // ── 数据 ──

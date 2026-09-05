@@ -42,8 +42,11 @@ const recentItems = computed(() =>
 )
 
 // 层切换段与 IconRail 同义(换层 = 全新),点当前层不动;抽屉不关(用户可能还要在层内挑屏)。
+// ⚠ guard 比的是**不带兜底**的当前层(与 IconRail / 底栏同源)。用上面那个 activeLayer 的话,
+// 当前屏属不可见层时它已经退回 layers[0] —— 股东从书签进 /ledger,抽屉里唯一那颗胶囊
+// 既高亮又点不动(整期复查实测)。
 function goLayer(layer: NavLayer) {
-  if (layer.id === activeLayer.value.id) return
+  if (layer.id === fpFindLayer(activeValue.value).id) return
   tabs.openFresh(layer.home)
   router.push('/' + layer.home)
 }

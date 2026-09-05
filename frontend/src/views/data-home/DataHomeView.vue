@@ -21,6 +21,7 @@ import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
+import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN } from '@/nav/billingChain'
 
@@ -31,7 +32,7 @@ const period = useBillingPeriodStore()
 const presence = usePresenceStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
 
-/** **本标签页**(按 sid,不按 self —— 同一用户多开标签页时 self 有多个)正握着的出账链 / 抄表锁里的期… */
+/** **本标签页**正握着的出账链 / 抄表锁里的期,用来给确认框写出「你在编辑哪个月」。 */
 function myChainLockPeriods(): string[] {
   const me = presence.users.find(u => u.sid === presence.sid)
   return (me?.editScopes ?? [])
@@ -77,11 +78,21 @@ function go(v: string, tag = '') {
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
   const ym = pickedYm.value ?? curYm.value
   const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
+  // 首页行仍是「全新」(spec §4.1:显式任务导航),所以点之前必须问 —— openFresh 会重建目标屏,
+  // 编辑中的草稿不分同月异月都会丢(2026-09-03 对抗复查 F3)。
+  // P3 收窄(spec §4.1 把这件事派给本期):判据从「本人握着出账链/抄表锁」换成
+  // **本标签页在不在目标屏那把锁底下持锁** —— ① 改前读的是服务端回声的 editScopes,
+  // 进编辑态 3 秒内(下一拍 ping 之前)点回来不弹确认,草稿照丢;② 改前只盖出账链五屏,
+  // 附10 / 台账 / 附表屏的草稿(sched:s10:* 之类)一律不问,而清单上 15 行大半是它们。
+  // 两个真源取或:`holdsEditUnder` 读本地 editCallbacks(即时,补上进编辑态 3 秒内还没回声的空窗),
+  // `myChainLockPeriods` 读服务端回声(它另外还提供「在编辑哪个月」的文案,且只对出账链行有意义)。
+  const heldHere = presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])
+  const held = myChainLockPeriods()
+  if (heldHere || (CHAIN_VALUES.has(v) && held.length > 0)) {
+    const where = held.length ? `（${held.join('、')}）` : ''
+    if (!window.confirm(`你正在编辑${where}。从首页重新打开会丢失未保存的改动，继续？`)) return
+  }
   if (p && CHAIN_VALUES.has(v)) {
-    // 只要本人握着任一出账链/抄表锁就先确认:openFresh 会重建目标屏,编辑中的草稿不分同月异月都会丢
-    // (2026-09-03 对抗复查 F3;侧栏改「恢复现场」的 P3 落地后再收窄)。
-    const held = myChainLockPeriods()
-    if (held.length && !window.confirm(`你正在编辑出账链（${held.join('、')}）。从首页重新打开会丢失未保存的改动，继续？`)) return
     period.pick(p.year, p.month)
     // 门被前置跳过 → ChainMonthGate 不再挂载,而它是 loadChain 的唯一调用方;不补这一句,
     // 目标屏的链路条读到的是空格子,五道工序全显「未做」(2026-09-03 对抗复查 F1)。
