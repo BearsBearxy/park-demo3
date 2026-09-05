@@ -8,7 +8,6 @@ import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
-import CommandPalette from '@/components/shell/CommandPalette.vue'
 import { defineAsyncComponent } from 'vue'
 // 手机三件套懒加载(size-check 门禁:index 预算 185KB,静态引入把它压破到 197.3——
 // 桌面用户永远用不到的代码不该进首屏包,FPApprovalDrawer 同一条铁律)。
@@ -19,6 +18,10 @@ import { defineAsyncComponent } from 'vue'
 const MobileTopBar = defineAsyncComponent(() => import('@/components/shell/mobile/MobileTopBar.vue'))
 const MobileBottomNav = defineAsyncComponent(() => import('@/components/shell/mobile/MobileBottomNav.vue'))
 const MobileNavDrawer = defineAsyncComponent(() => import('@/components/shell/mobile/MobileNavDrawer.vue'))
+// 命令面板同一条铁律:Ctrl-K 才用得上的覆盖层,不该让每个人首屏都下载它。
+// 必须配下面的 v-if 才真省(defineAsyncComponent 是渲染时才拉块的);
+// 组件里那个 reset+autofocus 的 watch 因此加了 immediate —— 它现在是带着 open=true 挂载的。
+const CommandPalette = defineAsyncComponent(() => import('@/components/shell/CommandPalette.vue'))
 
 const ui = useUiStore()
 const reloadPage = () => window.location.reload()
@@ -55,6 +58,8 @@ const mnavEverOpened = ref(false)
 watch(mnavOpen, (v) => { if (v) mnavEverOpened.value = true })
 
 const paletteOpen = ref(false)
+const paletteEverOpened = ref(false)
+watch(paletteOpen, (v) => { if (v) paletteEverOpened.value = true })
 const paletteMode = ref<'jump' | 'new'>('jump')
 
 function openPalette(mode: 'jump' | 'new' = 'jump') {
@@ -139,6 +144,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <MobileNavDrawer v-if="tier === 's' && mnavEverOpened" :open="mnavOpen" @close="mnavOpen = false" />
 
   <CommandPalette
+    v-if="paletteEverOpened"
     :open="paletteOpen"
     :mode="paletteMode"
     @close="paletteOpen = false"

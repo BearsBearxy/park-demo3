@@ -143,7 +143,7 @@ const ctxText = computed(() => {
   border-radius: var(--radius-sm);
   background: var(--surface-subtle);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--fs-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

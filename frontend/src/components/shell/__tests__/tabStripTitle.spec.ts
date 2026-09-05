@@ -53,7 +53,22 @@ describe('TabStrip · 标题拼上下文(§6)', () => {
   it('页签定宽 148px(改名不改宽 —— 标题现在会跟着期变,弹性宽度等于每换一次期整条跳一次)', () => {
     const s = src('components/shell/TabStrip.vue')
     expect(s.includes('flex: 0 0 148px')).toBe(true)
-    expect(/\.fp-tab\s*\{[^}]*flex:\s*1 1 0/.test(s)).toBe(false)
+    // 只盯 `.fp-tab { }` 块内的 flex 防不住「换个选择器把宽度写回来」——
+    // 本次清掉的那行 min-width 就在 `.fp-tab.on:hover` 里(2026-09-06 T4 评审实测:塞回去 37 条全绿)。
+    // 所以扫整个 <style>:任何 .fp-tab 系列规则里都不许再出现伸缩宽度。
+    const style = s.slice(s.indexOf('<style'))
+    // (?![\w-]) 排掉 .fp-tabs 容器与 .fp-tab-label / -overflow / -actions —— 它们该有 min-width:0
+    for (const rule of style.match(/\.fp-tab(?![\w-])[^{]*\{[^}]*\}/g) ?? []) {
+      expect(rule, `${rule.split('{')[0].trim()} 里又出现了伸缩宽度`)
+        .not.toMatch(/(min-width|max-width)\s*:|flex:\s*1/)
+    }
+  })
+
+  it('溢出下拉行也拼上下文(定宽之后下拉从「几乎不发生」变常态入口,它是看全文的唯一去处之一)', () => {
+    const s = src('components/shell/TabStrip.vue')
+    const row = s.slice(s.indexOf('fp-tablist-row'), s.indexOf('fp-tablist-row') + 600)
+    expect(row, '下拉行的 title 丢了 titleOf').toContain(':title="titleOf(value)"')
+    expect(row, '下拉行的文字丢了 titleOf').toContain('{{ titleOf(value) }}')
   })
 
 })
