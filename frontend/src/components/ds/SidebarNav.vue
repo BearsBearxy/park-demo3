@@ -174,8 +174,20 @@ export default defineComponent({
           // role=img + aria-label:光靠颜色的 6px 圆点屏读念不出来,title 是鼠标 hover 的老路,两个并存。
           // 接 ds/Popover:点按/Enter 打开,点外关走 Popover 自带的 capture mousedown(UI-OVERLAY-SPEC)。
           note
-            ? h("span", { style: { position: "absolute", right: "10px", top: "50%", marginTop: "-3px" } }, [
-                h(Popover, { width: 260 }, {
+            ? h("span", {
+                style: {
+                  position: "absolute", right: "10px", top: "50%", marginTop: "-3px",
+                  display: "flex", alignItems: "center", height: "6px",
+                  // display:flex + alignItems:center:这层现在只是个包壳(6px 盒子在 Popover
+                  // 的 trigger 里),不加这两条它会走行内格式化上下文,点被行盒 strut 顶下去
+                  // (2026-09-06 实测偏下 9px)。height:6px 让包壳自己也是个 6px 高的盒子。
+                },
+                // 挡住点击/Enter 向外冒泡到行 <button> —— 否则开 Popover 的同时把整行 select 掉
+                // (2026-09-06 实测坐实)。Popover 自己的 trigger 包裹层在这层内部,先冒泡到它
+                // 把面板打开,再冒到这里截断,不影响开合。
+                onClick: (e: MouseEvent) => e.stopPropagation(),
+              }, [
+                h(Popover, { width: 206, align: "end" }, {
                   trigger: () => h("span", {
                     title: note,
                     role: "img",
@@ -227,6 +239,10 @@ export default defineComponent({
         notes.length
           ? h("span", {
               title: notes.join("\n"),
+              // 与展开态那颗点同款(role/aria-label):组收着时它是唯一的在场信号,
+              // 光有 title 屏读念不出来(2026-09-06 复查补齐)。
+              role: "img",
+              "aria-label": notes.join("\n"),
               style: {
                 position: "absolute", right: "32px", top: "50%", marginTop: "-3px",
                 width: "6px", height: "6px", borderRadius: "50%", background: "var(--hue-orange)",

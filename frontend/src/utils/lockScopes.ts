@@ -109,8 +109,8 @@ export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
   'ledger': ['ledger', 'book-template:ledger'],
   'params': 'billing-chain',
   'alloc': 'billing-chain',
-  'alloc-loss': 'billing-chain', // 公共电核算,出账链四写面之一(§3.2)
-  // reconciliation / import 两屏没有编辑锁(纯查看/仅登记),不补键 —— 补了是一个永远不亮的键
+  // reconciliation / import / alloc-loss 三屏没有编辑锁(纯查看/仅登记,楼栋损耗全文件无
+  // useEditMode / 无 acquire),不补键 —— 补了是一个永远不亮的键(2026-09-06 复查撤回 alloc-loss)
   'bill-notices': 'billing-chain',
   'meters': 'meters',
   'pv-income': ['sched:pv', 'pv-meter'],
@@ -162,7 +162,7 @@ export function scopePeriod(scope: string | null | undefined): string | null {
 
 /**
  * 反查这把锁属于哪一屏。边界规则与 presence.editorsUnder 逐字同形(=== p 或 p+':' 或 p+'-' 开头)。
- * ⚠ 一把锁可命中多个 nav —— `billing-chain` 底下有 params / alloc / alloc-loss / bill-notices 四屏,
+ * ⚠ 一把锁可命中多个 nav —— `billing-chain` 底下有 params / alloc / bill-notices 三屏,
  *   它们共用一把月锁(spec §3.3)。裁定:**取 NAV_SCOPE_PREFIX 声明序的第一个**,
  *   这样「谁在编辑」的 chip 有一个稳定去处,而不是随 Object.keys 顺序漂。
  */

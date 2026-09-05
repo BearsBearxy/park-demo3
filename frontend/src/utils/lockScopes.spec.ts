@@ -91,10 +91,10 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
      *   同时认领是设计内的,所以这里是集合相等,不是「恰好一个」。
      */
     const SAMPLES: Record<string, { scopes: string[]; navs: string[] }> = {
-      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
-      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
-      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
-      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
+      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'bill-notices'] },
+      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
+      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'bill-notices'] },
       ledger:      { scopes: [S.ledger(3, 2025, 6)],   navs: ['ledger'] },
       elecCost:    { scopes: [S.elecCost(2025, 6)],    navs: ['elec-cost'] },
       bookTemplate: {
@@ -226,6 +226,11 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
       expect(scopePeriod(S.s10Year(1, 2025))).toBe('2025')
       expect(scopePeriod(null)).toBeNull()
       expect(scopePeriod(undefined)).toBeNull()
+      // ❗正则本身的负例:末段不是合法年/年月的 scope 必须回 null —— 光靠 !scope 早退与七条正例
+      // 抠不出这条,把正则整条删掉(return last)之前七条正例照样全绿(2026-09-06 复查坐实)
+      expect(scopePeriod('billing-chain:0-00'), '占位假锁,期未落定').toBeNull()
+      expect(scopePeriod('book-template:ledger'), '压根没有期段').toBeNull()
+      expect(scopePeriod('sched:elec:2025-13'), '非法月份').toBeNull()
     })
 
     it('navOfScope 反查 nav value —— 一把锁命中多个时取 NAV_SCOPE_PREFIX 声明序首个(billing-chain → params)', () => {
@@ -234,6 +239,19 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
       expect(navOfScope('sched:utilities13:2025')).toBeNull()
       expect(navOfScope(S.utilities(13, 2025))).toBe('utilities')
       expect(navOfScope(null)).toBeNull()
+    })
+
+    it('navOfScope 吃数组前缀的第二个元素 —— 改成只取首个(ps[0])当场漏掉 pv-meter', () => {
+      // NAV_SCOPE_PREFIX['pv-income'] = ['sched:pv', 'pv-meter']:S.pvMeter 只命中第二个前缀,
+      // 若实现把 `Array.isArray(pre) ? pre : [pre]` 退化成只取首元素,这条锁再也反查不到 nav。
+      expect(navOfScope(S.pvMeter(2026))).toBe('pv-income')
+    })
+
+    it('navOfScope 三条边界分支各钉一条 —— 只测过 startsWith(p + \':\') 那一条', () => {
+      // scope === p:裸前缀(不带任何限定段)命中
+      expect(navOfScope('meters')).toBe('meters')
+      // scope.startsWith(p + '-'):分隔符是连字符而非冒号的边界(与 editorsUnder 逐字同形)
+      expect(navOfScope('meters-legacy:2020')).toBe('meters')
     })
   })
 })

@@ -200,6 +200,34 @@ describe('在场', () => {
     expect(p.editorsUnder('sched:pv:2025')).toEqual([])
   })
 
+  it('❗editingNote:一个座位同时握两个锁根下的锁,名字只报一次(台账编辑态里又开着模板面板)', () => {
+    // 'ledger' 的锁根是数组 ['ledger', 'book-template:ledger'](2026-08-29 放开一对多)。
+    // flatMap 逐根查一遍,同一个 Seat 命中两根就被收两遍 —— 名字拼两次,读成两个人在抢。
+    // 顺带钉住「期真的接自 scopePeriod」:这里用 2026-03,不是别处 fixture 写死的 2026-08。
+    const p = usePresenceStore()
+    p.users = [{
+      sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
+      scope: null, label: '月度台账', mode: 'edit',
+      editScopes: ['ledger:3:2026-03', 'book-template:ledger:7:2026-03'],
+      sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑 · 2026-03')
+  })
+
+  it('❗editingNote 要吃到数组锁根的第二个前缀,不是只查第一个(pv-income 底下只握 pv-meter)', () => {
+    // NAV_SCOPE_PREFIX['pv-income'] = ['sched:pv', 'pv-meter']。这里的座位只握第二根的锁,
+    // 若实现把 ps 退化成只取首元素,editorsUnder('sched:pv') 找不到人,editingNote 会静默回 null。
+    const p = usePresenceStore()
+    p.users = [{
+      sid: 's2', user: 'lisi', displayName: '李四', role: null,
+      scope: null, label: '光伏收入', mode: 'edit',
+      editScopes: ['pv-meter:2026'], sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    expect(p.editingNote('pv-income')).toBe('李四 正在编辑 · 2026')
+  })
+
   it('每次换屏都立刻补一拍，不等下一个 20 秒', async () => {
     // 头像组本来就是自动更新的（20 秒一拍），但**换屏那一下**必须立刻发：
     // 否则你切到别的页面后，自己的「在哪一屏」和别人的名单都要等最多 20 秒才对得上，

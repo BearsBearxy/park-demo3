@@ -96,7 +96,9 @@ export const usePresenceStore = defineStore('presence', () => {
     const prefix = NAV_SCOPE_PREFIX[navValue]
     if (!prefix) return null
     const ps = Array.isArray(prefix) ? prefix : [prefix]
-    const who = ps.flatMap((p) => editorsUnder(p))
+    // 去重按 sid:同一个会话在多个锁根下都命中时(如台账编辑态里又开着模板面板),
+    // flatMap 会把同一个 Seat 收两遍 —— 名字被拼两次,读成两个人在抢(2026-09-06 复查坐实)。
+    const who = [...new Map(ps.flatMap((p) => editorsUnder(p)).map((e) => [e.sid, e])).values()]
     if (!who.length) return null
     const names = who.map((e) => `${e.displayName} 正在编辑`).join('、')
     // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
