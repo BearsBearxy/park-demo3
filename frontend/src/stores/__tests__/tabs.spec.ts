@@ -1,8 +1,10 @@
 // src/stores/__tests__/tabs.spec.ts
 // TDD for the browser-style tab model (ported from app.jsx go/pinTab/closeTab logic)
 import { describe, it, expect, beforeEach } from 'vitest'
+import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore } from '../tabs'
+import { useAuthStore } from '@/stores/auth'
 
 // Stub localStorage for jsdom
 beforeEach(() => {
@@ -159,6 +161,89 @@ describe('tabs store epoch / openFresh', () => {
   it('未知 value openFresh 不计 epoch', () => {
     const store = useTabsStore()
     store.openFresh('not-a-route')
+    expect(store.epochOf('not-a-route')).toBe(0)
+  })
+})
+
+describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则(P3 §4.3)', () => {
+  it('setCtx 整条替换,空字段不落键;未知 value 不写', () => {
+    const store = useTabsStore()
+    store.setCtx('ledger', { p: '2025-06', coName: '一期公司' })
+    expect(store.ctx.ledger).toEqual({ p: '2025-06', coName: '一期公司' })
+    // 换期换到别家公司:整条替换,不能留着上一家的名字
+    store.setCtx('ledger', { p: '2025-07' })
+    expect(store.ctx.ledger).toEqual({ p: '2025-07' })
+    store.setCtx('not-a-route', { p: '2025-01' })
+    expect(store.ctx['not-a-route']).toBeUndefined()
+  })
+
+  it('close / dropState 清掉该页签的 ctx', () => {
+    const store = useTabsStore()
+    store.open('ledger', { pin: true })
+    store.setCtx('ledger', { p: '2025-06' })
+    store.close('ledger')
+    expect(store.ctx.ledger).toBeUndefined()
+    store.setCtx('tenants', { p: '2025-06' })
+    store.dropState('tenants')
+    expect(store.ctx.tenants).toBeUndefined()
+  })
+
+  it('换人(登入再登出)清空全部 ctx 与 evicted', async () => {
+    const store = useTabsStore()
+    const auth = useAuthStore()
+    // ⚠ auth.me 初始就是 null(auth.ts:21 读 localStorage,beforeEach 已 clear),
+    //   直接赋 null 是 null → null,watch 不触发 —— 必须先给它一个人。
+    auth.me = 'zhangsan'
+    await nextTick()
+    store.setCtx('ledger', { p: '2025-06' })
+    auth.me = null
+    await nextTick()
+    expect(store.ctx).toEqual({})
+  })
+
+  it('open 顶掉预览槽时记下被顶的 value;同值重开与 pin 直开不算被顶', () => {
+    const store = useTabsStore()
+    store.open('ledger')            // 预览槽 = ledger
+    expect(store.evicted).toBeNull()
+    store.open('tenants')           // 顶掉 ledger
+    expect(store.evicted).toBe('ledger')
+    store.clearEvicted()
+    store.open('tenants')           // 同值重开
+    expect(store.evicted).toBeNull()
+    store.open('contracts', { pin: true })  // 直接进固定页签,不占预览槽
+    expect(store.evicted).toBeNull()
+  })
+
+  it('openDeep:来源屏正坐在预览槽 → 目标钉住(来源不被顶掉)', () => {
+    const store = useTabsStore()
+    store.open('anomaly')                     // 来源进预览槽,recent[0] = anomaly
+    store.openDeep('ledger')
+    expect(store.tabs.map(t => t.value)).toContain('ledger')   // 目标钉住
+    expect(store.preview?.value).toBe('anomaly')               // 来源还在
+    expect(store.epochOf('ledger')).toBe(1)                    // 仍是全新实例
+  })
+
+  it('openDeep:来源已是固定页签 → 目标照常占预览槽', () => {
+    const store = useTabsStore()
+    store.open('anomaly', { pin: true })      // 来源钉住,recent[0] = anomaly
+    store.openDeep('ledger')
+    expect(store.preview?.value).toBe('ledger')
+    expect(store.tabs.map(t => t.value)).not.toContain('ledger')
+  })
+
+  it('openDeep 到来源自己不把来源提成固定页签', () => {
+    const store = useTabsStore()
+    store.open('ledger')
+    store.openDeep('ledger')
+    expect(store.preview?.value).toBe('ledger')
+    expect(store.tabs.map(t => t.value)).not.toContain('ledger')
+  })
+
+  it('openDeep 未知 value 不动任何槽', () => {
+    const store = useTabsStore()
+    const before = store.preview?.value ?? null
+    store.openDeep('not-a-route')
+    expect(store.preview?.value ?? null).toBe(before)
     expect(store.epochOf('not-a-route')).toBe(0)
   })
 })
