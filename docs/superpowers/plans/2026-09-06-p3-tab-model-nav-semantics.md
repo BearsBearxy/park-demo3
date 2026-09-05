@@ -615,7 +615,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：新增 10 条绿（入口语义 8 + 纯读屏 2）；全量 2285 条（2275 + 10）全绿；tsc 零错。若 `reportsHomeGo.spec` / `ledgerLeaveAndReturn.spec` 红了 —— **停下报告**，它们本期不该动。
+期望：新增 10 条绿（入口语义 8 + 纯读屏 2；实际 readScreenRefresh 的源码门禁按 13 屏 it.each 展开，落地为 +22，评审已查实无计划外断言）；全量绿；tsc 零错。若 `reportsHomeGo.spec` / `ledgerLeaveAndReturn.spec` 红了 —— **停下报告**，它们本期不该动。
 
 - [ ] **Step 8: 逐条破坏验证**
 
@@ -771,7 +771,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2289 条（2285 + 4）全绿。**特别盯**：P0a–P0c 的深链用例（`ledgerDeepLink` / `s10DeepLink` / `schedDeepLink` / `reportDeepLink` / `reportWorkbenchFlow` / `cpMeterFlow`）一条都不许红 —— 它们的 route 桩多半没有 `meta`，`navValue` 取不到就跳过写 ctx，这正是上面那个 `typeof` 判的用处。
+期望：全量 2306 条（T2 收尾 2302 + 4）全绿。**特别盯**：P0a–P0c 的深链用例（`ledgerDeepLink` / `s10DeepLink` / `schedDeepLink` / `reportDeepLink` / `reportWorkbenchFlow` / `cpMeterFlow`）一条都不许红 —— 它们的 route 桩多半没有 `meta`，`navValue` 取不到就跳过写 ctx，这正是上面那个 `typeof` 判的用处。
 
 - [ ] **Step 6: 逐条破坏验证**
 
@@ -870,9 +870,6 @@ describe('TabStrip · 标题拼上下文(§6)', () => {
     expect(/\.fp-tab\s*\{[^}]*flex:\s*1 1 0/.test(s)).toBe(false)
   })
 
-  it('KeepAlive 深度 16(§4.1 D9:侧栏不再重置实例之后,这个数字决定切回去还在不在)', () => {
-    expect(src('App.vue').includes(':max="16"')).toBe(true)
-  })
 })
 ```
 
@@ -913,7 +910,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/components/shell/__tests__/tabStripTitle.spec.ts src/components/shell/__tests__/toolbar.spec.ts
 ```
 
-期望：新增 7 条红（tabStripTitle 5 + toolbar 2）—— **是断言失败,不是 ReferenceError**；toolbar 现有条目绿。若见到 `ResizeObserver is not defined`，说明上面那行全局桩没加对。
+期望：新增 6 条红（tabStripTitle 4 + toolbar 2；KeepAlive 深度那条已在 T2 评审修补里落进 readScreenRefresh.spec，别再写第二遍）—— **是断言失败,不是 ReferenceError**；toolbar 现有条目绿。若见到 `ResizeObserver is not defined`，说明上面那行全局桩没加对。
 
 - [ ] **Step 4: 实现 —— TabStrip**
 
@@ -986,7 +983,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2296 条（2289 + 7）全绿。
+期望：全量 2312 条（2306 + 6）全绿。
 
 - [ ] **Step 7: 逐条破坏验证**
 
@@ -996,7 +993,6 @@ npx vue-tsc --noEmit
 | `titleOf` 里 `.filter(Boolean)` 删掉 | 「什么都没有:只有屏名」 |
 | `:title` 改回只有屏名 | 「title 属性带全文」 |
 | `flex: 0 0 148px` 改回 `flex: 1 1 0` | 「页签定宽 148px」 |
-| `App.vue` 的 `:max="16"` 改回 `10` | 「KeepAlive 深度 16」 |
 | chip 加上 `v-if="ctxText !== '—'"` | 「上下文 chip 常驻」 |
 | ★ 的 `:aria-pressed` 删掉 | 「收藏 ★ 带 aria-pressed」 |
 
@@ -1153,7 +1149,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2299 条（2296 + 3）全绿。
+期望：全量 2315 条（2312 + 3）全绿。
 
 - [ ] **Step 7: 逐条破坏验证**
 
@@ -1247,7 +1243,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：2299 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
+期望：2315 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
 
 - [ ] **Step 5: 破坏验证**
 
@@ -1342,6 +1338,7 @@ const CommandPalette = defineAsyncComponent(() => import('@/components/shell/Com
   2. `auth.logout()` 至今不重置已实例化的 tabs store（`tabs` / `preview` / `recent` / `epoch` 都留着），P3 只让 `ctx` / `evicted` 跟着 `auth.me` 清；整体重置留给 P5。
   3. `ctx` 只写给调了 `useDeepPeriod` 的屏；导入中心等无期屏的页签标题就是屏名，符合「有几段写几段」。
   4. 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— 三条以上没有排队机制。
+  4b. **Shift 点当前项仍然重建**（不 push、只 epoch++）：偏离 §4.1 字面次序（那里 guard 写在 Shift 之前）。理由：改前「点当前项」走的就是 openFresh，不放开这条出路，当前屏在本期之后再没有任何强制刷新手势。
   5. **分析层 11 屏与导入中心没有 ctx**（它们不接 `useDeepPeriod`，期也不吃 URL）：页签只显屏名、顶栏 chip 恒显「—」。与「给 `usePeriod` 开深链入口」是同一件事，一并留后期。
   6. **T2 Step 6b 判定「不补切回重读」的那几屏**（重读会清掉用户选择的）逐个列名与理由 —— 侧栏改恢复现场之后它们没有刷新入口，用户要靠 Shift 点击或关签重开。
 
@@ -1356,7 +1353,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
 git status --short
 ```
 
-期望：2299 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
+期望：2315 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
 
 - [ ] **Step 5: 提交**
 
@@ -1378,5 +1375,5 @@ EOF
 - **占位符**：无 TBD / 「参照上一任务」；每个代码步都有可抄的代码块；三处标了 ⚠ 的地方是**实施者必须先看实际值再落笔**（层短名与 home、附10 的期区取法、`--bg-subtle` token 名），不是留白。
 - **类型一致**：`TabCtx` 在 T1 定义、T3 写、T4 读，字段名 `p` / `coName` 三处一致；`openDeep(value: string)` 在 T1 定义、T6 调用，签名一致；`holdsEditUnder(prefix: string | string[] | undefined)` 与 `NAV_SCOPE_PREFIX` 的值类型对齐。
 - **任务间冲突**：T2 与 T4 都碰 `App.vue`（T2 改 `:max`，T4 只**读**它做源码断言）—— T4 的断言在 T2 之后必然绿，顺序不可颠倒。T2 建的 `iconRail.spec` 第三条依赖 T5 才加的 `aria-label`：**T2 落地时就把那一行 aria 顺手加上**（计划已在 T5 Step 5 写明「若 T2 已加则只确认」），否则 T2 收尾时全量会红一条。
-- **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2299**（含 T1 评审修补 +1），T6/T7 不增不减。
+- **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2315**（T1 评审修补 +1、T2 的门禁按屏展开 +22、T2 评审修补 +5 均已计入），T6/T7 不增不减。
 - **2026-09-06 单人复查已修**：3 阻断（T6 门禁把 ReconWorkbench 断言进去 / `mount(TabStrip)` 撞 jsdom 无 `ResizeObserver` / 侧栏改恢复现场后纯读屏没有刷新入口）· 5 严重（ctx 覆盖不到分析层 / `auth.me` 初始就是 null 用例恒红 / toolbar.spec 的 value 与辅助名对不上 / `.fp-tab` 命中基底页签 / T3 第三条与自己的标题不符导致 coName 通路零覆盖）· 6 一般（用例计数 / 三大报表矩阵态 ctx 写出年份 / evictToast 缺 api mock 与 Teleport stub / grep 期望 / 份数 10 不是 11 / S10View 路径与 `phaseOf` 不存在）· 2 建议（Task 0 的 HEAD / `MobileNavDrawer:95`）。两条正面结论记档：`recent[0]` 当来源成立（`router/index.ts:135-142` 有全局 `afterEach` 无条件 `open(v)`，每条导航路径都会把当前屏推到队首）；被顶的屏锁还在（`useEditLock.ts:176` 只在 `onUnmounted` 释放，没有 `onDeactivated`），提示出得来。
