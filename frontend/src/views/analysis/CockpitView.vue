@@ -7,6 +7,7 @@
 // (取数全走 anaData 既有聚合器,变换纯函数见 cockpit.logic.ts)。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
@@ -62,7 +63,7 @@ watch(year, (y) => {
     .finally(() => { if (t === token) pnlLoading.value = false })
 }, { immediate: true })
 
-onMounted(async () => {
+async function reload() {
   try {
     const [c, ph, lr, t, ct, ai, bg] = await Promise.all([
       fetchCollectRates(), fetchS10PhaseMonthly(), fetchLedgerRows(),
@@ -79,7 +80,11 @@ onMounted(async () => {
   } finally {
     ready.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 期间与 KPI(口径同 v1:月=当月,年=有数月Σ,缺月 null 不补 0) ──
 const isMonth = computed(() => period.sel.value.gran === 'month')

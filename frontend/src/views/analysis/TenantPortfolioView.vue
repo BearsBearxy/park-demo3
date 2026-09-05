@@ -5,6 +5,7 @@
 // 类目未维护 → 按期区呈现;合同起止日期未录 → 续约风险空态;rent_area 全 0 → 面积空态。
 // 数据变换纯函数见 ./TenantPortfolio.logic.ts(单测)。
 import { computed, onMounted, ref } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import { fetchContracts, fetchTenants } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
@@ -23,7 +24,7 @@ const err = ref('')
 const tenantList = ref<TenantDTO[]>([])
 const contracts = ref<ContractDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     const [ts, cs] = await Promise.all([fetchTenants(), fetchContracts()])
     tenantList.value = ts
@@ -33,7 +34,11 @@ onMounted(async () => {
   } finally {
     loaded.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 const phaseName = (p: number): string => (p === 0 ? '未标注' : PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`)
 // ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值(HTML 图例同源保持一致)

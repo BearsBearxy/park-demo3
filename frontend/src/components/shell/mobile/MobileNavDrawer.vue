@@ -6,7 +6,7 @@
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogOut } from 'lucide-vue-next'
-import { fpFindLayer } from '@/nav/fpNav'
+import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { buildAllPages } from '@/components/shell/paletteFilter'
 import { useTabsStore } from '@/stores/tabs'
@@ -41,17 +41,19 @@ const recentItems = computed(() =>
     .slice(0, 8)
 )
 
-// 层切换 = 显式导航 → 全新状态(IconRail.goLayer 同语义)。
-// 抽屉不关:切层是「翻目录」,人往往是来找该层某个屏的,目录随路由自动切换。
-function goLayer(home: string) {
-  tabs.openFresh(home)
-  router.push('/' + home)
+// 层切换段与 IconRail 同义(换层 = 全新),点当前层不动;抽屉不关(用户可能还要在层内挑屏)。
+function goLayer(layer: NavLayer) {
+  if (layer.id === activeLayer.value.id) return
+  tabs.openFresh(layer.home)
+  router.push('/' + layer.home)
 }
 
-// 目录条目 = 全新状态(SidebarPanel 同语义),点后关抽屉
+// 目录条目与桌面侧栏同义:恢复现场(§4.1)。触屏没有修饰键,不做 Shift。
 function goItem(value: string) {
-  tabs.openFresh(value)
-  router.push('/' + value)
+  if (value !== activeValue.value) {
+    tabs.open(value)
+    router.push('/' + value)
+  }
   emit('close')
 }
 
@@ -92,7 +94,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 :key="layer.id"
                 class="mnav-pill"
                 :class="{ on: layer.id === activeLayer.id }"
-                @click="goLayer(layer.home)"
+                @click="goLayer(layer)"
               >
                 <component :is="iconFor(layer.icon)" :size="16" />{{ layer.short }}
               </button>

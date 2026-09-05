@@ -7,6 +7,7 @@
 // 数据变换纯函数见 ./TenantEnergy.logic.ts(单测)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
@@ -38,7 +39,7 @@ const tenantMap = ref<Map<string, AnalysisS10Row[]>>(new Map())
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const tenantList = ref<TenantDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     const [tm, lr, ts] = await Promise.all([fetchS10TenantMap(), fetchLedgerRows(), fetchTenants()])
     tenantMap.value = tm
@@ -49,7 +50,11 @@ onMounted(async () => {
   } finally {
     loaded.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 期区标签/配色(ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值) ──
 const phaseName = (p: number): string => PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`

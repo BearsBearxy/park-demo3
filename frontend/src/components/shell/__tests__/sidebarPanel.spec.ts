@@ -1,9 +1,9 @@
 // 侧栏分组折叠(SIDEBAR-UX-REDESIGN §3.2):展开集合是内存态,换层清空;路由变化只追加含当前屏的组,不收回用户手动展开的组。
-// P3 会在本文件续加侧栏点击语义(当前项 no-op / open / Shift)三条。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { useTabsStore } from '@/stores/tabs'
 
 const route = reactive({ meta: { value: 'data-home' } as Record<string, string>, path: '/data-home' })
 const push = vi.fn()
@@ -31,6 +31,9 @@ async function go(value: string) {
 const titleBtn = (w: VueWrapper, title: string) =>
   w.findAll('button.fp-sbnav-title').find(b => b.text().startsWith(title))!
 const rows = (w: VueWrapper) => w.findAll('.fp-sbnav-row').map(b => b.text())
+const mountPanel = () => mount(SidebarPanel)
+const rowByText = (w: VueWrapper, text: string) =>
+  w.findAll('.fp-sbnav-row').find(b => b.text().includes(text))
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -82,6 +85,34 @@ describe('SidebarPanel · 分组折叠(§3.2)', () => {
     await go('import')
     expect(spy).toHaveBeenCalledWith({ block: 'nearest' })
     expect(w.find('.fp-sbnav-row[data-on]').text()).toBe('导入中心')
+  })
+})
+
+describe('SidebarPanel · 点击语义(§4.1)', () => {
+  it('点当前项:不 push、不动页签', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    push.mockClear()
+    await rowByText(w, '本月出账')!.trigger('click')
+    expect(push).not.toHaveBeenCalled()
+    expect(tabs.epochOf('data-home')).toBe(0)
+  })
+
+  it('点别的项 = open(恢复 KeepAlive 现场,epoch 不动)+ push', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    await rowByText(w, '园区抄表')!.trigger('click')
+    expect(tabs.epochOf('meters')).toBe(0)
+    expect(tabs.preview?.value).toBe('meters')
+    expect(push).toHaveBeenCalledWith('/meters')
+  })
+
+  it('Shift + 点击 = openFresh(epoch++ 全新实例)', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    await rowByText(w, '园区抄表')!.trigger('click', { shiftKey: true })
+    expect(tabs.epochOf('meters')).toBe(1)
+    expect(push).toHaveBeenCalledWith('/meters')
   })
 })
 

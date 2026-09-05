@@ -131,8 +131,8 @@ export default defineComponent({
       openSet.value = next;
     }
 
-    function select(value: string) {
-      emit("select", value);
+    function select(value: string, ev?: MouseEvent) {
+      emit("select", value, ev);
       emit("update:modelValue", value);
     }
 
@@ -181,7 +181,7 @@ ${note}` : names;
           class: "fp-sbnav-row",
           "data-on": on ? "" : undefined,
           style: rowStyle,
-          onClick: () => isDir ? toggle(it.value) : select(it.value),
+          onClick: (e: MouseEvent) => isDir ? toggle(it.value) : select(it.value, e),
         }, [
           // active accent bar
           on ? h("span", { style: { position: "absolute", left: "0", top: "8px", bottom: "8px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,

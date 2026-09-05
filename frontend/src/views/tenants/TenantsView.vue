@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { tenantApi } from '@/api/tenant'
 import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
@@ -55,6 +56,9 @@ async function reload() {
   ;[tenants.value, summary.value] = await Promise.all([tenantApi.list(), tenantApi.summary()])
 }
 onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // 新增成功 → 关弹窗并重拉 list+summary;租户 CRUD 使分析层缓存失效(派生审计病根B)
 async function onTenantCreated() {

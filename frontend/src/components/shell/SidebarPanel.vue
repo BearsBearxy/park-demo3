@@ -60,9 +60,13 @@ watch(activeValue, () => {
   void nextTick(() => panelEl.value?.querySelector('.fp-sbnav-row[data-on]')?.scrollIntoView?.({ block: 'nearest' }))
 })
 
-function onSelect(value: string) {
-  // 侧边栏点击 = 全新状态:openFresh 递增 epoch,即使该页有 KeepAlive 缓存也重置(spec 2026-07-07 §二)
-  tabs.openFresh(value)
+// 侧栏点击 = **恢复现场**(P3 §4.1):KeepAlive 里那份实例连同 P0a–P0c 落进去的期、公司、
+// 抽屉一起留着 —— 「导航一次重过一次门」正是这一期要消灭的东西。
+// 「全新」收窄成三个显式动作:Shift + 点击 / 关签后重开(dropState) / 换层。
+function onSelect(value: string, ev?: MouseEvent) {
+  if (value === activeValue.value) return
+  if (ev?.shiftKey) tabs.openFresh(value)
+  else tabs.open(value)
   router.push('/' + value)
 }
 </script>

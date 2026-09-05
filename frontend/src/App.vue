@@ -50,11 +50,13 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
   <router-view v-if="isBare" />
   <!-- all other routes render inside the two-card shell -->
   <!-- KeepAlive per tab:key = value:epoch。TabStrip 点击=命中缓存,恢复浏览状态;
-       openFresh(侧边栏点击/核对跳转/关闭重开)递增 epoch → key 变 → 全新实例走 onMounted。
-       共用同一组件的兄弟路由(充电桩汽车/电动车)value 不同 → key 天然不同,切换必重建,原「陈旧数据」防线不回归 -->
+       openFresh(核对跳转/关闭重开/换层)递增 epoch → key 变 → 全新实例走 onMounted。
+       共用同一组件的兄弟路由(充电桩汽车/电动车)value 不同 → key 天然不同,切换必重建,原「陈旧数据」防线不回归
+       max 16 = 专员一个月要开的屏数(D9;spec §4.1 末行)。侧边栏点击不再重置实例之后,
+       这个数字决定「切回去还在不在」——10 时排在第 11 个的屏一切回就是空白重来。 -->
   <AppShell v-else>
     <router-view v-slot="{ Component }">
-      <keep-alive :max="10">
+      <keep-alive :max="16">
         <component :is="Component" :key="routeValue + ':' + tabs.epochOf(routeValue)" />
       </keep-alive>
     </router-view>

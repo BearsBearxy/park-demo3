@@ -6,6 +6,7 @@
 // cp_reading 为空 → AnaEmpty 引导(护栏硬要求,禁止渲染 0 假数据);数据变换纯函数抽 chargingAnalysis.logic.ts(单测)。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
@@ -71,6 +72,9 @@ onMounted(async () => {
   void load(year.value)
 })
 watch(year, (y) => { void load(y) })
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void load(year.value) })
 
 // ── 当前 tab 视角(前端过滤;logic 纯函数不认识 tab) ──
 const myStations = computed(() => stations.value.filter((s) => s.vehicleType === tab.value))

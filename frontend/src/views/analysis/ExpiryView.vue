@@ -5,6 +5,7 @@
 // 无日期时保留降级空态(判据 wall.totalCount > 0,本机数据日期全 NULL 仍走空态,口径数值不变)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -22,13 +23,17 @@ const router = useRouter()
 const loading = ref(true)
 const contracts = ref<ContractDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     contracts.value = await fetchContracts()
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 const wan = (v: number) => fnum(v / 10000, 1)
 // 文案取权威表(contractStatus.ts):此前本屏是同一批状态的第三套叫法(在租/临期/到期/终止),

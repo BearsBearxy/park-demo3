@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { buildingApi } from '@/api/building'
 import { invalidateAnaCache } from '@/analysis/anaData'
 import { fpSortRows } from '@/components/fp/fpSort'
@@ -48,6 +49,9 @@ async function load() {
   ;[buildings.value, summary.value] = await Promise.all([buildingApi.list(), buildingApi.summary()])
 }
 onMounted(load)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void load() })
 
 // 新增楼栋
 const newDlg = ref(false)

@@ -6,6 +6,7 @@
 // spec §B/W2:欠费清单+账龄卡共用「按户|按家族」开关,开时 rows 先 mergeFamilyRows 再走现有函数。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -46,7 +47,7 @@ const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const s10 = ref<S10PhaseMonthly | null>(null)
 const famMap = ref(new Map<string, string>())
 const tenants = ref<TenantDTO[]>([])   // 催缴清单导出查联系方式
-onMounted(async () => {
+async function reload() {
   try {
     const [cos, rows, pm, tns] = await Promise.all([
       fetchCompanies(), fetchLedgerRows(), fetchS10PhaseMonthly(), fetchTenants()])
@@ -58,7 +59,11 @@ onMounted(async () => {
   } catch { /* 拉取失败 → 空态卡兜底 */ } finally {
     ready.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 家族口径开关(spec §B/W2 方案A):按户|按家族,默认按户,仅作用于欠费清单+账龄卡 ──
 const famOn = ref(false)

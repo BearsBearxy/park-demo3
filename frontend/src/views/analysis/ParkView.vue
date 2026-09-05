@@ -6,6 +6,7 @@
 // F3(2026-07-15)追加「面积转换」卡:在租合同建筑 vs 租赁面积楼栋对比 + 换算系数/分摊率,带覆盖率护栏。
 // 数据变换纯函数见 park.logic.ts(单测 park.logic.spec.ts)。
 import { computed, onMounted, ref } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -25,7 +26,7 @@ const buildings = ref<BuildingDTO[]>([])
 const contracts = ref<ContractDTO[]>([])
 const tenants = ref<TenantDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     ;[buildings.value, contracts.value, tenants.value] = await Promise.all([
       fetchBuildings(), fetchContracts(), fetchTenants(),
@@ -35,7 +36,11 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // fpAnaTheme 蓝族字面色(ECharts canvas 不认 CSS 变量;分期 1~4 取主题前 4 色)
 const PHASE_COLOR = ['#378ADD', '#185FA5', '#85B7EB', '#B5D4F4']

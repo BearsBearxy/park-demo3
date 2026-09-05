@@ -3,6 +3,7 @@
 // CVP 线(AnaEChart:收入/总成本,markPoint 保本点,markArea 盈利区;固定成本系数滑杆改动即时重算 option)
 // + 敏感性龙卷风横条 + 固定/变动逐月堆叠。口径与 v1 一致(CVP 计算抽至 breakeven.logic.ts,数值不变)。
 import { computed, onMounted, ref, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -24,11 +25,15 @@ const loading = ref(true)
 const summary = ref<PnlSummary | null>(null)
 const s10 = ref<AnalysisS10Row[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     s10.value = await fetchS10Rows()
   } finally { /* s10 缺失不阻塞(敏感性因子降级) */ }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(() => period.sel.value.year, async (y) => {
   if (!y) return   // usePeriod 初始化前 year=0:不发 /pnl/*/0(后端年份门必 400,复审)

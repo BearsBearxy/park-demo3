@@ -2,7 +2,7 @@
 // 手机底栏(S 档,RESPONSIVE-LAYOUT-SPEC §4.1):层级导航,IconRail 在手机上的化身。
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fpFindLayer } from '@/nav/fpNav'
+import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -19,10 +19,11 @@ const activeLayer = computed(() =>
   fpFindLayer((route.meta as Record<string, string>).value ?? '')
 )
 
-// 层切换=显式导航 → 全新状态(openFresh,IconRail.goLayer 同语义)
-function goLayer(home: string) {
-  tabsStore.openFresh(home)
-  router.push('/' + home)
+// 点当前层什么都不做(§4.1,IconRail.goLayer 同语义)
+function goLayer(layer: NavLayer) {
+  if (layer.id === activeLayer.value.id) return
+  tabsStore.openFresh(layer.home)
+  router.push('/' + layer.home)
 }
 </script>
 
@@ -33,7 +34,7 @@ function goLayer(home: string) {
       :key="layer.id"
       class="mbn-tab"
       :class="{ on: layer.id === activeLayer.id }"
-      @click="goLayer(layer.home)"
+      @click="goLayer(layer)"
     >
       <span class="mbn-ic">
         <component :is="iconFor(layer.icon)" :size="20" />
