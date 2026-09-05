@@ -1243,7 +1243,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：2320 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
+期望：2324 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
 
 - [ ] **Step 5: 破坏验证**
 
@@ -1353,7 +1353,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
 git status --short
 ```
 
-期望：2320 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
+期望：2324 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
 
 - [ ] **Step 5: 提交**
 
@@ -1375,5 +1375,5 @@ EOF
 - **占位符**：无 TBD / 「参照上一任务」；每个代码步都有可抄的代码块；三处标了 ⚠ 的地方是**实施者必须先看实际值再落笔**（层短名与 home、附10 的期区取法、`--bg-subtle` token 名），不是留白。
 - **类型一致**：`TabCtx` 在 T1 定义、T3 写、T4 读，字段名 `p` / `coName` 三处一致；`openDeep(value: string)` 在 T1 定义、T6 调用，签名一致；`holdsEditUnder(prefix: string | string[] | undefined)` 与 `NAV_SCOPE_PREFIX` 的值类型对齐。
 - **任务间冲突**：T2 与 T4 都碰 `App.vue`（T2 改 `:max`，T4 只**读**它做源码断言）—— T4 的断言在 T2 之后必然绿，顺序不可颠倒。T2 建的 `iconRail.spec` 第三条依赖 T5 才加的 `aria-label`：**T2 落地时就把那一行 aria 顺手加上**（计划已在 T5 Step 5 写明「若 T2 已加则只确认」），否则 T2 收尾时全量会红一条。
-- **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2320**（T1 +1、T2 门禁按屏展开 +22、T2 修补 +5、T3 修补 +3、T4 修补 +2 均已计入），T6/T7 不增不减。
+- **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2324**（T1 +1、T2 门禁按屏展开 +22、T2 修补 +5、T3 修补 +3、T4 修补 +2、T5 修补 +4 均已计入），T6/T7 不增不减。
 - **2026-09-06 单人复查已修**：3 阻断（T6 门禁把 ReconWorkbench 断言进去 / `mount(TabStrip)` 撞 jsdom 无 `ResizeObserver` / 侧栏改恢复现场后纯读屏没有刷新入口）· 5 严重（ctx 覆盖不到分析层 / `auth.me` 初始就是 null 用例恒红 / toolbar.spec 的 value 与辅助名对不上 / `.fp-tab` 命中基底页签 / T3 第三条与自己的标题不符导致 coName 通路零覆盖）· 6 一般（用例计数 / 三大报表矩阵态 ctx 写出年份 / evictToast 缺 api mock 与 Teleport stub / grep 期望 / 份数 10 不是 11 / S10View 路径与 `phaseOf` 不存在）· 2 建议（Task 0 的 HEAD / `MobileNavDrawer:95`）。两条正面结论记档：`recent[0]` 当来源成立（`router/index.ts:135-142` 有全局 `afterEach` 无条件 `open(v)`，每条导航路径都会把当前屏推到队首）；被顶的屏锁还在（`useEditLock.ts:176` 只在 `onUnmounted` 释放，没有 `onDeactivated`），提示出得来。
