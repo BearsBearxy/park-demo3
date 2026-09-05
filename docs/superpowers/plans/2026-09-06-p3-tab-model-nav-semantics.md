@@ -4,7 +4,7 @@
 
 **Goal:** 侧栏 / 轨 / 手机抽屉 / 手机底栏点一下不再把屏重置成全新实例 —— 恢复现场（P0a–P0c 好不容易落进去的期、公司、抽屉全都留着），KeepAlive 深度 10 → 16 覆盖专员一个月要开的屏数；「全新」收窄成三个显式动作（Shift 点击 / 关签重开 / 换层）。页签条与顶栏能说出「这一签停在哪个期、哪家公司」，页签定宽 148px 不再因改名跳动，顶栏上下文 chip 132px 常驻预留位。深链的 pin 从 16 处硬编码 `{ pin: true }` 收成一条规则：来源屏正坐在预览槽才钉住目标，否则目标照常占预览槽；预览槽被顶掉且被顶的那屏本人正在编辑时，出一条带「固定它」的 4s 提示。
 
-**Architecture:** `stores/tabs.ts` 加三样内存态与两个动作：`ctx`（value → `{ p?, coName? }`，页签标题与顶栏 chip 的唯一数据源）、`evicted`（预览槽被替换时记下被顶的 value）、`openDeep(value)`（深链专用，按「来源是否坐在预览槽」决定 pin）。ctx 的写入**收在 `composables/useDeepPeriod` 一处**：所有有期的屏都已经过这条路，屏内换期时它 watch `current()` 把期写进本屏的 ctx（台账 / 三大报表 / 附10 多传一个 `coName`）。四个导航入口各加一句「点当前项 / 当前层直接 return」并把 `openFresh` 换成 `open`（Shift 才 `openFresh`）；`ds/SidebarNav` 的 `select` 事件多带一个 MouseEvent 以支持 Shift。`TabStrip` 标题改成 `屏名 · 期 · 公司` 有几段写几段、`.fp-tab` 改 `flex: 0 0 148px`；`Toolbar` 面包屑后插一个定宽 132px 的常驻 chip（无期显「—」）。被顶提示复用 `AppShell` 的 `.fp-net-toast` 视觉与位置，编辑态判定走 `presence` 新增的 `holdsEditUnder(prefix)`（读本地 `editCallbacks`，不等服务端回声）。
+**Architecture:** `stores/tabs.ts` 加三样内存态与两个动作：`ctx`（value → `{ p?, coName? }`，页签标题与顶栏 chip 的唯一数据源）、`evicted`（预览槽被替换时记下被顶的 value）、`openDeep(value)`（深链专用，按「来源是否坐在预览槽」决定 pin）。ctx 的写入**收在 `composables/useDeepPeriod` 一处**：接了深链的 18 处屏都经过这条路，屏内换期时它 watch 把期写进本屏的 ctx（台账 / 三大报表 / 附10 多传一个 `ctx()` 覆盖公司名与矩阵态）。分析层 11 屏与导入中心不接 `useDeepPeriod`（它们的期本来就不吃 URL，spec §12 已记），因此没有 ctx —— 页签只显屏名，写进 §12。四个导航入口各加一句「点当前项 / 当前层直接 return」并把 `openFresh` 换成 `open`（Shift 才 `openFresh`）；`ds/SidebarNav` 的 `select` 事件多带一个 MouseEvent 以支持 Shift。`TabStrip` 标题改成 `屏名 · 期 · 公司` 有几段写几段、`.fp-tab` 改 `flex: 0 0 148px`；`Toolbar` 面包屑后插一个定宽 132px 的常驻 chip（无期显「—」）。被顶提示复用 `AppShell` 的 `.fp-net-toast` 视觉与位置，编辑态判定走 `presence` 新增的 `holdsEditUnder(prefix)`（读本地 `editCallbacks`，不等服务端回声）。
 
 **Tech Stack:** Vue 3 `<script setup>`（`ds/SidebarNav` 是 `defineComponent` + `h()` 渲染函数）+ Pinia + vue-router 4 + Vitest（jsdom）+ @vue/test-utils；vue-tsc strict。
 
@@ -21,9 +21,12 @@
   - `nav/deepLink.ts` / `periodLink` / `parsePeriod` / P0a–P0c 的落期逻辑（`useDeepPeriod` 只**追加**一个 ctx watch 与一个可选 opt，`run()` 一行不改）。
   - 三个 localStorage 键（`fp-app-tabs` / `fp-app-preview` / `fp-app-recent`）的名字与序列化格式（§8.1 铁律）。`ctx` / `evicted` / `epoch` / `openTitles` 全部**只在内存**，一个都不落盘。
 - **pin 缺省规则的实现形状**：新增 store 动作 `openDeep(value)` = `openFresh(value, { pin: 来源屏正坐在预览槽 })`。**来源 = `recent[0]`**：`open()` 每次都把目标推到 `recent` 队首，所以进 `openDeep` 时队首还是上一屏。天花板写进注释：刷新后第一次跳转时 `recent[0]` 来自 localStorage、未必等于当前屏 —— 代价上限是多钉或少钉一个页签，不丢数据。**不引 router 进 store**（`stores/tabs.ts` 现在只依赖 `nav/fpNav` 与 `stores/auth`，引 `@/router` 会把懒加载的视图图拉进循环）。
-- **ctx 的写入点收在 `useDeepPeriod` 一处**（对 spec §4.3 枚举的六个写入点的显式裁定）：`billingPeriod.pick` / `screenPeriod.pick` / `LedgerView` 选册选月 / `useFinStatementScreen` 的 y·m·co 变化 / `useDeepPeriod.apply` 这五个写入点，**背后的屏无一例外都已经在调 `useDeepPeriod`**（出账链五屏经 `useChainDeepPeriod`、运营账三屏经 `useMonthGate` 的宿主屏、年表四屏、台账、附10、附12、三大报表、损益附表、收入核对）。在 composable 里 watch `o.current()` 一处写，等价覆盖五个点，且天然拿得到本屏的 `route.meta.value` 与「期变了」的时机；分散写六处则要给 `useMonthGate` / `billingPeriod` 造出「我在哪个页签」的知识。第六点「审核态拉取」属 R2，本期不做。
+- **ctx 的写入点收在 `useDeepPeriod` 一处**（对 spec §4.3 枚举的六个写入点的显式裁定）：`billingPeriod.pick` / `screenPeriod.pick` / `LedgerView` 选册选月 / `useFinStatementScreen` 的 y·m·co 变化 / `useDeepPeriod.apply` 这五个写入点，**背后的屏都已经在调 `useDeepPeriod`**（实测 18 处调用：`useFinStatementScreen` 一处顶三屏、`PnlScheduleView` 一处顶五屏，加台账 / 附10 / 附12 / 运营账三屏 / 年表四屏 / 收入核对，以及 `useChainDeepPeriod` 的出账链五屏）。在 composable 里一处 watch 等价覆盖五个点，且天然拿得到本屏的 `route.meta.value` 与「期变了」的时机；分散写六处则要给 `useMonthGate` / `billingPeriod` 造出「我在哪个页签」的知识。第六点「审核态拉取」属 R2，本期不做。
+- **ctx 覆盖不到分析层**（复查坐实，据实写进 §12，不在计划里声称全覆盖）：`views/analysis/` 的 11 屏与 `ImportCenterView` 都不接 `useDeepPeriod`（spec §12 已记「分析屏的期不吃 URL」、§4.2 已记导入中心不接），所以它们的页签标题只有屏名、顶栏 chip 恒显「—」。这与「有几段写几段」自洽，但不许在 Goal 里说成全覆盖。给 `usePeriod` 开深链入口连同 ctx 一起留给后期。
+- **ctx 的取值不复用 `current()`**：`useFinStatementScreen.ts:128` 的 `current.p` 在矩阵态（`month == null`）是 `periodOf(year, null)` = 光秃秃一个年份 —— 那是 P0c 为「只有年的链停在矩阵」特意造的相等条件，**不是用户选了期**。照抄进 ctx 会让页签写「利润表 · 2025 · 一期公司」而用户根本没点月格（台账 `LedgerView.vue:165` 在同一状态下给的是 `null`）。所以 opt 是一个 `ctx?: () => { p: string | null; coName?: string | null }`（**一个 opt 覆盖公司名与矩阵态两件事**，不加第二个 `coName?`）；不传时默认 `{ p: o.current().p }`。年表四屏与损益附表的 `current` 只报年是**对的**（它们的期就是年），不传 opt。
 - **`ctx.review` 归 R2**：`ReviewStatus` 类型要到 R1/R2 才存在。本期 `TabCtx` 只有 `p?: string` 与 `coName?: string`，R2 再加字段（`setCtx` 是浅合并的话 R2 会更好接 —— 本期实现成**整条替换**，因为期变了公司也可能变，浅合并会留下上一家公司的名字）。
-- **`coName` 只有三处有来源**：台账（`company?.short || companyName`，`LedgerView.vue:75-76`）· 三大报表（`useFinStatementScreen.ts:85` 的 `companyName`，`'all'` 时给 `'全部汇总'`）· 附10（期区 → `${phase}期`）。其余屏是园区级表，不传 `coName`（spec §12「公司 chips 只在台账与附10」同口径）。
+- **`coName` 只有三处有来源**：台账（`company?.short || companyName`，`LedgerView.vue:75-76`）· 三大报表（`useFinStatementScreen.ts:85` 的 `companyName`，`'all'` 时给 `'全部汇总'`）· 附10（`views/sales-income/S10View.vue:253` 屏内现成的 `phase` computed → `${phase}期`，**仓里没有 `phaseOf` 这个函数**）。其余屏是园区级表，不传 opt（spec §12「公司 chips 只在台账与附10」同口径）。
+- **侧栏改「恢复现场」之后，纯读屏要补切回重读**（复查坐实的阻断项，裁定：补，不留成边界）：侧栏点击此前是这些屏**唯一**的刷新入口，改成 `open` 之后「导入中心导完租户 → 侧栏点租户管理 → 看到导入前的名单」；`:max` 10 → 16 让缓存活得更久，概率只增不减。做法与 P0b 给 9 张附表屏补 `onReactivated` 逐字同形（`composables/onReactivated.ts`，天然跳过首次 activated）。**只补「重读不动用户选择」的屏**：重读会清掉筛选 / 分页 / 展开态的屏改为写进 §12，不硬补。**有草稿的屏一律不补**（本期没有这类屏落在名单里）。
 - **换人清内存态**：`stores/tabs.ts` 里 `watch(() => auth.me, …)` 清 `ctx` / `evicted`（登入登出都清）。**不改 `auth.ts`**：它 `logout()` 只清 localStorage、不重置已实例化的 tabs store（`tabs` / `preview` / `recent` / `epoch` 至今都留着），从 auth 反向 import tabs 会成环（tabs 已 import auth）。ctx 跟着现有口径走，整体重置留给 P5（那期本来就要动 `auth.ts` 加 `roleNames`）—— 写进 spec §12。
 - **编辑态判定不等服务端**：`presence.mode` 是服务端字段、`self` 按 user 不按 sid（同一人两个标签页都是 `self=true`），拿来判「本标签页此刻在不在编辑」会慢一拍且串台。新增 `presence.holdsEditUnder(prefix)` 直接读本地 `editCallbacks`（`stores/presence.ts:129`，`holdLock` / `dropLock` 的真源），前缀边界与 `editorsUnder` 逐字同规则（`=== p` 或 `p + ':'` 或 `p + '-'` 开头）。屏 → 锁根用现成的 `NAV_SCOPE_PREFIX`（`utils/lockScopes.ts:105-129`，值可能是 `string | string[]`，两种都要吃）。
 - **被顶提示的载体不是 `FPToast`**：`FPToast` 没有动作按钮插槽（`components/fp/FPToast.vue:58-66`），而这条提示必须带「固定它」。按 spec「复用 `.fp-net-toast` 位置」在 `AppShell` 的同一个 `<Teleport to="body">` 里加一个兄弟块，复用 `.fp-net-toast` 的类与 `.act` 按钮样式；两条同时在场时给被顶提示加 `.stacked`（`bottom: 84px`）避免叠字。`.fp-net-toast` 自身的选择器、`bottom:28px`、L273 的 S 档覆盖**一个字不改**。
@@ -36,6 +39,7 @@
   3. `anaDeepLink.spec.ts:65-70` goAnom 那条里的 `tabs.openFresh(v, { pin: true })` → `tabs.openDeep(v)`（`co: a.co,` 那半条不动）。
   4. 其余 spec 零改动。特别是 `tabs.spec.ts` 现有 18 条、`ledgerLeaveAndReturn.spec`、`reportsHomeGo.spec`、`toolbar.spec` 现有条目、`palette.spec` 6 条、`navHeight.spec`、`fpNav.spec` 全部保持绿。
 - **零布局位移**（§8.1）：页签定宽与 chip 预留位是本期唯一的「新常驻元素」，两者都必须**无条件渲染**（chip 无期显「—」而不是 `v-if`），被顶提示是 `position: fixed`。`noInteractionLayoutShift.spec` 抓的是「流内块级 + v-if 引用交互态变量 + 非 absolute/fixed」的形状 —— 新增元素不许落进这个形状。
+- **pin 的计数口径**（复查核对）：`views/analysis/` 下 `pin: true` 实测 **16 处、10 个文件**（不是 11 个）；`src/views/` 全仓生产代码（`--include=*.vue`）共 **23 处**，改完剩 **7 处**（`LossLedgerView:153` · `PoolLedgerView:392` · `BillNoticesView:152` · `ParamCenterView:413` · `ReconWorkbench:121,128` · **`LedgerView:685` 的 gotoTenants**）。spec §4.3 写的「分析层 9 处」是 P0c 之前的旧数，T7 一并订正为 16 处。
 - **构建预算**：`npm run build` 的 size-check：index ≤ 191KB（P0c 收官实测 189.5，**余 1.5KB**），合计 ≤ 3900KB（实测 3881.3）。本期改的全是首屏常驻代码（tabs store / 四个入口 / TabStrip / Toolbar / AppShell），**很可能触线**。触线的处置顺序：① 先按 T7 的瘦身杠杆做 —— `AppShell.vue:11` 的 `CommandPalette` 静态 import 改 `defineAsyncComponent` + 模板 `v-if="paletteOpen"`（与仓里 `FPApprovalDrawer` / 手机三件套两次瘦身同一招，源码 7.9KB），② 仍超线就停下报告。**绝不上调 `BUDGET_KB.index`**。
 - **EOL**：仓库 `core.autocrlf=true`，本期要改的文件混有 CRLF/LF。**禁止 `sed -i` 之类的整文件重写**；改动一律用 Edit / 精确字符串替换脚本，改完 `git diff --stat` 里不许出现「整文件重写」的行数。
 - 提交信息末尾：`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`。所有命令在 worktree `C:\financial_dashboard\demo3\.claude\worktrees\model-12d043`；前端命令在 `frontend/`（`npx vitest run` / `npx vue-tsc --noEmit` / `npm run build`）。
@@ -51,14 +55,15 @@
 | `frontend/src/components/ds/SidebarNav.vue:115, 134-137, 184` | `select` 事件多带 MouseEvent（T2） |
 | `frontend/src/components/shell/SidebarPanel.vue:63-67` | `onSelect(value, ev)`：当前项 return；Shift → `openFresh`，否则 `open`（T2） |
 | `frontend/src/components/shell/IconRail.vue:34-39, 57, 66-69` | `goLayer(layer)`：当前层 return；命令钮补 `aria-label`（T2 / T5） |
-| `frontend/src/components/shell/mobile/MobileNavDrawer.vue:44-56, 109` | `goItem` 当前项 return + `open`；`goLayer` 当前层 return（T2） |
+| `frontend/src/components/shell/mobile/MobileNavDrawer.vue:44-56, 95, 109` | `goItem` 当前项 return + `open`；`goLayer` 当前层 return（:95 的 `@click="goLayer(layer.home)"` 随签名改）（T2） |
+| `frontend/src/views/tenants/TenantsView.vue` · `buildings/BuildingsView.vue` · `system/System{Users,Roles,Logs}View.vue` · `views/analysis/` 的 11 屏 | 纯读屏补 `onReactivated` 切回重读（T2 Step 6b） |
 | `frontend/src/components/shell/mobile/MobileBottomNav.vue:22-26` | `goLayer(layer)`：当前层 return（T2） |
 | `frontend/src/App.vue:57` | KeepAlive `:max="10"` → `16`（T2） |
 | `frontend/src/components/shell/__tests__/sidebarPanel.spec.ts` | +3 条点击语义（T2） |
 | `frontend/src/components/shell/__tests__/iconRail.spec.ts`（新） | 3 条：当前层 no-op / 换层 openFresh / 命令钮 aria（T2，aria 那条在 T5 落地后仍在本文件） |
 | `frontend/src/components/shell/mobile/mobileNavDrawer.spec.ts:35-42` | 翻转 + 补当前项 / 当前层 no-op 两条（T2） |
 | `frontend/src/composables/useDeepPeriod.ts` | opts 加 `coName?`；追加 ctx watch（T3） |
-| `frontend/src/views/ledger/LedgerView.vue` · `frontend/src/components/fin/useFinStatementScreen.ts` · `frontend/src/views/reports/s10/S10View.vue` | 各传一个 `coName`（T3） |
+| `frontend/src/views/ledger/LedgerView.vue` · `frontend/src/components/fin/useFinStatementScreen.ts` · `frontend/src/views/sales-income/S10View.vue:252-253` | 各传一个 `ctx()`（T3） |
 | `frontend/src/composables/__tests__/useDeepPeriod.spec.ts` | +3 条 ctx 写入（T3） |
 | `frontend/src/components/shell/TabStrip.vue:120, 127, 176-197, 231-258` | 标题拼 ctx；定宽 `flex: 0 0 148px`；溢出行同款（T4） |
 | `frontend/src/components/shell/Toolbar.vue:49-51, 54-58` | ★ 补 `aria-pressed`；面包屑后插常驻 chip（T4） |
@@ -67,7 +72,7 @@
 | `frontend/src/stores/presence.ts:129, 251` | 新增 `holdsEditUnder(prefix)` 并导出（T5） |
 | `frontend/src/components/shell/AppShell.vue` | 被顶提示块 + 样式 + 4s 计时（T5） |
 | `frontend/src/components/shell/__tests__/evictToast.spec.ts`（新） | 3 条（静默 / 编辑态出 / 固定它）（T5） |
-| `frontend/src/views/analysis/*.vue`（11 份 16 处） | `openFresh(…, { pin: true })` → `openDeep(…)`（T6） |
+| `frontend/src/views/analysis/*.vue`（10 份 16 处） | `openFresh(…, { pin: true })` → `openDeep(…)`（T6） |
 | `frontend/src/views/__tests__/anaDeepLink.spec.ts:35-39, 65-70` | 两条断言翻转（T6） |
 | `docs/superpowers/specs/2026-07-07-demo3-recon-jump-tab-state-design.md` §二 · `docs/design/RESPONSIVE-LAYOUT-SPEC.md` §4.1/§4.2 · `docs/design/LAYOUT-STABILITY-SPEC.md` · `docs/superpowers/specs/2026-09-03-sidebar-ux-redesign-design.md` 头行/§4.3/§6/§12 | 规范随裁定（T7） |
 
@@ -85,7 +90,8 @@ git rev-parse HEAD
 git status --short
 ```
 
-期望：HEAD = `8fb3e91`（P0c 收官），`git status --short` 空。
+期望：HEAD = `53a5327`（P3 计划提交），`git status --short` 空。
+**本任务控制者已代跑，实施者可跳过**：vitest 193 / 2266 全绿；build 合计 3881.5 / 3900KB，index 189.5 / 191KB（余 1.5KB）。
 
 - [ ] **Step 2: 跑一次全量，确认起点全绿**
 
@@ -151,9 +157,13 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
     expect(store.ctx.tenants).toBeUndefined()
   })
 
-  it('换人(登出置空 me)清空全部 ctx 与 evicted', async () => {
+  it('换人(登入再登出)清空全部 ctx 与 evicted', async () => {
     const store = useTabsStore()
     const auth = useAuthStore()
+    // ⚠ auth.me 初始就是 null(auth.ts:21 读 localStorage,beforeEach 已 clear),
+    //   直接赋 null 是 null → null,watch 不触发 —— 必须先给它一个人。
+    auth.me = 'zhangsan'
+    await nextTick()
     store.setCtx('ledger', { p: '2025-06' })
     auth.me = null
     await nextTick()
@@ -492,7 +502,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/components/shell/__tests__/sidebarPanel.spec.ts src/components/shell/__tests__/iconRail.spec.ts src/components/shell/mobile/mobileNavDrawer.spec.ts
 ```
 
-期望：新增 / 翻转的 7 条红，其余绿。
+期望：新增 / 翻转的 8 条红（侧栏 3 + 轨 3 + 抽屉 2 —— 原 :35-42 那一条被拆成「目录条目 = open」与「点当前屏只关抽屉」两条 —— 加底栏 1，净 +8），其余绿。
 
 - [ ] **Step 5: 实现 —— `ds/SidebarNav` 带上事件**
 
@@ -542,7 +552,7 @@ function goLayer(layer: NavLayer) {
 
 （`NavLayer` 从 `@/nav/fpNav` import type；`activeLayer` 是 computed，注意 `.value`。）
 
-`MobileBottomNav.vue:22-26` 同形（模板 :31-42 的 `@click="goLayer(layer.home)"` → `@click="goLayer(layer)"`）。
+`MobileBottomNav.vue:22-26` 同形（模板 :36 的 `@click="goLayer(layer.home)"` → `@click="goLayer(layer)"`）。
 
 `MobileNavDrawer.vue`：
 
@@ -564,7 +574,7 @@ function goItem(value: string) {
 }
 ```
 
-（`activeValue` 若本文件还没有，按 `SidebarPanel.vue:27-29` 的写法补一个 computed；`goRecent` 一行不动。）
+（`activeValue` 若本文件还没有，按 `SidebarPanel.vue:27-29` 的写法补一个 computed；`goRecent` 一行不动。**模板 :95 的 `@click="goLayer(layer.home)"` 要跟着改成 `goLayer(layer)`**，否则 tsc 报 string → NavLayer。）
 
 `App.vue:57`：`:max="10"` → `:max="16"`，并把 :52-54 的注释补一句：
 
@@ -573,16 +583,39 @@ function goItem(value: string) {
        这个数字决定「切回去还在不在」——10 时排在第 11 个的屏一切回就是空白重来。
 ```
 
+- [ ] **Step 6b: 纯读屏补切回重读**
+
+侧栏改成「恢复现场」之后，这些屏**再没有任何刷新入口**（它们只在 `onMounted` 取数、没有 `onReactivated`）。逐屏加一行，写法与 P0b 给附表屏补的逐字同形：
+
+```ts
+import { onReactivated } from '@/composables/onReactivated'
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
+```
+
+名单（复查实测「只有 onMounted、无 onReactivated」的生产屏）：
+
+`views/tenants/TenantsView.vue` · `views/buildings/BuildingsView.vue` · `views/system/SystemUsersView.vue` · `SystemRolesView.vue` · `SystemLogsView.vue` · `views/analysis/` 的 `BudgetView` · `ChargingAnalysisView` · `FinCashflowView` · `ParkView` · `PvRoiView` · `PvMeterAnaView` · `TenantEnergyView` · `TenantPortfolioView` · `BreakevenView` · `ExpiryView`（`CockpitView` 的取数在 `AnaShell` 里，按实际落点补）。
+
+**逐屏两条判据，任缺一条就不补、改为记进 §12**：
+1. 屏内那个取数函数（`reload` / `load` / `refresh`，各屏名字不同）**只换数据**，不清筛选 / 分页 / 展开 / 抽屉等用户选择；
+2. 屏内没有草稿态（没有 `dirty` / `draft` / 编辑锁）。
+
+不补的屏在本任务报告里逐个列出理由，T7 写进 spec §12。
+
+验证用一条挂载测（放在 `frontend/src/views/__tests__/readScreenRefresh.spec.ts`，新建）：挑 `TenantsView` 一屏，mount → 断言取数一次 → 触发 `onReactivated` 的宿主钩子 → 断言取数两次。其余屏用源码门禁一条兜住（本文件同 spec 内）：名单里补了的每一屏源码都含 `onReactivated(`。**两条用例都要能被破坏验证**：删掉 `TenantsView` 的那一行 → 两条都红。
+
 - [ ] **Step 7: 跑三份 + 全量**
 
 ```bash
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
-npx vitest run src/components/shell src/App.vue 2>&1 | tail -8
+npx vitest run src/components/shell 2>&1 | tail -8
 npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：新增 7 条绿；全量 2281 条（2274 + 7）全绿；tsc 零错。若 `reportsHomeGo.spec` / `ledgerLeaveAndReturn.spec` 红了 —— **停下报告**，它们本期不该动。
+期望：新增 10 条绿（入口语义 8 + 纯读屏 2）；全量 2284 条（2274 + 10）全绿；tsc 零错。若 `reportsHomeGo.spec` / `ledgerLeaveAndReturn.spec` 红了 —— **停下报告**，它们本期不该动。
 
 - [ ] **Step 8: 逐条破坏验证**
 
@@ -595,6 +628,7 @@ npx vue-tsc --noEmit
 | `IconRail.goLayer` 删掉当前层 guard | 轨「点当前层」 |
 | `MobileNavDrawer.goItem` 的 `tabs.open` 改回 `openFresh` | 抽屉「目录条目 = open」 |
 | `MobileBottomNav.goLayer` 删掉 guard | 底栏「点当前层」 |
+| 删掉 `TenantsView` 的 `onReactivated(() => { void reload() })` | 「纯读屏切回重读」两条（挂载测 + 源码门禁） |
 
 - [ ] **Step 9: 提交**
 
@@ -614,12 +648,12 @@ EOF
 
 **Files:**
 - Modify: `frontend/src/composables/useDeepPeriod.ts`
-- Modify: `frontend/src/views/ledger/LedgerView.vue`（`useDeepPeriod` 调用处）· `frontend/src/components/fin/useFinStatementScreen.ts`（同）· `frontend/src/views/reports/s10/S10View.vue`（同，路径以实际为准）
+- Modify: `frontend/src/views/ledger/LedgerView.vue`（`useDeepPeriod` 调用处）· `frontend/src/components/fin/useFinStatementScreen.ts`（同）· `frontend/src/views/sales-income/S10View.vue:252-253`（同）
 - Test: `frontend/src/composables/__tests__/useDeepPeriod.spec.ts`
 
 **Interfaces:**
 - Consumes: `tabs.setCtx`（T1）；`o.current()` 现有形状 `{ p: string | null; co?: number | 'all' | string | null }`。
-- Produces: `DeepPeriodOpts.coName?: () => string | null`。
+- Produces: `DeepPeriodOpts.ctx?: () => { p: string | null; coName?: string | null }`（不传时默认 `{ p: o.current().p }`）。
 
 - [ ] **Step 1: 先写失败的测试**
 
@@ -645,9 +679,14 @@ describe('useDeepPeriod · 写页签上下文(P3 §4.3)', () => {
     expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-07' })
   })
 
-  it('传了 coName 就一起写;回矩阵(p 为 null)时 ctx 只剩空壳', async () => {
-    // current 返回 { p: null } 且 coName 返回 null
-    expect(useTabsStore().ctx.ledger).toEqual({})
+  it('传了 ctx() 就按它写(公司名一起进去),而不是照抄 current()', () => {
+    // ctx: () => ({ p: '2025-06', coName: '一期公司' });current 故意返回别的 p
+    expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-06', coName: '一期公司' })
+  })
+
+  it('ctx() 的 p 为 null(停在选期矩阵)→ ctx 只剩空壳,页签只显屏名', () => {
+    // ctx: () => ({ p: null, coName: '一期公司' }) —— 没选期就不该在页签上写期
+    expect(useTabsStore().ctx.ledger).toEqual({ coName: '一期公司' })
   })
 })
 ```
@@ -661,7 +700,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/composables/__tests__/useDeepPeriod.spec.ts
 ```
 
-期望：新增 3 条红，现有条目绿。
+期望：新增 4 条红，现有条目绿。
 
 - [ ] **Step 3: 实现 —— composable**
 
@@ -669,10 +708,13 @@ npx vitest run src/composables/__tests__/useDeepPeriod.spec.ts
 
 ```ts
   /**
-   * 本屏的公司 / 期区名,写进页签上下文用(spec §4.3)。只有台账、三大报表、附10 有这个维度,
-   * 其余是园区级表 —— 不传就只写期。
+   * 写进页签上下文的期与公司名(spec §4.3)。不传就用 `current().p` ——
+   * 传的理由只有两个:① 本屏有公司 / 期区维度(台账、三大报表、附10);
+   * ② 本屏的 `current().p` 是为深链相等判造的、与用户看到的期不是一回事
+   *    (三大报表矩阵态 `current.p` 是光秃秃一个年份,那是「只有年的链停在矩阵」的相等条件,
+   *     不是用户选了期 —— 照抄进页签会写出「利润表 · 2025」而用户没点月格)。
    */
-  coName?: () => string | null
+  ctx?: () => { p: string | null; coName?: string | null }
 ```
 
 `useDeepPeriod` 体内（`run(true)` 之前或之后都行，放 `onReactivated` 之后最不打扰阅读顺序）加：
@@ -686,8 +728,8 @@ npx vitest run src/composables/__tests__/useDeepPeriod.spec.ts
   const navValue = (route.meta as Record<string, unknown>)?.value
   if (typeof navValue === 'string' && navValue) {
     watch(
-      () => ({ p: o.current().p, co: o.coName?.() ?? null }),
-      (c) => tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.co ?? undefined }),
+      () => (o.ctx ? o.ctx() : { p: o.current().p, coName: null }),
+      (c) => tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.coName ?? undefined }),
       { immediate: true },
     )
   }
@@ -697,25 +739,28 @@ npx vitest run src/composables/__tests__/useDeepPeriod.spec.ts
 
 - [ ] **Step 4: 实现 —— 三个 `coName`**
 
-台账（`LedgerView.vue` 的 `useDeepPeriod({...})` 调用处）加一行：
+台账（`LedgerView.vue` 的 `useDeepPeriod({...})` 调用处；`current.p` 在矩阵态本来就给 null，:165 原样）：
 
 ```ts
-  coName: () => company.value?.short || companyName.value || null,
+  ctx: () => ({ p: month.value == null ? null : periodOf(year.value, month.value), coName: company.value?.short || companyName.value || null }),
 ```
 
-三大报表（`useFinStatementScreen.ts` 的调用处）：
+三大报表（`useFinStatementScreen.ts` 的调用处；**这里的 p 与 `current.p` 故意不同**，见 opt 注释）：
 
 ```ts
-  coName: () => (companyId.value === 'all' ? '全部汇总' : companyName.value),
+  ctx: () => ({
+    p: month.value == null ? null : periodOf(year.value, month.value),
+    coName: companyId.value === 'all' ? '全部汇总' : companyName.value,
+  }),
 ```
 
-附10（`S10View.vue` 的调用处；期区就是 `co`）：
+附10（`views/sales-income/S10View.vue:252-253` 的调用处；期区用屏内现成的 `phase` computed，**仓里没有 `phaseOf`**）：
 
 ```ts
-  coName: () => (activeBookId.value == null ? null : `${phaseOf(activeBookId.value)}期`),
+  ctx: () => ({ p: current().p, coName: phase.value == null ? null : `${phase.value}期` }),
 ```
 
-⚠ 附10 那句里的取期区写法以屏内实际变量为准（P0b 的 `activeBookId` 与册对象上的 `phase`）；取不到期区就返回 `null`，**不要为此新造派生逻辑**。
+⚠ 附10 那句里的 `current().p` 按屏内实际写法取（它的 `current` 是内联箭头，直接把同样的表达式抄一遍即可，别为此提取函数）。
 
 - [ ] **Step 5: 跑测试 + 全量**
 
@@ -726,7 +771,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2284 条（2281 + 3）全绿。**特别盯**：P0a–P0c 的深链用例（`ledgerDeepLink` / `s10DeepLink` / `schedDeepLink` / `reportDeepLink` / `reportWorkbenchFlow` / `cpMeterFlow`）一条都不许红 —— 它们的 route 桩多半没有 `meta`，`navValue` 取不到就跳过写 ctx，这正是上面那个 `typeof` 判的用处。
+期望：全量 2288 条（2284 + 4）全绿。**特别盯**：P0a–P0c 的深链用例（`ledgerDeepLink` / `s10DeepLink` / `schedDeepLink` / `reportDeepLink` / `reportWorkbenchFlow` / `cpMeterFlow`）一条都不许红 —— 它们的 route 桩多半没有 `meta`，`navValue` 取不到就跳过写 ctx，这正是上面那个 `typeof` 判的用处。
 
 - [ ] **Step 6: 逐条破坏验证**
 
@@ -735,7 +780,8 @@ npx vue-tsc --noEmit
 | 删掉 `watch(...)` 整段 | 「首跑就把本屏的期写进 ctx」 |
 | `{ immediate: true }` 去掉 | 「首跑就把本屏的期写进 ctx」（换期那条仍绿 —— 正是要区分的两件事） |
 | `tabs.setCtx(navValue, …)` 的 `navValue` 换成硬编码 `'ledger'` 之外的值 | 「键 = route.meta.value」 |
-| `coName: c.co ?? undefined` 改成恒 `undefined` | 「传了 coName 就一起写」 |
+| `coName: c.coName ?? undefined` 改成恒 `undefined` | 「传了 ctx() 就按它写」 |
+| `o.ctx ? o.ctx() : …` 改成恒走 `current()` 那支 | 「传了 ctx() 就按它写」（三大报表矩阵态那条同理） |
 
 - [ ] **Step 7: 提交**
 
@@ -783,6 +829,10 @@ vi.mock('vue-router', () => ({
 const SRC = join(__dirname, '..', '..', '..')
 const src = (rel: string) => readFileSync(join(SRC, rel), 'utf8')
 
+// TabStrip.vue:49 裸 new ResizeObserver(没有 typeof 守卫),jsdom 里没有这个全局 ——
+// 不桩掉 5 条会全部炸成 ReferenceError 而不是断言失败(照 anaEChart.spec 的既有写法)。
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never
+
 describe('TabStrip · 标题拼上下文(§6)', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
 
@@ -808,7 +858,8 @@ describe('TabStrip · 标题拼上下文(§6)', () => {
     const tabs = useTabsStore()
     tabs.open('ledger', { pin: true })
     tabs.setCtx('ledger', { p: '2025-06', coName: '一期公司' })
-    const el = mount(TabStrip).find('.fp-tab')
+    // ⚠ 用 data-tabv 选,别用 .fp-tab —— 基底页签 data-home 排在 ledger 前面,first() 命中的是它
+    const el = mount(TabStrip).find('[data-tabv="ledger"]')
     expect(el.attributes('title')).toContain('2025-06')
     expect(el.attributes('title')).toContain('一期公司')
   })
@@ -832,26 +883,28 @@ describe('TabStrip · 标题拼上下文(§6)', () => {
 `frontend/src/components/shell/__tests__/toolbar.spec.ts` 追加两条：
 
 ```ts
+  // ⚠ 本文件的 route 桩是 meta.value = 'tenants'(:8),挂载辅助叫 mountBar(:25) ——
+  //   写 'ledger' 的 ctx / pin 一个都读不到,实现全对也会红。
   it('上下文 chip 常驻:无期显「—」,有期显 期 · 公司(预留位不 v-if —— 一进一出会把面包屑推着走)', async () => {
-    const w = mountToolbar()
+    const w = mountBar()
     expect(w.find('.fp-ctx-chip').exists()).toBe(true)
     expect(w.find('.fp-ctx-chip').text()).toBe('—')
-    useTabsStore().setCtx('ledger', { p: '2025-06', coName: '一期公司' })
+    useTabsStore().setCtx('tenants', { p: '2025-06', coName: '一期公司' })
     await nextTick()
     expect(w.find('.fp-ctx-chip').text()).toBe('2025-06 · 一期公司')
   })
 
   it('收藏 ★ 带 aria-pressed(屏读要念出「已固定 / 未固定」,:active 只是视觉)', async () => {
-    const w = mountToolbar()
+    const w = mountBar()
     const star = w.find('[aria-label="固定为常驻页签"]')
     expect(star.attributes('aria-pressed')).toBe('false')
-    useTabsStore().pin('ledger')
+    useTabsStore().pin('tenants')
     await nextTick()
     expect(star.attributes('aria-pressed')).toBe('true')
   })
 ```
 
-（本文件既有的 route mock 的 `meta.value` 决定 `activeValue`；按它选 `setCtx` / `pin` 的 value。）
+（`nextTick` / `useTabsStore` 若本文件还没 import 要补。）
 
 - [ ] **Step 3: 跑两份,确认失败**
 
@@ -860,7 +913,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
 npx vitest run src/components/shell/__tests__/tabStripTitle.spec.ts src/components/shell/__tests__/toolbar.spec.ts
 ```
 
-期望：新增 7 条红（tabStripTitle 5 + toolbar 2），toolbar 现有条目绿。
+期望：新增 7 条红（tabStripTitle 5 + toolbar 2）—— **是断言失败,不是 ReferenceError**；toolbar 现有条目绿。若见到 `ResizeObserver is not defined`，说明上面那行全局桩没加对。
 
 - [ ] **Step 4: 实现 —— TabStrip**
 
@@ -877,7 +930,7 @@ const titleOf = (v: string): string => {
 }
 ```
 
-:120 的 `:title` → `:title="(ROUTES[value]?.layerLabel ?? '') + ' / ' + titleOf(value)"`；:127 的标签文字 → `{{ titleOf(value) }}`；溢出下拉行（:176-197）的文字同样换成 `titleOf(...)`，并给行补 `:title="titleOf(...)"`（现在没有 title，定宽后同样会截断）。
+:120 的 `:title` → `:title="(ROUTES[value]?.layerLabel ?? '') + ' / ' + titleOf(value)"`；:127 的标签文字 → `{{ titleOf(value) }}`；溢出下拉行（:177-197）的文字同样换成 `titleOf(...)`，并给行补 `:title="titleOf(...)"`（现在没有 title，定宽后同样会截断）。`data-tabv`（:114）已存在，不动。
 
 CSS：`.fp-tab`（:232-240）的 `flex: 1 1 0; min-width: 42px; max-width: 196px` 三个值换成一句
 
@@ -887,7 +940,7 @@ CSS：`.fp-tab`（:232-240）的 `flex: 1 1 0; min-width: 42px; max-width: 196px
   flex: 0 0 148px;
 ```
 
-`.fp-tab.on, .fp-tab.on:hover`（:255-258）里的 `min-width: 124px` 删掉，其余视觉不动。
+`.fp-tab.on, .fp-tab.on:hover`（:255-261）里的 `min-width: 124px`（:257）删掉，其余视觉不动。
 
 - [ ] **Step 5: 实现 —— Toolbar**
 
@@ -933,7 +986,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2291 条（2284 + 7）全绿。
+期望：全量 2295 条（2288 + 7）全绿。
 
 - [ ] **Step 7: 逐条破坏验证**
 
@@ -1006,7 +1059,7 @@ describe('AppShell · 预览页签被顶提示(§4.3)', () => {
 })
 ```
 
-⚠ `mountShell` 要给 `AppShell` 配 route/router 桩与必要的子组件 stub（`IconRail` / `SidebarPanel` / `TabStrip` / `Toolbar` / `CommandPalette` 全部 stub 掉，本用例只关心那块 toast）；`presence` 的轮询 timer 要在 `afterEach` 里 `presence.stop()` 或用 `vi.useFakeTimers()`，别让它在 jsdom 里发请求。锁 scope 用 `NAV_SCOPE_PREFIX['ledger']` 的实际前缀拼一个合法值。
+⚠ 三样缺一不可（复查实测）：① 照抄 `sidebarPanel.spec.ts:11-21` 的 `vi.mock('@/api', …)` —— `AppShell.vue:86-91` 的 immediate watch 会 `presence.enter()`、`presence.stop()` 会发 `api.delete`，不 mock 就在 jsdom 里真发请求；② `global.stubs` 里 **`Teleport: true`** —— 提示块在 `AppShell.vue:148` 的 `<Teleport to="body">` 里，不 stub 节点被搬去 `document.body`，`w.find('.fp-evict-toast')` 找不到；③ 子组件全 stub：`{ Teleport: true, IconRail: true, SidebarPanel: true, TabStrip: true, Toolbar: true, CommandPalette: true }`（`TabStrip` 不 stub 会撞 `ResizeObserver` 未定义）。`presence` 的 3 秒轮询用 `vi.useFakeTimers()` 或 `afterEach(() => presence.stop())` 收掉。锁 scope 用 `NAV_SCOPE_PREFIX['ledger']` 的实际前缀拼一个合法值（如 `ledger:1:2025-06`）。
 
 - [ ] **Step 2: 跑它,确认失败**
 
@@ -1089,7 +1142,7 @@ onUnmounted(() => { if (evictTimer) clearTimeout(evictTimer) })
 
 - [ ] **Step 5: 实现 —— 命令钮 aria**
 
-`IconRail.vue:66-69` 的按钮加 `aria-label="搜索 / 跳转"`（§6 最后一行）。
+`IconRail.vue:67-69` 的按钮加 `aria-label="搜索 / 跳转"`（§6 最后一行）。**T2 落地时已顺手加过**（`iconRail.spec` 第三条依赖它），本步只确认还在。
 
 - [ ] **Step 6: 跑测试 + 全量**
 
@@ -1100,7 +1153,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：全量 2294 条（2291 + 3）全绿。
+期望：全量 2298 条（2295 + 3）全绿。
 
 - [ ] **Step 7: 逐条破坏验证**
 
@@ -1128,7 +1181,7 @@ EOF
 ### Task 6: 分析层 16 处 pin → `openDeep` + 门禁翻转
 
 **Files:**
-- Modify（11 份 16 处）：`frontend/src/views/analysis/AnomalyView.vue:152, 158, 167` · `BudgetView.vue:132` · `ChargingAnalysisView.vue:91` · `ChurnView.vue:51` · `CockpitView.vue:204, 236, 250` · `ElecAnalysisView.vue:113` · `FinCashflowView.vue:183` · `PnlAnalysisView.vue:81` · `PvMeterAnaView.vue:243, 247` · `TenantEnergyView.vue:261, 266`
+- Modify（10 份 16 处，行号复查逐条核对全对）：`frontend/src/views/analysis/AnomalyView.vue:152, 158, 167` · `BudgetView.vue:132` · `ChargingAnalysisView.vue:91` · `ChurnView.vue:51` · `CockpitView.vue:204, 236, 250` · `ElecAnalysisView.vue:113` · `FinCashflowView.vue:183` · `PnlAnalysisView.vue:81` · `PvMeterAnaView.vue:243, 247` · `TenantEnergyView.vue:261, 266`
 - Modify: `frontend/src/views/__tests__/anaDeepLink.spec.ts:35-39, 65-70`
 
 **Interfaces:** Consumes `tabs.openDeep`（T1）。
@@ -1141,17 +1194,19 @@ EOF
 
 ```ts
   it('分析层深链不再硬编码 pin:一律 tabs.openDeep(来源在预览槽才钉住目标,规则收在 store,§4.3)', () => {
-    for (const rel of SENDERS.filter(r => !r.includes('Expiry'))) {
+    // ⚠ 只筛分析层。SENDERS(:13-24)里还有 views/reports/recon/ReconWorkbench.vue ——
+    //   那两处 pin 是 spec §4.1 明写「不变」的,断言进来会把任务卡死在一个不许改的文件上。
+    //   (原写法 filter(!includes('Expiry')) 是空转:ExpiryView 根本不在 SENDERS 里,它在 :60-62 单独断言。)
+    for (const rel of SENDERS.filter(r => r.startsWith('views/analysis/'))) {
       const s = src(rel)
+      if (!src(rel).includes('tabs.')) continue          // 只发 query 不开页签的屏跳过
       expect(s.includes('tabs.openDeep('), `${rel} 没改走 openDeep`).toBe(true)
       expect(s.includes('{ pin: true }'), `${rel} 还硬编码着 pin`).toBe(false)
     }
   })
 ```
 
-⚠ `SENDERS` 里哪些文件真的有页签调用要按实际过滤（`BudgetView` / `PnlAnalysisView` 原本就在 filter 之外的那条里 —— 实施者按现有 `SENDERS` 常量核对，确保过滤后每个文件都真含 `tabs.` 调用；`ExpiryView` 只发 query 不开页签）。
-
-:65-70 那条里的 `tabs.openFresh(v, { pin: true })` 改成 `tabs.openDeep(v)`（`co: a.co,` 那半条**不动**）。
+:64-69 那条里的 `tabs.openFresh(v, { pin: true })` 改成 `tabs.openDeep(v)`（`co: a.co,` 那半条**不动**）。
 
 - [ ] **Step 2: 跑它,确认失败**
 
@@ -1177,10 +1232,11 @@ if (v === 'ledger' || v === 'sales-income') tabs.openDeep(v)
 
 ```bash
 cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
-grep -rn "pin: true" src/views/analysis/ | wc -l    # 期望 0
-grep -rn "openDeep(" src/views/ | wc -l             # 期望 16
-grep -rn "pin: true" src/views/ | wc -l             # 期望 6(四处运营账/账单 + 收入核对两处)
-grep -rn "pin: true" src/views/ledger/LedgerView.vue | wc -l   # 期望 1(gotoTenants,不动)
+grep -rn "pin: true" src/views/analysis/ --include=*.vue | wc -l   # 期望 0
+grep -rn "openDeep(" src/views/ --include=*.vue | wc -l           # 期望 16
+grep -rn "pin: true" src/views/ --include=*.vue | wc -l           # 期望 7
+#   = LossLedger:153 · PoolLedger:392 · BillNotices:152 · ParamCenter:413 · ReconWorkbench:121,128 · LedgerView:685
+#   (spec 文件里的字符串字面量不计,所以要带 --include=*.vue)
 ```
 
 - [ ] **Step 4: 跑测试 + 全量**
@@ -1191,7 +1247,7 @@ npx vitest run 2>&1 | tail -8
 npx vue-tsc --noEmit
 ```
 
-期望：2294 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
+期望：2298 条全绿（本任务不加不减用例）。`anaAnomaly.spec` / `ledgerLeaveAndReturn.spec` 必须仍绿。
 
 - [ ] **Step 5: 破坏验证**
 
@@ -1261,7 +1317,7 @@ const CommandPalette = defineAsyncComponent(() => import('@/components/shell/Com
 > `:max` 同步 10 → 16 覆盖专员月内要开的屏数。点当前项 / 当前层一律 no-op（不 push、不动 epoch）。
 ```
 
-`RESPONSIVE-LAYOUT-SPEC.md` §4.1 表格「底栏」那格的 `点按 = openFresh(layer.home)` 后面补「；**点当前层 no-op**（2026-09-06 P3）」；§4.2 末尾那段「导航语义分开走」的第一条改成：
+`RESPONSIVE-LAYOUT-SPEC.md` §4.1（:118）表格「底栏」那格的 `点按 = openFresh(layer.home)` 后面补「；**点当前层 no-op**（2026-09-06 P3）」；§4.2（:132-137）「导航语义分开走」下面那**一条合并写的 bullet**（原文是「层切换段 / sections 条目 = `openFresh` + push（与 IconRail/SidebarPanel 同义，全新状态）」，不是两条）拆成两条：
 
 ```markdown
 - 层切换段 = `openFresh` + push（与 IconRail 同义，全新状态），**点当前层 no-op**；
@@ -1269,7 +1325,7 @@ const CommandPalette = defineAsyncComponent(() => import('@/components/shell/Com
   改前是 openFresh），**点当前屏只关抽屉不 push**；触屏没有修饰键，不做 Shift；
 ```
 
-`LAYOUT-STABILITY-SPEC.md` §4 之下补两行「零位移做法」登记：
+`LAYOUT-STABILITY-SPEC.md` 插在 §4.2（表单的错误/提示位必须常驻）之后、§5 之前，补两行「零位移做法」登记：
 
 ```markdown
 - **页签定宽 148px**（`TabStrip .fp-tab { flex: 0 0 148px }`）：标题会随期变化，弹性宽度等于
@@ -1280,12 +1336,14 @@ const CommandPalette = defineAsyncComponent(() => import('@/components/shell/Com
 
 `2026-09-03-sidebar-ux-redesign-design.md`：
 - 头行「P1、P4、P0a、P0b、P0c 已在分支…」→ 加 `、P3`。
-- §4.3 三条 bullet 后各补一句落地形状（pin 规则实现成 `tabs.openDeep`、来源取 `recent[0]`；ctx 写入收在 `useDeepPeriod` 一处、`review` 归 R2；被顶提示的编辑态判定走 `presence.holdsEditUnder`、载体是 `.fp-net-toast` 兄弟块）。
-- §12 补四条遗留：
+- §4.3 三条 bullet 后各补一句落地形状（pin 规则实现成 `tabs.openDeep`、来源取 `recent[0]`；ctx 写入收在 `useDeepPeriod` 一处、`review` 归 R2；被顶提示的编辑态判定走 `presence.holdsEditUnder`、载体是 `.fp-net-toast` 兄弟块），并把「分析层 **9 处**硬编码 `pin:true` 删除」订正为 **16 处、10 个文件**（9 是 P0c 之前的旧数）。
+- §12 补六条遗留：
   1. `openDeep` 的来源判据是 `recent[0]`，刷新后第一次跳转可能判错（代价 = 多钉 / 少钉一个页签）。
   2. `auth.logout()` 至今不重置已实例化的 tabs store（`tabs` / `preview` / `recent` / `epoch` 都留着），P3 只让 `ctx` / `evicted` 跟着 `auth.me` 清；整体重置留给 P5。
   3. `ctx` 只写给调了 `useDeepPeriod` 的屏；导入中心等无期屏的页签标题就是屏名，符合「有几段写几段」。
   4. 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— 三条以上没有排队机制。
+  5. **分析层 11 屏与导入中心没有 ctx**（它们不接 `useDeepPeriod`，期也不吃 URL）：页签只显屏名、顶栏 chip 恒显「—」。与「给 `usePeriod` 开深链入口」是同一件事，一并留后期。
+  6. **T2 Step 6b 判定「不补切回重读」的那几屏**（重读会清掉用户选择的）逐个列名与理由 —— 侧栏改恢复现场之后它们没有刷新入口，用户要靠 Shift 点击或关签重开。
 
 - [ ] **Step 4: 全量收尾**
 
@@ -1298,7 +1356,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
 git status --short
 ```
 
-期望：2294 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
+期望：2298 条全绿；tsc 零错；size-check 通过；`git status` 只剩本步待提交的文档。
 
 - [ ] **Step 5: 提交**
 
@@ -1320,4 +1378,5 @@ EOF
 - **占位符**：无 TBD / 「参照上一任务」；每个代码步都有可抄的代码块；三处标了 ⚠ 的地方是**实施者必须先看实际值再落笔**（层短名与 home、附10 的期区取法、`--bg-subtle` token 名），不是留白。
 - **类型一致**：`TabCtx` 在 T1 定义、T3 写、T4 读，字段名 `p` / `coName` 三处一致；`openDeep(value: string)` 在 T1 定义、T6 调用，签名一致；`holdsEditUnder(prefix: string | string[] | undefined)` 与 `NAV_SCOPE_PREFIX` 的值类型对齐。
 - **任务间冲突**：T2 与 T4 都碰 `App.vue`（T2 改 `:max`，T4 只**读**它做源码断言）—— T4 的断言在 T2 之后必然绿，顺序不可颠倒。T2 建的 `iconRail.spec` 第三条依赖 T5 才加的 `aria-label`：**T2 落地时就把那一行 aria 顺手加上**（计划已在 T5 Step 5 写明「若 T2 已加则只确认」），否则 T2 收尾时全量会红一条。
-- **用例计数**：2266（基线）+ 8（T1）+ 7（T2）+ 3（T3）+ 7（T4）+ 3（T5）= **2294**，T6/T7 不增不减。
+- **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2298**，T6/T7 不增不减。
+- **2026-09-06 单人复查已修**：3 阻断（T6 门禁把 ReconWorkbench 断言进去 / `mount(TabStrip)` 撞 jsdom 无 `ResizeObserver` / 侧栏改恢复现场后纯读屏没有刷新入口）· 5 严重（ctx 覆盖不到分析层 / `auth.me` 初始就是 null 用例恒红 / toolbar.spec 的 value 与辅助名对不上 / `.fp-tab` 命中基底页签 / T3 第三条与自己的标题不符导致 coName 通路零覆盖）· 6 一般（用例计数 / 三大报表矩阵态 ctx 写出年份 / evictToast 缺 api mock 与 Teleport stub / grep 期望 / 份数 10 不是 11 / S10View 路径与 `phaseOf` 不存在）· 2 建议（Task 0 的 HEAD / `MobileNavDrawer:95`）。两条正面结论记档：`recent[0]` 当来源成立（`router/index.ts:135-142` 有全局 `afterEach` 无条件 `open(v)`，每条导航路径都会把当前屏推到队首）；被顶的屏锁还在（`useEditLock.ts:176` 只在 `onUnmounted` 释放，没有 `onDeactivated`），提示出得来。
