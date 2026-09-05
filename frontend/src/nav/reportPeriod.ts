@@ -9,7 +9,7 @@
 // ⚠ 与出账链有一处**真实差别**，不要照抄：出账链五屏的期轴完全相同（都是那把月锁的年月），
 //   所以期能进一个 store。报表层不同 —— 三大报表是 (公司, 年, 月)、损益附表是 (年)、
 //   收入核对是 (年, 月)。**不存在一个所有屏都认的期对象**。
-//   所以这里走查询参数而不是 store：条把整包 y/m/co 带过去，
+//   所以这里走查询参数而不是 store：条把整包 p/co 带过去（periodLink 形状，各屏自己组，2026-09-04 起），
 //   **目标屏认得几个用几个，不认的原样传回来**。靠这条，
 //   利润表 → 附表1 → 利润表 之后月份和公司都还在。
 import { fpBuildRoutes } from '@/nav/fpNav'
@@ -39,16 +39,6 @@ export interface ReportPeriod {
   year: number
   month: number | null
   companyId: number | 'all' | null
-}
-
-/** 组期包。缺的项不写进 query —— 空串会让目标屏把「没给」误读成「给了个空」。 */
-export function periodQuery(
-  year: number, month: number | null, companyId: number | 'all' | null,
-): Record<string, string> {
-  const q: Record<string, string> = { y: String(year) }
-  if (month != null) q.m = String(month)
-  if (companyId != null) q.co = String(companyId)
-  return q
 }
 
 /**

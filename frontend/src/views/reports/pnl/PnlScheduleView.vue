@@ -24,7 +24,10 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import SchedYearGate, { type YearCard } from '@/components/sched/SchedYearGate.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
-import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
+import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
+import { periodOf, parsePeriod, type DeepPeriod } from '@/nav/deepLink'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import FPToast from '@/components/fp/FPToast.vue'
 import SchedHeader from '@/components/sched/SchedHeader.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import FpImportModal from '@/components/import/FpImportModal.vue'
@@ -63,16 +66,22 @@ const currentYear = computed(() => {
 
 // 期间条(设计稿 §3.2c)。本屏是**园区全局整年一张表**,没有月与公司维度 ——
 // 但从三大报表跳过来时那两样在 query 里,得原样带回去,否则跳回利润表就丢了月份。
-const carry = parsePeriodQuery(route.query as Record<string, unknown>)
+// carry 只在深链 apply 时写(见文末 useDeepPeriod):不能写成 computed(route.query) —— useRoute 是全局当前路由,
+// 屏停用时跟着别的屏变,切回若地址没 query 会把 carry 清空(违反「无 query 激活不重置」)。
+const carry = ref<DeepPeriod | null>(null)
 const stripLabel = computed(() => periodLabel(year.value ?? 0, null, null))
-const stripQuery = computed(() =>
-  periodQuery(year.value ?? 0, carry?.month ?? null, carry?.companyId ?? null))
+/** 带着走的那一包(periodLink 形状 §4.2):p 用本屏的年 + 带来的月;co 只在是公司 id / all 时原样带回。 */
+const stripQuery = computed<Record<string, string>>(() => {
+  const co = carry.value?.co
+  return {
+    p: periodOf(year.value ?? 0, carry.value?.month ?? null),
+    ...(co === 'all' || typeof co === 'number' ? { co: String(co) } : {}),
+  }
+})
 
-// ── 进入屏:overview(§6 取数前不渲染);深链 ?y= 直落该年(分析层 budget/pnl-analysis 与报表中心都带年) ──
+// ── 进入屏:overview(§6 取数前不渲染)。深链落年在文末 useDeepPeriod(setup 同步首跑,不依赖 overview) ──
 onMounted(async () => {
   overview.value = await pnlApi.overview(config.schedule)
-  const y = carry?.year ?? Number(route.query.y)
-  if (Number.isInteger(y) && y >= 2000 && y <= 2100) await pickYear(y)
 })
 async function reloadOverview() {
   overview.value = await pnlApi.overview(config.schedule)
@@ -359,6 +368,21 @@ async function onExport() {
     alert((e as { message?: string })?.message ?? '导出失败')
   }
 }
+
+// ── 期间深链(SIDEBAR-UX-REDESIGN §4.2)。放文末:apply 同步走到 pickYear → loadDerive 读 deriveCache、loadYear 读 yearSeq,放前面撞 TDZ ──
+// 年表屏 p 只取年,current 也只报年;?y= 旧链(预算 / 损益分析改前发的书签)parsePeriod 照认。
+// 本屏没有 co 维度而报表中心恒发 co=all,composable 那道「与当前相同」永远判不相等 —— apply 自己按年幂等;carry 每次都更新(带回 m/co)。
+// dirty = 四类草稿之和(切走不清):切回时有 → 不切年,只在 deepNote 里说。
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: year.value == null ? null : periodOf(year.value, null) }),
+  apply: (t) => {
+    carry.value = t
+    if (t.year !== year.value) void pickYear(t.year).catch(() => {})
+  },
+  // 闸也要按年幂等:composable 的 dirty 闸排在 apply 之前,只报年的 current 与恒带月/co 的链永远判不相等 ——
+  // 不这么写,有草稿时哪怕年没变(利润表换了个月再跳回来)也会误弹「地址栏要求 X 期」,carry 还被冻在旧月。
+  dirty: () => (parsePeriod(route.query as Record<string, unknown>)?.year !== year.value ? dirty.value : 0),
+})
 </script>
 
 <template>
@@ -526,6 +550,9 @@ async function onExport() {
   />
 
   <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+
+  <!-- 期间深链被草稿挡下时的页内提示(§4.2) -->
+  <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 </template>
 
 <style scoped>
