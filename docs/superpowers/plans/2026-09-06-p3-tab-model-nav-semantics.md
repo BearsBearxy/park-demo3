@@ -1377,3 +1377,49 @@ EOF
 - **任务间冲突**：T2 与 T4 都碰 `App.vue`（T2 改 `:max`，T4 只**读**它做源码断言）—— T4 的断言在 T2 之后必然绿，顺序不可颠倒。T2 建的 `iconRail.spec` 第三条依赖 T5 才加的 `aria-label`：**T2 落地时就把那一行 aria 顺手加上**（计划已在 T5 Step 5 写明「若 T2 已加则只确认」），否则 T2 收尾时全量会红一条。
 - **用例计数**：2266（基线）+ 8（T1）+ 10（T2：入口 8 + 纯读屏 2）+ 4（T3）+ 7（T4）+ 3（T5）= **2324**（T1 +1、T2 门禁按屏展开 +22、T2 修补 +5、T3 修补 +3、T4 修补 +2、T5 修补 +4 均已计入），T6/T7 不增不减。
 - **2026-09-06 单人复查已修**：3 阻断（T6 门禁把 ReconWorkbench 断言进去 / `mount(TabStrip)` 撞 jsdom 无 `ResizeObserver` / 侧栏改恢复现场后纯读屏没有刷新入口）· 5 严重（ctx 覆盖不到分析层 / `auth.me` 初始就是 null 用例恒红 / toolbar.spec 的 value 与辅助名对不上 / `.fp-tab` 命中基底页签 / T3 第三条与自己的标题不符导致 coName 通路零覆盖）· 6 一般（用例计数 / 三大报表矩阵态 ctx 写出年份 / evictToast 缺 api mock 与 Teleport stub / grep 期望 / 份数 10 不是 11 / S10View 路径与 `phaseOf` 不存在）· 2 建议（Task 0 的 HEAD / `MobileNavDrawer:95`）。两条正面结论记档：`recent[0]` 当来源成立（`router/index.ts:135-142` 有全局 `afterEach` 无条件 `open(v)`，每条导航路径都会把当前屏推到队首）；被顶的屏锁还在（`useEditLock.ts:176` 只在 `onUnmounted` 释放，没有 `onDeactivated`），提示出得来。
+
+---
+
+## 复查记录（2026-09-06 收官）
+
+**节奏**：按 memory 的 2026-09-05 降档执行 —— 计划级只做**单人 opus 复查**（不跑对抗工作流），任务级**每期一名 opus 评审**，机械性任务（T6 的 16 处同形替换、T7 的文档）控制者本人执行不派发。测试的破坏验证由控制者**独立重做**，不采信子代理自述。
+
+### 计划级复查（1 名 opus，15 条，全部修进计划 8cf9a54）
+- **3 阻断**：① 新门禁把 `ReconWorkbench` 一起断言进去，而它是 spec §4.1 明写「不动」的 → filter 收成 `startsWith('views/analysis/')`；② `mount(TabStrip)` 撞 jsdom 没有的 `ResizeObserver`（`TabStrip.vue:49` 裸 `new`，无守卫）→ 全局桩；③ 侧栏改「恢复现场」后**纯读屏失去唯一刷新入口** → 裁定补 `onReactivated`（新增 T2 Step 6b），判据两条（重读不清用户选择 + 无草稿），不合判据的记 §12。
+- **5 严重**：ctx 覆盖不到分析层 11 屏（据实收窄 Goal，记 §12）；`auth.me` 初始就是 null 导致「换人」用例恒红；`toolbar.spec` 的 route 桩是 `tenants`、辅助叫 `mountBar`；`.fp-tab` 命中基底页签 `data-home`；T3 第三条与自己的标题不符 → coName 通路零覆盖。
+- **6 一般 / 2 建议**：用例计数、三大报表矩阵态会写出一个用户没选过的期（opt 改成一个 `ctx()`，不复用 `current()`）、`evictToast` 缺 `@/api` mock 与 `Teleport` stub、grep 期望、份数 10 不是 11、`S10View` 路径与不存在的 `phaseOf`、Task 0 的 HEAD、`MobileNavDrawer:95`。
+- **2 条正面确认记档**：`recent[0]` 当来源成立（`router/index.ts` 全局 `afterEach` 无条件 `open(v)`）；被顶的屏锁还在（`useEditLock.ts:176` 只在 `onUnmounted` 释放，无 `onDeactivated`）。
+
+### 任务级（每期一名 opus 评审，5 期全部「规格符合性 通过 / 代码质量 通过」）
+七次评审共抓到 **13 处「改坏 production 却没有一条红」的假绿**，全部补齐并由控制者独立重做破坏验证：
+| 期 | 假绿 / 真 bug |
+|---|---|
+| T1 | 换人清 `evicted` 半句删掉 26 条全绿；`openDeep` 的 `!!from` 空守卫删掉 26 条全绿 |
+| T2 | **真 bug**：三屏的重读不清失败标志 —— 一次性函数改成可重入带进来的陈旧态（首访失败 → 切走切回正是重试手势 → 取数成功但失败卡还挂着）；`App.vue :max="16"` 改回 10 全量照样全绿；Shift 点当前项被 guard 吞掉（改前它走的就是 `openFresh`，等于当前屏再无强制刷新手势）→ 裁定放开 |
+| T3 | 三大报表矩阵态给 null 零覆盖（去掉三元全量全绿）；ctx 支的响应式跟随零覆盖（改成挂载期快照 12 条全绿，绿的那条测的是没人用的回退支）；**同类真 bug**：`ReconView` 停在①月份层会把光秃秃一个年份写进 ctx |
+| T4 | 溢出下拉行零覆盖（jsdom 里 `scrollWidth=0`，那段从不渲染）；定宽断言只盯主规则块，把 `min-width` 塞回 `.fp-tab.on:hover` 照样全绿 |
+| T5 | `clearEvicted()` / 4 秒计时 / `holdsEditUnder` 前缀边界三处零覆盖；**真 CSS bug**：S 档下 `.stacked` 不但没错开反而制造重叠（`@media` 不加特异度，桌面那条 84px 在手机上照样赢） |
+
+另：T4 时构建实测 index 190.8 / 191，只剩 0.2KB 而 T5 还要加代码 —— **提前执行 T7 的瘦身杠杆**，`CommandPalette` 改 `defineAsyncComponent` + `v-if`，190.8 → 184.1KB；连带给它的 reset+autofocus watch 加 `immediate`（懒加载后它是带着 `open=true` 挂载的，没有 false→true 这个变化）。
+
+### 整期复查（1 名 opus，读全文 + 4 个临时 probe spec）
+结论「**可以合并，无阻断**」，2 严重 + 6 一般 + 2 建议，全部处置见下：
+- **`openDeep` 只护得住第一跳**（严重）：驾驶舱(预览槽) → 附10(钉住) → 台账，第二跳的来源已是固定签，目标落进预览槽把驾驶舱顶掉，而改前 16 处恒 `pin:true` 不会，且全程无声。**裁定：判据改成「会不会顶掉别人」** —— 它是 §4.3 字面规则的超集，且不再依赖 `recent[0]`（那条遗留随之作废）。既有 4 条用例照样绿。
+- **父子共用一个页签 value 的三对屏对写 ctx**（严重）：子屏卸载不回滚，切回父屏年表时页签仍写着子屏的月。**裁定：`ctx` 允许回 `null` = 本屏不写**，三个子屏交出。
+- 其余已修：`deepNote` 在无 query 的「恢复现场」不清（存完盘绕回来还挂着一句假话）；手机抽屉的当前层 guard 用了带兜底的 `activeLayer`（股东从书签进 `/ledger`，唯一那颗胶囊既高亮又点不动）；首页清单行的确认只读服务端回声且只盖出账链五屏（spec §4.1 原文把「收窄」派给 P3，本期做掉）；`anaDeepLink` 的 pin 循环漏了 `PvMeterAnaView`。
+- 记 §12 不改：出账链三屏共用一把月锁 → 被顶提示会为没编辑过的邻屏弹出；滚动位置不属于「恢复现场」；★ 的 `aria-pressed` 不可反按。
+
+### 门禁（收官实测）
+| 项 | 结果 |
+|---|---|
+| vitest | **198 文件 / 2331 用例**全绿（起点 193 / 2266） |
+| vue-tsc --noEmit | 0 错 |
+| build size-check | index **185.0** / 191KB（起点 189.5，瘦身后净降 4.5KB）；合计 3885.8 / 3900KB |
+
+### 既有断言的改动（超出这份清单即超范围）
+1. `mobileNavDrawer.spec` 「目录条目 = openFresh」→ 翻转成 `open`（spec §10 已预告）；
+2. `anaDeepLink.spec` 「openFresh({pin:true}) 一行不动」→ 翻转成「分析层一律 `openDeep`」，并**新增**一条正向钉「收入核对仍是硬编码 pin」；
+3. 同文件 goAnom 那条的 `openFresh` 断言随之改名；
+4. `sidebarPanel.spec` 删掉文件头那句 P3 待办注释（brief 明令）；
+5. `reportWorkbenchFlow.spec` 的 vue-router 桩补 `meta`（此前没有，ctx 根本写不进去）；`mobileNavDrawer.spec` 的 route 桩改可变。
+其余既有断言零改动 —— `ledgerLeaveAndReturn` / `reportsHomeGo` / `palette` / `navHeight` / `fpNav` / `noInteractionLayoutShift` 全程未动。
