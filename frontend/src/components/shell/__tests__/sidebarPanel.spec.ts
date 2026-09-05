@@ -107,6 +107,15 @@ describe('SidebarPanel · 点击语义(§4.1)', () => {
     expect(push).toHaveBeenCalledWith('/meters')
   })
 
+  it('Shift + 点当前项:仍然重建(epoch++),但不 push(路由没变)', async () => {
+    const w = mountPanel()
+    const tabs = useTabsStore()
+    push.mockClear()
+    await rowByText(w, '本月出账')!.trigger('click', { shiftKey: true })
+    expect(tabs.epochOf('data-home')).toBe(1)
+    expect(push).not.toHaveBeenCalled()
+  })
+
   it('Shift + 点击 = openFresh(epoch++ 全新实例)', async () => {
     const w = mountPanel()
     const tabs = useTabsStore()

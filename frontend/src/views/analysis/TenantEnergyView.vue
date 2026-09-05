@@ -40,6 +40,8 @@ const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const tenantList = ref<TenantDTO[]>([])
 
 async function reload() {
+  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
+  err.value = ''
   try {
     const [tm, lr, ts] = await Promise.all([fetchS10TenantMap(), fetchLedgerRows(), fetchTenants()])
     tenantMap.value = tm

@@ -83,4 +83,21 @@ describe('纯读屏切回重读(P3 §4.1 Step6b) · 源码门禁', () => {
   it.each(REACTIVATED_SCREENS)('%s 含 onReactivated(', (rel) => {
     expect(src(rel)).toContain('onReactivated(')
   })
+
+  // 取数函数从「一次性」变成「可重入」之后新出的一类陈旧态:失败标志不清,
+  // 重试成功了屏上还挂着上一次的失败卡(2026-09-06 T2 评审坐实)。
+  it.each([
+    ['/analysis/ParkView.vue', 'failed.value = false'],
+    ['/analysis/TenantEnergyView.vue', "err.value = ''"],
+    ['/analysis/TenantPortfolioView.vue', "err.value = ''"],
+  ])('%s 的重读先清掉上一次的失败标志', (rel, reset) => {
+    const body = src(rel).split('async function reload()')[1] ?? ''
+    expect(body.slice(0, 400)).toContain(reset)
+  })
+
+  // KeepAlive 深度是「恢复现场」的实际收益所在:排在第 17 的屏切回就是空白重来。
+  // 本期唯一没有门禁的改动点(评审把它改回 10,全量照样全绿)。
+  it('App.vue 的 KeepAlive 深度是 16(D9;侧栏不再重建实例之后,这个数字决定切回去还在不在)', () => {
+    expect(readFileSync(join(__dirname, '..', '..', 'App.vue'), 'utf8')).toContain(':max="16"')
+  })
 })

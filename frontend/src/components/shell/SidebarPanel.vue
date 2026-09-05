@@ -63,8 +63,13 @@ watch(activeValue, () => {
 // 侧栏点击 = **恢复现场**(P3 §4.1):KeepAlive 里那份实例连同 P0a–P0c 落进去的期、公司、
 // 抽屉一起留着 —— 「导航一次重过一次门」正是这一期要消灭的东西。
 // 「全新」收窄成三个显式动作:Shift + 点击 / 关签后重开(dropState) / 换层。
+// Shift + 点当前项照样重建(不 push,路由没变;App.vue 的 key 含 epoch,原地重挂载)——
+// 改前「点当前项」走的就是 openFresh,不给这条出路的话,当前屏在本期之后再没有任何强制刷新手势。
 function onSelect(value: string, ev?: MouseEvent) {
-  if (value === activeValue.value) return
+  if (value === activeValue.value) {
+    if (ev?.shiftKey) tabs.openFresh(value)
+    return
+  }
   if (ev?.shiftKey) tabs.openFresh(value)
   else tabs.open(value)
   router.push('/' + value)

@@ -27,6 +27,8 @@ const contracts = ref<ContractDTO[]>([])
 const tenants = ref<TenantDTO[]>([])
 
 async function reload() {
+  // 切回重读会重跑本函数:失败标志不清,重试成功后屏上仍挂着「加载失败」卡(P3 T2 评审坐实)
+  failed.value = false
   try {
     ;[buildings.value, contracts.value, tenants.value] = await Promise.all([
       fetchBuildings(), fetchContracts(), fetchTenants(),

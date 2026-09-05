@@ -25,6 +25,8 @@ const tenantList = ref<TenantDTO[]>([])
 const contracts = ref<ContractDTO[]>([])
 
 async function reload() {
+  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
+  err.value = ''
   try {
     const [ts, cs] = await Promise.all([fetchTenants(), fetchContracts()])
     tenantList.value = ts
