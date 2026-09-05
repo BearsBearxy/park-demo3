@@ -8,6 +8,7 @@
 // 实现骨架与 PvMeterView 同构对齐(乐观更新/竞态守卫/抽屉行式编辑同款)。
 // ponytail: 桩数个位数,不上分页机;短窗时卡片内滚动兜底,桩数破 30 再上
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
 import type { ImportResultDTO } from '@/types/import'
@@ -100,6 +101,18 @@ useDeepPeriod({
   apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
 })
 
+// 「读站」(SIDEBAR-UX-REDESIGN §4.2 分析层假下钻 → 真下钻):?station=<桩 id> 桩库到手且已选月后直开该桩抽屉。
+// 只开一次(开过 / 找不到即清 pending):分析屏走 openFresh 实例总是新的;onDeactivated 清 openSt 是既有约定,开过的不在切回时重开。
+// 只有年的链没选月 → pending 留着,选月后的下一次 loadStations(切回)再开。跨型(汽车屏收到电动车桩 id)找不到 → 不开、也清 pending。
+const route = useRoute()
+let pendingStation: number | null = Number(route.query.station) || null
+function openDeepStation() {
+  if (pendingStation == null || !picked.value) return
+  const st = myStations.value.find(s => s.id === pendingStation) ?? null
+  pendingStation = null
+  if (st) openSt.value = st
+}
+
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 
@@ -119,7 +132,7 @@ async function loadStations() {
   const my = ++stSeq
   try {
     const data = await cpMeterApi.stations()
-    if (my === stSeq) { stations.value = data; stationsErr.value = '' }
+    if (my === stSeq) { stations.value = data; stationsErr.value = ''; openDeepStation() }
   } catch {
     if (my === stSeq) stationsErr.value = '充电桩档案加载失败,请重试'
   }

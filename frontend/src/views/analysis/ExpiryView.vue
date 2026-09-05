@@ -116,14 +116,14 @@ function onParetoClick(p: unknown) {
             to="/contracts" toText="去合同屏补录日期" />
         </div>
 
-        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏) -->
+        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏(带合同号,合同屏预填搜索)) -->
         <div v-if="soon.length > 0" class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序<span class="hint-desk"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>租户</th><th>合同号</th><th>月租金(万)</th><th>到期日</th><th>剩余天数</th></tr></thead>
               <tbody>
-                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push('/contracts')">
+                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push({ path: '/contracts', query: { contractNo: r.contractNo } })">
                   <td style="text-align: left">{{ r.tenantName }}</td>
                   <td class="mono mut">{{ r.contractNo }}</td>
                   <td class="mono">{{ wan(r.monthlyRent) }}</td>

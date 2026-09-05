@@ -907,4 +907,15 @@ describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     await w.setProps({ on: true }); await flushPromises()
     expect(cpMeterApi.readings, '没有草稿可护 → 期照换').toHaveBeenCalledWith(2025, 4)
   })
+
+  it('?p=2025-03&station=1 → 落月后直开「快充1」抽屉(充电桩分析点桩柱的真下钻)', async () => {
+    query.p = '2025-03'; query.station = '1'
+    const w = await open()
+    expect((w.vm as unknown as { openSt: CpStationDTO | null }).openSt?.id).toBe(1)
+  })
+  it('station 是别的车型的桩(单车棚 9)→ 汽车屏不开抽屉', async () => {
+    query.p = '2025-03'; query.station = '9'
+    const w = await open()
+    expect((w.vm as unknown as { openSt: CpStationDTO | null }).openSt).toBeNull()
+  })
 })

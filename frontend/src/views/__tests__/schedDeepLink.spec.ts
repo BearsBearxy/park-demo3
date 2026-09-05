@@ -15,13 +15,35 @@ vi.mock('vue-router', () => ({
 vi.mock('@/api/utilities', () => ({ utilitiesApi: { overview: vi.fn(), records: vi.fn(), batchDelete: vi.fn(), clearImported: vi.fn() } }))
 vi.mock('@/api/charging', () => ({ chargingApi: { cats: vi.fn(), overview: vi.fn(), records: vi.fn(), batchDelete: vi.fn(), clearImported: vi.fn() } }))
 vi.mock('@/api/elec', () => ({ elecApi: { phases: vi.fn(), overview: vi.fn(), records: vi.fn(), batchDelete: vi.fn(), clearImported: vi.fn() } }))
+// 第二本账 ElecCostView 只在 mode=cost 下挂;它的 api 与锁照 elecCostFlow.spec:25-48
+vi.mock('@/api/elecCost', () => ({
+  elecCostApi: {
+    meters: vi.fn(), createMeter: vi.fn(), updateMeter: vi.fn(), deleteMeter: vi.fn(),
+    years: vi.fn(), months: vi.fn(),
+    entries: vi.fn(), upsertEntry: vi.fn(), deleteEntry: vi.fn(),
+    priceCfg: vi.fn(), savePriceCfg: vi.fn(),
+    importRows: vi.fn(), simulate: vi.fn(),
+    metrics: vi.fn(), metricsYear: vi.fn(),
+  },
+}))
+vi.mock('@/api/locks', () => ({
+  locksApi: {
+    acquire: () => Promise.resolve({ granted: true, holder: null }),
+    release: () => Promise.resolve(),
+    heartbeat: () => Promise.resolve({ evicted: null }),
+    takeover: () => Promise.resolve({ granted: true, holder: null }),
+    releaseOnUnload: () => {},
+  },
+}))
 
 import UtilitiesView from '@/views/utilities/UtilitiesView.vue'
 import ChargingView from '@/views/charging/ChargingView.vue'
 import ElecView from '@/views/elec/ElecView.vue'
+import ElecCostView from '@/views/elec/ElecCostView.vue'
 import { utilitiesApi } from '@/api/utilities'
 import { chargingApi } from '@/api/charging'
 import { elecApi } from '@/api/elec'
+import { elecCostApi } from '@/api/elecCost'
 
 const NEVER = () => new Promise(() => {}) as never
 
@@ -39,6 +61,12 @@ beforeEach(() => {
   vi.mocked(elecApi.phases).mockResolvedValue([] as never)
   vi.mocked(elecApi.overview).mockResolvedValue({ currentYear: 2025, years: [] } as never)
   vi.mocked(elecApi.records).mockReturnValue(NEVER())
+  vi.mocked(elecCostApi.meters).mockResolvedValue([] as never)
+  vi.mocked(elecCostApi.years).mockResolvedValue([2025] as never)
+  vi.mocked(elecCostApi.months).mockResolvedValue(['2025-03'] as never)
+  vi.mocked(elecCostApi.entries).mockResolvedValue([] as never)
+  vi.mocked(elecCostApi.priceCfg).mockResolvedValue([] as never)
+  vi.mocked(elecCostApi.metrics).mockResolvedValue([] as never)
 })
 
 async function open(C: typeof UtilitiesView | typeof ChargingView | typeof ElecView) {
@@ -134,5 +162,13 @@ describe('年表屏 · 期间深链', () => {
     alive.value = true; await flushPromises()
     expect(elecApi.records).toHaveBeenCalledWith(2025, 'energy')
     expect(elecApi.overview).toHaveBeenCalledTimes(1)
+  })
+
+  it('电费:?mode=cost&p=2025-03 → 第二本账 ElecCostView 挂起且直落 2025-03(电费收益「去看成本」的真下钻)', async () => {
+    query.mode = 'cost'; query.p = '2025-03'
+    const w = await open(ElecView)
+    expect(w.findComponent(ElecCostView).exists(), 'mode=cost 才挂第二本账').toBe(true)
+    expect(elecCostApi.entries).toHaveBeenCalledWith(2025, 3)
+    expect(elecApi.records, '报送台账那本不该被拉').not.toHaveBeenCalled()
   })
 })

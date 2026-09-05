@@ -19,6 +19,8 @@ const SENDERS = [
   'views/analysis/BudgetView.vue',
   'views/analysis/PnlAnalysisView.vue',
   'views/reports/recon/ReconWorkbench.vue',
+  'views/analysis/ElecAnalysisView.vue',
+  'views/analysis/ChargingAnalysisView.vue',
 ]
 
 describe('分析层发链门禁', () => {
@@ -45,5 +47,17 @@ describe('分析层发链门禁', () => {
   it('utils/deepLink.ts 已删(零消费方;vue-tsc 证明没人再引)', () => {
     expect(existsSync(join(SRC, 'utils/deepLink.ts'))).toBe(false)
     expect(existsSync(join(SRC, 'utils/deepLink.spec.ts'))).toBe(false)
+  })
+
+  it('电费收益「去看成本」发 mode=cost(改前发 view=cost,键名对不上 ElecView 的 ?mode=,永远落报送台账)', () => {
+    expect(src('views/analysis/ElecAnalysisView.vue').includes("mode: 'cost'")).toBe(true)
+  })
+  it('充电桩分析点桩柱发 mode=meter + station(改前裸 push 到门为止)', () => {
+    const s = src('views/analysis/ChargingAnalysisView.vue')
+    expect(s.includes("mode: 'meter'")).toBe(true)
+    expect(s.includes('station:')).toBe(true)
+  })
+  it('到期墙点行带合同号(合同没有期,不走 periodLink —— 目标是 ContractsView 的搜索框)', () => {
+    expect(src('views/analysis/ExpiryView.vue').includes('contractNo:')).toBe(true)
   })
 })
