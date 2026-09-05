@@ -6,6 +6,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
@@ -75,10 +76,10 @@ watch(cards, (cs) => {
 })
 const selCard = computed(() => cards.value.find((c) => c.s === sel.value))
 
-// 深链到附表录入屏(KeepAlive 需 openFresh,同 ChurnView.goLedger 协议)
+// 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
 function goSched(nav: string): void {
-  tabs.openFresh(nav, { pin: true })
-  router.push({ path: '/' + nav, query: { y: String(year.value) } })
+  tabs.openDeep(nav)
+  router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }
 
 // ── 主图:选中附表 12 月组合(收入柱+成本柱+损益线;s5=费用柱);环比=上月虚线 ──

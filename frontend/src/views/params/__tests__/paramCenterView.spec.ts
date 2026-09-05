@@ -6,11 +6,15 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { ParamRowDTO, ParamStatusDTO } from '@/api/params'
 import { forbiddenText } from '@/utils/paramCenterLogic'
 import { useAuthStore } from '@/stores/auth'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
 
 // RBAC:本屏三扇门(① param-monthly / ②③④ param-policy / 重算 billing-run),空权限进来是浏览态没有写入口
 beforeEach(() => {
   setActivePinia(createPinia())
   useAuthStore().permissions = ['param-monthly:edit', 'param-policy:edit', 'billing-run:edit']
+  // 每条用例从同一份深链起步:adopt= 那两条会删掉 ym,不还原就污染后面的用例
+  query.ym = '2024-02'
+  delete query.adopt
 })
 
 const push = vi.fn()
@@ -240,11 +244,30 @@ describe('ParamCenterView 计费参数页', () => {
       //   紧接着期被改成真的那个月 —— 锁与所编的期从此错位,而表现是「锁没生效」,不报错。
       //   （给 useEditMode.enter() 补上"占锁回来复核一次期"之后这条当场暴露:
       //     复核发现期变了 → 还锁不进 → 深链彻底进不去编辑态。）
+      //   （2026-09-03 起期由 useChainDeepPeriod 在 setup 期落定,adoptYm 只剩分析层 adopt= 一个调用方）
       // 出账链四屏共一把月锁 → scope 是 `billing-chain:YYYY-MM`(S.paramCenter = billingChain)
       expect(acquired, '深链占的锁不是真期的那把').not.toContain('billing-chain:0-00')
       expect(acquired.some(x => /^billing-chain:\d{4}-\d{2}$/.test(x)), '没占到真期的锁').toBe(true)
       w.unmount()
     } finally { delete query.edit }
+  })
+
+  it('分析层 adopt=YYYY-12:会话已选期 → 不动(不是选月,P0a 复查 P0A-2)', async () => {
+    delete query.ym
+    query.adopt = '2026-12'
+    useBillingPeriodStore().pick(2025, 3)
+    const w = await mountPage()
+    expect(useBillingPeriodStore().ym).toBe('2025-03')
+    w.unmount()
+  })
+
+  it('分析层 adopt=YYYY-12:会话没有期 → 认领,落常数区不撞矩阵', async () => {
+    delete query.ym
+    query.adopt = '2026-12'
+    const w = await mountPage()
+    expect(useBillingPeriodStore().ym).toBe('2026-12')
+    expect(w.find('.cmg').exists()).toBe(false)
+    w.unmount()
   })
 
   it('保存:PUT 带页面账期 → 只 patch 该行(其它行引用不变)+ 状态条「参数已改 1 项」', async () => {

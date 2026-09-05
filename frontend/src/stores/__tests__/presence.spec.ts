@@ -179,6 +179,15 @@ describe('在场', () => {
     expect(p.editorsUnder('sched:salary:2024')).toEqual([])
   })
 
+  it('holdsEditUnder 的前缀边界与 editorsUnder 逐字同规则 —— 两个函数各写一遍,只有一边有护栏就会单边漂移', () => {
+    const p = usePresenceStore()
+    p.holdLock('sched:pv:20251', () => {})
+    expect(p.holdsEditUnder('sched:pv:2025'), '20251 不是 2025 底下的').toBe(false)
+    expect(p.holdsEditUnder('sched:pv:20251')).toBe(true)
+    expect(p.holdsEditUnder(['nope', 'sched:pv:20251']), '数组形态的锁根也要吃').toBe(true)
+    expect(p.holdsEditUnder(undefined)).toBe(false)
+  })
+
   it('前缀匹配不许误伤相邻的年份键', async () => {
     // `sched:pv:2025` 不能匹配到 `sched:pv:20251`(将来若有更长的键),
     // 也不能让 `sched:salary:2025` 匹配 `sched:salary:2025X`。边界必须是分隔符或结尾。

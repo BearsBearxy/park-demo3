@@ -2,7 +2,7 @@
 
 2026-07-20 定稿。把四个新数据域（光伏分栋抄表 / 汽车·电动车充电桩分桩明细 / 电费成本模型）接入经营分析层。风格铁律：与既有 15 屏分析一致（AnaEChart 紧凑仪表盘、结论条、深链 openFresh、AnaMethodNote 口径注释、AnaEmpty 空态、覆盖率护栏——数据不足显示引导而非假数字）。
 
-## 1. 新屏「电费成本分析」（value: elec-analysis，专题分析组）
+## 1. 新屏「电费成本分析」（value: elec-analysis，能源专题组（2026-09-03 SIDEBAR-UX-REDESIGN §2.3 由「专题分析」拆出））
 
 数据源：elec_cost_entry（含 2025 模拟种子）+ metrics 年度序列 + price_cfg。含 simulated 数据时页头常驻说明条「本页含模拟数据（灰标口径），真实电费单导入后自动替换」。
 
@@ -23,7 +23,7 @@
 - **消纳收益**（第 6 项）：各站月消纳收益（Σ自消纳×price_snap）+ 上网收益（上网×0.453 参数价）对比。
 - 口径注释：效率分母=站配置装机容量；收益=快照单价口径与抄表屏全等。
 
-## 3. 新屏「充电桩分析」（value: charging-analysis，专题分析组）
+## 3. 新屏「充电桩分析」（value: charging-analysis，能源专题组（2026-09-03 SIDEBAR-UX-REDESIGN §2.3 由「专题分析」拆出））
 
 汽车 / 电动车 **双 tab**（Segmented，各自独立视角，默认汽车）。数据源 cp_reading/cp_station/cp_power_usage（无数据 AnaEmpty 引导）。
 
@@ -41,7 +41,7 @@
 
 ## 5. 导航与守卫
 
-- fpNav 专题分析组追加 elec-analysis（icon zap）、charging-analysis（icon plug）两项；41 屏 → 43 屏（fpNav.spec 计数断言同步）。
+- fpNav 能源专题组（2026-09-03 SIDEBAR-UX-REDESIGN §2.3 由「专题分析」拆出）追加 elec-analysis（icon zap）、charging-analysis（icon plug）两项；41 屏 → 43 屏（fpNav.spec 计数断言同步）。
 - 全部图表遵既有 AnaEChart 组件与配色语义；数据为空/覆盖不足一律护栏+引导，禁止渲染 0 假数据（ParkView 面积卡先例）。
 
 ## 6. 不做（YAGNI）

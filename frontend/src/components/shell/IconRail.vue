@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { LogOut } from 'lucide-vue-next'
-import { fpFindLayer } from '@/nav/fpNav'
+import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -31,11 +31,12 @@ const activeLayer = computed(() =>
 // 导航层可见性按角色的 navLayers,不按权限点(读全开:看不到入口 ≠ 进不去)
 const layers = computed(() => visibleLayers(auth.navLayers, auth.can('system:view')))
 
-// 层切换=侧边栏级显式导航 → 全新状态(openFresh,复审:非侧边栏入口语义)
+// 点当前层什么都不做(§4.1):它既不换屏也不该把当前层首页重置成全新实例。
 const tabsStore = useTabsStore()
-function goLayer(home: string) {
-  tabsStore.openFresh(home)
-  router.push('/' + home)
+function goLayer(layer: NavLayer) {
+  if (layer.id === activeLayer.value.id) return
+  tabsStore.openFresh(layer.home)
+  router.push('/' + layer.home)
 }
 </script>
 
@@ -55,7 +56,7 @@ function goLayer(home: string) {
       :key="layer.id"
       class="fp-rail-btn"
       :class="{ on: layer.id === activeLayer.id }"
-      @click="goLayer(layer.home)"
+      @click="goLayer(layer)"
     >
       <component :is="iconFor(layer.icon)" :size="20" />
       <span>{{ layer.short }}</span>
@@ -64,7 +65,7 @@ function goLayer(home: string) {
     <!-- footer: margin-top auto -->
     <div class="fp-rail-foot">
       <!-- command button: emits open-command for Task 6 to wire -->
-      <button class="fp-rail-cmd" @click="emit('open-command')">
+      <button class="fp-rail-cmd" aria-label="搜索 / 跳转" @click="emit('open-command')">
         <component :is="iconFor('command')" :size="16" />
       </button>
       <!-- 账号菜单:向上弹(头像在屏幕左下角,默认向下会出屏) -->

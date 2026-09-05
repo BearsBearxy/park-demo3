@@ -10,6 +10,7 @@
 //
 // 全屏只读,只需 system:view(整层无权时导航不显示、路由守卫也会兜),所以屏内不做任何权限判断。
 import { ref, computed, onMounted, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { systemApi } from '@/api/system'
 import type { AuditRowDTO } from '@/types/system'
 import Button from '@/components/ds/Button.vue'
@@ -80,6 +81,9 @@ async function load() {
   }
 }
 onMounted(load)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void load() })
 
 // 改筛选 = 回第一页 + 重新请求。翻页走 FPPager 的 @page(不另设 page 的 watch,
 // 否则「筛选里顺带把 page 拨回 1」会连带触发一次,同一次交互发两个请求)。

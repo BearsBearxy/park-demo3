@@ -103,6 +103,18 @@
 仓库里早有合规先例可抄：`MeterView` / `PvMeterView` / `ElecCostView` 的
 `.*-dlg-err { min-height: 14px }`。
 
+## 4.3 定宽与预留位（2026-09-06 P3 登记）
+
+- **页签定宽 148px**（`TabStrip .fp-tab { flex: 0 0 148px }`）：页签标题自本期起是
+  `屏名 · 期 · 公司`，会随屏内换期变长变短 —— 弹性宽度等于每换一次期整条页签条重排一次。
+  改名不改宽，溢出交给 `ellipsis` + `title`（溢出下拉里的行同款）。
+  门禁 `tabStripTitle.spec` 扫整个 `<style>`：任何 `.fp-tab` 系列规则里都不许再出现
+  `min-width` / `max-width` / `flex: 1` —— 只盯主规则块防不住「换个选择器把宽度写回来」。
+- **顶栏上下文 chip 定宽 132px 常驻**（`Toolbar .fp-ctx-chip`）：无期显「—」而**不是 `v-if`**，
+  一进一出会把它右边的东西推着走。⚠ 本条零位移门禁**扫不到** —— `noInteractionLayoutShift.spec`
+  只抓流内**块级**元素，chip 是 `<span>`，就算加了 `v-if` 也不会红；靠 `toolbar.spec` 那条
+  `exists()` 断言守着。
+
 ## 5. 编辑态本身怎么办
 
 进编辑模式会多出一整排工具（批量条、勾选列、操作列），这**必然**改变布局 ——

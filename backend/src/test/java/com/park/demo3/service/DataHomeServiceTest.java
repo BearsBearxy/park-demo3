@@ -74,7 +74,7 @@ class DataHomeServiceTest {
         when(charging.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
         when(elec.selectByYearAndType(anyInt(), anyString())).thenReturn(List.of());
         when(contractService.summary()).thenReturn(summary(0));
-        // 出账链四源:空库(4 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
+        // 出账链四源:空库(5 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
         when(meterReadings.selectDistinctYms()).thenReturn(List.of());
         when(poolResults.selectDistinctYms()).thenReturn(List.of());
         when(lossResults.selectDistinctYms()).thenReturn(List.of());
@@ -144,42 +144,93 @@ class DataHomeServiceTest {
             .containsExactly("2023-08", "2024-02", "2025-01");
     }
 
-    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════
+    // ══ 出账链 5 步(SIDEBAR-UX-REDESIGN §5.1) ══════════════════════════════════════
     @Test void 出账链_当前步是第一个非done() {
-        var chain = DataHomeService.buildChain(1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
-        assertThat(chain.currentIndex()).isEqualTo(3);
+        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.currentIndex()).isEqualTo(4);
         assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
-            .containsExactly("done", "done", "done", "current");
+            .containsExactly("done", "done", "done", "done", "current");
+        assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::key)
+            .containsExactly("params", "meters", "alloc", "alloc-loss", "bill-notices");
     }
 
     @Test void 出账链_催缴单detail报张数不报户数() {
         // bill_notice 一租户可有多行(按收款公司/单据类型拆单);而催缴单屏的「户数」是
         // aggregateByTenant 聚合后、且只算当前期别 tab(默认一期)的数。两者根本不是一个口径,
         // 首页报「张」= 唯一且不会与屏上户数打架(METRIC-SOURCE-SPEC §2)。
-        var chain = DataHomeService.buildChain(1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183);
-        assertThat(chain.steps().get(3).detail())
+        var chain = DataHomeService.buildChain(6, 6, 1, true, true, 295, new java.math.BigDecimal("4107986.54"), 183);
+        assertThat(chain.steps().get(4).detail())
             .isEqualTo("295 张 · ¥4107986.54 · 183 张有警告").doesNotContain("户");
     }
 
     @Test void 出账链_全部完成时currentIndex为负1() {
-        var chain = DataHomeService.buildChain(1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
+        var chain = DataHomeService.buildChain(6, 6, 1088, true, true, 102, new java.math.BigDecimal("2474138.88"), 66);
         assertThat(chain.currentIndex()).isEqualTo(-1);
         assertThat(chain.steps()).allMatch(s -> "done".equals(s.status()));
     }
 
     @Test void 出账链_空月第一步为current其余todo() {
-        var chain = DataHomeService.buildChain(0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        var chain = DataHomeService.buildChain(0, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
         assertThat(chain.currentIndex()).isZero();
         assertThat(chain.steps()).extracting(DataHomeOverviewDTO.Step::status)
-            .containsExactly("current", "todo", "todo", "todo");
+            .containsExactly("current", "todo", "todo", "todo", "todo");
     }
 
     @Test void 出账链_抄表detail只给已抄数不给分母() {
         // 92/94 那个比例是 MeterView 前端 cardCounts() 在电水+分区筛选链上算的,
         // 后端另算一份分母必然与之漂移 —— METRIC-SOURCE-SPEC §1 禁止同一判定两份实现。
         // 首页只回答「这步做没做、做了多少」,比例留在抄表屏(它才有完整筛选口径)。
-        var chain = DataHomeService.buildChain(1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
-        assertThat(chain.steps().get(0).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
+        var chain = DataHomeService.buildChain(6, 6, 1088, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(1).detail()).isEqualTo("已抄 1088 块").doesNotContain("/");
+    }
+
+    // ── 第 1 步「计费参数」(SIDEBAR-UX-REDESIGN §5.1):判据是电价录齐,不是 stale ──
+    @Test void 参数步_电价录齐才done() {
+        var chain = DataHomeService.buildChain(6, 6, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(0).status()).isEqualTo("done");
+        assertThat(chain.steps().get(0).detail()).isEqualTo("本月电价 6/6 已录");
+        assertThat(chain.currentIndex()).isEqualTo(1);
+    }
+
+    @Test void 参数步_少一键就是current且detail报进度() {
+        var chain = DataHomeService.buildChain(5, 6, 1088, true, true, 102, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(0).status()).isEqualTo("current");
+        assertThat(chain.steps().get(0).detail()).isEqualTo("本月电价 5/6 已录");
+        assertThat(chain.currentIndex()).isZero();
+    }
+
+    @Test void 参数步_没有电价键的月不算done且detail未配置() {
+        // 全新库分支传 (0, 0):priceTotal 为 0 时 0 == 0 不能算 done —— 那是「没配」不是「配齐」
+        var chain = DataHomeService.buildChain(0, 0, 0, false, false, 0, java.math.BigDecimal.ZERO, 0);
+        assertThat(chain.steps().get(0).status()).isEqualTo("current");
+        assertThat(chain.steps().get(0).detail()).isEqualTo("未配置");
+    }
+
+    // ── overview → buildChain 的接线(2026-09-03 对抗复查 C2)──
+    // buildChain 的单测都直接传数,接线本身没人看着:overview 把 ParamStatusDTO 的
+    // priceOk/priceTotal 递进去,两个 int 挨着,顺序反了编译照过、上面那组单测照绿。
+    // 下面两条走一遍 overview(用 selectDistinctYms 定锚月),把这段接线钉住。
+    @Test void overview_参数步吃priceOk与priceTotal_录齐为done() {
+        stubAllEmpty();
+        when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
+        when(paramService.status(anyString()))
+            .thenReturn(new ParamStatusDTO(6, 6, 0, null, null, null, false, List.of()));
+
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.chain().steps().get(0).status()).isEqualTo("done");
+        assertThat(o.chain().steps().get(0).detail()).isEqualTo("本月电价 6/6 已录");
+    }
+
+    @Test void overview_参数步少一键为current且是当前步() {
+        stubAllEmpty();
+        when(meterReadings.selectDistinctYms()).thenReturn(List.of("2026-06"));
+        when(paramService.status(anyString()))
+            .thenReturn(new ParamStatusDTO(5, 6, 0, null, null, null, false, List.of()));
+
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.chain().steps().get(0).status()).isEqualTo("current");
+        assertThat(o.chain().currentIndex()).isZero();
+        assertThat(o.chain().steps().get(0).detail()).isEqualTo("本月电价 5/6 已录");
     }
 
     // ══ 前置条 blockers(spec §2.1) ══════════════════════════════════

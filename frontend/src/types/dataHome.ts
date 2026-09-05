@@ -29,7 +29,7 @@ export interface DataHomeStepDTO {
   go: string
 }
 
-/** currentIndex = -1 表示 4 步全部完成。 */
+/** currentIndex = -1 表示 5 步全部完成。 */
 export interface DataHomeChainDTO {
   currentIndex: number
   steps: DataHomeStepDTO[]

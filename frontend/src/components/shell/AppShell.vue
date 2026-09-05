@@ -3,12 +3,14 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
+import { useTabsStore } from '@/stores/tabs'
+import { fpBuildRoutes } from '@/nav/fpNav'
+import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { useViewport } from '@/composables/useViewport'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
-import CommandPalette from '@/components/shell/CommandPalette.vue'
 import { defineAsyncComponent } from 'vue'
 // 手机三件套懒加载(size-check 门禁:index 预算 185KB,静态引入把它压破到 197.3——
 // 桌面用户永远用不到的代码不该进首屏包,FPApprovalDrawer 同一条铁律)。
@@ -19,6 +21,10 @@ import { defineAsyncComponent } from 'vue'
 const MobileTopBar = defineAsyncComponent(() => import('@/components/shell/mobile/MobileTopBar.vue'))
 const MobileBottomNav = defineAsyncComponent(() => import('@/components/shell/mobile/MobileBottomNav.vue'))
 const MobileNavDrawer = defineAsyncComponent(() => import('@/components/shell/mobile/MobileNavDrawer.vue'))
+// 命令面板同一条铁律:Ctrl-K 才用得上的覆盖层,不该让每个人首屏都下载它。
+// 必须配下面的 v-if 才真省(defineAsyncComponent 是渲染时才拉块的);
+// 组件里那个 reset+autofocus 的 watch 因此加了 immediate —— 它现在是带着 open=true 挂载的。
+const CommandPalette = defineAsyncComponent(() => import('@/components/shell/CommandPalette.vue'))
 
 const ui = useUiStore()
 const reloadPage = () => window.location.reload()
@@ -55,6 +61,8 @@ const mnavEverOpened = ref(false)
 watch(mnavOpen, (v) => { if (v) mnavEverOpened.value = true })
 
 const paletteOpen = ref(false)
+const paletteEverOpened = ref(false)
+watch(paletteOpen, (v) => { if (v) paletteEverOpened.value = true })
 const paletteMode = ref<'jump' | 'new'>('jump')
 
 function openPalette(mode: 'jump' | 'new' = 'jump') {
@@ -89,6 +97,29 @@ watch(() => route.path, () => {
   presence.enter(null, label || null)
 }, { immediate: true })
 onUnmounted(() => presence.stop())
+
+// 预览槽被顶掉的提示(§4.3)。**只在被顶的那屏本人正在编辑时出** —— 其余情况静默:
+// 预览槽本来就是「随手看一眼」的槽,每换一次屏都吭一声等于把提示训练成噪音。
+// 载体不用 FPToast(它没有动作按钮),复用本文件 .fp-net-toast 的位置与深色语言。
+const tabs = useTabsStore()
+const ROUTES = fpBuildRoutes()
+const evictValue = ref('')
+const evictMsg = computed(() => (evictValue.value ? `「${ROUTES[evictValue.value]?.page ?? evictValue.value}」预览页签已被替换` : ''))
+let evictTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => tabs.evicted, (v) => {
+  if (!v) return
+  tabs.clearEvicted()
+  if (!presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])) return
+  evictValue.value = v
+  if (evictTimer) clearTimeout(evictTimer)
+  evictTimer = setTimeout(() => { evictValue.value = '' }, 4000)
+})
+function pinEvicted() {
+  if (evictTimer) clearTimeout(evictTimer)
+  tabs.pin(evictValue.value)
+  evictValue.value = ''
+}
+onUnmounted(() => { if (evictTimer) clearTimeout(evictTimer) })
 
 // 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
 // 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
@@ -139,6 +170,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <MobileNavDrawer v-if="tier === 's' && mnavEverOpened" :open="mnavOpen" @close="mnavOpen = false" />
 
   <CommandPalette
+    v-if="paletteEverOpened"
     :open="paletteOpen"
     :mode="paletteMode"
     @close="paletteOpen = false"
@@ -150,6 +182,11 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
       <span class="msg">{{ ui.netError }}</span>
       <button class="act" @click="reloadPage">刷新</button>
       <button class="act ghost" @click="ui.dismissNetError()">×</button>
+    </div>
+    <div v-if="evictMsg" class="fp-net-toast fp-evict-toast" :class="{ stacked: !!ui.netError }" role="alert">
+      <span class="msg">{{ evictMsg }}</span>
+      <button class="act" @click="pinEvicted">固定它</button>
+      <button class="act ghost" @click="evictValue = ''">×</button>
     </div>
   </Teleport>
 </template>
@@ -177,6 +214,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   background:transparent; color:#fff; font-size:12px; cursor:pointer; }
 .fp-net-toast .act:hover { background:rgba(255,255,255,.14); }
 .fp-net-toast .act.ghost { border-color:transparent; padding:0 6px; }
+
+/* 被顶提示复用上面那套深色语言与位置;两条同时在场时它上移一格,不叠字。 */
+.fp-evict-toast.stacked { bottom: 84px; }
 
 /* ── nav card ── */
 .fp-nav-card {
@@ -271,6 +311,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   .fp-main-card { border: none; border-radius: 0; }
   /* toast 抬到底栏之上(§4.5):56px 底栏 + 20px 呼吸 + safe-area,不被底栏遮住 */
   .fp-net-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
+  /* @media 不加特异度:桌面那条 .fp-evict-toast.stacked{84px} 在 S 档照样赢,
+     而底下这条已经抬到 76px+safe —— 两块各高约 46px,只差 8px 就压字。这里跟着抬。 */
+  .fp-evict-toast.stacked { bottom: calc(56px + 76px + env(safe-area-inset-bottom)); }
 }
 /* 手机栏的定高占位壳:异步 chunk 到达前高度即终态,内容区不因铬边迟到重新量高
    (LAYOUT-STABILITY 容器尺寸挂载即终态)。高度公式与组件自身 height 逐字同步:

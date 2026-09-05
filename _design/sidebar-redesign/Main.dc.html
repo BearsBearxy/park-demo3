@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>推荐方案 · 侧边栏</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap">
+  <style>
+  body { margin:0; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgb(28,28,28); background:#fff; -webkit-font-smoothing:antialiased; }
+  a { color:oklch(0.55 0.115 250); } a:hover { color:rgb(31,95,191); }
+  .num { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+  /* rail */
+  .fp-rail { width:66px; flex:0 0 66px; display:flex; flex-direction:column; align-items:center; padding:14px 9px; gap:5px; box-sizing:border-box; background:rgb(245,245,246); }
+  .fp-rail-mark { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid rgba(28,28,28,0.1); display:grid; place-items:center; flex:0 0 auto; }
+  .fp-railsep { width:30px; height:1px; background:rgba(28,28,28,0.1); margin:9px 0 7px; flex:0 0 auto; }
+  .fp-rail-btn { width:48px; border:none; background:transparent; color:rgba(28,28,28,0.62); border-radius:15px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:5px; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; font-size:10.5px; font-weight:500; flex:0 0 auto; }
+  .fp-rail-btn.on { background:rgb(28,28,28); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,0.2); }
+  .fp-rail-foot { margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:11px; padding-top:10px; }
+  .fp-rail-cmd { width:40px; height:40px; border-radius:13px; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgba(28,28,28,0.8); display:grid; place-items:center; }
+  .fp-avatar { width:32px; height:32px; border-radius:50%; background:rgb(76,152,253); color:#fff; display:grid; place-items:center; font-size:12px; font-weight:600; }
+  /* panel */
+  .fp-panel { width:234px; flex:0 0 234px; display:flex; flex-direction:column; gap:14px; padding:18px 14px 14px; box-sizing:border-box; }
+  .fp-panel-hdr { display:flex; align-items:center; gap:9px; padding:0 6px; color:rgb(28,28,28); height:24px; }
+  .fp-panel-hdr .nm { font-size:16px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
+  .fp-panel-div { height:1px; background:rgba(28,28,28,0.1); margin:0 -14px; }
+  .fp-nav { display:flex; flex-direction:column; gap:16px; }
+  .fp-sec { display:flex; flex-direction:column; gap:2px; }
+  .fp-gt { font:400 12px/18px "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgba(28,28,28,0.62); padding:6px 12px; }
+  .fp-row { position:relative; display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:rgba(28,28,28,0.8); box-sizing:border-box; white-space:nowrap; }
+  .fp-row .lb { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .fp-row.on { background:rgba(28,28,28,0.05); color:rgb(28,28,28); }
+  .fp-row.on::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:rgb(28,28,28); }
+  .fp-dot { position:absolute; right:10px; top:50%; margin-top:-3px; width:6px; height:6px; border-radius:50%; background:oklch(0.54 0.115 62); }
+  /* shell */
+  .fp-stage { display:flex; padding:12px; gap:12px; box-sizing:border-box; background:#fff; }
+  .fp-nav-card { flex:0 0 auto; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; display:flex; }
+  .fp-vdiv { flex:0 0 1px; width:1px; background:rgba(28,28,28,0.1); }
+  .fp-main-card { flex:1; min-width:0; display:flex; flex-direction:column; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; position:relative; }
+  .fp-tabstrip { height:44px; padding:0 8px; background:rgb(249,249,250); display:flex; align-items:center; gap:4px; box-sizing:border-box; }
+  .fp-tab { height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; line-height:20px; color:rgba(28,28,28,0.8); }
+  .fp-tab.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-tab.prev { font-style:italic; }
+  .fp-tab-x { width:20px; height:20px; border-radius:6px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-tab-add { height:28px; width:28px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-toolbar { height:48px; display:flex; align-items:center; gap:8px; padding:0 16px; border-bottom:1px solid rgba(28,28,28,0.1); background:rgba(255,255,255,0.9); box-sizing:border-box; }
+  .fp-ib { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.8); }
+  .fp-crumb { display:flex; align-items:center; gap:7px; margin-left:6px; font-size:14px; }
+  .fp-crumb .g { color:rgba(28,28,28,0.62); } .fp-crumb .s { color:rgba(28,28,28,0.2); } .fp-crumb .p { font-weight:500; color:rgb(28,28,28); }
+  .fp-tb-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .fp-search { display:flex; align-items:center; gap:8px; height:34px; padding:0 8px 0 12px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:rgb(249,249,250); color:rgba(28,28,28,0.62); min-width:200px; font-size:13px; box-sizing:border-box; }
+  .fp-kbd { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; padding:1px 6px; border:1px solid rgba(28,28,28,0.1); border-radius:5px; color:rgba(28,28,28,0.62); background:#fff; }
+  .fp-presence { width:130px; height:32px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:#fff; display:flex; align-items:center; padding:0 6px; gap:4px; box-sizing:border-box; }
+  .fp-content { flex:1; padding:24px; box-sizing:border-box; }
+  /* callouts */
+  .co { position:absolute; width:18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; box-shadow:0 0 0 2px #fff; z-index:5; }
+  .legend { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 18px; padding:16px 24px 20px; font-size:12.5px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .legend .it { display:flex; gap:8px; align-items:flex-start; }
+  .legend .it b { flex:0 0 18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; }
+  .cap { font-size:11.5px; color:rgba(28,28,28,0.62); }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); }
+
+  .fp-gt2 { position:relative; cursor:pointer; padding-right:32px; }
+  .fp-gt-n { margin-left:6px; font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; color:rgba(28,28,28,0.4); }
+  .fp-tab2 { width:148px; flex:0 0 148px; height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .fp-tab2 .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fp-tab2.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-ctx { width:132px; flex:0 0 132px; height:26px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); font-size:12px; display:flex; align-items:center; gap:6px; padding:0 10px; box-sizing:border-box; margin-left:8px; white-space:nowrap; }
+  .fp-ctx .num { font-size:12px; }
+  .ann { font-size:12.5px; line-height:19px; color:rgba(28,28,28,0.8); }
+  .ann b { color:rgb(28,28,28); font-weight:600; }
+  .ann li { margin:0 0 8px 0; }
+  .h { font-size:16px; font-weight:600; color:rgb(28,28,28); letter-spacing:-0.01em; }
+  .sub { font-size:12px; color:rgba(28,28,28,0.62); }
+  /* hub */
+  .mc { width:76px; height:72px; border:1px solid rgba(28,28,28,0.1); border-radius:12px; padding:8px 8px 6px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; position:relative; background:#fff; }
+  .mc.cur { border:2px solid rgb(28,28,28); padding:7px 7px 5px; }
+  .mc.stale { background:oklch(0.97 0.03 62); }
+  .mc.empty { background:rgb(245,245,246); border-color:transparent; color:rgba(28,28,28,0.62); }
+  .mc .m { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; font-weight:600; }
+  .pips { display:flex; gap:4px; }
+  .pip { width:9px; height:9px; border-radius:50%; background:rgba(28,28,28,0.1); }
+  .pip.d { background:oklch(0.58 0.130 150); }
+  .pip.w { background:oklch(0.54 0.115 62); }
+  .lockb { position:absolute; right:6px; top:6px; color:oklch(0.54 0.115 62); }
+  .sup { height:32px; border-radius:10px; background:rgb(245,245,246); display:flex; align-items:center; gap:10px; padding:0 12px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .chip { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:999px; background:#fff; border:1px solid rgba(28,28,28,0.1); font-size:12px; color:rgba(28,28,28,0.8); white-space:nowrap; }
+  .chip.ok { border-color:oklch(0.85 0.08 150); color:oklch(0.58 0.130 150); }
+  .chip.todo { color:rgba(28,28,28,0.62); border-style:dashed; }
+  .chip.ent { background:rgb(245,245,246); color:rgba(28,28,28,0.8); border-color:transparent; }
+  .chip.pend { border-color:oklch(0.85 0.08 62); color:oklch(0.54 0.115 62); }
+  .chip.ret { border-color:oklch(0.85 0.08 27); color:oklch(0.56 0.150 27); }
+  .chip.me { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .rv { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 8px; border-radius:999px; font-size:11.5px; white-space:nowrap; }
+  .rv.ok { background:oklch(0.95 0.04 150); color:oklch(0.58 0.130 150); }
+  .rv.pend { background:oklch(0.96 0.04 62); color:oklch(0.54 0.115 62); }
+  .rv.none { background:rgb(245,245,246); color:rgba(28,28,28,0.62); }
+  .rv.ret { background:oklch(0.96 0.04 27); color:oklch(0.56 0.150 27); }
+  .rv.na { color:rgba(28,28,28,0.2); }
+  .btn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:8px; font-size:12.5px; font-weight:500; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgb(28,28,28); white-space:nowrap; flex:0 0 auto; }
+  .btn.solid { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .btn.dis { color:rgba(28,28,28,0.2); background:rgb(245,245,246); border-color:transparent; }
+  .box { border:1px solid rgba(28,28,28,0.1); border-radius:14px; padding:14px 16px; background:#fff; }
+  .sm { width:118px; height:56px; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:13px; font-weight:600; border:1px solid rgba(28,28,28,0.1); }
+  .arrow { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:rgba(28,28,28,0.62); width:120px; }
+  .arrow .ln { width:100%; height:0; border-top:2px solid rgba(28,28,28,0.2); position:relative; }
+  .arrow .ln::after { content:''; position:absolute; right:-1px; top:-5px; border:5px solid transparent; border-left:7px solid rgba(28,28,28,0.2); }
+  .col { flex:1; min-width:0; border:1px solid rgba(28,28,28,0.1); border-radius:16px; overflow:hidden; }
+  .col .ch { height:36px; display:flex; align-items:center; gap:8px; padding:0 14px; font-size:13px; font-weight:600; background:rgb(249,249,250); border-bottom:1px solid rgba(28,28,28,0.1); }
+  .crow { height:38px; display:flex; align-items:center; gap:10px; padding:0 14px; border-bottom:1px solid rgba(28,28,28,0.05); font-size:13px; color:rgb(28,28,28); }
+  .crow:last-child { border-bottom:none; }
+  .crow .nm { width:112px; flex:0 0 112px; font-weight:500; white-space:nowrap; }
+  .crow .dt { flex:1; min-width:0; color:rgba(28,28,28,0.62); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .crow .st { flex:0 0 auto; display:flex; align-items:center; gap:6px; font-size:12px; }
+  .crow.cur { background:oklch(0.97 0.02 250); }
+  .crow.dis { color:rgba(28,28,28,0.2); }
+  .crow.dis .nm { color:rgba(28,28,28,0.2); }
+  .lo { border:1px dashed rgba(28,28,28,0.2); border-radius:14px; padding:14px 16px; background:#fff; }
+  .lo h4 { margin:0 0 6px; font-size:14px; }
+  .lo p { margin:0 0 6px; font-size:12px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .score { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:22px; font-weight:600; }
+</style>
+</helmet>
+
+  <div style="width:1180px;padding:24px;box-sizing:border-box;background:#fff;">
+    <div class="h">推荐方案 · 侧边栏三层默认态</div>
+    <div class="sub" style="margin:4px 0 18px;">容器不动（轨 66 / 面板 234 / 行 34 / 组标题 30）；只重排内容、加折叠、修语义。预算 <span class="num">500px</span>（内视口 620 → 导航区 509）。</div>
+    <div style="display:flex;gap:24px;align-items:flex-start;">
+      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;width:234px;font-size:12.5px;color:rgba(28,28,28,0.8)"><span>数据中心 · 默认态</span><span class="num" style="color:oklch(0.58 0.130 150)">448px</span></div>
+      <div style="width:236px;border:1px solid rgba(28,28,28,0.1);border-radius:16px;overflow:hidden;background:#fff;"><div class="fp-panel" style="">
+    <div class="fp-panel-hdr"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">数据中心</span></div>
+    <div class="fp-panel-div"></div>
+    <div class="fp-nav"><div class="fp-sec"><div class="fp-row on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg><span class="lb">本月出账</span></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">档案<span class="fp-gt-n">3</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">出账 · 每月工序<span class="fp-gt-n">5</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m6 9 6 6 6-6"/></svg></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg><span class="lb">计费参数</span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span class="lb">园区抄表</span><span class="fp-dot"></span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg><span class="lb">公共电核算</span><span class="fp-dot"></span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg><span class="lb">楼栋损耗</span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m3 15 2 2 4-4"/></svg><span class="lb">催缴单</span></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">记账 · 按月<span class="fp-gt-n">3</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">记账 · 按年<span class="fp-gt-n">5</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg><span class="lb">导入中心</span></div></div></div>
+  </div></div>
+      <div class="cap" style="width:234px;">5 组按动词：档案 / 出账 / 记账·月 / 记账·年 / 导入。合同移入档案；银行流水下架。折叠组标题行聚合子项在场点（档案 无、出账 有）。</div>
+    </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;width:234px;font-size:12.5px;color:rgba(28,28,28,0.8)"><span>账簿与报表 · 默认态</span><span class="num" style="color:oklch(0.58 0.130 150)">284px</span></div>
+      <div style="width:236px;border:1px solid rgba(28,28,28,0.1);border-radius:16px;overflow:hidden;background:#fff;"><div class="fp-panel" style="">
+    <div class="fp-panel-hdr"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M10 2v8l3-3 3 3V2"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg><span class="nm">账簿与报表</span></div>
+    <div class="fp-panel-div"></div>
+    <div class="fp-nav"><div class="fp-sec"><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg><span class="lb">报表中心</span></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">三大报表<span class="fp-gt-n">3</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m6 9 6 6 6-6"/></svg></div><div class="fp-row on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg><span class="lb">利润表</span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg><span class="lb">资产负债表</span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg><span class="lb">科目余额表</span></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">损益附表<span class="fp-gt-n">5</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg><span class="lb">收入核对</span></div></div></div>
+  </div></div>
+      <div class="cap" style="width:234px;">结构不变。收入核对留在报表层（期间条与面包屑一致）；在「本月出账」清单里以出账列第 6 行出现。</div>
+    </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;width:234px;font-size:12.5px;color:rgba(28,28,28,0.8)"><span>经营分析 · 默认态</span><span class="num" style="color:oklch(0.58 0.130 150)">300px</span></div>
+      <div style="width:236px;border:1px solid rgba(28,28,28,0.1);border-radius:16px;overflow:hidden;background:#fff;"><div class="fp-panel" style="">
+    <div class="fp-panel-hdr"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/></svg><span class="nm">经营分析</span></div>
+    <div class="fp-panel-div"></div>
+    <div class="fp-nav"><div class="fp-sec"><div class="fp-row on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span class="lb">经营驾驶舱</span></div><div class="fp-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M22 8c0-2.3-.8-4.3-2-6"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/><path d="M4 2C2.8 3.7 2 5.7 2 8"/></svg><span class="lb">异常提醒中心</span></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">园区维度<span class="fp-gt-n">2</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">租户维度<span class="fp-gt-n">2</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">管理公司维度<span class="fp-gt-n">4</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">经营专题<span class="fp-gt-n">5</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div><div class="fp-sec"><div class="fp-gt fp-gt2">能源专题<span class="fp-gt-n">4</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(28,28,28,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;position:absolute;right:12px;top:8px"><path d="m9 18 6-6-6-6"/></svg></div></div></div>
+  </div></div>
+      <div class="cap" style="width:234px;">「监控」组撤销，异常提醒中心升到第 2 行。「专题分析」9 项拆为经营 5 + 能源 4。带标题组全部手风琴。</div>
+    </div>
+      <div style="flex:1;min-width:0;">
+        <div class="h" style="font-size:14px;margin-bottom:8px;">语义（对应 04 文档 §2.5）</div>
+        <ul class="ann" style="padding-left:18px;margin:0;">
+          <li><b>侧栏项 = 恢复现场</b>（open）；点当前项 no-op；Shift+点击 = 全新。今天是每次重建、丢年/月/册。</li>
+          <li><b>轨层钮</b>：当前层 no-op；换层才 openFresh(home)。</li>
+          <li><b>组标题可点折叠</b>，chevron absolute，30px 不变；路由变化只展开含当前屏的组，<b>不收回</b>用户手动展开的组（会话内记忆）。</li>
+          <li><b>折叠组聚合在场点</b>：出账组收起时仍能看到「有人在改」。</li>
+          <li><b>在场点</b>文案带期「李四 正在编辑 · 2024-02」，aria + 点按弹说明，触屏可达。</li>
+          <li><b>一套期间深链</b>：<code>?p=YYYY-MM&amp;co=</code>；目标屏 onMounted + onReactivated 认领；首页/清单行 = 显式选月 pick。</li>
+          <li><b>KeepAlive max 10 → 16</b>，覆盖专员月内 15 屏。</li>
+          <li><b>navHeight.spec</b>：默认态与最坏单组展开 ≤ 500，塞 3 个假项应红。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</x-dc>
+</body>
+</html>

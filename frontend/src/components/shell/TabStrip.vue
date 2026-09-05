@@ -16,6 +16,15 @@ const route = useRoute()
 const tabs = useTabsStore()
 const ROUTES = fpBuildRoutes()
 
+/**
+ * 页签上要写的一整句:`屏名 · 期 · 公司`,**有几段写几段**(§6)。
+ * 期与公司来自 `tabs.ctx` —— 未激活的页签早已卸载,屏内的 ref 拿不到。
+ */
+const titleOf = (v: string): string => {
+  const c = tabs.ctx[v]
+  return [ROUTES[v]?.page ?? v, c?.p, c?.coName].filter(Boolean).join(' · ')
+}
+
 // The ordered list of visible tabs: pinned first, then preview appended if not pinned
 const order = computed(() => {
   const list = tabs.tabs.filter(t => ROUTES[t.value]).map(t => t.value)
@@ -117,14 +126,14 @@ function onNewTab() {
           on: value === activeValue,
           preview: value === tabs.preview?.value && !tabs.tabs.some(t => t.value === value),
         }"
-        :title="ROUTES[value]?.layerLabel + ' / ' + ROUTES[value]?.page"
+        :title="(ROUTES[value]?.layerLabel ?? '') + ' / ' + titleOf(value)"
         @click="selectTab(value)"
         @dblclick="pinTab(value)"
       >
         <span class="fp-tab-ic">
           <component :is="iconFor(ROUTES[value]?.icon ?? '')" :size="14" />
         </span>
-        <span class="fp-tab-label">{{ ROUTES[value]?.page }}</span>
+        <span class="fp-tab-label">{{ titleOf(value) }}</span>
         <span class="fp-tab-trail">
           <!-- pin button for preview tabs -->
           <button
@@ -179,13 +188,14 @@ function onNewTab() {
         :key="value"
         class="fp-tablist-row"
         :class="{ on: value === activeValue }"
+        :title="titleOf(value)"
         @click="selectTab(value)"
       >
         <component :is="iconFor(ROUTES[value]?.icon ?? '')" :size="15" />
         <span
           class="nm"
           :class="{ it: value === tabs.preview?.value && !tabs.tabs.some(t => t.value === value) }"
-        >{{ ROUTES[value]?.page }}</span>
+        >{{ titleOf(value) }}</span>
         <button
           v-if="canClose(value)"
           class="x"
@@ -229,9 +239,9 @@ function onNewTab() {
 .fp-tabs::-webkit-scrollbar { display: none; }
 
 .fp-tab {
-  flex: 1 1 0;
-  min-width: 42px;
-  max-width: 196px;
+  /* 定宽 148px(§6):标题现在会跟着期变,弹性宽度等于「每换一次期,整条页签条重排一次」。
+     改名不改宽,溢出交给 ellipsis 与 title。 */
+  flex: 0 0 148px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -254,7 +264,6 @@ function onNewTab() {
 }
 .fp-tab.on,
 .fp-tab.on:hover {
-  min-width: 124px;
   background: var(--surface-white);
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(28, 28, 28, 0.10);

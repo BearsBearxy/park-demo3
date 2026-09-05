@@ -34,7 +34,7 @@ vi.mock('@/api/alloc', () => ({
 vi.mock('@/api/params', () => ({ paramsApi: { list: vi.fn(), status: vi.fn() } }))
 vi.mock('@/api/meters', () => ({ metersApi: { months: vi.fn() } }))
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn() } }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ query: {}, fullPath: '/alloc-loss' }) }))
 
 const STATUS = {
   priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,

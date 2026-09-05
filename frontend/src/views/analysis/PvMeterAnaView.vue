@@ -237,12 +237,14 @@ const critLines = computed(() => {
     { key: 'yield', text: `年等效小时 ≥ 锚点 ${pct0(c.yieldRatio)}`, off: false },
   ]
 })
+// 「去改」落计费参数的常数区。adopt=YYYY-12 只在会话还没有出账月时认领(常数存 12 月的约定,PvAnalysis §01);
+// 已选期的会话不动 —— 它不是选月,不能用 p= / ym=(那两个是显式深链,会覆盖组级期;2026-09-03 P0a 复查 P0A-2)。
 function gotoParams() {
-  tabs.openFresh('params', { pin: true })
-  void router.push({ path: '/params', query: { ym: `${year.value}-12`, section: 'constant' } })
+  tabs.openDeep('params')
+  void router.push({ path: '/params', query: { adopt: `${year.value}-12`, section: 'constant' } })
 }
 function goMeter(): void {
-  tabs.openFresh('pv-income', { pin: true })
+  tabs.openDeep('pv-income')
   void router.push('/pv-income')
 }
 

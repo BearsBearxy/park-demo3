@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { defineComponent, h, ref, KeepAlive } from 'vue'
 
 import MeterView from '@/views/meters/MeterView.vue'
 import {
@@ -56,8 +57,13 @@ vi.mock('@/api/alloc', () => ({
 }))
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: () => Promise.resolve([]) } }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: () => Promise.resolve(null) } }))
-// FPStepStrip 里点链路条要 router.push
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+// FPStepStrip 里点链路条要 router.push;query 可变 —— 期间深链那条要在切回之间换掉 ?p=
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  // fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址
+  useRoute: () => ({ query, get fullPath() { return '/meters?' + new URLSearchParams(query).toString() } }),
+}))
 // 编辑锁不 mock 的话 locksApi 走真 axios,jsdom 里抛错 → 被「拿不准就不进」兜住 → 编辑态永远进不去。
 vi.mock('@/api/locks', () => ({
   locksApi: {
@@ -130,12 +136,15 @@ interface MeterVm {
   onImport: (payload: never, fileName: never) => Promise<void>
   submitMeter: () => Promise<void>
   autoLink: () => Promise<void>
+  dirtyIds: number[]
+  onCellEdit: (p: { meterId: number; field: 'currTotal'; value: string }) => void
 }
 
 beforeEach(() => {
   setActivePinia(createPinia())
   useAuthStore().permissions = ['meter-reading:edit', 'meter-master:edit']
   useBillingPeriodStore().pick(2025, 3)          // 期由出账月矩阵选定,这里直接落到 2025-03
+  for (const k of Object.keys(query)) delete query[k]
   vi.clearAllMocks()
   localStorage.clear()
   vi.mocked(metersApi.list).mockResolvedValue(METERS)
@@ -278,5 +287,37 @@ describe('园区抄表 · 编辑态被接管走之后写口自守', () => {
     // 另一半照旧:浏览态 + 取数失败 = 不许进编辑态(在伪造的空读数列上录入 = 覆盖旧月或凭空补条)
     expect(w.find('button.fp-emb').attributes('disabled'),
       '`!!readErr` 那一半丢了 —— 失败态下又能进编辑模式了').toBeDefined()
+  })
+})
+
+describe('园区抄表 · 深链遇上草稿', () => {
+  it('❗带草稿时切回、地址栏换了月 → 期不动,草稿还在,deepNote 说清楚(dirty 闸在屏上真接住了)', async () => {
+    // 钉 MeterView.vue 的 `useChainDeepPeriod(() => dirtyIds.value.length)`:
+    // 把 dirty 探针改成 `() => 0`,期当场被切到 2025-04、watch(ym) 顺手 draft.clear() —— 一屏未保存的读数没了。
+    // 本屏是链上唯一有草稿的屏,这道闸只在这里有靶子。
+    query.p = '2025-03'
+    const alive = ref(true)
+    const w = mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(MeterView) : null) }),
+    }), { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    const vm = w.findComponent(MeterView).vm as unknown as MeterVm
+
+    vm.editMode = true
+    await flushPromises()
+    vm.onCellEdit({ meterId: 1, field: 'currTotal', value: '260' })   // 服务器值 180 → 真脏
+    await flushPromises()
+    expect(vm.dirtyIds.length, '前提:草稿真的算脏了').toBeGreaterThan(0)
+
+    alive.value = false                       // 切去别的页签(KeepAlive 停用,不卸载)
+    await flushPromises()
+    query.p = '2025-04'                       // 侧栏/深链在别处把地址栏换成了下个月
+    alive.value = true
+    await flushPromises()
+
+    expect(useBillingPeriodStore().ym, '有草稿 → 不切期').toBe('2025-03')
+    expect(vm.dirtyIds.length, '草稿没被 watch(ym) 清掉').toBeGreaterThan(0)
+    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期，本期有')
+    w.unmount()
   })
 })

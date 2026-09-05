@@ -77,7 +77,7 @@ v2 定稿 2026-09-01。审计与布局定稿：Artifact `2478cb46-910d-4769-82ef
 
 | 决策 | 理由 |
 |---|---|
-| **新屏 `pv-meter-analysis`「光伏分栋分析」**，落 fpNav 分析层「专题分析」组（`pv-roi` 同组，排它后面） | 两套数据源、两套时间维、两套期间语义挤一屏 |
+| **新屏 `pv-meter-analysis`「光伏分栋分析」**，落 fpNav 分析层「能源专题」组（`pv-roi` 同组，排它后面；2026-09-03 SIDEBAR-UX-REDESIGN §2.3 把「专题分析」拆为经营 / 能源两组） | 两套数据源、两套时间维、两套期间语义挤一屏 |
 | **`PvRoiView` 保留附表 6 口径的投资回收，卸掉抄表区**（468 行 → ~230 行） | 两屏各自单一口径 |
 | **零剔除**：所有数据进模型，所有异常进图 | 剔低辐照日 / `minStations=8` / 整月排除，是把该报的东西扔掉再拿剩下的装作正常。不确定性反映在**区间宽度**上，不反映在样本被删掉 |
 | **14 块全部是图**（11 块在屏上，3 块在单栋抽屉） | 见 §06 |
@@ -1039,6 +1039,6 @@ frontend/src/api/weather.ts                  frontend/src/utils/weatherExcel.ts(
 1. **路由不是自动派生的。** `frontend/src/router/index.ts` 有一张显式的 `VIEWS` 表，
    `fpBuildRoutes()`（`fpNav.ts:86-90`）只产 meta 不产组件。漏配这一行，该屏
    **静默降级成 `PlaceholderView`**，且 `router/routeMap.spec.ts:11` 会红。
-2. **fpNav 没有「能源专题」组。** 分析层第 3 组叫**「专题分析」**（`fpNav.ts:60`），`pv-roi` 就在里面（:66）。
+2. **fpNav 的分析层分组已重切（2026-09-03 SIDEBAR-UX-REDESIGN §2.3）。** 原「专题分析」拆为「经营专题」与「能源专题」，`pv-roi` / `pv-meter-analysis` / `elec-analysis` / `charging-analysis` 在「能源专题」（`fpNav.ts`）。本稿初版写的「没有能源专题组」已不成立；`pv-meter-analysis` 图标同时由 `sun` 改 `table-2`。
 3. **`fpNav.ts:1` 的头注释写「49屏×4层」已过时**（实际 50）。加屏时一并改成 51。
 4. **`S_GLOBAL_ONLY` 在 `ParamRegistry` 中尚不存在**（现有 `S_GLOBAL_ZONE` / `S_ZONE` 等 8 个，:30-37），本刀新建。

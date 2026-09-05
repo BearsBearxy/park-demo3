@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>三方向对比</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap">
+  <style>
+  body { margin:0; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgb(28,28,28); background:#fff; -webkit-font-smoothing:antialiased; }
+  a { color:oklch(0.55 0.115 250); } a:hover { color:rgb(31,95,191); }
+  .num { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+  /* rail */
+  .fp-rail { width:66px; flex:0 0 66px; display:flex; flex-direction:column; align-items:center; padding:14px 9px; gap:5px; box-sizing:border-box; background:rgb(245,245,246); }
+  .fp-rail-mark { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid rgba(28,28,28,0.1); display:grid; place-items:center; flex:0 0 auto; }
+  .fp-railsep { width:30px; height:1px; background:rgba(28,28,28,0.1); margin:9px 0 7px; flex:0 0 auto; }
+  .fp-rail-btn { width:48px; border:none; background:transparent; color:rgba(28,28,28,0.62); border-radius:15px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:5px; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; font-size:10.5px; font-weight:500; flex:0 0 auto; }
+  .fp-rail-btn.on { background:rgb(28,28,28); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,0.2); }
+  .fp-rail-foot { margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:11px; padding-top:10px; }
+  .fp-rail-cmd { width:40px; height:40px; border-radius:13px; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgba(28,28,28,0.8); display:grid; place-items:center; }
+  .fp-avatar { width:32px; height:32px; border-radius:50%; background:rgb(76,152,253); color:#fff; display:grid; place-items:center; font-size:12px; font-weight:600; }
+  /* panel */
+  .fp-panel { width:234px; flex:0 0 234px; display:flex; flex-direction:column; gap:14px; padding:18px 14px 14px; box-sizing:border-box; }
+  .fp-panel-hdr { display:flex; align-items:center; gap:9px; padding:0 6px; color:rgb(28,28,28); height:24px; }
+  .fp-panel-hdr .nm { font-size:16px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
+  .fp-panel-div { height:1px; background:rgba(28,28,28,0.1); margin:0 -14px; }
+  .fp-nav { display:flex; flex-direction:column; gap:16px; }
+  .fp-sec { display:flex; flex-direction:column; gap:2px; }
+  .fp-gt { font:400 12px/18px "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgba(28,28,28,0.62); padding:6px 12px; }
+  .fp-row { position:relative; display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:rgba(28,28,28,0.8); box-sizing:border-box; white-space:nowrap; }
+  .fp-row .lb { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .fp-row.on { background:rgba(28,28,28,0.05); color:rgb(28,28,28); }
+  .fp-row.on::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:rgb(28,28,28); }
+  .fp-dot { position:absolute; right:10px; top:50%; margin-top:-3px; width:6px; height:6px; border-radius:50%; background:oklch(0.54 0.115 62); }
+  /* shell */
+  .fp-stage { display:flex; padding:12px; gap:12px; box-sizing:border-box; background:#fff; }
+  .fp-nav-card { flex:0 0 auto; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; display:flex; }
+  .fp-vdiv { flex:0 0 1px; width:1px; background:rgba(28,28,28,0.1); }
+  .fp-main-card { flex:1; min-width:0; display:flex; flex-direction:column; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; position:relative; }
+  .fp-tabstrip { height:44px; padding:0 8px; background:rgb(249,249,250); display:flex; align-items:center; gap:4px; box-sizing:border-box; }
+  .fp-tab { height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; line-height:20px; color:rgba(28,28,28,0.8); }
+  .fp-tab.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-tab.prev { font-style:italic; }
+  .fp-tab-x { width:20px; height:20px; border-radius:6px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-tab-add { height:28px; width:28px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-toolbar { height:48px; display:flex; align-items:center; gap:8px; padding:0 16px; border-bottom:1px solid rgba(28,28,28,0.1); background:rgba(255,255,255,0.9); box-sizing:border-box; }
+  .fp-ib { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.8); }
+  .fp-crumb { display:flex; align-items:center; gap:7px; margin-left:6px; font-size:14px; }
+  .fp-crumb .g { color:rgba(28,28,28,0.62); } .fp-crumb .s { color:rgba(28,28,28,0.2); } .fp-crumb .p { font-weight:500; color:rgb(28,28,28); }
+  .fp-tb-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .fp-search { display:flex; align-items:center; gap:8px; height:34px; padding:0 8px 0 12px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:rgb(249,249,250); color:rgba(28,28,28,0.62); min-width:200px; font-size:13px; box-sizing:border-box; }
+  .fp-kbd { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; padding:1px 6px; border:1px solid rgba(28,28,28,0.1); border-radius:5px; color:rgba(28,28,28,0.62); background:#fff; }
+  .fp-presence { width:130px; height:32px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:#fff; display:flex; align-items:center; padding:0 6px; gap:4px; box-sizing:border-box; }
+  .fp-content { flex:1; padding:24px; box-sizing:border-box; }
+  /* callouts */
+  .co { position:absolute; width:18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; box-shadow:0 0 0 2px #fff; z-index:5; }
+  .legend { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 18px; padding:16px 24px 20px; font-size:12.5px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .legend .it { display:flex; gap:8px; align-items:flex-start; }
+  .legend .it b { flex:0 0 18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; }
+  .cap { font-size:11.5px; color:rgba(28,28,28,0.62); }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); }
+
+  .fp-gt2 { position:relative; cursor:pointer; padding-right:32px; }
+  .fp-gt-n { margin-left:6px; font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; color:rgba(28,28,28,0.4); }
+  .fp-tab2 { width:148px; flex:0 0 148px; height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .fp-tab2 .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fp-tab2.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-ctx { width:132px; flex:0 0 132px; height:26px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); font-size:12px; display:flex; align-items:center; gap:6px; padding:0 10px; box-sizing:border-box; margin-left:8px; white-space:nowrap; }
+  .fp-ctx .num { font-size:12px; }
+  .ann { font-size:12.5px; line-height:19px; color:rgba(28,28,28,0.8); }
+  .ann b { color:rgb(28,28,28); font-weight:600; }
+  .ann li { margin:0 0 8px 0; }
+  .h { font-size:16px; font-weight:600; color:rgb(28,28,28); letter-spacing:-0.01em; }
+  .sub { font-size:12px; color:rgba(28,28,28,0.62); }
+  /* hub */
+  .mc { width:76px; height:72px; border:1px solid rgba(28,28,28,0.1); border-radius:12px; padding:8px 8px 6px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; position:relative; background:#fff; }
+  .mc.cur { border:2px solid rgb(28,28,28); padding:7px 7px 5px; }
+  .mc.stale { background:oklch(0.97 0.03 62); }
+  .mc.empty { background:rgb(245,245,246); border-color:transparent; color:rgba(28,28,28,0.62); }
+  .mc .m { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; font-weight:600; }
+  .pips { display:flex; gap:4px; }
+  .pip { width:9px; height:9px; border-radius:50%; background:rgba(28,28,28,0.1); }
+  .pip.d { background:oklch(0.58 0.130 150); }
+  .pip.w { background:oklch(0.54 0.115 62); }
+  .lockb { position:absolute; right:6px; top:6px; color:oklch(0.54 0.115 62); }
+  .sup { height:32px; border-radius:10px; background:rgb(245,245,246); display:flex; align-items:center; gap:10px; padding:0 12px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .chip { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:999px; background:#fff; border:1px solid rgba(28,28,28,0.1); font-size:12px; color:rgba(28,28,28,0.8); white-space:nowrap; }
+  .chip.ok { border-color:oklch(0.85 0.08 150); color:oklch(0.58 0.130 150); }
+  .chip.todo { color:rgba(28,28,28,0.62); border-style:dashed; }
+  .chip.ent { background:rgb(245,245,246); color:rgba(28,28,28,0.8); border-color:transparent; }
+  .chip.pend { border-color:oklch(0.85 0.08 62); color:oklch(0.54 0.115 62); }
+  .chip.ret { border-color:oklch(0.85 0.08 27); color:oklch(0.56 0.150 27); }
+  .chip.me { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .rv { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 8px; border-radius:999px; font-size:11.5px; white-space:nowrap; }
+  .rv.ok { background:oklch(0.95 0.04 150); color:oklch(0.58 0.130 150); }
+  .rv.pend { background:oklch(0.96 0.04 62); color:oklch(0.54 0.115 62); }
+  .rv.none { background:rgb(245,245,246); color:rgba(28,28,28,0.62); }
+  .rv.ret { background:oklch(0.96 0.04 27); color:oklch(0.56 0.150 27); }
+  .rv.na { color:rgba(28,28,28,0.2); }
+  .btn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:8px; font-size:12.5px; font-weight:500; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgb(28,28,28); white-space:nowrap; flex:0 0 auto; }
+  .btn.solid { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .btn.dis { color:rgba(28,28,28,0.2); background:rgb(245,245,246); border-color:transparent; }
+  .box { border:1px solid rgba(28,28,28,0.1); border-radius:14px; padding:14px 16px; background:#fff; }
+  .sm { width:118px; height:56px; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:13px; font-weight:600; border:1px solid rgba(28,28,28,0.1); }
+  .arrow { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:rgba(28,28,28,0.62); width:120px; }
+  .arrow .ln { width:100%; height:0; border-top:2px solid rgba(28,28,28,0.2); position:relative; }
+  .arrow .ln::after { content:''; position:absolute; right:-1px; top:-5px; border:5px solid transparent; border-left:7px solid rgba(28,28,28,0.2); }
+  .col { flex:1; min-width:0; border:1px solid rgba(28,28,28,0.1); border-radius:16px; overflow:hidden; }
+  .col .ch { height:36px; display:flex; align-items:center; gap:8px; padding:0 14px; font-size:13px; font-weight:600; background:rgb(249,249,250); border-bottom:1px solid rgba(28,28,28,0.1); }
+  .crow { height:38px; display:flex; align-items:center; gap:10px; padding:0 14px; border-bottom:1px solid rgba(28,28,28,0.05); font-size:13px; color:rgb(28,28,28); }
+  .crow:last-child { border-bottom:none; }
+  .crow .nm { width:112px; flex:0 0 112px; font-weight:500; white-space:nowrap; }
+  .crow .dt { flex:1; min-width:0; color:rgba(28,28,28,0.62); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .crow .st { flex:0 0 auto; display:flex; align-items:center; gap:6px; font-size:12px; }
+  .crow.cur { background:oklch(0.97 0.02 250); }
+  .crow.dis { color:rgba(28,28,28,0.2); }
+  .crow.dis .nm { color:rgba(28,28,28,0.2); }
+  .lo { border:1px dashed rgba(28,28,28,0.2); border-radius:14px; padding:14px 16px; background:#fff; }
+  .lo h4 { margin:0 0 6px; font-size:14px; }
+  .lo p { margin:0 0 6px; font-size:12px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .score { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:22px; font-weight:600; }
+</style>
+</helmet>
+
+  <div style="width:1180px;padding:24px;box-sizing:border-box;background:#fff;">
+    <div class="h">三个独立方向 · 三位评审打分（专员点击 25 / 主管高管 15 / 约束兼容 20 / 一屏装下 15 / 单一分类法 15 / 可分期 10）</div>
+    <div class="sub" style="margin:4px 0 16px;">分数 = 三位评审总分之和（满分 300）。评审镜头：专员的一个月 · 工程护栏 · IA 可扫描性。三位一致选 A。</div>
+    <div style="display:flex;gap:16px;align-items:stretch;">
+      
+    <div class="lo" style="flex:1;min-width:0;border:2px solid rgb(28,28,28);">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;"><h4>A · 工序优先</h4><span class="score" style="color:rgb(28,28,28)">209</span></div>
+      <p><b>主攻</b>：专员按工序用、侧栏按对象列。数据层第一项「本月出账」= 期间矩阵 + 清单；侧栏=恢复现场；角色落地三档。</p>
+      <p><b>动什么</b>：一屏新工作台（首页改名补全）；期协议中央化；面板折叠；常用块。</p>
+      <p style="color:oklch(0.56 0.150 27)"><b>评审扣分</b>：常用块 + 清单 + 侧栏 三处指向同 15 屏；展开态 644px 装不下（被重算）；两处需拍板。</p>
+    </div>
+      
+    <div class="lo" style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;"><h4>B · 重切信息架构</h4><span class="score" style="color:rgba(28,28,28,0.62)">196</span></div>
+      <p><b>主攻</b>：按动词/频次重切 51 屏；驾驶舱 + 监控置顶；系统层退到轨底齿轮；股东无轨。</p>
+      <p><b>动什么</b>：fpNav 组行（目录项）+ 手风琴；navHeight.spec 护栏；后端 4→5 步；收入核对搬层。</p>
+      <p style="color:oklch(0.56 0.150 27)"><b>评审扣分</b>：专员点击 47→47 持平；主管零收益；股东无轨破 XL 冻结；目录项破 DESIGN-FIDELITY §2.4.1。</p>
+    </div>
+      
+    <div class="lo" style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;"><h4>C · 最小改动修语义</h4><span class="score" style="color:rgba(28,28,28,0.62)">176</span></div>
+      <p><b>主攻</b>：不动 fpNav：修 open/openFresh、深链协议、死 UI、在场点、折叠记忆。</p>
+      <p><b>动什么</b>：nav/deepLink.ts + useDeepPeriod；evicted 提示；scopePeriod；角色派生；常用块。</p>
+      <p style="color:oklch(0.56 0.150 27)"><b>评审扣分</b>：面板高度自报 760 实算 946（假绿）；无主管落地；高管仍落数据层；行号引用失真。</p>
+    </div>
+    </div>
+    <div style="margin-top:18px;padding:14px 16px;border-radius:14px;background:rgb(245,245,246);font-size:12.5px;line-height:19px;color:rgba(28,28,28,0.8);">
+      <b style="color:rgb(28,28,28)">综合 = A 骨架</b> + B 的动词组名、手风琴、navHeight.spec、buildChain 5 步、anaData 走 fpAllPages + C 的 useDeepPeriod、evicted 提示、scopePeriod、角色派生、搜索文案。
+      <b style="color:rgb(28,28,28)">砍掉</b>：常用块（第二指针）、新建 month-close 屏（首页改名即可）、矩阵 5 颗点、B 的目录项与股东无轨、收入核对搬层。
+      <b style="color:rgb(28,28,28)">对抗复核推翻 4 条并改写</b>：首页第 5 步判据用 priceOk 不用 stale；银行流水删条目不过滤；首页行显式 pick 不给 adoptYm 加 force；手风琴不自动收回。
+    </div>
+  </div>
+</x-dc>
+</body>
+</html>

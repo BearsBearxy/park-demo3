@@ -44,6 +44,12 @@ vi.mock('@/api/system', () => ({
   systemApi: { users: vi.fn(), roles: vi.fn(), auditPage: vi.fn(() => Promise.resolve({ rows: [], total: 0 })) },
 }))
 vi.mock('@/api/ana', () => ({ invalidateAnaCache: vi.fn() }))
+// ContractsView 读 ?contractNo=(P0c);其余三屏不碰 vue-router,这个桩对它们无感
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: {}, fullPath: '/x' }),
+  useRouter: () => ({ push: vi.fn() }),
+  RouterLink: { name: 'RouterLink', template: '<a><slot /></a>' },
+}))
 
 /** 让两个首载接口都停在「在途」，好在数据到达前观察 DOM。 */
 function deferred<T>() {

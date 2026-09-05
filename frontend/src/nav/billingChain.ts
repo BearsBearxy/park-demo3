@@ -1,5 +1,5 @@
 // 出账链的定义 —— 五道工序的顺序、屏名、以及从一个月的进度推出链路条状态。
-// 顺序即业务时序（fpNav「出账链 · 应收派生」那一组，BILL-FORWARD 第 0 刀）。
+// 顺序即业务时序（fpNav「出账 · 每月工序」那一组，BILL-FORWARD 第 0 刀；2026-09-03 起合同管理归「档案」组，不在链里）。
 // 屏名从 fpNav 取，不在这里写第二遍：链路条上的字与侧栏对不上，用户就不知道自己点到哪去了。
 import { fpBuildRoutes } from '@/nav/fpNav'
 import type { Step } from '@/components/fp/FPStepStrip.vue'

@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>审核机制</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap">
+  <style>
+  body { margin:0; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgb(28,28,28); background:#fff; -webkit-font-smoothing:antialiased; }
+  a { color:oklch(0.55 0.115 250); } a:hover { color:rgb(31,95,191); }
+  .num { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+  /* rail */
+  .fp-rail { width:66px; flex:0 0 66px; display:flex; flex-direction:column; align-items:center; padding:14px 9px; gap:5px; box-sizing:border-box; background:rgb(245,245,246); }
+  .fp-rail-mark { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid rgba(28,28,28,0.1); display:grid; place-items:center; flex:0 0 auto; }
+  .fp-railsep { width:30px; height:1px; background:rgba(28,28,28,0.1); margin:9px 0 7px; flex:0 0 auto; }
+  .fp-rail-btn { width:48px; border:none; background:transparent; color:rgba(28,28,28,0.62); border-radius:15px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:5px; font-family:"Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; font-size:10.5px; font-weight:500; flex:0 0 auto; }
+  .fp-rail-btn.on { background:rgb(28,28,28); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,0.2); }
+  .fp-rail-foot { margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:11px; padding-top:10px; }
+  .fp-rail-cmd { width:40px; height:40px; border-radius:13px; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgba(28,28,28,0.8); display:grid; place-items:center; }
+  .fp-avatar { width:32px; height:32px; border-radius:50%; background:rgb(76,152,253); color:#fff; display:grid; place-items:center; font-size:12px; font-weight:600; }
+  /* panel */
+  .fp-panel { width:234px; flex:0 0 234px; display:flex; flex-direction:column; gap:14px; padding:18px 14px 14px; box-sizing:border-box; }
+  .fp-panel-hdr { display:flex; align-items:center; gap:9px; padding:0 6px; color:rgb(28,28,28); height:24px; }
+  .fp-panel-hdr .nm { font-size:16px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
+  .fp-panel-div { height:1px; background:rgba(28,28,28,0.1); margin:0 -14px; }
+  .fp-nav { display:flex; flex-direction:column; gap:16px; }
+  .fp-sec { display:flex; flex-direction:column; gap:2px; }
+  .fp-gt { font:400 12px/18px "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif; color:rgba(28,28,28,0.62); padding:6px 12px; }
+  .fp-row { position:relative; display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:rgba(28,28,28,0.8); box-sizing:border-box; white-space:nowrap; }
+  .fp-row .lb { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .fp-row.on { background:rgba(28,28,28,0.05); color:rgb(28,28,28); }
+  .fp-row.on::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:rgb(28,28,28); }
+  .fp-dot { position:absolute; right:10px; top:50%; margin-top:-3px; width:6px; height:6px; border-radius:50%; background:oklch(0.54 0.115 62); }
+  /* shell */
+  .fp-stage { display:flex; padding:12px; gap:12px; box-sizing:border-box; background:#fff; }
+  .fp-nav-card { flex:0 0 auto; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; display:flex; }
+  .fp-vdiv { flex:0 0 1px; width:1px; background:rgba(28,28,28,0.1); }
+  .fp-main-card { flex:1; min-width:0; display:flex; flex-direction:column; background:#fff; border:1px solid rgba(28,28,28,0.1); border-radius:24px; overflow:hidden; position:relative; }
+  .fp-tabstrip { height:44px; padding:0 8px; background:rgb(249,249,250); display:flex; align-items:center; gap:4px; box-sizing:border-box; }
+  .fp-tab { height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; line-height:20px; color:rgba(28,28,28,0.8); }
+  .fp-tab.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-tab.prev { font-style:italic; }
+  .fp-tab-x { width:20px; height:20px; border-radius:6px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-tab-add { height:28px; width:28px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.62); }
+  .fp-toolbar { height:48px; display:flex; align-items:center; gap:8px; padding:0 16px; border-bottom:1px solid rgba(28,28,28,0.1); background:rgba(255,255,255,0.9); box-sizing:border-box; }
+  .fp-ib { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; color:rgba(28,28,28,0.8); }
+  .fp-crumb { display:flex; align-items:center; gap:7px; margin-left:6px; font-size:14px; }
+  .fp-crumb .g { color:rgba(28,28,28,0.62); } .fp-crumb .s { color:rgba(28,28,28,0.2); } .fp-crumb .p { font-weight:500; color:rgb(28,28,28); }
+  .fp-tb-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .fp-search { display:flex; align-items:center; gap:8px; height:34px; padding:0 8px 0 12px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:rgb(249,249,250); color:rgba(28,28,28,0.62); min-width:200px; font-size:13px; box-sizing:border-box; }
+  .fp-kbd { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; padding:1px 6px; border:1px solid rgba(28,28,28,0.1); border-radius:5px; color:rgba(28,28,28,0.62); background:#fff; }
+  .fp-presence { width:130px; height:32px; border-radius:999px; border:1px solid rgba(28,28,28,0.1); background:#fff; display:flex; align-items:center; padding:0 6px; gap:4px; box-sizing:border-box; }
+  .fp-content { flex:1; padding:24px; box-sizing:border-box; }
+  /* callouts */
+  .co { position:absolute; width:18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; box-shadow:0 0 0 2px #fff; z-index:5; }
+  .legend { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px 18px; padding:16px 24px 20px; font-size:12.5px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .legend .it { display:flex; gap:8px; align-items:flex-start; }
+  .legend .it b { flex:0 0 18px; height:18px; border-radius:50%; background:oklch(0.56 0.150 27); color:#fff; font:600 11px/18px "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; text-align:center; }
+  .cap { font-size:11.5px; color:rgba(28,28,28,0.62); }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); }
+
+  .fp-gt2 { position:relative; cursor:pointer; padding-right:32px; }
+  .fp-gt-n { margin-left:6px; font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:10.5px; color:rgba(28,28,28,0.4); }
+  .fp-tab2 { width:148px; flex:0 0 148px; height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:7px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .fp-tab2 .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fp-tab2.on { background:#fff; color:rgb(28,28,28); box-shadow:0 1px 3px rgba(28,28,28,0.06), 0 1px 2px rgba(28,28,28,0.04); }
+  .fp-ctx { width:132px; flex:0 0 132px; height:26px; border-radius:999px; background:rgb(245,245,246); color:rgba(28,28,28,0.8); font-size:12px; display:flex; align-items:center; gap:6px; padding:0 10px; box-sizing:border-box; margin-left:8px; white-space:nowrap; }
+  .fp-ctx .num { font-size:12px; }
+  .ann { font-size:12.5px; line-height:19px; color:rgba(28,28,28,0.8); }
+  .ann b { color:rgb(28,28,28); font-weight:600; }
+  .ann li { margin:0 0 8px 0; }
+  .h { font-size:16px; font-weight:600; color:rgb(28,28,28); letter-spacing:-0.01em; }
+  .sub { font-size:12px; color:rgba(28,28,28,0.62); }
+  /* hub */
+  .mc { width:76px; height:72px; border:1px solid rgba(28,28,28,0.1); border-radius:12px; padding:8px 8px 6px; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; position:relative; background:#fff; }
+  .mc.cur { border:2px solid rgb(28,28,28); padding:7px 7px 5px; }
+  .mc.stale { background:oklch(0.97 0.03 62); }
+  .mc.empty { background:rgb(245,245,246); border-color:transparent; color:rgba(28,28,28,0.62); }
+  .mc .m { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; font-weight:600; }
+  .pips { display:flex; gap:4px; }
+  .pip { width:9px; height:9px; border-radius:50%; background:rgba(28,28,28,0.1); }
+  .pip.d { background:oklch(0.58 0.130 150); }
+  .pip.w { background:oklch(0.54 0.115 62); }
+  .lockb { position:absolute; right:6px; top:6px; color:oklch(0.54 0.115 62); }
+  .sup { height:32px; border-radius:10px; background:rgb(245,245,246); display:flex; align-items:center; gap:10px; padding:0 12px; font-size:12.5px; color:rgba(28,28,28,0.8); box-sizing:border-box; }
+  .chip { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:999px; background:#fff; border:1px solid rgba(28,28,28,0.1); font-size:12px; color:rgba(28,28,28,0.8); white-space:nowrap; }
+  .chip.ok { border-color:oklch(0.85 0.08 150); color:oklch(0.58 0.130 150); }
+  .chip.todo { color:rgba(28,28,28,0.62); border-style:dashed; }
+  .chip.ent { background:rgb(245,245,246); color:rgba(28,28,28,0.8); border-color:transparent; }
+  .chip.pend { border-color:oklch(0.85 0.08 62); color:oklch(0.54 0.115 62); }
+  .chip.ret { border-color:oklch(0.85 0.08 27); color:oklch(0.56 0.150 27); }
+  .chip.me { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .rv { flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 8px; border-radius:999px; font-size:11.5px; white-space:nowrap; }
+  .rv.ok { background:oklch(0.95 0.04 150); color:oklch(0.58 0.130 150); }
+  .rv.pend { background:oklch(0.96 0.04 62); color:oklch(0.54 0.115 62); }
+  .rv.none { background:rgb(245,245,246); color:rgba(28,28,28,0.62); }
+  .rv.ret { background:oklch(0.96 0.04 27); color:oklch(0.56 0.150 27); }
+  .rv.na { color:rgba(28,28,28,0.2); }
+  .btn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px; border-radius:8px; font-size:12.5px; font-weight:500; border:1px solid rgba(28,28,28,0.1); background:#fff; color:rgb(28,28,28); white-space:nowrap; flex:0 0 auto; }
+  .btn.solid { background:rgb(28,28,28); color:#fff; border-color:rgb(28,28,28); }
+  .btn.dis { color:rgba(28,28,28,0.2); background:rgb(245,245,246); border-color:transparent; }
+  .box { border:1px solid rgba(28,28,28,0.1); border-radius:14px; padding:14px 16px; background:#fff; }
+  .sm { width:118px; height:56px; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:13px; font-weight:600; border:1px solid rgba(28,28,28,0.1); }
+  .arrow { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:rgba(28,28,28,0.62); width:120px; }
+  .arrow .ln { width:100%; height:0; border-top:2px solid rgba(28,28,28,0.2); position:relative; }
+  .arrow .ln::after { content:''; position:absolute; right:-1px; top:-5px; border:5px solid transparent; border-left:7px solid rgba(28,28,28,0.2); }
+  .col { flex:1; min-width:0; border:1px solid rgba(28,28,28,0.1); border-radius:16px; overflow:hidden; }
+  .col .ch { height:36px; display:flex; align-items:center; gap:8px; padding:0 14px; font-size:13px; font-weight:600; background:rgb(249,249,250); border-bottom:1px solid rgba(28,28,28,0.1); }
+  .crow { height:38px; display:flex; align-items:center; gap:10px; padding:0 14px; border-bottom:1px solid rgba(28,28,28,0.05); font-size:13px; color:rgb(28,28,28); }
+  .crow:last-child { border-bottom:none; }
+  .crow .nm { width:112px; flex:0 0 112px; font-weight:500; white-space:nowrap; }
+  .crow .dt { flex:1; min-width:0; color:rgba(28,28,28,0.62); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .crow .st { flex:0 0 auto; display:flex; align-items:center; gap:6px; font-size:12px; }
+  .crow.cur { background:oklch(0.97 0.02 250); }
+  .crow.dis { color:rgba(28,28,28,0.2); }
+  .crow.dis .nm { color:rgba(28,28,28,0.2); }
+  .lo { border:1px dashed rgba(28,28,28,0.2); border-radius:14px; padding:14px 16px; background:#fff; }
+  .lo h4 { margin:0 0 6px; font-size:14px; }
+  .lo p { margin:0 0 6px; font-size:12px; line-height:18px; color:rgba(28,28,28,0.8); }
+  .score { font-family:"Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size:22px; font-weight:600; }
+</style>
+</helmet>
+
+  <div style="width:1180px;padding:24px;box-sizing:border-box;background:#fff;display:flex;flex-direction:column;gap:16px;">
+    <div>
+      <div class="h">审核机制 · 一张表 × 一个月</div>
+      <div class="sub" style="margin-top:4px;">已拍板：粒度 = 一张表 × 一个月；已审核 = 只读，只有审核员能撤销。新角色「审核员」只有 <code>review:approve</code>，零编辑权（录审分离）。</div>
+    </div>
+    <div class="box">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px;">状态机（每个审核键，如 <code>ledger:A:2024-02</code>）</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="sm" style="background:rgb(245,245,246);color:rgb(28,28,28);border-color:transparent"><span>录入中</span><span style="font-size:10.5px;font-weight:400;opacity:.8">派生态 · 可编辑</span></div>
+        <div class="arrow"><span><b style="color:rgb(28,28,28)">交审</b></span><div class="ln"></div><span>录入方 · 需该表 edit 权</span></div>
+        <div class="sm" style="background:oklch(0.96 0.04 62);color:oklch(0.54 0.115 62);border-color:transparent"><span>待审核</span><span style="font-size:10.5px;font-weight:400;opacity:.8">锁 · 审核员队列</span></div>
+        <div class="arrow"><span><b style="color:rgb(28,28,28)">通过</b></span><div class="ln"></div><span>审核员</span></div>
+        <div class="sm" style="background:oklch(0.95 0.04 150);color:oklch(0.58 0.130 150);border-color:transparent"><span>已审核 🔒</span><span style="font-size:10.5px;font-weight:400;opacity:.8">只读 · 任何入口都改不了</span></div>
+        <div style="flex:1"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:rgba(28,28,28,0.8);">
+          <span class="rv ret" style="height:24px;padding:0 10px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>退回（审核员 + 理由）→ 录入中</span>
+          <span class="rv ret" style="height:24px;padding:0 10px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>撤销审核（审核员 + 理由）→ 录入中</span>
+        </div>
+      </div>
+      <div class="sub" style="margin-top:12px;">前置：公共电核算通过需 参数 + 抄表 已审核；催缴单通过需 公摊 + 损耗 已审核。下游已审核时上游不能撤销（先撤催缴单才能撤公摊）。整月锁账 = 该月全部键已审核，自动派生，没有单独的锁账按钮。</div>
+    </div>
+    <div style="display:flex;gap:16px;">
+      <div class="box" style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">屏内：编辑模式按钮位的三种态（同尺寸，零位移）</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <span class="btn solid"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>编辑模式</span><span class="sub">录入中 / 已退回</span>
+          <span class="btn dis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/></svg>待审核 · 已交审</span><span class="sub">交审后即锁</span>
+          <span class="btn dis"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>已审核 · 李审 03-05</span><span class="sub">tooltip：撤销审核需审核员</span>
+        </div>
+        <div class="sub" style="margin-top:10px;">后端同样拦：所有写路径（含导入、复制上月、参数重算）先过 <code>ReviewGuard</code>，已审/待审一律 423，消息写明谁、何时审核。主管的接管锁、当场提权都绕不过。</div>
+      </div>
+      <div class="box" style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">审核员落地：本月出账 + 审核条</div>
+        <div class="sup" style="margin-bottom:10px;"><span class="chip pend"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/></svg>待审核 <span class="num">2</span></span><span class="chip">只看待审</span><span style="margin-left:auto;" class="chip ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>本月已审 <span class="num">6</span>/13</span></div>
+        <div class="crow" style="border:1px solid rgba(28,28,28,0.1);border-radius:10px;padding:0 10px;"><span class="nm" style="width:72px;flex-basis:72px">园区抄表</span><span class="dt">王五 交审 03-04</span><span class="rv pend"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/></svg>待审核</span><span class="btn solid" style="height:24px;padding:0 10px;font-size:12px;">通过</span><span class="btn" style="height:24px;padding:0 10px;font-size:12px;">退回</span></div>
+        <div class="crow" style="border:1px solid rgba(28,28,28,0.1);border-radius:10px;margin-top:6px;padding:0 10px;"><span class="nm" style="width:72px;flex-basis:72px">计费参数</span><span class="dt">电价 6/6</span><span class="rv ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>已审核 · 李审 03-05</span><span class="btn" style="height:24px;padding:0 10px;font-size:12px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;display:block;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>撤销</span></div>
+      </div>
+      <div class="box" style="flex:0 0 300px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">撤销审核 · 居中弹卡</div>
+        <div style="border:1px solid rgba(28,28,28,0.1);border-radius:12px;padding:12px;box-shadow:0 8px 28px rgba(28,28,28,0.12);">
+          <div style="font-size:13px;font-weight:600;">撤销审核</div>
+          <div class="sub" style="margin:2px 0 8px;">2024-02 · A 公司 · 月度台账</div>
+          <div style="border:1px solid rgba(28,28,28,0.2);border-radius:8px;height:52px;padding:6px 8px;font-size:12px;color:rgba(28,28,28,0.62);">理由（必填）：3 月租金列录错，专员申请改…</div>
+          <div class="sub" style="margin:8px 0;">撤销后回到「录入中」，可编辑；写入操作日志。</div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;"><span class="btn" style="height:26px;">取消</span><span class="btn solid" style="height:26px;">确认撤销</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</x-dc>
+</body>
+</html>

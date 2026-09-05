@@ -110,6 +110,21 @@ describe('规则④ 负值行', () => {
     expect(s.sev).toBe('watch')
     expect(s.link).toBe('/sales-income')
   })
+
+  it('附10 负值行异常带 co(=该行 phase)与 tenant;台账负值行异常带 company 与 tenant', () => {
+    const inputs: AnomalyInputs = {
+      ...empty,
+      s10: [s10({ acctMonth: '2025-06', tenantName: '创显宿舍', total: -936.73 })],
+      ledger: [ledger({ tenantName: '易通达', companyName: '一泽', receivable: -32055.63, collected: 0 })],
+    }
+    const out = buildAnomalies(inputs, { collectTarget: 0 })
+    const led = out.find((a) => a.type === '负值行' && a.dim === '管理公司')!
+    expect(led.company).toBe('一泽')
+    expect(led.tenant).toBe('易通达')
+    const s = out.find((a) => a.dim === '租户')!
+    expect(s.co).toBe(1)          // s10 夹具默认 phase: 1
+    expect(s.tenant).toBe('创显宿舍')
+  })
 })
 
 describe('排序', () => {

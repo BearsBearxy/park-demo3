@@ -6,6 +6,7 @@
 // spec §B/W2:欠费清单+账龄卡共用「按户|按家族」开关,开时 rows 先 mergeFamilyRows 再走现有函数。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -18,6 +19,7 @@ import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, fetchTenants, type S10PhaseMonthly } from '@/analysis/anaData'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { fint, fnum } from '@/components/ana/anaFmt'
@@ -45,7 +47,7 @@ const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const s10 = ref<S10PhaseMonthly | null>(null)
 const famMap = ref(new Map<string, string>())
 const tenants = ref<TenantDTO[]>([])   // 催缴清单导出查联系方式
-onMounted(async () => {
+async function reload() {
   try {
     const [cos, rows, pm, tns] = await Promise.all([
       fetchCompanies(), fetchLedgerRows(), fetchS10PhaseMonthly(), fetchTenants()])
@@ -57,7 +59,11 @@ onMounted(async () => {
   } catch { /* 拉取失败 → 空态卡兜底 */ } finally {
     ready.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 家族口径开关(spec §B/W2 方案A):按户|按家族,默认按户,仅作用于欠费清单+账龄卡 ──
 const famOn = ref(false)
@@ -174,13 +180,13 @@ async function onExportCollection() {
   } catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
 }
 
-// 深链必须 openFresh:KeepAlive 缓存的 LedgerView 只在 onMounted 消费 query(同 ChurnView.goLedger)
+// 深链走 openFresh({pin:true})(页签语义,spec §4.1);发链 periodLink(§4.2):p + extra.company/tenant。台账屏切回也认 query(P0b)。
 const router = useRouter()
 const tabs = useTabsStore()
 function goLedger(tenant: string, company: string, ym: string) {
   drillYm.value = null
-  tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), company, tenant } })
+  tabs.openDeep('ledger')
+  router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 
 const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'

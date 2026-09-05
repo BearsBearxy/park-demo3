@@ -391,6 +391,14 @@ describe('光伏分栋分析 · 事实句与判据脚', () => {
     expect(t).toContain('年锚点 950 小时')
     expect(t).toContain('年等效小时 ≥ 锚点 85%')
     expect(w.find('.pma-b2 .pma-lk').text()).toBe('去改')
+    // 「去改」不是选月:带 adopt=YYYY-12(只在会话没有出账月时认领),**不许**带 p= / ym=(那两个是显式深链,
+    // 会把出账链五屏共读的期顶到 12 月 —— 2026-09-03 P0a 复查 P0A-2)
+    push.mockClear()
+    await w.find('.pma-b2 .pma-lk').trigger('click')
+    expect(push).toHaveBeenCalledWith({ path: '/params', query: { adopt: expect.stringMatching(/^\d{4}-12$/), section: 'constant' } })
+    const q = (push.mock.calls[0][0] as { query: Record<string, string> }).query
+    expect(q).not.toHaveProperty('ym')
+    expect(q).not.toHaveProperty('p')
   })
 
   it('底部固定写着「未列出 ≠ 没问题」', async () => {

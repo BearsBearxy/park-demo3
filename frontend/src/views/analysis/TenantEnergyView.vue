@@ -7,7 +7,9 @@
 // 数据变换纯函数见 ./TenantEnergy.logic.ts(单测)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -37,7 +39,9 @@ const tenantMap = ref<Map<string, AnalysisS10Row[]>>(new Map())
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
 const tenantList = ref<TenantDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
+  // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
+  err.value = ''
   try {
     const [tm, lr, ts] = await Promise.all([fetchS10TenantMap(), fetchLedgerRows(), fetchTenants()])
     tenantMap.value = tm
@@ -48,7 +52,11 @@ onMounted(async () => {
   } finally {
     loaded.value = true
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 期区标签/配色(ECharts canvas 不识别 CSS 变量 → fpAnaTheme 蓝族字面值) ──
 const phaseName = (p: number): string => PHASES.find((x) => x.phase === p)?.short ?? `期区${p}`
@@ -248,7 +256,7 @@ function onScatterClick(params: unknown) {
   if (p?.data?.name) select(p.data.name)
 }
 
-// ── 深链(openFresh+query 协议,参照 ChurnView.goLedger) ──
+// ── 深链(openFresh 页签语义 + periodLink 发链,参照 ChurnView.goLedger) ──
 const selCompany = computed(() => {
   const name = selRow.value?.name
   if (!name) return ''
@@ -257,13 +265,13 @@ const selCompany = computed(() => {
 })
 function goLedger() {
   if (!selRow.value || !ledgerYm.value) return
-  tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: { y: ledgerYm.value.slice(0, 4), m: String(+ledgerYm.value.slice(5, 7)), company: selCompany.value, tenant: selRow.value.name } })
+  tabs.openDeep('ledger')
+  router.push(periodLink('ledger', { p: periodOf(+ledgerYm.value.slice(0, 4), +ledgerYm.value.slice(5, 7)), extra: { company: selCompany.value, tenant: selRow.value.name } }))
 }
 function goS10() {
   if (!selRow.value || !curYm.value) return
-  tabs.openFresh('sales-income', { pin: true })
-  router.push({ path: '/sales-income', query: { y: curYm.value.slice(0, 4), m: String(+curYm.value.slice(5, 7)), phase: String(selRow.value.phase), tenant: selRow.value.name } })
+  tabs.openDeep('sales-income')
+  router.push(periodLink('sales-income', { p: periodOf(+curYm.value.slice(0, 4), +curYm.value.slice(5, 7)), co: selRow.value.phase, extra: { tenant: selRow.value.name } }))
 }
 
 const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.value.name) ?? null : null))

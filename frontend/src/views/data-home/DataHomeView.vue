@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // 数据中心首页 = 录入工作台(DATA-HOME-REDESIGN spec §2)。只回答一件事:现在该干什么。
+// 2026-09-03 改名「本月出账」,出账链 5 步(SIDEBAR-UX-REDESIGN §5.1)。
 //
 // 2026-08-18 重设计。改版前这屏把同一批信息说了三遍:4 个 KPI 卡里 3 个是下方栏目的重复,
 // 而「本期待办」本身是「完整度」的子集(后端直接遍历同一个 sources 生成 tasks)。
@@ -18,26 +19,95 @@ import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
+import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { usePresenceStore } from '@/stores/presence'
+import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
+import { periodLink, periodOf } from '@/nav/deepLink'
+import { CHAIN } from '@/nav/billingChain'
 
 const router = useRouter()
 const tabsStore = useTabsStore()
 const auth = useAuthStore()
+const period = useBillingPeriodStore()
+const presence = usePresenceStore()
+const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
+
+/** **本标签页**正握着的出账链 / 抄表锁里的期,用来给确认框写出「你在编辑哪个月」。 */
+function myChainLockPeriods(): string[] {
+  const me = presence.users.find(u => u.sid === presence.sid)
+  return (me?.editScopes ?? [])
+    .filter(sc => sc.startsWith('billing-chain:') || sc.startsWith('meters:'))
+    .map(sc => sc.slice(sc.indexOf(':') + 1))
+}
 
 const ov = ref<DataHomeOverviewDTO | null>(null)
 // 用户手动选的月;null = 跟随后端锚定月。**刻意不持久化** —— 下次打开仍按锚重算,
 // 否则看过一眼历史月之后天天落在那儿(spec §2.2)。
 const pickedYm = ref<string | null>(null)
 
+// 晚到的旧回包不许覆盖新选的月(2026-09-03 对抗复查 F2)
+let loadSeq = 0
 async function load() {
-  ov.value = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+  const seq = ++loadSeq
+  const res = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+  if (seq !== loadSeq) return
+  ov.value = res
 }
 onMounted(load)
 watch(pickedYm, load)
 
-// 行点击 = 「去做事」显式导航 → 全新状态(openFresh,非侧边栏入口语义)
-function go(v: string) {
+// 行点击 = 「去做事」显式导航 → 全新状态(openFresh;侧栏语义翻案是 P3 的事,这里不动)。
+// 出账链五屏共读 billingPeriod store:先 pick 首页当前月再 push,目标屏的选期矩阵就被前置满足
+// (SIDEBAR-UX-REDESIGN §4.1 / D2)。pick 覆盖会话里已选的期 —— 首页写着的月就是用户刚点的意图;
+// 本人握着任一链锁时先确认:openFresh 重建目标屏会清掉未保存草稿(不分同月异月)。
+// 链屏与收入核对带 ?p(目标屏的 parsePeriod / parsePeriodQuery 都认);附表行也带(P0b,形状见 scheduleLink)。
+// 前置条「去重算」的 go 也是 params,同样走这条 pick 分支 —— 它指向的正是首页显示月的参数屏,不 pick 反而落回矩阵(评审裁定 2026-09-03)。
+// 本人锁的判断读 presence.users(3 秒一拍,PING_MS):刚进首页那一拍之前看不到自己别处的锁,确认框是尽力而为不是保证。
+// ponytail: window.confirm —— 与 ParamCenterView / BillNoticesView 现有 200+ 处同款,P0 之后若换 FPDrawer 一起换。
+const MONTH_ROWS = new Set(['ledger', 'sales-income', 'salary'])
+const YEAR_ROWS = new Set(['pv-income', 'car-charging', 'ebike-charging', 'elec-cost'])
+/** 附表行的深链形状(SIDEBAR-UX-REDESIGN §5.1):月表带 p=YYYY-MM;年表屏 p 只取年 + mode=summary(盖过本机记住的运营账);
+ *  附13 / 附14 两行同指 utilities,按行的 tag 分 tab。台账行本期不带 co(公司 chips 是 P2 的事,目标屏落首册)。 */
+function scheduleLink(v: string, tag: string, p: { year: number; month: number }) {
+  if (MONTH_ROWS.has(v)) return periodLink(v, { p: periodOf(p.year, p.month) })
+  if (YEAR_ROWS.has(v)) return periodLink(v, { p: periodOf(p.year, null), extra: { mode: 'summary' } })
+  if (v === 'utilities') return periodLink(v, { p: periodOf(p.year, null), extra: { tab: tag === '附14' ? 'phase3' : 'office' } })
+  return null
+}
+function go(v: string, tag = '') {
+  // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
+  const ym = pickedYm.value ?? curYm.value
+  const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
+  // 首页行仍是「全新」(spec §4.1:显式任务导航),所以点之前必须问 —— openFresh 会重建目标屏,
+  // 编辑中的草稿不分同月异月都会丢(2026-09-03 对抗复查 F3)。
+  // P3 收窄(spec §4.1 把这件事派给本期):判据从「本人握着出账链/抄表锁」换成
+  // **本标签页在不在目标屏那把锁底下持锁** —— ① 改前读的是服务端回声的 editScopes,
+  // 进编辑态 3 秒内(下一拍 ping 之前)点回来不弹确认,草稿照丢;② 改前只盖出账链五屏,
+  // 附10 / 台账 / 附表屏的草稿(sched:s10:* 之类)一律不问,而清单上 15 行大半是它们。
+  // 两个真源取或:`holdsEditUnder` 读本地 editCallbacks(即时,补上进编辑态 3 秒内还没回声的空窗),
+  // `myChainLockPeriods` 读服务端回声(它另外还提供「在编辑哪个月」的文案,且只对出账链行有意义)。
+  const heldHere = presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])
+  const held = myChainLockPeriods()
+  if (heldHere || (CHAIN_VALUES.has(v) && held.length > 0)) {
+    const where = held.length ? `（${held.join('、')}）` : ''
+    if (!window.confirm(`你正在编辑${where}。从首页重新打开会丢失未保存的改动，继续？`)) return
+  }
+  if (p && CHAIN_VALUES.has(v)) {
+    period.pick(p.year, p.month)
+    // 门被前置跳过 → ChainMonthGate 不再挂载,而它是 loadChain 的唯一调用方;不补这一句,
+    // 目标屏的链路条读到的是空格子,五道工序全显「未做」(2026-09-03 对抗复查 F1)。
+    // loadChain 幂等:已载入直接返回,在途去重。失败不阻断跳转(矩阵那边同样只标「加载失败」)。
+    void period.loadChain().catch(() => {})
+  }
   tabsStore.openFresh(v)
-  router.push('/' + v)
+  // 链屏与收入核对带 ?p(SIDEBAR-UX-REDESIGN §4.1「显式选月 + periodLink」):目标屏 useDeepPeriod 认得,
+  // 链屏还会与上面预 pick 的期比对(相同 → 不动);附表行按 scheduleLink 的形状带参(P0b)。
+  if (p && (CHAIN_VALUES.has(v) || v === 'reconciliation')) {
+    router.push(periodLink(v, { p: periodOf(p.year, p.month) }))
+    return
+  }
+  const link = p ? scheduleLink(v, tag, p) : null
+  router.push(link ?? '/' + v)
 }
 
 const curYm = computed(() =>
@@ -58,9 +128,9 @@ const sortedItems = computed(() =>
 <template>
   <!-- ⚠ 根节点 .dh **不再吊在 ov 上** —— 它此前是整页 v-if,数据到达前是一整块白屏,
        而这是登录后第一眼看到的屏(加载态设计稿 §03)。
-       骨架能画准是因为两个数都是常量:出账链恒 4 步,附表恒 9 项
+       骨架能画准是因为两个数都是常量:出账链恒 5 步,附表恒 9 项
        (后端 DataHomeService 写死 `new Schedules(done, 9, items)`)。
-       静态文案(本月工作 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
+       静态文案(本月出账 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
        糊成微光条反而是把已知的东西藏起来。
        fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
        出账链/附表本就是 flex-wrap 胶囊行,横幅/大卡 S 档允许换行即可,无定宽结构。 -->
@@ -68,7 +138,7 @@ const sortedItems = computed(() =>
     <template v-if="!ov">
       <div class="dh-head">
         <div class="dh-period">
-          <span class="dh-title">本月工作</span>
+          <span class="dh-title">本月出账</span>
           <div class="dh-msel"><span class="fp-shim" style="display:block;height:28px;border-radius:8px"></span></div>
         </div>
         <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
@@ -76,7 +146,7 @@ const sortedItems = computed(() =>
       <section class="dh-sec">
         <h3 class="dh-h3">出账链</h3>
         <ol class="dh-steps">
-          <li v-for="i in 4" :key="i" class="dh-step" style="cursor:default">
+          <li v-for="i in 5" :key="i" class="dh-step" style="cursor:default">
             <span class="fp-shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span>
             <span class="fp-shim" style="display:block;width:64px;height:12px"></span>
           </li>
@@ -104,14 +174,14 @@ const sortedItems = computed(() =>
     <!-- 顶部唯一总览行:月份 + 两个进度数字。改版前这里是 4 个 KPI 卡,其中 3 个与下方重复 -->
     <div class="dh-head">
       <div class="dh-period">
-        <span class="dh-title">本月工作</span>
+        <span class="dh-title">本月出账</span>
         <div v-if="ov.period" class="dh-msel">
           <Select :options="monthOpts" :model-value="curYm" size="sm"
                   @update:model-value="pickedYm = $event" />
         </div>
       </div>
       <span v-if="ov.period" class="dh-counts">
-        出账 {{ doneSteps }}/4 · 附表 {{ ov.schedules.done }}/{{ ov.schedules.total }}
+        出账 {{ doneSteps }}/5 · 附表 {{ ov.schedules.done }}/{{ ov.schedules.total }}
       </span>
     </div>
 
@@ -167,7 +237,7 @@ const sortedItems = computed(() =>
         <h3 class="dh-h3">附表录入 <span class="dh-h3n">{{ ov.schedules.done }}/{{ ov.schedules.total }}</span></h3>
         <ul class="dh-items">
           <li v-for="i in sortedItems" :key="i.go + i.name" :data-done="i.done"
-              class="dh-item" @click="go(i.go)">
+              class="dh-item" @click="go(i.go, i.tag)">
             <span class="dh-idot">{{ i.done ? '✓' : '○' }}</span>
             <span class="dh-iname">{{ i.name }}</span>
             <span class="dh-itag">{{ i.tag }}</span>

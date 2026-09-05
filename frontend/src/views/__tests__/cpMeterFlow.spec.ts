@@ -42,6 +42,14 @@ vi.mock('@/api/locks', () => ({
   },
 }))
 
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/car-charging?' + new URLSearchParams(query).toString() } }),
+}))
+
 // 夹具按真实 DTO 声明(src/api/cpMeter.ts)再 as never —— 字段漏一个渲染当场崩。
 // 桩库是 car/ebike 共享表:塞一个 ebike 桩进去,car 屏的行数=2 顺带钉住类型过滤。
 const STATIONS: CpStationDTO[] = [
@@ -69,6 +77,7 @@ beforeEach(() => {
   useAuthStore().permissions = ['meter-master:edit', 'meter-reading:edit', 'billing-run:edit']
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(cpMeterApi.stations).mockResolvedValue(STATIONS as never)
   vi.mocked(cpMeterApi.readings).mockResolvedValue([] as never)
@@ -862,5 +871,51 @@ describe('分桩充电明细 · 复查补钉', () => {
     expect(cpMeterApi.simulate, 'simulate 会写对面的账,对面有锁就不许跑').not.toHaveBeenCalled()
     expect(alert).toHaveBeenCalled()
     expect(String(alert.mock.calls[0][0])).toContain('李四')
+  })
+})
+
+describe('分桩充电明细 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => {
+  it('❗带 p 进屏直落那个月:矩阵不出现,记录只拉一次、拉的就是那个月', async () => {
+    // 红线:CpMeterView.vue 的 useDeepPeriod 删掉 → 落回矩阵;挪到 onMounted 之后 → readings 拉两次
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.find('.fmg').exists(), '门该被深链跳过').toBe(false)
+    expect(w.find('.cm-page').exists()).toBe(true)
+    expect(cpMeterApi.readings).toHaveBeenCalledWith(2025, 3)
+    expect(cpMeterApi.readings).toHaveBeenCalledTimes(1)
+  })
+
+  it('抽屉里正在新增一行时切走 → 草稿随抽屉一起收掉;切回换月照换(本屏不设 dirty 闸:切回时没有草稿可护)', async () => {
+    // 红线:onDeactivated 里的 `openSt.value = null` 删掉 → watch(openSt, cancelForm) 不跑,adding 留着 → 「草稿已收」断言红
+    query.p = '2025-03'
+    const Host = defineComponent({
+      components: { CpMeterView },
+      props: { on: { type: Boolean, default: true } },
+      template: '<KeepAlive><CpMeterView v-if="on" vehicle-type="car" /></KeepAlive>',
+    })
+    const w = mount(Host, { global: { stubs: { Teleport: true } } })
+    await flushPromises()
+    const vm = w.findComponent(CpMeterView).vm as unknown as { openSt: unknown; startAdd: () => void; adding: boolean }
+    vm.openSt = STATIONS[0]        // 走真实路径:新增行只能从抽屉里点出来
+    await flushPromises()          // 抽屉先开(watch(openSt, cancelForm) 先落定),照真实两次点击的间隔来
+    vm.startAdd()
+    await flushPromises()
+    expect(vm.adding, '前提:新增行展开着').toBe(true)
+    await w.setProps({ on: false }); await flushPromises()
+    expect(vm.adding, '切走时抽屉收掉,草稿跟着没了').toBe(false)
+    query.p = '2025-04'
+    await w.setProps({ on: true }); await flushPromises()
+    expect(cpMeterApi.readings, '没有草稿可护 → 期照换').toHaveBeenCalledWith(2025, 4)
+  })
+
+  it('?p=2025-03&station=1 → 落月后直开「快充1」抽屉(充电桩分析点桩柱的真下钻)', async () => {
+    query.p = '2025-03'; query.station = '1'
+    const w = await open()
+    expect((w.vm as unknown as { openSt: CpStationDTO | null }).openSt?.id).toBe(1)
+  })
+  it('station 是别的车型的桩(单车棚 9)→ 汽车屏不开抽屉', async () => {
+    query.p = '2025-03'; query.station = '9'
+    const w = await open()
+    expect((w.vm as unknown as { openSt: CpStationDTO | null }).openSt).toBeNull()
   })
 })

@@ -15,6 +15,7 @@ import { buildLossReconRows, lossFooter } from '@/utils/poolLedgerLogic'
 import { zoneLabel } from '@/utils/zoneLabel'
 import { rangeBadge, staleText } from '@/utils/paramCenterLogic'
 import { onReactivated } from '@/composables/onReactivated'
+import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useViewport } from '@/composables/useViewport'
 import { useTabsStore } from '@/stores/tabs'
 import { useZonesStore } from '@/stores/zones'
@@ -40,6 +41,9 @@ const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(格子与条上同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain;本屏只读、无草稿,不传 dirty。
+// 必须在下面的 onMounted / watch / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于状态刷新改期。
+useChainDeepPeriod()
 const zone = ref<string>('p1')
 const zones = useZonesStore()
 onMounted(() => zones.ensure())

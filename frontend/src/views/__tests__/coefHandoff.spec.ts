@@ -20,7 +20,7 @@ import { billsApi } from '@/api/bills'
  *   ① 计费参数补 `openFresh`（深链协议的另一半：KeepAlive 缓存实例只在 setup 消费 query）
  *   ② 催缴单真的消费 `?coef=1`
  *
- * 账期不用从 query 取：出账链五屏共读一份组级期，本来就是同一个月。
+ * 账期由 useChainDeepPeriod 认（?p= 与旧 ?ym=，SIDEBAR-UX-REDESIGN §4.2）：深链是显式选月，落进五屏共读的组级期；系数簿窗口从 store 读。
  */
 
 const query: Record<string, string> = {}
@@ -95,10 +95,11 @@ describe('计费参数 →〈系数簿〉', () => {
     expect(w.findComponent({ name: 'CoefBookWindow' }).props('open')).toBe(false)
   })
 
-  it('系数簿拿到的是组级期,不是 query 里的 ym —— 五屏共读一份,本来就是同一个月', async () => {
+  it('系数簿拿到的是组级期 —— 深链的 ym 先落进 store(§4.2 / D2:显式链接覆盖会话已选的期),窗口再从 store 读', async () => {
     query.coef = '1'
-    query.ym = '2024-12'          // 老协议残留;期以 store 为准
+    query.ym = '2024-12'          // 老协议照认;open() 预置的 2025-03 被它覆盖
     const w = await open()
-    expect(w.findComponent({ name: 'CoefBookWindow' }).props('ym')).toBe('2025-03')
+    expect(useBillingPeriodStore().ym, '深链的期落进 store').toBe('2024-12')
+    expect(w.findComponent({ name: 'CoefBookWindow' }).props('ym')).toBe('2024-12')
   })
 })

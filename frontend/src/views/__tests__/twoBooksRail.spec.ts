@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -36,12 +37,20 @@ vi.mock('@/api/pvMeter', () => ({
     createStation: vi.fn(), updateStation: vi.fn(), deleteStation: vi.fn(), simulate: vi.fn(),
   },
 }))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):PvView 与子屏 PvMeterView 都接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/pv-income?' + new URLSearchParams(query).toString() } }),
+}))
 
 beforeEach(() => {
   setActivePinia(createPinia())
   useAuthStore().permissions = ['entry:edit', 'meter-master:edit', 'meter-reading:edit']
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(pvApi.overview).mockResolvedValue({ currentYear: 2025, years: [] } as never)
   vi.mocked(pvApi.phases).mockResolvedValue([] as never)
@@ -54,6 +63,16 @@ async function open() {
   const w = mount(PvView, { global: { stubs: { Teleport: true } } })
   await flushPromises()
   return w
+}
+
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回(照 meterWriteGuards.spec:299)。 */
+async function keptAlive() {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(PvView) : null) }),
+  }), { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return { w, alive }
 }
 
 describe('光伏 · 一屏两本账', () => {
@@ -171,4 +190,82 @@ describe('三屏一致性门禁', () => {
       expect(s.includes('返回功能选择')).toBe(false)
       expect(s.includes("defineEmits<{ back: [] }>"), `${rel} 的 back 事件没人接了`).toBe(false)
     })
+})
+
+describe('光伏 · 期间深链(SIDEBAR-UX-REDESIGN §4.2 年表屏 p 只取年 / §5.1 extra.mode)', () => {
+  // 年表 DTO 的形状不是这里要钉的:records 让它在途,屏落在转圈分支,断言只看门与请求
+  const pending = () => vi.mocked(pvApi.records).mockReturnValue(new Promise(() => {}) as never)
+
+  it('❗带 p=2025 进屏直落该年:年份门不出现,拉的就是那一年且只拉一次', async () => {
+    // 红线:PvView.vue 的 useDeepPeriod 删掉 → 门出现;current 用 periodOf(year, month) → 切回每次白拉
+    query.p = '2025'
+    pending()
+    const w = await open()
+    expect(w.find('.sm-gate').exists(), '门该被深链跳过').toBe(false)
+    expect(pvApi.records).toHaveBeenCalledWith(2025)
+    expect(pvApi.records).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗?mode=summary 盖过本机记住的运营账,且不写回本机', async () => {
+    // 红线:mode 初值不看 route.query.mode → 落到运营账;deepMode 经 saveViewMode 写回 → 记忆被一条链接改掉
+    localStorage.setItem('fp-view-mode:pv-income', 'meter')
+    query.p = '2025'; query.mode = 'summary'
+    pending()
+    const w = await open()
+    expect(w.findAll('.br-item')[0].classes(), '落在报送台账').toContain('on')
+    expect(localStorage.getItem('fp-view-mode:pv-income'), '深链不改记忆').toBe('meter')
+  })
+
+  it('运营账那本开着时,年份深链不拉年表(它在 v-else 底下看不见);带月的 p 由子屏自己认', async () => {
+    // 红线:apply 里的 mode === 'summary' 门删掉 → 看不见的年表白拉一趟
+    localStorage.setItem('fp-view-mode:pv-income', 'meter')
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.findAll('.br-item')[1].classes()).toContain('on')
+    expect(pvApi.records).not.toHaveBeenCalled()
+    expect(pvMeterApi.readings, '子屏 PvMeterView 的深链照常').toHaveBeenCalledWith(2025, 3)
+  })
+
+  it('❗切页签回来重读年表与总览(spec §12)', async () => {
+    // 红线:PvView.vue 新加的 onReactivated(refresh) 删掉 → 切回零请求
+    query.p = '2025'
+    // 这条不能用 pending():refresh 先 await load(year) 再 reloadOverview,records 不兑现 overview 永远到不了(计划复查 P0B-1)
+    vi.mocked(pvApi.records).mockResolvedValue(null as never)
+    const { alive } = await keptAlive()
+    vi.mocked(pvApi.records).mockClear()
+    vi.mocked(pvApi.overview).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(pvApi.records).toHaveBeenCalledWith(2025)
+    expect(pvApi.overview).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗新增抽屉开着时切回、地址栏换了年 → 不切年,deepNote 说清楚', async () => {
+    // 红线:dirty 探针改成 () => 0 → 年被切到 2026,pickYear 顺手 edit=false 把抽屉关了
+    query.p = '2025'
+    pending()
+    const { w, alive } = await keptAlive()
+    const vm = w.findComponent(PvView).vm as unknown as { drawer: boolean; year: number | null }
+    vm.drawer = true
+    await flushPromises()
+    alive.value = false; await flushPromises()
+    query.p = '2026'
+    alive.value = true; await flushPromises()
+    expect(pvApi.records).not.toHaveBeenCalledWith(2026)
+    expect(vm.year).toBe(2025)
+    expect(vm.drawer).toBe(true)
+    expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2026 期，本期有 1 处未保存')
+  })
+
+  it('❗current 只报年:切回时地址栏多了别的键、期没变 → 只有重读那一趟,深链不再 apply', async () => {
+    // 红线:current 改成 periodOf(year.value, 1) → want '2025' 永不等于 '2025-01' → 地址栏一变键就多 apply 一次(pickYear 又拉一趟年表),records 两趟
+    query.p = '2025'
+    vi.mocked(pvApi.records).mockResolvedValue(null as never)
+    const { alive } = await keptAlive()
+    vi.mocked(pvApi.records).mockClear()
+    alive.value = false; await flushPromises()
+    query.mode = 'summary'   // 去重键变了,期没变
+    alive.value = true; await flushPromises()
+    expect(pvApi.records, '只有 refresh 那一趟').toHaveBeenCalledTimes(1)
+  })
 })

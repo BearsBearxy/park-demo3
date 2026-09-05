@@ -24,6 +24,7 @@ import { ref, computed, nextTick, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
@@ -109,6 +110,9 @@ const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain;本屏逐行即时写库、无草稿(cfgDirty 是「需重算」不是草稿),不传 dirty。
+// 必须在下面的 onMounted / watch / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于状态刷新改期。
+useChainDeepPeriod()
 const zone = ref<string>('p1')
 const zones = useZonesStore()
 onMounted(() => zones.ensure())
@@ -201,22 +205,14 @@ function loadMasters() {
 }
 onReactivated(() => { loadMasters(); refreshStatus() })
 
-// 深链带账期落到同一个月(generate=1 直接进编辑模式) —— 否则用户到了这儿还要自己重选年月、再找到「编辑模式」
-// 才看得见生成按钮(2026-08-14 用户报障)。
+// 深链落到同一个月后 generate=1 直接进编辑模式 —— 否则用户到了这儿还要自己找到「编辑模式」才看得见生成按钮(2026-08-14 用户报障)。
+// 期本身由 useChainDeepPeriod 在 setup 期落定(认 p= 与旧 ym=,SIDEBAR-UX-REDESIGN §4.2);这里只剩 generate。
 const route = useRoute()
-function applyHandoff(): boolean {
-  const q = route.query
-  const m = typeof q.ym === 'string' ? /^(\d{4})-(\d{2})$/.exec(q.ym) : null
-  // ⚠ 先认领期,再进编辑(同 ParamCenterView 2026-08-29 的修复):顺序反了的话
-  //   toggleEdit 占的是 `billing-chain:0-00`(期未认领),随后 adoptYm 改期 ——
-  //   enter() 的占锁后复核发现期变了,还锁不进,深链彻底进不去编辑态。
-  //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
-  // 只在还没有期时认领(store.adoptYm):已经选好期的人不该被一条链接顶到别的月去。
-  if (m) period.adoptYm(q.ym as string)
-  // 深链也要过权限闸 —— 走 toggle 而不是裸写 editMode
-  // (裸写在权限不齐时会被守卫下一个 tick 静默弹回浏览态;toggle 会弹授权窗)
-  if (q.generate === '1' && period.picked && canEnter.value) toggleEdit()
-  return !!m
+function applyHandoff() {
+  // ⚠ 顺序仍是先有期再进编辑:toggleEdit 占的锁按 period.year/month 算,期未落定时占的是 billing-chain:0-00,
+  //   enter() 的占锁后复核发现期变了,还锁不进,深链彻底进不去编辑态(2026-08-29 修复)。period.picked 也要判:
+  //   没有期时主区是选期矩阵,进了编辑态也没有任何写入口。走 toggle 不裸写 editMode:缺权限时弹授权窗。
+  if (route.query.generate === '1' && period.picked && canEnter.value) toggleEdit()
 }
 
 onMounted(() => {

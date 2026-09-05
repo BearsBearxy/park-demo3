@@ -2,6 +2,8 @@
 // 导入中心 — 1:1 移植 screen-import.jsx。统一入口:按数据类型卡片(状态/最近导入/就地上传) + 导入记录表。
 // 卡片「上传」就地开该类型导入抽屉(复用 importRegistry);ledger 先选公司+年月;charging 先取 cats。
 import { ref, onMounted, computed, h } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { parsePeriod, periodLink, periodOf } from '@/nav/deepLink'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Card from '@/components/ds/Card.vue'
@@ -38,9 +40,22 @@ const sort = ref<SortState | null>({ key: 'createdAt', dir: 'desc' })
 // ledger 上下文表单
 const ledgerForm = ref(false)
 const companies = ref<CompanyDTO[]>([])
-// 默认会计期 = 当前年月(不硬编码,跨年自适应)
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<公司 id> 预填台账类表单。本屏没有「当前期」,读一次即可,不接 useDeepPeriod ——
+// 所以产出方要 `tabs.openFresh('import')` 再 push(KeepAlive 缓存实例不再读 query,与 PoolLedgerView 同口径)。
+// 只有年的链接(?p=YYYY)不认:年月是一对,半个期不预填(与台账 / 附10 的 t.month == null 早退同口径)。
+// 默认会计期 = 深链的期,没有就当前年月(不硬编码,跨年自适应);公司 = 深链的 co(必须在名单里),没有就首家。
+const route = useRoute()
+const router = useRouter()
+const parsed = parsePeriod(route.query as Record<string, unknown>)
+const deep = parsed?.month != null ? parsed : null
 const now = new Date()
-const lf = ref<{ companyId: number | null; year: number; month: number }>({ companyId: null, year: now.getFullYear(), month: now.getMonth() + 1 })
+function defaultLf(): { companyId: number | null; year: number; month: number } {
+  const dc = deep?.co
+  const companyId = typeof dc === 'number' && companies.value.some(c => c.id === dc) ? dc : companies.value[0]?.id ?? null
+  return { companyId, year: deep?.year ?? now.getFullYear(), month: deep?.month ?? now.getMonth() + 1 }
+}
+// 初值只解析出年月:此刻 companies 还没拉,公司必落 null;真正的预填在 openImport 里 companyApi.list 之后重跑 defaultLf()
+const lf = ref(defaultLf())
 // ds/Select 只吃字符串值,数字进出各转一次(ElecCostView 同款)
 const monthOpts = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}月` }))
 const companyOpts = computed(() => companies.value.map(c => ({ value: String(c.id), label: c.name })))
@@ -95,7 +110,7 @@ async function openImport(entry: ImportTypeEntry) {
   }
   if (entry.context === 'ledger') {
     if (!companies.value.length) companies.value = await companyApi.list()
-    lf.value = { companyId: companies.value[0]?.id ?? null, year: now.getFullYear(), month: now.getMonth() + 1 }
+    lf.value = defaultLf()
     ledgerForm.value = true
     return
   }
@@ -147,6 +162,26 @@ async function confirmLedgerOverwrite(recs: ImportRec[]): Promise<boolean> {
     return n === 0 || window.confirm(`${ctx.value.year} 年 ${ctx.value.month} 月已有 ${n} 家租户的台账数据,导入将覆盖这些租户文件中提供的列,继续?`)
   } catch { return true }
 }
+// 导后「去查看」(SIDEBAR-UX-REDESIGN §9 P0b):只给期在导入时就已知的三类 —— 台账(ctx)、附10 / 附12(第一段 pick 的 year/month/phase);
+// 平铺行的期在行里,本屏不解析,其余类型结果弹层照旧。年表屏 / 抄表屏的导入以后要接再加。
+const viewTo = ref<{ path: string; query: Record<string, string> } | null>(null)
+function viewLink(key: string, c: ImportCtx, payload: unknown[]): typeof viewTo.value {
+  const first = payload[0] as { year?: number; month?: number; phase?: number; records?: unknown[] } | undefined
+  // 台账只给平铺单段:整册多段(元素带 .records)入库的是各段自己识别出的公司 / 月,表单里的 ctx 只是兜底,按它发链会把人送去一个可能一行都没有的册与期
+  if (key === 'ledger' && !first?.records && c.year && c.month && c.companyId)
+    return periodLink('ledger', { p: periodOf(c.year, c.month), co: c.companyId })
+  if (key === 's10' && first?.year && first.month)
+    return periodLink('sales-income', { p: periodOf(first.year, first.month), co: first.phase })
+  if (key === 'salary' && first?.year && first.month)
+    return periodLink('salary', { p: periodOf(first.year, first.month) })
+  return null
+}
+// 裸 push:router.afterEach 会 tabs.open;目标页签活着就走它 onReactivated 那条深链,不活就新实例 setup 那条
+function goView() {
+  const to = viewTo.value
+  importResult.value = null
+  if (to) router.push(to)
+}
 async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
   if (!activeKey.value) return
   // 覆盖预检仅平铺台账做;段模式(元素带 .records)不做覆盖 confirm(规范 v1 边界)
@@ -154,6 +189,7 @@ async function doRun(payload: Parameters<typeof runImport>[1], fileName: string)
   if (activeKey.value === 'ledger' && !isSections && !(await confirmLedgerOverwrite(payload as ImportRec[]))) return
   try {
     importResult.value = await runImport(activeKey.value, payload, ctx.value, fileName)
+    viewTo.value = viewLink(activeKey.value, ctx.value, payload as unknown[])
     await reload()
   } catch (e) {
     alert((e as { message?: string })?.message ?? '导入失败')
@@ -273,7 +309,7 @@ const cols: SortableColumn<ImportLogDTO>[] = [
     @import-sections="handleSections"
   />
   <!-- 台账未登记租户预检(自管显隐,放最后不打断状态链) -->
-  <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+  <ImportResultToast v-if="importResult" :result="importResult" :go="viewTo ? '去查看' : undefined" @go="goView" @close="importResult = null" />
 </template>
 
 <style scoped>
