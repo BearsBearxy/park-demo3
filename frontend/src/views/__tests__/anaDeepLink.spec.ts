@@ -32,10 +32,19 @@ describe('分析层发链门禁', () => {
     expect(s.includes("'@/utils/deepLink'"), `${rel} 还引用已删的 utils/deepLink`).toBe(false)
   })
 
-  it('openFresh({pin:true}) 一行不动(spec §4.1:收入核对 / 分析层 → 台账 / 附10 的页签语义;pin 规则归 P3)', () => {
-    for (const rel of SENDERS.filter(r => !r.includes('Budget') && !r.includes('PnlAnalysis'))) {
-      expect(src(rel).includes('{ pin: true }'), `${rel} 丢了 openFresh pin`).toBe(true)
+  it('分析层不再硬编码 pin:一律 tabs.openDeep(来源在预览槽才钉住目标,规则收在 store —— P3 §4.3)', () => {
+    // ⚠ 只筛分析层。SENDERS 里还有 views/reports/recon/ReconWorkbench.vue ——
+    //   那两处 pin 是 spec §4.1 明写「不变」的(收入核对 → 台账 / 附10 恒钉住),断言进来会把它逼改。
+    for (const rel of SENDERS.filter(r => r.startsWith('views/analysis/'))) {
+      const s = src(rel)
+      if (!s.includes('tabs.')) continue          // 只发 query 不开页签的屏跳过
+      expect(s.includes('.openDeep('), `${rel} 没改走 openDeep`).toBe(true)
+      expect(s.includes('{ pin: true }'), `${rel} 还硬编码着 pin`).toBe(false)
     }
+  })
+
+  it('收入核对 → 台账 / 附10 仍是硬编码 pin(spec §4.1 明写不变;它跳的是「去把这笔改掉」,来源在哪都得钉住目标)', () => {
+    expect(src('views/reports/recon/ReconWorkbench.vue').includes('{ pin: true }')).toBe(true)
   })
 
   it('PvMeterAnaView 的 adopt= 不走 periodLink —— 它不是选月(P0A-2),是「采纳参数」', () => {
@@ -61,10 +70,10 @@ describe('分析层发链门禁', () => {
     expect(src('views/analysis/ExpiryView.vue').includes('contractNo:')).toBe(true)
   })
 
-  it('goAnom 两屏同形:带 co: a.co(附10 负值行落期区)+ 录入屏目标 openFresh(P0c 修补波;发链侧此前零覆盖)', () => {
+  it('goAnom 两屏同形:带 co: a.co(附10 负值行落期区)+ 录入屏目标 openDeep(P0c 修补波加的覆盖,P3 随 pin 规则改名)', () => {
     for (const rel of ['views/analysis/AnomalyView.vue', 'views/analysis/CockpitView.vue']) {
       expect(src(rel).includes('co: a.co,'), `${rel} goAnom 丢了 co`).toBe(true)
-      expect(src(rel).includes('tabs.openFresh(v, { pin: true })'), `${rel} goAnom 丢了 openFresh`).toBe(true)
+      expect(src(rel).includes('tabs.openDeep(v)'), `${rel} goAnom 丢了 openDeep`).toBe(true)
     }
   })
 })

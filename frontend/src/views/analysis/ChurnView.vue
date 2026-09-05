@@ -48,7 +48,7 @@ const detail = computed(() => model.value?.list.slice(0, 30) ?? [])
 const router = useRouter()
 const tabs = useTabsStore()
 function goLedger(tenant: string, company: string, ym: string) {
-  tabs.openFresh('ledger', { pin: true })
+  tabs.openDeep('ledger')
   router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 // 散点点点→该租户末期台账(spec §二.10 下钻)

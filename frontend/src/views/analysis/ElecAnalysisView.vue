@@ -110,7 +110,7 @@ const conclusion = computed(() =>
 // ── 深链电费成本第二本账(cost):ElecView 认 ?mode=(P0b),子屏 ElecCostView 认 ?p=YYYY-MM 落月(只有年 → 停在它的月门) ──
 // 改前发的是 view=cost —— 键名对不上,永远落在报送台账(假下钻)。openFresh 页签语义不变(spec §4.1)。
 function goCost(month?: number): void {
-  tabs.openFresh('elec-cost', { pin: true })
+  tabs.openDeep('elec-cost')
   void router.push(periodLink('elec-cost', { p: periodOf(year.value, month ?? null), extra: { mode: 'cost' } }))
 }
 interface EcClick { componentType?: string; dataIndex?: number }

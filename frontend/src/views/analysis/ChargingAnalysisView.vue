@@ -92,7 +92,7 @@ function goDetail(p?: unknown): void {
   const e = p as { seriesName?: string; dataIndex?: number } | undefined
   const st = myStations.value.find((s) => s.name === e?.seriesName)
   const month = st && e?.dataIndex != null ? e.dataIndex + 1 : null
-  tabs.openFresh(navValue.value, { pin: true })
+  tabs.openDeep(navValue.value)
   void router.push(periodLink(navValue.value, { p: periodOf(year.value, month), extra: { mode: 'meter', station: st?.id } }))
 }
 

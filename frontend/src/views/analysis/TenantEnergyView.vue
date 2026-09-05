@@ -265,12 +265,12 @@ const selCompany = computed(() => {
 })
 function goLedger() {
   if (!selRow.value || !ledgerYm.value) return
-  tabs.openFresh('ledger', { pin: true })
+  tabs.openDeep('ledger')
   router.push(periodLink('ledger', { p: periodOf(+ledgerYm.value.slice(0, 4), +ledgerYm.value.slice(5, 7)), extra: { company: selCompany.value, tenant: selRow.value.name } }))
 }
 function goS10() {
   if (!selRow.value || !curYm.value) return
-  tabs.openFresh('sales-income', { pin: true })
+  tabs.openDeep('sales-income')
   router.push(periodLink('sales-income', { p: periodOf(+curYm.value.slice(0, 4), +curYm.value.slice(5, 7)), co: selRow.value.phase, extra: { tenant: selRow.value.name } }))
 }
 

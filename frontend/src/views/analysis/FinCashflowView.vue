@@ -185,7 +185,7 @@ const router = useRouter()
 const tabs = useTabsStore()
 function goLedger(tenant: string, company: string, ym: string) {
   drillYm.value = null
-  tabs.openFresh('ledger', { pin: true })
+  tabs.openDeep('ledger')
   router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 

@@ -149,13 +149,13 @@ const setStatus = (id: string, k: TrackStatus): void => { track.value = { ...tra
 function goLedger(t: MonitorTenant): void {
   const ym = model.value?.lastLedgerYm
   if (!t.company || !ym) return
-  tabs.openFresh('ledger', { pin: true })
+  tabs.openDeep('ledger')
   void router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company: t.company, tenant: t.name } }))
 }
 function goS10(t: MonitorTenant): void {
   const ym = t.months[t.months.length - 1]
   if (!ym) return
-  tabs.openFresh('sales-income', { pin: true })
+  tabs.openDeep('sales-income')
   void router.push(periodLink('sales-income', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), co: t.phase ?? undefined, extra: { tenant: t.name } }))
 }
 const go = (link: string): void => { void router.push(link) }
@@ -164,7 +164,7 @@ const go = (link: string): void => { void router.push(link) }
 const goAnom = (a: AnaAnomaly): void => {
   const v = a.link.slice(1)
   // 录入屏目标走 openFresh({pin:true})(与 goLedger / goS10 同形):缓存的台账 / 附10 页签有草稿时 useDeepPeriod 的 dirty 闸会吞掉这一跳,「一击落位」靠全新实例;分析屏目标保持裸 push
-  if (v === 'ledger' || v === 'sales-income') tabs.openFresh(v, { pin: true })
+  if (v === 'ledger' || v === 'sales-income') tabs.openDeep(v)
   void router.push(periodLink(v, { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), co: a.co, extra: { company: a.company, tenant: a.tenant } }))
 }
 const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert-octagon' : s === 'watch' ? 'alert-triangle' : 'info')

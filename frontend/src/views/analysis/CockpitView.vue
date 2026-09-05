@@ -206,7 +206,7 @@ function onPhaseClick(p: unknown): void {
   const e = p as EcClick
   const s = ps.value?.series.find((x) => x.name === e.seriesName)
   if (!s || !e.name) return
-  tabs.openFresh('sales-income', { pin: true })   // 页签语义(spec §4.1);发链 periodLink:p + co=期区(§4.2)
+  tabs.openDeep('sales-income')   // 页签语义(spec §4.1);发链 periodLink:p + co=期区(§4.2)
   void router.push(periodLink('sales-income', { p: periodOf(+e.name.slice(0, 4), +e.name.slice(5, 7)), co: s.phase }))
 }
 
@@ -238,7 +238,7 @@ function onCollectClick(p: unknown): void {
   if (ym) arrModal.value = ym
 }
 function goLedger(tenant: string, company: string, ym: string): void {
-  tabs.openFresh('ledger', { pin: true })
+  tabs.openDeep('ledger')
   void router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 
@@ -252,7 +252,7 @@ const go = (link: string): void => { void router.push(link) }
 const goAnom = (a: AnaAnomaly): void => {
   const v = a.link.slice(1)
   // 录入屏目标走 openFresh({pin:true})(与 goLedger / goS10 同形):缓存的台账 / 附10 页签有草稿时 useDeepPeriod 的 dirty 闸会吞掉这一跳,「一击落位」靠全新实例;分析屏目标保持裸 push
-  if (v === 'ledger' || v === 'sales-income') tabs.openFresh(v, { pin: true })
+  if (v === 'ledger' || v === 'sales-income') tabs.openDeep(v)
   void router.push(periodLink(v, { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), co: a.co, extra: { company: a.company, tenant: a.tenant } }))
 }
 

@@ -134,7 +134,7 @@ const detail = computed(() => {
 })
 // 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
 function goSched(nav: string): void {
-  tabs.openFresh(nav, { pin: true })
+  tabs.openDeep(nav)
   router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }
 
