@@ -1,0 +1,724 @@
+<title>园区管理系统 产品展示页</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+/* ============================================================
+   园区管理系统 · 产品展示页 · 滚动动效原型（设计稿，非实现）
+   深夜蓝开场，进入「账簿与报表」章时整站翻为纸白。单一强调色 = 品牌蓝。
+   圆角规则：舞台 / 纸 / 格 22px；按钮 / 标签 胶囊；内嵌素材位 14px。
+   ============================================================ */
+:root{
+  --bg:#0B0F16; --bg-2:#121826; --bg-3:#182235;
+  --fg:#F2F5F9; --fg-2:rgba(242,245,249,.68); --fg-3:rgba(242,245,249,.44);
+  --line:rgba(242,245,249,.12);
+  --slot-a:#182235; --slot-b:#0E141F;
+  --shadow:rgba(0,0,0,.5);
+  --accent:#4C98FD; --accent-deep:#1F5FBF; --accent-soft:#A8CDF0; --cta:#2668CC;
+  --warn:#E08A2E;
+  --r-stage:22px; --r-inner:14px;
+  --font-display:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --font-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+  --font-mono:"Roboto Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 var(--font-body);-webkit-font-smoothing:antialiased;overflow-x:hidden;transition:none}
+a{color:inherit;text-decoration:none}
+h1,h2,h3{margin:0;font-family:var(--font-display);text-wrap:balance}
+p{margin:0}
+ul{margin:0;padding:0;list-style:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+svg.lucide{width:22px;height:22px;stroke-width:1.75;color:var(--accent)}
+
+/* ---- 字阶 ---- */
+.display{font-size:clamp(46px,7.4vw,108px);font-weight:900;line-height:1.02;letter-spacing:-.035em}
+.display .l{display:block}
+h2{font-size:clamp(34px,4.6vw,64px);font-weight:900;line-height:1.08;letter-spacing:-.028em}
+h3{font-size:clamp(20px,1.6vw,24px);font-weight:700;line-height:1.3;letter-spacing:-.012em}
+.lede{font-size:clamp(17px,1.35vw,21px);line-height:1.6;color:var(--fg-2);max-width:34em}
+.eyebrow{font:500 13px/1 var(--font-mono);letter-spacing:.14em;color:var(--accent);margin-bottom:18px}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---- 按钮 ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;height:46px;padding:0 24px;border-radius:999px;font-weight:600;font-size:15px;white-space:nowrap;border:1px solid transparent;transition:transform .12s ease,background-color .2s ease,border-color .2s ease}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--cta);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.btn.primary:hover{background:#2f74dd}
+.btn.ghost{border-color:var(--line);color:var(--fg);background:transparent}
+.btn.ghost:hover{border-color:var(--fg-3)}
+.btn.sm{height:36px;padding:0 16px;font-size:14px}
+.btn.lg{height:54px;padding:0 32px;font-size:17px}
+
+/* ---- 顶栏（半透明材质，内容从下方滑过）---- */
+.nav{position:fixed;inset:0 0 auto 0;height:60px;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,3vw,40px);background:color-mix(in srgb,var(--bg) 72%,transparent);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand svg{width:22px;height:22px}
+.nav-links{display:flex;gap:clamp(14px,2vw,30px);font-size:14px;color:var(--fg-2)}
+.nav-links a{position:relative;padding:6px 0;transition:color .2s}
+.nav-links a:hover,.nav-links a.on{color:var(--fg)}
+.nav-links a.on::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--accent)}
+
+/* ---- 章节骨架 ---- */
+.chapter{position:relative;padding:clamp(80px,12vh,140px) clamp(20px,6vw,96px)}
+.ch-head{max-width:1200px;margin:0 auto clamp(40px,6vh,72px)}
+.ch-head.center{text-align:center;margin-left:auto;margin-right:auto}
+.ch-head.center .lede{margin:18px auto 0}
+.ch-head .lede{margin-top:20px}
+.wrap{max-width:1200px;margin:0 auto}
+.pinsec{padding:0}
+.pinsec .pin-inner{position:relative;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:92px clamp(20px,6vw,96px) 40px}
+
+/* ---- 舞台与素材位 ---- */
+.stage{position:relative;border-radius:var(--r-stage);background:var(--bg-2);border:1px solid var(--line);box-shadow:0 30px 90px var(--shadow);overflow:hidden}
+.slot{position:relative;width:100%;height:100%;min-height:120px;border-radius:inherit;background:linear-gradient(160deg,var(--slot-a),var(--slot-b));overflow:hidden}
+.slot::before{content:"";position:absolute;inset:12px;border:1px dashed color-mix(in srgb,var(--fg) 22%,transparent);border-radius:calc(var(--r-inner) - 4px);pointer-events:none}
+.slot::after{content:"素材位  " attr(data-label);position:absolute;left:24px;bottom:20px;right:24px;font:500 12px/1.5 var(--font-mono);color:var(--fg-3);letter-spacing:.02em}
+.slot.grid-tex{background:
+  repeating-linear-gradient(90deg,transparent 0 88px,color-mix(in srgb,var(--fg) 9%,transparent) 88px 89px),
+  repeating-linear-gradient(0deg,transparent 0 25px,color-mix(in srgb,var(--fg) 9%,transparent) 25px 26px),
+  linear-gradient(160deg,var(--slot-a),var(--slot-b))}
+
+/* ---- 设计批注 ---- */
+.dnote{position:absolute;right:20px;top:76px;width:312px;z-index:6;background:color-mix(in srgb,var(--fg) 7%,var(--bg));border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;line-height:1.55;color:var(--fg-2);box-shadow:0 12px 40px var(--shadow)}
+.dnote b{display:block;font:500 11px/1 var(--font-mono);letter-spacing:.1em;color:var(--accent);margin-bottom:8px}
+.dnote p{margin:0 0 6px}
+.dnote p:last-child{margin:0}
+.dnote span{color:var(--fg);font-weight:600}
+.notes-off .dnote{display:none}
+.notes-toggle{position:fixed;right:20px;bottom:20px;z-index:60;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:color-mix(in srgb,var(--bg) 80%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);color:var(--fg);font:600 13px var(--font-body);display:inline-flex;align-items:center;gap:8px}
+.notes-toggle i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.notes-off .notes-toggle i{background:var(--fg-3)}
+
+/* ============ 0 · 首屏 ============ */
+.hero{position:relative;min-height:100svh;padding:132px clamp(20px,6vw,96px) 0;display:flex;flex-direction:column}
+.hero-inner{max-width:1200px;width:100%;margin:0 auto;display:grid;grid-template-columns:auto 1fr;gap:clamp(24px,4vw,56px);align-items:end}
+.mark-big{display:flex;align-items:flex-end;gap:14px;height:150px;padding-bottom:6px}
+.mark-big .bar{display:block;width:34px;border-radius:9px;transform-origin:bottom}
+.mark-big .b1{height:66px;background:var(--accent-soft)}
+.mark-big .b2{height:104px;background:var(--accent)}
+.mark-big .b3{height:150px;background:var(--accent-deep)}
+.hero-copy{display:flex;flex-direction:column;gap:26px;padding-bottom:6px}
+.cta-row{display:flex;gap:12px;flex-wrap:wrap}
+.hero-stage{max-width:1200px;width:100%;margin:clamp(40px,7vh,72px) auto 0;aspect-ratio:16/8;border-radius:var(--r-stage) var(--r-stage) 0 0;border-bottom:0}
+
+/* ============ 1 · 一眼看全园（钉住 + 三段说明）============ */
+#overview .split{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:1.3fr 1fr;gap:clamp(28px,5vw,72px);align-items:center;width:100%}
+#overview .screen{aspect-ratio:16/10}
+#overview .view{position:absolute;inset:0}
+#overview .caps{position:relative;min-height:260px}
+#overview .cap{position:absolute;inset:0;display:flex;flex-direction:column;gap:14px;justify-content:center}
+#overview .cap p{color:var(--fg-2);font-size:clamp(16px,1.2vw,19px)}
+#overview h2{margin-bottom:28px}
+
+/* ============ 2 · 出账链（横向平移）============ */
+.pan-wrap{position:relative;height:100vh;display:flex;align-items:center;overflow:hidden}
+.pan-track{display:flex;gap:40px;padding:0 clamp(20px,8vw,120px);width:max-content;will-change:transform}
+.step{flex:0 0 auto;width:min(560px,72vw);display:flex;flex-direction:column;gap:12px}
+.step .node{position:relative;height:14px;margin-bottom:14px}
+.step .node::before{content:"";position:absolute;left:14px;top:6px;height:2px;width:calc(100% + 40px);background:var(--line)}
+.step .node i{position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;background:var(--bg-3);border:1px solid var(--line)}
+.step .node .seg{position:absolute;left:14px;top:6px;height:2px;width:calc(100% + 40px);background:var(--accent);transform-origin:left;transform:scaleX(0)}
+.step:last-child .node::before,.step:last-child .node .seg{display:none}
+.step p{color:var(--fg-2)}
+.step .stage{aspect-ratio:16/10;margin-top:10px}
+
+/* ============ 3 · 公摊引擎（揩开）============ */
+#pool .pool-grid{max-width:1240px;width:100%;margin:0 auto;display:grid;grid-template-columns:.9fr 1.25fr;gap:clamp(28px,5vw,72px);align-items:center}
+#pool .lede{margin-top:20px}
+.figs{display:grid;grid-template-columns:repeat(3,auto);gap:clamp(20px,3vw,44px);margin:36px 0 0;justify-content:start}
+.figs div{display:flex;flex-direction:column-reverse;gap:6px}
+.figs dt{font-size:13px;color:var(--fg-3)}
+.figs dd{margin:0;font:500 clamp(40px,4.2vw,64px)/1 var(--font-mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.wipe{aspect-ratio:16/10}
+.wipe .layer{position:absolute;inset:0;border-radius:inherit}
+.wipe .tag{position:absolute;top:18px;padding:5px 12px;border-radius:999px;background:color-mix(in srgb,var(--fg) 10%,transparent);border:1px solid var(--line);font:500 12px var(--font-mono);color:var(--fg);letter-spacing:.04em;z-index:2}
+.wipe .tag.l{left:18px}
+.wipe .tag.r{right:18px}
+.wipe-bar{position:absolute;top:0;bottom:0;left:-1px;width:2px;background:var(--accent);box-shadow:0 0 28px 2px var(--accent);z-index:3}
+
+/* ============ 4 · 导入中心（表头飞入）============ */
+.imp-stage{position:relative;max-width:1200px;width:100%;margin:0 auto;display:grid;grid-template-columns:1.25fr 56px .85fr;gap:24px;align-items:center}
+.imp-sheet{position:relative;aspect-ratio:16/10}
+.chip{position:absolute;display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;background:var(--fg);color:var(--bg);font:600 13px var(--font-body);white-space:nowrap;box-shadow:0 8px 24px var(--shadow);z-index:3;will-change:transform}
+.chip.skip{background:color-mix(in srgb,var(--fg) 30%,var(--bg-2));color:var(--fg)}
+.imp-arrow{display:grid;place-items:center;color:var(--fg-3)}
+.imp-arrow svg{width:28px;height:28px;color:var(--fg-3)}
+.imp-targets{display:flex;flex-direction:column;gap:12px}
+.imp-targets li{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:10px 14px;border-radius:14px;background:var(--bg-2);border:1px solid var(--line)}
+.imp-targets li b{font-weight:600;font-size:15px}
+.imp-targets li small{grid-column:1/-1;color:var(--fg-3);font-size:12px}
+.imp-targets .dock{display:block;width:8.5em;height:30px;border-radius:999px;border:1px dashed color-mix(in srgb,var(--fg) 28%,transparent)}
+.imp-targets li.skip{background:transparent}
+.imp-result{max-width:1200px;margin:22px auto 0;font:500 14px var(--font-mono);color:var(--fg-2);display:flex;align-items:center;gap:10px}
+.imp-result i{width:10px;height:10px;border-radius:50%;background:var(--accent)}
+
+/* ============ 5 · 账簿与报表（配色翻转 + 纸张叠放）============ */
+.co-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.co{height:32px;padding:0 14px;border-radius:999px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:13.5px;color:var(--fg-2)}
+.co.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.stack{position:relative}
+.sheet{height:100vh;position:sticky;top:0;display:grid;place-items:center}
+.paper{width:min(980px,90vw);aspect-ratio:16/9.6;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-stage);box-shadow:0 30px 90px var(--shadow);padding:26px 28px 28px;display:flex;flex-direction:column;gap:16px;will-change:transform}
+.paper .ph{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.paper .ph span{font:500 13px var(--font-mono);color:var(--fg-3)}
+.paper .slot{flex:1;border-radius:var(--r-inner);min-height:0}
+
+/* ============ 6 · 经营分析（Bento）============ */
+.bento{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:230px 230px 330px;grid-template-areas:"a a b c" "a a d e" "f f g g";gap:16px}
+.tile{position:relative;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-stage);padding:22px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.tile .slot{flex:1;border-radius:var(--r-inner);min-height:0}
+.tile .tile-h{display:flex;align-items:center;gap:10px}
+.tile p{color:var(--fg-2);font-size:15px}
+.tile small{color:var(--fg-3);font-size:12px}
+.tile.a{grid-area:a}.tile.b{grid-area:b}.tile.c{grid-area:c}.tile.d{grid-area:d}.tile.e{grid-area:e}.tile.f{grid-area:f}.tile.g{grid-area:g}
+.tile.warn{background:color-mix(in srgb,var(--warn) 12%,var(--bg-2));border-color:color-mix(in srgb,var(--warn) 30%,var(--line))}
+.tile.warn svg.lucide{color:var(--warn)}
+.alerts{display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--fg-2)}
+.alerts b{color:var(--fg);font-weight:600}
+#pv-chart{width:100%;flex:1;min-height:0;display:block}
+
+/* ============ 7 · 协作（双窗）============ */
+.panes{max-width:1200px;width:100%;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.pane{position:relative;aspect-ratio:16/10.5;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-stage);padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 90px var(--shadow)}
+.pane-bar{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--fg-3)}
+.who-row{display:flex;gap:10px}
+.who{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--fg-2)}
+.who::before{content:"";width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--accent-soft),var(--accent-deep))}
+.who.other{opacity:0}
+.pane-row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.pane-title{font-weight:600;font-size:15px}
+.lockbtn{position:relative;height:36px;min-width:150px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);font-weight:600;font-size:14px}
+.lockbtn .st{position:absolute;inset:0;display:grid;place-items:center;opacity:0;white-space:nowrap;border-radius:inherit}
+.lockbtn .s0{opacity:1}
+.lockbtn .s2{background:var(--cta);color:#fff}
+.pane .slot{flex:1;border-radius:var(--r-inner);min-height:0}
+.pane .toast{position:absolute;left:18px;right:18px;bottom:18px;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;font-size:13.5px;opacity:0;transform:translateY(10px);z-index:2}
+.rules{max-width:1200px;margin:32px auto 0;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.rules li{height:36px;padding:0 16px;border-radius:999px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:14px;color:var(--fg-2)}
+
+/* ============ 8 · 大小园区 ============ */
+.fit-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,5vw,80px)}
+.fit-col h3{margin-bottom:22px;color:var(--fg)}
+.qa{padding:22px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.qa .q{font-weight:600;font-size:17px}
+.qa .a{color:var(--fg-2)}
+
+/* ============ 9 · 底座 ============ */
+.stats{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.stat{padding:26px 24px;border-radius:var(--r-stage);border:1px solid var(--line);background:var(--bg-2);display:flex;flex-direction:column;gap:12px;min-height:200px;justify-content:flex-end}
+.stat .num{font:500 clamp(44px,4.6vw,68px)/1 var(--font-mono);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat .num sup{font-size:.5em;vertical-align:top;margin-left:2px}
+.stat p{color:var(--fg-2);font-size:15px}
+.stat.text{justify-content:center;background:color-mix(in srgb,var(--accent) 12%,var(--bg-2));border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+.stat.text p{color:var(--fg);font-size:16px}
+
+/* ============ 10 · CTA + 页脚 ============ */
+#cta{text-align:center;padding-bottom:clamp(60px,10vh,120px)}
+#cta .lede{margin:22px auto 34px}
+footer{padding:28px clamp(20px,6vw,96px) 40px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:13px;color:var(--fg-3)}
+footer .brand{color:var(--fg-2)}
+
+/* ---- 静态模式（移动端 / 减少动态效果 / 无脚本）：所有终态直接可读 ---- */
+.static .pinsec .pin-inner{min-height:auto;padding-top:80px;padding-bottom:60px}
+.static #overview .caps{min-height:0;display:flex;flex-direction:column;gap:28px}
+.static #overview .cap{position:static;opacity:1!important;transform:none!important}
+.static #overview .view{opacity:0!important}
+.static #overview .view:first-child{opacity:1!important}
+.static .pan-wrap{height:auto;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:20px}
+.static .pan-track{transform:none!important}
+.static .step{scroll-snap-align:start}
+.static .step .node .seg{transform:scaleX(1)}
+.static .step .node i{background:var(--accent)}
+.static .wipe .layer.excel{opacity:0}
+.static .wipe .layer.sys{clip-path:none!important}
+.static .wipe-bar,.static .wipe .tag.l{display:none}
+.static .imp-result{opacity:1!important;transform:none!important}
+.static .who.other{opacity:1}
+.static .lockbtn .s0{opacity:0}
+.static #pane-a .s1,.static #pane-b .s1{opacity:1}
+.static .hero-inner,.static .hero-stage{opacity:1!important;transform:none!important}
+
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} .btn{transition:none} }
+
+@media (max-width:899px){
+  .nav-links{display:none}
+  .hero{padding-top:100px}
+  .hero-inner{grid-template-columns:1fr;align-items:start}
+  .mark-big{height:90px}.mark-big .b1{height:40px}.mark-big .b2{height:62px}.mark-big .b3{height:90px}.mark-big .bar{width:22px}
+  .hero-stage{aspect-ratio:16/11}
+  #overview .split,#pool .pool-grid,.panes,.fit-grid{grid-template-columns:1fr}
+  .imp-stage{grid-template-columns:1fr}
+  .imp-arrow{display:none}
+  .imp-sheet{aspect-ratio:16/12}
+  .bento{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(180px,auto);grid-template-areas:"a" "b" "c" "d" "e" "f" "g"}
+  .tile.a,.tile.g{min-height:300px}.tile.f{min-height:320px}
+  .stats{grid-template-columns:1fr 1fr}
+  .dnote{position:static;width:auto;margin:0 0 24px}
+  .pinsec .pin-inner .dnote{order:-1}
+  .paper{aspect-ratio:auto;min-height:60vh}
+  .figs{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+
+<!-- ============ 顶栏 ============ -->
+<nav class="nav" aria-label="页面导航">
+  <a class="brand" href="#top">
+    <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"/><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"/><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"/></svg>
+    <span>园区管理系统</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#overview" data-for="overview">总览</a></li>
+    <li><a href="#chain" data-for="chain">出账链</a></li>
+    <li><a href="#pool" data-for="pool">公摊引擎</a></li>
+    <li><a href="#import" data-for="import">导入</a></li>
+    <li><a href="#reports" data-for="reports">账簿报表</a></li>
+    <li><a href="#analysis" data-for="analysis">经营分析</a></li>
+    <li><a href="#collab" data-for="collab">协作</a></li>
+  </ul>
+  <a class="btn primary sm" href="#cta">预约演示</a>
+</nav>
+
+<main>
+
+<!-- ============ 0 · 首屏 ============ -->
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <div class="mark-big" aria-hidden="true"><span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span></div>
+    <div class="hero-copy">
+      <h1 class="display"><span class="l">园区经营，</span><span class="l">算得清。</span></h1>
+      <p class="lede">厂房园区运营与财务一体化系统。抄表、公摊、催缴单、三大报表、经营分析，一套账算到底。</p>
+      <div class="cta-row"><a class="btn primary" href="#cta">预约演示</a><a class="btn ghost" href="#chain">看它怎么算</a></div>
+    </div>
+  </div>
+  <div class="hero-stage stage"><div class="slot" data-label="录屏 · 登录后首页「本月出账」五步链路，1440×900，12s 无缝循环"></div></div>
+  <aside class="dnote"><b>批注 00 首屏</b>
+    <p><span>载入</span>：三根楼栋柱依次升起（错峰 0.12s，expo.out），标题两行上浮，屏幕从下方升入并归位。</p>
+    <p><span>滚动</span>：文案随滚动上移 80px 并淡出（scrub）；屏幕保持，被下一章接走。</p>
+    <p><span>素材</span>：登录后首页录屏，WebM + 首帧 WebP 兜底。</p>
+  </aside>
+</section>
+
+<!-- ============ 1 · 一眼看全园 ============ -->
+<section class="chapter pinsec" id="overview">
+  <div class="pin-inner">
+    <div class="split">
+      <div class="stage screen">
+        <div class="slot view" data-label="截图 · 经营驾驭舱，1440×900"></div>
+        <div class="slot view" data-label="截图 · 出租与楼栋，1440×900"></div>
+        <div class="slot view" data-label="截图 · 异常提醒中心，1440×900"></div>
+      </div>
+      <div>
+        <h2>一眼看全园。</h2>
+        <div class="caps">
+          <div class="cap"><h3>打开就是本月。</h3><p>驾驭舱把出租率、应收、能耗、光伏、异常放在一屏。每个数字都能点，直接落到对应那张表、那个月。</p></div>
+          <div class="cap"><h3>园区、租户、管理公司，三个维度。</h3><p>同一份数据，换个维度重新排：出租与楼栋、用能与缴费、利润与现金流。</p></div>
+          <div class="cap"><h3>异常先来找你。</h3><p>抄表倒走、损耗率越界、缴费逾期，异常提醒中心按严重度排好，不用翻表找。</p></div>
+        </div>
+      </div>
+    </div>
+    <aside class="dnote"><b>批注 01 总览</b>
+      <p><span>动效</span>：整章钉住 2.6 屏高。左侧屏幕三张画面交叉淡入（opacity + 1.03→1 缩放），右侧说明随进度上浮换段。</p>
+      <p><span>转场</span>：第三段读完解钉，整屏正常滚出，接出账链标题。</p>
+      <p><span>素材</span>：驾驭舱 / 出租与楼栋 / 异常提醒中心 三张截图。</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ 2 · 出账链 ============ -->
+<section class="chapter" id="chain" style="padding-bottom:0">
+  <header class="ch-head">
+    <p class="eyebrow">出账链</p>
+    <h2>从抄表到催缴单，一条链算到底。</h2>
+    <p class="lede">每月一次工序，六步。前一步的结果就是后一步的输入，改任何一步，下游全部重算。</p>
+  </header>
+</section>
+<section class="pan-wrap" aria-label="出账链六步">
+  <div class="pan-track">
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>合同管理</h3><p>租金、面积、单价与起止期。一切应收从合同派生，不手抄。</p><div class="stage"><div class="slot" data-label="截图 · 合同管理屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>计费参数</h3><p>电价水价、公摊系数按月锁定，改动留版本，随时回看当月口径。</p><div class="stage"><div class="slot" data-label="截图 · 计费参数屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>园区抄表</h3><p>尖峰平谷四段读数，导入或手录。反向电量当场拦下，不进账。</p><div class="stage"><div class="slot" data-label="截图 · 园区抄表屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>公共电核算</h3><p>公摊池按拓扑序计算，池间折入不绕圈，每池保留位数各自可配。</p><div class="stage"><div class="slot" data-label="截图 · 公共电核算屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>楼栋损耗</h3><p>总表减分表，损耗率逐栋落账，越界的栋在下游分析里点亮。</p><div class="stage"><div class="slot" data-label="截图 · 楼栋损耗屏，1120×700"></div></div></article>
+    <article class="step"><div class="node"><i></i><span class="seg"></span></div><h3>催缴单</h3><p>指定收款公司，核对确认，导出通知单与对账表。算出来，发出去。</p><div class="stage"><div class="slot" data-label="截图 · 催缴单屏，1120×700"></div></div></article>
+  </div>
+  <aside class="dnote"><b>批注 02 出账链</b>
+    <p><span>动效</span>：标题滚过后横滚区钉住，竖向滚动转为横向平移（scrub 0.8）；链路线与节点随进度逐段点亮。</p>
+    <p><span>转场</span>：末步「催缴单」到位即解钉。移动端改为原生横向 scroll-snap，不劫持滚动。</p>
+    <p><span>素材</span>：六张截图，构图统一（同一账期、同一公司）。</p>
+  </aside>
+</section>
+
+<!-- ============ 3 · 公摊引擎 ============ -->
+<section class="chapter pinsec" id="pool">
+  <div class="pin-inner">
+    <div class="pool-grid">
+      <div>
+        <h2>你的 Excel，<br>逐格全等。</h2>
+        <p class="lede">公摊引擎把两期原册的公摊池与楼栋损耗行逐格验算过。口径怪癖不「顺手修正」，全部做成参数位；改参数，全链重算。</p>
+        <dl class="figs">
+          <div><dt>公摊池</dt><dd class="num" data-count>51</dd></div>
+          <div><dt>楼栋损耗行</dt><dd class="num" data-count>17</dd></div>
+          <div><dt>与原册差异</dt><dd class="num">0</dd></div>
+        </dl>
+      </div>
+      <div class="stage wipe">
+        <div class="slot layer excel grid-tex" data-label="截图 · 原 Excel「公共电分摊明细」2024-02"><span class="tag l">原 Excel 工作表</span></div>
+        <div class="slot layer sys" data-label="截图 · 公共电核算屏（同期），构图与左图对齐"><span class="tag r">系统 · 公共电核算</span></div>
+        <div class="wipe-bar"></div>
+      </div>
+    </div>
+    <aside class="dnote"><b>批注 03 公摊引擎</b>
+      <p><span>动效</span>：钉住 1.8 屏高。系统画面以 clip-path 从左向右揩开 Excel 原册，揩痕是一条发光竖线；两个数字进入时计数。</p>
+      <p><span>转场</span>：揩开完成后解钉。</p>
+      <p><span>素材</span>：同期 Excel 截图 + 公共电核算屏截图，行列对齐，揩开时才有「同一张表」的错觉。</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ 4 · 导入中心 ============ -->
+<section class="chapter pinsec" id="import">
+  <div class="pin-inner">
+    <header class="ch-head center">
+      <h2>真实的 Excel 有多乱都行。</h2>
+      <p class="lede">按表头名字和数据内容认列，不按固定位置。多行表头、分类列、合计列、小计行，照样进。重导干净，手动行不动。</p>
+    </header>
+    <div class="imp-stage">
+      <div class="imp-sheet stage">
+        <div class="slot grid-tex" data-label="截图 · 用户真实附表10.xlsx（多行表头、小计行），已脱敏"></div>
+        <span class="chip" data-to="#t-period" style="left:6%;top:9%">2026年6月</span>
+        <span class="chip" data-to="#t-tenant" style="left:9%;top:27%">租户名称</span>
+        <span class="chip" data-to="#t-unit" style="left:38%;top:27%">车间</span>
+        <span class="chip" data-to="#t-amt" style="left:58%;top:27%">本月应收(元)</span>
+        <span class="chip skip" data-to="#t-skip" style="left:80%;top:27%">合计</span>
+        <span class="chip skip" data-to="#t-skip" style="left:24%;top:72%">小计</span>
+      </div>
+      <div class="imp-arrow"><i data-lucide="arrow-right"></i></div>
+      <ul class="imp-targets">
+        <li id="t-period"><b>期间</b><span class="dock"></span></li>
+        <li id="t-tenant"><b>租户</b><span class="dock"></span></li>
+        <li id="t-unit"><b>单元 / 车间</b><span class="dock"></span></li>
+        <li id="t-amt"><b>应收金额</b><span class="dock"></span></li>
+        <li id="t-skip" class="skip"><b>跳过</b><span class="dock"></span><small>合计列、小计行不入库</small></li>
+      </ul>
+    </div>
+    <p class="imp-result"><i></i>导入 386 行，跳过 2 行，错误 0（示例）</p>
+    <aside class="dnote"><b>批注 04 导入中心</b>
+      <p><span>动效</span>：钉住 2 屏高。表头字块从乱表飞到右侧目标列（power2.inOut，错峰 0.12s），「合计 / 小计」飞进跳过栏后变暗；结果条最后浮现。</p>
+      <p><span>转场</span>：解钉后进入报表章，整站背景在接下来 70vh 的滚动里由深夜蓝转为纸白。</p>
+      <p><span>素材</span>：一张用户真实 Excel 截图（多行表头 + 小计行），脱敏。</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ 5 · 账簿与报表 ============ -->
+<section class="chapter" id="reports" style="padding-bottom:0">
+  <header class="ch-head">
+    <p class="eyebrow">账簿与报表</p>
+    <h2>一套账，多家公司。</h2>
+    <p class="lede">每家管理公司一本结构相同的册子：利润表、资产负债表、科目余额表，加五张损益附表。「全部汇总」就是跨公司求和；收入核对把台账与附表10 对上。</p>
+    <div class="co-row"><span class="co on">全部汇总</span><span class="co">创显</span><span class="co">B2</span><span class="co">帮管好</span><span class="co">一泽</span><span class="co">积前</span><span class="co">创燊高</span></div>
+  </header>
+  <aside class="dnote"><b>批注 05 账簿与报表</b>
+    <p><span>动效</span>：进入本章时全站配色由深转浅（scrub，可逆，往回滚会再变暗）。三张报表纸 sticky 叠放：下一张到来时上一张缩至 0.94、透明度 0.45。</p>
+    <p><span>转场</span>：第三张到位后正常滚出。</p>
+    <p><span>素材</span>：利润表 / 资产负债表 / 科目余额表 三屏截图（单公司同期）。</p>
+  </aside>
+</section>
+<div class="stack" aria-label="三大报表">
+  <div class="sheet"><div class="paper"><div class="ph"><h3>利润表</h3><span>一泽 2026-06</span></div><div class="slot" data-label="截图 · 利润表屏，1440×900"></div></div></div>
+  <div class="sheet"><div class="paper"><div class="ph"><h3>资产负债表</h3><span>一泽 2026-06</span></div><div class="slot" data-label="截图 · 资产负债表屏，1440×900"></div></div></div>
+  <div class="sheet"><div class="paper"><div class="ph"><h3>科目余额表</h3><span>一泽 2026-06</span></div><div class="slot" data-label="截图 · 科目余额表屏，1440×900"></div></div></div>
+</div>
+
+<!-- ============ 6 · 经营分析 ============ -->
+<section class="chapter" id="analysis">
+  <header class="ch-head">
+    <p class="eyebrow">经营分析</p>
+    <h2>三个维度，看清一个园区。</h2>
+    <p class="lede">园区、租户、管理公司三个维度，19 个分析屏，加一个异常提醒中心。每个结论都能点回原始那张表。</p>
+  </header>
+  <div class="bento">
+    <article class="tile a rv"><div class="tile-h"><i data-lucide="gauge"></i><h3>经营驾驭舱</h3></div><div class="slot" data-label="录屏 · 驾驭舱 8s 循环，1440×900"></div></article>
+    <article class="tile b rv"><i data-lucide="siren"></i><h3>租户流失预警</h3><p>缴费拖延、用能骤降、临近到期，三条信号叠加打分。</p></article>
+    <article class="tile c rv"><i data-lucide="calendar-clock"></i><h3>到期墙与续约</h3><p>按月排开的到期面积与续约进度，一眼看完。</p></article>
+    <article class="tile d rv"><i data-lucide="scale-3d"></i><h3>盈亏平衡与敏感性</h3><p>出租率、电价、人工三个变量拨一拨，看利润怎么动。</p></article>
+    <article class="tile e warn rv"><i data-lucide="bell-ring"></i><h3>异常提醒中心</h3>
+      <ul class="alerts"><li><b>B3 栋</b> 光伏日发电跌出正常带，已 9 天</li><li><b>一期 7 号电表</b> 出现反向电量，疑接线错误</li><li><b>二期公摊池</b> 损耗率越过上限</li></ul><small>示例数据</small></article>
+    <article class="tile f rv"><div class="tile-h"><i data-lucide="sun"></i><h3>光伏分栋分析</h3></div><svg id="pv-chart" viewBox="0 0 600 220" role="img" aria-label="某栋日发电与全园中位之比，最后九天跌出正常范围带"></svg><small>示例数据：某栋日发电 ÷ 全园同刻度中位，灰带为该栋自己的正常范围</small></article>
+    <article class="tile g rv"><div class="tile-h"><i data-lucide="plug"></i><h3>充电桩分析</h3></div><div class="slot" data-label="截图 · 充电桩分析（汽车 tab），1440×900"></div></article>
+  </div>
+  <aside class="dnote"><b>批注 06 经营分析</b>
+    <p><span>动效</span>：七格 Bento 进入视口时错峰上浮，一次性。光伏格是真实 SVG 示例图，不是截图。</p>
+    <p><span>转场</span>：普通滚动。</p>
+    <p><span>素材</span>：驾驭舱录屏、充电桩分析截图；其余四格纯文字 + 图标（沿用产品内 lucide 图标）。</p>
+  </aside>
+</section>
+
+<!-- ============ 7 · 协作 ============ -->
+<section class="chapter pinsec" id="collab">
+  <div class="pin-inner">
+    <header class="ch-head center">
+      <h2>多人同时做账，不打架。</h2>
+      <p class="lede">读全开，写分权。谁在编辑一眼可见；要改先占锁；急事可请在线主管授权接管，全过程留审计。</p>
+    </header>
+    <div class="panes">
+      <div class="pane" id="pane-a">
+        <div class="pane-bar"><span>陈会计 的窗口</span><span class="who-row"><span class="who">我</span><span class="who other">王会计</span></span></div>
+        <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><button class="lockbtn" type="button" aria-label="编辑模式"><span class="st s0">编辑模式</span><span class="st s1">完成</span></button></div>
+        <div class="slot" data-label="截图 · 月度台账屏（编辑态），1120×700"></div>
+      </div>
+      <div class="pane" id="pane-b">
+        <div class="pane-bar"><span>王会计 的窗口</span><span class="who-row"><span class="who">我</span><span class="who other">陈会计</span></span></div>
+        <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><button class="lockbtn" type="button" aria-label="编辑模式"><span class="st s0">编辑模式</span><span class="st s1">陈会计 正在编辑</span><span class="st s2">请求接管</span></button></div>
+        <div class="slot" data-label="截图 · 月度台账屏（浏览态），1120×700"></div>
+        <div class="toast">已向在线主管 发送接管请求，授权后锁归你，双方留名审计（示例）</div>
+      </div>
+    </div>
+    <ul class="rules"><li>读全开</li><li>写按 11 个业务模块分权</li><li>一张表 × 一个月，审核后只读</li></ul>
+    <aside class="dnote"><b>批注 07 协作</b>
+      <p><span>动效</span>：钉住 2 屏高。左窗按下「编辑模式」变「完成」，两侧顶栏出现对方头像；右窗按钮依次变「陈会计 正在编辑」「请求接管」，最后浮出接管提示。</p>
+      <p><span>转场</span>：解钉后普通滚动。</p>
+      <p><span>素材</span>：同一张台账两个账号视角的截图两张。</p>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ 8 · 大小园区 ============ -->
+<section class="chapter" id="fit">
+  <header class="ch-head"><h2>两个人的园区，<br>和两百人的园区。</h2></header>
+  <div class="fit-grid">
+    <div class="fit-col">
+      <h3>一个园区，一家管理公司</h3>
+      <div class="qa rv"><p class="q">“Excel 用得挺好，为什么要换？”</p><p class="a">Excel 直接导进来，公式口径原样复刻，录入屏的形状也和你的表一样。换的是不再手抄，不是换习惯。</p></div>
+      <div class="qa rv"><p class="q">“我们没有 IT 部门。”</p><p class="a">一台服务器，Docker Compose 一条命令起全套，自动 HTTPS。数据在你自己的机器上。</p></div>
+      <div class="qa rv"><p class="q">“怕系统算错，还不如自己算。”</p><p class="a">每个参数都能改、能回看版本；算出的每一格都与原册对得上，差异为零才上线。</p></div>
+    </div>
+    <div class="fit-col">
+      <h3>多期园区，多家公司，几十个人</h3>
+      <div class="qa rv"><p class="q">“几个人同时录账，会不会互相覆盖？”</p><p class="a">编辑锁加在场提示，谁在改一眼看见；急事可授权接管，改动全部留痕。</p></div>
+      <div class="qa rv"><p class="q">“各公司的账要分开，又要合并看。”</p><p class="a">每家一本独立册，全部汇总一键求和，收入核对把台账与附表10 对上。</p></div>
+      <div class="qa rv"><p class="q">“谁改了什么，要查得到。”</p><p class="a">按 11 个业务模块分权，操作日志与审核状态可追溯；审核过的表只读，只有审核员能撤销。</p></div>
+    </div>
+  </div>
+  <aside class="dnote"><b>批注 08 大小园区</b><p><span>动效</span>：两列问答进入视口时错峰上浮。</p><p><span>素材</span>：无。</p></aside>
+</section>
+
+<!-- ============ 9 · 底座 ============ -->
+<section class="chapter" id="base">
+  <header class="ch-head"><h2>看不见的地方，也认真做。</h2></header>
+  <div class="stats">
+    <div class="stat rv"><span class="num" data-count>240<sup>+</sup></span><p>条真库集成测试，每次提交都跑</p></div>
+    <div class="stat rv"><span class="num" data-count>2200<sup>+</sup></span><p>条前端断言</p></div>
+    <div class="stat rv"><span class="num" data-count>100<sup>+</sup></span><p>次数据库迁移，全部可重放</p></div>
+    <div class="stat text rv"><p>私有化部署。Docker Compose 一条命令起全套，Caddy 自动 HTTPS，JWT 登录防爆破，操作全程审计。</p></div>
+  </div>
+  <aside class="dnote"><b>批注 09 底座</b><p><span>动效</span>：三个数字进入视口时计数一次。</p><p><span>口径</span>：数字取自仓内 2026-09 现状，上线前重新核一次。</p></aside>
+</section>
+
+<!-- ============ 10 · CTA ============ -->
+<section class="chapter" id="cta">
+  <h2 class="rv">用你们自己的 Excel，<br>看一场 30 分钟的演示。</h2>
+  <p class="lede rv">带一份真实的月度台账或附表来。我们当场导入、算账、出报表。</p>
+  <a class="btn primary lg rv" href="#top">预约演示</a>
+</section>
+
+</main>
+<footer>
+  <a class="brand" href="#top"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"/><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"/><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"/></svg><span>园区管理系统</span></a>
+  <span>© 2026 厂房园区运营与财务一体化系统</span>
+</footer>
+
+<button class="notes-toggle" id="notes-toggle" type="button" aria-pressed="true"><i></i>设计批注 开</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script>
+(function(){
+  /* ---- 批注开关 ---- */
+  var nt=document.getElementById('notes-toggle');
+  nt.addEventListener('click',function(){
+    var off=document.body.classList.toggle('notes-off');
+    nt.setAttribute('aria-pressed',String(!off));
+    nt.lastChild.textContent=off?'设计批注 关':'设计批注 开';
+  });
+
+  /* ---- 图标（与产品同一套 lucide）---- */
+  if(window.lucide&&lucide.createIcons){ lucide.createIcons({attrs:{'stroke-width':1.75}}); }
+
+  /* ---- 光伏示例图：某栋 ÷ 全园中位，最后九天跌出带 ---- */
+  drawPv();
+  function drawPv(){
+    var svg=document.getElementById('pv-chart'); if(!svg) return;
+    var W=600,H=220,pl=34,pr=14,pt=14,pb=28, n=30;
+    var x=function(i){return pl+(W-pl-pr)*i/(n-1);};
+    var y=function(v){return pt+(H-pt-pb)*(1-(v-0.5)/1.0);}; /* 0.5 .. 1.5 */
+    var lo=[],hi=[],line=[];
+    for(var i=0;i<n;i++){
+      var wob=Math.sin(i*0.7)*0.03;
+      lo.push(0.86+wob); hi.push(1.16+wob);
+      var v=1.01+Math.sin(i*1.3)*0.06+Math.cos(i*0.4)*0.04;
+      if(i>=21) v=0.80-(i-21)*0.028+Math.sin(i)*0.015; /* 断崖 */
+      line.push(v);
+    }
+    var band='M'+lo.map(function(v,i){return x(i)+','+y(hi[i]);}).join('L')+'L'+lo.slice().reverse().map(function(v,i){var k=n-1-i;return x(k)+','+y(lo[k]);}).join('L')+'Z';
+    var path='M'+line.map(function(v,i){return x(i)+','+y(v);}).join('L');
+    var ticks=[0.6,1.0,1.4].map(function(t){return '<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y(t)+'" y2="'+y(t)+'" style="stroke:var(--line)"/><text x="'+(pl-8)+'" y="'+(y(t)+4)+'" text-anchor="end" style="fill:var(--fg-3);font:11px var(--font-mono)">'+t.toFixed(1)+'</text>';}).join('');
+    var days=[1,10,20,30].map(function(d){return '<text x="'+x(d-1)+'" y="'+(H-8)+'" text-anchor="middle" style="fill:var(--fg-3);font:11px var(--font-mono)">'+d+'日</text>';}).join('');
+    var last=n-1;
+    svg.innerHTML=ticks+days+
+      '<path d="'+band+'" style="fill:color-mix(in srgb,var(--fg) 9%,transparent)"/>'+
+      '<path d="'+path+'" style="fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round"/>'+
+      '<circle cx="'+x(last)+'" cy="'+y(line[last])+'" r="5" style="fill:var(--warn)"/>'+
+      '<text x="'+(x(last)-10)+'" y="'+(y(line[last])-12)+'" text-anchor="end" style="fill:var(--warn);font:600 11px var(--font-body)">跌出正常带 9 天</text>';
+  }
+
+  if(!window.gsap||!window.ScrollTrigger){ document.body.classList.add('static'); return; }
+  gsap.registerPlugin(ScrollTrigger);
+
+  var LIGHT={'--bg':'#F5F7FA','--bg-2':'#FFFFFF','--bg-3':'#E9EEF6','--fg':'#14181F','--fg-2':'rgba(20,24,31,0.68)','--fg-3':'rgba(20,24,31,0.46)','--line':'rgba(20,24,31,0.10)','--slot-a':'#E6ECF5','--slot-b':'#D3DCEA','--shadow':'rgba(20,40,80,0.16)'};
+
+  function posIn(el,root){ var x=0,y=0; while(el&&el!==root){ x+=el.offsetLeft; y+=el.offsetTop; el=el.offsetParent; } return {x:x,y:y}; }
+
+  var mm=gsap.matchMedia();
+  mm.add({
+    desk:'(min-width: 900px) and (prefers-reduced-motion: no-preference)',
+    mob:'(max-width: 899px) and (prefers-reduced-motion: no-preference)',
+    reduce:'(prefers-reduced-motion: reduce)'
+  },function(ctx){
+    var c=ctx.conditions;
+    if(c.reduce){
+      document.body.classList.add('static');
+      /* 减少动态效果：配色翻转不再随滚动渐变，进入报表章时 400ms 直接切 */
+      ScrollTrigger.create({trigger:'#reports',start:'top 60%',onEnter:function(){gsap.to(document.body,Object.assign({duration:.4},LIGHT));},onLeaveBack:function(){gsap.to(document.body,{duration:.4,clearProps:Object.keys(LIGHT).join(',')});}});
+      return;
+    }
+    if(c.mob){ document.body.classList.add('static'); }
+    else{ document.body.classList.remove('static'); }
+
+    navSpy(); hero(); themeFlip(); counters(); reveals();
+    if(c.desk){ overview(); chain(); pool(); importSec(); reports(); collab(); }
+  });
+
+  /* ---- 顶栏当前章高亮 ---- */
+  function navSpy(){
+    document.querySelectorAll('.nav-links a').forEach(function(a){
+      var sec=document.getElementById(a.dataset.for); if(!sec) return;
+      ScrollTrigger.create({trigger:sec,start:'top 50%',end:'bottom 50%',onToggle:function(s){a.classList.toggle('on',s.isActive);}});
+    });
+  }
+
+  /* ---- 00 首屏：载入三柱升起，滚动文案淡出 ---- */
+  function hero(){
+    var tl=gsap.timeline({defaults:{ease:'expo.out'}});
+    tl.from('.mark-big .bar',{scaleY:.12,opacity:0,duration:1.1,stagger:.12})
+      .from('.hero h1 .l',{y:30,opacity:0,duration:1,stagger:.1},'-=.75')
+      .from('.hero .lede, .hero .cta-row',{y:18,opacity:0,duration:.9,stagger:.1},'-=.65')
+      .from('.hero-stage',{y:90,opacity:0,scale:.965,duration:1.25},'-=.85');
+    gsap.to('.hero-inner',{y:-80,opacity:0,ease:'none',scrollTrigger:{trigger:'.hero',start:'top top',end:'bottom 45%',scrub:true}});
+  }
+
+  /* ---- 05 进入报表章：深 → 浅，随滚动可逆 ---- */
+  function themeFlip(){
+    gsap.to(document.body,Object.assign({ease:'none',scrollTrigger:{trigger:'#reports',start:'top 85%',end:'top 15%',scrub:true}},LIGHT));
+  }
+
+  /* ---- 数字计数（进入一次）---- */
+  function counters(){
+    document.querySelectorAll('[data-count]').forEach(function(el){
+      var node=el.firstChild; var to=parseInt(node.textContent.replace(/\D/g,''),10); if(!to) return;
+      var o={v:0};
+      gsap.to(o,{v:to,duration:1.6,ease:'power2.out',snap:{v:1},onUpdate:function(){node.textContent=o.v.toLocaleString('zh-CN');},scrollTrigger:{trigger:el,start:'top 88%',once:true}});
+    });
+  }
+
+  /* ---- 进入视口上浮（一次性）---- */
+  function reveals(){
+    ScrollTrigger.batch('.rv',{start:'top 88%',once:true,onEnter:function(els){gsap.from(els,{y:28,opacity:0,duration:.9,ease:'expo.out',stagger:.08});}});
+  }
+
+  /* ---- 01 总览：钉住，三段说明换画面 ---- */
+  function overview(){
+    var caps=gsap.utils.toArray('#overview .cap'), views=gsap.utils.toArray('#overview .view');
+    gsap.set(caps.slice(1),{opacity:0,y:36}); gsap.set(views.slice(1),{opacity:0,scale:1.03});
+    var tl=gsap.timeline({scrollTrigger:{trigger:'#overview',start:'top top',end:'+=260%',pin:true,scrub:.5,anticipatePin:1}});
+    for(var i=1;i<caps.length;i++){
+      tl.to({},{duration:.7})
+        .to(caps[i-1],{opacity:0,y:-36,duration:1})
+        .to(views[i-1],{opacity:0,scale:.985,duration:1},'<')
+        .to(caps[i],{opacity:1,y:0,duration:1},'<+=.35')
+        .to(views[i],{opacity:1,scale:1,duration:1},'<');
+    }
+    tl.to({},{duration:.8});
+  }
+
+  /* ---- 02 出账链：竖滚转横移，链路逐段点亮 ---- */
+  function chain(){
+    var wrap=document.querySelector('.pan-wrap'), track=wrap.querySelector('.pan-track');
+    var dist=function(){return Math.max(0,track.scrollWidth-wrap.clientWidth);};
+    var segs=gsap.utils.toArray('.step .seg'), dots=gsap.utils.toArray('.step .node i');
+    var tl=gsap.timeline({scrollTrigger:{trigger:wrap,start:'top top',end:function(){return '+='+dist();},pin:true,scrub:.8,invalidateOnRefresh:true,anticipatePin:1}});
+    tl.to(track,{x:function(){return -dist();},ease:'none',duration:1},0);
+    var n=dots.length;
+    dots.forEach(function(d,i){
+      tl.to(d,{backgroundColor:'#4C98FD',borderColor:'#4C98FD',boxShadow:'0 0 0 6px rgba(76,152,253,.22)',duration:.03},i/n);
+      if(segs[i]) tl.to(segs[i],{scaleX:1,ease:'none',duration:1/n},i/n);
+    });
+  }
+
+  /* ---- 03 公摊引擎：clip-path 揩开 ---- */
+  function pool(){
+    var stage=document.querySelector('#pool .wipe');
+    var tl=gsap.timeline({scrollTrigger:{trigger:'#pool',start:'top top',end:'+=180%',pin:true,scrub:.5,anticipatePin:1,invalidateOnRefresh:true}});
+    tl.fromTo('#pool .layer.sys',{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0% 0 0)',ease:'none',duration:1},0)
+      .fromTo('#pool .wipe-bar',{x:0},{x:function(){return stage.clientWidth;},ease:'none',duration:1},0)
+      .to('#pool .tag.l',{opacity:0,duration:.15},.75);
+  }
+
+  /* ---- 04 导入：表头字块飞到目标列 ---- */
+  function importSec(){
+    var stage=document.querySelector('#import .imp-stage');
+    var chips=gsap.utils.toArray('#import .chip');
+    var tl=gsap.timeline({scrollTrigger:{trigger:'#import',start:'top top',end:'+=200%',pin:true,scrub:.6,invalidateOnRefresh:true,anticipatePin:1}});
+    tl.to({},{duration:.4});
+    chips.forEach(function(chip,i){
+      var dock=document.querySelector(chip.dataset.to+' .dock'); if(!dock) return;
+      tl.to(chip,{
+        x:function(){return posIn(dock,stage).x-posIn(chip,stage).x;},
+        y:function(){return posIn(dock,stage).y-posIn(chip,stage).y;},
+        ease:'power2.inOut',duration:1
+      },.4+i*.12);
+      if(chip.classList.contains('skip')) tl.to(chip,{opacity:.4,duration:.3},'>-.1');
+    });
+    tl.fromTo('#import .imp-result',{opacity:0,y:14},{opacity:1,y:0,duration:.5},'+=.15');
+    tl.to({},{duration:.5});
+  }
+
+  /* ---- 05 报表：纸张 sticky 叠放，前一张退后 ---- */
+  function reports(){
+    var sheets=gsap.utils.toArray('.stack .sheet');
+    sheets.forEach(function(s,i){
+      if(i===sheets.length-1) return;
+      gsap.to(s.querySelector('.paper'),{scale:.94,opacity:.45,y:-24,ease:'none',scrollTrigger:{trigger:sheets[i+1],start:'top bottom',end:'top top',scrub:true}});
+    });
+  }
+
+  /* ---- 07 协作：占锁、在场、接管 ---- */
+  function collab(){
+    var tl=gsap.timeline({scrollTrigger:{trigger:'#collab',start:'top top',end:'+=200%',pin:true,scrub:.5,anticipatePin:1}});
+    tl.to({},{duration:.4})
+      .to('#pane-a .lockbtn',{scale:.96,duration:.1}).to('#pane-a .lockbtn',{scale:1,duration:.1})
+      .to('#pane-a .s0',{opacity:0,duration:.25},'a').to('#pane-a .s1',{opacity:1,duration:.25},'a')
+      .to('#pane-a .lockbtn',{borderColor:'#4C98FD',duration:.25},'a')
+      .to('#pane-a',{borderColor:'#4C98FD',duration:.25},'a')
+      .to('.who.other',{opacity:1,duration:.4},'a+=.2')
+      .to({},{duration:.5})
+      .to('#pane-b .s0',{opacity:0,duration:.25},'b').to('#pane-b .s1',{opacity:1,duration:.25},'b')
+      .to({},{duration:.6})
+      .to('#pane-b .s1',{opacity:0,duration:.25},'c').to('#pane-b .s2',{opacity:1,duration:.25},'c')
+      .to({},{duration:.5})
+      .to('#pane-b .toast',{opacity:1,y:0,duration:.4})
+      .to({},{duration:.6});
+  }
+})();
+</script>
