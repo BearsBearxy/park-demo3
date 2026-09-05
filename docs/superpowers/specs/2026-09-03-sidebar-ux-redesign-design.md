@@ -1,6 +1,6 @@
 # 侧边栏与使用动线重设计 + 审核机制（SIDEBAR-UX-REDESIGN）
 
-2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b、P0c 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
+2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b、P0c、P3 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
 上游：`docs/research/2026-09-03-sidebar-ux-research/`（01 现状动线审计 · 02 同类产品调研 · 03 综合结论 · 04 方案与拍板过程）；
 BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · DESIGN-FIDELITY · LAYOUT-STABILITY-SPEC。
 设计稿：https://claude.ai/code/artifact/521bb00c-d981-4e55-8685-5ca7fe8834f7（源文件 `_design/sidebar-redesign/`）。
@@ -157,9 +157,9 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 
 ### 4.3 页签模型
 
-- pin 缺省规则：来源屏正坐在 preview 槽 → 目标 `pin: true`；否则目标进 preview（`LedgerView.gotoTenants` 规则通用化，`ledgerLeaveAndReturn.spec` 三条不动）。分析层 9 处硬编码 `pin:true` 删除。
-- `tabs.open` 顶掉 preview 时记录 `evicted`；**仅当被顶屏处于编辑态**（`presence` 本人 `mode === 'edit'` 且 scope 命中该屏）出 4s toast「『月度台账』预览页签已被替换 — [固定它]」（复用 `.fp-net-toast` 位置，`position: fixed`）。其余情况静默。
-- `tabs` store 增内存态 `ctx: Record<value, { p?: string; coName?: string; review?: ReviewStatus }>`，`setCtx / clearCtx`；`close`/`dropState`/`logout` 清对应项；三个 localStorage 键格式不变。写入点：`billingPeriod.pick` · `screenPeriod.pick` · `LedgerView` 选册选月 · `useFinStatementScreen` 的 y/m/co 变化 · `useDeepPeriod.apply` · 审核态拉取。
+- pin 缺省规则：来源屏正坐在 preview 槽 → 目标 `pin: true`；否则目标进 preview（`LedgerView.gotoTenants` 规则通用化，`ledgerLeaveAndReturn.spec` 三条不动）。分析层 **16 处、10 个文件**硬编码 `pin:true` 删除（原文写「9 处」是 P0c 之前的旧数）。（P3 落地：规则收成 store 动作 `tabs.openDeep(value)` = `openFresh(value, { pin: 来源屏正坐在预览槽 })`；**来源取 `recent[0]`** —— `open()` 每次都把目标推到队首，且 `router/index.ts` 有全局 `afterEach` 无条件 `open(v)`，所以进函数时队首必是当前屏，不必往 store 里塞「当前屏」也不必引 router 进来。`ReconWorkbench` 两处与 `LedgerView.gotoTenants` 按 §4.1 保持硬编码 pin，门禁**正向**钉住。）
+- `tabs.open` 顶掉 preview 时记录 `evicted`；**仅当被顶屏处于编辑态**出 4s toast「『月度台账』预览页签已被替换 — [固定它]」（复用 `.fp-net-toast` 位置，`position: fixed`）。其余情况静默。（P3 落地：编辑态判定**不查服务端座位** —— `presence.mode` 慢一拍、`self` 又是按 user 比对不按 sid（同一人两个浏览器标签页两条座位都是 self），改用新增的 `presence.holdsEditUnder(prefix)` 直接读本地 `editCallbacks`，前缀边界与 `editorsUnder` 逐字同规则；屏 → 锁根走现成的 `NAV_SCOPE_PREFIX`。载体不是 `FPToast`（它没有动作按钮插槽），是 `AppShell` 里 `.fp-net-toast` 的兄弟块；两条同时在场靠 `.stacked` 上移一格，**S 档要单独再抬一次** —— `@media` 不加特异度，桌面那条 `bottom:84px` 在手机上照样赢。`evicted` 在编辑态判断**之前**就清掉，否则非编辑态那次不清、同一屏第二次被顶时值没变、watch 不触发。）
+- `tabs` store 增内存态 `ctx: Record<value, { p?: string; coName?: string; review?: ReviewStatus }>`，`setCtx / clearCtx`；`close`/`dropState`/`logout` 清对应项；三个 localStorage 键格式不变。（P3 落地：`review?` 归 R2，本期只有 `p?` / `coName?`；`setCtx` 是**整条替换**不是浅合并 —— 期变了公司也可能变，合并会把上一家公司的名字留在标题里。**五个写入点收在 `composables/useDeepPeriod` 一处** watch：接了深链的 18 处屏本来就都经过这条路，而那里天然拿得到「我是哪个页签」（`route.meta.value`）与「期变了」的时机；分散写则要给 `useMonthGate` / `billingPeriod` 造出「我在哪个页签」的知识。**ctx 的取值不复用 `current().p`** —— 三大报表与收入核对停在选期矩阵 / 月份层时 `current.p` 是光秃秃一个年份（那是 P0c 为「只有年的链停在矩阵」造的相等条件，不是用户选了期），照抄会在页签上写出用户没点过的期；opt 是一个 `ctx?: () => { p, coName? }`，只有台账 / 三大报表 / 附10 / 收入核对传。「logout 清」见 §12 遗留。）
 
 ---
 
@@ -351,4 +351,13 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - `PnlScheduleView` 的期间条在 977af27 合并时被 sed `\1` 吃掉、2026-09-04 修回；`reportPeriodGate.spec` 钉九屏（`<FPStepStrip` 与 `current=` 两断言未绑定同一标签 = 已知天花板）。
 - 分析屏的期（`usePeriod`）不吃 URL：落 `/fin-cashflow` `/park-energy` `/churn` 的三条异常 `p` 暂无消费方（AnomalyView 那一列今天等于原样 push）；给 `usePeriod` 开深链入口留后期。
 - `ReconView` 深链首载发两次 overview（默认年定上限 + 深链年）：接受，上限与落年解耦的代价；`overview(y)` 失败时永久转圈与改前同款。
+- **P3 遗留（2026-09-06）**：
+  - `tabs.openDeep` 判「来源屏在不在预览槽」取 `recent[0]`：刷新后的第一次跳转，队首来自 localStorage、未必等于当前屏 —— 代价上限是多钉或少钉一个页签，不丢数据。
+  - `auth.logout()` 至今**不重置已实例化的 tabs store**（`tabs` / `preview` / `recent` / `epoch` 都留着，它只清三个 localStorage 键）。P3 只让 `ctx` / `evicted` 跟着 `auth.me` 变化清；整体重置留给 P5（那期本来就要动 `auth.ts`）。
+  - **ctx 只写给接了 `useDeepPeriod` 的屏**：`views/analysis/` 的 11 屏与导入中心不接（分析屏的期本来就不吃 URL，见上一条），所以它们的页签标题只有屏名、顶栏 chip 恒显「—」。与「给 `usePeriod` 开深链入口」是同一件事，一并留后期。
+  - **Shift 点当前项仍然重建**（不 push、只 epoch++）：偏离 §4.1 的字面次序（那里 guard 写在 Shift 之前）。理由：改前「点当前项」走的就是 `openFresh`，不放开这条出路，当前屏在本期之后再没有任何强制刷新手势。
+  - **纯读屏切回重读补了 13 屏，3 屏没补**：`SystemRolesView`（`load()` 收尾 `fillForm` 重置编辑区 + 屏内有真草稿态）、`PvRoiView`（`onMounted` 无条件重置选中期）、`PvMeterAnaView`（屏头铁律「只有换年才重新取数」，且每次切回要重跑抛光 / 变点检验）。这三屏在侧栏改「恢复现场」之后没有刷新入口，用户要靠 Shift 点击或关签重开。
+  - 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— **三条以上没有排队机制**。
+  - 页签定宽 148px 之后溢出下拉从「几乎不发生」变常态入口（6–7 签就撑破一行），`.fp-tab-overflow` 的 `v-if` 一进一出会挤窄 `.fp-tabs`；不算 §1 违规（开第 7 个签本来就要重排那一行），要不要给 `.fp-tab-actions` 一个恒定占位宽留下一期定。
+  - `CommandPalette` 自 P3 起懒加载（`defineAsyncComponent` + `v-if="paletteEverOpened"`，index 190.8 → 184.1KB）。连带它的 reset+autofocus watch 加了 `immediate` —— 首次打开时它是**带着 open=true 挂载**的，没有 false→true 这个变化。
 - 四张年表屏（`ElecView` / `UtilitiesView` / `PvView` / `ChargingView`，dirty 闸与 `current` 逐字同形；`UtilitiesView` 的 apply 少一道 `mode === 'summary'` 门）的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。

@@ -115,7 +115,7 @@ fp-app-tabs/preview/recent 格式不变），回桌面时页签原样都在—�
 |---|---|---|
 | 顶栏 | 52px + safe-area-top | 菜单钮（开导航抽屉）· 当前屏名（route.meta.page）· 搜索钮（开命令面板）· 铃铛（红点随迁） |
 | 内容 | 其余，`overflow-y:auto` | padding 16px；高度基准 100dvh 不用 100vh |
-| 底栏 | 56px + safe-area-bottom | ≤4 个层 tab（数据/报表/分析/系统，按 navLayers + system:view 过滤，同 IconRail 口径）；点按 = `openFresh(layer.home)` |
+| 底栏 | 56px + safe-area-bottom | ≤4 个层 tab（数据/报表/分析/系统，按 navLayers + system:view 过滤，同 IconRail 口径）；点按 = `openFresh(layer.home)`，**点当前层 no-op**（2026-09-06 P3） |
 
 ### 4.2 导航抽屉
 
@@ -130,8 +130,9 @@ fp-app-tabs/preview/recent 格式不变），回桌面时页签原样都在—�
    手机用户就无法退出登录。
 
 导航语义分开走，与桌面各自的同类入口保持一致：
-- 层切换段 / sections 条目 = `openFresh` + push（与 IconRail/SidebarPanel 同义，
-  全新状态）；
+- 层切换段 = `openFresh` + push（与 IconRail 同义，全新状态），**点当前层 no-op**；
+- sections 条目 = `open` + push（与桌面 SidebarPanel 同义，**恢复现场**；2026-09-06 P3 起，
+  改前是 openFresh），**点当前屏只关抽屉、不 push**；触屏没有修饰键，不做 Shift；
 - **「最近打开」= `open` + push**（与 CommandPalette 的 recent 同义，恢复
   KeepAlive 现场）。它既然是页签的化身就要继承页签的恢复语义——走 openFresh
   会 epoch++ 把用户填到一半的表单丢掉，而同一动作在桌面命令面板是恢复现场。
