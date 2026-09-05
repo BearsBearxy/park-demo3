@@ -1236,3 +1236,23 @@ git commit -m "docs(spec): P0c 口径 —— 报表层三屏落地形状、三�
 1. **Spec 覆盖**：§4.2 报表层三屏 → T2/T3；期间条 periodLink 形状 → T2/T3；分析层发链统一 periodLink → T4；三个假下钻 → T5；anaData 五条 link → T4（三条分析屏目标裁定为遗留，T6 写进 §12）；§9 P0c 破坏验证（切回期跟随 / 无 query 不重置）→ T2（三大报表）、T3（附表 / 核对）、T5（合同屏同口径）；P0b 遗留（utils/deepLink、五处注释）→ T4；`\1` 事故 → T1。
 2. **占位符扫描**：无 TBD / 「类似 Task N」；每处代码都给全文；两处「若类型可空 / 若是 string ref」是让实现者按 tsc 报错取舍的显式分支，不是占位。
 3. **类型一致**：`stripQuery: Record<string,string>` 三屏同形；`DeepPeriod.co: number | 'all' | string | null` 的判法三处一致（`co === 'all' || typeof co === 'number'`）；`goAnom(a: AnaAnomaly)` 两屏逐字同；`AnaAnomaly.company?/tenant?` 与消费方 `extra: { company: a.company, tenant: a.tenant }` 对得上（undefined 被 periodLink 丢掉 —— T4 Step 6 ④ 手动核这条）；CpMeterView `pendingStation` 与发链 `extra.station = st?.id` 同为桩 id。
+
+---
+
+## 复查记录（2026-09-05 收官）
+
+**节奏**：用户 2026-09-05 拍板降档 —— 计划级对抗复查保留（Workflow，opus，3 镜头 × 3 反驳者），任务级改单人 opus 评审，同形任务合并派发（T4+T5），P3 / P2 不跑计划复查工作流。
+
+**计划级对抗复查**（wf_114535aa-256，51 agents）：16 条发现，9 条存活（全票）。阻断 1：三大报表只有年的链落在停在正文的缓存实例上不回矩阵（`pickCompany` 同公司早退不清 month）→ `else if (month.value != null) backToMatrix()` + 用例。严重 3：损益附表 dirty 闸永远走非幂等路（current 只报年 vs 链恒带月/co；闸在 apply 之前）→ dirty 按年幂等；T4 grep 撞 `nav/deepLink.ts:6` 注释 → 收紧；T2「新四条红」假红声明 → 改口为回归护栏。次要 5：既有用例 16 非 15、总数、TDZ 症状被 `.catch` 吞（两条）、Global Constraints 补症状。修补提交 69e468a。
+
+**任务级评审（单人 opus）**：T1 d5b393a APPROVED（评审证明 `/^\1$/m` 在 CRLF 下有效；`<FPStepStrip` 与 `current=` 两断言未绑定同一标签 = 已知天花板）；T2 c4ba361 APPROVED（续体顺序论证成立；(a)–(e) 无坑；brief 写 `Ref<string|null>` 实为 `Ref<string>` 笔误）；T3 ccbece1 APPROVED（grep 命中 spec 注释 = 接受；破坏验证 ⑤ 红 3/4 = TDZ 只炸首跑，三条首跑用例已钉错位）；T4+T5 1630484 / 23c5501 APPROVED（`?? 1` 去掉后 periodLink co 缺席不写 + S10View 默认册一期 → 同落点；CockpitView jsdoc 抄自 AnomalyView 自相矛盾 → 1260b68 改）。
+
+**整期复查（单人 opus，69e468a..1260b68）**：major-1 anaData 规则④ s10 负值行不带期区 → goAnom 无 co → S10View 落首册无高亮（计划裁定漏了期区维度）；minor-1 goAnom 录入屏目标缺 `openFresh({pin:true})`（缓存页签有草稿被 dirty 闸吞）；minor-2 §12 遗留应写四张年表屏；minor-3 `FPStepStrip.vue` query 注释过期；minor-4 `anaDeepLink` 正则只看对象首键（记录）；minor-5 `exactPlaceholderScreens` 桩 query 恒空（记录）。E 五条破坏验证全真红。
+
+**修补波** 65daf62（实现者被会话限流 429 打断，六文件改动落盘未提交；控制者核 diff 逐字一致、自跑门禁与破坏验证后提交）：`AnaAnomaly.co?` + 规则④ `co: r.phase` + 两屏 goAnom `co: a.co` 与录入屏目标 openFresh + §12 四屏 + FPStepStrip 注释 + `anaAnomaly.spec` 新 it。定点复审 APPROVED：四条已修对；`UtilitiesView` apply 少一道 `mode === 'summary'` 门（措辞改「dirty 闸与 current 逐字同形」）；goAnom 发链侧零覆盖 → 297f273 `anaDeepLink.spec` 加一条钉 `co: a.co,` + `tabs.openFresh(v, { pin: true })`（破坏验证：删 `co: a.co,` 只红这条）。
+
+**门禁**：全仓 vitest 193 files / 2266 tests 绿（基线 190 / 2231）；`vue-tsc --noEmit` 0；`npm run build` 绿：index 189.5 / 191KB，合计 3881.3 / 3900KB。
+
+**既有断言改动**：`reportWorkbenchFlow.spec` 期间条断言 `{y,m,co}` → `{p,co}`；`reportPeriod.spec` 「期包」3 条随 `periodQuery` 删；`utils/deepLink.spec` 整份随模块删；`nav/deepLink.spec` 「utils/deepLink 两个解析器」1 条删；`ledgerDeepLink.spec` / `s10DeepLink.spec` 各一条只改标题。
+
+**裁定与遗留**（已写入 spec §12）：分析屏 `usePeriod` 不吃 URL；`ReconView` 深链首载两次 overview、`overview(y)` 失败永久转圈（改前同款）；四张年表屏 dirty 闸未按年幂等；`CpMeterView` `?station=` 「只有年」pending 分支从唯一发链方不可达；`anaDeepLink` 正则首键；`exactPlaceholderScreens` 桩；附10 异常链带 co 后吃「指名期区不存在整段早退」（协议既有代价）。
