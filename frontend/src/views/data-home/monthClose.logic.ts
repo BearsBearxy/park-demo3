@@ -102,15 +102,23 @@ function bookingRow(row: (typeof BOOKING_ROWS)[number], items: DataHomeItemDTO[]
   const base = { key: row.key, col: 'booking' as const, label: row.label, tag: row.tag, go: row.go, review: 'na' as const }
   // 无源(导入中心)或源缺(防御性 —— 正常回包 7 个非导入行必有匹配)→ na,屏上显「—」
   if (row.from.length === 0 || matched.length === 0) return { ...base, state: 'na' }
-  // 折出来的行两项都 done 才算 done —— 只做了其中一项(比如只录了附13)仍是 todo
-  const state: CloseRow['state'] = matched.every(it => it.done) ? 'done' : 'todo'
   const chips = chipsFor(row.key, matched)
+  // 有 chips 的行:行 done 收严成「所有 chip 都 done」,不是「matched 源项自己的 done」——
+  // 台账/附10 的 chips 来自 companies/phases 子集,可能与源项自己的 done 字段对不上(自相矛盾,
+  // 一行之内左边说已做、右边挂着没做的公司 chip)。合并行(utilities/charging)本就是按 matched
+  // 逐项拆 chip,两边等价,不受影响。
+  // ⚠ chips.length===0(companies/phases 线上发 null 时 chipsFor 回空数组)必须靠 `chips.length` 守——
+  // `[].every()` 恒真,不守会把源项自己 done=false 的行错判成 done。
+  const state: CloseRow['state'] =
+    (chips && chips.length ? chips.every(c => c.done) : matched.every(it => it.done)) ? 'done' : 'todo'
   return chips ? { ...base, state, chips } : { ...base, state }
 }
 
 function reconRow(recon: ReconMonthMeta | null): CloseRow {
+  // 后端每年恒发 12 个 MonthMeta,空月 hasData=false 且四个计数全 0 —— 与 ReconView.vue 同源写法
+  // (:145 先 v-if="!m.hasData" 出空卡),先过 hasData 闸,不能让「计数全 0」被误判成「已配平」。
   const state: CloseRow['state'] =
-    recon === null ? 'na' : recon.diffCount === 0 && recon.missCount === 0 ? 'done' : 'todo'
+    recon === null || !recon.hasData ? 'na' : recon.diffCount === 0 && recon.missCount === 0 ? 'done' : 'todo'
   return { key: 'reconciliation', col: 'billing', label: '收入核对', go: 'reconciliation', state, review: 'na' }
 }
 
@@ -126,7 +134,11 @@ export function rowsOf({ overview, recon }: RowsInput): CloseRow[] {
     col: 'billing',
     label: s.label,
     go: s.go,
-    state: s.status === 'done' ? 'done' : 'todo',
+    // 后端 buildChain 目前只产 done/current/todo 三值(DataHomeApiIT「出账链五步的状态取值受限」钉死
+    // 取值域,算法源码里也是三选一的 ternary,'stale' 现在不会真的从这条链路来)。但 CloseRow.state 已
+    // 声明 'stale' 档(spec §5.2 三态:未做/已做/需重算),不能把它并入 'todo' 死档 —— 用字符串比较
+    // (越过 DataHomeStepDTO['status'] 的类型域)如实映射,不是猜的。
+    state: s.status === 'done' ? 'done' : (s.status as string) === 'stale' ? 'stale' : 'todo',
     detail: s.detail,
     review: 'na',
   }))
@@ -143,6 +155,9 @@ export function closeChecks(rows: CloseRow[]): { done: number; total: number; by
     booking: { done: 0, total: 0 },
   }
   for (const r of rows) {
+    // 恒 na 的行(导入中心、本月锁账)不进分母 —— 分母若包含永远做不完的行,「记账 7/8」永远差一格,
+    // 用户会去找那一格是什么;与 spec §5.2「计数源缺显『—』不显 0」同源。
+    if (r.state === 'na') continue
     byCol[r.col].total++
     if (r.state === 'done') byCol[r.col].done++
   }

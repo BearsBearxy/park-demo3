@@ -6,8 +6,11 @@ import { rowsOf, closeChecks } from '../monthClose.logic'
 import type { DataHomeItemDTO, DataHomeOverviewDTO, DataHomeStepDTO } from '@/types/dataHome'
 import type { ReconMonthMeta } from '@/types/recon'
 
-function step(key: string, status: DataHomeStepDTO['status']): DataHomeStepDTO {
-  return { key, label: key, status, detail: `${key}-detail`, go: key }
+// key/label/go/detail 四值各不相同 —— 若实现拿 key 顶替 label/go(比如 `go: s.key`),同值夹具会让
+// 断言恒真看不出来。'stale' 不在 DataHomeStepDTO['status'] 类型域内(后端算法只产 done/current/todo,
+// 见 fix-brief #2),这里放宽夹具类型仅为覆盖 CloseRow.state 的防御分支,用 cast 越过类型域。
+function step(key: string, status: DataHomeStepDTO['status'] | 'stale'): DataHomeStepDTO {
+  return { key, label: `${key}-label`, status: status as DataHomeStepDTO['status'], detail: `${key}-detail`, go: `${key}-go` }
 }
 
 // 业务时序:计费参数 → 园区抄表 → 公共电核算 → 楼栋损耗 → 催缴单
@@ -59,6 +62,26 @@ function overview(steps: DataHomeStepDTO[], items: DataHomeItemDTO[]): DataHomeO
 const RECON_OK: ReconMonthMeta = { month: 9, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }
 const RECON_DIFF: ReconMonthMeta = { month: 9, hasData: true, entityCount: 5, okCount: 3, diffCount: 2, missCount: 0 }
 const RECON_MISS: ReconMonthMeta = { month: 9, hasData: true, entityCount: 5, okCount: 4, diffCount: 0, missCount: 1 }
+// 空月:后端每年恒发 12 个 MonthMeta,没数据的月 hasData=false 且四个计数全 0 —— 专钉「hasData 闸」。
+const RECON_EMPTY: ReconMonthMeta = { month: 9, hasData: false, entityCount: 0, okCount: 0, diffCount: 0, missCount: 0 }
+
+// 出账链五步全部走到 status='stale' 分支的最小样例(后端目前不发,见 step() 上方注释)。
+const STALE_STEP: DataHomeStepDTO[] = [
+  step('params', 'stale'), step('meters', 'done'), step('alloc', 'todo'),
+  step('alloc-loss', 'todo'), step('bill-notices', 'todo'),
+]
+
+// 记账列 8 行全 done 的样例:companies/phases 子项也都填成 true,不能只改源项自己的 done。
+function allDoneItems(): DataHomeItemDTO[] {
+  return fullItems({
+    ledger: item('ledger', '凭证', true, {
+      companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }],
+    }),
+    'sales-income': item('sales-income', '附10', true, {
+      phases: [{ no: 1, done: true }, { no: 2, done: true }, { no: 3, done: true }, { no: 4, done: true }],
+    }),
+  })
+}
 
 describe('monthClose.logic', () => {
   it('出账列 7 行:链五步 + 收入核对 + 本月锁账,顺序即业务时序', () => {
@@ -127,11 +150,11 @@ describe('monthClose.logic', () => {
     expect(missRow.state).toBe('todo')   // diffCount=0 但 missCount=1 —— 只查 diffCount 会漏这档
   })
 
-  it('计数从渲染的行算,不抄 schedules.total —— 后端 9 源折成 8 行,记账列分母是 8', () => {
+  it('计数从渲染的行算,不抄 schedules.total —— 恒 na 的行不进分母,记账列分母是 7、出账列分母是 6', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const { byCol } = closeChecks(rows)
-    expect(byCol.booking.total).toBe(8)
-    expect(byCol.billing.total).toBe(7)
+    expect(byCol.booking.total).toBe(7)
+    expect(byCol.billing.total).toBe(6)
   })
 
   it('链五步的状态取 overview.chain.steps[i].status —— 不许用 chainStepsOf,它的第一步恒 done', () => {
@@ -175,5 +198,106 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, items), recon: RECON_OK, review: null })
     expect(rows.find(r => r.key === 'ledger')!.chips).toEqual([])
     expect(rows.find(r => r.key === 'sales-income')!.chips).toEqual([])
+  })
+
+  // ── 以下为评审修补补的断言(task-2-fix-brief.md) ──────────────────────────────────
+
+  it('收入核对:hasData=false 的空月(四计数全 0)判 na,不判 done(先过 hasData 闸,同 ReconView.vue 口径)', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_EMPTY, review: null })
+    expect(rows.find(r => r.key === 'reconciliation')!.state).toBe('na')
+  })
+
+  it('链步 status 是 stale 时行 state 也是 stale —— 不折进 todo(后端目前不发,防御分支,越过类型域测)', () => {
+    const rows = rowsOf({ overview: overview(STALE_STEP, fullItems()), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'params')!.state).toBe('stale')
+  })
+
+  it('台账行:chips 收严 —— 源项自己说 done,但有一个公司没做,行仍是 todo(所有 chip 都 done 才算 done)', () => {
+    const items = fullItems({
+      ledger: item('ledger', '凭证', true, {
+        companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: false }],
+      }),
+    })
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, items), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'ledger')!.state).toBe('todo')
+  })
+
+  it('台账行:companies 为 null(chips 空数组)时不能靠 [].every() 恒真判 done,退回源项自己的 done', () => {
+    const items = fullItems({
+      ledger: item('ledger', '凭证', false, { companies: null }),
+    })
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, items), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'ledger')!.state).toBe('todo')
+  })
+
+  it('出账链五步全 done 时,五行状态都是 done', () => {
+    const rows = rowsOf({ overview: overview(ALL_DONE_STEPS, fullItems()), recon: RECON_OK, review: null })
+    const steps = rows.filter(r => ['params', 'meters', 'alloc', 'alloc-loss', 'bill-notices'].includes(r.key))
+    expect(steps.map(r => r.state)).toEqual(['done', 'done', 'done', 'done', 'done'])
+  })
+
+  it('记账列单源行(无 chips):源项 done 时行也是 done(附12/附6/附11)', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'salary')!.state).toBe('done')
+    expect(rows.find(r => r.key === 'pv-income')!.state).toBe('done')
+    expect(rows.find(r => r.key === 'elec-cost')!.state).toBe('done')
+  })
+
+  it('closeChecks 的分子是渲染出的 done 行数,不是写死 0 —— 全 done 夹具下应等于分母', () => {
+    const rows = rowsOf({ overview: overview(ALL_DONE_STEPS, allDoneItems()), recon: RECON_OK, review: null })
+    const { done, total, byCol } = closeChecks(rows)
+    expect(byCol.billing).toEqual({ done: 6, total: 6 })
+    expect(byCol.booking).toEqual({ done: 7, total: 7 })
+    expect(done).toBe(13)
+    expect(total).toBe(13)
+  })
+
+  it('BOOKING_ROWS 里有条目、但后端没发对应 source 时那一行是 na(防御路径,不是导入中心那条)', () => {
+    const items = fullItems().filter(it => it.go !== 'salary')   // 模拟后端漏发附12源
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, items), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'salary')!.state).toBe('na')
+  })
+
+  it('链步的 detail/go 原样透传,不是拿 key 顶替(step 夹具 key/label/go 各不相同)', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
+    const meters = rows.find(r => r.key === 'meters')!
+    expect(meters.detail).toBe('meters-detail')
+    expect(meters.go).toBe('meters-go')
+  })
+
+  it('记账列 8 行的 go/tag 逐行钉住(合并成 8 行之后深链入口一个不丢)', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
+    const booking = rows.filter(r => r.col === 'booking')
+    const expected: Record<string, { go?: string; tag?: string }> = {
+      ledger: { go: 'ledger', tag: '凭证' },
+      'sales-income': { go: 'sales-income', tag: '附10' },
+      salary: { go: 'salary', tag: '附12' },
+      utilities: { go: 'utilities', tag: '附13/14' },
+      'pv-income': { go: 'pv-income', tag: '附6' },
+      charging: { go: 'car-charging', tag: '附7/8' },
+      'elec-cost': { go: 'elec-cost', tag: '附11' },
+      import: { go: 'import', tag: undefined },
+    }
+    for (const row of booking) {
+      expect(row.go).toBe(expected[row.key].go)
+      expect(row.tag).toBe(expected[row.key].tag)
+    }
+  })
+
+  it('收入核对/本月锁账:label 与 go 钉住 —— 无入口的行不给 go', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
+    const recon = rows.find(r => r.key === 'reconciliation')!
+    const lock = rows.find(r => r.key === 'month-lock')!
+    expect(recon.label).toBe('收入核对')
+    expect(recon.go).toBe('reconciliation')
+    expect(lock.label).toBe('本月锁账')
+    expect(lock.go).toBeUndefined()
+  })
+
+  it('单源行(附12/附6/附11)没有子入口,chips 是 undefined —— 真正调到 chipsFor 的兜底分支(非 na 早退)', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
+    expect(rows.find(r => r.key === 'salary')!.chips).toBeUndefined()
+    expect(rows.find(r => r.key === 'pv-income')!.chips).toBeUndefined()
+    expect(rows.find(r => r.key === 'elec-cost')!.chips).toBeUndefined()
   })
 })
