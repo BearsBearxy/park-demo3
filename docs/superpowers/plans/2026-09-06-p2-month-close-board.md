@@ -14,28 +14,39 @@
 
 - **审核机制在仓里一行都没有**（五路摸底一致坐实：`review_state` / `review_log` / `GET /api/review` / `ReviewGuard` / `Perm.REVIEW_APPROVE` 全仓 grep 命中 0，`Perm.ALL` 只有 17 项，最新迁移是 `V123`）。而 spec §9 把整个 §7.4 排在 **R1**，即 P2 之后。**裁定**：
   - `Item.companies[] / phases[]` **只发 `done`，不发 `review`**；R1 再补字段，前端按 `undefined` 处理。
+  - **chips 是「这一行有子入口」的通用装置**，不只给公司 / 期区：附13+附14 合并行出「办公」/「三期」两个 chip、附7+附8 合并行出「汽车」/「电动车」两个 chip，各自带自己的 `tab` 或 nav value。这样合并成 8 行之后，P0b 立的每一个深链入口都还在。
   - `monthClose.logic.ts` 的 `rowsOf(...)` **签名收 `review` 入参但本期调用方恒传 `null`**，行右侧审核态列渲染「—」（这正是 spec §5.2「计数源缺显『—』不显 0」的口径）。
   - 「本月锁账」行**在清单里**（§5.2 出账列第 7 行、D20 派生），但本期恒显「—」+ padlock，悬停说「审核机制未上线」。**不许**临时降级成「五步全 done 就算锁账」——那是假绿。
 - **后端仍是 9 个附表源，两栏是前端呈现**。`Schedules(done, 9, items)` 里的 9 **不动**，`DataHomeApiIT:54-55` 与 `DataHomeServiceTest:107-108` 的 `hasSize(9)` / `total()==9` **一个字不改**。记账列的 8 行（附13+附14 合一、附7+附8 合一、加导入中心）全部在 `monthClose.logic.ts` 里折。**屏上的计数从渲染的行算**（记账 n/8、出账 n/7），不抄 `schedules.total` —— 这才叫「计数与屏内同源」（§8.1）。
-- **三个年度源改按月判**（本期唯一一处会改变用户看到的状态）：`DataHomeService:157-165` 的 `pv.selectByYear(year)` / `charging.selectByScheduleAndYear(7|8, year)` / `elec.selectByYearAndType(year, ...)` 取回来的行**本来就带 `acctMonth`**（`PvRecord:9` / `ChargingRecord:10` / `ElecRecord:10`），加一道 `.filter(r -> acctMonth.equals(r.getAcctMonth()))` 即可，**零新查询零迁移**，写法与 `:151-156` 附13/14 的既有过滤逐字同形。**行为变化**：改前一月录了数据，十二月的首页仍显「已录」；改后按本月判。这是删掉一个假绿，不是回归。`SourceData.yearly` 这个位随之只剩「标签写不写年」的用途，注释要改口径。
-- **台账公司全集要能显「未录」**：`monthly_ledger` 那次 `selectList` 已经把该月**全部公司**的行读进内存（`:142-144` 无 company 过滤），所以 `done` 零新查询（`groupingBy(MonthlyLedger::getCompanyId)`）；但公司**短名与全集**在 `management_company`，要注入第 14 个依赖。**裁定**：注入 `ManagementCompanyMapper`，照 `CompanyService.java:61-62` 的既有写法 `selectList(orderByAsc("sort_no").orderByAsc("id"))` 取全集（**不过滤 status**，与既有口径一致）。只有这样「该录 5 家，录了 3 家」才显示得出来。`DataHomeServiceTest:31-32` 的构造器与 `:64-89` 的 `stubAllEmpty()` 必须同步补一条 stub，否则 16 条测试全部 NPE。
+- **三个年度源改按月判**（本期唯一一处会改变用户看到的状态）：`DataHomeService:157-165` 的 `pv.selectByYear(year)` / `charging.selectByScheduleAndYear(7|8, year)` / `elec.selectByYearAndType(year, ...)` 取回来的行**本来就带 `acctMonth`**（`PvRecord:9` / `ChargingRecord:10` / `ElecRecord:10`），加一道 `.filter(r -> acctMonth.equals(r.getAcctMonth()))` 即可，**零新查询零迁移**，写法与 `:151-156` 附13/14 的既有过滤逐字同形。零风险的依据（复查核实）：三张表的 `acct_month` 都是 `VARCHAR(7) NOT NULL`（`V6__pv_schema.sql:16` / `V8__charging_schema.sql:18` / `V10__elec_schema.sql:15`），无 null 行；`equals` 的方向是非 null 的 ym 参数在左；`DataHomeApiIT` 那两条夹具用例**都不断言 `schedules.done`**（`:54-56` 只断 total 与 hasSize，`:80-81` 用的 ym 是 2099-12 本就空），所以不会红。**行为变化**：改前一月录了数据，十二月的首页仍显「已录」；改后按本月判。这是删掉一个假绿，不是回归。`SourceData.yearly` 这个位随之只剩「标签写不写年」的用途，注释要改口径。
+- **台账公司全集要能显「未录」**：`monthly_ledger` 那次 `selectList` 已经把该月**全部公司**的行读进内存（`:142-144` 无 company 过滤），所以 `done` 零新查询（`groupingBy(MonthlyLedger::getCompanyId)`）；但公司**短名与全集**在 `management_company`，要注入第 14 个依赖。**裁定**：注入 `ManagementCompanyMapper`，照 `CompanyService.java:61-62` 的既有写法 `selectList(orderByAsc("sort_no").orderByAsc("id"))` 取全集（**不过滤 status**，与既有口径一致）。只有这样「该录 5 家，录了 3 家」才显示得出来。`DataHomeServiceTest:31` 的构造器（手写 `new DataHomeService(...)`，不是注解注入）与 `:64-89` 的 `stubAllEmpty()` 必须同步补。⚠ 漏 stub **不会报错** —— Mockito 对 `List` 返回值默认给空 List，只是静默拿到空公司集、测试照绿，比 NPE 更坏。
 - **附10 期区零新 SQL**：`:146-147` 现在就是 `selectBySlot(1..4, acctMonth)` 分四次查再 `concat` 拍平。拆开保留每段 `isEmpty()` 就是 `phases[].done`。期区数固定 4（仓里既有写法 `S10Service.java:135` 硬循环 1..4，无配置表）。
 - **不做的三件事，各写一行理由进 §12**：
   1. **审批抽屉「页面」行改 periodLink**（spec §5.2 有这一句）：`Pending` 只有 `page/action/impact` 三个自由文本（`api/approvals.ts:14-26` / `ApprovalDtos.java:20-27`），10 个调用点各自拼字符串，既无 nav value 也无规范化的期。要做得给提权审批 DTO 加两个字段并改 10 个调用点 —— 为一个便利改动安全相邻的提权流程，本期不划算。**推后**。（主管条「谁在编辑」chips 的点跳**照做**，它走前端反查，见下。）
   2. **导入中心行没有「本月导没导」的数据源**：`import` 不在 9 个 source 里，导入日志按天数窗口取、DTO 无账期字段。本行**只做入口**，状态位恒「—」。
   3. **第 18 个权限点 `review:approve`** 与 `V124__review.sql`：属 R1。碰它会连锁 `BookPinApiIT:432` 的 `hasSize(17)`、`RoleApiIT` 的种子断言、`SystemApiIT` 的字典断言，而那几条要跑全量 testcontainers IT（Windows 冷启动 15+ 分钟）。
-- **收入核对行的完成度走前端并发取数**：`reconApi.overview(year)` 返回的 `ReconMonthMeta{month,hasData,entityCount,okCount,diffCount,missCount}`，`done = diffCount === 0 && missCount === 0`（与 `ReconView.vue:67` 屏内同源）。**不**给 `DataHomeService` 加 `ReconService` 依赖（跨服务耦合换一次往返，不值）。取数失败该行显「—」，不阻断整屏。
-- **`BookMonthMatrix` 没有任何插槽**（全文 `<slot` 零命中）。§5.2 写的「4 点 + 锁角标插槽」按组件既有的扩展惯例落成 **`MonthCell` 的一个字段**：`locked?: boolean`，渲染优先级排在 `pips` 之后（`:102-107` 那段）。**不加具名插槽** —— 那要动 7 个调用点与 4 份快照类断言。
+- **出账列五步的状态取 `overview.chain.steps[i].status`，不用 `chainStepsOf`**（复查坐实的阻断）：`nav/billingChain.ts:32` 里 `chainStepsOf` 的第一步是 `{ ...CHAIN[0], state: c.stale ? 'stale' : 'done' }` —— **计费参数恒 done**（同文件 :20-22 注释写明理由：那是矩阵那 4 个点的口径，「这个月配过参数没有」对参数不是一个有答案的问题）。清单要的是 P1 立的另一套判据 `priceTotal > 0 && priceOk == priceTotal`（`DataHomeService.buildChain:242`），而它只在后端算、只在 `overview.chain.steps[].status` 里。**照 spec §5.1 原文「矩阵 4 点、清单 5 步」两套口径**：`chainStepsOf` 只喂 T4 年份条格子的 pips / stale，清单五步一律读后端的 status。叠加时序还有第二重理由：T2/T3 在 T4（补 `loadChain`）之前，`billingPeriod.cellOf()` 恒返回全 false 的 EMPTY（`billingPeriod.ts:35-37`），照 `chainStepsOf` 走会得到「参数 done + 四步 todo」的固定假象，与后端无关。
+- **收入核对行的完成度：串行补发，不是并发**（复查坐实）。年从哪来是关键：默认首载 `pickedYm` 是 null，年只能从 `overview` 回包的 `ov.period` 派生（`DataHomeView.vue:113-114`）。若照「并发」写就只能传 `undefined`，后端会取「两本账有数据的最大年」，与首页锚定月的年**大概率不是同一年** —— 收入核对行会拿别的年的差异数，形状对、数字张冠李戴，没有任何断言抓得到。**裁定：`watch(curYm)` 串行补发**（多一次往返约 60ms，换掉一整类静默错年）。`reconApi.overview(year)` 返回的是 `ReconOverview { year, months: ReconMonthMeta[] }`，要 `months.find(m => m.month === 当前月)` 再判 `done = diffCount === 0 && missCount === 0`（与 `ReconView.vue:67` 屏内同源）。**不**给 `DataHomeService` 加 `ReconService` 依赖。取数失败该行显「—」，不阻断整屏。
+- **`BookMonthMatrix` 没有任何插槽**（全文 `<slot` 零命中）。§5.2 写的「4 点 + 锁角标插槽」按组件既有的扩展惯例落成 **`MonthCell` 的一个字段** `locked?: boolean`。**不加具名插槽** —— 那要动 7 个调用点与 4 份快照类断言。
+  ⚠ **锁角标必须是独立的绝对定位角标，不许进 `:103-108` 那条 `v-else-if` 互斥链**（复查坐实的假绿）：那条链是 pips → badge → rowCount → 「空」，而年份条恒传 pips（照 `ChainMonthGate.vue:49-53` 的组法），pips 分支永远命中，锁标一次都画不出来；而「本期审核未上线该位恒不亮」那条用例**接对接错都绿**。写法照同文件 `.bmm-who` 那种 absolute 角标，与 pips **并存**；配套用例改成「同时传 `pips` 与 `locked: true` 时两者都在 DOM 里」。
 - **年份条取代月份下拉**：`DataHomeView.vue:178-181` 的 `Select` 删掉，`pickedYm` 改由矩阵 `@pick` 回写。年维格子的数据源是 `billingPeriod` 的链数据，首页 `onMounted` 补一句 `void period.loadChain()`（幂等、在途去重，`:99` 注释已说明），行的组法照抄 `ChainMonthGate.vue` 组 `rows` 的那段。**「默认选中 = 出账链最新有数据月」的现锚规则不变**（`curYm` 来自 `ov.period`）。
 - **§3.3 的两个纯函数放哪**：`scopePeriod(scope)` 与 `navOfScope(scope)` 都作为**独立 export** 放 `utils/lockScopes.ts`，与 `scopeNote` 并列，**不进 `S` 对象** —— `lockScopes.spec` 有一条 `Object.keys(S)` 完整性断言，放进去会直接红。`navOfScope` 用与 `editorsUnder` 同一条边界规则反查 `NAV_SCOPE_PREFIX`；**一把锁可命中多个 nav**（`billing-chain` 命中 params / alloc / bill-notices 三个），裁定：**取 `NAV_SCOPE_PREFIX` 声明序的第一个**，并在 spec 里钉住这条规则。
 - **`sched:s10` 一个前缀两种粒度**（月锁 `sched:s10:1:2025-06` 与年锁 `sched:s10:1:2025` 并存，`lockScopes.ts:76-78` 两个构造器）。裁定：`scopePeriod` **照实返回**（`YYYY-MM` 或 `YYYY`），`periodLink` 的 `p` 本就允许只有年（`deepLink.ts:31-33`）。文案跟着变粒度，不额外规整。
 - **`editingHere` 上提**：`SidebarNav.vue:147-164` 的局部函数搬进 `stores/presence.ts` 成 `editingNote(navValue): string | null`，`SidebarNav` 改调它（`:198` / `:200` / `:224` 三个调用点同改）。在场点的属性 **`title` 与 `aria-label` 并存**：`sidebarLockNote.spec` 现有 3 条全用 `span[title*=...]` 选择器，**一条都不许改**；新增的断言钉 `role="img"` / `aria-label` / `tabindex` / Popover 开合。`SidebarNav` 是纯 `h()` 渲染函数（`grep -c "<template>"` = 0），零位移门禁对它整份免疫，所以这几条只能靠挂载测守。
 - **`NAV_SCOPE_PREFIX` 补 `'alloc-loss': 'billing-chain'`**（`lockScopes.ts:105-129` 现在缺这个键，与 params / alloc / bill-notices 同锁根，`:110-112` 已是这个写法）。清单化之后 `go()` 的确认判据逐行生效，缺键那行会静默不弹确认。`reconciliation` 与 `import` 确认无编辑锁 → **不补，但要写注释钉住理由**。
+  ⚠ **补这个键必然弄红 `utils/lockScopes.spec.ts` 的反向护栏**（复查实跑模拟：paramCenter / poolLedger / billNotices / coefBook **四条 FAIL**）—— `:94-97` 四条 SAMPLES 声明的 navs 是 `['params','alloc','bill-notices']`，`:133-147` 断言「认领集 = 声明的那组」。**这是补键的必然结果，不是遮红**：四条各加 `'alloc-loss'` 即可，登记在下面「既有断言的改动」里。spec §9 P2 行写的「反向护栏不红」指的是**改完之后**它仍然绿。
 - **主管条的形状是硬约束，门禁抓不到**：§5.2 明写「32px 定高常驻，无待批显『暂无』，不 `v-if`」。`noInteractionLayoutShift.spec` 的交互态词表（`:50-51`）里**没有 `approvals`**，所以写成 `v-if="approvals.length"` 也不会红。计划在此钉死：**主管条外层不许有 `v-if`**（权限判 `can('lock:takeover') || can('system:view')` 那一层除外，那是「有没有这个角色」不是「有没有数据」）。
 - **两栏清单会真红的写法**（同一份门禁的 `:50-51` 词表）：`v-if="selected"` / `selectedIds` / `dirty` / 任何流内 toast。公司 chips 的展开详情若写成 `<div v-if="selected…">` 当场红。合规写法：常驻容器 + 内层 `<template v-if>`，或 `position: absolute` 的浮层。
 - **图标与令牌要先登记**：`components/ds/__tests__/icon.spec.ts:28` 扫全 `src` 的每个 `iconFor('字面量')` 必须在 `icon.ts` 的 MAP 里；构建期 `scripts/token-check.mjs:40-49` 要求每个 `var(--x)` 有定义。padlock / ✓ 锁标 / 橙钟这些新图标名与任何新色令牌，**先登记再用**。
 - **首屏包只剩 6.0KB，而且是借来的**（P3 把 `CommandPalette` 改懒加载从 190.8 换到 185.0；`size-check.mjs:44` 的 `index: 191` **不许上调**）。本期进 index 的**只有** `lockScopes.scopePeriod` / `navOfScope` 与 `presence.editingNote` 三个纯函数（这两个文件本来就在 index）。主管条本体、两栏清单、`monthClose.logic.ts`、`BookMonthMatrix` 全部落在 `DataHomeView-*.js` 懒加载块（`router/index.ts` 的 `VIEWS` 表全是 `() => import()`）。**任何新的 shell 层静态 import 一律拒**。触线即停，不签字上调。
 - **EOL**：仓库 `core.autocrlf=true`，无 `.gitattributes`。本期要改的文件里 `DataHomeView.vue` / `DataHomeView.spec.ts` / `DataHomeService.java` / `DataHomeOverviewDTO.java` / `presence.ts` / `lockScopes.ts` / `BookMonthMatrix.vue` / `types/dataHome.ts` 全是 **CRLF**，`SidebarNav.vue` / `SidebarPanel.vue` 是 **LF**。判断行尾一律用 `git ls-files --eol`，**别用 `grep $'\r'`**（实测给相反答案）。**禁止整文件重写**（会把行尾翻面，diff 变成全文件红绿）。
+- **既有断言的改动清单**（超出这份清单即超范围，逐条都要在提交信息里点名）：
+  1. `utils/lockScopes.spec.ts:94-97` 四条 SAMPLES 的 navs 各加 `'alloc-loss'`（补键的必然结果，见上）。
+  2. `DataHomeView.spec.ts:358` 「出账链恒 5 步」`toBe(5)` → 出账列 **7** 行；`:359` 「附表恒 9 项」`toBe(9)` → 记账列 **8** 行；`:367` 同一条里的第二个 `toBe(5)` 同改。**这是期望值改动不是选择器迁移**，理由是版式从一排胶囊改成两栏板子。
+  3. `DataHomeView.spec.ts:138-143` 「附表未录在前、已录在后」**整条删**：两栏清单按**业务时序**固定排序（spec §5.2 的表序），`sortedItems` 的 done 升序排序随之取消。P1 那条排序是给一排扁平胶囊用的可供性，两栏板子里它会让「月度台账」跳来跳去。**删断言要在 §12 记一笔**。
+  4. `DataHomeView.spec.ts:175-181` 「附13 / 附14 同屏异 tab」：合并成一行之后不可能按原样通过。**裁定：合并行带两个 chip**（「办公」/「三期」），**每个 chip 各自带自己的 `tab`** —— 这样 P0b 立的链形状（`tab=office` / `tab=phase3`）一个都不丢，spec §5.2 的 8 行也成立。该条改成断言两个 chip 各自的 tab。**附表7/8 同办**（两个 chip「汽车」/「电动车」，各自的 nav value 是 `car-charging` / `ebike-charging`）。
+  5. `DataHomeView.spec.ts:161` / `:168` 的 `.dh-item` 索引位移（折行后下标变了）。
+  其余 20 条**只改选择器不改期望值**。清单之外任何一条断言的期望值被改了 → **停下报告**。
 - **逐条破坏验证**：每条新断言改坏 production 一处 → **只有对应那条红** → 字符串替换还原，**绝不 `git checkout` / `git stash`**。这一期前面五期的评审累计抓到 13 处「改坏了却没有一条红」的假绿，写每条用例前先自问：**把我要保护的那一行删掉，这条会红吗**。
 - 提交信息末尾：`Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`。前端命令在 `frontend/`，后端在 `backend/`（`./mvnw.cmd`）。**后端只跑 `-Dtest=DataHomeServiceTest,PermissionCoverageTest` 这类单测**，`*IT.java` 走 testcontainers（Windows 冷启动 15+ 分钟），只在收尾任务跑一次。
 
@@ -48,17 +59,17 @@
 | `backend/.../dto/DataHomeOverviewDTO.java:31` | `Item` 加 `List<Company> companies` / `List<Phase> phases`（都可 null）+ 两个内嵌 record（T1） |
 | `backend/.../service/DataHomeService.java:139-167` | 三个年度源加 `acctMonth` 过滤；台账派生 companies；附10 拆 slot 出 phases；注入 `ManagementCompanyMapper`（T1） |
 | `backend/.../service/DataHomeServiceTest.java:31,64-89` | 构造器 + `stubAllEmpty()` 补公司 stub；新增年度按月 / companies / phases 断言（T1） |
-| `frontend/src/types/dataHome.ts:38-48` | 契约镜像同步（T1） |
+| `frontend/src/types/dataHome.ts:38-43`（`DataHomeItemDTO`） | 契约镜像同步（T1） |
 | `frontend/src/views/data-home/monthClose.logic.ts`（新） | `rowsOf(...) → CloseRow[]` / `closeChecks(...)`；9 源折 8 行、出账 7 行、计数从行算（T2） |
 | `frontend/src/views/data-home/__tests__/monthClose.logic.spec.ts`（新） | 纯函数单测：折行、padlock、源缺显「—」、年度行按月（T2） |
-| `frontend/src/views/data-home/DataHomeView.vue:128-250` | 两栏清单取代胶囊行；收入核对并发取数；`go()` 逐行确认（T3） |
+| `frontend/src/views/data-home/DataHomeView.vue:128-250` · **`:183-185`（`.dh-counts`）与 `:237`（`.dh-h3n`）两处都直读 `ov.schedules.done/total`** | 两栏清单取代胶囊行；收入核对串行补发；`go()` 逐行确认；**两处计数一起改成从行算**（只改一处的话段标题仍显「n/9」与两栏的「n/8」当屏打架）（T3） |
 | `frontend/src/views/data-home/DataHomeView.spec.ts` | 既有 29 条按新版式改选择器（**只改选择器不改断言意图**），新增两栏 / chips / 「—」用例（T3） |
-| `frontend/src/components/fp/BookMonthMatrix.vue:13-31, 102-107` | `MonthCell` 加 `locked?: boolean` + 渲染（T4） |
+| `frontend/src/components/fp/BookMonthMatrix.vue:13-31, 103-108` | `MonthCell` 加 `locked?: boolean` + **独立 absolute 角标**（不进 `:103-108` 的 v-else-if 链）（T4） |
 | `frontend/src/views/data-home/DataHomeView.vue:173-186` | 年份条取代 `Select`；`onMounted` 补 `loadChain`（T4） |
 | `frontend/src/utils/lockScopes.ts` | 新增 `scopePeriod` / `navOfScope` 两个独立 export + `NAV_SCOPE_PREFIX` 补 `alloc-loss`（T5） |
 | `frontend/src/stores/presence.ts` | 新增 `editingNote(navValue)`（从 SidebarNav 上提）（T5） |
 | `frontend/src/components/ds/SidebarNav.vue:147-164, 198-207` | 改调 `presence.editingNote`；在场点补 `role="img"` / `aria-label` / `tabindex` / Popover（T5） |
-| `frontend/src/utils/__tests__/lockScopes.spec.ts` · `components/ds/__tests__/sidebarLockNote.spec.ts` | +1 / +3（T5） |
+| `frontend/src/utils/lockScopes.spec.ts`（**不在 `__tests__/` 下**）· `components/ds/__tests__/sidebarLockNote.spec.ts` | +2 / +3（T5） |
 | `frontend/src/views/data-home/DataHomeView.vue`（主管条段） | 32px 定高常驻；待批授权 N + 谁在编辑 chips（点跳走 `navOfScope`）（T6） |
 | `docs/superpowers/specs/2026-09-03-sidebar-ux-redesign-design.md` §5.2 / §12 · `docs/design/BOOK-WORKBENCH-SPEC.md` §7 | 规范随裁定（T7） |
 
@@ -73,7 +84,7 @@ cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
 git rev-parse --short HEAD && git status --short
 ```
 
-期望：HEAD = `b9473da`（P3 合并后），工作区干净。
+期望：HEAD = `27d5f6b`（P2 计划提交后），工作区干净。
 
 - [ ] **Step 2: 三道门禁的基线数字**
 
@@ -111,14 +122,15 @@ cat target/surefire-reports/*DataHomeServiceTest.txt | head -4
   ```java
   public record Item(String name, String tag, boolean done, String go,
                      List<Company> companies, List<Phase> phases) {}   // 后两个可为 null
-  public record Company(int id, String short_, boolean done) {}        // JSON 键必须是 "short"
+  public record Company(int id, @JsonProperty("short") String shortName, boolean done) {}
   public record Phase(int no, boolean done) {}
   ```
-  ⚠ `short` 是 Java 关键字。record 组件不能叫 `short`，用 `@JsonProperty("short")` 把 `shortName` 映射过去，或组件名取 `shortName` 并在前端类型里写 `shortName`。**实施者二选一，但必须与 `frontend/src/types/dataHome.ts` 和 T2 的 `monthClose.logic.ts` 三处一致**，并在报告里写明选了哪个。
+  前端镜像：`companies?: { id: number; short: string; done: boolean }[]` / `phases?: { no: number; done: boolean }[]`。
+  ⚠ 这个写法**不是二选一，是仓里唯一的既有写法**：`short` 是 Java 保留字不能作组件名；而 `CompanyDTO.java:9` / `ChargingCatDTO.java:6` / `CompanyReq.java:10` 三处已有先例，前端镜像 `types/charging.ts:8` / `types/elec.ts:9` / `types/ledger.ts:8` 一律写 `short`（其中一处注释还专门写了「非 shortName」）。照抄，别发挥。
 
 - [ ] **Step 1: 先写失败的测试**
 
-`DataHomeServiceTest.java` 追加三条（现有 20 条一行不动）：
+`DataHomeServiceTest.java` 追加四条（现有 **20** 条一行不动；其中只有 3 条真正走到 `scheduleSources`）：
 
 ```java
 @Test
@@ -159,7 +171,10 @@ void 其余七项的companies与phases为null_不占JSON体积() {
 }
 ```
 
-⚠ `pvRow` / `company` / `ledgerRow` / `s10Row` / `itemOf` 四个小工厂按本文件既有风格自己加（现有工厂在 `:42-43` 一带）。`companies` 是新 mapper 的 `@Mock` 字段，要加在类顶部。
+⚠ 两件事写死，别自己发挥：
+- **这份测试不用 Mockito 注解**。`DataHomeServiceTest.java:16-32` 没有 `@ExtendWith(MockitoExtension.class)`、没有 `@Mock`，13 个依赖全是字段初始化 `X x = Mockito.mock(X.class);` + `:31` 手写 `new DataHomeService(...)`。所以新 mapper 要写成 `ManagementCompanyMapper companies = Mockito.mock(ManagementCompanyMapper.class);` 加在 `:29` 之后，`:31` 构造器补第 14 个实参。**写成 `@Mock` 字段会恒为 null**，然后在每一条走 `overview` 的用例里 NPE，而且症状指向 service 不指向测试。
+- `stubAllEmpty()`（`:64-89`）补一条 `when(companies.selectList(any())).thenReturn(List.of());`。⚠ **漏了不会报错** —— Mockito 对 `List` 返回值默认给空 List 不给 null，漏 stub 只是静默拿到空公司集，测试照绿。这比 NPE 更坏，所以这条 stub 要在报告里点名确认加了。
+- `pvRow` / `company` / `ledgerRow` / `s10Row` / `itemOf` 五个小工厂按本文件既有风格自己加（现有工厂在 `:42-43` 一带）。
 
 - [ ] **Step 2: 跑它,确认按预期失败**
 
@@ -246,7 +261,7 @@ EOF
 - Test: `frontend/src/views/data-home/__tests__/monthClose.logic.spec.ts`（新）
 
 **Interfaces:**
-- Consumes：`DataHomeOverviewDTO`（T1 扩过）、`chainStepsOf(cell)`（`nav/billingChain.ts:29-38`，只出 `{value,label,state}`）、`ReconMonthMeta`（T3 传入，本任务允许为 null）。
+- Consumes：`DataHomeOverviewDTO`（T1 扩过）、`ReconMonthMeta`（T3 传入，本任务允许为 null）。**不 consume `chainStepsOf`**（见 Global Constraints）。
 - Produces：
   ```ts
   export type CloseCol = 'billing' | 'booking'
@@ -265,7 +280,7 @@ EOF
   export function rowsOf(o: RowsInput): CloseRow[]
   export function closeChecks(rows: CloseRow[]): { done: number; total: number; byCol: Record<CloseCol, { done: number; total: number }> }
   ```
-  `RowsInput = { overview, cell, recon, review }`，其中 `review` 本期恒 `null`。
+  `RowsInput = { overview, recon, review }`，其中 `review` 本期恒 `null`。**没有 `cell`** —— 出账列五步读 `overview.chain.steps`，`ChainCell` 只在 T4 的年份条里用。
 
 - [ ] **Step 1: 先写失败的测试**
 
@@ -279,7 +294,7 @@ it('本月锁账恒 na(审核机制未上线),显「—」不显 0,且带 locked
 it('导入中心恒 na —— 它不在后端 9 源里,没有「本月导没导」这回事', ...)
 it('收入核对:recon 为 null 时 na;diffCount/missCount 都是 0 才 done', ...)
 it('计数从渲染的行算,不抄 schedules.total —— 后端 9 源折成 8 行,记账列分母是 8', ...)
-it('链五步的状态用 chainStepsOf(与矩阵/期间条同函数),detail 文案取 overview.chain.steps 按 key 对齐', ...)
+it('链五步的状态取 overview.chain.steps[i].status —— 不许用 chainStepsOf,它的第一步恒 done(矩阵 4 点与清单 5 步是两套口径,spec §5.1)', ...)
 ```
 
 **每条写之前先自问：把我要保护的那一行删掉，这条会红吗。** 尤其「计数从行算」那条 —— 断言必须是 `byCol.booking.total === 8`，而不是「等于某个变量」。
@@ -319,7 +334,7 @@ const BOOKING_ROWS: { key: string; label: string; tag?: string; from: string[]; 
 | 合并行的 done 从「两项皆 done」改成「任一 done」 | 「只做了附13 是 todo」 |
 | 「本月锁账」的 state 从 `na` 改成按五步派生 | 「本月锁账恒 na」 |
 | `closeChecks` 的分母改成 `overview.schedules.total` | 「计数从渲染的行算」 |
-| 链五步改成直接读 `overview.chain.steps[i].status` | 「链五步的状态用 chainStepsOf」 |
+| 链五步改成 `chainStepsOf(cell)` | 「链五步的状态取后端 status」（`chainStepsOf` 的第一步恒 done，会让没录电价的月显示已完成 —— P1 的破坏验证专门钉过这个洞） |
 
 - [ ] **Step 5: 提交**
 
@@ -344,7 +359,7 @@ EOF
 
 - [ ] **Step 1: 先改既有测试的选择器（不改断言意图）**
 
-现有 29 条里有 12 条用 `.dh-step` / `.dh-item` 选行。新版式两栏后类名会变，**只改选择器，断言一个字不动**，并在每条改动处加一句注释说明「版式从胶囊行改两栏，选择器随之」。**任何一条断言的期望值被改了都要停下报告** —— 那不是版式迁移，是遮红。
+本文件实测 **25** 条，其中 **16** 条用 `.dh-step` / `.dh-item` 选行（`:123 :138 :152 :161 :168 :175 :184 :193 :201 :241 :255 :272 :287 :302 :317 :349`）。**先照 Global Constraints 的「既有断言的改动清单」处理那 5 条**（期望值改 / 整条删 / 改成 chip 断言），其余**只改选择器，断言一个字不动**，每处加一句注释说明「版式从胶囊行改两栏，选择器随之」。**清单之外任何一条断言的期望值被改了都要停下报告** —— 那不是版式迁移，是遮红。
 
 - [ ] **Step 2: 新增用例**
 
@@ -382,8 +397,8 @@ it('收入核对取数失败不阻断整屏,该行显「—」', ...)
 ```ts
 it('年份条取代月份下拉:屏上没有 Select,点格子换月', ...)
 it('默认选中 = 出账链最新有数据月(现锚规则不变)', ...)
-it('全月已审核的格子带锁角标 —— 本期审核未上线,该位恒不亮', ...)   // 钉住 locked 字段接上了
-it('BookMonthMatrix:locked 为 true 时渲染锁角标,渲染优先级在 pips 之后', ...)
+it('BookMonthMatrix:同时传 pips 与 locked:true 时两者都在 DOM 里(锁标是独立 absolute 角标,不进 v-else-if 链)', ...)
+it('年份条恒传 pips,所以锁标若写进那条互斥链就一次都画不出来 —— 这条钉住它没被写进去', ...)
 ```
 
 - [ ] **Step 2–4: 实现 / 破坏验证 / 提交**
@@ -452,7 +467,7 @@ cd ../backend && ./mvnw.cmd -q test 2>&1 | tail -20
 - [ ] **Step 2: 规范修订**
 
 - spec §5.2：补 P2 落地形状（两栏在前端折、后端仍 9 源、计数从行算、年度三行改按月、chips 的 done 口径、年份条取代下拉、locked 是字段不是插槽）。
-- spec §12 补五条遗留：① 审核态整条链归 R1，本期审核态列 / 本月锁账恒「—」；② 审批抽屉「页面」行不可跳（提权 DTO 无 nav/期，10 个调用点，推后）；③ 导入中心无「本月导没导」的源；④ `navOfScope` 一把锁命中多个 nav 时取声明序首个；⑤ `sched:s10` 月锁年锁并存，`scopePeriod` 照实返回混粒度。
+- spec §12 补七条遗留：⓪ 两栏清单取消了 P1 的「未录在前」排序（改按业务时序固定排），`DataHomeView.spec` 那条断言随之删；⓪b `chainStepsOf` 的第一步恒 done，是矩阵 4 点的口径，任何「清单/列表」场景都不许拿它当完成度；① 审核态整条链归 R1，本期审核态列 / 本月锁账恒「—」；② 审批抽屉「页面」行不可跳（提权 DTO 无 nav/期，10 个调用点，推后）；③ 导入中心无「本月导没导」的源；④ `navOfScope` 一把锁命中多个 nav 时取声明序首个；⑤ `sched:s10` 月锁年锁并存，`scopePeriod` 照实返回混粒度。
 - `docs/design/BOOK-WORKBENCH-SPEC.md` §7 补第 7 条「清单行点击 = 显式选期，目标门被前置满足」（§8.2 派给本期的那条；第 8 条「已审核的表任何写入口一律拒」归 R1）。
 
 - [ ] **Step 3: 提交**
@@ -463,5 +478,6 @@ cd ../backend && ./mvnw.cmd -q test 2>&1 | tail -20
 
 - **spec 覆盖**：§5.2 年份条 → T4；两栏清单 → T2+T3；主管条 → T6；公司 / 期区 chips → T1+T3；后端 DTO → T1；§3.3 在场点 → T5；§9 P2 行的三条破坏验证分别落在 T3（源缺显「—」）、T3（chip 带 p/co）、T5（反向护栏 = `lockScopes.spec` 的 `Object.keys(S)` 与 `NAV_SCOPE_PREFIX` 双向断言）。
 - **占位符**：无 TBD。三处标了 ⚠ 的是「实施者必须先看实际值再落笔」：`short` 的 Java 关键字规避方式、`SourceData` 挂 companies 还是在组 Item 时挂、后端测试小工厂的既有风格。
+- **2026-09-06 单人复查已修**：4 阻断（清单五步用 `chainStepsOf` 会复活 P1 杀掉的假绿且那条用例必假绿 / 补 `alloc-loss` 键必然弄红 `lockScopes.spec` 四条反向护栏 / 「既有断言只改选择器」不成立，五条要动期望值且一条覆盖会消失 / `@Mock` 写法在这份测试里恒 null 且漏 stub 是静默空集不是 NPE）· 2 严重（收入核对拿不到年，必须串行 / 锁角标进 v-else-if 链则永不渲染，用例两种实现都绿）· 3 一般建议（`short` 的唯一写法、两处计数直读只点了一处、`lockScopes.spec` 路径）。行号与计数订正：HEAD `27d5f6b`、`DataHomeView.spec` 25 条其中 16 条选行、`DataHomeServiceTest` 20 条、`BookMonthMatrix` 渲染段 `:103-108`、`types/dataHome.ts:38-43`。核实为「可以放心做」的：三张年表改按月（列 NOT NULL + IT 不断言 done）、主管条与零位移门禁的两条判断、`BookMonthMatrix` 是独立共享块首页引它不进 index、`BOOK-WORKBENCH-SPEC §7` 现有 6 条补第 7 条编号无冲突。
 - **任务间冲突**：T1 与 T2 共享 `DataHomeItemDTO` 的字段名（T1 定义、T2 消费，**顺序不可颠倒**）；T3 与 T4 都改 `DataHomeView.vue` 的模板头部（T3 改清单区 `:206-246`、T4 改头行 `:173-186`，**区间不相交**）；T5 的 `navOfScope` 是 T6 chips 点跳的前置（**T5 必须在 T6 之前**）；T3 先补 `NAV_SCOPE_PREFIX` 的 `alloc-loss` 键（清单行确认要用），T5 再动同文件的其余部分（**同文件不同段，T3 只加一行**）。
 - **计数**：本计划不预估最终用例数 —— P3 的经验是评审每期都会补出假绿，预估的数字反而会逼实施者去凑。每个任务只与**上一个任务的实测数**比。
