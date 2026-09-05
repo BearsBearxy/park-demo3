@@ -38,6 +38,13 @@ const crumbPage  = computed(() => meta.value.page ?? '')
 const tabs = useTabsStore()
 const activeValue = computed(() => meta.value.value ?? '')
 const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value))
+
+// 上下文 chip:面包屑后面的常驻预留位(§6)。无期显「—」而不是 v-if ——
+// 一进一出会把它右边的东西推着走,LAYOUT-STABILITY §1 铁律禁止。
+const ctxText = computed(() => {
+  const c = tabs.ctx[activeValue.value]
+  return [c?.p, c?.coName].filter(Boolean).join(' · ') || '—'
+})
 </script>
 
 <template>
@@ -46,7 +53,7 @@ const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value)
     <IconButton aria-label="折叠侧边栏" @click="ui.toggleSidebar()">
       <PanelLeft :size="16" />
     </IconButton>
-    <IconButton aria-label="固定为常驻页签" :active="pinned" @click="tabs.pin(activeValue)">
+    <IconButton aria-label="固定为常驻页签" :aria-pressed="String(pinned)" :active="pinned" @click="tabs.pin(activeValue)">
       <Star :size="16" />
     </IconButton>
 
@@ -56,6 +63,7 @@ const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value)
       <span class="fp-crumb-sep">/</span>
       <span class="fp-crumb-page">{{ crumbPage }}</span>
     </span>
+    <span class="fp-ctx-chip" :title="ctxText">{{ ctxText }}</span>
 
     <!-- right: search + utility icons -->
     <div class="fp-toolbar-right">
@@ -119,6 +127,23 @@ const pinned = computed(() => tabs.tabs.some(t => t.value === activeValue.value)
   font-size: var(--fs-body);
   font-weight: var(--fw-medium);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-ctx-chip {
+  flex: 0 0 132px;
+  width: 132px;
+  height: 22px;
+  line-height: 22px;
+  margin-left: 8px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
