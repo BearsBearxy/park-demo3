@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
@@ -25,9 +26,13 @@ vi.mock('@/api/ledger', () => ({
 vi.mock('@/api/report', () => ({
   reportApi: { years: vi.fn(), year: vi.fn(), period: vi.fn(), allPeriod: vi.fn(), save: vi.fn() },
 }))
-const query: Record<string, string> = {}          // 深链;单测里临时塞 y/m/co
+const query: Record<string, string> = {}          // 深链;单测里临时塞 p/co(旧 y/m/co 也认)
 const push = vi.fn()
-vi.mock('vue-router', () => ({ useRoute: () => ({ query }), useRouter: () => ({ push }) }))
+// fullPath 走 getter:useRoute() 的返回对象只建一次,普通字段在切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query, get fullPath() { return '/income-statement?' + new URLSearchParams(query).toString() } }),
+  useRouter: () => ({ push }),
+}))
 
 const COMPANIES = [
   { id: 1, name: '物业公司', short: '物业' },
@@ -59,6 +64,16 @@ async function open() {
   })
   await flushPromises()
   return w
+}
+
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回(期间条裸 push 命中缓存实例就是这条路)。 */
+async function keptAlive() {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(IncomeStatementView) : null) }),
+  }), { global: { stubs: { Teleport: true, RouterLink: true, 'router-link': true } } })
+  await flushPromises()
+  return { w, alive }
 }
 
 describe('三大报表工作台 · 利润表', () => {
@@ -194,20 +209,78 @@ describe('三大报表工作台 · 利润表', () => {
       expect(steps.filter(s => s.classes('on')).map(s => s.text())).toEqual(['利润表'])
     })
 
-    it('❗跳去别的报表时把整包期带上 —— 月份与公司都不丢', async () => {
+    it('❗跳去别的报表时把整包期带上 —— 月份与公司都不丢(periodLink 形状 p/co)', async () => {
       const w = await open()
       await w.findAll('.bmm-card')[1].trigger('click')   // 2025-02
       await flushPromises()
       await w.findAll('.fss-step')[3].trigger('click')   // 附表1
       expect(push).toHaveBeenCalledWith({
         path: '/rent-pnl',
-        query: { y: '2025', m: '2', co: '1' },
+        query: { p: '2025-02', co: '1' },
       })
     })
 
     it('矩阵态没有条 —— 还没选期,没有期可写', async () => {
       const w = await open()
       expect(w.findAll('.fss-step')).toHaveLength(0)
+    })
+  })
+
+  describe('期间深链(SIDEBAR-UX-REDESIGN §4.2 · P0c)', () => {
+    it('❗第二圈期跟随:切走后地址换成别的月,切回直落新月 —— 改前只在 onMounted 读一次,期间条裸 push 命中缓存实例期不动', async () => {
+      query.p = '2025-03'; query.co = '1'
+      const { w, alive } = await keptAlive()
+      expect(reportApi.period).toHaveBeenCalledWith('is', 1, 2025, 3)
+      alive.value = false; await flushPromises()
+      query.p = '2025-04'
+      alive.value = true; await flushPromises()
+      expect(reportApi.period).toHaveBeenCalledWith('is', 1, 2025, 4)
+      expect(w.findAll('.bmm-card'), '正文态,不是矩阵').toHaveLength(0)
+    })
+
+    it('无 query 激活不重置:切回时地址栏没有期,停在原来那一期', async () => {
+      query.p = '2025-03'; query.co = '1'
+      const { w, alive } = await keptAlive()
+      vi.mocked(reportApi.period).mockClear()
+      alive.value = false; await flushPromises()
+      delete query.p; delete query.co
+      alive.value = true; await flushPromises()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.findAll('.bmm-card'), '还在 2025-03 正文').toHaveLength(0)
+    })
+
+    it('有未保存草稿时切回不换期,只在页内提示', async () => {
+      query.p = '2025-03'; query.co = '1'
+      const { w, alive } = await keptAlive()
+      const vm = w.findComponent(IncomeStatementView).vm as unknown as { draft: Record<string, number> }
+      vm.draft = { 'r1|amount': 1 }    // dirty = 1(draft 键数;不走编辑锁)
+      await flushPromises()
+      vi.mocked(reportApi.period).mockClear()
+      alive.value = false; await flushPromises()
+      query.p = '2025-04'
+      alive.value = true; await flushPromises()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.find('.fpt--warning').text()).toContain('地址栏要求 2025-04 期')
+    })
+
+    it('co 指名的公司不存在 → 不落错公司:停在首家公司的矩阵,不拉本期', async () => {
+      query.p = '2025-03'; query.co = '999'
+      const w = await open()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.findAll('.br-item')[1].classes(), '首家公司照常选中').toContain('on')
+      expect(w.findAll('.bmm-card').length, '矩阵').toBeGreaterThan(0)
+    })
+
+    it('❗只有年的链落在停在正文的缓存实例上 → 回矩阵、年落位、不拉本期 —— pickCompany 同公司早退不清 month,applyDeep 得自己回', async () => {
+      query.p = '2025-03'; query.co = '1'
+      const { w, alive } = await keptAlive()
+      vi.mocked(reportApi.period).mockClear()
+      alive.value = false; await flushPromises()
+      query.p = '2024'; delete query.co
+      alive.value = true; await flushPromises()
+      expect(reportApi.period).not.toHaveBeenCalled()
+      expect(w.findAll('.bmm-card').length, '回矩阵').toBeGreaterThan(0)
+      expect((w.findComponent(IncomeStatementView).vm as unknown as { year: number }).year).toBe(2024)
     })
   })
 })

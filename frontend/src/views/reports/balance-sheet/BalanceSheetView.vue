@@ -15,6 +15,7 @@ import Button from '@/components/ds/Button.vue'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import BookRail from '@/components/fp/BookRail.vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
+import FPToast from '@/components/fp/FPToast.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useFinStatementScreen } from '@/components/fin/useFinStatementScreen'
@@ -42,7 +43,7 @@ const {
   companiesLoaded, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
   railItems, matrixYears, matrixBook, gateYears,
-  periodSteps, stripLabel, stripQuery,
+  periodSteps, stripLabel, stripQuery, deepNote,
   pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
   loadPeriod,
   enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,
@@ -516,6 +517,8 @@ async function onExport() {
   <FPEvictedDialog :eviction="evictedBy"
                    :what="`资产负债表 · ${companyName ?? ''} ${year}-${String(month ?? 1).padStart(2, '0')}`"
                    :dirty-count="dirty" @close="evictedBy = null" />
+  <!-- 期间深链被草稿挡下时的页内提示(§4.2):切回时地址栏要求别的期,本期有未保存改动 → 不换期,只说 -->
+  <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
 </template>
 
 <style scoped>
