@@ -158,6 +158,22 @@ export const usePresenceStore = defineStore('presence', () => {
     return m.size
   }
 
+  /**
+   * 本标签页此刻在不在某个锁根底下持锁 —— 「预览页签被顶掉要不要吭声」只看这个。
+   *
+   * 不查 `users` 里的座位:`mode` 是服务端字段(慢一拍),`self` 又是按 user 比对不按 sid ——
+   * 同一个人开两个标签页,两条座位都是 self,拿它判「我这一页在编辑」会串台。
+   * `editCallbacks` 是客户端持锁的真源(holdLock / dropLock 的落点),即时且只属于本页。
+   */
+  function holdsEditUnder(prefix: string | string[] | undefined): boolean {
+    if (!prefix) return false
+    const ps = Array.isArray(prefix) ? prefix : [prefix]
+    for (const sc of editCallbacks.keys())
+      // 边界与 editorsUnder 逐字同规则:`utilities:1` 是 `utilities` 底下的,`utilities13` 不是
+      if (ps.some(p => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))) return true
+    return false
+  }
+
   /** 键鼠活动。**不能用「最后一次写请求」代替** —— 用户在表格里录了 10 分钟还没点保存，那不是空闲。 */
   function touch() { lastActivityAt = Date.now() }
 
@@ -248,5 +264,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })
