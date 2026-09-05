@@ -215,6 +215,24 @@ describe('在场', () => {
     expect(p.editingNote('ledger')).toBe('张三 正在编辑 · 2026-03')
   })
 
+  it('❗两个人挂同一把锁根却在不同月:期整段省掉,不许把第一个人的月安到所有人头上', () => {
+    // 复查里严重度最高的那条:期取的是 who[0] 的,而名字是所有人的 —— 张冠李戴。
+    // 裁定:期只在**所有人同一期**时才写。宁可不写期,也不写一个错的期
+    // (这个点要回答的只有「我点进去改得了吗」,期是锦上添花)。
+    const p = usePresenceStore()
+    const seat = (sid: string, name: string, sc: string) => ({
+      sid, user: sid, displayName: name, role: null,
+      scope: null, label: '月度台账', mode: 'edit' as const,
+      editScopes: [sc], sinceMs: 1000, idleMs: 0, self: false,
+    })
+    p.users = [seat('a', '张三', 'ledger:3:2026-03'), seat('b', '李四', 'ledger:5:2026-07')]
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑、李四 正在编辑')
+
+    // 同一期时期照写 —— 证明省略是「期不唯一」触发的,不是把期整个删了
+    p.users = [seat('a', '张三', 'ledger:3:2026-03'), seat('b', '李四', 'ledger:5:2026-03')]
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑、李四 正在编辑 · 2026-03')
+  })
+
   it('❗editingNote 要吃到数组锁根的第二个前缀,不是只查第一个(pv-income 底下只握 pv-meter)', () => {
     // NAV_SCOPE_PREFIX['pv-income'] = ['sched:pv', 'pv-meter']。这里的座位只握第二根的锁,
     // 若实现把 ps 退化成只取首元素,editorsUnder('sched:pv') 找不到人,editingNote 会静默回 null。

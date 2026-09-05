@@ -105,10 +105,15 @@ export const usePresenceStore = defineStore('presence', () => {
     // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
     //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
     //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
-    const lockSc = who[0].editScopes.find((sc) =>
-      ps.some((p) => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))) ?? null
+    const hit = (sc: string) => ps.some((p) => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))
+    const lockOf = (e: Seat) => e.editScopes.find(hit) ?? null
+    // 期只在**所有人都在同一期**时才写。多人挂同一把锁根却在不同月时,
+    // 拿 who[0] 的期安到整串名字上就是张冠李戴(2026-09-06 三镜头复查坐实,严重度最高的那条)。
+    // 宁可不写期,也不写一个错的期 —— 这个点要回答的只有「我点进去改得了吗」,期是锦上添花。
+    const periods = new Set(who.map((e) => scopePeriod(lockOf(e))).filter(Boolean))
+    const period = periods.size === 1 ? [...periods][0] : null
     // §3.3:三段有几段写几段 —— 名字 · 期 · 共锁解释,与页签标题同一条口径
-    return [names, scopePeriod(lockSc), scopeNote(lockSc)].filter(Boolean).join(' · ')
+    return [names, period, scopeNote(lockOf(who[0]))].filter(Boolean).join(' · ')
   }
 
   // 我此刻在哪一屏。屏进来时登记。锁**不再**挤在这个单槽里 —— 见下面 editCallbacks。
