@@ -9,7 +9,7 @@
  */
 import { defineComponent, h, ref, computed, Fragment } from "vue";
 import { usePresenceStore } from '@/stores/presence'
-import { NAV_SCOPE_PREFIX, scopeNote } from '@/utils/lockScopes'
+import Popover from '@/components/ds/Popover.vue'
 
 // ---- shared types ---------------------------------------------------------
 
@@ -138,36 +138,12 @@ export default defineComponent({
 
     // ---- expanded tree (recursive) ----------------------------------------
 
-    /**
-     * 这个导航项底下有没有人在编辑 —— 有则返回提示文案，无则返回 null。
-     *
-     * **只标编辑态**（设计稿 §04）：标记要回答的只有「我点进去改得了吗」，
-     * 别人在看不挡你。全标上的话侧栏常年一片点，一周之内就没人看了。
-     */
-    function editingHere(navValue: string): string | null {
-      // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
-      const prefix = NAV_SCOPE_PREFIX[navValue];
-      if (!prefix) return null;
-      const ps = Array.isArray(prefix) ? prefix : [prefix];
-      const who = ps.flatMap((p) => presence.editorsUnder(p));
-      if (!who.length) return null;
-      const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
-      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
-      // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
-      //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
-      //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
-      const lockSc = who[0].editScopes.find((sc) =>
-        ps.some((p) => sc === p || sc.startsWith(p + ":") || sc.startsWith(p + "-"))) ?? null;
-      const note = scopeNote(lockSc);
-      return note ? `${names}
-${note}` : names;
-    }
-
     function renderTree(items: SidebarItem[], depth: number): any[] {
       return items.map((it) => {
         const isDir  = !!(it.children && it.children.length);
         const isOpen = openSet.value.has(it.value);
         const on     = !isDir && it.value === activeValue.value;
+        const note   = presence.editingNote(it.value);
 
         const rowStyle: Record<string, string> = {
           ...ROW_BASE,
@@ -195,15 +171,28 @@ ${note}` : names;
           it.trailing ? h("span", {}, [it.trailing]) : null,
           // 在场标记(PRESENCE §04):有人正在这一屏的某一期编辑。
           // **绝对定位** —— 出现与消失都不改变行的尺寸(LAYOUT-STABILITY)。
-          editingHere(it.value)
-            ? h("span", {
-                title: editingHere(it.value),
-                style: {
-                  position: "absolute", right: "10px", top: "50%", marginTop: "-3px",
-                  width: "6px", height: "6px", borderRadius: "50%",
-                  background: "var(--hue-orange)",
-                },
-              })
+          // role=img + aria-label:光靠颜色的 6px 圆点屏读念不出来,title 是鼠标 hover 的老路,两个并存。
+          // 接 ds/Popover:点按/Enter 打开,点外关走 Popover 自带的 capture mousedown(UI-OVERLAY-SPEC)。
+          note
+            ? h("span", { style: { position: "absolute", right: "10px", top: "50%", marginTop: "-3px" } }, [
+                h(Popover, { width: 260 }, {
+                  trigger: () => h("span", {
+                    title: note,
+                    role: "img",
+                    "aria-label": note,
+                    tabindex: 0,
+                    onKeydown: (e: KeyboardEvent) => {
+                      if (e.key === "Enter") { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
+                    },
+                    style: {
+                      display: "inline-block",
+                      width: "6px", height: "6px", borderRadius: "50%",
+                      background: "var(--hue-orange)",
+                    },
+                  }),
+                  default: () => note,
+                }),
+              ])
             : null,
         ]);
 
@@ -221,7 +210,7 @@ ${note}` : names;
     function renderTitle(sec: SidebarSection, foldable: boolean, open: boolean) {
       if (!foldable) return h("div", { style: TITLE_STYLE }, [sec.title]);
       // 收起的组把子项的在场提示聚到标题上:组收着也得知道里面有人在改
-      const notes = open ? [] : sec.items.map((it) => editingHere(it.value)).filter((n): n is string => !!n);
+      const notes = open ? [] : sec.items.map((it) => presence.editingNote(it.value)).filter((n): n is string => !!n);
       return h("button", {
         class: "fp-sbnav-title",
         type: "button",

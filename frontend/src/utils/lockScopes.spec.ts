@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { S, NAV_SCOPE_PREFIX } from './lockScopes'
+import { S, NAV_SCOPE_PREFIX, scopePeriod, navOfScope } from './lockScopes'
 
 describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
   describe('§3.2 出账链必须共占同一把月锁', () => {
@@ -91,10 +91,10 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
      *   同时认领是设计内的,所以这里是集合相等,不是「恰好一个」。
      */
     const SAMPLES: Record<string, { scopes: string[]; navs: string[] }> = {
-      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
-      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'bill-notices'] },
-      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'bill-notices'] },
-      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'bill-notices'] },
+      paramCenter: { scopes: [S.paramCenter(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      poolLedger:  { scopes: [S.poolLedger(2025, 6)],  navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      billNotices: { scopes: [S.billNotices(2025, 6)], navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
+      coefBook:    { scopes: [S.coefBook(2025, 6)],    navs: ['params', 'alloc', 'alloc-loss', 'bill-notices'] },
       ledger:      { scopes: [S.ledger(3, 2025, 6)],   navs: ['ledger'] },
       elecCost:    { scopes: [S.elecCost(2025, 6)],    navs: ['elec-cost'] },
       bookTemplate: {
@@ -211,6 +211,29 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
     it('期没选全时没有锁', () => {
       expect(S.report('bs', null, 2025, 6)).toBeNull()
       expect(S.report('bs', 3, 2025, null)).toBeNull()
+    })
+  })
+
+  describe('scopePeriod / navOfScope —— §3.3 在场点上提共用的两个纯函数', () => {
+    it('scopePeriod 认全部锁形状:billing-chain:2025-06 → 2025-06;meters:2025 → 2025;ledger:3:2025-06 → 2025-06;无期 → null', () => {
+      expect(scopePeriod(S.paramCenter(2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.meters(2025))).toBe('2025')
+      expect(scopePeriod(S.ledger(3, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.report('is', 3, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.bookTemplate('ledger', 7, 2025, 6))).toBe('2025-06')
+      // sched:s10 一个前缀两种粒度:月锁与年锁并存,照实返回,不把年补成月
+      expect(scopePeriod(S.s10(1, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.s10Year(1, 2025))).toBe('2025')
+      expect(scopePeriod(null)).toBeNull()
+      expect(scopePeriod(undefined)).toBeNull()
+    })
+
+    it('navOfScope 反查 nav value —— 一把锁命中多个时取 NAV_SCOPE_PREFIX 声明序首个(billing-chain → params)', () => {
+      expect(navOfScope(S.paramCenter(2025, 6))).toBe('params')
+      // 边界与 presence.editorsUnder 逐字同规则:sched:utilities13 不是 sched:utilities 底下的
+      expect(navOfScope('sched:utilities13:2025')).toBeNull()
+      expect(navOfScope(S.utilities(13, 2025))).toBe('utilities')
+      expect(navOfScope(null)).toBeNull()
     })
   })
 })

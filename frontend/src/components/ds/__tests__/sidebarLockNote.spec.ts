@@ -65,4 +65,29 @@ describe('侧栏 · 共锁注解', () => {
     expect(w.find('button.fp-sbnav-title span[title*="正在编辑"]').exists()).toBe(false)
     expect(w.find('.fp-sbnav-row span[title*="张三 正在编辑"]').exists()).toBe(true)  // 点回到子项行
   })
+
+  it('在场点有 role="img" 与 aria-label —— 屏读能念出「谁在编辑哪一期」', () => {
+    seed()
+    const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
+    const dot = w.find('span[title*="正在编辑"]')
+    expect(dot.attributes('role')).toBe('img')
+    expect(dot.attributes('aria-label')).toBe(dot.attributes('title'))
+  })
+
+  it('在场点可聚焦(tabindex=0),Enter 开 Popover', async () => {
+    seed()
+    const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
+    const dot = w.find('span[title*="正在编辑"]')
+    expect(dot.attributes('tabindex')).toBe('0')
+    expect(w.find('.ds-popover-panel').exists()).toBe(false)
+    await dot.trigger('keydown', { key: 'Enter' })
+    expect(w.find('.ds-popover-panel').exists()).toBe(true)
+  })
+
+  it('文案带期:名字 · 期 · 共锁解释三段用 · 拼(§3.3)', () => {
+    seed()
+    const w = mount(SidebarNav, { props: { sections: [{ items: ITEMS }] } })
+    const dot = w.find('span[title*="正在编辑"]')
+    expect(dot.attributes('title')).toContain(' · 2026-08 · ')
+  })
 })

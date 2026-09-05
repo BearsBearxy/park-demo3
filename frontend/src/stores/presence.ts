@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api, { readToken } from '@/api'
 import type { Eviction } from '@/api/locks'
 import type { Pending, Outcome } from '@/api/approvals'
+import { NAV_SCOPE_PREFIX, scopeNote, scopePeriod } from '@/utils/lockScopes'
 
 /** 在线的一个人（服务端算好时长与排序）。 */
 export interface Seat {
@@ -82,6 +83,30 @@ export const usePresenceStore = defineStore('presence', () => {
   function editorsUnder(prefix: string): Seat[] {
     return users.value.filter((u) => (u.editScopes ?? []).some((sc) =>
       sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')))
+  }
+
+  /**
+   * 这个导航项底下有没有人在编辑 —— 有则返回提示文案,无则 null。
+   * 自 P2 起上提到 store:侧栏的点、清单行、主管条 chips 三处共用同一份文案,
+   * 否则同一件事三份实现会各自漂(P3 的 holdsEditUnder / editorsUnder 就差点漂开)。
+   * **只标编辑态**(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
+   */
+  function editingNote(navValue: string): string | null {
+    // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
+    const prefix = NAV_SCOPE_PREFIX[navValue]
+    if (!prefix) return null
+    const ps = Array.isArray(prefix) ? prefix : [prefix]
+    const who = ps.flatMap((p) => editorsUnder(p))
+    if (!who.length) return null
+    const names = who.map((e) => `${e.displayName} 正在编辑`).join('、')
+    // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
+    // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
+    //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
+    //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
+    const lockSc = who[0].editScopes.find((sc) =>
+      ps.some((p) => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))) ?? null
+    // §3.3:三段有几段写几段 —— 名字 · 期 · 共锁解释,与页签标题同一条口径
+    return [names, scopePeriod(lockSc), scopeNote(lockSc)].filter(Boolean).join(' · ')
   }
 
   // 我此刻在哪一屏。屏进来时登记。锁**不再**挤在这个单槽里 —— 见下面 editCallbacks。
@@ -264,5 +289,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })
