@@ -60,4 +60,11 @@ describe('分析层发链门禁', () => {
   it('到期墙点行带合同号(合同没有期,不走 periodLink —— 目标是 ContractsView 的搜索框)', () => {
     expect(src('views/analysis/ExpiryView.vue').includes('contractNo:')).toBe(true)
   })
+
+  it('goAnom 两屏同形:带 co: a.co(附10 负值行落期区)+ 录入屏目标 openFresh(P0c 修补波;发链侧此前零覆盖)', () => {
+    for (const rel of ['views/analysis/AnomalyView.vue', 'views/analysis/CockpitView.vue']) {
+      expect(src(rel).includes('co: a.co,'), `${rel} goAnom 丢了 co`).toBe(true)
+      expect(src(rel).includes('tabs.openFresh(v, { pin: true })'), `${rel} goAnom 丢了 openFresh`).toBe(true)
+    }
+  })
 })
