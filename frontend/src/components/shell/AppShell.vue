@@ -183,7 +183,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
       <button class="act" @click="reloadPage">刷新</button>
       <button class="act ghost" @click="ui.dismissNetError()">×</button>
     </div>
-    <div v-if="evictMsg" class="fp-net-toast fp-evict-toast" :class="{ stacked: !!ui.netError }" role="status">
+    <div v-if="evictMsg" class="fp-net-toast fp-evict-toast" :class="{ stacked: !!ui.netError }" role="alert">
       <span class="msg">{{ evictMsg }}</span>
       <button class="act" @click="pinEvicted">固定它</button>
       <button class="act ghost" @click="evictValue = ''">×</button>
@@ -311,6 +311,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   .fp-main-card { border: none; border-radius: 0; }
   /* toast 抬到底栏之上(§4.5):56px 底栏 + 20px 呼吸 + safe-area,不被底栏遮住 */
   .fp-net-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
+  /* @media 不加特异度:桌面那条 .fp-evict-toast.stacked{84px} 在 S 档照样赢,
+     而底下这条已经抬到 76px+safe —— 两块各高约 46px,只差 8px 就压字。这里跟着抬。 */
+  .fp-evict-toast.stacked { bottom: calc(56px + 76px + env(safe-area-inset-bottom)); }
 }
 /* 手机栏的定高占位壳:异步 chunk 到达前高度即终态,内容区不因铬边迟到重新量高
    (LAYOUT-STABILITY 容器尺寸挂载即终态)。高度公式与组件自身 height 逐字同步:
