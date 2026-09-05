@@ -46,7 +46,8 @@ function fullItems(overrides: Partial<Record<string, DataHomeItemDTO>> = {}): Da
     'ebike-charging': item('ebike-charging', '附8', true),
     'elec-cost': item('elec-cost', '附11', true),
   }
-  return Object.values({ ...base, ...overrides })
+  // Object.values 对 Partial 的展开产出 (T | undefined)[] —— 严格模式下要显式收窄
+  return Object.values({ ...base, ...overrides }).filter((x): x is DataHomeItemDTO => x != null)
 }
 
 function overview(steps: DataHomeStepDTO[], items: DataHomeItemDTO[]): DataHomeOverviewDTO {

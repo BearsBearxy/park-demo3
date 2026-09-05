@@ -421,7 +421,8 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
       ebike: { name: '电动车充电', tag: '附8', done: true, go: 'ebike-charging' },
       elec: { name: '电费', tag: '附11', done: true, go: 'elec-cost' },
     }
-    return Object.values({ ...base, ...overrides })
+    // Object.values 对 Partial 的展开产出 (T | undefined)[] —— 严格模式下要显式收窄
+    return Object.values({ ...base, ...overrides }).filter((x): x is DataHomeItemDTO => x != null)
   }
 
   it('两栏:出账列 7 行、记账列 8 行,各自带自己的计数', async () => {
