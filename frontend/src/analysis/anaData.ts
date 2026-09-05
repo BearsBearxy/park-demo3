@@ -329,8 +329,10 @@ export interface AnaAnomaly {
   title: string
   detail: string    // 依据数字(可解释性:每条给出计算依据)
   value: string
-  link: string      // 深链(分析屏或录入屏路由)
+  link: string      // 深链目标路径(分析屏或录入屏);消费方按 ym(+company/tenant)组 periodLink(P0c)
   ym: string        // 所属期间 YYYY-MM
+  company?: string  // 台账负值行:管理公司名(台账深链 extra.company)
+  tenant?: string   // 租户维度规则:租户名(录入屏 extra.tenant 定位行)
 }
 export interface EnergySeries { name: string; unit: string; series: Record<string, number> }
 export interface AnomalyInputs {
@@ -418,7 +420,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
         dim: '租户', type: '收入中断', metric: '上期有收入本期无',
         title: `${name} ${c} 无计费记录`,
         detail: `${p} 计费 ¥${fInt(tot)} → ${c} 无记录,请核实是否退租或漏录`,
-        value: `¥${fInt(tot)}`, link: '/churn', ym: c,
+        value: `¥${fInt(tot)}`, link: '/churn', ym: c, tenant: name,
       })
     }
   }
@@ -435,7 +437,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
       dim: '租户', type: '负值行', metric: `附表10 ${neg[0]}为负`,
       title: `${r.tenantName} ${r.acctMonth} ${neg[0]}为负`,
       detail: `${neg[0]} −¥${fInt(Math.abs(neg[1]))},请核对附表10录入`,
-      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth,
+      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth, tenant: r.tenantName,
     })
   }
   for (const r of inputs.ledger) {
@@ -449,7 +451,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
       dim: '管理公司', type: '负值行', metric: `台账${neg[0]}为负`,
       title: `${r.tenantName} ${ym} ${neg[0]}为负`,
       detail: `${r.companyName} 台账:${neg[0]} −¥${fInt(Math.abs(neg[1]))},请核对台账录入`,
-      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/ledger', ym,
+      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/ledger', ym, company: r.companyName, tenant: r.tenantName,
     })
   }
 

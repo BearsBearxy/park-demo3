@@ -8,6 +8,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -143,20 +144,26 @@ watch(track, (v) => {
 const statusOf = (id: string): TrackStatus => track.value[id] ?? 'open'
 const setStatus = (id: string, k: TrackStatus): void => { track.value = { ...track.value, [id]: k } }
 
-// ── 深链(openFresh:KeepAlive 缓存实例只在 onMounted 消费 query,ChurnView 同款语义) ──
+// 深链走 openFresh({pin:true})(spec §4.1 页签语义不变;目标屏 useDeepPeriod 切回也认 query,P0b)。发链统一 periodLink(§4.2):
+// 台账 → p + extra.company/tenant;附10 → p + co=期区(periodLink 的 co 就是附10 的期区;缺席不写,S10View 落当前册)+ extra.tenant。
 function goLedger(t: MonitorTenant): void {
   const ym = model.value?.lastLedgerYm
   if (!t.company || !ym) return
   tabs.openFresh('ledger', { pin: true })
-  void router.push({ path: '/ledger', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), company: t.company, tenant: t.name } })
+  void router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company: t.company, tenant: t.name } }))
 }
 function goS10(t: MonitorTenant): void {
   const ym = t.months[t.months.length - 1]
   if (!ym) return
   tabs.openFresh('sales-income', { pin: true })
-  void router.push({ path: '/sales-income', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), ...(t.phase != null ? { phase: String(t.phase) } : {}), tenant: t.name } })
+  void router.push(periodLink('sales-income', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), co: t.phase ?? undefined, extra: { tenant: t.name } }))
 }
 const go = (link: string): void => { void router.push(link) }
+/** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
+ *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
+const goAnom = (a: AnaAnomaly): void => {
+  void router.push(periodLink(a.link.slice(1), { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), extra: { company: a.company, tenant: a.tenant } }))
+}
 const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert-octagon' : s === 'watch' ? 'alert-triangle' : 'info')
 </script>
 
@@ -299,7 +306,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
                   color: statusOf(a.id) === o.k ? o.c : 'var(--text-muted)',
                 }" @click="setStatus(a.id, o.k)">{{ o.l }}</button>
               </div>
-              <button class="mn-link" @click="go(a.link)">查看分析 →</button>
+              <button class="mn-link" @click="goAnom(a)">查看分析 →</button>
             </div>
           </div>
         </div>

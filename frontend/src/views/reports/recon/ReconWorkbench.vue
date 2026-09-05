@@ -6,6 +6,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import { reconApi } from '@/api/recon'
 import type { FeeLine, ReconEntity } from '@/types/recon'
 import { filterEntities, segCounts, statusColor, type ReconSeg } from '@/reports/recon'
@@ -110,27 +111,22 @@ const dlgVals = computed(() => {
   }
 })
 
-// 跳转深链(spec 2026-07-07 §一):目标页固定为钉住 tab + 全新实例(openFresh)+ query 自动钻取定位租户行。
-// 多公司记户取第一张卡(弹窗里本就按卡展示);query 由 LedgerView/S10View onMounted 消费。
+// 跳转深链(spec 2026-07-07 §一 / SIDEBAR-UX-REDESIGN §4.1):目标页固定为钉住 tab + 全新实例(openFresh)+ query 定位租户行。
+// 多公司记户取第一张卡(弹窗里本就按卡展示)。发链 periodLink(§4.2):台账 p + extra.company/tenant;附10 p + co=期区 + extra.tenant
+// (没有附10 卡就不写 co:S10View 落当前册,新实例默认一期,与改前 ?? 1 同落点)。目标屏 useDeepPeriod 首载与切回都认 query(P0b)。
 function jumpLedger() {
   const e = selected.value
   if (!e) return
   dlg.value = null
   tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: {
-    y: props.year, m: props.month,
-    company: e.ledgerCards[0]?.companyName ?? '', tenant: e.tenantName,
-  } })
+  router.push(periodLink('ledger', { p: periodOf(props.year, props.month), extra: { company: e.ledgerCards[0]?.companyName, tenant: e.tenantName } }))
 }
 function jumpS10() {
   const e = selected.value
   if (!e) return
   dlg.value = null
   tabs.openFresh('sales-income', { pin: true })
-  router.push({ path: '/sales-income', query: {
-    y: props.year, m: props.month,
-    phase: e.s10Cards[0]?.phase ?? 1, tenant: e.tenantName,
-  } })
+  router.push(periodLink('sales-income', { p: periodOf(props.year, props.month), co: e.s10Cards[0]?.phase, extra: { tenant: e.tenantName } }))
 }
 // 标记已核实(upsert 备注)/已核实则取消核实;成功后 emit patch 局部更新
 async function confirmMark() {

@@ -103,7 +103,7 @@ describe('月度台账 · 期间深链', () => {
     expect(booksApi.list, 'books 只拉一次(onMounted 与 apply 共用 ensureLoaded)').toHaveBeenCalledTimes(1)
   })
 
-  it('旧链 ?y&m&company=<公司名>&tenant= 照认(收入核对 / 分析层 6 处本期不改发链侧) —— 用非首册那家,首册兜底混不进来', async () => {
+  it('旧链 ?y&m&company=<公司名>&tenant= 照认(发链侧 P0c 已迁 periodLink;解析侧永远认旧格式 —— 地址栏里已存在的旧书签仍须落得到) —— 用非首册那家,首册兜底混不进来', async () => {
     // 红线:bookOf 的字符串分支(公司名 → companyId → 册)整段删掉 → 落首册 → 拉到 (9, …) 而不是 (12, …)
     query.y = '2026'; query.m = '9'; query.company = '乙公司'; query.tenant = '甲户'
     const w = await open()

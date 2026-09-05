@@ -3,7 +3,6 @@
 import { describe, it, expect } from 'vitest'
 import { periodLink, periodOf, parsePeriod } from '../deepLink'
 import { parsePeriodQuery } from '../reportPeriod'
-import { parseLedgerDeepLink, parseS10DeepLink } from '@/utils/deepLink'
 
 describe('periodLink 发链', () => {
   it('p 必带;co 与 extra 有才写,值一律 string', () => {
@@ -62,11 +61,5 @@ describe('旧解析器委托后:认 p,旧口径原样', () => {
   it('reportPeriod.parsePeriodQuery 认 p;company 名不落进 companyId(报表层没有公司名维度)', () => {
     expect(parsePeriodQuery({ p: '2025-09', co: 'all' })).toEqual({ year: 2025, month: 9, companyId: 'all' })
     expect(parsePeriodQuery({ y: '2025', m: '9', company: '创显' })?.companyId).toBe(null)
-  })
-  it('utils/deepLink 两个解析器认 p;旧 y&m 无年份上下界的口径原样', () => {
-    expect(parseLedgerDeepLink({ p: '2025-01', company: '创显' })).toEqual({ y: 2025, m: 1, company: '创显', tenant: '' })
-    expect(parseS10DeepLink({ p: '2025-01', phase: '2' })).toEqual({ y: 2025, m: 1, phase: 2, tenant: '' })
-    expect(parseLedgerDeepLink({ y: '1999', m: '1' })?.y, '旧链没有 2000..2100 的界,委托后也不能凭空加').toBe(1999)
-    expect(parseLedgerDeepLink({ y: '2025', m: '13' })).toBeNull()
   })
 })

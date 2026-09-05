@@ -103,7 +103,7 @@ describe('附表10 · 期间深链', () => {
     expect(booksApi.list).toHaveBeenCalledTimes(1)
   })
 
-  it('旧链 ?y&m&phase=3&tenant= 照认(收入核对「去改附表10」/ 分析层本期不改发链侧)', async () => {
+  it('旧链 ?y&m&phase=3&tenant= 照认(发链侧 P0c 已迁 periodLink;解析侧永远认旧格式 —— 地址栏里已存在的旧书签仍须落得到)', async () => {
     query.y = '2026'; query.m = '9'; query.phase = '3'; query.tenant = '甲户'
     const w = await open()
     expect(s10Api.getMonth).toHaveBeenCalledWith(3, 2026, 9)

@@ -8,6 +8,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -200,8 +201,8 @@ function onPhaseClick(p: unknown): void {
   const e = p as EcClick
   const s = ps.value?.series.find((x) => x.name === e.seriesName)
   if (!s || !e.name) return
-  tabs.openFresh('sales-income', { pin: true })   // 深链协议:KeepAlive 只在 onMounted 消费 query
-  void router.push({ path: '/sales-income', query: { y: e.name.slice(0, 4), m: String(+e.name.slice(5, 7)), phase: String(s.phase) } })
+  tabs.openFresh('sales-income', { pin: true })   // 页签语义(spec §4.1);发链 periodLink:p + co=期区(§4.2)
+  void router.push(periodLink('sales-income', { p: periodOf(+e.name.slice(0, 4), +e.name.slice(5, 7)), co: s.phase }))
 }
 
 // ── 收缴率横条 vs 目标(点击 → 该期欠费清单弹层) ──
@@ -233,7 +234,7 @@ function onCollectClick(p: unknown): void {
 }
 function goLedger(tenant: string, company: string, ym: string): void {
   tabs.openFresh('ledger', { pin: true })
-  void router.push({ path: '/ledger', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), company, tenant } })
+  void router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 
 // ── 异常速览(规则引擎共用 anomaly 屏;前 4 条,链监控中心) ──
@@ -241,6 +242,11 @@ const anomalies = computed<AnaAnomaly[]>(() =>
   anomInputs.value ? buildAnomalies(anomInputs.value, { collectTarget: anaSettings.collectTarget }) : [])
 const anomTop = computed(() => anomalies.value.slice(0, 4))
 const go = (link: string): void => { void router.push(link) }
+/** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
+ *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
+const goAnom = (a: AnaAnomaly): void => {
+  void router.push(periodLink(a.link.slice(1), { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), extra: { company: a.company, tenant: a.tenant } }))
+}
 
 // ── 经营结论条(spec 2026-07-11 §A:分句数据模板,取数全复用上方 computed 同源函数) ──
 const conclusion = computed(() => buildConclusion(
@@ -344,7 +350,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span></span>
         </div>
         <div v-if="anomTop.length" class="cv2-anoms">
-          <button v-for="a in anomTop" :key="a.id" class="cv2-anom" @click="go(a.link)">
+          <button v-for="a in anomTop" :key="a.id" class="cv2-anom" @click="goAnom(a)">
             <span class="dot" :style="{ background: STATUS[a.sev].color }"></span>
             <span class="tt">{{ a.title }}</span>
             <span class="vv" :style="{ color: STATUS[a.sev].color }">{{ a.value }}</span>

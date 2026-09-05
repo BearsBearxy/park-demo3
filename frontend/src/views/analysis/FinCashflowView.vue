@@ -18,6 +18,7 @@ import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import { fetchCompanies, fetchLedgerRows, fetchS10PhaseMonthly, fetchTenants, type S10PhaseMonthly } from '@/analysis/anaData'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { fint, fnum } from '@/components/ana/anaFmt'
@@ -174,13 +175,13 @@ async function onExportCollection() {
   } catch (e) { alert((e as { message?: string })?.message ?? '导出失败') }
 }
 
-// 深链必须 openFresh:KeepAlive 缓存的 LedgerView 只在 onMounted 消费 query(同 ChurnView.goLedger)
+// 深链走 openFresh({pin:true})(页签语义,spec §4.1);发链 periodLink(§4.2):p + extra.company/tenant。台账屏切回也认 query(P0b)。
 const router = useRouter()
 const tabs = useTabsStore()
 function goLedger(tenant: string, company: string, ym: string) {
   drillYm.value = null
   tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), company, tenant } })
+  router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 
 const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'

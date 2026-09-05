@@ -7,6 +7,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaBullet from '@/components/ana/AnaBullet.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
@@ -126,10 +127,10 @@ const detail = computed(() => {
     }
   })
 })
-// 深链必须 openFresh(KeepAlive 缓存;同 ChurnView.goLedger 协议)
+// 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
 function goSched(nav: string): void {
   tabs.openFresh(nav, { pin: true })
-  router.push({ path: '/' + nav, query: { y: String(year.value) } })
+  router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }
 
 // ── 卡4 前瞻:最大「只有预算、无实际」年 vs 上一年实际 ──

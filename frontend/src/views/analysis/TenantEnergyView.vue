@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import { usePeriod } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -248,7 +249,7 @@ function onScatterClick(params: unknown) {
   if (p?.data?.name) select(p.data.name)
 }
 
-// ── 深链(openFresh+query 协议,参照 ChurnView.goLedger) ──
+// ── 深链(openFresh 页签语义 + periodLink 发链,参照 ChurnView.goLedger) ──
 const selCompany = computed(() => {
   const name = selRow.value?.name
   if (!name) return ''
@@ -258,12 +259,12 @@ const selCompany = computed(() => {
 function goLedger() {
   if (!selRow.value || !ledgerYm.value) return
   tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: { y: ledgerYm.value.slice(0, 4), m: String(+ledgerYm.value.slice(5, 7)), company: selCompany.value, tenant: selRow.value.name } })
+  router.push(periodLink('ledger', { p: periodOf(+ledgerYm.value.slice(0, 4), +ledgerYm.value.slice(5, 7)), extra: { company: selCompany.value, tenant: selRow.value.name } }))
 }
 function goS10() {
   if (!selRow.value || !curYm.value) return
   tabs.openFresh('sales-income', { pin: true })
-  router.push({ path: '/sales-income', query: { y: curYm.value.slice(0, 4), m: String(+curYm.value.slice(5, 7)), phase: String(selRow.value.phase), tenant: selRow.value.name } })
+  router.push(periodLink('sales-income', { p: periodOf(+curYm.value.slice(0, 4), +curYm.value.slice(5, 7)), co: selRow.value.phase, extra: { tenant: selRow.value.name } }))
 }
 
 const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.value.name) ?? null : null))
