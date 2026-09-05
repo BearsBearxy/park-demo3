@@ -14,12 +14,13 @@
 
 - **审核机制在仓里一行都没有**（五路摸底一致坐实：`review_state` / `review_log` / `GET /api/review` / `ReviewGuard` / `Perm.REVIEW_APPROVE` 全仓 grep 命中 0，`Perm.ALL` 只有 17 项，最新迁移是 `V123`）。而 spec §9 把整个 §7.4 排在 **R1**，即 P2 之后。**裁定**：
   - `Item.companies[] / phases[]` **只发 `done`，不发 `review`**；R1 再补字段，前端按 `undefined` 处理。
+  - **有 chips 的行，行 done 收严成「所有 chip 都 done」**（2026-09-06 执行中定）：改前台账「任一公司有行」就算 done，而同一行右边并排挂着两个灰 chip，一行之内自相矛盾；同屏的合并行却是「两项皆 done」的严口径。这块板存在的意义就是能不能全绿锁账。⚠ 实现必须按 `chips.length` 守（`companies`/`phases` 线上发 null 时 chips 是空数组，`[].every()` 恒 true，不守会把 todo 翻成 done）。
   - **chips 是「这一行有子入口」的通用装置**，不只给公司 / 期区：附13+附14 合并行出「办公」/「三期」两个 chip、附7+附8 合并行出「汽车」/「电动车」两个 chip，各自带自己的 `tab` 或 nav value。这样合并成 8 行之后，P0b 立的每一个深链入口都还在。
   - `monthClose.logic.ts` 的 `rowsOf(...)` **签名收 `review` 入参但本期调用方恒传 `null`**，行右侧审核态列渲染「—」（这正是 spec §5.2「计数源缺显『—』不显 0」的口径）。
   - 「本月锁账」行**在清单里**（§5.2 出账列第 7 行、D20 派生），但本期恒显「—」+ padlock，悬停说「审核机制未上线」。**不许**临时降级成「五步全 done 就算锁账」——那是假绿。
-- **后端仍是 9 个附表源，两栏是前端呈现**。`Schedules(done, 9, items)` 里的 9 **不动**，`DataHomeApiIT:54-55` 与 `DataHomeServiceTest:107-108` 的 `hasSize(9)` / `total()==9` **一个字不改**。记账列的 8 行（附13+附14 合一、附7+附8 合一、加导入中心）全部在 `monthClose.logic.ts` 里折。**屏上的计数从渲染的行算**（记账 n/8、出账 n/7），不抄 `schedules.total` —— 这才叫「计数与屏内同源」（§8.1）。
+- **后端仍是 9 个附表源，两栏是前端呈现**。`Schedules(done, 9, items)` 里的 9 **不动**，`DataHomeApiIT:54-55` 与 `DataHomeServiceTest:107-108` 的 `hasSize(9)` / `total()==9` **一个字不改**。记账列的 8 行（附13+附14 合一、附7+附8 合一、加导入中心）全部在 `monthClose.logic.ts` 里折。**屏上的计数从渲染的行算**，不抄 `schedules.total` —— 这才叫「计数与屏内同源」（§8.1）。⚠ **2026-09-06 执行中定的口径**：恒 `na` 的行（导入中心、本月锁账）**不进分母**，所以今天是**记账 n/7、出账 n/6**，不是 8 和 7。理由：分母若包含永远做不完的行，「记账 7/8」就永远差一格，用户会去找那一格是什么；与 §5.2「计数源缺显『—』不显 0」同源 —— 源缺的行不是一个可数的事项。等 R1 让锁账变成真状态、导入中心拿到账期，分母会自己长回 8 和 7。
 - **三个年度源改按月判**（本期唯一一处会改变用户看到的状态）：`DataHomeService:157-165` 的 `pv.selectByYear(year)` / `charging.selectByScheduleAndYear(7|8, year)` / `elec.selectByYearAndType(year, ...)` 取回来的行**本来就带 `acctMonth`**（`PvRecord:9` / `ChargingRecord:10` / `ElecRecord:10`），加一道 `.filter(r -> acctMonth.equals(r.getAcctMonth()))` 即可，**零新查询零迁移**，写法与 `:151-156` 附13/14 的既有过滤逐字同形。零风险的依据（复查核实）：三张表的 `acct_month` 都是 `VARCHAR(7) NOT NULL`（`V6__pv_schema.sql:16` / `V8__charging_schema.sql:18` / `V10__elec_schema.sql:15`），无 null 行；`equals` 的方向是非 null 的 ym 参数在左；`DataHomeApiIT` 那两条夹具用例**都不断言 `schedules.done`**（`:54-56` 只断 total 与 hasSize，`:80-81` 用的 ym 是 2099-12 本就空），所以不会红。**行为变化**：改前一月录了数据，十二月的首页仍显「已录」；改后按本月判。这是删掉一个假绿，不是回归。`SourceData.yearly` 这个位随之只剩「标签写不写年」的用途，注释要改口径。
-- **台账公司全集要能显「未录」**：`monthly_ledger` 那次 `selectList` 已经把该月**全部公司**的行读进内存（`:142-144` 无 company 过滤），所以 `done` 零新查询（`groupingBy(MonthlyLedger::getCompanyId)`）；但公司**短名与全集**在 `management_company`，要注入第 14 个依赖。**裁定**：注入 `ManagementCompanyMapper`，照 `CompanyService.java:61-62` 的既有写法 `selectList(orderByAsc("sort_no").orderByAsc("id"))` 取全集（**不过滤 status**，与既有口径一致）。只有这样「该录 5 家，录了 3 家」才显示得出来。`DataHomeServiceTest:31` 的构造器（手写 `new DataHomeService(...)`，不是注解注入）与 `:64-89` 的 `stubAllEmpty()` 必须同步补。⚠ 漏 stub **不会报错** —— Mockito 对 `List` 返回值默认给空 List，只是静默拿到空公司集、测试照绿，比 NPE 更坏。
+- **台账公司全集要能显「未录」**：`monthly_ledger` 那次 `selectList` 已经把该月**全部公司**的行读进内存（`:142-144` 无 company 过滤），所以 `done` 零新查询（`groupingBy(MonthlyLedger::getCompanyId)`）；但公司**短名与全集**在 `management_company`，要注入第 14 个依赖。**裁定**：注入 `ManagementCompanyMapper` 取公司全集，`selectList(new QueryWrapper<>().eq("status", 1).orderByAsc("sort_no").orderByAsc("id"))`。⚠ **2026-09-06 执行中改过一次**：原裁定照 `CompanyService.java` 写「不过滤 status」，评审坐实那样会让**停用的公司**永远占着台账「该录几家」的分母、板子清不干净（仓里 `V94` 就有 status 语义、收款公司选择器早已按它过滤）。改成滤 status=1。配套：这条过滤在 SQL 层，纯 Mockito 单测里 `any()` 会吞掉 QueryWrapper、塞数据伪造不出红，用 `ArgumentCaptor` 钉 WHERE 片段（仓里先例 `BookLineageMergeTest.java:119`）；**不**为了让单测能塞数据而在 Java 层再加一道冗余过滤。只有这样「该录 5 家，录了 3 家」才显示得出来。`DataHomeServiceTest:31` 的构造器（手写 `new DataHomeService(...)`，不是注解注入）与 `:64-89` 的 `stubAllEmpty()` 必须同步补。⚠ 漏 stub **不会报错** —— Mockito 对 `List` 返回值默认给空 List，只是静默拿到空公司集、测试照绿，比 NPE 更坏。
 - **附10 期区零新 SQL**：`:146-147` 现在就是 `selectBySlot(1..4, acctMonth)` 分四次查再 `concat` 拍平。拆开保留每段 `isEmpty()` 就是 `phases[].done`。期区数固定 4（仓里既有写法 `S10Service.java:135` 硬循环 1..4，无配置表）。
 - **不做的三件事，各写一行理由进 §12**：
   1. **审批抽屉「页面」行改 periodLink**（spec §5.2 有这一句）：`Pending` 只有 `page/action/impact` 三个自由文本（`api/approvals.ts:14-26` / `ApprovalDtos.java:20-27`），10 个调用点各自拼字符串，既无 nav value 也无规范化的期。要做得给提权审批 DTO 加两个字段并改 10 个调用点 —— 为一个便利改动安全相邻的提权流程，本期不划算。**推后**。（主管条「谁在编辑」chips 的点跳**照做**，它走前端反查，见下。）
@@ -377,7 +378,7 @@ it('收入核对取数失败不阻断整屏,该行显「—」', ...)
 
 两栏用 CSS Grid 两列（1366×620 内视口下内容区 ≈1027×502，行 38px，两栏各 7–8 行一屏装下）。**行是常驻的**，状态点用 `data-state` 属性驱动样式，不要 `v-if` 切换整行。chips 的展开详情若要浮层，一律 `position: absolute`（零位移门禁 `:50-51` 的词表里 `selected` 会红）。
 
-收入核对：`onMounted` 里与 `dataHomeApi.getOverview()` **并发**发 `reconApi.overview(year)`，失败 `.catch(() => null)` 落成 `recon = null`。
+收入核对：**串行补发**（`watch(curYm)`，见 Global Constraints —— 默认首载拿不到年，并发只能传 undefined，后端会取别的年，静默错年）。失败 `.catch(() => null)` 落成 `recon = null`。⚠ 判据本身**收在 T2 的 `reconRow` 里**，T3 只负责把 `ReconMonthMeta` 取来喂进去，别在 T3 再判一遍。
 
 - [ ] **Step 4: 全量 + 破坏验证 + 提交**
 
@@ -576,7 +577,8 @@ cd ../backend && ./mvnw.cmd -q test 2>&1 | tail -20
 - [ ] **Step 2: 规范修订**
 
 - spec §5.2：补 P2 落地形状（两栏在前端折、后端仍 9 源、计数从行算、年度三行改按月、chips 的 done 口径、年份条取代下拉、locked 是字段不是插槽）。
-- spec §12 补七条遗留：⓪ 两栏清单取消了 P1 的「未录在前」排序（改按业务时序固定排），`DataHomeView.spec` 那条断言随之删；⓪b `chainStepsOf` 的第一步恒 done，是矩阵 4 点的口径，任何「清单/列表」场景都不许拿它当完成度；① 审核态整条链归 R1，本期审核态列 / 本月锁账恒「—」；② 审批抽屉「页面」行不可跳（提权 DTO 无 nav/期，10 个调用点，推后）；③ 导入中心无「本月导没导」的源；④ `navOfScope` 一把锁命中多个 nav 时取声明序首个；⑤ `sched:s10` 月锁年锁并存，`scopePeriod` 照实返回混粒度。
+- **spec §5.2:188 与 §10:323 至今还在教「五步用 `chainStepsOf`」** —— 这是 P2 执行中被评审坐实会复活 P1 假绿的写法，两处都要改成「清单五步读 `overview.chain.steps[i].status`；`chainStepsOf` 只喂矩阵的 4 点」。§10 此前不在修订清单里，补上。
+- spec §12 补九条遗留：⓪ 两栏清单取消了 P1 的「未录在前」排序（改按业务时序固定排），`DataHomeView.spec` 那条断言随之删；⓪b `chainStepsOf` 的第一步恒 done，是矩阵 4 点的口径，任何「清单/列表」场景都不许拿它当完成度；① 审核态整条链归 R1，本期审核态列 / 本月锁账恒「—」；② 审批抽屉「页面」行不可跳（提权 DTO 无 nav/期，10 个调用点，推后）；③ 导入中心无「本月导没导」的源；④ `navOfScope` 一把锁命中多个 nav 时取声明序首个；⑤ `sched:s10` 月锁年锁并存，`scopePeriod` 照实返回混粒度。
 - `docs/design/BOOK-WORKBENCH-SPEC.md` §7 补第 7 条「清单行点击 = 显式选期，目标门被前置满足」（§8.2 派给本期的那条；第 8 条「已审核的表任何写入口一律拒」归 R1）。
 
 - [ ] **Step 3: 提交**
