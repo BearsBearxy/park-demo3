@@ -427,9 +427,118 @@ it('在场点可聚焦(tabindex=0),Enter 开 Popover', ...)
 it('文案带期:「李四 正在编辑 · 2025-06 · 三屏共用一把月锁」', ...)
 ```
 
-- [ ] **Step 2–4: 实现 / 破坏验证 / 提交**
+- [ ] **Step 2: 跑它,确认按预期失败**
 
-`scopePeriod` / `navOfScope` 是**独立 export**，与 `scopeNote` 并列，**不进 `S` 对象**（`lockScopes.spec` 有 `Object.keys(S)` 完整性断言）。`navOfScope` 的边界规则与 `editorsUnder` 逐字同形。`editingHere` 整体搬进 `presence.editingNote(navValue)`，`SidebarNav` 的三个调用点（`:198` / `:200` / `:224`）同改。在场点 **`title` 与 `aria-label` 并存** —— 现有 3 条断言用 `span[title*=]`，一条都不许改。
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/utils/lockScopes.spec.ts src/components/ds/__tests__/sidebarLockNote.spec.ts
+```
+
+期望：新增 5 条红（`scopePeriod is not a function` 之类），**现有条目全绿**（lockScopes 的反向护栏与 sidebarLockNote 的 3 条）。
+
+- [ ] **Step 3: 实现 —— `utils/lockScopes.ts` 两个纯函数**
+
+放在 `scopeNote`（`:138`）旁边，**独立 export，不进 `S` 对象**（`lockScopes.spec` 有一条 `Object.keys(S)` 完整性断言，放进去直接红）：
+
+```ts
+/**
+ * 从锁 scope 里抠出期。scope 一律 `模块:限定:期` 冒号分段(见本文件头注释):
+ *   billing-chain:2025-06 → '2025-06'   meters:2025 → '2025'
+ *   ledger:3:2025-06     → '2025-06'   report:is:1:2025-06 → '2025-06'
+ *   book-template:ledger:7:2025-06 → '2025-06'   无期 → null
+ * ⚠ sched:s10 一个前缀两种粒度(月锁 …:2025-06 与年锁 …:2025 并存,S.s10 / S.s10Year),
+ *   这里**照实返回**,不把年补成月 —— periodLink 的 p 本就允许只有年(nav/deepLink.ts)。
+ */
+export function scopePeriod(scope: string | null | undefined): string | null {
+  if (!scope) return null
+  const last = scope.slice(scope.lastIndexOf(':') + 1)
+  return /^\d{4}(-(0[1-9]|1[0-2]))?$/.test(last) ? last : null
+}
+
+/**
+ * 反查这把锁属于哪一屏。边界规则与 presence.editorsUnder 逐字同形(=== p 或 p+':' 或 p+'-' 开头)。
+ * ⚠ 一把锁可命中多个 nav —— `billing-chain` 底下有 params / alloc / alloc-loss / bill-notices 四屏,
+ *   它们共用一把月锁(spec §3.3)。裁定:**取 NAV_SCOPE_PREFIX 声明序的第一个**,
+ *   这样「谁在编辑」的 chip 有一个稳定去处,而不是随 Object.keys 顺序漂。
+ */
+export function navOfScope(scope: string | null | undefined): string | null {
+  if (!scope) return null
+  for (const [nav, pre] of Object.entries(NAV_SCOPE_PREFIX)) {
+    const ps = Array.isArray(pre) ? pre : [pre]
+    if (ps.some(p => scope === p || scope.startsWith(p + ':') || scope.startsWith(p + '-'))) return nav
+  }
+  return null
+}
+```
+
+同时给 `NAV_SCOPE_PREFIX`（`:105-129`）补一行 `'alloc-loss': 'billing-chain',`，位置紧挨 `alloc`。**注释写清** `reconciliation` / `import` 为什么不补（这两屏没有编辑锁，补了等于给一个永远不亮的键）。
+
+⚠ 补键之后 `lockScopes.spec.ts:94-97` 四条 SAMPLES 的 `navs` 各加 `'alloc-loss'` —— **这是补键的必然结果，已在 Global Constraints 的「既有断言的改动清单」第 1 条登记**，不是遮红。改完 `:133-147` 那条反向护栏必须仍然绿。
+
+- [ ] **Step 4: 实现 —— `editingHere` 上提**
+
+`SidebarNav.vue:147-164` 的局部函数整体搬进 `stores/presence.ts` 成：
+
+```ts
+/**
+ * 这个导航项底下有没有人在编辑 —— 有则返回提示文案,无则 null。
+ * 自 P2 起上提到 store:侧栏的点、清单行、主管条 chips 三处共用同一份文案,
+ * 否则同一件事三份实现会各自漂(P3 的 holdsEditUnder / editorsUnder 就差点漂开)。
+ * **只标编辑态**(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
+ */
+function editingNote(navValue: string): string | null { … }
+```
+
+搬运时**逐字保留**原实现的边界规则与文案拼法，只把 `presence.` 前缀去掉（它现在在 store 里）。文案按 §3.3 加期：`${姓名} 正在编辑 · ${scopePeriod(sc)} · ${scopeNote(sc)}`，三段有几段写几段（与页签标题同一条口径）。
+
+`SidebarNav.vue` 改调 `presence.editingNote(...)`，三个调用点 `:198` / `:200` / `:224` 同改，本地那份删掉。
+
+- [ ] **Step 5: 实现 —— 在场点的可访问性**
+
+`SidebarNav.vue:198-207` 那个 6px 橙点（`h("span", { style: { position: "absolute", … } })`）补 `role: "img"`、`"aria-label": note`、`tabindex: 0`，并接 `ds/Popover`（点按 / Enter 打开，capture mousedown 点外关 —— 照 UI-OVERLAY-SPEC 的既有写法）。
+
+⚠ **`title` 不许删**：`sidebarLockNote.spec` 现有 3 条全用 `span[title*=...]` 选择器，删了三条一起红。`title` 与 `aria-label` **并存**（同一句文案挂两个属性，代价是重复一份，换旧护栏零改动）。
+⚠ 本组件是纯 `h()` 渲染函数（`grep -c "<template>"` = 0），**零位移门禁对它整份免疫**（那份 spec 找不到 `<template>` 就整份跳过）。所以这几条只能靠挂载测守，写用例时别指望门禁兜底。
+
+- [ ] **Step 6: 跑测试**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/utils/lockScopes.spec.ts src/components/ds/__tests__/sidebarLockNote.spec.ts src/stores/__tests__/presence.spec.ts
+npx vitest run 2>&1 | tail -3
+npx vue-tsc --noEmit
+```
+
+期望：三份全绿；全量在基线 2331 之上只多你新加的 5 条；tsc 零错。**若 `navHeight.spec` 红了 —— 停下报告**（在场点是 absolute 的 6px 点，不该占行高）。
+
+- [ ] **Step 7: 逐条破坏验证**
+
+| 改坏什么 | 应红的那条 |
+|---|---|
+| `scopePeriod` 的正则去掉 `(-(0[1-9]\|1[0-2]))?` 的可选段 | 「认全部锁形状」里 `meters:2025 → 2025` 那半条 |
+| `navOfScope` 的边界改成裸 `startsWith(p)` | 「反查 nav value」（`utilities13` 会被误判成 `utilities` 底下的） |
+| `navOfScope` 改成返回**最后一个**命中而不是第一个 | 「一把锁命中多个时取声明序首个」 |
+| `NAV_SCOPE_PREFIX` 的 `alloc-loss` 键删掉 | 反向护栏那条（认领集少一个） |
+| 在场点的 `aria-label` 删掉 | 「有 role=img 与 aria-label」 |
+| 在场点的 `title` 删掉 | **现有 3 条**（证明并存这条约束是真的） |
+| `editingNote` 的文案去掉期那一段 | 「文案带期」 |
+
+- [ ] **Step 8: 提交**
+
+⚠ **另一路 agent 正在同一个工作区改后端 Java**。`git status` 里会看到不属于你的改动，**一个都别碰**；提交时只 `git add` 你自己这几个路径，**不许 `git add -A`**：
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
+git add frontend/src/utils/lockScopes.ts frontend/src/utils/lockScopes.spec.ts \
+        frontend/src/stores/presence.ts frontend/src/components/ds/SidebarNav.vue \
+        frontend/src/components/ds/__tests__/sidebarLockNote.spec.ts
+git commit -m "$(cat <<'EOF'
+feat(presence): P2 §3.3 在场点 —— scopePeriod / navOfScope 两个纯函数;editingHere 上提到 store 三处共用;点补 role/aria/Popover
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+)"
+```
 
 ---
 
