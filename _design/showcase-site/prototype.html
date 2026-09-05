@@ -36,7 +36,7 @@ h3{font-size:clamp(19px,1.5vw,24px);line-height:1.25;letter-spacing:-.005em}
 .caption{font-size:14px;line-height:1.43;color:var(--fg-3)}
 .footnote{font-size:12px;line-height:1.5;color:var(--fg-3)}
 .num{font-variant-numeric:tabular-nums}
-.tag{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:980px;background:var(--tile-2);color:var(--fg-3);font-size:11px;font-weight:600}
+.tag{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:980px;background:var(--tile-2);color:var(--fg-2);font-size:11px;font-weight:600} /* 三级灰压次级格只有 3.85:1，角标用次级灰 5.4:1 */
 
 /* ---- 按钮 / 链接 ---- */
 .btn{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 22px;border-radius:980px;font-size:17px;font-weight:400;white-space:nowrap;border:0;background:var(--accent);color:var(--on-accent);transition:background-color .2s ease,transform .1s ease}
@@ -95,7 +95,7 @@ h3{font-size:clamp(19px,1.5vw,24px);line-height:1.25;letter-spacing:-.005em}
 
 /* ============ 1 · 以前长这样（大数字 + 叠纸）============ */
 .figs{display:grid;grid-template-columns:repeat(3,auto);gap:clamp(24px,5vw,72px);justify-content:center;margin:0 auto clamp(40px,6vh,64px)}
-.figs div{display:flex;flex-direction:column;gap:6px;align-items:center}
+.figs div{display:flex;flex-direction:column-reverse;gap:6px;align-items:center} /* DOM 里 dt 在前 dd 在后（合法顺序），视觉上数字在上 */
 .figs dd{margin:0;font-size:clamp(44px,5vw,76px);font-weight:600;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .figs dt{font-size:15px;color:var(--fg-2)}
 .stack{position:relative}
@@ -113,7 +113,6 @@ h3{font-size:clamp(19px,1.5vw,24px);line-height:1.25;letter-spacing:-.005em}
 .step:last-child .node::before,.step:last-child .node .seg{display:none}
 .step p{color:var(--fg-2);font-size:15px}
 .step .stage{aspect-ratio:16/10;margin-top:6px}
-.step.last .stage{aspect-ratio:16/9}
 
 /* ============ 3 · 催缴单（钉住换画面）============ */
 #bill .screen{aspect-ratio:16/10}
@@ -252,14 +251,19 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 .static .view{opacity:0!important}
 .static .view:first-child{opacity:1!important}
 .static .hinge .line{transform:scaleY(1)}
-.static .dash-lines p{opacity:0!important}
-.static .dash-lines p:first-child{opacity:1!important}
+.static #dashboard .view,.static #dashboard .view:first-child,.static .dash-lines p,.static .dash-lines p:first-child{opacity:0!important}
+.static #dashboard .view.on,.static .dash-lines p.on{opacity:1!important}
+.static .segc.prog .thumb{transition:transform .38s cubic-bezier(.32,.72,0,1)}
 .static .wipe .layer.excel{opacity:0}
 .static .wipe .layer.sys{clip-path:none!important}
 .static .wipe-bar,.static .wipe .tag.l{display:none}
-.static .who.other{opacity:1}
-.static .lockbtn .s0{opacity:0}
-.static #pane-a .s1,.static #pane-b .s1{opacity:1}
+/* 协作章不播放的两档（减少动态效果 / 无脚本）直接呈现播放终态；只作用于 .panes，不碰组件表 */
+.final .who.other{opacity:1}
+.final .panes .lockbtn .s0{opacity:0}
+.final #pane-a .s1{opacity:1}
+.final #pane-a .lockbtn{border-color:var(--accent);color:var(--accent)}
+.final #pane-b .s2{opacity:1}
+.final .pane .toast{opacity:1;transform:none}
 .static .hero-copy,.static .hero-stage{opacity:1!important;transform:none!important}
 
 @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} .btn,.segc .thumb,.fit-panel{transition:none} }
@@ -325,9 +329,9 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     <p class="intro">两期园区 2024 年 3 月的真实盘点。每一格，以前都是会计每月手填的。</p>
   </header>
   <dl class="figs rv">
-    <div><dd class="num">152</dd><dt>个租户 sheet</dt></div>
-    <div><dd class="num">209</dd><dt>个通知单块</dt></div>
-    <div><dd class="num">920</dd><dt>条费项行</dt></div>
+    <div><dt>个租户 sheet</dt><dd class="num">152</dd></div>
+    <div><dt>个通知单块</dt><dd class="num">209</dd></div>
+    <div><dt>条费项行</dt><dd class="num">920</dd></div>
   </dl>
   <p class="caption rv" style="text-align:center;margin:-24px auto 40px;max-width:40em">24 种费项名，归一后 13 类。48 户一张 sheet 上叠 2 到 5 张通知单，版式 7 型。</p>
   <aside class="dnote"><b>批注 01 以前长这样</b>
@@ -345,7 +349,7 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 <section class="chapter" id="chain" style="padding-bottom:0">
   <header class="ch-head">
     <h2>六步一条链，算到催缴单。</h2>
-    <p class="intro">每月一次工序，六步。前一步的输出是后一步的输入，改任一步，下游全部重算。</p>
+    <p class="intro">每月一次工序，六步。前一步的输出是后一步的输入，最后一步是每户一张催缴单。</p>
   </header>
 </section>
 <section class="pan-wrap" aria-label="出账链六步">
@@ -359,7 +363,7 @@ footer .brand{font-size:14px;color:var(--fg-2)}
   </div>
   <aside class="dnote"><b>批注 02 出账链</b>
     <p><span>动效</span>：标题滚过后横滚区轻钉 1.4 屏高，竖向滚动转横向平移（scrub 0.8）。1px 链路线随进度逐段点亮；已过节点白，当前节点香槟金（进行中状态，允许上金的四处之一）。</p>
-    <p><span>转场</span>：末卡「催缴单」比前五张略高，到位即解钉，接催缴单章：横滚终点就是主角起点，这是全页唯一一次连续劫持。移动端改原生横向 scroll-snap。</p>
+    <p><span>转场</span>：末卡「催缴单」到位即解钉，接催缴单章：末卡与下一章第一张画面是同一张催缴单屏，内容衔接；这是全页唯一一次连续劫持。移动端改原生横向 scroll-snap。</p>
     <p><span>素材</span>：六张截图，同一账期同一公司。</p>
   </aside>
 </section>
@@ -379,14 +383,14 @@ footer .brand{font-size:14px;color:var(--fg-2)}
         <h2>算出来，发出去。</h2>
         <div class="caps">
           <div class="cap"><h3>按户一行，按月派生。</h3><p>来源是合同计费行、抄表读数、计费参数。三样相乘，每户本月应收自己出来。</p></div>
-          <div class="cap"><h3>租金表加水电表，就是那张通知单。</h3><p>现实里发给租户的那份，系统按户生成，格式照旧。</p></div>
+          <div class="cap"><h3>租金表加水电表，就是那张通知单。</h3><p>现实里发给租户的那份，系统按户生成。</p></div>
           <div class="cap"><h3>指定收款公司，核对，导出就发。</h3><p>核对确认后导出 Excel 通知单与对账表。会计的活从「填」变成「核」。</p></div>
           <div class="cap"><h3>三方勾稽。</h3><p>催缴单应收、附表10 应收、台账实收对得上。以前 152 个 sheet 逐格手填，现在核对一遍再发。</p></div>
         </div>
       </div>
     </div>
     <aside class="dnote"><b>批注 03 催缴单（全页最重）</b>
-      <p><span>入口</span>：横滚解钉后，本章舞台在同一水平位置从卡片尺寸放大到 55% 栏（power3.out 0.6s）。</p>
+      <p><span>入口</span>：横滚解钉后正常滚动进章，舞台入视口时 scale .82→1 一次（origin 左，power3.out 0.6s）。</p>
       <p><span>动效</span>：钉住 2.6 屏高，scrub 0.5。四段：上一段说明上移淡出、上一张画面淡出微缩；下一段上浮、下一张画面 1.03→1 淡入；段间停 0.6 单位。第四段回扣第 1 章的 152。</p>
       <p><span>素材</span>：催缴单列表 / 单户通知单预览 / Excel 打开的真实导出文件 / 收入核对屏。</p>
     </aside>
@@ -397,10 +401,10 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 <section class="chapter hinge" id="hinge">
   <h2 class="rv">没有一格是填进去的。</h2>
   <p class="intro rv" style="margin:18px auto 0">录入归你，派生归系统。催缴单算完，经营分析同时就有了。</p>
-  <div class="concl rv"><b>经营驾驶舱</b><span>本月应收、能耗、光伏、异常，来自同一道出账工序。</span><span class="tag">示例</span></div>
+  <div class="concl rv"><b>经营驾驶舱</b><span>本月应收、能耗、光伏、异常，都从这个月的录入数据派生。</span><span class="tag">示例</span></div>
   <div class="line" aria-hidden="true"></div>
   <aside class="dnote"><b>批注 04 转轴</b>
-    <p><span>动效</span>：纯排版过桥，约 0.6 屏高，无素材。一根 1px 白色竖线从结论条小格底部出发，随滚动 scaleY 0→1（scrub），正好接到下一章舞台顶边。它就是出账链那根链路线换了方向：把产物一牵到产物二。</p>
+    <p><span>动效</span>：纯排版过桥，约 0.6 屏高，无素材。一根 1px 白色竖线从结论条小格底部出发，随滚动 scaleY 0→1（scrub），正好接到下一章顶边（钉住起点，章头在线下，舞台再下）。它就是出账链那根链路线换了方向：把产物一牵到产物二。</p>
     <p><span>作用</span>：隔开两个重章（催缴单 / 经营分析），完成 a 到 b 的掉头。</p>
   </aside>
 </section>
@@ -421,13 +425,13 @@ footer .brand{font-size:14px;color:var(--fg-2)}
       <button type="button" role="tab" aria-selected="false" data-v="3">管理公司</button>
     </div>
     <div class="stage dash-stage">
-      <div class="slot view" data-label="录屏 · 经营驾驶舱，含一次维度切换，1440×900，8s 循环"></div>
+      <div class="slot view on" data-label="录屏 · 经营驾驶舱，含一次维度切换，1440×900，8s 循环"></div>
       <div class="slot view" data-label="截图 · 出租与楼栋，1440×900"></div>
       <div class="slot view" data-label="截图 · 用能与缴费，1440×900"></div>
       <div class="slot view" data-label="截图 · 利润表分析，1440×900"></div>
     </div>
     <div class="dash-lines" aria-live="polite">
-      <p>一眼看全园：出租、应收、能耗、光伏、异常放在一屏。</p>
+      <p class="on">一眼看全园：出租、应收、能耗、光伏、异常放在一屏。</p>
       <p>园区维度：出租与楼栋，园区能耗。</p>
       <p>租户维度：用能与缴费，结构与续约。</p>
       <p>管理公司维度：利润表、资产负债、现金流、费用与报销。</p>
@@ -471,8 +475,8 @@ footer .brand{font-size:14px;color:var(--fg-2)}
       <h2>你的 Excel，<br>逐格全等。</h2>
       <p class="intro">51 个公摊池加 17 行损耗，与原册逐格验算全等。口径怪癖做成参数位，不顺手修正。</p>
       <dl class="figs rv">
-        <div><dd class="num">51</dd><dt>公摊池</dt></div>
-        <div><dd class="num">17</dd><dt>楼栋损耗行</dt></div>
+        <div><dt>公摊池</dt><dd class="num">51</dd></div>
+        <div><dt>楼栋损耗行</dt><dd class="num">17</dd></div>
       </dl>
     </div>
     <div class="stage wipe">
@@ -508,15 +512,15 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     <h2>多人同时做账，不打架。</h2>
     <p class="intro">读全开，写分权。要改先占锁，谁在编辑一眼可见；急事可授权接管，全程留审计。</p>
   </header>
-  <div class="panes">
+  <div class="panes" role="img" aria-label="演示：陈会计点编辑模式后变为完成；王会计一侧显示陈会计正在编辑，可请求接管，全程留审计">
     <div class="pane" id="pane-a">
       <div class="pane-bar"><span>陈会计 的窗口</span><span class="who-row"><span class="who">我</span><span class="who other">王会计</span></span></div>
-      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><button class="lockbtn" type="button" aria-label="编辑模式"><span class="st s0">编辑模式</span><span class="st s1">完成</span></button></div>
+      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><span class="lockbtn"><span class="st s0">编辑模式</span><span class="st s1">完成</span></span></div>
       <div class="slot" data-label="截图 · 月度台账屏（编辑态），1120×700"></div>
     </div>
     <div class="pane" id="pane-b">
       <div class="pane-bar"><span>王会计 的窗口</span><span class="who-row"><span class="who">我</span><span class="who other">陈会计</span></span></div>
-      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><button class="lockbtn" type="button" aria-label="编辑模式"><span class="st s0">编辑模式</span><span class="st s1">陈会计 正在编辑</span><span class="st s2">请求接管</span></button></div>
+      <div class="pane-row"><span class="pane-title">月度台账 2026-06</span><span class="lockbtn"><span class="st s0">编辑模式</span><span class="st s1">陈会计 正在编辑</span><span class="st s2">请求接管</span></span></div>
       <div class="slot" data-label="截图 · 月度台账屏（浏览态），1120×700"></div>
       <div class="toast">已向在线主管发送接管请求，授权后锁归你，双方留名审计（示例）</div>
     </div>
@@ -531,7 +535,7 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 <!-- ============ 10 · 大小园区 ============ -->
 <section class="chapter" id="fit">
   <div class="fit-head">
-    <h2 style="text-align:center">两个人的园区，<br>和几十人的园区。</h2>
+    <h2 style="text-align:center">两个人，<br>或几十个人的园区。</h2>
     <div class="segc" id="fit-seg" role="tablist" data-i="0" aria-label="选择园区规模">
       <span class="thumb" aria-hidden="true"></span>
       <button type="button" role="tab" aria-selected="true" aria-controls="fit-small" id="tab-small">一个园区，一家管理公司</button>
@@ -540,14 +544,14 @@ footer .brand{font-size:14px;color:var(--fg-2)}
   </div>
   <div class="fit-panels">
     <div class="fit-panel on" id="fit-small" role="tabpanel" aria-labelledby="tab-small">
-      <div class="qa"><p class="q">“Excel 用得挺好，为什么要换？”</p><p class="a">每月手填的那 920 条费项行，以后由合同、读数、参数算出来。换的是不再手抄，不是换习惯。</p></div>
+      <div class="qa"><p class="q">“Excel 用得挺好，为什么要换？”</p><p class="a">每月手填的 920 条费项行，以后由合同、读数、参数算出来。不再手抄，不换习惯。</p></div>
       <div class="qa"><p class="q">“我们没有 IT 部门。”</p><p class="a">Docker Compose 私有化部署，Caddy 自动 HTTPS。数据在你自己的服务器上。</p></div>
       <div class="qa"><p class="q">“怕系统算错，还不如自己算。”</p><p class="a">51 个公摊池、17 行损耗与原册逐格验算全等；口径做成参数位，你能看见、能改。</p></div>
     </div>
     <div class="fit-panel" id="fit-large" role="tabpanel" aria-labelledby="tab-large">
       <div class="qa"><p class="q">“几个人同时录账，会不会互相覆盖？”</p><p class="a">编辑锁加在场头像，谁在改一眼看见；急事可授权接管，改动全部留审计。</p></div>
       <div class="qa"><p class="q">“各公司的账要分开，又要合并看。”</p><p class="a">6 家管理公司各一本独立册，全部汇总就是跨公司求和，收入核对把应收与实收对上。</p></div>
-      <div class="qa"><p class="q">“谁改了什么，要查得到。”</p><p class="a">写按 11 个业务模块分权，操作日志可追溯；审核过的表只读，只有审核员能撤销。</p></div>
+      <div class="qa"><p class="q">“谁改了什么，要查得到。”</p><p class="a">写按 11 个业务模块分权，操作日志可追溯；审核过的表只读。</p></div>
     </div>
   </div>
   <aside class="dnote"><b>批注 10 大小园区</b>
@@ -569,7 +573,7 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 
 <!-- ============ 12 · CTA ============ -->
 <section class="chapter" id="cta">
-  <h2 class="rv">带上你们这个月的通知单，<br>来看一场演示。</h2>
+  <h2 class="rv">带上通知单，<br>来看一场演示。</h2>
   <p class="intro rv">用示例园区，当场走一遍从抄表到催缴单，再到经营分析。</p>
   <a class="btn lg rv" href="#top">预约演示</a>
 </section>
@@ -655,7 +659,7 @@ footer .brand{font-size:14px;color:var(--fg-2)}
 <footer>
   <div class="row">
     <a class="brand" href="#top"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="20" width="9" height="16" rx="2" fill="#6E6E73"/><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#A1A1A6"/><rect x="28" y="4" width="9" height="32" rx="2" fill="#F5F5F7"/></svg><span>园区管理系统</span></a>
-    <span>© 2026 厂房园区运营与财务一体化系统</span>
+    <span>© 2026 园区管理系统</span>
   </div>
   <p class="footnote">标注「示例」的画面与条目为演示数据。Excel 时代的工作量取自 2024 年 3 月两期通知单盘点。工程数字为 2026 年 9 月仓内现状，上线前重核。</p>
 </footer>
@@ -690,11 +694,27 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     }); });
   })();
 
+  /* ---- 分段控件（经营分析）：桌面钉住时点了滚到对应进度；静态档当普通 tab ---- */
+  var dashTl=null;
+  (function(){
+    var seg=document.getElementById('dash-seg'); if(!seg) return;
+    var tabs=seg.querySelectorAll('[role="tab"]'), views=document.querySelectorAll('#dashboard .view'), lines=document.querySelectorAll('#dashboard .dash-lines p');
+    tabs.forEach(function(t,i){ t.addEventListener('click',function(){
+      if(dashTl){ var st=dashTl.scrollTrigger, p=(dashTl.labels['v'+i]+0.35)/dashTl.duration(); window.scrollTo({top:st.start+(st.end-st.start)*p,behavior:'smooth'}); return; }
+      seg.dataset.i=i; tabs.forEach(function(x,j){x.setAttribute('aria-selected',String(j===i));});
+      views.forEach(function(v,j){v.classList.toggle('on',j===i);}); lines.forEach(function(v,j){v.classList.toggle('on',j===i);});
+    }); });
+  })();
+
   /* ---- 光伏示例图：某栋 ÷ 全园中位，最后九天跌出带。主线次级灰，尾点是整张图唯一的彩色 ---- */
+  var pvPlayed=false;
   drawPv();
+  if(window.ResizeObserver){ var pvEl=document.getElementById('pv-chart'); if(pvEl) new ResizeObserver(function(){drawPv();}).observe(pvEl); }
   function drawPv(){
     var svg=document.getElementById('pv-chart'); if(!svg) return;
-    var W=600,H=220,pl=34,pr=14,pt=14,pb=28, n=30;
+    /* viewBox 跟随渲染尺寸：SVG 用户单位 = CSS px，11px 标注不会被压缩 */
+    var W=Math.round(svg.clientWidth)||600,H=Math.round(svg.clientHeight)||140,pl=34,pr=14,pt=10,pb=22, n=30;
+    svg.setAttribute('viewBox','0 0 '+W+' '+H);
     var x=function(i){return pl+(W-pl-pr)*i/(n-1);};
     var y=function(v){return pt+(H-pt-pb)*(1-(v-0.5)/1.0);};
     var lo=[],hi=[],line=[];
@@ -715,9 +735,15 @@ footer .brand{font-size:14px;color:var(--fg-2)}
       '<path class="pv-line" d="'+path+'" style="fill:none;stroke:var(--fg-2);stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>'+
       '<circle cx="'+x(last)+'" cy="'+y(line[last])+'" r="5" style="fill:var(--warn)"/>'+
       '<text x="'+(x(last)-10)+'" y="'+(y(line[last])-12)+'" text-anchor="end" style="fill:var(--warn);font:600 11px var(--font)">跌出正常带 9 天</text>';
+    var p=svg.querySelector('.pv-line');
+    if(p&&window.gsap&&!pvPlayed&&!document.body.classList.contains('static')){ var L=p.getTotalLength(); p.style.strokeDasharray=L; p.style.strokeDashoffset=L; }
+  }
+  function playPv(){
+    var p=document.querySelector('.pv-line'); if(!p||pvPlayed) return; pvPlayed=true;
+    var L=p.getTotalLength(); gsap.fromTo(p,{strokeDasharray:L,strokeDashoffset:L},{strokeDashoffset:0,duration:1.2,ease:'power2.inOut'});
   }
 
-  if(!window.gsap||!window.ScrollTrigger){ document.body.classList.add('static'); return; }
+  if(!window.gsap||!window.ScrollTrigger){ document.body.classList.add('static','final'); return; }
   gsap.registerPlugin(ScrollTrigger);
 
   var mm=gsap.matchMedia();
@@ -727,17 +753,20 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     reduce:'(prefers-reduced-motion: reduce)'
   },function(ctx){
     var c=ctx.conditions;
-    if(c.reduce){ document.body.classList.add('static'); return; }
+    if(c.reduce){ document.body.classList.add('static','final'); drawPv(); return; }
     if(c.mob){ document.body.classList.add('static'); } else { document.body.classList.remove('static'); }
 
-    navSpy(); hero(); counters(); reveals(); collab();
+    /* 先建钉住的 ScrollTrigger，再建其余：否则后者按「无钉住」的位置算触发点，会提前几千像素触发 */
     if(c.desk){ before(); chain(); bill(); hinge(); dashboard(); pool(); }
+    navSpy(); hero(); counters(); reveals(); collab();
   });
 
   function navSpy(){
     document.querySelectorAll('.nav-links a').forEach(function(a){
       var sec=document.getElementById(a.dataset.for); if(!sec) return;
-      ScrollTrigger.create({trigger:sec,start:'top 50%',end:'bottom 50%',onToggle:function(s){a.classList.toggle('on',s.isActive);}});
+      var opts={trigger:sec,start:'top 50%',end:'bottom 50%',onToggle:function(s){a.classList.toggle('on',s.isActive);}};
+      if(a.dataset.for==='chain') opts.endTrigger='.pan-wrap'; /* 横滚区是兄弟节，高亮要覆盖到它 */
+      ScrollTrigger.create(opts);
     });
   }
 
@@ -754,15 +783,14 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     document.querySelectorAll('[data-count]').forEach(function(el){
       var node=el.firstChild; var to=parseInt(node.textContent.replace(/\D/g,''),10); if(!to) return;
       var o={v:0};
-      gsap.to(o,{v:to,duration:1.4,ease:'power2.out',snap:{v:1},onUpdate:function(){node.textContent=o.v.toLocaleString('zh-CN');},scrollTrigger:{trigger:el,start:'top 88%',once:true}});
+      gsap.to(o,{v:to,duration:1.4,ease:'power2.out',snap:{v:1},onUpdate:function(){node.textContent=String(o.v);},scrollTrigger:{trigger:el,start:'top 88%',once:true}});
     });
   }
 
   /* ---- 进入视口上浮（一次性）---- */
   function reveals(){
     ScrollTrigger.batch('.rv',{start:'top 88%',once:true,onEnter:function(els){gsap.from(els,{y:24,opacity:0,duration:.8,ease:'power2.out',stagger:.07});}});
-    var pv=document.querySelector('.pv-line');
-    if(pv){ var L=pv.getTotalLength(); gsap.set(pv,{strokeDasharray:L,strokeDashoffset:L}); gsap.to(pv,{strokeDashoffset:0,duration:1.2,ease:'power2.inOut',scrollTrigger:{trigger:'.tile.pv',start:'top 80%',once:true}}); }
+    ScrollTrigger.create({trigger:'.tile.pv',start:'top 80%',once:true,onEnter:playPv});
   }
 
   /* ---- 01 叠纸：下一张到来时上一张退后 ---- */
@@ -806,33 +834,35 @@ footer .brand{font-size:14px;color:var(--fg-2)}
     tl.to({},{duration:.8});
   }
 
-  /* ---- 04 转轴：引线随滚动画到下一章舞台顶边 ---- */
+  /* ---- 04 转轴：引线随滚动画到下一章顶边 ---- */
   function hinge(){
     gsap.to('.hinge .line',{scaleY:1,ease:'none',scrollTrigger:{trigger:'.hinge .line',start:'top 85%',end:'bottom 60%',scrub:true}});
   }
 
-  /* ---- 05 经营分析：钉住换画面，分段控件当进度且可点 ---- */
+  /* ---- 05 经营分析：钉住换画面，分段控件当进度（点击见上面的 dash-seg 绑定）---- */
   function dashboard(){
     var views=gsap.utils.toArray('#dashboard .view'), lines=gsap.utils.toArray('#dashboard .dash-lines p');
     var seg=document.getElementById('dash-seg'), thumb=seg.querySelector('.thumb'), tabs=seg.querySelectorAll('[role="tab"]');
     gsap.set(views.slice(1),{opacity:0,scale:1.03}); gsap.set(lines.slice(1),{opacity:0,y:10});
-    var tl=gsap.timeline({scrollTrigger:{trigger:'#dashboard',start:'top top',end:'+=260%',pin:true,scrub:.5,anticipatePin:1,
-      onUpdate:function(st){ var i=Math.min(3,Math.floor(st.progress*4)); tabs.forEach(function(t,j){t.setAttribute('aria-selected',String(j===i));}); }}});
+    var cur=0;
+    var tl=gsap.timeline({
+      onUpdate:function(){ /* 标签落在每段画面到位处，白字随播放头翻，与滑块共用同一时间轴 */
+        var t=tl.time(), i=t>=tl.labels.v3?3:t>=tl.labels.v2?2:t>=tl.labels.v1?1:0;
+        if(i!==cur){ cur=i; tabs.forEach(function(b,j){b.setAttribute('aria-selected',String(j===i));}); }
+      },
+      scrollTrigger:{trigger:'#dashboard',start:'top top',end:'+=260%',pin:true,scrub:.5,anticipatePin:1}});
     tl.addLabel('v0').to({},{duration:.6});
     for(var i=1;i<views.length;i++){
-      tl.addLabel('v'+i)
-        .to(views[i-1],{opacity:0,scale:.985,duration:1})
+      tl.to(views[i-1],{opacity:0,scale:.985,duration:1})
         .to(lines[i-1],{opacity:0,y:-10,duration:.6},'<')
         .to(views[i],{opacity:1,scale:1,duration:1},'<+=.2')
         .to(lines[i],{opacity:1,y:0,duration:.6},'<+=.2')
         .to(thumb,{xPercent:100*i,duration:.6,ease:'power2.inOut'},'<-=.4')
+        .addLabel('v'+i)
         .to({},{duration:.6});
     }
     tl.to({},{duration:.4});
-    tabs.forEach(function(t){ t.addEventListener('click',function(){
-      var st=tl.scrollTrigger, p=(tl.labels['v'+t.dataset.v]+0.35)/tl.duration();
-      window.scrollTo({top:st.start+(st.end-st.start)*p,behavior:'smooth'});
-    }); });
+    dashTl=tl;
   }
 
   /* ---- 07 公摊引擎：经过式揩开，不钉住 ---- */
