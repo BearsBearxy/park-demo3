@@ -384,7 +384,11 @@ async function onExport() {
       <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3 迁移(表内横滚 + S 档单 sticky 首列,
            编辑态按 §11.2 荐桌面),摘掉 base.css 的 800px 屏级地板 -->
       <div class="pnl-page fp-fluid">
-\1
+        <!-- 期间条(设计稿 §3.2c):九张报表横跳不换期。本屏是整年一张表,条上只写年份
+             (2026-09-04 修复:合并 977af27 时 sed 反向引用把这一段写成了字面反斜杠 1,期间条随之丢失;
+             ReconView 同一处 2026-09-03 已修,本屏漏了 —— reportPeriodGate.spec 从此钉住九屏) -->
+        <FPStepStrip :steps="REPORT_STEPS" :current="config.route" :period="stripLabel"
+                     :query="stripQuery" back-label="换年" @back="goGate" />
         <SchedHeader
           :scope="S.pnl(config.schedule, year)"
           :icon="icon"
