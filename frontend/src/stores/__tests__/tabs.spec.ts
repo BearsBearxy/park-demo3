@@ -196,9 +196,15 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
     auth.me = 'zhangsan'
     await nextTick()
     store.setCtx('ledger', { p: '2025-06' })
+    // evicted 也要造出来再断言 —— 只断言 ctx 的话,watch 里那半句 evicted.value = null
+    // 删掉照样全绿(2026-09-06 评审实测),下一个人登入就会看到上一个人那次被顶的提示。
+    store.open('ledger')
+    store.open('tenants')
+    expect(store.evicted).toBe('ledger')
     auth.me = null
     await nextTick()
     expect(store.ctx).toEqual({})
+    expect(store.evicted).toBeNull()
   })
 
   it('open 顶掉预览槽时记下被顶的 value;同值重开与 pin 直开不算被顶', () => {
@@ -241,9 +247,21 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
 
   it('openDeep 未知 value 不动任何槽', () => {
     const store = useTabsStore()
+    store.open('ledger')                        // 先占住预览槽,before 才是个非 null 值
     const before = store.preview?.value ?? null
+    expect(before).toBe('ledger')
     store.openDeep('not-a-route')
     expect(store.preview?.value ?? null).toBe(before)
     expect(store.epochOf('not-a-route')).toBe(0)
+  })
+
+  it('recent 还空(导航一次都没跑过)时发深链:目标进预览槽,不该被钉住', () => {
+    // from 与 preview?.value 都是 undefined —— 少了 !!from 那道守卫,两个 undefined 相等
+    // 就把 pin 判成 true,凭空多一个固定页签(2026-09-06 评审实测:删掉守卫 26 条照样全绿)。
+    const store = useTabsStore()
+    expect(store.recent).toEqual([])
+    store.openDeep('ledger')
+    expect(store.preview?.value).toBe('ledger')
+    expect(store.tabs.map(t => t.value)).not.toContain('ledger')
   })
 })
