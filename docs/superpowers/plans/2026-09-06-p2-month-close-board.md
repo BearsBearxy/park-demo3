@@ -356,7 +356,13 @@ EOF
 **Files:**
 - Modify: `frontend/src/views/data-home/DataHomeView.vue`（模板 `:206-246` 两块换成两栏；`:113-125` computed；`go()` 的确认判据逐行生效）
 - Modify: `frontend/src/views/data-home/DataHomeView.spec.ts`
-- Modify: `frontend/src/utils/lockScopes.ts`（补 `alloc-loss` 键，T5 的其余部分不在本任务）
+~~- Modify: `frontend/src/utils/lockScopes.ts`（补 `alloc-loss` 键）~~ **撤销**：执行中裁定不补这个键（`NAV_SCOPE_PREFIX` 是「屏 → 锁根」，出账链几屏共用一把锁根，补键不会让确认更准，只会让在场点长在一个只读屏上）。本任务**不碰 `lockScopes.ts`**。
+
+**上游已落地，直接用（别重复造）：**
+- `views/data-home/monthClose.logic.ts` 的 `rowsOf({ overview, recon, review }) → CloseRow[]` 与 `closeChecks(rows)`。**行状态、chips、计数全在那里算完了**，本任务只负责取数与渲染。
+- 收入核对的判据（含 `hasData` 闸）**已经在 `reconRow` 里**，T3 只把 `ReconMonthMeta` 取来喂进去，**别再判一遍**。
+- 有 chips 的行 done 已收严成「所有 chip 都 done」，所以默认夹具下 `sales-income` 是 **todo 不是 done** —— 写用例时别按旧行为设预期。
+- 恒 `na` 的行不进分母，所以计数是**记账 n/7、出账 n/6**，不是 8 和 7。
 
 - [ ] **Step 1: 先改既有测试的选择器（不改断言意图）**
 
@@ -374,15 +380,73 @@ it('前置未满的行显 padlock,悬停说前置是什么', ...)
 it('收入核对取数失败不阻断整屏,该行显「—」', ...)
 ```
 
-- [ ] **Step 3: 实现**
+- [ ] **Step 3: 实现 —— 取数**
 
-两栏用 CSS Grid 两列（1366×620 内视口下内容区 ≈1027×502，行 38px，两栏各 7–8 行一屏装下）。**行是常驻的**，状态点用 `data-state` 属性驱动样式，不要 `v-if` 切换整行。chips 的展开详情若要浮层，一律 `position: absolute`（零位移门禁 `:50-51` 的词表里 `selected` 会红）。
+`onMounted` 之外补一个 `watch(curYm)`：拿到年之后串行发 `reconApi.overview(year)`，从回包的 `months` 里 `find(m => m.month === 当前月)` 落成 `recon`。失败 `.catch(() => null)`。**为什么不并发**：默认首载 `pickedYm` 是 null，年只能从 overview 回包的 `ov.period` 派生；并发就只能传 `undefined`，后端会取「两本账有数据的最大年」，与首页锚定月的年大概率不是同一年 —— 拿到的是别的年的差异数，形状对、数字张冠李戴，没有任何断言抓得到。
 
-收入核对：**串行补发**（`watch(curYm)`，见 Global Constraints —— 默认首载拿不到年，并发只能传 undefined，后端会取别的年，静默错年）。失败 `.catch(() => null)` 落成 `recon = null`。⚠ 判据本身**收在 T2 的 `reconRow` 里**，T3 只负责把 `ReconMonthMeta` 取来喂进去，别在 T3 再判一遍。
+然后：
 
-- [ ] **Step 4: 全量 + 破坏验证 + 提交**
+```ts
+const rows = computed(() => (ov.value ? rowsOf({ overview: ov.value, recon: recon.value, review: null }) : []))
+const checks = computed(() => closeChecks(rows.value))
+const billingRows = computed(() => rows.value.filter(r => r.col === 'billing'))
+const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
+```
 
-期望：前端全量绿（既有 2331 + 本任务新增）；`npx vue-tsc --noEmit` 零错。破坏项至少四条，逐条只红对应的那条。
+`review` 本期恒 `null`（审核机制归 R1）。
+
+- [ ] **Step 4: 实现 —— 两栏版式**
+
+两栏 CSS Grid 两列（1366×620 内视口下内容区 ≈1027×502，行 38px，两栏各 6–8 行一屏装下）。三条硬要求：
+
+1. **行是常驻的**：状态用 `:data-state="r.state"` 属性驱动样式，**不要** `v-if` 切换整行。`na` 的行照样渲染，状态位显「—」。
+2. **chips 的展开详情若要浮层，一律 `position: absolute`**。零位移门禁的交互态词表（`noInteractionLayoutShift.spec:50-51`）里有 `selected` / `selectedIds` / `dirty` —— 写成 `<div v-if="selected…">` 当场红。
+3. **两处计数都要改**：`:183-185` 的 `.dh-counts` 与 `:237` 的 `.dh-h3n` 现在都直读 `ov.schedules.done/total`。只改一处的话段标题仍显「n/9」，与两栏的「n/7」当屏打架 —— 正是 §8.1「计数与屏内同源」要防的。两处一起换成 `checks`。
+
+行内元素：状态点 · 行名 · tag · chips · padlock（`r.locked` 有值时显，文案即 tooltip）· 审核态位（本期恒「—」）。
+点行走既有的 `go(r.go, r.tab)`；**`r.go` 为空的行（本月锁账）不给点**。
+chip 点击带自己的参数：公司 chip 带 `co`，期区 chip 带 `co`，办公/三期与汽车/电动车两组带各自的 `tab` 或 nav value。**与分析层 `openDeep` 同口径**。
+
+- [ ] **Step 5: 跑测试**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/views/data-home/
+npx vitest run 2>&1 | tail -3
+npx vue-tsc --noEmit
+```
+
+期望：`DataHomeView.spec` 现有 25 条（按 Step 1 处理过的除外）+ 新增 7 条全绿；全量在基线 **2372** 之上只多你新加的；tsc 零错。
+**若 `noInteractionLayoutShift.spec` 或 `readonlyHasNoWriteButtons.spec` 红了 —— 停下报告**，那说明新版式落进了门禁抓的形状。
+
+- [ ] **Step 6: 逐条破坏验证**
+
+⚠ **往两个方向破坏**。上一个任务的实现者做了 18 次破坏却全部朝「改得更 done」一个方向，结果「永远不 done」与「入口串了」两片盲区一次没验到，评审一破坏全线飘绿。
+
+| 改坏什么 | 应红的那条 |
+|---|---|
+| 两栏的 `filter(r => r.col === 'billing')` 改成不过滤 | 「两栏各自的行数」 |
+| `.dh-counts` 改回读 `ov.schedules.total` | 「两处计数同源且分母是 7」 |
+| `:237` 段标题**不**改（保留读 DTO） | 同上（这一条专门钉「两处一起改」） |
+| `na` 的行加上 `v-if="r.state !== 'na'"` | 「源缺的行照样渲染，状态位显『—』」 |
+| 台账行的 chips 不渲染 | 「台账行带公司 chips，没录的也在」 |
+| chip 的 `co` 不带 | 「chip 点击带 p 与 co」 |
+| 给本月锁账行也绑上点击 | 「无入口的行不给点」 |
+| `recon` 改成不发请求（恒 null） | 「收入核对行显『—』」**注意**：这条同时验「取数失败不阻断整屏」 |
+| `watch(curYm)` 改成 `onMounted` 里并发发 `overview(undefined)` | 若无断言能红 → **说明「串行」这条口径零覆盖，要补一条**（断言 `reconApi.overview` 被调用时的实参是当前年，不是 undefined） |
+
+- [ ] **Step 7: 提交**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
+git add frontend/src/views/data-home/DataHomeView.vue frontend/src/views/data-home/DataHomeView.spec.ts
+git commit -m "$(cat <<'EOF'
+feat(data-home): P2 两栏清单落屏 —— 出账 7 行 / 记账 8 行,行状态由数据派生,源缺显「—」;计数两处同源从行算
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+EOF
+)"
+```
 
 ---
 
