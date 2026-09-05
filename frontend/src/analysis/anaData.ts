@@ -333,6 +333,7 @@ export interface AnaAnomaly {
   ym: string        // 所属期间 YYYY-MM
   company?: string  // 台账负值行:管理公司名(台账深链 extra.company)
   tenant?: string   // 租户维度规则:租户名(录入屏 extra.tenant 定位行)
+  co?: number       // 附10 负值行:期区(附10 深链的 co 就是期区;与 CockpitView.onPhaseClick 同口径)
 }
 export interface EnergySeries { name: string; unit: string; series: Record<string, number> }
 export interface AnomalyInputs {
@@ -437,7 +438,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
       dim: '租户', type: '负值行', metric: `附表10 ${neg[0]}为负`,
       title: `${r.tenantName} ${r.acctMonth} ${neg[0]}为负`,
       detail: `${neg[0]} −¥${fInt(Math.abs(neg[1]))},请核对附表10录入`,
-      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth, tenant: r.tenantName,
+      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth, tenant: r.tenantName, co: r.phase,
     })
   }
   for (const r of inputs.ledger) {

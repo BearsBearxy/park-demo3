@@ -351,4 +351,4 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - `PnlScheduleView` 的期间条在 977af27 合并时被 sed `\1` 吃掉、2026-09-04 修回；`reportPeriodGate.spec` 钉九屏（`<FPStepStrip` 与 `current=` 两断言未绑定同一标签 = 已知天花板）。
 - 分析屏的期（`usePeriod`）不吃 URL：落 `/fin-cashflow` `/park-energy` `/churn` 的三条异常 `p` 暂无消费方（AnomalyView 那一列今天等于原样 push）；给 `usePeriod` 开深链入口留后期。
 - `ReconView` 深链首载发两次 overview（默认年定上限 + 深链年）：接受，上限与落年解耦的代价；`overview(y)` 失败时永久转圈与改前同款。
-- `ChargingView` 的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。
+- 四张年表屏（`ElecView` / `UtilitiesView` / `PvView` / `ChargingView`，逐字同形）的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。

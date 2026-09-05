@@ -162,7 +162,10 @@ const go = (link: string): void => { void router.push(link) }
 /** 规则引擎异常条(AnaAnomaly):录入屏目标带期与定位;落分析屏的三条 p 今天不被消费(usePeriod 单例,spec §12 遗留),带上无害。
  *  本屏这一列(otherAnoms)只有规则①②、目标都是分析屏 → 今天等于原样 push;留着为与驾驶舱同形(驾驶舱 anomTop 含③④两条录入屏规则)。 */
 const goAnom = (a: AnaAnomaly): void => {
-  void router.push(periodLink(a.link.slice(1), { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), extra: { company: a.company, tenant: a.tenant } }))
+  const v = a.link.slice(1)
+  // 录入屏目标走 openFresh({pin:true})(与 goLedger / goS10 同形):缓存的台账 / 附10 页签有草稿时 useDeepPeriod 的 dirty 闸会吞掉这一跳,「一击落位」靠全新实例;分析屏目标保持裸 push
+  if (v === 'ledger' || v === 'sales-income') tabs.openFresh(v, { pin: true })
+  void router.push(periodLink(v, { p: periodOf(+a.ym.slice(0, 4), +a.ym.slice(5, 7)), co: a.co, extra: { company: a.company, tenant: a.tenant } }))
 }
 const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert-octagon' : s === 'watch' ? 'alert-triangle' : 'info')
 </script>
