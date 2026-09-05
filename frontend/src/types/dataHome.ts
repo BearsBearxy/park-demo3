@@ -42,7 +42,7 @@ export interface DataHomeCompanyDTO {
   done: boolean
 }
 
-/** 附10 四个期区(仅 sales-income 项非 null):no = 1一期/2二期/3三期/4担保。 */
+/** 附10 四个期区(仅 sales-income 项非 null):no = 1一期/2二期/3三期/4宿舍。 */
 export interface DataHomePhaseDTO {
   no: number
   done: boolean
@@ -53,8 +53,8 @@ export interface DataHomeItemDTO {
   tag: string
   done: boolean
   go: string
-  companies?: DataHomeCompanyDTO[]   // 只有台账(ledger)非 null
-  phases?: DataHomePhaseDTO[]        // 只有附10(sales-income)非 null
+  companies?: DataHomeCompanyDTO[] | null   // 只有台账(ledger)非 null
+  phases?: DataHomePhaseDTO[] | null        // 只有附10(sales-income)非 null
 }
 
 export interface DataHomeSchedulesDTO {

@@ -97,8 +97,7 @@ public class DataHomeService {
         ParamStatusDTO ps = paramService.status(ym);
         boolean paramStale = ps.stale();
 
-        // ── 附表 9 源:保留原有取数与**月/年粒度差异**(月度类按 acctMonth、年度类按 year),
-        //    改了会让附表完成度失真 ──
+        // ── 附表 9 源:一律按 acctMonth 判本月有没有行(2026-09-06 起,口径见 scheduleSources 头注)──
         List<SourceData> sources = scheduleSources(year, month, ym);
         List<DataHomeOverviewDTO.Item> items = sources.stream()
             .map(x -> new DataHomeOverviewDTO.Item(x.name(), x.tag(), x.done(), x.go(), x.companies(), x.phases()))
@@ -121,7 +120,8 @@ public class DataHomeService {
             .flatMap(List::stream).distinct().sorted().toList();
     }
 
-    /** 5 个月度类附表源的 distinct 账期(年度类 pv/charging/elec 不按月,不参与月份下拉)。
+    /** 9 个附表源的 distinct 账期并集(2026-09-06 起 pv/charging/elec 三个年度源也按 acctMonth 判本月,
+     *  月份下拉必须跟上,否则某月只有这三源之一有行时,该月进不了下拉、用户切不过去)。
      *  用 DISTINCT 聚合而非整表读实体 —— 沿用旧 currentPeriod() 那次 I/O 优化的考量(该方法已随锚口径变更删除):
      *  data-home 是登录后第一屏、每次刷新都跑,不能为了取几个月份把 monthly_ledger 两万行拉进内存。 */
     private List<String> scheduleYms() {
@@ -134,6 +134,9 @@ public class DataHomeService {
         addYms(out, salary.selectObjs(new QueryWrapper<SalaryRecord>().select("DISTINCT acct_month")));
         addYms(out, office.selectObjs(new QueryWrapper<OfficeRecord>()
             .select("DISTINCT acct_month").in("schedule_no", 13, 14)));
+        addYms(out, pv.selectObjs(new QueryWrapper<PvRecord>().select("DISTINCT acct_month")));
+        addYms(out, charging.selectObjs(new QueryWrapper<ChargingRecord>().select("DISTINCT acct_month")));
+        addYms(out, elec.selectObjs(new QueryWrapper<ElecRecord>().select("DISTINCT acct_month")));
         return List.copyOf(out);
     }
 
@@ -152,7 +155,7 @@ public class DataHomeService {
             .collect(Collectors.groupingBy(MonthlyLedger::getCompanyId,
                      Collectors.reducing(false, r -> true, Boolean::logicalOr)));
         List<DataHomeOverviewDTO.Company> cos = companies.selectList(new QueryWrapper<ManagementCompany>()
-                .orderByAsc("sort_no").orderByAsc("id")).stream()
+                .eq("status", 1).orderByAsc("sort_no").orderByAsc("id")).stream()
             .map(c -> new DataHomeOverviewDTO.Company(c.getId(), c.getShortName(), ledgerDone.getOrDefault(c.getId(), false)))
             .toList();
         sources.add(new SourceData("月度台账", "凭证", "ledger", false,

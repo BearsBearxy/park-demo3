@@ -1,15 +1,19 @@
 package com.park.demo3.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +72,9 @@ class DataHomeServiceTest {
     DataHomeOverviewDTO.Item itemOf(DataHomeOverviewDTO o, String go) {
         return o.schedules().items().stream().filter(i -> go.equals(i.go())).findFirst().orElseThrow();
     }
+    boolean doneByTag(DataHomeOverviewDTO o, String tag) {
+        return o.schedules().items().stream().filter(i -> tag.equals(i.tag())).findFirst().orElseThrow().done();
+    }
 
     /**
      * 默认全部 mapper 返回空(所有源 missing)；按需在测试里覆盖。
@@ -84,8 +91,11 @@ class DataHomeServiceTest {
         when(office.<Object>selectObjs(any())).thenReturn(List.of());
         when(office.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
         when(pv.selectByYear(anyInt())).thenReturn(List.of());
+        when(pv.<Object>selectObjs(any())).thenReturn(List.of());
         when(charging.selectByScheduleAndYear(anyInt(), anyInt())).thenReturn(List.of());
+        when(charging.<Object>selectObjs(any())).thenReturn(List.of());
         when(elec.selectByYearAndType(anyInt(), anyString())).thenReturn(List.of());
+        when(elec.<Object>selectObjs(any())).thenReturn(List.of());
         when(contractService.summary()).thenReturn(summary(0));
         // 出账链四源:空库(5 步全 todo);contractService.list 空 → 无合同缺口;参数不 stale
         when(meterReadings.selectDistinctYms()).thenReturn(List.of());
@@ -131,12 +141,28 @@ class DataHomeServiceTest {
         stubAllEmpty();
         // 附6:同年内有行、但不是本月 → 本月应为未做(改前:整年有行就 done,一月录完十二月还显对勾)
         when(pv.selectByYear(2025)).thenReturn(List.of(pvRow("2025-01"), pvRow("2025-03")));
+        // 附7/附8/附11 是同一形态的三道过滤,不能只护住附6 一道 —— 各自也要有护栏
+        when(charging.selectByScheduleAndYear(7, 2025)).thenReturn(
+            List.of(chargingRow(7, "2025-01", LocalDateTime.of(2025, 1, 1, 0, 0)),
+                    chargingRow(7, "2025-03", LocalDateTime.of(2025, 3, 1, 0, 0))));
+        when(charging.selectByScheduleAndYear(8, 2025)).thenReturn(
+            List.of(chargingRow(8, "2025-01", LocalDateTime.of(2025, 1, 1, 0, 0)),
+                    chargingRow(8, "2025-03", LocalDateTime.of(2025, 3, 1, 0, 0))));
+        when(elec.selectByYearAndType(2025, "energy")).thenReturn(
+            List.of(elecRow("2025-01", "energy", LocalDateTime.of(2025, 1, 1, 0, 0)),
+                    elecRow("2025-03", "energy", LocalDateTime.of(2025, 3, 1, 0, 0))));
         var ov = svc.overview("2025-06");
         var pv6 = ov.schedules().items().stream().filter(i -> "附6".equals(i.tag())).findFirst().orElseThrow();
         assertThat(pv6.done()).isFalse();
+        assertThat(doneByTag(ov, "附7")).isFalse();
+        assertThat(doneByTag(ov, "附8")).isFalse();
+        assertThat(doneByTag(ov, "附11")).isFalse();
         var ov3 = svc.overview("2025-03");
         var pv3 = ov3.schedules().items().stream().filter(i -> "附6".equals(i.tag())).findFirst().orElseThrow();
         assertThat(pv3.done()).isTrue();
+        assertThat(doneByTag(ov3, "附7")).isTrue();
+        assertThat(doneByTag(ov3, "附8")).isTrue();
+        assertThat(doneByTag(ov3, "附11")).isTrue();
     }
 
     @Test
@@ -148,6 +174,16 @@ class DataHomeServiceTest {
         assertThat(item.companies()).hasSize(2);
         assertThat(item.companies().get(0).done()).isTrue();
         assertThat(item.companies().get(1).done()).isFalse();   // 没录的也要在,否则看不出「该录几家」
+        // id / shortName 取值钉住(getShortName() 换成 getName() 之前不会红)
+        assertThat(item.companies()).extracting(DataHomeOverviewDTO.Company::id, DataHomeOverviewDTO.Company::shortName)
+            .containsExactly(tuple(1, "一期"), tuple(2, "二期"));
+    }
+
+    @Test
+    void company记录_json线名为short_不是shortName() throws Exception {
+        var c = new DataHomeOverviewDTO.Company(1, "一期", true);
+        String json = new ObjectMapper().writeValueAsString(c);
+        assertThat(json).contains("\"short\":\"一期\"").doesNotContain("shortName");
     }
 
     @Test
@@ -157,14 +193,59 @@ class DataHomeServiceTest {
         var item = itemOf(svc.overview("2025-06"), "sales-income");
         assertThat(item.phases()).hasSize(4);
         assertThat(item.phases().stream().filter(p -> p.done()).map(p -> p.no())).containsExactly(2);
+        // 四个编号都要钉住,不能只靠 filteredOn(done) 漏看未录三个 slot 的 no 写没写对
+        assertThat(item.phases()).extracting(DataHomeOverviewDTO.Phase::no).containsExactly(1, 2, 3, 4);
+        // 名字承诺的「零新查询」:四个 slot 各查一次,不多不少
+        Mockito.verify(s10, Mockito.times(4)).selectBySlot(anyInt(), anyString());
     }
 
     @Test
     void 其余七项的companies与phases为null_不占JSON体积() {
         stubAllEmpty();
-        var item = itemOf(svc.overview("2025-06"), "salary");
+        var ov = svc.overview("2025-06");
+        var item = itemOf(ov, "salary");
         assertThat(item.companies()).isNull();
         assertThat(item.phases()).isNull();
+        // 「其余七项」不是只有 salary 一项 —— yearly() 那对 null,null 也要覆盖到(附6/7/8/11 都走 yearly())
+        assertThat(ov.schedules().items()).filteredOn(i -> !List.of("ledger", "sales-income").contains(i.go()))
+            .allSatisfy(i -> { assertThat(i.companies()).isNull(); assertThat(i.phases()).isNull(); });
+    }
+
+    @Test
+    void 公司全集查询按status过滤为启用公司() {
+        // mock 不会真的按 QueryWrapper 过滤(any() 吞掉条件),没法靠"stub 一个停用公司再断言它不在结果里"
+        // 拦住 —— 那只测得出 mock 返回了什么,测不出 SQL 加没加条件。改用 ArgumentCaptor 直接钉住
+        // 传给 companies.selectList 的 QueryWrapper 里确实带了 status=1(先例:BookLineageMergeTest.java:119)。
+        stubAllEmpty();
+        svc.overview("2025-06");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<QueryWrapper<ManagementCompany>> cap = ArgumentCaptor.forClass(QueryWrapper.class);
+        Mockito.verify(companies).selectList(cap.capture());
+        QueryWrapper<ManagementCompany> w = cap.getValue();
+        w.getTargetSql();   // MP 的条件参数是惰性生成的:不先取一次 SQL,参数表就是空的
+        assertThat(w.getSqlSegment()).contains("status = ");
+        assertThat(w.getParamNameValuePairs()).containsValue(1);
+    }
+
+    @Test
+    void 公司全集查询按sortNo_id排序() {
+        stubAllEmpty();
+        svc.overview("2025-06");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<QueryWrapper<ManagementCompany>> cap = ArgumentCaptor.forClass(QueryWrapper.class);
+        Mockito.verify(companies).selectList(cap.capture());
+        QueryWrapper<ManagementCompany> w = cap.getValue();
+        w.getTargetSql();
+        assertThat(w.getSqlSegment()).contains("ORDER BY sort_no ASC,id ASC");
+    }
+
+    @Test
+    void months全集_年度三源的acctMonth也并入() {
+        // 判据已改按月,scheduleYms() 却只并了四个月度源 —— pv/charging/elec 有行的月份进不了下拉
+        stubAllEmpty();
+        when(pv.<Object>selectObjs(any())).thenReturn(List.of("2025-07"));
+        DataHomeOverviewDTO o = svc.overview(null);
+        assertThat(o.months()).contains("2025-07");
     }
 
     @Test

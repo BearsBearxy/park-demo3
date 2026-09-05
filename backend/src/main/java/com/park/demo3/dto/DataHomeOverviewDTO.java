@@ -34,6 +34,6 @@ public record DataHomeOverviewDTO(
                        List<Company> companies, List<Phase> phases) {}
     /** 台账公司清单：全集来自管理公司表，done = 该公司本月台账有没有行。 */
     public record Company(int id, @JsonProperty("short") String shortName, boolean done) {}
-    /** 附10四个期区：no = phase(1一期/2二期/3三期/4担保)，done = 该slot本月有没有行。 */
+    /** 附10四个期区：no = phase(1一期/2二期/3三期/4宿舍)，done = 该slot本月有没有行。 */
     public record Phase(int no, boolean done) {}
 }
