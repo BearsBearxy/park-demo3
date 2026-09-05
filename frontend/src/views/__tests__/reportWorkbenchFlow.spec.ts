@@ -4,6 +4,7 @@ import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import { useAuthStore } from '@/stores/auth'
+import { useTabsStore } from '@/stores/tabs'
 
 import IncomeStatementView from '@/views/reports/income-statement/IncomeStatementView.vue'
 import { companyApi } from '@/api/ledger'
@@ -30,7 +31,7 @@ const query: Record<string, string> = {}          // 深链;单测里临时塞 p
 const push = vi.fn()
 // fullPath 走 getter:useRoute() 的返回对象只建一次,普通字段在切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ query, get fullPath() { return '/income-statement?' + new URLSearchParams(query).toString() } }),
+  useRoute: () => ({ query, meta: { value: 'income-statement' }, get fullPath() { return '/income-statement?' + new URLSearchParams(query).toString() } }),
   useRouter: () => ({ push }),
 }))
 
@@ -223,6 +224,15 @@ describe('三大报表工作台 · 利润表', () => {
     it('矩阵态没有条 —— 还没选期,没有期可写', async () => {
       const w = await open()
       expect(w.findAll('.fss-step')).toHaveLength(0)
+    })
+
+    it('矩阵态的页签上下文也没有期,选了月才有 —— current().p 在矩阵态是光秃秃一个年份(深链相等判专用),照抄会让页签写出「利润表 · 2025」而用户没点过月格', async () => {
+      const w = await open()
+      const tabs = useTabsStore()
+      expect(tabs.ctx['income-statement']?.p).toBeUndefined()
+      await w.findAll('.bmm-card')[1].trigger('click')   // 2025-02
+      await flushPromises()
+      expect(tabs.ctx['income-statement']).toEqual({ p: '2025-02', coName: '物业公司' })
     })
   })
 

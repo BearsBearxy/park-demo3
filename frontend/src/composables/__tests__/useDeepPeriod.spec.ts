@@ -155,6 +155,21 @@ describe('useDeepPeriod · 写页签上下文(P3 §4.3)', () => {
     expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-06', coName: '一期公司' })
   })
 
+  it('传了 ctx() 的屏换期,ctx 照样跟着变 —— 生产上三屏走的全是这一支', async () => {
+    route.meta = { value: 'ledger' }
+    // 评审实测:只把 ctx 支改成挂载期快照(非响应式),原有 12 条全绿 ——
+    // 绿的那条「屏内换期」测的是没人用的 current() 回退支。这条专钉 ctx 支。
+    const month = ref(6)
+    host({
+      current: () => ({ p: '1999-01' }),
+      ctx: () => ({ p: `2025-0${month.value}`, coName: '一期公司' }),
+    })
+    expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-06', coName: '一期公司' })
+    month.value = 7
+    await nextTick()
+    expect(useTabsStore().ctx.ledger).toEqual({ p: '2025-07', coName: '一期公司' })
+  })
+
   it('ctx() 的 p 为 null(停在选期矩阵)→ ctx 只剩空壳,页签只显屏名', () => {
     route.meta = { value: 'ledger' }
     host({

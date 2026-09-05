@@ -92,6 +92,9 @@ async function applyDeep(t: DeepPeriod) {
 useDeepPeriod({
   current: () => ({ p: year.value ? periodOf(year.value, month.value) : null }),
   apply: (t) => { void applyDeep(t).catch(() => {}) },
+  // current().p 在①月份层是光秃秃一个年份(深链相等判专用) —— 页签上下文按用户真实看到的来:
+  // 还在选月就没有期(与三大报表同裁定,2026-09-06 T3 评审坐实本屏漏了这一道)。
+  ctx: () => ({ p: year.value && month.value != null ? periodOf(year.value, month.value) : null }),
 })
 
 // 处置标记后局部更新 entities(不整页刷)

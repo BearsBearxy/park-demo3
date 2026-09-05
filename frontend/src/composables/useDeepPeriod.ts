@@ -55,9 +55,10 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
   // 收在这里而不是散在 billingPeriod.pick / screenPeriod.pick / LedgerView / useFinStatementScreen
   // 四处:所有有期的屏本来就都经过这条路,而这里天然拿得到「我是哪个页签」(route.meta.value)
   // 与「期变了」的时机。深链落期与屏内自己换期走的是同一个 current(),两条路一起覆盖。
-  const tabs = useTabsStore()
+  // typeof 判是把 unknown 收窄给 TS 用的;运行时那道白名单在 tabs.setCtx 里(未知 value 不写)。
   const navValue = (route.meta as Record<string, unknown>)?.value
   if (typeof navValue === 'string' && navValue) {
+    const tabs = useTabsStore()
     watch(
       () => (o.ctx ? o.ctx() : { p: o.current().p, coName: null }),
       (c) => tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.coName ?? undefined }),

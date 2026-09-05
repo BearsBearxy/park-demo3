@@ -253,7 +253,8 @@ const { note: deepNote } = useDeepPeriod({
   current: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), co: phase.value }),
   apply: (t) => { void applyDeep(t).catch(() => {}) },
   dirty: () => dirty.size,
-  ctx: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), coName: phase.value == null ? null : `${phase.value}期` }),
+  // phase 是 `railBook?.phase ?? 1`,恒有值 —— 不写空判(2026-09-06 T3 评审:那一支到不了)
+  ctx: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), coName: `${phase.value}期` }),
 })
 // KeepAlive 切回重读(spec §12):导入中心导完切回来,矩阵与本月不能还是导入前的旧表;有草稿只刷总览(loadMonth 会 dirty.clear())
 onReactivated(() => {

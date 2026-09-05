@@ -38,6 +38,7 @@ import ReconView from '@/views/reports/recon/ReconView.vue'
 import { pnlApi } from '@/api/pnl'
 import { reconApi } from '@/api/recon'
 import { useAuthStore } from '@/stores/auth'
+import { useTabsStore } from '@/stores/tabs'
 
 type Screen = typeof PnlScheduleView | typeof ReconView
 const OPTS = { global: { stubs: { Teleport: true, RouterLink: true, 'router-link': true } } }
@@ -169,6 +170,16 @@ describe('收入核对 · 期间深链', () => {
     expect(steps).toHaveLength(9)
     await steps[0].trigger('click')
     expect(push).toHaveBeenCalledWith({ path: '/income-statement', query: { p: '2024', co: 'all' } })
+  })
+
+  it('停在①月份层时页签上下文没有期 —— current().p 那份是光秃秃一个年份(深链相等判专用),照抄会在页签上写出用户没选过的期', async () => {
+    meta.value = 'reconciliation'
+    query.p = '2024'
+    await open(ReconView)
+    expect(useTabsStore().ctx.reconciliation).toEqual({})
+    query.p = '2024-05'
+    await open(ReconView)
+    expect(useTabsStore().ctx.reconciliation).toEqual({ p: '2024-05' })
   })
 
   it('❗第二圈期跟随:切走后地址换月,切回直落新月', async () => {
