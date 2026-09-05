@@ -367,6 +367,9 @@ describe('数据中心首页 · 首载骨架', () => {
     // 记账列 9 源折成 8 行(P2 T3,批准的既有断言改动清单)。
     expect(w.findAll('.dh-row-billing').length, '出账列恒 7 行').toBe(7)
     expect(w.findAll('.dh-row-booking').length, '记账列恒 8 行').toBe(8)
+    // 骨架也要两栏(评审修补 T3 fix-brief #1):骨架态断,不是落位后 —— 真版式是 .dh-cols 两栏 grid,
+    // 骨架若没包这层,数据落位那一瞬轴向会从单列竖排跳成两栏并排,整屏塌一次。
+    expect(w.find('.dh-cols').exists(), '骨架也要两栏,否则数据落位时轴向变').toBe(true)
     // 静态文案不该被糊掉:它们不依赖数据,糊成微光条等于把已知的东西藏起来
     expect(w.text()).toContain('本月出账')
     expect(w.text()).toContain('出账链')
@@ -375,6 +378,9 @@ describe('数据中心首页 · 首载骨架', () => {
     await flushPromises()
     expect(w.findAll('.fp-shim').length, '数据到了就不该再有骨架').toBe(0)
     expect(w.findAll('.dh-row-billing').length, '真版式也是 7 行 —— 对不上就会跳').toBe(7)
+    // 落位后复核不能只看出账列(评审修补 T3 fix-brief #11):记账列也要复核,否则谁把记账列的
+    // 条数改坏了,这条测试一条都不会红。
+    expect(w.findAll('.dh-row-booking').length, '真版式记账列也是 8 行 —— 对不上就会跳').toBe(8)
   })
 
   it('根节点在数据到达前后是同一个 DOM 节点', async () => {
@@ -419,10 +425,16 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
   }
 
   it('两栏:出账列 7 行、记账列 8 行,各自带自己的计数', async () => {
-    // 收入核对给一条 hasData 的当月数,让出账列分母是 6(不是 5)——两处计数都要吃 checks
+    // 收入核对回包给多个月(评审修补 T3 fix-brief #7:recon 选月的 find(m => m.month === month) 零覆盖
+    // —— 全 spec 此前只在这里给过成功回包,且 months 只有一个元素,find/[0]/at(-1) 完全等价,测不出
+    // 选错月)。这里首月(1月)todo、当月(2月)done:选错月会让出账列少一格 done,.dh-counts 从
+    // 「出账 5/6」掉成「出账 4/6」。
     reconOverview.mockResolvedValueOnce({
       year: 2024,
-      months: [{ month: 2, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }],
+      months: [
+        { month: 1, hasData: true, entityCount: 5, okCount: 2, diffCount: 3, missCount: 0 },
+        { month: 2, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 },
+      ],
     })
     const w = await mountWith({ schedules: { done: 7, total: 9, items: fullBookingItems() } })
     await flushPromises()   // 让 watch(curYm) 触发的 reconApi.overview 落定
@@ -432,6 +444,22 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     // 分母 6/7 不是旧口径的 5/9(doneSteps/5、ov.schedules.total)
     expect(w.find('.dh-counts').text()).toBe('出账 5/6 · 附表 5/7')
     expect(w.find('.dh-h3n').text()).toBe('5/7')
+    // 行状态圆点/data-state 三档零覆盖(评审修补 T3 fix-brief #6):此前全仓只钉过 na 一档,
+    // dotOf 改成「非 na 一律 ✓」或「非 na 一律 ○」都全绿。这份夹具 done/todo/na 三档都有,
+    // 逐行数组断言两个方向都会不再逐项相等 —— 整屏染成已做 / 整片折成未做都要红。
+    expect(w.findAll('.dh-row-billing').map(r => r.find('.dh-rdot').text()))
+      .toEqual(['✓', '✓', '✓', '✓', '○', '✓', '—'])
+    expect(w.findAll('.dh-row-booking').map(r => r.attributes('data-state')))
+      .toEqual(['todo', 'todo', 'done', 'done', 'done', 'done', 'done', 'na'])
+  })
+
+  // 评审修补(task-3-fix-brief.md #5):分母排除的是结构性 na(导入中心/本月锁账),不是「当下 state
+  // 是不是 na」——收入核对还没到达时也是 na,但它是真能做完的事,恒排除会让出账分母随异步加载从 5
+  // 跳到 6。默认夹具下 reconOverview 回空年(收入核对 na),分母仍应是 6,不是 5。
+  it('没有核对数据的月,出账分母仍是 6 —— 不随 recon 到达从 5 跳到 6', async () => {
+    const w = await mountWith({ schedules: { done: 7, total: 9, items: fullBookingItems() } })
+    await flushPromises()   // 默认 reconOverview 回空年 → 收入核对 na,但仍计入分母(countable)
+    expect(w.find('.dh-counts').text()).toBe('出账 4/6 · 附表 5/7')
   })
 
   it('源缺的行显「—」不显 0(本月锁账 / 导入中心)', async () => {
@@ -445,6 +473,12 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     // data-state 驱动样式(灰底文案,Step 4 point 1)——不只是圆点文案凑巧对,属性也要跟 r.state 同源
     expect(lockRow!.attributes('data-state')).toBe('na')
     expect(impRow!.attributes('data-state')).toBe('na')
+    // 审核态列零覆盖(评审修补 T3 fix-brief #10):此前把 .dh-rreview 整个删掉,33 条一条都不红 ——
+    // 补断言钉住这一列确实渲染、且读的是 r.review(本期恒 'na',留字段给 R2 只填数据不改形状)。
+    expect(lockRow!.find('.dh-rreview').text()).toBe('—')
+    expect(impRow!.find('.dh-rreview').text()).toBe('—')
+    expect(lockRow!.find('.dh-rreview').attributes('data-review')).toBe('na')
+    expect(impRow!.find('.dh-rreview').attributes('data-review')).toBe('na')
   })
 
   it('台账行带公司 chips:没录的公司也在,灰的', async () => {
@@ -501,11 +535,27 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     const icon = lockRow!.find('.dh-rlock')
     expect(icon.exists()).toBe(true)
     expect(icon.attributes('title')).toBe('审核机制未上线')   // padlock 悬停文案即 r.locked
+    // title 要挂在 HTML 元素上(评审修补 T3 fix-brief #3):SVG 的 title 属性不出浏览器 tooltip,
+    // 悬停要出文案,title 得挂在 svg 外面的包壳上 —— 断言收紧,光查属性在不在挡不住挂错元素。
+    expect(icon.element.tagName.toLowerCase(), 'title 要挂在非 svg 元素上,否则浏览器不出 tooltip').not.toBe('svg')
     await lockRow!.trigger('click')
     expect(push).not.toHaveBeenCalled()   // r.go 为空 —— 无入口的行不给点
   })
 
-  it('收入核对取数失败不阻断整屏,该行显「—」', async () => {
+  // 评审修补(task-3-fix-brief.md #8):改前这条只 mock 了失败路径,断言「显—」——但默认夹具
+  // (reconOverview 恒回空年)也是「显—」,两条路径逐字等价,删掉 mockRejectedValueOnce 这条用例
+  // 照样绿,是一条空断言。补一个「取数成功」的对照(圆点 ✓),让失败路径与成功路径真的可分辨 ——
+  // 而不是分辨失败路径与「压根没取数」的默认路径(两者本就该长一样,分辨不出属于正常)。
+  it('收入核对取数失败不阻断整屏,该行显「—」(与成功路径对照)', async () => {
+    reconOverview.mockResolvedValueOnce({
+      year: 2024,
+      months: [{ month: 2, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }],
+    })
+    const wOk = await mountWith()
+    await flushPromises()
+    const okRow = wOk.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))
+    expect(okRow!.find('.dh-rdot').text(), '取数成功要显 ✓,不然和失败路径没法比').toBe('✓')
+
     reconOverview.mockRejectedValueOnce(new Error('network down'))
     const w = await mountWith()
     await flushPromises()   // 让失败的 reconApi.overview 落定(.catch(() => null))
@@ -513,6 +563,52 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     const row = w.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))
     expect(row, '收入核对行应照常渲染').toBeTruthy()
     expect(row!.find('.dh-rdot').text()).toBe('—')
+  })
+
+  // 评审修补(task-3-fix-brief.md #2):recon 只在 await **之后**赋值,换月那一刻(curYm 已变、
+  // 新回包未到)这一行仍挂着上个月的结论。reconSeq 只守晚到方向(旧回包不覆盖新月),不守这段空窗。
+  it('换月后收入核对不留上一个月的值', async () => {
+    reconOverview.mockResolvedValueOnce({
+      year: 2024,
+      months: [{ month: 2, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }],
+    })
+    const w = await mountWith()
+    await flushPromises()
+    const dot = () => w.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))!.find('.dh-rdot').text()
+    expect(dot()).toBe('✓')
+    // 切到 2024-03:overview 回来,收入核对停在在途
+    getOverview.mockResolvedValueOnce(overview({ period: { year: 2024, month: 3, label: '2024年3月' } }))
+    reconOverview.mockReturnValueOnce(new Promise(() => {}))
+    await w.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', '2024-03')
+    await flushPromises()
+    expect(dot(), '新月的行不该挂着上个月的 ✓').toBe('—')
+  })
+
+  // 评审修补(task-3-fix-brief.md #9):reconSeq 竞态守卫零覆盖 —— 兄弟守卫 loadSeq 有专门用例
+  // (「晚到的旧回包不覆盖新选的月」)钉住,这份没有。照同款写法:切两次月,让旧月的核对回包晚到。
+  it('晚到的旧核对回包不覆盖新选的月(reconSeq 守卫,同 loadSeq 口径)', async () => {
+    const w = await mountWith()
+    await flushPromises()
+    let resolveOld!: (v: unknown) => void
+    let resolveNew!: (v: unknown) => void
+    reconOverview
+      .mockReturnValueOnce(new Promise((r) => { resolveOld = r }))
+      .mockReturnValueOnce(new Promise((r) => { resolveNew = r }))
+    getOverview
+      .mockResolvedValueOnce(overview({ period: { year: 2023, month: 8, label: '2023年8月' } }))
+      .mockResolvedValueOnce(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+    const sel = w.findComponent({ name: 'Select' })
+    await sel.vm.$emit('update:modelValue', '2023-08')
+    await flushPromises()
+    await sel.vm.$emit('update:modelValue', '2025-06')
+    await flushPromises()
+    // 新月(2025-06,已配平)的核对回包先到,旧月(2023-08,有差异)的晚到 —— 晚到的不该覆盖
+    resolveNew({ year: 2025, months: [{ month: 6, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }] })
+    await flushPromises()
+    resolveOld({ year: 2023, months: [{ month: 8, hasData: true, entityCount: 3, okCount: 1, diffCount: 2, missCount: 0 }] })
+    await flushPromises()
+    const dot = () => w.findAll('.dh-row-billing').find(r => r.text().includes('收入核对'))!.find('.dh-rdot').text()
+    expect(dot(), '晚到的旧回包(2023-08,有差异)不该盖掉新选月(2025-06,已配平)的收入核对状态').toBe('✓')
   })
 
   // 开放覆盖项(task-3-brief.md Step 6):若「串行取数」改成并发 onMounted 里发 overview(undefined)

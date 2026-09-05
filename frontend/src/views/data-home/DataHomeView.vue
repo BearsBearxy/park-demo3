@@ -148,7 +148,11 @@ const recon = ref<ReconMonthMeta | null>(null)
 let reconSeq = 0
 watch(curYm, async (ym) => {
   const seq = ++reconSeq
-  if (!ym) { recon.value = null; return }
+  // 换月后先清零(评审修补 T3 fix-brief #2):reconSeq 只守「晚到的旧回包不覆盖新选的月」,不守
+  // 「新月已上屏、新回包还没到」这段空窗 —— 不清的话这一行会在整年 12 个月重跑核对的窗口里,
+  // 挂着上一个月的 ✓/○,与已经换好月的其余行(链五步/附表)对不上。
+  recon.value = null
+  if (!ym) return
   const year = +ym.slice(0, 4)
   const month = +ym.slice(5, 7)
   const res = await reconApi.overview(year).catch(() => null)
@@ -182,31 +186,35 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
         </div>
         <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
       </div>
-      <section class="dh-sec">
-        <h3 class="dh-h3">出账链</h3>
-        <ul class="dh-rows">
-          <li v-for="i in 7" :key="i" class="dh-row dh-row-billing" style="cursor:default">
-            <span class="fp-shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span>
-            <span class="fp-shim" style="display:block;width:64px;height:12px"></span>
-          </li>
-        </ul>
-        <Card surface="white" class="dh-cur">
-          <div class="dh-curmain">
-            <span class="fp-shim" style="display:block;width:128px;height:16px"></span>
-            <span class="fp-shim" style="display:block;width:196px;height:12px"></span>
-          </div>
-          <span class="fp-shim" style="display:block;width:104px;height:34px;border-radius:8px"></span>
-        </Card>
-      </section>
-      <section class="dh-sec">
-        <h3 class="dh-h3">附表录入</h3>
-        <ul class="dh-rows">
-          <li v-for="i in 8" :key="i" class="dh-row dh-row-booking" style="cursor:default">
-            <span class="fp-shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span>
-            <span class="fp-shim" style="display:block;width:76px;height:11px"></span>
-          </li>
-        </ul>
-      </section>
+      <!-- 骨架也要两栏(评审修补 T3 fix-brief #1):真版式(:247)的两个 section 包在 .dh-cols 里,
+           骨架不包的话数据落位那一瞬轴向会从单列竖排跳成两栏并排,整屏塌一次。 -->
+      <div class="dh-cols">
+        <section class="dh-sec">
+          <h3 class="dh-h3">出账链</h3>
+          <ul class="dh-rows">
+            <li v-for="i in 7" :key="i" class="dh-row dh-row-billing" style="cursor:default">
+              <span class="fp-shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span>
+              <span class="fp-shim" style="display:block;width:64px;height:12px"></span>
+            </li>
+          </ul>
+          <Card surface="white" class="dh-cur">
+            <div class="dh-curmain">
+              <span class="fp-shim" style="display:block;width:128px;height:16px"></span>
+              <span class="fp-shim" style="display:block;width:196px;height:12px"></span>
+            </div>
+            <span class="fp-shim" style="display:block;width:104px;height:34px;border-radius:8px"></span>
+          </Card>
+        </section>
+        <section class="dh-sec">
+          <h3 class="dh-h3">附表录入</h3>
+          <ul class="dh-rows">
+            <li v-for="i in 8" :key="i" class="dh-row dh-row-booking" style="cursor:default">
+              <span class="fp-shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span>
+              <span class="fp-shim" style="display:block;width:76px;height:11px"></span>
+            </li>
+          </ul>
+        </section>
+      </div>
     </template>
 
     <template v-else>
@@ -255,12 +263,10 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>
               <span v-if="r.detail" class="dh-rdetail">{{ r.detail }}</span>
-              <span v-if="r.chips" class="dh-rchips">
-                <span v-for="c in r.chips" :key="c.label" class="dh-chip" :data-done="c.done"
-                      @click.stop="goChip(r, c)">{{ c.label }}</span>
-              </span>
-              <component v-if="r.locked" :is="iconFor('lock')" :size="12" class="dh-rlock" :title="r.locked" />
-              <span class="dh-rreview">—</span>
+              <!-- 出账列的行从不带 chips(rowsOf 只给记账行发 chips)——评审修补 T3 fix-brief #4 删掉
+                   这条恒不可达的死分支,别留着骗人。 -->
+              <span v-if="r.locked" class="dh-rlock" :title="r.locked"><component :is="iconFor('lock')" :size="12" /></span>
+              <span class="dh-rreview" :data-review="r.review">{{ r.review === 'na' ? '—' : r.review }}</span>
             </li>
           </ul>
 
@@ -295,8 +301,9 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
                 <span v-for="c in r.chips" :key="c.label" class="dh-chip" :data-done="c.done"
                       @click.stop="goChip(r, c)">{{ c.label }}</span>
               </span>
-              <component v-if="r.locked" :is="iconFor('lock')" :size="12" class="dh-rlock" :title="r.locked" />
-              <span class="dh-rreview">—</span>
+              <!-- 记账行从不设 locked(只有本月锁账才有,那是出账列的行)——评审修补 T3 fix-brief #4
+                   删掉这条恒不可达的死分支。 -->
+              <span class="dh-rreview" :data-review="r.review">{{ r.review === 'na' ? '—' : r.review }}</span>
             </li>
           </ul>
         </section>

@@ -38,6 +38,10 @@ export interface CloseRow {
   tag?: string             // 「凭证」/「附10」
   go?: string              // nav value;无入口的行不给
   state: 'todo' | 'done' | 'stale' | 'na'   // na = 源缺,屏上显「—」
+  // 分母是否把这一行算进去(评审修补 T3 fix-brief #5):结构性 na 恒 false(导入中心没有这个数据源、
+  // 本月锁账机制未上线,两者永远做不完,进分母会让「n/6」永远差一格);其余恒 true —— 包括收入核对,
+  // 它的 na 只是「暂时不知道」(recon 还没到达),不是「做不完」,不能因为异步加载就把分母从 6 撞成 5。
+  countable: boolean
   detail?: string          // 「本月电价 6/6 已录」,来自 overview.chain.steps[i].detail
   locked?: string          // 有值 = 前置未满,显 padlock,文案即 tooltip
   chips?: CloseChip[]      // 台账公司 / 附10 期区 / 合并行子入口
@@ -99,7 +103,11 @@ function chipsFor(key: string, matched: DataHomeItemDTO[]): CloseChip[] | undefi
 
 function bookingRow(row: (typeof BOOKING_ROWS)[number], items: DataHomeItemDTO[]): CloseRow {
   const matched = items.filter(it => row.from.includes(it.go))
-  const base = { key: row.key, col: 'booking' as const, label: row.label, tag: row.tag, go: row.go, review: 'na' as const }
+  const base = {
+    key: row.key, col: 'booking' as const, label: row.label, tag: row.tag, go: row.go,
+    countable: row.from.length > 0,   // 结构性 na 只有导入中心(row.from 空数组);其余记账行恒 true
+    review: 'na' as const,
+  }
   // 无源(导入中心)或源缺(防御性 —— 正常回包 7 个非导入行必有匹配)→ na,屏上显「—」
   if (row.from.length === 0 || matched.length === 0) return { ...base, state: 'na' }
   const chips = chipsFor(row.key, matched)
@@ -119,13 +127,13 @@ function reconRow(recon: ReconMonthMeta | null): CloseRow {
   // (:145 先 v-if="!m.hasData" 出空卡),先过 hasData 闸,不能让「计数全 0」被误判成「已配平」。
   const state: CloseRow['state'] =
     recon === null || !recon.hasData ? 'na' : recon.diffCount === 0 && recon.missCount === 0 ? 'done' : 'todo'
-  return { key: 'reconciliation', col: 'billing', label: '收入核对', go: 'reconciliation', state, review: 'na' }
+  return { key: 'reconciliation', col: 'billing', label: '收入核对', go: 'reconciliation', state, countable: true, review: 'na' }
 }
 
 /** 本月锁账:审核机制(spec §7.4)本期只做前置不做实现,恒 na —— 不许降级成「五步全 done 就算锁账」,
  *  那是假绿。locked 文案即 padlock 的 tooltip。 */
 function monthLockRow(): CloseRow {
-  return { key: 'month-lock', col: 'billing', label: '本月锁账', state: 'na', locked: '审核机制未上线', review: 'na' }
+  return { key: 'month-lock', col: 'billing', label: '本月锁账', state: 'na', countable: false, locked: '审核机制未上线', review: 'na' }
 }
 
 export function rowsOf({ overview, recon }: RowsInput): CloseRow[] {
@@ -139,6 +147,7 @@ export function rowsOf({ overview, recon }: RowsInput): CloseRow[] {
     // 声明 'stale' 档(spec §5.2 三态:未做/已做/需重算),不能把它并入 'todo' 死档 —— 用字符串比较
     // (越过 DataHomeStepDTO['status'] 的类型域)如实映射,不是猜的。
     state: s.status === 'done' ? 'done' : (s.status as string) === 'stale' ? 'stale' : 'todo',
+    countable: true,
     detail: s.detail,
     review: 'na',
   }))
@@ -155,9 +164,11 @@ export function closeChecks(rows: CloseRow[]): { done: number; total: number; by
     booking: { done: 0, total: 0 },
   }
   for (const r of rows) {
-    // 恒 na 的行(导入中心、本月锁账)不进分母 —— 分母若包含永远做不完的行,「记账 7/8」永远差一格,
-    // 用户会去找那一格是什么;与 spec §5.2「计数源缺显『—』不显 0」同源。
-    if (r.state === 'na') continue
+    // 结构性 na 的行(导入中心、本月锁账)不进分母 —— 它们永远做不完,进分母会让「记账 7/8」永远差
+    // 一格,用户会去找那一格是什么;与 spec §5.2「计数源缺显『—』不显 0」同源。收入核对不在此列
+    // (评审修补 T3 fix-brief #5):它的 na 只是「暂时不知道」,一定会算完,恒排除会让分母随异步
+    // 加载从 5 跳到 6。判据从「当下 state 是不是 na」换成「这一行结构上算不算得完」(countable)。
+    if (!r.countable) continue
     byCol[r.col].total++
     if (r.state === 'done') byCol[r.col].done++
   }

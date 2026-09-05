@@ -150,11 +150,27 @@ describe('monthClose.logic', () => {
     expect(missRow.state).toBe('todo')   // diffCount=0 但 missCount=1 —— 只查 diffCount 会漏这档
   })
 
-  it('计数从渲染的行算,不抄 schedules.total —— 恒 na 的行不进分母,记账列分母是 7、出账列分母是 6', () => {
+  it('计数从渲染的行算,不抄 schedules.total —— 结构性 na 的行不进分母,记账列分母是 7、出账列分母是 6', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const { byCol } = closeChecks(rows)
     expect(byCol.booking.total).toBe(7)
     expect(byCol.billing.total).toBe(6)
+  })
+
+  // 评审修补(task-3-fix-brief.md #5):分母排除的是「结构性 na」(导入中心 / 本月锁账,恒做不完),
+  // 不是「当下 state 为 na」——收入核对的 na 只是「recon 还没到达」,真能做完,不能因为异步加载
+  // 就把出账分母从 6 撞成 5。旧口径(`if (r.state === 'na') continue`)下这条会失败(billing.total=5)。
+  it('分母只排除结构性 na(导入中心/本月锁账)——收入核对未到(na)时也计入分母,出账恒 6、记账恒 7', () => {
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: null, review: null })
+    const { byCol } = closeChecks(rows)
+    expect(byCol.billing.total).toBe(6)   // 5 链步 + 收入核对(countable,即使此刻是 na)
+    expect(byCol.booking.total).toBe(7)
+    const recon = rows.find(r => r.key === 'reconciliation')!
+    const lock = rows.find(r => r.key === 'month-lock')!
+    const imp = rows.find(r => r.key === 'import')!
+    expect(recon.countable, '收入核对不是结构性 na —— 只是暂时不知道,要进分母').toBe(true)
+    expect(lock.countable, '本月锁账是结构性 na —— 审核机制未上线,不进分母').toBe(false)
+    expect(imp.countable, '导入中心是结构性 na —— 没有这个数据源,不进分母').toBe(false)
   })
 
   it('链五步的状态取 overview.chain.steps[i].status —— 不许用 chainStepsOf,它的第一步恒 done', () => {
