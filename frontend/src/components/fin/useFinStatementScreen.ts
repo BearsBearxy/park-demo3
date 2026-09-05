@@ -128,6 +128,12 @@ export function useFinStatementScreen(opts: {
     current: () => ({ p: periodOf(year.value, month.value), co: companyId.value }),
     apply: (t) => { void applyDeep(t).catch(() => {}) },
     dirty: () => dirty.value,
+    // current().p 矩阵态是光秃秃一个年份(深链相等判专用,见 DeepPeriodOpts.ctx 注释)——
+    // 页签上下文得按用户真实看到的来:没选月就是 null。
+    ctx: () => ({
+      p: month.value == null ? null : periodOf(year.value, month.value),
+      coName: companyId.value === 'all' ? '全部汇总' : companyName.value,
+    }),
   })
   async function loadCompanies() {
     companies.value = await companyApi.list()

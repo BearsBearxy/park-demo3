@@ -7,11 +7,12 @@
 // 去重键 = route.fullPath(单测的 route 桩多半没有 fullPath,退回 query 序列化)。
 // 三不动:parsePeriod 为 null / 与当前 (period, co) 相同 / 目标屏有未保存改动(dirty > 0 → 不切期,只在 note 里说)。
 // 去重键在判断之前就记下 —— 被拒的地址在同一实例上不再重试(用户已经看过提示);下一次真的 apply 时 note 清空。
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { parsePeriod, periodOf, type DeepPeriod } from '@/nav/deepLink'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { useTabsStore } from '@/stores/tabs'
 
 export interface DeepPeriodOpts {
   /** 屏此刻的期与公司,用来判「与当前相同 → 不动」;p 用 periodOf 的形状,co 缺省视同 null */
@@ -19,6 +20,14 @@ export interface DeepPeriodOpts {
   apply: (t: DeepPeriod) => void
   /** 未保存改动数;不传 = 没有草稿态的屏 */
   dirty?: () => number
+  /**
+   * 写进页签上下文的期与公司名(spec §4.3)。不传就用 `current().p` ——
+   * 传的理由只有两个:① 本屏有公司 / 期区维度(台账、三大报表、附10);
+   * ② 本屏的 `current().p` 是为深链相等判造的、与用户看到的期不是一回事
+   *    (三大报表矩阵态 `current.p` 是光秃秃一个年份,那是「只有年的链停在矩阵」的相等条件,
+   *     不是用户选了期 —— 照抄进页签会写出「利润表 · 2025」而用户没点月格)。
+   */
+  ctx?: () => { p: string | null; coName?: string | null }
 }
 
 export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
@@ -41,6 +50,21 @@ export function useDeepPeriod(o: DeepPeriodOpts): { note: Ref<string> } {
   }
   run(true)
   onReactivated(() => run(false))
+
+  // ── 把本屏的期寄存进页签上下文(spec §4.3) ─────────────────
+  // 收在这里而不是散在 billingPeriod.pick / screenPeriod.pick / LedgerView / useFinStatementScreen
+  // 四处:所有有期的屏本来就都经过这条路,而这里天然拿得到「我是哪个页签」(route.meta.value)
+  // 与「期变了」的时机。深链落期与屏内自己换期走的是同一个 current(),两条路一起覆盖。
+  const tabs = useTabsStore()
+  const navValue = (route.meta as Record<string, unknown>)?.value
+  if (typeof navValue === 'string' && navValue) {
+    watch(
+      () => (o.ctx ? o.ctx() : { p: o.current().p, coName: null }),
+      (c) => tabs.setCtx(navValue, { p: c.p ?? undefined, coName: c.coName ?? undefined }),
+      { immediate: true },
+    )
+  }
+
   return { note }
 }
 

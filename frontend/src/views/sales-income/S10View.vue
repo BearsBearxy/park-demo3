@@ -253,6 +253,7 @@ const { note: deepNote } = useDeepPeriod({
   current: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), co: phase.value }),
   apply: (t) => { void applyDeep(t).catch(() => {}) },
   dirty: () => dirty.size,
+  ctx: () => ({ p: year.value == null ? null : periodOf(year.value, month.value), coName: phase.value == null ? null : `${phase.value}期` }),
 })
 // KeepAlive 切回重读(spec §12):导入中心导完切回来,矩阵与本月不能还是导入前的旧表;有草稿只刷总览(loadMonth 会 dirty.clear())
 onReactivated(() => {

@@ -165,6 +165,7 @@ const { note: deepNote } = useDeepPeriod({
   current: () => ({ p: month.value == null ? null : periodOf(year.value, month.value), co: companyId.value }),
   apply: (t) => { void applyDeep(t).catch(() => {}) },
   dirty: dirtyCount,
+  ctx: () => ({ p: month.value == null ? null : periodOf(year.value, month.value), coName: company.value?.short || companyName.value || null }),
 })
 // KeepAlive 切回重读本月(spec §12 同款):导入中心导完切回来,宽表不能还是导入前的;编辑态不动(草稿在 draft 里,快照换了会把它判脏)
 onReactivated(() => { if (month.value != null && !edit.value) void loadMonth().catch(() => {}) })
