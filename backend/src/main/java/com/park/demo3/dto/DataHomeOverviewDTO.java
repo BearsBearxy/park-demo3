@@ -1,4 +1,5 @@
 package com.park.demo3.dto;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
@@ -28,5 +29,11 @@ public record DataHomeOverviewDTO(
     public record Step(String key, String label, String status, String detail, String go) {}
     /** 附表录入 9 项。 */
     public record Schedules(int done, int total, List<Item> items) {}
-    public record Item(String name, String tag, boolean done, String go) {}
+    /** companies/phases都可为null：只有台账(ledger)出companies、只有附10出phases；review位归R1。 */
+    public record Item(String name, String tag, boolean done, String go,
+                       List<Company> companies, List<Phase> phases) {}
+    /** 台账公司清单：全集来自管理公司表，done = 该公司本月台账有没有行。 */
+    public record Company(int id, @JsonProperty("short") String shortName, boolean done) {}
+    /** 附10四个期区：no = phase(1一期/2二期/3三期/4担保)，done = 该slot本月有没有行。 */
+    public record Phase(int no, boolean done) {}
 }

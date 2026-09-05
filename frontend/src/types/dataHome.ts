@@ -35,11 +35,26 @@ export interface DataHomeChainDTO {
   steps: DataHomeStepDTO[]
 }
 
+/** 台账公司清单(仅 ledger 项非 null):全集来自管理公司表,done = 该公司本月有没有台账行。 */
+export interface DataHomeCompanyDTO {
+  id: number
+  short: string   // 简称(@JsonProperty("short"))
+  done: boolean
+}
+
+/** 附10 四个期区(仅 sales-income 项非 null):no = 1一期/2二期/3三期/4担保。 */
+export interface DataHomePhaseDTO {
+  no: number
+  done: boolean
+}
+
 export interface DataHomeItemDTO {
   name: string
   tag: string
   done: boolean
   go: string
+  companies?: DataHomeCompanyDTO[]   // 只有台账(ledger)非 null
+  phases?: DataHomePhaseDTO[]        // 只有附10(sales-income)非 null
 }
 
 export interface DataHomeSchedulesDTO {

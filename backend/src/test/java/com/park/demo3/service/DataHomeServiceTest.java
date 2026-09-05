@@ -27,9 +27,10 @@ class DataHomeServiceTest {
     AllocLossResultMapper lossResults = Mockito.mock(AllocLossResultMapper.class);
     BillNoticeMapper billNotices = Mockito.mock(BillNoticeMapper.class);
     ParamService paramService = Mockito.mock(ParamService.class);
+    ManagementCompanyMapper companies = Mockito.mock(ManagementCompanyMapper.class);
 
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
-        meterReadings, poolResults, lossResults, billNotices, paramService);
+        meterReadings, poolResults, lossResults, billNotices, paramService, companies);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
@@ -56,6 +57,17 @@ class DataHomeServiceTest {
     ContractSummaryDTO summary(int expiring) {
         return new ContractSummaryDTO(10, 5, expiring, 1, java.math.BigDecimal.ZERO);
     }
+    PvRecord pvRow(String acctMonth) { return pvRow(acctMonth, LocalDateTime.of(2025, 1, 1, 0, 0)); }
+    S10Record s10Row(int phase) { return s10Row("2025-06", phase, LocalDateTime.of(2025, 6, 1, 0, 0)); }
+    ManagementCompany company(int id, String shortName) {
+        ManagementCompany c = new ManagementCompany(); c.setId(id); c.setShortName(shortName); return c;
+    }
+    MonthlyLedger ledgerRow(int companyId) {
+        MonthlyLedger r = new MonthlyLedger(); r.setCompanyId(companyId); return r;
+    }
+    DataHomeOverviewDTO.Item itemOf(DataHomeOverviewDTO o, String go) {
+        return o.schedules().items().stream().filter(i -> go.equals(i.go())).findFirst().orElseThrow();
+    }
 
     /**
      * 默认全部 mapper 返回空(所有源 missing)；按需在测试里覆盖。
@@ -63,6 +75,7 @@ class DataHomeServiceTest {
      */
     void stubAllEmpty() {
         when(ledger.selectList(any())).thenReturn(List.of());
+        when(companies.selectList(any())).thenReturn(List.of());
         when(ledger.<Object>selectObjs(any())).thenReturn(List.of());
         when(s10.<Object>selectObjs(any())).thenReturn(List.of());
         when(s10.selectBySlot(anyInt(), anyString())).thenReturn(List.of());
@@ -111,6 +124,47 @@ class DataHomeServiceTest {
             .allMatch(DataHomeOverviewDTO.Item::done);
         assertThat(o.schedules().items()).filteredOn(i -> i.name().equals("月度台账"))
             .noneMatch(DataHomeOverviewDTO.Item::done);
+    }
+
+    @Test
+    void 年度类附表按本月判_不是今年有行就算做了() {
+        stubAllEmpty();
+        // 附6:同年内有行、但不是本月 → 本月应为未做(改前:整年有行就 done,一月录完十二月还显对勾)
+        when(pv.selectByYear(2025)).thenReturn(List.of(pvRow("2025-01"), pvRow("2025-03")));
+        var ov = svc.overview("2025-06");
+        var pv6 = ov.schedules().items().stream().filter(i -> "附6".equals(i.tag())).findFirst().orElseThrow();
+        assertThat(pv6.done()).isFalse();
+        var ov3 = svc.overview("2025-03");
+        var pv3 = ov3.schedules().items().stream().filter(i -> "附6".equals(i.tag())).findFirst().orElseThrow();
+        assertThat(pv3.done()).isTrue();
+    }
+
+    @Test
+    void 台账项带公司清单_公司全集来自管理公司表_done按该月有没有行() {
+        stubAllEmpty();
+        when(companies.selectList(any())).thenReturn(List.of(company(1, "一期"), company(2, "二期")));
+        when(ledger.selectList(any())).thenReturn(List.of(ledgerRow(1)));   // 只有一期录了
+        var item = itemOf(svc.overview("2025-06"), "ledger");
+        assertThat(item.companies()).hasSize(2);
+        assertThat(item.companies().get(0).done()).isTrue();
+        assertThat(item.companies().get(1).done()).isFalse();   // 没录的也要在,否则看不出「该录几家」
+    }
+
+    @Test
+    void 附10项带四个期区_零新查询_按slot各自判() {
+        stubAllEmpty();
+        when(s10.selectBySlot(2, "2025-06")).thenReturn(List.of(s10Row(2)));
+        var item = itemOf(svc.overview("2025-06"), "sales-income");
+        assertThat(item.phases()).hasSize(4);
+        assertThat(item.phases().stream().filter(p -> p.done()).map(p -> p.no())).containsExactly(2);
+    }
+
+    @Test
+    void 其余七项的companies与phases为null_不占JSON体积() {
+        stubAllEmpty();
+        var item = itemOf(svc.overview("2025-06"), "salary");
+        assertThat(item.companies()).isNull();
+        assertThat(item.phases()).isNull();
     }
 
     @Test

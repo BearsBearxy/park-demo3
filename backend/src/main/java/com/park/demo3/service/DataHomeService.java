@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -35,23 +36,27 @@ public class DataHomeService {
     private final AllocLossResultMapper lossResults;
     private final BillNoticeMapper billNotices;
     private final ParamService paramService;
+    private final ManagementCompanyMapper companies;   // 台账公司清单全集(P2):按 sort_no,id 排序
 
     public DataHomeService(MonthlyLedgerMapper ledger, S10RecordMapper s10, SalaryRecordMapper salary,
                            OfficeRecordMapper office, PvRecordMapper pv, ChargingRecordMapper charging,
                            ElecRecordMapper elec, ContractService contractService,
                            MeterReadingMapper meterReadings, AllocPoolResultMapper poolResults,
                            AllocLossResultMapper lossResults, BillNoticeMapper billNotices,
-                           ParamService paramService) {
+                           ParamService paramService, ManagementCompanyMapper companies) {
         this.ledger = ledger; this.s10 = s10; this.salary = salary; this.office = office;
         this.pv = pv; this.charging = charging; this.elec = elec; this.contractService = contractService;
         this.meterReadings = meterReadings; this.poolResults = poolResults;
         this.lossResults = lossResults; this.billNotices = billNotices; this.paramService = paramService;
+        this.companies = companies;
     }
 
 
     /** 一个数据源在本期的取数结果：本期行的 updated_at 列表(用于 status/updated/count/recent)。 */
     private record SourceData(String name, String tag, String go, boolean yearly,
-                              List<LocalDateTime> updatedAts) {
+                              List<LocalDateTime> updatedAts,
+                              List<DataHomeOverviewDTO.Company> companies,   // 只有台账非 null
+                              List<DataHomeOverviewDTO.Phase> phases) {      // 只有附10非 null
         boolean done() { return !updatedAts.isEmpty(); }
         LocalDateTime maxUpdated() { return updatedAts.stream().max(Comparator.naturalOrder()).orElse(null); }
     }
@@ -96,7 +101,7 @@ public class DataHomeService {
         //    改了会让附表完成度失真 ──
         List<SourceData> sources = scheduleSources(year, month, ym);
         List<DataHomeOverviewDTO.Item> items = sources.stream()
-            .map(x -> new DataHomeOverviewDTO.Item(x.name(), x.tag(), x.done(), x.go()))
+            .map(x -> new DataHomeOverviewDTO.Item(x.name(), x.tag(), x.done(), x.go(), x.companies(), x.phases()))
             .toList();
         int done = (int) sources.stream().filter(SourceData::done).count();
 
@@ -136,16 +141,35 @@ public class DataHomeService {
         for (Object o : rows) if (o instanceof String v && parseAcctMonth(v) != null) out.add(v);
     }
 
-    /** 9 个附表源的本期取数。粒度差异是既有口径:月度类按 acctMonth、年度类按 year。 */
+    /** 9 个附表源的本期取数。全部按 acctMonth 判本月有没有行(2026-09-06 前年度类曾按整年判,
+     *  一月录完十二月看还显对勾——那是假绿,已改);yearly 这个位现在只剩「标签写不写年」的用途。 */
     private List<SourceData> scheduleSources(int year, int month, String acctMonth) {
         List<SourceData> sources = new ArrayList<>(9);
-        sources.add(monthly("月度台账", "凭证", "ledger",
-            ledger.selectList(new QueryWrapper<MonthlyLedger>()
-                .eq("period_year", year).eq("period_month", month)), MonthlyLedger::getUpdatedAt));
-        sources.add(monthly("销售收入", "附10", "sales-income",
-            concat(s10.selectBySlot(1, acctMonth), s10.selectBySlot(2, acctMonth),
-                   s10.selectBySlot(3, acctMonth), s10.selectBySlot(4, acctMonth)),
-            S10Record::getUpdatedAt));
+        List<MonthlyLedger> ledgerRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
+            .eq("period_year", year).eq("period_month", month));
+        // 台账公司清单:全集来自管理公司表(不是「谁录了谁才在列表里」),done 按该公司本月有没有台账行判
+        Map<Integer, Boolean> ledgerDone = ledgerRows.stream()
+            .collect(Collectors.groupingBy(MonthlyLedger::getCompanyId,
+                     Collectors.reducing(false, r -> true, Boolean::logicalOr)));
+        List<DataHomeOverviewDTO.Company> cos = companies.selectList(new QueryWrapper<ManagementCompany>()
+                .orderByAsc("sort_no").orderByAsc("id")).stream()
+            .map(c -> new DataHomeOverviewDTO.Company(c.getId(), c.getShortName(), ledgerDone.getOrDefault(c.getId(), false)))
+            .toList();
+        sources.add(new SourceData("月度台账", "凭证", "ledger", false,
+            updatedAts(ledgerRows, MonthlyLedger::getUpdatedAt), cos, null));
+        // 附10 四个期区:selectBySlot 拆出来各留一个 isEmpty() 判 phase 的 done,concat 仍供整项 done 用
+        // (零新增 SQL —— 四次 selectBySlot 本就要发)
+        List<S10Record> s10p1 = s10.selectBySlot(1, acctMonth);
+        List<S10Record> s10p2 = s10.selectBySlot(2, acctMonth);
+        List<S10Record> s10p3 = s10.selectBySlot(3, acctMonth);
+        List<S10Record> s10p4 = s10.selectBySlot(4, acctMonth);
+        List<DataHomeOverviewDTO.Phase> phases = List.of(
+            new DataHomeOverviewDTO.Phase(1, !s10p1.isEmpty()),
+            new DataHomeOverviewDTO.Phase(2, !s10p2.isEmpty()),
+            new DataHomeOverviewDTO.Phase(3, !s10p3.isEmpty()),
+            new DataHomeOverviewDTO.Phase(4, !s10p4.isEmpty()));
+        sources.add(new SourceData("销售收入", "附10", "sales-income", false,
+            updatedAts(concat(s10p1, s10p2, s10p3, s10p4), S10Record::getUpdatedAt), null, phases));
         sources.add(monthly("工资明细", "附12", "salary",
             salary.selectByMonth(acctMonth), SalaryRecord::getUpdatedAt));
         sources.add(monthly("办公水电", "附13", "utilities",
@@ -155,14 +179,17 @@ public class DataHomeService {
             office.selectByScheduleAndYear(14, year).stream()
                 .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), OfficeRecord::getUpdatedAt));
         sources.add(yearly("光伏发电", "附6", "pv-income",
-            pv.selectByYear(year), PvRecord::getUpdatedAt));
+            pv.selectByYear(year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), PvRecord::getUpdatedAt));
         sources.add(yearly("汽车充电桩", "附7", "car-charging",
-            charging.selectByScheduleAndYear(7, year), ChargingRecord::getUpdatedAt));
+            charging.selectByScheduleAndYear(7, year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ChargingRecord::getUpdatedAt));
         sources.add(yearly("电动车充电桩", "附8", "ebike-charging",
-            charging.selectByScheduleAndYear(8, year), ChargingRecord::getUpdatedAt));
+            charging.selectByScheduleAndYear(8, year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ChargingRecord::getUpdatedAt));
         sources.add(yearly("电费成本", "附11", "elec-cost",
-            concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")),
-            ElecRecord::getUpdatedAt));
+            concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ElecRecord::getUpdatedAt));
         return sources;
     }
 
@@ -178,12 +205,12 @@ public class DataHomeService {
 
     private static <T> SourceData monthly(String name, String tag, String go,
                                           List<T> rows, Function<T, LocalDateTime> getUpdated) {
-        return new SourceData(name, tag, go, false, updatedAts(rows, getUpdated));
+        return new SourceData(name, tag, go, false, updatedAts(rows, getUpdated), null, null);
     }
 
     private static <T> SourceData yearly(String name, String tag, String go,
                                          List<T> rows, Function<T, LocalDateTime> getUpdated) {
-        return new SourceData(name, tag, go, true, updatedAts(rows, getUpdated));
+        return new SourceData(name, tag, go, true, updatedAts(rows, getUpdated), null, null);
     }
 
     private static <T> List<LocalDateTime> updatedAts(List<T> rows, Function<T, LocalDateTime> getUpdated) {
