@@ -47,6 +47,8 @@
   3. `DataHomeView.spec.ts:138-143` 「附表未录在前、已录在后」**整条删**：两栏清单按**业务时序**固定排序（spec §5.2 的表序），`sortedItems` 的 done 升序排序随之取消。P1 那条排序是给一排扁平胶囊用的可供性，两栏板子里它会让「月度台账」跳来跳去。**删断言要在 §12 记一笔**。
   4. `DataHomeView.spec.ts:175-181` 「附13 / 附14 同屏异 tab」：合并成一行之后不可能按原样通过。**裁定：合并行带两个 chip**（「办公」/「三期」），**每个 chip 各自带自己的 `tab`** —— 这样 P0b 立的链形状（`tab=office` / `tab=phase3`）一个都不丢，spec §5.2 的 8 行也成立。该条改成断言两个 chip 各自的 tab。**附表7/8 同办**（两个 chip「汽车」/「电动车」，各自的 nav value 是 `car-charging` / `ebike-charging`）。
   5. `DataHomeView.spec.ts:161` / `:168` 的 `.dh-item` 索引位移（折行后下标变了）。
+  6. `DataHomeView.spec.ts:202` 「点附表项不触发 loadChain」**整条删**（T4，2026-09-06 定）：年份条要四个工序点，本屏从此**永远**是链数据的消费者，`onMounted` 就发 —— 「点附表不打链的网络」这句话不再成立。**§12 记一笔**。
+  7. `DataHomeView.spec.ts:192` 「点出账链步骤后触发 loadChain」**改写**成「进屏即 loadChain 一次；再点出账链行不重复打网络」（T4）。不改写它会因为 `onMounted` 已经发过而**恒绿** —— 变成一条什么都不守的断言。
   其余 20 条**只改选择器不改期望值**。清单之外任何一条断言的期望值被改了 → **停下报告**。
 - ⚠ **类型门禁只有 `npm run typecheck` 算数**（= `vue-tsc --noEmit -p tsconfig.app.json`，也是 `npm run build` 的第一步）。**不带 `-p` 的 `npx vue-tsc --noEmit` 什么都不检查** —— 根 `tsconfig.json` 是 `files: []` + references，实测输出 0 行。2026-09-06 在 T3 收尾发现：那之前各任务报的「vue-tsc 零错」全是空的，真正验过类型的只有跑过 `npm run build` 的那几个检查点（幸好它们把问题都挡住了，T3 之后才漏出两处）。
 - **逐条破坏验证**：每条新断言改坏 production 一处 → **只有对应那条红** → 字符串替换还原，**绝不 `git checkout` / `git stash`**。这一期前面五期的评审累计抓到 13 处「改坏了却没有一条红」的假绿，写每条用例前先自问：**把我要保护的那一行删掉，这条会红吗**。
@@ -454,22 +456,268 @@ EOF
 ### Task 4: 年份条取代月份下拉
 
 **Files:**
-- Modify: `frontend/src/components/fp/BookMonthMatrix.vue:13-31, 102-107`（`MonthCell` 加 `locked?: boolean`）
-- Modify: `frontend/src/views/data-home/DataHomeView.vue:173-186`（删 `Select`，挂矩阵，`onMounted` 补 `loadChain`）
-- Test: `DataHomeView.spec.ts` +3；`components/fp/__tests__/` 下 BookMonthMatrix 的既有测 +1
+- Modify: `frontend/src/components/fp/BookMonthMatrix.vue`（`MonthCell` 加 `locked?: boolean` + 独立 absolute 锁角标；新增可选 prop `manageYears?: boolean`）
+- Modify: `frontend/src/views/data-home/DataHomeView.vue`（删 `Select` 与 `monthOpts`，头里改显 `ov.period.label`，`.dh-head` 与前置条之间插年份条，骨架同步；`onMounted` 补 `loadChain`）
+- Test: `frontend/src/components/fp/__tests__/chainMatrix.spec.ts` +2；`frontend/src/views/data-home/DataHomeView.spec.ts` 迁 4 处选择器 + 删 1 条 + 改写 1 条 + 新增 5 条
 
-- [ ] **Step 1: 先写失败的测试**
+**Interfaces:**
+- Consumes: T3 落地的 `.dh-head` / `.dh-cols` / 骨架分支；`stores/billingPeriod` 的 `loadChain()` / `cellOf(ym)` / `loaded`；`nav/billingChain` 的 `pipsOf(cell) → boolean[]`；`utils/matrixYears` 的 `buildYearRows(dataYears, currentYear, extraYears) → { year, manual }[]`
+- Produces: `MonthCell.locked?: boolean` —— R1 §7.2「全月已审核 → ✓ 锁标」的落点；`BookMonthMatrix` 的 `manageYears?: boolean`（默认 `true`，其余 7 个调用点零改动）
+
+**本任务的九条裁定**（2026-09-06 控制者定，逐条带理由与判错代价）：
+
+1. **年份行的数据源是 `ov.months`，不是 `period.dataYears`。** 后端 `DataHomeService.allMonths` 的头注原话：「顶部月份下拉的可切月份：链 ∪ 附表……**不能只给链的月份** —— 用户要能切到 2025-06 补台账，而那个月链上一条数据都没有」。照 `dataYears`（只有链的四个 `/months` 端点）组年份，只有附表数据的年整年点不进去 —— 那正是这屏最常用的场景。**判错代价**：一行 `map` 换回来。
+2. **`hasData` 取 `ov.months.includes(ym)`，不取 `pips.some(Boolean)`。** 同上：附表月的四个工序点全灭，照 pips 判会把它画成虚线「空」卡。
+3. **`pips` 只在 `period.loaded` 为真时传，否则整个字段不给。** 链数据是 `onMounted` 之后异步到的；未到时传 `[false,false,false,false]` 就是「这个月一道工序没走」—— 本期评审累计抓了 13 处这类假绿，不许再造一处。不传时落到 `:105-107` 的 `v-else-if` 后段，卡片只显「N月」，诚实。**零位移**：`.bmm-card` 是 `min-height:62px` + `justify-content:space-between`，少一个子元素不改高度，月份标签仍在顶部（这一条要有用例钉住）。
+4. **`cur`（描边）= 当前显示月，不是 ChainMonthGate 的「最近有数据月」。** 这条回答「你现在看的是哪个月」，`ChainMonthGate` 那条回答「从哪儿接着干」。用 `ym === curYm` 判。
+5. **`manageYears?: boolean` 默认 `true`，首页传 `false`**，隐藏「＋ 补更早年份」「＋ 添加 {次年} 年」与行尾移除槽三处。理由：首页这条是**导航**不是账册管理 —— 在总览屏「添加 2027 年」不产生任何数据，接了线也没有语义，不接线就是两颗按下去没反应的按钮（比没有按钮更坏）。顺带省掉约 80px 竖向空间，而 1366×620 下内容区只有 ≈502px，两栏板子本身要 300px+。默认 `true` 保证 7 个既有调用点与快照类断言**一个字不改**。**判错代价**：删一个 prop。
+   ⚠ 隐藏移除槽会让月卡网格变宽（`.bmm-rm-slot` 是 `flex:0 0 44px` 常驻占宽）—— 这是**跨屏的不同版式**，不是位移；同一屏内它恒隐或恒显。
+6. **年份条插在 `.dh-head` 之后、前置条（`.dh-blocker`）之前。** 前置条是按 ym 算的（`paramStale` 就是 `paramService.status(ym)` 的回包），期的选择器必须读在它上面，否则用户看到一条警告却不知道说的是哪个月。
+7. **头里 `.dh-msel` 换成 `ov.period.label` 纯文本，不许直接删。** `DataHomeView.spec.ts:237` 的 `expect(w.text()).toContain('2025年6月')` 与 `:238` 的 `not.toContain('2023年8月')` 靠屏上有这句月名；删了那条会红，而它守的是「晚到的旧回包不覆盖新选的月」这件真事，不是版式。这是**选择器迁移不是期望值改动**。
+8. **`onMounted` 补 `loadChain` 会动到两条既有断言，两条都按下面处理**（超出计划原有的 5 条改动清单，登记为第 6、7 条）：
+   - `:202`「点附表项不触发 loadChain」（`expect(metersApi.months).not.toHaveBeenCalled()`）—— **整条删**。它的意图被设计作废：年份条让本屏**永远**是链数据的消费者，「点附表不打链的网络」这句话从今天起不再成立。§12 记一笔。
+   - `:192`「点出账链步骤后触发 loadChain」—— 改写成「**进屏即 loadChain 一次；再点出账链行不重复打网络**」（仍断 `toHaveBeenCalledTimes(1)`，但语义从「点了才发」变成「进屏就发 + 幂等」）。不改写的话它会因为 `onMounted` 已经发过而**恒绿**，变成一条什么都不守的断言。
+9. **锁角标本期没有生产路径，唯一有效的守是组件级用例。** §7.2 审核机制整块归 R1（见 Global Constraints 第一条），所以首页**不传 `locked`**，屏级怎么写都绿。有效的守只有 `chainMatrix.spec` 里那条「同时传 `pips` 与 `locked: true` 时两者都在 DOM 里」—— 它钉的是「锁标是独立 absolute 角标，没被写进 `:102-107` 那条 `v-else-if` 互斥链」（年份条恒传 pips，写进链里就一次都画不出来，而 R1 那时再发现就晚了）。如实记 §12：本期 `locked` 是 R1 的落点，无调用方。
+
+- [ ] **Step 1: 先写失败的测试 —— 组件级（`components/fp/__tests__/chainMatrix.spec.ts`）**
+
+照该文件既有的 `months()` / `mk()` 两个辅助写（`:18-29`），**不要另起夹具**：
 
 ```ts
-it('年份条取代月份下拉:屏上没有 Select,点格子换月', ...)
-it('默认选中 = 出账链最新有数据月(现锚规则不变)', ...)
-it('BookMonthMatrix:同时传 pips 与 locked:true 时两者都在 DOM 里(锁标是独立 absolute 角标,不进 v-else-if 链)', ...)
-it('年份条恒传 pips,所以锁标若写进那条互斥链就一次都画不出来 —— 这条钉住它没被写进去', ...)
+it('锁标是独立角标:同传 pips 与 locked 时两者都在 DOM 里', () => {
+  const w = mk(months({ 3: { hasData: true, pips: [true, false, false, false], locked: true } }))
+  const card = w.findAll('.bmm-card')[2]
+  expect(card.findAll('.bmm-pip')).toHaveLength(4)
+  expect(card.find('.bmm-lock').exists(), '锁标若写进 pips/badge/rowCount 那条 v-else-if 链就永远画不出来').toBe(true)
+})
+
+it('manageYears=false 时三处年份管理入口都不渲染', () => {
+  setActivePinia(createPinia())
+  const w = mount(BookMonthMatrix, {
+    props: { book: BOOK, years: [{ year: 2025, months: months(), removable: true }], manageYears: false },
+  })
+  expect(w.find('.bmm-addy').exists()).toBe(false)     // ＋ 补更早年份
+  expect(w.find('.bmm-addrow').exists()).toBe(false)   // ＋ 添加 {次年} 年
+  expect(w.find('.bmm-rm-slot').exists()).toBe(false)  // 行尾移除槽
+})
 ```
 
-- [ ] **Step 2–4: 实现 / 破坏验证 / 提交**
+⚠ 第二条自己 `setActivePinia`（`mk()` 里做了，直接 `mount` 的这条没有 —— 组件读 `usePresenceStore`）。
 
-`locked` 字段照 `pips`（`:23`）/ `badge`（`:28`）的既有风格加，**不加具名插槽**（那要动 7 个调用点与 4 份快照类断言）。首页 `onMounted` 补 `void period.loadChain().catch(() => {})`，行的组法照抄 `ChainMonthGate.vue` 组 `rows` 那段。`pickedYm` 改由矩阵 `@pick` 回写，`:79` 的「手选优先」链路保持。
+- [ ] **Step 2: 先写失败的测试 —— 屏级（`views/data-home/DataHomeView.spec.ts`）**
+
+```ts
+it('年份条取代月份下拉:屏上没有 Select,矩阵在,月名照显', async () => {
+  const w = await mountWith()
+  expect(w.findComponent({ name: 'Select' }).exists()).toBe(false)
+  expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(true)
+  expect(w.text()).toContain('2024年2月')
+})
+
+it('年份行来自 ov.months 的年,不是链数据年:只有附表的年也点得进去', async () => {
+  const w = await mountWith()   // 夹具 months = ['2023-08','2024-02','2025-06'],链四端点全 mock 成 []
+  const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number }[]
+  expect(years.map(y => y.year), '照 period.dataYears 组年份这里会是空的').toContain(2023)
+  expect(years.map(y => y.year)).toContain(2025)
+})
+
+it('点格子换月:@pick 回写 pickedYm,重新取 overview', async () => {
+  const w = await mountWith()
+  getOverview.mockResolvedValue(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+  await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
+  await flushPromises()
+  expect(getOverview).toHaveBeenLastCalledWith('2025-06')
+  expect(w.text()).toContain('2025年6月')
+})
+
+it('描边跟着当前显示月走,不是「最近有数据月」', async () => {
+  const w = await mountWith()   // 锚定月 2024-02
+  const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number; months: { month: number; cur?: boolean }[] }[]
+  const flat = years.flatMap(y => y.months.map(m => ({ ym: `${y.year}-${String(m.month).padStart(2, '0')}`, cur: m.cur })))
+  expect(flat.filter(c => c.cur).map(c => c.ym)).toEqual(['2024-02'])
+})
+
+it('链数据没到时不给 pips —— 四个灭点会被读成「这个月一道工序没走」', async () => {
+  // metersApi.months 停在在途:overview 已上屏,billingPeriod.loaded 仍为 false
+  let resolve!: (v: string[]) => void
+  vi.mocked(metersApi.months).mockReturnValueOnce(new Promise<string[]>((r) => { resolve = r }))
+  const w = await mountWith()
+  const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { months: { pips?: boolean[] }[] }[]
+  expect(years.flatMap(y => y.months).every(m => m.pips === undefined),
+    '未加载时传 [false,false,false,false] = 假绿:那是「查过了,一道没走」').toBe(true)
+  resolve([])
+  await flushPromises()
+})
+```
+
+改写 `:192`、删 `:202`（裁定 8）：
+
+```ts
+it('进屏即 loadChain 一次,再点出账链行不重复打网络', async () => {
+  // 年份条要 4 个工序点,所以本屏从 T4 起进屏就发;go() 里那句是幂等兜底(loaded 后直接返回)。
+  // 不补这一句,目标屏 chainStepsOf(cellOf(ym)) 读到冻结的 EMPTY 格子,五道工序全显「未做」。
+  const w = await mountWith()
+  expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+  await w.findAll('.dh-row-billing')[1].trigger('click')
+  await flushPromises()
+  expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+})
+```
+
+四处 `Select` 选择器迁移（`:215` / `:230` / `:583` / `:601`，**期望值一个字不改**）：
+`await w.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', '2025-06')`
+→ `await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)`
+
+- [ ] **Step 3: 跑它,确认按预期失败**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/components/fp/__tests__/chainMatrix.spec.ts src/views/data-home/DataHomeView.spec.ts
+```
+
+期望：组件 2 条 + 屏级 5 条新用例红，`Select` 迁移那 4 条红（组件不存在）。**其余既有条目全绿** —— 若有别的红，先停下报告。
+
+- [ ] **Step 4: 实现 —— `BookMonthMatrix.vue`**
+
+`MonthCell`（`:13-31`）末尾加一个字段，注释照该 interface 既有的密度写：
+
+```ts
+  /**
+   * 全月已审核 → 卡右下角一枚 ✓ 锁标（SIDEBAR-UX-REDESIGN §7.2）。
+   * **独立 absolute 角标，与 pips / badge / rowCount 并存**，不进下面那条 v-else-if 互斥链 ——
+   * 年份条恒传 pips，写进链里锁标一次都画不出来，而那种用例接对接错都绿。
+   * 审核机制本身归 R1，本期无调用方传它。
+   */
+  locked?: boolean
+```
+
+props（`:39-49`）加：
+
+```ts
+  /** 年份增删入口（补更早 / 添加次年 / 行尾移除）。默认开；总览屏那条年份条是导航不是账册管理，传 false。 */
+  manageYears?: boolean
+```
+
+⚠ 本文件用的是**裸 `defineProps<{...}>()`**，没有 `withDefaults`。别为了一个布尔把整段改成 `withDefaults` —— 模板里写 `v-if="manageYears !== false"` 即可（`undefined` 当真）。
+
+模板三处：`.bmm-top`（`:73-77`）与 `.bmm-addrow`（`:119-125`）整块加 `v-if="manageYears !== false"`；`.bmm-rm-slot`（`:111-116`）同样。锁标插在 `.bmm-who`（`:96-100`）后面、pips 那条链之前：
+
+```html
+<span v-if="m.locked" class="bmm-lock" title="本月已审核锁定"><Lock :size="11" /></span>
+```
+
+`Lock` 从 `lucide-vue-next` 直接 import，与本文件既有的 `Plus, X`（`:11`）同行同风格（**不走 `iconFor`** —— 本组件一次都没用过它）。样式挨着 `.bmm-who`（`:192`）写：
+
+```css
+.bmm-lock { position:absolute; bottom:6px; right:6px; z-index:2; pointer-events:none; display:flex; color:var(--text-muted); }
+```
+
+⚠ 位置选 **右下**：右上被 `.bmm-who` 在场头像占了，左下是 `.bmm-pips`（flex-start），只有右下是空的。`--text-muted` 本文件 `:154` 已在用，不引入新令牌（构建期 `scripts/token-check.mjs` 会查）。
+
+- [ ] **Step 5: 实现 —— `DataHomeView.vue`**
+
+① 删 `import Select from '@/components/ds/Select.vue'`（`:23`）与 `monthOpts`（`:133-134`）；加 `BookMonthMatrix` 的 import、`pipsOf`（并进 `:28` 那行 `@/nav/billingChain`）、`buildYearRows`（`@/utils/matrixYears`）。
+
+② `onMounted(load)`（`:60`）→ 照 `ChainMonthGate.vue:36` 的既有写法：
+
+```ts
+onMounted(() => { void load(); void period.loadChain() })
+```
+
+`loadChain` 内部自己吞异常（`fetchAll` 的 catch 落 `loadErr`、不 reject），**不用再 `.catch`**。
+
+③ 年份行：
+
+```ts
+// 年份条(P2 T4):年份行来自 ov.months —— 后端明发的「链 ∪ 附表」全集(DataHomeService.allMonths)。
+// 照 period.dataYears 走会丢掉只有附表的年,而「切到 2025-06 补台账」正是这屏最常用的一步。
+const yearRows = computed(() => {
+  const ms = ov.value?.months ?? []
+  const have = new Set(ms)
+  const years = [...new Set(ms.map(m => +m.slice(0, 4)))]
+  return buildYearRows(years, new Date().getFullYear(), []).map(r => ({
+    year: r.year,
+    months: Array.from({ length: 12 }, (_, i) => {
+      const ym = `${r.year}-${String(i + 1).padStart(2, '0')}`
+      const c = period.cellOf(ym)
+      return {
+        month: i + 1,
+        hasData: have.has(ym),
+        // 链数据没到时**整个字段不给** —— 四个灭点会被读成「这个月一道工序没走」(裁定 3)
+        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale } : {}),
+        cur: ym === curYm.value,
+      }
+    }),
+  }))
+})
+```
+
+④ 模板：头里 `:225-228` 那块换成月名（裁定 7）；年份条作为 `.dh-head` 的**兄弟**插在前置条之前（裁定 6）：
+
+```html
+      <div v-if="ov.period" class="dh-mnow">{{ ov.period.label }}</div>
+```
+```html
+    <div v-if="ov.period" class="dh-ystrip">
+      <BookMonthMatrix :book="{}" :years="yearRows" :manage-years="false"
+                       @pick="(y, m) => { pickedYm = `${y}-${String(m).padStart(2, '0')}` }" />
+    </div>
+```
+
+`.dh-msel { width: 140px }`（`:321`）随 `Select` 一起删，换 `.dh-mnow`（`--fs-label` / `--text-secondary` 一类，照 `.dh-counts` 的量级）与 `.dh-ystrip`（只要一个下边距即可，矩阵自己有 `gap`）。
+
+⑤ **骨架同步**（`:185` 那个 `.dh-msel` 28px 微光条）：换成 `.dh-mnow` 尺寸的短条，**并且**在 `.dh-head` 之后补一个 `.dh-ystrip` 微光块 —— 同一个 class、同一条竖向轴，高度按**一年**给（78px ≈ 62px 卡 + 行距）。
+⚠ **诚实记一笔在注释里**：年份数在数据到达前不可知，所以骨架给一年、真版式若是四年，这一块会**长高**。T3 修的是轴向从单列跳成两栏（版式塌）—— 那是必须消掉的；块变高是同轴同序的增高，量级不同，**不假装能对齐**。
+
+- [ ] **Step 6: 跑测试**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/components/fp/ src/views/data-home/
+npx vitest run 2>&1 | tail -3
+npm run typecheck
+npm run build 2>&1 | tail -8
+```
+
+期望：全量在基线 **2384** 之上 = 2384 + 7 新增 − 1 删除 = **2390**；`npm run typecheck` 零错（⚠ **只有它算数**，见 Global Constraints 最后一条）。
+`npm run build` 必须过 `size-check`：上一次是 **index 185.7 / 191KB、合计 3890.3 / 3900KB —— 只剩 9.7KB**。`BookMonthMatrix` 已经是独立共享块（`dist/assets/BookMonthMatrix-*.js` 3.3KB），多一个引用方**不增字节**；真正新增的只有本任务写的那几十行。**触线即停，不许上调 `size-check.mjs` 的任何一个数**。
+**若 `noInteractionLayoutShift.spec` 或 `readonlyHasNoWriteButtons.spec` 红了 —— 停下报告。**
+
+- [ ] **Step 7: 逐条破坏验证**
+
+⚠ **往两个方向破坏**，并且**每一次破坏先自证改到了 production 语句**（改注释 = 没破坏，0 红会被读成「护栏是假的」—— 本期真出过一次）。还原一律**字符串替换**，替换前先数命中次数，不是 1 就换更长的上下文；**绝不 `git checkout` / `git stash`**。
+
+| 改坏什么 | 应红的那条 |
+|---|---|
+| 锁标挪进 `:102-107` 的 `v-else-if` 链（改成 `v-else-if="m.locked"`） | 组件条「锁标是独立角标」 |
+| `manageYears !== false` 改成恒真 | 组件条「三处年份管理入口都不渲染」 |
+| `yearRows` 的年份改回 `period.dataYears` | 「年份行来自 ov.months」 |
+| `hasData` 改成 `pipsOf(c).some(Boolean)` | 同上（链全空 → 整条全是虚线卡） |
+| `period.loaded ? {...} : {}` 改成恒传 | 「链数据没到时不给 pips」 |
+| `cur` 改成 ChainMonthGate 那套「最近有数据月」 | 「描边跟着当前显示月走」 |
+| `@pick` 不回写 `pickedYm` | 「点格子换月」 |
+| 头里的 `ov.period.label` 删掉 | **既有两条**（`:237` 晚到回包那条 + `:601` 那条），证明裁定 7 是真的 |
+| `onMounted` 里的 `void period.loadChain()` 删掉 | 「进屏即 loadChain 一次」 |
+| 骨架里新加的 `.dh-ystrip` 微光块删掉 | 若**无一条红** → 如实报告「这一条零覆盖」，**不要硬凑**（T3 那条「取数失败兜底」就是如实报了测不出） |
+
+- [ ] **Step 8: 提交**
+
+只 `git add` 下面四个路径，**不许 `git add -A`**（工作区可能有别人的改动）。提交信息用 `git commit -F` 读一个临时文件，避免嵌套 heredoc：
+
+```
+feat(data-home): P2 年份条取代月份下拉 —— 年份行取 ov.months(链∪附表),链未到不给 pips;BookMonthMatrix 加 locked 独立角标与 manageYears
+
+既有断言改动(计划改动清单第 6/7 条):删「点附表项不触发 loadChain」(年份条让本屏永远消费链数据,该语义作废);
+「点出账链步骤后触发 loadChain」改写成「进屏即发一次 + 幂等」(否则 onMounted 已发过,该条恒绿)。
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+```
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043
+git add frontend/src/components/fp/BookMonthMatrix.vue frontend/src/components/fp/__tests__/chainMatrix.spec.ts frontend/src/views/data-home/DataHomeView.vue frontend/src/views/data-home/DataHomeView.spec.ts
+git commit -F <上面那段写成的临时文件路径>
+```
 
 ---
 
