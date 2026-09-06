@@ -11,6 +11,7 @@ import com.park.demo3.entity.ReviewState;
 import com.park.demo3.mapper.ElecCostEntryMapper;
 import com.park.demo3.mapper.ReviewLogMapper;
 import com.park.demo3.mapper.ReviewStateMapper;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.security.Perm;
 import com.park.demo3.security.ReviewKey;
 import com.park.demo3.security.ReviewKind;
@@ -134,6 +135,7 @@ public class ReviewService {
     // ══ 四个动作 ═════════════════════════════════════════════════════════════
 
     @Transactional
+    @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void submit(String rawKey) {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireAnyPerm(key.kind().perms(),
@@ -164,6 +166,7 @@ public class ReviewService {
     }
 
     @Transactional
+    @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void approve(String rawKey) {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireStatus(key, "submitted", "通过");
@@ -181,6 +184,7 @@ public class ReviewService {
     }
 
     @Transactional
+    @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void returnBack(String rawKey, String reason) {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireStatus(key, "submitted", "退回");
@@ -196,6 +200,7 @@ public class ReviewService {
      * 理由留在 review_log 里,查得到。
      */
     @Transactional
+    @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
     public void withdraw(String rawKey, String reason) {
         ReviewKey key = ReviewKey.parse(rawKey);
         requireStatus(key, "approved", "撤销");

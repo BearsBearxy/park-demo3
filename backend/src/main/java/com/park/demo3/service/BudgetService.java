@@ -7,6 +7,7 @@ import com.park.demo3.dto.BudgetRowDTO;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.entity.BudgetRow;
 import com.park.demo3.mapper.BudgetRowMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -25,6 +26,7 @@ public class BudgetService {
 
     // ── 导入:按 payload 内出现的 year 整年替换(delete+insert) ──
     @Transactional
+    @NoReviewGuard(reason = "预算行按年落库(budget_row 只有 year 没有 acct_month),不属任何月;审核键全是月度的,无键可挂")
     public ImportResultDTO importRows(BudgetImportRequest req) {
         List<BudgetRowDTO> dtos = req == null || req.rows() == null ? List.of() : req.rows();
         Set<Integer> years = new LinkedHashSet<>();
