@@ -858,20 +858,213 @@ EOF
 
 ### Task 6: 主管条
 
-**Files:** `frontend/src/views/data-home/DataHomeView.vue`（新增主管条段）· `DataHomeView.spec.ts` +4
+**Files:**
+- Modify: `frontend/src/views/data-home/DataHomeView.vue`（新增主管条段 + 把 `go()` 里的确认抽成 `confirmRebuild`）
+- Test: `frontend/src/views/data-home/DataHomeView.spec.ts` +6
 
-- [ ] **Step 1: 先写失败的测试**
+**Interfaces:**
+- Consumes: `stores/presence` 的 `approvals`（`Pending[]`，**ping 已经在拉，不加新 API**）、`others`、`holdsEditUnder`；
+  `stores/auth` 的 `can(key)`；T5 落地的 `utils/lockScopes` 的 `navOfScope(scope)` / `scopePeriod(scope)`；
+  `nav/deepLink` 的 `periodLink`；`components/fp/FPApprovalDrawer.vue`
+- Produces: 无（本任务不导出新东西）
+
+**上游已经在那儿了，别重复造**：
+- `presence.approvals` 是 `Pending[]`，由那条 20 秒一拍的 ping 顺带带回来（`presence.ts:131,238`）。**不许为这条加任何新请求。**
+- `FPApprovalDrawer.vue` 已存在，仓里已经有**两个**懒加载实例（`Toolbar.vue:13,94` 与 `MobileTopBar.vue:11,42`，
+  写法都是 `defineAsyncComponent(() => import(...))` + `v-if="inbox"`）。照抄第三个，不增字节只增一条边。
+- `presence.users[]` 的形状见 `presence.ts:10-26`：`displayName` / `mode: 'view'|'edit'` / `editScopes: string[]` / `self`。
+  `others` = `users.filter(u => !u.self)`。测试里直接 `presence.users = [...]` 赋值（`DataHomeView.spec.ts:279` 已是这个写法）。
+- 权限键两个都是真的：`lock:takeover`（`systemRolesView.spec.ts:16`）、`system:view`（`router/index.ts:88`）。
+
+**本任务的六条裁定**：
+
+1. **主管条渲染在 `.dh` 的第一个子元素，落在 `<template v-if="!ov">` 与 `<template v-else>` 两个分支之外。**
+   它的数据源（`presence` + `auth`）与 `ov` 毫无关系 —— 跟着 `ov` 走没有任何理由，
+   而且分成两份写就要靠人记得同步（T3 的骨架漏包 `.dh-cols`、T4 的骨架漏 `.dh-ystrip` 都是这么来的）。
+   写在外面，骨架与真版式一致是**结构性的**，不靠自觉。
+2. **外层唯一允许的 `v-if` 是权限判** `auth.can('lock:takeover') || auth.can('system:view')`（那是「有没有这个角色」，不是「有没有数据」）。
+   **数据 `v-if` 一律禁**：`v-if="approvals.length"` / `v-if="editors.length"` 都不许。
+   ⚠ `noInteractionLayoutShift.spec` 的交互态词表（`:50-51`）里**没有 `approvals`**，写错了门禁**不会红** —— 只能靠下面的用例守。
+3. **「待批授权 N」读 `presence.approvals.length`**，零待批时同一条里显「暂无待批」。抽屉照 `MobileTopBar.vue:11,42` 那套写。
+4. **「谁在编辑」chips：一人一枚，取 `editScopes[0]`。** 理由：条是 32px 定高，N 人 × M 把锁装不下；
+   这条要回答的是「**谁**卡在哪」，一行一个人。一人握多把锁时取第一把 —— 与 `navOfScope`「取 `NAV_SCOPE_PREFIX` 声明序第一个」
+   同一种确定性（要的是稳定去处，不是随 `Object.keys` 顺序漂）。文案 `姓名 · 屏名 · 期`，三段有几段写几段（与页签标题、`editingNote` 同一条口径）。
+5. **chip 点跳不能复用 `go()`，但必须复用它的确认。**
+   `go()` 的期取的是**首页选的月**（`const ym = pickedYm.value ?? curYm.value`），而 chip 要跳的是**那个人锁着的期**，两者常常不同。
+   但 `go()` 里那段「本标签页在目标屏那把锁底下持锁 → 先问一句」的确认**必须一起生效**
+   —— `tabsStore.openFresh(v)` 会重建目标屏、丢掉未保存草稿，chip 走的是同一条路。
+   ⚠ **做法：把确认抽成 `confirmRebuild(v): boolean`，`go()` 与 chip 两处共用。这是纯提取，不改任何行为**，
+   评审要能把提取前后逐字比对上。抽完 `go()` 里那三行换成 `if (!confirmRebuild(v)) return`。
+6. **期可能只有年**（`sched:s10` 一个前缀两种粒度，T5 已裁定 `scopePeriod` 照实返回 `YYYY-MM` 或 `YYYY`）。
+   `periodLink` 的 `p` 本就允许只有年（`nav/deepLink.ts:31-33`），**照实传，不补成月**。
+
+- [ ] **Step 1: 先写失败的测试（`DataHomeView.spec.ts`）**
+
+夹具（放 describe 顶部，别每条重写）：
 
 ```ts
-it('无 lock:takeover 也无 system:view → 整条不渲染', ...)
-it('有权限但零待批:条还在,32px 定高,显「暂无待批」—— 不是 v-if 消失', ...)
-it('待批 N 条:点开 FPApprovalDrawer', ...)
-it('「谁在编辑」chips:姓名 · 屏名 · 期,点按跳到那一屏那一期(navOfScope + scopePeriod)', ...)
+function seatEditor(displayName: string, editScopes: string[]) {
+  return { sid: 's-' + displayName, user: displayName, displayName, role: null,
+           scope: editScopes[0] ?? null, label: null, mode: 'edit' as const,
+           editScopes, sinceMs: 0, idleMs: 0, self: false }
+}
 ```
 
-- [ ] **Step 2–4: 实现 / 破坏验证 / 提交**
+```ts
+it('主管条:无 lock:takeover 也无 system:view → 整条不渲染', async () => {
+  const w = await mountWith({}, { perms: ['entry:edit'] })
+  expect(w.find('.dh-sup').exists()).toBe(false)
+})
 
-**外层不许 `v-if` 数据**（权限判那一层除外）。`noInteractionLayoutShift.spec` 的词表里没有 `approvals`，写成 `v-if="approvals.length"` 门禁**不会红** —— 靠上面那条用例守。chips 的数据来自 `presence.others.filter(u => u.mode === 'edit')`，nav 与期走 `navOfScope(sc)` / `scopePeriod(sc)`。
+it('主管条:有权限但零待批 —— 条还在,显「暂无待批」,不是 v-if 消失', async () => {
+  // 32px 定高常驻(spec §5.2)。写成 v-if="approvals.length" 门禁不会红(零位移那份的
+  // 交互态词表里没有 approvals),只有这条能守住。
+  const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+  expect(w.find('.dh-sup').exists()).toBe(true)
+  expect(w.find('.dh-sup').text()).toContain('暂无待批')
+})
+
+it('主管条:零在编辑时 chips 容器仍在 —— 同样不许 v-if 数据', async () => {
+  const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'system:view'] })
+  expect(w.find('.dh-sup-who').exists()).toBe(true)
+  expect(w.findAll('.dh-sup-chip')).toHaveLength(0)
+})
+
+it('主管条:待批 N 条显数字,点开抽屉', async () => {
+  const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+  usePresenceStore().approvals = [pending('a'), pending('b')]
+  await w.vm.$nextTick()
+  expect(w.find('.dh-sup').text()).toContain('2')
+  await w.find('.dh-sup-inbox').trigger('click')
+  await flushPromises()
+  expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(true)
+})
+
+it('主管条:「谁在编辑」chip 显 姓名 · 屏名 · 期,点跳到那一屏那一期', async () => {
+  const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+  usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06'])]
+  await w.vm.$nextTick()
+  const chip = w.find('.dh-sup-chip')
+  expect(chip.text()).toContain('张三')
+  expect(chip.text()).toContain('2025-06')
+  await chip.trigger('click')
+  expect(push).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ p: '2025-06' }) }))
+})
+
+it('主管条:一人握两把锁只出一枚 chip(取 editScopes[0])', async () => {
+  // 32px 定高装不下 N 人 × M 锁;这条要回答的是「谁卡在哪」,一行一个人。
+  const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+  usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06', 'ledger:3:2025-06'])]
+  await w.vm.$nextTick()
+  expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+})
+```
+
+`pending(id)` 按 `api/approvals.ts:14-26` 的 `Pending` 造一个最小值（`id / requester / requesterName /
+requesterRole / perms / permLabels / page / action / impact / leftMs`）。
+
+- [ ] **Step 2: 跑它,确认按预期失败**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/views/data-home/DataHomeView.spec.ts
+```
+
+期望：新增 6 条红，**既有的全绿**。有别的红先停下报告。
+
+- [ ] **Step 3: 实现 —— 提取 `confirmRebuild`**
+
+把 `go()` 里这三行（`const heldHere = ...` / `const held = ...` / `if (heldHere || ...) { ... }`）**逐字**搬进：
+
+```ts
+/** openFresh 会重建目标屏、丢掉未保存草稿 —— 本标签页在那把锁底下持锁时先问一句。
+ *  go()(清单行)与主管条 chip 两处共用:两者都走 openFresh,风险一模一样。 */
+function confirmRebuild(v: string): boolean { … return true }
+```
+
+`go()` 原处换成 `if (!confirmRebuild(v)) return`。**注释一并搬走，不要留在 `go()` 里也不要重写** —— 这是纯提取。
+
+- [ ] **Step 4: 实现 —— 主管条**
+
+```ts
+const inbox = ref(false)
+const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
+const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
+
+// 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4)。
+const editors = computed(() => presence.others
+  .filter(u => u.mode === 'edit' && u.editScopes.length)
+  .map(u => {
+    const sc = u.editScopes[0]
+    const v = navOfScope(sc)
+    return { sid: u.sid, name: u.displayName, v, p: scopePeriod(sc),
+             note: [u.displayName, v ? navLabel(v) : null, scopePeriod(sc)].filter(Boolean).join(' · ') }
+  }))
+
+function goEditor(e: { v: string | null; p: string | null }) {
+  if (!e.v || !confirmRebuild(e.v)) return
+  tabsStore.openFresh(e.v)
+  router.push(e.p ? periodLink(e.v, { p: e.p }) : '/' + e.v)
+}
+```
+
+⚠ `navLabel(v)`：屏名从哪来 —— **先去仓里找现成的**（`nav/fpNav` 一类有屏名表，`presence.editingNote` 里
+拼「屏名」那段已经解决过同一个问题，照它走）。**找不到现成的就照 `editingNote` 的做法，别新建一张表。**
+
+模板放在 `.dh` 的第一个子元素、两个 `<template>` 分支**之外**（裁定 1）：
+
+```html
+<div v-if="isSupervisor" class="dh-sup">
+  <button class="dh-sup-inbox" @click="inbox = true">
+    {{ presence.approvals.length ? `待批授权 ${presence.approvals.length}` : '暂无待批' }}
+  </button>
+  <div class="dh-sup-who">
+    <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e)">{{ e.note }}</button>
+  </div>
+</div>
+<FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
+```
+
+CSS：`.dh-sup { height: 32px; display: flex; align-items: center; gap: … }` —— **定高不是 min-height**，
+`.dh-sup-who { flex: 1; min-width: 0; overflow: hidden; }`（人多了裁掉，不许换行把条撑高）。
+新令牌先登记（构建期 `scripts/token-check.mjs` 会查）；新图标名先进 `components/ds/icon.ts` 的 MAP。
+
+- [ ] **Step 5: 跑门禁**
+
+```bash
+cd C:/financial_dashboard/demo3/.claude/worktrees/model-12d043/frontend
+npx vitest run src/views/data-home/
+npx vitest run 2>&1 | tail -3
+npm run typecheck
+npm run build 2>&1 | tail -8
+```
+
+期望：全量在基线 **2400** 之上只多你新加的 6 条 = **2406**；`npm run typecheck` 零错（⚠ 只有它算数）。
+⚠ **包只剩 8.4KB**（上一次 index 185.7/191KB、合计 3891.6/3900KB）。`FPApprovalDrawer` 已是独立块、第三个引用方不增字节，
+但主管条本体 + CSS 会增。**触线即停并报告，绝不上调 `scripts/size-check.mjs` 的任何数字。**
+**若 `noInteractionLayoutShift.spec` / `readonlyHasNoWriteButtons.spec` 红了 —— 停下报告。**
+
+- [ ] **Step 6: 逐条破坏验证**
+
+⚠ 往两个方向；每次破坏**先自证改到的是 production 语句**；还原一律字符串替换（先 `grep -c` 数命中，不是 1 就换更长上下文），
+**绝不 `git checkout` / `git stash`**。
+
+| 改坏什么 | 应红的那条 |
+|---|---|
+| `v-if="isSupervisor"` 改成恒真 | 「无权限整条不渲染」 |
+| 外层加 `v-if="presence.approvals.length"` | 「零待批条还在」 |
+| `.dh-sup-who` 加 `v-if="editors.length"` | 「零在编辑 chips 容器仍在」 |
+| `editors` 不去重、改成 `flatMap(u => u.editScopes)` | 「一人握两把锁只出一枚」 |
+| chip 的 `p` 不带 | 「点跳带 p」 |
+| `goEditor` 里 `confirmRebuild` 去掉 | 若**无一条红** → 补一条（本标签页持有目标屏锁时点 chip 要弹确认），别放着 |
+| `presence.approvals.length` 改成常量 0 | 「待批 N 条显数字」 |
+| 主管条整块挪进 `<template v-else>` 里 | 若**无一条红** → 如实报告零覆盖（裁定 1 靠结构而不是靠断言）；能补就补一条「`ov` 未到时主管条已在」 |
+
+- [ ] **Step 7: 提交**
+
+只 `git add` 你动过的两个路径（`DataHomeView.vue` / `DataHomeView.spec.ts`），**不许 `git add -A`**。
+提交信息末尾 `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`。
+若为找屏名动了别的文件，在提交信息里点名说明。
 
 ---
 
