@@ -7,7 +7,7 @@ import { fpSortRows } from '@/components/fp/fpSort'
 import type { SortState } from '@/components/fp/fpSort'
 import { useFitRows } from '@/components/fp/useFitRows'
 import type { BuildingDTO, BuildingSummaryDTO, BuildingDetailDTO, BuildingCreateReq, BuildingUpdateReq } from '@/types/building'
-import { occPct, OCC_NULL_WHY } from '@/types/building'
+import { occByUnit, occPct, OCC_NULL_WHY } from '@/types/building'
 import { fpWan } from '@/utils/money'
 import KpiCard from '@/components/ds/KpiCard.vue'
 import Button from '@/components/ds/Button.vue'
@@ -197,13 +197,12 @@ function onTableRowClick(b: BuildingDTO) { onOpenBuilding(b) }
 const stoppedCount = computed(() => buildings.value.filter(b => b.status === 0).length)
 
 // 出租率副标(§3 替代口径):按单元口径不依赖可租面积,主口径算不出来时它仍在,故两态都给。
-// ⚠ 两个口径的样本集不同:occRate 只统计非停用栋,unitCount/vacantCount 是全量(含停用栋),
-//   所以副标必须显式写「按单元」标明口径名,不能拿它当主口径的验算。
+// 口径定义在 types/building.ts occByUnit(出租与楼栋屏同一句,§2 同名指标同源)。
 // 副标在 224px KPI 栏会被 ellipsis 截,缺因另挂卡片 title 兜底。
 const occSub = computed(() => {
   const s = summary.value
   if (!s) return undefined
-  const byUnit = `按单元 ${s.unitCount - s.vacantCount}/${s.unitCount}`
+  const byUnit = occByUnit(s).text
   return s.occRate == null ? `${byUnit} · ${OCC_NULL_WHY}` : byUnit
 })
 </script>
