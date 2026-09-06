@@ -46,6 +46,26 @@
 | R-5 | 交审前置的「清单行 done」 | 复用 `DataHomeService` 的现成聚合，按 key 取对应行，**不另写一份判据**（METRIC-SOURCE-SPEC §1 红线：同一件事不许有第二份实现） | 每次交审跑一遍首页聚合。交审是低频动作，加 `ponytail:` 注释标明这个上限 |
 | R-6 | 第二本账（`PvMeterService` / `CpMeterService` / `BookService`） | **本轮不进审核**，用 `@NoReviewGuard(reason)` 标注，理由写「第二本账，§7.1 无键」。`BookService` 已有自己的 `assertMonthEditable`（P6 录入即冻结） | 光伏分栋抄表 / 充电桩分桩抄表在审核月仍可改；它们是附表6/7/8 的**下游**派生账，不回写附表 |
 
+## 执行中的偏离（边做边记，2026-09-07）
+
+| # | 偏离 | 为什么 |
+|---|---|---|
+| E-1 | **T10 `ReviewApiIT` 并入 T5** | 否则 T5 交付 350 行没有任何检查的状态机。Task 10 整节作废，用例已在 T5 落地（12 条） |
+| E-2 | T1 的 DDL 用 `CREATE TABLE IF NOT EXISTS` | Flyway 在容器启动时已跑过 V124，「重放同一份文件」的幂等断言必然炸在建表上；`continueOnError` 会把重复键错误一起吞掉、幂等断言变永久假绿。先例 `V91` |
+| E-3 | `ReviewMigrationIT` 加 `@AfterEach` 重放种子 | 开头两条 `DELETE` 会被随后 `CREATE TABLE` 的隐式提交带着落库，`@Transactional` 挡不住；中途失败就把复用容器里的 `reviewer` 种子永久删了 |
+| E-4 | 计划里「去掉 `setSqlScriptEncoding` → INSERT 静默失效」的机理**写错了** | 实测 `file.encoding=GBK` 下语句边界没被打乱，两条 INSERT 照常执行，只是中文串落库成乱码。原断言只验 ASCII 列 = 假绿，已补 `name` 断言 |
+| E-5 | 删掉 `ReviewService.requireReviewer()` | URL 层挂的就是 `review:approve`，每条路径都过得了那道闸且无内部调用方 —— 恒为真的守卫比没有守卫更糟。改测真正承重的 `submit` kind→perm 收窄 |
+| E-6 | 状态写入一律走 `UpdateWrapper` 显式 `set(col, null)` | MyBatis-Plus 默认 `updateStrategy = NOT_NULL`，`setXxx(null)` 压根不进 UPDATE —— 重新交审清不掉上一轮的退回理由（ReviewApiIT 抓到） |
+| E-7 | T6/T7/T8 各自新建 IT 文件 | `ReviewGuardChainIT` / `ReviewGuardBookingIT` / `ReviewGuardElecIT`。不往 `ReviewGuardIT` 里塞 —— 那个是非 HTTP 的守卫单元测试，混进 HTTP 用例会让两种失败模式纠缠 |
+| E-8 | `ReviewGuard` 的 `assertNoLockedMonth` 只用于**参数/规则的长期默认行** | 计划原写「rechain 也用它」，T7 的裁定 R-2 已改成逐行守在真正要 `updateById` 的那一行 |
+| E-9 | **R-4 的一个副作用，等用户裁定** | `AllocService.createRule` 带初始分母时会 `saveCfg(scope="rule:<新id>", key="coefficient", acctMonth="")` → `ParamService.write` → `assertNoLockedMonth(PARAMS, null)`。于是 **params 只要有任一月 submitted/approved，「新建公摊池（带初始分母）」就永久 423**，文案还说的是「计费参数已审核」。试过按「这个键没有历史行就放行」收窄——**不成立**：key 是 `coefficient`，它在别的池下有大量行；改按 (key, scope) 判又会在 `scope="p1"` 这类情况下放行真正的口径修改。已撤回，保持 R-4 原样 |
+
+**两个自查踩到的坑，写给后面的 Task：**
+- 块注释里不许出现 `*/` —— `/api/review/*/submit` 会提前闭合 javadoc，编译炸在莫名其妙的行上。用 `{key}`。
+- **编译失败时 `target/surefire-reports/*.txt` 是上一轮的旧文件**，会显示上次的绿。每次先 grep `COMPILATION ERROR` 再看报告。
+
+---
+
 ## 附表11 拆两把键（2026-09-07 用户拍板）
 
 spec §7.1 原表只有一把 `elec-cost:YYYY-MM`，但附表11 的数据躺在两张表里：
@@ -1420,7 +1440,9 @@ git commit -m "test(review): R1 T9 ReviewGuardCoverageTest —— 从 Permission
 
 ---
 
-### Task 10: `ReviewApiIT`
+### Task 10: `ReviewApiIT` —— ~~独立任务~~ **已并入 T5 落地（见 E-1）**
+
+> 本节保留作检查表:下面八组用例在 `ReviewApiIT` 里都要有。T5 实际落了 12 条(多出 kind→perm 收窄、键里两个冒号、list 枚举三条)。执行 T7/T8 时不必再回来做这一节。
 
 **Files:**
 - Create: `backend/src/test/java/com/park/demo3/api/ReviewApiIT.java`
