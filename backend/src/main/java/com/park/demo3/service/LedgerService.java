@@ -23,6 +23,9 @@ import com.park.demo3.entity.Tenant;
 import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -39,11 +42,21 @@ public class LedgerService {
     private final TenantMapper tenants;
     private final BookService bookService;
     private final BookPinService pinService;
+    private final ReviewGuard reviewGuard;
 
     public LedgerService(MonthlyLedgerMapper ledger, ManagementCompanyMapper companies,
-                         TenantMapper tenants, BookService bookService, BookPinService pinService) {
+                         TenantMapper tenants, BookService bookService, BookPinService pinService,
+                         ReviewGuard reviewGuard) {
         this.ledger = ledger; this.companies = companies; this.tenants = tenants;
         this.bookService = bookService; this.pinService = pinService;
+        this.reviewGuard = reviewGuard;
+    }
+
+    /** 台账的审核闸(§7.4):键是 `ledger:{公司}:{该行的年月}`。六条写路径共用一处拼键 ——
+     *  scope 这一维漏掉的话,审掉 A 公司的月份会把 B 公司同月一起锁死。 */
+    private void assertLedgerEditable(Integer companyId, int year, int month) {
+        reviewGuard.assertEditable(ReviewKind.LEDGER,
+            String.format("%04d-%02d", year, month), String.valueOf(companyId));
     }
 
     // P6:该月第一次落库数据时固化 pin。不固化的话,日后改更早月份的 pin 会顺着解析规则把本月一起改掉。
@@ -155,6 +168,7 @@ public class LedgerService {
             if (prev != null && prev[0] == ym - 1) {          // 紧邻上月有记录 → 派生位
                 BigDecimal expect = lastEnd.get(key);
                 if (r2(nz(l.getBalancePrev())).compareTo(expect) != 0) {
+                    assertRechainEditable(l);   // 裁定 R-2:守在真要改的这一行上,用它自己的月
                     l.setBalancePrev(expect);
                     ledger.updateById(l);
                 } else {
@@ -163,6 +177,24 @@ public class LedgerService {
             }                                                  // 否则:链起点,期初原样保留
             last.put(key, new long[]{ ym });
             lastEnd.put(key, recalc(l)[1]);
+        }
+    }
+
+    /**
+     * rechain 的逐行守卫。**不是**「该公司有任一已审月就整体拒」—— 那会让审掉 1 月之后连 5 月都录不进去
+     * (每次 save/import/绑定都调 rechain)。只有这一行真的要落库时才判它自己的月。
+     *
+     * 触发者可能在改 2024-01,而被拒的原因是 2024-03 已审核 —— 文案不说清楚,用户会以为系统坏了。
+     * ReviewGuard 的文案只知道被锁月,所以这里在守卫外面再包一句上下文。
+     * 只包 423 那一类:别的 BizException 原样抛,改了文案就把别人的错因说成审核。
+     */
+    private void assertRechainEditable(MonthlyLedger l) {
+        try {
+            assertLedgerEditable(l.getCompanyId(), l.getPeriodYear(), l.getPeriodMonth());
+        } catch (BizException e) {
+            if (e.getCode() != ResultCode.LOCKED.code) throw e;
+            throw new BizException(ResultCode.LOCKED,
+                e.getMessage() + "。结余链会顺着改到那个月,请先撤销它的审核");
         }
     }
 
@@ -293,6 +325,7 @@ public class LedgerService {
     public LedgerMonthDTO save(Integer companyId, int year, int month, LedgerSaveRequest req) {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        assertLedgerEditable(companyId, year, month);
 
         List<MonthlyLedger> storedRows = ledger.selectMonth(companyId, year, month);
         Map<Integer, MonthlyLedger> byId = storedRows.stream()
@@ -417,6 +450,9 @@ public class LedgerService {
         for (MonthlyLedger l : unbound) {
             String slot = l.getCompanyId() + "-" + l.getPeriodYear() + "-" + l.getPeriodMonth();
             if (occupied.contains(slot)) { conflicts++; continue; }
+            // 裁定 R-2b:命中已审核行整体抛,**不并进 conflicts** —— BindResultDTO 只有 bound/conflicts
+            // 两个数,并进去用户看到的原因是「租户当月已有行」,与真实原因(那个月审过了)完全不同。
+            assertLedgerEditable(l.getCompanyId(), l.getPeriodYear(), l.getPeriodMonth());
             l.setTenantId(req.tenantId());
             ledger.updateById(l);
             occupied.add(slot);
@@ -429,6 +465,7 @@ public class LedgerService {
 
     // ── 行级绑定/换绑/解绑(抄表屏「表档案·租户」同款交互的台账版;tenantId=null 即解绑) ──
     @Transactional
+    @NoReviewGuard(reason = "转调三参重载,守卫在那里按实体的公司与年月判")
     public LedgerRowDTO bindRow(Integer rowId, Integer tenantId) { return bindRow(rowId, tenantId, false); }
 
     /** addAlias=true:顺手把本行账面名记进该租户的别名,今后 softIndex 自动认(2026-08-27 拍板)。
@@ -436,6 +473,7 @@ public class LedgerService {
     public LedgerRowDTO bindRow(Integer rowId, Integer tenantId, boolean addAlias) {
         MonthlyLedger l = ledger.selectById(rowId);
         if (l == null) throw new BizException(ResultCode.NOT_FOUND, "台账行不存在");
+        assertLedgerEditable(l.getCompanyId(), l.getPeriodYear(), l.getPeriodMonth());
         if (Objects.equals(l.getTenantId(), tenantId))
             return toRowDTO(l, displayName(l, archiveNameOf(l.getTenantId())));
         if (tenantId != null) {
@@ -491,6 +529,7 @@ public class LedgerService {
     public LedgerRowDTO renameRow(Integer rowId, String tenantName) {
         MonthlyLedger l = ledger.selectById(rowId);
         if (l == null) throw new BizException(ResultCode.NOT_FOUND, "台账行不存在");
+        assertLedgerEditable(l.getCompanyId(), l.getPeriodYear(), l.getPeriodMonth());
         String newName = tenantName.trim();
         if (newName.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "账面名不能为空");
         if (!newName.equals(l.getTenantName())) {
@@ -535,6 +574,7 @@ public class LedgerService {
     public ImportResultDTO importRows(Integer companyId, int year, int month, LedgerImportRequest req) {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        assertLedgerEditable(companyId, year, month);
 
         Map<String, Integer> byName = TenantService.softIndex(tenants.selectList(null));
         // 词典跟着月份走(spec §6):钉在旧版的月份不认得后来才加进链尾的列
@@ -661,6 +701,8 @@ public class LedgerService {
     public LedgerMonthDTO copyFromPrev(Integer companyId, int year, int month) {
         ManagementCompany company = companies.selectById(companyId);
         if (company == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        // 只守写目标 (year, month);上月是读来源,读不受限
+        assertLedgerEditable(companyId, year, month);
 
         int pm = prevMonth(month);
         int py = month == 1 ? year - 1 : year;

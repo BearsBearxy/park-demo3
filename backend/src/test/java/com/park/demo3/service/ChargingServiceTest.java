@@ -17,7 +17,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ChargingServiceTest {
     ChargingCatMapper cats = Mockito.mock(ChargingCatMapper.class);
     ChargingRecordMapper records = Mockito.mock(ChargingRecordMapper.class);
-    ChargingService svc = new ChargingService(cats, records);
+        // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+ChargingService svc = new ChargingService(cats, records, rg);
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 

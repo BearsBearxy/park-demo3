@@ -21,7 +21,9 @@ class LedgerRechainTest {
     TenantMapper tm = Mockito.mock(TenantMapper.class);
     BookService bm = Mockito.mock(BookService.class);
     BookPinService pm = Mockito.mock(BookPinService.class);
-    LedgerService svc = new LedgerService(lm, cm, tm, bm, pm);
+        // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+LedgerService svc = new LedgerService(lm, cm, tm, bm, pm, rg);
 
     static BigDecimal bd(String v) { return new BigDecimal(v); }
 

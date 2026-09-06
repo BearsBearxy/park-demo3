@@ -21,6 +21,8 @@ import com.park.demo3.mapper.TenantMapper;
 import com.park.demo3.dto.TenantBindReq;
 import com.park.demo3.dto.BindResultDTO;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -40,11 +42,18 @@ public class S10Service {
     private final TenantMapper tenants;
     private final BookService bookService;
     private final BookPinService pinService;
+    private final ReviewGuard reviewGuard;
 
     public S10Service(S10RecordMapper records, TenantMapper tenants, BookService bookService,
-                      BookPinService pinService) {
+                      BookPinService pinService, ReviewGuard reviewGuard) {
         this.bookService = bookService; this.pinService = pinService;
         this.records = records; this.tenants = tenants;
+        this.reviewGuard = reviewGuard;
+    }
+
+    /** 附表10 的审核闸(§7.4):键是 `s10:{期区}:{记账月}`。期区这一维漏掉的话,审掉二期会把三期同月一起锁死。 */
+    private void assertS10Editable(int phase, String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.S10, acctMonth, String.valueOf(phase));
     }
 
     // P6:与台账同一条规则。owner=phase;acctMonth 是 'YYYY-MM',在这里拆成年月两个整数
@@ -220,6 +229,8 @@ public class S10Service {
                 r.setSource("manual");
             }
         }
+        // 被写槽:改既有行时是**实体的**期区与月(save 不改这两列),新行时是 req 的 —— 两条路都在 r 上
+        assertS10Editable(r.getPhase(), r.getAcctMonth());
         // 绑定解析顺序(评审A5/E2):显式传入 > 行上既有绑定(手工绑过的绝不静默抹掉) > 按名自动配档
         // (只有前两者都空才扫租户表,避免逐行保存时反复全表构建索引)
         Integer tid = req.tenantId() != null ? req.tenantId() : r.getTenantId();
@@ -250,9 +261,18 @@ public class S10Service {
     public BindResultDTO bindTenant(TenantBindReq req) {
         if (tenants.selectById(req.tenantId()) == null)
             throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
-        int bound = records.update(null, new UpdateWrapper<S10Record>()
-            .isNull("tenant_id").eq("tenant_name", req.tenantName().trim())
-            .set("tenant_id", req.tenantId()));
+        // 裁定 R-3:原来是一条 UpdateWrapper 打穿全期区全月份 —— 拿不到任何月,审核闸(按被写数据的月判)
+        // 就无从挂起。改成先捞命中行、再逐行守 + 逐行 update(形状照 LedgerService.bindTenant)。
+        // 命中行的 tenant_id 恒为 NULL,逐行 update 与原来那条 SQL 影响的是同一批行,bound 口径不变。
+        List<S10Record> hit = records.selectList(new QueryWrapper<S10Record>()
+            .isNull("tenant_id").eq("tenant_name", req.tenantName().trim()));
+        int bound = 0;
+        for (S10Record r : hit) {
+            assertS10Editable(r.getPhase(), r.getAcctMonth());
+            records.update(null, new UpdateWrapper<S10Record>()
+                .eq("id", r.getId()).set("tenant_id", req.tenantId()));
+            bound++;
+        }
         return new BindResultDTO(bound, 0);
     }
 
@@ -260,6 +280,7 @@ public class S10Service {
     public S10RecordDTO bindRow(Long id, Integer tenantId) {
         S10Record r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertS10Editable(r.getPhase(), r.getAcctMonth());
         if (tenantId != null && tenants.selectById(tenantId) == null)
             throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
         // 解绑要显式置 NULL(updateById 跳过 null 字段)
@@ -272,6 +293,7 @@ public class S10Service {
     //          (source='manual'/'seed' 手动行不动;新行 source='import'、tenant_id=null 软引用) ──
     @org.springframework.transaction.annotation.Transactional
     public ImportResultDTO importRows(S10ImportRequest req) {
+        assertS10Editable(req.phase(), req.acctMonth());   // 整批落在同一个 (期区,月) 槽上,一次闸掉
         // 重导前记住本槽既有导入行的绑定(评审A3:问题面板手工绑好的行不能因重导蒸发)。
         // 既有绑定优先于本次自动解析——手工纠正过的口径比 softIndex 更可信;
         // ponytail: 档案别名后改指别家时旧绑定会粘住,重绑走问题面板,不为此加"绑定来源"字段。
@@ -342,6 +364,7 @@ public class S10Service {
     public S10RecordDTO renameRow(Long id, String tenantName) {
         S10Record r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertS10Editable(r.getPhase(), r.getAcctMonth());
         String newName = tenantName.trim();
         if (newName.isEmpty()) throw new BizException(ResultCode.BAD_REQUEST, "账面名不能为空");
         if (!newName.equals(r.getTenantName())) {
@@ -359,6 +382,7 @@ public class S10Service {
     // ── clearImported(phase,acctMonth):删本槽 source='import' 行,返回删除计数 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int phase, String acctMonth) {
+        assertS10Editable(phase, acctMonth);
         int deleted = records.deleteImported(phase, acctMonth);
         return new DeleteResultDTO(deleted, 0);
     }
@@ -371,6 +395,8 @@ public class S10Service {
             S10Record r = records.selectById(id);
             if (r == null) continue;
             if ("seed".equals(r.getSource())) { skipped++; continue; }
+            // 一批 id 可跨期区跨月:逐行按被删行自己的槽判(整批同一 @Transactional,命中即整批回滚)
+            assertS10Editable(r.getPhase(), r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }
@@ -381,6 +407,7 @@ public class S10Service {
     public S10RecordDTO updateNote(Long id, String note) {
         S10Record r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertS10Editable(r.getPhase(), r.getAcctMonth());
         r.setNote(note == null || note.isBlank() ? null : note);
         records.updateById(r);
         return toRecordDTO(records.selectById(id));
@@ -390,6 +417,7 @@ public class S10Service {
     public void delete(Long id) {
         S10Record r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertS10Editable(r.getPhase(), r.getAcctMonth());
         if ("seed".equals(r.getSource())) throw new BizException(ResultCode.CONFLICT, "官方台账,不可删除");
         records.deleteById(id);
     }

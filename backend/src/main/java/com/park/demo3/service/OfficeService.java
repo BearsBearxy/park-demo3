@@ -13,6 +13,8 @@ import com.park.demo3.dto.OfficeYearDTO;
 import com.park.demo3.dto.OfficeYearDTO.OfficeTotal;
 import com.park.demo3.entity.OfficeRecord;
 import com.park.demo3.mapper.OfficeRecordMapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -28,8 +30,27 @@ import java.util.stream.Stream;
 public class OfficeService {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final OfficeRecordMapper records;
+    private final ReviewGuard reviewGuard;
 
-    public OfficeService(OfficeRecordMapper records) { this.records = records; }
+    public OfficeService(OfficeRecordMapper records, ReviewGuard reviewGuard) {
+        this.records = records; this.reviewGuard = reviewGuard;
+    }
+
+    /**
+     * 附13 / 附14 是**一把键的两个 scope**(utilities:office / utilities:phase3,spec §7.1 备注列),
+     * 不是两把 kind —— 对比充电桩那两张表才是两把 kind。映射只此一处,别在每个方法里写 if。
+     */
+    private static String scopeOf(int scheduleNo) {
+        return switch (scheduleNo) {
+            case 13 -> "office";
+            case 14 -> "phase3";
+            default -> throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        };
+    }
+
+    private void assertOfficeEditable(int scheduleNo, String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.UTILITIES, acctMonth, scopeOf(scheduleNo));
+    }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
     private static BigDecimal r2(BigDecimal v) { return nz(v).setScale(2, RoundingMode.HALF_UP); }
@@ -78,6 +99,7 @@ public class OfficeService {
         if (no != 13 && no != 14) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
         if (req.scheduleNo() == null || req.scheduleNo() != no)
             throw new BizException(ResultCode.CONFLICT, "路径与记账附表不一致");
+        assertOfficeEditable(no, req.acctMonth());
 
         OfficeRecord r = new OfficeRecord();
         r.setScheduleNo(req.scheduleNo());
@@ -117,6 +139,9 @@ public class OfficeService {
             valid.add(row);
             months.add(row.acctMonth());
         }
+        // 一批可跨月:用上面已经收集好的 months(全部过了 parseYear,口径与 ReviewKey 同严)一次闸掉。
+        // 非法月的行本来就进 errors 跳过、不在这个集合里 —— 行级容错不会被打成批级 400。
+        if (!months.isEmpty()) reviewGuard.assertEditable(ReviewKind.UTILITIES, months, scopeOf(scheduleNo));
         records.deleteByScheduleAndMonths(scheduleNo, new ArrayList<>(months));
         int imported = 0;
         for (OfficeImportRequest.Row row : valid) {
@@ -151,6 +176,10 @@ public class OfficeService {
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int scheduleNo, int year) {
         if (scheduleNo != 13 && scheduleNo != 14) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        // 只有年、没有月:整年清空会碰到该年任何一个已审月,所以 12 个月一起送闸(点名最早的锁月)
+        List<String> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) months.add(String.format("%04d-%02d", year, m));
+        reviewGuard.assertEditable(ReviewKind.UTILITIES, months, scopeOf(scheduleNo));
         int deleted = records.deleteImported(scheduleNo, year);
         return new DeleteResultDTO(deleted, 0);
     }
@@ -162,6 +191,8 @@ public class OfficeService {
         for (Long id : ids) {
             OfficeRecord r = records.selectById(id);
             if (r == null) continue;
+            // 一批 id 可跨附表跨月:逐行按被删行自己的附表与月判(同一 @Transactional,命中即整批回滚)
+            assertOfficeEditable(r.getScheduleNo(), r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }
@@ -172,6 +203,7 @@ public class OfficeService {
     public OfficeRecordDTO updateNote(int no, Integer id, String note) {
         OfficeRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertOfficeEditable(no, r.getAcctMonth());
         r.setNote(note == null || note.isBlank() ? null : note);
         records.updateById(r);
         return toRecordDTO(records.selectById(id));
@@ -181,6 +213,7 @@ public class OfficeService {
     public void delete(int no, Integer id) {
         OfficeRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertOfficeEditable(no, r.getAcctMonth());
         records.deleteById(id);
     }
 

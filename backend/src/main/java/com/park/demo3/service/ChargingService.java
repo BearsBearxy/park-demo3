@@ -16,6 +16,8 @@ import com.park.demo3.entity.ChargingCat;
 import com.park.demo3.entity.ChargingRecord;
 import com.park.demo3.mapper.ChargingCatMapper;
 import com.park.demo3.mapper.ChargingRecordMapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,9 +35,27 @@ public class ChargingService {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final ChargingCatMapper cats;
     private final ChargingRecordMapper records;
+    private final ReviewGuard reviewGuard;
 
-    public ChargingService(ChargingCatMapper cats, ChargingRecordMapper records) {
-        this.cats = cats; this.records = records;
+    public ChargingService(ChargingCatMapper cats, ChargingRecordMapper records, ReviewGuard reviewGuard) {
+        this.cats = cats; this.records = records; this.reviewGuard = reviewGuard;
+    }
+
+    /**
+     * 附7(汽车)/ 附8(电动车)是**两把 kind**,不是一把 kind 的两个 scope(spec §7.1;
+     * 对比办公水电 utilities:office / utilities:phase3 才是一把键两个 scope)。
+     * 映射只此一处,别在每个方法里写 if —— 写散了就一定有一处写反。
+     */
+    private static ReviewKind kindOf(int scheduleNo) {
+        return switch (scheduleNo) {
+            case 7 -> ReviewKind.CHARGING_CAR;
+            case 8 -> ReviewKind.CHARGING_EBIKE;
+            default -> throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        };
+    }
+
+    private void assertChargingEditable(int scheduleNo, String acctMonth) {
+        reviewGuard.assertEditable(kindOf(scheduleNo), acctMonth, null);
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -93,6 +113,7 @@ public class ChargingService {
         ChargingCat cat = cats.selectBySchedule(req.scheduleNo()).stream()
             .filter(c -> c.getCatId().equals(req.cat())).findFirst().orElse(null);
         if (cat == null) throw new BizException(ResultCode.CONFLICT, "充电桩类别不存在");
+        assertChargingEditable(no, req.acctMonth());
 
         ChargingRecord r = new ChargingRecord();
         r.setScheduleNo(req.scheduleNo());
@@ -111,6 +132,7 @@ public class ChargingService {
     public ChargingRecordDTO updateNote(int no, Integer id, String note) {
         ChargingRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertChargingEditable(no, r.getAcctMonth());
         r.setNote(note == null || note.isBlank() ? null : note);
         records.updateById(r);
         ChargingRecord saved = records.selectById(id);
@@ -121,6 +143,7 @@ public class ChargingService {
     public void delete(int no, Integer id) {
         ChargingRecord r = records.selectById(id);
         if (r == null || r.getScheduleNo() != no) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertChargingEditable(no, r.getAcctMonth());
         records.deleteById(id);
     }
 
@@ -155,6 +178,10 @@ public class ChargingService {
             valid.add(row);
             tuples.putIfAbsent(row.cat() + "|" + row.acctMonth(), new String[]{row.cat(), row.acctMonth()});
         }
+        // 一批可跨月:tuples 是现成的 (cat,月) 去重集合,取月这一维送闸(全部过了 validMonth,
+        // 口径与 ReviewKey 同严;非法月的行进 errors 跳过、不在集合里,行级容错不被打成批级 400)。
+        Set<String> months = tuples.values().stream().map(t -> t[1]).collect(Collectors.toSet());
+        if (!months.isEmpty()) reviewGuard.assertEditable(kindOf(scheduleNo), months, null);
         records.deleteByScheduleCatMonths(scheduleNo, new ArrayList<>(tuples.values()));
         int imported = 0;
         for (ChargingImportRequest.Row row : valid) {
@@ -186,6 +213,10 @@ public class ChargingService {
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int scheduleNo, int year) {
         if (scheduleNo != 7 && scheduleNo != 8) throw new BizException(ResultCode.NOT_FOUND, "附表不存在");
+        // 只有年、没有月:整年清空会碰到该年任何一个已审月,所以 12 个月一起送闸(点名最早的锁月)
+        List<String> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) months.add(String.format("%04d-%02d", year, m));
+        reviewGuard.assertEditable(kindOf(scheduleNo), months, null);
         return new DeleteResultDTO(records.deleteImported(scheduleNo, year), 0);
     }
 
@@ -196,6 +227,8 @@ public class ChargingService {
         for (Long id : ids) {
             ChargingRecord r = records.selectById(id);
             if (r == null) continue;
+            // 一批 id 可跨附表跨月:逐行按被删行自己的附表与月判(同一 @Transactional,命中即整批回滚)
+            assertChargingEditable(r.getScheduleNo(), r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }
