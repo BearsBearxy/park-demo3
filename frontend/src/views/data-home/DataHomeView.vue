@@ -11,6 +11,7 @@
 // 附表互相独立、能并行做,所以画成紧凑清单。结构与真实工作的形状同构。
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { dataHomeApi } from '@/api/dataHome'
@@ -21,7 +22,7 @@ import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
 import Button from '@/components/ds/Button.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
-import { useBillingPeriodStore } from '@/stores/billingPeriod'
+import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
@@ -136,10 +137,15 @@ const curYm = computed(() =>
 // 年份条(P2 T4):年份行来自 ov.months —— 后端明发的「链 ∪ 附表」全集(DataHomeService.allMonths)。
 // 照 period.dataYears 走会丢掉只有附表的年,而「切到 2025-06 补台账」正是这屏最常用的一步。
 const yearRows = computed(() => {
-  const ms = ov.value?.months ?? []
+  // 脏 ym 不进年份条(F2):stores/billingPeriod.ts 的 fetchAll 用 YM.test 挡过格式不对的输入
+  // (`if (!YM.test(m)) continue`),但格式对、年份离谱的值(如 '0001-01')一样能通过那道闸 ——
+  // 复查实测正是这种值把 buildYearRows 的 lo..hi 撑到两千年,2000+ 行 × 12 卡直接 OOM。
+  // 格式闸之外再挡一道年份范围(±50 年,这本书的真实数据不可能落在这个窗口外)。
+  const curYear = new Date().getFullYear()
+  const ms = (ov.value?.months ?? []).filter(m => YM.test(m) && Math.abs(+m.slice(0, 4) - curYear) <= 50)
   const have = new Set(ms)
   const years = [...new Set(ms.map(m => +m.slice(0, 4)))]
-  return buildYearRows(years, new Date().getFullYear(), []).map(r => ({
+  return buildYearRows(years, curYear, []).map(r => ({
     year: r.year,
     months: Array.from({ length: 12 }, (_, i) => {
       const ym = `${r.year}-${String(i + 1).padStart(2, '0')}`
@@ -167,7 +173,7 @@ const curStep = computed(() => {
 // 不阻断整屏 —— 收入核对那一行照 reconRow 的 hasData 闸判 na,显「—」。
 const recon = ref<ReconMonthMeta | null>(null)
 let reconSeq = 0
-watch(curYm, async (ym) => {
+async function loadRecon(ym: string) {
   const seq = ++reconSeq
   // 换月后先清零(评审修补 T3 fix-brief #2):reconSeq 只守「晚到的旧回包不覆盖新选的月」,不守
   // 「新月已上屏、新回包还没到」这段空窗 —— 不清的话这一行会在整年 12 个月重跑核对的窗口里,
@@ -179,7 +185,16 @@ watch(curYm, async (ym) => {
   const res = await reconApi.overview(year).catch(() => null)
   if (seq !== reconSeq) return   // 晚到的旧回包不许覆盖新选的月(同 loadSeq 口径)
   recon.value = res?.months.find(m => m.month === month) ?? null
-})
+}
+watch(curYm, loadRecon)
+
+// 切走再切回 KeepAlive 命中缓存实例、onMounted 不再跑(P3 §4.1 Step 6b,门禁在
+// views/__tests__/readScreenRefresh.spec.ts)。P2 T4 起这屏**必须**补:年份条读的是活的
+// billingPeriod.cells(抄表/公摊/损耗/催缴单写完都 reloadChain),而两栏板子读的是只取一次的 ov ——
+// 不重取就会出现「年份条上这个月的第一颗工序点已亮,正下方那一行还显○ 未做」,
+// 更坏的是新月 hasData 仍为 false,BookMonthMatrix 的 v-if="m.hasData && m.pips" 把点整块吞掉,
+// 刚抄完读数的月被画成虚线「空」卡。
+onReactivated(() => { void load(); void loadRecon(curYm.value) })
 
 // 两栏清单(P2 T3):行状态 / chips / 计数全在 monthClose.logic 算完,这里只取数与派生。
 // review 本期恒传 null(审核机制归 R1)。

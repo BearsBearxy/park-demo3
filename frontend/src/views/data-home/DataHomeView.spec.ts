@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ref, defineComponent, h, KeepAlive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { DataHomeOverviewDTO, DataHomeStepDTO, DataHomeItemDTO } from '@/types/dataHome'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
@@ -110,6 +111,9 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(w.find('.dh-blocker').exists()).toBe(true)
     expect(w.text()).toContain('219 份合同无租金计费行')
     expect(w.text()).toContain('去补档')
+    // 年份条(裁定 6)必须读在前置条上面 —— 否则用户看到一条按 ym 算的警告却不知道说的是哪个月(F5)
+    const h = w.html()
+    expect(h.indexOf('dh-ystrip')).toBeLessThan(h.indexOf('dh-blocker'))
   })
 
   it('当前步出大卡,且全页只有一个主 CTA', async () => {
@@ -130,6 +134,8 @@ describe('数据中心首页 · 两段式工作台', () => {
     const w = await mountWith({ period: null })
     expect(w.text()).toContain('还没开始出账')
     expect(w.find('.dh-rows').exists()).toBe(false)   // 空库不摆两栏清单空架子(选择器:胶囊行 → 两栏行,P2 T3)
+    // 全新库只给一句引导,不摆空架子(F6):年份条同样不该先弹出一堆可点的「空」卡
+    expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(false)
   })
 
   it('零写权限:主 CTA 改「查看」,前置条的写操作按钮隐藏', async () => {
@@ -198,6 +204,18 @@ describe('数据中心首页 · 两段式工作台', () => {
     await w.findAll('.dh-row-billing')[1].trigger('click')
     await flushPromises()
     expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+  })
+
+  // 修补(F9):首载失败后 loaded 仍为 false、inflight 已清空 —— 点链行时 go() 里的
+  // loadChain 该真的再发一次,不是被幂等兜底吞掉。这条路径此前没有覆盖。
+  it('首载失败后点链行会重试:loadChain 再发一次', async () => {
+    vi.mocked(metersApi.months).mockRejectedValueOnce(new Error('x'))
+    const w = await mountWith()
+    await flushPromises()
+    expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+    await w.findAll('.dh-row-billing')[1].trigger('click')
+    await flushPromises()
+    expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(2)
   })
 
   // ── 刚选的月 vs 服务端回包(2026-09-03 对抗复查 F2)──
@@ -364,6 +382,9 @@ describe('数据中心首页 · 首载骨架', () => {
     // 骨架也要两栏(评审修补 T3 fix-brief #1):骨架态断,不是落位后 —— 真版式是 .dh-cols 两栏 grid,
     // 骨架若没包这层,数据落位那一瞬轴向会从单列竖排跳成两栏并排,整屏塌一次。
     expect(w.find('.dh-cols').exists(), '骨架也要两栏,否则数据落位时轴向变').toBe(true)
+    // 骨架也要有年份条(F10):真版式在 .dh-head 与两栏之间插了 .dh-ystrip,骨架没包的话
+    // 落位那一瞬两栏板子会被顶下去一截。
+    expect(w.find('.dh-ystrip').exists(), '骨架缺年份条 → 落位时两栏被顶下去').toBe(true)
     // 静态文案不该被糊掉:它们不依赖数据,糊成微光条等于把已知的东西藏起来
     expect(w.text()).toContain('本月出账')
     expect(w.text()).toContain('出账链')
@@ -622,13 +643,22 @@ describe('数据中心首页 · 年份条(P2 T4)', () => {
     expect(w.findComponent({ name: 'Select' }).exists()).toBe(false)
     expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(true)
     expect(w.text()).toContain('2024年2月')
+    // manageYears=false 真的传到了生产落点(F8):首页这条是导航不是账册管理,「＋ 补更早年份」
+    // 不该出现 —— 组件级用例只证明组件支持这个 prop,这条证明首页真的传了 false。
+    expect(w.find('.bmm-addy').exists()).toBe(false)
   })
 
   it('年份行来自 ov.months 的年,不是链数据年:只有附表的年也点得进去', async () => {
     const w = await mountWith()   // 夹具 months = ['2023-08','2024-02','2025-06'],链四端点全 mock 成 []
-    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number }[]
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as
+      { year: number; months: { month: number; hasData: boolean }[] }[]
     expect(years.map(y => y.year), '照 period.dataYears 组年份这里会是空的').toContain(2023)
     expect(years.map(y => y.year)).toContain(2025)
+    // hasData 的口径(F4):取 ov.months.includes(ym),不取 pips —— 链全空时若照 pips 判,
+    // 整条年份条含正在看的锚定月全部会画成虚线「空」卡。
+    const y2024 = years.find(y => y.year === 2024)!
+    expect(y2024.months.find(m => m.month === 2)!.hasData, '2024-02 在 ov.months 里').toBe(true)
+    expect(y2024.months.find(m => m.month === 1)!.hasData, '2024-01 不在 ov.months 里').toBe(false)
   })
 
   it('点格子换月:@pick 回写 pickedYm,重新取 overview', async () => {
@@ -657,5 +687,61 @@ describe('数据中心首页 · 年份条(P2 T4)', () => {
       '未加载时传 [false,false,false,false] = 假绿:那是「查过了,一道没走」').toBe(true)
     resolve([])
     await flushPromises()
+  })
+
+  // F2(真 bug,major):一条脏 ym(格式不对或年份离谱)不校验就直接 +m.slice(0,4) 取年,
+  // 会让 buildYearRows 的 lo..hi 跨两千年,2000+ 行 × 12 卡 —— 复查已实跑坐实 OOM。
+  it('脏 ym 不进年份条:混进脏值不会撑爆年份行(F2)', async () => {
+    const dirty = await mountWith({ months: ['2023-08', 'GARBAGE', '0001-01', '2025-06'] })
+    const dirtyYears = dirty.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number }[]
+    const clean = await mountWith({ months: ['2023-08', '2025-06'] })
+    const cleanYears = clean.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number }[]
+    expect(dirtyYears.length, '脏值应被滤掉,行数与只喂两条干净值时相同').toBe(cleanYears.length)
+  })
+
+  // F3:四个工序点的值 —— 顺序错就是屏上四道工序说错,此前一条断言都没有。
+  it('工序点的值对,且只钉住取到值的那个格子 —— 别的月不沾光', async () => {
+    vi.mocked(metersApi.months).mockResolvedValueOnce(['2024-02'])
+    const w = await mountWith()
+    await flushPromises()
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as
+      { year: number; months: { month: number; pips?: boolean[] }[] }[]
+    const cell = (y: number, m: number) => years.find(yr => yr.year === y)!.months.find(mm => mm.month === m)!
+    expect(cell(2024, 2).pips, 'pipsOf 顺序是 [meters,pool,loss,notices]').toEqual([true, false, false, false])
+    expect(cell(2023, 8).pips, '没数据的月四道工序都没走').toEqual([false, false, false, false])
+  })
+
+  // F12:stale 与 pips 同一段落出,同样没有断言 —— 参数改动晚于快照那面旗要传对。
+  it('stale 从链数据传到年份条格子', async () => {
+    vi.mocked(metersApi.months).mockResolvedValueOnce(['2024-02'])
+    vi.mocked(paramsApi.status).mockResolvedValueOnce({
+      priceOk: 6, priceTotal: 6, pendingChanges: 0, lastChangeAt: null,
+      poolSnapshotAt: null, billBatchAt: null,
+      stale: true, otherMonthsAffected: ['2024-02'],
+    })
+    const w = await mountWith()
+    await flushPromises()
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as
+      { year: number; months: { month: number; stale?: boolean }[] }[]
+    expect(years.find(y => y.year === 2024)!.months.find(m => m.month === 2)!.stale).toBe(true)
+  })
+
+  // F1(真 bug,blocker):切走再切回,KeepAlive 命中缓存实例、onMounted 不再跑 —— ov(两栏板子 /
+  // 两处计数 / 年份条的 hasData 全靠它)整个会话只取一次,而 period.cells 是活的(抄表/公摊/
+  // 损耗/催缴单写完都调 reloadChain)。不补 onReactivated,刚抄完读数的月切回首页会被画成虚线「空」。
+  it('切走再切回重取 overview:年份条读活的链数据,两栏板子不能停在旧快照', async () => {
+    const alive = ref(true)
+    localStorage.setItem('permissions', JSON.stringify(EDITOR_PERMS))
+    setActivePinia(createPinia())
+    getOverview.mockResolvedValue(overview())
+    getOverview.mockClear()   // 之前测试留下的调用计数不该算进这条的「取数一次/两次」
+    mount(defineComponent({
+      setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(DataHomeView) : null) }),
+    }))
+    await flushPromises()
+    expect(getOverview).toHaveBeenCalledTimes(1)
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(getOverview).toHaveBeenCalledTimes(2)
   })
 })

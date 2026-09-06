@@ -30,7 +30,7 @@ export interface ChainCell {
   stale: boolean
 }
 
-const YM = /^\d{4}-(0[1-9]|1[0-2])$/
+export const YM = /^\d{4}-(0[1-9]|1[0-2])$/
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const EMPTY: ChainCell = Object.freeze({
   meters: false, pool: false, loss: false, notices: false, stale: false,

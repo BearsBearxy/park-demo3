@@ -64,6 +64,7 @@ const src = (rel: string) => readFileSync(join(VIEWS, rel), 'utf8')
  *  会重置选中期)/PvMeterAnaView(屏内明文铁律「只有换年才重新取数」)三屏因判据不满足,不在表里
  *  ——理由见 task-2-report.md §Step6b。 */
 const REACTIVATED_SCREENS = [
+  '/data-home/DataHomeView.vue',
   '/tenants/TenantsView.vue',
   '/buildings/BuildingsView.vue',
   '/system/SystemUsersView.vue',
