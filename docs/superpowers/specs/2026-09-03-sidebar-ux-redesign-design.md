@@ -174,7 +174,21 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 
 ### 5.2 P2：年份条 + 两栏清单 + 主管条
 
-- 年份条复用 `BookMonthMatrix`（4 点 + 锁角标插槽；全月已审核 → ✓ 锁标，§7.2）。默认选中 = 出账链最新有数据月（现锚规则不变）。
+- 年份条复用 `BookMonthMatrix`。**落地形状（P2 实施，2026-09-06）**：
+  - 锁角标是 `MonthCell.locked?: boolean` **字段不是插槽**（该组件全文零 `<slot>`，加具名插槽要动 7 个调用点与 4 份快照类断言），
+    且必须是**独立 absolute 角标**、不进 `pips → badge → rowCount → 空` 那条 `v-else-if` 互斥链 ——
+    年份条恒传 pips，写进链里锁标一次都画不出来，而那种用例接对接错都绿。**本期 `locked` 无调用方**（全月已审核归 R1 §7.2），它是那一期的落点。
+  - 年份行取 `ov.months`（后端 `allMonths` 明发的「链 ∪ 附表」全集），**不取 `billingPeriod.dataYears`** ——
+    后者只有链的四个源，只有附表数据的年整年点不进去，而「切到 2025-06 补台账」正是这屏最常用的一步。`hasData` 同源。
+  - 链数据未到（`billingPeriod.loaded` 为 false）时**整个 `pips` 字段不给**：四颗灭点会被读成「这个月一道工序没走」。
+  - 首页传 `manageYears: false`（新增可选 prop，默认 `true`，其余 7 个调用点零改动），隐藏「补更早年份 / 添加次年 / 行尾移除」——
+    总览屏这条是导航不是账册管理（在这儿「添加 2027 年」不产生任何数据），且省约 80px 竖向空间。
+  - 默认选中 = 出账链最新有数据月（现锚规则不变）；**描边跟当前显示月走**，不是 `ChainMonthGate` 那套「最近有数据月」。
+  - 本屏因此成为链数据的常驻消费者：`onMounted` 补 `loadChain`，并登记进 `readScreenRefresh` 的 `REACTIVATED_SCREENS` ——
+    切走再切回不重取 `ov` 的话，年份条读的是活的 `billingPeriod.cells`、两栏板子读的是只取一次的旧快照，**同屏对同一件事说反话**
+    （实测：抄完读数点回首页，该月第一颗工序点已亮而正下方那一行仍显「○ 未做」；新月更因 `hasData` 仍为 false 被 `v-if="m.hasData && m.pips"` 吞掉整组点、画成虚线「空」卡）。
+  - `buildYearRows` 自带年份钳位（`currentYear-30 .. +9`，与 `utils/yearGate.ts` 同源），调用方另用 `inYearWindow` 先滤脏年 ——
+    **两道都要**：钳位只保证一条 `'0001-01'` 不撑爆堆内存（实测过 OOM），滤掉才不会把年份条从 4 行拉成 31 行。
 - 两栏（1366×620 内视口下内容区 ≈ 1027 × 502，行 38px，两栏各 7-8 行，一屏装下）：
 
 | 出账列 | 记账列 |
@@ -182,10 +196,43 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 计费参数 · 园区抄表 · 公共电核算 · 楼栋损耗 · 催缴单 · 收入核对 · **本月锁账**（派生，D20） | 月度台账 [公司 chips] · 附表10 [期区 chips] · 附表12 · 办公·三期水电 · 附表6 · 附表7/8 · 附表11 · 导入中心 |
 
 - 行状态**由数据派生**不可手勾：未做 / 已做 / 需重算；前置未满显 padlock（悬停 / 点按说前置）；计数源缺显「—」不显 0。行右侧审核态列（§7.5）。
-- 主管条：`can('lock:takeover') || can('system:view')` 时渲染，32px 定高常驻（无待批显「暂无」，不 `v-if`）：「待批授权 N」（`presence.approvals`，开 `FPApprovalDrawer`；抽屉「页面」行改为 `periodLink` 可跳）+「谁在编辑」chips（`presence.others` 中 `mode === 'edit'`：姓名 · `scopeNote` · `scopePeriod`，点按 `periodLink`）+ 审核计数（§7.5）。审核员条见 §7.5。
+- **落地（P2 实施）**：出账列 7 行、记账列 8 行 —— 后端**仍是 9 个附表源**，附13+附14 / 附7+附8 各并一行、加导入中心，
+  这一折全部在前端 `views/data-home/monthClose.logic.ts` 里做，`Schedules(done, 9, items)` 的 9 **不动**。
+  - **屏上的计数从渲染出来的行算**，不抄 DTO 的 `total`（§8.1 计数与屏内同源），且**结构性恒 `na` 的行不进分母**
+    （导入中心无「本月导没导」的源、本月锁账等 R1）—— 所以今天是**记账 n/7、出账 n/6**。分母若含永远做不完的行，
+    「记账 7/8」就永远差一格，用户会去找那一格是什么。等 R1 让锁账变真状态、导入中心拿到账期，分母自己长回 8 和 7。
+  - **有 chips 的行，行 done 收严成「所有 chip 都 done」**：改前台账「任一公司有行」即 done，而同一行右边并排挂着两个灰 chip，一行之内自相矛盾。
+    ⚠ 实现必须按 `chips.length` 守 —— `companies` / `phases` 线上发 null 时 chips 是空数组，`[].every()` 恒 true，不守会把 todo 翻成 done。
+  - **chips 是「这一行有子入口」的通用装置**，不只给公司 / 期区：附13+附14 出「办公」/「三期」两个 chip、附7+附8 出「汽车」/「电动车」两个，
+    各带自己的 `tab` 或 nav value —— 合并成 8 行之后，P0b 立的每一个深链入口都还在。
+  - 两栏按**业务时序**固定排序，取消 P1 的「未录在前、已录在后」（那是给一排扁平胶囊用的可供性，两栏板子里它会让「月度台账」跳来跳去）。
+- 主管条：`can('lock:takeover') || can('system:view')` 时渲染，32px 定高常驻（无待批显「暂无」，不 `v-if`）：「待批授权 N」（`presence.approvals`，开 `FPApprovalDrawer`；抽屉「页面」行改为 `periodLink` 可跳）+「谁在编辑」chips + 审核计数（§7.5，**归 R1**）。审核员条见 §7.5。
+  - **chips 落地（P2 实施）**：`presence.others` 中 `mode === 'edit'` 且握着锁的座位，**一人一枚**（`presence.others` 的单位是**座位不是人**，
+    同一个人开两个标签页会出两枚一模一样的 chip，主管读成两个人在抢 —— 按 `user` 去重，与 `presence.editingNote` 按 sid 去重同源），取 `editScopes[0]`。
+  - **文案与目的地用两个不同的源**：
+    文案中段用**座位自带的 `label`**（`AppShell` 按 `route.path` 实时写的「层名 · 屏名」）—— 那才是「这个人此刻真的在哪一屏」；
+    目的地用 `utils/lockScopes.scopeTarget(scope)`。
+    ⚠ **不能拿目的地当文案**：出账链三屏与系数簿共用一把 `billing-chain` 月锁，`navOfScope` 按声明序取第一个（对目的地是要的确定性），
+    握这把锁的人**四分之三的时候不在计费参数屏**，照抄就会言之凿凿写错屏名。
+    ⚠ 也**不用 `scopeNote()`** 当文案：它返回的是一整句解释（「……锁住一个就是锁住四个」），32px 一行装不下。
+  - **点跳必须带上锁 scope 的第二维**（`scopeTarget` 就是为此存在）：台账的公司 id、附10 的期区、三大报表的公司、附13/14 是哪一张。
+    只发期的话会落到目标屏的**默认子视图**，而那里恰恰没有人在编辑 —— 主管点了「张三卡在月度台账」，到了首册看到一片风平浪静，
+    正好把这条 chip 存在的理由反过来。（充电桩不用特判：`NAV_SCOPE_PREFIX` 已把 `sched:charging:7` / `:8` 分成两个 nav value。）
+  - 抽屉「页面」行改为 `periodLink` 可跳 —— **推后**，见 §12（提权 DTO 无 nav 无规范化的期，10 个调用点各自拼字符串）。
 - **无 `view=mine|all`**：所有人同一份清单。
-- 数据契约（D8）：`DataHomeOverviewDTO.Item` 增 `companies?: [{ id, short, done, review }]`（台账按 `company_id`）与 `phases?: [{ no, done, review }]`（附10 按 slot）；`scheduleSources` 改 ≈ 20 行；审核态来自 `GET /api/review?period=` 一次拉全月（§7.4），前端在 `monthClose.logic.ts` 合并。
-- `views/data-home/monthClose.logic.ts`（纯函数）：`rowsOf(cell, overview, seats, review, companies, ym) → CloseRow[]`；`closeChecks(...)` → 全月已审核判定。五步状态直接用 `chainStepsOf`（与 `ChainMonthGate` / `FPStepStrip` 同函数）。
+- 数据契约（D8）：`DataHomeOverviewDTO.Item` 增 `companies?: [{ id, short, done, review }]`（台账按 `company_id`）与 `phases?: [{ no, done, review }]`（附10 按 slot）；`scheduleSources` 改 ≈ 20 行；审核态来自 `GET /api/review?period=` 一次拉全月（§7.4）—— **归 R1**；P2 的 `companies[]` / `phases[]` **只发 `done` 不发 `review`**
+（审核机制在仓里一行都没有：`review_state` / `review_log` / `GET /api/review` / `ReviewGuard` / `Perm.REVIEW_APPROVE` 全仓 grep 命中 0）。
+另：台账公司全集取 `management_company` 且**按 `status = 1` 过滤** —— 停用的公司会永远占着「该录几家」的分母、板子清不干净。
+三个年度源（附6 光伏 / 附7·8 充电 / 附11 电费）加一道 `acctMonth` 过滤，**改前一月录了数据十二月仍显「已录」**，这是删掉一个假绿不是回归。
+- `views/data-home/monthClose.logic.ts`（纯函数）：`rowsOf({ overview, recon, review }) → CloseRow[]`；`closeChecks(rows)` → 两栏计数与全月已审核判定。
+  `review` 本期恒传 `null`（审核机制归 R1），行右侧审核态列渲染「—」。
+- ⚠ **清单五步一律读 `overview.chain.steps[i].status`，绝不用 `chainStepsOf`**（P2 执行中被对抗复查坐实的阻断）：
+  `nav/billingChain.ts` 里 `chainStepsOf` 的第一步是 `{ ...CHAIN[0], state: c.stale ? 'stale' : 'done' }` —— **计费参数恒 done**，
+  那是**矩阵 4 点**的口径（同文件注释写明理由：「这个月配过参数没有」对参数不是一个有答案的问题）。
+  清单要的是 P1 立的另一套判据 `priceTotal > 0 && priceOk == priceTotal`，它只在后端算、只在 `overview.chain.steps[].status` 里。
+  照 §5.1 原文「**矩阵 4 点、清单 5 步**」两套口径：`chainStepsOf` 只喂年份条格子的 pips / stale。
+  叠加时序还有第二重理由：清单先于年份条落地，那时 `billingPeriod.cellOf()` 恒返回全 false 的 EMPTY，照 `chainStepsOf` 走会得到
+  「参数 done + 四步 todo」的固定假象，与后端无关。
 
 ---
 
@@ -320,7 +367,7 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - **不变**：`fpNav.spec` 4 层；`palette.spec` 6 条；`tabs.spec` epoch 12 条；`ledgerLeaveAndReturn.spec`；`lockScopes.spec` 护栏；8 份 flow/gate spec 的断言（只改注释口径）；`billingPeriod.spec:84-88`。
 - **翻转 1 条**：`mobileNavDrawer.spec:35-42`（目录条目 epoch 0）。2026-09-03 实跑 vitest：只改 `SidebarPanel` 0 红；同改 `MobileNavDrawer.goItem` 恰 1 红。
 - **改数**：`fpNav.spec` 51 → 50 并加「`contracts` 在档案组 / `anomaly` 是分析层第一组第 2 项 / 经营·能源两组存在 / `bank-flow` 不存在」；`routeMap.spec` 改「无任何屏落 PlaceholderView」+ `/bank-flow` 有 redirect；`tabs.spec:80-85` 基底页签随落地页；`DataHomeView.spec:151,160` 与 `DataHomeApiIT:51` 4 → 5；`Perm` 覆盖率回归 18 点。
-- **新增**：`navHeight.spec` · `deepLink.spec`（p / ym / y&m / company 名兼容、越界丢弃、pin 规则）· `useDeepPeriod.spec`（同 fullPath 只 apply 一次；query 变更再 apply；无 p 不 apply；dirty 不切）· `sidebarPanel.spec`（当前项 no-op / open / Shift / 折叠追加不收回 / scrollIntoView）· `iconRail.spec`（当前层 guard）· `tabStripTitle.spec`（定宽、ctx 拼接、非激活签退回屏名）· `monthClose.logic.spec`（5 步与 `chainStepsOf` 同源、padlock、锁账派生、审核态映射）· `useEditMode.spec` +3（approved / submitted 不进、returned 可进）· `reviewDialog.spec`（理由必填）· `sidebarLockNote.spec` +3（期 / 折叠组聚合点 / aria）· `lockScopes.spec` +1（`scopePeriod`）· `auth.spec` +1（`roleLabel` 派生表）· 后端 `ReviewGuardCoverageTest` · `ReviewApiIT` · `V124` 迁移测试。
+- **新增**：`navHeight.spec` · `deepLink.spec`（p / ym / y&m / company 名兼容、越界丢弃、pin 规则）· `useDeepPeriod.spec`（同 fullPath 只 apply 一次；query 变更再 apply；无 p 不 apply；dirty 不切）· `sidebarPanel.spec`（当前项 no-op / open / Shift / 折叠追加不收回 / scrollIntoView）· `iconRail.spec`（当前层 guard）· `tabStripTitle.spec`（定宽、ctx 拼接、非激活签退回屏名）· `monthClose.logic.spec`（五步读 `overview.chain.steps[i].status`——**不是** `chainStepsOf`，见 §5.2、padlock、锁账派生、审核态映射、恒 na 不进分母、chips 收严按 `chips.length` 守）· `useEditMode.spec` +3（approved / submitted 不进、returned 可进）· `reviewDialog.spec`（理由必填）· `sidebarLockNote.spec` +3（期 / 折叠组聚合点 / aria）· `lockScopes.spec` +1（`scopePeriod`）· `auth.spec` +1（`roleLabel` 派生表）· 后端 `ReviewGuardCoverageTest` · `ReviewApiIT` · `V124` 迁移测试。
 - 每条新断言按 memory 节奏逐条破坏验证；子 agent 写的测试由本人独立重做破坏验证。
 - **P0c 例外**：`reportWorkbenchFlow.spec` 期间条断言由 `{y,m,co}` 改 `{p,co}`（发链形状迁移）；`reportPeriod.spec` 「期包」3 条随 `periodQuery` 删；`utils/deepLink.spec` 整份随模块删；`nav/deepLink.spec` 「utils/deepLink 两个解析器」1 条删；`ledgerDeepLink.spec` / `s10DeepLink.spec` 各一条只改标题。新增：`reportPeriodGate.spec`（九屏期间条源码门禁）· `reportDeepLink.spec`（附表 / 核对 10 条）· `anaDeepLink.spec`（发链形状 16 条）· `contractsDeepLink.spec`（4 条）· `reportWorkbenchFlow` +5 · `schedDeepLink` +1 · `cpMeterFlow` +2。
 
@@ -363,4 +410,17 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
   - **★ 有 `aria-pressed` 却不可反按**：`tabs.pin()` 幂等，全站没有 unpin 入口，读屏会把它读成一个按下去就弹不起来的开关。要么给一个 unpin，要么去掉这个属性。
   - 页签定宽 148px 之后溢出下拉从「几乎不发生」变常态入口（6–7 签就撑破一行），`.fp-tab-overflow` 的 `v-if` 一进一出会挤窄 `.fp-tabs`；不算 §1 违规（开第 7 个签本来就要重排那一行），要不要给 `.fp-tab-actions` 一个恒定占位宽留下一期定。
   - `CommandPalette` 自 P3 起懒加载（`defineAsyncComponent` + `v-if="paletteEverOpened"`，index 190.8 → 184.1KB）。连带它的 reset+autofocus watch 加了 `immediate` —— 首次打开时它是**带着 open=true 挂载**的，没有 false→true 这个变化。
+- **P2 遗留（2026-09-06）**：
+  - **审核机制整条链归 R1**：本期 `Item.companies[] / phases[]` 只发 `done` 不发 `review`，行右侧审核态列与「本月锁账」行恒显「—」+ padlock（悬停说「审核机制未上线」）。**不许**临时降级成「五步全 done 就算锁账」—— 那是假绿。第 18 个权限点 `review:approve` 与 `V124` 迁移同归 R1（碰它会连锁 `BookPinApiIT:432` 的 `hasSize(17)` 与两处种子断言）。
+  - **`CloseRow.stale` 今天没有生产路径**：后端 `buildChain` 只发 `done` / `current` / `todo`（`DataHomeApiIT` 有契约测钉着取值域），它是防御分支、夹具靠类型放宽造出来的。如实记着比假装能走到强。
+  - **`MonthCell.locked` 本期无调用方**，是 R1 §7.2「全月已审核 → ✓ 锁标」的落点；本期唯一有效的守是组件级那条「同传 pips 与 locked 时两者都在 DOM 里」（屏级怎么写都绿）。
+  - **审批抽屉的「页面」行不可跳**：`Pending` 只有 `page / action / impact` 三个自由文本（`api/approvals.ts` / `ApprovalDtos.java`），10 个调用点各自拼字符串，既无 nav value 也无规范化的期。要做得给提权审批 DTO 加两个字段并改 10 个调用点 —— 为一个便利改动去动安全相邻的提权流程，不划算。**推后**。
+  - **导入中心没有「本月导没导」的数据源**：`import` 不在 9 个 source 里，导入日志按天数窗口取、DTO 无账期字段。该行**只做入口**，状态位恒「—」，且不进计数分母。
+  - **`navOfScope` 一把锁命中多个 nav 时取 `NAV_SCOPE_PREFIX` 声明序的第一个**（出账链三屏与系数簿共用一把月锁）。⚠ 这个结果**只可用作目的地，不可用作文案** —— 握这把锁的人四分之三的时候不在第一个屏上。文案见 §5.2。
+  - **`sched:s10` 一个前缀两种粒度**（月锁 `…:2025-06` 与年锁 `…:2025` 并存），`scopePeriod` **照实返回**混粒度，不把年补成月（`periodLink` 的 `p` 本就允许只有年）。
+  - **★ 年锁的深链会被目标屏静默丢弃**：主管条 chip 点跳带出去的 `p` 若只有年（`meters:2025` / `sched:s10:1:2025`），目标屏的 `applyDeep` 是 `if (t.month == null) return` —— 人落在那一屏，但不在那一年，且没有任何提示。修它要动 `S10View` 与 `useDeepPeriod` 两处别的屏，超出 P2；本期只用一条用例把**现状**钉住。
+  - **首页骨架的年份条按「一年」给高度**：年份数在 `ov` 到达之前不可知，所以真版式若是四年，这一块会长高。T3 修掉的是**轴向**从单列跳成两栏（版式塌），这是同轴同序的增高，量级不同，不假装能对齐。
+  - **「点附表项不触发 loadChain」这条断言随 P2 整条删**：年份条要四颗工序点，本屏自 T4 起**永远**是链数据的消费者（`onMounted` 就发），那句话不再成立。同时 `DataHomeView` 登记进 `readScreenRefresh` 的 `REACTIVATED_SCREENS`。
+  - **主管条是第二个「待批授权」入口**（`Toolbar` 已有一个，移动端 `MobileTopBar` 是第三个），三处读同一份 `presence.approvals`、开同一个 `FPApprovalDrawer`，没有共享的开合状态 —— 各自一个实例，同时只会开一个。
+  - **两栏清单取消了 P1 的「未录在前、已录在后」排序**（改按业务时序固定排），`DataHomeView.spec` 里那条断言随之整条删 —— 那条排序是给一排扁平胶囊用的可供性，两栏板子里它会让「月度台账」跳来跳去。
 - 四张年表屏（`ElecView` / `UtilitiesView` / `PvView` / `ChargingView`，dirty 闸与 `current` 逐字同形；`UtilitiesView` 的 apply 少一道 `mode === 'summary'` 门）的 dirty 闸未按年幂等（同年不同月的链在有抽屉 / 导入窗时会误弹提示），与损益附表的裁定不一致 —— 遗留；`CpMeterView` 的 `?station=` 「只有年」pending 分支从唯一发链方不可达。
