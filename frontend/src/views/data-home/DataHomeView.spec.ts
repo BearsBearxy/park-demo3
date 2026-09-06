@@ -190,20 +190,14 @@ describe('数据中心首页 · 两段式工作台', () => {
     expect(push).toHaveBeenLastCalledWith({ path: '/utilities', query: { p: '2024', tab: 'phase3' } })
   })
 
-  it('点出账链步骤后触发 loadChain:目标屏链路条不能读到空格子', async () => {
-    // pick() 让目标屏的 ChainMonthGate 不挂载,而它是 loadChain 的唯一调用方 ——
+  it('进屏即 loadChain 一次,再点出账链行不重复打网络', async () => {
+    // 年份条要 4 个工序点,所以本屏从 T4 起进屏就发;go() 里那句是幂等兜底(loaded 后直接返回)。
     // 不补这一句,目标屏 chainStepsOf(cellOf(ym)) 读到冻结的 EMPTY 格子,五道工序全显「未做」。
     const w = await mountWith()
-    await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
+    expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
+    await w.findAll('.dh-row-billing')[1].trigger('click')
     await flushPromises()
     expect(vi.mocked(metersApi.months)).toHaveBeenCalledTimes(1)
-  })
-
-  it('点附表项不触发 loadChain', async () => {
-    const w = await mountWith()
-    await w.findAll('.dh-row-booking')[0].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
-    await flushPromises()
-    expect(vi.mocked(metersApi.months)).not.toHaveBeenCalled()
   })
 
   // ── 刚选的月 vs 服务端回包(2026-09-03 对抗复查 F2)──
@@ -212,7 +206,7 @@ describe('数据中心首页 · 两段式工作台', () => {
     // 第二次 getOverview 停在在途,模拟用户切月后马上点
     let resolve!: (v: DataHomeOverviewDTO) => void
     getOverview.mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
-    await w.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', '2025-06')
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
     await flushPromises()
     await w.findAll('.dh-row-billing')[1].trigger('click')   // 选择器:胶囊行 → 两栏行,P2 T3
     expect([useBillingPeriodStore().year, useBillingPeriodStore().month]).toEqual([2025, 6])
@@ -227,10 +221,10 @@ describe('数据中心首页 · 两段式工作台', () => {
     getOverview
       .mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolveA = r }))
       .mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolveB = r }))
-    const sel = w.findComponent({ name: 'Select' })
-    await sel.vm.$emit('update:modelValue', '2023-08')
+    const sel = w.findComponent({ name: 'BookMonthMatrix' })
+    await sel.vm.$emit('pick', 2023, 8)
     await flushPromises()
-    await sel.vm.$emit('update:modelValue', '2025-06')
+    await sel.vm.$emit('pick', 2025, 6)
     await flushPromises()
     resolveB(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
     await flushPromises()
@@ -580,7 +574,7 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     // 切到 2024-03:overview 回来,收入核对停在在途
     getOverview.mockResolvedValueOnce(overview({ period: { year: 2024, month: 3, label: '2024年3月' } }))
     reconOverview.mockReturnValueOnce(new Promise(() => {}))
-    await w.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', '2024-03')
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2024, 3)
     await flushPromises()
     expect(dot(), '新月的行不该挂着上个月的 ✓').toBe('—')
   })
@@ -598,10 +592,10 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     getOverview
       .mockResolvedValueOnce(overview({ period: { year: 2023, month: 8, label: '2023年8月' } }))
       .mockResolvedValueOnce(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
-    const sel = w.findComponent({ name: 'Select' })
-    await sel.vm.$emit('update:modelValue', '2023-08')
+    const sel = w.findComponent({ name: 'BookMonthMatrix' })
+    await sel.vm.$emit('pick', 2023, 8)
     await flushPromises()
-    await sel.vm.$emit('update:modelValue', '2025-06')
+    await sel.vm.$emit('pick', 2025, 6)
     await flushPromises()
     // 新月(2025-06,已配平)的核对回包先到,旧月(2023-08,有差异)的晚到 —— 晚到的不该覆盖
     resolveNew({ year: 2025, months: [{ month: 6, hasData: true, entityCount: 5, okCount: 5, diffCount: 0, missCount: 0 }] })
@@ -618,5 +612,50 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     await mountWith()
     await flushPromises()
     expect(reconOverview).toHaveBeenCalledWith(2024)
+  })
+})
+
+// ── 年份条取代月份下拉(P2 T4):年份行取 ov.months(链∪附表),链未到不给 pips ──
+describe('数据中心首页 · 年份条(P2 T4)', () => {
+  it('年份条取代月份下拉:屏上没有 Select,矩阵在,月名照显', async () => {
+    const w = await mountWith()
+    expect(w.findComponent({ name: 'Select' }).exists()).toBe(false)
+    expect(w.findComponent({ name: 'BookMonthMatrix' }).exists()).toBe(true)
+    expect(w.text()).toContain('2024年2月')
+  })
+
+  it('年份行来自 ov.months 的年,不是链数据年:只有附表的年也点得进去', async () => {
+    const w = await mountWith()   // 夹具 months = ['2023-08','2024-02','2025-06'],链四端点全 mock 成 []
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number }[]
+    expect(years.map(y => y.year), '照 period.dataYears 组年份这里会是空的').toContain(2023)
+    expect(years.map(y => y.year)).toContain(2025)
+  })
+
+  it('点格子换月:@pick 回写 pickedYm,重新取 overview', async () => {
+    const w = await mountWith()
+    getOverview.mockResolvedValue(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
+    await flushPromises()
+    expect(getOverview).toHaveBeenLastCalledWith('2025-06')
+    expect(w.text()).toContain('2025年6月')
+  })
+
+  it('描边跟着当前显示月走,不是「最近有数据月」', async () => {
+    const w = await mountWith()   // 锚定月 2024-02
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { year: number; months: { month: number; cur?: boolean }[] }[]
+    const flat = years.flatMap(y => y.months.map(m => ({ ym: `${y.year}-${String(m.month).padStart(2, '0')}`, cur: m.cur })))
+    expect(flat.filter(c => c.cur).map(c => c.ym)).toEqual(['2024-02'])
+  })
+
+  it('链数据没到时不给 pips —— 四个灭点会被读成「这个月一道工序没走」', async () => {
+    // metersApi.months 停在在途:overview 已上屏,billingPeriod.loaded 仍为 false
+    let resolve!: (v: string[]) => void
+    vi.mocked(metersApi.months).mockReturnValueOnce(new Promise<string[]>((r) => { resolve = r }))
+    const w = await mountWith()
+    const years = w.findComponent({ name: 'BookMonthMatrix' }).props('years') as { months: { pips?: boolean[] }[] }[]
+    expect(years.flatMap(y => y.months).every(m => m.pips === undefined),
+      '未加载时传 [false,false,false,false] = 假绿:那是「查过了,一道没走」').toBe(true)
+    resolve([])
+    await flushPromises()
   })
 })

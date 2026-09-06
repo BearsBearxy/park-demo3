@@ -20,12 +20,13 @@ import type { ReconMonthMeta } from '@/types/recon'
 import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
 import Button from '@/components/ds/Button.vue'
-import Select from '@/components/ds/Select.vue'
+import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import { CHAIN } from '@/nav/billingChain'
+import { CHAIN, pipsOf } from '@/nav/billingChain'
+import { buildYearRows } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
 
@@ -57,7 +58,7 @@ async function load() {
   if (seq !== loadSeq) return
   ov.value = res
 }
-onMounted(load)
+onMounted(() => { void load(); void period.loadChain() })
 watch(pickedYm, load)
 
 // 行点击 = 「去做事」显式导航 → 全新状态(openFresh;侧栏语义翻案是 P3 的事,这里不动)。
@@ -131,8 +132,28 @@ function dotOf(state: CloseRow['state']): string {
 
 const curYm = computed(() =>
   ov.value?.period ? `${ov.value.period.year}-${String(ov.value.period.month).padStart(2, '0')}` : '')
-const monthOpts = computed(() =>
-  (ov.value?.months ?? []).map(m => ({ value: m, label: `${+m.slice(0, 4)}年${+m.slice(5, 7)}月` })))
+
+// 年份条(P2 T4):年份行来自 ov.months —— 后端明发的「链 ∪ 附表」全集(DataHomeService.allMonths)。
+// 照 period.dataYears 走会丢掉只有附表的年,而「切到 2025-06 补台账」正是这屏最常用的一步。
+const yearRows = computed(() => {
+  const ms = ov.value?.months ?? []
+  const have = new Set(ms)
+  const years = [...new Set(ms.map(m => +m.slice(0, 4)))]
+  return buildYearRows(years, new Date().getFullYear(), []).map(r => ({
+    year: r.year,
+    months: Array.from({ length: 12 }, (_, i) => {
+      const ym = `${r.year}-${String(i + 1).padStart(2, '0')}`
+      const c = period.cellOf(ym)
+      return {
+        month: i + 1,
+        hasData: have.has(ym),
+        // 链数据没到时**整个字段不给** —— 四个灭点会被读成「这个月一道工序没走」(裁定 3)
+        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale } : {}),
+        cur: ym === curYm.value,
+      }
+    }),
+  }))
+})
 
 const curStep = computed(() => {
   const c = ov.value?.chain
@@ -182,10 +203,13 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
       <div class="dh-head">
         <div class="dh-period">
           <span class="dh-title">本月出账</span>
-          <div class="dh-msel"><span class="fp-shim" style="display:block;height:28px;border-radius:8px"></span></div>
+          <div class="dh-mnow"><span class="fp-shim" style="display:block;width:72px;height:14px;border-radius:4px"></span></div>
         </div>
         <span class="fp-shim" style="display:block;width:150px;height:12px"></span>
       </div>
+      <!-- 年份条骨架(P2 T4):年份数在数据到达前不可知,骨架给一年(78px≈62px 卡+行距);
+           真版式若是多年,这一块会长高 —— 同轴同序的增高,不是版式塌(T3 修的是轴向从单列跳成两栏)。 -->
+      <div class="dh-ystrip"><span class="fp-shim" style="display:block;height:78px;border-radius:8px"></span></div>
       <!-- 骨架也要两栏(评审修补 T3 fix-brief #1):真版式(:247)的两个 section 包在 .dh-cols 里,
            骨架不包的话数据落位那一瞬轴向会从单列竖排跳成两栏并排,整屏塌一次。 -->
       <div class="dh-cols">
@@ -222,15 +246,19 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
     <div class="dh-head">
       <div class="dh-period">
         <span class="dh-title">本月出账</span>
-        <div v-if="ov.period" class="dh-msel">
-          <Select :options="monthOpts" :model-value="curYm" size="sm"
-                  @update:model-value="pickedYm = $event" />
-        </div>
+        <div v-if="ov.period" class="dh-mnow">{{ ov.period.label }}</div>
       </div>
       <span v-if="ov.period" class="dh-counts">
         出账 {{ checks.byCol.billing.done }}/{{ checks.byCol.billing.total }} ·
         附表 {{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}
       </span>
+    </div>
+
+    <!-- 年份条(P2 T4):取代月份下拉。manage-years=false —— 首页这条是导航不是账册管理,
+         「添加次年」在总览屏不产生任何数据,接了线也没有语义(裁定 5)。 -->
+    <div v-if="ov.period" class="dh-ystrip">
+      <BookMonthMatrix :book="{}" :years="yearRows" :manage-years="false"
+                       @pick="(y, m) => { pickedYm = `${y}-${String(m).padStart(2, '0')}` }" />
     </div>
 
     <!-- 全新库:一条数据都没有,只给一句引导,不摆空架子 -->
@@ -318,8 +346,9 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
 .dh-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .dh-period { display: flex; align-items: center; gap: 12px; }
 .dh-title { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
-.dh-msel { width: 140px; }
+.dh-mnow { font-size: var(--fs-label); color: var(--text-secondary); }
 .dh-counts { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
+.dh-ystrip { margin-bottom: 4px; }
 
 .dh-empty { display: flex; align-items: center; gap: 12px; padding: 24px; color: var(--text-secondary); }
 

@@ -79,4 +79,21 @@ describe('选期矩阵 · 工序点', () => {
     expect(card.findAll('.bmm-pip')).toHaveLength(4)
     expect(card.find('.bmm-count').exists()).toBe(false)
   })
+
+  it('锁标是独立角标:同传 pips 与 locked 时两者都在 DOM 里', () => {
+    const w = mk(months({ 3: { hasData: true, pips: [true, false, false, false], locked: true } }))
+    const card = w.findAll('.bmm-card')[2]
+    expect(card.findAll('.bmm-pip')).toHaveLength(4)
+    expect(card.find('.bmm-lock').exists(), '锁标若写进 pips/badge/rowCount 那条 v-else-if 链就永远画不出来').toBe(true)
+  })
+
+  it('manageYears=false 时三处年份管理入口都不渲染', () => {
+    setActivePinia(createPinia())
+    const w = mount(BookMonthMatrix, {
+      props: { book: BOOK, years: [{ year: 2025, months: months(), removable: true }], manageYears: false },
+    })
+    expect(w.find('.bmm-addy').exists()).toBe(false)     // ＋ 补更早年份
+    expect(w.find('.bmm-addrow').exists()).toBe(false)   // ＋ 添加 {次年} 年
+    expect(w.find('.bmm-rm-slot').exists()).toBe(false)  // 行尾移除槽
+  })
 })
