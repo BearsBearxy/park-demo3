@@ -47,7 +47,7 @@ public class SystemController {
     @DeleteMapping("/roles/{id}")
     public void deleteRole(@PathVariable Integer id) { svc.deleteRole(id); }
 
-    @Operation(summary = "操作日志时间线（三表 union，按时间倒序；src=param|import|auth）")
+    @Operation(summary = "操作日志时间线（四表 union，按时间倒序；src=param|import|auth|review）")
     @GetMapping("/logs")
     public AuditPageDTO logs(@RequestParam(required = false) String src,
                             @RequestParam(required = false) String actor,

@@ -43,6 +43,50 @@ class AuditLogApiIT extends AbstractMysqlIT {
                 .andExpect(status().isOk()).andReturn());
     }
 
+    // ══════════ 第 4 张来源表 review_log（R1）══════════
+
+    /**
+     * review_log 进时间线(RBAC-SPEC §7 第 4 行)。四处齐了才算接上:
+     * BRANCHES 的第 4 路(每个分支必须写全列别名,否则 src=review 单查「Unknown column」500)、
+     * actors() 的 UNION、SystemService 的来源白名单(不加则 src=review 直接 400)、
+     * 以及外层 ORDER BY 的全序(靠 u.rid 末位键,没有它同一秒的多行翻页会重复/漏行)。
+     */
+    @Test
+    void reviewLogJoinsTheTimeline_andIsFilterableAndOrdered() throws Exception {
+        String actor = "it_rvlog_" + (System.nanoTime() % 1000000);
+        // 同一秒插 3 行:既验并入时间线,也验分页全序(类注释坑 2)
+        for (int i = 1; i <= 3; i++)
+            jdbc.update("INSERT INTO review_log (review_key, action, actor, at, reason) "
+                      + "VALUES (?,?,?,NOW(),?)", "salary:2031-0" + i, "submit", actor, "理由" + i);
+        try {
+            // ① 不带 src 也能查到,source 归一成 review
+            String all = logs("?size=500&actor=" + actor);
+            assertThat((List<String>) JsonPath.read(all, "$.data.rows[*].source")).containsOnly("review");
+
+            // ② src=review 单查不 500、不 400 —— 全列别名与白名单两条同时钉住
+            String only = logs("?src=review&size=500&actor=" + actor);
+            assertThat(total(only)).isEqualTo(3);
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].target"))
+                .containsExactlyInAnyOrder("salary:2031-01", "salary:2031-02", "salary:2031-03");
+            assertThat((List<String>) JsonPath.read(only, "$.data.rows[*].detail"))
+                .containsExactlyInAnyOrder("理由1", "理由2", "理由3");
+
+            // ③ actors 下拉含这个人
+            assertThat((List<String>) JsonPath.read(logs("?size=1"), "$.data.actors")).contains(actor);
+
+            // ④ 全序:同一秒的 3 行按 size=2 翻两页,每行恰好出现一次
+            List<String> p1 = JsonPath.read(logs("?src=review&size=2&page=1&actor=" + actor), "$.data.rows[*].target");
+            List<String> p2 = JsonPath.read(logs("?src=review&size=2&page=2&actor=" + actor), "$.data.rows[*].target");
+            List<String> both = new java.util.ArrayList<>(p1); both.addAll(p2);
+            assertThat(both).as("同一秒的行翻页不许重复/漏行(靠 ORDER BY 的 rid 末位键)")
+                .containsExactlyInAnyOrder("salary:2031-01", "salary:2031-02", "salary:2031-03");
+        } finally {
+            jdbc.update("DELETE FROM review_log WHERE actor=?", actor);
+        }
+    }
+
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     // ══════════ 时间线 ══════════
 
     @Test
