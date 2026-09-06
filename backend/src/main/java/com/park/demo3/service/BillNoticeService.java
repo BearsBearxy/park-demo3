@@ -37,6 +37,9 @@ import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -98,6 +101,7 @@ public class BillNoticeService {
     private final PriceCfgService price;
     private final AllocService alloc;
     private final MeterBindingService binding;
+    private final ReviewGuard reviewGuard;
 
     public BillNoticeService(BillNoticeMapper notices, BillNoticeLineMapper noticeLines,
                              BillNoteOverrideMapper noteOverrides,
@@ -109,7 +113,9 @@ public class BillNoticeService {
                              AllocPoolResultMapper poolResults,
                              UnitMapper units, BillingTermUnitMapper termUnits,
                              PriceCfgService price,
-                             AllocService alloc, MeterBindingService binding) {
+                             AllocService alloc, MeterBindingService binding,
+                             ReviewGuard reviewGuard) {
+        this.reviewGuard = reviewGuard;
         this.notices = notices; this.noticeLines = noticeLines; this.noteOverrides = noteOverrides;
         this.meters = meters; this.readings = readings;
         this.contracts = contracts; this.billingTerms = billingTerms;
@@ -140,6 +146,7 @@ public class BillNoticeService {
     @Transactional
     public BillNoticeGenResultDTO generate(String ym) {
         requireYm(ym);
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         LocalDate first = LocalDate.parse(ym + "-01");
         LocalDate last = first.withDayOfMonth(first.lengthOfMonth());
         String batch = "BN" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
@@ -1191,6 +1198,8 @@ public class BillNoticeService {
     }
 
     public void saveNote(BillNoteReq req) {
+        // 全类唯一漏 requireYm 的方法 —— 格式由 ReviewKey 自己校验,不额外补一份
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, req.ym(), null);
         if (tenants.selectById(req.tenantId()) == null)
             throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
         noteOverrides.upsertNote(req.ym(), req.tenantId(), req.feeKey(),
@@ -1202,6 +1211,7 @@ public class BillNoticeService {
     public void deleteNote(String ym, Integer tenantId, String feeKey,
                            String premiseKey, String meterKey, String segKey) {
         requireYm(ym);
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         noteOverrides.delete(new QueryWrapper<BillNoteOverride>()
             .eq("ym", ym).eq("tenant_id", tenantId).eq("fee_key", feeKey)
             .eq("premise_key", emptyIfNull(premiseKey))
@@ -1216,6 +1226,8 @@ public class BillNoticeService {
 
     @Transactional
     public BillDeliveryDTO.Confirm confirm(String ym, List<Integer> tenantIds) {
+        // 交付轴(draft→confirmed→exported,V94)与审核轴并存(§7.1),两条都要过:已审核的月不许再改交付态
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         String who = currentUser();
         LocalDateTime now = LocalDateTime.now();
         int confirmed = 0, skipped = 0;
@@ -1233,6 +1245,7 @@ public class BillNoticeService {
     // 导出后回标;重复导出刷新 exported_at(「最近一次导出时间」)。已作废单不动。
     @Transactional
     public BillDeliveryDTO.Export markExported(String ym, List<Integer> tenantIds) {
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, ym, null);
         LocalDateTime now = LocalDateTime.now();
         int marked = 0;
         for (BillNotice n : byTenants(ym, tenantIds)) {
@@ -1259,12 +1272,15 @@ public class BillNoticeService {
     }
 
     // 仅 issued/draft 可 void;issue 仅 draft(issued 不可被重跑覆盖,须先 void)
+    @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")
     public BillNoticeDTO voidNotice(Integer id) { return transition(id, "void"); }
+    @NoReviewGuard(reason = "转调 transition(id,action),守卫在那里按实体的 ym 判")
     public BillNoticeDTO issue(Integer id) { return transition(id, "issued"); }
 
     private BillNoticeDTO transition(Integer id, String to) {
         BillNotice n = notices.selectById(id);
         if (n == null) throw new BizException(ResultCode.NOT_FOUND, "催缴单不存在");
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES, n.getYm(), null);
         boolean ok = "void".equals(to) ? !"void".equals(n.getStatus()) : "draft".equals(n.getStatus());
         if (!ok) throw new BizException(ResultCode.CONFLICT,
             "void".equals(to) ? "该单已作废" : "仅草稿单可签发,当前状态=" + n.getStatus());

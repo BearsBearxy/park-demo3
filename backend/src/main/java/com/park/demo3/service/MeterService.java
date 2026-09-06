@@ -25,6 +25,9 @@ import com.park.demo3.mapper.AllocRuleMeterMapper;
 import com.park.demo3.mapper.BillNoticeMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +44,8 @@ import java.util.stream.Collectors;
 @Service
 public class MeterService {
     private static final Pattern YM = Pattern.compile("\\d{4}-\\d{2}");
+    /** 审核闸送月份用的严格版(月份 01-12),与 ReviewKey 同口径;上面那份是既有的宽正则,不在本期动它。 */
+    private static final Pattern REVIEW_YM = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     private final MeterMapper meters;
     private final MeterReadingMapper readings;
     // §H5 批量删除的级联面:四张派生快照表 + 池绑定(FK 守卫)+ 审计日志。
@@ -54,12 +59,14 @@ public class MeterService {
     private final AllocRuleMapper rules;
     private final BillNoticeMapper billNotices;   // S4-2 守卫:该月已出催缴单 → 批量删读数 409
     private final ImportLogService importLogs;
+    private final ReviewGuard reviewGuard;
 
     public MeterService(MeterMapper meters, MeterReadingMapper readings,
                         AllocPoolResultMapper poolResults, AllocPoolMeterResultMapper poolMeterResults,
                         AllocLossResultMapper lossResults, AllocResultMapper allocResults,
                         AllocRuleMeterMapper ruleMeters, AllocRuleMapper rules,
-                        BillNoticeMapper billNotices, ImportLogService importLogs) {
+                        BillNoticeMapper billNotices, ImportLogService importLogs, ReviewGuard reviewGuard) {
+        this.reviewGuard = reviewGuard;
         this.meters = meters; this.readings = readings;
         this.poolResults = poolResults; this.poolMeterResults = poolMeterResults;
         this.lossResults = lossResults; this.allocResults = allocResults;
@@ -114,6 +121,7 @@ public class MeterService {
                 m -> ((Number) m.get("meter_id")).intValue(), m -> ((Number) m.get("cnt")).longValue()));
     }
 
+    @NoReviewGuard(reason = "表档案不带期间;倍率改动只影响之后新录的读数,不改已审月的行")
     public MeterDTO create(MeterReq req) {
         String name = req.name().trim();
         if (meters.selectByKey(req.kind(), req.zone(), name) != null)
@@ -125,6 +133,7 @@ public class MeterService {
         return toDTO(meters.selectById(m.getId()), 0L);
     }
 
+    @NoReviewGuard(reason = "表档案不带期间;倍率改动只影响之后新录的读数,不改已审月的行")
     public MeterDTO update(Integer id, MeterReq req) {
         Meter m = meters.selectById(id);
         if (m == null) throw new BizException(ResultCode.NOT_FOUND, "表不存在");
@@ -137,6 +146,7 @@ public class MeterService {
         return toDTO(meters.selectById(id), readings.countByMeter(id));
     }
 
+    @NoReviewGuard(reason = "表档案不带期间;有读数的表本来就删不掉(既有 409),删得掉的表没有任何月的行")
     public void delete(Integer id) {
         if (meters.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "表不存在");
         if (readings.countByMeter(id) > 0)
@@ -170,6 +180,7 @@ public class MeterService {
     }
 
     public MeterReadingDTO createReading(MeterReadingReq req) {
+        reviewGuard.assertEditable(ReviewKind.METERS, req.ym(), null);
         Meter m = meters.selectById(req.meterId());
         if (m == null) throw new BizException(ResultCode.CONFLICT, "表不存在");
         if (readings.selectByMeterAndYm(m.getId(), req.ym()) != null)
@@ -188,6 +199,8 @@ public class MeterService {
     public MeterReadingDTO updateReading(Integer id, MeterReadingReq req) {
         MeterReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        // 旧月与新月都要判:只守新月的话,把已审月的读数「挪」进未审月改完再挪回去就绕过了整道闸
+        reviewGuard.assertEditable(ReviewKind.METERS, List.of(r.getYm(), req.ym()), null);
         MeterReading clash = readings.selectByMeterAndYm(r.getMeterId(), req.ym());
         if (clash != null && !clash.getId().equals(id))
             throw new BizException(ResultCode.CONFLICT, "该表该月已有读数");
@@ -198,8 +211,11 @@ public class MeterService {
         return toReadingDTO(readings.selectById(id));
     }
 
+    // 先取行再删:被删行的 ym 是审核闸的唯一来源,只判存在性拿不到它
     public void deleteReading(Integer id) {
-        if (readings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        MeterReading r = readings.selectById(id);
+        if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        reviewGuard.assertEditable(ReviewKind.METERS, r.getYm(), null);
         readings.deleteById(id);
     }
 
@@ -249,6 +265,8 @@ public class MeterService {
             manual.stream().map(r -> "租户#" + r.getTenantId() + " " + r.getFeeKey()).toList(),
             dropped, blocked);
         if (!apply) return dto;
+        // 审核闸只在实删这一侧:apply=false 是预览,预览被拒的话用户连「为什么删不了」都看不见
+        reviewGuard.assertEditable(ReviewKind.METERS, ym, null);
         if (notices > 0)
             throw new BizException(ResultCode.CONFLICT,
                 "该月已生成催缴单 " + notices + " 张,请先作废/删除该月催缴单再删读数");
@@ -281,6 +299,12 @@ public class MeterService {
 
     @Transactional
     public MeterImportResultDTO importRows(MeterImportRequest req) {
+        // 一批可跨月:把本批**真会落库**的月份去重后一次闸掉,任一月被审就整批拒(同一 @Transactional,半批落库更糟)。
+        // ⚠ 只送格式合法的月份:月份非法的行本来是行级错误(跳过并进 errors),送进闸会被 ReviewKey 的严格校验
+        //   打成整批 400 —— 行级容错变批级拒收。本类的 YM 是宽正则(放行 2024-13),故这里另用与 ReviewKey 同口径的一份。
+        java.util.Set<String> months = req.rows().stream().map(MeterImportRequest.Row::ym)
+            .filter(y -> y != null && REVIEW_YM.matcher(y).matches()).collect(Collectors.toSet());
+        if (!months.isEmpty()) reviewGuard.assertEditable(ReviewKind.METERS, months, null);
         List<Meter> all = meters.selectList(null);
         Index idx = new Index(all);
         // §E3.4 重复建档探针:ym → (表id → 本月读数),按需装载;本批新导入的行随写随进,同批重复也照抓

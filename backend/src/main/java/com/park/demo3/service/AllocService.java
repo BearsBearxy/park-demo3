@@ -4,6 +4,9 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +53,7 @@ public class AllocService {
     private final ElecCostEntryMapper elecEntries;   // 互认提示行只读(单向:P-B 永不写 elec_cost)
     private final PriceCfgService priceCfg;          // 池引擎取价单一事实源(POOL-ENGINE-SPEC §3)
     private final ParamService params;               // S21:alloc_cfg 写路径(注册表门+变更日志)唯一入口
+    private final ReviewGuard reviewGuard;
 
     public AllocService(AllocRuleMapper rules, AllocRuleMeterMapper ruleMeters, AllocRuleMemberMapper ruleMembers,
                         AllocRuleLinkMapper ruleLinks, AllocCfgMapper cfgs, AllocResultMapper results,
@@ -59,7 +63,9 @@ public class AllocService {
                         ContractMapper contracts, ContractBillingTermMapper billingTerms,
                         BillingTermUnitMapper termUnits,
                         UnitMapper units, ContractUnitMapper contractUnits,
-                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg, ParamService params) {
+                        ElecCostEntryMapper elecEntries, PriceCfgService priceCfg, ParamService params,
+                        ReviewGuard reviewGuard) {
+        this.reviewGuard = reviewGuard;
         this.rules = rules; this.ruleMeters = ruleMeters; this.ruleMembers = ruleMembers; this.ruleLinks = ruleLinks;
         this.cfgs = cfgs; this.results = results; this.poolResults = poolResults;
         this.poolMeterResults = poolMeterResults; this.lossResults = lossResults;
@@ -547,6 +553,7 @@ public class AllocService {
 
     @Transactional
     public AllocRuleDTO createRule(AllocRuleReq req) {
+        assertRuleEditable(req);
         validateRule(req, null);
         AllocRule r = new AllocRule();
         apply(r, req);
@@ -567,6 +574,7 @@ public class AllocService {
     public AllocRuleDTO updateRule(Integer id, AllocRuleReq req) {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
+        assertRuleEditable(req);
         validateRule(req, id);
         // ⚠ 旧值必须**在先删后插之前**抓下来(RBAC-SPEC §7.1):下面 deleteByRuleMonth + saveChildren
         // 一走,层份/成员的旧值就再也查不回来了。系数簿改层份走的正是这条路径,
@@ -593,6 +601,7 @@ public class AllocService {
         return ruleById(id);
     }
 
+    @NoReviewGuard(reason = "有结果的池删不掉(既有 409),能删的池从没生成过任何期间数据")
     public void deleteRule(Integer id) {
         AllocRule r = rules.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "规则不存在");
@@ -634,6 +643,14 @@ public class AllocService {
 
     private static String memberMonth(AllocRuleReq req) {
         return req.memberMonth() == null ? "" : req.memberMonth().trim();
+    }
+
+    // 受益人按月存:memberMonth 非空=只覆盖那一个月,守它即可;空=长期默认行(所有未被月度行覆盖的月的取值来源),
+    // 没有「被写月」这个概念,退回 R-4 的粗闸「该 kind 有任一锁月就整体拒」。
+    private void assertRuleEditable(AllocRuleReq req) {
+        String month = memberMonth(req);
+        if (month.isEmpty()) reviewGuard.assertNoLockedMonth(ReviewKind.ALLOC, null);
+        else reviewGuard.assertEditable(ReviewKind.ALLOC, month, null);
     }
 
     private void apply(AllocRule r, AllocRuleReq req) {
@@ -734,6 +751,7 @@ public class AllocService {
 
     // S21:写走 ParamService.write(注册表门 + param_change_log;删被已生成月使用的版本行 400)。本端点只收 alloc 键;
     // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
+    @NoReviewGuard(reason = "转调 ParamService.write,被写月由那边按 req.acctMonth 判")
     public void saveCfg(AllocCfgReq req) {
         String scope = req.scope().trim(), key = req.cfgKey().trim();
         if (ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
@@ -747,6 +765,9 @@ public class AllocService {
     @Transactional
     public AllocGenerateResultDTO generate(String ym) {
         requireYm(ym);
+        // 两把键都守:池结果与损耗结果是同一次算出来的,只守一把等于给另一把开后门
+        reviewGuard.assertEditable(ReviewKind.ALLOC, ym, null);
+        reviewGuard.assertEditable(ReviewKind.ALLOC_LOSS, ym, null);
         Ctx ctx = loadCtx(ym);
         // ── 池级+损耗快照(POOL-ENGINE-SPEC §3.5/§3.6):门禁→拓扑计算→按 ym 先删后插幂等 ──
         priceGate(ym, ctx);
@@ -892,6 +913,7 @@ public class AllocService {
 
     // ── 手工行(孵化协议固定收取等):同键 upsert 置 manual;仅 manual 行可删 ──
     public AllocResultDTO saveManual(AllocManualReq req) {
+        reviewGuard.assertEditable(ReviewKind.ALLOC, req.ym(), null);
         AllocResult row = results.selectOne(new QueryWrapper<AllocResult>()
             .eq("tenant_id", req.tenantId()).eq("ym", req.ym()).eq("fee_key", req.feeKey()));
         if (row == null) {
@@ -913,6 +935,7 @@ public class AllocService {
     public void deleteResult(Integer id) {
         AllocResult r = results.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        reviewGuard.assertEditable(ReviewKind.ALLOC, r.getYm(), null);
         if (!"manual".equals(r.getSource()))
             throw new BizException(ResultCode.CONFLICT, "仅手工行可单独删除;生成行请整月重新生成");
         results.deleteById(id);

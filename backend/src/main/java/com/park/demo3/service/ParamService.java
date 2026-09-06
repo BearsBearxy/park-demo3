@@ -4,6 +4,9 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import com.park.demo3.service.ParamRegistry.Def;
 import com.park.demo3.service.ParamRegistry.ScopeKind;
 import com.park.demo3.service.ParamRegistry.Table;
@@ -55,16 +58,18 @@ public class ParamService {
     private final AllocService alloc;            // @Lazy:AllocService 写参数走本类,本类重算又调它 —— 懒代理断环
     private final BillNoticeService billNotice;
     private final com.park.demo3.security.PermissionGuard guard;   // 按 cfg_key 分月度/口径两档
+    private final ReviewGuard reviewGuard;
 
     public ParamService(AllocCfgMapper allocCfgs, TenantPriceCfgMapper priceCfgs, ParamChangeLogMapper logs,
                         AllocPoolResultMapper poolResults, AllocLossResultMapper lossResults, BillNoticeMapper notices,
                         BuildingMapper buildings, AllocRuleMapper rules, MeterMapper meters, TenantMapper tenants,
                         PriceCfgService priceCfg, @Lazy AllocService alloc, @Lazy BillNoticeService billNotice,
-                        com.park.demo3.security.PermissionGuard guard) {
+                        com.park.demo3.security.PermissionGuard guard, ReviewGuard reviewGuard) {
         this.allocCfgs = allocCfgs; this.priceCfgs = priceCfgs; this.logs = logs;
         this.poolResults = poolResults; this.lossResults = lossResults; this.notices = notices;
         this.buildings = buildings; this.rules = rules; this.meters = meters; this.tenants = tenants;
         this.priceCfg = priceCfg; this.alloc = alloc; this.billNotice = billNotice; this.guard = guard;
+        this.reviewGuard = reviewGuard;
     }
 
     // ══════════ 读:站在 ym 看的全部生效参数行 ══════════
@@ -386,6 +391,10 @@ public class ParamService {
         if (req.value() != null && !valueOk(d, req.value()))
             throw new BizException(ResultCode.BAD_REQUEST, "值不在「" + d.label() + "」的允许范围");
         String note = req.note() == null || req.note().isBlank() ? null : req.note().trim();
+        // 审核闸(§7.4「按被写数据的月判,不按 URL」):守 req.acctMonth,**不守形参 ym**。
+        // ym 是「站在哪个月看」的 URL 月,PUT /api/price-cfg 那条路径硬传 null —— 按它判会既漏又误。
+        if (month.isEmpty()) reviewGuard.assertNoLockedMonth(ReviewKind.PARAMS, null);   // 长期默认行,裁定 R-4
+        else reviewGuard.assertEditable(ReviewKind.PARAMS, affectedMonths(key, scope, month, mode), null);
         String stand = ym == null ? month : ym;
         if (Boolean.TRUE.equals(req.correction())) {
             if (req.value() == null) throw new BizException(ResultCode.BAD_REQUEST, "改错须给出新值");
@@ -413,6 +422,22 @@ public class ParamService {
         }
         if (price) priceCfg.evict();
         return row(key, scope, stand);
+    }
+
+    // 一次参数写入实际改动的月份集合(审核闸用):month 行只动那一个月;from 行前滚生效到下一版本起点之前。
+    // 上界用 usedBy 同一条 VersionResolver.nextFrom —— 「这一行覆盖哪些月」全仓只该有一份判据。
+    // ponytail: nextFrom 返回 null(该 (键,作用域) 之后没有更晚的 from 行)时区间无上界,退化成只守 acctMonth
+    //   一个月。取无穷区间的正确做法是「acctMonth 之后有任一锁月就拒」,但那会让改 2024-01 的初始版本行
+    //   被一个 2031 的锁月拒掉,代价远大于收益;真要收紧,升级路径是给 assertNoLockedMonth 加个「从某月起」的重载。
+    private List<String> affectedMonths(String key, String scope, String month, String mode) {
+        if ("month".equals(mode)) return List.of(month);
+        String next = VersionResolver.nextFrom(
+            index().rows.getOrDefault(key, Map.of()).getOrDefault(scope, List.of()), month);
+        if (next == null) return List.of(month);
+        List<String> out = new ArrayList<>();
+        for (YearMonth m = YearMonth.parse(month); m.toString().compareTo(next) < 0; m = m.plusMonths(1))
+            out.add(m.toString());
+        return out;
     }
 
     // 值域(spec §6):枚举须在字典里;布尔 0/1;整数与引用型(表/栋/池 id)须为整数;数值/比率/金额不设限
@@ -475,6 +500,8 @@ public class ParamService {
     @Transactional
     public CopyResult copyElec(String fromYm, String toYm) {
         requireYm(fromYm); requireYm(toYm);
+        // 只守 toYm。从已审月复制出来是读,读不受限(逐行的 write() 也会再守一次 toYm,这里是为了源月无行时也早拒)
+        reviewGuard.assertEditable(ReviewKind.PARAMS, toYm, null);
         int copied = 0, skipped = 0;
         for (TenantPriceCfg src : priceCfgs.selectList(new QueryWrapper<TenantPriceCfg>()
                 .eq("acct_month", fromYm).eq("mode", "month").in("cfg_key", PriceCfgService.ELEC_KEYS).orderByAsc("scope", "cfg_key"))) {
@@ -499,6 +526,7 @@ public class ParamService {
      * 参数历史页读的就是这张表，改规则和改参数本来就该在同一条时间线上。
      * 规则不是数值，所以 old/new 走 note 记文字描述。
      */
+    @NoReviewGuard(reason = "只写 param_change_log 审计流水,不碰期间数据")
     public void logRuleChange(String action, Integer ruleId, String ruleName, String note) {
         log(action, false, "rule:" + ruleId, "", "", "from", null, null,
             (ruleName == null ? "" : ruleName + " ") + (note == null ? "" : note), null);
@@ -512,6 +540,7 @@ public class ParamService {
      * 公摊金额一起变，而参数中心看不到任何变更 —— 「面积污染」已经炸过一次。
      * 数值型变更，所以走 old/new 两列而不是 note。
      */
+    @NoReviewGuard(reason = "只写 param_change_log 审计流水,不碰期间数据")
     public void logUnitAreaChange(Integer unitId, String unitNo, BigDecimal oldArea, BigDecimal newArea) {
         log("set", false, "unit:" + unitId, "area", "", "from", oldArea, newArea,
             "单元 " + unitNo + " 面积变更（影响租金与 area 法公摊基数）", null);
@@ -599,6 +628,8 @@ public class ParamService {
 
     // ══════════ 重算(spec §5.5):池+损耗 → 催缴单(已确认/已导出户跳过) → 日志 recalc ══════════
     @Transactional
+    @NoReviewGuard(reason = "转调 AllocService.generate 与 BillNoticeService.generate,两处各自守;"
+                          + "这里再守一次会把错误文案说成计费参数")
     public RecalcResultDTO recalc(String ym) {
         requireYm(ym);
         AllocGenerateResultDTO a = alloc.generate(ym);
