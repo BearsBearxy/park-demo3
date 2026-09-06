@@ -61,11 +61,14 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 
 ---
 
-## 2. 权限点（14 个）
+## 2. 权限点（18 个）
 
-**11 个业务模块的 `edit` + `system:view` + `lock:takeover` + `elevate:request`。**
+**11 个业务模块的 `edit` + `system:view` + `system:edit` + `lock:takeover` + `elevate:request` + `company:manage` + `book-template:edit` + `book-template:switch` + `review:approve`。**
 
 > 2026-08-22 新增第 14 个 `elevate:request`（ELEVATION-SPEC）。
+> 2026-08-24 新增第 15 / 16 个 `company:manage`、`book-template:edit`；2026-08-26 第 17 个 `book-template:switch`。
+> 2026-09-03 拍板、R1 落地第 18 个 `review:approve`（SIDEBAR-UX-REDESIGN §7.3）。
+> 权威清单是后端 `Perm.ALL`（顺序即角色屏矩阵行序）与 `Perm.META`（矩阵渲染读的是 META，只加 ALL 永远勾不上）。
 
 | 权限点 | 管什么 |
 |--------|--------|
@@ -83,6 +86,7 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `system:view` | **唯一的读权限点**：能不能看到用户列表、角色配置、操作日志 |
 | `lock:takeover` | **能授权别人接管**编辑锁（不是能自己接管），见 CONCURRENCY-SPEC §4.3 |
 | `elevate:request` | **能不能请主管当场授权**。没有这项的账号（`viewer` / `shareholder`）连编辑模式按钮都看不到，见 ELEVATION-SPEC |
+| `review:approve` | **审核通过 / 退回 / 撤销**某张表某个月（SIDEBAR-UX-REDESIGN §7）。交审不设独立权限点 —— 该表的 edit 权即交审权，映射见下面 §2.2。**进 `Perm.NOT_ELEVATABLE`**：审核能当场借 30 分钟的话，录审分离当场作废（录入方可以请主管借一次权把自己刚录的东西审掉） |
 
 `analysis` **没有权限点** —— 分析层是纯只读层。它唯一落库的写是年度预算导入，按拍板 #9 归 `entry:edit`；
 另一个「写」是 `anaSettings.ts` 的目标与阈值，存 localStorage 不落库（文件头注释明写）。
@@ -95,6 +99,35 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 | `meter` → `master` + `reading` | 表倍率是直接乘进度数的计费系数，表↔合同绑定决定这块表的电算到谁头上 —— 属口径，不是抄表 |
 | `billing` → `run` + `issue` | 拍板 #2 只说了「生成」。签发/作废是对外不可逆闸门（生成时已签发单跳过不覆盖，须先作废） |
 | `alloc` 归入 `billing-run`，规则归入 `param-policy` | 公共电核算与楼栋损耗两屏在初版划分里**根本没有归属**，而它们含分摊规则增删改 |
+
+---
+
+### 2.2 审核键 kind → 交审权限点（SIDEBAR-UX-REDESIGN §7）
+
+交审不设独立权限点：**该表的 edit 权即交审权**。但「该表的 edit 权」这张表是**新写的一张**，
+不是 §5.2 的复用 —— §5.2 是 126 条 **URL 路径 → 权限点**的有序表，而这里要的是
+**审核键 kind → 权限点**；两者不同轴，而且那个映射对 `params` 与 `elec-cost` 根本不是函数
+（`params` 屏同时含 policy 与 monthly 两档；`/api/elec-cost/price-cfg` 归 param-policy、其余归 entry）。
+
+落点在后端 `security/ReviewKind` 枚举的 `perms()`，满足其一即可（同 `PermissionRegistry` 的 anyOf 语义）：
+
+| kind | 交审要的权限点 | 守卫落在哪个 service |
+|---|---|---|
+| `params` | `param-policy:edit` **或** `param-monthly:edit` | `ParamService` |
+| `meters` | `meter-reading:edit` | `MeterService` |
+| `alloc` · `alloc-loss` | `billing-run:edit` | `AllocService` |
+| `bill-notices` | `billing-run:edit` | `BillNoticeService` |
+| `ledger`（scope=companyId） | `entry:edit` | `LedgerService` |
+| `s10`（scope=1..4） | `entry:edit` | `S10Service` |
+| `salary` | `entry:edit` | `SalaryService` |
+| `utilities`（scope=office\|phase3） | `entry:edit` | **`OfficeService`**（URL `/api/utilities`） |
+| `pv` | `entry:edit` | `PvService` |
+| `charging-car` · `charging-ebike` | `entry:edit` | `ChargingService`（按 scheduleNo 7/8 分 kind） |
+| `elec-cost`（附表11 报送台账） | `entry:edit` | **`ElecService`**（`/api/elec`，表 `elec_record`） |
+| `elec-model`（园区电费模型） | `entry:edit` | **`ElecCostService`**（`/api/elec-cost`，表 `elec_cost_entry`） |
+
+`POST /api/review/{key}/submit` 要哪个权限点取决于 key 里的 kind，URL 层判不出来 ——
+照 `PUT /api/params` 那条既有例外：URL 层放行「任一相关 edit 权」，真正的 kind→perm 判定下沉到 `ReviewService.submit`。
 
 ---
 
@@ -122,6 +155,11 @@ v2 把它去掉，只把后半句的 `hasRole("ADMIN")` 换成模块映射表。
 > **总经理 / 园区股东 / 只读 三者在权限上完全相同**（一个 `edit` 都没有），
 > 差别**只在导航可见层**。这不是设计缺陷，是 v2 模型的直接结果 ——
 > 读全开之后，「只能看」的角色之间本来就没有权限差别，差别只在给他看什么入口。
+
+**第 7 个预置角色 `reviewer`「审核员」**（2026-09-03 拍板 D16，R1 的 V124 落库）：只有 `review:approve`，**零 `:edit`、无 `elevate:request`**，`nav_layers='data,reports,analysis'`。
+上面那张矩阵**六个既有角色一格都不改** —— 尤其财务主管默认**不带**审核权，录审分离靠角色分配保证；
+例外是 `admin`，它是「全部权限」角色（V101 起每个新权限点都给它），所以也持有 `review:approve`。
+系统不拦「同一账号既录又审」；客户若给主管勾了审核权，录审分离由客户自己负责。
 
 **向后兼容**：现有 `admin` → 系统管理员，`viewer` → 只读。老账号与老 JWT 照常认。
 
@@ -219,6 +257,14 @@ analysis  经营分析
    POST /api/cp-meter/simulate                   → billing-run    ★见 §5.3-⑥
    /api/cp-meter/**                              → meter-reading
    POST /api/budget/import                       → entry          ★拍板 #9
+
+# ═══ 审核（SIDEBAR-UX-REDESIGN §7.3）═══
+# submit 的权限点看 key 里的 kind,URL 层判不出来 —— 放行「任一相关 edit 权」,细分下沉 ReviewService
+POST /api/review/*/submit    → param-policy | param-monthly | meter-reading | billing-run | entry
+POST /api/review/*/approve   → review:approve
+POST /api/review/*/return    → review:approve
+POST /api/review/*/withdraw  → review:approve
+# GET /api/review 不登记 —— 本表只管非 GET,读全开
 
 # ═══ 默认段（单模块 controller）═══
    /api/buildings/**, /api/units/**, /api/tenants/**,
@@ -359,9 +405,11 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 |----|------|--------|
 | `param_change_log` | **已有**（V96） | 计费参数与公摊配置变更，带 `actor` / `old_value` / `new_value` / `action` |
 | `import_log` | **已有**（V20） | 导入记录，带 `operator` |
-| `auth_audit_log` | **新建** | 账号与角色变更、**编辑锁接管**（记接管人 + 授权人两个）、强制解锁、密码重置、登录锁定 |
+| `auth_audit_log` | **已有**（V102） | 账号与角色变更、**编辑锁接管**（记接管人 + 授权人两个）、强制解锁、密码重置、登录锁定 |
+| `review_log` | **新建**（V124） | 审核动作留痕：`submit` / `approve` / `return` / `withdraw`，带 `review_key` 与理由。**无 `authorizer` 列** —— 审核不走提权（`review:approve` 在不可提权名单里），没有「代他人执行」这回事，union 时写 `NULL AS authorizer` |
 
-统一时间线页放在 `系统管理 → 操作日志`：三张表 union 后按时间倒序，可按类型 / 操作人 / 时间筛。
+统一时间线页放在 `系统管理 → 操作日志`：**四张表** union 后按时间倒序，可按类型 / 操作人 / 时间筛。
+后端落点 `AuditQueryMapper.BRANCHES`（每个分支必须写全列别名，否则单源查询「Unknown column」500）+ `SystemService.auditLogs()` 的来源白名单 + `actors()` 的 UNION。
 
 ### 7.1 必须补的留痕缺口
 
