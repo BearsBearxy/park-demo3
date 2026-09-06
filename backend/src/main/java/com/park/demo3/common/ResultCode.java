@@ -8,6 +8,10 @@ public enum ResultCode {
     FORBIDDEN(403, "无操作权限：当前账号没有修改这项数据的权限（可查看，如需修改请联系管理员开通）"),
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "资源冲突"),
+    // 审核锁定(SIDEBAR-UX-REDESIGN §7.4)。与 409 分开:409 是「上游没审完」的前置冲突,
+    // 423 是「这张表本月已审 / 待审」—— 合成一个码前端就分不出「去催上游」和「去找审核员撤销」
+    // 这两种下一步。仍走 BizException → HTTP 200 + body.code=423,与 TOO_MANY_REQUESTS(429) 同先例。
+    LOCKED(423, "该表本月已审核或待审核，不能修改"),
     TOO_MANY_REQUESTS(429, "登录尝试过于频繁，请 15 分钟后再试"),   // 登录限流(LoginRateLimiter);仍走 BizException → HTTP 200 + body.code=429
 
     INTERNAL(500, "服务器内部错误");
