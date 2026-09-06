@@ -27,7 +27,7 @@ import { usePresenceStore } from '@/stores/presence'
 import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf } from '@/nav/billingChain'
-import { buildYearRows } from '@/utils/matrixYears'
+import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
 
@@ -137,12 +137,14 @@ const curYm = computed(() =>
 // 年份条(P2 T4):年份行来自 ov.months —— 后端明发的「链 ∪ 附表」全集(DataHomeService.allMonths)。
 // 照 period.dataYears 走会丢掉只有附表的年,而「切到 2025-06 补台账」正是这屏最常用的一步。
 const yearRows = computed(() => {
-  // 脏 ym 不进年份条(F2):stores/billingPeriod.ts 的 fetchAll 用 YM.test 挡过格式不对的输入
-  // (`if (!YM.test(m)) continue`),但格式对、年份离谱的值(如 '0001-01')一样能通过那道闸 ——
-  // 复查实测正是这种值把 buildYearRows 的 lo..hi 撑到两千年,2000+ 行 × 12 卡直接 OOM。
-  // 格式闸之外再挡一道年份范围(±50 年,这本书的真实数据不可能落在这个窗口外)。
+  // 脏 ym 不进年份条(F2,两道闸):格式闸照 stores/billingPeriod.ts 的 fetchAll
+  // (`if (!YM.test(m)) continue`,注释「脏数据不进矩阵」);年份闸用 buildYearRows 自己导出的
+  // inYearWindow —— 同一个窗口两处共用,别写第二个魔数。
+  // ⚠ 两道都要:buildYearRows 内部的钳位只保证不撑爆堆内存(复查实测过 OOM),
+  //   但一条 '0001-01' 仍会把年份条从 4 行拉成 31 行,得在这里先滤掉。
   const curYear = new Date().getFullYear()
-  const ms = (ov.value?.months ?? []).filter(m => YM.test(m) && Math.abs(+m.slice(0, 4) - curYear) <= 50)
+  const ms = (ov.value?.months ?? [])
+    .filter(m => YM.test(m) && inYearWindow(+m.slice(0, 4), curYear))
   const have = new Set(ms)
   const years = [...new Set(ms.map(m => +m.slice(0, 4)))]
   return buildYearRows(years, curYear, []).map(r => ({
