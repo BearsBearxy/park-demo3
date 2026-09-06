@@ -1,8 +1,12 @@
 <script setup lang="ts">
 // 出租与楼栋(park)v2 — spec §二.3:KPI 4(楼栋/在租/合同/月租总额)+ 主图 s8 楼栋月租 TreeMap
-// (点块→右侧 s4 该楼栋租户明细表联动过滤)+ 期区结构环 s4 + 楼栋×租户散点 s6 + 单元空态卡保留。
+// (点块→右侧 s4 该楼栋租户明细表联动过滤)+ 期区结构环 s4 + 楼栋×租户散点 s6 + 出租率卡 s2。
 // 数据与口径 = v1(building×contract×tenant 快照,有效合同=active/expiring,数值锚点不变);
-// spec 降级不变:库内 unit.area/contract.rent_area 全 0 → 面积口径不可算,空态卡深链 /buildings。
+// 面积口径降级(2026-09-06 复核实测,旧注释「unit.area/contract.rent_area 全 0」已过期):
+// 分子侧其实有数 —— unit.area 217/373 行已录、在租合同 rent_area 230/386 份已录;
+// 缺的是**分母** —— building.rentable_area 与 total_area 各只有 1/30 栋非 0(那 1 栋还是 100㎡ 占位)。
+// 故面积口径出租率与平均分摊率不可算 → METRIC-SOURCE-SPEC §3:渲染「—」+ 写明原因,
+// 并给不依赖缺失字段的替代口径(副标「按单元 n/m」,与楼栋管理 KPI 同源同句),深链 /buildings 引导补录。
 // F3(2026-07-15)追加「面积转换」卡:在租合同建筑 vs 租赁面积楼栋对比 + 换算系数/分摊率,带覆盖率护栏。
 // 数据变换纯函数见 park.logic.ts(单测 park.logic.spec.ts)。
 import { computed, onMounted, ref } from 'vue'
@@ -13,16 +17,17 @@ import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { fint, fnum } from '@/components/ana/anaFmt'
-import { fetchBuildings, fetchContracts, fetchTenants } from '@/analysis/anaData'
+import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
-import type { BuildingDTO } from '@/types/building'
+import { occByUnit, occPct, OCC_NULL_WHY, type BuildingDTO, type BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 
 const loading = ref(true)
 const failed = ref(false)
 const buildings = ref<BuildingDTO[]>([])
+const bSummary = ref<BuildingSummaryDTO | null>(null)   // 全园出租率(面积口径)唯一来源,见 fetchBuildingSummary 注释
 const contracts = ref<ContractDTO[]>([])
 const tenants = ref<TenantDTO[]>([])
 
@@ -30,8 +35,8 @@ async function reload() {
   // 切回重读会重跑本函数:失败标志不清,重试成功后屏上仍挂着「加载失败」卡(P3 T2 评审坐实)
   failed.value = false
   try {
-    ;[buildings.value, contracts.value, tenants.value] = await Promise.all([
-      fetchBuildings(), fetchContracts(), fetchTenants(),
+    ;[buildings.value, bSummary.value, contracts.value, tenants.value] = await Promise.all([
+      fetchBuildings(), fetchBuildingSummary(), fetchContracts(), fetchTenants(),
     ])
   } catch {
     failed.value = true
@@ -53,7 +58,10 @@ const rows = computed(() => buildBuildingRows(buildings.value, live.value))
 const phases = computed(() => buildPhaseRows(buildings.value, live.value))
 const totalRentWan = computed(() => rows.value.reduce((s, r) => s + r.rentWan, 0))
 const activeTenants = computed(() => tenants.value.filter((t) => t.status === 1).length)
-const unitTotal = computed(() => buildings.value.reduce((s, b) => s + b.unitCount, 0))
+// 出租率卡:面积口径的值与「按单元」副标都出自 bSummary(后端 occRateOf / 共享 occByUnit,
+// 与楼栋管理 KPI 同源同句);列表只用来数「分母到底有几栋录了可租面积」——那正是算不出的原因。
+const rentableN = computed(() => buildings.value.filter((b) => b.rentableArea > 0).length)
+const byUnit = computed(() => (bSummary.value ? occByUnit(bSummary.value) : null))
 
 // ── KPI 条(spec §二.3:楼栋/在租/合同/月租总额;值与 v1 statItems 一致) ──
 const kpis = computed(() => (loading.value || failed.value ? [] : [
@@ -142,10 +150,13 @@ const areaStats = computed(() => {
   const sumB = areaLive.value.reduce((s, c) => s + bAreaOf(c), 0)
   const sumR = areaLive.value.reduce((s, c) => s + c.rentArea, 0)
   const parkArea = buildings.value.reduce((s, b) => s + b.totalArea, 0)
+  const parkAreaN = buildings.value.filter((b) => b.totalArea > 0).length
   return {
-    n: areaLive.value.length, m: live.value.length, sumB, sumR, parkArea,
+    n: areaLive.value.length, m: live.value.length, sumB, sumR, parkArea, parkAreaN,
     factor: sumR > 0 ? sumB / sumR : null,                  // 全园实际换算系数 = Σ建筑÷Σ租赁
-    share: parkArea > 0 ? (sumB / parkArea) * 100 : null,   // 平均分摊率 = Σ在租建筑÷Σ楼栋建筑
+    // 平均分摊率 = Σ在租建筑÷Σ楼栋建筑。判据与后端 occRateOf 同款:分母≤0 **或分子>分母**(数据自相矛盾)→ null。
+    // 少了后半句时,全园仅 1/30 栋录了 total_area(占位 100㎡)的分母把 13.9 万㎡ 画成「139511.4%」。
+    share: parkArea > 0 && sumB <= parkArea ? (sumB / parkArea) * 100 : null,
   }
 })
 // 楼栋行:仅保留有面积数据合同的楼栋,按建筑面积降序(全空楼栋不画空柱)
@@ -255,9 +266,22 @@ const areaBarOption = computed(() => ({
         </div>
 
         <div class="av2-card pk-s2">
-          <!-- spec 空态覆盖点保留:park 单元层 → 引导补录 unit.area,深链 /buildings -->
-          <AnaEmpty label="单元面积未录入" :hint="unitTotal + ' 个单元 area 全为 0,出租率/面积去化暂不可算'"
-            to="/buildings" to-text="去补录面积" />
+          <!-- 出租率(METRIC-SOURCE-SPEC §3):主口径按面积,分母缺失 → 「—」+ 写明原因;
+               副标给不依赖缺失字段的替代口径「按单元 n/m」,两个口径都标口径名,禁止混用。
+               整卡空态只留给「连单元台账都没有」——那时两个口径都无分母,才真的什么都算不出。 -->
+          <div class="av2-card-h">
+            <span class="t">出租率</span>
+            <span class="hint"><b class="pk-cov">{{ rentableN }}/{{ rows.length }}</b> 栋已录可租面积</span>
+          </div>
+          <AnaEmpty v-if="!byUnit || byUnit.rate == null" label="单元台账未建"
+            hint="楼栋下没有单元记录,面积与单元两个口径都不可算" to="/buildings" to-text="去建单元" />
+          <div v-else class="pk-am">
+            <div class="v">{{ occPct(bSummary?.occRate ?? null) }}</div>
+            <div class="l">面积口径出租率</div>
+            <div v-if="bSummary?.occRate == null" class="s">{{ OCC_NULL_WHY }}</div>
+            <div class="s">{{ byUnit.text }} · {{ occPct(byUnit.rate) }}</div>
+            <RouterLink v-if="bSummary?.occRate == null" class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
+          </div>
         </div>
 
         <div class="av2-card av2-s12">
@@ -278,7 +302,7 @@ const areaBarOption = computed(() => ({
               <div class="pk-am">
                 <div class="v">{{ areaStats.share != null ? fnum(areaStats.share, 1) + '%' : '—' }}</div>
                 <div class="l">平均分摊率</div>
-                <div class="s">Σ在租建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ楼栋建筑 {{ fnum(areaStats.parkArea, 0) }}㎡</div>
+                <div class="s">Σ在租建筑 {{ fnum(areaStats.sumB, 0) }}㎡ ÷ Σ楼栋建筑 {{ fnum(areaStats.parkArea, 0) }}㎡<template v-if="areaStats.share == null"> · 楼栋建筑面积仅 {{ areaStats.parkAreaN }}/{{ rows.length }} 栋已录,分母不成立</template></div>
               </div>
             </div>
             <div class="pk-area-chart">
@@ -292,7 +316,7 @@ const areaBarOption = computed(() => ({
         </div>
       </div>
 
-      <AnaMethodNote>口径:库内 unit.area 与 contract.rent_area 全为 0,出租率/面积去化不可算;本屏以有效合同(active/expiring)的月租与租户分布呈现楼栋结构,楼栋租户数为去重口径。面积转换卡只聚合建筑/租赁面积均已录入的在租合同(覆盖率见卡头),换算系数=Σ建筑÷Σ租赁(录入基准 0.8),平均分摊率=Σ在租建筑÷Σ楼栋建筑面积。</AnaMethodNote>
+      <AnaMethodNote>口径:出租率主口径按面积(Σ在租面积÷Σ可租面积,后端 BuildingService.occRateOf 单一判据),库内 building.rentable_area 仅 1/30 栋非 0 → 分母缺失渲染「—」,副标给单元口径(Σ已占单元÷Σ单元,与楼栋管理同源);同理 building.total_area 仅 1/30 栋非 0,平均分摊率分子>分母时不出数。本屏以有效合同(active/expiring)的月租与租户分布呈现楼栋结构,楼栋租户数为去重口径。面积转换卡只聚合建筑/租赁面积均已录入的在租合同(覆盖率见卡头),换算系数=Σ建筑÷Σ租赁(录入基准 0.8),平均分摊率=Σ在租建筑÷Σ楼栋建筑面积。</AnaMethodNote>
     </div>
   </AnaShell>
 </template>
@@ -310,6 +334,9 @@ const areaBarOption = computed(() => ({
 .pk-leg .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 /* F3 面积转换卡:左指标竖排 + 右图;窄屏降为纵排(指标改横排) */
 .pk-cov { font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+/* 与 AnaEmpty 的 .go 同形态:那份样式是 scoped 的,跨组件拿不过来 */
+.pk-go { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--text-link); text-decoration: none; }
+.pk-go:hover { text-decoration: underline; }
 .pk-area-body { display: flex; gap: 20px; align-items: stretch; }
 .pk-area-metrics { flex: 0 0 216px; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
 .pk-am .v { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }

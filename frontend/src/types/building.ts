@@ -18,6 +18,22 @@ export const leasedAreaShow = (b: BuildingDTO): number => b.leasedArea ?? 0
 export const occPct = (r: number | null): string => r == null ? '—' : r + '%'
 export const OCC_NULL_WHY = '缺可租面积数据'
 
+// 出租率的替代口径(METRIC-SOURCE-SPEC §3):按单元 = 已占单元/总单元,不依赖可租面积,
+// 主口径(按面积)算不出来时它仍在。「按单元 n/m」同时出现在楼栋管理 KPI 与出租与楼栋屏,
+// §2 要求同名指标同源 —— 两屏各写一遍就会各自演化,故定义点只此一处。
+// ⚠ 与主口径样本集不同(occRate 只统计非停用栋,单元数是全量),调用方必须显式写「按单元」
+//   标明口径名,不能拿它当主口径的验算。
+// 分子取 unitCount − vacantCount 而非 Σ occupiedCount:后者不含 reserved(draft 合同占位)单元,
+// 两屏各挑一个的话,同一句「按单元 n/m」会在两屏对不上。
+// rate 小数位与后端 occRateOf 对齐(1 位);无单元 → null(禁止用 0 兼表「没法算」)。
+export function occByUnit(s: { unitCount: number; vacantCount: number }): { text: string; rate: number | null } {
+  const occ = s.unitCount - s.vacantCount
+  return {
+    text: `按单元 ${occ}/${s.unitCount}`,
+    rate: s.unitCount > 0 ? Math.round((occ / s.unitCount) * 1000) / 10 : null,
+  }
+}
+
 export interface BuildingCreateReq {
   name: string; phase: number; floorCount: number
   totalArea: number; rentableArea: number

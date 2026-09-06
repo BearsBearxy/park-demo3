@@ -22,6 +22,7 @@
 // ├─ fetchTenants()/fetchTenantSummary()      ├ cockpit/park/portfolio/churn ├ TenantDTO[] / TenantSummaryDTO
 // ├─ fetchContracts()/fetchContractSummary()  ├ park/portfolio/expiry/cockpit├ ContractDTO[] / ContractSummaryDTO
 // ├─ fetchBuildings()/fetchBuildingDetail(id) ├ park                        ├ BuildingDTO[] / BuildingDetailDTO
+// ├─ fetchBuildingSummary()      ├ park(全园出租率,面积口径)              ├ BuildingSummaryDTO(occRate 可空)
 // ═══════════════════════════════════════════════════════════════════════════
 import { analysisApi, type AnalysisLedgerRow, type AnalysisMonthsDTO, type AnalysisS10Row } from '@/api/analysis'
 import { pnlApi } from '@/api/pnl'
@@ -252,6 +253,9 @@ export function fetchTenantSummary() { return cached('tenantSummary', () => tena
 export function fetchContracts() { return cached('contracts', () => contractApi.list()) }
 export function fetchContractSummary() { return cached('contractSummary', () => contractApi.summary()) }
 export function fetchBuildings() { return cached('buildings', () => buildingApi.list()) }
+// 全园出租率(面积口径)只取 buildings/summary 的 occRate —— 唯一判据是后端 BuildingService.occRateOf,
+// METRIC-SOURCE-SPEC §1 禁止前端拿 leasedArea/rentableArea 把公式再实现一遍(全园与单栋必须同源)。
+export function fetchBuildingSummary() { return cached('buildingSummary', () => buildingApi.summary()) }
 export function fetchBuildingDetail(id: number) { return cached(`building:${id}`, () => buildingApi.detail(id)) }
 
 // ── 光伏期别元数据(pv-roi:期名/并网月;API 未暴露 cost/capacity,投资额走 anaSettings.pvInvestment) ──
