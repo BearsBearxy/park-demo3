@@ -1,0 +1,114 @@
+package com.park.demo3.api;
+
+import com.jayway.jsonpath.JsonPath;
+import com.park.demo3.AbstractMysqlIT;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * ping 的第 5 件事:pendingReviews(SIDEBAR-UX-REDESIGN §7.4 通知行)。
+ *
+ * R1 的交付边界就画在这个字段上 —— 后端发它 = R1 完;前端读它、进 store、并进铃铛计数 = R2。
+ * 所以这里只断言「谁能看到几」,不碰任何前端。
+ */
+@AutoConfigureMockMvc
+class ReviewPingIT extends AbstractMysqlIT {
+
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+
+    private static final String PASS = "init-pass-123";
+    private static final String YM = "2031-11";
+
+    @AfterEach
+    void wipe() {
+        jdbc.update("DELETE FROM review_state WHERE period = ?", YM);
+    }
+
+    @Test
+    void holdersOfReviewApproveSeeTheCount_othersAlwaysSeeZero() throws Exception {
+        String a = admin();
+        int before = pending(a);
+
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) "
+                  + "VALUES (?,?,?,NULL,'submitted')", "salary:" + YM, "salary", YM);
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) "
+                  + "VALUES (?,?,?,NULL,'approved')", "pv:" + YM, "pv", YM);
+
+        // admin 持 review:approve —— 只数 submitted,approved 那条不算
+        assertThat(pending(a)).as("只数待审核,已审核的不进计数").isEqualTo(before + 1);
+
+        // 没有 review:approve 的账号恒 0(不是「查了库再过滤」,是根本不查)
+        String u = mkUser(a, "it_ping", "finance_clerk");
+        try {
+            assertThat(pending(login(u, PASS))).as("没有审核权的人恒 0").isZero();
+        } finally { cleanup(u); }
+    }
+
+    /** 字段必须真的在响应体里 —— 前端 R2 靠它,发漏了这条会红。 */
+    @Test
+    void pingCarriesTheFieldEvenWhenZero() throws Exception {
+        String b = body(ping(admin()));
+        assertThat(JsonPath.<Object>read(b, "$.data.pendingReviews"))
+            .as("pendingReviews 必须出现在 ping 的响应体里").isNotNull();
+    }
+
+    // ══════════ helpers ══════════
+
+    private int pending(String token) throws Exception {
+        return JsonPath.read(body(ping(token)), "$.data.pendingReviews");
+    }
+
+    private MvcResult ping(String token) throws Exception {
+        return mvc.perform(MockMvcRequestBuilders.put("/api/presence/ping")
+            .header("Authorization", "Bearer " + token).contentType("application/json")
+            .content("{\"sid\":\"it-ping-sid\",\"scope\":null,\"label\":null,"
+                   + "\"lastActivityAt\":null,\"editScopes\":[],\"mode\":null}"))
+            .andExpect(status().isOk()).andReturn();
+    }
+
+    private String body(MvcResult r) {
+        return new String(r.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private String login(String user, String pass) throws Exception {
+        String b = body(mvc.perform(MockMvcRequestBuilders.post("/api/auth/login")
+            .contentType("application/json")
+            .content("{\"username\":\"" + user + "\",\"password\":\"" + pass + "\"}")).andReturn());
+        return JsonPath.read(b, "$.data.token");
+    }
+
+    private String admin() throws Exception { return login("admin", "admin123"); }
+
+    private String mkUser(String adminToken, String prefix, String roleCode) throws Exception {
+        String uname = prefix + "_" + System.nanoTime();
+        String b = body(mvc.perform(MockMvcRequestBuilders.get("/api/system/roles")
+            .header("Authorization", "Bearer " + adminToken)).andReturn());
+        List<Integer> ids = JsonPath.read(b, "$.data[?(@.code=='" + roleCode + "')].id");
+        assertThat(ids).as("预置角色 %s 应存在", roleCode).hasSize(1);
+        mvc.perform(MockMvcRequestBuilders.post("/api/system/users")
+            .header("Authorization", "Bearer " + adminToken).contentType("application/json")
+            .content("{\"username\":\"" + uname + "\",\"displayName\":\"ping测试\","
+                   + "\"password\":\"" + PASS + "\",\"roleIds\":[" + ids.get(0) + "]}"))
+           .andExpect(status().isOk());
+        return uname;
+    }
+
+    private void cleanup(String username) {
+        jdbc.update("DELETE FROM auth_audit_log WHERE actor=? OR authorizer=?", username, username);
+        jdbc.update("DELETE aur FROM auth_user_role aur JOIN auth_user u ON u.id=aur.user_id WHERE u.username=?", username);
+        jdbc.update("DELETE FROM auth_user WHERE username=?", username);
+    }
+}
