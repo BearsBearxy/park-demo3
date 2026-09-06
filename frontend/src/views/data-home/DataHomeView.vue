@@ -12,6 +12,8 @@
 import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
 import { dataHomeApi } from '@/api/dataHome'
@@ -89,11 +91,21 @@ const pickedYm = ref<string | null>(null)
 
 // 晚到的旧回包不许覆盖新选的月(2026-09-03 对抗复查 F2)
 let loadSeq = 0
+// 换月在途:旧内容留在原地(§06 第一档),所以必须有信号 —— FPLoadBar 的头注原话
+// 「不给信号的话用户根本不知道发生了什么,那些屏现在就是这么静默的」,本屏此前正是其中之一。
+// 走 useDeferredFlag(200ms 才亮):本地后端常在几十毫秒内返回,直接绑 inflight 会闪一下。
+const ovInflight = ref(false)
+const veil = useDeferredFlag(ovInflight)
 async function load() {
   const seq = ++loadSeq
-  const res = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
-  if (seq !== loadSeq) return
-  ov.value = res
+  ovInflight.value = true
+  try {
+    const res = await dataHomeApi.getOverview(pickedYm.value ?? undefined)
+    if (seq !== loadSeq) return   // 被更新的一趟顶掉:不落数据,也不由我来灭灯
+    ov.value = res
+  } finally {
+    if (seq === loadSeq) ovInflight.value = false
+  }
 }
 onMounted(() => { void load(); void period.loadChain() })
 watch(pickedYm, load)
@@ -140,7 +152,7 @@ function confirmRebuild(v: string): boolean {
 }
 function go(v: string, tag = '', co?: number | 'all') {
   // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
-  const ym = pickedYm.value ?? curYm.value
+  const ym = shownYm.value
   const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
   if (!confirmRebuild(v)) return
   if (p && CHAIN_VALUES.has(v)) {
@@ -176,6 +188,13 @@ function dotOf(state: CloseRow['state']): string {
 const curYm = computed(() =>
   ov.value?.period ? `${ov.value.period.year}-${String(ov.value.period.month).padStart(2, '0')}` : '')
 
+/**
+ * 屏上此刻**认**的月:手选优先,没选过才用回包的锚定月。
+ * 与 curYm 的差别只在「点了但回包还没到」那一段 —— 而年份条的描边、收入核对取数、
+ * go() 带的期都该按**用户刚点的**那个月走,不该等一趟往返。
+ */
+const shownYm = computed(() => pickedYm.value ?? curYm.value)
+
 // 年份条(P2 T4):年份行来自 ov.months —— 后端明发的「链 ∪ 附表」全集(DataHomeService.allMonths)。
 // 照 period.dataYears 走会丢掉只有附表的年,而「切到 2025-06 补台账」正是这屏最常用的一步。
 const yearRows = computed(() => {
@@ -199,7 +218,8 @@ const yearRows = computed(() => {
         hasData: have.has(ym),
         // 链数据没到时**整个字段不给** —— 四个灭点会被读成「这个月一道工序没走」(裁定 3)
         ...(period.loaded ? { pips: pipsOf(c), stale: c.stale } : {}),
-        cur: ym === curYm.value,
+        // 描边跟 shownYm 不跟 curYm:点下去立刻挪过去,不等回包 —— 否则这一下点击**零反馈**
+        cur: ym === shownYm.value,
       }
     }),
   }))
@@ -210,11 +230,13 @@ const curStep = computed(() => {
   return c && c.currentIndex >= 0 ? c.steps[c.currentIndex] : null
 })
 
-// 收入核对元数据(P2 T3):年只能从 overview 回包的 ov.period 派生(默认首载 pickedYm=null,
-// 只有 curYm 知道锚定年是哪年)—— 与 getOverview **串行**,watch(curYm) 而不在 onMounted 里并发发
-// overview(undefined):并发就只能传 undefined,后端会取「两本账有数据的最大年」,与首页锚定月的年
-// 大概率不是同一年,拿到的是别的年的差异数,形状对、数字张冠李戴。取数失败 `.catch(() => null)`,
-// 不阻断整屏 —— 收入核对那一行照 reconRow 的 hasData 闸判 na,显「—」。
+// 收入核对元数据(P2 T3,2026-09-06 改由 shownYm 驱动)。
+// 首载仍然**串行**:pickedYm 是 null,年只能从 overview 回包的 ov.period 派生;并发就只能传
+// undefined,后端会取「两本账有数据的最大年」,与首页锚定月的年大概率不是同一年 —— 形状对、数字张冠李戴。
+// 但**显式点月时年是已知的**(就写在用户点的那个格子上),再串一趟就是白等一次往返。
+// watch(shownYm) 一处兼顾两种:首载时 shownYm 随 curYm 在回包后变(仍串行),点月时它立刻变(与 overview 并发)。
+// ⚠ 回包落地后 curYm 会等于 pickedYm,shownYm 不再变化 → 不会重复发第二趟。
+// 取数失败 `.catch(() => null)` 不阻断整屏 —— 收入核对那一行照 reconRow 的 hasData 闸判 na,显「—」。
 const recon = ref<ReconMonthMeta | null>(null)
 let reconSeq = 0
 async function loadRecon(ym: string) {
@@ -230,7 +252,7 @@ async function loadRecon(ym: string) {
   if (seq !== reconSeq) return   // 晚到的旧回包不许覆盖新选的月(同 loadSeq 口径)
   recon.value = res?.months.find(m => m.month === month) ?? null
 }
-watch(curYm, loadRecon)
+watch(shownYm, loadRecon)
 
 // 切走再切回 KeepAlive 命中缓存实例、onMounted 不再跑(P3 §4.1 Step 6b,门禁在
 // views/__tests__/readScreenRefresh.spec.ts)。P2 T4 起这屏**必须**补:年份条读的是活的
@@ -238,7 +260,7 @@ watch(curYm, loadRecon)
 // 不重取就会出现「年份条上这个月的第一颗工序点已亮,正下方那一行还显○ 未做」,
 // 更坏的是新月 hasData 仍为 false,BookMonthMatrix 的 v-if="m.hasData && m.pips" 把点整块吞掉,
 // 刚抄完读数的月被画成虚线「空」卡。
-onReactivated(() => { void load(); void loadRecon(curYm.value) })
+onReactivated(() => { void load(); void loadRecon(shownYm.value) })
 
 // 两栏清单(P2 T3):行状态 / chips / 计数全在 monthClose.logic 算完,这里只取数与派生。
 // review 本期恒传 null(审核机制归 R1)。
@@ -258,6 +280,8 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
        fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
        出账链/附表本就是 flex-wrap 胶囊行,横幅/大卡 S 档允许换行即可,无定宽结构。 -->
   <div class="dh fp-fluid">
+    <!-- 换期重取的唯一信号(加载态设计稿 §08)。宿主 .dh 已设 position: relative。 -->
+    <FPLoadBar :on="veil" />
     <!-- 主管条(P2 T6):数据源 presence + auth,与 ov 无关 —— 渲染在两个骨架/真版式分支**之外**,
          骨架与真版式不靠人记得同步(T3 漏 .dh-cols、T4 漏 .dh-ystrip 都是分两份写漏的)。
          外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻,
@@ -319,9 +343,12 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
     <div class="dh-head">
       <div class="dh-period">
         <span class="dh-title">本月出账</span>
-        <div v-if="ov.period" class="dh-mnow">{{ ov.period.label }}</div>
+        <!-- 在途时三处一起压暗(.fp-stale:opacity+blur+pointer-events:none,不改高度):
+             月名、计数、两栏板子都还是**上一个月**的数,而年份条的描边已经挪到新月上了 ——
+             不压暗就是同屏两处对同一件事说反话。年份条本身不压:它是你正在点的那个控件。 -->
+        <div v-if="ov.period" class="dh-mnow" :class="{ 'fp-stale': veil }" :aria-busy="veil">{{ ov.period.label }}</div>
       </div>
-      <span v-if="ov.period" class="dh-counts">
+      <span v-if="ov.period" class="dh-counts" :class="{ 'fp-stale': veil }" :aria-busy="veil">
         出账 {{ checks.byCol.billing.done }}/{{ checks.byCol.billing.total }} ·
         附表 {{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}
       </span>
@@ -353,7 +380,7 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
 
       <!-- 两栏清单(P2 T3,monthClose.logic §5.2):出账列 7 行 / 记账列 8 行,行是常驻的 ——
            状态用 :data-state 属性驱动样式,na(源缺)的行照样渲染,状态位显「—」,不 v-if 掉整行。 -->
-      <div class="dh-cols">
+      <div class="dh-cols" :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <!-- ① 出账列:链五步 + 收入核对 + 本月锁账,有先后依赖,一眼看出卡在哪一步 -->
         <section class="dh-sec">
           <h3 class="dh-h3">出账链</h3>
@@ -415,7 +442,9 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
 </template>
 
 <style scoped>
-.dh { display: flex; flex-direction: column; gap: 20px; padding: 24px; }
+/* position: relative 是 FPLoadBar 的宿主要求 —— 那条 2px 进度线是 absolute,
+   没有定位祖先会跑到外壳上去(组件头注写明它不替宿主设,包一层 div 会碰本仓的定高链)。 */
+.dh { position: relative; display: flex; flex-direction: column; gap: 20px; padding: 24px; }
 
 /* 主管条(P2 T6):32px 定高常驻 —— 不是 min-height,人多了裁掉不许把条撑高(裁定 2)。 */
 .dh-sup { height: 32px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }

@@ -890,3 +890,54 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     expect(w.find('.dh-sup').exists(), '落位之后主管条仍在').toBe(true)
   })
 })
+
+describe('数据中心首页 · 换月的即时反馈(2026-09-06 浏览器实看:「选择月份的时候加载延迟有点明显」)', () => {
+  // 三条都钉「点下去到回包之间那一段」。改前这一段是**完全静默**的:描边不动、板子不变、
+  // 收入核对还要等 overview 回来才发第二趟 —— 一次点击等两趟往返,期间零反馈。
+  const cursOf = (w: ReturnType<typeof mount>) =>
+    (w.findComponent({ name: 'BookMonthMatrix' }).props('years') as
+      { year: number; months: { month: number; cur?: boolean }[] }[])
+      .flatMap(y => y.months.map(m => ({ ym: `${y.year}-${String(m.month).padStart(2, '0')}`, cur: m.cur })))
+      .filter(c => c.cur).map(c => c.ym)
+
+  it('点格子后描边立刻挪到新月,不等回包', async () => {
+    const w = await mountWith()                              // 锚定月 2024-02
+    getOverview.mockReturnValueOnce(new Promise(() => {}))   // 回包永不到
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
+    await w.vm.$nextTick()
+    expect(cursOf(w), '描边跟 curYm(回包派生)走的话这里还是 2024-02 —— 那一下点击零反馈').toEqual(['2025-06'])
+  })
+
+  it('点格子后收入核对与 overview 并发发,不再串在它后面', async () => {
+    // 首载仍必须串行(pickedYm=null,年只能从回包派生);但显式点月时年就写在用户点的格子上,
+    // 再串一趟就是白等一次往返 —— 这是 P2 引入的第二趟请求,改前每次换月都要等两趟。
+    const w = await mountWith()
+    reconOverview.mockClear()
+    getOverview.mockReturnValueOnce(new Promise(() => {}))   // overview 永不回
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
+    await flushPromises()
+    expect(reconOverview, '串行的话要等 overview 回包才发,这里就是 0 次').toHaveBeenCalledWith(2025)
+  })
+
+  it('取数在途 200ms 后月名/计数/两栏一起压暗(fp-stale),回包立刻灭', async () => {
+    // 描边已经挪到新月、而这三处还是**上一个月**的数 —— 不压暗就是同屏两处对同一件事说反话。
+    // 年份条本身不压:它是你正在点的那个控件。fp-stale 带 pointer-events:none,旧行不许被点。
+    const w = await mountWith()
+    let resolve!: (v: DataHomeOverviewDTO) => void
+    getOverview.mockReturnValueOnce(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
+    await w.findComponent({ name: 'BookMonthMatrix' }).vm.$emit('pick', 2025, 6)
+    await w.vm.$nextTick()
+    expect(w.find('.dh-cols').classes(), '200ms 内不亮(useDeferredFlag 防闪)').not.toContain('fp-stale')
+
+    await new Promise((r) => setTimeout(r, 260))
+    await flushPromises()
+    expect(w.find('.dh-cols').classes(), '旧内容留在原地就必须退一步').toContain('fp-stale')
+    expect(w.find('.dh-cols').attributes('aria-busy')).toBe('true')
+    expect(w.find('.dh-mnow').classes(), '月名还是上一个月的').toContain('fp-stale')
+    expect(w.find('.dh-counts').classes(), '两处计数也还是上一个月的').toContain('fp-stale')
+
+    resolve(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
+    await flushPromises()
+    expect(w.find('.dh-cols').classes(), '退场立刻灭 —— 数据都上屏了还盖着一层就是纯碍事').not.toContain('fp-stale')
+  })
+})
