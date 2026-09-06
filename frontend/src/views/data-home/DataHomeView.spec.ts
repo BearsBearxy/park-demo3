@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref, defineComponent, h, KeepAlive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { DataHomeOverviewDTO, DataHomeStepDTO, DataHomeItemDTO } from '@/types/dataHome'
+import type { Pending } from '@/api/approvals'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
 import { metersApi } from '@/api/meters'
@@ -743,5 +744,103 @@ describe('数据中心首页 · 年份条(P2 T4)', () => {
     alive.value = false; await flushPromises()
     alive.value = true; await flushPromises()
     expect(getOverview).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ── 主管条(P2 T6):presence.approvals(20 秒一拍的 ping 顺带带回,不加新请求)+「谁在编辑」chips。
+//    外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻(裁定 1/2)。 ──
+describe('数据中心首页 · 主管条(P2 T6)', () => {
+  function seatEditor(displayName: string, editScopes: string[]) {
+    return { sid: 's-' + displayName, user: displayName, displayName, role: null,
+             scope: editScopes[0] ?? null, label: null, mode: 'edit' as const,
+             editScopes, sinceMs: 0, idleMs: 0, self: false }
+  }
+  function pending(id: string): Pending {
+    return { id, requester: 'u-' + id, requesterName: id, requesterRole: null,
+             perms: ['x'], permLabels: ['x'], page: 'x', action: 'x', impact: null, leftMs: 60_000 }
+  }
+
+  it('主管条:无 lock:takeover 也无 system:view → 整条不渲染', async () => {
+    const w = await mountWith({}, { perms: ['entry:edit'] })
+    expect(w.find('.dh-sup').exists()).toBe(false)
+  })
+
+  it('主管条:有权限但零待批 —— 条还在,显「暂无待批」,不是 v-if 消失', async () => {
+    // 32px 定高常驻(spec §5.2)。写成 v-if="approvals.length" 门禁不会红(零位移那份的
+    // 交互态词表里没有 approvals),只有这条能守住。
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    expect(w.find('.dh-sup').exists()).toBe(true)
+    expect(w.find('.dh-sup').text()).toContain('暂无待批')
+  })
+
+  it('主管条:零在编辑时 chips 容器仍在 —— 同样不许 v-if 数据', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'system:view'] })
+    expect(w.find('.dh-sup-who').exists()).toBe(true)
+    expect(w.findAll('.dh-sup-chip')).toHaveLength(0)
+  })
+
+  it('主管条:待批 N 条显数字,点开抽屉', async () => {
+    // 预热懒加载的模块 —— defineAsyncComponent 首次 import() 在 vitest 里要走一次真实的
+    // 模块转换,单靠 flushPromises(它只是 setTimeout(0))在冷启动时赶不上;预热之后
+    // 命中转换缓存,一拍 flushPromises 就够(与 Toolbar.vue/MobileTopBar.vue 的生产用法无关,
+    // 纯粹是测试环境的时序问题)。
+    await import('@/components/fp/FPApprovalDrawer.vue')
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().approvals = [pending('a'), pending('b')]
+    await w.vm.$nextTick()
+    expect(w.find('.dh-sup').text()).toContain('2')
+    await w.find('.dh-sup-inbox').trigger('click')
+    await flushPromises()
+    expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(true)
+  })
+
+  it('主管条:「谁在编辑」chip 显 姓名 · 屏名 · 期,点跳到那一屏那一期', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06'])]
+    await w.vm.$nextTick()
+    const chip = w.find('.dh-sup-chip')
+    expect(chip.text()).toContain('张三')
+    expect(chip.text()).toContain('2025-06')
+    await chip.trigger('click')
+    expect(push).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ p: '2025-06' }) }))
+  })
+
+  it('主管条:一人握两把锁只出一枚 chip(取 editScopes[0])', async () => {
+    // 32px 定高装不下 N 人 × M 锁;这条要回答的是「谁卡在哪」,一行一个人。
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06', 'ledger:3:2025-06'])]
+    await w.vm.$nextTick()
+    expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+  })
+
+  // 破坏验证(Step 6)实测坐实的空白:goEditor 去掉 confirmRebuild 调用后,既有 6 条一条不红——
+  // 补这一条钉住 chip 跳转与 go() 共用同一份确认(裁定 5:两者都走 openFresh,风险一模一样)。
+  it('主管条:chip 跳转复用 confirmRebuild —— 本标签页在目标屏那把锁底下持锁时点 chip 也先确认', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    const presence = usePresenceStore()
+    presence.users = [seatEditor('张三', ['billing-chain:2025-06'])]
+    presence.holdLock('billing-chain:2025-06', () => {})   // 本标签页在 params 屏那把锁底下持锁
+    await w.vm.$nextTick()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await w.find('.dh-sup-chip').trigger('click')
+    expect(confirm, 'chip 跳转不能绕开 go() 同款的确认').toHaveBeenCalledOnce()
+    expect(push).not.toHaveBeenCalled()
+    confirm.mockRestore()
+    presence.stop()
+  })
+
+  // 破坏验证(Step 6)实测坐实的空白:主管条整块挪进 <template v-else>(真版式分支)里,
+  // 既有 7 条一条不红 —— 补这一条钉住裁定 1(渲染在两个分支之外,不跟 ov 走)。
+  it('主管条:ov 未到(骨架态)时已经在 —— 不等 ov 落位才出现(裁定 1)', async () => {
+    localStorage.setItem('permissions', JSON.stringify([...EDITOR_PERMS, 'lock:takeover']))
+    setActivePinia(createPinia())
+    let resolve!: (v: DataHomeOverviewDTO) => void
+    getOverview.mockReturnValue(new Promise<DataHomeOverviewDTO>((r) => { resolve = r }))
+    const w = mount(DataHomeView)
+    await flushPromises()
+    expect(w.find('.dh-sup').exists(), '骨架态(ov 还没到)时主管条也该在').toBe(true)
+    resolve(overview())
+    await flushPromises()
+    expect(w.find('.dh-sup').exists(), '落位之后主管条仍在').toBe(true)
   })
 })

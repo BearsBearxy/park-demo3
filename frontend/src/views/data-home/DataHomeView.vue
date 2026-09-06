@@ -9,7 +9,7 @@
 // 现在三级主次:① 顶部一行总览 → ② 出账链流水线 → ③ 当前步大卡 + 全页唯一主 CTA。
 // 出账链有先后依赖(抄表没抄完算不了公摊,公摊没生成出不了催缴单)所以画成流水线;
 // 附表互相独立、能并行做,所以画成紧凑清单。结构与真实工作的形状同构。
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
@@ -24,12 +24,15 @@ import Button from '@/components/ds/Button.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
-import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
+import { NAV_SCOPE_PREFIX, navOfScope, scopePeriod } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
-import { CHAIN, pipsOf } from '@/nav/billingChain'
+import { CHAIN, pipsOf, chainLabel } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
+
+// 铃铛抽屉懒加载,口径照抄 Toolbar.vue / MobileTopBar.vue(第三个引用方,defineAsyncComponent + v-if 才真懒)。
+const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
 
 const router = useRouter()
 const tabsStore = useTabsStore()
@@ -44,6 +47,29 @@ function myChainLockPeriods(): string[] {
   return (me?.editScopes ?? [])
     .filter(sc => sc.startsWith('billing-chain:') || sc.startsWith('meters:'))
     .map(sc => sc.slice(sc.indexOf(':') + 1))
+}
+
+// 主管条(P2 T6,任务书六条裁定):数据源是 presence + auth,跟 ov 有没有到无关 ——
+// 渲染位置见模板,在两个 v-if="!ov"/v-else 分支之外。
+const inbox = ref(false)
+const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
+
+// 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4:32px 定高装不下 N 人 × M 把锁,
+// 要回答的是「谁卡在哪」而不是「都握了哪些锁」)。屏名沿用 chainLabel(nav/fpNav 的 ROUTES.page,
+// 与侧栏 / 页签同一张表,不新开一张)。
+const editors = computed(() => presence.others
+  .filter(u => u.mode === 'edit' && u.editScopes.length)
+  .map(u => {
+    const sc = u.editScopes[0]
+    const v = navOfScope(sc)
+    return { sid: u.sid, name: u.displayName, v, p: scopePeriod(sc),
+             note: [u.displayName, v ? chainLabel(v) : null, scopePeriod(sc)].filter(Boolean).join(' · ') }
+  }))
+
+function goEditor(e: { v: string | null; p: string | null }) {
+  if (!e.v || !confirmRebuild(e.v)) return
+  tabsStore.openFresh(e.v)
+  router.push(e.p ? periodLink(e.v, { p: e.p }) : '/' + e.v)
 }
 
 const ov = ref<DataHomeOverviewDTO | null>(null)
@@ -83,24 +109,30 @@ function scheduleLink(v: string, tag: string, p: { year: number; month: number }
   if (v === 'utilities') return periodLink(v, { p: periodOf(p.year, null), extra: { tab: tag === '附14' ? 'phase3' : 'office' } })
   return null
 }
-function go(v: string, tag = '', co?: number | 'all') {
-  // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
-  const ym = pickedYm.value ?? curYm.value
-  const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
-  // 首页行仍是「全新」(spec §4.1:显式任务导航),所以点之前必须问 —— openFresh 会重建目标屏,
-  // 编辑中的草稿不分同月异月都会丢(2026-09-03 对抗复查 F3)。
-  // P3 收窄(spec §4.1 把这件事派给本期):判据从「本人握着出账链/抄表锁」换成
-  // **本标签页在不在目标屏那把锁底下持锁** —— ① 改前读的是服务端回声的 editScopes,
-  // 进编辑态 3 秒内(下一拍 ping 之前)点回来不弹确认,草稿照丢;② 改前只盖出账链五屏,
-  // 附10 / 台账 / 附表屏的草稿(sched:s10:* 之类)一律不问,而清单上 15 行大半是它们。
-  // 两个真源取或:`holdsEditUnder` 读本地 editCallbacks(即时,补上进编辑态 3 秒内还没回声的空窗),
-  // `myChainLockPeriods` 读服务端回声(它另外还提供「在编辑哪个月」的文案,且只对出账链行有意义)。
+// 首页行仍是「全新」(spec §4.1:显式任务导航),所以点之前必须问 —— openFresh 会重建目标屏,
+// 编辑中的草稿不分同月异月都会丢(2026-09-03 对抗复查 F3)。
+// P3 收窄(spec §4.1 把这件事派给本期):判据从「本人握着出账链/抄表锁」换成
+// **本标签页在不在目标屏那把锁底下持锁** —— ① 改前读的是服务端回声的 editScopes,
+// 进编辑态 3 秒内(下一拍 ping 之前)点回来不弹确认,草稿照丢;② 改前只盖出账链五屏,
+// 附10 / 台账 / 附表屏的草稿(sched:s10:* 之类)一律不问,而清单上 15 行大半是它们。
+// 两个真源取或:`holdsEditUnder` 读本地 editCallbacks(即时,补上进编辑态 3 秒内还没回声的空窗),
+// `myChainLockPeriods` 读服务端回声(它另外还提供「在编辑哪个月」的文案,且只对出账链行有意义)。
+/** openFresh 会重建目标屏、丢掉未保存草稿 —— 本标签页在那把锁底下持锁时先问一句。
+ *  go()(清单行)与主管条 chip 两处共用:两者都走 openFresh,风险一模一样。 */
+function confirmRebuild(v: string): boolean {
   const heldHere = presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])
   const held = myChainLockPeriods()
   if (heldHere || (CHAIN_VALUES.has(v) && held.length > 0)) {
     const where = held.length ? `（${held.join('、')}）` : ''
-    if (!window.confirm(`你正在编辑${where}。从首页重新打开会丢失未保存的改动，继续？`)) return
+    if (!window.confirm(`你正在编辑${where}。从首页重新打开会丢失未保存的改动，继续？`)) return false
   }
+  return true
+}
+function go(v: string, tag = '', co?: number | 'all') {
+  // 用户刚在下拉里选的月优先于服务端回包(回包在途时也按他选的走);没选过才用锚定月
+  const ym = pickedYm.value ?? curYm.value
+  const p = ym ? { year: +ym.slice(0, 4), month: +ym.slice(5, 7) } : null
+  if (!confirmRebuild(v)) return
   if (p && CHAIN_VALUES.has(v)) {
     period.pick(p.year, p.month)
     // 门被前置跳过 → ChainMonthGate 不再挂载,而它是 loadChain 的唯一调用方;不补这一句,
@@ -216,6 +248,20 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
        fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
        出账链/附表本就是 flex-wrap 胶囊行,横幅/大卡 S 档允许换行即可,无定宽结构。 -->
   <div class="dh fp-fluid">
+    <!-- 主管条(P2 T6):数据源 presence + auth,与 ov 无关 —— 渲染在两个骨架/真版式分支**之外**,
+         骨架与真版式不靠人记得同步(T3 漏 .dh-cols、T4 漏 .dh-ystrip 都是分两份写漏的)。
+         外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻,
+         零待批显「暂无待批」、零在编辑 chips 容器仍在,不许 v-if 掉整条或子容器(裁定 1/2)。 -->
+    <div v-if="isSupervisor" class="dh-sup">
+      <button class="dh-sup-inbox" @click="inbox = true">
+        {{ presence.approvals.length ? `待批授权 ${presence.approvals.length}` : '暂无待批' }}
+      </button>
+      <div class="dh-sup-who">
+        <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e)">{{ e.note }}</button>
+      </div>
+    </div>
+    <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
+
     <template v-if="!ov">
       <div class="dh-head">
         <div class="dh-period">
@@ -360,6 +406,21 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
 
 <style scoped>
 .dh { display: flex; flex-direction: column; gap: 20px; padding: 24px; }
+
+/* 主管条(P2 T6):32px 定高常驻 —— 不是 min-height,人多了裁掉不许把条撑高(裁定 2)。 */
+.dh-sup { height: 32px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.dh-sup-inbox {
+  flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-primary);
+  background: var(--surface-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full); padding: 4px 12px; cursor: pointer;
+}
+.dh-sup-who { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
+.dh-sup-chip {
+  flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-secondary);
+  background: var(--surface-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full); padding: 2px 10px; cursor: pointer; white-space: nowrap;
+}
+
 .dh-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .dh-period { display: flex; align-items: center; gap: 12px; }
 .dh-title { font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text-primary); }
