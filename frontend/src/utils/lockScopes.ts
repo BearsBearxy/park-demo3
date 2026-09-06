@@ -109,6 +109,8 @@ export const NAV_SCOPE_PREFIX: Record<string, string | string[]> = {
   'ledger': ['ledger', 'book-template:ledger'],
   'params': 'billing-chain',
   'alloc': 'billing-chain',
+  // reconciliation / import / alloc-loss 三屏没有编辑锁(纯查看/仅登记,楼栋损耗全文件无
+  // useEditMode / 无 acquire),不补键 —— 补了是一个永远不亮的键(2026-09-06 复查撤回 alloc-loss)
   'bill-notices': 'billing-chain',
   'meters': 'meters',
   'pv-income': ['sched:pv', 'pv-meter'],
@@ -142,4 +144,52 @@ export function scopeNote(scope: string | null | undefined): string | null {
          + '它们改的是同一批出账快照，锁住一个就是锁住四个'
   }
   return null
+}
+
+/**
+ * 从锁 scope 里抠出期。scope 一律 `模块:限定:期` 冒号分段(见本文件头注释):
+ *   billing-chain:2025-06 → '2025-06'   meters:2025 → '2025'
+ *   ledger:3:2025-06     → '2025-06'   report:is:1:2025-06 → '2025-06'
+ *   book-template:ledger:7:2025-06 → '2025-06'   无期 → null
+ * ⚠ sched:s10 一个前缀两种粒度(月锁 …:2025-06 与年锁 …:2025 并存,S.s10 / S.s10Year),
+ *   这里**照实返回**,不把年补成月 —— periodLink 的 p 本就允许只有年(nav/deepLink.ts)。
+ */
+export function scopePeriod(scope: string | null | undefined): string | null {
+  if (!scope) return null
+  const last = scope.slice(scope.lastIndexOf(':') + 1)
+  return /^\d{4}(-(0[1-9]|1[0-2]))?$/.test(last) ? last : null
+}
+
+/**
+ * 反查这把锁属于哪一屏。边界规则与 presence.editorsUnder 逐字同形(=== p 或 p+':' 或 p+'-' 开头)。
+ * ⚠ 一把锁可命中多个 nav —— `billing-chain` 底下有 params / alloc / bill-notices 三屏,
+ *   它们共用一把月锁(spec §3.3)。裁定:**取 NAV_SCOPE_PREFIX 声明序的第一个**,
+ *   这样「谁在编辑」的 chip 有一个稳定去处,而不是随 Object.keys 顺序漂。
+ */
+export function navOfScope(scope: string | null | undefined): string | null {
+  if (!scope) return null
+  for (const [nav, pre] of Object.entries(NAV_SCOPE_PREFIX)) {
+    const ps = Array.isArray(pre) ? pre : [pre]
+    if (ps.some(p => scope === p || scope.startsWith(p + ':') || scope.startsWith(p + '-'))) return nav
+  }
+  return null
+}
+
+/**
+ * 锁 scope → 一个能点过去的落点。`navOfScope` 只回答「哪一屏」，但几个模块的锁串里还带着
+ * **第二维**（台账的公司 / 附10 的期区 / 三大报表的公司 / 附13-14 是哪一张）——
+ * 不带过去就会落到目标屏的默认子视图，而那里恰恰没有人在编辑（2026-09-06 复查实跑坐实）。
+ * 充电桩不用管：`NAV_SCOPE_PREFIX` 已经把 `sched:charging:7` / `:8` 分成两个 nav value。
+ */
+export function scopeTarget(scope: string | null | undefined):
+  { v: string; p: string | null; co?: number | string; tab?: string } | null {
+  const v = navOfScope(scope)
+  if (!v || !scope) return null
+  const g = scope.split(':')
+  const out: { v: string; p: string | null; co?: number | string; tab?: string } = { v, p: scopePeriod(scope) }
+  if (g[0] === 'ledger') out.co = g[1]                                   // ledger:{co}:{ym}
+  else if (g[0] === 'report') out.co = g[2]                              // report:{stmt}:{co}:{ym}
+  else if (g[0] === 'sched' && g[1] === 's10') out.co = g[2]             // sched:s10:{期区}:{ym}
+  else if (g[0] === 'sched' && g[1] === 'utilities') out.tab = g[2] === '14' ? 'phase3' : 'office'
+  return out
 }

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { filterPages, buildAllPages, type PageEntry } from '../paletteFilter'
 import { fpAllPages } from '@/nav/fpNav'
 
@@ -69,5 +71,22 @@ describe('filterPages', () => {
     expect(groups).toHaveLength(1)
     expect(groups[0].title).toBe('无匹配')
     expect(groups[0].items).toHaveLength(0)
+  })
+
+  it('按分组名匹配:「档案」命中楼栋 / 租户 / 合同(§6:搜索承诺改成「页面 / 分组」,面板就得真按分组找)', () => {
+    const groups = filterPages('档案', allPages, [])
+    expect(groups[0].items.map(p => p.value)).toEqual(['buildings', 'tenants', 'contracts'])
+    expect(allPages.find(p => p.value === 'salary')!.group).toBe('记账 · 按月')
+    expect(allPages.find(p => p.value === 'data-home')!.group).toBeUndefined()   // 无标题组
+  })
+})
+
+describe('命令面板不进首屏包(P3 T4 瘦身)', () => {
+  it('AppShell 用 defineAsyncComponent + v-if 拉它 —— 静态 import 会把 7KB 压进 index,而它是 Ctrl-K 才用的覆盖层', () => {
+    const s = readFileSync(join(__dirname, '..', 'AppShell.vue'), 'utf8')
+    expect(s, '又变回静态 import 了').not.toContain("import CommandPalette from")
+    expect(s).toContain("defineAsyncComponent(() => import('@/components/shell/CommandPalette.vue'))")
+    // defineAsyncComponent 是**渲染时**才拉块的:只靠 :open=false 常挂在树上等于没懒
+    expect(s).toContain('v-if="paletteEverOpened"')
   })
 })

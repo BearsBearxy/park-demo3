@@ -11,7 +11,6 @@
 // 这里只收敛「搬运」部分:公司增删改、年历/本期加载(含竞态守卫)、状态迁移、编辑草稿与 dirty、
 // 保存外壳、导入接线。行定义/取值口径/KPI/表格/保存载荷/导出仍留在各屏——数值计算一格都不在这里。
 import { ref, computed, watch, onMounted, type Ref } from 'vue'
-import { useRoute } from 'vue-router'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
 import type { CompanyDTO, YearMonthsDTO } from '@/types/ledger'
@@ -21,7 +20,9 @@ import type { FinDialog } from '@/components/fin/FinDialogs.vue'
 import type { RailItem } from '@/components/fp/BookRail.vue'
 import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
-import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
+import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
+import { periodOf, type DeepPeriod } from '@/nav/deepLink'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
@@ -95,20 +96,44 @@ export function useFinStatementScreen(opts: {
   // 进屏自动选中第一家:左栏常驻,「选公司」不再是一道门,没理由让人对着空占位再点一下。
   // 不默认「全部汇总」——那一档要按公司数发 N 倍请求,当默认落点太贵;它在左栏第一项,一点即到。
   //
-  // 深链(?y&m&co,设计稿 §3.2b):从报表中心或期间条过来时直落那一期,跳过矩阵。
-  // 矩阵仍是**直接从侧栏进屏**时的门 —— 深链只是「从已经选好期的地方来」时不再拦一道。
-  const route = useRoute()
-  const deepLink = parsePeriodQuery(route.query as Record<string, unknown>)
+  // 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM&co=<公司 id | all> 从报表中心 / 期间条过来时直落那一期,跳过矩阵;
+  // 只有年的链接(从损益附表跳回来就是这样)→ 停在矩阵,年份照样落到它说的那年;缓存实例停在正文时回矩阵。矩阵仍是**直接从侧栏进屏**时的门。
+  // 改前只在 setup 读一次 query:期间条裸 push 命中 KeepAlive 缓存实例时期纹丝不动(「第二圈期不跟」);
+  // useDeepPeriod 的 onReactivated 那一跑正是对症。setup 期公司名单还没到,apply 是异步的:先等 ensureLoaded 再落公司落期。
+  // co 指名的公司不存在 → 不动(与附10「指名期区不存在不落错册」同口径);co 是公司名字符串 → 报表层没有公司名维度,视同没给。
+  // 换期回矩阵不改地址栏:fullPath 去重是「回矩阵后切页签不被同一地址推回正文」的唯一保障。
+  let loaded: Promise<void> | null = null
+  function ensureLoaded() {
+    if (!loaded) loaded = loadCompanies()
+    return loaded
+  }
   onMounted(async () => {
-    await loadCompanies()
+    await ensureLoaded()
+    // 深链的 applyDeep 先注册先续跑(同一个 promise 的续体按注册序执行),它已选了公司就不再抢着选首家
+    if (companyId.value == null && companies.value.length) await pickCompany(companies.value[0].id)
+  })
+  async function applyDeep(t: DeepPeriod) {
+    await ensureLoaded()
     if (!companies.value.length) return
-    const want = deepLink?.companyId ?? companies.value[0].id
-    await pickCompany(want)
-    // 深链里没有月(从损益附表跳回来就是这样)→ 停在矩阵,年份照样落到它说的那年
-    if (deepLink) {
-      year.value = deepLink.year
-      if (deepLink.month != null) await pickCell(deepLink.year, deepLink.month)
-    }
+    if (typeof t.co === 'number' && !companies.value.some(c => c.id === t.co)) return
+    const co = t.co === 'all' || typeof t.co === 'number' ? t.co : null
+    await pickCompany(co ?? companyId.value ?? companies.value[0].id)
+    year.value = t.year
+    if (t.month != null) await pickCell(t.year, t.month)
+    // 只有年的链落在停在正文的缓存实例上:pickCompany 同公司早退不清 month,得自己回矩阵 ——
+    // 否则期标换了年、表里还是旧月的快照、锁域(S.report(stmt, co, year, month))指向新年旧月。首载 month 本就 null,不多拉。
+    else if (month.value != null) backToMatrix()
+  }
+  const { note: deepNote } = useDeepPeriod({
+    current: () => ({ p: periodOf(year.value, month.value), co: companyId.value }),
+    apply: (t) => { void applyDeep(t).catch(() => {}) },
+    dirty: () => dirty.value,
+    // current().p 矩阵态是光秃秃一个年份(深链相等判专用,见 DeepPeriodOpts.ctx 注释)——
+    // 页签上下文得按用户真实看到的来:没选月就是 null。
+    ctx: () => ({
+      p: month.value == null ? null : periodOf(year.value, month.value),
+      coName: companyId.value === 'all' ? '全部汇总' : companyName.value,
+    }),
   })
   async function loadCompanies() {
     companies.value = await companyApi.list()
@@ -231,8 +256,11 @@ export function useFinStatementScreen(opts: {
   const periodSteps = REPORT_STEPS
   const stripLabel = computed(() =>
     periodLabel(year.value, month.value, isAll.value ? '全部汇总' : companyName.value))
-  /** 带着走的那一包:目标屏认得几个用几个,不认的原样传回来。 */
-  const stripQuery = computed(() => periodQuery(year.value, month.value, companyId.value))
+  /** 带着走的那一包(periodLink 形状,§4.2):p=YYYY-MM(矩阵态只有年)、co=公司 id | all;目标屏认得几个用几个,不认的原样传回来。 */
+  const stripQuery = computed<Record<string, string>>(() => ({
+    p: periodOf(year.value, month.value),
+    ...(companyId.value != null ? { co: String(companyId.value) } : {}),
+  }))
   /** 矩阵的「已选中」比特:没选公司时为 null,组件显占位。 */
   const matrixBook = computed(() => (companyId.value == null ? null : MATRIX_BOOK))
 
@@ -424,7 +452,7 @@ export function useFinStatementScreen(opts: {
     companies, companiesLoaded, yearMonths, period, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,
     railItems, matrixYears, matrixBook, gateYears,
-    periodSteps, stripLabel, stripQuery,
+    periodSteps, stripLabel, stripQuery, deepNote,
     pickCompany, pickCell, backToMatrix, addEarlier, addLater, removeYear,
     loadYear, loadMatrix, loadPeriod,
     enterEdit, onTaken, lockedBy, evictedBy, heldByOther, lockScope, requestCancel, saveConfirm, finishEdit, save, onDiscard,

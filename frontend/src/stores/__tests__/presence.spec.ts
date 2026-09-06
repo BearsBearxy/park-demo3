@@ -179,6 +179,15 @@ describe('在场', () => {
     expect(p.editorsUnder('sched:salary:2024')).toEqual([])
   })
 
+  it('holdsEditUnder 的前缀边界与 editorsUnder 逐字同规则 —— 两个函数各写一遍,只有一边有护栏就会单边漂移', () => {
+    const p = usePresenceStore()
+    p.holdLock('sched:pv:20251', () => {})
+    expect(p.holdsEditUnder('sched:pv:2025'), '20251 不是 2025 底下的').toBe(false)
+    expect(p.holdsEditUnder('sched:pv:20251')).toBe(true)
+    expect(p.holdsEditUnder(['nope', 'sched:pv:20251']), '数组形态的锁根也要吃').toBe(true)
+    expect(p.holdsEditUnder(undefined)).toBe(false)
+  })
+
   it('前缀匹配不许误伤相邻的年份键', async () => {
     // `sched:pv:2025` 不能匹配到 `sched:pv:20251`(将来若有更长的键),
     // 也不能让 `sched:salary:2025` 匹配 `sched:salary:2025X`。边界必须是分隔符或结尾。
@@ -189,6 +198,52 @@ describe('在场', () => {
     ]
 
     expect(p.editorsUnder('sched:pv:2025')).toEqual([])
+  })
+
+  it('❗editingNote:一个座位同时握两个锁根下的锁,名字只报一次(台账编辑态里又开着模板面板)', () => {
+    // 'ledger' 的锁根是数组 ['ledger', 'book-template:ledger'](2026-08-29 放开一对多)。
+    // flatMap 逐根查一遍,同一个 Seat 命中两根就被收两遍 —— 名字拼两次,读成两个人在抢。
+    // 顺带钉住「期真的接自 scopePeriod」:这里用 2026-03,不是别处 fixture 写死的 2026-08。
+    const p = usePresenceStore()
+    p.users = [{
+      sid: 's1', user: 'zhangsan', displayName: '张三', role: null,
+      scope: null, label: '月度台账', mode: 'edit',
+      editScopes: ['ledger:3:2026-03', 'book-template:ledger:7:2026-03'],
+      sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑 · 2026-03')
+  })
+
+  it('❗两个人挂同一把锁根却在不同月:期整段省掉,不许把第一个人的月安到所有人头上', () => {
+    // 复查里严重度最高的那条:期取的是 who[0] 的,而名字是所有人的 —— 张冠李戴。
+    // 裁定:期只在**所有人同一期**时才写。宁可不写期,也不写一个错的期
+    // (这个点要回答的只有「我点进去改得了吗」,期是锦上添花)。
+    const p = usePresenceStore()
+    const seat = (sid: string, name: string, sc: string) => ({
+      sid, user: sid, displayName: name, role: null,
+      scope: null, label: '月度台账', mode: 'edit' as const,
+      editScopes: [sc], sinceMs: 1000, idleMs: 0, self: false,
+    })
+    p.users = [seat('a', '张三', 'ledger:3:2026-03'), seat('b', '李四', 'ledger:5:2026-07')]
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑、李四 正在编辑')
+
+    // 同一期时期照写 —— 证明省略是「期不唯一」触发的,不是把期整个删了
+    p.users = [seat('a', '张三', 'ledger:3:2026-03'), seat('b', '李四', 'ledger:5:2026-03')]
+    expect(p.editingNote('ledger')).toBe('张三 正在编辑、李四 正在编辑 · 2026-03')
+  })
+
+  it('❗editingNote 要吃到数组锁根的第二个前缀,不是只查第一个(pv-income 底下只握 pv-meter)', () => {
+    // NAV_SCOPE_PREFIX['pv-income'] = ['sched:pv', 'pv-meter']。这里的座位只握第二根的锁,
+    // 若实现把 ps 退化成只取首元素,editorsUnder('sched:pv') 找不到人,editingNote 会静默回 null。
+    const p = usePresenceStore()
+    p.users = [{
+      sid: 's2', user: 'lisi', displayName: '李四', role: null,
+      scope: null, label: '光伏收入', mode: 'edit',
+      editScopes: ['pv-meter:2026'], sinceMs: 1000, idleMs: 0, self: false,
+    }]
+
+    expect(p.editingNote('pv-income')).toBe('李四 正在编辑 · 2026')
   })
 
   it('每次换屏都立刻补一拍，不等下一个 20 秒', async () => {

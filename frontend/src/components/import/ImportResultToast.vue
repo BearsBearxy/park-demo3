@@ -6,8 +6,9 @@ import Button from '@/components/ds/Button.vue'
 import type { ImportResultDTO } from '@/types/import'
 
 // summary: 智能整表多段导入时,各段「年月期·导入/跳过/错误」一行一段
-const props = defineProps<{ result: ImportResultDTO; summary?: string }>()
-const emit = defineEmits<{ close: [] }>()
+// go: 传了就多一个按钮(文案即它),点击 emit('go') —— 导入中心「去查看」(SIDEBAR-UX-REDESIGN §9 P0b);其余 16 个消费方不传,一个字不变
+const props = defineProps<{ result: ImportResultDTO; summary?: string; go?: string }>()
+const emit = defineEmits<{ close: []; go: [] }>()
 
 const showErrors = ref(false)
 // 刀G:提示(归属被钉住/位置被冻结/疑似重复)与错误分开 —— 这些行已成功导入,不能算「未导入」也不该出警告三角
@@ -78,6 +79,7 @@ const matchStats = computed(() => {
         </ul>
       </div>
       <div class="ir-f">
+        <Button v-if="go" variant="outline" full-width @click="emit('go')">{{ go }}</Button>
         <Button variant="filled" full-width @click="emit('close')">知道了</Button>
       </div>
     </div>
@@ -122,5 +124,5 @@ const matchStats = computed(() => {
 .ir-errs-label { color:var(--text-primary); flex:0 0 auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ir-errs-reason { color:var(--hue-red); flex:1; }
 
-.ir-f { padding:16px 20px; }
+.ir-f { padding:16px 20px; display:flex; gap:10px; }
 </style>

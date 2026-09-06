@@ -41,7 +41,7 @@ import type { PnlYearDTO } from '@/types/pnl'
 import type { PvRecordDTO } from '@/types/pv'
 import type { OfficeYearDTO } from '@/types/utilities'
 import { useTabsStore } from '@/stores/tabs'
-import { FP_NAV } from '@/nav/fpNav'
+import { fpAllPages } from '@/nav/fpNav'
 
 // ── 模块级 Promise 缓存(失败即删,可重试) ──
 const cache = new Map<string, Promise<unknown>>()
@@ -53,9 +53,9 @@ function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 export function __clearAnaCacheForTest(): void { cache.clear() }
 
-// 分析层全部路由 value(fpNav 单一事实源派生,勿手抄清单)
-const ANA_VALUES: string[] =
-  FP_NAV.find(l => l.id === 'analysis')?.sections.flatMap(s => s.items.map(i => i.value)) ?? []
+// 分析层全部路由 value(fpNav 单一事实源派生,勿手抄清单)。
+// 不读 sections:分组是侧栏的事,这里只要「属于分析层」,组怎么切都不该牵动缓存失效的范围。
+const ANA_VALUES: string[] = fpAllPages().filter(p => p.layer === 'analysis').map(p => p.value)
 
 // 导入成功(runImport)与 租户/合同/楼栋 写成功后调用:分析层全部缓存失效。
 // 同时作废分析页签的 KeepAlive 缓存实例(epoch++)——只清数据缓存的话,缓存实例里的 ref
@@ -329,8 +329,11 @@ export interface AnaAnomaly {
   title: string
   detail: string    // 依据数字(可解释性:每条给出计算依据)
   value: string
-  link: string      // 深链(分析屏或录入屏路由)
+  link: string      // 深链目标路径(分析屏或录入屏);消费方按 ym(+company/tenant)组 periodLink(P0c)
   ym: string        // 所属期间 YYYY-MM
+  company?: string  // 台账负值行:管理公司名(台账深链 extra.company)
+  tenant?: string   // 租户维度规则:租户名(录入屏 extra.tenant 定位行)
+  co?: number       // 附10 负值行:期区(附10 深链的 co 就是期区;与 CockpitView.onPhaseClick 同口径)
 }
 export interface EnergySeries { name: string; unit: string; series: Record<string, number> }
 export interface AnomalyInputs {
@@ -418,7 +421,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
         dim: '租户', type: '收入中断', metric: '上期有收入本期无',
         title: `${name} ${c} 无计费记录`,
         detail: `${p} 计费 ¥${fInt(tot)} → ${c} 无记录,请核实是否退租或漏录`,
-        value: `¥${fInt(tot)}`, link: '/churn', ym: c,
+        value: `¥${fInt(tot)}`, link: '/churn', ym: c, tenant: name,
       })
     }
   }
@@ -435,7 +438,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
       dim: '租户', type: '负值行', metric: `附表10 ${neg[0]}为负`,
       title: `${r.tenantName} ${r.acctMonth} ${neg[0]}为负`,
       detail: `${neg[0]} −¥${fInt(Math.abs(neg[1]))},请核对附表10录入`,
-      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth,
+      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/sales-income', ym: r.acctMonth, tenant: r.tenantName, co: r.phase,
     })
   }
   for (const r of inputs.ledger) {
@@ -449,7 +452,7 @@ export function buildAnomalies(inputs: AnomalyInputs, opts: { collectTarget: num
       dim: '管理公司', type: '负值行', metric: `台账${neg[0]}为负`,
       title: `${r.tenantName} ${ym} ${neg[0]}为负`,
       detail: `${r.companyName} 台账:${neg[0]} −¥${fInt(Math.abs(neg[1]))},请核对台账录入`,
-      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/ledger', ym,
+      value: `−¥${fInt(Math.abs(neg[1]))}`, link: '/ledger', ym, company: r.companyName, tenant: r.tenantName,
     })
   }
 

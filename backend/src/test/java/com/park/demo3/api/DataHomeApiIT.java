@@ -48,14 +48,16 @@ class DataHomeApiIT extends AbstractMysqlIT {
         assertThat((String) JsonPath.read(body, "$.data.period.label")).contains("年").contains("月");
         List<String> months = JsonPath.read(body, "$.data.months[*]");
         assertThat(months).isSorted().allMatch(m -> m.matches("\\d{4}-\\d{2}"));
-        assertThat((List<?>) JsonPath.read(body, "$.data.chain.steps")).hasSize(4);
+        assertThat((List<?>) JsonPath.read(body, "$.data.chain.steps")).hasSize(5);
+        assertThat((List<String>) JsonPath.read(body, "$.data.chain.steps[*].key"))
+            .containsExactly("params", "meters", "alloc", "alloc-loss", "bill-notices");
         assertThat((int) JsonPath.read(body, "$.data.schedules.total")).isEqualTo(9);
         assertThat((List<?>) JsonPath.read(body, "$.data.schedules.items")).hasSize(9);
         assertThat((List<?>) JsonPath.read(body, "$.data.blockers")).isNotNull();
     }
 
     @Test
-    void overview_出账链四步的状态取值受限() throws Exception {
+    void overview_出账链五步的状态取值受限() throws Exception {
         String body = getOk("/api/data-home/overview");
         List<String> statuses = JsonPath.read(body, "$.data.chain.steps[*].status");
         assertThat(statuses).allMatch(s -> List.of("done", "current", "todo").contains(s));
@@ -78,7 +80,7 @@ class DataHomeApiIT extends AbstractMysqlIT {
         assertThat((int) JsonPath.read(body, "$.data.chain.currentIndex")).isZero();
         assertThat((int) JsonPath.read(body, "$.data.schedules.done")).isZero();
         List<String> statuses = JsonPath.read(body, "$.data.chain.steps[*].status");
-        assertThat(statuses).containsExactly("current", "todo", "todo", "todo");
+        assertThat(statuses).containsExactly("current", "todo", "todo", "todo", "todo");
     }
 
     @Test

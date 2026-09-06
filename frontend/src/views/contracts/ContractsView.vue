@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, h } from 'vue'
+import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { contractApi } from '@/api/contract'
 import { invalidateAnaCache } from '@/analysis/anaData'
@@ -44,11 +45,25 @@ const showNew = ref(false)
 const editFrom = ref<ContractDTO | null>(null)
 const renewFrom = ref<ContractDTO | null>(null)
 
+// 深链 ?contractNo=<合同号>(到期墙「临期 90 天」点行,SIDEBAR-UX-REDESIGN §4.2):预填搜索框定位到该合同。
+// 合同没有期维度,不接 useDeepPeriod;同一套口径手写:按 fullPath 去重 + 切回再读 —— 没 query 的激活不重置用户改过的筛选,
+// 同一地址切回也不把用户清掉的搜索再填回去。
+const route = useRoute()
+let appliedLink = ''
+function readDeepLink() {
+  const key = route.fullPath ?? JSON.stringify(route.query)
+  if (key === appliedLink) return
+  appliedLink = key
+  const no = route.query.contractNo
+  if (typeof no === 'string' && no) q.value = no
+}
+readDeepLink()
+
 async function reload() {
   ;[contracts.value, summary.value] = await Promise.all([contractApi.list(activeOn.value || undefined), contractApi.summary()])
 }
 onMounted(reload)
-onReactivated(reload)   // 页签切回:楼栋/单元/租户改动后列表 floorInfo/名称回拉(读时派生,重拉即新)
+onReactivated(() => { readDeepLink(); void reload() })   // 页签切回:先读链再重拉(楼栋/单元/租户改动后列表 floorInfo/名称回拉,读时派生,重拉即新)
 watch(activeOn, reload)   // 某日在租=后端过滤,切换即重拉
 
 async function onCreated() {

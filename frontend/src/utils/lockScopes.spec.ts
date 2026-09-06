@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { S, NAV_SCOPE_PREFIX } from './lockScopes'
+import { S, NAV_SCOPE_PREFIX, scopePeriod, navOfScope, scopeTarget } from './lockScopes'
 
 describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
   describe('§3.2 出账链必须共占同一把月锁', () => {
@@ -211,6 +211,58 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
     it('期没选全时没有锁', () => {
       expect(S.report('bs', null, 2025, 6)).toBeNull()
       expect(S.report('bs', 3, 2025, null)).toBeNull()
+    })
+  })
+
+  describe('scopePeriod / navOfScope —— §3.3 在场点上提共用的两个纯函数', () => {
+    it('scopePeriod 认全部锁形状:billing-chain:2025-06 → 2025-06;meters:2025 → 2025;ledger:3:2025-06 → 2025-06;无期 → null', () => {
+      expect(scopePeriod(S.paramCenter(2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.meters(2025))).toBe('2025')
+      expect(scopePeriod(S.ledger(3, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.report('is', 3, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.bookTemplate('ledger', 7, 2025, 6))).toBe('2025-06')
+      // sched:s10 一个前缀两种粒度:月锁与年锁并存,照实返回,不把年补成月
+      expect(scopePeriod(S.s10(1, 2025, 6))).toBe('2025-06')
+      expect(scopePeriod(S.s10Year(1, 2025))).toBe('2025')
+      expect(scopePeriod(null)).toBeNull()
+      expect(scopePeriod(undefined)).toBeNull()
+      // ❗正则本身的负例:末段不是合法年/年月的 scope 必须回 null —— 光靠 !scope 早退与七条正例
+      // 抠不出这条,把正则整条删掉(return last)之前七条正例照样全绿(2026-09-06 复查坐实)
+      expect(scopePeriod('billing-chain:0-00'), '占位假锁,期未落定').toBeNull()
+      expect(scopePeriod('book-template:ledger'), '压根没有期段').toBeNull()
+      expect(scopePeriod('sched:elec:2025-13'), '非法月份').toBeNull()
+    })
+
+    it('navOfScope 反查 nav value —— 一把锁命中多个时取 NAV_SCOPE_PREFIX 声明序首个(billing-chain → params)', () => {
+      expect(navOfScope(S.paramCenter(2025, 6))).toBe('params')
+      // 边界与 presence.editorsUnder 逐字同规则:sched:utilities13 不是 sched:utilities 底下的
+      expect(navOfScope('sched:utilities13:2025')).toBeNull()
+      expect(navOfScope(S.utilities(13, 2025))).toBe('utilities')
+      expect(navOfScope(null)).toBeNull()
+    })
+
+    it('navOfScope 吃数组前缀的第二个元素 —— 改成只取首个(ps[0])当场漏掉 pv-meter', () => {
+      // NAV_SCOPE_PREFIX['pv-income'] = ['sched:pv', 'pv-meter']:S.pvMeter 只命中第二个前缀,
+      // 若实现把 `Array.isArray(pre) ? pre : [pre]` 退化成只取首元素,这条锁再也反查不到 nav。
+      expect(navOfScope(S.pvMeter(2026))).toBe('pv-income')
+    })
+
+    it('navOfScope 三条边界分支各钉一条 —— 只测过 startsWith(p + \':\') 那一条', () => {
+      // scope === p:裸前缀(不带任何限定段)命中
+      expect(navOfScope('meters')).toBe('meters')
+      // scope.startsWith(p + '-'):分隔符是连字符而非冒号的边界(与 editorsUnder 逐字同形)
+      expect(navOfScope('meters-legacy:2020')).toBe('meters')
+    })
+
+    it('scopeTarget 五族各带一次第二维 —— 不止带期(2026-09-06 fix-brief FA)', () => {
+      expect(scopeTarget('ledger:3:2025-06')).toEqual({ v: 'ledger', p: '2025-06', co: '3' })
+      expect(scopeTarget('report:is:1:2025-06')).toEqual({ v: 'income-statement', p: '2025-06', co: '1' })
+      expect(scopeTarget('sched:s10:1:2025-06')).toEqual({ v: 'sales-income', p: '2025-06', co: '1' })
+      expect(scopeTarget('sched:utilities:14:2025')).toEqual({ v: 'utilities', p: '2025', tab: 'phase3' })
+      // 出账链共占锁:没有第二维,co/tab 都不带
+      expect(scopeTarget('billing-chain:2025-06')).toEqual({ v: 'params', p: '2025-06' })
+      expect(scopeTarget(null)).toBeNull()
+      expect(scopeTarget('unknown-prefix:1')).toBeNull()
     })
   })
 })

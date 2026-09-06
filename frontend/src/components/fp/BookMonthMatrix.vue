@@ -8,7 +8,7 @@ import { usePresenceStore } from '@/stores/presence'
 // 手工添加且整年仍为空的年,行尾可「移除」(槽位常驻占宽,hover 行才显——布局稳定铁律)。
 // 纯展示组件,不发请求;年份范围与 removable 判定由上层用 utils/matrixYears 组好传入。
 import { computed } from 'vue'
-import { Plus, X } from 'lucide-vue-next'
+import { Plus, X, Lock } from 'lucide-vue-next'
 
 interface MonthCell {
   month: number
@@ -28,6 +28,13 @@ interface MonthCell {
   badge?: string
   /** 参数改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
   stale?: boolean
+  /**
+   * 全月已审核 → 卡右下角一枚 ✓ 锁标（SIDEBAR-UX-REDESIGN §7.2）。
+   * **独立 absolute 角标，与 pips / badge / rowCount 并存**，不进下面那条 v-else-if 互斥链 ——
+   * 年份条恒传 pips，写进链里锁标一次都画不出来，而那种用例接对接错都绿。
+   * 审核机制本身归 R1，本期无调用方传它。
+   */
+  locked?: boolean
 }
 interface YearRow {
   year: number
@@ -36,7 +43,11 @@ interface YearRow {
   removable?: boolean   // 手工年且整年为空 → 行尾显「移除」
 }
 
-const props = defineProps<{
+// ⚠ manageYears 用 withDefaults 给真默认值 —— 裸 defineProps 下,可选布尔 prop 不传时
+// Vue 会把它转型成 false 而不是 undefined(runtime boolean-cast 规则),`v-if="manageYears !== false"`
+// 那种写法在这条 prop 上不成立,7 个既有调用点会被静默改成 manageYears=false(bookRail.spec.ts /
+// chainMonthGate.spec.ts 的增删年份用例即刻钉住并变红)。
+const props = withDefaults(defineProps<{
   /** 这一格的锁作用域（如 (y,m) => S.ledger(companyId, y, m)）。不传 = 不显示在场标记。 */
   scopeOf?: (year: number, month: number) => string | null
   /**
@@ -46,7 +57,11 @@ const props = defineProps<{
    */
   book: object | null
   years: YearRow[]      // 升序;上层负责连续补满
-}>()
+  /** 年份增删入口（补更早 / 添加次年 / 行尾移除）。默认开；总览屏那条年份条是导航不是账册管理,传 false。 */
+  manageYears?: boolean
+}>(), {
+  manageYears: true,
+})
 
 // 只标编辑态(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
 const presence = usePresenceStore()
@@ -70,7 +85,7 @@ const nextYear = computed(() =>
 <template>
   <div class="bmm">
     <template v-if="book && years.length">
-      <div class="bmm-top">
+      <div v-if="manageYears" class="bmm-top">
         <button class="bmm-addy" @click="emit('add-earlier')">
           <Plus :size="13" />补更早年份
         </button>
@@ -98,6 +113,7 @@ const nextYear = computed(() =>
               <Avatar :uid="editorOf(y.year, m.month)!.user"
                       :name="editorOf(y.year, m.month)!.displayName" :size="20" class="bmm-av" />
             </span>
+            <span v-if="m.locked" class="bmm-lock" title="本月已审核锁定"><Lock :size="11" /></span>
             <!-- 出账链:四道工序点。空月不画点 —— 它本来就是一张「空」的虚线卡 -->
             <span v-if="m.hasData && m.pips" class="bmm-pips">
               <i v-for="(p, i) in m.pips" :key="i" class="bmm-pip" :class="{ on: p }" />
@@ -108,7 +124,7 @@ const nextYear = computed(() =>
           </button>
         </div>
         <!-- 移除槽常驻占宽:hover 行且 removable 才显,不挤动月卡网格 -->
-        <span class="bmm-rm-slot">
+        <span v-if="manageYears" class="bmm-rm-slot">
           <button v-if="y.removable" class="bmm-rm" :title="`移除 ${y.year} 年(仅本机,录入数据后自动转正)`"
                   @click="emit('remove-year', y.year)">
             <X :size="12" />移除
@@ -116,7 +132,7 @@ const nextYear = computed(() =>
         </span>
       </div>
 
-      <div class="bmm-yrow bmm-addrow">
+      <div v-if="manageYears" class="bmm-yrow bmm-addrow">
         <div class="bmm-ylabel"></div>
         <button class="bmm-addbtn" @click="emit('add-later')">
           <Plus :size="13" />添加 {{ nextYear }} 年
@@ -191,6 +207,7 @@ const nextYear = computed(() =>
 
 .bmm-who { position:absolute; top:6px; right:6px; z-index:2; pointer-events:none; display:flex; }
 .bmm-av { box-shadow:0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--hue-orange); }
+.bmm-lock { position:absolute; bottom:6px; right:6px; z-index:2; pointer-events:none; display:flex; color:var(--text-muted); }
 .bmm-card {
   position: relative;   /* 在场角标绝对定位的参照 */
   min-height: 62px;

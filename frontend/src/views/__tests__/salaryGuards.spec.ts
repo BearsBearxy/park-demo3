@@ -57,6 +57,9 @@ vi.mock('@/api/locks', () => ({
   },
 }))
 
+// 屏接了 useDeepPeriod(内部 useRoute):补桩,断言不动(照 chainPeriodFlow.spec:37)
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ query: {}, fullPath: '/salary' }) }))
+
 // ── 夹具:按真实 DTO 声明(src/types/salary.ts),喂 mock 时再 as never ──
 const REC = (p: Partial<SalaryRecordDTO> & Pick<SalaryRecordDTO, 'id' | 'name' | 'acctMonth'>): SalaryRecordDTO => ({
   empIdx: 1, role: '文员', base: 3000, post: 1000, perf: 0, attend: 0, skill: 0, edu: 0, other: 0,

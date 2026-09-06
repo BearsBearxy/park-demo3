@@ -4,9 +4,10 @@
 // overview 仅 counts 无金额字段 → 指标条按户数口径聚合(不硬造总额)。
 // §6 加载门 + v-else 紧邻链;切月不清 data(避免闪加载门),竞态守卫换数据。
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
-import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from '@/nav/reportPeriod'
+import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
+import { periodOf, type DeepPeriod } from '@/nav/deepLink'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { reconApi } from '@/api/recon'
 import type { ReconMonth, ReconMonthMeta, ReconOverview } from '@/types/recon'
 import { iconFor } from '@/components/ds/icon'
@@ -19,18 +20,23 @@ const month = ref<number | null>(null)       // null → ①月份层
 const data = ref<ReconMonth | null>(null)    // ②工作台整月对照
 
 // 期间条(设计稿 §3.2c)。本屏认 y/m,co 不认但原样带回去 —— 否则跳回利润表就丢了公司。
-const route = useRoute()
-const carry = parsePeriodQuery(route.query as Record<string, unknown>)
+// carry 只在深链 apply 时写(见 pickMonth 之后):不能写成 computed(route.query) —— 屏停用时全局 route 跟着别的屏变。
+const carry = ref<DeepPeriod | null>(null)
 const stripLabel = computed(() => periodLabel(year.value, month.value, null))
-const stripQuery = computed(() => periodQuery(year.value, month.value, carry?.companyId ?? null))
+const stripQuery = computed<Record<string, string>>(() => {
+  const co = carry.value?.co
+  return {
+    p: periodOf(year.value, month.value),
+    ...(co === 'all' || typeof co === 'number' ? { co: String(co) } : {}),
+  }
+})
 
 onMounted(async () => {
-  // 深链(报表中心 / 期间条)优先:它说哪一年就取哪一年
-  const o = await reconApi.overview(carry?.year)
-  overview.value = o
-  year.value = carry?.year ?? o.year
+  // 不带年的 overview 定默认年与上限:maxYear 只由它决定 —— 改前 overview(carry.year) 原样回传深链那年,
+  // 深链 2023 进来 maxYear 就成了 2023,「下一年」按钮锁死。深链已落年时只取上限,不覆盖 overview / year。
+  const o = await reconApi.overview()
   maxYear.value = o.year
-  if (carry?.month != null) await pickMonth(carry.month)
+  if (!year.value) { overview.value = o; year.value = o.year }
 })
 
 // 切年不清 overview(同「切月不清 data」口径),竞态守卫
@@ -74,6 +80,23 @@ async function pickMonth(m: number) {
   if (reqId === monthReq) data.value = d
 }
 
+// ── 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月工作台,只有年 → 停在月份层;报表中心 / 期间条都走这里 ──
+// 放在 setYear / pickMonth 之后:apply 同步走到 setYear 的 ++yearReq,放前面撞 let 的 TDZ。
+// 本屏没有草稿(处置标记即时 upsert),不传 dirty、不接 note、不加 toast。year 初值 0 → current 报 null(不是「0 年」)。
+async function applyDeep(t: DeepPeriod) {
+  carry.value = t
+  if (t.year !== year.value) await setYear(t.year)
+  if (t.month != null) await pickMonth(t.month)
+  else month.value = null
+}
+useDeepPeriod({
+  current: () => ({ p: year.value ? periodOf(year.value, month.value) : null }),
+  apply: (t) => { void applyDeep(t).catch(() => {}) },
+  // current().p 在①月份层是光秃秃一个年份(深链相等判专用) —— 页签上下文按用户真实看到的来:
+  // 还在选月就没有期(与三大报表同裁定,2026-09-06 T3 评审坐实本屏漏了这一道)。
+  ctx: () => ({ p: year.value && month.value != null ? periodOf(year.value, month.value) : null }),
+})
+
 // 处置标记后局部更新 entities(不整页刷)
 function onPatch(tenantName: string, marked: boolean, note: string | null) {
   if (!data.value) return
@@ -92,7 +115,11 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
   <template v-if="month === null">
     <!-- fp-fluid:本屏已迁移,摘 800px 屏级地板;根级 v-if 分支挂标(§8) -->
     <div v-if="overview" class="rc3 rc-page fp-fluid">
-\1
+      <!-- 期间条:九张报表横跳不换期。
+           不画返回钮 —— 月份层就是本屏自己的门,上面没有一层可回;换年在右边那个年份胶囊上。
+           (2026-09-03 修复:合并 977af27 时 sed 反向引用把这一段写成了字面反斜杠 1,期间条随之丢失) -->
+      <FPStepStrip :steps="REPORT_STEPS" current="reconciliation" :period="stripLabel"
+                   :query="stripQuery" hide-back />
       <div class="rc-months-head">
         <div>
           <h2 class="rc-ptitle">收入核对</h2>

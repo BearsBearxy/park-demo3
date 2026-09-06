@@ -17,6 +17,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { metersApi, type MeterDTO } from '@/api/meters'
 import { buildingApi } from '@/api/building'
@@ -90,6 +91,9 @@ const month = computed(() => period.month ?? 0)
 const ym = computed(() => period.ym ?? '')
 // 链路条:本月各道工序走到哪(与矩阵格子同一份数据)
 const chainSteps = computed(() => chainStepsOf(period.cellOf(ym.value)))
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM(或旧 ?ym=)直落该月,pick + loadChain;本屏逐行即时写库、无草稿,不传 dirty;?zone / ?section / ?rule / ?edit 仍由下面的 applyHandoff 消费。
+// 必须在下面的 onMounted / watch / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于状态刷新改期。
+useChainDeepPeriod()
 // 期区值域按后端 p\d+|dorm 的形状判断,不枚举具体代码 —— p4 出现时不用改这里。
 // applyHandoff 的深链校验与 refOptions 的 ref_meter 候选过滤共用同一条,
 // 避免两处各写一份、drift 出两种拼法。(本分支增量,随出账链期结构一起保留)
@@ -147,7 +151,7 @@ function loadMasters() {
   tenantApi.list().then(d => { tenants.value = d }).catch(() => {})
   allocApi.rules().then(d => { rules.value = d }).catch(() => {})
 }
-// 其它屏跳来的深链:?ym=2024-02&zone=p1&section=rule&rule=23(楼栋损耗 / 公共电核算 的「去计费参数」);
+// 其它屏跳来的深链:?p=2024-02(或旧 ?ym=)&zone=p1&section=rule&rule=23 —— 期归 useChainDeepPeriod,这里消费其余四个键;分析层来的 adopt=YYYY-12 只认领不覆盖
 // edit=1 直接进编辑态(三屏 stale 条的 [去重算]:重算是写操作只在编辑态出,别让用户到了这儿再找「编辑模式」——同 PoolLedgerView generate=1)
 const route = useRoute()
 const router = useRouter()
@@ -163,12 +167,12 @@ function applyHandoff(): boolean {
   if (typeof q.zone === 'string' && (q.zone === 'all' || isZoneCode(q.zone))) zone.value = q.zone
   if (typeof q.section === 'string') pendingSection = q.section
   if (typeof q.rule === 'string' && /^\d+$/.test(q.rule)) hlScope.value = `rule:${q.rule}`
-  // 只在还没有期时认领:已经选好期的人不该被一条链接顶到别的月去。
-  // 链内跳转过来的 ym 与组级期本就相同,这里是给外部深链兜底。
-  period.adoptYm(typeof q.ym === 'string' ? q.ym : null)
+  // 分析层「去改常数」带 adopt=YYYY-12:只在没有期时认领(billingPeriod.adoptYm 的旧语义),已选期不动。
+  // 显式深链(p= / ym=)由 useChainDeepPeriod 在 setup 更早处处理,两者互不覆盖:有 p 时期已落定,adopt 自然无事可做。
+  period.adoptYm(typeof q.adopt === 'string' ? q.adopt : null)
   // ⚠ 必须**先认领期再进编辑态**。顺序反了的话 toggleEdit() 占的是 `param-center:0-00`
-  //   (year/month 此刻还是 `period.year ?? 0`),紧接着 adoptYm 把期改成真的那个月 ——
-  //   锁与所编的期从此错位,而表现是「锁没生效」,不报错、没人会发现。
+  //   (year/month 此刻还是 `period.year ?? 0`)。期现在由 useChainDeepPeriod 在 setup 更早处落定(§4.2),
+  //   本函数只负责 edit=1;顺序约束不变:锁与所编的期错位的表现是「锁没生效」,不报错、没人会发现。
   //   （2026-08-29 给 useEditMode.enter() 补上"占锁回来再复核一次期"之后,这条当场暴露。）
   //   period.picked 也要判:没有期时主区是选期矩阵,进了编辑态也没有任何写入口。
   // 深链也走 toggle:缺权限时弹授权窗(裸写 editMode 会被守卫静默弹回浏览态,用户不知道为什么)
@@ -181,7 +185,7 @@ function scrollToSection() {
   pendingSection = ''
   nextTick(() => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
 }
-applyHandoff()   // setup 期同步落深链账期(在 watch 注册之前,免得触发第二次拉取)
+applyHandoff()   // setup 期同步消费 zone/section/rule/edit/adopt(在 watch 注册之前,免得触发第二次拉取;期本身由上面的 useChainDeepPeriod 落定)
 onMounted(() => {
   loadMasters()
   if (period.picked) load()

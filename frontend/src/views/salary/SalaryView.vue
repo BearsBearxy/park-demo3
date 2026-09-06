@@ -18,6 +18,9 @@
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { periodOf } from '@/nav/deepLink'
 import { S } from '@/utils/lockScopes'
 import { salaryApi } from '@/api/salary'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -113,6 +116,19 @@ const yearMonths = computed<Set<number>>(() =>
 const hasMonth = (m: number) => yearMonths.value.has(m)
 
 const monthOptions = computed(() => (overview.value?.years ?? []).map(y => y.year))
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月宽表(pickCell 置月 + pickYear 取数,顺序已对);只有年的链接不动(本屏只认整月)。
+// 必须在下面的 onMounted / onReactivated 之前调用:期先落定;切回时也先于重读改期。
+// 不传 dirty、也不接 note:本屏所有写都即时落库,唯一的浮层(新增抽屉 / 导入窗)在下面的 onDeactivated 里切走即关 —— 切回时没有草稿可护。
+useDeepPeriod({
+  current: () => ({ p: year.value == null || month.value == null ? null : periodOf(year.value, month.value) }),
+  apply: (t) => { if (t.month != null) void pickCell(t.year, t.month) },
+})
+// KeepAlive 切回重读(spec §12):导入中心导完切回来,矩阵与本月不能还是导入前的(loadMonth 自带竞态守卫与 try/catch)
+onReactivated(() => {
+  void reloadOverview()
+  if (year.value != null && month.value != null) void loadMonth(year.value)
+})
 
 // ── 进入屏:overview(§6 取数前不渲染) ──────────────────
 onMounted(reloadOverview)

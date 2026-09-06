@@ -6,7 +6,9 @@
 // 成本费用 = 收入 − 利润。图数据纯函数抽于 budgetView.logic.ts(单测)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaBullet from '@/components/ana/AnaBullet.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
@@ -31,7 +33,7 @@ const rows = ref<BudgetRowDTO[]>([])
 const pnlKeys = ref<Map<number, Record<BudgetKey, number | null>>>(new Map())
 const ready = ref(false)
 
-onMounted(async () => {
+async function reload() {
   try {
     rows.value = await fetchBudgetAll()
     const pnlYears = [...new Set(rows.value.map(r => r.year))].filter(y => y >= PNL_SOT_FROM_YEAR)
@@ -43,7 +45,11 @@ onMounted(async () => {
         .catch(() => { /* 无 pnl → 用文件值 */ })))
     pnlKeys.value = m
   } catch { rows.value = [] } finally { ready.value = true }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ── 年×关键行取值(实际:pnl 推算优先,回退文件发生额) ──
 const years = computed(() => [...new Set(rows.value.map(r => r.year))].sort((a, b) => a - b))
@@ -126,10 +132,10 @@ const detail = computed(() => {
     }
   })
 })
-// 深链必须 openFresh(KeepAlive 缓存;同 ChurnView.goLedger 协议)
+// 深链走 openFresh(页签语义,spec §4.1);发链 periodLink(§4.2):年表屏只取年,p=YYYY(改前 ?y=,parsePeriod 仍认旧书签)
 function goSched(nav: string): void {
-  tabs.openFresh(nav, { pin: true })
-  router.push({ path: '/' + nav, query: { y: String(year.value) } })
+  tabs.openDeep(nav)
+  router.push(periodLink(nav, { p: periodOf(year.value, null) }))
 }
 
 // ── 卡4 前瞻:最大「只有预算、无实际」年 vs 上一年实际 ──

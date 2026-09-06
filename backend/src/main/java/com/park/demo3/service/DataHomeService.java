@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -35,23 +36,27 @@ public class DataHomeService {
     private final AllocLossResultMapper lossResults;
     private final BillNoticeMapper billNotices;
     private final ParamService paramService;
+    private final ManagementCompanyMapper companies;   // 台账公司清单全集(P2):按 sort_no,id 排序
 
     public DataHomeService(MonthlyLedgerMapper ledger, S10RecordMapper s10, SalaryRecordMapper salary,
                            OfficeRecordMapper office, PvRecordMapper pv, ChargingRecordMapper charging,
                            ElecRecordMapper elec, ContractService contractService,
                            MeterReadingMapper meterReadings, AllocPoolResultMapper poolResults,
                            AllocLossResultMapper lossResults, BillNoticeMapper billNotices,
-                           ParamService paramService) {
+                           ParamService paramService, ManagementCompanyMapper companies) {
         this.ledger = ledger; this.s10 = s10; this.salary = salary; this.office = office;
         this.pv = pv; this.charging = charging; this.elec = elec; this.contractService = contractService;
         this.meterReadings = meterReadings; this.poolResults = poolResults;
         this.lossResults = lossResults; this.billNotices = billNotices; this.paramService = paramService;
+        this.companies = companies;
     }
 
 
     /** 一个数据源在本期的取数结果：本期行的 updated_at 列表(用于 status/updated/count/recent)。 */
     private record SourceData(String name, String tag, String go, boolean yearly,
-                              List<LocalDateTime> updatedAts) {
+                              List<LocalDateTime> updatedAts,
+                              List<DataHomeOverviewDTO.Company> companies,   // 只有台账非 null
+                              List<DataHomeOverviewDTO.Phase> phases) {      // 只有附10非 null
         boolean done() { return !updatedAts.isEmpty(); }
         LocalDateTime maxUpdated() { return updatedAts.stream().max(Comparator.naturalOrder()).orElse(null); }
     }
@@ -65,13 +70,13 @@ public class DataHomeService {
 
         if (ym == null) {   // 全新库:一条数据都没有,前端出「还没开始出账」引导
             return new DataHomeOverviewDTO(null, months, List.of(),
-                buildChain(0, false, false, 0, BigDecimal.ZERO, 0),
+                buildChain(0, 0, 0, false, false, 0, BigDecimal.ZERO, 0),
                 new DataHomeOverviewDTO.Schedules(0, 9, List.of()));
         }
 
         int year = Integer.parseInt(ym.substring(0, 4)), month = Integer.parseInt(ym.substring(5, 7));
 
-        // ── 出账链 4 步:各源按 ym 存在性判定,走现成索引(idx_meter_reading_ym / uk_pool_result 等) ──
+        // ── 出账链 5 步:各源按 ym 存在性判定,走现成索引(idx_meter_reading_ym / uk_pool_result 等) ──
         long readings = meterReadings.selectCount(new QueryWrapper<MeterReading>().eq("ym", ym));
         boolean pool = poolResults.selectCount(new QueryWrapper<AllocPoolResult>().eq("ym", ym)) > 0;
         boolean loss = lossResults.selectCount(new QueryWrapper<AllocLossResult>().eq("ym", ym)) > 0;
@@ -89,13 +94,13 @@ public class DataHomeService {
         // 代价:多读一遍合同+计费行(实测全表扫描 0.5~2ms 级),换口径永不漂移,值。
         int contractNoLine = (int) contractService.list(null).stream()
             .filter(c -> c.billingLineCount() == 0).count();
-        boolean paramStale = paramService.status(ym).stale();
+        ParamStatusDTO ps = paramService.status(ym);
+        boolean paramStale = ps.stale();
 
-        // ── 附表 9 源:保留原有取数与**月/年粒度差异**(月度类按 acctMonth、年度类按 year),
-        //    改了会让附表完成度失真 ──
+        // ── 附表 9 源:一律按 acctMonth 判本月有没有行(2026-09-06 起,口径见 scheduleSources 头注)──
         List<SourceData> sources = scheduleSources(year, month, ym);
         List<DataHomeOverviewDTO.Item> items = sources.stream()
-            .map(x -> new DataHomeOverviewDTO.Item(x.name(), x.tag(), x.done(), x.go()))
+            .map(x -> new DataHomeOverviewDTO.Item(x.name(), x.tag(), x.done(), x.go(), x.companies(), x.phases()))
             .toList();
         int done = (int) sources.stream().filter(SourceData::done).count();
 
@@ -103,7 +108,7 @@ public class DataHomeService {
             new DataHomeOverviewDTO.Period(year, month, year + "年" + month + "月"),
             months,
             buildBlockers(contractNoLine, paramStale),
-            buildChain(readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
+            buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
             new DataHomeOverviewDTO.Schedules(done, 9, items));
     }
 
@@ -115,7 +120,8 @@ public class DataHomeService {
             .flatMap(List::stream).distinct().sorted().toList();
     }
 
-    /** 5 个月度类附表源的 distinct 账期(年度类 pv/charging/elec 不按月,不参与月份下拉)。
+    /** 9 个附表源的 distinct 账期并集(2026-09-06 起 pv/charging/elec 三个年度源也按 acctMonth 判本月,
+     *  月份下拉必须跟上,否则某月只有这三源之一有行时,该月进不了下拉、用户切不过去)。
      *  用 DISTINCT 聚合而非整表读实体 —— 沿用旧 currentPeriod() 那次 I/O 优化的考量(该方法已随锚口径变更删除):
      *  data-home 是登录后第一屏、每次刷新都跑,不能为了取几个月份把 monthly_ledger 两万行拉进内存。 */
     private List<String> scheduleYms() {
@@ -128,6 +134,9 @@ public class DataHomeService {
         addYms(out, salary.selectObjs(new QueryWrapper<SalaryRecord>().select("DISTINCT acct_month")));
         addYms(out, office.selectObjs(new QueryWrapper<OfficeRecord>()
             .select("DISTINCT acct_month").in("schedule_no", 13, 14)));
+        addYms(out, pv.selectObjs(new QueryWrapper<PvRecord>().select("DISTINCT acct_month")));
+        addYms(out, charging.selectObjs(new QueryWrapper<ChargingRecord>().select("DISTINCT acct_month")));
+        addYms(out, elec.selectObjs(new QueryWrapper<ElecRecord>().select("DISTINCT acct_month")));
         return List.copyOf(out);
     }
 
@@ -135,16 +144,35 @@ public class DataHomeService {
         for (Object o : rows) if (o instanceof String v && parseAcctMonth(v) != null) out.add(v);
     }
 
-    /** 9 个附表源的本期取数。粒度差异是既有口径:月度类按 acctMonth、年度类按 year。 */
+    /** 9 个附表源的本期取数。全部按 acctMonth 判本月有没有行(2026-09-06 前年度类曾按整年判,
+     *  一月录完十二月看还显对勾——那是假绿,已改);yearly 这个位现在只剩「标签写不写年」的用途。 */
     private List<SourceData> scheduleSources(int year, int month, String acctMonth) {
         List<SourceData> sources = new ArrayList<>(9);
-        sources.add(monthly("月度台账", "凭证", "ledger",
-            ledger.selectList(new QueryWrapper<MonthlyLedger>()
-                .eq("period_year", year).eq("period_month", month)), MonthlyLedger::getUpdatedAt));
-        sources.add(monthly("销售收入", "附10", "sales-income",
-            concat(s10.selectBySlot(1, acctMonth), s10.selectBySlot(2, acctMonth),
-                   s10.selectBySlot(3, acctMonth), s10.selectBySlot(4, acctMonth)),
-            S10Record::getUpdatedAt));
+        List<MonthlyLedger> ledgerRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
+            .eq("period_year", year).eq("period_month", month));
+        // 台账公司清单:全集来自管理公司表(不是「谁录了谁才在列表里」),done 按该公司本月有没有台账行判
+        Map<Integer, Boolean> ledgerDone = ledgerRows.stream()
+            .collect(Collectors.groupingBy(MonthlyLedger::getCompanyId,
+                     Collectors.reducing(false, r -> true, Boolean::logicalOr)));
+        List<DataHomeOverviewDTO.Company> cos = companies.selectList(new QueryWrapper<ManagementCompany>()
+                .eq("status", 1).orderByAsc("sort_no").orderByAsc("id")).stream()
+            .map(c -> new DataHomeOverviewDTO.Company(c.getId(), c.getShortName(), ledgerDone.getOrDefault(c.getId(), false)))
+            .toList();
+        sources.add(new SourceData("月度台账", "凭证", "ledger", false,
+            updatedAts(ledgerRows, MonthlyLedger::getUpdatedAt), cos, null));
+        // 附10 四个期区:selectBySlot 拆出来各留一个 isEmpty() 判 phase 的 done,concat 仍供整项 done 用
+        // (零新增 SQL —— 四次 selectBySlot 本就要发)
+        List<S10Record> s10p1 = s10.selectBySlot(1, acctMonth);
+        List<S10Record> s10p2 = s10.selectBySlot(2, acctMonth);
+        List<S10Record> s10p3 = s10.selectBySlot(3, acctMonth);
+        List<S10Record> s10p4 = s10.selectBySlot(4, acctMonth);
+        List<DataHomeOverviewDTO.Phase> phases = List.of(
+            new DataHomeOverviewDTO.Phase(1, !s10p1.isEmpty()),
+            new DataHomeOverviewDTO.Phase(2, !s10p2.isEmpty()),
+            new DataHomeOverviewDTO.Phase(3, !s10p3.isEmpty()),
+            new DataHomeOverviewDTO.Phase(4, !s10p4.isEmpty()));
+        sources.add(new SourceData("销售收入", "附10", "sales-income", false,
+            updatedAts(concat(s10p1, s10p2, s10p3, s10p4), S10Record::getUpdatedAt), null, phases));
         sources.add(monthly("工资明细", "附12", "salary",
             salary.selectByMonth(acctMonth), SalaryRecord::getUpdatedAt));
         sources.add(monthly("办公水电", "附13", "utilities",
@@ -154,14 +182,17 @@ public class DataHomeService {
             office.selectByScheduleAndYear(14, year).stream()
                 .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), OfficeRecord::getUpdatedAt));
         sources.add(yearly("光伏发电", "附6", "pv-income",
-            pv.selectByYear(year), PvRecord::getUpdatedAt));
+            pv.selectByYear(year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), PvRecord::getUpdatedAt));
         sources.add(yearly("汽车充电桩", "附7", "car-charging",
-            charging.selectByScheduleAndYear(7, year), ChargingRecord::getUpdatedAt));
+            charging.selectByScheduleAndYear(7, year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ChargingRecord::getUpdatedAt));
         sources.add(yearly("电动车充电桩", "附8", "ebike-charging",
-            charging.selectByScheduleAndYear(8, year), ChargingRecord::getUpdatedAt));
+            charging.selectByScheduleAndYear(8, year).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ChargingRecord::getUpdatedAt));
         sources.add(yearly("电费成本", "附11", "elec-cost",
-            concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")),
-            ElecRecord::getUpdatedAt));
+            concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")).stream()
+                .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ElecRecord::getUpdatedAt));
         return sources;
     }
 
@@ -177,12 +208,12 @@ public class DataHomeService {
 
     private static <T> SourceData monthly(String name, String tag, String go,
                                           List<T> rows, Function<T, LocalDateTime> getUpdated) {
-        return new SourceData(name, tag, go, false, updatedAts(rows, getUpdated));
+        return new SourceData(name, tag, go, false, updatedAts(rows, getUpdated), null, null);
     }
 
     private static <T> SourceData yearly(String name, String tag, String go,
                                          List<T> rows, Function<T, LocalDateTime> getUpdated) {
-        return new SourceData(name, tag, go, true, updatedAts(rows, getUpdated));
+        return new SourceData(name, tag, go, true, updatedAts(rows, getUpdated), null, null);
     }
 
     private static <T> List<LocalDateTime> updatedAts(List<T> rows, Function<T, LocalDateTime> getUpdated) {
@@ -220,25 +251,30 @@ public class DataHomeService {
         return Stream.concat(chainYms.stream(), scheduleYms.stream()).distinct().sorted().toList();
     }
 
-    // ══ 出账链 4 步(spec §2.1) ══════════════════════════════════════════════════════
-    // 只画 4 步不画 6 步:合同与参数**不按月完成** —— 合同的「待补档案」是全局档案缺口,
-    // 参数是版本簿 —— 塞进流水线会得到两个永远不知道该不该打勾的格子。
-    // 它们改由 buildBlockers 承担:只在有问题时渲染,没问题时整条不出现。
+    // ══ 出账链 5 步(SIDEBAR-UX-REDESIGN §5.1;2026-09-03 由 4 步补成 5 步) ═════════════════════
+    // 合同仍不进流水线(「待补档案」是全局档案缺口,不按月),留在 buildBlockers。
+    // 计费参数进了:判据是**本月电价键录齐**,这是专员每月第一道工序的可回答问题。
 
-    /** 出账链 4 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+    /** 出账链 5 步。当前步 = 第一个非 done;全 done → currentIndex=-1,前端把大卡换成「去对账核对」。
+     *  ⚠ 第 1 步不用 ParamStatusDTO.stale 当判据:stale 是「改参晚于快照,需重算」,月初池/催缴单都还没
+     *    生成时恒 false —— 拿它当 done,第 1 步会在最需要它的时候假绿。stale 继续只喂 buildBlockers。
+     *  ⚠ 三处「参数」口径各答各的问题,不是 bug:链路条 chainStepsOf 画「参数与快照一致」(stale 驱动),
+     *    这里画「电价录齐」(priceOk),矩阵格子 pipsOf 仍 4 颗点不含参数。
      *  ⚠ 催缴单 detail 给「N 张」不是「N 户」:bill_notice 一租户可有多行(按收款公司/单据类型拆单),
-     *    而催缴单屏的「户数」是 aggregateByTenant 聚合后、且只算当前期别 tab 的数(默认一期)。
-     *    首页要的是整月全期口径,屏上压根没有这个数 —— 与其重算一份聚合(METRIC-SOURCE-SPEC §1
-     *    禁止同一判定两份实现),不如老实报单据张数:口径唯一、不会和屏上的户数打架。
+     *    而催缴单屏的「户数」是 aggregateByTenant 聚合后、且只算当前期别 tab 的数。首页要的是整月全期口径,
+     *    屏上压根没有这个数 —— 与其重算一份聚合(METRIC-SOURCE-SPEC §1 禁止同一判定两份实现),
+     *    不如老实报单据张数:口径唯一、不会和屏上的户数打架。
      *  ⚠ 抄表 detail 只给「已抄 N 块」不给分母:92/94 那个比例是 MeterView 前端 cardCounts()
-     *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1
-     *    禁止同一判定两份实现)。首页只回答「做没做、做了多少」,比例留在抄表屏。 */
-    static DataHomeOverviewDTO.Chain buildChain(long readingCount, boolean poolGenerated, boolean lossGenerated,
+     *    在电水+分区筛选链上算的,后端另算一份分母必然与之漂移(METRIC-SOURCE-SPEC §1)。 */
+    static DataHomeOverviewDTO.Chain buildChain(int priceOk, int priceTotal,
+                                                long readingCount, boolean poolGenerated, boolean lossGenerated,
                                                 int noticeCount, BigDecimal noticeTotal, int noticeWarn) {
-        boolean[] done   = { readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
-        String[]  keys   = { "meters", "alloc", "alloc-loss", "bill-notices" };
-        String[]  labels = { "园区抄表", "公共电核算", "楼栋损耗", "催缴单" };
+        boolean paramsDone = priceTotal > 0 && priceOk == priceTotal;
+        boolean[] done   = { paramsDone, readingCount > 0, poolGenerated, lossGenerated, noticeCount > 0 };
+        String[]  keys   = { "params", "meters", "alloc", "alloc-loss", "bill-notices" };
+        String[]  labels = { "计费参数", "园区抄表", "公共电核算", "楼栋损耗", "催缴单" };
         String[]  details = {
+            priceTotal > 0 ? "本月电价 " + priceOk + "/" + priceTotal + " 已录" : "未配置",
             readingCount > 0 ? "已抄 " + readingCount + " 块" : "未抄表",
             poolGenerated ? "" : "未生成",
             lossGenerated ? "" : "未生成",
@@ -248,10 +284,10 @@ public class DataHomeService {
                 : "未生成",
         };
         int current = -1;
-        for (int i = 0; i < 4; i++) if (!done[i]) { current = i; break; }
+        for (int i = 0; i < done.length; i++) if (!done[i]) { current = i; break; }
 
-        List<DataHomeOverviewDTO.Step> steps = new ArrayList<>(4);
-        for (int i = 0; i < 4; i++) {
+        List<DataHomeOverviewDTO.Step> steps = new ArrayList<>(done.length);
+        for (int i = 0; i < done.length; i++) {
             String status = done[i] ? "done" : (i == current ? "current" : "todo");
             steps.add(new DataHomeOverviewDTO.Step(keys[i], labels[i], status, details[i], keys[i]));
         }

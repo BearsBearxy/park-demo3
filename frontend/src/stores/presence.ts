@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api, { readToken } from '@/api'
 import type { Eviction } from '@/api/locks'
 import type { Pending, Outcome } from '@/api/approvals'
+import { NAV_SCOPE_PREFIX, scopeNote, scopePeriod } from '@/utils/lockScopes'
 
 /** 在线的一个人（服务端算好时长与排序）。 */
 export interface Seat {
@@ -84,6 +85,37 @@ export const usePresenceStore = defineStore('presence', () => {
       sc === prefix || sc.startsWith(prefix + ':') || sc.startsWith(prefix + '-')))
   }
 
+  /**
+   * 这个导航项底下有没有人在编辑 —— 有则返回提示文案,无则 null。
+   * 自 P2 起上提到 store:侧栏的点、清单行、主管条 chips 三处共用同一份文案,
+   * 否则同一件事三份实现会各自漂(P3 的 holdsEditUnder / editorsUnder 就差点漂开)。
+   * **只标编辑态**(设计稿 §04):标记要回答的只有「我点进去改得了吗」,别人在看不挡你。
+   */
+  function editingNote(navValue: string): string | null {
+    // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
+    const prefix = NAV_SCOPE_PREFIX[navValue]
+    if (!prefix) return null
+    const ps = Array.isArray(prefix) ? prefix : [prefix]
+    // 去重按 sid:同一个会话在多个锁根下都命中时(如台账编辑态里又开着模板面板),
+    // flatMap 会把同一个 Seat 收两遍 —— 名字被拼两次,读成两个人在抢(2026-09-06 复查坐实)。
+    const who = [...new Map(ps.flatMap((p) => editorsUnder(p)).map((e) => [e.sid, e])).values()]
+    if (!who.length) return null
+    const names = who.map((e) => `${e.displayName} 正在编辑`).join('、')
+    // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
+    // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
+    //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
+    //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
+    const hit = (sc: string) => ps.some((p) => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))
+    const lockOf = (e: Seat) => e.editScopes.find(hit) ?? null
+    // 期只在**所有人都在同一期**时才写。多人挂同一把锁根却在不同月时,
+    // 拿 who[0] 的期安到整串名字上就是张冠李戴(2026-09-06 三镜头复查坐实,严重度最高的那条)。
+    // 宁可不写期,也不写一个错的期 —— 这个点要回答的只有「我点进去改得了吗」,期是锦上添花。
+    const periods = new Set(who.map((e) => scopePeriod(lockOf(e))).filter(Boolean))
+    const period = periods.size === 1 ? [...periods][0] : null
+    // §3.3:三段有几段写几段 —— 名字 · 期 · 共锁解释,与页签标题同一条口径
+    return [names, period, scopeNote(lockOf(who[0]))].filter(Boolean).join(' · ')
+  }
+
   // 我此刻在哪一屏。屏进来时登记。锁**不再**挤在这个单槽里 —— 见下面 editCallbacks。
   let scope: string | null = null
   let label: string | null = null
@@ -156,6 +188,22 @@ export const usePresenceStore = defineStore('presence', () => {
     m.delete(onEvicted)
     if (!m.size) editCallbacks.delete(sc)
     return m.size
+  }
+
+  /**
+   * 本标签页此刻在不在某个锁根底下持锁 —— 「预览页签被顶掉要不要吭声」只看这个。
+   *
+   * 不查 `users` 里的座位:`mode` 是服务端字段(慢一拍),`self` 又是按 user 比对不按 sid ——
+   * 同一个人开两个标签页,两条座位都是 self,拿它判「我这一页在编辑」会串台。
+   * `editCallbacks` 是客户端持锁的真源(holdLock / dropLock 的落点),即时且只属于本页。
+   */
+  function holdsEditUnder(prefix: string | string[] | undefined): boolean {
+    if (!prefix) return false
+    const ps = Array.isArray(prefix) ? prefix : [prefix]
+    for (const sc of editCallbacks.keys())
+      // 边界与 editorsUnder 逐字同规则:`utilities:1` 是 `utilities` 底下的,`utilities13` 不是
+      if (ps.some(p => sc === p || sc.startsWith(p + ':') || sc.startsWith(p + '-'))) return true
+    return false
   }
 
   /** 键鼠活动。**不能用「最后一次写请求」代替** —— 用户在表格里录了 10 分钟还没点保存，那不是空闲。 */
@@ -248,5 +296,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })

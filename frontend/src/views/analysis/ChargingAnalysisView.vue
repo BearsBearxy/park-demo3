@@ -6,7 +6,9 @@
 // cp_reading 为空 → AnaEmpty 引导(护栏硬要求,禁止渲染 0 假数据);数据变换纯函数抽 chargingAnalysis.logic.ts(单测)。
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
@@ -70,6 +72,9 @@ onMounted(async () => {
   void load(year.value)
 })
 watch(year, (y) => { void load(y) })
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void load(year.value) })
 
 // ── 当前 tab 视角(前端过滤;logic 纯函数不认识 tab) ──
 const myStations = computed(() => stations.value.filter((s) => s.vehicleType === tab.value))
@@ -79,12 +84,16 @@ const myUsage = computed(() => usage.value.filter((u) => u.vehicleType === tab.v
 // 护栏:该类型该年无任何 cp_reading → 整区空态引导,不画假图
 const empty = computed(() => !myReadings.value.length)
 
-// 深链(openFresh 协议同 ChurnView.goLedger):附表7/8 屏为功能门结构(ChargingView mode gate),
-// 落地后点「分桩充电明细」卡进入;该屏不消费 query,本刀不改它 → 深链到门,不带参。
+// 深链分桩运营账(第二本账 meter):ChargingView 认 ?mode=(P0b),子屏 CpMeterView 认 ?p=YYYY-MM 落月 + ?station=<桩 id> 直开该桩抽屉。
+// 图1 点桩柱:seriesName = 桩名 → 桩 id,dataIndex = 月;环图 / 费率图点的是运营商,没有桩也没有月 → 只发 mode + 年。
+// 改前裸 push 不带参(假下钻:到门为止)。openFresh 页签语义不变(spec §4.1)。
 const navValue = computed(() => (tab.value === 'ebike' ? 'ebike-charging' : 'car-charging'))
-function goDetail(): void {
-  tabs.openFresh(navValue.value, { pin: true })
-  void router.push({ path: '/' + navValue.value })
+function goDetail(p?: unknown): void {
+  const e = p as { seriesName?: string; dataIndex?: number } | undefined
+  const st = myStations.value.find((s) => s.name === e?.seriesName)
+  const month = st && e?.dataIndex != null ? e.dataIndex + 1 : null
+  tabs.openDeep(navValue.value)
+  void router.push(periodLink(navValue.value, { p: periodOf(year.value, month), extra: { mode: 'meter', station: st?.id } }))
 }
 
 // ── 结论条(数据模板分句,同 CockpitView §A 观感;损耗率缺电表→诚实说不可算) ──

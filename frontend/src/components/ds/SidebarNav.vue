@@ -5,10 +5,11 @@
  * 源于 2026-06 对设计包 SidebarNav.jsx 的 1:1 移植；那份 jsx 已冻结为
  * 2026-06 基线（.claude/skills/factory-park-design/），不再跟随本文件更新。
  * v-model support added: modelValue mirrors `active`; emits "update:modelValue".
+ * 2026-09-03(SIDEBAR-UX-REDESIGN §3.2):加 openTitles / toggle 做组折叠;删掉全仓零调用点的 collapsed 折叠轨道与 flyout 分支。
  */
 import { defineComponent, h, ref, computed, Fragment } from "vue";
 import { usePresenceStore } from '@/stores/presence'
-import { NAV_SCOPE_PREFIX, scopeNote } from '@/utils/lockScopes'
+import Popover from '@/components/ds/Popover.vue'
 
 // ---- shared types ---------------------------------------------------------
 
@@ -35,7 +36,8 @@ export interface SidebarNavProps {
   sections?: SidebarSection[];
   active?: string;
   modelValue?: string;
-  collapsed?: boolean;
+  /** 传了就按标题折叠:不在集合里的带标题组只画标题行;不传 = 全部展开(老行为) */
+  openTitles?: string[];
 }
 
 // ---- shared row base style ------------------------------------------------
@@ -107,10 +109,10 @@ export default defineComponent({
     sections:   { type: Array as () => SidebarSection[], default: () => [] },
     active:     { type: String,  default: undefined },
     modelValue: { type: String,  default: undefined },
-    collapsed:  { type: Boolean, default: false },
+    openTitles: { type: Array as () => string[], default: undefined },
   },
 
-  emits: ["select", "update:modelValue"],
+  emits: ["select", "update:modelValue", "toggle"],
 
   setup(props, { emit }) {
     // controlled / uncontrolled duality
@@ -129,48 +131,19 @@ export default defineComponent({
       openSet.value = next;
     }
 
-    // folded-rail hover / flyout state
-    const hoverVal = ref<string | null>(null);
-    const flyout   = ref<string | null>(null);
-
-    function select(value: string) {
-      flyout.value = null;
-      emit("select", value);
+    function select(value: string, ev?: MouseEvent) {
+      emit("select", value, ev);
       emit("update:modelValue", value);
     }
 
     // ---- expanded tree (recursive) ----------------------------------------
-
-    /**
-     * 这个导航项底下有没有人在编辑 —— 有则返回提示文案，无则返回 null。
-     *
-     * **只标编辑态**（设计稿 §04）：标记要回答的只有「我点进去改得了吗」，
-     * 别人在看不挡你。全标上的话侧栏常年一片点，一周之内就没人看了。
-     */
-    function editingHere(navValue: string): string | null {
-      // 一个导航项可能挂多个锁根(一屏两本账:报送台账 + 运营账),逐个查再并起来
-      const prefix = NAV_SCOPE_PREFIX[navValue];
-      if (!prefix) return null;
-      const ps = Array.isArray(prefix) ? prefix : [prefix];
-      const who = ps.flatMap((p) => presence.editorsUnder(p));
-      if (!who.length) return null;
-      const names = who.map((e) => `${e.displayName} 正在编辑`).join("、");
-      // 共占锁的屏要说清楚为什么这几个一起亮 —— 否则看着像见鬼。
-      // ⚠ 喂 scopeNote 的必须是**锁**(editScopes 里命中前缀的那把)。
-      //   seat.scope 在 2026-08-30 之后只是「在哪一屏」,生产里 AppShell 恒传 null ——
-      //   拿它喂的话这句解释永远渲染不出来,正是 2026-08-26 用户「莫名其妙」投诉的那条回退。
-      const lockSc = who[0].editScopes.find((sc) =>
-        ps.some((p) => sc === p || sc.startsWith(p + ":") || sc.startsWith(p + "-"))) ?? null;
-      const note = scopeNote(lockSc);
-      return note ? `${names}
-${note}` : names;
-    }
 
     function renderTree(items: SidebarItem[], depth: number): any[] {
       return items.map((it) => {
         const isDir  = !!(it.children && it.children.length);
         const isOpen = openSet.value.has(it.value);
         const on     = !isDir && it.value === activeValue.value;
+        const note   = presence.editingNote(it.value);
 
         const rowStyle: Record<string, string> = {
           ...ROW_BASE,
@@ -184,7 +157,7 @@ ${note}` : names;
           class: "fp-sbnav-row",
           "data-on": on ? "" : undefined,
           style: rowStyle,
-          onClick: () => isDir ? toggle(it.value) : select(it.value),
+          onClick: (e: MouseEvent) => isDir ? toggle(it.value) : select(it.value, e),
         }, [
           // active accent bar
           on ? h("span", { style: { position: "absolute", left: "0", top: "8px", bottom: "8px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,
@@ -198,15 +171,40 @@ ${note}` : names;
           it.trailing ? h("span", {}, [it.trailing]) : null,
           // 在场标记(PRESENCE §04):有人正在这一屏的某一期编辑。
           // **绝对定位** —— 出现与消失都不改变行的尺寸(LAYOUT-STABILITY)。
-          editingHere(it.value)
+          // role=img + aria-label:光靠颜色的 6px 圆点屏读念不出来,title 是鼠标 hover 的老路,两个并存。
+          // 接 ds/Popover:点按/Enter 打开,点外关走 Popover 自带的 capture mousedown(UI-OVERLAY-SPEC)。
+          note
             ? h("span", {
-                title: editingHere(it.value),
                 style: {
                   position: "absolute", right: "10px", top: "50%", marginTop: "-3px",
-                  width: "6px", height: "6px", borderRadius: "50%",
-                  background: "var(--hue-orange)",
+                  display: "flex", alignItems: "center", height: "6px",
+                  // display:flex + alignItems:center:这层现在只是个包壳(6px 盒子在 Popover
+                  // 的 trigger 里),不加这两条它会走行内格式化上下文,点被行盒 strut 顶下去
+                  // (2026-09-06 实测偏下 9px)。height:6px 让包壳自己也是个 6px 高的盒子。
                 },
-              })
+                // 挡住点击/Enter 向外冒泡到行 <button> —— 否则开 Popover 的同时把整行 select 掉
+                // (2026-09-06 实测坐实)。Popover 自己的 trigger 包裹层在这层内部,先冒泡到它
+                // 把面板打开,再冒到这里截断,不影响开合。
+                onClick: (e: MouseEvent) => e.stopPropagation(),
+              }, [
+                h(Popover, { width: 206, align: "end" }, {
+                  trigger: () => h("span", {
+                    title: note,
+                    role: "img",
+                    "aria-label": note,
+                    tabindex: 0,
+                    onKeydown: (e: KeyboardEvent) => {
+                      if (e.key === "Enter") { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
+                    },
+                    style: {
+                      display: "inline-block",
+                      width: "6px", height: "6px", borderRadius: "50%",
+                      background: "var(--hue-orange)",
+                    },
+                  }),
+                  default: () => note,
+                }),
+              ])
             : null,
         ]);
 
@@ -217,125 +215,57 @@ ${note}` : names;
       });
     }
 
+    // ---- 组标题 ----------------------------------------------------------
+    // 像素同 DESIGN-FIDELITY §2.3(--type-label / 6px 12px → 30px 行)。可折叠时是 button:
+    // chevron 与折叠态的「有人在编辑」聚合点都 absolute —— 出现与消失不改行的尺寸(LAYOUT-STABILITY)。
+    const TITLE_STYLE: Record<string, string> = { font: "var(--type-label)", color: "var(--text-muted)", padding: "6px 12px" };
+    function renderTitle(sec: SidebarSection, foldable: boolean, open: boolean) {
+      if (!foldable) return h("div", { style: TITLE_STYLE }, [sec.title]);
+      // 收起的组把子项的在场提示聚到标题上:组收着也得知道里面有人在改
+      const notes = open ? [] : sec.items.map((it) => presence.editingNote(it.value)).filter((n): n is string => !!n);
+      return h("button", {
+        class: "fp-sbnav-title",
+        type: "button",
+        "aria-expanded": open ? "true" : "false",
+        style: {
+          ...TITLE_STYLE, color: "var(--fp-sbnav-title-c)",
+          position: "relative", display: "block", width: "100%", textAlign: "left",
+          border: "none", background: "transparent", cursor: "pointer", boxSizing: "border-box",
+        },
+        onClick: () => emit("toggle", sec.title),
+      }, [
+        sec.title,
+        h("span", { style: { position: "absolute", right: "12px", top: "50%", marginTop: "-7px", display: "inline-flex" } }, [Chevron(open)]),
+        notes.length
+          ? h("span", {
+              title: notes.join("\n"),
+              // 与展开态那颗点同款(role/aria-label):组收着时它是唯一的在场信号,
+              // 光有 title 屏读念不出来(2026-09-06 复查补齐)。
+              role: "img",
+              "aria-label": notes.join("\n"),
+              style: {
+                position: "absolute", right: "32px", top: "50%", marginTop: "-3px",
+                width: "6px", height: "6px", borderRadius: "50%", background: "var(--hue-orange)",
+              },
+            })
+          : null,
+      ]);
+    }
+
     // ---- render -----------------------------------------------------------
 
-    return () => {
-      if (props.collapsed) {
-        // ---- FOLDED RAIL --------------------------------------------------
-        return h("nav", {
-          style: { display: "flex", flexDirection: "column", gap: "4px", width: "56px" },
-        },
-          props.sections.map((sec, si) =>
-            h("div", {
-              key: si,
-              style: { display: "flex", flexDirection: "column", gap: "4px", marginTop: si > 0 ? "8px" : "0" },
-            },
-              sec.items.map((it) => {
-                const isDir = !!(it.children && it.children.length);
-                const on    = !isDir && it.value === activeValue.value;
-                const isFly = flyout.value === it.value;
-                const lit   = on || isFly;
-
-                return h("div", {
-                  key: it.value,
-                  style: { position: "relative", display: "flex", justifyContent: "center" },
-                  onMouseenter: () => { hoverVal.value = it.value; },
-                  onMouseleave: () => { if (hoverVal.value === it.value) hoverVal.value = null; },
-                }, [
-                  // icon button
-                  h("button", {
-                    "aria-label": typeof it.label === "string" ? it.label : undefined,
-                    style: {
-                      width: "40px", height: "40px", display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      border: "none", borderRadius: "var(--radius-sm)", position: "relative",
-                      background: "var(--fp-sbnav-bg)",
-                      color:      lit ? "var(--text-primary)" : "var(--text-secondary)",
-                      cursor: "pointer", transition: "background var(--dur-fast) var(--ease-standard)",
-                    },
-                    class: "fp-sbnav-row",
-                    "data-on": lit ? "" : undefined,
-                    onClick: () => isDir
-                      ? (flyout.value = flyout.value === it.value ? null : it.value)
-                      : select(it.value),
-                  }, [
-                    // icon or first-letter fallback
-                    it.icon
-                      ? (typeof it.icon === "object" && it.icon.render ? h(it.icon) : it.icon)
-                      : h("span", { style: { fontSize: "var(--fs-body)" } }, [String(it.label).slice(0, 1)]),
-                    // active accent bar
-                    on ? h("span", { style: { position: "absolute", left: "0", top: "9px", bottom: "9px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,
-                  ]),
-
-                  // hover tooltip (hidden while flyout is open for this item)
-                  hoverVal.value === it.value && !isFly
-                    ? h("div", {
-                        class: "fp-sbnav-tip",
-                        style: {
-                          position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)",
-                          background: "var(--ink-900)", color: "#fff", borderRadius: "var(--radius-sm)", padding: "6px 10px",
-                          fontFamily: "var(--font-sans)", fontSize: "var(--fs-label)", whiteSpace: "nowrap",
-                          boxShadow: "var(--shadow-pop)", pointerEvents: "none", zIndex: "var(--z-popover)",
-                          display: "flex", alignItems: "center", gap: "8px",
-                        },
-                      }, [
-                        it.label,
-                        it.shortcut
-                          ? h("span", { style: { background: "rgba(255,255,255,0.16)", borderRadius: "4px", padding: "1px 6px", fontSize: "11px" } }, [it.shortcut])
-                          : null,
-                      ])
-                    : null,
-
-                  // directory flyout — one level, one open at a time
-                  isDir && isFly
-                    ? h("div", {
-                        class: "fp-sbnav-flyout",
-                        style: {
-                          position: "absolute", left: "calc(100% + 10px)", top: "-4px", minWidth: "184px",
-                          background: "var(--surface-white)", border: "1px solid var(--border-subtle)",
-                          borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-pop)", padding: "6px",
-                          display: "flex", flexDirection: "column", gap: "2px", zIndex: "var(--z-popover)",
-                        },
-                      }, [
-                        h("div", { style: { font: "var(--type-label)", color: "var(--text-muted)", padding: "4px 10px" } }, [it.label]),
-                        ...(it.children || []).map((c) => {
-                          const con = c.value === activeValue.value;
-                          return h("button", {
-                            key: c.value,
-                            class: "fp-sbnav-row",
-                            "data-on": con ? "" : undefined,
-                            style: { ...ROW_BASE, padding: "0 10px", height: "32px", color: con ? "var(--text-primary)" : "var(--text-secondary)", background: "var(--fp-sbnav-bg)" },
-                            onClick: () => select(c.value),
-                          }, [
-                            c.icon ? h("span", { style: { display: "inline-flex", flex: "0 0 auto" } }, [typeof c.icon === "object" && c.icon.render ? h(c.icon) : c.icon]) : null,
-                            h("span", { style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, [c.label]),
-                          ]);
-                        }),
-                      ])
-                    : null,
-                ]);
-              })
-            )
-          )
-        );
-      }
-
-      // ---- EXPANDED TREE --------------------------------------------------
-      return h("nav", {
-        style: { display: "flex", flexDirection: "column", gap: "16px" },
-      },
-        props.sections.map((sec, si) =>
-          h("div", {
-            key: si,
-            style: { display: "flex", flexDirection: "column", gap: "2px" },
-          }, [
-            sec.title
-              ? h("div", { style: { font: "var(--type-label)", color: "var(--text-muted)", padding: "6px 12px" } }, [sec.title])
-              : null,
-            ...renderTree(sec.items, 0),
-          ])
-        )
+    return () =>
+      h("nav", { style: { display: "flex", flexDirection: "column", gap: "16px" } },
+        props.sections.map((sec, si) => {
+          // 带标题组可折叠(SIDEBAR-UX-REDESIGN §3.2):openTitles 未传 = 老行为,全部展开
+          const foldable = !!sec.title && props.openTitles !== undefined;
+          const open = !foldable || props.openTitles!.includes(sec.title!);
+          return h("div", { key: si, style: { display: "flex", flexDirection: "column", gap: "2px" } }, [
+            sec.title ? renderTitle(sec, foldable, open) : null,
+            ...(open ? renderTree(sec.items, 0) : []),
+          ]);
+        })
       );
-    };
   },
 });
 </script>
@@ -353,19 +283,7 @@ ${note}` : names;
 .fp-sbnav-row:hover { --fp-sbnav-bg: var(--bg-hover); }
 .fp-sbnav-row[data-on] { --fp-sbnav-bg: var(--bg-hover); }
 
-/* 折叠轨道的悬停提示:**延迟 400ms 才出现**。
-   轨道上四个图标竖排,鼠标从顶滑到底会依次经过每一个 —— 没有延迟的话一次滑动
-   就连闪四个黑色提示框,那不是提示是干扰。延迟意味着「停下来看」才出提示、
-   「路过」不出;消失不延迟,鼠标一走立刻收。
-   ⚠ 用 opacity:0 + forwards 而不是 both:fp-fade-in 只有 to 帧,
-   both 会在延迟期间就把 opacity 应用成 1,提示框立刻可见,延迟等于白设。
-   reduced-motion 下时长被压到 1ms 但 delay 不受影响 —— 这是对的,
-   400ms 是交互设计(区分「停下看」与「路过」),不是动效。 */
-.fp-sbnav-tip {
-  opacity: 0;
-  animation: fp-fade-in var(--dur-fast) var(--ease-out) 400ms forwards;
-}
-
-/* 目录浮出层:与下拉面板同规格(见 motion.css 的 fp-pop-in)。 */
-.fp-sbnav-flyout { animation: fp-pop-in var(--dur-fast) var(--ease-out); }
+/* 组标题按钮:颜色走变量,inline 的 color 才能被 :hover 盖到(与行的 --fp-sbnav-bg 同一招)。 */
+.fp-sbnav-title { --fp-sbnav-title-c: var(--text-muted); }
+.fp-sbnav-title:hover { --fp-sbnav-title-c: var(--text-secondary); }
 </style>

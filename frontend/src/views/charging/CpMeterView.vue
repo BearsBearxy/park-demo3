@@ -8,6 +8,7 @@
 // 实现骨架与 PvMeterView 同构对齐(乐观更新/竞态守卫/抽屉行式编辑同款)。
 // ponytail: 桩数个位数,不上分页机;短窗时卡片内滚动兜底,桩数破 30 再上
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { cpMeterApi, type CpStationDTO, type CpPowerUsageDTO } from '@/api/cpMeter'
 import type { ImportResultDTO } from '@/types/import'
@@ -15,6 +16,7 @@ import type { ImportRec } from '@/components/import/FpImportModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
 import { useMonthGate } from '@/composables/useMonthGate'
@@ -89,6 +91,32 @@ const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPer
 })
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
+// 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 只有年的链接不动(本屏只认整月)。不传 dirty、也不接 note:抽屉里的行草稿在切走时随抽屉一起收掉
+// (onDeactivated 清 openSt → watch(openSt, cancelForm)),切回时没有草稿可护。
+useDeepPeriod({
+  current: () => ({ p: gateYm.value }),
+  apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
+  // 本屏与父屏共用同一个页签 value(一个 value 两个组件,靠父屏的 mode 切换)——
+  // 两个 useDeepPeriod 实例会往同一格 ctx 里对写,而子屏卸载时不回滚,页签会留着子屏的月
+  // 对着父屏的年表撒谎(整期复查实测)。页签上下文由父屏一家写。
+  ctx: () => null,
+})
+
+// 「读站」(SIDEBAR-UX-REDESIGN §4.2 分析层假下钻 → 真下钻):?station=<桩 id> 桩库到手且已选月后直开该桩抽屉。
+// 只开一次(开过 / 找不到即清 pending):分析屏走 openFresh 实例总是新的;onDeactivated 清 openSt 是既有约定,开过的不在切回时重开。
+// 只有年的链没选月 → pending 留着,选月后的下一次 loadStations(切回)再开。跨型(汽车屏收到电动车桩 id)找不到 → 不开、也清 pending。
+const route = useRoute()
+let pendingStation: number | null = Number(route.query.station) || null
+function openDeepStation() {
+  if (pendingStation == null || !picked.value) return
+  const st = myStations.value.find(s => s.id === pendingStation) ?? null
+  pendingStation = null
+  if (st) openSt.value = st
+}
+
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
 
@@ -108,7 +136,7 @@ async function loadStations() {
   const my = ++stSeq
   try {
     const data = await cpMeterApi.stations()
-    if (my === stSeq) { stations.value = data; stationsErr.value = '' }
+    if (my === stSeq) { stations.value = data; stationsErr.value = ''; openDeepStation() }
   } catch {
     if (my === stSeq) stationsErr.value = '充电桩档案加载失败,请重试'
   }

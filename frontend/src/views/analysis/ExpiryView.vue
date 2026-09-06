@@ -5,6 +5,7 @@
 // 无日期时保留降级空态(判据 wall.totalCount > 0,本机数据日期全 NULL 仍走空态,口径数值不变)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -22,13 +23,17 @@ const router = useRouter()
 const loading = ref(true)
 const contracts = ref<ContractDTO[]>([])
 
-onMounted(async () => {
+async function reload() {
   try {
     contracts.value = await fetchContracts()
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 const wan = (v: number) => fnum(v / 10000, 1)
 // 文案取权威表(contractStatus.ts):此前本屏是同一批状态的第三套叫法(在租/临期/到期/终止),
@@ -116,14 +121,14 @@ function onParetoClick(p: unknown) {
             to="/contracts" toText="去合同屏补录日期" />
         </div>
 
-        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏) -->
+        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏(带合同号,合同屏预填搜索)) -->
         <div v-if="soon.length > 0" class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序<span class="hint-desk"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
               <thead><tr><th>租户</th><th>合同号</th><th>月租金(万)</th><th>到期日</th><th>剩余天数</th></tr></thead>
               <tbody>
-                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push('/contracts')">
+                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push({ path: '/contracts', query: { contractNo: r.contractNo } })">
                   <td style="text-align: left">{{ r.tenantName }}</td>
                   <td class="mono mut">{{ r.contractNo }}</td>
                   <td class="mono">{{ wan(r.monthlyRent) }}</td>

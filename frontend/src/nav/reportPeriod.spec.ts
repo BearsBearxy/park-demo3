@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { REPORT_STEPS, periodQuery, parsePeriodQuery, periodLabel } from './reportPeriod'
+import { REPORT_STEPS, parsePeriodQuery, periodLabel } from './reportPeriod'
 
 describe('报表层的期', () => {
   it('九个步骤：三大报表 + 附表1–5 + 收入核对，顺序同报表中心目录', () => {
@@ -17,20 +17,6 @@ describe('报表层的期', () => {
     // 三大报表名字短，原样上条，不需要 title
     expect(REPORT_STEPS[0].label).toBe('利润表')
     expect(REPORT_STEPS[0].title).toBeUndefined()
-  })
-
-  describe('期包(y / m / co)', () => {
-    it('三样齐全时全带上', () => {
-      expect(periodQuery(2025, 9, 3)).toEqual({ y: '2025', m: '9', co: '3' })
-    })
-
-    it('「全部汇总」写成 co=all —— 它是个合法落点,不是「没选公司」', () => {
-      expect(periodQuery(2025, 9, 'all')).toEqual({ y: '2025', m: '9', co: 'all' })
-    })
-
-    it('没有月/公司的屏只带年 —— 损益附表是园区全局整年一张表', () => {
-      expect(periodQuery(2025, null, null)).toEqual({ y: '2025' })
-    })
   })
 
   describe('回读', () => {

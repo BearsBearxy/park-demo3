@@ -31,14 +31,17 @@ const groups = computed(() =>
 const flat = computed(() => groups.value.flatMap(g => g.items))
 const safeIdx = computed(() => Math.min(idx.value, Math.max(0, flat.value.length - 1)))
 
-// reset + autofocus on open
+// reset + autofocus on open。
+// immediate 是给懒加载准备的:本组件自 P3 起挂在 AppShell 的 v-if="paletteEverOpened" 后面
+// (首屏包瘦身),首次打开时它是**带着 open=true 挂载**的 —— 没有 false→true 这个变化,
+// 不加 immediate 就既不清上次的搜索词也不聚焦输入框。
 watch(() => props.open, open => {
   if (open) {
     query.value = ''
     idx.value = 0
     setTimeout(() => inputRef.value?.focus(), 30)
   }
-})
+}, { immediate: true })
 
 function choose(value: string) {
   tabs.open(value, { pin: props.mode === 'new' })
@@ -71,7 +74,7 @@ function onQueryInput(e: Event) {
             :value="query"
             @input="onQueryInput"
             @keydown="onKey"
-            placeholder="跳转到页面 — 输入页面名或所属模块…"
+            placeholder="跳转到页面 — 输入页面名或分组名…"
           />
           <kbd class="fp-kbd fp-kbd-esc">Esc</kbd>
         </div>

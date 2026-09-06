@@ -7,6 +7,7 @@
 // 读全开的唯一例外是 system 层(§0):无 system:edit 的人进得来、看得见全部账号与角色,
 //   只是所有写按钮不渲染 —— 与其它屏「显示但不能改」同一口径。
 import { ref, computed, watch, onMounted, onBeforeUnmount, h } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
 import { systemApi } from '@/api/system'
 import type { RoleDTO, UserDTO } from '@/types/system'
 import type { SortState } from '@/components/fp/fpSort'
@@ -72,6 +73,9 @@ async function reload() {
   }
 }
 onMounted(reload)
+// 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
+// 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
+onReactivated(() => { void reload() })
 
 // ─── 筛选 ────────────────────────────────────────────────
 const STATUS_OPTS = [

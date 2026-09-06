@@ -5,6 +5,11 @@
 //   进表后顶部 Segmented 切「附表13·办公水电 / 附表14·三期水电」(切 tab → 用对应 no 重载 records)。
 // 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { periodOf } from '@/nav/deepLink'
+import FPToast from '@/components/fp/FPToast.vue'
 import { S } from '@/utils/lockScopes'
 import { utilitiesApi } from '@/api/utilities'
 import { exportUtilitiesYear } from '@/utils/utilitiesExcel'
@@ -37,7 +42,14 @@ const TABS: Record<Tab, { no: number; name: string; icon: string; sub: string; n
 }
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
-const tab = ref<Tab>('office')
+// 深链 ?tab=office|phase3 只在首载认(首页附13 / 附14 两行都指本屏,走 openFresh,实例总是新的;SIDEBAR-UX-REDESIGN §5.1)。
+// 必须在 year 落定之前定下 —— loadYear 读的是 no(由 tab 派生),先落年再切 tab 会多拉一趟办公水电。
+const route = useRoute()
+const deepTab = (): Tab | null => {
+  const t = route.query.tab
+  return t === 'office' || t === 'phase3' ? t : null
+}
+const tab = ref<Tab>(deepTab() ?? 'office')
 const no = computed(() => TABS[tab.value].no)
 const meta = computed(() => TABS[tab.value])
 
@@ -70,6 +82,17 @@ const {
     confirm: clearConfirm('本年', '手动行不受影响。'),
   },
 })
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):年表屏 p 只取年(current 也只报年,否则首页发 YYYY-MM 时永不相等、每次切回白拉一趟)。
+// 必须在下面的 onMounted / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 本屏唯一的草稿是开着的新增抽屉 / 导入窗(pickYear 会经 edit=false 把它们关掉);切回时有 → 不切年,只在 deepNote 里说。
+const { note: deepNote } = useDeepPeriod({
+  current: () => ({ p: year.value == null ? null : periodOf(year.value, null) }),
+  apply: (t) => { void pickYear(t.year).catch(() => {}) },
+  dirty: () => (drawer.value || importing.value ? 1 : 0),
+})
+// KeepAlive 切回重读(spec §12):导入中心导完切回来,年表与总览不能还是导入前的(refresh = load(year) + reloadOverview)
+onReactivated(() => { void refresh().catch(() => {}) })
 
 // ⓪ overview.years → YearCard(metric=「¥X万」label=「全年水电费·N条」)
 const yearCards = computed<YearCard[]>(() =>
@@ -250,6 +273,7 @@ const onExport = () => guard('导出失败', async () => {
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
     <ImportResultToast v-if="importResult" :result="importResult" @close="importResult = null" />
+    <FPToast v-model="deepNote" tone="warning" placement="page" :duration="0" />
   </template>
 
   <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>

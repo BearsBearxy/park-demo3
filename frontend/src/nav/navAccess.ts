@@ -15,7 +15,7 @@ export function visibleLayers(navLayers: string[], canSystemView = false): NavLa
 }
 
 /** 登录落地页。必须落在**这个角色看得见的层里**,否则人一进来就在一个侧边栏没有入口的屏上,
- *  像页面坏了。三档:数据层 → 数据中心首页;有业务层但没数据层(园区股东)→ 驾驶舱;
+ *  像页面坏了。三档:数据层 → 本月出账;有业务层但没数据层(园区股东)→ 驾驶舱;
  *  一个业务层都没有、只有系统管理权限(客户自建的"纯管理员")→ 用户管理。
  *  最后那档预置角色打不到(6 个预置角色都带全部业务层),但客户建得出来。 */
 export function landingPath(navLayers: string[], canSystemView = false): string {

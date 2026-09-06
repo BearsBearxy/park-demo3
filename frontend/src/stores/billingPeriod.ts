@@ -30,7 +30,7 @@ export interface ChainCell {
   stale: boolean
 }
 
-const YM = /^\d{4}-(0[1-9]|1[0-2])$/
+export const YM = /^\d{4}-(0[1-9]|1[0-2])$/
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const EMPTY: ChainCell = Object.freeze({
   meters: false, pool: false, loss: false, notices: false, stale: false,
@@ -53,8 +53,9 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
     month.value = null
   }
   /**
-   * 认领屏间深链带来的 `?ym=`（`/params?ym=2025-03` 那四处既有跳转）。
-   * **只在还没有期时认领** —— 已经选好期的人不该被一条链接顶到别的月去。
+   * 「只在还没有期时认领」—— 已经选好期的人不该被一条链接顶到别的月去。
+   * 2026-09-03 起显式深链(?p= / 旧 ?ym=)走 composables/useDeepPeriod(会覆盖已选期,D2);
+   * 本函数只剩一个调用方:分析层「去改常数」的 adopt=YYYY-12(ParamCenterView.applyHandoff)——那不是选月。
    */
   function adoptYm(v: string | null | undefined) {
     if (picked.value || !v || !YM.test(v)) return

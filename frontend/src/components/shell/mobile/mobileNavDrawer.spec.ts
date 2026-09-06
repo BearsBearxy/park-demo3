@@ -2,10 +2,14 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
+import { reactive } from 'vue'
 
 const push = vi.fn()
+// meta 可变:要造「当前屏属不可见层」那一档(股东从书签进 /ledger)
+const route = reactive({ meta: { value: 'data-home', page: '本月出账' } as Record<string, string> })
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ meta: { value: 'data-home', page: '数据中心首页' } }),
+  useRoute: () => route,
   useRouter: () => ({ push }),
 }))
 
@@ -17,6 +21,7 @@ beforeEach(() => {
   sessionStorage.clear()
   push.mockClear()
   setActivePinia(createPinia())
+  route.meta = { value: 'data-home', page: '本月出账' }
 })
 
 const mountDrawer = () =>
@@ -32,12 +37,21 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
     expect(w.find('.mnav-logout').exists()).toBe(true)                  // S 档全站唯一退出入口
   })
 
-  it('目录条目 = openFresh(epoch++ 全新状态)+ push + 关抽屉', async () => {
+  it('目录条目 = open(恢复 KeepAlive 现场,epoch 不动)+ push + 关抽屉(P3 §4.1:与桌面侧栏同义)', async () => {
     const w = mountDrawer()
     const tabs = useTabsStore()
     await w.findAll('.mnav-row').find(r => r.text().includes('租户管理'))!.trigger('click')
-    expect(tabs.epochOf('tenants')).toBe(1)
+    expect(tabs.epochOf('tenants')).toBe(0)
+    expect(tabs.preview?.value).toBe('tenants')
     expect(push).toHaveBeenCalledWith('/tenants')
+    expect(w.emitted('close')).toHaveLength(1)
+  })
+
+  it('点当前屏的目录条目:不 push,但照常关抽屉', async () => {
+    const w = mountDrawer()
+    push.mockClear()
+    await w.findAll('.mnav-row').find(r => r.text().includes('本月出账'))!.trigger('click')
+    expect(push).not.toHaveBeenCalled()
     expect(w.emitted('close')).toHaveLength(1)
   })
 
@@ -49,6 +63,15 @@ describe('MobileNavDrawer 手机导航抽屉', () => {
     expect(tabs.epochOf('contracts')).toBe(0)   // 走 openFresh 会丢掉用户填一半的表单
     expect(push).toHaveBeenCalledWith('/contracts')
     expect(w.emitted('close')).toHaveLength(1)
+  })
+
+  it('当前屏属不可见层时,唯一那颗胶囊照样点得动 —— guard 比的是不带兜底的当前层', async () => {
+    useAuthStore().navLayers = ['analysis']
+    route.meta = { value: 'ledger', page: '月度台账' }   // 数据层的屏(读全开,深链能进),但数据层不可见
+    const w = mountDrawer()
+    push.mockClear()
+    await w.findAll('button').find(b => b.text().includes('分析'))!.trigger('click')
+    expect(push, '兜底出来的层被当成「当前层」,胶囊变成死钮').toHaveBeenCalled()
   })
 
   it('Esc 与点遮罩关闭;点面板内部不关', async () => {
@@ -78,5 +101,14 @@ describe('MobileBottomNav 手机底栏', () => {
     await btns[1].trigger('click')
     expect(tabs.epochOf('reports-home')).toBe(1)
     expect(push).toHaveBeenCalledWith('/reports-home')
+  })
+
+  it('点当前层:不 push、不动页签(§4.1)', async () => {
+    const w = mount(MobileBottomNav)
+    const tabs = useTabsStore()
+    push.mockClear()
+    await w.findAll('button').find(b => b.text().includes('数据'))!.trigger('click')
+    expect(push).not.toHaveBeenCalled()
+    expect(tabs.epochOf('data-home')).toBe(0)
   })
 })

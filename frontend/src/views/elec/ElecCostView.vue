@@ -7,6 +7,8 @@
 // 编辑模式(EDIT-MODE-SPEC v2):浏览态=完全只读,一切纯文本(DOM 无输入框);金额/备注行内输入、
 // 电表增删改、电价参数小节、导入、模拟填充全部收编辑态。viewer 永远浏览态。年月选择 years 数据驱动(同 PvMeterView)。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import {
   elecCostApi,
@@ -83,6 +85,19 @@ const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPer
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
 const acctMonth = computed(() => `${year.value}-${pad2(month.value)}`)
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
+// 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 只有年的链接不动(本屏只认整月)。本屏没有草稿(金额 / 备注 / 电价全是即时乐观提交),不传 dirty、也不接 note。
+// 本屏按月锁(S.elecCost(year, month)):编辑态里被深链换月 = 换 scope,useEditMode 的 scopeWhileEditing 守卫接手,与屏内换月同一条路。
+useDeepPeriod({
+  current: () => ({ p: gateYm.value }),
+  apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
+  // 本屏与父屏共用同一个页签 value(一个 value 两个组件,靠父屏的 mode 切换)——
+  // 两个 useDeepPeriod 实例会往同一格 ctx 里对写,而子屏卸载时不回滚,页签会留着子屏的月
+  // 对着父屏的年表撒谎(整期复查实测)。页签上下文由父屏一家写。
+  ctx: () => null,
+})
 
 // ── 数据 ──
 const meters = ref<ElecMeterDTO[] | null>(null)
@@ -174,6 +189,12 @@ onMounted(() => {
   loadMeters()
   loadMonths()
   if (picked.value) loadMonth()   // 会话内选过期 → 直落表,不再撞矩阵
+})
+// KeepAlive 切回重读(spec §12;照 CpMeterView 的三支):导入中心导完切回来,矩阵与本月不能还是导入前的
+onReactivated(() => {
+  loadMeters()
+  loadMonths()
+  if (picked.value) loadMonth()
 })
 watch(gateYm, () => { if (picked.value) loadMonth() })
 

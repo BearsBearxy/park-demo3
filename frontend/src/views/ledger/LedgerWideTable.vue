@@ -59,8 +59,8 @@ const emit = defineEmits<{
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──
 // 与附表族页头共用同一份机制(useEditLock)。这一屏的编辑态由父层 LedgerView 持有,
 // 所以锁的进出挂在两个地方:进 = 拦住 enter-edit 直到占到锁;出 = watch(edit) 归假即还。
-// 用 watch 而不是在每个退出口各加一行 —— 父层有 4 条路会把 edit 置回 false
-// (取消/保存/换期/切册),漏一条就是一把没人认领的锁。
+// 用 watch 而不是在每个退出口各加一行 —— 父层有 5 条路会把 edit 置回 false
+// (取消/保存/换期/切册/深链换期),漏一条就是一把没人认领的锁。
 // ⚠ 第二个参数是权限守卫。宿主 LedgerView 是裸的 `const edit = ref(false)`,**不走 useEditMode** ——
 //   所以铁律①在这一屏没有任何实现:点了「结束授权」人还留在编辑态,锁还被 ping 续着。
 //   权限点与上面那个编辑按钮同源(entry:edit),不新开一个 prop。

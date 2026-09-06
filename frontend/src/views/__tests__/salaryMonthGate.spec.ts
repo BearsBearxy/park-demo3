@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h, KeepAlive, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import SalaryView from '@/views/salary/SalaryView.vue'
@@ -31,6 +32,14 @@ vi.mock('@/api/salary', () => ({
   },
 }))
 
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/salary?' + new URLSearchParams(query).toString() } }),
+}))
+
 const OVERVIEW = {
   currentYear: 2025,
   years: [
@@ -48,6 +57,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(salaryApi.overview).mockResolvedValue(OVERVIEW as never)
   vi.mocked(salaryApi.records).mockResolvedValue({ year: 2025, month: 2, rows: [], total: ZERO } as never)
@@ -57,6 +67,16 @@ async function open() {
   const w = mount(SalaryView, { global: { stubs: { Teleport: true } } })
   await flushPromises()
   return w
+}
+
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回。 */
+async function keptAlive() {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(SalaryView) : null) }),
+  }), { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return { w, alive }
 }
 
 /** 年份行标 → 该行 12 张月卡 */
@@ -169,5 +189,36 @@ describe('附表12 · 一层选期门', () => {
     const scopeOf = matrix.props('scopeOf') as (y: number, m: number) => string | null
     expect(scopeOf(2025, 3)).toBe('sched:salary:2025-03')
     expect(scopeOf(2025, 4)).toBe('sched:salary:2025-04')
+  })
+})
+
+describe('附表12 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => {
+  it('❗带 p 进屏直落那个月的宽表:矩阵不出现,拉的就是那个月且只拉一次', async () => {
+    // 红线:SalaryView.vue 的 useDeepPeriod({ apply: … pickCell }) 删掉 → 落回矩阵
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.findAll('.bmm-card').length, '矩阵该被深链跳过').toBe(0)
+    expect(w.find('.s12-page').exists()).toBe(true)
+    expect(salaryApi.records).toHaveBeenCalledWith(2025, 3)
+    expect(salaryApi.records).toHaveBeenCalledTimes(1)
+  })
+
+  it('只有年的链接不动 —— 本屏只认整月', async () => {
+    query.p = '2025'
+    const w = await open()
+    expect(w.findAll('.bmm-card').length).toBe(24)
+    expect(salaryApi.records).not.toHaveBeenCalled()
+  })
+
+  it('❗切页签回来重读:总览与本月都重拉 —— 导入中心导完切回来不能还是旧表(spec §12)', async () => {
+    // 红线:SalaryView.vue 新加的 onReactivated 删掉 → 切回零请求
+    query.p = '2025-03'
+    const { alive } = await keptAlive()
+    vi.mocked(salaryApi.overview).mockClear()
+    vi.mocked(salaryApi.records).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(salaryApi.overview).toHaveBeenCalledTimes(1)
+    expect(salaryApi.records).toHaveBeenCalledWith(2025, 3)
   })
 })

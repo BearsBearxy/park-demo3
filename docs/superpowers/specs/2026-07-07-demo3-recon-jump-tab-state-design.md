@@ -34,6 +34,15 @@
 | 数据首页/报表首页「去做事」行点击 | 全新状态(openFresh;复审补裁:显式任务导航=全新) |
 | IconRail 层切换 | 全新状态(openFresh,同侧边栏级语义) |
 
+> **2026-09-06（P3，SIDEBAR-UX-REDESIGN §4.1）修订**：上表 `SidebarPanel 点击页面` 那一行的
+> 「全新状态」收窄 —— 侧边栏点击改为**恢复该 tab 之前的浏览状态**（与 TabStrip 点击同义）；
+> 手机抽屉的目录条目同改。`数据首页/报表首页「去做事」行点击` 仍是全新（显式任务导航，不变）。
+> 「全新」只剩三个显式动作：**Shift + 侧栏点击（点当前项也算，原地重挂载不 push）/
+> 关闭 tab 后再打开（dropState）/ IconRail 换层**。点当前项、当前层一律 no-op（不 push、不动 epoch）。
+> 理由：P0a–P0c 把期、公司、抽屉都落进了屏内，导航一次就重过一次门是这一期要消灭的东西；
+> `:max` 同步 10 → 16 覆盖专员月内要开的屏数。代价：只在 `onMounted` 取数的纯读屏失去唯一刷新入口
+> —— 13 屏补了 `onReactivated(重读)`，另 3 屏因「重读会清用户选择」或「有草稿态」不补（见 SIDEBAR-UX §12）。
+
 **实现**:
 - tabs store 增加 `epoch: Record<string, number>`(内存态,不持久化——刷新后全新是合理默认)与 `openFresh(value, opts)`(epoch[value]++ 后走 open)。**close() 本身不 bump**:弃状态由调用方(TabStrip)在 `router.push(neighbor)` 完成后调 `dropState(value)`——若 epoch++ 先于导航,当前路由 key 立变会让被关视图以新 key 瞬时重挂载(onMounted 重跑+快照污染缓存,复审实测击穿后修正)。
 - App.vue 改为:

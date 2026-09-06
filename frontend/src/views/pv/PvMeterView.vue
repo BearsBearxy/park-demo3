@@ -7,6 +7,8 @@
 // 布局遵 LIST-PAGE-SPEC 列宽铁律(定宽列+唯一弹性列,fixed 布局);
 // ponytail: 13 站固定量级,不上 useFitRows/FPPager 分页机(短窗时卡片内滚动兜底),站数破 30 再上。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
+import { onReactivated } from '@/composables/onReactivated'
+import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
 import { pvMeterApi, type PvStationDTO } from '@/api/pvMeter'
 import type { ImportResultDTO } from '@/types/import'
@@ -86,6 +88,19 @@ const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPer
         rows: gateRows, addEarlier, addLater, removeYear } = gate
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
+
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):?p=YYYY-MM 直落该月 —— 只 pick 进 screenPeriod,取数交给下面的 onMounted / watch(gateYm)。
+// 必须在 onMounted / watch(gateYm) / onReactivated 之前调用:期先落定,首载才只拉一次;切回时也先于重读改期。
+// 只有年的链接不动(本屏只认整月)。不传 dirty、也不接 note:抽屉里的行草稿在切走时随抽屉一起收掉
+// (onDeactivated 清 openSt → watch(openSt, cancelForm)),切回时没有草稿可护。
+useDeepPeriod({
+  current: () => ({ p: gateYm.value }),
+  apply: (t) => { if (t.month != null) pickCell(t.year, t.month) },
+  // 本屏与父屏共用同一个页签 value(一个 value 两个组件,靠父屏的 mode 切换)——
+  // 两个 useDeepPeriod 实例会往同一格 ctx 里对写,而子屏卸载时不回滚,页签会留着子屏的月
+  // 对着父屏的年表撒谎(整期复查实测)。页签上下文由父屏一家写。
+  ctx: () => null,
+})
 
 const monthLast = computed(() => `${year.value}-${pad2(month.value)}-${pad2(new Date(year.value, month.value, 0).getDate())}`)
 const monthFirst = computed(() => `${year.value}-${pad2(month.value)}-01`)
@@ -184,6 +199,12 @@ onMounted(() => {
   loadStations()
   loadMonths()
   if (picked.value) loadReadings()   // 会话内选过期 → 直落表,不再撞矩阵
+})
+// KeepAlive 切回重读(spec §12;照 CpMeterView 的三支):导入中心导完切回来,矩阵与本月不能还是导入前的
+onReactivated(() => {
+  loadStations()
+  loadMonths()
+  if (picked.value) loadReadings()
 })
 watch(gateYm, () => { if (picked.value) loadReadings() })
 

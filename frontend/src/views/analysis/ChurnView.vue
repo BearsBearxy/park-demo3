@@ -5,6 +5,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
@@ -41,13 +42,14 @@ const scatterOpt = computed(() => (model.value ? churnScatterOption(model.value.
 const flowOpt = computed(() => churnFlowOption(model.value?.flows ?? []))
 const detail = computed(() => model.value?.list.slice(0, 30) ?? [])
 
-// 深链必须 openFresh:KeepAlive 缓存的 LedgerView 只在 onMounted 消费 query,
-// 裸 RouterLink 命中缓存实例不会定位(复审;与收入核对跳转同款语义)
+// 深链走 openFresh({pin:true})(spec §4.1:分析层 → 台账的页签语义不变:新开固定页签、全新实例);
+// 台账屏 useDeepPeriod 在 setup 与切回都认 query(P0b),openFresh 保留的是页签语义,不是读 query 的必要条件。
+// 发链统一 periodLink(§4.2):期 p=YYYY-MM,公司名走 extra.company(periodLink.co 只收 id | all),租户走 extra.tenant。
 const router = useRouter()
 const tabs = useTabsStore()
 function goLedger(tenant: string, company: string, ym: string) {
-  tabs.openFresh('ledger', { pin: true })
-  router.push({ path: '/ledger', query: { y: ym.slice(0, 4), m: String(+ym.slice(5, 7)), company, tenant } })
+  tabs.openDeep('ledger')
+  router.push(periodLink('ledger', { p: periodOf(+ym.slice(0, 4), +ym.slice(5, 7)), extra: { company, tenant } }))
 }
 // 散点点点→该租户末期台账(spec §二.10 下钻)
 function onScatterClick(p: unknown) {

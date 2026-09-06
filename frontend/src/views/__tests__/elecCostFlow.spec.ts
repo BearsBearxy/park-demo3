@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import ElecCostView from '@/views/elec/ElecCostView.vue'
@@ -45,6 +45,14 @@ vi.mock('@/api/locks', () => ({
   },
 }))
 
+// 期间深链(SIDEBAR-UX-REDESIGN §4.2):屏接了 useDeepPeriod(内部 useRoute)。query 可变 —— 深链那几条要在切回之间换掉 ?p=;
+// fullPath 走 getter:useRoute() 的返回对象只建一次,写成普通字段的话切回时读到的还是旧地址(照 meterWriteGuards.spec:60-66)。
+const query: Record<string, string> = {}
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query, get fullPath() { return '/elec-cost?' + new URLSearchParams(query).toString() } }),
+}))
+
 // 夹具按真实 DTO 声明(src/api/elecCost.ts)再 as never —— 字段漏一个渲染当场崩。
 const METERS: ElecMeterDTO[] = [
   { id: 1, name: '园区总表', kind: 'master', sortNo: 1 },
@@ -74,6 +82,7 @@ beforeEach(() => {
   useAuthStore().permissions = ['entry:edit', 'param-policy:edit']
   vi.clearAllMocks()
   localStorage.clear()
+  for (const k of Object.keys(query)) delete query[k]
   vi.setSystemTime(new Date('2025-06-15T00:00:00'))
   vi.mocked(elecCostApi.meters).mockResolvedValue(METERS as never)
   vi.mocked(elecCostApi.entries).mockResolvedValue([] as never)
@@ -86,6 +95,16 @@ async function open() {
   const w = mount(ElecCostView, { global: { stubs: { Teleport: true } } })
   await flushPromises()
   return w
+}
+
+/** 把屏包进 KeepAlive,alive 开关模拟切走 / 切回(照 meterWriteGuards.spec:299)。 */
+async function keptAlive() {
+  const alive = ref(true)
+  const w = mount(defineComponent({
+    setup: () => () => h(KeepAlive, null, { default: () => (alive.value ? h(ElecCostView) : null) }),
+  }), { global: { stubs: { Teleport: true } } })
+  await flushPromises()
+  return { w, alive }
 }
 
 /** 进到表格页:2025-03,三路都成功。 */
@@ -616,5 +635,32 @@ describe('电费成本总览 · 复查第二轮补钉', () => {
     slow([{ key: 'k', label: 'x', value: 111, formula: '', missing: [] }])
     await p1
     expect((vm.metrics?.[0] as { value: number } | undefined)?.value, '旧回包盖了新指标').toBe(222)
+  })
+})
+
+describe('电费成本总览 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => {
+  it('❗带 p 进屏直落那个月:矩阵不出现,费项只拉一次、拉的就是那个月', async () => {
+    // 红线:ElecCostView.vue 的 useDeepPeriod 删掉 → 落回矩阵;挪到 onMounted 之后 → entries 拉两次
+    query.p = '2025-03'
+    const w = await open()
+    expect(w.find('.fmg').exists(), '门该被深链跳过').toBe(false)
+    expect(w.find('.ec-page').exists()).toBe(true)
+    expect(elecCostApi.entries).toHaveBeenCalledWith(2025, 3)
+    expect(elecCostApi.entries).toHaveBeenCalledTimes(1)
+  })
+
+  it('❗切页签回来要重拉电表、账期清单与本月 —— 本屏此前没有 onReactivated(spec §12)', async () => {
+    // 红线:ElecCostView.vue 新加的 onReactivated 三支删掉 → 切回零请求
+    query.p = '2025-03'
+    const { w, alive } = await keptAlive()
+    vi.mocked(elecCostApi.meters).mockClear()
+    vi.mocked(elecCostApi.months).mockClear()
+    vi.mocked(elecCostApi.entries).mockClear()
+    alive.value = false; await flushPromises()
+    alive.value = true; await flushPromises()
+    expect(elecCostApi.meters).toHaveBeenCalledTimes(1)
+    expect(elecCostApi.months).toHaveBeenCalledTimes(1)
+    expect(elecCostApi.entries).toHaveBeenCalledWith(2025, 3)
+    expect(w.find('.ec-page').exists()).toBe(true)
   })
 })
