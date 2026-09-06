@@ -20,7 +20,9 @@ const P = /^(\d{4})(?:-(0[1-9]|1[0-2]))?$/
 /** 发链。缺的项不写进 query(空串会被目标屏误读成「给了个空」);extra 的值一律转 string,null / undefined 丢掉。 */
 export function periodLink(
   value: string,
-  o: { p: string; co?: number | 'all' | string; extra?: Record<string, string | number | boolean | null | undefined> },
+  // co 的取值域:公司 id | 期区 id(S.s10 的 phase 声明就是 number | string)| 哨兵 'all'。
+  // ⚠ 别写成 `number | 'all' | string` —— 'all' 会被 string 吸收,看着像有约束其实没有。
+  o: { p: string; co?: number | string; extra?: Record<string, string | number | boolean | null | undefined> },
 ): { path: string; query: Record<string, string> } {
   const query: Record<string, string> = { p: o.p }
   if (o.co != null) query.co = String(o.co)
