@@ -174,3 +174,22 @@ export function navOfScope(scope: string | null | undefined): string | null {
   }
   return null
 }
+
+/**
+ * 锁 scope → 一个能点过去的落点。`navOfScope` 只回答「哪一屏」，但几个模块的锁串里还带着
+ * **第二维**（台账的公司 / 附10 的期区 / 三大报表的公司 / 附13-14 是哪一张）——
+ * 不带过去就会落到目标屏的默认子视图，而那里恰恰没有人在编辑（2026-09-06 复查实跑坐实）。
+ * 充电桩不用管：`NAV_SCOPE_PREFIX` 已经把 `sched:charging:7` / `:8` 分成两个 nav value。
+ */
+export function scopeTarget(scope: string | null | undefined):
+  { v: string; p: string | null; co?: number | string; tab?: string } | null {
+  const v = navOfScope(scope)
+  if (!v || !scope) return null
+  const g = scope.split(':')
+  const out: { v: string; p: string | null; co?: number | string; tab?: string } = { v, p: scopePeriod(scope) }
+  if (g[0] === 'ledger') out.co = g[1]                                   // ledger:{co}:{ym}
+  else if (g[0] === 'report') out.co = g[2]                              // report:{stmt}:{co}:{ym}
+  else if (g[0] === 'sched' && g[1] === 's10') out.co = g[2]             // sched:s10:{期区}:{ym}
+  else if (g[0] === 'sched' && g[1] === 'utilities') out.tab = g[2] === '14' ? 'phase3' : 'office'
+  return out
+}

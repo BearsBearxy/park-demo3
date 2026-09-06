@@ -24,7 +24,7 @@ import Button from '@/components/ds/Button.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
-import { NAV_SCOPE_PREFIX, navOfScope, scopePeriod } from '@/utils/lockScopes'
+import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf, chainLabel } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
@@ -55,21 +55,31 @@ const inbox = ref(false)
 const isSupervisor = computed(() => auth.can('lock:takeover') || auth.can('system:view'))
 
 // 「谁在编辑」—— 一人一枚 chip,取 editScopes[0](裁定 4:32px 定高装不下 N 人 × M 把锁,
-// 要回答的是「谁卡在哪」而不是「都握了哪些锁」)。屏名沿用 chainLabel(nav/fpNav 的 ROUTES.page,
-// 与侧栏 / 页签同一张表,不新开一张)。
-const editors = computed(() => presence.others
-  .filter(u => u.mode === 'edit' && u.editScopes.length)
-  .map(u => {
-    const sc = u.editScopes[0]
-    const v = navOfScope(sc)
-    return { sid: u.sid, name: u.displayName, v, p: scopePeriod(sc),
-             note: [u.displayName, v ? chainLabel(v) : null, scopePeriod(sc)].filter(Boolean).join(' · ') }
-  }))
+// 要回答的是「谁卡在哪」而不是「都握了哪些锁」)。按 user 去重(不是 sid)—— presence 的单位是
+// 座位不是人,同一个人开两个标签页会出两个 sid、两枚一模一样的 chip(fix-brief FC)。
+// 屏名读座位自带的 label(AppShell 按 route.path 实时写的「此刻真的在哪一屏」),为空才回落
+// chainLabel(v);跳转目标另读 scopeTarget(锁串的第二维:公司/期区/tab)—— 两者是两个不同的源,
+// 文案与目的地各走各的(fix-brief FB)。
+const editors = computed(() => {
+  const seatsByUser = new Map<string, (typeof presence.others)[number]>()
+  for (const u of presence.others)
+    if (u.mode === 'edit' && u.editScopes.length && !seatsByUser.has(u.user)) seatsByUser.set(u.user, u)
+  return [...seatsByUser.values()].map(u => {
+    const target = scopeTarget(u.editScopes[0])
+    return { sid: u.sid, target,
+             note: [u.displayName, u.label ?? (target ? chainLabel(target.v) : null), target?.p]
+               .filter(Boolean).join(' · ') }
+  })
+})
 
-function goEditor(e: { v: string | null; p: string | null }) {
-  if (!e.v || !confirmRebuild(e.v)) return
-  tabsStore.openFresh(e.v)
-  router.push(e.p ? periodLink(e.v, { p: e.p }) : '/' + e.v)
+// chip 点跳:目标带上 scopeTarget 给的第二维(co/tab),不止带期(fix-brief FA)——
+// 锁串本身带着「台账的公司 / 附10 的期区 / 三大报表的公司 / 附13-14 是哪一张」,不带过去就会
+// 落到目标屏的默认子视图,而那里恰恰没有人在编辑。⚠ co 照实传字符串,别转 number:
+// 转一道只会给非数字期区制造 NaN。
+function goEditor(t: ReturnType<typeof scopeTarget>) {
+  if (!t || !confirmRebuild(t.v)) return
+  tabsStore.openFresh(t.v)
+  router.push(t.p ? periodLink(t.v, { p: t.p, co: t.co, extra: t.tab ? { tab: t.tab } : undefined }) : '/' + t.v)
 }
 
 const ov = ref<DataHomeOverviewDTO | null>(null)
@@ -257,7 +267,7 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
         {{ presence.approvals.length ? `待批授权 ${presence.approvals.length}` : '暂无待批' }}
       </button>
       <div class="dh-sup-who">
-        <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e)">{{ e.note }}</button>
+        <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e.target)">{{ e.note }}</button>
       </div>
     </div>
     <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { S, NAV_SCOPE_PREFIX, scopePeriod, navOfScope } from './lockScopes'
+import { S, NAV_SCOPE_PREFIX, scopePeriod, navOfScope, scopeTarget } from './lockScopes'
 
 describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
   describe('§3.2 出账链必须共占同一把月锁', () => {
@@ -252,6 +252,17 @@ describe('编辑锁作用域表（CONCURRENCY-SPEC §3.1）', () => {
       expect(navOfScope('meters')).toBe('meters')
       // scope.startsWith(p + '-'):分隔符是连字符而非冒号的边界(与 editorsUnder 逐字同形)
       expect(navOfScope('meters-legacy:2020')).toBe('meters')
+    })
+
+    it('scopeTarget 五族各带一次第二维 —— 不止带期(2026-09-06 fix-brief FA)', () => {
+      expect(scopeTarget('ledger:3:2025-06')).toEqual({ v: 'ledger', p: '2025-06', co: '3' })
+      expect(scopeTarget('report:is:1:2025-06')).toEqual({ v: 'income-statement', p: '2025-06', co: '1' })
+      expect(scopeTarget('sched:s10:1:2025-06')).toEqual({ v: 'sales-income', p: '2025-06', co: '1' })
+      expect(scopeTarget('sched:utilities:14:2025')).toEqual({ v: 'utilities', p: '2025', tab: 'phase3' })
+      // 出账链共占锁:没有第二维,co/tab 都不带
+      expect(scopeTarget('billing-chain:2025-06')).toEqual({ v: 'params', p: '2025-06' })
+      expect(scopeTarget(null)).toBeNull()
+      expect(scopeTarget('unknown-prefix:1')).toBeNull()
     })
   })
 })

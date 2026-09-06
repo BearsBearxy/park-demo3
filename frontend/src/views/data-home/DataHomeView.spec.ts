@@ -6,6 +6,7 @@ import type { DataHomeOverviewDTO, DataHomeStepDTO, DataHomeItemDTO } from '@/ty
 import type { Pending } from '@/api/approvals'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
+import { useTabsStore } from '@/stores/tabs'
 import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
@@ -750,9 +751,9 @@ describe('数据中心首页 · 年份条(P2 T4)', () => {
 // ── 主管条(P2 T6):presence.approvals(20 秒一拍的 ping 顺带带回,不加新请求)+「谁在编辑」chips。
 //    外层唯一允许的 v-if 是权限判(有没有这个角色),数据 v-if 一律禁 —— 32px 定高常驻(裁定 1/2)。 ──
 describe('数据中心首页 · 主管条(P2 T6)', () => {
-  function seatEditor(displayName: string, editScopes: string[]) {
+  function seatEditor(displayName: string, editScopes: string[], label: string | null = null) {
     return { sid: 's-' + displayName, user: displayName, displayName, role: null,
-             scope: editScopes[0] ?? null, label: null, mode: 'edit' as const,
+             scope: editScopes[0] ?? null, label, mode: 'edit' as const,
              editScopes, sinceMs: 0, idleMs: 0, self: false }
   }
   function pending(id: string): Pending {
@@ -770,6 +771,7 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     // 交互态词表里没有 approvals),只有这条能守住。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
     expect(w.find('.dh-sup').exists()).toBe(true)
+    expect(w.find('.dh-sup').isVisible(), '不许被 display:none 之类藏掉(候选9)').toBe(true)
     expect(w.find('.dh-sup').text()).toContain('暂无待批')
   })
 
@@ -794,15 +796,30 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     expect(w.findComponent({ name: 'FPApprovalDrawer' }).exists()).toBe(true)
   })
 
-  it('主管条:「谁在编辑」chip 显 姓名 · 屏名 · 期,点跳到那一屏那一期', async () => {
+  it('主管条:「谁在编辑」chip 点跳带上锁串的第二维(公司/期区/tab),不止带期(fix-brief FA)', async () => {
+    // 锁串本身带着第二维:ledger:{co}:{ym} 的 co 是公司。改前 goEditor 只发 periodLink(v,{p}),
+    // 目标屏收到的 co 是 null,落到默认子视图(首册)—— 那里恰恰没有人在编辑(2026-09-06 复查坐实)。
     const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
-    usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06'])]
+    usePresenceStore().users = [seatEditor('张三', ['ledger:3:2025-06'])]
     await w.vm.$nextTick()
     const chip = w.find('.dh-sup-chip')
-    expect(chip.text()).toContain('张三')
-    expect(chip.text()).toContain('2025-06')
+    expect(chip.text()).toBe('张三 · 月度台账 · 2025-06')
     await chip.trigger('click')
-    expect(push).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ p: '2025-06' }) }))
+    expect(push).toHaveBeenLastCalledWith({ path: '/ledger', query: { p: '2025-06', co: '3' } })
+    // openFresh 真的调了 —— 确认框弹了却什么都没重建,等于弹了个谎(fix-brief FD)。
+    expect(useTabsStore().epochOf('ledger')).toBe(1)
+  })
+
+  it('主管条:chip 文案的屏名读座位自带的 label,与跳转目标是两个不同的源(fix-brief FB)', async () => {
+    // 出账链共占锁下(billing-chain)四分之三时间握锁的人不在「计费参数」屏 —— 文案该读
+    // AppShell 按 route.path 实时写的 label(此刻真的在哪一屏),目的地仍读 scopeTarget(哪把锁)。
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06'], '数据 · 催缴单')]
+    await w.vm.$nextTick()
+    const chip = w.find('.dh-sup-chip')
+    expect(chip.text()).toBe('张三 · 数据 · 催缴单 · 2025-06')
+    await chip.trigger('click')
+    expect(push).toHaveBeenLastCalledWith({ path: '/params', query: { p: '2025-06' } })
   })
 
   it('主管条:一人握两把锁只出一枚 chip(取 editScopes[0])', async () => {
@@ -811,6 +828,35 @@ describe('数据中心首页 · 主管条(P2 T6)', () => {
     usePresenceStore().users = [seatEditor('张三', ['billing-chain:2025-06', 'ledger:3:2025-06'])]
     await w.vm.$nextTick()
     expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+    // 取位(候选8):两把锁反查出不同 nav(billing-chain→params,ledger→ledger),
+    // 钉住取的是 editScopes[0] 那把 —— 换成 .at(-1) 这条也要翻脸。
+    await w.find('.dh-sup-chip').trigger('click')
+    expect(push).toHaveBeenLastCalledWith({ path: '/params', query: { p: '2025-06' } })
+  })
+
+  it('主管条:同一个人开两个标签页只出一枚 chip(按 user 去重,不是按 sid)(fix-brief FC)', async () => {
+    // presence 的单位是座位不是人(presence.ts:52)——张三在标签页 A/B 各开一屏编辑态,
+    // 两个 sid 若都保留就是两枚一模一样的 chip,主管读成两个人在抢。
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [
+      { ...seatEditor('张三', ['billing-chain:2025-06']), sid: 's-a' },
+      { ...seatEditor('张三', ['ledger:3:2025-06']), sid: 's-b' },
+    ]
+    await w.vm.$nextTick()
+    expect(w.findAll('.dh-sup-chip')).toHaveLength(1)
+  })
+
+  it('主管条:「谁在编辑」只数编辑态的别人 —— 自己不占位,mode=view 的不算(候选13)', async () => {
+    const w = await mountWith({}, { perms: [...EDITOR_PERMS, 'lock:takeover'] })
+    usePresenceStore().users = [
+      { ...seatEditor('张三', ['ledger:3:2025-06']), self: true },
+      { ...seatEditor('李四', ['ledger:5:2025-06']), mode: 'view' as const },
+      seatEditor('王五', ['ledger:7:2025-06']),
+    ]
+    await w.vm.$nextTick()
+    const chips = w.findAll('.dh-sup-chip')
+    expect(chips).toHaveLength(1)
+    expect(chips[0].text()).toBe('王五 · 月度台账 · 2025-06')
   })
 
   // 破坏验证(Step 6)实测坐实的空白:goEditor 去掉 confirmRebuild 调用后,既有 6 条一条不红——
