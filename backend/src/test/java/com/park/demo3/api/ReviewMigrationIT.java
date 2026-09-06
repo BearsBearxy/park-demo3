@@ -36,6 +36,19 @@ class ReviewMigrationIT extends AbstractMysqlIT {
         populator.execute(jdbc.getDataSource());
     }
 
+    /**
+     * 无论用例走到哪一步失败,都把种子原样种回去。
+     *
+     * 本用例开头的两条 DELETE 会被随后 CREATE TABLE 的**隐式提交**带着一起落库,类上的
+     * @Transactional 挡不住;若 applyMigration 中途炸掉,复用容器(testcontainers.reuse.enable=true)
+     * 里的 reviewer 种子就永久没了 —— 下一次跑 RoleApiIT 会红在一个和它自己毫无关系的地方,
+     * 正是 AbstractMysqlIT 头注释里那个「单跑绿、连跑红」。重放是幂等的,兜底零代价。
+     */
+    @org.junit.jupiter.api.AfterEach
+    void reseed() {
+        applyMigration();
+    }
+
     private List<String> columnsOf(String table) {
         return jdbc.queryForList("SELECT column_name FROM information_schema.columns "
                 + "WHERE table_schema = DATABASE() AND table_name = ?", String.class, table);
