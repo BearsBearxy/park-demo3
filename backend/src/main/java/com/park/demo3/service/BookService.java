@@ -16,6 +16,7 @@ import com.park.demo3.mapper.LedgerBookMapper;
 import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.S10RecordMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -299,6 +300,7 @@ public class BookService {
     // 按月独立之后,原地改写会把所有钉在该版的月份一起改掉 ——「只带走当前月」当场沦为谎话,
     // 所以旧的「轻改动就地更新」整条路废除,structural 恒 true。
     @Transactional
+    @NoReviewGuard(reason = "账册模板已有同型守卫 assertMonthEditable(P6 录入即冻结);模板不是期间数据,spec §7.1 无键")
     public TemplateSaveResultDTO saveTemplate(Integer bookId, TemplateSaveReq req) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");
@@ -343,6 +345,7 @@ public class BookService {
 
     /** 显式钉版(选择器)。已录入的月份拒绝(P6)。 */
     @Transactional
+    @NoReviewGuard(reason = "账册模板已有同型守卫 assertMonthEditable(P6 录入即冻结);模板不是期间数据,spec §7.1 无键")
     public BookDTO pinVersion(Integer bookId, PinReq req) {
         LedgerBook b = books.selectById(bookId);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "账册不存在");

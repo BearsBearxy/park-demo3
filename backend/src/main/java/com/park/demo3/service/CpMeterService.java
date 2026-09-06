@@ -15,6 +15,7 @@ import com.park.demo3.entity.ChargingRecord;
 import com.park.demo3.entity.CpPowerUsage;
 import com.park.demo3.entity.CpReading;
 import com.park.demo3.entity.CpStation;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.mapper.ChargingRecordMapper;
 import com.park.demo3.mapper.CpPowerUsageMapper;
 import com.park.demo3.mapper.CpReadingMapper;
@@ -67,6 +68,7 @@ public class CpMeterService {
         return stations.selectAllSorted().stream().map(CpMeterService::toStationDTO).toList();
     }
 
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpStationDTO createStation(CpStationReq req) {
         String name = req.name().trim();
         if (stations.selectCount(new QueryWrapper<CpStation>().eq("name", name)) > 0)
@@ -81,6 +83,7 @@ public class CpMeterService {
     }
 
     @Transactional
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpStationDTO updateStation(Integer id, CpStationReq req) {
         CpStation s = stations.selectById(id);
         if (s == null) throw new BizException(ResultCode.NOT_FOUND, "充电桩不存在");
@@ -115,6 +118,7 @@ public class CpMeterService {
         }
     }
 
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public void deleteStation(Integer id) {
         if (stations.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "充电桩不存在");
         if (readings.countByStation(id) > 0)
@@ -140,6 +144,7 @@ public class CpMeterService {
             .map(r -> toReadingDTO(r, names.get(r.getStationId()))).toList();
     }
 
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpReadingDTO createReading(CpReadingReq req) {
         CpStation station = stations.selectById(req.stationId());
         if (station == null) throw new BizException(ResultCode.CONFLICT, "充电桩不存在");
@@ -156,6 +161,7 @@ public class CpMeterService {
     }
 
     // PUT:改日期/三金额/备注;station 不可改
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpReadingDTO updateReading(Integer id, CpReadingReq req) {
         CpReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
@@ -171,6 +177,7 @@ public class CpMeterService {
         return toReadingDTO(readings.selectById(id), station == null ? null : station.getName());
     }
 
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public void deleteReading(Integer id) {
         if (readings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         readings.deleteById(id);
@@ -219,6 +226,7 @@ public class CpMeterService {
     }
 
     // upsert:uk(运营商,类型,月)有则改无则插;返回带派生损耗的行
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpPowerUsageDTO upsertPowerUsage(CpPowerUsageReq req) {
         LocalDate period = LocalDate.of(req.year(), req.month(), 1);
         String operator = req.operator().trim();
@@ -254,6 +262,7 @@ public class CpMeterService {
     private static final BigDecimal LOSS_FACTOR = new BigDecimal("1.05"); // 电表=Σ充电量×1.05(5% 损耗假设)
 
     @Transactional
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public CpSimulateResultDTO simulate(int year) {
         Map<String, CpStation> byName = stations.selectList(null).stream()
             .collect(Collectors.toMap(s -> s.getName().trim(), Function.identity(), (a, b) -> a));
@@ -323,6 +332,7 @@ public class CpMeterService {
     // ── 导入:行自带 station(桩名)+readDate。(桩,日)幂等 upsert=先删同(桩,日)再插,重导修正即覆盖。
     //   未知桩名/非法日期/负金额=行级错误跳过,不整批拦截(风格同 PvMeterService.importRows)。 ──
     @Transactional
+    @NoReviewGuard(reason = "充电桩分桩抄表是附表7/8 的下游派生第二本账,不回写 charging_record;spec §7.1 无键,本轮不进审核")
     public ImportResultDTO importRows(CpMeterImportRequest req) {
         Map<String, CpStation> byName = stations.selectList(null).stream()
             .collect(Collectors.toMap(s -> s.getName().trim(), Function.identity()));

@@ -59,6 +59,9 @@
 | E-7 | T6/T7/T8 各自新建 IT 文件 | `ReviewGuardChainIT` / `ReviewGuardBookingIT` / `ReviewGuardElecIT`。不往 `ReviewGuardIT` 里塞 —— 那个是非 HTTP 的守卫单元测试，混进 HTTP 用例会让两种失败模式纠缠 |
 | E-8 | `ReviewGuard` 的 `assertNoLockedMonth` 只用于**参数/规则的长期默认行** | 计划原写「rechain 也用它」，T7 的裁定 R-2 已改成逐行守在真正要 `updateById` 的那一行 |
 | E-9 | **R-4 的一个副作用，等用户裁定** | `AllocService.createRule` 带初始分母时会 `saveCfg(scope="rule:<新id>", key="coefficient", acctMonth="")` → `ParamService.write` → `assertNoLockedMonth(PARAMS, null)`。于是 **params 只要有任一月 submitted/approved，「新建公摊池（带初始分母）」就永久 423**，文案还说的是「计费参数已审核」。试过按「这个键没有历史行就放行」收窄——**不成立**：key 是 `coefficient`，它在别的池下有大量行；改按 (key, scope) 判又会在 `scope="p1"` 这类情况下放行真正的口径修改。已撤回，保持 R-4 原样 |
+| E-10 | T8:`ElecCostService` 的守卫落在私有 `writeEntry` 一处,但**只有两个** public 转调它 | 计划猜的是「三个 public 共用 `writeEntry`」。实际 `upsertEntry` / `importRows` 走 `writeEntry`,`simulate` 走另一条私有路径(`upsertSim` + `insertCfgIfAbsent`)—— 所以 simulate 单独挂整年批量闸,两个转调的 public 各挂 `@NoReviewGuard` 指过去 |
+| E-11 | T8:`ElecCostService` 的电表档案 CRUD(`createMeter`/`updateMeter`/`deleteMeter`)进白名单 | 计划没点到这三个,但它们是 controller 可达的写方法,T9 的覆盖率推导会扫到。`elec_meter` 不带期间,照 `MeterService` 表档案那三条的先例写理由 |
+| E-12 | T8:白名单注解比计划多 —— `PvMeterService` 8 个(计划写 5)、`CpMeterService` 9 个(计划写 6) | 计划只数了抄表读数那几个,漏了电站档案 CRUD 与 `CpMeterService.upsertPowerUsage`。按 controller 可达的写方法逐个标,数字以代码为准 |
 
 **两个自查踩到的坑，写给后面的 Task：**
 - 块注释里不许出现 `*/` —— `/api/review/*/submit` 会提前闭合 javadoc，编译炸在莫名其妙的行上。用 `{key}`。
