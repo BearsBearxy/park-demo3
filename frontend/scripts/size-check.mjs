@@ -54,7 +54,21 @@ const BUDGET_KB = {
 //     新屏没夹带任何重库进来(heatmap/visualMap/calendar 全部手写 CSS Grid 与内联 SVG,
 //     正是为了不往 echartsBundle 里加东西)。这是这次敢签字的前提:涨的是新功能本身,不是失控。
 //   实测 3763.1 → 3869.1,取 3900 留 ~31KB 余量(跨平台构建有 ~1KB 差,见 index 那条的教训)。
-const TOTAL_KB = 3900
+// 2026-09-07 上调 3900 → 3950(+50KB)。**这是一次签字决定,理由写在这里**:
+//   审核机制前端(R2,SIDEBAR-UX-REDESIGN §7.5)。实测 master 3896.3 → 本分支 3918.3,**净 +22.0KB**。
+//   构成:三条编辑闸各自的判据接线(useEditMode / SchedHeader / LedgerWideTable)、
+//   12 个消费屏各自声明的审核键、四张年表屏的行级锁(sched/reviewLock + useSchedScreen)、
+//   本月出账屏的审核态列 / 行动作 / 审核条、FPReviewDialog、stores+types+api/review。
+//   ⚠ **首屏 index 只涨 0.2KB(186.1 → 186.3)** —— 贵的那部分全落在各屏自己的懒加载块里
+//     (BillNoticesView / MeterView / LedgerView / ElecView / PoolLedgerView / PvView /
+//      ChargingView / ParamCenterView 各摊一点)。三个重块 exceljs / echarts / vue 一字节没动。
+//   没做进一步瘦身就上调的理由:这 22KB 是 12 个屏各自的功能代码,没有可提取的公共大块;
+//   唯一能懒的 FPReviewDialog 本来就在 DataHomeView 的块里,拆出去总量不变(且换回一层
+//   「点了还要再等一拍」的时序,R2 T6 已经因此栽过一次)。
+//   取 3950 留 ~32KB 余量,与 2026-09-03 那次同口径(跨平台构建有 ~1KB 差,见 index 那条的教训)。
+//   ⚠ 顺带记一笔:改前 master 实测 3896.3 / 预算 3900 —— 只剩 3.7KB,任何一个新功能都会撞线。
+//     下一个人动这里之前先看看总量是不是又贴着线了。
+const TOTAL_KB = 3950
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。
