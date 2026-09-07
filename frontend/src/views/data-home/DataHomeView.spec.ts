@@ -1104,6 +1104,86 @@ describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
   })
 })
 
+// ══════════ 屏不许闪(2026-09-08) ══════════
+//
+// stores/__tests__/review.spec.ts 那几条守的是 store 手上有没有值;这四条守的是**屏**。
+// 两层都要:store 的 batch() 不逐把收尾是一回事,视图有没有接对是另一回事 ——
+// runEach 若改回逐把调 submitAll([k]),store 那几条照样绿而屏照样闪。
+//
+// 手法:把动作之后那趟清单重取**悬在半空**,DOM 就稳定停在「已失效、新值未到」那一帧,
+// 直接断言屏上的字与动作之前逐字相同。不用 MutationObserver、不用数 nextTick。
+// 靶子选附13/14 那一行:夹具里办公水电与三期水电都 done,折成一行两把键 —— 正是用户说的多键行。
+describe('❗审核动作期间清单不许出现空帧', () => {
+  beforeEach(() => {
+    vi.mocked(reviewApi.list).mockReset().mockResolvedValue([])
+    vi.mocked(reviewApi.submit).mockReset().mockResolvedValue(undefined)
+  })
+  const texts = (w: Awaited<ReturnType<typeof mountWith>>) => w.findAll('.dh-rreview').map(e => e.text())
+
+  // ❗破坏验证:把 review.ts 的 invalidate 改回「立刻 delete」→ 红。
+  //   那一帧 reviewRows 变 null,每一格都退成「—」、动作按钮整组从 DOM 消失。
+  //   两条断言各对应用户原话的一半:「不停闪烁」与「一个一个变绿」。
+  it('❗多键行交审:重取在途时,屏上还是动作之前那一屏', async () => {
+    const w = await mountReview(reviewFixture())
+    const before = texts(w)
+    const btns = w.findAll('.dh-abtn').length
+    let release!: (v: ReviewRow[]) => void
+    vi.mocked(reviewApi.list).mockImplementationOnce(() => new Promise<ReviewRow[]>(r => { release = r }))
+    await btn(rowByText(w, '办公·三期水电'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(texts(w), '重取在途时整屏退成「—」就是用户看见的那一闪').toEqual(before)
+    expect(w.findAll('.dh-abtn').length, '动作按钮整组消失是同一帧的另一半').toBe(btns)
+    release(reviewFixture({ [`utilities:office:${YM}`]: { status: 'submitted' },
+                            [`utilities:phase3:${YM}`]: { status: 'submitted' } }))
+    await flushPromises()
+    expect(rowByText(w, '办公·三期水电').find('.dh-rreview').text(), '新值到了才换').toBe('待审核')
+  })
+
+  // ❗破坏验证:把 runEach 里的 `await fn(keys)` 改回 `for (const k of keys) await fn([k])` → 红(会是 2)。
+  it('❗一行两把键只重取一次清单 —— 逐把收尾就是「一个一个变绿」', async () => {
+    const w = await mountReview(reviewFixture())
+    const before = vi.mocked(reviewApi.list).mock.calls.length
+    await btn(rowByText(w, '办公·三期水电'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.submit, '两把键各写一次').toHaveBeenCalledTimes(2)
+    expect(vi.mocked(reviewApi.list).mock.calls.length - before, '清单只重取一次').toBe(1)
+  })
+
+  // ❗破坏验证:删掉 runEach 里那句 period.reloadChain() → 红。
+  //   月格的 ✓ 读 billingPeriod 的 closedMonths,而审核动作本来不碰那条链 ——
+  //   不补这一句,审完当月最后一把键月格也不打勾,要等下次进屏。
+  it('❗审完当月最后一把键,年份条那格立刻打勾', async () => {
+    vi.mocked(reviewApi.closedMonths).mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([YM])
+    const w = await mountReview(reviewFixture({ [`params:${YM}`]: { status: 'submitted' } }),
+                                [...EDITOR_PERMS, 'review:approve'])
+    const cell = () => (w.findComponent({ name: 'BookMonthMatrix' }).props('years') as
+        { year: number; months: { month: number; locked?: boolean }[] }[])
+        .find(y => y.year === 2024)!.months.find(m => m.month === 2)!
+    expect(cell().locked, '动作之前没打勾').toBe(false)
+    await btn(rowByText(w, '计费参数'), '通过')!.trigger('click')
+    await flushPromises()
+    expect(cell().locked, '不重取 closedMonths 的话要等下次进屏才打勾').toBe(true)
+  })
+
+  // ❗破坏验证:把 runEach 里的 try/finally 拆掉(改回顺序执行)→ 红。
+  //   6 把键审到第 3 把失败时,前两把已经写进服务端,其中可能正好有解锁整月的那一把 ——
+  //   不刷的话清单已经变了而 ✓ 停在动作之前。
+  it('❗中途失败也要刷年份条 —— 失败之前那几把已经写进去了', async () => {
+    vi.mocked(reviewApi.closedMonths).mockReset().mockResolvedValue([])
+    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.mocked(reviewApi.submit).mockReset()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 409 }))
+    const w = await mountReview(reviewFixture())
+    await btn(rowByText(w, '办公·三期水电'), '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.closedMonths, '进屏一趟 + 动作后一趟').toHaveBeenCalledTimes(2)
+  })
+})
+
+
 describe('退回 / 撤销弹窗(R2 T6)', () => {
   beforeEach(() => {
     vi.mocked(reviewApi.list).mockReset().mockResolvedValue([])

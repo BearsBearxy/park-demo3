@@ -148,9 +148,8 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
 
   /** 写操作之后(生成本月 / 重算 / 保存读数)强制重取,矩阵立刻反映。 */
   async function reloadChain(): Promise<void> {
-    loaded.value = false
-    inflight = null
-    return loadChain()
+    inflight = fetchAll().finally(() => { inflight = null })
+    return inflight
   }
 
   return {

@@ -193,6 +193,24 @@ describe('出账链组级账期', () => {
       await s.reloadChain()
       expect(s.cellOf('2025-01').pool).toBe(true)
     })
+
+    // ❗破坏验证:把 `loaded.value = false; inflight = null; return loadChain()` 加回 reloadChain → 红。
+    //   年份条读 loaded 决定给不给 pips/locked(DataHomeView 的 yearRows):翻假的那一帧
+    //   12×N 个月格的工序点与 ✓ 整块消失,刚抄完读数的月还会被画成虚线「空」卡。
+    //   这一条是 2026-09-08 加「审核动作后刷年份条」时顺出来的 —— 那句 reloadChain 本身
+    //   会把闪从清单挪到它正上方的年份条,五个既有调用方(抄表/公摊/催缴单/参数保存)一直白一下。
+    it('❗reload 在途时旧格子留着 —— 不许先白一帧', async () => {
+      wire({ meters: ['2025-01'] })
+      const s = useBillingPeriodStore()
+      await s.loadChain()
+      let release!: (v: string[]) => void
+      vi.mocked(metersApi.months).mockReturnValueOnce(new Promise<string[]>(r => { release = r }))
+      const p = s.reloadChain()
+      expect(s.loaded, '在途时仍算已加载,否则 pips/locked 整块不给').toBe(true)
+      expect(s.cellOf('2025-01').meters, '旧格子要留着').toBe(true)
+      release(['2025-01']); await p
+      expect(s.cellOf('2025-01').meters).toBe(true)
+    })
   })
 })
 

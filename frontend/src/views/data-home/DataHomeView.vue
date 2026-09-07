@@ -401,9 +401,12 @@ async function runAction(key: string, fn: () => Promise<unknown>) {
  * 放在这里不放 store:整年那排月格只有本屏在画,store 不必认识 billingPeriod。
  */
 async function runEach(keys: string[], fn: (keys: string[]) => Promise<unknown>) {
+  if (!keys.length) return
   await runAction(keys.join('|'), async () => {
-    await fn(keys)
-    period.reloadChain().catch(() => { /* ✓ 没刷上不算动作失败,下次进屏会对 */ })
+    try { await fn(keys) }
+    finally {
+      void period.reloadChain().catch(() => { /* noop */ })
+    }
   })
 }
 
