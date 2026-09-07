@@ -249,7 +249,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 后端（D6）✅ | `UserPermissionCache.UserAuth` 加 `List<String> roleNames`（已 join `auth_user_role`）；`LoginResp` 与 `SeatDTO` 同时改读它；`FPPresenceBar.vue:59` 显真名（零改动，它读的就是 `SeatDTO.role`）。⚠ **是 7 个预置角色不是 6 个** —— `reviewer` 是 R1 的 V124 加的，本行写于它之前 |
 | 落地页（`navAccess.landingPath`）✅ | 加参 `readonly`（零 `:edit`）与 `reviewer`（`can('review:approve')`）：`reviewer && navLayers.includes('data')` → `/data-home`；`readonly && navLayers.includes('analysis')` → `/cockpit`；其余沿用三档。**两档次序不能反** —— 审核员本身零 `:edit`（D16 录审分离），readonly 在前会把他也送去驾驶舱。⚠ 调用点是**六处不是四处**：规范只点了 `router/index.ts` 那四处，`LoginView` 与 `ChangePasswordView` 也各调一次。实施时四个判据收进 `auth.landing` 一个 computed，六处全改读它 —— 各传一遍的话漏传一个不报错，只是那条路径悄悄回到旧的三档 |
 | 基底页签 ✅ | `tabs.baseHome()` 改取 `auth.landing.slice(1)`；`tabs.spec` 的默认身份改成「带一颗 `:edit` 的财务专员」（零权限的 store 会被判成只读 → 落驾驶舱，而那几条讲的是页签模型本身）。顺带收 P3 遗留：换人时整体重置 `tabs` / `preview` / `recent` / `epoch`（依赖 watcher 默认 `flush:'pre'` —— `login()` 里 `me` 比 `permissions` 先赋值，同步执行会拿上一个人的权限算落地页） |
-| `AnaEmpty.vue:11` ✅ | 「去录入」链接按 `isLayerVisible` 显隐（股东不被引到不可见层）。判在**组件里**而不是 17 个调用点：调用点只知道自己缺什么数、不知道看的人是谁，且漏掉一处不报错。`to` 先剥 `/` 与 query 再查导航表；查不到的目标一律放行（认不出来是导航表的问题，不该表现成「链接凭空少了一个」）。说明文字照旧全给 |
+| `AnaEmpty.vue:11` ✅ | 「去录入」链接按 `isLayerVisible` 显隐（股东不被引到不可见层）。判在**组件里**而不是 17 个调用点：调用点只知道自己缺什么数、不知道看的人是谁，且漏掉一处不报错。`to` 先剥 `/` 与 query 再查导航表；查不到的目标一律放行（认不出来是导航表的问题，不该表现成「链接凭空少了一个」）。说明文字照旧全给。**2026-09-08 补**：判据抽成 `navAccess.canReach(to, navLayers, canSystemView)` —— 屏内手写的 `RouterLink` 也是跨层引导，当初漏在门外（见 §12），两处不能各判一遍；新写的由 `crossLayerLinkGate.spec` 挡着 |
 | `IconRail` 命令钮 | 补 `aria-label="搜索 / 跳转"` |
 
 ---
@@ -416,8 +416,14 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 ## §12 已知边界
 
 - **P5 边界（2026-09-07 实施时新增）**：
-  - **`roleNames` 的顺序 = 挂载序**（`auth_user_role` 的返回序），后端不排序。兼岗账号「财务主管、系统管理员」还是「系统管理员、财务主管」取决于当初先挂哪个。要定序就得约定一个排序键（角色 id？builtin 优先？），而那是个显示口径决定，不该由我替客户拍。
+  - **`roleNames` 的顺序实际是 `role_id` 序，不是挂载序**（2026-09-07 复查订正：`auth_user_role` 的主键就是 `(user_id, role_id)`、**没有 id 列**，先挂哪个根本记不下来；`UserPermissionCache.reload()` 的 `selectList(null)` 无 ORDER BY，扫的是聚簇主键，于是同一个人的角色按 role_id 升序出来）。所以兼岗恒显「财务主管、审核员」（2、7）而不是反过来。**这是实现的副产物，不是约定** —— 想让它稳定就该显式写 `ORDER BY role_id`；想按别的序（builtin 优先、常用角色在前）是个显示口径决定，不该由我替客户拍。
   - **派生角色名没有「总经理」档**，见 §6 角色行那一行的 ⚠。
+  - ~~跨层引导只收住了 `AnaEmpty` 那 17 处，组件外的手写链接是漏网的~~ → **已解决（2026-09-08）**。2026-09-07 验收复查发现 `ParkView.vue` 的「去补录可租面积 →」（`/buildings`）与 `TenantPortfolioView.vue` 的「去租户管理补录类目」（`/tenants`）是直接写在模板里的 `RouterLink`，不经 `AnaEmpty`，园区股东照样点得进去。落法三件：
+    - **判据抽成 `navAccess.canReach(to, navLayers, canSystemView)`**，`AnaEmpty` 与那两屏共用一份。放 `navAccess.ts` 是因为 `isLayerVisible` 就在那儿、它已经是「导航可见性」的家；**不新开 composable** —— 三个调用点各省一行，不值一个新文件。
+    - **嵌在句子中间的那条要连着它前面的分号一起收进 `v-if`**，否则链接隐掉会剩「…改按期区呈现;。」。
+    - **新门禁 `crossLayerLinkGate.spec`** 才是真正堵住这一类的东西（改那两处只堵今天的洞，门禁堵的是明天再写一条）：扫 `views/analysis/**` 的手写 `RouterLink`，目标屏不在 analysis 层而那一行没问过 `canReach` 就红；另有两条自证 —— 正则认出的链接数与笨办法数出来的对不上就红（`:to` 动态绑定这类写法不许静默漏过），扫到的文件数有下限。
+    ⚠ 两个天花板写在门禁头注里：**只扫分析屏**（会被「送进回不来的屏」的前提是本人可见层比目标窄，7 个预置角色里只有园区股东少于三层；客户自建别的窄组合时把 `ROOT` 放宽到 `views/`，判据不用改）；**守卫离标签超过一行**（挂在外层 `div` 上）门禁看不见 → 误报 —— 误报是红的、有人会来看，漏报才致命，所以窗口宁可开小。
+  - **验收时可用的三张恒显空态卡**（不需要制造缺数据）：现金流量分析屏的「现金流量表数据待录入」→ 去报表中心、结构与续约屏的「续约风险」→ 去合同管理补录、资产负债分析屏的「资产负债趋势」→ 去录入资产负债表。另有一张条件型的：驾驶舱把年份切到没有损益附表的年（如 2026）→「X 年损益附表未录入」→ 去录入损益附表。
   - **在场座位的角色名只在会话第一拍取**：与 `displayName` 同一条既有代价（`PresenceService` 头注写着「改了显示名，已开着的标签页要到下次开页才更新」）。改角色同理。
   - **落地页不受当场授权影响**：`auth.landing` 读 `can()`，但它用到的两个权限点 `system:view` / `review:approve` 都在不可提权名单里，而 `isReadonly` 读的是 `permissions` 不是 `can` —— 三个判据一个都提不动。这是巧合成立的，不是设计出来的：往 landing 里加第四个判据前先核一遍。
   - **`auth_user.role` 那一列没动**：V32 的 JWT role claim 仍在签它，`LoginResp.role` 也仍在发它。P5 只是不再拿它当名字显示。删它要连 JWT 签发与老前端一起改，不在本期。
