@@ -2,11 +2,35 @@
 //(权限只决定「能不能改」,读全开:不可见层的屏本身照样能打开、数据照显)。
 // 刻意不在 fpNav.ts 源头过滤:fpAllPages()/fpBuildRoutes() 还要喂路由表、tabs store、TabStrip,
 // 源头砍掉会连路由记录一起没,跳转直接 404。这里只过滤「导航入口」。
-import { FP_NAV, type NavLayer } from './fpNav'
+import { FP_NAV, fpBuildRoutes, type NavLayer } from './fpNav'
 
 /** 单层可见性。「系统管理」层(id='system')不进 navLayers,按 system:view 判 —— 无权即整层不显示 */
 export function isLayerVisible(id: string, navLayers: string[], canSystemView = false): boolean {
   return id === 'system' ? canSystemView : navLayers.includes(id)
+}
+
+/** 屏 value → 元信息。导航表是常量,建一次。 */
+const ROUTES = fpBuildRoutes()
+
+/**
+ * 「这个人点了这条链接,到得了吗」—— 判的是**目标屏所在层**看不看得见。
+ *
+ * 路由是读全开的:不可见层的屏照样打得开、数据照显。所以「到不了」不是打不开,
+ * 而是**回不来** —— 侧边栏里没有那一层的入口,人落在那屏上没有任何返回路径。
+ * 给园区股东(只有经营分析层)一条「去台账录入」,就是把他送进这么一个地方。
+ *
+ * 收在这里而不是各屏自己判:判据只有一条,抄第二遍就会漂。跨层引导目前有两种长法 ——
+ * `AnaEmpty` 的 to(17 处)与屏内手写的 `RouterLink`(2 处) —— 两种都问这一个函数。
+ * 新写的那种由 `crossLayerLinkGate.spec` 挡着,不许再出现没问过就画的跨层链接。
+ *
+ * to 可以带 query / hash(深链空态),取第一段就是 nav value。**不认识的目标一律放行**:
+ * 认不出来是导航表的问题,不该表现成「链接凭空少了一个」。
+ */
+export function canReach(to: string | null | undefined, navLayers: string[],
+                         canSystemView = false): boolean {
+  if (!to) return false
+  const meta = ROUTES[to.replace(/^\//, '').split(/[?#]/)[0]]
+  return !meta || isLayerVisible(meta.layer, navLayers, canSystemView)
 }
 
 /** 图标栏/侧边栏要展示的层。返回 FP_NAV 里的原对象,可直接用引用比较 */
