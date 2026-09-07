@@ -17,7 +17,7 @@ const router = useRouter()
 
 // 当前账号菜单:头像接登录态(原为写死「周明」),点开显示账号+角色,可退出登录
 const auth = useAuthStore()
-const roleLabel = computed(() => (auth.isReadonly ? '只读账号' : '管理员(可写)'))
+
 function onLogout() {
   auth.logout()
   router.push('/login')
@@ -77,7 +77,7 @@ function goLayer(layer: NavLayer) {
         </template>
         <div class="fp-user-menu">
           <div class="fp-user-name">{{ auth.displayName ?? '未登录' }}</div>
-          <div class="fp-user-role" :class="{ ro: auth.isReadonly }">{{ roleLabel }}</div>
+          <div class="fp-user-role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
           <div class="fp-user-sep" />
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录
@@ -187,7 +187,9 @@ function goLayer(layer: NavLayer) {
 .fp-rail-user:hover { box-shadow: 0 0 0 3px rgba(28, 28, 28, 0.08); }
 .fp-user-menu { padding: 4px 6px; }
 .fp-user-name { font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.fp-user-role { display: inline-block; margin-top: 5px; font-size: 11px; color: var(--fill-blue); background: rgba(55, 138, 221, 0.1); border-radius: var(--radius-full); padding: 2px 9px; }
+/* 定上限 + 省略号:兼岗账号的真名是顿号拼的(「财务主管、系统管理员」),不封顶会把整个账号浮层撑宽 */
+.fp-user-role { display: inline-block; max-width: 176px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                margin-top: 5px; font-size: 11px; color: var(--fill-blue); background: rgba(55, 138, 221, 0.1); border-radius: var(--radius-full); padding: 2px 9px; }
 .fp-user-role.ro { color: var(--hue-orange); background: rgba(239, 159, 39, 0.12); }
 .fp-user-sep { height: 1px; background: var(--border-subtle); margin: 9px 0; }
 .fp-user-logout { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }

@@ -55,7 +55,12 @@ public class PresenceService {
         } else {
             AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, me));
             name = u == null || u.getDisplayName() == null ? me : u.getDisplayName();
-            role = u == null ? null : u.getRole();
+            // 角色名走权限快照,不读 auth_user.role —— 那一列存的是 'admin' / 'viewer' 代码,
+            // 头像组上显示内部标识等于没显示(D6)。多角色顿号拼,与前端 roleLabel 同形。
+            // 角色名走权限快照,不读 auth_user.role —— 那一列存的是 'admin' / 'viewer' 代码,
+            // 头像组上显示内部标识等于没显示(D6)。多角色顿号拼,与前端 roleLabel 同形。
+            UserPermissionCache.UserAuth ua = permCache.get(me);
+            role = ua == null || ua.roleNames().isEmpty() ? null : String.join("、", ua.roleNames());
         }
 
         Instant touched = req.lastActivityAt() == null

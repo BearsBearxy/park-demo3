@@ -245,11 +245,11 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 收藏 ★ | `aria-label="固定为常驻页签"`，`@click="tabs.pin(activeValue)"` |
 | 主题 ☀ | 删（`Toolbar.vue:65-67`） |
 | 搜索 | 按钮文案「搜索页面 / 分组（Ctrl K）」；`fpAllPages()` 输出加派生字段 `group = section.title`（`fpBuildRoutes` 不吃）；`filterPages` 增匹配 `group`；命令面板占位「输入页面名或分组名」 |
-| 角色行（`IconRail.vue:20` / `MobileNavDrawer`） | 读 `auth.roleLabel`：后端 `roleNames` 有值则显真名（多角色顿号拼）；无值按 `can('system:view')` → 系统管理员 / `can('review:approve')` → 审核员 / `can('lock:takeover')` → 财务主管 / 任一 `:edit` → 财务专员 / `navLayers` 仅 analysis → 园区股东 / 其余 → 只读账号，并标「（派生）」 |
-| 后端（D6） | `UserPermissionCache.UserAuth` 加 `List<String> roleNames`（已 join `auth_user_role`）；`LoginResp` 与 `SeatDTO` 同时改读它；`FPPresenceBar.vue:59` 显真名 |
-| 落地页（`navAccess.landingPath`） | 加参 `readonly`（零 `:edit`）与 `reviewer`（`can('review:approve')`）：`reviewer && navLayers.includes('data')` → `/data-home`；`readonly && navLayers.includes('analysis')` → `/cockpit`；其余沿用三档。`router/index.ts:90,106,124,130` 四处补传 |
-| 基底页签 | `tabs.baseHome()` 改取 `landingPath(...).slice(1)`；`tabs.spec:80-85` 断言随改 |
-| `AnaEmpty.vue:11` | 「去录入」链接按 `isLayerVisible` 显隐（股东不被引到不可见层） |
+| 角色行（`IconRail.vue:20` / `MobileNavDrawer`）✅ | 读 `auth.roleLabel`：后端 `roleNames` 有值则显真名（多角色顿号拼）；无值按 `can('system:view')` → 系统管理员 / `can('review:approve')` → 审核员 / `can('lock:takeover')` → 财务主管 / 任一 `:edit` → 财务专员 / `navLayers` 仅 analysis → 园区股东 / 其余 → 只读账号，并标「（派生）」。⚠ 派生表里**没有「总经理」这一档**：总经理与只读账号的权限完全相同（V101 头注写死），派生只能算出「只读账号」——「（派生）」那三个字因此是必需的，不标就是让人以为系统认得他。药丸 `max-width:176px` + 省略号：兼岗真名是顿号拼的，不封顶会撑宽账号浮层 |
+| 后端（D6）✅ | `UserPermissionCache.UserAuth` 加 `List<String> roleNames`（已 join `auth_user_role`）；`LoginResp` 与 `SeatDTO` 同时改读它；`FPPresenceBar.vue:59` 显真名（零改动，它读的就是 `SeatDTO.role`）。⚠ **是 7 个预置角色不是 6 个** —— `reviewer` 是 R1 的 V124 加的，本行写于它之前 |
+| 落地页（`navAccess.landingPath`）✅ | 加参 `readonly`（零 `:edit`）与 `reviewer`（`can('review:approve')`）：`reviewer && navLayers.includes('data')` → `/data-home`；`readonly && navLayers.includes('analysis')` → `/cockpit`；其余沿用三档。**两档次序不能反** —— 审核员本身零 `:edit`（D16 录审分离），readonly 在前会把他也送去驾驶舱。⚠ 调用点是**六处不是四处**：规范只点了 `router/index.ts` 那四处，`LoginView` 与 `ChangePasswordView` 也各调一次。实施时四个判据收进 `auth.landing` 一个 computed，六处全改读它 —— 各传一遍的话漏传一个不报错，只是那条路径悄悄回到旧的三档 |
+| 基底页签 ✅ | `tabs.baseHome()` 改取 `auth.landing.slice(1)`；`tabs.spec` 的默认身份改成「带一颗 `:edit` 的财务专员」（零权限的 store 会被判成只读 → 落驾驶舱，而那几条讲的是页签模型本身）。顺带收 P3 遗留：换人时整体重置 `tabs` / `preview` / `recent` / `epoch`（依赖 watcher 默认 `flush:'pre'` —— `login()` 里 `me` 比 `permissions` 先赋值，同步执行会拿上一个人的权限算落地页） |
+| `AnaEmpty.vue:11` ✅ | 「去录入」链接按 `isLayerVisible` 显隐（股东不被引到不可见层）。判在**组件里**而不是 17 个调用点：调用点只知道自己缺什么数、不知道看的人是谁，且漏掉一处不报错。`to` 先剥 `/` 与 query 再查导航表；查不到的目标一律放行（认不出来是导航表的问题，不该表现成「链接凭空少了一个」）。说明文字照旧全给 |
 | `IconRail` 命令钮 | 补 `aria-label="搜索 / 跳转"` |
 
 ---
@@ -383,7 +383,7 @@ fpNav 唯一事实源（无新字段，折叠按 `section.title` 派生）· 可
 | **P2** | §5.2 年份条 + 两栏清单 + 主管条 + 公司 chips + 后端 DTO + 在场点补全（§3.3）| 主管落地即知谁卡在哪 | 六计数任一源缺显「—」；chip 点击带 p/co；反向护栏不红 |
 | **R1** | §7.3 / §7.4 后端全部 | 审过的表任何入口都改不了 | 删掉某 service 的守卫调用 → 覆盖率测试红；已审核后写端点 423 |
 | **R2** ✅ | §7.5 前端全部 | 审核员有队列；录入方知道卡在谁手里 | 把 `approved` 改 `entered` → 编辑按钮出现；理由为空不能提交（实施时另做了 60+ 处破坏验证，五处偏离见 §7.5 / §12） |
-| **P5** | §6 落地页 + 角色行 + 后端 `roleNames` + `baseHome` | 总经理直落驾驶舱；六角色真名 | zero-edit 落 `/cockpit`；`reviewer` 落 `/data-home`；自建纯管理员仍 `/sys-users` |
+| **P5** ✅ | §6 落地页 + 角色行 + 后端 `roleNames` + `baseHome`（顺带 `AnaEmpty` 层门 + P3 遗留的 tabs 整体重置） | 总经理直落驾驶舱；七角色真名 | zero-edit 落 `/cockpit`；`reviewer` 落 `/data-home`；自建纯管理员仍 `/sys-users`（实施时 19 处破坏验证，四处偏离见 §6 各行的 ⚠） |
 | P6（可选） | 命令面板「本月」组（清单未完成行进面板） | Ctrl-K 直达 | `palette.spec` 3 + 1 组 |
 
 P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
@@ -414,6 +414,14 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 ---
 
 ## §12 已知边界
+
+- **P5 边界（2026-09-07 实施时新增）**：
+  - **`roleNames` 的顺序 = 挂载序**（`auth_user_role` 的返回序），后端不排序。兼岗账号「财务主管、系统管理员」还是「系统管理员、财务主管」取决于当初先挂哪个。要定序就得约定一个排序键（角色 id？builtin 优先？），而那是个显示口径决定，不该由我替客户拍。
+  - **派生角色名没有「总经理」档**，见 §6 角色行那一行的 ⚠。
+  - **在场座位的角色名只在会话第一拍取**：与 `displayName` 同一条既有代价（`PresenceService` 头注写着「改了显示名，已开着的标签页要到下次开页才更新」）。改角色同理。
+  - **落地页不受当场授权影响**：`auth.landing` 读 `can()`，但它用到的两个权限点 `system:view` / `review:approve` 都在不可提权名单里，而 `isReadonly` 读的是 `permissions` 不是 `can` —— 三个判据一个都提不动。这是巧合成立的，不是设计出来的：往 landing 里加第四个判据前先核一遍。
+  - **`auth_user.role` 那一列没动**：V32 的 JWT role claim 仍在签它，`LoginResp.role` 也仍在发它。P5 只是不再拿它当名字显示。删它要连 JWT 签发与老前端一起改，不在本期。
+  - **破坏验证的坑（工具问题，记着别再踩）**：用 `shutil.move` 还原被破坏的 Java 源文件会**保留旧 mtime**，maven 认为源比 class 新才重编 —— 结果被破坏的 class 留在 `target/`，下一趟 verify 红得莫名其妙。还原一律用重写（新 mtime），或 `touch` 一下。
 
 - **R2 边界（2026-09-07 实施时新增）**：
   - **撤销审核不发提醒，且做不到**：`withdraw` 是删行（`ReviewService.withdraw` 头注：不留 `returned`，理由进 `review_log`），`submitted_by` 随行一起没了，没有任何列能反查「这张表原来是谁交的」。退回的提醒（`PingResp.myReturned`）是从 `review_state WHERE status='returned' AND submitted_by=me` 派生的，零迁移且自清；撤销要发就得加列或加每人一份的已读位。

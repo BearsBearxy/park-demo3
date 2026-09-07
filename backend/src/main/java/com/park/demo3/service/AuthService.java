@@ -40,8 +40,9 @@ public class AuthService {
         UserPermissionCache.UserAuth ua = perms.get(u.getUsername());
         List<String> ps = ua == null ? List.of() : List.copyOf(ua.perms());
         List<String> nl = ua == null ? List.of("data", "reports", "analysis") : ua.navLayers();
+        List<String> rn = ua == null ? List.of() : ua.roleNames();
         return new LoginResp(jwt.generate(u.getUsername(), u.getRole()), u.getUsername(), u.getDisplayName(), u.getRole(),
-                             ps, nl, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
+                             ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
     }
     // 取 XFF 首段(nginx 用 $proxy_add_x_forwarded_for 透传)。首段是客户端自报值、可伪造,
     // 所以 IP 只是尽力而为的分桶维度,不是身份。

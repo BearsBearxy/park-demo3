@@ -13,11 +13,12 @@ export interface Tab { value: string }
 export interface TabCtx { p?: string; coName?: string }
 
 const MAX_RECENT = 8
-// 固定标签第一格。data-home 属「数据中心」层,园区股东看不到那一层 ——
-// 恒给他一个通向不可见层的入口,是他登录后第一眼就看见的坏。按导航可见层取首页。
+// 固定标签第一格 = 落地页(§6)。恒给一个通向不可见层的入口,是登录后第一眼就看见的坏;
+// 而落地页与第一格页签指的本就是同一件事「这个人进来先看哪一屏」,两处各判一次必然漂移
+// (P5 之前这里判 data 层、landingPath 判三档,总经理落驾驶舱却拿到 data-home 页签)。
 // logout() 会清 fp-app-tabs,换人登录不会继承上一个人的标签。
 function baseHome(): string {
-  return useAuthStore().navLayers.includes('data') ? 'data-home' : 'cockpit'
+  return useAuthStore().landing.slice(1)
 }
 
 function loadJSON<T>(key: string, fallback: T): T {
@@ -178,10 +179,20 @@ export const useTabsStore = defineStore('tabs', () => {
     openFresh(value, { pin: !!out && out !== value })
   }
 
-  // 换人(登入 / 登出)清掉本次会话的内存态。auth.logout() 只清三个 localStorage 键、
-  // 不重置已实例化的 store(tabs / preview / recent / epoch 至今都留着) —— 整体重置留给 P5,
-  // 这里先保证新用户看不到上一个人的期与公司名。
-  watch(() => useAuthStore().me, () => { ctx.value = {}; evicted.value = null })
+  // 换人(登入 / 登出)整体重置(P5 收 P3 遗留)。`auth.logout()` 只清三个 localStorage 键,
+  // store 实例还活着 —— 共享机器上换个人登进来,上一个人的页签、预览槽、最近访问原样都在,
+  // 而其中一半可能是他这个角色看不见的层的屏。
+  //
+  // ⚠ 依赖 watcher 的默认 flush:'pre'(微任务):`login()` 里 `me` 比 `permissions` /
+  //   `navLayers` 先赋值,同步执行的话 `baseHome()` 会拿上一个人的权限算落地页。
+  watch(() => useAuthStore().me, () => {
+    tabs.value = [{ value: baseHome() }]
+    preview.value = null
+    recent.value = []
+    epoch.value = {}
+    ctx.value = {}
+    evicted.value = null
+  })
 
   return {
     tabs, preview, recent, epoch, open, pin, close, epochOf, openFresh, dropState,

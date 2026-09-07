@@ -379,12 +379,12 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 
 | 落点 | 改什么 |
 |------|--------|
-| `stores/auth.ts` | 加 `permissions` ref（双轨存储口径同 token）+ `can(key)`（内部用 Set）。`isReadonly` 保留，退化成 `permissions.length === 0` |
+| `stores/auth.ts` | 加 `permissions` ref（双轨存储口径同 token）+ `can(key)`（内部用 Set）。`isReadonly` 保留，退化成 `permissions.length === 0`。**2026-09-07（P5）加** `roleNames`（后端 `auth_role.name`，双轨同口径）+ `roleLabel`（有真名显真名，无则按权限派生并标「（派生）」）+ `landing` |
 | **`api/index.ts:35`** | ⚠ **本次改造唯一的真实安全洞**：401 拦截器有自己一份清理列表 `['token','displayName','role']`。不加 `'permissions'`，token 过期后权限数组留在 storage 里，同一台机器下一个人登录会继承前一个人的权限 |
 | `nav/fpNav.ts` | **零改动**。`NavLayer.id` 已有 `data`/`reports`/`analysis`，导航过滤直接用它匹配角色的 `nav_layers`，不需要给每个屏加字段 |
 | `SidebarPanel.vue` / `IconRail.vue:50` | 按 `nav_layers` 过滤层；`system` 层按 `system:view` |
 | `paletteFilter.ts` | 同口径：不可见层的屏不进命令面板 |
-| `router/index.ts` | **只加 `system` 段的守卫**，其余 47 屏零改动。登录落地页按角色：股东→`/cockpit`，其余→`/data-home`（现在硬编码 `/data-home`，股东会撞墙） |
+| `router/index.ts` | **只加 `system` 段的守卫**，其余 47 屏零改动。登录落地页按角色。**2026-09-07（P5）改**：落地页判据从「看得见哪几层」扩成「这个人进来干什么」—— 零 `:edit`（总经理 / 股东 / 只读账号）落 `/cockpit`，`review:approve` 且有 data 层落 `/data-home`，其余沿用三档。四个判据收在 `auth.landing` 一个 computed 里，router 四处 + `LoginView` + `ChangePasswordView` 共六处全读它 |
 | 有编辑模式的 19 屏 | 「编辑模式」按钮的 `v-if` 从 `!auth.isReadonly` 换成对应模块的 `can('xxx:edit')` |
 | 无编辑模式的屏 | 合同（新增/编辑/续签/终止/删除）、租户、楼栋 —— 各写按钮直接判 `contract:edit` / `master:edit` |
 | `PoolLedgerView.vue:58` | `canEdit` 一个开关同时开两扇门。拆 `canGen = can('billing-run:edit')` + `canCfg = can('param-policy:edit')`。「生成本月」判前者，「新增/编辑/删除池」判后者。⚠ 本屏**没有**行内 `paramsApi.put`：分摊基数/加减度数两列是只读镜像，点格子深链去计费参数页改 |

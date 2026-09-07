@@ -10,6 +10,10 @@ import { useAuthStore } from '@/stores/auth'
 beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
+  // 第一格页签 = 落地页(P5)。零权限的 store 会被判成只读账号 → 落驾驶舱,
+  // 而本文件下面这几条讲的是页签模型本身,写的时候预设的是「财务专员坐在 data-home」。
+  // 给一颗写权限把身份定住,别让落地页规则改一次就把页签模型的用例全带红。
+  useAuthStore().permissions = ['ledger:edit']
 })
 
 describe('tabs store', () => {
@@ -188,6 +192,14 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
     expect(store.ctx.tenants).toBeUndefined()
   })
 
+  // 破坏验证:把 baseHome() 改回 `navLayers.includes('data') ? 'data-home' : 'cockpit'` → 红
+  it('❗第一格页签跟着落地页走 —— 零 :edit 的人落驾驶舱,页签也得是驾驶舱', () => {
+    const auth = useAuthStore()
+    auth.permissions = []                    // 总经理 / 只读账号:导航三层全在,但一颗写权限都没有
+    expect(auth.landing).toBe('/cockpit')
+    expect(useTabsStore().tabs.map(t => t.value)).toEqual(['cockpit'])
+  })
+
   it('换人(登入再登出)清空全部 ctx 与 evicted', async () => {
     const store = useTabsStore()
     const auth = useAuthStore()
@@ -205,6 +217,29 @@ describe('tabs store · 页签上下文 ctx / 被顶 evicted / 深链 pin 规则
     await nextTick()
     expect(store.ctx).toEqual({})
     expect(store.evicted).toBeNull()
+  })
+
+  // ❗P5 收 P3 遗留:logout() 只清三个 localStorage 键,store 实例还活着。
+  //   破坏验证:把 watch 里 tabs / preview / recent / epoch 四行任删一行 → 对应那条红。
+  it('❗换人还要清掉页签、预览槽、最近访问与 epoch —— 共享机器上这些全是上一个人的', async () => {
+    const store = useTabsStore()
+    const auth = useAuthStore()
+    auth.me = 'zhangsan'
+    await nextTick()
+    store.pin('ledger')
+    store.open('tenants')
+    store.openFresh('ledger')                 // epoch.ledger++
+    expect(store.tabs.map(t => t.value)).toEqual(['data-home', 'ledger'])
+    expect(store.preview?.value).toBe('tenants')
+    expect(store.recent.length).toBeGreaterThan(0)
+    expect(store.epochOf('ledger')).toBeGreaterThan(0)
+
+    auth.me = 'lisi'
+    await nextTick()
+    expect(store.tabs.map(t => t.value), '只剩落地页那一格').toEqual(['data-home'])
+    expect(store.preview).toBeNull()
+    expect(store.recent).toEqual([])
+    expect(store.epochOf('ledger'), '上一个人开过的屏不该带着旧 epoch 进来').toBe(0)
   })
 
   it('open 顶掉预览槽时记下被顶的 value;同值重开与 pin 直开不算被顶', () => {

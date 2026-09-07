@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { fpBuildRoutes } from '@/nav/fpNav'
-import { landingPath } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
@@ -84,8 +83,9 @@ if (import.meta.env.DEV) {
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // 落地页按 navLayers 定(园区股东看不到数据层,落驾驶舱);pinia 先于 router 安装,守卫期取 store 安全
-    { path: '/', redirect: () => landingPath(useAuthStore().navLayers, useAuthStore().can('system:view')) },
+    // 落地页按「这个人来干什么」定(§6:总经理落驾驶舱、审核员落本月出账);判据全在 auth.landing 一处。
+    // pinia 先于 router 安装,守卫期取 store 安全。
+    { path: '/', redirect: () => useAuthStore().landing },
     // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
     { path: '/price-cfg', redirect: '/params' },
     // 2026-09-03(SIDEBAR-UX-REDESIGN D4):银行流水条目删除,旧地址(书签 / 最近访问)落首页。
@@ -104,7 +104,7 @@ const router = createRouter({
     // 撤下的屏(如 2026-08-13 的 /bills 账单管理)与手打错的地址都落这里。
     // 没有兜底时 vue-router 匹配不到会渲染空 router-view —— 外壳在、内容区全白,像页面崩了。
     // 标签页/最近访问的残留项由 tabs store 的 ROUTES 过滤自动丢弃,不必在此处理。
-    { path: '/:pathMatch(.*)*', redirect: () => landingPath(useAuthStore().navLayers, useAuthStore().can('system:view')) },
+    { path: '/:pathMatch(.*)*', redirect: () => useAuthStore().landing },
   ],
 })
 
@@ -122,13 +122,13 @@ router.beforeEach((to) => {
     return { path: '/change-password' }
   }
   if (auth.isAuthed && to.path === '/login') {
-    return { path: landingPath(auth.navLayers, auth.can('system:view')) }
+    return { path: auth.landing }
   }
   // 系统管理层是**全站唯一读也管的一段**(RBAC-SPEC §4/§5.1):无 system:view 一律兜回首页。
   // 其余 47 屏刻意不拦 —— 读全开,无权也进得去、数据照显,只是没有写入口。
   // 不拦的话手打地址能进到一个「后端 403、页面只剩报错」的屏,看着像系统坏了。
   if (auth.isAuthed && (to.meta as Record<string, unknown>).layer === 'system' && !auth.can('system:view')) {
-    return { path: landingPath(auth.navLayers, false) }
+    return { path: auth.landing }
   }
 })
 
