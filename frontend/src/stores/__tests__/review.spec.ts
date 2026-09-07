@@ -19,8 +19,9 @@ const row = (p: Partial<ReviewRow> & { key: string }): ReviewRow => ({
   reason: null, blockedBy: [], ...p,
 })
 
-/** 只数打到 /review 的 GET —— 别的 mock 调用不算。 */
-const listCalls = () => vi.mocked(api.get).mock.calls.filter(c => c[0] === '/review').length
+/** 只数打到某条端点的 GET —— 别的 mock 调用不算。 */
+const callsTo = (url: string) => vi.mocked(api.get).mock.calls.filter(c => c[0] === url).length
+const listCalls = () => callsTo('/review')
 
 describe('审核键解析', () => {
   it('带 scope 的三段键', () => {
@@ -82,23 +83,48 @@ describe('审核 store', () => {
   it('rowOf 按整把键认,认不到回 null', async () => {
     vi.mocked(api.get).mockResolvedValueOnce([row({ key: 'ledger:7:2024-02', kind: 'ledger', scope: '7', status: 'approved' })])
     const s = useReviewStore()
-    await s.ensure('2024-02')
+    await s.ensureYear(2024)
     expect(s.rowOf('ledger:7:2024-02')?.status).toBe('approved')
     expect(s.rowOf('ledger:8:2024-02')).toBeNull()   // 同 kind 不同公司,不许张冠李戴
     expect(s.rowOf('salary:2024-02')).toBeNull()
   })
 
   // 破坏验证:把 act() 里的 invalidate+ensure 删掉,这条红 —— 屏上会一直挂着交审前的状态。
-  it('交审之后当月重取,屏上拿到的是新态', async () => {
-    vi.mocked(api.get)
-      .mockResolvedValueOnce([row({ key: 'salary:2024-02', status: 'entered' })])
-      .mockResolvedValueOnce([row({ key: 'salary:2024-02', status: 'submitted' })])
+  // 破坏验证:把 invalidate 里那半段「年道也失效」删掉 → 红。
+  // 只失效一道的后果:清单已经翻成「待审核」,而编辑按钮还画得出来。
+  it('❗交审之后**两道**都重取,清单与闸不许各说各话', async () => {
+    const entered = [row({ key: 'salary:2024-02', status: 'entered' })]
+    const submitted = [row({ key: 'salary:2024-02', status: 'submitted' })]
+    let phase = 0
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve(phase === 0 ? entered : submitted) as never)
     const s = useReviewStore()
-    await s.ensure('2024-02')
-    expect(s.rowOf('salary:2024-02')?.status).toBe('entered')
+    await Promise.all([s.ensure('2024-02'), s.ensureYear(2024)])
+    expect(s.rowOf('salary:2024-02')?.status, '闸道').toBe('entered')
+    expect(s.rowsOf('2024-02')[0].status, '清单道').toBe('entered')
+    phase = 1
     await s.submit('salary:2024-02')
-    expect(s.rowOf('salary:2024-02')?.status).toBe('submitted')
-    expect(listCalls()).toBe(2)
+    expect(s.rowOf('salary:2024-02')?.status, '闸道').toBe('submitted')
+    expect(s.rowsOf('2024-02')[0].status, '清单道').toBe('submitted')
+  })
+
+  // 年表屏(附6/7/8/11、附13/14)按月份行上锁(D18)。
+  // 破坏验证:把 lockedMonths 里的 kinds 过滤删掉 → 红(附表7 的锁会串到附表8 的行上)。
+  it('❗lockedMonths 只认本屏管的 kind 与 scope', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce([
+      row({ key: 'charging-car:2024-03', kind: 'charging-car', status: 'approved' }),
+      row({ key: 'charging-ebike:2024-05', kind: 'charging-ebike', status: 'submitted' }),
+      row({ key: 'pv:2024-07', kind: 'pv', status: 'approved' }),
+      row({ key: 'utilities:office:2024-09', kind: 'utilities', scope: 'office', status: 'approved' }),
+      row({ key: 'utilities:phase3:2024-11', kind: 'utilities', scope: 'phase3', status: 'approved' }),
+      row({ key: 'pv:2024-08', kind: 'pv', status: 'returned' }),   // returned 不锁
+    ])
+    const s = useReviewStore()
+    await s.ensureYear(2024)
+    expect([...s.lockedMonths(2024, ['charging-car', 'charging-ebike'])].sort((a, b) => a - b)).toEqual([3, 5])
+    expect([...s.lockedMonths(2024, ['pv'])], 'returned 的 8 月不在内').toEqual([7])
+    expect([...s.lockedMonths(2024, ['utilities'], 'office')], '两个 scope 各锁各的').toEqual([9])
+    expect([...s.lockedMonths(2024, ['utilities'], 'phase3')]).toEqual([11])
+    expect([...s.lockedMonths(null, ['pv'])], '还没选年回空集').toEqual([])
   })
 
   // ❗一屏压多把键(公共电核算屏同时管 alloc 与 alloc-loss:池结果与损耗结果是
@@ -112,7 +138,7 @@ describe('审核 store', () => {
             reviewedBy: '李审', reviewedAt: '2024-03-05T10:00:00' }),
     ])
     const s = useReviewStore()
-    await s.ensure('2024-02')
+    await s.ensureYear(2024)
     expect(s.blockOf(['alloc:2024-02', 'alloc-loss:2024-02'])?.note).toBe('已审核 · 李审 03-05')
     expect(s.blockOf('alloc:2024-02'), '单看没审的那把当然不挡').toBeNull()
   })
@@ -121,7 +147,7 @@ describe('审核 store', () => {
   it('❗拉失败不挡编辑 —— 与旁边的编辑锁故意相反', async () => {
     vi.mocked(api.get).mockRejectedValueOnce(new Error('boom'))
     const s = useReviewStore()
-    await s.ensure('2024-02')
+    await s.ensureYear(2024)
     expect(s.blockOf('salary:2024-02'),
            '真正的闸在后端;GET /api/review 内部跑一遍首页聚合,它一抖不该关掉 12 个屏的编辑入口').toBeNull()
   })

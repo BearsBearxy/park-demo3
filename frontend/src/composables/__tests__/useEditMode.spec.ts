@@ -413,10 +413,10 @@ describe('lockScope / onTaken(接管闭环)', () => {
 
 // ══════════ 审核闸(SIDEBAR-UX-REDESIGN §7.5,R2 T2) ══════════
 
-/** 让 /review 回一行指定态,其余端点照常回 []。 */
+/** 让闸道(/review/states)回一行指定态,其余端点照常回 []。 */
 function seedReview(status: string, extra: Record<string, unknown> = {}) {
   vi.mocked(api.get).mockImplementation((url: string) =>
-    url === '/review'
+    url === '/review/states'
       ? Promise.resolve([{
           key: 'salary:2025-03', kind: 'salary', scope: null, status,
           submittedBy: '张三', submittedAt: '2025-03-04T09:00:00',
@@ -445,7 +445,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
    * 挂在关键路径上等于每次进编辑态都多等一个慢往返)。所以断言「点不进去」的用例必须先等这一下,
    * 否则测的是「取数还没到」那条分支 —— 那条本来就该放行。
    */
-  const settled = () => useReviewStore().ensure('2025-03')
+  const settled = () => useReviewStore().ensureYear(2025)
 
   // 破坏验证:删掉 enter()/toggle() 里那两处 `if (reviewBlock.value) return` → 红
   it('❗已审核的表进不了编辑模式', async () => {
@@ -530,7 +530,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     seedReview('approved')
     const rs = useReviewStore()
     rs.invalidate('2025-03')
-    await rs.ensure('2025-03')
+    await rs.ensureYear(2025)
     await nextTick()
     expect(m.editMode.value, '在编辑态里被审了 → 立刻退出').toBe(false)
   })
@@ -553,7 +553,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
   it('❗审核态拉失败不挡编辑 —— 真正的闸在后端,前端这道只是别让人白跑', async () => {
     asRole(['entry:edit'])
     vi.mocked(api.get).mockImplementation((url: string) =>
-      url === '/review' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
+      url === '/review/states' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
     const m = useEditMode(['entry:edit'], SALARY)
     await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
@@ -571,7 +571,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     await nextTick()
     expect(m.editMode.value).toBe(true)
     expect(m.reviewNote.value).toBeNull()
-    expect(vi.mocked(api.get).mock.calls.filter(c => c[0] === '/review'),
+    expect(vi.mocked(api.get).mock.calls.filter(c => String(c[0]).startsWith('/review')),
            '没有审核键就不该去问审核态').toHaveLength(0)
   })
 })

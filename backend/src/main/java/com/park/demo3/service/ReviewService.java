@@ -126,6 +126,23 @@ public class ReviewService {
         return out;
     }
 
+    /**
+     * 某一年**已经落库**的审核行(R2 的编辑闸用)。
+     *
+     * 与 list(period) 的分工写在 ReviewStateMapper.byYear 上:这条不跑 dataHome.overview,
+     * 因此不发派生态的 entered 行,也不算 blockedBy(闸只问「锁没锁」)。
+     * 一屏一年一趟 —— 附表族屏(附6/7/8/11、附13/14)进屏即要 12 个月,
+     * 走 list(period) 等于跑 12 遍首页聚合。
+     */
+    public List<ReviewRowDTO> statesOfYear(int year) {
+        List<ReviewRowDTO> out = new ArrayList<>();
+        for (ReviewState s : states.byYear(year))
+            out.add(new ReviewRowDTO(s.getReviewKey(), s.getKind(), s.getScope(), s.getStatus(),
+                s.getSubmittedBy(), s.getSubmittedAt(), s.getReviewedBy(), s.getReviewedAt(),
+                s.getReason(), List.of()));
+        return out;
+    }
+
     /** ping 用:全库待审核条数。见 PresenceService。 */
     public int pendingCount() {
         return Math.toIntExact(states.selectCount(

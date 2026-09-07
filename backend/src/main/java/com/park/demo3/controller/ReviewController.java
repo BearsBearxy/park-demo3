@@ -33,6 +33,10 @@ public class ReviewController {
     @GetMapping
     public List<ReviewRowDTO> list(@RequestParam String period) { return svc.list(period); }
 
+    @Operation(summary = "某年已落库的审核行(编辑闸用;不含派生 entered,不算前置)")
+    @GetMapping("/states")
+    public List<ReviewRowDTO> states(@RequestParam int year) { return svc.statesOfYear(year); }
+
     @Operation(summary = "交审(录入方;需该表的 edit 权,且清单行已做)")
     @PostMapping("/{key}/submit")
     public void submit(@PathVariable String key) { svc.submit(key); }

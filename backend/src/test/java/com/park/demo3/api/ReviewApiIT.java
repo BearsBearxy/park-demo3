@@ -274,6 +274,51 @@ class ReviewApiIT extends AbstractMysqlIT {
         assertThat(salaryBlocked.get(0)).isEmpty();
     }
 
+    /**
+     * 闸道 `GET /api/review/states?year=`(R2 T4b)。
+     *
+     * 与 list 的分工要**当场看得出来**:这条只发已落库的行(没有派生 entered)、blockedBy 恒空、
+     * 一趟给整年。年表屏(附6/7/8/11、附13/14)一屏 12 个月,走 list 等于跑 12 遍首页聚合。
+     */
+    @Test
+    void statesOfYear_returnsOnlyPersistedRows_forTheWholeYear() throws Exception {
+        String a = admin();
+        int year = Integer.parseInt(YM.substring(0, 4));
+        seedState("salary:" + YM, "salary", null, "approved");
+        // 同年另一个月 —— 一趟要能把整年都带回来
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,?)",
+            "pv:" + year + "-02", "pv", year + "-02", null, "submitted");
+
+        String b = body(doGet("/api/review/states?year=" + year, a));
+        List<String> keys = JsonPath.read(b, "$.data[*].key");
+        assertThat(keys).containsExactlyInAnyOrder("salary:" + YM, "pv:" + year + "-02");
+        // ❗不含派生 entered —— 含了就说明它偷偷走了 list 那条路(那条要跑首页聚合)
+        assertThat(keys).doesNotContain("params:" + YM, "meters:" + YM);
+        assertThat((List<String>) JsonPath.read(b, "$.data[*].status"))
+            .containsExactlyInAnyOrder("approved", "submitted");
+        // 闸只问「锁没锁」,不算前置
+        List<List<String>> blocked = JsonPath.read(b, "$.data[*].blockedBy");
+        assertThat(blocked).allSatisfy(x -> assertThat(x).isEmpty());
+
+        jdbc.update("DELETE FROM review_state WHERE review_key = ?", "pv:" + year + "-02");
+    }
+
+    /** 别的年不许漏进来 —— likeRight 前缀写错(比如 like '%2031%')就会把 12031 之类也带上。 */
+    @Test
+    void statesOfYear_doesNotLeakOtherYears() throws Exception {
+        String a = admin();
+        int year = Integer.parseInt(YM.substring(0, 4));
+        seedState("salary:" + YM, "salary", null, "approved");
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,?)",
+            "salary:" + (year + 1) + "-01", "salary", (year + 1) + "-01", null, "approved");
+        try {
+            List<String> keys = JsonPath.read(body(doGet("/api/review/states?year=" + year, a)), "$.data[*].key");
+            assertThat(keys).containsExactly("salary:" + YM);
+        } finally {
+            jdbc.update("DELETE FROM review_state WHERE review_key = ?", "salary:" + (year + 1) + "-01");
+        }
+    }
+
     // ══════════ helpers ══════════
 
     private void seedElecCostEntry() {

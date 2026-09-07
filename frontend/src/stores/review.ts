@@ -4,27 +4,54 @@ import { reviewApi } from '@/api/review'
 import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/review'
 
 /**
- * 审核态(SIDEBAR-UX-REDESIGN §7.5)。**按月一份**。
+ * 审核态(SIDEBAR-UX-REDESIGN §7.5)。**两条取数道,别混**:
  *
- * 编辑闸要的是单键,但全月一趟(~20 键)比逐键 N 趟便宜,且切走再切回能命中缓存 ——
- * 而且 `GET /api/review` 本来就只有按月这一种形状。
+ *  · **闸道**(`states`,按年)—— 12 个编辑入口用。后端 `GET /api/review/states?year=` 只发
+ *    已落库的行,不跑聚合、不算前置。按年取有两个理由:附表族本来就是年表屏(一屏 12 个月),
+ *    而单月屏在屏内换月时也能命中同一份,不必每换一次月打一趟。
+ *  · **清单道**(`board`,按月)—— 只有本月出账屏用。它要**全部**键(含派生 entered)与
+ *    通过前置缺项,那两样只有 `GET /api/review?period=` 给得出,代价是内部跑一遍首页聚合。
  *
- * ponytail: 没有 TTL。审核是低频动作,四个动作都会主动失效当月;别人在别的浏览器审的,
+ * 混用的后果:拿闸道的数据当清单,会把「还没交审」显示成「这个月没有这张表」;
+ * 拿清单道喂闸,会让 12 个屏的编辑入口挂在本仓最贵的端点之一上。
+ *
+ * ponytail: 没有 TTL。审核是低频动作,四个动作都会主动失效两道;别人在别的浏览器审的,
  *   靠 ping 的 pendingReviews 变化 + 进屏重取覆盖。要实时到秒再上 WebSocket。
  */
 export const useReviewStore = defineStore('review', () => {
+  // ── 闸道:按年 ──────────────────────────────────────────────
+  const byYear = ref<Map<number, ReviewRow[]>>(new Map())
+  const yearInflight = new Map<number, Promise<void>>()
+
+  // ── 清单道:按月 ────────────────────────────────────────────
   const byPeriod = ref<Map<string, ReviewRow[]>>(new Map())
-  /** 同月并发去重 —— 一屏进来时编辑闸与清单可能同时要同一个月。 */
-  const inflight = new Map<string, Promise<void>>()
+  const periodInflight = new Map<string, Promise<void>>()
   /**
-   * 拉失败的月。屏上要能区分「这个月没有任何审核记录」和「不知道」——
-   * 后者**不许**当成可编辑放行,否则一次网络抖动就等于把闸整个撤了。
+   * 拉失败的月。清单屏要能区分「这个月一条审核记录都没有」和「审核态没取到」——
+   * 前者显「未交审」,后者显「—」,显反了就是对用户撒谎。
    */
   const failed = ref<Set<string>>(new Set())
 
+  const yearOf = (period: string | null): number | null => (period ? +period.slice(0, 4) : null)
+
+  async function ensureYear(year: number | null): Promise<void> {
+    if (year == null || byYear.value.has(year)) return
+    let p = yearInflight.get(year)
+    if (!p) {
+      p = reviewApi
+        .states(year)
+        .then((rows) => { byYear.value = new Map(byYear.value).set(year, rows) })
+        .catch(() => { /* 拉失败不挡编辑(D-R2-7);清单屏另有 failed 留痕 */ })
+        .finally(() => { yearInflight.delete(year) })
+      yearInflight.set(year, p)
+    }
+    return p
+  }
+
+  /** 清单道。只有本月出账屏调。 */
   async function ensure(period: string | null): Promise<void> {
     if (!period || byPeriod.value.has(period)) return
-    let p = inflight.get(period)
+    let p = periodInflight.get(period)
     if (!p) {
       p = reviewApi
         .list(period)
@@ -34,30 +61,44 @@ export const useReviewStore = defineStore('review', () => {
           f.delete(period)
           failed.value = f
         })
-        .catch(() => {
-          failed.value = new Set(failed.value).add(period)
-        })
-        .finally(() => {
-          inflight.delete(period)
-        })
-      inflight.set(period, p)
+        .catch(() => { failed.value = new Set(failed.value).add(period) })
+        .finally(() => { periodInflight.delete(period) })
+      periodInflight.set(period, p)
     }
     return p
   }
 
+  /** 清单道:某月全部键(含派生 entered)。 */
   function rowsOf(period: string | null): ReviewRow[] {
     return (period && byPeriod.value.get(period)) || []
   }
 
-  /** 单键。没有这一行 = 派生「录入中」,回 null(调用方按未锁处理)。 */
+  /** 闸道:单键。没有这一行 = 派生「录入中」,回 null(调用方按未锁处理)。 */
   function rowOf(key: string | null): ReviewRow | null {
     if (!key) return null
-    return rowsOf(periodOfKey(key)).find((r) => r.key === key) ?? null
+    const y = yearOf(periodOfKey(key))
+    return (y != null && byYear.value.get(y)?.find((r) => r.key === key)) || null
   }
 
-  /** 这个月的数据到底有没有到。false 时编辑闸要**保守**(见 useEditMode)。 */
   const isLoaded = (period: string | null): boolean => !!period && byPeriod.value.has(period)
   const isFailed = (period: string | null): boolean => !!period && failed.value.has(period)
+  const yearLoaded = (year: number | null): boolean => year != null && byYear.value.has(year)
+
+  function invalidate(period: string | null) {
+    if (!period) return
+    const m = new Map(byPeriod.value)
+    m.delete(period)
+    byPeriod.value = m
+    periodInflight.delete(period)
+    // 两道一起失效 —— 只失效一道的话,屏上清单已经翻成「已审核」而编辑按钮还画得出来。
+    const y = yearOf(period)
+    if (y != null) {
+      const ym = new Map(byYear.value)
+      ym.delete(y)
+      byYear.value = ym
+      yearInflight.delete(y)
+    }
+  }
 
   // ── 三条编辑闸共用的判据 ─────────────────────────────────────────
   // useEditMode / SchedHeader / LedgerWideTable 是本仓仅有的三个编辑入口,判据必须是同一份:
@@ -66,10 +107,10 @@ export const useReviewStore = defineStore('review', () => {
   const asList = (keys: string | string[] | null | undefined): string[] =>
     keys == null ? [] : Array.isArray(keys) ? keys : [keys]
 
-  /** 一屏可能压着不止一把键(公共电核算屏同时管 alloc 与 alloc-loss)。按键涉及的月各取一次。 */
+  /** 一屏可能压着不止一把键(公共电核算屏同时管 alloc 与 alloc-loss)。按键涉及的年各取一次。 */
   async function ensureFor(keys: string | string[] | null | undefined): Promise<void> {
-    const months = [...new Set(asList(keys).map(periodOfKey).filter(Boolean))] as string[]
-    await Promise.all(months.map(ensure))
+    const years = asList(keys).map((k) => yearOf(periodOfKey(k))).filter((y): y is number => y != null)
+    await Promise.all([...new Set(years)].map(ensureYear))
   }
 
   /**
@@ -84,13 +125,11 @@ export const useReviewStore = defineStore('review', () => {
     // 拉失败 / 还没到 ⇒ **不挡**(R2 拍板 D-R2-7)。
     //
     // 这一条与旁边编辑锁的口径**故意相反**(useEditLock 那边是「拿不准就不进」)。两者性质不同:
-    //   · 锁失灵 ⇒ 两个人同改同保存,后保存的整片覆盖前一个,且**双方都提示保存成功** —— 静默丢数据,不可逆。
+    //   · 锁失灵 ⇒ 两人同改同保存,后保存的整片覆盖前一个,且**双方都提示保存成功** —— 静默丢数据,不可逆。
     //   · 审核态失灵 ⇒ 后端那道闸(R1 的 ReviewGuard)照样拦,用户拿到的是一句准话
-    //     「2024-02 附表12 已审核(李审 03-05),撤销审核后才能修改」。最坏结果是白录一次,不是丢数据。
-    // 而挡住的代价是实打实的:GET /api/review 内部要跑一遍首页聚合(十几条 count),
-    // 是本仓较贵的端点之一;它一抖,12 个屏同时进不了编辑模式。
-    // 拿「一次白录」去换「12 屏的可用性挂在一个贵端点上」不划算。
-    if (list.some((k) => !isLoaded(periodOfKey(k)))) return null
+    //     「2024-02 附表12 已审核(李审 03-05),撤销审核后才能修改」。最坏是白录一次,不是丢数据。
+    // 拿「一次白录」去换「12 屏的编辑入口挂在一个可能抖的端点上」不划算。
+    if (list.some((k) => !yearLoaded(yearOf(periodOfKey(k))))) return null
     for (const k of list) {
       const r = rowOf(k)
       if (r && LOCKING.includes(r.status)) return { note: reviewNoteOf(r)!, tip: '撤销审核需审核员' }
@@ -98,23 +137,34 @@ export const useReviewStore = defineStore('review', () => {
     return null
   }
 
-  function invalidate(period: string | null) {
-    if (!period) return
-    const m = new Map(byPeriod.value)
-    m.delete(period)
-    byPeriod.value = m
-    inflight.delete(period)
+  /**
+   * 年表屏(附6/7/8/11、附13/14)按月份行上锁(D18)用:这一年里锁着的月份号(1..12)。
+   *
+   * `kinds` 是这一屏管的 kind(附表7/8 一屏两个 kind);`scope` 只在附13/14 用得上。
+   * 年份数据还没到手时回空集 —— 与 blockOf 同一条口径(拿不准不挡)。
+   */
+  function lockedMonths(year: number | null, kinds: string[], scope: string | null = null): Set<number> {
+    const out = new Set<number>()
+    if (year == null) return out
+    for (const r of byYear.value.get(year) ?? []) {
+      if (!kinds.includes(r.kind)) continue
+      if (scope != null && r.scope !== scope) continue
+      if (!LOCKING.includes(r.status)) continue
+      const p = periodOfKey(r.key)
+      if (p) out.add(+p.slice(5, 7))
+    }
+    return out
   }
 
   /**
-   * 四个动作做完一律失效当月并重取。
-   * 不是「把这一行改掉就行」—— 通过一把键会改变**下游键的 blockedBy**,只改一行屏上就对不上。
+   * 四个动作做完一律失效当月**两道**并重取。
+   * 不是「把这一行改掉就行」—— 通过一把键会改变下游键的 blockedBy,只改一行屏上就对不上。
    */
   async function act(fn: () => Promise<unknown>, key: string) {
     await fn()
     const p = periodOfKey(key)
     invalidate(p)
-    await ensure(p)
+    await Promise.all([ensure(p), ensureYear(yearOf(p))])
   }
 
   const submit = (k: string) => act(() => reviewApi.submit(k), k)
@@ -123,8 +173,9 @@ export const useReviewStore = defineStore('review', () => {
   const withdraw = (k: string, reason: string) => act(() => reviewApi.withdraw(k, reason), k)
 
   return {
-    byPeriod, failed,
-    ensure, ensureFor, blockOf, rowsOf, rowOf, isLoaded, isFailed, invalidate,
+    byPeriod, byYear, failed,
+    ensure, ensureYear, ensureFor, blockOf, lockedMonths,
+    rowsOf, rowOf, isLoaded, isFailed, yearLoaded, invalidate,
     submit, approve, returnBack, withdraw,
   }
 })

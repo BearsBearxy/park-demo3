@@ -8,7 +8,12 @@ import type { ReviewRow } from '@/types/review'
  *   但 scope 将来出现斜杠或非 ASCII 就会把路径切断。后端 @PathVariable 收的是解码后的值。
  */
 export const reviewApi = {
+  /** 清单屏用:某月**全部**审核键(含派生 entered)+ 通过前置缺项。内部跑一遍首页聚合,不便宜。 */
   list: (period: string) => api.get<ReviewRow[]>('/review', { params: { period } }),
+
+  /** 编辑闸用:某年**已落库**的行。不跑聚合、不发派生态、不算前置 —— 闸只问「锁没锁」。
+   *  按年取是因为附表族是年表屏(一屏 12 个月),而单月屏在屏内换月也能命中同一份。 */
+  states: (year: number) => api.get<ReviewRow[]>('/review/states', { params: { year } }),
 
   submit: (key: string) => api.post<void>(`/review/${encodeURIComponent(key)}/submit`),
   approve: (key: string) => api.post<void>(`/review/${encodeURIComponent(key)}/approve`),

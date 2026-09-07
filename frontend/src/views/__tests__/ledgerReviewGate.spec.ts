@@ -48,7 +48,7 @@ const KEY = 'ledger:9:2026-09'
 
 function seedReview(status: string) {
   vi.mocked(api.get).mockImplementation((url: string) =>
-    url === '/review'
+    url === '/review/states'
       ? Promise.resolve([{
           key: KEY, kind: 'ledger', scope: '9', status,
           submittedBy: '张三', submittedAt: null,
@@ -128,7 +128,7 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
     const { useReviewStore } = await import('@/stores/review')
     const rs = useReviewStore()
     rs.invalidate('2026-09')
-    await rs.ensure('2026-09')
+    await rs.ensureYear(2026)
     await flushPromises()
     expect(w.emitted('cancel'), '在编辑态里被审了 → 退出').toBeTruthy()
   })
@@ -138,6 +138,6 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
     const w = mk()
     await flushPromises()
     expect(w.find('.lg-reviewpill').exists()).toBe(false)
-    expect(vi.mocked(api.get).mock.calls.filter(c => c[0] === '/review')).toHaveLength(0)
+    expect(vi.mocked(api.get).mock.calls.filter(c => String(c[0]).startsWith('/review'))).toHaveLength(0)
   })
 })

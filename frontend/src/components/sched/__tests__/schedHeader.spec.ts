@@ -276,7 +276,7 @@ describe('SchedHeader 还锁时序(锁跟着 edit 状态走)', () => {
 
 function seedReview(status: string) {
   vi.mocked(api.get).mockImplementation((url: string) =>
-    url === '/review'
+    url === '/review/states'
       ? Promise.resolve([{
           key: 'salary:2025-03', kind: 'salary', scope: null, status,
           submittedBy: '张三', submittedAt: null,
@@ -326,11 +326,13 @@ describe('SchedHeader 审核闸', () => {
   //   所以上面那条「换期还锁」的守卫**看不到**它。
   //   破坏验证:删掉 watch(reviewBlock, ...) 那一条 → 红
   it('❗编辑态里换到已审核的月 → 强制退出', async () => {
+    // 闸道按**年**缓存(一屏 12 个月一趟),所以屏内换月不重新取数 —— 3 月已审这件事
+    // 在进屏那一趟里就拿到了。这条测的正是「本地已经知道,换过去要当场拦」。
+    seedReview('approved')                              // 该年只有 2025-03 是 approved
     const w = mk({ reviewKey: 'salary:2025-04', edit: true })
     await flushPromises()
     expect(w.emitted('toggle-edit'), '2025-04 没审,不该误伤').toBeUndefined()
 
-    seedReview('approved')
     await w.setProps({ reviewKey: 'salary:2025-03' })   // 月胶囊换到 3 月
     await flushPromises()
     await nextTick()
@@ -354,7 +356,7 @@ describe('SchedHeader 审核闸', () => {
     seedReview('approved')                   // 弹窗开着的时候,别人把这张表审了
     const rs = useReviewStore()
     rs.invalidate('2025-03')
-    await rs.ensure('2025-03')
+    await rs.ensureYear(2025)
     await nextTick()
 
     // 主管批了 —— 权限这才齐(不补这一步 onToggleEdit 会在权限判那儿就返回,
@@ -384,7 +386,7 @@ describe('SchedHeader 审核闸', () => {
   // 同 useEditMode 那条(D-R2-7):拉失败不挡,也不画药丸 —— 画了等于对用户断言「已审核」。
   it('❗审核态拉失败不挡编辑,也不画药丸', async () => {
     vi.mocked(api.get).mockImplementation((url: string) =>
-      url === '/review' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
+      url === '/review/states' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
     const w = mk({ reviewKey: 'salary:2025-03' })
     await flushPromises()
     expect(w.find('.lc-reviewpill').exists()).toBe(false)
@@ -398,6 +400,6 @@ describe('SchedHeader 审核闸', () => {
     const w = mk()
     await flushPromises()
     expect(w.find('.lc-reviewpill').exists()).toBe(false)
-    expect(vi.mocked(api.get).mock.calls.filter(c => c[0] === '/review')).toHaveLength(0)
+    expect(vi.mocked(api.get).mock.calls.filter(c => String(c[0]).startsWith('/review'))).toHaveLength(0)
   })
 })
