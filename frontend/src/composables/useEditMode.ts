@@ -2,7 +2,7 @@ import { ref, computed, watch, onMounted, onDeactivated, onUnmounted, getCurrent
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
-import { LOCKING, periodOfKey, reviewNoteOf } from '@/types/review'
+
 
 export interface EditModeOpts {
   /**
@@ -20,7 +20,7 @@ export interface EditModeOpts {
    * **不传(或返回 null)= 这一屏不受审核约束** —— 后端标了 @NoReviewGuard 的四屏
    * (光伏/充电桩分栋抄表、母册两屏)与不在审核范围内的十几屏一个字不改。
    */
-  reviewKey?: () => string | null
+  reviewKey?: () => string | string[] | null
 }
 
 /**
@@ -109,20 +109,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    * computed 没人读就不算,第一次读发生在渲染期,那时闭包已经好了。同一个坑下面
    * scopeWhileEditing 是靠「关在编辑态里」绕的。
    */
-  const reviewBlock = computed<{ note: string; tip: string } | null>(() => {
-    const k = opts.reviewKey?.() ?? null
-    if (!k) return null
-    const p = periodOfKey(k)
-    // 拉失败 ⇒ **保守**。放行的后果不是「多改一次」,是人录完二十行按保存吃一个 423,
-    // 白录 —— 后端那道闸是真的,前端这道只是别让人做无用功。
-    if (review.isFailed(p))
-      return { note: '审核态未知', tip: '审核状态没取到,刷新后再试' }
-    // 还没到:不挡。点进来那条路(enter)会先 await ensure,不会漏。
-    if (!review.isLoaded(p)) return null
-    const r = review.rowOf(k)
-    if (!r || !LOCKING.includes(r.status)) return null
-    return { note: reviewNoteOf(r)!, tip: '撤销审核需审核员' }
-  })
+  const reviewBlock = computed(() => review.blockOf(opts.reviewKey?.()))
 
   /** 按钮位那颗禁用药丸的文案(§7.5,同尺寸零位移)。null = 照常画编辑按钮。 */
   const reviewNote = computed(() => reviewBlock.value?.note ?? null)
@@ -133,8 +120,8 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   //   多半还没初始化(见上)。组件外调用(单测)没有 mounted 钩子,闭包也早已就绪,直接接。
   const watchKey = () =>
     watch(() => opts.reviewKey?.() ?? null,
-          (k) => { void review.ensure(periodOfKey(k)) },
-          { immediate: true })
+          (k) => { void review.ensureFor(k) },
+          { immediate: true, deep: true })
   if (getCurrentInstance()) onMounted(watchKey)
   else watchKey()
 
@@ -144,11 +131,7 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     // onElevated() 走 enter() 再把人挡回来 —— 白叫一次主管。
     // §7.5 明写「elevate:request 弹窗不出现」,说的就是这一步。
     // (按钮位在审核态下本来就是禁用药丸,点不到;这里守的是药丸还没画出来的那一瞬。)
-    const rk = opts.reviewKey?.() ?? null
-    if (rk) {
-      await review.ensure(periodOfKey(rk))
-      if (reviewBlock.value) return
-    }
+    if (reviewBlock.value) return
     // 缺任何一项就当场弹授权窗 —— 不进去之后再用提示条告诉他
     if (missing.value.length) { asking.value = [...missing.value]; return }
     await enter()
@@ -180,11 +163,11 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
       // ⚠ 装在 enter() 而不是 spec §7.5 写的 toggle():toggle / onElevated(主管授权后)
       //   / onTaken(接管后)三条路都汇进这里。只挂 toggle 的话,叫主管授权进来的人和
       //   接管进来的人照样改得了已审核的表 —— 而 §7.3 明写「主管接管锁、当场提权都过不去」。
-      const rk = opts.reviewKey?.() ?? null
-      if (rk) {
-        await review.ensure(periodOfKey(rk))
-        if (reviewBlock.value) return
-      }
+      // ⚠ 只读**已经到手**的审核态,不在这里 await 一趟网络。GET /api/review 内部要跑一遍
+      //   首页聚合,是本仓较贵的端点之一 —— 把它挂在「点编辑模式」这一下的关键路径上,
+      //   等于让每次进编辑态都多等一个慢往返。取数在 onMounted 那条 watch 里早就发了,
+      //   人点下去时药丸本来就画好了;真赶在取数落地之前点进来,由下面那条守卫拉回来。
+      if (reviewBlock.value) return
       const scope = opts.scope?.() ?? null
       if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
       if (!(await lock.acquire(scope))) return

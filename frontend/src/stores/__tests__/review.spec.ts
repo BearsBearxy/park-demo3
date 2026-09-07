@@ -101,8 +101,34 @@ describe('审核 store', () => {
     expect(listCalls()).toBe(2)
   })
 
-  // 破坏验证:把 catch 里那句 failed 记录删掉,这条红 —— 拉失败会与「这个月没有审核记录」
-  // 无法区分,而后者是放行,前者必须保守。
+  // ❗一屏压多把键(公共电核算屏同时管 alloc 与 alloc-loss:池结果与损耗结果是
+  //   AllocService.generate(ym) 同一次算出来的)。**任一把锁着就锁** ——
+  //   只看第一把等于放行另一半。
+  //   破坏验证:把 blockOf 里那个 for 换成只看 list[0] → 红。
+  it('❗多键取「任一把锁着就锁」,不是只看第一把', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce([
+      row({ key: 'alloc:2024-02', kind: 'alloc', status: 'entered' }),
+      row({ key: 'alloc-loss:2024-02', kind: 'alloc-loss', status: 'approved',
+            reviewedBy: '李审', reviewedAt: '2024-03-05T10:00:00' }),
+    ])
+    const s = useReviewStore()
+    await s.ensure('2024-02')
+    expect(s.blockOf(['alloc:2024-02', 'alloc-loss:2024-02'])?.note).toBe('已审核 · 李审 03-05')
+    expect(s.blockOf('alloc:2024-02'), '单看没审的那把当然不挡').toBeNull()
+  })
+
+  // 破坏验证:把 blockOf 改回「isFailed → 挡住」→ 红(D-R2-7)。
+  it('❗拉失败不挡编辑 —— 与旁边的编辑锁故意相反', async () => {
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('boom'))
+    const s = useReviewStore()
+    await s.ensure('2024-02')
+    expect(s.blockOf('salary:2024-02'),
+           '真正的闸在后端;GET /api/review 内部跑一遍首页聚合,它一抖不该关掉 12 个屏的编辑入口').toBeNull()
+  })
+
+  // 拉失败仍要留痕(即使 blockOf 拿它放行):清单屏要能区分「这个月一条审核记录都没有」
+  // 和「审核态没取到」—— 前者该显「未交审」,后者该显「—」,显反了就是对用户撒谎。
+  // 破坏验证:把 catch 里那句 failed 记录删掉 → 红。
   it('拉失败要留痕:isLoaded 为假且 isFailed 为真', async () => {
     vi.mocked(api.get).mockRejectedValueOnce(new Error('boom'))
     const s = useReviewStore()

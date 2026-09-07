@@ -296,6 +296,7 @@ const onExport = () => guard('导出失败', async () => {
         <FPLoadBar :on="veil" />
         <SchedHeader
           :scope="S.salary(year!, month!)"
+          :review-key="`salary:${year}-${String(month).padStart(2, '0')}`"
           icon="wallet"
           title="附表12 · 工资明细"
           sub="逐月人员工资 · 月工资 / 补贴 / 招商提成 / 考勤 / 代缴代扣 · 金额单位 元"

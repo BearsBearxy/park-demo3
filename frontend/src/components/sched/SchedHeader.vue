@@ -7,7 +7,7 @@ import Button from '@/components/ds/Button.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
-import { LOCKING, periodOfKey, reviewNoteOf } from '@/types/review'
+
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
@@ -84,18 +84,9 @@ const heldByOther = lock.watchScope(() => props.scope)
 //   见本文件头注),所以闸要在这里再接一次。接的是同一个 store 与同一份文案,不是另抄一份判据:
 //   spec §7.5 只写了 useEditMode 那条路,照字面实现等于放过附表族六把键。
 const review = useReviewStore()
-watch(() => props.reviewKey, (k) => { void review.ensure(periodOfKey(k)) }, { immediate: true })
-
-/** 挡编辑的审核行。拉失败也挡(保守:放行等于让人录完一屏再吃一个 423)。 */
-const reviewBlock = computed<{ note: string; tip: string } | null>(() => {
-  if (!props.reviewKey) return null
-  const p = periodOfKey(props.reviewKey)
-  if (review.isFailed(p)) return { note: '审核态未知', tip: '审核状态没取到,刷新后再试' }
-  if (!review.isLoaded(p)) return null
-  const r = review.rowOf(props.reviewKey)
-  if (!r || !LOCKING.includes(r.status)) return null
-  return { note: reviewNoteOf(r)!, tip: '撤销审核需审核员' }
-})
+watch(() => props.reviewKey, (k) => { void review.ensureFor(k) }, { immediate: true })
+/** 挡编辑的审核态。判据在 store,与另外两条编辑闸共用同一份。 */
+const reviewBlock = computed(() => review.blockOf(props.reviewKey))
 const reviewNote = computed(() => reviewBlock.value?.note ?? null)
 
 /**

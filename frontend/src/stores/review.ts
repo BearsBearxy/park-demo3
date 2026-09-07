@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { reviewApi } from '@/api/review'
-import { periodOfKey, type ReviewRow } from '@/types/review'
+import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/review'
 
 /**
  * 审核态(SIDEBAR-UX-REDESIGN §7.5)。**按月一份**。
@@ -59,6 +59,45 @@ export const useReviewStore = defineStore('review', () => {
   const isLoaded = (period: string | null): boolean => !!period && byPeriod.value.has(period)
   const isFailed = (period: string | null): boolean => !!period && failed.value.has(period)
 
+  // ── 三条编辑闸共用的判据 ─────────────────────────────────────────
+  // useEditMode / SchedHeader / LedgerWideTable 是本仓仅有的三个编辑入口,判据必须是同一份:
+  // 各写一份必漂移,而漂移的表现是同一个状态在不同屏上给出不同答案。
+
+  const asList = (keys: string | string[] | null | undefined): string[] =>
+    keys == null ? [] : Array.isArray(keys) ? keys : [keys]
+
+  /** 一屏可能压着不止一把键(公共电核算屏同时管 alloc 与 alloc-loss)。按键涉及的月各取一次。 */
+  async function ensureFor(keys: string | string[] | null | undefined): Promise<void> {
+    const months = [...new Set(asList(keys).map(periodOfKey).filter(Boolean))] as string[]
+    await Promise.all(months.map(ensure))
+  }
+
+  /**
+   * 这一屏此刻挡不挡编辑。null = 不挡。
+   *
+   * 多键取**任一把锁着就锁**:公共电核算屏的池结果与损耗结果是 AllocService.generate(ym)
+   * 同一次算出来的,只锁住一半等于放行。
+   */
+  function blockOf(keys: string | string[] | null | undefined): { note: string; tip: string } | null {
+    const list = asList(keys)
+    if (!list.length) return null
+    // 拉失败 / 还没到 ⇒ **不挡**(R2 拍板 D-R2-7)。
+    //
+    // 这一条与旁边编辑锁的口径**故意相反**(useEditLock 那边是「拿不准就不进」)。两者性质不同:
+    //   · 锁失灵 ⇒ 两个人同改同保存,后保存的整片覆盖前一个,且**双方都提示保存成功** —— 静默丢数据,不可逆。
+    //   · 审核态失灵 ⇒ 后端那道闸(R1 的 ReviewGuard)照样拦,用户拿到的是一句准话
+    //     「2024-02 附表12 已审核(李审 03-05),撤销审核后才能修改」。最坏结果是白录一次,不是丢数据。
+    // 而挡住的代价是实打实的:GET /api/review 内部要跑一遍首页聚合(十几条 count),
+    // 是本仓较贵的端点之一;它一抖,12 个屏同时进不了编辑模式。
+    // 拿「一次白录」去换「12 屏的可用性挂在一个贵端点上」不划算。
+    if (list.some((k) => !isLoaded(periodOfKey(k)))) return null
+    for (const k of list) {
+      const r = rowOf(k)
+      if (r && LOCKING.includes(r.status)) return { note: reviewNoteOf(r)!, tip: '撤销审核需审核员' }
+    }
+    return null
+  }
+
   function invalidate(period: string | null) {
     if (!period) return
     const m = new Map(byPeriod.value)
@@ -85,7 +124,7 @@ export const useReviewStore = defineStore('review', () => {
 
   return {
     byPeriod, failed,
-    ensure, rowsOf, rowOf, isLoaded, isFailed, invalidate,
+    ensure, ensureFor, blockOf, rowsOf, rowOf, isLoaded, isFailed, invalidate,
     submit, approve, returnBack, withdraw,
   }
 })

@@ -66,7 +66,11 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 // 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], { scope: () => S.paramCenter(year.value, month.value) })
+  useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], {
+    scope: () => S.paramCenter(year.value, month.value),
+    // 审核键(§7.1):计费参数每月一把。ym 为空 = 还在选期门,没有月可审。
+    reviewKey: () => (ym.value ? `params:${ym.value}` : null),
+  })
 onDeactivated(() => {
   editRow.value = null; exOpen.value = false; addExcl.value = null
   histRow.value = null; changesOpen.value = false; alertOpen.value = false   // 抽屉 Teleport 到 body,KeepAlive 停用不随实例移出

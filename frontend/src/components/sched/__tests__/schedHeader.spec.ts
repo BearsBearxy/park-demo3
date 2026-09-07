@@ -381,13 +381,16 @@ describe('SchedHeader 审核闸', () => {
     expect(lockPosts()).toHaveLength(0)
   })
 
-  // 破坏验证:把 reviewBlock 里的 isFailed 判断删掉 → 红
-  it('❗审核态拉失败要保守', async () => {
+  // 同 useEditMode 那条(D-R2-7):拉失败不挡,也不画药丸 —— 画了等于对用户断言「已审核」。
+  it('❗审核态拉失败不挡编辑,也不画药丸', async () => {
     vi.mocked(api.get).mockImplementation((url: string) =>
       url === '/review' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
     const w = mk({ reviewKey: 'salary:2025-03' })
     await flushPromises()
-    expect(w.find('.lc-reviewpill').text()).toContain('审核态未知')
+    expect(w.find('.lc-reviewpill').exists()).toBe(false)
+    await w.find('.lc-lockbtn').trigger('click')
+    await flushPromises()
+    expect(w.emitted('toggle-edit')).toBeTruthy()
   })
 
   // 破坏验证:把 watch 的 immediate 去掉或改成无条件 ensure → 红

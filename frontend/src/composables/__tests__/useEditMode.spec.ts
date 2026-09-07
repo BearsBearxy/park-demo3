@@ -438,11 +438,21 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
   })
 
+  /**
+   * 等构造时那条 watch 把审核态取回来 —— 也就是**人点下去时药丸本来就画好了**的那一刻。
+   *
+   * 闸只读已经到手的状态,不在点击那一下 await 网络(GET /api/review 内部要跑一遍首页聚合,
+   * 挂在关键路径上等于每次进编辑态都多等一个慢往返)。所以断言「点不进去」的用例必须先等这一下,
+   * 否则测的是「取数还没到」那条分支 —— 那条本来就该放行。
+   */
+  const settled = () => useReviewStore().ensure('2025-03')
+
   // 破坏验证:删掉 enter()/toggle() 里那两处 `if (reviewBlock.value) return` → 红
   it('❗已审核的表进不了编辑模式', async () => {
     asRole(['entry:edit'])
     seedReview('approved')
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
     expect(m.editMode.value, '已审核 = 谁都改不了(§7.3)').toBe(false)
@@ -454,6 +464,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     asRole(['entry:edit'])
     seedReview('submitted')
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
     expect(m.editMode.value).toBe(false)
@@ -465,6 +476,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     asRole(['entry:edit'])
     seedReview('returned')
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
     expect(m.editMode.value, '退回就是要他改完再交,拦了他改什么').toBe(true)
@@ -484,6 +496,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     asRole([])                       // 一档权限都没有,只能请求提权
     seedReview('approved')
     const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    await settled()   // 等药丸画好(见 settled 的注释)
     await grant('entry:edit')        // 主管当场批了
     await m.onElevated()             // 授权成功的回调
     await nextTick()
@@ -496,6 +509,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     asRole(['entry:edit'])
     seedReview('approved')
     const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.onTaken()
     await nextTick()
     expect(m.editMode.value).toBe(false)
@@ -506,6 +520,7 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
   it('❗深链绕过 toggle 直接进了编辑态,审核态一到就把人拉出来', async () => {
     asRole(['entry:edit'])
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     m.editMode.value = true                    // ?edit=1 / ?generate=1 那条路
     await nextTick()
     expect(m.editMode.value, '审核态还没到,不该误伤').toBe(true)
@@ -525,26 +540,33 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
     asRole([])                       // 缺权限,平时点了会弹授权窗
     seedReview('approved')
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     expect(m.asking.value, '§7.5:elevate:request 弹窗不出现').toBeNull()
   })
 
-  // 破坏验证:把 reviewBlock 里那句 isFailed 判断删掉 → 红
-  it('❗审核态拉失败要保守 —— 放行等于让人录完二十行再吃一个 423', async () => {
+  // ❗与旁边的编辑锁**故意相反**(D-R2-7):锁是「拿不准就不进」,审核态是「拿不准就放行」。
+  //   锁失灵会静默丢数据(两人同改同保存,双方都显示成功);审核态失灵最坏是白录一次,
+  //   后端 R1 那道闸照样拦,还给一句准话。而 GET /api/review 内部要跑一遍首页聚合,
+  //   它一抖就让 12 个屏同时进不了编辑模式 —— 不划算。
+  //   破坏验证:把 blockOf 改回「isFailed → 挡住」 → 红。
+  it('❗审核态拉失败不挡编辑 —— 真正的闸在后端,前端这道只是别让人白跑', async () => {
     asRole(['entry:edit'])
     vi.mocked(api.get).mockImplementation((url: string) =>
       url === '/review' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
     const m = useEditMode(['entry:edit'], SALARY)
+    await settled()   // 等药丸画好(见 settled 的注释)
     await m.toggle()
     await nextTick()
-    expect(m.editMode.value).toBe(false)
-    expect(m.reviewNote.value).toBe('审核态未知')
+    expect(m.editMode.value, '一个贵端点抖一下不该把 12 个屏的编辑入口全关掉').toBe(true)
+    expect(m.reviewNote.value, '不确定就别画药丸 —— 画了等于对用户断言「已审核」').toBeNull()
   })
 
   // 破坏验证:把 enter()/toggle() 里的 `if (rk)` 改成无条件 ensure → 红
   it('❗不传 reviewKey 的屏一个字不改 —— 不打网络也不挡', async () => {
     asRole(['entry:edit'])
     const m = useEditMode(['entry:edit'])
+    // 这一条**不能**调 settled():它自己会打一趟 /review,正好把要断言的那件事做掉
     await m.toggle()
     await nextTick()
     expect(m.editMode.value).toBe(true)

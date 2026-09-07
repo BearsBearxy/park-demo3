@@ -84,7 +84,12 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['billing-run:edit', 'param-policy:edit'], { scope: () => S.poolLedger(year.value, month.value) })
+  useEditMode(['billing-run:edit', 'param-policy:edit'], {
+    scope: () => S.poolLedger(year.value, month.value),
+    // 审核键(§7.1):本屏压**两把** —— 池结果与损耗结果是 AllocService.generate(ym)
+    // 同一次算出来的,只认一把等于放行另一半。任一把锁着就锁(store.blockOf 的语义)。
+    reviewKey: () => (ym.value ? [`alloc:${ym.value}`, `alloc-loss:${ym.value}`] : null),
+  })
 // alertOpen 必须一起收:告警面板是 FPSideDrawer(Teleport to body),子树随 KeepAlive
 // 停用消失时它留在 body 上飘着,盖在下一个屏上(同 MeterView 的 openId)。
 onDeactivated(() => { poolDlg.value = false; alertOpen.value = false })
