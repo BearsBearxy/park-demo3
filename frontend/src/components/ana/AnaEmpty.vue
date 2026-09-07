@@ -1,14 +1,35 @@
 <script setup lang="ts">
 // 「数据待录入」统一空态卡(spec 通用降级规则②):说明缺什么、去哪录,深链到录入屏,不画假图。
 // to 为路由路径(如 '/contracts');不传则纯提示(移植 ana-charts.jsx Empty 的语义)。
-defineProps<{ label?: string; hint?: string; to?: string; toText?: string }>()
+//
+// 「去录入」按目标屏**所在层的可见性**显隐(§6):园区股东只有经营分析层,给他一条
+// 「去台账录入」的链接,是把他引到一个侧边栏根本没有入口的屏 —— 点进去他自己回不来。
+// 判在这里而不是 17 个调用点:调用点只知道自己缺什么数,不知道看的人是谁;
+// 而漏掉一处不报错,只是那一张卡继续引错人。说明文字照旧全给 —— 缺什么数该让他知道。
+import { computed } from 'vue'
+import { fpBuildRoutes } from '@/nav/fpNav'
+import { isLayerVisible } from '@/nav/navAccess'
+import { useAuthStore } from '@/stores/auth'
+
+// 模块级:导航表是常量,89 处调用点各建一份 50 项的 map 没有意义
+const ROUTES = fpBuildRoutes()
+
+const props = defineProps<{ label?: string; hint?: string; to?: string; toText?: string }>()
+const auth = useAuthStore()
+const canGo = computed(() => {
+  if (!props.to) return false
+  // 路径里可能带 query(深链空态),取第一段就是 nav value;不认识的目标一律放行 ——
+  // 认不出来是导航表的问题,不该表现成"链接凭空少了一个"。
+  const meta = ROUTES[props.to.replace(/^\//, '').split(/[?#]/)[0]]
+  return !meta || isLayerVisible(meta.layer, auth.navLayers, auth.can('system:view'))
+})
 </script>
 
 <template>
   <div class="ana-empty">
     <div class="lb">{{ label || '当前筛选下暂无数据' }}</div>
     <div v-if="hint" class="ht">{{ hint }}</div>
-    <RouterLink v-if="to" class="go" :to="to">{{ toText || '去录入' }} →</RouterLink>
+    <RouterLink v-if="canGo" class="go" :to="to!">{{ toText || '去录入' }} →</RouterLink>
     <slot />
   </div>
 </template>

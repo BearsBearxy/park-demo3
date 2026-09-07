@@ -7,7 +7,6 @@ import { useRouter } from 'vue-router'
 import { Lock, AlertCircle } from 'lucide-vue-next'
 import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { landingPath } from '@/nav/navAccess'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -37,7 +36,7 @@ async function submit() {
   try {
     await api.post('/auth/change-password', { currentPassword: current.value, newPassword: next.value })
     auth.clearMustChangePassword()
-    router.replace(landingPath(auth.navLayers, auth.can('system:view')))
+    router.replace(auth.landing)
   } catch (e: any) {
     errorMsg.value = e?.message || e?.msg || '修改失败，请稍后重试'
   } finally {

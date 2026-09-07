@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { bindSession, sessionDrifted } from '@/api'
+import { landingPath } from '@/nav/navAccess'
 
 /** 一次授权:哪个权限点、谁授权的、什么时候到期(毫秒时间戳)。与后端 ElevationDtos.GrantDTO 对齐。 */
 export interface Grant {
@@ -34,6 +35,9 @@ export const useAuthStore = defineStore('auth', () => {
   const DEFAULT_NAV_LAYERS = ['data', 'reports', 'analysis']
   const permissions = ref<string[]>(readArr('permissions') ?? [])
   const navLayers = ref<string[]>(readArr('navLayers') ?? [...DEFAULT_NAV_LAYERS])
+  // 角色显示名(D6,后端 LoginResp.roleNames)。老 token / 一个角色都没挂的账号 → 空表,
+  // 由 roleLabel 派生兜底。**不做判定**:能不能改一律看 permissions。
+  const roleNames = ref<string[]>(readArr('roleNames') ?? [])
   // 首次登录强制改密(RBAC-SPEC 拍板 #3):管理员设初始密码,本人进系统前必须改掉。
   // 存 '1'/缺省,双轨口径同 token;老后端不返这个字段 → 缺省 false,不误拦既有账号
   const mustChangePassword = ref((localStorage.getItem('mustChangePassword') ?? sessionStorage.getItem('mustChangePassword')) === '1')
@@ -102,24 +106,53 @@ export const useAuthStore = defineStore('auth', () => {
   // 只读账号(审计建议#8):一个 edit 权限都没有即为只读;此标志供 UI 按需降噪(非安全边界,后端才是)
   const isReadonly = computed(() => !permissions.value.some((p) => p.endsWith(':edit')))
 
+  /**
+   * 侧栏头像下那一行字(§6 角色行)。后端给了真名就显真名,多角色顿号拼。
+   *
+   * 派生兜底是给**一个角色都没挂**的账号的(手工 INSERT 进 auth_user 的那种,后端注释里
+   * 写着这类账号零权限 + 导航全开)。它按「最能说明这个人是谁」的顺序取第一条命中,
+   * 并且**必须**标「（派生）」—— 不标的话它跟真名长得一模一样,而它是猜的:
+   * 派生表里没有「总经理」这一档(总经理与只读账号的权限完全相同,V101 头注写死),
+   * 猜出来只会是「只读账号」。宁可让人看见括号里那两个字,也不要让他以为系统认得他。
+   */
+  const roleLabel = computed(() => {
+    if (roleNames.value.length) return roleNames.value.join('、')
+    const d = can('system:view') ? '系统管理员'
+      : can('review:approve') ? '审核员'
+      : can('lock:takeover') ? '财务主管'
+      : !isReadonly.value ? '财务专员'
+      : navLayers.value.length === 1 && navLayers.value[0] === 'analysis' ? '园区股东'
+      : '只读账号'
+    return d + '（派生）'
+  })
+
+  /**
+   * 登录后该落哪一屏(§6 落地页)。四个参数都在这里读齐 —— 六个调用点各传一遍的话,
+   * 漏传一个不报错、只是那条路径悄悄回到旧的三档。
+   */
+  const landing = computed(() => landingPath(navLayers.value, can('system:view'),
+    { readonly: isReadonly.value, reviewer: can('review:approve') }))
+
   async function login({ username, password }: { username: string; password: string }, remember = true) {
-    const { token: t, username: un, displayName: dn, role: r, permissions: ps, navLayers: nl, mustChangePassword: mcp } = await api.post<{ token: string; username?: string; displayName: string; role?: string; permissions?: string[]; navLayers?: string[]; mustChangePassword?: boolean }>('/auth/login', { username, password })
+    const { token: t, username: un, displayName: dn, role: r, permissions: ps, navLayers: nl, roleNames: rn, mustChangePassword: mcp } = await api.post<{ token: string; username?: string; displayName: string; role?: string; permissions?: string[]; navLayers?: string[]; roleNames?: string[]; mustChangePassword?: boolean }>('/auth/login', { username, password })
     token.value = t
     displayName.value = dn
     me.value = un ?? username
     role.value = r ?? null   // 旧后端(无 role 字段)登录不落 "undefined" 字符串
     permissions.value = ps ?? []
     navLayers.value = nl ?? [...DEFAULT_NAV_LAYERS]
+    roleNames.value = rn ?? []
     mustChangePassword.value = !!mcp
     // 目标之外的另一份必须清:否则上次「记住」的旧 token 会盖过本次「不记住」的选择
     const target = remember ? localStorage : sessionStorage
     const other = remember ? sessionStorage : localStorage
-    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) other.removeItem(k)
+    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword']) other.removeItem(k)
     target.setItem('token', t)
     if (me.value) target.setItem('username', me.value)
     target.setItem('displayName', dn)
     target.setItem('permissions', JSON.stringify(permissions.value))
     target.setItem('navLayers', JSON.stringify(navLayers.value))
+    target.setItem('roleNames', JSON.stringify(roleNames.value))
     if (r) target.setItem('role', r)
     else target.removeItem('role')
     // 不置真时必须显式清:同机上一个账号留下的 '1' 会把这个账号也拦进改密页
@@ -215,8 +248,9 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = null
     permissions.value = []
     navLayers.value = [...DEFAULT_NAV_LAYERS]
+    roleNames.value = []
     mustChangePassword.value = false
-    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'mustChangePassword']) {
+    for (const k of ['token', 'username', 'displayName', 'role', 'permissions', 'navLayers', 'roleNames', 'mustChangePassword']) {
       localStorage.removeItem(k)
       sessionStorage.removeItem(k)
     }
@@ -237,7 +271,8 @@ export const useAuthStore = defineStore('auth', () => {
     else localStorage.removeItem('token')
   }
 
-  return { token, me, drifted, displayName, role, permissions, navLayers, mustChangePassword, isAuthed, isReadonly,
+  return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
+           isAuthed, isReadonly, roleLabel, landing,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation,
            openEditor, closeEditor,
            login, logout, clearMustChangePassword, setToken }

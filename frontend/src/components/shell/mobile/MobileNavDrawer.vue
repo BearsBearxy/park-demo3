@@ -69,7 +69,7 @@ function goRecent(value: string) {
 }
 
 // 账号段照抄 IconRail 头像菜单:S 档不渲染 IconRail,这是全站唯一退出入口
-const roleLabel = computed(() => (auth.isReadonly ? '只读账号' : '管理员(可写)'))
+
 function onLogout() {
   auth.logout()
   router.push('/login')
@@ -138,7 +138,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <Avatar :name="auth.displayName ?? '—'" :size="36" />
             <div class="mnav-user-txt">
               <div class="nm">{{ auth.displayName ?? '未登录' }}</div>
-              <div class="role" :class="{ ro: auth.isReadonly }">{{ roleLabel }}</div>
+              <div class="role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
             </div>
             <button class="mnav-logout" @click="onLogout">
               <LogOut :size="16" />退出登录
@@ -280,6 +280,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 .mnav-user-txt .role {
   display: inline-block;
+  /* 同 IconRail:兼岗真名顿号拼,不封顶会顶开抽屉里的用户块 */
+  max-width: 176px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin-top: 3px;
   font-size: 11px;
   color: var(--fill-blue);

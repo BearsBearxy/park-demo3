@@ -72,6 +72,19 @@ describe('auth store', () => {
     expect(auth.token).toBe('sess-token')
   })
 
+  // 破坏验证:把 login 里 `target.setItem('roleNames', ...)` 那行删掉 → 第二段红。
+  // 不落盘的话刷新一次角色行就掉回派生值 —— 屏上不报错,只是那行字悄悄换了个人。
+  it('❗roleNames 落 storage,刷新后角色行还在', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({
+      token: 'jwt-r', displayName: '王主管', role: 'finance_manager',
+      permissions: ['ledger:edit'], roleNames: ['财务主管', '审核员'],
+    })
+    const auth = useAuthStore()
+    await auth.login({ username: 'wang', password: 'x' })
+    expect(auth.roleLabel).toBe('财务主管、审核员')
+    expect(JSON.parse(localStorage.getItem('roleNames')!)).toEqual(['财务主管', '审核员'])
+  })
+
   it('viewer role → isReadonly true(只读标志;安全边界在后端 GET-only,此处仅供 UI)', async () => {
     vi.mocked(api.post).mockResolvedValueOnce({ token: 'jwt-v', displayName: '只读账号', role: 'viewer', permissions: [] })
     const auth = useAuthStore()
@@ -211,5 +224,66 @@ describe('关页面前的二次确认', () => {
     window.dispatchEvent(e)
 
     expect(e.defaultPrevented).toBe(false)
+  })
+})
+
+// ══════════ 角色行(§6 角色行,P5) ══════════
+//
+// 侧栏头像下那一行字。改前它是个二值常量:「只读账号」/「管理员(可写)」——
+// 财务专员、财务主管、审核员三种人一律被写成「管理员」,而其中两种连用户管理都进不去。
+describe('角色行 roleLabel(P5)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); sessionStorage.clear() })
+
+  // 破坏验证:把 roleNames.length 那一支删掉 → 红(会掉进派生表显「系统管理员（派生）」)
+  it('❗后端给了真名就显真名,不再自己猜', () => {
+    const auth = useAuthStore()
+    auth.roleNames = ['财务主管']
+    auth.permissions = ['system:view']          // 派生表会算成「系统管理员」,真名必须压过它
+    expect(auth.roleLabel).toBe('财务主管')
+  })
+
+  // 破坏验证:把 join('、') 改成 join('/') 或 [0] → 红
+  it('❗兼岗给全部角色,顿号拼 —— 只显第一个等于把另一半身份藏了', () => {
+    const auth = useAuthStore()
+    auth.roleNames = ['财务主管', '系统管理员']
+    expect(auth.roleLabel).toBe('财务主管、系统管理员')
+  })
+
+  // ❗派生表逐档。每一档都要能被上一档压住 —— 少一档就是把这个人说成别人。
+  //   破坏验证:任删一支 → 该档那一条红。
+  it('❗一个角色都没挂时按权限派生,次序 系统管理员 > 审核员 > 财务主管 > 财务专员 > 股东 > 只读', () => {
+    const auth = useAuthStore()
+    const label = (perms: string[], layers = ['data', 'reports', 'analysis']) => {
+      auth.roleNames = []; auth.permissions = perms; auth.navLayers = layers
+      return auth.roleLabel
+    }
+    expect(label(['system:view', 'review:approve', 'lock:takeover', 'ledger:edit'])).toBe('系统管理员（派生）')
+    expect(label(['review:approve', 'lock:takeover', 'ledger:edit'])).toBe('审核员（派生）')
+    expect(label(['lock:takeover', 'ledger:edit'])).toBe('财务主管（派生）')
+    expect(label(['ledger:edit'])).toBe('财务专员（派生）')
+    expect(label([], ['analysis'])).toBe('园区股东（派生）')
+    expect(label([])).toBe('只读账号（派生）')
+  })
+
+  // ❗「（派生）」不是装饰:派生值跟真名长得一模一样,不标的话用户会以为系统认得他,
+  //   而派生表里根本没有「总经理」这一档(总经理与只读账号权限完全相同)。
+  //   破坏验证:把 `d + '（派生）'` 改成 `d` → 红。
+  it('❗派生出来的必须带「（派生）」,真名不带', () => {
+    const auth = useAuthStore()
+    auth.permissions = ['ledger:edit']
+    expect(auth.roleLabel).toContain('（派生）')
+    auth.roleNames = ['财务专员']
+    expect(auth.roleLabel).not.toContain('（派生）')
+  })
+
+  // 破坏验证:把 landing 里的 readonly / reviewer 任一参数去掉 → 对应那条红
+  it('❗auth.landing 把四个判据一处读齐 —— 六个调用点各传一遍必然漏', () => {
+    const auth = useAuthStore()
+    auth.permissions = []                       // 零 :edit
+    expect(auth.landing).toBe('/cockpit')
+    auth.permissions = ['review:approve']       // 审核员:仍零 :edit,但要落审核队列那一屏
+    expect(auth.landing).toBe('/data-home')
+    auth.permissions = ['ledger:edit']
+    expect(auth.landing).toBe('/data-home')
   })
 })
