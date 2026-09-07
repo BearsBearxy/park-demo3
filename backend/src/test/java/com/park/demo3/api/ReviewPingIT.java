@@ -32,9 +32,17 @@ class ReviewPingIT extends AbstractMysqlIT {
     private static final String PASS = "init-pass-123";
     private static final String YM = "2031-11";
 
+    /**
+     * ⚠ review_log 也要清。本类原先只造 review_state(直接 INSERT,不走端点),从不留痕;
+     * reviewRevMovesWhenSomeoneReviews 是第一条真调审核端点的用例,它会落一行 review_log。
+     * 不清的话审计日志那两条按**总数**断言的用例(AuditLogApiIT.timelineUnionsThreeSources /
+     * sourceFilterSkipsOtherBranches)会被这一行顶红 —— 容器是复用的,红在别人身上。
+     * 清法照抄 ReviewApiIT:按键的月份前缀删。
+     */
     @AfterEach
     void wipe() {
         jdbc.update("DELETE FROM review_state WHERE period = ?", YM);
+        jdbc.update("DELETE FROM review_log WHERE review_key LIKE ?", "%" + YM);
     }
 
     @Test
