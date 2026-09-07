@@ -6,6 +6,8 @@ import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
+import { useReviewStore } from '@/stores/review'
+import { LOCKING, periodOfKey, reviewNoteOf } from '@/types/review'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
@@ -33,7 +35,14 @@ const props = withDefaults(defineProps<{
   /** 把未保存草稿序列化成 TSV(被接管弹窗的「复制我的改动」)。草稿在各屏,页头只递话:
    *  有草稿的屏(附表10/母册附表)传,即时落库的 5 屏不用管 —— 不传就不显示复制块。 */
   copyText?: () => string
-}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null })
+  /**
+   * 本屏**当前选中月**那把审核键(SIDEBAR-UX-REDESIGN §7.1),如 `salary:2025-03`。
+   *
+   * ⚠ 附表族是「按年进屏、按月审」:传的是屏内此刻在改的那个月,不是 year。
+   * **不传 = 这一屏不受审核约束** —— 损益附表(报表层本轮不进审核,§7.1)就不传。
+   */
+  reviewKey?: string | null
+}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null, reviewKey: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
 
@@ -69,6 +78,26 @@ const { lockedBy, evictedBy } = lock
  */
 const heldByOther = lock.watchScope(() => props.scope)
 
+// ── 审核闸(§7.5;EDIT-MODE-SPEC 三道闸之二:权限 → 审核态 → 锁) ──
+//
+// ⚠ 本组件是**第二条独立的编辑入口** —— 它不走 useEditMode(编辑态由 7 个消费屏各自持有,
+//   见本文件头注),所以闸要在这里再接一次。接的是同一个 store 与同一份文案,不是另抄一份判据:
+//   spec §7.5 只写了 useEditMode 那条路,照字面实现等于放过附表族六把键。
+const review = useReviewStore()
+watch(() => props.reviewKey, (k) => { void review.ensure(periodOfKey(k)) }, { immediate: true })
+
+/** 挡编辑的审核行。拉失败也挡(保守:放行等于让人录完一屏再吃一个 423)。 */
+const reviewBlock = computed<{ note: string; tip: string } | null>(() => {
+  if (!props.reviewKey) return null
+  const p = periodOfKey(props.reviewKey)
+  if (review.isFailed(p)) return { note: '审核态未知', tip: '审核状态没取到,刷新后再试' }
+  if (!review.isLoaded(p)) return null
+  const r = review.rowOf(props.reviewKey)
+  if (!r || !LOCKING.includes(r.status)) return null
+  return { note: reviewNoteOf(r)!, tip: '撤销审核需审核员' }
+})
+const reviewNote = computed(() => reviewBlock.value?.note ?? null)
+
 /**
  * edit 真正退下来时的统一收尾。**锁跟着 edit 状态走**:屏什么时候真的翻假,什么时候才还。
  *
@@ -95,6 +124,9 @@ function exitEdit(forced = false) {
 }
 
 async function onToggleEdit() {
+  // 审核闸在**提权窗之前**:否则已审核的表会先弹「请主管授权」,主管批完了照样进不去,
+  // 白叫一次主管(§7.5:elevate:request 弹窗不出现)。退出编辑不拦 —— 在里面的人要出得来。
+  if (!props.edit && reviewBlock.value) return
   if (!props.edit && !auth.can(props.perm)) { asking.value = [props.perm]; return }
   // 用户点「完成」:**只递话,不还锁** —— 屏可能还要问一句「有 N 处未保存」,
   // 锁要陪到那道确认结束(edit 翻假时上面的 watch 才收尾)。
@@ -120,9 +152,20 @@ watch(() => props.scope, (now, before) => {
   exitEdit(true)
 })
 
+/**
+ * 编辑态里这张表被审了 → 强制退出(与上面「换期还锁」同一档:会丢数据的那一档)。
+ *
+ * 两条路走到这里:① 别人在另一个浏览器交审/通过,本屏下一次重取看到
+ * ② 屏内换月(附表12 月胶囊 / 附13-14 Segmented)换到了一个已审核的月 —— 这一条最常见,
+ *    而 scope 那条守卫看不到它(锁的 scope 是按年的 `sched:salary:2025`,换月不变)。
+ */
+watch(reviewBlock, (rb) => { if (rb && props.edit) exitEdit(true) })
+
 /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
 async function onTaken() {
   lockedBy.value = null
+  // 接管拿到的是**锁**,不是改已审核表的资格。这里不拦的话,接管抽屉成了绕开审核闸的后门。
+  if (reviewBlock.value) return
   if (props.scope) await lock.acquire(props.scope)   // 重入拿回 held 与心跳
   if (!props.edit) emit('toggle-edit')
 }
@@ -165,7 +208,11 @@ function onImport() {
            改前这里恒 filled + 文案「编辑表格」,与 6 个抄表族屏的 outline +「编辑模式」两派并存。 -->
       <!-- 锁位就长在编辑模式按钮上(设计稿 §05):不另加 chip —— 那是你的手本来就要去的地方。
            min-width 定死,三态换文案不换宽度,工具条不挪一个像素(LAYOUT-STABILITY)。 -->
-      <Button v-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm"
+      <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lc-lockbtn 同 min-width)。 -->
+      <span v-if="canAsk && reviewNote" class="lc-lockbtn lc-reviewpill" :title="reviewBlock?.tip ?? undefined">
+        <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
+      </span>
+      <Button v-else-if="canAsk" :variant="edit ? 'filled' : 'outline'" size="sm"
               class="lc-lockbtn" :class="{ held: !!heldByOther }" @click="onToggleEdit">
         <template #leading>
           <span v-if="heldByOther && !edit" class="lc-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
@@ -201,6 +248,14 @@ function onImport() {
 .lc-editbadge { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:var(--radius-full); background:rgb(255,243,230); color:var(--hue-orange); font-size:12.5px; font-weight:var(--fw-medium); white-space:nowrap; }
 /* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」/「完成」换文案不挪版 */
 .lc-lockbtn { min-width:150px; justify-content:center; }
+/* 审核药丸:逐项对齐 ds/Button 的 size="sm"(SIZES.sm = height 28 / padding 0 12px / fs-label),
+   只是点不动。与 .lc-lockbtn 共用 min-width,换的是内容不是版面。 */
+.lc-reviewpill {
+  display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; box-sizing:border-box;
+  border:1px solid var(--border-subtle); border-radius:var(--radius-full);
+  background:var(--bg-subtle); color:var(--text-muted);
+  font-size:var(--fs-label); line-height:1; white-space:nowrap; cursor:not-allowed;
+}
 .lc-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
 .lc-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
 .lc-lockav.dim { opacity:.55; }
