@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// no-review: 充电桩分栋抄表是附表7/8 的**下游**派生第二本账,不单独审;
+//            后端同款豁免见 CpMeterService 上的 @NoReviewGuard。
 // 分桩充电明细(CP-METER-SPEC §2)— 与附表7/8 月度汇总并列的新屏,由 ChargingView 功能门进入。
 // 附表7/8 共享本组件,按 vehicleType 过滤共享桩库;一行一桩,月度量=该桩该月记录求和;点行开抽屉逐条增删改;
 // 三金额(充电量/手续费/收益)全手填(从平台对账单抄,无自动换算);

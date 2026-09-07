@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// no-review: 母册收款簿同上(改的是 bill_pay_company,不进出账链快照);
+//            后端同款豁免见 BookService 上的 @NoReviewGuard。
 // 收款簿窗口(S20-BILL-DELIVERY-SPEC §3 入口2 / S19 批量):批量指定 租户 × 收款槽 → 公司。
 // 容器与交互范式照抄 CoefBookWindow(居中 FPDrawer/期页签/楼栋分组/多选/统一修改条唯一改值入口/
 // 暂存-保存两段/切换与关闭前二次确认):同一个页面的两个簿,手法不一致会让用户重新学一遍。

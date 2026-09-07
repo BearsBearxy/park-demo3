@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// no-review: 报表层本轮不进审核(SIDEBAR-UX-REDESIGN §7.1 末句:收入核对与报表层本轮不进审核)。
 // 损益附表 1–5 — 一个参数化 View 服务 5 条路由(P2-D spec D4,charging 7/8 先例)。
 // 路由 meta.value → PNL_SCHEDULES config(App.vue KeepAlive key=value:epoch,5 条路由 value 不同不串台)。
 // 动线:⓪ SchedYearGate(年份门,P1 惯例) → 年度矩阵(SchedHeader + PnlTable)。

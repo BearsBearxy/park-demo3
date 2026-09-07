@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// no-review: 母册系数簿已有同型守卫 assertMonthEditable(P6 录入即冻结),不重复挂审核闸;
+//            后端同款豁免见 BookService 上的 @NoReviewGuard。
 // 系数簿窗口(S14-COEF-BOOK-SPEC §3 v3 定稿):催缴单页入口的批量系数编辑器——居中窗口卡片
 // (编辑池弹窗同款 FPDrawer 容器)。交互=选租户→选系数→统一修改条改→保存:
 // 期页签+搜索/系数下拉(一次一个)/生效月(默认=催缴单页 ym,版本自该月起前滚)/多选+表头全选
