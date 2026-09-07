@@ -82,9 +82,13 @@ public class PresenceService {
         int pendingReviews = ua != null && ua.perms().contains(Perm.REVIEW_APPROVE)
             ? reviews.pendingCount() : 0;
 
+        // 「我交的表被退回了」—— 与 pendingReviews 不同,**不看权限**:谁都可能被退回。
+        // 一次按 submitted_by 的 count,自清(重新交审即归零),见 ReviewService.returnedCount。
+        int myReturned = reviews.returnedCount(me);
+
         return new PingResp(seats(me), evictions,
             evictions.isEmpty() ? null : evictions.get(0),
-            approvals.inbox(), out, pendingReviews);
+            approvals.inbox(), out, pendingReviews, myReturned);
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */

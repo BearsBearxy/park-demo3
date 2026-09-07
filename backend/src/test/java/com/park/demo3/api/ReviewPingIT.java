@@ -65,10 +65,58 @@ class ReviewPingIT extends AbstractMysqlIT {
             .as("pendingReviews 必须出现在 ping 的响应体里").isNotNull();
     }
 
+    /**
+     * 第 6 件事:myReturned(R2 T9)。
+     *
+     * 与 pendingReviews 两点不同:① **不看权限**(谁都可能被退回)② 是**我的**数不是全库的数。
+     */
+    @Test
+    void myReturned_countsOnlyMyOwnReturnedTables_andIsPerUser() throws Exception {
+        String a = admin();
+        String u = mkUser(a, "it_ret", "finance_clerk");   // finance_clerk 没有 review:approve
+        try {
+            // 「admin 交的表被退回了」——直接落一行,免得跑一整套交审/退回(那条 ReviewApiIT 已经钉了)
+            jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status, submitted_by) "
+                      + "VALUES (?,?,?,NULL,'returned',?)", "salary:" + YM, "salary", YM, "admin");
+
+            assertThat(returned(a)).as("我交的、被退回的,算我头上").isEqualTo(1);
+            assertThat(returned(login(u, PASS))).as("别人交的不算在我头上").isZero();
+
+            // ❗**不看权限**:录入员没有 review:approve,但他交的表被退回照样要提醒他 ——
+            //   这一条正是 myReturned 与 pendingReviews 的分水岭。
+            //   (头一版没有这一条:把 myReturned 挂上 review:approve 的破坏当场假绿,
+            //    因为那时没有审核权的账号恰好也没有被退回的表。)
+            jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status, submitted_by) "
+                      + "VALUES (?,?,?,NULL,'returned',?)", "pv:" + YM, "pv", YM, u);
+            assertThat(returned(login(u, PASS)))
+                .as("录入员没有审核权,但他交的表被退回了照样要提醒他").isEqualTo(1);
+            assertThat(returned(a)).as("他那张不算在我头上").isEqualTo(1);
+
+            // ❗自清:重新交审 → status 翻回 submitted,这个数自己掉下去,不需要「已读位」
+            jdbc.update("UPDATE review_state SET status='submitted' WHERE review_key=?", "salary:" + YM);
+            assertThat(returned(a)).as("重新交审之后不该再提醒").isZero();
+        } finally { cleanup(u); }
+    }
+
+    /** 已审核 / 待审核的行不算「被退回」—— 只有 returned 那一档算。 */
+    @Test
+    void myReturned_ignoresOtherStatuses() throws Exception {
+        String a = admin();
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status, submitted_by) "
+                  + "VALUES (?,?,?,NULL,'approved',?)", "pv:" + YM, "pv", YM, "admin");
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status, submitted_by) "
+                  + "VALUES (?,?,?,NULL,'submitted',?)", "salary:" + YM, "salary", YM, "admin");
+        assertThat(returned(a)).isZero();
+    }
+
     // ══════════ helpers ══════════
 
     private int pending(String token) throws Exception {
         return JsonPath.read(body(ping(token)), "$.data.pendingReviews");
+    }
+
+    private int returned(String token) throws Exception {
+        return JsonPath.read(body(ping(token)), "$.data.myReturned");
     }
 
     private MvcResult ping(String token) throws Exception {

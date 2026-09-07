@@ -1148,3 +1148,74 @@ describe('退回 / 撤销弹窗(R2 T6)', () => {
     expect(reviewApi.returnBack).toHaveBeenCalledWith(`params:${YM}`, '电价填错了')
   })
 })
+
+
+// ══════════ 审核条(§7.5 审核员落地位,R2 T7) ══════════
+
+describe('审核条(R2 T7)', () => {
+  beforeEach(() => {
+    vi.mocked(reviewApi.list).mockReset().mockResolvedValue([])
+  })
+
+  // 破坏验证:把 isReviewer 改成恒真 → 红
+  it('❗没有 review:approve 的人看不到审核条', async () => {
+    const w = await mountReview(reviewFixture(), EDITOR_PERMS)
+    expect(w.find('.dh-rvbar').exists()).toBe(false)
+  })
+
+  // 破坏验证:把审核条那个 v-if 改成 v-else-if 挂在主管条上 → 红
+  it('❗admin 两个身份都有 → 主管条与审核条各占各的,不合并', async () => {
+    const w = await mountReview(reviewFixture(),
+      [...EDITOR_PERMS, 'review:approve', 'lock:takeover'])
+    expect(w.findAll('.dh-sup').length, '两条各一行,合成一条会让 admin 少看见一半').toBe(2)
+    expect(w.find('.dh-rvbar').exists()).toBe(true)
+  })
+
+  // 破坏验证:把「暂无待审」那支删掉(改成 v-if="reviewCounts.pending") → 红。
+  // 32px 定高常驻是 P2 裁定 1/2:零待审也要占位,不许整条塌掉。
+  it('❗零待审时按钮仍在位,写「暂无待审」', async () => {
+    const w = await mountReview(reviewFixture(), [...EDITOR_PERMS, 'review:approve'])
+    expect(w.find('.dh-rvbar .dh-sup-inbox').text()).toBe('暂无待审')
+  })
+
+  it('待审核条数与「本月已审 n/总」都从渲染出来的行算', async () => {
+    const w = await mountReview(reviewFixture({
+      [`params:${YM}`]: { status: 'submitted' },
+      [`meters:${YM}`]: { status: 'submitted' },
+      [`pv:${YM}`]: { status: 'approved' },
+    }), [...EDITOR_PERMS, 'review:approve'])
+    expect(w.find('.dh-rvbar .dh-sup-inbox').text()).toBe('待审核 2')
+    // 分母 = 有审核键的行数(导入中心 / 收入核对 / 本月锁账不算)
+    const bar = w.find('.dh-rvcount').text()
+    expect(bar).toMatch(/^本月已审 1\/\d+$/)
+  })
+
+  // ❗破坏验证:把 reviewCounts 改成抄 reviewRows.length(回包 19 把键)→ 红。
+  //   §12:计数与审核键集合必须与屏内同源,假绿栽过三次。
+  it('❗计数不许抄回包条数 —— 回包是 19 把键,屏上是 15 行', async () => {
+    const w = await mountReview(reviewFixture(), [...EDITOR_PERMS, 'review:approve'])
+    const total = +w.find('.dh-rvcount').text().match(/\/(\d+)$/)![1]
+    const shown = w.findAll('.dh-rreview').filter(e => e.text() !== '—').length
+    expect(total, '分母要等于屏上真的带审核态的行数').toBe(shown)
+    expect(total, '不该是回包那 19 条').not.toBe(reviewFixture().length)
+  })
+
+  // 破坏验证:把 shown() 里的 onlyPending 判断删掉 → 红
+  it('❗「只看待审」筛掉其余行,再点一下还原', async () => {
+    const w = await mountReview(reviewFixture({
+      [`params:${YM}`]: { status: 'submitted' },
+    }), [...EDITOR_PERMS, 'review:approve'])
+    const before = w.findAll('.dh-row').length
+    await w.find('.dh-rvbar .dh-sup-inbox').trigger('click')
+    const after = w.findAll('.dh-row')
+    expect(after.length, '只剩待审核那一行').toBe(1)
+    expect(after[0].text()).toContain('计费参数')
+    // 两栏的容器与标题常驻 —— 筛掉行不是把版面塌掉
+    expect(w.findAll('.dh-sec').length, '两栏 section 照样在').toBe(2)
+    expect(w.text()).toContain('出账链')
+    expect(w.text()).toContain('附表录入')
+
+    await w.find('.dh-rvbar .dh-sup-inbox').trigger('click')
+    expect(w.findAll('.dh-row').length).toBe(before)
+  })
+})

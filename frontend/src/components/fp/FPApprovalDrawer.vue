@@ -15,12 +15,27 @@ import Button from '@/components/ds/Button.vue'
 import Input from '@/components/ds/Input.vue'
 import FPSideDrawer from '@/components/fp/FPSideDrawer.vue'
 import { iconFor } from '@/components/ds/icon'
+import { useRouter } from 'vue-router'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 const presence = usePresenceStore()
 const pending = computed(() => presence.approvals)
+
+// ── 审核两段(R2 T8/T9) ──────────────────────────────────
+// ping 只发个数不发清单(§7.4:3 秒一拍,发清单等于每 3 秒推一遍全月审核态),
+// 所以这两段给的是「几件 + 一个去处」,不列具体哪几张表 —— 清单在本月出账屏上,那里什么都有。
+// 抽屉自己也不再打一趟网络去补清单:它是浮层,开一次打一趟不划算,而跳过去本来就要重取。
+const router = useRouter()
+const toReview = computed(() => presence.pendingReviews)
+const returned = computed(() => presence.myReturned)
+function goDataHome() {
+  emit('close')
+  // 裸路径不带 ?p —— periodLink 要求必须给一个期,而待审的键可能分散在好几个月,
+  // 硬指一个月反倒把人送错地方。首页自己会锚定到该做事的那个月。
+  void router.push('/data-home')
+}
 
 /** 每条请求各自的密码框 —— 两条请求同时进来时，不能共用一个输入。 */
 const pw = ref<Record<string, string>>({})
@@ -62,8 +77,23 @@ async function decide(p: Pending, approve: boolean) {
 </script>
 
 <template>
-  <FPSideDrawer :open="open" :title="`待批授权 ${pending.length}`" :width="440" @close="emit('close')">
+  <FPSideDrawer :open="open" :title="`通知 ${pending.length + toReview + returned}`" :width="440" @close="emit('close')">
     <div class="ap-body">
+      <!-- 审核两段在最上面:它们是「今天要做的事」,而授权请求是「别人在等你」——
+           两者都得有,但前者是常态,后者是偶发。零条时整段不渲染(这里不是定高常驻的条,
+           是抽屉里的段落,空段落只会让人多滚一屏)。 -->
+      <div v-if="toReview" class="ap-note">
+        <component :is="iconFor('clipboard-check')" :size="16" />
+        <span>有 <b>{{ toReview }}</b> 张表等你审</span>
+        <Button variant="outline" size="sm" @click="goDataHome">去审核</Button>
+      </div>
+      <div v-if="returned" class="ap-note ap-note-warn">
+        <component :is="iconFor('rotate-ccw')" :size="16" />
+        <span>你交的 <b>{{ returned }}</b> 张表被退回了</span>
+        <Button variant="outline" size="sm" @click="goDataHome">去看看</Button>
+      </div>
+
+      <h4 v-if="toReview || returned" class="ap-seg">待批授权 {{ pending.length }}</h4>
       <p v-if="!pending.length" class="ap-empty">
         现在没有等你批的请求。<br>
         同事在自己的屏幕上点「远程请求授权」并指名你之后，这里会出现一条，<b>2 分钟内有效</b>。
@@ -121,6 +151,17 @@ async function decide(p: Pending, approve: boolean) {
 </template>
 
 <style scoped>
+/* 审核两段:与授权卡片同一栏宽,一行说清「几件 + 去处」。 */
+.ap-note {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 10px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: var(--surface-card); color: var(--text-primary); font-size: var(--fs-body);
+}
+.ap-note > span { flex: 1; min-width: 0; }
+.ap-note-warn { border-color: var(--hue-orange); color: var(--hue-orange); }
+.ap-seg { margin: 16px 0 8px; font-size: var(--fs-label); color: var(--text-secondary); font-weight: var(--fw-semibold); }
+
 .ap-body { display: flex; flex-direction: column; gap: 14px; }
 .ap-empty { margin: 0; font-size: 13px; line-height: 1.7; color: var(--text-muted); }
 .ap-empty b { color: var(--text-primary); font-weight: var(--fw-semibold); }

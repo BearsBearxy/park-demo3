@@ -149,6 +149,22 @@ public class ReviewService {
             new QueryWrapper<ReviewState>().eq("status", "submitted")));
     }
 
+    /**
+     * ping 用:**我交的表被退回了**几张(R2 D-R2-4)。
+     *
+     * 零迁移:`review_state` 里既有 submitted_by 又有 status,派生得出来,而且**自清** ——
+     * 重新交审时 submit() 会把 status 翻回 submitted(那句「重新交审要把上一轮退回的痕迹清掉」),
+     * 这个数自己就掉下去了,不需要「已读位」。
+     *
+     * ⚠ **撤销不在内,且做不到**:withdraw 是删行(见它的头注:不留 returned,理由进 review_log),
+     *   submitted_by 随行一起没了,没有任何列能反查「这张表原来是谁交的」。
+     *   要发撤销提醒就得加列或加每人一份的已读位 —— 超出 R2 该付的代价,记在 spec §12。
+     */
+    public int returnedCount(String user) {
+        return Math.toIntExact(states.selectCount(new QueryWrapper<ReviewState>()
+            .eq("status", "returned").eq("submitted_by", user)));
+    }
+
     // ══ 四个动作 ═════════════════════════════════════════════════════════════
 
     @Transactional

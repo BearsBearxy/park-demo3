@@ -407,8 +407,29 @@ async function onDialogConfirm(reason: string) {
     d.action === 'return' ? review.returnBack(k, reason) : review.withdraw(k, reason))
   dialog.value = null
 }
-const billingRows = computed(() => rows.value.filter(r => r.col === 'billing'))
-const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
+// ── 审核条(§7.5:审核员落地位) ───────────────────────────
+// 主管条与审核条**各占各的 32px,不合并** —— admin 两个身份都有,合成一条会让他少看见一半。
+const isReviewer = computed(() => auth.can('review:approve'))
+/** 「只看待审」筛选。审核员一个月要过 19 把键,不给筛选就得自己在 15 行里数。 */
+const onlyPending = ref(false)
+
+/** 有审核键的行(导入中心 / 收入核对不算)。屏上那个「本月已审 n/总」的分母就是它。 */
+const reviewable = computed(() => rows.value.filter(r => r.review !== 'na'))
+/**
+ * 计数从**渲染出来的 rows** 算,不抄 review 回包的条数(§12:计数与审核键集合必须与屏内同源,
+ * 假绿栽过三次)。两个数不同源:回包是 19 把键,屏上是 15 行,台账/附10 一行压多把。
+ * 多键行按「最不进展」折过一次,所以这里数的是「整行都审完了」的行数 —— 与屏上写的字一致。
+ */
+const reviewCounts = computed(() => ({
+  pending: reviewable.value.filter(r => r.review === 'submitted').length,
+  approved: reviewable.value.filter(r => r.review === 'approved').length,
+  total: reviewable.value.length,
+}))
+
+const shown = (col: CloseRow['col']) => rows.value.filter(r =>
+  r.col === col && (!onlyPending.value || r.review === 'submitted'))
+const billingRows = computed(() => shown('billing'))
+const bookingRows = computed(() => shown('booking'))
 </script>
 
 <template>
@@ -434,6 +455,15 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
       <div class="dh-sup-who">
         <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e.target)">{{ e.note }}</button>
       </div>
+    </div>
+    <!-- 审核条(R2 T7):与主管条同款 32px 定高常驻。外层唯一的 v-if 是权限判 ——
+         零待审显「暂无待审」,筛选钮与计数照样在位,不许 v-if 掉子容器(P2 裁定 1/2)。 -->
+    <div v-if="isReviewer" class="dh-sup dh-rvbar">
+      <button class="dh-sup-inbox" :data-on="onlyPending" @click="onlyPending = !onlyPending">
+        {{ reviewCounts.pending ? `待审核 ${reviewCounts.pending}` : '暂无待审' }}
+      </button>
+      <span v-if="onlyPending" class="dh-rvfilter">只看待审 · 点上面那颗取消</span>
+      <span class="dh-rvcount">本月已审 {{ reviewCounts.approved }}/{{ reviewCounts.total }}</span>
     </div>
     <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
     <FPReviewDialog v-if="dialog" :target="dialog.label" :action="dialog.action"
@@ -638,6 +668,10 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
   border-radius: var(--radius-full); padding: 4px 12px; cursor: pointer;
 }
 .dh-sup-who { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
+/* 审核条:复用主管条的定高与胶囊,只把计数推到右边 */
+.dh-rvbar .dh-rvcount { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
+.dh-rvfilter { font-size: var(--fs-micro); color: var(--text-muted); }
+.dh-sup-inbox[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: rgb(252, 243, 232); }
 .dh-sup-chip {
   flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-secondary);
   background: var(--surface-card); border: 1px solid var(--border-subtle);

@@ -141,6 +141,18 @@ export const usePresenceStore = defineStore('presence', () => {
   const outcome = ref<Outcome | null>(null)
 
   /**
+   * 审核两个计数,顺同一条 ping 回来(SIDEBAR-UX-REDESIGN §7.4)。
+   *
+   * · pendingReviews 等我审的键有几把 —— 没有 review:approve 的人后端恒发 0,不查库。
+   * · myReturned     我交的表被退回了几张 —— 不看权限,谁都可能被退回;自清(重新交审即归零)。
+   *
+   * **只有个数没有清单**:ping 3 秒一拍,发清单等于每 3 秒推一遍全月审核态。
+   * 要清单去 `GET /api/review`(本月出账屏那一条路)。
+   */
+  const pendingReviews = ref(0)
+  const myReturned = ref(0)
+
+  /**
    * 本会话此刻握着的锁 → 各自的被接管回调。
    *
    * ⚠ **按 scope 一把一槽,不是单槽。** 旧版是 `let onEvicted` 单槽 + scope/mode 单槽:
@@ -233,9 +245,13 @@ export const usePresenceStore = defineStore('presence', () => {
       const r = await api.put<{
         users: Seat[]; evictions: Eviction[] | null
         approvals: Pending[]; outcome: Outcome | null
+        pendingReviews?: number; myReturned?: number
       }>('/presence/ping', { sid, scope, label, lastActivityAt, editScopes })
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
+      // ?? 0 而不是 ?? 旧值:字段缺席(旧后端 / 半截响应)时该显示 0,不该挂着上一拍的数
+      pendingReviews.value = r?.pendingReviews ?? 0
+      myReturned.value = r?.myReturned ?? 0
       // 通知按 scope 派回**它自己的每一个**登记者(同名 scope 可能有多个屏,都得退)。
       // 拍快照再迭代:回调里会 dropLock,原地迭代会漏。
       // ⚠ 只派给「发拍之前就登记着」的(since < myGen):这拍发出之后才登记的回调,
@@ -296,5 +312,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, pendingReviews, myReturned, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })
