@@ -414,7 +414,7 @@ function onBack() {
 .lg-reviewpill {
   display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; box-sizing:border-box;
   border:1px solid var(--border-subtle); border-radius:var(--radius-full);
-  background:var(--bg-subtle); color:var(--text-muted);
+  background:var(--surface-sunken); color:var(--text-muted);
   font-size:var(--fs-label); line-height:1; white-space:nowrap; cursor:not-allowed;
 }
 .lg-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }

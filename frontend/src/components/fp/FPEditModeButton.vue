@@ -80,7 +80,7 @@ const idleMin = computed(() => Math.floor((held.value?.idleMs ?? 0) / 60000))
   height: 28px; padding: 0 12px; box-sizing: border-box;
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
-  background: var(--bg-subtle); color: var(--text-muted);
+  background: var(--surface-sunken); color: var(--text-muted);
   font-size: var(--fs-label); line-height: 1; white-space: nowrap; cursor: not-allowed;
 }
 /* 他人活跃占着:橙描边,一眼看出握在别人手上 */

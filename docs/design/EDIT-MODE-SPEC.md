@@ -109,7 +109,18 @@
 ```
 
 - **审核态这道闸与提权正交**：已审核 / 待审核由**写路径守卫**（`ReviewGuard`，service 层）拦，与调用方持有何种 edit 权无关 —— 主管接管锁、当场提权都过不去。
-- **R1 只落了后端那一半**：写端点会返 `body.code=423`。前端的闸（`useEditMode.toggle()` 在权限检查之后、`enter()` 占锁之前查审核态，按钮位渲染同尺寸禁用药丸「已审核 · 李审 03-05」，零位移）是 **R2**，见 SIDEBAR-UX-REDESIGN §7.5。
+- **R1 后端 / R2 前端,两半都已落地**(2026-09-07)。写端点返 `body.code=423`;前端的闸落在**三个地方**,不是一个:
+  - `composables/useEditMode.ts` —— 10 屏
+  - `components/sched/SchedHeader.vue` —— 附表族 7 屏(它自己接 `useEditLock`,**不走 `useEditMode`**)
+  - `views/ledger/LedgerWideTable.vue` —— 宿主 `LedgerView` 是裸 `const edit = ref(false)`
+
+  判据共用 `stores/review.ts` 的 `blockOf(keys)` 一份。落点在 `enter()` / `onToggleEdit` / `onEnterEdit`
+  这一层(不是 `toggle()`):提权批准后的回调与接管成功的回调都汇进那里,只挂最外层等于给这两条路开后门。
+  按钮位渲染同尺寸禁用药丸「已审核 · 李审 03-05」(零位移)。
+  年表屏(附6/7/8/11、附13/14)是**按月份行**上锁,不是整屏 —— 一屏 12 个月,整屏锁会连没审的月一起锁死。
+  详见 SIDEBAR-UX-REDESIGN §7.5(那里逐条写明了五处与设计稿原文的偏离)。
+- **审核态拉不到时放行,不挡** —— 与本文其余各闸「拿不准就不进」的口径**故意相反**,理由见 SIDEBAR-UX-REDESIGN §7.5 偏离 ④:
+  锁失灵是静默丢数据,审核态失灵后端照样拦。改这一条之前先读那一段。
 - ⚠ 前端闸只挡 `useEditMode` 这一条路（7 屏），附表族 7 屏走 `SchedHeader`、台账是裸 ref —— R2 要把这三条路都补上，否则屏上还能进编辑态，只是保存时才 423。后端守卫是唯一全覆盖的那道。
 
 ## 2. 适用范围（v2：全站）
