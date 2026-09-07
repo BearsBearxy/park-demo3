@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ApprovalDtos.*;
@@ -129,7 +130,8 @@ public class ApprovalService {
      * 批准要输**自己的密码，在自己的电脑上** —— 那正是这条路径比当场授权更安全的地方，
      * 也防「主管电脑没锁屏，路过的人替他点了同意」。
      */
-    public void decide(String id, DecideReq req) {
+        @NoReviewGuard(reason = "提权审批流本身,同 ReviewService 四个动作的豁免理由 ——「审核/审批动作自己再进一次审核」会死锁")
+public void decide(String id, DecideReq req) {
         // ⚠ **顺序要紧**：先 peek（不消费）→ 验密码 → 再 take（原子摘走）。
         //   反过来的话密码输错一次请求就没了，请求者对着等待环白等满两分钟、
         //   而他那边什么错误都看不到。take 仍然是「只处理一次」的保证点。

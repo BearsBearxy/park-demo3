@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.AuditRowDTO;
@@ -104,7 +105,8 @@ public class SystemService {
             splitLayers(r.getNavLayers()), ps, countByRole.getOrDefault(r.getId(), 0L), r.getRemark());
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "角色权限配置,不是期间数据。它是**元权限** —— 改这里能改谁有 entry:edit,进审核会自锁(要改权限先请人审,而审核权本身也在这张表里)")
+@Transactional
     public RoleDTO createRole(RoleCreateReq req) {
         if (roles.selectOne(Wrappers.<AuthRole>lambdaQuery().eq(AuthRole::getCode, req.code())) != null)
             throw new BizException(ResultCode.CONFLICT, "角色标识「" + req.code() + "」已存在");
@@ -121,7 +123,8 @@ public class SystemService {
         return oneRole(r.getId());
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "同 createRole:元权限配置,进审核会自锁")
+@Transactional
     public RoleDTO updateRole(Integer id, RoleUpdateReq req) {
         AuthRole r = mustRole(id);
         // 预置角色的**权限与导航层可改**（「交付后客户自己调」的核心），只有 code 和"能不能删"是固定的
@@ -137,7 +140,8 @@ public class SystemService {
         return oneRole(id);
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "同 createRole:元权限配置,进审核会自锁")
+@Transactional
     public void deleteRole(Integer id) {
         AuthRole r = mustRole(id);
         if (r.getBuiltin() != null && r.getBuiltin() == 1)
@@ -177,7 +181,8 @@ public class SystemService {
             .toList();
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "账号档案,不是期间数据。停用一个人不该等审核 —— 那正是出事时最需要立刻做的事")
+@Transactional
     public UserDTO createUser(UserCreateReq req) {
         if (users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username())) != null)
             throw new BizException(ResultCode.CONFLICT, "用户名「" + req.username() + "」已被占用");
@@ -195,7 +200,8 @@ public class SystemService {
         return oneUser(u.getId());
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "同 createUser:账号档案,与任何账期无关")
+@Transactional
     public UserDTO updateUser(Integer id, UserUpdateReq req) {
         AuthUser u = mustUser(id);
         boolean self = u.getUsername().equals(currentUsername());
@@ -225,7 +231,8 @@ public class SystemService {
         return !now.equals(new HashSet<>(safe(incoming)));
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "停用/启用账号。出事时要能立刻停,等审核等于把安全动作排进业务队列")
+@Transactional
     public UserDTO setStatus(Integer id, int status) {
         AuthUser u = mustUser(id);
         guardNotSelf(u, "不能停用自己。");
@@ -236,7 +243,8 @@ public class SystemService {
         return oneUser(id);
     }
 
-    @Transactional
+        @NoReviewGuard(reason = "凭据操作。凭据不是期间数据,而让重置密码等审核会在人被锁在门外时无解")
+@Transactional
     public void resetPassword(Integer id, String password) {
         AuthUser u = mustUser(id);
         u.setPasswordHash(enc.encode(password));

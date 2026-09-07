@@ -1,5 +1,6 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.*;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
@@ -16,7 +17,8 @@ public class ImportLogService {
     private final ImportLogMapper mapper; private final AuthUserMapper users;
     public ImportLogService(ImportLogMapper mapper, AuthUserMapper users) { this.mapper = mapper; this.users = users; }
 
-    public ImportLogDTO record(ImportLogReq req) {
+        @NoReviewGuard(reason = "只写审计流水,不碰期间数据(ImportLog 实体只有 createdAt,连月都没有)。同 ParamService.logRuleChange 的豁免理由")
+public ImportLogDTO record(ImportLogReq req) {
         ImportLog l = new ImportLog();
         l.setDataType(req.dataType()); l.setTypeLabel(req.typeLabel()); l.setFileName(req.fileName());
         l.setTarget(req.target()); l.setRows(req.rows()); l.setOk(req.ok()); l.setWarn(req.warn());

@@ -1,5 +1,6 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.*;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.AuthUser;
@@ -25,7 +26,8 @@ public class AuthService {
         this.users = users; this.enc = enc; this.jwt = jwt; this.limiter = limiter;
         this.request = request; this.perms = perms;
     }
-    public LoginResp login(LoginReq req) {
+        @NoReviewGuard(reason = "会话,不是数据录入。进审核等于登录要先过闸,而闸的判定本身要先登录")
+public LoginResp login(LoginReq req) {
         String key = LoginRateLimiter.key(clientIp(), req.username());
         if (limiter.isLocked(key)) throw new BizException(ResultCode.TOO_MANY_REQUESTS);
         AuthUser u = users.selectOne(Wrappers.<AuthUser>lambdaQuery().eq(AuthUser::getUsername, req.username()));

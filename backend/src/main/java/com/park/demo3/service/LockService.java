@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.LockDtos.*;
@@ -36,7 +37,8 @@ public class LockService {
         this.cache = cache; this.users = users;
     }
 
-    public LockDTO acquire(String scope) {
+        @NoReviewGuard(reason = "编辑锁写的是内存 PresenceStore,不落库,不是期间数据。锁本身是并发协调,进审核会变成「要占锁先请人审」")
+public LockDTO acquire(String scope) {
         requireSomeEditPerm();
         LockState held = store.acquire(scope, me(), myName());
         if (held != null) return new LockDTO(false, holderOf(scope, held), null);
@@ -44,14 +46,16 @@ public class LockService {
         return LockDTO.ok(mine == null ? null : mine.acquiredAt().toEpochMilli());
     }
 
-    public HeartbeatDTO heartbeat(String scope, Long lastActivityAt) {
+        @NoReviewGuard(reason = "同 acquire:续锁,写内存。它 3 秒一拍,进审核等于每拍撞一次闸")
+public HeartbeatDTO heartbeat(String scope, Long lastActivityAt) {
         Instant touched = lastActivityAt == null ? Instant.now() : Instant.ofEpochMilli(lastActivityAt);
         PresenceStore.Eviction e = store.heartbeat(scope, me(), touched);
         return new HeartbeatDTO(e == null ? null
             : new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()));
     }
 
-    public void release(String scope, Long token) {
+        @NoReviewGuard(reason = "同 acquire:还锁,写内存")
+public void release(String scope, Long token) {
         store.release(scope, me(), token);
     }
 
@@ -61,7 +65,8 @@ public class LockService {
      * ⚠ **锁转给请求者，不是转给授权人。** 主管授权的是「这件事可以发生」，不是「我来接手」——
      *   初版转给主管，结果请求者还是进不去，除非主管接管后立刻退出、他抢在别人前点进去。
      */
-    public LockDTO takeover(String scope, TakeoverReq req) {
+        @NoReviewGuard(reason = "同 acquire。spec §7.3 说的「接管绕不过 ReviewGuard」指的是接管**之后的写**,不是接管这个动作本身")
+public LockDTO takeover(String scope, TakeoverReq req) {
         requireSomeEditPerm();
         LockState cur = store.state(scope);
         // 已经空了（心跳超时自愈 / 持有人刚点了完成）→ 就是一次普通的占锁，不必留接管痕迹

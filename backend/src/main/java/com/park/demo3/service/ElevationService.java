@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ElevationDtos.ElevateReq;
@@ -51,7 +52,8 @@ public class ElevationService {
         this.limiter = limiter; this.audit = audit; this.request = request;
     }
 
-    public List<GrantDTO> elevate(ElevateReq req) {
+        @NoReviewGuard(reason = "spec §7.3 明写提权过不了 ReviewGuard。提权动作自己再进一次审核会死锁:要提权先请审,而请审要先有权")
+public List<GrantDTO> elevate(ElevateReq req) {
         String me = currentUsername();
 
         // ── 1. 请求的权限点必须干净 ──
