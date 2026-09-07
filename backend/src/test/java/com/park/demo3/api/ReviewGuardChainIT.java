@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +41,7 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
         jdbc.update("DELETE FROM meter_reading WHERE ym IN (?,?)", YM, OTHER);
         jdbc.update("DELETE FROM tenant_price_cfg WHERE acct_month IN (?,?)", YM, OTHER);
         jdbc.update("DELETE FROM param_change_log WHERE acct_month IN (?,?)", YM, OTHER);
+        jdbc.update("DELETE FROM report_amount WHERE year=2031");
     }
 
     // ══ params:守的是 body 的 acctMonth,不是 URL 的 ym ══════════════════════
@@ -99,9 +101,11 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
 
     // ══════════ helpers ══════════
 
-    private void seedApproved(String key, String kind) {
-        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,NULL,'approved')",
-            key, kind, key.substring(key.lastIndexOf(':') + 1));
+    private void seedApproved(String key, String kind) { seedApproved(key, kind, null); }
+
+    private void seedApproved(String key, String kind, String scope) {
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,'approved')",
+            key, kind, key.substring(key.lastIndexOf(':') + 1), scope);
     }
 
     /** 电价是月变键(mode 只能 month),写它的话「被写月」就是 acctMonth 本身,不牵扯 from 行的生效区间。 */
@@ -190,6 +194,70 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
             jdbc.update("DELETE FROM alloc_rule_member WHERE rule_id = ?", ruleId);
             jdbc.update("DELETE FROM alloc_rule WHERE id = ?", ruleId);
             jdbc.update("DELETE FROM param_change_log WHERE scope = ?", "rule:" + ruleId);
+        }
+    }
+
+
+    // ══ 三大报表(2026-09-08):一张表 × 一家公司 × 一个月 ═════════════════════
+
+    /** 已审核的月不许再存这家公司这张报表。破坏验证:去掉 ReportService.save 里那句 assertEditable → 绿。 */
+    @Test
+    void report_lockedMonth_is423() throws Exception {
+        seedApproved("report-is:1:" + YM, "report-is", "1");
+        assertThat(code(putJson("/api/reports/is/1/2031/8", "{\"cells\":[]}"))).isEqualTo(423);
+    }
+
+    /**
+     * 同一家公司、**换一张报表**就该放行。
+     *
+     * 这条是「三个 statement 是三把独立的键」的反证:要是守成了一个 kind(或者按公司整体拒),
+     * 审掉利润表会连资产负债表一起锁死,而它们是两张各录各的表。
+     */
+    @Test
+    void report_anotherStatement_passes() throws Exception {
+        seedApproved("report-is:1:" + YM, "report-is", "1");
+        assertThat(code(putJson("/api/reports/bs/1/2031/8", "{\"cells\":[]}"))).isEqualTo(0);
+    }
+
+    /**
+     * 同一张报表、**换一家公司**就该放行。
+     *
+     * 审核键的 scope 段放的是 companyId —— 守卫要是漏了 scope,一家公司审完会把别家一起锁死。
+     */
+    @Test
+    void report_anotherCompany_passes() throws Exception {
+        seedApproved("report-is:1:" + YM, "report-is", "1");
+        assertThat(code(putJson("/api/reports/is/2/2031/8", "{\"cells\":[]}"))).isEqualTo(0);
+    }
+
+    /** 换个没审的月照样能存。 */
+    @Test
+    void report_anotherMonth_passes() throws Exception {
+        seedApproved("report-is:1:" + YM, "report-is", "1");
+        assertThat(code(putJson("/api/reports/is/1/2031/9", "{\"cells\":[]}"))).isEqualTo(0);
+    }
+
+    /**
+     * ❗删自定义行是**跨全部期**删金额(级联子树 × 所有月),算不出「被写的是哪几个月」,
+     * 所以按「有任一已审月就整体拒」判。这条之前是个真洞:整个 ReportService 一句守卫都没有,
+     * 一次点击就能删掉已审月的报表金额。
+     */
+    @Test
+    void report_deleteCustomRow_refusedWhenAnyMonthApproved() throws Exception {
+        // 先建一行自己的(不复用库里现成的:那行可能被别的用例依赖,删了会连坐)
+        assertThat(code(postJson("/api/reports/is/1/custom-row",
+            "{\"parentKey\":\"1\",\"label\":\"审核闸用例\",\"level\":1}"))).isEqualTo(0);
+        List<Long> ids = jdbc.queryForList(
+            "SELECT id FROM report_custom_row WHERE company_id=1 AND statement='is' AND label='审核闸用例'",
+            Long.class);
+        assertThat(ids).as("自定义行没建出来,后面那句删就没意义了").hasSize(1);
+        try {
+            seedApproved("report-is:1:" + YM, "report-is", "1");
+            assertThat(code(mvc.perform(MockMvcRequestBuilders
+                .delete("/api/reports/is/custom-row/" + ids.get(0))
+                .header("Authorization", hdr(admin()))).andReturn())).isEqualTo(423);
+        } finally {
+            jdbc.update("DELETE FROM report_custom_row WHERE label='审核闸用例'");
         }
     }
 

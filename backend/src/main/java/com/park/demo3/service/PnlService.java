@@ -11,6 +11,7 @@ import com.park.demo3.dto.PnlSaveRequest;
 import com.park.demo3.dto.PnlYearDTO;
 import com.park.demo3.entity.PnlRow;
 import com.park.demo3.mapper.PnlRowMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -68,7 +69,8 @@ public class PnlService {
     }
 
     // ── 保存整年(clear+insert;row_key 服务端按行序合成 r<n>) ──
-    @Transactional
+        @NoReviewGuard(reason = "损益附表按年落库(pnl 行只有 year 没有 acct_month),不属任何月;审核键全是月度的,无键可挂。同 BudgetService.importRows 的处境。要审它得先有「按年」的审核键")
+@Transactional
     public PnlYearDTO save(String schedule, int year, PnlSaveRequest req) {
         check(schedule);
         clear(schedule, year);
@@ -77,7 +79,8 @@ public class PnlService {
     }
 
     // ── 导入整年(clear+insert,imported=行数) ──
-    @Transactional
+        @NoReviewGuard(reason = "同 save:按年落库,无月可挂")
+@Transactional
     public ImportResultDTO importRows(String schedule, int year, PnlImportRequest req) {
         check(schedule);
         clear(schedule, year);

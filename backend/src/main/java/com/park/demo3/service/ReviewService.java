@@ -58,12 +58,14 @@ public class ReviewService {
     private final ReviewLogMapper logs;
     private final DataHomeService dataHome;
     private final ElecCostEntryMapper elecCostEntries;
+    private final com.park.demo3.mapper.ReportAmountMapper amounts;
     private final UserPermissionCache cache;
 
     public ReviewService(ReviewStateMapper states, ReviewLogMapper logs, DataHomeService dataHome,
-                         ElecCostEntryMapper elecCostEntries, UserPermissionCache cache) {
+                         ElecCostEntryMapper elecCostEntries,
+                         com.park.demo3.mapper.ReportAmountMapper amounts, UserPermissionCache cache) {
         this.states = states; this.logs = logs; this.dataHome = dataHome;
-        this.elecCostEntries = elecCostEntries; this.cache = cache;
+        this.elecCostEntries = elecCostEntries; this.amounts = amounts; this.cache = cache;
     }
 
     // ══ 读侧 ═════════════════════════════════════════════════════════════════
@@ -103,6 +105,12 @@ public class ReviewService {
         for (ReviewKind k : List.of(ReviewKind.PV, ReviewKind.CHARGING_CAR, ReviewKind.CHARGING_EBIKE,
                                     ReviewKind.ELEC_COST, ReviewKind.ELEC_MODEL))
             keys.add(ReviewKey.of(k, null, period));
+
+        // 三大报表:一张表 × 一家公司 × 一个月。公司名单复用台账那一份(companiesOf(ov)),
+        // 不另查库 —— 两处各查一次必漂移,而漂移的表现是「清单上有这家公司、审核键里没有」。
+        for (DataHomeOverviewDTO.Company c : companiesOf(ov))
+            for (ReviewKind k : List.of(ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB))
+                keys.add(ReviewKey.of(k, String.valueOf(c.id()), period));
         return keys;
     }
 
@@ -326,6 +334,13 @@ public class ReviewService {
             case CHARGING_EBIKE -> itemDone(ov, "ebike-charging");
             case ELEC_COST      -> itemDone(ov, "elec-cost");
             case ELEC_MODEL     -> true;   // 上面已提前返回,这里只是让 switch 穷尽
+            // 报表没有清单行的 done 位可读(本月出账屏那 15 行里本来没有它们),
+            // 判「该公司该报表这个月有没有金额行」—— 与 elec-model 同一条路子。
+            // ⚠ 不判「有没有非零金额」:一张全 0 的资产负债表也是录过的,判零会把它当成没录。
+            case REPORT_IS, REPORT_BS, REPORT_TB -> !amounts.period(
+                Integer.parseInt(key.scope()), key.kind().statement(),
+                Integer.parseInt(key.period().substring(0, 4)),
+                Integer.parseInt(key.period().substring(5, 7))).isEmpty();
         };
     }
 
