@@ -3,6 +3,7 @@ import { nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useEditMode } from '@/composables/useEditMode'
+import { useReviewStore } from '@/stores/review'
 import api from '@/api'
 
 /** 种一份授权 —— 走真实路径 requestElevation(),而不是往 store 里塞。
@@ -407,5 +408,148 @@ describe('lockScope / onTaken(接管闭环)', () => {
     await em.onTaken()
     expect(em.editMode.value, '期已经变了,不该留在编辑态').toBe(false)
     expect(api.delete, '刚拿到的那把锁要还回去').toHaveBeenCalledWith('/locks/pv-meter:2025?t=1')
+  })
+})
+
+// ══════════ 审核闸(SIDEBAR-UX-REDESIGN §7.5,R2 T2) ══════════
+
+/** 让 /review 回一行指定态,其余端点照常回 []。 */
+function seedReview(status: string, extra: Record<string, unknown> = {}) {
+  vi.mocked(api.get).mockImplementation((url: string) =>
+    url === '/review'
+      ? Promise.resolve([{
+          key: 'salary:2025-03', kind: 'salary', scope: null, status,
+          submittedBy: '张三', submittedAt: '2025-03-04T09:00:00',
+          reviewedBy: '李审', reviewedAt: '2025-03-05T10:00:00',
+          reason: null, blockedBy: [], ...extra,
+        }] as never)
+      : (Promise.resolve([]) as never),
+  )
+}
+
+const SALARY = { reviewKey: () => 'salary:2025-03' }
+
+describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    sessionStorage.clear()
+    vi.clearAllMocks()
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
+  })
+
+  // 破坏验证:删掉 enter()/toggle() 里那两处 `if (reviewBlock.value) return` → 红
+  it('❗已审核的表进不了编辑模式', async () => {
+    asRole(['entry:edit'])
+    seedReview('approved')
+    const m = useEditMode(['entry:edit'], SALARY)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value, '已审核 = 谁都改不了(§7.3)').toBe(false)
+    expect(m.reviewNote.value).toBe('已审核 · 李审 03-05')
+  })
+
+  // 破坏验证:把 types/review.ts 的 LOCKING 改成只含 'approved' → 红
+  it('❗待审核也锁(D17)', async () => {
+    asRole(['entry:edit'])
+    seedReview('submitted')
+    const m = useEditMode(['entry:edit'], SALARY)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(false)
+    expect(m.reviewNote.value).toBe('待审核 · 已交审')
+  })
+
+  // 破坏验证:把 'returned' 加进 LOCKING → 红
+  it('❗已退回可以改 —— returned 只是留痕,可编辑性等同录入中(§7.2)', async () => {
+    asRole(['entry:edit'])
+    seedReview('returned')
+    const m = useEditMode(['entry:edit'], SALARY)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value, '退回就是要他改完再交,拦了他改什么').toBe(true)
+    expect(m.reviewNote.value, '可编辑就不该出药丸').toBeNull()
+  })
+
+  // ❗这两条是「闸装在 enter() 不装在 toggle()」的证据(计划 D-R2-1)。
+  //
+  // ⚠ 只断言 editMode 为假是**假绿**:enter() 的闸删掉之后,下面那个深链守卫照样会把人
+  //   拉出来,最终态一模一样。差别在中间那一下 —— 没有 enter() 闸时,人先去服务端**占了
+  //   一把锁**再被踢出来:一张已审核的表上凭空多一次 acquire/release,别人那一瞬看到的是
+  //   「有人正在编辑」。所以断言点是「有没有发出这趟占锁」。
+  const lockPosts = () =>
+    vi.mocked(api.post).mock.calls.filter(c => String(c[0]).startsWith('/locks'))
+
+  it('❗叫主管授权进来的人照样进不去,且不去占锁 —— 闸在 enter() 不在 toggle()', async () => {
+    asRole([])                       // 一档权限都没有,只能请求提权
+    seedReview('approved')
+    const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    await grant('entry:edit')        // 主管当场批了
+    await m.onElevated()             // 授权成功的回调
+    await nextTick()
+    expect(m.editMode.value, '权限齐 ≠ 进得去:审核态是另一道闸').toBe(false)
+    expect(lockPosts(), '已审核的表上不该出现一次 acquire').toHaveLength(0)
+  })
+
+  // 同上一条同源:接管拿到的是锁,不是改已审核表的资格。
+  it('❗接管成功也进不去,且不去重占锁', async () => {
+    asRole(['entry:edit'])
+    seedReview('approved')
+    const m = useEditMode(['entry:edit'], { ...SALARY, scope: () => 'sched:salary:2025' })
+    await m.onTaken()
+    await nextTick()
+    expect(m.editMode.value).toBe(false)
+    expect(lockPosts(), '接管回来直接被审核态挡住,不该再 acquire 一次').toHaveLength(0)
+  })
+
+  // 破坏验证:从 watch 的依赖数组里删掉 reviewBlockWhileEditing → 红
+  it('❗深链绕过 toggle 直接进了编辑态,审核态一到就把人拉出来', async () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'], SALARY)
+    m.editMode.value = true                    // ?edit=1 / ?generate=1 那条路
+    await nextTick()
+    expect(m.editMode.value, '审核态还没到,不该误伤').toBe(true)
+
+    // 别人在另一个浏览器审了,本屏下一次重取才看得到 —— store 按月缓存,
+    // 不失效的话 ensure 直接命中旧的空结果(这一步漏了会得到一条永远绿的假断言)。
+    seedReview('approved')
+    const rs = useReviewStore()
+    rs.invalidate('2025-03')
+    await rs.ensure('2025-03')
+    await nextTick()
+    expect(m.editMode.value, '在编辑态里被审了 → 立刻退出').toBe(false)
+  })
+
+  // 破坏验证:把 toggle() 里的审核闸挪到 missing 判断之后 → 红
+  it('❗已审核时不弹提权窗 —— 别让人白叫一次主管', async () => {
+    asRole([])                       // 缺权限,平时点了会弹授权窗
+    seedReview('approved')
+    const m = useEditMode(['entry:edit'], SALARY)
+    await m.toggle()
+    expect(m.asking.value, '§7.5:elevate:request 弹窗不出现').toBeNull()
+  })
+
+  // 破坏验证:把 reviewBlock 里那句 isFailed 判断删掉 → 红
+  it('❗审核态拉失败要保守 —— 放行等于让人录完二十行再吃一个 423', async () => {
+    asRole(['entry:edit'])
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url === '/review' ? (Promise.reject(new Error('boom')) as never) : (Promise.resolve([]) as never))
+    const m = useEditMode(['entry:edit'], SALARY)
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(false)
+    expect(m.reviewNote.value).toBe('审核态未知')
+  })
+
+  // 破坏验证:把 enter()/toggle() 里的 `if (rk)` 改成无条件 ensure → 红
+  it('❗不传 reviewKey 的屏一个字不改 —— 不打网络也不挡', async () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'])
+    await m.toggle()
+    await nextTick()
+    expect(m.editMode.value).toBe(true)
+    expect(m.reviewNote.value).toBeNull()
+    expect(vi.mocked(api.get).mock.calls.filter(c => c[0] === '/review'),
+           '没有审核键就不该去问审核态').toHaveLength(0)
   })
 })
