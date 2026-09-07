@@ -7,11 +7,14 @@
 // 抽取的前提是行为零变化,哪怕只有一屏不一样也留钩子,不为了「统一」把某屏改成别人的样子。
 import { ref, computed, watch } from 'vue'
 import type { ImportResultDTO } from '@/types/import'
+import { useReviewStore } from '@/stores/review'
+import { rowLocked } from '@/components/sched/reviewLock'
 
-/** 台账行的共同形状:id 用于勾选/批删,source 用于「本期导入」计数 */
+/** 台账行的共同形状:id 用于勾选/批删,source 用于「本期导入」计数,acctMonth 用于按月上锁(D18) */
 export interface SchedRow {
   id: number
   source: 'seed' | 'manual' | 'import'
+  acctMonth?: string
 }
 
 /** 标准「清空本期导入」确认流程:无导入行先提示,有则二次确认。unit = 本年 / 本月 / 本期。
@@ -44,6 +47,16 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   canSelect?: (row: R) => boolean
   /** 切年 / 回门保留已勾选:仅附表10 原本不清,保持原状 */
   keepSelectionOnNav?: boolean
+  /**
+   * 年表屏按月份行上锁(SIDEBAR-UX-REDESIGN §7.1 D18):本屏管的审核 kind。
+   *
+   * 只有**年表屏**传(附表6 / 7·8 / 11 / 13·14)—— 它们一屏 12 个月的行,闸不能长在页头
+   * 那颗编辑按钮上,否则会连没审的月一起锁死。附表10 / 12 是单月屏,闸在 SchedHeader 上,
+   * 不传这个。附表7/8 一屏两个 kind,所以是数组。
+   */
+  reviewKinds?: string[]
+  /** kind 的 scope 维。只有附13/14 用得上(office / phase3),跟着 tab 变所以传函数。 */
+  reviewScope?: () => string | null
 }) {
   const year = ref<number | null>(null)   // null → ⓪ 年份选择层
   const edit = ref(false)
@@ -61,6 +74,19 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   //   失锁后「保存」「导入」照样落库(后端写口不校验锁)。附表12 修过的这一课,
   //   下沉到这里让附表族全体屏一次吃上。
   watch(edit, v => { if (!v) { drawer.value = false; importing.value = false } })
+
+  // ── 审核闸:按月份行上锁(D18) ───────────────────────────
+  // 取数走闸道(GET /api/review/states?year=,不跑首页聚合)—— 一屏一年一趟。
+  const review = useReviewStore()
+  watch(year, (y) => { if (opts.reviewKinds && y != null) void review.ensureYear(y) }, { immediate: true })
+
+  /** 这一年里锁着的月份号。不是年表屏(没传 reviewKinds)时:上面那条 watch 根本不取数,
+   *  byYear 里没有这一年,这里自然回空集 —— 不必再加一层三元(加了是杀不掉的冗余分支)。 */
+  const lockedMonths = computed(() =>
+    review.lockedMonths(year.value, opts.reviewKinds ?? [], opts.reviewScope?.() ?? null))
+
+  /** 这一行在不在锁月里。勾选与批删两处都要问 —— 只把复选框画成 disabled 拦不住批删。 */
+  const isRowLocked = (row: R) => rowLocked(lockedMonths.value, row.acctMonth)
 
   /** 统一报错口径:后端 message 优先,否则用兜底文案 */
   async function guard(fallback: string, fn: () => Promise<void>) {
@@ -99,13 +125,18 @@ export function useSchedScreen<R extends SchedRow>(opts: {
 
   // ── 批量删除(编辑态复选框) ──────────────────────────────
   function toggleSelect(row: R) {
+    // 已审核 / 待审核的月不许进选中集 —— 复选框那边虽然也画成了 disabled,但「删除选中」
+    // 读的是这个集合,只画不拦等于把闸做成了纯装饰。
+    if (isRowLocked(row)) return
     if (opts.canSelect && !opts.canSelect(row)) return
     const next = new Set(selectedIds.value)
     if (next.has(row.id)) next.delete(row.id); else next.add(row.id)
     selectedIds.value = next
   }
   function selectAll(checked: boolean) {
-    const scope = opts.selectAllFilter ? opts.rows().filter(opts.selectAllFilter) : opts.rows()
+    const all = opts.selectAllFilter ? opts.rows().filter(opts.selectAllFilter) : opts.rows()
+    // 「全选」也要跳过锁月 —— 否则一键就把闸绕过去了,而且那是**批量**删除。
+    const scope = all.filter(r => !isRowLocked(r))
     selectedIds.value = checked ? new Set(scope.map(r => r.id)) : new Set()
   }
   async function onBatchDelete() {
@@ -136,7 +167,7 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   }
 
   return {
-    year, edit, drawer, importing, importResult, selectedIds, importedCount,
+    year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
     guard, refresh, pickYear, goGate,
     toggleSelect, selectAll, onBatchDelete, onClearImported,
   }

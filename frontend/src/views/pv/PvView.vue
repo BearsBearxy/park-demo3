@@ -64,9 +64,11 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
+  // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
+  reviewKinds: ['pv'],
   load: loadYear,
   reloadOverview,
   rows: () => yearData.value?.rows ?? [],
@@ -218,6 +220,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         </SchedHeader>
 
         <PvTable
+          :locked-months="lockedMonths"
           :year="year"
           :phases="yearData.phases"
           :rows="yearData.rows"

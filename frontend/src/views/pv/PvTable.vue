@@ -7,6 +7,7 @@ import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import { phaseTint } from '@/components/sched/tints'
 import type { PvPhaseDTO, PvRecordDTO, PvTotal } from '@/types/pv'
 
@@ -18,6 +19,9 @@ const props = defineProps<{
   phase: string          // 'all' | phase id
   edit: boolean
   selectedIds?: Set<number>
+  /** 这一年里已审核 / 待审核的月份号(D18,来自 stores/review 的 lockedMonths)。
+   *  不传 = 这一屏不受审核约束。行级判据在 sched/reviewLock.ts,四张表共用一份。 */
+  lockedMonths?: Set<number>
 }>()
 const emit = defineEmits<{
   'update:phase': [value: string]
@@ -174,6 +178,7 @@ const k = computed(() => {
                     class="s6-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
                     title="选中以批量删除"
+                    :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
                   <span>{{ mLabel(r.acctMonth) }}</span>
@@ -189,11 +194,12 @@ const k = computed(() => {
               <td class="s6-c-num s6-c-kwh">{{ kwh(r.gridKwh) }}</td>
               <td class="s6-c-num s6-c-yuan">{{ yuan(r.gridAmt) }}</td>
               <td class="l" style="max-width:220px">
-                <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
+                <SchedNoteCell :note="r.note" :edit="edit && !rowLocked(lockedMonths, r.acctMonth)" @save="emit('note', r, $event)" />
               </td>
               <td v-if="edit">
                 <span class="s6-acts">
-                  <button class="s6-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="s6-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="s6-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -297,4 +303,8 @@ const k = computed(() => {
   .s6-actbtn { position:relative; }
   .s6-actbtn::after { content:''; position:absolute; inset:-5px; }
 }
+
+/* 审核闸(D18):已审核 / 待审核的月,行上的删除位换成同尺寸锁标 —— 换的是内容不是版面。 */
+.s6-actlock { display:inline-flex; align-items:center; justify-content:center;
+                  width:26px; height:26px; color:var(--text-muted); cursor:not-allowed; }
 </style>
