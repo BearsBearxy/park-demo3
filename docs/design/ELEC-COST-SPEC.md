@@ -2,6 +2,12 @@
 
 2026-07-19 定稿。用户确认四决策：总表×费项×月录入、楼栋拆分可选；运营性电表与售电协议损益一并做全；模拟数据标 source='simulated' 灰标可替换；模拟 2025 全年。**现有附表11（ElecView 月度电费进项）保持原样**，新功能经功能门进入。
 
+> **两本账各有一把审核键**（2026-09-07 用户拍板，SIDEBAR-UX-REDESIGN §7.1）：
+> 报送台账（`elec_record` / `ElecService` / `/api/elec`）= `elec-cost:YYYY-MM`，它才是本月出账屏清单上「附表11」那一行；
+> 本规范这本园区电费模型（`elec_cost_entry` / `ElecCostService` / `/api/elec-cost`）= `elec-model:YYYY-MM`，**无清单行**，
+> 交审前置判「该月 `elec_cost_entry` 有行」，且不进整月锁账的键集合。
+> 改本模型的写路径时，守卫挂的是 `elec-model` 那把键 —— 别照 SIDEBAR spec §7.4 早期版本把 `elec-cost` 挂到 `ElecCostService`，那是点反的。
+
 ## 0. 园区电费物理模型（整理自用户两张树状图，本节即"完善后的园区电费逻辑"）
 
 **计量体系（4 类 8 表）**：

@@ -269,9 +269,14 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 附表10 | `s10:{phase}:YYYY-MM` | 每期区一键 |
 | 附表12 | `salary:YYYY-MM` | |
 | 办公·三期水电 | `utilities:office:YYYY-MM` / `utilities:phase3:YYYY-MM` | 附13 / 附14 |
-| 附表6/7/8/11 | `pv:YYYY-MM` · `charging-car:YYYY-MM` · `charging-ebike:YYYY-MM` · `elec-cost:YYYY-MM` | 年表屏内按月份行上锁（D18） |
+| 附表6/7/8/11 | `pv:YYYY-MM` · `charging-car:YYYY-MM` · `charging-ebike:YYYY-MM` · `elec-cost:YYYY-MM` | 年表屏内按月份行上锁（D18）。`elec-cost` = 附表11 的**报送台账**（`elec_record` / `ElecService` / `/api/elec`）—— 清单行 `go='elec-cost'` 的 done 判据读的就是它 |
+| （无清单行） | `elec-model:YYYY-MM` | **园区电费模型**（`elec_cost_entry` / `ElecCostService` / `/api/elec-cost`），2026-09-07 用户拍板与上一行拆成两把键 |
 
-收入核对与报表层本轮不进审核。键格式：`kind[:scope]:period`，`kind` 白名单在后端 `ReviewKind` 枚举，`period` 恒为 `YYYY-MM`。
+附表11 一屏两本账（`ElecView` 左栏 `BookRailShell`），数据分躺两张表，故两把键。`elec-model` 没有清单行，随之两条：交审前置不走「清单行 done」，改判**该月 `elec_cost_entry` 有行**；且**不进整月锁账的键集合**（见 §7.2）—— 否则锁账永远达不成，且 P2 已落地的六项计数要跟着改（§12：计数与审核键集合必须与屏内同源，假绿栽过三次）。
+
+收入核对与报表层本轮不进审核。键格式：`kind[:scope]:period`，`kind` 白名单在后端 `ReviewKind` 枚举（14 个），`period` 恒为 `YYYY-MM`。
+
+**交审权限用的 kind → perm 表是新写的一张，不是复用 RBAC-SPEC §5.2**（§7.3 原文那句「映射复用」不成立）：§5.2 是 126 条 **URL 路径 → 权限点**的有序表，且该映射对 `params`（policy / monthly 两档）与 `elec-cost`（`/api/elec-cost/price-cfg` 归 param-policy、其余归 entry）根本不是函数。表落在后端 `ReviewKind` 枚举的 `perms()` 上，同步记在 RBAC-SPEC。
 
 ### 7.2 状态机（每键）
 
@@ -285,9 +290,16 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 - 「录入中」是派生态（该键无 `review_state` 行或 `status='entered'`）；落库三态 `submitted / approved / returned`（`returned` 只是留痕，可编辑性等同录入中）。
 - **待审核也锁**（D17）。
 - 通过前置：`alloc` 通过需 `params` 与 `meters` 已审核；`bill-notices` 通过需 `alloc` 与 `alloc-loss` 已审核。清单行显 padlock + 原因；端点返回 409 带缺项。
-- 撤销前置（D19）：下游有 `approved` 时上游 `withdraw` 返回 409「先撤销 公共电核算 / 催缴单 的审核」。依赖图只在出账链五键内；记账列各键互不依赖。
-- 交审前置：该键派生状态为「已做」（清单行 done）；未做不能交审。
-- 整月「本月锁账」行 = 该月**全部**审核键 `approved`（键集合 = 出账 5 + 台账公司数 + 附10 期区数 + 其余 7 张），派生（D20）；月格显 ✓ 锁标。
+- 撤销前置（D19）：下游有 `approved` 时上游 `withdraw` 返回 409「先撤销 公共电核算 / 催缴单 的审核」。依赖图只在出账链五键内；记账列各键互不依赖。完整的上游 → 下游图**比通过前置多两条边**：
+
+  ```
+  params → { alloc, alloc-loss }      meters → { alloc, alloc-loss }
+  alloc  → { bill-notices }           alloc-loss → { bill-notices }
+  ```
+
+  多出的 `params → alloc-loss` 与 `meters → alloc-loss` 是 R1 实施时补的：池结果与损耗结果是 `AllocService.generate(ym)` **同一次**算出来的，同样吃 meters 的读数与 params 的电价。只照通过前置那两条连的话，「meters 已审 → alloc-loss 已审 → 撤 meters」这条路会放行，抄表员改完读数，已审核的损耗结果就和读数对不上了。
+- 交审前置：该键派生状态为「已做」（清单行 done）；未做不能交审。判据**复用 `DataHomeService.overview(ym)`**，不另写一份（METRIC-SOURCE-SPEC §1：同一件事不许有第二份实现）；代价是每次交审跑一遍首页聚合，交审低频，接受。例外是 `elec-model`（无清单行）：判「该月 `elec_cost_entry` 有行」。
+- 整月「本月锁账」行 = 该月**全部**审核键 `approved`（键集合 = 出账 5 + 台账公司数 + 附10 期区数 + 其余 7 张），派生（D20）；月格显 ✓ 锁标。`elec-model` **不计入**这个集合（它没有清单行，见 §7.1），所以「其余 7 张」仍是 7。后端 `ReviewKind.countsTowardMonthClose()` 是这条的唯一落点。
 
 ### 7.3 权限与角色
 
@@ -302,11 +314,11 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 |---|---|
 | 迁移 `V124__review.sql` | `review_state(review_key VARCHAR(64) PK, kind VARCHAR(24), period CHAR(7), scope VARCHAR(16) NULL, status VARCHAR(12), submitted_by VARCHAR(64), submitted_at DATETIME, reviewed_by VARCHAR(64), reviewed_at DATETIME, reason VARCHAR(255), KEY idx_review_period (period))`；`review_log(id BIGINT PK AUTO_INCREMENT, review_key, action VARCHAR(12), actor VARCHAR(64), at DATETIME, reason VARCHAR(255), KEY idx_rl_key, KEY idx_rl_at)`；`auth_role` 插 `reviewer`；`auth_role_perm` 给 `admin` 与 `reviewer` 各插 `review:approve`（admin 是「全部权限」角色，保持这一语义） |
 | 端点 | `GET /api/review?period=YYYY-MM` → `[{key, kind, scope, status, submittedBy, submittedAt, reviewedBy, reviewedAt, reason, blockedBy?: string[]}]`（含派生 `entered` 与前置缺项）；`POST /api/review/{key}/submit`（kind 的 edit 权）；`POST /api/review/{key}/approve` · `/return` · `/withdraw`（`review:approve`；return/withdraw 必带 `reason`，空则 400） |
-| 守卫 | `security/ReviewGuard.assertEditable(kind, period, scope)`：查 `review_state`，`submitted / approved` → 423 LOCKED，body 统一信封，message「2024-02 A 公司月度台账 已审核（李审 2024-03-05），撤销审核后才能修改」。调用点 = RBAC-SPEC §5.2 表里所有碰期间数据的写 service，含：`ParamService`（月度键 PUT、recalc、复制上月、系数簿生效月）、`MeterService`（读数增删改、导入）、`AllocService`（生成 / 池 / 规则生效月）、`BillNoticeService`（生成 / 备注）、`LedgerService`、`S10Service`、`SalaryService`、`UtilitiesService`、`PvService`、`ChargingService`、`ElecCostService`、导入 service 各 kind 分支。守卫按被写数据的月判，不按 URL |
-| 覆盖率测试 `ReviewGuardCoverageTest` | **从源码推导**：扫 §5.2 表列出的 controller 写方法 → 对应 service 方法，逐个断言方法体内调用了 `ReviewGuard.assertEditable`（或标注 `@NoReviewGuard(reason)` 的白名单例外，例外须写理由）。不用手写清单（stage-review 2026-08-31 新1 的教训） |
+| 守卫 | `security/ReviewGuard`，三个重载：`assertEditable(kind, period, scope)`（单月）· `assertEditable(kind, Collection<period>, scope)`（一批跨多月，文案点名最早的锁月）· `assertNoLockedMonth(kind, scope)`（拿不到被写月时的兜底，用于 `LedgerService.rechain` 与参数长期默认行）。查 `review_state`，`submitted / approved` → **`ResultCode.LOCKED(423)`，仍走 HTTP 200 + `body.code=423`**（项目口径，见 `GlobalExceptionHandler` 头注释；不是真发 HTTP 423）。与 409 分开：409 是「上游没审完」的前置冲突，423 是「这张表本月已审 / 待审」，合成一个码前端就分不出「去催上游」和「去找审核员撤销」。message「2024-02 A 公司月度台账 已审核（李审 2024-03-05），撤销审核后才能修改」。<br>调用点 = RBAC-SPEC §5.2 表里所有碰期间数据的写 service，共 **12 个 / 67 个写方法**：`ParamService`（守 `req.acctMonth()` **不守形参 ym** —— ym 是 URL 月）、`MeterService`（改月的读数**旧月新月都判**）、`AllocService`（`generate` 一次守 `alloc` 与 `alloc-loss` **两把键**）、`BillNoticeService`、`LedgerService`、`S10Service`、`SalaryService`、**`OfficeService`**（附13/14；spec 原写的 `UtilitiesService` 不存在）、`PvService`、`ChargingService`、**`ElecService`**（附表11 报送台账 = `elec-cost` 键）、**`ElecCostService`**（园区电费模型 = `elec-model` 键）。导入不是独立 service，是这些类各自的 `importRows`。守卫按被写数据的月判，不按 URL。<br>**本轮不进审核并用 `@NoReviewGuard(reason)` 标注**：`PvMeterService` / `CpMeterService`（光伏、充电桩分栋抄表 —— 是附表6/7/8 的**下游**派生第二本账，依赖方向是附表 → 抄表）、`BookService`（已有同型守卫 `assertMonthEditable`，P6 录入即冻结） |
+| 覆盖率测试 `ReviewGuardCoverageTest` | **从源码推导**，四步链：① 读 `PermissionRegistry` 源码抓出全部 `add(...)` 的 URL pattern ② 匹配 controller 的 `@RequestMapping` ③ 找非 GET 端点方法调的 service 方法 ④ 断言该方法体含 `reviewGuard.assert` 或方法上有 `@NoReviewGuard(reason)`（例外须写理由，且理由非空有断言）。不用手写清单（stage-review 2026-08-31 新1 的教训）。<br>三条不许省的自证：**任一步解析不出来一律 `fail()` 并打印是哪个 controller 的哪个方法，不许 `continue`**（「解析不了就跳过」是这类测试最常见的假绿源，一个正则失配能悄悄放掉半张表）；`hasSizeGreaterThan(60)` 防空扫（照 `PermissionCoverageTest` 那条 `hasSizeGreaterThan(150)`）；`everyReviewKindIsGuardedSomewhere` —— 14 个 kind 每个至少在某个 service 源码里出现一次，少一个就是「审了却锁不住」，屏上显示已审核而数据照改，是最坏的一种假绿。白名单也设上限（超过 25 条就该重想），它是例外不是常态 |
 | 集成测试 `ReviewApiIT` | 提交 / 通过 / 退回 / 撤销；前置阻断 409；已审核后写端点 423；`review_log` 逐条落；`reviewer` 角色调写端点 403 |
 | 日志 | `review_log` 进「操作日志」时间线，作第 4 张来源表（RBAC-SPEC §7 表补一行；`SystemLogsView` 类型筛选加「审核」） |
-| 通知 | 交审 → 有 `review:approve` 的在线用户铃铛计数 +1（复用 `presence.approvals` 轮询通道，`FPApprovalDrawer` 加「待审核」段，行点击 `periodLink` 到清单）；退回 / 撤销 → `submitted_by` 铃铛 +1 |
+| 通知 | 交审 → 有 `review:approve` 的在线用户铃铛计数 +1。**复用的是 ping 这条轮询「通道」，不是 `approvals` 那个字段** —— 后者是定向的（`inboxOf(approver)`）、2 分钟 TTL、纯内存，承不了持久的待审队列。落点：`PingResp` 新增第 5 个组件 `int pendingReviews`（javadoc 那句「一条通道四件事」同步改成五件事）；受众判定复用 `UserPermissionCache`（ping 路径上唯一零 DB 的权限查询），无该权限者恒 0 不查库。**只发个数不发清单** —— ping 是 3 秒一拍，发清单等于每 3 秒推一遍全月审核态；要清单去 `GET /api/review`。<br>**R1 / R2 的边界就画在这个字段上**：后端发它 = R1；前端读它、进 store、并进铃铛计数、`FPApprovalDrawer` 加「待审核」段、行点击 `periodLink` 到清单 = R2。退回 / 撤销 → `submitted_by` 铃铛 +1 同属 R2（现有 `outcome` 是单槽取走即清，承不了持续提醒，R2 要另开字段） |
 
 ### 7.5 前端
 
@@ -331,7 +343,8 @@ fpNav 唯一事实源（无新字段，折叠按 `section.title` 派生）· 可
 | 文件 | 改什么 |
 |---|---|
 | `2026-07-07-demo3-recon-jump-tab-state-design.md` §二 | B3 侧栏 = 恢复；首页「去做事」行同条；全新 = Shift / 关签 / 换层 |
-| `RBAC-SPEC.md` §2 / §3 / §4 / §6 / §7 | 第 18 权限点；`reviewer` 角色行；落地页规则；操作日志第 4 张表 |
+| `RBAC-SPEC.md` §2 / §3 / §4 / §5.2 / §6 / §7 | 第 18 权限点（顺带订正 §2 标题里过期的「14 个」）；`reviewer` 角色行；§5.2 补四条审核端点；落地页规则；操作日志第 4 张表；新增一小节 **kind → perm 表**并写明它不是 §5.2 的复用 |
+| `ELEC-COST-SPEC.md` 头部 | 「现有附表11 保持原样不动」那句之后补：两本账现在各有一把审核键（`elec-cost` / `elec-model`），指向本 spec §7.1。不补的话下次动电费模型的人不会来读审核 spec |
 | `RESPONSIVE-LAYOUT-SPEC.md` §4.1 / §4.2 | 底栏当前层 no-op；抽屉目录条目 = open |
 | `DESIGN-FIDELITY.md` §2.3 | 组标题可点折叠（像素不变，加 chevron） |
 | `BOOK-WORKBENCH-SPEC.md` §7 | 补第 7 条：清单行点击 = 显式选期，目标门被前置满足；补第 8 条：已审核 / 待审核的表任何写入口一律拒 |
@@ -398,15 +411,20 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 - `PnlScheduleView` 的期间条在 977af27 合并时被 sed `\1` 吃掉、2026-09-04 修回；`reportPeriodGate.spec` 钉九屏（`<FPStepStrip` 与 `current=` 两断言未绑定同一标签 = 已知天花板）。
 - 分析屏的期（`usePeriod`）不吃 URL：落 `/fin-cashflow` `/park-energy` `/churn` 的三条异常 `p` 暂无消费方（AnomalyView 那一列今天等于原样 push）；给 `usePeriod` 开深链入口留后期。
 - `ReconView` 深链首载发两次 overview（默认年定上限 + 深链年）：接受，上限与落年解耦的代价；`overview(y)` 失败时永久转圈与改前同款。
+- **`LedgerService.rechain(companyId)` 的守卫粒度**：守在循环里真正要 `updateById(l)` 的那一行（该行的月），不是「该公司有任一已审月就整体拒」—— 后者会让审掉 1 月之后连 5 月都录不进去（每次 save 都调 rechain）。代价：错误文案必须自解释「你改的是 2024-01，被拒是因为 2024-03 审过，结余链会顺着改到那个月」，否则用户以为系统坏了。升级路径：等 rechain 改成按月增量重算后可收窄。
+- **计费参数的长期默认行**（`acctMonth=''`）与 `AllocService` 空 `memberMonth` 的规则行：它们是「所有未被月度行覆盖的月」的取值来源，拿不到单一被写月，故走 `assertNoLockedMonth`（该 kind 存在任一已审 / 待审月就整体拒）。比按月精确判粗，一旦有月审过默认行就锁死；换精确判要先算出「这一改影响哪些月」的区间，`from` 行那半边已经用 `VersionResolver.nextFrom` 做了，默认行没有对应的上界概念。
+- **交审前置跑一遍 `DataHomeService.overview`**：约十几条 count 查询换「done 判据与屏上同源」。交审是低频动作（一个月十几次），接受。升级路径：`DataHomeService` 拆出单键 done 查询后换过去。
+- **第二本账本轮不进审核**：光伏分栋抄表（`pv_reading` / `PvMeterService`）与充电桩分桩抄表（`cp_reading` / `CpMeterService`）在已审月仍可改。依据是依赖方向 —— 附表6 的源是 `pv_record`、附表7/8 的源是 `charging_record`，两个抄表账是它们的**下游**派生（`PvMeterService.simulate` 按附表6 月度汇总推导分栋明细），不回写附表。`@NoReviewGuard` 的理由里写死了这条，改这个判断前先核依赖方向。
+- **`ReviewGuard` 自己校验 period 格式**：正则 `^\d{4}-(0[1-9]|1[0-2])$`。不能信调用方洗过 —— 8 个 service 一个 `requireYm` 都没有，`MeterService` 那份是 `\d{4}-\d{2}`，放行 `2024-00` / `2024-13`。
 - **P3 遗留（2026-09-06）**：
   - `tabs.openDeep` 的判据是「**会不会顶掉别人**」（`preview` 有人且不是目标本身 → 钉住目标），不是 §4.3 字面的「来源在不在预览槽」：后者只护得住第一跳，驾驶舱 → 附10 → 台账的第二跳会把驾驶舱顶没，而改前 16 处恒 `pin:true` 不会（整期复查实测坐实）。本判据是它的超集，且不必知道来源是谁。
   - `auth.logout()` 至今**不重置已实例化的 tabs store**（`tabs` / `preview` / `recent` / `epoch` 都留着，它只清三个 localStorage 键）。P3 只让 `ctx` / `evicted` 跟着 `auth.me` 变化清；整体重置留给 P5（那期本来就要动 `auth.ts`）。
   - **ctx 只写给接了 `useDeepPeriod` 的屏**：`views/analysis/` 的 11 屏与导入中心不接（分析屏的期本来就不吃 URL，见上一条），所以它们的页签标题只有屏名、顶栏 chip 恒显「—」。与「给 `usePeriod` 开深链入口」是同一件事，一并留后期。
   - **Shift 点当前项仍然重建**（不 push、只 epoch++）：偏离 §4.1 的字面次序（那里 guard 写在 Shift 之前）。理由：改前「点当前项」走的就是 `openFresh`，不放开这条出路，当前屏在本期之后再没有任何强制刷新手势。
   - **纯读屏切回重读补了 13 屏，3 屏没补**：`SystemRolesView`（`load()` 收尾 `fillForm` 重置编辑区 + 屏内有真草稿态）、`PvRoiView`（`onMounted` 无条件重置选中期）、`PvMeterAnaView`（屏头铁律「只有换年才重新取数」，且每次切回要重跑抛光 / 变点检验）。这三屏在侧栏改「恢复现场」之后没有刷新入口，用户要靠 Shift 点击或关签重开。
-  - 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— **三条以上没有排队机制**。
-  - **被顶提示会为「你没编辑过的那一屏」弹出**：出账链三屏（计费参数 / 公共电核算 / 催缴单）共用一把 `billing-chain` 月锁（§3.3 明写），`holdsEditUnder` 按锁根判，所以在计费参数编辑态时公共电核算被顶也会弹。要精确到屏得让 `holdLock` 登记时带上 `route.meta.value`。
-  - **「恢复现场」不含滚动位置**：`AppShell` 的 `.fp-content` 是各档共用、永不卸载的一个滚动容器，路由无 `scrollBehavior`、全仓没有按签存 `scrollTop`。期、公司、抽屉、编辑态都回来了，唯独位置不回来 —— 这是这句承诺里最显眼的一个洞。
+  - 被顶提示与网络错误 toast 同底 28px，两条同时在场靠 `.stacked` 上移一格 —— **三条以上没有排队机制**。
+  - **被顶提示会为「你没编辑过的那一屏」弹出**：出账链三屏（计费参数 / 公共电核算 / 催缴单）共用一把 `billing-chain` 月锁（§3.3 明写），`holdsEditUnder` 按锁根判，所以在计费参数编辑态时公共电核算被顶也会弹。要精确到屏得让 `holdLock` 登记时带上 `route.meta.value`。
+  - **「恢复现场」不含滚动位置**：`AppShell` 的 `.fp-content` 是各档共用、永不卸载的一个滚动容器，路由无 `scrollBehavior`、全仓没有按签存 `scrollTop`。期、公司、抽屉、编辑态都回来了，唯独位置不回来 —— 这是这句承诺里最显眼的一个洞。
   - **★ 有 `aria-pressed` 却不可反按**：`tabs.pin()` 幂等，全站没有 unpin 入口，读屏会把它读成一个按下去就弹不起来的开关。要么给一个 unpin，要么去掉这个属性。
   - 页签定宽 148px 之后溢出下拉从「几乎不发生」变常态入口（6–7 签就撑破一行），`.fp-tab-overflow` 的 `v-if` 一进一出会挤窄 `.fp-tabs`；不算 §1 违规（开第 7 个签本来就要重排那一行），要不要给 `.fp-tab-actions` 一个恒定占位宽留下一期定。
   - `CommandPalette` 自 P3 起懒加载（`defineAsyncComponent` + `v-if="paletteEverOpened"`，index 190.8 → 184.1KB）。连带它的 reset+autofocus watch 加了 `immediate` —— 首次打开时它是**带着 open=true 挂载**的，没有 false→true 这个变化。

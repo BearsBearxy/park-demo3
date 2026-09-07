@@ -4,6 +4,9 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,15 +67,34 @@ public class ElecCostService {
     private final S10RecordMapper s10Records;
     private final MonthlyLedgerMapper ledgers;
     private final AllocResultMapper allocResults;   // P-B 桥:单向读分摊结果Σ(elec-cost→P-B,spec §5)
+    private final ReviewGuard reviewGuard;
 
     public ElecCostService(ElecMeterMapper meters, ElecCostEntryMapper entries, ElecPriceCfgMapper cfgs,
                            ElecRecordMapper elecRecords, PvRecordMapper pvRecords, OfficeRecordMapper officeRecords,
                            PvReadingMapper pvReadings, CpReadingMapper cpReadings, CpPowerUsageMapper cpPowers,
-                           S10RecordMapper s10Records, MonthlyLedgerMapper ledgers, AllocResultMapper allocResults) {
+                           S10RecordMapper s10Records, MonthlyLedgerMapper ledgers, AllocResultMapper allocResults,
+                           ReviewGuard reviewGuard) {
         this.meters = meters; this.entries = entries; this.cfgs = cfgs;
         this.elecRecords = elecRecords; this.pvRecords = pvRecords; this.officeRecords = officeRecords;
         this.pvReadings = pvReadings; this.cpReadings = cpReadings; this.cpPowers = cpPowers;
         this.s10Records = s10Records; this.ledgers = ledgers; this.allocResults = allocResults;
+        this.reviewGuard = reviewGuard;
+    }
+
+    /**
+     * 园区电费模型的审核闸(§7.4)。键是 elec-model,**不是 elec-cost** —— elec-cost 守的是
+     * 附表11 报送台账(ElecService / 表 elec_record),spec §7.4 早期版本点名本类是点反了。
+     * 本类写的是 elec_cost_entry / elec_price_cfg,ElecView 左栏第二本账,清单上没有它的行。
+     */
+    private void assertModelEditable(String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.ELEC_MODEL, acctMonth, null);
+    }
+
+    /** 整年一把梭的写路径专用(simulate):该年 12 个月全送进批量闸(点名最早的锁月)。 */
+    private void assertYearEditable(int year) {
+        List<String> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) months.add(ym(year, m));
+        reviewGuard.assertEditable(ReviewKind.ELEC_MODEL, months, null);
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -90,6 +112,7 @@ public class ElecCostService {
         return meters.selectAllSorted().stream().map(ElecCostService::toMeterDTO).toList();
     }
 
+    @NoReviewGuard(reason = "电表档案不带期间;新增电表不产生任何月的费项行")
     public ElecMeterDTO createMeter(ElecMeterReq req) {
         String name = req.name().trim();
         if (meters.selectCount(new QueryWrapper<ElecMeter>().eq("name", name)) > 0)
@@ -102,6 +125,7 @@ public class ElecCostService {
         return toMeterDTO(meters.selectById(m.getId()));
     }
 
+    @NoReviewGuard(reason = "电表档案不带期间;有费项数据的表禁改类型(既有 409),改名不改任何月的金额")
     public ElecMeterDTO updateMeter(Integer id, ElecMeterReq req) {
         ElecMeter m = meters.selectById(id);
         if (m == null) throw new BizException(ResultCode.NOT_FOUND, "电表不存在");
@@ -117,6 +141,7 @@ public class ElecCostService {
         return toMeterDTO(meters.selectById(id));
     }
 
+    @NoReviewGuard(reason = "电表档案不带期间;有费项数据的表本来就删不掉(既有 409),删得掉的表没有任何月的行")
     public void deleteMeter(Integer id) {
         if (meters.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "电表不存在");
         if (entries.countByMeter(id) > 0)
@@ -137,6 +162,7 @@ public class ElecCostService {
     }
 
     // upsert:键=(表,月,费项,拆分空串归一化);命中改值、无则插;手工写入 source 统一 manual(覆盖 simulated 即「真实替换模拟」)
+    @NoReviewGuard(reason = "转调 writeEntry,守卫在那里按 acctMonth 判")
     public ElecCostEntryDTO upsertEntry(ElecCostEntryReq req) {
         ElecMeter meter = meters.selectById(req.meterId());
         if (meter == null) throw new BizException(ResultCode.CONFLICT, "电表不存在");
@@ -148,8 +174,12 @@ public class ElecCostService {
         return toEntryDTO(e, meter.getName());
     }
 
+    // 原本只判存在性就删。审核闸要按**被删行自己的月**判(§7.4「按被写数据的月判,不按 URL」),
+    // 所以改成先取实体再守 —— 只判存在性拿不到 acctMonth。
     public void deleteEntry(Integer id) {
-        if (entries.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        ElecCostEntry e = entries.selectById(id);
+        if (e == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertModelEditable(e.getAcctMonth());
         entries.deleteById(id);
     }
 
@@ -175,6 +205,10 @@ public class ElecCostService {
         String key = req.cfgKey().trim();
         if (!CFG_KEYS.contains(key)) throw new BizException(ResultCode.BAD_REQUEST, "未知参数键: " + key);
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
+        // 空串 = 长期默认行,它是「所有没有月度行的月」的取值来源,压根没有「被写月」这个概念 ——
+        // 按裁定 R-4 用整键闸:该 kind 有任一被锁月就整体拒(点名最早那个月)。
+        if (month.isEmpty()) reviewGuard.assertNoLockedMonth(ReviewKind.ELEC_MODEL, null);
+        else assertModelEditable(month);
         ElecPriceCfg row = cfgs.selectByKey(month, key);
         if (req.value() == null) {
             if (row != null) cfgs.deleteById(row.getId());
@@ -203,6 +237,7 @@ public class ElecCostService {
 
     // ── 导入:(表,月,费项,拆分) upsert 幂等;未知表/费项/拆分、非法月份、负金额=行级错误跳过 ──
     @Transactional
+    @NoReviewGuard(reason = "转调 writeEntry,守卫在那里按 acctMonth 判")
     public ImportResultDTO importRows(ElecCostImportRequest req) {
         Map<String, ElecMeter> byName = new HashMap<>();
         for (ElecMeter m : meters.selectList(null)) byName.put(m.getName().trim(), m);
@@ -246,6 +281,8 @@ public class ElecCostService {
     //    类别判定(真实值域 商业/大工业用电/居民生活;种子另有 一般工商业):含「居民」→宿舍,否则含「商」→商业用电,其余→工业。
     @Transactional
     public ElecSimulateResultDTO simulate(int year) {
+        // 只有年、没有月:整年模拟会往该年任何一个月写费项行/电价行,所以 12 个月一起送闸
+        assertYearEditable(year);
         Map<String, ElecMeter> byName = new HashMap<>();
         for (ElecMeter m : meters.selectList(null)) byName.put(m.getName(), m);
         // byRule 全键预置 0:无源数据的规则也在摘要里,形状稳定
@@ -606,8 +643,11 @@ public class ElecCostService {
             throw new BizException(ResultCode.BAD_REQUEST, "该费项不支持此拆分: " + subKey);
     }
 
+    // upsertEntry 与 importRows 的共同出口:守卫落这一处,两个 public 各挂 @NoReviewGuard 指过来。
+    // 导入是逐行判(整个方法一个 @Transactional,命中已审月即整批回滚)。
     private ElecCostEntry writeEntry(Integer meterId, String acctMonth, String feeKey, String subKey,
                                      BigDecimal amount, BigDecimal qty, String note, String source) {
+        assertModelEditable(acctMonth);
         ElecCostEntry existing = entries.selectByKey(meterId, acctMonth, feeKey, subKey);
         ElecCostEntry e = existing == null ? new ElecCostEntry() : existing;
         e.setMeterId(meterId);

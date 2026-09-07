@@ -138,6 +138,18 @@ public class PermissionRegistry {
         // 是两种风险,故分权。第16点不蕴含第17点 —— 只勾模板编辑的人切不了版。
         add(HttpMethod.POST, "/api/books/*/template/pin",      Perm.BOOK_TEMPLATE_SWITCH);
 
+        // ═══ 审核端点(第18点 review:approve,2026-09-03 拍板;SIDEBAR-UX-REDESIGN §7.3)═══
+        //     submit 要哪个权限点取决于 key 里的 kind(params 是 policy|monthly 两档、其余多为 entry),
+        //     URL 层判不出来 —— 照 PUT /api/params 那条既有例外:这里放行「任一相关 edit 权」,
+        //     真正的 kind→perm 判定下沉到 ReviewService.submit(表在 ReviewKind.perms())。
+        //     GET /api/review 不登记:本表只管非 GET,读全开。
+        add(HttpMethod.POST, "/api/review/*/submit",
+            Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
+            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
+        add(HttpMethod.POST, "/api/review/*/approve",  Perm.REVIEW_APPROVE);
+        add(HttpMethod.POST, "/api/review/*/return",   Perm.REVIEW_APPROVE);
+        add(HttpMethod.POST, "/api/review/*/withdraw", Perm.REVIEW_APPROVE);
+
         // ═══ 公司建/删 = 建删账册(第15点 company:manage,2026-08-24 拍板):
         //     必须排在主数据 catch-all 之前(铁律2:首个命中);改名 PUT 与收款账户仍落 master:edit ═══
         add(HttpMethod.POST,   "/api/companies",    Perm.COMPANY_MANAGE);

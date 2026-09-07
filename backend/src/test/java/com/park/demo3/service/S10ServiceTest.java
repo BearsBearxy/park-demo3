@@ -20,7 +20,9 @@ class S10ServiceTest {
     TenantMapper tenants = Mockito.mock(TenantMapper.class);   // selectList(null) 默认空表 → softIndex 空,配档不干扰既有用例
     BookService bm = Mockito.mock(BookService.class);   // customIdsAt 默认空集
     BookPinService pm = Mockito.mock(BookPinService.class);   // bookOfPhase 默认 null → 固化 pin 空转
-    S10Service svc = new S10Service(records, tenants, bm, pm);
+        // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+S10Service svc = new S10Service(records, tenants, bm, pm, rg);
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 

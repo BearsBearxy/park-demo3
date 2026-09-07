@@ -41,13 +41,18 @@ public final class Perm {
     // 第 17 点(2026-08-26 用户拍板):更换账册版本 —— 换一套别人的列,与第 16 点「在本月微调列名」
     // 是两种风险,故分权。已录入的月份两者都拒(录入即冻结),这个点只对空月有意义
     public static final String BOOK_TEMPLATE_SWITCH = "book-template:switch";
+    // 第 18 点(2026-09-03 用户拍板):审核通过 / 退回 / 撤销某张表某个月(SIDEBAR-UX-REDESIGN §7)。
+    // 与「录」彻底分开的一档:录审分离靠角色分配保证(六个既有角色权限不变,财务主管默认不带审核权,D16);
+    // 不给这项的账号在清单行上看不到「通过/退回/撤销」,而已审核的表任何人都改不了
+    public static final String REVIEW_APPROVE      = "review:approve";
 
-    /** 全部 17 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
+    /** 全部 18 个。角色屏的勾选矩阵按这个顺序渲染;覆盖率测试也拿它校验映射表不引用不存在的权限。 */
     public static final List<String> ALL = List.of(
         MASTER_EDIT, COMPANY_MANAGE, BOOK_TEMPLATE_EDIT, BOOK_TEMPLATE_SWITCH,
         CONTRACT_EDIT, PARAM_POLICY_EDIT, PARAM_MONTHLY_EDIT,
         METER_MASTER_EDIT, METER_READING_EDIT, BILLING_RUN_EDIT, BILLING_ISSUE_EDIT,
-        ENTRY_EDIT, REPORT_EDIT, SYSTEM_VIEW, SYSTEM_EDIT, LOCK_TAKEOVER, ELEVATE_REQUEST);
+        ENTRY_EDIT, REPORT_EDIT, SYSTEM_VIEW, SYSTEM_EDIT, LOCK_TAKEOVER, ELEVATE_REQUEST,
+        REVIEW_APPROVE);
 
     private static final Set<String> ALL_SET = Set.copyOf(ALL);
 
@@ -61,9 +66,12 @@ public final class Perm {
      * 系统管理只能主管自己登录进去改。
      *
      * elevate:request 与 lock:takeover 同理列入:提权这两项只会让提权机制自我授权,毫无业务意义。
+     *
+     * review:approve 同理(2026-09-03,SIDEBAR-UX-REDESIGN §7.3):审核能当场借 30 分钟的话,
+     * 「录审分离」当场作废 —— 录入方可以请主管借一次审核权,把自己刚录的东西审掉。
      */
     private static final Set<String> NOT_ELEVATABLE = Set.of(
-        SYSTEM_VIEW, SYSTEM_EDIT, ELEVATE_REQUEST, LOCK_TAKEOVER);
+        SYSTEM_VIEW, SYSTEM_EDIT, ELEVATE_REQUEST, LOCK_TAKEOVER, REVIEW_APPROVE);
 
     public static boolean elevatable(String perm) { return exists(perm) && !NOT_ELEVATABLE.contains(perm); }
 
@@ -87,5 +95,6 @@ public final class Perm {
         new Meta(SYSTEM_VIEW,        "系统管理 · 查看", "能看到用户列表、角色配置与操作日志"),
         new Meta(SYSTEM_EDIT,        "系统管理 · 管理", "新建/停用账号、配置角色权限"),
         new Meta(LOCK_TAKEOVER,      "编辑锁 · 授权",   "别人正在编辑时，授权他人接管（不是自己接管）"),
-        new Meta(ELEVATE_REQUEST,    "可请求提权",      "遇到没权限的操作时，能请主管当场输密码授权 30 分钟；不给这项的账号连编辑模式按钮都看不到"));
+        new Meta(ELEVATE_REQUEST,    "可请求提权",      "遇到没权限的操作时，能请主管当场输密码授权 30 分钟；不给这项的账号连编辑模式按钮都看不到"),
+        new Meta(REVIEW_APPROVE,     "审核",            "通过 / 退回 / 撤销某张表某个月的审核；已审核的表任何人都改不了，只有审核员能撤销"));
 }

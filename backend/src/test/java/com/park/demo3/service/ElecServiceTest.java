@@ -7,6 +7,7 @@ import com.park.demo3.entity.ElecPhase;
 import com.park.demo3.entity.ElecRecord;
 import com.park.demo3.mapper.ElecPhaseMapper;
 import com.park.demo3.mapper.ElecRecordMapper;
+import com.park.demo3.security.ReviewGuard;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import java.math.BigDecimal;
@@ -17,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ElecServiceTest {
     ElecPhaseMapper phases = Mockito.mock(ElecPhaseMapper.class);
     ElecRecordMapper records = Mockito.mock(ElecRecordMapper.class);
-    ElecService svc = new ElecService(phases, records);
+    ElecService svc = new ElecService(phases, records, Mockito.mock(ReviewGuard.class));
 
     static BigDecimal bd(double v) { return BigDecimal.valueOf(v); }
 

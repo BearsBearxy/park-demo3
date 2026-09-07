@@ -7,7 +7,8 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 
 /**
- * 操作日志时间线:三张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。
+ * 操作日志时间线:四张来源表 union 后按时间倒序（RBAC-SPEC §7.2）。review_log 是 R1 加的第 4 张,
+ * 它没有 authorizer 列(审核不走提权,没有「代他人执行」这回事),照 import 分支写 NULL AS authorizer。
  *
  * **分页与筛选都在 SQL 里做**,不是捞进内存再切。param_change_log 随每次改参数增长,
  * 全捞正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
@@ -68,6 +69,17 @@ public interface AuditQueryMapper {
             <if test="to != null">AND ts &lt; #{to}</if>
           </where>
         </if>
+        <if test="src == null">UNION ALL</if>
+        <if test="src == null or src == 'review'">
+          SELECT 'review' AS source, id AS rid, at AS ts, actor AS actor, action AS action,
+                 review_key AS target, reason AS detail, NULL AS authorizer
+          FROM review_log
+          <where>
+            <if test="actor != null and actor != ''">actor = #{actor}</if>
+            <if test="from != null">AND at &gt;= #{from}</if>
+            <if test="to != null">AND at &lt; #{to}</if>
+          </where>
+        </if>
         """;
 
     /** 末位键 rid 让排序成为全序 —— 见类注释第 2 条，没有它翻页会重复/漏行。 */
@@ -87,6 +99,7 @@ public interface AuditQueryMapper {
           SELECT actor a FROM param_change_log
           UNION SELECT operator FROM import_log
           UNION SELECT actor FROM auth_audit_log
+          UNION SELECT actor FROM review_log
         ) x WHERE a IS NOT NULL AND a <> '' ORDER BY a
         """)
     List<String> actors();

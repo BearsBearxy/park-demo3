@@ -55,13 +55,13 @@ public class SystemService {
      * 三张来源表 union 后按时间倒序。**分页在 SQL 里做** —— param_change_log 随每次
      * 改参数增长，全捞进内存再切正是 QueryHygieneTest 防的那种「返回行数只涨不跌」。
      *
-     * @param src  param / import / auth，null=全部
+     * @param src  param / import / auth / review，null=全部
      * @param to   传日期时按「当天含全天」处理（前端给的是 2026-08-22，用户的意思是含这一天）
      */
     public AuditPageDTO auditLogs(String src, String actor, LocalDate from, LocalDate to,
                                   int page, int size) {
         String s = (src == null || src.isBlank()) ? null : src.trim();
-        if (s != null && !List.of("param", "import", "auth").contains(s))
+        if (s != null && !List.of("param", "import", "auth", "review").contains(s))
             throw new BizException(ResultCode.BAD_REQUEST, "未知的日志来源：" + s);
         String a = (actor == null || actor.isBlank()) ? null : actor.trim();
         LocalDateTime f = from == null ? null : from.atStartOfDay();

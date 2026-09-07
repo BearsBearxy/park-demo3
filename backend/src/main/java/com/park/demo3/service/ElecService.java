@@ -16,6 +16,8 @@ import com.park.demo3.entity.ElecPhase;
 import com.park.demo3.entity.ElecRecord;
 import com.park.demo3.mapper.ElecPhaseMapper;
 import com.park.demo3.mapper.ElecRecordMapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,9 +35,28 @@ public class ElecService {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final ElecPhaseMapper phases;
     private final ElecRecordMapper records;
+    private final ReviewGuard reviewGuard;
 
-    public ElecService(ElecPhaseMapper phases, ElecRecordMapper records) {
-        this.phases = phases; this.records = records;
+    public ElecService(ElecPhaseMapper phases, ElecRecordMapper records, ReviewGuard reviewGuard) {
+        this.phases = phases; this.records = records; this.reviewGuard = reviewGuard;
+    }
+
+    /**
+     * 附表11 报送台账的审核闸(§7.4)。园区级表,不带 scope。
+     *
+     * ⚠ elec-cost 这把键守的是**本类**(表 elec_record),不是 ElecCostService —— spec §7.4 早期版本
+     * 点名 ElecCostService 是点反了:本月出账屏清单上「附表11」那一行的 done 判据读的是
+     * ElecRecordMapper(DataHomeService)。园区电费模型(elec_cost_entry)是另一把键 elec-model。
+     */
+    private void assertElecEditable(String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.ELEC_COST, acctMonth, null);
+    }
+
+    /** 整年一条 SQL 的写路径专用:该年 12 个月全送进批量闸(点名最早的锁月)。 */
+    private void assertYearEditable(int year) {
+        List<String> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) months.add(String.format("%04d-%02d", year, m));
+        reviewGuard.assertEditable(ReviewKind.ELEC_COST, months, null);
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -94,6 +115,7 @@ public class ElecService {
     public ElecRecordDTO create(ElecRecordReq req) {
         ElecPhase phase = phases.selectById(req.phase());
         if (phase == null) throw new BizException(ResultCode.CONFLICT, "期别不存在");
+        assertElecEditable(req.acctMonth());
 
         ElecRecord r = new ElecRecord();
         r.setType(req.type());
@@ -118,6 +140,7 @@ public class ElecService {
     public ElecRecordDTO updateNote(Integer id, String note) {
         ElecRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertElecEditable(r.getAcctMonth());
         r.setNote(note == null || note.isBlank() ? null : note);
         records.updateById(r);
         ElecPhase phase = phases.selectById(r.getPhaseId());
@@ -128,6 +151,7 @@ public class ElecService {
     public void delete(Integer id) {
         ElecRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertElecEditable(r.getAcctMonth());
         records.deleteById(id);
     }
 
@@ -163,6 +187,10 @@ public class ElecService {
             valid.add(row);
             monthsByPhase.computeIfAbsent(row.phaseId(), k -> new LinkedHashSet<>()).add(row.acctMonth());
         }
+        // 一批可跨月:用现成的 monthsByPhase(已过 validMonth,口径与 ReviewKey 同严)去重后一次闸掉。
+        // 非法月的行本来就进 errors 跳过,压根不在这个集合里 —— 行级容错不会被打成批级 400。
+        Set<String> allMonths = monthsByPhase.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+        if (!allMonths.isEmpty()) reviewGuard.assertEditable(ReviewKind.ELEC_COST, allMonths, null);
         monthsByPhase.forEach((phaseId, months) -> records.deleteByPhaseAndMonths(phaseId, new ArrayList<>(months)));
         int imported = 0;
         for (ElecImportRequest.Row row : valid) {
@@ -199,6 +227,8 @@ public class ElecService {
     // ── clearImported(year):删本年 source='import' 行,返回删除计数 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int year) {
+        // 只有年、没有月:整年清空会碰到该年任何一个已审月,所以 12 个月一起送闸
+        assertYearEditable(year);
         return new DeleteResultDTO(records.deleteImported(year), 0);
     }
 
@@ -209,6 +239,8 @@ public class ElecService {
         for (Long id : ids) {
             ElecRecord r = records.selectById(id);
             if (r == null) continue;
+            // 一批 id 可跨月:逐行按被删行自己的月判(同一 @Transactional,命中即整批回滚)
+            assertElecEditable(r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }

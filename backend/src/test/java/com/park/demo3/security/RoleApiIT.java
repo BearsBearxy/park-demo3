@@ -57,6 +57,29 @@ class RoleApiIT extends AbstractMysqlIT {
             .containsExactlyInAnyOrderElementsOf(Perm.ALL);
     }
 
+    /**
+     * 第 18 个权限点 review:approve(SIDEBAR-UX-REDESIGN §7.3)。四处齐了才算加完:
+     * 常量 / ALL(决定角色屏矩阵行序) / META(矩阵渲染读的是它 —— 只加 ALL 永远勾不上) /
+     * NOT_ELEVATABLE。少任一处这条就红。
+     */
+    @Test
+    void perm18_reviewApprove_isRegisteredEverywhere() {
+        assertThat(Perm.ALL).hasSize(18).contains(Perm.REVIEW_APPROVE);
+        assertThat(Perm.META.stream().map(Perm.Meta::key)).contains(Perm.REVIEW_APPROVE);
+        assertThat(Perm.elevatable(Perm.REVIEW_APPROVE))
+            .as("审核不是能当场借的权限(§7.3):借得到就等于录入方能请主管借一次权把自己录的东西审掉")
+            .isFalse();
+        // 没有断言的常量就是没有护栏。423 与 409 分开是 R1 的一条明确裁定,钉住它。
+        assertThat(com.park.demo3.common.ResultCode.LOCKED.code).isEqualTo(423);
+        assertThat(com.park.demo3.common.ResultCode.CONFLICT.code).isEqualTo(409);
+    }
+
+    /** reviewer 是第 7 个预置角色:只审不录 —— 只有 review:approve,一个 :edit 都没有(D16)。 */
+    @Test
+    void reviewerRoleIsSeeded_withReviewApproveOnly() {
+        assertThat(permsOf("reviewer")).containsExactly(Perm.REVIEW_APPROVE);
+    }
+
     @Test
     void presetRolesMatchSpec() {
         // 钉住 RBAC-SPEC §3 的角色矩阵。改这里之前先改规范,别让代码和文档对不上。

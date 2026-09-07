@@ -13,6 +13,8 @@ import com.park.demo3.dto.SalaryYearMonthDTO;
 import com.park.demo3.dto.SalaryYearMonthDTO.Total;
 import com.park.demo3.entity.SalaryRecord;
 import com.park.demo3.mapper.SalaryRecordMapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -26,8 +28,16 @@ import java.util.stream.Collectors;
 public class SalaryService {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final SalaryRecordMapper records;
+    private final ReviewGuard reviewGuard;
 
-    public SalaryService(SalaryRecordMapper records) { this.records = records; }
+    public SalaryService(SalaryRecordMapper records, ReviewGuard reviewGuard) {
+        this.records = records; this.reviewGuard = reviewGuard;
+    }
+
+    /** 附表12 的审核闸(§7.4):园区级表,不带 scope。 */
+    private void assertSalaryEditable(String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.SALARY, acctMonth, null);
+    }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
     private static BigDecimal r2(BigDecimal v) { return nz(v).setScale(2, RoundingMode.HALF_UP); }
@@ -82,6 +92,7 @@ public class SalaryService {
 
     // ── create(source=manual) ──
     public SalaryRecordDTO create(SalaryRecordReq req) {
+        assertSalaryEditable(req.acctMonth());
         SalaryRecord r = new SalaryRecord();
         r.setAcctMonth(req.acctMonth());
         r.setEmpIdx(0);
@@ -114,6 +125,8 @@ public class SalaryService {
     @org.springframework.transaction.annotation.Transactional
     public ImportResultDTO importRows(int year, int month, SalaryImportRequest req) {
         String acctMonth = String.format("%04d-%02d", year, month);
+        // 整批落在同一个月(行不带月,月来自 query param),一次闸掉;命中即整批回滚,半批落库更糟
+        assertSalaryEditable(acctMonth);
         records.deleteImported(acctMonth);
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
@@ -158,7 +171,9 @@ public class SalaryService {
     // ── clearImported(year,month):删本月 source='import' 行,返回删除计数 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int year, int month) {
-        int deleted = records.deleteImported(String.format("%04d-%02d", year, month));
+        String acctMonth = String.format("%04d-%02d", year, month);
+        assertSalaryEditable(acctMonth);
+        int deleted = records.deleteImported(acctMonth);
         return new DeleteResultDTO(deleted, 0);
     }
 
@@ -169,6 +184,8 @@ public class SalaryService {
         for (Long id : ids) {
             SalaryRecord r = records.selectById(id);
             if (r == null) continue;
+            // 一批 id 可跨月:逐行按被删行自己的月判(同一 @Transactional,命中即整批回滚)
+            assertSalaryEditable(r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }
@@ -179,6 +196,7 @@ public class SalaryService {
     public SalaryRecordDTO updateNote(Integer id, String note) {
         SalaryRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertSalaryEditable(r.getAcctMonth());
         r.setNote(blankToNull(note));
         records.updateById(r);
         return toDTO(records.selectById(id));
@@ -188,6 +206,7 @@ public class SalaryService {
     public void delete(Integer id) {
         SalaryRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertSalaryEditable(r.getAcctMonth());
         records.deleteById(id);
     }
 

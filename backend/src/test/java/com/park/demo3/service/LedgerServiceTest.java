@@ -23,7 +23,9 @@ class LedgerServiceTest {
     TenantMapper tm = Mockito.mock(TenantMapper.class);
     BookService bm = Mockito.mock(BookService.class);   // customIdsAt 默认空集
     BookPinService pm = Mockito.mock(BookPinService.class);   // bookOfCompany 默认 null → 固化 pin 空转
-    LedgerService svc = new LedgerService(lm, cm, tm, bm, pm);
+        // 审核闸(R1 T7)在这一层不是被测对象:桩掉,让这些用例继续只钉派生/归一口径
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+LedgerService svc = new LedgerService(lm, cm, tm, bm, pm, rg);
 
     // --- fixtures ---
     Tenant tenant(int id, int status) {

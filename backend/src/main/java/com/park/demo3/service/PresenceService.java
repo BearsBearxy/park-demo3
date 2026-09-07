@@ -5,7 +5,9 @@ import com.park.demo3.dto.LockDtos.EvictionDTO;
 import com.park.demo3.dto.PresenceDtos.*;
 import com.park.demo3.entity.AuthUser;
 import com.park.demo3.mapper.AuthUserMapper;
+import com.park.demo3.security.Perm;
 import com.park.demo3.security.PresenceStore;
+import com.park.demo3.security.UserPermissionCache;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -30,9 +32,13 @@ public class PresenceService {
     private final PresenceStore store;
     private final AuthUserMapper users;
     private final ApprovalService approvals;
+    private final UserPermissionCache permCache;
+    private final ReviewService reviews;
 
-    public PresenceService(PresenceStore store, AuthUserMapper users, ApprovalService approvals) {
+    public PresenceService(PresenceStore store, AuthUserMapper users, ApprovalService approvals,
+                           UserPermissionCache permCache, ReviewService reviews) {
         this.store = store; this.users = users; this.approvals = approvals;
+        this.permCache = permCache; this.reviews = reviews;
     }
 
     public PingResp ping(PingReq req) {
@@ -66,9 +72,19 @@ public class PresenceService {
             .map(e -> new EvictionDTO(e.scope(), e.by(), e.byDisplayName(), e.authorizerName()))
             .toList();
         // 单数 evicted 是给发布前就开着的旧页签的 —— 它们只读这个字段,不给的话被接管零提示
+        // 审核待办顺着同一条通道回来(§7.4「复用 presence.approvals 轮询通道」)——
+        // 复用的是这条轮询本身,不是 approvals 那个字段:后者是定向的(inboxOf)、2 分钟 TTL、纯内存,
+        // 承不了「活到被审为止且跨重启」的待审队列。
+        // 受众判定走 UserPermissionCache(ping 路径上唯一零 DB 的权限查询);没这项权限的人恒 0,不查库。
+        // ponytail: 有权限的人每 3 秒一次 selectCount。真到扛不住,改法是在 ReviewService 里加个
+        //   「写操作后失效」的内存计数,**不要**去调慢 ping —— 那条通道还担着在场点与接管提示。
+        UserPermissionCache.UserAuth ua = permCache.get(me);
+        int pendingReviews = ua != null && ua.perms().contains(Perm.REVIEW_APPROVE)
+            ? reviews.pendingCount() : 0;
+
         return new PingResp(seats(me), evictions,
             evictions.isEmpty() ? null : evictions.get(0),
-            approvals.inbox(), out);
+            approvals.inbox(), out, pendingReviews);
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */

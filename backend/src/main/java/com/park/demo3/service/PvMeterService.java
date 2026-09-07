@@ -15,6 +15,7 @@ import com.park.demo3.entity.PvStation;
 import com.park.demo3.mapper.PvReadingMapper;
 import com.park.demo3.mapper.PvRecordMapper;
 import com.park.demo3.mapper.PvStationMapper;
+import com.park.demo3.security.NoReviewGuard;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,7 @@ public class PvMeterService {
         return stations.selectAllSorted().stream().map(PvMeterService::toStationDTO).toList();
     }
 
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvStationDTO createStation(PvStationReq req) {
         String name = req.name().trim();
         if (stations.selectCount(new QueryWrapper<PvStation>().eq("name", name)) > 0)
@@ -76,6 +78,7 @@ public class PvMeterService {
         return toStationDTO(stations.selectById(s.getId()));
     }
 
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvStationDTO updateStation(Integer id, PvStationReq req) {
         PvStation s = stations.selectById(id);
         if (s == null) throw new BizException(ResultCode.NOT_FOUND, "电站不存在");
@@ -92,6 +95,7 @@ public class PvMeterService {
         return toStationDTO(stations.selectById(id));
     }
 
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public void deleteStation(Integer id) {
         if (stations.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "电站不存在");
         if (readings.countByStation(id) > 0)
@@ -112,6 +116,7 @@ public class PvMeterService {
             .map(r -> toReadingDTO(r, names.get(r.getStationId()))).toList();
     }
 
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvReadingDTO createReading(PvReadingReq req) {
         PvStation station = stations.selectById(req.stationId());
         if (station == null) throw new BizException(ResultCode.CONFLICT, "电站不存在");
@@ -129,6 +134,7 @@ public class PvMeterService {
     }
 
     // PUT:改日期/三量/备注;station 与 price_snap 保持不变(快照语义)
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvReadingDTO updateReading(Integer id, PvReadingReq req) {
         PvReading r = readings.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
@@ -144,6 +150,7 @@ public class PvMeterService {
         return toReadingDTO(readings.selectById(id), station == null ? null : station.getName());
     }
 
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public void deleteReading(Integer id) {
         if (readings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
         readings.deleteById(id);
@@ -186,6 +193,7 @@ public class PvMeterService {
     }
 
     @Transactional
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public PvSimulateResultDTO simulate(int year) {
         // 附表6 该年聚合:annual[phase]=[消纳合计,selfKwh,selfAmt];monthly[phase][acctMonth]=[self,grid]
         Map<Integer, BigDecimal[]> annual = new HashMap<>();
@@ -358,6 +366,7 @@ public class PvMeterService {
     // ── 导入:行自带 station(名)+readDate。(站,日)幂等 upsert=先删同(站,日)再插,重导修正即覆盖
     //   (price_snap 重新快照当时站单价——重导即重新录入)。未知站名/非法日期/负电量=行级错误跳过。 ──
     @Transactional
+    @NoReviewGuard(reason = "光伏分栋抄表是附表6 的下游派生第二本账,不回写 pv_record;spec §7.1 无键,本轮不进审核")
     public ImportResultDTO importRows(PvMeterImportRequest req) {
         Map<String, PvStation> byName = stations.selectList(null).stream()
             .collect(Collectors.toMap(s -> s.getName().trim(), Function.identity()));

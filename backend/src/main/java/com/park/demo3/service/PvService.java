@@ -16,6 +16,8 @@ import com.park.demo3.entity.PvPhase;
 import com.park.demo3.entity.PvRecord;
 import com.park.demo3.mapper.PvPhaseMapper;
 import com.park.demo3.mapper.PvRecordMapper;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,9 +35,15 @@ public class PvService {
     private static final int BASE_YEAR = 2024;   // 年份范围下界(确定性,不读系统时钟)
     private final PvPhaseMapper phases;
     private final PvRecordMapper records;
+    private final ReviewGuard reviewGuard;
 
-    public PvService(PvPhaseMapper phases, PvRecordMapper records) {
-        this.phases = phases; this.records = records;
+    public PvService(PvPhaseMapper phases, PvRecordMapper records, ReviewGuard reviewGuard) {
+        this.phases = phases; this.records = records; this.reviewGuard = reviewGuard;
+    }
+
+    /** 附表6 的审核闸(§7.4):园区级表,不带 scope —— p1/p2/p3 是同一张表的行,不是三把键。 */
+    private void assertPvEditable(String acctMonth) {
+        reviewGuard.assertEditable(ReviewKind.PV, acctMonth, null);
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
@@ -90,6 +98,7 @@ public class PvService {
     public PvRecordDTO create(PvRecordReq req) {
         PvPhase phase = phases.selectById(req.phase());
         if (phase == null) throw new BizException(ResultCode.CONFLICT, "期别不存在");
+        assertPvEditable(req.acctMonth());
 
         PvRecord r = new PvRecord();
         r.setPhaseId(req.phase());
@@ -109,6 +118,7 @@ public class PvService {
     public PvRecordDTO updateNote(Integer id, String note) {
         PvRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertPvEditable(r.getAcctMonth());
         r.setNote(note == null || note.isBlank() ? null : note);
         records.updateById(r);
         PvPhase phase = phases.selectById(r.getPhaseId());
@@ -119,6 +129,7 @@ public class PvService {
     public void delete(Integer id) {
         PvRecord r = records.selectById(id);
         if (r == null) throw new BizException(ResultCode.NOT_FOUND, "记录不存在");
+        assertPvEditable(r.getAcctMonth());
         records.deleteById(id);
     }
 
@@ -149,7 +160,11 @@ public class PvService {
             valid.add(row);
             monthsByPhase.computeIfAbsent(row.phaseId(), k -> new LinkedHashSet<>()).add(row.acctMonth());
         }
-        monthsByPhase.forEach((phaseId, months) -> records.deleteByPhaseAndMonths(phaseId, new ArrayList<>(months)));
+        // 一批可跨月:用现成的 monthsByPhase(已过 validMonth,口径与 ReviewKey 同严)去重后一次闸掉。
+        // 非法月的行本来就进 errors 跳过,压根不在这个集合里 —— 行级容错不会被打成批级 400。
+        Set<String> months = monthsByPhase.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+        if (!months.isEmpty()) reviewGuard.assertEditable(ReviewKind.PV, months, null);
+        monthsByPhase.forEach((phaseId, months2) -> records.deleteByPhaseAndMonths(phaseId, new ArrayList<>(months2)));
         int imported = 0;
         for (PvImportRequest.Row row : valid) {
             String acct = row.acctMonth();
@@ -182,6 +197,8 @@ public class PvService {
     // ── clearImported(year):删本年 source='import' 行,返回删除计数 ──
     @org.springframework.transaction.annotation.Transactional
     public DeleteResultDTO clearImported(int year) {
+        // 只有年、没有月:整年清空会碰到该年任何一个已审月,所以 12 个月一起送闸(点名最早的锁月)
+        assertYearEditable(year);
         return new DeleteResultDTO(records.deleteImported(year), 0);
     }
 
@@ -192,6 +209,8 @@ public class PvService {
         for (Long id : ids) {
             PvRecord r = records.selectById(id);
             if (r == null) continue;
+            // 一批 id 可跨月:逐行按被删行自己的月判(同一 @Transactional,命中即整批回滚)
+            assertPvEditable(r.getAcctMonth());
             records.deleteById(id);
             deleted++;
         }
@@ -199,6 +218,13 @@ public class PvService {
     }
 
     // ── helpers ──
+    /** 整年一条 SQL 的写路径专用:该年 12 个月全送进批量闸。 */
+    private void assertYearEditable(int year) {
+        List<String> months = new ArrayList<>(12);
+        for (int m = 1; m <= 12; m++) months.add(String.format("%04d-%02d", year, m));
+        reviewGuard.assertEditable(ReviewKind.PV, months, null);
+    }
+
     private static PvTotal total(List<PvRecord> rows) {
         BigDecimal g = BigDecimal.ZERO, f = BigDecimal.ZERO,
                    sk = BigDecimal.ZERO, sa = BigDecimal.ZERO,
