@@ -351,3 +351,36 @@ describe('关页面时的收尾', () => {
     vi.unstubAllGlobals()
   })
 })
+
+// ══════════ 审核两个计数顺 ping 回来(§7.4,R2 T8/T9) ══════════
+describe('审核计数', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  // 破坏验证:把 ping 里那两行赋值删掉 → 红
+  it('❗pendingReviews 与 myReturned 顺同一条 ping 落进 store', async () => {
+    vi.mocked(api.put).mockResolvedValue(
+      { users: [], evictions: [], approvals: [], outcome: null, pendingReviews: 3, myReturned: 2 } as never)
+    const p = usePresenceStore()
+    await p.ping()
+    expect(p.pendingReviews).toBe(3)
+    expect(p.myReturned).toBe(2)
+  })
+
+  // 破坏验证:把 `?? 0` 改成 `?? pendingReviews.value` → 红。
+  // 字段缺席(旧后端 / 半截响应)时该显 0,不该挂着上一拍的数 —— 挂着的话红点会永远不消。
+  it('❗字段缺席时归零,不是留着上一拍的数', async () => {
+    const p = usePresenceStore()
+    vi.mocked(api.put).mockResolvedValueOnce(
+      { users: [], evictions: [], approvals: [], outcome: null, pendingReviews: 5, myReturned: 1 } as never)
+    await p.ping()
+    expect(p.pendingReviews).toBe(5)
+    vi.mocked(api.put).mockResolvedValueOnce(
+      { users: [], evictions: [], approvals: [], outcome: null } as never)
+    await p.ping()
+    expect(p.pendingReviews).toBe(0)
+    expect(p.myReturned).toBe(0)
+  })
+})

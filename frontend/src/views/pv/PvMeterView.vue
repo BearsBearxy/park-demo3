@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// no-review: 光伏分栋抄表是附表6 的**下游**派生第二本账(依赖方向是附表 → 抄表),不单独审;
+//            后端同款豁免见 PvMeterService 上的 @NoReviewGuard。
 // 分栋抄表明细(PV-METER-SPEC §2)— 与附表6 月度汇总并列的新屏,由 PvView 功能门进入。
 // 一行一电站(13 站种子),月度量=该站该月记录求和;点行开抽屉逐条增删改;
 // 容量/单价行内乐观更新(BillsView setPayCo 模式:即时更新,失败回滚 alert);

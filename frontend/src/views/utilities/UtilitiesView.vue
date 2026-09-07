@@ -69,9 +69,12 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
+  // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
+  reviewKinds: ['utilities'],
+  reviewScope: () => (no.value === 14 ? 'phase3' : 'office'),
   load: loadYear,
   reloadOverview,
   rows: () => yearData.value?.rows ?? [],
@@ -232,6 +235,7 @@ const onExport = () => guard('导出失败', async () => {
         </div>
 
         <UtilitiesTable
+          :locked-months="lockedMonths"
           :year="year"
           :icon="meta.icon"
           :name="meta.name"

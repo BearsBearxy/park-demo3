@@ -604,6 +604,7 @@ function onImportClick() {
           <div class="s10-page">
             <SchedHeader
               :scope="S.s10(phase, year, month)"
+              :review-key="`s10:${phase}:${year}-${String(month).padStart(2, '0')}`"
               icon="coins"
               title="附表10 · 销售收入"
               sub="逐月、按期 / 宿舍汇总的租户总收款 · 一行一租户,列为各收款项目 · 金额单位 元"

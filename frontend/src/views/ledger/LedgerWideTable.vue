@@ -18,6 +18,7 @@ import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
 import { ledgerRowKey } from '@/types/ledger'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
+import { useReviewStore } from '@/stores/review'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
@@ -39,6 +40,9 @@ const props = defineProps<{
   /** 本期编辑锁的作用域(CONCURRENCY-SPEC §3.1):ledger:{companyId}:{year}-{month}。
    *  不传 = 不上锁,行为与加锁之前一个字不差。 */
   lockScope?: string | null
+  /** 本期的审核键(SIDEBAR-UX-REDESIGN §7.1):`ledger:{companyId}:YYYY-MM`,每公司每月一把。
+   *  不传 = 不受审核约束。 */
+  reviewKey?: string | null
 }>()
 const emit = defineEmits<{
   back: []
@@ -71,7 +75,24 @@ const { lockedBy, evictedBy } = lock
 const heldByOther = lock.watchScope(() => props.lockScope ?? null)
 watch(() => props.edit, (on) => { if (!on) lock.release() })
 
+// ── 审核闸(§7.5;EDIT-MODE-SPEC 三道闸之二:权限 → 审核态 → 锁) ──
+//
+// ⚠ 这是编辑入口的**第三条路**。宿主 LedgerView 是裸的 `const edit = ref(false)`(见上面那段头注),
+//   既不走 useEditMode 也不在 SchedHeader 底下 —— 三条路都得各接一次,判据共用 store 里那一份。
+const review = useReviewStore()
+watch(() => props.reviewKey, (k) => { void review.ensureFor(k) }, { immediate: true })
+const reviewBlock = computed(() => review.blockOf(props.reviewKey))
+const reviewNote = computed(() => reviewBlock.value?.note ?? null)
+
+/** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。 */
+watch(reviewBlock, (rb) => { if (rb && props.edit) emit('cancel') })
+
 async function onEnterEdit() {
+  // ⚠ 这一行**当前杀不掉**:药丸一渲染就把唯一的调用方(那颗按钮)换成了 span,点击落不到这里,
+  //   而本屏没有 SchedHeader 那条「提权批准后回调 onToggleEdit」的路。删掉它测试照样全绿 ——
+  //   实测过,不是猜的。留着是模板漂移的兜底:药丸的 v-if 是这条路上唯一的闸,
+  //   将来谁动了那段模板,这里还能接住。伪造一条断言来「覆盖」它没有意义,故如实写明。
+  if (reviewBlock.value) return
   if (props.lockScope && !(await lock.acquire(props.lockScope))) return
   emit('enter-edit')
 }
@@ -99,6 +120,8 @@ function draftAsTsv(): string {
 
 async function onTaken() {
   lockedBy.value = null
+  // 接管拿到的是锁,不是改已审核台账的资格 —— 不拦的话接管抽屉成了绕开审核闸的后门。
+  if (reviewBlock.value) return
   if (props.lockScope) await lock.acquire(props.lockScope)
   emit('enter-edit')
 }
@@ -302,7 +325,12 @@ function onBack() {
           </Button>
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
-          <Button v-if="auth.can('entry:edit')" variant="outline" size="sm"
+          <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lg-lockbtn 同 min-width)。 -->
+          <span v-if="auth.can('entry:edit') && reviewNote" class="lg-lockbtn lg-reviewpill"
+                :title="reviewBlock?.tip ?? undefined">
+            <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
+          </span>
+          <Button v-else-if="auth.can('entry:edit')" variant="outline" size="sm"
                   class="lg-lockbtn" :class="{ held: !!heldByOther }" @click="onEnterEdit">
             <template #leading>
               <span v-if="heldByOther" class="lg-lockav" :class="{ dim: heldByOther.idle }">{{ heldByOther.displayName.slice(0, 1) }}</span>
@@ -382,6 +410,13 @@ function onBack() {
 <style scoped>
 /* 锁位:三态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」换文案不挪版 */
 .lg-lockbtn { min-width:150px; justify-content:center; }
+/* 审核药丸:逐项对齐 ds/Button 的 size="sm"(SIZES.sm),只是点不动。 */
+.lg-reviewpill {
+  display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; box-sizing:border-box;
+  border:1px solid var(--border-subtle); border-radius:var(--radius-full);
+  background:var(--surface-sunken); color:var(--text-muted);
+  font-size:var(--fs-label); line-height:1; white-space:nowrap; cursor:not-allowed;
+}
 .lg-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
 .lg-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }
 .lg-lockav.dim { opacity:.55; }

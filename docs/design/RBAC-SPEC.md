@@ -411,6 +411,10 @@ JWT 有效期 120 分钟。权限烤进令牌 → 停用一个人他还能再用
 统一时间线页放在 `系统管理 → 操作日志`：**四张表** union 后按时间倒序，可按类型 / 操作人 / 时间筛。
 后端落点 `AuditQueryMapper.BRANCHES`（每个分支必须写全列别名，否则单源查询「Unknown column」500）+ `SystemService.auditLogs()` 的来源白名单 + `actors()` 的 UNION。
 
+**前端落点四处**（R2 已补，2026-09-07）：`SystemLogsView.vue` 的 `SRC` 色表 / `ACTION` 人话字典 / `SRC_OPTS` 筛选项，加 `types/system.ts` 的 `AuditSource` 联合类型。
+四处都补齐才算接上 —— `SRC` 有 `OTHER` 兜底，漏了不会崩，但一屏审计日志上写着「其他 / approve」等于「不知道这是什么」。
+`review` 的徽标 tone 用 `slate`（`BadgeTone` 没有 green 档，为一行日志给 `ds/Badge` 加一档色不划算）；左侧圆点的 color 是自由值，那里给绿，与「已审核」在清单上的色同源。
+
 ### 7.1 必须补的留痕缺口
 
 ⚠ **系数簿现在半边有痕半边没有**：

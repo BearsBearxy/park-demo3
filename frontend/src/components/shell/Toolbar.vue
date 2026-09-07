@@ -28,7 +28,14 @@ const presence = usePresenceStore()
 const auth = useAuthStore()
 const router = useRouter()
 const inbox = ref(false)
-const pendingCount = computed(() => presence.approvals.length)
+/**
+ * 铃铛红点 = 三件要我处理的事的总和(§7.4 通知行):
+ *   等我批的授权 + 等我审的键 + 我交的表被退回。
+ * 三个数都顺同一条 ping 回来;抽屉里分三段列出来,红点只给一个总数 ——
+ * 分三个红点会让顶栏出现三个几乎一样的点,没人分得清哪个是哪个。
+ */
+const pendingCount = computed(() =>
+  presence.approvals.length + presence.pendingReviews + presence.myReturned)
 
 const meta = computed(() => route.meta as Record<string, string>)
 const crumbGroup = computed(() => meta.value.layerLabel ?? '')

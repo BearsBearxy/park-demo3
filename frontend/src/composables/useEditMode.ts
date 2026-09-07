@@ -1,6 +1,8 @@
-import { ref, computed, watch, onDeactivated, onUnmounted, getCurrentInstance } from 'vue'
+import { ref, computed, watch, onMounted, onDeactivated, onUnmounted, getCurrentInstance } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
+import { useReviewStore } from '@/stores/review'
+
 
 export interface EditModeOpts {
   /**
@@ -11,6 +13,14 @@ export interface EditModeOpts {
    * P1 只铺台账 + 附表族，其余十几屏原样不动。
    */
   scope?: () => string | null
+  /**
+   * 本屏当前这一期的**审核键**(SIDEBAR-UX-REDESIGN §7.1),如 `ledger:7:2025-06`。
+   *
+   * 与 scope 同风格传函数:键跟着公司/年月变,点下去那一刻才算得准。
+   * **不传(或返回 null)= 这一屏不受审核约束** —— 后端标了 @NoReviewGuard 的四屏
+   * (光伏/充电桩分栋抄表、母册两屏)与不在审核范围内的十几屏一个字不改。
+   */
+  reviewKey?: () => string | string[] | null
 }
 
 /**
@@ -88,8 +98,40 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   /** 编辑模式按钮画不画。 */
   const canEnter = computed(() => hasAny.value || auth.can('elevate:request'))
 
+  // ── 审核闸(SIDEBAR-UX-REDESIGN §7.5,EDIT-MODE-SPEC 三道闸之二:权限 → 审核态 → 锁) ──
+  const review = useReviewStore()
+
+  /**
+   * 这一期的审核态挡不挡编辑。null = 不挡。
+   *
+   * **必须是惰性 computed** —— 多数调用方把 useEditMode(...) 写在 `const year = ...` 之前
+   * (ParamCenterView:69 vs :89),reviewKey 闭包当时还没初始化,setup 期求值会撞 TDZ。
+   * computed 没人读就不算,第一次读发生在渲染期,那时闭包已经好了。同一个坑下面
+   * scopeWhileEditing 是靠「关在编辑态里」绕的。
+   */
+  const reviewBlock = computed(() => review.blockOf(opts.reviewKey?.()))
+
+  /** 按钮位那颗禁用药丸的文案(§7.5,同尺寸零位移)。null = 照常画编辑按钮。 */
+  const reviewNote = computed(() => reviewBlock.value?.note ?? null)
+  const reviewTip = computed(() => reviewBlock.value?.tip ?? null)
+
+  // 药丸要在**点之前**就画出来,所以进屏与换期各取一次。
+  // ⚠ 推迟到 onMounted:watch 的 getter 在 setup 期就会跑一遍,而 reviewKey 闭包那时
+  //   多半还没初始化(见上)。组件外调用(单测)没有 mounted 钩子,闭包也早已就绪,直接接。
+  const watchKey = () =>
+    watch(() => opts.reviewKey?.() ?? null,
+          (k) => { void review.ensureFor(k) },
+          { immediate: true, deep: true })
+  if (getCurrentInstance()) onMounted(watchKey)
+  else watchKey()
+
   async function toggle() {
     if (editMode.value) { exit(); return }
+    // 审核闸要在提权窗**之前**。否则已审核的表会先弹「请主管授权」,主管当场输完密码,
+    // onElevated() 走 enter() 再把人挡回来 —— 白叫一次主管。
+    // §7.5 明写「elevate:request 弹窗不出现」,说的就是这一步。
+    // (按钮位在审核态下本来就是禁用药丸,点不到;这里守的是药丸还没画出来的那一瞬。)
+    if (reviewBlock.value) return
     // 缺任何一项就当场弹授权窗 —— 不进去之后再用提示条告诉他
     if (missing.value.length) { asking.value = [...missing.value]; return }
     await enter()
@@ -112,20 +154,32 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
   let entering = false
   async function enter() {
     if (entering) return
-    const scope = opts.scope?.() ?? null
-    if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
+    // ⚠ 闸门提到最前面立起来(原来只守 acquire 那一段)。下面的审核闸自带一个 await,
+    //   照原样的话连点两下会**两趟都越过** `if (entering) return`,正是这个标志位当初
+    //   要挡的那件事 —— 后果见上面那段长注释。try/finally 保证在途那趟结束后能复位。
     entering = true
-    let got = false
-    try { got = await lock.acquire(scope) } finally { entering = false }
-    if (!got) return
-    // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门 ——
-    // 回来时这把锁锁的已经不是他要编的东西了。
-    // 下面那个 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
-    // （发起时还没进编辑态），条件里 `before != null` 当场把它放过去。
-    // 后果在带选期门的屏上最狠:退回矩阵后 editMode 仍为真,而唯一的「完成」按钮
-    // 长在 v-else 的表格页里、已经不渲染 —— 锁握着、没有写入口、也没有出口。
-    if ((opts.scope?.() ?? null) !== scope) { lock.release(); return }
-    editMode.value = true
+    try {
+      // 审核闸(§7.5;EDIT-MODE-SPEC 三道闸之二:权限 → 审核态 → 锁)。
+      // ⚠ 装在 enter() 而不是 spec §7.5 写的 toggle():toggle / onElevated(主管授权后)
+      //   / onTaken(接管后)三条路都汇进这里。只挂 toggle 的话,叫主管授权进来的人和
+      //   接管进来的人照样改得了已审核的表 —— 而 §7.3 明写「主管接管锁、当场提权都过不去」。
+      // ⚠ 只读**已经到手**的审核态,不在这里 await 一趟网络。GET /api/review 内部要跑一遍
+      //   首页聚合,是本仓较贵的端点之一 —— 把它挂在「点编辑模式」这一下的关键路径上,
+      //   等于让每次进编辑态都多等一个慢往返。取数在 onMounted 那条 watch 里早就发了,
+      //   人点下去时药丸本来就画好了;真赶在取数落地之前点进来,由下面那条守卫拉回来。
+      if (reviewBlock.value) return
+      const scope = opts.scope?.() ?? null
+      if (!scope) { editMode.value = true; return }   // 不上锁的屏，行为与加锁之前一个字不差
+      if (!(await lock.acquire(scope))) return
+      // 占锁是一趟网络往返。这中间用户完全可以换期、或退回选期门 ——
+      // 回来时这把锁锁的已经不是他要编的东西了。
+      // 下面那个 scopeWhileEditing 守卫**看不到这一种**:它的 before 是 null
+      // （发起时还没进编辑态），条件里 `before != null` 当场把它放过去。
+      // 后果在带选期门的屏上最狠:退回矩阵后 editMode 仍为真,而唯一的「完成」按钮
+      // 长在 v-else 的表格页里、已经不渲染 —— 锁握着、没有写入口、也没有出口。
+      if ((opts.scope?.() ?? null) !== scope) { lock.release(); return }
+      editMode.value = true
+    } finally { entering = false }
   }
 
   /** 本屏这一期的锁作用域。暴露出去是为了让接管抽屉接同一把锁 ——
@@ -198,12 +252,21 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     void auth.endElevation()
   }
 
-  // 「在编辑模式里权限却不齐」这个状态一秒都不许存在(铁律 ①)。两条路会走到这里:
+  // 「在编辑模式里权限却不齐」与「在编辑模式里这张表却被审了」这两个状态一秒都不许存在
+  // (铁律 ①)。四条路会走到这里:
   //   · 授权 30 分钟到期 —— auth 每秒 tick nowMs,过期授权掉出 can(),missing 转非空
-  //   · 深链(?edit=1 / ?generate=1)直接写 editMode.value = true,绕过了 toggle 的检查
-  // 两条都由这一个守卫兜住,不必让 7 个页面各自记得。
+  //   · 深链(?edit=1 / ?generate=1)直接写 editMode.value = true,绕过了 enter() 的两道闸
+  //   · 别人在另一个浏览器把这张表交审/通过了,本屏刷新 store 之后审核态转锁
+  //   · 换期换到了一个已审核的月(附表族屏内换月不重建实例)
+  // 四条都由这一个守卫兜住,不必让十几个页面各自记得。
   // 不会自激:exit() 把 editMode 置 false,再次触发时被 on 挡掉。
-  watch([editMode, missing], ([on, m]) => { if (on && m.length) exit() })
+  //
+  // ⚠ 审核态必须**关在编辑态里**求值,与下面 scopeWhileEditing 同一个理由:watch 的 getter
+  //   在 setup 期就跑一遍,而 reviewKey 闭包那时还没初始化(TDZ)。editMode 起手是 false,
+  //   这个 getter 在 setup 期直接回 null,碰都不碰闭包。
+  const reviewBlockWhileEditing = () => (editMode.value ? reviewBlock.value : null)
+  watch([editMode, missing, reviewBlockWhileEditing],
+        ([on, m, rb]) => { if (on && ((m as string[]).length || rb)) exit() })
 
   // 期一换,旧锁就不该再握着(CONCURRENCY-SPEC §3)。
   // 没有这一条时:编辑模式开着 → 换年月(顶栏下拉,或出账链的「换出账月」)→ editMode 与锁原地不动,
@@ -232,5 +295,5 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     })
   }
 
-  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, toggle, askFor, cancelAsk, onElevated, exit, lockScope, onTaken }
+  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, reviewNote, reviewTip, toggle, askFor, cancelAsk, onElevated, exit, lockScope, onTaken }
 }

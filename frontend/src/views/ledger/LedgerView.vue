@@ -769,6 +769,8 @@ function gotoTenants() {
           :issue-count="issueGroups.reduce((n, g) => n + g.count, 0)"
           :focus-tenant="focusTenant"
           :lock-scope="lockScope"
+          :review-key="companyId != null && month != null
+            ? `ledger:${companyId}:${year}-${String(month).padStart(2, '0')}` : null"
           @focus-done="focusTenant = ''"
           @back="backToMonths"
           @enter-edit="enterEdit"

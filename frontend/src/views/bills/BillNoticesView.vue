@@ -78,7 +78,11 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['billing-run:edit', 'billing-issue:edit'], { scope: () => S.billNotices(year.value, month.value) })
+  useEditMode(['billing-run:edit', 'billing-issue:edit'], {
+    scope: () => S.billNotices(year.value, month.value),
+    // 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留。
+    reviewKey: () => (ym.value ? `bill-notices:${ym.value}` : null),
+  })
 const canRun = computed(() => mayRun.value && editMode.value)
 const canIssue = computed(() => mayIssue.value && editMode.value)
 // 编辑态不跨会话(spec §1):切走页签回来即回浏览态

@@ -313,18 +313,33 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | 项 | 内容 |
 |---|---|
 | 迁移 `V124__review.sql` | `review_state(review_key VARCHAR(64) PK, kind VARCHAR(24), period CHAR(7), scope VARCHAR(16) NULL, status VARCHAR(12), submitted_by VARCHAR(64), submitted_at DATETIME, reviewed_by VARCHAR(64), reviewed_at DATETIME, reason VARCHAR(255), KEY idx_review_period (period))`；`review_log(id BIGINT PK AUTO_INCREMENT, review_key, action VARCHAR(12), actor VARCHAR(64), at DATETIME, reason VARCHAR(255), KEY idx_rl_key, KEY idx_rl_at)`；`auth_role` 插 `reviewer`；`auth_role_perm` 给 `admin` 与 `reviewer` 各插 `review:approve`（admin 是「全部权限」角色，保持这一语义） |
-| 端点 | `GET /api/review?period=YYYY-MM` → `[{key, kind, scope, status, submittedBy, submittedAt, reviewedBy, reviewedAt, reason, blockedBy?: string[]}]`（含派生 `entered` 与前置缺项）；`POST /api/review/{key}/submit`（kind 的 edit 权）；`POST /api/review/{key}/approve` · `/return` · `/withdraw`（`review:approve`；return/withdraw 必带 `reason`，空则 400） |
+| 端点 | **R2 加了两条读端点**：`GET /api/review/states?year=YYYY`（闸道 —— 只发已落库的行，不跑聚合、不发派生 `entered`、不算前置；12 个编辑入口都走它，年表屏一屏 12 个月一趟）与 `GET /api/review/closed-months`（整月全审的月集合，年份条月格的 ✓，与四个 `/months` 端点同形）。原有：`GET /api/review?period=YYYY-MM` → `[{key, kind, scope, status, submittedBy, submittedAt, reviewedBy, reviewedAt, reason, blockedBy?: string[]}]`（含派生 `entered` 与前置缺项）；`POST /api/review/{key}/submit`（kind 的 edit 权）；`POST /api/review/{key}/approve` · `/return` · `/withdraw`（`review:approve`；return/withdraw 必带 `reason`，空则 400） |
 | 守卫 | `security/ReviewGuard`，三个重载：`assertEditable(kind, period, scope)`（单月）· `assertEditable(kind, Collection<period>, scope)`（一批跨多月，文案点名最早的锁月）· `assertNoLockedMonth(kind, scope)`（拿不到被写月时的兜底，用于 `LedgerService.rechain` 与参数长期默认行）。查 `review_state`，`submitted / approved` → **`ResultCode.LOCKED(423)`，仍走 HTTP 200 + `body.code=423`**（项目口径，见 `GlobalExceptionHandler` 头注释；不是真发 HTTP 423）。与 409 分开：409 是「上游没审完」的前置冲突，423 是「这张表本月已审 / 待审」，合成一个码前端就分不出「去催上游」和「去找审核员撤销」。message「2024-02 A 公司月度台账 已审核（李审 2024-03-05），撤销审核后才能修改」。<br>调用点 = RBAC-SPEC §5.2 表里所有碰期间数据的写 service，共 **12 个 / 67 个写方法**：`ParamService`（守 `req.acctMonth()` **不守形参 ym** —— ym 是 URL 月）、`MeterService`（改月的读数**旧月新月都判**）、`AllocService`（`generate` 一次守 `alloc` 与 `alloc-loss` **两把键**）、`BillNoticeService`、`LedgerService`、`S10Service`、`SalaryService`、**`OfficeService`**（附13/14；spec 原写的 `UtilitiesService` 不存在）、`PvService`、`ChargingService`、**`ElecService`**（附表11 报送台账 = `elec-cost` 键）、**`ElecCostService`**（园区电费模型 = `elec-model` 键）。导入不是独立 service，是这些类各自的 `importRows`。守卫按被写数据的月判，不按 URL。<br>**本轮不进审核并用 `@NoReviewGuard(reason)` 标注**：`PvMeterService` / `CpMeterService`（光伏、充电桩分栋抄表 —— 是附表6/7/8 的**下游**派生第二本账，依赖方向是附表 → 抄表）、`BookService`（已有同型守卫 `assertMonthEditable`，P6 录入即冻结） |
 | 覆盖率测试 `ReviewGuardCoverageTest` | **从源码推导**，四步链：① 读 `PermissionRegistry` 源码抓出全部 `add(...)` 的 URL pattern ② 匹配 controller 的 `@RequestMapping` ③ 找非 GET 端点方法调的 service 方法 ④ 断言该方法体含 `reviewGuard.assert` 或方法上有 `@NoReviewGuard(reason)`（例外须写理由，且理由非空有断言）。不用手写清单（stage-review 2026-08-31 新1 的教训）。<br>三条不许省的自证：**任一步解析不出来一律 `fail()` 并打印是哪个 controller 的哪个方法，不许 `continue`**（「解析不了就跳过」是这类测试最常见的假绿源，一个正则失配能悄悄放掉半张表）；`hasSizeGreaterThan(60)` 防空扫（照 `PermissionCoverageTest` 那条 `hasSizeGreaterThan(150)`）；`everyReviewKindIsGuardedSomewhere` —— 14 个 kind 每个至少在某个 service 源码里出现一次，少一个就是「审了却锁不住」，屏上显示已审核而数据照改，是最坏的一种假绿。白名单也设上限（超过 25 条就该重想），它是例外不是常态 |
 | 集成测试 `ReviewApiIT` | 提交 / 通过 / 退回 / 撤销；前置阻断 409；已审核后写端点 423；`review_log` 逐条落；`reviewer` 角色调写端点 403 |
 | 日志 | `review_log` 进「操作日志」时间线，作第 4 张来源表（RBAC-SPEC §7 表补一行；`SystemLogsView` 类型筛选加「审核」） |
-| 通知 | 交审 → 有 `review:approve` 的在线用户铃铛计数 +1。**复用的是 ping 这条轮询「通道」，不是 `approvals` 那个字段** —— 后者是定向的（`inboxOf(approver)`）、2 分钟 TTL、纯内存，承不了持久的待审队列。落点：`PingResp` 新增第 5 个组件 `int pendingReviews`（javadoc 那句「一条通道四件事」同步改成五件事）；受众判定复用 `UserPermissionCache`（ping 路径上唯一零 DB 的权限查询），无该权限者恒 0 不查库。**只发个数不发清单** —— ping 是 3 秒一拍，发清单等于每 3 秒推一遍全月审核态；要清单去 `GET /api/review`。<br>**R1 / R2 的边界就画在这个字段上**：后端发它 = R1；前端读它、进 store、并进铃铛计数、`FPApprovalDrawer` 加「待审核」段、行点击 `periodLink` 到清单 = R2。退回 / 撤销 → `submitted_by` 铃铛 +1 同属 R2（现有 `outcome` 是单槽取走即清，承不了持续提醒，R2 要另开字段） |
+| 通知 | 交审 → 有 `review:approve` 的在线用户铃铛计数 +1。**复用的是 ping 这条轮询「通道」，不是 `approvals` 那个字段** —— 后者是定向的（`inboxOf(approver)`）、2 分钟 TTL、纯内存，承不了持久的待审队列。落点：`PingResp` 新增第 5 个组件 `int pendingReviews`（javadoc 那句「一条通道四件事」同步改成五件事）；受众判定复用 `UserPermissionCache`（ping 路径上唯一零 DB 的权限查询），无该权限者恒 0 不查库。**只发个数不发清单** —— ping 是 3 秒一拍，发清单等于每 3 秒推一遍全月审核态；要清单去 `GET /api/review`。<br>**R1 / R2 的边界就画在这个字段上**：后端发它 = R1；前端读它、进 store、并进铃铛计数、`FPApprovalDrawer` 加「待审核」段 = R2（**已落地**）。<br>R2 另开了第 6 个字段 `int myReturned`（「我交的表被退回了几张」）：从 `review_state WHERE status='returned' AND submitted_by=me` 派生，**零迁移且自清**（重新交审时 `submit()` 把 status 翻回 submitted，数自己掉下去，不需要已读位）。**撤销没有对应字段，也做不到** —— `withdraw` 是删行，`submitted_by` 随行没了，见 §12。铃铛红点 = 三件事的总和（授权 + 待审 + 被退回），抽屉里分三段；两段都只给「几件 + 一个去处」，清单去本月出账屏 |
 
 ### 7.5 前端
 
-- **编辑模式闸**：`useEditMode.toggle()` 在权限检查之后、`enter()` 占锁之前查 `reviewState(kind, period, scope)`（屏声明 `opts.reviewKey?: () => string | null`，与 `opts.scope` 同风格）；`submitted / approved` 时不进，按钮位渲染同尺寸禁用药丸「待审核 · 已交审」/「已审核 · 李审 03-05」（零位移），tooltip「撤销审核需审核员」；`elevate:request` 弹窗不出现。屏内状态从 `GET /api/review?period=` 缓存在 `stores/review.ts`（按月一份，写操作后失效）。
-- **屏内提示**：顶栏上下文 chip 带审核态图标；矩阵月格全审 ✓。
-- **清单行**：审核态列 未交审 / 待审核 / 已审核（人 · 日期）/ 已退回（理由 tooltip）；行动作按权限：有该表 edit 权 → 「交审」（行 done 时可用）；`can('review:approve')` → 待审核行「通过」「退回」，已审核行「撤销」。台账公司 chips 与附10 期区 chips 各自带审核态色（已审 绿勾 / 待审 橙钟 / 录入中 灰底 / 未录 虚线）。
+> 以下为 **R2 实施后的落地形状**（2026-09-07）。设计期原文有五处与实际不符，逐条写明偏离与理由 —— 照原文改回去会重新打开对应的洞。
+
+- **编辑模式闸有三条路，不是一条**（偏离 ①）。全仓只有三个地方持编辑态：
+  - `composables/useEditMode.ts`（10 屏）
+  - `components/sched/SchedHeader.vue`（附表族 7 屏 —— 它自己接了一份 `useEditLock`，**不走 `useEditMode`**，见其头注）
+  - `views/ledger/LedgerWideTable.vue`（宿主 `LedgerView` 是裸的 `const edit = ref(false)`，前两条都不沾）
+
+  三条各接一次，判据共用 `stores/review.ts` 的 `blockOf(keys)` 一份。只改 `useEditMode` 等于放过一半的审核键。
+- **闸落在 `enter()`，不是 `toggle()`**（偏离 ②）。`toggle` / `onElevated`（主管授权后）/ `onTaken`（接管后）三条路都汇进 `enter()`；只挂 `toggle` 的话，叫主管授权进来的人和接管进来的人照样改得了已审核的表 —— 而 §7.3 明写这两条路都过不去。`toggle()` 里另留一道，位置在**提权窗之前**（否则已审核的表会先弹「请主管授权」，主管批完再被挡回来，白叫一次主管；即原文那句「`elevate:request` 弹窗不出现」）。
+- **闸只读已经到手的审核态，不在点击那一下 await 网络**（偏离 ③）。取数在进屏 / 换期的 watch 里发；把它放进点击的关键路径会让每次进编辑态多等一个往返。真赶在取数落地之前点进来，由「在编辑态里被审了就退出」那条守卫拉回来。
+- **审核态拉不到 / 还没到 ⇒ 不挡**（偏离 ④），与旁边编辑锁的「拿不准就不进」**故意相反**：锁失灵会两人同改同保存、双方都提示成功（静默丢数据，不可逆）；审核态失灵后端那道闸照样拦，最坏是白录一次。
+- 屏声明 `reviewKey`（`useEditMode` 传函数 `() => string | string[] | null`；`SchedHeader` / `LedgerWideTable` 传 prop）。一屏可压多把键（公共电核算屏同时管 `alloc` 与 `alloc-loss`），**任一把锁着就锁**。
+- 按钮位渲染同尺寸禁用药丸「待审核 · 已交审」/「已审核 · 李审 03-05」（零位移，逐项对齐 `ds/Button` 的 `size="sm"`），tooltip「撤销审核需审核员」。文案在 `types/review.ts` 的 `reviewNoteOf` 一份，三条闸共用。
+- **两条取数道，别混**：闸道 `GET /api/review/states?year=`（只发已落库的行，不跑聚合、不算前置；按年缓存，年表屏一屏 12 个月一趟）；清单道 `GET /api/review?period=`（全部键含派生 `entered` + 通过前置缺项，只有本月出账屏用）。混用的后果：拿闸道当清单会把「还没交审」显示成「这个月没有这张表」；拿清单道喂闸会让 12 个屏的编辑入口挂在跑首页聚合的端点上。
+- **年表屏按月份行上锁**（D18）：附6/7/8/11 与附13/14 是一屏 12 个月的行，闸不能长在页头那颗按钮上（会连没审的月一起锁死）。锁月的行：删除位换同尺寸锁标、备注只读、勾选框禁用；`toggleSelect` 与 `selectAll` 两处都拦（只画 `disabled` 拦不住批删）。判据在 `useSchedScreen` 的 `reviewKinds` / `reviewScope` 与 `sched/reviewLock.ts`，四屏共用。
+- **屏内提示**：矩阵月格全审 ✓（`BookMonthMatrix.locked` ← `ChainCell.closed` ← `GET /api/review/closed-months`）。顶栏上下文 chip 的审核态图标**不做**，理由见 §12。
+- **清单行**：审核态列 未交审 / 待审核 / 已审核（人 · 日期）/ 已退回（理由 tooltip）。**行动作作用于该行全部适用的键**（偏离 ⑤）：台账每公司一把、附10 每期区一把、附13/14 两个 scope、附7/8 两个 kind，一共占 19 把键里的 8 把 —— 原文只给 chips 配了颜色，没说这 8 把的动作挂哪儿，只给单键行配动作的话它们在全站一个入口都没有。交审按 chip 各自的 done 判（只录了 A 公司就只交 A 公司）；多键逐把做，碰到第一个失败就停。
+- 行动作按权限：有该表 edit 权 → 「交审」（**行没做完时画得出来但按不动**，直接不画会让人以为界面坏了；「有没有这张表的 edit 权」是粗判，见 §12）；`can('review:approve')` → 待审核行「通过」「退回」，已审核行「撤销」；通过前置缺项时「通过」禁用并点名缺谁。台账公司 chips 与附10 期区 chips 各自带审核态色（`data-review` 与既有 `data-done` **两维叠加** —— 合成一个属性就分不出「已录未交审」和「已交审待审核」）。
 - **审核员落地**：`/data-home`；主管条位置换成审核条「待审核 N」+ 「只看待审」筛选 + 「本月已审 n/总」。
 - **退回 / 撤销弹窗**：居中弹卡（DESIGN-FIDELITY §七），理由必填，确认后写 `review_log` 并刷新清单。
 - **与编辑锁的关系**：审核态不占锁、不发在场点；已审核屏没人能进编辑，在场点自然消失。
@@ -367,7 +382,7 @@ fpNav 唯一事实源（无新字段，折叠按 `section.title` 派生）· 可
 | **P3** | §4.1 侧栏 / 轨 / 抽屉语义 + KeepAlive 16 + §4.3 ctx / evicted + §6 页签 / chip | 导后重过门 16 次 → 0 | 关签重开仍全新；Shift 点击 epoch++；点当前项不 push；toast 仅编辑态出 |
 | **P2** | §5.2 年份条 + 两栏清单 + 主管条 + 公司 chips + 后端 DTO + 在场点补全（§3.3）| 主管落地即知谁卡在哪 | 六计数任一源缺显「—」；chip 点击带 p/co；反向护栏不红 |
 | **R1** | §7.3 / §7.4 后端全部 | 审过的表任何入口都改不了 | 删掉某 service 的守卫调用 → 覆盖率测试红；已审核后写端点 423 |
-| **R2** | §7.5 前端全部 | 审核员有队列；录入方知道卡在谁手里 | 把 `approved` 改 `entered` → 编辑按钮出现；理由为空不能提交 |
+| **R2** ✅ | §7.5 前端全部 | 审核员有队列；录入方知道卡在谁手里 | 把 `approved` 改 `entered` → 编辑按钮出现；理由为空不能提交（实施时另做了 60+ 处破坏验证，五处偏离见 §7.5 / §12） |
 | **P5** | §6 落地页 + 角色行 + 后端 `roleNames` + `baseHome` | 总经理直落驾驶舱；六角色真名 | zero-edit 落 `/cockpit`；`reviewer` 落 `/data-home`；自建纯管理员仍 `/sys-users` |
 | P6（可选） | 命令面板「本月」组（清单未完成行进面板） | Ctrl-K 直达 | `palette.spec` 3 + 1 组 |
 
@@ -399,6 +414,14 @@ P4 与 P0/P3 无依赖；R1/R2 依赖 P2 的清单行；P5 最后。
 ---
 
 ## §12 已知边界
+
+- **R2 边界（2026-09-07 实施时新增）**：
+  - **撤销审核不发提醒，且做不到**：`withdraw` 是删行（`ReviewService.withdraw` 头注：不留 `returned`，理由进 `review_log`），`submitted_by` 随行一起没了，没有任何列能反查「这张表原来是谁交的」。退回的提醒（`PingResp.myReturned`）是从 `review_state WHERE status='returned' AND submitted_by=me` 派生的，零迁移且自清；撤销要发就得加列或加每人一份的已读位。
+  - **前端「有没有这张表的 edit 权」是粗判**：只按「持有五个写权限中的任一个」决定交审按钮画不画。真正的 kind→perm 表在后端 `ReviewKind.perms()`，前端不重列一份（§7.1 明写它不是 RBAC §5.2 的复用，重列必漂移）。代价：没有某张表 edit 权的人会看见一颗按不动的「交审」，点下去由后端 403 兜底并把原话弹出来。
+  - **顶栏上下文 chip 不带审核态图标**（§7.5 原文有这一条，实施时判断不做）：编辑按钮的药丸就在同一条工具栏上、说的是同一件事；而要做它就得在 `Toolbar.vue` 里再抄一份「屏 → kind」表，正是 `reviewGateCoverage.spec` 存在的理由。要做的话正确路子是让当前屏把自己的审核态发布到一个共用位置，而不是让工具栏自己去猜。
+  - **年表屏的「导入 Excel」与「清空本期导入」不按月拦**：它们跨整年，按「该年任一月已审就禁用」会让审掉一月之后整年再也导不进去。行级闸（D18）覆盖的是删除 / 备注 / 批删勾选；导入与清空由后端逐行按月 423 兜。
+  - **新增记账抽屉不过滤已审核的月**：抽屉的年份可以选到别的年，而那一年的审核态没取（闸道按年缓存）。往已审核的月新增由后端拦，文案是准的。
+  - **`GET /api/review/closed-months` 的候选月下限写死 12**：= 固定键 5(出账链) + 1(附12) + 2(附13/14) + 1(附6) + 2(附7/8) + 1(附11)。台账按公司数、附10 按期区数只会更多，所以这个下限恒成立；但**改了 `ReviewKind` 的键集合就要同步改这个数**，改小只是多跑几次聚合，改大会漏掉真的锁账月。
 
 - 「恢复现场」只对 KeepAlive 命中成立：`max` 提 16 后覆盖专员月内 15 屏；关签 `dropState` 仍全新。
 - 8 张附表屏 + 台账月表的切回重读 P0b 已补（有草稿不重读当前期）；切回且地址栏换了期时，重读会先按旧期发一趟被竞态守卫丢弃的请求（已知、接受，若要收敛改在 `useDeepPeriod` 一处）。

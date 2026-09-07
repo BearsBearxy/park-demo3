@@ -106,9 +106,11 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, items), recon: RECON_OK, review: null })
     const utilities = rows.find(r => r.key === 'utilities')!
     expect(utilities.state).toBe('todo')
+    // R2 起 chip 多带两个字段:自己那把审核键 + 审核态(review 传 null 时态是 'na',
+    // 但键照给 —— 键只跟期与 scope 有关,不依赖审核数据到没到)
     expect(utilities.chips).toEqual([
-      { label: '办公', done: true, tab: 'office' },
-      { label: '三期', done: false, tab: 'phase3' },
+      { label: '办公', done: true, tab: 'office', reviewKey: 'utilities:office:2026-09', review: 'na' },
+      { label: '三期', done: false, tab: 'phase3', reviewKey: 'utilities:phase3:2026-09', review: 'na' },
     ])
   })
 
@@ -118,12 +120,14 @@ describe('monthClose.logic', () => {
     const charging = rows.find(r => r.key === 'charging')!
     expect(charging.state).toBe('todo')
     expect(charging.chips).toEqual([
-      { label: '汽车', done: true, go: 'car-charging' },
-      { label: '电动车', done: false, go: 'ebike-charging' },
+      { label: '汽车', done: true, go: 'car-charging', reviewKey: 'charging-car:2026-09', review: 'na' },
+      { label: '电动车', done: false, go: 'ebike-charging', reviewKey: 'charging-ebike:2026-09', review: 'na' },
     ])
   })
 
-  it('本月锁账恒 na(审核机制未上线)——即使出账链五步全部完成也不降级成「已锁账」,且带 locked 文案', () => {
+  // R2 起本月锁账是**派生**的(全部键 approved),但判据只认审核态 —— 出账链五步全 done
+  // 也不许降级成「已锁账」,那是假绿。审核态没到时仍是 na。
+  it('审核态没到时本月锁账仍是 na —— 出账链五步全完成也不降级成「已锁账」', () => {
     const rows = rowsOf({ overview: overview(ALL_DONE_STEPS, fullItems()), recon: RECON_OK, review: null })
     const lock = rows.find(r => r.key === 'month-lock')!
     expect(lock.state).toBe('na')
@@ -191,8 +195,8 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const ledger = rows.find(r => r.key === 'ledger')!
     expect(ledger.chips).toEqual([
-      { label: 'A公司', done: true, co: 1 },
-      { label: 'B公司', done: false, co: 2 },
+      { label: 'A公司', done: true, co: 1, reviewKey: 'ledger:1:2026-09', review: 'na' },
+      { label: 'B公司', done: false, co: 2, reviewKey: 'ledger:2:2026-09', review: 'na' },
     ])
   })
 
@@ -200,10 +204,10 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const s10 = rows.find(r => r.key === 'sales-income')!
     expect(s10.chips).toEqual([
-      { label: '一期', done: true, co: 1 },
-      { label: '二期', done: false, co: 2 },
-      { label: '三期', done: true, co: 3 },
-      { label: '宿舍', done: true, co: 4 },
+      { label: '一期', done: true, co: 1, reviewKey: 's10:1:2026-09', review: 'na' },
+      { label: '二期', done: false, co: 2, reviewKey: 's10:2:2026-09', review: 'na' },
+      { label: '三期', done: true, co: 3, reviewKey: 's10:3:2026-09', review: 'na' },
+      { label: '宿舍', done: true, co: 4, reviewKey: 's10:4:2026-09', review: 'na' },
     ])
   })
 
@@ -316,5 +320,140 @@ describe('monthClose.logic', () => {
     expect(rows.find(r => r.key === 'salary')!.chips).toBeUndefined()
     expect(rows.find(r => r.key === 'pv-income')!.chips).toBeUndefined()
     expect(rows.find(r => r.key === 'elec-cost')!.chips).toBeUndefined()
+  })
+})
+
+
+// ══════════ 审核态落数(SIDEBAR-UX-REDESIGN §7.5,R2 T5) ══════════
+//
+// 屏上要能分清三件事,它们在清单上是三个不同的字:
+//   · 审核态没到 → 「—」(na)
+//   · 到了、这把键没有落库行 → 「未交审」(entered)
+//   · 到了、有行 → 该行的状态
+// 混起来就是对用户撒谎,所以这一组断言先钉这三档。
+import type { ReviewRow, ReviewStatus } from '@/types/review'
+
+const P9 = '2026-09'
+function rv(key: string, kind: string, status: ReviewStatus, scope: string | null = null): ReviewRow {
+  return { key, kind, scope, status, submittedBy: null, submittedAt: null,
+           reviewedBy: null, reviewedAt: null, reason: null, blockedBy: [] }
+}
+
+/** 后端 GET /api/review?period= 发的是**全集**(含派生 entered),这里照那个形状造。 */
+function fullReview(over: Record<string, ReviewStatus> = {}): ReviewRow[] {
+  const mk = (key: string, kind: string, scope: string | null = null) =>
+    rv(key, kind, over[key] ?? 'entered', scope)
+  return [
+    mk(`params:${P9}`, 'params'), mk(`meters:${P9}`, 'meters'), mk(`alloc:${P9}`, 'alloc'),
+    mk(`alloc-loss:${P9}`, 'alloc-loss'), mk(`bill-notices:${P9}`, 'bill-notices'),
+    mk(`ledger:1:${P9}`, 'ledger', '1'), mk(`ledger:2:${P9}`, 'ledger', '2'),
+    mk(`s10:1:${P9}`, 's10', '1'), mk(`s10:2:${P9}`, 's10', '2'),
+    mk(`s10:3:${P9}`, 's10', '3'), mk(`s10:4:${P9}`, 's10', '4'),
+    mk(`salary:${P9}`, 'salary'),
+    mk(`utilities:office:${P9}`, 'utilities', 'office'), mk(`utilities:phase3:${P9}`, 'utilities', 'phase3'),
+    mk(`pv:${P9}`, 'pv'), mk(`charging-car:${P9}`, 'charging-car'),
+    mk(`charging-ebike:${P9}`, 'charging-ebike'), mk(`elec-cost:${P9}`, 'elec-cost'),
+    mk(`elec-model:${P9}`, 'elec-model'),
+  ]
+}
+
+const rowsWith = (review: ReviewRow[] | null) =>
+  rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review })
+const byKey = (rs: ReturnType<typeof rowsOf>, k: string) => rs.find(r => r.key === k)!
+
+describe('清单的审核态(R2)', () => {
+  // 破坏验证:把 statusOf 的空集分支从 'na' 改成 'entered' → 红
+  it('❗审核态没到显「—」,不许当成「未交审」', () => {
+    const rs = rowsWith(null)
+    expect(rs.every(r => r.review === 'na'), '一行都不该猜').toBe(true)
+    expect(byKey(rs, 'month-lock').state).toBe('na')
+  })
+
+  it('到了但这把键没落库行 → 未交审(entered)', () => {
+    expect(byKey(rowsWith(fullReview()), 'salary').review).toBe('entered')
+  })
+
+  it('单键行落到自己的键与态,并带上行级 reviewKey(行上的交审按钮要用)', () => {
+    const rs = rowsWith(fullReview({ [`salary:${P9}`]: 'approved', [`params:${P9}`]: 'submitted' }))
+    expect(byKey(rs, 'salary').review).toBe('approved')
+    expect(byKey(rs, 'salary').reviewKey).toBe(`salary:${P9}`)
+    expect(byKey(rs, 'params').review).toBe('submitted')
+  })
+
+  // ❗破坏验证:把 leastOf 改成取第一个 / 取最大 → 红
+  it('❗多键行取「最不进展」的那个 —— 一行显已审核而底下挂着没交审的公司是自相矛盾', () => {
+    const rs = rowsWith(fullReview({ [`ledger:1:${P9}`]: 'approved' }))   // 2 号公司仍是 entered
+    expect(byKey(rs, 'ledger').review).toBe('entered')
+    expect(byKey(rs, 'ledger').reviewKey, '多键行不给行级键,动作长在 chip 上').toBeUndefined()
+
+    const rs2 = rowsWith(fullReview({ [`ledger:1:${P9}`]: 'approved', [`ledger:2:${P9}`]: 'submitted' }))
+    expect(byKey(rs2, 'ledger').review, 'submitted 比 approved 不进展').toBe('submitted')
+  })
+
+  // 破坏验证:把 chipsFor 的 rv() 里 scope 传 null → 红(所有公司 chip 会共用一把键)
+  it('❗chips 各带各的键与态:台账按公司、附10 按期区', () => {
+    const rs = rowsWith(fullReview({ [`ledger:2:${P9}`]: 'approved', [`s10:3:${P9}`]: 'submitted' }))
+    const led = byKey(rs, 'ledger').chips!
+    expect(led.map(c => [c.reviewKey, c.review]))
+      .toEqual([[`ledger:1:${P9}`, 'entered'], [`ledger:2:${P9}`, 'approved']])
+    const s10 = byKey(rs, 'sales-income').chips!
+    expect(s10.find(c => c.label === '三期')!.review).toBe('submitted')
+    expect(s10.find(c => c.label === '一期')!.review).toBe('entered')
+  })
+
+  // ❗附表7/8 是两个 kind,不是一个 kind 的两个 scope(后端 ReviewKind 头注第三坑)。
+  //   破坏验证:把 charging 那支 rv() 的 kind 写死成 'charging' → 红
+  it('❗附7/8 合并行的两枚 chip 各挂各的 kind', () => {
+    const rs = rowsWith(fullReview({ [`charging-ebike:${P9}`]: 'approved' }))
+    const chips = byKey(rs, 'charging').chips!
+    expect(chips.find(c => c.label === '汽车')!.reviewKey).toBe(`charging-car:${P9}`)
+    expect(chips.find(c => c.label === '电动车')!.reviewKey).toBe(`charging-ebike:${P9}`)
+    expect(chips.find(c => c.label === '电动车')!.review).toBe('approved')
+    expect(byKey(rs, 'charging').review, '汽车还没交审 → 行取最不进展').toBe('entered')
+  })
+
+  // 附13/14 是同一个 kind 的两个 scope
+  it('附13 / 附14 两枚 chip 按 scope 分键', () => {
+    const chips = byKey(rowsWith(fullReview({ [`utilities:phase3:${P9}`]: 'returned' })), 'utilities').chips!
+    expect(chips.find(c => c.label === '办公')!.reviewKey).toBe(`utilities:office:${P9}`)
+    expect(chips.find(c => c.label === '三期')!.review).toBe('returned')
+  })
+
+  it('收入核对与导入中心没有审核键,恒 na(§7.1 末句:收入核对本轮不进审核)', () => {
+    const rs = rowsWith(fullReview())
+    expect(byKey(rs, 'reconciliation').review).toBe('na')
+    expect(byKey(rs, 'import').review).toBe('na')
+  })
+})
+
+describe('本月锁账(D20)', () => {
+  const allApproved = (): ReviewRow[] =>
+    fullReview().map(r => ({ ...r, status: 'approved' as ReviewStatus }))
+
+  it('全审 → done', () => {
+    expect(byKey(rowsWith(allApproved()), 'month-lock').state).toBe('done')
+  })
+
+  // ❗这一条钉 2026-09-07 拆两把键那个裁定。
+  //   破坏验证:把 monthLockRow 里的 `r.kind !== 'elec-model'` 过滤删掉 → 红
+  it('❗只差 elec-model 没审 → 照样算锁账(它没有清单行,计入就永远达不成)', () => {
+    const all = allApproved().map(r => r.kind === 'elec-model' ? { ...r, status: 'entered' as ReviewStatus } : r)
+    expect(byKey(rowsWith(all), 'month-lock').state).toBe('done')
+  })
+
+  // 破坏验证:把 left 的比较从 !== 'approved' 改成 === 'entered' → 红(待审核会被当成审完)
+  it('❗差一张就不算,并点名还差几张;待审核不算审完', () => {
+    const one = allApproved().map(r => r.key === `salary:${P9}` ? { ...r, status: 'submitted' as ReviewStatus } : r)
+    const row = byKey(rowsWith(one), 'month-lock')
+    expect(row.state).toBe('todo')
+    expect(row.locked).toBe('还有 1 张表没审完')
+  })
+
+  // 破坏验证:把 monthLockRow 的 countable 改成 true → 红
+  it('❗本月锁账不进分母 —— 它是其余 14 行的同义反复,进分母等于同一件事数两遍', () => {
+    const a = closeChecks(rowsWith(null))
+    const b = closeChecks(rowsWith(allApproved()))
+    expect(a.byCol.billing.total, '审核态到不到都不该改分母').toBe(b.byCol.billing.total)
+    expect(byKey(rowsWith(allApproved()), 'month-lock').countable).toBe(false)
   })
 })

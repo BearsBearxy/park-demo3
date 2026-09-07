@@ -126,10 +126,82 @@ public class ReviewService {
         return out;
     }
 
+    /**
+     * 某一年**已经落库**的审核行(R2 的编辑闸用)。
+     *
+     * 与 list(period) 的分工写在 ReviewStateMapper.byYear 上:这条不跑 dataHome.overview,
+     * 因此不发派生态的 entered 行,也不算 blockedBy(闸只问「锁没锁」)。
+     * 一屏一年一趟 —— 附表族屏(附6/7/8/11、附13/14)进屏即要 12 个月,
+     * 走 list(period) 等于跑 12 遍首页聚合。
+     */
+    public List<ReviewRowDTO> statesOfYear(int year) {
+        List<ReviewRowDTO> out = new ArrayList<>();
+        for (ReviewState s : states.byYear(year))
+            out.add(new ReviewRowDTO(s.getReviewKey(), s.getKind(), s.getScope(), s.getStatus(),
+                s.getSubmittedBy(), s.getSubmittedAt(), s.getReviewedBy(), s.getReviewedAt(),
+                s.getReason(), List.of()));
+        return out;
+    }
+
+    /**
+     * 整月全审的月份(D20)。年份条矩阵的月格 ✓ 靠它,与 metersApi.months() 那四个端点同形。
+     *
+     * ponytail: **两段式**。先一条 group-by 拿「已审核键数 ≥ 12」的候选月
+     *   (12 = 固定键 5+1+2+1+2+1,是任何月的下限;台账按公司数、附10 按期区数只会更多),
+     *   再只对候选月跑一遍 keysOf 全集比对。直接对每个月跑 keysOf 要各调一次
+     *   dataHome.overview()(十几条 count 查询)—— 年份条一屏最多 4 年 48 个月,
+     *   那就是几百条查询换一屏 ✓。实际候选月通常是 0~2 个。
+     *   升级路径:候选月多到几十个再说,那意味着这个库已经审了好几年。
+     *
+     * ⚠ elec-model 不计入(countsTowardMonthClose() 为 false)—— 它没有清单行,
+     *   计入的话锁账永远达不成(§7.1)。判据只此一处,前端不重算。
+     */
+    public List<String> closedMonths() {
+        Map<String, Integer> approvedPerPeriod = new java.util.HashMap<>();
+        for (ReviewState s : states.selectList(new QueryWrapper<ReviewState>().eq("status", "approved")))
+            approvedPerPeriod.merge(s.getPeriod(), 1, Integer::sum);
+
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : approvedPerPeriod.entrySet()) {
+            if (e.getValue() < MIN_MONTH_CLOSE_KEYS) continue;   // 连下限都不够,不必去跑聚合
+            String period = e.getKey();
+            Map<String, ReviewState> rows = states.byPeriod(period).stream()
+                .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, x -> x, (a, b) -> a));
+            boolean all = true;
+            for (ReviewKey k : keysOf(period, dataHome.overview(period))) {
+                if (!k.kind().countsTowardMonthClose()) continue;
+                ReviewState st = rows.get(k.raw());
+                if (st == null || !"approved".equals(st.getStatus())) { all = false; break; }
+            }
+            if (all) out.add(period);
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** 任何月「整月锁账」所需键数的下限:固定键 5(出账链) + 1(附12) + 2(附13/14) + 1(附6) + 2(附7/8) + 1(附11)。 */
+    private static final int MIN_MONTH_CLOSE_KEYS = 12;
+
     /** ping 用:全库待审核条数。见 PresenceService。 */
     public int pendingCount() {
         return Math.toIntExact(states.selectCount(
             new QueryWrapper<ReviewState>().eq("status", "submitted")));
+    }
+
+    /**
+     * ping 用:**我交的表被退回了**几张(R2 D-R2-4)。
+     *
+     * 零迁移:`review_state` 里既有 submitted_by 又有 status,派生得出来,而且**自清** ——
+     * 重新交审时 submit() 会把 status 翻回 submitted(那句「重新交审要把上一轮退回的痕迹清掉」),
+     * 这个数自己就掉下去了,不需要「已读位」。
+     *
+     * ⚠ **撤销不在内,且做不到**:withdraw 是删行(见它的头注:不留 returned,理由进 review_log),
+     *   submitted_by 随行一起没了,没有任何列能反查「这张表原来是谁交的」。
+     *   要发撤销提醒就得加列或加每人一份的已读位 —— 超出 R2 该付的代价,记在 spec §12。
+     */
+    public int returnedCount(String user) {
+        return Math.toIntExact(states.selectCount(new QueryWrapper<ReviewState>()
+            .eq("status", "returned").eq("submitted_by", user)));
     }
 
     // ══ 四个动作 ═════════════════════════════════════════════════════════════

@@ -18,7 +18,9 @@ const pageName = computed(() => (route.meta as Record<string, string>).page ?? '
 // 待批授权铃铛:红点机制与桌面 Toolbar 完全一致(红点随迁,规范 §4.1)
 const presence = usePresenceStore()
 const inbox = ref(false)
-const pendingCount = computed(() => presence.approvals.length)
+// 与 Toolbar.vue 同一口径(三件事的总和)—— 两处各写一份的话,手机上和桌面上的红点会不一样。
+const pendingCount = computed(() =>
+  presence.approvals.length + presence.pendingReviews + presence.myReturned)
 </script>
 
 <template>

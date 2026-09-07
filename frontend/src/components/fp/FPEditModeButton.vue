@@ -25,7 +25,14 @@ const props = withDefaults(defineProps<{
   canEnter?: boolean
   /** 保存中之类的临时禁用 */
   disabled?: boolean
-}>(), { heldByOther: null, canEnter: true, disabled: false })
+  /**
+   * 审核闸(SIDEBAR-UX-REDESIGN §7.5)的药丸文案,如「已审核 · 李审 03-05」。
+   * 非空 = 按钮位换成**同尺寸**禁用药丸。来自 useEditMode 的 reviewNote,屏不要自己拼。
+   */
+  reviewNote?: string | null
+  /** 药丸的 tooltip，如「撤销审核需审核员」。 */
+  reviewTip?: string | null
+}>(), { heldByOther: null, canEnter: true, disabled: false, reviewNote: null, reviewTip: null })
 
 defineEmits<{ toggle: [] }>()
 
@@ -34,8 +41,15 @@ const idleMin = computed(() => Math.floor((held.value?.idleMs ?? 0) / 60000))
 </script>
 
 <template>
+  <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸。撤销要找审核员 —— tooltip 说的就是这句。
+       与下面那颗 Button 同 min-width / 同高 —— 换的是内容不是版面(LAYOUT-STABILITY)。
+       canEnter 为假(只读账号 / 园区股东)时两颗都不出:那种账号本来就没有编辑按钮,
+       单给他看一句「已审核」是凭空多一条他用不上的信息。 -->
+  <span v-if="canEnter && reviewNote" class="fp-emb fp-emb-rv" :title="reviewTip ?? undefined">
+    <component :is="iconFor('lock')" :size="14" />{{ reviewNote }}
+  </span>
   <Button
-    v-if="canEnter"
+    v-else-if="canEnter"
     class="fp-emb"
     :class="{ held: !!held, idle: held?.idle }"
     :variant="edit ? 'filled' : 'outline'"
@@ -60,6 +74,15 @@ const idleMin = computed(() => Math.floor((held.value?.idleMs ?? 0) / 60000))
 <style scoped>
 /* 四态同宽 —— 「编辑模式」/「张三 编辑中」/「张三 空闲 23 分」/「完成」换文案不挪版 */
 .fp-emb { min-width: 150px; justify-content: center; }
+/* 审核药丸:逐项对齐 ds/Button 的 size="sm"(height 28 / padding 0 12px / fs-label / radius-full),
+   只是点不动。数字不是拍的 —— 见 Button.vue 的 SIZES.sm。 */
+.fp-emb-rv {
+  height: 28px; padding: 0 12px; box-sizing: border-box;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--text-muted);
+  font-size: var(--fs-label); line-height: 1; white-space: nowrap; cursor: not-allowed;
+}
 /* 他人活跃占着:橙描边,一眼看出握在别人手上 */
 .fp-emb.held {
   border-color: var(--hue-orange);

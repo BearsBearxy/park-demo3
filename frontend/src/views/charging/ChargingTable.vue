@@ -7,6 +7,7 @@ import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import type { ChargingCatDTO, ChargingRecordDTO, ChargingTotal } from '@/types/charging'
 
 const props = defineProps<{
@@ -18,6 +19,9 @@ const props = defineProps<{
   cat: string            // 'all' | cat id
   edit: boolean
   selectedIds?: Set<number>
+  /** 这一年里已审核 / 待审核的月份号(D18,来自 stores/review 的 lockedMonths)。
+   *  不传 = 这一屏不受审核约束。行级判据在 sched/reviewLock.ts,四张表共用一份。 */
+  lockedMonths?: Set<number>
 }>()
 const emit = defineEmits<{
   'update:cat': [value: string]
@@ -172,6 +176,7 @@ const k = computed(() => {
                     class="ch-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
                     title="选中以批量删除"
+                    :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
                   <span>{{ mLabel(r.acctMonth) }}</span>
@@ -184,11 +189,12 @@ const k = computed(() => {
               <td class="ch-c-num ch-c-yuan">{{ yuan(r.cost) }}</td>
               <td class="ch-c-num ch-c-profit" :class="{ neg: r.profit < 0 }">{{ yuan(r.profit) }}</td>
               <td class="l" style="max-width:220px">
-                <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
+                <SchedNoteCell :note="r.note" :edit="edit && !rowLocked(lockedMonths, r.acctMonth)" @save="emit('note', r, $event)" />
               </td>
               <td v-if="edit">
                 <span class="ch-acts">
-                  <button class="ch-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ch-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="ch-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -291,4 +297,8 @@ const k = computed(() => {
   .ch-actbtn { position:relative; }
   .ch-actbtn::after { content:''; position:absolute; inset:-5px; }
 }
+
+/* 审核闸(D18):已审核 / 待审核的月,行上的删除位换成同尺寸锁标 —— 换的是内容不是版面。 */
+.ch-actlock { display:inline-flex; align-items:center; justify-content:center;
+                  width:26px; height:26px; color:var(--text-muted); cursor:not-allowed; }
 </style>

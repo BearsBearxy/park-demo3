@@ -21,13 +21,18 @@ import FPPager from '@/components/fp/FPPager.vue'
 import { useFitRows } from '@/components/fp/useFitRows'
 import { iconFor } from '@/components/ds/icon'
 
-// ─── 三路来源的语义色(左侧徽标靠它区分) ──────────────────────────
+// ─── 四路来源的语义色(左侧徽标靠它区分) ──────────────────────────
 const SRC = {
   param: { label: '计费参数', tone: 'blue' as const, color: 'var(--hue-blue)' },
   import: { label: '导入', tone: 'cyan' as const, color: 'var(--hue-cyan)' },
   auth: { label: '账号与角色', tone: 'orange' as const, color: 'var(--hue-orange)' },
+  // R1 起的第 4 路:review_log(交审 / 通过 / 退回 / 撤销)。
+  // ⚠ tone 用 'slate'(BadgeTone 只有 neutral/blue/cyan/slate/orange/red,没有 green)——
+  //   为一行日志给 ds/Badge 加一档色不划算。左侧那颗圆点的 color 是自由值,那里给绿,
+  //   与「已审核」在清单上的色同源;徽标底色走 slate,与另外三路照样分得开。
+  review: { label: '审核', tone: 'slate' as const, color: 'var(--hue-green)' },
 }
-// 后端只认这三个来源,但真冒出第四种也要看得见(而不是渲染成一行没有徽标的孤儿)
+// 后端只认这四个来源,但真冒出第五种也要看得见(而不是渲染成一行没有徽标的孤儿)
 const OTHER = { label: '其他', tone: 'neutral' as const, color: 'var(--ink-500)' }
 
 // 动作码翻人话。查不到就原样显示 —— 吞掉未知动作等于审计有洞。
@@ -41,6 +46,8 @@ const ACTION: Record<string, string> = {
   'user.disable': '停用账号', 'user.reset-password': '重置密码', 'user.change-password': '修改密码',
   'role.create': '新建角色', 'role.update': '改角色权限', 'role.delete': '删除角色',
   'lock.takeover': '接管编辑锁', 'lock.force-release': '强制解锁',
+  // review_log.action(R1;四个动作的取值见 ReviewService)
+  submit: '交审', approve: '通过审核', return: '退回', withdraw: '撤销审核',
 }
 
 // ─── state ───────────────────────────────────────────────
@@ -97,6 +104,7 @@ const SRC_OPTS = [
   { value: 'param', label: '计费参数' },
   { value: 'import', label: '导入' },
   { value: 'auth', label: '账号与角色' },
+  { value: 'review', label: '审核' },
 ]
 // 操作人来自返回的 actors(三表并集),与当前筛选无关 —— 筛出 0 条时下拉不会跟着空掉
 const actorOpts = computed(() => [

@@ -83,14 +83,16 @@ export interface UserQuery {
 // 三张来源表(param_change_log / import_log / auth_audit_log)**不合并**:各有各的专用字段,
 // 合进通用表就得塞 JSON,那两屏的历史查询反而难写。归一只发生在**展示层**,即下面这个形状。
 
-/** 日志来源:param=计费参数 · import=导入 · auth=账号与角色。后端只认这三个值,别的返 400 */
-export type AuditSource = 'param' | 'import' | 'auth'
+/** 日志来源:param=计费参数 · import=导入 · auth=账号与角色 · review=审核(R1 起的第 4 路)。
+ *  后端只认这四个值,别的返 400(白名单在 SystemService)。 */
+export type AuditSource = 'param' | 'import' | 'auth' | 'review'
 
 export interface AuditRowDTO {
   source: AuditSource
   ts: string
   actor: string
-  /** 来源各有各的取值:param=set/delete/recalc/migrate · import=complete/partial/rejected · auth=user.create/role.update/… */
+  /** 来源各有各的取值:param=set/delete/recalc/migrate · import=complete/partial/rejected ·
+   *  auth=user.create/role.update/… · review=submit/approve/return/withdraw */
   action: string
   target: string
   detail: string

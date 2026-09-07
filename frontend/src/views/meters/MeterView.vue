@@ -67,7 +67,12 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
 const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['meter-reading:edit', 'meter-master:edit'], { scope: () => S.meters(year.value) })
+  useEditMode(['meter-reading:edit', 'meter-master:edit'], {
+    scope: () => S.meters(year.value),
+    // 审核键(§7.1):抄表屏**按年锁、按月审**。屏上编辑的确实是单月读数
+    // (loadReadings(ym) / draft 按 ym 清),所以键取 ym 不取 year。
+    reviewKey: () => (ym.value ? `meters:${ym.value}` : null),
+  })
 const importing = ref(false)
 const okMsg = ref('')
 const toastTone = ref<'success' | 'warning'>('success')

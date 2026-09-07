@@ -24,14 +24,21 @@ import { iconFor } from '@/components/ds/icon'
 import Card from '@/components/ds/Card.vue'
 import Button from '@/components/ds/Button.vue'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
+// 直接引入不走 defineAsyncComponent:这颗弹卡只有百来行,懒加载省不下什么,
+// 却换来一层「点了之后还要再等一拍才渲染」的时序(单测里表现为 querySelector 拿到 null)。
+// 铃铛抽屉那颗才值得懒 —— 它拖着一整套授权表单。
+import FPReviewDialog from '@/components/fp/FPReviewDialog.vue'
 import { useBillingPeriodStore, YM } from '@/stores/billingPeriod'
 import { usePresenceStore } from '@/stores/presence'
+import { useReviewStore } from '@/stores/review'
+import type { ReviewRow } from '@/types/review'
 import { NAV_SCOPE_PREFIX, scopeTarget } from '@/utils/lockScopes'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import { CHAIN, pipsOf, chainLabel } from '@/nav/billingChain'
 import { buildYearRows, inYearWindow } from '@/utils/matrixYears'
 import { rowsOf, closeChecks } from './monthClose.logic'
 import type { CloseRow, CloseChip } from './monthClose.logic'
+
 
 // 铃铛抽屉懒加载,口径照抄 Toolbar.vue / MobileTopBar.vue(第三个引用方,defineAsyncComponent + v-if 才真懒)。
 const FPApprovalDrawer = defineAsyncComponent(() => import('@/components/fp/FPApprovalDrawer.vue'))
@@ -41,6 +48,7 @@ const tabsStore = useTabsStore()
 const auth = useAuthStore()
 const period = useBillingPeriodStore()
 const presence = usePresenceStore()
+const review = useReviewStore()
 const CHAIN_VALUES = new Set(CHAIN.map(c => c.value))
 
 /** **本标签页**正握着的出账链 / 抄表锁里的期,用来给确认框写出「你在编辑哪个月」。 */
@@ -217,7 +225,9 @@ const yearRows = computed(() => {
         month: i + 1,
         hasData: have.has(ym),
         // 链数据没到时**整个字段不给** —— 四个灭点会被读成「这个月一道工序没走」(裁定 3)
-        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale } : {}),
+        // locked 与 pips/stale 同进同出:链数据没到时整个字段不给(裁定 3),
+        // 否则 closed 恒 false 会被读成「这个月还没审完」。
+        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale, locked: c.closed } : {}),
         // 描边跟 shownYm 不跟 curYm:点下去立刻挪过去,不等回包 —— 否则这一下点击**零反馈**
         cur: ym === shownYm.value,
       }
@@ -260,14 +270,168 @@ watch(shownYm, loadRecon)
 // 不重取就会出现「年份条上这个月的第一颗工序点已亮,正下方那一行还显○ 未做」,
 // 更坏的是新月 hasData 仍为 false,BookMonthMatrix 的 v-if="m.hasData && m.pips" 把点整块吞掉,
 // 刚抄完读数的月被画成虚线「空」卡。
-onReactivated(() => { void load(); void loadRecon(shownYm.value) })
+onReactivated(() => {
+  void load()
+  void loadRecon(shownYm.value)
+  // 审核态也重取:切走的这段时间里审核员可能审了几张,回来还挂着旧态就会让人去点一个
+  // 已经不存在的动作(P2 T4 那条「年份条与两栏板子不同源」同一类毛病)。
+  review.invalidate(shownYm.value || null)
+  void review.ensure(shownYm.value || null)
+})
+
+// ── 审核态(R2) ────────────────────────────────────────────
+// 走**清单道**(GET /api/review?period=):这一屏要的是全部键(含派生 entered)与通过前置缺项,
+// 闸道那条只发已落库的行,喂不出「未交审」这一档(会显示成「这个月没有这张表」)。
+// 换月即取;取不到时 rowsOf 收到 null,全行显「—」而不是猜成「未交审」。
+watch(shownYm, (ym) => { void review.ensure(ym || null) }, { immediate: true })
+const reviewRows = computed<ReviewRow[] | null>(() =>
+  review.isLoaded(shownYm.value || null) ? review.rowsOf(shownYm.value || null) : null)
 
 // 两栏清单(P2 T3):行状态 / chips / 计数全在 monthClose.logic 算完,这里只取数与派生。
-// review 本期恒传 null(审核机制归 R1)。
-const rows = computed(() => (ov.value ? rowsOf({ overview: ov.value, recon: recon.value, review: null }) : []))
+const rows = computed(() => (ov.value ? rowsOf({ overview: ov.value, recon: recon.value, review: reviewRows.value }) : []))
 const checks = computed(() => closeChecks(rows.value))
-const billingRows = computed(() => rows.value.filter(r => r.col === 'billing'))
-const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
+
+// ── 审核动作(§7.5:行动作按权限) ─────────────────────────
+const REVIEW_TEXT: Record<string, string> = {
+  entered: '未交审', submitted: '待审核', approved: '已审核', returned: '已退回', na: '—',
+}
+const reviewText = (s: string) => REVIEW_TEXT[s] ?? '—'
+
+/** 审核态列的悬停文案:谁在什么时候做的 / 退回理由。查不到就不给 title(别挂个空串)。 */
+function reviewTip(key: string | undefined, status: string): string | undefined {
+  const r = key ? reviewRows.value?.find(x => x.key === key) : null
+  if (!r) return undefined
+  const day = (s: string | null) => (s ? s.slice(5, 10) : '')
+  if (status === 'approved') return `${r.reviewedBy ?? ''} 通过 · ${day(r.reviewedAt)}`
+  if (status === 'submitted') return `${r.submittedBy ?? ''} 交审 · ${day(r.submittedAt)}`
+  if (status === 'returned') return r.reason ? `退回理由：${r.reason}` : `${r.reviewedBy ?? ''} 退回`
+  return undefined
+}
+
+/**
+ * 「有没有这张表的录入权」—— 这里只决定**按钮画不画**,是粗判。
+ *
+ * 真正的 kind→perm 表在后端 `ReviewKind.perms()`,前端不重列一份(§7.1 明写它不是
+ * RBAC §5.2 那张表的复用,重列必漂移)。点下去由后端 403 兜底并把原话弹出来。
+ * 代价写明:没有某张表 edit 权的人会看见一颗按不动的「交审」——比"少一张表的按钮
+ * 且没人知道为什么"好。
+ */
+const canSubmitAny = computed(() =>
+  ['entry:edit', 'billing-run:edit', 'param-policy:edit', 'param-monthly:edit', 'meter-reading:edit']
+    .some(p => auth.can(p)))
+const canApprove = computed(() => auth.can('review:approve'))
+
+/**
+ * 这一行涉及的全部审核键。
+ *
+ * ⚠ 多键行(台账每公司一把 / 附10 每期区一把 / 附13-14 两个 scope / 附7-8 两个 kind)
+ *   一共占 19 把键里的 8 把 —— 只给单键行配动作的话,这 8 把在全站一个入口都没有。
+ *   spec §7.5 只写了「chips 带审核态色」,没说动作挂哪儿(D-R2-9 补的裁定):
+ *   **行动作作用于该行全部适用的键**,与人的说法一致(「台账这一行我审了」),
+ *   而键的粒度在库里与日志里照样是每公司一条。
+ */
+function keysOf(r: CloseRow): string[] {
+  if (r.reviewKey) return [r.reviewKey]
+  return (r.chips ?? []).map(c => c.reviewKey).filter((k): k is string => !!k)
+}
+
+const rowOf = (key: string) => reviewRows.value?.find(x => x.key === key) ?? null
+
+/** 这一行此刻各个动作要作用到哪几把键。空数组 = 该动作不画。 */
+function actionsOf(r: CloseRow) {
+  const keys = r.review === 'na' ? [] : keysOf(r)
+  const st = (k: string) => rowOf(k)?.status ?? null
+  return {
+    // 交审前置:该键已做(§7.2)。多键行按 chip 各自的 done 判 —— 只录了 A 公司就只交 A 公司。
+    submit: canSubmitAny.value
+      ? keys.filter(k => {
+          const s = st(k)
+          if (s !== 'entered' && s !== 'returned') return false
+          const chip = (r.chips ?? []).find(c => c.reviewKey === k)
+          return chip ? chip.done : r.state === 'done'
+        })
+      : [],
+    approve: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
+    back: canApprove.value ? keys.filter(k => st(k) === 'submitted') : [],
+    undo: canApprove.value ? keys.filter(k => st(k) === 'approved') : [],
+    /** 有交审资格但还没录完的键 —— 按钮要画出来但按不动(直接不画会让人以为界面坏了)。 */
+    submitPending: canSubmitAny.value
+      ? keys.filter(k => (st(k) === 'entered' || st(k) === 'returned'))
+      : [],
+  }
+}
+
+/** 通过前置缺项(后端算好的 blockedBy)。多键行取并集 —— 任一把缺上游,「通过」就按不下去。 */
+function blockedBy(keys: string[]): string[] {
+  return [...new Set(keys.flatMap(k => rowOf(k)?.blockedBy ?? []))]
+}
+
+const acting = ref<string | null>(null)          // 在途的那把键,防连点
+const dialog = ref<{ keys: string[]; label: string; action: 'return' | 'withdraw' } | null>(null)
+
+/**
+ * 动作的报错分流。**423 / 409 / 403 不许合成一句** —— 三者要用户去做的事完全不同:
+ *   409 = 上游没审完 → 去催上游 / 先审上游
+ *   403 = 你没有这张表的权限 → 去找有权限的人
+ *   其余(含 423)= 后端已经写好了准话,原样弹
+ * 合成一句的话,用户分不出该找谁。
+ */
+async function runAction(key: string, fn: () => Promise<unknown>) {
+  if (acting.value) return
+  acting.value = key
+  try {
+    await fn()
+  } catch (e) {
+    const err = e as { code?: number; message?: string }
+    const msg = err?.message ?? '操作失败'
+    alert(err?.code === 409 ? `上游还没审完：${msg}`
+        : err?.code === 403 ? `你没有这张表的权限：${msg}`
+        : msg)
+  } finally {
+    acting.value = null
+  }
+}
+
+/** 多键行的动作逐把做,**碰到第一个失败就停** —— 后面的接着做只会让人分不清哪几把成了。 */
+async function runEach(keys: string[], fn: (k: string) => Promise<unknown>) {
+  await runAction(keys.join('|'), async () => { for (const k of keys) await fn(k) })
+}
+
+const onSubmit = (keys: string[]) => runEach(keys, k => review.submit(k))
+const onApprove = (keys: string[]) => runEach(keys, k => review.approve(k))
+function openDialog(keys: string[], label: string, action: 'return' | 'withdraw') {
+  dialog.value = { keys, label, action }
+}
+async function onDialogConfirm(reason: string) {
+  const d = dialog.value
+  if (!d) return
+  await runEach(d.keys, k =>
+    d.action === 'return' ? review.returnBack(k, reason) : review.withdraw(k, reason))
+  dialog.value = null
+}
+// ── 审核条(§7.5:审核员落地位) ───────────────────────────
+// 主管条与审核条**各占各的 32px,不合并** —— admin 两个身份都有,合成一条会让他少看见一半。
+const isReviewer = computed(() => auth.can('review:approve'))
+/** 「只看待审」筛选。审核员一个月要过 19 把键,不给筛选就得自己在 15 行里数。 */
+const onlyPending = ref(false)
+
+/** 有审核键的行(导入中心 / 收入核对不算)。屏上那个「本月已审 n/总」的分母就是它。 */
+const reviewable = computed(() => rows.value.filter(r => r.review !== 'na'))
+/**
+ * 计数从**渲染出来的 rows** 算,不抄 review 回包的条数(§12:计数与审核键集合必须与屏内同源,
+ * 假绿栽过三次)。两个数不同源:回包是 19 把键,屏上是 15 行,台账/附10 一行压多把。
+ * 多键行按「最不进展」折过一次,所以这里数的是「整行都审完了」的行数 —— 与屏上写的字一致。
+ */
+const reviewCounts = computed(() => ({
+  pending: reviewable.value.filter(r => r.review === 'submitted').length,
+  approved: reviewable.value.filter(r => r.review === 'approved').length,
+  total: reviewable.value.length,
+}))
+
+const shown = (col: CloseRow['col']) => rows.value.filter(r =>
+  r.col === col && (!onlyPending.value || r.review === 'submitted'))
+const billingRows = computed(() => shown('billing'))
+const bookingRows = computed(() => shown('booking'))
 </script>
 
 <template>
@@ -294,7 +458,19 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
         <button v-for="e in editors" :key="e.sid" class="dh-sup-chip" @click="goEditor(e.target)">{{ e.note }}</button>
       </div>
     </div>
+    <!-- 审核条(R2 T7):与主管条同款 32px 定高常驻。外层唯一的 v-if 是权限判 ——
+         零待审显「暂无待审」,筛选钮与计数照样在位,不许 v-if 掉子容器(P2 裁定 1/2)。 -->
+    <div v-if="isReviewer" class="dh-sup dh-rvbar">
+      <button class="dh-sup-inbox" :data-on="onlyPending" @click="onlyPending = !onlyPending">
+        {{ reviewCounts.pending ? `待审核 ${reviewCounts.pending}` : '暂无待审' }}
+      </button>
+      <span v-if="onlyPending" class="dh-rvfilter">只看待审 · 点上面那颗取消</span>
+      <span class="dh-rvcount">本月已审 {{ reviewCounts.approved }}/{{ reviewCounts.total }}</span>
+    </div>
     <FPApprovalDrawer v-if="inbox" :open="inbox" @close="inbox = false" />
+    <FPReviewDialog v-if="dialog" :target="dialog.label" :action="dialog.action"
+                    :busy="!!acting"
+                    @close="dialog = null" @confirm="onDialogConfirm" />
 
     <template v-if="!ov">
       <div class="dh-head">
@@ -394,7 +570,25 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
               <!-- 出账列的行从不带 chips(rowsOf 只给记账行发 chips)——评审修补 T3 fix-brief #4 删掉
                    这条恒不可达的死分支,别留着骗人。 -->
               <span v-if="r.locked" class="dh-rlock" :title="r.locked"><component :is="iconFor('lock')" :size="12" /></span>
-              <span class="dh-rreview" :data-review="r.review">{{ r.review === 'na' ? '—' : r.review }}</span>
+              <span class="dh-rreview" :data-review="r.review" :title="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
+              <span class="dh-racts" @click.stop>
+                <template v-for="a in [actionsOf(r)]" :key="r.key">
+                  <!-- 交审:有资格但还没录完时**画出来但按不动** —— 直接不画会让人以为界面坏了。
+                       多键行只交已录完的那几把(只录了 A 公司就只交 A 公司)。 -->
+                  <button v-if="a.submitPending.length" class="dh-abtn"
+                          :disabled="!a.submit.length || !!acting"
+                          :title="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
+                          @click="onSubmit(a.submit)">交审</button>
+                  <button v-if="a.approve.length" class="dh-abtn ok"
+                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
+                          :title="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                          @click="onApprove(a.approve)">通过</button>
+                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                          @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
+                  <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
+                          @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>
+                </template>
+              </span>
             </li>
           </ul>
 
@@ -426,12 +620,34 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
               <span class="dh-rlabel">{{ r.label }}</span>
               <span v-if="r.tag" class="dh-rtag">{{ r.tag }}</span>
               <span v-if="r.chips" class="dh-rchips">
-                <span v-for="c in r.chips" :key="c.label" class="dh-chip" :data-done="c.done"
+                <!-- chip 同时带「做没做」(data-done,P2)与「审到哪一步」(data-review,R2):
+                     两件事各自一维,合成一个属性就分不出「已录未交审」和「已交审待审核」。 -->
+                <span v-for="c in r.chips" :key="c.label" class="dh-chip"
+                      :data-done="c.done" :data-review="c.review ?? 'na'"
+                      :title="reviewTip(c.reviewKey, c.review ?? 'na')"
                       @click.stop="goChip(r, c)">{{ c.label }}</span>
               </span>
               <!-- 记账行从不设 locked(只有本月锁账才有,那是出账列的行)——评审修补 T3 fix-brief #4
                    删掉这条恒不可达的死分支。 -->
-              <span class="dh-rreview" :data-review="r.review">{{ r.review === 'na' ? '—' : r.review }}</span>
+              <span class="dh-rreview" :data-review="r.review" :title="reviewTip(r.reviewKey, r.review)">{{ reviewText(r.review) }}</span>
+              <span class="dh-racts" @click.stop>
+                <template v-for="a in [actionsOf(r)]" :key="r.key">
+                  <!-- 交审:有资格但还没录完时**画出来但按不动** —— 直接不画会让人以为界面坏了。
+                       多键行只交已录完的那几把(只录了 A 公司就只交 A 公司)。 -->
+                  <button v-if="a.submitPending.length" class="dh-abtn"
+                          :disabled="!a.submit.length || !!acting"
+                          :title="a.submit.length ? `交给审核员（${a.submit.length} 项）` : '还没录完,做完才能交审'"
+                          @click="onSubmit(a.submit)">交审</button>
+                  <button v-if="a.approve.length" class="dh-abtn ok"
+                          :disabled="blockedBy(a.approve).length > 0 || !!acting"
+                          :title="blockedBy(a.approve).length ? `先通过 ${blockedBy(a.approve).join(' / ')} 的审核` : '通过'"
+                          @click="onApprove(a.approve)">通过</button>
+                  <button v-if="a.back.length" class="dh-abtn" :disabled="!!acting"
+                          @click="openDialog(a.back, `${shownYm} ${r.label}`, 'return')">退回</button>
+                  <button v-if="a.undo.length" class="dh-abtn" :disabled="!!acting"
+                          @click="openDialog(a.undo, `${shownYm} ${r.label}`, 'withdraw')">撤销</button>
+                </template>
+              </span>
             </li>
           </ul>
         </section>
@@ -454,6 +670,10 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
   border-radius: var(--radius-full); padding: 4px 12px; cursor: pointer;
 }
 .dh-sup-who { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 6px; }
+/* 审核条:复用主管条的定高与胶囊,只把计数推到右边 */
+.dh-rvbar .dh-rvcount { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-secondary); }
+.dh-rvfilter { font-size: var(--fs-micro); color: var(--text-muted); }
+.dh-sup-inbox[data-on="true"] { border-color: var(--hue-orange); color: var(--hue-orange); background: rgb(252, 243, 232); }
 .dh-sup-chip {
   flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-secondary);
   background: var(--surface-card); border: 1px solid var(--border-subtle);
@@ -516,6 +736,26 @@ const bookingRows = computed(() => rows.value.filter(r => r.col === 'booking'))
   margin-left: auto; flex: 0 0 auto;
   font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-disabled);
 }
+/* 四态各一色。na 保持灰 —— 「不知道」不该看着像一个状态。 */
+.dh-rreview[data-review="submitted"] { color: var(--hue-orange); }
+.dh-rreview[data-review="approved"]  { color: var(--hue-green); }
+.dh-rreview[data-review="returned"]  { color: var(--hue-red); }
+
+/* 动作位常驻定宽:有没有按钮都占同一格,行不会因为审核态变化而左右晃(LAYOUT-STABILITY)。 */
+.dh-racts { flex: 0 0 auto; width: 96px; display: flex; justify-content: flex-end; gap: 4px; }
+.dh-abtn {
+  font-size: var(--fs-micro); line-height: 1; padding: 3px 7px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  background: var(--surface-white); color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.dh-abtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.dh-abtn.ok { border-color: var(--hue-green); color: var(--hue-green); }
+.dh-abtn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* chip 的审核态:已审绿勾 / 待审橙 / 已退回红。未录(data-done=false)仍是灰,两维叠加。 */
+.dh-chip[data-review="approved"]  { border-color: var(--hue-green); color: var(--hue-green); }
+.dh-chip[data-review="submitted"] { border-color: var(--hue-orange); color: var(--hue-orange); }
+.dh-chip[data-review="returned"]  { border-color: var(--hue-red); color: var(--hue-red); }
 
 .dh-cur { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; }
 .dh-curmain { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

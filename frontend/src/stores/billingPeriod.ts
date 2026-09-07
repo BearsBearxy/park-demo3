@@ -19,6 +19,7 @@ import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
 import { paramsApi } from '@/api/params'
+import { reviewApi } from '@/api/review'
 
 /** 一个出账月的进度。四道工序 + 一个月级的「上游改过」。 */
 export interface ChainCell {
@@ -28,12 +29,14 @@ export interface ChainCell {
   notices: boolean   // 有催缴单
   /** 参数改动晚于快照 —— 屏上数字是旧的。**月的属性,不是某一道工序的**。 */
   stale: boolean
+  /** 整月已审核锁定(D20:该月全部计入锁账的键都 approved)。年份条月格的 ✓ 靠它。 */
+  closed: boolean
 }
 
 export const YM = /^\d{4}-(0[1-9]|1[0-2])$/
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const EMPTY: ChainCell = Object.freeze({
-  meters: false, pool: false, loss: false, notices: false, stale: false,
+  meters: false, pool: false, loss: false, notices: false, stale: false, closed: false,
 })
 
 export const useBillingPeriodStore = defineStore('billingPeriod', () => {
@@ -78,9 +81,14 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
     loadErr.value = null
     let map: Map<string, ChainCell>
     try {
-      // 四个 /months 端点互不依赖 → 并发,一个往返取齐。全是 'YYYY-MM' 升序全集。
-      const [meters, pool, loss, notices] = await Promise.all([
+      // 五个端点互不依赖 → 并发,一个往返取齐。全是 'YYYY-MM' 升序全集。
+      // ⚠ closedMonths 自带 .catch,而另外四个不带 —— 两种失败的后果不一样:
+      //   缺一列工序点会被读成「这些月没做过」(所以下面那个 catch 是整屏说加载失败),
+      //   缺一枚 ✓ 只是少个注记。放进同一个 Promise.all 而不是另起一趟 await,
+      //   是为了不让矩阵为一个注记多等一个往返。
+      const [meters, pool, loss, notices, closed] = await Promise.all([
         metersApi.months(), allocApi.poolMonths(), allocApi.lossMonths(), billNoticesApi.months(),
+        reviewApi.closedMonths().catch(() => [] as string[]),
       ])
       map = new Map()
       const mark = (ms: readonly string[], k: 'meters' | 'pool' | 'loss' | 'notices') => {
@@ -92,6 +100,16 @@ export const useBillingPeriodStore = defineStore('billingPeriod', () => {
         }
       }
       mark(meters, 'meters'); mark(pool, 'pool'); mark(loss, 'loss'); mark(notices, 'notices')
+
+      // 整月已审核(R2 T10,D20)。
+      // ⚠ 已审核的月**可能不在 map 里**(只有附表数据、没有出账链数据的月):
+      //   map.get(m) 拿不到就补一个空格子再标,否则那个月的 ✓ 会静默丢掉。
+      for (const m of closed) {
+        if (!YM.test(m)) continue
+        const c = map.get(m) ?? { ...EMPTY }
+        c.closed = true
+        map.set(m, c)
+      }
     } catch (e) {
       // 半张矩阵比没有矩阵更坏:缺的那一列会被读成「这些月没做过」。宁可整屏说加载失败。
       loadErr.value = (e as { message?: string })?.message ?? '出账月数据加载失败'

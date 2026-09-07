@@ -5,6 +5,7 @@
 import { computed } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import Button from '@/components/ds/Button.vue'
 import type { OfficeRecordDTO, OfficeTotal } from '@/types/utilities'
 
@@ -17,6 +18,9 @@ const props = defineProps<{
   total: OfficeTotal
   edit: boolean
   selectedIds?: Set<number>
+  /** 这一年里已审核 / 待审核的月份号(D18,来自 stores/review 的 lockedMonths)。
+   *  不传 = 这一屏不受审核约束。行级判据在 sched/reviewLock.ts,四张表共用一份。 */
+  lockedMonths?: Set<number>
 }>()
 const emit = defineEmits<{
   add: []
@@ -102,7 +106,8 @@ const num = (n: number, d = 2) =>
                 class="ut-cb"
                 :checked="selectedIds?.has(r.id) ?? false"
                 title="选中以批量删除"
-                @change="emit('toggleSelect', r)"
+                :disabled="rowLocked(lockedMonths, r.acctMonth)"
+                    @change="emit('toggleSelect', r)"
               />
               <span>{{ mLabel(r.acctMonth) }}</span>
               <span v-if="r.source === 'manual'" class="ut-userbadge">手动</span>
@@ -117,11 +122,12 @@ const num = (n: number, d = 2) =>
           <td class="ut-c-num ut-c-amt">{{ num(r.waterAmt) }}</td>
           <td class="ut-c-num ut-c-total ut-cap-cell">{{ num(r.total) }}</td>
           <td class="ut-c-note" style="max-width:220px">
-            <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
+            <SchedNoteCell :note="r.note" :edit="edit && !rowLocked(lockedMonths, r.acctMonth)" @save="emit('note', r, $event)" />
           </td>
           <td v-if="edit">
             <span class="ut-acts">
-              <button class="ut-actbtn del" title="删除" @click="emit('delete', r)">
+              <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="ut-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="ut-actbtn del" title="删除" @click="emit('delete', r)">
                 <component :is="iconFor('trash-2')" :size="15" />
               </button>
             </span>
@@ -212,4 +218,8 @@ const num = (n: number, d = 2) =>
   .ut-actbtn { position:relative; }
   .ut-actbtn::after { content:''; position:absolute; inset:-5px; }
 }
+
+/* 审核闸(D18):已审核 / 待审核的月,行上的删除位换成同尺寸锁标 —— 换的是内容不是版面。 */
+.ut-actlock { display:inline-flex; align-items:center; justify-content:center;
+                  width:26px; height:26px; color:var(--text-muted); cursor:not-allowed; }
 </style>

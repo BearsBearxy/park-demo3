@@ -8,6 +8,7 @@ import { iconFor } from '@/components/ds/icon'
 import Segmented from '@/components/ds/Segmented.vue'
 import Button from '@/components/ds/Button.vue'
 import SchedNoteCell from '@/components/sched/SchedNoteCell.vue'
+import { rowLocked, ROW_LOCK_TIP } from '@/components/sched/reviewLock'
 import { phaseTint } from '@/components/sched/tints'
 import type { ElecPhaseDTO, ElecRecordDTO, ElecTotal } from '@/types/elec'
 
@@ -19,6 +20,9 @@ const props = defineProps<{
   total: ElecTotal
   edit: boolean
   selectedIds?: Set<number>
+  /** 这一年里已审核 / 待审核的月份号(D18,来自 stores/review 的 lockedMonths)。
+   *  不传 = 这一屏不受审核约束。行级判据在 sched/reviewLock.ts,四张表共用一份。 */
+  lockedMonths?: Set<number>
 }>()
 const emit = defineEmits<{
   'switch-type': [value: string]
@@ -164,6 +168,7 @@ const groups = computed(() =>
                     class="e11-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
                     title="选中以批量删除"
+                    :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
                   <span>{{ mLabel(r.acctMonth) }}</span>
@@ -181,11 +186,12 @@ const groups = computed(() =>
               <td class="e11-c-num e11-c-tax">{{ num(r.tax) }}</td>
               <td class="e11-c-num e11-c-total">{{ num(r.total) }}</td>
               <td class="l" style="max-width:220px">
-                <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
+                <SchedNoteCell :note="r.note" :edit="edit && !rowLocked(lockedMonths, r.acctMonth)" @save="emit('note', r, $event)" />
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <button class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -266,6 +272,7 @@ const groups = computed(() =>
                     class="e11-cb"
                     :checked="selectedIds?.has(r.id) ?? false"
                     title="选中以批量删除"
+                    :disabled="rowLocked(lockedMonths, r.acctMonth)"
                     @change="emit('toggleSelect', r)"
                   />
                   <span>{{ mLabel(r.acctMonth) }}</span>
@@ -281,11 +288,12 @@ const groups = computed(() =>
               <td class="e11-c-num e11-c-tax">{{ num(r.tax) }}</td>
               <td class="e11-c-num e11-c-total">{{ num(r.total) }}</td>
               <td class="l" style="max-width:220px">
-                <SchedNoteCell :note="r.note" :edit="edit" @save="emit('note', r, $event)" />
+                <SchedNoteCell :note="r.note" :edit="edit && !rowLocked(lockedMonths, r.acctMonth)" @save="emit('note', r, $event)" />
               </td>
               <td v-if="edit">
                 <span class="e11-acts">
-                  <button class="e11-actbtn del" title="删除" @click="emit('delete', r)">
+                  <span v-if="rowLocked(lockedMonths, r.acctMonth)" class="e11-actlock" :title="ROW_LOCK_TIP"><component :is="iconFor('lock')" :size="14" /></span>
+                  <button v-else class="e11-actbtn del" title="删除" @click="emit('delete', r)">
                     <component :is="iconFor('trash-2')" :size="15" />
                   </button>
                 </span>
@@ -396,4 +404,8 @@ const groups = computed(() =>
   .e11-actbtn { position:relative; }
   .e11-actbtn::after { content:''; position:absolute; inset:-5px; }
 }
+
+/* 审核闸(D18):已审核 / 待审核的月,行上的删除位换成同尺寸锁标 —— 换的是内容不是版面。 */
+.e11-actlock { display:inline-flex; align-items:center; justify-content:center;
+                  width:26px; height:26px; color:var(--text-muted); cursor:not-allowed; }
 </style>

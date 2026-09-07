@@ -25,16 +25,20 @@ public final class PresenceDtos {
                           long sinceMs, long idleMs, boolean self) {}
 
     /**
-     * ping 的回答。**一条通道五件事** —— 全站唯一的轮询：
+     * ping 的回答。**一条通道六件事** —— 全站唯一的轮询：
      *   users          谁在线、在哪一屏
      *   evicted        你的编辑权被接管了（当面提示）
      *   approvals      等你批的授权请求（顶栏通知的红点靠它）
      *   outcome        你请的那次远程授权批了没有
      *   pendingReviews 等你审的键有几把（SIDEBAR-UX-REDESIGN §7.4；没有 review:approve 的人恒 0）
+     *   myReturned     你交的表被退回了几张（R2；**不看权限**，谁都可能被退回）
      *
-     * pendingReviews **只发个数不发清单**：ping 是 3 秒一拍（前端 PING_MS = 3_000，
+     * 两个计数都**只发个数不发清单**：ping 是 3 秒一拍（前端 PING_MS = 3_000，
      * 上面那句「20 秒」是旧文案），发清单等于每 3 秒把全月审核态推一遍。要清单去 GET /api/review。
-     * R1 只做到「后端发出这个字段」；前端读它、进 store、并进铃铛计数是 R2。
+     *
+     * myReturned 自清：重新交审时 submit() 把 status 翻回 submitted，这个数自己掉下去，
+     * 不需要「已读位」。**撤销没有对应的字段，也做不到** —— withdraw 是删行，
+     * submitted_by 随行没了（见 ReviewService.returnedCount 的头注与 spec §12）。
      *
      * 每加一条通道就多一份「谁跟谁不同步」的可能，所以宁可让这个响应体宽一点。
      */
@@ -44,5 +48,7 @@ public final class PresenceDtos {
                            LockDtos.EvictionDTO evicted,
                            java.util.List<ApprovalDtos.PendingDTO> approvals,
                            ApprovalDtos.OutcomeDTO outcome,
-                           int pendingReviews) {}
+                           int pendingReviews,
+                           /** 我交的表被退回了几张(R2)。人人都可能被退回,所以不看权限,恒发。 */
+                           int myReturned) {}
 }

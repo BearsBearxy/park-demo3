@@ -79,9 +79,13 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount,
+  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
+  // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
+  // 附表7 / 附表8 是**两个 kind**(不是一个 kind 的两个 scope,见后端 ReviewKind 头注)。
+  // no 取自 route.meta.kind,一个组件实例的整个生命周期里不变,所以这里取一次值就够。
+  reviewKinds: no.value === 7 ? ['charging-car'] : ['charging-ebike'],
   load: loadYear,
   reloadOverview,
   rows: () => yearData.value?.rows ?? [],
@@ -239,6 +243,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
         </SchedHeader>
 
         <ChargingTable
+          :locked-months="lockedMonths"
           :year="year"
           :icon="icon"
           :cats="yearData.cats"

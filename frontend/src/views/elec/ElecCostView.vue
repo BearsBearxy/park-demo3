@@ -47,7 +47,13 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
         lockedBy, evictedBy, lockScope, onTaken } =
-  useEditMode(['entry:edit', 'param-policy:edit'], { scope: () => S.elecCost(year.value, month.value) })
+  useEditMode(['entry:edit', 'param-policy:edit'], {
+    scope: () => S.elecCost(year.value, month.value),
+    // 审核键(§7.1):**elec-model**,不是 elec-cost —— 后者是附表11 的报送台账(ElecView/elec_record)。
+    // 两把键 2026-09-07 用户拍板拆开;这一把没有清单行,也不进整月锁账的集合。
+    reviewKey: () => (year.value && month.value
+      ? `elec-model:${year.value}-${String(month.value).padStart(2, '0')}` : null),
+  })
 // 编辑态 × 分区权限:费项录入走 editE,电价参数走 editC
 // ⚠ 两扇门都要 `&& !loadErr`(照 PvMeterView 三轮复查后的形状):本月费项没加载成功时
 //   表里逐格是「—」的假底数,放行录入 = 对着假底数写真数据。
