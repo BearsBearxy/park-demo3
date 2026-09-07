@@ -208,7 +208,13 @@ function monthLockRow(review: ReviewRow[] | null): CloseRow {
   const base = { key: 'month-lock' as const, col: 'billing' as const, label: '本月锁账',
                  countable: false, review: 'na' as const }
   if (!review) return { ...base, state: 'na', locked: '审核态加载中' }
-  const left = review.filter(r => r.kind !== 'elec-model' && r.status !== 'approved').length
+  const counted = review.filter(r => r.kind !== 'elec-model')
+  // ⚠ 空集合**不算锁账**。`[].every(...)` 恒真那类假绿在 P2 的 chips 上栽过一次
+  //   (「chips.length===0 必须靠 chips.length 守」),这里是同一个坑:回包空数组
+  //   (全新库 / 端点回了个空)会被算成「14 张表全审完了」并在屏上打一个 ✓。
+  //   拿不准就显「—」,不许替用户断言。
+  if (counted.length === 0) return { ...base, state: 'na', locked: '审核态加载中' }
+  const left = counted.filter(r => r.status !== 'approved').length
   return left === 0
     ? { ...base, state: 'done' }
     : { ...base, state: 'todo', locked: `还有 ${left} 张表没审完` }

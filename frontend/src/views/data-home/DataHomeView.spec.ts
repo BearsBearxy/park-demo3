@@ -45,6 +45,19 @@ vi.mock('@/api/meters', () => ({ metersApi: { months: vi.fn().mockResolvedValue(
 vi.mock('@/api/alloc', () => ({ allocApi: { poolMonths: vi.fn().mockResolvedValue([]), lossMonths: vi.fn().mockResolvedValue([]) } }))
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn().mockResolvedValue([]) } }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: vi.fn().mockResolvedValue({ stale: false, otherMonthsAffected: [] }) } }))
+// 审核态(R2 T6):不 mock 的话 reviewApi 走真 axios,jsdom 里抛错 → 全行显「—」,
+// 下面那组用例会全部恒绿(而不是红),所以必须 mock。
+vi.mock('@/api/review', () => ({
+  reviewApi: {
+    list: vi.fn().mockResolvedValue([]),
+    states: vi.fn().mockResolvedValue([]),
+    submit: vi.fn().mockResolvedValue(undefined),
+    approve: vi.fn().mockResolvedValue(undefined),
+    returnBack: vi.fn().mockResolvedValue(undefined),
+    withdraw: vi.fn().mockResolvedValue(undefined),
+    closedMonths: vi.fn().mockResolvedValue([]),
+  },
+}))
 
 import DataHomeView from './DataHomeView.vue'
 
@@ -941,5 +954,197 @@ describe('数据中心首页 · 换月的即时反馈(2026-09-06 浏览器实看
     resolve(overview({ period: { year: 2025, month: 6, label: '2025年6月' } }))
     await flushPromises()
     expect(w.find('.dh-cols').classes(), '退场立刻灭 —— 数据都上屏了还盖着一层就是纯碍事').not.toContain('fp-stale')
+  })
+})
+
+
+// ══════════ 审核态列 + 行动作 + 退回/撤销弹窗(§7.5,R2 T6) ══════════
+//
+// 这一组钉三件事:① 屏上写的是人话不是英文枚举 ② 动作按权限出、按状态出
+// ③ 多键行(台账 N 公司 / 附10 N 期区 / 附13-14 / 附7-8)也够得着 —— 那 8 把键
+//    在单键行的方案里全站一个入口都没有(D-R2-9)。
+import { reviewApi } from '@/api/review'
+import type { ReviewRow, ReviewStatus } from '@/types/review'
+
+const YM = '2024-02'
+function rvRow(key: string, kind: string, status: ReviewStatus,
+               extra: Partial<ReviewRow> = {}): ReviewRow {
+  return { key, kind, scope: null, status, submittedBy: null, submittedAt: null,
+           reviewedBy: null, reviewedAt: null, reason: null, blockedBy: [], ...extra }
+}
+
+/** 后端 GET /api/review?period= 的形状:该月**全部**键,含派生 entered。 */
+function reviewFixture(over: Record<string, Partial<ReviewRow>> = {}): ReviewRow[] {
+  const mk = (key: string, kind: string, scope: string | null = null) =>
+    rvRow(key, kind, (over[key]?.status as ReviewStatus) ?? 'entered', { scope, ...over[key] })
+  return [
+    mk(`params:${YM}`, 'params'), mk(`meters:${YM}`, 'meters'), mk(`alloc:${YM}`, 'alloc'),
+    mk(`alloc-loss:${YM}`, 'alloc-loss'), mk(`bill-notices:${YM}`, 'bill-notices'),
+    mk(`ledger:1:${YM}`, 'ledger', '1'), mk(`ledger:2:${YM}`, 'ledger', '2'),
+    mk(`utilities:office:${YM}`, 'utilities', 'office'), mk(`utilities:phase3:${YM}`, 'utilities', 'phase3'),
+    mk(`pv:${YM}`, 'pv'), mk(`salary:${YM}`, 'salary'),
+    mk(`charging-car:${YM}`, 'charging-car'), mk(`charging-ebike:${YM}`, 'charging-ebike'),
+    mk(`elec-cost:${YM}`, 'elec-cost'), mk(`elec-model:${YM}`, 'elec-model'),
+  ]
+}
+
+/** 台账两个公司:A 已录、B 没录 —— 专钉「只交已录完的那几把」。 */
+const LEDGER_ITEM: DataHomeItemDTO = {
+  name: '月度台账', tag: '凭证', done: false, go: 'ledger',
+  companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: false }],
+} as DataHomeItemDTO
+
+async function mountReview(rows: ReviewRow[], perms = EDITOR_PERMS) {
+  vi.mocked(reviewApi.list).mockResolvedValue(rows)
+  const items = [LEDGER_ITEM, ...overview().schedules.items.filter(i => i.go !== 'ledger')]
+  return mountWith({ schedules: { done: 2, total: 9, items } }, { perms })
+}
+
+const rowByText = (w: Awaited<ReturnType<typeof mountWith>>, label: string) =>
+  w.findAll('.dh-row').find(r => r.text().includes(label))!
+const btn = (row: ReturnType<typeof rowByText>, text: string) =>
+  row.findAll('.dh-abtn').find(b => b.text() === text)
+
+describe('数据中心首页 · 审核态与行动作(R2 T6)', () => {
+  beforeEach(() => {
+    vi.mocked(reviewApi.list).mockReset().mockResolvedValue([])
+    vi.mocked(reviewApi.submit).mockReset().mockResolvedValue(undefined)
+    vi.mocked(reviewApi.approve).mockReset().mockResolvedValue(undefined)
+    vi.mocked(reviewApi.returnBack).mockReset().mockResolvedValue(undefined)
+    vi.mocked(reviewApi.withdraw).mockReset().mockResolvedValue(undefined)
+  })
+
+  // 破坏验证:把模板里的 reviewText(r.review) 改回 r.review → 红
+  it('❗审核态列写人话,不是 submitted / approved 这种英文', async () => {
+    const w = await mountReview(reviewFixture({
+      [`params:${YM}`]: { status: 'submitted' },
+      [`meters:${YM}`]: { status: 'approved' },
+      [`bill-notices:${YM}`]: { status: 'returned', reason: '电价填错了' },
+    }))
+    expect(rowByText(w, '计费参数').find('.dh-rreview').text()).toBe('待审核')
+    expect(rowByText(w, '园区抄表').find('.dh-rreview').text()).toBe('已审核')
+    expect(rowByText(w, '催缴单').find('.dh-rreview').text()).toBe('已退回')
+    expect(rowByText(w, '附表12').find('.dh-rreview').text()).toBe('未交审')
+  })
+
+  // 破坏验证:把 reviewTip 的 returned 分支删掉 → 红
+  it('❗已退回的悬停给的是理由 —— 不给理由等于告诉他「被打回来了,自己猜」', async () => {
+    const w = await mountReview(reviewFixture({
+      [`params:${YM}`]: { status: 'returned', reason: '电价填错了' },
+    }))
+    expect(rowByText(w, '计费参数').find('.dh-rreview').attributes('title')).toBe('退回理由：电价填错了')
+  })
+
+  // 破坏验证:把 submitPending 换成 submit(即没录完就不画按钮)→ 红
+  it('❗没录完时「交审」画得出来但按不动 —— 直接不画会让人以为界面坏了', async () => {
+    const w = await mountReview(reviewFixture())
+    const salary = rowByText(w, '附表12')           // fixture 里没有 salary 源项 → state 'na'
+    const notices = rowByText(w, '催缴单')          // STEPS_4DONE 里 bill-notices 是 current → todo
+    expect(btn(notices, '交审')!.attributes('disabled')).toBeDefined()
+    expect(btn(notices, '交审')!.attributes('title')).toContain('还没录完')
+    expect(salary.find('.dh-rreview').text(), 'na 行不出动作').toBe('未交审')
+  })
+
+  it('行已做且未交审 → 「交审」可点,点了打 submit', async () => {
+    const w = await mountReview(reviewFixture())
+    const params = rowByText(w, '计费参数')          // STEPS_4DONE 里 params 是 done
+    await btn(params, '交审')!.trigger('click')
+    await flushPromises()
+    expect(reviewApi.submit).toHaveBeenCalledWith(`params:${YM}`)
+  })
+
+  // 破坏验证:把 canApprove 改成恒真 → 红
+  it('❗没有 review:approve 的人看不到通过/退回/撤销', async () => {
+    const w = await mountReview(reviewFixture({ [`params:${YM}`]: { status: 'submitted' } }))
+    const params = rowByText(w, '计费参数')
+    expect(btn(params, '通过')).toBeUndefined()
+    expect(btn(params, '退回')).toBeUndefined()
+  })
+
+  // 破坏验证:把 blockedBy 的 disabled 判断删掉 → 红
+  it('❗上游没审完时「通过」按不动,并点名缺谁', async () => {
+    const w = await mountReview(reviewFixture({
+      [`alloc:${YM}`]: { status: 'submitted', blockedBy: ['计费参数', '园区抄表'] },
+    }), [...EDITOR_PERMS, 'review:approve'])
+    const alloc = rowByText(w, '公共电核算')
+    expect(btn(alloc, '通过')!.attributes('disabled')).toBeDefined()
+    expect(btn(alloc, '通过')!.attributes('title')).toBe('先通过 计费参数 / 园区抄表 的审核')
+  })
+
+  it('已审核的行出「撤销」,待审核的行出「通过」「退回」', async () => {
+    const w = await mountReview(reviewFixture({
+      [`params:${YM}`]: { status: 'approved' },
+      [`meters:${YM}`]: { status: 'submitted' },
+    }), [...EDITOR_PERMS, 'review:approve'])
+    expect(btn(rowByText(w, '计费参数'), '撤销')).toBeTruthy()
+    expect(btn(rowByText(w, '计费参数'), '通过')).toBeUndefined()
+    expect(btn(rowByText(w, '园区抄表'), '通过')).toBeTruthy()
+    expect(btn(rowByText(w, '园区抄表'), '退回')).toBeTruthy()
+  })
+
+  // ❗这一条是 D-R2-9 的证据:多键行(台账每公司一把)在单键方案里全站没有入口。
+  //   破坏验证:把 keysOf 的 chips 分支删掉(只回 r.reviewKey)→ 红
+  it('❗台账这种多键行也能交审,且只交已录完的那几把', async () => {
+    const w = await mountReview(reviewFixture())
+    const ledger = rowByText(w, '月度台账')
+    expect(ledger.find('.dh-rreview').text(), '两把键都未交审').toBe('未交审')
+    await btn(ledger, '交审')!.trigger('click')
+    await flushPromises()
+    // A 公司 done:true、B 公司 done:false —— 只交 A
+    expect(reviewApi.submit).toHaveBeenCalledTimes(1)
+    expect(reviewApi.submit).toHaveBeenCalledWith(`ledger:1:${YM}`)
+  })
+
+  // 破坏验证:把 chip 上的 :data-review 删掉 → 红
+  it('❗chips 各带各的审核态色(公司/期区各审各的)', async () => {
+    const w = await mountReview(reviewFixture({ [`ledger:2:${YM}`]: { status: 'approved' } }))
+    const chips = rowByText(w, '月度台账').findAll('.dh-chip')
+    expect(chips.map(c => [c.text(), c.attributes('data-review')]))
+      .toEqual([['A公司', 'entered'], ['B公司', 'approved']])
+  })
+})
+
+describe('退回 / 撤销弹窗(R2 T6)', () => {
+  beforeEach(() => {
+    vi.mocked(reviewApi.list).mockReset().mockResolvedValue([])
+    vi.mocked(reviewApi.returnBack).mockReset().mockResolvedValue(undefined)
+  })
+
+  async function openReturn() {
+    const w = await mountReview(reviewFixture({ [`params:${YM}`]: { status: 'submitted' } }),
+                                [...EDITOR_PERMS, 'review:approve'])
+    await btn(rowByText(w, '计费参数'), '退回')!.trigger('click')
+    // FPReviewDialog 是 defineAsyncComponent + Teleport:一次 flush 只够解掉动态 import,
+    // 还要再一拍才渲染进 body。少一拍 querySelector 拿到 null,那不是「弹窗没出来」。
+    await flushPromises()
+    await flushPromises()
+    return w
+  }
+
+  // 破坏验证:把 FPReviewDialog 里 ok 的 trim() 去掉 → 「全是空格」那条红
+  it('❗理由必填,而且一串空格不算', async () => {
+    await openReturn()
+    const card = document.querySelector('.rvd-card')!
+    const confirm = [...card.querySelectorAll('button')].find(b => b.textContent?.includes('确认退回'))!
+    expect(confirm.hasAttribute('disabled'), '空理由不许提交').toBe(true)
+
+    const ta = card.querySelector('textarea') as HTMLTextAreaElement
+    ta.value = '    '
+    ta.dispatchEvent(new Event('input'))
+    await flushPromises()
+    expect(confirm.hasAttribute('disabled'), '一串空格也不算写了理由').toBe(true)
+  })
+
+  it('填了理由 → 打 returnBack 且带 trim 后的值', async () => {
+    await openReturn()
+    const card = document.querySelector('.rvd-card')!
+    const ta = card.querySelector('textarea') as HTMLTextAreaElement
+    ta.value = '  电价填错了  '
+    ta.dispatchEvent(new Event('input'))
+    await flushPromises()
+    const confirm = [...card.querySelectorAll('button')].find(b => b.textContent?.includes('确认退回'))!
+    confirm.click()
+    await flushPromises()
+    expect(reviewApi.returnBack).toHaveBeenCalledWith(`params:${YM}`, '电价填错了')
   })
 })
