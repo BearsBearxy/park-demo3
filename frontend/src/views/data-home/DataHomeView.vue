@@ -392,21 +392,31 @@ async function runAction(key: string, fn: () => Promise<unknown>) {
   }
 }
 
-/** 多键行的动作逐把做,**碰到第一个失败就停** —— 后面的接着做只会让人分不清哪几把成了。 */
-async function runEach(keys: string[], fn: (k: string) => Promise<unknown>) {
-  await runAction(keys.join('|'), async () => { for (const k of keys) await fn(k) })
+/**
+ * 多键行的动作。逐把写、碰到第一个失败就停,做完**只刷新一次** —— 这两条都搬进了
+ * store 的 batch()(2026-09-08);改前是每把键各刷一次,屏上逐个变绿并反复闪。
+ *
+ * 顺带把年份条也刷一遍:月格上那枚 ✓ 读的是 billingPeriod 的 closedMonths,
+ * 而审核动作从不碰那条链 —— 不补这一句,审完当月最后一把键月格也不会打勾。
+ * 放在这里不放 store:整年那排月格只有本屏在画,store 不必认识 billingPeriod。
+ */
+async function runEach(keys: string[], fn: (keys: string[]) => Promise<unknown>) {
+  await runAction(keys.join('|'), async () => {
+    await fn(keys)
+    period.reloadChain().catch(() => { /* ✓ 没刷上不算动作失败,下次进屏会对 */ })
+  })
 }
 
-const onSubmit = (keys: string[]) => runEach(keys, k => review.submit(k))
-const onApprove = (keys: string[]) => runEach(keys, k => review.approve(k))
+const onSubmit = (keys: string[]) => runEach(keys, ks => review.submitAll(ks))
+const onApprove = (keys: string[]) => runEach(keys, ks => review.approveAll(ks))
 function openDialog(keys: string[], label: string, action: 'return' | 'withdraw') {
   dialog.value = { keys, label, action }
 }
 async function onDialogConfirm(reason: string) {
   const d = dialog.value
   if (!d) return
-  await runEach(d.keys, k =>
-    d.action === 'return' ? review.returnBack(k, reason) : review.withdraw(k, reason))
+  await runEach(d.keys, ks =>
+    d.action === 'return' ? review.returnAll(ks, reason) : review.withdrawAll(ks, reason))
   dialog.value = null
 }
 // ── 审核条(§7.5:审核员落地位) ───────────────────────────
