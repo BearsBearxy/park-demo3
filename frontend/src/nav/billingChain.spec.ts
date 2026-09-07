@@ -3,7 +3,7 @@ import { CHAIN, chainStepsOf, pipsOf, chainLabel } from './billingChain'
 import type { ChainCell } from '@/stores/billingPeriod'
 
 const cell = (o: Partial<ChainCell> = {}): ChainCell =>
-  ({ meters: false, pool: false, loss: false, notices: false, stale: false, ...o })
+  ({ meters: false, pool: false, loss: false, notices: false, stale: false, closed: false, ...o })
 
 describe('出账链', () => {
   it('五道工序，顺序即业务时序（BILL-FORWARD 出账链）', () => {

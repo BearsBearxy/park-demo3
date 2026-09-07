@@ -225,7 +225,9 @@ const yearRows = computed(() => {
         month: i + 1,
         hasData: have.has(ym),
         // 链数据没到时**整个字段不给** —— 四个灭点会被读成「这个月一道工序没走」(裁定 3)
-        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale } : {}),
+        // locked 与 pips/stale 同进同出:链数据没到时整个字段不给(裁定 3),
+        // 否则 closed 恒 false 会被读成「这个月还没审完」。
+        ...(period.loaded ? { pips: pipsOf(c), stale: c.stale, locked: c.closed } : {}),
         // 描边跟 shownYm 不跟 curYm:点下去立刻挪过去,不等回包 —— 否则这一下点击**零反馈**
         cur: ym === shownYm.value,
       }

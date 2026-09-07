@@ -40,10 +40,18 @@ class ReviewApiIT extends AbstractMysqlIT {
     private static final String YM = "2031-07";           // 远期空月,不撞任何既有数据
     private static final String MODEL = "elec-model:" + YM;
 
+    /**
+     * ⚠ 按**年**清,不是按 YM 清。本类有两条用例故意写同年别的月(statesOfYear 那条要证明
+     * 「一趟带回整年」)与次年一月;testcontainer 是复用的,某条中途红掉时它自己那句 DELETE
+     * 就跑不到,残留行会让**下一次运行**的别的用例撞主键或多出一条 ——
+     * 2026-09-07 破坏验证时实际发生过一次(pv:2031-02 撞主键)。
+     */
     @AfterEach
     void wipe() {
-        jdbc.update("DELETE FROM review_log WHERE review_key LIKE ?", "%" + YM);
-        jdbc.update("DELETE FROM review_state WHERE period = ?", YM);
+        String year = YM.substring(0, 4);
+        jdbc.update("DELETE FROM review_log WHERE review_key LIKE ?", "%" + year + "-__");
+        jdbc.update("DELETE FROM review_state WHERE period LIKE ?", year + "-%");
+        jdbc.update("DELETE FROM review_state WHERE period LIKE ?", (Integer.parseInt(year) + 1) + "-%");
         jdbc.update("DELETE FROM elec_cost_entry WHERE acct_month = ?", YM);
     }
 
@@ -299,8 +307,7 @@ class ReviewApiIT extends AbstractMysqlIT {
         // 闸只问「锁没锁」,不算前置
         List<List<String>> blocked = JsonPath.read(b, "$.data[*].blockedBy");
         assertThat(blocked).allSatisfy(x -> assertThat(x).isEmpty());
-
-        jdbc.update("DELETE FROM review_state WHERE review_key = ?", "pv:" + year + "-02");
+        // 清理交给 @AfterEach(它按年清)—— 写在这里的话断言一红就跑不到,残留会污染下一次运行
     }
 
     /** 别的年不许漏进来 —— likeRight 前缀写错(比如 like '%2031%')就会把 12031 之类也带上。 */
@@ -311,12 +318,56 @@ class ReviewApiIT extends AbstractMysqlIT {
         seedState("salary:" + YM, "salary", null, "approved");
         jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,?)",
             "salary:" + (year + 1) + "-01", "salary", (year + 1) + "-01", null, "approved");
-        try {
-            List<String> keys = JsonPath.read(body(doGet("/api/review/states?year=" + year, a)), "$.data[*].key");
-            assertThat(keys).containsExactly("salary:" + YM);
-        } finally {
-            jdbc.update("DELETE FROM review_state WHERE review_key = ?", "salary:" + (year + 1) + "-01");
-        }
+        List<String> keys = JsonPath.read(body(doGet("/api/review/states?year=" + year, a)), "$.data[*].key");
+        assertThat(keys).containsExactly("salary:" + YM);
+        // 次年那行同样交给 @AfterEach
+    }
+
+    /**
+     * 整月全审的月份(D20,年份条月格的 ✓)。
+     *
+     * 用 list() 拿到该月的**全部**键再逐把 approve —— 不手写那张键表:
+     * 台账按公司数、附10 按期区数展开,写死就会跟着库漂。
+     */
+    @Test
+    void closedMonths_needsEveryCountingKeyApproved_andIgnoresElecModel() throws Exception {
+        String a = admin();
+        List<String> keys = JsonPath.read(body(doGet("/api/review?period=" + YM, a)), "$.data[*].key");
+        List<String> kinds = JsonPath.read(body(doGet("/api/review?period=" + YM, a)), "$.data[*].kind");
+
+        // ① 差一把(salary 留着不审)→ 不在列表里
+        for (int i = 0; i < keys.size(); i++)
+            if (!keys.get(i).startsWith("salary:")) seedApproved(keys.get(i), kinds.get(i));
+        assertThat(this.<List<String>>closed(a)).as("差一把就不算锁账").doesNotContain(YM);
+
+        // ② 补上 salary,但 elec-model 仍**不审** → 照样算锁账(它没有清单行,§7.1)
+        jdbc.update("DELETE FROM review_state WHERE review_key = ?", "elec-model:" + YM);
+        for (int i = 0; i < keys.size(); i++)
+            if (keys.get(i).startsWith("salary:")) seedApproved(keys.get(i), kinds.get(i));
+        assertThat(this.<List<String>>closed(a))
+            .as("elec-model 没有清单行,计入的话锁账永远达不成").contains(YM);
+    }
+
+    /** 只有几把键审了的月不许混进来 —— 那条 group-by 下限只是筛候选,判据仍是全集比对。 */
+    @Test
+    void closedMonths_doesNotLeakPartiallyApprovedMonths() throws Exception {
+        String a = admin();
+        seedState("params:" + YM, "params", null, "approved");
+        seedState("meters:" + YM, "meters", null, "approved");
+        assertThat(this.<List<String>>closed(a)).doesNotContain(YM);
+    }
+
+    private <T> T closed(String token) throws Exception {
+        return JsonPath.read(body(doGet("/api/review/closed-months", token)), "$.data");
+    }
+
+    private void seedApproved(String key, String kind) {
+        int i = key.lastIndexOf(':');
+        String head = key.substring(0, i);
+        int j = head.lastIndexOf(':');
+        String scope = j < 0 ? null : head.substring(j + 1);
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) VALUES (?,?,?,?,'approved')",
+            key, kind, YM, scope);
     }
 
     // ══════════ helpers ══════════

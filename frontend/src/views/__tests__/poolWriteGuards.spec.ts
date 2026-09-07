@@ -72,6 +72,17 @@ vi.mock('@/api/meters', () => ({
 vi.mock('@/api/building', () => ({ buildingApi: { list: vi.fn(() => Promise.resolve([])) } }))
 vi.mock('@/api/tenant', () => ({ tenantApi: { list: vi.fn(() => Promise.resolve([])) } }))
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn(() => Promise.resolve([])) } }))
+// billingPeriod.fetchAll 的第 5 个来源(R2 T10:整月已审核 → 月格 ✓)。
+// 与另外四个一样必须 mock:不 mock 的话走真 axios,而它在 Promise.all 里,
+// 整个矩阵要等这一趟在 jsdom 里超时才渲染 —— 表现是「格子一个都找不到」。
+vi.mock('@/api/review', () => ({
+  reviewApi: {
+    closedMonths: vi.fn().mockResolvedValue([]),
+    states: vi.fn().mockResolvedValue([]),     // 编辑闸走这条(闸道,按年)
+    list: vi.fn().mockResolvedValue([]),
+    submit: vi.fn(), approve: vi.fn(), returnBack: vi.fn(), withdraw: vi.fn(),
+  },
+}))
 
 import PoolLedgerView from '../alloc/PoolLedgerView.vue'
 import { allocApi, type AllocRuleDTO } from '@/api/alloc'

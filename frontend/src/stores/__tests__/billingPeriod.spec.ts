@@ -6,6 +6,7 @@ import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
 import { paramsApi } from '@/api/params'
+import { reviewApi } from '@/api/review'
 
 /**
  * 出账链的组级账期(2026-08-28 设计稿 §⑤)。
@@ -22,6 +23,7 @@ vi.mock('@/api/meters', () => ({ metersApi: { months: vi.fn() } }))
 vi.mock('@/api/alloc', () => ({ allocApi: { poolMonths: vi.fn(), lossMonths: vi.fn() } }))
 vi.mock('@/api/billNotices', () => ({ billNoticesApi: { months: vi.fn() } }))
 vi.mock('@/api/params', () => ({ paramsApi: { status: vi.fn() } }))
+vi.mock('@/api/review', () => ({ reviewApi: { closedMonths: vi.fn() } }))
 
 function wire(opts: {
   meters?: string[]
@@ -29,6 +31,7 @@ function wire(opts: {
   loss?: string[]
   notices?: string[]
   stale?: { ym: string; self: boolean; others: string[] }
+  closed?: string[] | Error
 } = {}) {
   vi.mocked(metersApi.months).mockResolvedValue(opts.meters ?? [])
   vi.mocked(allocApi.poolMonths).mockResolvedValue(opts.pool ?? [])
@@ -40,6 +43,9 @@ function wire(opts: {
     stale: opts.stale?.self ?? false,
     otherMonthsAffected: opts.stale?.others ?? [],
   })
+  const c = opts.closed
+  if (c instanceof Error) vi.mocked(reviewApi.closedMonths).mockRejectedValue(c)
+  else vi.mocked(reviewApi.closedMonths).mockResolvedValue(c ?? [])
 }
 
 describe('出账链组级账期', () => {
@@ -105,16 +111,16 @@ describe('出账链组级账期', () => {
       const s = useBillingPeriodStore()
       await s.loadChain()
 
-      expect(s.cellOf('2025-01')).toEqual({ meters: true, pool: true, loss: true, notices: true, stale: false })
-      expect(s.cellOf('2025-02')).toEqual({ meters: true, pool: true, loss: false, notices: false, stale: false })
-      expect(s.cellOf('2025-03')).toEqual({ meters: true, pool: false, loss: false, notices: false, stale: false })
+      expect(s.cellOf('2025-01')).toEqual({ meters: true, pool: true, loss: true, notices: true, stale: false, closed: false })
+      expect(s.cellOf('2025-02')).toEqual({ meters: true, pool: true, loss: false, notices: false, stale: false, closed: false })
+      expect(s.cellOf('2025-03')).toEqual({ meters: true, pool: false, loss: false, notices: false, stale: false, closed: false })
     })
 
     it('没碰过的月四个点全灭', async () => {
       wire({ meters: ['2025-01'] })
       const s = useBillingPeriodStore()
       await s.loadChain()
-      expect(s.cellOf('2024-08')).toEqual({ meters: false, pool: false, loss: false, notices: false, stale: false })
+      expect(s.cellOf('2024-08')).toEqual({ meters: false, pool: false, loss: false, notices: false, stale: false, closed: false })
     })
 
     it('stale 是月的属性 —— status 的自身 stale 与 otherMonthsAffected 合成一个集合', async () => {
@@ -152,7 +158,7 @@ describe('出账链组级账期', () => {
       const s = useBillingPeriodStore()
       await s.loadChain()
       expect(s.loaded).toBe(true)
-      expect(s.cellOf('2025-01')).toEqual({ meters: true, pool: true, loss: false, notices: false, stale: false })
+      expect(s.cellOf('2025-01')).toEqual({ meters: true, pool: true, loss: false, notices: false, stale: false, closed: false })
     })
 
     it('任一 months 端点挂了就报错 —— 半张矩阵会让用户以为那些月是空的', async () => {
@@ -187,5 +193,51 @@ describe('出账链组级账期', () => {
       await s.reloadChain()
       expect(s.cellOf('2025-01').pool).toBe(true)
     })
+  })
+})
+
+// ══════════ 整月已审核 → 月格 ✓(D20,R2 T10) ══════════
+describe('整月已审核', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
+  // 破坏验证:把 fetchAll 里那段 closedMonths 循环删掉 → 红
+  it('❗全审的月标 closed,其余月不标', async () => {
+    wire({ meters: ['2025-03', '2025-04'], closed: ['2025-03'] })
+    const s = useBillingPeriodStore()
+    await s.loadChain()
+    expect(s.cellOf('2025-03').closed).toBe(true)
+    expect(s.cellOf('2025-04').closed).toBe(false)
+  })
+
+  // ❗已审核的月**可能一条链数据都没有**(只有附表的月)。
+  //   破坏验证:把 `map.get(m) ?? { ...EMPTY }` 换成 `map.get(m)` + 存在才标 → 红。
+  it('❗链里没有的月也要标上 —— 只有附表数据的月照样会被审完', async () => {
+    wire({ meters: [], closed: ['2025-07'] })
+    const s = useBillingPeriodStore()
+    await s.loadChain()
+    expect(s.cellOf('2025-07').closed).toBe(true)
+  })
+
+  // 破坏验证:把那段的 try/catch 去掉 → 红(整屏会变成加载失败)。
+  // 与四个 /months 来源不同:缺一枚 ✓ 只是少个标,缺一列工序点会被读成「这些月没做过」。
+  it('❗拉不到只是少一枚 ✓,不阻断整个矩阵', async () => {
+    wire({ meters: ['2025-03'], closed: new Error('boom') })
+    const s = useBillingPeriodStore()
+    await s.loadChain()
+    expect(s.loaded, '四个工序点照常').toBe(true)
+    expect(s.loadErr).toBeNull()
+    expect(s.cellOf('2025-03').closed).toBe(false)
+  })
+
+  // 破坏验证:把那段里的 `if (!YM.test(m)) continue` 删掉 → 红。
+  //
+  // ⚠ 这道闸只管**格式**('2025-13' 挡掉),不管年份远近 —— '0001-01' 格式合法,照样进。
+  //   年份窗那道闸在视图层(DataHomeView.yearRows 的 inYearWindow),两道各管一段,
+  //   都要有:见 yearRows 那句「buildYearRows 内部的钳位只保证不撑爆堆内存」。
+  it('❗脏 ym 不进矩阵(格式闸,与四个来源同一道)', async () => {
+    wire({ meters: ['2025-03'], closed: ['2025-13', '2025-8', '2025-08'] })
+    const s = useBillingPeriodStore()
+    await s.loadChain()
+    expect([...s.cells.keys()].sort()).toEqual(['2025-03', '2025-08'])
   })
 })

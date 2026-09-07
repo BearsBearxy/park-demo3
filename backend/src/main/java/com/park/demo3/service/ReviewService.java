@@ -143,6 +143,45 @@ public class ReviewService {
         return out;
     }
 
+    /**
+     * 整月全审的月份(D20)。年份条矩阵的月格 ✓ 靠它,与 metersApi.months() 那四个端点同形。
+     *
+     * ponytail: **两段式**。先一条 group-by 拿「已审核键数 ≥ 12」的候选月
+     *   (12 = 固定键 5+1+2+1+2+1,是任何月的下限;台账按公司数、附10 按期区数只会更多),
+     *   再只对候选月跑一遍 keysOf 全集比对。直接对每个月跑 keysOf 要各调一次
+     *   dataHome.overview()(十几条 count 查询)—— 年份条一屏最多 4 年 48 个月,
+     *   那就是几百条查询换一屏 ✓。实际候选月通常是 0~2 个。
+     *   升级路径:候选月多到几十个再说,那意味着这个库已经审了好几年。
+     *
+     * ⚠ elec-model 不计入(countsTowardMonthClose() 为 false)—— 它没有清单行,
+     *   计入的话锁账永远达不成(§7.1)。判据只此一处,前端不重算。
+     */
+    public List<String> closedMonths() {
+        Map<String, Integer> approvedPerPeriod = new java.util.HashMap<>();
+        for (ReviewState s : states.selectList(new QueryWrapper<ReviewState>().eq("status", "approved")))
+            approvedPerPeriod.merge(s.getPeriod(), 1, Integer::sum);
+
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : approvedPerPeriod.entrySet()) {
+            if (e.getValue() < MIN_MONTH_CLOSE_KEYS) continue;   // 连下限都不够,不必去跑聚合
+            String period = e.getKey();
+            Map<String, ReviewState> rows = states.byPeriod(period).stream()
+                .collect(java.util.stream.Collectors.toMap(ReviewState::getReviewKey, x -> x, (a, b) -> a));
+            boolean all = true;
+            for (ReviewKey k : keysOf(period, dataHome.overview(period))) {
+                if (!k.kind().countsTowardMonthClose()) continue;
+                ReviewState st = rows.get(k.raw());
+                if (st == null || !"approved".equals(st.getStatus())) { all = false; break; }
+            }
+            if (all) out.add(period);
+        }
+        java.util.Collections.sort(out);
+        return out;
+    }
+
+    /** 任何月「整月锁账」所需键数的下限:固定键 5(出账链) + 1(附12) + 2(附13/14) + 1(附6) + 2(附7/8) + 1(附11)。 */
+    private static final int MIN_MONTH_CLOSE_KEYS = 12;
+
     /** ping 用:全库待审核条数。见 PresenceService。 */
     public int pendingCount() {
         return Math.toIntExact(states.selectCount(

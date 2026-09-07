@@ -18,6 +18,9 @@ const ROWS = [
   // 代他人执行:接管别人手上的编辑锁,主管授权
   { source: 'auth', ts: '2026-08-18T09:05:00', actor: 'wang.zg', action: 'lock.takeover',
     target: 'user:zhangsan', detail: '接管计费参数编辑锁', authorizer: '李主管' },
+  // 第 4 路(R1 落库 / R2 上屏):review_log。authorizer 恒 null —— 审核不走提权。
+  { source: 'review', ts: '2026-08-17T14:00:00', actor: 'li.sh', action: 'approve',
+    target: 'salary:2026-07', detail: null, authorizer: null },
 ]
 
 const logs = vi.fn()
@@ -39,6 +42,27 @@ beforeEach(() => {
 })
 
 describe('SystemLogsView', () => {
+  // ❗第 4 路(R2 T11)。不改也不炸 —— SRC 有 OTHER 兜底,只是会显示成「其他」,
+  //   而「其他」在一屏审计日志上等于「不知道这是什么」。
+  //   破坏验证:把 SRC.review 删掉 → 红(退回 OTHER 的「其他」);
+  //             把 ACTION 里那四条删掉 → 「通过审核」变成裸的 approve,也红。
+  it('❗审核那一路显「审核 / 通过审核」,不是「其他 / approve」', async () => {
+    const w = mountView()
+    await flushPromises()
+    const row = w.findAll('.lg-row').find(r => r.text().includes('salary:2026-07'))!
+    expect(row.text()).toContain('审核')
+    expect(row.text()).not.toContain('其他')
+    expect(row.text()).toContain('通过审核')
+    expect(row.text()).not.toContain('approve')
+  })
+
+  // 破坏验证:把 SRC_OPTS 里那条删掉 → 红。筛不出来 = 这一路在筛选器里不存在。
+  it('❗来源筛选里有「审核」这一项', () => {
+    const w = mountView()
+    const opts = w.findAllComponents(Select)[0].props('options') as { value: string; label: string }[]
+    expect(opts.map(o => o.value)).toContain('review')
+  })
+
   it('三路来源各自渲染出可区分的徽标', async () => {
     const w = mountView()
     await flushPromises()
