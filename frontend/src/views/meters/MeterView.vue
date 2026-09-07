@@ -66,7 +66,7 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
 const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle,
-        lockedBy, evictedBy, lockScope, onTaken } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
   useEditMode(['meter-reading:edit', 'meter-master:edit'], {
     scope: () => S.meters(year.value),
     // 审核键(§7.1):抄表屏**按年锁、按月审**。屏上编辑的确实是单月读数
@@ -639,6 +639,7 @@ const emptyText = computed(() => {
         <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
         <FPEditModeButton
           :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :review-note="reviewNote" :review-tip="reviewTip"
           :disabled="saving || (!editMode && !!readErr)"
           :title="!editMode && readErr ? '本月读数未加载成功,先点失败条上的「重试」再录入' : undefined"
           @toggle="onEditBtn"

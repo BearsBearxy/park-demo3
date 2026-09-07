@@ -395,7 +395,26 @@ public class ReviewService {
         l.setReviewKey(key.raw()); l.setAction(action); l.setActor(me());
         l.setAt(LocalDateTime.now()); l.setReason(reason);
         logs.insert(l);
+        rev.incrementAndGet();
     }
+
+    /**
+     * 「审核态变过几次」。顺 presence 的心跳发给所有人,别人的浏览器看见数变了就重取审核态。
+     *
+     * 加在 log() 里而不是四个动作各加一次:四个动作**都**以 log() 收尾,加在这里忘不掉;
+     * 将来加第五个动作,它要留痕就自然会 bump。
+     *
+     * ⚠ 进程内的数,**多实例部署下是错的** —— 每个实例各自从 0 开始数,前端会在两个数之间
+     *   来回跳,表现是「有时候刷得到有时候刷不到」。本项目单实例部署(deploy/ 只有一份),
+     *   真要上多实例,换法是把它挪进数据库或 Redis,而不是给前端加轮询。
+     *
+     * ⚠ 不按月分:分了之后前端要为每个显示中的月各记一个数,而收益是「别的月变了我不用重取」——
+     *   审核是低频动作,那点收益换不来这份复杂度。代价写明:任何月有人审,所有人重取一次当月清单。
+     */
+    private final java.util.concurrent.atomic.AtomicLong rev = new java.util.concurrent.atomic.AtomicLong();
+
+    /** 给 PresenceService 发心跳用。 */
+    public long rev() { return rev.get(); }
 
     private static String human(String status) {
         return switch (status) {

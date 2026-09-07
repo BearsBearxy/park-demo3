@@ -93,7 +93,7 @@ public class PresenceService {
 
         return new PingResp(seats(me), evictions,
             evictions.isEmpty() ? null : evictions.get(0),
-            approvals.inbox(), out, pendingReviews, myReturned);
+            approvals.inbox(), out, pendingReviews, myReturned, reviews.rev());
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */

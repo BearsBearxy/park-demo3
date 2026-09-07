@@ -119,6 +119,30 @@ class ReviewPingIT extends AbstractMysqlIT {
         return JsonPath.read(body(ping(token)), "$.data.myReturned");
     }
 
+    /**
+     * 第 7 件事:reviewRev(2026-09-08)。别人审了这个号就变,别人的浏览器据此重取审核态。
+     *
+     * 改前跨账号完全不同步 —— A 交审,B 坐在本月出账屏上一动不动,顶栏铃铛的数字跳了、
+     * 正下方的审核条还写「暂无待审」。前端那半在 stores/review.ts 的 watch 里。
+     *
+     * 破坏验证:把 ReviewService.log() 里的 rev.incrementAndGet() 删掉 → 本条红。
+     */
+    @Test
+    void reviewRevMovesWhenSomeoneReviews() throws Exception {
+        String a = admin();
+        assertThat(JsonPath.<Object>read(body(ping(a)), "$.data.reviewRev"))
+            .as("reviewRev 必须出现在 ping 的响应体里").isNotNull();
+        long before = ((Number) JsonPath.<Object>read(body(ping(a)), "$.data.reviewRev")).longValue();
+
+        jdbc.update("INSERT INTO review_state (review_key, kind, period, scope, status) "
+                  + "VALUES (?,?,?,NULL,'submitted')", "pv:" + YM, "pv", YM);
+        mvc.perform(MockMvcRequestBuilders.post("/api/review/pv:" + YM + "/approve")
+            .header("Authorization", "Bearer " + a)).andExpect(status().isOk());
+
+        long after = ((Number) JsonPath.<Object>read(body(ping(a)), "$.data.reviewRev")).longValue();
+        assertThat(after).as("审了一把之后号必须变 —— 不变就等于所有人都收不到通知").isGreaterThan(before);
+    }
+
     private MvcResult ping(String token) throws Exception {
         return mvc.perform(MockMvcRequestBuilders.put("/api/presence/ping")
             .header("Authorization", "Bearer " + token).contentType("application/json")

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useReviewStore } from '@/stores/review'
+import { usePresenceStore } from '@/stores/presence'
 import { parseReviewKey, reviewNoteOf, LOCKING, type ReviewRow } from '@/types/review'
 import api from '@/api'
 
@@ -171,6 +172,8 @@ describe('审核 store', () => {
 // 用户实测:月度台账 6 个公司点一次「交审」,行一个一个变绿、整屏反复闪。
 // 两个成因各一条用例钉住 —— 这两条是这次修复的全部意义,杀不掉就等于没修。
 describe('❗审核动作期间屏上不许出现空帧', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
   const P = '2024-02'
   const K1 = 'ledger:1:2024-02'
   const K2 = 'ledger:2:2024-02'
@@ -225,5 +228,66 @@ describe('❗审核动作期间屏上不许出现空帧', () => {
     release([row({ key: K1, kind: 'ledger', scope: '1', status: 'approved' })])
     await first
     expect(s.rowsOf(P), '作废那趟的回包不许落地').toHaveLength(2)
+  })
+})
+
+
+// ══════════ 别人审了,我这屏也要跟着变(2026-09-08) ══════════
+//
+// 改前:A 交审,B 坐在本月出账屏上一动不动。顶栏铃铛的数字会跳(3 秒心跳),
+// 正下方的审核条还写「暂无待审」—— 同一块屏上两个数当场打架。
+// 而 12 个编辑屏的闸也不跟着锁,人能进编辑态改半天,存的时候才被后端 423 拦回来。
+describe('❗跨账号同步:顺心跳带回的号变了就重取', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+
+  const P = '2024-02'
+
+  async function held() {
+    vi.mocked(api.get).mockResolvedValue([row({ key: 'salary:2024-02', status: 'entered' })])
+    const s = useReviewStore()
+    await Promise.all([s.ensure(P), s.ensureYear(2024)])
+    return s
+  }
+
+  // ❗破坏验证:把 review.ts 里 watch(() => presence.reviewRev, ...) 整段删掉 → 红。
+  //   这一条就是「别人审了我看得见」本身。
+  it('❗号变了 → 重取手上已有的月与年', async () => {
+    const s = await held()
+    const pr = usePresenceStore()
+    pr.reviewRev = 1                       // 本会话第一拍拿到的基线
+    await Promise.resolve()
+    const before = listCalls()
+    vi.mocked(api.get).mockResolvedValue([row({ key: 'salary:2024-02', status: 'submitted' })])
+    pr.reviewRev = 2                       // 别人审了
+    await new Promise((r) => setTimeout(r, 0))
+    expect(listCalls() - before, '清单道要重取').toBe(1)
+    expect(s.rowsOf(P)[0].status, '屏上要跟着翻成待审核').toBe('submitted')
+    expect(s.rowOf('salary:2024-02')?.status, '闸道同样,不然编辑按钮还画得出来').toBe('submitted')
+  })
+
+  // ❗破坏验证:把 `if (!before || ...)` 里的 `!before` 去掉 → 红。
+  //   第一拍从 0 变成某个数是本会话拿到基线,不是「有人审了」;当成有人审会让每个人
+  //   一进系统就白打一趟清单道(那是本仓最贵的端点之一)。
+  it('❗第一拍拿到基线不算「有人审了」', async () => {
+    const s = await held()
+    const pr = usePresenceStore()
+    const before = listCalls()
+    pr.reviewRev = 7
+    await new Promise((r) => setTimeout(r, 0))
+    expect(listCalls() - before, '基线不该触发重取').toBe(0)
+    void s
+  })
+
+  // 手上没取过的月不去猜着取 —— 取它没有意义,屏上又不显示。
+  it('只刷手上已经取过的,不去拉别的月', async () => {
+    const s = useReviewStore()
+    const pr = usePresenceStore()
+    pr.reviewRev = 1
+    await Promise.resolve()
+    const before = listCalls()
+    pr.reviewRev = 2
+    await new Promise((r) => setTimeout(r, 0))
+    expect(listCalls() - before).toBe(0)
+    void s
   })
 })

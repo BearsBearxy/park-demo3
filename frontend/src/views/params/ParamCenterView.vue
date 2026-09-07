@@ -65,7 +65,7 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 // 缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
 // 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
   useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], {
     scope: () => S.paramCenter(year.value, month.value),
     // 审核键(§7.1):计费参数每月一把。ym 为空 = 还在选期门,没有月可审。
@@ -563,6 +563,7 @@ const FIXED_RULES = [
           变更记录
         </Button>
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />
       </div>
     </div>

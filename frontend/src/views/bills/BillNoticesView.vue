@@ -77,7 +77,7 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
   useEditMode(['billing-run:edit', 'billing-issue:edit'], {
     scope: () => S.billNotices(year.value, month.value),
     // 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留。
@@ -656,6 +656,7 @@ const drawerSub = computed(() => {
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />
       </div>
     </div>

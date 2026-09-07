@@ -83,7 +83,7 @@ const canGen = computed(() => auth.can('billing-run:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
   useEditMode(['billing-run:edit', 'param-policy:edit'], {
     scope: () => S.poolLedger(year.value, month.value),
     // 审核键(§7.1):本屏压**两把** —— 池结果与损耗结果是 AllocService.generate(ym)
@@ -912,6 +912,7 @@ async function delPool() {
           新增池
         </Button>
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />
       </div>
     </div>

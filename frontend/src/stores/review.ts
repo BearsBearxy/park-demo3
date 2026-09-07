@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { reviewApi } from '@/api/review'
+import { usePresenceStore } from '@/stores/presence'
 import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/review'
 
 /**
@@ -15,8 +16,10 @@ import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/revi
  * 混用的后果:拿闸道的数据当清单,会把「还没交审」显示成「这个月没有这张表」;
  * 拿清单道喂闸,会让 12 个屏的编辑入口挂在本仓最贵的端点之一上。
  *
- * ponytail: 没有 TTL。审核是低频动作,四个动作都会主动失效两道;别人在别的浏览器审的,
- *   靠 ping 的 pendingReviews 变化 + 进屏重取覆盖。要实时到秒再上 WebSocket。
+ * 没有 TTL,靠三处主动失效:本人做完动作、切回本月出账屏、**别人审了**(2026-09-08 补,
+ * 顺 presence 那条 3 秒心跳带回来的 `reviewRev`)。第三处原先只在这行注释里写着
+ * 「靠 ping 的 pendingReviews 变化覆盖」,而那个 watcher 从来没接上 —— 写下预期然后
+ * 没实现,比不写更坏:后面的人读到这句会以为它成立。
  */
 export const useReviewStore = defineStore('review', () => {
   // ── 闸道:按年 ──────────────────────────────────────────────
@@ -206,6 +209,43 @@ export const useReviewStore = defineStore('review', () => {
       await Promise.all([ensure(p), ensureYear(yearOf(p))])
     }
   }
+
+  /**
+   * 把手上**已经取过**的都标过期并重取。别人审了之后走这条。
+   *
+   * 只刷已经取过的,不去猜别的月:手上有的正是屏上正在显示的,刷它才有意义。
+   * 靠上面那套「旧值留着」,这一趟在屏上是无声的 —— 数据换了行才跟着变,不闪。
+   */
+  async function refreshHeld(): Promise<void> {
+    const ps = [...byPeriod.value.keys()]
+    const ys = [...byYear.value.keys()]
+    ps.forEach(invalidate)                      // invalidate 顺带把该月所属的年也标了
+    ys.forEach((y) => {
+      staleY.value = new Set(staleY.value).add(y)
+      seqY.set(y, (seqY.get(y) ?? 0) + 1)
+      yearInflight.delete(y)
+    })
+    await Promise.all([...ps.map(ensure), ...ys.map(ensureYear)])
+  }
+
+  /**
+   * 跨账号同步:别人交审 / 通过 / 退回 / 撤销之后,这屏也要跟着变。
+   *
+   * 顺的是 presence 那条 3 秒心跳(它本来就在跑,带回一个号)。改前这里什么都没有 ——
+   * 顶栏铃铛的数字会跳,正下方的审核条还写「暂无待审」,同一块屏上两个数当场打架;
+   * 而 12 个编辑屏的闸也不会跟着锁上,人能进编辑态改半天,存的时候才被后端 423 拦回来。
+   *
+   * 监听方向是 review → presence:presence 不认识 review(它只管在场与心跳),
+   * 反过来接会让心跳那条通道长出一根伸向业务的线。presence 实例化没有副作用
+   * (定时器在 enter() 里才起),所以这里取它是安全的。
+   *
+   * 首个非零值不触发:那是本会话第一拍拿到的基线,不是「有人审了」。
+   */
+  const presence = usePresenceStore()
+  watch(() => presence.reviewRev, (now, before) => {
+    if (!before || now === before) return
+    void refreshHeld()
+  })
 
   // 单键仍留一个入口:调用方大多数时候手上就一把键,让它自己包一层数组没意义。
   const submit = (k: string) => batch([k], (x) => reviewApi.submit(x))
