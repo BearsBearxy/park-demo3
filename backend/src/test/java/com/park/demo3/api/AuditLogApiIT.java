@@ -90,13 +90,14 @@ class AuditLogApiIT extends AbstractMysqlIT {
     // ══════════ 时间线 ══════════
 
     @Test
-    void timelineUnionsThreeSources() throws Exception {
+    void timelineUnionsAllSources() throws Exception {
         String body = logs("?size=200");
         assertThat((int) JsonPath.read(body, "$.code")).isEqualTo(0);
         List<String> sources = JsonPath.read(body, "$.data.rows[*].source");
         // 种子库里 param_change_log 与 import_log 都有行；auth_audit_log 可能为空（没人建过账号）
-        assertThat(sources).as("三张来源表要合到一条时间线上").isNotEmpty();
-        assertThat(sources).allMatch(s -> List.of("param", "import", "auth").contains(s));
+        assertThat(sources).as("几张来源表要合到一条时间线上").isNotEmpty();
+        assertThat(sources).as("回来的 source 只能是产品代码认得的那几路")
+            .allMatch(SOURCES::contains);
         long total = ((Number) JsonPath.read(body, "$.data.total")).longValue();
         assertThat(total).isGreaterThan(0);
     }
@@ -113,19 +114,76 @@ class AuditLogApiIT extends AbstractMysqlIT {
         // ⚠ 不能假设某一路一定有数据：测试库是迁移种子建的，param_change_log 有行
         //    （V96–V100 灌的），import_log / auth_audit_log 都是空的 —— 那 89 条导入记录
         //    是 dev 库里真实用出来的。所以这里用**数据无关**的断言。
+        //
+        // ⚠ 逐路之和必须覆盖**全部**来源。少数一路,别人留下的那一行就会让这条红 ——
+        //   而且红在这里,离肇事者十万八千里(2026-09-08 实事:ReviewPingIT 落了一行
+        //   review_log,红的是本类)。所以路数从产品代码读,不在这里写死。
         long all = total(logs("?size=1"));
-        long param = total(logs("?src=param&size=1"));
-        long imp = total(logs("?src=import&size=1"));
-        long auth = total(logs("?src=auth&size=1"));
+        long sum = 0;
+        for (String src : SOURCES) sum += total(logs("?src=" + src + "&size=1"));
 
-        assertThat(param + imp + auth)
-            .as("三路之和必须等于不筛的总数 —— 不等就说明筛选没真的下推到各分支")
+        assertThat(sum)
+            .as("逐路之和必须等于不筛的总数(%s) —— 不等就说明筛选没真的下推到各分支", SOURCES)
             .isEqualTo(all);
-        assertThat(param).as("param_change_log 有迁移种子，这一路一定有行").isGreaterThan(0);
+        assertThat(total(logs("?src=param&size=1")))
+            .as("param_change_log 有迁移种子，这一路一定有行").isGreaterThan(0);
 
         // 有行的那一路，回来的 source 必须全是它
         List<String> only = JsonPath.read(logs("?src=param&size=50"), "$.data.rows[*].source");
         assertThat(only).isNotEmpty().allMatch("param"::equals);
+    }
+
+    // ══════════ 来源清单从产品代码读 ══════════
+
+    /**
+     * 时间线有几路来源 —— **从产品代码解析,不在这里抄一份**。
+     *
+     * 抄一份的下场 2026-09-08 已经见过:R1/R2 加了第 4 路 review,而下面两条用例还写着
+     * 三路。它们并不是当天就红的 —— 只要 review_log 是空的就一直绿,直到某个别的 IT
+     * 头一回落了一行审核留痕,红的是本类,离肇事者十万八千里。
+     *
+     * 顺带钉住一件真事:**SQL 分支与白名单必须一一对应**。
+     *   · SQL 里有一路而白名单没有 → 用户点那个筛选项直接 400;
+     *   · 白名单有一路而 SQL 没有 → 那个筛选项什么都不筛,回来的是全部。
+     * 两边分开写在两个文件里,加第 5 路时漏一边不会报错,只会表现成上面两种怪事。
+     */
+    private static final java.util.Set<String> SOURCES = readSources();
+
+    private static java.util.Set<String> readSources() {
+        try {
+            // ① SQL 的分支:AuditQueryMapper.BRANCHES 里每一路都有 `src == 'xxx'`
+            String sql = java.nio.file.Files.readString(
+                java.nio.file.Paths.get("src/main/java/com/park/demo3/mapper/AuditQueryMapper.java"),
+                java.nio.charset.StandardCharsets.UTF_8);
+            java.util.Set<String> branches = new java.util.TreeSet<>();
+            java.util.regex.Matcher m1 =
+                java.util.regex.Pattern.compile("src == '([a-z-]+)'").matcher(sql);
+            while (m1.find()) branches.add(m1.group(1));
+
+            // ② 白名单:SystemService.auditLogs 里那句 List.of("param", "import", ...)
+            String svc = java.nio.file.Files.readString(
+                java.nio.file.Paths.get("src/main/java/com/park/demo3/service/SystemService.java"),
+                java.nio.charset.StandardCharsets.UTF_8);
+            java.util.regex.Matcher m2 = java.util.regex.Pattern
+                .compile("List\\.of\\(([^)]*)\\)\\.contains\\(s\\)").matcher(svc);
+            java.util.Set<String> allowed = new java.util.TreeSet<>();
+            if (m2.find())
+                for (String part : m2.group(1).split(","))
+                    allowed.add(part.trim().replace("\"", ""));
+
+            // 解析不出来一律 fail,不许当成「没有来源」放过 —— 那正是这份门禁失效的样子
+            assertThat(branches).as("没能从 AuditQueryMapper 解析出来源分支,门禁失效")
+                .hasSizeGreaterThanOrEqualTo(4);
+            assertThat(allowed).as("没能从 SystemService 解析出来源白名单,门禁失效")
+                .hasSizeGreaterThanOrEqualTo(4);
+            assertThat(allowed)
+                .as("白名单与 SQL 分支必须一一对应:SQL 有而白名单没有 → 那个筛选项 400;"
+                  + "白名单有而 SQL 没有 → 那个筛选项什么都不筛")
+                .isEqualTo(branches);
+            return branches;
+        } catch (java.io.IOException e) {
+            throw new AssertionError("读不到产品代码,门禁失效", e);
+        }
     }
 
     private static long total(String body) {
