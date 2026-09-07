@@ -156,4 +156,45 @@ class ReviewGuardChainIT extends AbstractMysqlIT {
     }
 
     private String hdr(String t) { return "Bearer " + t; }
+
+    /**
+     * 新建池的例外只对「建」开,不对「改」开(2026-09-07 用户拍板 B)。
+     *
+     * 裁定 R-4 让长期默认行(acctMonth='')走 assertNoLockedMonth。新建池会落两条 scope=`rule:{新id}`
+     * 的默认行 —— 那个作用域刚 insert 出来,任何已审月都不可能读过它,所以放行。
+     * 池建成之后再改这两个键走的是参数页的普通 write,照样被拦。一正一反两条钉住这个边界。
+     */
+    @Test
+    void params_lockedMonth_stillAllowsCreatingANewPool_butNotEditingDefaults() throws Exception {
+        seedApproved("params:" + YM, "params");
+
+        // ① 建池带初始分母 —— 该放行
+        MvcResult created = postJson("/api/alloc/rules",
+            "{\"zone\":\"p1\",\"method\":\"area\",\"feeKey\":\"share_elec_light\","
+          + "\"coefficient\":1.5,\"note\":\"审核闸例外用例\"}");
+        assertThat(code(created))
+            .as("params 有已审月不该拦住「新建公摊池」——那个 scope 刚建出来,已审月读不到它")
+            .isZero();
+        Integer ruleId = JsonPath.read(
+            new String(created.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8), "$.data.id");
+
+        try {
+            // ② 池建成之后再改同一个键的默认行 —— 该拒
+            assertThat(code(putJson("/api/alloc/cfg",
+                "{\"scope\":\"rule:" + ruleId + "\",\"cfgKey\":\"coefficient\",\"acctMonth\":\"\","
+              + "\"value\":2.5,\"mode\":\"from\"}")))
+                .as("池建成后改默认行走的是普通 write,R-4 照样拦")
+                .isEqualTo(423);
+        } finally {
+            jdbc.update("DELETE FROM alloc_cfg WHERE scope = ?", "rule:" + ruleId);
+            jdbc.update("DELETE FROM alloc_rule_member WHERE rule_id = ?", ruleId);
+            jdbc.update("DELETE FROM alloc_rule WHERE id = ?", ruleId);
+            jdbc.update("DELETE FROM param_change_log WHERE scope = ?", "rule:" + ruleId);
+        }
+    }
+
+    private MvcResult putJson(String url, String json) throws Exception {
+        return mvc.perform(MockMvcRequestBuilders.put(url).header("Authorization", hdr(admin()))
+            .contentType("application/json").content(json)).andReturn();
+    }
 }

@@ -562,9 +562,9 @@ public class AllocService {
         saveChildren(r.getId(), req);
         // S21 §2.4 新建池例外:初始分母/初始加度落成 rule:{id} 的 '' from 行(同表同版本链);池建成后只在参数页改
         if (req.coefficient() != null)
-            saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"));
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "coefficient", "", req.coefficient(), "新建池初始分母", "from"), true);
         if (req.extraQty() != null && req.extraQty().signum() != 0)
-            saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"));
+            saveCfg(new AllocCfgReq("rule:" + r.getId(), "extra_qty", "", req.extraQty(), "新建池初始加度", "from"), true);
         params.logRuleChange("set", r.getId(), r.getName(), "新建池 · 方法 " + r.getMethod()
             + " · 费项 " + r.getFeeKey() + " · 受益人 " + (req.members() == null ? 0 : req.members().size()) + " 户");
         return ruleById(r.getId());
@@ -752,13 +752,16 @@ public class AllocService {
     // S21:写走 ParamService.write(注册表门 + param_change_log;删被已生成月使用的版本行 400)。本端点只收 alloc 键;
     // mode 缺省(spec §6 兼容行):acctMonth 非空⇒month(=旧「仅当月」语义),空⇒from(初始版)
     @NoReviewGuard(reason = "转调 ParamService.write,被写月由那边按 req.acctMonth 判")
-    public void saveCfg(AllocCfgReq req) {
+    public void saveCfg(AllocCfgReq req) { saveCfg(req, false); }
+
+    /** newPoolBootstrap 只有 createRule 落初始分母/加度时传 true —— 见 ParamService.write 的 javadoc。 */
+    private void saveCfg(AllocCfgReq req, boolean newPoolBootstrap) {
         String scope = req.scope().trim(), key = req.cfgKey().trim();
         if (ParamRegistry.tableOf(key) != ParamRegistry.Table.ALLOC)
             throw new BizException(ResultCode.BAD_REQUEST, "参数键不在注册表：" + key + "@" + scope);
         String month = req.acctMonth() == null ? "" : req.acctMonth().trim();
         String mode = req.mode() == null || req.mode().isBlank() ? (month.isEmpty() ? "from" : "month") : req.mode().trim();
-        params.write(new ParamPutReq(key, scope, month, mode, req.value(), req.note(), null), null);
+        params.write(new ParamPutReq(key, scope, month, mode, req.value(), req.note(), null), null, newPoolBootstrap);
     }
 
     // ── 生成(§1 alloc_result):按 ym 先删后插 gen 行幂等;manual 行保留不覆盖;缺抄跳过并入 warnings ──

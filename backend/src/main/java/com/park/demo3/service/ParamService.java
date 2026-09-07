@@ -374,7 +374,22 @@ public class ParamService {
     //   (spec §5.3「取用过」;建行前就有的快照没吃过这行,不算 —— 否则误录的初始版本行永远删不掉)。
     // 返回站在 ym(缺省 acctMonth)的该 (键,作用域) 生效行(WRITE-KEEP-CONTEXT 铁律二:前端只 patch 该行)。
     @Transactional
-    public ParamRowDTO write(ParamPutReq req, String ym) {
+    public ParamRowDTO write(ParamPutReq req, String ym) { return write(req, ym, false); }
+
+    /**
+     * @param newPoolBootstrap 只允许一个调用方传 true:{@code AllocService.createRule} 落新池的
+     *   初始分母 / 初始加度(S21 §2.4 的新建池例外)。
+     *
+     *   为什么要这个口子(2026-09-07 用户拍板 B):长期默认行(acctMonth='')是「所有未被月度行覆盖
+     *   的月」的取值来源,改它会动已审月的口径,所以裁定 R-4 让它走 assertNoLockedMonth。
+     *   但新建池那两行写的是 scope=`rule:{新id}` —— 一个刚 insert 出来、任何已审月都不可能读过的
+     *   作用域,它改不动任何已审月。不开这个口子的话,params 只要有任一月审过,「新建公摊池」
+     *   就永久 423,而且文案说的是「计费参数已审核」,用户在公摊池屏完全对不上。
+     *
+     *   ⚠ 口子只对**新建**开,不对**改**开:池建成之后再动这两个键走的是参数页的普通 write,
+     *   照样被 R-4 拦。ReviewGuardChainIT 里一正一反两条钉着这个边界。
+     */
+    public ParamRowDTO write(ParamPutReq req, String ym, boolean newPoolBootstrap) {
         String key = req.key().trim();
         String scope = req.scope() == null ? "" : req.scope().trim();
         if (!ParamRegistry.allowed(key, scope))
@@ -393,8 +408,12 @@ public class ParamService {
         String note = req.note() == null || req.note().isBlank() ? null : req.note().trim();
         // 审核闸(§7.4「按被写数据的月判,不按 URL」):守 req.acctMonth,**不守形参 ym**。
         // ym 是「站在哪个月看」的 URL 月,PUT /api/price-cfg 那条路径硬传 null —— 按它判会既漏又误。
-        if (month.isEmpty()) reviewGuard.assertNoLockedMonth(ReviewKind.PARAMS, null);   // 长期默认行,裁定 R-4
-        else reviewGuard.assertEditable(ReviewKind.PARAMS, affectedMonths(key, scope, month, mode), null);
+        if (month.isEmpty()) {
+            // 长期默认行,裁定 R-4;newPoolBootstrap 是唯一的例外,理由见方法 javadoc
+            if (!newPoolBootstrap) reviewGuard.assertNoLockedMonth(ReviewKind.PARAMS, null);
+        } else {
+            reviewGuard.assertEditable(ReviewKind.PARAMS, affectedMonths(key, scope, month, mode), null);
+        }
         String stand = ym == null ? month : ym;
         if (Boolean.TRUE.equals(req.correction())) {
             if (req.value() == null) throw new BizException(ResultCode.BAD_REQUEST, "改错须给出新值");
