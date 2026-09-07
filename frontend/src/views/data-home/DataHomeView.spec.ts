@@ -552,7 +552,9 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     expect(lockRow, '本月锁账行应照常渲染').toBeTruthy()
     const icon = lockRow!.find('.dh-rlock')
     expect(icon.exists()).toBe(true)
-    expect(icon.attributes('title')).toBe('审核机制未上线')   // padlock 悬停文案即 r.locked
+    // padlock 悬停文案即 r.locked。R2 起本月锁账是派生的(全部键 approved),
+    // 审核态还没到时文案是「审核态加载中」——「未上线」那句随 R1/R2 落地作废。
+    expect(icon.attributes('title')).toBe('审核态加载中')
     // title 要挂在 HTML 元素上(评审修补 T3 fix-brief #3):SVG 的 title 属性不出浏览器 tooltip,
     // 悬停要出文案,title 得挂在 svg 外面的包壳上 —— 断言收紧,光查属性在不在挡不住挂错元素。
     expect(icon.element.tagName.toLowerCase(), 'title 要挂在非 svg 元素上,否则浏览器不出 tooltip').not.toBe('svg')
