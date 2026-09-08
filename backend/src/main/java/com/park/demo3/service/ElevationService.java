@@ -158,6 +158,8 @@ public List<GrantDTO> elevate(ElevateReq req) {
     }
 
     /** 退出编辑模式 / 登出 / 主动结束。幂等。 */
+    // 同 request:换判据之后才照出来,grant 那半边早就标了豁免。
+    @NoReviewGuard(reason = "只清内存里的 ElevationStore,不落库;它是 grant 的反向动作,而 grant 已按 spec §7.3 豁免 —— 让「拿权」免审、「交权」要审,等于人退出编辑模式还得先找审核员")
     public void revoke() {
         String me = currentUsername();
         if (!store.active(me).isEmpty()) audit.log("elevate.revoke", "user:" + me, "结束授权");

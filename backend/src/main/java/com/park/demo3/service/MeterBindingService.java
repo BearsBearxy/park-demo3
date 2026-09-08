@@ -17,6 +17,7 @@ import com.park.demo3.mapper.ContractMapper;
 import com.park.demo3.mapper.MeterMapper;
 import com.park.demo3.mapper.MeterReadingMapper;
 import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -170,6 +171,8 @@ public class MeterBindingService {
     }
 
     // ── 人工绑定/解绑(写 override;§3) ──
+    // 2026-09-09 裁定(此前挂在 ReviewGuardCoverageTest.PENDING_ADJUDICATION 里等人拍板):不守。
+    @NoReviewGuard(reason = "只写 meter.contract_id 一列,meter 表的两个月份列(active_from_ym/retired_ym)不碰;绑定进的是读侧派生 resolveBinding(ym),而落库的两处都在守卫后面且各自按 ym 存快照 —— alloc_result 是「按 ym 先删后插」的表(AllocService §1),唯一写者 generate(ym) 开头就守 ALLOC 与 ALLOC_LOSS;bill_notice_line.contract_id 是出账时的归属快照(V89 建表注释:绑定是表级属性,不快照则回溯漂移),唯一写者 BillNoticeService.generate(ym) 守 BILL_NOTICES。所以改绑定动不了已审月已经存下来的数,重算那条路本来就被守着;反过来挂上唯一能用的 assertNoLockedMonth 就是「任一月审过 → 全园区的表再也不能改绑定」")
     @Transactional
     public void bind(Integer meterId, Integer contractId) {
         Meter m = meters.selectById(meterId);
@@ -181,6 +184,8 @@ public class MeterBindingService {
     }
 
     // ── 按企业名称原文=租户档案名(含别名,V86) 精确唯一匹配批量挂 tenant_id;幂等(§3) ──
+    // 同 bind,同一次裁定(2026-09-09)。
+    @NoReviewGuard(reason = "同 bind 的数据流:只写 meter.tenant_id,且 WHERE 限定 ownership='tenant' AND tenant_id IS NULL —— 从空到有,不改任何已有绑定,已审月出账时用的归属快照(bill_notice_line.contract_id / 按 ym 存的 alloc_result)一个都动不到。而且它一次扫全库,连「这批写落在哪几个月」都不存在,挂上守卫只能是 assertNoLockedMonth,后果是任一月审过 → 批量挂租户功能永久失效")
     @Transactional
     public AutoLinkResultDTO autoLinkByName() {
         Map<String, List<Tenant>> byName = new HashMap<>();

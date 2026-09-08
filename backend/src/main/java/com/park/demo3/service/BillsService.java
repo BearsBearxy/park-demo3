@@ -14,6 +14,7 @@ import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.S10RecordMapper;
 import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -118,6 +119,11 @@ public class BillsService {
     }
 
     /** 指引 upsert:feeKey 须为附表10 25 colId 之一,租户/公司须存在。 */
+    // ⚠ 这条 reason 2026-09-09 改写过一次。改前写的是「唯一读者是 GET /api/bills/paymap,
+    //   一分钱不经过它」—— 那是**假的**:BillNoticeService.generate(ym) 读它(payByTenant)决定
+    //   每个费项挂哪个收款主体,进而决定拆单键 uk_notice(ym,tenant_id,pay_company_id,notice_kind)。
+    //   结论没变,理由必须是实话:下一个人照着「一分钱不经过它」去推别的路径就会推错。
+    @NoReviewGuard(reason = "upsert bill_pay_company(tenant_id,fee_key,company_id),V34 建表三列就是全部业务字段、无任何 ym 列。它确实是 BillNoticeService.generate(ym) 的输入(payByTenant 决定每个费项挂哪个收款主体、进而决定拆单键),但落库只发生在 generate 那一刻,而 generate 开头就守着 BILL_NOTICES:已审月重跑不了,改指引只影响下一次能跑的月;已审月的 bill_notice.pay_company_id 是出账时的快照,改这张表动不了它")
     public void savePaymap(PayMapReq req) {
         if (!S10_FEE_KEYS.contains(req.feeKey()))
             throw new BizException(ResultCode.BAD_REQUEST, "无效费用项 " + req.feeKey() + "：须为附表10费用列");

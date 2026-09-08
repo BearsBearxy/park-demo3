@@ -80,6 +80,8 @@ public class ApprovalService {
     }
 
     /** 发起请求。请求出现在被指名那位主管的顶栏通知里，2 分钟内有效。 */
+    // 换判据(2026-09-09 分母改成全部写端点)之后才照出来:decide 早就标了豁免,发起端漏了。
+    @NoReviewGuard(reason = "只往内存里的 ApprovalStore(ConcurrentHashMap,2 分钟 TTL)放一条待批,一行库都不落;而且它是 decide 的上半程,decide 的豁免理由(审批动作自己再进一次审核会死锁)对它同样成立 —— 只锁「发起」不锁「批准」还是同一个死锁")
     public PendingDTO request(RequestReq req) {
         List<String> perms = clean(req.perms());
         for (String p : perms) {
