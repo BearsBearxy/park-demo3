@@ -394,16 +394,45 @@ class ReviewGuardCoverageTest {
             .isEmpty();
     }
 
+    /**
+     * 压根不产生期间数据的 service。它们上面的 @NoReviewGuard 不进「白名单要小」那个上限。
+     *
+     * 2026-09-08 加这一层之前,白名单里混着两拨性质完全不同的东西:
+     *   ① 业务数据,但挂不上键 / 守卫在下游 —— PvMeter、CpMeter、Budget、ElecCost 那些。
+     *      上限就是为它们设的:这一拨越多,越说明该回去想「是不是该给它一把审核键」。
+     *   ② 根本不是业务数据 —— 登录、改密码、角色配置、编辑锁、在场心跳、审计流水。
+     *      这一拨再多也不说明任何问题:登录永远不该进审核,数量跟设计好坏无关。
+     * 混在一起数,第二拨会把第一拨的信号淹掉:补齐 17 条「不是业务数据」的豁免就撞了上限,
+     * 而那 17 条恰恰是把「故意不管」和「忘了管」区分开的东西 —— 为了不撞上限而不写,
+     * 等于为了让指示灯不亮而拔掉灯泡。
+     *
+     * ⚠ 往这个集合里加名字 = 宣称「这个 service 一行期间数据都不写」。加之前先确认。
+     */
+    private static final java.util.Set<String> NOT_PERIOD_DATA = java.util.Set.of(
+        "SystemService", "AuthService", "ElevationService", "ApprovalService",
+        "LockService", "PresenceService", "ImportLogService");
+
     @Test
     @DisplayName("白名单要小 —— 它是例外不是常态")
     void whitelistIsSmall() throws IOException {
+        List<Exemption> all = whitelist();
+        List<Exemption> businessData = all.stream()
+            .filter(x -> !NOT_PERIOD_DATA.contains(x.service()))
+            .toList();
+
         // 现值 41：PvMeter 8 + CpMeter 9 + ElecCost 6 + PvMeter 之外的档案类 8 + Review 4 + Budget 1 等。
         // 上限设 45，只留下一轮的余量：再多就不是「例外」了，该回去想想是不是该给它一把审核键，
         // 而不是继续往名单里加人（spec §7.4：白名单超过某个数就该重新想想）。
-        assertThat(whitelist())
+        assertThat(businessData)
             .as("@NoReviewGuard 太多了 —— 豁免成了常态。先读一遍这些 reason，"
               + "看是不是有几条其实该进 ReviewKind 而不是进白名单")
             .hasSizeLessThanOrEqualTo(45);
+
+        // 防空扫:上面那个过滤器要是把所有人都滤掉了(比如 service() 的取值形状变了),
+        // 这条断言就成了「0 ≤ 45」的恒真句。
+        assertThat(businessData)
+            .as("按 service 名过滤之后一条都不剩 —— 过滤器失效了，这条上限等于没设")
+            .hasSizeGreaterThan(20);
     }
 
     @Test
@@ -420,8 +449,15 @@ class ReviewGuardCoverageTest {
             .as("没有任何 service 调 reviewGuard.assert —— 这条断言等于没跑")
             .hasSizeGreaterThan(10);
 
+        // 三大报表的守卫是按 statement 反查 kind 的(ReviewKind.ofStatement(statement)),
+        // 源码里不会出现 `ReviewKind.REPORT_IS` 这样的字面量。这不是放宽:ofStatement 是一个
+        // 只覆盖这三把键的 switch(statement() 非空的恰好就是它们),所以「源码里出现 ofStatement」
+        // 与「这三把键都被引用」是等价的。判据仍然只认**真的调过 reviewGuard.assert 的 service**。
+        boolean byStatement = guardingSrc.values().stream().anyMatch(s -> s.contains("ReviewKind.ofStatement("));
+
         List<String> orphan = new ArrayList<>();
         for (ReviewKind k : ReviewKind.values()) {
+            if (k.statement() != null && byStatement) continue;
             String ref = "ReviewKind." + k.name();
             if (guardingSrc.values().stream().noneMatch(s -> s.contains(ref)))
                 orphan.add(k.name() + "（" + k.label() + "）");
@@ -430,7 +466,7 @@ class ReviewGuardCoverageTest {
             .as("这些审核键没有任何写路径守卫引用：屏上能交审、能通过，通过之后数据照改。"
               + "去对应的 service 挂上 ReviewGuard.assertEditable(ReviewKind.XXX, …)；对照 spec §7.4")
             .isEmpty();
-        assertThat(ReviewKind.values()).hasSize(14);
+        assertThat(ReviewKind.values()).as("键的数目变了就该有人来看一眼这份门禁").hasSize(17);
     }
 
     @Test

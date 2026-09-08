@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { reviewApi } from '@/api/review'
+import { usePresenceStore } from '@/stores/presence'
 import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/review'
 
 /**
@@ -15,8 +16,10 @@ import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/revi
  * 混用的后果:拿闸道的数据当清单,会把「还没交审」显示成「这个月没有这张表」;
  * 拿清单道喂闸,会让 12 个屏的编辑入口挂在本仓最贵的端点之一上。
  *
- * ponytail: 没有 TTL。审核是低频动作,四个动作都会主动失效两道;别人在别的浏览器审的,
- *   靠 ping 的 pendingReviews 变化 + 进屏重取覆盖。要实时到秒再上 WebSocket。
+ * 没有 TTL,靠三处主动失效:本人做完动作、切回本月出账屏、**别人审了**(2026-09-08 补,
+ * 顺 presence 那条 3 秒心跳带回来的 `reviewRev`)。第三处原先只在这行注释里写着
+ * 「靠 ping 的 pendingReviews 变化覆盖」,而那个 watcher 从来没接上 —— 写下预期然后
+ * 没实现,比不写更坏:后面的人读到这句会以为它成立。
  */
 export const useReviewStore = defineStore('review', () => {
   // ── 闸道:按年 ──────────────────────────────────────────────
@@ -34,14 +37,41 @@ export const useReviewStore = defineStore('review', () => {
 
   const yearOf = (period: string | null): number | null => (period ? +period.slice(0, 4) : null)
 
+  // ── 过期标记(2026-09-08 修「屏在闪」) ────────────────────────────
+  //
+  // 改前 invalidate 是**立刻删**,删完再拉。那一个往返里 byPeriod 没有这个月,
+  // rowsOf 回空数组 → 整张清单退成「—」、动作按钮整组从 DOM 消失 → 数据回来再画一遍。
+  // 一行多把键时这个来回要走 N 次,屏上就是「一个一个变绿 + 不停闪」。
+  //
+  // 改成**旧值留着、只标过期**:下一次 ensure 看见过期就重拉,但在新数据到达之前
+  // 屏上一直是旧值。这就是 stale-while-revalidate,不是什么新发明 —— 改前那个形状
+  // 只是最好写的形状,不是对的形状。
+  //
+  // 顺带治好另外两处同源的毛病:
+  //   · 切回本月出账屏(onReactivated 也调 invalidate)同样不再闪;
+  //   · invalidate 会连整年的闸道一起失效,而别的 KeepAlive 页签没有重取者 ——
+  //     改前它们屏上的「已审核」提示会被静默抹平成可编辑,现在旧值还在,不会。
+  const staleP = ref<Set<string>>(new Set())
+  const staleY = ref<Set<number>>(new Set())
+  // 每次失效给这个键换一个号。在途的那趟请求回来时号对不上,说明它取的是失效前的数,
+  // 直接丢掉 —— 不丢的话「失效 → 新请求」与「旧请求回包」赛跑,旧的赢了就把过期数据写了回去。
+  const seqP = new Map<string, number>()
+  const seqY = new Map<number, number>()
+
   async function ensureYear(year: number | null): Promise<void> {
-    if (year == null || byYear.value.has(year)) return
+    if (year == null) return
+    if (byYear.value.has(year) && !staleY.value.has(year)) return
     let p = yearInflight.get(year)
     if (!p) {
+      const my = seqY.get(year) ?? 0
       p = reviewApi
         .states(year)
-        .then((rows) => { byYear.value = new Map(byYear.value).set(year, rows) })
-        .catch(() => { /* 拉失败不挡编辑(D-R2-7);清单屏另有 failed 留痕 */ })
+        .then((rows) => {
+          if ((seqY.get(year) ?? 0) !== my) return       // 期间被失效过,这份是旧的
+          byYear.value = new Map(byYear.value).set(year, rows)
+          const s = new Set(staleY.value); s.delete(year); staleY.value = s
+        })
+        .catch(() => { /* 拉失败不挡编辑(D-R2-7);旧值留着比退回「不知道」强 */ })
         .finally(() => { yearInflight.delete(year) })
       yearInflight.set(year, p)
     }
@@ -50,18 +80,21 @@ export const useReviewStore = defineStore('review', () => {
 
   /** 清单道。只有本月出账屏调。 */
   async function ensure(period: string | null): Promise<void> {
-    if (!period || byPeriod.value.has(period)) return
+    if (!period) return
+    if (byPeriod.value.has(period) && !staleP.value.has(period)) return
     let p = periodInflight.get(period)
     if (!p) {
+      const my = seqP.get(period) ?? 0
       p = reviewApi
         .list(period)
         .then((rows) => {
+          if ((seqP.get(period) ?? 0) !== my) return     // 同上:失效前发出的回包,丢掉
           byPeriod.value = new Map(byPeriod.value).set(period, rows)
-          const f = new Set(failed.value)
-          f.delete(period)
-          failed.value = f
+          const s = new Set(staleP.value); s.delete(period); staleP.value = s
+          const f = new Set(failed.value); f.delete(period); failed.value = f
         })
-        .catch(() => { failed.value = new Set(failed.value).add(period) })
+        // 手上一份旧的都没有才算「取不到」——有旧值就接着显旧值,别退回「—」。
+        .catch(() => { if (!byPeriod.value.has(period)) failed.value = new Set(failed.value).add(period) })
         .finally(() => { periodInflight.delete(period) })
       periodInflight.set(period, p)
     }
@@ -84,18 +117,17 @@ export const useReviewStore = defineStore('review', () => {
   const isFailed = (period: string | null): boolean => !!period && failed.value.has(period)
   const yearLoaded = (year: number | null): boolean => year != null && byYear.value.has(year)
 
+  /** 标过期,**不删值**。理由见上面「过期标记」那段。 */
   function invalidate(period: string | null) {
     if (!period) return
-    const m = new Map(byPeriod.value)
-    m.delete(period)
-    byPeriod.value = m
+    staleP.value = new Set(staleP.value).add(period)
+    seqP.set(period, (seqP.get(period) ?? 0) + 1)
     periodInflight.delete(period)
     // 两道一起失效 —— 只失效一道的话,屏上清单已经翻成「已审核」而编辑按钮还画得出来。
     const y = yearOf(period)
     if (y != null) {
-      const ym = new Map(byYear.value)
-      ym.delete(y)
-      byYear.value = ym
+      staleY.value = new Set(staleY.value).add(y)
+      seqY.set(y, (seqY.get(y) ?? 0) + 1)
       yearInflight.delete(y)
     }
   }
@@ -157,25 +189,80 @@ export const useReviewStore = defineStore('review', () => {
   }
 
   /**
-   * 四个动作做完一律失效当月**两道**并重取。
-   * 不是「把这一行改掉就行」—— 通过一把键会改变下游键的 blockedBy,只改一行屏上就对不上。
+   * 一批键做完**只收一次尾**:全部写完 → 失效当月两道 → 重取。
+   *
+   * 收尾不能省,也不能只改本行:通过一把键会改变下游键的 blockedBy,只改一行屏上就对不上。
+   * 但改前是**每把键各收一次尾** —— 月度台账 6 个公司点一次「交审」要跑
+   * 6 次写 + 6 次失效 + 12 次重取,还是排队的。屏上就是逐个变绿加满屏闪。
+   *
+   * 键按**顺序**写、碰到第一个失败就停:后面的接着做只会让人分不清哪几把成了
+   * (原 runEach 的口径,搬进来的)。失败也要收尾 —— 前几把已经写进去了,
+   * 不收尾屏上就停在动作前的样子,人会以为一把都没成。
    */
-  async function act(fn: () => Promise<unknown>, key: string) {
-    await fn()
-    const p = periodOfKey(key)
-    invalidate(p)
-    await Promise.all([ensure(p), ensureYear(yearOf(p))])
+  async function batch(keys: string[], fn: (k: string) => Promise<unknown>) {
+    if (!keys.length) return
+    const p = periodOfKey(keys[0])
+    try {
+      for (const k of keys) await fn(k)
+    } finally {
+      invalidate(p)
+      await Promise.all([ensure(p), ensureYear(yearOf(p))])
+    }
   }
 
-  const submit = (k: string) => act(() => reviewApi.submit(k), k)
-  const approve = (k: string) => act(() => reviewApi.approve(k), k)
-  const returnBack = (k: string, reason: string) => act(() => reviewApi.returnBack(k, reason), k)
-  const withdraw = (k: string, reason: string) => act(() => reviewApi.withdraw(k, reason), k)
+  /**
+   * 把手上**已经取过**的都标过期并重取。别人审了之后走这条。
+   *
+   * 只刷已经取过的,不去猜别的月:手上有的正是屏上正在显示的,刷它才有意义。
+   * 靠上面那套「旧值留着」,这一趟在屏上是无声的 —— 数据换了行才跟着变,不闪。
+   */
+  async function refreshHeld(): Promise<void> {
+    const ps = [...byPeriod.value.keys()]
+    const ys = [...byYear.value.keys()]
+    ps.forEach(invalidate)                      // invalidate 顺带把该月所属的年也标了
+    ys.forEach((y) => {
+      staleY.value = new Set(staleY.value).add(y)
+      seqY.set(y, (seqY.get(y) ?? 0) + 1)
+      yearInflight.delete(y)
+    })
+    await Promise.all([...ps.map(ensure), ...ys.map(ensureYear)])
+  }
+
+  /**
+   * 跨账号同步:别人交审 / 通过 / 退回 / 撤销之后,这屏也要跟着变。
+   *
+   * 顺的是 presence 那条 3 秒心跳(它本来就在跑,带回一个号)。改前这里什么都没有 ——
+   * 顶栏铃铛的数字会跳,正下方的审核条还写「暂无待审」,同一块屏上两个数当场打架;
+   * 而 12 个编辑屏的闸也不会跟着锁上,人能进编辑态改半天,存的时候才被后端 423 拦回来。
+   *
+   * 监听方向是 review → presence:presence 不认识 review(它只管在场与心跳),
+   * 反过来接会让心跳那条通道长出一根伸向业务的线。presence 实例化没有副作用
+   * (定时器在 enter() 里才起),所以这里取它是安全的。
+   *
+   * 首个非零值不触发:那是本会话第一拍拿到的基线,不是「有人审了」。
+   */
+  const presence = usePresenceStore()
+  watch(() => presence.reviewRev, (now, before) => {
+    if (!before || now === before) return
+    void refreshHeld()
+  })
+
+  // 单键仍留一个入口:调用方大多数时候手上就一把键,让它自己包一层数组没意义。
+  const submit = (k: string) => batch([k], (x) => reviewApi.submit(x))
+  const approve = (k: string) => batch([k], (x) => reviewApi.approve(x))
+  const returnBack = (k: string, reason: string) => batch([k], (x) => reviewApi.returnBack(x, reason))
+  const withdraw = (k: string, reason: string) => batch([k], (x) => reviewApi.withdraw(x, reason))
+
+  const submitAll = (ks: string[]) => batch(ks, (k) => reviewApi.submit(k))
+  const approveAll = (ks: string[]) => batch(ks, (k) => reviewApi.approve(k))
+  const returnAll = (ks: string[], reason: string) => batch(ks, (k) => reviewApi.returnBack(k, reason))
+  const withdrawAll = (ks: string[], reason: string) => batch(ks, (k) => reviewApi.withdraw(k, reason))
 
   return {
     byPeriod, byYear, failed,
     ensure, ensureYear, ensureFor, blockOf, lockedMonths,
     rowsOf, rowOf, isLoaded, isFailed, yearLoaded, invalidate,
     submit, approve, returnBack, withdraw,
+    submitAll, approveAll, returnAll, withdrawAll,
   }
 })

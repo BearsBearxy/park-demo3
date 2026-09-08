@@ -50,5 +50,14 @@ public final class PresenceDtos {
                            ApprovalDtos.OutcomeDTO outcome,
                            int pendingReviews,
                            /** 我交的表被退回了几张(R2)。人人都可能被退回,所以不看权限,恒发。 */
-                           int myReturned) {}
+                           int myReturned,
+                           /**
+                            * 审核态变过几次(2026-09-08)。别人交审 / 通过 / 退回 / 撤销之后这个数就变,
+                            * 前端看见变了就重取当月审核清单 —— 在这之前,别人审完你屏上一动不动,
+                            * 只有铃铛的数字跳了,正下方的审核条还写「暂无待审」,两个数当场打架。
+                            *
+                            * 只发一个数不发内容:发内容等于每 3 秒推一遍全月审核态(§7.4 的原判)。
+                            * 数变了让前端自己去取那一趟,一天也没几次。
+                            */
+                           long reviewRev) {}
 }

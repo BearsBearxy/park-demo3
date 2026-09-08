@@ -134,6 +134,10 @@ const YEAR_ROWS = new Set(['pv-income', 'car-charging', 'ebike-charging', 'elec-
 // (CockpitView.vue onPhaseClick)。只有 MONTH_ROWS 分支会收到非空 co —— 合并行(utilities/charging)
 // 的 chip 走各自的 tab/go,不带 co(monthClose.logic.ts chipsFor 里那两组 chip 本就没有 co 字段)。
 function scheduleLink(v: string, tag: string, p: { year: number; month: number }, co?: number | 'all') {
+  // 园区电费模型与附表11 同一个 go,靠 tag 分:它是那一屏的 ?mode=cost 子视图,
+  // 不带 mode 会落在附表11 的报送台账上 —— 点「园区电费模型」却打开另一张表。
+  if (v === 'elec-cost' && tag === '模型')
+    return periodLink(v, { p: periodOf(p.year, p.month), extra: { mode: 'cost' } })
   if (MONTH_ROWS.has(v)) return periodLink(v, { p: periodOf(p.year, p.month), co })
   if (YEAR_ROWS.has(v)) return periodLink(v, { p: periodOf(p.year, null), extra: { mode: 'summary' } })
   if (v === 'utilities') return periodLink(v, { p: periodOf(p.year, null), extra: { tab: tag === '附14' ? 'phase3' : 'office' } })
@@ -392,21 +396,34 @@ async function runAction(key: string, fn: () => Promise<unknown>) {
   }
 }
 
-/** 多键行的动作逐把做,**碰到第一个失败就停** —— 后面的接着做只会让人分不清哪几把成了。 */
-async function runEach(keys: string[], fn: (k: string) => Promise<unknown>) {
-  await runAction(keys.join('|'), async () => { for (const k of keys) await fn(k) })
+/**
+ * 多键行的动作。逐把写、碰到第一个失败就停,做完**只刷新一次** —— 这两条都搬进了
+ * store 的 batch()(2026-09-08);改前是每把键各刷一次,屏上逐个变绿并反复闪。
+ *
+ * 顺带把年份条也刷一遍:月格上那枚 ✓ 读的是 billingPeriod 的 closedMonths,
+ * 而审核动作从不碰那条链 —— 不补这一句,审完当月最后一把键月格也不会打勾。
+ * 放在这里不放 store:整年那排月格只有本屏在画,store 不必认识 billingPeriod。
+ */
+async function runEach(keys: string[], fn: (keys: string[]) => Promise<unknown>) {
+  if (!keys.length) return
+  await runAction(keys.join('|'), async () => {
+    try { await fn(keys) }
+    finally {
+      void period.reloadChain().catch(() => { /* noop */ })
+    }
+  })
 }
 
-const onSubmit = (keys: string[]) => runEach(keys, k => review.submit(k))
-const onApprove = (keys: string[]) => runEach(keys, k => review.approve(k))
+const onSubmit = (keys: string[]) => runEach(keys, ks => review.submitAll(ks))
+const onApprove = (keys: string[]) => runEach(keys, ks => review.approveAll(ks))
 function openDialog(keys: string[], label: string, action: 'return' | 'withdraw') {
   dialog.value = { keys, label, action }
 }
 async function onDialogConfirm(reason: string) {
   const d = dialog.value
   if (!d) return
-  await runEach(d.keys, k =>
-    d.action === 'return' ? review.returnBack(k, reason) : review.withdraw(k, reason))
+  await runEach(d.keys, ks =>
+    d.action === 'return' ? review.returnAll(ks, reason) : review.withdrawAll(ks, reason))
   dialog.value = null
 }
 // ── 审核条(§7.5:审核员落地位) ───────────────────────────
@@ -438,7 +455,7 @@ const bookingRows = computed(() => shown('booking'))
   <!-- ⚠ 根节点 .dh **不再吊在 ov 上** —— 它此前是整页 v-if,数据到达前是一整块白屏,
        而这是登录后第一眼看到的屏(加载态设计稿 §03)。
        骨架能画准是因为两栏的行数都是常量(monthClose.logic §5.2):出账列恒 7 行(链五步 + 收入核对 +
-       本月锁账),记账列恒 8 行(后端 9 源,附13+附14/附7+附8 各并一行)。
+       本月锁账),记账列恒 12 行(后端 13 源,附13+附14/附7+附8 各并一行,加三大报表三行)。
        静态文案(本月出账 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
        糊成微光条反而是把已知的东西藏起来。
        fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
@@ -505,7 +522,7 @@ const bookingRows = computed(() => shown('booking'))
         <section class="dh-sec">
           <h3 class="dh-h3">附表录入</h3>
           <ul class="dh-rows">
-            <li v-for="i in 8" :key="i" class="dh-row dh-row-booking" style="cursor:default">
+            <li v-for="i in 12" :key="i" class="dh-row dh-row-booking" style="cursor:default">
               <span class="fp-shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span>
               <span class="fp-shim" style="display:block;width:76px;height:11px"></span>
             </li>

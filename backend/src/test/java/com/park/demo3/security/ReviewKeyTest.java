@@ -61,16 +61,21 @@ class ReviewKeyTest {
     }
 
     @Test
-    void everyKindHasPermsAndLabel_andOnlyElecModelIsOutOfMonthClose() {
+    void everyKindHasPermsAndLabel_andMonthCloseSetIsExplicit() {
         for (ReviewKind k : ReviewKind.values()) {
             assertThat(k.perms()).as(k.code() + " 缺 kind→perm 映射").isNotEmpty();
             assertThat(k.perms()).as(k.code() + " 映射到了不存在的权限点").allMatch(Perm::exists);
             assertThat(k.label()).as(k.code() + " 缺人话名").isNotBlank();
         }
+        // 不进整月锁账的键必须是**逐条拍过板的**,多一个少一个都会让锁账口径与屏上不同源。
+        //   · elec-model:没有清单行,计入就永远达不成。
+        //   · 三大报表:按期导入,并非每月都有 —— 计入会让没导报表的月「本月锁账」永远达不成。
+        //     与 elec-model 的区别是它们**有**清单行,交得了审、审得过,只是不参与锁账判据;
+        //     等报表变成每月必做,把 ReviewKind 里那一位翻真即可。
         assertThat(Arrays.stream(ReviewKind.values())
                 .filter(k -> !k.countsTowardMonthClose()).map(ReviewKind::code))
-            .as("只有 elec-model 不进整月锁账(它没有清单行);多一个少一个都会让锁账口径与屏上不同源")
-            .containsExactly("elec-model");
+            .as("不进整月锁账的键要逐条有理由,不许顺手加")
+            .containsExactly("elec-model", "report-is", "report-bs", "report-tb");
     }
 
     /** 键集合的规模钉住:14 个 kind,少一个就是有一张表能审但审了不锁。 */
@@ -80,7 +85,11 @@ class ReviewKeyTest {
             .containsExactly(
                 "params", "meters", "alloc", "alloc-loss", "bill-notices",
                 "ledger", "s10", "salary", "utilities",
-                "pv", "charging-car", "charging-ebike", "elec-cost", "elec-model");
+                "pv", "charging-car", "charging-ebike", "elec-cost", "elec-model",
+                // 2026-09-08 用户拍板「每个录入屏都要审核」,三大报表进来。
+                // 三个 statement 是三个 kind 不是一个 kind 的三个 scope —— scope 那一段
+                // 被 companyId 占了(报表是 statement × 公司 × 月三维,而键只有一段 scope)。
+                "report-is", "report-bs", "report-tb");
     }
 
     /**

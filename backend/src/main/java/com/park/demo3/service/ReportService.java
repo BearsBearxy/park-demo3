@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.park.demo3.common.BizException;
+import com.park.demo3.security.ReviewKind;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.ImportResultDTO;
 import com.park.demo3.dto.ImportError;
@@ -37,9 +38,12 @@ public class ReportService {
     private final ReportCustomRowMapper customRows;
     private final ManagementCompanyMapper companies;
     private final ReportAccountMapper accounts;
+    private final com.park.demo3.security.ReviewGuard reviewGuard;
 
     public ReportService(ReportAmountMapper amounts, ReportCustomRowMapper customRows,
-                         ManagementCompanyMapper companies, ReportAccountMapper accounts) {
+                         ManagementCompanyMapper companies, ReportAccountMapper accounts,
+                         com.park.demo3.security.ReviewGuard reviewGuard) {
+        this.reviewGuard = reviewGuard;
         this.amounts = amounts; this.customRows = customRows; this.companies = companies; this.accounts = accounts;
     }
 
@@ -153,6 +157,7 @@ public class ReportService {
     public ReportPeriodDTO save(String statement, int companyId, int year, int month, ReportSaveReq req) {
         checkStatement(statement);
         requireCompany(companyId);
+        assertEditable(statement, companyId, year, month);
         clearPeriod(companyId, statement, year, month);
         if (req != null && req.cells() != null) {
             for (ReportSaveReq.Cell c : req.cells()) insertCell(companyId, statement, year, month, c.rowKey(), c.field(), c.amount());
@@ -167,11 +172,20 @@ public class ReportService {
         return period(statement, companyId, year, month);
     }
 
+    /** 一张报表 × 一家公司 × 一个月的闸。审核键的 scope 段放 companyId(同月度台账)。 */
+    private void assertEditable(String statement, int companyId, int year, int month) {
+        reviewGuard.assertEditable(ReviewKind.ofStatement(statement),
+            String.format("%04d-%02d", year, month), String.valueOf(companyId));
+    }
+
     // ── 加自定义子类(生成稳定 rowKey 'isc-<seq>' 每公司自增) ──
     @Transactional
     public ReportCustomRowDTO addCustomRow(String statement, int companyId, String parentKey, String label, int level) {
         checkStatement(statement);
         requireCompany(companyId);
+        // 加一行本身不写金额,但它改的是这家公司这张报表**所有期**的行结构(自定义行不带月),
+        // 所以按「有任一已审月就拒」判 —— 与参数长期默认行同一条路子。
+        reviewGuard.assertNoLockedMonth(ReviewKind.ofStatement(statement), String.valueOf(companyId));
         if (parentKey == null || parentKey.isBlank()) throw new BizException(ResultCode.BAD_REQUEST, "父行不能为空");
         if (label == null || label.isBlank()) throw new BizException(ResultCode.BAD_REQUEST, "名称不能为空");
         ReportCustomRow row = new ReportCustomRow();
@@ -191,6 +205,12 @@ public class ReportService {
         checkStatement(statement);
         ReportCustomRow row = customRows.selectById(id);
         if (row == null) throw new BizException(ResultCode.NOT_FOUND, "自定义行不存在");
+        // ⚠ 这一刀删的是该公司该报表**所有期**的金额(级联子树 × 全部期),算不出「被写的是哪几个月」——
+        //   ReviewGuard 的批量重载解决的是「知道被写哪些月」的情形,这里不适用。
+        //   所以按「有任一已审月就整体拒」判,与参数长期默认行同一条路子。宁可粗,不可漏:
+        //   漏了就是一次点击删掉已审月的报表金额,而审核的全部意义就是不许发生这件事。
+        reviewGuard.assertNoLockedMonth(ReviewKind.ofStatement(statement),
+                                        String.valueOf(row.getCompanyId()));
         // 收集该公司该 statement 下 id 为根的整棵子树 rowKey(含自身)
         List<ReportCustomRow> pool = customRows.forCompany(row.getCompanyId(), statement);
         Map<String, List<ReportCustomRow>> byParent = pool.stream()
@@ -219,6 +239,15 @@ public class ReportService {
         checkStatement(statement);
         Map<String, Integer> byName = companies.selectList(null).stream()
             .collect(Collectors.toMap(ManagementCompany::getName, ManagementCompany::getId, (a, b) -> a));
+        // 审核闸:**逐家**判,不是「任一家已审就整体拒」—— 后者会让一家公司审完之后,
+        // 别的公司这个月再也导不进来(同 LedgerService.rechain 那条裁定:审掉 1 月不该
+        // 连 5 月都录不进去)。未匹配到公司的段会自动新建公司,新公司不可能有已审月,自然放行。
+        // 复用上面这份 byName,不另起一趟全表查(QueryHygieneTest 会红,而且本来就是同一份数据)。
+        if (req != null && req.sections() != null)
+            for (ReportImportRequest.CompanySection sec : req.sections()) {
+                Integer cid = sec == null ? null : byName.get(sec.companyName());
+                if (cid != null) assertEditable(statement, cid, year, month);
+            }
         int imported = 0;
         List<ImportError> errors = new ArrayList<>();
         List<ImportError> notices = new ArrayList<>();

@@ -54,7 +54,8 @@ function declSites(files: string[]): { file: string; text: string }[] {
     const src = readFileSync(f, 'utf8')
     for (const re of [/reviewKey:\s*\(\)\s*=>[\s\S]{0,400}?(?=\n\s*\}\)|\n\s*\}\s*$)/g,
                       /:review-key="[\s\S]{0,300}?"/g,
-                      /reviewKinds:\s*[\s\S]{0,200}?(?=\n\s*(?:reviewScope|load|\/\/))/g]) {
+                      /reviewKinds:\s*[\s\S]{0,200}?(?=\n\s*(?:reviewScope|load|\/\/))/g,
+                      /reviewKind:\s*'[a-z-]+'/g]) {
       for (const m of src.matchAll(re)) out.push({ file: f, text: m[0] })
     }
   }

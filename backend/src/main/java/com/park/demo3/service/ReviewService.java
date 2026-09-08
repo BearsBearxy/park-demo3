@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.DataHomeOverviewDTO;
+import com.park.demo3.dto.ReviewDtos.PendingItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReviewRowDTO;
 import com.park.demo3.entity.ReviewLog;
 import com.park.demo3.entity.ReviewState;
@@ -58,12 +59,14 @@ public class ReviewService {
     private final ReviewLogMapper logs;
     private final DataHomeService dataHome;
     private final ElecCostEntryMapper elecCostEntries;
+    private final com.park.demo3.mapper.ReportAmountMapper amounts;
     private final UserPermissionCache cache;
 
     public ReviewService(ReviewStateMapper states, ReviewLogMapper logs, DataHomeService dataHome,
-                         ElecCostEntryMapper elecCostEntries, UserPermissionCache cache) {
+                         ElecCostEntryMapper elecCostEntries,
+                         com.park.demo3.mapper.ReportAmountMapper amounts, UserPermissionCache cache) {
         this.states = states; this.logs = logs; this.dataHome = dataHome;
-        this.elecCostEntries = elecCostEntries; this.cache = cache;
+        this.elecCostEntries = elecCostEntries; this.amounts = amounts; this.cache = cache;
     }
 
     // ══ 读侧 ═════════════════════════════════════════════════════════════════
@@ -103,6 +106,12 @@ public class ReviewService {
         for (ReviewKind k : List.of(ReviewKind.PV, ReviewKind.CHARGING_CAR, ReviewKind.CHARGING_EBIKE,
                                     ReviewKind.ELEC_COST, ReviewKind.ELEC_MODEL))
             keys.add(ReviewKey.of(k, null, period));
+
+        // 三大报表:一张表 × 一家公司 × 一个月。公司名单复用台账那一份(companiesOf(ov)),
+        // 不另查库 —— 两处各查一次必漂移,而漂移的表现是「清单上有这家公司、审核键里没有」。
+        for (DataHomeOverviewDTO.Company c : companiesOf(ov))
+            for (ReviewKind k : List.of(ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB))
+                keys.add(ReviewKey.of(k, String.valueOf(c.id()), period));
         return keys;
     }
 
@@ -186,6 +195,39 @@ public class ReviewService {
     public int pendingCount() {
         return Math.toIntExact(states.selectCount(
             new QueryWrapper<ReviewState>().eq("status", "submitted")));
+    }
+
+    /**
+     * 待审明细。铃铛点开的抽屉用 —— 只有个数的话,人得自己在年份条上逐月翻着找。
+     *
+     * 与 pendingCount() 同一个判据(status='submitted'),**跨全部月**,按交审时间倒序。
+     * 不按权限二次过滤:R1 定的是「有 review:approve 就能审全部键」(§7.3),
+     * 没这项权限的人后端在 controller 那层就已经 403 了,进不到这里。
+     *
+     * ponytail: 没有分页。待审队列本来就该短 —— 长到要翻页,说明审核积压了,
+     *   那是流程问题不是列表问题。真长了先加上限再说。
+     */
+    public List<PendingItemDTO> pendingList() {
+        return states.selectList(new QueryWrapper<ReviewState>()
+                .eq("status", "submitted").orderByDesc("submitted_at"))
+            .stream()
+            .map(r -> {
+                ReviewKey k = ReviewKey.parse(r.getReviewKey());
+                return new PendingItemDTO(r.getReviewKey(), r.getKind(), r.getScope(),
+                    r.getPeriod(), k.human() + scopeSuffix(k), r.getSubmittedBy(), r.getSubmittedAt());
+            })
+            .toList();
+    }
+
+    /** 「2024-02 月度台账」后面那截。台账按公司、附10 按期区、附13/14 按办公/三期 —— 不带就分不清是哪一格。 */
+    private static String scopeSuffix(ReviewKey k) {
+        if (k.scope() == null) return "";
+        return switch (k.kind().scopeShape()) {
+            case COMPANY -> " · 公司 " + k.scope();
+            case PHASE   -> " · " + k.scope() + " 期";
+            case FIXED   -> " · " + ("office".equals(k.scope()) ? "办公" : "三期");
+            case NONE    -> "";
+        };
     }
 
     /**
@@ -326,6 +368,13 @@ public class ReviewService {
             case CHARGING_EBIKE -> itemDone(ov, "ebike-charging");
             case ELEC_COST      -> itemDone(ov, "elec-cost");
             case ELEC_MODEL     -> true;   // 上面已提前返回,这里只是让 switch 穷尽
+            // 报表没有清单行的 done 位可读(本月出账屏那 15 行里本来没有它们),
+            // 判「该公司该报表这个月有没有金额行」—— 与 elec-model 同一条路子。
+            // ⚠ 不判「有没有非零金额」:一张全 0 的资产负债表也是录过的,判零会把它当成没录。
+            case REPORT_IS, REPORT_BS, REPORT_TB -> !amounts.period(
+                Integer.parseInt(key.scope()), key.kind().statement(),
+                Integer.parseInt(key.period().substring(0, 4)),
+                Integer.parseInt(key.period().substring(5, 7))).isEmpty();
         };
     }
 
@@ -395,7 +444,26 @@ public class ReviewService {
         l.setReviewKey(key.raw()); l.setAction(action); l.setActor(me());
         l.setAt(LocalDateTime.now()); l.setReason(reason);
         logs.insert(l);
+        rev.incrementAndGet();
     }
+
+    /**
+     * 「审核态变过几次」。顺 presence 的心跳发给所有人,别人的浏览器看见数变了就重取审核态。
+     *
+     * 加在 log() 里而不是四个动作各加一次:四个动作**都**以 log() 收尾,加在这里忘不掉;
+     * 将来加第五个动作,它要留痕就自然会 bump。
+     *
+     * ⚠ 进程内的数,**多实例部署下是错的** —— 每个实例各自从 0 开始数,前端会在两个数之间
+     *   来回跳,表现是「有时候刷得到有时候刷不到」。本项目单实例部署(deploy/ 只有一份),
+     *   真要上多实例,换法是把它挪进数据库或 Redis,而不是给前端加轮询。
+     *
+     * ⚠ 不按月分:分了之后前端要为每个显示中的月各记一个数,而收益是「别的月变了我不用重取」——
+     *   审核是低频动作,那点收益换不来这份复杂度。代价写明:任何月有人审,所有人重取一次当月清单。
+     */
+    private final java.util.concurrent.atomic.AtomicLong rev = new java.util.concurrent.atomic.AtomicLong();
+
+    /** 给 PresenceService 发心跳用。 */
+    public long rev() { return rev.get(); }
 
     private static String human(String status) {
         return switch (status) {

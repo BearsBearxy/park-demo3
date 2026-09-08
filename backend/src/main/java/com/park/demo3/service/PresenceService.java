@@ -1,6 +1,7 @@
 package com.park.demo3.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.park.demo3.security.NoReviewGuard;
 import com.park.demo3.dto.LockDtos.EvictionDTO;
 import com.park.demo3.dto.PresenceDtos.*;
 import com.park.demo3.entity.AuthUser;
@@ -41,7 +42,8 @@ public class PresenceService {
         this.permCache = permCache; this.reviews = reviews;
     }
 
-    public PingResp ping(PingReq req) {
+        @NoReviewGuard(reason = "在场心跳,写内存不落库。全站唯一的轮询,3 秒一拍 —— 进审核就是每 3 秒撞一次闸")
+public PingResp ping(PingReq req) {
         String me = me();
         // ⚠ 身份从令牌取，不从请求体取。让客户端报自己是谁，头像组就成了谁都能冒名的地方。
         //
@@ -93,11 +95,12 @@ public class PresenceService {
 
         return new PingResp(seats(me), evictions,
             evictions.isEmpty() ? null : evictions.get(0),
-            approvals.inbox(), out, pendingReviews, myReturned);
+            approvals.inbox(), out, pendingReviews, myReturned, reviews.rev());
     }
 
     /** 登出 / 关页面。不清的话他会在别人的头像组里多挂 60 秒。 */
-    public void leave(String sid) { store.leave(sid); }
+        @NoReviewGuard(reason = "同 ping:离场,写内存")
+public void leave(String sid) { store.leave(sid); }
 
     /**
      * 在线清单，排序即优先级：**编辑中 → 浏览中 → 空闲**，同档内先到先排。

@@ -46,7 +46,7 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
   useEditMode(['entry:edit', 'param-policy:edit'], {
     scope: () => S.elecCost(year.value, month.value),
     // 审核键(§7.1):**elec-model**,不是 elec-cost —— 后者是附表11 的报送台账(ElecView/elec_record)。
@@ -598,6 +598,7 @@ function fmtMetric(mt: ElecMetricDTO): string {
         </Button>
         <!-- 失败态禁"进"不禁"出"(:disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
+                          :review-note="reviewNote" :review-tip="reviewTip"
                           :disabled="!editMode && !!loadErr"
                           :title="!editMode && loadErr ? '数据未加载成功,先点失败条上的「重试」再进编辑' : undefined"
                           @toggle="toggleEdit()" />

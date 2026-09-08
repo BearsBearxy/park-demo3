@@ -32,9 +32,15 @@ class DataHomeServiceTest {
     BillNoticeMapper billNotices = Mockito.mock(BillNoticeMapper.class);
     ParamService paramService = Mockito.mock(ParamService.class);
     ManagementCompanyMapper companies = Mockito.mock(ManagementCompanyMapper.class);
+    // 三大报表进清单之后多的一个源(2026-09-08)。本类的用例都不碰报表,mock 回空即可 ——
+    // selectObjs 默认回 null 会 NPE,所以显式给空 list。
+    com.park.demo3.mapper.ReportAmountMapper amounts = Mockito.mock(com.park.demo3.mapper.ReportAmountMapper.class);
+    // 园区电费模型也进清单了(2026-09-08),本类用例不碰它,mock 回空
+    com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries =
+        Mockito.mock(com.park.demo3.mapper.ElecCostEntryMapper.class);
 
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
-        meterReadings, poolResults, lossResults, billNotices, paramService, companies);
+        meterReadings, poolResults, lossResults, billNotices, paramService, companies, amounts, elecCostEntries);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
@@ -127,8 +133,9 @@ class DataHomeServiceTest {
             .thenReturn(List.of(salaryRow("2026-06", LocalDateTime.of(2026, 6, 5, 8, 30))));
 
         DataHomeOverviewDTO o = svc.overview("2026-06");
-        assertThat(o.schedules().items()).hasSize(9);
-        assertThat(o.schedules().total()).isEqualTo(9);
+        // 2026-09-08:三大报表进清单,9 → 12 源
+        assertThat(o.schedules().items()).hasSize(13);
+        assertThat(o.schedules().total()).isEqualTo(13);
         assertThat(o.schedules().done()).isEqualTo(1);
         assertThat(o.schedules().items()).filteredOn(i -> i.name().equals("工资明细"))
             .allMatch(DataHomeOverviewDTO.Item::done);
@@ -207,7 +214,10 @@ class DataHomeServiceTest {
         assertThat(item.companies()).isNull();
         assertThat(item.phases()).isNull();
         // 「其余七项」不是只有 salary 一项 —— yearly() 那对 null,null 也要覆盖到(附6/7/8/11 都走 yearly())
-        assertThat(ov.schedules().items()).filteredOn(i -> !List.of("ledger", "sales-income").contains(i.go()))
+        // ⚠ 三大报表(2026-09-08)与台账一样按公司分格,companies 非 null,所以一并排除。
+        List<String> withCompanies = List.of("ledger", "sales-income",
+            "income-statement", "balance-sheet", "trial-balance");
+        assertThat(ov.schedules().items()).filteredOn(i -> !withCompanies.contains(i.go()))
             .allSatisfy(i -> { assertThat(i.companies()).isNull(); assertThat(i.phases()).isNull(); });
     }
 

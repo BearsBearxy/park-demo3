@@ -14,6 +14,9 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.park.demo3.entity.ReportAmount;
+import java.util.Set;
+import com.park.demo3.entity.ElecCostEntry;
 
 /**
  * data-home 只读聚合：所有数字从已建子系统真实数据派生。零新表、零迁移、不读 new Date()。
@@ -23,6 +26,8 @@ import java.util.stream.Stream;
 public class DataHomeService {
 
     private final MonthlyLedgerMapper ledger;
+    private final com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries;
+    private final com.park.demo3.mapper.ReportAmountMapper amounts;
     private final S10RecordMapper s10;
     private final SalaryRecordMapper salary;
     private final OfficeRecordMapper office;
@@ -43,7 +48,11 @@ public class DataHomeService {
                            ElecRecordMapper elec, ContractService contractService,
                            MeterReadingMapper meterReadings, AllocPoolResultMapper poolResults,
                            AllocLossResultMapper lossResults, BillNoticeMapper billNotices,
-                           ParamService paramService, ManagementCompanyMapper companies) {
+                           ParamService paramService, ManagementCompanyMapper companies,
+                           com.park.demo3.mapper.ReportAmountMapper amounts,
+                           com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries) {
+        this.elecCostEntries = elecCostEntries;
+        this.amounts = amounts;
         this.ledger = ledger; this.s10 = s10; this.salary = salary; this.office = office;
         this.pv = pv; this.charging = charging; this.elec = elec; this.contractService = contractService;
         this.meterReadings = meterReadings; this.poolResults = poolResults;
@@ -109,7 +118,7 @@ public class DataHomeService {
             months,
             buildBlockers(contractNoLine, paramStale),
             buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
-            new DataHomeOverviewDTO.Schedules(done, 9, items));
+            new DataHomeOverviewDTO.Schedules(done, 13, items));
     }
 
     /** 出账链四源的 distinct 账期并集(升序去重)。四个 selectDistinctYms 是上一轮为干掉
@@ -147,7 +156,7 @@ public class DataHomeService {
     /** 9 个附表源的本期取数。全部按 acctMonth 判本月有没有行(2026-09-06 前年度类曾按整年判,
      *  一月录完十二月看还显对勾——那是假绿,已改);yearly 这个位现在只剩「标签写不写年」的用途。 */
     private List<SourceData> scheduleSources(int year, int month, String acctMonth) {
-        List<SourceData> sources = new ArrayList<>(9);
+        List<SourceData> sources = new ArrayList<>(13);
         List<MonthlyLedger> ledgerRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
             .eq("period_year", year).eq("period_month", month));
         // 台账公司清单:全集来自管理公司表(不是「谁录了谁才在列表里」),done 按该公司本月有没有台账行判
@@ -193,6 +202,44 @@ public class DataHomeService {
         sources.add(yearly("电费成本", "附11", "elec-cost",
             concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")).stream()
                 .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ElecRecord::getUpdatedAt));
+
+        // 园区电费模型(2026-09-08 补):后端 R1 就给它建了审核键(elec-model),但前端清单里
+        // 一直没有它的行 —— 结果是交不了审、也就永远审不了,那把键的闸等于死代码。
+        // ⚠ 它不是独立的屏,是附表11 屏的 ?mode=cost 子视图,所以 go 与附表11 同为 elec-cost,
+        //   靠 tag 分行(与附13/附14 共用 go='utilities' 同一套办法)。
+        sources.add(monthly("园区电费模型", "模型", "elec-cost",
+            elecCostEntries.selectByMonth(acctMonth), ElecCostEntry::getUpdatedAt));
+
+        // ── 三大报表(2026-09-08:用户拍板「每个录入屏都要审核」,交审入口放本月出账清单上) ──
+        //
+        // 与别的源不同的是它按**公司**分格(同月度台账):一张报表 × 一家公司 × 一个月一把审核键。
+        // 公司全集同样取管理公司表 —— 「谁录了谁才在列表里」会让没录的那家公司从清单上消失,
+        // 而清单要回答的正是「还有谁没录」。
+        //
+        // 一趟查齐三张表:report_amount 的唯一键带 statement,按 (statement, company_id) 去重
+        // 就是「这个月哪家公司这张表有数」。分三趟查等于把同一件事做三遍。
+        Set<String> reportFilled = new java.util.HashSet<>();
+        for (Object o : amounts.selectObjs(new QueryWrapper<ReportAmount>()
+                .select("DISTINCT CONCAT(statement, ':', company_id)")
+                .eq("year", year).eq("month", month))) {
+            if (o instanceof String v) reportFilled.add(v);
+        }
+        // 公司全集复用上面给台账查的那一份(cos):同一个「启用公司按 sort_no 排」的清单,
+        // 再查一遍等于把同一件事做两遍,而且会让「公司表只查一次」那条单测红。这里只换 done。
+        record Rpt(String name, String tag, String go, String statement) {}
+        for (Rpt r : List.of(new Rpt("利润表", "报表", "income-statement", "is"),
+                             new Rpt("资产负债表", "报表", "balance-sheet", "bs"),
+                             new Rpt("科目余额表", "报表", "trial-balance", "tb"))) {
+            List<DataHomeOverviewDTO.Company> rcos = cos.stream()
+                .map(c -> new DataHomeOverviewDTO.Company(c.id(), c.shortName(),
+                          reportFilled.contains(r.statement() + ":" + c.id())))
+                .toList();
+            // 整项 done = 每家公司都录了。与台账「有 chips 的行 done 收严成全部 chip done」同调 ——
+            // 一家没录就说「已录」,会让「本月还差什么」这张清单说假话。
+            boolean allDone = !rcos.isEmpty() && rcos.stream().allMatch(DataHomeOverviewDTO.Company::done);
+            sources.add(new SourceData(r.name(), r.tag(), r.go(), false,
+                allDone ? List.of(LocalDateTime.now()) : List.of(), rcos, null));
+        }
         return sources;
     }
 

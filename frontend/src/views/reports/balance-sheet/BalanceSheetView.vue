@@ -51,6 +51,9 @@ const {
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
+  // 审核键(2026-09-08):一张表 × 一家公司 × 一个月。已审核 / 待审核的月进不了编辑态;
+  // 交审动作在「本月出账」清单上(各屏自己的入口等设计稿)。
+  reviewKind: 'report-bs',
   // bs 只存 field='end',后端 netPreview(行1 cur)恒 0,月卡显 ¥0.00 是误导 → 只标「已录入」
   zeroPreviewHidden: true,
   resetLocal: () => { selected.value = new Set() },

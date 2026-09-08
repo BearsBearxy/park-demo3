@@ -19,6 +19,7 @@ import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.ReconMarkMapper;
 import com.park.demo3.mapper.S10RecordMapper;
 import com.park.demo3.mapper.TenantMapper;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -244,7 +245,8 @@ public class ReconService {
     }
 
     // ── mark upsert:按 uk(year,month,tenant_name) 有则更新 note/tenant_id,无则插入(E5) ──
-    public ReconMarkDTO mark(int year, int month, ReconMarkReq req) {
+        @NoReviewGuard(reason = "收入核对是**核对标记**不是录入的数据(spec §7.1 末句明写它本轮不进审核)。它标的是「这个月的差异我看过了」,本身不产生业务数字;要它进审核得先定「核对完算不算月结的一步」")
+public ReconMarkDTO mark(int year, int month, ReconMarkReq req) {
         ReconMark m = marks.selectOne(new QueryWrapper<ReconMark>()
             .eq("year", year).eq("month", month).eq("tenant_name", req.tenantName()));
         if (m == null) {
@@ -260,7 +262,8 @@ public class ReconService {
     }
 
     // ── 取消核实=删除(幂等,不存在静默) ──
-    public void unmark(int year, int month, String tenantName) {
+        @NoReviewGuard(reason = "同 mark:取消核对标记")
+public void unmark(int year, int month, String tenantName) {
         marks.delete(new QueryWrapper<ReconMark>()
             .eq("year", year).eq("month", month).eq("tenant_name", tenantName));
     }

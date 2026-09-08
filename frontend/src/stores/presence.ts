@@ -151,6 +151,15 @@ export const usePresenceStore = defineStore('presence', () => {
    */
   const pendingReviews = ref(0)
   const myReturned = ref(0)
+  /**
+   * 审核态变过几次(后端 ReviewService 的进程内计数)。**只是个号,不是内容** ——
+   * 别人审了这个数就变,review store 看见变了自己去重取当月清单。
+   *
+   * 为什么不复用上面两个数当触发器:pendingReviews 按权限算(没有审核权的人恒 0)、
+   * myReturned 按人算(只数我自己被退回的)。别人交审时,一个审核员看得见、
+   * 录入方看不见 —— 拿它们当「审核态变了」的信号,一半的人永远收不到。
+   */
+  const reviewRev = ref(0)
 
   /**
    * 本会话此刻握着的锁 → 各自的被接管回调。
@@ -245,13 +254,14 @@ export const usePresenceStore = defineStore('presence', () => {
       const r = await api.put<{
         users: Seat[]; evictions: Eviction[] | null
         approvals: Pending[]; outcome: Outcome | null
-        pendingReviews?: number; myReturned?: number
+        pendingReviews?: number; myReturned?: number; reviewRev?: number
       }>('/presence/ping', { sid, scope, label, lastActivityAt, editScopes })
       users.value = r?.users ?? []
       approvals.value = r?.approvals ?? []
       // ?? 0 而不是 ?? 旧值:字段缺席(旧后端 / 半截响应)时该显示 0,不该挂着上一拍的数
       pendingReviews.value = r?.pendingReviews ?? 0
       myReturned.value = r?.myReturned ?? 0
+      reviewRev.value = r?.reviewRev ?? 0
       // 通知按 scope 派回**它自己的每一个**登记者(同名 scope 可能有多个屏,都得退)。
       // 拍快照再迭代:回调里会 dropLock,原地迭代会漏。
       // ⚠ 只派给「发拍之前就登记着」的(since < myGen):这拍发出之后才登记的回调,
@@ -312,5 +322,5 @@ export const usePresenceStore = defineStore('presence', () => {
     api.delete(`/presence/${sid}`).catch(() => { /* TTL 兜底 */ })
   }
 
-  return { sid, users, others, approvals, outcome, pendingReviews, myReturned, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
+  return { sid, users, others, approvals, outcome, pendingReviews, myReturned, reviewRev, editorsByScope, editorsUnder, editingNote, holdsEditUnder, enter, holdLock, dropLock, touch, stop, ping }
 })

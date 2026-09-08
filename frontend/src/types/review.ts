@@ -72,3 +72,14 @@ export function reviewNoteOf(r: ReviewRow | null): string | null {
   const day = r.reviewedAt ? r.reviewedAt.slice(5, 10) : ''
   return `已审核${who ? ' · ' + who : ''}${day ? ' ' + day : ''}`
 }
+
+/** 待审明细的一条(后端 ReviewDtos.PendingItemDTO)。label 是后端拼好的人话名,前端不再拼。 */
+export interface PendingItem {
+  key: string
+  kind: string
+  scope: string | null
+  period: string
+  label: string
+  submittedBy: string | null
+  submittedAt: string | null
+}
