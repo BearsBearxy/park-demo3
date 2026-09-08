@@ -21,6 +21,9 @@ export const reviewApi = {
     api.post<void>(`/review/${encodeURIComponent(key)}/return`, { reason }),
   withdraw: (key: string, reason: string) =>
     api.post<void>(`/review/${encodeURIComponent(key)}/withdraw`, { reason }),
+  /** 撤回:自己交的、还没人审(per-screen-review §07-③)。**不带理由** —— 撤的是自己十秒钟前交的
+   *  东西,没有第二个人读过它;「撤销审核」要理由是因为它作废的是别人的判断。故形状同 submit,无 body。 */
+  recall: (key: string) => api.post<void>(`/review/${encodeURIComponent(key)}/recall`),
 
   /** 整月全审的月份集合(D20)。矩阵月格的 ✓ 靠它,与四个 /months 端点同形。 */
   closedMonths: () => api.get<string[]>('/review/closed-months'),

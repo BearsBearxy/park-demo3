@@ -575,3 +575,50 @@ describe('审核闸(第二道:权限 → 审核态 → 锁)', () => {
            '没有审核键就不该去问审核态').toHaveLength(0)
   })
 })
+
+// ── reviewKeys:动作簇要的那几把键从 composable 里出来,屏不再各写一份 ──
+//
+// 收口前 5 个屏各写了一份 `reviewKeys` computed 去喂 FPReviewActions,与 `reviewKey: () =>`
+// 里的字面量是同一个键名的两处写法 —— 改键名要改两处,漏一处的表现是屏上那颗「交审」
+// 交的是另一把键(或整簇不渲染),而两处单看都自洽。
+//
+// 破坏验证①:把 useEditMode 末尾 return 里的 reviewKeys 删掉 → 这三条全红(undefined)。
+// 破坏验证②:把 `Array.isArray(k) ? k : [k]` 改成直接回 k → 「单键也要裹成数组」那条红
+//   (FPReviewActions 的 keys 是 string[],喂裸串进去 keys.value.every 会按字符逐个走)。
+// 破坏验证③:把 `k == null ? null : ...` 改成恒回数组 → 「没有期就是 null」那条红
+//   (空数组与 null 在组件里都不渲染,但 null 才是「这屏此刻没有可审的期」的准话)。
+describe('reviewKeys:喂给审核动作簇的那几把键', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
+  })
+
+  it('❗单键屏:裹成数组出来', () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'], SALARY)
+    expect(m.reviewKeys.value).toEqual(['salary:2025-03'])
+  })
+
+  it('❗多键屏(公共电核算 alloc + alloc-loss):原样两把,顺序不变', () => {
+    asRole(['entry:edit'])
+    const m = useEditMode(['entry:edit'], { reviewKey: () => ['alloc:2025-03', 'alloc-loss:2025-03'] })
+    expect(m.reviewKeys.value).toEqual(['alloc:2025-03', 'alloc-loss:2025-03'])
+  })
+
+  it('❗还在选期门(reviewKey 回 null)/ 根本不进审核的屏:回 null,不是空数组', () => {
+    asRole(['entry:edit'])
+    expect(useEditMode(['entry:edit'], { reviewKey: () => null }).reviewKeys.value).toBeNull()
+    expect(useEditMode(['entry:edit']).reviewKeys.value).toBeNull()
+  })
+
+  it('❗跟着期走:换月之后拿到的是新那把(屏里那份 computed 删掉之后靠的就是这条)', async () => {
+    asRole(['entry:edit'])
+    const ym = ref('2025-03')
+    const m = useEditMode(['entry:edit'], { reviewKey: () => `salary:${ym.value}` })
+    expect(m.reviewKeys.value).toEqual(['salary:2025-03'])
+    ym.value = '2025-04'
+    await nextTick()
+    expect(m.reviewKeys.value).toEqual(['salary:2025-04'])
+  })
+})
