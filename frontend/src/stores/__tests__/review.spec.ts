@@ -90,6 +90,31 @@ describe('审核 store', () => {
     expect(s.rowOf('salary:2024-02')).toBeNull()
   })
 
+  // ── statusOf:五份抄写收成一份(METRIC-SOURCE-SPEC §1) ────────────────
+  //
+  // 破坏验证①:把 statusOf 的 `if (!yearLoaded(...)) return null` 改成 `return 'entered'`
+  //   → 「年还没到手」那条红(也正是收口前动作簇会给已审核的表画「交审」的那条路)。
+  // 破坏验证②:把 `?? 'entered'` 删掉(回 null)→ 「库里没这行 = 派生 entered」那条红。
+  // 破坏验证③:把 statusOf 从 setup store 末尾的 return 里删掉 → 这三条一起红(TypeError)。
+  it('❗statusOf:年没到手回 null,不许说成「未交审」', () => {
+    const s = useReviewStore()
+    // 一个 ensure 都没做过 —— byYear 里没有 2024
+    expect(s.statusOf('salary:2024-02')).toBeNull()
+    expect(s.statusOf(null)).toBeNull()
+    expect(s.statusOf('这不是一把键')).toBeNull()      // periodOfKey 认不出来 ⇒ 年为 null ⇒ 拿不准
+  })
+
+  it('❗statusOf:年到手了,有行取 row.status,没行派生 entered', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce([row({ key: 'salary:2024-02', status: 'approved' })])
+    const s = useReviewStore()
+    await s.ensureYear(2024)
+    expect(s.statusOf('salary:2024-02')).toBe('approved')
+    // 后端闸道只发已落库的行,没发的那几把是「还没交审」——不是「不知道」
+    expect(s.statusOf('salary:2024-03')).toBe('entered')
+    // 另一年仍然「不知道」:2024 到手不代表 2025 到手
+    expect(s.statusOf('salary:2025-03')).toBeNull()
+  })
+
   // 破坏验证:把 act() 里的 invalidate+ensure 删掉,这条红 —— 屏上会一直挂着交审前的状态。
   // 破坏验证:把 invalidate 里那半段「年道也失效」删掉 → 红。
   // 只失效一道的后果:清单已经翻成「待审核」,而编辑按钮还画得出来。

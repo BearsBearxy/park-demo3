@@ -9,6 +9,7 @@
 // 矩阵本身、手工年、连续补满的规则完全一样，所以那部分收在这里，两边都别再抄。
 import { computed, ref } from 'vue'
 import { useScreenPeriodStore } from '@/stores/screenPeriod'
+import type { ReviewStatus } from '@/types/review'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -20,6 +21,11 @@ export interface GateCell {
   hasData: boolean
   badge?: string
   cur?: boolean
+  /**
+   * 这个月的审核态 → 月卡右下角一枚角标（`BookMonthMatrix` 的 `.bmm-rv`，设计稿 §9.2-④）。
+   * `null` = 还不知道（闸道没到手）＝不画；不传 reviewOf 的屏恒 undefined，也不画。
+   */
+  review?: ReviewStatus | null
 }
 
 export interface GateRow {
@@ -38,6 +44,15 @@ export function useMonthGate(opts: {
   months: () => readonly string[]
   /** 每格的徽标。省略 = 只画有无，不写数字。 */
   badgeOf?: (ym: string) => string | undefined
+  /**
+   * 每格的审核态（`stores/review` 的 `statusOf`）。省略 = 不画角标 —— 用这道门的三屏里
+   * 分栋抄表 / 分桩明细本来就不进审核（`views/__tests__/reviewGateCoverage.spec.ts` 的白名单）。
+   *
+   * ⚠ 名字只能是 `reviewOf`。叫 `reviewKey` / `review-key` 会被那份覆盖率门禁认成
+   *   「这一屏声明了审核键」，而白名单那两屏正好用这道门 —— 它那条反向断言
+   *   「白名单里的屏确实没有声明审核键」当场红，红的样子还像是白名单写错了。
+   */
+  reviewOf?: (ym: string) => ReviewStatus | null
 }) {
   const store = useScreenPeriodStore()
 
@@ -68,7 +83,11 @@ export function useMonthGate(opts: {
       const months = Array.from({ length: 12 }, (_, i) => {
         const key = `${r.year}-${pad2(i + 1)}`
         const hasData = set.has(key)
-        return { month: i + 1, hasData, badge: hasData ? opts.badgeOf?.(key) : undefined }
+        // 角标的空月判据不在这里重复：BookMonthMatrix 一处拦（v-if="m.hasData && m.review"）。
+        // 徽标那份 `hasData ?` 留着是因为它还要决定显不显 `.bmm-count`，两者不是一回事。
+        return { month: i + 1, hasData,
+                 badge: hasData ? opts.badgeOf?.(key) : undefined,
+                 review: opts.reviewOf?.(key) }
       })
       return {
         year: r.year,

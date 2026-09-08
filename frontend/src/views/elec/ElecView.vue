@@ -51,6 +51,10 @@ const mode = ref<Mode>(deepMode ?? loadViewMode(MODE_SCREEN, MODES.map(m => m.id
 watch(mode, (m) => saveViewMode(MODE_SCREEN, m))
 
 // ── 本屏状态(通用部分见 useSchedScreen) ─────────────────
+// ⚠ 整年动作的候选月跟着 type 走:records(y, type) 一趟只拉一类,rows() 里就只有当前这一类的行。
+//   于是「只有基本电费、没有电量电费」的月在电量视图下不算候选 —— 按钮上的月数会随右上角的
+//   类型切换而变,而两类共用**同一把** elec-cost 键。保守方向(少交不多交),但它是个天花板:
+//   真要不随视图变,得让后端一趟给回本年有数据的月份集合,而不是在前端把两类都拉一遍。
 const type = ref<'energy' | 'basic'>('energy')
 const phases = ref<ElecPhaseDTO[]>([])
 const overview = ref<ElecOverviewDTO | null>(null)  // §6 加载信号
@@ -69,7 +73,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
+  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
@@ -202,6 +206,8 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
       <div class="e11-page fp-fluid">
+        <!-- 整年动作簇(2026-09-08 拍板):一颗按钮管整年、键仍按月;
+             候选月的筛法只此一份 —— useSchedScreen 的 reviewKeys。 -->
         <SchedHeader
           :scope="S.elecSched(year)"
           icon="zap"
@@ -210,6 +216,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
           :year="year"
           :edit="edit"
           perm="entry:edit"
+          :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

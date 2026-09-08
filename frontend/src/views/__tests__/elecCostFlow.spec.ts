@@ -9,6 +9,8 @@ import type {
   ElecMeterDTO, ElecCostEntryDTO, ElecPriceCfgDTO, ElecMetricDTO,
 } from '@/api/elecCost'
 import { useAuthStore } from '@/stores/auth'
+import { reviewApi } from '@/api/review'
+import type { ReviewRow, ReviewStatus } from '@/types/review'
 import api from '@/api'
 
 /**
@@ -30,6 +32,18 @@ vi.mock('@/api/elecCost', () => ({
     priceCfg: vi.fn(), savePriceCfg: vi.fn(),
     importRows: vi.fn(), simulate: vi.fn(),
     metrics: vi.fn(), metricsYear: vi.fn(),
+  },
+}))
+
+// 审核 mock:月卡角标(§9.2-④)让矩阵态也要走一趟闸道 `states?year=`。
+// 不 mock 就走真 axios —— 挂了被 store 的 catch 吞掉,角标那两条恒不出现(假红/假绿都可能)。
+vi.mock('@/api/review', () => ({
+  reviewApi: {
+    states: vi.fn().mockResolvedValue([]),
+    list: vi.fn().mockResolvedValue([]),
+    closedMonths: vi.fn().mockResolvedValue([]),
+    pending: vi.fn().mockResolvedValue([]),
+    submit: vi.fn(), approve: vi.fn(), returnBack: vi.fn(), withdraw: vi.fn(), recall: vi.fn(),
   },
 }))
 
@@ -89,6 +103,9 @@ beforeEach(() => {
   vi.mocked(elecCostApi.metrics).mockResolvedValue(METRICS as never)
   vi.mocked(elecCostApi.priceCfg).mockResolvedValue(CFGS as never)
   vi.mocked(elecCostApi.months).mockResolvedValue(['2025-01', '2025-02', '2025-03'])
+  // ⚠ 每条都要重设:clearAllMocks 只清调用记录不清实现,角标那条设的已审核行会漏进
+  //   后面每一条 —— 而 approved 会把编辑闸锁上,⑥⑦ 那些编辑态用例会莫名其妙地红。
+  vi.mocked(reviewApi.states).mockResolvedValue([] as never)
 })
 
 async function open() {
@@ -662,5 +679,39 @@ describe('电费成本总览 · 期间深链(SIDEBAR-UX-REDESIGN §4.2)', () => 
     expect(elecCostApi.months).toHaveBeenCalledTimes(1)
     expect(elecCostApi.entries).toHaveBeenCalledWith(2025, 3)
     expect(w.find('.ec-page').exists()).toBe(true)
+  })
+})
+
+/**
+ * 月卡审核角标（设计稿 §9.2-④）。这一屏的月格走通用月门 `useMonthGate` 的 `reviewOf` 口，
+ * 一格一把键（`elec-model:{年月}`，无 scope 维），所以不过 worstReview —— 那是给多键格的。
+ *
+ * 「哪一档画哪个色」在 components/fp/__tests__/chainMatrix.spec.ts 钉过；
+ * 这里只验**这一屏喂进去的是什么**：哪一把键、按年取了几趟。
+ */
+const rvRow = (key: string, status: ReviewStatus): ReviewRow => ({
+  key, kind: 'elec-model', scope: null, status,
+  submittedBy: 'zhangsan', submittedAt: null, reviewedBy: '李审',
+  reviewedAt: '2025-03-05T10:00:00', reason: null, blockedBy: [],
+})
+
+describe('电费成本总览 · 月卡审核角标', () => {
+  it('❗一格一把键 elec-model:{年月} —— 库里没这行是灰点(未交审)，不是「没角标」', async () => {
+    // 红线:ElecCostView.vue 的 `reviewOf: (ym) => review.statusOf(`elec-model:${ym}`)` 里
+    // 键名写成 elec-cost(附表11 那把,真实存在的另一把键)→ 3 月退成灰点 → 红
+    vi.mocked(reviewApi.states).mockResolvedValue([rvRow('elec-model:2025-03', 'approved')] as never)
+    const w = await open()
+    await flushPromises()
+    const cards = w.findAll('.bmm-card')
+    expect(cards[2].find('.bmm-rv').classes(), '3 月已审核 → 绿锁').toContain('rv-approved')
+    expect(cards[0].find('.bmm-rv').classes(), '1 月有数据、库里没行 → 未交审').toContain('rv-entered')
+    expect(cards[5].find('.bmm-rv').exists(), '6 月是空月,没有东西可交').toBe(false)
+  })
+
+  it('❗矩阵态自己取闸道，一年一趟 —— 没有期时 useEditMode 那条 ensureFor 一趟都不发', async () => {
+    // 红线:ElecCostView.vue 里那条 watch(gateRows…) 的 { immediate: true } 去掉 → 零趟 → 角标全没 → 红
+    await open()
+    await flushPromises()
+    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0]), '数据年只有 2025 ⇒ 一趟').toEqual([2025])
   })
 })

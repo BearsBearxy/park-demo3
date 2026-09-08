@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * 守卫本身由 {@code ReviewGuardIT} 逐条钉死,键解析由 {@code ReviewKeyTest} 钉死。
  * 这里只测**只有接上 HTTP 与账号体系才成立**的那几条:状态机、两种前置、理由必填、
- * 谁能审谁不能审、review_log 落没落。
+ * 谁能审谁不能审、撤回限本人、review_log 落没落。
  *
  * 用 elec-model 这把键跑状态机:它的交审前置是「该月 elec_cost_entry 有行」,插一行就能
  * 造出 done —— 其余 13 把键的 done 要跑一遍首页聚合,得先造出台账/抄表/公摊一整套数据。
@@ -132,6 +132,84 @@ class ReviewApiIT extends AbstractMysqlIT {
         ok(doPost("/api/review/" + MODEL + "/submit", a));
         assertThat(code(doPostJson("/api/review/" + MODEL + "/return", a, "{\"reason\":\"\"}"))).isEqualTo(400);
         assertThat(code(doPostJson("/api/review/" + MODEL + "/return", a, "{\"reason\":\"   \"}"))).isEqualTo(400);
+    }
+
+    // ══ 撤回(R4)═════════════════════════════════════════════════════════════
+
+    @Test
+    void recall_byTheSubmitter_deletesTheRow_andIsSubmittableAgain() throws Exception {
+        String a = admin();
+        seedElecCostEntry();
+        ok(doPost("/api/review/" + MODEL + "/submit", a));
+
+        // 撤回**没有** body —— 加了 ReasonReq 的话这一句会 400
+        ok(doPost("/api/review/" + MODEL + "/recall", a));
+        // 与 withdraw 同形:删行,回派生态「录入中」,不留 returned
+        assertThat(statusOf(a, MODEL)).isEqualTo("entered");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM review_state WHERE review_key=?",
+                Integer.class, MODEL)).isZero();
+
+        List<Map<String, Object>> log = jdbc.queryForList(
+            "SELECT action, actor, reason FROM review_log WHERE review_key=? ORDER BY id", MODEL);
+        assertThat(log.stream().map(r -> r.get("action"))).containsExactly("submit", "recall");
+        assertThat(log.get(1).get("reason")).as("撤回不带理由").isNull();
+
+        // 闭环:撤回的整个意义就是「改完再交」,交不回去等于把人锁在外面
+        ok(doPost("/api/review/" + MODEL + "/submit", a));
+        assertThat(statusOf(a, MODEL)).isEqualTo("submitted");
+    }
+
+    /**
+     * 别人交的撤不了 —— 打回去那条路是审核员的「退回」(要理由、留痕在行上)。
+     *
+     * 故意让 **admin** 去撤:他 13 个权限点全有、还能 approve,连他都撤不动,
+     * 才说明这一条判的是「谁交的」而不是「有没有权限」。
+     */
+    @Test
+    void recall_ofSomeoneElsesSubmission_is403_andTheRowStays() throws Exception {
+        String a = admin();
+        String u = mkUser(a, "it-clk", "finance_clerk");   // 有 entry:edit,交得了 elec-model 的审
+        try {
+            String t = login(u, PASS);
+            seedElecCostEntry();
+            ok(doPost("/api/review/" + MODEL + "/submit", t));
+
+            String r = body(doPost("/api/review/" + MODEL + "/recall", a));
+            assertThat((int) JsonPath.read(r, "$.code")).isEqualTo(403);
+            // 文案要让人知道下一步该干什么,光说「不许」等于把人晾在那儿
+            assertThat((String) JsonPath.read(r, "$.message")).contains(u).contains("退回");
+            // 撤不动 ≠ 状态被动过
+            assertThat(statusOf(a, MODEL)).isEqualTo("submitted");
+        } finally { cleanup(u); }
+    }
+
+    /** 只有待审核态撤得回。已审核那一步该走审核员的「撤销审核」,已退回球本来就在录入人脚下。 */
+    @Test
+    void recall_onlyFromSubmitted_otherwise409() throws Exception {
+        String a = admin();
+        seedElecCostEntry();
+        assertThat(code(doPost("/api/review/" + MODEL + "/recall", a))).as("录入中").isEqualTo(409);
+
+        ok(doPost("/api/review/" + MODEL + "/submit", a));
+        ok(doPostJson("/api/review/" + MODEL + "/return", a, "{\"reason\":\"重录\"}"));
+        assertThat(code(doPost("/api/review/" + MODEL + "/recall", a))).as("已退回").isEqualTo(409);
+
+        ok(doPost("/api/review/" + MODEL + "/submit", a));
+        ok(doPost("/api/review/" + MODEL + "/approve", a));
+        assertThat(code(doPost("/api/review/" + MODEL + "/recall", a))).as("已审核").isEqualTo(409);
+    }
+
+    /** 撤回挂的是「任一相关 edit 权」而不是 review:approve —— 审核员在 URL 层就进不来。 */
+    @Test
+    void recall_needsAnEditPermission_notReviewApprove() throws Exception {
+        String a = admin();
+        String u = mkUser(a, "it-rv", "reviewer");
+        try {
+            String t = login(u, PASS);
+            seedState(MODEL, "elec-model", null, "submitted");
+            mvc.perform(post("/api/review/" + MODEL + "/recall").header("Authorization", hdr(t)))
+               .andExpect(status().isForbidden());
+        } finally { cleanup(u); }
     }
 
     // ══ 两种前置 ════════════════════════════════════════════════════════════

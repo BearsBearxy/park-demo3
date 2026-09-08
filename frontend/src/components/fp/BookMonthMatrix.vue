@@ -9,6 +9,19 @@ import { usePresenceStore } from '@/stores/presence'
 // 纯展示组件,不发请求;年份范围与 removable 判定由上层用 utils/matrixYears 组好传入。
 import { computed } from 'vue'
 import { Plus, X, Lock } from 'lucide-vue-next'
+// type-only:这是纯展示组件,不给它加 stores/review 的运行时依赖。
+import type { ReviewStatus } from '@/types/review'
+
+// 角标悬停说人话。四档逐字照设计稿 §07-④ 的 legend —— 屏上只有一个点,
+// 「橙 = 待审核」这层意思除了 title 没有第二个地方能讲。
+const REVIEW_TITLE: Record<ReviewStatus, string> = {
+  entered: '未交审 · 该你交了',
+  submitted: '待审核 · 在审核员手上',
+  approved: '已审核 · 锁了',
+  returned: '已退回 · 该你改了',
+}
+// 模板里的 v-if 不给下面的绑定收窄类型(同 :111 那处 editorOf 要写 `!`),索引一个可选联合会红。
+const titleOf = (r?: ReviewStatus | null) => (r ? REVIEW_TITLE[r] : undefined)
 
 interface MonthCell {
   month: number
@@ -29,12 +42,19 @@ interface MonthCell {
   /** 参数改动晚于快照 → 屏上数字是旧的。只换底色，不加边框（布局稳定铁律）。 */
   stale?: boolean
   /**
-   * 全月已审核 → 卡右下角一枚 ✓ 锁标（SIDEBAR-UX-REDESIGN §7.2）。
+   * 这个月的审核态 → 卡右下角一枚角标（SIDEBAR-UX-REDESIGN §9.2-4）。
+   * 灰点＝未交审（该你交了）· 橙点＝待审核 · 绿锁＝已审核 · 红点＝已退回。
+   * 前身是只有「锁 / 不锁」两档的 `locked`，分不出「待审」和「被退回」——
+   * 而分不出的恰恰是唯一需要人动手的两档。
+   *
    * **独立 absolute 角标，与 pips / badge / rowCount 并存**，不进下面那条 v-else-if 互斥链 ——
-   * 年份条恒传 pips，写进链里锁标一次都画不出来，而那种用例接对接错都绿。
-   * 审核机制本身归 R1，本期无调用方传它。
+   * 年份条恒传 pips，写进链里角标一次都画不出来，而那种接法接对接错屏级用例都绿。
+   *
+   * 一格对多把键的宿主（出账链五把 / 年份条全月十几把）先过 `monthReview.worstReview` 收成一档，
+   * 别在模板里三元判 —— 聚合序是一条判据，第二份必漂移。
+   * 空月（hasData 假）恒不画：本来就没有东西可交，一片虚线卡长满灰点是纯噪音。
    */
-  locked?: boolean
+  review?: ReviewStatus | null
 }
 interface YearRow {
   year: number
@@ -113,7 +133,13 @@ const nextYear = computed(() =>
               <Avatar :uid="editorOf(y.year, m.month)!.user"
                       :name="editorOf(y.year, m.month)!.displayName" :size="20" class="bmm-av" />
             </span>
-            <span v-if="m.locked" class="bmm-lock" title="本月已审核锁定"><Lock :size="11" /></span>
+            <!-- 审核角标(设计稿 §07-④)。与在场标记同族的**独立 absolute 分支** ——
+                 严禁并进下面那条 v-else-if 互斥链:年份条恒传 pips,进了链就一次都画不出来。 -->
+            <span v-if="m.hasData && m.review" class="bmm-rv" :class="`rv-${m.review}`"
+                  :title="titleOf(m.review)">
+              <Lock v-if="m.review === 'approved'" :size="11" />
+              <i v-else class="bmm-rvdot" />
+            </span>
             <!-- 出账链:四道工序点。空月不画点 —— 它本来就是一张「空」的虚线卡 -->
             <span v-if="m.hasData && m.pips" class="bmm-pips">
               <i v-for="(p, i) in m.pips" :key="i" class="bmm-pip" :class="{ on: p }" />
@@ -207,7 +233,15 @@ const nextYear = computed(() =>
 
 .bmm-who { position:absolute; top:6px; right:6px; z-index:2; pointer-events:none; display:flex; }
 .bmm-av { box-shadow:0 0 0 2px var(--surface-white), 0 0 0 3.5px var(--hue-orange); }
-.bmm-lock { position:absolute; bottom:6px; right:6px; z-index:2; pointer-events:none; display:flex; color:var(--text-muted); }
+/* 审核角标:占 .bmm-who 的**对角**,不照设计稿画在右上 —— 右上是在场头像的位,
+   而 entered / returned 恰恰是可编辑、正会有人在里面改的两档,同一个角必撞。
+   只换颜色不换尺寸:四档都是 absolute,加它不改月卡高度、不挤动网格(LAYOUT-STABILITY)。 */
+.bmm-rv { position:absolute; bottom:6px; right:6px; z-index:2; pointer-events:none; display:flex; }
+.bmm-rvdot { width:8px; height:8px; border-radius:50%; background:currentColor; }
+.bmm-rv.rv-entered   { color: var(--text-disabled); }
+.bmm-rv.rv-submitted { color: var(--hue-orange); }
+.bmm-rv.rv-approved  { color: var(--hue-green); }
+.bmm-rv.rv-returned  { color: var(--hue-red); }
 .bmm-card {
   position: relative;   /* 在场角标绝对定位的参照 */
   min-height: 62px;

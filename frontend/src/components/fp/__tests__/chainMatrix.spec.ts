@@ -82,11 +82,56 @@ describe('选期矩阵 · 工序点', () => {
     expect(card.find('.bmm-count').exists()).toBe(false)
   })
 
-  it('锁标是独立角标:同传 pips 与 locked 时两者都在 DOM 里', () => {
-    const w = mk(months({ 3: { hasData: true, pips: [true, false, false, false], locked: true } }))
+  it('审核角标是独立角标:同传 pips 与 review 时两者都在 DOM 里', () => {
+    const w = mk(months({ 3: { hasData: true, pips: [true, false, false, false], review: 'approved' } }))
     const card = w.findAll('.bmm-card')[2]
     expect(card.findAll('.bmm-pip')).toHaveLength(4)
-    expect(card.find('.bmm-lock').exists(), '锁标若写进 pips/badge/rowCount 那条 v-else-if 链就永远画不出来').toBe(true)
+    expect(card.find('.bmm-rv').exists(), '角标若写进 pips/badge/rowCount 那条 v-else-if 链就永远画不出来').toBe(true)
+  })
+
+  // 四档的颜色只在 scoped 样式里,jsdom 不跑它 —— 能断的只有「哪一档给哪个类」这条映射,
+  // 以及只有 approved 出锁图标。类名与 .bmm-rv.rv-* 那四行 CSS 一一对应,断了类就断了颜色。
+  it.each([
+    ['entered', 'rv-entered', '未交审 · 该你交了', false],
+    ['submitted', 'rv-submitted', '待审核 · 在审核员手上', false],
+    ['approved', 'rv-approved', '已审核 · 锁了', true],
+    ['returned', 'rv-returned', '已退回 · 该你改了', false],
+  ] as const)('审核态 %s → 角标 .%s,title 说人话', (review, cls, title, isLock) => {
+    const w = mk(months({ 3: { hasData: true, rowCount: 12, review } }))
+    const rv = w.findAll('.bmm-card')[2].find('.bmm-rv')
+    expect(rv.exists()).toBe(true)
+    expect(rv.classes(), '颜色靠这个类,换了名字四档就全成一个色').toContain(cls)
+    expect(rv.attributes('title'), '屏上只有一个点,除了 title 没第二处能讲它是什么意思').toBe(title)
+    // 已审核是「锁了」,画锁;另外三档是「还没完」,画点 —— 两者不能混
+    expect(rv.find('svg').exists()).toBe(isLock)
+    expect(rv.find('.bmm-rvdot').exists()).toBe(!isLock)
+  })
+
+  it.each([[undefined], [null]])('review 为 %s 不画角标 —— 拿不准就不画', (review) => {
+    const w = mk(months({ 3: { hasData: true, rowCount: 12, review } }))
+    expect(w.findAll('.bmm-card')[2].find('.bmm-rv').exists()).toBe(false)
+  })
+
+  it('空月不画角标 —— 它本来就没有东西可交,一片虚线卡长满灰点是纯噪音', () => {
+    const w = mk(months({ 5: { hasData: false, review: 'entered' } }))
+    const card = w.findAll('.bmm-card')[4]
+    expect(card.classes()).toContain('blank')
+    expect(card.find('.bmm-rv').exists()).toBe(false)
+    expect(card.text()).toContain('空')
+  })
+
+  // LAYOUT-STABILITY:角标是 absolute 的,不进 flex 流。加它 = 卡片子元素数不变、首元素仍是 .bmm-month。
+  // 断类名不断像素(jsdom 不跑 scoped 样式),position:absolute 那一行查源码钉死。
+  it('加角标不改月卡结构 —— absolute 角标,不进 flex 流', () => {
+    const withRv = mk(months({ 3: { hasData: true, rowCount: 12, review: 'submitted' } }))
+    const without = mk(months({ 3: { hasData: true, rowCount: 12 } }))
+    const a = withRv.findAll('.bmm-card')[2].element
+    const b = without.findAll('.bmm-card')[2].element
+    expect(a.children.length, '角标是绝对定位的,不该多占一个流内子元素位').toBe(b.children.length + 1)
+    expect(a.children[0].classList.contains('bmm-month')).toBe(true)
+    expect(withRv.findAll('.bmm-card')[2].find('.bmm-count').text(), '角标与行数徽标并存').toBe('12 行')
+    const src = readFileSync(join(__dirname, '..', 'BookMonthMatrix.vue'), 'utf8')
+    expect(src, '.bmm-rv 一旦不是 absolute,四档角标就会把月卡顶高').toMatch(/\.bmm-rv\s*\{[^}]*position:\s*absolute/)
   })
 
   it('manageYears=false 时三处年份管理入口都不渲染', () => {

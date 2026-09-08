@@ -15,8 +15,9 @@ import java.util.List;
  * 审核机制(SIDEBAR-UX-REDESIGN §7.4)。
  *
  * GET 不进 PermissionRegistry —— 那张表只管非 GET,读全开。
- * 四个写端点已登记:submit 挂「任一相关 edit 权」(真正的 kind→perm 判定在 ReviewService,
- * 因为要哪个权限点取决于 key 里的 kind,URL 层判不出来),其余三个挂 review:approve。
+ * 五个写端点已登记:submit 与 recall 挂「任一相关 edit 权」(真正的 kind→perm 判定在 ReviewService,
+ * 因为要哪个权限点取决于 key 里的 kind,URL 层判不出来;recall 与 submit 同源 —— 都是录入方的动作,
+ * 「只能撤自己交的」那一条也下沉到 service),其余三个挂 review:approve。
  *
  * ⚠ 审核键里带冒号(`ledger:7:2024-02`)。冒号在 path segment 里合法,`{key}` 单段能吃下 ——
  * ReviewApiIT 第一条用例就打这个带两个冒号的键,红了说明这个假设不成立,那时改成 @RequestParam,
@@ -65,4 +66,10 @@ public class ReviewController {
     public void withdraw(@PathVariable String key, @Valid @RequestBody ReasonReq req) {
         svc.withdraw(key, req.reason());
     }
+
+    // 撤回**没有** @RequestBody:撤的是自己刚交的,没有第二个人读过它 —— 理由写给谁看(§7.2)。
+    // 形状因此与 submit / approve 一致,别顺手加上 ReasonReq。
+    @Operation(summary = "撤回(交审本人;不带理由,别人交的撤不了)")
+    @PostMapping("/{key}/recall")
+    public void recall(@PathVariable String key) { svc.recall(key); }
 }

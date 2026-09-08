@@ -22,6 +22,7 @@
 // 披露来源单元格与真实年月 —— 只披露不重算(重算会改动已出的实收,需用户单独拍板)。
 import { ref, computed, nextTick, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
@@ -82,8 +83,12 @@ const auth = useAuthStore()
 const canGen = computed(() => auth.can('billing-run:edit'))
 
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签保留编辑态,只关浮层 ──
+// 两把键一起交:按钮自己写成「交审(2 项)」;两把态不同时各动各的那几把
+// (组件里 inState 分开算),不折成一个态再统一发 —— 折了会把已交审的那把再交一次吃 409。
+/** 弹卡标题的人话名。前端没有 kind→人话名映射表,各屏自己拼(新开一份 = 后端 ReviewKind 的第二份)。 */
+const reviewLabel = computed(() => `公共电核算 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['billing-run:edit', 'param-policy:edit'], {
     scope: () => S.poolLedger(year.value, month.value),
     // 审核键(§7.1):本屏压**两把** —— 池结果与损耗结果是 AllocService.generate(ym)
@@ -911,6 +916,9 @@ async function delPool() {
           <template #leading><component :is="iconFor('plus')" :size="14" /></template>
           新增池
         </Button>
+        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
+             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />

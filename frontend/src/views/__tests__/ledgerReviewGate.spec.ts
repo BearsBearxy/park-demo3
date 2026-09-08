@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import LedgerWideTable from '@/views/ledger/LedgerWideTable.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import type { Book, BookDef } from '@/types/book'
 import type { LedgerMonthDTO, LedgerRowDTO } from '@/types/ledger'
 import { FEE_KEYS } from '@/utils/ledgerColumns'
@@ -131,6 +132,46 @@ describe('台账审核闸(编辑入口的第三条路)', () => {
     await rs.ensureYear(2026)
     await flushPromises()
     expect(w.emitted('cancel'), '在编辑态里被审了 → 退出').toBeTruthy()
+  })
+
+  // ── 交审动作簇(per-screen-review §03-B2) ───────────────────────────
+  // 簇内「哪个态画哪几颗」的断言在 components/fp/__tests__/FPReviewActions.spec.ts 写过一次,
+  // 这里只验**这一屏喂进去的是什么**:哪一把键、哪个人话名、什么时候不喂。
+
+  // 破坏验证:把 :keys 改成 `[reviewKey, 'ledger:8:2026-09']`(冒充「一次交全部公司」)→
+  //   keys 断言红;把 :label 里的 companyName 去掉 → label 断言红。
+  it('❗动作簇只作用于当前这一册这一月那一把键,弹卡标题带公司名', async () => {
+    const w = mk({ reviewKey: KEY })
+    await flushPromises()
+    const a = w.findComponent(FPReviewActions)
+    expect(a.props('keys'), '一次只交看得见的那一把 —— 交全部公司是本月出账清单的活').toEqual([KEY])
+    expect(a.props('label')).toBe('月度台账 · 甲公司 · 2026-09')
+    expect(w.findAll('button').map(b => b.text()).join('|'), '未交审 ⇒ 画「交审」').toContain('交审')
+  })
+
+  // 编辑态一颗动作按钮不画,但整簇**要挂着** —— 「已退回」那颗 chip 归它管,人正是照着理由在改。
+  // 判据收在组件里(FPReviewActions 的 edit prop),这一屏只负责把自己的编辑态告诉它:
+  // 改前是靠「整簇长在 v-else 分支里」实现的,那是第二份判据,顺手把 chip 也藏了。
+  //
+  // 破坏验证①:把 <FPReviewActions> 上的 :edit 删掉 → props('edit') 那条红(默认 false = 当成浏览态)
+  // 破坏验证②:把它挪回浏览态那个 v-else 分支里 → exists() 那条红
+  it('❗编辑态:整簇仍挂着(chip 要留),但「交审」一颗不画', async () => {
+    const w = mk({ reviewKey: KEY, edit: true })
+    await flushPromises()
+    const a = w.findComponent(FPReviewActions)
+    expect(a.exists(), '整簇被藏掉的话「已退回 · 理由」那颗 chip 跟着没了').toBe(true)
+    expect(a.props('edit'), '不传 :edit 的话组件按浏览态画,编辑态照样出「交审」').toBe(true)
+    expect(w.findAll('button').map(b => b.text()).join('|'),
+           '交审交的是**库里那一份**,而编辑态手上是没保存的草稿').not.toContain('交审')
+  })
+
+  // 破坏验证:把 :can-edit 改成写死 true → 红
+  it('❗无 entry:edit 的账号整簇不画 —— 与旁边那颗编辑按钮同一道门', async () => {
+    useAuthStore().permissions = []
+    const w = mk({ reviewKey: KEY })
+    await flushPromises()
+    expect(w.findComponent(FPReviewActions).props('canEdit')).toBe(false)
+    expect(w.findAll('button').map(b => b.text()).join('|')).not.toContain('交审')
   })
 
   // 破坏验证:把 watch 的 immediate 去掉 → 红

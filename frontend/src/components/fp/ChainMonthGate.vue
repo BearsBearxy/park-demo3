@@ -13,14 +13,17 @@
  * ⚠ 只在**没有期**时渲染 —— 选过一次之后五屏都直落表格，这道门退成链路条上的一个按钮。
  *   见 stores/billingPeriod 的「只记会话内」。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { S } from '@/utils/lockScopes'
 import { iconFor } from '@/components/ds/icon'
 import BookMonthMatrix from '@/components/fp/BookMonthMatrix.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { useBillingPeriodStore } from '@/stores/billingPeriod'
-import { pipsOf } from '@/nav/billingChain'
+import { useReviewStore } from '@/stores/review'
+import { worstReview } from '@/components/fp/monthReview'
+import type { ReviewStatus } from '@/types/review'
+import { CHAIN, pipsOf } from '@/nav/billingChain'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
 
 const props = defineProps<{ title: string; icon: string }>()
@@ -39,13 +42,36 @@ onMounted(() => { void period.loadChain() })
 // 出账链没有「册」的概念 —— 恒为已选，给个空对象。
 const book = {}
 
-interface Cell { month: number; hasData: boolean; pips: boolean[]; stale: boolean; cur?: boolean }
+// ── 月卡审核角标(设计稿 §9.2-④) ────────────────────────────
+// 改前这张矩阵只讲「四道工序做没做」。做完了交审没有、被退回没有,得逐个月点进去看
+// 编辑按钮变没变成药丸 —— 而「被退回」正是唯一一定要人回来动手的那一档。
+const review = useReviewStore()
+/**
+ * 一格对**五把键**(CHAIN 那五道工序:params / meters / alloc / alloc-loss / bill-notices)。
+ * kind 与工序 value 同名是有意的 —— 后端 ReviewKind 就是照屏取的名,所以这里直接用 CHAIN,
+ * 不在本文件抄第二份键名表(抄一份就会与四个宿主屏里的 `reviewKey` 漂移)。
+ *
+ * 取**最未完成**的一档(`monthReview.worstReview`):月格回答的是「这个月还有没有我的事」——
+ * 五把里只要有一把被退回,这个月就还得回来改,不能因为另外四把审过了就画成绿锁。
+ *
+ * ⚠ 不用手边现成的 `cellOf(ym).closed`:那一位是「整月锁账」(D20,跨 kind、含附表族),
+ *   答的是另一个问题,而且只有 approved 一档 —— submitted / returned 全塌成「不画」,
+ *   恰恰把唯一需要人动手的两档抹平了。它留给年份条,那里问的才是「这个月封了没有」。
+ *
+ * 「还不知道 → null」与「库里没这行 = 派生 entered」两条判据都在 stores/review.ts 的 statusOf。
+ */
+const reviewOf = (ym: string): ReviewStatus | null =>
+  worstReview(CHAIN.map(s => review.statusOf(`${s.value}:${ym}`)))
+
+interface Cell { month: number; hasData: boolean; pips: boolean[]; stale: boolean; cur?: boolean
+                 review?: ReviewStatus | null }
 const rows = computed(() => {
   if (!loaded.value) return []
   const cur = new Date().getFullYear()
   const out = buildYearRows(dataYears.value, cur, extraYears.value).map(r => {
     const months: Cell[] = Array.from({ length: 12 }, (_, i) => {
-      const c = period.cellOf(`${r.year}-${String(i + 1).padStart(2, '0')}`)
+      const ym = `${r.year}-${String(i + 1).padStart(2, '0')}`
+      const c = period.cellOf(ym)
       const pips = pipsOf(c)
       return {
         month: i + 1,
@@ -53,6 +79,8 @@ const rows = computed(() => {
         hasData: pips.some(Boolean),
         pips,
         stale: c.stale,
+        // 空月不喂角标由 BookMonthMatrix 一处拦(v-if="m.hasData && m.review")，这里不重复判
+        review: reviewOf(ym),
       }
     })
     return {
@@ -69,6 +97,13 @@ const rows = computed(() => {
   }
   return out
 })
+
+// 矩阵态本来只打 billingPeriod 那几趟,审核闸道要按年再补一趟(statusOf 靠它:年没到手恒 null＝不画,
+// 所以少了这条 watch 角标一个都不出来)。挂在**年份列表**上:纵排几年就几趟,
+// ensureYear 命中已有的年直接 return —— 而这几年正是进屏后五个宿主屏的编辑闸要用的同一份缓存。
+watch(() => rows.value.map(r => r.year).join(','), () => {
+  for (const r of rows.value) void review.ensureYear(r.year)
+}, { immediate: true })
 
 /** 格子上的在场标记走出账链那把月锁 —— 四屏共占的正是它。 */
 const cellScope = (y: number, m: number) => S.poolLedger(y, m)

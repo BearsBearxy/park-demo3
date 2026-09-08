@@ -27,6 +27,7 @@ import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import type { ReviewStatus } from '@/types/review'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { useAuthStore } from '@/stores/auth'
@@ -216,7 +217,8 @@ export function useFinStatementScreen(opts: {
 
   // ── 矩阵年份行(数据年 ∪ 当前年 ∪ 手工年,连续补满;与台账同一套 utils/matrixYears) ──
   const EXTRA_SCREEN = `report-${stmt}`
-  interface MatrixCell { month: number; hasData: boolean; badge?: string; cur?: boolean }
+  interface MatrixCell { month: number; hasData: boolean; badge?: string; cur?: boolean
+                         review?: ReviewStatus | null }
   const matrixYears = computed(() => {
     if (companyId.value == null) return []
     const cur = new Date().getFullYear()
@@ -226,7 +228,9 @@ export function useFinStatementScreen(opts: {
       const metas = r.manual ? undefined : yearMetas.value.get(`${cid}:${r.year}`)
       const months: MatrixCell[] = Array.from({ length: 12 }, (_, i) => {
         const mm = metas?.[i]
-        return { month: i + 1, hasData: !!mm?.hasData, badge: mm?.preview }
+        // 空月不喂角标由 BookMonthMatrix 自己拦(v-if="m.hasData && m.review"),这里不重复判
+        return { month: i + 1, hasData: !!mm?.hasData, badge: mm?.preview,
+                 review: cellReview(r.year, i + 1) }
       })
       return {
         year: r.year,
@@ -256,6 +260,13 @@ export function useFinStatementScreen(opts: {
     setExtra([...extraYears.value, (r.length ? r[r.length - 1].year : new Date().getFullYear()) + 1])
   }
   function removeYear(y: number) { setExtra(extraYears.value.filter(x => x !== y)) }
+
+  // 矩阵态本来一个审核请求都不发(下面那条 watch(reviewKey) 在 month==null 时键是 null)。
+  // 角标要按年取一趟 —— 一屏纵排 2~4 年就是 2~4 趟,byYear 有缓存与在途去重,换公司不必重取
+  // (states?year= 是整年全部键,不分公司)。挂在年份列表上:年份行随「更早 / 更晚」增删时才真需要新的一趟。
+  watch(() => matrixYears.value.map(r => r.year).join(','), () => {
+    matrixYears.value.forEach(r => { void review.ensureYear(r.year) })
+  }, { immediate: true })
 
   // ── 期间条(设计稿 §3.2c):九张报表横跳不换期。与出账链链路条同一个组件 ──
   const periodSteps = REPORT_STEPS
@@ -335,10 +346,26 @@ export function useFinStatementScreen(opts: {
   // 键 = 一张表 × 一家公司 × 一个月。「全部汇总」(companyId==='all')与选期矩阵态(month==null)
   // 都拼不出键 → 不挡:前者本来就存不了盘(save 第一行 return),后者还没选到具体的月。
   const review = useReviewStore()
-  const reviewKey = computed(() =>
-    month.value == null || typeof companyId.value !== 'number'
+  /** 一张表 × 一家公司 × 一个月 = 一把键。选期矩阵的角标与正文的动作簇走同一个拼法,不拼第二遍。
+   *  函数声明是**故意**的:它被上面的 matrixYears 调,而那段在这行之前(函数声明提升,const 会 TDZ)。 */
+  function reviewKeyOf(y: number, m: number | null): string | null {
+    return m == null || typeof companyId.value !== 'number'
       ? null
-      : `${opts.reviewKind}:${companyId.value}:${periodOf(year.value, month.value)}`)
+      : `${opts.reviewKind}:${companyId.value}:${periodOf(y, m)}`
+  }
+  /**
+   * 月格角标(§9.2-4)。判据(含「还不知道 → null」与「库里没这行 = 派生 entered」)
+   * 在 stores/review.ts 的 statusOf 一份 —— 改前台账那条入口里还有逐字相同的一份。
+   * 函数声明同上:matrixYears 在这一行之前就调它。
+   */
+  function cellReview(y: number, m: number): ReviewStatus | null {
+    return review.statusOf(reviewKeyOf(y, m))
+  }
+  const reviewKey = computed(() => reviewKeyOf(year.value, month.value))
+  /** 动作簇弹卡的人话名。屏名由屏自己给 —— 前端没有 kind→人话名的映射表,
+   *  新开一份会与后端 ReviewKind.label() 成为第二份。 */
+  const reviewLabelOf = (title: string) =>
+    `${title} · ${companyName.value} · ${periodOf(year.value, month.value ?? 1)}`
   watch(reviewKey, (k) => { void review.ensureFor(k) }, { immediate: true })
   const reviewBlock = computed(() => review.blockOf(reviewKey.value))
   const reviewNote = computed(() => reviewBlock.value?.note ?? null)
@@ -474,7 +501,7 @@ export function useFinStatementScreen(opts: {
   }
 
   return {
-    canEdit, reviewKey, reviewNote, reviewTip,
+    canEdit, reviewKey, reviewNote, reviewTip, reviewLabelOf,
     companyId, year, month, edit, saving, maxYear,
     companies, companiesLoaded, yearMonths, period, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,

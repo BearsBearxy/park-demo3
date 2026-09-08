@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import SchedHeader from '@/components/sched/SchedHeader.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useReviewStore } from '@/stores/review'
 import api from '@/api'
@@ -401,5 +402,167 @@ describe('SchedHeader 审核闸', () => {
     await flushPromises()
     expect(w.find('.lc-reviewpill').exists()).toBe(false)
     expect(vi.mocked(api.get).mock.calls.filter(c => String(c[0]).startsWith('/review'))).toHaveLength(0)
+  })
+})
+
+// ══════════ 审核动作簇(per-screen-review §03-B2)══════════
+//
+// 动作簇接在**页头**而不是 7 个消费屏各填一次 #static-actions —— 与导入按钮当年收进本组件
+// 同一条理由。所以「7 屏一次到位」这件事只能在这里断言:屏那一层没有可断的东西。
+//
+// 「哪个态画哪几颗」的判据在 FPReviewActions 那一份(它自己的用例里逐格钉着),
+// 这里只断三件本组件负责的事:接线接上了没有、月份从哪来、与旁边那颗编辑按钮/药丸打不打架。
+
+describe('SchedHeader 审核动作簇', () => {
+  /** ds/Button 渲染成 <button>;按文案找,免得依赖组件内部的 class */
+  const btn = (w: ReturnType<typeof mk>, text: string) =>
+    w.findAll('button').find((b) => b.text().includes(text))
+
+  // 闸道回空表 = 这一年一条已落库的行都没有,而「录入中」是前端派生的(后端只发 submitted/
+  // approved/returned)。⚠ 这一句必须显式写:上一个 describe 最后留下的实现是「/review/states
+  // 一律 reject」,vi.clearAllMocks 只清调用记录不清实现 —— 继承过来的话 yearLoaded 恒假,
+  // 动作簇「拿不准一颗都不画」,整个 describe 会绿得毫无意义。
+  beforeEach(() => { vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never) })
+
+  // 破坏验证:把 reviewMonthText 改成恒 null → 红
+  it('❗交审按钮写着月份,月份从 reviewKey 里推 —— 屏不用多传一个 prop', async () => {
+    // 闸道只发已落库的行(submitted/approved/returned),空表 = 这把键还「录入中」
+    const w = mk({ reviewKey: 'salary:2025-06' })
+    await flushPromises()
+    expect(btn(w, '交审 6 月'), '一屏 12 个月,不写月份交的是哪个月全靠猜').toBeTruthy()
+  })
+
+  // 破坏验证:把 <FPReviewActions> 挪到 .lc-lockbtn 之后 → 红
+  it('❗动作簇长在编辑按钮左边,编辑按钮位不动', async () => {
+    const w = mk({ reviewKey: 'salary:2025-06' })
+    await flushPromises()
+    const kids = [...w.find('.lc-head-actions').element.children]
+    const iSubmit = kids.findIndex((el) => el.textContent?.includes('交审'))
+    const iEdit = kids.findIndex((el) => el.classList.contains('lc-lockbtn'))
+    expect(iSubmit, '动作簇要在 DOM 里').toBeGreaterThanOrEqual(0)
+    expect(iSubmit, '§01:它长在编辑按钮**左边**').toBeLessThan(iEdit)
+  })
+
+  // 破坏验证:把动作簇的 :keys 写成恒 null → 红(药丸还在,撤回没了)
+  it('❗待审核:药丸与动作簇并存 —— 编辑按钮位是药丸,旁边照样撤得回来', async () => {
+    seedReview('submitted')
+    useAuthStore().me = '张三'          // = 后端 submittedBy(登录名,不是 displayName)
+    const w = mk({ reviewKey: 'salary:2025-03' })
+    await flushPromises()
+    expect(w.find('.lc-reviewpill').text()).toContain('待审核 · 已交审')
+    expect(w.find('.lc-lockbtn').element.tagName, '按钮位仍是药丸').toBe('SPAN')
+    expect(btn(w, '撤回'), '自己交的撤得回来(§07-③)').toBeTruthy()
+    expect(btn(w, '交审'), '已经交出去了,不该再画一颗交审').toBeFalsy()
+  })
+
+  // 破坏验证:把 reviewPeriod 钉死成 mount 那一刻的值(非 computed)→ 红
+  it('❗月胶囊换月 → 动作簇跟着换那个月的态', async () => {
+    seedReview('approved')                              // 该年只有 2025-03 已审
+    const w = mk({ reviewKey: 'salary:2025-03' })
+    await flushPromises()
+    expect(btn(w, '交审'), '已审核的月不画交审 —— 点下去只会吃一个 409').toBeFalsy()
+
+    await w.setProps({ reviewKey: 'salary:2025-04' })
+    await flushPromises()
+    expect(btn(w, '交审 4 月'), '换到没审的月,按钮跟着换月份').toBeTruthy()
+  })
+
+  // 破坏验证:把 :can-edit 改成恒 true → 红
+  it('❗只读账号两栏都不画 —— 没有编辑按钮的人也不该看见交审', async () => {
+    useAuthStore().permissions = []                     // 连 elevate:request 都没有
+    const w = mk({ reviewKey: 'salary:2025-06' })
+    await flushPromises()
+    expect(w.find('.lc-lockbtn').exists(), '编辑按钮本来就不画').toBe(false)
+    expect(btn(w, '交审'), '单给他看一句「该你交审」是凭空多一条用不上的信息').toBeFalsy()
+  })
+})
+
+// ══════════ 整年模式(2026-09-08「一颗按钮管整年,键仍按月」)══════════
+//
+// 四个年表屏(附6 / 附7·8 / 附11 / 附13·14)一屏一整年、12 行同时摆着,没有「当前月」这一维,
+// 所以它们传 reviewKeys 而不是 reviewKey。本组件要负责的是三件:
+//   ① 两条路合一(动作簇只认 keys),且**按月那条一个字不变** —— 另外 3 个消费屏正跑在上面;
+//   ② 整年模式把 year 递给动作簇(文案「交审 2025 年（3 个月）」由它写,这里不重测);
+//   ③ 分布 chip —— 用户拍板时明确要的那一半:一颗按钮管整年,这一年不是非黑即白的锁。
+describe('SchedHeader 整年模式', () => {
+  const btn = (w: ReturnType<typeof mk>, text: string) =>
+    w.findAll('button').find((b) => b.text().includes(text))
+  const YK = (m: string) => `pv:2025-${m}`
+
+  beforeEach(() => { vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never) })
+
+  /** 闸道回这几行(后端只发已落库的三档) */
+  const seed = (rows: { key: string; status: string }[]) => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url === '/review/states'
+        ? Promise.resolve(rows.map(r => ({
+            kind: r.key.split(':')[0], scope: null, submittedBy: 'lisi',
+            submittedAt: '2025-07-01T09:00:00', reviewedBy: '李审',
+            reviewedAt: '2025-07-02T10:00:00', reason: null, blockedBy: [], ...r,
+          })) as never)
+        : (Promise.resolve([]) as never))
+  }
+
+  // 破坏验证:把 reviewKeyList 的 props.reviewKeys 那一支删掉 → 红(整簇又变回不渲染)。
+  it('❗年表屏传一串月键 → 动作簇拿到整串,并按年模式写文案', async () => {
+    const w = mk({ reviewKey: null, reviewKeys: [YK('01'), YK('02'), YK('03')] })
+    await flushPromises()
+    const rva = w.findComponent(FPReviewActions)
+    expect(rva.props('keys')).toEqual([YK('01'), YK('02'), YK('03')])
+    expect(rva.props('year'), '不传 year 的话文案退回「交审（3 项）」,读不出是哪一年').toBe(2025)
+    expect(btn(w, '交审 2025 年（3 个月）')).toBeTruthy()
+  })
+
+  // ❗这一条守的是**另外 3 个消费屏**(附10 / 附12 / 台账走的是按月那条路)。
+  //   破坏验证:把 reviewKeyList 写成 `props.reviewKeys ?? []` → 红(按月屏整簇消失)。
+  it('❗按月那条路一个字不变 —— 不传 reviewKeys 时仍是单键 + monthText,year 为 null', async () => {
+    const w = mk({ reviewKey: 'salary:2025-06' })
+    await flushPromises()
+    const rva = w.findComponent(FPReviewActions)
+    expect(rva.props('keys')).toEqual(['salary:2025-06'])
+    expect(rva.props('year'), '按月屏进了年模式的话「通过」会写成「通过 2025 年（N 个月）」').toBeNull()
+    expect(btn(w, '交审 6 月')).toBeTruthy()
+    expect(w.find('.lc-spreadchip').exists(), '按月屏不该有「本年 …」这条 chip').toBe(false)
+  })
+
+  // 破坏验证:把 yearSpread 里的三个分支合成一个数(例如只数 approved) → 红。
+  // 用户原话的那一半:部分月已审、部分月还没录时,它不是一个非黑即白的锁,屏上要读得出分布。
+  it('❗分布 chip 逐档数:「本年 2 已审 · 1 待审 · 2 待交」', async () => {
+    seed([{ key: YK('01'), status: 'approved' }, { key: YK('02'), status: 'approved' },
+          { key: YK('03'), status: 'submitted' }, { key: YK('04'), status: 'returned' }])
+    const w = mk({ reviewKey: null,
+      reviewKeys: [YK('01'), YK('02'), YK('03'), YK('04'), YK('05')] })
+    await flushPromises()
+    // 05 库里没行 = 派生 entered,与 returned 同属「还要交」那一档
+    expect(w.find('.lc-spreadchip').text()).toBe('本年 2 已审 · 1 待审 · 2 待交')
+  })
+
+  // 破坏验证:把 yearSpread 里的 `parts.length ? … : null` 换成恒返回 → 红。
+  it('❗年数据还没到手 → chip 不画,不是画一个「本年」空壳', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url === '/review/states' ? (new Promise(() => {}) as never) : (Promise.resolve([]) as never))
+    const w = mk({ reviewKey: null, reviewKeys: [YK('01'), YK('02')] })
+    await flushPromises()
+    expect(w.find('.lc-spreadchip').exists(), '拿不准就什么都不画(同动作簇 ready 的口径)').toBe(false)
+  })
+
+  // 破坏验证:把 `v-if="canAsk && yearSpread"` 的 canAsk 去掉 → 红。
+  it('❗空年 / 只读账号:整簇与 chip 都不画', async () => {
+    const empty = mk({ reviewKey: null, reviewKeys: [] })
+    await flushPromises()
+    expect(empty.find('.lc-spreadchip').exists(), '空年没什么可说的').toBe(false)
+    expect(empty.findComponent(FPReviewActions).find('button').exists()).toBe(false)
+
+    useAuthStore().permissions = []                    // 连 elevate:request 都没有
+    const readonly = mk({ reviewKey: null, reviewKeys: [YK('01'), YK('02')] })
+    await flushPromises()
+    expect(readonly.find('.lc-spreadchip').exists(), '没有编辑按钮的人也不该看见这一条').toBe(false)
+  })
+
+  // 破坏验证:把 reviewLabel 的年模式那一支删掉 → 红(弹卡标题写成「附表6 · 光伏发电」,没有年)。
+  it('❗弹卡标题带年份 —— 交的是整年,标题只写表名读不出交的是哪一年', async () => {
+    const w = mk({ title: '附表6 · 光伏发电', reviewKey: null, reviewKeys: [YK('01')] })
+    await flushPromises()
+    expect(w.findComponent(FPReviewActions).props('label')).toBe('附表6 · 光伏发电 · 2025 年')
   })
 })

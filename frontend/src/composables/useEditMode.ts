@@ -111,6 +111,22 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
    */
   const reviewBlock = computed(() => review.blockOf(opts.reviewKey?.()))
 
+  /**
+   * 审核动作簇(FPReviewActions)要的那几把键 —— **已求值**、恒数组或 null。
+   *
+   * 屏里原本各写了一份 `reviewKeys` computed 去喂动作簇,与 `reviewKey: () =>` 里的字面量
+   * 同一个键名要改两处;5 个屏就是 5 份。惰性 computed,和 reviewBlock 同一条:
+   * setup 期没人读,不会撞 opts.reviewKey 闭包的 TDZ。
+   *
+   * ⚠ `reviewKey: () =>` 里的字面量**不许抽走** —— 门禁 reviewGateCoverage 的 declSites
+   *   只认写在那儿的字面量,抽成共用 computed 它就扫不到,表现是「后端有这个 kind
+   *   却没有任何屏声明它」。这里 return 的是那把键的**第二个出口**,不是第二份声明。
+   */
+  const reviewKeys = computed<string[] | null>(() => {
+    const k = opts.reviewKey?.() ?? null
+    return k == null ? null : Array.isArray(k) ? k : [k]
+  })
+
   /** 按钮位那颗禁用药丸的文案(§7.5,同尺寸零位移)。null = 照常画编辑按钮。 */
   const reviewNote = computed(() => reviewBlock.value?.note ?? null)
   const reviewTip = computed(() => reviewBlock.value?.tip ?? null)
@@ -295,5 +311,5 @@ export function useEditMode(perms: string[], opts: EditModeOpts = {}) {
     })
   }
 
-  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, reviewNote, reviewTip, toggle, askFor, cancelAsk, onElevated, exit, lockScope, onTaken }
+  return { editMode, canEnter, missing, asking, lockedBy, evictedBy, heldByOther, reviewNote, reviewTip, reviewKeys, toggle, askFor, cancelAsk, onElevated, exit, lockScope, onTaken }
 }

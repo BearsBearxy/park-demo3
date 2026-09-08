@@ -69,7 +69,7 @@ async function reloadOverview() {
 }
 
 const {
-  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
+  year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
   guard, refresh, pickYear, goGate, toggleSelect, selectAll, onBatchDelete, onClearImported,
 } = useSchedScreen({
   // 审核闸按月份行上锁(D18):本屏是年表屏,一屏 12 个月的行各审各的
@@ -184,6 +184,8 @@ const onExport = () => guard('导出失败', async () => {
     <!-- 年度明细表 -->
     <template v-else-if="yearData">
       <div class="ut-page fp-fluid">
+        <!-- 整年动作簇(2026-09-08 拍板):一颗按钮管整年、键仍按月;
+             候选月的筛法只此一份 —— useSchedScreen 的 reviewKeys。 -->
         <SchedHeader
           :scope="S.utilities(no, year)"
           icon="plug"
@@ -192,6 +194,7 @@ const onExport = () => guard('导出失败', async () => {
           :year="year"
           :edit="edit"
           perm="entry:edit"
+          :review-keys="reviewKeys"
           @back="goGate"
           @toggle-edit="edit = !edit"
          :show-import="true" @import="importing = true">

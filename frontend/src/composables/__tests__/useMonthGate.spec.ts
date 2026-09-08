@@ -112,6 +112,25 @@ describe('通用月门', () => {
       expect(y25.months[1].badge).toBeUndefined()
     })
 
+    // 破坏验证:rows 里那行 `review: opts.reviewOf?.(key)` 删掉 → 恒 undefined → 红
+    it('❗reviewOf 给格子喂审核态 —— 角标那一档从这里进来', () => {
+      const g = useMonthGate({
+        key: 'k', store: ['pv-meter', 'all'], months: () => ['2025-01'],
+        reviewOf: (ym) => (ym === '2025-01' ? 'returned' : null),
+      })
+      const y25 = g.rows.value.find(r => r.year === NOW)!
+      expect(y25.months[0].review).toBe('returned')
+      expect(y25.months[1].review, 'null = 还不知道 —— 与「未交审」不是一回事').toBe(null)
+    })
+
+    it('❗不传 reviewOf 的屏一格都不画 —— 用这道门的三屏里有两屏不进审核', () => {
+      // 名字必须是 reviewOf,不能叫 reviewKey:那两屏(PvMeterView / CpMeterView)在
+      // views/__tests__/reviewGateCoverage.spec.ts 的白名单里,而那份门禁有一条反向断言
+      //「白名单里的屏确实没有声明审核键」—— 起错名字会让它当场红,红的样子还像是白名单写错了。
+      const g = mk(['2025-01'])
+      expect(g.rows.value[0].months.every(m => m.review === undefined)).toBe(true)
+    })
+
     it('一条数据都没有时也给出当前年一行 —— 否则没地方点进去录第一笔', () => {
       const g = mk([])
       expect(g.rows.value.map(r => r.year)).toEqual([NOW])

@@ -19,6 +19,7 @@ import { ledgerRowKey } from '@/types/ledger'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
@@ -86,6 +87,15 @@ const reviewNote = computed(() => reviewBlock.value?.note ?? null)
 
 /** 编辑态里这一册这一月被审了 → 请父层退出(它那边 5 条路都汇到 cancel)。 */
 watch(reviewBlock, (rb) => { if (rb && props.edit) emit('cancel') })
+
+// ── 交审动作簇(per-screen-review §03-B2) ────────────────────────
+// 这一屏一次只看得见**当前这一册这一个月**那一把键 —— 「一次交全部公司」是本月出账清单的活,
+// 不是这里的(设计稿 §03-B3 同一条规则)。
+const reviewKeys = computed(() => (props.reviewKey ? [props.reviewKey] : null))
+// 弹卡标题的人话名。前端没有 kind→人话名的映射表,新开一份会与后端 ReviewKind.label() 成为第二份,
+// 所以各屏拿自己屏上已有的名字拼 —— 这一屏的公司名本来就写在 h2 上。
+const reviewLabel = computed(() =>
+  `月度台账 · ${props.companyName} · ${props.year}-${String(props.monthNo).padStart(2, '0')}`)
 
 async function onEnterEdit() {
   // ⚠ 这一行**当前杀不掉**:药丸一渲染就把唯一的调用方(那颗按钮)换成了 span,点击落不到这里,
@@ -300,12 +310,6 @@ function onBack() {
             :items="[{ key: 'export', label: '导出 Excel', icon: 'download' }, { key: 'template', label: '账册模板', icon: 'table-2' }]"
             @select="onMore"
           />
-          <!-- ⑤ 主控区(恒右):取消紧邻保存,保存 filled 恒最右 -->
-          <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
-          <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
-            <template #leading><component :is="iconFor('check')" :size="14" /></template>
-            保存
-          </Button>
         </template>
 
         <template v-else>
@@ -323,6 +327,28 @@ function onBack() {
             <template #leading><component :is="iconFor('table-2')" :size="14" /></template>
             账册模板
           </Button>
+        </template>
+
+        <!-- 交审动作簇:两态常驻,长在主控区(浏览态的「编辑模式」/ 编辑态的「取消 保存」)**左边**,
+             同高同圆角(per-screen-review §01)。主控位一个像素不动。
+             门与编辑按钮同源(裸 entry:edit,这一屏没有 elevate:request 兜底)—— 两套门会让
+             同一行里出现「能交审但没有编辑按钮」。
+             ⚠ 编辑态画什么由组件按 `:edit` 自己定:动作按钮一颗不画(交审交的是**库里那一份**,
+               而编辑态手上是 draft),但「已退回」那颗 chip 留着 —— 人正是照着那句理由在改。
+               改前是靠「整簇长在 v-else 分支里」实现的:那是第二份判据,而且顺手把 chip 也藏了。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :edit="edit"
+                         :can-edit="auth.can('entry:edit')" />
+
+        <template v-if="edit">
+          <!-- ⑤ 主控区(恒右):取消紧邻保存,保存 filled 恒最右 -->
+          <Button variant="gray" size="sm" :disabled="saving" @click="onCancel">取消</Button>
+          <Button variant="filled" size="sm" :disabled="saving" @click="emit('save')">
+            <template #leading><component :is="iconFor('check')" :size="14" /></template>
+            保存
+          </Button>
+        </template>
+
+        <template v-else>
           <!-- ⚠ 编辑模式入口带权限门:无 entry:edit 不显示(2026-08-22 v-else 语义坑,勿改回 v-else 兜底) -->
           <!-- 锁位就长在这颗按钮上(设计稿 §05):min-width 定死,三态换文案不换宽度。 -->
           <!-- 审核闸(§7.5):已审核 / 待审核时按钮位换成同尺寸禁用药丸(与 .lg-lockbtn 同 min-width)。 -->

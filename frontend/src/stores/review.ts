@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { reviewApi } from '@/api/review'
 import { usePresenceStore } from '@/stores/presence'
-import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow } from '@/types/review'
+import { LOCKING, periodOfKey, reviewNoteOf, type ReviewRow, type ReviewStatus } from '@/types/review'
 
 /**
  * 审核态(SIDEBAR-UX-REDESIGN §7.5)。**两条取数道,别混**:
@@ -116,6 +116,25 @@ export const useReviewStore = defineStore('review', () => {
   const isLoaded = (period: string | null): boolean => !!period && byPeriod.value.has(period)
   const isFailed = (period: string | null): boolean => !!period && failed.value.has(period)
   const yearLoaded = (year: number | null): boolean => year != null && byYear.value.has(year)
+
+  /**
+   * 闸道:单键此刻的审核态。**null = 还不知道**(键为空,或这一年的闸道数据还没到手)。
+   *
+   * 「库里没这一行 = 派生 entered」这条判据本仓一度有**五份**逐字相同的抄写:动作簇、
+   * 工资矩阵、S10 矩阵、台账矩阵、三大报表矩阵。后端闸道只发已落库的行
+   * (submitted/approved/returned),`entered` 是前端派生出来的 —— 派生规则五份必漂移,
+   * 漂移的表现是同一个月在两张屏上一个显「未交审」一个显空白(METRIC-SOURCE-SPEC §1)。
+   *
+   * ⚠ 「还不知道」与「未交审」**必须分开**:两者在 rowOf 那里都是 null。合并的后果分两处:
+   *   · 矩阵屏 —— 进屏那几百毫秒整张矩阵先刷成一片灰点再翻牌;
+   *   · 动作簇 —— 会给一张**已审核**的表画一颗「交审」,点下去吃 409,用户以为界面坏了。
+   *   所以拿不准就回 null,让调用方自己决定画不画,与 blockOf「拿不准不挡」同一条口径。
+   */
+  function statusOf(key: string | null): ReviewStatus | null {
+    if (!key) return null
+    if (!yearLoaded(yearOf(periodOfKey(key)))) return null
+    return rowOf(key)?.status ?? 'entered'
+  }
 
   /** 标过期,**不删值**。理由见上面「过期标记」那段。 */
   function invalidate(period: string | null) {
@@ -252,17 +271,23 @@ export const useReviewStore = defineStore('review', () => {
   const approve = (k: string) => batch([k], (x) => reviewApi.approve(x))
   const returnBack = (k: string, reason: string) => batch([k], (x) => reviewApi.returnBack(x, reason))
   const withdraw = (k: string, reason: string) => batch([k], (x) => reviewApi.withdraw(x, reason))
+  const recall = (k: string) => batch([k], (x) => reviewApi.recall(x))
 
   const submitAll = (ks: string[]) => batch(ks, (k) => reviewApi.submit(k))
   const approveAll = (ks: string[]) => batch(ks, (k) => reviewApi.approve(k))
   const returnAll = (ks: string[], reason: string) => batch(ks, (k) => reviewApi.returnBack(k, reason))
   const withdrawAll = (ks: string[], reason: string) => batch(ks, (k) => reviewApi.withdraw(k, reason))
+  // 公共电核算屏一屏两把键(alloc + alloc-loss)是一起交的 —— 交得了就得撤得回来,
+  // 否则那一屏交审之后只能撤一半,剩下的那把要去求审核员退回。
+  const recallAll = (ks: string[]) => batch(ks, (k) => reviewApi.recall(k))
 
   return {
     byPeriod, byYear, failed,
     ensure, ensureYear, ensureFor, blockOf, lockedMonths,
-    rowsOf, rowOf, isLoaded, isFailed, yearLoaded, invalidate,
-    submit, approve, returnBack, withdraw,
-    submitAll, approveAll, returnAll, withdrawAll,
+    // ⚠ statusOf 漏在这张表外不会报错 —— 组件里拿到的是 undefined,一调就 TypeError,
+    //    而 setup store 的这一步本仓漏过。加函数就把名字加进来。
+    rowsOf, rowOf, statusOf, isLoaded, isFailed, yearLoaded, invalidate,
+    submit, approve, returnBack, withdraw, recall,
+    submitAll, approveAll, returnAll, withdrawAll, recallAll,
   }
 })
