@@ -31,8 +31,10 @@ function collect(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** 声明了审核键的屏 = 它的编辑按钮会被审核态挡住 = 它必须把状态说给用户听。 */
-const DECLARES_KEY = /\breviewKey\s*:/
+/** 声明了审核键的屏 = 它的编辑按钮会被审核态挡住 = 它必须把状态说给用户听。
+ *  两种写法:useEditMode 的 `reviewKey:`,与三大报表 useFinStatementScreen 的 `reviewKind: '…'`
+ *  (2026-09-08 补:三个报表屏当初也没接 review-note,和这五屏是同一个漏,只是走的另一条编辑入口)。 */
+const DECLARES_KEY = /\breviewKey\s*:|\breviewKind:\s*'/
 /** 屏上那颗按钮。只认这一个组件 —— SchedHeader / LedgerWideTable 走的是自己的另一条路。 */
 const USES_BUTTON = /<FPEditModeButton\b/
 
@@ -55,7 +57,8 @@ describe('声明了审核键的屏,必须把审核状态传给编辑按钮', () 
       if (!/:review-note=/.test(src)) bad.push(relative(SRC, f))
     }
     // 防空扫:判据是两条正则的交集,任一条哪天不匹配了,这份门禁会一声不吭地全绿。
-    expect(checked, '没扫到任何「声明了审核键 + 用了这颗按钮」的屏 —— 判据失效了').toBeGreaterThanOrEqual(5)
+    expect(checked, '没扫到任何「声明了审核键 + 用了这颗按钮」的屏 —— 判据失效了')
+      .toBeGreaterThanOrEqual(8)   // 现值 8:5 个工具行屏 + 三大报表
     expect(bad,
       `这些屏声明了审核键、却没把审核状态传给编辑按钮。表现是:已审核的月点「编辑模式」\n`
       + `什么都不会发生 —— 挡住了但不说为什么。改法:从 useEditMode 解构 reviewNote / reviewTip,\n`
