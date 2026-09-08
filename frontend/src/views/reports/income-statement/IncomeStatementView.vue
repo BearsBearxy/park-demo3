@@ -49,6 +49,9 @@ const {
   importing, importResult, importSummary, onImport, requestImport,
 } = useFinStatementScreen({
   stmt: STMT,
+  // 审核键(2026-09-08):一张表 × 一家公司 × 一个月。已审核 / 待审核的月进不了编辑态;
+  // 交审动作在「本月出账」清单上(各屏自己的入口等设计稿)。
+  reviewKind: 'report-is',
   resetLocal: () => { selected.value = new Set() },
 })
 

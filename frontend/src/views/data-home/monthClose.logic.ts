@@ -83,6 +83,9 @@ const ROW_KINDS: Record<string, string[]> = {
   ledger: ['ledger'], 'sales-income': ['s10'], salary: ['salary'],
   utilities: ['utilities'], 'pv-income': ['pv'],
   charging: ['charging-car', 'charging-ebike'], 'elec-cost': ['elec-cost'],
+  // 三大报表(2026-09-08):一张表一行,行内按公司分格。三个 statement 是三个 kind ——
+  // scope 那一段被 companyId 占了(后端 ReviewKind 头注)。
+  'income-statement': ['report-is'], 'balance-sheet': ['report-bs'], 'trial-balance': ['report-tb'],
   import: [],           // 导入中心没有审核键
   reconciliation: [],   // 收入核对本轮不进审核(§7.1 末句)
   'month-lock': [],     // 本月锁账是别的 14 行的派生,自己没有键
@@ -112,8 +115,16 @@ const BOOKING_ROWS: { key: string; label: string; tag?: string; from: string[]; 
   { key: 'pv-income',     label: '附表6',    tag: '附6',    from: ['pv-income'],     go: 'pv-income' },
   { key: 'charging',      label: '附表7/8',  tag: '附7/8',  from: ['car-charging', 'ebike-charging'], go: 'car-charging' },
   { key: 'elec-cost',     label: '附表11',   tag: '附11',   from: ['elec-cost'],     go: 'elec-cost' },
+  { key: 'income-statement', label: '利润表',     tag: '报表', from: ['income-statement'], go: 'income-statement' },
+  { key: 'balance-sheet',    label: '资产负债表', tag: '报表', from: ['balance-sheet'],    go: 'balance-sheet' },
+  { key: 'trial-balance',    label: '科目余额表', tag: '报表', from: ['trial-balance'],    go: 'trial-balance' },
   { key: 'import',        label: '导入中心', from: [],      go: 'import' },   // 无源 → 恒 na
 ]
+
+/** 清单行 key → 报表 kind。三大报表的 chips 与月度台账同形(按公司),只是 kind 不同。 */
+const REPORT_KIND: Record<string, string> = {
+  'income-statement': 'report-is', 'balance-sheet': 'report-bs', 'trial-balance': 'report-tb',
+}
 
 /** 合并行(utilities / charging)按匹配到的源项拆出各自的 chip;单源行(ledger / sales-income)
  *  按 companies / phases 拆;其余行没有子入口,不给 chips。
@@ -144,6 +155,12 @@ function chipsFor(key: string, matched: DataHomeItemDTO[], review: ReviewRow[] |
       tab: it.tag === '附14' ? 'phase3' : 'office',
       ...rv('utilities', it.tag === '附14' ? 'phase3' : 'office'),
     }))
+  }
+  if (REPORT_KIND[key]) {
+    // 与台账同形:公司全集来自后端(不是「谁录了谁才在列表里」),done 按该公司本月有没有金额行。
+    const companies = matched[0]?.companies ?? []
+    return companies.map(c => ({ label: c.short, done: c.done, co: c.id,
+                                 ...rv(REPORT_KIND[key], String(c.id)) }))
   }
   if (key === 'charging') {
     return matched.map(it => ({

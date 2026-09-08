@@ -45,6 +45,16 @@ function fullItems(overrides: Partial<Record<string, DataHomeItemDTO>> = {}): Da
     'car-charging': item('car-charging', '附7', true),
     'ebike-charging': item('ebike-charging', '附8', true),
     'elec-cost': item('elec-cost', '附11', true),
+    // 三大报表(2026-09-08):与月度台账同形 —— 按公司分格,公司全集来自后端
+    'income-statement': item('income-statement', '报表', true, {
+      companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }],
+    }),
+    'balance-sheet': item('balance-sheet', '报表', true, {
+      companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }],
+    }),
+    'trial-balance': item('trial-balance', '报表', true, {
+      companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }],
+    }),
   }
   // Object.values 对 Partial 的展开产出 (T | undefined)[] —— 严格模式下要显式收窄
   return Object.values({ ...base, ...overrides }).filter((x): x is DataHomeItemDTO => x != null)
@@ -72,7 +82,7 @@ const STALE_STEP: DataHomeStepDTO[] = [
   step('alloc-loss', 'todo'), step('bill-notices', 'todo'),
 ]
 
-// 记账列 8 行全 done 的样例:companies/phases 子项也都填成 true,不能只改源项自己的 done。
+// 记账列 11 行全 done 的样例:companies/phases 子项也都填成 true,不能只改源项自己的 done。
 function allDoneItems(): DataHomeItemDTO[] {
   return fullItems({
     ledger: item('ledger', '凭证', true, {
@@ -93,11 +103,12 @@ describe('monthClose.logic', () => {
     ])
   })
 
-  it('记账列 8 行:附13+附14 折成「办公·三期水电」一行、附7+附8 折成「附表7/8」一行、加导入中心', () => {
+  it('记账列 11 行:附13+附14 折成「办公·三期水电」一行、附7+附8 折成「附表7/8」一行、加导入中心', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const booking = rows.filter(r => r.col === 'booking')
     expect(booking.map(r => r.label)).toEqual([
-      '月度台账', '附表10', '附表12', '办公·三期水电', '附表6', '附表7/8', '附表11', '导入中心',
+      '月度台账', '附表10', '附表12', '办公·三期水电', '附表6', '附表7/8', '附表11',
+      '利润表', '资产负债表', '科目余额表', '导入中心',
     ])
   })
 
@@ -155,21 +166,21 @@ describe('monthClose.logic', () => {
     expect(missRow.state).toBe('todo')   // diffCount=0 但 missCount=1 —— 只查 diffCount 会漏这档
   })
 
-  it('计数从渲染的行算,不抄 schedules.total —— 结构性 na 的行不进分母,记账列分母是 7、出账列分母是 6', () => {
+  it('计数从渲染的行算,不抄 schedules.total —— 结构性 na 的行不进分母,记账列分母是 10、出账列分母是 6', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const { byCol } = closeChecks(rows)
-    expect(byCol.booking.total).toBe(7)
+    expect(byCol.booking.total).toBe(10)
     expect(byCol.billing.total).toBe(6)
   })
 
   // 评审修补(task-3-fix-brief.md #5):分母排除的是「结构性 na」(导入中心 / 本月锁账,恒做不完),
   // 不是「当下 state 为 na」——收入核对的 na 只是「recon 还没到达」,真能做完,不能因为异步加载
   // 就把出账分母从 6 撞成 5。旧口径(`if (r.state === 'na') continue`)下这条会失败(billing.total=5)。
-  it('分母只排除结构性 na(导入中心/本月锁账)——收入核对未到(na)时也计入分母,出账恒 6、记账恒 7', () => {
+  it('分母只排除结构性 na(导入中心/本月锁账)——收入核对未到(na)时也计入分母,出账恒 6、记账恒 10', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: null, review: null })
     const { byCol } = closeChecks(rows)
     expect(byCol.billing.total).toBe(6)   // 5 链步 + 收入核对(countable,即使此刻是 na)
-    expect(byCol.booking.total).toBe(7)
+    expect(byCol.booking.total).toBe(10)
     const recon = rows.find(r => r.key === 'reconciliation')!
     const lock = rows.find(r => r.key === 'month-lock')!
     const imp = rows.find(r => r.key === 'import')!
@@ -268,9 +279,9 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(ALL_DONE_STEPS, allDoneItems()), recon: RECON_OK, review: null })
     const { done, total, byCol } = closeChecks(rows)
     expect(byCol.billing).toEqual({ done: 6, total: 6 })
-    expect(byCol.booking).toEqual({ done: 7, total: 7 })
-    expect(done).toBe(13)
-    expect(total).toBe(13)
+    expect(byCol.booking).toEqual({ done: 10, total: 10 })
+    expect(done).toBe(16)
+    expect(total).toBe(16)
   })
 
   it('BOOKING_ROWS 里有条目、但后端没发对应 source 时那一行是 na(防御路径,不是导入中心那条)', () => {
@@ -286,7 +297,7 @@ describe('monthClose.logic', () => {
     expect(meters.go).toBe('meters-go')
   })
 
-  it('记账列 8 行的 go/tag 逐行钉住(合并成 8 行之后深链入口一个不丢)', () => {
+  it('记账列 11 行的 go/tag 逐行钉住(合并 + 三大报表之后深链入口一个不丢)', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const booking = rows.filter(r => r.col === 'booking')
     const expected: Record<string, { go?: string; tag?: string }> = {
@@ -297,9 +308,15 @@ describe('monthClose.logic', () => {
       'pv-income': { go: 'pv-income', tag: '附6' },
       charging: { go: 'car-charging', tag: '附7/8' },
       'elec-cost': { go: 'elec-cost', tag: '附11' },
+      'income-statement': { go: 'income-statement', tag: '报表' },
+      'balance-sheet': { go: 'balance-sheet', tag: '报表' },
+      'trial-balance': { go: 'trial-balance', tag: '报表' },
       import: { go: 'import', tag: undefined },
     }
+    // 行数与表长必须相等 —— 少写一行,下面那个循环会跳过它而不是报错(表里没有 = 恒不检查)
+    expect(booking.map(r => r.key)).toHaveLength(Object.keys(expected).length)
     for (const row of booking) {
+      expect(expected[row.key], `${row.key} 不在钉住表里`).toBeDefined()
       expect(row.go).toBe(expected[row.key].go)
       expect(row.tag).toBe(expected[row.key].tag)
     }
@@ -455,5 +472,64 @@ describe('本月锁账(D20)', () => {
     const b = closeChecks(rowsWith(allApproved()))
     expect(a.byCol.billing.total, '审核态到不到都不该改分母').toBe(b.byCol.billing.total)
     expect(byKey(rowsWith(allApproved()), 'month-lock').countable).toBe(false)
+  })
+})
+
+
+// ══════════ 三大报表进清单(2026-09-08) ══════════
+//
+// 后端的闸已经挂上了(ReviewGuardChainIT);这里钉的是**入口** —— 屏上得有地方交审,
+// 否则闸就是死代码:审不了就永远到不了「已审核」,闸一辈子不生效(elec-model 犯过这个错)。
+describe('三大报表的清单行', () => {
+  // 夹具 overview 的期就是 2026-09(见文件头 overview()),键按它拼
+  const P = '2026-09'
+  const full = () => rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK,
+                              review: null })
+  const rowOf = (k: string) => full().find(r => r.key === k)!
+
+  it('三行都在记账列,各带公司格', () => {
+    for (const k of ['income-statement', 'balance-sheet', 'trial-balance']) {
+      const r = rowOf(k)
+      expect(r.col, `${k} 该在记账列`).toBe('booking')
+      expect(r.chips?.map(c => c.label), `${k} 要按公司分格`).toEqual(['A公司', 'B公司'])
+    }
+  })
+
+  // ❗破坏验证:把 chipsFor 里 REPORT_KIND 那一支删掉 → 红(没有键就没有动作可挂,屏上交不了审)。
+  it('❗每格带自己的审核键 —— 三张表三个 kind,公司进 scope', () => {
+    const keyOf = (k: string) => rowOf(k).chips!.map(c => c.reviewKey)
+    expect(keyOf('income-statement')).toEqual([`report-is:1:${P}`, `report-is:2:${P}`])
+    expect(keyOf('balance-sheet')).toEqual([`report-bs:1:${P}`, `report-bs:2:${P}`])
+    expect(keyOf('trial-balance')).toEqual([`report-tb:1:${P}`, `report-tb:2:${P}`])
+  })
+
+  // ❗破坏验证:把 ROW_KINDS 里那三项删掉 → 红(行级审核态恒 na,整行显「—」、动作全不出)。
+  it('❗行级审核态按各自的 kind 取,不许串台', () => {
+    // ⚠ 照后端清单道的真形状造:它发的是**该月全部键**,没落库的那把也发,状态是派生的 entered。
+    //   只造已落库的那几行是不真的 —— 那样 2 号公司会整个缺席,而缺席与「未交审」在
+    //   leastOf 里是两回事(缺席不参与比较,未交审会把整行拉回未交审)。
+    const review: ReviewRow[] = [
+      rv(`report-is:1:${P}`, 'report-is', 'approved', '1'),
+      rv(`report-is:2:${P}`, 'report-is', 'approved', '2'),
+      rv(`report-bs:1:${P}`, 'report-bs', 'submitted', '1'),
+      rv(`report-bs:2:${P}`, 'report-bs', 'entered', '2'),
+      rv(`report-tb:1:${P}`, 'report-tb', 'entered', '1'),
+      rv(`report-tb:2:${P}`, 'report-tb', 'entered', '2'),
+    ]
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review })
+    expect(rows.find(r => r.key === 'income-statement')!.review, '两家都审完').toBe('approved')
+    // 资产负债表只有 1 号公司交了审、2 号一条记录都没有 → 取「最不进展」= 未交审
+    expect(rows.find(r => r.key === 'balance-sheet')!.review, '一家没交就不算').toBe('entered')
+    expect(rows.find(r => r.key === 'trial-balance')!.review, '两家都没交').toBe('entered')
+  })
+
+  // 报表不进整月锁账(后端 ReviewKind 那一位是 false),屏上的「本月锁账」判据要与它同源。
+  it('报表没审也不挡本月锁账 —— 与后端 countsTowardMonthClose 同源', () => {
+    const others = fullReview().filter(r => !r.kind.startsWith('report-'))
+                               .map(r => ({ ...r, status: 'approved' as ReviewStatus }))
+    const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK,
+                          review: others })
+    expect(rows.find(r => r.key === 'month-lock')!.state,
+      '报表一条都没审,锁账照样成立').toBe('done')
   })
 })

@@ -26,6 +26,7 @@ import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import { maxSelectableYear } from '@/utils/yearGate'
 import { S } from '@/utils/lockScopes'
 import { useEditLock } from '@/composables/useEditLock'
+import { useReviewStore } from '@/stores/review'
 import { runImport } from '@/utils/importRegistry'
 import { finMoney } from '@/utils/finFmt'
 import { useAuthStore } from '@/stores/auth'
@@ -42,6 +43,10 @@ const MATRIX_BOOK = {}
 
 export function useFinStatementScreen(opts: {
   stmt: 'is' | 'bs' | 'tb'
+  /** 审核 kind。**由屏写死传进来,不在这里用 stmt 拼** —— 拼出来的字面量不出现在
+   *  任何一个屏里,reviewGateCoverage 那道门禁就看不见「这一屏声明了哪把键」,
+   *  而它存在的全部意义就是「后端加了 kind 而某屏没接」当场变红。 */
+  reviewKind: 'report-is' | 'report-bs' | 'report-tb'
   // 清屏内私有草稿态(选集;tb 还有科目增删计数与科目树回滚)。进出编辑、切月、保存后都走它。
   resetLocal: () => void
   // 零值预览抑制:bs/tb 不存 'cur',后端 netPreview 恒 0,月卡显 ¥0.00 是误导 → 只标「已录入」。
@@ -321,14 +326,36 @@ export function useFinStatementScreen(opts: {
   // 退出编辑的路有四条(取消/完成/保存成功/换期),用 watch 兜住 —— 漏一条就是一把没人认领的锁。
   watch(edit, (on) => { if (!on) lock.release() })
 
+  // ── 审核闸(2026-09-08:三大报表进审核) ────────────────────────
+  //
+  // 这是本仓**第四条**编辑入口 —— R2 收的是 useEditMode / SchedHeader / LedgerWideTable 三条,
+  // 报表屏用的是裸 `const edit = ref(false)` + useEditLock,当时不在名单里。
+  // 判据仍走 stores/review.ts 的 blockOf(一份共用,各写一份必漂移)。
+  //
+  // 键 = 一张表 × 一家公司 × 一个月。「全部汇总」(companyId==='all')与选期矩阵态(month==null)
+  // 都拼不出键 → 不挡:前者本来就存不了盘(save 第一行 return),后者还没选到具体的月。
+  const review = useReviewStore()
+  const reviewKey = computed(() =>
+    month.value == null || typeof companyId.value !== 'number'
+      ? null
+      : `${opts.reviewKind}:${companyId.value}:${periodOf(year.value, month.value)}`)
+  watch(reviewKey, (k) => { void review.ensureFor(k) }, { immediate: true })
+  const reviewBlock = computed(() => review.blockOf(reviewKey.value))
+  const reviewNote = computed(() => reviewBlock.value?.note ?? null)
+  const reviewTip = computed(() => reviewBlock.value?.tip ?? null)
+  // 编辑态里被别人审了就退出来 —— 跨账号同步之后这条真会触发(改前它是死的)。
+  watch(reviewBlock, (b) => { if (b && edit.value) cancelEdit() })
+
   // ── 编辑流 ───────────────────────────────────────────────
   async function enterEdit() {
+    if (reviewBlock.value) return          // 已审核 / 待审核:进不去(按钮位换成状态字,见屏)
     const sc = lockScope()
     if (sc && !(await lock.acquire(sc))) return
     draft.value = {}; opts.resetLocal(); edit.value = true
   }
   /** 接管成功 → 锁已经是我们的了,直接进编辑态。 */
   async function onTaken() {
+    if (reviewBlock.value) return          // 接管这条路同样要过闸,否则主管接管就绕过了审核
     lockedBy.value = null
     const sc = lockScope()
     if (sc) await lock.acquire(sc)
@@ -447,7 +474,7 @@ export function useFinStatementScreen(opts: {
   }
 
   return {
-    canEdit,
+    canEdit, reviewKey, reviewNote, reviewTip,
     companyId, year, month, edit, saving, maxYear,
     companies, companiesLoaded, yearMonths, period, draft, dirty, dlg,
     isAll, company, companyName, finCompanies,

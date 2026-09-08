@@ -393,7 +393,7 @@ describe('数据中心首页 · 首载骨架', () => {
     // 选择器:胶囊行 → 两栏行;期望值 5→7 / 9→8 —— 出账列并入收入核对 + 本月锁账两行,
     // 记账列 9 源折成 8 行(P2 T3,批准的既有断言改动清单)。
     expect(w.findAll('.dh-row-billing').length, '出账列恒 7 行').toBe(7)
-    expect(w.findAll('.dh-row-booking').length, '记账列恒 8 行').toBe(8)
+    expect(w.findAll('.dh-row-booking').length, '记账列恒 11 行').toBe(11)
     // 骨架也要两栏(评审修补 T3 fix-brief #1):骨架态断,不是落位后 —— 真版式是 .dh-cols 两栏 grid,
     // 骨架若没包这层,数据落位那一瞬轴向会从单列竖排跳成两栏并排,整屏塌一次。
     expect(w.find('.dh-cols').exists(), '骨架也要两栏,否则数据落位时轴向变').toBe(true)
@@ -410,7 +410,7 @@ describe('数据中心首页 · 首载骨架', () => {
     expect(w.findAll('.dh-row-billing').length, '真版式也是 7 行 —— 对不上就会跳').toBe(7)
     // 落位后复核不能只看出账列(评审修补 T3 fix-brief #11):记账列也要复核,否则谁把记账列的
     // 条数改坏了,这条测试一条都不会红。
-    expect(w.findAll('.dh-row-booking').length, '真版式记账列也是 8 行 —— 对不上就会跳').toBe(8)
+    expect(w.findAll('.dh-row-booking').length, '真版式记账列也是 11 行 —— 对不上就会跳').toBe(11)
   })
 
   it('根节点在数据到达前后是同一个 DOM 节点', async () => {
@@ -450,12 +450,19 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
       car: { name: '汽车充电', tag: '附7', done: true, go: 'car-charging' },
       ebike: { name: '电动车充电', tag: '附8', done: true, go: 'ebike-charging' },
       elec: { name: '电费', tag: '附11', done: true, go: 'elec-cost' },
+      // 三大报表(2026-09-08):与月度台账同形,按公司分格
+      rptIs: { name: '利润表', tag: '报表', done: true, go: 'income-statement',
+               companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }] },
+      rptBs: { name: '资产负债表', tag: '报表', done: true, go: 'balance-sheet',
+               companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }] },
+      rptTb: { name: '科目余额表', tag: '报表', done: true, go: 'trial-balance',
+               companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }] },
     }
     // Object.values 对 Partial 的展开产出 (T | undefined)[] —— 严格模式下要显式收窄
     return Object.values({ ...base, ...overrides }).filter((x): x is DataHomeItemDTO => x != null)
   }
 
-  it('两栏:出账列 7 行、记账列 8 行,各自带自己的计数', async () => {
+  it('两栏:出账列 7 行、记账列 11 行,各自带自己的计数', async () => {
     // 收入核对回包给多个月(评审修补 T3 fix-brief #7:recon 选月的 find(m => m.month === month) 零覆盖
     // —— 全 spec 此前只在这里给过成功回包,且 months 只有一个元素,find/[0]/at(-1) 完全等价,测不出
     // 选错月)。这里首月(1月)todo、当月(2月)done:选错月会让出账列少一格 done,.dh-counts 从
@@ -470,18 +477,21 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
     const w = await mountWith({ schedules: { done: 7, total: 9, items: fullBookingItems() } })
     await flushPromises()   // 让 watch(curYm) 触发的 reconApi.overview 落定
     expect(w.findAll('.dh-row-billing')).toHaveLength(7)
-    expect(w.findAll('.dh-row-booking')).toHaveLength(8)
+    // 2026-09-08:三大报表进清单,8 → 11 行(利润表 / 资产负债表 / 科目余额表 各一行,按公司分格)
+    expect(w.findAll('.dh-row-booking')).toHaveLength(11)
     // 两处计数同源(§8.1):.dh-counts 总览行与 .dh-h3n 记账列标题都从 checks 算,
     // 分母 6/7 不是旧口径的 5/9(doneSteps/5、ov.schedules.total)
-    expect(w.find('.dh-counts').text()).toBe('出账 5/6 · 附表 5/7')
-    expect(w.find('.dh-h3n').text()).toBe('5/7')
+    expect(w.find('.dh-counts').text()).toBe('出账 5/6 · 附表 8/10')
+    expect(w.find('.dh-h3n').text()).toBe('8/10')
     // 行状态圆点/data-state 三档零覆盖(评审修补 T3 fix-brief #6):此前全仓只钉过 na 一档,
     // dotOf 改成「非 na 一律 ✓」或「非 na 一律 ○」都全绿。这份夹具 done/todo/na 三档都有,
     // 逐行数组断言两个方向都会不再逐项相等 —— 整屏染成已做 / 整片折成未做都要红。
     expect(w.findAll('.dh-row-billing').map(r => r.find('.dh-rdot').text()))
       .toEqual(['✓', '✓', '✓', '✓', '○', '✓', '—'])
     expect(w.findAll('.dh-row-booking').map(r => r.attributes('data-state')))
-      .toEqual(['todo', 'todo', 'done', 'done', 'done', 'done', 'done', 'na'])
+      // 三大报表夹具全 done,排在附表11 之后、导入中心之前(BOOKING_ROWS 的次序)
+      .toEqual(['todo', 'todo', 'done', 'done', 'done', 'done', 'done',
+                'done', 'done', 'done', 'na'])
   })
 
   // 评审修补(task-3-fix-brief.md #5):分母排除的是结构性 na(导入中心/本月锁账),不是「当下 state
@@ -490,7 +500,7 @@ describe('数据中心首页 · 两栏清单(P2 T3)', () => {
   it('没有核对数据的月,出账分母仍是 6 —— 不随 recon 到达从 5 跳到 6', async () => {
     const w = await mountWith({ schedules: { done: 7, total: 9, items: fullBookingItems() } })
     await flushPromises()   // 默认 reconOverview 回空年 → 收入核对 na,但仍计入分母(countable)
-    expect(w.find('.dh-counts').text()).toBe('出账 4/6 · 附表 5/7')
+    expect(w.find('.dh-counts').text()).toBe('出账 4/6 · 附表 8/10')
   })
 
   it('源缺的行显「—」不显 0(本月锁账 / 导入中心)', async () => {

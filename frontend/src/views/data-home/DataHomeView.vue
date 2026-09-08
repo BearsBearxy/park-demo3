@@ -451,7 +451,7 @@ const bookingRows = computed(() => shown('booking'))
   <!-- ⚠ 根节点 .dh **不再吊在 ov 上** —— 它此前是整页 v-if,数据到达前是一整块白屏,
        而这是登录后第一眼看到的屏(加载态设计稿 §03)。
        骨架能画准是因为两栏的行数都是常量(monthClose.logic §5.2):出账列恒 7 行(链五步 + 收入核对 +
-       本月锁账),记账列恒 8 行(后端 9 源,附13+附14/附7+附8 各并一行)。
+       本月锁账),记账列恒 11 行(后端 12 源,附13+附14/附7+附8 各并一行,加三大报表三行)。
        静态文案(本月出账 / 出账链 / 附表录入)直接照常渲染 —— 它们不依赖数据,
        糊成微光条反而是把已知的东西藏起来。
        fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5 迁移摘掉 base.css 的 800px 屏级地板——
@@ -518,7 +518,7 @@ const bookingRows = computed(() => shown('booking'))
         <section class="dh-sec">
           <h3 class="dh-h3">附表录入</h3>
           <ul class="dh-rows">
-            <li v-for="i in 8" :key="i" class="dh-row dh-row-booking" style="cursor:default">
+            <li v-for="i in 11" :key="i" class="dh-row dh-row-booking" style="cursor:default">
               <span class="fp-shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span>
               <span class="fp-shim" style="display:block;width:76px;height:11px"></span>
             </li>
