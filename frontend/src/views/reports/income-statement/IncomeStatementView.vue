@@ -28,6 +28,7 @@ import ImportResultToast from '@/components/import/ImportResultToast.vue'
 import SaveConfirmDialog from '@/components/import/SaveConfirmDialog.vue'
 import IncomeStatementTable from './IncomeStatementTable.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
 
 const STMT = 'is'
@@ -36,7 +37,7 @@ const STMT = 'is'
 const selected = ref(new Set<string | number>())
 
 const {
-  canEdit,
+  canEdit, reviewKey, reviewNote, reviewTip, reviewLabelOf,
   companyId, year, month, edit, saving,
   companiesLoaded, period, draft, dirty, dlg,
   isAll, company, companyName, finCompanies,
@@ -359,10 +360,21 @@ async function onExport() {
               <template #leading><component :is="iconFor('download')" :size="14" /></template>
               导出 Excel
             </Button>
+            <!-- 交审动作簇:紧贴编辑按钮**左边**,同高同圆角(per-screen-review §01)。编辑按钮位一个像素不动。
+                 一张表 × 一家公司 × 一个月 = 一把键 —— 左栏换公司就换键,「全部汇总」拼不出键(reviewKey 为 null)整簇不画。
+                 「一次交全部公司」是本月出账清单的活,不是这里的(§03-B3)。
+                 ⚠ 编辑态不再整簇藏掉，改成把 `:edit` 交给组件：动作按钮一颗不画（交审交的是**库里那一份**，
+                   而这一屏编辑态手上是 draft），但「已退回」那颗 chip 留着 —— 人正是照着那句理由在改。
+                   判据只在组件里一份，宿主不再挂第二份 v-if。 -->
+            <FPReviewActions :edit="edit" :keys="reviewKey ? [reviewKey] : null"
+                             :label="reviewLabelOf('利润表')" :can-edit="canEdit" />
             <!-- 草稿型屏:编辑态走下面的 [取消][保存]，所以这里只负责浏览态那三态
                  (编辑模式 / 张三 编辑中 / 张三 空闲 23 分) —— 设计稿 §05 -->
+            <!-- 审核药丸(§7.5):已审核 / 待审核时这一位换成同尺寸禁用药丸 —— 不接的话按钮还写着
+                 「编辑模式」,点下去 enterEdit 被 reviewBlock 挡住无声返回,看起来像坏了。 -->
             <FPEditModeButton v-if="!edit" :edit="false" :held-by-other="heldByOther"
-                              :can-enter="canEdit" @toggle="enterEdit" />
+                              :can-enter="canEdit" :review-note="reviewNote" :review-tip="reviewTip"
+                              @toggle="enterEdit" />
             <!-- ⚠ 必须 v-if="edit"，不能 v-else：上面是「!edit && canEdit」，
                  v-else 会把「没权限」也算进去，无权账号将看到「保存/取消」。 -->
             <template v-if="edit">

@@ -9,6 +9,9 @@ import { useTabsStore } from '@/stores/tabs'
 import IncomeStatementView from '@/views/reports/income-statement/IncomeStatementView.vue'
 import { companyApi } from '@/api/ledger'
 import { reportApi } from '@/api/report'
+import { reviewApi } from '@/api/review'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
+import type { ReviewRow, ReviewStatus } from '@/types/review'
 
 /**
  * 三大报表：四层 → 两层（2026-08-29 设计稿 §3.2a）。
@@ -26,6 +29,20 @@ vi.mock('@/api/ledger', () => ({
 }))
 vi.mock('@/api/report', () => ({
   reportApi: { years: vi.fn(), year: vi.fn(), period: vi.fn(), allPeriod: vi.fn(), save: vi.fn() },
+}))
+// 审核闸道(2026-09-08 报表屏进审核):矩阵按年取一趟喂月格角标,正文态喂动作簇。
+vi.mock('@/api/review', () => ({
+  reviewApi: {
+    list: vi.fn(() => Promise.resolve([])),
+    states: vi.fn(() => Promise.resolve([])),
+    submit: vi.fn(() => Promise.resolve()),
+    approve: vi.fn(() => Promise.resolve()),
+    returnBack: vi.fn(() => Promise.resolve()),
+    withdraw: vi.fn(() => Promise.resolve()),
+    recall: vi.fn(() => Promise.resolve()),
+    closedMonths: vi.fn(() => Promise.resolve([])),
+    pending: vi.fn(() => Promise.resolve([])),
+  },
 }))
 const query: Record<string, string> = {}          // 深链;单测里临时塞 p/co(旧 y/m/co 也认)
 const push = vi.fn()
@@ -293,4 +310,75 @@ describe('三大报表工作台 · 利润表', () => {
       expect((w.findComponent(IncomeStatementView).vm as unknown as { year: number }).year).toBe(2024)
     })
   })
+
+  // ── 交审动作簇 + 月格角标(per-screen-review §03-B3 / §07-④) ──────────────
+  //
+  // 三屏共用 useFinStatementScreen,接法逐字相同,仍挑利润表做样本。
+  // 「哪个态画哪几颗按钮」在 FPReviewActions.spec 写过一次,这里只验**这一屏喂进去的是什么**。
+  describe('交审动作簇', () => {
+    const row = (key: string, status: ReviewStatus): ReviewRow => ({
+      key, kind: key.split(':')[0], scope: key.split(':')[1], status,
+      submittedBy: 'zhangsan', submittedAt: null, reviewedBy: '李审',
+      reviewedAt: '2025-03-05T10:00:00', reason: null, blockedBy: [],
+    })
+
+    // 破坏验证:把 reviewKeyOf 里的 companyId 换成写死 1(冒充「全部公司一起交」)→ 换到资产公司那条断言红
+    it('❗一张表 × 一家公司 × 一个月 = 一把键,换公司就换键', async () => {
+      const w = await open()
+      await w.findAll('.bmm-card')[1].trigger('click')          // 物业公司 2025-02
+      await flushPromises()
+      expect(w.findComponent(FPReviewActions).props('keys')).toEqual(['report-is:1:2025-02'])
+      expect(w.findComponent(FPReviewActions).props('label')).toBe('利润表 · 物业公司 · 2025-02')
+
+      await w.findAll('.br-item')[2].trigger('click')           // 换资产公司 → 回矩阵
+      await flushPromises()
+      await w.findAll('.bmm-card')[0].trigger('click')          // 2024-01
+      await flushPromises()
+      expect(w.findComponent(FPReviewActions).props('keys')).toEqual(['report-is:2:2024-01'])
+    })
+
+    // 破坏验证:把 reviewKeyOf 的 `typeof companyId.value !== 'number'` 去掉 → 键拼成
+    //   `report-is:all:2025-02`,整簇画出来 → 红
+    it('❗「全部汇总」拼不出键 —— 整簇不画,不做「全部公司一起交」', async () => {
+      vi.mocked(reportApi.allPeriod).mockResolvedValue({
+        year: 2025, month: 2, rows: [], customRows: [], amounts: {},
+      } as never)
+      const w = await open()
+      await w.findAll('.br-item')[0].trigger('click')           // 全部汇总
+      await flushPromises()
+      await w.findAll('.bmm-card')[1].trigger('click')
+      await flushPromises()
+      expect(w.text(), '先确认真的进了正文态').toContain('汇总只读')
+      // 钉在**键**上而不只钉「簇没渲染」:模板里那一层 v-else(非 isAll)本来就把这一簇关在外面,
+      // 只断 exists() 的话,把 reviewKeyOf 的公司维判据放宽成 `== null` 也照样绿。
+      expect((w.vm as unknown as { reviewKey: string | null }).reviewKey,
+             '「全部汇总」拼不出键').toBeNull()
+      expect(w.findComponent(FPReviewActions).exists()).toBe(false)
+    })
+
+    // 破坏验证:删掉 matrixYears 那格的 `review: cellReview(...)` → 红;
+    //   或删掉那条按年 ensureYear 的 watch → 一格都取不到,同样红
+    it('❗月格角标:已审核画绿锁,没这一行画灰点(未交审)', async () => {
+      vi.mocked(reviewApi.states).mockResolvedValue([row('report-is:1:2025-01', 'approved')] as never)
+      const w = await open()
+      await flushPromises()
+      const cards = w.findAll('.bmm-card')
+      expect(cards[0].find('.bmm-rv').classes(), '1 月已审核').toContain('rv-approved')
+      expect(cards[1].find('.bmm-rv').classes(), '2 月库里没这一行 = 未交审').toContain('rv-entered')
+      expect(cards[3].find('.bmm-rv').exists(), '空月一格不画 —— 本来就没东西可交').toBe(false)
+    })
+
+    // 破坏验证:把 cellReview 里的 yearLoaded 那道门去掉 → 红(整张矩阵先刷成一片灰点再翻牌)
+    it('❗年份数据还没到手时一格都不画,不拿「未交审」冒充「还不知道」', async () => {
+      let release!: (v: unknown) => void
+      vi.mocked(reviewApi.states).mockReturnValue(new Promise((r) => { release = r }) as never)
+      const w = await open()
+      await flushPromises()
+      expect(w.findAll('.bmm-rv'), '闸道还没回来').toHaveLength(0)
+      release([])
+      await flushPromises()
+      expect(w.findAll('.bmm-rv').length, '回来了才画').toBeGreaterThan(0)
+    })
+  })
+
 })

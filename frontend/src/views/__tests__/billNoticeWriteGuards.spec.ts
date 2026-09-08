@@ -227,4 +227,19 @@ describe('催缴单 · 写操作的编辑态守卫', () => {
     expect(w.find('.bn-actions').text()).toContain('重新生成')
     expect(w.find('.bn-toolbar').text()).toContain('批量确认')
   })
+
+  // 审核动作簇(per-screen-review §01/§03-B)。屏这一层只负责两件事:键喂对、位置在编辑按钮左边;
+  // 四态八格归 components/fp/__tests__/FPReviewActions.spec.ts —— 判据不许有第二份。
+  it('❗审核动作簇:喂的是本月那把 bill-notices 键,且长在编辑按钮左边', async () => {
+    const w = await open()
+    const texts = w.find('.bn-actions').findAll('button').map(b => b.text())
+    const iSubmit = texts.findIndex(t => t.includes('交审'))
+    const iEdit = texts.findIndex(t => t.includes('编辑模式'))
+    // 前置:闸道(states)回空表 ⇒ 这把键派生成「录入中」,交审那一颗一定在
+    expect(iSubmit, '浏览态就该看得见交审').toBeGreaterThanOrEqual(0)
+    // 单键屏不写项数;误把 keys 喂成两把(或漏了 ym 那道空判)→ 变成「交审（2 项）」→ 红
+    expect(texts[iSubmit], '单键屏不带项数').toBe('交审')
+    // §01:动作簇在编辑按钮**左边**
+    expect(iSubmit, '动作簇必须排在编辑按钮之前').toBeLessThan(iEdit)
+  })
 })

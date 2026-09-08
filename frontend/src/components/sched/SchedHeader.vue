@@ -7,7 +7,9 @@ import Button from '@/components/ds/Button.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
+import { periodOfKey } from '@/types/review'
 
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPTakeoverDrawer from '@/components/fp/FPTakeoverDrawer.vue'
 import FPEvictedDialog from '@/components/fp/FPEvictedDialog.vue'
@@ -42,7 +44,19 @@ const props = withDefaults(defineProps<{
    * **不传 = 这一屏不受审核约束** —— 损益附表(报表层本轮不进审核,§7.1)就不传。
    */
   reviewKey?: string | null
-}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null, reviewKey: null })
+  /**
+   * **整年模式**的那一串按月键(2026-09-08 拍板)。与 reviewKey 二选一。
+   *
+   * 四个年表屏(附6 光伏 / 附7·8 充电桩 / 附11 电费成本 / 附13·14 水电)一屏一整年、12 行同时
+   * 摆着,没有「当前月」这一维 —— 它们传这个,一颗按钮管整年。键**仍然是按月的**,数据模型
+   * 一个字没动:本月出账清单、D20 月度锁账、按月份行上锁全不受影响。
+   *
+   * `[]` = 这一年一行数据都没有:动作簇与分布 chip 都不画(空年没什么可说的)。
+   * ⚠ 它**不接编辑闸**:年表屏的闸在行上(D18 的 lockedMonths),不在页头那颗编辑按钮上 ——
+   *   接上去等于一个月审了就把整年 12 行一起锁死。所以 reviewBlock 那几条仍只读 reviewKey。
+   */
+  reviewKeys?: string[] | null
+}>(), { showImport: false, importDisabled: false, dirty: 0, scope: null, reviewKey: null, reviewKeys: null })
 
 const emit = defineEmits<{ back: []; 'toggle-edit': [forced?: boolean]; import: [] }>()
 
@@ -88,6 +102,63 @@ watch(() => props.reviewKey, (k) => { void review.ensureFor(k) }, { immediate: t
 /** 挡编辑的审核态。判据在 store,与另外两条编辑闸共用同一份。 */
 const reviewBlock = computed(() => review.blockOf(props.reviewKey))
 const reviewNote = computed(() => reviewBlock.value?.note ?? null)
+
+// ── 审核动作簇(per-screen-review §03-B2) ──
+//
+// 接在这里而不是让 7 个消费屏各填一次 #static-actions —— 与导入按钮当年收进本组件同一条理由
+// (见头注:那 7 屏各塞逐字相同的 5 行,门控也就散成 7 份)。屏那边一个字都不用改。
+//
+// 按月屏(附10/12/台账)那条路**一个新 prop 都不用**:动作簇要的三样本组件手上已经有了 ——
+//   · 键:reviewKey 本身(附表族一屏一把,不是双键屏);
+//   · 月份:附表族「按年进屏、按月审」,当前月就写在键的 period 段里(`salary:2025-06`),
+//     从键里推等于跟着月胶囊走,再传一个 prop 只会多出一份可能与键对不上的月;
+//   · 人话名:页头那行 title。
+// 年表屏那条路只多一个 reviewKeys(2026-09-08)—— 它们没有「当前月」这一维,键推不出来。
+// canEdit 传 canAsk,与右边那颗编辑按钮/药丸同一道门(只读账号与园区股东两栏都不画)。
+const reviewPeriod = computed(() => periodOfKey(props.reviewKey))
+/** 「交审 6 月」:一屏 12 个月,光秃秃一颗「交审」交的是哪个月全靠猜(§03-B2)。 */
+const reviewMonthText = computed(() =>
+  reviewPeriod.value ? `${+reviewPeriod.value.slice(5, 7)} 月` : null)
+
+/**
+ * 两条路合一,动作簇那边只认 `keys`:年表屏传一串月键,按月屏传一把。
+ * 二选一而不是让年表屏把 12 把键塞进 reviewKey ——「当前月那一把」是编辑闸读的,
+ * 混在一起的话一个月审了就锁整屏(见 reviewKeys 那条 prop 的头注)。
+ */
+const reviewKeyList = computed(() => props.reviewKeys ?? (props.reviewKey ? [props.reviewKey] : null))
+const reviewLabel = computed(() =>
+  props.reviewKeys
+    ? `${props.title} · ${props.year} 年`
+    : `${props.title}${reviewPeriod.value ? ` · ${reviewPeriod.value}` : ''}`)
+
+/**
+ * 整年那颗按钮的**代价**要在屏上读得出(用户 2026-09-08 拍板时明确要的那一半)。
+ *
+ * 部分月已审、部分月还没录的年,「交审 2025 年（3 个月）」不是一把非黑即白的锁 ——
+ * 只看那颗按钮读不出这一年其余九个月是什么状态。所以在它旁边常驻一条只读 chip:
+ * 「本年 8 已审 · 2 待审 · 1 待交」。
+ *
+ * 判据仍是 store.statusOf 那一份(含「库里没这行 = 派生 entered」),这里只数不判。
+ * 年数据还没到手时 statusOf 全回 null → 三个数都是 0 → 不画,而不是画一个「本年」空壳
+ * (与动作簇 ready 同一条口径:拿不准就什么都不画)。
+ */
+const yearSpread = computed(() => {
+  const ks = props.reviewKeys
+  if (!ks?.length) return null
+  let approved = 0, submitted = 0, todo = 0
+  for (const k of ks) {
+    const s = review.statusOf(k)
+    if (s === 'approved') approved++
+    else if (s === 'submitted') submitted++
+    else if (s) todo++                       // entered 与 returned 都是「还要交」的那一档
+  }
+  const parts = [
+    approved ? `${approved} 已审` : '',
+    submitted ? `${submitted} 待审` : '',
+    todo ? `${todo} 待交` : '',
+  ].filter(Boolean)
+  return parts.length ? `本年 ${parts.join(' · ')}` : null
+})
 
 /**
  * edit 真正退下来时的统一收尾。**锁跟着 edit 状态走**:屏什么时候真的翻假,什么时候才还。
@@ -194,6 +265,17 @@ function onImport() {
         导入 Excel
       </Button>
       <slot name="static-actions" />
+      <!-- 审核动作簇(§9.2 / per-screen-review §01):长在编辑按钮**左边**、同一个 flex 行,
+           不套容器 —— .lc-head-actions 本来就是 flex + gap 8,多一层的话这几颗的间距与旁边的不一样。
+           不传 review-key / review-keys 的屏(损益附表)keys 为 null,整簇不渲染。 -->
+      <!-- 分布 chip 在动作簇**左边**:先读这一年是什么样,再决定按不按那颗整年按钮。
+           同高 28px、同胶囊圆角,与旁边的年份徽标/审核药丸一条线(LAYOUT-STABILITY)。
+           门与动作簇同一道(canAsk):只读账号 / 园区股东两栏都不画,单给他看一句分布是用不上的信息。 -->
+      <span v-if="canAsk && yearSpread" class="lc-spreadchip">
+        <component :is="iconFor('calendar-check')" :size="13" />{{ yearSpread }}
+      </span>
+      <FPReviewActions :keys="reviewKeyList" :label="reviewLabel" :year="reviewKeys ? year : null"
+                       :month-text="reviewMonthText" :can-edit="canAsk" :edit="edit" />
       <!-- 文案与形态对齐 EDIT-MODE-SPEC §2 与抄表屏样板(MeterView.vue:583):
            浏览态 outline(编辑是次要动作) → 编辑态 filled(完成是主要动作)。
            改前这里恒 filled + 文案「编辑表格」,与 6 个抄表族屏的 outline +「编辑模式」两派并存。 -->
@@ -246,6 +328,14 @@ function onImport() {
   border:1px solid var(--border-subtle); border-radius:var(--radius-full);
   background:var(--surface-sunken); color:var(--text-muted);
   font-size:var(--fs-label); line-height:1; white-space:nowrap; cursor:not-allowed;
+}
+/* 整年模式的分布 chip:只读、不可点。尺寸逐项对齐 ds/Button 的 size="sm"(同 .lc-reviewpill),
+   配色走中性 —— 它不是一个状态警告,是一句「这一年长这样」的说明。 */
+.lc-spreadchip {
+  display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; box-sizing:border-box;
+  border:1px solid var(--border-subtle); border-radius:var(--radius-full);
+  background:var(--surface-sunken); color:var(--text-secondary);
+  font-size:var(--fs-label); line-height:1; white-space:nowrap;
 }
 .lc-lockbtn.held { border-color:var(--hue-orange); background:rgb(252,243,232); color:var(--hue-orange); }
 .lc-lockav { width:18px; height:18px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; background:var(--fill-blue); color:#fff; font-size:9.5px; font-weight:var(--fw-semibold); }

@@ -251,4 +251,22 @@ describe('PoolLedgerView 写口守卫', () => {
     expect(saveBtn()?.disabled, 'rules 落地后按钮应自动可用').toBe(false)
     w.unmount()
   })
+
+  // ⑦ 审核动作簇(per-screen-review §01/§03-B):本屏是全站**唯一的双键屏**,
+  //   两把键(alloc + alloc-loss)是 generate(ym) 同一次算出来的,交审必须一起交。
+  //   这条只钉屏这一层的两件事 —— 喂的键对不对、位置在不在编辑按钮左边;
+  //   「哪个态画哪几颗」归 components/fp/__tests__/FPReviewActions.spec.ts,不在这里重写一遍。
+  it('⑦ 审核动作簇:两把键一起交、长在编辑按钮左边', async () => {
+    const w = await mountPicked()
+    const texts = w.find('.pl-actions').findAll('button').map(b => b.text())
+    const iSubmit = texts.findIndex(t => t.includes('交审'))
+    const iEdit = texts.findIndex(t => t.includes('编辑模式'))
+    // 前置:闸道回了空表 ⇒ 两把键都派生成「录入中」,交审这一颗一定在
+    expect(iSubmit, '浏览态就该看得见交审').toBeGreaterThanOrEqual(0)
+    // reviewKeys 少喂一把(或退回单键 string)→ 组件写「交审」不带项数 → 这条红
+    expect(texts[iSubmit], '双键屏两把一起交').toBe('交审（2 项）')
+    // §01:动作簇在编辑按钮**左边**,不是右边、也不是另起一行
+    expect(iSubmit, '动作簇必须排在编辑按钮之前').toBeLessThan(iEdit)
+    w.unmount()
+  })
 })

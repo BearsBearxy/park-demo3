@@ -88,6 +88,42 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   /** 这一行在不在锁月里。勾选与批删两处都要问 —— 只把复选框画成 disabled 拦不住批删。 */
   const isRowLocked = (row: R) => rowLocked(lockedMonths.value, row.acctMonth)
 
+  /**
+   * 整年动作簇作用的那一串**按月**的键(2026-09-08 拍板「一颗按钮管整年,键仍按月」)。
+   *
+   * 年表屏一屏一整年、12 行同时摆着,没有「当前月」这一维 —— 所以给动作簇的不是一把键而是一串,
+   * 一颗「交审 2025 年（3 个月）」把这一年够格的月一次交出去。**数据模型一个字没动**:
+   * 键仍是 `kind[:scope]:YYYY-MM`,本月出账清单、D20 月度锁账、上面那条按月份行上锁全不受影响
+   * (字面的「年键」方案被否掉了:6 月出账要求 6 月全部表已审,附表6 若变年键就永远等不到它)。
+   *
+   * 只筛一条:**屏上这个月真的有行**。不筛的话空年会把 12 个月全发出去,而 store.batch 是
+   * 逐把写、碰到第一个失败就停 —— 人看到的是「1 月还没录完」,他明明想交的是 6 月。
+   * ⚠ 这**不是**在前端重算后端的 isDone,「前端不预判录完没有」那条裁定仍然成立:
+   *   这里滤掉的只是「屏上压根没有这个月」这种显然不是候选的,够不够格仍由后端 409 裁定。
+   *
+   * **审核态不在这里筛**。筛了的话审核员那三颗按钮就永远出不来 —— 先滤成 entered|returned,
+   * 「通过」要的 submitted 早被扔了。态的分组在动作簇里一份(toSubmit/toApprove/toWithdraw),
+   * 判据只此一处(铁律 5)。
+   *
+   * 多 scope 的屏(附13/14 office/phase3)天然只算当前那一份:rows() 取的就是当前 tab 那一趟
+   * 拉回来的数据,reviewScope 闭包也跟着 tab 变 —— 与全站「动作只作用于此刻看得见的那一把」一致。
+   *
+   * null = 不是年表屏(没传 reviewKinds)或还在年份门上;`[]` = 这一年一行都没有。两者动作簇都不画。
+   */
+  const reviewKeys = computed<string[] | null>(() => {
+    const kinds = opts.reviewKinds
+    const y = year.value
+    if (!kinds?.length || y == null) return null
+    const scope = opts.reviewScope?.() ?? null
+    // 只认本年的行:跨年的行会拼出一把指向**没取过的那一年**的键,而动作簇的 ready 要求
+    // 每把键所在的年都已到手 —— 一把野键就让整簇静默消失。
+    const pre = `${y}-`
+    const months = [...new Set(
+      opts.rows().map(r => r.acctMonth).filter((m): m is string => !!m && m.startsWith(pre)),
+    )].sort()
+    return months.flatMap(m => kinds.map(k => (scope ? `${k}:${scope}:${m}` : `${k}:${m}`)))
+  })
+
   /** 统一报错口径:后端 message 优先,否则用兜底文案 */
   async function guard(fallback: string, fn: () => Promise<void>) {
     try {
@@ -167,7 +203,9 @@ export function useSchedScreen<R extends SchedRow>(opts: {
   }
 
   return {
-    year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths,
+    // ⚠ 少写一个名字不报错 —— setup 风格的返回表漏项,消费方拿到的是 undefined,一用才 TypeError。
+    //   本仓漏过(stores/review.ts 的 statusOf 头注记着同一课)。加 computed 就把名字加进来。
+    year, edit, drawer, importing, importResult, selectedIds, importedCount, lockedMonths, reviewKeys,
     guard, refresh, pickYear, goGate,
     toggleSelect, selectAll, onBatchDelete, onClearImported,
   }

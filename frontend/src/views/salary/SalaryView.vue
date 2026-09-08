@@ -27,6 +27,8 @@ import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import { exportSalaryMonth } from '@/utils/salaryExcel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
+import { useReviewStore } from '@/stores/review'
+import type { ReviewStatus } from '@/types/review'
 import type { SalaryOverviewDTO, SalaryYearMonthDTO, SalaryRecordDTO, SalaryRecordReq, SalaryImportRow } from '@/types/salary'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -166,7 +168,20 @@ function backToMonths() {
 const EXTRA_KEY = ['salary', 'all'] as const
 const extraYears = ref<number[]>(loadExtraYears(...EXTRA_KEY))
 
-interface Cell { month: number; hasData: boolean; cur?: boolean }
+// ── 月卡角标:这个月归谁管(设计稿 per-screen-review §07-④) ──
+// 改前这一屏只讲「录了没有」。人要知道 3 月锁没锁,得点进去看编辑按钮变没变成药丸 ——
+// 一年十二个月就是十二次。
+const review = useReviewStore()
+/**
+ * 一格一把键(`salary:YYYY-MM`,工资无 scope 维),所以不过 worstReview —— 那是给多键格的。
+ *
+ * 「还不知道 → null」与「库里没这行 = 派生 entered」两条判据都在 stores/review.ts 的 statusOf,
+ * 这里不再抄一遍(改前本仓有五份逐字相同的抄写)。
+ */
+const reviewOf = (y: number, m: number): ReviewStatus | null =>
+  review.statusOf(`salary:${periodOf(y, m)}`)
+
+interface Cell { month: number; hasData: boolean; cur?: boolean; review?: ReviewStatus | null }
 const matrixYears = computed(() => {
   const ov = overview.value
   if (!ov) return []
@@ -176,7 +191,9 @@ const matrixYears = computed(() => {
   const out = buildYearRows(dataYears, cur, extraYears.value).map(r => {
     const has = hasByYear.get(r.year) ?? new Set<number>()
     // 人数按月拆分 overview 里没有,徽标留空 —— 编不出来的数字不如不显
-    const months: Cell[] = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, hasData: has.has(i + 1) }))
+    const months: Cell[] = Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1, hasData: has.has(i + 1), review: reviewOf(r.year, i + 1),
+    }))
     return {
       year: r.year,
       months,
@@ -192,6 +209,12 @@ const matrixYears = computed(() => {
   }
   return out
 })
+// 矩阵态本来一个审核请求都不发 —— useSchedScreen 那条闸道 watch 挂在 year 上,而矩阵态 year 恒 null。
+// 角标要按年取一趟:纵排几年就是几趟,ensureYear 命中已有的年直接 return,与宽表态共用同一份缓存。
+watch(() => matrixYears.value.map(r => r.year).join(','), () => {
+  for (const r of matrixYears.value) void review.ensureYear(r.year)
+}, { immediate: true })
+
 function setExtra(years: number[]) {
   saveExtraYears(...EXTRA_KEY, years)
   extraYears.value = loadExtraYears(...EXTRA_KEY)   // 回读取归一化(去重排序)

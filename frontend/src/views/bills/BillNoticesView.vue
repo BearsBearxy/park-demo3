@@ -9,6 +9,7 @@
 // 账外户(offbook)整行降淡。写操作 admin(viewer 隐藏),GET 全员。
 import { computed, onDeactivated, onMounted, ref, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
@@ -76,8 +77,14 @@ const mayIssue = computed(() => auth.can('billing-issue:edit'))
 // canRun / canIssue = 有对应权限 且 在编辑态,凡写入口与写函数守卫一律走它(漏一个就是裸写入口)。
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+// 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留 ——
+// 动作簇画的是审核那条,别拿单据状态去推它。
+// 本屏的上游前置是 alloc + alloc-loss(后端 UPSTREAM),所以「通过」最容易吃 409;
+// 前端不预判(铁律 7),按钮照画,准话由组件里那份 409/403 分流弹出来。
+/** 弹卡标题的人话名。前端没有 kind→人话名映射表,各屏自己拼(新开一份 = 后端 ReviewKind 的第二份)。 */
+const reviewLabel = computed(() => `催缴单 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['billing-run:edit', 'billing-issue:edit'], {
     scope: () => S.billNotices(year.value, month.value),
     // 审核键(§7.1)。与现有 draft→confirmed→exported(主管业务确认,V94)是两条轴,都保留。
@@ -655,6 +662,9 @@ const drawerSub = computed(() => {
           <template #leading><component :is="iconFor(rows.length ? 'refresh-cw' : 'play')" :size="14" /></template>
           {{ generating ? '生成中…' : rows.length ? '重新生成' : '生成本月' }}
         </Button>
+        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
+             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />

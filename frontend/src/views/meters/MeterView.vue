@@ -8,6 +8,7 @@
 // 编辑态不跨会话(onDeactivated 复位含 draft,EDIT-MODE-SPEC v2)。
 import { ref, computed, reactive, onMounted, onDeactivated, watch } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import FPLoadError from '@/components/fp/FPLoadError.vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { useChainDeepPeriod } from '@/composables/useDeepPeriod'
@@ -65,8 +66,10 @@ const canMaster = computed(() => auth.can('meter-master:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v3):切页签**保留**编辑态与草稿,只关浮层 ──
 // v2 在这里 draft.clear() —— 切去别的页面核对一眼回来,没保存的读数全没了。
 // 那正是用户点名要改的行为(2026-08-22)。浮层仍要关:Teleport 到 body,不随实例停用移出。
+/** 弹卡标题的人话名。前端没有 kind→人话名映射表,各屏自己拼(新开一份 = 后端 ReviewKind 的第二份)。 */
+const reviewLabel = computed(() => `园区抄表 · ${ym.value}`)
 const { editMode, canEnter, missing: lockedPerms, asking, askFor, cancelAsk, onElevated, exit: exitEdit, heldByOther, toggle,
-        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['meter-reading:edit', 'meter-master:edit'], {
     scope: () => S.meters(year.value),
     // 审核键(§7.1):抄表屏**按年锁、按月审**。屏上编辑的确实是单月读数
@@ -636,6 +639,9 @@ const emptyText = computed(() => {
           <template #leading><component :is="iconFor('trash-2')" :size="14" /></template>
           批量删除本期
         </Button>
+        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
+             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <!-- 编辑模式:任一权限(或能请授权)即画按钮;进得去 ⇒ 两把权限一定齐(useEditMode 铁律 ①) -->
         <FPEditModeButton
           :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"

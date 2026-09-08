@@ -206,3 +206,124 @@ describe('年表屏按月份行上锁(D18)', () => {
     expect(vi.mocked(api.get).mock.calls.filter(c => String(c[0]).startsWith('/review'))).toHaveLength(0)
   })
 })
+
+// ══════════ 整年动作的候选月(2026-09-08「一颗按钮管整年,键仍按月」) ══════════
+//
+// 四个年表屏一屏一整年、12 行同时摆着,没有「当前月」这一维,所以给动作簇的是一**串**按月的键。
+// 这一串怎么筛只此一份(四屏共用),所以断言也只在这里写一次:
+// 动作簇内部「哪个态画哪几颗」的八格在 components/fp/__tests__/FPReviewActions.spec.ts,这里不重测。
+
+import { ref } from 'vue'
+
+function keysHost(opts: {
+  rows: () => LockRow[]
+  kinds?: string[]
+  scope?: () => string | null
+}) {
+  let out!: ReturnType<typeof useSchedScreen>
+  const Host = defineComponent({
+    setup() {
+      out = useSchedScreen({
+        load: async () => {}, reloadOverview: async () => {},
+        rows: opts.rows, clearData: () => {},
+        batchDelete: async () => {}, clear: { call: async () => {}, confirm: () => true },
+        ...(opts.kinds ? { reviewKinds: opts.kinds } : {}),
+        ...(opts.scope ? { reviewScope: opts.scope } : {}),
+      } as never)
+      return () => null
+    },
+  })
+  mount(Host)
+  return out
+}
+const kv = (s: ReturnType<typeof useSchedScreen>) =>
+  (s.reviewKeys as unknown as { value: string[] | null }).value
+
+describe('整年动作的候选月 reviewKeys', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve([]) as never)
+  })
+
+  const m = (id: number, acctMonth: string): LockRow => ({ id, source: 'manual', acctMonth })
+
+  // 破坏验证:把 computed 里的 return 换成写死的 12 个月 → 红。
+  // 空年发 12 把键的后果:store.batch 逐把写、碰到第一个 409 就停,
+  // 人看到的是「1 月还没录完」,而他想交的是 6 月。
+  it('❗空年 → 一把键都不给(空年整簇不渲染)', async () => {
+    const s = keysHost({ rows: () => [], kinds: ['pv'] })
+    await s.pickYear(2025)
+    await nextTick()
+    expect(kv(s), '屏上一行都没有的年,没有任何月够格').toEqual([])
+  })
+
+  // 破坏验证:把 `[...new Set(...)]` 去掉 → 红(同月两行会拼出两把一模一样的键,
+  //          按钮写成「交审 2025 年（4 个月）」而其实只有 3 个月)。
+  it('❗按月去重 + 按月排序:一个月多少行都只出一把键', async () => {
+    const s = keysHost({
+      rows: () => [m(1, '2025-06'), m(2, '2025-03'), m(3, '2025-06')],
+      kinds: ['pv'],
+    })
+    await s.pickYear(2025)
+    await nextTick()
+    expect(kv(s)).toEqual(['pv:2025-03', 'pv:2025-06'])
+  })
+
+  // 破坏验证:把 `.startsWith(pre)` 去掉 → 红。
+  // 野键指向一个没取过的年,而动作簇的 ready 要求每把键的年都到手 —— 一把野键让整簇静默消失。
+  it('❗只认本年的行 —— 跨年的行会拼出指向未取年份的键,整簇会因此消失', async () => {
+    const s = keysHost({ rows: () => [m(1, '2024-11'), m(2, '2025-02')], kinds: ['pv'] })
+    await s.pickYear(2025)
+    await nextTick()
+    expect(kv(s)).toEqual(['pv:2025-02'])
+  })
+
+  // 破坏验证:在 computed 里加一层 `.filter(k => statusOf(k) === 'entered')` → 红。
+  // **态不在这一层筛**:筛了的话审核员那三颗(通过/退回/撤销)永远出不来 —— 它们要的
+  // 正是 submitted / approved。态的分组在动作簇里一份(铁律 5)。
+  it('❗已审的月照样在候选里 —— 按态分组是动作簇那一份的事', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url === '/review/states'
+        ? Promise.resolve([{ key: 'pv:2025-03', kind: 'pv', scope: null, status: 'approved',
+            submittedBy: null, submittedAt: null, reviewedBy: '李审',
+            reviewedAt: '2025-04-05T10:00:00', reason: null, blockedBy: [] }] as never)
+        : (Promise.resolve([]) as never))
+    const s = keysHost({ rows: () => [m(1, '2025-03'), m(2, '2025-04')], kinds: ['pv'] })
+    await s.pickYear(2025)
+    await flushPromises()
+    await nextTick()
+    expect([...s.lockedMonths.value], '3 月确实是已审的').toEqual([3])
+    expect(kv(s), '已审的月也要交给动作簇 —— 审核员的「撤销审核」认的就是它')
+      .toEqual(['pv:2025-03', 'pv:2025-04'])
+  })
+
+  // 破坏验证:把 computed 里的 `opts.reviewScope?.() ?? null` 换成常量 'office' → 后半条红。
+  // 那是「在三期屏上交了办公的审」——静默的错。
+  it('❗多 scope 的屏切 tab:候选跟着当前 scope 换(附13 办公 / 附14 三期)', async () => {
+    const tab = ref<'office' | 'phase3'>('office')
+    const s = keysHost({
+      rows: () => [m(1, '2025-02')], kinds: ['utilities'], scope: () => tab.value,
+    })
+    await s.pickYear(2025)
+    await nextTick()
+    expect(kv(s)).toEqual(['utilities:office:2025-02'])
+
+    tab.value = 'phase3'
+    await nextTick()
+    expect(kv(s), '切 tab 没换 scope = 在三期屏上交了办公的审')
+      .toEqual(['utilities:phase3:2025-02'])
+  })
+
+  // 破坏验证:把 `if (!kinds?.length || y == null) return null` 里的 `y == null` 去掉 →
+  //          年份门上就会拼出 `pv:null-...` 这种键。
+  it('❗不是年表屏 / 还在年份门上 → null(整簇不渲染)', async () => {
+    const notYearly = keysHost({ rows: () => [m(1, '2025-02')] })
+    await notYearly.pickYear(2025)
+    await nextTick()
+    expect(kv(notYearly), '没传 reviewKinds 的屏(附10/12)走的是按月那条路').toBeNull()
+
+    const onGate = keysHost({ rows: () => [m(1, '2025-02')], kinds: ['pv'] })
+    expect(kv(onGate), '还没进年').toBeNull()
+  })
+})

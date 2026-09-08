@@ -8,6 +8,8 @@ import { metersApi } from '@/api/meters'
 import { allocApi } from '@/api/alloc'
 import { billNoticesApi } from '@/api/billNotices'
 import { paramsApi } from '@/api/params'
+import { reviewApi } from '@/api/review'
+import type { ReviewRow, ReviewStatus } from '@/types/review'
 
 /**
  * 出账月矩阵（2026-08-28 设计稿 §①）—— 五屏共用的那道门。
@@ -33,7 +35,11 @@ vi.mock('@/api/params', () => ({ paramsApi: { status: vi.fn() } }))
 
 const NOW = 2025
 
-function wire(o: { meters?: string[]; pool?: string[]; loss?: string[]; notices?: string[]; stale?: string[] } = {}) {
+function wire(o: { meters?: string[]; pool?: string[]; loss?: string[]; notices?: string[]; stale?: string[]
+                   review?: ReviewRow[] } = {}) {
+  // ⚠ 闸道每条用例都要重设:vi.clearAllMocks() 只清调用记录、不清实现,
+  //   某一条设的 mockResolvedValue 会漏进后面每一条(角标那几条互相染色,查起来像随机红)。
+  vi.mocked(reviewApi.states).mockResolvedValue(o.review ?? [])
   vi.mocked(metersApi.months).mockResolvedValue(o.meters ?? [])
   vi.mocked(allocApi.poolMonths).mockResolvedValue(o.pool ?? [])
   vi.mocked(allocApi.lossMonths).mockResolvedValue(o.loss ?? [])
@@ -117,5 +123,120 @@ describe('出账月矩阵', () => {
     await w.find('.bmm-addy').trigger('click')     // ＋ 补更早年份
     expect(JSON.parse(localStorage.getItem('bw-extra-years:chain:billing') ?? '[]')).toEqual([2024])
     expect(w.findAll('.bmm-yrow .bmm-y').map(e => e.text())).toEqual(['2024', '2025'])
+  })
+})
+
+/**
+ * 月卡审核角标（设计稿 §9.2-④）。
+ *
+ * 这一格对的是**五把键**（CHAIN 五道工序 params / meters / alloc / alloc-loss / bill-notices），
+ * 取最未完成的一档（`components/fp/monthReview.ts` 的 worstReview）——
+ * 月格回答的是「这个月还有没有我的事」，不是「这个月封了没有」。
+ *
+ * 「哪一档画哪个色」在 chainMatrix.spec.ts 钉过（组件那一层）；这里只验**这道门喂进去的是什么**：
+ * 哪五把键、怎么聚合、什么时候不喂、按年取了几趟。
+ */
+const KINDS = ['params', 'meters', 'alloc', 'alloc-loss', 'bill-notices']
+const row = (key: string, status: ReviewStatus): ReviewRow => ({
+  key, kind: key.slice(0, key.lastIndexOf(':')), scope: null, status,
+  submittedBy: 'zhangsan', submittedAt: null, reviewedBy: '李审',
+  reviewedAt: '2025-03-05T10:00:00', reason: null, blockedBy: [],
+})
+/** 某月五把键同一档。 */
+const all5 = (ym: string, status: ReviewStatus) => KINDS.map(k => row(`${k}:${ym}`, status))
+
+/** 闸道是第二趟异步（矩阵先落地 → watch 才发请求），要再刷一次微任务才拿得到角标。 */
+async function mkRv() {
+  const w = await mk()
+  await flushPromises()
+  return w
+}
+
+describe('出账月矩阵 · 月卡审核角标', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    localStorage.clear()
+    vi.setSystemTime(new Date(`${NOW}-06-15T00:00:00`))
+  })
+
+  it('❗五把键取最未完成的一档 —— 一把被退回，另外四把已审也不许画成绿锁', async () => {
+    // 破坏验证:reviewOf 改成 `period.cellOf(ym).closed ? 'approved' : null`(只画整月锁账那一档)→ 红
+    wire({
+      meters: ['2025-01'],
+      review: [...all5('2025-01', 'approved').slice(0, 4), row('bill-notices:2025-01', 'returned')],
+    })
+    const rv = (await mkRv()).findAll('.bmm-card')[0].find('.bmm-rv')
+    expect(rv.exists()).toBe(true)
+    expect(rv.classes(), '五把里有一把还得回来改，这个月就还有你的事').toContain('rv-returned')
+  })
+
+  it('❗五把全 approved 才是绿锁', async () => {
+    wire({ meters: ['2025-01'], review: all5('2025-01', 'approved') })
+    expect((await mkRv()).findAll('.bmm-card')[0].find('.bmm-rv').classes()).toContain('rv-approved')
+  })
+
+  it('❗库里一行都没有 = 未交审（灰点），不是「没角标」', async () => {
+    // 破坏验证:去掉 Cell 里那行 `review: reviewOf(ym)` → 一格都不画 → 红
+    wire({ meters: ['2025-01'] })
+    expect((await mkRv()).findAll('.bmm-card')[0].find('.bmm-rv').classes()).toContain('rv-entered')
+  })
+
+  it('❗空月一格不画 —— 本来就没有东西可交，一片虚线卡长满灰点是纯噪音', async () => {
+    // 破坏验证:BookMonthMatrix 模板里角标那条 `m.hasData &&` 去掉 → 红
+    wire({ meters: ['2025-01'], review: all5('2025-05', 'approved') })
+    const card = (await mkRv()).findAll('.bmm-card')[4]      // 2025-05：四道工序一道没走
+    expect(card.classes()).toContain('blank')
+    expect(card.find('.bmm-rv').exists()).toBe(false)
+  })
+
+  it('❗闸道没回来时一格都不画，不拿「未交审」冒充「还不知道」', async () => {
+    wire({ meters: ['2025-01'] })
+    let release!: (v: unknown) => void
+    vi.mocked(reviewApi.states).mockReturnValue(new Promise((r) => { release = r }) as never)
+    const w = await mkRv()
+    expect(w.findAll('.bmm-rv'), '闸道还没回来 —— 进屏那几百毫秒不许先刷一片灰点再翻牌').toHaveLength(0)
+    release([])
+    await flushPromises()
+    expect(w.findAll('.bmm-rv').length, '回来了才画').toBeGreaterThan(0)
+  })
+
+  it('❗按年取，一年一趟（不是一格一趟、更不是一格五趟）', async () => {
+    // 破坏验证:把那条 watch 整条删掉 → 一趟都不发 → 红
+    // (⚠ 只去掉 { immediate: true } **这条不红**:首进时 rows 从空变满,watch 照样会响一次。
+    //  immediate 挡的是下面那条「第二次进门」—— 注释别谎报破坏点。)
+    wire({ meters: ['2024-11', '2025-01'] })
+    await mkRv()
+    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0]), '纵排两年 ⇒ 两趟').toEqual([2024, 2025])
+  })
+
+  it('❗第二次进门也要取 —— 五屏共读一份 chain，回到矩阵时它早就加载好了', async () => {
+    // 破坏验证:watch 去掉 { immediate: true } → 挂载时年份表就已经是全的、字符串再没变过 →
+    // watch 一次都不响 → 角标全没 → 红。而「换出账月」回到这道门走的正是这条路(store 有缓存),
+    // 也就是说这是**多数**进门姿势,不是边角。
+    wire({ meters: ['2025-01'], review: all5('2025-01', 'approved') })
+    await useBillingPeriodStore().loadChain()      // 模拟:抄表屏已经进过一次,cells 早已在手
+    vi.mocked(reviewApi.states).mockClear()
+    const w = await mkRv()
+    expect(vi.mocked(reviewApi.states).mock.calls.map(c => c[0])).toEqual([2025])
+    expect(w.findAll('.bmm-card')[0].find('.bmm-rv').classes()).toContain('rv-approved')
+  })
+
+  it('❗角标与四道工序点并存，且不占流内子元素位 —— 加它不改月卡结构', async () => {
+    // 破坏验证:把角标那个 <span> 挪进 .bmm-pips 里（或并进 pips/badge 那条 v-else-if 互斥链）
+    // → 工序点消失 / 子元素数与无角标时相等 → 红
+    wire({ meters: ['2025-01'], pool: ['2025-01'], review: all5('2025-01', 'submitted') })
+    const withRv = (await mkRv()).findAll('.bmm-card')[0]
+    // 同一张卡、闸道拉挂（yearLoaded 假 ⇒ statusOf 恒 null ⇒ 不画角标），其余完全一样
+    setActivePinia(createPinia())
+    wire({ meters: ['2025-01'], pool: ['2025-01'] })
+    vi.mocked(reviewApi.states).mockRejectedValue(new Error('闸道挂了'))
+    const without = (await mkRv()).findAll('.bmm-card')[0]
+
+    expect(without.find('.bmm-rv').exists(), '对照组必须真的没有角标').toBe(false)
+    expect(withRv.findAll('.bmm-pip.on'), '角标不许把工序点挤掉').toHaveLength(2)
+    expect(withRv.element.children.length, '角标是 absolute 的，只多一个不占流的子元素')
+      .toBe(without.element.children.length + 1)
+    expect(withRv.element.children[0].classList.contains('bmm-month'), '月份仍是第一个流内元素').toBe(true)
   })
 })

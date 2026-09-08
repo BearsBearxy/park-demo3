@@ -10,6 +10,7 @@ import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import {
   elecCostApi,
   type ElecMeterDTO, type ElecMeterKind, type ElecCostEntryDTO, type ElecPriceCfgDTO, type ElecMetricDTO,
@@ -21,6 +22,7 @@ import FPElevateDialog from '@/components/fp/FPElevateDialog.vue'
 import FPLockDialogs from '@/components/fp/FPLockDialogs.vue'
 import { S } from '@/utils/lockScopes'
 import { useEditMode } from '@/composables/useEditMode'
+import { useReviewStore } from '@/stores/review'
 import { useMonthGate } from '@/composables/useMonthGate'
 import FPMonthGate from '@/components/fp/FPMonthGate.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
@@ -45,8 +47,14 @@ const canPrice = computed(() => auth.can('param-policy:edit'))
 // ── 编辑模式(EDIT-MODE-SPEC v2):不跨会话,组件 ref;KeepAlive 切页签回来也回浏览态(安全默认) ──
 // 编辑模式 + 提权入口(EDIT-MODE-SPEC v3 / ELEVATION-SPEC):无权限的账号也看得到按钮,
 // 点了弹主管授权窗;切页签不再回浏览态(只关浮层)。
+/**
+ * 弹卡标题写的是**审核键那张表**的人话名「园区电费模型」(后端 ReviewKind),
+ * 不是屏名「电费成本总览」—— 交审后所有报错、清单行、审计日志都用前者,
+ * 这里换成屏名,人拿着弹卡上的名字在待审清单里一个都搜不到。
+ */
+const reviewLabel = computed(() => `园区电费模型 · ${acctMonth.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['entry:edit', 'param-policy:edit'], {
     scope: () => S.elecCost(year.value, month.value),
     // 审核键(§7.1):**elec-model**,不是 elec-cost —— 后者是附表11 的报送台账(ElecView/elec_record)。
@@ -82,12 +90,23 @@ const fy = (n: number) => '¥' + n.toLocaleString('en-US', { minimumFractionDigi
 //   出账链那道同形的门用的是真 `loaded` 布尔(stores/billingPeriod),这里对齐它。
 const dataMonths = ref<string[] | null>(null)
 const monthsErr = ref<string | null>(null)
+const review = useReviewStore()
 const { year: gy, month: gm, picked, ym: gateYm, pick: pickCell, clear: clearPeriod,
         rows: gateRows, addEarlier, addLater, removeYear } = useMonthGate({
   key: 'elec-cost',
   store: ['elec-cost', 'all'],
   months: () => dataMonths.value ?? [],
+  // 月卡审核角标(设计稿 §9.2-④):一格一把键,四档灰/橙/绿/红。
+  // ⚠ `elec-model:` 这个字面量与上面 reviewKey 里那份**故意各写一份**:收进一个共用函数,
+  //   门禁 reviewGateCoverage 认的那四种声明形状里 `reviewKey: () => …` 那条就扫不到
+  //   「这一屏声明了 elec-model」,后端加键漏接屏时它不会红(同 LedgerView 的两处)。两处要一起改。
+  reviewOf: (ym) => review.statusOf(`elec-model:${ym}`),
 })
+// 角标要按年取一趟闸道。矩阵态没有期 ⇒ useEditMode 那条 ensureFor 挂的键恒 null,一趟都不发;
+// 少了这条,statusOf 永远回「还不知道」,角标一个也画不出来。纵排几年就几趟(ensureYear 自带缓存与在途去重)。
+watch(() => gateRows.value.map(r => r.year).join(','), () => {
+  for (const r of gateRows.value) void review.ensureYear(r.year)
+}, { immediate: true })
 const year = computed(() => gy.value ?? 0)
 const month = computed(() => gm.value ?? 0)
 const acctMonth = computed(() => `${year.value}-${pad2(month.value)}`)
@@ -596,6 +615,9 @@ function fmtMetric(mt: ElecMetricDTO): string {
           <template #leading><component :is="iconFor('wand-2')" :size="14" /></template>
           模拟填充 2025
         </Button>
+        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
+             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <!-- 失败态禁"进"不禁"出"(:disabled 不分编辑态,不带 !editMode 会把「完成」也禁掉 → 死锁) -->
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"

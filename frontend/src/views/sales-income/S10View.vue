@@ -16,6 +16,8 @@ import { s10Api } from '@/api/s10'
 import { booksApi } from '@/api/books'
 import { exportS10Month } from '@/utils/s10Excel'
 import { useSchedScreen, clearConfirm } from '@/composables/useSchedScreen'
+import { useReviewStore } from '@/stores/review'
+import type { ReviewStatus } from '@/types/review'
 import type { S10OverviewDTO, S10MonthDTO, S10RecordDTO, S10ColId, S10RecordReq } from '@/types/s10'
 import type { Book, BookDef, TemplateVersion } from '@/types/book'
 import { flattenCols } from '@/types/book'
@@ -145,6 +147,18 @@ function recordedFor(y: number, m: number): boolean {
 // 手工年落本机(bw-extra-years:s10:{phase});bump 让 localStorage 写入驱动重组
 const extraBump = ref(0)
 const extraYears = computed(() => { void extraBump.value; return loadExtraYears('s10', phase.value) })
+
+// ── 月卡角标:这个月归谁管(设计稿 per-screen-review §07-④) ──
+const review = useReviewStore()
+/**
+ * 一格一把键 —— 本屏挂 4 把期区键,但矩阵只画**左轨选中那一册**的那一把,与屏上按钮同一条规则
+ * (§03-B4:用户一次只看得见一把)。切册 = 整片换键,phase 在这里被读到,矩阵自己会重算。
+ *
+ * 「还不知道 → null」与「库里没这行 = 派生 entered」两条判据都在 stores/review.ts 的 statusOf,
+ * 这里不再抄一遍(改前本仓有五份逐字相同的抄写)。
+ */
+const reviewOf = (y: number, m: number): ReviewStatus | null =>
+  review.statusOf(`s10:${phase.value}:${periodOf(y, m)}`)
 const matrixYears = computed(() => {
   const ov = overview.value
   if (!ov) return []
@@ -163,10 +177,18 @@ const matrixYears = computed(() => {
       const m = i + 1
       const hasData = recordedFor(y, m)
       // cur = 该册最近有数据月 = 当年 currentMonth(currentMonth=0 即全空,无 cur)
-      return { month: m, hasData, cur: hasData && y === ov.currentYear && m === ov.currentMonth }
+      return { month: m, hasData, cur: hasData && y === ov.currentYear && m === ov.currentMonth,
+               review: reviewOf(y, m) }
     }),
   }))
 })
+
+// 矩阵态本来一个审核请求都不发 —— useSchedScreen 那条闸道 watch 挂在 year 上,而矩阵态 year 恒 null。
+// 角标要按年取一趟:纵排几年就是几趟,ensureYear 命中已有的年直接 return,与宽表态共用同一份缓存。
+// (审核态按年发,不按册 —— 切册不必重取。)
+watch(() => matrixYears.value.map(r => r.year).join(','), () => {
+  for (const r of matrixYears.value) void review.ensureYear(r.year)
+}, { immediate: true })
 
 // 增删手工年:本机便利动作,无权限门、无确认(§8)
 function onAddEarlier() {

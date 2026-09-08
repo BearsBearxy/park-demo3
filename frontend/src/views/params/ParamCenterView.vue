@@ -12,6 +12,7 @@
 // (参数 / 作用范围 / 来自 三列两行内换行且给 min-width、单位另起小灰字;值 / 区间 nowrap 按内容撑开;说明列三行 line-clamp + 完整 title;宽了横向滚动)。
 import { ref, computed, onMounted, onDeactivated, watch, nextTick } from 'vue'
 import FPEditModeButton from '@/components/fp/FPEditModeButton.vue'
+import FPReviewActions from '@/components/fp/FPReviewActions.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { paramsApi, type ParamPutReq, type ParamRowDTO, type ParamStatusDTO, type ParamZone } from '@/api/params'
@@ -64,8 +65,11 @@ const idOf = (scope: string) => Number(scope.slice(scope.indexOf(':') + 1))
 // ① 区月度录入(照抄供电局账单)、②③④ 区长期计费口径、重算 —— 三档权限在点「编辑模式」时一次要齐:
 // 缺任何一档当场弹主管授权窗(ELEVATION-SPEC),取消 = 什么都没发生,留在浏览态。
 // 于是**进得了编辑态就一定齐**,四个区的写入口在编辑态直接可用,不再有「点了转成授权请求」的包装。
+// 弹卡标题的人话名。前端没有 kind→人话名的映射表,由各屏自己拼 ——
+// 新开一张映射表会与后端 ReviewKind.label() 形成第二份。
+const reviewLabel = computed(() => `计费参数 · ${ym.value}`)
 const { editMode, canEnter, asking, toggle: toggleEdit, cancelAsk, onElevated, heldByOther,
-        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip } =
+        lockedBy, evictedBy, lockScope, onTaken, reviewNote, reviewTip, reviewKeys } =
   useEditMode(['param-monthly:edit', 'param-policy:edit', 'billing-run:edit'], {
     scope: () => S.paramCenter(year.value, month.value),
     // 审核键(§7.1):计费参数每月一把。ym 为空 = 还在选期门,没有月可审。
@@ -562,6 +566,9 @@ const FIXED_RULES = [
           <template #leading><component :is="iconFor('history')" :size="14" /></template>
           变更记录
         </Button>
+        <!-- 审核动作簇(§01):长在编辑按钮**左边**,同一条 flex 行 —— 编辑按钮位一个像素不动。
+             四态八格由组件自己判(全站唯一那一份),屏这一层只负责喂键与人话名。 -->
+        <FPReviewActions :keys="reviewKeys" :label="reviewLabel" :can-edit="canEnter" :edit="editMode" />
         <FPEditModeButton :edit="editMode" :held-by-other="heldByOther" :can-enter="canEnter"
                           :review-note="reviewNote" :review-tip="reviewTip"
                           @toggle="toggleEdit()" />

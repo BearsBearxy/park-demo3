@@ -12,6 +12,8 @@ import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { useReviewStore } from '@/stores/review'
+import type { ReviewStatus } from '@/types/review'
 import { companyApi, ledgerApi } from '@/api/ledger'
 import { booksApi } from '@/api/books'
 import { loadExtraYears, saveExtraYears, buildYearRows } from '@/utils/matrixYears'
@@ -79,6 +81,16 @@ const companyName = computed(() => company.value?.name ?? book.value?.name ?? ''
 /** 矩阵每一格的作用域 —— 与进去之后那把锁必须是同一个键。 */
 const cellScope = (y: number, m: number) =>
   companyId.value == null ? null : S.ledger(companyId.value, y, m)
+/**
+ * 矩阵每一格的审核键(SIDEBAR-UX-REDESIGN §7.1)—— 与进去之后宽表拿到的那一把必须逐字相同。
+ *
+ * ⚠ 下面表格态那处 `:review-key` 里的字面量**故意留着没收进来**:门禁
+ * `views/__tests__/reviewGateCoverage.spec.ts` 认的四种声明形状之一就是模板里的
+ * `:review-key="…ledger:…"`,收进函数它就扫不到「这一屏声明了 ledger 这把键」,
+ * 后端加键漏接屏时那道门禁不会红。两处要一起改。
+ */
+const cellReviewKey = (y: number, m: number) =>
+  companyId.value == null ? null : `ledger:${companyId.value}:${y}-${String(m).padStart(2, '0')}`
 const lockScope = computed(() =>
   companyId.value != null && month.value != null
     ? S.ledger(companyId.value, year.value, month.value)
@@ -279,7 +291,17 @@ function removeYear(y: number) {
   setExtra(extraYears.value.filter(x => x !== y))
 }
 
-type MatrixCell = { month: number; hasData: boolean; rowCount?: number; cur?: boolean }
+type MatrixCell = { month: number; hasData: boolean; rowCount?: number; cur?: boolean
+                   review?: ReviewStatus | null }
+// 矩阵态本来一个审核请求都不发(闸道只在表格态取)。角标要按年取一趟 —— 一屏纵排 2~4 年就是
+// 2~4 趟,byYear 有缓存与在途去重,换册不必重取(states?year= 是整年全部键,不分公司)。
+const review = useReviewStore()
+/**
+ * 一格一把键 → 一枚角标。判据(含「还不知道 → null」与「库里没这行 = 派生 entered」)
+ * 在 stores/review.ts 的 statusOf 一份 —— 改前这一小段在报表屏那条入口里还有逐字相同的一份。
+ */
+const cellReview = (y: number, m: number): ReviewStatus | null =>
+  review.statusOf(cellReviewKey(y, m))
 const matrixYears = computed(() => {
   const cid = companyId.value
   if (cid == null) return []
@@ -293,7 +315,9 @@ const matrixYears = computed(() => {
     const months: MatrixCell[] = Array.from({ length: 12 }, (_, i) => {
       const meta = metaBy.get(i + 1)
       const hasData = !!meta && meta.status !== 'empty'
-      return { month: i + 1, hasData, rowCount: hasData ? meta!.tenants : undefined }
+      // 空月不喂角标由 BookMonthMatrix 自己拦(v-if="m.hasData && m.review"),这里不重复判
+      return { month: i + 1, hasData, rowCount: hasData ? meta!.tenants : undefined,
+               review: cellReview(r.year, i + 1) }
     })
     return {
       year: r.year,
@@ -311,6 +335,12 @@ const matrixYears = computed(() => {
   }
   return out
 })
+
+// 矩阵上有哪几年就取哪几年的闸道。挂在年份列表(而不是 companyId)上:一趟是整年全部键,
+// 换册不必重取;而年份行会随「更早 / 更晚」按钮增删,那时才真需要新的一趟。
+watch(() => matrixYears.value.map(r => r.year).join(','), () => {
+  matrixYears.value.forEach(r => { void review.ensureYear(r.year) })
+}, { immediate: true })
 
 // ── 新增账册(§9 建司即建册,后端建公司时自动挂 v1 账册;company:manage 门) ──
 async function createCompany(name: string) {
