@@ -35,9 +35,12 @@ class DataHomeServiceTest {
     // 三大报表进清单之后多的一个源(2026-09-08)。本类的用例都不碰报表,mock 回空即可 ——
     // selectObjs 默认回 null 会 NPE,所以显式给空 list。
     com.park.demo3.mapper.ReportAmountMapper amounts = Mockito.mock(com.park.demo3.mapper.ReportAmountMapper.class);
+    // 园区电费模型也进清单了(2026-09-08),本类用例不碰它,mock 回空
+    com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries =
+        Mockito.mock(com.park.demo3.mapper.ElecCostEntryMapper.class);
 
     DataHomeService svc = new DataHomeService(ledger, s10, salary, office, pv, charging, elec, contractService,
-        meterReadings, poolResults, lossResults, billNotices, paramService, companies, amounts);
+        meterReadings, poolResults, lossResults, billNotices, paramService, companies, amounts, elecCostEntries);
 
     // ── helpers ──
     S10Record s10Row(String acctMonth, int phase, LocalDateTime updated) {
@@ -131,8 +134,8 @@ class DataHomeServiceTest {
 
         DataHomeOverviewDTO o = svc.overview("2026-06");
         // 2026-09-08:三大报表进清单,9 → 12 源
-        assertThat(o.schedules().items()).hasSize(12);
-        assertThat(o.schedules().total()).isEqualTo(12);
+        assertThat(o.schedules().items()).hasSize(13);
+        assertThat(o.schedules().total()).isEqualTo(13);
         assertThat(o.schedules().done()).isEqualTo(1);
         assertThat(o.schedules().items()).filteredOn(i -> i.name().equals("工资明细"))
             .allMatch(DataHomeOverviewDTO.Item::done);

@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import com.park.demo3.entity.ReportAmount;
 import java.util.Set;
+import com.park.demo3.entity.ElecCostEntry;
 
 /**
  * data-home 只读聚合：所有数字从已建子系统真实数据派生。零新表、零迁移、不读 new Date()。
@@ -25,6 +26,7 @@ import java.util.Set;
 public class DataHomeService {
 
     private final MonthlyLedgerMapper ledger;
+    private final com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries;
     private final com.park.demo3.mapper.ReportAmountMapper amounts;
     private final S10RecordMapper s10;
     private final SalaryRecordMapper salary;
@@ -47,7 +49,9 @@ public class DataHomeService {
                            MeterReadingMapper meterReadings, AllocPoolResultMapper poolResults,
                            AllocLossResultMapper lossResults, BillNoticeMapper billNotices,
                            ParamService paramService, ManagementCompanyMapper companies,
-                           com.park.demo3.mapper.ReportAmountMapper amounts) {
+                           com.park.demo3.mapper.ReportAmountMapper amounts,
+                           com.park.demo3.mapper.ElecCostEntryMapper elecCostEntries) {
+        this.elecCostEntries = elecCostEntries;
         this.amounts = amounts;
         this.ledger = ledger; this.s10 = s10; this.salary = salary; this.office = office;
         this.pv = pv; this.charging = charging; this.elec = elec; this.contractService = contractService;
@@ -114,7 +118,7 @@ public class DataHomeService {
             months,
             buildBlockers(contractNoLine, paramStale),
             buildChain(ps.priceOk(), ps.priceTotal(), readings, pool, loss, notices.size(), noticeTotal, noticeWarn),
-            new DataHomeOverviewDTO.Schedules(done, 12, items));
+            new DataHomeOverviewDTO.Schedules(done, 13, items));
     }
 
     /** 出账链四源的 distinct 账期并集(升序去重)。四个 selectDistinctYms 是上一轮为干掉
@@ -152,7 +156,7 @@ public class DataHomeService {
     /** 9 个附表源的本期取数。全部按 acctMonth 判本月有没有行(2026-09-06 前年度类曾按整年判,
      *  一月录完十二月看还显对勾——那是假绿,已改);yearly 这个位现在只剩「标签写不写年」的用途。 */
     private List<SourceData> scheduleSources(int year, int month, String acctMonth) {
-        List<SourceData> sources = new ArrayList<>(12);
+        List<SourceData> sources = new ArrayList<>(13);
         List<MonthlyLedger> ledgerRows = ledger.selectList(new QueryWrapper<MonthlyLedger>()
             .eq("period_year", year).eq("period_month", month));
         // 台账公司清单:全集来自管理公司表(不是「谁录了谁才在列表里」),done 按该公司本月有没有台账行判
@@ -198,6 +202,13 @@ public class DataHomeService {
         sources.add(yearly("电费成本", "附11", "elec-cost",
             concat(elec.selectByYearAndType(year, "energy"), elec.selectByYearAndType(year, "basic")).stream()
                 .filter(r -> acctMonth.equals(r.getAcctMonth())).toList(), ElecRecord::getUpdatedAt));
+
+        // 园区电费模型(2026-09-08 补):后端 R1 就给它建了审核键(elec-model),但前端清单里
+        // 一直没有它的行 —— 结果是交不了审、也就永远审不了,那把键的闸等于死代码。
+        // ⚠ 它不是独立的屏,是附表11 屏的 ?mode=cost 子视图,所以 go 与附表11 同为 elec-cost,
+        //   靠 tag 分行(与附13/附14 共用 go='utilities' 同一套办法)。
+        sources.add(monthly("园区电费模型", "模型", "elec-cost",
+            elecCostEntries.selectByMonth(acctMonth), ElecCostEntry::getUpdatedAt));
 
         // ── 三大报表(2026-09-08:用户拍板「每个录入屏都要审核」,交审入口放本月出账清单上) ──
         //

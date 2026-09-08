@@ -1,5 +1,5 @@
 import api from '@/api'
-import type { ReviewRow } from '@/types/review'
+import type { PendingItem, ReviewRow } from '@/types/review'
 
 /**
  * 审核机制(SIDEBAR-UX-REDESIGN §7.4)。
@@ -24,4 +24,8 @@ export const reviewApi = {
 
   /** 整月全审的月份集合(D20)。矩阵月格的 ✓ 靠它,与四个 /months 端点同形。 */
   closedMonths: () => api.get<string[]>('/review/closed-months'),
+
+  /** 铃铛抽屉用:待审**明细**(跨全部月)。只有个数的话,人得自己在年份条上逐月翻着找。
+   *  ⚠ 只在抽屉打开时取 —— 别挂到 3 秒一拍的心跳上,那条通道只该带一个号。 */
+  pending: () => api.get<PendingItem[]>('/review/pending'),
 }

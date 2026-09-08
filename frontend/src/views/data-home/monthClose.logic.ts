@@ -83,12 +83,29 @@ const ROW_KINDS: Record<string, string[]> = {
   ledger: ['ledger'], 'sales-income': ['s10'], salary: ['salary'],
   utilities: ['utilities'], 'pv-income': ['pv'],
   charging: ['charging-car', 'charging-ebike'], 'elec-cost': ['elec-cost'],
+  // 园区电费模型:后端 R1 就有这把键,前端一直没有行 —— 交不了审,那把闸就是死代码。
+  'elec-model': ['elec-model'],
   // 三大报表(2026-09-08):一张表一行,行内按公司分格。三个 statement 是三个 kind ——
   // scope 那一段被 companyId 占了(后端 ReviewKind 头注)。
   'income-statement': ['report-is'], 'balance-sheet': ['report-bs'], 'trial-balance': ['report-tb'],
   import: [],           // 导入中心没有审核键
   reconciliation: [],   // 收入核对本轮不进审核(§7.1 末句)
   'month-lock': [],     // 本月锁账是别的 14 行的派生,自己没有键
+}
+
+/**
+ * 审核 kind → 该去哪一屏。**从上面那张 ROW_KINDS 反推**,不另列一份 ——
+ * 两份必漂移,而漂移的表现是「通知点进去落在别的屏上」。
+ *
+ * 出账链五步的 kind code 逐字就是屏的 value(DataHomeService.buildChain 那个数组写死的),
+ * 所以它们走恒等;记账列的行 key 与屏 value 不同名,查 BOOKING_ROWS 的 go。
+ * 查不到回 null —— 调用方按「不给跳转」处理,不猜。
+ */
+export function screenOfKind(kind: string): string | null {
+  const row = BOOKING_ROWS.find(r => (ROW_KINDS[r.key] ?? []).includes(kind))
+  if (row?.go) return row.go
+  // 出账链五步:kind code === 屏 value
+  return (ROW_KINDS[kind] ?? []).includes(kind) ? kind : null
 }
 
 /** 进展序。取「最不进展」用它比大小 —— 一行显示已审核而底下挂着没交审的公司是自相矛盾。 */
@@ -107,14 +124,18 @@ const statusOf = (rows: ReviewRow[]): ReviewStatus | 'na' => leastOf(rows.map(r 
 /** 记账列 8 行 ← 后端 9 源。合并行 done = 两项皆 done(保守:与「全月已审核」同调)。
  *  `from` 按 `DataHomeItemDTO.go` 匹配 —— 附13/附14 两条源本就共用 go='utilities',
  *  `from: ['utilities']` 一项就能同时收下两条;附7/8 的 go 本就不同,`from` 列两个。 */
-const BOOKING_ROWS: { key: string; label: string; tag?: string; from: string[]; go?: string }[] = [
+/** `fromTag`:同一个 go 下按 tag 再筛一层。附表11 与园区电费模型共用 go='elec-cost'
+ *  (后者是前者的 ?mode=cost 子视图,不是独立的屏),不筛的话两行会各自吃下两条源。 */
+const BOOKING_ROWS: { key: string; label: string; tag?: string; from: string[];
+                      fromTag?: string[]; go?: string }[] = [
   { key: 'ledger',        label: '月度台账', tag: '凭证',   from: ['ledger'],        go: 'ledger' },
   { key: 'sales-income',  label: '附表10',   tag: '附10',   from: ['sales-income'],  go: 'sales-income' },
   { key: 'salary',        label: '附表12',   tag: '附12',   from: ['salary'],        go: 'salary' },
   { key: 'utilities',     label: '办公·三期水电', tag: '附13/14', from: ['utilities'], go: 'utilities' },
   { key: 'pv-income',     label: '附表6',    tag: '附6',    from: ['pv-income'],     go: 'pv-income' },
   { key: 'charging',      label: '附表7/8',  tag: '附7/8',  from: ['car-charging', 'ebike-charging'], go: 'car-charging' },
-  { key: 'elec-cost',     label: '附表11',   tag: '附11',   from: ['elec-cost'],     go: 'elec-cost' },
+  { key: 'elec-cost',     label: '附表11',   tag: '附11',   from: ['elec-cost'], fromTag: ['附11'], go: 'elec-cost' },
+  { key: 'elec-model',    label: '园区电费模型', tag: '模型', from: ['elec-cost'], fromTag: ['模型'], go: 'elec-cost' },
   { key: 'income-statement', label: '利润表',     tag: '报表', from: ['income-statement'], go: 'income-statement' },
   { key: 'balance-sheet',    label: '资产负债表', tag: '报表', from: ['balance-sheet'],    go: 'balance-sheet' },
   { key: 'trial-balance',    label: '科目余额表', tag: '报表', from: ['trial-balance'],    go: 'trial-balance' },
@@ -176,7 +197,8 @@ function chipsFor(key: string, matched: DataHomeItemDTO[], review: ReviewRow[] |
 
 function bookingRow(row: (typeof BOOKING_ROWS)[number], items: DataHomeItemDTO[],
                     review: ReviewRow[] | null, period: string | null): CloseRow {
-  const matched = items.filter(it => row.from.includes(it.go))
+  const matched = items.filter(it => row.from.includes(it.go)
+                                  && (!row.fromTag || row.fromTag.includes(it.tag ?? '')))
   const kinds = ROW_KINDS[row.key] ?? []
   const rvRows = pick(review, kinds)
   const base = {

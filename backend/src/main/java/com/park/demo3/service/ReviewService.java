@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.park.demo3.common.BizException;
 import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.DataHomeOverviewDTO;
+import com.park.demo3.dto.ReviewDtos.PendingItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReviewRowDTO;
 import com.park.demo3.entity.ReviewLog;
 import com.park.demo3.entity.ReviewState;
@@ -194,6 +195,39 @@ public class ReviewService {
     public int pendingCount() {
         return Math.toIntExact(states.selectCount(
             new QueryWrapper<ReviewState>().eq("status", "submitted")));
+    }
+
+    /**
+     * 待审明细。铃铛点开的抽屉用 —— 只有个数的话,人得自己在年份条上逐月翻着找。
+     *
+     * 与 pendingCount() 同一个判据(status='submitted'),**跨全部月**,按交审时间倒序。
+     * 不按权限二次过滤:R1 定的是「有 review:approve 就能审全部键」(§7.3),
+     * 没这项权限的人后端在 controller 那层就已经 403 了,进不到这里。
+     *
+     * ponytail: 没有分页。待审队列本来就该短 —— 长到要翻页,说明审核积压了,
+     *   那是流程问题不是列表问题。真长了先加上限再说。
+     */
+    public List<PendingItemDTO> pendingList() {
+        return states.selectList(new QueryWrapper<ReviewState>()
+                .eq("status", "submitted").orderByDesc("submitted_at"))
+            .stream()
+            .map(r -> {
+                ReviewKey k = ReviewKey.parse(r.getReviewKey());
+                return new PendingItemDTO(r.getReviewKey(), r.getKind(), r.getScope(),
+                    r.getPeriod(), k.human() + scopeSuffix(k), r.getSubmittedBy(), r.getSubmittedAt());
+            })
+            .toList();
+    }
+
+    /** 「2024-02 月度台账」后面那截。台账按公司、附10 按期区、附13/14 按办公/三期 —— 不带就分不清是哪一格。 */
+    private static String scopeSuffix(ReviewKey k) {
+        if (k.scope() == null) return "";
+        return switch (k.kind().scopeShape()) {
+            case COMPANY -> " · 公司 " + k.scope();
+            case PHASE   -> " · " + k.scope() + " 期";
+            case FIXED   -> " · " + ("office".equals(k.scope()) ? "办公" : "三期");
+            case NONE    -> "";
+        };
     }
 
     /**

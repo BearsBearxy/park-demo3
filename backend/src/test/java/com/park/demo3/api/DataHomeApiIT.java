@@ -51,9 +51,9 @@ class DataHomeApiIT extends AbstractMysqlIT {
         assertThat((List<?>) JsonPath.read(body, "$.data.chain.steps")).hasSize(5);
         assertThat((List<String>) JsonPath.read(body, "$.data.chain.steps[*].key"))
             .containsExactly("params", "meters", "alloc", "alloc-loss", "bill-notices");
-        // 2026-09-08:三大报表进清单,9 → 12 源(前端折成 11 行:附13+14、附7+8 各并一行)
-        assertThat((int) JsonPath.read(body, "$.data.schedules.total")).isEqualTo(12);
-        assertThat((List<?>) JsonPath.read(body, "$.data.schedules.items")).hasSize(12);
+        // 2026-09-08:三大报表进清单,9 → 13 源(前端折成 12 行:附13+14、附7+8 各并一行)
+        assertThat((int) JsonPath.read(body, "$.data.schedules.total")).isEqualTo(13);
+        assertThat((List<?>) JsonPath.read(body, "$.data.schedules.items")).hasSize(13);
         assertThat((List<?>) JsonPath.read(body, "$.data.blockers")).isNotNull();
     }
 

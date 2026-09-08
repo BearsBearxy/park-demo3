@@ -1,5 +1,6 @@
 package com.park.demo3.controller;
 
+import com.park.demo3.dto.ReviewDtos.PendingItemDTO;
 import com.park.demo3.dto.ReviewDtos.ReasonReq;
 import com.park.demo3.dto.ReviewDtos.ReviewRowDTO;
 import com.park.demo3.service.ReviewService;
@@ -40,6 +41,10 @@ public class ReviewController {
     @Operation(summary = "整月全审的月份(年份条矩阵的月格 ✓)")
     @GetMapping("/closed-months")
     public List<String> closedMonths() { return svc.closedMonths(); }
+
+    @Operation(summary = "待审明细(跨全部月;铃铛抽屉列清单用,只有个数的话人得逐月翻着找)")
+    @GetMapping("/pending")
+    public List<PendingItemDTO> pending() { return svc.pendingList(); }
 
     @Operation(summary = "交审(录入方;需该表的 edit 权,且清单行已做)")
     @PostMapping("/{key}/submit")

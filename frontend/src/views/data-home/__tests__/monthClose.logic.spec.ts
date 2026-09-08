@@ -45,6 +45,8 @@ function fullItems(overrides: Partial<Record<string, DataHomeItemDTO>> = {}): Da
     'car-charging': item('car-charging', '附7', true),
     'ebike-charging': item('ebike-charging', '附8', true),
     'elec-cost': item('elec-cost', '附11', true),
+    // 园区电费模型:与附表11 共用 go,靠 tag 分行
+    'elec-model': item('elec-cost', '模型', true),
     // 三大报表(2026-09-08):与月度台账同形 —— 按公司分格,公司全集来自后端
     'income-statement': item('income-statement', '报表', true, {
       companies: [{ id: 1, short: 'A公司', done: true }, { id: 2, short: 'B公司', done: true }],
@@ -82,7 +84,7 @@ const STALE_STEP: DataHomeStepDTO[] = [
   step('alloc-loss', 'todo'), step('bill-notices', 'todo'),
 ]
 
-// 记账列 11 行全 done 的样例:companies/phases 子项也都填成 true,不能只改源项自己的 done。
+// 记账列 12 行全 done 的样例:companies/phases 子项也都填成 true,不能只改源项自己的 done。
 function allDoneItems(): DataHomeItemDTO[] {
   return fullItems({
     ledger: item('ledger', '凭证', true, {
@@ -103,12 +105,12 @@ describe('monthClose.logic', () => {
     ])
   })
 
-  it('记账列 11 行:附13+附14 折成「办公·三期水电」一行、附7+附8 折成「附表7/8」一行、加导入中心', () => {
+  it('记账列 12 行:附13+附14 折成「办公·三期水电」一行、附7+附8 折成「附表7/8」一行、加导入中心', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const booking = rows.filter(r => r.col === 'booking')
     expect(booking.map(r => r.label)).toEqual([
       '月度台账', '附表10', '附表12', '办公·三期水电', '附表6', '附表7/8', '附表11',
-      '利润表', '资产负债表', '科目余额表', '导入中心',
+      '园区电费模型', '利润表', '资产负债表', '科目余额表', '导入中心',
     ])
   })
 
@@ -169,7 +171,7 @@ describe('monthClose.logic', () => {
   it('计数从渲染的行算,不抄 schedules.total —— 结构性 na 的行不进分母,记账列分母是 10、出账列分母是 6', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const { byCol } = closeChecks(rows)
-    expect(byCol.booking.total).toBe(10)
+    expect(byCol.booking.total).toBe(11)
     expect(byCol.billing.total).toBe(6)
   })
 
@@ -180,7 +182,7 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: null, review: null })
     const { byCol } = closeChecks(rows)
     expect(byCol.billing.total).toBe(6)   // 5 链步 + 收入核对(countable,即使此刻是 na)
-    expect(byCol.booking.total).toBe(10)
+    expect(byCol.booking.total).toBe(11)
     const recon = rows.find(r => r.key === 'reconciliation')!
     const lock = rows.find(r => r.key === 'month-lock')!
     const imp = rows.find(r => r.key === 'import')!
@@ -279,9 +281,9 @@ describe('monthClose.logic', () => {
     const rows = rowsOf({ overview: overview(ALL_DONE_STEPS, allDoneItems()), recon: RECON_OK, review: null })
     const { done, total, byCol } = closeChecks(rows)
     expect(byCol.billing).toEqual({ done: 6, total: 6 })
-    expect(byCol.booking).toEqual({ done: 10, total: 10 })
-    expect(done).toBe(16)
-    expect(total).toBe(16)
+    expect(byCol.booking).toEqual({ done: 11, total: 11 })
+    expect(done).toBe(17)
+    expect(total).toBe(17)
   })
 
   it('BOOKING_ROWS 里有条目、但后端没发对应 source 时那一行是 na(防御路径,不是导入中心那条)', () => {
@@ -297,7 +299,7 @@ describe('monthClose.logic', () => {
     expect(meters.go).toBe('meters-go')
   })
 
-  it('记账列 11 行的 go/tag 逐行钉住(合并 + 三大报表之后深链入口一个不丢)', () => {
+  it('记账列 12 行的 go/tag 逐行钉住(合并 + 三大报表之后深链入口一个不丢)', () => {
     const rows = rowsOf({ overview: overview(MIXED_STEPS, fullItems()), recon: RECON_OK, review: null })
     const booking = rows.filter(r => r.col === 'booking')
     const expected: Record<string, { go?: string; tag?: string }> = {
@@ -308,6 +310,7 @@ describe('monthClose.logic', () => {
       'pv-income': { go: 'pv-income', tag: '附6' },
       charging: { go: 'car-charging', tag: '附7/8' },
       'elec-cost': { go: 'elec-cost', tag: '附11' },
+      'elec-model': { go: 'elec-cost', tag: '模型' },
       'income-statement': { go: 'income-statement', tag: '报表' },
       'balance-sheet': { go: 'balance-sheet', tag: '报表' },
       'trial-balance': { go: 'trial-balance', tag: '报表' },

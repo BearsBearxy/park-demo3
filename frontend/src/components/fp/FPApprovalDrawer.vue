@@ -16,25 +16,67 @@ import Input from '@/components/ds/Input.vue'
 import FPSideDrawer from '@/components/fp/FPSideDrawer.vue'
 import { iconFor } from '@/components/ds/icon'
 import { useRouter } from 'vue-router'
+import { reviewApi } from '@/api/review'
+import type { PendingItem } from '@/types/review'
+import { screenOfKind } from '@/views/data-home/monthClose.logic'
+import { periodLink } from '@/nav/deepLink'
+import { useTabsStore } from '@/stores/tabs'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 const presence = usePresenceStore()
+const tabs = useTabsStore()
 const pending = computed(() => presence.approvals)
 
-// ── 审核两段(R2 T8/T9) ──────────────────────────────────
-// ping 只发个数不发清单(§7.4:3 秒一拍,发清单等于每 3 秒推一遍全月审核态),
-// 所以这两段给的是「几件 + 一个去处」,不列具体哪几张表 —— 清单在本月出账屏上,那里什么都有。
-// 抽屉自己也不再打一趟网络去补清单:它是浮层,开一次打一趟不划算,而跳过去本来就要重取。
+// ── 审核两段(R2 T8/T9;2026-09-08 补明细) ──────────────────
+//
+// 心跳只发个数(§7.4:3 秒一拍,发清单等于每 3 秒推一遍全月审核态)—— 那条没变。
+// 变的是抽屉**打开时**自己去取一趟明细:改前只有「有 N 张表等你审」,
+// 而那个「去审核」按钮推的是不带期的裸 /data-home,首页落在它自己锚定的月上。
+// 待审的键不在那个月时,人点进去看到的是「暂无待审」,只能自己在年份条上逐月翻 ——
+// 铃铛说有、屏上说没有,两句话打架。
+//
+// 开一次打一趟,不挂在心跳上:抽屉是浮层,不常开;而心跳那条通道只该带一个号。
 const router = useRouter()
 const toReview = computed(() => presence.pendingReviews)
 const returned = computed(() => presence.myReturned)
+
+const rows = ref<PendingItem[]>([])
+const loading = ref(false)
+watch(() => props.open, async (on) => {
+  if (!on || !toReview.value) return
+  loading.value = true
+  // 取不到就退回改前的样子(只有个数 + 一个去处),不把抽屉整段藏起来:
+  // 明细是锦上添花,数字才是那句「有事等你」。
+  try { rows.value = await reviewApi.pending() } catch { rows.value = [] }
+  finally { loading.value = false }
+}, { immediate: true })
+
 function goDataHome() {
   emit('close')
-  // 裸路径不带 ?p —— periodLink 要求必须给一个期,而待审的键可能分散在好几个月,
-  // 硬指一个月反倒把人送错地方。首页自己会锚定到该做事的那个月。
+  // 裸路径不带 ?p —— 待审的键可能分散在好几个月,硬指一个月反倒把人送错地方。
+  // 要落到具体某一张表,走下面 goItem 那条(它知道是哪个月)。
   void router.push('/data-home')
+}
+
+/**
+ * 点一条 → 直达那张表所在的屏与月。
+ *
+ * kind → 屏走 monthClose.logic 的 screenOfKind(从清单那张表反推,不另列一份);
+ * scope → co:台账是 companyId、附10 是期区号、报表是 companyId,都能直接当 co 传;
+ * 附13/14 的 scope 是 office|phase3,不是 co —— periodLink 的 co 只收数字或 'all',
+ * 所以那种走 extra.tab(与首页 chip 同一套口径)。
+ * 认不出屏就只跳首页 —— 不猜,猜错比不跳更坏。
+ */
+function goItem(r: PendingItem) {
+  emit('close')
+  const v = screenOfKind(r.kind)
+  if (!v) { void router.push('/data-home'); return }
+  const co = r.scope != null && /^\d+$/.test(r.scope) ? Number(r.scope) : undefined
+  const tab = r.scope === 'office' || r.scope === 'phase3' ? r.scope : undefined
+  tabs.openDeep(v)
+  void router.push(periodLink(v, { p: r.period, co, extra: tab ? { tab } : undefined }))
 }
 
 /** 每条请求各自的密码框 —— 两条请求同时进来时，不能共用一个输入。 */
@@ -87,6 +129,17 @@ async function decide(p: Pending, approve: boolean) {
         <span>有 <b>{{ toReview }}</b> 张表等你审</span>
         <Button variant="outline" size="sm" @click="goDataHome">去审核</Button>
       </div>
+      <!-- 明细:点一条直达那张表所在的屏与月。取不到就只剩上面那行数字(改前的样子),
+           不把整段藏起来 —— 数字才是那句「有事等你」,明细是锦上添花。 -->
+      <ul v-if="toReview && rows.length" class="ap-rvlist">
+        <li v-for="r in rows" :key="r.key">
+          <button type="button" class="ap-rvitem" @click="goItem(r)">
+            <span class="nm">{{ r.label }}</span>
+            <span class="who">{{ r.submittedBy ?? '—' }} 交</span>
+            <component :is="iconFor('chevron-right')" :size="14" class="arw" />
+          </button>
+        </li>
+      </ul>
       <div v-if="returned" class="ap-note ap-note-warn">
         <component :is="iconFor('rotate-ccw')" :size="16" />
         <span>你交的 <b>{{ returned }}</b> 张表被退回了</span>
@@ -151,6 +204,19 @@ async function decide(p: Pending, approve: boolean) {
 </template>
 
 <style scoped>
+/* 待审明细。一条一行,整行可点 —— 只把表名做成链接的话点击区太小(这是浮层里的密排列表)。 */
+.ap-rvlist { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ap-rvitem {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border: none; border-radius: 8px; cursor: pointer;
+  background: transparent; font-family: var(--font-sans); font-size: 12.5px;
+  color: var(--text-primary); text-align: left;
+}
+.ap-rvitem:hover { background: var(--bg-hover); }
+.ap-rvitem .nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-rvitem .who { flex: 0 0 auto; font-size: 11.5px; color: var(--text-secondary); }
+.ap-rvitem .arw { flex: 0 0 auto; color: var(--text-disabled); }
+
 /* 审核两段:与授权卡片同一栏宽,一行说清「几件 + 去处」。 */
 .ap-note {
   display: flex; align-items: center; gap: 8px;
