@@ -146,6 +146,16 @@ public class PermissionRegistry {
         add(HttpMethod.POST, "/api/review/*/submit",
             Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
             Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
+        //     撤回(R4)与 submit **同源**:同为录入方的动作,同样是「任一相关 edit 权」,
+        //     kind→perm 与「只能撤自己交的」都下沉到 ReviewService.recall。故参数逐字同上一条。
+        //     ⚠ 既有缺口,这里照抄就原样继承:两条都**没有 Perm.REPORT_EDIT**,而三大报表那三把键
+        //     (ReviewKind.REPORT_IS/BS/TB)要的正是 report:edit —— 只有 report:edit 的窄权限账号
+        //     在 URL 层就 403,交不了也撤不了报表的审。预置角色里 report:edit 恒与 entry:edit 同现
+        //     (admin / finance_manager / finance_clerk),所以今天打不着;客户自建一个「只录报表」的
+        //     角色就会踩上。不在本期改(改的是 submit 的既有行为),记在 spec §12。
+        add(HttpMethod.POST, "/api/review/*/recall",
+            Perm.PARAM_POLICY_EDIT, Perm.PARAM_MONTHLY_EDIT, Perm.METER_READING_EDIT,
+            Perm.BILLING_RUN_EDIT, Perm.ENTRY_EDIT);
         add(HttpMethod.POST, "/api/review/*/approve",  Perm.REVIEW_APPROVE);
         add(HttpMethod.POST, "/api/review/*/return",   Perm.REVIEW_APPROVE);
         add(HttpMethod.POST, "/api/review/*/withdraw", Perm.REVIEW_APPROVE);

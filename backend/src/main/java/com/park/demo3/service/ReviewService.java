@@ -29,7 +29,7 @@ import java.util.Map;
 /**
  * 审核机制的状态机与读侧聚合(SIDEBAR-UX-REDESIGN §7.2 / §7.4)。
  *
- * 四个动作 submit / approve / return / withdraw,每一步落一行 review_log。
+ * 五个动作 submit / approve / return / withdraw / recall,每一步落一行 review_log。
  * 写路径的闸不在这里 —— 那是 ReviewGuard,挂在 12 个业务 service 上。
  */
 @Service
@@ -246,7 +246,7 @@ public class ReviewService {
             .eq("status", "returned").eq("submitted_by", user)));
     }
 
-    // ══ 四个动作 ═════════════════════════════════════════════════════════════
+    // ══ 五个动作 ═════════════════════════════════════════════════════════════
 
     @Transactional
     @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
@@ -334,6 +334,41 @@ public class ReviewService {
         log(key, "withdraw", reason);
     }
 
+    /**
+     * 撤回 —— 自己交的、还没人审,自己收回来(R4,用户 2026-09-08 拍板;§7.2)。
+     *
+     * **为什么也是删行而不是新写一个状态**:撤回后该回到派生的「录入中」,而这行上此刻
+     * 没有任何痕迹值得留 —— submit() 本来就会把上一轮的 reviewed_by / reviewed_at / reason
+     * 清干净(见它那句「重新交审要把上一轮退回的痕迹清掉」),所以留一行只剩「谁交过」,
+     * 而那件事 review_log 已经记着了。同 withdraw 的道理,注释不重复写第二遍。
+     *
+     * **为什么不带理由**:撤的是自己刚交出去的东西,还没有第二个人读过它,理由写给谁看?
+     * withdraw 要理由是因为它作废的是**审核员**的判断,得给那个人一句交代。
+     *
+     * **为什么限本人**:别人交的表要打回去是「退回」,那是审核员的动作、要理由、留痕在行上。
+     * 谁都能撤回的话,退回这条路就被绕开了 —— 表回到录入中,而交审的人不知道发生过什么。
+     */
+    @Transactional
+    @NoReviewGuard(reason = "审核动作本身:守卫拦的就是审核态,再挂一次会让已交审的表连撤销都做不了(状态机在 requireStatus)")
+    public void recall(String rawKey) {
+        ReviewKey key = ReviewKey.parse(rawKey);
+        // 顺序照 submit:先权限后状态 —— 没有这张表录入权的人,连「它现在是什么态」都不该从报错里读出来
+        requireAnyPerm(key.kind().perms(),
+            "没有「" + key.kind().label() + "」的录入权限,撤不了审");
+        ReviewState s = requireStatus(key, "submitted", "撤回");
+
+        // me() 取不到时回的是**空串不是 null**,反过来写(s.getSubmittedBy().equals(me()))在这一列为空时 NPE
+        if (!me().equals(s.getSubmittedBy()))
+            throw new BizException(ResultCode.FORBIDDEN,
+                key.human() + " 是 " + s.getSubmittedBy() + " 交的,你撤不了 —— 要打回去请找审核员退回");
+
+        // 不抄 withdraw 那段 DOWNSTREAM 反向图检查:对 submitted 态**恒为空** ——
+        // 下游要 approved 得先本键 approved,本键还挂在 submitted 就不可能有已审的下游。
+        // 抄过来只是白跑一次 states.byPeriod,还会让人以为这里有一条真的前置。
+        states.deleteById(key.raw());
+        log(key, "recall", null);
+    }
+
     // ══ 内部 ═════════════════════════════════════════════════════════════════
 
     /**
@@ -408,9 +443,10 @@ public class ReviewService {
     }
 
     /**
-     * 交审的权限收窄:URL 层(PermissionRegistry)对 `POST /api/review/{key}/submit` 放行的是「任一相关 edit 权」,
-     * 因为要哪个权限点取决于 key 里的 kind,URL 判不出来 —— 真正的判定在这里,表在 ReviewKind.perms()。
-     * 这一道是**承重的**:只有 entry:edit 的人能交附表的审,交不了 alloc 的审。
+     * 交审 / 撤回的权限收窄:URL 层(PermissionRegistry)对 `POST /api/review/{key}/submit` 与 `/recall`
+     * 放行的是「任一相关 edit 权」,因为要哪个权限点取决于 key 里的 kind,URL 判不出来 ——
+     * 真正的判定在这里,表在 ReviewKind.perms()。
+     * 这一道是**承重的**:只有 entry:edit 的人能交附表的审,交不了 alloc 的审(撤回是同一道,recall 与 submit 同源)。
      *
      * approve / return / withdraw 三个动作**没有**对应的 service 自守:URL 层挂的就是 review:approve,
      * 每一条路径都过得了那道闸,且没有任何内部调用方 —— 再加一道恒为真的检查只会让人以为有两层保护
