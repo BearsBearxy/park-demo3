@@ -5,6 +5,7 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal; import java.math.RoundingMode;
@@ -242,6 +243,14 @@ public class BuildingService {
         );
     }
 
+    // ─── 楼栋/单元六个写口为什么都不进审核(2026-09-09 逐条过数据流) ──────────────
+    // building 与 unit 两张表都没有 ym 列。它们里面**确实有两列进分摊引擎** —— building.zone
+    // 被 inForceByZone 用来切期别名册,unit.area 是 area 法公摊的分摊基数与 per_sqm_month 租金行
+    // 的面积来源 —— 所以理由不能写成「这是主数据」。真正的判据是这两列只被 loadCtx(ym) 读,
+    // 而 loadCtx 的写侧调用点只有 AllocService.generate(ym)(已守 ALLOC + ALLOC_LOSS),
+    // 其余四个调用点(resultDetail / recon / meterDiff / loss)全是读。改档案只改下一次生成的
+    // 结果,已审月落库的 alloc_pool_result / alloc_result 一行不变。
+    @NoReviewGuard(reason = "insert building 与可选批量 unit,两张表都无 ym 列;新栋下不可能挂着覆盖历史月的合同,进不了任何已审月的名册与面积基数")
     @Transactional
     public BuildingDTO create(BuildingCreateReq req) {
         if (buildings.selectCount(new QueryWrapper<Building>().eq("name", req.name())) > 0)
@@ -272,6 +281,7 @@ public class BuildingService {
         return toDTO(buildings.selectById(b.getId()), units.selectByBuildingId(b.getId()), List.of(), Map.of(), Map.of());
     }
 
+    @NoReviewGuard(reason = "zone 确实进分摊(inForceByZone 按它切期别名册),但只在 loadCtx(ym) 被读、落库只发生在已守 ALLOC/ALLOC_LOSS 的 generate;building 表无 ym 列,面积两列只进本 service 的占用率派生")
     public BuildingDTO update(Integer id, BuildingUpdateReq req) {
         Building b = buildings.selectById(id);
         if (b == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
@@ -289,10 +299,26 @@ public class BuildingService {
             links, derivedUnitAreas(contracts.selectList(null), links));
     }
 
+    // ⚠ reason 2026-09-09 改写过一次。改前写的是「能删掉的楼栋从来没挂过合同」—— 漏了一整条
+    //   引用路径:下面那道 409 只查 contract.building_id,而 ContractService.replaceExtraUnits
+    //   往 contract_unit 插附加单元时**不校验该单元属于本合同的楼栋**,A 栋的合同可以把 B 栋的
+    //   单元当附加单元用(billing_term_unit 同理,行级绑定连合同楼栋都不看)。所以「本栋无合同」
+    //   推不出「本栋的单元没被任何合同引用」,理由要写实。
+    @NoReviewGuard(reason = "该楼栋下存在任何合同(不论状态,含历史 terminated/renewed)即先 409;本栋单元被别栋合同当附加单元/计费行单元引用的也先 409(见下面第二道)。两道之后能删掉的楼栋,它的单元既没进过任何一个月的名册,也没当过任何一次分摊的面积基数 —— 而 alloc_result / bill_notice_line 本就是按 ym 存的快照,重算那条路由已守 ALLOC/ALLOC_LOSS/BILL_NOTICES 的 generate 独占")
     public void delete(Integer id) {
         if (buildings.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "楼栋不存在");
         if (contracts.selectCount(new QueryWrapper<Contract>().eq("building_id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "该楼栋下存在合同,请先处理合同");
+        // 第二道:本栋的 unit 被别处引用。unit 随楼栋 ON DELETE CASCADE(V1),而 contract_unit(V58)
+        // 与 billing_term_unit(V91)的 unit_id 是 RESTRICT —— 少这一道,用户看到的是 500 而不是
+        // 一句能照着做的中文。挡不住任何本来删得掉的楼栋:这两查有行的场景,原先必 500。
+        // ⚠ 空集守卫:无单元时 ids 为空,MP 的 in(空集) 生成 `IN ()` 是 SQL 语法错(500)。
+        List<Integer> unitIds = units.selectByBuildingId(id).stream().map(Unit::getId).toList();
+        if (!unitIds.isEmpty()
+            && (contractUnits.selectCount(new QueryWrapper<ContractUnit>().in("unit_id", unitIds)) > 0
+             || termUnits.selectCount(new QueryWrapper<BillingTermUnit>().in("unit_id", unitIds)) > 0))
+            throw new BizException(ResultCode.CONFLICT,
+                "该楼栋的单元被其他楼栋的合同引用(附加单元或计费行绑定),请先解除引用");
         buildings.deleteById(id); // unit 表 FK ON DELETE CASCADE 自动清
     }
 
@@ -320,6 +346,7 @@ public class BuildingService {
             throw new BizException(ResultCode.CONFLICT, "楼层超出楼栋层数,请先在编辑楼栋中增加层数");
     }
 
+    @NoReviewGuard(reason = "insert 一行 unit,表无 ym 列,新单元必然无合同;要让它影响某个月的数得先挂一份覆盖那月的合同,而那条路(ContractService)同样改不了已审月的落库行")
     @Transactional
     public UnitDTO createUnit(Integer buildingId, UnitCreateReq req) {
         Building b = buildings.selectById(buildingId);
@@ -335,6 +362,7 @@ public class BuildingService {
         return toUnitDTO(units.selectById(u.getId()), List.of(), Map.of(), Map.of()); // 新单元无合同,必 vacant
     }
 
+    @NoReviewGuard(reason = "unit.area 是计费口径没错,但它只在 loadCtx(ym) 被读、落库只在已守的 generate,方法内注释自己写的也是「下个月该户租金与公摊一起变」;unit 表无 ym 列,改面积另有 params.logUnitAreaChange 留痕")
     public UnitDTO updateUnit(Integer id, UnitUpdateReq req) {
         Unit u = units.selectById(id);
         if (u == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
@@ -356,11 +384,21 @@ public class BuildingService {
             derivedUnitAreas(contracts.selectList(null), links));
     }
 
+    // ⚠ reason 与第三道查询 2026-09-09 一起补的,和上面 delete(楼栋)那条是**同一个洞的两级**:
+    //   改前只查 contract.unit_id 与 contract_unit,漏了 billing_term_unit。而 ContractService.saveLines
+    //   写计费行时直接拿请求里的 unitIds 插 billing_term_unit,**既不校验该单元属于本合同楼栋,
+    //   也不校验它在 contract_unit 里** —— 所以「只被 billing_term_unit 引用」是可达状态,
+    //   而 fk_btu_unit(V91)是 RESTRICT,用户看到的是 400「违反完整性约束」而不是能照着做的中文。
+    //   楼栋那一级修好时这一级没跟着修,是典型的「只补了点名的那条路径,兄弟调用点还烂着」。
+    @NoReviewGuard(reason = "被 contract.unit_id / contract_unit / billing_term_unit 任一引用即先 409;三道之后能删掉的单元从来没被任何合同占用过,也就从来没进过任何一个月的面积基数或名册 —— 而 alloc_result / bill_notice_line 本就是按 ym 存的快照,重算那条路由已守 ALLOC/ALLOC_LOSS/BILL_NOTICES 的 generate 独占")
     public void deleteUnit(Integer id) {
         if (units.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "单元不存在");
+        // 三道查的是三条**互相独立**的引用路径,不是一条的三种写法:主单元 / 附加单元 / 计费行绑定。
+        // 单个 id 不需要上面 delete 那道空集守卫。
         if (contracts.selectCount(new QueryWrapper<Contract>().eq("unit_id", id)) > 0
-            || contractUnits.selectCount(new QueryWrapper<ContractUnit>().eq("unit_id", id)) > 0)
-            throw new BizException(ResultCode.CONFLICT, "单元存在合同记录,请先处理相关合同");
+            || contractUnits.selectCount(new QueryWrapper<ContractUnit>().eq("unit_id", id)) > 0
+            || termUnits.selectCount(new QueryWrapper<BillingTermUnit>().eq("unit_id", id)) > 0)
+            throw new BizException(ResultCode.CONFLICT, "单元存在合同记录(主单元/附加单元/计费行绑定),请先处理相关合同");
         units.deleteById(id);
     }
 
