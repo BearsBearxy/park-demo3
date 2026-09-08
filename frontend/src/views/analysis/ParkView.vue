@@ -20,9 +20,13 @@ import { fint, fnum } from '@/components/ana/anaFmt'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
 import { iconFor } from '@/components/ds/icon'
+import { canReach } from '@/nav/navAccess'
+import { useAuthStore } from '@/stores/auth'
 import { occByUnit, occPct, OCC_NULL_WHY, type BuildingDTO, type BuildingSummaryDTO } from '@/types/building'
 import { RENT_AREA_FACTOR, type ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
+
+const auth = useAuthStore()
 
 const loading = ref(true)
 const failed = ref(false)
@@ -280,7 +284,9 @@ const areaBarOption = computed(() => ({
             <div class="l">面积口径出租率</div>
             <div v-if="bSummary?.occRate == null" class="s">{{ OCC_NULL_WHY }}</div>
             <div class="s">{{ byUnit.text }} · {{ occPct(byUnit.rate) }}</div>
-            <RouterLink v-if="bSummary?.occRate == null" class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
+            <!-- 跨层引导:楼栋管理属数据层,园区股东看不见那一层 —— 给他这条链接等于把他送进一个自己回不来的屏 -->
+            <RouterLink v-if="bSummary?.occRate == null && canReach('/buildings', auth.navLayers, auth.can('system:view'))"
+                        class="pk-go" to="/buildings">去补录可租面积 →</RouterLink>
           </div>
         </div>
 

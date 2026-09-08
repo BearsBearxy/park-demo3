@@ -18,6 +18,10 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { PHASES } from '@/views/sales-income/layout'
 import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
+import { canReach } from '@/nav/navAccess'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 const loaded = ref(false)
 const err = ref('')
@@ -295,7 +299,8 @@ const listRows = computed(() => {
               <span class="am">¥{{ (d.rent / 10000).toFixed(1) }}万</span>
             </button>
           </div>
-          <AnaMethodNote>租户类目均未维护(全部「未分类」),改按期区呈现;<RouterLink class="tp-link" to="/tenants">去租户管理补录类目</RouterLink>。</AnaMethodNote>
+          <!-- 链接连着前面那个分号一起收:只摘走 RouterLink 会剩「…改按期区呈现;。」这种断句 -->
+          <AnaMethodNote>租户类目均未维护(全部「未分类」),改按期区呈现<template v-if="canReach('/tenants', auth.navLayers, auth.can('system:view'))">;<RouterLink class="tp-link" to="/tenants">去租户管理补录类目</RouterLink></template>。</AnaMethodNote>
         </div>
 
         <!-- 租金分布散点带(对数轴,按期区;点=每份合同) -->

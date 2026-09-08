@@ -6,23 +6,16 @@
 // 「去台账录入」的链接,是把他引到一个侧边栏根本没有入口的屏 —— 点进去他自己回不来。
 // 判在这里而不是 17 个调用点:调用点只知道自己缺什么数,不知道看的人是谁;
 // 而漏掉一处不报错,只是那一张卡继续引错人。说明文字照旧全给 —— 缺什么数该让他知道。
+//
+// 判据本身在 `navAccess.canReach`(2026-09-08 从这里抽出去):屏内手写的 RouterLink
+// 也是跨层引导,当初漏在门外,两处不能各判一遍。
 import { computed } from 'vue'
-import { fpBuildRoutes } from '@/nav/fpNav'
-import { isLayerVisible } from '@/nav/navAccess'
+import { canReach } from '@/nav/navAccess'
 import { useAuthStore } from '@/stores/auth'
-
-// 模块级:导航表是常量,89 处调用点各建一份 50 项的 map 没有意义
-const ROUTES = fpBuildRoutes()
 
 const props = defineProps<{ label?: string; hint?: string; to?: string; toText?: string }>()
 const auth = useAuthStore()
-const canGo = computed(() => {
-  if (!props.to) return false
-  // 路径里可能带 query(深链空态),取第一段就是 nav value;不认识的目标一律放行 ——
-  // 认不出来是导航表的问题,不该表现成"链接凭空少了一个"。
-  const meta = ROUTES[props.to.replace(/^\//, '').split(/[?#]/)[0]]
-  return !meta || isLayerVisible(meta.layer, auth.navLayers, auth.can('system:view'))
-})
+const canGo = computed(() => canReach(props.to, auth.navLayers, auth.can('system:view')))
 </script>
 
 <template>
