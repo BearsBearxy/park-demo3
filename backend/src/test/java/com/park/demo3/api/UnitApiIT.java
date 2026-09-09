@@ -225,7 +225,12 @@ class UnitApiIT extends AbstractMysqlIT {
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(409))
-                .andExpect(jsonPath("$.message").value("单元存在合同记录,请先处理相关合同"));
+                // 文案 2026-09-09 加了括号里那三条:deleteUnit 原先只查主单元与附加单元,漏了
+                // billing_term_unit(计费行绑定),那种单元删下去是 400「违反完整性约束」而不是这句话。
+                // 补第三查时把三条引用路径写进文案 —— 光说「存在合同记录」,人不知道该去解除哪一个。
+                // 仍用逐字断言(不放松成 contains):文案是这个端点对外契约的一部分,改了就该有人来看一眼。
+                .andExpect(jsonPath("$.message")
+                        .value("单元存在合同记录(主单元/附加单元/计费行绑定),请先处理相关合同"));
     }
 
     @Test

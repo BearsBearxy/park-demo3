@@ -23,7 +23,12 @@ class CompanyServiceTest {
     ReportCustomRowMapper rcm = Mockito.mock(ReportCustomRowMapper.class);
     ReportAccountMapper racm = Mockito.mock(ReportAccountMapper.class);
     BookService bm = Mockito.mock(BookService.class);
-    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, bm);
+    // 删公司要读 bill_notice(该司当过收款主体的账期):默认 mock 返回空表/0 行,等于「没出过单」
+    com.park.demo3.mapper.BillNoticeMapper nm = Mockito.mock(com.park.demo3.mapper.BillNoticeMapper.class);
+    // 删公司要过审核闸(见 CompanyService.delete):本类是纯单元测试,mock 一个不拦的闸,
+    // 闸本身的行为由 ReviewGuardIT 钉,挂点由 ReviewGuardMasterDataIT 钉
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+    CompanyService svc = new CompanyService(cm, am, lm, ram, rcm, racm, nm, bm, rg);
 
     ManagementCompany co(int id, String name) {
         ManagementCompany c = new ManagementCompany();

@@ -19,7 +19,11 @@ class TenantServiceTest {
     MonthlyLedgerMapper mlm = Mockito.mock(MonthlyLedgerMapper.class);
     S10RecordMapper s10m = Mockito.mock(S10RecordMapper.class);
     ReconMarkMapper rmm = Mockito.mock(ReconMarkMapper.class);
-    TenantService svc = new TenantService(tm, cm, bm, catm, bs, um, mlm, s10m, rmm);
+    // 删租户要读 bill_note_override(人工备注覆盖的账期):默认 mock 返回空表,等于「没有覆盖」
+    BillNoteOverrideMapper nom = Mockito.mock(BillNoteOverrideMapper.class);
+    // 删租户要过附表10 的审核闸(见 TenantService.delete):同 CompanyServiceTest,这里 mock 一个不拦的
+    com.park.demo3.security.ReviewGuard rg = Mockito.mock(com.park.demo3.security.ReviewGuard.class);
+    TenantService svc = new TenantService(tm, cm, bm, catm, bs, um, mlm, s10m, rmm, nom, rg);
 
     Tenant t(int id,int status){ Tenant x=new Tenant(); x.setId(id);x.setCompanyName("T"+id);
         x.setBusinessType("精密机械");x.setStatus(status);x.setPhase(1);return x; }

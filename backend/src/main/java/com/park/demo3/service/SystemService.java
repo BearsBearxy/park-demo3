@@ -255,6 +255,7 @@ public class SystemService {
     }
 
     /** 本人改密。改完清 mustChangePassword，放行进系统。 */
+    @NoReviewGuard(reason = "同 resetPassword:只写 auth_user 的口令列,凭据不是期间数据。首登强制改密走的正是这条路,进审核等于新账号在审核员点头前一直登不进系统")
     @Transactional
     public void changeOwnPassword(String currentPassword, String newPassword) {
         String me = currentUsername();

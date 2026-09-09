@@ -5,6 +5,9 @@ import com.park.demo3.common.BizException; import com.park.demo3.common.ResultCo
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -17,11 +20,14 @@ public class TenantService {
     private final BuildingService buildingService; private final UnitMapper units;
     private final MonthlyLedgerMapper ledger; private final S10RecordMapper s10Records;
     private final ReconMarkMapper reconMarks;
+    private final BillNoteOverrideMapper noteOverrides;   // 删租户只读它:人工备注覆盖的账期(见 delete)
+    private final ReviewGuard reviewGuard;
     public TenantService(TenantMapper t, ContractMapper c, BuildingMapper b,
                          TenantCategoryMapper cat, BuildingService bs, UnitMapper u,
-                         MonthlyLedgerMapper ml, S10RecordMapper s10, ReconMarkMapper rm) {
+                         MonthlyLedgerMapper ml, S10RecordMapper s10, ReconMarkMapper rm,
+                         BillNoteOverrideMapper no, ReviewGuard rg) {
         tenants=t; contracts=c; buildings=b; categories=cat; buildingService=bs; units=u;
-        ledger=ml; s10Records=s10; reconMarks=rm;
+        ledger=ml; s10Records=s10; reconMarks=rm; noteOverrides=no; reviewGuard=rg;
     }
 
     public List<TenantDTO> list() {
@@ -48,6 +54,7 @@ public class TenantService {
     }
 
     // tenant 表无 company_name 唯一键(仅普通索引 idx_tenant_name),应用层 selectCount 查重
+    @NoReviewGuard(reason = "insert 一行 tenant,表无 ym 列,新租户名下必然没有合同/台账/附表10 行;这一条正是「主数据一刀切挂 assertNoLockedMonth」的反例 —— 那样 1 月审过之后就再也不能新增租户")
     public TenantDTO create(TenantCreateReq req) {
         if (tenants.selectCount(new QueryWrapper<Tenant>().eq("company_name", req.companyName())) > 0)
             throw new BizException(ResultCode.CONFLICT, "租户名称已存在");
@@ -66,6 +73,7 @@ public class TenantService {
         return buildTenantDto(saved, List.of(), Map.of(), parentName(saved));
     }
 
+    @NoReviewGuard(reason = "tenant 表无 ym 列;parent_id(familyRoots)与 aliases(matchNames)只影响读侧现算与下一次 generate,已审月的 bill_notice_line.contract_id 是出账时的快照;改名后已审月台账按 tenant_id 关联显示新名而金额不动,是「改名就该到处生效」的正常语义")
     public TenantDTO update(Integer id, TenantUpdateReq req) {
         if (tenants.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "租户不存在");
         if (tenants.selectCount(new QueryWrapper<Tenant>()
@@ -111,7 +119,43 @@ public class TenantService {
             throw new BizException(ResultCode.CONFLICT, "该租户存在台账记录,不可删除");
         if (tenants.selectCount(new QueryWrapper<Tenant>().eq("parent_id", id)) > 0)
             throw new BizException(ResultCode.CONFLICT, "该租户存在关联子租户,请先解除关联");
+        // ⚠ 下面那句 UpdateWrapper 的 WHERE 里只有 tenant_id、没有月份 —— 它会把该租户在**全部
+        // 账期月**的 s10_record 行的 tenant_id 抹成 NULL,已审月的行照抹。前面三道 409 拦不住这条
+        // 路径:一个只有 s10_record、没有台账没有合同的租户能一路走到这里。抹掉之后 BillsService
+        // .s10Bills 吐出的那一行只剩 tenant_name 兜底显示,savePaymap 的收款指引(按 tenant_id 建索引)
+        // 也一起丢。变的是身份列不是金额列,但确实是**往回改已审月的行**,所以守。
+        //
+        // 按 (期区, 账期) 精确守,不用 assertNoLockedMonth:S10 的 scope 是期区不是租户,
+        // 「任一期区任一月审过就拒删租户」会把删租户这件事永久锁死。
+        // ⚠ 脏数据必须先跳过:phase 为空/越界或 acctMonth 不是 YYYY-MM 时 ReviewKey.of 抛的是
+        //   400「附表10 必须带数字 scope」而不是 423,用户会看到删不掉且看不懂为什么。
+        Map<Integer, List<String>> monthsByPhase = new TreeMap<>();
+        for (S10Record r : s10Records.selectList(new QueryWrapper<S10Record>().eq("tenant_id", id)))
+            if (r.getPhase() != null && r.getPhase() >= 1 && r.getPhase() <= 4
+                && r.getAcctMonth() != null && r.getAcctMonth().matches("\\d{4}-(0[1-9]|1[0-2])"))
+                monthsByPhase.computeIfAbsent(r.getPhase(), k -> new ArrayList<>()).add(r.getAcctMonth());
+        for (Map.Entry<Integer, List<String>> e : monthsByPhase.entrySet())
+            reviewGuard.assertEditable(ReviewKind.S10, e.getValue(), String.valueOf(e.getKey()));
+        // 第二条跨月路径:bill_note_override(V92)的 fk_note_override_tenant 是 ON DELETE CASCADE,
+        // 删租户会**硬删**它在全部账期的人工备注,一声不吭。可达性窄但不是零:需要「该户某月有备注
+        // 覆盖、但那月该户当前没有单」—— 而 V92 建表注释写明这张表独立存在就是为了「催缴单先删后插
+        // 重生成也不丢」,这种状态是设计出来的常态,不是脏数据。
+        //
+        // 这里守而不是补一道 409(「有备注覆盖就不许删」):
+        //   · 409 会把今天正常能删的租户也挡下 —— 未审月的备注覆盖本来就该随租户一起走;
+        //   · 而已审月那一档,409 让用户去「先清理」,清理入口(DELETE 备注)自己就守着 BILL_NOTICES,
+        //     用户点进去照样被拒 —— 那才是「审过一个月之后就不能正常干活」。
+        // BILL_NOTICES 是园区级键(ScopeShape.NONE)不假,但传的是**该租户自己**那几个月,
+        // 不是 assertNoLockedMonth,所以退化不成「任一月审过 → 全园区租户都删不掉」。
+        // 脏 ym 同样先跳过,理由同上面那段。
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES,
+            noteOverrides.selectObjs(new QueryWrapper<BillNoteOverride>()
+                    .select("distinct ym").eq("tenant_id", id))
+                .stream().filter(Objects::nonNull).map(String::valueOf)
+                .filter(ym -> ym.matches("\\d{4}-(0[1-9]|1[0-2])")).toList(),
+            null);
         // s10_record / recon_mark 的 tenant_id 为软引用(无 FK,tenant_name 兜底显示):置 NULL 再删
+        // recon_mark 同样被跨月改(带 year/month),但收入核对没有对应的 ReviewKind,守不了也不是审核对象。
         s10Records.update(null, new UpdateWrapper<S10Record>()
             .eq("tenant_id", id).set("tenant_id", null));
         reconMarks.update(null, new UpdateWrapper<ReconMark>()

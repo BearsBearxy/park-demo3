@@ -9,6 +9,7 @@ import com.park.demo3.common.ResultCode;
 import com.park.demo3.dto.*;
 import com.park.demo3.entity.*;
 import com.park.demo3.mapper.*;
+import com.park.demo3.security.NoReviewGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -149,6 +150,19 @@ public class ContractService {
         return new ContractDetailDTO(dto, snap, loadLines(id), extraIds);
     }
 
+    // ─── 写口为什么全部不进审核(2026-09-09 逐条过数据流) ────────────────────────
+    // 本 service 碰的四张表(contract / contract_billing_term / contract_unit / billing_term_unit)
+    // **一列 ym 都没有** —— 全文 grep acctMonth|getYm|setYm 零命中。合同数据只有两个下游会
+    // 把它变成带月份的数:AllocService.loadCtx(ym) 与 BillNoticeService.generate(ym),而这两处
+    // 的落库口 generate 已经分别守着 ALLOC/ALLOC_LOSS 与 BILL_NOTICES。已审月的 alloc_result /
+    // bill_notice_line 是出账那一刻的快照,改合同动不了它们 —— 想让它们变必须重跑 generate,
+    // 而 generate 被守卫拒。⚠ 另一半否证同样重要:月度台账**不读合同**(LedgerService 的依赖
+    // 里没有 ContractMapper),monthly_ledger 是人工录入+导入的,不存在「改合同→重算台账」这条路。
+    // 已知后果(是产品裁定题,不是守卫题,已写进遗留):改一份覆盖已审月的合同,该月分摊明细屏
+    // 会整片标 stale(AllocService.resultDetail 把落库快照与现算值并排比),而唯一的修复动作
+    // (整月重生成)被守卫拒。能挡住它的只有 assertNoLockedMonth(ALLOC),那等于「一月审过之后
+    // 合同永远不能改」—— 系统当场不能用,所以不做。
+    @NoReviewGuard(reason = "只写 contract/contract_billing_term/contract_unit,三张表都无 ym 列;新建的合同进不了任何历史月的快照,合同数据仅在已守的 generate 那一刻被读")
     @Transactional
     public ContractDTO create(ContractCreateReq req) {
         validateReq(req, null);
@@ -174,6 +188,7 @@ public class ContractService {
     }
 
     /** PUT 语义:全字段编辑,校验同创建(合同号查重排除自身)。人工改动的计费字段在 fee_src 标 manual(导入保留)。 */
+    @NoReviewGuard(reason = "改租金/面积/起止只改下一次 generate 的输入;台账压根不读合同(LedgerService 无 ContractMapper),已审月的 alloc_result 与 bill_notice_line 是出账那一刻的落库快照")
     @Transactional
     public ContractDTO update(Integer id, ContractCreateReq req) {
         Contract c = contracts.selectById(id);
@@ -218,6 +233,7 @@ public class ContractService {
     }
 
     /** 终止合同;单元状态读时派生,终止后自动回 vacant。 */
+    @NoReviewGuard(reason = "只写 contract.status 一列;历史月的在租名册按起止日期重叠判、不看 status(AllocService 那一段注释:active 是今天的状态),且只在已守的 generate 那一刻被读")
     public ContractDTO terminate(Integer id) {
         Contract c = contracts.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
@@ -230,6 +246,7 @@ public class ContractService {
 
     /** 续签(§5.3):旧合同 status='renewed'(非 terminated),新合同 parentContractId=旧 id 并继承计费行;
      *  可覆盖字段空则继承旧值。 */
+    @NoReviewGuard(reason = "旧合同标 renewed 再插一份新合同并复制计费行,两张表都无 ym 列;续签期即使覆盖已审月也只改下一次 generate 的输入,改不了已落库的分摊与催缴单行")
     @Transactional
     public ContractDTO renew(Integer id, ContractRenewReq req) {
         Contract old = contracts.selectById(id);
@@ -287,6 +304,7 @@ public class ContractService {
     }
 
     // ponytail: 留档费项行经 FK ON DELETE CASCADE 随删(V48),直接 deleteById
+    @NoReviewGuard(reason = "级联路径逐条查过 V48/V54/V56/V58/V63/V91:CASCADE 到的全是无 ym 列的合同子表,meter.contract_id 是 SET NULL(等价解绑),bill_notice_line.contract_id 无 FK(V89 的出账快照),没有一条通向带 ym 的表")
     public void delete(Integer id) {
         if (contracts.selectById(id) == null) throw new BizException(ResultCode.NOT_FOUND, "合同不存在");
         contracts.deleteById(id);
@@ -296,6 +314,7 @@ public class ContractService {
     // 覆盖律:按合同整组替换 source='import' 行,人工改过(manual)行保留;落库后反向同步五标量缓存;
     // 行级错误(合同不存在/费项枚举非法/负值)跳过不整批拦。
 
+    @NoReviewGuard(reason = "按合同整组替换 contract_billing_term 的 import 行,该表无 ym 列;影响面与单条 update 完全同构 —— 只改分摊面积与租金行的输入,落库仍只发生在已守的 generate")
     @Transactional
     public ImportResultDTO importBillingLines(BillingLinesImportRequest req) {
         List<ImportError> errors = new ArrayList<>();
@@ -358,6 +377,7 @@ public class ContractService {
     private static final String IMPORT_NO_PREFIX = "C2024M-";
     private static final Set<String> TERM_TYPES = Set.of("explicit","multiple","relative","none");
 
+    @NoReviewGuard(reason = "全量导入只碰 contract/contract_billing_term/contract_unit/billing_term_unit,无一带 ym 列;写进去的起止日期与计费面积只在 loadCtx(ym) 那一刻被读,已审月的落库行不重算")
     @Transactional
     public ContractFullImportRequest.Result importFull(ContractFullImportRequest req) {
         List<ImportError> errors = new ArrayList<>();

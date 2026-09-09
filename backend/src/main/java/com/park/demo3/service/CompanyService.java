@@ -7,18 +7,23 @@ import com.park.demo3.dto.CompanyAccountDTO;
 import com.park.demo3.dto.CompanyAccountReq;
 import com.park.demo3.dto.CompanyDTO;
 import com.park.demo3.dto.CompanyReq;
+import com.park.demo3.entity.BillNotice;
 import com.park.demo3.entity.CompanyAccount;
 import com.park.demo3.entity.ManagementCompany;
 import com.park.demo3.entity.MonthlyLedger;
 import com.park.demo3.entity.ReportAccount;
 import com.park.demo3.entity.ReportAmount;
 import com.park.demo3.entity.ReportCustomRow;
+import com.park.demo3.mapper.BillNoticeMapper;
 import com.park.demo3.mapper.CompanyAccountMapper;
 import com.park.demo3.mapper.ManagementCompanyMapper;
 import com.park.demo3.mapper.MonthlyLedgerMapper;
 import com.park.demo3.mapper.ReportAccountMapper;
 import com.park.demo3.mapper.ReportAmountMapper;
 import com.park.demo3.mapper.ReportCustomRowMapper;
+import com.park.demo3.security.NoReviewGuard;
+import com.park.demo3.security.ReviewGuard;
+import com.park.demo3.security.ReviewKind;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
@@ -38,17 +43,26 @@ public class CompanyService {
     private final ReportAmountMapper reportAmounts;
     private final ReportCustomRowMapper reportCustomRows;
     private final ReportAccountMapper reportAccounts;
+    private final BillNoticeMapper notices;   // 删公司只读它:该司当过收款主体的账期(见 delete)
 
     private final BookService bookService;
+    private final ReviewGuard reviewGuard;
 
     public CompanyService(ManagementCompanyMapper companies, CompanyAccountMapper accounts,
                           MonthlyLedgerMapper ledger,
                           ReportAmountMapper reportAmounts, ReportCustomRowMapper reportCustomRows,
-                          ReportAccountMapper reportAccounts, BookService bookService) {
+                          ReportAccountMapper reportAccounts, BillNoticeMapper notices,
+                          BookService bookService, ReviewGuard reviewGuard) {
         this.companies = companies; this.accounts = accounts; this.ledger = ledger;
         this.reportAmounts = reportAmounts; this.reportCustomRows = reportCustomRows;
-        this.reportAccounts = reportAccounts; this.bookService = bookService;
+        this.reportAccounts = reportAccounts; this.notices = notices;
+        this.bookService = bookService;
+        this.reviewGuard = reviewGuard;
     }
+
+    /** 删公司会跨全部年份清掉这四把键的数据,scope 恒是 companyId。 */
+    private static final List<ReviewKind> COMPANY_SCOPED =
+        List.of(ReviewKind.LEDGER, ReviewKind.REPORT_IS, ReviewKind.REPORT_BS, ReviewKind.REPORT_TB);
 
     public List<CompanyDTO> list() {
         Map<Integer, List<CompanyAccountDTO>> byCompany = accounts.selectList(
@@ -61,6 +75,7 @@ public class CompanyService {
             .stream().map(c -> toDTO(c, byCompany.getOrDefault(c.getId(), List.of()))).toList();
     }
 
+    @NoReviewGuard(reason = "insert management_company 加建册,两张表都无 ym 列;建册那一步把新司指针直接指到全局链尾(不另起私链、不新增也不改 book_month_pin),已审月台账用的是哪一版模板不受影响")
     public CompanyDTO create(CompanyReq req) {
         requireUniqueName(req.name(), null);
         ManagementCompany c = new ManagementCompany();
@@ -76,6 +91,7 @@ public class CompanyService {
     }
 
     // 停用不删:status=0 即从收款公司选择器消失,历史单仍指得回来(delete 才是级联清库)
+    @NoReviewGuard(reason = "只改名字与启停用标志,management_company 无 ym 列无金额列;renameLedgerBook 只 setName、不碰 book_template_version 与 book_month_pin,而 bill_notice.pay_company_id 是外键快照,改 status 动不了它")
     public CompanyDTO update(Integer id, CompanyReq req) {
         ManagementCompany c = companies.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
@@ -91,7 +107,8 @@ public class CompanyService {
 
     // 级联删除:公司连同其全部台账与报表数据一并删除(前端删除确认弹窗已明示不可恢复);
     // 不级联则 report_* 的 FK 会让 deleteById 直接 500(company_account 走 DB 级 ON DELETE CASCADE)
-    @Transactional
+    // ⚠ @Transactional 在 2 参重载上,不在这里:controller 走的是 2 参那个,而这一句是自调用、
+    //   绕过 Spring 代理,注解挂在这里等于六步删除各跑各的事务(拒在中途就留半清空的库)。
     public void delete(Integer id) { delete(id, false); }
 
     /**
@@ -104,16 +121,45 @@ public class CompanyService {
      * 修法是加守卫而不是发明更高的权限档 —— 这是缺守卫不是缺权限:
      * 就算只有主管能删,主管也不该在不知情的情况下毁掉几年的台账。
      */
+    @Transactional
     public void delete(Integer id, boolean force) {
         ManagementCompany c = companies.selectById(id);
         if (c == null) throw new BizException(ResultCode.NOT_FOUND, "公司不存在");
+        // 全站唯一一条**无条件跨全部年份删已审月数据**的写:下面四句 delete 的 WHERE 里只有
+        // company_id,没有年月。已审月的 monthly_ledger 与三大报表金额会被一次删光,而下面那道
+        // !force 的 409 只是「确认请再删一次」,主管点第二次照删。审核态在 service 层才拦得住
+        // (提权在 WriteAccessManager 里就放行了),所以闸在这里。
+        //
+        // 这四把键的 scope 恒是 companyId,守卫精确到公司,不会误伤别家 —— 新司/空司/没审过的司
+        // 照删。用 assertNoLockedMonth 而不是那个跨多月的重载不是偷懒:这一次写的「被影响月集合」
+        // 就是该司全部月,「该 kind+scope 下存在任一被锁月就拒」与它精确等价,没有多拒一个月。
+        for (ReviewKind k : COMPANY_SCOPED) reviewGuard.assertNoLockedMonth(k, String.valueOf(id));
+        // 第五把:催缴单的**收款主体**。上面四把只数 monthly_ledger 与 report_amount,看不见催缴单 ——
+        // 而 bill_notice.pay_company_id 无 FK(V89 只有 fk_notice_tenant),DB 一声不吭就让它悬空:
+        // 行还在、total_amount 一分不动,但 BillNoticeService.toDTO 的 payCompanyName 变 null,
+        // 已审月的单子从此没有落款主体、账户块(company_account 是 ON DELETE CASCADE,V94)一起消失。
+        // **不改数字,但让数字印不出来** —— 与上面四把同一档,所以一起守。
+        //
+        // ⚠ 不用 assertNoLockedMonth(BILL_NOTICES, null):BILL_NOTICES 是 ScopeShape.NONE 的园区级键,
+        //   那等于「任一月催缴单审过 → 谁都删不掉公司」,正是这一轮要防的那种让系统不能用的守卫。
+        //   按**被影响月**精确守:只有该司真当过收款主体的那几个月算数,没出过单的公司照删。
+        // ⚠ 脏 ym 先跳过:ym 是 CHAR(7) 无格式约束,ReviewKey.of 对 2031-13 抛的是 400
+        //   「账期必须是 YYYY-MM」而不是 423,用户会看到删不掉且看不懂(同 TenantService.delete)。
+        reviewGuard.assertEditable(ReviewKind.BILL_NOTICES,
+            notices.selectObjs(new QueryWrapper<BillNotice>().select("distinct ym").eq("pay_company_id", id))
+                .stream().filter(java.util.Objects::nonNull).map(String::valueOf)
+                .filter(ym -> ym.matches("\\d{4}-(0[1-9]|1[0-2])")).toList(),
+            null);
         if (!force) {
             long ledgerRows = ledger.selectCount(new QueryWrapper<MonthlyLedger>().eq("company_id", id));
             long reportRows = reportAmounts.selectCount(new QueryWrapper<ReportAmount>().eq("company_id", id));
-            if (ledgerRows > 0 || reportRows > 0) {
+            // 催缴单也进这道确认:只当收款主体、名下无台账无报表的公司,原先删起来连提示都不弹
+            long noticeRows = notices.selectCount(new QueryWrapper<BillNotice>().eq("pay_company_id", id));
+            if (ledgerRows > 0 || reportRows > 0 || noticeRows > 0) {
                 throw new BizException(ResultCode.CONFLICT, String.format(
-                    "「%s」名下还有 %d 行月度台账、%d 行报表金额,删除会连同清空且不可恢复。确认请再删一次。",
-                    c.getName(), ledgerRows, reportRows));
+                    "「%s」名下还有 %d 行月度台账、%d 行报表金额(删除即清空,不可恢复),"
+                  + "另有 %d 张催缴单以它为收款主体(单子留着,但落款主体会空掉)。确认请再删一次。",
+                    c.getName(), ledgerRows, reportRows, noticeRows));
             }
         }
         bookService.dropLedgerBook(id);   // 册随司退场;模板版本在全局链上,不跟着走
@@ -126,6 +172,7 @@ public class CompanyService {
 
     // ══════════ 收款账户(S20 §1.2) ══════════
 
+    @NoReviewGuard(reason = "company_account(V94)无 ym 列也无金额列;催缴单只快照 pay_company_id,账户块是导出时按公司现取默认账户渲染的,不进 bill_notice_line 的任何金额列")
     @Transactional
     public CompanyAccountDTO addAccount(Integer companyId, CompanyAccountReq req) {
         if (companies.selectById(companyId) == null)
@@ -142,6 +189,7 @@ public class CompanyService {
     }
 
     // PUT 全量提交,但 null 字段保持不变(MyBatis-Plus updateById 跳过 null);清空传空串
+    @NoReviewGuard(reason = "同 addAccount:company_account 无 ym 列无金额列。最坏后果是已审月的单子重新导出时账号栏印的是新账号 —— 那正是「当前收款信息本该更新」的语义,已审月的 total_amount 与逐行 amount 一分不动")
     @Transactional
     public CompanyAccountDTO updateAccount(Integer id, CompanyAccountReq req) {
         CompanyAccount a = accounts.selectById(id);
@@ -153,6 +201,7 @@ public class CompanyService {
         return toDTO(accounts.selectById(id));
     }
 
+    @NoReviewGuard(reason = "company_account 无 ym 列无金额列,且没有任何表以 FK 指向它(V94 里只有反向的 company_account→management_company),deleteById 级联不到任何带 ym 的行")
     public void deleteAccount(Integer id) { accounts.deleteById(id); }
 
     private static void apply(CompanyAccount a, CompanyAccountReq req) {
