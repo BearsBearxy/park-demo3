@@ -60,5 +60,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // 2026-09-10:全量并行下重屏 spec 撞 5000ms 默认线(pvMeterAnaScreen 单条实测 7703ms,
+    // 同文件另有 5 条落在 3993~7703ms)。放宽到 15s —— 真死循环仍会被拦,
+    // 而 exceljs 那两条自带 30s 的 describe 级 timeout 不受影响(billNoticeExcel.spec.ts:258)。
+    testTimeout: 15_000,
   },
 })
