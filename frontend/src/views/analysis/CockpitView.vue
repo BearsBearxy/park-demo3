@@ -118,6 +118,12 @@ const outlierBannerText = computed(() => {
   const m = mc.value?.outlierMonths[0]
   return m ? `${year.value}-${String(m).padStart(2, '0')} 为年末冲回,已排除在趋势与达成率之外` : ''
 })
+// AnaPeriodBanner selected/used 必填(五个既有屏共享该契约);插槽覆盖了文案,这两个值不上屏,
+// 但仍按实际的离群月/达成率覆盖区间传——都是上面已算出来的值。
+const outlierYm = computed(() => {
+  const m = mc.value?.outlierMonths[0]
+  return m ? ymOf(year.value, m) : ''
+})
 const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 // 未闭月护栏(FORECAST §2.7):y 轴量程只看可用月(剔离群月),不被 2025-12 那种极端负值拉爆;
 // 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
@@ -346,7 +352,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
         <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
-        <AnaPeriodBanner v-if="outlierBannerText" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
+        <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="achRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
