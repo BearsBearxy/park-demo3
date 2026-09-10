@@ -18,15 +18,60 @@ const READ_MAX = 30   // ana.css:131(.ana-read 注释)
 const REF_MAX = 28    // ana.css:132(.ana-ref 注释,F4 修复轮1 落成具名常量)
 const HINT_OVER_BASELINE = 28   // ⚠ 只许改小
 
+/**
+ * D2(用户 2026-09-10 拍板):统计符号跨屏禁用,口径浮层里也算屏上。
+ *
+ * 这条门禁是补的,不是原计划里的。Task 5 手工把这四样从租户能耗屏上清掉,
+ * **一个修复轮之后 σ 就回来了** —— 搬文案进浮层时顺手写了「园区均值±1σ」。
+ * 只靠人复查的规矩会回来,所以给它配一道机器判据。
+ *
+ * 判据只看模板,不看 <script> 与注释:代码里提 σ 是正常的(变量名、算法注释),
+ * 屏上不行。豁免两个光伏文件 —— 「高级分析」面板是全仓唯一准出统计量的地方,
+ * 给要复算这屏数字的人看。⚠ 这个豁免是按**整文件**给的,比规矩本身松:
+ * 那两个文件里非高级分析的部分也就一并放过了。要收紧得先能界定面板边界。
+ *
+ * F7(修复轮2)加了三个词:大写 Σ(U+03A3)、标准偏差、西格玛。Σ 单独处理:
+ * 全仓「Σ应收」「Σ建筑」这类求和记号(会计上的「合计」)已经是既有写法,
+ * 逐一核过 src/views/analysis 全部模板可见文本里的每一处 Σ ——不含豁免文件、
+ * 已剥掉 <script>——无一例外后面紧跟中文字(Σ应/Σ建/Σ租…)。真正的误写(把 σ
+ * 打成大写)长得像当初那次事故本身:「±1σ」,Σ 后面接的是标点/数字,不是中文。
+ * 拿这个当界:Σ 后面不是中文字才算命中,求和记号不受影响。
+ *
+ * F9(修复轮2):这道门禁原来只扫得到 .vue 模板。AnomalyView/TenantEnergyView
+ * 那四句真正读给用户看的文字,Task 6 修复轮1(F3)已经抽成 monitor.logic.ts /
+ * TenantEnergy.logic.ts 里的纯函数(elecReadout/elecBandRef/bandReadout/
+ * bandRefText),模板里只剩 `{{ elecBandRef }}` 这样的插值,四条句子写什么禁词
+ * 这道门禁都看不见。改法不是全文扫 .logic.ts —— 那两个文件里提 σ、标准差是
+ * 正常的(算法注释、变量名),全文扫会大面积误伤,而且会被下一个被误伤的人删掉。
+ * 改法是对这四个函数的**返回值**加禁词断言;字数门禁那两条用例已经在调它们了,
+ * 断言加在同一处(见下面 READ_MAX / REF_MAX 两条 it)。
+ *
+ * 残留口子(F9,照实写、不假装堵上):.vue 的 <script> 块里拼一个含禁词的字符串
+ * 再插值到模板(例如 `const x = '标准' + '差'` 再 `{{ x }}`),这道门禁仍抓不到——
+ * 扫描前把 <script> 整段剥掉了,为的是不误伤变量名与代码注释。这条路目前没人走,
+ * 但门禁本身证明不了这件事。
+ */
+const JARGON_SRC = String.raw`σ|Σ(?![一-鿿])|标准差|标准偏差|西格玛|z\s*分数|置信`
+const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
+const JARGON_ONE = new RegExp(JARGON_SRC)    // 单值断言用:非 global,test() 不留 lastIndex 状态
+const JARGON_EXEMPT = new Set(['PvLabTable.vue', 'PvMeterAnaView.vue'])
+
+// F8(修复轮2):原来只扫 src/views/analysis。AnaMethodNote.vue 自己住在
+// src/components/ana/,是全仓专门放口径文案的组件,却完全不在门禁内 —— 并进来。
 const DIR = join(__dirname, '../analysis')
+const DIR2 = join(__dirname, '../../components/ana')
+const DIRS = [DIR, DIR2]
 const strip = (s: string) =>
   s.replace(/<[^>]*>/g, '').replace(/\{\{[\s\S]*?\}\}/g, '').replace(/\s+/g, '').trim()
 
+function vueFiles(): { dir: string; file: string }[] {
+  return DIRS.flatMap((dir) => readdirSync(dir).filter((f) => f.endsWith('.vue')).map((file) => ({ dir, file })))
+}
+
 function scan(re: RegExp): { file: string; text: string; len: number }[] {
   const out: { file: string; text: string; len: number }[] = []
-  for (const f of readdirSync(DIR)) {
-    if (!f.endsWith('.vue')) continue
-    const src = readFileSync(join(DIR, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+  for (const { dir, file: f } of vueFiles()) {
+    const src = readFileSync(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const m of src.matchAll(re)) {
       const t = strip(m[1] ?? '')
       if (t) out.push({ file: f, text: t, len: [...t].length })
@@ -71,9 +116,8 @@ describe('分析层文案门禁', () => {
 
   it('❗带 % 的读数句,同一张卡里必须找得到样本量 —— 否则就是把「样本 5」包装成一个小数点', () => {
     const bad: string[] = []
-    for (const f of readdirSync(DIR)) {
-      if (!f.endsWith('.vue')) continue
-      const src = readFileSync(join(DIR, f), 'utf8')
+    for (const { dir, file: f } of vueFiles()) {
+      const src = readFileSync(join(dir, f), 'utf8')
       for (const { start, text } of splitCards(src)) {
         const reads = [...text.matchAll(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)].map((m) => m[1])
         const pctRead = reads.find((r) => r.includes('%'))
@@ -89,7 +133,7 @@ describe('分析层文案门禁', () => {
   // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符
   // (`<p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>`),
   // 渲染结果字符对字符等于这两个纯函数的返回值 —— 直接量函数输出就是量渲染结果,不必为此单开挂载测。
-  it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字', () => {
+  it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字,且不含禁词(F9:门禁扫不到 .logic.ts,直接量函数输出)', () => {
     const cases: (string | null)[] = [
       elecReadout(500000, { p25: 123456, p75: 987654, n: 23 }),
       bandReadout(500000, 123456, 987654, '电费'),
@@ -98,13 +142,14 @@ describe('分析层文案门禁', () => {
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
       expect([...(s as string)].length, s ?? '').toBeLessThanOrEqual(READ_MAX)
+      expect(s, s ?? '').not.toMatch(JARGON_ONE)
     }
   })
 
   // F4(修复轮1):上面那条只量了 .ana-read,.ana-ref 躲过了门禁(超标的正好是躲过去的那两条,
   // 不是巧合)。F3 把 elecBandRef/bandRefText 抽成纯函数后,`<p class="ana-ref">{{ ... }}</p>`
   // 同样除插值外没有第二个字符,量函数输出即量渲染结果 —— 用上面同一手法补上。
-  it('❗参照系小字渲染结果也要 ≤28 可见字(F4:.ana-ref 补上跟 .ana-read 一样的门禁)', () => {
+  it('❗参照系小字渲染结果也要 ≤28 可见字,且不含禁词(F4:.ana-ref 补上跟 .ana-read 一样的门禁;F9:同一处补禁词断言)', () => {
     const cases: string[] = [
       elecBandRef(251),
       elecBandRef(null),
@@ -113,29 +158,16 @@ describe('分析层文案门禁', () => {
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
+      expect(s, s).not.toMatch(JARGON_ONE)
     }
   })
 
-  /**
-   * D2(用户 2026-09-10 拍板):统计符号跨屏禁用,口径浮层里也算屏上。
-   *
-   * 这条门禁是补的,不是原计划里的。Task 5 手工把这四样从租户能耗屏上清掉,
-   * **一个修复轮之后 σ 就回来了** —— 搬文案进浮层时顺手写了「园区均值±1σ」。
-   * 只靠人复查的规矩会回来,所以给它配一道机器判据。
-   *
-   * 判据只看模板,不看 <script> 与注释:代码里提 σ 是正常的(变量名、算法注释),
-   * 屏上不行。豁免两个光伏文件 —— 「高级分析」面板是全仓唯一准出统计量的地方,
-   * 给要复算这屏数字的人看。⚠ 这个豁免是按**整文件**给的,比规矩本身松:
-   * 那两个文件里非高级分析的部分也就一并放过了。要收紧得先能界定面板边界。
-   */
-  const JARGON = /σ|标准差|z\s*分数|置信/g
-  const JARGON_EXEMPT = new Set(['PvLabTable.vue', 'PvMeterAnaView.vue'])
-
-  it('❗屏上(含 ⓘ 浮层)不许出现 σ / 标准差 / z分数 / 置信', () => {
+  // JARGON / JARGON_EXEMPT 定义见文件顶部(D2 doc comment,F7/F8/F9 修复轮2 的改动理由都写在那)。
+  it('❗屏上(含 ⓘ 浮层)不许出现 σ / Σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信', () => {
     const bad: string[] = []
-    for (const f of readdirSync(DIR)) {
-      if (!f.endsWith('.vue') || JARGON_EXEMPT.has(f)) continue
-      const tpl = readFileSync(join(DIR, f), 'utf8')
+    for (const { dir, file: f } of vueFiles()) {
+      if (JARGON_EXEMPT.has(f)) continue
+      const tpl = readFileSync(join(dir, f), 'utf8')
         .replace(/<script[\s\S]*?<\/script>/g, '')
         .replace(/<!--[\s\S]*?-->/g, '')
       for (const m of tpl.matchAll(JARGON)) {

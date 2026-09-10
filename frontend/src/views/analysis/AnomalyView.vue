@@ -342,7 +342,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           风险分 = 收缴恶化(40%) + 营收变动(30%) + 能耗变动(30%),缺项按权重归一,高分=差;收缴取台账
           {{ model.lastLedgerYm ?? '—' }} 期,营收/能耗取附表10 相邻有数月环比(能耗按|环比|,突变双向计入)。
           阈值(收缴目标 {{ anaSettings.collectTarget }}% / 突变 ±{{ anaSettings.spikeTh }}% / 风险线 {{ anaSettings.churnTh }} 分)在右上「目标与阈值」调整并即时重算;处置状态仅本地保存。
-          灰带=同类电费区间(P25~P75),样本量不足20户当月不画带;相邻有数月环比判突变。
+          灰带=同类电费区间(P25~P75),样本量不足20户,或同类之间差距过大时,当月都不画带;相邻有数月环比判突变。
         </AnaMethodNote>
       </div>
     </div>
