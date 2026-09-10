@@ -59,6 +59,22 @@ describe('一句话结论模板(FORECAST §3.3/§3.4)', () => {
       .toBe('预算达成 100.4%，离预算 1%')
   })
 
+  // 负数走的是 money/pct1 里单独的一支(符号前置 + 排版减号 −,同 anaFmt 的 sgn 与
+  // cockpit.logic.ts 的 fw)。这两条钉的是那一支 —— 没有它,负号形状怎么变都不会红。
+  it('❗负偏离:排版减号 −(U+2212),不是 ASCII 连字符', () => {
+    const s = sAchieve({ label: '预算达成', value: 94.4, target: '预算', gapPct: -5.6, th: 1 })
+    expect(s).toBe('预算达成 94.4%，离预算 −5.6%')
+    expect(s).not.toContain('-')
+    expect(len(s)).toBeLessThanOrEqual(22)
+  })
+
+  it('❗负金额:符号在 ¥ 前面,不是 ¥ 后面', () => {
+    const s = sForecast({ period: '12月', label: '收入', value: 78, p: 80, lo: -20, hi: 86, backtests: 5 })
+    expect(s).toBe('12月收入预计 ¥78，80% 落在 −¥20 ~ ¥86')
+    expect(s).not.toContain('¥−')
+    expect(len(s)).toBeLessThanOrEqual(30)
+  })
+
   it('❗结构占比:最大项 < 30% → 闭嘴', () => {
     expect(sShare({ n: 3, pct: 62, maxPct: 22 })).toBeNull()
   })
