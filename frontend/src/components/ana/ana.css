@@ -124,6 +124,14 @@
    优先级反了 —— 标题是这张图的身份,hint 是补充说明。改为:标题永不收缩,hint 先让位。 */
 .av2-card-h .t { font-size:var(--fs-body); flex:0 0 auto; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .av2-card-h .hint { font-size:var(--fs-micro); color:var(--text-muted); min-width:0; }
+/* 读数句(FORECAST §3.4):≤30 字,全档常显 —— 不许收进 ⓘ 浮层,
+   那是口径的位置;结论收起来等于手机上看不见结论。
+   ⚠ 写法照本文件既有的 .ak-sub(:39)/.ak-bar-name(:53):font-size + color 分开写,
+   不用 font: var(--type-*) 简写 —— ana.css 全文没有那种写法。 */
+.ana-read { margin: 8px 0 0; font-size: var(--fs-label); color: var(--text-primary); }
+/* 参照系小字:≤28 字,必带三件 —— 样本量 n · 口径列 · 单位。
+   砍了就是把「样本 5」包装成一个 71.3% 的小数点。 */
+.ana-ref { margin: 2px 0 0; font-size: var(--fs-micro); color: var(--text-muted); }
 /* S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.2):KPI 定两列——auto-fit minmax(120px) 在 390px
    视口会挤成三列,主数值互相顶到截断;两列下瓦片约 170px,数值+delta 都放得下。
    栅格 gap 与卡内边距各微收一档,省下的宽度还给图表。
