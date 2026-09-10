@@ -9,7 +9,7 @@ import { join } from 'node:path'
  * 不用「纯中文字符数」—— 按那个判,稿自己举的旗舰例子 AnomalyView 那条(剥插值后中文 19 字)
  * 根本抓不到,门禁形同虚设。
  *
- * 起点写死在断言里:立档当天 hint 超标 40 处。往下降,不许往上涨。
+ * 起点写死在断言里:立档当天 hint 超标 30 处。往下降,不许往上涨。
  */
 const HINT_MAX = 24
 const READ_MAX = 30
@@ -47,15 +47,35 @@ describe('分析层文案门禁', () => {
     expect(over.map((x) => `${x.file}:${x.len}字`)).toEqual([])
   })
 
-  it('❗带 % 的读数句,同一个文件里必须找得到样本量 —— 否则就是把「样本 5」包装成一个小数点', () => {
+  // 卡级切块:以 class="av2-card"(可带后续类名)开头的标签为卡片分界,
+  // 每块从本卡开始切到下一卡开始(或文件尾)。同屏多卡是常态(AnomalyView/ChurnView
+  // 等一屏 3~5 张 av2-card),file 级判据会被别的卡的 .ana-ref 顺便糊过去。
+  // 已知盲区(手写模板上的简单切法,不是 parser):
+  //   1) 卡嵌卡(av2-card 内部再套一层 av2-card)会被当成又开一张新卡,
+  //      提前截断外层卡的内容;
+  //   2) 开标签跨行(class 属性换行书写)时,单行正则抓不到分界,那张卡
+  //      会被并入上一张。
+  // 目前全仓 av2-card 开标签都在同一行、且不互相嵌套,两条盲区暂未命中。
+  const CARD_RE = /class="av2-card(?=[ "])/g
+  function splitCards(src: string): { start: number; text: string }[] {
+    const starts = [...src.matchAll(CARD_RE)].map((m) => m.index!)
+    if (starts.length === 0) return [{ start: 0, text: src }]
+    return starts.map((s, i) => ({ start: s, text: src.slice(s, starts[i + 1] ?? src.length) }))
+  }
+  const lineOf = (src: string, idx: number) => src.slice(0, idx).split('\n').length
+
+  it('❗带 % 的读数句,同一张卡里必须找得到样本量 —— 否则就是把「样本 5」包装成一个小数点', () => {
     const bad: string[] = []
     for (const f of readdirSync(DIR)) {
       if (!f.endsWith('.vue')) continue
       const src = readFileSync(join(DIR, f), 'utf8')
-      const reads = [...src.matchAll(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)].map((m) => m[1])
-      if (!reads.some((r) => r.includes('%'))) continue
-      if (!/class="ana-ref"/.test(src)) bad.push(f)
+      for (const { start, text } of splitCards(src)) {
+        const reads = [...text.matchAll(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)].map((m) => m[1])
+        const pctRead = reads.find((r) => r.includes('%'))
+        if (!pctRead) continue
+        if (!/class="ana-ref"/.test(text)) bad.push(`${f}:${lineOf(src, start)} ${strip(pctRead).slice(0, 20)}`)
+      }
     }
-    expect(bad, `这些屏印了百分数却没有参照系小字: ${bad.join(', ')}`).toEqual([])
+    expect(bad, `这些卡片印了百分数却没有参照系小字: ${bad.join(' | ')}`).toEqual([])
   })
 })
