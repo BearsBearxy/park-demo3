@@ -3,7 +3,7 @@
 // 「本期」=≤所选期间的最近 s10 月;窗口=≤本期的全部 s10 月;台账应收/实收沿 AnalysisLedgerRow。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { familyRootOf } from '@/analysis/anaFamily'
-import { mean as aMean, std as aStd } from '@/components/ana/anaFmt'
+import { fint, mean as aMean, std as aStd } from '@/components/ana/anaFmt'
 
 export interface TenantRow {
   name: string; phase: number; rank: number
@@ -96,6 +96,13 @@ export function buildParkBand(rows: TenantRow[], months: string[]): ParkBand {
 /** 选中租户逐月序列(缺月 = null,不补 0)。 */
 export function tenantSeries(row: TenantRow | null, months: string[]): (number | null)[] {
   return months.map((m) => (row?.vals.has(m) ? +(row.vals.get(m) as number).toFixed(0) : null))
+}
+
+/** 主图读数句:选中租户本期 vs 跨户区间(cur/lo/hi 任一缺 → 闭嘴,不写占位句)。 */
+export function bandReadout(cur: number | null, lo: number | null, hi: number | null, metricLabel: string): string | null {
+  if (cur == null || lo == null || hi == null) return null
+  const pos = cur > hi ? '高于' : cur < lo ? '低于' : '落在'
+  return `${metricLabel}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
 }
 
 // ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样 ──

@@ -19,7 +19,7 @@ import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
-import { buildMonitorModel, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
+import { buildMonitorModel, elecReadout as elecReadoutOf, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -100,11 +100,7 @@ const elecReadout = computed<string | null>(() => {
   const t = sel.value, m = model.value
   if (!t || !m || !t.months.length) return null
   const ym = t.months[t.months.length - 1]
-  const b = m.band[ym]
-  if (!b) return null
-  const v = t.elec[t.elec.length - 1]
-  const pos = v > b.p75 ? '高于' : v < b.p25 ? '低于' : '落在'
-  return `电费${pos}同类区间 ¥${fint(b.p25)}~¥${fint(b.p75)}`
+  return elecReadoutOf(t.elec[t.elec.length - 1], m.band[ym])
 })
 
 // ── 右面板:应收 vs 实收(台账各期) ──

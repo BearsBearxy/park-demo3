@@ -65,5 +65,8 @@ onBeforeUnmount(() => {
   background: var(--surface-white); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
   font-size: var(--fs-label); color: var(--text-secondary); line-height: 1.6;
+  /* F1: 无上限时长口径文案(如台账期数列表)能把弹层撑到盖住上方图表(常见图高 300px)。
+     240px 留出可辨的余量,超出部分滚动,内容不再决定弹层能盖多少。 */
+  max-height: 240px; overflow-y: auto;
 }
 </style>

@@ -26,7 +26,7 @@ import { NEG, WARN, fint } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout as bandReadoutOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const period = usePeriod()
 const router = useRouter()
@@ -114,9 +114,7 @@ const bandReadout = computed<string | null>(() => {
   const idx = winMonths.value.indexOf(curYm.value)
   const lo = idx >= 0 ? parkBand.value.lo[idx] : null
   const hi = idx >= 0 ? parkBand.value.hi[idx] : null
-  if (!r || lo == null || hi == null) return null
-  const pos = r.cur > hi ? '高于' : r.cur < lo ? '低于' : '落在'
-  return `${metricLabel.value}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
+  return bandReadoutOf(r?.cur ?? null, lo, hi, metricLabel.value)
 })
 
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──

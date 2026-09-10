@@ -1,7 +1,7 @@
 // 监控中心纯函数单测(铁律⑦):突变检测(相邻有数月/双向/上月≤0 跳过)、缺项归一、
 // 风险分与分层边界、末期欠费聚合、规则 id 稳定、灰带分位、期别汇总行剔除、最差在前排序。
 import { describe, expect, it } from 'vitest'
-import { buildMonitorModel, detectSpikes, tenantLedgerBars, weighScore } from './monitor.logic'
+import { buildMonitorModel, detectSpikes, elecReadout, tenantLedgerBars, weighScore } from './monitor.logic'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 
 function ledger(p: Partial<AnalysisLedgerRow>): AnalysisLedgerRow {
@@ -101,6 +101,16 @@ describe('buildMonitorModel(评分/分层/规则/汇总卡/灰带)', () => {
   it('灰带 = 各月租户电费 P25/P75(线性分位)', () => {
     expect(m.band['2025-09']).toEqual({ p25: 200, p75: 400 })       // [100,300,500]
     expect(m.band['2025-10']).toEqual({ p25: 303.75, p75: 701.25 }) // [105,900]
+  })
+})
+
+describe('elecReadout(电费读数句)', () => {
+  it('高于上界 / 低于下界 / 落在区间内 / 缺数据(v 为 null 或 band 缺月)→ null', () => {
+    expect(elecReadout(500, { p25: 200, p75: 400 })).toBe('电费高于同类区间 ¥200~¥400')
+    expect(elecReadout(100, { p25: 200, p75: 400 })).toBe('电费低于同类区间 ¥200~¥400')
+    expect(elecReadout(300, { p25: 200, p75: 400 })).toBe('电费落在同类区间 ¥200~¥400')
+    expect(elecReadout(null, { p25: 200, p75: 400 })).toBeNull()
+    expect(elecReadout(300, undefined)).toBeNull()
   })
 })
 

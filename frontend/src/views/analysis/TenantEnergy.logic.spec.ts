@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -55,6 +55,17 @@ describe('buildParkBand / tenantSeries', () => {
     const jia = rows.find((r) => r.name === '甲') ?? null
     expect(tenantSeries(jia, ['2025-01', '2025-02', '2025-03'])).toEqual([100, null, 300])
     expect(tenantSeries(null, ['2025-01'])).toEqual([null])
+  })
+})
+
+describe('bandReadout(主图读数句)', () => {
+  it('高于上界 / 低于下界 / 落在区间内 / 缺数据(cur/lo/hi 任一为 null)→ null', () => {
+    expect(bandReadout(400, 100, 300, '电费')).toBe('电费高于跨户区间 ¥100~¥300')
+    expect(bandReadout(50, 100, 300, '电费')).toBe('电费低于跨户区间 ¥100~¥300')
+    expect(bandReadout(200, 100, 300, '电费')).toBe('电费落在跨户区间 ¥100~¥300')
+    expect(bandReadout(null, 100, 300, '电费')).toBeNull()
+    expect(bandReadout(200, null, 300, '电费')).toBeNull()
+    expect(bandReadout(200, 100, null, '电费')).toBeNull()
   })
 })
 

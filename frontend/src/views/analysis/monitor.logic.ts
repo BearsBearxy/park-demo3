@@ -63,6 +63,13 @@ export function weighScore(parts: { pay: number | null; rev: number | null; ener
   return den > 0 ? Math.round(num / den) : 0
 }
 
+/** 电费读数句:选中租户末月电费 vs 同类 P25~P75 区间(v/band 任一缺 → 闭嘴,不写占位句)。 */
+export function elecReadout(v: number | null, band: { p25: number; p75: number } | undefined): string | null {
+  if (v == null || !band) return null
+  const pos = v > band.p75 ? '高于' : v < band.p25 ? '低于' : '落在'
+  return `电费${pos}同类区间 ¥${fInt(band.p25)}~¥${fInt(band.p75)}`
+}
+
 /** 选中租户 应收vs实收 分期条(台账各期,跨公司求和)。 */
 export function tenantLedgerBars(ledger: AnalysisLedgerRow[], name: string): { yms: string[]; recv: number[]; coll: number[] } {
   const by = new Map<string, { recv: number; coll: number }>()
