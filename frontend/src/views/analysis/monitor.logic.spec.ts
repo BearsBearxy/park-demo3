@@ -1,7 +1,7 @@
 // 监控中心纯函数单测(铁律⑦):突变检测(相邻有数月/双向/上月≤0 跳过)、缺项归一、
 // 风险分与分层边界、末期欠费聚合、规则 id 稳定、灰带分位、期别汇总行剔除、最差在前排序。
 import { describe, expect, it } from 'vitest'
-import { buildMonitorModel, detectSpikes, elecReadout, tenantLedgerBars, weighScore } from './monitor.logic'
+import { buildMonitorModel, detectSpikes, elecBandRef, elecReadout, tenantLedgerBars, weighScore } from './monitor.logic'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 
 function ledger(p: Partial<AnalysisLedgerRow>): AnalysisLedgerRow {
@@ -131,6 +131,23 @@ describe('elecReadout(电费读数句)', () => {
     const rows = Array.from({ length: 19 }, (_, i) => s10({ tenantName: `户${i}`, acctMonth: '2025-09', elec: 100, total: 100 }))
     const mm = buildMonitorModel([], rows, OPTS)
     expect(elecReadout(500, mm.band['2025-09'])).toBeNull()
+  })
+})
+
+describe('elecBandRef(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
+  it('n 有值 → 样本N户;n 缺(同类不足20户)→ 不画带的话不进这句,只说不足20户', () => {
+    expect(elecBandRef(251)).toBe('记账月口径 · 元 · 样本251户')
+    expect(elecBandRef(null)).toBe('记账月口径 · 元 · 同类不足20户')
+  })
+
+  it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
+    expect(elecBandRef(251)).not.toContain('acct_month')
+    expect(elecBandRef(251)).toContain('记账月')
+  })
+
+  it('❗F2:句子里不再出现「灰带」二字 —— 带画不画不影响这句话真假', () => {
+    expect(elecBandRef(251)).not.toContain('灰带')
+    expect(elecBandRef(null)).not.toContain('灰带')
   })
 })
 

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { elecReadout } from '../analysis/monitor.logic'
-import { bandReadout } from '../analysis/TenantEnergy.logic'
+import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
+import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
 
 /**
  * 分析层文案门禁(FORECAST-BAND-AND-PLAIN-SENTENCE §3.4)。
@@ -14,7 +14,8 @@ import { bandReadout } from '../analysis/TenantEnergy.logic'
  * 起点写死在断言里:立档当天 hint 超标 30 处。往下降,不许往上涨。
  */
 const HINT_MAX = 24
-const READ_MAX = 30
+const READ_MAX = 30   // ana.css:131(.ana-read 注释)
+const REF_MAX = 28    // ana.css:132(.ana-ref 注释,F4 修复轮1 落成具名常量)
 const HINT_OVER_BASELINE = 28   // ⚠ 只许改小
 
 const DIR = join(__dirname, '../analysis')
@@ -97,6 +98,21 @@ describe('分析层文案门禁', () => {
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
       expect([...(s as string)].length, s ?? '').toBeLessThanOrEqual(READ_MAX)
+    }
+  })
+
+  // F4(修复轮1):上面那条只量了 .ana-read,.ana-ref 躲过了门禁(超标的正好是躲过去的那两条,
+  // 不是巧合)。F3 把 elecBandRef/bandRefText 抽成纯函数后,`<p class="ana-ref">{{ ... }}</p>`
+  // 同样除插值外没有第二个字符,量函数输出即量渲染结果 —— 用上面同一手法补上。
+  it('❗参照系小字渲染结果也要 ≤28 可见字(F4:.ana-ref 补上跟 .ana-read 一样的门禁)', () => {
+    const cases: string[] = [
+      elecBandRef(251),
+      elecBandRef(null),
+      bandRefText(251),
+      bandRefText(null),
+    ]
+    for (const s of cases) {
+      expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
     }
   })
 })

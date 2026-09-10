@@ -115,5 +115,6 @@ export function bandTooWide(lo: (number | null)[], hi: (number | null)[]): boole
   }
   const mid = quantile(centers, 0.5)
   if (mid === 0) return false
-  return quantile(halfWidths, 0.5) / mid > 0.20
+  // F5(修复轮1):分母原写 mid,中位数为负时比值恒负,门永远不开(见 bandSeries.spec.ts 负中位数用例)。
+  return quantile(halfWidths, 0.5) / Math.abs(mid) > 0.20
 }

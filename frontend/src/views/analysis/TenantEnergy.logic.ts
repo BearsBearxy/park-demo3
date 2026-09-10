@@ -107,6 +107,13 @@ export function bandReadout(cur: number | null, lo: number | null, hi: number | 
   return `${metricLabel}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
 }
 
+/** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法(灰带画没画由
+ *  bandTooWide 另判,与这句无关)。acct_month 是列名,屏上写「记账月」(F1)。 */
+export function bandRefText(n: number | null): string {
+  const sample = n != null ? `样本${n}户` : '样本未知'
+  return `记账月口径 · 元 · ${sample}`
+}
+
 // ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样 ──
 export function splitLogPoints<T>(rows: T[], valueOf: (r: T) => number, log: boolean): { shown: T[]; hidden: number } {
   if (!log) return { shown: rows, hidden: 0 }

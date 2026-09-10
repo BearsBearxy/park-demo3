@@ -19,7 +19,7 @@ import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
 import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
-import { buildMonitorModel, elecReadout as elecReadoutOf, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
+import { buildMonitorModel, elecBandRef as elecBandRefOf, elecReadout as elecReadoutOf, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -108,10 +108,9 @@ const elecBandN = computed<number | null>(() => {
   if (!t || !m || !t.months.length) return null
   return m.band[t.months[t.months.length - 1]]?.n ?? null
 })
-const elecBandRef = computed<string>(() => {
-  const sample = elecBandN.value != null ? `样本${elecBandN.value}户` : '同类不足20户不画带'
-  return `灰带=同类电费区间(acct_month 口径 · 元 · ${sample});相邻有数月环比判突变`
-})
+// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进底部 AnaMethodNote —— 带画没画
+// 由 bandTooWide 另判,不再靠这句话跟着猜,desync 的 bug 根就没了。
+const elecBandRef = computed<string>(() => elecBandRefOf(elecBandN.value))
 
 // ── 右面板:应收 vs 实收(台账各期) ──
 const ledBars = computed(() => (sel.value && inputs.value ? tenantLedgerBars(inputs.value.ledger, sel.value.name) : null))
@@ -343,6 +342,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           风险分 = 收缴恶化(40%) + 营收变动(30%) + 能耗变动(30%),缺项按权重归一,高分=差;收缴取台账
           {{ model.lastLedgerYm ?? '—' }} 期,营收/能耗取附表10 相邻有数月环比(能耗按|环比|,突变双向计入)。
           阈值(收缴目标 {{ anaSettings.collectTarget }}% / 突变 ±{{ anaSettings.spikeTh }}% / 风险线 {{ anaSettings.churnTh }} 分)在右上「目标与阈值」调整并即时重算;处置状态仅本地保存。
+          灰带=同类电费区间(P25~P75),样本量不足20户当月不画带;相邻有数月环比判突变。
         </AnaMethodNote>
       </div>
     </div>

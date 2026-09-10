@@ -26,7 +26,7 @@ import { NEG, WARN, fint } from '@/components/ana/anaFmt'
 import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { bandReadout as bandReadoutOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout as bandReadoutOf, bandRefText as bandRefTextOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const period = usePeriod()
 const router = useRouter()
@@ -122,11 +122,9 @@ const curBandN = computed<number | null>(() => {
   const idx = curBandIdx.value
   return idx >= 0 ? parkBand.value.n[idx] : null
 })
-const bandRefText = computed<string>(() => {
-  const n = curBandN.value
-  const sample = n != null ? (n >= 20 ? `样本${n}户` : `样本${n}户,不足20不画带`) : '样本不足20户不画带'
-  return `灰带=跨户波动范围(acct_month 口径 · 元 · ${sample}) · 断点=该月无记录`
-})
+// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进同卡 AnaMethodNote —— 带画没画
+// 由 bandTooWide 另判,不再靠这句话跟着猜,desync 的 bug 根就没了。
+const bandRefText = computed<string>(() => bandRefTextOf(curBandN.value))
 
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
 const ledgerYmOf = (r: AnalysisLedgerRow): string => `${r.year}-${String(r.month).padStart(2, '0')}`
@@ -386,6 +384,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
               异常=该户本期用量偏离自身近12个月常态,超出正常波动的1.3倍。
               家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
+              灰带=跨户波动范围(园区均值±1σ),样本量不足20户当月不画带;断点=该月无记录。
             </AnaMethodNote>
           </div>
           <div class="av2-card">

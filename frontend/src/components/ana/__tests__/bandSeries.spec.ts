@@ -81,6 +81,11 @@ describe('bandTooWide —— 带宽门(半宽/中位 > 0.20 判太宽,只出点�
     // 半宽10/中心0:没有这道门槛会算成 10/0=Infinity>0.2 → true,错把「除不了」当「很宽」
     expect(bandTooWide([-10], [10])).toBe(false)
   })
+
+  it('❗F5:中位数为负(非0)时也要判宽 —— 分母不取 abs 的话比值恒负,门永远不开', () => {
+    // lo=-125,hi=-75:中心-100,半宽25,25/|-100|=0.25>0.20。改前用 mid(不取 abs):25/-100=-0.25,恒 false。
+    expect(bandTooWide([-125], [-75])).toBe(true)
+  })
 })
 
 import { readFileSync, readdirSync } from 'node:fs'

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { bandReadout, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries, type TenantRow } from './TenantEnergy.logic'
+import { bandReadout, bandRefText, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries, type TenantRow } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -97,6 +97,24 @@ describe('bandReadout(主图读数句)', () => {
     expect(bandReadout(null, 100, 300, '电费')).toBeNull()
     expect(bandReadout(200, null, 300, '电费')).toBeNull()
     expect(bandReadout(200, 100, null, '电费')).toBeNull()
+  })
+})
+
+describe('bandRefText(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
+  it('n 有值(即便<20)→ 样本N户;n 缺 → 样本未知', () => {
+    expect(bandRefText(251)).toBe('记账月口径 · 元 · 样本251户')
+    expect(bandRefText(15)).toBe('记账月口径 · 元 · 样本15户')   // <20 也照实报数,不夹带「不画带」判断
+    expect(bandRefText(null)).toBe('记账月口径 · 元 · 样本未知')
+  })
+
+  it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
+    expect(bandRefText(251)).not.toContain('acct_month')
+    expect(bandRefText(251)).toContain('记账月')
+  })
+
+  it('❗F2:句子里不再出现「灰带」「断点」—— 带画不画/断不断点不影响这句话真假', () => {
+    expect(bandRefText(251)).not.toContain('灰带')
+    expect(bandRefText(251)).not.toContain('断点')
   })
 })
 

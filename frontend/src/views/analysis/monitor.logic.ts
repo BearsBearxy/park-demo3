@@ -70,6 +70,13 @@ export function elecReadout(v: number | null, band: { p25: number; p75: number }
   return `电费${pos}同类区间 ¥${fInt(band.p25)}~¥${fInt(band.p75)}`
 }
 
+/** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法(灰带画没画由
+ *  bandTooWide 另判,与这句无关 —— 句子不该替画法背书)。acct_month 是列名,屏上写「记账月」(F1)。 */
+export function elecBandRef(n: number | null): string {
+  const sample = n != null ? `样本${n}户` : '同类不足20户'
+  return `记账月口径 · 元 · ${sample}`
+}
+
 /** 选中租户 应收vs实收 分期条(台账各期,跨公司求和)。 */
 export function tenantLedgerBars(ledger: AnalysisLedgerRow[], name: string): { yms: string[]; recv: number[]; coll: number[] } {
   const by = new Map<string, { recv: number; coll: number }>()
