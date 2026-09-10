@@ -77,20 +77,22 @@ export function buildFamilyRows(rows: TenantRow[], familyMap: Map<string, string
   return out
 }
 
-export interface ParkBand { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[] }
+export interface ParkBand { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[]; n: number[] }
 
-/** 园区均值带:逐月对「该月有记录的租户」求均值±1σ(lo 截 0;该月无任何租户 → null)。 */
+/** 园区均值带:逐月对「该月有记录的租户」求均值±1σ(lo 截 0;同类 <20 户不画带 —— D3 三档)。 */
 export function buildParkBand(rows: TenantRow[], months: string[]): ParkBand {
-  const mean: (number | null)[] = [], lo: (number | null)[] = [], hi: (number | null)[] = []
+  const mean: (number | null)[] = [], lo: (number | null)[] = [], hi: (number | null)[] = [], n: number[] = []
   for (const m of months) {
     const vs = rows.filter((r) => r.vals.has(m)).map((r) => r.vals.get(m) as number)
-    if (!vs.length) { mean.push(null); lo.push(null); hi.push(null); continue }
+    n.push(vs.length)
+    // D3 三档:同类 < 20 不画带。改前是 vs.length 只要 >0 就画,一户也画出一条零宽灰带。
+    if (vs.length < 20) { mean.push(null); lo.push(null); hi.push(null); continue }
     const mn = aMean(vs), sd = aStd(vs)
     mean.push(+mn.toFixed(0))
     lo.push(+Math.max(0, mn - sd).toFixed(0))
     hi.push(+(mn + sd).toFixed(0))
   }
-  return { mean, lo, hi }
+  return { mean, lo, hi, n }
 }
 
 /** 选中租户逐月序列(缺月 = null,不补 0)。 */

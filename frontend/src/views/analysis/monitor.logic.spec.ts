@@ -98,9 +98,23 @@ describe('buildMonitorModel(评分/分层/规则/汇总卡/灰带)', () => {
     expect(m.cards).toEqual({ risk: 2, watch: 1, arrearsTotal: 950, arrearsCount: 2, spikeTenants: 1 })
   })
 
-  it('灰带 = 各月租户电费 P25/P75(线性分位)', () => {
-    expect(m.band['2025-09']).toEqual({ p25: 200, p75: 400 })       // [100,300,500]
-    expect(m.band['2025-10']).toEqual({ p25: 303.75, p75: 701.25 }) // [105,900]
+})
+
+// 原例(A/B/D 三户 s10rows)每月同类数远低于 20,改用独立小模型验证分位算法与 D3 门槛,
+// 不动上面共用的 m/s10rows(那边有 m.list 的精确排序/构成断言,混进填户会连带弄红)。
+describe('灰带 = 各月租户电费 P25/P75(线性分位;D3 门槛 <20 户不建带)', () => {
+  const mkTenantElec = (n: number, ym: string, elec: number, offset = 0): AnalysisS10Row[] =>
+    Array.from({ length: n }, (_, i) => s10({ tenantName: `户${offset + i}`, acctMonth: ym, elec, total: elec }))
+
+  it('20 户按分位算出带,且 n 一并传出;同月不足 20 户 → 不建 key', () => {
+    const rows = [
+      ...mkTenantElec(10, '2025-09', 100),
+      ...mkTenantElec(10, '2025-09', 500, 10),
+      ...mkTenantElec(5, '2025-10', 999),   // 同月仅 5 户,不足 20
+    ]
+    const mm = buildMonitorModel([], rows, OPTS)
+    expect(mm.band['2025-09']).toEqual({ p25: 100, p75: 500, n: 20 })
+    expect(mm.band['2025-10']).toBeUndefined()
   })
 })
 
@@ -111,6 +125,12 @@ describe('elecReadout(电费读数句)', () => {
     expect(elecReadout(300, { p25: 200, p75: 400 })).toBe('电费落在同类区间 ¥200~¥400')
     expect(elecReadout(null, { p25: 200, p75: 400 })).toBeNull()
     expect(elecReadout(300, undefined)).toBeNull()
+  })
+
+  it('❗n<20 时 buildMonitorModel 该月不建 band key,elecReadout 跟着自动闭嘴(不用它自己另判 n)', () => {
+    const rows = Array.from({ length: 19 }, (_, i) => s10({ tenantName: `户${i}`, acctMonth: '2025-09', elec: 100, total: 100 }))
+    const mm = buildMonitorModel([], rows, OPTS)
+    expect(elecReadout(500, mm.band['2025-09'])).toBeNull()
   })
 })
 

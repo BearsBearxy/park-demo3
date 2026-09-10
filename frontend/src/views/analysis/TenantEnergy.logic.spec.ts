@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { bandReadout, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries, type TenantRow } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -12,6 +12,14 @@ const map = (rows: AnalysisS10Row[]): Map<string, AnalysisS10Row[]> => {
   for (const r of rows) m.set(r.tenantName, [...(m.get(r.tenantName) ?? []), r])
   return m
 }
+
+// buildParkBand 只读 .vals,直接造最小 TenantRow 免去经 buildTenantRows 的间接层(D3 门槛测试用)。
+const fakeRow = (name: string, vals: Record<string, number>): TenantRow => ({
+  name, phase: 1, rank: 0, cur: 0, mom: null, vsAvg: null, sd: 0, z: 0,
+  winTotal: 0, win: [], monthlyRent: null, vals: new Map(Object.entries(vals)),
+})
+const mkRows = (n: number, val = 100): TenantRow[] =>
+  Array.from({ length: n }, (_, i) => fakeRow(`户${i}`, { '2025-01': val }))
 
 describe('buildTenantRows', () => {
   const months = ['2025-01', '2025-02', '2025-03']
@@ -44,17 +52,40 @@ describe('buildTenantRows', () => {
 })
 
 describe('buildParkBand / tenantSeries', () => {
-  it('逐月均值±σ(lo 截 0),该月无租户 → null;租户缺月 → null', () => {
-    const tm = map([s10('甲', '2025-01', 100), s10('甲', '2025-03', 300), s10('乙', '2025-01', 300), s10('乙', '2025-03', 100)])
-    const rows = buildTenantRows(tm, '2025-03', ['2025-01', '2025-03'], 'elec', new Map())
+  // D3 门槛(<20 不画带)下,原 2 租户例子会整段判 null —— 补 18 户凑到 20 户,
+  // 且两月对称拆 10/10(甲/摆 两户在两月间互换阵营)保持 mean/σ 与改前一致,可心算验证。
+  const jia = fakeRow('甲', { '2025-01': 100, '2025-03': 300 })
+  const swing = fakeRow('摆', { '2025-01': 300, '2025-03': 100 })
+  const lo9 = Array.from({ length: 9 }, (_, i) => fakeRow(`低${i}`, { '2025-01': 100, '2025-03': 100 }))
+  const hi9 = Array.from({ length: 9 }, (_, i) => fakeRow(`高${i}`, { '2025-01': 300, '2025-03': 300 }))
+  const rows = [jia, swing, ...lo9, ...hi9]   // 20 户:每月各 10@100 + 10@300
+
+  it('逐月均值±σ(lo 截 0),该月无租户 → null;租户缺月 → null;n 传出(D3 门槛 ≥20)', () => {
     const band = buildParkBand(rows, ['2025-01', '2025-02', '2025-03'])
     expect(band.mean).toEqual([200, null, 200])                     // 逐月跨户均值;2月无数据
     expect(band.lo[0]).toBe(100)                                    // 200-σ(=100)
     expect(band.hi[0]).toBe(300)
     expect(band.lo[2]).toBe(100)
-    const jia = rows.find((r) => r.name === '甲') ?? null
+    expect(band.n).toEqual([20, 0, 20])
     expect(tenantSeries(jia, ['2025-01', '2025-02', '2025-03'])).toEqual([100, null, 300])
     expect(tenantSeries(null, ['2025-01'])).toEqual([null])
+  })
+
+  it('❗n = 19 不返回带(D3 三档:<20 不画),n 仍传出', () => {
+    const band = buildParkBand(mkRows(19), ['2025-01'])
+    expect(band.lo[0]).toBeNull()
+    expect(band.n[0]).toBe(19)
+  })
+
+  it('❗n = 20 返回带,且 n 一并传出供参照系小字印', () => {
+    const band = buildParkBand(mkRows(20), ['2025-01'])
+    expect(band.lo[0]).not.toBeNull()
+    expect(band.n[0]).toBe(20)
+  })
+
+  it('❗n<20 时 buildParkBand 出 null,bandReadout 跟着自动闭嘴(不用它自己另判 n)', () => {
+    const band = buildParkBand(mkRows(15, 200), ['2025-01'])
+    expect(bandReadout(200, band.lo[0], band.hi[0], '电费')).toBeNull()
   })
 })
 

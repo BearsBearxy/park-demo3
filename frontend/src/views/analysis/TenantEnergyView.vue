@@ -23,7 +23,7 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
-import { bandSeries } from '@/components/ana/anaTheme'
+import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { bandReadout as bandReadoutOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
@@ -109,12 +109,23 @@ const selRow = computed(() => rowsCur.value.find((r) => r.name === selName.value
 function select(name: string) { selName.value = name }
 
 // ── 主图读数句:选中租户本期 vs 跨户区间(无对应月带数据 → 闭嘴) ──
+const curBandIdx = computed(() => winMonths.value.indexOf(curYm.value))
 const bandReadout = computed<string | null>(() => {
   const r = selRow.value
-  const idx = winMonths.value.indexOf(curYm.value)
+  const idx = curBandIdx.value
   const lo = idx >= 0 ? parkBand.value.lo[idx] : null
   const hi = idx >= 0 ? parkBand.value.hi[idx] : null
   return bandReadoutOf(r?.cur ?? null, lo, hi, metricLabel.value)
+})
+// D1:句子印了区间就得在同屏带出样本量 —— buildParkBand 逐月都推 n(即便 <20 未画带也有数,与 monitor 侧 Record 不同)。
+const curBandN = computed<number | null>(() => {
+  const idx = curBandIdx.value
+  return idx >= 0 ? parkBand.value.n[idx] : null
+})
+const bandRefText = computed<string>(() => {
+  const n = curBandN.value
+  const sample = n != null ? (n >= 20 ? `样本${n}户` : `样本${n}户,不足20不画带`) : '样本不足20户不画带'
+  return `灰带=跨户波动范围(acct_month 口径 · 元 · ${sample}) · 断点=该月无记录`
 })
 
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
@@ -170,7 +181,8 @@ const trendOption = computed<object>(() => {
     xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
     series: [
-      ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
+      // 带宽门(D3 附属):半宽/中位 > 20% 太宽,只出点不画带。
+      ...(bandTooWide(band.lo, band.hi) ? [] : bandSeries(band.lo, band.hi, { name: '跨户波动范围带' })),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
       { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
@@ -368,7 +380,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
             </div>
             <AnaEChart :option="trendOption" :height="300" />
             <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
-            <p class="ana-ref">灰带=跨户波动范围 · 断点=该月无记录</p>
+            <p class="ana-ref">{{ bandRefText }}</p>
             <AnaMethodNote>
               口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。

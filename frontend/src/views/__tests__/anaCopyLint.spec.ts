@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { elecReadout } from '../analysis/monitor.logic'
+import { bandReadout } from '../analysis/TenantEnergy.logic'
 
 /**
  * 分析层文案门禁(FORECAST-BAND-AND-PLAIN-SENTENCE §3.4)。
@@ -79,5 +81,22 @@ describe('分析层文案门禁', () => {
       }
     }
     expect(bad, `这些卡片印了百分数却没有参照系小字: ${bad.join(' | ')}`).toEqual([])
+  })
+
+  // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
+  // echarts + anaData 太重),上面 scan() 的 strip() 又把 `{{ elecReadout }}` 这类插值整个删掉,
+  // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符
+  // (`<p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>`),
+  // 渲染结果字符对字符等于这两个纯函数的返回值 —— 直接量函数输出就是量渲染结果,不必为此单开挂载测。
+  it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字', () => {
+    const cases: (string | null)[] = [
+      elecReadout(500000, { p25: 123456, p75: 987654, n: 23 }),
+      bandReadout(500000, 123456, 987654, '电费'),
+      bandReadout(500000, 123456, 987654, '水费'),
+    ]
+    for (const s of cases) {
+      expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
+      expect([...(s as string)].length, s ?? '').toBeLessThanOrEqual(READ_MAX)
+    }
   })
 })

@@ -38,7 +38,7 @@ export interface MonitorModel {
   lastLedgerYm: string | null
   lastS10Ym: string | null
   cards: { risk: number; watch: number; arrearsTotal: number; arrearsCount: number; spikeTenants: number }
-  band: Record<string, { p25: number; p75: number }>   // 月 → 园区租户电费 P25/P75(灰带)
+  band: Record<string, { p25: number; p75: number; n: number }>   // 月 → 园区租户电费 P25/P75(灰带;D3 三档 <20 户不建 key)
 }
 export interface MonitorOpts { collectTarget: number; spikeTh: number; riskTh: number }
 
@@ -119,12 +119,14 @@ export function buildMonitorModel(ledger: AnalysisLedgerRow[], s10: AnalysisS10R
     phaseOf.set(r.tenantName, r.phase)   // 行按月升序 → 留最近行期区
   }
 
-  // ── 园区灰带:各月 租户电费 P25/P75(同类=全部计费租户) ──
-  const band: Record<string, { p25: number; p75: number }> = {}
+  // ── 园区灰带:各月 租户电费 P25/P75(同类=全部计费租户;D3 三档:<20 户不建带) ──
+  const band: Record<string, { p25: number; p75: number; n: number }> = {}
   for (const m of s10Months) {
     const vals: number[] = []
     for (const byM of byTenant.values()) { const v = byM.get(m); if (v && v.elec > 0) vals.push(v.elec) }
-    if (vals.length) band[m] = { p25: quantile(vals, 0.25), p75: quantile(vals, 0.75) }
+    if (vals.length >= 20) {
+      band[m] = { p25: quantile(vals, 0.25), p75: quantile(vals, 0.75), n: vals.length }
+    }
   }
 
   // ── 逐租户评分 + 规则命中 ──

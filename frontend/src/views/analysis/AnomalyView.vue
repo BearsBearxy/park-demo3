@@ -16,7 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
-import { bandSeries } from '@/components/ana/anaTheme'
+import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
 import { buildMonitorModel, elecReadout as elecReadoutOf, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
@@ -85,8 +85,8 @@ const energyOption = computed<object | null>(() => {
     xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
-      // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)
-      ...bandSeries(p25, p75, { name: '园区P25~P75' }),
+      // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)。带宽门(D3 附属):半宽/中位 > 20% 太宽,只出点不画带。
+      ...(bandTooWide(p25, p75) ? [] : bandSeries(p25, p75, { name: '园区P25~P75' })),
       { name: '电费', type: 'line', data: t.elec, smooth: true, symbolSize: 5, itemStyle: { color: '#378ADD' },
         markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('elec', t.elec) } },
       { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: '#5DCAA5' },
@@ -101,6 +101,16 @@ const elecReadout = computed<string | null>(() => {
   if (!t || !m || !t.months.length) return null
   const ym = t.months[t.months.length - 1]
   return elecReadoutOf(t.elec[t.elec.length - 1], m.band[ym])
+})
+// D1:句子印了区间就得在同屏带出样本量 —— band 记录本身就是 n(D3:<20 不建 key,查不到具体数也就无从印起)。
+const elecBandN = computed<number | null>(() => {
+  const t = sel.value, m = model.value
+  if (!t || !m || !t.months.length) return null
+  return m.band[t.months[t.months.length - 1]]?.n ?? null
+})
+const elecBandRef = computed<string>(() => {
+  const sample = elecBandN.value != null ? `样本${elecBandN.value}户` : '同类不足20户不画带'
+  return `灰带=同类电费区间(acct_month 口径 · 元 · ${sample});相邻有数月环比判突变`
 })
 
 // ── 右面板:应收 vs 实收(台账各期) ──
@@ -243,7 +253,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
           <template v-if="energyOption">
             <p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>
-            <p class="ana-ref">灰带=同类电费区间(相邻有数月环比判突变)</p>
+            <p class="ana-ref">{{ elecBandRef }}</p>
           </template>
         </div>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bandSeries } from '../anaTheme'
+import { bandSeries, bandTooWide } from '../anaTheme'
 
 describe('bandSeries —— 全站唯一一份带子', () => {
   it('返回两条:下沿哨兵 + 上沿宽度,宽度 = hi − lo', () => {
@@ -44,6 +44,42 @@ describe('bandSeries —— 全站唯一一份带子', () => {
     const s = bandSeries([1], [2], { series: { smooth: true } }) as Array<Record<string, unknown>>
     expect(s[0].smooth).toBe(true)
     expect(s[1].smooth).toBe(true)
+  })
+})
+
+describe('bandTooWide —— 带宽门(半宽/中位 > 0.20 判太宽,只出点不画带)', () => {
+  it('半宽/中位 = 0.25(>0.20)→ true', () => {
+    expect(bandTooWide([75], [125])).toBe(true)   // 半宽25/中位100=0.25
+  })
+
+  it('半宽/中位 = 0.15(≤0.20)→ false', () => {
+    expect(bandTooWide([85], [115])).toBe(false)  // 半宽15/中位100=0.15
+  })
+
+  it('半宽/中位 = 0.20 整(边界,不超过 → false;门槛是「超过」不是「达到」)', () => {
+    expect(bandTooWide([80], [120])).toBe(false)  // 半宽20/中位100=0.20
+  })
+
+  it('❗bandSeries 第一条断言 [1,2]~[4,6] 半宽/中位约 0.54,若把此门写进 bandSeries 入口会把那条断言判红 —— 这正是本函数独立于 bandSeries 之外的原因', () => {
+    expect(bandTooWide([1, 2], [4, 6])).toBe(true)
+    // 佐证:bandSeries 本身不受影响,仍出两条
+    const s = bandSeries([1, 2], [4, 6]) as Array<Record<string, unknown>>
+    expect(s).toHaveLength(2)
+  })
+
+  it('null 点跳过,只算非 null 的点 —— 多数点 null 时,若误把 null 当 0 参与计算,中位数会被拖成 0 反而判不宽', () => {
+    // 3 null + 1 真点(75~125,半宽25/中心100=0.25);null 若被当 0 混进两个中位数,
+    // 两串各 4 个数里 3 个是 0,中位数双双落 0 → mid=0 触发另一条门槛(mid===0)错判 false。
+    expect(bandTooWide([null, null, null, 75], [null, null, null, 125])).toBe(true)
+  })
+
+  it('全 null → 无点可判,不算太宽(false)', () => {
+    expect(bandTooWide([null], [null])).toBe(false)
+  })
+
+  it('❗中心=0 但半宽非零(带跨零轴)→ 不判太宽(避免除以 0 把 Infinity 当「宽」)', () => {
+    // 半宽10/中心0:没有这道门槛会算成 10/0=Infinity>0.2 → true,错把「除不了」当「很宽」
+    expect(bandTooWide([-10], [10])).toBe(false)
   })
 })
 

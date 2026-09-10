@@ -3,6 +3,8 @@
 // tooltip 深底白字沿 .cz-tip 观感(背景 rgb(40,52,66)、圆角 9、字号 11)。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值(--divider=ink-100、--text-muted)。
 
+import { quantile } from './anaFmt'
+
 // ⚠ 必须与 tokens.css 的 --font-sans 逐字一致(ECharts 主题是纯 JSON,引不了 CSS 变量)。
 // 不同步的话图表轴标签/图例会和页面其余部分不是同一个字体,并排一看就出戏。
 // 2026-08-20 同步:此处曾停在 "Roboto Mono"(旧值),而 tokens.css 早已改为 "Roboto Mono Digits"。
@@ -91,4 +93,27 @@ export function bandSeries(
     { ...base, name: '', data: floor },
     { ...base, name, data: width, areaStyle: { color } },
   ]
+}
+
+/**
+ * 带宽门(P2 同类对标带 D3 附属):区间半宽 / 序列中位数 > 0.20 → 太宽,调用方应只出点不画带。
+ * 覆盖率必须和相对宽度成对读:月度实收 naiveLast 覆盖率 100% 但宽度 177%、ma3 224%,
+ * 只看覆盖率会把一条宽过均值一倍的带判成「很准」。
+ *
+ * 不写进 bandSeries 入口(职责纯渲染,调用方自己决定判不判、判完还画不画点)——
+ * bandSeries.spec.ts 首条断言 [1,2]~[4,6] 半宽/中位约 0.54,过门槛,写进入口会当场判红;
+ * PvMeterAnaView 的四分位带按定义就宽,进了口也回不来。
+ */
+export function bandTooWide(lo: (number | null)[], hi: (number | null)[]): boolean {
+  const halfWidths: number[] = []
+  const centers: number[] = []
+  for (let i = 0; i < lo.length; i++) {
+    const l = lo[i], h = hi[i]
+    if (l == null || h == null) continue
+    halfWidths.push((h - l) / 2)
+    centers.push((l + h) / 2)
+  }
+  const mid = quantile(centers, 0.5)
+  if (mid === 0) return false
+  return quantile(halfWidths, 0.5) / mid > 0.20
 }
