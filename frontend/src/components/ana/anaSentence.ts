@@ -1,11 +1,12 @@
 /**
  * 一句话结论的七条模板(FORECAST-BAND-AND-PLAIN-SENTENCE §3.3/§3.4)。
  *
- * 三条规矩,写在这里免得每条函数各写一遍:
+ * 四条规矩,写在这里免得每条函数各写一遍:
  *  ① 句子只负责读数,不负责解释画法。画法能自己说的,句子闭嘴。
  *  ② 能直接读出来的写事实;要过模型的写事实 + 样本量。样本量印不出来的,不许写百分比。
  *  ③ 该闭嘴时返回 null,**不是**返回「无异常」「暂无偏离」这类占位句 ——
  *    那等于用一句废话占住屏上最贵的一行。
+ *  ④ 本模块所有百分数参数一律已缩放(0-100),不是分数。
  *
  * 为什么是七条不是稿里的六条:模板①「预测区间」的闭嘴出口写着「换频次句」,
  * 而六行里没有这条;又因为 §0/§2.1 判定月度外推一律不许写百分比,
@@ -13,9 +14,11 @@
  * 补为 sFreq(D4 待拍板)。sForecast 因此只在有真实样本外回测覆盖率时才出句。
  */
 
-/** 全角逗号统一,金额千分位,与 anaFmt 的 fint 同形但不引它(避免 logic 层反向依赖)。 */
-const money = (n: number): string => '¥' + Math.round(n).toLocaleString('en-US')
-const pct1 = (n: number): string => n.toFixed(1).replace(/\.0$/, '') + '%'
+import { fint } from './anaFmt'
+
+/** 全角逗号统一,金额千分位。 */
+const money = (n: number): string => (n < 0 ? '−¥' : '¥') + fint(Math.abs(n))
+const pct1 = (n: number): string => (n < 0 ? '−' : '') + Math.abs(n).toFixed(1).replace(/\.0$/, '') + '%'
 
 /** ① 预测区间 —— ≤30 字。只在有样本外回测覆盖率时才出句;否则调用方改用 sFreq。 */
 export function sForecast(a: {
@@ -32,11 +35,13 @@ export function sPeer(a: {
   if (a.n < 20) return `${a.name} ${money(a.value)}，同类样本 ${a.n} 户，不给区间`
   if (a.n < 100) return `${a.name} ${money(a.value)}，高于同类中位数`
   // ⚠「中间一半」不是「80%」:带画的是 P25~P75。写 80% 就是把 50% 说成 80%。
-  // 这一档量已经画在带的端点上(见任务说明「①量」槽),句子不重复,才压得进 34 字预算。
-  return `${a.name}比 ${pct1(a.pct * 100)} 的同类高，中间一半在 ${money(a.lo)} ~ ${money(a.hi)}`
+  // 量在这里砍是因为字数:20-99 档整句 17 字没有预算压力,量留着不花钱;
+  // ≥100 档原句 45 字超 34 字预算,必须砍一样,四槽原则下该砍的正是量。
+  // 20-99 档是否也该砍量,待 Task 5 确认该档图实际标了什么之后再定。
+  return `${a.name}比 ${pct1(a.pct)} 的同类高，中间一半在 ${money(a.lo)} ~ ${money(a.hi)}`
 }
 
-/** ③ 达成偏离 —— ≤22 字。偏离在阈值内 → 闭嘴。 */
+/** ③ 达成偏离 —— ≤22 字。偏离绝对值 < 阈值才闭嘴;等于阈值也出句(阈值是触发点,不是安全区)。 */
 export function sAchieve(a: {
   label: string; value: number; target: string; gapPct: number; th: number
 }): string | null {
