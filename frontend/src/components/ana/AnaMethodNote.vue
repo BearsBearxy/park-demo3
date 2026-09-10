@@ -65,8 +65,11 @@ onBeforeUnmount(() => {
   background: var(--surface-white); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
   font-size: var(--fs-label); color: var(--text-secondary); line-height: 1.6;
-  /* F1: 无上限时长口径文案(如台账期数列表)能把弹层撑到盖住上方图表(常见图高 300px)。
-     240px 留出可辨的余量,超出部分滚动,内容不再决定弹层能盖多少。 */
-  max-height: 240px; overflow-y: auto;
+  /* 无上限时,长口径文案(如台账期数列表)能把弹层撑到把上方图表整个盖住 —— 图还在,
+     但读者看不见,也不知道它在后面。判据不是「常见图高」而是**最矮**的那张:
+     全仓 AnaEChart 只有 170 / 200 / 250 / 300 / 440 五种高度(170 是最矮,3 处),
+     所以上限取 160 —— 比最矮的还矮,任何一张图都不会被整个盖住。超出部分滚动。
+     ⚠ 改大这个数之前先重数一遍最矮的图:`grep -rho ':height="[0-9]*"' src`。 */
+  max-height: 160px; overflow-y: auto;
 }
 </style>
