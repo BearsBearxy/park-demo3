@@ -384,7 +384,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
               异常=该户本期用量偏离自身近12个月常态,超出正常波动的1.3倍。
               家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
-              灰带=跨户波动范围(园区均值±1σ),样本量不足20户当月不画带;断点=该月无记录。
+              灰带=跨户波动范围(园区各户当月均值上下各一个常态波动幅度),样本量不足20户当月不画带;断点=该月无记录。
             </AnaMethodNote>
           </div>
           <div class="av2-card">

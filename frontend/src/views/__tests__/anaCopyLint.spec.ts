@@ -115,4 +115,34 @@ describe('分析层文案门禁', () => {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
     }
   })
+
+  /**
+   * D2(用户 2026-09-10 拍板):统计符号跨屏禁用,口径浮层里也算屏上。
+   *
+   * 这条门禁是补的,不是原计划里的。Task 5 手工把这四样从租户能耗屏上清掉,
+   * **一个修复轮之后 σ 就回来了** —— 搬文案进浮层时顺手写了「园区均值±1σ」。
+   * 只靠人复查的规矩会回来,所以给它配一道机器判据。
+   *
+   * 判据只看模板,不看 <script> 与注释:代码里提 σ 是正常的(变量名、算法注释),
+   * 屏上不行。豁免两个光伏文件 —— 「高级分析」面板是全仓唯一准出统计量的地方,
+   * 给要复算这屏数字的人看。⚠ 这个豁免是按**整文件**给的,比规矩本身松:
+   * 那两个文件里非高级分析的部分也就一并放过了。要收紧得先能界定面板边界。
+   */
+  const JARGON = /σ|标准差|z\s*分数|置信/g
+  const JARGON_EXEMPT = new Set(['PvLabTable.vue', 'PvMeterAnaView.vue'])
+
+  it('❗屏上(含 ⓘ 浮层)不许出现 σ / 标准差 / z分数 / 置信', () => {
+    const bad: string[] = []
+    for (const f of readdirSync(DIR)) {
+      if (!f.endsWith('.vue') || JARGON_EXEMPT.has(f)) continue
+      const tpl = readFileSync(join(DIR, f), 'utf8')
+        .replace(/<script[\s\S]*?<\/script>/g, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+      for (const m of tpl.matchAll(JARGON)) {
+        const line = tpl.slice(0, m.index).split('\n').length
+        bad.push(`  ${f} 模板第 ${line} 行附近: ${m[0]}`)
+      }
+    }
+    expect(bad.length, `屏上出现统计符号 ${bad.length} 处:\n${bad.join('\n')}`).toBe(0)
+  })
 })
