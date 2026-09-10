@@ -13,7 +13,7 @@ import { join } from 'node:path'
  */
 const HINT_MAX = 24
 const READ_MAX = 30
-const HINT_OVER_BASELINE = 30   // ⚠ 只许改小
+const HINT_OVER_BASELINE = 28   // ⚠ 只许改小
 
 const DIR = join(__dirname, '../analysis')
 const strip = (s: string) =>
@@ -56,6 +56,8 @@ describe('分析层文案门禁', () => {
   //   2) 开标签跨行(class 属性换行书写)时,单行正则抓不到分界,那张卡
   //      会被并入上一张。
   // 目前全仓 av2-card 开标签都在同一行、且不互相嵌套,两条盲区暂未命中。
+  // 盲区 3:切片从第一张卡的起点开始,文件里第一张 av2-card 之前的内容不进任何切片
+  // ——可接受,因为 .ana-read 只会出现在卡体内,不会写在卡外。
   const CARD_RE = /class="av2-card(?=[ "])/g
   function splitCards(src: string): { start: number; text: string }[] {
     const starts = [...src.matchAll(CARD_RE)].map((m) => m.index!)

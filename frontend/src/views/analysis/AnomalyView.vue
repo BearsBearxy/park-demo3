@@ -95,6 +95,18 @@ const energyOption = computed<object | null>(() => {
   }
 })
 
+// ── 电费读数句:选中租户末月电费 vs 同类区间(灰带只按电费画,水费不适用) ──
+const elecReadout = computed<string | null>(() => {
+  const t = sel.value, m = model.value
+  if (!t || !m || !t.months.length) return null
+  const ym = t.months[t.months.length - 1]
+  const b = m.band[ym]
+  if (!b) return null
+  const v = t.elec[t.elec.length - 1]
+  const pos = v > b.p75 ? '高于' : v < b.p25 ? '低于' : '落在'
+  return `电费${pos}同类区间 ¥${fint(b.p25)}~¥${fint(b.p75)}`
+})
+
 // ── 右面板:应收 vs 实收(台账各期) ──
 const ledBars = computed(() => (sel.value && inputs.value ? tenantLedgerBars(inputs.value.ledger, sel.value.name) : null))
 const ledgerOption = computed<object | null>(() => {
@@ -229,10 +241,14 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
         <div class="av2-card">
           <div class="av2-card-h">
             <span class="t">{{ sel?.name ?? '—' }} · 电/水费逐月</span>
-            <span class="hint">红点 = 环比突变 >±{{ anaSettings.spikeTh }}%(相邻有数月)· 灰带 = 园区租户电费 P25~P75</span>
+            <span class="hint">红点=突变 >±{{ anaSettings.spikeTh }}%</span>
           </div>
           <AnaEChart v-if="energyOption" :option="energyOption" :height="250" />
           <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
+          <template v-if="energyOption">
+            <p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>
+            <p class="ana-ref">灰带=同类电费区间(相邻有数月环比判突变)</p>
+          </template>
         </div>
 
         <div class="av2-card">

@@ -108,6 +108,17 @@ const selName = ref('')
 const selRow = computed(() => rowsCur.value.find((r) => r.name === selName.value) ?? rowsCur.value[0] ?? null)
 function select(name: string) { selName.value = name }
 
+// ── 主图读数句:选中租户本期 vs 跨户区间(无对应月带数据 → 闭嘴) ──
+const bandReadout = computed<string | null>(() => {
+  const r = selRow.value
+  const idx = winMonths.value.indexOf(curYm.value)
+  const lo = idx >= 0 ? parkBand.value.lo[idx] : null
+  const hi = idx >= 0 ? parkBand.value.hi[idx] : null
+  if (!r || lo == null || hi == null) return null
+  const pos = r.cur > hi ? '高于' : r.cur < lo ? '低于' : '落在'
+  return `${metricLabel.value}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
+})
+
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
 const ledgerYmOf = (r: AnalysisLedgerRow): string => `${r.year}-${String(r.month).padStart(2, '0')}`
 const ledgerYms = computed(() => [...new Set(ledgerRows.value.map(ledgerYmOf))].sort())
@@ -149,9 +160,10 @@ const listRows = computed(() => {
 })
 
 // ── 主图:选中租户趋势 vs 园区均值带 ──
+const parkBand = computed(() => buildParkBand(rowsCur.value, winMonths.value))
 const trendOption = computed<object>(() => {
   const months = winMonths.value
-  const band = buildParkBand(rowsCur.value, months)
+  const band = parkBand.value
   const name = selRow.value?.name ?? '—'
   return {
     grid: { left: 64, right: 18, top: 34, bottom: 26 },
@@ -160,7 +172,7 @@ const trendOption = computed<object>(() => {
     xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
     series: [
-      ...bandSeries(band.lo, band.hi, { name: '均值±σ带' }),
+      ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
       { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
@@ -285,7 +297,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     <template #kpis>
       <template v-if="loaded && !err && s10Months.length">
       <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />
-      <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户 σ ${fint(crossStd)}`" />
+      <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户波动 ${fint(crossStd)} 元`" />
       <!-- spec §C/C1 人话化:主标签人话,z 分数口径退 AnaMethodNote(计算零变化) -->
       <AnaKpiTile label="用量异常户" :value="`${anomCount} 户`" note="较自身常态明显偏离" />
       <AnaKpiTile v-if="curCollect" :label="`收缴率(${ledgerYm})`" :value="`${curCollect.rate}%`" :delta="+(curCollect.rate - anaSettings.collectTarget).toFixed(1)" :kind="`vs 目标 ${anaSettings.collectTarget}%`" />
@@ -354,13 +366,15 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="av2-card">
             <div class="av2-card-h">
               <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
-              <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录{{ byFamily ? ' · 趋势为主租户本户' : '' }}</span>
+              <span class="hint">窗口 {{ winMonths.length }} 期{{ byFamily ? ' · 主租户本户' : '' }}</span>
             </div>
             <AnaEChart :option="trendOption" :height="300" />
+            <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
+            <p class="ana-ref">灰带=跨户波动范围 · 断点=该月无记录</p>
             <AnaMethodNote>
               口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
-              异常=该户本期用量偏离其12个月均值超1.3倍标准差(z分数)。
+              异常=该户本期用量偏离自身近12个月常态,超出正常波动的1.3倍。
               家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
             </AnaMethodNote>
           </div>

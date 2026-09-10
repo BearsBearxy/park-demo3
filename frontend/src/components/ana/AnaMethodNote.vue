@@ -1,13 +1,10 @@
 <script setup lang="ts">
 // 方法/口径说明脚注(移植 ana-charts.jsx MethodNote)。
-// S 档改型(移动阅读设计稿 §05):长注释在窄屏吃掉整卡高度,收进「ⓘ 口径」浮层;
-// tier!=='s' 走原段落一字不动(>600 零视觉差异)。useViewport 是仓库单例,
-// jsdom 无 matchMedia 恒 'xl',既有测试口径不变。
+// S 档改型(移动阅读设计稿 §05):长注释吃版面,收进「ⓘ 口径」浮层;
+// D5:桌面档不再例外,一律走 pill + 浮层(FORECAST-BAND-AND-PLAIN-SENTENCE Task 5)。
 import { ref, onBeforeUnmount, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
-import { useViewport } from '@/composables/useViewport'
 
-const { tier } = useViewport()
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 
@@ -39,13 +36,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <p v-if="tier !== 's'" class="ana-note">
-    <span class="ic"><component :is="iconFor('flask-conical')" :size="13" /></span>
-    <span><slot /></span>
-  </p>
-  <!-- S 档:pill 触发 + absolute 浮层卡(覆盖不推挤,交互零位移);内容同一个 slot,
+  <!-- pill 触发 + absolute 浮层卡(覆盖不推挤,交互零位移);内容同一个 slot,
        动态插值随 slot 自然工作。 -->
-  <div v-else ref="root" class="ana-note-s">
+  <div ref="root" class="ana-note-s">
     <button class="ana-note-pill" :class="{ on: open }" type="button" @click="open = !open">
       <component :is="iconFor('info')" :size="13" />
       口径
@@ -55,8 +48,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.ana-note { font-size: 11px; color: var(--text-muted); margin: 10px 0 0; display: flex; gap: 6px; line-height: 1.5; }
-.ic { flex: 0 0 auto; margin-top: 1px; }
 /* S 档:pill 高 ≥36px 保触达热区;浮层锚在 note 区向上弹——注释都在卡底,
    向上不出视口下沿;z 用 --z-popover 令牌(贴附浮层档)。 */
 .ana-note-s { position: relative; margin: 10px 0 0; }

@@ -287,9 +287,9 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
         <!-- spec 必选空态:下半屏 现金流量表引导 s12 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">现金流量表</span>
-            <span class="hint">经营 / 投资 / 筹资 三段 · 现金流瀑布 · 自由现金流 FCF</span></div>
+            <span class="hint">经营/投资/筹资三段</span></div>
           <AnaEmpty label="现金流量表数据待录入"
-            hint="园区当前无经营/投资/筹资三段现金流数据源;录入现金流量表后,此处呈现三段净额对比、期初→期末现金瀑布与 FCF(原型 screen-fin-cashflow 全量视图)"
+            hint="录入后展示三段净额对比、现金瀑布与自由现金流"
             to="/reports-home" toText="去报表中心" />
         </div>
       </div>

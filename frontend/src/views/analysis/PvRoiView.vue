@@ -131,7 +131,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
       <AnaKpiTile label="工程总投资（含税）" :value="finWan(invest)" note="右上「目标与阈值」设置" />
       <AnaKpiTile label="累计电费收益" :value="finWan(tot.cum)" :note="cumPts.length + ' 个记账月'" />
       <AnaKpiTile label="综合回收进度" :value="rpct(tot.recovery)" note="= 累计收益 ÷ 总投资" />
-      <AnaKpiTile label="年化电费收益" :value="finWan(tot.annual)" note="按各期活跃月折算" />
+      <AnaKpiTile label="年化电费收益" :value="finWan(tot.annual)" note="按各期已记账月折算" />
       <AnaKpiTile label="预估回收周期" :value="tot.payback ? tot.payback.toFixed(1) + ' 年' : '—'"
         :note="hitYm ? '预估回收点 ' + hitYm : '按年化外推'" />
     </template>
@@ -209,7 +209,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         </div>
 
         <AnaMethodNote>
-          年化电费收益按各期已记账月份折算;回收进度 = 累计电费收益 ÷ 工程总投资(期别工程成本暂未暴露,按全园合计口径);
+          年化电费收益按各期已记账月折算;回收进度 = 累计电费收益 ÷ 工程总投资(期别工程成本暂未暴露,按全园合计口径);
           外推虚线按全园年化 ÷12 逐月递增,与投资额线交点即预估回收点。投运初期月份样本少,仅供参考。
         </AnaMethodNote>
       </template>
