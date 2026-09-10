@@ -57,8 +57,12 @@ export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | nul
   const profit = pnl.profit.map(wan)
   const prevRev = rev.map((_, i) => (i > 0 ? rev[i - 1] : null))
   const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
-  // 量程只看可用月(FORECAST §2.7):usableMonths 剔掉离群月,不被 2025-12 那种极端负值拉爆
-  const usableVals = usableMonths(pnl.months, pnl.revenue)
+  // 量程只看可用月(FORECAST §2.7):usableMonths 剔掉离群月,不被 2025-12 那种极端负值拉爆。
+  // usableMonths 的「全离群→原样返回」兜底是给分母消费者(budgetAch 等)保的,不能为 0;
+  // 量程消费者的需求正相反 —— 全离群时轴不该被钉在被污染月的极端值上,该放弃 yMin 交 ECharts 自动定。
+  // 所以这里在调 usableMonths 之前先把「全离群」这个退化场景摘出来,不指望共享兜底替量程操心。
+  const allOutlier = pnl.months.length > 0 && outlierMonths.length === pnl.months.length
+  const usableVals = allOutlier ? [] : usableMonths(pnl.months, pnl.revenue)
     .flatMap((m) => [rev[m - 1], profit[m - 1]])
     .filter((v): v is number => v != null)
   return {

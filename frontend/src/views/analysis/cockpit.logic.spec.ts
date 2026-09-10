@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
 } from './cockpit.logic'
+import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -79,6 +80,14 @@ describe('mainChart(主图整形:折万/上月右移/预算月均)', () => {
     const d = mainChart(pnl({ months: [10, 12], revenue, profit }), null)!
     // 10 月利润 −10 万是可用月里的最小值;12 月离群收入 −63.61 万被 usableMonths 剔掉,不参与量程
     expect(d.yMin).toBe(-10)
+  })
+  it('❗全离群(usableMonths 退回原始月列表)时 yMin 不取该兜底 —— 交 ECharts 自动定量程;分母侧月列表仍非空', () => {
+    const revenue = N12(); revenue[9] = -8000000; revenue[11] = -636050.65
+    const d = mainChart(pnl({ months: [10, 12], revenue }), null)!
+    expect(d.outlierMonths).toEqual([10, 12])   // 两个覆盖月都是离群月
+    expect(d.yMin).toBeUndefined()              // 不能钉在 −80/−63.61 万那种被污染的极端值上
+    // 同一份数据喂给 usableMonths(分母消费者走这条路):兜底仍在,不返回空数组(分母不为 0)
+    expect(usableMonths([10, 12], revenue)).toEqual([10, 12])
   })
 })
 
