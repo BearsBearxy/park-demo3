@@ -16,6 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
 import { buildMonitorModel, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
@@ -66,7 +67,7 @@ const energyOption = computed<object | null>(() => {
   const t = sel.value, m = model.value
   if (!t || !m || !t.months.length) return null
   const p25 = t.months.map((ym) => m.band[ym]?.p25 ?? null)
-  const bandW = t.months.map((ym) => (m.band[ym] ? m.band[ym].p75 - m.band[ym].p25 : null))
+  const p75 = t.months.map((ym) => m.band[ym]?.p75 ?? null)
   const mkPts = (series: 'elec' | 'water', vals: number[]): object[] =>
     t.spikes.filter((s) => s.series === series).map((s) => ({ coord: [s.idx, vals[s.idx]] }))
   interface TipRow { seriesName?: string; axisValueLabel?: string; value?: number | null; marker?: string }
@@ -85,8 +86,7 @@ const energyOption = computed<object | null>(() => {
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
       // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)
-      { name: '园区P25', type: 'line', data: p25, stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 } },
-      { name: '园区P25~P75', type: 'line', data: bandW, stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(28,28,28,.07)' } },
+      ...bandSeries(p25, p75, { name: '园区P25~P75' }),
       { name: '电费', type: 'line', data: t.elec, smooth: true, symbolSize: 5, itemStyle: { color: '#378ADD' },
         markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('elec', t.elec) } },
       { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: '#5DCAA5' },

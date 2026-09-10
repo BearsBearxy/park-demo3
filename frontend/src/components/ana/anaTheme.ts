@@ -59,3 +59,31 @@ export function registerFpAnaTheme(ec: { registerTheme(name: string, theme: obje
   registered = true
   ec.registerTheme('fpAnaTheme', FP_ANA_THEME)
 }
+
+/**
+ * 全站唯一一份「带子」—— 两条堆叠线:下沿透明哨兵 + 上沿只留填充,不描边(描了会被读成两条数据线)。
+ *
+ * 收编前全仓有五处逐字近似的手写:AnomalyView(园区 P25~P75)、TenantEnergyView(跨户均值±σ)、
+ * PvMeterAnaView 三处(各栋四分位距 stack 'q'、样条带 stack 'band'、斜率标准误 stack 'se')。
+ * 五处写了**四种** null 判法,收编后只许这一种:任一端 null → 该点整体 null。
+ *
+ * ⚠ 带色不在这里统一:AnomalyView/TenantEnergyView 用 rgba(28,28,28,.07),PV 三处用 C.INK100,
+ *   差一档灰是有意的(PV-ANALYSIS-SPEC 要求渐变透明不描硬边)。统一配色是配色决定,不搭这趟车。
+ */
+export function bandSeries(
+  lo: (number | null)[],
+  hi: (number | null)[],
+  opt: { name?: string; color?: string; stack?: string; dp?: number; series?: Record<string, unknown> } = {},
+): object[] {
+  const { name = '', color = 'rgba(28,28,28,.07)', stack = 'band', dp = 0, series = {} } = opt
+  const base = { type: 'line', stack, symbol: 'none', silent: true, lineStyle: { opacity: 0 }, ...series }
+  const width = lo.map((l, i) => {
+    const h = hi[i]
+    return l == null || h == null ? null : +(h - l).toFixed(dp)
+  })
+  const floor = lo.map((l, i) => (l == null || hi[i] == null ? null : +l.toFixed(dp)))
+  return [
+    { ...base, name: '', data: floor, tooltip: { show: false } },
+    { ...base, name, data: width, areaStyle: { color } },
+  ]
+}

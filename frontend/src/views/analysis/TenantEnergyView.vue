@@ -23,6 +23,7 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
@@ -151,7 +152,6 @@ const listRows = computed(() => {
 const trendOption = computed<object>(() => {
   const months = winMonths.value
   const band = buildParkBand(rowsCur.value, months)
-  const diff = months.map((_, i) => (band.hi[i] != null && band.lo[i] != null ? +((band.hi[i] as number) - (band.lo[i] as number)).toFixed(0) : null))
   const name = selRow.value?.name ?? '—'
   return {
     grid: { left: 64, right: 18, top: 34, bottom: 26 },
@@ -160,8 +160,7 @@ const trendOption = computed<object>(() => {
     xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
     series: [
-      { name: 'lo', type: 'line', data: band.lo, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
-      { name: '均值±σ带', type: 'line', data: diff, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(28,28,28,.07)' }, silent: true, tooltip: { show: false } },
+      ...bandSeries(band.lo, band.hi, { name: '均值±σ带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
       { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
