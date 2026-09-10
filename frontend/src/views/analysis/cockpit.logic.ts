@@ -2,7 +2,7 @@
 // 输入均为 anaData 既有聚合器返回值:只做取期/折万/整形,**不改数字口径**(数值锚点与 v1 一致:
 // 2025-10 营收 930.2万 / 收缴率 81.3%,SQL 回验见 dataChecks;2025 预算达成旧锚 94.6% 已废
 // ——FORECAST-BAND §2.7 未闭月护栏上线后,budgetAch 分母剔除 2025-12 离群月,达成率改为 ~105.6%)。
-import { isOutlierMonth, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
+import { isOutlierMonth, usableMonths, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -47,7 +47,8 @@ export interface MainChartData {
   prevRev: (number | null)[]       // 上月收入右移一格(万,对比开关=环比时叠加)
   budgetAvgWan: number | null      // 年预算/12(万;无预算 → null)
   covered: number                  // 覆盖期数(诚实标注)
-  outlierMonths: number[]          // 离群月(1-12,收入为负);点仍画,量程/配色由调用方按此标红带外
+  outlierMonths: number[]          // 离群月(1-12,收入为负);只管点怎么画(标红/markPoint),不参与量程
+  yMin: number | undefined         // y 轴下限:usableMonths 挑出的月里 rev/profit 的最小值(含 0);无可用值 → undefined 交 ECharts 自动定
 }
 export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | null): MainChartData | null {
   if (!pnl) return null
@@ -55,11 +56,17 @@ export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | nul
   const rev = pnl.revenue.map(wan)
   const profit = pnl.profit.map(wan)
   const prevRev = rev.map((_, i) => (i > 0 ? rev[i - 1] : null))
+  const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
+  // 量程只看可用月(FORECAST §2.7):usableMonths 剔掉离群月,不被 2025-12 那种极端负值拉爆
+  const usableVals = usableMonths(pnl.months, pnl.revenue)
+    .flatMap((m) => [rev[m - 1], profit[m - 1]])
+    .filter((v): v is number => v != null)
   return {
     labels, rev, profit, prevRev,
     budgetAvgWan: budgetYearAmount != null ? +(budgetYearAmount / 12 / 10000).toFixed(1) : null,
     covered: pnl.months.length,
-    outlierMonths: pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m)),
+    outlierMonths,
+    yMin: usableVals.length ? Math.min(0, ...usableVals) : undefined,
   }
 }
 

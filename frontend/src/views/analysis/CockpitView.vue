@@ -125,15 +125,12 @@ const outlierYm = computed(() => {
   return m ? ymOf(year.value, m) : ''
 })
 const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
-// 未闭月护栏(FORECAST §2.7):y 轴量程只看可用月(剔离群月),不被 2025-12 那种极端负值拉爆;
+// 未闭月护栏(FORECAST §2.7):y 轴量程(d.yMin)由 mainChart 用 usableMonths 算好,这里只消费;
 // 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
 const mainOption = computed<object | null>(() => {
   const d = mc.value
   if (!d || !d.covered) return null
-  const usableVals = d.labels
-    .flatMap((_, i) => (d.outlierMonths.includes(i + 1) ? [] : [d.rev[i], d.profit[i]]))
-    .filter((v): v is number => v != null)
-  const yMin = usableVals.length ? Math.min(0, ...usableVals) : undefined
+  const yMin = d.yMin
   const revData = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? { value: v, itemStyle: { color: OUTLIER_RED } } : v))
   const series: object[] = [
     {

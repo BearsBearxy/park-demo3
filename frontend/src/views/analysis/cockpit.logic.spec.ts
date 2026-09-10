@@ -63,13 +63,22 @@ describe('mainChart(主图整形:折万/上月右移/预算月均)', () => {
   })
   it('无 pnl → null;无预算 → budgetAvgWan null', () => {
     expect(mainChart(null, 1)).toBeNull()
-    expect(mainChart(pnl({}), null)!.budgetAvgWan).toBeNull()
+    const d = mainChart(pnl({}), null)!
+    expect(d.budgetAvgWan).toBeNull()
+    expect(d.yMin).toBeUndefined()   // 无可用值 → 交 ECharts 自动定量程
   })
   it('❗outlierMonths 标记收入为负的月(FORECAST §2.7);点仍画,不从 labels/rev 里摘除', () => {
     const revenue = N12(); revenue[9] = 8000000; revenue[11] = -636050.65
     const d = mainChart(pnl({ months: [10, 12], revenue }), null)!
     expect(d.outlierMonths).toEqual([12])
     expect(d.rev[11]).toBe(-63.61)   // 离群月数据点仍在 rev 里,只是被标记
+  })
+  it('❗yMin 只取 usableMonths 挑出的月(离群月的极端负收入不拉爆量程)', () => {
+    const revenue = N12(); revenue[9] = 8000000; revenue[11] = -636050.65
+    const profit = N12(); profit[9] = -100000
+    const d = mainChart(pnl({ months: [10, 12], revenue, profit }), null)!
+    // 10 月利润 −10 万是可用月里的最小值;12 月离群收入 −63.61 万被 usableMonths 剔掉,不参与量程
+    expect(d.yMin).toBe(-10)
   })
 })
 
