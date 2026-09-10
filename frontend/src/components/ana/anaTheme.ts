@@ -69,6 +69,11 @@ export function registerFpAnaTheme(ec: { registerTheme(name: string, theme: obje
  *
  * ⚠ 带色不在这里统一:AnomalyView/TenantEnergyView 用 rgba(28,28,28,.07),PV 三处用 C.INK100,
  *   差一档灰是有意的(PV-ANALYSIS-SPEC 要求渐变透明不描硬边)。统一配色是配色决定,不搭这趟车。
+ *
+ * ⚠ 两条系列默认都不进 tooltip(`tooltip:{show:false}`),不只是下沿哨兵:上沿那条数据是
+ *   **宽度**(hi−lo),不是上沿本身。坐标轴 tooltip 一旦放它进去,标签写的是「P25~P75」
+ *   「均值±σ带」,数字却是宽度值——读数句对不上量,正是这个计划要从屏上消灭的那种假话。
+ *   真要在 tooltip 里印带的上下沿,用 formatter 自己算,不要指望这两条合成系列。
  */
 export function bandSeries(
   lo: (number | null)[],
@@ -76,14 +81,14 @@ export function bandSeries(
   opt: { name?: string; color?: string; stack?: string; dp?: number; series?: Record<string, unknown> } = {},
 ): object[] {
   const { name = '', color = 'rgba(28,28,28,.07)', stack = 'band', dp = 0, series = {} } = opt
-  const base = { type: 'line', stack, symbol: 'none', silent: true, lineStyle: { opacity: 0 }, ...series }
+  const base = { type: 'line', stack, symbol: 'none', silent: true, lineStyle: { opacity: 0 }, tooltip: { show: false }, ...series }
   const width = lo.map((l, i) => {
     const h = hi[i]
     return l == null || h == null ? null : +(h - l).toFixed(dp)
   })
   const floor = lo.map((l, i) => (l == null || hi[i] == null ? null : +l.toFixed(dp)))
   return [
-    { ...base, name: '', data: floor, tooltip: { show: false } },
+    { ...base, name: '', data: floor },
     { ...base, name, data: width, areaStyle: { color } },
   ]
 }

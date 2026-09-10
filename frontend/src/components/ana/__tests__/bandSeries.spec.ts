@@ -23,6 +23,12 @@ describe('bandSeries —— 全站唯一一份带子', () => {
     expect((s[0].lineStyle as Record<string, unknown>).opacity).toBe(0)
   })
 
+  it('❗上沿宽度线也不吃 tooltip —— 它扛的是宽度(hi−lo)不是上沿,标签写着 P25~P75/均值±σ带,漏进 tooltip 就是读数句说谎', () => {
+    const s = bandSeries([1], [2]) as Array<Record<string, unknown>>
+    expect(s[0].tooltip).toEqual({ show: false })
+    expect(s[1].tooltip).toEqual({ show: false })
+  })
+
   it('dp 控制小数位:PV 三处要 3~4 位,金额两处要 0 位', () => {
     const s = bandSeries([1.23456], [2.34567], { dp: 3 }) as Array<Record<string, unknown>>
     expect(s[1].data).toEqual([1.111])
