@@ -65,6 +65,12 @@ describe('mainChart(主图整形:折万/上月右移/预算月均)', () => {
     expect(mainChart(null, 1)).toBeNull()
     expect(mainChart(pnl({}), null)!.budgetAvgWan).toBeNull()
   })
+  it('❗outlierMonths 标记收入为负的月(FORECAST §2.7);点仍画,不从 labels/rev 里摘除', () => {
+    const revenue = N12(); revenue[9] = 8000000; revenue[11] = -636050.65
+    const d = mainChart(pnl({ months: [10, 12], revenue }), null)!
+    expect(d.outlierMonths).toEqual([12])
+    expect(d.rev[11]).toBe(-63.61)   // 离群月数据点仍在 rev 里,只是被标记
+  })
 })
 
 describe('compoData / schedTrend(构成环 + 点扇区趋势)', () => {
@@ -160,6 +166,16 @@ describe('budgetAch / budgetRevenueOf(年度口径;锚点 94.6%)', () => {
     const a = budgetAch(rows, pnl({ revenue }), 2025)!
     expect(a.rate.toFixed(1)).toBe('94.6')
     expect(a.gap).toBeCloseTo(4983126.87, 1)
+    expect(a.usedMonths).toEqual([1])   // 无离群月:usedMonths = 有数月本身
+  })
+  it('❗离群月(收入<0)不计入分母 —— 之前无条件相加会把达成率往错方向压(FORECAST §2.7)', () => {
+    const withOutlier = N12(); withOutlier[9] = 87722076; withOutlier[11] = -636050.65   // 12月年末冲回
+    const noOutlier = N12(); noOutlier[9] = 87722076   // 同一份 10 月数据,少一个离群月
+    const a1 = budgetAch(rows, pnl({ revenue: withOutlier }), 2025)!
+    const a2 = budgetAch(rows, pnl({ revenue: noOutlier }), 2025)!
+    expect(a1.usedMonths).toEqual([10])            // 12 月被剔除,不进 usedMonths
+    expect(a1.actual).toBe(a2.actual)               // 离群月的负收入没有被吃进分子
+    expect(a1.rate).toBe(a2.rate)                    // 剔除前后达成率一致 —— 证明离群月未被计入
   })
   it('无预算或无实际 → null', () => {
     expect(budgetAch([], pnl({}), 2025)).toBeNull()

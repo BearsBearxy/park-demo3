@@ -3,13 +3,14 @@
 // 仅 selected !== used 时由调用方渲染(本组件不做该判断)。
 import { iconFor } from '@/components/ds/icon'
 
-defineProps<{ selected: string; used: string; source?: string }>()
+// selected/used 仅默认文案需要;调用方给 slot 自定义文案时(如未闭月护栏的离群月提示)可不传。
+defineProps<{ selected?: string; used?: string; source?: string }>()
 </script>
 
 <template>
   <div class="ana-pbanner">
     <component :is="iconFor('alert-triangle')" :size="13" />
-    <span>所选 {{ selected }} 无{{ source ?? '' }}数据,当前显示 {{ used }}</span>
+    <span><slot>所选 {{ selected }} 无{{ source ?? '' }}数据,当前显示 {{ used }}</slot></span>
   </div>
 </template>
 

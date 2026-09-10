@@ -103,16 +103,40 @@ const prof = computed(() => atPeriod(pnl.value?.profit, isMonth.value, usedMi.va
 const margin = computed(() => (rev.value && prof.value != null ? (prof.value / rev.value) * 100 : null))
 const cp = computed(() => colPick(collects.value, isMonth.value, year.value, period.ym.value))
 const ach = computed(() => budgetAch(budgetRows.value, pnl.value, year.value))
+// 未闭月护栏(FORECAST §2.7):副标题按 usedMonths 印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)
+const achRange = computed(() => {
+  const u = ach.value?.usedMonths
+  if (!u?.length) return ''
+  return u.length > 1 ? `${u[0]}-${u[u.length - 1]}月` : `${u[0]}月`
+})
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }
 const mc = computed(() => mainChart(pnl.value, budgetRevenueOf(budgetRows.value, year.value)))
+// 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
+const outlierBannerText = computed(() => {
+  const m = mc.value?.outlierMonths[0]
+  return m ? `${year.value}-${String(m).padStart(2, '0')} 为年末冲回,已排除在趋势与达成率之外` : ''
+})
+const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
+// 未闭月护栏(FORECAST §2.7):y 轴量程只看可用月(剔离群月),不被 2025-12 那种极端负值拉爆;
+// 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
 const mainOption = computed<object | null>(() => {
   const d = mc.value
   if (!d || !d.covered) return null
+  const usableVals = d.labels
+    .flatMap((_, i) => (d.outlierMonths.includes(i + 1) ? [] : [d.rev[i], d.profit[i]]))
+    .filter((v): v is number => v != null)
+  const yMin = usableVals.length ? Math.min(0, ...usableVals) : undefined
+  const revData = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? { value: v, itemStyle: { color: OUTLIER_RED } } : v))
   const series: object[] = [
     {
-      name: '收入', type: 'bar', data: d.rev, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
+      name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
+      markPoint: d.outlierMonths.length ? {
+        symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
+        label: { fontSize: 10, color: '#fff', formatter: '离群' },
+        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0] })),
+      } : undefined,
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
@@ -134,7 +158,7 @@ const mainOption = computed<object | null>(() => {
     tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
     dataZoom: [{ type: 'inside' }, { type: 'slider', height: 12, bottom: 6, borderColor: 'transparent' }],
     xAxis: { type: 'category', data: d.labels },
-    yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
+    yAxis: { type: 'value', min: yMin, axisLabel: { formatter: '{value}万' } },
     series,
   }
 })
@@ -276,15 +300,17 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile :label="isMonth ? '营业收入' : '营收合计'" :value="money(rev)"
         :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" />
       <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" />
+      <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
       <AnaKpiTile label="园区利润" :value="money(prof)"
-        :note="margin != null ? '利润率 ' + margin.toFixed(1) + '%' : '当期无损益数据'" :trend="pnl?.profit" />
+        :note="margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据'" :trend="pnl?.profit" />
       <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
         :kind="cp ? `距目标${anaSettings.collectTarget}%` : ''" unit="pt"
         :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
+      <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
       <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
-        :note="ach ? `${year}年预算 ${money(ach.budget)}` : `${year}年未导入预算`" />
+        :note="ach ? `${money(ach.budget)} · ${achRange}` : `${year}年未导入预算`" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
     </template>
@@ -319,6 +345,8 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入与利润 · {{ year }}年</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
+        <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
+        <AnaPeriodBanner v-if="outlierBannerText" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
       </div>

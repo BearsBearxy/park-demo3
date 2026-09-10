@@ -1,7 +1,8 @@
 // src/views/analysis/cockpit.logic.ts — 驾驶舱 v2 数据变换纯函数(铁律⑦:屏内变换抽出单测)。
 // 输入均为 anaData 既有聚合器返回值:只做取期/折万/整形,**不改数字口径**(数值锚点与 v1 一致:
-// 2025-10 营收 930.2万 / 收缴率 81.3% / 2025 预算达成 94.6%,SQL 回验见 dataChecks)。
-import type { CollectRate, PnlSummary, S10PhaseMonthly } from '@/analysis/anaData'
+// 2025-10 营收 930.2万 / 收缴率 81.3%,SQL 回验见 dataChecks;2025 预算达成旧锚 94.6% 已废
+// ——FORECAST-BAND §2.7 未闭月护栏上线后,budgetAch 分母剔除 2025-12 离群月,达成率改为 ~105.6%)。
+import { isOutlierMonth, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -46,6 +47,7 @@ export interface MainChartData {
   prevRev: (number | null)[]       // 上月收入右移一格(万,对比开关=环比时叠加)
   budgetAvgWan: number | null      // 年预算/12(万;无预算 → null)
   covered: number                  // 覆盖期数(诚实标注)
+  outlierMonths: number[]          // 离群月(1-12,收入为负);点仍画,量程/配色由调用方按此标红带外
 }
 export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | null): MainChartData | null {
   if (!pnl) return null
@@ -57,6 +59,7 @@ export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | nul
     labels, rev, profit, prevRev,
     budgetAvgWan: budgetYearAmount != null ? +(budgetYearAmount / 12 / 10000).toFixed(1) : null,
     covered: pnl.months.length,
+    outlierMonths: pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m)),
   }
 }
 
@@ -190,12 +193,15 @@ export function buildConclusion(
 }
 
 // ── 预算达成(v1 budgetAch 原样抽出:预算行=当年收入总计,实际=pnl 收入年Σ) ──
-export interface BudgetAch { budget: number; actual: number; rate: number; gap: number }
+export interface BudgetAch { budget: number; actual: number; rate: number; gap: number; usedMonths: number[] }
 export function budgetAch(budgetRows: BudgetRowDTO[], pnl: PnlSummary | null, year: number): BudgetAch | null {
   const b = budgetRows.find((r) => r.year === year && matchBudgetKey(r.label, r.sub) === 'revenue')?.budget
   if (!b) return null
-  const vals = (pnl?.revenue ?? []).filter((v): v is number => v != null)
-  if (!vals.length) return null
-  const actual = vals.reduce((s, v) => s + v, 0)
-  return { budget: b, actual, rate: (actual / b) * 100, gap: b - actual }
+  const rev = pnl?.revenue ?? []
+  // 达成率分母排除离群月:2025-12 的年末冲回(收入 −63.6 万)被无条件加进来,
+  // 会把 2025 年达成率从 105.6% 压成 94.6% —— 差 11 个点且方向相反。
+  const used = rev.map((_, i) => i + 1).filter((m) => rev[m - 1] != null && !isOutlierMonth(rev, m))
+  if (!used.length) return null
+  const actual = used.reduce((s, m) => s + (rev[m - 1] as number), 0)
+  return { budget: b, actual, rate: (actual / b) * 100, gap: b - actual, usedMonths: used }
 }

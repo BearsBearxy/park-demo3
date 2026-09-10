@@ -3,6 +3,7 @@
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。
 import type { AnalysisS10Row } from '@/api/analysis'
 import { fnum } from '@/components/ana/anaFmt'
+import { isOutlierMonth } from '@/analysis/anaData'
 
 export interface BeModel {
   rev: number; cost: number
@@ -35,7 +36,9 @@ export function anchorMonth(months: number[], revenue: (number | null)[], select
   if (!months.length) return { month: null, allNegative: false }
   if (selected != null && months.includes(selected)) return { month: selected, allNegative: false }
   for (let i = months.length - 1; i >= 0; i--) {
-    if ((revenue[months[i] - 1] ?? 0) > 0) return { month: months[i], allNegative: false }
+    if (!isOutlierMonth(revenue, months[i]) && (revenue[months[i] - 1] ?? 0) > 0) {
+      return { month: months[i], allNegative: false }
+    }
   }
   return { month: months[months.length - 1], allNegative: true }
 }
