@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, pnlYearMonths, schedTrend,
+  achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, monthRangeLabel, phaseStack, pnlYearMonths, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -110,11 +110,11 @@ const cp = computed(() => colPick(collects.value, isMonth.value, year.value, per
 const ach = computed(() => budgetAch(budgetRows.value, pnl.value, year.value))
 // 未闭月护栏(FORECAST §2.7):副标题按可用月印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)。
 // I4:达成率与营收/成本/利润三瓦共用 pnlYearMonths,所以覆盖区间也只算一次,四个瓦印的是同一句。
-const pnlRange = computed(() => {
-  const u = yearMonths.value
-  if (isMonth.value || !u.length) return ''
-  return u.length > 1 ? `${u[0]}-${u[u.length - 1]}月` : `${u[0]}月`
-})
+// 月粒度下这三瓦本就是显示当月实值(不是年度口径),没有覆盖区间可印 —— 空字符串是对的。
+const pnlRange = computed(() => (isMonth.value ? '' : monthRangeLabel(yearMonths.value)))
+// N2(修复轮2):预算达成永远是年度口径(budgetAch 不吃 isMonth),覆盖区间不能跟着 pnlRange
+// 在月粒度下被清空 —— 否则默认打开驾驶舱看到的是「¥9,271万 · 」,分隔符后面空的。
+const achNote = computed(() => achNoteText(ach.value, ach.value ? money(ach.value.budget) : '', year.value))
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }
@@ -180,7 +180,8 @@ function onMainClick(p: unknown): void {
 }
 
 // ── 收入构成环(点扇区 → 该板块 12 月趋势弹层;月锚随 usedMi,与 KPI 同口径) ──
-const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value))
+// N1(修复轮2):与 rev/cost/prof 共用 yearMonths,收入构成合计不再是另一个数(见 cockpit.logic.ts)。
+const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value, yearMonths.value))
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
 // 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
 // 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
@@ -319,8 +320,8 @@ const conclusion = computed(() => buildConclusion(
         :kind="cp ? `距目标${anaSettings.collectTarget}%` : ''" unit="pt"
         :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
       <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
-      <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
-        :note="ach ? `${money(ach.budget)} · ${pnlRange}` : `${year}年未导入预算`" />
+      <!-- N2:达成率是年度口径,覆盖区间用 achNote(不借 pnlRange —— 那个在月粒度下是空的) -->
+      <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
     </template>

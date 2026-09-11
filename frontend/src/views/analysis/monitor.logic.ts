@@ -63,17 +63,23 @@ export function weighScore(parts: { pay: number | null; rev: number | null; ener
   return den > 0 ? Math.round(num / den) : 0
 }
 
-/** 电费读数句:选中租户末月电费 vs 同类 P25~P75 区间(v/band 任一缺 → 闭嘴,不写占位句)。 */
+/**
+ * 电费读数句:选中租户末月电费 vs 全园 P25~P75 区间(v/band 任一缺 → 闭嘴,不写占位句)。
+ *
+ * N6(对抗复查修复轮2):这条带是按下面 buildParkBand 里全部计费租户建的,不是按可比分组 ——
+ * 「同类」这个词声称的比数据撑得住的多(洗衣房和重工业厂被放进同一个分布里排位次),改成据实的
+ * 「全园」。若将来要做一个真正可比的分组口径,是另一件事,不在这次改动里。
+ */
 export function elecReadout(v: number | null, band: { p25: number; p75: number } | undefined): string | null {
   if (v == null || !band) return null
   const pos = v > band.p75 ? '高于' : v < band.p25 ? '低于' : '落在'
-  return `电费${pos}同类区间 ¥${fInt(band.p25)}~¥${fInt(band.p75)}`
+  return `电费${pos}全园区间 ¥${fInt(band.p25)}~¥${fInt(band.p75)}`
 }
 
 /** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法
  *  (句子不该替画法背书)。acct_month 是列名,屏上写「记账月」(F1)。 */
 export function elecBandRef(n: number | null): string {
-  const sample = n != null ? `样本${n}户` : '同类不足20户'
+  const sample = n != null ? `样本${n}户` : '全园不足20户'
   return `记账月口径 · 元 · ${sample}`
 }
 
@@ -126,7 +132,7 @@ export function buildMonitorModel(ledger: AnalysisLedgerRow[], s10: AnalysisS10R
     phaseOf.set(r.tenantName, r.phase)   // 行按月升序 → 留最近行期区
   }
 
-  // ── 园区灰带:各月 租户电费 P25/P75(同类=全部计费租户;D3 三档:<20 户不建带) ──
+  // ── 园区灰带:各月 租户电费 P25/P75(按全园全部计费租户建,不分行业/品类;D3 三档:<20 户不建带) ──
   const band: Record<string, { p25: number; p75: number; n: number }> = {}
   for (const m of s10Months) {
     const vals: number[] = []

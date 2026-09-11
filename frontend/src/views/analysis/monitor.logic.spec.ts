@@ -120,9 +120,9 @@ describe('灰带 = 各月租户电费 P25/P75(线性分位;D3 门槛 <20 户不�
 
 describe('elecReadout(电费读数句)', () => {
   it('高于上界 / 低于下界 / 落在区间内 / 缺数据(v 为 null 或 band 缺月)→ null', () => {
-    expect(elecReadout(500, { p25: 200, p75: 400 })).toBe('电费高于同类区间 ¥200~¥400')
-    expect(elecReadout(100, { p25: 200, p75: 400 })).toBe('电费低于同类区间 ¥200~¥400')
-    expect(elecReadout(300, { p25: 200, p75: 400 })).toBe('电费落在同类区间 ¥200~¥400')
+    expect(elecReadout(500, { p25: 200, p75: 400 })).toBe('电费高于全园区间 ¥200~¥400')
+    expect(elecReadout(100, { p25: 200, p75: 400 })).toBe('电费低于全园区间 ¥200~¥400')
+    expect(elecReadout(300, { p25: 200, p75: 400 })).toBe('电费落在全园区间 ¥200~¥400')
     expect(elecReadout(null, { p25: 200, p75: 400 })).toBeNull()
     expect(elecReadout(300, undefined)).toBeNull()
   })
@@ -132,12 +132,18 @@ describe('elecReadout(电费读数句)', () => {
     const mm = buildMonitorModel([], rows, OPTS)
     expect(elecReadout(500, mm.band['2025-09'])).toBeNull()
   })
+
+  // N6(对抗复查修复轮2):这条带是按全部计费租户建的,不是按可比分组 ——
+  // 「同类」声称的比数据撑得住的多,句子里不许再出现这个词。
+  it('❗N6:句子里不许出现「同类」—— 带是按全园全部计费租户建的,不是按可比分组', () => {
+    expect(elecReadout(500, { p25: 200, p75: 400 })).not.toContain('同类')
+  })
 })
 
 describe('elecBandRef(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
-  it('n 有值 → 样本N户;n 缺(同类不足20户)→ 不画带的话不进这句,只说不足20户', () => {
+  it('n 有值 → 样本N户;n 缺(全园不足20户)→ 不画带的话不进这句,只说不足20户', () => {
     expect(elecBandRef(251)).toBe('记账月口径 · 元 · 样本251户')
-    expect(elecBandRef(null)).toBe('记账月口径 · 元 · 同类不足20户')
+    expect(elecBandRef(null)).toBe('记账月口径 · 元 · 全园不足20户')
   })
 
   it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
@@ -148,6 +154,10 @@ describe('elecBandRef(参照系小字,F2 修复轮1:只说样本量/口径/单�
   it('❗F2:句子里不再出现「灰带」二字 —— 带画不画不影响这句话真假', () => {
     expect(elecBandRef(251)).not.toContain('灰带')
     expect(elecBandRef(null)).not.toContain('灰带')
+  })
+
+  it('❗N6:句子里不许出现「同类」', () => {
+    expect(elecBandRef(null)).not.toContain('同类')
   })
 })
 

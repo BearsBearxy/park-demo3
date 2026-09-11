@@ -84,9 +84,15 @@ export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | nul
 // ── 收入构成(s1~s4 板块,当期;>0 降序,与 v1 compo 同口径) ──
 export const SEG: [string, string][] = [['s1', '租金'], ['s2', '用电'], ['s3', '用水'], ['s4', '运营配套']]
 export interface CompoItem { key: string; label: string; value: number }
-export function compoData(pnl: PnlSummary | null, isMonth: boolean, mi: number): CompoItem[] {
+/**
+ * N1(对抗复查修复轮2):年粒度按 months(= 调用方的 pnlYearMonths)过滤,与 KPI 营收合计
+ * (atPnlPeriod)共用同一批月份 —— 改前这里走的是不剔离群月的 atPeriod,同一屏上「营收合计」
+ * 与「收入构成合计」是两个不同的数(差的正是被剔掉那个离群月),环图图例百分比的基数也因此对不上
+ * 表头。I4 把三个损益读数搬到 pnlYearMonths 口径,这里是被漏掉的第四个。
+ */
+export function compoData(pnl: PnlSummary | null, isMonth: boolean, mi: number, months: number[]): CompoItem[] {
   if (!pnl) return []
-  return SEG.map(([key, label]) => ({ key, label, value: atPeriod(pnl.bySchedule[key]?.rev, isMonth, mi) ?? 0 }))
+  return SEG.map(([key, label]) => ({ key, label, value: atPnlPeriod(pnl.bySchedule[key]?.rev, isMonth, mi, months) ?? 0 }))
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value)
 }
@@ -252,4 +258,25 @@ export function budgetAch(budgetRows: BudgetRowDTO[], pnl: PnlSummary | null, ye
   if (!used.length) return null
   const actual = used.reduce((s, m) => s + (rev[m - 1] as number), 0)
   return { budget: b, actual, rate: (actual / b) * 100, gap: b - actual, usedMonths: used }
+}
+
+/** 月份区间小字(1-11月 / 单月 3月);月份列表为空 → ''。 */
+export function monthRangeLabel(months: number[]): string {
+  if (!months.length) return ''
+  return months.length > 1 ? `${months[0]}-${months[months.length - 1]}月` : `${months[0]}月`
+}
+
+/**
+ * N2(对抗复查修复轮2):预算达成小字。
+ *
+ * `budgetAch` 不吃 isMonth —— 达成率永远是年度口径,不随所选粒度变化。改前的 note 却接的是
+ * 「月粒度下强制清空」的 pnlRange,于是默认(月粒度)打开驾驶舱看到 `¥9,271万 · `,
+ * 分隔符后面什么都没有,而这个率覆盖哪几个月屏上从头到尾没说。这里改用 ach.usedMonths
+ * 自己的区间(不借 isMonth 清空),范围为空时(理论上不会发生:budgetAch 非 null 时
+ * usedMonths 必非空)连分隔符一起省掉,不留半句。
+ */
+export function achNoteText(ach: BudgetAch | null, budgetText: string, year: number): string {
+  if (!ach) return `${year}年未导入预算`
+  const range = monthRangeLabel(ach.usedMonths)
+  return range ? `${budgetText} · ${range}` : budgetText
 }

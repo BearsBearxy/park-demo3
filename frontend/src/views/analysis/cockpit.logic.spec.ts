@@ -1,8 +1,11 @@
 // 驾驶舱 v2 纯函数单测(铁律⑦):取期/环比/主图整形/构成/分期堆叠/收缴取期/欠费清单/预算达成。
 // 折万与聚合口径必须与 v1 一致(锚点:2025-10 营收 9,301,531 元 → 930.15 万)。
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
-  anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, pnlYearMonths, schedTrend,
+  achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, monthRangeLabel, phaseStack, pnlYearMonths, schedTrend,
+  type BudgetAch,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -102,11 +105,11 @@ describe('compoData / schedTrend(构成环 + 点扇区趋势)', () => {
     },
   })
   it('当月取值,>0 降序,带板块 key', () => {
-    expect(compoData(p, true, 0)).toEqual([
+    expect(compoData(p, true, 0, [])).toEqual([
       { key: 's2', label: '用电', value: 800 },
       { key: 's1', label: '租金', value: 500 },
     ])
-    expect(compoData(null, true, 0)).toEqual([])
+    expect(compoData(null, true, 0, [])).toEqual([])
   })
   it('schedTrend 只取有数月并折万', () => {
     expect(schedTrend(p, 's2')).toEqual({ labels: ['1月', '3月'], vals: [0.08, 0.02] })
@@ -319,5 +322,69 @@ describe('❗I3 / I4:2025 实测量级', () => {
     // 对照:不过滤月份的老写法把冲回加进年度合计 —— 两者相差正是那 63.6 万
     expect((atPeriod(p.revenue, false, 0) as number) - (atPnlPeriod(p.revenue, false, 0, months) as number))
       .toBeCloseTo(-636050.65, 2)
+  })
+})
+
+// ── N1(对抗复查修复轮2):收入构成环与 KPI 营收合计共用同一批月份 ─────────────────────────
+// 改前 compoData 走 atPeriod(不剔离群月),KPI 营收走 atPnlPeriod(剔离群月)——12 月那笔离群
+// 冲回被环图吃了进去、被 KPI 剔了出去,同一屏出现两个不同的营收合计。
+describe('❗N1:年粒度构成合计按 yearMonths 过滤,不再是另一个数', () => {
+  const revenue = N12(); revenue[9] = 8000000; revenue[11] = -636050.65   // 12 月离群(年末冲回)
+  const s1 = N12(); s1[9] = 5000000; s1[11] = 300000                     // 12 月这一段本身不是负的
+  const p = pnl({
+    months: [10, 12], revenue,
+    bySchedule: { s1: { rev: s1, cost: N12(), pnl: N12() } },
+  })
+  const months = pnlYearMonths(p)   // 12 月因整屏营收离群被剔:[10]
+
+  it('构成合计只算 yearMonths 里的月,与营收 KPI 用同一批月份、不含 12 月那笔', () => {
+    expect(months).toEqual([10])
+    expect(compoData(p, false, 0, months)).toEqual([{ key: 's1', label: '租金', value: 5000000 }])
+    expect(atPnlPeriod(p.revenue, false, 0, months)).toBe(8000000)
+  })
+
+  it('❗回退成不按月份过滤的旧写法(atPeriod)会把离群月的 30 万也加进构成合计', () => {
+    // 这条钉的是「旧写法算出来是另一个数」本身:s1 全年(含 12 月)Σ = 530 万,
+    // 与过滤后的 500 万相差正是 12 月那 30 万 —— compoData 换回 atPeriod 就会掉回这个数。
+    expect(atPeriod(s1, false, 0)).toBe(5300000)
+  })
+})
+
+// ── N2(对抗复查修复轮2):预算达成小字不随粒度消失覆盖区间,也不留半句分隔符 ──────────────
+describe('❗N2:achNoteText/monthRangeLabel', () => {
+  const rows = [budgetRow({ budget: 92705202.87 })]
+  // 只给 10 月数据 → usedMonths=[10];budgetAch 不吃 isMonth,这个结果与「当前是月粒度还是年粒度」无关。
+  const revenue = N12(); revenue[9] = 87722076
+  const a = budgetAch(rows, pnl({ revenue }), 2025)!
+
+  it('月份区间:多月给区间,单月给该月,空给空串', () => {
+    expect(monthRangeLabel([1, 2, 3])).toBe('1-3月')
+    expect(monthRangeLabel([10])).toBe('10月')
+    expect(monthRangeLabel([])).toBe('')
+  })
+
+  it('ach 存在:区间来自 usedMonths,与 isMonth 无关(budgetAch 本就不吃这个参数)', () => {
+    expect(a.usedMonths).toEqual([10])
+    expect(achNoteText(a, '¥9,271万', 2025)).toBe('¥9,271万 · 10月')
+  })
+
+  it('无预算 → 年份提示,不带分隔符', () => {
+    expect(achNoteText(null, '¥9,271万', 2025)).toBe('2025年未导入预算')
+  })
+
+  it('❗区间为空时不留半句(不以分隔符结尾)—— 这是本函数存在的意义', () => {
+    const empty: BudgetAch = { budget: 1, actual: 1, rate: 100, gap: 0, usedMonths: [] }
+    const text = achNoteText(empty, '¥1万', 2025)
+    expect(text).toBe('¥1万')
+    expect(text.endsWith(' · ')).toBe(false)
+  })
+
+  it('❗组件必须用 achNote(ach.usedMonths 的区间)接预算达成的 note,不能借回 pnlRange —— '
+    + 'pnlRange 在月粒度下强制清空,那正是改前「¥9,271万 · 」断句的成因', () => {
+    const src = readFileSync(join(__dirname, 'CockpitView.vue'), 'utf8')
+    const tile = /<AnaKpiTile label="预算达成"[\s\S]*?\/>/.exec(src)
+    expect(tile, 'CockpitView.vue 找不到「预算达成」瓦').toBeTruthy()
+    expect(tile![0]).toContain(':note="achNote"')
+    expect(tile![0]).not.toContain('pnlRange')
   })
 })

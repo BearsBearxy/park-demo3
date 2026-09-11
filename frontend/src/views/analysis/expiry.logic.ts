@@ -511,10 +511,11 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
 /**
  * 合约租金带 option:锁定线(实线)+ 续签区间带(locked+renewalLo ~ locked+renewalHi)。
  *
- * ⚠ 不套 bandTooWide(anaTheme.ts):那道门判「半宽/中位 > 0.20 → 太宽只出点」,是给
- * P25~P75 这类"画宽了大概率是画法或样本问题"的带用的。这条带的宽是内容本身 ——
- * 85 份到期在金额上等效约 15 份等额赌注,续签是非黑即白的个体事件,宽本来就对,
- * 套上这道门会把这张卡存在的理由(诚实地告诉你续签不确定性有多大)本身给隐藏掉。
+ * N4(修复轮2):这条带**不受宽度门管**(C2 已把那道门整个删掉,理由见 anaTheme.ts 墓志铭)。
+ * 那道门原本判「半宽/中位 > 0.20 → 太宽只出点」,是给 P25~P75 这类"画宽了大概率是画法或
+ * 样本问题"的带用的。这条带的宽是内容本身 —— 85 份到期在金额上等效约 15 份等额赌注,
+ * 续签是非黑即白的个体事件,宽本来就对,套上这种门会把这张卡存在的理由
+ * (诚实地告诉你续签不确定性有多大)本身给隐藏掉。
  */
 export function rentRollOption(r: RentRoll): object {
   const months = r.months.map((m) => m.month)

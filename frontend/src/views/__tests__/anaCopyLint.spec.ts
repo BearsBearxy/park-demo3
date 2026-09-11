@@ -268,6 +268,47 @@ describe('分析层文案门禁', () => {
     }
   })
 
+  /**
+   * N3(对抗复查修复轮2):到期墙浮层那句「续签不确定性…见 X 方「合约租金带」卡」指错了方向。
+   * 「合约租金带」是页面上第二张卡,这句话却长在最后一张卡(合同清单)的浮层里、写着「下方」——
+   * 它下面什么都没有。判据钉在**相对位置**上:合约租金带卡的位置必须在这句话之前(= 是「上方」),
+   * 且原文必须写「上方」不写「下方」。
+   */
+  it('❗N3:到期墙浮层「见 X 方合约租金带卡」的方向必须对 —— 那张卡在这句话上面', () => {
+    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
+    const bandIdx = src.indexOf('class="t">合约租金带')
+    const noteIdx = src.indexOf('续签会不会发生带来的金额不确定性')
+    expect(bandIdx, 'ExpiryView.vue 找不到「合约租金带」卡').toBeGreaterThan(-1)
+    expect(noteIdx, 'ExpiryView.vue 找不到到期墙口径浮层那句话').toBeGreaterThan(-1)
+    expect(bandIdx, '「合约租金带」卡必须在这句话之前,不然「上方」就是假话').toBeLessThan(noteIdx)
+    const around = src.slice(noteIdx, noteIdx + 40)
+    expect(around).toContain('见上方「合约租金带」')
+    expect(around).not.toContain('见下方')
+  })
+
+  /** N4(修复轮2):C2 把 bandTooWide 整个删掉了,expiry.logic.ts 里还留着一处点名它的注释
+   *  (round1 扫掉另外四处时漏掉的第五处,还恰好是那次改法引作先例的那段)。判据很直接:
+   *  这个已删符号的名字不该再出现在这个文件里。 */
+  it('❗N4:expiry.logic.ts 不再点名已删的 bandTooWide', () => {
+    const src = readFileSync(join(DIR, 'expiry.logic.ts'), 'utf8')
+    expect(src).not.toContain('bandTooWide')
+  })
+
+  /**
+   * N5(修复轮2):TenantEnergyView 口径浮层原话「所以本图不印「高于/低于跨户区间」的判断句」
+   * 只报了两支,而 bandReadout 的 `if (lo <= 0) return null` 是把「高于/落在/低于」三支全闭嘴——
+   * 「落在」也不印。读者被告知少了两个分支,会去猜第三个到底印不印。判据钉在「不能再说只藏两支」
+   * 上:浮层里不许再出现那句旧原文,且必须能读出「三支都不印」这件事。
+   */
+  it('❗N5:跨户区间闭嘴文案不能少说一支 —— lo<=0 时三支全闭嘴,不是只藏「高于/低于」', () => {
+    const src = readFileSync(join(DIR, 'TenantEnergyView.vue'), 'utf8')
+    const note = /<AnaMethodNote>([\s\S]*?)<\/AnaMethodNote>/.exec(src)
+    expect(note, 'TenantEnergyView.vue 找不到跨户带那张卡的口径浮层').toBeTruthy()
+    const body = note![1]
+    expect(body, '旧原文只报了两支,不该再出现').not.toContain('不印「高于/低于跨户区间」的判断句')
+    expect(body, '必须写清楚三支(高于/落在/低于)都不印').toMatch(/高于\/落在\/低于|落在\/高于\/低于|高于、落在、低于/)
+  })
+
   // JARGON / JARGON_EXEMPT 定义见文件顶部(D2 doc comment,F7/F8/F9 修复轮2 的改动理由都写在那)。
   it('❗屏上(含 ⓘ 浮层)不许出现 σ / Σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信', () => {
     const bad: string[] = []
