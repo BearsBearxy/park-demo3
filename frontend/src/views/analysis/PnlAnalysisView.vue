@@ -11,7 +11,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaSpark from '@/components/ana/AnaSpark.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
@@ -196,10 +195,6 @@ const structOpt = computed<object>(() => {
         </div>
       </div>
 
-      <AnaMethodNote>
-        口径:分项损益总览为附表1-4 损益求和(本年已录入者);费用支出(附表5)为运营费用,单列不计入分项损益。
-        覆盖 {{ covMonths.length }} 个月({{ year }} 年);缺 pnl 行的附表按 收入−成本 退化推算。
-      </AnaMethodNote>
     </div>
   </AnaShell>
 </template>

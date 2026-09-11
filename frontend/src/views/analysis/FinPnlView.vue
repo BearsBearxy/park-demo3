@@ -9,7 +9,6 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
@@ -260,10 +259,6 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
             <span class="hint">覆盖 {{ mLabels.length }} 期 · 万元</span></div>
           <template v-if="mLabels.length">
             <AnaEChart :option="trendOpt" :height="300" />
-            <AnaMethodNote v-if="cmp.mode.value === 'budget' && budgetWan == null">
-              「{{ subject }}」无年度预算基准(budget_row 关键行仅收入/利润级)→ 预算虚线不出。</AnaMethodNote>
-            <AnaMethodNote v-else-if="cmp.mode.value === 'budget'">预算虚线＝budget_row {{ year }} 年值 ÷ 12(月均基准)。</AnaMethodNote>
-            <AnaMethodNote v-else-if="cmp.mode.value === 'mom'">环比＝上一覆盖期值虚线叠加;首期无上期。</AnaMethodNote>
           </template>
           <AnaEmpty v-else-if="ready" label="该年度无逐月数据" hint="录入损益附表后呈现科目趋势" />
         </div>
@@ -281,7 +276,6 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
           <div class="ak-bar-rows">
             <AnaBarRow v-for="r in shareRows" :key="r.name" :name="r.name" :value="r.value" :max="100" :fill="r.fill" />
           </div>
-          <AnaMethodNote>利润表快照仅 {{ reportYm }} 单期 → 同比/环比卡隐藏(spec 降级);占比分母＝本年累计营业收入。</AnaMethodNote>
         </div>
 
         <!-- is 快照全表 s12(保留) -->

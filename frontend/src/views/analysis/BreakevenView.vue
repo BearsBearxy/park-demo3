@@ -7,7 +7,6 @@ import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
@@ -147,8 +146,6 @@ function onFr(e: Event) {
             <span class="v mono">{{ be.fr.toFixed(2) }}</span>
             <span class="k">(拖动即时重算保本点)</span>
           </div>
-          <AnaMethodNote>面积/出租率未录入,横轴由原型「出租率」改造为「收入达成率」(当月收入=100%);
-            收入线 = 收入 × 达成率,成本线 = 固定成本 + 变动成本 × 达成率。</AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s4">
@@ -157,8 +154,6 @@ function onFr(e: Event) {
           <AnaPeriodBanner v-if="s10Used && ymUsed && s10Used.ym !== ymUsed"
             :selected="ymUsed" :used="s10Used.ym" source="附表10 " style="margin-bottom: 8px" />
           <AnaEChart :option="torOpt" :height="300" />
-          <AnaMethodNote>各驱动单独 ±10% 对月净利的影响(其余不变);红=下行、蓝=上行。基于固定/变动成本
-            {{ (be.fr * 100).toFixed(0) }}/{{ (100 - be.fr * 100).toFixed(0) }} 拆分假设(滑杆或顶栏「目标与阈值」可调),仅供敏感性排序。</AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s12">

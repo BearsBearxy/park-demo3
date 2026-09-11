@@ -9,7 +9,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { anaSettings } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
@@ -208,10 +207,6 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           </div>
         </div>
 
-        <AnaMethodNote>
-          年化电费收益按各期已记账月折算;回收进度 = 累计电费收益 ÷ 工程总投资(期别工程成本暂未暴露,按全园合计口径);
-          外推虚线按全园年化 ÷12 逐月递增,与投资额线交点即预估回收点。投运初期月份样本少,仅供参考。
-        </AnaMethodNote>
       </template>
 
     </div>

@@ -69,24 +69,13 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
     expect(text).toMatch(/过去\s*5\s*份到期中\s*2\s*份续签/)
     const rollCard = w.findAll('.av2-card').find((c) => c.text().includes('合约租金带'))
     expect(rollCard, '没找到合约租金带卡').toBeTruthy()
-    // F2(修复轮1,design-boards 对抗复查):这条只管**默认收起态**——AnaMethodNote 的口径
-    // 浮层挂在 v-if="open"(默认 false),挂载测扫的是收起态 DOM,原来看不见浮层里的字,
-    // 却被读成"这张卡任何状态下都不印 %"。浮层本身**允许**印 %:80% 是分布的分位数,
-    // 不是校准声明,ruling 已认,不删——门禁要看见它,不是假装它不存在。
+    // 用户 2026-09-12 拆掉 ⓘ 浮层之后,这张卡不再有折叠态——整张卡任何状态下都不印 %,
+    // 断言随之变成无条件的(改前它只管收起态,浮层里那个 80% 是判给自己的例外)。
     expect(rollCard!.text()).not.toMatch(/%/)
-
-    // 打开口径浮层,让门禁真的看一眼里面印了什么。
-    const pill = rollCard!.find('.ana-note-pill')
-    expect(pill.exists(), '合约租金带卡里没找到口径浮层的触发按钮').toBe(true)
-    await pill.trigger('click')
-    await flushPromises()
-    const openedText = rollCard!.text()
-    // 浮层打开后必须真的看得见这个数——这是"例外"的存在性证据,不是"看不见就等于没有"。
-    // 哪天它从浮层里消失,这条先变红,提醒去 t4-fix-1.md F2 那条为什么。
-    expect(openedText).toMatch(/80%/)
-    // 设计稿上的 20%(18/90) 是占位数,不进屏上文案——浮层里不许再出现对设计稿的引用。
-    expect(openedText).not.toMatch(/设计稿|18\/90/)
-    // 例外只收给浮层,不收给卡上直接可见的读数句/参照系小字——那两行仍然一个 % 都不许有。
+    // 卡头必须仍写着「是下界」——浮层拆掉时这句从浮层挪进了卡头 hint,它是这张卡唯一
+    // 防止读者把下界当预测读的装置,挪丢了没人会发现。
+    expect(rollCard!.text()).toContain('是下界')
+    // 读数句/参照系小字同样一个 % 都不许有。
     expect(w.find('.ana-ref').text()).not.toMatch(/%/)
     if (w.find('.ana-read').exists()) expect(w.find('.ana-read').text()).not.toMatch(/%/)
   })

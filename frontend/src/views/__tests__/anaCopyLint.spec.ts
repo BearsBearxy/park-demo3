@@ -330,88 +330,26 @@ describe('分析层文案门禁', () => {
   })
 
   /**
-   * F1(修复轮1,design-boards):驾驶舱护栏图那张卡印了读数句(.ana-read),却没有自己的口径浮层 ——
-   * 稿上紧跟读数句之后那句「判据:…带子用来抓离群,不用来押未来」在屏上、仓库里都找不到,
-   * 直到对抗复查逐块比对设计稿才揪出来。这道门禁就是补那个盲区:凡印了读数句的卡,
-   * 必须自带 <AnaMethodNote>,不能拿"读数句本身说得挺清楚"当借口。
+   * 用户 2026-09-12 拆掉 ⓘ 口径浮层之后的替代判据。
    *
-   * 起点写死在断言里(与 HINT_OVER_BASELINE 同一个写法):立档当天(F1 修完后)实测 1 处既有违规
-   * (AnomalyView.vue 的电费带卡口径写在同屏底部的总说明卡里,不在本卡——那是另一件事,不在本轮),
-   * 只许往下降,不许往上涨。**这条基线是在 F1 把驾驶舱卡自己的浮层补上之后量的**——
-   * 如果先量后补(基线包含驾驶舱那处违规),之后再有人把驾驶舱的浮层删掉,违规数还是压在基线以内,
-   * 门禁会照样绿,防不住它本该防的那次回归。
+   * 这里原有四道门禁,判据都落在「浮层正文里必须写着某句话」上。浮层没了,那四道跟着删 ——
+   * 但其中一条守的东西必须换个形式留下:「续签率变一档」卡的四档判词借了「盈亏平衡」这个词,
+   * 而它跟「盈亏平衡与敏感性」屏那个由成本结构(固定成本/边际贡献率)算出的真保本点没有任何
+   * 数值关系。见过那一屏、又照字面读这张表的人,会得出「园区要亏了」的结论,比实际严重得多。
+   *
+   * 原来的做法是在浮层里声明「这个不是那一个」。现在改成**根本不借这个词**(判词已改成
+   * 「明显偏低」),判据也跟着简单:除了盈亏平衡屏自己,分析层不许再出现它。
+   * 不借词比解释借词更防回归 —— 没有词就没有误读,也不依赖谁去点开一层折叠。
    */
-  const ANA_READ_NEEDS_NOTE_BASELINE = 1
-  it(`❗印了读数句(.ana-read)的卡必须同卡自带 <AnaMethodNote> —— 超标处只许减少(基线 ${ANA_READ_NEEDS_NOTE_BASELINE})`, () => {
+  it('❗「盈亏平衡」只许出现在盈亏平衡屏 —— 别处借这个词会被读成那个真保本点', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
-      const src = readFileSync(join(dir, f), 'utf8')
-      for (const { start, text } of splitCards(src)) {
-        if (!/class="ana-read"/.test(text)) continue
-        if (!/<AnaMethodNote/.test(text)) bad.push(`${f}:${lineOf(src, start)}`)
-      }
+      if (f === 'BreakevenView.vue') continue
+      if (/盈亏平衡/.test(readFileSync(join(dir, f), 'utf8'))) bad.push(f)
     }
-    expect(bad.length, `这些卡有读数句却没有口径浮层(基线 ${ANA_READ_NEEDS_NOTE_BASELINE}):\n${bad.join('\n')}`)
-      .toBeLessThanOrEqual(ANA_READ_NEEDS_NOTE_BASELINE)
-  })
-
-  /**
-   * I5(对抗复查):合约租金带是本分支唯一一条**模拟**出来的带,却是唯一一张没有自己口径浮层的带卡。
-   * 读者从屏上看到的只有一句「末月租金预计 X~Y」,读起来像总租金预测 —— 而它结构上不可能包含
-   * 新招租(池子只装已签合同),是下界不是预测。这条门禁钉的就是「那三件事还写在卡上没有」。
-   *
-   * 为什么是卡级点名而不是「所有印读数句的卡都得有 note」:AnomalyView 的读数句卡把口径写在
-   * 同屏底部那张总说明卡里(已过复查),一条泛化规矩会把它一起判红 —— 那是另一件事,不在本轮。
-   */
-  it('❗I5:「合约租金带」这张卡必须自带口径 note,并写明下界/不含新招租/整租不计', () => {
-    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
-    const card = splitCards(src).find((c) => /class="t">合约租金带/.test(c.text))
-    expect(card, 'ExpiryView.vue 里找不到「合约租金带」那张卡').toBeTruthy()
-    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')   // 注释里写了不算,要写在屏上
-    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
-    expect(note, '这张卡没有口径浮层').toBeTruthy()
-    // 判据落在**浮层正文**里,不是「这张卡的某处提过」—— 卡头 hint 也写着「不含新招租」,
-    // 拿整张卡当判据的话,把浮层里那句删掉照样全绿(实测过,所以改成只认浮层)。
-    for (const kw of ['不含新招租', '下界', '整租', '10~90 分位'])
-      expect(note![1], `口径浮层缺了「${kw}」`).toContain(kw)
-  })
-
-  /**
-   * F2(修复轮1,design-boards):「续签率变一档」卡的四档判词借了「盈亏平衡」这个词(稿上原话),
-   * 但算法是续签率×到期租金的线性期望,与 breakeven.logic.ts 那个由成本结构(固定成本/边际贡献率)
-   * 算出的真保本点没有数值关系——那个与租金续签完全无关。见过「盈亏平衡与敏感性」屏、又照字面读
-   * 这张表的人会得出「园区要亏了」的结论,比实际严重得多。判据钉住:口径浮层必须声明这里的
-   * 「盈亏平衡」不是那一个,不许下一次有人整理文案时顺手删掉这句声明。
-   */
-  it('❗F2:「续签率变一档」卡借用了「盈亏平衡」这个词,口径浮层必须声明它不是那个真保本点', () => {
-    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
-    const card = splitCards(src).find((c) => /class="t">续签率变一档/.test(c.text))
-    expect(card, 'ExpiryView.vue 里找不到「续签率变一档」那张卡').toBeTruthy()
-    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')
-    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
-    expect(note, '这张卡没有口径浮层').toBeTruthy()
-    expect(note![1], '浮层没有声明这里的「盈亏平衡」不是「盈亏平衡与敏感性」屏那个真保本点')
-      .toContain('不是「盈亏平衡与敏感性」')
-    expect(note![1], '浮层没有说清楚两者数值上没有关系').toContain('与租金续签无关')
-  })
-
-  /**
-   * F2(T8/T9 修复轮1):「单位租金对标」卡口径浮层原文照抄了 board-peer.txt 的诊断——
-   * 「期区二是宿舍和厂房混在一起,两拨价格差很大,中位数没有意义」。查库实测:期区二那批同类
-   * 解析出的物业类型全部是厂房或「无租金计费行」的数据缺口(后者已被 F1 排除),不存在宿舍。
-   * 读者信了这句话会去找一个不存在的物业问题,而不会去找真正的那个数据缺口——屏上自己的诚实
-   * 装置,指向了错误的方向。判据钉住:浮层必须说清真正原因(缺口合同已排除),不许再出现
-   * 「宿舍与厂房」这个已实测为假的诊断。
-   */
-  it('❗F2:「单位租金对标」卡口径浮层不许照抄「宿舍与厂房混杂」的误诊断,须写实测的真正原因', () => {
-    const src = readFileSync(join(DIR, 'TenantPeerView.vue'), 'utf8')
-    const card = splitCards(src).find((c) => /class="t">单位租金对标/.test(c.text))
-    expect(card, 'TenantPeerView.vue 里找不到「单位租金对标」那张卡').toBeTruthy()
-    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')
-    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
-    expect(note, '这张卡没有口径浮层').toBeTruthy()
-    expect(note![1], '浮层没有说明真正原因是无租金计费行的数据缺口合同').toContain('数据缺口')
-    expect(note![1], '浮层没有说清楚这批同类不含宿舍').not.toMatch(/宿舍与厂房.{0,6}(混在一起|混杂|两拨价格)/)
+    expect(bad, `这些文件借用了「盈亏平衡」: ${bad.join(' | ')}`).toEqual([])
+    // 判词本身也钉住 —— 它住在 expiry.logic.ts 里,上面那圈扫 .vue 扫不到。
+    for (const r of SENSITIVITY_SAMPLE) expect(r.verdict).not.toContain('盈亏平衡')
   })
 
   /**
@@ -465,24 +403,6 @@ describe('分析层文案门禁', () => {
       .toBe(REF_SLOTS.length)
   })
 
-  /**
-   * N3(对抗复查修复轮2):到期墙浮层那句「续签不确定性…见 X 方「合约租金带」卡」指错了方向。
-   * 「合约租金带」是页面上第二张卡,这句话却长在最后一张卡(合同清单)的浮层里、写着「下方」——
-   * 它下面什么都没有。判据钉在**相对位置**上:合约租金带卡的位置必须在这句话之前(= 是「上方」),
-   * 且原文必须写「上方」不写「下方」。
-   */
-  it('❗N3:到期墙浮层「见 X 方合约租金带卡」的方向必须对 —— 那张卡在这句话上面', () => {
-    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
-    const bandIdx = src.indexOf('class="t">合约租金带')
-    const noteIdx = src.indexOf('续签会不会发生带来的金额不确定性')
-    expect(bandIdx, 'ExpiryView.vue 找不到「合约租金带」卡').toBeGreaterThan(-1)
-    expect(noteIdx, 'ExpiryView.vue 找不到到期墙口径浮层那句话').toBeGreaterThan(-1)
-    expect(bandIdx, '「合约租金带」卡必须在这句话之前,不然「上方」就是假话').toBeLessThan(noteIdx)
-    const around = src.slice(noteIdx, noteIdx + 40)
-    expect(around).toContain('见上方「合约租金带」')
-    expect(around).not.toContain('见下方')
-  })
-
   /** N4(修复轮2):C2 把 bandTooWide 整个删掉了,expiry.logic.ts 里还留着一处点名它的注释
    *  (round1 扫掉另外四处时漏掉的第五处,还恰好是那次改法引作先例的那段)。判据很直接:
    *  这个已删符号的名字不该再出现在这个文件里。 */
@@ -492,26 +412,18 @@ describe('分析层文案门禁', () => {
   })
 
   /**
-   * N5(修复轮2):TenantEnergyView 口径浮层原话「所以本图不印「高于/低于跨户区间」的判断句」
-   * 只报了两支,而 bandReadout 的 `if (lo <= 0) return null` 是把「高于/落在/低于」三支全闭嘴——
-   * 「落在」也不印。读者被告知少了两个分支,会去猜第三个到底印不印。判据钉在「不能再说只藏两支」
-   * 上:浮层里不许再出现那句旧原文,且必须能读出「三支都不印」这件事。
+   * N5 原来钉的是 TenantEnergyView 口径浮层里那句「本图不印…判断句」少报了一支(lo<=0 时
+   * 高于/落在/低于三支全闭嘴,浮层只说了两支)。浮层 2026-09-12 拆掉,这条跟着删 ——
+   * 它守的**行为**由 TenantEnergy.logic.spec.ts 的「I9」那条直接钉在 bandReadout 上,
+   * 那里拿实测量级的均值与波动幅度喂进去,断言三支都返回 null,比数浮层里的字牢靠。
    */
-  it('❗N5:跨户区间闭嘴文案不能少说一支 —— lo<=0 时三支全闭嘴,不是只藏「高于/低于」', () => {
-    const src = readFileSync(join(DIR, 'TenantEnergyView.vue'), 'utf8')
-    const note = /<AnaMethodNote>([\s\S]*?)<\/AnaMethodNote>/.exec(src)
-    expect(note, 'TenantEnergyView.vue 找不到跨户带那张卡的口径浮层').toBeTruthy()
-    const body = note![1]
-    expect(body, '旧原文只报了两支,不该再出现').not.toContain('不印「高于/低于跨户区间」的判断句')
-    expect(body, '必须写清楚三支(高于/落在/低于)都不印').toMatch(/高于\/落在\/低于|落在\/高于\/低于|高于、落在、低于/)
-  })
 
   // JARGON / JARGON_EXEMPT 定义见文件顶部(D2 doc comment,F7/F8/F9 修复轮2 的改动理由都写在那)。
   // F8(对抗复查):标题曾经承诺连大写 Σ 也禁,判据(JARGON_SRC,见文件头 D2 doc comment)其实
   // 没有 Σ——Σ 在本仓是求和号,是有意放行的正当写法,撤禁的理由写在上面 D2 注释里。标题原文
   // 一度包含「Σ」,读测试列表的人会以为它已被禁,不会再去看六十行外的 doc comment。
   // 改法只是让名字与判据对上,不加新断言。
-  it('❗屏上(含 ⓘ 浮层)不许出现 σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信(Σ 作为求和号有意放行,理由见文件头 D2)', () => {
+  it('❗屏上不许出现 σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信(Σ 作为求和号有意放行,理由见文件头 D2)', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
       if (JARGON_EXEMPT.has(f)) continue

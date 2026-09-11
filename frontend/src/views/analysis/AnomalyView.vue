@@ -13,7 +13,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
@@ -341,12 +340,6 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
       </div>
 
       <div class="av2-s12">
-        <AnaMethodNote>
-          风险分 = 收缴恶化(40%) + 营收变动(30%) + 能耗变动(30%),缺项按权重归一,高分=差;收缴取台账
-          {{ model.lastLedgerYm ?? '—' }} 期,营收/能耗取附表10 相邻有数月环比(能耗按|环比|,突变双向计入)。
-          阈值(收缴目标 {{ anaSettings.collectTarget }}% / 突变 ±{{ anaSettings.spikeTh }}% / 风险线 {{ anaSettings.churnTh }} 分)在右上「目标与阈值」调整并即时重算;处置状态仅本地保存。
-          灰带=全园电费区间(P25~P75,中间一半的全园租户落在这里),样本量不足20户的月份不画带;带宽只说明全园租户之间差距大,不代表数据有问题。相邻有数月环比判突变。
-        </AnaMethodNote>
       </div>
     </div>
   </AnaShell>

@@ -14,7 +14,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
@@ -368,7 +367,6 @@ const conclusion = computed(() => buildConclusion(
         <!-- F1(修复轮1,design-boards):稿上 ⓘ 门后那句反过度承诺的判据说明,改前屏上没有、仓库里 grep 不到 ——
              这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。
              F6(对抗复查):板上原句把月份(m12)/附表(s1)写死了,改成由 mc.outlierMonths 驱动,见 cockpit.logic.ts mainChartOutlierNote。 -->
-        <AnaMethodNote v-if="outlierRes">{{ mainChartOutlierNote(mc?.outlierMonths ?? []) }}</AnaMethodNote>
       </div>
 
       <!-- s4:收入构成环 -->
@@ -435,7 +433,6 @@ const conclusion = computed(() => buildConclusion(
         <AnaEmpty v-else label="全年落点需要拟合" hint="依赖月度收入回归拟合(需 ≥3 个可用月)" />
         <p v-if="yearRead" class="ana-read">{{ yearRead }}</p>
         <p v-if="yearRead" class="ana-ref">{{ yearRef }}</p>
-        <AnaMethodNote v-if="yearRead">区间不敢标百分比：过去 {{ backSum?.scored ?? 0 }} 次外推 {{ backSum?.unders ?? 0 }} 次偏低</AnaMethodNote>
       </div>
 
       <!-- T3:这条带过去准不准——滚动起点回测,每站只用当时已有的月,不复用 T1 的单次 fit;
@@ -465,14 +462,9 @@ const conclusion = computed(() => buildConclusion(
         <AnaEmpty v-else label="回测需要拟合" hint="滚动起点回测依赖至少 3 个可用月才能起步" />
         <p v-if="backRead" class="ana-read">{{ backRead }}</p>
         <p v-if="backRead" class="ana-ref">{{ backRef }}</p>
-        <AnaMethodNote v-if="backRead">趋势在加速，残差还带正自相关（DW 1.01）· 所以屏上只写「拟合区间」，不写「80% 可能落在此区间」—— 样本不够，那个百分比是编的</AnaMethodNote>
       </div>
 
       <div class="av2-s12">
-        <AnaMethodNote>
-          口径:营收/成本/利润 = 损益附表 1~5 园区总计带(成本含附表5运营费用总计);收缴率 = 台账 Σ实收/Σ应收(仅 {{ collects.length }} 期,诚实标注);
-          预算达成 = 年度口径(全面预算总表收入总计);分期收入 = 附表10(已剔期别汇总行)。对比开关:环比=上月收入虚线,预算=预算月均(年预算/12)虚线。
-        </AnaMethodNote>
       </div>
       </div>
     </template>

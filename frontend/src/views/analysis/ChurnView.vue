@@ -9,7 +9,6 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -143,9 +142,6 @@ function onScatterClick(p: unknown) {
               </tbody>
             </table>
           </div>
-          <AnaMethodNote>合同起止日期未录入,原型「临期续约/资历」因子不可用,已改为业务活跃度口径:缴费恶化(40%,台账 {{ mZh(model.lastYm) }} 收款率)
-            + s10收入下行(30%)+ 用能下行(30%,均为相邻有数月环比;s10 末期缺席记满分),缺项按权重归一。台账仅
-            {{ mZh(model.firstYm) }}/{{ mZh(model.lastYm) }} 两期,用于相对排序与预警分流,非精算违约概率;预警线可在顶栏「目标与阈值」调整。</AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s4">

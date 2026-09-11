@@ -790,14 +790,14 @@ describe('sensitivityFinalRent / sensitivityRows / neededRatePct(T7,design-board
   it('四档 ratePct/deltaPct/verdict 逐档核对(不是松散的符号判断)', () => {
     expect(rows.map((r) => r.ratePct)).toEqual([0, 20, 40, 60])
     expect(rows.map((r) => r.deltaPct)).toEqual([-31, -17, -3, 11])
-    expect(rows.map((r) => r.verdict)).toEqual(['低于盈亏平衡', '勉强打平', '持平', '有余量'])
+    expect(rows.map((r) => r.verdict)).toEqual(['明显偏低', '勉强打平', '持平', '有余量'])
   })
 
   // 直接构造 deltaPct(lockedLast=today×(1+deltaPct/100)、expiringRentSum=0、rate=0),
   // 让 deltaPct 精确落在边界值上,不必反解续签率——逐条钉住每个分界点两侧归类不同。
-  it('❗verdict 边界:< −20 才算「低于盈亏平衡」,−20 本身已经是「勉强打平」', () => {
+  it('❗verdict 边界:< −20 才算「明显偏低」,−20 本身已经是「勉强打平」', () => {
     const at = (deltaPct: number) => sensitivityRows(100 * (1 + deltaPct / 100), 0, 100, 0)[0].verdict
-    expect(at(-21)).toBe('低于盈亏平衡')
+    expect(at(-21)).toBe('明显偏低')
     expect(at(-20)).toBe('勉强打平')
   })
 

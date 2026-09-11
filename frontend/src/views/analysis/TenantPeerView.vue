@@ -5,16 +5,15 @@
 //
 // T8/T9:骨架 + 单位租金对标直方图。T10:「哪些期区能给区间」+「同一招式用在电费上会翻车」
 // 两张卡。T11:「这张图为什么可信/和预测图的区别」对照卡。四张卡都在「单位租金」页签下——
-// 电费/缴费行为两个页签在设计稿里**没有对应的卡片规格**(不是「本任务先跳过」,是稿子本身
-// 没定义画什么;T10 的「电费会翻车」卡是拿电费当反例摆在单位租金页签里说明,不是补上电费
-// 页签的内容),所以这两个页签仍然禁用 + hover 提示,不替设计稿编内容。
+// 电费/缴费行为两个页签在设计稿里没有对应的卡片规格(不是「本任务先跳过」,是稿子本身没定义
+// 画什么;T10 的「电费会翻车」卡是拿电费当反例摆在单位租金页签里说明,不是补上电费页签的
+// 内容),所以这两个页签禁用 + hover 写「暂未开放」。
 //
 // 数据变换纯函数见 ./TenantPeer.logic.ts(单测,含 break-verify 记录见 t8-report.md / t10-report.md)。
 import { computed, onMounted, ref, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import { fetchBuildings, fetchContractDetail, fetchContracts, fetchS10TenantMap, fetchTenants } from '@/analysis/anaData'
@@ -27,7 +26,6 @@ import {
   MIN_SAMPLE, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel, phaseStatsOf,
   buildUnitRentHist, unitRentReadout, unitRentRefText, unitRentHistOption, dominantPropertyType,
   phaseTableRows, phaseTableReadout, phaseTableRefText, latestElecSpread, elecTrapReadout, elecTrapRefText,
-  propertyTypeBreakdown, peerPropertyTypeNote,
   type PeerRow,
 } from './TenantPeer.logic'
 
@@ -80,9 +78,6 @@ const primaryRow = computed<PeerRow | null>(() =>
 
 // ── 单位租金对标(T9):同类 = 选中租户所在期区、在租、已录面积的合同(含本户自己) ──
 const phaseZone = computed(() => (primaryRow.value ? phaseZoneLabel(primaryRow.value.phase) : ''))
-// F2(对抗复查):口径浮层那句"这批同类物业类型是否单一"必须由**实际渲染中的这批 population**驱动
-// (phaseGroupRows,与 phaseValues/phaseTableRows 同一批过滤结果),不能测一个期区、渲染在另一个——
-// 之前的缺陷正是"经核实"那句只查过期区二,却渲染在默认打开的期区一。
 const phaseGroupRows = computed(() =>
   primaryRow.value ? peerRows.value.filter((r) => r.phase === primaryRow.value!.phase) : [])
 const phaseValues = computed(() => phaseGroupRows.value.map((r) => r.unitRent))
@@ -96,21 +91,19 @@ const readout = computed(() =>
   primaryRow.value ? unitRentReadout(primaryRow.value.unitRent, phaseValues.value, phaseZone.value) : null)
 const refText = computed(() => unitRentRefText(phaseValues.value.length, phaseZone.value, periodLabel))
 
-// ── 头部「物业类型」+ F2 口径浮层「同类物业类型是否单一」:两处共用同一份缓存,只为
-// phaseGroupRows(当前渲染的这批同类)查计费行,不为全部合同都查(理由见 TenantPeer.logic.ts)。
-// F2 改前只为选中租户的主合同查一次——现在整批同类都要查,才有数据支持"是否单一类型"这句话。
+// ── 头部「物业类型」:只为选中租户的主合同查一次计费行。
+// F2(对抗复查)时这里扩成整批同类都查,为的是给口径浮层那句「这批同类物业类型是否单一」
+// 提供数据。浮层 2026-09-12 拆掉,那句话没了,请求跟着收回来 —— 期区一 25 份同类就是
+// 25 次 fetchContractDetail,留着是白付的钱。
 const propTypeCache = ref<Map<number, PropertyType | null>>(new Map())
-watch(phaseGroupRows, async (rows) => {
-  const missing = rows.filter((r) => !propTypeCache.value.has(r.contractId))
-  if (!missing.length) return
-  await Promise.all(missing.map(async (r) => {
-    try {
-      const detail = await fetchContractDetail(r.contractId)
-      propTypeCache.value.set(r.contractId, dominantPropertyType(detail.billingLines))
-    } catch {
-      propTypeCache.value.set(r.contractId, null)
-    }
-  }))
+watch(primaryRow, async (row) => {
+  if (!row || propTypeCache.value.has(row.contractId)) return
+  try {
+    const detail = await fetchContractDetail(row.contractId)
+    propTypeCache.value.set(row.contractId, dominantPropertyType(detail.billingLines))
+  } catch {
+    propTypeCache.value.set(row.contractId, null)
+  }
 }, { immediate: true })
 const propertyTypeLabel = computed(() => {
   const row = primaryRow.value
@@ -119,14 +112,6 @@ const propertyTypeLabel = computed(() => {
   const pt = propTypeCache.value.get(row.contractId)
   return pt ? PROPERTY_TYPE_LABEL[pt] : '—'
 })
-// 全部查完之前不敢断言"是否单一类型"——只查完一部分就下结论,与 F2 坐实的缺陷是同一种错误
-// (拿不完整的样本代表整个 population)。
-const phaseTypesReady = computed(() =>
-  phaseGroupRows.value.length > 0 && phaseGroupRows.value.every((r) => propTypeCache.value.has(r.contractId)))
-const phaseTypeBreakdown = computed(() =>
-  propertyTypeBreakdown(phaseGroupRows.value.map((r) => propTypeCache.value.get(r.contractId) ?? null)))
-const phasePropertyTypeSentence = computed(() =>
-  phaseTypesReady.value ? peerPropertyTypeNote(phaseTypeBreakdown.value) : '同类物业类型核实中…')
 
 // ── T10「哪些期区能给区间」:不看选中哪个租户,四个期区一次性给行(population 同上,按期区分组)──
 const phaseRows = computed(() => phaseTableRows(peerRows.value))
@@ -185,22 +170,13 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
           <p v-if="hist.overflowCount" class="tp-overflow">{{ hist.overflowCount }} 份 &gt; {{ hist.capHi }},最高 {{ hist.overflowMax.toFixed(1) }}</p>
           <p v-if="readout" class="ana-read">{{ readout }}</p>
           <p class="ana-ref">{{ refText }}</p>
-          <AnaMethodNote>
-            单位租金 = 合同月租(含管理费/基础维护等五费项合计,不是租金单价字段本身)÷ 租赁面积。
-            同类 = {{ phaseZone }}在租(非草稿、非整体承租、起止日期覆盖 {{ periodLabel }})、已录面积、
-            且月租含租金计费行的合同——monthly_rent 若只有维护/电梯/变压器等费用、没有任何 rent_* 行,
-            那不是便宜,是数据缺口,已排除(与数据总览页「N 份合同无租金计费行」同一判据)。
-            {{ phasePropertyTypeSentence }}
-            p10/中位/p90 为线性插值分位;样本 &lt; {{ MIN_SAMPLE }} 份不画区间、不印百分比。
-            「80% 的同类在这段」是 p10~p90 这两个分位点之间本来就该有的那部分,不是历史命中率那种校准声明。
-          </AnaMethodNote>
         </template>
         <AnaEmpty v-else label="同类样本不足" :hint="`${phaseZone}在租且已录面积的合同仅 ${phaseValues.length} 份,不足 ${MIN_SAMPLE} 份,无法画分布区间`" />
       </div>
 
       <!-- T10:「哪些期区能给区间」—— 板上四行表标签写「在租」,数字却是不过滤日期的总体(168/100/3/2),
-           复现不出;板还把期区二的成因诊断错了(说宿舍/厂房混杂,真实原因是无租金计费行合同,已在
-           上面这张卡的口径浮层里改写并坐实)。这里按屏上实际用的口径现算,不抄板的字面数字。 -->
+           复现不出;板还把期区二的成因诊断错了(说宿舍/厂房混杂,真实原因是无租金计费行合同,
+           已实测坐实)。这里按屏上实际用的口径现算,不抄板的字面数字。 -->
       <div class="av2-card av2-s6">
         <div class="av2-card-h">
           <span class="t">哪些期区能给区间</span>
@@ -219,18 +195,6 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
         </table>
         <p class="ana-read">{{ phaseTableRead }}</p>
         <p class="ana-ref">{{ phaseTableRef }}</p>
-        <AnaMethodNote>
-          population 与上方「单位租金对标」卡同一批(在租、已录面积、排除无租金计费行的合同),按期区
-          分组。板上这张表标签写「在租」,但板的四个数字(168/100/3/2)按今天的「在租」口径查不出——
-          今天(asOf 显式取当天)按屏上实际用的口径现算是 {{ phaseRows.map((r) => r.n).join('/') }}。
-          板还把期区二的成因诊断错了:板说是宿舍与厂房混杂两拨价格,查库坐实并非如此——期区二这
-          {{ phaseRows.find((r) => r.phase === 2)?.n ?? 0 }} 份合同里,每一份的**主导**物业类型
-          (面积最大的那条租金行)都是厂房,有几份还搭了小面积宿舍行,但那几条从来不是面积最大的
-          一条,撑不起「两拨价格」。真正拉低样本量、也是本表期区二样本不足 {{ MIN_SAMPLE }} 份门槛
-          的原因,是上面「单位租金对标」卡口径浮层里已经排除的那批只有维护/电梯/变压器费、没有任何
-          租金计费行的合同(与那张卡同一次排除,不是这张表另起的判据)。中位数不论样本多寡都给
-          (板对自己最薄的两个期区也是这么处理);区间/百分比只在样本 &ge; {{ MIN_SAMPLE }} 份时给。
-        </AnaMethodNote>
       </div>
 
       <!-- T10:「同一招式，用在电费上会翻车」—— 反例卡:把「单位租金对标」同一招(p10~p90 一条带)
@@ -254,19 +218,13 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
           </table>
           <p v-if="elecRead" class="ana-read">{{ elecRead }}</p>
           <p v-if="elecRead" class="ana-ref">{{ elecRef }}</p>
-          <AnaMethodNote v-if="elecRead">
-            电费 = 附表10 基本电费+标准电费+维护电费(同「租户用能工作台」屏口径),全园区按户直接比,
-            不除以面积、不按厂房/办公分层——这正是本卡要示范的反例:同一招式(p10~p90 一条带)搬到
-            电费上,不先分层就是这个结果,带宽到盖住所有人,等于什么都没说。电费要先除以面积、或按
-            厂房/办公分层,才配有区间——这张卡不做那件事,只用来说明为什么不能不做。
-          </AnaMethodNote>
         </template>
         <AnaEmpty v-else label="附表10 未导入" hint="录入销售收入(附表10)后,此处按最新一期呈现电费分布宽度" />
       </div>
 
       <!-- T11:「这张图为什么可信 / 和预测图的区别」—— 对标带 vs 预测带对照表。「预测带月度数据不够、
            不敢标百分比」不是本卡新论证的结论,是驾驶舱「这条带过去准不准」卡(滚动起点回测,
-           CockpitView.vue)已经测过、写进它自己口径浮层的既有发现,这里只是拿来跟对标带对照,
+           CockpitView.vue)已经测过的既有发现,这里只是拿来跟对标带对照,
            不重新论证一遍——也不把到期屏的续签率带一起拉进来:那张带走的是历史租约抽样,不是
            月度时间序列回归,「需要多少历史/会不会过时」这两条维度上跟驾驶舱预测带不是同一回事,
            混进来比较会是本卡自己制造的一次误诊断。 -->
@@ -302,15 +260,6 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
         </table>
         <p class="ana-read">对标带今天能用，预测带月度数据不够</p>
         <p class="ana-ref">对标=本屏同类·预测=驾驶舱月度回归</p>
-        <AnaMethodNote>
-          「预测带月度数据不够、不敢标百分比」不是本卡新论证的结论,是驾驶舱「这条带过去准不准」卡
-          (滚动起点回测)已经测过、写进它自己口径浮层的既有发现——趋势在加速、残差还带正自相关,
-          所以那张卡只写「拟合区间」,不写「N% 可能落在此区间」。对标带不外推、不需要历史,每次进屏
-          都按当天在租数据重算;能不能给出区间只取决于同类样本够不够(样本 &lt; {{ MIN_SAMPLE }} 份
-          照样落空态,见「哪些期区能给区间」卡),不取决于历史长短。到期屏的续签率带没有拉进这张对照
-          表——它走的是历史租约抽样(90 份历史到期结果),不是月度时间序列回归,跟驾驶舱预测带不是
-          同一种模型,硬凑进「需要多少历史/会不会过时」这两行会是新的误诊断,不比。
-        </AnaMethodNote>
       </div>
       </template>
 

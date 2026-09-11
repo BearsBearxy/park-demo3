@@ -745,9 +745,16 @@ export function sensitivityFinalRent(lockedLast: number, expiringRentSum: number
   return lockedLast + rate * expiringRentSum
 }
 
-/** 够不够的判定:相对今天的百分比变化分四档,边界见 sensitivityRows.spec 逐条断言。 */
+/**
+ * 够不够的判定:相对今天的百分比变化分四档,边界见 sensitivityRows.spec 逐条断言。
+ *
+ * 最低那档原来叫「低于盈亏平衡」(稿上原话)。改掉了:这张表算的是续签率×到期租金的线性期望,
+ * 与「盈亏平衡与敏感性」屏那个由成本结构算出的真保本点没有任何数值关系,见过那一屏的人照
+ * 字面读会得出「园区要亏了」的结论。原来靠口径浮层声明「不是那一个」,浮层拆掉之后改成
+ * 根本不借这个词 —— 没有词就没有误读(门禁见 anaCopyLint.spec.ts)。
+ */
 function sensitivityVerdict(deltaPct: number): string {
-  if (deltaPct < -20) return '低于盈亏平衡'
+  if (deltaPct < -20) return '明显偏低'
   if (deltaPct < -5) return '勉强打平'
   if (deltaPct < 5) return '持平'
   return '有余量'

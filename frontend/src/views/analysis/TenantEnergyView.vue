@@ -19,7 +19,6 @@ import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
@@ -181,7 +180,7 @@ const trendOption = computed<object>(() => {
     series: [
       // C2:这里曾套一道「半宽/中位 > 20% 就不画带」的门。这条带的 lo=max(0, 均值−一个波动幅度),
       // 实测七个月的 mean−σ 全为负、lo 全被夹到 0,比值恒等于 1.000 —— 门一挂上就是一个月都不画。
-      // 带无条件画;下沿被 0 截断这件事由同卡口径浮层说明,读数句也因此闭嘴(见 bandReadout)。
+      // 带无条件画;下沿被 0 截断时读数句闭嘴(见 bandReadout)。
       ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
@@ -381,13 +380,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
             <AnaEChart :option="trendOption" :height="300" />
             <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
             <p class="ana-ref">{{ bandRefText }}</p>
-            <AnaMethodNote>
-              口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
-              s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
-              异常=该户本期用量偏离自身近12个月常态,超出正常波动的1.3倍。
-              家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
-              灰带=跨户波动范围(园区各户当月均值上下各一个常态波动幅度),样本量不足20户的月份不画带;断点=该月无记录。园区各户电费差距极大(实测各月波动幅度是均值的2.4~2.7倍),带的下沿被0截住 —— 那个0是坐标轴不是跨户下界,所以这种情况下本图跨户区间判断句整句不印(高于/落在/低于三支都不印,不是只藏「高于/低于」两支)。
-            </AnaMethodNote>
           </div>
           <div class="av2-card">
             <div class="av2-card-h">
@@ -408,7 +400,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
                 </div>
               </template>
               <div v-else class="te2-none" style="padding: 28px 0">该租户台账无应收/实收记录</div>
-              <AnaMethodNote>台账仅覆盖 {{ ledgerYms.length }} 期({{ ledgerYms.join(' / ') }});收缴率=Σ实收/Σ应收,实收含补缴上期结余,可超 100%。</AnaMethodNote>
             </template>
             <AnaEmpty v-else label="月度台账未录入" hint="录入台账后此处对照该租户应收与实收" to="/ledger" toText="去录入台账" />
           </div>
@@ -435,7 +426,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>
           </div>
-          <AnaMethodNote>仅显示与主数据同名匹配到月租金的 {{ scatterRows.length }} 户(共 {{ rowsCur.length }} 户)。</AnaMethodNote>
         </div>
       </div>
     </div>

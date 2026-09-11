@@ -13,7 +13,6 @@ import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { PHASES } from '@/views/sales-income/layout'
 import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
@@ -275,7 +274,6 @@ const listRows = computed(() => {
     </div>
 
     <div v-else class="ak-page">
-      <AnaMethodNote>主数据(租户/合同)为当前快照口径,不随顶部期间切换;月租金=各户生效合同月租之和。</AnaMethodNote>
 
       <div class="av2-grid">
         <!-- 主图:月租帕累托(柱+累计%线双轴) -->
@@ -300,7 +298,6 @@ const listRows = computed(() => {
             </button>
           </div>
           <!-- 链接连着前面那个分号一起收:只摘走 RouterLink 会剩「…改按期区呈现;。」这种断句 -->
-          <AnaMethodNote>租户类目均未维护(全部「未分类」),改按期区呈现<template v-if="canReach('/tenants', auth.navLayers, auth.can('system:view'))">;<RouterLink class="tp-link" to="/tenants">去租户管理补录类目</RouterLink></template>。</AnaMethodNote>
         </div>
 
         <!-- 租金分布散点带(对数轴,按期区;点=每份合同) -->

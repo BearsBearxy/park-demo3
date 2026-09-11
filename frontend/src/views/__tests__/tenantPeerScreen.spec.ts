@@ -74,10 +74,8 @@ vi.mock('@/analysis/anaData', () => ({
   fetchContracts: vi.fn(async () => CONTRACTS),
   fetchTenants: vi.fn(async () => TENANTS),
   fetchBuildings: vi.fn(async () => BUILDINGS),
-  // F2(对抗复查):期区一(PHASE1,id 1001..1025)混合物业类型——1021..1025 这 5 份是办公,
-  // 其余(含期区二/单独查头部的那份)一律厂房。用来验证口径浮层不得声称"全部是厂房"
-  // (那正是 F2 坐实的缺陷:那句话验的是期区二,渲染在默认打开的期区一)。1001(租户01)
-  // 仍是厂房,不影响既有的"头部物业类型"断言。
+  // 期区一(PHASE1,id 1001..1025)混合物业类型——1021..1025 这 5 份是办公,其余一律厂房。
+  // 1001(租户01)是厂房,头部「物业类型」那条断言读的就是它。
   fetchContractDetail: vi.fn(async (id: number) => {
     const pt = id >= 1021 && id <= 1025 ? 'office' : 'factory'
     const feeKey = pt === 'office' ? 'rent_office' : 'rent_factory'
@@ -115,30 +113,6 @@ describe('TenantPeerView · 单位租金对标挂载测', () => {
     expect(text).toContain('期区一')
     expect(text).toContain('厂房')       // fetchContractDetail 桩返回 property_type=factory
     expect(text).toMatch(/100\s*㎡/)
-  })
-
-  // F2(对抗复查,缺的断言):给 fetchContractDetail 桩喂一批混合物业类型(见文件头 mock 注释),
-  // 断言「单位租金对标」卡的口径浮层不得声称同类只有单一物业类型——这是改前的真实缺陷:
-  // 浮层写死"全部是厂房",实际渲染的这批同类(期区一)是厂房/办公混合。
-  it('❗F2:同类物业类型混合(期区一含办公)时,口径浮层不得声称"全部是厂房",须逐类点出份数', async () => {
-    const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
-    await flushPromises()
-    await flushPromises()
-    await selectTenant(w, '租户01')
-    await flushPromises()   // propTypeCache 要等 25 份 fetchContractDetail 的 Promise.all 全部落地
-    await flushPromises()
-    const card = w.findAll('.av2-card').find((c) => c.text().includes('单位租金对标'))
-    expect(card, '找不到「单位租金对标」卡').toBeTruthy()
-    // 口径浮层默认收起(AnaMethodNote 的 v-if="open"),不打开就看不见 slot 内容——
-    // 同 expiryScreen.spec.ts 的既有写法,打开浮层让门禁真的看一眼里面印了什么。
-    const pill = card!.find('.ana-note-pill')
-    expect(pill.exists(), '「单位租金对标」卡里没找到口径浮层的触发按钮').toBe(true)
-    await pill.trigger('click')
-    await flushPromises()
-    const noteText = card!.text()
-    expect(noteText).not.toContain('全部是厂房')   // 核心断言:改前的假话
-    expect(noteText).toContain('厂房20份')
-    expect(noteText).toContain('办公室5份')
   })
 
   it('❗卡内:直方图桩 + 读数句(闭嘴条件:below<50→"低于"分支,人数=严格大于占比)+ 参照系小字含样本量', async () => {

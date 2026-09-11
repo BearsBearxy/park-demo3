@@ -9,7 +9,6 @@ import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -76,7 +75,7 @@ const priorityRead = computed(() => priorityReadout(rentRoll.value.expiringList,
 const priorityRef = computed(() => priorityRefText(rentRoll.value.expiringList, rentRoll.value.expiringRentSum))
 
 // ── T7(design-boards):「续签率从哪来」—— 区间是续签率本身的历史不确定性(只抽 p),
-// 与「合约租金带」卡的金额区间(抽 p 之后还要抽哪几户续签)是两件事,口径浮层里分开说。
+// 与「合约租金带」卡的金额区间(抽 p 之后还要抽哪几户续签)是两件事。
 const renewalRateRead = computed(() => renewalRateReadout(rentRoll.value.renewalHits, rentRoll.value.renewalN))
 
 // ── T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(0/历史/40%/60%)下,
@@ -128,7 +127,7 @@ function onParetoClick(p: unknown) {
         <AnaKpiTile label="历史续签率" :value="(rentRoll.renewalP * 100).toFixed(1) + '%'"
           :note="rentRoll.renewalN + ' 份已到期中 ' + rentRoll.renewalHits + ' 份续签'" />
         <!-- T4 ruling:这里印 80% ——是模拟分布本身的 10~90 分位宽度,不是回测校准声明(驾驶舱那条
-             禁的是后者)。差异与理由写在下方「合约租金带」卡的口径浮层里。 -->
+             禁的是后者)。 -->
         <AnaKpiTile :label="rentRollLast.month + ' 预计'" :value="'¥' + wan(rentRollLast.locked + rentRollLast.renewalMid) + '万/月'"
           :note="'80% 在 ' + wan(rentRollLast.locked + rentRollLast.renewalLo) + '~' + wan(rentRollLast.locked + rentRollLast.renewalHi) + ' 万'" />
         <AnaKpiTile label="最近的缺口" :value="rentRoll.gap ? rentRoll.gap.monthsAway + ' 月' : '—'"
@@ -180,28 +179,10 @@ function onParetoClick(p: unknown) {
              按不同条件决定露不露出,那样会撕裂 D1 的「同屏」前提。 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
-            <span class="hint">锁定实线 + 续签区间 · 不含新招租{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
+            <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
           <AnaEChart v-if="rentRollText" :option="rentRollOpt" :height="260" />
           <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
           <p class="ana-ref">{{ rentRollRef }}</p>
-          <!-- I5(对抗复查):本分支唯一一条模拟带,原来是唯一一张没有自己口径浮层的带卡。
-               三件必须说清楚的事:阴影是什么、谁不在图里、以及最要紧的「它是下界不是预测」。
-               F2(修复轮1,design-boards 对抗复查):下面这段浮层允许出现「80%」——它是模拟分布的
-               分位数,不是回测校准声明(卡头两道文案门禁禁的是后者)。这条例外**不是**靠"门禁扫不到
-               收起态的浮层"才成立——扫描已经改成会先点开浮层再看(expiryScreen.spec.ts F2),
-               这个数在断言里是被要求出现的,不是漏网之鱼。真正不许出现 % 的是本卡直接可见的
-               读数句(.ana-read/.ana-ref)。 -->
-          <AnaMethodNote>
-            「已实现」= 预测起点(今天)那一个点,已经是事实,不是模拟;「已锁定」= 已签约覆盖到该月的
-            合同月租向后延伸的同一条线(免租期整月落在区间内的不计)。「预计」= 在「已锁定」之上加历史
-            续签率模拟一万次后的中位数;阴影(80% 区间)= 续签部分落在 10~90 分位的范围,不是校准过的
-            命中率——它来自「哪几户会续签」这层真实的随机性,不是凭空编出来的一个数。
-            历史续签率按「租约」算、不按合同行算:同一份租约被拆成几个价格档的(合同屏标「递增」徽标),
-            只算一次到期,换档不算一次续签;整租合同不进这张图(存在时卡头标注)。
-            图上红色标注是最近一次到期扎堆造成的锁定线缺口,已把拉低它的合同标出。
-            ⚠ 这条带结构上不含新招租 —— 今天空着的单元将来租出去的租金不在任何一次模拟里。
-            所以它是未来租金的下界,不是租金预测:实际租金只会等于或高于它。
-          </AnaMethodNote>
         </div>
 
         <!-- T6(design-boards):「先谈哪几户」—— 既有「临期90天」卡改造:population 从 90 天窗口
@@ -224,10 +205,6 @@ function onParetoClick(p: unknown) {
           </div>
           <p v-if="priorityRead" class="ana-read">{{ priorityRead }}</p>
           <p v-if="priorityRead" class="ana-ref">{{ priorityRef }}</p>
-          <AnaMethodNote v-if="priorityRead">
-            按月租金降序,不按到期日;统计范围与「未来12月到期」瓦、「合约租金带」卡的续签抽样池
-            同一批合同(不含新招租),不另起一套过滤 —— 三处对不上账在这个项目上出过两次。
-          </AnaMethodNote>
         </div>
 
         <!-- T7(design-boards):「续签率从哪来」—— 历史到期结果统计 + 续签率本身的区间(只抽 p,
@@ -241,11 +218,6 @@ function onParetoClick(p: unknown) {
           </div>
           <p v-if="renewalRateRead" class="ana-read">{{ renewalRateRead }}</p>
           <p v-if="renewalRateRead" class="ana-ref">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</p>
-          <AnaMethodNote v-if="renewalRateRead">
-            历史续签率按「租约」算(同一份租约拆成几个价格档只算一次到期,换档不算续签),与上方
-            「历史续签率」瓦、「合约租金带」卡同一口径。这里的区间是续签率这个比例本身的历史不确定性
-            (只抽这一件事),不是续签金额的宽度——金额的不确定性见「合约租金带」卡。
-          </AnaMethodNote>
         </div>
 
         <!-- T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(不抽 p)下的期望值表,
@@ -269,14 +241,6 @@ function onParetoClick(p: unknown) {
           <p v-if="sensitivityRead" class="ana-read">{{ sensitivityRead }}</p>
           <p v-if="sensitivityGapRead" class="ana-read">{{ sensitivityGapRead }}</p>
           <p v-if="sensitivityRead" class="ana-ref">与上方合约租金带同一份锁定线</p>
-          <AnaMethodNote v-if="sensitivityRead">
-            四档续签率下的月租都是「哪几户续签」随机性的期望值(线性可加,闭式解,不用蒙特卡洛);
-            历史档用的是上方「历史续签率」瓦同一个数。够不够的判定:相对今天
-            变化低于 −20% 记为低于盈亏平衡、−20%~−5% 记为勉强打平、−5%~5% 记为持平、5% 以上记为有余量。
-            F2(修复轮1):这里的「低于盈亏平衡」不是「盈亏平衡与敏感性」屏用成本结构算出的那个
-            保本点(那个由固定成本与边际贡献率决定,与租金续签无关)——同一个词,这里只是续签后
-            月租比今天低超过 20% 的档位名,数值上两者没有关系。
-          </AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s8">
@@ -335,15 +299,6 @@ function onParetoClick(p: unknown) {
               </tbody>
             </table>
           </div>
-          <!-- I5(对抗复查):这段原来写着「续约概率/预测留存需历史续约数据,暂不展示(不画假图)」,
-               而本分支已经在下面两张卡之外画上了一条按历史续签率模拟的租金带 —— 浮层与屏上自相矛盾。
-               改成指路:续签不确定性在「合约租金带」那张卡上,口径写在那张卡自己的浮层里。 -->
-          <AnaMethodNote v-if="wall.totalCount > 0">到期墙口径:按合同止日逐季聚合,仅计生效/临期合同(止日早于今天的不进墙);
-            到期墙本身只排期不预测(止日在库里,不是随机量)。续签会不会发生带来的金额不确定性,见上方「合约租金带」卡及其口径说明。
-            零租金合同 {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
-          <AnaMethodNote v-else>原型「到期墙/续约概率/预测留存」依赖合同起止日期与流失健康分,当前 {{ stats.dateMissing }} 份合同日期均未录入,
-            已降级为租金结构视图,补录后自动恢复;rent_area 字段当前全为 0,面积分布暂不展示(不画假图)。零租金合同
-            {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
         </div>
       </div>
     </div>

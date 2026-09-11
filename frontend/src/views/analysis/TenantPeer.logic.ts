@@ -211,29 +211,7 @@ export function dominantPropertyType(lines: BillingLineDTO[]): PropertyType | nu
 // 那句话矢口否认的"两拨价格")。根子是"验证一个总体的说法,却验的是另一个总体"——
 // 修法不是再测一遍期区一重新写死,而是让这句话由「当前渲染中的那批 population」驱动:
 // 谁在渲染谁负责举证,换期区、换数据,这句话跟着重算,不会再对不上。
-export interface PropertyTypeCount { type: PropertyType; count: number }
 
-/** 统计一批物业类型的分布,按份数降序(同数按类型名排序,输出稳定)。null(未知类型)不计入。 */
-export function propertyTypeBreakdown(types: readonly (PropertyType | null)[]): PropertyTypeCount[] {
-  const m = new Map<PropertyType, number>()
-  for (const t of types) if (t) m.set(t, (m.get(t) ?? 0) + 1)
-  return [...m.entries()]
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
-}
-
-/** 口径浮层那句话本身(F2):单一类型时维持原有措辞;>1 类时不许再说"没有第二类物业类型",
- *  按实测分布逐类点出份数,并把"不能排除类型驱动的价格分层"这句话说清楚——breakdown 传空数组
- *  (population 为空,理论上不会走到,上游有 v-if 守卫)时按"未知"兜底,不瞎编一个"全部是"。 */
-export function peerPropertyTypeNote(breakdown: PropertyTypeCount[]): string {
-  if (breakdown.length <= 1) {
-    const only = breakdown[0] ? PROPERTY_TYPE_LABEL[breakdown[0].type] : '未知'
-    return `按期区分组、不按物业类型再拆:这批同类解析出的物业类型全部是${only},不存在"类型混杂拖累这张图"这个问题。`
-  }
-  const parts = breakdown.map((b) => `${PROPERTY_TYPE_LABEL[b.type]}${b.count}份`).join('、')
-  return `这批同类的物业类型并非单一(${parts}):不能排除按物业类型分层带来的价格分层,`
-    + `本卡仍按期区分组、不按物业类型再拆,读这张图时留意这一点。`
-}
 
 // ── T10「哪些期区能给区间」──────────────────────────────────────────────
 export interface PhaseTableRow { phase: number; n: number; median: number | null; p10: number | null; p90: number | null }
