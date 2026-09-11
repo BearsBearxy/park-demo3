@@ -1,7 +1,11 @@
 // expiry.logic 纯函数单测(v2 抽出;统计口径=v1,Pareto 累计占比对全量合计)
 import { describe, expect, it } from 'vitest'
 import type { ContractDTO } from '@/types/contract'
-import { buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, concentrationOption, paretoOption, wallOption } from './expiry.logic'
+import {
+  buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
+  concentrationOption, lockedRentByMonth, paretoOption, renewalVariance,
+  rentRollRefText, rentRollSentence, wallOption,
+} from './expiry.logic'
 
 let seq = 0
 function ct(p: Partial<ContractDTO>): ContractDTO {
@@ -145,5 +149,131 @@ describe('wallOption', () => {
     expect(opt.xAxis.data).toHaveLength(8)
     expect(opt.series[0].data[0]).toBe(2.5)   // 25000 元 → 2.5 万
     expect(opt.tooltip.formatter([{ name: '2026Q3', value: 2.5, dataIndex: 0 }])).toBe('2026Q3<br/>¥2.5万 · 1 份合同')
+  })
+})
+
+describe('合约租金带(FORECAST §1.1)', () => {
+  // a1 在 2025-12 在租、2026-09 已到期(保证两个锚点算出不同的锁定线);a2 历史续签命中;
+  // a3 历史未续签(active 但早已到期、无后续合同);a4 全程覆盖两个视界,不进抽样池。
+  const a1 = ct({ unitId: 1, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-01-31' })
+  const a2 = ct({ unitId: 2, monthlyRent: 2000, startDate: '2023-01-01', endDate: '2025-06-30', status: 'renewed' })
+  const a3 = ct({ unitId: 3, monthlyRent: 1500, startDate: '2023-01-01', endDate: '2025-08-31' })
+  const a4 = ct({ unitId: 4, monthlyRent: 3000, startDate: '2025-01-01', endDate: '2099-12-31' })
+  const CONTRACTS = [a1, a2, a3, a4]
+
+  it('❗锚点必须显式传入 —— 用真实时钟会算出完全不同的带', () => {
+    const a = buildRentRoll(CONTRACTS, '2025-12-01', 12)
+    const b = buildRentRoll(CONTRACTS, '2026-09-10', 12)
+    expect(a.locked).not.toEqual(b.locked)
+  })
+
+  it('❗锁定部分零随机量 —— 画实线,不许套带', () => {
+    const r = buildRentRoll(CONTRACTS, '2025-12-01', 12)
+    expect(r.lockedBand).toBeUndefined()
+  })
+
+  it('❗续签方差两项分开算:逐户金额平方和 + p 本身不准', () => {
+    const v = renewalVariance([100, 100, 100], 0.2, 90)
+    // 第一项 p(1−p)Σr² = .16 × 30000 = 4800;第二项 Var(p̂)(Σr)² = .001778 × 90000 = 160
+    expect(v.byWhichTenants).toBeCloseTo(4800, 0)
+    expect(v.byRateUncertainty).toBeCloseTo(160, 0)
+  })
+
+  it('❗只用 Wilson 会把带画到三分之一宽 —— 这条断言就是「不能只用 Wilson」的可执行形式', () => {
+    const v = renewalVariance([100, 100, 100], 0.2, 90)
+    const wilsonOnly = Math.sqrt(v.byRateUncertainty)
+    const full = Math.sqrt(v.byWhichTenants + v.byRateUncertainty)
+    expect(wilsonOnly / full).toBeLessThan(0.4)
+  })
+
+  it('该月整月落在免租区间内 → 不计;区间只盖月中一部分则仍计全额(brief 字面条件,不按天折算)', () => {
+    const withFree = ct({ unitId: 10, monthlyRent: 1000, startDate: '2025-01-01', endDate: '2026-01-31', rentFree: [{ start: '2025-06-01', end: '2025-06-30' }] })
+    const locked = lockedRentByMonth([withFree], '2025-06-01', 2)   // month0=2025-06(整月免租) / month1=2025-07
+    expect(locked[0]).toBe(0)
+    expect(locked[1]).toBe(1000)
+    const partialFree = ct({ unitId: 11, monthlyRent: 1000, startDate: '2025-01-01', endDate: '2026-01-31', rentFree: [{ start: '2025-06-01', end: '2025-06-15' }] })
+    expect(lockedRentByMonth([partialFree], '2025-06-01', 1)[0]).toBe(1000)
+  })
+
+  it('同一单元同月多于一份合同(实测园区 2 例):只计 startDate 最新的一份,不许双计', () => {
+    const older = ct({ unitId: 9, monthlyRent: 800, startDate: '2024-01-01', endDate: '2026-02-28' })
+    const newer = ct({ unitId: 9, monthlyRent: 900, startDate: '2026-01-01', endDate: '2027-01-31' })
+    expect(lockedRentByMonth([older, newer], '2026-01-01', 1)[0]).toBe(900)   // 不是 1700
+  })
+
+  it('整租(kind=master_lease)不进 locked,单列在 months[].masterLease', () => {
+    const master = ct({ unitId: 20, monthlyRent: 5000, startDate: '2020-01-01', endDate: '2099-01-01', kind: 'master_lease' })
+    const r = buildRentRoll([master], '2026-01-01', 1)
+    expect(r.locked[0]).toBe(0)
+    expect(r.months[0].masterLease).toBe(5000)
+  })
+
+  it('历史回测分母/命中由 asOf 现算(不是写死的 18/90):状态标记与续签链两种命中路径都算,草稿/整租/未到期都不进分母', () => {
+    const byFlag = ct({ endDate: '2025-01-01', status: 'renewed' })              // 命中①:状态标记
+    const parent = ct({ endDate: '2025-02-01', status: 'active' })              // 命中②:续签链(状态未同步)
+    const child = ct({ startDate: '2025-02-02', parentContractId: parent.id })  // parent 的后续合同
+    const miss = ct({ endDate: '2025-03-01', status: 'active' })                // 未续签
+    const draft = ct({ endDate: '2025-01-05', status: 'draft' })                // 草稿,不算"已知结果"
+    const master = ct({ endDate: '2025-01-05', status: 'active', kind: 'master_lease' })   // 整租,不进分母
+    const future = ct({ endDate: '2099-01-01', status: 'active' })              // 还没到期,不进分母
+    const r = buildRentRoll([byFlag, parent, child, miss, draft, master, future], '2026-01-01', 1)
+    expect(r.renewalN).toBe(3)      // byFlag / parent / miss
+    expect(r.renewalHits).toBe(2)   // byFlag / parent
+    expect(r.renewalP).toBeCloseTo(2 / 3, 5)
+  })
+
+  it('续签区间确定性可重放(种子固定,不是 Math.random —— 同一份数据两次调用逐字节相同)', () => {
+    // 池子刻意做大做杂(10 份、各不相同的月租、分摊在 6 个月各自到期):
+    // 只用 1~2 份合同时,10~90 分位落在"非0即整份租金"两档,换成 Math.random 也大概率巧合撞上同一档,
+    // 测不出问题 —— 这是本次实现时踩过的坑,数量/金额都要够杂,分位数才会对随机源敏感。
+    const decided = [...Array(10)].map((_, i) => ct({ endDate: '2025-01-01', status: i < 5 ? 'renewed' : 'active' }))
+    const pool = [...Array(10)].map((_, i) => ct({ endDate: `2026-0${(i % 6) + 1}-15`, monthlyRent: (i + 1) * 137, unitId: 100 + i }))
+    const cs = [...decided, ...pool]
+    const r1 = buildRentRoll(cs, '2026-01-01', 6)
+    const r2 = buildRentRoll(cs, '2026-01-01', 6)
+    expect(r1.months.map((m) => m.renewalLo)).toEqual(r2.months.map((m) => m.renewalLo))
+    expect(r1.months.map((m) => m.renewalHi)).toEqual(r2.months.map((m) => m.renewalHi))
+  })
+
+  it('抽样池为空(所有合同全程覆盖视界或已决出)→ 续签区间恒为 0,不是凭空给宽度', () => {
+    const alwaysLocked = ct({ startDate: '2020-01-01', endDate: '2099-01-01', status: 'active' })
+    const r = buildRentRoll([alwaysLocked], '2026-01-01', 6)
+    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalHi === 0)).toBe(true)
+  })
+
+  it('抽样池非空时上下界不重合(真的在抽样,不是常数占位)', () => {
+    const cs = [
+      ct({ endDate: '2025-06-01', status: 'renewed' }),
+      ct({ endDate: '2025-07-01', status: 'active' }),
+      ct({ endDate: '2026-03-01', status: 'active', monthlyRent: 5000, unitId: 20 }),
+    ]
+    const r = buildRentRoll(cs, '2026-01-01', 6)
+    expect(r.renewalN).toBe(2)
+    const last = r.months[r.months.length - 1]
+    expect(last.renewalHi).toBeGreaterThan(0)
+    expect(last.renewalHi).toBeGreaterThanOrEqual(last.renewalLo)
+  })
+})
+
+describe('rentRollSentence / rentRollRefText(D1 可执行形式:样本量与命中数同屏)', () => {
+  it('回测样本 < 5 → 闭嘴(sFreq 自带的 D1 对称规矩)', () => {
+    const cs = [ct({ endDate: '2025-01-01', status: 'renewed' })]
+    const r = buildRentRoll(cs, '2026-01-01', 3)
+    expect(rentRollSentence(r)).toBeNull()
+  })
+
+  it('回测样本 ≥ 5 → 出句,含样本量与命中数,不写百分比,≤30 可见字', () => {
+    const cs = [...Array(5)].map((_, i) => ct({ endDate: '2025-01-01', status: i < 2 ? 'renewed' : 'active' }))
+    const r = buildRentRoll(cs, '2026-01-01', 3)
+    const s = rentRollSentence(r)
+    expect(s).not.toBeNull()
+    expect(s).toContain(`过去 ${r.renewalN} 次中 ${r.renewalHits} 次`)
+    expect(s).not.toMatch(/%/)
+    expect([...(s as string)].length).toBeLessThanOrEqual(30)
+  })
+
+  it('rentRollRefText:口径 + 单位 + 回测分母', () => {
+    const r = buildRentRoll([], '2026-01-01', 1)
+    expect(rentRollRefText(r)).toBe('月度口径 · 万元 · 回测样本0份')
   })
 })

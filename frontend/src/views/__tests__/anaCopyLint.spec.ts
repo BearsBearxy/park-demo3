@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
 import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
+import { rentRollRefText, rentRollSentence, type RentRoll } from '../analysis/expiry.logic'
 
 /**
  * 分析层文案门禁(FORECAST-BAND-AND-PLAIN-SENTENCE §3.4)。
@@ -140,12 +141,19 @@ describe('分析层文案门禁', () => {
   // (`<p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>`),
   // 渲染结果字符对字符等于这两个纯函数的返回值 —— 直接量函数输出就是量渲染结果,不必为此单开挂载测。
   it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字,且不含禁词(F9:门禁扫不到 .logic.ts,直接量函数输出)', () => {
+    // Task 7:合约租金带的读数句(rentRollSentence)同样是 .logic.ts 抽出的纯函数,
+    // 模板里只剩 `{{ rentRollText }}`,同一处盲区,补同一手治法。
+    const rollA: RentRoll = {
+      months: [{ month: '2026-09', locked: 2320000, masterLease: 0, renewalLo: 100000, renewalHi: 300000 }],
+      locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+    }
     const cases: (string | null)[] = [
       // 只传 p25/p75:elecReadout 不吃样本量(样本量走 elecBandRef)。多传一个 n 会触发
       // TS 的多余属性检查 —— 真实调用点传的是变量不是字面量,所以只有这里会红。
       elecReadout(500000, { p25: 123456, p75: 987654 }),
       bandReadout(500000, 123456, 987654, '电费'),
       bandReadout(500000, 123456, 987654, '水费'),
+      rentRollSentence(rollA),
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -158,11 +166,15 @@ describe('分析层文案门禁', () => {
   // 不是巧合)。F3 把 elecBandRef/bandRefText 抽成纯函数后,`<p class="ana-ref">{{ ... }}</p>`
   // 同样除插值外没有第二个字符,量函数输出即量渲染结果 —— 用上面同一手法补上。
   it('❗参照系小字渲染结果也要 ≤28 可见字,且不含禁词(F4:.ana-ref 补上跟 .ana-read 一样的门禁;F9:同一处补禁词断言)', () => {
+    const rollB: RentRoll = {
+      months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+    }
     const cases: string[] = [
       elecBandRef(251),
       elecBandRef(null),
       bandRefText(251),
       bandRefText(null),
+      rentRollRefText(rollB),
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)

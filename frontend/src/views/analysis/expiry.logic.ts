@@ -2,6 +2,8 @@
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
 import { quantile } from '@/components/ana/anaFmt'
+import { sFreq } from '@/components/ana/anaSentence'
+import { bandSeries } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 
 export interface ExpiryStats {
@@ -175,4 +177,294 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
       ],
     }],
   }
+}
+
+/* ---------- 合约租金带(Task 7,FORECAST-BAND-AND-PLAIN-SENTENCE §1.1) ----------
+ * 锁定线(实线,零随机量)= 已签约、日期覆盖到该月月末的合同。
+ * 续签带(蒙特卡洛)= 到期日落在预测视界内的合同,是否续签建模成两层随机性:
+ *   ① 哪几户续签 —— 每户各自一枚 Bernoulli(p);
+ *   ② p 本身不准 —— p 取自历史回测的 Jeffreys 后验 Beta(hits+0.5, n−hits+0.5)。
+ * 与 renewalVariance 的两项方差一一对应,只是这里不假设正态,直接对蒙特卡洛的和取经验分位
+ * (稿内数反解 (Σr)²/Σr² ≈ 14.6,85 份到期在金额上等效约 15 份等额赌注,总额是块状多峰分布,
+ * 正态的名义 80% 在这个规模下不成立,所以不能从方差反解 ±1.2816σ)。
+ *
+ * ⚠ 决定权衡与假设,供复核:
+ *  · status ∈ {active, renewed}(不含稿里的 expiring)—— 实测(2026-09-11)contract.status
+ *    只出现这两个值,expiring 从未出现;若真出现过,它在这套「派生桶」语义下是 active 的一个
+ *    子状态(展示态细分),仍会被 active 这一支收进来,不会漏记。收进 renewed 是因为它代表
+ *    真实仍在租的续签合同(实测 9 份 renewed 的 endDate ≥ 今天,其中 1 份当月仍在收租)——
+ *    漏掉它们会把「锁定」系统性做小,而这条线存在的意义就是「真正锁定了多少」。
+ *  · 同一单元同月多于一份合同(实测 2 例):dedupByUnit 只留 startDate 最新的一份,理由见其注释。
+ *  · 历史回测分母/命中不是写死的 18/90 —— 由 asOf 现算(下面 decided/renewalHits),18.5/72.5
+ *    只是 asOf=2025-12-01 那一次现算的结果,换 asOf 会跟着变(全局约束①要求的锚点显式传入)。
+ */
+
+const MC_SEED = 20260910   // 固定种子(锚定稿基准日),任何人重跑都拿到逐字节相同的带
+const MC_DRAWS = 10000
+const MC_LO_Q = 0.10
+const MC_HI_Q = 0.90
+
+function dateKeyOf(s: string | null): number | null {
+  if (!s) return null
+  const p = ymd(s)
+  return p ? p[0] * 10000 + p[1] * 100 + p[2] : null
+}
+
+/** asOf 起第 i 个自然月的起止日期键与 'YYYY-MM' 标签(本地 Date 构造做月份进位,不解析 ISO 字符串)。 */
+function monthBounds(asOf: string, i: number): { startKey: number; endKey: number; label: string } {
+  const [ay, am] = asOf.split('-').map(Number)
+  const total = am - 1 + i
+  const y = ay + Math.floor(total / 12)
+  const m = (total % 12) + 1
+  const start = new Date(y, m - 1, 1)
+  const end = new Date(y, m, 0)   // 下月第0天 = 本月最后一天
+  const key = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+  return { startKey: key(start), endKey: key(end), label: `${y}-${String(m).padStart(2, '0')}` }
+}
+
+/** 该月是否整月落在某段免租区间内(区间须覆盖 [monthStart,monthEnd] 两端,不是"月内含免租日")。 */
+function monthFullyRentFree(c: ContractDTO, startKey: number, endKey: number): boolean {
+  if (!c.rentFree?.length) return false
+  return c.rentFree.some((p) => {
+    const s = dateKeyOf(p.start), e = dateKeyOf(p.end)
+    return s != null && e != null && s <= startKey && e >= endKey
+  })
+}
+
+/**
+ * 同一单元同月多于一份合同时只计一次(实测:园区 2 例,naive 求和会双记)。
+ * 规则:取 startDate 最新的一份(startDate 相同再比 id)——最近签的那份代表该单元此刻的真实
+ * 条款,更早一份多半是续签过渡期数据录入留下的重叠尾巴。无 unitId 的合同没有分组键,原样保留。
+ */
+function dedupByUnit(cs: ContractDTO[]): ContractDTO[] {
+  const byUnit = new Map<number, ContractDTO>()
+  const rest: ContractDTO[] = []
+  for (const c of cs) {
+    if (c.unitId == null) { rest.push(c); continue }
+    const cur = byUnit.get(c.unitId)
+    if (!cur || (c.startDate ?? '') > (cur.startDate ?? '') || ((c.startDate ?? '') === (cur.startDate ?? '') && c.id > cur.id)) {
+      byUnit.set(c.unitId, c)
+    }
+  }
+  return [...rest, ...byUnit.values()]
+}
+
+function coveringMonth(cs: ContractDTO[], startKey: number, endKey: number, wantMaster: boolean): ContractDTO[] {
+  return cs.filter((c) => {
+    if ((c.kind === 'master_lease') !== wantMaster) return false
+    if (!wantMaster && c.status !== 'active' && c.status !== 'renewed') return false
+    const ek = dateKeyOf(c.endDate), sk = dateKeyOf(c.startDate)
+    if (ek == null || sk == null) return false
+    if (ek < endKey || sk > endKey) return false
+    return !monthFullyRentFree(c, startKey, endKey)
+  })
+}
+
+/**
+ * 锁定月租(brief §Step3 lockedRentByMonth):第 i 月 Σ monthlyRent。条件:status ∈ {active,renewed}、
+ * 非整租、endDate ≥ 该月月末、startDate ≤ 该月月末,且该月不整月落在免租区间内;同单元同月去重。
+ * asOf 必须显式传入(全局约束①):同一份合同数据在不同锚点下会算出不同的锁定线,已写成断言。
+ */
+export function lockedRentByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
+  return [...Array(n)].map((_, i) => {
+    const { startKey, endKey } = monthBounds(asOf, i)
+    return dedupByUnit(coveringMonth(cs, startKey, endKey, false)).reduce((s, c) => s + c.monthlyRent, 0)
+  })
+}
+
+/** 整租合同月租(kind==='master_lease',单列不进 locked/KPI,理由见文件顶部锚点注释)。 */
+function masterLeaseByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
+  return [...Array(n)].map((_, i) => {
+    const { startKey, endKey } = monthBounds(asOf, i)
+    return coveringMonth(cs, startKey, endKey, true).reduce((s, c) => s + c.monthlyRent, 0)
+  })
+}
+
+export interface RenewalVariance { byWhichTenants: number; byRateUncertainty: number }
+
+/**
+ * 续签方差两项分开算(FORECAST §1.1):R = Σ r_i·X_i,X_i~Bernoulli(p)。
+ * byWhichTenants = p(1−p)Σr²(哪几户续签的随机性,个体层面,独立可加);
+ * byRateUncertainty = Var(p̂)(Σr)²(p 本身的估计误差,整体共享同一个 p,不随户数分摊)。
+ * 只用 Wilson(p 的置信区间)只给出后一项 —— 这正是「不能只用 Wilson」的算术含义。
+ */
+export function renewalVariance(rents: number[], p: number, n: number): RenewalVariance {
+  const sumR = rents.reduce((s, r) => s + r, 0)
+  const sumR2 = rents.reduce((s, r) => s + r * r, 0)
+  const byWhichTenants = p * (1 - p) * sumR2
+  const varP = (p * (1 - p)) / n
+  const byRateUncertainty = varP * sumR * sumR
+  return { byWhichTenants, byRateUncertainty }
+}
+
+/** mulberry32:32 位状态确定性 PRNG(公有算法),种子固定 → 结果逐字节可重放,零依赖。 */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** 标准正态(Box-Muller),供 Marsaglia-Tsang 的 Gamma 采样使用。 */
+function gaussian(rng: () => number): number {
+  const u1 = Math.max(rng(), 1e-12)
+  const u2 = rng()
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+}
+
+/**
+ * Gamma(shape,1) 采样(Marsaglia & Tsang 2000,拒绝采样,真实分布不是正态近似)。
+ * 方法本身要求 shape≥1;本任务两个形状参数是否满足取决于 n/hits(Jeffreys 后验 hits+0.5、
+ * n−hits+0.5),n 很小时后者可能 <1,故补 boost 技巧:采 Gamma(shape+1) 再乘 U^(1/shape)
+ * 无偏变回 Gamma(shape)(标准补丁,同一篇论文 §1)。已用 200000 次抽样核对 Beta(0.5,0.5) 与
+ * Beta(18.5,72.5) 的经验均值/方差对理论值,吻合(见 task-7-report.md)。
+ */
+function sampleGamma(shape: number, rng: () => number): number {
+  if (shape < 1) {
+    const g = sampleGamma(shape + 1, rng)
+    return g * Math.pow(rng(), 1 / shape)
+  }
+  const d = shape - 1 / 3
+  const c = 1 / Math.sqrt(9 * d)
+  for (;;) {
+    let x: number, v: number
+    do {
+      x = gaussian(rng)
+      v = 1 + c * x
+    } while (v <= 0)
+    v = v * v * v
+    const u = rng()
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v
+  }
+}
+
+/** Beta(a,b) = Ga/(Ga+Gb),Ga~Gamma(a,1)、Gb~Gamma(b,1) 独立 —— 真 Beta 分布,不是正态换标签。 */
+function sampleBeta(a: number, b: number, rng: () => number): number {
+  const x = sampleGamma(a, rng)
+  const y = sampleGamma(b, rng)
+  return x / (x + y)
+}
+
+export interface RentRollMonth {
+  month: string          // 'YYYY-MM'
+  locked: number         // 锁定月租(元)
+  masterLease: number    // 整租合同月租(元,单列,不进 locked)
+  renewalLo: number      // 续签贡献 10 分位(元,蒙特卡洛,不含 locked)
+  renewalHi: number      // 续签贡献 90 分位(元,蒙特卡洛,不含 locked)
+}
+
+export interface RentRoll {
+  months: RentRollMonth[]
+  locked: number[]           // = months.map(m => m.locked)
+  lockedBand?: undefined     // 锁定线零随机量,不许套带(❗spec 断言这个键必须是 undefined)
+  renewalN: number           // 历史回测分母:asOf 之前已到期、结果已知的合同数
+  renewalHits: number        // 其中续签的数量
+  renewalP: number           // hits/n(经验续签率;n=0 时给 0,不除以零)
+}
+
+/**
+ * 合约租金带:锁定线(buildRentRoll.locked,实线)+ 续签区间(蒙特卡洛 10~90 分位)。
+ * asOf 必须显式传入(全局约束①),n=预测月数。
+ */
+export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentRoll {
+  const months = [...Array(n)].map((_, i) => monthBounds(asOf, i))
+  const locked = lockedRentByMonth(cs, asOf, n)
+  const masterLease = masterLeaseByMonth(cs, asOf, n)
+  const asOfKey = dateKeyOf(asOf)!
+
+  // 历史回测:asOf 之前已到期、结果已知的合同(草稿从未真正在租,不算"已知结果")。
+  // 命中 = 状态已标 renewed,或存在以它为 parentContractId 的后续合同(续签链落地,状态标记
+  // 是否同步不影响判定 —— 这就是为什么不能只信 status 字段)。
+  const decided = cs.filter((c) =>
+    c.kind !== 'master_lease' && c.status !== 'draft' && (dateKeyOf(c.endDate) ?? Infinity) < asOfKey)
+  const renewalHits = decided.filter((c) => c.status === 'renewed' || cs.some((o) => o.parentContractId === c.id)).length
+  const renewalN = decided.length
+  const renewalP = renewalN > 0 ? renewalHits / renewalN : 0
+
+  // 续签抽样总体:asOf 当天仍在租(未到期)、到期日落在预测视界内的合同。
+  // 全程覆盖到视界末尾的合同没有续签不确定性(locked 已经算全了),不进池。
+  const pool = cs.filter((c) =>
+    c.kind !== 'master_lease' && (c.status === 'active' || c.status === 'renewed') &&
+    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey)
+  const byExpMonth: number[][] = [...Array(n)].map(() => [])
+  for (const c of pool) {
+    const ek = dateKeyOf(c.endDate)
+    if (ek == null) continue
+    const idx = months.findIndex((mb) => ek < mb.endKey)   // 首个"不再算 locked"的月
+    if (idx >= 0) byExpMonth[idx].push(c.monthlyRent)
+  }
+
+  const a = renewalHits + 0.5, b = renewalN - renewalHits + 0.5   // Jeffreys 后验
+  const rng = mulberry32(MC_SEED)
+  const drawSums: number[][] = [...Array(n)].map(() => new Array(MC_DRAWS))
+  for (let d = 0; d < MC_DRAWS; d++) {
+    const p = sampleBeta(a, b, rng)
+    let running = 0
+    for (let m = 0; m < n; m++) {
+      for (const rent of byExpMonth[m]) running += rng() < p ? rent : 0
+      drawSums[m][d] = running
+    }
+  }
+  const quantileOf = (arr: number[], q: number): number => {
+    const s = [...arr].sort((x, y) => x - y)
+    return s[Math.min(s.length - 1, Math.floor(q * s.length))]
+  }
+  const renewalLo = drawSums.map((s) => quantileOf(s, MC_LO_Q))
+  const renewalHi = drawSums.map((s) => quantileOf(s, MC_HI_Q))
+
+  return {
+    months: months.map((mb, i) => ({ month: mb.label, locked: locked[i], masterLease: masterLease[i], renewalLo: renewalLo[i], renewalHi: renewalHi[i] })),
+    locked,
+    lockedBand: undefined,
+    renewalN, renewalHits, renewalP,
+  }
+}
+
+/**
+ * 合约租金带 option:锁定线(实线)+ 续签区间带(locked+renewalLo ~ locked+renewalHi)。
+ *
+ * ⚠ 不套 bandTooWide(anaTheme.ts):那道门判「半宽/中位 > 0.20 → 太宽只出点」,是给
+ * P25~P75 这类"画宽了大概率是画法或样本问题"的带用的。这条带的宽是内容本身 ——
+ * 85 份到期在金额上等效约 15 份等额赌注,续签是非黑即白的个体事件,宽本来就对,
+ * 套上这道门会把这张卡存在的理由(诚实地告诉你续签不确定性有多大)本身给隐藏掉。
+ */
+export function rentRollOption(r: RentRoll): object {
+  const months = r.months.map((m) => m.month)
+  const lockedWan = r.months.map((m) => +(m.locked / 10000).toFixed(2))
+  const loWan = r.months.map((m) => +((m.locked + m.renewalLo) / 10000).toFixed(2))
+  const hiWan = r.months.map((m) => +((m.locked + m.renewalHi) / 10000).toFixed(2))
+  return {
+    grid: { left: 48, right: 16, top: 30, bottom: 30 },
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, data: ['锁定租金'] },
+    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
+    series: [
+      { name: '锁定租金', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: '#378ADD' }, data: lockedWan },
+      ...bandSeries(loWan, hiWan, { name: '续签区间', color: 'rgba(55,138,221,.14)' }),
+    ],
+  }
+}
+
+/** 卡片读数句(D1 可执行形式):末月预计租金区间,同屏必须印回测样本量与命中数,不写百分比。 */
+export function rentRollSentence(r: RentRoll): string | null {
+  const last = r.months[r.months.length - 1]
+  if (!last) return null
+  const wan = (v: number) => Math.round(v / 10000)
+  return sFreq({
+    label: '末月租金',
+    lo: wan(last.locked + last.renewalLo),
+    hi: wan(last.locked + last.renewalHi),
+    backtests: r.renewalN,
+    hits: r.renewalHits,
+  })
+}
+
+/** 参照系小字:口径 + 单位 + 回测分母(与 bandRefText/elecBandRef 同职责,不解释画法)。 */
+export function rentRollRefText(r: RentRoll): string {
+  return `月度口径 · 万元 · 回测样本${r.renewalN}份`
 }

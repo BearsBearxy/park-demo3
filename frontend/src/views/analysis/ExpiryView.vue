@@ -17,7 +17,10 @@ import { fnum } from '@/components/ana/anaFmt'
 import { fetchContracts } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
 import { contractStatusOf } from '@/components/fp/contractStatus'
-import { buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, concentrationOption, paretoOption, wallOption } from './expiry.logic'
+import {
+  buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
+  concentrationOption, paretoOption, rentRollOption, rentRollRefText, rentRollSentence, wallOption,
+} from './expiry.logic'
 
 const router = useRouter()
 const loading = ref(true)
@@ -51,6 +54,15 @@ const wall = computed(() => buildExpiryWall(contracts.value, today))
 const wallOpt = computed(() => wallOption(wall.value))   // tooltip 闭包引用 wall,wall 变更随 computed 重建
 const wallRentSum = computed(() => wall.value.quarters.reduce((s, q) => s + q.rentSum, 0))
 const soon = computed(() => buildExpiringSoon(contracts.value, today))
+
+// ── 合约租金带(Task 7,FORECAST §1.1):锁定实线 + 续签区间(蒙特卡洛)。asOf 显式取一次今天,
+// 不在 expiry.logic 里碰系统时钟(全局约束①)。
+const asOf = today.toLocaleDateString('sv')
+const rentRoll = computed(() => buildRentRoll(contracts.value, asOf, 12))
+const rentRollOpt = computed(() => rentRollOption(rentRoll.value))
+const rentRollText = computed(() => rentRollSentence(rentRoll.value))
+const rentRollRef = computed(() => rentRollRefText(rentRoll.value))
+const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.masterLease > 0))
 
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
@@ -119,6 +131,17 @@ function onParetoClick(p: unknown) {
           <AnaEmpty v-else :label="'到期时间轴暂不可用:' + stats.dateMissing + ' 份合同的起止/签订日期均未录入'"
             hint="补录合同起止日期后,此处将展示未来 8 季到期租金墙、临期清单与续约预测"
             to="/contracts" toText="去合同屏补录日期" />
+        </div>
+
+        <!-- 合约租金带(Task 7):不是给到期墙加带 —— 到期墙(上一张卡)是无时间轴的 8 季排期柱,
+             这张才是以月为 x 轴的图。锁定实线 = 已签约覆盖到该月的合同;续签区间 = 到期后是否
+             续签的蒙特卡洛不确定性,同屏印回测样本量与命中数(D1 可执行形式,见 rentRollSentence)。 -->
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
+            <span class="hint">锁定实线 + 续签区间{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
+          <AnaEChart :option="rentRollOpt" :height="260" />
+          <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
+          <p class="ana-ref">{{ rentRollRef }}</p>
         </div>
 
         <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏(带合同号,合同屏预填搜索)) -->
