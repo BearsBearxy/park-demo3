@@ -449,8 +449,7 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
  */
 const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 export function mainChartOption(
-  d: MainChartData | null, fit: RevenueFit | null, fitBand: FitBand | null,
-  outlierResByMonth: Map<number, number>, cmpMode: CompareMode,
+  d: MainChartData | null, outlierResByMonth: Map<number, number>, cmpMode: CompareMode,
 ): object | null {
   if (!d || !d.covered) return null
   const yMin = d.yMin
@@ -486,26 +485,8 @@ export function mainChartOption(
   if (cmpMode === 'budget' && d.budgetAvgWan != null) {
     series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
   }
-  // T2(design-boards 2026-09-11):趋势线(fit.fitted,1-11月拟合值+12月外推值同一条线,
-  // 训练/外推共用一个 fit——见 CockpitView.vue 里 fit 那个 computed 的头注)+ 拟合区间(仅标在
-  // 离群月那一列,不画成整年的带——「拟合区间」这个说法只许用在这里,且不敢标百分比,见 fitBandAt 头注)。
-  if (fit) {
-    series.push({
-      name: '趋势', type: 'line', data: fit.fitted, symbol: 'none',
-      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
-    })
-  }
-  if (fitBand) {
-    const b = fitBand
-    series.push({
-      name: '拟合区间（未校准）', type: 'line', data: d.labels.map(() => null), silent: true,
-      markArea: {
-        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
-        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}\n${fint(b.mid)}\n${fint(b.lo)}` },
-        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
-      },
-    })
-  }
+  // 趋势线与拟合区间 2026-09-12 搬去 trendChartOption(用户:「现在完全看不见」)——
+  // 这张图是 0 起的柱图,三条线只能挤在柱顶那一小段里。理由见那个函数的头注。
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 42 },
     legend: { top: 0 },
@@ -513,6 +494,65 @@ export function mainChartOption(
     dataZoom: [{ type: 'inside' }, { type: 'slider', height: 12, bottom: 6, borderColor: 'transparent' }],
     xAxis: { type: 'category', data: d.labels },
     yAxis: { type: 'value', min: yMin, axisLabel: { formatter: '{value}万' } },
+    series,
+  }
+}
+
+/**
+ * 「收入趋势 · 拟合区间」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
+ * 可视化,现在完全看不见」)。
+ *
+ * 拆的理由是实测量级:主图是 0 起的柱图,2025 年 1–11 月收入在 714~941 万之间,波动幅度只占
+ * 轴高的两成多,趋势线的斜率(月均 +25.8 万)与拟合区间的宽度在屏上都读不出来。
+ *
+ * 两处与主图不同,都是为了让波动看得见,也都只在这张图成立:
+ * ① y 轴 `scale: true`,不从 0 起。这张图里**没有柱子** —— 截断轴会放大的是面积,而这里只有
+ *    线的位置,位置本来就得照轴刻度读。主图有柱子,原样保持 0 起,不动。
+ * ② 离群月不进折线(填 null,留一个看得见的断口)。−64 万那一个点会把 700~940 这段压成平线,
+ *    正是用户说的「完全看不见」。它的真实值不藏:那一列照标竖线,标签写值与「离群」。
+ */
+export function trendChartOption(
+  d: MainChartData | null, fit: RevenueFit | null, fitBand: FitBand | null,
+): object | null {
+  if (!d || !d.covered || !fit) return null
+  const revLine = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? null : v))
+  const series: object[] = [
+    {
+      name: '已录入', type: 'line', data: revLine, symbolSize: 6, connectNulls: false,
+      lineStyle: { width: 2, color: '#378ADD' }, itemStyle: { color: '#378ADD' },
+      markLine: d.outlierMonths.length ? {
+        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: OUTLIER_RED },
+        label: {
+          fontSize: 10, color: OUTLIER_RED, position: 'insideEndTop',
+          formatter: d.outlierMonths.map((m) => `${m}月 ${fint(d.rev[m - 1] ?? 0)}万 离群`).join(' / '),
+        },
+        data: d.outlierMonths.map((m) => ({ xAxis: m - 1 })),
+      } : undefined,
+    },
+    {
+      name: '趋势', type: 'line', data: fit.fitted, symbol: 'none',
+      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
+    },
+  ]
+  if (fitBand) {
+    const b = fitBand
+    series.push({
+      name: '拟合区间（未校准）', type: 'line', data: d.labels.map(() => null), silent: true,
+      markArea: {
+        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}
+${fint(b.mid)}
+${fint(b.lo)}` },
+        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
+      },
+    })
+  }
+  return {
+    grid: { left: 52, right: 18, top: 32, bottom: 28 },
+    legend: { top: 0 },
+    tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
+    xAxis: { type: 'category', data: d.labels },
+    yAxis: { type: 'value', scale: true, axisLabel: { formatter: '{value}万' } },
     series,
   }
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -542,8 +542,8 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
   })
 })
 
-describe('❗F1(对抗复查,adversarial-survived.md):mainChartOption——主图的趋势线/拟合区间/离群标注'
-  + '原先整段写在 CockpitView.vue 的 <script setup> computed 里,零纯函数/零挂载测覆盖,这里钉住 option 对象本身', () => {
+describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 option 对象'
+  + '——这几块原先整段写在 CockpitView.vue 的 <script setup> computed 里,零纯函数/零挂载测覆盖', () => {
   const REV: (number | null)[] = [
     7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
     8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
@@ -551,34 +551,65 @@ describe('❗F1(对抗复查,adversarial-survived.md):mainChartOption——主�
   const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
 
+  // ── 趋势线/拟合区间 2026-09-12 搬去 trendChartOption(用户:主图里「完全看不见」)。
+  //    断言跟着搬,判据一个没减,另加两条只在新图成立的(轴不从 0 起、离群月留断口)。
   it('❗趋势 series 存在,data 就是 fit.fitted 本身(同一份,不是另算一条线)', () => {
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
-    const opt = mainChartOption(d, fit, null, new Map(), 'none') as { series: { name: string; data: unknown }[] }
+    const opt = trendChartOption(d, fit, null) as { series: { name: string; data: unknown }[] }
     const trend = opt.series.find((s) => s.name === '趋势')
-    expect(trend, '主图缺「趋势」series——整段被删也不会有任何断言变红').toBeTruthy()
+    expect(trend, '趋势图缺「趋势」series——整段被删也不会有任何断言变红').toBeTruthy()
     expect(trend!.data).toBe(fit!.fitted)
+  })
+
+  it('❗主图(柱图)里不再有趋势线/拟合区间 —— 拆出去了就不许两张图各画一份', () => {
+    const d = mainChart(p2025(), null)
+    const opt = mainChartOption(d, new Map(), 'none') as { series: { name: string }[] }
+    expect(opt.series.find((s) => s.name === '趋势')).toBeUndefined()
+    expect(opt.series.find((s) => s.name === '拟合区间（未校准）')).toBeUndefined()
+  })
+
+  it('❗趋势图 y 轴 scale: true —— 不从 0 起,否则 714~941 万的波动只占轴高两成', () => {
+    const d = mainChart(p2025(), null)
+    const fit = fitRevenueTrend(p2025())
+    const opt = trendChartOption(d, fit, null) as { yAxis: { scale?: boolean; min?: unknown } }
+    expect(opt.yAxis.scale, '轴退回 0 起,用户报的「完全看不见」就回来了').toBe(true)
+    expect(opt.yAxis.min, 'scale 与写死 min 同时给会互相打架').toBeUndefined()
+  })
+
+  it('❗离群月不进「已录入」折线(留 null 断口),但它的真实值照标在竖线标签上', () => {
+    const d = mainChart(p2025(), null)
+    const fit = fitRevenueTrend(p2025())
+    const opt = trendChartOption(d, fit, null) as
+      { series: { name: string; data?: (number | null)[]; markLine?: { label: { formatter: string } } }[] }
+    const line = opt.series.find((s) => s.name === '已录入')!
+    expect(line.data![11], '12 月(离群)必须是 null —— −64 万一个点会把其余 11 个月压成平线').toBeNull()
+    expect(line.data![10], '11 月是正常月,不许跟着一起被抹掉').not.toBeNull()
+    // 值不藏:竖线标签写出真实的 −64 万
+    expect(line.markLine!.label.formatter).toContain('离群')
+    expect(line.markLine!.label.formatter).toMatch(/-64|−64/)
   })
 
   it('❗拟合区间 markArea 的 label.formatter 同时含 hi/mid/lo 三个数(997/958/919,T1/T2 已钉过的验收锚点)', () => {
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
     const band = fitBandAt(fit, 12)
-    const opt = mainChartOption(d, fit, band, new Map(), 'none') as
+    const opt = trendChartOption(d, fit, band) as
       { series: { name: string; markArea?: { label: { formatter: string } } }[] }
     const bandSeries = opt.series.find((s) => s.name === '拟合区间（未校准）')
-    expect(bandSeries, '主图缺「拟合区间」series——markArea 的 formatter 清空也不会有任何断言变红').toBeTruthy()
+    expect(bandSeries, '趋势图缺「拟合区间」series——markArea 的 formatter 清空也不会有任何断言变红').toBeTruthy()
     const formatter = bandSeries!.markArea!.label.formatter
     expect(formatter).toContain('997')   // hi
     expect(formatter).toContain('958')   // mid
     expect(formatter).toContain('919')   // lo
   })
 
-  it('无拟合区间(fitBand=null)时,「拟合区间」series 不出现', () => {
+  it('无拟合区间(fitBand=null)时,「拟合区间」series 不出现;无 fit 时整张趋势图为 null', () => {
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
-    const opt = mainChartOption(d, fit, null, new Map(), 'none') as { series: { name: string }[] }
+    const opt = trendChartOption(d, fit, null) as { series: { name: string }[] }
     expect(opt.series.find((s) => s.name === '拟合区间（未校准）')).toBeUndefined()
+    expect(trendChartOption(d, null, null)).toBeNull()
   })
 
   it('❗离群 markPoint 的 label.formatter 逐月取 outlierResByMonth(F4 的原话镜像到 option 层:'
@@ -591,7 +622,7 @@ describe('❗F1(对抗复查,adversarial-survived.md):mainChartOption——主�
       labels: Array.from({ length: 12 }, (_, i) => `${i + 1}月`), rev: revWan, profit: new Array(12).fill(null),
       prevRev: new Array(12).fill(null), budgetAvgWan: null, covered: 12, outlierMonths, yMin: undefined,
     }
-    const opt = mainChartOption(d, fit, null, outlierRes, 'none') as
+    const opt = mainChartOption(d, outlierRes, 'none') as
       { series: { name: string; markPoint?: { label: { formatter: (p: { data: { month?: number } }) => string } } }[] }
     const bar = opt.series.find((s) => s.name === '收入')
     const formatter = bar!.markPoint!.label.formatter
@@ -603,10 +634,10 @@ describe('❗F1(对抗复查,adversarial-survived.md):mainChartOption——主�
   })
 
   it('无离群月时不给 markPoint;pnl/mainChart 未覆盖(covered=0)时整个 option 为 null', () => {
-    const opt = mainChartOption(mainChart(pnl({ months: [], revenue: N12() }), null), null, null, new Map(), 'none')
+    const opt = mainChartOption(mainChart(pnl({ months: [], revenue: N12() }), null), new Map(), 'none')
     expect(opt).toBeNull()
     const noOutlier = mainChart(pnl({ months: [1], revenue: [100, ...N12().slice(1)] }), null)
-    const o2 = mainChartOption(noOutlier, null, null, new Map(), 'none') as { series: { name: string; markPoint?: unknown }[] }
+    const o2 = mainChartOption(noOutlier, new Map(), 'none') as { series: { name: string; markPoint?: unknown }[] }
     const bar = o2.series.find((s) => s.name === '收入')
     expect(bar!.markPoint).toBeUndefined()
   })

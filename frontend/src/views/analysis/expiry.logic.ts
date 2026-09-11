@@ -620,7 +620,11 @@ export function rentRollOption(r: RentRoll): object {
     // F4(修复轮1):图例顺序照稿——已实现/预计/80%区间/已锁定,原实现把已锁定错排在第二位。
     legend: { top: 0, data: ['已实现', '预计', '80%区间', '已锁定'] },
     xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
+    // scale: true —— 不从 0 起(用户 2026-09-12:「完全看不见折线的波动」)。
+    // 量程 165~232 万,0 起的轴把 67 万的落差压成七分之一个屏高,缺口那一跌看不出来。
+    // ⚠ 只给这张图:它是折线+带,截断轴改的是线的位置,而位置本来就得照刻度读。
+    //    同文件的 wallOption 是柱图,截断轴会放大柱子之间的面积差,那边保持 0 起。
+    yAxis: { type: 'value', name: '万/月', scale: true, axisLabel: { formatter: (v: number) => String(v) } },
     series: [
       {
         name: '已锁定', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: '#378ADD' }, data: lockedWan,
@@ -718,6 +722,44 @@ export function simulateRenewalRate(hits: number, n: number, draws: number, seed
 export function renewalRateBand(hits: number, n: number, draws = MC_DRAWS, seed = MC_SEED): { lo: number; hi: number } {
   const ps = simulateRenewalRate(hits, n, draws, seed)
   return { lo: quantile(ps, MC_LO_Q), hi: quantile(ps, MC_HI_Q) }
+}
+
+/**
+ * 「续签率从哪来」那条数轴(稿上第三块)。
+ *
+ * 原 Ruling-7 判的是不做,理由写的是「和卡里的表重复」。用户 2026-09-12 要求补上——
+ * 重新看确实不重复:表给的是 18/72 两个计数,轴给的是**这个比例落在 0~100% 的哪儿、有多宽**,
+ * 后者是一眼的事,数字读不出来。
+ *
+ * 轴上三样:观测到的续签率(点+竖线)、它自己的 80% 区间(底色块)、0~100% 的刻度。
+ * 区间是 `renewalRateBand` 只抽 p 的那一个,不是「合约租金带」的金额区间(那个还要再抽
+ * 哪几户续签),两者不可互换——混用会把一个宽得多的区间说成续签率本身的不确定性。
+ */
+export function renewalRateLineOption(hits: number, n: number, band: { lo: number; hi: number }): object {
+  const pct = (v: number) => +(v * 100).toFixed(1)
+  const p = n > 0 ? pct(hits / n) : 0
+  const lo = pct(band.lo), hi = pct(band.hi)
+  return {
+    grid: { left: 12, right: 12, top: 34, bottom: 24 },
+    xAxis: {
+      type: 'value', min: 0, max: 100, interval: 25,
+      axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { show: false },
+    },
+    yAxis: { type: 'value', min: 0, max: 1, show: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false } },
+    series: [{
+      type: 'scatter', symbolSize: 13, itemStyle: { color: '#185FA5' }, data: [[p, 0.5]],
+      markArea: {
+        silent: true, itemStyle: { color: 'rgba(55,138,221,.16)' },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: '#185FA5', formatter: `${lo}~${hi}` },
+        data: [[{ xAxis: lo }, { xAxis: hi }]],
+      },
+      markLine: {
+        silent: true, symbol: 'none', lineStyle: { color: '#185FA5', width: 1.5 },
+        label: { formatter: `${p}%`, fontSize: 11, color: '#185FA5', position: 'start' },
+        data: [{ xAxis: p }],
+      },
+    }],
+  }
 }
 
 /** 卡片读数句(同 rentRollSentence 的 D1 可执行形式):n=0 时闭嘴,不硬造一个区间。 */

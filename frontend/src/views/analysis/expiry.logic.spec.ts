@@ -5,7 +5,7 @@ import {
   buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, lockedCountByMonth, lockedRentByMonth, nearestGap, paretoOption, renewalVariance,
   rentRollOption, rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
-  priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateReadout,
+  priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateLineOption, renewalRateReadout, type RentRoll,
   sensitivityFinalRent, sensitivityRows, neededRatePct, sensitivitySentence,
   sensitivityGapSentence, MEDIAN_FACTORY_RENT, MEDIAN_FACTORY_RENT_ASOF, medianFactoryRent,
   type RentPriorityRow,
@@ -929,5 +929,47 @@ describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续�
     const s = sensitivityGapSentence(rows, 3122000)
     expect([...(s as string)].length).toBeLessThanOrEqual(30)
     expect(s).not.toMatch(/[pq]|σ|标准差|z\s*分数|置信/)
+  })
+})
+
+describe('renewalRateLineOption(「续签率从哪来」那条数轴)+ 合约租金带的轴', () => {
+  it('❗轴钉死 0~100%,观测值落在轴上,80% 区间画成 markArea', () => {
+    const band = renewalRateBand(18, 90)
+    const opt = renewalRateLineOption(18, 90, band) as {
+      xAxis: { min: number; max: number }
+      series: {
+        data: number[][]
+        markArea: { data: { xAxis: number }[][]; label: { formatter: string } }
+        markLine: { data: { xAxis: number }[]; label: { formatter: string } }
+      }[]
+    }
+    // 轴必须是完整的 0~100 —— 截到「数据附近」会让 20% 看起来像居中,把一个低续签率显示成常态
+    expect(opt.xAxis.min).toBe(0)
+    expect(opt.xAxis.max).toBe(100)
+    const se = opt.series[0]
+    expect(se.data[0][0]).toBeCloseTo(20, 1)          // 18/90 = 20%
+    expect(se.markLine.label.formatter).toContain('20')
+    // 区间端点就是 renewalRateBand 的两端(乘 100),不是另算一遍
+    const [a, b] = se.markArea.data[0]
+    expect(a.xAxis).toBeCloseTo(band.lo * 100, 1)
+    expect(b.xAxis).toBeCloseTo(band.hi * 100, 1)
+    expect(b.xAxis).toBeGreaterThan(a.xAxis)
+  })
+
+  it('❗n=0 时不崩、不编一个 0 之外的点(分母为零没有续签率可言)', () => {
+    const opt = renewalRateLineOption(0, 0, { lo: 0, hi: 0 }) as { series: { data: number[][] }[] }
+    expect(opt.series[0].data[0][0]).toBe(0)
+  })
+
+  it('❗合约租金带 y 轴 scale: true —— 不从 0 起,否则 165~232 万的落差只占七分之一屏高', () => {
+    // 轴的配置与数据无关,给一份最小 RentRoll 即可(量程那句话在断言说明里,不靠构造复现)
+    const r: RentRoll = {
+      months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 0, renewalMid: 0, renewalHi: 0 }],
+      locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+      expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
+    }
+    const opt = rentRollOption(r) as { yAxis: { scale?: boolean; min?: unknown } }
+    expect(opt.yAxis.scale, '轴退回 0 起,用户报的「完全看不见折线的波动」就回来了').toBe(true)
+    expect(opt.yAxis.min, 'scale 与写死 min 同时给会互相打架').toBeUndefined()
   })
 })

@@ -94,7 +94,8 @@ const BUDGET_KB = {
 //   而它存在的全部意义是挡住无声增长。抬的时候写明了会收,现在收。
 // 2026-09-12 拆掉 ⓘ 口径浮层(用户拍板):AnaMethodNote.vue 与 43 处浮层正文一起删,
 //   实测 3987.4 → 3965.6KB(−21.8)。同一条规矩,同一个做法:实测 + 2KB。
-const TOTAL_KB = 3968
+// 2026-09-12 拆图:趋势/拟合区间独立图 + 续签率数轴,实测 3967.6KB,上限跟着 3968 → 3970。
+const TOTAL_KB = 3970
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

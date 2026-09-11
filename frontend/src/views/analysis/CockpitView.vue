@@ -26,7 +26,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -162,7 +162,10 @@ const outlierYm = computed(() => {
 // F1(对抗复查):option 本体(趋势线/拟合区间/离群标注三块交付物)抽成 cockpit.logic.ts 的纯函数
 // mainChartOption——原先整段写在这个 computed 里,没有挂载测/纯函数覆盖,删掉/清空照样全绿。
 const mainOption = computed<object | null>(() =>
-  mainChartOption(mc.value, fit.value, fitBand.value, outlierResByMonth.value, cmp.mode.value))
+  mainChartOption(mc.value, outlierResByMonth.value, cmp.mode.value))
+// 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
+// 理由与两处轴的差别见 cockpit.logic.ts trendChartOption 头注。
+const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, fitBand.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -377,6 +380,17 @@ const conclusion = computed(() => buildConclusion(
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
+      </div>
+
+
+      <!-- 2026-09-12(用户):收入趋势 · 拟合区间 —— 从主图拆出来的独立图。主图是 0 起的柱图,
+           三条线挤在柱顶那一小段里看不出斜率;这张图没有柱子,轴不从 0 起,离群月留断口。 -->
+      <div v-if="trendOption" class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">收入趋势 · 拟合区间</span>
+          <span class="hint">轴不从 0 起 · 离群月不进折线</span>
+        </div>
+        <AnaEChart :option="trendOption" :height="260" />
       </div>
 
       <!-- 第二排 s4×3 -->
