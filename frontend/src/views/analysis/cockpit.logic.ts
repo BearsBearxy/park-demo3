@@ -10,6 +10,7 @@
 // 63.6 万,本来也不可能动 11 个点。护栏本身是对的,它的自述价值是错的。
 // 这两个率由 cockpit.logic.spec.ts 的「I3 实测量级」用例钉住,再写谎会当场红。
 import { isOutlierMonth, usableMonths, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -423,12 +424,30 @@ export function outlierRefText(fit: RevenueFit | null): string {
  * t 表只铺到 df=9 —— 月度收入训练点撑死 11(=12个月刨掉1个离群月),df 到不了两位数,再宽用不到
  * (ponytail:这是有意的封顶,月度收入拟合以外的场景要更大 df 得先扩表)。
  */
-const T80: Record<number, number> = { 1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476, 6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383 }
+/**
+ * t 分布双侧 80% 分位(单侧 0.90)按自由度查表。
+ *
+ * ⚠ 这张表原来只有 df 1~9,查不到就 `return null`,**整条带消失**。后果不是「保守」,是无声:
+ * 拟合月份一满 11 个(df=9)以上 —— 比如一个 12 个月都干净的年份 —— 带子就不画了,屏上什么
+ * 提示都没有。用户 2026-09-12 的要求是「不管中几次都显示预测带」,这种因为查表查不到而
+ * 静默消失的行为首先得去掉。补到 df 30,再往上用正态极限 1.2816(df>30 时两者差 <1%)。
+ */
+const T80: Record<number, number> = {
+  1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476, 6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383,
+  10: 1.372, 11: 1.363, 12: 1.356, 13: 1.350, 14: 1.345, 15: 1.341, 16: 1.337, 17: 1.333,
+  18: 1.330, 19: 1.328, 20: 1.325, 21: 1.323, 22: 1.321, 23: 1.319, 24: 1.318, 25: 1.316,
+  26: 1.315, 27: 1.314, 28: 1.313, 29: 1.311, 30: 1.310,
+}
+const T80_INF = 1.2816   // 正态极限
+export function t80(df: number): number | null {
+  if (df < 1) return null           // 少于 3 个拟合点,没有残差自由度,这时候是真的算不出
+  return T80[df] ?? T80_INF
+}
 export interface FitBand { month: number; mid: number; lo: number; hi: number }
 export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null {
   if (!fit) return null
   const n = fit.months.length
-  const t = T80[n - 2]
+  const t = t80(n - 2)
   if (!t) return null
   const mid = fit.fitted[month - 1]
   if (mid == null) return null
@@ -524,6 +543,31 @@ export function trendOutlierHint(d: MainChartData | null): string {
 }
 
 /**
+ * 整条拟合区间(每个月一个上下沿),不是只有离群月那一列。
+ *
+ * 改前:屏上只在**离群月**那一列画一个色块,判据是 `outlierRes ? fitBandAt(...) : null` ——
+ * 没有离群月的年份,这条带一整年都不出现。加上上面 T80 查不到就返回 null 那条,
+ * 一共两道让带子**静默消失**的门,都跟「准不准」无关,纯粹是实现留下的。
+ * 用户 2026-09-12:「我不管你中几次都显示预测带」。两道都拆掉:只要拟合得出来就整年都画。
+ *
+ * 带宽随离拟合中心的距离变宽(se 里的 (month−xbar)²/sxx 那一项),外推月自然比中间月宽,
+ * 这正是它该有的形状 —— 一条等宽的带才是假的。
+ */
+export function fitBandAll(fit: RevenueFit | null): { lo: (number | null)[]; hi: (number | null)[] } | null {
+  if (!fit) return null
+  const lo: (number | null)[] = []
+  const hi: (number | null)[] = []
+  let any = false
+  for (let m = 1; m <= fit.fitted.length; m++) {
+    const b = fitBandAt(fit, m)
+    lo.push(b ? b.lo : null)
+    hi.push(b ? b.hi : null)
+    if (b) any = true
+  }
+  return any ? { lo, hi } : null
+}
+
+/**
  * 「收入趋势 · 拟合区间」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
  * 可视化,现在完全看不见」)。
  *
@@ -537,7 +581,8 @@ export function trendOutlierHint(d: MainChartData | null): string {
  *    正是用户说的「完全看不见」。它的真实值不藏:那一列照标竖线,标签写值与「离群」。
  */
 export function trendChartOption(
-  d: MainChartData | null, fit: RevenueFit | null, fitBand: FitBand | null,
+  d: MainChartData | null, fit: RevenueFit | null,
+  band: { lo: (number | null)[]; hi: (number | null)[] } | null,
   bandLegend = '拟合区间（没验过）',
 ): object | null {
   if (!d || !d.covered || !fit) return null
@@ -560,19 +605,8 @@ export function trendChartOption(
       lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
     },
   ]
-  if (fitBand) {
-    const b = fitBand
-    series.push({
-      name: bandLegend, type: 'line', data: d.labels.map(() => null), silent: true,
-      markArea: {
-        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
-        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}
-${fint(b.mid)}
-${fint(b.lo)}` },
-        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
-      },
-    })
-  }
+  // 整年一条带,不再是离群月那一列的色块 —— 见 fitBandAll 头注。
+  if (band) series.push(...bandSeries(band.lo, band.hi, { name: bandLegend, color: 'rgba(124,58,237,0.10)', dp: 1 }))
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 28 },
     legend: { top: 0 },

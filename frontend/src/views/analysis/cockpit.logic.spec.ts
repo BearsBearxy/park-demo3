@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -532,13 +532,16 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     expect(band.mid).toBeLessThan(band.hi)
   })
 
-  it('fitBandAt:无拟合 / 该月无拟合值 / 自由度超出 t 表覆盖范围 → null', () => {
+  it('fitBandAt:无拟合 → null;自由度大到表外**不再**返回 null,改走正态极限', () => {
     expect(fitBandAt(null, 12)).toBeNull()
     const fit = fitRevenueTrend(p2025())!
-    // df = months.length-2 = 9,表内最后一档;伪造一个 11 训练点、但月份跨度撑到 20(超表范围的 df)
-    // 用不到真实数据也能测边界:直接构造 df 越界的 fit 对象。
+    // 这条断言 2026-09-12 翻过来了。改前:df 超出 t 表(旧表只到 9)就 return null,
+    // 后果是拟合月份一多带子**无声消失**——跟准不准无关,纯粹是查表查不到。
+    // 用户要求「不管中几次都显示预测带」,所以表补到 df 30、再往上用正态极限。
     const overDf = { ...fit, months: Array.from({ length: 20 }, (_, i) => i + 1) }
-    expect(fitBandAt(overDf, 12)).toBeNull()
+    const band = fitBandAt(overDf, 12)
+    expect(band, 'df 大就不给带 —— 这正是拆掉的那道门').toBeTruthy()
+    expect(band!.hi).toBeGreaterThan(band!.lo)
   })
 })
 
@@ -595,25 +598,42 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     expect(trendOutlierHint(null), '没有数据时闭嘴,不编一句').toBe('')
   })
 
-  it('❗拟合区间 markArea 的 label.formatter 同时含 hi/mid/lo 三个数(997/958/919,T1/T2 已钉过的验收锚点)', () => {
-    const d = mainChart(p2025(), null)
+  it('❗拟合区间整年都在,12 月那一列仍是 919~997(T1/T2 已钉过的验收锚点)', () => {
     const fit = fitRevenueTrend(p2025())
-    const band = fitBandAt(fit, 12)
-    const opt = trendChartOption(d, fit, band) as
-      { series: { name: string; markArea?: { label: { formatter: string } } }[] }
-    const bandSeries = opt.series.find((s) => s.name.startsWith('拟合区间'))
-    expect(bandSeries, '趋势图缺「拟合区间」series——markArea 的 formatter 清空也不会有任何断言变红').toBeTruthy()
-    const formatter = bandSeries!.markArea!.label.formatter
-    expect(formatter).toContain('997')   // hi
-    expect(formatter).toContain('958')   // mid
-    expect(formatter).toContain('919')   // lo
+    const band = fitBandAll(fit)!
+    expect(band.lo.length, '带必须逐月给值,不是只有离群月一列').toBe(12)
+    expect(band.lo.every((v) => v != null), '拟合得出来的月份一个都不许是空').toBe(true)
+    expect(band.lo[11]).toBeCloseTo(919, 0)
+    expect(band.hi[11]).toBeCloseTo(997, 0)
+    // 外推月比拟合中心宽 —— 等宽的带是假的
+    const width = (i: number) => band.hi[i]! - band.lo[i]!
+    expect(width(11)).toBeGreaterThan(width(5))
   })
 
-  it('无拟合区间(fitBand=null)时,「拟合区间」series 不出现;无 fit 时整张趋势图为 null', () => {
+  it('❗有没有离群月都照画 —— 用户 2026-09-12:「我不管你中几次都显示预测带」', () => {
+    // 12 个月全干净(没有离群月、df=10 落在旧 T80 表外):改前这两条各自都会让带子静默消失
+    const clean = pnl({ months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], revenue: Array.from({ length: 12 }, (_, i) => 7000000 + i * 200000) })
+    const fitC = fitRevenueTrend(clean)
+    expect(fitC!.months.length, '这一年 12 个月都可用,df=10 正是旧表查不到的那档').toBe(12)
+    const bandC = fitBandAll(fitC)
+    expect(bandC, 'df 超出旧 T80 表就返回 null —— 带子无声消失,正是要拆的门').toBeTruthy()
+    const optC = trendChartOption(mainChart(clean, null), fitC, bandC, '拟合区间（没验过）') as { series: { name: string }[] }
+    expect(optC.series.some((s) => s.name === '拟合区间（没验过）'), '没有离群月就不画带 —— 另一道要拆的门').toBe(true)
+  })
+
+  it('t80:表内按表,df>30 用正态极限,df<1 才是真的算不出', () => {
+    expect(t80(9)).toBe(1.383)
+    expect(t80(30)).toBe(1.310)
+    expect(t80(31)).toBe(1.2816)
+    expect(t80(0)).toBeNull()
+  })
+
+  it('无 fit 时整张趋势图为 null;band=null 时图还在,只是没有带', () => {
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
     const opt = trendChartOption(d, fit, null) as { series: { name: string }[] }
     expect(opt.series.find((s) => s.name.startsWith('拟合区间'))).toBeUndefined()
+    expect(opt.series.find((s) => s.name === '趋势'), '带没了图不该跟着没').toBeTruthy()
     expect(trendChartOption(d, null, null)).toBeNull()
   })
 
@@ -869,7 +889,7 @@ describe('❗fitBandLegend:图例名由回测现算,不写死、也不设门槛(
     const d = mainChart(p2, null)
     const f = fitRevenueTrend(p2)
     const band = fitBandAt(f, 5)
-    const opt = trendChartOption(d, f, band, '拟合区间（7次中3次）') as { series: { name: string }[] }
+    const opt = trendChartOption(d, f, fitBandAll(f), '拟合区间（7次中3次）') as { series: { name: string }[] }
     expect(opt.series.some((s) => s.name === '拟合区间（7次中3次）')).toBe(true)
   })
 })

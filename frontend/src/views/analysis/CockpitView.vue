@@ -26,7 +26,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -135,7 +135,9 @@ const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? []
 const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
 const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
 const outlierRef = computed(() => outlierRefText(fit.value))
-const fitBand = computed(() => (outlierRes.value ? fitBandAt(fit.value, outlierRes.value.month) : null))
+// 整年一条拟合区间 —— 改前是「有离群月才画、且只画那一列」,用户 2026-09-12:
+// 「我不管你中几次都显示预测带」。门槛拆在 cockpit.logic.ts(fitBandAll / t80 两处头注)。
+const fitBand = computed(() => fitBandAll(fit.value))
 // T3(design-boards 2026-09-11):「全年会落在哪」四行 + 「这条带过去准不准」滚动回测六行——
 // 全年落点复用 T1 的 fit(同一份,不再拟合);回测每站重新只用当时已有的月拟合(见 backtestRows 头注)。
 const yearRows = computed(() => yearOutlookRows(pnl.value, fit.value, budgetYuan.value))
