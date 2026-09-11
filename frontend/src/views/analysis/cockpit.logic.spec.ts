@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, monthRangeLabel, phaseStack, pnlYearMonths, schedTrend,
+  achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, paceFullYear, phaseStack, pnlYearMonths, schedTrend,
   type BudgetAch,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -386,5 +386,122 @@ describe('❗N2:achNoteText/monthRangeLabel', () => {
     expect(tile, 'CockpitView.vue 找不到「预算达成」瓦').toBeTruthy()
     expect(tile![0]).toContain(':note="achNote"')
     expect(tile![0]).not.toContain('pnlRange')
+  })
+})
+
+// ── T1/T2(design-boards 2026-09-11):月度收入 OLS 拟合(全屏唯一一份)+ 依赖它的三个 KPI 瓦 ──
+// 与「❗I3/I4」用同一批 2025 实测数(park_demo3,锚点 2025-12);任务书给的验收锚点全部钉在这里:
+// 月均增速 25.8 / 12月拟合 958 / 全年拟合合计 9794 / 按节奏推全年 105.6% / 屏上旧值 94.6%。
+describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实测锚点)', () => {
+  const REV: (number | null)[] = [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
+  ]
+  const BUDGET = 92705202.87
+  const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
+
+  it('❗拟合结果落在验收锚点上:斜率25.8万/月、拟合优度0.93、12月拟合958万、训练月=1-11月', () => {
+    const fit = fitRevenueTrend(p2025())!
+    expect(fit).not.toBeNull()
+    expect(fit.months).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])   // 12月离群,不进训练集
+    expect(fit.slope.toFixed(1)).toBe('25.8')
+    expect(fit.r2.toFixed(2)).toBe('0.93')
+    expect(fit.r2).toBeGreaterThan(0)
+    expect(fit.r2).toBeLessThanOrEqual(1)                              // 拟合优度不能越界
+    expect(Math.round(fit.fitted[11]!)).toBe(958)                        // 12月外推值
+    expect(Math.round(fit.residualScale)).toBe(24)                      // 残差标准差
+  })
+
+  it('训练点 <3(覆盖月太少)→ 拟合没有意义,返回 null;pnl 为 null 同样返回 null', () => {
+    const revenue = new Array(12).fill(null) as (number | null)[]
+    revenue[0] = 100; revenue[1] = 200
+    expect(fitRevenueTrend(pnl({ months: [1, 2], revenue }))).toBeNull()
+    expect(fitRevenueTrend(null)).toBeNull()
+  })
+
+  it('❗斜率方向不是写死的:收入递减的年份必须拟合出负斜率(不是永远正)', () => {
+    const revenue = [1200, 1100, 1000, 900, 800, 700].map((v) => v * 10000) as (number | null)[]
+    revenue.push(null, null, null, null, null, null)
+    const fit = fitRevenueTrend(pnl({ months: [1, 2, 3, 4, 5, 6], revenue }))!
+    expect(fit.slope).toBeLessThan(0)     // 递减序列 → 负斜率,不是恒正
+    expect(fit.r2).toBeCloseTo(1, 2)      // 完美线性,拟合优度应接近 1
+  })
+
+  it('❗按节奏推全年(paceFullYear):训练月用实际值、12月用拟合值补齐,Σ/预算 = 105.6%', () => {
+    const fit = fitRevenueTrend(p2025())
+    const pace = paceFullYear(p2025(), fit, BUDGET)!
+    expect(Math.round(pace.totalWan)).toBe(9794)     // 8,836(实际1-11月) + 958(12月拟合)
+    expect(pace.rate!.toFixed(1)).toBe('105.6')
+    expect(pace.rate!).toBeGreaterThan(100)          // 全年在预算之上,不是「差11个点」那种曾经的误传(见I3)
+  })
+
+  it('paceFullYear:pnl 或 fit 缺一 → null;无预算 → rate 为 null 但 totalWan 仍算', () => {
+    const fit = fitRevenueTrend(p2025())
+    expect(paceFullYear(null, fit, BUDGET)).toBeNull()
+    expect(paceFullYear(p2025(), null, BUDGET)).toBeNull()
+    const pace = paceFullYear(p2025(), fit, null)!
+    expect(pace.rate).toBeNull()
+    expect(pace.totalWan).toBeGreaterThan(0)
+  })
+
+  it('❗屏上旧值(oldScreenRate):12月冲回无条件计入分子,复现护栏修复前的94.6% —— 与budgetAch的95.3%刻意不同', () => {
+    const rows = [budgetRow({ budget: BUDGET })]
+    expect(oldScreenRate(p2025(), BUDGET)!.toFixed(1)).toBe('94.6')
+    const a = budgetAch(rows, p2025(), 2025)!
+    expect(oldScreenRate(p2025(), BUDGET)!).toBeLessThan(a.rate)   // 旧值必须比护栏后的值低(护栏抬的方向)
+    expect(oldScreenRate(null, BUDGET)).toBeNull()
+    expect(oldScreenRate(p2025(), null)).toBeNull()
+  })
+
+  it('❗离群月残差倍数(outlierResidual):12月实际−63.61万 距拟合958万,超过40倍残差', () => {
+    const fit = fitRevenueTrend(p2025())
+    const mc = mainChart(p2025(), null)!
+    const o = outlierResidual(fit, mc.rev, mc.outlierMonths)!
+    expect(o.month).toBe(12)
+    expect(o.actualWan).toBeCloseTo(-63.61, 1)
+    expect(Math.floor(o.residuals)).toBe(42)          // 板上「42倍残差」是向下取整,不是四舍五入的43
+    expect(o.residuals).toBeGreaterThan(40)            // 护栏要抓的就是「远超正常波动」,下限粗筛
+  })
+
+  it('outlierResidual:无离群月 / 无拟合 / 该月无实际值 → null(不能瞎编一个倍数)', () => {
+    const fit = fitRevenueTrend(p2025())
+    expect(outlierResidual(fit, [], [])).toBeNull()
+    expect(outlierResidual(null, [1], [1])).toBeNull()
+    expect(outlierResidual(fit, [null], [1])).toBeNull()
+  })
+
+  it('❗读数句/参照系小字:内容与字数门禁(≤30 / ≤28 可见字,copy lint 的真实判据)', () => {
+    const fit = fitRevenueTrend(p2025())
+    const mc = mainChart(p2025(), null)!
+    const o = outlierResidual(fit, mc.rev, mc.outlierMonths)
+    const read = outlierReadout(fit, o)
+    const ref = outlierRefText(fit)
+    expect(read).toBe('12月收入 −64万，离1-11月的正常波动 42倍残差')
+    expect(ref).toBe('参照1-11月拟合 · 残差24万')
+    expect([...read!.replace(/\s+/g, '')].length).toBeLessThanOrEqual(30)
+    expect([...ref.replace(/\s+/g, '')].length).toBeLessThanOrEqual(28)
+    expect(outlierReadout(null, o)).toBeNull()
+    expect(outlierRefText(null)).toBe('')
+  })
+
+  it('❗拟合区间(fitBandAt):12月预测区间下沿919万/上沿997万,宽度对称包住958万中心', () => {
+    const fit = fitRevenueTrend(p2025())
+    const band = fitBandAt(fit, 12)!
+    expect(Math.round(band.mid)).toBe(958)
+    expect(Math.round(band.lo)).toBe(919)
+    expect(Math.round(band.hi)).toBe(997)
+    expect(band.hi - band.mid).toBeCloseTo(band.mid - band.lo, 1)   // 对称区间,不是单边宽
+    expect(band.lo).toBeLessThan(band.mid)
+    expect(band.mid).toBeLessThan(band.hi)
+  })
+
+  it('fitBandAt:无拟合 / 该月无拟合值 / 自由度超出 t 表覆盖范围 → null', () => {
+    expect(fitBandAt(null, 12)).toBeNull()
+    const fit = fitRevenueTrend(p2025())!
+    // df = months.length-2 = 9,表内最后一档;伪造一个 11 训练点、但月份跨度撑到 20(超表范围的 df)
+    // 用不到真实数据也能测边界:直接构造 df 越界的 fit 对象。
+    const overDf = { ...fit, months: Array.from({ length: 20 }, (_, i) => i + 1) }
+    expect(fitBandAt(overDf, 12)).toBeNull()
   })
 })

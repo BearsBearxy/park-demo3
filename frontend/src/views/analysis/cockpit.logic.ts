@@ -280,3 +280,110 @@ export function achNoteText(ach: BudgetAch | null, budgetText: string, year: num
   const range = monthRangeLabel(ach.usedMonths)
   return range ? `${budgetText} · ${range}` : budgetText
 }
+
+// ── T1/T2(design-boards 2026-09-11,驾驶舱护栏):月度收入 OLS 拟合 —— 全屏唯一一份 ──
+// 结构决定(任务书原话):KPI 瓦(按节奏推全年/月均增速)与主图(趋势线/拟合区间/离群残差倍数)
+// 必须读同一份 fit,不许各自再拟合一次 —— 两套实现算同一条回归,是「增速与线对不上」这类缺陷的根源
+// (前序分支刚修过同类问题,见文件头 I3/I4)。x=月序(1..12),y=该月收入(万);训练集=pnlYearMonths,
+// 与预算达成/构成环共用同一批月(离群/缺月不进训练)。训练点 <3 → 拟合没有意义,返回 null。
+export interface RevenueFit {
+  months: number[]              // 训练月(升序;供上层拼「参照 X-Y 月拟合」,不必重算)
+  slope: number                 // 万/月
+  intercept: number             // 万(月序=0 处的截距)
+  r2: number                    // 拟合优度(0~1)
+  fitted: (number | null)[]     // 12 长度:intercept+slope×月序,训练/外推月都算
+  residualScale: number         // 残差标准差(万;自由度 = 训练点数−2;<3 点时为 0)
+}
+export function fitRevenueTrend(pnl: PnlSummary | null): RevenueFit | null {
+  if (!pnl) return null
+  const months = pnlYearMonths(pnl)
+  const n = months.length
+  if (n < 3) return null
+  const ys = months.map((m) => wan(pnl.revenue[m - 1]) as number)
+  const xbar = months.reduce((a, b) => a + b, 0) / n
+  const ybar = ys.reduce((a, b) => a + b, 0) / n
+  let sxy = 0, sxx = 0, syy = 0
+  for (let i = 0; i < n; i++) {
+    sxy += (months[i] - xbar) * (ys[i] - ybar)
+    sxx += (months[i] - xbar) ** 2
+    syy += (ys[i] - ybar) ** 2
+  }
+  const slope = sxx ? sxy / sxx : 0
+  const intercept = ybar - slope * xbar
+  const r2 = sxx && syy ? (sxy * sxy) / (sxx * syy) : 0
+  // fitted 用未四舍五入的 slope/intercept 算,只在落盘时才 toFixed —— 12 月那一格外推值
+  // 若先拿舍入过的斜率去乘,乘以 12 的误差会被放大到看得见(958 万那一档的量级经不起二次舍入)。
+  const fitted = Array.from({ length: 12 }, (_, i) => +(intercept + slope * (i + 1)).toFixed(2))
+  let ssRes = 0
+  for (let i = 0; i < n; i++) ssRes += (ys[i] - (intercept + slope * months[i])) ** 2
+  const residualScale = n > 2 ? Math.sqrt(ssRes / (n - 2)) : 0
+  return { months, slope: +slope.toFixed(2), intercept: +intercept.toFixed(2), r2: +r2.toFixed(4), fitted, residualScale: +residualScale.toFixed(2) }
+}
+
+/** KPI「按节奏推全年」:训练月用实际值、其余月(离群/未覆盖)用拟合值补齐,Σ12月 ÷ 预算。 */
+export interface PaceKpi { totalWan: number; rate: number | null }
+export function paceFullYear(pnl: PnlSummary | null, fit: RevenueFit | null, budgetYuan: number | null): PaceKpi | null {
+  if (!pnl || !fit) return null
+  const used = new Set(fit.months)
+  let total = 0
+  for (let m = 1; m <= 12; m++) total += (used.has(m) ? wan(pnl.revenue[m - 1]) : fit.fitted[m - 1]) ?? 0
+  total = +total.toFixed(2)
+  return { totalWan: total, rate: budgetYuan ? (total * 10000 / budgetYuan) * 100 : null }
+}
+
+/**
+ * KPI「屏上旧值」(T1 对照瓦,故意留着的前后对比):护栏修复前的口径 —— 12 月冲回无条件计入
+ * 年度收入,不剔离群月。与 budgetAch 的分子刻意不同(那边剔了离群月),两者摆一起就是改前/改后。
+ */
+export function oldScreenRate(pnl: PnlSummary | null, budgetYuan: number | null): number | null {
+  if (!pnl || !budgetYuan) return null
+  const total = pnl.revenue.reduce<number>((s, v) => s + (v ?? 0), 0)
+  return (total / budgetYuan) * 100
+}
+
+/** 离群月相对拟合值的残差倍数(主图标注 + 读数句共用同一个数,不各算一份)。 */
+export interface OutlierResidual { month: number; actualWan: number; residuals: number }
+export function outlierResidual(fit: RevenueFit | null, revWan: (number | null)[], outlierMonths: number[]): OutlierResidual | null {
+  if (!fit || !fit.residualScale || !outlierMonths.length) return null
+  const month = outlierMonths[0]
+  const actualWan = revWan[month - 1]
+  const fitted = fit.fitted[month - 1]
+  if (actualWan == null || fitted == null) return null
+  return { month, actualWan, residuals: Math.abs(actualWan - fitted) / fit.residualScale }
+}
+
+/** 读数句(门禁 anaCopyLint ≤30 可见字):月份+实际值+离几倍残差(取整 —— 「倍」本就是概数)。 */
+export function outlierReadout(fit: RevenueFit | null, o: OutlierResidual | null): string | null {
+  if (!fit || !o) return null
+  const sign = o.actualWan < 0 ? '−' : ''
+  return `${o.month}月收入 ${sign}${fint(Math.abs(o.actualWan))}万，离${monthRangeLabel(fit.months)}的正常波动 ${Math.floor(o.residuals)}倍残差`
+}
+
+/** 参照系小字(门禁 anaCopyLint ≤28 可见字):训练区间 + 残差绝对值(万);判据细节留给口径浮层。 */
+export function outlierRefText(fit: RevenueFit | null): string {
+  if (!fit) return ''
+  return `参照${monthRangeLabel(fit.months)}拟合 · 残差${fint(fit.residualScale)}万`
+}
+
+/**
+ * 拟合区间(仅用来抓离群,不许在屏上说成「能兜住未来」——稿注:滚动回测 5 次中 2 次,标百分比是编的)。
+ * 标准 OLS 预测区间公式:t(双侧80%,自由度=训练点数−2) × 预测标准误。
+ * t 表只铺到 df=9 —— 月度收入训练点撑死 11(=12个月刨掉1个离群月),df 到不了两位数,再宽用不到
+ * (ponytail:这是有意的封顶,月度收入拟合以外的场景要更大 df 得先扩表)。
+ */
+const T80: Record<number, number> = { 1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476, 6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383 }
+export interface FitBand { month: number; mid: number; lo: number; hi: number }
+export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null {
+  if (!fit) return null
+  const n = fit.months.length
+  const t = T80[n - 2]
+  if (!t) return null
+  const mid = fit.fitted[month - 1]
+  if (mid == null) return null
+  const xbar = fit.months.reduce((a, b) => a + b, 0) / n
+  const sxx = fit.months.reduce((s, x) => s + (x - xbar) ** 2, 0)
+  if (!sxx) return null
+  const se = fit.residualScale * Math.sqrt(1 + 1 / n + (month - xbar) ** 2 / sxx)
+  const half = t * se
+  return { month, mid, lo: +(mid - half).toFixed(2), hi: +(mid + half).toFixed(2) }
+}

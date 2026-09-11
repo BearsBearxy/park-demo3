@@ -17,7 +17,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { CMP_BASELINE, CMP_BUDGET, STATUS, fint, fnum } from '@/components/ana/anaFmt'
+import { CMP_BASELINE, CMP_BUDGET, STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useCompare } from '@/analysis/useCompare'
@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, monthRangeLabel, phaseStack, pnlYearMonths, schedTrend,
+  achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, paceFullYear, phaseStack, pnlYearMonths, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -118,7 +118,18 @@ const achNote = computed(() => achNoteText(ach.value, ach.value ? money(ach.valu
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }
-const mc = computed(() => mainChart(pnl.value, budgetRevenueOf(budgetRows.value, year.value)))
+const budgetYuan = computed(() => budgetRevenueOf(budgetRows.value, year.value))
+const mc = computed(() => mainChart(pnl.value, budgetYuan.value))
+
+// T1/T2(design-boards 2026-09-11):月度收入 OLS 拟合 —— 全屏唯一一份(fitRevenueTrend),
+// 下面三个 KPI 瓦与主图的趋势线/拟合区间/离群残差标注全部从这一个 fit 读,不再各算一次回归。
+const fit = computed(() => fitRevenueTrend(pnl.value))
+const pace = computed(() => paceFullYear(pnl.value, fit.value, budgetYuan.value))
+const oldRate = computed(() => oldScreenRate(pnl.value, budgetYuan.value))
+const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
+const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
+const outlierRef = computed(() => outlierRefText(fit.value))
+const fitBand = computed(() => (outlierRes.value ? fitBandAt(fit.value, outlierRes.value.month) : null))
 // 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
 const outlierBannerText = computed(() => {
   const m = mc.value?.outlierMonths[0]
@@ -143,7 +154,10 @@ const mainOption = computed<object | null>(() => {
       name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
       markPoint: d.outlierMonths.length ? {
         symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
-        label: { fontSize: 10, color: '#fff', formatter: '离群' },
+        label: {
+          fontSize: 10, color: '#fff',
+          formatter: outlierRes.value ? `离群\n${Math.floor(outlierRes.value.residuals)}倍残差` : '离群',
+        },
         data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0] })),
       } : undefined,
       markLine: d.budgetAvgWan != null ? {
@@ -160,6 +174,26 @@ const mainOption = computed<object | null>(() => {
   }
   if (cmp.mode.value === 'budget' && d.budgetAvgWan != null) {
     series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
+  }
+  // T2(design-boards 2026-09-11):趋势线(fit.fitted,1-11月拟合值+12月外推值同一条线,
+  // 训练/外推共用一个 fit——见 fit 那个 computed 的头注)+ 拟合区间(仅标在离群月那一列,
+  // 不画成整年的带——「拟合区间」这个说法只许用在这里,且不敢标百分比,见 fitBandAt 头注)。
+  if (fit.value) {
+    series.push({
+      name: '趋势', type: 'line', data: fit.value.fitted, symbol: 'none',
+      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
+    })
+  }
+  if (fitBand.value) {
+    const b = fitBand.value
+    series.push({
+      name: '拟合区间（未校准）', type: 'line', data: d.labels.map(() => null), silent: true,
+      markArea: {
+        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}\n${fint(b.mid)}\n${fint(b.lo)}` },
+        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
+      },
+    })
   }
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 42 },
@@ -324,6 +358,13 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
+      <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
+      <AnaKpiTile label="按节奏推全年" :value="pace?.rate != null ? pace.rate.toFixed(1) + '%' : '—'" note="区间未校准" />
+      <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
+        :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
+      <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
+      <AnaKpiTile label="屏上旧值" :value="oldRate != null ? oldRate.toFixed(1) + '%' : '—'"
+        note="把12月冲回当收入算了" note-tone="warn" />
     </template>
 
     <div v-if="!ready || pnlLoading" class="page-loading"><span class="page-spin" /></div>
@@ -360,6 +401,9 @@ const conclusion = computed(() => buildConclusion(
         <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="pnlRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
+        <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
+        <p v-if="outlierRead" class="ana-read">{{ outlierRead }}</p>
+        <p v-if="outlierRef" class="ana-ref">{{ outlierRef }}</p>
       </div>
 
       <!-- s4:收入构成环 -->

@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
 import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
 import { rentRollRefText, rentRollSentence, type RentRoll } from '../analysis/expiry.logic'
+import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
+import type { PnlSummary } from '../../analysis/anaData'
 
 /**
  * 分析层文案门禁(FORECAST-BAND-AND-PLAIN-SENTENCE §3.4)。
@@ -69,6 +71,24 @@ const HINT_OVER_BASELINE = 31
  * 扫描前把 <script> 整段剥掉了,为的是不误伤变量名与代码注释。这条路目前没人走,
  * 但门禁本身证明不了这件事。
  */
+// T2(design-boards 2026-09-11)固定字:驾驶舱护栏图的读数句/参照系小字是 cockpit.logic.ts 抽出的
+// 纯函数,同 F9 的盲区(.ana-read/.ana-ref 段落除插值外没有第二个字符)——直接量函数输出即可。
+// 数据是实测(park_demo3,锚点 2025-12,见 cockpit.logic.spec.ts 的「I3/I4:2025 实测量级」同一批数)。
+const COCKPIT_PNL: PnlSummary = {
+  year: 2025,
+  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  revenue: [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
+  ],
+  cost: new Array(12).fill(null),
+  profit: new Array(12).fill(null),
+  bySchedule: {},
+}
+const cockpitFit = fitRevenueTrend(COCKPIT_PNL)
+const cockpitMc = mainChart(COCKPIT_PNL, null)!
+const cockpitOutlier = outlierResidual(cockpitFit, cockpitMc.rev, cockpitMc.outlierMonths)
+
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
 const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
 const JARGON_ONE = new RegExp(JARGON_SRC)    // 单值断言用:非 global,test() 不留 lastIndex 状态
@@ -240,6 +260,7 @@ describe('分析层文案门禁', () => {
       bandReadout(500000, 123456, 987654, '电费'),
       bandReadout(500000, 123456, 987654, '水费'),
       rentRollSentence(rollA),
+      outlierReadout(cockpitFit, cockpitOutlier),   // T2(design-boards):驾驶舱护栏图读数句,同一处盲区
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -261,6 +282,7 @@ describe('分析层文案门禁', () => {
       bandRefText(251),
       bandRefText(null),
       rentRollRefText(rollB),
+      outlierRefText(cockpitFit),   // T2(design-boards):驾驶舱护栏图参照系小字,同一处盲区
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
