@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -617,8 +617,8 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     expect(fitC!.months.length, '这一年 12 个月都可用,df=10 正是旧表查不到的那档').toBe(12)
     const bandC = fitBandAll(fitC)
     expect(bandC, 'df 超出旧 T80 表就返回 null —— 带子无声消失,正是要拆的门').toBeTruthy()
-    const optC = trendChartOption(mainChart(clean, null), fitC, bandC, '拟合区间（没验过）') as { series: { name: string }[] }
-    expect(optC.series.some((s) => s.name === '拟合区间（没验过）'), '没有离群月就不画带 —— 另一道要拆的门').toBe(true)
+    const optC = trendChartOption(mainChart(clean, null), fitC, bandC) as { series: { name: string }[] }
+    expect(optC.series.some((s) => s.name === '拟合区间（未校准）'), '没有离群月就不画带 —— 另一道要拆的门').toBe(true)
   })
 
   it('t80:表内按表,df>30 用正态极限,df<1 才是真的算不出', () => {
@@ -864,32 +864,3 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
   })
 })
 
-describe('❗fitBandLegend:图例名由回测现算,不写死、也不设门槛(用户 2026-09-12)', () => {
-  it('❗有回测就报几次中几次 —— 原来写死的「未校准」是行话,用户看不懂', () => {
-    const pnl2025: PnlSummary = pnl({
-      months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-      revenue: [7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
-        8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65],
-    })
-    const sum = backtestSummary(backtestRows(pnl2025, 92705202.87))
-    expect(fitBandLegend(sum)).toBe('拟合区间（5次中2次）')
-    // 数就是同屏那张回测卡的两个数,不是另算一遍
-    expect(fitBandLegend(sum)).toContain(String(sum!.scored))
-    expect(fitBandLegend(sum)).toContain(String(sum!.hits))
-  })
-
-  it('❗没有可评分的回测时说「没验过」,不说命中率,更不写「未校准」这种行话', () => {
-    expect(fitBandLegend(null)).toBe('拟合区间（没验过）')
-    expect(fitBandLegend({ scored: 0, hits: 0, misses: 0, unders: 0, allUnder: false })).toBe('拟合区间（没验过）')
-    expect(fitBandLegend(null)).not.toContain('未校准')
-  })
-
-  it('❗这个名字真的会到图上去(默认参数不许把它顶掉)', () => {
-    const p2 = pnl({ months: [1, 2, 3, 4, 5], revenue: [100, 200, 300, 400, 500, ...new Array(7).fill(null)] })
-    const d = mainChart(p2, null)
-    const f = fitRevenueTrend(p2)
-    const band = fitBandAt(f, 5)
-    const opt = trendChartOption(d, f, fitBandAll(f), '拟合区间（7次中3次）') as { series: { name: string }[] }
-    expect(opt.series.some((s) => s.name === '拟合区间（7次中3次）')).toBe(true)
-  })
-})

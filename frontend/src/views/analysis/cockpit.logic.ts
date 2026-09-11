@@ -517,20 +517,6 @@ export function mainChartOption(
   }
 }
 
-/**
- * 拟合区间的图例名(用户 2026-09-12:「我不设定 5 次中几次,才显示,行不行」)。
- *
- * 原来写死「拟合区间（未校准）」。「未校准」是行话 —— 用户看见它得回头问一句才知道什么意思,
- * 而它想说的事其实有现成的数:同屏「这条带过去准不准」那张卡已经把滚动回测算出来了。
- * 所以图例直接写那两个数,不写行话,也不需要谁去设定一个门槛 —— 几次中几次就报几次中几次。
- *
- * 没有可评分的回测(scored=0,例如年份太短拟合不出来)时说「没验过」,不说「未校准」,
- * 更不假装有个命中率。
- */
-export function fitBandLegend(sum: BacktestSummary | null): string {
-  if (!sum || !sum.scored) return '拟合区间（没验过）'
-  return `拟合区间（${sum.scored}次中${sum.hits}次）`
-}
 
 /**
  * 趋势图卡头那句「哪个月离群、原值多少」。
@@ -583,7 +569,6 @@ export function fitBandAll(fit: RevenueFit | null): { lo: (number | null)[]; hi:
 export function trendChartOption(
   d: MainChartData | null, fit: RevenueFit | null,
   band: { lo: (number | null)[]; hi: (number | null)[] } | null,
-  bandLegend = '拟合区间（没验过）',
 ): object | null {
   if (!d || !d.covered || !fit) return null
   const revLine = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? null : v))
@@ -606,7 +591,7 @@ export function trendChartOption(
     },
   ]
   // 整年一条带,不再是离群月那一列的色块 —— 见 fitBandAll 头注。
-  if (band) series.push(...bandSeries(band.lo, band.hi, { name: bandLegend, color: 'rgba(124,58,237,0.10)', dp: 1 }))
+  if (band) series.push(...bandSeries(band.lo, band.hi, { name: '拟合区间（未校准）', color: 'rgba(124,58,237,0.10)', dp: 1 }))
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 28 },
     legend: { top: 0 },
