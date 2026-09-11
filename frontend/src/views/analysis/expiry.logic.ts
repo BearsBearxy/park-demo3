@@ -193,9 +193,14 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
  *    真出现了也会被 active 这一支收进来」——后半句是错的,白名单会把 status='expiring' 的
  *    合同整个滤掉,不会落进 active 那一支。查 DB 原始列看不出这个问题(那一列确实只有
  *    active/renewed),因为 expiring/future 是后端 `ContractService.effectiveStatus` 在
- *    请求时按日期现算的展示态,只在**调 API 拿到的 ContractDTO**上才看得见(T4,2026-09-11
- *    live API 实测:431 份里 23 份 expiring¥37.8万/月、27 份 future¥76.6万/月,旧白名单
- *    把「当前合约租金」做小了近 9%)。收进 renewed 是因为它代表真实仍在租的续签合同
+ *    请求时按日期现算的展示态,只在**调 API 拿到的 ContractDTO**上才看得见。
+ *    数错过一次(F1,修复轮1 对抗复查):最初写的是"做小了近 9%",那是拿整本账算的
+ *    (378,356/4,311,044——分母混进大量不覆盖当月的合同,分子也数错,23 份 expiring 里
+ *    只有 21 份真覆盖当月)。对**「当前合约租金」瓦实际求和的那批合同**(asOf=2026-09-11,
+ *    coveringMonth 覆盖 2026-09 月末、非整租、已剔除整月免租,92 份 = 70 active + 1 renewed
+ *    + 21 expiring)重算:白名单(active/renewed)¥1,969,962.68/月,黑名单(现用)
+ *    ¥2,320,829.23/月,做小了 **15.1%**(相对黑名单;相对白名单是 17.8%)。
+ *    断言钉在 expiry.logic.spec.ts「F1(修复轮1)」一节。收进 renewed 是因为它代表真实仍在租的续签合同
  *    (实测 9 份 renewed 的 endDate ≥ 今天,其中 1 份当月仍在收租)——
  *    漏掉它们会把「锁定」系统性做小,而这条线存在的意义就是「真正锁定了多少」。
  *  · 同一单元同月多于一份合同(实测 2 例):F6(修复轮2)拿掉了 dedupByUnit——单元 455 上是两个
@@ -266,11 +271,14 @@ function assertNoSameTenantDoubleCoverage(covering: ContractDTO[], endKey: numbe
  * T4(design-boards,2026-09-11 对抗复查):不在租的三个「派生桶」终态,判"覆盖"时排除。
  * 判据从白名单(只认 active/renewed)改成黑名单——白名单当年漏了 `effectiveStatus` 会派生出的
  * 另外两桶:`expiring`(签的是 active,只是 endDate 在 90 天内)与 `future`(签的是 active,
- * startDate 还没到)。两者都不是"不在租",是"在租的两种展示态细分",之前被白名单误伤:
- * 实测(2026-09-11,live API,不是查 DB 原始列——那一列确实只有 active/renewed,派生桶是后端
- * ContractService.effectiveStatus 在请求时现算的,查 DB 看不见)389 份合同里 23 份 expiring
- * (¥37.8万/月)、27 份 future(¥76.6万/月),旧白名单会把它们整个漏计,「当前合约租金」瓦
- * 系统性做小了近 9%。黑名单只排除三个确定"不算在租"的终态,其余(含以后可能新增的展示态)
+ * startDate 还没到)。两者都不是"不在租",是"在租的两种展示态细分",之前被白名单误伤。
+ * 数错过一次(F1,修复轮1 对抗复查):最初写的是"做小了近 9%",那是拿 389 份整本账的
+ * expiring/future 计数(23 份¥37.8万/月、27 份¥76.6万/月)去除整本账的分母算出来的——
+ * 分母里混进大量不覆盖当月的合同。对**「当前合约租金」瓦实际求和的那批合同**(asOf=
+ * 2026-09-11,coveringMonth 覆盖 2026-09 月末、非整租、已剔除整月免租,92 份 = 70 active
+ * + 1 renewed + 21 expiring)重算:白名单¥1,969,962.68/月,黑名单(现用)¥2,320,829.23/月,
+ * 做小了 **15.1%**(相对黑名单;相对白名单是 17.8%)。断言钉在 expiry.logic.spec.ts
+ * 「F1(修复轮1)」一节。黑名单只排除三个确定"不算在租"的终态,其余(含以后可能新增的展示态)
  * 一律按日期本身说了算——这正是 coveringMonth 下面几行本来就在做的事。
  */
 const NOT_COVERING_STATUS = new Set(['draft', 'expired', 'terminated'])
@@ -612,7 +620,8 @@ export function rentRollOption(r: RentRoll): object {
   return {
     grid: { left: 48, right: 16, top: 30, bottom: 30 },
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, data: ['已实现', '已锁定', '预计', '80%区间'] },
+    // F4(修复轮1):图例顺序照稿——已实现/预计/80%区间/已锁定,原实现把已锁定错排在第二位。
+    legend: { top: 0, data: ['已实现', '预计', '80%区间', '已锁定'] },
     xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
     series: [

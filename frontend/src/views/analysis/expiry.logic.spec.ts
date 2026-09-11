@@ -4,7 +4,7 @@ import type { ContractDTO } from '@/types/contract'
 import {
   buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, lockedCountByMonth, lockedRentByMonth, nearestGap, paretoOption, renewalVariance,
-  rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
+  rentRollOption, rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
 } from './expiry.logic'
 
 let seq = 0
@@ -225,6 +225,31 @@ describe('合约租金带(FORECAST §1.1)', () => {
       const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-01-01', status })
       expect(lockedRentByMonth([c], '2026-01-01', 1)[0], `status=${status} 不该算在租`).toBe(0)
     }
+  })
+
+  // F1(修复轮1,design-boards 对抗复查):把"黑名单比白名单多认多少"这个数钉成断言,免得文件顶部
+  // 注释里的百分比又变成一句没人核过的散文。同一批合同,四个覆盖当月的桶(active/renewed 落
+  // 白名单,expiring/future 只落黑名单)+ 三个两边都不算的终态(draft/expired/terminated)。
+  // 用精确金额断言(不是 >= 或 toBeGreaterThan)是故意的:一条方向写反的比例断言("黑名单不小于
+  // 白名单")在数字错一倍时也可能照样绿。
+  it('❗F1:黑名单比白名单多认 expiring+future,做小比例钉住(不是松散的 >= 断言)', () => {
+    const cs = [
+      ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-06-30', status: 'active' }),
+      ct({ monthlyRent: 200, startDate: '2020-01-01', endDate: '2026-06-30', status: 'renewed' }),
+      ct({ monthlyRent: 300, startDate: '2020-01-01', endDate: '2026-02-15', status: 'expiring' }),
+      ct({ monthlyRent: 400, startDate: '2025-12-01', endDate: '2026-06-30', status: 'future' }),
+      ct({ monthlyRent: 999, startDate: '2020-01-01', endDate: '2026-06-30', status: 'draft' }),
+      ct({ monthlyRent: 999, startDate: '2020-01-01', endDate: '2026-06-30', status: 'expired' }),
+      ct({ monthlyRent: 999, startDate: '2020-01-01', endDate: '2026-06-30', status: 'terminated' }),
+    ]
+    const denylistSum = lockedRentByMonth(cs, '2026-01-01', 1)[0]
+    expect(denylistSum).toBe(1900)   // 1000+200+300+400,draft/expired/terminated 排除在外
+    const whitelistSum = 1000 + 200   // 旧口径:只认 active/renewed,同一批合同手算(不是重新实现旧滤镜)
+    expect(whitelistSum).toBe(1200)
+    // 做小比例:相对黑名单(当前/正确口径)15.1% 这条真实数字的合成版本 —— 这里刻意选另一组数,
+    // 逼近但不等于生产的 15.1%/17.8%,免得断言看起来像是从生产数字倒推出来的巧合。
+    expect((denylistSum - whitelistSum) / denylistSum).toBeCloseTo(700 / 1900, 5)   // ≈36.8%,相对黑名单
+    expect((denylistSum - whitelistSum) / whitelistSum).toBeCloseTo(700 / 1200, 5)  // ≈58.3%,相对白名单
   })
 
   it('❗T4:status=expiring 的合同也进续签抽样池 —— 它离到期最近,最该被建模"续不续得上"', () => {
@@ -497,6 +522,86 @@ describe('nearestGap(T4/T5,design-boards):最近一次到期造成的锁定线�
     const locked = lockedRentByMonth([c], '2026-01-01', 3)
     expect(locked).toEqual([1000, 0, 1000])   // 2 月整月免租,锁定线跌到 0,3 月恢复
     expect(nearestGap([c], '2026-01-01', locked)).toBeNull()   // 这份合同压根没到期,不该被当成"缺口"
+  })
+})
+
+// F3(修复轮1,design-boards 对抗复查):T5 真正的交付物(图例四项、预测起点竖线、缺口标注、
+// 新的散点与线系列)之前一层测试都没读过它的返回值——挂载测里 AnaEChart 是打桩的,没有一条
+// findComponent(...).props('option')。这里直接单测 rentRollOption() 的返回对象,不经挂载。
+describe('rentRollOption(T4/T5,design-boards):图上的家具(图例/预测起点线/缺口标注)钉断言', () => {
+  const a1 = ct({ unitId: 1, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-01-31' })
+
+  it('❗F4:图例四项且顺序照稿——已实现/预计/80%区间/已锁定', () => {
+    const r = buildRentRoll([a1], '2025-12-01', 12)
+    const opt = rentRollOption(r) as { legend: { data: string[] } }
+    expect(opt.legend.data).toEqual(['已实现', '预计', '80%区间', '已锁定'])
+  })
+
+  it('❗已锁定是 step line,markLine 钉在第 0 月(xAxis:0),标签值=锁定线第 0 项', () => {
+    const r = buildRentRoll([a1], '2025-12-01', 12)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opt = rentRollOption(r) as any
+    const locked = opt.series.find((s: { name: string }) => s.name === '已锁定')
+    expect(locked.type).toBe('line')
+    expect(locked.step).toBe('end')
+    expect(locked.markLine.data).toEqual([{ xAxis: 0 }])
+    expect(locked.markLine.label.formatter).toContain('预测起点')
+    expect(locked.markLine.label.formatter).toContain(String(locked.data[0]))
+  })
+
+  it('❗已实现是只有第 0 月一个值的 scatter(其余月份为 null),不是隐藏线的 line', () => {
+    const r = buildRentRoll([a1], '2025-12-01', 12)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opt = rentRollOption(r) as any
+    const realized = opt.series.find((s: { name: string }) => s.name === '已实现')
+    expect(realized.type).toBe('scatter')
+    expect(realized.data[0]).not.toBeNull()
+    expect(realized.data.slice(1).every((v: unknown) => v === null)).toBe(true)
+  })
+
+  it('❗预计是虚线 line,值=(locked+renewalMid)折万,与第 0 月 KPI 瓦同一份计算', () => {
+    const r = buildRentRoll([a1], '2025-12-01', 12)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opt = rentRollOption(r) as any
+    const mid = opt.series.find((s: { name: string }) => s.name === '预计')
+    expect(mid.type).toBe('line')
+    expect(mid.lineStyle.type).toBe('dashed')
+    expect(mid.data[0]).toBeCloseTo((r.months[0].locked + r.months[0].renewalMid) / 10000, 2)
+  })
+
+  it('❗80%区间是 bandSeries 出的两条 line(空名的下界 + 具名的宽度,带 areaStyle)', () => {
+    const r = buildRentRoll([a1], '2025-12-01', 12)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opt = rentRollOption(r) as any
+    const names = opt.series.map((s: { name: string }) => s.name)
+    expect(names.filter((n: string) => n === '80%区间')).toHaveLength(1)   // 具名的那一条只有一条
+    expect(names.filter((n: string) => n === '')).toHaveLength(1)          // 无名的下界那一条
+    const band = opt.series.find((s: { name: string }) => s.name === '80%区间')
+    expect(band.type).toBe('line')
+    expect(band.areaStyle).toBeTruthy()
+  })
+
+  it('❗有缺口时 markPoint 落在 gap.monthsAway,坐标与「最近的缺口」瓦读同一份 gap;无缺口时不出现', () => {
+    const big = ct({ tenantName: '大户', monthlyRent: 1200, startDate: '2020-01-01', endDate: '2099-12-31' })
+    const small = ct({ tenantName: '小户', monthlyRent: 800, startDate: '2020-01-01', endDate: '2026-02-15' })
+    const withGap = buildRentRoll([big, small], '2026-01-01', 4)
+    expect(withGap.gap).not.toBeNull()   // 复用 nearestGap 那条已验证过的 fixture(1 月后,小户 800)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const optWithGap = rentRollOption(withGap) as any
+    const lockedWithGap = optWithGap.series.find((s: { name: string }) => s.name === '已锁定')
+    expect(lockedWithGap.markPoint).toBeTruthy()
+    expect(lockedWithGap.markPoint.data).toEqual([
+      { coord: [withGap.gap!.monthsAway, +((withGap.months[withGap.gap!.monthsAway].locked) / 10000).toFixed(2)] },
+    ])
+    expect(lockedWithGap.markPoint.label.formatter).toContain('小户')
+
+    const noGapContract = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31' })
+    const withoutGap = buildRentRoll([noGapContract], '2026-01-01', 6)
+    expect(withoutGap.gap).toBeNull()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const optNoGap = rentRollOption(withoutGap) as any
+    const lockedNoGap = optNoGap.series.find((s: { name: string }) => s.name === '已锁定')
+    expect(lockedNoGap.markPoint).toBeUndefined()
   })
 })
 

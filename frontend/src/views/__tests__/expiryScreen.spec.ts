@@ -69,7 +69,25 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
     expect(text).toMatch(/过去\s*5\s*份到期中\s*2\s*份续签/)
     const rollCard = w.findAll('.av2-card').find((c) => c.text().includes('合约租金带'))
     expect(rollCard, '没找到合约租金带卡').toBeTruthy()
+    // F2(修复轮1,design-boards 对抗复查):这条只管**默认收起态**——AnaMethodNote 的口径
+    // 浮层挂在 v-if="open"(默认 false),挂载测扫的是收起态 DOM,原来看不见浮层里的字,
+    // 却被读成"这张卡任何状态下都不印 %"。浮层本身**允许**印 %:80%/20%(18/90) 是分布的
+    // 分位数,不是校准声明,ruling 已认,不删——门禁要看见它,不是假装它不存在。
     expect(rollCard!.text()).not.toMatch(/%/)
+
+    // 打开口径浮层,让门禁真的看一眼里面印了什么。
+    const pill = rollCard!.find('.ana-note-pill')
+    expect(pill.exists(), '合约租金带卡里没找到口径浮层的触发按钮').toBe(true)
+    await pill.trigger('click')
+    await flushPromises()
+    const openedText = rollCard!.text()
+    // 浮层打开后必须真的看得见这两个数——这是"例外"的存在性证据,不是"看不见就等于没有"。
+    // 哪天它们从浮层里消失,这条先变红,提醒去 t4-fix-1.md F2 那条为什么。
+    expect(openedText).toMatch(/80%/)
+    expect(openedText).toMatch(/20%\(18\/90\)/)
+    // 例外只收给浮层,不收给卡上直接可见的读数句/参照系小字——那两行仍然一个 % 都不许有。
+    expect(w.find('.ana-ref').text()).not.toMatch(/%/)
+    if (w.find('.ana-read').exists()) expect(w.find('.ana-read').text()).not.toMatch(/%/)
   })
 
   it('❗图与句子受同一个条件门控(F5:decided/pool 是独立过滤,结构上可能只有一边有数据)', () => {
