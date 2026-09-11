@@ -7,7 +7,10 @@ import {
   priorityReadout, priorityRefText, renewalRateReadout, sensitivityRows, sensitivitySentence,
   sensitivityGapSentence, rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
 } from '../analysis/expiry.logic'
-import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
+import {
+  fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual,
+  yearOutlookRows, yearOutlookReadout, yearOutlookRefText, backtestRows, backtestSummary, backtestReadout, backtestRefText,
+} from '../analysis/cockpit.logic'
 import {
   unitRentReadout, unitRentRefText, phaseTableReadout, phaseTableRefText,
   elecTrapReadout, elecTrapRefText, type PhaseTableRow, type ElecSpread,
@@ -95,6 +98,15 @@ const COCKPIT_PNL: PnlSummary = {
 const cockpitFit = fitRevenueTrend(COCKPIT_PNL)
 const cockpitMc = mainChart(COCKPIT_PNL, null)!
 const cockpitOutlier = outlierResidual(cockpitFit, cockpitMc.rev, cockpitMc.outlierMonths)
+// F7(对抗复查):yearOutlookReadout/yearOutlookRefText/backtestReadout/backtestRefText 是驾驶舱
+// 「全年会落在哪」「这条带过去准不准」两张卡的读数句/参照系小字——同一处 F9 盲区,改前一条都不在
+// 下面两个 cases 数组里,只是恰好在 cockpit.logic.spec.ts 另行断言过才没出事。补进来,与下面
+// 「❗F7:cases 完整性」那条断言配套(见该条注释)。BUDGET 锚点与 cockpit.logic.spec.ts 的
+// T1/T2/T3 三节同一份(park_demo3 2025 实测,收入总计预算 92,705,202.87)。
+const COCKPIT_BUDGET = 92705202.87
+const cockpitYearRows = yearOutlookRows(COCKPIT_PNL, cockpitFit, COCKPIT_BUDGET)
+const cockpitBacktestRows = backtestRows(COCKPIT_PNL, COCKPIT_BUDGET)
+const cockpitBacktestSum = backtestSummary(cockpitBacktestRows)
 
 // T6/T7(design-boards)固定字:「先谈哪几户」「续签率从哪来」「续签率变一档」三张卡的读数句/
 // 参照系小字同样是 expiry.logic.ts 抽出的纯函数,同一处 F9 盲区(.ana-read/.ana-ref 除插值外
@@ -120,6 +132,61 @@ const PHASE_TABLE_SAMPLE: PhaseTableRow[] = [
 ]
 const ELEC_SPREAD_SAMPLE: ElecSpread = { period: '2025-12', n: 263, p10: 62.62, p90: 11685.75, max: 101645.94 }
 
+// rentRollSentence/rentRollRefText(合约租金带读数句/参照系小字)固定字——两条门禁与下面的
+// 完整性断言共用同一份 fixture,不重复定义。
+const ROLL_A: RentRoll = {
+  months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 100000, renewalMid: 200000, renewalHi: 300000 }],
+  locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+  expiringCount: 5, expiringRentSum: 500000, expiringList: [], gap: null,
+}
+const ROLL_B: RentRoll = {
+  months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+  expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
+}
+
+/**
+ * F7(对抗复查):字数/禁词门禁的真实覆盖全靠下面 READ_SLOTS/REF_SLOTS 两张手写清单
+ * (加 cockpit.logic.spec.ts 里的第三份拷贝),没有任何断言保证这张清单是全的——CockpitView
+ * 两张 T3 卡的四条读数句(yearOutlookReadout/yearOutlookRefText/backtestReadout/backtestRefText)
+ * 改前一条都不在这里,只是恰好在 cockpit.logic.spec.ts 另行断言过才没出事,下一张卡没这份运气。
+ *
+ * 判据(❗F7:cases 完整性 一条):
+ * 「插值槽」= 全仓 .ana-read / .ana-ref 段落里,除 `{{ xxx }}` 插值外没有第二个字符的那些——
+ * 这正是 F9 门禁摸不到渲染结果、必须靠手写清单补的那批。每个插值槽在下面登记成**一个数组**
+ * (可能含多个场景,例如 TenantEnergyView 的 bandReadout 按 metric 切换文案,登记两个场景但
+ * 是同一个插值槽——多场景不代表多插值槽,按数组分组才不会被"一个槽测两次"误判成两个槽)。
+ * 断言 READ_SLOTS.length / REF_SLOTS.length 与全仓插值槽数量逐一相等——漏登记一个新插值槽,
+ * 数字对不上,当场红(不追究"是哪一条漏了",只追究"数量还对不对",与 F7 finding 原话"或至少
+ * 断言两边条数相等"同一个判据)。
+ */
+const READ_SLOTS: (string | null)[][] = [
+  [elecReadout(500000, { p25: 123456, p75: 987654 })],                        // AnomalyView.vue elecReadout 插值槽
+  [bandReadout(500000, 123456, 987654, '电费'), bandReadout(500000, 123456, 987654, '水费')],   // TenantEnergyView.vue bandReadout 插值槽(同一元素,按 metric 切两个场景)
+  [rentRollSentence(ROLL_A)],                                                 // ExpiryView.vue rentRollText 插值槽
+  [outlierReadout(cockpitFit, cockpitOutlier)],                               // CockpitView.vue outlierRead 插值槽
+  [priorityReadout(PRIORITY_SAMPLE, 2179000)],                                // ExpiryView.vue priorityRead 插值槽
+  [renewalRateReadout(18, 90)],                                               // ExpiryView.vue renewalRateRead 插值槽
+  [sensitivitySentence(SENSITIVITY_SAMPLE)],                                  // ExpiryView.vue sensitivityRead 插值槽
+  [sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000)],                      // ExpiryView.vue sensitivityGapRead 插值槽
+  [unitRentReadout(28.11, PEER_SAMPLE, '期区一')],                             // TenantPeerView.vue readout 插值槽
+  [phaseTableReadout(PHASE_TABLE_SAMPLE)],                                    // TenantPeerView.vue phaseTableRead 插值槽
+  [elecTrapReadout(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRead 插值槽
+  [yearOutlookReadout(cockpitYearRows)],                                      // CockpitView.vue yearRead 插值槽(F7 补登记)
+  [backtestReadout(cockpitBacktestSum)],                                      // CockpitView.vue backRead 插值槽(F7 补登记)
+]
+const REF_SLOTS: string[][] = [
+  [elecBandRef(251), elecBandRef(null)],                                      // AnomalyView.vue elecBandRef 插值槽
+  [bandRefText(251), bandRefText(null)],                                      // TenantEnergyView.vue bandRefText 插值槽
+  [rentRollRefText(ROLL_B)],                                                  // ExpiryView.vue rentRollRef 插值槽
+  [outlierRefText(cockpitFit)],                                               // CockpitView.vue outlierRef 插值槽
+  [priorityRefText(PRIORITY_SAMPLE, 2179000)],                                // ExpiryView.vue priorityRef 插值槽
+  [unitRentRefText(51, '期区一', '2026-09')],                                  // TenantPeerView.vue refText 插值槽
+  [phaseTableRefText('2026-09')],                                             // TenantPeerView.vue phaseTableRef 插值槽
+  [elecTrapRefText(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRef 插值槽
+  [yearOutlookRefText(cockpitYearRows, COCKPIT_PNL, cockpitFit)],             // CockpitView.vue yearRef 插值槽(F7 补登记)
+  [backtestRefText(cockpitBacktestRows)],                                     // CockpitView.vue backRef 插值槽(F7 补登记)
+]
+
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
 const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
 const JARGON_ONE = new RegExp(JARGON_SRC)    // 单值断言用:非 global,test() 不留 lastIndex 状态
@@ -135,6 +202,17 @@ const strip = (s: string) =>
 
 function vueFiles(): { dir: string; file: string }[] {
   return DIRS.flatMap((dir) => readdirSync(dir).filter((f) => f.endsWith('.vue')).map((file) => ({ dir, file })))
+}
+
+/** 全仓「插值槽」计数(F7):.ana-read/.ana-ref 段落剥掉标签/插值/空白后是空串,即除 `{{ xxx }}` 外
+ *  没有第二个字符——F9 门禁摸不到渲染结果、必须靠 READ_SLOTS/REF_SLOTS 手写清单补的那批。 */
+function pureInterpolationSlotCount(re: RegExp): number {
+  let n = 0
+  for (const { dir, file } of vueFiles()) {
+    const src = readFileSync(join(dir, file), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    for (const m of src.matchAll(re)) if (!strip(m[1] ?? '')) n++
+  }
+  return n
 }
 
 function scan(re: RegExp): { file: string; text: string; len: number }[] {
@@ -336,36 +414,31 @@ describe('分析层文案门禁', () => {
     expect(note![1], '浮层没有说清楚这批同类不含宿舍').not.toMatch(/宿舍与厂房.{0,6}(混在一起|混杂|两拨价格)/)
   })
 
+  /**
+   * F5(对抗复查):「单位租金对标」卡从头到尾叫「单位租金」的那个数,其实含管理费/基础维护/
+   * 电梯/变压器等五费项合计,比真正的租金单价高约 36%——改前只有折叠的 ⓘ 浮层里说清楚这件事,
+   * 卡头/hint/读数句这些屏上直接可见的地方全没提「含费」,谈判桌上没人会点开 ⓘ。
+   * 判据钉住:这张卡未折叠处(卡头 hint、.ana-read、.ana-ref——不含 AnaMethodNote 内文)
+   * 只要提了「租金」,就必须在同一处出现「含费」,不能只藏在折叠的浮层里。
+   */
+  it('❗F5:「单位租金对标」卡未折叠处提了"租金"就必须同处出现"含费"——不能只藏在折叠的 ⓘ 浮层里', () => {
+    const src = readFileSync(join(DIR, 'TenantPeerView.vue'), 'utf8')
+    const card = splitCards(src).find((c) => /class="t">单位租金对标/.test(c.text))
+    expect(card, 'TenantPeerView.vue 里找不到「单位租金对标」那张卡').toBeTruthy()
+    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')
+    const note = /<AnaMethodNote[^>]*>[\s\S]*?<\/AnaMethodNote>/.exec(body)
+    const unfolded = note ? body.slice(0, note.index) + body.slice(note.index! + note[0].length) : body
+    expect(unfolded, '未折叠处压根没提"租金"——门禁本身失去意义,检查卡是不是改了名字').toContain('租金')
+    expect(unfolded, '未折叠处提了"租金"却没有"含费"——读者会拿它当纯租金单价去谈判').toContain('含费')
+  })
+
   // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
   // echarts + anaData 太重),上面 scan() 的 strip() 又把 `{{ elecReadout }}` 这类插值整个删掉,
   // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符
   // (`<p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>`),
   // 渲染结果字符对字符等于这两个纯函数的返回值 —— 直接量函数输出就是量渲染结果,不必为此单开挂载测。
   it('❗读数句渲染结果(不是插值源码)也要 ≤30 可见字,且不含禁词(F9:门禁扫不到 .logic.ts,直接量函数输出)', () => {
-    // Task 7:合约租金带的读数句(rentRollSentence)同样是 .logic.ts 抽出的纯函数,
-    // 模板里只剩 `{{ rentRollText }}`,同一处盲区,补同一手治法。
-    const rollA: RentRoll = {
-      months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 100000, renewalMid: 200000, renewalHi: 300000 }],
-      locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
-      expiringCount: 5, expiringRentSum: 500000, expiringList: [], gap: null,
-    }
-    const cases: (string | null)[] = [
-      // 只传 p25/p75:elecReadout 不吃样本量(样本量走 elecBandRef)。多传一个 n 会触发
-      // TS 的多余属性检查 —— 真实调用点传的是变量不是字面量,所以只有这里会红。
-      elecReadout(500000, { p25: 123456, p75: 987654 }),
-      bandReadout(500000, 123456, 987654, '电费'),
-      bandReadout(500000, 123456, 987654, '水费'),
-      rentRollSentence(rollA),
-      outlierReadout(cockpitFit, cockpitOutlier),   // T2(design-boards):驾驶舱护栏图读数句,同一处盲区
-      priorityReadout(PRIORITY_SAMPLE, 2179000),         // T6(design-boards):先谈哪几户
-      renewalRateReadout(18, 90),                        // T7(design-boards):续签率从哪来
-      sensitivitySentence(SENSITIVITY_SAMPLE),           // T7(design-boards):续签率变一档
-      sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000),   // F1(修复轮1):板上收尾行,缺口折算中型厂房
-      unitRentReadout(28.11, PEER_SAMPLE, '期区一'),         // T8/T9(design-boards):单位租金对标
-      phaseTableReadout(PHASE_TABLE_SAMPLE),                 // T10(design-boards):哪些期区能给区间
-      elecTrapReadout(ELEC_SPREAD_SAMPLE),                   // T10(design-boards):电费会翻车
-    ]
-    for (const s of cases) {
+    for (const s of READ_SLOTS.flat()) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
       expect([...(s as string)].length, s ?? '').toBeLessThanOrEqual(READ_MAX)
       expect(s, s ?? '').not.toMatch(JARGON_ONE)
@@ -376,26 +449,20 @@ describe('分析层文案门禁', () => {
   // 不是巧合)。F3 把 elecBandRef/bandRefText 抽成纯函数后,`<p class="ana-ref">{{ ... }}</p>`
   // 同样除插值外没有第二个字符,量函数输出即量渲染结果 —— 用上面同一手法补上。
   it('❗参照系小字渲染结果也要 ≤28 可见字,且不含禁词(F4:.ana-ref 补上跟 .ana-read 一样的门禁;F9:同一处补禁词断言)', () => {
-    const rollB: RentRoll = {
-      months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
-      expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
-    }
-    const cases: string[] = [
-      elecBandRef(251),
-      elecBandRef(null),
-      bandRefText(251),
-      bandRefText(null),
-      rentRollRefText(rollB),
-      outlierRefText(cockpitFit),   // T2(design-boards):驾驶舱护栏图参照系小字,同一处盲区
-      priorityRefText(PRIORITY_SAMPLE, 2179000),   // T6(design-boards):先谈哪几户
-      unitRentRefText(51, '期区一', '2026-09'),      // T8/T9(design-boards):单位租金对标
-      phaseTableRefText('2026-09'),                  // T10(design-boards):哪些期区能给区间
-      elecTrapRefText(ELEC_SPREAD_SAMPLE),            // T10(design-boards):电费会翻车
-    ]
-    for (const s of cases) {
+    for (const s of REF_SLOTS.flat()) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)
       expect(s, s).not.toMatch(JARGON_ONE)
     }
+  })
+
+  it('❗F7:cases 清单完整性——全仓「插值槽」(.ana-read/.ana-ref 除插值外没有第二个字符)数量,'
+    + '必须与 READ_SLOTS/REF_SLOTS 登记的槽位数逐一相等,漏登记一个新插值槽就当场红', () => {
+    const pureRead = pureInterpolationSlotCount(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)
+    const pureRef = pureInterpolationSlotCount(/class="ana-ref"[^>]*>([\s\S]*?)<\/p>/g)
+    expect(pureRead, `全仓 ${pureRead} 处纯插值 .ana-read,READ_SLOTS 只登记了 ${READ_SLOTS.length} 个槽位`)
+      .toBe(READ_SLOTS.length)
+    expect(pureRef, `全仓 ${pureRef} 处纯插值 .ana-ref,REF_SLOTS 只登记了 ${REF_SLOTS.length} 个槽位`)
+      .toBe(REF_SLOTS.length)
   })
 
   /**
@@ -440,7 +507,11 @@ describe('分析层文案门禁', () => {
   })
 
   // JARGON / JARGON_EXEMPT 定义见文件顶部(D2 doc comment,F7/F8/F9 修复轮2 的改动理由都写在那)。
-  it('❗屏上(含 ⓘ 浮层)不许出现 σ / Σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信', () => {
+  // F8(对抗复查):标题曾经承诺连大写 Σ 也禁,判据(JARGON_SRC,见文件头 D2 doc comment)其实
+  // 没有 Σ——Σ 在本仓是求和号,是有意放行的正当写法,撤禁的理由写在上面 D2 注释里。标题原文
+  // 一度包含「Σ」,读测试列表的人会以为它已被禁,不会再去看六十行外的 doc comment。
+  // 改法只是让名字与判据对上,不加新断言。
+  it('❗屏上(含 ⓘ 浮层)不许出现 σ / 标准差 / 标准偏差 / 西格玛 / z分数 / 置信(Σ 作为求和号有意放行,理由见文件头 D2)', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
       if (JARGON_EXEMPT.has(f)) continue
