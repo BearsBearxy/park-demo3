@@ -3,7 +3,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
 import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
-import { rentRollRefText, rentRollSentence, type RentRoll } from '../analysis/expiry.logic'
+import {
+  priorityReadout, priorityRefText, renewalRateReadout, sensitivityRows, sensitivitySentence,
+  rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
+} from '../analysis/expiry.logic'
 import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
 import type { PnlSummary } from '../../analysis/anaData'
 
@@ -88,6 +91,14 @@ const COCKPIT_PNL: PnlSummary = {
 const cockpitFit = fitRevenueTrend(COCKPIT_PNL)
 const cockpitMc = mainChart(COCKPIT_PNL, null)!
 const cockpitOutlier = outlierResidual(cockpitFit, cockpitMc.rev, cockpitMc.outlierMonths)
+
+// T6/T7(design-boards)固定字:「先谈哪几户」「续签率从哪来」「续签率变一档」三张卡的读数句/
+// 参照系小字同样是 expiry.logic.ts 抽出的纯函数,同一处 F9 盲区(.ana-read/.ana-ref 除插值外
+// 没有第二个字符)——直接量函数输出即可,不必挂载整屏。样本量级不追求业务真实,够用就行。
+const PRIORITY_SAMPLE: RentPriorityRow[] = [...Array(10)].map((_, i) => ({
+  id: i, contractNo: 'HT' + i, tenantName: '租户' + i, endDate: '2026-08-01', monthlyRent: (10 - i) * 100000, monthsLeft: i,
+}))
+const SENSITIVITY_SAMPLE = sensitivityRows(2147000, 2179000, 3122000, 0.2)
 
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
 const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
@@ -278,7 +289,7 @@ describe('分析层文案门禁', () => {
     const rollA: RentRoll = {
       months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 100000, renewalMid: 200000, renewalHi: 300000 }],
       locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
-      expiringCount: 5, expiringRentSum: 500000, gap: null,
+      expiringCount: 5, expiringRentSum: 500000, expiringList: [], gap: null,
     }
     const cases: (string | null)[] = [
       // 只传 p25/p75:elecReadout 不吃样本量(样本量走 elecBandRef)。多传一个 n 会触发
@@ -288,6 +299,9 @@ describe('分析层文案门禁', () => {
       bandReadout(500000, 123456, 987654, '水费'),
       rentRollSentence(rollA),
       outlierReadout(cockpitFit, cockpitOutlier),   // T2(design-boards):驾驶舱护栏图读数句,同一处盲区
+      priorityReadout(PRIORITY_SAMPLE, 2179000),         // T6(design-boards):先谈哪几户
+      renewalRateReadout(18, 90),                        // T7(design-boards):续签率从哪来
+      sensitivitySentence(SENSITIVITY_SAMPLE),           // T7(design-boards):续签率变一档
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -302,7 +316,7 @@ describe('分析层文案门禁', () => {
   it('❗参照系小字渲染结果也要 ≤28 可见字,且不含禁词(F4:.ana-ref 补上跟 .ana-read 一样的门禁;F9:同一处补禁词断言)', () => {
     const rollB: RentRoll = {
       months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
-      expiringCount: 0, expiringRentSum: 0, gap: null,
+      expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
     }
     const cases: string[] = [
       elecBandRef(251),
@@ -311,6 +325,7 @@ describe('分析层文案门禁', () => {
       bandRefText(null),
       rentRollRefText(rollB),
       outlierRefText(cockpitFit),   // T2(design-boards):驾驶舱护栏图参照系小字,同一处盲区
+      priorityRefText(PRIORITY_SAMPLE, 2179000),   // T6(design-boards):先谈哪几户
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)

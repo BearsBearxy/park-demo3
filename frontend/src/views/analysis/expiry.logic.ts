@@ -117,31 +117,6 @@ export function buildExpiryWall(cs: ContractDTO[], today: Date): ExpiryWall {
   return { quarters, totalCount: quarters.reduce((s, q) => s + q.count, 0) }
 }
 
-export interface ExpiringSoonRow {
-  id: number; tenantName: string; contractNo: string
-  monthlyRent: number; endDate: string; daysLeft: number
-}
-
-/** 临期清单:endDate ∈ [today, today+days] 闭区间,状态口径同到期墙,按 endDate 升序。 */
-export function buildExpiringSoon(cs: ContractDTO[], today: Date, days = 90): ExpiringSoonRow[] {
-  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())   // 归零到本地零点,天数才数得准
-  const limit = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + days)
-  const k0 = t0.getFullYear() * 10000 + (t0.getMonth() + 1) * 100 + t0.getDate()
-  const k1 = limit.getFullYear() * 10000 + (limit.getMonth() + 1) * 100 + limit.getDate()
-  const rows: ExpiringSoonRow[] = []
-  for (const c of cs) {
-    if (!WALL_STATUS.has(c.status) || !c.endDate) continue
-    const p = ymd(c.endDate)
-    if (!p) continue
-    const [y, m, d] = p
-    const k = y * 10000 + m * 100 + d
-    if (k < k0 || k > k1) continue
-    const daysLeft = Math.round((new Date(y, m - 1, d).getTime() - t0.getTime()) / 86400000)   // round 吸收 DST 时差
-    rows.push({ id: c.id, tenantName: c.tenantName, contractNo: c.contractNo, monthlyRent: c.monthlyRent, endDate: c.endDate, daysLeft })
-  }
-  return rows.sort((a, b) => a.endDate.localeCompare(b.endDate))
-}
-
 /** 到期墙柱图 option(柱=每季到期月租折万,tooltip 含户数;样式对齐 paretoOption)。 */
 export function wallOption(w: ExpiryWall): object {
   return {
@@ -467,6 +442,12 @@ export function nearestGap(cs: ContractDTO[], asOf: string, locked: number[]): R
   return null
 }
 
+export interface RentPriorityRow {
+  id: number; contractNo: string; tenantName: string
+  endDate: string; monthlyRent: number
+  monthsLeft: number   // 与 byExpMonth 同一个下标(0=到期落在 asOf 当月的桶),不是 RentRollGap.monthsAway 那个 1-based 序号
+}
+
 export interface RentRoll {
   months: RentRollMonth[]
   locked: number[]           // = months.map(m => m.locked)
@@ -476,6 +457,7 @@ export interface RentRoll {
   renewalP: number           // hits/n(经验续签率;n=0 时给 0,不除以零)
   expiringCount: number      // T4:视界内(byExpMonth 实际分到桶里)的到期合同份数,与续签抽样同一份数据
   expiringRentSum: number    // 上面这批合同的月租合计(元)
+  expiringList: RentPriorityRow[]   // T6:与 expiringCount/expiringRentSum 同一份 pool/桶,按月租金降序 —— 供「先谈哪几户」卡用,不另起一套过滤
   gap: RentRollGap | null    // T4/T5:最近的到期缺口,KPI 瓦与图上标注共用同一个值
 }
 
@@ -560,12 +542,19 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   // 真正的续签不确定性落在视界之外的下一个月,本来就不该有桶。这与"全程覆盖到视界末尾的合同
   // 不进池"是同一条规则的边界情形,不是新问题;钉在 expiry.logic.spec.ts 的 F8 用例里。
   const byExpMonth: number[][] = [...Array(n)].map(() => [])
+  // T6(design-boards):expiringList 与 byExpMonth 同一次遍历产出,同一个 idx —— 「先谈哪几户」卡
+  // 与「未来12月到期」瓦(expiringCount/expiringRentSum)必须是同一份合同,不能各自过滤一遍再对不上账。
+  const expiringList: RentPriorityRow[] = []
   for (const c of pool) {
     const ek = dateKeyOf(c.endDate)
     if (ek == null) continue
     const idx = months.findIndex((mb) => ek < mb.endKey)   // 首个"不再算 locked"的月
-    if (idx >= 0) byExpMonth[idx].push(c.monthlyRent)
+    if (idx >= 0) {
+      byExpMonth[idx].push(c.monthlyRent)
+      expiringList.push({ id: c.id, contractNo: c.contractNo, tenantName: c.tenantName, endDate: c.endDate!, monthlyRent: c.monthlyRent, monthsLeft: idx })
+    }
   }
+  expiringList.sort((a, b) => b.monthlyRent - a.monthlyRent)
 
   const a = renewalHits + 0.5, b = renewalN - renewalHits + 0.5   // Jeffreys 后验
   const drawSums = simulateRenewalDraws(byExpMonth, a, b, MC_DRAWS, MC_SEED)
@@ -590,7 +579,7 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
     locked,
     lockedBand: undefined,
     renewalN, renewalHits, renewalP,
-    expiringCount, expiringRentSum,
+    expiringCount, expiringRentSum, expiringList,
     gap: nearestGap(cs, asOf, locked),
   }
 }
@@ -673,4 +662,107 @@ export function rentRollSentence(r: RentRoll): string | null {
  */
 export function rentRollRefText(r: RentRoll): string {
   return `月度口径 · 万元 · 过去${r.renewalN}份到期中${r.renewalHits}份续签`
+}
+
+/* ---------- T6(design-boards):先谈哪几户 —— 既有「临期90天」卡改造,不新增卡 ----------
+ * 原卡按 endDate 升序、90 天窗口(buildExpiringSoon)。稿上「前8份占2026到期租金的58%·
+ * 其余77份合计92.2万」总数 8+77=85,与「2026 到期 85 份」KPI 同一个数 —— population 从
+ * 90 天窗口换成 rentRoll.expiringList(未来 12 月、与续签抽样同一批),按月租金降序。
+ * buildExpiringSoon 因此不再被本屏调用,连同 ExpiringSoonRow 一并删除(不留孤儿导出)。
+ */
+const PRIORITY_TOP_K = 8
+
+/** 前 K 份(按月租金降序)占 rentRoll.expiringRentSum 的份额。 */
+export function priorityReadout(list: RentPriorityRow[], totalRentSum: number, topK = PRIORITY_TOP_K): string | null {
+  if (!list.length || totalRentSum <= 0) return null
+  const top = list.slice(0, topK)
+  const topSum = top.reduce((s, r) => s + r.monthlyRent, 0)
+  const pct = Math.round((topSum / totalRentSum) * 100)
+  return `前${top.length}份占未来12月到期租金的${pct}%`
+}
+
+/** 其余份数与合计(万) —— 与 priorityReadout 同一个 topK,两句必须对得上账。 */
+export function priorityRefText(list: RentPriorityRow[], totalRentSum: number, topK = PRIORITY_TOP_K): string {
+  const top = list.slice(0, topK)
+  const topSum = top.reduce((s, r) => s + r.monthlyRent, 0)
+  const restCount = list.length - top.length
+  const restSum = totalRentSum - topSum
+  return `其余${restCount}份合计${(restSum / 10000).toFixed(1)}万`
+}
+
+/* ---------- T7(design-boards):续签率从哪来 / 续签率变一档 ---------- */
+
+/**
+ * 续签率本身的后验抽样 —— 只抽 p,不抽「哪几户续签」。
+ * 与 simulateRenewalDraws 分开路径(踩坑提示,写在这):那个函数每轮从 Beta(a,b) 抽一个 p
+ * 之后紧接着对每户各抽一次 Bernoulli(p),返回的是金额和,从里面倒推不出 p 自己的分布。
+ * 「续签率从哪来」卡要的是 p 本身有多不确定,不是金额的宽窄,所以另起一个只抽 p 的函数,
+ * 不去改 simulateRenewalDraws,也不通过给它一个收紧的先验来"模拟"定值(那样抽出来的还是
+ * 一个分布,只是窄了,答的仍是错的问题)。
+ */
+export function simulateRenewalRate(hits: number, n: number, draws: number, seed: number): number[] {
+  const a = hits + 0.5, b = n - hits + 0.5   // Jeffreys 后验,与 buildRentRoll 里的写法一致
+  const rng = mulberry32(seed)
+  return [...Array(draws)].map(() => sampleBeta(a, b, rng))
+}
+
+/** 续签率本身 10~90 分位(不是金额区间,是比例这个数自己的不确定性)。 */
+export function renewalRateBand(hits: number, n: number, draws = MC_DRAWS, seed = MC_SEED): { lo: number; hi: number } {
+  const ps = simulateRenewalRate(hits, n, draws, seed)
+  return { lo: quantile(ps, MC_LO_Q), hi: quantile(ps, MC_HI_Q) }
+}
+
+/** 卡片读数句(同 rentRollSentence 的 D1 可执行形式):n=0 时闭嘴,不硬造一个区间。 */
+export function renewalRateReadout(hits: number, n: number, draws = MC_DRAWS, seed = MC_SEED): string | null {
+  if (n <= 0) return null
+  const { lo, hi } = renewalRateBand(hits, n, draws, seed)
+  return `续签率本身80%落在${Math.round(lo * 100)}%~${Math.round(hi * 100)}%`
+}
+
+export interface SensitivityRow {
+  ratePct: number    // 续签率,整数百分比
+  tag: string         // '全不续' | '历史' | ''
+  finalRentWan: number  // 该档下视界最后一月的月租(万)
+  deltaPct: number      // 相对「当前合约租金」(今天)的百分比变化,整数,可正可负
+  verdict: string        // 够不够的判定文案
+}
+
+/**
+ * 固定续签率下,视界最后一月的租金 —— 这是「trap」要避开的那条:不做蒙特卡洛。
+ * 一旦续签率是指定值(不是从后验抽的),「哪几户续签」这层随机性对总额求期望就是线性的
+ * (Σ独立伯努利·租金 的期望 = 续签率 × Σ租金),不需要抽样去逼近一个本来就有闭式解的数。
+ * 抽样反而会引入不必要的随机噪声,让四档之间的差异掺进抽样误差。
+ */
+export function sensitivityFinalRent(lockedLast: number, expiringRentSum: number, rate: number): number {
+  return lockedLast + rate * expiringRentSum
+}
+
+/** 够不够的判定:相对今天的百分比变化分四档,边界见 sensitivityRows.spec 逐条断言。 */
+function sensitivityVerdict(deltaPct: number): string {
+  if (deltaPct < -20) return '低于盈亏平衡'
+  if (deltaPct < -5) return '勉强打平'
+  if (deltaPct < 5) return '持平'
+  return '有余量'
+}
+
+/** 四档续签率(0/历史/40%/60%)一张表 —— historicalP 传 rentRoll.renewalP。 */
+export function sensitivityRows(lockedLast: number, expiringRentSum: number, todayRent: number, historicalP: number): SensitivityRow[] {
+  const scenarios: [number, string][] = [[0, '全不续'], [historicalP, '历史'], [0.4, ''], [0.6, '']]
+  return scenarios.map(([rate, tag]) => {
+    const finalRent = sensitivityFinalRent(lockedLast, expiringRentSum, rate)
+    const deltaPct = todayRent > 0 ? Math.round(((finalRent - todayRent) / todayRent) * 100) : 0
+    return { ratePct: Math.round(rate * 100), tag, finalRentWan: +(finalRent / 10000).toFixed(1), deltaPct, verdict: sensitivityVerdict(deltaPct) }
+  })
+}
+
+/** 四档里(按续签率从低到高)第一个「持平」或「有余量」——「守得住今天的租金」要的最低续签率档。 */
+export function neededRatePct(rows: SensitivityRow[]): number | null {
+  const sorted = [...rows].sort((a, b) => a.ratePct - b.ratePct)
+  const hit = sorted.find((r) => r.verdict === '持平' || r.verdict === '有余量')
+  return hit ? hit.ratePct : null
+}
+
+export function sensitivitySentence(rows: SensitivityRow[]): string | null {
+  const need = neededRatePct(rows)
+  return need == null ? null : `续签率要到${need}%才守得住今天的租金`
 }

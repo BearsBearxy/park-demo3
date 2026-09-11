@@ -18,8 +18,9 @@ import { fetchContracts } from '@/analysis/anaData'
 import type { ContractDTO } from '@/types/contract'
 import { contractStatusOf } from '@/components/fp/contractStatus'
 import {
-  buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
-  concentrationOption, paretoOption, rentRollOption, rentRollRefText, rentRollSentence, wallOption,
+  buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
+  concentrationOption, paretoOption, priorityReadout, priorityRefText,
+  renewalRateReadout, sensitivityRows, sensitivitySentence, rentRollOption, rentRollRefText, rentRollSentence, wallOption,
 } from './expiry.logic'
 
 const router = useRouter()
@@ -53,7 +54,6 @@ const today = new Date()
 const wall = computed(() => buildExpiryWall(contracts.value, today))
 const wallOpt = computed(() => wallOption(wall.value))   // tooltip 闭包引用 wall,wall 变更随 computed 重建
 const wallRentSum = computed(() => wall.value.quarters.reduce((s, q) => s + q.rentSum, 0))
-const soon = computed(() => buildExpiringSoon(contracts.value, today))
 
 // ── 合约租金带(Task 7,FORECAST §1.1):锁定实线 + 续签区间(蒙特卡洛)。asOf 显式取一次今天,
 // 不在 expiry.logic 里碰系统时钟(全局约束①)。
@@ -68,6 +68,22 @@ const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.mas
 // 不为瓦另算一次 —— 这正是 T4/T5 合并成一个任务的理由(卡片与瓦对不上,已经在这个项目上出过两次)。
 const asOfYm = asOf.slice(0, 7)
 const rentRollLast = computed(() => rentRoll.value.months[rentRoll.value.months.length - 1])
+
+// ── T6(design-boards):「先谈哪几户」—— rentRoll.expiringList 已经按月租金降序,直接读,
+// 不再另过滤一遍(与「未来12月到期」瓦、续签抽样池同一批合同,理由见 buildRentRoll 内注释)。
+const priorityRead = computed(() => priorityReadout(rentRoll.value.expiringList, rentRoll.value.expiringRentSum))
+const priorityRef = computed(() => priorityRefText(rentRoll.value.expiringList, rentRoll.value.expiringRentSum))
+
+// ── T7(design-boards):「续签率从哪来」—— 区间是续签率本身的历史不确定性(只抽 p),
+// 与「合约租金带」卡的金额区间(抽 p 之后还要抽哪几户续签)是两件事,口径浮层里分开说。
+const renewalRateRead = computed(() => renewalRateReadout(rentRoll.value.renewalHits, rentRoll.value.renewalN))
+
+// ── T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(0/历史/40%/60%)下,
+// 视界最后一月的租金是「哪几户续签」随机性的期望值(闭式解,详见 sensitivityFinalRent 注释),
+// 不复用 simulateRenewalDraws(那个函数每轮重新从后验抽 p,答的是另一个问题)。
+const sensitivity = computed(() =>
+  sensitivityRows(rentRollLast.value.locked, rentRoll.value.expiringRentSum, rentRoll.value.months[0].locked, rentRoll.value.renewalP))
+const sensitivityRead = computed(() => sensitivitySentence(sensitivity.value))
 
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
@@ -185,23 +201,72 @@ function onParetoClick(p: unknown) {
           </AnaMethodNote>
         </div>
 
-        <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏(带合同号,合同屏预填搜索)) -->
-        <div v-if="soon.length > 0" class="av2-card av2-s12">
-          <div class="av2-card-h"><span class="t">临期 90 天</span><span class="hint">共 {{ soon.length }} 份 · 按到期日升序<span class="hint-desk"> · 点行去合同屏</span></span></div>
+        <!-- T6(design-boards):「先谈哪几户」—— 既有「临期90天」卡改造:population 从 90 天窗口
+             换成 rentRoll.expiringList(未来12月、与续签抽样同一批合同),排序从到期日改成月租金降序。
+             点行去合同屏的交互原样保留。 -->
+        <div v-if="rentRoll.expiringList.length > 0" class="av2-card av2-s12">
+          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 {{ rentRoll.expiringList.length }} 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span></span></div>
           <div class="exp-scroll">
             <table class="ak-tbl">
-              <thead><tr><th>租户</th><th>合同号</th><th>月租金(万)</th><th>到期日</th><th>剩余天数</th></tr></thead>
+              <thead><tr><th>到期</th><th>租户</th><th>月租(万)</th><th>剩余</th></tr></thead>
               <tbody>
-                <tr v-for="r in soon" :key="r.id" class="exp-row" @click="router.push({ path: '/contracts', query: { contractNo: r.contractNo } })">
-                  <td style="text-align: left">{{ r.tenantName }}</td>
-                  <td class="mono mut">{{ r.contractNo }}</td>
+                <tr v-for="r in rentRoll.expiringList" :key="r.id" class="exp-row" @click="router.push({ path: '/contracts', query: { contractNo: r.contractNo } })">
+                  <td class="mono mut" style="text-align: left">{{ r.endDate.slice(2, 7) }}</td>
+                  <td style="text-align: right">{{ r.tenantName }}</td>
                   <td class="mono">{{ wan(r.monthlyRent) }}</td>
-                  <td class="mono mut">{{ r.endDate }}</td>
-                  <td class="mono">{{ r.daysLeft }} 天</td>
+                  <td class="mono">{{ r.monthsLeft }} 月</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <p v-if="priorityRead" class="ana-read">{{ priorityRead }}</p>
+          <p v-if="priorityRead" class="ana-ref">{{ priorityRef }}</p>
+          <AnaMethodNote v-if="priorityRead">
+            按月租金降序,不按到期日;统计范围与「未来12月到期」瓦、「合约租金带」卡的续签抽样池
+            同一批合同(不含新招租),不另起一套过滤 —— 三处对不上账在这个项目上出过两次。
+          </AnaMethodNote>
+        </div>
+
+        <!-- T7(design-boards):「续签率从哪来」—— 历史到期结果统计 + 续签率本身的区间(只抽 p,
+             不抽哪几户续签),与「合约租金带」卡的金额区间是两件事,分开说。 -->
+        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6">
+          <div class="av2-card-h"><span class="t">续签率从哪来</span><span class="hint">历史到期结果统计</span></div>
+          <div style="display: flex; flex-direction: column; gap: 9px">
+            <div class="exp-kv"><span class="k">历史到期</span><span class="v">{{ rentRoll.renewalN }} 份</span></div>
+            <div class="exp-kv"><span class="k">续签</span><span class="v" style="color: var(--hue-blue)">{{ rentRoll.renewalHits }} 份</span></div>
+            <div class="exp-kv" style="padding-top: 8px; border-top: 1px solid var(--divider)"><span class="k">未续签</span><span class="v">{{ rentRoll.renewalN - rentRoll.renewalHits }} 份</span></div>
+          </div>
+          <p v-if="renewalRateRead" class="ana-read">{{ renewalRateRead }}</p>
+          <p v-if="renewalRateRead" class="ana-ref">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</p>
+          <AnaMethodNote v-if="renewalRateRead">
+            历史续签率按「租约」算(同一份租约拆成几个价格档只算一次到期,换档不算续签),与上方
+            「历史续签率」瓦、「合约租金带」卡同一口径。这里的区间是续签率这个比例本身的历史不确定性
+            (只抽这一件事),不是续签金额的宽度——金额的不确定性见「合约租金带」卡。
+          </AnaMethodNote>
+        </div>
+
+        <!-- T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(不抽 p)下的期望值表,
+             不复用 simulateRenewalDraws(那个函数会把 p 的不确定性也混进来,见 sensitivityFinalRent 注释)。 -->
+        <div v-if="sensitivity.length > 0" class="av2-card av2-s6">
+          <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
+          <table class="ak-tbl">
+            <thead><tr><th>续签率</th><th>{{ rentRollLast.month }} 月租(万)</th><th>对今天</th><th>够不够</th></tr></thead>
+            <tbody>
+              <tr v-for="row in sensitivity" :key="row.ratePct + row.tag">
+                <td style="text-align: left">{{ row.ratePct }}%{{ row.tag ? ' ' + row.tag : '' }}</td>
+                <td class="mono">{{ row.finalRentWan }}</td>
+                <td class="mono">{{ row.deltaPct >= 0 ? '+' : '' }}{{ row.deltaPct }}%</td>
+                <td>{{ row.verdict }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="sensitivityRead" class="ana-read">{{ sensitivityRead }}</p>
+          <p v-if="sensitivityRead" class="ana-ref">与上方合约租金带同一份锁定线</p>
+          <AnaMethodNote v-if="sensitivityRead">
+            四档续签率下的月租都是「哪几户续签」随机性的期望值(线性可加,闭式解,不用蒙特卡洛);
+            历史档用的是上方「历史续签率」瓦同一个数,不是设计稿的 20%。够不够的判定:相对今天
+            变化低于 −20% 记为低于盈亏平衡、−20%~−5% 记为勉强打平、−5%~5% 记为持平、5% 以上记为有余量。
+          </AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s8">

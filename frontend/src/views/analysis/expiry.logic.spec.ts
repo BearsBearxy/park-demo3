@@ -2,9 +2,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ContractDTO } from '@/types/contract'
 import {
-  buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
+  buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, lockedCountByMonth, lockedRentByMonth, nearestGap, paretoOption, renewalVariance,
   rentRollOption, rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
+  priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateReadout,
+  sensitivityFinalRent, sensitivityRows, neededRatePct, sensitivitySentence,
+  type RentPriorityRow,
 } from './expiry.logic'
 
 let seq = 0
@@ -115,29 +118,6 @@ describe('buildExpiryWall', () => {
   })
 })
 
-describe('buildExpiringSoon', () => {
-  const today = new Date(2026, 6, 12)
-
-  it('90 天闭区间两端计入,区间外/无日期/状态不入围剔除,按 endDate 升序', () => {
-    const rows = buildExpiringSoon([
-      ct({ tenantName: '乙', endDate: '2026-10-10' }),   // today+90,右端点计入
-      ct({ tenantName: '甲', endDate: '2026-07-12' }),   // 当天,左端点计入
-      ct({ endDate: '2026-10-11' }),                     // 第 91 天,出界
-      ct({ endDate: '2026-07-11' }),                     // 昨天,出界
-      ct({ endDate: null }),                             // 无日期跳过
-      ct({ endDate: '2026-08-01', status: 'expired' }),  // 状态不入围
-    ], today)
-    expect(rows.map((r) => r.tenantName)).toEqual(['甲', '乙'])
-    expect(rows.map((r) => r.daysLeft)).toEqual([0, 90])
-  })
-
-  it('空输入 → 空数组;行字段齐全', () => {
-    expect(buildExpiringSoon([], today)).toEqual([])
-    const [r] = buildExpiringSoon([ct({ contractNo: 'HT-X', tenantName: '丙', monthlyRent: 8000, endDate: '2026-08-01' })], today)
-    expect(r).toMatchObject({ tenantName: '丙', contractNo: 'HT-X', monthlyRent: 8000, endDate: '2026-08-01', daysLeft: 20 })
-  })
-})
-
 describe('wallOption', () => {
   it('柱=折万,tooltip 含户数', () => {
     const w = buildExpiryWall([ct({ monthlyRent: 25000, endDate: '2026-08-01' })], new Date(2026, 6, 12))
@@ -180,6 +160,28 @@ describe('合约租金带(FORECAST §1.1)', () => {
     // 池子里有 a1(2026-01-31 到期,落进桶)和 a4(2099-12-31 到期,视界内全程锁定,不进任何桶)。
     expect(r.expiringCount).toBe(1)
     expect(r.expiringRentSum).toBe(1000)   // 只有 a1 的月租
+  })
+
+  // T6(design-boards):expiringList 必须与 expiringCount/expiringRentSum 同一份 pool/桶——
+  // 这条断言的破坏方向是"用一套单独的过滤重新扫一遍 cs",那样份数会对不上账(项目上已出过两次)。
+  it('❗T6:expiringList 与 expiringCount/expiringRentSum 同一批合同,按月租金降序,monthsLeft=桶下标', () => {
+    const r = buildRentRoll(CONTRACTS, '2025-12-01', 12)
+    expect(r.expiringList).toHaveLength(r.expiringCount)   // 同一份 pool,数量必须相等
+    expect(r.expiringList.reduce((s, x) => s + x.monthlyRent, 0)).toBe(r.expiringRentSum)
+    expect(r.expiringList[0]).toMatchObject({ tenantName: a1.tenantName, monthlyRent: 1000, endDate: '2026-01-31' })
+    // a1 的 endDate 恰好是 2026-01 的月末,ek<mb.endKey 在 2026-01 那个月不成立(等于,不是小于)——
+    // 2026-01 整月仍算锁定,首个"不再锁定"的月是 2026-02,idx 落在那里(与 F8 同一条边界规则,
+    // 不是本测试的新发现,只是借它验证 expiringList 与 byExpMonth 用的是同一个 idx)。
+    const idx = r.months.findIndex((m) => m.month === '2026-02')
+    expect(idx).toBe(2)
+    expect(r.expiringList[0].monthsLeft).toBe(idx)
+  })
+
+  it('❗T6:多份合同时按月租金降序(不是到期日顺序)', () => {
+    const small = ct({ unitId: 70, monthlyRent: 500, startDate: '2020-01-01', endDate: '2026-01-10' })   // 到期更早,租金更小
+    const big = ct({ unitId: 71, monthlyRent: 9000, startDate: '2020-01-01', endDate: '2026-06-20' })    // 到期更晚,租金更大
+    const r = buildRentRoll([small, big], '2025-12-01', 12)
+    expect(r.expiringList.map((x) => x.monthlyRent)).toEqual([9000, 500])   // 降序,不是按到期日升序
   })
 
   it('❗续签方差两项分开算:逐户金额平方和 + p 本身不准', () => {
@@ -664,4 +666,132 @@ describe('F3(修复轮1):蒙特卡洛的实际离散度要与 renewalVariance �
   // 挪到最内层(每户一次)、跑上面这条断言、确认它变红、再还原,结果记在 task-7-report.md。
   // 不把这份 mutation 写成第二条常驻测试:那需要在测试文件里独立复刻一份 PRNG/Gamma/Beta,
   // 而它本该测的是生产代码本身,复刻一份只会制造两份要维护的代码却什么也多测不到。
+})
+
+describe('priorityReadout / priorityRefText(T6,design-boards):先谈哪几户 摘要', () => {
+  const mk = (rent: number): RentPriorityRow =>
+    ({ id: rent, contractNo: 'HT' + rent, tenantName: 'T' + rent, endDate: '2026-01-01', monthlyRent: rent, monthsLeft: 0 })
+  // 10 份,月租 100万..10万(降序),总和 550万
+  const list = [1000000, 900000, 800000, 700000, 600000, 500000, 400000, 300000, 200000, 100000].map(mk)
+  const total = list.reduce((s, r) => s + r.monthlyRent, 0)   // 5,500,000
+
+  it('前 8 份(默认 topK)占比,四舍五入到整数(5,200,000/5,500,000=94.5…→95)', () => {
+    expect(priorityReadout(list, total)).toBe('前8份占未来12月到期租金的95%')
+  })
+
+  it('其余份数与合计(万)跟 topK 相同的切法,两句必须对得上账(其余 2 份=30万)', () => {
+    expect(priorityRefText(list, total)).toBe('其余2份合计30.0万')
+  })
+
+  it('列表比 topK 短:全部算"前N份",其余 0 份(不是拿不满 8 份就报错)', () => {
+    const short = list.slice(0, 3)
+    const shortTotal = short.reduce((s, r) => s + r.monthlyRent, 0)
+    expect(priorityReadout(short, shortTotal)).toBe('前3份占未来12月到期租金的100%')
+    expect(priorityRefText(short, shortTotal)).toBe('其余0份合计0.0万')
+  })
+
+  it('空列表或总额为 0 → 读数句闭嘴(不硬造一个 100%/0% 的假读数)', () => {
+    expect(priorityReadout([], 0)).toBeNull()
+    expect(priorityReadout(list, 0)).toBeNull()
+  })
+})
+
+describe('simulateRenewalRate / renewalRateBand(T7,design-boards):续签率本身的区间 —— 与金额模拟分开路径', () => {
+  it('❗只抽 p,不碰任何金额 —— 固定种子逐字节可重放,证明这条路径跟 rents 无关', () => {
+    const a = renewalRateBand(18, 90)
+    const b = renewalRateBand(18, 90)
+    expect(a).toEqual(b)
+  })
+
+  it('样本量越大,区间越窄(同一个经验续签率 20%,n 大 10 倍应更确定)', () => {
+    const narrow = renewalRateBand(180, 900)
+    const wide = renewalRateBand(18, 90)
+    expect(narrow.hi - narrow.lo).toBeLessThan(wide.hi - wide.lo)
+  })
+
+  it('区间必须包住经验续签率本身(hits/n 落在 [lo,hi] 内,不是区间外一个不相关的数)', () => {
+    const { lo, hi } = renewalRateBand(18, 90)
+    expect(lo).toBeLessThanOrEqual(18 / 90)
+    expect(hi).toBeGreaterThanOrEqual(18 / 90)
+  })
+
+  it('renewalRateReadout:n=0 闭嘴;n>0 出句且 ≤30 可见字、不含 p/q/σ/标准差/z分数/置信', () => {
+    expect(renewalRateReadout(0, 0)).toBeNull()
+    const s = renewalRateReadout(18, 90)
+    expect(s).not.toBeNull()
+    expect([...(s as string)].length).toBeLessThanOrEqual(30)
+    expect(s).not.toMatch(/[pq]|σ|标准差|z\s*分数|置信/)
+  })
+})
+
+describe('sensitivityFinalRent / sensitivityRows / neededRatePct(T7,design-boards):续签率变一档,年末差多少', () => {
+  it('❗sensitivityFinalRent 是线性闭式解,不是蒙特卡洛 —— 同样入参调用多少次结果都逐位相同', () => {
+    const a = sensitivityFinalRent(2147000, 2179000, 0.4)
+    const b = sensitivityFinalRent(2147000, 2179000, 0.4)
+    expect(a).toBe(b)
+    expect(a).toBe(2147000 + 0.4 * 2179000)   // 精确闭式解,不是约等于
+  })
+
+  it('rate=0 → final=lockedLast;rate=1 → final=lockedLast+expiringRentSum(两个边界钉死方向)', () => {
+    expect(sensitivityFinalRent(1000, 500, 0)).toBe(1000)
+    expect(sensitivityFinalRent(1000, 500, 1)).toBe(1500)
+  })
+
+  // 四档:0/历史(0.2)/40%/60%,今天租金 3,122,000,lockedLast 2,147,000,expiringRentSum 2,179,000。
+  // final = 2,147,000 / 2,582,800 / 3,018,600 / 3,454,400;deltaPct(取整)= -31/-17/-3/+11。
+  const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
+
+  it('四档 ratePct/deltaPct/verdict 逐档核对(不是松散的符号判断)', () => {
+    expect(rows.map((r) => r.ratePct)).toEqual([0, 20, 40, 60])
+    expect(rows.map((r) => r.deltaPct)).toEqual([-31, -17, -3, 11])
+    expect(rows.map((r) => r.verdict)).toEqual(['低于盈亏平衡', '勉强打平', '持平', '有余量'])
+  })
+
+  // 直接构造 deltaPct(lockedLast=today×(1+deltaPct/100)、expiringRentSum=0、rate=0),
+  // 让 deltaPct 精确落在边界值上,不必反解续签率——逐条钉住每个分界点两侧归类不同。
+  it('❗verdict 边界:< −20 才算「低于盈亏平衡」,−20 本身已经是「勉强打平」', () => {
+    const at = (deltaPct: number) => sensitivityRows(100 * (1 + deltaPct / 100), 0, 100, 0)[0].verdict
+    expect(at(-21)).toBe('低于盈亏平衡')
+    expect(at(-20)).toBe('勉强打平')
+  })
+
+  it('❗verdict 边界:< −5 才算「勉强打平」,−5 本身已经是「持平」', () => {
+    const at = (deltaPct: number) => sensitivityRows(100 * (1 + deltaPct / 100), 0, 100, 0)[0].verdict
+    expect(at(-6)).toBe('勉强打平')
+    expect(at(-5)).toBe('持平')
+  })
+
+  it('❗verdict 边界:< 5 才算「持平」,5 本身已经是「有余量」', () => {
+    const at = (deltaPct: number) => sensitivityRows(100 * (1 + deltaPct / 100), 0, 100, 0)[0].verdict
+    expect(at(4)).toBe('持平')
+    expect(at(5)).toBe('有余量')
+  })
+
+  it('neededRatePct:四档里按续签率升序取第一个"持平"或"有余量"(0%/20% 都不够,40% 第一次够)', () => {
+    expect(neededRatePct(rows)).toBe(40)
+  })
+
+  // 上面这条断言用的样本里,数组原始顺序([0,20%,40%,60%])碰巧已经是升序,删掉 neededRatePct
+  // 里的排序也照样能过。这条故意让「历史」档(55%)比 40% 更高、且原始顺序排在 40% 前面,
+  // 逼出排序这一步真正的作用:答案必须是四档里最小的够格续签率,不是数组里第一个够格的。
+  it('❗neededRatePct 必须按续签率升序排序后再找 —— 「历史」档位置不固定,原始顺序里它可能排在更小的够格档前面', () => {
+    const outOfOrder = sensitivityRows(2147000, 2179000, 3122000, 0.55)
+    expect(outOfOrder.map((r) => r.ratePct)).toEqual([0, 55, 40, 60])   // 数组原始顺序不是升序
+    expect(outOfOrder[1].verdict).toBe('有余量')   // 55% 已经够格,且排在 40% 前面
+    expect(outOfOrder[2].verdict).toBe('持平')     // 40% 也够格,是四档里最小的够格续签率
+    expect(neededRatePct(outOfOrder)).toBe(40)     // 答案必须是 40,不是数组里先撞见的 55
+  })
+
+  it('neededRatePct:一档都不够时给 null,句子跟着闭嘴(不是硬凑一个 60% 交差)', () => {
+    const allBad = sensitivityRows(0, 0, 100, 0)   // 四档 final 都是 0,今天 100,都是 -100%
+    expect(neededRatePct(allBad)).toBeNull()
+    expect(sensitivitySentence(allBad)).toBeNull()
+  })
+
+  it('sensitivitySentence:句子拼出需要的续签率,≤30 可见字、不含 p/q/σ/标准差/z分数/置信', () => {
+    const s = sensitivitySentence(rows)
+    expect(s).toBe('续签率要到40%才守得住今天的租金')
+    expect([...(s as string)].length).toBeLessThanOrEqual(30)
+    expect(s).not.toMatch(/[pq]|σ|标准差|z\s*分数|置信/)
+  })
 })
