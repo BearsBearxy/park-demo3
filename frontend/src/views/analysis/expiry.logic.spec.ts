@@ -232,25 +232,101 @@ describe('合约租金带(FORECAST §1.1)', () => {
   })
 
   it('F4:decided 故意不去重 —— 同一单元先后两段历史租约是两次独立的续签结果,不是重复数据', () => {
-    const first = ct({ unitId: 50, monthlyRent: 800, startDate: '2018-01-01', endDate: '2020-12-31', status: 'renewed' })
+    const first = ct({ id: 510, unitId: 50, monthlyRent: 800, startDate: '2018-01-01', endDate: '2020-12-31', status: 'renewed' })
+    const firstNext = ct({ unitId: 50, monthlyRent: 850, startDate: '2021-01-01', parentContractId: 510, linkType: 'renew' })
     const second = ct({ unitId: 50, monthlyRent: 900, startDate: '2021-01-01', endDate: '2023-12-31', status: 'active' })
-    const r = buildRentRoll([first, second], '2026-01-01', 1)
-    expect(r.renewalN).toBe(2)      // 两段历史都算,不因同一单元被 dedup 掉
-    expect(r.renewalHits).toBe(1)   // 只有 first 命中(status=renewed)
+    const r = buildRentRoll([first, firstNext, second], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)      // 两段历史都算,不因同一单元被 dedup 掉(firstNext 未到期,不进分母)
+    expect(r.renewalHits).toBe(1)   // 只有 first 命中(后继 linkType=renew)
   })
 
-  it('历史回测分母/命中由 asOf 现算(不是写死的 18/90):状态标记与续签链两种命中路径都算,草稿/整租/未到期都不进分母', () => {
-    const byFlag = ct({ endDate: '2025-01-01', status: 'renewed' })              // 命中①:状态标记
-    const parent = ct({ endDate: '2025-02-01', status: 'active' })              // 命中②:续签链(状态未同步)
-    const child = ct({ startDate: '2025-02-02', parentContractId: parent.id })  // parent 的后续合同
+  // ── C1(对抗复查):递增段 ≠ 续签换约 ──────────────────────────────────────────
+  // 这两条是这条缺陷活下来的原因:改前全部 fixture 都没设过 linkType,于是「后继 = 续签」
+  // 这个错口径在 fixture 里和正确口径长得一模一样,十几轮复查一条断言都碰不到它。
+  it('❗C1:后继是递增段(linkType=escalation)的,既不算续签命中,本身也不进分母 —— 它只是同一份租约的上一个价格档', () => {
+    // 一份租约拆成两个价格档:tier1 → tier2(escalation),tier2 到期后没人续。
+    const tier1 = ct({ id: 601, unitId: 60, monthlyRent: 1000, startDate: '2023-01-01', endDate: '2023-12-31', status: 'renewed' })
+    const tier2 = ct({ id: 602, unitId: 60, monthlyRent: 1100, startDate: '2024-01-01', endDate: '2024-12-31', status: 'active', parentContractId: 601, linkType: 'escalation' })
+    const r = buildRentRoll([tier1, tier2], '2026-01-01', 1)
+    // 改前:分母 2(两个档各算一次到期)、命中 2(tier1 有后继 + status=renewed,tier2 status 也曾被算)
+    expect(r.renewalN).toBe(1)      // 折成一份租约:只有末档 tier2 是一次真到期
+    expect(r.renewalHits).toBe(0)   // 换价格档不是续签
+    expect(r.renewalP).toBe(0)
+  })
+
+  it('❗C1:同一条链上递增段在前、真续签在后 —— 只有末档进分母,且它算一次命中', () => {
+    const tier1 = ct({ id: 701, monthlyRent: 1000, endDate: '2023-12-31', status: 'renewed' })
+    const tier2 = ct({ id: 702, monthlyRent: 1100, endDate: '2024-12-31', status: 'renewed', parentContractId: 701, linkType: 'escalation' })
+    const renew = ct({ id: 703, monthlyRent: 1200, startDate: '2025-01-01', endDate: '2025-12-31', status: 'active', parentContractId: 702, linkType: 'renew' })
+    const r = buildRentRoll([tier1, tier2, renew], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)      // tier2(末档,已到期)+ renew(也已到期,自己没再续)
+    expect(r.renewalHits).toBe(1)   // 只有 tier2 命中;tier1 是中间价格档,根本不在分母里
+    expect(r.renewalP).toBeCloseTo(0.5, 5)
+  })
+
+  it('❗C1:status=renewed 不再是命中路径 —— 拆链脚本给中间价格档也打这个状态(SPEC §1「中间档 status=renewed」)', () => {
+    // 有 renewed 状态、有后继,但后继是递增段:改前这条两条路径都判命中,改后一条都不算。
+    const mid = ct({ id: 801, endDate: '2024-06-30', status: 'renewed' })
+    const tier = ct({ id: 802, endDate: '2025-06-30', status: 'active', parentContractId: 801, linkType: 'escalation' })
+    // 另一份:只有状态标记、没有任何后继(实测库里 0 条,但状态字段本身不该再被当判据)
+    const flagOnly = ct({ endDate: '2024-08-31', status: 'renewed' })
+    const r = buildRentRoll([mid, tier, flagOnly], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)      // tier(末档)+ flagOnly
+    expect(r.renewalHits).toBe(0)   // 一条都不算续签
+  })
+
+  it('❗C1:后继的 linkType 不是 renew(缺失 / new / 以后新增的类型)一律不算命中 —— 判据是「链上写着这是续签」,不是「有后继」', () => {
+    // 折链之后,末档身上剩下的后继在今天的库里只可能是 renew,所以光看「有没有后继」也能算对 ——
+    // 这条断言钉的是**判据本身**:数据一旦脏(老行没回填 link_type、以后加了新的链接类型),
+    // 「有后继就算续签」会立刻把它们当成续签,而这正是 C1 的原样重演。
+    const a = ct({ id: 851, endDate: '2024-01-31', status: 'active' })
+    const aNext = ct({ startDate: '2024-02-01', parentContractId: 851 })                    // linkType 缺失(老数据行)
+    const b = ct({ id: 861, endDate: '2024-02-29', status: 'active' })
+    const bNext = ct({ startDate: '2024-03-01', parentContractId: 861, linkType: 'new' })   // 链指针在、但不是续签
+    const r = buildRentRoll([a, aNext, b, bNext], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)
+    expect(r.renewalHits).toBe(0)
+  })
+
+  it('历史回测分母/命中由 asOf 现算(不是写死的 18/90):命中只认 linkType=renew 的后继,草稿/整租/未到期都不进分母', () => {
+    const parent = ct({ id: 301, endDate: '2025-02-01', status: 'active' })     // 命中:续签链落地(状态未同步也算)
+    const child = ct({ startDate: '2025-02-02', parentContractId: 301, linkType: 'renew' })
     const miss = ct({ endDate: '2025-03-01', status: 'active' })                // 未续签
     const draft = ct({ endDate: '2025-01-05', status: 'draft' })                // 草稿,不算"已知结果"
     const master = ct({ endDate: '2025-01-05', status: 'active', kind: 'master_lease' })   // 整租,不进分母
     const future = ct({ endDate: '2099-01-01', status: 'active' })              // 还没到期,不进分母
-    const r = buildRentRoll([byFlag, parent, child, miss, draft, master, future], '2026-01-01', 1)
-    expect(r.renewalN).toBe(3)      // byFlag / parent / miss
-    expect(r.renewalHits).toBe(2)   // byFlag / parent
-    expect(r.renewalP).toBeCloseTo(2 / 3, 5)
+    const r = buildRentRoll([parent, child, miss, draft, master, future], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)      // parent / miss(child 无 endDate,不进分母)
+    expect(r.renewalHits).toBe(1)   // parent
+    expect(r.renewalP).toBeCloseTo(0.5, 5)
+  })
+
+  it('❗C1:续签率直接决定带的上沿 —— 把递增段当续签会把上沿抬高一大截(这是屏上那条带唯一的不确定性来源)', () => {
+    // 照着实测库的形状造:16 份租约各被拆成两个价格档、4 份租约真的换约续了租。
+    //   正确口径:分母 20 份租约(16 个末档 + 4 份续了的),命中 4 → p = 0.20
+    //   把递增当续签:分母 36 个合同行(16×2 + 4),命中 20(16 个首档 + 4 份) → p ≈ 0.56
+    // 同一个未来到期池,两种口径画出来的上沿必须差出一截。
+    const tiers = [...Array(16)].flatMap((_, i) => {
+      const t1 = ct({ id: 2000 + i * 2, endDate: '2024-06-30', status: 'renewed' })
+      const t2 = ct({ id: 2001 + i * 2, endDate: '2025-06-30', status: 'active', parentContractId: t1.id, linkType: 'escalation' })
+      return [t1, t2]
+    })
+    const renewed = [...Array(4)].flatMap((_, i) => {
+      const p = ct({ id: 2100 + i * 2, endDate: '2024-09-30', status: 'renewed' })
+      return [p, ct({ id: 2101 + i * 2, startDate: '2024-10-01', parentContractId: p.id, linkType: 'renew' })]
+    })
+    // 未来池:10 份等额合同都在 2026-02 到期(上沿 = 其中能续下来多少份)
+    const pool = [...Array(10)].map(() => ct({ monthlyRent: 10000, startDate: '2025-06-01', endDate: '2026-01-31', status: 'active' }))
+    const cs = [...tiers, ...renewed, ...pool]
+    const r = buildRentRoll(cs, '2026-01-01', 2)
+    expect(r.renewalN).toBe(20)
+    expect(r.renewalHits).toBe(4)
+    // 对照组:把 escalation 全改标成 renew(= 改前那套「有后继就算续签」的口径)
+    const wrong = buildRentRoll(
+      cs.map((c) => (c.linkType === 'escalation' ? { ...c, linkType: 'renew' as const } : c)), '2026-01-01', 2)
+    expect(wrong.renewalN).toBe(36)
+    expect(wrong.renewalHits).toBe(20)
+    expect(r.months[1].renewalHi).toBeLessThan(wrong.months[1].renewalHi)
   })
 
   it('续签区间确定性可重放(种子固定,不是 Math.random —— 同一份数据两次调用逐字节相同)', () => {

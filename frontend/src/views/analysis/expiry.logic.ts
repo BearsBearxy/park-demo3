@@ -416,24 +416,49 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   const masterLease = masterLeaseByMonth(cs, asOf, n)
   const asOfKey = dateKeyOf(asOf)!
 
-  // 历史回测:asOf 之前已到期、结果已知的合同(草稿从未真正在租,不算"已知结果")。
-  // 命中 = 状态已标 renewed,或存在以它为 parentContractId 的后续合同(续签链落地,状态标记
-  // 是否同步不影响判定 —— 这就是为什么不能只信 status 字段)。
+  // 历史回测:asOf 之前已到期、结果已知的**租约**(不是合同行)。草稿从未真正在租,不算"已知结果"。
   //
-  // F2(修复轮1,2026-09-11 实测 park_demo3):计划锚点「2025-12-01 续签率 18/90」复现不出来。
-  // 查了 9 种口径 —— 仅状态标记 17/106、仅续签链 27/106、两者取或(=当前实现)27/106、
-  // 三种各自再加 monthlyRent>0 分别 17/27/27@分母91、只认近12月到期 15/36、近24月到期 17/95、
-  // 含 master_lease 只认状态 17/107、限 start_date≥2023-01-01 2/69。分母从没出现过 90,
-  // 命中数从没出现过 18。不为了凑这个数改口径 —— 现在这套(状态标记或续签链落地)比只信状态
-  // 字段稳,继续用;下面的判定规则(哪些算 decided、哪些算 hit)由 expiry.logic.spec.ts 里
-  // 不依赖数据库的 fixture 钉死,口径以后被人改动会当场红。
+  // C1(对抗复查,2026-09-11):`parentContractId` 不等于「续签了」。它是两件事共用的链指针,
+  // 分辨这两件事的字段是 `linkType`,而这个判断本仓早就写下来了 ——
+  // `CONTRACT-ESCALATION-SPLIT-SPEC §1`:链的形状是「档1(new) ← 档2(escalation) ← … ←
+  // 末档(escalation) ← 续签子期(renew)」,合同屏 `ContractsView.vue:193` 据此给递增段单发一个
+  // 「递增」徽标,注释原话是「递增段≠续签换约」。分析屏原来把两者合成一件事:
   //
-  // decided 从来不按单元去重 —— 横跨 asOf 之前的全部历史,同一单元先后好几段真实租约
+  //   实测 park_demo3(2026-09-11,SQL 见 task-8-report.md):全库 link_type 分布
+  //   new 338 / escalation 79 / renew 14;锚点 2025-12-01 原口径 27 次「命中」里,
+  //   后继是 escalation 的 24 次、是 renew 的只有 3 次 —— 印在屏上的续签率大了近七倍。
+  //
+  // 改后的两条判据(分子分母同时改,只改一头会拿一个错数换另一个错数):
+  //
+  //  ① 分母折到**租约末档**:有 escalation 后继的那份是同一份租约的上一个价格档,它的 endDate
+  //     是换档日不是到期日,不该在分母里各算一次。实测锚点 2025-12-01:106 份合同行里 24 份是
+  //     中间价格档,折完剩 82 份租约。
+  //  ② 分子只认 `linkType === 'renew'` 的后继。`status === 'renewed'` 这一支**删掉** ——
+  //     拆链脚本的原话是「中间档 status='renewed',末档保持原状态」,也就是说这个状态字段编码的是
+  //     「被下一期取代」,取代它的既可能是续签也可能是下一个价格档。实测:全库 45 条 renewed 全部有
+  //     后继(其中 39 条后继是递增段),没有一条是「标了 renewed 却没有后继」;折链之后的 82 份租约里
+  //     3 份是 renewed,这 3 份的后继全是 renew —— 留着这一支今天不多算一条,但它随时会把下一批
+  //     递增段放进来,是个定时炸弹,不是保险带。
+  //     linkType 缺失(库里 NOT NULL DEFAULT 'new',只有老 fixture 会缺)按「不是续签」处理:
+  //     这条带上沿高了才骗人,宁可保守。
+  //
+  //  锚点 2025-12-01 改后:3/82 = 3.7%(原 27/106 = 25.5%)。蒙特卡洛的 Beta(3.5, 79.5) 均值 0.042。
+  //
+  // decided 从来不按**单元**去重 —— 横跨 asOf 之前的全部历史,同一单元先后好几段真实租约
   // (各自到期、各自有续签结果)是常态,不是重复数据。按单元去重会把多段历史强行合并成一段,
-  // 悄悄吃掉真实存在的历史续签结果。
+  // 悄悄吃掉真实存在的历史续签结果。折价格档与按单元去重是两回事:前者折的是同一份租约被拆开的
+  // 几个价格档,后者会把同一单元上先后两份不同租约也一起吃掉。
+  //
+  // F2(修复轮1):计划锚点「2025-12-01 续签率 18/90」查了 9 种口径都复现不出来,不为了凑那个数
+  // 改口径;判定规则由 expiry.logic.spec.ts 里不依赖数据库的 fixture 钉死,以后被人改动会当场红。
+  const succBy = (t: 'renew' | 'escalation') => new Set(
+    cs.filter((c) => c.linkType === t && c.parentContractId != null).map((c) => c.parentContractId))
+  const midTier = succBy('escalation')   // 有递增后继 = 自己只是链中间的一个价格档
+  const renewedInto = succBy('renew')    // 有续签后继 = 真的换约续租了
   const decided = cs.filter((c) =>
-    c.kind !== 'master_lease' && c.status !== 'draft' && (dateKeyOf(c.endDate) ?? Infinity) < asOfKey)
-  const renewalHits = decided.filter((c) => c.status === 'renewed' || cs.some((o) => o.parentContractId === c.id)).length
+    c.kind !== 'master_lease' && c.status !== 'draft' &&
+    (dateKeyOf(c.endDate) ?? Infinity) < asOfKey && !midTier.has(c.id))
+  const renewalHits = decided.filter((c) => renewedInto.has(c.id)).length
   const renewalN = decided.length
   const renewalP = renewalN > 0 ? renewalHits / renewalN : 0
 

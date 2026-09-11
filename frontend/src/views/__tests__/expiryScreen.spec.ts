@@ -37,8 +37,13 @@ function ct(p: Partial<ContractDTO>): ContractDTO {
 
 // 5 份已到期、结果已知(2 续签命中,3 未续签)→ 回测 n=5、hits=2;1 份仍在租、到期日落在
 // 未来 12 月视界内 → 续签抽样池非空,带子有内容可画。
+//
+// C1(对抗复查):命中判据改成「后继合同的 linkType === 'renew'」,`status='renewed'` 不再算一条
+// 路径(拆链脚本给中间价格档也打这个状态)。所以这里给前两份各挂一个真的续签子期。
+// 子期无止日、零租金:不进分母(结果未知)、不进抽样池(止日为空)、不改锁定线,只当那根链指针。
 const CONTRACTS: ContractDTO[] = [
-  ...[...Array(5)].map((_, i) => ct({ endDate: pastDate, status: i < 2 ? 'renewed' : 'active' })),
+  ...[...Array(5)].map((_, i) => ct({ id: 100 + i, endDate: pastDate, status: i < 2 ? 'renewed' : 'active' })),
+  ...[...Array(2)].map((_, i) => ct({ parentContractId: 100 + i, linkType: 'renew', monthlyRent: 0 })),
   ct({ endDate: futureDate, monthlyRent: 8000, startDate: iso(new Date(today.getFullYear() - 3, 0, 1)) }),
 ]
 
