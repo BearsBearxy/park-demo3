@@ -772,3 +772,35 @@ export function sensitivitySentence(rows: SensitivityRow[]): string | null {
   const need = neededRatePct(rows)
   return need == null ? `${rows.length}档都守不住今天的租金` : `续签率要到${need}%才守得住今天的租金`
 }
+
+/* ---------- F1(修复轮1,design-boards):板上收尾行 ----------
+ * board-expiry.txt 最后一行「历史 20% · 缺口 44 万/月,约等于 15 户中型厂房」——原实现整句没做
+ * (grep「缺口」「中型厂房」零命中,报告未做清单里也没提)。它算得出来:缺口 = 今天的月租
+ * (todayRent,即 rentRoll.months[0].locked)− 按历史续签率(rows 里 tag==='历史' 那档)推出的
+ * 末月月租,直接读 rows 已经算好的 finalRentWan,不重算 sensitivityFinalRent(同一个数不能算两次
+ * 各出各的账)。
+ *
+ * 「中型厂房」口径查库定,不是拍脑袋(park_demo3,2026-09-11 实测):"纯厂房类"在租合同
+ * (billing_term 全部行 property_type='factory',排除任何混着宿舍/办公/商铺/空地的户,避免非
+ * 厂房的租金/管理费掺进来)monthly_rent 中位数——
+ *   SELECT c.id, c.monthly_rent FROM contract c JOIN contract_billing_term t
+ *     ON t.contract_id=c.id WHERE c.status IN ('active','expiring') AND c.kind='normal'
+ *     GROUP BY c.id, c.monthly_rent HAVING SUM(t.property_type<>'factory')=0
+ *       AND SUM(t.property_type='factory')>0 ORDER BY c.monthly_rent;
+ * 103 份,中位数(第 52 名,合同 id=210)= ¥8990.30/月。这个数会随合同新签/到期漂移,不是常量;
+ * expiry.logic.spec.ts 里有一条断言把它钉死(pin 住这个具体数字),谁改这行不重新查库就会被看见。
+ *
+ * gap 四舍五入到「万」之后若 ≤0(续签率已经够,或差额小到不足 0.5 万),说一句「已经守住」,
+ * 不说「缺口 0 万」或「缺口 −44 万」这种读不通的话。
+ */
+export const MEDIAN_FACTORY_RENT = 8990.3   // 元/月;来源见上,park_demo3 2026-09-11 实测,103 份纯厂房类合同中位数;expiry.logic.spec.ts 钉死这个数,漂移必须重新查库再改
+
+export function sensitivityGapSentence(rows: SensitivityRow[], todayRent: number, medianFactoryRent = MEDIAN_FACTORY_RENT): string | null {
+  const hist = rows.find((r) => r.tag === '历史')
+  if (!hist || todayRent <= 0) return null
+  const gap = todayRent - hist.finalRentWan * 10000
+  const gapWan = Math.round(gap / 10000)
+  if (gapWan <= 0) return `历史${hist.ratePct}% · 已经守住今天的租金,没有缺口`
+  const units = Math.max(1, Math.round(gap / medianFactoryRent))
+  return `历史${hist.ratePct}% · 缺口${gapWan}万/月,约等于${units}户中型厂房`
+}

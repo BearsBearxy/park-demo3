@@ -20,7 +20,8 @@ import { contractStatusOf } from '@/components/fp/contractStatus'
 import {
   buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, paretoOption, priorityReadout, priorityRefText,
-  renewalRateReadout, sensitivityRows, sensitivitySentence, rentRollOption, rentRollRefText, rentRollSentence, wallOption,
+  renewalRateReadout, sensitivityRows, sensitivitySentence, sensitivityGapSentence,
+  rentRollOption, rentRollRefText, rentRollSentence, wallOption,
 } from './expiry.logic'
 
 const router = useRouter()
@@ -84,6 +85,9 @@ const renewalRateRead = computed(() => renewalRateReadout(rentRoll.value.renewal
 const sensitivity = computed(() =>
   sensitivityRows(rentRollLast.value.locked, rentRoll.value.expiringRentSum, rentRoll.value.months[0].locked, rentRoll.value.renewalP))
 const sensitivityRead = computed(() => sensitivitySentence(sensitivity.value))
+// F1(修复轮1,design-boards):板上收尾行——历史续签率下的缺口,折算成约等于几户中型厂房。
+// 见 sensitivityGapSentence 注释:「中型厂房」口径查库定,不是拍脑袋。
+const sensitivityGapRead = computed(() => sensitivityGapSentence(sensitivity.value, rentRoll.value.months[0].locked))
 
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
@@ -264,11 +268,15 @@ function onParetoClick(p: unknown) {
             </tbody>
           </table>
           <p v-if="sensitivityRead" class="ana-read">{{ sensitivityRead }}</p>
+          <p v-if="sensitivityGapRead" class="ana-read">{{ sensitivityGapRead }}</p>
           <p v-if="sensitivityRead" class="ana-ref">与上方合约租金带同一份锁定线</p>
           <AnaMethodNote v-if="sensitivityRead">
             四档续签率下的月租都是「哪几户续签」随机性的期望值(线性可加,闭式解,不用蒙特卡洛);
             历史档用的是上方「历史续签率」瓦同一个数,不是设计稿的 20%。够不够的判定:相对今天
             变化低于 −20% 记为低于盈亏平衡、−20%~−5% 记为勉强打平、−5%~5% 记为持平、5% 以上记为有余量。
+            F2(修复轮1):这里的「低于盈亏平衡」不是「盈亏平衡与敏感性」屏用成本结构算出的那个
+            保本点(那个由固定成本与边际贡献率决定,与租金续签无关)——同一个词,这里只是续签后
+            月租比今天低超过 20% 的档位名,数值上两者没有关系。
           </AnaMethodNote>
         </div>
 

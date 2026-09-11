@@ -5,7 +5,7 @@ import { elecBandRef, elecReadout } from '../analysis/monitor.logic'
 import { bandReadout, bandRefText } from '../analysis/TenantEnergy.logic'
 import {
   priorityReadout, priorityRefText, renewalRateReadout, sensitivityRows, sensitivitySentence,
-  rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
+  sensitivityGapSentence, rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
 } from '../analysis/expiry.logic'
 import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
 import type { PnlSummary } from '../../analysis/anaData'
@@ -278,6 +278,25 @@ describe('分析层文案门禁', () => {
       expect(note![1], `口径浮层缺了「${kw}」`).toContain(kw)
   })
 
+  /**
+   * F2(修复轮1,design-boards):「续签率变一档」卡的四档判词借了「盈亏平衡」这个词(稿上原话),
+   * 但算法是续签率×到期租金的线性期望,与 breakeven.logic.ts 那个由成本结构(固定成本/边际贡献率)
+   * 算出的真保本点没有数值关系——那个与租金续签完全无关。见过「盈亏平衡与敏感性」屏、又照字面读
+   * 这张表的人会得出「园区要亏了」的结论,比实际严重得多。判据钉住:口径浮层必须声明这里的
+   * 「盈亏平衡」不是那一个,不许下一次有人整理文案时顺手删掉这句声明。
+   */
+  it('❗F2:「续签率变一档」卡借用了「盈亏平衡」这个词,口径浮层必须声明它不是那个真保本点', () => {
+    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
+    const card = splitCards(src).find((c) => /class="t">续签率变一档/.test(c.text))
+    expect(card, 'ExpiryView.vue 里找不到「续签率变一档」那张卡').toBeTruthy()
+    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')
+    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
+    expect(note, '这张卡没有口径浮层').toBeTruthy()
+    expect(note![1], '浮层没有声明这里的「盈亏平衡」不是「盈亏平衡与敏感性」屏那个真保本点')
+      .toContain('不是「盈亏平衡与敏感性」')
+    expect(note![1], '浮层没有说清楚两者数值上没有关系').toContain('与租金续签无关')
+  })
+
   // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
   // echarts + anaData 太重),上面 scan() 的 strip() 又把 `{{ elecReadout }}` 这类插值整个删掉,
   // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符
@@ -302,6 +321,7 @@ describe('分析层文案门禁', () => {
       priorityReadout(PRIORITY_SAMPLE, 2179000),         // T6(design-boards):先谈哪几户
       renewalRateReadout(18, 90),                        // T7(design-boards):续签率从哪来
       sensitivitySentence(SENSITIVITY_SAMPLE),           // T7(design-boards):续签率变一档
+      sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000),   // F1(修复轮1):板上收尾行,缺口折算中型厂房
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
