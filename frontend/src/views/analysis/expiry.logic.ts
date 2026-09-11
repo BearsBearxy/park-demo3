@@ -762,7 +762,13 @@ export function neededRatePct(rows: SensitivityRow[]): number | null {
   return hit ? hit.ratePct : null
 }
 
+/**
+ * T7(design-boards,真实数据核对后改):四档一档都不够的情况不是"没数据"—— 实测当前库
+ * (asOf=2026-09-11)恰好落在这一支:60% 都还差着,不该跟着 rows 为空那种情况一样闭嘴,
+ * 那样整张卡连同它的口径浮层会一起消失,读者反而看不到最需要看到的那句结论。
+ */
 export function sensitivitySentence(rows: SensitivityRow[]): string | null {
+  if (!rows.length) return null
   const need = neededRatePct(rows)
-  return need == null ? null : `续签率要到${need}%才守得住今天的租金`
+  return need == null ? `${rows.length}档都守不住今天的租金` : `续签率要到${need}%才守得住今天的租金`
 }

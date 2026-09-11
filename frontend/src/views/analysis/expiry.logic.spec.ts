@@ -782,10 +782,17 @@ describe('sensitivityFinalRent / sensitivityRows / neededRatePct(T7,design-board
     expect(neededRatePct(outOfOrder)).toBe(40)     // 答案必须是 40,不是数组里先撞见的 55
   })
 
-  it('neededRatePct:一档都不够时给 null,句子跟着闭嘴(不是硬凑一个 60% 交差)', () => {
+  // 实测当前库(asOf=2026-09-11)恰好落在这一支(见 t6-report.md):60% 都还守不住今天的租金。
+  // 这不是"没数据",句子不该闭嘴——闭嘴会连同 AnaMethodNote 一起从卡上消失,读者反而看不到
+  // 最需要看到的那句结论。
+  it('neededRatePct:一档都不够时给 null;sensitivitySentence 不跟着闭嘴,给一句诚实的结论', () => {
     const allBad = sensitivityRows(0, 0, 100, 0)   // 四档 final 都是 0,今天 100,都是 -100%
     expect(neededRatePct(allBad)).toBeNull()
-    expect(sensitivitySentence(allBad)).toBeNull()
+    expect(sensitivitySentence(allBad)).toBe('4档都守不住今天的租金')
+  })
+
+  it('sensitivitySentence:rows 为空才真正闭嘴(与"四档都不够"是两件事)', () => {
+    expect(sensitivitySentence([])).toBeNull()
   })
 
   it('sensitivitySentence:句子拼出需要的续签率,≤30 可见字、不含 p/q/σ/标准差/z分数/置信', () => {

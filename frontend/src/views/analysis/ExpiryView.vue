@@ -247,7 +247,10 @@ function onParetoClick(p: unknown) {
 
         <!-- T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(不抽 p)下的期望值表,
              不复用 simulateRenewalDraws(那个函数会把 p 的不确定性也混进来,见 sensitivityFinalRent 注释)。 -->
-        <div v-if="sensitivity.length > 0" class="av2-card av2-s6">
+        <!-- 门槛用 renewalN(有没有历史续签数据),不用 sensitivity.length —— 后者是固定 4 档,
+             恒为真,拿它当门禁形同虚设(sensitivityRows 是纯算术,没有历史数据也会算出一张
+             退化的表,那张表没有意义,不该露出来)。 -->
+        <div v-if="rentRoll.renewalN > 0" class="av2-card av2-s6">
           <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
           <table class="ak-tbl">
             <thead><tr><th>续签率</th><th>{{ rentRollLast.month }} 月租(万)</th><th>对今天</th><th>够不够</th></tr></thead>
