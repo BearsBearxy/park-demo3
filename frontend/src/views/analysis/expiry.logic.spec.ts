@@ -7,7 +7,7 @@ import {
   rentRollOption, rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
   priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateReadout,
   sensitivityFinalRent, sensitivityRows, neededRatePct, sensitivitySentence,
-  sensitivityGapSentence, MEDIAN_FACTORY_RENT,
+  sensitivityGapSentence, MEDIAN_FACTORY_RENT, MEDIAN_FACTORY_RENT_ASOF, medianFactoryRent,
   type RentPriorityRow,
 } from './expiry.logic'
 
@@ -485,18 +485,22 @@ describe('合约租金带(FORECAST §1.1)', () => {
 
 // T4/T5(design-boards):「最近的缺口」瓦 + 图上缺口标注共用同一个值。
 describe('nearestGap(T4/T5,design-boards):最近一次到期造成的锁定线下跌', () => {
+  const NONE = new Set<number>()   // 大多数用例不涉及续签链,传空集
+
   it('找到最早出现下跌的月份,把拉低它的合同按月租降序列出(1 份到期的简单情形)', () => {
     const big = ct({ tenantName: '大户', monthlyRent: 1200, startDate: '2020-01-01', endDate: '2099-12-31' })
     const small = ct({ tenantName: '小户', monthlyRent: 800, startDate: '2020-01-01', endDate: '2026-02-15' })
     const cs = [big, small]
     const locked = lockedRentByMonth(cs, '2026-01-01', 4)
     expect(locked).toEqual([2000, 1200, 1200, 1200])   // 小户 2/15 到期,2 月起不再覆盖月末
-    const gap = nearestGap(cs, '2026-01-01', locked)
+    const gap = nearestGap(cs, '2026-01-01', locked, NONE)
     expect(gap).not.toBeNull()
     expect(gap!.monthsAway).toBe(1)
     expect(gap!.count).toBe(1)
     expect(gap!.totalRentSum).toBe(800)
     expect(gap!.names).toEqual(['小户'])
+    // F4(缺的断言①):totalRentSum 必须等于锁定线实际的跌幅,不能是"标注一个数、线跌另一个数"。
+    expect(gap!.totalRentSum).toBe(locked[gap!.monthsAway - 1] - locked[gap!.monthsAway])
   })
 
   it('多份合同同一次到期造成同一次下跌 —— names 只取月租前两名,count/totalRentSum 给真实总数', () => {
@@ -506,25 +510,66 @@ describe('nearestGap(T4/T5,design-boards):最近一次到期造成的锁定线�
     const c3 = ct({ tenantName: '丁户', monthlyRent: 300, startDate: '2020-01-01', endDate: '2026-01-31' })
     const cs = [big, c1, c2, c3]
     const locked = lockedRentByMonth(cs, '2026-01-01', 3)
-    const gap = nearestGap(cs, '2026-01-01', locked)
+    const gap = nearestGap(cs, '2026-01-01', locked, NONE)
     expect(gap).not.toBeNull()
     expect(gap!.monthsAway).toBe(1)
     expect(gap!.count).toBe(3)
     expect(gap!.names).toEqual(['开利暖通', '丙户'])   // 降序取前两名,力灏没到期不该出现
     expect(gap!.totalRentSum).toBe(2060 + 500 + 300)
+    expect(gap!.totalRentSum).toBe(locked[gap!.monthsAway - 1] - locked[gap!.monthsAway])
   })
 
   it('锁定线全程持平或上涨(无到期造成的下跌)→ 没有缺口,不是凭空报一个', () => {
     const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31' })
     const locked = lockedRentByMonth([c], '2026-01-01', 6)
-    expect(nearestGap([c], '2026-01-01', locked)).toBeNull()
+    expect(nearestGap([c], '2026-01-01', locked, NONE)).toBeNull()
   })
 
   it('下跌若是整月免租退出造成的(不是到期)—— 不算缺口,继续找下一个真正的到期', () => {
     const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31', rentFree: [{ start: '2026-02-01', end: '2026-02-28' }] })
     const locked = lockedRentByMonth([c], '2026-01-01', 3)
     expect(locked).toEqual([1000, 0, 1000])   // 2 月整月免租,锁定线跌到 0,3 月恢复
-    expect(nearestGap([c], '2026-01-01', locked)).toBeNull()   // 这份合同压根没到期,不该被当成"缺口"
+    expect(nearestGap([c], '2026-01-01', locked, NONE)).toBeNull()   // 这份合同压根没到期,不该被当成"缺口"
+  })
+
+  // F4(对抗复查):到期当月就有后继合同接上的租约,不该算「缺口」——结果已经发生,不是待定问题
+  // (同一条规则 buildRentRoll 的续签抽样池已经在用,见 F10 用例)。日期刻意安排成 A 覆盖到 prev
+  // 月月末、B 在 cur 月月中起租并覆盖 cur 月月末——这样 A 才会先满足"覆盖 prev 月"这个前提进入
+  // 原始 dropped 候选,同时 locked 数组本身(由 coveringMonth 独立算)已经被 B 接住、不显示跌幅,
+  // 复现的正是 F4 原话:「dropped 名单」与「线的跌幅」不是一件事。
+  it('❗F4:混合情形——4 份到期当月就有后继接上(不算缺口)+ 3 份真到期(算),count/totalRentSum '
+    + '只认真到期的那 3 份,且与锁定线实际跌幅对上', () => {
+    // 3 份真到期,无后继:2 月起彻底退出 locked。
+    const real1 = ct({ id: 920, tenantName: '真到期1', monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-01-31' })
+    const real2 = ct({ id: 921, tenantName: '真到期2', monthlyRent: 500, startDate: '2020-01-01', endDate: '2026-01-31' })
+    const real3 = ct({ id: 922, tenantName: '真到期3', monthlyRent: 300, startDate: '2020-01-01', endDate: '2026-01-31' })
+    // 4 组「A 到期、B 当月起接上」:A 覆盖 1 月月末、2 月月中到期;B 2 月月中起租、覆盖 2 月月末——
+    // locked 线上 A→B 无缝交接(同租金 800,互不重叠),但 A 仍满足"覆盖 1 月月末"进入原始候选。
+    const pairs = [1, 2, 3, 4].flatMap((n) => {
+      const aId = 930 + n * 2, bId = aId + 1
+      return [
+        ct({ id: aId, unitId: 100 + n, tenantId: 100 + n, monthlyRent: 800, startDate: '2020-01-01', endDate: '2026-02-10' }),
+        ct({ id: bId, unitId: 100 + n, tenantId: 100 + n, monthlyRent: 800, startDate: '2026-02-11', endDate: '2099-12-31', parentContractId: aId }),
+      ]
+    })
+    const hasSuccessor = new Set(pairs.filter((c) => c.parentContractId != null).map((c) => c.parentContractId!))
+    const cs = [real1, real2, real3, ...pairs]
+    const locked = lockedRentByMonth(cs, '2026-01-01', 3)
+    expect(locked).toEqual([5000, 3200, 3200])   // 1月:1800(真到期)+3200(4×800 A) / 2月起 A→B 无缝交接,只掉真到期那 1800
+
+    // 不加 F4 修复(空 hasSuccessor):dropped 会把 4 组 A 一起算进去,totalRentSum 虚高到 5000。
+    const buggy = nearestGap(cs, '2026-01-01', locked, new Set())!
+    expect(buggy.count).toBe(7)
+    expect(buggy.totalRentSum).toBe(5000)
+    expect(buggy.totalRentSum).not.toBe(locked[buggy.monthsAway - 1] - locked[buggy.monthsAway])   // 与线的实际跌幅(1800)对不上——这就是 F4 坐实的缺陷
+
+    // F4 修复后:4 组 A 被 hasSuccessor 排除,只剩 3 份真到期。
+    const gap = nearestGap(cs, '2026-01-01', locked, hasSuccessor)!
+    expect(gap).not.toBeNull()
+    expect(gap.count).toBe(3)   // 只有 3 份真到期,4 份接上的不算
+    expect(gap.names).toEqual(['真到期1', '真到期2'])
+    expect(gap.totalRentSum).toBe(1000 + 500 + 300)
+    expect(gap.totalRentSum).toBe(locked[gap.monthsAway - 1] - locked[gap.monthsAway])   // 与锁定线实际跌幅对上(缺的断言①)
   })
 })
 
@@ -805,22 +850,44 @@ describe('sensitivityFinalRent / sensitivityRows / neededRatePct(T7,design-board
 })
 
 // F1(修复轮1,design-boards):板上收尾行——「历史XX% · 缺口XX万/月,约等于XX户中型厂房」。
-// 「中型厂房」口径查库定(park_demo3,2026-09-11):103 份"纯厂房类"在租合同(billing_term 全部
-// property_type='factory')monthly_rent 中位数 = ¥8990.30/月,SQL 见 expiry.logic.ts 里
-// sensitivityGapSentence 上面那段注释。这条断言把这个数钉死——谁不查库就改这个常量,下面用
-// 常量算出的期望值会跟着变,测试跟着红,不查库不敢动它。
+// 「中型厂房」口径查库定(park_demo3,2026-09-11):103 份候选"纯厂房类"合同(billing_term 全部
+// property_type='factory')按 isInForce(日期区间,不读 status 列——F3 对抗复查坐实的缺陷)过滤后
+// 剩 54 份真在租,monthly_rent 中位数 = ¥11,448.50/月,SQL 与候选数据见 expiry.logic.ts 里
+// medianFactoryRent 上面那段注释。下面的断言把这个数钉死——谁不查库就改常量或候选数据,
+// 用常量算出的期望值会跟着变,测试跟着红,不查库不敢动它。
 describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续签率的缺口,折算成约等于几户中型厂房', () => {
-  it('❗MEDIAN_FACTORY_RENT 钉死查库结果,不许拍脑袋改(park_demo3 2026-09-11:103 份纯厂房类合同中位数)', () => {
-    expect(MEDIAN_FACTORY_RENT).toBe(8990.3)
+  it('❗MEDIAN_FACTORY_RENT 钉死查库结果,不许拍脑袋改(park_demo3 2026-09-11:103 份候选、54 份真在租的中位数)', () => {
+    expect(MEDIAN_FACTORY_RENT).toBe(11448.5)
   })
 
-  it('缺口为正:今天3,122,000,历史档(20%)final=2,582,800 → finalRentWan 258.3,缺口54万,约60户', () => {
+  // F3(对抗复查):缺的断言就是这条——「在租」判据必须是 isInForce(日期区间),不能退回读 status 列。
+  // fixture 里两份候选:A 的 status 列(固定传 'active')与日期都显示"在租",B 的 endDate 早于 asOf
+  // (已到期,但 status 列同样会显示 'active',镜像库里的真实情况)。旧实现(status IN (...))会把
+  // B 也算进中位数总体;isInForce 必须把它排除。
+  it('❗medianFactoryRent:end_date 早于 asOf 的候选不得进入中位数总体(status 列不可信,镜像 F3 坐实的库内状态)', () => {
+    const inForceRow: [number, string, string] = [1000, '2020-01-01', '2099-12-31']   // 覆盖 asOf,真在租
+    const expiredRow: [number, string, string] = [9999999, '2020-01-01', '2025-01-01']   // endDate 早于 asOf,已到期
+    // 只有一份在租 → 中位数就是那一份的值,不是 9999999(若 9999999 混进来,中位数会被它带偏)
+    expect(medianFactoryRent([inForceRow, expiredRow], '2026-09-11')).toBe(1000)
+    // 两份都在租 → 中位数是两者平均(quantile 线性插值,n=2 时就是均值)
+    const bothInForce: [number, string, string] = [2000, '2020-01-01', '2099-12-31']
+    expect(medianFactoryRent([inForceRow, bothInForce], '2026-09-11')).toBe(1500)
+    // 全部已到期 → 没有在租样本,返回 null(不能瞎编一个中位数)
+    expect(medianFactoryRent([expiredRow], '2026-09-11')).toBeNull()
+    expect(medianFactoryRent([], '2026-09-11')).toBeNull()
+  })
+
+  it('MEDIAN_FACTORY_RENT_ASOF 与 SQL 注释锚点一致(全局约束①:显式传入,不读系统时钟)', () => {
+    expect(MEDIAN_FACTORY_RENT_ASOF).toBe('2026-09-11')
+  })
+
+  it('缺口为正:今天3,122,000,历史档(20%)final=2,582,800 → finalRentWan 258.3,缺口54万,约47户', () => {
     // rows 复用上面 describe 里同一份 fixture 的算法(lockedLast 2,147,000 / expiringRentSum
     // 2,179,000 / todayRent 3,122,000 / historicalP 0.2),独立在这里重新构造,不依赖外层变量。
     const rows = sensitivityRows(2147000, 2179000, 3122000, 0.2)
     // gap = todayRent(3,122,000) − finalRentWan(258.3)×10000(2,583,000) = 539,000
-    // gapWan = round(53.9) = 54;units = round(539000 / 8990.3) = round(59.95..) = 60
-    expect(sensitivityGapSentence(rows, 3122000)).toBe('历史20% · 缺口54万/月,约等于60户中型厂房')
+    // gapWan = round(53.9) = 54;units = round(539000 / 11448.5) = round(47.08..) = 47
+    expect(sensitivityGapSentence(rows, 3122000)).toBe('历史20% · 缺口54万/月,约等于47户中型厂房')
   })
 
   it('❗户数下限钉在 1 户:缺口摆在(比"中型厂房"大得多的口径下)四舍五入会到 0 户也不说「约等于0户」', () => {
