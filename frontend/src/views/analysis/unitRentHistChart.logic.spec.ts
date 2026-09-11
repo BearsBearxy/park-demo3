@@ -82,6 +82,7 @@ describe('renewalGeo(续签率:堆叠条 + 数轴)', () => {
     expect(geo.bar.hitW + geo.bar.missW).toBeCloseTo(geo.bar.totalW, 2)
     expect(geo.bar.hitW / geo.bar.totalW).toBeCloseTo(18 / 90, 4)
     expect(geo.barLabels.hit.text).toBe('18 续签')
+    expect(geo.barLabels.hit.inside, '18/90 的蓝段装得下,字放里面').toBe(true)
     expect(geo.barLabels.miss!.text).toBe('72 未续签')
   })
 
@@ -100,6 +101,14 @@ describe('renewalGeo(续签率:堆叠条 + 数轴)', () => {
   it('❗蓝段太窄时不画「未续签」标签 —— 挤在一起不如不写', () => {
     const geo = renewalGeo(89, 90, null, BOX2)!
     expect(geo.barLabels.miss).toBeNull()
+  })
+
+  it('❗续签率低时蓝段装不下字,把字放到段外 —— 压在里面会糊出段外(实测 8/116)', () => {
+    const geo = renewalGeo(8, 116, { lo: 0.04, hi: 0.1 }, BOX2)!
+    expect(geo.bar.hitW).toBeLessThan(60)
+    expect(geo.barLabels.hit.inside).toBe(false)
+    expect(geo.barLabels.hit.x).toBeGreaterThan(geo.bar.x + geo.bar.hitW)
+    expect(geo.barLabels.miss, '蓝段已经放不下字了,灰段那句也别再挤').toBeNull()
   })
 
   it('n=0 / 命中数越界 → null(不画一条没有分母的比例)', () => {

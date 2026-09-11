@@ -69,7 +69,8 @@ const tipX = computed(() => {
       <!-- 堆叠条:蓝=续签,灰=未续签 -->
       <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.totalW" :height="geo.bar.h" rx="4" class="arn-track" />
       <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.hitW" :height="geo.bar.h" rx="4" class="arn-hit" />
-      <text :x="geo.barLabels.hit.x" :y="geo.barLabels.hit.y" class="arn-hitlab">{{ geo.barLabels.hit.text }}</text>
+      <text :x="geo.barLabels.hit.x" :y="geo.barLabels.hit.y"
+        :class="geo.barLabels.hit.inside ? 'arn-hitlab' : 'arn-hitlab-out'">{{ geo.barLabels.hit.text }}</text>
       <text v-if="geo.barLabels.miss" :x="geo.barLabels.miss.x" :y="geo.barLabels.miss.y" class="arn-misslab">{{ geo.barLabels.miss.text }}</text>
 
       <!-- 数轴:区间色块 + 轴线 + 刻度 + 观测值竖线 -->
@@ -98,6 +99,7 @@ const tipX = computed(() => {
 .arn-track { fill: #E9EBEF; }
 .arn-hit { fill: #2E7CD6; }
 .arn-hitlab { fill: #fff; font-size: 12px; font-weight: 600; }
+.arn-hitlab-out { fill: #185FA5; font-size: 12px; font-weight: 600; }
 .arn-misslab { fill: #6B7280; font-size: 12px; }
 .arn-band { fill: #BFD8F5; fill-opacity: 0.6; }
 .arn-axis { stroke: #D7DBE2; stroke-width: 1; }

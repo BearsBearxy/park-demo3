@@ -11,7 +11,7 @@ export interface RenewalGeo {
   box: RenewalBox
   /** 堆叠条:续签(蓝)与未续签(灰)两段。 */
   bar: { y: number; h: number; hitW: number; missW: number; x: number; totalW: number }
-  barLabels: { hit: { x: number; y: number; text: string }; miss: { x: number; y: number; text: string } | null }
+  barLabels: { hit: { x: number; y: number; text: string; inside: boolean }; miss: { x: number; y: number; text: string } | null }
   /** 数轴:0~100% 的直线与刻度。 */
   axis: { y: number; x0: number; x1: number }
   ticks: { v: number; x: number; label: string; strong: boolean }[]
@@ -35,6 +35,10 @@ export function renewalGeo(
   const axisY = barY + barH + 34
 
   const pct = (hits / n) * 100
+  // 估宽同气泡那套:中日韩字 12px,其余 6.6px。宁可略宽也不要把字压出段外。
+  const hitText = `${hits} 续签`
+  let hitLabelW = 0
+  for (const ch of hitText) hitLabelW += /[　-鿿]/.test(ch) ? 12 : 6.6
   // 刻度:0 与 100 常驻;区间两端与观测值加粗标出来(稿上就是这四个数)
   const base = [{ v: 0, strong: false }, { v: 100, strong: false }]
   const extra: { v: number; strong: boolean }[] = []
@@ -51,8 +55,13 @@ export function renewalGeo(
     box,
     bar: { y: barY, h: barH, x: box.padL, hitW, missW, totalW },
     barLabels: {
-      hit: { x: r2(box.padL + 10), y: barY + barH / 2 + 4, text: `${hits} 续签` },
-      miss: missW > 46 ? { x: r2(box.padL + hitW + 10), y: barY + barH / 2 + 4, text: `${n - hits} 未续签` } : null,
+      // 蓝段装不下就把字放到段外(深色)。续签率低的园区(实测 8/116 = 6.9%)蓝段只有几十像素,
+      // 字比段还宽,压在里面会糊出段外 —— 2026-09-12 在预览图上看见的。
+      hit: hitW >= hitLabelW + 16
+        ? { x: r2(box.padL + 10), y: barY + barH / 2 + 4, text: hitText, inside: true }
+        : { x: r2(box.padL + hitW + 8), y: barY + barH / 2 + 4, text: hitText, inside: false },
+      miss: missW > 46 && hitW >= hitLabelW + 16
+        ? { x: r2(box.padL + hitW + 10), y: barY + barH / 2 + 4, text: `${n - hits} 未续签` } : null,
     },
     axis: { y: axisY, x0: r2(x(0)), x1: r2(x(100)) },
     ticks,
