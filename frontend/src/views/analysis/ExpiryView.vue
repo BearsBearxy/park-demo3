@@ -141,10 +141,20 @@ function onParetoClick(p: unknown) {
              按不同条件决定露不露出,那样会撕裂 D1 的「同屏」前提。 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
-            <span class="hint">锁定实线 + 续签区间{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
+            <span class="hint">锁定实线 + 续签区间 · 不含新招租{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
           <AnaEChart v-if="rentRollText" :option="rentRollOpt" :height="260" />
           <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
           <p class="ana-ref">{{ rentRollRef }}</p>
+          <!-- I5(对抗复查):本分支唯一一条模拟带,原来是唯一一张没有自己口径浮层的带卡。
+               三件必须说清楚的事:阴影是什么、谁不在图里、以及最要紧的「它是下界不是预测」。 -->
+          <AnaMethodNote>
+            锁定实线 = 已签约覆盖到该月的合同月租(免租期整月落在区间内的不计);
+            阴影 = 按历史续签率把「到期的那批会不会续」模拟一万次后,续签部分落在 10~90 分位的范围。
+            历史续签率按「租约」算、不按合同行算:同一份租约被拆成几个价格档的(合同屏标「递增」徽标),
+            只算一次到期,换档不算一次续签;整租合同不进这张图(存在时卡头标注)。
+            ⚠ 这条带结构上不含新招租 —— 今天空着的单元将来租出去的租金不在任何一次模拟里。
+            所以它是未来租金的下界,不是租金预测:实际租金只会等于或高于它。
+          </AnaMethodNote>
         </div>
 
         <!-- 临期 90 天清单(仅有临期合同时渲染;点行去合同屏(带合同号,合同屏预填搜索)) -->
@@ -222,8 +232,12 @@ function onParetoClick(p: unknown) {
               </tbody>
             </table>
           </div>
+          <!-- I5(对抗复查):这段原来写着「续约概率/预测留存需历史续约数据,暂不展示(不画假图)」,
+               而本分支已经在下面两张卡之外画上了一条按历史续签率模拟的租金带 —— 浮层与屏上自相矛盾。
+               改成指路:续签不确定性在「合约租金带」那张卡上,口径写在那张卡自己的浮层里。 -->
           <AnaMethodNote v-if="wall.totalCount > 0">到期墙口径:按合同止日逐季聚合,仅计生效/临期合同(止日早于今天的不进墙);
-            续约概率/预测留存需历史续约数据,暂不展示(不画假图)。零租金合同 {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
+            到期墙本身只排期不预测(止日在库里,不是随机量)。续签会不会发生带来的金额不确定性,见下方「合约租金带」卡及其口径说明。
+            零租金合同 {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>
           <AnaMethodNote v-else>原型「到期墙/续约概率/预测留存」依赖合同起止日期与流失健康分,当前 {{ stats.dateMissing }} 份合同日期均未录入,
             已降级为租金结构视图,补录后自动恢复;rent_area 字段当前全为 0,面积分布暂不展示(不画假图)。零租金合同
             {{ stats.zeroRent }} 份(免租/内部占用等)不计入分布。</AnaMethodNote>

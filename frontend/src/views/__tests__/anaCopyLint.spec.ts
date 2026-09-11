@@ -17,7 +17,18 @@ import { rentRollRefText, rentRollSentence, type RentRoll } from '../analysis/ex
 const HINT_MAX = 24
 const READ_MAX = 30   // ana.css:131(.ana-read 注释)
 const REF_MAX = 28    // ana.css:132(.ana-ref 注释,F4 修复轮1 落成具名常量)
-const HINT_OVER_BASELINE = 28   // ⚠ 只许改小
+/**
+ * ⚠ 只许改小 —— 但这一次是**改大的**(28 → 31),而且是对的。
+ *
+ * I6(对抗复查 2026-09-11):旧基线 28 是用一个量不准的取法数出来的。hint 段落的取法原是
+ * 非贪婪正则,遇到嵌套 `<span>` 就停在内层的 `</span>`,四处 hint 被少量了一大截
+ * (58→7、42→5、30→21、18→8,详见 hintTexts 的注释)。换成配平取法后重数,实测超标 31 处。
+ *
+ * 31 > 28 不是放宽,是**旧的数就是错的**:那 3 处从来就超标,只是门禁看不见 ——
+ * 其中 42 字那条还在本分支刚改短过的屏上。「只许改小」这条规矩的前提是量得准,
+ * 量不准的时候先把尺子修好,再谈往下降。下一次改这个数只许往下。
+ */
+const HINT_OVER_BASELINE = 31
 
 /**
  * D2(用户 2026-09-10 拍板):统计符号跨屏禁用,口径浮层里也算屏上。
@@ -87,14 +98,68 @@ function scan(re: RegExp): { file: string; text: string; len: number }[] {
   return out
 }
 
+/**
+ * I6(对抗复查):hint 段落必须**配平** `<span>` 才量得准。
+ *
+ * 原写法是 `scan(/class="hint"[^>]*>([\s\S]*?)<\/span>/g)`,非贪婪 —— 遇到内层再套一个
+ * `<span class="hint-desk">…</span>` 就停在**内层**那个 `</span>`,外层剩下的字一个都没量到。
+ * 实测(2026-09-11,改前 vs 配平后):
+ *   TenantPortfolioView.vue  量到 7 字  → 实际 58 字
+ *   TenantEnergyView.vue     量到 5 字  → 实际 42 字
+ *   CockpitView.vue          量到 21 字 → 实际 30 字
+ *   PnlAnalysisView.vue      量到 8 字  → 实际 18 字
+ * 分析层最长的那条 hint 被量成了 7 个字,而它就在本分支刚改短过的屏上。
+ *
+ * 做法:从带 class="hint" 的开标签起往后走,`<span` 加一、`</span>` 减一,归零处才是本段的结尾。
+ * (`class="hint-desk"` 不会被误当成 hint —— 判据要求引号闭合的 `class="hint"`。)
+ */
+function hintTexts(): { file: string; text: string; len: number }[] {
+  const out: { file: string; text: string; len: number }[] = []
+  for (const { dir, file: f } of vueFiles()) {
+    const src = readFileSync(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    for (const open of src.matchAll(/<span[^>]*class="hint"[^>]*>/g)) {
+      const bodyStart = open.index! + open[0].length
+      const tagRe = /<span\b|<\/span>/g
+      tagRe.lastIndex = bodyStart
+      let depth = 1, tag: RegExpExecArray | null
+      while ((tag = tagRe.exec(src)) !== null) {
+        depth += tag[0] === '</span>' ? -1 : 1
+        if (depth === 0) break
+      }
+      const t = strip(src.slice(bodyStart, tag ? tag.index : src.length))
+      if (t) out.push({ file: f, text: t, len: [...t].length })
+    }
+  }
+  return out
+}
+
 describe('分析层文案门禁', () => {
   it(`❗卡头 hint ≤ ${HINT_MAX} 可见字 —— 超标处只许减少`, () => {
-    const over = scan(/class="hint"[^>]*>([\s\S]*?)<\/span>/g).filter((x) => x.len > HINT_MAX)
+    const over = hintTexts().filter((x) => x.len > HINT_MAX)
     expect(
       over.length,
       `超标 ${over.length} 处(基线 ${HINT_OVER_BASELINE}):\n` +
         over.map((x) => `  ${x.file} ${x.len}字 ${x.text.slice(0, 30)}`).join('\n'),
     ).toBeLessThanOrEqual(HINT_OVER_BASELINE)
+  })
+
+  /**
+   * ❗I6 的真正判据:上面那条是「≤ 基线」,量得**少**它不会红 —— 缺陷正是「量少了」,
+   * 所以把取法换回非贪婪版,上面那条照样全绿(实测过:28 ≤ 31)。
+   * 能当场变红的判据只能钉在**取法本身**上:配平版对同一批段落,每段都不该比非贪婪版短,
+   * 且在那几处内层套了 `<span class="hint-desk">` 的 hint 上必须更长。
+   * 不写死字数(那几条 hint 本来就该继续变短,写死会在做对事的时候变红)。
+   */
+  it('❗I6:hint 取法必须配平 <span> —— 与非贪婪取法对照,配平版不更短,且在嵌套处更长', () => {
+    const naive = scan(/class="hint"[^>]*>([\s\S]*?)<\/span>/g)
+    const balanced = hintTexts()
+    expect(balanced.length, '两种取法抓到的 hint 段数应当一致,只是每段量到哪里不同').toBe(naive.length)
+    balanced.forEach((b, i) => {
+      expect(b.len, `${b.file}: 配平取法反而更短了 —— 取法写错了`).toBeGreaterThanOrEqual(naive[i].len)
+    })
+    const nested = balanced.filter((b, i) => b.len > naive[i].len).map((b) => b.file)
+    for (const f of ['TenantPortfolioView.vue', 'TenantEnergyView.vue', 'CockpitView.vue', 'PnlAnalysisView.vue'])
+      expect(nested, `${f} 的 hint 内层套了 <span>,非贪婪取法必定少量,这里却没测出差异`).toContain(f)
   })
 
   it(`❗读数句 .ana-read ≤ ${READ_MAX} 可见字`, () => {
@@ -133,6 +198,27 @@ describe('分析层文案门禁', () => {
       }
     }
     expect(bad, `这些卡片印了百分数却没有参照系小字: ${bad.join(' | ')}`).toEqual([])
+  })
+
+  /**
+   * I5(对抗复查):合约租金带是本分支唯一一条**模拟**出来的带,却是唯一一张没有自己口径浮层的带卡。
+   * 读者从屏上看到的只有一句「末月租金预计 X~Y」,读起来像总租金预测 —— 而它结构上不可能包含
+   * 新招租(池子只装已签合同),是下界不是预测。这条门禁钉的就是「那三件事还写在卡上没有」。
+   *
+   * 为什么是卡级点名而不是「所有印读数句的卡都得有 note」:AnomalyView 的读数句卡把口径写在
+   * 同屏底部那张总说明卡里(已过复查),一条泛化规矩会把它一起判红 —— 那是另一件事,不在本轮。
+   */
+  it('❗I5:「合约租金带」这张卡必须自带口径 note,并写明下界/不含新招租/整租不计', () => {
+    const src = readFileSync(join(DIR, 'ExpiryView.vue'), 'utf8')
+    const card = splitCards(src).find((c) => /class="t">合约租金带/.test(c.text))
+    expect(card, 'ExpiryView.vue 里找不到「合约租金带」那张卡').toBeTruthy()
+    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')   // 注释里写了不算,要写在屏上
+    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
+    expect(note, '这张卡没有口径浮层').toBeTruthy()
+    // 判据落在**浮层正文**里,不是「这张卡的某处提过」—— 卡头 hint 也写着「不含新招租」,
+    // 拿整张卡当判据的话,把浮层里那句删掉照样全绿(实测过,所以改成只认浮层)。
+    for (const kw of ['不含新招租', '下界', '整租', '10~90 分位'])
+      expect(note![1], `口径浮层缺了「${kw}」`).toContain(kw)
   })
 
   // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
