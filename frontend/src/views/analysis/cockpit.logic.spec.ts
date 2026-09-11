@@ -2,7 +2,7 @@
 // 折万与聚合口径必须与 v1 一致(锚点:2025-10 营收 9,301,531 元 → 930.15 万)。
 import { describe, expect, it } from 'vitest'
 import {
-  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
+  anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, pnlYearMonths, schedTrend,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -256,5 +256,68 @@ describe('buildConclusion(经营结论条 spec §A:数据模板分句,缺数据�
       { isMonth: true, year: 2025, usedMi: 9, ym: '2025-11' })
     expect(r[0].text).toBe('2025年10月收入 ¥930万,园区利润 ¥316万(利润率 34.0%)')
     expect(r[1].text).toBe('收缴率 81.3% 低于目标 96%')
+  })
+})
+
+// ── I3 / I4(对抗复查 2026-09-11):未闭月护栏的自述价值 + 并排数的月份一致性 ─────────────
+// 下面这一整年都是实测值(park_demo3,SQL 见 task-8-report.md),不是造的:
+//   pnl_row year=2025 / group_label='' / kind='total' / label LIKE '%收入%' / schedule s1~s4 → 收入
+//   同上 label LIKE '%成本%' 加 s5「运营费用总计」→ 成本;budget_row 2025「收入总计」→ 预算
+// 改前源码注释、文件头锚点、提交标题都写着「105.6% → 94.6%,差 11 个点且方向相反」,
+// 而 cockpit.logic.spec.ts 里唯一一条相关断言是 `a1.rate === a2.rate`(离群月被剔掉了)——
+// 它在注释说谎时照样全绿。这两条用例存在的理由就是把那句自述钉在实测量级上。
+describe('❗I3 / I4:2025 实测量级', () => {
+  const REV: (number | null)[] = [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
+  ]
+  const COST: (number | null)[] = [
+    5352943.58, 4407978.73, 4563133.11, 5120974.86, 5000786.11, 5178358.96,
+    5203700.08, 5702265.08, 6272067.92, 6142810.17, 5958830.00, 5917279.67,
+  ]
+  const PROFIT: (number | null)[] = REV.map((v, i) => (v as number) - (COST[i] as number))
+  const BUDGET = 92705202.87
+  const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const rows2025: BudgetRowDTO[] = [budgetRow({ budget: BUDGET })]
+  const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV, cost: COST, profit: PROFIT })
+
+  it('❗I3:护栏把达成率从 94.6% 抬到 95.3% —— 涨 0.69 个点、方向相同、两边都够不着 100%', () => {
+    const allMonths = REV.reduce<number>((s, v) => s + (v ?? 0), 0)
+    const rateAll = (allMonths / BUDGET) * 100            // 含 12 月冲回(= 改前 atPeriod 的年度口径)
+    const a = budgetAch(rows2025, p2025(), 2025)!         // 剔掉 12 月(护栏口径)
+    expect(rateAll.toFixed(1)).toBe('94.6')
+    expect(a.rate.toFixed(1)).toBe('95.3')
+    expect(a.usedMonths).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(a.actual).toBeCloseTo(88358126.19, 2)
+    expect(a.rate - rateAll).toBeCloseTo(0.69, 2)         // 不是 11 个点
+    expect(a.rate).toBeGreaterThan(rateAll)               // 方向相同,不是「相反」
+    expect(a.rate).toBeLessThan(100)                      // 护栏抬不过 100%,105.6% 那个数不存在
+  })
+
+  it('❗I4:结论句里印出来的收入 ÷ 预算,必须回到同一句里印出来的达成率(利润率同理)', () => {
+    const r = buildConclusion(p2025(), [], rows2025, [], 0, { collectTarget: 96 },
+      { isMonth: false, year: 2025, usedMi: 0, ym: null })
+    expect(r[0].text).toBe('2025年收入 ¥8,836万(预算达成 95.3%),园区利润 ¥2,945万(利润率 33.3%)')
+    // 可执行形式:只认句子自己印出来的数,读者拿计算器怎么算,这里就怎么算。
+    const num = (re: RegExp): number => Number(re.exec(r[0].text)![1].replace(/,/g, ''))
+    const revWan = num(/收入 ¥([\d,]+)万/)
+    const profWan = num(/园区利润 ¥([\d,]+)万/)
+    const rate = num(/预算达成 ([\d.]+)%/)
+    const margin = num(/利润率 ([\d.]+)%/)
+    // 改前:收入含 12 月冲回(¥8,772万)、达成率不含 —— 这一除得 94.62,与印出来的 95.3 差 0.68 个点
+    expect((revWan * 10000 / BUDGET) * 100).toBeCloseTo(rate, 1)
+    expect((profWan / revWan) * 100).toBeCloseTo(margin, 1)
+  })
+
+  it('❗I4:达成率分母与并排三瓦的取期共用同一个月份集合(不是各算各的)', () => {
+    const p = p2025()
+    const months = pnlYearMonths(p)
+    expect(months).toEqual(budgetAch(rows2025, p, 2025)!.usedMonths)
+    expect(atPnlPeriod(p.revenue, false, 0, months)).toBeCloseTo(88358126.19, 2)
+    // 月粒度不受护栏影响:点开 12 月就该看见那笔冲回本身,不是一片空白
+    expect(atPnlPeriod(p.revenue, true, 11, months)).toBe(-636050.65)
+    // 对照:不过滤月份的老写法把冲回加进年度合计 —— 两者相差正是那 63.6 万
+    expect((atPeriod(p.revenue, false, 0) as number) - (atPnlPeriod(p.revenue, false, 0, months) as number))
+      .toBeCloseTo(-636050.65, 2)
   })
 })

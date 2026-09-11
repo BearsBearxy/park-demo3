@@ -1,7 +1,14 @@
 // src/views/analysis/cockpit.logic.ts — 驾驶舱 v2 数据变换纯函数(铁律⑦:屏内变换抽出单测)。
 // 输入均为 anaData 既有聚合器返回值:只做取期/折万/整形,**不改数字口径**(数值锚点与 v1 一致:
-// 2025-10 营收 930.2万 / 收缴率 81.3%,SQL 回验见 dataChecks;2025 预算达成旧锚 94.6% 已废
-// ——FORECAST-BAND §2.7 未闭月护栏上线后,budgetAch 分母剔除 2025-12 离群月,达成率改为 ~105.6%)。
+// 2025-10 营收 930.2万 / 收缴率 81.3%,SQL 回验见 dataChecks)。
+//
+// I3(对抗复查,2026-09-11 实测 park_demo3):这一行原来写着「达成率改为 ~105.6%」,
+// 那个数从计划里一路被转述成源码注释、文件头锚点和提交标题,**没有人查过**。实测:
+//   Σ m1..m11 = 88,358,126.19   m12 = −636,050.65   预算(收入总计) = 92,705,202.87
+//   含 12 月 87,722,075.54 / 92,705,202.87 = 94.62%;剔 12 月 88,358,126.19 / … = 95.31%
+// 也就是 94.6% → 95.3%,**涨 0.69 个点、方向相同、从不越过 100%**。8,800 万的基数里拿掉
+// 63.6 万,本来也不可能动 11 个点。护栏本身是对的,它的自述价值是错的。
+// 这两个率由 cockpit.logic.spec.ts 的「I3 实测量级」用例钉住,再写谎会当场红。
 import { isOutlierMonth, usableMonths, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
@@ -166,9 +173,13 @@ export function buildConclusion(
   const out: ConclusionItem[] = []
   const fw = (v: number): string => (v < 0 ? '−¥' : '¥') + fint(Math.abs(v) / 10000) + '万'
 
-  // 收入利润句:取期同 KPI;预算达成为年度口径,仅年粒度并入(月收入配年达成会混期)
-  const rev = atPeriod(pnl?.revenue, isMonth, usedMi)
-  const prof = atPeriod(pnl?.profit, isMonth, usedMi)
+  // 收入利润句:取期同 KPI;预算达成为年度口径,仅年粒度并入(月收入配年达成会混期)。
+  // I4:年粒度下收入/利润与达成率共用 pnlYearMonths —— 这句话里的三个数摆在一起,
+  // 读者会拿收入除以预算、拿利润除以收入,分别对上达成率和利润率。用不同月份集算,
+  // 除出来的数和印出来的数对不上(实测:收入含 12 月冲回、达成率不含,一除得 94.6% 而非 95.3%)。
+  const yearMonths = pnlYearMonths(pnl)
+  const rev = atPnlPeriod(pnl?.revenue, isMonth, usedMi, yearMonths)
+  const prof = atPnlPeriod(pnl?.profit, isMonth, usedMi, yearMonths)
   const ach = isMonth ? null : budgetAch(budgetRows, pnl, year)
   if (rev != null) {
     let text = `${isMonth ? `${year}年${usedMi + 1}月` : `${year}年`}收入 ${fw(rev)}`
@@ -205,13 +216,39 @@ export function buildConclusion(
 
 // ── 预算达成(v1 budgetAch 原样抽出:预算行=当年收入总计,实际=pnl 收入年Σ) ──
 export interface BudgetAch { budget: number; actual: number; rate: number; gap: number; usedMonths: number[] }
+
+/**
+ * 年粒度损益的可用月(1-12):有收入数、且不是离群月。
+ *
+ * I4(对抗复查):抽出来是为了让**同一张卡上并排出现的数落在同一批月份上** ——
+ * 达成率分母与营收/成本/利润取期共用这一个函数,不各算一份。改前 budgetAch 剔了 2025-12
+ * 的年末冲回、atPeriod 却把它加进营收合计,于是卡上印着「营收 ¥8,772万」与「预算达成 95.3%」,
+ * 读者拿这两个数一除得到的是 94.6%,两个数没有一个错、摆在一起就是错的。
+ */
+export function pnlYearMonths(pnl: PnlSummary | null): number[] {
+  const rev = pnl?.revenue ?? []
+  return rev.map((_, i) => i + 1).filter((m) => rev[m - 1] != null && !isOutlierMonth(rev, m))
+}
+
+/**
+ * 年粒度损益取期:只累计 months 里的月;月粒度与 atPeriod 完全一致(离群月护栏是年度合计的事,
+ * 单月卡就是要看那个月本身 —— 12 月点开就该看见那笔冲回,不是看见一片空白)。
+ */
+export function atPnlPeriod(
+  arr: (number | null)[] | undefined, isMonth: boolean, mi: number, months: number[],
+): number | null {
+  if (isMonth) return atPeriod(arr, true, mi)
+  return atPeriod(arr?.map((v, i) => (months.includes(i + 1) ? v : null)), false, mi)
+}
+
 export function budgetAch(budgetRows: BudgetRowDTO[], pnl: PnlSummary | null, year: number): BudgetAch | null {
   const b = budgetRows.find((r) => r.year === year && matchBudgetKey(r.label, r.sub) === 'revenue')?.budget
   if (!b) return null
   const rev = pnl?.revenue ?? []
-  // 达成率分母排除离群月:2025-12 的年末冲回(收入 −63.6 万)被无条件加进来,
-  // 会把 2025 年达成率从 105.6% 压成 94.6% —— 差 11 个点且方向相反。
-  const used = rev.map((_, i) => i + 1).filter((m) => rev[m - 1] != null && !isOutlierMonth(rev, m))
+  // 达成率分母排除离群月:2025-12 的年末冲回(收入 −63.6 万)无条件加进来会把达成率从
+  // 95.31% 压到 94.62%(实测,见文件头 I3)。护栏的价值是「不让一笔冲回冒充一个经营月」,
+  // 不是「把达成率抬过 100%」—— 它抬不动,方向也没反。
+  const used = pnlYearMonths(pnl)
   if (!used.length) return null
   const actual = used.reduce((s, m) => s + (rev[m - 1] as number), 0)
   return { budget: b, actual, rate: (actual / b) * 100, gap: b - actual, usedMonths: used }

@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
+  anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, pnlYearMonths, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -97,16 +97,22 @@ const pnlUsedYm = computed(() => (isMonth.value && usedMi.value !== mi.value ? y
 // §五策略3:所选年无损益附表 → 主区整体空态(禁止沿用旧年图表)
 const pnlEmpty = computed(() => !pnl.value?.months.length)
 
-const rev = computed(() => atPeriod(pnl.value?.revenue, isMonth.value, usedMi.value))
-const cost = computed(() => atPeriod(pnl.value?.cost, isMonth.value, usedMi.value))
-const prof = computed(() => atPeriod(pnl.value?.profit, isMonth.value, usedMi.value))
+// I4(对抗复查):年粒度下这三个数与「预算达成」共用同一批月份(pnlYearMonths)。
+// 改前 atPeriod 把 2025-12 那笔年末冲回(收入 −63.6 万)也加进年度合计,而达成率把它剔了 ——
+// 同一条 KPI 条上「营收合计 ¥8,772万」与「预算达成 95.3%(¥9,271万)」一除得 94.6%,对不上。
+// 月粒度不受影响:点开 12 月就该看见那笔冲回本身。覆盖区间印在各瓦 note 上(pnlRange),不隐瞒。
+const yearMonths = computed(() => pnlYearMonths(pnl.value))
+const rev = computed(() => atPnlPeriod(pnl.value?.revenue, isMonth.value, usedMi.value, yearMonths.value))
+const cost = computed(() => atPnlPeriod(pnl.value?.cost, isMonth.value, usedMi.value, yearMonths.value))
+const prof = computed(() => atPnlPeriod(pnl.value?.profit, isMonth.value, usedMi.value, yearMonths.value))
 const margin = computed(() => (rev.value && prof.value != null ? (prof.value / rev.value) * 100 : null))
 const cp = computed(() => colPick(collects.value, isMonth.value, year.value, period.ym.value))
 const ach = computed(() => budgetAch(budgetRows.value, pnl.value, year.value))
-// 未闭月护栏(FORECAST §2.7):副标题按 usedMonths 印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)
-const achRange = computed(() => {
-  const u = ach.value?.usedMonths
-  if (!u?.length) return ''
+// 未闭月护栏(FORECAST §2.7):副标题按可用月印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)。
+// I4:达成率与营收/成本/利润三瓦共用 pnlYearMonths,所以覆盖区间也只算一次,四个瓦印的是同一句。
+const pnlRange = computed(() => {
+  const u = yearMonths.value
+  if (isMonth.value || !u.length) return ''
   return u.length > 1 ? `${u[0]}-${u[u.length - 1]}月` : `${u[0]}月`
 })
 
@@ -116,7 +122,7 @@ const mc = computed(() => mainChart(pnl.value, budgetRevenueOf(budgetRows.value,
 // 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
 const outlierBannerText = computed(() => {
   const m = mc.value?.outlierMonths[0]
-  return m ? `${year.value}-${String(m).padStart(2, '0')} 为年末冲回,已排除在趋势与达成率之外` : ''
+  return m ? `${year.value}-${String(m).padStart(2, '0')} 为年末冲回,已排除在年度营收/成本/利润与达成率之外` : ''
 })
 // AnaPeriodBanner selected/used 必填(五个既有屏共享该契约);插槽覆盖了文案,这两个值不上屏,
 // 但仍按实际的离群月/达成率覆盖区间传——都是上面已算出来的值。
@@ -300,12 +306,13 @@ const conclusion = computed(() => buildConclusion(
 
     <!-- KPI 条(spec:营收/成本/利润率/收缴率 vs 目标/预算达成/在租租户) -->
     <template #kpis>
+      <!-- I4:年粒度三瓦与「预算达成」同批月份,覆盖区间印在 note 上(月粒度 pnlRange 为空,note 不出现) -->
       <AnaKpiTile :label="isMonth ? '营业收入' : '营收合计'" :value="money(rev)"
-        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" />
-      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" />
+        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" :note="pnlRange || undefined" />
+      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" :note="pnlRange || undefined" />
       <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
       <AnaKpiTile label="园区利润" :value="money(prof)"
-        :note="margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据'" :trend="pnl?.profit" />
+        :note="(margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" :trend="pnl?.profit" />
       <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
@@ -313,7 +320,7 @@ const conclusion = computed(() => buildConclusion(
         :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
       <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
       <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
-        :note="ach ? `${money(ach.budget)} · ${achRange}` : `${year}年未导入预算`" />
+        :note="ach ? `${money(ach.budget)} · ${pnlRange}` : `${year}年未导入预算`" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
     </template>
@@ -349,7 +356,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
         <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
-        <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="achRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
+        <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="pnlRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
       </div>
