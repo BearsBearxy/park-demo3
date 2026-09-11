@@ -187,8 +187,12 @@ export function unitRentHistOption(hist: UnitRentHist, stats: PhaseStats, tenant
           { xAxis: clamp(stats.median), label: { formatter: '中位 ' + stats.median.toFixed(1) } },
           { xAxis: clamp(stats.p90), label: { formatter: stats.p90.toFixed(1) } },
           {
+            // 本户这条线的标签钉在**轴侧**(position:'start'),三条分位线的标签留在顶端。
+            // 2026-09-12 在运行中的屏上看到:选中租户的值等于中位数时(碧沃丰 23.0 = 中位 23.0),
+            // 两条线重合、两个标签都在顶端默认位置,直接印成一团。分开上下就不会再撞,
+            // 而且哪个租户、什么值都不会撞 —— 不是靠"这次的数正好错开"。
             xAxis: clamp(tenantValue), lineStyle: { color: '#185FA5', width: 2 },
-            label: { formatter: `${tenantName} ${tenantValue.toFixed(1)}`, color: '#185FA5' },
+            label: { formatter: `${tenantName} ${tenantValue.toFixed(1)}`, color: '#185FA5', position: 'start' },
           },
         ],
       },

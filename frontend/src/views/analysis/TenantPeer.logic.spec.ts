@@ -178,7 +178,7 @@ describe('unitRentHistOption', () => {
       series: {
         data: unknown[]
         markArea: { label: { formatter: string } }
-        markLine: { data: { label: { formatter: string } }[] }
+        markLine: { data: { label: { formatter: string; position?: string } }[] }
       }[]
     }
   }
@@ -198,6 +198,24 @@ describe('unitRentHistOption', () => {
     expect(p10Line.label.formatter).toBe(stats.p10.toFixed(1))
     expect(medianLine.label.formatter).toBe('中位 ' + stats.median.toFixed(1))
     expect(p90Line.label.formatter).toBe(stats.p90.toFixed(1))
+  })
+
+  /**
+   * 2026-09-12 在运行中的屏上看到的:选中租户的单位租金正好等于中位数(碧沃丰 23.0 = 中位 23.0)时,
+   * 两条 markLine 重合,两个标签都在顶端默认位置,印成一团谁也读不出来。
+   * 判据不写成「这两个标签不许同 x」——它们本来就可能同 x,那是数据的事。判据写成
+   * **本户标签必须钉在轴侧**:上下分开之后,任何租户、任何值都不会再撞。
+   */
+  it('❗本户标签钉在轴侧,不与三条分位线的顶端标签抢同一个位置', () => {
+    const o = unitRentHistOption(h, { n: 5, p10: 6, median: 25, p90: 34 }, '鑫皇', 25) as {
+      series: { markLine: { data: { label: { formatter: string; position?: string } }[] }[] }[]
+    }
+    const lines = (o.series[0].markLine as unknown as { data: { label: { formatter: string; position?: string } }[] }).data
+    const own = lines[3]
+    const median = lines[1]
+    expect(own.label.formatter).toBe('鑫皇 25.0')
+    expect(own.label.position, '本户标签回到默认顶端,就会和中位标签重合').toBe('start')
+    expect(median.label.position, '分位线标签留在顶端(不设 position 即默认顶端)').toBeUndefined()
   })
 })
 
