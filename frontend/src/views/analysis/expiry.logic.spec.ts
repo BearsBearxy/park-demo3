@@ -291,6 +291,14 @@ describe('rentRollSentence / rentRollRefText(F1 修复轮1:句子只说区间,n/
     expect([...(s as string)].length).toBeLessThanOrEqual(30)
   })
 
+  // 措辞本身钉一条:上面几条只查「不含什么」,删掉整句话也照样全绿。
+  it('句子原文:说「预计」不说「拟合」—— 这条带不是回归拟合的', () => {
+    const cs = [ct({ startDate: '2025-01-01', endDate: '2027-01-01', monthlyRent: 100000 })]
+    const r = buildRentRoll(cs, '2026-01-01', 1)
+    expect(rentRollSentence(r)).toBe('末月租金预计 10~10')
+    expect(rentRollSentence(r)).not.toMatch(/拟合/)
+  })
+
   it('rentRollRefText:口径 + 单位 + 续签统计,按真实身份标注(不叫"回测样本")', () => {
     const r = buildRentRoll([], '2026-01-01', 1)
     expect(rentRollRefText(r)).toBe('月度口径 · 万元 · 过去0份到期中0份续签')

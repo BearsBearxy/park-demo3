@@ -499,7 +499,10 @@ export function rentRollSentence(r: RentRoll): string | null {
   const last = r.months[r.months.length - 1]
   if (!last) return null
   const wan = (v: number) => Math.round(v / 10000)
-  return `末月租金拟合区间 ${wan(last.locked + last.renewalLo)}~${wan(last.locked + last.renewalHi)}`
+  // 用「预计」不用「拟合」:这条带不是回归拟合出来的,是已签合同(确定)加一个续签率模拟出来的。
+  // 「拟合」暗示回归,是这份计划要挤掉的那类夸大。sFreq 那句留着「拟合区间」是对的 ——
+  // 它服务的园区收入序列确实是回归拟合的,两处说的不是同一回事。
+  return `末月租金预计 ${wan(last.locked + last.renewalLo)}~${wan(last.locked + last.renewalHi)}`
 }
 
 /**
