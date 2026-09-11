@@ -10,7 +10,6 @@
 // 63.6 万,本来也不可能动 11 个点。护栏本身是对的,它的自述价值是错的。
 // 这两个率由 cockpit.logic.spec.ts 的「I3 实测量级」用例钉住,再写谎会当场红。
 import { isOutlierMonth, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
-import { bandSeries } from '@/components/ana/anaTheme'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -344,16 +343,6 @@ export function fitRevenueTrend(pnl: PnlSummary | null): RevenueFit | null {
   return { months, slope: +slope.toFixed(2), intercept: +intercept.toFixed(2), r2: +r2.toFixed(4), fitted, residualScale: +residualScale.toFixed(2) }
 }
 
-/** KPI「按节奏推全年」:训练月用实际值、其余月(离群/未覆盖)用拟合值补齐,Σ12月 ÷ 预算。 */
-export interface PaceKpi { totalWan: number; rate: number | null }
-export function paceFullYear(pnl: PnlSummary | null, fit: RevenueFit | null, budgetYuan: number | null): PaceKpi | null {
-  if (!pnl || !fit) return null
-  const used = new Set(fit.months)
-  let total = 0
-  for (let m = 1; m <= 12; m++) total += (used.has(m) ? wan(pnl.revenue[m - 1]) : fit.fitted[m - 1]) ?? 0
-  total = +total.toFixed(2)
-  return { totalWan: total, rate: budgetYuan ? (total * 10000 / budgetYuan) * 100 : null }
-}
 
 
 
@@ -504,33 +493,46 @@ export function mainChartOption(
 
 
 
+
 /**
- * 整条拟合区间(每个月一个上下沿),不是只有离群月那一列。
+ * 下月预测(用户 2026-09-12:「我只需要用户每个月录入单月数据的时候能看到下月的预测,
+ * 仅此而已,全年分析对用户一点作用没有」)。
  *
- * 改前:屏上只在**离群月**那一列画一个色块,判据是 `outlierRes ? fitBandAt(...) : null` ——
- * 没有离群月的年份,这条带一整年都不出现。加上上面 T80 查不到就返回 null 那条,
- * 一共两道让带子**静默消失**的门,都跟「准不准」无关,纯粹是实现留下的。
- * 用户 2026-09-12:「我不管你中几次都显示预测带」。两道都拆掉:只要拟合得出来就整年都画。
+ * 算法与「这条带过去准不准」里**每一站完全相同** —— 拿已录入的月拟合,预测紧接着的下一个月。
+ * 这一条是本次改动的重点:改前图上画的是含全部月份的整年拟合带(样本内),而回测表验的是
+ * 样本外的一步预测,两者宽度差十倍,屏上并排摆着自相矛盾(用户当场指出来了)。
+ * 现在图上画的就是表里最后一行那条,表就是它自己的成绩单。
  *
- * 带宽随离拟合中心的距离变宽(se 里的 (month−xbar)²/sxx 那一项),外推月自然比中间月宽,
- * 这正是它该有的形状 —— 一条等宽的带才是假的。
+ * 已录入的月全部进训练集(不剔任何月,见 pnlYearMonths)。整年录满就没有「下月」可预测,
+ * 返回 null —— 不跨年,那需要下一年的数据,不在这一屏的口径里。
  */
-export function fitBandAll(fit: RevenueFit | null): { lo: (number | null)[]; hi: (number | null)[] } | null {
-  if (!fit) return null
-  const lo: (number | null)[] = []
-  const hi: (number | null)[] = []
-  let any = false
-  for (let m = 1; m <= fit.fitted.length; m++) {
-    const b = fitBandAt(fit, m)
-    lo.push(b ? b.lo : null)
-    hi.push(b ? b.hi : null)
-    if (b) any = true
-  }
-  return any ? { lo, hi } : null
+export interface NextForecast { trainMonths: number[]; month: number; mid: number; lo: number; hi: number }
+export function nextMonthForecast(pnl: PnlSummary | null): NextForecast | null {
+  if (!pnl) return null
+  const recorded = pnlYearMonths(pnl)
+  const last = recorded[recorded.length - 1]
+  if (last == null || last >= 12) return null
+  const fit = fitRevenueTrendUpTo(pnl, last)
+  const band = fit ? fitBandAt(fit, last + 1) : null
+  if (!fit || !band) return null
+  return { trainMonths: fit.months, month: last + 1, mid: band.mid, lo: band.lo, hi: band.hi }
+}
+
+/** 读数句(≤30 可见字):只报数,不报「80%」—— 名义覆盖率没兑现过,实测命中在参照系小字里。 */
+export function nextForecastReadout(f: NextForecast | null): string | null {
+  if (!f) return null
+  return `${f.month}月预计 ${fint(f.mid)}万，区间 ${fint(f.lo)}~${fint(f.hi)}`
+}
+
+/** 参照系小字(≤28 可见字):训练月区间 + 这套算法过去的实测命中,两者同屏(D1 可执行形式)。 */
+export function nextForecastRefText(f: NextForecast | null, sum: BacktestSummary | null): string {
+  if (!f) return ''
+  const base = `参照${monthRangeLabel(f.trainMonths)}拟合`
+  return sum && sum.scored ? `${base} · 过去${sum.scored}次中${sum.hits}次` : base
 }
 
 /**
- * 「收入趋势 · 拟合区间」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
+ * 「收入趋势 · 下月预测」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
  * 可视化,现在完全看不见」)。
  *
  * 拆的理由是实测量级:主图是 0 起的柱图,2025 年 1–11 月收入在 714~941 万之间,波动幅度只占
@@ -543,8 +545,7 @@ export function fitBandAll(fit: RevenueFit | null): { lo: (number | null)[]; hi:
  *    正是用户说的「完全看不见」。它的真实值不藏:那一列照标竖线,标签写值与「离群」。
  */
 export function trendChartOption(
-  d: MainChartData | null, fit: RevenueFit | null,
-  band: { lo: (number | null)[]; hi: (number | null)[] } | null,
+  d: MainChartData | null, fit: RevenueFit | null, f: NextForecast | null,
 ): object | null {
   if (!d || !d.covered || !fit) return null
   // 用户 2026-09-12:「用户是什么数据就使用什么数据」。改前这里把收入为负的月份换成 null,
@@ -565,8 +566,20 @@ export function trendChartOption(
       lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
     },
   ]
-  // 整年一条带,不再是离群月那一列的色块 —— 见 fitBandAll 头注。
-  if (band) series.push(...bandSeries(band.lo, band.hi, { name: '拟合区间（未校准）', color: 'rgba(124,58,237,0.10)', dp: 1 }))
+  // 只画**下月预测**那一列,不画整年带 —— 见 nextMonthForecast 头注(整年带是样本内的,
+  // 与下面那张回测表验的东西不是一回事,宽度差十倍,并排摆着自相矛盾)。
+  if (f) {
+    series.push({
+      name: '下月预测', type: 'line', data: d.labels.map(() => null), silent: true,
+      markArea: {
+        silent: true, itemStyle: { color: 'rgba(124,58,237,0.12)' },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(f.hi)}
+${fint(f.mid)}
+${fint(f.lo)}` },
+        data: [[{ xAxis: f.month - 1 - 0.5, yAxis: f.lo }, { xAxis: f.month - 1 + 0.5, yAxis: f.hi }]],
+      },
+    })
+  }
   return {
     grid: { left: 52, right: 18, top: 32, bottom: 28 },
     legend: { top: 0 },
@@ -589,79 +602,9 @@ export function mainChartOutlierNote(outlierMonths: number[]): string {
 
 // ── T3(design-boards 2026-09-11):「全年会落在哪」+「这条带过去准不准」两张卡 ──
 
-/** 卡「全年会落在哪」表头小字:预算整数万(与 fint 同风格,不带小数)。 */
-export function yearOutlookBudgetHint(budgetYuan: number | null): string {
-  return budgetYuan != null ? `预算${fint(budgetYuan / 10000)}万` : ''
-}
 
-export interface YearOutlookRow { label: string; totalWan: number; rate: number | null }
-/**
- * 「全年会落在哪」四行:按训练月节奏(=paceFullYear,同一个 fit,不再拟合)/ 拟合下沿 / 拟合上沿 /
- * 含离群月冲回(屏上现值,=旧口径 Σ全年实际)。下沿/上沿把 fit 之外的月份换成 fitBandAt 的 lo/hi
- * 再求和(与 paceFullYear 用 fitted 中心值求和是同一种拼法,只是换一个分量)。
- */
-export function yearOutlookRows(pnl: PnlSummary | null, fit: RevenueFit | null, budgetYuan: number | null): YearOutlookRow[] | null {
-  if (!pnl || !fit) return null
-  const pace = paceFullYear(pnl, fit, budgetYuan)
-  if (!pace) return null
-  // 2026-09-12:不再排除任何月份之后,一个**十二个月全部录入**的年份没有任何一格要靠拟合补 ——
-  // 四行会是同一个数,读数句变成「全年在94%上下,不是94.6%」(自己跟自己比)。
-  // 这张卡答的是「还没录的月按拟合补,全年会落在哪」,没有要补的格就没有问题要答,闭嘴。
-  if (Array.from({ length: 12 }, (_, i) => i + 1).every((m) => fit.months.includes(m))) return null
-  const rateOf = (t: number): number | null => (budgetYuan ? (t * 10000 / budgetYuan) * 100 : null)
-  let lo = 0, hi = 0, old = 0
-  for (let m = 1; m <= 12; m++) {
-    const actual = wan(pnl.revenue[m - 1]) ?? 0
-    old += actual
-    if (fit.months.includes(m)) { lo += actual; hi += actual } else {
-      const b = fitBandAt(fit, m)
-      lo += b?.lo ?? (fit.fitted[m - 1] ?? 0)
-      hi += b?.hi ?? (fit.fitted[m - 1] ?? 0)
-    }
-  }
-  lo = +lo.toFixed(2); hi = +hi.toFixed(2); old = +old.toFixed(2)
-  // 第四行原来叫「含 X 月负收入(屏上现值)」—— 负收入月现在**每一行都含**,那个标签不再区分任何东西。
-  // 它真正与第一行的差别是:缺月按 0 计,而第一行按拟合补。照这个实际差别命名。
-  const untrainedM = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !fit.months.includes(m))
-  const oldLabel = `缺 ${untrainedM.join('、')} 月按 0 计`
-  return [
-    { label: `按${monthRangeLabel(fit.months)}节奏`, totalWan: pace.totalWan, rate: pace.rate },
-    { label: '拟合下沿', totalWan: lo, rate: rateOf(lo) },
-    { label: '拟合上沿', totalWan: hi, rate: rateOf(hi) },
-    { label: oldLabel, totalWan: old, rate: rateOf(old) },
-  ]
-}
 
-/** 读数句(≤30 可见字):全年落点(向下取整,概数——同 outlierReadout 的「倍」不四舍五入)vs 屏上旧值(精确到 1 位)。 */
-export function yearOutlookReadout(rows: YearOutlookRow[] | null): string | null {
-  if (!rows || rows.length < 4) return null
-  const pace = rows[0].rate, old = rows[3].rate
-  if (pace == null || old == null) return null
-  return `全年在${Math.floor(pace)}%上下，不是${old.toFixed(1)}%`
-}
 
-/**
- * 参照系小字(≤28 可见字):差距是不是「全部」来自冲回月,不敢标百分比——那句解释挪去 AnaMethodNote。
- *
- * F6(对抗复查):改前月份写死「12月」——换年、换离群月就是假话。现在月份由 outlierMonths(与
- * yearOutlookRows 里算 oldLabel 用的是同一条 isOutlierMonth 判据)现算。「全部」这个措辞也不再
- * 无条件说:它只在「未训练的月份(fit.months 之外)恰好等于离群月集合」时成立——一旦某年还缺一个
- * 月(既不离群、也没数据),差额里就混进了缺月那份,继续说「全部来自冲回」就是假话,这里改口。
- */
-export function yearOutlookRefText(rows: YearOutlookRow[] | null, pnl: PnlSummary | null, fit: RevenueFit | null): string {
-  if (!rows || rows.length < 4 || !pnl || !fit) return ''
-  const pace = rows[0].rate, old = rows[3].rate
-  if (pace == null || old == null) return ''
-  const gap = Math.round(pace - old)
-  const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
-  const untrained = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !fit.months.includes(m))
-  const onlyOutliers = outlierMonths.length > 0 && untrained.length === outlierMonths.length
-    && outlierMonths.every((m) => untrained.includes(m))
-  // 2026-09-12:这三句原来都在说「冲回」——那是对数据的解读,而且现在负收入月根本没被摘出去。
-  // 差额只可能来自**还没录入**的月(它们在第一行按拟合补,在第四行按 0 计)。
-  if (onlyOutliers || !untrained.length) return `差${gap}个百分点来自未录入月`
-  return `差${gap}个百分点来自${untrained.join('、')}月按拟合补的部分`
-}
 
 /**
  * 「这条带过去准不准」滚动起点回测:与 fitRevenueTrend **不是同一个计算** —— 那个只拟合一次
@@ -702,7 +645,6 @@ export interface BacktestRow {
   hit: boolean | null         // 命中/落空;null = 待验
   under: boolean | null       // 落空时:true=低估(实际超上沿) false=高估(实际低于下沿)
   missPct: number | null      // 落空时 |实际-预测中心|/预测中心,一位小数
-  fullYearRate: number | null // 同时推全年(站在这个月末,用这个月末的 fit 重跑 paceFullYear)
 }
 /** 最近 6 个站点(不足 6 个训练月则全取):每站只用到当时已有的月,预测下一个月,同时给出那一站推算的全年。 */
 export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null): BacktestRow[] | null {
@@ -727,10 +669,9 @@ export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null):
         missPct = +(Math.abs((actualWan - band.mid) / band.mid) * 100).toFixed(1)
       }
     }
-    const pace = paceFullYear(pnl, fit, budgetYuan)
     rows.push({
       vantageMonth: v, isLast: v === lastV, predictMid: band.mid, lo: band.lo, hi: band.hi,
-      actualWan, hit, under, missPct, fullYearRate: pace?.rate ?? null,
+      actualWan, hit, under, missPct,
     })
   }
   return rows

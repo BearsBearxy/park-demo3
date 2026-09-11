@@ -26,7 +26,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -128,21 +128,18 @@ const mc = computed(() => mainChart(pnl.value, budgetYuan.value))
 // T1/T2(design-boards 2026-09-11):月度收入 OLS 拟合 —— 全屏唯一一份(fitRevenueTrend),
 // 下面三个 KPI 瓦与主图的趋势线/拟合区间/离群残差标注全部从这一个 fit 读,不再各算一次回归。
 const fit = computed(() => fitRevenueTrend(pnl.value))
-const pace = computed(() => paceFullYear(pnl.value, fit.value, budgetYuan.value))
 const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
 // F4(修复轮1):主图 markPoint 逐点标注用,每根 pin 各取自己月份的残差倍数(不像 outlierRes 那样固定第一个月)
 const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
 const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
 const outlierRef = computed(() => outlierRefText(fit.value))
-// 整年一条拟合区间 —— 改前是「有离群月才画、且只画那一列」,用户 2026-09-12:
-// 「我不管你中几次都显示预测带」。门槛拆在 cockpit.logic.ts(fitBandAll / t80 两处头注)。
-const fitBand = computed(() => fitBandAll(fit.value))
-// T3(design-boards 2026-09-11):「全年会落在哪」四行 + 「这条带过去准不准」滚动回测六行——
-// 全年落点复用 T1 的 fit(同一份,不再拟合);回测每站重新只用当时已有的月拟合(见 backtestRows 头注)。
-const yearRows = computed(() => yearOutlookRows(pnl.value, fit.value, budgetYuan.value))
-const yearHint = computed(() => yearOutlookBudgetHint(budgetYuan.value))
-const yearRead = computed(() => yearOutlookReadout(yearRows.value))
-const yearRef = computed(() => yearOutlookRefText(yearRows.value, pnl.value, fit.value))
+// 下月预测(用户 2026-09-12:只要「录了这个月,看到下个月大概多少」)。
+// 与下面回测表每一站同一套算法 —— 理由见 cockpit.logic.ts nextMonthForecast 头注。
+const forecast = computed(() => nextMonthForecast(pnl.value))
+const forecastRead = computed(() => nextForecastReadout(forecast.value))
+const forecastRef = computed(() => nextForecastRefText(forecast.value, backSum.value))
+// 回测:每站只用当时已有的月重新拟合(见 backtestRows 头注)。
+// 「全年会落在哪」那张卡 2026-09-12 整块删掉 —— 用户:「全年分析对用户一点作用没有」。
 const backRows = computed(() => backtestRows(pnl.value, budgetYuan.value))
 const backSum = computed(() => backtestSummary(backRows.value))
 const backRead = computed(() => backtestReadout(backSum.value))
@@ -169,7 +166,7 @@ const mainOption = computed<object | null>(() =>
   mainChartOption(mc.value, outlierResByMonth.value, cmp.mode.value))
 // 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
 // 理由与两处轴的差别见 cockpit.logic.ts trendChartOption 头注。
-const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, fitBand.value))
+const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, forecast.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -325,7 +322,6 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
       <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
-      <AnaKpiTile label="按节奏推全年" :value="pace?.rate != null ? pace.rate.toFixed(1) + '%' : '—'" note="区间未校准" />
       <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
         :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
@@ -385,14 +381,21 @@ const conclusion = computed(() => buildConclusion(
       </div>
 
 
-      <!-- 2026-09-12(用户):收入趋势 · 拟合区间 —— 从主图拆出来的独立图。主图是 0 起的柱图,
+      <!-- 2026-09-12(用户):收入趋势 · 下月预测 —— 从主图拆出来的独立图。主图是 0 起的柱图,
            三条线挤在柱顶那一小段里看不出斜率;这张图没有柱子,轴不从 0 起,离群月留断口。 -->
       <div v-if="trendOption" class="av2-card av2-s12">
         <div class="av2-card-h">
-          <span class="t">收入趋势 · 拟合区间</span>
-          <span class="hint">轴不从 0 起 · 逐月原值,一个都不剔</span>
+          <span class="t">收入趋势 · 下月预测</span>
+          <span class="hint">轴不从 0 起 · 逐月原值 · 只预测下月</span>
         </div>
         <AnaEChart :option="trendOption" :height="260" />
+        <!-- 下月预测的读数句与参照系小字:参照系里带着这套算法过去的实测命中,与读数句同屏(D1)。 -->
+        <template v-if="forecastRead">
+          <p class="ana-read">{{ forecastRead }}</p>
+          <p class="ana-ref">{{ forecastRef }}</p>
+        </template>
+        <!-- 没有下月可预测时说清楚为什么,不留一张光秃秃的图让人以为功能坏了。 -->
+        <p v-else class="ana-ref">本年 12 个月已录满，没有下月可预测</p>
       </div>
 
       <!-- 第二排 s4×3 -->
@@ -430,27 +433,6 @@ const conclusion = computed(() => buildConclusion(
         <AnaEmpty v-else label="当前规则下暂无异常" hint="收缴率/能耗环比/收入中断/负值行 四规则均未触发" />
       </div>
 
-      <!-- T3(design-boards 2026-09-11):全年会落在哪——按训练节奏/拟合下沿/拟合上沿/含冲回旧值 四行 -->
-      <div class="av2-card av2-s6">
-        <div class="av2-card-h">
-          <span class="t">全年会落在哪</span>
-          <span class="hint">{{ yearHint }}</span>
-        </div>
-        <table v-if="yearRows" class="ak-tbl">
-          <thead><tr><th>算法</th><th>全年收入</th><th>达成</th></tr></thead>
-          <tbody>
-            <tr v-for="r in yearRows" :key="r.label">
-              <td>{{ r.label }}</td>
-              <td class="mono">{{ fint(r.totalWan) }}万</td>
-              <td class="mono">{{ r.rate != null ? r.rate.toFixed(1) + '%' : '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <AnaEmpty v-else label="全年落点需要拟合" hint="依赖月度收入回归拟合(需 ≥3 个可用月)" />
-        <p v-if="yearRead" class="ana-read">{{ yearRead }}</p>
-        <p v-if="yearRead" class="ana-ref">{{ yearRef }}</p>
-      </div>
-
       <!-- T3:这条带过去准不准——滚动起点回测,每站只用当时已有的月,不复用 T1 的单次 fit;
            六列数据比四行三列的邻卡宽得多,独占一整行不挤 -->
       <div class="av2-card av2-s12">
@@ -459,7 +441,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
         </div>
         <table v-if="backRows" class="ak-tbl">
-          <thead><tr><th>站在哪个月末</th><th>下月预测</th><th>拟合区间</th><th>实际</th><th>中没中</th><th>同时推全年</th></tr></thead>
+          <thead><tr><th>站在哪个月末</th><th>下月预测</th><th>区间</th><th>实际</th><th>中没中</th></tr></thead>
           <tbody>
             <tr v-for="r in backRows" :key="r.vantageMonth">
               <td>{{ r.vantageMonth }}月末{{ r.isLast ? '（今天）' : '' }}</td>
@@ -471,7 +453,6 @@ const conclusion = computed(() => buildConclusion(
                 <span v-else-if="r.hit" :style="{ color: STATUS.good.color }">命中</span>
                 <span v-else :style="{ color: STATUS.watch.color }">落空 {{ r.under ? '低估' : '高估' }} {{ r.missPct?.toFixed(1) }}%</span>
               </td>
-              <td class="mono">{{ r.fullYearRate != null ? r.fullYearRate.toFixed(1) + '%' : '—' }}</td>
             </tr>
           </tbody>
         </table>
