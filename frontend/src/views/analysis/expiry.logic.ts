@@ -188,10 +188,15 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
  * 正态的名义 80% 在这个规模下不成立,所以不能从方差反解 ±1.2816σ)。
  *
  * ⚠ 决定权衡与假设,供复核:
- *  · status ∈ {active, renewed}(不含稿里的 expiring)—— 实测(2026-09-11)contract.status
- *    只出现这两个值,expiring 从未出现;若真出现过,它在这套「派生桶」语义下是 active 的一个
- *    子状态(展示态细分),仍会被 active 这一支收进来,不会漏记。收进 renewed 是因为它代表
- *    真实仍在租的续签合同(实测 9 份 renewed 的 endDate ≥ 今天,其中 1 份当月仍在收租)——
+ *  · 「在租」判据是黑名单 NOT_COVERING_STATUS = {draft, expired, terminated},不是白名单
+ *    {active, renewed}。**这条注释曾经写反过**:白名单版本的假设是「expiring 从未出现,
+ *    真出现了也会被 active 这一支收进来」——后半句是错的,白名单会把 status='expiring' 的
+ *    合同整个滤掉,不会落进 active 那一支。查 DB 原始列看不出这个问题(那一列确实只有
+ *    active/renewed),因为 expiring/future 是后端 `ContractService.effectiveStatus` 在
+ *    请求时按日期现算的展示态,只在**调 API 拿到的 ContractDTO**上才看得见(T4,2026-09-11
+ *    live API 实测:431 份里 23 份 expiring¥37.8万/月、27 份 future¥76.6万/月,旧白名单
+ *    把「当前合约租金」做小了近 9%)。收进 renewed 是因为它代表真实仍在租的续签合同
+ *    (实测 9 份 renewed 的 endDate ≥ 今天,其中 1 份当月仍在收租)——
  *    漏掉它们会把「锁定」系统性做小,而这条线存在的意义就是「真正锁定了多少」。
  *  · 同一单元同月多于一份合同(实测 2 例):F6(修复轮2)拿掉了 dedupByUnit——单元 455 上是两个
  *    不同租户(265/165)并行跑了好几年的两条租约链,不是重复行;按单元去重会把其中一份月租 32
@@ -208,6 +213,7 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
 const MC_SEED = 20260910   // 固定种子(锚定稿基准日),任何人重跑都拿到逐字节相同的带
 const MC_DRAWS = 10000
 const MC_LO_Q = 0.10
+const MC_MID_Q = 0.50   // T4/T5(design-boards):「预计」中线 —— 与 Lo/Hi 同一批抽样,同一个分位函数
 const MC_HI_Q = 0.90
 
 function dateKeyOf(s: string | null): number | null {
@@ -256,10 +262,23 @@ function assertNoSameTenantDoubleCoverage(covering: ContractDTO[], endKey: numbe
   }
 }
 
+/**
+ * T4(design-boards,2026-09-11 对抗复查):不在租的三个「派生桶」终态,判"覆盖"时排除。
+ * 判据从白名单(只认 active/renewed)改成黑名单——白名单当年漏了 `effectiveStatus` 会派生出的
+ * 另外两桶:`expiring`(签的是 active,只是 endDate 在 90 天内)与 `future`(签的是 active,
+ * startDate 还没到)。两者都不是"不在租",是"在租的两种展示态细分",之前被白名单误伤:
+ * 实测(2026-09-11,live API,不是查 DB 原始列——那一列确实只有 active/renewed,派生桶是后端
+ * ContractService.effectiveStatus 在请求时现算的,查 DB 看不见)389 份合同里 23 份 expiring
+ * (¥37.8万/月)、27 份 future(¥76.6万/月),旧白名单会把它们整个漏计,「当前合约租金」瓦
+ * 系统性做小了近 9%。黑名单只排除三个确定"不算在租"的终态,其余(含以后可能新增的展示态)
+ * 一律按日期本身说了算——这正是 coveringMonth 下面几行本来就在做的事。
+ */
+const NOT_COVERING_STATUS = new Set(['draft', 'expired', 'terminated'])
+
 function coveringMonth(cs: ContractDTO[], startKey: number, endKey: number, wantMaster: boolean): ContractDTO[] {
   const covering = cs.filter((c) => {
     if ((c.kind === 'master_lease') !== wantMaster) return false
-    if (!wantMaster && c.status !== 'active' && c.status !== 'renewed') return false
+    if (!wantMaster && NOT_COVERING_STATUS.has(c.status)) return false
     const ek = dateKeyOf(c.endDate), sk = dateKeyOf(c.startDate)
     if (ek == null || sk == null) return false
     if (ek < endKey || sk > endKey) return false
@@ -280,6 +299,15 @@ export function lockedRentByMonth(cs: ContractDTO[], asOf: string, n: number): n
   return [...Array(n)].map((_, i) => {
     const { startKey, endKey } = monthBounds(asOf, i)
     return coveringMonth(cs, startKey, endKey, false).reduce((s, c) => s + c.monthlyRent, 0)
+  })
+}
+
+/** 锁定合同份数(T4,design-boards):判据与 lockedRentByMonth 逐字相同,只换成计数——
+ * 供「当前合约租金」瓦的「N 份在租」用,不另立一套覆盖口径。 */
+export function lockedCountByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
+  return [...Array(n)].map((_, i) => {
+    const { startKey, endKey } = monthBounds(asOf, i)
+    return coveringMonth(cs, startKey, endKey, false).length
   })
 }
 
@@ -392,9 +420,43 @@ export function simulateRenewalDraws(byExpMonth: number[][], a: number, b: numbe
 export interface RentRollMonth {
   month: string          // 'YYYY-MM'
   locked: number         // 锁定月租(元)
+  lockedCount: number    // 锁定合同份数(T4,design-boards:「N 份在租」瓦用)
   masterLease: number    // 整租合同月租(元,单列,不进 locked)
   renewalLo: number      // 续签贡献 10 分位(元,蒙特卡洛,不含 locked)
+  renewalMid: number     // 续签贡献 50 分位(元,蒙特卡洛,不含 locked;T4/T5「预计」中线,与 Lo/Hi 同一批抽样)
   renewalHi: number      // 续签贡献 90 分位(元,蒙特卡洛,不含 locked)
+}
+
+export interface RentRollGap {
+  monthsAway: number   // 锁定线最早出现下跌的月序(1-based,第 1 月 = asOf 的下一月)
+  count: number         // 拉低当月锁定线的到期合同份数
+  totalRentSum: number  // 这些合同的月租合计(元)
+  names: string[]       // 按月租降序取前两个租户名(供「名字1+名字2 等N份」这类文案拼接)
+}
+
+/**
+ * 最近的缺口(T4/T5,design-boards):锁定线里最早出现的月度下跌,连同拉低它的到期合同。
+ * 判「到期」用 endDate 本身(< 当月月末),不用「覆盖集合的差集」——两者通常一致,但免租期
+ * 满月退出(monthFullyRentFree)也会让合同暂时退出 coveringMonth,那不是「到期」,不该混进来。
+ * 复用已经算好的 locked 数组(buildRentRoll 调用处传入),不重新拟合一次口径。
+ */
+export function nearestGap(cs: ContractDTO[], asOf: string, locked: number[]): RentRollGap | null {
+  for (let i = 1; i < locked.length; i++) {
+    if (locked[i] >= locked[i - 1]) continue
+    const prev = monthBounds(asOf, i - 1)
+    const cur = monthBounds(asOf, i)
+    const dropped = coveringMonth(cs, prev.startKey, prev.endKey, false)
+      .filter((c) => (dateKeyOf(c.endDate) ?? Infinity) < cur.endKey)
+      .sort((a, b) => b.monthlyRent - a.monthlyRent)
+    if (!dropped.length) continue   // 下跌另有原因(如整月免租退出),不算「到期缺口」
+    return {
+      monthsAway: i,
+      count: dropped.length,
+      totalRentSum: dropped.reduce((s, c) => s + c.monthlyRent, 0),
+      names: dropped.slice(0, 2).map((c) => c.tenantName),
+    }
+  }
+  return null
 }
 
 export interface RentRoll {
@@ -404,6 +466,9 @@ export interface RentRoll {
   renewalN: number           // 历史回测分母:asOf 之前已到期、结果已知的合同数
   renewalHits: number        // 其中续签的数量
   renewalP: number           // hits/n(经验续签率;n=0 时给 0,不除以零)
+  expiringCount: number      // T4:视界内(byExpMonth 实际分到桶里)的到期合同份数,与续签抽样同一份数据
+  expiringRentSum: number    // 上面这批合同的月租合计(元)
+  gap: RentRollGap | null    // T4/T5:最近的到期缺口,KPI 瓦与图上标注共用同一个值
 }
 
 /**
@@ -413,6 +478,7 @@ export interface RentRoll {
 export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentRoll {
   const months = [...Array(n)].map((_, i) => monthBounds(asOf, i))
   const locked = lockedRentByMonth(cs, asOf, n)
+  const lockedCount = lockedCountByMonth(cs, asOf, n)
   const masterLease = masterLeaseByMonth(cs, asOf, n)
   const asOfKey = dateKeyOf(asOf)!
 
@@ -475,8 +541,10 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   // 而这里用「有没有后继」判,比按单元/租户去重更贴语义:它问的是结果知不知道,不是行重不重复。
   const hasSuccessor = new Set(
     cs.map((c) => c.parentContractId).filter((v): v is number => v != null))
+  // T4:同一个黑名单(NOT_COVERING_STATUS),理由同 coveringMonth——旧白名单漏掉的 23 份
+  // expiring 合同恰恰是离到期最近、最该被建模"续不续得上"的那批,漏进池子外等于假装它们没有不确定性。
   const pool = cs.filter((c) =>
-    c.kind !== 'master_lease' && (c.status === 'active' || c.status === 'renewed') &&
+    c.kind !== 'master_lease' && !NOT_COVERING_STATUS.has(c.status) &&
     (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey && !hasSuccessor.has(c.id))
   // F8(修复轮2):endDate 恰好等于视界最后一个月月末时,严格小于(ek < mb.endKey)在最后一个
   // 月也不成立,findIndex 全程落空、该合同不进任何桶——这不是漏算。ek 等于最后一月的 endKey
@@ -498,13 +566,24 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
     return s[Math.min(s.length - 1, Math.floor(q * s.length))]
   }
   const renewalLo = drawSums.map((s) => quantileOf(s, MC_LO_Q))
+  const renewalMid = drawSums.map((s) => quantileOf(s, MC_MID_Q))
   const renewalHi = drawSums.map((s) => quantileOf(s, MC_HI_Q))
 
+  // T4(design-boards):「未来 N 月到期」瓦读的是喂给蒙特卡洛的同一批合同(byExpMonth),
+  // 不是 pool 本身——pool 里覆盖到视界末尾之外的长租约不进任何一个桶,不该算进"到期"份数。
+  const expiringCount = byExpMonth.reduce((s, arr) => s + arr.length, 0)
+  const expiringRentSum = byExpMonth.reduce((s, arr) => s + arr.reduce((s2, v) => s2 + v, 0), 0)
+
   return {
-    months: months.map((mb, i) => ({ month: mb.label, locked: locked[i], masterLease: masterLease[i], renewalLo: renewalLo[i], renewalHi: renewalHi[i] })),
+    months: months.map((mb, i) => ({
+      month: mb.label, locked: locked[i], lockedCount: lockedCount[i], masterLease: masterLease[i],
+      renewalLo: renewalLo[i], renewalMid: renewalMid[i], renewalHi: renewalHi[i],
+    })),
     locked,
     lockedBand: undefined,
     renewalN, renewalHits, renewalP,
+    expiringCount, expiringRentSum,
+    gap: nearestGap(cs, asOf, locked),
   }
 }
 
@@ -521,16 +600,41 @@ export function rentRollOption(r: RentRoll): object {
   const months = r.months.map((m) => m.month)
   const lockedWan = r.months.map((m) => +(m.locked / 10000).toFixed(2))
   const loWan = r.months.map((m) => +((m.locked + m.renewalLo) / 10000).toFixed(2))
+  const midWan = r.months.map((m) => +((m.locked + m.renewalMid) / 10000).toFixed(2))
   const hiWan = r.months.map((m) => +((m.locked + m.renewalHi) / 10000).toFixed(2))
+  // T5(design-boards):「已实现」= 预测起点(第 0 月,今天)这一个点,已经是事实不是模拟;
+  // 「已锁定」= 同一条锁定线往后延伸的部分。两段本是同一个数组,只按第 0 月拆成两个图例,
+  // 不另算一次口径——这样才不会出现两条线在起点对不上的缺陷。
+  const realizedWan = lockedWan.map((v, i) => (i === 0 ? v : null))
+  const gap = r.gap
+  const gapNames = gap ? gap.names.join('+') + (gap.count > gap.names.length ? ` 等${gap.count}份` : '') : ''
+  const gapWan = gap ? +(gap.totalRentSum / 10000).toFixed(1) : 0
   return {
     grid: { left: 48, right: 16, top: 30, bottom: 30 },
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, data: ['锁定租金'] },
+    legend: { top: 0, data: ['已实现', '已锁定', '预计', '80%区间'] },
     xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '万/月', axisLabel: { formatter: (v: number) => String(v) } },
     series: [
-      { name: '锁定租金', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: '#378ADD' }, data: lockedWan },
-      ...bandSeries(loWan, hiWan, { name: '续签区间', color: 'rgba(55,138,221,.14)' }),
+      {
+        name: '已锁定', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: '#378ADD' }, data: lockedWan,
+        // 预测起点竖线:钉在第 0 月,标当天的锁定值——不用系统时钟,值就是数组第一项。
+        markLine: {
+          silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: '#9CA3AF' },
+          label: { formatter: `预测起点\n${lockedWan[0] ?? 0}`, fontSize: 10, color: '#6B7280' },
+          data: [{ xAxis: 0 }],
+        },
+        // 缺口标注:最近一次到期扎堆造成的锁定线下跌,连同拉低它的合同名字(与「最近的缺口」瓦同一份 gap)。
+        markPoint: gap ? {
+          symbol: 'pin', symbolSize: 36, itemStyle: { color: '#E24B4A' },
+          label: { fontSize: 10, color: '#fff', formatter: `−${gapWan}万\n${gapNames}` },
+          data: [{ coord: [gap.monthsAway, lockedWan[gap.monthsAway]] }],
+        } : undefined,
+      },
+      // scatter(不是 line):只有第 0 月一个值,没有第二个点可连,天然不画线,不必再手写隐藏线样式。
+      { name: '已实现', type: 'scatter', symbolSize: 7, itemStyle: { color: '#1C1C1C' }, data: realizedWan },
+      { name: '预计', type: 'line', symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#185FA5' }, data: midWan },
+      ...bandSeries(loWan, hiWan, { name: '80%区间', color: 'rgba(55,138,221,.14)' }),
     ],
   }
 }

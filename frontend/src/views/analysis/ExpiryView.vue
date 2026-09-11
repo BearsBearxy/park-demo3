@@ -64,6 +64,11 @@ const rentRollText = computed(() => rentRollSentence(rentRoll.value))
 const rentRollRef = computed(() => rentRollRefText(rentRoll.value))
 const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.masterLease > 0))
 
+// ── T4(design-boards):五个 KPI 瓦读的是 rentRoll 同一份计算(锁定/续签/缺口),
+// 不为瓦另算一次 —— 这正是 T4/T5 合并成一个任务的理由(卡片与瓦对不上,已经在这个项目上出过两次)。
+const asOfYm = asOf.slice(0, 7)
+const rentRollLast = computed(() => rentRoll.value.months[rentRoll.value.months.length - 1])
+
 const listed = computed(() => [...contracts.value].sort((a, b) => b.monthlyRent - a.monthlyRent))
 const maxRent = computed(() => listed.value[0]?.monthlyRent || 1)
 
@@ -89,11 +94,25 @@ function onParetoClick(p: unknown) {
     <template #kpis>
       <template v-if="!loading && stats">
         <AnaKpiTile label="合同总数" :value="stats.total + ' 份'" />
-        <AnaKpiTile label="月租金合计" :value="'¥' + wan(stats.rentSum) + '万/月'" />
+        <!-- T4(design-boards):「月租金合计」改成「当前合约租金」——board 上同名瓦读的是锁定线
+             第 0 月(今天)的值,不是全部合同(含早已到期/日期缺失行)原样求和,口径更准。 -->
+        <AnaKpiTile label="当前合约租金" :value="'¥' + wan(rentRoll.months[0].locked) + '万/月'"
+          :note="rentRoll.months[0].lockedCount + ' 份在租 · ' + asOfYm" />
         <AnaKpiTile label="有租金合同" :value="stats.withRent + ' 份'" :note="'零租金 ' + stats.zeroRent + ' 份'" />
         <AnaKpiTile label="租金中位数" :value="'¥' + wan(stats.medRent) + '万'" note="有租金口径" />
         <AnaKpiTile label="Top10 集中度" :value="stats.top10Pct + '%'" :note="'Top10 ¥' + wan(stats.top10Sum) + '万/月'" />
-        <AnaKpiTile label="日期待补录" :value="stats.dateMissing + ' 份'" note="到期分析前置条件" />
+        <!-- T4:「日期待补录」改成「未来12月到期」——日期缺失已经在页头 AnaPill 里提示,这个位置
+             换成 board 上的「2026 到期」瓦(读的是喂给续签抽样的同一批合同,见 rentRoll.expiringCount)。 -->
+        <AnaKpiTile label="未来12月到期" :value="rentRoll.expiringCount + ' 份'"
+          :note="'涉及月租 ' + wan(rentRoll.expiringRentSum) + ' 万'" />
+        <AnaKpiTile label="历史续签率" :value="(rentRoll.renewalP * 100).toFixed(1) + '%'"
+          :note="rentRoll.renewalN + ' 份已到期中 ' + rentRoll.renewalHits + ' 份续签'" />
+        <!-- T4 ruling:这里印 80% ——是模拟分布本身的 10~90 分位宽度,不是回测校准声明(驾驶舱那条
+             禁的是后者)。差异与理由写在下方「合约租金带」卡的口径浮层里。 -->
+        <AnaKpiTile :label="rentRollLast.month + ' 预计'" :value="'¥' + wan(rentRollLast.locked + rentRollLast.renewalMid) + '万/月'"
+          :note="'80% 在 ' + wan(rentRollLast.locked + rentRollLast.renewalLo) + '~' + wan(rentRollLast.locked + rentRollLast.renewalHi) + ' 万'" />
+        <AnaKpiTile label="最近的缺口" :value="rentRoll.gap ? rentRoll.gap.monthsAway + ' 月' : '—'"
+          :note="rentRoll.gap ? rentRoll.gap.count + ' 份到期 · ' + wan(rentRoll.gap.totalRentSum) + ' 万' : '未来12月内无缺口'" />
       </template>
     </template>
 
@@ -148,10 +167,14 @@ function onParetoClick(p: unknown) {
           <!-- I5(对抗复查):本分支唯一一条模拟带,原来是唯一一张没有自己口径浮层的带卡。
                三件必须说清楚的事:阴影是什么、谁不在图里、以及最要紧的「它是下界不是预测」。 -->
           <AnaMethodNote>
-            锁定实线 = 已签约覆盖到该月的合同月租(免租期整月落在区间内的不计);
-            阴影 = 按历史续签率把「到期的那批会不会续」模拟一万次后,续签部分落在 10~90 分位的范围。
+            「已实现」= 预测起点(今天)那一个点,已经是事实,不是模拟;「已锁定」= 已签约覆盖到该月的
+            合同月租向后延伸的同一条线(免租期整月落在区间内的不计)。「预计」= 在「已锁定」之上加历史
+            续签率模拟一万次后的中位数;阴影(80% 区间)= 续签部分落在 10~90 分位的范围,不是校准过的
+            命中率——它来自「哪几户会续签」这层真实的随机性,不是凭空编出来的一个数。
             历史续签率按「租约」算、不按合同行算:同一份租约被拆成几个价格档的(合同屏标「递增」徽标),
-            只算一次到期,换档不算一次续签;整租合同不进这张图(存在时卡头标注)。
+            只算一次到期,换档不算一次续签;整租合同不进这张图(存在时卡头标注)。设计稿标注的续签率
+            20%(18/90)按今天的库口径查不出这两个数,上方「历史续签率」瓦按实测口径出数,以它为准。
+            图上红色标注是最近一次到期扎堆造成的锁定线缺口,已把拉低它的合同标出。
             ⚠ 这条带结构上不含新招租 —— 今天空着的单元将来租出去的租金不在任何一次模拟里。
             所以它是未来租金的下界,不是租金预测:实际租金只会等于或高于它。
           </AnaMethodNote>

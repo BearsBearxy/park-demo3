@@ -276,8 +276,9 @@ describe('分析层文案门禁', () => {
     // Task 7:合约租金带的读数句(rentRollSentence)同样是 .logic.ts 抽出的纯函数,
     // 模板里只剩 `{{ rentRollText }}`,同一处盲区,补同一手治法。
     const rollA: RentRoll = {
-      months: [{ month: '2026-09', locked: 2320000, masterLease: 0, renewalLo: 100000, renewalHi: 300000 }],
+      months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 100000, renewalMid: 200000, renewalHi: 300000 }],
       locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+      expiringCount: 5, expiringRentSum: 500000, gap: null,
     }
     const cases: (string | null)[] = [
       // 只传 p25/p75:elecReadout 不吃样本量(样本量走 elecBandRef)。多传一个 n 会触发
@@ -301,6 +302,7 @@ describe('分析层文案门禁', () => {
   it('❗参照系小字渲染结果也要 ≤28 可见字,且不含禁词(F4:.ana-ref 补上跟 .ana-read 一样的门禁;F9:同一处补禁词断言)', () => {
     const rollB: RentRoll = {
       months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
+      expiringCount: 0, expiringRentSum: 0, gap: null,
     }
     const cases: string[] = [
       elecBandRef(251),

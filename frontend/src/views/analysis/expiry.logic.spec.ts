@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ContractDTO } from '@/types/contract'
 import {
   buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
-  concentrationOption, lockedRentByMonth, paretoOption, renewalVariance,
+  concentrationOption, lockedCountByMonth, lockedRentByMonth, nearestGap, paretoOption, renewalVariance,
   rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
 } from './expiry.logic'
 
@@ -172,6 +172,16 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(r.lockedBand).toBeUndefined()
   })
 
+  // T4(design-boards):「未来12月到期」瓦读 byExpMonth 的桶,不是原始 pool——a4(2099-12-31 到期)
+  // 落进 pool(仍在租、无后继),但视界 12 个月里没有一个月的月末晚于它,ek<mb.endKey 对每个月
+  // 都不成立,永远进不了任何一个桶。若瓦直接数 pool.length 会把 a1/a4 都算成"到期",多算一份。
+  it('❗T4:expiringCount/expiringRentSum 只数真的落进桶的合同,覆盖到视界外的(a4)不算"到期"', () => {
+    const r = buildRentRoll(CONTRACTS, '2025-12-01', 12)
+    // 池子里有 a1(2026-01-31 到期,落进桶)和 a4(2099-12-31 到期,视界内全程锁定,不进任何桶)。
+    expect(r.expiringCount).toBe(1)
+    expect(r.expiringRentSum).toBe(1000)   // 只有 a1 的月租
+  })
+
   it('❗续签方差两项分开算:逐户金额平方和 + p 本身不准', () => {
     const v = renewalVariance([100, 100, 100], 0.2, 90)
     // 第一项 p(1−p)Σr² = .16 × 30000 = 4800;第二项 Var(p̂)(Σr)² = .001778 × 90000 = 160
@@ -195,10 +205,50 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(lockedRentByMonth([partialFree], '2025-06-01', 1)[0]).toBe(1000)
   })
 
+  // T4(design-boards,对抗复查):coveringMonth 的在租判据从白名单{active,renewed}改成黑名单
+  // {draft,expired,terminated}——白名单会把 status='expiring'/'future' 的合同整个滤掉,而这两个
+  // 都是后端 effectiveStatus 派生出的"仍在租"展示态细分(实测 live API:23 份 expiring¥37.8万/月、
+  // 27 份 future¥76.6万/月),不是"不在租"。
+  it('❗T4:status=expiring(签的是 active,只是快到期)算在租,不是"不认识的状态就滤掉"', () => {
+    const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-03-01', status: 'expiring' })
+    expect(lockedRentByMonth([c], '2026-01-01', 1)[0]).toBe(1000)
+  })
+
+  it('❗T4:status=future(签的是 active,只是还没起租)—— 起租前不算在租,起租后照算,判据落在日期不落在状态', () => {
+    const c = ct({ monthlyRent: 1000, startDate: '2026-03-01', endDate: '2027-01-01', status: 'future' })
+    const locked = lockedRentByMonth([c], '2026-01-01', 4)
+    expect(locked).toEqual([0, 0, 1000, 1000])   // 1/2 月还没到 3/1,3 月起才覆盖月末
+  })
+
+  it('❗T4:draft/expired/terminated 三个终态仍然不算在租(黑名单没有把它们放进来)', () => {
+    for (const status of ['draft', 'expired', 'terminated']) {
+      const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-01-01', status })
+      expect(lockedRentByMonth([c], '2026-01-01', 1)[0], `status=${status} 不该算在租`).toBe(0)
+    }
+  })
+
+  it('❗T4:status=expiring 的合同也进续签抽样池 —— 它离到期最近,最该被建模"续不续得上"', () => {
+    const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-02-15', status: 'expiring' })
+    const r = buildRentRoll([c], '2026-01-01', 3)
+    const idx = r.months.findIndex((m) => m.month === '2026-02')
+    expect(r.months[idx].renewalHi).toBeGreaterThan(0)   // 落进了抽样池,续签区间不是恒零
+  })
+
   it('F6:同一单元同月多于一份合同 —— 都计入,不假设是重复行(实测单元 455:两个不同租户并行租约)', () => {
     const tenantA = ct({ unitId: 9, monthlyRent: 800, startDate: '2024-01-01', endDate: '2026-02-28' })
     const tenantB = ct({ unitId: 9, monthlyRent: 900, startDate: '2026-01-01', endDate: '2027-01-31' })
     expect(lockedRentByMonth([tenantA, tenantB], '2026-01-01', 1)[0]).toBe(1700)   // 不再是 900(去重时的旧值)
+  })
+
+  // T4(design-boards):「当前合约租金」瓦的「N 份在租」读这个函数,判据必须与锁定金额逐字一致——
+  // 否则金额和份数会各自代表不同的合同集合,读者拿两个数一除会得出一个假的"户均租金"。
+  it('T4:lockedCountByMonth 与 lockedRentByMonth 同一判据,只换成计数', () => {
+    const tenantA = ct({ unitId: 9, monthlyRent: 800, startDate: '2024-01-01', endDate: '2026-02-28' })
+    const tenantB = ct({ unitId: 9, monthlyRent: 900, startDate: '2026-01-01', endDate: '2027-01-31' })
+    expect(lockedCountByMonth([tenantA, tenantB], '2026-01-01', 1)[0]).toBe(2)
+    // 已到期的不算在租
+    const gone = ct({ monthlyRent: 500, startDate: '2020-01-01', endDate: '2025-12-31' })
+    expect(lockedCountByMonth([tenantA, tenantB, gone], '2026-01-01', 1)[0]).toBe(2)
   })
 
   it('F6 前提守卫:同一租户在同一单元上有两份合同同时覆盖同一个月末 —— 当场报错,不许悄悄多算', () => {
@@ -345,7 +395,8 @@ describe('合约租金带(FORECAST §1.1)', () => {
   it('抽样池为空(所有合同全程覆盖视界或已决出)→ 续签区间恒为 0,不是凭空给宽度', () => {
     const alwaysLocked = ct({ startDate: '2020-01-01', endDate: '2099-01-01', status: 'active' })
     const r = buildRentRoll([alwaysLocked], '2026-01-01', 6)
-    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalHi === 0)).toBe(true)
+    // T4:renewalMid(「预计」中线)与 Lo/Hi 同一批抽样,池空则连中线也该是 0,不是漏了没算。
+    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalMid === 0 && m.renewalHi === 0)).toBe(true)
   })
 
   it('抽样池非空时上下界不重合(真的在抽样,不是常数占位)', () => {
@@ -359,6 +410,26 @@ describe('合约租金带(FORECAST §1.1)', () => {
     const last = r.months[r.months.length - 1]
     expect(last.renewalHi).toBeGreaterThan(0)
     expect(last.renewalHi).toBeGreaterThanOrEqual(last.renewalLo)
+    // T4:中线必须落在 [Lo, Hi] 之间 —— 三者是同一批 drawSums 的三个分位,顺序钉死。
+    expect(last.renewalMid).toBeGreaterThanOrEqual(last.renewalLo)
+    expect(last.renewalMid).toBeLessThanOrEqual(last.renewalHi)
+  })
+
+  // T4:上面那条池子只有 1 份合同,分布退化成二值(0 或全额),中线经常跟上/下界之一重合,
+  // 掩盖不了"quantile 分位取错、三者恒相等"这类缺陷。这里换一个够杂的池子(10 份不同金额、
+  // 同一个月到期),专门钉「中线是真的居中,不是常数或误取了 Lo/Hi 本身」。
+  it('T4:续签池够杂时,50 分位中线真的落在 10/90 分位之间(不是与某一端重合)', () => {
+    const decided = [...Array(10)].flatMap((_, i) => {
+      const parent = ct({ id: 9000 + i, endDate: '2025-01-01', status: i < 5 ? 'renewed' : 'active' })
+      return i < 5 ? [parent, ct({ startDate: '2025-01-02', parentContractId: parent.id, linkType: 'renew' })] : [parent]
+    })
+    const pool = [...Array(10)].map((_, i) => ct({ endDate: '2026-06-15', monthlyRent: (i + 1) * 137, unitId: 300 + i }))
+    const r = buildRentRoll([...decided, ...pool], '2026-01-01', 6)
+    expect(r.renewalN).toBe(10)
+    expect(r.renewalHits).toBe(5)
+    const last = r.months[r.months.length - 1]
+    expect(last.renewalLo).toBeLessThan(last.renewalMid)
+    expect(last.renewalMid).toBeLessThan(last.renewalHi)
   })
 
   it('F8:endDate 恰好等于视界最后一个月月末 —— 整个视界都算 locked,不进续签池(不是漏算)', () => {
@@ -366,7 +437,7 @@ describe('合约租金带(FORECAST §1.1)', () => {
     const c = ct({ unitId: 70, monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-03-31', status: 'active' })
     const r = buildRentRoll([c], '2026-01-01', 3)
     expect(r.locked).toEqual([1000, 1000, 1000])   // 三个月都锁定,包括最后一月
-    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalHi === 0)).toBe(true)   // 没有落进任何续签桶
+    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalMid === 0 && m.renewalHi === 0)).toBe(true)   // 没有落进任何续签桶
   })
 
   // F10(修复轮3):已有后继合同的那份不进续签池 —— 它的续签结果已经发生了,后继就是那个结果。
@@ -381,6 +452,51 @@ describe('合约租金带(FORECAST §1.1)', () => {
     // 若 old 也进池,它会在 2026-02 桶里再添一份 1000 的不确定性,末月上界随之变高。
     const two = buildRentRoll([old, { ...next, parentContractId: null }], '2026-02-10', 2)
     expect(r.months[0].renewalHi).toBeLessThan(two.months[0].renewalHi)
+  })
+})
+
+// T4/T5(design-boards):「最近的缺口」瓦 + 图上缺口标注共用同一个值。
+describe('nearestGap(T4/T5,design-boards):最近一次到期造成的锁定线下跌', () => {
+  it('找到最早出现下跌的月份,把拉低它的合同按月租降序列出(1 份到期的简单情形)', () => {
+    const big = ct({ tenantName: '大户', monthlyRent: 1200, startDate: '2020-01-01', endDate: '2099-12-31' })
+    const small = ct({ tenantName: '小户', monthlyRent: 800, startDate: '2020-01-01', endDate: '2026-02-15' })
+    const cs = [big, small]
+    const locked = lockedRentByMonth(cs, '2026-01-01', 4)
+    expect(locked).toEqual([2000, 1200, 1200, 1200])   // 小户 2/15 到期,2 月起不再覆盖月末
+    const gap = nearestGap(cs, '2026-01-01', locked)
+    expect(gap).not.toBeNull()
+    expect(gap!.monthsAway).toBe(1)
+    expect(gap!.count).toBe(1)
+    expect(gap!.totalRentSum).toBe(800)
+    expect(gap!.names).toEqual(['小户'])
+  })
+
+  it('多份合同同一次到期造成同一次下跌 —— names 只取月租前两名,count/totalRentSum 给真实总数', () => {
+    const big = ct({ tenantName: '力灏', monthlyRent: 3610, startDate: '2020-01-01', endDate: '2099-12-31' })
+    const c1 = ct({ tenantName: '开利暖通', monthlyRent: 2060, startDate: '2020-01-01', endDate: '2026-01-31' })
+    const c2 = ct({ tenantName: '丙户', monthlyRent: 500, startDate: '2020-01-01', endDate: '2026-01-31' })
+    const c3 = ct({ tenantName: '丁户', monthlyRent: 300, startDate: '2020-01-01', endDate: '2026-01-31' })
+    const cs = [big, c1, c2, c3]
+    const locked = lockedRentByMonth(cs, '2026-01-01', 3)
+    const gap = nearestGap(cs, '2026-01-01', locked)
+    expect(gap).not.toBeNull()
+    expect(gap!.monthsAway).toBe(1)
+    expect(gap!.count).toBe(3)
+    expect(gap!.names).toEqual(['开利暖通', '丙户'])   // 降序取前两名,力灏没到期不该出现
+    expect(gap!.totalRentSum).toBe(2060 + 500 + 300)
+  })
+
+  it('锁定线全程持平或上涨(无到期造成的下跌)→ 没有缺口,不是凭空报一个', () => {
+    const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31' })
+    const locked = lockedRentByMonth([c], '2026-01-01', 6)
+    expect(nearestGap([c], '2026-01-01', locked)).toBeNull()
+  })
+
+  it('下跌若是整月免租退出造成的(不是到期)—— 不算缺口,继续找下一个真正的到期', () => {
+    const c = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31', rentFree: [{ start: '2026-02-01', end: '2026-02-28' }] })
+    const locked = lockedRentByMonth([c], '2026-01-01', 3)
+    expect(locked).toEqual([1000, 0, 1000])   // 2 月整月免租,锁定线跌到 0,3 月恢复
+    expect(nearestGap([c], '2026-01-01', locked)).toBeNull()   // 这份合同压根没到期,不该被当成"缺口"
   })
 })
 
