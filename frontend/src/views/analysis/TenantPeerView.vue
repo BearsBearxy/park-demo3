@@ -14,6 +14,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaUnitRentHist from '@/components/ana/AnaUnitRentHist.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
 import { fetchBuildings, fetchContractDetail, fetchContracts, fetchS10TenantMap, fetchTenants } from '@/analysis/anaData'
@@ -24,7 +25,7 @@ import { PROPERTY_TYPE_LABEL } from '@/types/contract'
 import { fint } from '@/components/ana/anaFmt'
 import {
   MIN_SAMPLE, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel, phaseStatsOf,
-  buildUnitRentHist, unitRentReadout, unitRentRefText, unitRentHistOption, dominantPropertyType,
+  buildUnitRentHist, unitRentReadout, unitRentRefText, dominantPropertyType,
   phaseTableRows, phaseTableReadout, phaseTableRefText, latestElecSpread, elecTrapReadout, elecTrapRefText,
   type PeerRow,
 } from './TenantPeer.logic'
@@ -83,14 +84,6 @@ const phaseGroupRows = computed(() =>
 const phaseValues = computed(() => phaseGroupRows.value.map((r) => r.unitRent))
 const stats = computed(() => phaseStatsOf(phaseValues.value))
 const hist = computed(() => (stats.value ? buildUnitRentHist(phaseValues.value, stats.value.p90) : null))
-const histOpt = computed<object>(() =>
-  hist.value && stats.value && primaryRow.value
-    ? unitRentHistOption(hist.value, stats.value, primaryRow.value.tenantName, primaryRow.value.unitRent)
-    : {})
-const readout = computed(() =>
-  primaryRow.value ? unitRentReadout(primaryRow.value.unitRent, phaseValues.value, phaseZone.value) : null)
-const refText = computed(() => unitRentRefText(phaseValues.value.length, phaseZone.value, periodLabel))
-
 // ── 头部「物业类型」:只为选中租户的主合同查一次计费行。
 // F2(对抗复查)时这里扩成整批同类都查,为的是给口径浮层那句「这批同类物业类型是否单一」
 // 提供数据。浮层 2026-09-12 拆掉,那句话没了,请求跟着收回来 —— 期区一 25 份同类就是
@@ -112,6 +105,10 @@ const propertyTypeLabel = computed(() => {
   const pt = propTypeCache.value.get(row.contractId)
   return pt ? PROPERTY_TYPE_LABEL[pt] : '—'
 })
+const readout = computed(() =>
+  primaryRow.value ? unitRentReadout(primaryRow.value.unitRent, phaseValues.value, phaseZone.value) : null)
+const refText = computed(() => unitRentRefText(phaseValues.value.length, phaseZone.value, periodLabel))
+
 
 // ── T10「哪些期区能给区间」:不看选中哪个租户,四个期区一次性给行(population 同上,按期区分组)──
 const phaseRows = computed(() => phaseTableRows(peerRows.value))
@@ -166,7 +163,9 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
           <span class="hint">元/㎡·月(含费)· {{ phaseZone }}在租合同</span>
         </div>
         <template v-if="stats && hist && primaryRow">
-          <AnaEChart :option="histOpt" :height="280" />
+          <AnaUnitRentHist :bins="hist.bins" :cap-hi="hist.capHi" :overflow-count="hist.overflowCount"
+            :overflow-max="hist.overflowMax" :stats="stats" :self-value="primaryRow.unitRent"
+            :self-name="primaryRow.tenantName" :height="280" />
           <p v-if="hist.overflowCount" class="tp-overflow">{{ hist.overflowCount }} 份 &gt; {{ hist.capHi }},最高 {{ hist.overflowMax.toFixed(1) }}</p>
           <p v-if="readout" class="ana-read">{{ readout }}</p>
           <p class="ana-ref">{{ refText }}</p>

@@ -9,6 +9,7 @@ import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaRentBandChart from '@/components/ana/AnaRentBandChart.vue'
+import AnaRenewalChart from '@/components/ana/AnaRenewalChart.vue'
 import type { RentBandCol, GapInput } from './rentBandChart.logic'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
@@ -109,9 +110,7 @@ const priorityRef = computed(() => priorityRefText(rentRoll.value.expiringList, 
 // ── T7(design-boards):「续签率从哪来」—— 区间是续签率本身的历史不确定性(只抽 p),
 // 与「合约租金带」卡的金额区间(抽 p 之后还要抽哪几户续签)是两件事。
 const renewalRateRead = computed(() => renewalRateReadout(rentRoll.value.renewalHits, rentRoll.value.renewalN))
-const renewalRateLineOpt = computed(() =>
-  renewalRateLineOption(rentRoll.value.renewalHits, rentRoll.value.renewalN,
-    renewalRateBand(rentRoll.value.renewalHits, rentRoll.value.renewalN)))
+const renewalBand = computed(() => renewalRateBand(rentRoll.value.renewalHits, rentRoll.value.renewalN))
 
 // ── T7(design-boards):「续签率变一档,年末差多少」—— 固定续签率(0/历史/40%/60%)下,
 // 视界最后一月的租金是「哪几户续签」随机性的期望值(闭式解,详见 sensitivityFinalRent 注释),
@@ -254,7 +253,8 @@ function onParetoClick(p: unknown) {
           <!-- 稿上那条数轴(原 Ruling-7 判的不做,用户 2026-09-12 要求补上):
                0~100% 的横轴 + 观测值 + 它自己的 80% 区间。与上面三行计数不重复——
                计数给的是 18/72,轴给的是这个比例落在哪儿、有多宽。 -->
-          <AnaEChart v-if="renewalRateRead" :option="renewalRateLineOpt" :height="110" />
+          <AnaRenewalChart v-if="renewalRateRead" :hits="rentRoll.renewalHits" :n="rentRoll.renewalN"
+            :band="renewalBand" :height="112" />
           <p v-if="renewalRateRead" class="ana-read">{{ renewalRateRead }}</p>
           <p v-if="renewalRateRead" class="ana-ref">历史{{ rentRoll.renewalN }}份 · 口径同历史续签率瓦</p>
         </div>

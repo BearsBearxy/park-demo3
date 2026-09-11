@@ -103,7 +103,10 @@ const BUDGET_KB = {
 // 2026-09-12 三图照稿自绘(第1步:合约租金带):新增 AnaRentBandChart + rentBandChart.logic,
 //   实测 3981.3KB。剩下两张图(续签率数轴、单位租金对标)还会再加 —— 到那两步再各自实测收一次,
 //   不预留:预留过的额度没人会主动收回,这个教训本分支上一次就吃过。
-const TOTAL_KB = 3984
+// 2026-09-12 第2、3 步(续签率数轴 + 单位租金对标)也换成自绘,实测 3992.2KB。
+// ⚠ 三张图换完 echarts 仍是 698KB —— 驾驶舱的收入柱、构成环、分期堆叠、收缴率还在用它,
+//    这一步没有「换掉图表库」这回事,如实记下,别让下一个人以为已经可以摘掉依赖了。
+const TOTAL_KB = 3995
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

@@ -110,14 +110,19 @@ function niceStep(raw: number): number {
   if (!(raw > 0)) return 1
   const mag = 10 ** Math.floor(Math.log10(raw))
   const n = raw / mag
-  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10
+  // 2.5 这一档 2026-09-12 补的:16 档直方图上 p90=34.5 时理想步长 2.16,
+  // 没有 2.5 就只能跳到 5,capHi 变成 80 —— 横轴一半是空的,稿上是 0~40。
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10
   return step * mag
 }
-const HIST_BINS = 4
+// 2026-09-12 照稿(board-peer)从 4 档改成 16 档:4 档的直方图只有四根柱,看不出分布形状,
+// 「本户落在哪」这件事也就无从谈起 —— 稿上画的是十几根细柱。
+// p90=34 时 niceStep(34/16)=2.5,capHi=40,与稿上 0/10/20/30/40+ 的轴逐格对得上。
+const HIST_BINS = 16
 export interface HistBin { lo: number; hi: number; count: number }
 export interface UnitRentHist { bins: HistBin[]; binWidth: number; capHi: number; overflowCount: number; overflowMax: number }
 
-/** binWidth = niceStep(p90/4),capHi = binWidth×4;capHi 及以上落溢出档(板上「7 份 > 40，最高 150」同款)。 */
+/** binWidth = niceStep(p90/HIST_BINS),capHi = binWidth×HIST_BINS;capHi 及以上落溢出档(板上「7 份 > 40，最高 150」同款)。 */
 export function buildUnitRentHist(values: number[], p90: number): UnitRentHist {
   const binWidth = niceStep(p90 / HIST_BINS)
   const capHi = binWidth * HIST_BINS
@@ -145,60 +150,11 @@ export function unitRentRefText(n: number, phase: string, period: string): strin
   return `参照${n}份${phase}、已录面积在租合同·${period}`
 }
 
-/** 直方图 ECharts option:value 型 x 轴(能精确摆 markLine),bar 数据 [中心值,份数],
- *  溢出档摆在 capHi+binWidth/2,与常规档同宽(视觉简化,精确数字由脚注文案兜底)。
- *  p10/中位/p90/本户四条 markLine;本户超出图右边界时贴边显示,标签仍写真实值。 */
-export function unitRentHistOption(hist: UnitRentHist, stats: PhaseStats, tenantName: string, tenantValue: number): object {
-  const { bins, binWidth, capHi, overflowCount } = hist
-  const axisMax = capHi + binWidth
-  const clamp = (v: number) => Math.min(Math.max(v, 0), axisMax - binWidth * 0.02)
-  const barData = [
-    ...bins.map((b) => ({ value: [b.lo + binWidth / 2, b.count], itemStyle: { color: '#85B7EB' } })),
-    { value: [capHi + binWidth / 2, overflowCount], itemStyle: { color: 'rgba(28,28,28,.25)' } },
-  ]
-  return {
-    grid: { left: 46, right: 24, top: 34, bottom: 34 },
-    tooltip: {
-      trigger: 'item',
-      formatter: (p: { value: [number, number] }) => {
-        const x = p.value[0]
-        const label = x >= capHi ? `${capHi}+` : `${Math.floor(x / binWidth) * binWidth}~${Math.floor(x / binWidth) * binWidth + binWidth}`
-        return `${label} 元/㎡·月<br/>${p.value[1]} 份`
-      },
-    },
-    xAxis: {
-      type: 'value', min: 0, max: axisMax, interval: binWidth,
-      axisLabel: { formatter: (v: number) => (v === 0 ? '0' : v === binWidth ? String(binWidth) : v === capHi ? `${capHi}+` : '') },
-    },
-    yAxis: { type: 'value', name: '份数', nameLocation: 'end', nameTextStyle: { fontSize: 11 } },
-    series: [{
-      type: 'bar', barWidth: 34, data: barData,
-      markArea: {
-        silent: true, itemStyle: { color: 'rgba(56,138,221,.10)' },
-        label: { show: true, position: 'insideTop', color: 'rgba(28,28,28,.5)', fontSize: 11, formatter: '80% 的同类在这段' },
-        data: [[{ xAxis: stats.p10 }, { xAxis: stats.p90 }]],
-      },
-      markLine: {
-        silent: true, symbol: 'none',
-        lineStyle: { type: 'dashed', color: 'rgba(28,28,28,.45)', width: 1 },
-        label: { fontSize: 11, color: 'rgba(28,28,28,.65)' },
-        data: [
-          { xAxis: clamp(stats.p10), label: { formatter: stats.p10.toFixed(1) } },
-          { xAxis: clamp(stats.median), label: { formatter: '中位 ' + stats.median.toFixed(1) } },
-          { xAxis: clamp(stats.p90), label: { formatter: stats.p90.toFixed(1) } },
-          {
-            // 本户这条线的标签钉在**轴侧**(position:'start'),三条分位线的标签留在顶端。
-            // 2026-09-12 在运行中的屏上看到:选中租户的值等于中位数时(碧沃丰 23.0 = 中位 23.0),
-            // 两条线重合、两个标签都在顶端默认位置,直接印成一团。分开上下就不会再撞,
-            // 而且哪个租户、什么值都不会撞 —— 不是靠"这次的数正好错开"。
-            xAxis: clamp(tenantValue), lineStyle: { color: '#185FA5', width: 2 },
-            label: { formatter: `${tenantName} ${tenantValue.toFixed(1)}`, color: '#185FA5', position: 'start' },
-          },
-        ],
-      },
-    }],
-  }
-}
+/*
+ * unitRentHistOption(ECharts 版直方图)2026-09-12 删掉,换成自绘 SVG
+ * (AnaUnitRentHist.vue + unitRentHistChart.logic.ts)。用户要求照设计稿实现,
+ * 而稿上那几件事(区间内外两色、本户竖线落在准确的值上、带下居中一句话)ECharts 都得绕。
+ */
 
 // ── 头部「物业类型」(只为选中租户的主合同查一次计费行,不为整批同类都查) ──
 /** 主合同的主导物业类型 = 面积最大的租金行(rent_* feeKey)的 propertyType;无租金行 → null。 */

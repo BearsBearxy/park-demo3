@@ -4,7 +4,7 @@ import type { AnalysisS10Row } from '@/api/analysis'
 import {
   MIN_SAMPLE, isInForce, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel,
   percentBelow, phaseStatsOf, buildUnitRentHist, unitRentReadout, unitRentRefText,
-  unitRentHistOption, dominantPropertyType,
+  dominantPropertyType,
   phaseTableRowOf, phaseTableRows, phaseTableReadout, phaseTableRefText,
   latestElecSpread, elecTrapReadout, elecTrapRefText,
   type PeerRow, type PhaseStats, type PhaseTableRow, type ElecSpread,
@@ -123,20 +123,22 @@ describe('percentBelow / phaseStatsOf', () => {
 })
 
 describe('buildUnitRentHist', () => {
-  it('binWidth 由 p90 推 4 档等宽,capHi=binWidth×4,capHi 以上归溢出档', () => {
-    // p90=34.48 → niceStep(34.48/4=8.62)→ 10;capHi=40
+  it('binWidth 由 p90 推 16 档等宽,capHi=binWidth×16,capHi 以上归溢出档', () => {
+    // 2026-09-12 照稿从 4 档改 16 档:p90=34.48 → niceStep(34.48/16=2.155)→ 2.5;capHi=40。
+    // capHi 仍是 40,与稿上 0/10/20/30/40+ 的轴对得上,只是柱子从 4 根细分成 16 根。
     const vals = [7.45, 9, 16.5, 22.6, 28.11, 39.76, 60.98]
     const h = buildUnitRentHist(vals, 34.48)
-    expect(h.binWidth).toBe(10)
+    expect(h.binWidth).toBe(2.5)
     expect(h.capHi).toBe(40)
+    expect(h.bins).toHaveLength(16)
     expect(h.overflowCount).toBe(1)          // 只有 60.98 ≥ 40
     expect(h.overflowMax).toBe(60.98)
     const total = h.bins.reduce((s, b) => s + b.count, 0) + h.overflowCount
     expect(total).toBe(vals.length)
   })
   it('边界值 v=capHi 精确落溢出档,不落最后一个常规档', () => {
-    const h = buildUnitRentHist([39, 40], 40)   // binWidth=niceStep(10)=10,capHi=40
-    expect(h.bins[3].count).toBe(1)    // 39 落 [30,40)
+    const h = buildUnitRentHist([39, 40], 40)   // binWidth=niceStep(40/16=2.5)=2.5,capHi=40
+    expect(h.bins[15].count).toBe(1)   // 39 落最后一个常规档 [37.5,40)
     expect(h.overflowCount).toBe(1)    // 40 落溢出档(>=capHi)
   })
 })
@@ -170,55 +172,8 @@ describe('unitRentReadout / unitRentRefText', () => {
   })
 })
 
-describe('unitRentHistOption', () => {
-  const h = buildUnitRentHist([5, 15, 25, 35, 45], 34)
-  const stats: PhaseStats = { n: 5, p10: 6, median: 25, p90: 34 }
-  function opt() {
-    return unitRentHistOption(h, stats, '鑫皇', 28.11) as {
-      series: {
-        data: unknown[]
-        markArea: { label: { formatter: string } }
-        markLine: { data: { label: { formatter: string; position?: string } }[] }
-      }[]
-    }
-  }
-  it('结构:1 个 bar 系列,数据=4 常规档+1 溢出档,4 条 markLine', () => {
-    const o = opt()
-    expect(o.series).toHaveLength(1)
-    expect(o.series[0].data).toHaveLength(5)
-    expect(o.series[0].markLine.data).toHaveLength(4)
-  })
-  // F3(修复轮1):读数句拆分时「80% 的同类在…」与 p10/p90 数字从受门禁的 .ana-read 搬到了图上
-  // markArea/markLine 标签——那里没有任何门禁扫,markArea 整段被删/p10/p90 的 formatter 被清空,
-  // 上面那条「结构」用例照样绿。钉住标签内容,堵这个静默消失口。
-  it('F3:markArea 标签含「80% 的同类在这段」,p10/p90 两条 markLine 的 formatter 等于对应分位数值', () => {
-    const o = opt()
-    expect(o.series[0].markArea.label.formatter).toBe('80% 的同类在这段')
-    const [p10Line, medianLine, p90Line] = o.series[0].markLine.data
-    expect(p10Line.label.formatter).toBe(stats.p10.toFixed(1))
-    expect(medianLine.label.formatter).toBe('中位 ' + stats.median.toFixed(1))
-    expect(p90Line.label.formatter).toBe(stats.p90.toFixed(1))
-  })
-
-  /**
-   * 2026-09-12 在运行中的屏上看到的:选中租户的单位租金正好等于中位数(碧沃丰 23.0 = 中位 23.0)时,
-   * 两条 markLine 重合,两个标签都在顶端默认位置,印成一团谁也读不出来。
-   * 判据不写成「这两个标签不许同 x」——它们本来就可能同 x,那是数据的事。判据写成
-   * **本户标签必须钉在轴侧**:上下分开之后,任何租户、任何值都不会再撞。
-   */
-  it('❗本户标签钉在轴侧,不与三条分位线的顶端标签抢同一个位置', () => {
-    const o = unitRentHistOption(h, { n: 5, p10: 6, median: 25, p90: 34 }, '鑫皇', 25) as {
-      series: { markLine: { data: { label: { formatter: string; position?: string } }[] }[] }[]
-    }
-    const lines = (o.series[0].markLine as unknown as { data: { label: { formatter: string; position?: string } }[] }).data
-    const own = lines[3]
-    const median = lines[1]
-    expect(own.label.formatter).toBe('鑫皇 25.0')
-    expect(own.label.position, '本户标签回到默认顶端,就会和中位标签重合').toBe('start')
-    expect(median.label.position, '分位线标签留在顶端(不设 position 即默认顶端)').toBeUndefined()
-  })
-})
-
+// unitRentHistOption 的用例 2026-09-12 随函数一起删 —— 直方图改成自绘 SVG,
+// 判据搬去 unitRentHistChart.logic.spec.ts(量的是柱子坐标与本户线落点,比量 option 对象牢靠)。
 describe('dominantPropertyType', () => {
   it('无租金行 → null', () => {
     expect(dominantPropertyType([bl({ feeKey: 'mgmt' })])).toBeNull()

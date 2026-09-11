@@ -122,7 +122,9 @@ describe('TenantPeerView · 单位租金对标挂载测', () => {
     await selectTenant(w, '租户01')
     const card = w.findAll('.av2-card').find((c) => c.text().includes('单位租金对标'))
     expect(card, '找不到「单位租金对标」卡').toBeTruthy()
-    expect(card!.find('.stub-chart').exists(), '直方图没有渲染').toBe(true)
+    // 2026-09-12:直方图从 ECharts 换成自绘 SVG(AnaUnitRentHist),桩组件不再命中 —— 判据改看真 SVG。
+    expect(card!.find('svg.auh').exists(), '直方图没有渲染').toBe(true)
+    expect(card!.findAll('rect.auh-bar').length, '柱子一根都没有').toBeGreaterThan(3)
     // 租户01(n=1):月租 1000+1×100=1100,面积 100 → 单位租金 11,是本组(11..35)最小值:
     // 0 份严格更低 → 低于分支,严格更高的 24/25=96%
     const readEl = card!.find('.ana-read')
@@ -143,7 +145,7 @@ describe('TenantPeerView · 单位租金对标挂载测', () => {
     // 切到期区二那户(丙租户100),期区二只有 3 份 < MIN_SAMPLE=20
     await selectTenant(w, '丙租户100')
     const card = w.findAll('.av2-card').find((c) => c.text().includes('单位租金对标'))
-    expect(card!.find('.stub-chart').exists(), '样本不足时不该画图').toBe(false)
+    expect(card!.find('svg.auh').exists(), '样本不足时不该画图').toBe(false)
     expect(card!.text()).toContain('同类样本不足')
     expect(card!.text()).toContain('3')       // 实际样本量
     expect(card!.text()).not.toMatch(/%/)     // 样本不足不印百分比
