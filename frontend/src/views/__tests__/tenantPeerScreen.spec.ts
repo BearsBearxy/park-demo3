@@ -175,7 +175,7 @@ describe('TenantPeerView · 单位租金对标挂载测', () => {
     expect(card!.text()).not.toMatch(/%/)     // 样本不足不印百分比
   })
 
-  it('❗页签:电费/缴费行为设计稿未定义内容,禁用不可点', async () => {
+  it('❗页签:电费/缴费行为暂未开放,禁用不可点', async () => {
     const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
     await flushPromises()
     await flushPromises()

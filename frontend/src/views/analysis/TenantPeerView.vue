@@ -171,7 +171,7 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
 
       <div class="anx-seg tp-tabs" role="group" aria-label="对标维度">
         <button v-for="t in TABS" :key="t.k" :class="{ on: tab === t.k }" :disabled="!t.on"
-          :title="t.on ? undefined : '设计稿未定义该页签内容,暂不可用'" @click="tab = t.k">{{ t.l }}</button>
+          :title="t.on ? undefined : '暂未开放'" @click="tab = t.k">{{ t.l }}</button>
       </div>
 
       <template v-if="tab === 'rent'">
@@ -316,7 +316,7 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
 
       <div v-else class="av2-card">
         <div class="av2-card-h"><span class="t">{{ TABS.find((t) => t.k === tab)?.l }}</span></div>
-        <AnaEmpty label="该页签设计稿未定义内容" hint="board-peer.txt 只给了「单位租金」这一页的规格,电费/缴费行为两页没有可实现的规格" />
+        <AnaEmpty label="暂未开放" hint="本屏目前只做单位租金对标" />
       </div>
     </div>
   </AnaShell>

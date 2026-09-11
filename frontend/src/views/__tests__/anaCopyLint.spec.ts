@@ -525,4 +525,29 @@ describe('分析层文案门禁', () => {
     }
     expect(bad.length, `屏上出现统计符号 ${bad.length} 处:\n${bad.join('\n')}`).toBe(0)
   })
+
+  /**
+   * 用户 2026-09-12:屏上不许提设计稿。
+   *
+   * 出事的是三处口径文案:「设计稿标注的续签率 20%(18/90)按今天的库口径查不出」、
+   * 「不是设计稿的 20%」、「board-peer.txt 只给了单位租金这一页的规格」。三处都在讲
+   * **我做这屏时的过程**,而不是用户看的数 —— 稿里的数字是占位,占位数和实测数对不上
+   * 是实现期的事,不该出现在产品里;`board-peer.txt` 更是工作区里的文件名。
+   *
+   * 判据只看模板不看 <script> 与注释:代码注释里写明这块出自哪张稿是正当的溯源。
+   */
+  it('❗屏上(含 ⓘ 浮层)不许提设计稿/视觉稿/board-*.txt —— 稿是实现期的东西,不是给用户看的', () => {
+    const BOARD_REF = /设计稿|视觉稿|稿上|board-\w+\.txt/g
+    const bad: string[] = []
+    for (const { dir, file: f } of vueFiles()) {
+      const tpl = readFileSync(join(dir, f), 'utf8')
+        .replace(/<script[\s\S]*?<\/script>/g, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+      for (const m of tpl.matchAll(BOARD_REF)) {
+        const line = tpl.slice(0, m.index).split('\n').length
+        bad.push(`  ${f} 模板第 ${line} 行附近: ${m[0]}`)
+      }
+    }
+    expect(bad.length, `屏上提到设计稿 ${bad.length} 处:\n${bad.join('\n')}`).toBe(0)
+  })
 })
