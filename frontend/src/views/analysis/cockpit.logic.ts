@@ -9,7 +9,7 @@
 // 也就是 94.6% → 95.3%,**涨 0.69 个点、方向相同、从不越过 100%**。8,800 万的基数里拿掉
 // 63.6 万,本来也不可能动 11 个点。护栏本身是对的,它的自述价值是错的。
 // 这两个率由 cockpit.logic.spec.ts 的「I3 实测量级」用例钉住,再写谎会当场红。
-import { isOutlierMonth, usableMonths, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
+import { isOutlierMonth, type CollectRate, type PnlSummary, type S10PhaseMonthly } from '@/analysis/anaData'
 import { bandSeries } from '@/components/ana/anaTheme'
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
@@ -57,7 +57,7 @@ export interface MainChartData {
   budgetAvgWan: number | null      // 年预算/12(万;无预算 → null)
   covered: number                  // 覆盖期数(诚实标注)
   outlierMonths: number[]          // 离群月(1-12,收入为负);只管点怎么画(标红/markPoint),不参与量程
-  yMin: number | undefined         // y 轴下限:usableMonths 挑出的月里 rev/profit 的最小值(含 0);无可用值 → undefined 交 ECharts 自动定
+  yMin: number | undefined         // y 轴下限:所有录入月里 rev/profit 的最小值(含 0);一个月都没录 → undefined 交 ECharts 自动定
 }
 export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | null): MainChartData | null {
   if (!pnl) return null
@@ -66,12 +66,9 @@ export function mainChart(pnl: PnlSummary | null, budgetYearAmount: number | nul
   const profit = pnl.profit.map(wan)
   const prevRev = rev.map((_, i) => (i > 0 ? rev[i - 1] : null))
   const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
-  // 量程只看可用月(FORECAST §2.7):usableMonths 剔掉离群月,不被 2025-12 那种极端负值拉爆。
-  // usableMonths 的「全离群→原样返回」兜底是给分母消费者(budgetAch 等)保的,不能为 0;
-  // 量程消费者的需求正相反 —— 全离群时轴不该被钉在被污染月的极端值上,该放弃 yMin 交 ECharts 自动定。
-  // 所以这里在调 usableMonths 之前先把「全离群」这个退化场景摘出来,不指望共享兜底替量程操心。
-  const allOutlier = pnl.months.length > 0 && outlierMonths.length === pnl.months.length
-  const usableVals = allOutlier ? [] : usableMonths(pnl.months, pnl.revenue)
+  // 量程罩住所有录入了的月(2026-09-12:柱子画的是真值,轴就不能把它切掉)。
+  // 改前这里用 usableMonths 剔掉负收入月,轴到 0 为止,那根负柱子被画在轴外。
+  const usableVals = pnl.months
     .flatMap((m) => [rev[m - 1], profit[m - 1]])
     .filter((v): v is number => v != null)
   return {
@@ -235,7 +232,11 @@ export interface BudgetAch { budget: number; actual: number; rate: number; gap: 
  */
 export function pnlYearMonths(pnl: PnlSummary | null): number[] {
   const rev = pnl?.revenue ?? []
-  return rev.map((_, i) => i + 1).filter((m) => rev[m - 1] != null && !isOutlierMonth(rev, m))
+  // 用户 2026-09-12 拍板:「用户是什么数据就使用什么数据」,拟合 / 全年 / 达成率全部算进去。
+  // 改前这里还有一个 `!isOutlierMonth(rev, m)`,把收入为负的月份从**所有**年度口径里摘掉
+  // (拟合、营收合计、成本、利润、达成率、按节奏推全年、回测,全走这一个函数)。
+  // 只保留「这个月有没有录入」这一条 —— null 是没有数,不是一个值。
+  return rev.map((_, i) => i + 1).filter((m) => rev[m - 1] != null)
 }
 
 /**
@@ -253,9 +254,9 @@ export function budgetAch(budgetRows: BudgetRowDTO[], pnl: PnlSummary | null, ye
   const b = budgetRows.find((r) => r.year === year && matchBudgetKey(r.label, r.sub) === 'revenue')?.budget
   if (!b) return null
   const rev = pnl?.revenue ?? []
-  // 达成率分母排除离群月:2025-12 的年末冲回(收入 −63.6 万)无条件加进来会把达成率从
-  // 95.31% 压到 94.62%(实测,见文件头 I3)。护栏的价值是「不让一笔冲回冒充一个经营月」,
-  // 不是「把达成率抬过 100%」—— 它抬不动,方向也没反。
+  // 达成率分母 = 所有录入了的月(2026-09-12 起不再排除负收入月,见 pnlYearMonths)。
+  // 实测后果照实记:2025 达成率从 95.31% 变成 94.62%,与「屏上旧值」那一档相同,
+  // 所以那块对照瓦同时删掉了 —— 两个数已经是同一个数,并排印着只会让人以为哪里算错了。
   const used = pnlYearMonths(pnl)
   if (!used.length) return null
   const actual = used.reduce((s, m) => s + (rev[m - 1] as number), 0)
@@ -354,23 +355,7 @@ export function paceFullYear(pnl: PnlSummary | null, fit: RevenueFit | null, bud
   return { totalWan: total, rate: budgetYuan ? (total * 10000 / budgetYuan) * 100 : null }
 }
 
-/**
- * KPI「屏上旧值」(T1 对照瓦,故意留着的前后对比):护栏修复前的口径 —— 12 月冲回无条件计入
- * 年度收入,不剔离群月。与 budgetAch 的分子刻意不同(那边剔了离群月),两者摆一起就是改前/改后。
- */
-export function oldScreenRate(pnl: PnlSummary | null, budgetYuan: number | null): number | null {
-  if (!pnl || !budgetYuan) return null
-  const total = pnl.revenue.reduce<number>((s, v) => s + (v ?? 0), 0)
-  return (total / budgetYuan) * 100
-}
 
-/**
- * 「屏上旧值」瓦的 note(F6,对抗复查):改前写死「把12月冲回当收入算了」——换年、换离群月就是假话。
- * 由实测的 outlierMonths 驱动;没有离群月时,旧口径本来就等于护栏口径,不该再提"冲回"。
- */
-export function oldScreenNoteText(outlierMonths: number[]): string {
-  return outlierMonths.length ? `把${outlierMonths.join('、')}月冲回当收入算了` : '未命中离群月，与护栏口径一致'
-}
 
 /** 离群月相对拟合值的残差倍数(主图标注 + 读数句共用同一个数,不各算一份)。 */
 export interface OutlierResidual { month: number; actualWan: number; residuals: number }
@@ -518,15 +503,6 @@ export function mainChartOption(
 }
 
 
-/**
- * 趋势图卡头那句「哪个月离群、原值多少」。
- * 它本来是图里竖线上的标签,与拟合区间的三个数压在同一列,屏上叠成一团 —— 挪到卡头。
- * 值仍然由数据出,不写死月份(F6 那条同一个理由:换年换离群月,写死的就变成假话)。
- */
-export function trendOutlierHint(d: MainChartData | null): string {
-  if (!d || !d.outlierMonths.length) return ''
-  return d.outlierMonths.map((m) => `${m}月${fint(d.rev[m - 1] ?? 0)}万离群`).join('、')
-}
 
 /**
  * 整条拟合区间(每个月一个上下沿),不是只有离群月那一列。
@@ -571,7 +547,10 @@ export function trendChartOption(
   band: { lo: (number | null)[]; hi: (number | null)[] } | null,
 ): object | null {
   if (!d || !d.covered || !fit) return null
-  const revLine = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? null : v))
+  // 用户 2026-09-12:「用户是什么数据就使用什么数据」。改前这里把收入为负的月份换成 null,
+  // 屏上留一个断口 —— 那是替用户判断他的数据该不该出现。现在**原样画**,一个月都不剔。
+  // 代价照实说:12 月 −64 万进了量程,1–11 月那段 714~941 万的波动又被压回去一截。
+  const revLine = d.rev
   const series: object[] = [
     {
       name: '已录入', type: 'line', data: revLine, symbolSize: 6, connectNulls: false,
@@ -579,11 +558,7 @@ export function trendChartOption(
       // 竖线只标位置,不带标签 —— 标签原本写在这里,和拟合区间的 997/958/919 落在同一列,
       // 屏上两行字叠成一团(用户截图可见)。文字改由 trendOutlierHint 出到卡头 hint,
       // 那里有整行的宽度,且不会跟图里任何东西抢位置。
-      markLine: d.outlierMonths.length ? {
-        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: OUTLIER_RED },
-        label: { show: false },
-        data: d.outlierMonths.map((m) => ({ xAxis: m - 1 })),
-      } : undefined,
+
     },
     {
       name: '趋势', type: 'line', data: fit.fitted, symbol: 'none',
@@ -629,6 +604,10 @@ export function yearOutlookRows(pnl: PnlSummary | null, fit: RevenueFit | null, 
   if (!pnl || !fit) return null
   const pace = paceFullYear(pnl, fit, budgetYuan)
   if (!pace) return null
+  // 2026-09-12:不再排除任何月份之后,一个**十二个月全部录入**的年份没有任何一格要靠拟合补 ——
+  // 四行会是同一个数,读数句变成「全年在94%上下,不是94.6%」(自己跟自己比)。
+  // 这张卡答的是「还没录的月按拟合补,全年会落在哪」,没有要补的格就没有问题要答,闭嘴。
+  if (Array.from({ length: 12 }, (_, i) => i + 1).every((m) => fit.months.includes(m))) return null
   const rateOf = (t: number): number | null => (budgetYuan ? (t * 10000 / budgetYuan) * 100 : null)
   let lo = 0, hi = 0, old = 0
   for (let m = 1; m <= 12; m++) {
@@ -641,8 +620,10 @@ export function yearOutlookRows(pnl: PnlSummary | null, fit: RevenueFit | null, 
     }
   }
   lo = +lo.toFixed(2); hi = +hi.toFixed(2); old = +old.toFixed(2)
-  const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
-  const oldLabel = outlierMonths.length ? `含 ${outlierMonths.join('、')} 月冲回（屏上现值）` : '含冲回（屏上现值）'
+  // 第四行原来叫「含 X 月负收入(屏上现值)」—— 负收入月现在**每一行都含**,那个标签不再区分任何东西。
+  // 它真正与第一行的差别是:缺月按 0 计,而第一行按拟合补。照这个实际差别命名。
+  const untrainedM = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !fit.months.includes(m))
+  const oldLabel = `缺 ${untrainedM.join('、')} 月按 0 计`
   return [
     { label: `按${monthRangeLabel(fit.months)}节奏`, totalWan: pace.totalWan, rate: pace.rate },
     { label: '拟合下沿', totalWan: lo, rate: rateOf(lo) },
@@ -676,9 +657,10 @@ export function yearOutlookRefText(rows: YearOutlookRow[] | null, pnl: PnlSummar
   const untrained = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !fit.months.includes(m))
   const onlyOutliers = outlierMonths.length > 0 && untrained.length === outlierMonths.length
     && outlierMonths.every((m) => untrained.includes(m))
-  if (onlyOutliers) return `差${gap}个百分点全部来自${outlierMonths.join('、')}月冲回`
-  if (!outlierMonths.length) return `差${gap}个百分点来自缺数月，非冲回`
-  return `差${gap}个百分点不止来自冲回月`
+  // 2026-09-12:这三句原来都在说「冲回」——那是对数据的解读,而且现在负收入月根本没被摘出去。
+  // 差额只可能来自**还没录入**的月(它们在第一行按拟合补,在第四行按 0 计)。
+  if (onlyOutliers || !untrained.length) return `差${gap}个百分点来自未录入月`
+  return `差${gap}个百分点来自${untrained.join('、')}月按拟合补的部分`
 }
 
 /**
@@ -735,7 +717,8 @@ export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null):
     const band = fit ? fitBandAt(fit, nextM) : null
     if (!fit || !band) return null   // 训练点不足(理论上 v≥3 就够,不该发生)——整表宁可不画也不半拉子
     const rawNext = pnl.revenue[nextM - 1]
-    const actualWan = rawNext != null && !isOutlierMonth(pnl.revenue, nextM) ? wan(rawNext) : null
+    // 2026-09-12:负收入月也进评分 —— 改前它被跳过,那一站永远「待验」,等于挑掉了最难的一次。
+    const actualWan = rawNext != null ? wan(rawNext) : null
     let hit: boolean | null = null, under: boolean | null = null, missPct: number | null = null
     if (actualWan != null) {
       hit = actualWan >= band.lo && actualWan <= band.hi

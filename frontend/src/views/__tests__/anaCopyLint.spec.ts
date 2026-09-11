@@ -104,7 +104,15 @@ const cockpitOutlier = outlierResidual(cockpitFit, cockpitMc.rev, cockpitMc.outl
 // 「❗F7:cases 完整性」那条断言配套(见该条注释)。BUDGET 锚点与 cockpit.logic.spec.ts 的
 // T1/T2/T3 三节同一份(park_demo3 2025 实测,收入总计预算 92,705,202.87)。
 const COCKPIT_BUDGET = 92705202.87
-const cockpitYearRows = yearOutlookRows(COCKPIT_PNL, cockpitFit, COCKPIT_BUDGET)
+// 2026-09-12:「全年会落在哪」只在**有月份还没录**的年份出句(十二个月全录入时四行同数,卡自己闭嘴)。
+// 文案门禁要量那两句的字数,就得喂一个真会出句的年份 —— 拿同一份实测数据挖掉 8 月。
+const COCKPIT_PNL_GAP: PnlSummary = {
+  ...COCKPIT_PNL,
+  months: [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12],
+  revenue: COCKPIT_PNL.revenue.map((v, i) => (i === 7 ? null : v)),
+}
+const cockpitFitGap = fitRevenueTrend(COCKPIT_PNL_GAP)
+const cockpitYearRows = yearOutlookRows(COCKPIT_PNL_GAP, cockpitFitGap, COCKPIT_BUDGET)
 const cockpitBacktestRows = backtestRows(COCKPIT_PNL, COCKPIT_BUDGET)
 const cockpitBacktestSum = backtestSummary(cockpitBacktestRows)
 
@@ -183,7 +191,7 @@ const REF_SLOTS: string[][] = [
   [unitRentRefText(51, '期区一', '2026-09')],                                  // TenantPeerView.vue refText 插值槽
   [phaseTableRefText('2026-09')],                                             // TenantPeerView.vue phaseTableRef 插值槽
   [elecTrapRefText(ELEC_SPREAD_SAMPLE)],                                      // TenantPeerView.vue elecRef 插值槽
-  [yearOutlookRefText(cockpitYearRows, COCKPIT_PNL, cockpitFit)],             // CockpitView.vue yearRef 插值槽(F7 补登记)
+  [yearOutlookRefText(cockpitYearRows, COCKPIT_PNL_GAP, cockpitFitGap)],             // CockpitView.vue yearRef 插值槽(F7 补登记)
   [backtestRefText(cockpitBacktestRows)],                                     // CockpitView.vue backRef 插值槽(F7 补登记)
 ]
 

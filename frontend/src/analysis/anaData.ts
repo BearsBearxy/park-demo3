@@ -113,10 +113,6 @@ export function isOutlierMonth(revenue: (number | null)[], m: number): boolean {
 }
 
 /** 可用月 = 覆盖月剔掉离群月;**全离群时原样返回** —— 返回空数组会让下游分母为 0,屏上出 NaN%。 */
-export function usableMonths(months: number[], revenue: (number | null)[]): number[] {
-  const ok = months.filter((m) => !isOutlierMonth(revenue, m))
-  return ok.length ? ok : months
-}
 
 const SCHEDULES = ['s1', 's2', 's3', 's4', 's5'] as const
 // s5 底带大合计行「运营费用总计」= 销售+管理+财务+修缮改造(2025 库 m1 已 SQL 回验:1,060,875.45)

@@ -4,10 +4,9 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
-import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -77,20 +76,12 @@ describe('mainChart(主图整形:折万/上月右移/预算月均)', () => {
     expect(d.outlierMonths).toEqual([12])
     expect(d.rev[11]).toBe(-63.61)   // 离群月数据点仍在 rev 里,只是被标记
   })
-  it('❗yMin 只取 usableMonths 挑出的月(离群月的极端负收入不拉爆量程)', () => {
+  it('❗yMin 必须罩住负收入月 —— 柱子画的是真值,轴不许把它切在外面(用户 2026-09-12)', () => {
     const revenue = N12(); revenue[9] = 8000000; revenue[11] = -636050.65
     const profit = N12(); profit[9] = -100000
     const d = mainChart(pnl({ months: [10, 12], revenue, profit }), null)!
-    // 10 月利润 −10 万是可用月里的最小值;12 月离群收入 −63.61 万被 usableMonths 剔掉,不参与量程
-    expect(d.yMin).toBe(-10)
-  })
-  it('❗全离群(usableMonths 退回原始月列表)时 yMin 不取该兜底 —— 交 ECharts 自动定量程;分母侧月列表仍非空', () => {
-    const revenue = N12(); revenue[9] = -8000000; revenue[11] = -636050.65
-    const d = mainChart(pnl({ months: [10, 12], revenue }), null)!
-    expect(d.outlierMonths).toEqual([10, 12])   // 两个覆盖月都是离群月
-    expect(d.yMin).toBeUndefined()              // 不能钉在 −80/−63.61 万那种被污染的极端值上
-    // 同一份数据喂给 usableMonths(分母消费者走这条路):兜底仍在,不返回空数组(分母不为 0)
-    expect(usableMonths([10, 12], revenue)).toEqual([10, 12])
+    // 改前 yMin 是 −10(12 月被 usableMonths 剔掉,那根 −63.61 万的柱子画在轴外)
+    expect(d.yMin).toBe(-63.61)
   })
 })
 
@@ -189,14 +180,15 @@ describe('budgetAch / budgetRevenueOf(年度口径;锚点 94.6%)', () => {
     expect(a.gap).toBeCloseTo(4983126.87, 1)
     expect(a.usedMonths).toEqual([1])   // 无离群月:usedMonths = 有数月本身
   })
-  it('❗离群月(收入<0)不计入分母 —— 之前无条件相加会把达成率往错方向压(FORECAST §2.7)', () => {
-    const withOutlier = N12(); withOutlier[9] = 87722076; withOutlier[11] = -636050.65   // 12月年末冲回
-    const noOutlier = N12(); noOutlier[9] = 87722076   // 同一份 10 月数据,少一个离群月
-    const a1 = budgetAch(rows, pnl({ revenue: withOutlier }), 2025)!
-    const a2 = budgetAch(rows, pnl({ revenue: noOutlier }), 2025)!
-    expect(a1.usedMonths).toEqual([10])            // 12 月被剔除,不进 usedMonths
-    expect(a1.actual).toBe(a2.actual)               // 离群月的负收入没有被吃进分子
-    expect(a1.rate).toBe(a2.rate)                    // 剔除前后达成率一致 —— 证明离群月未被计入
+  it('❗负收入月照样进分母 —— 用户 2026-09-12:「是什么数据就使用什么数据」', () => {
+    const withNeg = N12(); withNeg[9] = 87722076; withNeg[11] = -636050.65
+    const noNeg = N12(); noNeg[9] = 87722076   // 同一份 10 月数据,少那个负收入月
+    const a1 = budgetAch(rows, pnl({ revenue: withNeg }), 2025)!
+    const a2 = budgetAch(rows, pnl({ revenue: noNeg }), 2025)!
+    // 这条 2026-09-12 整个翻过来了。改前:12 月被剔,a1 与 a2 完全相同。
+    expect(a1.usedMonths).toEqual([10, 12])                  // 录了就算,一个不摘
+    expect(a1.actual).toBeCloseTo(a2.actual - 636050.65, 2)  // 负收入被如实加进分子
+    expect(a1.rate).toBeLessThan(a2.rate)                    // 达成率因此更低,这是数据本来的样子
   })
   it('无预算或无实际 → null', () => {
     expect(budgetAch([], pnl({}), 2025)).toBeNull()
@@ -284,30 +276,30 @@ describe('❗I3 / I4:2025 实测量级', () => {
   const rows2025: BudgetRowDTO[] = [budgetRow({ budget: BUDGET })]
   const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV, cost: COST, profit: PROFIT })
 
-  it('❗I3:护栏把达成率从 94.6% 抬到 95.3% —— 涨 0.69 个点、方向相同、两边都够不着 100%', () => {
+  it('❗I3:达成率 = 十二个月原样相加 ÷ 预算 = 94.6%,与「把全部月份加起来」逐分钱相同', () => {
     const allMonths = REV.reduce<number>((s, v) => s + (v ?? 0), 0)
-    const rateAll = (allMonths / BUDGET) * 100            // 含 12 月冲回(= 改前 atPeriod 的年度口径)
-    const a = budgetAch(rows2025, p2025(), 2025)!         // 剔掉 12 月(护栏口径)
+    const rateAll = (allMonths / BUDGET) * 100
+    const a = budgetAch(rows2025, p2025(), 2025)!
+    // 2026-09-12 起没有任何月份被摘出去,所以「护栏口径」与「全部月份」是同一个数。
+    // 改前这里钉的是 95.3% vs 94.6% 的差,那个差随排除规则一起没了。
     expect(rateAll.toFixed(1)).toBe('94.6')
-    expect(a.rate.toFixed(1)).toBe('95.3')
-    expect(a.usedMonths).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-    expect(a.actual).toBeCloseTo(88358126.19, 2)
-    expect(a.rate - rateAll).toBeCloseTo(0.69, 2)         // 不是 11 个点
-    expect(a.rate).toBeGreaterThan(rateAll)               // 方向相同,不是「相反」
-    expect(a.rate).toBeLessThan(100)                      // 护栏抬不过 100%,105.6% 那个数不存在
+    expect(a.rate.toFixed(1)).toBe('94.6')
+    expect(a.usedMonths).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(a.actual).toBeCloseTo(87722075.54, 2)
+    expect(a.rate).toBeCloseTo(rateAll, 10)   // 逐分钱相同,不是「接近」
   })
 
   it('❗I4:结论句里印出来的收入 ÷ 预算,必须回到同一句里印出来的达成率(利润率同理)', () => {
     const r = buildConclusion(p2025(), [], rows2025, [], 0, { collectTarget: 96 },
       { isMonth: false, year: 2025, usedMi: 0, ym: null })
-    expect(r[0].text).toBe('2025年收入 ¥8,836万(预算达成 95.3%),园区利润 ¥2,945万(利润率 33.3%)')
+    expect(r[0].text).toBe('2025年收入 ¥8,772万(预算达成 94.6%),园区利润 ¥2,290万(利润率 26.1%)')
     // 可执行形式:只认句子自己印出来的数,读者拿计算器怎么算,这里就怎么算。
     const num = (re: RegExp): number => Number(re.exec(r[0].text)![1].replace(/,/g, ''))
     const revWan = num(/收入 ¥([\d,]+)万/)
     const profWan = num(/园区利润 ¥([\d,]+)万/)
     const rate = num(/预算达成 ([\d.]+)%/)
     const margin = num(/利润率 ([\d.]+)%/)
-    // 改前:收入含 12 月冲回(¥8,772万)、达成率不含 —— 这一除得 94.62,与印出来的 95.3 差 0.68 个点
+    // I4 钉的是「印出来的两个数自洽」,与排除不排除无关 —— 2026-09-12 改口径后仍然必须成立
     expect((revWan * 10000 / BUDGET) * 100).toBeCloseTo(rate, 1)
     expect((profWan / revWan) * 100).toBeCloseTo(margin, 1)
   })
@@ -316,12 +308,12 @@ describe('❗I3 / I4:2025 实测量级', () => {
     const p = p2025()
     const months = pnlYearMonths(p)
     expect(months).toEqual(budgetAch(rows2025, p, 2025)!.usedMonths)
-    expect(atPnlPeriod(p.revenue, false, 0, months)).toBeCloseTo(88358126.19, 2)
-    // 月粒度不受护栏影响:点开 12 月就该看见那笔冲回本身,不是一片空白
+    expect(atPnlPeriod(p.revenue, false, 0, months)).toBeCloseTo(87722075.54, 2)
+    // 月粒度一直如此:点开 12 月就该看见那个负数本身,不是一片空白
     expect(atPnlPeriod(p.revenue, true, 11, months)).toBe(-636050.65)
-    // 对照:不过滤月份的老写法把冲回加进年度合计 —— 两者相差正是那 63.6 万
+    // 2026-09-12 起年度口径与「不过滤月份」的老写法**相同** —— 改前这里差的正是那 63.6 万
     expect((atPeriod(p.revenue, false, 0) as number) - (atPnlPeriod(p.revenue, false, 0, months) as number))
-      .toBeCloseTo(-636050.65, 2)
+      .toBeCloseTo(0, 2)
   })
 })
 
@@ -335,12 +327,12 @@ describe('❗N1:年粒度构成合计按 yearMonths 过滤,不再是另一个数
     months: [10, 12], revenue,
     bySchedule: { s1: { rev: s1, cost: N12(), pnl: N12() } },
   })
-  const months = pnlYearMonths(p)   // 12 月因整屏营收离群被剔:[10]
+  const months = pnlYearMonths(p)   // 2026-09-12 起不再剔任何月:[10, 12]
 
-  it('构成合计只算 yearMonths 里的月,与营收 KPI 用同一批月份、不含 12 月那笔', () => {
-    expect(months).toEqual([10])
-    expect(compoData(p, false, 0, months)).toEqual([{ key: 's1', label: '租金', value: 5000000 }])
-    expect(atPnlPeriod(p.revenue, false, 0, months)).toBe(8000000)
+  it('构成合计与营收 KPI 用同一批月份 —— 两个数必须同源,不是「含不含 12 月」', () => {
+    expect(months).toEqual([10, 12])
+    expect(compoData(p, false, 0, months)).toEqual([{ key: 's1', label: '租金', value: 5300000 }])
+    expect(atPnlPeriod(p.revenue, false, 0, months)).toBeCloseTo(8000000 - 636050.65, 2)
   })
 
   it('❗回退成不按月份过滤的旧写法(atPeriod)会把离群月的 30 万也加进构成合计', () => {
@@ -418,16 +410,18 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
   const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
 
-  it('❗拟合结果落在验收锚点上:斜率25.8万/月、拟合优度0.93、12月拟合958万、训练月=1-11月', () => {
+  it('❗拟合用全部十二个月(用户 2026-09-12),锚点随之改写:斜率 −13.5、拟合优度 0.03', () => {
     const fit = fitRevenueTrend(p2025())!
     expect(fit).not.toBeNull()
-    expect(fit.months).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])   // 12月离群,不进训练集
-    expect(fit.slope.toFixed(1)).toBe('25.8')
-    expect(fit.r2.toFixed(2)).toBe('0.93')
-    expect(fit.r2).toBeGreaterThan(0)
-    expect(fit.r2).toBeLessThanOrEqual(1)                              // 拟合优度不能越界
-    expect(Math.round(fit.fitted[11]!)).toBe(958)                        // 12月外推值
-    expect(Math.round(fit.residualScale)).toBe(24)                      // 残差标准差
+    // 这一组数 2026-09-12 整体换掉了。改前训练月是 1-11(12 月因收入为负被摘出去),
+    // 斜率 +25.8 万/月、拟合优度 0.93。现在十二个月全进,−63.61 万那一点把回归拉翻:
+    expect(fit.months).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(fit.slope.toFixed(1)).toBe('-13.5')      // 从 +25.8 翻成负数:线在说园区收入在缩
+    expect(fit.r2.toFixed(2)).toBe('0.03')          // 拟合优度从 0.93 掉到几乎为零
+    expect(fit.r2).toBeGreaterThanOrEqual(0)
+    expect(fit.r2).toBeLessThanOrEqual(1)
+    expect(Math.round(fit.fitted[11]!)).toBe(657)   // 12 月拟合值,改前 958
+    expect(Math.round(fit.residualScale)).toBe(272) // 残差标准差,改前 24 —— 一个点撑大了十倍
   })
 
   it('训练点 <3(覆盖月太少)→ 拟合没有意义,返回 null;pnl 为 null 同样返回 null', () => {
@@ -445,12 +439,14 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     expect(fit.r2).toBeCloseTo(1, 2)      // 完美线性,拟合优度应接近 1
   })
 
-  it('❗按节奏推全年(paceFullYear):训练月用实际值、12月用拟合值补齐,Σ/预算 = 105.6%', () => {
+  it('❗按节奏推全年(paceFullYear):十二个月全是实际值,没有一格要补 —— 等于实际合计', () => {
     const fit = fitRevenueTrend(p2025())
     const pace = paceFullYear(p2025(), fit, BUDGET)!
-    expect(Math.round(pace.totalWan)).toBe(9794)     // 8,836(实际1-11月) + 958(12月拟合)
-    expect(pace.rate!.toFixed(1)).toBe('105.6')
-    expect(pace.rate!).toBeGreaterThan(100)          // 全年在预算之上,不是「差11个点」那种曾经的误传(见I3)
+    // 改前 9794 = 实际 1-11 月 8,836 + 12 月拟合 958。2026-09-12 起 12 月也是训练月,
+    // 「按节奏推」无格可推,退化成实际合计本身。
+    expect(Math.round(pace.totalWan)).toBe(8772)
+    expect(pace.rate!.toFixed(1)).toBe('94.6')
+    expect(pace.rate!).toBeLessThan(100)
   })
 
   it('paceFullYear:pnl 或 fit 缺一 → null;无预算 → rate 为 null 但 totalWan 仍算', () => {
@@ -462,23 +458,20 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     expect(pace.totalWan).toBeGreaterThan(0)
   })
 
-  it('❗屏上旧值(oldScreenRate):12月冲回无条件计入分子,复现护栏修复前的94.6% —— 与budgetAch的95.3%刻意不同', () => {
-    const rows = [budgetRow({ budget: BUDGET })]
-    expect(oldScreenRate(p2025(), BUDGET)!.toFixed(1)).toBe('94.6')
-    const a = budgetAch(rows, p2025(), 2025)!
-    expect(oldScreenRate(p2025(), BUDGET)!).toBeLessThan(a.rate)   // 旧值必须比护栏后的值低(护栏抬的方向)
-    expect(oldScreenRate(null, BUDGET)).toBeNull()
-    expect(oldScreenRate(p2025(), null)).toBeNull()
-  })
+  // 「屏上旧值」那块对照瓦 2026-09-12 删掉:不再排除任何月份之后,它与 budgetAch 是同一个数,
+  // 并排印两个一样的百分比只会让人以为哪里算错了。oldScreenRate/oldScreenNoteText 一并删。
 
-  it('❗离群月残差倍数(outlierResidual):12月实际−63.61万 距拟合958万,超过40倍残差', () => {
+  it('❗负收入月的残差倍数:12月实际−63.61万 距拟合657万,2 倍残差', () => {
     const fit = fitRevenueTrend(p2025())
     const mc = mainChart(p2025(), null)!
     const o = outlierResidual(fit, mc.rev, mc.outlierMonths)!
     expect(o.month).toBe(12)
     expect(o.actualWan).toBeCloseTo(-63.61, 1)
-    expect(Math.floor(o.residuals)).toBe(42)          // 板上「42倍残差」是向下取整,不是四舍五入的43
-    expect(o.residuals).toBeGreaterThan(40)            // 护栏要抓的就是「远超正常波动」,下限粗筛
+    // 改前是 42 倍。12 月自己进了训练集之后,它把残差标准差从 24 万撑到 272 万,
+    // 于是「离正常波动多远」这个数自己把自己压下去了 —— 这是把异常点算进基准的必然结果。
+    expect(Math.floor(o.residuals)).toBe(2)
+    expect(o.residuals).toBeGreaterThan(2)
+    expect(o.residuals).toBeLessThan(3)
   })
 
   it('outlierResidual:无离群月 / 无拟合 / 该月无实际值 → null(不能瞎编一个倍数)', () => {
@@ -513,20 +506,22 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     const o = outlierResidual(fit, mc.rev, mc.outlierMonths)
     const read = outlierReadout(fit, o)
     const ref = outlierRefText(fit)
-    expect(read).toBe('12月收入 −64万，离1-11月的正常波动 42倍残差')
-    expect(ref).toBe('参照1-11月拟合 · 残差24万')
+    expect(read).toBe('12月收入 −64万，离1-12月的正常波动 2倍残差')
+    expect(ref).toBe('参照1-12月拟合 · 残差272万')
     expect([...read!.replace(/\s+/g, '')].length).toBeLessThanOrEqual(30)
     expect([...ref.replace(/\s+/g, '')].length).toBeLessThanOrEqual(28)
     expect(outlierReadout(null, o)).toBeNull()
     expect(outlierRefText(null)).toBe('')
   })
 
-  it('❗拟合区间(fitBandAt):12月预测区间下沿919万/上沿997万,宽度对称包住958万中心', () => {
+  it('❗拟合区间(fitBandAt):12月下沿232万/上沿1082万,宽度对称包住657万中心', () => {
     const fit = fitRevenueTrend(p2025())
     const band = fitBandAt(fit, 12)!
-    expect(Math.round(band.mid)).toBe(958)
-    expect(Math.round(band.lo)).toBe(919)
-    expect(Math.round(band.hi)).toBe(997)
+    // 改前 919/958/997(带宽 78 万)。12 月进训练集之后残差标准差涨了十倍,带跟着张到 850 万宽 ——
+    // 一条什么都罩得住的带,这是用户选「全部算进去」的代价,如实钉住,不修饰。
+    expect(Math.round(band.mid)).toBe(657)
+    expect(Math.round(band.lo)).toBe(232)
+    expect(Math.round(band.hi)).toBe(1082)
     expect(band.hi - band.mid).toBeCloseTo(band.mid - band.lo, 1)   // 对称区间,不是单边宽
     expect(band.lo).toBeLessThan(band.mid)
     expect(band.mid).toBeLessThan(band.hi)
@@ -580,31 +575,27 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     expect(opt.yAxis.min, 'scale 与写死 min 同时给会互相打架').toBeUndefined()
   })
 
-  it('❗离群月不进「已录入」折线(留 null 断口),但它的真实值照标在竖线标签上', () => {
+  it('❗折线逐月原值,一个都不剔 —— 用户 2026-09-12:「是什么数据就使用什么数据」', () => {
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
     const opt = trendChartOption(d, fit, null) as
-      { series: { name: string; data?: (number | null)[]; markLine?: { label: { show: boolean }; data: { xAxis: number }[] } }[] }
+      { series: { name: string; data?: (number | null)[]; markLine?: unknown }[] }
     const line = opt.series.find((s) => s.name === '已录入')!
-    expect(line.data![11], '12 月(离群)必须是 null —— −64 万一个点会把其余 11 个月压成平线').toBeNull()
-    expect(line.data![10], '11 月是正常月,不许跟着一起被抹掉').not.toBeNull()
-    // 竖线仍然标住那一列(断口在哪看得见),但不带标签 —— 标签与拟合区间的三个数压在同一列,
-    // 屏上叠成一团(用户截图可见),文字移到卡头。
-    expect(line.markLine!.data[0].xAxis, '竖线必须钉在 12 月那一列').toBe(11)
-    expect(line.markLine!.label.show, '标签留在图里会和 997/958/919 叠字').toBe(false)
-    // 值不藏:卡头那句写出真实的 −64 万,且月份由数据出不写死
-    expect(trendOutlierHint(d)).toContain('12月')
-    expect(trendOutlierHint(d)).toMatch(/-64|−64/)
-    expect(trendOutlierHint(null), '没有数据时闭嘴,不编一句').toBe('')
+    // 改前这里是 null(收入为负的月份被换成断口)。那是替用户判断他的数据该不该出现。
+    expect(line.data![11], '12 月必须是它的真实值 −63.61 万,不许换成 null').toBeCloseTo(-63.61, 1)
+    expect(line.data!.every((v) => v != null), '任何一个月都不许被剔掉').toBe(true)
+    expect(line.data!.length).toBe(12)
+    // 断口没了,解释断口的竖线跟着没
+    expect(line.markLine, '没有断口要标了,竖线不该还在').toBeUndefined()
   })
 
-  it('❗拟合区间整年都在,12 月那一列仍是 919~997(T1/T2 已钉过的验收锚点)', () => {
+  it('❗拟合区间整年都在,12 月那一列是 232~1082', () => {
     const fit = fitRevenueTrend(p2025())
     const band = fitBandAll(fit)!
     expect(band.lo.length, '带必须逐月给值,不是只有离群月一列').toBe(12)
     expect(band.lo.every((v) => v != null), '拟合得出来的月份一个都不许是空').toBe(true)
-    expect(band.lo[11]).toBeCloseTo(919, 0)
-    expect(band.hi[11]).toBeCloseTo(997, 0)
+    expect(band.lo[11]).toBeCloseTo(231.74, 1)
+    expect(band.hi[11]).toBeCloseTo(1081.76, 1)
     // 外推月比拟合中心宽 —— 等宽的带是假的
     const width = (i: number) => band.hi[i]! - band.lo[i]!
     expect(width(11)).toBeGreaterThan(width(5))
@@ -668,15 +659,8 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
   })
 })
 
-describe('❗F6(对抗复查):oldScreenNoteText/mainChartOutlierNote——不再写死「12月」/「m12」/「s1」', () => {
-  it('❗oldScreenNoteText:离群月是 3 月时文案必须说「3月」,不出现「12月」', () => {
-    const s = oldScreenNoteText([3])
-    expect(s).toContain('3月')
-    expect(s).not.toContain('12月')
-  })
-  it('oldScreenNoteText:没有离群月时不该再提"冲回"', () => {
-    expect(oldScreenNoteText([])).not.toContain('冲回')
-  })
+describe('❗F6(对抗复查):mainChartOutlierNote——不再写死「12月」/「m12」/「s1」', () => {
+  // oldScreenNoteText 的两条随那块对照瓦一起删(2026-09-12),理由见上面同日那条注释。
 
   it('❗mainChartOutlierNote:离群月是 3 月时文案必须说「3月」,不出现「12月」「m12」「s1」', () => {
     const s = mainChartOutlierNote([3])
@@ -699,55 +683,71 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
   const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
 
-  it('❗yearOutlookRows:四行落在验收锚点上 —— 9794/105.6% · 9754/105.2% · 9833/106.1% · 8772/94.6%', () => {
-    const fit = fitRevenueTrend(p2025())
-    const rows = yearOutlookRows(p2025(), fit, BUDGET)!
+  // ── 2026-09-12 起「全年会落在哪」只回答一件事:**还没录的月**按拟合补,全年会落在哪。
+  //    十二个月全部录入的年份没有一格要补,四行会是同一个数,那时这张卡返回 null(闭嘴)。
+  //    所以下面的 fixture 全部改成「8 月没录」的年份 —— 改前用的是完整年份 + 12 月被摘。
+  const revGap8: (number | null)[] = [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, null, 8762619.48, 9301530.81, 9407837.38, -636050.65,   // 8 月没录
+  ]
+  const pGap8 = () => pnl({ months: [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12], revenue: revGap8 })
+
+  it('❗十二个月全录入 → 这张卡闭嘴(四行会是同一个数,读数句会变成自己跟自己比)', () => {
+    expect(yearOutlookRows(p2025(), fitRevenueTrend(p2025()), BUDGET)).toBeNull()
+    expect(yearOutlookReadout(null)).toBeNull()
+  })
+
+  it('❗yearOutlookRows:四行落在验收锚点上 —— 8599/92.8% · 8188/88.3% · 9009/97.2% · 7905/85.3%', () => {
+    const fit = fitRevenueTrend(pGap8())
+    const rows = yearOutlookRows(pGap8(), fit, BUDGET)!
     expect(rows).toHaveLength(4)
-    expect(Math.round(rows[0].totalWan)).toBe(9794)
-    expect(rows[0].rate!.toFixed(1)).toBe('105.6')
-    expect(Math.round(rows[1].totalWan)).toBe(9754)
-    expect(rows[1].rate!.toFixed(1)).toBe('105.2')
-    expect(Math.round(rows[2].totalWan)).toBe(9833)
-    expect(rows[2].rate!.toFixed(1)).toBe('106.1')
-    expect(Math.round(rows[3].totalWan)).toBe(8772)
-    expect(rows[3].rate!.toFixed(1)).toBe('94.6')
-    // 下沿 < 节奏 < 上沿(区间必须真是区间,不能拟合下沿比节奏值还高)
+    expect(Math.round(rows[0].totalWan)).toBe(8599)
+    expect(rows[0].rate!.toFixed(1)).toBe('92.8')
+    expect(Math.round(rows[1].totalWan)).toBe(8188)
+    expect(rows[1].rate!.toFixed(1)).toBe('88.3')
+    expect(Math.round(rows[2].totalWan)).toBe(9009)
+    expect(rows[2].rate!.toFixed(1)).toBe('97.2')
+    expect(Math.round(rows[3].totalWan)).toBe(7905)
+    expect(rows[3].rate!.toFixed(1)).toBe('85.3')
+    // 第四行标签说的是它与第一行的**实际**差别:缺月按 0 计 vs 按拟合补
+    expect(rows[3].label).toBe('缺 8 月按 0 计')
+    // 下沿 < 节奏 < 上沿(区间必须真是区间)
     expect(rows[1].totalWan).toBeLessThan(rows[0].totalWan)
     expect(rows[0].totalWan).toBeLessThan(rows[2].totalWan)
   })
 
   it('yearOutlookRows:pnl 或 fit 缺一 → null;paceFullYear 本身 null(训练点<3)也传导为 null', () => {
-    const fit = fitRevenueTrend(p2025())
+    const fit = fitRevenueTrend(pGap8())
     expect(yearOutlookRows(null, fit, BUDGET)).toBeNull()
-    expect(yearOutlookRows(p2025(), null, BUDGET)).toBeNull()
+    expect(yearOutlookRows(pGap8(), null, BUDGET)).toBeNull()
     const tooFew = pnl({ months: [1, 2], revenue: [100, 200, ...new Array(10).fill(null)] })
     expect(yearOutlookRows(tooFew, fitRevenueTrend(tooFew), BUDGET)).toBeNull()
   })
 
-  it('❗yearOutlookReadout/RefText:文案与字数门禁(≤30/≤28 可见字),数落在105%与94.6%上', () => {
-    const fit = fitRevenueTrend(p2025())
-    const rows = yearOutlookRows(p2025(), fit, BUDGET)
+  it('❗yearOutlookReadout/RefText:文案与字数门禁(≤30/≤28 可见字)', () => {
+    const fit = fitRevenueTrend(pGap8())
+    const rows = yearOutlookRows(pGap8(), fit, BUDGET)
     const read = yearOutlookReadout(rows)
-    const ref = yearOutlookRefText(rows, p2025(), fit)
-    expect(read).toBe('全年在105%上下，不是94.6%')
-    expect(ref).toBe('差11个百分点全部来自12月冲回')
+    const ref = yearOutlookRefText(rows, pGap8(), fit)
+    expect(read).toBe('全年在92%上下，不是85.3%')
+    // 差额来自缺月,不是来自「冲回」—— 那个词 2026-09-12 从这三句里全部去掉了
+    expect(ref).toBe('差7个百分点来自8月按拟合补的部分')
+    expect(ref).not.toContain('冲回')
     expect([...read!].length).toBeLessThanOrEqual(30)
     expect([...ref].length).toBeLessThanOrEqual(28)
     expect(yearOutlookReadout(null)).toBeNull()
     expect(yearOutlookRefText(null, null, null)).toBe('')
   })
 
-  // F6(对抗复查,adversarial-survived.md):改前月份写死「12月」——下面两条用非12月的离群月/
-  // 缺数月+离群月混合两个 fixture,钉住「不再写死 12 月」与「不能再无条件说全部来自冲回」。
-  it('❗F6:离群月换成 3 月(不是 12 月)——yearOutlookRefText 里必须出现「3月」,不出现「12月」', () => {
+  // F6(对抗复查):改前月份写死「12月」。判据不变 —— 换一个缺月,文案必须跟着换。
+  it('❗F6:缺的是 3 月时,yearOutlookRefText 必须说「3月」,不出现「12月」', () => {
     const rev3: (number | null)[] = [
-      7146649.89, 7169836.30, -996629.95, 7406069.55, 7537092.36, 7711058.20,
+      7146649.89, 7169836.30, null, 7406069.55, 7537092.36, 7711058.20,
       8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, 9500000,
     ]
-    const p = pnl({ months: M12, revenue: rev3 })
+    const p = pnl({ months: [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12], revenue: rev3 })
     const fit = fitRevenueTrend(p)
-    const rows = yearOutlookRows(p, fit, BUDGET)
-    const ref = yearOutlookRefText(rows, p, fit)
+    const ref = yearOutlookRefText(yearOutlookRows(p, fit, BUDGET), p, fit)
     expect(ref).toContain('3月')
     expect(ref).not.toContain('12月')
     expect(ref).not.toMatch(/m12/i)
@@ -791,7 +791,8 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
       { v: 8, pred: 859, lo: 814, hi: 905, actual: 876, hit: true, under: null, pct: null, fy: '104.2' },
       { v: 9, pred: 889, lo: 847, hi: 930, actual: 930, hit: false, under: true, pct: '4.7', fy: '104.6' },
       { v: 10, pred: 928, lo: 886, hi: 971, actual: 941, hit: true, under: null, pct: null, fy: '105.5' },
-      { v: 11, pred: 958, lo: 919, hi: 997, actual: null, hit: null, under: null, pct: null, fy: '105.6' },
+      // 2026-09-12:最后一站不再「待验」—— 负收入月也进评分,跳过它等于挑掉了最难的一次。
+      { v: 11, pred: 958, lo: 919, hi: 997, actual: -64, hit: false, under: false, pct: '106.6', fy: '105.6' },
     ]
     rows.forEach((r, i) => {
       const e = expected[i]
@@ -806,26 +807,29 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
     })
     expect(rows[5].isLast).toBe(true)
     expect(rows.slice(0, 5).every((r) => !r.isLast)).toBe(true)
-    // 最新一站(11月末)站在全部训练月上,和 T1 主 fit 是同一个计算结果——不是巧合,是同一个训练集
-    const mainFit = fitRevenueTrend(p2025())!
-    const mainBand = fitBandAt(mainFit, 12)!
-    expect(round(rows[5].predictMid)).toBe(round(mainBand.mid))
-    expect(round(rows[5].lo)).toBe(round(mainBand.lo))
-    expect(round(rows[5].hi)).toBe(round(mainBand.hi))
+    // 2026-09-12 之后这条**反过来了**,而且必须反:回测是样本外的,站在 11 月末只能用 1-11 月;
+    // 主 fit 现在含 12 月自己(用户要求全部算进去)。两者不该再相等 —— 屏上因此有两个 12 月区间:
+    // 回测表里的 919~997(样本外)与图上的 232~1082(样本内)。钉住这个差别,免得有人"修"成一致。
+    const mainBand = fitBandAt(fitRevenueTrend(p2025())!, 12)!
+    expect(round(rows[5].predictMid)).toBe(958)
+    expect(round(mainBand.mid)).toBe(657)
+    expect(round(rows[5].predictMid)).not.toBe(round(mainBand.mid))
   })
 
   it('backtestRows:pnl 为 null → null', () => {
     expect(backtestRows(null, BUDGET)).toBeNull()
   })
 
-  it('❗backtestSummary:5 次可评分(11月末待验不算数),2 中 3 落空,3 次落空全是低估', () => {
+  it('❗backtestSummary:6 次可评分(最后一站也算),2 中 4 落空,方向有高有低', () => {
     const rows = backtestRows(p2025(), BUDGET)
     const sum = backtestSummary(rows)!
-    expect(sum.scored).toBe(5)
+    // 改前 5/2/3 且「全是低估」。12 月那一站进来之后多一次落空,而且方向是高估(实际远低于下沿),
+    // 所以「全是低估」不再成立 —— 这正是那条文案不许写死方向的理由。
+    expect(sum.scored).toBe(6)
     expect(sum.hits).toBe(2)
-    expect(sum.misses).toBe(3)
+    expect(sum.misses).toBe(4)
     expect(sum.unders).toBe(3)
-    expect(sum.allUnder).toBe(true)
+    expect(sum.allUnder).toBe(false)
     expect(backtestSummary(null)).toBeNull()
   })
 
@@ -834,8 +838,8 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
     const sum = backtestSummary(rows)
     const read = backtestReadout(sum)
     const ref = backtestRefText(rows)
-    expect(read).toBe('这条带按80%画的，5次里只中了2次，落空的3次全是低估')
-    expect(ref).toBe('参照6-10月末起点·样本5次')
+    expect(read).toBe('这条带按80%画的，6次里只中了2次，落空的4次全是有高有低')
+    expect(ref).toBe('参照6-11月末起点·样本6次')
     expect([...read!].length).toBeLessThanOrEqual(30)
     expect([...ref].length).toBeLessThanOrEqual(28)
     expect(read).not.toMatch(/σ|标准差|标准偏差|西格玛|z\s*分数|置信/)

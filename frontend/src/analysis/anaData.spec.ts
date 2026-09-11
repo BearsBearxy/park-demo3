@@ -149,7 +149,7 @@ describe('s10 聚合', () => {
   })
 })
 
-import { usableMonths, isOutlierMonth } from './anaData'
+import { isOutlierMonth } from './anaData'
 
 describe('未闭月护栏(FORECAST §2.7 —— 逐格判,不整期丢)', () => {
   const rev = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, -636000]
@@ -159,13 +159,8 @@ describe('未闭月护栏(FORECAST §2.7 —— 逐格判,不整期丢)', () => 
     expect(isOutlierMonth(rev, 11)).toBe(false)
   })
 
-  it('❗可用月剔掉离群月,顺序不变', () => {
-    expect(usableMonths([1, 2, 11, 12], rev)).toEqual([1, 2, 11])
-  })
-
-  it('❗全负时不返回空 —— 空数组会让分母为 0,屏上出 NaN%', () => {
-    expect(usableMonths([1, 2], [-1, -2])).toEqual([1, 2])
-  })
+  // usableMonths 2026-09-12 随「不再排除任何月份」一起删掉(用户:「是什么数据就使用什么数据」)。
+  // isOutlierMonth 留着 —— 它现在只用来在图上把那个月标红,不再从任何口径里把它摘出去。
 
   it('❗null 不算离群 —— 缺数据月与被污染月是两件事', () => {
     expect(isOutlierMonth([null, 5], 1)).toBe(false)

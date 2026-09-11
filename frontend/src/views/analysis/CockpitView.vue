@@ -26,7 +26,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAll, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -129,7 +129,6 @@ const mc = computed(() => mainChart(pnl.value, budgetYuan.value))
 // 下面三个 KPI 瓦与主图的趋势线/拟合区间/离群残差标注全部从这一个 fit 读,不再各算一次回归。
 const fit = computed(() => fitRevenueTrend(pnl.value))
 const pace = computed(() => paceFullYear(pnl.value, fit.value, budgetYuan.value))
-const oldRate = computed(() => oldScreenRate(pnl.value, budgetYuan.value))
 const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
 // F4(修复轮1):主图 markPoint 逐点标注用,每根 pin 各取自己月份的残差倍数(不像 outlierRes 那样固定第一个月)
 const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
@@ -151,7 +150,10 @@ const backRef = computed(() => backtestRefText(backRows.value))
 // 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
 const outlierBannerText = computed(() => {
   const m = mc.value?.outlierMonths[0]
-  return m ? `${year.value}-${String(m).padStart(2, '0')} 为年末冲回,已排除在年度营收/成本/利润与达成率之外` : ''
+  // 用户 2026-09-12:不许替他判断那个数是什么,也不许替他把它摘出去。
+  // 改前这句写死「为年末冲回」(库里只有「收入为负」这一个事实,「冲回」是解读),
+  // 而且声称「已排除」。两处都改:只陈述实测到的事实,并说明它**在**年度口径里。
+  return m ? `${year.value}-${String(m).padStart(2, '0')} 收入为负,已计入年度营收/成本/利润与达成率` : ''
 })
 // AnaPeriodBanner selected/used 必填(五个既有屏共享该契约);插槽覆盖了文案,这两个值不上屏,
 // 但仍按实际的离群月/达成率覆盖区间传——都是上面已算出来的值。
@@ -168,7 +170,6 @@ const mainOption = computed<object | null>(() =>
 // 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
 // 理由与两处轴的差别见 cockpit.logic.ts trendChartOption 头注。
 const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, fitBand.value))
-const trendHint = computed(() => trendOutlierHint(mc.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -328,8 +329,6 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
         :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
-      <AnaKpiTile label="屏上旧值" :value="oldRate != null ? oldRate.toFixed(1) + '%' : '—'"
-        :note="oldScreenNoteText(mc?.outlierMonths ?? [])" note-tone="warn" />
     </template>
 
     <div v-if="!ready || pnlLoading" class="page-loading"><span class="page-spin" /></div>
@@ -391,7 +390,7 @@ const conclusion = computed(() => buildConclusion(
       <div v-if="trendOption" class="av2-card av2-s12">
         <div class="av2-card-h">
           <span class="t">收入趋势 · 拟合区间</span>
-          <span class="hint">轴不从 0 起 · {{ trendHint || '无离群月' }},不进折线</span>
+          <span class="hint">轴不从 0 起 · 逐月原值,一个都不剔</span>
         </div>
         <AnaEChart :option="trendOption" :height="260" />
       </div>
