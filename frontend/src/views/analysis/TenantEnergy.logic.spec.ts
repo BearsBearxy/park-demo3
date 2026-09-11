@@ -98,6 +98,25 @@ describe('bandReadout(主图读数句)', () => {
     expect(bandReadout(200, null, 300, '电费')).toBeNull()
     expect(bandReadout(200, 100, null, '电费')).toBeNull()
   })
+
+  // ── I9(对抗复查):下沿被夹到 0 的区间,位置判断恒真 ──────────────────────────
+  // 下面两条用的是**实测量级**的均值与波动幅度(park_demo3 2025-12:263 户,均值 5315、σ 14134),
+  // 不是为了卡住边界捏的小数。改前这条句子在全部七个真实月份上都印得出来、且永远为真。
+  it('❗I9:真实量级的均值与波动幅度喂进去 —— mean−σ 为负、下沿被夹到 0,这句话必须闭嘴', () => {
+    const band = buildParkBand(
+      // 造 30 户:1 户大工业把均值与波动幅度拉到实测比例(mean 5315 / σ 14134,σ≈2.7×mean)
+      [...Array(29)].map((_, i) => fakeRow('小户' + i, { '2025-12': 300 })).concat([fakeRow('大工业', { '2025-12': 150000 })]),
+      ['2025-12'])
+    expect(band.lo[0]).toBe(0)                                   // mean−σ < 0,被 max(0,…) 夹住
+    expect(band.hi[0]).toBeGreaterThan(20000)
+    expect(bandReadout(300, band.lo[0], band.hi[0], '电费')).toBeNull()      // 普通户:改前印「落在 ¥0~¥…」
+    expect(bandReadout(150000, band.lo[0], band.hi[0], '电费')).toBeNull()   // 高出上沿的也闭嘴:¥0 那个下沿本身就是假的
+  })
+
+  it('❗I9:「低于跨户区间」只有在下沿真的大于 0 时才印得出来 —— 下沿为 0 时它在数学上不可达', () => {
+    expect(bandReadout(-1, 0, 19449, '电费')).toBeNull()   // 唯一能触发「低于」的输入是负电费
+    expect(bandReadout(50, 100, 19449, '电费')).toBe('电费低于跨户区间 ¥100~¥19,449')
+  })
 })
 
 describe('bandRefText(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {

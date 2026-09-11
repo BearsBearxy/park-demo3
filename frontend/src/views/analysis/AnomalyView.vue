@@ -16,7 +16,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
-import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { anaSettings } from '@/analysis/anaSettings'
 import { buildAnomalies, fetchAnomalyInputs, type AnaAnomaly, type AnomalyInputs } from '@/analysis/anaData'
 import { buildMonitorModel, elecBandRef as elecBandRefOf, elecReadout as elecReadoutOf, tenantLedgerBars, type MonitorTenant } from './monitor.logic'
@@ -85,8 +85,11 @@ const energyOption = computed<object | null>(() => {
     xAxis: { type: 'category', data: t.months, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => wanF(v) } },
     series: [
-      // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)。带宽门(D3 附属):半宽/中位 > 20% 太宽,只出点不画带。
-      ...(bandTooWide(p25, p75) ? [] : bandSeries(p25, p75, { name: '园区P25~P75' })),
+      // 园区同类灰带(P25~P75,堆叠带;silent 不响应交互)。
+      // C2:这里曾套一道「半宽/中位 > 20% 就不画带」的门。横截面 P25~P75 不含任何推断(全局约束③),
+      // 它的宽**就是**结论——实测该比值逐月 0.75~0.82,门一挂上就是每个月都不画,而下面那句
+      // 「电费落在同类区间 ¥…~¥…」还在指着它。带无条件画,宽窄交给读者自己看。
+      ...bandSeries(p25, p75, { name: '园区P25~P75' }),
       { name: '电费', type: 'line', data: t.elec, smooth: true, symbolSize: 5, itemStyle: { color: '#378ADD' },
         markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('elec', t.elec) } },
       { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: '#5DCAA5' },
@@ -108,8 +111,8 @@ const elecBandN = computed<number | null>(() => {
   if (!t || !m || !t.months.length) return null
   return m.band[t.months[t.months.length - 1]]?.n ?? null
 })
-// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进底部 AnaMethodNote —— 带画没画
-// 由 bandTooWide 另判,不再靠这句话跟着猜,desync 的 bug 根就没了。
+// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进底部 AnaMethodNote。
+// C2:带宽门已删,同类带无条件画 —— 这句小字与画不画带本来就无关,继续只报三件事。
 const elecBandRef = computed<string>(() => elecBandRefOf(elecBandN.value))
 
 // ── 右面板:应收 vs 实收(台账各期) ──
@@ -342,7 +345,7 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           风险分 = 收缴恶化(40%) + 营收变动(30%) + 能耗变动(30%),缺项按权重归一,高分=差;收缴取台账
           {{ model.lastLedgerYm ?? '—' }} 期,营收/能耗取附表10 相邻有数月环比(能耗按|环比|,突变双向计入)。
           阈值(收缴目标 {{ anaSettings.collectTarget }}% / 突变 ±{{ anaSettings.spikeTh }}% / 风险线 {{ anaSettings.churnTh }} 分)在右上「目标与阈值」调整并即时重算;处置状态仅本地保存。
-          灰带=同类电费区间(P25~P75),样本量不足20户,或同类之间差距过大时,当月都不画带;相邻有数月环比判突变。
+          灰带=同类电费区间(P25~P75,中间一半的同类落在这里),样本量不足20户的月份不画带;带宽只说明同类之间差距大,不代表数据有问题。相邻有数月环比判突变。
         </AnaMethodNote>
       </div>
     </div>

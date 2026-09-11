@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bandSeries, bandTooWide } from '../anaTheme'
+import { bandSeries } from '../anaTheme'
 
 describe('bandSeries —— 全站唯一一份带子', () => {
   it('返回两条:下沿哨兵 + 上沿宽度,宽度 = hi − lo', () => {
@@ -47,44 +47,36 @@ describe('bandSeries —— 全站唯一一份带子', () => {
   })
 })
 
-describe('bandTooWide —— 带宽门(半宽/中位 > 0.20 判太宽,只出点不画带)', () => {
-  it('半宽/中位 = 0.25(>0.20)→ true', () => {
-    expect(bandTooWide([75], [125])).toBe(true)   // 半宽25/中位100=0.25
+describe('❗C2:横截面对标带必须画得出来 —— 用实测量级的真实分布喂进去', () => {
+  // 这里的数字全部来自 park_demo3(2026-09-11 实测,SQL 见 task-8-report.md),
+  // 不是为了卡在某个阈值两侧捏出来的两元素数组 —— C2 能活下来,正是因为这个文件里
+  // 从头到尾只有 [75]~[125] 这类为阈值量身定做的样例,没有一条断言见过真实数据长什么样。
+  //
+  // AnomalyView:同类电费 P25~P75(monitor.logic buildMonitorModel,n≥20 才建 key)
+  const P25 = [251.57, 292.33, 408.60, 521.54, 602.08, 516.14, 329.67]
+  const P75 = [2538.24, 2866.91, 3327.56, 3681.64, 5099.61, 3945.46, 3178.05]
+  // TenantEnergyView:跨户均值±一个波动幅度(buildParkBand,lo=max(0, mean−σ))
+  const LO = [0, 0, 0, 0, 0, 0, 0]
+  const HI = [23016, 24216, 24038, 23839, 26705, 21990, 19449]
+
+  const halfOverCenter = (lo: number[], hi: number[]): number[] =>
+    lo.map((l, i) => (hi[i] - l) / 2 / ((hi[i] + l) / 2))
+
+  it('实测比值:同类 P25~P75 逐月 0.75~0.82、跨户均值带逐月恒为 1.000 —— 任何 20% 量级的带宽门都是「一个月都不画」', () => {
+    for (const r of halfOverCenter(P25, P75)) {
+      expect(r).toBeGreaterThan(0.70)
+      expect(r).toBeLessThan(0.85)
+    }
+    for (const r of halfOverCenter(LO, HI)) expect(r).toBe(1)
   })
 
-  it('半宽/中位 = 0.15(≤0.20)→ false', () => {
-    expect(bandTooWide([85], [115])).toBe(false)  // 半宽15/中位100=0.15
-  })
-
-  it('半宽/中位 = 0.20 整(边界,不超过 → false;门槛是「超过」不是「达到」)', () => {
-    expect(bandTooWide([80], [120])).toBe(false)  // 半宽20/中位100=0.20
-  })
-
-  it('❗bandSeries 第一条断言 [1,2]~[4,6] 半宽/中位约 0.54,若把此门写进 bandSeries 入口会把那条断言判红 —— 这正是本函数独立于 bandSeries 之外的原因', () => {
-    expect(bandTooWide([1, 2], [4, 6])).toBe(true)
-    // 佐证:bandSeries 本身不受影响,仍出两条
-    const s = bandSeries([1, 2], [4, 6]) as Array<Record<string, unknown>>
-    expect(s).toHaveLength(2)
-  })
-
-  it('null 点跳过,只算非 null 的点 —— 多数点 null 时,若误把 null 当 0 参与计算,中位数会被拖成 0 反而判不宽', () => {
-    // 3 null + 1 真点(75~125,半宽25/中心100=0.25);null 若被当 0 混进两个中位数,
-    // 两串各 4 个数里 3 个是 0,中位数双双落 0 → mid=0 触发另一条门槛(mid===0)错判 false。
-    expect(bandTooWide([null, null, null, 75], [null, null, null, 125])).toBe(true)
-  })
-
-  it('全 null → 无点可判,不算太宽(false)', () => {
-    expect(bandTooWide([null], [null])).toBe(false)
-  })
-
-  it('❗中心=0 但半宽非零(带跨零轴)→ 不判太宽(避免除以 0 把 Infinity 当「宽」)', () => {
-    // 半宽10/中心0:没有这道门槛会算成 10/0=Infinity>0.2 → true,错把「除不了」当「很宽」
-    expect(bandTooWide([-10], [10])).toBe(false)
-  })
-
-  it('❗F5:中位数为负(非0)时也要判宽 —— 分母不取 abs 的话比值恒负,门永远不开', () => {
-    // lo=-125,hi=-75:中心-100,半宽25,25/|-100|=0.25>0.20。改前用 mid(不取 abs):25/-100=-0.25,恒 false。
-    expect(bandTooWide([-125], [-75])).toBe(true)
+  it('❗真实量级喂进去,两条带都出得来 —— bandSeries 不自己判宽窄,宽是结论不是毛病', () => {
+    const a = bandSeries(P25, P75, { name: '园区P25~P75' }) as Array<Record<string, unknown>>
+    expect(a).toHaveLength(2)
+    expect((a[1].data as (number | null)[]).every((v) => v != null && v > 0)).toBe(true)
+    const b = bandSeries(LO, HI, { name: '跨户波动范围带' }) as Array<Record<string, unknown>>
+    expect(b).toHaveLength(2)
+    expect((b[1].data as (number | null)[]).every((v) => v != null && v > 0)).toBe(true)
   })
 })
 
@@ -100,4 +92,32 @@ it('❗全仓 lineStyle:{opacity:0} 只许出现在 anaTheme.ts —— 没这条
     if (/lineStyle:\s*\{\s*opacity:\s*0\s*\}/.test(s)) hits.push(f)
   }
   expect(hits, `这些文件还在手写带子,改用 bandSeries(): ${hits.join(', ')}`).toEqual([])
+})
+
+/**
+ * ❗C2 的门禁:分析层的 bandSeries 调用一律不许挂条件。
+ *
+ * 这条比「给 bandTooWide 补个用例」管用一个量级:C2 那道门本身算得对,出事的是**把它套在
+ * 横截面带上**。一条针对函数本身的断言,不管怎么写都照样全绿。真正能当场变红的判据是
+ * 「这张图上的带还在不在」—— 而带在不在,由调用点有没有挂条件决定。
+ *
+ * 分析层今天六处 bandSeries 调用全部无条件(合约租金带 / 同类 P25~P75 / 跨户均值带 / PV 三处)。
+ * 计划 §5 禁做清单把所有该配宽度门的时序外推带都禁掉了,所以「无条件」不是巧合,是当下的完整规矩。
+ * 将来真要给某条带加条件,先把 anaTheme.ts 里 bandTooWide 那段墓志铭读完,再来改这条门禁。
+ */
+it('❗分析层的 bandSeries 调用不许挂条件 —— 横截面带被一道宽度门按住是 C2 的原样重演', () => {
+  const dir = join(__dirname, '../../../views/analysis')
+  const bad: string[] = []
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.vue') && !f.endsWith('.ts')) continue
+    if (f.endsWith('.spec.ts')) continue
+    const src = readFileSync(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    src.split('\n').forEach((ln, i) => {
+      const at = ln.indexOf('bandSeries(')
+      if (at < 0) return
+      const before = ln.slice(0, at)
+      if (/[?&|]/.test(before)) bad.push(`${f}:${i + 1} ${ln.trim().slice(0, 80)}`)
+    })
+  }
+  expect(bad, `这些 bandSeries 调用挂了条件,带可能一个点都画不出来: ${bad.join(' | ')}`).toEqual([])
 })

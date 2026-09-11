@@ -23,7 +23,7 @@ import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
-import { bandSeries, bandTooWide } from '@/components/ana/anaTheme'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
 import { bandReadout as bandReadoutOf, bandRefText as bandRefTextOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
@@ -122,8 +122,8 @@ const curBandN = computed<number | null>(() => {
   const idx = curBandIdx.value
   return idx >= 0 ? parkBand.value.n[idx] : null
 })
-// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进同卡 AnaMethodNote —— 带画没画
-// 由 bandTooWide 另判,不再靠这句话跟着猜,desync 的 bug 根就没了。
+// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进同卡 AnaMethodNote。
+// C2:带宽门已删,跨户带无条件画 —— 这句小字与画不画带本来就无关,继续只报三件事。
 const bandRefText = computed<string>(() => bandRefTextOf(curBandN.value))
 
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
@@ -179,8 +179,10 @@ const trendOption = computed<object>(() => {
     xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
     series: [
-      // 带宽门(D3 附属):半宽/中位 > 20% 太宽,只出点不画带。
-      ...(bandTooWide(band.lo, band.hi) ? [] : bandSeries(band.lo, band.hi, { name: '跨户波动范围带' })),
+      // C2:这里曾套一道「半宽/中位 > 20% 就不画带」的门。这条带的 lo=max(0, 均值−一个波动幅度),
+      // 实测七个月的 mean−σ 全为负、lo 全被夹到 0,比值恒等于 1.000 —— 门一挂上就是一个月都不画。
+      // 带无条件画;下沿被 0 截断这件事由同卡口径浮层说明,读数句也因此闭嘴(见 bandReadout)。
+      ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
       { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
@@ -384,7 +386,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
               异常=该户本期用量偏离自身近12个月常态,超出正常波动的1.3倍。
               家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
-              灰带=跨户波动范围(园区各户当月均值上下各一个常态波动幅度),样本量不足20户,或同类之间差距过大时,当月都不画带;断点=该月无记录。
+              灰带=跨户波动范围(园区各户当月均值上下各一个常态波动幅度),样本量不足20户的月份不画带;断点=该月无记录。园区各户电费差距极大(实测各月波动幅度是均值的2.4~2.7倍),带的下沿被0截住 —— 那个0是坐标轴不是同类下界,所以本图不印「高于/低于跨户区间」的判断句。
             </AnaMethodNote>
           </div>
           <div class="av2-card">

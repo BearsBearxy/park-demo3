@@ -3,8 +3,6 @@
 // tooltip 深底白字沿 .cz-tip 观感(背景 rgb(40,52,66)、圆角 9、字号 11)。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值(--divider=ink-100、--text-muted)。
 
-import { quantile } from './anaFmt'
-
 // ⚠ 必须与 tokens.css 的 --font-sans 逐字一致(ECharts 主题是纯 JSON,引不了 CSS 变量)。
 // 不同步的话图表轴标签/图例会和页面其余部分不是同一个字体,并排一看就出戏。
 // 2026-08-20 同步:此处曾停在 "Roboto Mono"(旧值),而 tokens.css 早已改为 "Roboto Mono Digits"。
@@ -95,26 +93,31 @@ export function bandSeries(
   ]
 }
 
-/**
- * 带宽门(P2 同类对标带 D3 附属):区间半宽 / 序列中位数 > 0.20 → 太宽,调用方应只出点不画带。
- * 覆盖率必须和相对宽度成对读:月度实收 naiveLast 覆盖率 100% 但宽度 177%、ma3 224%,
- * 只看覆盖率会把一条宽过均值一倍的带判成「很准」。
+/*
+ * ── 这里曾经有一个 `bandTooWide`(带宽门:半宽中位 / |中位中心| > 0.20 → 太宽,调用方只出点不画带)。
+ * C2(对抗复查,2026-09-11)把它整个删掉了,原因不是它算错,而是**它没有可管的对象**。
  *
- * 不写进 bandSeries 入口(职责纯渲染,调用方自己决定判不判、判完还画不画点)——
- * bandSeries.spec.ts 首条断言 [1,2]~[4,6] 半宽/中位约 0.54,过门槛,写进入口会当场判红;
- * PvMeterAnaView 的四分位带按定义就宽,进了口也回不来。
+ * 它的全部论证来自**时序预测带**:月度实收 naiveLast 覆盖率 100% 但宽度 177%、ma3 224%、
+ * 办公楼 ma3 620% —— 那是「覆盖率好看但带宽得没用」的外推带,宽度确实是它不可信的证据。
+ * 可它上线后实际套住的两条带都是**横截面描述带**,而横截面带的宽本身就是结论:
+ *
+ *   实测 park_demo3(2026-09-11,逐月比值与 SQL 见 task-8-report.md):
+ *     AnomalyView 同类电费 P25~P75  半宽中位/中心中位 = 0.781(逐月 0.75~0.82)
+ *     TenantEnergyView 跨户均值±σ   = 1.000(lo=max(0,mean−σ),七个月全被夹到 0)
+ *   两条都是阈值的四到五倍,**每一个真实月份都超** —— 门上线后这两条带一次都没画出来过,
+ *   而屏上的读数句还在指着它们说「落在同类区间 ¥…~¥…」。
+ *
+ * 全局约束③早就写下了正确的判断:同类对标带「既不是 CI 也不是 PI……不含任何推断,
+ * 没有抽样分布也没有模型」。一条不含推断的观测分位区间,宽只说明同类之间差距大 ——
+ * 那正是读者来看这张图要知道的事,把它藏起来等于把这张卡存在的理由删掉。
+ * expiry.logic.ts:rentRollOption 的注释已经按同一条理由给合约租金带写过豁免,C2 只是把
+ * 这条理由补用到它真正管着的那两条上。
+ *
+ * 删掉而不是留着不调用:计划 §5 禁做清单把这道门本来要管的时序外推带**全部**禁掉了
+ * (月度收缴 / 办公楼电量 / 财务报表趋势 / 台账应收 / 保本点 / 退租 / 预算 / 到期墙 / 光伏三表),
+ * 加上合约租金带自带豁免,今天与可预见的将来都没有一条带该受它管。留着一个零调用方的门,
+ * 只会让下一个人把它套到下一条横截面带上 —— C2 就是这么来的。
+ * 真要给某条**外推**带重新配一道宽度门,把上面这段论证重读一遍再写,不要直接复活旧实现。
+ *
+ * 门禁见 __tests__/bandSeries.spec.ts 末条:分析层的 bandSeries 调用一律不许挂条件。
  */
-export function bandTooWide(lo: (number | null)[], hi: (number | null)[]): boolean {
-  const halfWidths: number[] = []
-  const centers: number[] = []
-  for (let i = 0; i < lo.length; i++) {
-    const l = lo[i], h = hi[i]
-    if (l == null || h == null) continue
-    halfWidths.push((h - l) / 2)
-    centers.push((l + h) / 2)
-  }
-  const mid = quantile(centers, 0.5)
-  if (mid === 0) return false
-  // F5(修复轮1):分母原写 mid,中位数为负时比值恒负,门永远不开(见 bandSeries.spec.ts 负中位数用例)。
-  return quantile(halfWidths, 0.5) / Math.abs(mid) > 0.20
-}
