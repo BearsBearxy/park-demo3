@@ -98,7 +98,9 @@ const BUDGET_KB = {
 // 2026-09-12 自绘折线图(用户:「echart画不出来这个可视化就不要用echart的」):
 //   新增 AnaForecastChart.vue + forecastChart.logic.ts,实测 3970.5KB。同一条规矩:实测 + 2KB。
 //   ⚠ echarts 那块 698KB 没省下来 —— 本屏别的图(收入柱、构成环、回测…)还在用它。
-const TOTAL_KB = 3973
+// 2026-09-12 跨年预测带(用户:「用户导入数据自动就有了」):OLS 抽通用核 + 上一年接横轴,
+//   实测 3973.0KB,正好顶在上限上。同一条规矩:实测 + 2KB。
+const TOTAL_KB = 3975
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

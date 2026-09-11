@@ -317,12 +317,22 @@ export interface RevenueFit {
   fitted: (number | null)[]     // 12 长度:intercept+slope×月序,训练/外推月都算
   residualScale: number         // 残差标准差(万;自由度 = 训练点数−2;<3 点时为 0)
 }
-export function fitRevenueTrend(pnl: PnlSummary | null): RevenueFit | null {
-  if (!pnl) return null
-  const months = pnlYearMonths(pnl)
-  const n = months.length
+/**
+ * 最小二乘的通用核 —— x 可以是任意数,不必是本年的 1~12 月号。
+ *
+ * 抽出来的理由(2026-09-12):要让「今年 1 月」也有预测带,横轴就得跨年 ——
+ * 去年 12 月记作 0、去年 11 月记作 −1,以此类推。原来两个入口把 x 写死成本年月号,
+ * 跨年这件事在那种形状下根本表达不了。`fitted` 仍按本年 1~12 给值,所以下游一个都不用改。
+ *
+ * 这也顺手消掉了一处重复:fitRevenueTrend 与 fitRevenueTrendUpTo 原本各抄了一遍同样的 OLS,
+ * 头注还写着「独立实现,不共享内部状态」—— 那条理由讲的是**训练集不能共享**,不是公式要抄两份。
+ */
+export interface XYPoint { x: number; y: number }
+export function fitPoints(pts: XYPoint[]): RevenueFit | null {
+  const n = pts.length
   if (n < 3) return null
-  const ys = months.map((m) => wan(pnl.revenue[m - 1]) as number)
+  const months = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
   const xbar = months.reduce((a, b) => a + b, 0) / n
   const ybar = ys.reduce((a, b) => a + b, 0) / n
   let sxy = 0, sxx = 0, syy = 0
@@ -339,8 +349,14 @@ export function fitRevenueTrend(pnl: PnlSummary | null): RevenueFit | null {
   const fitted = Array.from({ length: 12 }, (_, i) => +(intercept + slope * (i + 1)).toFixed(2))
   let ssRes = 0
   for (let i = 0; i < n; i++) ssRes += (ys[i] - (intercept + slope * months[i])) ** 2
-  const residualScale = n > 2 ? Math.sqrt(ssRes / (n - 2)) : 0
+  const residualScale = Math.sqrt(ssRes / (n - 2))
   return { months, slope: +slope.toFixed(2), intercept: +intercept.toFixed(2), r2: +r2.toFixed(4), fitted, residualScale: +residualScale.toFixed(2) }
+}
+
+/** 本年全部已录入月的拟合(薄壳,核在 fitPoints)。 */
+export function fitRevenueTrend(pnl: PnlSummary | null): RevenueFit | null {
+  if (!pnl) return null
+  return fitPoints(pnlYearMonths(pnl).map((m) => ({ x: m, y: wan(pnl.revenue[m - 1]) as number })))
 }
 
 
@@ -554,33 +570,14 @@ export function mainChartOutlierNote(outlierMonths: number[]): string {
 
 
 /**
- * 「这条带过去准不准」滚动起点回测:与 fitRevenueTrend **不是同一个计算** —— 那个只拟合一次
- * (训练月=全部非离群月);这里在每个站点月末重新只用当时已有的月再拟合一次,再预测下一个月。
- * 复用 fitRevenueTrend 会导致训练集包含尚未发生的未来月,回测就失去意义(任务书原话)。
- * 独立实现(不改 fitRevenueTrend,不共享其内部状态),OLS 公式与其一致。
+ * 截到 maxMonth 为止的拟合 —— 回测每一站、逐月预测带都走它。
+ * 与 fitRevenueTrend **不是同一个训练集**:那个用全部已录入月,这里只用当时已有的月。
+ * 训练集不能共享(共享就等于让回测看见未来月,回测失去意义);公式共享 —— 两者同走 fitPoints。
  */
 export function fitRevenueTrendUpTo(pnl: PnlSummary | null, maxMonth: number): RevenueFit | null {
   if (!pnl) return null
-  const months = pnlYearMonths(pnl).filter((m) => m <= maxMonth)
-  const n = months.length
-  if (n < 3) return null
-  const ys = months.map((m) => wan(pnl.revenue[m - 1]) as number)
-  const xbar = months.reduce((a, b) => a + b, 0) / n
-  const ybar = ys.reduce((a, b) => a + b, 0) / n
-  let sxy = 0, sxx = 0, syy = 0
-  for (let i = 0; i < n; i++) {
-    sxy += (months[i] - xbar) * (ys[i] - ybar)
-    sxx += (months[i] - xbar) ** 2
-    syy += (ys[i] - ybar) ** 2
-  }
-  const slope = sxx ? sxy / sxx : 0
-  const intercept = ybar - slope * xbar
-  const r2 = sxx && syy ? (sxy * sxy) / (sxx * syy) : 0
-  const fitted = Array.from({ length: 12 }, (_, i) => +(intercept + slope * (i + 1)).toFixed(2))
-  let ssRes = 0
-  for (let i = 0; i < n; i++) ssRes += (ys[i] - (intercept + slope * months[i])) ** 2
-  const residualScale = n > 2 ? Math.sqrt(ssRes / (n - 2)) : 0
-  return { months, slope: +slope.toFixed(2), intercept: +intercept.toFixed(2), r2: +r2.toFixed(4), fitted, residualScale: +residualScale.toFixed(2) }
+  return fitPoints(pnlYearMonths(pnl).filter((m) => m <= maxMonth)
+    .map((m) => ({ x: m, y: wan(pnl.revenue[m - 1]) as number })))
 }
 
 export interface BacktestRow {

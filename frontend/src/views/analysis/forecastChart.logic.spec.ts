@@ -2,15 +2,20 @@
 // （SVG 的 d 属性、坐标、刻度），不是「option 对象长得对不对」那种隔了一层的判据 ——
 // 2026-09-12 那天在 ECharts 上栽过两次:值全对、位置也对，画出来却是错的。
 import { describe, it, expect } from 'vitest'
-import { rollingForecastRows, forecastChartGeo, niceTicks, type ChartBox } from './forecastChart.logic'
+import { rollingForecastRows, prevYearUsable, forecastChartGeo, niceTicks, type ChartBox } from './forecastChart.logic'
 import type { PnlSummary } from '@/analysis/anaData'
 
 const REV: (number | null)[] = [
   7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
   8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
 ]
-function pnl(months: number[], revenue: (number | null)[]): PnlSummary {
-  return { year: 2025, months, revenue, cost: new Array(12).fill(null), profit: new Array(12).fill(null), bySchedule: {} }
+const band = (rev: (number | null)[]) => ({ rev, cost: new Array(12).fill(null), pnl: new Array(12).fill(null) })
+/** scheds:哪些附表有收入 —— prevYearUsable 的判据就是这个集合。 */
+function pnl(months: number[], revenue: (number | null)[], scheds: string[] = ['s1'], year = 2025): PnlSummary {
+  const bySchedule: Record<string, ReturnType<typeof band>> = {}
+  for (const k of ['s1', 's2', 's3', 's4', 's5']) bySchedule[k] = band(new Array(12).fill(null))
+  for (const k of scheds) bySchedule[k] = band(revenue)
+  return { year, months, revenue, cost: new Array(12).fill(null), profit: new Array(12).fill(null), bySchedule } as PnlSummary
 }
 const P_FULL = () => pnl([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], REV)
 const P_MID = () => pnl([1, 2, 3, 4, 5, 6], REV.map((v, i) => (i < 6 ? v : null)))
@@ -117,5 +122,46 @@ describe('forecastChartGeo(几何)', () => {
   it('rows 为 null / 空 → null', () => {
     expect(forecastChartGeo(null, BOX)).toBeNull()
     expect(forecastChartGeo([], BOX)).toBeNull()
+  })
+})
+
+describe('跨年:用上一年的尾月给今年前几个月算带(用户 2026-09-12)', () => {
+  // 上一年十二个月都录了,口径同本年
+  // ⚠ 不能造成完美直线:残差为 0,带宽就是 0,断言「hi > lo」会红,而那不是产品的问题。
+  //    加一点起伏,才是真实数据的样子。
+  const PREV = () => pnl([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    Array.from({ length: 12 }, (_, i) => 6_000_000 + i * 80_000 + (i % 3 - 1) * 120_000), ['s1'], 2024)
+  const CUR = () => pnl([1, 2, 3], [7_146_649.89, 7_169_836.30, 6_996_629.95, ...new Array(9).fill(null)], ['s1'])
+
+  it('❗不接上一年:1~3 月天然没带(这正是用户问的那个洞)', () => {
+    const rows = rollingForecastRows(CUR())!
+    expect(rows.map((r) => r.month)).toEqual([1, 2, 3, 4])
+    expect(rows.slice(0, 3).map((r) => r.lo), '1~3 月身前不足 3 个点').toEqual([null, null, null])
+    expect(rows[3].lo, '4 月(下月预测)身前有 1~3 月,是有带的').not.toBeNull()
+  })
+
+  it('❗接上一年:1 月就有带 —— 身前是去年 10、11、12 月', () => {
+    const rows = rollingForecastRows(CUR(), PREV())!
+    expect(rows[0].month).toBe(1)
+    expect(rows[0].lo, '1 月必须有带').not.toBeNull()
+    expect(rows[0].hi as number).toBeGreaterThan(rows[0].lo as number)
+    // 每个月的带仍各自独立:相邻两月带宽不同(没有退回整年带)
+    const w = (i: number) => (rows[i].hi as number) - (rows[i].lo as number)
+    expect(w(0)).not.toBeCloseTo(w(1), 2)
+  })
+
+  it('❗附表口径不同就不接 —— 去年只录了附表2,今年是附表1,接上去会造出假台阶', () => {
+    const prevOnlyS2 = pnl([10, 11, 12],
+      [...new Array(9).fill(null), 17.0 * 10000, 17.5 * 10000, 12.2 * 10000], ['s2'], 2024)
+    expect(prevYearUsable(CUR(), prevOnlyS2), '口径不同,不许接').toBe(false)
+    const rows = rollingForecastRows(CUR(), prevOnlyS2)!
+    expect(rows[0].lo, '没接上,1 月仍然没带 —— 宁可没有,也不要一条假带').toBeNull()
+  })
+
+  it('prevYearUsable:两边都得有收入附表;null / 空口径一律不接', () => {
+    expect(prevYearUsable(CUR(), PREV())).toBe(true)
+    expect(prevYearUsable(CUR(), null)).toBe(false)
+    expect(prevYearUsable(null, PREV())).toBe(false)
+    expect(prevYearUsable(CUR(), pnl([1], [1], [], 2024)), '上一年一个收入附表都没有').toBe(false)
   })
 })

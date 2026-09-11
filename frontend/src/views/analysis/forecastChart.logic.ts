@@ -12,7 +12,7 @@
  * **有意偏离稿的一处**:稿上是平滑曲线,这里用直线段。平滑会在两个月之间凭空造出没有的值,
  * 这一屏的全部规矩都是「不许编屏上没有的数」,为观感破这条不值当。
  */
-import { fitBandAt, fitRevenueTrendUpTo, pnlYearMonths } from './cockpit.logic'
+import { fitBandAt, fitPoints, pnlYearMonths, type XYPoint } from './cockpit.logic'
 import type { PnlSummary } from '@/analysis/anaData'
 
 const wan = (v: number | null | undefined): number | null => (v == null ? null : +(v / 10000).toFixed(2))
@@ -30,23 +30,52 @@ export interface RollingRow {
 }
 
 /**
+ * 上一年能不能接进来:**有收入的附表集合必须与本年相同**。
+ *
+ * 这道守卫不是洁癖。园区收入 = 附表1~4 相加,其中附表1(租金)占六成以上。
+ * 如果上一年只录了附表2(光伏)——demo 库里 2024 年正是这样 —— 直接接上去,
+ * 去年尾月会是十几万、今年 1 月是七百多万,拟合出来的斜率全是这个**假台阶**造的,
+ * 1~3 月的带又宽又偏,而且看上去一本正经。那比没有带更糟。
+ *
+ * 判据取「哪些附表有收入」而不是「有多少行」:行数天然不同,附表集合不同才是口径不同。
+ */
+export function prevYearUsable(cur: PnlSummary | null, prev: PnlSummary | null): boolean {
+  if (!cur || !prev) return false
+  const setOf = (p: PnlSummary) => Object.entries(p.bySchedule)
+    .filter(([, b]) => b.rev.some((v) => v != null))
+    .map(([k]) => k).sort().join(',')
+  const a = setOf(cur)
+  return a !== '' && a === setOf(prev)
+}
+
+/**
  * 逐月滚动预测:第 m 个月的带,只用 m **之前**已录入的月拟合出来。
  *
  * 这是用户 2026-09-12 的硬要求:「按照每个月的预测带,不允许再出现整年预测带的情况」。
  * 十二行里每一行的 lo/hi 来自各自不同的一次拟合 —— 不存在「一条整年的带」这种东西,
  * 也就不会再出现「图上一条宽带、表里一堆窄区间」那种自相矛盾(用户当场指出过)。
  *
+ * **跨年**(用户 2026-09-12:「有用前一年的最后几个月来预测今年前三个月的预测带的机制吗」):
+ * 传入 prev 就把上一年已录入的月按 x = 月号 − 12 接到横轴左边(去年 12 月 = 0,11 月 = −1),
+ * 于是 1 月也有三个在前的点,前三个月不再天然没带。接不接由 prevYearUsable 判,理由见它的头注。
+ * 一旦接上,**每个月**的带都用上全部可得历史,不只是前三个月 —— 同一张图上两套训练口径才是怪事。
+ *
  * 覆盖到「最后一个已录入月 + 1」为止:那一格没有实际值,就是下月预测。
  */
-export function rollingForecastRows(pnl: PnlSummary | null): RollingRow[] | null {
+export function rollingForecastRows(pnl: PnlSummary | null, prev: PnlSummary | null = null): RollingRow[] | null {
   if (!pnl) return null
   const recorded = pnlYearMonths(pnl)
   const last = recorded[recorded.length - 1]
   if (last == null) return null
+  const prevPts: XYPoint[] = prevYearUsable(pnl, prev) && prev
+    ? pnlYearMonths(prev).map((m) => ({ x: m - 12, y: wan(prev.revenue[m - 1]) as number }))
+    : []
+  const curPts: XYPoint[] = recorded.map((m) => ({ x: m, y: wan(pnl.revenue[m - 1]) as number }))
+  const all = [...prevPts, ...curPts]
   const upto = Math.min(last + 1, 12)
   const rows: RollingRow[] = []
   for (let m = 1; m <= upto; m++) {
-    const fit = fitRevenueTrendUpTo(pnl, m - 1)
+    const fit = fitPoints(all.filter((p) => p.x < m))
     const band = fit ? fitBandAt(fit, m) : null
     rows.push({
       month: m,
@@ -67,8 +96,6 @@ export interface ChartGeo {
   box: ChartBox
   /** 线下渐变与折线共用的这条路径(只连有实际值的月)。 */
   linePath: string
-  /** 折线下方的填充路径(收到底边闭合)。 */
-  areaPath: string
   /** 逐月带的外轮廓(上沿从左到右,下沿从右到左,闭合)。分段:中间断开的月不连过去。 */
   bandPaths: string[]
   /** 预测中位那条虚线(只连有 mid 的月)。 */
@@ -79,6 +106,8 @@ export interface ChartGeo {
   todayX: number | null
   yTicks: { v: number; y: number; label: string }[]
   xTicks: { month: number; x: number; label: string }[]
+  /** 第一个算得出带的月份。它之前的月身前不足 3 个已录入月,残差自由度为 0,带算不出来。 */
+  firstBandMonth: number | null
 }
 
 /** 轴刻度:在 [lo, hi] 上取 ≤count 个「好看的」整数刻度(1/2/5×10^k)。 */
@@ -126,11 +155,6 @@ export function forecastChartGeo(rows: RollingRow[] | null, box: ChartBox): Char
   })
   if (cur.length) segs.push(cur)
   const linePath = segs.map((sg) => sg.map((p, k) => `${k ? 'L' : 'M'}${r2(x(p.i))},${r2(y(p.v))}`).join(' ')).join(' ')
-  const areaPath = segs.filter((sg) => sg.length > 1).map((sg) => {
-    const up = sg.map((p, k) => `${k ? 'L' : 'M'}${r2(x(p.i))},${r2(y(p.v))}`).join(' ')
-    const base = box.height - box.padB
-    return `${up} L${r2(x(sg[sg.length - 1].i))},${r2(base)} L${r2(x(sg[0].i))},${r2(base)} Z`
-  }).join(' ')
 
   // 带:同样分段,缺带的月断开
   const bandSegs: { i: number; lo: number; hi: number }[][] = []
@@ -164,5 +188,6 @@ export function forecastChartGeo(rows: RollingRow[] | null, box: ChartBox): Char
 
   const yTicks = niceTicks(min, max).map((v) => ({ v, y: r2(y(v)), label: String(Math.round(v)) }))
   const xTicks = rows.map((r, i) => ({ month: r.month, x: r2(x(i)), label: `${r.month}月` }))
-  return { box, linePath, areaPath, bandPaths, midPath, dots, forecast, todayX, yTicks, xTicks }
+  const firstBandMonth = rows.find((r) => r.lo != null)?.month ?? null
+  return { box, linePath, bandPaths, midPath, dots, forecast, todayX, yTicks, xTicks, firstBandMonth }
 }

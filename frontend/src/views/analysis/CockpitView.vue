@@ -14,7 +14,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaForecastChart from '@/components/ana/AnaForecastChart.vue'
-import { rollingForecastRows } from './forecastChart.logic'
+import { rollingForecastRows, prevYearUsable } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
@@ -42,6 +42,9 @@ const cmp = useCompare(['mom', 'budget'])   // 屏声明支持集(AnaShell 同�
 
 // ── 取数(period 无关项拉一次;pnl 随年切换;全走 anaData 缓存) ──
 const pnl = ref<PnlSummary | null>(null)
+// 上一年:只给逐月预测带用(把去年尾月接到横轴左边,今年 1 月才有三个在前的点)。
+// 取不到就是 null —— 老园区第一年没有上一年很正常,不能因此让整屏出错。
+const prevPnl = ref<PnlSummary | null>(null)
 const collects = ref<CollectRate[]>([])
 const s10Phase = ref<S10PhaseMonthly | null>(null)
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
@@ -62,6 +65,10 @@ watch(year, (y) => {
     .then((v) => { if (t === token) pnl.value = v })
     .catch(() => { if (t === token) pnl.value = null })
     .finally(() => { if (t === token) pnlLoading.value = false })
+  // 上一年单独取,失败/为空都只让预测带退回本年口径,不进 pnlLoading,不拖住整屏。
+  fetchPnlSummary(y - 1)
+    .then((v) => { if (t === token) prevPnl.value = v })
+    .catch(() => { if (t === token) prevPnl.value = null })
 }, { immediate: true })
 
 async function reload() {
@@ -169,7 +176,11 @@ const mainOption = computed<object | null>(() =>
 // 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
 // 理由见 forecastChart.logic.ts 头注(ECharts 在类目轴上画不准这种「一个月一段区间」)。
 // 自绘图的数据:逐月预测带(每个月的带只用它之前的月算),见 forecastChart.logic.ts。
-const rollRows = computed(() => rollingForecastRows(pnl.value))
+// 上一年一起拉:它的尾月接到横轴左边,今年 1 月才有三个在前的点(用户 2026-09-12 提的跨年机制)。
+// 接不接由 prevYearUsable 判 —— 附表口径不同就不接,理由见该函数头注。
+const rollRows = computed(() => rollingForecastRows(pnl.value, prevPnl.value))
+const prevState = computed<'none' | 'mismatch' | 'spliced'>(() =>
+  prevYearUsable(pnl.value, prevPnl.value) ? 'spliced' : (prevPnl.value?.months.length ? 'mismatch' : 'none'))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -391,7 +402,7 @@ const conclusion = computed(() => buildConclusion(
           <span class="t">收入趋势 · 下月预测</span>
           <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
         </div>
-        <AnaForecastChart :rows="rollRows" :height="280" />
+        <AnaForecastChart :rows="rollRows" :height="280" :prev-state="prevState" />
         <!-- 下月预测的读数句与参照系小字:参照系里带着这套算法过去的实测命中,与读数句同屏(D1)。 -->
         <template v-if="forecastRead">
           <p class="ana-read">{{ forecastRead }}</p>
