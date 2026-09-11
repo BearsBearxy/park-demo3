@@ -22,14 +22,17 @@
 //   transformer 等维护费、没有任何 rent_* 计费行——那是数据缺口不是便宜,与 ContractsView.vue:146
 //   「无租金计费行」筛选、DataHomeService 的 219 份缺口告警同一判据(BUILDING_RENT_KEYS)。
 import { quantile } from '@/components/ana/anaFmt'
-import { RENT_KEYS, type BillingLineDTO, type ContractDTO, type PropertyType, inferPropertyType } from '@/types/contract'
+import { PROPERTY_TYPE_LABEL, RENT_KEYS, type BillingLineDTO, type ContractDTO, type PropertyType, inferPropertyType } from '@/types/contract'
 import type { AnalysisS10Row } from '@/api/analysis'
 
 /** 少于本数,不给区间/不给百分比读数(全局约束⑤;板上「样本 < 20 不画带」同一条规矩)。 */
 export const MIN_SAMPLE = 20
 
-/** 某日在租(镜像 ContractService.inForceOn):非草稿、非整体承租、起止日期齐全且 asOf 落在闭区间内。 */
-export function isInForce(c: ContractDTO, asOf: string): boolean {
+/** 某日在租(镜像 ContractService.inForceOn):非草稿、非整体承租、起止日期齐全且 asOf 落在闭区间内。
+ *  参数只取用到的四个字段(Pick,不是整个 ContractDTO)——F3(对抗复查)起,expiry.logic.ts 的
+ *  medianFactoryRent 也复用这同一份判据,只有 monthlyRent/startDate/endDate 三个字段的候选数据
+ *  不该被强迫拼出一整个 ContractDTO 才能传进来。 */
+export function isInForce(c: Pick<ContractDTO, 'status' | 'kind' | 'startDate' | 'endDate'>, asOf: string): boolean {
   if (c.status === 'draft') return false
   if (c.kind === 'master_lease') return false
   if (!c.startDate || !c.endDate) return false
@@ -200,6 +203,36 @@ export function dominantPropertyType(lines: BillingLineDTO[]): PropertyType | nu
   if (!rentLines.length) return null
   const best = rentLines.reduce((a, b) => ((b.area ?? 0) > (a.area ?? 0) ? b : a))
   return best.propertyType ?? inferPropertyType(best.feeKey)
+}
+
+// ── F2(对抗复查):口径浮层「这批同类物业类型是否单一」那句话,必须由实测的分布驱动 ──
+// 改前的缺陷:那句话测的是期区二(17/17 厂房主导,真的是单一类型),却写死渲染在默认打开的
+// 期区一(51 份:厂房24/办公14/商铺10/宿舍3,四类,office 均价 32.29 对 factory 21.83——正是
+// 那句话矢口否认的"两拨价格")。根子是"验证一个总体的说法,却验的是另一个总体"——
+// 修法不是再测一遍期区一重新写死,而是让这句话由「当前渲染中的那批 population」驱动:
+// 谁在渲染谁负责举证,换期区、换数据,这句话跟着重算,不会再对不上。
+export interface PropertyTypeCount { type: PropertyType; count: number }
+
+/** 统计一批物业类型的分布,按份数降序(同数按类型名排序,输出稳定)。null(未知类型)不计入。 */
+export function propertyTypeBreakdown(types: readonly (PropertyType | null)[]): PropertyTypeCount[] {
+  const m = new Map<PropertyType, number>()
+  for (const t of types) if (t) m.set(t, (m.get(t) ?? 0) + 1)
+  return [...m.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
+}
+
+/** 口径浮层那句话本身(F2):单一类型时维持原有措辞;>1 类时不许再说"没有第二类物业类型",
+ *  按实测分布逐类点出份数,并把"不能排除类型驱动的价格分层"这句话说清楚——breakdown 传空数组
+ *  (population 为空,理论上不会走到,上游有 v-if 守卫)时按"未知"兜底,不瞎编一个"全部是"。 */
+export function peerPropertyTypeNote(breakdown: PropertyTypeCount[]): string {
+  if (breakdown.length <= 1) {
+    const only = breakdown[0] ? PROPERTY_TYPE_LABEL[breakdown[0].type] : '未知'
+    return `按期区分组、不按物业类型再拆:这批同类解析出的物业类型全部是${only},不存在"类型混杂拖累这张图"这个问题。`
+  }
+  const parts = breakdown.map((b) => `${PROPERTY_TYPE_LABEL[b.type]}${b.count}份`).join('、')
+  return `这批同类的物业类型并非单一(${parts}):不能排除按物业类型分层带来的价格分层,`
+    + `本卡仍按期区分组、不按物业类型再拆,读这张图时留意这一点。`
 }
 
 // ── T10「哪些期区能给区间」──────────────────────────────────────────────

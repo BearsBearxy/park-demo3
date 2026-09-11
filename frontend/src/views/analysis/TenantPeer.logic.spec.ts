@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { BillingLineDTO, ContractDTO } from '@/types/contract'
+import type { BillingLineDTO, ContractDTO, PropertyType } from '@/types/contract'
 import type { AnalysisS10Row } from '@/api/analysis'
 import {
   MIN_SAMPLE, isInForce, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel,
   percentBelow, phaseStatsOf, buildUnitRentHist, unitRentReadout, unitRentRefText,
-  unitRentHistOption, dominantPropertyType,
+  unitRentHistOption, dominantPropertyType, propertyTypeBreakdown, peerPropertyTypeNote,
   phaseTableRowOf, phaseTableRows, phaseTableReadout, phaseTableRefText,
   latestElecSpread, elecTrapReadout, elecTrapRefText,
-  type PeerRow, type PhaseStats, type PhaseTableRow, type ElecSpread,
+  type PeerRow, type PhaseStats, type PhaseTableRow, type ElecSpread, type PropertyTypeCount,
 } from './TenantPeer.logic'
 
 let seq = 0
@@ -214,6 +214,52 @@ describe('dominantPropertyType', () => {
   })
   it('propertyType 空时按 feeKey 反推(inferPropertyType 口径)', () => {
     expect(dominantPropertyType([bl({ feeKey: 'rent_dorm', propertyType: null, area: 50 })])).toBe('dorm')
+  })
+})
+
+// F2(对抗复查):口径浮层「这批同类物业类型是否单一」那句话必须由实测分布驱动,不能测一个
+// population、渲染在另一个——缺的断言:给一批混合物业类型的 fixture,断言浮层不得声称单一类型。
+describe('propertyTypeBreakdown / peerPropertyTypeNote(F2)', () => {
+  it('全部同一类型 → 只有一条,count=份数', () => {
+    const b = propertyTypeBreakdown(['factory', 'factory', 'factory'])
+    expect(b).toEqual([{ type: 'factory', count: 3 }])
+  })
+
+  it('❗混合类型(镜像期区一实测:厂房24/办公14/商铺10/宿舍3)→ 四条,按份数降序', () => {
+    const types: PropertyType[] = [
+      ...Array(24).fill('factory'), ...Array(14).fill('office'), ...Array(10).fill('shop'), ...Array(3).fill('dorm'),
+    ]
+    const b = propertyTypeBreakdown(types)
+    expect(b).toEqual([
+      { type: 'factory', count: 24 }, { type: 'office', count: 14 },
+      { type: 'shop', count: 10 }, { type: 'dorm', count: 3 },
+    ])
+  })
+
+  it('null(未知类型)不计入分布', () => {
+    expect(propertyTypeBreakdown(['factory', null, null])).toEqual([{ type: 'factory', count: 1 }])
+    expect(propertyTypeBreakdown([null, null])).toEqual([])
+  })
+
+  it('❗单一类型:浮层说"全部是X",不否认"没有混杂问题"这句话本身成立', () => {
+    const s = peerPropertyTypeNote([{ type: 'factory', count: 51 }])
+    expect(s).toContain('全部是厂房')
+  })
+
+  it('❗混合类型(缺的断言):浮层不得声称"全部是"单一类型,必须逐类点出份数', () => {
+    const breakdown: PropertyTypeCount[] = [
+      { type: 'factory', count: 24 }, { type: 'office', count: 14 }, { type: 'shop', count: 10 }, { type: 'dorm', count: 3 },
+    ]
+    const s = peerPropertyTypeNote(breakdown)
+    expect(s).not.toMatch(/全部是(厂房|办公室|商铺|宿舍|空地)/)   // 核心断言:不许再声称单一类型
+    expect(s).toContain('厂房24份')
+    expect(s).toContain('办公室14份')
+    expect(s).toContain('商铺10份')
+    expect(s).toContain('宿舍3份')
+  })
+
+  it('空 → 兜底"未知",不瞎编一个"全部是XX"', () => {
+    expect(peerPropertyTypeNote([])).toContain('未知')
   })
 })
 

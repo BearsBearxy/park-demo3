@@ -27,6 +27,7 @@ import {
   MIN_SAMPLE, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel, phaseStatsOf,
   buildUnitRentHist, unitRentReadout, unitRentRefText, unitRentHistOption, dominantPropertyType,
   phaseTableRows, phaseTableReadout, phaseTableRefText, latestElecSpread, elecTrapReadout, elecTrapRefText,
+  propertyTypeBreakdown, peerPropertyTypeNote,
   type PeerRow,
 } from './TenantPeer.logic'
 
@@ -77,29 +78,14 @@ watch(tenantOptions, (opts) => {
 const primaryRow = computed<PeerRow | null>(() =>
   selTenantId.value == null ? null : primaryRowOf(peerRows.value, selTenantId.value))
 
-// ── 头部「物业类型」:只为选中租户的主合同查一次计费行(不为整批同类都查,理由见 TenantPeer.logic.ts)──
-const propTypeCache = ref<Map<number, PropertyType | null>>(new Map())
-watch(primaryRow, async (row) => {
-  if (!row || propTypeCache.value.has(row.contractId)) return
-  try {
-    const detail = await fetchContractDetail(row.contractId)
-    propTypeCache.value.set(row.contractId, dominantPropertyType(detail.billingLines))
-  } catch {
-    propTypeCache.value.set(row.contractId, null)
-  }
-}, { immediate: true })
-const propertyTypeLabel = computed(() => {
-  const row = primaryRow.value
-  if (!row) return '—'
-  if (!propTypeCache.value.has(row.contractId)) return '…'
-  const pt = propTypeCache.value.get(row.contractId)
-  return pt ? PROPERTY_TYPE_LABEL[pt] : '—'
-})
-
 // ── 单位租金对标(T9):同类 = 选中租户所在期区、在租、已录面积的合同(含本户自己) ──
 const phaseZone = computed(() => (primaryRow.value ? phaseZoneLabel(primaryRow.value.phase) : ''))
-const phaseValues = computed(() =>
-  primaryRow.value ? peerRows.value.filter((r) => r.phase === primaryRow.value!.phase).map((r) => r.unitRent) : [])
+// F2(对抗复查):口径浮层那句"这批同类物业类型是否单一"必须由**实际渲染中的这批 population**驱动
+// (phaseGroupRows,与 phaseValues/phaseTableRows 同一批过滤结果),不能测一个期区、渲染在另一个——
+// 之前的缺陷正是"经核实"那句只查过期区二,却渲染在默认打开的期区一。
+const phaseGroupRows = computed(() =>
+  primaryRow.value ? peerRows.value.filter((r) => r.phase === primaryRow.value!.phase) : [])
+const phaseValues = computed(() => phaseGroupRows.value.map((r) => r.unitRent))
 const stats = computed(() => phaseStatsOf(phaseValues.value))
 const hist = computed(() => (stats.value ? buildUnitRentHist(phaseValues.value, stats.value.p90) : null))
 const histOpt = computed<object>(() =>
@@ -109,6 +95,38 @@ const histOpt = computed<object>(() =>
 const readout = computed(() =>
   primaryRow.value ? unitRentReadout(primaryRow.value.unitRent, phaseValues.value, phaseZone.value) : null)
 const refText = computed(() => unitRentRefText(phaseValues.value.length, phaseZone.value, periodLabel))
+
+// ── 头部「物业类型」+ F2 口径浮层「同类物业类型是否单一」:两处共用同一份缓存,只为
+// phaseGroupRows(当前渲染的这批同类)查计费行,不为全部合同都查(理由见 TenantPeer.logic.ts)。
+// F2 改前只为选中租户的主合同查一次——现在整批同类都要查,才有数据支持"是否单一类型"这句话。
+const propTypeCache = ref<Map<number, PropertyType | null>>(new Map())
+watch(phaseGroupRows, async (rows) => {
+  const missing = rows.filter((r) => !propTypeCache.value.has(r.contractId))
+  if (!missing.length) return
+  await Promise.all(missing.map(async (r) => {
+    try {
+      const detail = await fetchContractDetail(r.contractId)
+      propTypeCache.value.set(r.contractId, dominantPropertyType(detail.billingLines))
+    } catch {
+      propTypeCache.value.set(r.contractId, null)
+    }
+  }))
+}, { immediate: true })
+const propertyTypeLabel = computed(() => {
+  const row = primaryRow.value
+  if (!row) return '—'
+  if (!propTypeCache.value.has(row.contractId)) return '…'
+  const pt = propTypeCache.value.get(row.contractId)
+  return pt ? PROPERTY_TYPE_LABEL[pt] : '—'
+})
+// 全部查完之前不敢断言"是否单一类型"——只查完一部分就下结论,与 F2 坐实的缺陷是同一种错误
+// (拿不完整的样本代表整个 population)。
+const phaseTypesReady = computed(() =>
+  phaseGroupRows.value.length > 0 && phaseGroupRows.value.every((r) => propTypeCache.value.has(r.contractId)))
+const phaseTypeBreakdown = computed(() =>
+  propertyTypeBreakdown(phaseGroupRows.value.map((r) => propTypeCache.value.get(r.contractId) ?? null)))
+const phasePropertyTypeSentence = computed(() =>
+  phaseTypesReady.value ? peerPropertyTypeNote(phaseTypeBreakdown.value) : '同类物业类型核实中…')
 
 // ── T10「哪些期区能给区间」:不看选中哪个租户,四个期区一次性给行(population 同上,按期区分组)──
 const phaseRows = computed(() => phaseTableRows(peerRows.value))
@@ -160,7 +178,7 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
       <div class="av2-card">
         <div class="av2-card-h">
           <span class="t">单位租金对标</span>
-          <span class="hint">元/㎡·月 · {{ phaseZone }}在租合同</span>
+          <span class="hint">元/㎡·月(含费)· {{ phaseZone }}在租合同</span>
         </div>
         <template v-if="stats && hist && primaryRow">
           <AnaEChart :option="histOpt" :height="280" />
@@ -171,10 +189,8 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
             单位租金 = 合同月租(含管理费/基础维护等五费项合计,不是租金单价字段本身)÷ 租赁面积。
             同类 = {{ phaseZone }}在租(非草稿、非整体承租、起止日期覆盖 {{ periodLabel }})、已录面积、
             且月租含租金计费行的合同——monthly_rent 若只有维护/电梯/变压器等费用、没有任何 rent_* 行,
-            那不是便宜,是数据缺口,已排除(与数据总览页「N 份合同无租金计费行」同一判据)。按期区分组、
-            不按物业类型再拆:真正会让这张图失真的是上面已排除的那批缺口合同,不是物业类型混杂——
-            经核实这批同类解析出的物业类型全部是厂房或缺口(不含 rent_* 行),没有第二类物业类型能撑起
-            「两拨价格」这个说法。
+            那不是便宜,是数据缺口,已排除(与数据总览页「N 份合同无租金计费行」同一判据)。
+            {{ phasePropertyTypeSentence }}
             p10/中位/p90 为线性插值分位;样本 &lt; {{ MIN_SAMPLE }} 份不画区间、不印百分比。
             「80% 的同类在这段」是 p10~p90 这两个分位点之间本来就该有的那部分,不是历史命中率那种校准声明。
           </AnaMethodNote>
