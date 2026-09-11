@@ -198,6 +198,9 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
  *    万的合同整个丢掉(占月度锁定线约 15%)。coveringMonth 的月末覆盖判定本身已保证同一段
  *    租约只算一次,不必再去重——唯一依赖的前提("同一租户不会在同一单元上有两份合同同时
  *    覆盖同一个月末")由 coveringMonth 里的运行时守卫钉住,理由见该函数注释。
+ *    ⚠ 那道守卫**只管走 coveringMonth 的两条线**(锁定线、整租线)。续签抽样池不走它,
+ *    池子那边靠的是另一条判据:已有后继合同的不进池(F10,见 buildRentRoll 里的注释)。
+ *    两者防的不是同一件事,别把它们当成一道。
  *  · 历史回测分母/命中不是写死的 18/90 —— 由 asOf 现算(下面 decided/renewalHits),18.5/72.5
  *    只是 asOf=2025-12-01 那一次现算的结果,换 asOf 会跟着变(全局约束①要求的锚点显式传入)。
  */
@@ -438,9 +441,18 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   // 全程覆盖到视界末尾的合同没有续签不确定性(locked 已经算全了),不进池。
   // F6(修复轮2):不再按单元去重——理由同 lockedRentByMonth:一个单元上可以合法地同时住着
   // 两个不同租户,把它们当重复行砍掉会让续签抽样池丢真实合同。
+  //
+  // F10(修复轮3):已有后继合同的那份**排除出池**。池子问的是「这份合同会不会续签」,
+  // 而一份已被 parentContractId 指向的合同,续签结果已经发生了——后继合同就是那个结果。
+  // 留着它等于把一个已知答案当成还没掷的骰子,既多算一份不确定性,又在交接重叠期
+  // (实测单元 418 的 296→424,重叠 10 天)把同一段租约放进池子两次、当成两次独立的伯努利。
+  // 这也是 coveringMonth 那道守卫覆盖不到的地方——池子不走月末覆盖判定,
+  // 而这里用「有没有后继」判,比按单元/租户去重更贴语义:它问的是结果知不知道,不是行重不重复。
+  const hasSuccessor = new Set(
+    cs.map((c) => c.parentContractId).filter((v): v is number => v != null))
   const pool = cs.filter((c) =>
     c.kind !== 'master_lease' && (c.status === 'active' || c.status === 'renewed') &&
-    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey)
+    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey && !hasSuccessor.has(c.id))
   // F8(修复轮2):endDate 恰好等于视界最后一个月月末时,严格小于(ek < mb.endKey)在最后一个
   // 月也不成立,findIndex 全程落空、该合同不进任何桶——这不是漏算。ek 等于最后一月的 endKey
   // 时,coveringMonth 对每个月都判它"覆盖到月末"(含最后一月),即它在整个视界内都是 locked,

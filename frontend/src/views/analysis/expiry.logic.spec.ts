@@ -292,6 +292,20 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(r.locked).toEqual([1000, 1000, 1000])   // 三个月都锁定,包括最后一月
     expect(r.months.every((m) => m.renewalLo === 0 && m.renewalHi === 0)).toBe(true)   // 没有落进任何续签桶
   })
+
+  // F10(修复轮3):已有后继合同的那份不进续签池 —— 它的续签结果已经发生了,后继就是那个结果。
+  // 交接重叠期(实测单元 418 的 296→424 重叠 10 天)取 asOf 落在重叠窗口里,是这条判据的用武之地:
+  // 不排除的话,同一段租约会以两份合同的身份进池,被当成两次独立的伯努利。
+  it('F10:已有后继合同的不进续签池 —— 续签结果已知,不该再当一次待掷的骰子', () => {
+    const old = ct({ id: 900, unitId: 80, tenantId: 5, monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-02-14', status: 'renewed' })
+    const next = ct({ id: 901, unitId: 80, tenantId: 5, monthlyRent: 1000, startDate: '2026-02-04', endDate: '2026-03-31', parentContractId: 900 })
+    // asOf 落在两份合同的重叠窗口内(2026-02-04..2026-02-14),两份的 endDate 都 ≥ asOf。
+    const r = buildRentRoll([old, next], '2026-02-10', 2)
+    // 池里只该有 next 一份:old 的续签已经兑现成 next,不是待定问题。
+    // 若 old 也进池,它会在 2026-02 桶里再添一份 1000 的不确定性,末月上界随之变高。
+    const two = buildRentRoll([old, { ...next, parentContractId: null }], '2026-02-10', 2)
+    expect(r.months[0].renewalHi).toBeLessThan(two.months[0].renewalHi)
+  })
 })
 
 describe('rentRollSentence / rentRollRefText(F1 修复轮1:句子只说区间,n/hits 按真实身份搬进小字)', () => {
