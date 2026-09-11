@@ -18,8 +18,9 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import FPTenantPicker from '@/components/fp/FPTenantPicker.vue'
-import { fetchBuildings, fetchContractDetail, fetchContracts } from '@/analysis/anaData'
+import { fetchBuildings, fetchContractDetail, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import type { ContractDTO, PropertyType } from '@/types/contract'
+import type { TenantDTO } from '@/types/tenant'
 import { PROPERTY_TYPE_LABEL } from '@/types/contract'
 import { fint } from '@/components/ana/anaFmt'
 import {
@@ -32,14 +33,16 @@ const loaded = ref(false)
 const err = ref('')
 const contracts = ref<ContractDTO[]>([])
 const phaseOf = ref<Map<number, number>>(new Map())
+const tenants = ref<TenantDTO[]>([])
 
 async function reload() {
   // 切回重读会重跑本函数:错误不清,重试成功后屏上仍挂着上次的失败文案(P3 T2 评审坐实)
   err.value = ''
   try {
-    const [cs, bs] = await Promise.all([fetchContracts(), fetchBuildings()])
+    const [cs, bs, ts] = await Promise.all([fetchContracts(), fetchBuildings(), fetchTenants()])
     contracts.value = cs
     phaseOf.value = new Map(bs.map((b) => [b.id, b.phase]))
+    tenants.value = ts
   } catch (e) {
     err.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -57,7 +60,9 @@ const asOf = today.toLocaleDateString('sv')
 const periodLabel = asOf.slice(0, 7)
 
 const peerRows = computed(() => buildPeerRows(contracts.value, phaseOf.value, asOf))
-const tenantOptions = computed(() => eligibleTenants(peerRows.value))
+// F4 修复轮1:徽章期区取 tenant.phase,不是 building.phase——两者可能不一致(见 TenantPeer.logic.ts 注释)。
+const tenantPhaseOf = computed(() => new Map(tenants.value.map((t) => [t.id, t.phase])))
+const tenantOptions = computed(() => eligibleTenants(peerRows.value, tenantPhaseOf.value))
 
 // ── 租户选择(默认候选首户;候选变化时若当前选中已不在候选里才改选,避免用户手选后被悄悄换人)──
 const selTenantId = ref<number | null>(null)
@@ -150,9 +155,12 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
           <p class="ana-ref">{{ refText }}</p>
           <AnaMethodNote>
             单位租金 = 合同月租(含管理费/基础维护等五费项合计,不是租金单价字段本身)÷ 租赁面积。
-            同类 = {{ phaseZone }}在租(非草稿、非整体承租、起止日期覆盖 {{ periodLabel }})且已录面积的合同,
-            按期区分组、不按物业类型再拆——本卡就是板上按期区分组的那张,同一期区若混着不同物业类型
-            (如宿舍与厂房两拨价格差很大),中位数会失真,那是另一张卡要处理的事,这里如实呈现分布本身。
+            同类 = {{ phaseZone }}在租(非草稿、非整体承租、起止日期覆盖 {{ periodLabel }})、已录面积、
+            且月租含租金计费行的合同——monthly_rent 若只有维护/电梯/变压器等费用、没有任何 rent_* 行,
+            那不是便宜,是数据缺口,已排除(与数据总览页「N 份合同无租金计费行」同一判据)。按期区分组、
+            不按物业类型再拆:真正会让这张图失真的是上面已排除的那批缺口合同,不是物业类型混杂——
+            经核实这批同类解析出的物业类型全部是厂房或缺口(不含 rent_* 行),没有第二类物业类型能撑起
+            「两拨价格」这个说法。
             p10/中位/p90 为线性插值分位;样本 &lt; {{ MIN_SAMPLE }} 份不画区间、不印百分比。
             「80% 的同类在这段」是 p10~p90 这两个分位点之间本来就该有的那部分,不是历史命中率那种校准声明。
           </AnaMethodNote>

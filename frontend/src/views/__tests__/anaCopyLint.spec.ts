@@ -303,6 +303,25 @@ describe('分析层文案门禁', () => {
     expect(note![1], '浮层没有说清楚两者数值上没有关系').toContain('与租金续签无关')
   })
 
+  /**
+   * F2(T8/T9 修复轮1):「单位租金对标」卡口径浮层原文照抄了 board-peer.txt 的诊断——
+   * 「期区二是宿舍和厂房混在一起,两拨价格差很大,中位数没有意义」。查库实测:期区二那批同类
+   * 解析出的物业类型全部是厂房或「无租金计费行」的数据缺口(后者已被 F1 排除),不存在宿舍。
+   * 读者信了这句话会去找一个不存在的物业问题,而不会去找真正的那个数据缺口——屏上自己的诚实
+   * 装置,指向了错误的方向。判据钉住:浮层必须说清真正原因(缺口合同已排除),不许再出现
+   * 「宿舍与厂房」这个已实测为假的诊断。
+   */
+  it('❗F2:「单位租金对标」卡口径浮层不许照抄「宿舍与厂房混杂」的误诊断,须写实测的真正原因', () => {
+    const src = readFileSync(join(DIR, 'TenantPeerView.vue'), 'utf8')
+    const card = splitCards(src).find((c) => /class="t">单位租金对标/.test(c.text))
+    expect(card, 'TenantPeerView.vue 里找不到「单位租金对标」那张卡').toBeTruthy()
+    const body = card!.text.replace(/<!--[\s\S]*?-->/g, '')
+    const note = /<AnaMethodNote[^>]*>([\s\S]*?)<\/AnaMethodNote>/.exec(body)
+    expect(note, '这张卡没有口径浮层').toBeTruthy()
+    expect(note![1], '浮层没有说明真正原因是无租金计费行的数据缺口合同').toContain('数据缺口')
+    expect(note![1], '浮层没有说清楚这批同类不含宿舍').not.toMatch(/宿舍与厂房.{0,6}(混在一起|混杂|两拨价格)/)
+  })
+
   // AnomalyView.vue / TenantEnergyView.vue 是本仓明确的「零挂载测」屏(anaDeepLink.spec.ts 头注:
   // echarts + anaData 太重),上面 scan() 的 strip() 又把 `{{ elecReadout }}` 这类插值整个删掉,
   // ≤30 字预算在这两句上等于没测。但 .ana-read 段落除插值外没有第二个字符

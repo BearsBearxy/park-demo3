@@ -14,7 +14,8 @@ function ct(p: Partial<ContractDTO>): ContractDTO {
     buildingId: 1, buildingName: 'A栋', unitId: null, floorInfo: '1F',
     rentArea: 100, monthlyRent: 1000, deposit: 0,
     startDate: '2025-01-01', endDate: '2026-12-31', signDate: '2025-01-01',
-    status: 'active', kind: 'normal', termMonths: 24, daysToEnd: null, remark: null, ...p,
+    status: 'active', kind: 'normal', termMonths: 24, daysToEnd: null, remark: null,
+    billingLineCount: 1, ...p,   // 默认有租金计费行;F1 用例显式传 0 测排除
   }
 }
 function bl(p: Partial<BillingLineDTO>): BillingLineDTO {
@@ -53,6 +54,16 @@ describe('buildPeerRows', () => {
     expect(rows[0].unitRent).toBe(20)
     expect(rows[0].phase).toBe(1)
   })
+  it('排除无租金计费行的合同(F1:monthly_rent 只有维护费,不是便宜)——查库验过的合同 162 原型:' +
+    '面积 9263、月租 20075.48(=9263×1.96+1590+330,全是维护/电梯/变压器费),billingLineCount=0', () => {
+    const cs = [
+      ct({ buildingId: 1, monthlyRent: 2000, rentArea: 100, billingLineCount: 1 }),   // 保留:有租金计费行
+      ct({ buildingId: 1, monthlyRent: 20075.48, rentArea: 9263, billingLineCount: 0 }),   // 排除:合同 162 原型
+    ]
+    const rows = buildPeerRows(cs, phaseOf, '2025-06-01')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].monthlyRent).toBe(2000)
+  })
 })
 
 describe('primaryRowOf / eligibleTenants', () => {
@@ -66,9 +77,19 @@ describe('primaryRowOf / eligibleTenants', () => {
     expect(primaryRowOf(rows, 999)).toBeNull()
   })
   it('候选去重且按名称 zh 排序(甲在乙前)', () => {
-    const opts = eligibleTenants(rows)
+    const opts = eligibleTenants(rows, new Map([[1, 1], [2, 2]]))
     expect(opts.map((o) => o.id)).toEqual([2, 1])
     expect(opts[1].name).toBe('乙公司')
+  })
+  it('徽章期区取 tenant.phase,不是 row.phase(building.phase)——F4:两者可能不一致' +
+    '(查库验过:可盈 tenant.phase=1、其主合同所在楼栋 phase=4)', () => {
+    // 乙公司(tenantId=1)行的 row.phase(building.phase)都是 1,tenantPhaseOf 给它 4——钉住取的是后者
+    const opts = eligibleTenants(rows, new Map([[1, 4], [2, 2]]))
+    expect(opts.find((o) => o.id === 1)?.phase).toBe(4)
+  })
+  it('tenantPhaseOf 查不到时 phase=null(不是回退 row.phase)', () => {
+    const opts = eligibleTenants(rows, new Map([[2, 2]]))   // 故意不给 tenantId=1
+    expect(opts.find((o) => o.id === 1)?.phase).toBeNull()
   })
 })
 
@@ -146,15 +167,33 @@ describe('unitRentReadout / unitRentRefText', () => {
 })
 
 describe('unitRentHistOption', () => {
-  it('结构:1 个 bar 系列,数据=4 常规档+1 溢出档,4 条 markLine', () => {
-    const h = buildUnitRentHist([5, 15, 25, 35, 45], 34)
-    const stats: PhaseStats = { n: 5, p10: 6, median: 25, p90: 34 }
-    const opt = unitRentHistOption(h, stats, '鑫皇', 28.11) as {
-      series: { data: unknown[]; markLine: { data: unknown[] } }[]
+  const h = buildUnitRentHist([5, 15, 25, 35, 45], 34)
+  const stats: PhaseStats = { n: 5, p10: 6, median: 25, p90: 34 }
+  function opt() {
+    return unitRentHistOption(h, stats, '鑫皇', 28.11) as {
+      series: {
+        data: unknown[]
+        markArea: { label: { formatter: string } }
+        markLine: { data: { label: { formatter: string } }[] }
+      }[]
     }
-    expect(opt.series).toHaveLength(1)
-    expect(opt.series[0].data).toHaveLength(5)
-    expect(opt.series[0].markLine.data).toHaveLength(4)
+  }
+  it('结构:1 个 bar 系列,数据=4 常规档+1 溢出档,4 条 markLine', () => {
+    const o = opt()
+    expect(o.series).toHaveLength(1)
+    expect(o.series[0].data).toHaveLength(5)
+    expect(o.series[0].markLine.data).toHaveLength(4)
+  })
+  // F3(修复轮1):读数句拆分时「80% 的同类在…」与 p10/p90 数字从受门禁的 .ana-read 搬到了图上
+  // markArea/markLine 标签——那里没有任何门禁扫,markArea 整段被删/p10/p90 的 formatter 被清空,
+  // 上面那条「结构」用例照样绿。钉住标签内容,堵这个静默消失口。
+  it('F3:markArea 标签含「80% 的同类在这段」,p10/p90 两条 markLine 的 formatter 等于对应分位数值', () => {
+    const o = opt()
+    expect(o.series[0].markArea.label.formatter).toBe('80% 的同类在这段')
+    const [p10Line, medianLine, p90Line] = o.series[0].markLine.data
+    expect(p10Line.label.formatter).toBe(stats.p10.toFixed(1))
+    expect(medianLine.label.formatter).toBe('中位 ' + stats.median.toFixed(1))
+    expect(p90Line.label.formatter).toBe(stats.p90.toFixed(1))
   })
 })
 

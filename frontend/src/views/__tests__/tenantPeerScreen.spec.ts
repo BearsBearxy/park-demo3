@@ -10,6 +10,7 @@ import { vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { BuildingDTO } from '@/types/building'
 import type { ContractDTO } from '@/types/contract'
+import type { TenantDTO } from '@/types/tenant'
 
 // AnaEmpty.vue 读 useAuthStore()(navAccess 判「去录入」链接可见性)——挂载测必须有一个活跃 Pinia,
 // 否则样本不足那条空态渲染时直接抛 [🍍] getActivePinia 错误(同 pvMeterAnaScreen.spec.ts 的既有写法)。
@@ -34,7 +35,8 @@ function ct(p: Partial<ContractDTO>): ContractDTO {
   return {
     id: 0, contractNo: 'HT', tenantId: 0, tenantName: '', buildingId: 1, buildingName: '', unitId: null, floorInfo: '',
     rentArea: 100, monthlyRent: 1000, deposit: 0, startDate: pastStart, endDate: futureEnd, signDate: pastStart,
-    status: 'active', kind: 'normal', termMonths: 24, daysToEnd: null, remark: null, ...p,
+    status: 'active', kind: 'normal', termMonths: 24, daysToEnd: null, remark: null,
+    billingLineCount: 1, ...p,   // 默认有租金计费行(F1);挂载测不专门覆盖 billingLineCount=0,那条在 TenantPeer.logic.spec.ts 测
   }
 }
 
@@ -50,9 +52,19 @@ const PHASE2 = Array.from({ length: 3 }, (_, i) => {
 })
 const CONTRACTS = [...PHASE1, ...PHASE2]
 
+// F4:tenant.phase 是徽章期区的字段来源(不是 building.phase)——桩数据里两者恰好同值,
+// 不专门覆盖「不一致」这个场景(那条在 TenantPeer.logic.spec.ts 用构造数据测,钉住取的是哪个字段)。
+const TENANTS: TenantDTO[] = CONTRACTS.map((c) => ({
+  id: c.tenantId, companyName: c.tenantName, contactName: null, contactPhone: null,
+  businessType: '', status: 1, categoryId: null, phase: c.buildingId === 1 ? 1 : 2,
+  since: null, monthlyRent: c.monthlyRent, leasedArea: c.rentArea,
+  primaryBuilding: null, contractCount: 1, parentId: null, parentName: null,
+}))
+
 vi.mock('@/analysis/anaData', () => ({
   fetchAvailableMonths: vi.fn(async () => ({ months: ['2026-08', '2026-09'], sources: { pnl: ['2026-08', '2026-09'] } })),
   fetchContracts: vi.fn(async () => CONTRACTS),
+  fetchTenants: vi.fn(async () => TENANTS),
   fetchBuildings: vi.fn(async () => BUILDINGS),
   fetchContractDetail: vi.fn(async () => ({
     contract: {}, tenant: {}, extraUnitIds: [],

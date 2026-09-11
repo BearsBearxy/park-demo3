@@ -8,6 +8,9 @@
 //   本身就是按期区分组(板上第二张卡「哪些期区能给区间」才逐期区判断是否要按 profile 再拆,那是 T10 的事)。
 // · 在租 = 非草稿、非整体承租(master_lease,与散户空间重叠会重复计入)、起止日期都有、asOf 落在闭区间内
 //   (镜像后端 ContractService.inForceOn,§5.2)。
+// · 已排除 billingLineCount==0 的合同(F1 修复轮1,查库验过):monthly_rent 只有 mgmt/infra/elevator/
+//   transformer 等维护费、没有任何 rent_* 计费行——那是数据缺口不是便宜,与 ContractsView.vue:146
+//   「无租金计费行」筛选、DataHomeService 的 219 份缺口告警同一判据(BUILDING_RENT_KEYS)。
 import { quantile } from '@/components/ana/anaFmt'
 import { RENT_KEYS, type BillingLineDTO, type ContractDTO, type PropertyType, inferPropertyType } from '@/types/contract'
 
@@ -33,6 +36,7 @@ export function buildPeerRows(contracts: ContractDTO[], phaseOf: Map<number, num
   for (const c of contracts) {
     if (!isInForce(c, asOf)) continue
     if (!(c.rentArea > 0)) continue
+    if (!(c.billingLineCount ?? 0)) continue   // 无租金计费行:monthly_rent 里没有租金,不是「便宜」(F1)
     const phase = phaseOf.get(c.buildingId)
     if (phase == null) continue
     out.push({
@@ -51,15 +55,18 @@ export function primaryRowOf(rows: PeerRow[], tenantId: number): PeerRow | null 
 
 export interface PeerTenantOption { id: number; name: string; phase: number | null }
 
-/** 租户选择器候选:按主合同去重,name 的 zh 排序(与 FPTenantPicker 的候选排序口径一致)。 */
-export function eligibleTenants(rows: PeerRow[]): PeerTenantOption[] {
+/** 租户选择器候选:按主合同去重,name 的 zh 排序(与 FPTenantPicker 的候选排序口径一致)。
+ *  phase 取 tenantPhaseOf(tenant.phase),不是 row.phase(building.phase)——F4 修复轮1:
+ *  两者可能不一致(查库验过:可盈 tenant.phase=1、其主合同所在楼栋 phase=4),而 FPTenantOption.phase
+ *  的约定就是 tenant.phase(见 fpTenantPicker.ts 的 toBindOptions),渲染走同一套 PHASE_BADGE。 */
+export function eligibleTenants(rows: PeerRow[], tenantPhaseOf: Map<number, number | null>): PeerTenantOption[] {
   const best = new Map<number, PeerRow>()
   for (const r of rows) {
     const cur = best.get(r.tenantId)
     if (!cur || r.contractId < cur.contractId) best.set(r.tenantId, r)
   }
   return [...best.values()]
-    .map((r) => ({ id: r.tenantId, name: r.tenantName, phase: r.phase }))
+    .map((r) => ({ id: r.tenantId, name: r.tenantName, phase: tenantPhaseOf.get(r.tenantId) ?? null }))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
 }
 
