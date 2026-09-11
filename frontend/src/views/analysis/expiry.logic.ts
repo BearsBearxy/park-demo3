@@ -193,7 +193,11 @@ export function concentrationOption(top10Sum: number, rentSum: number): object {
  *    子状态(展示态细分),仍会被 active 这一支收进来,不会漏记。收进 renewed 是因为它代表
  *    真实仍在租的续签合同(实测 9 份 renewed 的 endDate ≥ 今天,其中 1 份当月仍在收租)——
  *    漏掉它们会把「锁定」系统性做小,而这条线存在的意义就是「真正锁定了多少」。
- *  · 同一单元同月多于一份合同(实测 2 例):dedupByUnit 只留 startDate 最新的一份,理由见其注释。
+ *  · 同一单元同月多于一份合同(实测 2 例):F6(修复轮2)拿掉了 dedupByUnit——单元 455 上是两个
+ *    不同租户(265/165)并行跑了好几年的两条租约链,不是重复行;按单元去重会把其中一份月租 32
+ *    万的合同整个丢掉(占月度锁定线约 15%)。coveringMonth 的月末覆盖判定本身已保证同一段
+ *    租约只算一次,不必再去重——唯一依赖的前提("同一租户不会在同一单元上有两份合同同时
+ *    覆盖同一个月末")由 coveringMonth 里的运行时守卫钉住,理由见该函数注释。
  *  · 历史回测分母/命中不是写死的 18/90 —— 由 asOf 现算(下面 decided/renewalHits),18.5/72.5
  *    只是 asOf=2025-12-01 那一次现算的结果,换 asOf 会跟着变(全局约束①要求的锚点显式传入)。
  */
@@ -231,25 +235,26 @@ function monthFullyRentFree(c: ContractDTO, startKey: number, endKey: number): b
 }
 
 /**
- * 同一单元同月多于一份合同时只计一次(实测:园区 2 例,naive 求和会双记)。
- * 规则:取 startDate 最新的一份(startDate 相同再比 id)——最近签的那份代表该单元此刻的真实
- * 条款,更早一份多半是续签过渡期数据录入留下的重叠尾巴。无 unitId 的合同没有分组键,原样保留。
+ * F6(修复轮2)前提守卫:coveringMonth 不再对结果去重,前提是"同一租户不会在同一单元上
+ * 有两份合同同时覆盖同一个月末"(全库验证过:唯一的同租户同单元重叠对是续签交接的 10 天,
+ * 不跨任何一个月末)。两个不同租户共用同一单元是合法状态(单元 455 例),不受此守卫约束。
+ * 哪天这个前提被打破,这里就地报错,而不是让锁定线/整租线悄悄多算一遍——用 fixture 测,不连库。
  */
-function dedupByUnit(cs: ContractDTO[]): ContractDTO[] {
-  const byUnit = new Map<number, ContractDTO>()
-  const rest: ContractDTO[] = []
-  for (const c of cs) {
-    if (c.unitId == null) { rest.push(c); continue }
-    const cur = byUnit.get(c.unitId)
-    if (!cur || (c.startDate ?? '') > (cur.startDate ?? '') || ((c.startDate ?? '') === (cur.startDate ?? '') && c.id > cur.id)) {
-      byUnit.set(c.unitId, c)
+function assertNoSameTenantDoubleCoverage(covering: ContractDTO[], endKey: number): void {
+  const seenByUnit = new Map<string, number>()   // "unitId:tenantId" → 合同 id
+  for (const c of covering) {
+    if (c.unitId == null) continue
+    const key = `${c.unitId}:${c.tenantId}`
+    const prevId = seenByUnit.get(key)
+    if (prevId != null) {
+      throw new Error(`前提被打破:租户 ${c.tenantId} 在单元 ${c.unitId} 上有两份合同(${prevId}/${c.id})同时覆盖月末 ${endKey}`)
     }
+    seenByUnit.set(key, c.id)
   }
-  return [...rest, ...byUnit.values()]
 }
 
 function coveringMonth(cs: ContractDTO[], startKey: number, endKey: number, wantMaster: boolean): ContractDTO[] {
-  return cs.filter((c) => {
+  const covering = cs.filter((c) => {
     if ((c.kind === 'master_lease') !== wantMaster) return false
     if (!wantMaster && c.status !== 'active' && c.status !== 'renewed') return false
     const ek = dateKeyOf(c.endDate), sk = dateKeyOf(c.startDate)
@@ -257,27 +262,31 @@ function coveringMonth(cs: ContractDTO[], startKey: number, endKey: number, want
     if (ek < endKey || sk > endKey) return false
     return !monthFullyRentFree(c, startKey, endKey)
   })
+  assertNoSameTenantDoubleCoverage(covering, endKey)
+  return covering
 }
 
 /**
  * 锁定月租(brief §Step3 lockedRentByMonth):第 i 月 Σ monthlyRent。条件:status ∈ {active,renewed}、
- * 非整租、endDate ≥ 该月月末、startDate ≤ 该月月末,且该月不整月落在免租区间内;同单元同月去重。
+ * 非整租、endDate ≥ 该月月末、startDate ≤ 该月月末,且该月不整月落在免租区间内。
+ * F6(修复轮2):不再按单元去重——coveringMonth 的月末覆盖判定已保证同一段租约只算一次,
+ * 一个单元上可以合法地同时住着两个不同租户(单元 455 例),去重会把其中一份真实合同丢掉。
  * asOf 必须显式传入(全局约束①):同一份合同数据在不同锚点下会算出不同的锁定线,已写成断言。
  */
 export function lockedRentByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
   return [...Array(n)].map((_, i) => {
     const { startKey, endKey } = monthBounds(asOf, i)
-    return dedupByUnit(coveringMonth(cs, startKey, endKey, false)).reduce((s, c) => s + c.monthlyRent, 0)
+    return coveringMonth(cs, startKey, endKey, false).reduce((s, c) => s + c.monthlyRent, 0)
   })
 }
 
 /** 整租合同月租(kind==='master_lease',单列不进 locked/KPI,理由见文件顶部锚点注释)。
- * F4(修复轮1):补 dedupByUnit —— 与 lockedRentByMonth 同一治法,coveringMonth 本来就是
- * 月度快照(单月覆盖判定),同一单元同月多份整租记录同样会被 naive 求和双记。 */
+ * F6(修复轮2):不再按单元去重,理由与 lockedRentByMonth 相同——coveringMonth 本身已保证
+ * 单月不重复计入同一段租约,一个单元上两个不同整租租户是合法状态,不该被去重丢掉。 */
 function masterLeaseByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
   return [...Array(n)].map((_, i) => {
     const { startKey, endKey } = monthBounds(asOf, i)
-    return dedupByUnit(coveringMonth(cs, startKey, endKey, true)).reduce((s, c) => s + c.monthlyRent, 0)
+    return coveringMonth(cs, startKey, endKey, true).reduce((s, c) => s + c.monthlyRent, 0)
   })
 }
 
@@ -416,12 +425,9 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   // 字段稳,继续用;下面的判定规则(哪些算 decided、哪些算 hit)由 expiry.logic.spec.ts 里
   // 不依赖数据库的 fixture 钉死,口径以后被人改动会当场红。
   //
-  // F4(修复轮1):decided 故意不过 dedupByUnit。dedupByUnit 是「同一时刻只认一份」的快照去重
-  // (对 coveringMonth/pool 这类"现在谁在租"的单值状态正确),但 decided 横跨 asOf 之前的
-  // 全部历史 —— 同一单元先后好几段真实租约(各自到期、各自有续签结果)是常态,不是重复数据。
-  // 对 decided 套用「同单元全局只留一份」会把同一单元的多段历史强行合并成一段,悄悄吃掉
-  // 真实存在的历史续签结果,这比"偶发的同月重复记录多算一次"更糟。真出现同月重复历史记录时
-  // 该在数据源头去重,不该靠这里的单元级 dedup 猜哪一份是"真的"。
+  // decided 从来不按单元去重 —— 横跨 asOf 之前的全部历史,同一单元先后好几段真实租约
+  // (各自到期、各自有续签结果)是常态,不是重复数据。按单元去重会把多段历史强行合并成一段,
+  // 悄悄吃掉真实存在的历史续签结果。
   const decided = cs.filter((c) =>
     c.kind !== 'master_lease' && c.status !== 'draft' && (dateKeyOf(c.endDate) ?? Infinity) < asOfKey)
   const renewalHits = decided.filter((c) => c.status === 'renewed' || cs.some((o) => o.parentContractId === c.id)).length
@@ -430,12 +436,16 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
 
   // 续签抽样总体:asOf 当天仍在租(未到期)、到期日落在预测视界内的合同。
   // 全程覆盖到视界末尾的合同没有续签不确定性(locked 已经算全了),不进池。
-  // F4(修复轮1):补 dedupByUnit —— 与 decided 不同,"当前仍在租、尚未到期"对一个物理单元
-  // 而言是单值状态(同一时刻只能有一份合同真的在管这个单元),不是可以合法累积的历史序列,
-  // 所以这里可以直接套用同一条"同单元全局只留一份(取 startDate 最新)"规则,不会误伤。
-  const pool = dedupByUnit(cs.filter((c) =>
+  // F6(修复轮2):不再按单元去重——理由同 lockedRentByMonth:一个单元上可以合法地同时住着
+  // 两个不同租户,把它们当重复行砍掉会让续签抽样池丢真实合同。
+  const pool = cs.filter((c) =>
     c.kind !== 'master_lease' && (c.status === 'active' || c.status === 'renewed') &&
-    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey))
+    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey)
+  // F8(修复轮2):endDate 恰好等于视界最后一个月月末时,严格小于(ek < mb.endKey)在最后一个
+  // 月也不成立,findIndex 全程落空、该合同不进任何桶——这不是漏算。ek 等于最后一月的 endKey
+  // 时,coveringMonth 对每个月都判它"覆盖到月末"(含最后一月),即它在整个视界内都是 locked,
+  // 真正的续签不确定性落在视界之外的下一个月,本来就不该有桶。这与"全程覆盖到视界末尾的合同
+  // 不进池"是同一条规则的边界情形,不是新问题;钉在 expiry.logic.spec.ts 的 F8 用例里。
   const byExpMonth: number[][] = [...Array(n)].map(() => [])
   for (const c of pool) {
     const ek = dateKeyOf(c.endDate)
@@ -500,8 +510,8 @@ export function rentRollSentence(r: RentRoll): string | null {
   if (!last) return null
   const wan = (v: number) => Math.round(v / 10000)
   // 用「预计」不用「拟合」:这条带不是回归拟合出来的,是已签合同(确定)加一个续签率模拟出来的。
-  // 「拟合」暗示回归,是这份计划要挤掉的那类夸大。sFreq 那句留着「拟合区间」是对的 ——
-  // 它服务的园区收入序列确实是回归拟合的,两处说的不是同一回事。
+  // 「拟合」暗示回归,是这份计划要挤掉的那类夸大。(F7,修复轮2:上一版这里还断言了 sFreq 那句
+  // 「拟合区间」措辞是对的——没查证就信了,sFreq 全仓没有生产调用方,断言已删,不替换。)
   return `末月租金预计 ${wan(last.locked + last.renewalLo)}~${wan(last.locked + last.renewalHi)}`
 }
 

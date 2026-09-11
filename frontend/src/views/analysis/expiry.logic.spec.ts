@@ -195,10 +195,16 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(lockedRentByMonth([partialFree], '2025-06-01', 1)[0]).toBe(1000)
   })
 
-  it('同一单元同月多于一份合同(实测园区 2 例):只计 startDate 最新的一份,不许双计', () => {
-    const older = ct({ unitId: 9, monthlyRent: 800, startDate: '2024-01-01', endDate: '2026-02-28' })
-    const newer = ct({ unitId: 9, monthlyRent: 900, startDate: '2026-01-01', endDate: '2027-01-31' })
-    expect(lockedRentByMonth([older, newer], '2026-01-01', 1)[0]).toBe(900)   // 不是 1700
+  it('F6:同一单元同月多于一份合同 —— 都计入,不假设是重复行(实测单元 455:两个不同租户并行租约)', () => {
+    const tenantA = ct({ unitId: 9, monthlyRent: 800, startDate: '2024-01-01', endDate: '2026-02-28' })
+    const tenantB = ct({ unitId: 9, monthlyRent: 900, startDate: '2026-01-01', endDate: '2027-01-31' })
+    expect(lockedRentByMonth([tenantA, tenantB], '2026-01-01', 1)[0]).toBe(1700)   // 不再是 900(去重时的旧值)
+  })
+
+  it('F6 前提守卫:同一租户在同一单元上有两份合同同时覆盖同一个月末 —— 当场报错,不许悄悄多算', () => {
+    const dup1 = ct({ unitId: 61, tenantId: 999, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-06-30' })
+    const dup2 = ct({ unitId: 61, tenantId: 999, monthlyRent: 1200, startDate: '2024-06-01', endDate: '2026-12-31' })
+    expect(() => lockedRentByMonth([dup1, dup2], '2026-01-01', 6)).toThrow(/同一单元|前提被打破/)
   })
 
   it('整租(kind=master_lease)不进 locked,单列在 months[].masterLease', () => {
@@ -208,21 +214,21 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(r.months[0].masterLease).toBe(5000)
   })
 
-  it('F4:masterLeaseByMonth 同一单元同月多于一份整租合同 —— 去重(与 lockedRentByMonth 同一治法)', () => {
-    const older = ct({ unitId: 40, monthlyRent: 5000, startDate: '2020-01-01', endDate: '2099-01-01', kind: 'master_lease' })
-    const newer = ct({ unitId: 40, monthlyRent: 6000, startDate: '2026-01-01', endDate: '2099-01-01', kind: 'master_lease' })
-    const r = buildRentRoll([older, newer], '2026-01-01', 1)
-    expect(r.months[0].masterLease).toBe(6000)   // 不是 11000
+  it('F6:masterLeaseByMonth 同一单元同月多于一份整租合同 —— 都计入(不再去重,理由同 lockedRentByMonth)', () => {
+    const tenantA = ct({ unitId: 40, monthlyRent: 5000, startDate: '2020-01-01', endDate: '2099-01-01', kind: 'master_lease' })
+    const tenantB = ct({ unitId: 40, monthlyRent: 6000, startDate: '2026-01-01', endDate: '2099-01-01', kind: 'master_lease' })
+    const r = buildRentRoll([tenantA, tenantB], '2026-01-01', 1)
+    expect(r.months[0].masterLease).toBe(11000)   // 不再是去重后的 6000
   })
 
-  it('F4:pool 同一单元同月多于一份合同 —— 去重,不然一个物理单元的续签结果算两遍', () => {
-    const older = ct({ unitId: 30, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-05-15', status: 'active' })
-    const newer = ct({ unitId: 30, monthlyRent: 1200, startDate: '2026-01-01', endDate: '2026-05-15', status: 'active' })
-    const r = buildRentRoll([older, newer], '2026-01-01', 6)
+  it('F6:pool 同一单元同月多于一份合同 —— 都计入抽样池,不假设是重复行', () => {
+    const tenantA = ct({ unitId: 30, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-05-15', status: 'active' })
+    const tenantB = ct({ unitId: 30, monthlyRent: 1200, startDate: '2026-01-01', endDate: '2026-05-15', status: 'active' })
+    const r = buildRentRoll([tenantA, tenantB], '2026-01-01', 6)
     const idx = r.months.findIndex((m) => m.month === '2026-05')
-    // 去重后该月抽样池只剩 newer 一份(1200),任何一次抽样的和都不可能超过 1200 ——
-    // 不去重时 older+newer 两份都可能命中,和能到 2200(破坏验证实测正好顶到 2200)。
-    expect(r.months[idx].renewalHi).toBeLessThanOrEqual(1200)
+    // 不去重:两份合同都进抽样池,和能顶到 2200(两个都命中)—— 去重版本这里断言过 ≤1200,
+    // 现在两份都保留,只要求上界能超过旧的 1200 上限(具体数受蒙特卡洛种子影响,不钉死等于 2200)。
+    expect(r.months[idx].renewalHi).toBeGreaterThan(1200)
   })
 
   it('F4:decided 故意不去重 —— 同一单元先后两段历史租约是两次独立的续签结果,不是重复数据', () => {
@@ -277,6 +283,14 @@ describe('合约租金带(FORECAST §1.1)', () => {
     const last = r.months[r.months.length - 1]
     expect(last.renewalHi).toBeGreaterThan(0)
     expect(last.renewalHi).toBeGreaterThanOrEqual(last.renewalLo)
+  })
+
+  it('F8:endDate 恰好等于视界最后一个月月末 —— 整个视界都算 locked,不进续签池(不是漏算)', () => {
+    // asOf=2026-01-01,n=3 → 视界 2026-01/02/03,最后一月月末=2026-03-31,与合同 endDate 精确相等。
+    const c = ct({ unitId: 70, monthlyRent: 1000, startDate: '2020-01-01', endDate: '2026-03-31', status: 'active' })
+    const r = buildRentRoll([c], '2026-01-01', 3)
+    expect(r.locked).toEqual([1000, 1000, 1000])   // 三个月都锁定,包括最后一月
+    expect(r.months.every((m) => m.renewalLo === 0 && m.renewalHi === 0)).toBe(true)   // 没有落进任何续签桶
   })
 })
 
