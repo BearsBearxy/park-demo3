@@ -8,9 +8,9 @@ import type { ChartBox } from '@/views/analysis/forecastChart.logic'
 const props = withDefaults(defineProps<{
   cols: RentBandCol[] | null
   splitIdx?: number | null
-  gap?: GapInput | null
+  gaps?: GapInput[]
   height?: number
-}>(), { height: 300, splitIdx: null, gap: null })
+}>(), { height: 300, splitIdx: null, gaps: () => [] })
 
 const host = ref<HTMLElement | null>(null)
 const w = ref(900)
@@ -24,7 +24,7 @@ onMounted(() => {
 onBeforeUnmount(() => ro?.disconnect())
 
 const box = computed<ChartBox>(() => ({ width: w.value, height: props.height, padL: 54, padR: 52, padT: 26, padB: 26 }))
-const geo = computed(() => rentBandGeo(props.cols, box.value, props.splitIdx, props.gap))
+const geo = computed(() => rentBandGeo(props.cols, box.value, props.splitIdx, props.gaps))
 
 const hoverIdx = ref<number | null>(null)
 const hoverCol = computed(() => (hoverIdx.value == null ? null : props.cols?.[hoverIdx.value] ?? null))
@@ -52,6 +52,9 @@ const tipLines = computed(() => {
   if (c.locked != null) out.push(`已锁定 ${f1(c.locked)} 万`)
   if (c.mid != null) out.push(`预计 ${f1(c.mid)} 万`)
   if (c.lo != null && c.hi != null) out.push(`80% 在 ${f1(c.lo)} ~ ${f1(c.hi)}`)
+  // 这一列若是到期缺口,气泡里直说是谁走了 —— 图上那三行小字只够写两个名字
+  const g = props.gaps.find((x) => x.colIndex === hoverIdx.value)
+  if (g) out.push(`${g.count} 份到期 · −${g.dropWan.toFixed(1)} 万`)
   return out
 })
 const CJK = /[　-鿿＀-￯]/
@@ -99,10 +102,10 @@ const tipX = computed(() => {
       </template>
 
       <!-- 缺口批注:稿上那个带引线的小框 —— 告诉人这一跌是谁造成的 -->
-      <template v-if="geo.gapMark">
-        <line :x1="geo.gapMark.x" :x2="geo.gapMark.x" :y1="geo.gapMark.y" :y2="geo.gapMark.y + 26" class="arb-gapline" />
-        <text v-for="(l, i) in geo.gapMark.lines" :key="'gm' + i"
-          :x="geo.gapMark.x - 6" :y="geo.gapMark.y + 38 + i * 13"
+      <template v-for="(gm, gi) in geo.gapMarks" :key="'g' + gi">
+        <line :x1="gm.x" :x2="gm.x" :y1="gm.y" :y2="gm.y + 26" class="arb-gapline" />
+        <text v-for="(l, i) in gm.lines" :key="'gm' + gi + '-' + i"
+          :x="gm.x - 6" :y="gm.y + 38 + i * 13"
           :class="['arb-gaptext', i === 0 ? 'arb-gapnum' : '']">{{ l }}</text>
       </template>
 

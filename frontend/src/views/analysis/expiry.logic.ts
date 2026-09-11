@@ -432,7 +432,8 @@ export interface RentRollGap {
  * 把"结果已经发生的合同"剔出去过(F10,同一条规则的镜像);这里复用同一个集合(调用处传入,
  * 不重算——同一个数不能算两次各出各的账),已有后继的合同不算「到期缺口」。
  */
-export function nearestGap(cs: ContractDTO[], asOf: string, locked: number[], hasSuccessor: Set<number>): RentRollGap | null {
+export function allGaps(cs: ContractDTO[], asOf: string, locked: number[], hasSuccessor: Set<number>): RentRollGap[] {
+  const out: RentRollGap[] = []
   for (let i = 1; i < locked.length; i++) {
     if (locked[i] >= locked[i - 1]) continue
     const prev = monthBounds(asOf, i - 1)
@@ -442,14 +443,23 @@ export function nearestGap(cs: ContractDTO[], asOf: string, locked: number[], ha
       .filter((c) => !hasSuccessor.has(c.id))
       .sort((a, b) => b.monthlyRent - a.monthlyRent)
     if (!dropped.length) continue   // 下跌另有原因(如整月免租退出,或全部到期合同都已续签接上),不算「到期缺口」
-    return {
+    out.push({
       monthsAway: i,
       count: dropped.length,
       totalRentSum: dropped.reduce((s, c) => s + c.monthlyRent, 0),
       names: dropped.slice(0, 2).map((c) => c.tenantName),
-    }
+    })
   }
-  return null
+  return out
+}
+
+/**
+ * 最近的那一个缺口(= allGaps 的第一个)。「最近的缺口」那块 KPI 瓦读它。
+ * 2026-09-12 之前图上也只标这一个,用户要求「每个到期扎堆的月份都标出来」,
+ * 图改读 allGaps;这个入口留着,因为瓦问的确实是「最近」那一个。
+ */
+export function nearestGap(cs: ContractDTO[], asOf: string, locked: number[], hasSuccessor: Set<number>): RentRollGap | null {
+  return allGaps(cs, asOf, locked, hasSuccessor)[0] ?? null
 }
 
 export interface RentPriorityRow {
@@ -471,7 +481,8 @@ export interface RentRoll {
   expiringCount: number      // T4:视界内(byExpMonth 实际分到桶里)的到期合同份数,与续签抽样同一份数据
   expiringRentSum: number    // 上面这批合同的月租合计(元)
   expiringList: RentPriorityRow[]   // T6:与 expiringCount/expiringRentSum 同一份 pool/桶,按月租金降序 —— 供「先谈哪几户」卡用,不另起一套过滤
-  gap: RentRollGap | null    // T4/T5:最近的到期缺口,KPI 瓦与图上标注共用同一个值
+  gap: RentRollGap | null    // T4/T5:最近的到期缺口,「最近的缺口」瓦读它(= gaps[0])
+  gaps: RentRollGap[]        // 全部到期缺口 —— 图上每个到期扎堆的月份都要标(用户 2026-09-12)
 }
 
 /**
@@ -586,6 +597,7 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
 
   // T4(design-boards):「未来 N 月到期」瓦读的是喂给蒙特卡洛的同一批合同(byExpMonth),
   // 不是 pool 本身——pool 里覆盖到视界末尾之外的长租约不进任何一个桶,不该算进"到期"份数。
+  const gapsAll = allGaps(cs, asOf, locked, hasSuccessor)
   const expiringCount = byExpMonth.reduce((s, arr) => s + arr.length, 0)
   const expiringRentSum = byExpMonth.reduce((s, arr) => s + arr.reduce((s2, v) => s2 + v, 0), 0)
 
@@ -599,7 +611,8 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
     lockedBand: undefined,
     renewalN, renewalHits, renewalP,
     expiringCount, expiringRentSum, expiringList,
-    gap: nearestGap(cs, asOf, locked, hasSuccessor),
+    gap: gapsAll[0] ?? null,
+    gaps: gapsAll,
   }
 }
 

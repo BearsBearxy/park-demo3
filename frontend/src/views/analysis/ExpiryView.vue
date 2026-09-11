@@ -83,19 +83,18 @@ const bandCols = computed<RentBandCol[]>(() => {
   return [...hist, ...fwd]
 })
 const bandSplitIdx = computed(() => rentRoll.value.history.length)
-const bandGap = computed<GapInput | null>(() => {
-  const g = rentRoll.value.gap
-  if (!g) return null
-  const col = bandSplitIdx.value + g.monthsAway
-  const m = rentRoll.value.months[g.monthsAway]
-  return {
-    colIndex: col, dropWan: +(g.totalRentSum / 10000).toFixed(1), names: g.names, count: g.count,
-    endLabel: m ? m.month : '',
-  }
-})
 const rentRollText = computed(() => rentRollSentence(rentRoll.value))
 const rentRollRef = computed(() => rentRollRefText(rentRoll.value))
 const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.masterLease > 0))
+// 每个到期扎堆的月份都标(用户 2026-09-12)。以前只标最近那一个 —— 右边更大的一跌反而没有批注。
+const bandGaps = computed<GapInput[]>(() => rentRoll.value.gaps.map((g) => {
+  const m = rentRoll.value.months[g.monthsAway]
+  return {
+    colIndex: bandSplitIdx.value + g.monthsAway,
+    dropWan: +(g.totalRentSum / 10000).toFixed(1),
+    names: g.names, count: g.count, endLabel: m ? m.month : '',
+  }
+}))
 
 // ── T4(design-boards):五个 KPI 瓦读的是 rentRoll 同一份计算(锁定/续签/缺口),
 // 不为瓦另算一次 —— 这正是 T4/T5 合并成一个任务的理由(卡片与瓦对不上,已经在这个项目上出过两次)。
@@ -214,7 +213,7 @@ function onParetoClick(p: unknown) {
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
             <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
-          <AnaRentBandChart v-if="rentRollText" :cols="bandCols" :split-idx="bandSplitIdx" :gap="bandGap" :height="280" />
+          <AnaRentBandChart v-if="rentRollText" :cols="bandCols" :split-idx="bandSplitIdx" :gaps="bandGaps" :height="280" />
           <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
           <p class="ana-ref">{{ rentRollRef }}</p>
         </div>

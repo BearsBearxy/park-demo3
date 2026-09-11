@@ -144,12 +144,14 @@ const ELEC_SPREAD_SAMPLE: ElecSpread = { period: '2025-12', n: 263, p10: 62.62, 
 // 完整性断言共用同一份 fixture,不重复定义。
 const ROLL_A: RentRoll = {
   history: [],
+  gaps: [],
   months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 100000, renewalMid: 200000, renewalHi: 300000 }],
   locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
   expiringCount: 5, expiringRentSum: 500000, expiringList: [], gap: null,
 }
 const ROLL_B: RentRoll = {
   history: [],
+  gaps: [],
   months: [], locked: [], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
   expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
 }

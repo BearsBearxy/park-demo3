@@ -36,19 +36,23 @@ export interface RentBandGeo {
   endLabels: { y: number; text: string; kind: 'hi' | 'mid' | 'locked' | 'lo' }[]
   /** 预测起点那个点的标注(稿上「312.2」)。 */
   startDot: { x: number; y: number; text: string } | null
-  /** 缺口批注:落在缺口那一列。 */
-  gapMark: { x: number; y: number; lines: string[] } | null
+  /** 缺口批注:每个到期扎堆的月份一条(用户 2026-09-12:「每个到期扎堆的月份都标出来」)。
+   *  y 已做过防叠字:横向挨得太近的两条会被逐级往下推。 */
+  gapMarks: { x: number; y: number; lines: string[] }[]
   dots: { i: number; x: number; y: number }[]
   yTicks: { v: number; y: number; label: string }[]
   xTicks: { i: number; x: number; label: string }[]
 }
 
 export interface GapInput { colIndex: number; dropWan: number; names: string[]; count: number; endLabel: string }
+/** 两条批注横向挨得比这还近,就把后一条往下推一层 —— 三行小字大约这么宽。 */
+const GAP_MIN_DX = 96
+const GAP_BLOCK_H = 46
 
 const r2 = (v: number) => +v.toFixed(2)
 
 export function rentBandGeo(
-  cols: RentBandCol[] | null, box: ChartBox, splitIdx: number | null, gap: GapInput | null,
+  cols: RentBandCol[] | null, box: ChartBox, splitIdx: number | null, gaps: GapInput[] = [],
 ): RentBandGeo | null {
   if (!cols || cols.length < 2) return null
   const vals: number[] = []
@@ -104,16 +108,28 @@ export function rentBandGeo(
   const startDot = sCol && sCol.realized != null && splitX != null
     ? { x: splitX, y: r2(y(sCol.realized)), text: sCol.realized.toFixed(1) } : null
 
-  const gCol = gap && gap.colIndex >= 0 && gap.colIndex < n ? cols[gap.colIndex] : null
-  const gBase = gCol ? (gCol.locked ?? gCol.mid ?? gCol.realized) : null
-  const gapMark = gap && gCol && gBase != null ? {
-    x: r2(x(gap.colIndex)), y: r2(y(gBase)),
-    lines: [
-      `−${gap.dropWan.toFixed(1)} 万`,
-      gap.names.slice(0, 2).join(' + ') + (gap.count > gap.names.slice(0, 2).length ? ` 等 ${gap.count} 份` : ''),
-      `${gap.endLabel} 到期`,
-    ],
-  } : null
+  // 每个缺口一条批注。横向挨得近的往下推一层,避免三行小字叠在一起。
+  const placed: { x: number; y: number; lines: string[] }[] = []
+  for (const g of [...gaps].sort((a, b) => a.colIndex - b.colIndex)) {
+    if (!(g.colIndex >= 0 && g.colIndex < n)) continue
+    const col = cols[g.colIndex]
+    const base = col.locked ?? col.mid ?? col.realized
+    if (base == null) continue
+    const gx = r2(x(g.colIndex))
+    let gy = r2(y(base))
+    for (const p of placed) {
+      if (Math.abs(p.x - gx) < GAP_MIN_DX && Math.abs(p.y - gy) < GAP_BLOCK_H) gy = r2(p.y + GAP_BLOCK_H)
+    }
+    placed.push({
+      x: gx, y: gy,
+      lines: [
+        `−${g.dropWan.toFixed(1)} 万`,
+        g.names.slice(0, 2).join(' + ') + (g.count > g.names.slice(0, 2).length ? ` 等 ${g.count} 份` : ''),
+        `${g.endLabel} 到期`,
+      ],
+    })
+  }
+  const gapMarks = placed
 
   const dots = cols.map((c, i) => ({ c, i })).filter(({ c }) => c.realized != null)
     .map(({ c, i }) => ({ i, x: r2(x(i)), y: r2(y(c.realized as number)) }))
@@ -122,5 +138,5 @@ export function rentBandGeo(
   // x 轴只标首月、每季、末月 —— 24 格全标必然挤成一团(稿上也是这么标的)
   const xTicks = cols.map((c, i) => ({ i, x: r2(x(i)), label: c.month }))
     .filter((t, i) => i === 0 || i === n - 1 || (splitIdx != null && i === splitIdx) || Number(cols[i].month.slice(5)) % 3 === 1)
-  return { box, cols, realizedPath, lockedPath, midPath, bandPath, splitX, shade, endLabels, startDot, gapMark, dots, yTicks, xTicks }
+  return { box, cols, realizedPath, lockedPath, midPath, bandPath, splitX, shade, endLabels, startDot, gapMarks, dots, yTicks, xTicks }
 }
