@@ -430,3 +430,157 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
   const half = t * se
   return { month, mid, lo: +(mid - half).toFixed(2), hi: +(mid + half).toFixed(2) }
 }
+
+// ── T3(design-boards 2026-09-11):「全年会落在哪」+「这条带过去准不准」两张卡 ──
+
+/** 卡「全年会落在哪」表头小字:预算整数万(与 fint 同风格,不带小数)。 */
+export function yearOutlookBudgetHint(budgetYuan: number | null): string {
+  return budgetYuan != null ? `预算${fint(budgetYuan / 10000)}万` : ''
+}
+
+export interface YearOutlookRow { label: string; totalWan: number; rate: number | null }
+/**
+ * 「全年会落在哪」四行:按训练月节奏(=paceFullYear,同一个 fit,不再拟合)/ 拟合下沿 / 拟合上沿 /
+ * 含离群月冲回(屏上现值,=旧口径 Σ全年实际)。下沿/上沿把 fit 之外的月份换成 fitBandAt 的 lo/hi
+ * 再求和(与 paceFullYear 用 fitted 中心值求和是同一种拼法,只是换一个分量)。
+ */
+export function yearOutlookRows(pnl: PnlSummary | null, fit: RevenueFit | null, budgetYuan: number | null): YearOutlookRow[] | null {
+  if (!pnl || !fit) return null
+  const pace = paceFullYear(pnl, fit, budgetYuan)
+  if (!pace) return null
+  const rateOf = (t: number): number | null => (budgetYuan ? (t * 10000 / budgetYuan) * 100 : null)
+  let lo = 0, hi = 0, old = 0
+  for (let m = 1; m <= 12; m++) {
+    const actual = wan(pnl.revenue[m - 1]) ?? 0
+    old += actual
+    if (fit.months.includes(m)) { lo += actual; hi += actual } else {
+      const b = fitBandAt(fit, m)
+      lo += b?.lo ?? (fit.fitted[m - 1] ?? 0)
+      hi += b?.hi ?? (fit.fitted[m - 1] ?? 0)
+    }
+  }
+  lo = +lo.toFixed(2); hi = +hi.toFixed(2); old = +old.toFixed(2)
+  const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
+  const oldLabel = outlierMonths.length ? `含 ${outlierMonths.join('、')} 月冲回（屏上现值）` : '含冲回（屏上现值）'
+  return [
+    { label: `按${monthRangeLabel(fit.months)}节奏`, totalWan: pace.totalWan, rate: pace.rate },
+    { label: '拟合下沿', totalWan: lo, rate: rateOf(lo) },
+    { label: '拟合上沿', totalWan: hi, rate: rateOf(hi) },
+    { label: oldLabel, totalWan: old, rate: rateOf(old) },
+  ]
+}
+
+/** 读数句(≤30 可见字):全年落点(向下取整,概数——同 outlierReadout 的「倍」不四舍五入)vs 屏上旧值(精确到 1 位)。 */
+export function yearOutlookReadout(rows: YearOutlookRow[] | null): string | null {
+  if (!rows || rows.length < 4) return null
+  const pace = rows[0].rate, old = rows[3].rate
+  if (pace == null || old == null) return null
+  return `全年在${Math.floor(pace)}%上下，不是${old.toFixed(1)}%`
+}
+
+/** 参照系小字(≤28 可见字):差距全部来自冲回月,不敢标百分比——那句解释挪去 AnaMethodNote。 */
+export function yearOutlookRefText(rows: YearOutlookRow[] | null): string {
+  if (!rows || rows.length < 4) return ''
+  const pace = rows[0].rate, old = rows[3].rate
+  if (pace == null || old == null) return ''
+  const gap = Math.round(pace - old)
+  return `差${gap}个百分点全部来自12月冲回`
+}
+
+/**
+ * 「这条带过去准不准」滚动起点回测:与 fitRevenueTrend **不是同一个计算** —— 那个只拟合一次
+ * (训练月=全部非离群月);这里在每个站点月末重新只用当时已有的月再拟合一次,再预测下一个月。
+ * 复用 fitRevenueTrend 会导致训练集包含尚未发生的未来月,回测就失去意义(任务书原话)。
+ * 独立实现(不改 fitRevenueTrend,不共享其内部状态),OLS 公式与其一致。
+ */
+export function fitRevenueTrendUpTo(pnl: PnlSummary | null, maxMonth: number): RevenueFit | null {
+  if (!pnl) return null
+  const months = pnlYearMonths(pnl).filter((m) => m <= maxMonth)
+  const n = months.length
+  if (n < 3) return null
+  const ys = months.map((m) => wan(pnl.revenue[m - 1]) as number)
+  const xbar = months.reduce((a, b) => a + b, 0) / n
+  const ybar = ys.reduce((a, b) => a + b, 0) / n
+  let sxy = 0, sxx = 0, syy = 0
+  for (let i = 0; i < n; i++) {
+    sxy += (months[i] - xbar) * (ys[i] - ybar)
+    sxx += (months[i] - xbar) ** 2
+    syy += (ys[i] - ybar) ** 2
+  }
+  const slope = sxx ? sxy / sxx : 0
+  const intercept = ybar - slope * xbar
+  const r2 = sxx && syy ? (sxy * sxy) / (sxx * syy) : 0
+  const fitted = Array.from({ length: 12 }, (_, i) => +(intercept + slope * (i + 1)).toFixed(2))
+  let ssRes = 0
+  for (let i = 0; i < n; i++) ssRes += (ys[i] - (intercept + slope * months[i])) ** 2
+  const residualScale = n > 2 ? Math.sqrt(ssRes / (n - 2)) : 0
+  return { months, slope: +slope.toFixed(2), intercept: +intercept.toFixed(2), r2: +r2.toFixed(4), fitted, residualScale: +residualScale.toFixed(2) }
+}
+
+export interface BacktestRow {
+  vantageMonth: number        // 站在哪个月末
+  isLast: boolean             // 最新站点(板上「(今天)」后缀)
+  predictMid: number          // 下月预测(万,拟合中心值)
+  lo: number; hi: number      // 拟合区间(万)
+  actualWan: number | null    // 实际(万);null = 待验(下月是离群月/无数据)
+  hit: boolean | null         // 命中/落空;null = 待验
+  under: boolean | null       // 落空时:true=低估(实际超上沿) false=高估(实际低于下沿)
+  missPct: number | null      // 落空时 |实际-预测中心|/预测中心,一位小数
+  fullYearRate: number | null // 同时推全年(站在这个月末,用这个月末的 fit 重跑 paceFullYear)
+}
+/** 最近 6 个站点(不足 6 个训练月则全取):每站只用到当时已有的月,预测下一个月,同时给出那一站推算的全年。 */
+export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null): BacktestRow[] | null {
+  if (!pnl) return null
+  const vantages = pnlYearMonths(pnl).filter((m) => m < 12).slice(-6)
+  if (!vantages.length) return null
+  const lastV = vantages[vantages.length - 1]
+  const rows: BacktestRow[] = []
+  for (const v of vantages) {
+    const fit = fitRevenueTrendUpTo(pnl, v)
+    const nextM = v + 1
+    const band = fit ? fitBandAt(fit, nextM) : null
+    if (!fit || !band) return null   // 训练点不足(理论上 v≥3 就够,不该发生)——整表宁可不画也不半拉子
+    const rawNext = pnl.revenue[nextM - 1]
+    const actualWan = rawNext != null && !isOutlierMonth(pnl.revenue, nextM) ? wan(rawNext) : null
+    let hit: boolean | null = null, under: boolean | null = null, missPct: number | null = null
+    if (actualWan != null) {
+      hit = actualWan >= band.lo && actualWan <= band.hi
+      if (!hit) {
+        under = actualWan > band.hi
+        missPct = +(Math.abs((actualWan - band.mid) / band.mid) * 100).toFixed(1)
+      }
+    }
+    const pace = paceFullYear(pnl, fit, budgetYuan)
+    rows.push({
+      vantageMonth: v, isLast: v === lastV, predictMid: band.mid, lo: band.lo, hi: band.hi,
+      actualWan, hit, under, missPct, fullYearRate: pace?.rate ?? null,
+    })
+  }
+  return rows
+}
+
+export interface BacktestSummary { scored: number; hits: number; misses: number; unders: number; allUnder: boolean }
+/** 只统计有实际值可比的站点(待验的最新一站不算数,板上「5 次里」不含它)。unders = 落空里偏低的那部分,
+ *  不能拿 misses 顶替 —— 万一哪天出现一次高估,「N次偏低」就该只数偏低的那几次,不是数全部落空。 */
+export function backtestSummary(rows: BacktestRow[] | null): BacktestSummary | null {
+  if (!rows) return null
+  const scored = rows.filter((r) => r.hit != null)
+  const missRows = scored.filter((r) => r.hit === false)
+  const unders = missRows.filter((r) => r.under).length
+  return { scored: scored.length, hits: scored.length - missRows.length, misses: missRows.length, unders, allUnder: missRows.length > 0 && unders === missRows.length }
+}
+
+/** 读数句(≤30 可见字):带按 80%(t 表双侧 80%,fitBandAt 头注)画的,但落空占比与偏向都是实测,不是编的。 */
+export function backtestReadout(sum: BacktestSummary | null): string | null {
+  if (!sum || !sum.scored) return null
+  if (!sum.misses) return `这条带按80%画的，${sum.scored}次全部命中`
+  return `这条带按80%画的，${sum.scored}次里只中了${sum.hits}次，落空的${sum.misses}次全是${sum.allUnder ? '低估' : '有高有低'}`
+}
+
+/** 参照系小字(≤28 可见字):样本量 + 站点区间(铁律:印了百分比就得印样本量)。 */
+export function backtestRefText(rows: BacktestRow[] | null): string {
+  if (!rows) return ''
+  const scored = rows.filter((r) => r.hit != null)
+  if (!scored.length) return ''
+  return `参照${scored[0].vantageMonth}-${scored[scored.length - 1].vantageMonth}月末起点·样本${scored.length}次`
+}

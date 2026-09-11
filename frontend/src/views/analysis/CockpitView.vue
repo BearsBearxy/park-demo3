@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -137,6 +137,16 @@ const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.v
 const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
 const outlierRef = computed(() => outlierRefText(fit.value))
 const fitBand = computed(() => (outlierRes.value ? fitBandAt(fit.value, outlierRes.value.month) : null))
+// T3(design-boards 2026-09-11):「全年会落在哪」四行 + 「这条带过去准不准」滚动回测六行——
+// 全年落点复用 T1 的 fit(同一份,不再拟合);回测每站重新只用当时已有的月拟合(见 backtestRows 头注)。
+const yearRows = computed(() => yearOutlookRows(pnl.value, fit.value, budgetYuan.value))
+const yearHint = computed(() => yearOutlookBudgetHint(budgetYuan.value))
+const yearRead = computed(() => yearOutlookReadout(yearRows.value))
+const yearRef = computed(() => yearOutlookRefText(yearRows.value))
+const backRows = computed(() => backtestRows(pnl.value, budgetYuan.value))
+const backSum = computed(() => backtestSummary(backRows.value))
+const backRead = computed(() => backtestReadout(backSum.value))
+const backRef = computed(() => backtestRefText(backRows.value))
 // 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
 const outlierBannerText = computed(() => {
   const m = mc.value?.outlierMonths[0]
@@ -466,6 +476,58 @@ const conclusion = computed(() => buildConclusion(
           <button class="cv2-all" @click="go('/anomaly')">进入监控中心 · 全部 {{ anomalies.length }} 条 →</button>
         </div>
         <AnaEmpty v-else label="当前规则下暂无异常" hint="收缴率/能耗环比/收入中断/负值行 四规则均未触发" />
+      </div>
+
+      <!-- T3(design-boards 2026-09-11):全年会落在哪——按训练节奏/拟合下沿/拟合上沿/含冲回旧值 四行 -->
+      <div class="av2-card av2-s6">
+        <div class="av2-card-h">
+          <span class="t">全年会落在哪</span>
+          <span class="hint">{{ yearHint }}</span>
+        </div>
+        <table v-if="yearRows" class="ak-tbl">
+          <thead><tr><th>算法</th><th>全年收入</th><th>达成</th></tr></thead>
+          <tbody>
+            <tr v-for="r in yearRows" :key="r.label">
+              <td>{{ r.label }}</td>
+              <td class="mono">{{ fint(r.totalWan) }}万</td>
+              <td class="mono">{{ r.rate != null ? r.rate.toFixed(1) + '%' : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <AnaEmpty v-else label="全年落点需要拟合" hint="依赖月度收入回归拟合(需 ≥3 个可用月)" />
+        <p v-if="yearRead" class="ana-read">{{ yearRead }}</p>
+        <p v-if="yearRead" class="ana-ref">{{ yearRef }}</p>
+        <AnaMethodNote v-if="yearRead">区间不敢标百分比：过去 {{ backSum?.scored ?? 0 }} 次外推 {{ backSum?.unders ?? 0 }} 次偏低</AnaMethodNote>
+      </div>
+
+      <!-- T3:这条带过去准不准——滚动起点回测,每站只用当时已有的月,不复用 T1 的单次 fit;
+           六列数据比四行三列的邻卡宽得多,独占一整行不挤 -->
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">这条带过去准不准</span>
+          <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
+        </div>
+        <table v-if="backRows" class="ak-tbl">
+          <thead><tr><th>站在哪个月末</th><th>下月预测</th><th>拟合区间</th><th>实际</th><th>中没中</th><th>同时推全年</th></tr></thead>
+          <tbody>
+            <tr v-for="r in backRows" :key="r.vantageMonth">
+              <td>{{ r.vantageMonth }}月末{{ r.isLast ? '（今天）' : '' }}</td>
+              <td class="mono">{{ fint(r.predictMid) }}万</td>
+              <td class="mono">{{ fint(r.lo) }}~{{ fint(r.hi) }}</td>
+              <td class="mono">{{ r.actualWan != null ? fint(r.actualWan) + '万' : '—' }}</td>
+              <td>
+                <span v-if="r.hit == null" style="color: var(--text-muted)">待验</span>
+                <span v-else-if="r.hit" :style="{ color: STATUS.good.color }">命中</span>
+                <span v-else :style="{ color: STATUS.watch.color }">落空 {{ r.under ? '低估' : '高估' }} {{ r.missPct?.toFixed(1) }}%</span>
+              </td>
+              <td class="mono">{{ r.fullYearRate != null ? r.fullYearRate.toFixed(1) + '%' : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <AnaEmpty v-else label="回测需要拟合" hint="滚动起点回测依赖至少 3 个可用月才能起步" />
+        <p v-if="backRead" class="ana-read">{{ backRead }}</p>
+        <p v-if="backRead" class="ana-ref">{{ backRef }}</p>
+        <AnaMethodNote v-if="backRead">趋势在加速，残差还带正自相关（DW 1.01）· 所以屏上只写「拟合区间」，不写「80% 可能落在此区间」—— 样本不够，那个百分比是编的</AnaMethodNote>
       </div>
 
       <div class="av2-s12">

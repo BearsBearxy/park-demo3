@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend,
-  type BudgetAch, type RevenueFit,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  type BacktestRow, type BudgetAch, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -539,5 +539,153 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     // 用不到真实数据也能测边界:直接构造 df 越界的 fit 对象。
     const overDf = { ...fit, months: Array.from({ length: 20 }, (_, i) => i + 1) }
     expect(fitBandAt(overDf, 12)).toBeNull()
+  })
+})
+
+// ── T3(design-boards 2026-09-11):「全年会落在哪」+「这条带过去准不准」两张卡 ──
+// 与 T1/T2 同一批 2025 实测数(park_demo3,锚点 2025-12);任务书验收锚点:
+// 9,794/105.6% · 9,754/105.2% · 9,833/106.1% · 8,772/94.6%,回测六站见下方逐条断言(数与板上逐字对)。
+describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测)', () => {
+  const REV: (number | null)[] = [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
+  ]
+  const BUDGET = 92705202.87
+  const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
+
+  it('❗yearOutlookRows:四行落在验收锚点上 —— 9794/105.6% · 9754/105.2% · 9833/106.1% · 8772/94.6%', () => {
+    const fit = fitRevenueTrend(p2025())
+    const rows = yearOutlookRows(p2025(), fit, BUDGET)!
+    expect(rows).toHaveLength(4)
+    expect(Math.round(rows[0].totalWan)).toBe(9794)
+    expect(rows[0].rate!.toFixed(1)).toBe('105.6')
+    expect(Math.round(rows[1].totalWan)).toBe(9754)
+    expect(rows[1].rate!.toFixed(1)).toBe('105.2')
+    expect(Math.round(rows[2].totalWan)).toBe(9833)
+    expect(rows[2].rate!.toFixed(1)).toBe('106.1')
+    expect(Math.round(rows[3].totalWan)).toBe(8772)
+    expect(rows[3].rate!.toFixed(1)).toBe('94.6')
+    // 下沿 < 节奏 < 上沿(区间必须真是区间,不能拟合下沿比节奏值还高)
+    expect(rows[1].totalWan).toBeLessThan(rows[0].totalWan)
+    expect(rows[0].totalWan).toBeLessThan(rows[2].totalWan)
+  })
+
+  it('yearOutlookRows:pnl 或 fit 缺一 → null;paceFullYear 本身 null(训练点<3)也传导为 null', () => {
+    const fit = fitRevenueTrend(p2025())
+    expect(yearOutlookRows(null, fit, BUDGET)).toBeNull()
+    expect(yearOutlookRows(p2025(), null, BUDGET)).toBeNull()
+    const tooFew = pnl({ months: [1, 2], revenue: [100, 200, ...new Array(10).fill(null)] })
+    expect(yearOutlookRows(tooFew, fitRevenueTrend(tooFew), BUDGET)).toBeNull()
+  })
+
+  it('❗yearOutlookReadout/RefText:文案与字数门禁(≤30/≤28 可见字),数落在105%与94.6%上', () => {
+    const rows = yearOutlookRows(p2025(), fitRevenueTrend(p2025()), BUDGET)
+    const read = yearOutlookReadout(rows)
+    const ref = yearOutlookRefText(rows)
+    expect(read).toBe('全年在105%上下，不是94.6%')
+    expect(ref).toBe('差11个百分点全部来自12月冲回')
+    expect([...read!].length).toBeLessThanOrEqual(30)
+    expect([...ref].length).toBeLessThanOrEqual(28)
+    expect(yearOutlookReadout(null)).toBeNull()
+    expect(yearOutlookRefText(null)).toBe('')
+  })
+
+  it('yearOutlookBudgetHint:整数万(≤24 可见字);预算缺失 → 空串', () => {
+    const hint = yearOutlookBudgetHint(BUDGET)
+    expect(hint).toBe('预算9,271万')
+    expect([...hint].length).toBeLessThanOrEqual(24)
+    expect(yearOutlookBudgetHint(null)).toBe('')
+  })
+
+  it('❗fitRevenueTrendUpTo:只用截止月之前的训练点,不是 fitRevenueTrend 的另一层皮 —— 站在6月末看不到7月', () => {
+    const fit6 = fitRevenueTrendUpTo(p2025(), 6)!
+    expect(fit6.months).toEqual([1, 2, 3, 4, 5, 6])              // 不含7月及以后,哪怕 pnl 里已经有7月的数
+    const fitFull = fitRevenueTrend(p2025())!
+    expect(fit6.slope).not.toBeCloseTo(fitFull.slope, 1)          // 训练集不同,拟合出的斜率不该凑巧撞上全量拟合
+    expect(fitRevenueTrendUpTo(p2025(), 2)).toBeNull()             // 训练点<3,站在2月末还拟合不出东西
+    expect(fitRevenueTrendUpTo(null, 6)).toBeNull()
+  })
+
+  it('❗backtestRows:六站逐条落在板上的数——预测/区间/实际/命中/全年推算', () => {
+    const rows = backtestRows(p2025(), BUDGET)!
+    expect(rows.map((r) => r.vantageMonth)).toEqual([6, 7, 8, 9, 10, 11])
+    const round = (v: number) => Math.round(v)
+    const expected = [
+      { v: 6, pred: 776, lo: 744, hi: 809, actual: 825, hit: false, under: true, pct: '6.3', fy: '99.7' },
+      { v: 7, pred: 816, lo: 776, hi: 857, actual: 867, hit: false, under: true, pct: '6.2', fy: '102.3' },
+      { v: 8, pred: 859, lo: 814, hi: 905, actual: 876, hit: true, under: null, pct: null, fy: '104.2' },
+      { v: 9, pred: 889, lo: 847, hi: 930, actual: 930, hit: false, under: true, pct: '4.7', fy: '104.6' },
+      { v: 10, pred: 928, lo: 886, hi: 971, actual: 941, hit: true, under: null, pct: null, fy: '105.5' },
+      { v: 11, pred: 958, lo: 919, hi: 997, actual: null, hit: null, under: null, pct: null, fy: '105.6' },
+    ]
+    rows.forEach((r, i) => {
+      const e = expected[i]
+      expect(round(r.predictMid), `v${e.v} pred`).toBe(e.pred)
+      expect(round(r.lo), `v${e.v} lo`).toBe(e.lo)
+      expect(round(r.hi), `v${e.v} hi`).toBe(e.hi)
+      expect(r.actualWan == null ? null : round(r.actualWan), `v${e.v} actual`).toBe(e.actual)
+      expect(r.hit, `v${e.v} hit`).toBe(e.hit)
+      expect(r.under, `v${e.v} under`).toBe(e.under)
+      expect(r.missPct == null ? null : r.missPct.toFixed(1), `v${e.v} pct`).toBe(e.pct)
+      expect(r.fullYearRate!.toFixed(1), `v${e.v} fy`).toBe(e.fy)
+    })
+    expect(rows[5].isLast).toBe(true)
+    expect(rows.slice(0, 5).every((r) => !r.isLast)).toBe(true)
+    // 最新一站(11月末)站在全部训练月上,和 T1 主 fit 是同一个计算结果——不是巧合,是同一个训练集
+    const mainFit = fitRevenueTrend(p2025())!
+    const mainBand = fitBandAt(mainFit, 12)!
+    expect(round(rows[5].predictMid)).toBe(round(mainBand.mid))
+    expect(round(rows[5].lo)).toBe(round(mainBand.lo))
+    expect(round(rows[5].hi)).toBe(round(mainBand.hi))
+  })
+
+  it('backtestRows:pnl 为 null → null', () => {
+    expect(backtestRows(null, BUDGET)).toBeNull()
+  })
+
+  it('❗backtestSummary:5 次可评分(11月末待验不算数),2 中 3 落空,3 次落空全是低估', () => {
+    const rows = backtestRows(p2025(), BUDGET)
+    const sum = backtestSummary(rows)!
+    expect(sum.scored).toBe(5)
+    expect(sum.hits).toBe(2)
+    expect(sum.misses).toBe(3)
+    expect(sum.unders).toBe(3)
+    expect(sum.allUnder).toBe(true)
+    expect(backtestSummary(null)).toBeNull()
+  })
+
+  it('❗backtestReadout/RefText:文案与字数门禁(≤30/≤28 可见字),不含统计禁词', () => {
+    const rows = backtestRows(p2025(), BUDGET)
+    const sum = backtestSummary(rows)
+    const read = backtestReadout(sum)
+    const ref = backtestRefText(rows)
+    expect(read).toBe('这条带按80%画的，5次里只中了2次，落空的3次全是低估')
+    expect(ref).toBe('参照6-10月末起点·样本5次')
+    expect([...read!].length).toBeLessThanOrEqual(30)
+    expect([...ref].length).toBeLessThanOrEqual(28)
+    expect(read).not.toMatch(/σ|标准差|标准偏差|西格玛|z\s*分数|置信/)
+    expect(ref).not.toMatch(/σ|标准差|标准偏差|西格玛|z\s*分数|置信/)
+    expect(backtestReadout(null)).toBeNull()
+    expect(backtestRefText(null)).toBe('')
+  })
+
+  it('backtestReadout:全部命中时不说「全是低估」(不能瞎编方向)', () => {
+    expect(backtestReadout({ scored: 3, hits: 3, misses: 0, unders: 0, allUnder: false })).toBe('这条带按80%画的，3次全部命中')
+  })
+
+  it('❗backtestSummary:unders 只数「落空里偏低」的那部分,不能拿 misses 顶替 —— '
+    + '2025 实测数据里两者刚好都是3,单靠上面那条测不出「顶替」这种 bug,这里手造一次高估把两者拆开', () => {
+    const rows: BacktestRow[] = [
+      { vantageMonth: 1, isLast: false, predictMid: 100, lo: 90, hi: 110, actualWan: 120, hit: false, under: true, missPct: 20, fullYearRate: null },
+      { vantageMonth: 2, isLast: false, predictMid: 100, lo: 90, hi: 110, actualWan: 80, hit: false, under: false, missPct: 20, fullYearRate: null },
+      { vantageMonth: 3, isLast: true, predictMid: 100, lo: 90, hi: 110, actualWan: 100, hit: true, under: null, missPct: null, fullYearRate: null },
+    ]
+    const sum = backtestSummary(rows)!
+    expect(sum.scored).toBe(3)
+    expect(sum.hits).toBe(1)
+    expect(sum.misses).toBe(2)
+    expect(sum.unders).toBe(1)    // 只有一次偏低——不等于 misses(2),顶替的话这里就会错报成 2
+    expect(sum.allUnder).toBe(false)
   })
 })
