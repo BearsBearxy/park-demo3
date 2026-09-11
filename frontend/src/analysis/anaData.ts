@@ -21,6 +21,7 @@
 // ├─ fetchBudgetAll()           ├ budget / cockpit(预算达成卡)           ├ BudgetRowDTO[](全部年份,表小一次拉全)
 // ├─ fetchTenants()/fetchTenantSummary()      ├ cockpit/park/portfolio/churn ├ TenantDTO[] / TenantSummaryDTO
 // ├─ fetchContracts()/fetchContractSummary()  ├ park/portfolio/expiry/cockpit├ ContractDTO[] / ContractSummaryDTO
+// ├─ fetchContractDetail(id)     ├ tenant-peer(头部物业类型)              ├ ContractDetailDTO(含 billingLines)
 // ├─ fetchBuildings()/fetchBuildingDetail(id) ├ park                        ├ BuildingDTO[] / BuildingDetailDTO
 // ├─ fetchBuildingSummary()      ├ park(全园出租率,面积口径)              ├ BuildingSummaryDTO(occRate 可空)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -276,6 +277,8 @@ export function fetchTenants() { return cached('tenants', () => tenantApi.list()
 export function fetchTenantSummary() { return cached('tenantSummary', () => tenantApi.summary()) }
 export function fetchContracts() { return cached('contracts', () => contractApi.list()) }
 export function fetchContractSummary() { return cached('contractSummary', () => contractApi.summary()) }
+// tenant-peer 头部「物业类型」:只为选中租户的主合同查一次计费行(不为整批同类都查,见 TenantPeer.logic.ts)
+export function fetchContractDetail(id: number) { return cached(`contractDetail:${id}`, () => contractApi.detail(id)) }
 export function fetchBuildings() { return cached('buildings', () => buildingApi.list()) }
 // 全园出租率(面积口径)只取 buildings/summary 的 occRate —— 唯一判据是后端 BuildingService.occRateOf,
 // METRIC-SOURCE-SPEC §1 禁止前端拿 leasedArea/rentableArea 把公式再实现一遍(全园与单栋必须同源)。

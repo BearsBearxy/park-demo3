@@ -8,6 +8,7 @@ import {
   sensitivityGapSentence, rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
 } from '../analysis/expiry.logic'
 import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
+import { unitRentReadout, unitRentRefText } from '../analysis/TenantPeer.logic'
 import type { PnlSummary } from '../../analysis/anaData'
 
 /**
@@ -99,6 +100,11 @@ const PRIORITY_SAMPLE: RentPriorityRow[] = [...Array(10)].map((_, i) => ({
   id: i, contractNo: 'HT' + i, tenantName: '租户' + i, endDate: '2026-08-01', monthlyRent: (10 - i) * 100000, monthsLeft: i,
 }))
 const SENSITIVITY_SAMPLE = sensitivityRows(2147000, 2179000, 3122000, 0.2)
+
+// T8/T9(design-boards)固定字:「单位租金对标」卡的读数句/参照系小字是 TenantPeer.logic.ts 抽出的
+// 纯函数,同一处 F9 盲区(.ana-read/.ana-ref 除插值外没有第二个字符)——直接量函数输出即可。
+// 样本量级不追求业务真实,够用(≥MIN_SAMPLE=20)就行。
+const PEER_SAMPLE = Array.from({ length: 51 }, (_, i) => 7 + i)   // 7..57,51 份
 
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
 const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
@@ -322,6 +328,7 @@ describe('分析层文案门禁', () => {
       renewalRateReadout(18, 90),                        // T7(design-boards):续签率从哪来
       sensitivitySentence(SENSITIVITY_SAMPLE),           // T7(design-boards):续签率变一档
       sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000),   // F1(修复轮1):板上收尾行,缺口折算中型厂房
+      unitRentReadout(28.11, PEER_SAMPLE, '期区一'),         // T8/T9(design-boards):单位租金对标
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -346,6 +353,7 @@ describe('分析层文案门禁', () => {
       rentRollRefText(rollB),
       outlierRefText(cockpitFit),   // T2(design-boards):驾驶舱护栏图参照系小字,同一处盲区
       priorityRefText(PRIORITY_SAMPLE, 2179000),   // T6(design-boards):先谈哪几户
+      unitRentRefText(51, '期区一', '2026-09'),      // T8/T9(design-boards):单位租金对标
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)

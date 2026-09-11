@@ -51,6 +51,7 @@ const VIEWS: Record<string, RouteRecordRaw['component']> = {
   'park-energy': () => import('@/views/analysis/ParkEnergyView.vue'),
   'tenant-energy': () => import('@/views/analysis/TenantEnergyView.vue'),
   'tenant-portfolio': () => import('@/views/analysis/TenantPortfolioView.vue'),
+  'tenant-peer': () => import('@/views/analysis/TenantPeerView.vue'),
   'fin-pnl': () => import('@/views/analysis/FinPnlView.vue'),
   'fin-balance': () => import('@/views/analysis/FinBalanceView.vue'),
   'fin-cashflow': () => import('@/views/analysis/FinCashflowView.vue'),
