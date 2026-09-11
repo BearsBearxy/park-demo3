@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, t80, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, nextMonthForecast, nextForecastReadout, nextForecastRefText, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -536,15 +536,6 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
 
   // ── 趋势线/拟合区间 2026-09-12 搬去 trendChartOption(用户:主图里「完全看不见」)。
   //    断言跟着搬,判据一个没减,另加两条只在新图成立的(轴不从 0 起、离群月留断口)。
-  it('❗趋势 series 存在,data 就是 fit.fitted 本身(同一份,不是另算一条线)', () => {
-    const d = mainChart(p2025(), null)
-    const fit = fitRevenueTrend(p2025())
-    const opt = trendChartOption(d, fit, null) as { series: { name: string; data: unknown }[] }
-    const trend = opt.series.find((s) => s.name === '趋势')
-    expect(trend, '趋势图缺「趋势」series——整段被删也不会有任何断言变红').toBeTruthy()
-    expect(trend!.data).toBe(fit!.fitted)
-  })
-
   it('❗主图(柱图)里不再有趋势线/拟合区间 —— 拆出去了就不许两张图各画一份', () => {
     const d = mainChart(p2025(), null)
     const opt = mainChartOption(d, new Map(), 'none') as { series: { name: string }[] }
@@ -552,70 +543,11 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     expect(opt.series.find((s) => s.name.startsWith('拟合区间'))).toBeUndefined()
   })
 
-  it('❗趋势图 y 轴 scale: true —— 不从 0 起,否则 714~941 万的波动只占轴高两成', () => {
-    const d = mainChart(p2025(), null)
-    const fit = fitRevenueTrend(p2025())
-    const opt = trendChartOption(d, fit, null) as { yAxis: { scale?: boolean; min?: unknown } }
-    expect(opt.yAxis.scale, '轴退回 0 起,用户报的「完全看不见」就回来了').toBe(true)
-    expect(opt.yAxis.min, 'scale 与写死 min 同时给会互相打架').toBeUndefined()
-  })
-
-  it('❗折线逐月原值,一个都不剔 —— 用户 2026-09-12:「是什么数据就使用什么数据」', () => {
-    const d = mainChart(p2025(), null)
-    const fit = fitRevenueTrend(p2025())
-    const opt = trendChartOption(d, fit, null) as
-      { series: { name: string; data?: (number | null)[]; markLine?: unknown }[] }
-    const line = opt.series.find((s) => s.name === '已录入')!
-    // 改前这里是 null(收入为负的月份被换成断口)。那是替用户判断他的数据该不该出现。
-    expect(line.data![11], '12 月必须是它的真实值 −63.61 万,不许换成 null').toBeCloseTo(-63.61, 1)
-    expect(line.data!.every((v) => v != null), '任何一个月都不许被剔掉').toBe(true)
-    expect(line.data!.length).toBe(12)
-    // 断口没了,解释断口的竖线跟着没
-    expect(line.markLine, '没有断口要标了,竖线不该还在').toBeUndefined()
-  })
-
-  it('❗图上只画下月预测那一列,不画整年带 —— 用户 2026-09-12:「只需要看到下月的预测」', () => {
-    // 8 月没录的年份:最后一个已录入月是 7 月(revGap 里 8 月为 null),所以下月预测就是 8 月。
-    const revGap: (number | null)[] = [7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20, null,
-      null, null, null, null, null]
-    const p = pnl({ months: [1, 2, 3, 4, 5, 6], revenue: revGap })
-    const f = nextMonthForecast(p)!
-    expect(f.month, '下月 = 最后一个已录入月 + 1').toBe(7)
-    expect(f.trainMonths, '训练集就是已录入的那几个月').toEqual([1, 2, 3, 4, 5, 6])
-    const opt = trendChartOption(mainChart(p, null), fitRevenueTrend(p), f) as
-      { series: { name: string; markArea?: { data: { xAxis: number; yAxis: number }[][] } }[] }
-    const area = opt.series.find((x) => x.name === '下月预测')
-    expect(area, '缺「下月预测」series').toBeTruthy()
-    const [lo, hi] = area!.markArea!.data[0]
-    expect(lo.xAxis, 'markArea 必须卡在下月那一列').toBeCloseTo(f.month - 1.5, 5)
-    expect(hi.xAxis).toBeCloseTo(f.month - 0.5, 5)
-    expect(lo.yAxis).toBeCloseTo(f.lo, 2)
-    expect(hi.yAxis).toBeCloseTo(f.hi, 2)
-  })
-
-  it('❗整年录满就没有「下月」可预测 → null(不跨年,那需要下一年的数据)', () => {
-    expect(nextMonthForecast(p2025())).toBeNull()
-    expect(nextForecastReadout(null)).toBeNull()
-    expect(nextForecastRefText(null, null)).toBe('')
-    const opt = trendChartOption(mainChart(p2025(), null), fitRevenueTrend(p2025()), null) as { series: { name: string }[] }
-    expect(opt.series.find((x) => x.name === '下月预测'), '没有下月就不该有这块色带').toBeUndefined()
-    expect(opt.series.find((x) => x.name === '趋势'), '预测没了图不该跟着没').toBeTruthy()
-  })
-
   it('t80:表内按表,df>30 用正态极限,df<1 才是真的算不出', () => {
     expect(t80(9)).toBe(1.383)
     expect(t80(30)).toBe(1.310)
     expect(t80(31)).toBe(1.2816)
     expect(t80(0)).toBeNull()
-  })
-
-  it('无 fit 时整张趋势图为 null;band=null 时图还在,只是没有带', () => {
-    const d = mainChart(p2025(), null)
-    const fit = fitRevenueTrend(p2025())
-    const opt = trendChartOption(d, fit, null) as { series: { name: string }[] }
-    expect(opt.series.find((s) => s.name.startsWith('拟合区间'))).toBeUndefined()
-    expect(opt.series.find((s) => s.name === '趋势'), '带没了图不该跟着没').toBeTruthy()
-    expect(trendChartOption(d, null, null)).toBeNull()
   })
 
   it('❗离群 markPoint 的 label.formatter 逐月取 outlierResByMonth(F4 的原话镜像到 option 层:'
@@ -697,6 +629,28 @@ describe('❗T3:backtestRows(滚动起点回测)+ nextMonthForecast(下月预测
     expect(Math.round(f.mid)).toBe(958)
     expect(Math.round(f.lo)).toBe(919)
     expect(Math.round(f.hi)).toBe(997)
+  })
+
+  it('❗年中(只录到 6 月):最早两站训练点不足,跳过它们而不是把整张成绩单判空', () => {
+    // 2026-09-12 实测发现的缺陷。年中正是这屏最常被打开的时候,而那张表是下月预测唯一的信用凭证,
+    // 改前 v=1(只有 1 个训练点)一算不出来就 `return null`,整表连同它一起消失。
+    const half: (number | null)[] = REV.map((v, i) => (i < 6 ? v : null))
+    const p6 = pnl({ months: [1, 2, 3, 4, 5, 6], revenue: half })
+    const rows = backtestRows(p6, BUDGET)!
+    expect(rows, '整张表不该消失').toBeTruthy()
+    expect(rows.map((r) => r.vantageMonth), 'v=1/2 训练点不足被跳过,3 起才算得出来').toEqual([3, 4, 5, 6])
+    // 「今天」是真正算出来的最后一站,不是名义上的最后一个月
+    expect(rows[rows.length - 1].isLast).toBe(true)
+    expect(rows.slice(0, -1).every((r) => !r.isLast)).toBe(true)
+    // 最后一站预测 7 月,7 月还没到 → 待验,不参与评分
+    expect(rows[3].actualWan).toBeNull()
+    expect(backtestSummary(rows)!.scored).toBe(3)
+    // 下月预测与这最后一站仍然逐位相等
+    const f = nextMonthForecast(p6)!
+    expect(f.month).toBe(7)
+    expect(f.mid).toBeCloseTo(rows[3].predictMid, 2)
+    expect(f.lo).toBeCloseTo(rows[3].lo, 2)
+    expect(f.hi).toBeCloseTo(rows[3].hi, 2)
   })
 
   it('❗读数句/参照系小字:只报数不报「80%」,实测命中随参照系同屏(D1)', () => {

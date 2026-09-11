@@ -531,64 +531,11 @@ export function nextForecastRefText(f: NextForecast | null, sum: BacktestSummary
   return sum && sum.scored ? `${base} · 过去${sum.scored}次中${sum.hits}次` : base
 }
 
-/**
- * 「收入趋势 · 下月预测」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
- * 可视化,现在完全看不见」)。
- *
- * 拆的理由是实测量级:主图是 0 起的柱图,2025 年 1–11 月收入在 714~941 万之间,波动幅度只占
- * 轴高的两成多,趋势线的斜率(月均 +25.8 万)与拟合区间的宽度在屏上都读不出来。
- *
- * 两处与主图不同,都是为了让波动看得见,也都只在这张图成立:
- * ① y 轴 `scale: true`,不从 0 起。这张图里**没有柱子** —— 截断轴会放大的是面积,而这里只有
- *    线的位置,位置本来就得照轴刻度读。主图有柱子,原样保持 0 起,不动。
- * ② 离群月不进折线(填 null,留一个看得见的断口)。−64 万那一个点会把 700~940 这段压成平线,
- *    正是用户说的「完全看不见」。它的真实值不藏:那一列照标竖线,标签写值与「离群」。
+/*
+ * trendChartOption(ECharts 版趋势图)2026-09-12 删掉,换成自绘 SVG(AnaForecastChart.vue +
+ * forecastChart.logic.ts)。用户原话:「echart画不出来这个可视化就不要用echart的」。
+ * 当天在浏览器里量到两处它画不准的地方,都写在 forecastChart.logic.ts 的头注里。
  */
-export function trendChartOption(
-  d: MainChartData | null, fit: RevenueFit | null, f: NextForecast | null,
-): object | null {
-  if (!d || !d.covered || !fit) return null
-  // 用户 2026-09-12:「用户是什么数据就使用什么数据」。改前这里把收入为负的月份换成 null,
-  // 屏上留一个断口 —— 那是替用户判断他的数据该不该出现。现在**原样画**,一个月都不剔。
-  // 代价照实说:12 月 −64 万进了量程,1–11 月那段 714~941 万的波动又被压回去一截。
-  const revLine = d.rev
-  const series: object[] = [
-    {
-      name: '已录入', type: 'line', data: revLine, symbolSize: 6, connectNulls: false,
-      lineStyle: { width: 2, color: '#378ADD' }, itemStyle: { color: '#378ADD' },
-      // 竖线只标位置,不带标签 —— 标签原本写在这里,和拟合区间的 997/958/919 落在同一列,
-      // 屏上两行字叠成一团(用户截图可见)。文字改由 trendOutlierHint 出到卡头 hint,
-      // 那里有整行的宽度,且不会跟图里任何东西抢位置。
-
-    },
-    {
-      name: '趋势', type: 'line', data: fit.fitted, symbol: 'none',
-      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
-    },
-  ]
-  // 只画**下月预测**那一列,不画整年带 —— 见 nextMonthForecast 头注(整年带是样本内的,
-  // 与下面那张回测表验的东西不是一回事,宽度差十倍,并排摆着自相矛盾)。
-  if (f) {
-    series.push({
-      name: '下月预测', type: 'line', data: d.labels.map(() => null), silent: true,
-      markArea: {
-        silent: true, itemStyle: { color: 'rgba(124,58,237,0.12)' },
-        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(f.hi)}
-${fint(f.mid)}
-${fint(f.lo)}` },
-        data: [[{ xAxis: f.month - 1 - 0.5, yAxis: f.lo }, { xAxis: f.month - 1 + 0.5, yAxis: f.hi }]],
-      },
-    })
-  }
-  return {
-    grid: { left: 52, right: 18, top: 32, bottom: 28 },
-    legend: { top: 0 },
-    tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
-    xAxis: { type: 'category', data: d.labels },
-    yAxis: { type: 'value', scale: true, axisLabel: { formatter: '{value}万' } },
-    series,
-  }
-}
 
 /**
  * 主图口径浮层(F6,对抗复查):原文照稿抄「判据：底带收入行 m12 < 0，全年仅命中 s1 一行」——
@@ -651,13 +598,16 @@ export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null):
   if (!pnl) return null
   const vantages = pnlYearMonths(pnl).filter((m) => m < 12).slice(-6)
   if (!vantages.length) return null
-  const lastV = vantages[vantages.length - 1]
   const rows: BacktestRow[] = []
   for (const v of vantages) {
     const fit = fitRevenueTrendUpTo(pnl, v)
     const nextM = v + 1
     const band = fit ? fitBandAt(fit, nextM) : null
-    if (!fit || !band) return null   // 训练点不足(理论上 v≥3 就够,不该发生)——整表宁可不画也不半拉子
+    // 训练点不足就跳过这一站,不是把整张表判空。
+    // 2026-09-12 实测:年中(只录了 1-6 月)时最早两站各只有 1~2 个训练点,原来的 `return null`
+    // 会让整张成绩单消失 —— 而年中正是这屏最常被打开的时候,那张表又是下月预测唯一的信用凭证。
+    // 一站算不出来就少一行,剩下的照常验。
+    if (!fit || !band) continue
     const rawNext = pnl.revenue[nextM - 1]
     // 2026-09-12:负收入月也进评分 —— 改前它被跳过,那一站永远「待验」,等于挑掉了最难的一次。
     const actualWan = rawNext != null ? wan(rawNext) : null
@@ -670,10 +620,12 @@ export function backtestRows(pnl: PnlSummary | null, budgetYuan: number | null):
       }
     }
     rows.push({
-      vantageMonth: v, isLast: v === lastV, predictMid: band.mid, lo: band.lo, hi: band.hi,
+      vantageMonth: v, isLast: false, predictMid: band.mid, lo: band.lo, hi: band.hi,
       actualWan, hit, under, missPct,
     })
   }
+  if (!rows.length) return null
+  rows[rows.length - 1].isLast = true   // 「今天」是真正算出来的最后一站,不是名义上的最后一个月
   return rows
 }
 

@@ -13,6 +13,8 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
+import AnaForecastChart from '@/components/ana/AnaForecastChart.vue'
+import { rollingForecastRows } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
@@ -26,7 +28,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -165,8 +167,9 @@ const outlierYm = computed(() => {
 const mainOption = computed<object | null>(() =>
   mainChartOption(mc.value, outlierResByMonth.value, cmp.mode.value))
 // 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
-// 理由与两处轴的差别见 cockpit.logic.ts trendChartOption 头注。
-const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, forecast.value))
+// 理由见 forecastChart.logic.ts 头注(ECharts 在类目轴上画不准这种「一个月一段区间」)。
+// 自绘图的数据:逐月预测带(每个月的带只用它之前的月算),见 forecastChart.logic.ts。
+const rollRows = computed(() => rollingForecastRows(pnl.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -383,12 +386,12 @@ const conclusion = computed(() => buildConclusion(
 
       <!-- 2026-09-12(用户):收入趋势 · 下月预测 —— 从主图拆出来的独立图。主图是 0 起的柱图,
            三条线挤在柱顶那一小段里看不出斜率;这张图没有柱子,轴不从 0 起,离群月留断口。 -->
-      <div v-if="trendOption" class="av2-card av2-s12">
+      <div v-if="rollRows" class="av2-card av2-s12">
         <div class="av2-card-h">
           <span class="t">收入趋势 · 下月预测</span>
-          <span class="hint">轴不从 0 起 · 逐月原值 · 只预测下月</span>
+          <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
         </div>
-        <AnaEChart :option="trendOption" :height="260" />
+        <AnaForecastChart :rows="rollRows" :height="280" />
         <!-- 下月预测的读数句与参照系小字:参照系里带着这套算法过去的实测命中,与读数句同屏(D1)。 -->
         <template v-if="forecastRead">
           <p class="ana-read">{{ forecastRead }}</p>
