@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -566,7 +566,7 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const d = mainChart(p2025(), null)
     const opt = mainChartOption(d, new Map(), 'none') as { series: { name: string }[] }
     expect(opt.series.find((s) => s.name === '趋势')).toBeUndefined()
-    expect(opt.series.find((s) => s.name === '拟合区间（未校准）')).toBeUndefined()
+    expect(opt.series.find((s) => s.name.startsWith('拟合区间'))).toBeUndefined()
   })
 
   it('❗趋势图 y 轴 scale: true —— 不从 0 起,否则 714~941 万的波动只占轴高两成', () => {
@@ -601,7 +601,7 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const band = fitBandAt(fit, 12)
     const opt = trendChartOption(d, fit, band) as
       { series: { name: string; markArea?: { label: { formatter: string } } }[] }
-    const bandSeries = opt.series.find((s) => s.name === '拟合区间（未校准）')
+    const bandSeries = opt.series.find((s) => s.name.startsWith('拟合区间'))
     expect(bandSeries, '趋势图缺「拟合区间」series——markArea 的 formatter 清空也不会有任何断言变红').toBeTruthy()
     const formatter = bandSeries!.markArea!.label.formatter
     expect(formatter).toContain('997')   // hi
@@ -613,7 +613,7 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
     const opt = trendChartOption(d, fit, null) as { series: { name: string }[] }
-    expect(opt.series.find((s) => s.name === '拟合区间（未校准）')).toBeUndefined()
+    expect(opt.series.find((s) => s.name.startsWith('拟合区间'))).toBeUndefined()
     expect(trendChartOption(d, null, null)).toBeNull()
   })
 
@@ -841,5 +841,35 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
     expect(sum.misses).toBe(2)
     expect(sum.unders).toBe(1)    // 只有一次偏低——不等于 misses(2),顶替的话这里就会错报成 2
     expect(sum.allUnder).toBe(false)
+  })
+})
+
+describe('❗fitBandLegend:图例名由回测现算,不写死、也不设门槛(用户 2026-09-12)', () => {
+  it('❗有回测就报几次中几次 —— 原来写死的「未校准」是行话,用户看不懂', () => {
+    const pnl2025: PnlSummary = pnl({
+      months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      revenue: [7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+        8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65],
+    })
+    const sum = backtestSummary(backtestRows(pnl2025, 92705202.87))
+    expect(fitBandLegend(sum)).toBe('拟合区间（5次中2次）')
+    // 数就是同屏那张回测卡的两个数,不是另算一遍
+    expect(fitBandLegend(sum)).toContain(String(sum!.scored))
+    expect(fitBandLegend(sum)).toContain(String(sum!.hits))
+  })
+
+  it('❗没有可评分的回测时说「没验过」,不说命中率,更不写「未校准」这种行话', () => {
+    expect(fitBandLegend(null)).toBe('拟合区间（没验过）')
+    expect(fitBandLegend({ scored: 0, hits: 0, misses: 0, unders: 0, allUnder: false })).toBe('拟合区间（没验过）')
+    expect(fitBandLegend(null)).not.toContain('未校准')
+  })
+
+  it('❗这个名字真的会到图上去(默认参数不许把它顶掉)', () => {
+    const p2 = pnl({ months: [1, 2, 3, 4, 5], revenue: [100, 200, 300, 400, 500, ...new Array(7).fill(null)] })
+    const d = mainChart(p2, null)
+    const f = fitRevenueTrend(p2)
+    const band = fitBandAt(f, 5)
+    const opt = trendChartOption(d, f, band, '拟合区间（7次中3次）') as { series: { name: string }[] }
+    expect(opt.series.some((s) => s.name === '拟合区间（7次中3次）')).toBe(true)
   })
 })

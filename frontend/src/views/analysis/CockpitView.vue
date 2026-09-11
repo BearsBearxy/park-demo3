@@ -26,7 +26,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, fitBandLegend, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -165,7 +165,8 @@ const mainOption = computed<object | null>(() =>
   mainChartOption(mc.value, outlierResByMonth.value, cmp.mode.value))
 // 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
 // 理由与两处轴的差别见 cockpit.logic.ts trendChartOption 头注。
-const trendOption = computed<object | null>(() => trendChartOption(mc.value, fit.value, fitBand.value))
+const trendOption = computed<object | null>(() =>
+  trendChartOption(mc.value, fit.value, fitBand.value, fitBandLegend(backSum.value)))
 const trendHint = computed(() => trendOutlierHint(mc.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
@@ -322,7 +323,7 @@ const conclusion = computed(() => buildConclusion(
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
       <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
-      <AnaKpiTile label="按节奏推全年" :value="pace?.rate != null ? pace.rate.toFixed(1) + '%' : '—'" note="区间未校准" />
+      <AnaKpiTile label="按节奏推全年" :value="pace?.rate != null ? pace.rate.toFixed(1) + '%' : '—'" note="直线外推,没验过" />
       <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
         :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
