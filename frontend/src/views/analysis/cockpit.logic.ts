@@ -13,7 +13,8 @@ import { isOutlierMonth, usableMonths, type CollectRate, type PnlSummary, type S
 import { matchBudgetKey } from '@/analysis/budget'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
-import { fint } from '@/components/ana/anaFmt'
+import type { CompareMode } from '@/analysis/useCompare'
+import { CMP_BASELINE, CMP_BUDGET, fint, fnum } from '@/components/ana/anaFmt'
 
 const wan = (v: number | null): number | null => (v == null ? null : +(v / 10000).toFixed(2))
 
@@ -362,6 +363,14 @@ export function oldScreenRate(pnl: PnlSummary | null, budgetYuan: number | null)
   return (total / budgetYuan) * 100
 }
 
+/**
+ * 「屏上旧值」瓦的 note(F6,对抗复查):改前写死「把12月冲回当收入算了」——换年、换离群月就是假话。
+ * 由实测的 outlierMonths 驱动;没有离群月时,旧口径本来就等于护栏口径,不该再提"冲回"。
+ */
+export function oldScreenNoteText(outlierMonths: number[]): string {
+  return outlierMonths.length ? `把${outlierMonths.join('、')}月冲回当收入算了` : '未命中离群月，与护栏口径一致'
+}
+
 /** 离群月相对拟合值的残差倍数(主图标注 + 读数句共用同一个数,不各算一份)。 */
 export interface OutlierResidual { month: number; actualWan: number; residuals: number }
 export function outlierResidual(fit: RevenueFit | null, revWan: (number | null)[], outlierMonths: number[]): OutlierResidual | null {
@@ -431,6 +440,93 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
   return { month, mid, lo: +(mid - half).toFixed(2), hi: +(mid + half).toFixed(2) }
 }
 
+/**
+ * F1(对抗复查,adversarial-survived.md):主图(趋势线/拟合区间 markArea/离群 markPoint)原先整段
+ * 写在 CockpitView.vue 的 <script setup> computed 里——没有抽成纯函数,也没有挂载测摸得到 option
+ * 对象,vitest/tsc/anaCopyLint 全绿情况下整段删掉、markArea 的 formatter 清空、markPoint 退回
+ * 固定文案都不会被抓到。照姊妹图(expiry.logic.ts 的 rentRollOption、TenantPeer.logic.ts 的
+ * unitRentHistOption)抽成纯函数,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
+ */
+const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
+export function mainChartOption(
+  d: MainChartData | null, fit: RevenueFit | null, fitBand: FitBand | null,
+  outlierResByMonth: Map<number, number>, cmpMode: CompareMode,
+): object | null {
+  if (!d || !d.covered) return null
+  const yMin = d.yMin
+  const revData = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? { value: v, itemStyle: { color: OUTLIER_RED } } : v))
+  const series: object[] = [
+    {
+      name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
+      markPoint: d.outlierMonths.length ? {
+        symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
+        label: {
+          fontSize: 10, color: '#fff',
+          // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
+          // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
+          formatter: (p: { data: { month?: number } }) => {
+            const r = p.data.month != null ? outlierResByMonth.get(p.data.month) : undefined
+            return r != null ? `离群\n${Math.floor(r)}倍残差` : '离群'
+          },
+        },
+        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
+      } : undefined,
+      markLine: d.budgetAvgWan != null ? {
+        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
+        // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
+        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
+        data: [{ yAxis: d.budgetAvgWan }],
+      } : undefined,
+    },
+    { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
+  ]
+  if (cmpMode === 'mom') {
+    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
+  }
+  if (cmpMode === 'budget' && d.budgetAvgWan != null) {
+    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
+  }
+  // T2(design-boards 2026-09-11):趋势线(fit.fitted,1-11月拟合值+12月外推值同一条线,
+  // 训练/外推共用一个 fit——见 CockpitView.vue 里 fit 那个 computed 的头注)+ 拟合区间(仅标在
+  // 离群月那一列,不画成整年的带——「拟合区间」这个说法只许用在这里,且不敢标百分比,见 fitBandAt 头注)。
+  if (fit) {
+    series.push({
+      name: '趋势', type: 'line', data: fit.fitted, symbol: 'none',
+      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
+    })
+  }
+  if (fitBand) {
+    const b = fitBand
+    series.push({
+      name: '拟合区间（未校准）', type: 'line', data: d.labels.map(() => null), silent: true,
+      markArea: {
+        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
+        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}\n${fint(b.mid)}\n${fint(b.lo)}` },
+        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
+      },
+    })
+  }
+  return {
+    grid: { left: 52, right: 18, top: 32, bottom: 42 },
+    legend: { top: 0 },
+    tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 12, bottom: 6, borderColor: 'transparent' }],
+    xAxis: { type: 'category', data: d.labels },
+    yAxis: { type: 'value', min: yMin, axisLabel: { formatter: '{value}万' } },
+    series,
+  }
+}
+
+/**
+ * 主图口径浮层(F6,对抗复查):原文照稿抄「判据：底带收入行 m12 < 0，全年仅命中 s1 一行」——
+ * 月份(m12)、附表(s1)都写死了,而代码里的判据是 isOutlierMonth(anaData.ts:110):对任意月判
+ * revenue<0,不分附表、不认哪一行。换年、换离群月、或某年不止一个月离群,这句话就变成假话。
+ * 改成由实测的 outlierMonths 驱动,且不再声称"只命中哪张附表的哪一行"——那句本就不是判据本身说的事。
+ */
+export function mainChartOutlierNote(outlierMonths: number[]): string {
+  return `判据：${outlierMonths.join('、')}月收入<0 即判离群（任意附表口径，不锁哪一行）· 带子用来抓离群，不用来押未来`
+}
+
 // ── T3(design-boards 2026-09-11):「全年会落在哪」+「这条带过去准不准」两张卡 ──
 
 /** 卡「全年会落在哪」表头小字:预算整数万(与 fint 同风格,不带小数)。 */
@@ -478,13 +574,26 @@ export function yearOutlookReadout(rows: YearOutlookRow[] | null): string | null
   return `全年在${Math.floor(pace)}%上下，不是${old.toFixed(1)}%`
 }
 
-/** 参照系小字(≤28 可见字):差距全部来自冲回月,不敢标百分比——那句解释挪去 AnaMethodNote。 */
-export function yearOutlookRefText(rows: YearOutlookRow[] | null): string {
-  if (!rows || rows.length < 4) return ''
+/**
+ * 参照系小字(≤28 可见字):差距是不是「全部」来自冲回月,不敢标百分比——那句解释挪去 AnaMethodNote。
+ *
+ * F6(对抗复查):改前月份写死「12月」——换年、换离群月就是假话。现在月份由 outlierMonths(与
+ * yearOutlookRows 里算 oldLabel 用的是同一条 isOutlierMonth 判据)现算。「全部」这个措辞也不再
+ * 无条件说:它只在「未训练的月份(fit.months 之外)恰好等于离群月集合」时成立——一旦某年还缺一个
+ * 月(既不离群、也没数据),差额里就混进了缺月那份,继续说「全部来自冲回」就是假话,这里改口。
+ */
+export function yearOutlookRefText(rows: YearOutlookRow[] | null, pnl: PnlSummary | null, fit: RevenueFit | null): string {
+  if (!rows || rows.length < 4 || !pnl || !fit) return ''
   const pace = rows[0].rate, old = rows[3].rate
   if (pace == null || old == null) return ''
   const gap = Math.round(pace - old)
-  return `差${gap}个百分点全部来自12月冲回`
+  const outlierMonths = pnl.months.filter((m) => isOutlierMonth(pnl.revenue, m))
+  const untrained = Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => !fit.months.includes(m))
+  const onlyOutliers = outlierMonths.length > 0 && untrained.length === outlierMonths.length
+    && outlierMonths.every((m) => untrained.includes(m))
+  if (onlyOutliers) return `差${gap}个百分点全部来自${outlierMonths.join('、')}月冲回`
+  if (!outlierMonths.length) return `差${gap}个百分点来自缺数月，非冲回`
+  return `差${gap}个百分点不止来自冲回月`
 }
 
 /**

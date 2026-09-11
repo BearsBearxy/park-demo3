@@ -17,7 +17,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { CMP_BASELINE, CMP_BUDGET, STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
+import { STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useCompare } from '@/analysis/useCompare'
@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -142,7 +142,7 @@ const fitBand = computed(() => (outlierRes.value ? fitBandAt(fit.value, outlierR
 const yearRows = computed(() => yearOutlookRows(pnl.value, fit.value, budgetYuan.value))
 const yearHint = computed(() => yearOutlookBudgetHint(budgetYuan.value))
 const yearRead = computed(() => yearOutlookReadout(yearRows.value))
-const yearRef = computed(() => yearOutlookRefText(yearRows.value))
+const yearRef = computed(() => yearOutlookRefText(yearRows.value, pnl.value, fit.value))
 const backRows = computed(() => backtestRows(pnl.value, budgetYuan.value))
 const backSum = computed(() => backtestSummary(backRows.value))
 const backRead = computed(() => backtestReadout(backSum.value))
@@ -158,75 +158,12 @@ const outlierYm = computed(() => {
   const m = mc.value?.outlierMonths[0]
   return m ? ymOf(year.value, m) : ''
 })
-const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 // 未闭月护栏(FORECAST §2.7):y 轴量程(d.yMin)由 mainChart 用 usableMonths 算好,这里只消费;
 // 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
-const mainOption = computed<object | null>(() => {
-  const d = mc.value
-  if (!d || !d.covered) return null
-  const yMin = d.yMin
-  const revData = d.rev.map((v, i) => (d.outlierMonths.includes(i + 1) ? { value: v, itemStyle: { color: OUTLIER_RED } } : v))
-  const series: object[] = [
-    {
-      name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
-      markPoint: d.outlierMonths.length ? {
-        symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
-        label: {
-          fontSize: 10, color: '#fff',
-          // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
-          // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
-          formatter: (p: { data: { month?: number } }) => {
-            const r = p.data.month != null ? outlierResByMonth.value.get(p.data.month) : undefined
-            return r != null ? `离群\n${Math.floor(r)}倍残差` : '离群'
-          },
-        },
-        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
-      } : undefined,
-      markLine: d.budgetAvgWan != null ? {
-        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
-        // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
-        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
-        data: [{ yAxis: d.budgetAvgWan }],
-      } : undefined,
-    },
-    { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
-  ]
-  if (cmp.mode.value === 'mom') {
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
-  }
-  if (cmp.mode.value === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
-  }
-  // T2(design-boards 2026-09-11):趋势线(fit.fitted,1-11月拟合值+12月外推值同一条线,
-  // 训练/外推共用一个 fit——见 fit 那个 computed 的头注)+ 拟合区间(仅标在离群月那一列,
-  // 不画成整年的带——「拟合区间」这个说法只许用在这里,且不敢标百分比,见 fitBandAt 头注)。
-  if (fit.value) {
-    series.push({
-      name: '趋势', type: 'line', data: fit.value.fitted, symbol: 'none',
-      lineStyle: { type: 'dashed', width: 1.5, color: '#9CA3AF' }, z: 2,
-    })
-  }
-  if (fitBand.value) {
-    const b = fitBand.value
-    series.push({
-      name: '拟合区间（未校准）', type: 'line', data: d.labels.map(() => null), silent: true,
-      markArea: {
-        silent: true, itemStyle: { color: 'rgba(124,58,237,0.10)' },
-        label: { show: true, position: 'insideTop', fontSize: 10, color: '#6B4FA0', formatter: `${fint(b.hi)}\n${fint(b.mid)}\n${fint(b.lo)}` },
-        data: [[{ xAxis: b.month - 1 - 0.5, yAxis: b.lo }, { xAxis: b.month - 1 + 0.5, yAxis: b.hi }]],
-      },
-    })
-  }
-  return {
-    grid: { left: 52, right: 18, top: 32, bottom: 42 },
-    legend: { top: 0 },
-    tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 12, bottom: 6, borderColor: 'transparent' }],
-    xAxis: { type: 'category', data: d.labels },
-    yAxis: { type: 'value', min: yMin, axisLabel: { formatter: '{value}万' } },
-    series,
-  }
-})
+// F1(对抗复查):option 本体(趋势线/拟合区间/离群标注三块交付物)抽成 cockpit.logic.ts 的纯函数
+// mainChartOption——原先整段写在这个 computed 里,没有挂载测/纯函数覆盖,删掉/清空照样全绿。
+const mainOption = computed<object | null>(() =>
+  mainChartOption(mc.value, fit.value, fitBand.value, outlierResByMonth.value, cmp.mode.value))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -387,7 +324,7 @@ const conclusion = computed(() => buildConclusion(
         :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
       <AnaKpiTile label="屏上旧值" :value="oldRate != null ? oldRate.toFixed(1) + '%' : '—'"
-        note="把12月冲回当收入算了" note-tone="warn" />
+        :note="oldScreenNoteText(mc?.outlierMonths ?? [])" note-tone="warn" />
     </template>
 
     <div v-if="!ready || pnlLoading" class="page-loading"><span class="page-spin" /></div>
@@ -429,8 +366,9 @@ const conclusion = computed(() => buildConclusion(
         <p v-if="outlierRead" class="ana-read">{{ outlierRead }}</p>
         <p v-if="outlierRef" class="ana-ref">{{ outlierRef }}</p>
         <!-- F1(修复轮1,design-boards):稿上 ⓘ 门后那句反过度承诺的判据说明,改前屏上没有、仓库里 grep 不到 ——
-             这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。原样按稿抄,一字不改。 -->
-        <AnaMethodNote v-if="outlierRes">判据：底带收入行 m12 &lt; 0，全年仅命中 s1 一行 · 带子用来抓离群，不用来押未来</AnaMethodNote>
+             这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。
+             F6(对抗复查):板上原句把月份(m12)/附表(s1)写死了,改成由 mc.outlierMonths 驱动,见 cockpit.logic.ts mainChartOutlierNote。 -->
+        <AnaMethodNote v-if="outlierRes">{{ mainChartOutlierNote(mc?.outlierMonths ?? []) }}</AnaMethodNote>
       </div>
 
       <!-- s4:收入构成环 -->

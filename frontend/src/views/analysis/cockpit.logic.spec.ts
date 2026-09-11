@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
-  type BacktestRow, type BudgetAch, type RevenueFit,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -542,6 +542,95 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
   })
 })
 
+describe('❗F1(对抗复查,adversarial-survived.md):mainChartOption——主图的趋势线/拟合区间/离群标注'
+  + '原先整段写在 CockpitView.vue 的 <script setup> computed 里,零纯函数/零挂载测覆盖,这里钉住 option 对象本身', () => {
+  const REV: (number | null)[] = [
+    7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+    8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, -636050.65,
+  ]
+  const M12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const p2025 = (): PnlSummary => pnl({ months: M12, revenue: REV })
+
+  it('❗趋势 series 存在,data 就是 fit.fitted 本身(同一份,不是另算一条线)', () => {
+    const d = mainChart(p2025(), null)
+    const fit = fitRevenueTrend(p2025())
+    const opt = mainChartOption(d, fit, null, new Map(), 'none') as { series: { name: string; data: unknown }[] }
+    const trend = opt.series.find((s) => s.name === '趋势')
+    expect(trend, '主图缺「趋势」series——整段被删也不会有任何断言变红').toBeTruthy()
+    expect(trend!.data).toBe(fit!.fitted)
+  })
+
+  it('❗拟合区间 markArea 的 label.formatter 同时含 hi/mid/lo 三个数(997/958/919,T1/T2 已钉过的验收锚点)', () => {
+    const d = mainChart(p2025(), null)
+    const fit = fitRevenueTrend(p2025())
+    const band = fitBandAt(fit, 12)
+    const opt = mainChartOption(d, fit, band, new Map(), 'none') as
+      { series: { name: string; markArea?: { label: { formatter: string } } }[] }
+    const bandSeries = opt.series.find((s) => s.name === '拟合区间（未校准）')
+    expect(bandSeries, '主图缺「拟合区间」series——markArea 的 formatter 清空也不会有任何断言变红').toBeTruthy()
+    const formatter = bandSeries!.markArea!.label.formatter
+    expect(formatter).toContain('997')   // hi
+    expect(formatter).toContain('958')   // mid
+    expect(formatter).toContain('919')   // lo
+  })
+
+  it('无拟合区间(fitBand=null)时,「拟合区间」series 不出现', () => {
+    const d = mainChart(p2025(), null)
+    const fit = fitRevenueTrend(p2025())
+    const opt = mainChartOption(d, fit, null, new Map(), 'none') as { series: { name: string }[] }
+    expect(opt.series.find((s) => s.name === '拟合区间（未校准）')).toBeUndefined()
+  })
+
+  it('❗离群 markPoint 的 label.formatter 逐月取 outlierResByMonth(F4 的原话镜像到 option 层:'
+    + '两根 pin 不能顶同一个数字,不许退回固定取 outlierMonths[0] 那种写法)', () => {
+    const fit: RevenueFit = { months: [1, 2, 3, 4, 5], slope: 10, intercept: 0, r2: 0.9, residualScale: 5, fitted: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] }
+    const revWan = [10, 20, 30, 40, 50, 60, 200, 80, 90, 100, 110, -40]
+    const outlierMonths = [7, 12]
+    const outlierRes = outlierResidualsByMonth(fit, revWan, outlierMonths)
+    const d: MainChartData = {
+      labels: Array.from({ length: 12 }, (_, i) => `${i + 1}月`), rev: revWan, profit: new Array(12).fill(null),
+      prevRev: new Array(12).fill(null), budgetAvgWan: null, covered: 12, outlierMonths, yMin: undefined,
+    }
+    const opt = mainChartOption(d, fit, null, outlierRes, 'none') as
+      { series: { name: string; markPoint?: { label: { formatter: (p: { data: { month?: number } }) => string } } }[] }
+    const bar = opt.series.find((s) => s.name === '收入')
+    const formatter = bar!.markPoint!.label.formatter
+    const f7 = formatter({ data: { month: 7 } })
+    const f12 = formatter({ data: { month: 12 } })
+    expect(f7).not.toBe(f12)   // 核心:两根 pin 不能顶同一个数字(改前的缺陷)
+    expect(f7).toContain(String(Math.floor(outlierRes.get(7)!)))
+    expect(f12).toContain(String(Math.floor(outlierRes.get(12)!)))
+  })
+
+  it('无离群月时不给 markPoint;pnl/mainChart 未覆盖(covered=0)时整个 option 为 null', () => {
+    const opt = mainChartOption(mainChart(pnl({ months: [], revenue: N12() }), null), null, null, new Map(), 'none')
+    expect(opt).toBeNull()
+    const noOutlier = mainChart(pnl({ months: [1], revenue: [100, ...N12().slice(1)] }), null)
+    const o2 = mainChartOption(noOutlier, null, null, new Map(), 'none') as { series: { name: string; markPoint?: unknown }[] }
+    const bar = o2.series.find((s) => s.name === '收入')
+    expect(bar!.markPoint).toBeUndefined()
+  })
+})
+
+describe('❗F6(对抗复查):oldScreenNoteText/mainChartOutlierNote——不再写死「12月」/「m12」/「s1」', () => {
+  it('❗oldScreenNoteText:离群月是 3 月时文案必须说「3月」,不出现「12月」', () => {
+    const s = oldScreenNoteText([3])
+    expect(s).toContain('3月')
+    expect(s).not.toContain('12月')
+  })
+  it('oldScreenNoteText:没有离群月时不该再提"冲回"', () => {
+    expect(oldScreenNoteText([])).not.toContain('冲回')
+  })
+
+  it('❗mainChartOutlierNote:离群月是 3 月时文案必须说「3月」,不出现「12月」「m12」「s1」', () => {
+    const s = mainChartOutlierNote([3])
+    expect(s).toContain('3月')
+    expect(s).not.toContain('12月')
+    expect(s).not.toMatch(/m12/i)
+    expect(s).not.toContain('s1')
+  })
+})
+
 // ── T3(design-boards 2026-09-11):「全年会落在哪」+「这条带过去准不准」两张卡 ──
 // 与 T1/T2 同一批 2025 实测数(park_demo3,锚点 2025-12);任务书验收锚点:
 // 9,794/105.6% · 9,754/105.2% · 9,833/106.1% · 8,772/94.6%,回测六站见下方逐条断言(数与板上逐字对)。
@@ -580,15 +669,44 @@ describe('❗T3:yearOutlookRows / backtestRows(全年落点 + 滚动起点回测
   })
 
   it('❗yearOutlookReadout/RefText:文案与字数门禁(≤30/≤28 可见字),数落在105%与94.6%上', () => {
-    const rows = yearOutlookRows(p2025(), fitRevenueTrend(p2025()), BUDGET)
+    const fit = fitRevenueTrend(p2025())
+    const rows = yearOutlookRows(p2025(), fit, BUDGET)
     const read = yearOutlookReadout(rows)
-    const ref = yearOutlookRefText(rows)
+    const ref = yearOutlookRefText(rows, p2025(), fit)
     expect(read).toBe('全年在105%上下，不是94.6%')
     expect(ref).toBe('差11个百分点全部来自12月冲回')
     expect([...read!].length).toBeLessThanOrEqual(30)
     expect([...ref].length).toBeLessThanOrEqual(28)
     expect(yearOutlookReadout(null)).toBeNull()
-    expect(yearOutlookRefText(null)).toBe('')
+    expect(yearOutlookRefText(null, null, null)).toBe('')
+  })
+
+  // F6(对抗复查,adversarial-survived.md):改前月份写死「12月」——下面两条用非12月的离群月/
+  // 缺数月+离群月混合两个 fixture,钉住「不再写死 12 月」与「不能再无条件说全部来自冲回」。
+  it('❗F6:离群月换成 3 月(不是 12 月)——yearOutlookRefText 里必须出现「3月」,不出现「12月」', () => {
+    const rev3: (number | null)[] = [
+      7146649.89, 7169836.30, -996629.95, 7406069.55, 7537092.36, 7711058.20,
+      8249744.52, 8669057.75, 8762619.48, 9301530.81, 9407837.38, 9500000,
+    ]
+    const p = pnl({ months: M12, revenue: rev3 })
+    const fit = fitRevenueTrend(p)
+    const rows = yearOutlookRows(p, fit, BUDGET)
+    const ref = yearOutlookRefText(rows, p, fit)
+    expect(ref).toContain('3月')
+    expect(ref).not.toContain('12月')
+    expect(ref).not.toMatch(/m12/i)
+  })
+
+  it('❗F6:12 月离群 + 8 月缺数(既非离群也没数据)混在一起——不许再说「全部来自」冲回', () => {
+    const revGap: (number | null)[] = [
+      7146649.89, 7169836.30, 6996629.95, 7406069.55, 7537092.36, 7711058.20,
+      8249744.52, null, 8762619.48, 9301530.81, 9407837.38, -636050.65,   // 8月缺数(null)
+    ]
+    const p = pnl({ months: [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12], revenue: revGap })
+    const fit = fitRevenueTrend(p)
+    const rows = yearOutlookRows(p, fit, BUDGET)
+    const ref = yearOutlookRefText(rows, p, fit)
+    expect(ref).not.toContain('全部来自')
   })
 
   it('yearOutlookBudgetHint:整数万(≤24 可见字);预算缺失 → 空串', () => {
