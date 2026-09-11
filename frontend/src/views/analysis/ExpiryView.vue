@@ -135,11 +135,14 @@ function onParetoClick(p: unknown) {
 
         <!-- 合约租金带(Task 7):不是给到期墙加带 —— 到期墙(上一张卡)是无时间轴的 8 季排期柱,
              这张才是以月为 x 轴的图。锁定实线 = 已签约覆盖到该月的合同;续签区间 = 到期后是否
-             续签的蒙特卡洛不确定性,同屏印回测样本量与命中数(D1 可执行形式,见 rentRollSentence)。 -->
+             续签的蒙特卡洛不确定性;n/份续签数同屏可见(D1 可执行形式,见 rentRollRefText)。
+             F5(修复轮1):图与句子共用 rentRollText 同一个 v-if —— decided(历史)与 pool(未来)
+             是两个独立的过滤条件,结构上可能出现「n 很小但 pool 非空」,不能让图和句子各自
+             按不同条件决定露不露出,那样会撕裂 D1 的「同屏」前提。 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
             <span class="hint">锁定实线 + 续签区间{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
-          <AnaEChart :option="rentRollOpt" :height="260" />
+          <AnaEChart v-if="rentRollText" :option="rentRollOpt" :height="260" />
           <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
           <p class="ana-ref">{{ rentRollRef }}</p>
         </div>

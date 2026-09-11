@@ -2,7 +2,6 @@
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
 import { quantile } from '@/components/ana/anaFmt'
-import { sFreq } from '@/components/ana/anaSentence'
 import { bandSeries } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 
@@ -272,11 +271,13 @@ export function lockedRentByMonth(cs: ContractDTO[], asOf: string, n: number): n
   })
 }
 
-/** 整租合同月租(kind==='master_lease',单列不进 locked/KPI,理由见文件顶部锚点注释)。 */
+/** 整租合同月租(kind==='master_lease',单列不进 locked/KPI,理由见文件顶部锚点注释)。
+ * F4(修复轮1):补 dedupByUnit —— 与 lockedRentByMonth 同一治法,coveringMonth 本来就是
+ * 月度快照(单月覆盖判定),同一单元同月多份整租记录同样会被 naive 求和双记。 */
 function masterLeaseByMonth(cs: ContractDTO[], asOf: string, n: number): number[] {
   return [...Array(n)].map((_, i) => {
     const { startKey, endKey } = monthBounds(asOf, i)
-    return coveringMonth(cs, startKey, endKey, true).reduce((s, c) => s + c.monthlyRent, 0)
+    return dedupByUnit(coveringMonth(cs, startKey, endKey, true)).reduce((s, c) => s + c.monthlyRent, 0)
   })
 }
 
@@ -287,6 +288,11 @@ export interface RenewalVariance { byWhichTenants: number; byRateUncertainty: nu
  * byWhichTenants = p(1−p)Σr²(哪几户续签的随机性,个体层面,独立可加);
  * byRateUncertainty = Var(p̂)(Σr)²(p 本身的估计误差,整体共享同一个 p,不随户数分摊)。
  * 只用 Wilson(p 的置信区间)只给出后一项 —— 这正是「不能只用 Wilson」的算术含义。
+ *
+ * F3(修复轮1):这两项此前从未被 buildRentRoll/rentRollOption 调用过 —— 屏上的带完全由
+ * simulateRenewalDraws 的蒙特卡洛直接产出,这个闭式解只是单独测算得对,和交付物脱节。
+ * 现在 expiry.logic.spec.ts 拿 simulateRenewalDraws 的经验方差和这里的闭式解直接比,
+ * 断言已破坏验证过(去掉共享 p、每户各抽一个,会抹掉 byRateUncertainty,经验方差显著偏低)。
  */
 export function renewalVariance(rents: number[], p: number, n: number): RenewalVariance {
   const sumR = rents.reduce((s, r) => s + r, 0)
@@ -349,6 +355,28 @@ function sampleBeta(a: number, b: number, rng: () => number): number {
   return x / (x + y)
 }
 
+/**
+ * 蒙特卡洛续签抽样(F3,修复轮1):从 buildRentRoll 内联双重循环原样搬出来命名导出,
+ * 抽样结构一个字节没动 —— 每轮共用一枚从 Beta(a,b) 抽的 p、每户各自一次 Bernoulli(p)、
+ * 按到期月分桶累加。搬出来的唯一目的是让 expiry.logic.spec.ts 能拿到原始抽样和,
+ * 与 renewalVariance 的闭式解比经验方差(F3 的问题是两者从未被绑在一起验证过,
+ * 不是抽样本身有 bug)。
+ */
+export function simulateRenewalDraws(byExpMonth: number[][], a: number, b: number, draws: number, seed: number): number[][] {
+  const n = byExpMonth.length
+  const rng = mulberry32(seed)
+  const drawSums: number[][] = [...Array(n)].map(() => new Array(draws))
+  for (let d = 0; d < draws; d++) {
+    const p = sampleBeta(a, b, rng)
+    let running = 0
+    for (let m = 0; m < n; m++) {
+      for (const rent of byExpMonth[m]) running += rng() < p ? rent : 0
+      drawSums[m][d] = running
+    }
+  }
+  return drawSums
+}
+
 export interface RentRollMonth {
   month: string          // 'YYYY-MM'
   locked: number         // 锁定月租(元)
@@ -379,6 +407,21 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   // 历史回测:asOf 之前已到期、结果已知的合同(草稿从未真正在租,不算"已知结果")。
   // 命中 = 状态已标 renewed,或存在以它为 parentContractId 的后续合同(续签链落地,状态标记
   // 是否同步不影响判定 —— 这就是为什么不能只信 status 字段)。
+  //
+  // F2(修复轮1,2026-09-11 实测 park_demo3):计划锚点「2025-12-01 续签率 18/90」复现不出来。
+  // 查了 9 种口径 —— 仅状态标记 17/106、仅续签链 27/106、两者取或(=当前实现)27/106、
+  // 三种各自再加 monthlyRent>0 分别 17/27/27@分母91、只认近12月到期 15/36、近24月到期 17/95、
+  // 含 master_lease 只认状态 17/107、限 start_date≥2023-01-01 2/69。分母从没出现过 90,
+  // 命中数从没出现过 18。不为了凑这个数改口径 —— 现在这套(状态标记或续签链落地)比只信状态
+  // 字段稳,继续用;下面的判定规则(哪些算 decided、哪些算 hit)由 expiry.logic.spec.ts 里
+  // 不依赖数据库的 fixture 钉死,口径以后被人改动会当场红。
+  //
+  // F4(修复轮1):decided 故意不过 dedupByUnit。dedupByUnit 是「同一时刻只认一份」的快照去重
+  // (对 coveringMonth/pool 这类"现在谁在租"的单值状态正确),但 decided 横跨 asOf 之前的
+  // 全部历史 —— 同一单元先后好几段真实租约(各自到期、各自有续签结果)是常态,不是重复数据。
+  // 对 decided 套用「同单元全局只留一份」会把同一单元的多段历史强行合并成一段,悄悄吃掉
+  // 真实存在的历史续签结果,这比"偶发的同月重复记录多算一次"更糟。真出现同月重复历史记录时
+  // 该在数据源头去重,不该靠这里的单元级 dedup 猜哪一份是"真的"。
   const decided = cs.filter((c) =>
     c.kind !== 'master_lease' && c.status !== 'draft' && (dateKeyOf(c.endDate) ?? Infinity) < asOfKey)
   const renewalHits = decided.filter((c) => c.status === 'renewed' || cs.some((o) => o.parentContractId === c.id)).length
@@ -387,9 +430,12 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
 
   // 续签抽样总体:asOf 当天仍在租(未到期)、到期日落在预测视界内的合同。
   // 全程覆盖到视界末尾的合同没有续签不确定性(locked 已经算全了),不进池。
-  const pool = cs.filter((c) =>
+  // F4(修复轮1):补 dedupByUnit —— 与 decided 不同,"当前仍在租、尚未到期"对一个物理单元
+  // 而言是单值状态(同一时刻只能有一份合同真的在管这个单元),不是可以合法累积的历史序列,
+  // 所以这里可以直接套用同一条"同单元全局只留一份(取 startDate 最新)"规则,不会误伤。
+  const pool = dedupByUnit(cs.filter((c) =>
     c.kind !== 'master_lease' && (c.status === 'active' || c.status === 'renewed') &&
-    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey)
+    (dateKeyOf(c.endDate) ?? -Infinity) >= asOfKey))
   const byExpMonth: number[][] = [...Array(n)].map(() => [])
   for (const c of pool) {
     const ek = dateKeyOf(c.endDate)
@@ -399,16 +445,7 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   }
 
   const a = renewalHits + 0.5, b = renewalN - renewalHits + 0.5   // Jeffreys 后验
-  const rng = mulberry32(MC_SEED)
-  const drawSums: number[][] = [...Array(n)].map(() => new Array(MC_DRAWS))
-  for (let d = 0; d < MC_DRAWS; d++) {
-    const p = sampleBeta(a, b, rng)
-    let running = 0
-    for (let m = 0; m < n; m++) {
-      for (const rent of byExpMonth[m]) running += rng() < p ? rent : 0
-      drawSums[m][d] = running
-    }
-  }
+  const drawSums = simulateRenewalDraws(byExpMonth, a, b, MC_DRAWS, MC_SEED)
   const quantileOf = (arr: number[], q: number): number => {
     const s = [...arr].sort((x, y) => x - y)
     return s[Math.min(s.length - 1, Math.floor(q * s.length))]
@@ -450,21 +487,26 @@ export function rentRollOption(r: RentRoll): object {
   }
 }
 
-/** 卡片读数句(D1 可执行形式):末月预计租金区间,同屏必须印回测样本量与命中数,不写百分比。 */
+/**
+ * 卡片读数句(D1 可执行形式)。
+ * F1(修复轮1):原来走 sFreq,印成「过去 N 次中 k 次」—— sFreq 的 backtests/hits 语义是
+ * 区间覆盖率回测(过去做过 N 次预测、区间罩住了 k 次),而这里的 renewalN/renewalHits 是
+ * 续签率的分母分子(多少份到期合同续了签),两者从没度量过同一件事,那句话等于替这条带
+ * 编了一段不存在的战绩。改法:句子只说区间是什么,不再暗示任何历史命中率;n/hits 按它们
+ * 真实的身份(续签统计)搬进 rentRollRefText,同屏仍可见,满足 D1。
+ */
 export function rentRollSentence(r: RentRoll): string | null {
   const last = r.months[r.months.length - 1]
   if (!last) return null
   const wan = (v: number) => Math.round(v / 10000)
-  return sFreq({
-    label: '末月租金',
-    lo: wan(last.locked + last.renewalLo),
-    hi: wan(last.locked + last.renewalHi),
-    backtests: r.renewalN,
-    hits: r.renewalHits,
-  })
+  return `末月租金拟合区间 ${wan(last.locked + last.renewalLo)}~${wan(last.locked + last.renewalHi)}`
 }
 
-/** 参照系小字:口径 + 单位 + 回测分母(与 bandRefText/elecBandRef 同职责,不解释画法)。 */
+/**
+ * 参照系小字:口径 + 单位 + 续签统计(与 bandRefText/elecBandRef 同职责,不解释画法)。
+ * F1(修复轮1):不再叫「回测样本」——这两个数从没度量过带准不准,是「过去 N 份到期合同里
+ * k 份续签」,按真实身份标注。
+ */
 export function rentRollRefText(r: RentRoll): string {
-  return `月度口径 · 万元 · 回测样本${r.renewalN}份`
+  return `月度口径 · 万元 · 过去${r.renewalN}份到期中${r.renewalHits}份续签`
 }

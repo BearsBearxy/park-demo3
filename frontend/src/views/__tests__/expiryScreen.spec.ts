@@ -9,6 +9,8 @@
 // 改用相对「今天」现算,而不是写死的年份字符串。
 import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ContractDTO } from '@/types/contract'
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
@@ -50,18 +52,28 @@ vi.mock('@/analysis/anaData', () => ({
 import ExpiryView from '@/views/analysis/ExpiryView.vue'
 
 describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
-  it('❗屏上必须同屏印回测样本量(n)与命中数,不是只印一个孤零零的概率数字', async () => {
+  it('❗屏上必须同屏印续签统计的样本量(n)与命中数,不是只印一个孤零零的概率数字', async () => {
     const w = mount(ExpiryView)
     await flushPromises()
     await flushPromises()
     const text = w.text()
-    // renewalN=5、renewalHits=2(见上面 CONTRACTS 构造),句子模板是 sFreq 的
-    // 「过去 N 次中 k 次」—— n 与命中数同时出现在同一句里,天然同屏。
+    // renewalN=5、renewalHits=2(见上面 CONTRACTS 构造)。F1(修复轮1)之后这两个数按真实身份
+    // (续签统计,不是回测)写在 rentRollRefText 里 ——「过去 5 份到期中 2 份续签」,同屏可见。
     // ⚠ 不断言整屏不含 '%':本屏另有 Top10 集中度等无关的百分比 KPI,那些不受 D1 约束
-    // (样本量已经同屏印着)。这条测的是"这句频次句本身不写百分比"。
-    expect(text).toMatch(/过去\s*5\s*次中\s*2\s*次/)
+    // (样本量已经同屏印着)。这条测的是"合约租金带这张卡自己不写百分比"。
+    expect(text).toMatch(/过去\s*5\s*份到期中\s*2\s*份续签/)
     const rollCard = w.findAll('.av2-card').find((c) => c.text().includes('合约租金带'))
     expect(rollCard, '没找到合约租金带卡').toBeTruthy()
     expect(rollCard!.text()).not.toMatch(/%/)
+  })
+
+  it('❗图与句子受同一个条件门控(F5:decided/pool 是独立过滤,结构上可能只有一边有数据)', () => {
+    const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
+    const chartTag = src.match(/<AnaEChart[^>]*:option="rentRollOpt"[^>]*\/>/)?.[0]
+    const sentenceTag = src.match(/<p[^>]*class="ana-read"[^>]*>\{\{ rentRollText \}\}<\/p>/)?.[0]
+    expect(chartTag, '合约租金带图元素未找到').toBeTruthy()
+    expect(sentenceTag, '合约租金带句子元素未找到').toBeTruthy()
+    expect(chartTag).toMatch(/v-if="rentRollText"/)
+    expect(sentenceTag).toMatch(/v-if="rentRollText"/)
   })
 })

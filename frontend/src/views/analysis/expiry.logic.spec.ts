@@ -4,7 +4,7 @@ import type { ContractDTO } from '@/types/contract'
 import {
   buildExpiringSoon, buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, lockedRentByMonth, paretoOption, renewalVariance,
-  rentRollRefText, rentRollSentence, wallOption,
+  rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
 } from './expiry.logic'
 
 let seq = 0
@@ -208,6 +208,31 @@ describe('合约租金带(FORECAST §1.1)', () => {
     expect(r.months[0].masterLease).toBe(5000)
   })
 
+  it('F4:masterLeaseByMonth 同一单元同月多于一份整租合同 —— 去重(与 lockedRentByMonth 同一治法)', () => {
+    const older = ct({ unitId: 40, monthlyRent: 5000, startDate: '2020-01-01', endDate: '2099-01-01', kind: 'master_lease' })
+    const newer = ct({ unitId: 40, monthlyRent: 6000, startDate: '2026-01-01', endDate: '2099-01-01', kind: 'master_lease' })
+    const r = buildRentRoll([older, newer], '2026-01-01', 1)
+    expect(r.months[0].masterLease).toBe(6000)   // 不是 11000
+  })
+
+  it('F4:pool 同一单元同月多于一份合同 —— 去重,不然一个物理单元的续签结果算两遍', () => {
+    const older = ct({ unitId: 30, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-05-15', status: 'active' })
+    const newer = ct({ unitId: 30, monthlyRent: 1200, startDate: '2026-01-01', endDate: '2026-05-15', status: 'active' })
+    const r = buildRentRoll([older, newer], '2026-01-01', 6)
+    const idx = r.months.findIndex((m) => m.month === '2026-05')
+    // 去重后该月抽样池只剩 newer 一份(1200),任何一次抽样的和都不可能超过 1200 ——
+    // 不去重时 older+newer 两份都可能命中,和能到 2200(破坏验证实测正好顶到 2200)。
+    expect(r.months[idx].renewalHi).toBeLessThanOrEqual(1200)
+  })
+
+  it('F4:decided 故意不去重 —— 同一单元先后两段历史租约是两次独立的续签结果,不是重复数据', () => {
+    const first = ct({ unitId: 50, monthlyRent: 800, startDate: '2018-01-01', endDate: '2020-12-31', status: 'renewed' })
+    const second = ct({ unitId: 50, monthlyRent: 900, startDate: '2021-01-01', endDate: '2023-12-31', status: 'active' })
+    const r = buildRentRoll([first, second], '2026-01-01', 1)
+    expect(r.renewalN).toBe(2)      // 两段历史都算,不因同一单元被 dedup 掉
+    expect(r.renewalHits).toBe(1)   // 只有 first 命中(status=renewed)
+  })
+
   it('历史回测分母/命中由 asOf 现算(不是写死的 18/90):状态标记与续签链两种命中路径都算,草稿/整租/未到期都不进分母', () => {
     const byFlag = ct({ endDate: '2025-01-01', status: 'renewed' })              // 命中①:状态标记
     const parent = ct({ endDate: '2025-02-01', status: 'active' })              // 命中②:续签链(状态未同步)
@@ -255,25 +280,55 @@ describe('合约租金带(FORECAST §1.1)', () => {
   })
 })
 
-describe('rentRollSentence / rentRollRefText(D1 可执行形式:样本量与命中数同屏)', () => {
-  it('回测样本 < 5 → 闭嘴(sFreq 自带的 D1 对称规矩)', () => {
+describe('rentRollSentence / rentRollRefText(F1 修复轮1:句子只说区间,n/hits 按真实身份搬进小字)', () => {
+  it('句子只说区间,不再暗示任何历史战绩(小样本也照样出句,不再有 sFreq 那道<5 闭嘴口)', () => {
     const cs = [ct({ endDate: '2025-01-01', status: 'renewed' })]
-    const r = buildRentRoll(cs, '2026-01-01', 3)
-    expect(rentRollSentence(r)).toBeNull()
-  })
-
-  it('回测样本 ≥ 5 → 出句,含样本量与命中数,不写百分比,≤30 可见字', () => {
-    const cs = [...Array(5)].map((_, i) => ct({ endDate: '2025-01-01', status: i < 2 ? 'renewed' : 'active' }))
     const r = buildRentRoll(cs, '2026-01-01', 3)
     const s = rentRollSentence(r)
     expect(s).not.toBeNull()
-    expect(s).toContain(`过去 ${r.renewalN} 次中 ${r.renewalHits} 次`)
+    expect(s).not.toMatch(/过去|次中|次/)   // 不再是「过去N次中k次」那句战绩
     expect(s).not.toMatch(/%/)
     expect([...(s as string)].length).toBeLessThanOrEqual(30)
   })
 
-  it('rentRollRefText:口径 + 单位 + 回测分母', () => {
+  it('rentRollRefText:口径 + 单位 + 续签统计,按真实身份标注(不叫"回测样本")', () => {
     const r = buildRentRoll([], '2026-01-01', 1)
-    expect(rentRollRefText(r)).toBe('月度口径 · 万元 · 回测样本0份')
+    expect(rentRollRefText(r)).toBe('月度口径 · 万元 · 过去0份到期中0份续签')
   })
+
+  it('rentRollRefText:n 与 hits 同屏可见(D1),≤28 可见字', () => {
+    const cs = [...Array(5)].map((_, i) => ct({ endDate: '2025-01-01', status: i < 2 ? 'renewed' : 'active' }))
+    const r = buildRentRoll(cs, '2026-01-01', 3)
+    const ref = rentRollRefText(r)
+    expect(ref).toBe(`月度口径 · 万元 · 过去${r.renewalN}份到期中${r.renewalHits}份续签`)
+    expect([...ref].length).toBeLessThanOrEqual(28)
+  })
+})
+
+describe('F3(修复轮1):蒙特卡洛的实际离散度要与 renewalVariance 闭式解绑在一起验', () => {
+  // k=20 份等额续签合同、历史回测 n=20/hits=4(p=0.2):选这组数是为了让两项方差刻意五五开
+  // (byWhichTenants=byRateUncertainty=3,200,000)—— 这样如果有人把第二项弄丢,总方差会砍半,
+  // 而不是砍掉几个百分点,断言才有真实的区分力(而不是容差随便设都能过)。
+  const rents = Array(20).fill(1000)
+  const n = 20, hits = 4
+  const a = hits + 0.5, b = n - hits + 0.5
+
+  it('❗蒙特卡洛经验方差与闭式解相符(比方差不比分位数 —— 分布是块状多峰,分位数没有意义)', () => {
+    const draws = simulateRenewalDraws([rents], a, b, 10000, 42)[0]
+    const mean = draws.reduce((s, x) => s + x, 0) / draws.length
+    const empiricalVar = draws.reduce((s, x) => s + (x - mean) ** 2, 0) / draws.length
+    const closed = renewalVariance(rents, hits / n, n)
+    const closedVar = closed.byWhichTenants + closed.byRateUncertainty
+    const relErr = Math.abs(empiricalVar - closedVar) / closedVar
+    // 容差 8%:闭式解用点估计 p=hits/n 与近似的 Var(p̂)=p(1-p)/n,蒙特卡洛用的是完整
+    // Beta(a,b) 后验(均值/方差都略有偏移)+ 10000 次抽样自身的采样噪声,两者不会逐位重合;
+    // 8% 远小于「漏掉第二项」造成的 ~50% 落差,足够区分"闭式解错了/没接上"与"正常数值噪声"。
+    expect(relErr).toBeLessThan(0.08)
+  })
+
+  // 破坏验证(不是常驻测试 —— 做法见 task-7-fix-1.md「把共享 p 改成每户各抽一个」):
+  // 手工把 simulateRenewalDraws 里的 `const p = sampleBeta(a, b, rng)` 从外层(每轮一次)
+  // 挪到最内层(每户一次)、跑上面这条断言、确认它变红、再还原,结果记在 task-7-report.md。
+  // 不把这份 mutation 写成第二条常驻测试:那需要在测试文件里独立复刻一份 PRNG/Gamma/Beta,
+  // 而它本该测的是生产代码本身,复刻一份只会制造两份要维护的代码却什么也多测不到。
 })
