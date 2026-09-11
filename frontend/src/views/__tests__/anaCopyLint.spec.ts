@@ -221,6 +221,32 @@ describe('分析层文案门禁', () => {
   })
 
   /**
+   * F1(修复轮1,design-boards):驾驶舱护栏图那张卡印了读数句(.ana-read),却没有自己的口径浮层 ——
+   * 稿上紧跟读数句之后那句「判据:…带子用来抓离群,不用来押未来」在屏上、仓库里都找不到,
+   * 直到对抗复查逐块比对设计稿才揪出来。这道门禁就是补那个盲区:凡印了读数句的卡,
+   * 必须自带 <AnaMethodNote>,不能拿"读数句本身说得挺清楚"当借口。
+   *
+   * 起点写死在断言里(与 HINT_OVER_BASELINE 同一个写法):立档当天(F1 修完后)实测 1 处既有违规
+   * (AnomalyView.vue 的电费带卡口径写在同屏底部的总说明卡里,不在本卡——那是另一件事,不在本轮),
+   * 只许往下降,不许往上涨。**这条基线是在 F1 把驾驶舱卡自己的浮层补上之后量的**——
+   * 如果先量后补(基线包含驾驶舱那处违规),之后再有人把驾驶舱的浮层删掉,违规数还是压在基线以内,
+   * 门禁会照样绿,防不住它本该防的那次回归。
+   */
+  const ANA_READ_NEEDS_NOTE_BASELINE = 1
+  it(`❗印了读数句(.ana-read)的卡必须同卡自带 <AnaMethodNote> —— 超标处只许减少(基线 ${ANA_READ_NEEDS_NOTE_BASELINE})`, () => {
+    const bad: string[] = []
+    for (const { dir, file: f } of vueFiles()) {
+      const src = readFileSync(join(dir, f), 'utf8')
+      for (const { start, text } of splitCards(src)) {
+        if (!/class="ana-read"/.test(text)) continue
+        if (!/<AnaMethodNote/.test(text)) bad.push(`${f}:${lineOf(src, start)}`)
+      }
+    }
+    expect(bad.length, `这些卡有读数句却没有口径浮层(基线 ${ANA_READ_NEEDS_NOTE_BASELINE}):\n${bad.join('\n')}`)
+      .toBeLessThanOrEqual(ANA_READ_NEEDS_NOTE_BASELINE)
+  })
+
+  /**
    * I5(对抗复查):合约租金带是本分支唯一一条**模拟**出来的带,却是唯一一张没有自己口径浮层的带卡。
    * 读者从屏上看到的只有一句「末月租金预计 X~Y」,读起来像总租金预测 —— 而它结构上不可能包含
    * 新招租(池子只装已签合同),是下界不是预测。这条门禁钉的就是「那三件事还写在卡上没有」。

@@ -27,7 +27,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, paceFullYear, phaseStack, pnlYearMonths, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -115,6 +115,11 @@ const pnlRange = computed(() => (isMonth.value ? '' : monthRangeLabel(yearMonths
 // N2(修复轮2):预算达成永远是年度口径(budgetAch 不吃 isMonth),覆盖区间不能跟着 pnlRange
 // 在月粒度下被清空 —— 否则默认打开驾驶舱看到的是「¥9,271万 · 」,分隔符后面空的。
 const achNote = computed(() => achNoteText(ach.value, ach.value ? money(ach.value.budget) : '', year.value))
+// F3(修复轮1,design-boards):覆盖表派给本任务的三处文案 —— 「预算达成」瓦标题/「N期收入」瓦 note,
+// 计算逻辑抽成 cockpit.logic.ts 的纯函数(achLabelText/revNoteText,与本文件其余屏内变换同规矩,
+// 单测见 cockpit.logic.spec.ts),这里只接线。
+const achLabel = computed(() => achLabelText(ach.value))
+const revNote = computed(() => revNoteText(isMonth.value, yearMonths.value, mc.value?.outlierMonths ?? [], pnlRange.value))
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }
@@ -127,6 +132,8 @@ const fit = computed(() => fitRevenueTrend(pnl.value))
 const pace = computed(() => paceFullYear(pnl.value, fit.value, budgetYuan.value))
 const oldRate = computed(() => oldScreenRate(pnl.value, budgetYuan.value))
 const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
+// F4(修复轮1):主图 markPoint 逐点标注用,每根 pin 各取自己月份的残差倍数(不像 outlierRes 那样固定第一个月)
+const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
 const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
 const outlierRef = computed(() => outlierRefText(fit.value))
 const fitBand = computed(() => (outlierRes.value ? fitBandAt(fit.value, outlierRes.value.month) : null))
@@ -156,9 +163,14 @@ const mainOption = computed<object | null>(() => {
         symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
         label: {
           fontSize: 10, color: '#fff',
-          formatter: outlierRes.value ? `离群\n${Math.floor(outlierRes.value.residuals)}倍残差` : '离群',
+          // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
+          // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
+          formatter: (p: { data: { month?: number } }) => {
+            const r = p.data.month != null ? outlierResByMonth.value.get(p.data.month) : undefined
+            return r != null ? `离群\n${Math.floor(r)}倍残差` : '离群'
+          },
         },
-        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0] })),
+        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
       } : undefined,
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
@@ -342,8 +354,9 @@ const conclusion = computed(() => buildConclusion(
     <!-- KPI 条(spec:营收/成本/利润率/收缴率 vs 目标/预算达成/在租租户) -->
     <template #kpis>
       <!-- I4:年粒度三瓦与「预算达成」同批月份,覆盖区间印在 note 上(月粒度 pnlRange 为空,note 不出现) -->
-      <AnaKpiTile :label="isMonth ? '营业收入' : '营收合计'" :value="money(rev)"
-        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" :note="pnlRange || undefined" />
+      <!-- F3(修复轮1):年粒度标题/note 按稿改「N-M 月收入」/「N 期,已剔 M 月」(revNote,见上方计算属性头注) -->
+      <AnaKpiTile :label="isMonth ? '营业收入' : pnlRange + '收入'" :value="money(rev)"
+        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" :note="revNote" />
       <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" :note="pnlRange || undefined" />
       <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
       <AnaKpiTile label="园区利润" :value="money(prof)"
@@ -355,7 +368,7 @@ const conclusion = computed(() => buildConclusion(
         :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
       <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
       <!-- N2:达成率是年度口径,覆盖区间用 achNote(不借 pnlRange —— 那个在月粒度下是空的) -->
-      <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
+      <AnaKpiTile :label="achLabel" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
       <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
@@ -394,7 +407,8 @@ const conclusion = computed(() => buildConclusion(
       <!-- 主图 s8:收入柱+利润线 -->
       <div class="av2-card av2-s8">
         <div class="av2-card-h">
-          <span class="t">收入与利润 · {{ year }}年</span>
+          <!-- F3(修复轮1):图标题按稿改「月度收入 · 预测护栏」——年份已在顶部期间选择器与下方 hint 里,标题不必重复 -->
+          <span class="t">月度收入 · 预测护栏</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
         <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
@@ -404,6 +418,9 @@ const conclusion = computed(() => buildConclusion(
         <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
         <p v-if="outlierRead" class="ana-read">{{ outlierRead }}</p>
         <p v-if="outlierRef" class="ana-ref">{{ outlierRef }}</p>
+        <!-- F1(修复轮1,design-boards):稿上 ⓘ 门后那句反过度承诺的判据说明,改前屏上没有、仓库里 grep 不到 ——
+             这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。原样按稿抄,一字不改。 -->
+        <AnaMethodNote v-if="outlierRes">判据：底带收入行 m12 &lt; 0，全年仅命中 s1 一行 · 带子用来抓离群，不用来押未来</AnaMethodNote>
       </div>
 
       <!-- s4:收入构成环 -->

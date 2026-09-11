@@ -281,6 +281,27 @@ export function achNoteText(ach: BudgetAch | null, budgetText: string, year: num
   return range ? `${budgetText} · ${range}` : budgetText
 }
 
+/**
+ * F3(修复轮1,design-boards):覆盖表派给 T1 的文案 ——「预算达成」瓦标题按稿补齐覆盖区间
+ * (稿:「预算达成(1–11 月)」)。区间取 ach.usedMonths 实测值,不写死「1–11」——换年、
+ * 换离群月都可能不是 1-11 月,写死到明年就是假话。
+ */
+export function achLabelText(ach: BudgetAch | null): string {
+  return ach ? `预算达成(${monthRangeLabel(ach.usedMonths)})` : '预算达成'
+}
+
+/**
+ * F3(修复轮1,design-boards):「N 期收入」瓦的 note 按稿改成「N 期,已剔 M 月」(稿:「11 期,
+ * 已剔 12 月」)。N = 训练月数(yearMonths.length),M = 被剔月份(outlierMonths,可能不止一个);
+ * 都是实测,不写死「12」—— 那正是 F4 要修的同一种坑。月粒度下没有覆盖区间可印,回落 fallback
+ * (调用方传 pnlRange,与其余两瓦的 note 同源)。
+ */
+export function revNoteText(isMonth: boolean, yearMonths: number[], outlierMonths: number[], fallback: string): string | undefined {
+  if (isMonth) return undefined
+  if (!yearMonths.length) return fallback || undefined
+  return `${yearMonths.length}期` + (outlierMonths.length ? `,已剔${outlierMonths.join('、')}月` : '')
+}
+
 // ── T1/T2(design-boards 2026-09-11,驾驶舱护栏):月度收入 OLS 拟合 —— 全屏唯一一份 ──
 // 结构决定(任务书原话):KPI 瓦(按节奏推全年/月均增速)与主图(趋势线/拟合区间/离群残差倍数)
 // 必须读同一份 fit,不许各自再拟合一次 —— 两套实现算同一条回归,是「增速与线对不上」这类缺陷的根源
@@ -350,6 +371,28 @@ export function outlierResidual(fit: RevenueFit | null, revWan: (number | null)[
   const fitted = fit.fitted[month - 1]
   if (actualWan == null || fitted == null) return null
   return { month, actualWan, residuals: Math.abs(actualWan - fitted) / fit.residualScale }
+}
+
+/**
+ * 离群点相对拟合值的残差倍数 —— 按点各算各的,不像 outlierResidual 那样固定认第一个月。
+ *
+ * F4(design-boards 修复轮1):主图 markPoint 给每个离群月都钉一根 pin,改前 label 的 formatter
+ * 是一句固定文案(取的是 outlierResidual(...)的 outlierMonths[0]),同年若有两个离群月,两根 pin
+ * 会显示同一个数字(都是第一个月的倍数)。这里逐月各算一份;读数句/参照系小字(outlierReadout/
+ * outlierRefText)结构上只讲「一个」离群月(2025 也确实只有一个),不受影响,继续用 outlierResidual
+ * 的单点版本 —— 两个函数不是重复,是「讲一个月的句子」与「给每根 pin 各自标数」两件不同的事。
+ */
+export function outlierResidualsByMonth(
+  fit: RevenueFit | null, revWan: (number | null)[], outlierMonths: number[],
+): Map<number, number> {
+  const out = new Map<number, number>()
+  if (!fit || !fit.residualScale) return out
+  for (const month of outlierMonths) {
+    const actualWan = revWan[month - 1]
+    const fitted = fit.fitted[month - 1]
+    if (actualWan != null && fitted != null) out.set(month, Math.abs(actualWan - fitted) / fit.residualScale)
+  }
+  return out
 }
 
 /** 读数句(门禁 anaCopyLint ≤30 可见字):月份+实际值+离几倍残差(取整 —— 「倍」本就是概数)。 */

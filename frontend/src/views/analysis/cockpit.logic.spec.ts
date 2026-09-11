@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, paceFullYear, phaseStack, pnlYearMonths, schedTrend,
-  type BudgetAch,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, mainChart, momOf, monthRangeLabel, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend,
+  type BudgetAch, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
@@ -382,10 +382,27 @@ describe('❗N2:achNoteText/monthRangeLabel', () => {
   it('❗组件必须用 achNote(ach.usedMonths 的区间)接预算达成的 note,不能借回 pnlRange —— '
     + 'pnlRange 在月粒度下强制清空,那正是改前「¥9,271万 · 」断句的成因', () => {
     const src = readFileSync(join(__dirname, 'CockpitView.vue'), 'utf8')
-    const tile = /<AnaKpiTile label="预算达成"[\s\S]*?\/>/.exec(src)
+    // F3(修复轮1):标题从静态 label="预算达成" 改成 :label="achLabel"(按稿补齐覆盖区间,
+    // 见 CockpitView.vue 的 achLabel 计算属性)——判据锚点跟着改,断言意图(note 接 achNote、
+    // 不借 pnlRange)不变。
+    const tile = /<AnaKpiTile :label="achLabel"[\s\S]*?\/>/.exec(src)
     expect(tile, 'CockpitView.vue 找不到「预算达成」瓦').toBeTruthy()
     expect(tile![0]).toContain(':note="achNote"')
     expect(tile![0]).not.toContain('pnlRange')
+  })
+
+  // ── F3(修复轮1,design-boards):achLabelText/revNoteText —— 覆盖表派给 T1 的另外两处文案 ──
+  it('❗achLabelText:标题按稿补齐覆盖区间「预算达成(N-M月)」,无预算 → 纯标题不带括号', () => {
+    expect(achLabelText(a)).toBe('预算达成(10月)')       // a.usedMonths=[10](本 describe 顶部构造)
+    expect(achLabelText(null)).toBe('预算达成')
+  })
+
+  it('❗revNoteText:年粒度给「N期,已剔M月」,月粒度不给,月份为空回落 fallback', () => {
+    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [12], '备用文案')).toBe('11期,已剔12月')
+    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [], '备用文案')).toBe('12期')   // 无离群月不写"已剔"
+    expect(revNoteText(true, [1, 2, 3], [12], '备用文案')).toBeUndefined()   // 月粒度:标题已是当月实值,不印覆盖区间
+    expect(revNoteText(false, [], [], '备用文案')).toBe('备用文案')          // 无覆盖月 → 回落
+    expect(revNoteText(false, [], [], '')).toBeUndefined()                  // 回落也是空 → undefined,不留半句
   })
 })
 
@@ -469,6 +486,25 @@ describe('❗T1/T2:fitRevenueTrend 与依赖它的 KPI/主图纯函数(2025 实�
     expect(outlierResidual(fit, [], [])).toBeNull()
     expect(outlierResidual(null, [1], [1])).toBeNull()
     expect(outlierResidual(fit, [null], [1])).toBeNull()
+  })
+
+  it('❗F4:两个离群月的残差按点各算(outlierResidualsByMonth)——改前主图 markPoint 两根 pin '
+    + '会顶同一个数字(固定取 outlierMonths[0]),这里断言两点必须各算各的', () => {
+    const fit: RevenueFit = { months: [1, 2, 3, 4, 5], slope: 10, intercept: 0, r2: 0.9, residualScale: 5, fitted: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] }
+    const revWan = [10, 20, 30, 40, 50, 60, 200, 80, 90, 100, 110, -40]   // 7月/12月是离群,偏离幅度不同
+    const m = outlierResidualsByMonth(fit, revWan, [7, 12])
+    expect(m.size).toBe(2)
+    expect(m.get(7)).toBeCloseTo(Math.abs(200 - 70) / 5, 5)     // |实际−拟合|/残差标准差 = 26
+    expect(m.get(12)).toBeCloseTo(Math.abs(-40 - 120) / 5, 5)   // = 32
+    expect(m.get(7)).not.toBe(m.get(12))   // 核心:不能两点顶同一个数字
+  })
+
+  it('outlierResidualsByMonth:无拟合 / 残差标准差为0 / 该月无实际值 → 该月不进 Map(不瞎编)', () => {
+    const fit: RevenueFit = { months: [1], slope: 0, intercept: 0, r2: 0, residualScale: 0, fitted: new Array(12).fill(0) }
+    expect(outlierResidualsByMonth(null, [1], [1]).size).toBe(0)
+    expect(outlierResidualsByMonth(fit, [1], [1]).size).toBe(0)   // residualScale=0
+    const fit2: RevenueFit = { ...fit, residualScale: 5 }
+    expect(outlierResidualsByMonth(fit2, [null], [1]).size).toBe(0)
   })
 
   it('❗读数句/参照系小字:内容与字数门禁(≤30 / ≤28 可见字,copy lint 的真实判据)', () => {
