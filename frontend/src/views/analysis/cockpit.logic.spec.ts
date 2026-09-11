@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPeriod, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, fitRevenueTrendUpTo, mainChart, mainChartOption, mainChartOutlierNote, trendChartOption, trendOutlierHint, momOf, monthRangeLabel, oldScreenNoteText, oldScreenRate, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, paceFullYear, phaseStack, pnlYearMonths, revNoteText, schedTrend, yearOutlookBudgetHint, yearOutlookReadout, yearOutlookRefText, yearOutlookRows,
   type BacktestRow, type BudgetAch, type MainChartData, type RevenueFit,
 } from './cockpit.logic'
 import { usableMonths } from '@/analysis/anaData'
@@ -581,13 +581,18 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const d = mainChart(p2025(), null)
     const fit = fitRevenueTrend(p2025())
     const opt = trendChartOption(d, fit, null) as
-      { series: { name: string; data?: (number | null)[]; markLine?: { label: { formatter: string } } }[] }
+      { series: { name: string; data?: (number | null)[]; markLine?: { label: { show: boolean }; data: { xAxis: number }[] } }[] }
     const line = opt.series.find((s) => s.name === '已录入')!
     expect(line.data![11], '12 月(离群)必须是 null —— −64 万一个点会把其余 11 个月压成平线').toBeNull()
     expect(line.data![10], '11 月是正常月,不许跟着一起被抹掉').not.toBeNull()
-    // 值不藏:竖线标签写出真实的 −64 万
-    expect(line.markLine!.label.formatter).toContain('离群')
-    expect(line.markLine!.label.formatter).toMatch(/-64|−64/)
+    // 竖线仍然标住那一列(断口在哪看得见),但不带标签 —— 标签与拟合区间的三个数压在同一列,
+    // 屏上叠成一团(用户截图可见),文字移到卡头。
+    expect(line.markLine!.data[0].xAxis, '竖线必须钉在 12 月那一列').toBe(11)
+    expect(line.markLine!.label.show, '标签留在图里会和 997/958/919 叠字').toBe(false)
+    // 值不藏:卡头那句写出真实的 −64 万,且月份由数据出不写死
+    expect(trendOutlierHint(d)).toContain('12月')
+    expect(trendOutlierHint(d)).toMatch(/-64|−64/)
+    expect(trendOutlierHint(null), '没有数据时闭嘴,不编一句').toBe('')
   })
 
   it('❗拟合区间 markArea 的 label.formatter 同时含 hi/mid/lo 三个数(997/958/919,T1/T2 已钉过的验收锚点)', () => {

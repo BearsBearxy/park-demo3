@@ -499,6 +499,16 @@ export function mainChartOption(
 }
 
 /**
+ * 趋势图卡头那句「哪个月离群、原值多少」。
+ * 它本来是图里竖线上的标签,与拟合区间的三个数压在同一列,屏上叠成一团 —— 挪到卡头。
+ * 值仍然由数据出,不写死月份(F6 那条同一个理由:换年换离群月,写死的就变成假话)。
+ */
+export function trendOutlierHint(d: MainChartData | null): string {
+  if (!d || !d.outlierMonths.length) return ''
+  return d.outlierMonths.map((m) => `${m}月${fint(d.rev[m - 1] ?? 0)}万离群`).join('、')
+}
+
+/**
  * 「收入趋势 · 拟合区间」独立图(用户 2026-09-12:「把趋势、拟合区间和已录入折线拆出来新开一个
  * 可视化,现在完全看不见」)。
  *
@@ -520,12 +530,12 @@ export function trendChartOption(
     {
       name: '已录入', type: 'line', data: revLine, symbolSize: 6, connectNulls: false,
       lineStyle: { width: 2, color: '#378ADD' }, itemStyle: { color: '#378ADD' },
+      // 竖线只标位置,不带标签 —— 标签原本写在这里,和拟合区间的 997/958/919 落在同一列,
+      // 屏上两行字叠成一团(用户截图可见)。文字改由 trendOutlierHint 出到卡头 hint,
+      // 那里有整行的宽度,且不会跟图里任何东西抢位置。
       markLine: d.outlierMonths.length ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: OUTLIER_RED },
-        label: {
-          fontSize: 10, color: OUTLIER_RED, position: 'insideEndTop',
-          formatter: d.outlierMonths.map((m) => `${m}月 ${fint(d.rev[m - 1] ?? 0)}万 离群`).join(' / '),
-        },
+        label: { show: false },
         data: d.outlierMonths.map((m) => ({ xAxis: m - 1 })),
       } : undefined,
     },
