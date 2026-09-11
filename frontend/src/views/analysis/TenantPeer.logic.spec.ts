@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { BillingLineDTO, ContractDTO } from '@/types/contract'
+import type { AnalysisS10Row } from '@/api/analysis'
 import {
   MIN_SAMPLE, isInForce, buildPeerRows, primaryRowOf, eligibleTenants, phaseZoneLabel,
   percentBelow, phaseStatsOf, buildUnitRentHist, unitRentReadout, unitRentRefText,
-  unitRentHistOption, dominantPropertyType, type PeerRow, type PhaseStats,
+  unitRentHistOption, dominantPropertyType,
+  phaseTableRowOf, phaseTableRows, phaseTableReadout, phaseTableRefText,
+  latestElecSpread, elecTrapReadout, elecTrapRefText,
+  type PeerRow, type PhaseStats, type PhaseTableRow, type ElecSpread,
 } from './TenantPeer.logic'
 
 let seq = 0
@@ -210,5 +214,109 @@ describe('dominantPropertyType', () => {
   })
   it('propertyType 空时按 feeKey 反推(inferPropertyType 口径)', () => {
     expect(dominantPropertyType([bl({ feeKey: 'rent_dorm', propertyType: null, area: 50 })])).toBe('dorm')
+  })
+})
+
+// ── T10「哪些期区能给区间」───────────────────────────────────────────────
+describe('phaseTableRowOf / phaseTableRows', () => {
+  it('样本 < MIN_SAMPLE:中位数照给,p10/p90 留 null', () => {
+    const vals = Array.from({ length: 19 }, (_, i) => i + 1)   // 1..19
+    const r = phaseTableRowOf(2, vals)
+    expect(r.n).toBe(19)
+    expect(r.median).toBeCloseTo(10, 6)
+    expect(r.p10).toBeNull()
+    expect(r.p90).toBeNull()
+  })
+  it('样本达标(边界 n=20):p10/中位/p90 都给,与 anaFmt.quantile 同一套线性插值', () => {
+    const vals = Array.from({ length: 20 }, (_, i) => i + 1)   // 1..20
+    const r = phaseTableRowOf(1, vals)
+    expect(r.n).toBe(20)
+    expect(r.p10).not.toBeNull()
+    expect(r.p90).not.toBeNull()
+    expect(r.median).toBeCloseTo(10.5, 6)
+  })
+  it('n=0:中位数也是 null,不是假装算出 0(quantile 空数组回退 0 的那个 0 不该被当真实中位数)', () => {
+    const r = phaseTableRowOf(3, [])
+    expect(r.n).toBe(0)
+    expect(r.median).toBeNull()
+  })
+  it('phaseTableRows:按期区分组、按期区升序排列(不依赖入参顺序)', () => {
+    const rows: PeerRow[] = [
+      { contractId: 1, tenantId: 1, tenantName: 'A', buildingId: 1, phase: 2, rentArea: 100, monthlyRent: 1000, unitRent: 10 },
+      { contractId: 2, tenantId: 2, tenantName: 'B', buildingId: 2, phase: 1, rentArea: 100, monthlyRent: 2000, unitRent: 20 },
+      { contractId: 3, tenantId: 3, tenantName: 'C', buildingId: 1, phase: 2, rentArea: 100, monthlyRent: 3000, unitRent: 30 },
+    ]
+    const out = phaseTableRows(rows)
+    expect(out.map((r) => r.phase)).toEqual([1, 2])   // 升序,不是入参出现顺序(2 先出现)
+    expect(out.find((r) => r.phase === 2)?.n).toBe(2)   // 期区二两份(unitRent 10/30)
+  })
+})
+
+describe('phaseTableReadout / phaseTableRefText', () => {
+  // 与今天(asOf=2026-09-11)查库实测的真实口径同一形状:期区一样本够(51≥20),二/三/四不够(17/1/1)。
+  const REAL_ROWS: PhaseTableRow[] = [
+    { phase: 1, n: 51, median: 23.0, p10: 14.7, p90: 34.5 },
+    { phase: 2, n: 17, median: 18.6, p10: null, p90: null },
+    { phase: 3, n: 1, median: 19.9, p10: null, p90: null },
+    { phase: 4, n: 1, median: 17.4, p10: null, p90: null },
+  ]
+  it('数的是「能给区间」(p10 非空)的期区数,不是「有中位数」的期区数——四行都有中位数,答案不能是 4', () => {
+    const s = phaseTableReadout(REAL_ROWS)
+    expect(s).toContain('4')
+    expect(s).toContain('1')
+    expect([...s].length).toBeLessThanOrEqual(30)
+  })
+  it('参照系小字含期间', () => {
+    expect(phaseTableRefText('2026-09')).toContain('2026-09')
+  })
+})
+
+// ── T10「同一招式，用在电费上会翻车」─────────────────────────────────────
+const s10 = (tenantName: string, acctMonth: string, elec: number): AnalysisS10Row =>
+  ({ acctMonth, phase: 1, tenantId: null, tenantName, elec, water: 0, total: elec })
+function s10Map(rows: AnalysisS10Row[]): Map<string, AnalysisS10Row[]> {
+  const m = new Map<string, AnalysisS10Row[]>()
+  for (const r of rows) m.set(r.tenantName, [...(m.get(r.tenantName) ?? []), r])
+  return m
+}
+
+describe('latestElecSpread', () => {
+  it('取全库最新一期(不是某个租户自己最新的一期)', () => {
+    const m = s10Map([s10('甲', '2025-11', 100), s10('乙', '2025-12', 200)])
+    expect(latestElecSpread(m)?.period).toBe('2025-12')
+  })
+  it('同一租户同一期多条求和折叠(镜像 TenantEnergy.logic.ts buildTenantRows 口径)', () => {
+    const m = s10Map([s10('甲', '2025-12', 100), s10('甲', '2025-12', 50)])
+    const sp = latestElecSpread(m)
+    expect(sp?.n).toBe(1)          // 折叠成 1 户,不是 2 条
+    expect(sp?.p10).toBe(150)      // 100+50
+  })
+  it('无 s10 记录 → null', () => {
+    expect(latestElecSpread(new Map())).toBeNull()
+  })
+  it('n/p10/p90/max 与线性插值分位同一套算法', () => {
+    const rows = Array.from({ length: 10 }, (_, i) => s10('户' + i, '2025-12', (i + 1) * 10))   // 10,20,...,100
+    const sp = latestElecSpread(s10Map(rows))!
+    expect(sp.n).toBe(10)
+    expect(sp.max).toBe(100)
+    expect(sp.p10).toBeCloseTo(19, 6)   // quantile([10..100],0.1) 线性插值
+  })
+})
+
+describe('elecTrapReadout / elecTrapRefText', () => {
+  it('比值 = p90/p10 四舍五入,不是反过来(p10/p90)', () => {
+    const spread: ElecSpread = { period: '2025-12', n: 263, p10: 62.62, p90: 11685.75, max: 101645.94 }
+    const s = elecTrapReadout(spread)
+    expect(s).toContain('187')   // round(11685.75/62.62)=186.6→187,不是 round(62.62/11685.75)
+    expect([...(s as string)].length).toBeLessThanOrEqual(30)
+  })
+  it('p10<=0:比值没有意义,返回 null(不是除零得 Infinity 印上屏)', () => {
+    expect(elecTrapReadout({ period: '2025-12', n: 1, p10: 0, p90: 100, max: 100 })).toBeNull()
+  })
+  it('参照系小字含样本量与期间,≤28 可见字', () => {
+    const r = elecTrapRefText({ period: '2025-12', n: 263, p10: 62.62, p90: 11685.75, max: 101645.94 })
+    expect(r).toContain('263')
+    expect(r).toContain('2025-12')
+    expect([...r].length).toBeLessThanOrEqual(28)
   })
 })

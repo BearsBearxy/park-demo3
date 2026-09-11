@@ -8,7 +8,10 @@ import {
   sensitivityGapSentence, rentRollRefText, rentRollSentence, type RentPriorityRow, type RentRoll,
 } from '../analysis/expiry.logic'
 import { fitRevenueTrend, mainChart, outlierReadout, outlierRefText, outlierResidual } from '../analysis/cockpit.logic'
-import { unitRentReadout, unitRentRefText } from '../analysis/TenantPeer.logic'
+import {
+  unitRentReadout, unitRentRefText, phaseTableReadout, phaseTableRefText,
+  elecTrapReadout, elecTrapRefText, type PhaseTableRow, type ElecSpread,
+} from '../analysis/TenantPeer.logic'
 import type { PnlSummary } from '../../analysis/anaData'
 
 /**
@@ -105,6 +108,17 @@ const SENSITIVITY_SAMPLE = sensitivityRows(2147000, 2179000, 3122000, 0.2)
 // 纯函数,同一处 F9 盲区(.ana-read/.ana-ref 除插值外没有第二个字符)——直接量函数输出即可。
 // 样本量级不追求业务真实,够用(≥MIN_SAMPLE=20)就行。
 const PEER_SAMPLE = Array.from({ length: 51 }, (_, i) => 7 + i)   // 7..57,51 份
+
+// T10(design-boards)固定字:「哪些期区能给区间」「同一招式，用在电费上会翻车」两卡的读数句/
+// 参照系小字同样是 TenantPeer.logic.ts 抽出的纯函数,同一处 F9 盲区——直接量函数输出即可。
+// 数字是今天(asOf=2026-09-11)查库实测的真实口径(见 t10-report.md),不是编的样本量级。
+const PHASE_TABLE_SAMPLE: PhaseTableRow[] = [
+  { phase: 1, n: 51, median: 23.0, p10: 14.7, p90: 34.5 },
+  { phase: 2, n: 17, median: 18.6, p10: null, p90: null },
+  { phase: 3, n: 1, median: 19.9, p10: null, p90: null },
+  { phase: 4, n: 1, median: 17.4, p10: null, p90: null },
+]
+const ELEC_SPREAD_SAMPLE: ElecSpread = { period: '2025-12', n: 263, p10: 62.62, p90: 11685.75, max: 101645.94 }
 
 const JARGON_SRC = String.raw`σ|标准差|标准偏差|西格玛|z\s*分数|置信`
 const JARGON = new RegExp(JARGON_SRC, 'g')   // 扫描用:matchAll 找全部命中位置
@@ -348,6 +362,8 @@ describe('分析层文案门禁', () => {
       sensitivitySentence(SENSITIVITY_SAMPLE),           // T7(design-boards):续签率变一档
       sensitivityGapSentence(SENSITIVITY_SAMPLE, 3122000),   // F1(修复轮1):板上收尾行,缺口折算中型厂房
       unitRentReadout(28.11, PEER_SAMPLE, '期区一'),         // T8/T9(design-boards):单位租金对标
+      phaseTableReadout(PHASE_TABLE_SAMPLE),                 // T10(design-boards):哪些期区能给区间
+      elecTrapReadout(ELEC_SPREAD_SAMPLE),                   // T10(design-boards):电费会翻车
     ]
     for (const s of cases) {
       expect(s, '这几个入参本该出句,不该闭嘴').not.toBeNull()
@@ -373,6 +389,8 @@ describe('分析层文案门禁', () => {
       outlierRefText(cockpitFit),   // T2(design-boards):驾驶舱护栏图参照系小字,同一处盲区
       priorityRefText(PRIORITY_SAMPLE, 2179000),   // T6(design-boards):先谈哪几户
       unitRentRefText(51, '期区一', '2026-09'),      // T8/T9(design-boards):单位租金对标
+      phaseTableRefText('2026-09'),                  // T10(design-boards):哪些期区能给区间
+      elecTrapRefText(ELEC_SPREAD_SAMPLE),            // T10(design-boards):电费会翻车
     ]
     for (const s of cases) {
       expect([...s].length, s).toBeLessThanOrEqual(REF_MAX)

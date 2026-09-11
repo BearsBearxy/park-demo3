@@ -1,5 +1,15 @@
-// TenantPeer(租户对标,tenant-peer)纯函数 —— design-boards T8/T9。
-// 只做板上「单位租金对标」这一张卡(其余三卡 电费/缴费行为 稿未定义内容,不做,见 TenantPeerView.vue 顶部注释)。
+// TenantPeer(租户对标,tenant-peer)纯函数 —— design-boards T8/T9/T10/T11。
+// T8/T9:骨架 + 单位租金对标直方图。T10:「哪些期区能给区间」+「电费会翻车」两张卡。
+// T11:「这张图为什么可信/和预测图的区别」对照卡(该卡是静态方法论对照,数字大多复用既有
+// computed,没有新增纯函数——见 TenantPeerView.vue)。
+//
+// T10 两张卡的口径(用户已给出、本轮查库坐实,见任务原文与下方各函数注释):
+// · 「哪些期区能给区间」不能照抄板上的四行数字(那是不过滤日期的总体,标签却写着「在租」)——
+//   板还把期区二的成因诊断错了(说是宿舍与厂房混杂,真实原因是 F1 已排除的无租金计费行合同,
+//   T8/T9 修复轮1 已查库坐实并改写单位租金卡自己的口径浮层)。本表按屏上实际用的口径现算:
+//   在租 + 已录面积 + 排除无租金计费行(与「单位租金对标」卡同一个 buildPeerRows population)。
+// · 「电费会翻车」不能抄板上的 62/7,554/79,750/122倍——那是设计时的示意数字,今天的附表10
+//   最新一期(现算,不是写死 2025-12)重新量。
 //
 // 口径(用户已查库核实,见 .superpowers/sdd/2026-09-11-design-boards/t8-report.md 引用的任务说明):
 // · 单位租金 = monthly_rent / rent_area(合同总月租,含管理费/基础维护等五费项合计,不是纯租金单价——
@@ -13,6 +23,7 @@
 //   「无租金计费行」筛选、DataHomeService 的 219 份缺口告警同一判据(BUILDING_RENT_KEYS)。
 import { quantile } from '@/components/ana/anaFmt'
 import { RENT_KEYS, type BillingLineDTO, type ContractDTO, type PropertyType, inferPropertyType } from '@/types/contract'
+import type { AnalysisS10Row } from '@/api/analysis'
 
 /** 少于本数,不给区间/不给百分比读数(全局约束⑤;板上「样本 < 20 不画带」同一条规矩)。 */
 export const MIN_SAMPLE = 20
@@ -189,4 +200,78 @@ export function dominantPropertyType(lines: BillingLineDTO[]): PropertyType | nu
   if (!rentLines.length) return null
   const best = rentLines.reduce((a, b) => ((b.area ?? 0) > (a.area ?? 0) ? b : a))
   return best.propertyType ?? inferPropertyType(best.feeKey)
+}
+
+// ── T10「哪些期区能给区间」──────────────────────────────────────────────
+export interface PhaseTableRow { phase: number; n: number; median: number | null; p10: number | null; p90: number | null }
+
+/** 单个期区一行:中位数不论样本多寡都给(板对自己最薄的期区三/四也是这么做的,见 board-peer.txt
+ *  的「样本不足」两行——区间格子写「样本不足」,中位数格子仍有数字);p10/p90 只在 n>=MIN_SAMPLE
+ *  时给,不足时留 null,调用方渲染成「样本不足」(全局约束⑤同一条规矩,不是这张卡另起的判据)。 */
+export function phaseTableRowOf(phase: number, values: number[]): PhaseTableRow {
+  const n = values.length
+  const enough = n >= MIN_SAMPLE
+  return {
+    phase, n,
+    median: n ? quantile(values, 0.5) : null,
+    p10: enough ? quantile(values, 0.1) : null,
+    p90: enough ? quantile(values, 0.9) : null,
+  }
+}
+
+/** 全部期区一次性给行(不看选中哪个租户——这张卡回答「哪个期区能给区间」,不是某户的位置,
+ *  population 与「单位租金对标」卡同一个 buildPeerRows 结果,按期区分组)。 */
+export function phaseTableRows(rows: PeerRow[]): PhaseTableRow[] {
+  const byPhase = new Map<number, number[]>()
+  for (const r of rows) {
+    const list = byPhase.get(r.phase)
+    if (list) list.push(r.unitRent)
+    else byPhase.set(r.phase, [r.unitRent])
+  }
+  return [...byPhase.keys()].sort((a, b) => a - b).map((p) => phaseTableRowOf(p, byPhase.get(p)!))
+}
+
+/** 读数句(≤30 可见字):样本够(能给区间)的期区数 / 总期区数。 */
+export function phaseTableReadout(rows: PhaseTableRow[]): string {
+  const enough = rows.filter((r) => r.p10 != null).length
+  return `${rows.length}个期区中${enough}个样本够，能给区间`
+}
+
+/** 参照系小字(≤28 可见字)。 */
+export function phaseTableRefText(period: string): string {
+  return `按期区分组·在租已录面积含租金合同·${period}`
+}
+
+// ── T10「同一招式，用在电费上会翻车」────────────────────────────────────
+export interface ElecSpread { period: string; n: number; p10: number; p90: number; max: number }
+
+/** 同一招式套电费:电费 = 附表10 基本+标准+维护电费(同 TenantEnergyView 口径),取全库最新一期,
+ *  同名同期多条求和折叠(镜像 TenantEnergy.logic.ts buildTenantRows 的口径,不新起一套)。
+ *  不按期区/面积分层,直接园区全量比——这正是本卡要示范的「反例」,不是遗漏。
+ *  返回 null:一条 s10 记录都没有(附表10 未导入)。 */
+export function latestElecSpread(tenantMap: Map<string, AnalysisS10Row[]>): ElecSpread | null {
+  let period = ''
+  for (const rs of tenantMap.values()) for (const r of rs) if (r.acctMonth > period) period = r.acctMonth
+  const values: number[] = []
+  for (const rs of tenantMap.values()) {
+    let v = 0, has = false
+    for (const r of rs) if (r.acctMonth === period) { v += r.elec; has = true }
+    if (has) values.push(v)
+  }
+  if (!values.length) return null
+  return { period, n: values.length, p10: quantile(values, 0.1), p90: quantile(values, 0.9), max: Math.max(...values) }
+}
+
+/** 读数句(≤30 可见字):p90 是 p10 的多少倍——用未取整的原始分位数算比值,不用显示用的四舍五入整数
+ *  (显示的 p10/p90/最高三个数走 fint 四舍五入,两套数字各自独立,互不绑定)。p10<=0 时倍数没有
+ *  意义(除零/趋近无穷),返回 null,调用方按「数据不足」处理。 */
+export function elecTrapReadout(spread: ElecSpread): string | null {
+  if (!(spread.p10 > 0)) return null
+  const ratio = Math.round(spread.p90 / spread.p10)
+  return `p90 是 p10 的 ${ratio} 倍，一条带说不清`
+}
+
+/** 参照系小字(≤28 可见字)。 */
+export function elecTrapRefText(spread: ElecSpread): string {
+  return `${spread.n}户附表10电费·${spread.period}`
 }

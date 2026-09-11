@@ -11,6 +11,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { BuildingDTO } from '@/types/building'
 import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
+import type { AnalysisS10Row } from '@/api/analysis'
 
 // AnaEmpty.vue 读 useAuthStore()(navAccess 判「去录入」链接可见性)——挂载测必须有一个活跃 Pinia,
 // 否则样本不足那条空态渲染时直接抛 [🍍] getActivePinia 错误(同 pvMeterAnaScreen.spec.ts 的既有写法)。
@@ -61,6 +62,13 @@ const TENANTS: TenantDTO[] = CONTRACTS.map((c) => ({
   primaryBuilding: null, contractCount: 1, parentId: null, parentName: null,
 }))
 
+// T10:s10 附表10 电费(「同一招式，用在电费上会翻车」卡)——250(超 MIN_SAMPLE 门槛不相关,这里只需
+// 覆盖「latestElecSpread 拿到数据后卡片渲染」这条路径,数字不追求业务真实,够用就行。
+const S10_ROWS: AnalysisS10Row[] = Array.from({ length: 5 }, (_, i) => ({
+  acctMonth: '2026-08', phase: 1, tenantId: null, tenantName: '电户' + i, elec: (i + 1) * 1000, water: 0, total: (i + 1) * 1000,
+}))
+const S10_MAP = new Map<string, AnalysisS10Row[]>(S10_ROWS.map((r) => [r.tenantName, [r]]))
+
 vi.mock('@/analysis/anaData', () => ({
   fetchAvailableMonths: vi.fn(async () => ({ months: ['2026-08', '2026-09'], sources: { pnl: ['2026-08', '2026-09'] } })),
   fetchContracts: vi.fn(async () => CONTRACTS),
@@ -70,10 +78,12 @@ vi.mock('@/analysis/anaData', () => ({
     contract: {}, tenant: {}, extraUnitIds: [],
     billingLines: [{ id: 1, contractId: 1, location: '主', feeKey: 'rent_factory', propertyType: 'factory', billMode: 'per_sqm_month', unitPrice: 10, area: 100, coeff: 1, source: 'manual', seq: 0 }],
   })),
+  fetchS10TenantMap: vi.fn(async () => S10_MAP),
   invalidateAnaCache: vi.fn(),
 }))
 
 import TenantPeerView from '@/views/analysis/TenantPeerView.vue'
+import { fetchS10TenantMap } from '@/analysis/anaData'
 import type { VueWrapper } from '@vue/test-utils'
 
 // FPTenantPicker 候选按 zh 排序,「丙租户100」的拼音(bǐng)排在「租户01」(zū)前面——
@@ -145,5 +155,61 @@ describe('TenantPeerView · 单位租金对标挂载测', () => {
     await flushPromises()
     // 点了禁用按钮也不该切走——卡头仍是「单位租金对标」
     expect(w.text()).toContain('单位租金对标')
+  })
+
+  it('❗T10「哪些期区能给区间」:期区一样本够(25≥20)给区间,期区二样本不足(3<20)', async () => {
+    const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    await flushPromises()
+    const card = w.findAll('.av2-card').find((c) => c.text().includes('哪些期区能给区间'))
+    expect(card, '找不到「哪些期区能给区间」卡').toBeTruthy()
+    const rows = card!.findAll('tbody tr')
+    expect(rows).toHaveLength(2)   // 桩数据只有期区一、期区二两个期区
+    expect(rows[0].text()).toContain('期区一')
+    expect(rows[0].text()).toContain('25')
+    expect(rows[0].text()).not.toContain('样本不足')   // 25≥MIN_SAMPLE=20,给区间
+    expect(rows[1].text()).toContain('期区二')
+    expect(rows[1].text()).toContain('3')
+    expect(rows[1].text()).toContain('样本不足')       // 3<MIN_SAMPLE=20,不给区间(但中位数仍有数字)
+  })
+
+  it('❗T10「同一招式，用在电费上会翻车」:附表10 数据到位后画出 p10/p90/最高 + 读数句', async () => {
+    const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    await flushPromises()
+    const card = w.findAll('.av2-card').find((c) => c.text().includes('同一招式'))
+    expect(card, '找不到「同一招式，用在电费上会翻车」卡').toBeTruthy()
+    expect(card!.text()).toContain('2026-08')   // 桩数据的最新 acctMonth
+    expect(card!.text()).toContain('5 户')       // S10_MAP 5 户
+    const readEl = card!.find('.ana-read')
+    expect(readEl.exists(), '没有读数句').toBe(true)
+    expect(readEl.text()).toContain('倍')
+    expect([...readEl.text()].length, '读数句超过 30 可见字').toBeLessThanOrEqual(30)
+    const refEl = card!.find('.ana-ref')
+    expect(refEl.exists(), '没有参照系小字').toBe(true)
+    expect([...refEl.text()].length, '参照系小字超过 28 可见字').toBeLessThanOrEqual(28)
+  })
+
+  it('❗T10「同一招式，用在电费上会翻车」:附表10 未导入 → 诚实空态,不是空表/崩溃', async () => {
+    vi.mocked(fetchS10TenantMap).mockResolvedValueOnce(new Map())
+    const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    await flushPromises()
+    const card = w.findAll('.av2-card').find((c) => c.text().includes('同一招式'))
+    expect(card, '找不到「同一招式，用在电费上会翻车」卡').toBeTruthy()
+    expect(card!.find('table').exists(), '没有电费数据时不该画表').toBe(false)
+    expect(card!.text()).toContain('附表10 未导入')
+  })
+
+  it('❗T11「这张图为什么可信」:对标带 vs 预测带对照表四行都在', async () => {
+    const w = mount(TenantPeerView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    await flushPromises()
+    const card = w.findAll('.av2-card').find((c) => c.text().includes('这张图为什么可信'))
+    expect(card, '找不到「这张图为什么可信」卡').toBeTruthy()
+    const rows = card!.findAll('tbody tr')
+    expect(rows).toHaveLength(4)
+    expect(card!.text()).toContain('对标带')
+    expect(card!.text()).toContain('预测带')
   })
 })
