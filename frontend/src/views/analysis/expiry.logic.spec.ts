@@ -964,6 +964,7 @@ describe('renewalRateLineOption(「续签率从哪来」那条数轴)+ 合约租
   it('❗合约租金带 y 轴 scale: true —— 不从 0 起,否则 165~232 万的落差只占七分之一屏高', () => {
     // 轴的配置与数据无关,给一份最小 RentRoll 即可(量程那句话在断言说明里,不靠构造复现)
     const r: RentRoll = {
+      history: [],
       months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 0, renewalMid: 0, renewalHi: 0 }],
       locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
       expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,

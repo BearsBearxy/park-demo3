@@ -8,6 +8,8 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaRentBandChart from '@/components/ana/AnaRentBandChart.vue'
+import type { RentBandCol, GapInput } from './rentBandChart.logic'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
@@ -59,7 +61,37 @@ const wallRentSum = computed(() => wall.value.quarters.reduce((s, q) => s + q.re
 // 不在 expiry.logic 里碰系统时钟(全局约束①)。
 const asOf = today.toLocaleDateString('sv')
 const rentRoll = computed(() => buildRentRoll(contracts.value, asOf, 12))
-const rentRollOpt = computed(() => rentRollOption(rentRoll.value))
+// 自绘图的列:历史 12 个月(只有已实现)+ 预测 12 个月(锁定/预计/上下沿)。
+// 万元一次换到位,组件里不再做单位换算 —— 换算散在两处,接缝迟早对不上。
+const wanOf = (v: number) => +(v / 10000).toFixed(2)
+const bandCols = computed<RentBandCol[]>(() => {
+  const r = rentRoll.value
+  const hist: RentBandCol[] = r.history.map((h) => ({
+    month: h.month, realized: wanOf(h.locked), locked: null, mid: null, lo: null, hi: null,
+  }))
+  const fwd: RentBandCol[] = r.months.map((m, i) => ({
+    month: m.month,
+    // 第 0 月是「今天」:它既是历史的末点也是预测的起点,两段在这一点接上才不会断开。
+    realized: i === 0 ? wanOf(m.locked) : null,
+    locked: wanOf(m.locked),
+    mid: wanOf(m.locked + m.renewalMid),
+    lo: wanOf(m.locked + m.renewalLo),
+    hi: wanOf(m.locked + m.renewalHi),
+  }))
+  // 历史末点与预测起点之间要连上:把历史最后一格的 realized 延到起点那一列
+  return [...hist, ...fwd]
+})
+const bandSplitIdx = computed(() => rentRoll.value.history.length)
+const bandGap = computed<GapInput | null>(() => {
+  const g = rentRoll.value.gap
+  if (!g) return null
+  const col = bandSplitIdx.value + g.monthsAway
+  const m = rentRoll.value.months[g.monthsAway]
+  return {
+    colIndex: col, dropWan: +(g.totalRentSum / 10000).toFixed(1), names: g.names, count: g.count,
+    endLabel: m ? m.month : '',
+  }
+})
 const rentRollText = computed(() => rentRollSentence(rentRoll.value))
 const rentRollRef = computed(() => rentRollRefText(rentRoll.value))
 const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.masterLease > 0))
@@ -183,7 +215,7 @@ function onParetoClick(p: unknown) {
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
             <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界{{ rentRollHasMaster ? ' · 另有整租未计入' : '' }}</span></div>
-          <AnaEChart v-if="rentRollText" :option="rentRollOpt" :height="260" />
+          <AnaRentBandChart v-if="rentRollText" :cols="bandCols" :split-idx="bandSplitIdx" :gap="bandGap" :height="280" />
           <p v-if="rentRollText" class="ana-read">{{ rentRollText }}</p>
           <p class="ana-ref">{{ rentRollRef }}</p>
         </div>

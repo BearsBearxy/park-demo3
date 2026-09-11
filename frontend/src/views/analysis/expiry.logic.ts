@@ -208,7 +208,9 @@ function monthBounds(asOf: string, i: number): { startKey: number; endKey: numbe
   const [ay, am] = asOf.split('-').map(Number)
   const total = am - 1 + i
   const y = ay + Math.floor(total / 12)
-  const m = (total % 12) + 1
+  // 取正模:JS 的 % 保留被除数的符号,i 为负(往回数月份)时 (total % 12) 会是负数,
+  // 算出 m = −3 这种不存在的月份。2026-09-12 加「往回 12 个月」的历史线时踩到,连带修掉。
+  const m = (((total % 12) + 12) % 12) + 1
   const start = new Date(y, m - 1, 1)
   const end = new Date(y, m, 0)   // 下月第0天 = 本月最后一天
   const key = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
@@ -457,6 +459,9 @@ export interface RentPriorityRow {
 }
 
 export interface RentRoll {
+  /** 预测起点之前的 12 个月锁定线 —— 与 months 同一套判据(lockedRentByMonth),只是锚点往回挪。
+   *  稿上那张图左半边就是它:没有它,图从「今天」开始,读者看不出这条线是涨是跌。 */
+  history: { month: string; locked: number }[]
   months: RentRollMonth[]
   locked: number[]           // = months.map(m => m.locked)
   lockedBand?: undefined     // 锁定线零随机量,不许套带(❗spec 断言这个键必须是 undefined)
@@ -479,6 +484,11 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   const lockedCount = lockedCountByMonth(cs, asOf, n)
   const masterLease = masterLeaseByMonth(cs, asOf, n)
   const asOfKey = dateKeyOf(asOf)!
+  // 往回 12 个月的锁定线:同一个 lockedRentByMonth,只把锚点挪到 12 个月前。
+  // 不另写一套「历史」口径 —— 两套口径画在同一条线上,接缝处必然对不上。
+  const histBase = monthBounds(asOf, -12).label + '-01'
+  const histLocked = lockedRentByMonth(cs, histBase, 12)
+  const history = histLocked.map((v, i) => ({ month: monthBounds(histBase, i).label, locked: v }))
 
   // 历史回测:asOf 之前已到期、结果已知的**租约**(不是合同行)。草稿从未真正在租,不算"已知结果"。
   //
@@ -580,6 +590,7 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
   const expiringRentSum = byExpMonth.reduce((s, arr) => s + arr.reduce((s2, v) => s2 + v, 0), 0)
 
   return {
+    history,
     months: months.map((mb, i) => ({
       month: mb.label, locked: locked[i], lockedCount: lockedCount[i], masterLease: masterLease[i],
       renewalLo: renewalLo[i], renewalMid: renewalMid[i], renewalHi: renewalHi[i],

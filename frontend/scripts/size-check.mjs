@@ -100,7 +100,10 @@ const BUDGET_KB = {
 //   ⚠ echarts 那块 698KB 没省下来 —— 本屏别的图(收入柱、构成环、回测…)还在用它。
 // 2026-09-12 跨年预测带(用户:「用户导入数据自动就有了」):OLS 抽通用核 + 上一年接横轴,
 //   实测 3973.0KB,正好顶在上限上。同一条规矩:实测 + 2KB。
-const TOTAL_KB = 3975
+// 2026-09-12 三图照稿自绘(第1步:合约租金带):新增 AnaRentBandChart + rentBandChart.logic,
+//   实测 3981.3KB。剩下两张图(续签率数轴、单位租金对标)还会再加 —— 到那两步再各自实测收一次,
+//   不预留:预留过的额度没人会主动收回,这个教训本分支上一次就吃过。
+const TOTAL_KB = 3984
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

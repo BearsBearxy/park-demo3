@@ -82,7 +82,9 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
 
   it('❗图与句子受同一个条件门控(F5:decided/pool 是独立过滤,结构上可能只有一边有数据)', () => {
     const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
-    const chartTag = src.match(/<AnaEChart[^>]*:option="rentRollOpt"[^>]*\/>/)?.[0]
+    // 2026-09-12:这张图从 ECharts 换成自绘的 AnaRentBandChart(照设计稿实现,用户拍板)。
+    // 判据不变 —— 图与句子必须受同一个 v-if 门控,只是元素名换了。
+    const chartTag = src.match(/<AnaRentBandChart[^>]*\/>/)?.[0]
     const sentenceTag = src.match(/<p[^>]*class="ana-read"[^>]*>\{\{ rentRollText \}\}<\/p>/)?.[0]
     expect(chartTag, '合约租金带图元素未找到').toBeTruthy()
     expect(sentenceTag, '合约租金带句子元素未找到').toBeTruthy()
