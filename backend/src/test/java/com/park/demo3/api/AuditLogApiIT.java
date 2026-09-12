@@ -31,7 +31,18 @@ class AuditLogApiIT extends AbstractMysqlIT {
         return JsonPath.read(body, "$.data.token");
     }
 
-    private String admin() throws Exception { return token("admin", "admin123"); }
+    /**
+     * 一个用例只登一次。
+     *
+     * V125 单会话之后这一行是必须的:这个类的 logs() 助手每调一次就 admin() 一次,
+     * 而每一次 admin() 都是一次新登录 —— 它会把用例开头拿到的那张令牌挤掉,
+     * 下一句 PUT 就是 401。JUnit 每个用例一个实例,所以这个字段天然是用例级缓存。
+     */
+    private String adminToken;
+    private String admin() throws Exception {
+        if (adminToken == null) adminToken = token("admin", "admin123");
+        return adminToken;
+    }
 
     private String utf8(org.springframework.test.web.servlet.MvcResult r) {
         return new String(r.getResponse().getContentAsByteArray(), java.nio.charset.StandardCharsets.UTF_8);

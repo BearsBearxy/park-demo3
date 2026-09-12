@@ -242,6 +242,9 @@ export const useAuthStore = defineStore('auth', () => {
     // 授权就留在服务端了,同一台电脑下一个人登进来白捡 30 分钟。
     // 不 await:登出不能被一个网络请求卡住;服务端 30 分钟 TTL 兜底。
     if (grants.value.length) api.delete('/auth/elevate').catch(() => { /* TTL 兜底 */ })
+    // V125:告诉服务端这张令牌作废。改前只清本地,服务端不知情 —— 那张令牌在剩下的
+    // 有效期里仍然能用(最多 120 分钟)。同样不 await,理由同上;失败了也只是等它自己过期。
+    if (token.value) api.post('/auth/logout').catch(() => { /* 过期兜底 */ })
     token.value = null
     displayName.value = null
     me.value = null

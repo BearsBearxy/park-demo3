@@ -43,6 +43,8 @@ public class PermissionRegistry {
         // 本人改密:任何已登录账号都能改自己的。不登记的话按「默认拒绝」会 403 ——
         // 首次强制改密的账号会被卡死在改密页(它是他唯一能去的地方,却提交不了)。
         add(HttpMethod.POST, "/api/auth/change-password", ANY_AUTHENTICATED);
+        // 登出只作废自己的令牌(用名取自 SecurityContext,不收入参),任何已登录账号都能调
+        add(HttpMethod.POST, "/api/auth/logout", ANY_AUTHENTICATED);
         // 结束自己的提权授权:幂等、只影响自己,任何人可调。放在 POST /elevate 之前 —— 方法不同不冲突,
         // 但顺序表读起来要一眼看出这两条是一对。
         add(HttpMethod.DELETE, "/api/auth/elevate", ANY_AUTHENTICATED);

@@ -499,7 +499,12 @@ class ReviewGuardCoverageTest {
      */
     private static final java.util.Set<String> NOT_PERIOD_DATA = java.util.Set.of(
         "SystemService", "AuthService", "ElevationService", "ApprovalService",
-        "LockService", "PresenceService", "ImportLogService");
+        "LockService", "PresenceService", "ImportLogService",
+        // SessionService(V125):会话与令牌版本。它写的两张表一列月份都没有,
+        // 与旁边的 AuthService(登录)、LockService(编辑锁)同一类。
+        // 没抬上限:上限是「白名单是例外不是常态」这条信号的唯一载体,
+        // 把一个本来就不属于那个桶的服务往里塞再抬顶,等于把灯拔了。
+        "SessionService");
 
     /**
      * 第三个桶（2026-09-09，随「分母换成全部写端点」一起加）：**写的表一列月份都没有**的方法。

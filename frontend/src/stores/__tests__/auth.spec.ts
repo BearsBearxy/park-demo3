@@ -5,7 +5,10 @@ import { useAuthStore } from '../auth'
 // Mock @/api so we never hit the network
 vi.mock('@/api', () => ({
   default: {
-    post: vi.fn(),
+    // 返回 Promise 而不是 undefined:logout 会对它挂 .catch(V125 登出告知服务端),
+    // 返 undefined 会让三条 logout 用例报「Cannot read properties of undefined」。
+    post: vi.fn(() => Promise.resolve(undefined)),
+    delete: vi.fn(() => Promise.resolve(undefined)),
   },
   // 跨标签页身份漂移守卫的两个具名导出:store 在 login/logout 收尾会调它们。
   // 漏 mock 会让本文件所有用例报「No "bindSession" export is defined」——
@@ -166,6 +169,14 @@ describe('auth store', () => {
     await auth.login({ username: 'vet', password: 'x' })
     expect(auth.mustChangePassword).toBe(false)
     expect(localStorage.getItem('mustChangePassword')).toBeNull()
+  })
+
+  it('❗logout 要告诉服务端 —— 只清本地的话那张令牌还能再用两小时(V125)', () => {
+    const s = useAuthStore()
+    s.setToken('t1')
+    ;(api.post as unknown as { mockClear: () => void }).mockClear()
+    s.logout()
+    expect(api.post).toHaveBeenCalledWith('/auth/logout')
   })
 
   it('logout clears token + displayName + role + removes from localStorage', async () => {

@@ -163,22 +163,22 @@ class RoleApiIT extends AbstractMysqlIT {
     }
 
     @Test
-    void legacyTokenResolvesToCurrentPermissions() throws Exception {
-        // V32 的做法是「无 role claim 的老令牌降级成 viewer」—— 那是因为**角色当时住在令牌里**,
-        // 一份半年前签发的令牌可能带着早已作废的角色。
+    void legacyTokenWithoutSessionClaimsIsRejected() throws Exception {
+        // 这条的判据 2026-09-12 反了。
         //
-        // V101 起权限一律服务端现查(UserPermissionCache),令牌只带用户名、不带任何授权信息,
-        // 「陈旧 claim」这回事就不存在了。所以老令牌解析成该账号的**当前**权限才是对的:
-        // 拿着老令牌的 admin 就是 admin,不需要重登录一次去"恢复"。
+        // 原来它叫 legacyTokenResolvesToCurrentPermissions,断言「没有 role claim 的老令牌照样能用」——
+        // 那在 V101 的前提下是对的:令牌只带用户名,授权全部现查,所以令牌新旧无关紧要。
         //
-        // 空体过写门后抵达 @Valid 返 400(≠403 即证明通过了写门),不产生数据。
-        String legacy = jwt.generate("admin", null);
+        // V125 给令牌加了 tv（令牌版本）与 sid（会话 id）两个 claim,而它们不是授权,
+        // 是「这张是不是还活着」的凭据。没有这两个 claim 就无法回答这个问题,
+        // 而「答不上来就放行」等于把改密码立刻生效这件事开一个永久的后门:
+        // 任何人拿一张升级前签的令牌就能绕过。所以一律拒。
+        //
+        // 代价写在这里:**升级当天所有人要重新登录一次**。一次性的。
+        String legacy = jwt.generate("admin", null, -1, null);
         mvc.perform(get("/api/tenants").header("Authorization", "Bearer " + legacy))
-           .andExpect(status().isOk());
-        mvc.perform(post("/api/tenants").header("Authorization", "Bearer " + legacy)
-                .contentType("application/json").content("{}"))
-           .andExpect(status().isBadRequest())
-           .andExpect(jsonPath("$.code").value(400));
+           .andExpect(status().isUnauthorized())
+           .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test
@@ -186,7 +186,7 @@ class RoleApiIT extends AbstractMysqlIT {
         // 缓存里查不到 = 账号不存在或已停用 → 保持匿名 → 401。
         // 这是 V101 换来的能力:**停用一个人,他手上的有效令牌下一个请求就失效**,
         // 不必等 120 分钟过期(权限烤进令牌的话就只能等)。
-        String ghost = jwt.generate("no-such-user", "admin");
+        String ghost = jwt.generate("no-such-user", "admin", 0, "whatever");
         mvc.perform(get("/api/tenants").header("Authorization", "Bearer " + ghost))
            .andExpect(status().isUnauthorized())
            .andExpect(jsonPath("$.code").value(401));

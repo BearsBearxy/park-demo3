@@ -5,6 +5,7 @@ import com.park.demo3.dto.ElevationDtos.ElevateReq;
 import com.park.demo3.dto.ElevationDtos.GrantDTO;
 import com.park.demo3.service.AuthService;
 import com.park.demo3.service.ElevationService;
+import com.park.demo3.service.SessionService;
 import com.park.demo3.service.SystemService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -16,11 +17,26 @@ public class AuthController {
     private final AuthService auth;
     private final SystemService system;
     private final ElevationService elevation;
-    public AuthController(AuthService auth, SystemService system, ElevationService elevation) {
-        this.auth = auth; this.system = system; this.elevation = elevation;
+    private final SessionService sessions;
+    public AuthController(AuthService auth, SystemService system, ElevationService elevation,
+                          SessionService sessions) {
+        this.auth = auth; this.system = system; this.elevation = elevation; this.sessions = sessions;
     }
     @PostMapping("/login")
     public LoginResp login(@Valid @RequestBody LoginReq req) { return auth.login(req); }
+
+    /**
+     * 登出(V125)。改前前端只把本地令牌删掉,服务端不知情 ——
+     * 那张令牌在剩下的有效期里仍然能用。现在它当场作废。
+     * 幂等:已经登出过再调一次,只是又 +1。
+     */
+    @io.swagger.v3.oas.annotations.Operation(summary = "登出（作废本人当前令牌）")
+    @PostMapping("/logout")
+    public void logout() {
+        String me = org.springframework.security.core.context.SecurityContextHolder
+            .getContext().getAuthentication().getName();
+        sessions.revokeAll(me, "self");
+    }
 
     // 本人改密:任何已登录账号都能改自己的,与 system 权限无关 →
     // PermissionRegistry 里登记为 ANY_AUTHENTICATED(不登记的话按「默认拒绝」会 403)。

@@ -10,13 +10,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * 令牌只带用户名;权限从 {@link UserPermissionCache} 现查(RBAC-SPEC v2 §5.5)。
+ * 令牌只带身份;权限从 {@link UserPermissionCache} 现查(RBAC-SPEC v2 §5.5)。
  *
  * 令牌里**不烤权限** —— 烤进去的话把人停用了他还能再用两小时(exp 120 分钟)。
  * 缓存里查不到 = 账号不存在或已停用 → 保持匿名 → 401,停用立刻生效。
  *
  * V32 的 role claim 仍在签发与解析,但不再参与授权判定(authorities 只放权限点,无 ROLE_ 前缀)。
- * 老令牌(V32 之前无 role claim)照样能用:权限一律现查,与 claim 无关。
+ *
+ * V125 加了两道,都读同一份内存快照,**逐请求零查库**:
+ *   ① tv 对不上 → 这张令牌是改密/踢人/别处登录之前签的,拒。
+ *   ② sid 不是这个账号当前那个 → 同上(单会话:一个账号同时只认一个 sid)。
+ * 老令牌(V125 之前签发、没有 tv/sid 的)一律拒:tokenVersionOf 给 -1,与任何真实版本都不等。
+ * 这是有意的 —— 升级当天所有人重登一次,换来的是「改密码立刻生效」。
  */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -31,7 +36,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 var claims = jwt.validateAndGetClaims(h.substring(7));
                 UserPermissionCache.UserAuth ua = cache.get(claims.getSubject());
-                if (ua != null) {   // null = 账号已停用/已删 → 不认证,后续 401
+                if (ua != null && live(ua, claims)) {   // null = 账号已停用/已删;live=false = 令牌已作废
                     var auth = new UsernamePasswordAuthenticationToken(ua.username(), null,
                             AuthorityUtils.createAuthorityList(ua.perms().toArray(new String[0])));
                     SecurityContextHolder.getContext().setAuthentication(auth);
@@ -39,5 +44,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             } catch (Exception ignored) { /* 无效令牌 → 保持匿名,后续被 401 拦截 */ }
         }
         chain.doFilter(req, res);
+    }
+
+    /** 这张令牌还活着吗。两个条件都要成立,缺一即作废。 */
+    private static boolean live(UserPermissionCache.UserAuth ua, io.jsonwebtoken.Claims claims) {
+        if (JwtUtil.tokenVersionOf(claims) != ua.tokenVersion()) return false;
+        String sid = JwtUtil.sessionIdOf(claims);
+        return sid != null && sid.equals(ua.sessionId());
     }
 }
