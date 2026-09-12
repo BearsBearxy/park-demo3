@@ -127,7 +127,7 @@ const achNote = computed(() => achNoteText(ach.value, ach.value ? money(ach.valu
 // 计算逻辑抽成 cockpit.logic.ts 的纯函数(achLabelText/revNoteText,与本文件其余屏内变换同规矩,
 // 单测见 cockpit.logic.spec.ts),这里只接线。
 const achLabel = computed(() => achLabelText(ach.value))
-const revNote = computed(() => revNoteText(isMonth.value, yearMonths.value, mc.value?.outlierMonths ?? [], pnlRange.value))
+const revNote = computed(() => revNoteText(isMonth.value, yearMonths.value, pnlRange.value))
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }

@@ -293,15 +293,20 @@ export function achLabelText(ach: BudgetAch | null): string {
 }
 
 /**
- * F3(修复轮1,design-boards):「N 期收入」瓦的 note 按稿改成「N 期,已剔 M 月」(稿:「11 期,
- * 已剔 12 月」)。N = 训练月数(yearMonths.length),M = 被剔月份(outlierMonths,可能不止一个);
- * 都是实测,不写死「12」—— 那正是 F4 要修的同一种坑。月粒度下没有覆盖区间可印,回落 fallback
- * (调用方传 pnlRange,与其余两瓦的 note 同源)。
+ * 「N 期收入」瓦的 note。只写训练月数,月粒度下回落 fallback(调用方传 pnlRange,
+ * 与其余两瓦的 note 同源)。
+ *
+ * 2026-09-12:原本还拼一句「,已剔 M 月」(照稿上的「11 期,已剔 12 月」)。那句现在恒为假:
+ * 负收入月必然有值,而 pnlYearMonths 改成「有值就要」之后(用户「用户是什么数据就使用什么数据」),
+ * 负收入月一定在 yearMonths 里 —— 它没被剔掉。实测 2025 库上这句印出来是「12期,已剔12月」,
+ * 而同屏上方的期间横幅写的是「2025-12 收入为负,已计入年度营收/成本/利润与达成率」。
+ * 两句直接相反,而只有横幅那句是真的。整句删掉,连带 outlierMonths 入参——
+ * 这块瓦统共多少期,哪一期是负的由横幅说,不在两处各说一遍。
  */
-export function revNoteText(isMonth: boolean, yearMonths: number[], outlierMonths: number[], fallback: string): string | undefined {
+export function revNoteText(isMonth: boolean, yearMonths: number[], fallback: string): string | undefined {
   if (isMonth) return undefined
   if (!yearMonths.length) return fallback || undefined
-  return `${yearMonths.length}期` + (outlierMonths.length ? `,已剔${outlierMonths.join('、')}月` : '')
+  return `${yearMonths.length}期`
 }
 
 // ── T1/T2(design-boards 2026-09-11,驾驶舱护栏):月度收入 OLS 拟合 —— 全屏唯一一份 ──

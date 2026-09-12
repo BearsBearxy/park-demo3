@@ -389,12 +389,15 @@ describe('❗N2:achNoteText/monthRangeLabel', () => {
     expect(achLabelText(null)).toBe('预算达成')
   })
 
-  it('❗revNoteText:年粒度给「N期,已剔M月」,月粒度不给,月份为空回落 fallback', () => {
-    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [12], '备用文案')).toBe('11期,已剔12月')
-    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [], '备用文案')).toBe('12期')   // 无离群月不写"已剔"
-    expect(revNoteText(true, [1, 2, 3], [12], '备用文案')).toBeUndefined()   // 月粒度:标题已是当月实值,不印覆盖区间
-    expect(revNoteText(false, [], [], '备用文案')).toBe('备用文案')          // 无覆盖月 → 回落
-    expect(revNoteText(false, [], [], '')).toBeUndefined()                  // 回落也是空 → undefined,不留半句
+  it('❗revNoteText 不得声称剔掉过月份 —— 负收入月已经在年度口径里了', () => {
+    // 实测 2025 库就是这个入参:12 个训练月,其中 12 月收入为负。旧写法印「12期,已剤12月」,
+    // 与同屏横幅「2025-12 收入为负,已计入年度营收/成本/利润与达成率」直接相反。
+    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], '备用文案')).toBe('12期')
+    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], '备用文案')).not.toContain('已剔')
+    expect(revNoteText(false, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], '备用文案')).toBe('11期')
+    expect(revNoteText(true, [1, 2, 3], '备用文案')).toBeUndefined()   // 月粒度:标题已是当月实值,不印覆盖区间
+    expect(revNoteText(false, [], '备用文案')).toBe('备用文案')          // 无覆盖月 → 回落
+    expect(revNoteText(false, [], '')).toBeUndefined()                  // 回落也是空 → undefined,不留半句
   })
 })
 
