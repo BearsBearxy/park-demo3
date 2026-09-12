@@ -2,7 +2,7 @@
 // 附表6 光伏发电 — 年度台账状态机。
 // 动线 1:1 from screen-schedule6.jsx Schedule6Screen(237-440):
 // ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + PvTable + 抽屉)。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 套用 PAGE-BEHAVIOR-SPEC §1 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted , watch} from 'vue'
 import { useRoute } from 'vue-router'
@@ -166,7 +166,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <!-- 分栋抄表明细(新屏) -->
   <PvMeterView v-if="mode === 'meter'" />
 
-  <!-- 附表6 · 月度汇总:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
+  <!-- 附表6 · 月度汇总:原流程原样(PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态) -->
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate

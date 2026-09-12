@@ -2,7 +2,7 @@
 
 2026-09-03 立档，**全部决定已拍板（D1–D20，见 §0.2）**。P1、P4、P0a、P0b、P0c、P3 已在分支 `jfen/sidebar-ux-redesign-450c37` 实施（复查记录见各期计划末尾），其余未实施。
 上游：`docs/research/2026-09-03-sidebar-ux-research/`（01 现状动线审计 · 02 同类产品调研 · 03 综合结论 · 04 方案与拍板过程）；
-BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · DESIGN-FIDELITY · LAYOUT-STABILITY-SPEC。
+BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC · RESPONSIVE-LAYOUT-SPEC · PAGE-BEHAVIOR-SPEC · LAYOUT-STABILITY-SPEC。
 设计稿：https://claude.ai/code/artifact/521bb00c-d981-4e55-8685-5ca7fe8834f7（源文件 `_design/sidebar-redesign/`）。
 
 ---
@@ -347,7 +347,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 - **清单行**：审核态列 未交审 / 待审核 / 已审核（人 · 日期）/ 已退回（理由 tooltip）。**行动作作用于该行全部适用的键**（偏离 ⑤）：台账每公司一把、附10 每期区一把、附13/14 两个 scope、附7/8 两个 kind，一共占 19 把键里的 8 把 —— 原文只给 chips 配了颜色，没说这 8 把的动作挂哪儿，只给单键行配动作的话它们在全站一个入口都没有。交审按 chip 各自的 done 判（只录了 A 公司就只交 A 公司）；多键逐把做，碰到第一个失败就停。
 - 行动作按权限：有该表 edit 权 → 「交审」（**行没做完时画得出来但按不动**，直接不画会让人以为界面坏了；「有没有这张表的 edit 权」是粗判，见 §12）；`can('review:approve')` → 待审核行「通过」「退回」，已审核行「撤销」；通过前置缺项时「通过」禁用并点名缺谁。台账公司 chips 与附10 期区 chips 各自带审核态色（`data-review` 与既有 `data-done` **两维叠加** —— 合成一个属性就分不出「已录未交审」和「已交审待审核」）。
 - **审核员落地**：`/data-home`；主管条位置换成审核条「待审核 N」+ 「只看待审」筛选 + 「本月已审 n/总」。
-- **退回 / 撤销弹窗**：居中弹卡（DESIGN-FIDELITY §七），理由必填，确认后写 `review_log` 并刷新清单。
+- **退回 / 撤销弹窗**：居中弹卡（PAGE-BEHAVIOR-SPEC §2），理由必填，确认后写 `review_log` 并刷新清单。
 - **与编辑锁的关系**：审核态不占锁、不发在场点；已审核屏没人能进编辑，在场点自然消失。
 - **各屏自己的交审入口**（R4，设计稿 2026-09-08）：R2 只把「已交审 / 已审核」的**状态**送到了屏上，四个**动作**仍只长在本月出账清单里。R4 把动作也搬到屏上，落点、四态两角色的画法、五种宿主（含年表屏整年那一颗）、17 把键的归属全在 `_design/per-screen-review/Canvas.html`（发布版 <https://claude.ai/code/artifact/e0e38881-0499-49ea-a36f-15994249561c>）。要点见 §9.2。
 - **与催缴单确认的关系**：主管「确认无误」→ 交审 → 审核员通过，三步并存；是否合并等清单跑一个月再议。
@@ -368,7 +368,7 @@ fpNav 唯一事实源（无新字段，折叠按 `section.title` 派生）· 可
 | `RBAC-SPEC.md` §2 / §3 / §4 / §5.2 / §6 / §7 | 第 18 权限点（顺带订正 §2 标题里过期的「14 个」）；`reviewer` 角色行；§5.2 补四条审核端点；落地页规则；操作日志第 4 张表；新增一小节 **kind → perm 表**并写明它不是 §5.2 的复用 |
 | `ELEC-COST-SPEC.md` 头部 | 「现有附表11 保持原样不动」那句之后补：两本账现在各有一把审核键（`elec-cost` / `elec-model`），指向本 spec §7.1。不补的话下次动电费模型的人不会来读审核 spec |
 | `RESPONSIVE-LAYOUT-SPEC.md` §4.1 / §4.2 | 底栏当前层 no-op；抽屉目录条目 = open |
-| `DESIGN-FIDELITY.md` §2.3 | 组标题可点折叠（像素不变，加 chevron） |
+| ~~`DESIGN-FIDELITY.md` §2.3~~ | 组标题可点折叠（像素不变，加 chevron）。**已完成，但该文件 2026-09-13 整份删除** —— 组件像素基准移交 Factory Park Design System，页面行为三组移到 `PAGE-BEHAVIOR-SPEC.md`。本表以下提到 DESIGN-FIDELITY 像素的几处（§9 P4 行的「像素比对」、§0.2 约束行）同样失效 |
 | `BOOK-WORKBENCH-SPEC.md` §7 | 补第 7 条：清单行点击 = 显式选期，目标门被前置满足；补第 8 条：已审核 / 待审核的表任何写入口一律拒 |
 | `EDIT-MODE-SPEC.md` | 编辑模式三道闸：权限 → 审核态 → 锁 |
 | `CONCURRENCY-SPEC.md` | 审核态与锁正交的一段 |

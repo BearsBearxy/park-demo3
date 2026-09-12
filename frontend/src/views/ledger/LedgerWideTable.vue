@@ -407,7 +407,7 @@ function onBack() {
       @toggle-select-all="toggleSelectAll"
     />
 
-    <!-- 批量删除确认(居中弹窗,项目 §7 惯例;点「保存」后生效,取消编辑可放弃) -->
+    <!-- 批量删除确认(居中弹窗,项目 PAGE-BEHAVIOR-SPEC §2 惯例;点「保存」后生效,取消编辑可放弃) -->
     <Teleport to="body">
       <div v-if="bulkConfirm" class="lg-bulk-mask" @mousedown="bulkConfirm = false">
         <div class="lg-bulk-dlg" role="dialog" aria-modal="true" @mousedown.stop>

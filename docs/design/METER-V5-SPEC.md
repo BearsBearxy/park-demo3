@@ -3,7 +3,7 @@
 > 定稿 2026-07-27（用户确认 mockup）。**推翻 v4 的三平级段范式**（月度分组区块/档案/绑定就绪三段全部退役），
 > 对标成熟租赁后台：账期驱动 + 统计卡收敛 + 筛选驱动的单一数据表格 + 详情抽屉。
 > **后端零改动**（数据全部来自既有端点：GET /meters、GET /meters/readings?ym、GET /meters/binding?ym、写端点照旧）。
-> 保留资产：meterExcel 导入链/importRegistry 接线/meterSplit/meterLogic/meterGroup（计算复用，不再渲染区块）/EDIT-MODE·LIST-PAGE·DESIGN-FIDELITY 铁律。
+> 保留资产：meterExcel 导入链/importRegistry 接线/meterSplit/meterLogic/meterGroup（计算复用，不再渲染区块）/EDIT-MODE·LIST-PAGE·PAGE-BEHAVIOR 铁律。
 
 ## 1. 页面结构（单视图，无段切换）
 

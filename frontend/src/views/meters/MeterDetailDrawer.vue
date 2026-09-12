@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 详情抽屉(METER-V5-SPEC §4,FPDrawer/DESIGN-FIDELITY §7,点行打开,三页签):
+// 详情抽屉(METER-V5-SPEC §4,FPDrawer/PAGE-BEHAVIOR-SPEC §2,点行打开,三页签):
 // 【表档案】档案行内编辑集中:楼栋/租户 FPTenantPicker/归属/表名称/倍率/表类型 + 删除表(409 守卫);
 // 【历史读数】原 ReadingDrawer 内容:逐月行式增删改、补历史月(仅编辑态);
 // 【合同绑定】状态分桶+候选合同选定绑定(PUT /bind)+date_missing 唯一候选一键确认+解绑;待核先挂租户。

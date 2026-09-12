@@ -302,7 +302,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
   <AnaShell period-mode="full">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
-         把下方图表整体下推 93px(DESIGN-FIDELITY §6.4)。写法对齐 ExpiryView。 -->
+         把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->
     <template #kpis>
       <template v-if="loaded && !err && s10Months.length">
       <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />

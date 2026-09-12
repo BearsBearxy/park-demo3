@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 利润表屏 — 两层状态机(useFinStatementScreen 三屏共用) + §6 加载门。
+// 利润表屏 — 两层状态机(useFinStatementScreen 三屏共用) + PAGE-BEHAVIOR-SPEC §1 加载门。
 // 动线(2026-08-29 改,设计稿 §3.2a):左栏常驻管理公司 → 选期矩阵(全部年份纵排×12月格)→ 正文。
 // 改前是四层串行(整屏选公司 → 年份门 → 月历 → 正文),换个公司看要退回第一屏重走三道门。
 //   · 单公司 = 可编辑(本月 cur / 本年累计 ytd 两列);companyId==='all' = 跨公司只读求和(无编辑/导入)。
@@ -442,7 +442,7 @@ async function onExport() {
 
       <!-- 过渡中(切公司 / 点月格,数据加载)兜底转圈,不闪空白。
            ⚠️ v-else 必须紧邻上方「矩阵态 / 正文态」状态链;不可被自带 v-if 的弹窗隔在中间
-              (见 DESIGN-FIDELITY §6.2)。 -->
+              (见 PAGE-BEHAVIOR-SPEC §1.2)。 -->
   <div v-else class="page-loading"><span class="page-spin" /></div>
     </div>
   </div>
@@ -457,7 +457,7 @@ async function onExport() {
     @submit-row="submitRow"
   />
 
-  <!-- 导入结果(自管 v-if),放最后:不打断上方 v-if/v-else 状态链(DESIGN-FIDELITY §6.2) -->
+  <!-- 导入结果(自管 v-if),放最后:不打断上方 v-if/v-else 状态链(PAGE-BEHAVIOR-SPEC §1.2) -->
   <ImportResultToast
     v-if="importResult"
     :result="importResult"
@@ -465,7 +465,7 @@ async function onExport() {
     @close="importResult = null; importSummary = ''"
   />
 
-  <!-- 批量删除确认(遵 DESIGN-FIDELITY §7:Teleport + backdrop 居中;样式 1:1 FinDialogs .fin-mask/.fin-dlg),放最后 -->
+  <!-- 批量删除确认(遵 PAGE-BEHAVIOR-SPEC §2:Teleport + backdrop 居中;样式 1:1 FinDialogs .fin-mask/.fin-dlg),放最后 -->
   <Teleport to="body">
     <div v-if="bulkConfirm" class="fin-mask" @mousedown="bulkConfirm = false">
       <div class="fin-dlg" role="dialog" aria-modal="true" @mousedown.stop>
@@ -523,7 +523,7 @@ async function onExport() {
 @media (max-width: 600px) {
   .fin-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
-/* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 §7) */
+/* 批量删除确认弹窗 — 1:1 FinDialogs .fin-mask/.fin-dlg(scoped 不跨组件,故本屏自带一份,遵 PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding:20px 22px 0; }

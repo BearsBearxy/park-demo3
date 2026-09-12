@@ -126,7 +126,7 @@ function submit() {
 /* 1:1 from ledger/LedgerNewCompanyDialog.vue */
 .lg-dlg-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:var(--z-modal); display:grid; place-items:center; opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 /* 嵌套态(编辑楼栋从抽屉里打开)升一档,与同场景的 ContractNewDialog .ct-mask 同档。
-   层级是结构问题不是实例问题,故用 class 切档,不用内联 :style 打补丁(见 DESIGN-FIDELITY §八)。
+   层级是结构问题不是实例问题,故用 class 切档,不用内联 :style 打补丁(见 PAGE-BEHAVIOR-SPEC §3)。
    与 BuildingDrawer 的 .bd-mask(同 320)不会同屏:那三个小弹窗都由抽屉内按钮触发,
    而任一遮罩铺开后抽屉页脚的「编辑楼栋」已点不到,两者互斥;真同屏也由 DOM 后序取胜。 */
 .lg-dlg-mask.nested { z-index:var(--z-modal-2); }

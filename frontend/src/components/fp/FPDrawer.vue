@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{
   fixedHeight?: boolean
   // 全屏档(催缴单 worksheet 级长表):96vw×94vh,压过 width/fixedHeight 的尺寸约束
   full?: boolean
-  // 层级档位(DESIGN-FIDELITY z 七级):从别的弹窗里再开本抽屉时传 'modal-2'/'confirm',默认 modal 零回归
+  // 层级档位(PAGE-BEHAVIOR-SPEC §3 七级):从别的弹窗里再开本抽屉时传 'modal-2'/'confirm',默认 modal 零回归
   tier?: 'modal' | 'modal-2' | 'confirm'
 }>(), { width: 640, fixedHeight: false, full: false, tier: 'modal' })
 
@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 DESIGN-FIDELITY §7。 */
+/* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 PAGE-BEHAVIOR-SPEC §2。 */
 .fp-dwr-backdrop {
   position: fixed;
   inset: 0;

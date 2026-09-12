@@ -344,7 +344,7 @@ const occSub = computed(() => {
 
     <!-- 7. Drawer -->
     <!-- 定高:本抽屉是「先打开、再 await detail」,不定高的话 detail 到达会把抽屉从 260px 撑到 760px
-         (DESIGN-FIDELITY §6.4);内容后到只在抽屉 body 内滚动,外框零位移 -->
+         (PAGE-BEHAVIOR-SPEC §1.4);内容后到只在抽屉 body 内滚动,外框零位移 -->
     <BuildingDrawer
       :open="!!openBuilding"
       :building="openBuilding"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 右侧滑出抽屉(用户 2026-08-23 指定 antd Drawer 形态,推翻 DESIGN-FIDELITY §7「一律居中弹窗」的默认——
+// 右侧滑出抽屉(用户 2026-08-23 指定 antd Drawer 形态,推翻 PAGE-BEHAVIOR-SPEC §2「一律居中弹窗」的默认——
 // 语义不同:居中弹窗=聚焦单任务,这里是「边看表格边处理问题清单」的持续参考面板,必须不挡主内容)。
 // 浮层纪律(UI-OVERLAY-SPEC):Esc 只在自己开着时拦截(第七次审计 C1 教训:关闭态无条件
 // stopPropagation 会吞掉全站 Esc)。监听挂 document **冒泡**阶段——抽屉是宿主不是内层浮层,

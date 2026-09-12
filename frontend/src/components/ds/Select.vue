@@ -194,7 +194,7 @@ onUnmounted(() => {
         minWidth: '100%',
         width: 'max-content',
         maxWidth: '280px',
-        zIndex: 'var(--z-popover)',   /* 改前是字面量 60(DESIGN-FIDELITY §八:新增覆盖层一律用令牌) */
+        zIndex: 'var(--z-popover)',   /* 改前是字面量 60(PAGE-BEHAVIOR-SPEC §3:新增覆盖层一律用令牌) */
         background: 'var(--surface-white)',
         border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-md)',

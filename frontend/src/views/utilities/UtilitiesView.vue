@@ -3,7 +3,7 @@
 // 动线 1:1 from screen-utilities.jsx UtilitiesScreen(238-444):
 // ⓪ 年份选择层(SchedYearGate,store-key="utilities",合并 13+14 两子表)→
 //   进表后顶部 Segmented 切「附表13·办公水电 / 附表14·三期水电」(切 tab → 用对应 no 重载 records)。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 套用 PAGE-BEHAVIOR-SPEC §1 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
@@ -162,7 +162,7 @@ const onExport = () => guard('导出失败', async () => {
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
     <!-- ⓪ 年份选择层(合并 13+14;store-key 固定 'utilities')。
          fp-fluid = 摘掉 base.css 的 800px 屏级地板(RESPONSIVE-LAYOUT-SPEC §8):本屏查看态已按

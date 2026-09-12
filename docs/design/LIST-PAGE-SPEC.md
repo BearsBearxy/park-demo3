@@ -57,6 +57,13 @@
   - 触发按钮 `min-width:116px; width:auto`——**文本任何页数下不得溢出按钮边框**（如"第 26 / 26 页"）。
 - 右侧：`Pagination` 窗口化页码 pills：≤7 个（首尾 + 当前±1 + … 省略号），32px 圆 pill，‹ › 步进；当前页 `bg-sunken` + semibold。
 - 楼栋卡片墙布局：无列表卡片，分页器保持既有「spacer 置底」方式停靠页面底部。
+- **停靠机制**（2026-09-13 自 `DESIGN-FIDELITY` §5.1 并入）：屏幕根容器 `min-height:100%` 撑满 `<main>` 内容区，
+  列表卡片与分页器之间插一个 `flex:1 1 auto; min-height:0` 的撑高占位 `div` 把分页器顶到底。
+  **行数不足一页时分页器仍停卡底，不得浮在页面中间。** 参照 `BuildingsView` / `TenantsView`，新建列表屏沿用。
+- **窗口化算法**（2026-09-13 自 `DESIGN-FIDELITY` §5.2 并入）：`Pagination` 的上限是 prop `maxPills`（默认 7）。
+  算法 `[1]` + `(left>2 ? '…')` + `[max(2,cur-1) .. min(count-1,cur+1)]` + `(right<count-1 ? '…')` + `[count]`；
+  `…` 用 `--text-disabled` 且不可点。跳任意页仍走 JumpSelect popover（可滚动列出全部页）或 ‹ › 步进。
+  门禁：`Pagination.spec.ts` windowing 三例（20 页/当前 10 → `1 … 9 10 11 … 20`；首端 → `1 2 3 … 20`；≤7 页无省略）。
 
 ## 6. 每页行数 useFitRows（防抖动铁律）
 
@@ -67,6 +74,7 @@
 
 ## 7. 禁止事项清单
 
+- ❌ 底部把所有页码全部列出（页数 > `maxPills` 必须窗口化 + `…`，见 §5；2026-09-13 自 `DESIGN-FIDELITY` §5.2 并入）
 - ❌ 表格卡片内出现垂直滚动条（每页行数必须自适应放满）
 - ❌ 行高随内容波动（这一条宽一点下一条窄一点）
 - ❌ 工具栏两行式布局 / 工具栏内放总数文本

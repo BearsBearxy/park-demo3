@@ -1,7 +1,7 @@
 # 审计整改实现计划（2026-08-11）
 
 来源：2026-08-11 全面审计（21 agent / 88 条存活 / 6 条证伪）。
-配套规范：`API-CONTRACT-SPEC.md`（新建）、`DESIGN-FIDELITY.md` §6.4/§6.5/§八（新增）、`LIST-PAGE-SPEC.md` §8（新增）。
+配套规范：`API-CONTRACT-SPEC.md`（新建）、`PAGE-BEHAVIOR-SPEC.md` §1.4/§1.5/§3（2026-08-11 新增时在 `DESIGN-FIDELITY.md`，该文件 2026-09-13 删除）、`LIST-PAGE-SPEC.md` §8（新增）。
 
 ## 执行原则
 

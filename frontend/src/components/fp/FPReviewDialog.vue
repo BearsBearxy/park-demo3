@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 退回 / 撤销审核的理由弹卡(SIDEBAR-UX-REDESIGN §7.5;居中弹卡照 DESIGN-FIDELITY §七)。
+// 退回 / 撤销审核的理由弹卡(SIDEBAR-UX-REDESIGN §7.5;居中弹卡照 PAGE-BEHAVIOR-SPEC §2)。
 //
 // 两个动作共用一个组件:形状与约束逐字相同(理由必填、最长 255、确认后写 review_log),
 // 只有标题与那句提示不一样。拆成两个组件的话,「必填」这条校验就有两份实现。

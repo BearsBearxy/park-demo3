@@ -6,7 +6,7 @@
 //  · 编辑模式:仅 canEdit(book-template:edit)且仅对现行版;头部「编辑模式」进入,
 //    「完成/取消」退回只读。正在看历史版时点「编辑模式」先切回现行版再进入。
 //
-// 版式:居中弹窗(DESIGN-FIDELITY §7,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
+// 版式:居中弹窗(PAGE-BEHAVIOR-SPEC §2,样式对齐 FinDialogs 的 .fin-mask/.fin-dlg 系)。
 // 主体=分组卡片(组名 + 组内列行),右侧窄栏=版本链;编辑态底部=变更说明 + 保存。
 //
 // 按月独立(2026-08-26 spec P4/P7):打开的是**当前月**生效的那一版,保存产出链尾+1 并只把当前月切过去;
@@ -404,7 +404,7 @@ function fmtTime(s: string): string {
 </template>
 
 <style scoped>
-/* 遮罩/弹窗壳:对齐 FinDialogs .fin-mask/.fin-dlg(居中,DESIGN-FIDELITY §7) */
+/* 遮罩/弹窗壳:对齐 FinDialogs .fin-mask/.fin-dlg(居中,PAGE-BEHAVIOR-SPEC §2) */
 .te-mask {
   position: fixed; inset: 0; z-index: var(--z-modal);
   background: rgba(28, 28, 28, 0.34);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // FinDialogs — 三报表共用弹窗三合一(公司新建/重命名、确认删除、添加子类)。
 // 1:1 移植 fin-common.jsx FinCompanyDialog/FinConfirm/FinAddRowDialog + .fin-mask/.fin-dlg 样式;
-// 遵 DESIGN-FIDELITY §7 居中弹窗:Teleport to body + backdrop flex 居中 + Esc 关闭 + 体内滚动。
+// 遵 PAGE-BEHAVIOR-SPEC §2 居中弹窗:Teleport to body + backdrop flex 居中 + Esc 关闭 + 体内滚动。
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -128,7 +128,7 @@ function submitRow() {
 </template>
 
 <style scoped>
-/* 居中弹窗(遵 DESIGN-FIDELITY §7)。fin-common.jsx 的 .fin-mask 本就 grid 居中,保留;补 Teleport+Esc(见 script)。 */
+/* 居中弹窗(遵 PAGE-BEHAVIOR-SPEC §2)。fin-common.jsx 的 .fin-mask 本就 grid 居中,保留;补 Teleport+Esc(见 script)。 */
 .fin-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:300; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width:min(440px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding:20px 22px 0; }

@@ -15,7 +15,7 @@
 //
 // 代价写明:年卡上「¥48.0万 · 117 人次」的年度指标随年份门一起退场,换成「哪几个月录了」
 // 一眼可见 —— 对按月录入的屏后者更有用(用户 2026-08-29 拍板)。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 套用 PAGE-BEHAVIOR-SPEC §1 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted, onDeactivated, watch } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
@@ -284,7 +284,7 @@ const onExport = () => guard('导出失败', async () => {
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
     <!-- ⓪ 选期矩阵(§7-1 明确选期门):全年份纵排一屏,点月格才进宽表。
          没有上一层了 —— 所以没有返回键(年份增删归矩阵自己的两个按钮管)。 -->

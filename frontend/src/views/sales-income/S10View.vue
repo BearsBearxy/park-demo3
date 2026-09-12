@@ -4,7 +4,7 @@
 // 全年份纵排一屏,手工年可增删) → 点月卡进宽表;宽表内「换期」回矩阵。
 // 版面由所选账册**本月生效**那版模板驱动(toS10Layout;版本按 (册,年,月) 解析,spec P3);自定义列 extra_fees
 // 平铺(mergeExtras)进宽表同权编辑,保存整包收回(extractExtras)。
-// §6 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
+// PAGE-BEHAVIOR-SPEC §1 加载门:overview/books 未就绪显 .page-loading,不假空态。深链(recon 核对跳转)绕过矩阵直落。
 import { ref, computed, watch, nextTick, onMounted, onDeactivated, reactive } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
@@ -573,7 +573,7 @@ function onImportClick() {
 </script>
 
 <template>
-  <!-- §6 加载门:overview/books 到达前显转圈,不闪空态 -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:overview/books 到达前显转圈,不闪空态 -->
   <template v-if="overview">
     <!-- fp-fluid:本屏已按 RESPONSIVE-LAYOUT-SPEC §5.3/§5.6 迁移(左轨收 chips、宽表 S 档单 sticky、
          矩阵横滚圈在 .s10-matrix 内),摘掉 base.css 的 M↓ 屏级地板——表内自滚,屏根不再触发双重横滚 -->

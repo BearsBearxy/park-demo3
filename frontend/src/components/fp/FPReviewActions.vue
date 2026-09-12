@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
 .rva-pop-h { font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 6px; }
 .rva-pop-b { margin: 0; font-size: var(--fs-label); color: var(--text-primary); line-height: 1.6; }
 
-/* 确认卡:与 FPReviewDialog 同一套尺寸/阴影,只是没有输入框(DESIGN-FIDELITY §七 居中弹卡)。 */
+/* 确认卡:与 FPReviewDialog 同一套尺寸/阴影,只是没有输入框(PAGE-BEHAVIOR-SPEC §2 居中弹卡)。 */
 .rva-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
              display: grid; place-items: center; }
 .rva-card { width: min(432px, 92vw); padding: 20px; box-sizing: border-box;
