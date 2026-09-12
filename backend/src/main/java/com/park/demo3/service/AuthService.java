@@ -20,11 +20,12 @@ public class AuthService {
 
     private final AuthUserMapper users; private final PasswordEncoder enc; private final JwtUtil jwt;
     private final LoginRateLimiter limiter; private final HttpServletRequest request;
-    private final UserPermissionCache perms;
+    private final UserPermissionCache perms; private final SessionService sessions;
     public AuthService(AuthUserMapper users, PasswordEncoder enc, JwtUtil jwt,
-                       LoginRateLimiter limiter, HttpServletRequest request, UserPermissionCache perms) {
+                       LoginRateLimiter limiter, HttpServletRequest request, UserPermissionCache perms,
+                       SessionService sessions) {
         this.users = users; this.enc = enc; this.jwt = jwt; this.limiter = limiter;
-        this.request = request; this.perms = perms;
+        this.request = request; this.perms = perms; this.sessions = sessions;
     }
         @NoReviewGuard(reason = "会话,不是数据录入。进审核等于登录要先过闸,而闸的判定本身要先登录")
 public LoginResp login(LoginReq req) {
@@ -43,7 +44,12 @@ public LoginResp login(LoginReq req) {
         List<String> ps = ua == null ? List.of() : List.copyOf(ua.perms());
         List<String> nl = ua == null ? List.of("data", "reports", "analysis") : ua.navLayers();
         List<String> rn = ua == null ? List.of() : ua.roleNames();
-        return new LoginResp(jwt.generate(u.getUsername(), u.getRole()), u.getUsername(), u.getDisplayName(), u.getRole(),
+        // 单会话(V125,用户 2026-09-12 拍板):开新会话前先作废旧的并把 token_version +1,
+        // 别处那台设备下一个请求就是 401。注意顺序:先 open 拿到新版本号再签发,
+        // 反过来的话刚签的那张会被自己这次 bump 当场作废。
+        SessionService.Issued is_ = sessions.open(u, clientIp(), request.getHeader("User-Agent"));
+        return new LoginResp(jwt.generate(u.getUsername(), u.getRole(), is_.tokenVersion(), is_.sessionId()),
+                             u.getUsername(), u.getDisplayName(), u.getRole(),
                              ps, nl, rn, u.getMustChangePassword() != null && u.getMustChangePassword() == 1);
     }
     // 取 XFF 首段(nginx 用 $proxy_add_x_forwarded_for 透传)。首段是客户端自报值、可伪造,

@@ -41,13 +41,15 @@ public class SystemService {
     private final UserPermissionCache cache;
     private final AuditLogService audit;
     private final AuditQueryMapper auditQuery;
+    private final SessionService sessions;
 
     public SystemService(AuthUserMapper users, AuthRoleMapper roles, AuthRolePermMapper rolePerms,
                          AuthUserRoleMapper userRoles, PasswordEncoder enc,
-                         UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery) {
+                         UserPermissionCache cache, AuditLogService audit, AuditQueryMapper auditQuery,
+                         SessionService sessions) {
         this.users = users; this.roles = roles; this.rolePerms = rolePerms;
         this.userRoles = userRoles; this.enc = enc; this.cache = cache;
-        this.audit = audit; this.auditQuery = auditQuery;
+        this.audit = audit; this.auditQuery = auditQuery; this.sessions = sessions;
     }
 
     // ══════════ 操作日志时间线（RBAC-SPEC §7.2） ══════════
@@ -240,6 +242,9 @@ public class SystemService {
         users.updateById(u);
         audit.log(status == 1 ? "user.enable" : "user.disable", "user:" + u.getUsername(), null);
         cache.reload();   // 停用后下一个请求即 401 —— 不必等令牌过期
+        // 停用本来就立刻生效(快照里查不到)。这里再作废一次是为了让 auth_session
+        // 跟得上 —— 否则「谁在线」那张表会永远挂着一个已停用的人。
+        if (status != 1) sessions.revokeAll(u.getUsername(), "disabled");
         return oneUser(id);
     }
 
@@ -252,6 +257,10 @@ public class SystemService {
         users.updateById(u);
         audit.log("user.reset-password", "user:" + u.getUsername(), null);
         cache.reload();
+        // V125:改完密码要立刻生效。改前它只换了库里的哈希,
+        // 已经发出去的令牌照样能用到 120 分钟过期为止。
+        // 放在 cache.reload() 之后:reload 重建整张快照,放前面会被它盖掉。
+        sessions.revokeAll(u.getUsername(), "password");
     }
 
     /** 本人改密。改完清 mustChangePassword，放行进系统。 */
@@ -270,6 +279,9 @@ public class SystemService {
         users.updateById(u);
         audit.log("user.change-password", "user:" + u.getUsername(), "本人修改");
         cache.reload();
+        // 同 resetPassword。本人手上这张也一起作废 —— 改密后重登一次是标准做法,
+        // 而「只作废别处的」需要把当前 sid 传进来,多一条参数换不来什么。
+        sessions.revokeAll(u.getUsername(), "password");
     }
 
     // ══════════ 守卫 ══════════

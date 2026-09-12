@@ -33,7 +33,13 @@ public class UserPermissionCache {
      * 后端不猜 —— 猜出来的名字会被当成真名显示,而"（派生）"这个标记只有前端画得出来。
      */
     public record UserAuth(String username, Set<String> perms, List<String> navLayers,
-                           List<String> roleNames) {}
+                           List<String> roleNames, int tokenVersion, String sessionId) {
+
+        /** 换一份会话身份,其余原样(V125:登录/改密/踢人之后定点改这一个账号,不整表 reload)。 */
+        UserAuth withSession(int tv, String sid) {
+            return new UserAuth(username, perms, navLayers, roleNames, tv, sid);
+        }
+    }
 
     private final AuthUserMapper users;
     private final AuthUserRoleMapper userRoles;
@@ -56,6 +62,10 @@ public class UserPermissionCache {
 
     /** 任何 auth_user / auth_role / auth_role_perm / auth_user_role 的写操作之后必须调。 */
     public synchronized void reload() {
+        // reload 会重建整张快照,而会话 id 不在它查的那几张表里 —— 不先存下来,
+        // 任何一次角色变更都会把所有人的 sid 抹成 null,下一个请求全部 401。
+        Map<String, String> liveSid = new HashMap<>();
+        for (var e : snapshot.entrySet()) if (e.getValue().sessionId() != null) liveSid.put(e.getKey(), e.getValue().sessionId());
         // 提权授权一并清空。不清的话「停用立刻踢」这条就有个 30 分钟的洞:
         // 被停用的账号仍能靠手上的授权继续写 —— 那正是这份缓存存在的理由。
         // 粗粒度(清所有人)是故意的:reload 不知道是谁变了,而角色变更本就罕见,
@@ -96,8 +106,12 @@ public class UserPermissionCache {
             // 一个角色都没挂的账号(手工 INSERT 进 auth_user 的)→ 零权限 + 导航全开。
             // 不给权限是安全的默认;导航全开是因为看不见入口比看得见更难排查。
             if (layers.isEmpty()) layers.addAll(List.of("data", "reports", "analysis"));
+            // sessionId 从 auth_session 现查会让 reload 多一次 join;它只在登录时才变,
+            // 由 applySession 定点写进来。reload 拿不到就给 null —— 见 applySession 的注释。
+            int tv = u.getTokenVersion() == null ? 0 : u.getTokenVersion();
+            String sid = liveSid.get(u.getUsername());
             next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(perms), List.copyOf(layers),
-                                                   List.copyOf(roleNames)));
+                                                   List.copyOf(roleNames), tv, sid));
         }
         snapshot = Map.copyOf(next);
         log.info("permission cache reloaded: {} active users", snapshot.size());
@@ -105,6 +119,23 @@ public class UserPermissionCache {
 
     /** 找不到 = 账号不存在或已停用。 */
     public UserAuth get(String username) { return username == null ? null : snapshot.get(username); }
+
+    /**
+     * 定点换掉一个账号的令牌版本与当前会话 id(V125)。
+     *
+     * **为什么不复用 reload()**:reload 的第一件事是 {@code elevations.revokeAllUsers()} ——
+     * 登录是高频动作,每次登录都清掉所有人的提权授权,等于随便谁登录一次全公司都要重新叫主管点头。
+     * 这里只换一个 entry,不碰提权,也不重查那四张表。
+     *
+     * sid 传 null = 这个账号当前没有活着的会话(被踢/登出),此后它的令牌一律不认。
+     */
+    public synchronized void applySession(String username, int tokenVersion, String sessionId) {
+        UserAuth cur = snapshot.get(username);
+        if (cur == null) return;   // 停用/不存在的账号不进快照,也就没有会话可言
+        Map<String, UserAuth> next = new HashMap<>(snapshot);
+        next.put(username, cur.withSession(tokenVersion, sessionId));
+        snapshot = Map.copyOf(next);
+    }
 
     /**
      * 持有全部这些权限点的启用账号 —— 远程授权的候选人名单（设计稿 §07）。

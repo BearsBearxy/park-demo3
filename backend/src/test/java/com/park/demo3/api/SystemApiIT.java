@@ -196,11 +196,14 @@ class SystemApiIT extends AbstractMysqlIT {
             .as("管理员设的是初始密码，本人首次登录必须改").isTrue();
 
         try {
-            // 立刻登录 —— 不重启、不等任何东西
-            String nt = login(uname, "init-pass-123");
+            // 立刻登录 —— 不重启、不等任何东西。
+            // V125 单会话:同一账号登两次会把第一张令牌挤掉 —— 改前这里真登了两次
+            // (一次取令牌、一次取权限清单),于是拿着已作废的第一张去请求,得到 401 而不是 403。
+            // 一次登录把两样一起取回来。
             String me = utf8(mvc.perform(post("/api/auth/login").contentType("application/json")
                     .content("{\"username\":\"" + uname + "\",\"password\":\"init-pass-123\"}")
                     ).andReturn());
+            String nt = JsonPath.read(me, "$.data.token");
             List<String> perms = JsonPath.read(me, "$.data.permissions");
             assertThat(perms).as("缓存已刷新，新账号拿到 finance_clerk 的权限").isNotEmpty();
 
@@ -253,9 +256,10 @@ class SystemApiIT extends AbstractMysqlIT {
                 .content("{\"username\":\"" + uname + "\",\"displayName\":\"改密测试\","
                        + "\"password\":\"init-pass-123\",\"roleIds\":[]}")).andReturn();
         try {
-            String tok = login(uname, "init-pass-123");
+            // 同 newUserIsUsableImmediately:一次登录取回令牌与标志,不能登两次(V125 单会话)
             String before = utf8(mvc.perform(post("/api/auth/login").contentType("application/json")
                     .content("{\"username\":\"" + uname + "\",\"password\":\"init-pass-123\"}")).andReturn());
+            String tok = JsonPath.read(before, "$.data.token");
             assertThat((boolean) JsonPath.read(before, "$.data.mustChangePassword")).isTrue();
 
             // 当前密码错 → 400
