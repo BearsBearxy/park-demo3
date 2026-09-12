@@ -1,0 +1,756 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) =====
+       Paste this whole block into <helmet><style> of every artboard. Do not change values. */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+      --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+      --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+      --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+      --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+      --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+      --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+      --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+      --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+      --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+      --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+      --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+      --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+      --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+      --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+      --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+      --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+      /* motion — existing */
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+      --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+      --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+    }
+
+    /* ECharts theme palette (components/ana/anaTheme.ts) — literal hex, charts cannot read CSS vars */
+    /* sequential blues: #378ADD #85B7EB #B5D4F4 #185FA5 ; categorical: #378ADD #EF9F27 #5DCAA5 #E24B4A #F0997B #185FA5 #85B7EB #B5D4F4 */
+    /* PV screen (views/analysis/pvAnaColors.ts): FOCUS #3675B2 · OUT #9D5D17 · YELLOW #DAB970 · FILL_SLATE #788CB0 · FILL_CYAN #A0CDE8 · FILL_SKY #C4E2F4 · INK300 rgba(28,28,28,.2) */
+
+    /* ===== artboard styles ===== */
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* header */
+    .hdr { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; }
+    .hdr-l { display:flex; flex-direction:column; gap:6px; }
+    .kick { font-size:11px; letter-spacing:.08em; font-weight:600; color:var(--text-muted); }
+    h1 { font-size:20px; font-weight:600; margin:0; line-height:1.2; }
+    .intro { font-size:12px; color:var(--text-muted); line-height:1.55; max-width:820px; }
+    .legend { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+    .chips { display:flex; gap:6px; }
+    .chip { height:22px; padding:0 9px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:11px; color:var(--text-secondary); display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono); white-space:nowrap; }
+    .chip.on { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+    .chip .lb { font-family:var(--font-sans); color:var(--text-muted); }
+
+    /* columns + cards */
+    .cols { display:grid; grid-template-columns:800px 544px; gap:24px; align-items:start; }
+    .card { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:14px; }
+    .ch { display:flex; align-items:center; gap:10px; }
+    .ch .t { font-size:16px; font-weight:600; }
+    .ch .s { font-size:12px; color:var(--text-muted); }
+    .tag { font-size:11px; font-weight:600; height:20px; padding:0 8px; border-radius:999px; display:inline-flex; align-items:center; white-space:nowrap; }
+    .tag.ok { background:var(--accent-blue); color:var(--brand-deep); }
+    .tag.no { background:color-mix(in srgb, var(--hue-red) 10%, white); color:var(--hue-red); }
+    .tag.big { height:26px; font-size:14px; padding:0 12px; }
+    .sub { font-size:12px; color:var(--text-muted); line-height:1.55; }
+    .sub b { color:var(--text-primary); font-weight:600; }
+    .h2 { font-size:14px; font-weight:600; display:flex; align-items:center; gap:8px; }
+    .h2 .s { font-size:11px; color:var(--text-muted); font-weight:400; font-family:var(--font-mono); }
+
+    /* four-frame sequence (缩略) */
+    .frames { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+    .fr { display:flex; flex-direction:column; gap:6px; }
+    .fr-box { height:110px; border-radius:8px; border:1px solid var(--border-subtle); overflow:hidden; position:relative; }
+    .fr-cap { display:flex; gap:7px; font-size:12px; line-height:1.5; align-items:flex-start; }
+    .fr-cap b { font-weight:600; }
+    .fr-cap .m { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+    .fr-dark { background:#060a13; }
+    .fr-card { position:absolute; right:8px; top:8px; bottom:8px; width:80px; background:#fff; border-radius:14px; display:flex; flex-direction:column; justify-content:flex-end; padding:8px; gap:4px; }
+    .fr-in { height:9px; border-radius:3px; background:#f2f4f8; }
+    .fr-btn { height:11px; border-radius:4px; background:#10151f; color:#fff; font-size:6px; display:flex; align-items:center; justify-content:center; letter-spacing:.5em; text-indent:.5em; }
+    .fr-btn.busy { opacity:.6; letter-spacing:.1em; text-indent:.1em; }
+    .fr-brand { position:absolute; left:10px; top:12px; width:54px; display:flex; flex-direction:column; gap:5px; }
+    .fr-brand i { display:block; height:5px; border-radius:2px; background:rgba(255,255,255,.55); }
+    .fr-brand i:nth-child(2) { width:70%; background:rgba(255,255,255,.3); }
+    .fr-brand i:nth-child(3) { width:40%; background:rgba(255,255,255,.3); }
+    .fr-shell { background:var(--surface-sunken); padding:4px; display:flex; gap:4px; height:100%; }
+    .fr-nav { width:52px; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; display:flex; }
+    .fr-rail { width:14px; background:var(--surface-sunken); border-radius:8px 0 0 8px; display:flex; flex-direction:column; align-items:center; gap:3px; padding-top:4px; }
+    .fr-rail i { display:block; width:8px; height:8px; border-radius:3px; background:var(--ink-100); }
+    .fr-rail i:first-child { background:var(--ink-900); }
+    .fr-main { flex:1; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; display:flex; flex-direction:column; overflow:hidden; }
+    .fr-tabs { height:10px; background:var(--surface-card); border-bottom:1px solid var(--divider); display:flex; align-items:center; padding:0 3px; gap:2px; }
+    .fr-tabs i { display:block; width:22px; height:6px; border-radius:2px; background:#fff; box-shadow:0 1px 2px rgba(28,28,28,.1); }
+    .fr-tabs i + i { width:10px; background:transparent; box-shadow:none; }
+    .fr-tb { height:9px; border-bottom:1px solid transparent; }
+    .fr-ct { padding:6px; display:flex; flex-direction:column; gap:4px; }
+    .fr-ct i { display:block; height:5px; border-radius:2px; }
+    .fr-ct i.s { background:var(--ink-100); }
+    .fr-ct i.d { background:var(--ink-900); }
+    .fr-ct i.d.w { background:var(--ink-500); }
+    .fr-ct .pills { display:flex; gap:3px; }
+    .fr-ct .pills i { width:16px; height:7px; border-radius:3px; }
+    .fr-ct .pills i.s { background:var(--ink-100); }
+    .fr-ct .pills i.d { background:#fff; border:1px solid var(--border-subtle); }
+    .fr-ct .pills i.d.on { border-color:var(--ink-900); background:var(--surface-card); }
+
+    /* demo grid: caption | replay button / stage / timeline */
+    .demo { display:grid; grid-template-columns:1fr auto; gap:8px 12px; align-items:center; }
+    .demo > .span { grid-column:1 / -1; }
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; }
+    .rp-btn:hover { background:var(--surface-card); }
+    .rp-btn:active { filter:brightness(0.94); }
+
+    /* ---- real shell mock (AppShell / IconRail / SidebarPanel / TabStrip / Toolbar) ---- */
+    .stage { position:relative; height:460px; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; background:var(--surface-sunken); }
+    .fp-stage { position:absolute; inset:0; display:flex; padding:12px; gap:12px; }
+    .navc { width:302px; flex:0 0 auto; background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; display:flex; }
+    .rail { width:66px; padding:14px 9px; display:flex; flex-direction:column; align-items:center; gap:5px; background:var(--surface-sunken); }
+    .brand { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid var(--border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ink-900); }
+    .rsep { width:30px; height:1px; background:var(--border-subtle); margin:9px 0 7px; flex:0 0 auto; }
+    .rbtn { width:48px; border-radius:15px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; font-weight:500; color:var(--text-muted); }
+    .rbtn.on { background:var(--ink-900); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,.2); }
+    .rdiv { width:1px; background:var(--border-subtle); }
+    .panel { width:234px; padding:18px 14px 14px; display:flex; flex-direction:column; gap:14px; }
+    .pnm { font-size:16px; font-weight:600; }
+    .pgrp { display:flex; flex-direction:column; }
+    .pgt { font-size:12px; color:var(--text-muted); padding:6px 12px; }
+    .prow { height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:var(--text-secondary); display:flex; align-items:center; gap:8px; }
+    .prow.on { background:var(--bg-hover); color:var(--text-primary); }
+    .mainc { flex:1; min-width:0; background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; position:relative; display:flex; flex-direction:column; }
+    .tabs { height:44px; padding:0 8px; gap:6px; display:flex; align-items:center; border-bottom:1px solid var(--divider); background:var(--surface-card); flex:0 0 auto; }
+    .tab { height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:8px; color:var(--text-muted); font-size:12.5px; line-height:20px; min-width:124px; }
+    .tab.on { background:#fff; color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); font-weight:600; }
+    .tab svg { opacity:.55; flex:0 0 auto; }
+    .tabx { width:20px; height:20px; border-radius:6px; margin-left:auto; display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+    .tabn { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+    .tbar { height:48px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text-muted); flex:0 0 auto; }
+    .crumb { display:flex; gap:8px; align-items:center; }
+    .crumb b { color:var(--text-primary); font-weight:500; }
+    .pill { height:34px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); }
+    .content { flex:1; min-height:0; padding:24px; position:relative; overflow:hidden; }
+    .layer { position:absolute; inset:0; padding:24px; background:#fff; }
+
+    /* ---- DataHomeView (data-home/DataHomeView.vue) — 真版式 ---- */
+    .dh { display:flex; flex-direction:column; gap:20px; padding:24px; }
+    .dh-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .dh-period { display:flex; align-items:center; gap:12px; }
+    .dh-title { font-size:20px; font-weight:600; color:var(--text-primary); }
+    .dh-msel { width:140px; }
+    .sel { height:28px; border-radius:8px; border:1px solid var(--border-subtle); background:#fff; padding:0 8px 0 10px; display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text-primary); }
+    .dh-counts { font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .dh-sec { display:flex; flex-direction:column; gap:12px; }
+    .dh-h3 { font-size:14px; font-weight:500; margin:0; color:var(--text-primary); }
+    .dh-h3n { font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); margin-left:8px; }
+    .dh-steps { display:flex; align-items:stretch; gap:8px; list-style:none; margin:0; padding:0; flex-wrap:wrap; }
+    .dh-step { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--border-subtle); border-radius:8px; background:#fff; font-size:12px; }
+    .dh-step[data-status="done"] { color:var(--text-secondary); }
+    .dh-step[data-status="done"] .dh-dot { color:var(--hue-blue); }
+    .dh-step[data-status="current"] { border-color:var(--ink-900); background:var(--surface-card); }
+    .dh-step[data-status="current"] .dh-slabel { font-weight:600; color:var(--text-primary); }
+    .dh-step[data-status="todo"] { color:var(--text-disabled); }
+    .dh-dot { display:flex; width:12px; height:12px; align-items:center; justify-content:center; }
+    .dh-slabel { font-size:12px; }
+    .dh-sdetail { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); }
+    .dh-cur { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px 24px; background:#fff; border:1px solid var(--border-subtle); border-radius:12px; }
+    .dh-curmain { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .dh-curlabel { font-size:16px; font-weight:600; color:var(--text-primary); }
+    .dh-curdetail { font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); }
+    .btn-filled { height:36px; padding:0 16px; font-size:14px; line-height:1; border-radius:999px; background:var(--ink-900); color:#fff; border:1px solid var(--ink-900); display:inline-flex; align-items:center; white-space:nowrap; flex:0 0 auto; }
+    .dh-items { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:0; padding:0; }
+    .dh-item { display:flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--border-subtle); border-radius:999px; background:#fff; font-size:12px; }
+    .dh-item[data-done="true"] { opacity:.45; }
+    .dh-idot { display:flex; width:10px; height:10px; align-items:center; justify-content:center; color:var(--hue-blue); }
+    .dh-iname { color:var(--text-primary); }
+    .dh-itag { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); }
+    .shim { border-radius:4px; background:linear-gradient(90deg, var(--surface-sunken) 0%, var(--border-subtle) 50%, var(--surface-sunken) 100%); background-size:200% 100%; animation:shim 1.4s linear infinite; }
+    @keyframes shim { to { background-position:-200% 0; } }
+
+    /* ---- LoginView mock (LoginView.vue) ---- */
+    .login { position:absolute; inset:0; display:flex; padding:14px; gap:14px; background:radial-gradient(1100px 700px at 18% 30%, rgba(31,95,191,.16), transparent 60%), radial-gradient(600px 400px at 85% 90%, rgba(76,152,253,.07), transparent 60%), #060a13; }
+    .lg-brand { flex:1; min-width:0; padding:24px 20px 24px 34px; color:#fff; display:flex; flex-direction:column; gap:22px; }
+    .lg-mark { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; }
+    .lg-mark i { display:flex; width:38px; height:38px; border-radius:12px; background:#fff; color:#060a13; align-items:center; justify-content:center; }
+    .lg-head { font-size:30px; line-height:1.3; font-weight:700; letter-spacing:.01em; margin:0; }
+    .lg-sub { font-size:15px; line-height:1.9; color:rgba(255,255,255,.62); margin:0; }
+    .lg-chips { display:flex; gap:10px; flex-wrap:wrap; }
+    .lg-chip { padding:8px 16px; border-radius:999px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); font-size:13px; color:rgba(255,255,255,.78); }
+    .lg-panel { flex:0 0 400px; background:#fff; border-radius:40px; padding:48px 24px; box-shadow:0 30px 80px rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
+    .lg-form { width:330px; display:flex; flex-direction:column; }
+    .lg-welcome { margin:0; font-size:27px; font-weight:700; color:#0f1420; }
+    .lg-hint { margin:8px 0 32px; font-size:13.5px; color:rgba(15,20,32,.45); }
+    .lg-field { position:relative; margin-bottom:14px; }
+    .lg-in { height:52px; border-radius:14px; background:#f2f4f8; border:1.5px solid transparent; padding:0 46px 0 44px; font-size:14.5px; color:#0f1420; display:flex; align-items:center; }
+    .lg-in.ph { color:rgba(15,20,32,.45); }
+    .lg-field svg { position:absolute; left:16px; top:18px; color:rgba(15,20,32,.45); }
+    .lg-row { display:flex; justify-content:space-between; align-items:center; margin:0 0 26px; font-size:13.5px; color:#0f1420; }
+    .lg-row .cb { display:flex; align-items:center; gap:8px; }
+    .lg-row .cbbox { width:16px; height:16px; border-radius:5px; border:1.5px solid rgba(15,20,32,.3); }
+    .lg-row .fg { color:var(--brand-blue); }
+    .lg-submit { position:relative; height:54px; border-radius:15px; background:#10151f; color:#fff; font-size:15.5px; font-weight:600; letter-spacing:.5em; text-indent:.5em; display:flex; align-items:center; justify-content:center; }
+    .lg-submit span { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+
+    /* ---- keyframes: hard cuts are 0ms (C4-03 / 同帧换树), the only tween is the existing .lg-submit 120ms ---- */
+    @keyframes k-hide-a { from { opacity:1; visibility:visible; } to { opacity:0; visibility:hidden; } }
+    @keyframes k-hide-b { from { opacity:1; visibility:visible; } to { opacity:0; visibility:hidden; } }
+    @keyframes k-show-a { from { opacity:0; visibility:hidden; } to { opacity:1; visibility:visible; } }
+    @keyframes k-show-b { from { opacity:0; visibility:hidden; } to { opacity:1; visibility:visible; } }
+    @keyframes k-sub-a { from { opacity:1; letter-spacing:.5em; text-indent:.5em; } to { opacity:.6; letter-spacing:.1em; text-indent:.1em; } }
+    @keyframes k-sub-b { from { opacity:1; letter-spacing:.5em; text-indent:.5em; } to { opacity:.6; letter-spacing:.1em; text-indent:.1em; } }
+    @keyframes k-fade-a { from { opacity:1; visibility:visible; } to { opacity:0; visibility:hidden; } }
+    @keyframes k-fade-b { from { opacity:1; visibility:visible; } to { opacity:0; visibility:hidden; } }
+    /* 预留 320ms 让人先看到登录页;--t0 = 点击时刻 */
+    .k-hide { animation:k-hide-a 0ms linear var(--d, 0ms) both; }
+    .k-show { animation:k-show-a 0ms linear var(--d, 0ms) both; }
+    .k-sub  { animation:k-sub-a var(--dur-fast) var(--ease-standard) var(--d, 0ms) both; }
+    .k-fade { animation:k-fade-a var(--dur-slow) var(--ease-out) var(--d, 0ms) both; }
+    .rp:checked ~ .stage .k-hide, .rp:checked ~ .stage2 .k-hide, .rp:checked ~ .eyes .k-hide { animation-name:k-hide-b; }
+    .rp:checked ~ .stage .k-show, .rp:checked ~ .stage2 .k-show, .rp:checked ~ .eyes .k-show { animation-name:k-show-b; }
+    .rp:checked ~ .stage .k-sub { animation-name:k-sub-b; }
+    .rp:checked ~ .stage2 .k-fade, .rp:checked ~ .eyes .k-fade { animation-name:k-fade-b; }
+
+    /* pins + notes */
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:20; }
+    .pin.rel { position:relative; left:0; top:0; flex:0 0 auto; }
+    .notes { display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; }
+    .noteb { display:flex; gap:9px; align-items:flex-start; }
+    .note { font-size:12px; line-height:1.55; color:var(--text-primary); }
+    .note b { color:var(--brand-deep); font-weight:600; }
+    .note .m { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+
+    /* two-track timeline (登录完进入是一条秒级序列,尺是 0…2600ms) */
+    .tl2 { display:flex; flex-direction:column; gap:6px; padding-top:8px; border-top:1px solid var(--divider); }
+    .tr { display:grid; grid-template-columns:44px 1fr; gap:8px; align-items:center; }
+    .tr .n { font-size:11px; color:var(--text-muted); }
+    .trk { position:relative; height:18px; }
+    .seg { position:absolute; top:3px; height:12px; border-radius:3px; font-family:var(--font-mono); font-size:11px; line-height:12px; padding:0 5px; white-space:nowrap; color:#fff; overflow:hidden; }
+    .seg.dark { background:var(--ink-900); }
+    .seg.blue { background:var(--hue-blue); }
+    .seg.sky { background:var(--fill-sky); color:var(--text-primary); }
+    .seg.red { background:color-mix(in srgb, var(--hue-red) 14%, white); color:var(--hue-red); border:1px dashed var(--hue-red); line-height:10px; }
+    .tick { position:absolute; top:0; bottom:0; width:1px; background:var(--ink-300); }
+    .axis { position:relative; height:30px; }
+    .axis span { position:absolute; top:0; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); transform:translateX(-50%); white-space:nowrap; line-height:1.3; text-align:center; }
+    .axis span.l { transform:none; text-align:left; }
+    .axis span.r { transform:translateX(-100%); text-align:right; }
+
+    /* standard 0…480 ruler */
+    .tl { position:relative; height:26px; margin-top:8px; border-top:1px solid var(--divider); }
+    .tl::before { content:'0'; position:absolute; left:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl::after { content:'120 · 200 · 320 ms'; position:absolute; right:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl-bar { position:absolute; top:-1px; height:3px; background:var(--hue-red); left:calc(var(--from) / 480 * 100%); width:calc((var(--to) - var(--from)) / 480 * 100%); }
+    .tl-bar::after { content:var(--lbl); position:absolute; left:0; top:8px; font:11px var(--font-mono); color:var(--hue-red); white-space:nowrap; }
+    .tl-t { position:absolute; top:-1px; width:1px; height:7px; background:var(--ink-300); }
+
+    /* spec table */
+    table.spec { width:100%; border-collapse:collapse; font-size:12px; }
+    .spec th { text-align:left; font-weight:500; color:var(--text-muted); font-size:11px; padding:6px 8px; border-bottom:1px solid var(--divider); white-space:nowrap; }
+    .spec td { padding:7px 8px; border-bottom:1px solid var(--divider); vertical-align:top; line-height:1.5; }
+    .spec td.m { font-family:var(--font-mono); font-size:11px; }
+    .spec td.id { font-family:var(--font-mono); font-size:11px; font-weight:600; white-space:nowrap; }
+    .spec tr.dead td { color:var(--text-muted); }
+    .spec tr.dead td.id { color:var(--hue-red); }
+
+    /* right: mini shell + mask + 视线处 */
+    .stage2 { position:relative; height:280px; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; background:var(--surface-sunken); }
+    .mini { position:absolute; left:0; top:0; width:768px; height:420px; transform:scale(.6667); transform-origin:0 0; }
+    .mask { position:absolute; inset:0; background:#060a13; z-index:5; }
+    .eyes { display:flex; flex-direction:column; gap:8px; }
+    .eyer { display:grid; grid-template-columns:60px 96px 1fr; gap:12px; align-items:center; }
+    .eyer .n { font-size:12px; font-weight:600; }
+    .eyer .n small { display:block; font-weight:400; font-size:11px; color:var(--text-muted); }
+    .eye { position:relative; width:96px; height:64px; border-radius:8px; border:1px solid var(--border-subtle); overflow:hidden; background:#fff; }
+    .eye-sk { position:absolute; inset:0; padding:10px 12px; display:flex; flex-direction:column; gap:7px; background:#fff; }
+    .eye-sk i { display:block; height:8px; }
+    .eye-card { position:absolute; inset:0; background:#fff; display:flex; align-items:center; justify-content:center; padding:0 10px; z-index:2; }
+    .eye-card i { display:flex; width:100%; height:22px; border-radius:6px; background:#10151f; color:#fff; font-size:11px; align-items:center; justify-content:center; letter-spacing:.1em; text-indent:.1em; opacity:.6; font-style:normal; }
+    .eye-mask { position:absolute; inset:0; background:#060a13; z-index:3; }
+    .sw { display:flex; align-items:center; gap:6px; font-size:12px; }
+    .sw i { display:block; width:22px; height:22px; border-radius:6px; border:1px solid var(--border-subtle); }
+    .sw i.w { background:#fff; }
+    .sw i.k { background:#060a13; }
+    .sw .ar { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+    .sw .cut { font-family:var(--font-mono); font-size:11px; padding:1px 6px; border-radius:4px; background:var(--surface-sunken); color:var(--text-secondary); }
+    .sw .cut.bad { background:color-mix(in srgb, var(--hue-red) 10%, white); color:var(--hue-red); }
+    .why { display:flex; flex-direction:column; gap:8px; }
+    .whyr { display:grid; grid-template-columns:22px 1fr; gap:9px; align-items:flex-start; font-size:12px; line-height:1.55; }
+    .whyr .k { width:22px; height:22px; border-radius:999px; background:var(--hue-red); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    .whyr b { font-weight:600; }
+    .whyr .m { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+
+    /* bottom strip */
+    .nd { display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; }
+    .ndi { display:flex; gap:8px; font-size:12px; line-height:1.55; color:var(--text-muted); }
+    .ndi b { color:var(--text-primary); font-weight:600; white-space:nowrap; }
+    .ndi .x { width:18px; height:18px; border-radius:999px; border:1px solid var(--hue-red); color:var(--hue-red); display:flex; align-items:center; justify-content:center; flex:0 0 auto; margin-top:1px; }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 1400px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- ===== header ===== -->
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="kick">04 · 登录完进入(待拍板 A)</div>
+      <h1>登录完进入页面</h1>
+      <div class="intro">本稿结论:<b style="color:var(--text-primary)">不加过渡</b>。登录按钮的「登录中…」一直亮到落地 chunk 确认(C4-02),外壳首帧即出,落地屏 DataHome 骨架→真数据原地硬切(C4-03)。右侧画出被否的备选「反向破晓遮罩」与它为什么在视线处是两刀而不是一刀。</div>
+    </div>
+    <div class="legend">
+      <div class="chips">
+        <span class="chip"><span class="lb">频次</span>100+/天</span>
+        <span class="chip"><span class="lb">·</span>十几/天</span>
+        <span class="chip"><span class="lb">·</span>偶发</span>
+        <span class="chip on">一生一次 / 一天一次</span>
+      </div>
+      <div class="chips">
+        <span class="chip"><span class="lb">令牌</span>120</span>
+        <span class="chip">200</span>
+        <span class="chip">320</span>
+        <span class="chip">--ease-out</span>
+        <span class="chip">--ease-standard</span>
+        <span class="chip on">本页新增令牌 0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+
+    <!-- ================= LEFT: 本稿结论 ================= -->
+    <div class="card">
+      <div class="ch"><span class="t">本稿结论 · C4-02 + C4-03</span><span class="tag ok">本稿</span><span class="s">一次交互只有一个动的东西 —— 这里连一个都没有,只有一处「亮着」的按钮</span></div>
+
+      <!-- four frames -->
+      <div class="frames">
+        <div class="fr">
+          <div class="fr-box fr-dark">
+            <div class="fr-brand"><i></i><i></i><i></i></div>
+            <div class="fr-card"><div class="fr-in"></div><div class="fr-in"></div><div class="fr-btn">登录</div></div>
+          </div>
+          <div class="fr-cap"><span class="pin rel">1</span><div><b>点「登录」</b><br><span class="m">t = 0 · submit</span></div></div>
+        </div>
+        <div class="fr">
+          <div class="fr-box fr-dark">
+            <div class="fr-brand"><i></i><i></i><i></i></div>
+            <div class="fr-card"><div class="fr-in"></div><div class="fr-in"></div><div class="fr-btn busy">登录中…</div></div>
+          </div>
+          <div class="fr-cap"><span class="pin rel">2</span><div><b>「登录中…」亮到 chunk 确认</b><br><span class="m">disabled · opacity .6 · ls .1em</span></div></div>
+        </div>
+        <div class="fr">
+          <div class="fr-box">
+            <div class="fr-shell">
+              <div class="fr-nav"><div class="fr-rail"><i></i><i></i><i></i><i></i></div></div>
+              <div class="fr-main"><div class="fr-tabs"><i></i><i></i></div><div class="fr-tb"></div>
+                <div class="fr-ct"><i class="d" style="width:40%"></i><div class="pills"><i class="s"></i><i class="s"></i><i class="s"></i><i class="s"></i></div><i class="s" style="height:14px"></i><i class="d w" style="width:30%"></i><div class="pills"><i class="s"></i><i class="s"></i><i class="s"></i></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="fr-cap"><span class="pin rel">3</span><div><b>同帧换树:外壳 + 骨架</b><br><span class="m">0ms · App.vue:50-61</span></div></div>
+        </div>
+        <div class="fr">
+          <div class="fr-box">
+            <div class="fr-shell">
+              <div class="fr-nav"><div class="fr-rail"><i></i><i></i><i></i><i></i></div></div>
+              <div class="fr-main"><div class="fr-tabs"><i></i><i></i></div><div class="fr-tb"></div>
+                <div class="fr-ct"><i class="d" style="width:40%"></i><div class="pills"><i class="d"></i><i class="d"></i><i class="d on"></i><i class="d"></i></div><i class="d w" style="height:14px; background:#fff; border:1px solid var(--border-subtle)"></i><i class="d w" style="width:30%"></i><div class="pills"><i class="d"></i><i class="d"></i><i class="d"></i></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="fr-cap"><span class="pin rel">4</span><div><b>数据到 → 原地硬切</b><br><span class="m">0ms · 零位移 · DataHomeView.vue:68-105</span></div></div>
+        </div>
+      </div>
+
+      <!-- live stage -->
+      <div class="demo">
+        <div class="h2">可重播舞台 <span class="s">重播后先停 320ms 看登录页,再从点击起算;chunk 与 getOverview 的等待为示意长度</span></div>
+        <input type="checkbox" id="rp1" class="rp" hidden>
+        <label for="rp1" class="rp-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>重播</label>
+
+        <div class="stage span">
+          <!-- ---- shell (first frame after tree swap; mounted at click+900) ---- -->
+          <div class="fp-stage">
+            <div class="navc">
+              <div class="rail">
+                <div class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div>
+                <div class="rsep"></div>
+                <div class="rbtn on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>数据</div>
+                <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h8"/></svg>报表</div>
+                <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4M12 15V7M17 15v-6"/></svg>分析</div>
+                <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>系统</div>
+              </div>
+              <div class="rdiv"></div>
+              <div class="panel">
+                <div class="pnm">数据中心</div>
+                <div class="pgrp">
+                  <div class="prow on">本月工作</div>
+                  <div class="pgt">录入</div>
+                  <div class="prow">园区抄表</div>
+                  <div class="prow">光伏发电</div>
+                  <div class="prow">充电桩</div>
+                  <div class="pgt">出账</div>
+                  <div class="prow">公摊分摊</div>
+                  <div class="prow">催缴单</div>
+                  <div class="prow">对账核对</div>
+                </div>
+              </div>
+            </div>
+            <div class="mainc">
+              <div class="tabs">
+                <div class="tab on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>本月工作<span class="tabx"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span></div>
+                <div class="tabn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+              </div>
+              <div class="tbar">
+                <div class="crumb"><span>数据中心</span><span>·</span><b>本月工作</b></div>
+                <div class="pill mono">数据截至 2026-08</div>
+              </div>
+              <div class="content" style="padding:0">
+                <!-- true data (bottom layer) -->
+                <div class="dh" style="padding:48px">
+                  <div class="dh-head">
+                    <div class="dh-period"><span class="dh-title">本月工作</span><div class="dh-msel"><div class="sel"><span>2026年8月</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div></div></div>
+                    <span class="dh-counts">出账 2/4 · 附表 6/9</span>
+                  </div>
+                  <section class="dh-sec">
+                    <h3 class="dh-h3">出账链</h3>
+                    <ol class="dh-steps">
+                      <li class="dh-step" data-status="done"><span class="dh-dot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="dh-slabel">园区抄表</span><span class="dh-sdetail">A座–F座 29/31</span></li>
+                      <li class="dh-step" data-status="done"><span class="dh-dot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="dh-slabel">公摊分摊</span></li>
+                      <li class="dh-step" data-status="current"><span class="dh-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg></span><span class="dh-slabel">催缴单</span><span class="dh-sdetail">42 户待生成</span></li>
+                      <li class="dh-step" data-status="todo"><span class="dh-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg></span><span class="dh-slabel">对账核对</span></li>
+                    </ol>
+                    <div class="dh-cur">
+                      <div class="dh-curmain"><span class="dh-curlabel">催缴单</span><span class="dh-curdetail">42 户待生成 · 收缴率 87.4%</span></div>
+                      <span class="btn-filled">去处理 →</span>
+                    </div>
+                  </section>
+                  <section class="dh-sec">
+                    <h3 class="dh-h3">附表录入 <span class="dh-h3n">6/9</span></h3>
+                    <ul class="dh-items">
+                      <li class="dh-item" data-done="false"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg></span><span class="dh-iname">水费</span><span class="dh-itag">2026-08</span></li>
+                      <li class="dh-item" data-done="false"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg></span><span class="dh-iname">租户变更</span><span class="dh-itag">2026-08</span></li>
+                      <li class="dh-item" data-done="false"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg></span><span class="dh-iname">保洁</span><span class="dh-itag">2026-08</span></li>
+                      <li class="dh-item" data-done="true"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="dh-iname">光伏发电</span><span class="dh-itag">2026-08</span></li>
+                      <li class="dh-item" data-done="true"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="dh-iname">充电桩</span><span class="dh-itag">2026-08</span></li>
+                      <li class="dh-item" data-done="true"><span class="dh-idot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="dh-iname">电梯电费</span><span class="dh-itag">2026-08</span></li>
+                    </ul>
+                  </section>
+                </div>
+                <!-- skeleton (top layer, same structure; hidden at click+900+1400 by a 0ms hard cut) -->
+                <div class="layer k-hide" style="--d:2620ms; padding:0">
+                  <div class="dh" style="padding:48px">
+                    <div class="dh-head">
+                      <div class="dh-period"><span class="dh-title">本月工作</span><div class="dh-msel"><span class="shim" style="display:block;height:28px;border-radius:8px"></span></div></div>
+                      <span class="shim" style="display:block;width:150px;height:12px"></span>
+                    </div>
+                    <section class="dh-sec">
+                      <h3 class="dh-h3">出账链</h3>
+                      <ol class="dh-steps">
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                      </ol>
+                      <div class="dh-cur">
+                        <div class="dh-curmain"><span class="shim" style="display:block;width:128px;height:16px"></span><span class="shim" style="display:block;width:196px;height:12px"></span></div>
+                        <span class="shim" style="display:block;width:104px;height:34px;border-radius:8px"></span>
+                      </div>
+                    </section>
+                    <section class="dh-sec">
+                      <h3 class="dh-h3">附表录入</h3>
+                      <ul class="dh-items">
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                        <li class="dh-item"><span class="shim" style="width:10px;height:10px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:76px;height:11px"></span></li>
+                      </ul>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- login (top layer until the tree swap at click+900: 0ms hard hide) ---- -->
+          <div class="login k-hide" style="--d:1220ms">
+            <div class="lg-brand">
+              <div class="lg-mark"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></i>园区管理系统</div>
+              <p class="lg-head">园区运营<br>一个后台管到底</p>
+              <p class="lg-sub">抄表、公摊、催缴、对账 —— 一条链上把账出完。</p>
+              <div class="lg-chips"><span class="lg-chip">楼栋管理</span><span class="lg-chip">租户管理</span><span class="lg-chip">合同管理</span><span class="lg-chip">月度台账</span></div>
+            </div>
+            <div class="lg-panel">
+              <div class="lg-form">
+                <p class="lg-welcome">欢迎回来</p>
+                <p class="lg-hint">登录园区管理系统</p>
+                <div class="lg-field"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><div class="lg-in">yanglyxy</div></div>
+                <div class="lg-field"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div class="lg-in">••••••••</div></div>
+                <div class="lg-row"><span class="cb"><span class="cbbox"></span>记住登录状态</span><span class="fg">忘记密码?</span></div>
+                <div class="lg-submit k-sub" style="--d:320ms">
+                  <span class="k-hide" style="--d:320ms">登录</span>
+                  <span class="k-show" style="--d:320ms">登录中…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- pins -->
+          <div class="pin" style="left:380px; top:340px;">1</div>
+          <div class="pin" style="left:296px; top:22px;">2</div>
+          <div class="pin" style="left:470px; top:168px;">3</div>
+          <div class="pin" style="left:710px; top:300px;">4</div>
+        </div>
+
+        <!-- two-track timeline: 今天 vs 设计 (0…2600ms; 0 = 点击) -->
+        <div class="tl2 span">
+          <div class="tr">
+            <div class="n">设计</div>
+            <div class="trk">
+              <span class="seg dark" style="left:0; width:34.6%;">「登录中…」亮到 chunk 确认 · disabled</span>
+              <span class="seg sky" style="left:34.6%; width:53.9%;">外壳首帧即出 + DataHome 骨架(fp-shim 1.4s linear)</span>
+              <span class="seg blue" style="left:88.5%; width:11.5%;">真数据</span>
+              <span class="tick" style="left:34.6%"></span><span class="tick" style="left:88.5%"></span>
+            </div>
+          </div>
+          <div class="tr">
+            <div class="n">今天</div>
+            <div class="trk">
+              <span class="seg dark" style="left:0; width:7.7%;">登录中…</span>
+              <span class="seg red" style="left:7.7%; width:26.9%;">按钮已复位「登录」· 登录页原样停着 · 无反馈</span>
+              <span class="seg sky" style="left:34.6%; width:53.9%;">骨架(现状已是硬切,零位移)</span>
+              <span class="seg blue" style="left:88.5%; width:11.5%;">真数据</span>
+              <span class="tick" style="left:7.7%"></span><span class="tick" style="left:34.6%"></span><span class="tick" style="left:88.5%"></span>
+            </div>
+          </div>
+          <div class="tr">
+            <div class="n"></div>
+            <div class="axis">
+              <span class="l" style="left:0">0 · 点击<br>120ms 存量 .lg-submit transition</span>
+              <span style="left:7.7%">auth.login 返回<br>今天:finally 立即复位</span>
+              <span style="left:34.6%">chunk 确认 · 同帧换树 0ms<br>冷缓存几百 ms,示意 900</span>
+              <span class="r" style="left:100%">getOverview 返回 · 硬切 0ms<br>示意 +1400(一轮 fp-shim)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- spec table -->
+      <table class="spec">
+        <thead><tr><th>#</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="id">C4-02</td>
+            <td>submit 成功 → router.push</td>
+            <td>一天一次</td>
+            <td>导航期间必须有反馈(DESIGN-FIDELITY §6.5);外壳导航条此时未挂载</td>
+            <td><b>无新动效,逻辑改动</b>:登录与导航分两个错误域,两条 push 都 <span class="mono">await</span>;按钮停在「登录中…」直到 chunk 确认;懒块 404 报「页面加载失败,请刷新重试」</td>
+            <td class="m">— / —<br>(按钮态沿用存量 120ms transition,不调)</td>
+            <td class="m">—</td>
+            <td class="m">LoginView.vue:41-56<br>现状 :45,:50 push 不 await · :54 finally 立即复位<br>router/index.ts:143-145</td>
+          </tr>
+          <tr>
+            <td class="id">C4-03</td>
+            <td>getOverview 返回</td>
+            <td>一天一次</td>
+            <td>明确:保持无动效</td>
+            <td>无。<span class="mono">v-if</span> 骨架 ↔ <span class="mono">v-else</span> 真版式同结构原地替换,已零位移;静态文案(本月工作 / 出账链 / 附表录入)照常渲染</td>
+            <td class="m">0 / —</td>
+            <td class="m">—(fp-shim 已 animation:none,motion.css:65)</td>
+            <td class="m">data-home/DataHomeView.vue:68-105<br>App.vue:50-61 isBare 同帧换树</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- notes -->
+      <div class="notes">
+        <div class="noteb"><span class="pin rel">1</span><div class="note"><b>按钮是登录后唯一的反馈,所以它必须亮到底。</b>今天 <span class="m">finally</span> 在 <span class="m">auth.login</span> 一返回就把 loading 复位,chunk 还在路上,登录页原样停几百 ms 无反馈。改:先 <span class="m">await auth.login</span> 得到 target,再 <span class="m">await router.push(target)</span>,两段各自 catch —— 懒块 404 不再冒充「密码错误」。</div></div>
+        <div class="noteb"><span class="pin rel">2</span><div class="note"><b>外壳整块首帧即出:轨 + 面板 + 页签 + 工具条不接力。</b><span class="m">App.vue:50-61</span> isBare 翻转是同一帧换树,本来就没有中间态;用户登录后要立刻点东西,任何入场编排都只是在拦着他。</div></div>
+        <div class="noteb"><span class="pin rel">3</span><div class="note"><b>内容区是 DataHome 真版式骨架,不是转圈。</b>出账链恒 4 步、附表恒 9 项是常量,骨架能画准;<span class="m">fp-shim</span> 微光条 1.4s linear 是唯一在动的东西,而它今天就在。</div></div>
+        <div class="noteb"><span class="pin rel">4</span><div class="note"><b>数据到 → 原地硬切,0ms,零位移。</b>文字原地替换,淡入没有信息增益;而且 KeepAlive 重插缓存 DOM 会重播根节点 animation —— 给这里加淡入等于给每次回页签加淡入。C6-01 首进分析屏与此同款。</div></div>
+      </div>
+    </div>
+
+    <!-- ================= RIGHT: 备选 A 已否 ================= -->
+    <div class="card">
+      <div class="ch"><span class="t">备选 A · 反向破晓遮罩</span><span class="tag no big">已否</span><span class="s mono">C4-01 · 24 位复核 KILL 成立</span></div>
+      <div class="sub">原方案:登录成功后置 <span class="mono">ui.fromLogin</span>,外壳挂载时 <span class="mono">.fp-stage::before</span> 铺一层 <span class="mono">#060a13</span> 黑遮罩,以新关键帧 <span class="mono">fp-fade-out</span> 320ms 淡出 —— 想让登录页的黑「破晓」成外壳的白。完整画出如下,重播看它在视线处的真实样子。</div>
+
+      <div class="demo">
+        <div class="h2">遮罩全貌 <span class="s">外壳 + 落地骨架已挂载,黑遮罩盖在上面 320ms 淡出</span></div>
+        <input type="checkbox" id="rp2" class="rp" hidden>
+        <label for="rp2" class="rp-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>重播</label>
+
+        <div class="stage2 span">
+          <div class="mini">
+            <div class="fp-stage">
+              <div class="navc">
+                <div class="rail">
+                  <div class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div>
+                  <div class="rsep"></div>
+                  <div class="rbtn on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>数据</div>
+                  <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h8"/></svg>报表</div>
+                  <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4M12 15V7M17 15v-6"/></svg>分析</div>
+                  <div class="rbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>系统</div>
+                </div>
+                <div class="rdiv"></div>
+                <div class="panel">
+                  <div class="pnm">数据中心</div>
+                  <div class="pgrp">
+                    <div class="prow on">本月工作</div>
+                    <div class="pgt">录入</div>
+                    <div class="prow">园区抄表</div>
+                    <div class="prow">光伏发电</div>
+                    <div class="prow">充电桩</div>
+                    <div class="pgt">出账</div>
+                    <div class="prow">公摊分摊</div>
+                    <div class="prow">催缴单</div>
+                  </div>
+                </div>
+              </div>
+              <div class="mainc">
+                <div class="tabs">
+                  <div class="tab on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>本月工作<span class="tabx"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span></div>
+                  <div class="tabn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+                </div>
+                <div class="tbar">
+                  <div class="crumb"><span>数据中心</span><span>·</span><b>本月工作</b></div>
+                  <div class="pill mono">数据截至 2026-08</div>
+                </div>
+                <div class="content" style="padding:0">
+                  <div class="dh" style="padding:48px">
+                    <div class="dh-head">
+                      <div class="dh-period"><span class="dh-title">本月工作</span><div class="dh-msel"><span class="shim" style="display:block;height:28px;border-radius:8px"></span></div></div>
+                      <span class="shim" style="display:block;width:150px;height:12px"></span>
+                    </div>
+                    <section class="dh-sec">
+                      <h3 class="dh-h3">出账链</h3>
+                      <ol class="dh-steps">
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                        <li class="dh-step"><span class="shim" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></span><span class="shim" style="display:block;width:64px;height:12px"></span></li>
+                      </ol>
+                      <div class="dh-cur">
+                        <div class="dh-curmain"><span class="shim" style="display:block;width:128px;height:16px"></span><span class="shim" style="display:block;width:196px;height:12px"></span></div>
+                        <span class="shim" style="display:block;width:104px;height:34px;border-radius:8px"></span>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- the proposed mask: #060a13, fp-fade-out 320ms --ease-out (rejected) -->
+          <div class="mask k-fade" style="--d:320ms"></div>
+          <div class="pin" style="left:12px; top:12px;">5</div>
+          <div class="pin" style="left:330px; top:120px;">6</div>
+        </div>
+
+        <div class="tl span">
+          <span class="tl-t" style="left:25%"></span><span class="tl-t" style="left:41.67%"></span><span class="tl-t" style="left:66.67%"></span>
+          <span class="tl-bar" style="--from:0; --to:320; --lbl:'320ms · --ease-out(fp-fade-out,已否)'"></span>
+        </div>
+      </div>
+
+      <!-- 视线处 side-by-side -->
+      <div class="demo">
+        <div class="h2">视线处放大 <span class="s">提交钮所在的白卡区域,换树那一帧前后</span></div>
+        <input type="checkbox" id="rp3" class="rp" hidden>
+        <label for="rp3" class="rp-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>重播</label>
+        <div class="eyes span">
+          <div class="eyer">
+            <div class="n">本稿<small>C4-02/03</small></div>
+            <div class="eye">
+              <div class="eye-sk"><i class="shim" style="width:60%"></i><i class="shim"></i><i class="shim" style="width:40%"></i></div>
+              <div class="eye-card k-hide" style="--d:320ms"><i>登录中…</i></div>
+            </div>
+            <div class="sw"><i class="w"></i><span class="cut">0ms</span><i class="w"></i><span class="ar">白卡 → 白骨架 · 一刀,视线处几乎无切口</span></div>
+          </div>
+          <div class="eyer">
+            <div class="n">备选 A<small>已否</small></div>
+            <div class="eye">
+              <div class="eye-sk"><i class="shim" style="width:60%"></i><i class="shim"></i><i class="shim" style="width:40%"></i></div>
+              <div class="eye-mask k-fade" style="--d:320ms"></div>
+              <div class="eye-card k-hide" style="--d:320ms"><i>登录中…</i></div>
+            </div>
+            <div class="sw"><i class="w"></i><span class="cut bad">0ms</span><i class="k"></i><span class="cut bad">320ms</span><i class="w"></i><span class="ar">白 → 闪黑 → 白 · 两刀代替一刀,还盖住骨架 320ms</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- reasons -->
+      <div class="why">
+        <div class="whyr"><span class="k">1</span><div><b>白卡。</b>提交钮在 400–500px 白卡里(<span class="m">LoginView.vue:481-486 .lg-panel { background:#fff }</span>),用户视线所在处本是白→白;「破晓」只对登录页的黑底成立,对视线处不成立 —— 遮罩让白卡先闪成 <span class="m">#060a13</span> 再 320ms 亮回。</div></div>
+        <div class="whyr"><span class="k">2</span><div><b>/change-password 标志泄漏。</b>强制改密分支不挂外壳(<span class="m">App.vue:50-61 isBare</span>),一次性 <span class="m">ui.fromLogin</span> 无人消费,会泄漏到之后任意一次无关的外壳挂载上再放一次黑幕。</div></div>
+        <div class="whyr"><span class="k">3</span><div><b>+250B 进 index。</b>遮罩规则 + <span class="m">fp-fade-out</span> 关键帧都在首屏块;本地余量 0.6KB、CI 少 ~1KB,一条一天一次的动效逼预算签字 191→192。删掉它反而给按压规则与 FPLoadBar 腾出预算。</div></div>
+      </div>
+
+      <table class="spec">
+        <thead><tr><th>#</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr></thead>
+        <tbody>
+          <tr class="dead">
+            <td class="id">C4-01 已否</td>
+            <td>登录后外壳首次挂载(ui.fromLogin)</td>
+            <td>一天一次</td>
+            <td>黑→白「破晓」衔接</td>
+            <td><span class="mono">.fp-stage::before</span> 黑遮罩 opacity 1→0,盖住外壳 + 落地骨架</td>
+            <td class="m">320ms · --ease-out<br>(fp-fade-out,不新增)</td>
+            <td class="m">全局 1ms(motion.css:45-53)→ 仍闪一帧黑</td>
+            <td class="m">未落地,已删<br>证据 LoginView.vue:481-486 · App.vue:50-61 · 预算 +250B</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="notes" style="grid-template-columns:1fr">
+        <div class="noteb"><span class="pin rel">5</span><div class="note"><b>遮罩盖住的是刚挂好的外壳和骨架。</b>外壳首帧本来就完整,遮罩把它藏 320ms 再露出来 —— 用户在这 320ms 里看到的是一块黑,而不是可点的页签。</div></div>
+        <div class="noteb"><span class="pin rel">6</span><div class="note"><b>视线处才是评判标准。</b>登录页整屏是黑的,但眼睛盯着提交钮,那里是白卡;换树后同一位置是白内容区。本稿一刀(0ms),备选两刀(0ms 闪黑 + 320ms 亮回)。C4-02 的按钮亮着已经是足够的反馈。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== bottom: 明确不做 ===== -->
+  <div class="card" style="gap:10px">
+    <div class="ch"><span class="t">明确不做</span><span class="s">登录完进入这一类,每条注明被哪一问杀掉</span></div>
+    <div class="nd">
+      <div class="ndi"><span class="x"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><div><b>登录后外壳接力入场(轨 → 页签 → 内容错峰)与两卡先后上浮</b> —— 接力 ≥500ms,用户登录后要立刻点东西;连单张遮罩也已否,原则 7:一次交互一个动的东西。</div></div>
+      <div class="ndi"><span class="x"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><div><b>反向破晓遮罩 C4-01</b> —— 白卡下两刀 + /change-password 标志泄漏 + 250B;见右侧。</div></div>
+      <div class="ndi"><span class="x"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><div><b>落地屏骨架 → 数据淡入(.av2-in 同款)</b> —— 文字原地替换无信息增益;KeepAlive(App.vue:55-61)重插会重播根节点 animation,回页签也会跟着淡一次。</div></div>
+      <div class="ndi"><span class="x"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><div><b>路由切换内容区 crossfade / 新屏根节点淡入</b> —— KeepAlive 单棵树做不了并存过渡;新实例首帧已是骨架,没有东西可淡。</div></div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

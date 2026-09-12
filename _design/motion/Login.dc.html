@@ -1,0 +1,1182 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+/* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) =====
+   Paste this whole block into <helmet><style> of every artboard. Do not change values. */
+:root {
+  --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+  --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+  --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+  --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+  --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+  --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+  --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+  --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+  --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+  --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+  --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+  --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+  --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+  --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+  --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+  --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+  --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+  --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+  --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+  --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+  --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+  --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+  --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+  --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+  /* motion — existing */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+  --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+}
+
+/* ECharts theme palette (components/ana/anaTheme.ts) — literal hex, charts cannot read CSS vars */
+/* sequential blues: #378ADD #85B7EB #B5D4F4 #185FA5 ; categorical: #378ADD #EF9F27 #5DCAA5 #E24B4A #F0997B #185FA5 #85B7EB #B5D4F4 */
+/* PV screen (views/analysis/pvAnaColors.ts): FOCUS #3675B2 · OUT #9D5D17 · YELLOW #DAB970 · FILL_SLATE #788CB0 · FILL_CYAN #A0CDE8 · FILL_SKY #C4E2F4 · INK300 rgba(28,28,28,.2) */
+
+    /* ===== artboard ===== */
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* header */
+    .hd { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+    .kick { font-size:11px; font-weight:500; letter-spacing:.04em; color:var(--text-muted); }
+    .h1 { font-size:20px; font-weight:600; line-height:1.2; margin-top:6px; }
+    .intro { font-size:12px; color:var(--text-muted); line-height:1.55; margin-top:6px; max-width:760px; }
+    .legend { display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+    .chips-row { display:flex; gap:6px; align-items:center; }
+    .lchip { height:22px; padding:0 9px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:11px; color:var(--text-muted); display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono); }
+    .lchip.on { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+    .lchip.lit { border-style:dashed; color:var(--hue-orange); }
+    .llab { font-size:11px; color:var(--text-muted); }
+
+    /* block */
+    .blk { display:flex; flex-direction:column; gap:12px; }
+    .bh { display:flex; align-items:center; gap:12px; }
+    .bh .t { font-size:16px; font-weight:600; }
+    .bh .id { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:4px; padding:2px 6px; background:#fff; }
+    .bh .sp { flex:1; }
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; }
+    .rp-btn:hover { background: var(--surface-card); }
+    .rp-btn:active { filter: brightness(0.94); }
+    .rp-btn.tg::before { content:''; width:8px; height:8px; border-radius:999px; border:1px solid var(--border-strong); background:#fff; }
+    .rm:checked ~ .bh .rp-btn.tg::before { background:var(--hue-blue); border-color:var(--hue-blue); }
+    .rm:checked ~ .bh .rp-btn.tg { border-color:var(--hue-blue); color:var(--hue-blue); }
+
+    .two { display:grid; grid-template-columns: 1080px 1fr; gap:24px; align-items:start; }
+    .stagewrap { display:flex; flex-direction:column; gap:8px; }
+    .stage { position:relative; width:1080px; height:675px; overflow:hidden; border-radius:8px; border:1px solid var(--border-subtle); background:#060a13; }
+    .stage > .lg { transform: scale(.75); transform-origin: 0 0; }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:50; }
+    .notes { display:flex; flex-direction:column; gap:10px; }
+    .note-r { display:flex; gap:9px; }
+    .note-r .pin { position:relative; flex:0 0 auto; }
+    .note { font-size:12px; line-height:1.55; color:var(--text-secondary); }
+    .note b { color:var(--text-primary); }
+    .note code { font-family:var(--font-mono); font-size:11px; background:var(--ink-050); border-radius:3px; padding:0 3px; }
+
+    /* ===== login mock, 1:1 values from LoginView.vue ===== */
+    .lg { position:relative; width:1440px; height:900px; overflow:hidden; color:#fff;
+      background: radial-gradient(1100px 700px at 18% 30%, rgba(31,95,191,.16), transparent 60%), radial-gradient(900px 600px at 85% 90%, rgba(76,152,253,.07), transparent 55%), #060a13; }
+    .lg .grid { position:absolute; inset:0; pointer-events:none;
+      background-image: linear-gradient(90deg, rgba(126,160,215,.09) 1px, transparent 1px), linear-gradient(rgba(126,160,215,.09) 1px, transparent 1px);
+      background-size:100px 100px; }
+    /* 交点 3px 方块 #a4c4f0,alpha .22±.07 呼吸(sin(t*0.0009) ≈ 7s 周期);两层错相 */
+    .lg .sq { position:absolute; inset:0; pointer-events:none; opacity:.22;
+      background-image: conic-gradient(at 3px 3px, transparent 75%, #a4c4f0 0), conic-gradient(at 3px 3px, transparent 75%, #a4c4f0 0);
+      background-size:200px 200px; animation: breathe 3.49s ease-in-out infinite alternate; }
+    .lg .sq.a { background-position:-1.5px -1.5px, 98.5px 98.5px; }
+    .lg .sq.b { background-position:98.5px -1.5px, -1.5px 98.5px; animation-delay:-1.75s; }
+    @keyframes breathe { from { opacity:.15 } to { opacity:.29 } }
+
+    .lg .frame { position:relative; z-index:1; display:flex; gap:14px; height:900px; padding:14px; }
+    .lg .brand { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; padding:24px 20px 24px 34px; }
+    .lg .btop { display:flex; align-items:center; gap:12px; }
+    .lg .mk { width:38px; height:38px; border-radius:12px; background:#fff; display:grid; place-items:center; box-shadow:0 4px 18px rgba(76,152,253,.25); }
+    .lg .bn { font-size:15px; font-weight:600; letter-spacing:.02em; }
+    .lg .hero { flex:1; display:flex; flex-direction:column; justify-content:center; gap:18px; }
+    .lg .plogo { position:relative; width:340px; height:280px; align-self:center; margin:0 0 -6px; }
+    .lg .hl { margin:0; font-size:44px; line-height:1.3; font-weight:700; letter-spacing:.01em; max-width:620px; }
+    .lg .sub { margin:0; font-size:15px; line-height:1.9; color:rgba(255,255,255,.62); max-width:620px; }
+    .lg .chips { display:flex; gap:10px; flex-wrap:wrap; }
+    .lg .chip { padding:8px 16px; border-radius:999px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); font-size:13px; color:rgba(255,255,255,.78); }
+
+    .lg .panel { flex:0 0 490px; display:flex; align-items:center; justify-content:center; background:#fff; border-radius:40px; padding:48px 24px; box-shadow:0 30px 80px rgba(0,0,0,.45); }
+    .lg .form { width:330px; display:flex; flex-direction:column; color:#0f1420; }
+    .lg .wel { font-size:27px; font-weight:700; line-height:1.2; }
+    .lg .hint { margin:8px 0 32px; font-size:13.5px; color:rgba(15,20,32,.45); }
+    .lg .field { position:relative; height:52px; margin-bottom:14px; border:1.5px solid transparent; border-radius:14px; background:#f2f4f8; display:flex; align-items:center; padding:0 46px 0 44px; font-size:14.5px; color:rgba(15,20,32,.35); }
+    .lg .field.focus { background:#fff; border-color:#4c98fd; box-shadow:0 0 0 4px rgba(76,152,253,.14); }
+    .lg .caret { display:inline-block; width:1px; height:18px; background:#0f1420; margin-right:2px; vertical-align:middle; }
+    .lg .fi { position:absolute; left:15px; top:50%; transform:translateY(-50%); color:rgba(15,20,32,.35); display:flex; }
+    .lg .eye { position:absolute; right:8px; top:50%; transform:translateY(-50%); padding:8px; border-radius:10px; color:rgba(15,20,32,.35); display:flex; }
+    .lg .err { min-height:18px; margin-top:2px; }
+    .lg .row { display:flex; align-items:center; justify-content:space-between; margin:14px 0 26px; font-size:13.5px; }
+    .lg .rem { display:flex; align-items:center; gap:9px; color:#2a3040; }
+    .lg .cb { width:19px; height:19px; border-radius:6px; background:#10151f; border:1.5px solid #10151f; display:grid; place-items:center; }
+    .lg .forgot { color:#4c98fd; }
+    .lg .fh { min-height:16px; margin:-16px 0 18px; }
+    .lg .submit { height:54px; border-radius:15px; background:#10151f; color:#fff; font-size:15.5px; font-weight:600; letter-spacing:.5em; text-indent:.5em; display:flex; align-items:center; justify-content:center; }
+
+    /* 黑遮罩 .lg-root::after —— lg-dawn 1.1s ease-out .1s forwards(LoginView.vue:433-448) */
+    .lg .mask { position:absolute; inset:0; background:#000; pointer-events:none; z-index:40; animation: dawn-a 1.1s ease-out 0.1s forwards; }
+    @keyframes dawn-a { from { opacity:1 } to { opacity:0 } }
+    @keyframes dawn-b { from { opacity:1 } to { opacity:0 } }
+
+    /* 粒子:2.4px 白方点,三档 alpha .45/.324/.203;暗场 800ms + 出生序×1000ms;每颗 350–800ms easeOutCubic,从 ±9px 漂回 */
+    .p { position:absolute; width:2.4px; height:2.4px; margin:-1.2px 0 0 -1.2px; background:#fff; opacity:0; animation: bloom-a var(--fd) cubic-bezier(.33,1,.68,1) calc(800ms + var(--o) * 1000ms) forwards; }
+    .p.t0 { --a:.45 } .p.t1 { --a:.324 } .p.t2 { --a:.203 }
+    @keyframes bloom-a { from { opacity:0; transform: translate(var(--ox), var(--oy)); } to { opacity:var(--a); transform:none; } }
+    @keyframes bloom-b { from { opacity:0; transform: translate(var(--ox), var(--oy)); } to { opacity:var(--a); transform:none; } }
+    .rp:checked ~ .two .mask { animation-name: dawn-b; }
+    .rp:checked ~ .two .p { animation-name: bloom-b; }
+    /* reduced-motion 预览:遮罩 display:none(:445-448)+ canvas 静帧(:320-321) */
+    .rm:checked ~ .two .mask { display:none; }
+    .rm:checked ~ .two .p { animation:none; opacity:var(--a); }
+    .rm:checked ~ .two .sq { animation:none; opacity:.22; }
+
+    /* ===== timeline ruler, 0…2000 ms across 1080px ===== */
+    .tl2 { display:flex; flex-direction:column; width:1080px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); padding-top:14px; }
+    .tl2 .axis { position:relative; height:34px; border-top:1px solid var(--ink-300); }
+    .tl2 .tick { position:absolute; top:-1px; width:1px; height:6px; background:var(--ink-300); }
+    .tl2 .tick span { position:absolute; top:8px; left:0; transform:translateX(-50%); white-space:nowrap; }
+    .tl2 .tick.tok { height:4px; background:var(--hue-orange); }
+    .tl2 .tick.tok span { color:var(--hue-orange); top:20px; }
+    .tl2 .tick.end span { transform:translateX(-100%); }
+    .tl2 .fr-mark { position:absolute; top:-9px; width:1px; height:9px; background:var(--hue-blue); }
+    .tl2 .fr-mark span { position:absolute; top:-14px; left:0; transform:translateX(-50%); color:var(--hue-blue); white-space:nowrap; }
+    .tl2 .fr-mark.first span { transform:none; }
+    .tl2 .lane { display:grid; grid-template-columns:132px 1fr; align-items:center; height:22px; }
+    .tl2 .lane .ln { color:var(--text-secondary); }
+    .tl2 .lane .tr { position:relative; height:22px; }
+    .tl2 .bar { position:absolute; top:8px; height:6px; border-radius:2px; background:var(--hue-blue); left:calc(var(--from) / 2000 * 100%); width:calc((var(--to) - var(--from)) / 2000 * 100%); }
+    .tl2 .bar.dim { background:var(--ink-300); }
+    .tl2 .bar.tail { background: repeating-linear-gradient(90deg, var(--fill-blue) 0 3px, transparent 3px 6px); }
+    .tl2 .bar.dot { height:2px; top:10px; background: repeating-linear-gradient(90deg, var(--ink-300) 0 3px, transparent 3px 7px); }
+    .tl2 .bl { position:absolute; top:3px; left:calc(var(--at) / 2000 * 100%); padding-left:6px; white-space:nowrap; color:var(--text-muted); }
+    .tl2 .bl.r { left:auto; right:calc((2000 - var(--at)) / 2000 * 100%); padding-left:0; padding-right:6px; }
+    .tl2 .lanes { padding-left:0; }
+    .tl2 .lanes .lane .tr { margin-left:0; }
+
+    /* ===== frames ===== */
+    .frames { display:flex; gap:12px; }
+    .fr { display:flex; flex-direction:column; gap:6px; width:216px; }
+    .th { width:216px; height:135px; overflow:hidden; border-radius:6px; border:1px solid var(--border-subtle); background:#060a13; }
+    .thin { transform:scale(.15); transform-origin:0 0; }
+    .th .mask, .th .p, .th .sq { animation:none; }
+    .th .p { width:12px; height:12px; margin:-6px 0 0 -6px; --a:1; } /* 缩略:点放大到 12px(×.15 = 1.8px)才看得见 */
+    .th .sq { opacity:.22; }
+    .f0 .mask { opacity:1 } .f0 .p { opacity:0 }
+    .f100 .mask { opacity:.98 } .f100 .p { opacity:0 }
+    .f600 .mask { opacity:.37 } .f600 .p { opacity:0 }
+    .f1200 .mask { opacity:0 } .f1200 .p { opacity: clamp(0, calc((400 - var(--o) * 1000) / 575), 1); }
+    .f1900 .mask { opacity:0 } .f1900 .p { opacity: clamp(0, calc((1100 - var(--o) * 1000) / 575), 1); }
+    .frm .mask { display:none } .frm .p { opacity:1 }
+    .fcap { display:flex; align-items:baseline; gap:8px; }
+    .ft { font-family:var(--font-mono); font-size:12px; font-weight:600; }
+    .fn { font-size:11px; color:var(--text-muted); }
+    .fnote { font-size:11px; line-height:1.5; color:var(--text-secondary); }
+
+    /* ===== spec table ===== */
+    .spec { width:100%; border-collapse:collapse; font-size:12px; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; }
+    .spec th, .spec td { text-align:left; vertical-align:top; padding:8px 10px; border-bottom:1px solid var(--divider); line-height:1.5; }
+    .spec th { font-size:11px; font-weight:500; color:var(--text-muted); background:var(--surface-card); }
+    .spec tr:last-child td { border-bottom:0; }
+    .spec td.v { font-family:var(--font-mono); font-size:11px; font-variant-numeric:tabular-nums; }
+    .spec td .id { font-family:var(--font-mono); font-weight:600; }
+    .spec td .no { color:var(--hue-red); font-weight:600; }
+
+    /* ===== 不做 ===== */
+    .nodo { display:flex; flex-direction:column; gap:6px; padding:12px 14px; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; }
+    .nodo .t { font-size:12px; font-weight:600; }
+    .nodo .it { font-size:12px; color:var(--text-muted); line-height:1.5; display:flex; gap:8px; }
+    .nodo .it b { color:var(--text-secondary); font-weight:500; white-space:nowrap; }
+    .card { background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:12px 14px; }
+    .sec-t { font-size:14px; font-weight:600; }
+    .sec-h { font-size:11px; color:var(--text-muted); margin-top:2px; }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 900px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <div class="hd">
+    <div>
+      <div class="kick">03 · 开屏出场(保持现状,不调一个数)</div>
+      <div class="h1">开屏出场</div>
+      <div class="intro">把登录页现有的开屏动效画清楚:白 → LoginView chunk 到达 → 黑遮罩 1.1s 淡出,粒子 logo 暗场 800ms 后 1000ms 内逐颗显影。本板不改任何数,只把时间线摊开给没逐帧看过的人;两条都是「一天一次」——原则 1 里唯一允许长拍的位置。</div>
+    </div>
+    <div class="legend">
+      <div class="chips-row"><span class="llab">频次档</span><span class="lchip">100+/天</span><span class="lchip">十几/天</span><span class="lchip">偶发</span><span class="lchip on">一生一次 / 一天一次</span></div>
+      <div class="chips-row"><span class="llab">令牌</span><span class="lchip">120</span><span class="lchip">200</span><span class="lchip">320</span><span class="lchip">--ease-out</span><span class="lchip">--ease-standard</span><span class="lchip lit">登录页字面量 1.1s · 800 · 1000 · 不令牌化</span></div>
+    </div>
+  </div>
+
+  <!-- ===== C3-01 live stage ===== -->
+  <div class="blk">
+    <input type="checkbox" id="rp1" class="rp" hidden>
+    <input type="checkbox" id="rm1" class="rm" hidden>
+    <div class="bh">
+      <span class="id">C3-01</span><span class="t">LoginView 破晓遮罩 .lg-root::after + canvas 粒子 logo 显影</span>
+      <span class="sp"></span>
+      <label for="rm1" class="rp-btn tg">减动效预览(遮罩 display:none + 静帧)</label>
+      <label for="rp1" class="rp-btn">重播 · 从 t=0 开始</label>
+    </div>
+    <div class="two">
+      <div class="stagewrap">
+        <div class="stage">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div>
+          <div class="pin" style="left:1044px; top:12px;">1</div>
+          <div class="pin" style="left:212px; top:172px;">2</div>
+          <div class="pin" style="left:64px; top:64px;">3</div>
+          <div class="pin" style="left:748px; top:256px;">4</div>
+          <div class="pin" style="left:692px; top:472px;">5</div>
+          <div class="pin" style="left:12px; top:640px;">6</div>
+        </div>
+        <div class="tl2">
+          <div class="lane"><span class="ln"></span><div class="axis">
+            <div class="fr-mark first" style="left:0%"><span>帧 t=0</span></div>
+            <div class="fr-mark" style="left:5%"><span>100</span></div>
+            <div class="fr-mark" style="left:30%"><span>600</span></div>
+            <div class="fr-mark" style="left:60%"><span>1200</span></div>
+            <div class="fr-mark" style="left:95%"><span>1900</span></div>
+            <div class="tick" style="left:0%"><span>0</span></div>
+            <div class="tick tok" style="left:6%"><span>120</span></div>
+            <div class="tick tok" style="left:10%"><span>200</span></div>
+            <div class="tick tok" style="left:16%"><span>320 令牌梯到此为止</span></div>
+            <div class="tick" style="left:40%"><span>800</span></div>
+            <div class="tick" style="left:55%"><span>1100</span></div>
+            <div class="tick" style="left:90%"><span>1800</span></div>
+            <div class="tick end" style="left:100%"><span>2000 ms</span></div>
+          </div></div>
+          <div class="lane"><span class="ln">1 遮罩 lg-dawn</span><div class="tr"><span class="bar" style="--from:100; --to:1200"></span><span class="bl" style="--at:1200">1.1s · ease-out(CSS 关键字,存量字面量)· delay 0.1s · forwards</span></div></div>
+          <div class="lane"><span class="ln">2 粒子 · 暗场</span><div class="tr"><span class="bar dim" style="--from:0; --to:800"></span><span class="bl" style="--at:800">800ms 一颗不画(logoBloomHold)</span></div></div>
+          <div class="lane"><span class="ln">2 粒子 · 显影窗口</span><div class="tr"><span class="bar" style="--from:800; --to:1800"></span><span class="bar tail" style="--from:1800; --to:2000"></span><span class="bl r" style="--at:800">1000ms 出生窗口(logoBloomMs)· 每颗 350–800ms cubicOut,尾巴拖到 ~2650</span></div></div>
+          <div class="lane"><span class="ln">3 交点方块呼吸</span><div class="tr"><span class="bar dot" style="--from:0; --to:2000"></span><span class="bl" style="--at:0">持续 · alpha .22±.07 · sin(t×0.0009) ≈ 7s 周期,与入场无关</span></div></div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note-r"><div class="pin">1</div><div class="note"><b>黑遮罩是整页「由暗到亮」的唯一手段。</b><code>.lg-root::after</code> fixed inset:0 #000 z-index:40,<code>lg-dawn 1.1s ease-out .1s forwards</code>,opacity 1→0。为什么不直接给 .lg-root 做 opacity/filter:filter 会把 <code>.lg-bg</code> 的 fixed 定位劫持成相对自己。为什么允许 1.1s 远超 320 令牌:一天一次是原则 1 唯一放行长拍的位置,不令牌化。</div></div>
+        <div class="note-r"><div class="pin">2</div><div class="note"><b>粒子不是飞进来的,是「显影」。</b>~90 颗 2.4px 白方点按三档 alpha(.45 / .324 / .203)分桶;暗场 800ms 与遮罩淡出衔接——遮罩 ~1200ms 才落地,粒子 800ms 起显,两条线交叠而不接力。出生序 = 离中心距离×70% + 随机 30%,每颗 350–800ms easeOutCubic,从 ±9px 偏移漂回原位。三版位移方案已否。</div></div>
+        <div class="note-r"><div class="pin">3</div><div class="note"><b>网格与交点方块是环境,不是入场。</b>线 rgba(126,160,215,.09)、~100px 节距;交点 3px #a4c4f0,alpha .22±.07 按各自相位呼吸(LoginView.vue:153-158)。桌面 pointer:fine 才挂鼠标撑开,触屏只有呼吸——本板不演鼠标。</div></div>
+        <div class="note-r"><div class="pin">4</div><div class="note"><b>破晓期间就能打字。</b>用户名框在 pointer:fine 下自动聚焦,遮罩 <code>pointer-events:none</code>,1.1s 里键盘输入不被挡——动效从不站在输入前面。</div></div>
+        <div class="note-r"><div class="pin">5</div><div class="note"><b>白卡零动效。</b>它只是从遮罩底下「亮出来」,不 rise 不 fade;一次出场只有遮罩与粒子两件东西在动(原则 7 的登录页版本)。</div></div>
+        <div class="note-r"><div class="pin">6</div><div class="note"><b>reduced-motion 是分工不是关闭。</b>遮罩 <code>display:none</code>(:445-448),canvas <code>if (reduced) { bg?.draw(0); return }</code>(:320-321)只画静帧、不挂 rAF、不挂鼠标。点上方「减动效预览」即所见。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== frame band ===== -->
+  <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+    <div><div class="sec-t">帧带:同一条时间线上的五帧 + reduced(静态,按曲线算出的遮罩透明度与已出生粒子)</div><div class="sec-h">缩略 ×0.15;粒子放大到 12px 才看得见,真实 2.4px · 遮罩透明度按 ease-out 曲线在该时刻的值</div></div>
+    <div class="frames">
+      
+<div class="fr f0">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">t = 0 ms</span><span class="fn">全黑</span></div>
+  <div class="fnote">chunk 已到,LoginView 挂载;遮罩 opacity 1,粒子 0 颗。用户名框此刻已聚焦。</div>
+</div>
+      
+<div class="fr f100">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">t = 100 ms</span><span class="fn">遮罩到点起步</span></div>
+  <div class="fnote">delay 0.1s 结束,lg-dawn 开始;ease-out 起点仍 ≈1,肉眼与 t=0 无差。</div>
+</div>
+      
+<div class="fr f600">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">t = 600 ms</span><span class="fn">半明</span></div>
+  <div class="fnote">遮罩已跑 500/1100,ease-out 进度 ≈63% → opacity ≈.37;粒子仍在暗场(&lt;800)。</div>
+</div>
+      
+<div class="fr f1200">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">t = 1200 ms</span><span class="fn">遮罩落地 · 波前起</span></div>
+  <div class="fnote">遮罩 opacity 0;显影已 400ms,出生序 &lt;0.4 的中心粒子在淡入,边缘一颗没有。</div>
+</div>
+      
+<div class="fr f1900">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">t = 1900 ms</span><span class="fn">近成型</span></div>
+  <div class="fnote">显影窗口 1000ms 已过,全部出生;最晚一批还在 350–800ms 尾巴里,边缘略暗。</div>
+</div>
+      
+<div class="fr frm">
+  <div class="th"><div class="thin">
+<div class="lg">
+  <div class="grid"></div><div class="sq a"></div><div class="sq b"></div>
+  <div class="frame">
+    <aside class="brand">
+      <div class="btop"><span class="mk"><svg width="20" height="20" viewBox="0 0 40 40" fill="none"><rect x="3" y="20" width="9" height="16" rx="2" fill="#A8CDF0"></rect><rect x="15.5" y="12" width="9" height="24" rx="2" fill="#4C98FD"></rect><rect x="28" y="4" width="9" height="32" rx="2" fill="#1F5FBF"></rect></svg></span><span class="bn">园区管理系统</span></div>
+      <div class="hero">
+        <div class="plogo"><i class="p t0" style="left:63.5px;top:144.0px;--o:0.662;--fd:350ms;--ox:0.2px;--oy:-8.8px"></i>
+<i class="p t1" style="left:79.5px;top:144.0px;--o:0.697;--fd:800ms;--ox:5.8px;--oy:7.2px"></i>
+<i class="p t2" style="left:95.5px;top:144.0px;--o:0.630;--fd:500ms;--ox:-6.3px;--oy:2.2px"></i>
+<i class="p t0" style="left:63.5px;top:160.0px;--o:0.612;--fd:500ms;--ox:2.3px;--oy:1.3px"></i>
+<i class="p t1" style="left:79.5px;top:160.0px;--o:0.546;--fd:800ms;--ox:-3.7px;--oy:7.6px"></i>
+<i class="p t2" style="left:95.5px;top:160.0px;--o:0.464;--fd:500ms;--ox:0.2px;--oy:2.0px"></i>
+<i class="p t0" style="left:63.5px;top:176.0px;--o:0.616;--fd:500ms;--ox:-0.0px;--oy:2.3px"></i>
+<i class="p t1" style="left:79.5px;top:176.0px;--o:0.582;--fd:800ms;--ox:-1.8px;--oy:4.9px"></i>
+<i class="p t2" style="left:95.5px;top:176.0px;--o:0.615;--fd:650ms;--ox:3.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:192.0px;--o:0.778;--fd:350ms;--ox:8.1px;--oy:-1.4px"></i>
+<i class="p t1" style="left:79.5px;top:192.0px;--o:0.720;--fd:650ms;--ox:3.9px;--oy:0.6px"></i>
+<i class="p t2" style="left:95.5px;top:192.0px;--o:0.660;--fd:800ms;--ox:0.6px;--oy:-0.2px"></i>
+<i class="p t0" style="left:63.5px;top:208.0px;--o:0.839;--fd:350ms;--ox:4.7px;--oy:-2.8px"></i>
+<i class="p t1" style="left:79.5px;top:208.0px;--o:0.776;--fd:650ms;--ox:0.6px;--oy:2.1px"></i>
+<i class="p t2" style="left:95.5px;top:208.0px;--o:0.515;--fd:800ms;--ox:7.3px;--oy:2.4px"></i>
+<i class="p t0" style="left:63.5px;top:224.0px;--o:0.712;--fd:350ms;--ox:-4.5px;--oy:-5.5px"></i>
+<i class="p t1" style="left:79.5px;top:224.0px;--o:0.632;--fd:350ms;--ox:-7.2px;--oy:-7.9px"></i>
+<i class="p t2" style="left:95.5px;top:224.0px;--o:0.609;--fd:650ms;--ox:8.4px;--oy:-4.2px"></i>
+<i class="p t0" style="left:63.5px;top:240.0px;--o:0.742;--fd:350ms;--ox:-4.8px;--oy:-8.0px"></i>
+<i class="p t1" style="left:79.5px;top:240.0px;--o:0.808;--fd:350ms;--ox:0.9px;--oy:8.5px"></i>
+<i class="p t2" style="left:95.5px;top:240.0px;--o:0.776;--fd:500ms;--ox:-3.5px;--oy:-4.4px"></i>
+<i class="p t0" style="left:144.8px;top:92.0px;--o:0.282;--fd:800ms;--ox:-8.0px;--oy:4.3px"></i>
+<i class="p t1" style="left:160.8px;top:92.0px;--o:0.249;--fd:350ms;--ox:-2.3px;--oy:0.4px"></i>
+<i class="p t2" style="left:176.8px;top:92.0px;--o:0.256;--fd:650ms;--ox:-8.2px;--oy:1.6px"></i>
+<i class="p t0" style="left:144.8px;top:108.0px;--o:0.344;--fd:650ms;--ox:-1.1px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:108.0px;--o:0.317;--fd:350ms;--ox:4.8px;--oy:-6.2px"></i>
+<i class="p t2" style="left:176.8px;top:108.0px;--o:0.199;--fd:650ms;--ox:-6.1px;--oy:-1.3px"></i>
+<i class="p t0" style="left:144.8px;top:124.0px;--o:0.284;--fd:500ms;--ox:-1.3px;--oy:1.6px"></i>
+<i class="p t1" style="left:160.8px;top:124.0px;--o:0.260;--fd:800ms;--ox:5.7px;--oy:-4.7px"></i>
+<i class="p t2" style="left:176.8px;top:124.0px;--o:0.353;--fd:800ms;--ox:-6.6px;--oy:-6.1px"></i>
+<i class="p t0" style="left:144.8px;top:140.0px;--o:0.383;--fd:500ms;--ox:7.0px;--oy:-1.2px"></i>
+<i class="p t1" style="left:160.8px;top:140.0px;--o:0.200;--fd:800ms;--ox:0.1px;--oy:-8.8px"></i>
+<i class="p t2" style="left:176.8px;top:140.0px;--o:0.303;--fd:800ms;--ox:6.9px;--oy:-8.6px"></i>
+<i class="p t0" style="left:144.8px;top:156.0px;--o:0.431;--fd:650ms;--ox:5.2px;--oy:-6.0px"></i>
+<i class="p t1" style="left:160.8px;top:156.0px;--o:0.107;--fd:350ms;--ox:5.7px;--oy:5.2px"></i>
+<i class="p t2" style="left:176.8px;top:156.0px;--o:0.161;--fd:800ms;--ox:-4.9px;--oy:-8.7px"></i>
+<i class="p t0" style="left:144.8px;top:172.0px;--o:0.489;--fd:500ms;--ox:3.7px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:172.0px;--o:0.251;--fd:500ms;--ox:-6.6px;--oy:-6.0px"></i>
+<i class="p t2" style="left:176.8px;top:172.0px;--o:0.279;--fd:800ms;--ox:-1.5px;--oy:5.3px"></i>
+<i class="p t0" style="left:144.8px;top:188.0px;--o:0.361;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t1" style="left:160.8px;top:188.0px;--o:0.460;--fd:350ms;--ox:-1.3px;--oy:7.8px"></i>
+<i class="p t2" style="left:176.8px;top:188.0px;--o:0.512;--fd:800ms;--ox:-4.5px;--oy:-8.0px"></i>
+<i class="p t0" style="left:144.8px;top:204.0px;--o:0.408;--fd:800ms;--ox:-0.4px;--oy:-5.1px"></i>
+<i class="p t1" style="left:160.8px;top:204.0px;--o:0.381;--fd:500ms;--ox:-5.7px;--oy:-2.0px"></i>
+<i class="p t2" style="left:176.8px;top:204.0px;--o:0.388;--fd:800ms;--ox:0.1px;--oy:-7.1px"></i>
+<i class="p t0" style="left:144.8px;top:220.0px;--o:0.602;--fd:800ms;--ox:8.7px;--oy:-8.0px"></i>
+<i class="p t1" style="left:160.8px;top:220.0px;--o:0.487;--fd:350ms;--ox:-3.6px;--oy:-6.8px"></i>
+<i class="p t2" style="left:176.8px;top:220.0px;--o:0.478;--fd:650ms;--ox:1.1px;--oy:7.3px"></i>
+<i class="p t0" style="left:144.8px;top:236.0px;--o:0.663;--fd:650ms;--ox:7.1px;--oy:5.8px"></i>
+<i class="p t1" style="left:160.8px;top:236.0px;--o:0.680;--fd:350ms;--ox:3.7px;--oy:-8.5px"></i>
+<i class="p t2" style="left:176.8px;top:236.0px;--o:0.477;--fd:350ms;--ox:-8.2px;--oy:-6.7px"></i>
+<i class="p t0" style="left:226.0px;top:40.0px;--o:0.781;--fd:650ms;--ox:4.6px;--oy:6.2px"></i>
+<i class="p t1" style="left:242.0px;top:40.0px;--o:0.800;--fd:500ms;--ox:0.5px;--oy:-7.0px"></i>
+<i class="p t2" style="left:258.0px;top:40.0px;--o:0.668;--fd:350ms;--ox:6.3px;--oy:-8.4px"></i>
+<i class="p t0" style="left:226.0px;top:56.0px;--o:0.522;--fd:650ms;--ox:-7.2px;--oy:0.8px"></i>
+<i class="p t1" style="left:242.0px;top:56.0px;--o:0.689;--fd:650ms;--ox:0.3px;--oy:1.1px"></i>
+<i class="p t2" style="left:258.0px;top:56.0px;--o:0.602;--fd:350ms;--ox:7.1px;--oy:5.9px"></i>
+<i class="p t0" style="left:226.0px;top:72.0px;--o:0.472;--fd:650ms;--ox:-5.9px;--oy:-0.8px"></i>
+<i class="p t1" style="left:242.0px;top:72.0px;--o:0.622;--fd:650ms;--ox:-0.7px;--oy:0.9px"></i>
+<i class="p t2" style="left:258.0px;top:72.0px;--o:0.719;--fd:800ms;--ox:-3.6px;--oy:4.7px"></i>
+<i class="p t0" style="left:226.0px;top:88.0px;--o:0.523;--fd:500ms;--ox:2.0px;--oy:0.6px"></i>
+<i class="p t1" style="left:242.0px;top:88.0px;--o:0.426;--fd:650ms;--ox:-5.1px;--oy:6.7px"></i>
+<i class="p t2" style="left:258.0px;top:88.0px;--o:0.521;--fd:350ms;--ox:-8.1px;--oy:7.6px"></i>
+<i class="p t0" style="left:226.0px;top:104.0px;--o:0.449;--fd:350ms;--ox:-1.5px;--oy:7.9px"></i>
+<i class="p t1" style="left:242.0px;top:104.0px;--o:0.541;--fd:650ms;--ox:5.5px;--oy:2.7px"></i>
+<i class="p t2" style="left:258.0px;top:104.0px;--o:0.589;--fd:800ms;--ox:-1.2px;--oy:-7.8px"></i>
+<i class="p t0" style="left:226.0px;top:120.0px;--o:0.423;--fd:800ms;--ox:-1.4px;--oy:-7.5px"></i>
+<i class="p t1" style="left:242.0px;top:120.0px;--o:0.506;--fd:500ms;--ox:4.8px;--oy:2.6px"></i>
+<i class="p t2" style="left:258.0px;top:120.0px;--o:0.611;--fd:350ms;--ox:6.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:136.0px;--o:0.507;--fd:800ms;--ox:5.1px;--oy:5.1px"></i>
+<i class="p t1" style="left:242.0px;top:136.0px;--o:0.615;--fd:350ms;--ox:-6.9px;--oy:0.1px"></i>
+<i class="p t2" style="left:258.0px;top:136.0px;--o:0.489;--fd:500ms;--ox:-0.0px;--oy:-2.5px"></i>
+<i class="p t0" style="left:226.0px;top:152.0px;--o:0.569;--fd:800ms;--ox:4.2px;--oy:1.2px"></i>
+<i class="p t1" style="left:242.0px;top:152.0px;--o:0.616;--fd:500ms;--ox:6.3px;--oy:-0.1px"></i>
+<i class="p t2" style="left:258.0px;top:152.0px;--o:0.511;--fd:500ms;--ox:-4.1px;--oy:0.2px"></i>
+<i class="p t0" style="left:226.0px;top:168.0px;--o:0.395;--fd:800ms;--ox:-6.3px;--oy:2.8px"></i>
+<i class="p t1" style="left:242.0px;top:168.0px;--o:0.585;--fd:800ms;--ox:-0.6px;--oy:1.2px"></i>
+<i class="p t2" style="left:258.0px;top:168.0px;--o:0.513;--fd:350ms;--ox:-5.4px;--oy:-5.2px"></i>
+<i class="p t0" style="left:226.0px;top:184.0px;--o:0.450;--fd:650ms;--ox:-8.2px;--oy:-1.5px"></i>
+<i class="p t1" style="left:242.0px;top:184.0px;--o:0.611;--fd:650ms;--ox:0.4px;--oy:-2.3px"></i>
+<i class="p t2" style="left:258.0px;top:184.0px;--o:0.704;--fd:350ms;--ox:6.5px;--oy:-7.5px"></i>
+<i class="p t0" style="left:226.0px;top:200.0px;--o:0.635;--fd:800ms;--ox:4.3px;--oy:6.4px"></i>
+<i class="p t1" style="left:242.0px;top:200.0px;--o:0.496;--fd:800ms;--ox:-5.9px;--oy:6.9px"></i>
+<i class="p t2" style="left:258.0px;top:200.0px;--o:0.588;--fd:500ms;--ox:0.9px;--oy:1.9px"></i>
+<i class="p t0" style="left:226.0px;top:216.0px;--o:0.628;--fd:350ms;--ox:6.0px;--oy:-1.7px"></i>
+<i class="p t1" style="left:242.0px;top:216.0px;--o:0.716;--fd:650ms;--ox:3.1px;--oy:2.1px"></i>
+<i class="p t2" style="left:258.0px;top:216.0px;--o:0.742;--fd:350ms;--ox:7.0px;--oy:-3.5px"></i>
+<i class="p t0" style="left:226.0px;top:232.0px;--o:0.706;--fd:350ms;--ox:6.7px;--oy:-3.2px"></i>
+<i class="p t1" style="left:242.0px;top:232.0px;--o:0.763;--fd:650ms;--ox:3.0px;--oy:1.9px"></i>
+<i class="p t2" style="left:258.0px;top:232.0px;--o:0.845;--fd:350ms;--ox:4.3px;--oy:-3.1px"></i></div>
+        <h1 class="hl">园区运营<br>一个后台管到底</h1>
+        <p class="sub">楼栋、租户、合同、价目与月度台账共用同一套数据，出账链路可追溯。</p>
+      </div>
+      <div class="chips"><span class="chip">楼栋管理</span><span class="chip">租户管理</span><span class="chip">合同管理</span><span class="chip">月度台账</span></div>
+    </aside>
+    <section class="panel">
+      <div class="form">
+        <div class="wel">欢迎回来</div>
+        <div class="hint">使用园区分配的账号进入管理后台</div>
+        <div class="field focus"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="inp"><span class="caret"></span>账号 / 工号</span></div>
+        <div class="field"><span class="fi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="inp">密码</span><span class="eye"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg></span></div>
+        <div class="err"></div>
+        <div class="row"><span class="rem"><span class="cb"><svg viewBox="0 0 10 8" width="10" height="8"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>记住登录状态</span><span class="forgot">忘记密码?</span></div>
+        <div class="fh"></div>
+        <div class="submit">登录</div>
+      </div>
+    </section>
+  </div>
+  <div class="mask"></div>
+</div></div></div>
+  <div class="fcap"><span class="ft">reduced</span><span class="fn">静帧</span></div>
+  <div class="fnote">prefers-reduced-motion:遮罩不渲染、粒子一帧到位、方块不呼吸;不挂 rAF。</div>
+</div>
+    </div>
+  </div>
+
+  <!-- ===== spec table ===== -->
+  <table class="spec">
+    <thead><tr><th style="width:160px">触发</th><th style="width:80px">频次</th><th style="width:150px">目的</th><th>动什么</th><th style="width:190px">时长·曲线</th><th style="width:190px">reduced-motion</th><th style="width:230px">落点(file:line)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="id">C3-01</span> LoginView 挂载</td>
+        <td>一天一次</td>
+        <td>第一印象;已拍板(7736130)</td>
+        <td>保持:黑遮罩 opacity 1→0;canvas 暗场 800ms + 逐颗显影 1000ms。<b>不调一个数。</b>属性:opacity(遮罩)+ canvas 像素</td>
+        <td class="v">1.1s ease-out + delay 0.1s<br>800 + 1000ms(每颗 350–800 easeOutCubic)<br>登录页专属字面量,不令牌化</td>
+        <td class="v">遮罩 display:none(:445-448)<br>canvas 静帧无 rAF(:320-321)</td>
+        <td class="v">frontend/src/views/LoginView.vue:433-448<br>LoginView.vue:71-79(TUNE)<br>LoginView.vue:320-321</td>
+      </tr>
+      <tr>
+        <td><span class="id">C3-02</span> 冷启动 chunk 到达前</td>
+        <td>一次/会话</td>
+        <td><span class="no">明确:不做</span></td>
+        <td>无。不加内联骨架、不加底色。现状:空 <span class="mono">&lt;div id=app&gt;</span>,router.isReady 后才 mount</td>
+        <td class="v">0 / —</td>
+        <td class="v">—</td>
+        <td class="v">frontend/index.html:16-29<br>frontend/src/main.ts:17</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===== 不做 ===== -->
+  <div class="nodo">
+    <div class="t">明确不做(本类)</div>
+    <div class="it"><b>index.html 内联骨架 / 底色(C3-02)</b><span>—— 内联骨架不知道登录态,做不了两种颜色:已登录刷新是白→白连续(--surface-page,tokens.css:119),未登录冷启白→登录页黑是既有硬切,接受。</span></div>
+    <div class="it"><b>登录页调参</b><span>—— rejected 28 条之一。TUNE(logoBloomHold 800 / logoBloomMs 1000 / 遮罩 1.1s)登录页专属,不进令牌;一天一次的动效不值得再开一轮参数争论。</span></div>
+    <div class="it"><b>粒子位移式入场(三版方案)</b><span>—— 已否。对照录屏,成型是出生波前从中心向外扩散、粒子在原位淡入,不是粒子在飞;位移版本读成「散开再聚拢」,与 mark 的静态感相悖。</span></div>
+    <div class="it"><b>登录后「反向破晓」</b><span>—— 属 04 板(C4),此处只记:提交钮在白卡里,视线处本是白→白,遮罩让白卡先闪黑再亮回,两刀代替一刀。</span></div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
