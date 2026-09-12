@@ -2,7 +2,7 @@
 
 > 立档 2026-08-20。来源：用户报障「进行一次前端视觉 ui、页面排布、按钮元素、颜色规范的统一」，
 > 8 维度全屏审计（82 条发现，对抗性复核后确认 65 条）。
-> 本文只收**审计里反复出现、且已有机器门禁或明确判据**的几条，不重复 DESIGN-FIDELITY / LIST-PAGE-SPEC。
+> 本文只收**审计里反复出现、且已有机器门禁或明确判据**的几条，不重复 PAGE-BEHAVIOR-SPEC / LIST-PAGE-SPEC 与 Factory Park Design System。
 
 ## 1. 下拉一律用 `ds/Select`，禁止原生 `<select>`
 
@@ -111,7 +111,7 @@ viewer 只读角色：编辑与导入按钮**不渲染**，不是渲染了点了
 
 ## 7. 相关
 
-- [DESIGN-FIDELITY.md](DESIGN-FIDELITY.md) —— 组件像素基准、z-index 七级阶梯、加载态与布局稳定性
+- [PAGE-BEHAVIOR-SPEC.md](PAGE-BEHAVIOR-SPEC.md) —— 加载门、居中弹卡、z-index 七级阶梯（组件像素基准已移交 Factory Park Design System，`DESIGN-FIDELITY.md` 2026-09-13 删除）
 - [LIST-PAGE-SPEC.md](LIST-PAGE-SPEC.md) —— 列表页骨架、行高列宽铁律、分页器
 - [UI-OVERLAY-SPEC.md](UI-OVERLAY-SPEC.md) —— 浮层点外关闭三铁律
 - [EDIT-MODE-SPEC.md](EDIT-MODE-SPEC.md) —— 编辑模式（含 2026-08-20 导入口径裁决）

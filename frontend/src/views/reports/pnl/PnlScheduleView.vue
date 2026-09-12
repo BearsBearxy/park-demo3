@@ -3,7 +3,7 @@
 // 损益附表 1–5 — 一个参数化 View 服务 5 条路由(P2-D spec D4,charging 7/8 先例)。
 // 路由 meta.value → PNL_SCHEDULES config(App.vue KeepAlive key=value:epoch,5 条路由 value 不同不串台)。
 // 动线:⓪ SchedYearGate(年份门,P1 惯例) → 年度矩阵(SchedHeader + PnlTable)。
-// 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 §7,kind 自动识)/多选批量删行(J7,§7 确认,沿单删 draft 语义),
+// 编辑态:单元格金额 draft(rowKey|monthIdx,null↔数值)/逐行备注/新增行(居中弹窗 PAGE-BEHAVIOR-SPEC §2,kind 自动识)/多选批量删行(J7,§7 确认,沿单删 draft 语义),
 // 保存 = PUT 整年 clear+insert(rows 重建 rowKey r<n> + sortOrder);退出有改动走 SaveConfirmDialog。
 // §6:overview 加载门;切年不清 data(旧表保留到新数据落位,模板按 data.year===year 把关) + seq 竞态守卫。
 // 导入:registry pnl_s1..s5(sheetMatch 挑表 + 年自动识,识别年 ≠ 当前年时自动切年)。
@@ -237,7 +237,7 @@ function resetEdit() {
   saveConfirm.value = false
 }
 
-// ── 批量删除(P2-G3 J7):行首复选多选 → §7 确认 → 循环既有单删(draft 移除,随保存落库) ──
+// ── 批量删除(P2-G3 J7):行首复选多选 → PAGE-BEHAVIOR-SPEC §2 确认 → 循环既有单删(draft 移除,随保存落库) ──
 const selected = ref<Set<string>>(new Set())
 const delConfirm = ref(false)
 function onToggleSelect(rowKey: string) {
@@ -250,7 +250,7 @@ function removeSelected() {
   for (const key of [...selected.value]) onRemove(key)
 }
 
-// ── 新增行(居中弹窗 §7:分组 datalist 自填 + 科目细分,kind=detectKind 自动) ──
+// ── 新增行(居中弹窗 PAGE-BEHAVIOR-SPEC §2:分组 datalist 自填 + 科目细分,kind=detectKind 自动) ──
 const addDlg = ref(false)
 const addGroup = ref('')
 const addLabel = ref('')
@@ -387,7 +387,7 @@ const { note: deepNote } = useDeepPeriod({
 </script>
 
 <template>
-  <!-- §6 加载门:overview 到达前显转圈,不闪空态 -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态 -->
   <template v-if="overview">
     <!-- ⓪ 年份选择层(class 透传到 .sm-gate 根:年卡是 auto-fill 卡片墙,天然流式,可摘地板) -->
     <SchedYearGate
@@ -480,14 +480,14 @@ const { note: deepNote } = useDeepPeriod({
       </div>
     </template>
 
-    <!-- 切年过渡兜底转圈(§6.2 v-else 紧邻状态链) -->
+    <!-- 切年过渡兜底转圈(PAGE-BEHAVIOR-SPEC §1.2 v-else 紧邻状态链) -->
     <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
   </template>
 
   <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 
-  <!-- 弹窗一律放状态链之后(§6.2) -->
-  <!-- 新增行(居中弹窗 §7,样式基准 SchedYearGate .sm-ydlg) -->
+  <!-- 弹窗一律放状态链之后(PAGE-BEHAVIOR-SPEC §1.2) -->
+  <!-- 新增行(居中弹窗 PAGE-BEHAVIOR-SPEC §2,样式基准 SchedYearGate .sm-ydlg) -->
   <div v-if="addDlg" class="pnl-mask" @mousedown="addDlg = false">
     <div class="pnl-dlg" @mousedown.stop>
       <div class="pnl-dlg-h">
@@ -518,7 +518,7 @@ const { note: deepNote } = useDeepPeriod({
     </div>
   </div>
 
-  <!-- 批量删除确认(§7 居中,基准本屏 .pnl-mask/.pnl-dlg) -->
+  <!-- 批量删除确认(PAGE-BEHAVIOR-SPEC §2 居中,基准本屏 .pnl-mask/.pnl-dlg) -->
   <div v-if="delConfirm" class="pnl-mask" @mousedown="delConfirm = false">
     <div class="pnl-dlg" role="dialog" aria-modal="true" @mousedown.stop>
       <div class="pnl-dlg-h">

@@ -151,7 +151,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </template>
 
 <style scoped>
-/* 带遮罩即模态档(--z-modal),不得用 popover 档 —— DESIGN-FIDELITY §八 */
+/* 带遮罩即模态档(--z-modal),不得用 popover 档 —— PAGE-BEHAVIOR-SPEC §3 */
 .mnav-backdrop {
   position: fixed;
   inset: 0;

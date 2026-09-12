@@ -39,12 +39,12 @@
 | 条款 | 处置 | 说明 |
 |---|---|---|
 | 零布局位移（LAYOUT-STABILITY §1） | **保留** | 新增边界裁定见 §7 |
-| z-index 七级阶梯（DESIGN-FIDELITY §八） | **保留** | 新浮层落点见 §3/§4 |
+| z-index 七级阶梯（PAGE-BEHAVIOR-SPEC §3） | **保留** | 新浮层落点见 §3/§4 |
 | 侧栏自动收放口径（ui.spec.ts 六条） | **保留** | 自动不写 localStorage，手动才是偏好，延伸到全部新档 |
 | 分级重排绝不缩放（responsive-shrink §0） | **保留** | 四档全重排，禁 transform 缩放 |
 | T3 硬地板 `.fp-stage min-width:960px` | **取代** | 地板下沉为屏级 `.fp-legacy-floor`（§8） |
 | 移动端 YAGNI（responsive-shrink §0.4） | **推翻** | 2026-08-29 用户需求即推翻理由 |
-| 居中弹卡（DESIGN-FIDELITY §七，2026-07-02 用户决策） | **仅 S 档修订** | ≤600 全屏 sheet（§4.4）；M 档以上仍居中弹卡 |
+| 居中弹卡（PAGE-BEHAVIOR-SPEC §2，2026-07-02 用户决策） | **仅 S 档修订** | ≤600 全屏 sheet（§4.4）；M 档以上仍居中弹卡 |
 | 工具栏单行（LIST-PAGE-SPEC §2） | **M/S 修订** | 允许两行，行组成按档静态确定，不随内容抖动 |
 | 高度驱动布局链/整页无滚动条（LIST-PAGE-SPEC §3） | **仅 S 档修订** | S 档改内容驱动自然流（§5.1），「常规窗口无滚动条」判据在 S 档不适用 |
 | PRESENCE §03 头像组定宽 | **L 以下修订** | 收成「+N」计数徽记，仍定宽不挪版 |
@@ -120,7 +120,7 @@ fp-app-tabs/preview/recent 格式不变），回桌面时页签原样都在—�
 ### 4.2 导航抽屉
 
 左滑入 `min(320px, 85vw)`，带遮罩，`--z-modal` 300（带遮罩即模态档，
-不得用 popover 档——DESIGN-FIDELITY §八原话）。内容自上而下：
+不得用 popover 档——PAGE-BEHAVIOR-SPEC §3 原话）。内容自上而下：
 
 1. 层切换段（4 层，同 IconRail 过滤口径）
 2. 当前层 sections 列表（fpNav 同一数据源，与桌面 SidebarPanel 1:1）

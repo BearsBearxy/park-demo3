@@ -216,7 +216,7 @@ export default defineComponent({
     }
 
     // ---- 组标题 ----------------------------------------------------------
-    // 像素同 DESIGN-FIDELITY §2.3(--type-label / 6px 12px → 30px 行)。可折叠时是 button:
+    // 像素同 Factory Park Design System 的 type-label 档(--type-label / 6px 12px → 30px 行)。可折叠时是 button:
     // chevron 与折叠态的「有人在编辑」聚合点都 absolute —— 出现与消失不改行的尺寸(LAYOUT-STABILITY)。
     const TITLE_STYLE: Record<string, string> = { font: "var(--type-label)", color: "var(--text-muted)", padding: "6px 12px" };
     function renderTitle(sec: SidebarSection, foldable: boolean, open: boolean) {

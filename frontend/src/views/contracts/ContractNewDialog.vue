@@ -777,7 +777,7 @@ async function submit() {
 </template>
 
 <style scoped>
-/* 1:1 FinDialogs .fin-mask/.fin-dlg(居中弹窗,遵 DESIGN-FIDELITY §7);两列表单为本弹窗新增 */
+/* 1:1 FinDialogs .fin-mask/.fin-dlg(居中弹窗,遵 PAGE-BEHAVIOR-SPEC §2);两列表单为本弹窗新增 */
 /* z-index 320:高于 FPDrawer(300/301),编辑/续签态从抽屉打开时弹窗须压在抽屉之上 */
 .ct-mask { position:fixed; inset:0; background:rgba(28,28,28,.34); z-index:320; display:grid; place-items:center; padding:24px; box-sizing:border-box; backdrop-filter:blur(2px); opacity:0; animation:fp-fade-in var(--dur-base) forwards; }
 .ct-dlg { width:min(640px,92vw); max-height:88vh; overflow-y:auto; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); animation:fp-rise-in var(--dur-base) var(--ease-standard) both; }

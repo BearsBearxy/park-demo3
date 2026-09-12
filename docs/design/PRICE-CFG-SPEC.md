@@ -90,7 +90,7 @@ CREATE TABLE tenant_price_cfg (
 
 **v2 重设计（2026-07-27 用户反馈：信息密度不足、留白过多）——单视图双栏，取消 tabs。**
 
-**遵守规范**：EDIT-MODE-SPEC v2 + LIST-PAGE-SPEC（56px 行高/列宽铁律；免 useFitRows/FPPager，短窗外层滚动）+ DESIGN-FIDELITY §6 加载门/§7 覆盖层。
+**遵守规范**：EDIT-MODE-SPEC v2 + LIST-PAGE-SPEC（56px 行高/列宽铁律；免 useFitRows/FPPager，短窗外层滚动）+ PAGE-BEHAVIOR-SPEC §1 加载门/§2 覆盖层。
 
 骨架：标题行（h2「价目管理」+ 副标题「收费价目版本簿 · 派生取价单一事实源」）→ `.mx-toolbar`（左=年 Select+月 Select+**月变价状态徽标**（电价当月版本 6/6 绿 / 缺 N 项红,红时 title="缺当月电价版本,该月派生将被门禁拦截"）；右=「复制上月电价」Button(size=sm,**仅编辑态**,confirm 带 from→to 与跳过说明) →「编辑模式/完成」（最右,v-if="!auth.isReadonly"）→ `.mx-body` 双栏 grid（`grid-template-columns: minmax(0,1fr) 360px; gap:16px`，窄窗右栏换行到下方）。
 

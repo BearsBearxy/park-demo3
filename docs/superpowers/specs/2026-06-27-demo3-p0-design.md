@@ -310,7 +310,7 @@ viewport 撑满 `padding:12 gap:12`，两张 `radius-2xl(24)` 发丝边浮卡：
 
 ## 13. 设计源参照（持久路径）
 
-- 像素事实源（打包态）：`C:\financial_dashboard\园区管理系统 (单文件离线版).html`
+- ~~像素事实源（打包态）：`C:\financial_dashboard\园区管理系统 (单文件离线版).html`~~ —— **2026-09-13 判为废案并删除。** 那批像素里今天仍然管用的几条见 `demo3/docs/design/PAGE-BEHAVIOR-SPEC.md` §4；其余以现网 `.vue` 实现为准（skill `SKILL.md:15-16`「实现即标准」）。
 - 分散源（React 原型）：`C:\financial_dashboard\_handoff_extracted\untitled\project\app\*.jsx`（shell/app/screen-buildings/screen-tenants/fp-master-ui/fp-table-sort/fp-pager/master-data.js）
-- 设计系统：`C:\financial_dashboard\Factory Park Design System\`（styles.css/tokens/components/guidelines）
-- 经营分析层规范（P3）：`C:\financial_dashboard\design_handoff_analysis_shell\`
+- 设计系统：**改以 skill 形态存在**，名字 `factory-park-design`，真身在 `.claude/skills/factory-park-design/`（全局 `~/.claude/skills/` 下同名软链指向它）。原先那个同名目录与 `Factory Park Design System.zip` 均已于 2026-09-13 删除 —— **按 skill 名引用，不要写路径。**
+- ~~经营分析层规范（P3）：`C:\financial_dashboard\design_handoff_analysis_shell\`~~ —— **2026-09-13 删除。** 那份 README 是已执行完的施工单，落地物是 `frontend/src/views/analysis/AnaShell.vue` 的 `anx-*` 工具条；`reference/screen-analysis.jsx` 与 `_handoff_extracted` 里那份逐字节重复。

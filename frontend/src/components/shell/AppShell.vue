@@ -148,7 +148,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
-      <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(DESIGN-FIDELITY §6.5) -->
+      <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(PAGE-BEHAVIOR-SPEC §1.5) -->
       <div v-if="ui.navigating" class="fp-nav-bar" aria-hidden="true" />
       <template v-if="tier !== 's'">
         <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
@@ -270,7 +270,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
 /* ── 导航进度条 ── */
 /* 绝对定位而非 flex 子项:作为兄弟节点插进这个 column flex 会把 TabStrip 整体下推 2px,
-   出现/消失各抖一次 —— 正是 DESIGN-FIDELITY §6.4 禁止的布局位移。 */
+   出现/消失各抖一次 —— 正是 PAGE-BEHAVIOR-SPEC §1.4 禁止的布局位移。 */
 .fp-nav-bar {
   position: absolute; top: 0; left: 0; right: 0; height: 2px;
   z-index: 20; /* P4 z-index 令牌化时改成 var(--z-sticky) */

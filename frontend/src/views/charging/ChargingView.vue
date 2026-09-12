@@ -3,7 +3,7 @@
 // 动线 1:1 from screen-charging.jsx ChargingScreen(233-437):
 // ⓪ 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + ChargingTable + 抽屉)。
 // schedule no 从路由 meta.kind 取(schedule7→7 汽车 / schedule8→8 电动车);两路由共用本 View。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 套用 PAGE-BEHAVIOR-SPEC §1 加载门:overview 未到显 .page-loading,不闪空态。
 // 6 屏共用的台账状态机(勾选/批删/清空导入/进出年份门/报错口径)走 useSchedScreen,这里只留本屏差异。
 import { ref, computed, onMounted , watch} from 'vue'
 import { S } from '@/utils/lockScopes'
@@ -189,7 +189,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <!-- 分桩充电明细(新屏,附表7/8 共享组件按类型过滤桩) -->
   <CpMeterView v-if="mode === 'meter'" :vehicle-type="vehicleType" />
 
-  <!-- 附表7/8 · 月度汇总:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
+  <!-- 附表7/8 · 月度汇总:原流程原样(PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态) -->
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate

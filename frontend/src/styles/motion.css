@@ -10,7 +10,7 @@
      isfade / rcfade / tbfade / sufade / tdfade …）逐字相同，都是 to { opacity: 1 }，
      配合元素上写死的 opacity: 0 使用。
    · 13 份 *rise 里 10 份是 8px/.985，3 份是 10px/.99。统一取 8px/.985 ——
-     DESIGN-FIDELITY §七 写明的基准就是「淡入 + 轻微 translateY(8px) scale(.985)→none」。
+     PAGE-BEHAVIOR-SPEC §2 写明的基准就是「淡入 + 轻微 translateY(8px) scale(.985)→none」。
      那 3 处的位移因此从 10px 收到 8px、缩放从 .99 到 .985，肉眼几乎无差，方向是向规范靠拢。
 
    ⚠ 各调用处的 animation 时长本轮**一律不动**（现状 .16s / .18s / .2s 混用）。

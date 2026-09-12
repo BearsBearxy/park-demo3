@@ -2,7 +2,7 @@
 // 收入核对 ①月份层 — P2-E Task3。年份胶囊 + 4 指标条 + 12 月卡 → 点月进 ②工作台。
 // 视觉 1:1 移植 recon-page-v3.js(--pa-* → demo3 令牌,映射见 plan Task3);
 // overview 仅 counts 无金额字段 → 指标条按户数口径聚合(不硬造总额)。
-// §6 加载门 + v-else 紧邻链;切月不清 data(避免闪加载门),竞态守卫换数据。
+// PAGE-BEHAVIOR-SPEC §1 加载门 + v-else 紧邻链;切月不清 data(避免闪加载门),竞态守卫换数据。
 import { ref, computed, onMounted } from 'vue'
 import FPStepStrip from '@/components/fp/FPStepStrip.vue'
 import { REPORT_STEPS, periodLabel } from '@/nav/reportPeriod'
@@ -169,7 +169,7 @@ function onPatch(tenantName: string, marked: boolean, note: string | null) {
     @patch="onPatch"
   />
 
-  <!-- §6 加载门:v-else 紧邻上方状态链(DESIGN-FIDELITY §6.2) -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:v-else 紧邻上方状态链(PAGE-BEHAVIOR-SPEC §1.2) -->
   <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 

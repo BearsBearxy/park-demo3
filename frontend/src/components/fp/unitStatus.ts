@@ -1,4 +1,4 @@
-// ponytail: UNIT_STATUS hardcoded per contract §2.5 — no purple/green per DESIGN-FIDELITY
+// ponytail: UNIT_STATUS hardcoded per contract §2.5 — no purple/green per Factory Park Design System
 export const UNIT_STATUS: Record<string, { label: string; sw: string }> = {
   occupied: { label: '在租',    sw: 'var(--accent-slate)' },
   expiring: { label: '即将到期', sw: 'rgba(255,149,0,.5)' },

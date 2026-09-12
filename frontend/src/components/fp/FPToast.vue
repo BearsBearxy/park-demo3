@@ -96,7 +96,7 @@ function close() { clear(); emit('update:modelValue', '') }
   line-height: 20px;
 }
 
-/* page = 贴屏幕底部。--z-toast 是最高档，不被任何弹窗遮挡（DESIGN-FIDELITY §八）。
+/* page = 贴屏幕底部。--z-toast 是最高档，不被任何弹窗遮挡（PAGE-BEHAVIOR-SPEC §3）。
    与 AppShell 的 .fp-net-toast 同一个 bottom:28px 与同一套深色语言，两者同时出现不打架。 */
 .fpt--page { position: fixed; bottom: 28px; z-index: var(--z-toast); }
 

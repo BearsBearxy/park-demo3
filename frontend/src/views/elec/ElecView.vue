@@ -3,7 +3,7 @@
 // 动线 1:1 from screen-schedule11.jsx Schedule11Screen(282-559):
 // ⓪ 左栏两本账 → 年份选择层(SchedYearGate) → 该年逐月明细表(SchedHeader + 右上 type 切换 + ElecTable + 抽屉)。
 // 两类型共一表用 type 区分:energy(电量电费)/ basic(基本电费),切 type 重新取数。
-// 套用 DESIGN-FIDELITY §6 加载门:overview 未到显 .page-loading,不闪空态。
+// 套用 PAGE-BEHAVIOR-SPEC §1 加载门:overview 未到显 .page-loading,不闪空态。
 import { ref, computed, onMounted , watch} from 'vue'
 import { useRoute } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
@@ -186,7 +186,7 @@ const yearRange = computed(() => (overview.value?.years ?? []).map(y => y.year))
   <!-- 电费成本总览(新屏) -->
   <ElecCostView v-if="mode === 'cost'" />
 
-  <!-- 附表11 · 月度电费:原流程原样(§6 加载门:overview 到达前显转圈,不闪空态) -->
+  <!-- 附表11 · 月度电费:原流程原样(PAGE-BEHAVIOR-SPEC §1 加载门:overview 到达前显转圈,不闪空态) -->
   <template v-else-if="overview">
     <!-- ⓪ 年份选择层 -->
     <SchedYearGate

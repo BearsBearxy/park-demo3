@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 报表中心 hub — P2-F Task2。1:1 移植 screen-reports-home.jsx(RhStyles 逐条 scoped)。
-// 目录/期间两视图共享同一 HomeData(tieout 同源);§6 加载门 + v-else 紧邻链;
+// 目录/期间两视图共享同一 HomeData(tieout 同源);PAGE-BEHAVIOR-SPEC §1 加载门 + v-else 紧邻链;
 // 切年/月不清 data(不闪加载门)+ seq 竞态守卫;卡/行点击 push 直达(F8);打印/导出禁用占位(F7)。
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -210,7 +210,7 @@ const okCount = computed(() => data.value?.tieout.filter(t => t.ok).length ?? 0)
     </template>
   </div>
 
-  <!-- §6 加载门:v-else 紧邻上方状态链(DESIGN-FIDELITY §6.2) -->
+  <!-- PAGE-BEHAVIOR-SPEC §1 加载门:v-else 紧邻上方状态链(PAGE-BEHAVIOR-SPEC §1.2) -->
   <div v-else class="page-loading fp-fluid"><span class="page-spin" /></div>
 </template>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 收入核对 ②对账工作台 — P2-E Task3。左租户清单(搜索+四档 Segmented+状态点) /
 // 右单户双源对照(台账按公司分卡 ⇄ 附表10按期分卡 + 同名科目对照行 + 底部配平条)。
-// 视觉 1:1 移植 recon-page-v3.js 工作台段(--pa-* → demo3 令牌);处置浮层改居中弹窗(§7,FinDialogs 范式)。
+// 视觉 1:1 移植 recon-page-v3.js 工作台段(--pa-* → demo3 令牌);处置浮层改居中弹窗(PAGE-BEHAVIOR-SPEC §2,FinDialogs 范式)。
 // 标记/取消核实走 reconApi 后 emit patch,由父级局部更新 entities(不整页刷)。
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
@@ -82,7 +82,7 @@ function feeState(f: FeeLine): 'ok' | 'diff' | 'miss' {
 }
 const pendingFees = computed(() => (selected.value?.fees ?? []).filter(f => feeState(f) !== 'ok').length)
 
-// ── 处置浮层(居中弹窗 §7):点差异行/配平条开;fee=null 表示整户口径 ──
+// ── 处置浮层(居中弹窗 PAGE-BEHAVIOR-SPEC §2):点差异行/配平条开;fee=null 表示整户口径 ──
 const dlg = ref<{ fee: FeeLine | null } | null>(null)
 const note = ref('')
 const busy = ref(false)
@@ -323,7 +323,7 @@ async function confirmMark() {
       <div v-else class="rc-detail"><div class="rc-empty" style="margin:auto">该月无核对实体</div></div>
     </div>
 
-    <!-- 处置浮层(居中弹窗 §7:Teleport + backdrop 居中 + Esc 关闭) -->
+    <!-- 处置浮层(居中弹窗 PAGE-BEHAVIOR-SPEC §2:Teleport + backdrop 居中 + Esc 关闭) -->
     <Teleport to="body">
       <div v-if="dlg && selected && dlgVals" class="rc-mask" @mousedown="dlg = null">
         <div class="rc-pop" role="dialog" aria-modal="true" @mousedown.stop>
@@ -471,7 +471,7 @@ async function confirmMark() {
 .rc-balance .eq { font-size: var(--fs-h3); color: var(--text-muted); font-weight: 300; }
 .rc-balance .verdict { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); font-weight: var(--fw-semibold); }
 
-/* 处置浮层:居中弹窗(§7,FinDialogs .fin-mask 范式) */
+/* 处置浮层:居中弹窗(PAGE-BEHAVIOR-SPEC §2,FinDialogs .fin-mask 范式) */
 .rc-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: var(--z-modal); display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: fp-fade-in var(--dur-base) forwards; }
 .rc-pop { width: min(320px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border-radius: 14px; box-shadow: var(--shadow-md), 0 8px 28px rgba(28,28,28,.14); border: 1px solid var(--border-subtle); padding: 16px; box-sizing: border-box; font-size: var(--fs-body); color: var(--text-primary); font-family: var(--font-sans); animation: rcpop var(--dur-fast) var(--ease-out) both; }
 @keyframes rcpop { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }

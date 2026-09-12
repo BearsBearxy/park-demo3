@@ -638,7 +638,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 .su-role-b { flex: 0 0 auto; font-size: var(--fs-micro); color: var(--text-muted); background: var(--bg-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
 .su-role-r { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* 弹窗外壳 1:1 TenantNewDialog .fin-mask/.fin-dlg(DESIGN-FIDELITY §7) */
+/* 弹窗外壳 1:1 TenantNewDialog .fin-mask/.fin-dlg(PAGE-BEHAVIOR-SPEC §2) */
 .fin-mask { position: fixed; inset: 0; background: rgba(28,28,28,.34); z-index: 320; display: grid; place-items: center; padding: 24px; box-sizing: border-box; backdrop-filter: blur(2px); opacity: 0; animation: fp-fade-in var(--dur-base) forwards; }
 .fin-dlg { width: min(480px,92vw); max-height: 88vh; overflow-y: auto; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 24px 64px rgba(28,28,28,.28); animation: fp-rise-in var(--dur-base) var(--ease-standard) both; }
 .fin-dlg-h { padding: 20px 22px 0; }
