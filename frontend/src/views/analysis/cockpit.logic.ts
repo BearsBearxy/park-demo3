@@ -479,7 +479,7 @@ export function mainChartOption(
           // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
           formatter: (p: { data: { month?: number } }) => {
             const r = p.data.month != null ? outlierResByMonth.get(p.data.month) : undefined
-            return r != null ? `离群\n${Math.floor(r)}倍残差` : '离群'
+            return r != null ? `收入为负\n${Math.floor(r)}倍残差` : '收入为负'
           },
         },
         data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
@@ -565,7 +565,7 @@ export function nextForecastRefText(f: NextForecast | null, sum: BacktestSummary
  * 改成由实测的 outlierMonths 驱动,且不再声称"只命中哪张附表的哪一行"——那句本就不是判据本身说的事。
  */
 export function mainChartOutlierNote(outlierMonths: number[]): string {
-  return `判据：${outlierMonths.join('、')}月收入<0 即判离群（任意附表口径，不锁哪一行）· 带子用来抓离群，不用来押未来`
+  return `判据：${outlierMonths.join('、')}月收入<0 即标红（任意附表口径，不锁哪一行）· 这条带量的是离趋势多远，不用来押未来`
 }
 
 // ── T3(design-boards 2026-09-11):「这条带过去准不准」回测卡 ──

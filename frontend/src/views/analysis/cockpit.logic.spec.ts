@@ -570,6 +570,9 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const f7 = formatter({ data: { month: 7 } })
     const f12 = formatter({ data: { month: 12 } })
     expect(f7).not.toBe(f12)   // 核心:两根 pin 不能顶同一个数字(改前的缺陷)
+    // pin 上那两个字也是屏上文案:不得写「离群」(同上一条理由)
+    for (const f of [f7, f12]) expect(f).not.toContain('离群')
+    expect(f12).toContain('收入为负')
     expect(f7).toContain(String(Math.floor(outlierRes.get(7)!)))
     expect(f12).toContain(String(Math.floor(outlierRes.get(12)!)))
   })
@@ -593,6 +596,12 @@ describe('❗F6(对抗复查):mainChartOutlierNote——不再写死「12月」/
     expect(s).not.toContain('12月')
     expect(s).not.toMatch(/m12/i)
     expect(s).not.toContain('s1')
+  })
+
+  it('❗屏上不得出现「离群」「污染」「冲回」 —— 用户 2026-09-12:那个月就是真亏损,不是脏数据', () => {
+    const s = mainChartOutlierNote([12])
+    for (const w of ['离群', '污染', '冲回']) expect(s, w).not.toContain(w)
+    expect(s).toContain('收入<0')        // 事实还在,换掉的只是对它的定性
   })
 })
 
