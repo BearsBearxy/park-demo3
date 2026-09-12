@@ -1,7 +1,8 @@
 // 合约租金带自绘图的几何。量的是 SVG 路径坐标本身 —— 2026-09-12 那天两次栽在
 // 「值全对、画出来是错的」,几何层的断言必须落在坐标上,不是落在配置对象上。
 import { describe, it, expect } from 'vitest'
-import { rentBandGeo, type RentBandCol, type GapInput } from './rentBandChart.logic'
+import { rentBandGeo, rentBandColsOf, rentBandGapsOf, rentBandSplitIdx, GAP_MIN_DROP_WAN, type RentBandCol, type GapInput } from './rentBandChart.logic'
+import type { RentRoll } from './expiry.logic'
 import type { ChartBox } from './forecastChart.logic'
 
 const BOX: ChartBox = { width: 900, height: 300, padL: 54, padR: 52, padT: 26, padB: 26 }
@@ -89,12 +90,18 @@ describe('rentBandGeo', () => {
     expect(geo.gapMarks[0].x).toBeLessThan(geo.gapMarks[1].x)
   })
 
-  it('❗两条批注挨得太近就往下推一层 —— 三行小字叠在一起谁都读不出来', () => {
-    const near: GapInput = { ...GAP2, colIndex: GAP.colIndex + 1 }
-    const geo = rentBandGeo(cols(), BOX, SPLIT, [GAP, near])!
-    expect(geo.gapMarks).toHaveLength(2)
-    expect(Math.abs(geo.gapMarks[1].x - geo.gapMarks[0].x)).toBeLessThan(96)   // 确实挨得近
-    expect(geo.gapMarks[1].y - geo.gapMarks[0].y).toBeGreaterThanOrEqual(40)   // 所以被推下去了
+  it('❗跌幅没到阈值的到期月不标 —— 实测图上那一跌 0.1 万(约万分之五)也占了三行字', () => {
+    const small: GapInput = { ...GAP2, dropWan: GAP_MIN_DROP_WAN - 0.1 }
+    expect(rentBandGeo(cols(), BOX, SPLIT, [GAP, small])!.gapMarks.map((m) => m.colIndex)).toEqual([GAP.colIndex])
+    // 恰好等于阈值算「够」,不是「不够」
+    const just: GapInput = { ...GAP2, dropWan: GAP_MIN_DROP_WAN }
+    expect(rentBandGeo(cols(), BOX, SPLIT, [GAP, just])!.gapMarks).toHaveLength(2)
+  })
+
+  it('❗气泡那一行与批注同源 —— 阈值只判一次,气泡不会替被滤掉的缺口说话', () => {
+    const geo = g()
+    expect(geo.gapMarks[0].colIndex).toBe(GAP.colIndex)
+    expect(geo.gapMarks[0].tip).toBe('5 份到期 · −56.8 万')
   })
 
   it('缺口落在列外 / 那一列没有值 → 跳过,不画半条批注', () => {
@@ -108,5 +115,30 @@ describe('rentBandGeo', () => {
     expect(rentBandGeo([cols()[0]], BOX, 0, [])).toBeNull()
     const blank = cols().map((c) => ({ ...c, realized: null, locked: null, mid: null, lo: null, hi: null }))
     expect(rentBandGeo(blank, BOX, SPLIT, [])).toBeNull()
+  })
+})
+
+describe('rentBandColsOf / rentBandGapsOf(RentRoll → 图的入参)', () => {
+  const roll = {
+    history: [{ month: '2025-08', locked: 3_300_000 }, { month: '2025-09', locked: 3_200_000 }],
+    months: [
+      { month: '2025-10', locked: 3_120_000, renewalLo: 0, renewalMid: 120_000, renewalHi: 260_000 },
+      { month: '2025-11', locked: 3_040_000, renewalLo: 20_000, renewalMid: 130_000, renewalHi: 280_000 },
+    ],
+    gaps: [{ monthsAway: 1, count: 3, totalRentSum: 80_000, names: ['甲', '乙'] }],
+  } as unknown as RentRoll
+
+  it('❗元→万只换一次，预测起点同时是历史末点 —— 两段在这一点接上才不断开', () => {
+    const cols = rentBandColsOf(roll)
+    expect(cols.map((c) => c.month)).toEqual(['2025-08', '2025-09', '2025-10', '2025-11'])
+    expect(rentBandSplitIdx(roll)).toBe(2)
+    expect(cols[1]).toMatchObject({ realized: 320, locked: null, mid: null })
+    expect(cols[2]).toMatchObject({ realized: 312, locked: 312, mid: 324, lo: 312, hi: 338 })
+    expect(cols[3].realized, '预测段只有第 0 月有已实现').toBeNull()
+  })
+
+  it('❗缺口的列下标 = 接缝 + monthsAway —— 差一格就标到旁边那个月上去了', () => {
+    const [g] = rentBandGapsOf(roll)
+    expect(g).toEqual({ colIndex: 3, dropWan: 8, names: ['甲', '乙'], count: 3, endLabel: '2025-11' })
   })
 })

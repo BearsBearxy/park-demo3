@@ -52,9 +52,10 @@ const tipLines = computed(() => {
   if (c.locked != null) out.push(`已锁定 ${f1(c.locked)} 万`)
   if (c.mid != null) out.push(`预计 ${f1(c.mid)} 万`)
   if (c.lo != null && c.hi != null) out.push(`80% 在 ${f1(c.lo)} ~ ${f1(c.hi)}`)
-  // 这一列若是到期缺口,气泡里直说是谁走了 —— 图上那三行小字只够写两个名字
-  const g = props.gaps.find((x) => x.colIndex === hoverIdx.value)
-  if (g) out.push(`${g.count} 份到期 · −${g.dropWan.toFixed(1)} 万`)
+  // 这一列若是够格的到期缺口,气泡里直说是谁走了 —— 图上那三行小字只够写两个名字。
+  // 读 geo.gapMarks 不读 props.gaps:阈值只在几何里判一次,气泡与批注不会各显各的。
+  const gm = geo.value?.gapMarks.find((x) => x.colIndex === hoverIdx.value)
+  if (gm) out.push(gm.tip)
   return out
 })
 const CJK = /[　-鿿＀-￯]/
@@ -101,10 +102,11 @@ const tipX = computed(() => {
         <text :x="geo.startDot.x - 8" :y="geo.startDot.y - 8" class="arb-startnum">{{ geo.startDot.text }}</text>
       </template>
 
-      <!-- 缺口批注:稿上那个带引线的小框 —— 告诉人这一跌是谁造成的 -->
+      <!-- 缺口批注:引线常驻(不然没人知道该往哪儿悬停),三行小字只在悬停这一列时出现 -->
       <template v-for="(gm, gi) in geo.gapMarks" :key="'g' + gi">
-        <line :x1="gm.x" :x2="gm.x" :y1="gm.y" :y2="gm.y + 26" class="arb-gapline" />
-        <text v-for="(l, i) in gm.lines" :key="'gm' + gi + '-' + i"
+        <line :x1="gm.x" :x2="gm.x" :y1="gm.y" :y2="gm.y + 26"
+          :class="['arb-gapline', hoverIdx === gm.colIndex ? 'arb-gapline-on' : '']" />
+        <text v-for="(l, i) in (hoverIdx === gm.colIndex ? gm.lines : [])" :key="'gm' + gi + '-' + i"
           :x="gm.x - 6" :y="gm.y + 38 + i * 13"
           :class="['arb-gaptext', i === 0 ? 'arb-gapnum' : '']">{{ l }}</text>
       </template>
@@ -143,7 +145,8 @@ const tipX = computed(() => {
 .arb-startnum { fill: #1C1C1C; font-size: 12px; font-weight: 600; text-anchor: end; font-variant-numeric: tabular-nums; }
 .arb-split { stroke: #C6CCD6; stroke-width: 1; stroke-dasharray: 3 3; }
 .arb-splitlab { fill: #94A3B8; font-size: 10px; }
-.arb-gapline { stroke: #D97757; stroke-width: 1; }
+.arb-gapline { stroke: #D97757; stroke-width: 1; stroke-opacity: 0.45; }
+.arb-gapline-on { stroke-width: 1.6; stroke-opacity: 1; }
 .arb-gaptext { fill: #8A9099; font-size: 10px; text-anchor: end; }
 .arb-gapnum { fill: #D97757; font-size: 11px; font-weight: 600; }
 .arb-end { font-size: 11px; font-variant-numeric: tabular-nums; }

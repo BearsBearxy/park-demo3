@@ -10,7 +10,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaRentBandChart from '@/components/ana/AnaRentBandChart.vue'
 import AnaRenewalChart from '@/components/ana/AnaRenewalChart.vue'
-import type { RentBandCol, GapInput } from './rentBandChart.logic'
+import { rentBandColsOf, rentBandGapsOf, rentBandSplitIdx } from './rentBandChart.logic'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
@@ -62,39 +62,14 @@ const wallRentSum = computed(() => wall.value.quarters.reduce((s, q) => s + q.re
 // 不在 expiry.logic 里碰系统时钟(全局约束①)。
 const asOf = today.toLocaleDateString('sv')
 const rentRoll = computed(() => buildRentRoll(contracts.value, asOf, 12))
-// 自绘图的列:历史 12 个月(只有已实现)+ 预测 12 个月(锁定/预计/上下沿)。
-// 万元一次换到位,组件里不再做单位换算 —— 换算散在两处,接缝迟早对不上。
-const wanOf = (v: number) => +(v / 10000).toFixed(2)
-const bandCols = computed<RentBandCol[]>(() => {
-  const r = rentRoll.value
-  const hist: RentBandCol[] = r.history.map((h) => ({
-    month: h.month, realized: wanOf(h.locked), locked: null, mid: null, lo: null, hi: null,
-  }))
-  const fwd: RentBandCol[] = r.months.map((m, i) => ({
-    month: m.month,
-    // 第 0 月是「今天」:它既是历史的末点也是预测的起点,两段在这一点接上才不会断开。
-    realized: i === 0 ? wanOf(m.locked) : null,
-    locked: wanOf(m.locked),
-    mid: wanOf(m.locked + m.renewalMid),
-    lo: wanOf(m.locked + m.renewalLo),
-    hi: wanOf(m.locked + m.renewalHi),
-  }))
-  // 历史末点与预测起点之间要连上:把历史最后一格的 realized 延到起点那一列
-  return [...hist, ...fwd]
-})
-const bandSplitIdx = computed(() => rentRoll.value.history.length)
+// 自绘图的列与缺口:映射住在 rentBandChart.logic,这里只把 rentRoll 递进去。
+const bandCols = computed(() => rentBandColsOf(rentRoll.value))
+const bandSplitIdx = computed(() => rentBandSplitIdx(rentRoll.value))
 const rentRollText = computed(() => rentRollSentence(rentRoll.value))
 const rentRollRef = computed(() => rentRollRefText(rentRoll.value))
 const rentRollHasMaster = computed(() => rentRoll.value.months.some((m) => m.masterLease > 0))
-// 每个到期扎堆的月份都标(用户 2026-09-12)。以前只标最近那一个 —— 右边更大的一跌反而没有批注。
-const bandGaps = computed<GapInput[]>(() => rentRoll.value.gaps.map((g) => {
-  const m = rentRoll.value.months[g.monthsAway]
-  return {
-    colIndex: bandSplitIdx.value + g.monthsAway,
-    dropWan: +(g.totalRentSum / 10000).toFixed(1),
-    names: g.names, count: g.count, endLabel: m ? m.month : '',
-  }
-}))
+// 每个到期扎堆的月份都送进去(用户 2026-09-12);跌幅不够阈值的由图自己滤掉。
+const bandGaps = computed(() => rentBandGapsOf(rentRoll.value))
 
 // ── T4(design-boards):五个 KPI 瓦读的是 rentRoll 同一份计算(锁定/续签/缺口),
 // 不为瓦另算一次 —— 这正是 T4/T5 合并成一个任务的理由(卡片与瓦对不上,已经在这个项目上出过两次)。

@@ -10,6 +10,7 @@
  * 直线段不做平滑 —— 平滑会在两个月之间造出没有的值。
  */
 import { niceTicks, type ChartBox } from './forecastChart.logic'
+import type { RentRoll } from './expiry.logic'
 
 /** 一列:历史段只有 realized,预测段有 locked/mid/lo/hi。 */
 export interface RentBandCol {
@@ -36,20 +37,60 @@ export interface RentBandGeo {
   endLabels: { y: number; text: string; kind: 'hi' | 'mid' | 'locked' | 'lo' }[]
   /** 预测起点那个点的标注(稿上「312.2」)。 */
   startDot: { x: number; y: number; text: string } | null
-  /** 缺口批注:每个到期扎堆的月份一条(用户 2026-09-12:「每个到期扎堆的月份都标出来」)。
-   *  y 已做过防叠字:横向挨得太近的两条会被逐级往下推。 */
-  gapMarks: { x: number; y: number; lines: string[] }[]
+  /** 缺口批注:每个跌幅够大的到期月一条(用户 2026-09-12:「设定一个阈值,高于阈值金额的退租才显示」)。
+   *  三行小字只在悬停那一列时画(同一天:「改为 hover 才出现显示」),所以不必再防叠字 ——
+   *  同时只会出现一条。tip 是气泡里那一行,与 lines 同源,免得两处各拼一遍。 */
+  gapMarks: { colIndex: number; x: number; y: number; lines: string[]; tip: string }[]
   dots: { i: number; x: number; y: number }[]
   yTicks: { v: number; y: number; label: string }[]
   xTicks: { i: number; x: number; label: string }[]
 }
 
 export interface GapInput { colIndex: number; dropWan: number; names: string[]; count: number; endLabel: string }
-/** 两条批注横向挨得比这还近,就把后一条往下推一层 —— 三行小字大约这么宽。 */
-const GAP_MIN_DX = 96
-const GAP_BLOCK_H = 46
+/**
+ * 跌幅没到这个数的到期月不标 —— 图上一跌 0.1 万(园区月租约 200 万,万分之五)标出来只是噪音,
+ * 它还会挤掉旁边那条真的要看的。用户 2026-09-12:「设定一个阈值,高于阈值金额的退租才显示」。
+ * ponytail: 绝对金额,不随园区体量缩放;若将来接入的园区月租量级差一个数量级,改成「占当月锁定线的 %」。
+ */
+export const GAP_MIN_DROP_WAN = 3
 
 const r2 = (v: number) => +v.toFixed(2)
+/** 万元一次换到位,组件里不再做单位换算 —— 换算散在两处,接缝迟早对不上。 */
+const wanOf = (v: number) => +(v / 10000).toFixed(2)
+
+/**
+ * RentRoll → 这张图的 24 列:历史 12 个月(只有已实现)+ 预测 12 个月(锁定/预计/上下沿)。
+ * 与 rentBandGapsOf 一起从 ExpiryView 提出来,好让离线渲染画的是同一张图而不是它的仿制品。
+ */
+export function rentBandColsOf(r: RentRoll): RentBandCol[] {
+  const hist: RentBandCol[] = r.history.map((h) => ({
+    month: h.month, realized: wanOf(h.locked), locked: null, mid: null, lo: null, hi: null,
+  }))
+  const fwd: RentBandCol[] = r.months.map((m, i) => ({
+    month: m.month,
+    // 第 0 月是「今天」:它既是历史的末点也是预测的起点,两段在这一点接上才不会断开。
+    realized: i === 0 ? wanOf(m.locked) : null,
+    locked: wanOf(m.locked),
+    mid: wanOf(m.locked + m.renewalMid),
+    lo: wanOf(m.locked + m.renewalLo),
+    hi: wanOf(m.locked + m.renewalHi),
+  }))
+  return [...hist, ...fwd]
+}
+
+/** 预测段起点那一列的下标(= 历史月数)。 */
+export const rentBandSplitIdx = (r: RentRoll) => r.history.length
+
+/** 每个到期缺口一条;够不够格由 rentBandGeo 按 GAP_MIN_DROP_WAN 判,这里只做换算。 */
+export function rentBandGapsOf(r: RentRoll): GapInput[] {
+  return r.gaps.map((g) => ({
+    colIndex: rentBandSplitIdx(r) + g.monthsAway,
+    dropWan: +(g.totalRentSum / 10000).toFixed(1),
+    names: g.names,
+    count: g.count,
+    endLabel: r.months[g.monthsAway]?.month ?? '',
+  }))
+}
 
 export function rentBandGeo(
   cols: RentBandCol[] | null, box: ChartBox, splitIdx: number | null, gaps: GapInput[] = [],
@@ -108,28 +149,24 @@ export function rentBandGeo(
   const startDot = sCol && sCol.realized != null && splitX != null
     ? { x: splitX, y: r2(y(sCol.realized)), text: sCol.realized.toFixed(1) } : null
 
-  // 每个缺口一条批注。横向挨得近的往下推一层,避免三行小字叠在一起。
-  const placed: { x: number; y: number; lines: string[] }[] = []
-  for (const g of [...gaps].sort((a, b) => a.colIndex - b.colIndex)) {
-    if (!(g.colIndex >= 0 && g.colIndex < n)) continue
-    const col = cols[g.colIndex]
-    const base = col.locked ?? col.mid ?? col.realized
-    if (base == null) continue
-    const gx = r2(x(g.colIndex))
-    let gy = r2(y(base))
-    for (const p of placed) {
-      if (Math.abs(p.x - gx) < GAP_MIN_DX && Math.abs(p.y - gy) < GAP_BLOCK_H) gy = r2(p.y + GAP_BLOCK_H)
-    }
-    placed.push({
-      x: gx, y: gy,
-      lines: [
-        `−${g.dropWan.toFixed(1)} 万`,
-        g.names.slice(0, 2).join(' + ') + (g.count > g.names.slice(0, 2).length ? ` 等 ${g.count} 份` : ''),
-        `${g.endLabel} 到期`,
-      ],
+  // 跌幅够大的到期月各一条批注,按列排序。三行小字由组件在悬停时才画,这里不再防叠字。
+  const gapMarks = [...gaps]
+    .filter((g) => g.dropWan >= GAP_MIN_DROP_WAN && g.colIndex >= 0 && g.colIndex < n)
+    .sort((a, b) => a.colIndex - b.colIndex)
+    .map((g) => {
+      const col = cols[g.colIndex]
+      const base = col.locked ?? col.mid ?? col.realized
+      if (base == null) return null
+      const who = g.names.slice(0, 2).join(' + ') + (g.count > g.names.slice(0, 2).length ? ` 等 ${g.count} 份` : '')
+      return {
+        colIndex: g.colIndex,
+        x: r2(x(g.colIndex)),
+        y: r2(y(base)),
+        lines: [`−${g.dropWan.toFixed(1)} 万`, who, `${g.endLabel} 到期`],
+        tip: `${g.count} 份到期 · −${g.dropWan.toFixed(1)} 万`,
+      }
     })
-  }
-  const gapMarks = placed
+    .filter((m): m is NonNullable<typeof m> => m != null)
 
   const dots = cols.map((c, i) => ({ c, i })).filter(({ c }) => c.realized != null)
     .map(({ c, i }) => ({ i, x: r2(x(i)), y: r2(y(c.realized as number)) }))
