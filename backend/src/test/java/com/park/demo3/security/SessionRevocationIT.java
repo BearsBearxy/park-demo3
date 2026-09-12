@@ -97,6 +97,30 @@ class SessionRevocationIT extends AbstractMysqlIT {
     }
 
     @Test
+    void 被挤掉的那一方能知道是为什么() throws Exception {
+        // 用户 2026-09-12:「另一个设备登录会本机账号就会登出这个没问题了,但是没有提示」。
+        // 没有这一头,三件事(别处登录/改密/停用)在屏上长得一模一样:都是默默跳回登录页。
+        String first = login("admin", "admin123");
+        login("admin", "admin123");                       // 另一台设备登进来
+        mvc.perform(get("/api/probe/ok").header("Authorization", "Bearer " + first))
+           .andExpect(status().isUnauthorized())
+           .andExpect(header().string("X-Auth-Reason", "relogin"));
+    }
+
+    @Test
+    void 没有理由可说时不给头_不给枚举用户名的档口() throws Exception {
+        // 账号根本不存在 → 什么都不说。否则「有头 = 这个用户名是真的」就成了一个枚举器。
+        String token = login("admin", "admin123");
+        String[] p = token.split("[.]");
+        String ghost = p[0] + "." + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                "{\"sub\":\"no-such-user\",\"tv\":0,\"sid\":\"x\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + "." + p[2];
+        mvc.perform(get("/api/probe/ok").header("Authorization", "Bearer " + ghost))
+           .andExpect(status().isUnauthorized())
+           .andExpect(header().doesNotExist("X-Auth-Reason"));
+    }
+
+    @Test
     void 会话表记下了这次登录() throws Exception {
         login("admin", "admin123");
         Integer live = jdbc.queryForObject(

@@ -33,11 +33,12 @@ public class UserPermissionCache {
      * 后端不猜 —— 猜出来的名字会被当成真名显示,而"（派生）"这个标记只有前端画得出来。
      */
     public record UserAuth(String username, Set<String> perms, List<String> navLayers,
-                           List<String> roleNames, int tokenVersion, String sessionId) {
+                           List<String> roleNames, int tokenVersion, String sessionId,
+                           String revokeReason) {
 
         /** 换一份会话身份,其余原样(V125:登录/改密/踢人之后定点改这一个账号,不整表 reload)。 */
-        UserAuth withSession(int tv, String sid) {
-            return new UserAuth(username, perms, navLayers, roleNames, tv, sid);
+        UserAuth withSession(int tv, String sid, String reason) {
+            return new UserAuth(username, perms, navLayers, roleNames, tv, sid, reason);
         }
     }
 
@@ -65,7 +66,11 @@ public class UserPermissionCache {
         // reload 会重建整张快照,而会话 id 不在它查的那几张表里 —— 不先存下来,
         // 任何一次角色变更都会把所有人的 sid 抹成 null,下一个请求全部 401。
         Map<String, String> liveSid = new HashMap<>();
-        for (var e : snapshot.entrySet()) if (e.getValue().sessionId() != null) liveSid.put(e.getKey(), e.getValue().sessionId());
+        Map<String, String> reason = new HashMap<>();
+        for (var e : snapshot.entrySet()) {
+            if (e.getValue().sessionId() != null) liveSid.put(e.getKey(), e.getValue().sessionId());
+            if (e.getValue().revokeReason() != null) reason.put(e.getKey(), e.getValue().revokeReason());
+        }
         // 提权授权一并清空。不清的话「停用立刻踢」这条就有个 30 分钟的洞:
         // 被停用的账号仍能靠手上的授权继续写 —— 那正是这份缓存存在的理由。
         // 粗粒度(清所有人)是故意的:reload 不知道是谁变了,而角色变更本就罕见,
@@ -111,7 +116,7 @@ public class UserPermissionCache {
             int tv = u.getTokenVersion() == null ? 0 : u.getTokenVersion();
             String sid = liveSid.get(u.getUsername());
             next.put(u.getUsername(), new UserAuth(u.getUsername(), Set.copyOf(perms), List.copyOf(layers),
-                                                   List.copyOf(roleNames), tv, sid));
+                                                   List.copyOf(roleNames), tv, sid, reason.get(u.getUsername())));
         }
         snapshot = Map.copyOf(next);
         log.info("permission cache reloaded: {} active users", snapshot.size());
@@ -129,11 +134,11 @@ public class UserPermissionCache {
      *
      * sid 传 null = 这个账号当前没有活着的会话(被踢/登出),此后它的令牌一律不认。
      */
-    public synchronized void applySession(String username, int tokenVersion, String sessionId) {
+    public synchronized void applySession(String username, int tokenVersion, String sessionId, String reason) {
         UserAuth cur = snapshot.get(username);
         if (cur == null) return;   // 停用/不存在的账号不进快照,也就没有会话可言
         Map<String, UserAuth> next = new HashMap<>(snapshot);
-        next.put(username, cur.withSession(tokenVersion, sessionId));
+        next.put(username, cur.withSession(tokenVersion, sessionId, reason));
         snapshot = Map.copyOf(next);
     }
 

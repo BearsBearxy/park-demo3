@@ -41,7 +41,7 @@ public class SessionService {
     @NoReviewGuard(reason = "会话,不是期间数据。与 AuthService.login 同一条路径,进审核等于登录要先请人审")
     @Transactional
     public Issued open(AuthUser u, String clientIp, String userAgent) {
-        revokeLive(u.getUsername(), "relogin");
+        int kicked = revokeLive(u.getUsername(), "relogin");
         int tv = bump(u);
         String sid = UUID.randomUUID().toString().replace("-", "");
         AuthSession s = new AuthSession();
@@ -55,7 +55,10 @@ public class SessionService {
         s.setClientIp(trim(clientIp, 64));
         s.setUserAgent(trim(userAgent, 255));
         sessions.insert(s);
-        cache.applySession(u.getUsername(), tv, sid);
+        // 这个 reason 不是说给刚登进来的人听的 —— 他的令牌 tv 对得上,永远读不到它。
+        // 它是说给**刚被挤掉的那一方**听的:他下一个请求 401,靠它知道是“另一台设备登录了”
+        // 而不是被默默踢回登录页。真踢掉了人才写,第一次登录不写。
+        cache.applySession(u.getUsername(), tv, sid, kicked > 0 ? "relogin" : null);
         return new Issued(sid, tv);
     }
 
@@ -73,7 +76,7 @@ public class SessionService {
         revokeLive(username, by);
         int tv = bump(u);
         // sid 置空:此后这个账号的任何令牌都对不上,直到他重新登录
-        cache.applySession(username, tv, null);
+        cache.applySession(username, tv, null, by);
     }
 
     /** 活着的会话(按建立时间倒序)。系统屏「谁在线」读它;不在鉴权路径上。 */
@@ -84,11 +87,12 @@ public class SessionService {
             .orderByDesc(AuthSession::getCreatedAt));
     }
 
-    private void revokeLive(String username, String by) {
+    /** 返回真正被作废的行数 —— 调用方靠它区分「挤掉了别人」与「本来就没人在线」。 */
+    private int revokeLive(String username, String by) {
         AuthSession patch = new AuthSession();
         patch.setRevokedAt(LocalDateTime.now());
         patch.setRevokedBy(trim(by, 64));
-        sessions.update(patch, Wrappers.<AuthSession>lambdaUpdate()
+        return sessions.update(patch, Wrappers.<AuthSession>lambdaUpdate()
             .eq(AuthSession::getUsername, username)
             .isNull(AuthSession::getRevokedAt));
     }

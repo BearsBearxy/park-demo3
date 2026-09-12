@@ -59,7 +59,8 @@ export const useAuthStore = defineStore('auth', () => {
   if (typeof window !== 'undefined') {
     // storage 事件只在**其它**标签页改动时触发，本页自己的 setItem 不会触发
     window.addEventListener('storage', (e) => {
-      if (e.key === 'token') drifted.value = sessionDrifted()
+      // 听 username 不听 token:同一个人换了张令牌(重新登录)不该惊动正在干活的人。
+      if (e.key === 'username' || e.key === 'token') drifted.value = sessionDrifted()
     })
   }
 
@@ -156,7 +157,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (r) target.setItem('role', r)
     else target.removeItem('role')
     // 不置真时必须显式清:同机上一个账号留下的 '1' 会把这个账号也拦进改密页
-    bindSession(t)      // 本标签页主动登录 → 重新绑定，别被漂移守卫误伤
+    // 绑的是用户名不是令牌串(2026-09-12):同一个人重新登录换一张令牌不算漂移。
+    bindSession(me.value)   // 本标签页主动登录 → 重新绑定，别被漂移守卫误伤
     drifted.value = false
     grants.value = []   // 上一个账号的授权残留不能带进新会话
     retick()

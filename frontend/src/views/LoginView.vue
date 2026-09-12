@@ -9,6 +9,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { AUTH_REASON_KEY } from '@/api'
 import { User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-vue-next'
 // 粒子 logo 素材:换 logo 直接替换这个 svg 文件(或改这里的 import 指向任意 png/svg)。
 // 引擎按「alpha>140 的像素」采样、颜色取自像素本身,任何形状/配色都能直接成粒子。
@@ -29,6 +30,24 @@ const unameEl = ref<HTMLInputElement | null>(null)
 
 // 重新输入即清错(错误提示对应的是上一次提交,留着会误导)
 watch([username, password], () => { errorMsg.value = '' })
+
+/**
+ * 被踢回登录页的原因(2026-09-12)。
+ *
+ * 改前一律默默跳回来:账号在别的设备登了、密码被重置了、账号被停用了 ——
+ * 三件事长得一模一样，用户只能猜。后端在 401 上带 X-Auth-Reason，api 层存进
+ * sessionStorage，这里读完即删 —— 它只该出现一次，不该在下次手动登录时再冒出来。
+ */
+const kickedMsg = ref('')
+onMounted(() => {
+  const r = sessionStorage.getItem(AUTH_REASON_KEY)
+  if (!r) return
+  sessionStorage.removeItem(AUTH_REASON_KEY)
+  kickedMsg.value = r === 'relogin' ? '你的账号在另一台设备登录，本设备已退出'
+    : r === 'password' ? '密码已修改，请用新密码登录'
+    : r === 'disabled' ? '账号已停用，请联系管理员'
+    : ''
+})
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
@@ -387,6 +406,7 @@ onBeforeUnmount(() => {
           </label>
 
           <!-- 错误位常驻(LAYOUT-STABILITY-SPEC §4.2):红字长出来不许把「登录」按钮顶走 -->
+          <p v-if="kickedMsg && !errorMsg" class="lg-kicked"><AlertCircle :size="14" />{{ kickedMsg }}</p>
           <p class="lg-err"><template v-if="errorMsg"><AlertCircle :size="14" />{{ errorMsg }}</template></p>
 
           <div class="lg-row">
@@ -513,6 +533,8 @@ onBeforeUnmount(() => {
 .lg-eye:hover { color: rgba(15, 20, 32, 0.7); background: rgba(15, 20, 32, 0.05); }
 
 /* min-height=line-height=恰好一行:空着也占位,出错不位移 */
+/* 被踢回来的原因:不是输错密码,用中性色不用错误红 */
+.lg-kicked { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; line-height: 18px; font-size: 13px; color: var(--hue-amber, #b76e00); }
 .lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; min-height: 18px; line-height: 18px; font-size: 13px; color: var(--hue-red, #e5484d); }
 
 .lg-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 26px; }

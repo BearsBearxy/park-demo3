@@ -3,6 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { sessionState } from '@/api'
 import AppShell from './components/shell/AppShell.vue'
 
 const route = useRoute()
@@ -15,6 +16,8 @@ const isBare = computed(() => route.path === '/login' || route.path === '/change
 const routeValue = computed(() => route.path.slice(1))
 // 模板里拿不到全局 location,显式暴露
 const reload = () => window.location.reload()
+// 哪一种漂移:别人登了,还是别处登出了。两句话、两个按钮。
+const driftKind = computed(() => sessionState())
 
 // ── 提权横幅(ELEVATION-SPEC) ──
 // 刷新页面后授权在服务端还活着(30 分钟内存态),横幅要跟着回来 ——
@@ -27,14 +30,24 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
 </script>
 
 <template>
-  <!-- 跨标签页身份漂移：别的标签页登了另一个账号（localStorage 按域名共享、不分标签页），
-       本页界面还是旧身份。api 层已经拒发请求，这里让用户看见发生了什么。
+  <!-- 跨标签页身份漂移。api 层已经拒发请求，这里让用户看见发生了什么。
        刻意**不自动刷新** —— CONCURRENCY-SPEC 铁律「永远不刷新用户正在编辑的表格」，
-       未保存的草稿得留给用户自己处置。 -->
+       未保存的草稿得留给用户自己处置。
+
+       2026-09-12:文案按**实测到的那一种**分开写。改前只有一句「已在别的标签页登录为
+       另一个账号」,而触发它的三种情况里有两种不是那回事 —— 别的标签页**登出**也会触发,
+       用户看到的是一句假话。屏上只陈述实测,不替用户断定原因。 -->
   <div v-if="auth.drifted" class="app-drift" role="alert">
-    <span class="app-drift-t">此浏览器已在别的标签页登录为另一个账号</span>
-    <span class="app-drift-d">本页显示的还是上一个身份，操作已被拦下 —— 否则做的事会记在对方头上。</span>
-    <button type="button" class="app-drift-b" @click="reload">重新载入</button>
+    <template v-if="driftKind === 'signed-out'">
+      <span class="app-drift-t">此浏览器已在别的标签页退出登录</span>
+      <span class="app-drift-d">本页还停在登录后的界面，操作已被拦下。</span>
+      <button type="button" class="app-drift-b" @click="reload">去登录</button>
+    </template>
+    <template v-else>
+      <span class="app-drift-t">此浏览器已在别的标签页登录为另一个账号</span>
+      <span class="app-drift-d">本页显示的还是上一个身份，操作已被拦下 —— 否则做的事会记在对方头上。</span>
+      <button type="button" class="app-drift-b" @click="reload">切换到当前账号</button>
+    </template>
   </div>
 
   <!-- 提权横幅：授权期间必须一直看得见 —— 谁授权的、还剩多久、怎么提前结束。
