@@ -1,7 +1,7 @@
 // 监控中心纯函数单测(铁律⑦):突变检测(相邻有数月/双向/上月≤0 跳过)、缺项归一、
 // 风险分与分层边界、末期欠费聚合、规则 id 稳定、灰带分位、期别汇总行剔除、最差在前排序。
 import { describe, expect, it } from 'vitest'
-import { buildMonitorModel, detectSpikes, tenantLedgerBars, weighScore } from './monitor.logic'
+import { buildMonitorModel, detectSpikes, elecBandRef, elecReadout, tenantLedgerBars, weighScore } from './monitor.logic'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 
 function ledger(p: Partial<AnalysisLedgerRow>): AnalysisLedgerRow {
@@ -98,9 +98,66 @@ describe('buildMonitorModel(评分/分层/规则/汇总卡/灰带)', () => {
     expect(m.cards).toEqual({ risk: 2, watch: 1, arrearsTotal: 950, arrearsCount: 2, spikeTenants: 1 })
   })
 
-  it('灰带 = 各月租户电费 P25/P75(线性分位)', () => {
-    expect(m.band['2025-09']).toEqual({ p25: 200, p75: 400 })       // [100,300,500]
-    expect(m.band['2025-10']).toEqual({ p25: 303.75, p75: 701.25 }) // [105,900]
+})
+
+// 原例(A/B/D 三户 s10rows)每月同类数远低于 20,改用独立小模型验证分位算法与 D3 门槛,
+// 不动上面共用的 m/s10rows(那边有 m.list 的精确排序/构成断言,混进填户会连带弄红)。
+describe('灰带 = 各月租户电费 P25/P75(线性分位;D3 门槛 <20 户不建带)', () => {
+  const mkTenantElec = (n: number, ym: string, elec: number, offset = 0): AnalysisS10Row[] =>
+    Array.from({ length: n }, (_, i) => s10({ tenantName: `户${offset + i}`, acctMonth: ym, elec, total: elec }))
+
+  it('20 户按分位算出带,且 n 一并传出;同月不足 20 户 → 不建 key', () => {
+    const rows = [
+      ...mkTenantElec(10, '2025-09', 100),
+      ...mkTenantElec(10, '2025-09', 500, 10),
+      ...mkTenantElec(5, '2025-10', 999),   // 同月仅 5 户,不足 20
+    ]
+    const mm = buildMonitorModel([], rows, OPTS)
+    expect(mm.band['2025-09']).toEqual({ p25: 100, p75: 500, n: 20 })
+    expect(mm.band['2025-10']).toBeUndefined()
+  })
+})
+
+describe('elecReadout(电费读数句)', () => {
+  it('高于上界 / 低于下界 / 落在区间内 / 缺数据(v 为 null 或 band 缺月)→ null', () => {
+    expect(elecReadout(500, { p25: 200, p75: 400 })).toBe('电费高于全园区间 ¥200~¥400')
+    expect(elecReadout(100, { p25: 200, p75: 400 })).toBe('电费低于全园区间 ¥200~¥400')
+    expect(elecReadout(300, { p25: 200, p75: 400 })).toBe('电费落在全园区间 ¥200~¥400')
+    expect(elecReadout(null, { p25: 200, p75: 400 })).toBeNull()
+    expect(elecReadout(300, undefined)).toBeNull()
+  })
+
+  it('❗n<20 时 buildMonitorModel 该月不建 band key,elecReadout 跟着自动闭嘴(不用它自己另判 n)', () => {
+    const rows = Array.from({ length: 19 }, (_, i) => s10({ tenantName: `户${i}`, acctMonth: '2025-09', elec: 100, total: 100 }))
+    const mm = buildMonitorModel([], rows, OPTS)
+    expect(elecReadout(500, mm.band['2025-09'])).toBeNull()
+  })
+
+  // N6(对抗复查修复轮2):这条带是按全部计费租户建的,不是按可比分组 ——
+  // 「同类」声称的比数据撑得住的多,句子里不许再出现这个词。
+  it('❗N6:句子里不许出现「同类」—— 带是按全园全部计费租户建的,不是按可比分组', () => {
+    expect(elecReadout(500, { p25: 200, p75: 400 })).not.toContain('同类')
+  })
+})
+
+describe('elecBandRef(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
+  it('n 有值 → 样本N户;n 缺(全园不足20户)→ 不画带的话不进这句,只说不足20户', () => {
+    expect(elecBandRef(251)).toBe('记账月口径 · 元 · 样本251户')
+    expect(elecBandRef(null)).toBe('记账月口径 · 元 · 全园不足20户')
+  })
+
+  it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
+    expect(elecBandRef(251)).not.toContain('acct_month')
+    expect(elecBandRef(251)).toContain('记账月')
+  })
+
+  it('❗F2:句子里不再出现「灰带」二字 —— 带画不画不影响这句话真假', () => {
+    expect(elecBandRef(251)).not.toContain('灰带')
+    expect(elecBandRef(null)).not.toContain('灰带')
+  })
+
+  it('❗N6:句子里不许出现「同类」', () => {
+    expect(elecBandRef(null)).not.toContain('同类')
   })
 })
 

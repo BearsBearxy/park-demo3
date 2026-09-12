@@ -9,7 +9,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { fnum, mean, sgn } from '@/components/ana/anaFmt'
 import {
   buildEnergyMonths, fetchBudgetAll, fetchChargingYear, fetchElecYear, fetchPvAll, fetchS10Rows, fetchUtilitiesYear,
@@ -283,10 +282,6 @@ const segsOption = computed(() => ({
           <AnaEmpty v-else label="该期间售电(附表10)未录入" hint="s10 为稀疏月度表,金额口径能量流暂不可算" to="/sales-income" to-text="去录入销售收入" />
           <!-- C6:生成式人话句(数据模板);守恒口径原句退下方 AnaMethodNote 保留 -->
           <p v-if="sankey" class="pe-reading">{{ sankeyReading }}</p>
-          <AnaMethodNote v-if="sankey">
-            守恒:购电+光伏消纳{{ sankey.residual < 0 ? '+转供毛差' : '' }} ＝ 售电+办公+充电{{ sankey.residual > 0 ? '+损耗差额' : '' }};
-            轧差 {{ sankey.residual < 0 ? '−' : '' }}¥{{ fnum(Math.abs(sankey.residual) / 10000, 1) }}万{{ sankey.residual < 0 ? '(售电按转供加价计费,收入高于同期购电成本 → 毛差记流入侧)' : '' }}。仅 s10 覆盖月同口径,缺月不补 0。
-          </AnaMethodNote>
         </div>
 
         <div class="av2-card av2-s12">
@@ -313,14 +308,9 @@ const segsOption = computed(() => ({
           <div class="av2-card-h"><span class="t">能耗板块损益</span><span class="hint">{{ isMonth ? '本月' : '本年' }} · 净额万元(红＝亏损)</span></div>
           <AnaEChart v-if="segs.length" :option="segsOption" :height="170" />
           <AnaEmpty v-else label="本期无可算板块" hint="电力转供需同月购电(附表11)与售电(附表10)同时在库" />
-          <AnaMethodNote>电力转供＝售电(s10 电费)−购电成本(仅 s10 覆盖月同口径);光伏＝消纳+上网收益;充电＝服务费−成本。</AnaMethodNote>
         </div>
       </div>
 
-      <AnaMethodNote>
-        桑基金额口径:购电＝附表11 energy+basic 价税合计;光伏消纳＝附表6 自消纳金额;售电＝s10 电费;办公＝附表13/14 电费金额;充电＝附表7/8 充电成本。
-        KPI 供电口径(kWh)＝购电+光伏自消纳,光伏上网不入园区供电;s10 售电为稀疏月度表({{ coverNote }}),缺月不补 0。
-      </AnaMethodNote>
     </div>
   </AnaShell>
 </template>

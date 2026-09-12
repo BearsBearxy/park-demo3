@@ -3,7 +3,7 @@
 // 「本期」=≤所选期间的最近 s10 月;窗口=≤本期的全部 s10 月;台账应收/实收沿 AnalysisLedgerRow。
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { familyRootOf } from '@/analysis/anaFamily'
-import { mean as aMean, std as aStd } from '@/components/ana/anaFmt'
+import { fint, mean as aMean, std as aStd } from '@/components/ana/anaFmt'
 
 export interface TenantRow {
   name: string; phase: number; rank: number
@@ -77,25 +77,60 @@ export function buildFamilyRows(rows: TenantRow[], familyMap: Map<string, string
   return out
 }
 
-export interface ParkBand { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[] }
+export interface ParkBand { mean: (number | null)[]; lo: (number | null)[]; hi: (number | null)[]; n: number[] }
 
-/** 园区均值带:逐月对「该月有记录的租户」求均值±1σ(lo 截 0;该月无任何租户 → null)。 */
+/** 园区均值带:逐月对「该月有记录的租户」求均值±1σ(lo 截 0;同类 <20 户不画带 —— D3 三档)。
+ *
+ *  ⚠ I9:`max(0, …)` 这个截断在真实数据上**每个月都生效** —— 电费横截面右偏得厉害
+ *  (2025-12:263 户,均值 5,315、σ 14,134,σ≈2.7 倍均值),mean−σ 恒为负。
+ *  也就是说 lo 恒等于 0,它是坐标轴不是同类下界。带照画(宽度是真的),但任何拿 lo 当
+ *  「下界」用的下游都必须先判它是不是 0 —— bandReadout 就是这么闭嘴的。 */
 export function buildParkBand(rows: TenantRow[], months: string[]): ParkBand {
-  const mean: (number | null)[] = [], lo: (number | null)[] = [], hi: (number | null)[] = []
+  const mean: (number | null)[] = [], lo: (number | null)[] = [], hi: (number | null)[] = [], n: number[] = []
   for (const m of months) {
     const vs = rows.filter((r) => r.vals.has(m)).map((r) => r.vals.get(m) as number)
-    if (!vs.length) { mean.push(null); lo.push(null); hi.push(null); continue }
+    n.push(vs.length)
+    // D3 三档:同类 < 20 不画带。改前是 vs.length 只要 >0 就画,一户也画出一条零宽灰带。
+    if (vs.length < 20) { mean.push(null); lo.push(null); hi.push(null); continue }
     const mn = aMean(vs), sd = aStd(vs)
     mean.push(+mn.toFixed(0))
     lo.push(+Math.max(0, mn - sd).toFixed(0))
     hi.push(+(mn + sd).toFixed(0))
   }
-  return { mean, lo, hi }
+  return { mean, lo, hi, n }
 }
 
 /** 选中租户逐月序列(缺月 = null,不补 0)。 */
 export function tenantSeries(row: TenantRow | null, months: string[]): (number | null)[] {
   return months.map((m) => (row?.vals.has(m) ? +(row.vals.get(m) as number).toFixed(0) : null))
+}
+
+/**
+ * 主图读数句:选中租户本期 vs 跨户区间(cur/lo/hi 任一缺 → 闭嘴,不写占位句)。
+ *
+ * I9(对抗复查,2026-09-11):`lo` 来自 buildParkBand 的 `max(0, 均值 − 一个波动幅度)`。
+ * 实测 park_demo3 七个记账月,跨户均值 ¥5,315~7,713、波动幅度 ¥14,134~18,992 ——
+ * **每一个月的 mean − σ 都是负的**,lo 恒被夹到 0。于是:
+ *   · 「低于跨户区间」需要电费为负,一辈子印不出来;
+ *   · 2025-12 截面 263 户里 247 户(94%)读到的是「落在跨户区间 ¥0~¥19,449」。
+ * 一句读起来像位置判断、实际恒真的话,比不说话更糟 —— 它会让读者以为自己被比较过了。
+ *
+ * 下沿被夹到 0 时区间只剩单边(0 是坐标轴,不是一个真实的同类下界),位置判断不再是判断:
+ * 按本模块规矩③「没话可说就返回 null」闭嘴。带本身照画(宽度是真的,园区差距有多大读者看得见),
+ * 下沿为什么贴着 0 由同卡的口径浮层说明。
+ */
+export function bandReadout(cur: number | null, lo: number | null, hi: number | null, metricLabel: string): string | null {
+  if (cur == null || lo == null || hi == null) return null
+  if (lo <= 0) return null
+  const pos = cur > hi ? '高于' : cur < lo ? '低于' : '落在'
+  return `${metricLabel}${pos}跨户区间 ¥${fint(lo)}~¥${fint(hi)}`
+}
+
+/** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法。
+ *  acct_month 是列名,屏上写「记账月」(F1)。 */
+export function bandRefText(n: number | null): string {
+  const sample = n != null ? `样本${n}户` : '样本未知'
+  return `记账月口径 · 元 · ${sample}`
 }
 
 // ── 散点对数轴数据准备(spec §T2):log 下金额≤0 无法取对数 → 过滤并披露计数;线性全量原样 ──

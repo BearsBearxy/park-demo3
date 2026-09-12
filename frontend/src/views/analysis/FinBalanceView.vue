@@ -9,7 +9,6 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -248,7 +247,6 @@ const bsTable = computed<BsTblRow[]>(() => {
               <span class="pc">{{ ((d.value / T.totalAssets) * 100).toFixed(0) }}%</span>
             </div>
           </div>
-          <AnaMethodNote>为负的科目(如应交税费、未分配利润)不入环图,金额见下方全表。</AnaMethodNote>
         </div>
 
         <!-- 比率仪表 s4(spec:gauge ≤2;其余比率见 KPI 条与副行) -->
@@ -292,8 +290,6 @@ const bsTable = computed<BsTblRow[]>(() => {
           </div>
           <AnaEmpty v-else label="杜邦拆解不可算"
             :hint="T.equity <= 0 ? '所有者权益为非正数(未分配利润为负拖累权益基数),ROE 无意义' : '缺同期利润表快照(净利率/周转率取自 is)'" />
-          <AnaMethodNote>单期快照口径:净利率/净利取利润表本年累计;周转率＝累计营业收入 ÷ 期末总资产(近似);
-            非流动资产占比 {{ R.ncShare.toFixed(0) }}%,属重资产结构,ROE 数值另受权益基数(¥{{ fint(T.equity / 1e4) }}万)放大杠杆影响。</AnaMethodNote>
         </div>
 
         <!-- spec 必选空态:fin-balance 趋势卡 -->

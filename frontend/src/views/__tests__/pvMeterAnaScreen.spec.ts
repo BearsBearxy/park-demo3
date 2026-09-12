@@ -629,7 +629,7 @@ describe('光伏分栋分析 · 配色(§06.7 焦点 / 类别 / 告警)', () => 
     expect([...opt.matchAll(/"color":"([^"]+)"/g)].map(m => m[1]))
       .toEqual([PV_COLORS.INK100, PV_COLORS.INK500, PV_COLORS.FOCUS])
     // 序列名同理:三条口径线 + 选中那栋。13 栋各画一条(那团灰毛球)长回来的话这条红
-    expect(b3Series(w).map(s => s.name)).toEqual(['p25', '各栋四分位距', '全园中位', 'S4'])
+    expect(b3Series(w).map(s => s.name)).toEqual(['', '各栋四分位距', '全园中位', 'S4'])
   })
 })
 

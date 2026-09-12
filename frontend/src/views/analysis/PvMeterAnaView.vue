@@ -43,6 +43,7 @@ import { PV_COLORS as C } from './pvAnaColors'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import { fnum } from '@/components/ana/anaFmt'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
 import PvQualityGrid from './PvQualityGrid.vue'
@@ -319,12 +320,7 @@ const b3Opt = computed<object>(() => {
     xAxis: { type: 'category', data: s.tickLabels, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '等效小时', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 } },
     series: [
-      // 带用两条堆叠线画:下沿透明,上沿只留填充 —— 不描边,免得读成两条数据线
-      { name: 'p25', type: 'line', ...L, stack: 'q', silent: true,
-        lineStyle: { opacity: 0 }, data: p25 },
-      { name: '各栋四分位距', type: 'line', ...L, stack: 'q', silent: true,
-        lineStyle: { opacity: 0 }, areaStyle: { color: C.INK100 },
-        data: p75.map((v, i) => (v == null || p25[i] == null ? null : +(v - p25[i]!).toFixed(3))) },
+      ...bandSeries(p25, p75, { name: '各栋四分位距', color: C.INK100, stack: 'q', dp: 3, series: L }),
       { name: '全园中位', type: 'line', ...L, lineStyle: { width: 2.2, color: C.INK500 }, data: p50 },
       // 选中那栋走焦点色:同为 2.2px 的两条灰(中位 INK500 / 选中 INK900)在屏上分不出谁是谁。
       // 蓝的是「你点的那一栋」,墨的是群体 —— 队列里的选择由此串成贯穿全屏的一条线索(§06.7)。
@@ -828,14 +824,8 @@ const b9Opt = computed<object>(() => {
     xAxis: { type: 'category', data: d.spline.map(x => x.date.slice(5)), axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', name: '相对自身水平（对数）', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, scale: true },
     series: [
-      { type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: d.spline.map(x => +x.lo.toFixed(4)) },
-      {
-        type: 'line', stack: 'band', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
-        // 渐变透明不描硬边 —— 硬边会被读成「界限」,而它只是估计范围的边缘(§06.6)
-        // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
-        areaStyle: { color: C.INK100 },
-        data: d.spline.map(x => +(x.hi - x.lo).toFixed(4)),
-      },
+      // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
+      ...bandSeries(d.spline.map(x => x.lo), d.spline.map(x => x.hi), { color: C.INK100, stack: 'band', dp: 4 }),
       { type: 'scatter', symbolSize: 3, itemStyle: { color: C.INK300 }, data: d.resid.map(v => +v.toFixed(4)) },
       {
         type: 'line', symbol: 'none', lineStyle: { width: 2, color: C.INK900 },
@@ -903,12 +893,8 @@ const b11Opt = computed<object>(() => {
     xAxis: { type: 'category', data: rs.map(r => r.key.slice(5) + '月'), axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', nameTextStyle: { fontSize: 11 }, axisLabel: { fontSize: 11 }, scale: true },
     series: [
-      { type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 }, data: rs.map(r => +(r.beta - r.se).toFixed(3)) },
-      {
-        type: 'line', stack: 'se', symbol: 'none', silent: true, lineStyle: { opacity: 0 },
-        // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
-        areaStyle: { color: C.INK100 }, data: rs.map(r => +(2 * r.se).toFixed(3)),
-      },
+      // 带是参照物不是数据类别 → 墨阶。FILL_SKY 的岗位是 L6「正常」态,别在这里占用它
+      ...bandSeries(rs.map(r => r.beta - r.se), rs.map(r => r.beta + r.se), { color: C.INK100, stack: 'se', dp: 3 }),
       {
         type: 'line', symbol: 'circle', symbolSize: 4,
         lineStyle: { width: 1.6, color: C.INK900 }, itemStyle: { color: C.INK900 },

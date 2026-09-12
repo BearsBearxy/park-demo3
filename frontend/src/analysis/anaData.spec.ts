@@ -148,3 +148,21 @@ describe('s10 聚合', () => {
     expect(analysisApi.s10TenantMonths).toHaveBeenCalledTimes(1)
   })
 })
+
+import { isOutlierMonth } from './anaData'
+
+describe('未闭月护栏(FORECAST §2.7 —— 逐格判,不整期丢)', () => {
+  const rev = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, -636000]
+
+  it('❗收入为负的月被判离群', () => {
+    expect(isOutlierMonth(rev, 12)).toBe(true)
+    expect(isOutlierMonth(rev, 11)).toBe(false)
+  })
+
+  // usableMonths 2026-09-12 随「不再排除任何月份」一起删掉(用户:「是什么数据就使用什么数据」)。
+  // isOutlierMonth 留着 —— 它现在只用来在图上把那个月标红,不再从任何口径里把它摘出去。
+
+  it('❗null 不算离群 —— 缺数据月与被污染月是两件事', () => {
+    expect(isOutlierMonth([null, 5], 1)).toBe(false)
+  })
+})

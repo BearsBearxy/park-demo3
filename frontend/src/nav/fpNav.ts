@@ -59,7 +59,10 @@ export const FP_NAV: NavLayer[] = [
       { value: 'park-energy', label: '园区能耗', icon: 'zap', kind: 'ana' } ] },
     { title: '租户维度', items: [
       { value: 'tenant-energy', label: '用能与缴费', icon: 'activity', kind: 'ana' },
-      { value: 'tenant-portfolio', label: '结构与续约', icon: 'users', kind: 'ana' } ] },
+      { value: 'tenant-portfolio', label: '结构与续约', icon: 'users', kind: 'ana' },
+      // design-boards T8/T9:选中单个租户,看它在同类(同期区在租合同)里的位置——与上面两屏的
+      // 组合层视角(全体租户分布/结构)不是同一个主语,新建屏而不是加卡(理由见 board-peer.txt 对应 plan)
+      { value: 'tenant-peer', label: '租户对标', icon: 'git-compare', kind: 'ana' } ] },
     { title: '管理公司维度', items: [
       { value: 'fin-pnl', label: '利润表分析', icon: 'bar-chart-3', kind: 'ana' },
       { value: 'fin-balance', label: '资产负债分析', icon: 'scale', kind: 'ana' },

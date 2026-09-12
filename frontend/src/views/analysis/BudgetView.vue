@@ -14,7 +14,6 @@ import AnaBullet from '@/components/ana/AnaBullet.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
 import { fetchBudgetAll, fetchPnlSummary, fetchPnlYear } from '@/analysis/anaData'
@@ -271,10 +270,6 @@ const kpiOutlook = computed(() => {
         </div>
       </div>
 
-      <AnaMethodNote>
-        口径:{{ PNL_SOT_FROM_YEAR }} 年起关键行(收入总计/成本总计/费用总计/利润)实际=损益附表实时推算(系统标记),其余行为文件值;
-        成本费用 = 收入 − 利润;预算为年度口径。
-      </AnaMethodNote>
     </div>
   </AnaShell>
 </template>

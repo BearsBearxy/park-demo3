@@ -9,7 +9,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { CMP_BASELINE, fnum, sgn } from '@/components/ana/anaFmt'
@@ -236,11 +235,6 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
         </div>
 
         <div class="av2-s12">
-          <AnaMethodNote>
-            口径:附表5 费用支出;销售/管理/财务/修缮与运营费用总计均取自带总计行(不重算明细);
-            员工报销与办公类=科目名称命中关键词「{{ REIMBURSE_KEYWORDS }}」的明细行(小计/合计行不圈);
-            费用占收入比分母=附表1-4 收入(为 0 或缺 → '—');缺月 null 不补 0。
-          </AnaMethodNote>
         </div>
       </div>
     </template>

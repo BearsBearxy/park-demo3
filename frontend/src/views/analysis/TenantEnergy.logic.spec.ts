@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout, bandRefText, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries, type TenantRow } from './TenantEnergy.logic'
 
 const s10 = (tenantName: string, acctMonth: string, elec: number, water = 0, phase = 1): AnalysisS10Row =>
   ({ acctMonth, phase, tenantId: null, tenantName, elec, water, total: elec + water })
@@ -12,6 +12,14 @@ const map = (rows: AnalysisS10Row[]): Map<string, AnalysisS10Row[]> => {
   for (const r of rows) m.set(r.tenantName, [...(m.get(r.tenantName) ?? []), r])
   return m
 }
+
+// buildParkBand 只读 .vals,直接造最小 TenantRow 免去经 buildTenantRows 的间接层(D3 门槛测试用)。
+const fakeRow = (name: string, vals: Record<string, number>): TenantRow => ({
+  name, phase: 1, rank: 0, cur: 0, mom: null, vsAvg: null, sd: 0, z: 0,
+  winTotal: 0, win: [], monthlyRent: null, vals: new Map(Object.entries(vals)),
+})
+const mkRows = (n: number, val = 100): TenantRow[] =>
+  Array.from({ length: n }, (_, i) => fakeRow(`户${i}`, { '2025-01': val }))
 
 describe('buildTenantRows', () => {
   const months = ['2025-01', '2025-02', '2025-03']
@@ -44,17 +52,88 @@ describe('buildTenantRows', () => {
 })
 
 describe('buildParkBand / tenantSeries', () => {
-  it('逐月均值±σ(lo 截 0),该月无租户 → null;租户缺月 → null', () => {
-    const tm = map([s10('甲', '2025-01', 100), s10('甲', '2025-03', 300), s10('乙', '2025-01', 300), s10('乙', '2025-03', 100)])
-    const rows = buildTenantRows(tm, '2025-03', ['2025-01', '2025-03'], 'elec', new Map())
+  // D3 门槛(<20 不画带)下,原 2 租户例子会整段判 null —— 补 18 户凑到 20 户,
+  // 且两月对称拆 10/10(甲/摆 两户在两月间互换阵营)保持 mean/σ 与改前一致,可心算验证。
+  const jia = fakeRow('甲', { '2025-01': 100, '2025-03': 300 })
+  const swing = fakeRow('摆', { '2025-01': 300, '2025-03': 100 })
+  const lo9 = Array.from({ length: 9 }, (_, i) => fakeRow(`低${i}`, { '2025-01': 100, '2025-03': 100 }))
+  const hi9 = Array.from({ length: 9 }, (_, i) => fakeRow(`高${i}`, { '2025-01': 300, '2025-03': 300 }))
+  const rows = [jia, swing, ...lo9, ...hi9]   // 20 户:每月各 10@100 + 10@300
+
+  it('逐月均值±σ(lo 截 0),该月无租户 → null;租户缺月 → null;n 传出(D3 门槛 ≥20)', () => {
     const band = buildParkBand(rows, ['2025-01', '2025-02', '2025-03'])
     expect(band.mean).toEqual([200, null, 200])                     // 逐月跨户均值;2月无数据
     expect(band.lo[0]).toBe(100)                                    // 200-σ(=100)
     expect(band.hi[0]).toBe(300)
     expect(band.lo[2]).toBe(100)
-    const jia = rows.find((r) => r.name === '甲') ?? null
+    expect(band.n).toEqual([20, 0, 20])
     expect(tenantSeries(jia, ['2025-01', '2025-02', '2025-03'])).toEqual([100, null, 300])
     expect(tenantSeries(null, ['2025-01'])).toEqual([null])
+  })
+
+  it('❗n = 19 不返回带(D3 三档:<20 不画),n 仍传出', () => {
+    const band = buildParkBand(mkRows(19), ['2025-01'])
+    expect(band.lo[0]).toBeNull()
+    expect(band.n[0]).toBe(19)
+  })
+
+  it('❗n = 20 返回带,且 n 一并传出供参照系小字印', () => {
+    const band = buildParkBand(mkRows(20), ['2025-01'])
+    expect(band.lo[0]).not.toBeNull()
+    expect(band.n[0]).toBe(20)
+  })
+
+  it('❗n<20 时 buildParkBand 出 null,bandReadout 跟着自动闭嘴(不用它自己另判 n)', () => {
+    const band = buildParkBand(mkRows(15, 200), ['2025-01'])
+    expect(bandReadout(200, band.lo[0], band.hi[0], '电费')).toBeNull()
+  })
+})
+
+describe('bandReadout(主图读数句)', () => {
+  it('高于上界 / 低于下界 / 落在区间内 / 缺数据(cur/lo/hi 任一为 null)→ null', () => {
+    expect(bandReadout(400, 100, 300, '电费')).toBe('电费高于跨户区间 ¥100~¥300')
+    expect(bandReadout(50, 100, 300, '电费')).toBe('电费低于跨户区间 ¥100~¥300')
+    expect(bandReadout(200, 100, 300, '电费')).toBe('电费落在跨户区间 ¥100~¥300')
+    expect(bandReadout(null, 100, 300, '电费')).toBeNull()
+    expect(bandReadout(200, null, 300, '电费')).toBeNull()
+    expect(bandReadout(200, 100, null, '电费')).toBeNull()
+  })
+
+  // ── I9(对抗复查):下沿被夹到 0 的区间,位置判断恒真 ──────────────────────────
+  // 下面两条用的是**实测量级**的均值与波动幅度(park_demo3 2025-12:263 户,均值 5315、σ 14134),
+  // 不是为了卡住边界捏的小数。改前这条句子在全部七个真实月份上都印得出来、且永远为真。
+  it('❗I9:真实量级的均值与波动幅度喂进去 —— mean−σ 为负、下沿被夹到 0,这句话必须闭嘴', () => {
+    const band = buildParkBand(
+      // 造 30 户:1 户大工业把均值与波动幅度拉到实测比例(mean 5315 / σ 14134,σ≈2.7×mean)
+      [...Array(29)].map((_, i) => fakeRow('小户' + i, { '2025-12': 300 })).concat([fakeRow('大工业', { '2025-12': 150000 })]),
+      ['2025-12'])
+    expect(band.lo[0]).toBe(0)                                   // mean−σ < 0,被 max(0,…) 夹住
+    expect(band.hi[0]).toBeGreaterThan(20000)
+    expect(bandReadout(300, band.lo[0], band.hi[0], '电费')).toBeNull()      // 普通户:改前印「落在 ¥0~¥…」
+    expect(bandReadout(150000, band.lo[0], band.hi[0], '电费')).toBeNull()   // 高出上沿的也闭嘴:¥0 那个下沿本身就是假的
+  })
+
+  it('❗I9:「低于跨户区间」只有在下沿真的大于 0 时才印得出来 —— 下沿为 0 时它在数学上不可达', () => {
+    expect(bandReadout(-1, 0, 19449, '电费')).toBeNull()   // 唯一能触发「低于」的输入是负电费
+    expect(bandReadout(50, 100, 19449, '电费')).toBe('电费低于跨户区间 ¥100~¥19,449')
+  })
+})
+
+describe('bandRefText(参照系小字,F2 修复轮1:只说样本量/口径/单位,不提灰带画没画)', () => {
+  it('n 有值(即便<20)→ 样本N户;n 缺 → 样本未知', () => {
+    expect(bandRefText(251)).toBe('记账月口径 · 元 · 样本251户')
+    expect(bandRefText(15)).toBe('记账月口径 · 元 · 样本15户')   // <20 也照实报数,不夹带「不画带」判断
+    expect(bandRefText(null)).toBe('记账月口径 · 元 · 样本未知')
+  })
+
+  it('❗F1:不许出现原始列名 acct_month —— 屏上写中文「记账月」', () => {
+    expect(bandRefText(251)).not.toContain('acct_month')
+    expect(bandRefText(251)).toContain('记账月')
+  })
+
+  it('❗F2:句子里不再出现「灰带」「断点」—— 带画不画/断不断点不影响这句话真假', () => {
+    expect(bandRefText(251)).not.toContain('灰带')
+    expect(bandRefText(251)).not.toContain('断点')
   })
 })
 

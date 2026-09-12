@@ -6,13 +6,14 @@ const layer = (id: string) => FP_NAV.find(L => L.id === id)!
 const itemsOf = (id: string, title: string) => layer(id).sections.find(s => s.title === title)!.items.map(i => i.value)
 
 describe('fpNav', () => {
-  it('has 4 layers and 50 items', () => {
+  it('has 4 layers and 51 items', () => {
     expect(FP_NAV).toHaveLength(4)
-    expect(fpAllPages()).toHaveLength(50)
+    // design-boards T8:租户对标(tenant-peer)新增,租户维度组 2→3 项
+    expect(fpAllPages()).toHaveLength(51)
   })
   it('builds a route per item with layer back-refs', () => {
     const r = fpBuildRoutes()
-    expect(Object.keys(r)).toHaveLength(50)
+    expect(Object.keys(r)).toHaveLength(51)
     expect(r['buildings'].layer).toBe('data')
     // 首页改名「本月出账」(SIDEBAR-UX-REDESIGN §5.1 / D12):value 不变,页签/面包屑/面板从这里取字
     expect(r['data-home'].page).toBe('本月出账')

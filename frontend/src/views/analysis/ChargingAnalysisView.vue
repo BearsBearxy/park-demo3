@@ -12,7 +12,6 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
@@ -281,11 +280,6 @@ const lossOpt = computed<object>(() => ({
           </div>
         </div>
 
-        <AnaMethodNote>
-          量收=分桩明细(cp_reading)三金额直加(平台对账单抄录口径);手续费率=手续费÷(收益+手续费);
-          损耗率=(运营商电表量−Σ该运营商{{ TAB_ZH[tab] }}桩充电量)÷电表量,平均损耗率按电表已录月加权;
-          与分桩明细屏口径全等。附表{{ tab === 'ebike' ? '8' : '7' }} 月度汇总为独立数据域,不入本屏。
-        </AnaMethodNote>
       </template>
     </div>
   </AnaShell>

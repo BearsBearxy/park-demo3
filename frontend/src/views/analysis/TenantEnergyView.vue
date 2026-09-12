@@ -19,13 +19,13 @@ import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { NEG, WARN, fint } from '@/components/ana/anaFmt'
+import { bandSeries } from '@/components/ana/anaTheme'
 import { PHASES } from '@/views/sales-income/layout'
 import { buildFamilyMap } from '@/analysis/anaFamily'
-import { buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
+import { bandReadout as bandReadoutOf, bandRefText as bandRefTextOf, buildFamilyRows, buildParkBand, buildPayRows, buildTenantRows, splitLogPoints, tenantSeries } from './TenantEnergy.logic'
 
 const period = usePeriod()
 const router = useRouter()
@@ -107,6 +107,24 @@ const selName = ref('')
 const selRow = computed(() => rowsCur.value.find((r) => r.name === selName.value) ?? rowsCur.value[0] ?? null)
 function select(name: string) { selName.value = name }
 
+// ── 主图读数句:选中租户本期 vs 跨户区间(无对应月带数据 → 闭嘴) ──
+const curBandIdx = computed(() => winMonths.value.indexOf(curYm.value))
+const bandReadout = computed<string | null>(() => {
+  const r = selRow.value
+  const idx = curBandIdx.value
+  const lo = idx >= 0 ? parkBand.value.lo[idx] : null
+  const hi = idx >= 0 ? parkBand.value.hi[idx] : null
+  return bandReadoutOf(r?.cur ?? null, lo, hi, metricLabel.value)
+})
+// D1:句子印了区间就得在同屏带出样本量 —— buildParkBand 逐月都推 n(即便 <20 未画带也有数,与 monitor 侧 Record 不同)。
+const curBandN = computed<number | null>(() => {
+  const idx = curBandIdx.value
+  return idx >= 0 ? parkBand.value.n[idx] : null
+})
+// F2(修复轮1):小字只报三件事(样本量/口径/单位),画法解释搬进同卡 AnaMethodNote。
+// C2:带宽门已删,跨户带无条件画 —— 这句小字与画不画带本来就无关,继续只报三件事。
+const bandRefText = computed<string>(() => bandRefTextOf(curBandN.value))
+
 // ── 台账:应收 vs 实收 + 欠费(v1 口径) ──
 const ledgerYmOf = (r: AnalysisLedgerRow): string => `${r.year}-${String(r.month).padStart(2, '0')}`
 const ledgerYms = computed(() => [...new Set(ledgerRows.value.map(ledgerYmOf))].sort())
@@ -148,10 +166,10 @@ const listRows = computed(() => {
 })
 
 // ── 主图:选中租户趋势 vs 园区均值带 ──
+const parkBand = computed(() => buildParkBand(rowsCur.value, winMonths.value))
 const trendOption = computed<object>(() => {
   const months = winMonths.value
-  const band = buildParkBand(rowsCur.value, months)
-  const diff = months.map((_, i) => (band.hi[i] != null && band.lo[i] != null ? +((band.hi[i] as number) - (band.lo[i] as number)).toFixed(0) : null))
+  const band = parkBand.value
   const name = selRow.value?.name ?? '—'
   return {
     grid: { left: 64, right: 18, top: 34, bottom: 26 },
@@ -160,8 +178,10 @@ const trendOption = computed<object>(() => {
     xAxis: { type: 'category', data: months.map(mShort), boundaryGap: false },
     yAxis: { type: 'value', axisLabel: { formatter: (v: number) => fint(v) } },
     series: [
-      { name: 'lo', type: 'line', data: band.lo, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
-      { name: '均值±σ带', type: 'line', data: diff, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(28,28,28,.07)' }, silent: true, tooltip: { show: false } },
+      // C2:这里曾套一道「半宽/中位 > 20% 就不画带」的门。这条带的 lo=max(0, 均值−一个波动幅度),
+      // 实测七个月的 mean−σ 全为负、lo 全被夹到 0,比值恒等于 1.000 —— 门一挂上就是一个月都不画。
+      // 带无条件画;下沿被 0 截断时读数句闭嘴(见 bandReadout)。
+      ...bandSeries(band.lo, band.hi, { name: '跨户波动范围带' }),
       // spec §C 规则4:稀疏序列缺月不连线蒙混 → connectNulls:false 断点呈现(hint 注明断点含义)
       { name: '园区均值', type: 'line', connectNulls: false, data: band.mean, symbol: 'none', lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.4)' }, itemStyle: { color: 'rgba(28,28,28,.4)' } },
       { name, type: 'line', connectNulls: false, data: tenantSeries(selRow.value, months), symbolSize: 7, lineStyle: { width: 2.5, color: '#378ADD' }, itemStyle: { color: '#378ADD' } },
@@ -286,7 +306,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     <template #kpis>
       <template v-if="loaded && !err && s10Months.length">
       <AnaKpiTile label="本期覆盖租户" :value="`${rowsCur.length} 户`" :note="curYm" />
-      <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户 σ ${fint(crossStd)}`" />
+      <AnaKpiTile :label="`户均${metricLabel}`" :value="`${fint(crossMean)} 元`" :note="`跨户波动 ${fint(crossStd)} 元`" />
       <!-- spec §C/C1 人话化:主标签人话,z 分数口径退 AnaMethodNote(计算零变化) -->
       <AnaKpiTile label="用量异常户" :value="`${anomCount} 户`" note="较自身常态明显偏离" />
       <AnaKpiTile v-if="curCollect" :label="`收缴率(${ledgerYm})`" :value="`${curCollect.rate}%`" :delta="+(curCollect.rate - anaSettings.collectTarget).toFixed(1)" :kind="`vs 目标 ${anaSettings.collectTarget}%`" />
@@ -355,15 +375,11 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="av2-card">
             <div class="av2-card-h">
               <span class="t">{{ selRow?.name ?? '—' }} · {{ metricLabel }}趋势 vs 园区均值带</span>
-              <span class="hint">窗口 {{ winMonths.length }} 期 · 灰带=跨户均值±σ · 断点=该月无记录{{ byFamily ? ' · 趋势为主租户本户' : '' }}</span>
+              <span class="hint">窗口 {{ winMonths.length }} 期{{ byFamily ? ' · 主租户本户' : '' }}</span>
             </div>
             <AnaEChart :option="trendOption" :height="300" />
-            <AnaMethodNote>
-              口径:s10 为费用金额(元),电费=基本+标准+维护电费、水费=标准+维护水费,非用量;合同面积未录入,单位面积强度口径不可用。
-              s10 覆盖 {{ s10Months.length }} 期({{ s10Months.join(' / ') }})。
-              异常=该户本期用量偏离其12个月均值超1.3倍标准差(z分数)。
-              家族=租户管理中的关联关系(parent_id);「按家族」仅作用于左侧榜单(成员本期金额加总重排),KPI 计数口径仍按户;点击家族行,右侧趋势/应收降级为主租户本户。
-            </AnaMethodNote>
+            <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
+            <p class="ana-ref">{{ bandRefText }}</p>
           </div>
           <div class="av2-card">
             <div class="av2-card-h">
@@ -384,7 +400,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
                 </div>
               </template>
               <div v-else class="te2-none" style="padding: 28px 0">该租户台账无应收/实收记录</div>
-              <AnaMethodNote>台账仅覆盖 {{ ledgerYms.length }} 期({{ ledgerYms.join(' / ') }});收缴率=Σ实收/Σ应收,实收含补缴上期结余,可超 100%。</AnaMethodNote>
             </template>
             <AnaEmpty v-else label="月度台账未录入" hint="录入台账后此处对照该租户应收与实收" to="/ledger" toText="去录入台账" />
           </div>
@@ -411,7 +426,6 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
           <div class="cz-legend" style="margin-top: 6px">
             <span v-for="p in presentPhases" :key="p" class="cz-leg"><span class="sw" :style="{ background: phaseHex(p) }"></span>{{ phaseName(p) }}</span>
           </div>
-          <AnaMethodNote>仅显示与主数据同名匹配到月租金的 {{ scatterRows.length }} 户(共 {{ rowsCur.length }} 户)。</AnaMethodNote>
         </div>
       </div>
     </div>

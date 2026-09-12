@@ -14,7 +14,6 @@ import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaTrend from '@/components/ana/AnaTrend.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { anaSettings } from '@/analysis/anaSettings'
@@ -219,7 +218,6 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
             <div class="av2-card-h"><span class="t">收款实现瀑布 · {{ cur.ym }}</span>
               <span class="hint">期初欠费 → 本期应收 → 本期实收 → 期末欠费 · 蓝＝加项 / 红＝减项</span></div>
             <AnaEChart :option="wfOpt" :height="250" />
-            <AnaMethodNote>欠费结余口径:期末＝期初＋本期应收(21费合计)−本期实收;实收＞应收表示收回历史欠费。</AnaMethodNote>
           </div>
 
           <!-- 次图 s4:收缴率 vs 目标(SVG 子弹条原语保留) -->
@@ -231,7 +229,6 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
                 :target="anaSettings.collectTarget"
                 :fill="p.rate >= anaSettings.collectTarget ? 'var(--fill-blue)' : 'var(--hue-orange)'" />
             </div>
-            <AnaMethodNote>收缴率＝Σ实收 ÷ Σ应收 × 100;台账仅 {{ ledgerPeriods.length }} 期,趋势结论需谨慎(覆盖度口径)。</AnaMethodNote>
           </div>
 
           <!-- 应收 vs 实收 分组柱 s8(点柱→该期欠费租户清单) -->
@@ -251,7 +248,6 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <div class="av2-card-h"><span class="t">附表10 现收 · 逐期</span>
             <span class="hint">园区口径(不随公司过滤) · {{ s10Months.length }} 期</span></div>
           <AnaTrend :labels="s10Months" :cur="s10Totals" unit="万" :height="200" cur-name="现收合计" />
-          <AnaMethodNote>25 费项合计,仅有数据月份;s10 无公司维度,本卡不随公司选择器过滤。</AnaMethodNote>
         </div>
 
         <!-- 欠费账龄 s4(spec §D:FIFO 冲抵分桶;随公司过滤联动;台账空整卡不渲) -->
@@ -281,15 +277,14 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
               <span class="cnt">{{ b.tenantCount }} {{ famOn ? '族' : '户' }}</span>
             </div>
           </div>
-          <AnaMethodNote>净欠费(应收−实收)按月入队,实收结余 FIFO 冲抵最旧;期初旧账早于覆盖窗口,固定归 &gt;6月。<template v-if="famOn">家族=租户管理中的关联关系(parent_id);按家族汇总时,家族成员的流水合并后计算——家族内某成员的预收/多收会抵减其他成员的欠费(同一实际客户口径),故家族合计可能小于逐户合计。</template><template v-else>口径=欠费户余额合计(预收不抵他户欠费),略高于左侧「期末欠费结余」净额。</template></AnaMethodNote>
         </div>
 
         <!-- spec 必选空态:下半屏 现金流量表引导 s12 -->
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">现金流量表</span>
-            <span class="hint">经营 / 投资 / 筹资 三段 · 现金流瀑布 · 自由现金流 FCF</span></div>
+            <span class="hint">经营/投资/筹资三段</span></div>
           <AnaEmpty label="现金流量表数据待录入"
-            hint="园区当前无经营/投资/筹资三段现金流数据源;录入现金流量表后,此处呈现三段净额对比、期初→期末现金瀑布与 FCF(原型 screen-fin-cashflow 全量视图)"
+            hint="录入后展示三段净额对比、现金瀑布与自由现金流"
             to="/reports-home" toText="去报表中心" />
         </div>
       </div>

@@ -12,7 +12,6 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import { fnum, STATUS } from '@/components/ana/anaFmt'
 import { finWan } from '@/utils/finFmt'
@@ -310,12 +309,6 @@ const spreadOption = computed<object>(() => ({
           </div>
         </div>
 
-        <AnaMethodNote>
-          口径:四指标 = 成本总览派生指标同一计算体(/metrics-year,与单月卡全等),缺源月为空不补 0;
-          结构柱 = 费项月度值(拆分行在场以 Σ拆分为准,合计行退让 — ELEC-COST §3),运营净额 = 电表费用−分摊额度,
-          功率因数奖励与光伏上网收益按抵减记负向段;购售价差 = 电价参数(当月优先、回退默认),
-          月损益 =(公告价−执行价)×附表11 购电量。模拟行(灰标)由真实电费单导入后自动替换。
-        </AnaMethodNote>
       </template>
     </div>
   </AnaShell>

@@ -15,7 +15,6 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { fint, fnum } from '@/components/ana/anaFmt'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
@@ -322,7 +321,6 @@ const areaBarOption = computed(() => ({
         </div>
       </div>
 
-      <AnaMethodNote>口径:出租率主口径按面积(Σ在租面积÷Σ可租面积,后端 BuildingService.occRateOf 单一判据),库内 building.rentable_area 仅 1/30 栋非 0 → 分母缺失渲染「—」,副标给单元口径(Σ已占单元÷Σ单元,与楼栋管理同源);同理 building.total_area 仅 1/30 栋非 0,平均分摊率分子>分母时不出数。本屏以有效合同(active/expiring)的月租与租户分布呈现楼栋结构,楼栋租户数为去重口径。面积转换卡只聚合建筑/租赁面积均已录入的在租合同(覆盖率见卡头),换算系数=Σ建筑÷Σ租赁(录入基准 0.8),平均分摊率=Σ在租建筑÷Σ楼栋建筑面积。</AnaMethodNote>
     </div>
   </AnaShell>
 </template>

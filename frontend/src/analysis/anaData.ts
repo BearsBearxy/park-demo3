@@ -21,6 +21,7 @@
 // ├─ fetchBudgetAll()           ├ budget / cockpit(预算达成卡)           ├ BudgetRowDTO[](全部年份,表小一次拉全)
 // ├─ fetchTenants()/fetchTenantSummary()      ├ cockpit/park/portfolio/churn ├ TenantDTO[] / TenantSummaryDTO
 // ├─ fetchContracts()/fetchContractSummary()  ├ park/portfolio/expiry/cockpit├ ContractDTO[] / ContractSummaryDTO
+// ├─ fetchContractDetail(id)     ├ tenant-peer(头部物业类型)              ├ ContractDetailDTO(含 billingLines)
 // ├─ fetchBuildings()/fetchBuildingDetail(id) ├ park                        ├ BuildingDTO[] / BuildingDetailDTO
 // ├─ fetchBuildingSummary()      ├ park(全园出租率,面积口径)              ├ BuildingSummaryDTO(occRate 可空)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -92,6 +93,31 @@ export interface PnlSummary {
   profit: (number | null)[]     // revenue − cost(两侧任一为 null → null)
   bySchedule: Record<string, PnlBand>
 }
+
+/**
+ * 未闭月(离群月)判定 —— **全站唯一一处**(FORECAST-BAND §2.7)。
+ *
+ * 判据只看损益侧收入是否为负:2025-12 的 pnl_row s1 园区总租金收入是 −341.3 万(二期 −665.9 万),
+ * 距点预测 42.7 个残差标准差。**逐格判,不整期丢** —— 同一个 12 月,
+ * buildEnergyMonths(:283-320) 那条能耗序列完全干净(电量 811,100 度正常入账),
+ * 整期丢等于白扔四条与损益无关的序列的最后一个点。
+ *
+ * 谓词本体来自 breakeven.logic.ts:38(那里为了 CVP 收入线不倒挂已经这么判过一次),
+ * 提上来三处共用:CVP 口径月锚、驾驶舱趋势轴、预算达成率分母。
+ *
+ * ⚠ null ≠ 负收入。缺数据月是「没录」,负收入月是「录了,值就是负的」,两者画法不同。
+ *
+ * ⚠ 函数名里的 outlier 是统计意义上的「离趋势很远」,不是「数据脏」。库里只记了
+ * 「二期租金收入这个月是负的」,分不出冲回还是真亏损;用户 2026-09-12 说那就是损失
+ * (有租户倒欠这么多租金)。所以**屏上不写「离群」也不写「污染」** —— 那是把一次真实亏损
+ * 说成脏数据。屏上只陈述两件实测:这个月收入为负,它离拟合线多少倍残差。
+ */
+export function isOutlierMonth(revenue: (number | null)[], m: number): boolean {
+  const v = revenue[m - 1]
+  return v != null && v < 0
+}
+
+/** 可用月 = 覆盖月剔掉离群月;**全离群时原样返回** —— 返回空数组会让下游分母为 0,屏上出 NaN%。 */
 
 const SCHEDULES = ['s1', 's2', 's3', 's4', 's5'] as const
 // s5 底带大合计行「运营费用总计」= 销售+管理+财务+修缮改造(2025 库 m1 已 SQL 回验:1,060,875.45)
@@ -252,6 +278,8 @@ export function fetchTenants() { return cached('tenants', () => tenantApi.list()
 export function fetchTenantSummary() { return cached('tenantSummary', () => tenantApi.summary()) }
 export function fetchContracts() { return cached('contracts', () => contractApi.list()) }
 export function fetchContractSummary() { return cached('contractSummary', () => contractApi.summary()) }
+// tenant-peer 头部「物业类型」:只为选中租户的主合同查一次计费行(不为整批同类都查,见 TenantPeer.logic.ts)
+export function fetchContractDetail(id: number) { return cached(`contractDetail:${id}`, () => contractApi.detail(id)) }
 export function fetchBuildings() { return cached('buildings', () => buildingApi.list()) }
 // 全园出租率(面积口径)只取 buildings/summary 的 occRate —— 唯一判据是后端 BuildingService.occRateOf,
 // METRIC-SOURCE-SPEC §1 禁止前端拿 leasedArea/rentableArea 把公式再实现一遍(全园与单栋必须同源)。

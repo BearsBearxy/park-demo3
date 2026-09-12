@@ -38,7 +38,7 @@ export interface MonitorModel {
   lastLedgerYm: string | null
   lastS10Ym: string | null
   cards: { risk: number; watch: number; arrearsTotal: number; arrearsCount: number; spikeTenants: number }
-  band: Record<string, { p25: number; p75: number }>   // 月 → 园区租户电费 P25/P75(灰带)
+  band: Record<string, { p25: number; p75: number; n: number }>   // 月 → 园区租户电费 P25/P75(灰带;D3 三档 <20 户不建 key)
 }
 export interface MonitorOpts { collectTarget: number; spikeTh: number; riskTh: number }
 
@@ -61,6 +61,26 @@ export function weighScore(parts: { pay: number | null; rev: number | null; ener
   if (parts.rev != null) { num += W_REV * parts.rev; den += W_REV }
   if (parts.energy != null) { num += W_ENERGY * parts.energy; den += W_ENERGY }
   return den > 0 ? Math.round(num / den) : 0
+}
+
+/**
+ * 电费读数句:选中租户末月电费 vs 全园 P25~P75 区间(v/band 任一缺 → 闭嘴,不写占位句)。
+ *
+ * N6(对抗复查修复轮2):这条带是按下面 buildParkBand 里全部计费租户建的,不是按可比分组 ——
+ * 「同类」这个词声称的比数据撑得住的多(洗衣房和重工业厂被放进同一个分布里排位次),改成据实的
+ * 「全园」。若将来要做一个真正可比的分组口径,是另一件事,不在这次改动里。
+ */
+export function elecReadout(v: number | null, band: { p25: number; p75: number } | undefined): string | null {
+  if (v == null || !band) return null
+  const pos = v > band.p75 ? '高于' : v < band.p25 ? '低于' : '落在'
+  return `电费${pos}全园区间 ¥${fInt(band.p25)}~¥${fInt(band.p75)}`
+}
+
+/** 参照系小字(F2 修复轮1):只说三件 —— 样本量 · 口径列 · 单位,不解释画法
+ *  (句子不该替画法背书)。acct_month 是列名,屏上写「记账月」(F1)。 */
+export function elecBandRef(n: number | null): string {
+  const sample = n != null ? `样本${n}户` : '全园不足20户'
+  return `记账月口径 · 元 · ${sample}`
 }
 
 /** 选中租户 应收vs实收 分期条(台账各期,跨公司求和)。 */
@@ -112,12 +132,14 @@ export function buildMonitorModel(ledger: AnalysisLedgerRow[], s10: AnalysisS10R
     phaseOf.set(r.tenantName, r.phase)   // 行按月升序 → 留最近行期区
   }
 
-  // ── 园区灰带:各月 租户电费 P25/P75(同类=全部计费租户) ──
-  const band: Record<string, { p25: number; p75: number }> = {}
+  // ── 园区灰带:各月 租户电费 P25/P75(按全园全部计费租户建,不分行业/品类;D3 三档:<20 户不建带) ──
+  const band: Record<string, { p25: number; p75: number; n: number }> = {}
   for (const m of s10Months) {
     const vals: number[] = []
     for (const byM of byTenant.values()) { const v = byM.get(m); if (v && v.elec > 0) vals.push(v.elec) }
-    if (vals.length) band[m] = { p25: quantile(vals, 0.25), p75: quantile(vals, 0.75) }
+    if (vals.length >= 20) {
+      band[m] = { p25: quantile(vals, 0.25), p75: quantile(vals, 0.75), n: vals.length }
+    }
   }
 
   // ── 逐租户评分 + 规则命中 ──

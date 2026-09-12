@@ -13,11 +13,12 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
+import AnaForecastChart from '@/components/ana/AnaForecastChart.vue'
+import { rollingForecastRows, prevYearUsable } from './forecastChart.logic'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
-import AnaMethodNote from '@/components/ana/AnaMethodNote.vue'
 import { iconFor } from '@/components/ds/icon'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { CMP_BASELINE, CMP_BUDGET, STATUS, fint, fnum } from '@/components/ana/anaFmt'
+import { STATUS, fint, fnum, sgn } from '@/components/ana/anaFmt'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { anaSettings } from '@/analysis/anaSettings'
 import { useCompare } from '@/analysis/useCompare'
@@ -27,7 +28,7 @@ import {
   type AnaAnomaly, type AnomalyInputs, type CollectRate, type PnlSummary, type S10PhaseMonthly,
 } from '@/analysis/anaData'
 import {
-  anchorMonth, arrearsOf, atPeriod, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, mainChart, momOf, phaseStack, schedTrend,
+  achLabelText, achNoteText, anchorMonth, arrearsOf, atPnlPeriod, backtestReadout, backtestRefText, backtestRows, backtestSummary, budgetAch, budgetRevenueOf, buildConclusion, colPick, compoData, fitBandAt, fitRevenueTrend, nextMonthForecast, nextForecastReadout, nextForecastRefText, mainChart, mainChartOption, mainChartOutlierNote, momOf, monthRangeLabel, outlierReadout, outlierRefText, outlierResidual, outlierResidualsByMonth, phaseStack, pnlYearMonths, revNoteText, schedTrend,
 } from './cockpit.logic'
 import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
@@ -41,6 +42,9 @@ const cmp = useCompare(['mom', 'budget'])   // 屏声明支持集(AnaShell 同�
 
 // ── 取数(period 无关项拉一次;pnl 随年切换;全走 anaData 缓存) ──
 const pnl = ref<PnlSummary | null>(null)
+// 上一年:只给逐月预测带用(把去年尾月接到横轴左边,今年 1 月才有三个在前的点)。
+// 取不到就是 null —— 老园区第一年没有上一年很正常,不能因此让整屏出错。
+const prevPnl = ref<PnlSummary | null>(null)
 const collects = ref<CollectRate[]>([])
 const s10Phase = ref<S10PhaseMonthly | null>(null)
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
@@ -61,6 +65,10 @@ watch(year, (y) => {
     .then((v) => { if (t === token) pnl.value = v })
     .catch(() => { if (t === token) pnl.value = null })
     .finally(() => { if (t === token) pnlLoading.value = false })
+  // 上一年单独取,失败/为空都只让预测带退回本年口径,不进 pnlLoading,不拖住整屏。
+  fetchPnlSummary(y - 1)
+    .then((v) => { if (t === token) prevPnl.value = v })
+    .catch(() => { if (t === token) prevPnl.value = null })
 }, { immediate: true })
 
 async function reload() {
@@ -97,47 +105,82 @@ const pnlUsedYm = computed(() => (isMonth.value && usedMi.value !== mi.value ? y
 // §五策略3:所选年无损益附表 → 主区整体空态(禁止沿用旧年图表)
 const pnlEmpty = computed(() => !pnl.value?.months.length)
 
-const rev = computed(() => atPeriod(pnl.value?.revenue, isMonth.value, usedMi.value))
-const cost = computed(() => atPeriod(pnl.value?.cost, isMonth.value, usedMi.value))
-const prof = computed(() => atPeriod(pnl.value?.profit, isMonth.value, usedMi.value))
+// I4(对抗复查):年粒度下这三个数与「预算达成」共用同一批月份(pnlYearMonths)。
+// 改前 atPeriod 把 2025-12 那笔年末冲回(收入 −63.6 万)也加进年度合计,而达成率把它剔了 ——
+// 同一条 KPI 条上「营收合计 ¥8,772万」与「预算达成 95.3%(¥9,271万)」一除得 94.6%,对不上。
+// 月粒度不受影响:点开 12 月就该看见那笔冲回本身。覆盖区间印在各瓦 note 上(pnlRange),不隐瞒。
+const yearMonths = computed(() => pnlYearMonths(pnl.value))
+const rev = computed(() => atPnlPeriod(pnl.value?.revenue, isMonth.value, usedMi.value, yearMonths.value))
+const cost = computed(() => atPnlPeriod(pnl.value?.cost, isMonth.value, usedMi.value, yearMonths.value))
+const prof = computed(() => atPnlPeriod(pnl.value?.profit, isMonth.value, usedMi.value, yearMonths.value))
 const margin = computed(() => (rev.value && prof.value != null ? (prof.value / rev.value) * 100 : null))
 const cp = computed(() => colPick(collects.value, isMonth.value, year.value, period.ym.value))
 const ach = computed(() => budgetAch(budgetRows.value, pnl.value, year.value))
+// 未闭月护栏(FORECAST §2.7):副标题按可用月印覆盖区间,不写「已闭月」(该端点语义是审核状态,分析层不消费)。
+// I4:达成率与营收/成本/利润三瓦共用 pnlYearMonths,所以覆盖区间也只算一次,四个瓦印的是同一句。
+// 月粒度下这三瓦本就是显示当月实值(不是年度口径),没有覆盖区间可印 —— 空字符串是对的。
+const pnlRange = computed(() => (isMonth.value ? '' : monthRangeLabel(yearMonths.value)))
+// N2(修复轮2):预算达成永远是年度口径(budgetAch 不吃 isMonth),覆盖区间不能跟着 pnlRange
+// 在月粒度下被清空 —— 否则默认打开驾驶舱看到的是「¥9,271万 · 」,分隔符后面空的。
+const achNote = computed(() => achNoteText(ach.value, ach.value ? money(ach.value.budget) : '', year.value))
+// F3(修复轮1,design-boards):覆盖表派给本任务的三处文案 —— 「预算达成」瓦标题/「N期收入」瓦 note,
+// 计算逻辑抽成 cockpit.logic.ts 的纯函数(achLabelText/revNoteText,与本文件其余屏内变换同规矩,
+// 单测见 cockpit.logic.spec.ts),这里只接线。
+const achLabel = computed(() => achLabelText(ach.value))
+const revNote = computed(() => revNoteText(isMonth.value, yearMonths.value, pnlRange.value))
 
 // ── 主图(对比开关:mom=上月收入虚线;budget=预算月均虚线;markLine=当年预算/12 常显) ──
 interface EcClick { componentType?: string; seriesName?: string; dataIndex?: number; name?: string }
-const mc = computed(() => mainChart(pnl.value, budgetRevenueOf(budgetRows.value, year.value)))
-const mainOption = computed<object | null>(() => {
-  const d = mc.value
-  if (!d || !d.covered) return null
-  const series: object[] = [
-    {
-      name: '收入', type: 'bar', data: d.rev, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
-      markLine: d.budgetAvgWan != null ? {
-        silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
-        // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
-        label: { position: 'insideEndTop', formatter: `预算月均 ${d.budgetAvgWan}万`, fontSize: 11, color: CMP_BUDGET },
-        data: [{ yAxis: d.budgetAvgWan }],
-      } : undefined,
-    },
-    { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
-  ]
-  if (cmp.mode.value === 'mom') {
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
-  }
-  if (cmp.mode.value === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
-  }
-  return {
-    grid: { left: 52, right: 18, top: 32, bottom: 42 },
-    legend: { top: 0 },
-    tooltip: { trigger: 'axis', valueFormatter: (v: number | null) => (v == null ? '—' : fnum(v) + '万') },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 12, bottom: 6, borderColor: 'transparent' }],
-    xAxis: { type: 'category', data: d.labels },
-    yAxis: { type: 'value', axisLabel: { formatter: '{value}万' } },
-    series,
-  }
+const budgetYuan = computed(() => budgetRevenueOf(budgetRows.value, year.value))
+const mc = computed(() => mainChart(pnl.value, budgetYuan.value))
+
+// T1/T2(design-boards 2026-09-11):月度收入 OLS 拟合 —— 全屏唯一一份(fitRevenueTrend),
+// 下面三个 KPI 瓦与主图的趋势线/拟合区间/离群残差标注全部从这一个 fit 读,不再各算一次回归。
+const fit = computed(() => fitRevenueTrend(pnl.value))
+const outlierRes = computed(() => outlierResidual(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
+// F4(修复轮1):主图 markPoint 逐点标注用,每根 pin 各取自己月份的残差倍数(不像 outlierRes 那样固定第一个月)
+const outlierResByMonth = computed(() => outlierResidualsByMonth(fit.value, mc.value?.rev ?? [], mc.value?.outlierMonths ?? []))
+const outlierRead = computed(() => outlierReadout(fit.value, outlierRes.value))
+const outlierRef = computed(() => outlierRefText(fit.value))
+// 下月预测(用户 2026-09-12:只要「录了这个月,看到下个月大概多少」)。
+// 与下面回测表每一站同一套算法 —— 理由见 cockpit.logic.ts nextMonthForecast 头注。
+const forecast = computed(() => nextMonthForecast(pnl.value))
+const forecastRead = computed(() => nextForecastReadout(forecast.value))
+const forecastRef = computed(() => nextForecastRefText(forecast.value, backSum.value))
+// 回测:每站只用当时已有的月重新拟合(见 backtestRows 头注)。
+// 「全年会落在哪」那张卡 2026-09-12 整块删掉 —— 用户:「全年分析对用户一点作用没有」。
+const backRows = computed(() => backtestRows(pnl.value, budgetYuan.value))
+const backSum = computed(() => backtestSummary(backRows.value))
+const backRead = computed(() => backtestReadout(backSum.value))
+const backRef = computed(() => backtestRefText(backRows.value))
+// 主图离群月提示(不写「已闭月」—— closed-months 端点语义是审核状态,不是会计封账,分析层零引用)
+const outlierBannerText = computed(() => {
+  const m = mc.value?.outlierMonths[0]
+  // 用户 2026-09-12:不许替他判断那个数是什么,也不许替他把它摘出去。
+  // 改前这句写死「为年末冲回」(库里只有「收入为负」这一个事实,「冲回」是解读),
+  // 而且声称「已排除」。两处都改:只陈述实测到的事实,并说明它**在**年度口径里。
+  return m ? `${year.value}-${String(m).padStart(2, '0')} 收入为负,已计入年度营收/成本/利润与达成率` : ''
 })
+// AnaPeriodBanner selected/used 必填(五个既有屏共享该契约);插槽覆盖了文案,这两个值不上屏,
+// 但仍按实际的离群月/达成率覆盖区间传——都是上面已算出来的值。
+const outlierYm = computed(() => {
+  const m = mc.value?.outlierMonths[0]
+  return m ? ymOf(year.value, m) : ''
+})
+// 未闭月护栏(FORECAST §2.7):y 轴量程(d.yMin)由 mainChart 用 usableMonths 算好,这里只消费;
+// 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
+// F1(对抗复查):option 本体(趋势线/拟合区间/离群标注三块交付物)抽成 cockpit.logic.ts 的纯函数
+// mainChartOption——原先整段写在这个 computed 里,没有挂载测/纯函数覆盖,删掉/清空照样全绿。
+const mainOption = computed<object | null>(() =>
+  mainChartOption(mc.value, outlierResByMonth.value, cmp.mode.value))
+// 2026-09-12(用户):趋势/拟合区间/已录入折线从主图拆出来自成一张,轴不从 0 起——
+// 理由见 forecastChart.logic.ts 头注(ECharts 在类目轴上画不准这种「一个月一段区间」)。
+// 自绘图的数据:逐月预测带(每个月的带只用它之前的月算),见 forecastChart.logic.ts。
+// 上一年一起拉:它的尾月接到横轴左边,今年 1 月才有三个在前的点(用户 2026-09-12 提的跨年机制)。
+// 接不接由 prevYearUsable 判 —— 附表口径不同就不接,理由见该函数头注。
+const rollRows = computed(() => rollingForecastRows(pnl.value, prevPnl.value))
+const prevState = computed<'none' | 'mismatch' | 'spliced'>(() =>
+  prevYearUsable(pnl.value, prevPnl.value) ? 'spliced' : (prevPnl.value?.months.length ? 'mismatch' : 'none'))
 // 点击月柱 → 期间切至该月(usePeriod 校验非法月自动忽略)→ 全屏联动
 function onMainClick(p: unknown): void {
   const e = p as EcClick
@@ -147,7 +190,8 @@ function onMainClick(p: unknown): void {
 }
 
 // ── 收入构成环(点扇区 → 该板块 12 月趋势弹层;月锚随 usedMi,与 KPI 同口径) ──
-const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value))
+// N1(修复轮2):与 rev/cost/prof 共用 yearMonths,收入构成合计不再是另一个数(见 cockpit.logic.ts)。
+const compo = computed(() => compoData(pnl.value, isMonth.value, usedMi.value, yearMonths.value))
 const compoTotal = computed(() => compo.value.reduce((s, d) => s + d.value, 0))
 // 名义分类(租金/用电/用水/运管)须异色:主题色板前 4 位是蓝族渐变(给「分期收入堆叠」这类有序量用的),
 // 4 扇区环恰好取满前 4 位 → 全蓝难辨。此处局部指定 4 个可区分色相,不动全局主题。
@@ -273,20 +317,28 @@ const conclusion = computed(() => buildConclusion(
 
     <!-- KPI 条(spec:营收/成本/利润率/收缴率 vs 目标/预算达成/在租租户) -->
     <template #kpis>
-      <AnaKpiTile :label="isMonth ? '营业收入' : '营收合计'" :value="money(rev)"
-        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" />
-      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" />
+      <!-- I4:年粒度三瓦与「预算达成」同批月份,覆盖区间印在 note 上(月粒度 pnlRange 为空,note 不出现) -->
+      <!-- F3(修复轮1):年粒度标题/note 按稿改「N-M 月收入」/「N 期,已剔 M 月」(revNote,见上方计算属性头注) -->
+      <AnaKpiTile :label="isMonth ? '营业收入' : pnlRange + '收入'" :value="money(rev)"
+        :delta="momOf(pnl?.revenue, isMonth, usedMi)" kind="环比" :trend="pnl?.revenue" :note="revNote" />
+      <AnaKpiTile label="成本费用" :value="money(cost)" :delta="momOf(pnl?.cost, isMonth, usedMi)" kind="环比" invert :trend="pnl?.cost" :note="pnlRange || undefined" />
+      <!-- 数值失真门(普查稿 §2.5):基数过小时利润率会被放大成失真的大百分比,上限守卫不印具体数 -->
       <AnaKpiTile label="园区利润" :value="money(prof)"
-        :note="margin != null ? '利润率 ' + margin.toFixed(1) + '%' : '当期无损益数据'" :trend="pnl?.profit" />
+        :note="(margin != null ? (margin > 300 ? '利润率 — 基数过小' : '利润率 ' + margin.toFixed(1) + '%') : '当期无损益数据') + (pnlRange ? ' · ' + pnlRange : '')" :trend="pnl?.profit" />
       <!-- 副文案人话化(2026-07-20 用户反馈):delta=−15.5pt + kind=距目标96%,口径区间挪 note 行 -->
       <AnaKpiTile label="收缴率" :value="cp ? cp.rate.toFixed(1) + '%' : '—'"
         :delta="cp ? +(cp.rate - anaSettings.collectTarget).toFixed(1) : null"
         :kind="cp ? `距目标${anaSettings.collectTarget}%` : ''" unit="pt"
         :note="cp ? `${cp.ym}累计实收/应收` : '台账未录入'" :trend="collects.map((c) => c.rate)" />
-      <AnaKpiTile label="预算达成" :value="ach ? ach.rate.toFixed(1) + '%' : '—'"
-        :note="ach ? `${year}年预算 ${money(ach.budget)}` : `${year}年未导入预算`" />
+      <!-- 未闭月护栏(FORECAST §2.7):分母排除离群月,副标题印 usedMonths 覆盖区间(不写「已闭月」) -->
+      <!-- N2:达成率是年度口径,覆盖区间用 achNote(不借 pnlRange —— 那个在月粒度下是空的) -->
+      <AnaKpiTile :label="achLabel" :value="ach ? ach.rate.toFixed(1) + '%' : '—'" :note="achNote" />
       <AnaKpiTile label="在租租户(计数口径)" :value="tenantSum ? fint(tenantSum.tenantActive) + ' 户' : '—'"
         :note="contractSum ? `在租合同 ${fint(contractSum.contractActive)} 份` : undefined" />
+      <!-- T1(design-boards 2026-09-11):三个新瓦,与主图共用同一份 fit(见 fit 计算属性头注) -->
+      <AnaKpiTile label="月均增速" :value="fit ? sgn(fit.slope, 1, '万/月') : '—'"
+        :note="fit ? '拟合优度 ' + fit.r2.toFixed(2) : undefined" />
+      <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
     </template>
 
     <div v-if="!ready || pnlLoading" class="page-loading"><span class="page-spin" /></div>
@@ -316,11 +368,20 @@ const conclusion = computed(() => buildConclusion(
       <!-- 主图 s8:收入柱+利润线 -->
       <div class="av2-card av2-s8">
         <div class="av2-card-h">
-          <span class="t">收入与利润 · {{ year }}年</span>
+          <!-- F3(修复轮1):图标题按稿改「月度收入 · 预测护栏」——年份已在顶部期间选择器与下方 hint 里,标题不必重复 -->
+          <span class="t">月度收入 · 预测护栏</span>
           <span class="hint">覆盖 {{ mc?.covered ?? 0 }} 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
         </div>
+        <!-- 未闭月护栏(FORECAST §2.7):该年含离群月(收入<0)时提示,不写「已闭月」 -->
+        <AnaPeriodBanner v-if="outlierBannerText" :selected="outlierYm" :used="pnlRange" style="margin-bottom: 8px">{{ outlierBannerText }}</AnaPeriodBanner>
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
+        <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
+        <p v-if="outlierRead" class="ana-read">{{ outlierRead }}</p>
+        <p v-if="outlierRef" class="ana-ref">{{ outlierRef }}</p>
+        <!-- F1(修复轮1,design-boards):稿上 ⓘ 门后那句反过度承诺的判据说明,改前屏上没有、仓库里 grep 不到 ——
+             这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。
+             F6(对抗复查):板上原句把月份(m12)/附表(s1)写死了,改成由 mc.outlierMonths 驱动,见 cockpit.logic.ts mainChartOutlierNote。 -->
       </div>
 
       <!-- s4:收入构成环 -->
@@ -331,6 +392,24 @@ const conclusion = computed(() => buildConclusion(
         </div>
         <AnaEChart v-if="compo.length" :option="donutOption" :height="300" @chart-click="onDonutClick" />
         <AnaEmpty v-else label="当期无收入构成数据" hint="构成来自损益附表 1~4 各板块收入" to="/rent-pnl" to-text="去录入损益附表" />
+      </div>
+
+
+      <!-- 2026-09-12(用户):收入趋势 · 下月预测 —— 从主图拆出来的独立图。主图是 0 起的柱图,
+           三条线挤在柱顶那一小段里看不出斜率;这张图没有柱子,轴不从 0 起,离群月留断口。 -->
+      <div v-if="rollRows" class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">收入趋势 · 下月预测</span>
+          <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
+        </div>
+        <AnaForecastChart :rows="rollRows" :height="280" :prev-state="prevState" />
+        <!-- 下月预测的读数句与参照系小字:参照系里带着这套算法过去的实测命中,与读数句同屏(D1)。 -->
+        <template v-if="forecastRead">
+          <p class="ana-read">{{ forecastRead }}</p>
+          <p class="ana-ref">{{ forecastRef }}</p>
+        </template>
+        <!-- 没有下月可预测时说清楚为什么,不留一张光秃秃的图让人以为功能坏了。 -->
+        <p v-else class="ana-ref">本年 12 个月已录满，没有下月可预测</p>
       </div>
 
       <!-- 第二排 s4×3 -->
@@ -368,11 +447,35 @@ const conclusion = computed(() => buildConclusion(
         <AnaEmpty v-else label="当前规则下暂无异常" hint="收缴率/能耗环比/收入中断/负值行 四规则均未触发" />
       </div>
 
+      <!-- T3:这条带过去准不准——滚动起点回测,每站只用当时已有的月,不复用 T1 的单次 fit;
+           六列数据比四行三列的邻卡宽得多,独占一整行不挤 -->
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">这条带过去准不准</span>
+          <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
+        </div>
+        <table v-if="backRows" class="ak-tbl">
+          <thead><tr><th>站在哪个月末</th><th>下月预测</th><th>区间</th><th>实际</th><th>中没中</th></tr></thead>
+          <tbody>
+            <tr v-for="r in backRows" :key="r.vantageMonth">
+              <td>{{ r.vantageMonth }}月末{{ r.isLast ? '（今天）' : '' }}</td>
+              <td class="mono">{{ fint(r.predictMid) }}万</td>
+              <td class="mono">{{ fint(r.lo) }}~{{ fint(r.hi) }}</td>
+              <td class="mono">{{ r.actualWan != null ? fint(r.actualWan) + '万' : '—' }}</td>
+              <td>
+                <span v-if="r.hit == null" style="color: var(--text-muted)">待验</span>
+                <span v-else-if="r.hit" :style="{ color: STATUS.good.color }">命中</span>
+                <span v-else :style="{ color: STATUS.watch.color }">落空 {{ r.under ? '低估' : '高估' }} {{ r.missPct?.toFixed(1) }}%</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <AnaEmpty v-else label="回测需要拟合" hint="滚动起点回测依赖至少 3 个可用月才能起步" />
+        <p v-if="backRead" class="ana-read">{{ backRead }}</p>
+        <p v-if="backRead" class="ana-ref">{{ backRef }}</p>
+      </div>
+
       <div class="av2-s12">
-        <AnaMethodNote>
-          口径:营收/成本/利润 = 损益附表 1~5 园区总计带(成本含附表5运营费用总计);收缴率 = 台账 Σ实收/Σ应收(仅 {{ collects.length }} 期,诚实标注);
-          预算达成 = 年度口径(全面预算总表收入总计);分期收入 = 附表10(已剔期别汇总行)。对比开关:环比=上月收入虚线,预算=预算月均(年预算/12)虚线。
-        </AnaMethodNote>
       </div>
       </div>
     </template>
