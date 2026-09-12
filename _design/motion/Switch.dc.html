@@ -1,0 +1,855 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) =====
+       Paste this whole block into <helmet><style> of every artboard. Do not change values. */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+      --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+      --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+      --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+      --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+      --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+      --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+      --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+      --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+      --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+      --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+      --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+      --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+      --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+      --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+      --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+      --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+      /* motion — existing */
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+      --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+      --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+    }
+
+    /* ECharts theme palette (components/ana/anaTheme.ts) — literal hex, charts cannot read CSS vars */
+    /* sequential blues: #378ADD #85B7EB #B5D4F4 #185FA5 ; categorical: #378ADD #EF9F27 #5DCAA5 #E24B4A #F0997B #185FA5 #85B7EB #B5D4F4 */
+    /* PV screen (views/analysis/pvAnaColors.ts): FOCUS #3675B2 · OUT #9D5D17 · YELLOW #DAB970 · FILL_SLATE #788CB0 · FILL_CYAN #A0CDE8 · FILL_SKY #C4E2F4 · INK300 rgba(28,28,28,.2) */
+
+    /* ===== artboard ===== */
+    /* ECharts cubicOut (zrender easing.js) — named, not invented; used for every 200ms data morph below */
+    :root { --ease-cubic-out: cubic-bezier(0.215, 0.61, 0.355, 1); }
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* header */
+    .hdr { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; }
+    .kick { font-size:11px; font-weight:600; letter-spacing:.08em; color:var(--text-muted); }
+    h1 { margin:0; font-size:20px; font-weight:600; line-height:1.2; }
+    .intro { font-size:12px; color:var(--text-muted); max-width:860px; line-height:1.55; }
+    .hdr-l { display:flex; flex-direction:column; gap:6px; }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .chiprow { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+    .chip { font-size:11px; border-radius:999px; padding:2px 8px; background:#fff; border:1px solid var(--border-subtle); color:var(--text-secondary); font-family:var(--font-mono); line-height:16px; }
+    .chip.k { background:var(--accent-blue); border-color:transparent; color:var(--brand-deep); }
+    .chip.f { background:var(--surface-card); }
+
+    /* block */
+    .blk { display:flex; flex-direction:column; gap:12px; }
+    .blk-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+    .blk-h .n { font-size:16px; font-weight:600; }
+    .blk-h .ids { font-size:11px; font-family:var(--font-mono); color:var(--text-muted); }
+    .blk-h .sub { font-size:12px; color:var(--text-muted); }
+    .blk-body { display:grid; grid-template-columns:minmax(0,1fr) 392px; gap:24px; align-items:start; }
+    .demo { display:flex; flex-direction:column; gap:8px; position:relative; }
+    .ctl { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ctl .lab { font-size:11px; color:var(--text-muted); }
+    .stage { position:relative; background:#fff; border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden; }
+    .stage.sunk { background:var(--surface-sunken); }
+    .cap { font-size:11px; color:var(--text-muted); font-family:var(--font-mono); }
+    .notes { display:flex; flex-direction:column; gap:8px; }
+    .notes .nt { font-size:11px; font-weight:600; letter-spacing:.06em; color:var(--text-muted); }
+    .notes ol { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; }
+    .notes li { display:flex; gap:8px; font-size:12px; line-height:1.55; }
+    .notes li b { color:var(--brand-deep); font-weight:600; }
+    .pn { flex:0 0 22px; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:5; pointer-events:none; }
+    .vs { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .vs-h { font-size:11px; font-weight:600; color:var(--text-muted); letter-spacing:.04em; margin-bottom:6px; display:flex; gap:6px; align-items:center; }
+    .tag { font-size:11px; border-radius:4px; padding:0 5px; line-height:16px; font-family:var(--font-mono); }
+    .tag.bad { background:rgba(226,75,74,.10); color:var(--hue-red); }
+    .tag.ok { background:var(--accent-blue); color:var(--brand-deep); }
+
+    /* replay control */
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; }
+    .rp-btn:hover { background: var(--surface-card); }
+    .rp-btn:active { filter: brightness(0.94); }
+    .rp-btn svg { width:14px; height:14px; }
+
+    /* timeline ruler */
+    .tl { position:relative; height:26px; margin-top:8px; border-top:1px solid var(--divider); --scale:480; }
+    .tl::before { content:'0'; position:absolute; left:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl::after { content:'120 · 200 · 320 ms'; position:absolute; right:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl.long::after { content: var(--right); }
+    .tl-bar { position:absolute; top:-1px; height:3px; background: var(--hue-blue); left: calc(var(--from) / var(--scale) * 100%); width: calc((var(--to) - var(--from)) / var(--scale) * 100%); }
+    .tl-bar::after { content: var(--lbl); position:absolute; left:0; top:6px; white-space:nowrap; font:11px var(--font-mono); color:var(--text-secondary); }
+    .tl-bar.r2 { top:9px; } .tl-bar.r2::after { top:6px; }
+    .tl-bar.gray { background: var(--ink-300); }
+    .tl-bar.orange { background: var(--hue-orange); }
+    .tick { position:absolute; top:-4px; width:1px; height:8px; background: var(--ink-300); left: calc(var(--at) / var(--scale) * 100%); }
+    .tick::after { content: var(--lbl); position:absolute; left:3px; top:8px; font:11px var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+    .tl.tall { height:42px; }
+
+    /* spec table */
+    .tw { background:#fff; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; }
+    table.spec { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+    .spec th { font-size:11px; font-weight:500; color:var(--text-muted); text-align:left; padding:6px 8px; background:var(--surface-card); border-bottom:1px solid var(--divider); }
+    .spec td { padding:6px 8px; vertical-align:top; border-bottom:1px solid var(--divider); line-height:1.5; }
+    .spec tr:last-child td { border-bottom:none; }
+    .spec td.m { font-family:var(--font-mono); font-size:11px; }
+    .spec td.id { font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--brand-deep); white-space:nowrap; }
+    .spec code { font-family:var(--font-mono); font-size:11px; background:var(--surface-sunken); border-radius:4px; padding:0 4px; }
+
+    /* ===== real UI mocks ===== */
+    .anx-tools { position:relative; display:flex; align-items:center; gap:10px; padding:9px 18px; border-bottom:1px solid var(--divider); background:var(--surface-overlay); backdrop-filter:blur(8px); overflow:hidden; }
+    .anx-period { display:inline-flex; align-items:center; gap:8px; }
+    .anx-lbl { font-size:11px; color:var(--text-muted); display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+    .anx-lbl svg { width:14px; height:14px; }
+    .anx-seg { display:inline-flex; background:var(--surface-sunken); border-radius:999px; padding:3px; gap:2px; }
+    .anx-seg .sb { border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12px; font-weight:500; color:var(--text-secondary); padding:5px 12px; border-radius:999px; white-space:nowrap; line-height:1.2; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); user-select:none; }
+    .anx-seg .sb:hover { color: var(--text-primary); }
+    .anx-seg .sb.on { background:#fff; color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    .sel { height:28px; border:1px solid var(--border-subtle); border-radius:8px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 8px 0 10px; font-size:12px; color:var(--text-primary); }
+    .sel svg { width:14px; height:14px; color:var(--text-muted); }
+    .selw { position:relative; flex:0 0 auto; }
+    .anx-nav { display:inline-flex; gap:2px; }
+    .anx-nav .nb { width:28px; height:28px; border-radius:8px; border:1px solid var(--border-subtle); background:#fff; color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; }
+    .anx-nav .nb:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .anx-nav .nb svg { width:15px; height:15px; }
+    .anx-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+    .anx-icobtn { width:34px; height:34px; border-radius:10px; border:1px solid var(--border-subtle); background:#fff; color:var(--text-secondary); display:grid; place-items:center; }
+    .anx-icobtn svg { width:16px; height:16px; }
+    .anx-body { padding:24px; display:flex; flex-direction:column; gap:8px; }
+    .av2-card { background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; position:relative; }
+    .av2-card-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
+    .av2-card-h .t { font-size:14px; font-weight:600; }
+    .av2-card-h .hint { font-size:11px; color:var(--text-muted); text-align:right; }
+    .av2-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; }
+    .s4 { grid-column:span 4; } .s6 { grid-column:span 6; } .s8 { grid-column:span 8; } .s12 { grid-column:span 12; }
+    /* chart mock: bar series with 4 gridlines, ECharts look */
+    .ch { position:relative; height:170px; }
+    .ch .gl { position:absolute; left:0; right:0; height:1px; background:var(--ink-100); }
+    .ch .gl.ax { background:rgba(28,28,28,.15); }
+    .ch .yl { position:absolute; left:0; font:11px var(--font-mono); color:var(--text-muted); transform:translateY(-50%); }
+    .plot { position:absolute; left:34px; right:6px; top:6px; bottom:0; }
+    .bars { position:absolute; inset:0; display:flex; align-items:flex-end; gap:3px; padding:0 2px; }
+    .bars .bar { flex:1; height:100%; background:#378ADD; border-radius:2px 2px 0 0; transform-origin:bottom; transform:scaleY(var(--a)); transition: transform var(--dur-base) var(--ease-cubic-out); }
+    .xl { display:flex; gap:3px; padding:4px 2px 0; margin-left:34px; margin-right:6px; }
+    .xl span { flex:1; font:11px var(--font-mono); color:var(--text-muted); text-align:center; white-space:nowrap; }
+    .xl.dense span:nth-child(2n) { visibility:hidden; }
+
+    /* ===== A · C5-01 ===== */
+    /* segmented state */
+    #ga-m:checked ~ .stage .sg-m, #ga-y:checked ~ .stage .sg-y { background:#fff; color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    /* month select: anx-hid keeps width */
+    #ga-y:checked ~ .stage .selm { visibility:hidden; pointer-events:none; }
+    .ghost { position:absolute; inset:0; border:1px dashed var(--hue-blue); border-radius:8px; display:none; align-items:center; justify-content:center; font:11px var(--font-mono); color:var(--hue-blue); background:var(--accent-blue); }
+    #ga-y:checked ~ .stage .ghost { display:flex; }
+    /* today: v-if unmount pushes siblings */
+    #ga-y:checked ~ .stage .tdy-selm { display:none; }
+    .shift { display:none; font:11px var(--font-mono); color:var(--hue-red); align-items:center; gap:4px; }
+    #ga-y:checked ~ .stage .shift { display:inline-flex; }
+    /* month step values */
+    #ga-7:checked ~ .stage .bars-m .bar { transform:scaleY(var(--b)); }
+    /* category swap: old bars fade 200 (engine), new bars instant */
+    .bars-y { opacity:1; transition:none; }
+    .bars-m { opacity:1; transition:none; }
+    #ga-y:checked ~ .stage .bars-m { opacity:0; transition: opacity var(--dur-base) var(--ease-cubic-out); }
+    #ga-m:checked ~ .stage .bars-y { opacity:0; transition: opacity var(--dur-base) var(--ease-cubic-out); }
+    #ga-y:checked ~ .stage .xl-m, #ga-m:checked ~ .stage .xl-y { display:none; }
+    /* titles / select text */
+    .t8, .t7, .ty, .v8, .v7 { display:none; }
+    #ga-m:checked ~ .stage .t8, #ga-m:checked ~ .stage .v8 { display:inline; }
+    #ga-7:checked ~ .stage .t8, #ga-7:checked ~ .stage .v8 { display:none; }
+    #ga-m:checked ~ .stage .t7, #ga-m:checked ~ .stage .v7 { display:none; }
+    #ga-7:checked ~ .stage .t7, #ga-7:checked ~ .stage .v7 { display:inline; }
+    #ga-y:checked ~ .stage .t8, #ga-y:checked ~ .stage .t7 { display:none; }
+    #ga-y:checked ~ .stage .ty { display:inline; }
+    #ga-m:checked ~ .stage .ty { display:none; }
+    /* ctl state pills */
+    .st { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:11px; font-family:var(--font-mono); cursor:pointer; user-select:none; color:var(--text-secondary); }
+    #ga-m:checked ~ .ctl .st-m, #ga-y:checked ~ .ctl .st-y, #ga-8:checked ~ .ctl .st-8, #ga-7:checked ~ .ctl .st-7,
+    #gc-abs:checked ~ .ctl .st-abs, #gc-book:checked ~ .ctl .st-book, #gc-lab:checked ~ .ctl .st-lab,
+    #gc-open:checked ~ .ctl .st-open, #gc-open:not(:checked) ~ .ctl .st-closed { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+
+    /* ===== B · C5-02 换年 ===== */
+    .lb { position:absolute; left:0; top:0; height:2px; width:100%; background:var(--hue-blue); transform:translateX(-100%); animation: lb-a 900ms var(--ease-both) 200ms 1 both; }
+    .rpB:checked ~ .stage .lb { animation-name: lb-b; }
+    @keyframes lb-a { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    @keyframes lb-b { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    .host { animation: staleIn-a var(--dur-base) var(--ease-out) 200ms forwards, staleOut-a var(--dur-base) var(--ease-out) 1100ms forwards; }
+    .rpB:checked ~ .stage .host { animation-name: staleIn-b, staleOut-b; }
+    @keyframes staleIn-a { from { opacity:1; filter:blur(0); } to { opacity:.42; filter:blur(1.5px); } }
+    @keyframes staleIn-b { from { opacity:1; filter:blur(0); } to { opacity:.42; filter:blur(1.5px); } }
+    @keyframes staleOut-a { from { opacity:.42; filter:blur(1.5px); } to { opacity:1; filter:blur(0); } }
+    @keyframes staleOut-b { from { opacity:.42; filter:blur(1.5px); } to { opacity:1; filter:blur(0); } }
+    .host .bar { transition:none; animation: morphB-a var(--dur-base) var(--ease-cubic-out) 1100ms forwards; }
+    .rpB:checked ~ .stage .host .bar { animation-name: morphB-b; }
+    @keyframes morphB-a { from { transform:scaleY(var(--a)); } to { transform:scaleY(var(--b)); } }
+    @keyframes morphB-b { from { transform:scaleY(var(--a)); } to { transform:scaleY(var(--b)); } }
+    .sw-old { animation: swapOut-a 1100ms step-end forwards; }
+    .sw-new { opacity:0; animation: swapIn-a 1100ms step-end forwards; }
+    .rpB:checked ~ .stage .sw-old { animation-name: swapOut-b; }
+    .rpB:checked ~ .stage .sw-new { animation-name: swapIn-b; }
+    @keyframes swapOut-a { from { opacity:1; position:static; } to { opacity:0; position:absolute; } }
+    @keyframes swapOut-b { from { opacity:1; position:static; } to { opacity:0; position:absolute; } }
+    @keyframes swapIn-a { from { opacity:0; position:absolute; } to { opacity:1; position:static; } }
+    @keyframes swapIn-b { from { opacity:0; position:absolute; } to { opacity:1; position:static; } }
+    .kpi-old, .kpi-new { }
+    /* today: unmount → 240px spinner → remount */
+    .tdy-box { position:relative; overflow:hidden; animation: tdyH-a 1100ms step-end forwards; }
+    .tdy-box .grid { animation: tdyGrid-a 1100ms step-end forwards; }
+    .tdy-box .spin { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#fff; animation: tdySpin-a 1100ms step-end forwards; }
+    .rpB:checked ~ .stage .tdy-box { animation-name: tdyH-b; }
+    .rpB:checked ~ .stage .tdy-box .grid { animation-name: tdyGrid-b; }
+    .rpB:checked ~ .stage .tdy-box .spin { animation-name: tdySpin-b; }
+    @keyframes tdyH-a { from { height:240px; } to { height:324px; } }
+    @keyframes tdyH-b { from { height:240px; } to { height:324px; } }
+    @keyframes tdyGrid-a { from { visibility:hidden; } to { visibility:visible; } }
+    @keyframes tdyGrid-b { from { visibility:hidden; } to { visibility:visible; } }
+    @keyframes tdySpin-a { from { opacity:1; } to { opacity:0; } }
+    @keyframes tdySpin-b { from { opacity:1; } to { opacity:0; } }
+    .page-spin { width:22px; height:22px; border-radius:999px; border:2.5px solid var(--border-subtle); border-top-color:var(--hue-blue); animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .stale-static { opacity:.42; filter:blur(1.5px); }
+    .lb-rm { position:absolute; left:0; top:0; height:2px; width:100%; background:var(--hue-blue); animation: lbPulse 1.6s var(--ease-standard) infinite alternate; }
+    @keyframes lbPulse { from { opacity:.30; } to { opacity:.85; } }
+
+    /* ===== C · C5-03 段控 / C5-04 折叠 ===== */
+    .pma-seg { display:flex; align-items:center; gap:12px; }
+    .seg-md { display:inline-flex; gap:2px; padding:3px; height:32px; background:var(--surface-sunken); border-radius:999px; }
+    .seg-md .si { padding:0 14px; height:100%; border-radius:999px; font-size:14px; font-weight:500; color:var(--text-muted); display:flex; align-items:center; cursor:pointer; user-select:none; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    #gc-abs:checked ~ .stage .si-abs, #gc-book:checked ~ .stage .si-book, #gc-lab:checked ~ .stage .si-lab { background:#fff; color:var(--text-primary); box-shadow:var(--shadow-pill); }
+    .pma-seghint { font-size:11px; line-height:1.5; color:var(--text-muted); }
+    .pma-sec { position:relative; height:236px; overflow:hidden; }
+    .pma-sec::after { content:''; position:absolute; left:0; right:0; bottom:0; height:56px; background:linear-gradient(to bottom, rgba(255,255,255,0), #fff); }
+    .sec { display:none; }
+    #gc-abs:checked ~ .stage .sec-abs, #gc-book:checked ~ .stage .sec-book, #gc-lab:checked ~ .stage .sec-lab { display:grid; }
+    .hlabel { position:absolute; right:12px; top:8px; font:11px var(--font-mono); color:var(--hue-blue); background:var(--accent-blue); border-radius:4px; padding:1px 6px; }
+    .mini-line { height:96px; position:relative; }
+    .mini-line svg { width:100%; height:100%; display:block; }
+    .dots-row { display:flex; align-items:center; height:22px; gap:8px; font-size:11px; }
+    .dots-row .nm { width:40px; color:var(--text-secondary); }
+    .dots-row .st { height:1px; background:var(--ink-300); border:none; border-radius:0; padding:0; }
+    .dots-row .dt { width:7px; height:7px; border-radius:999px; background:var(--ink-300); }
+    /* PvQueue */
+    .pq { width:268px; font-size:12px; }
+    .pq-hd { display:grid; grid-template-columns:12px 1fr 30px 56px; height:20px; align-items:center; font-size:11px; color:var(--text-muted); gap:4px; padding:0 2px; }
+    .pq-hd .n { font-family:var(--font-mono); text-align:right; }
+    .pq-gh { display:flex; align-items:center; gap:6px; width:100%; height:22px; padding:0 2px; margin-top:4px; font-size:11px; color:var(--text-muted); cursor:pointer; border-radius:4px; user-select:none; }
+    .pq-gh:hover { color:var(--text-secondary); background:var(--bg-hover); }
+    .pq-gh .ar { width:12px; height:12px; display:inline-flex; transition: transform var(--dur-fast) var(--ease-standard); }
+    .pq-gh .ar svg { width:12px; height:12px; }
+    #gc-open:checked ~ .stage .pq-gh .ar { transform:rotate(90deg); }
+    .pq-gh .c { margin-left:auto; padding-right:4px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+    .pq-body { display:none; flex-direction:column; }
+    #gc-open:checked ~ .stage .pq-body { display:flex; }
+    .pq-row { display:grid; grid-template-columns:12px 1fr 30px 56px; height:26px; align-items:center; gap:4px; padding:0 2px; }
+    .pq-row .nm { font-size:12px; }
+    .pq-row .num { font:11px var(--font-mono); text-align:right; font-variant-numeric:tabular-nums; }
+    .pq-row.out .num, .pq-row.out .aw { color:var(--hue-orange); }
+    .pq-row.on { background:var(--surface-sunken); box-shadow: inset 2px 0 0 var(--ink-300); }
+    .pq-row.on .nm { font-weight:600; }
+    .pq-row .aw { font:11px var(--font-mono); }
+    .pq-ft { font-size:11px; color:var(--text-muted); margin-top:6px; padding:0 2px; }
+
+    /* ===== D · C5-05 抽屉 / C5-06 浮层 ===== */
+    .dw-stage { height:300px; background:var(--surface-sunken); position:relative; }
+    .dw-page { position:absolute; inset:12px; background:#fff; border:1px solid var(--border-subtle); border-radius:24px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+    .mask { position:absolute; inset:0; background:rgba(28,28,28,.34); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; opacity:0; animation: maskIn-a var(--dur-base) var(--ease-out) forwards; }
+    .rpD:checked ~ .stage .mask { animation-name: maskIn-b; }
+    @keyframes maskIn-a { to { opacity:1; } }
+    @keyframes maskIn-b { to { opacity:1; } }
+    .dwr { width:420px; background:#fff; border:1px solid var(--border-subtle); border-radius:16px; box-shadow:0 24px 64px rgba(28,28,28,.28); overflow:hidden; display:flex; flex-direction:column; animation: riseIn-a var(--dur-base) var(--ease-out) both; }
+    .rpD:checked ~ .stage .dwr { animation-name: riseIn-b; }
+    @keyframes riseIn-a { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:none; } }
+    @keyframes riseIn-b { from { opacity:0; transform:translateY(8px) scale(.985); } to { opacity:1; transform:none; } }
+    .dwr-hd { display:flex; align-items:center; gap:12px; padding:14px 16px 10px; }
+    .dwr-ico { width:40px; height:40px; border-radius:12px; background:var(--surface-card); display:grid; place-items:center; color:var(--text-secondary); }
+    .dwr-ico svg { width:20px; height:20px; }
+    .dwr-t { font-size:16px; font-weight:600; }
+    .dwr-s { font-size:11px; color:var(--text-muted); }
+    .dwr-x { margin-left:auto; width:34px; height:34px; border-radius:10px; border:1px solid var(--border-subtle); display:grid; place-items:center; color:var(--text-secondary); }
+    .dwr-x svg { width:16px; height:16px; }
+    .dwr-bd { padding:0 16px 14px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+    .dwr-bd .av2-card { padding:8px 10px; }
+    .dwr-bd .t { font-size:12px; font-weight:600; margin-bottom:6px; display:block; }
+    .dwr-ft { padding:10px 16px; background:var(--surface-card); display:flex; justify-content:space-between; font-size:11px; color:var(--hue-blue); }
+    .ms { height:56px; position:relative; }
+    .ms .bars { gap:2px; }
+    .ms .bar { transition:none; }
+    /* pops */
+    .pop-stage { height:236px; background:#fff; position:relative; }
+    .pop { position:absolute; background:#fff; border:1px solid var(--border-subtle); border-radius:14px; box-shadow:0 8px 28px rgba(28,28,28,.16); padding:16px; width:268px; animation: popIn-a var(--dur-fast) var(--ease-out); }
+    .rpD2:checked ~ .stage .pop { animation-name: popIn-b; }
+    @keyframes popIn-a { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    @keyframes popIn-b { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    .pop h4 { margin:0 0 12px; font-size:12px; font-weight:600; }
+    .fld { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; font-size:12px; color:var(--text-secondary); }
+    .fld i { width:74px; font:12px var(--font-mono); text-align:right; border:1px solid var(--border-subtle); border-radius:8px; padding:5px 8px; font-style:normal; color:var(--text-primary); }
+    .jump { position:absolute; background:#fff; border:1px solid var(--border-subtle); border-radius:12px; box-shadow:var(--shadow-pop); padding:10px 12px; width:190px; opacity:0; animation: fadeIn-a var(--dur-fast) var(--ease-out) forwards; display:flex; flex-direction:column; gap:8px; font-size:12px; }
+    .rpD2:checked ~ .stage .jump { animation-name: fadeIn-b; }
+    @keyframes fadeIn-a { to { opacity:1; } }
+    @keyframes fadeIn-b { to { opacity:1; } }
+    .pager { position:absolute; display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); }
+    .pager .pb { width:28px; height:28px; border-radius:8px; border:1px solid var(--border-subtle); display:grid; place-items:center; background:#fff; }
+    .pager .pb svg { width:14px; height:14px; }
+    .pager .cur { border:1px solid var(--hue-blue); border-radius:8px; height:28px; padding:0 10px; display:flex; align-items:center; font-family:var(--font-mono); }
+    .arrow { position:absolute; font:11px var(--font-mono); color:var(--hue-blue); display:flex; align-items:center; gap:4px; }
+    .inp { height:28px; border:1px solid var(--border-subtle); border-radius:8px; padding:0 8px; display:flex; align-items:center; font-family:var(--font-mono); color:var(--text-muted); }
+    .ds-btn-sm { height:28px; padding:0 12px; font-size:12px; border-radius:999px; background:var(--ink-900); color:#fff; display:inline-flex; align-items:center; justify-content:center; }
+
+    /* ===== E · C5-07 toast / C5-08 高亮 / C5-09 ===== */
+    .toast-stage { height:150px; position:relative; background:#fff; }
+    .fpt { position:absolute; left:0; right:0; bottom:12px; margin:0 auto; width:max-content; display:flex; align-items:center; gap:8px; background:var(--ink-700); color:#fff; padding:8px 12px; border-radius:16px; font-size:14px; line-height:20px; box-shadow:0 12px 32px rgba(28,28,28,.32); animation: toastIn-a var(--dur-base) var(--ease-out) both, toastOut-a var(--dur-fast) var(--ease-standard) 2000ms forwards; }
+    .rpE:checked ~ .stage .fpt { animation-name: toastIn-b, toastOut-b; }
+    @keyframes toastIn-a { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    @keyframes toastIn-b { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    @keyframes toastOut-a { to { opacity:0; } }
+    @keyframes toastOut-b { to { opacity:0; } }
+    .fpt svg { width:20px; height:20px; }
+    .fpt .ok { color: oklch(0.78 0.15 150); }
+    /* table */
+    table.fb { width:100%; border-collapse:collapse; font-size:12px; }
+    .fb th { font-size:11px; font-weight:500; color:var(--text-muted); text-align:left; padding:0 10px; height:32px; border-bottom:1px solid var(--divider); }
+    .fb td { height:32px; padding:0 10px; border-bottom:1px solid var(--divider); }
+    .fb td.n { font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; }
+    .fb tr.fb-flash td { animation: fbflash-a var(--dur-highlight) var(--ease-standard); }
+    .rpE2:checked ~ .stage tr.fb-flash td { animation-name: fbflash-b; }
+    @keyframes fbflash-a { 0% { background: var(--accent-blue); } 100% { background: transparent; } }
+    @keyframes fbflash-b { 0% { background: var(--accent-blue); } 100% { background: transparent; } }
+    .fb tr.rm-today td { background: transparent; }
+    .fb tr.rm-keep td { background: var(--accent-blue); }
+
+    /* bottom strip */
+    .nodo { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:8px; }
+    .nodo .nt { font-size:12px; font-weight:600; }
+    .nodo ul { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; }
+    .nodo li { font-size:12px; color:var(--text-muted); line-height:1.5; display:flex; gap:8px; }
+    .nodo li b { color:var(--text-secondary); font-weight:600; white-space:nowrap; }
+    .nodo li::before { content:'—'; color:var(--ink-300); }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 2340px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- ===== header ===== -->
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="kick">05 · 切换动效(换期内容不动)</div>
+      <h1>切换动效</h1>
+      <div class="intro">舞台 = 光伏分栋分析屏(PvMeterAnaView)的工具条 + 一张 .av2-card + 一张柱图。换期、换年、切档、折叠、抽屉、浮层、toast、行高亮八条(C5-01 … C5-08)与补遗 C5-09。核心一句话:不打接口的换期只做「同实体同键 200ms 形变」;打接口的换年用 stale + 工具条进度线,旧图停在旧年直到新数据到;其余能瞬切的都瞬切。</div>
+    </div>
+    <div class="chiprow">
+      <div class="chips"><span class="chip f">100+/天</span><span class="chip f">十几/天</span><span class="chip f">偶发</span><span class="chip f">一生一次</span></div>
+      <div class="chips"><span class="chip k">120 --dur-fast</span><span class="chip k">200 --dur-base</span><span class="chip k">320 --dur-slow</span><span class="chip k">--ease-out</span><span class="chip k">--ease-standard</span><span class="chip k">cubicOut(ECharts)</span></div>
+    </div>
+  </div>
+
+  <!-- ===== A · C5-01 按月/按年 · 月步进 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="n">A · 按月/按年、月步进、对比 —— 不打接口,原地形变</span><span class="ids">C5-01</span><span class="sub">点工具条上的 按月 / 按年 与 ‹ ›,或用下面的状态钮</span></div>
+    <div class="blk-body">
+      <div class="demo">
+        <input type="radio" name="ga-gran" id="ga-m" checked hidden>
+        <input type="radio" name="ga-gran" id="ga-y" hidden>
+        <input type="radio" name="ga-mon" id="ga-8" checked hidden>
+        <input type="radio" name="ga-mon" id="ga-7" hidden>
+        <div class="ctl">
+          <span class="lab">粒度</span><label for="ga-m" class="st st-m">按月</label><label for="ga-y" class="st st-y">按年</label>
+          <span class="lab" style="margin-left:8px;">月步进</span><label for="ga-8" class="st st-8">8月</label><label for="ga-7" class="st st-7">7月</label>
+        </div>
+        <div class="stage">
+          <div class="pin" style="left:104px; top:14px;">1</div>
+          <div class="pin" style="left:372px; top:14px;">2</div>
+          <div class="pin" style="left:6px; top:64px;">3</div>
+          <div class="pin" style="left:460px; top:196px;">4</div>
+          <div class="pin" style="left:80px; top:330px;">5</div>
+          <div class="pin" style="left:696px; top:14px;">6</div>
+          <div class="anx-tools">
+            <div class="anx-period">
+              <span class="anx-lbl"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>期间</span>
+              <div class="anx-seg"><label for="ga-m" class="sb sg-m">按月</label><label for="ga-y" class="sb sg-y">按年</label></div>
+              <div class="selw" style="width:110px;"><div class="sel">2026年<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+              <div class="selw" style="width:92px;"><div class="sel selm"><span><span class="v8">8月</span><span class="v7">7月</span></span><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div><div class="ghost">anx-hid 占位</div></div>
+              <div class="anx-nav">
+                <label for="ga-7" class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></label>
+                <label for="ga-8" class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></label>
+              </div>
+            </div>
+            <div class="anx-right">
+              <span class="anx-lbl">对比</span>
+              <div class="anx-seg"><span class="sb on">无</span><span class="sb">环比</span><span class="sb">同比</span><span class="sb">预算</span></div>
+              <span class="anx-lbl">数据截至 <span class="mono">2026-08</span></span>
+              <span class="anx-icobtn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"></path></svg></span>
+            </div>
+          </div>
+          <!-- today: v-if pulls the month select out and pushes ‹ › left -->
+          <div style="display:flex; align-items:center; gap:8px; padding:8px 18px; border-bottom:1px dashed var(--divider); background:var(--surface-card);">
+            <span class="cap" style="width:150px;">今天 AnaShell.vue:118 v-if</span>
+            <div class="anx-period" style="opacity:.8;">
+              <div class="anx-seg"><span class="sb">按月</span><span class="sb on">按年</span></div>
+              <div class="selw" style="width:110px;"><div class="sel">2026年<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+              <div class="selw tdy-selm" style="width:92px;"><div class="sel">8月<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+              <div class="anx-nav"><span class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></span><span class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span></div>
+              <span class="shift"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>‹ › 左移 100px(92 + gap 8)· 位移</span>
+            </div>
+          </div>
+          <div class="anx-body">
+            <div class="av2-card">
+              <div class="av2-card-h">
+                <span class="t"><span class="t8">8 月逐日比值</span><span class="t7">7 月逐日比值</span><span class="ty">2026 逐月比值</span> · F座</span>
+                <span class="hint">柱 = 这栋当刻度发电 ÷ 全园同刻度中位;同键 200ms 形变,类目整换时旧柱淡出、新柱瞬现</span>
+              </div>
+              <div class="ch">
+                <span class="yl" style="top:6px;">1.0</span><span class="yl" style="top:47px;">0.75</span><span class="yl" style="top:88px;">0.5</span><span class="yl" style="top:129px;">0.25</span>
+                <div class="gl" style="top:6px;"></div><div class="gl" style="top:47px;"></div><div class="gl" style="top:88px;"></div><div class="gl" style="top:129px;"></div><div class="gl ax" style="bottom:0;"></div>
+                <div class="plot">
+                  <div class="bars bars-m"><!--BARS_M--></div>
+                  <div class="bars bars-y"><!--BARS_Y--></div>
+                </div>
+              </div>
+              <div class="xl xl-m dense"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span><span>29</span><span>30</span><span>31</span></div>
+              <div class="xl xl-y"><span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tl tall">
+          <span class="tick" style="--at:120; --lbl:'120'"></span><span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:320; --lbl:'320'"></span>
+          <span class="tl-bar gray" style="--from:0; --to:120; --lbl:'段控换底 120ms · --ease-standard(C2-03)'"></span>
+          <span class="tl-bar r2" style="--from:0; --to:200; --lbl:'同键柱形变 200ms · cubicOut(DUR.update)  ‖  旧柱淡出 200ms · cubicOut(引擎硬编码)  ‖  新柱 / 标签 / KPI / PvDayChart 0ms 瞬现'"></span>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="nt">为什么这样</div>
+        <ol>
+          <li><span class="pn">1</span><span><b>段控只换底 120。</b>按月/按年是几十次/天的档位(原则 1),.anx-seg 走 background 120ms --ease-standard;不做滑动指示条,不改字重(C2-03 已删 500→600 变宽)。</span></li>
+          <li><span class="pn">2</span><span><b>月 Select 改 <code>.anx-hid</code> 占位。</b>按年时 <code>visibility:hidden; pointer-events:none</code>,宽度 92 保住,‹ › 不动;visibility 同时把它移出 tab 序。<code>v-if="pmode==='full'"</code> 那半保留。</span></li>
+          <li><span class="pn">3</span><span><b>今天的对照:</b>AnaShell.vue:118 用 v-if 插拔月 Select,切按年时 ‹ › 与右侧整组左移 100px —— 原则 11「先修位移再谈动效」的第 5 处。</span></li>
+          <li><span class="pn">4</span><span><b>同键 200ms 形变。</b>月步进 8月→7月 类目仍是 1..31,已挂载的 AnaEChart 走更新路径:同实体同键 200 cubicOut;原则 1 唯一明写的例外(120 读不出「哪根动了」,且与引擎删除淡出 200 错拍)。</span></li>
+          <li><span class="pn">5</span><span><b>类目整换 = 旧柱淡出 + 新柱瞬现。</b>'1..31' ↔ 'N月'(pvMeterAna.logic.ts:804-805 / 1178-1181)让 DataDiffer 全删全增:新柱 0ms 出现,旧柱由引擎 200 淡出。b3 挂在 <code>v-if="gran==='month'"</code> 上是重挂,靠屏级 <code>entered</code>(C6-02)走更新相,不重播 1000ms 入场。</span></li>
+          <li><span class="pn">6</span><span><b>无 stale、无 LoadBar。</b>PvMeterAnaView.vue:137 同一份整年数据本地重算,没有网络就不用退让;同比首次选中是追加拉取(:139 loadPrev),当前数据仍有效,同样不 stale。</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="tw"><table class="spec">
+      <colgroup><col style="width:56px"><col style="width:150px"><col style="width:74px"><col style="width:190px"><col><col style="width:150px"><col style="width:120px"><col style="width:236px"></colgroup>
+      <tr><th>项</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr>
+      <tr><td class="id">C5-01</td><td class="m">period.setGran / step / cmp.mode</td><td>几十次/天</td><td>同一份整年数据本地重算(:137 注释),无网络;内容原地形变。同比首次选中是追加拉取(:139 loadPrev),当前数据仍有效,不需要 stale</td><td>无 .fp-stale、无 LoadBar;已挂载 AnaEChart 走更新路径(C6-03):同实体同键 200 形变、新元素瞬现、删除元素引擎 200 淡出;按月↔按年类目整换('1..31'↔'N月')→ 新柱瞬现 + 旧柱 200 淡出;b3(:1031)v-if 重挂由屏级 entered 走更新相;PvDayChart / PvDots / PvSlope / PvSeasonRows / KPI 瞬变;月 Select 改 <code>.anx-hid { visibility:hidden; pointer-events:none }</code></td><td class="m">200ms(DUR.update,原则 1 例外)/ cubicOut(ECharts);退场:引擎 200 淡出</td><td class="m">ECharts animation:false(C6-05)</td><td class="m">PvMeterAnaView.vue:137-139 · :1031-1032 · AnaShell.vue:104-107 · :118-122 · pvMeterAna.logic.ts:804-805 · :1178-1181</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ===== B · C5-02 换年 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="n">B · 换年(打接口)—— stale + 工具条进度线,旧图停在旧年直到新数据到</span><span class="ids">C5-02</span><span class="sub">最违规的一处:今天整棵 .av2-grid 卸载 → 240px 转圈 → 撑开</span></div>
+    <div class="blk-body">
+      <div class="demo">
+        <input type="checkbox" id="rpB" class="rpB" hidden>
+        <div class="ctl"><label for="rpB" class="rp-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>重播:选年 2026 → 2025</label><span class="lab">序列:0 点选 → 200 门槛过、stale 进场 + LoadBar 起 → 1100 数据到:stale 200 退场与柱 200 形变同帧 → 1300 完</span></div>
+        <div class="stage">
+          <div class="pin" style="left:6px; top:14px;">1</div>
+          <div class="pin" style="left:230px; top:14px;">2</div>
+          <div class="pin" style="left:6px; top:132px;">3</div>
+          <div class="pin" style="left:6px; top:218px;">4</div>
+          <div class="pin" style="left:520px; top:66px;">5</div>
+          <div class="vs" style="grid-template-columns:minmax(0,1fr) 300px; gap:0;">
+            <div style="border-right:1px solid var(--divider);">
+              <div class="anx-tools">
+                <span class="lb"></span>
+                <div class="anx-period">
+                  <span class="anx-lbl"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>期间</span>
+                  <div class="anx-seg"><span class="sb on">按月</span><span class="sb">按年</span></div>
+                  <div class="selw" style="width:110px;"><div class="sel" style="border-color:var(--status-info);">2025年<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+                  <div class="selw" style="width:92px;"><div class="sel">8月<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></div></div>
+                  <div class="anx-nav"><span class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></span><span class="nb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span></div>
+                </div>
+                <div class="anx-right"><span class="anx-lbl">数据截至 <span class="mono">2026-08</span></span></div>
+              </div>
+              <div class="anx-body" style="gap:8px;">
+                <div class="av2-grid host">
+                  <div class="av2-card s4" style="display:flex; flex-direction:column; gap:3px; padding:10px 12px;">
+                    <span style="font-size:11px; color:var(--text-muted);">本段发电 · F座</span>
+                    <span class="mono" style="font-size:16px; font-weight:600; position:relative;"><span class="sw-old">38,420 kWh</span><span class="sw-new">36,910 kWh</span></span>
+                    <span class="mono" style="font-size:11px; color:var(--hue-blue); position:relative;"><span class="sw-old">+4.2% vs 上月</span><span class="sw-new">+1.8% vs 上月</span></span>
+                  </div>
+                  <div class="av2-card s8" style="display:flex; flex-direction:column; gap:3px;">
+                    <span style="font-size:11px; color:var(--text-muted);">数据到</span>
+                    <span class="mono" style="font-size:16px; font-weight:600; position:relative;"><span class="sw-old">2026-08-31 · 已过去 31/31 天</span><span class="sw-new">2025-08-31 · 已过去 31/31 天</span></span>
+                    <span class="mono" style="font-size:11px; color:var(--text-muted);">已抄 29/31 · 覆盖 94%(按已过去算)</span>
+                  </div>
+                  <div class="av2-card s12">
+                    <div class="av2-card-h"><span class="t" style="position:relative;"><span class="sw-old">2026-08 逐日比值</span><span class="sw-new">2025-08 逐日比值</span> · F座</span><span class="hint">loadedYear:标题、刻度、rows 一起换,不出现「新年 ticks 配旧年 rows」</span></div>
+                    <div class="ch" style="height:120px;">
+                      <div class="gl" style="top:6px;"></div><div class="gl" style="top:44px;"></div><div class="gl" style="top:82px;"></div><div class="gl ax" style="bottom:0;"></div>
+                      <span class="yl" style="top:6px;">1.0</span><span class="yl" style="top:44px;">0.5</span><span class="yl" style="top:82px;">0</span>
+                      <div class="plot"><div class="bars"><!--BARS_B--></div></div>
+                    </div>
+                    <div class="xl dense"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span><span>28</span><span>29</span><span>30</span><span>31</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- today -->
+            <div style="background:var(--surface-card); display:flex; flex-direction:column;">
+              <div style="padding:10px 12px 6px; display:flex; align-items:center; gap:6px;"><span class="tag bad">今天</span><span class="cap">:939 v-if="loading" 整棵卸载</span></div>
+              <div style="padding:0 12px 12px;">
+                <div class="tdy-box" style="background:#fff; border:1px solid var(--border-subtle); border-radius:8px;">
+                  <div class="grid" style="padding:10px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                      <div class="av2-card" style="padding:8px 10px;"><span style="font-size:11px; color:var(--text-muted);">本段发电</span><div class="mono" style="font-size:16px; font-weight:600;">36,910</div></div>
+                      <div class="av2-card" style="padding:8px 10px;"><span style="font-size:11px; color:var(--text-muted);">已抄</span><div class="mono" style="font-size:16px; font-weight:600;">29/31</div></div>
+                    </div>
+                    <div class="av2-card" style="padding:8px 10px;">
+                      <span style="font-size:11px; font-weight:600;">2025-08 逐日比值</span>
+                      <div class="ch ms" style="height:150px; margin-top:6px;"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><!--BARS_T--></div></div></div>
+                      <div class="cap" style="margin-top:4px;">重挂 → 重播 1000ms 入场(实际被 RO 首帧截断为 0)</div>
+                    </div>
+                  </div>
+                  <div class="spin"><div style="display:flex; flex-direction:column; align-items:center; gap:10px;"><span class="page-spin"></span><span class="cap">.page-loading min-height 240</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tl long tall" style="--scale:1400; --right:'1400 ms';">
+          <span class="tick" style="--at:200; --lbl:'200 门槛'"></span><span class="tick" style="--at:400; --lbl:'400'"></span><span class="tick" style="--at:1100; --lbl:'1100 数据到'"></span><span class="tick" style="--at:1300; --lbl:'1300'"></span>
+          <span class="tl-bar gray" style="--from:200; --to:400; --lbl:'stale 进场 200ms · --ease-out'"></span>
+          <span class="tl-bar orange" style="--from:400; --to:1100; --lbl:'FPLoadBar 900ms · --ease-both(sticky 工具条,stale 宿主的兄弟)'"></span>
+          <span class="tl-bar r2" style="--from:1100; --to:1300; --lbl:'stale 退场 200ms · --ease-out  ‖  柱形变 200ms · cubicOut(同帧起步)'"></span>
+        </div>
+        <div class="vs" style="margin-top:4px;">
+          <div class="stage" style="padding:10px 12px; display:flex; align-items:center; gap:12px;">
+            <span class="tag ok">reduced-motion</span>
+            <div style="position:relative; flex:1; height:52px; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; background:#fff;">
+              <span class="lb-rm"></span>
+              <div class="stale-static" style="padding:10px 12px; font-size:12px;">stale 1ms 到位(opacity .42 + blur 1.5px);S 档 ≤600 去 blur</div>
+            </div>
+            <span class="cap" style="width:190px;">FPLoadBar 呼吸 .30↔.85 1.6s(FPLoadBar.vue:50-59 补 !important 后生效)</span>
+          </div>
+          <div class="stage" style="padding:10px 12px; font-size:12px; line-height:1.55; color:var(--text-secondary);"><b style="color:var(--text-primary);">模板链(:939-948)</b><br><code style="font-family:var(--font-mono); font-size:11px;">&lt;div v-if="!snap &amp;&amp; loading" class="pma-skel"&gt;骨架(C6-01)&lt;/div&gt;</code><br><code style="font-family:var(--font-mono); font-size:11px;">&lt;div v-else class="av2-grid" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown"&gt;</code></div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="nt">为什么这样</div>
+        <ol>
+          <li><span class="pn">1</span><span><b>FPLoadBar 在 sticky 工具条上,不在 stale 节点里。</b>放进 .av2-grid 会被 opacity .42 + blur 一起糊掉;AnaShell 加 prop <code>busy</code>,在 <code>.anx-tools</code>(:194,position:sticky 即定位祖先,滚动时始终可见)渲染 <code>&lt;FPLoadBar :on="busy" /&gt;</code>,18 屏免费获得。原则 8:LoadBar 必须是宿主的兄弟。</span></li>
+          <li><span class="pn">2</span><span><b>year 立刻变,loadedYear 等数据。</b>Select 显示 2025 是控件回显;snapInput / segLabel 用 <code>loadedYear</code>(load() 里与 readings 同步赋值)—— 否则新年 ticks 配旧年 rows,八张图先空后满 = 伪装的入场重播。</span></li>
+          <li><span class="pn">3</span><span><b>200ms 门槛。</b><code>staleShown = useDeferredFlag(loading)</code>;快返回的请求不闪一下 stale。进场 200 --ease-out(base.css:101-106;:99 的 140 是被同特异性后条盖掉的死行,不动)。</span></li>
+          <li><span class="pn">4</span><span><b><code>data-stale-host</code> 让退场也是 200。</b>类摘掉后元素仍有 transition-property,否则退场硬切(全仓今天 0 处用它,存量 9 处退场其实是硬切,另起 commit 补)。数据回来:stale 200 退场与 ECharts 200 形变同帧起步 —— 一次交互一个节拍。</span></li>
+          <li><span class="pn">5</span><span><b>今天的形状被 §7.1 明令禁止:</b>.av2-grid 卸载 → 240px 转圈 → 撑回 2000px+,17/19 个分析屏同款。pointer-events:none 是安全项(旧行 id 写回事故)。2000px+ 网格叠 8 张 DPR2 canvas 做 blur:落地后核显机量一次 stale 进场帧时间,&gt;16ms 退到 opacity-only。</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="tw"><table class="spec">
+      <colgroup><col style="width:56px"><col style="width:150px"><col style="width:74px"><col style="width:190px"><col><col style="width:150px"><col style="width:120px"><col style="width:236px"></colgroup>
+      <tr><th>项</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr>
+      <tr><td class="id">C5-02</td><td class="m">watch(year) → loading=true 且已有旧数据</td><td>几次~几十/天</td><td>今天整棵 .av2-grid 卸载 → 240px 转圈 → 撑开,§7.1 明令禁止;year 先变、readings 还旧 → 新年 ticks 配旧年 rows → 八张图先空后满</td><td>① <code>loadedYear</code> 与 readings 同步赋值,snapInput/segLabel 用它;② <code>staleShown = useDeferredFlag(loading)</code>;③ 模板链保留 failed / !snap 分支,.av2-grid 加 <code>data-stale-host</code> + <code>.fp-stale</code> + aria-busy;④ FPLoadBar 不进 stale 节点,AnaShell prop busy 渲染在 sticky .anx-tools;⑤ S 档 <code>@media (max-width:600px){ .fp-stale{ filter:none } }</code>。数据回来:stale 200 退场与 ECharts 200 形变同帧起步</td><td class="m">进出 200ms / --ease-out(base.css:101-106);门槛 200ms(useDeferredFlag);cubicOut(ECharts);退场:类摘 200 淡出(data-stale-host)</td><td class="m">stale 1ms;FPLoadBar 呼吸(修复后生效)</td><td class="m">PvMeterAnaView.vue:108-125 · :142-146 · :939-948 · AnaShell.vue:100 · :194 · CockpitView.vue:278 · base.css:95-106 · FPLoadBar.vue:14-19 · useDeferredFlag.ts:20 · ParamCenterView.vue:540 · :597</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ===== C · C5-03 段控 / C5-04 折叠 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="n">C · L2 段控切档瞬切、容器 636 钉高 · 折叠只转箭头</span><span class="ids">C5-03 · C5-04</span></div>
+    <div class="blk-body">
+      <div class="demo">
+        <input type="radio" name="gc-sec" id="gc-abs" checked hidden>
+        <input type="radio" name="gc-sec" id="gc-book" hidden>
+        <input type="radio" name="gc-sec" id="gc-lab" hidden>
+        <input type="checkbox" id="gc-open" checked hidden>
+        <div class="ctl">
+          <span class="lab">段控</span><label for="gc-abs" class="st st-abs">绝对水平</label><label for="gc-book" class="st st-book">账面量</label><label for="gc-lab" class="st st-lab">高级分析</label>
+          <span class="lab" style="margin-left:8px;">组头</span><label for="gc-open" class="st st-open">展开</label><label for="gc-open" class="st st-closed">收起</label>
+        </div>
+        <div class="stage" style="display:grid; grid-template-columns:minmax(0,1fr) 300px;">
+          <div class="pin" style="left:6px; top:12px;">1</div>
+          <div class="pin" style="left:6px; top:64px;">2</div>
+          <div class="pin" style="left:6px; top:220px;">3</div>
+          <div class="pin" style="right:274px; top:44px;">4</div>
+          <div class="pin" style="right:274px; top:112px;">5</div>
+          <div style="padding:16px 18px; display:flex; flex-direction:column; gap:10px; border-right:1px solid var(--divider);">
+            <div class="pma-seg">
+              <div class="seg-md"><label for="gc-abs" class="si si-abs">绝对水平</label><label for="gc-book" class="si si-book">账面量</label><label for="gc-lab" class="si si-lab">高级分析</label></div>
+              <span class="pma-seghint">「高级分析」= 算法自检与口径核对,给要复算这屏数字的人</span>
+            </div>
+            <div class="pma-sec">
+              <span class="hlabel">.pma-sec min-height:636px(此处裁切显示)</span>
+              <div class="av2-grid sec sec-abs">
+                <div class="av2-card s8"><div class="av2-card-h"><span class="t">等效小时轨迹</span><span class="hint">淡带 = 各栋 p25~p75;粗线 = 全园中位;深线 = 选中那栋</span></div>
+                  <div class="mini-line"><svg viewBox="0 0 400 96" preserveAspectRatio="none"><path d="M0 70 L40 62 L80 66 L120 50 L160 44 L200 38 L240 30 L280 34 L320 26 L360 32 L400 28 L400 60 L360 66 L320 58 L280 64 L240 60 L200 68 L160 74 L120 78 L80 86 L40 84 L0 90 Z" fill="rgba(28,28,28,.05)"></path><path d="M0 80 L40 73 L80 76 L120 64 L160 59 L200 53 L240 45 L280 49 L320 42 L360 49 L400 44" stroke="#788CB0" stroke-width="2" fill="none"></path><path d="M0 76 L40 66 L80 72 L120 58 L160 50 L200 47 L240 36 L280 42 L320 33 L360 40 L400 36" stroke="#3675B2" stroke-width="2" fill="none"></path></svg></div>
+                  <div class="cap" style="margin-top:6px;">AnaEChart 250 · v-if="gran==='month' &amp;&amp; hasB34"</div></div>
+                <div class="av2-card s4"><div class="av2-card-h"><span class="t">各站年等效小时</span></div>
+                  <div class="dots-row"><span class="nm">A座</span><span class="st" style="width:70px;"></span><span class="dt"></span></div>
+                  <div class="dots-row"><span class="nm">C座</span><span class="st" style="width:104px;"></span><span class="dt"></span></div>
+                  <div class="dots-row"><span class="nm">F座</span><span class="st" style="width:52px;"></span><span class="dt" style="background:#3675B2;"></span></div>
+                  <div class="dots-row"><span class="nm">D座</span><span class="st" style="width:126px;"></span><span class="dt"></span></div>
+                  <div class="cap" style="margin-top:6px;">PvDots · 行高 22</div></div>
+              </div>
+              <div class="av2-grid sec sec-book">
+                <div class="av2-card s6"><div class="av2-card-h"><span class="t">消纳结构与损耗率</span><span class="hint">B7 · 170 bar</span></div>
+                  <div class="ch ms" style="height:96px;"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:.9"></i><i class="bar" style="--a:.62"></i><i class="bar" style="--a:.28"></i><i class="bar" style="--a:.74"></i><i class="bar" style="--a:.51"></i><i class="bar" style="--a:.33"></i></div></div></div>
+                  <div class="xl" style="margin-left:0;"><span>自用</span><span>上网</span><span>损耗</span><span>自用</span><span>上网</span><span>损耗</span></div></div>
+                <div class="av2-card s6"><div class="av2-card-h"><span class="t">各栋消纳收益与上网收益(截至 2026-08-31 累计)</span><span class="hint">B8 · 300 bar</span></div>
+                  <div class="ch ms" style="height:96px;"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:.82"></i><i class="bar" style="--a:.66"></i><i class="bar" style="--a:.58"></i><i class="bar" style="--a:.91"></i><i class="bar" style="--a:.47"></i><i class="bar" style="--a:.72"></i></div></div></div>
+                  <div class="xl" style="margin-left:0;"><span>A座</span><span>B座</span><span>C座</span><span>D座</span><span>E座</span><span>F座</span></div></div>
+              </div>
+              <div class="av2-grid sec sec-lab">
+                <div class="av2-card s6"><div class="av2-card-h"><span class="t">先天水平 α 排序</span><span class="hint">含 p / q / σ,其余各档不出现</span></div>
+                  <div class="dots-row"><span class="nm">F座</span><span class="st" style="width:120px;"></span><span class="dt" style="background:#3675B2;"></span><span class="mono" style="color:var(--text-muted);">1.18</span></div>
+                  <div class="dots-row"><span class="nm">C座</span><span class="st" style="width:92px;"></span><span class="dt"></span><span class="mono" style="color:var(--text-muted);">1.06</span></div>
+                  <div class="dots-row"><span class="nm">A座</span><span class="st" style="width:64px;"></span><span class="dt"></span><span class="mono" style="color:var(--text-muted);">0.97</span></div>
+                  <div class="dots-row"><span class="nm">D座</span><span class="st" style="width:40px;"></span><span class="dt"></span><span class="mono" style="color:var(--text-muted);">0.88</span></div></div>
+                <div class="av2-card s6"><div class="av2-card-h"><span class="t">残差自相关 ACF · F座</span><span class="hint">.ak-analyst akFade 320 存量保留</span></div>
+                  <div class="ch ms" style="height:96px;"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:1"></i><i class="bar" style="--a:.42"></i><i class="bar" style="--a:.21"></i><i class="bar" style="--a:.12"></i><i class="bar" style="--a:.08"></i><i class="bar" style="--a:.05"></i><i class="bar" style="--a:.04"></i><i class="bar" style="--a:.03"></i></div></div></div></div>
+              </div>
+            </div>
+          </div>
+          <!-- PvQueue fold -->
+          <div style="padding:16px 16px; display:flex; flex-direction:column; gap:6px;">
+            <span class="cap">PvQueue · 组头折叠</span>
+            <div class="pq">
+              <div class="pq-hd"><span></span><span>楼栋</span><span class="n">出范围</span><span class="n">段</span></div>
+              <label for="gc-open" class="pq-gh"><span class="ar"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span>出范围<span class="c">5</span></label>
+              <div class="pq-body">
+                <div class="pq-row out on"><span class="aw">↓</span><span class="nm">F座</span><span class="num">7</span><span class="num">0.61</span></div>
+                <div class="pq-row out"><span class="aw">↓</span><span class="nm">C座</span><span class="num">4</span><span class="num">0.72</span></div>
+                <div class="pq-row out"><span class="aw">↑</span><span class="nm">A座</span><span class="num">3</span><span class="num">1.31</span></div>
+                <div class="pq-row out"><span class="aw">↓</span><span class="nm">D座</span><span class="num">2</span><span class="num">0.78</span></div>
+                <div class="pq-row out"><span class="aw">↓</span><span class="nm">B座</span><span class="num">1</span><span class="num">0.83</span></div>
+              </div>
+              <div class="pq-gh" style="cursor:default;"><span class="ar" style="transform:none;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span>未低于你设的线<span class="c">6</span></div>
+              <div class="pq-gh" style="cursor:default;"><span class="ar" style="transform:none;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span>读不出<span class="c">2</span></div>
+              <div class="pq-ft">1 栋本段未投产,不画</div>
+            </div>
+          </div>
+        </div>
+        <div class="tl tall">
+          <span class="tick" style="--at:120; --lbl:'120'"></span><span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:320; --lbl:'320'"></span>
+          <span class="tl-bar gray" style="--from:0; --to:120; --lbl:'段控药丸换底 120ms · --ease-standard(C2-03)  ‖  折叠箭头 rotate(90deg) 120ms · --ease-standard'"></span>
+          <span class="tl-bar r2" style="--from:0; --to:0; --lbl:'切档内容 0ms 瞬切(v-if,容器 636 钉高故零位移)  ‖  组体 v-show 0ms 瞬显瞬隐'"></span>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="nt">为什么这样</div>
+        <ol>
+          <li><span class="pn">1</span><span><b>Segmented 只换底 120,不加滑动指示条</b>(几十次/天;JS 量宽 + RO 与「hover 回归 CSS」相悖)。</span></li>
+          <li><span class="pn">2</span><span><b>保持 v-if,不改 v-show。</b>.pma-sec 636 已钉,切档零位移;v-show 会让隐藏档图表 0×0 初始化告警 + 4 张多余 canvas。</span></li>
+          <li><span class="pn">3</span><span><b>不重播入场:</b>屏级 <code>entered</code>(AnaShell <code>provide('anaEntered')</code>,AnaEChart inject)一处覆盖段控、粒度、hasB34、lab、AnomalyView <code>v-if=energyOption</code>、TenantEnergy <code>v-if=selPay.length</code> 全部重挂 → 走更新相瞬现。比每张图手写 :entrance 少 65 处改动;段切本身无淡入淡出。今天 :1021+ 三段 v-if 硬替换,ECharts 每次重挂重播 1000ms(被 RO 截断)。</span></li>
+          <li><span class="pn">4</span><span><b>折叠只转箭头。</b>PvQueue.vue:231 今天没写 ease(浏览器默认 ease),补 --ease-standard;SidebarNav.vue:70-71 已有。</span></li>
+          <li><span class="pn">5</span><span><b>组体瞬显瞬隐。</b>height 是布局属性;用户主动推开下方内容规范容许;在已位移的内容上叠淡入只是把位移画出来。组名与计数常驻,折叠只收行。</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="tw"><table class="spec">
+      <colgroup><col style="width:56px"><col style="width:150px"><col style="width:74px"><col style="width:190px"><col><col style="width:150px"><col style="width:120px"><col style="width:236px"></colgroup>
+      <tr><th>项</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr>
+      <tr><td class="id">C5-03</td><td class="m">Segmented v-model section / gran / hasB34 / lab 数据翻转</td><td>几十次/天</td><td>段内 AnaEChart 随 v-if 重挂 → 每次切档、切粒度重播图表入场;watch(SECTIONS, immediate) 还会在首绘前程序化改 section</td><td>保持 v-if(.pma-sec 636 已钉);不用屏侧 sectionSwitched:入场相由 AnaShell <code>provide('anaEntered', ref(false))</code> + AnaEChart inject 的屏级标志决定(C6-02),nextTick 后置 true,此后任何 v-if 重挂全部走更新相瞬现。段切本身无淡入淡出。lab 档存量 .ak-analyst akFade 320 保留</td><td class="m">0(切档)/ —</td><td class="m">—</td><td class="m">PvMeterAnaView.vue:491-495 · :1010-1031 · :1447 · AnaShell.vue:100 · AnaEChart.vue:90 · :104-134</td></tr>
+      <tr><td class="id">C5-04</td><td class="m">点组头 / 目录</td><td>偶发~几十次/天</td><td>用户主动推开下方内容,规范容许</td><td>只保留箭头 rotate(90deg) 120ms(PvQueue.vue:231 补 --ease-standard;SidebarNav.vue:70-71 已有);组体 v-show / 子树 v-if 瞬显瞬隐,不做高度动画、不做淡入</td><td class="m">120ms(--dur-fast)/ --ease-standard</td><td class="m">1ms</td><td class="m">PvQueue.vue:231-232 · SidebarNav.vue:70-71</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ===== D · C5-05 抽屉 / C5-06 浮层 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="n">D · FPDrawer 开:遮罩 fade + 卡 rise 200,关瞬时,内图瞬现 · 浮层 pop-in 120 / FPPager 只淡</span><span class="ids">C5-05 · C5-06</span></div>
+    <div class="blk-body">
+      <div class="demo">
+        <div class="vs" style="grid-template-columns:minmax(0,1fr) 380px;">
+          <div class="demo">
+            <input type="checkbox" id="rpD" class="rpD" hidden>
+            <div class="ctl"><label for="rpD" class="rp-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>重播:开 F座 抽屉</label><span class="lab">C5-05 · 关 = v-if 瞬时,无退场</span></div>
+            <div class="stage dw-stage">
+              <div class="pin" style="left:8px; top:8px;">1</div>
+              <div class="pin" style="left:150px; top:56px;">2</div>
+              <div class="pin" style="left:120px; top:170px;">3</div>
+              <div class="dw-page">
+                <div style="display:flex; gap:8px; align-items:center;"><span style="font-size:14px; font-weight:600;">8 月逐日比值</span><span class="cap">看 F座 的整年趋势 →</span></div>
+                <div style="display:grid; grid-template-columns:120px 1fr; gap:12px;">
+                  <div style="display:flex; flex-direction:column; gap:4px;"><div class="pq-row out on" style="grid-template-columns:12px 1fr 30px;"><span class="aw">↓</span><span class="nm">F座</span><span class="num">7</span></div><div class="pq-row out" style="grid-template-columns:12px 1fr 30px;"><span class="aw">↓</span><span class="nm">C座</span><span class="num">4</span></div><div class="pq-row out" style="grid-template-columns:12px 1fr 30px;"><span class="aw">↑</span><span class="nm">A座</span><span class="num">3</span></div></div>
+                  <div class="mini-line" style="height:140px;"><svg viewBox="0 0 400 140" preserveAspectRatio="none"><rect x="0" y="40" width="400" height="60" fill="rgba(28,28,28,.05)"></rect><path d="M0 70 L400 70" stroke="rgba(28,28,28,.2)" stroke-dasharray="2 3"></path><path d="M0 62 L30 66 L60 58 L90 74 L120 80 L150 92 L180 88 L210 104 L240 98 L270 110 L300 96 L330 88 L360 82 L400 78" stroke="oklch(0.55 0.115 250)" stroke-width="1.4" fill="none"></path></svg></div>
+                </div>
+              </div>
+              <div class="mask">
+                <div class="dwr">
+                  <div class="dwr-hd"><span class="dwr-ico"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m7 15 4-6 4 3 5-8"></path></svg></span><div><div class="dwr-t">F座 · 这一年的偏离与水平变化</div><div class="dwr-s">本块固定按年 · 2026</div></div><span class="dwr-x"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></span></div>
+                  <div class="dwr-bd">
+                    <div class="av2-card"><span class="t">逐日偏离与两道范围线</span><div class="ch ms"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:.6"></i><i class="bar" style="--a:.8"></i><i class="bar" style="--a:.5"></i><i class="bar" style="--a:.9"></i><i class="bar" style="--a:.7"></i><i class="bar" style="--a:.4"></i><i class="bar" style="--a:.75"></i></div></div></div></div>
+                    <div class="av2-card"><span class="t">跟全园一起涨落的程度</span><div class="ch ms"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:.3"></i><i class="bar" style="--a:.55"></i><i class="bar" style="--a:.7"></i><i class="bar" style="--a:.85"></i><i class="bar" style="--a:.95"></i><i class="bar" style="--a:.8"></i><i class="bar" style="--a:.65"></i></div></div></div></div>
+                    <div class="av2-card"><span class="t">逐刻度明细</span><div class="ch ms"><div class="gl ax" style="bottom:0;"></div><div class="plot" style="left:0;"><div class="bars"><i class="bar" style="--a:.5"></i><i class="bar" style="--a:.45"></i><i class="bar" style="--a:.6"></i><i class="bar" style="--a:.4"></i><i class="bar" style="--a:.7"></i><i class="bar" style="--a:.66"></i><i class="bar" style="--a:.58"></i></div></div></div></div>
+                  </div>
+                  <div class="dwr-ft"><span>← 上一栋</span><span>下一栋 →</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="tl tall">
+              <span class="tick" style="--at:120; --lbl:'120'"></span><span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:320; --lbl:'320'"></span>
+              <span class="tl-bar" style="--from:0; --to:200; --lbl:'遮罩 fp-fade-in 200ms · --ease-out  ‖  卡 fp-rise-in 8px/.985 200ms · --ease-out(both)'"></span>
+              <span class="tl-bar r2" style="--from:0; --to:0; --lbl:'抽屉内 b9/b10/b11 0ms 瞬现(entered 已真)  ‖  关 0ms(v-if)'"></span>
+            </div>
+          </div>
+          <div class="demo">
+            <input type="checkbox" id="rpD2" class="rpD2" hidden>
+            <div class="ctl"><label for="rpD2" class="rp-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>重播:浮层</label><span class="lab">C5-06</span></div>
+            <div class="stage pop-stage">
+              <div class="pin" style="left:8px; top:8px;">4</div>
+              <div class="pin" style="left:8px; top:150px;">5</div>
+              <span class="anx-icobtn" style="position:absolute; right:12px; top:8px; background:var(--bg-hover); color:var(--text-primary);"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"></path></svg></span>
+              <div class="pop" style="right:12px; top:50px; width:240px; padding:12px;">
+                <h4>判据阈值</h4>
+                <div class="fld"><span>波动倍数</span><i>2.0</i></div>
+                <div class="fld" style="margin-bottom:0;"><span>放宽档</span><i>1</i></div>
+              </div>
+              <span class="arrow" style="right:262px; top:58px;">.anx-pop fp-pop-in 120 · -4px→0</span>
+              <div class="jump" style="left:14px; bottom:54px;">
+                <span style="font-size:11px; color:var(--text-muted);">跳到第</span>
+                <div style="display:flex; gap:6px; align-items:center;"><span class="inp" style="width:64px;">12</span><span class="ds-btn-sm">跳转</span></div>
+              </div>
+              <div class="pager" style="left:14px; bottom:14px;"><span class="pb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></span><span class="cur">3 / 42</span><span class="pb"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span></div>
+              <span class="arrow" style="left:214px; bottom:74px;">FPPager 面板在触发器上方 → 只 fp-fade-in 120</span>
+            </div>
+            <div class="tl tall">
+              <span class="tick" style="--at:120; --lbl:'120'"></span><span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:320; --lbl:'320'"></span>
+              <span class="tl-bar" style="--from:0; --to:120; --lbl:'.fp-more-pop / .anx-pop fp-pop-in · FPPager fp-fade-in 120ms · --ease-out'"></span>
+              <span class="tl-bar r2 gray" style="--from:0; --to:200; --lbl:'Cockpit .cv2-mask / FinCashflow .fin-mask 改 FPDrawer 同款 200ms · --ease-out'"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="nt">为什么这样</div>
+        <ol>
+          <li><span class="pn">1</span><span><b>遮罩 <code>rgba(28,28,28,.34)</code> + blur 2px fade 200,卡 rise 8px/.985 200。</b>抽屉承载决策,值 --dur-base;曲线 FPDrawer.vue:98,113 的 <code>var(--ease-standard, ease)</code> 改 <code>--ease-out</code> —— tokens.css:256-259 自己写明 standard「用在进出场偏软」。</span></li>
+          <li><span class="pn">2</span><span><b>关瞬时(v-if),不加退场。</b>带遮罩的元素永不用 &lt;Transition&gt;(原则 4;FPSideDrawer.vue:34-36 禁令);CSS 退场需延迟卸载 = JS 计时器 = 同一失败模式。</span></li>
+          <li><span class="pn">3</span><span><b>抽屉内三图瞬现。</b>开抽屉时屏级 entered 已为 true(C6-02),b9/b10/b11 自动走更新相;卡片 rise 是这次交互唯一的动效(原则 7)。「偶发」对这屏的抽屉不诚实(坏日子一口气十几次),故内图不再 320。上一栋/下一栋见 C6-16(系列 id 带序号,阻止跨实体形变)。</span></li>
+          <li><span class="pn">4</span><span><b>贴附浮层 pop-in 120。</b>.fp-more-pop / .anx-pop 补 <code>fp-pop-in var(--dur-fast) var(--ease-out)</code>,与 ds/Popover、Select 面板一致;不写 transform-origin(fp-pop-in 只有 translateY,origin 是空操作)。</span></li>
+          <li><span class="pn">5</span><span><b>FPPager 面板长在触发器上方</b>(<code>bottom: calc(100% + 6px)</code>),fp-pop-in 的 -4px→0 方向反了 → 改 <code>opacity:0; animation: fp-fade-in 120 forwards</code>,只淡不位移,不为罕见操作加向上关键帧。两处自绘模态(Cockpit / FinCashflow)改 FPDrawer 同款;六处关闭全部瞬时;不新增机制,复用 motion.css 三条关键帧。</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="tw"><table class="spec">
+      <colgroup><col style="width:56px"><col style="width:150px"><col style="width:74px"><col style="width:190px"><col><col style="width:150px"><col style="width:120px"><col style="width:236px"></colgroup>
+      <tr><th>项</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr>
+      <tr><td class="id">C5-05</td><td class="m">open 翻转</td><td>偶发~坏日子一口气十几次</td><td>承载决策,值 200ms;曲线归位;抽屉内图表不叠第二个动的东西</td><td>开:遮罩 fp-fade-in + 卡 fp-rise-in(8px/.985)200ms,FPDrawer.vue:98,113 <code>var(--ease-standard, ease)</code> 改 <code>var(--ease-out)</code>;关:v-if 瞬时(保持)。抽屉内 3 张 AnaEChart 瞬现 —— 屏级 entered 已为 true(C6-02),自动走更新相,卡片 rise 是唯一动效;上一栋/下一栋见 C6-16</td><td class="m">200ms(--dur-base)/ --ease-out;退场:瞬时</td><td class="m">1ms;forwards 停终态。Teleport 节点在 KeepAlive 回签时重插会重播一次 200 淡入,终态 opacity 1,无害</td><td class="m">FPDrawer.vue:53 · :94-113 · PvMeterAnaView.vue:1300-1360</td></tr>
+      <tr><td class="id">C5-06</td><td class="m">v-if 开</td><td>偶发</td><td>与 ds/Popover(fp-pop-in 120)与 FPDrawer(fade+rise 200)一致</td><td><code>.fp-more-pop, .anx-pop { animation: fp-pop-in var(--dur-fast) var(--ease-out) }</code>(各自 scoped;不写 transform-origin);FPPager 面板在触发器上方 → <code>opacity:0; animation: fp-fade-in var(--dur-fast) var(--ease-out) forwards</code>;Cockpit / FinCashflow 两处自绘模态改 FPDrawer 同款:遮罩 fp-fade-in 200 forwards,卡 fp-rise-in 200 both。关闭全部瞬时</td><td class="m">120ms(贴附)/ 200ms(模态)/ --ease-out;退场:瞬时</td><td class="m">1ms;forwards/both 到终态</td><td class="m">FPMoreMenu.vue:54-79 · AnaShell.vue:160 · :232 · FPPager.vue:70 · :178-183 · CockpitView.vue:367-368 · :427-428 · FinCashflowView.vue:293 · :354 · motion.css:18-37</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ===== E · C5-07 toast / C5-08 高亮 / C5-09 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="n">E · FPToast 进 200 出 120(现状,不动)· 行定位高亮 2s · 补遗:减动效下的行高亮</span><span class="ids">C5-07 · C5-08 · C5-09</span></div>
+    <div class="blk-body">
+      <div class="demo">
+        <div class="vs" style="grid-template-columns:380px minmax(0,1fr);">
+          <div class="demo">
+            <input type="checkbox" id="rpE" class="rpE" hidden>
+            <div class="ctl"><label for="rpE" class="rp-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>重播:toast</label><span class="lab">C5-07 · 进 200 → 停 → 2000 出 120</span></div>
+            <div class="stage toast-stage">
+              <div class="pin" style="left:8px; top:8px;">1</div>
+              <div style="padding:14px 16px; display:flex; flex-direction:column; gap:6px;"><span style="font-size:14px; font-weight:600;">判据阈值</span><span class="cap">波动倍数 2.0 → 2.5 · 已保存</span></div>
+              <div class="fpt"><svg class="ok" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4-7 7z"></path></svg><span>判据已保存,8 张图已按新阈值重算</span></div>
+            </div>
+            <div class="tl long tall" style="--scale:2400; --right:'2400 ms';">
+              <span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:2000; --lbl:'2000'"></span><span class="tick" style="--at:2120; --lbl:''"></span>
+              <span class="tl-bar" style="--from:0; --to:200; --lbl:'进 200ms · --ease-out · 6px'"></span>
+              <span class="tl-bar r2 gray" style="--from:2000; --to:2120; --lbl:'出 120ms · --ease-standard · 只淡'"></span>
+            </div>
+          </div>
+          <div class="demo">
+            <input type="checkbox" id="rpE2" class="rpE2" hidden>
+            <div class="ctl"><label for="rpE2" class="rp-btn"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>重播:点扇区定位行</label><span class="lab">C5-08 · FinBalanceView 资产负债表</span></div>
+            <div class="stage" style="display:grid; grid-template-columns:minmax(0,1fr) 250px;">
+              <div class="pin" style="left:8px; top:8px;">2</div>
+              <div class="pin" style="right:228px; top:8px;">3</div>
+              <div style="padding:8px 12px; border-right:1px solid var(--divider);">
+                <table class="fb">
+                  <tr><th>科目</th><th style="text-align:right;">2026-08</th><th style="text-align:right;">占比</th></tr>
+                  <tr><td>货币资金</td><td class="n">12,480,000</td><td class="n">18.2%</td></tr>
+                  <tr class="fb-flash"><td>应收账款 · 租户</td><td class="n">6,930,000</td><td class="n">10.1%</td></tr>
+                  <tr><td>固定资产 · 光伏</td><td class="n">31,200,000</td><td class="n">45.5%</td></tr>
+                  <tr><td>其他</td><td class="n">17,960,000</td><td class="n">26.2%</td></tr>
+                </table>
+              </div>
+              <div style="padding:10px 12px; display:flex; flex-direction:column; gap:6px;">
+                <span class="tag ok" style="width:max-content;">C5-09 · reduced-motion</span>
+                <table class="fb" style="font-size:11px;">
+                  <tr class="rm-today"><td style="padding:0 6px;">今天:1ms 压平 → 无提示</td></tr>
+                  <tr class="rm-keep"><td style="padding:0 6px;">建议:2s 例外,底色渐隐是颜色不是位移</td></tr>
+                </table>
+                <span class="cap" style="line-height:1.5;">motion.css 减动效块加 <code style="font-family:var(--font-mono);">.fb-flash td, tr.row-flash &gt; td { animation-duration: var(--dur-highlight) !important }</code>;+≈80B,零新令牌</span>
+              </div>
+            </div>
+            <div class="tl long tall" style="--scale:2400; --right:'2400 ms';">
+              <span class="tick" style="--at:200; --lbl:'200'"></span><span class="tick" style="--at:2000; --lbl:'2000'"></span>
+              <span class="tl-bar" style="--from:0; --to:2000; --lbl:'背景 accent-blue → transparent 2s(--dur-highlight)· --ease-standard · animationend 摘类'"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="nt">为什么这样</div>
+        <ol>
+          <li><span class="pn">1</span><span><b>FPToast 保持 &lt;Transition&gt; 容忍例外:</b>无遮罩、自动摘除,进 200 --ease-out 6px、出 120 --ease-standard 只淡(用户已不看它,再挪动只会拖住下一步)。MobileNavDrawer 保持;FPSideDrawer 直开直关(用户指定例外);FPEditModeButton 经 ds/Button 自然继承 C2-01 按压。禁令的两个安全例外,不扩散。</span></li>
+          <li><span class="pn">2</span><span><b>行高亮保持 2s 底色渐隐,消灭双写。</b>FinBalanceView.vue:314 的 &lt;tr&gt; 加 <code>@animationend="flashLabel === r.label &amp;&amp; (flashLabel = null)"</code>(animation 在 td 上冒泡到 tr,多次赋 null 无害;守卫防止点第二个扇区后迟到事件把新目标清掉),删 :191 <code>setTimeout(2000)</code>。减动效:1ms → animationend 立即触发,类立刻摘;:190 scrollIntoView smooth 是 JS 显式值,位置仍由滚动回答。</span></li>
+          <li><span class="pn">3</span><span><b>补遗 C5-09(待拍板):</b>motion.css:47-52 全局 <code>1ms !important</code> 把 .fb-flash td / tr.row-flash&gt;td 压成 1ms,减动效用户定位到的行没有任何视觉提示 —— 无障碍能力的静默退化。建议在减动效块(替换 C1-01 删掉的 .fp-nav-bar::after 行)加 2s 例外:底色渐隐不是位移/视差/闪烁,与 .page-spin 同理。待确认:接受为第三个减动效例外,还是改静态终态(需选一个色令牌)。</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="tw"><table class="spec">
+      <colgroup><col style="width:56px"><col style="width:150px"><col style="width:74px"><col style="width:190px"><col><col style="width:150px"><col style="width:120px"><col style="width:236px"></colgroup>
+      <tr><th>项</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr>
+      <tr><td class="id">C5-07</td><td class="m">—</td><td>几十次/天 / 手机偶发 / 偶发</td><td>明确:不动</td><td>FPToast 保持 &lt;Transition&gt; 容忍例外(进 200 --ease-out 6px,出 120 淡出;无遮罩、自动摘除);MobileNavDrawer 保持;FPSideDrawer 直开直关(用户指定例外);FPEditModeButton 经 ds/Button 自然继承 C2-01 按压</td><td class="m">既有 / 既有</td><td class="m">既有</td><td class="m">FPToast.vue:56-72 · :144-147 · FPSideDrawer.vue:34-37 · FPEditModeButton.vue:43-57</td></tr>
+      <tr><td class="id">C5-08</td><td class="m">深链定位 / 点扇区定位行</td><td>罕见</td><td>回答「变的是哪一行」</td><td>保持 --dur-highlight 2s 底色渐隐;FinBalanceView.vue:314 &lt;tr&gt; 加 <code>@animationend="flashLabel === r.label &amp;&amp; (flashLabel = null)"</code>,删 :191 setTimeout(2000)</td><td class="m">2s(--dur-highlight)/ --ease-standard</td><td class="m">1ms → animationend 立即触发,类立刻摘;:190 scrollIntoView smooth 不受 CSS 规则影响</td><td class="m">FinBalanceView.vue:188-191 · :314 · :339-340 · LedgerWideTable.vue:117-118</td></tr>
+      <tr><td class="id">C5-09 补遗</td><td class="m">prefers-reduced-motion 下的 C5-08</td><td>罕见</td><td>缺口:motion.css:47-52 全局 1ms 压平 .fb-flash td / tr.row-flash&gt;td,定位行无提示;§8.6 只列 .page-spin / .fp-shim / FPLoadBar</td><td>建议:减动效块加 <code>.fb-flash td, tr.row-flash &gt; td { animation-duration: var(--dur-highlight) !important; }</code>,底色渐隐不是动效(无位移/视差/闪烁),与 .page-spin 同理;零新令牌,+≈80B index</td><td class="m">2s(--dur-highlight)/ --ease-standard(例外)</td><td class="m">待确认:接受为第三个例外,或静态终态(需选色令牌)</td><td class="m">motion.css:45-53 · FinBalanceView.vue:339 · LedgerWideTable.vue:434</td></tr>
+    </table></div>
+  </div>
+
+  <!-- ===== bottom strip ===== -->
+  <div class="nodo">
+    <span class="nt">明确不做(切换动效相关,摘自规范 §14)</span>
+    <ul>
+      <li><span><b>换期 / 切档 / 开抽屉重播图表入场</b> — 几十次/天 × 1000ms;§7.1 明令换期内容不动。更新路径 animationDuration:0 + 屏级 entered 直接消灭。</span></li>
+      <li><span><b>PvQueue 组体 / SidebarNav 子树 展开高度动画或淡入</b> — height 是布局属性;用户主动推开内容规范容许瞬变。</span></li>
+      <li><span><b>FPDrawer / FPSideDrawer / Select / Popover / 命令面板 退场动画</b> — Transition 禁令;CSS 退场需延迟卸载 = JS 计时器 = 同一失败模式。</span></li>
+      <li><span><b>AnaEChart morph prop / 屏侧 sectionSwitched / entrancePhase / 逐图 :entrance</b> — 屏级 entered + painted 一处覆盖全部重挂路径;类目漂移幽灵由系列 id 机制解决。</span></li>
+      <li><span><b>Segmented / .anx-seg 滑动指示条(含 --ease-spring)</b> — 几十/天档;需 JS 量宽 + RO,与「hover 回归 CSS」相悖;120 换底在使用中不可区分。</span></li>
+      <li><span><b>选中驱动的兄弟图给稳定 id 让不同实体之间形变</b> — 不同实体之间的形变是假中间数据;抽屉 b9/b10/b11 反而要加带序号的 id 阻止跨实体形变。</span></li>
+      <li><span><b>Cockpit 主图 animationDurationUpdate:120 拖动特例</b> — dataZoom 拖动由引擎 roams.js 每次 dispatch 自带 duration:100;月步进走通用 200。</span></li>
+      <li><span><b>ECharts universalTransition</b> — 未注册,需新 use 项吃预算;它做跨系列/跨形态 morph,本仓没有这种切换。</span></li>
+      <li><span><b>DUR.update 取 120(三位评审主张)</b> — 短到读不出「哪根动了」,且与引擎删除淡出硬编码 200 错拍;取 200 并在原则 1 明写例外(待拍板 B)。</span></li>
+      <li><span><b>自绘导航条 / 路由 crossfade / 登录后外壳接力</b> — 见 01 页面切换与 04 登录后画板。</span></li>
+    </ul>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

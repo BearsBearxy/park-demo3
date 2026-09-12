@@ -1,0 +1,659 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) ===== */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+      --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+      --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+      --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+      --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+      --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+      --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+      --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+      --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+      --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+      --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+      --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+      --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+      --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+      --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+      --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+      --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+      /* motion — existing */
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+      --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+      --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+    }
+
+    /* ===== artboard chrome ===== */
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    svg { flex: 0 0 auto; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .hd { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+    .hd-l { display:flex; flex-direction:column; gap:6px; }
+    .kicker { font-size:11px; font-weight:600; letter-spacing:.08em; color:var(--text-muted); }
+    h1 { font-size:20px; font-weight:600; margin:0; line-height:1.2; }
+    .intro { font-size:12px; color:var(--text-muted); line-height:1.55; max-width:820px; }
+    .legend { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+    .chips { display:flex; gap:6px; align-items:center; }
+    .chips .k { font-size:11px; color:var(--text-muted); }
+    .chip { font-family:var(--font-mono); font-size:11px; border-radius:999px; padding:2px 8px; background:#fff; border:1px solid var(--border-subtle); color:var(--text-muted); white-space:nowrap; }
+    .chip.on { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+
+    .blk { display:flex; flex-direction:column; gap:12px; }
+    .blk-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+    .blk-h .id { font-family:var(--font-mono); font-size:11px; font-weight:600; color:var(--hue-blue); background:var(--accent-blue); border-radius:4px; padding:2px 6px; }
+    .blk-h .t { font-size:16px; font-weight:600; }
+    .blk-h .s { font-size:12px; color:var(--text-muted); }
+    .row { display:flex; gap:16px; align-items:flex-start; }
+    .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+
+    .stage-wrap { display:flex; flex-direction:column; gap:8px; flex:0 0 auto; }
+    .stage-top { display:flex; align-items:center; gap:8px; min-height:28px; }
+    .stage-lbl { font-size:12px; color:var(--text-muted); }
+    .stage { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:12px; position:relative; }
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; }
+    .rp-btn:hover { background: var(--surface-card); }
+    .rp-btn:active { filter: brightness(0.94); }
+    .rd:checked + .rp-btn, #b1:checked ~ .stage-top .for-b1, #b3:checked ~ .stage-top .for-b3, #c1:checked ~ .stage-top .for-c1, #c2:checked ~ .stage-top .for-c2, #d1:checked ~ .stage-top .for-d1, #d2:checked ~ .stage-top .for-d2 { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+
+    .tag { display:inline-flex; align-items:center; height:18px; padding:0 7px; border-radius:4px; font-size:11px; font-weight:600; }
+    .tag.today { background:var(--surface-sunken); color:var(--text-muted); }
+    .tag.design { background:var(--accent-blue); color:var(--hue-blue); }
+    .ver { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); }
+
+    /* timeline ruler (0…480ms) */
+    .tl { position:relative; height:26px; margin-top:8px; border-top:1px solid var(--divider); }
+    .tl::before { content:'0'; position:absolute; left:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl::after { content:'120 · 200 · 320 ms'; position:absolute; right:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl-bar { position:absolute; top:-1px; height:3px; background: var(--hue-blue); left: calc(var(--from) / 480 * 100%); width: calc((var(--to) - var(--from)) / 480 * 100%); }
+    .tl-bar::after { content: var(--lbl); position:absolute; left:0; top:8px; font:11px var(--font-mono); color:var(--hue-blue); white-space:nowrap; }
+    .tl-bar.zero { background:var(--ink-300); width:2px; }
+    .tl-bar.zero::after { color:var(--text-muted); }
+    .tl .tk { position:absolute; top:-1px; width:1px; height:6px; background:var(--ink-300); }
+
+    /* wide two-lane ruler for C1-01 (0…1200ms, 1200 = 200 gate + 900 sweep + 100 slack) */
+    .tlw { position:relative; border-top:1px solid var(--divider); margin-top:4px; padding-top:22px; display:flex; flex-direction:column; gap:6px; }
+    .tlw .tk { position:absolute; top:-1px; width:1px; height:6px; background:var(--ink-300); }
+    .tlw .tkl { position:absolute; top:6px; transform:translateX(-50%); font:11px var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+    .lane { position:relative; height:30px; display:flex; align-items:center; }
+    .lane .ln { width:72px; flex:0 0 auto; font-size:11px; color:var(--text-muted); font-weight:600; }
+    .lane .lt { position:relative; flex:1; height:100%; }
+    .lane .bar { position:absolute; top:6px; height:4px; border-radius:2px; }
+    .lane .bar.gate { background: repeating-linear-gradient(90deg, var(--ink-300) 0 3px, transparent 3px 6px); }
+    .lane .bar.blue { background: var(--hue-blue); }
+    .lane .bar.ghost { background: repeating-linear-gradient(90deg, var(--fill-sky) 0 4px, transparent 4px 8px); }
+    .lane .bar.fast { background: var(--hue-cyan); }
+    .lane .mk { position:absolute; top:2px; width:2px; height:12px; background:var(--ink-900); }
+    .lane .cap { position:absolute; top:14px; font:11px var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+    .lane .cap.b { color:var(--hue-blue); }
+    .tlw .lane .ln, .tlw .lane .lt { pointer-events:none; }
+    .tlw .axis { position:absolute; left:72px; right:0; top:0; height:0; }
+
+    /* spec table (vertical) */
+    .spec { width:100%; border-collapse:collapse; font-size:12px; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; }
+    .spec th { width:84px; text-align:left; font-size:11px; font-weight:600; color:var(--text-muted); padding:5px 8px; border-bottom:1px solid var(--divider); background:var(--surface-card); vertical-align:top; white-space:nowrap; }
+    .spec td { padding:5px 8px; border-bottom:1px solid var(--divider); line-height:1.5; vertical-align:top; }
+    .spec tr:last-child th, .spec tr:last-child td { border-bottom:none; }
+    .spec code { font-family:var(--font-mono); font-size:11px; color:var(--text-primary); background:var(--surface-sunken); border-radius:3px; padding:0 4px; white-space:nowrap; }
+    .spec .v { font-family:var(--font-mono); font-size:11px; }
+    .spec .ok { color:var(--hue-blue); font-weight:600; }
+
+    /* pins + notes */
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:5; font-family:var(--font-mono); }
+    .notes { display:flex; flex-direction:column; gap:7px; }
+    .nrow { display:flex; gap:9px; align-items:flex-start; }
+    .nrow .pin { position:relative; left:0; top:0; flex:0 0 auto; }
+    .note { font-size:12px; line-height:1.55; color:var(--text-primary); }
+    .note b { color:var(--hue-blue); font-weight:600; }
+
+    .nope { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; }
+    .nope .t { font-size:12px; font-weight:600; }
+    .nope .it { font-size:12px; color:var(--text-muted); line-height:1.5; display:flex; gap:8px; }
+    .nope .it::before { content:'—'; color:var(--ink-300); flex:0 0 auto; }
+
+    /* ===== app shell mock (component-reference.md values) ===== */
+    .fp-stage { display:flex; padding:12px; gap:12px; background:var(--surface-sunken); border-radius:8px; height:306px; }
+    .fp-nav-card { background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; display:flex; flex:0 0 auto; }
+    .fp-rail { width:66px; padding:14px 9px; gap:5px; background:var(--surface-sunken); display:flex; flex-direction:column; align-items:center; flex:0 0 auto; }
+    .fp-rail-mark { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid var(--border-subtle); display:grid; place-items:center; color:var(--ink-900); flex:0 0 auto; }
+    .fp-railsep { width:30px; height:1px; background:var(--border-subtle); margin:9px 0 7px; flex:0 0 auto; }
+    .fp-rail-btn { width:48px; border-radius:15px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:5px; font-size:10.5px; font-weight:500; color:var(--text-muted); cursor:pointer; flex:0 0 auto; transition: color 120ms var(--ease-standard); }
+    .fp-rail-btn:hover { background:rgba(28,28,28,.05); color:var(--text-secondary); }
+    .fp-rail-btn.on, .fp-rail-btn.on:hover { background:var(--ink-900); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,.2); }
+    .fp-vdiv { width:1px; background:var(--border-subtle); flex:0 0 auto; }
+    .fp-panel { width:234px; padding:18px 14px 14px; display:flex; flex-direction:column; gap:14px; overflow:hidden; flex:0 0 auto; }
+    .fp-panel .nm { font-size:16px; font-weight:600; line-height:20px; display:flex; align-items:center; gap:8px; }
+    .sb-sec { display:flex; flex-direction:column; }
+    .sb-t { font-size:12px; color:var(--text-muted); padding:6px 12px; }
+    .sb-it { height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:var(--text-secondary); display:flex; align-items:center; gap:8px; cursor:pointer; transition: background 120ms var(--ease-standard); }
+    .sb-it:hover { background:var(--bg-hover); }
+    .sb-it.on { background:var(--bg-hover); }
+    .fp-main-card { flex:1; min-width:0; background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; position:relative; display:flex; flex-direction:column; }
+    .fp-tabstrip { height:44px; padding:0 8px; gap:6px; display:flex; align-items:center; border-bottom:1px solid var(--divider); background:var(--surface-card); position:relative; flex:0 0 auto; }
+    .fp-tabs { flex:1; min-width:0; display:flex; gap:6px; overflow:hidden; }
+    .fp-tab { --on:0; flex:1 1 0; min-width:124px; max-width:196px; height:32px; padding:0 6px 0 11px; border-radius:8px; display:flex; align-items:center; gap:8px; color:var(--text-muted); white-space:nowrap; cursor:pointer; transition: background 120ms var(--ease-standard), color 120ms var(--ease-standard), box-shadow 120ms var(--ease-standard); }
+    .fp-tab:hover { background:rgba(28,28,28,.05); color:var(--text-secondary); }
+    .fp-tab.on, .fp-tab.on:hover { --on:1; background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    .fp-tab-ic { display:inline-flex; opacity: calc(.55 + .45 * var(--on)); }
+    .fp-tab:hover .fp-tab-ic { opacity:1; }
+    .fp-tab-label { flex:1 1 auto; min-width:0; font-size:12.5px; line-height:20px; overflow:hidden; text-overflow:ellipsis; font-weight: calc(400 + 200 * var(--on)); }
+    .fp-tab.preview .fp-tab-label { font-style:italic; }
+    .fp-tab-btn { width:20px; height:20px; border-radius:6px; display:grid; place-items:center; color:var(--text-disabled); opacity: var(--on); flex:0 0 auto; }
+    .fp-tab:hover .fp-tab-btn { opacity:1; }
+    .fp-tab-new { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; color:var(--text-muted); flex:0 0 auto; cursor:pointer; }
+    .fp-tab-new:hover { background:rgba(28,28,28,.05); color:var(--text-primary); }
+    .fp-tab-overflow { display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 9px; border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:500; flex:0 0 auto; cursor:pointer; }
+    .fp-tab-overflow:hover, .fp-tab-overflow.open { background:rgba(28,28,28,.05); color:var(--text-primary); }
+    .fp-toolbar { height:48px; padding:0 16px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--divider); background:var(--surface-overlay); flex:0 0 auto; }
+    .fp-crumb { display:flex; align-items:center; gap:7px; margin-left:6px; font-size:14px; min-width:0; }
+    .fp-crumb-grp { color:var(--text-muted); white-space:nowrap; }
+    .fp-crumb-sep { color:var(--text-disabled); }
+    .fp-crumb-page { font-weight:500; color:var(--text-primary); white-space:nowrap; position:relative; display:inline-grid; }
+    .fp-crumb-page > span { grid-area:1/1; }
+    .fp-toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+    .fp-search-btn { display:flex; align-items:center; gap:8px; height:34px; padding:0 8px 0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:var(--surface-card); color:var(--text-muted); font-size:13px; min-width:150px; }
+    .fp-kbd { font-size:11px; font-weight:600; color:var(--text-secondary); background:#fff; border:1px solid var(--border-subtle); border-radius:6px; padding:1px 5px; margin-left:auto; }
+    .ico-btn { width:34px; height:34px; border-radius:10px; border:1px solid var(--border-subtle); background:#fff; display:grid; place-items:center; color:var(--text-muted); }
+    .fp-content { flex:1; padding:24px; position:relative; overflow:hidden; min-height:0; }
+    .c-layer { position:absolute; inset:24px; display:flex; flex-direction:column; gap:8px; }
+    .fp-lb { position:absolute; left:0; right:0; top:0; height:2px; overflow:hidden; pointer-events:none; border-top-left-radius:inherit; border-top-right-radius:inherit; }
+    .fp-lb i { position:absolute; inset:0; display:block; background:var(--hue-blue); transform:translateX(-100%); }
+
+    /* mini table / skeleton content */
+    .mt { width:100%; border-collapse:collapse; font-size:12px; }
+    .mt th { text-align:left; font-size:11px; color:var(--text-muted); font-weight:500; padding:0 8px 6px; border-bottom:1px solid var(--divider); }
+    .mt td { padding:6px 8px; border-bottom:1px solid var(--divider); }
+    .mt td.n { font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; }
+    .fp-shim { border-radius:4px; background: linear-gradient(90deg, var(--surface-sunken) 0%, var(--border-subtle) 50%, var(--surface-sunken) 100%); background-size:200% 100%; animation: fp-shim 1.4s linear infinite; }
+    @keyframes fp-shim { to { background-position:-200% 0; } }
+    .ctitle { font-size:14px; font-weight:600; }
+    .csub { font-size:11px; color:var(--text-muted); }
+
+    /* overflow pop (TabStrip.vue:371-385) */
+    .fp-tablist-pop { position:absolute; top:43px; right:6px; z-index:6; width:288px; padding:6px; background:var(--surface-white); border:1px solid var(--border-subtle); border-radius:12px; box-shadow:0 8px 28px rgba(28,28,28,.12); }
+    .fp-tablist-hd { padding:6px 10px 4px; font-size:11px; font-weight:600; color:var(--text-disabled); }
+    .fp-tablist-row { display:flex; align-items:center; gap:10px; padding:8px 9px; border-radius:8px; cursor:pointer; color:var(--text-muted); }
+    .fp-tablist-row:hover { background:var(--bg-hover); }
+    .fp-tablist-row.on { background:var(--accent-slate); }
+    .fp-tablist-row .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:var(--text-primary); }
+    .fp-tablist-row .nm.it { font-style:italic; color:var(--text-secondary); }
+    .fp-tablist-row .x { width:22px; height:22px; border-radius:6px; display:grid; place-items:center; color:var(--text-disabled); }
+
+    /* ===== Block A · C1-01 nav progress: master 720ms = 600ms chunk arrival + 120ms highlight migration ===== */
+    .kA { animation-duration:720ms; animation-fill-mode:both; }
+    .k-lb { animation: a-lb-a 720ms step-end both; }
+    .k-lb i { animation: a-sw-a 900ms var(--ease-both) 200ms infinite; }
+    .k-told { animation: a-told-a 720ms both; }
+    .k-tnew { animation: a-tnew-a 720ms both; }
+    .k-sbold { animation: a-sbold-a 720ms both; }
+    .k-sbnew { animation: a-sbnew-a 720ms both; }
+    .k-cold { animation: a-hide-a 720ms step-end both; }
+    .k-cnew { animation: a-show-a 720ms step-end both; }
+    #rpA:checked ~ .stage .k-lb { animation-name: a-lb-b; }
+    #rpA:checked ~ .stage .k-lb i { animation-name: a-sw-b; }
+    #rpA:checked ~ .stage .k-told { animation-name: a-told-b; }
+    #rpA:checked ~ .stage .k-tnew { animation-name: a-tnew-b; }
+    #rpA:checked ~ .stage .k-sbold { animation-name: a-sbold-b; }
+    #rpA:checked ~ .stage .k-sbnew { animation-name: a-sbnew-b; }
+    #rpA:checked ~ .stage .k-cold { animation-name: a-hide-b; }
+    #rpA:checked ~ .stage .k-cnew { animation-name: a-show-b; }
+    /* 200ms gate (27.78%) → shown; 600ms confirm (83.33%) → v-if unmount, instant */
+    @keyframes a-lb-a { 0% { opacity:0; } 27.78% { opacity:1; } 83.33%, 100% { opacity:0; } }
+    @keyframes a-lb-b { 0% { opacity:0; } 27.78% { opacity:1; } 83.33%, 100% { opacity:0; } }
+    @keyframes a-sw-a { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    @keyframes a-sw-b { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    /* tab highlight: old stays .on until 600ms, then 120ms --ease-standard (TabStrip.vue:246-249 existing transition) */
+    @keyframes a-told-a { 0%, 83.32% { --on:1; background:rgb(255,255,255); color:var(--ink-900); box-shadow:0 1px 3px rgba(28,28,28,.10); animation-timing-function:var(--ease-standard); } 83.33% { --on:0; } 100% { --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); } }
+    @keyframes a-told-b { 0%, 83.32% { --on:1; background:rgb(255,255,255); color:var(--ink-900); box-shadow:0 1px 3px rgba(28,28,28,.10); animation-timing-function:var(--ease-standard); } 83.33% { --on:0; } 100% { --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); } }
+    /* new preview chip: present at 0ms (no fade), highlighted only after confirm */
+    @keyframes a-tnew-a { 0% { opacity:0; --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); animation-timing-function:step-end; } 0.5%, 83.32% { opacity:1; --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); animation-timing-function:var(--ease-standard); } 83.33% { --on:1; } 100% { opacity:1; --on:1; background:rgb(255,255,255); color:var(--ink-900); box-shadow:0 1px 3px rgba(28,28,28,.10); } }
+    @keyframes a-tnew-b { 0% { opacity:0; --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); animation-timing-function:step-end; } 0.5%, 83.32% { opacity:1; --on:0; background:rgba(255,255,255,0); color:var(--text-muted); box-shadow:0 1px 3px rgba(28,28,28,0); animation-timing-function:var(--ease-standard); } 83.33% { --on:1; } 100% { opacity:1; --on:1; background:rgb(255,255,255); color:var(--ink-900); box-shadow:0 1px 3px rgba(28,28,28,.10); } }
+    /* sidebar rows: SidebarNav.vue:58 background 120ms --ease-standard, fires only at route confirm */
+    @keyframes a-sbold-a { 0%, 83.33% { background:rgba(28,28,28,.05); animation-timing-function:var(--ease-standard); } 100% { background:rgba(28,28,28,0); } }
+    @keyframes a-sbold-b { 0%, 83.33% { background:rgba(28,28,28,.05); animation-timing-function:var(--ease-standard); } 100% { background:rgba(28,28,28,0); } }
+    @keyframes a-sbnew-a { 0%, 83.33% { background:rgba(28,28,28,0); animation-timing-function:var(--ease-standard); } 100% { background:rgba(28,28,28,.05); } }
+    @keyframes a-sbnew-b { 0%, 83.33% { background:rgba(28,28,28,0); animation-timing-function:var(--ease-standard); } 100% { background:rgba(28,28,28,.05); } }
+    /* crumb + content: hard swap at confirm, new instance first frame = skeleton */
+    @keyframes a-hide-a { 0% { opacity:1; } 83.33%, 100% { opacity:0; } }
+    @keyframes a-hide-b { 0% { opacity:1; } 83.33%, 100% { opacity:0; } }
+    @keyframes a-show-a { 0% { opacity:0; } 83.33%, 100% { opacity:1; } }
+    @keyframes a-show-b { 0% { opacity:0; } 83.33%, 100% { opacity:1; } }
+    /* reduced-motion variant: FPLoadBar.vue:50-59 breathing, needs §2 !important fix */
+    .rm-strip { display:flex; align-items:center; gap:12px; }
+    .rm-card { position:relative; width:300px; height:36px; border:1px solid var(--border-subtle); border-radius:24px 24px 0 0; border-bottom:none; background:var(--surface-card); overflow:hidden; flex:0 0 auto; }
+    .rm-card .fp-lb i { transform:none; animation: lb-pulse 1.6s ease-in-out infinite; }
+    @keyframes lb-pulse { 0%, 100% { opacity:.30; } 50% { opacity:.85; } }
+    .rm-card .rm-tabs { position:absolute; left:8px; top:6px; display:flex; gap:6px; }
+    .rm-card .rm-tab { height:24px; width:90px; border-radius:6px; background:#fff; box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    .rm-card .rm-tab.off { background:transparent; box-shadow:none; }
+
+    /* ===== Block B · C1-02 width jump (state switch, 0ms — it is a layout fix, not a motion) ===== */
+    .tb-today .fp-tab { min-width:42px; }
+    .tb-design .fp-tab { min-width:124px; }
+    #b1:checked ~ .stage .fp-tab.t1, #b3:checked ~ .stage .fp-tab.t3 { --on:1; background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    #b1:checked ~ .stage .tb-today .fp-tab.t1, #b3:checked ~ .stage .tb-today .fp-tab.t3 { min-width:124px; }
+    .tabs-fixed { width:400px; flex:0 0 auto; }
+    .shift-rule { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-muted); font-family:var(--font-mono); padding-left:8px; }
+    .shift-rule i { display:block; height:0; border-top:2px dashed var(--hue-orange); width:74.8px; }
+    .shift-rule.zero i { border-top-color:var(--ink-300); width:2px; }
+
+    /* ===== Block C · C1-03 IconRail .on / hover ===== */
+    .rail-today .fp-rail-btn { transition: color 120ms var(--ease-standard); }
+    .rail-design .fp-rail-btn { transition: color 120ms var(--ease-standard), background 120ms var(--ease-standard), box-shadow 120ms var(--ease-standard); }
+    #c1:checked ~ .stage .fp-rail-btn.r1, #c2:checked ~ .stage .fp-rail-btn.r2 { background:var(--ink-900); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,.2); }
+    .rail-box { display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .rail-box .fp-rail { border:1px solid var(--border-subtle); border-radius:24px 0 0 24px; height:257px; }
+
+    /* ===== Block D · C1-04 zero motion ===== */
+    .d-layer { position:absolute; inset:0; padding:14px 16px; display:none; flex-direction:column; gap:8px; }
+    #d1:checked ~ .stage .fp-tab.t1, #d2:checked ~ .stage .fp-tab.t2 { --on:1; background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    #d1:checked ~ .stage .d-layer.l1, #d2:checked ~ .stage .d-layer.l2 { display:flex; }
+    .mini { border:1px solid var(--border-subtle); border-radius:8px; background:var(--surface-card); padding:8px 10px; display:flex; flex-direction:column; gap:6px; font-size:11px; color:var(--text-muted); }
+    .mini .h { font-size:12px; font-weight:600; color:var(--text-primary); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .mini .h .ok { font-family:var(--font-mono); font-size:11px; color:var(--hue-blue); font-weight:600; }
+    .pal { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; box-shadow:var(--shadow-pop); padding:6px; display:flex; flex-direction:column; gap:2px; }
+    .pal .in { display:flex; align-items:center; gap:8px; height:30px; padding:0 8px; font-size:12px; color:var(--text-primary); border-bottom:1px solid var(--divider); }
+    .pal .it { display:flex; align-items:center; gap:8px; height:26px; padding:0 8px; border-radius:6px; font-size:12px; color:var(--text-primary); }
+    .pal .it.on { background:var(--bg-hover); }
+    .addr { display:flex; align-items:center; gap:8px; height:28px; padding:0 10px; border:1px solid var(--border-subtle); border-radius:8px; background:#fff; font-family:var(--font-mono); font-size:11px; color:var(--text-primary); }
+
+    /* ===== Block E · C1-05 overflow menu pop-in 120 --ease-out; close = v-if instant ===== */
+    .k-pop { animation: pop-a 120ms var(--ease-out) both; }
+    #rpE:checked ~ .stage .k-pop { animation-name: pop-b; }
+    @keyframes pop-a { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    @keyframes pop-b { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 900px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- ===== header ===== -->
+  <div class="hd">
+    <div class="hd-l">
+      <div class="kicker">01 · 页面切换(100+/天:零动效为主)</div>
+      <h1>页面切换</h1>
+      <div class="intro">一天点一百多次的东西不配有动效。本类 5 条里只有 2 条真的会动:chunk 空窗过 200ms 门才亮的 2px 进度线,和偶发的溢出菜单 120ms 冒出;其余是修位移、补齐既有换色列表,和明确写下「零动效是对的,别加」。</div>
+    </div>
+    <div class="legend">
+      <div class="chips"><span class="k">频次档</span><span class="chip on">100+/天</span><span class="chip">几十/天</span><span class="chip">偶发</span><span class="chip">一生一次</span></div>
+      <div class="chips"><span class="k">令牌</span><span class="chip on">--dur-fast 120</span><span class="chip">--dur-base 200</span><span class="chip">--dur-slow 320</span><span class="chip on">--ease-standard</span><span class="chip on">--ease-out</span><span class="chip on">--ease-both</span></div>
+    </div>
+  </div>
+
+  <!-- ===== Block A · C1-01 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="id">C1-01</span><span class="t">导航进度条:删自绘 .fp-nav-bar,改用 FPLoadBar</span><span class="s">几十次/天 · 预热命中的绝大多数 &lt;200ms 全程静默 · 只有冷缓存才看得见这条线</span></div>
+    <div class="row">
+      <div class="stage-wrap" style="width:860px;">
+        <input type="checkbox" id="rpA" class="rp" hidden>
+        <div class="stage-top"><span class="stage-lbl">舞台 · 侧栏点「附表6 光伏发电」,冷缓存,chunk 在 600ms 到达(示例场景)</span><label for="rpA" class="rp-btn">重播</label></div>
+        <div class="stage">
+          <div class="fp-stage">
+            <div class="fp-nav-card">
+              <div class="fp-rail">
+                <div class="fp-rail-mark"><svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l6 3V9l6 3V9l6 3v9z"/><path d="M3 21h18"/></svg></div>
+                <div class="fp-railsep"></div>
+                <div class="fp-rail-btn on"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span>数据</span></div>
+                <div class="fp-rail-btn"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M10 2v8l3-3 3 3V2"/></svg><span>报表</span></div>
+                <div class="fp-rail-btn"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><span>分析</span></div>
+              </div>
+              <div class="fp-vdiv"></div>
+              <div class="fp-panel">
+                <div class="nm">数据中心</div>
+                <div class="sb-sec"><div class="sb-it"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>数据中心首页</div></div>
+                <div class="sb-sec"><div class="sb-t">出账链 · 应收派生</div><div class="sb-it"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>园区抄表</div></div>
+                <div class="sb-sec"><div class="sb-t">实际数 · 事后录入</div>
+                  <div class="sb-it k-sbold"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>月度台账</div>
+                  <div class="sb-it k-sbnew"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>附表6 光伏发电</div>
+                </div>
+              </div>
+            </div>
+            <div class="fp-main-card">
+              <div class="fp-tabstrip">
+                <div class="fp-tabs">
+                  <div class="fp-tab"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span><span class="fp-tab-label">数据中心首页</span><span class="fp-tab-btn"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+                  <div class="fp-tab k-told"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span><span class="fp-tab-label">月度台账</span><span class="fp-tab-btn"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+                  <div class="fp-tab preview k-tnew"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><span class="fp-tab-label">附表6 光伏发电</span><span class="fp-tab-btn"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+                </div>
+                <div class="fp-tab-new"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+              </div>
+              <div class="fp-toolbar">
+                <span class="fp-crumb"><span class="fp-crumb-grp">数据中心</span><span class="fp-crumb-sep">/</span><span class="fp-crumb-page"><span class="k-cold">月度台账</span><span class="k-cnew">附表6 光伏发电</span></span></span>
+                <div class="fp-toolbar-right">
+                  <div class="fp-search-btn"><svg width="15" height="15" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>搜索页面 / 租户</span><span class="fp-kbd">Ctrl K</span></div>
+                  <div class="ico-btn"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+                </div>
+              </div>
+              <div class="fp-content">
+                <div class="c-layer k-cold">
+                  <div class="ctitle">月度台账 · 2026-08</div>
+                  <table class="mt"><tr><th>楼栋</th><th style="text-align:right;">应收(元)</th><th style="text-align:right;">收缴率</th></tr><tr><td>A座</td><td class="n">318,420</td><td class="n">96.2%</td></tr><tr><td>C座</td><td class="n">402,115</td><td class="n">91.8%</td></tr><tr><td>F座</td><td class="n">127,900</td><td class="n">88.4%</td></tr></table>
+                </div>
+                <div class="c-layer k-cnew">
+                  <div class="ctitle">附表6 光伏发电 · 2026-08</div>
+                  <div class="fp-shim" style="height:20px; width:60%;"></div>
+                  <div class="fp-shim" style="height:20px; width:84%;"></div>
+                  <div class="fp-shim" style="height:20px; width:72%;"></div>
+                  <div class="csub">新实例首帧即骨架(C6-01),不淡入</div>
+                </div>
+              </div>
+              <span class="fp-lb k-lb"><i></i></span>
+            </div>
+          </div>
+          <div class="pin" style="left:222px; top:242px;">1</div>
+          <div class="pin" style="left:698px; top:20px;">2</div>
+          <div class="pin" style="left:520px; top:10px;">3</div>
+          <div class="pin" style="left:392px; top:150px;">4</div>
+          <div class="pin" style="left:6px; top:84px;">5</div>
+        </div>
+        <div class="tlw">
+          <div class="axis">
+            <span class="tk" style="left:0;"></span><span class="tkl" style="left:0; transform:none;">0</span>
+            <span class="tk" style="left:10%;"></span><span class="tkl" style="left:10%;">120</span>
+            <span class="tk" style="left:16.67%;"></span><span class="tkl" style="left:16.67%;">200 门</span>
+            <span class="tk" style="left:26.67%;"></span><span class="tkl" style="left:26.67%;">320</span>
+            <span class="tk" style="left:50%;"></span><span class="tkl" style="left:50%;">600 导航确认(示例)</span>
+            <span class="tk" style="left:91.67%;"></span><span class="tkl" style="left:91.67%;">1100 = 200 + 900 · ms</span>
+          </div>
+          <div class="lane"><span class="ln">预热命中</span><div class="lt"><span class="bar gate" style="left:0; width:16.67%;"></span><span class="mk" style="left:11%;"></span><span class="cap" style="left:0;">≤200ms 门内 chunk 已到 · 全程静默:无线、无淡入、无任何指示器</span></div></div>
+          <div class="lane"><span class="ln">冷缓存</span><div class="lt"><span class="bar gate" style="left:0; width:16.67%;"></span><span class="bar blue" style="left:16.67%; width:33.33%;"></span><span class="bar ghost" style="left:50%; width:41.67%;"></span><span class="mk" style="left:50%;"></span><span class="bar fast" style="left:50%; width:10%; top:0;"></span><span class="cap" style="left:0;">门 200ms</span><span class="cap b" style="left:16.67%;">FPLoadBar 2px translateX 扫动 · 900ms --ease-both</span><span class="cap" style="left:50%;">导航确认 → v-if 瞬时卸载(扫动周期未完就没了)· 高亮迁移 120ms --ease-standard</span></div></div>
+        </div>
+        <div class="rm-strip">
+          <div class="rm-card"><span class="fp-lb"><i></i></span><div class="rm-tabs"><div class="rm-tab"></div><div class="rm-tab off"></div></div></div>
+          <div class="csub">reduced-motion:FPLoadBar 改整条呼吸 opacity .30↔.85 · 1.6s ease-in-out(FPLoadBar.vue:50-59 存量),不再横向位移。今天被 motion.css:49 的全局 1ms !important 压成静止蓝条 —— §2 的 !important 修复是本条硬前置。</div>
+        </div>
+      </div>
+      <div class="col" style="flex:1;">
+        <table class="spec">
+          <tr><th>触发</th><td><code>ui.navigating</code>(beforeEach → afterEach)· 侧栏 / 轨 / 页签 / Ctrl-K 任何一种入口</td></tr>
+          <tr><th>频次</th><td>几十次/天;预热命中的绝大多数 &lt;200ms,<span class="ok">全程静默</span></td></tr>
+          <tr><th>目的</th><td>chunk 空窗里唯一的反馈(DESIGN-FIDELITY §6.5)。存量条动 <code>left</code>(布局属性)、无 200ms 门、reduced 下仍横滑(违 LAYOUT-STABILITY §7.4「进度线改呼吸」)</td></tr>
+          <tr><th>动什么</th><td>删 <code>.fp-nav-bar</code> + <code>fp-nav-slide</code>;改 <code>&lt;FPLoadBar :on="navShown" /&gt;</code> 放 <code>.fp-main-card</code> 最后一个子节点;<code>navShown = useDeferredFlag(storeToRefs(ui).navigating)</code>;不加淡入</td></tr>
+          <tr><th>时长·曲线</th><td class="v">扫动 900ms · --ease-both(FPLoadBar 存量,指示器类不入三档)· 门槛 200ms · 退场瞬时(v-if)</td></tr>
+          <tr><th>reduced-motion</th><td class="v">呼吸 opacity .30↔.85 · 1.6s(依赖 §2 的 !important 修复)</td></tr>
+          <tr><th>落点</th><td class="v">AppShell.vue:118-121 · AppShell.vue:228-249 · FPLoadBar.vue:26-46 · motion.css:66-69 · base.css:138 · useDeferredFlag.ts:20</td></tr>
+        </table>
+        <div class="notes">
+          <div class="nrow"><div class="pin">1</div><div class="note"><b>点侧栏行,行底色不马上跟。</b>SidebarNav 的选中态来自路由,路由要等 chunk 到达才 confirm;到达那一帧才走它已有的 background 120ms --ease-standard(SidebarNav.vue:58)。</div></div>
+          <div class="nrow"><div class="pin">2</div><div class="note"><b>页签芯片 0ms 出现,不淡入。</b>预览签(斜体)由 tabs store 同步插入;高亮同样等到导航确认才迁移(TabStrip.vue:246-249 现有 120ms)。芯片是「你点了」的确认,进度线才是「还在等」。</div></div>
+          <div class="nrow"><div class="pin">3</div><div class="note"><b>2px 蓝线过了 200ms 门才亮,亮了就 translateX 扫。</b>复用 FPLoadBar 而不是再养一条自绘条:同规格、自带 reduced 呼吸、约 0.4KB 与删掉的 nav-bar CSS 大致抵消。不淡入 —— 一条 2px 细线过了门才出现,不需要;250ms 的导航会把半淡的条卸掉。</div></div>
+          <div class="nrow"><div class="pin">4</div><div class="note"><b>内容区硬切,新实例首帧即骨架。</b>面包屑与内容同帧换;不做 crossfade(KeepAlive 单棵树做不了并存过渡,见「明确不做」)。</div></div>
+          <div class="nrow"><div class="pin">5</div><div class="note"><b>轨不动。</b>同层内导航,IconRail 的 .on 不变;跨层时它的迁移见 C1-03。</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Block B · C1-02 ===== -->
+  <div class="blk">
+    <div class="blk-h"><span class="id">C1-02</span><span class="t">TabStrip 激活签宽度跳变 —— 修正,不是动效</span><span class="s">100+/天 · 今天 .on 把 min-width 从 42 推到 124,拥挤时邻签横移(违 LAYOUT-STABILITY §1 铁律)</span></div>
+    <div class="row">
+      <div class="stage-wrap" style="width:540px;">
+        <input type="radio" name="segB" id="b1" class="rd" hidden checked>
+        <input type="radio" name="segB" id="b3" class="rd" hidden>
+        <div class="stage-top"><span class="stage-lbl">切换激活签:</span><label for="b1" class="rp-btn for-b1">数据中心首页</label><label for="b3" class="rp-btn for-b3">园区抄表</label><span class="stage-lbl">· 6 签挤在 400px 里</span></div>
+        <div class="stage" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="ver"><span class="tag today">今天</span>TabStrip.vue:233 <span class="mono">min-width:42px</span> · :257 <span class="mono">.on { min-width:124px }</span></div>
+          <div class="fp-tabstrip tb-today" style="border-radius:8px; border:1px solid var(--divider);">
+            <div class="fp-tabs tabs-fixed">
+              <div class="fp-tab t1"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span><span class="fp-tab-label">数据中心首页</span></div>
+              <div class="fp-tab t2"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></span><span class="fp-tab-label">楼栋管理</span></div>
+              <div class="fp-tab t3"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="fp-tab-label">园区抄表</span></div>
+              <div class="fp-tab t4"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span><span class="fp-tab-label">月度台账</span></div>
+              <div class="fp-tab t5"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><span class="fp-tab-label">附表6 光伏发电</span></div>
+              <div class="fp-tab t6"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="fp-tab-label">租户管理</span></div>
+            </div>
+            <div class="fp-tab-new"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+          </div>
+          <div class="shift-rule"><i></i>邻签「楼栋管理」横移 74.8px(本例:(400 − 30 − 124) ÷ 5 = 49.2 ↔ 124)· 0ms 硬跳</div>
+          <div class="ver" style="margin-top:2px;"><span class="tag design">设计</span>:233 改 <span class="mono">min-width:124px</span> · 删 :257 · 两态同值 · 接受溢出菜单更早触发</div>
+          <div class="fp-tabstrip tb-design" style="border-radius:8px; border:1px solid var(--divider);">
+            <div class="fp-tabs tabs-fixed">
+              <div class="fp-tab t1"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span><span class="fp-tab-label">数据中心首页</span></div>
+              <div class="fp-tab t2"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></span><span class="fp-tab-label">楼栋管理</span></div>
+              <div class="fp-tab t3"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="fp-tab-label">园区抄表</span></div>
+              <div class="fp-tab t4"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span><span class="fp-tab-label">月度台账</span></div>
+              <div class="fp-tab t5"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><span class="fp-tab-label">附表6 光伏发电</span></div>
+              <div class="fp-tab t6"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="fp-tab-label">租户管理</span></div>
+            </div>
+            <div class="fp-tab-overflow"><svg width="15" height="15" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span class="mono">6</span></div>
+            <div class="fp-tab-new"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+          </div>
+          <div class="shift-rule zero"><i></i>邻签位移 0px · 激活签永远可读(124)· 塞不下的进溢出菜单(它就是为拥挤准备的)</div>
+          <div class="pin" style="left:-11px; top:44px;">1</div>
+          <div class="pin" style="left:184px; top:44px;">2</div>
+          <div class="pin" style="left:456px; top:194px;">3</div>
+        </div>
+        <div class="tl"><span class="tk" style="left:25%;"></span><span class="tk" style="left:41.67%;"></span><span class="tk" style="left:66.67%;"></span><span class="tl-bar zero" style="--from:0; --to:0; --lbl:'0ms · 布局修正,无动效,无曲线';"></span></div>
+      </div>
+      <table class="spec" style="width:420px; flex:0 0 auto;">
+        <tr><th>触发</th><td>任何路由切换(激活签迁移)</td></tr>
+        <tr><th>频次</th><td>100+/天</td></tr>
+        <tr><th>目的</th><td><code>.fp-tab.on { min-width:124px }</code> vs 非激活 42px → 拥挤时邻签横移,违 §1 铁律。<span class="ok">先修位移再谈动效</span>(原则 11)</td></tr>
+        <tr><th>动什么</th><td>无动效:TabStrip.vue:233 <code>min-width: 42px</code> 改 124,删 :257 的 min-width;两态同值。:281 <code>.on</code> 标签字重不动 —— flex-basis 0 + 显式 min-width 下内容宽不参与分配,不位移。加注释「激活签不得改宽 — 邻签会横移(LAYOUT-STABILITY §1)」</td></tr>
+        <tr><th>时长·曲线</th><td class="v">— / —(布局修正)</td></tr>
+        <tr><th>reduced-motion</th><td class="v">—</td></tr>
+        <tr><th>落点</th><td class="v">TabStrip.vue:231-261 · TabStrip.vue:37-49</td></tr>
+      </table>
+      <div class="notes" style="flex:1;">
+        <div class="nrow"><div class="pin">1</div><div class="note"><b>今天:激活签一变,右边整排跳。</b>点「园区抄表」看第二排的「楼栋管理」瞬间左移 74.8px —— 用户眼睛正跟着的那个签被推走了。</div></div>
+        <div class="nrow"><div class="pin">2</div><div class="note"><b>不是要给它加过渡,是让它根本不动。</b>三位评审一位主张全 42(删 :257),两位主张全 124;取 124 —— 激活标签永远可读,比塞下 19 个图标签重要。</div></div>
+        <div class="nrow"><div class="pin">3</div><div class="note"><b>代价:溢出菜单更早出现。</b>同一批 6 签在 400px 里今天勉强挤下,设计后第 4 签起进溢出菜单 —— 那个菜单本来就是为拥挤准备的(C1-05)。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Row · C1-03 / C1-04 / C1-05 ===== -->
+  <div class="row">
+
+    <!-- Block C · C1-03 -->
+    <div class="col blk" style="flex:1;">
+      <div class="blk-h"><span class="id">C1-03</span><span class="t">IconRail .on / hover 补全 120</span><span class="s">100+/天 · 补齐已有换色列表,不加新动效</span></div>
+      <div class="stage-wrap">
+        <input type="radio" name="segC" id="c1" class="rd" hidden checked>
+        <input type="radio" name="segC" id="c2" class="rd" hidden>
+        <div class="stage-top"><span class="stage-lbl">选中层:</span><label for="c1" class="rp-btn for-c1">数据</label><label for="c2" class="rp-btn for-c2">报表</label><span class="stage-lbl">· 可直接 hover</span></div>
+        <div class="stage" style="display:flex; gap:40px; justify-content:center; padding:16px 12px 12px;">
+          <div class="rail-box"><span class="tag today">今天 · 只 transition color</span>
+            <div class="fp-rail rail-today">
+              <div class="fp-rail-mark"><svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l6 3V9l6 3V9l6 3v9z"/><path d="M3 21h18"/></svg></div>
+              <div class="fp-railsep"></div>
+              <div class="fp-rail-btn r1"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span>数据</span></div>
+              <div class="fp-rail-btn r2"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M10 2v8l3-3 3 3V2"/></svg><span>报表</span></div>
+              <div class="fp-rail-btn r3"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><span>分析</span></div>
+            </div>
+          </div>
+          <div class="rail-box"><span class="tag design">设计 · color + background + box-shadow</span>
+            <div class="fp-rail rail-design">
+              <div class="fp-rail-mark"><svg width="22" height="22" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l6 3V9l6 3V9l6 3v9z"/><path d="M3 21h18"/></svg></div>
+              <div class="fp-railsep"></div>
+              <div class="fp-rail-btn r1"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span>数据</span></div>
+              <div class="fp-rail-btn r2"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M10 2v8l3-3 3 3V2"/></svg><span>报表</span></div>
+              <div class="fp-rail-btn r3"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><span>分析</span></div>
+            </div>
+          </div>
+          <div class="pin" style="left:82px; top:106px;">1</div>
+          <div class="pin" style="left:270px; top:106px;">2</div>
+          <div class="pin" style="left:270px; top:214px;">3</div>
+        </div>
+        <div class="tl"><span class="tk" style="left:25%;"></span><span class="tk" style="left:41.67%;"></span><span class="tk" style="left:66.67%;"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'120ms · --ease-standard';"></span></div>
+      </div>
+      <table class="spec">
+        <tr><th>触发</th><td>路由确认后高亮迁移 / hover</td></tr>
+        <tr><th>频次</th><td>100+/天</td></tr>
+        <tr><th>目的</th><td>IconRail.vue:142 transition 只列 color,黑底 <code>.on</code> 与 hover 底硬切;与 SidebarNav(bg 120ms)不一致</td></tr>
+        <tr><th>动什么</th><td>:142 改 <code>color / background / box-shadow</code> 各 <code>var(--dur-fast) var(--ease-standard)</code>。不加 scale。同一行同时服务 C2-04 的按压回弹</td></tr>
+        <tr><th>时长·曲线</th><td class="v">120ms(--dur-fast)· --ease-standard</td></tr>
+        <tr><th>reduced-motion</th><td class="v">1ms(motion.css:45-53 全局)</td></tr>
+        <tr><th>落点</th><td class="v">IconRail.vue:142-155 · SidebarNav.vue:58</td></tr>
+      </table>
+      <div class="notes">
+        <div class="nrow"><div class="pin">1</div><div class="note"><b>今天:字色 120ms 渐变,黑底 0ms 砸下。</b>两个通道不同步,看起来像闪。</div></div>
+        <div class="nrow"><div class="pin">2</div><div class="note"><b>设计:三通道同一拍。</b>底色、阴影、字色一起 120ms --ease-standard —— 和面板里 SidebarNav 行同一个数、同一条曲线。</div></div>
+        <div class="nrow"><div class="pin">3</div><div class="note"><b>hover 也归它管。</b>rgba(28,28,28,.05) 淡底同一行 transition;不加 scale、不加位移 —— 100+/天档只准换色。</div></div>
+      </div>
+    </div>
+
+    <!-- Block D · C1-04 -->
+    <div class="col blk" style="flex:1;">
+      <div class="blk-h"><span class="id">C1-04</span><span class="t">回缓存签 / 命令面板 / 深链 = 零动效</span><span class="s">100+/天 · <b style="color:var(--hue-blue);">正确,不要加</b></span></div>
+      <div class="stage-wrap">
+        <input type="radio" name="segD" id="d1" class="rd" hidden checked>
+        <input type="radio" name="segD" id="d2" class="rd" hidden>
+        <div class="stage-top"><span class="stage-lbl">回缓存签:</span><label for="d1" class="rp-btn for-d1">楼栋管理</label><label for="d2" class="rp-btn for-d2">租户管理</label></div>
+        <div class="stage" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="fp-main-card" style="flex:0 0 auto; height:196px; border-radius:12px;">
+            <div class="fp-tabstrip">
+              <div class="fp-tabs">
+                <div class="fp-tab t1"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg></span><span class="fp-tab-label">楼栋管理</span></div>
+                <div class="fp-tab t2"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="fp-tab-label">租户管理</span></div>
+              </div>
+              <div class="fp-tab-new"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+            </div>
+            <div class="fp-content" style="padding:0;">
+              <div class="d-layer l1">
+                <div class="ctitle">楼栋管理 <span class="csub">· KeepAlive 实例 · 6 栋</span></div>
+                <table class="mt"><tr><th>楼栋</th><th style="text-align:right;">建面(㎡)</th><th style="text-align:right;">租户</th></tr><tr><td>A座</td><td class="n">12,480</td><td class="n">18</td></tr><tr><td>C座</td><td class="n">15,920</td><td class="n">23</td></tr><tr><td>F座</td><td class="n">6,210</td><td class="n">7</td></tr></table>
+              </div>
+              <div class="d-layer l2">
+                <div class="ctitle">租户管理 <span class="csub">· KeepAlive 实例 · 2026-08</span></div>
+                <table class="mt"><tr><th>租户</th><th>楼栋</th><th style="text-align:right;">收缴率</th></tr><tr><td>盛华精密</td><td>A座</td><td class="n">100%</td></tr><tr><td>凯锐电子</td><td>C座</td><td class="n">92.5%</td></tr><tr><td>星海物流</td><td>F座</td><td class="n">71.0%</td></tr></table>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <div class="mini" style="flex:1;">
+              <div class="h">命令面板 <span class="ok">0ms</span></div>
+              <div class="pal">
+                <div class="in"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>光伏</div>
+                <div class="it on">附表6 光伏发电</div>
+                <div class="it">光伏分栋分析</div>
+              </div>
+              <div>Ctrl-K 开关硬切 —— CommandPalette.vue:63-64 刻意为之</div>
+            </div>
+            <div class="mini" style="flex:1;">
+              <div class="h">深链 / 地址栏 <span class="ok">0ms</span></div>
+              <div class="addr"><svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>/pv-income?ym=2026-08</div>
+              <div class="fp-shim" style="height:14px; width:70%;"></div>
+              <div class="fp-shim" style="height:14px; width:88%;"></div>
+              <div>新实例首帧即骨架(C6-01);外壳未挂载,没有进度线可言</div>
+            </div>
+          </div>
+          <div class="pin" style="left:118px; top:14px;">1</div>
+          <div class="pin" style="left:0px; top:214px;">2</div>
+        </div>
+        <div class="tl"><span class="tk" style="left:25%;"></span><span class="tk" style="left:41.67%;"></span><span class="tk" style="left:66.67%;"></span><span class="tl-bar zero" style="--from:0; --to:0; --lbl:'0ms · 零动效 · 无曲线';"></span></div>
+      </div>
+      <table class="spec">
+        <tr><th>触发</th><td>侧栏 / 轨 / 页签 / Ctrl-K / 地址栏</td></tr>
+        <tr><th>频次</th><td>100+/天(页签 / 面板)、几十次/天(侧栏)</td></tr>
+        <tr><th>目的</th><td>明确:<span class="ok">零动效</span>。频次门第一档</td></tr>
+        <tr><th>动什么</th><td>无。新实例首帧即骨架(C6-01);缓存实例 KeepAlive 瞬时恢复,ECharts 实例活着不重画;命令面板开关硬切(刻意,CommandPalette.vue:63-64)</td></tr>
+        <tr><th>时长·曲线</th><td class="v">0 / —</td></tr>
+        <tr><th>reduced-motion</th><td class="v">—</td></tr>
+        <tr><th>落点</th><td class="v">App.vue:55-61 · CommandPalette.vue:63-64 · AppShell.vue:129-132</td></tr>
+      </table>
+      <div class="notes">
+        <div class="nrow"><div class="pin">1</div><div class="note"><b>点回缓存签,内容 0ms 换。</b>KeepAlive 单棵树做不了并存过渡;根节点 animation 会在重插时重播(C6-01 已因此改为硬切)。左右点着看:没有任何东西在动,这就是对的。</div></div>
+        <div class="nrow"><div class="pin">2</div><div class="note"><b>命令面板与深链同理。</b>现状已是零动效 —— 本条的作用是把它写进规范,免得下一轮有人「顺手加个淡入」。</div></div>
+      </div>
+    </div>
+
+    <!-- Block E · C1-05 -->
+    <div class="col blk" style="flex:1;">
+      <div class="blk-h"><span class="id">C1-05</span><span class="t">TabStrip 溢出菜单 fp-pop-in 120</span><span class="s">偶发 · 与 ds/Popover 同规格 · 关瞬时</span></div>
+      <div class="stage-wrap">
+        <input type="checkbox" id="rpE" class="rp" hidden>
+        <div class="stage-top"><span class="stage-lbl">点溢出钮「6」</span><label for="rpE" class="rp-btn">重播</label></div>
+        <div class="stage" style="height:330px;">
+          <div class="fp-main-card" style="height:100%; border-radius:12px;">
+            <div class="fp-tabstrip">
+              <div class="fp-tabs">
+                <div class="fp-tab on"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span><span class="fp-tab-label">附表6 光伏发电</span><span class="fp-tab-btn"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+                <div class="fp-tab"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span><span class="fp-tab-label">月度台账</span></div>
+                <div class="fp-tab"><span class="fp-tab-ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="fp-tab-label">园区抄表</span></div>
+              </div>
+              <div class="fp-tab-overflow open"><svg width="15" height="15" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span class="mono">6</span></div>
+              <div class="fp-tab-new"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+            </div>
+            <div class="fp-toolbar"><span class="fp-crumb"><span class="fp-crumb-grp">数据中心</span><span class="fp-crumb-sep">/</span><span class="fp-crumb-page"><span>附表6 光伏发电</span></span></span></div>
+            <div class="fp-content" style="padding:16px;">
+              <div class="fp-shim" style="height:16px; width:52%; margin-bottom:8px;"></div>
+              <div class="fp-shim" style="height:16px; width:78%;"></div>
+            </div>
+            <div class="fp-tablist-pop k-pop">
+              <div class="fp-tablist-hd">全部标签页 · 6</div>
+              <div class="fp-tablist-row on"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><span class="nm">附表6 光伏发电</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+              <div class="fp-tablist-row"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span class="nm">月度台账</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+              <div class="fp-tablist-row"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span class="nm">园区抄表</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+              <div class="fp-tablist-row"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg><span class="nm">楼栋管理</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+              <div class="fp-tablist-row"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nm">租户管理</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+              <div class="fp-tablist-row"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><span class="nm it">光伏分栋分析</span><span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+            </div>
+          </div>
+          <div class="pin" style="left:120px; top:52px;">1</div>
+          <div class="pin" style="left:120px; top:96px;">2</div>
+          <div class="pin" style="left:378px; top:16px;">3</div>
+        </div>
+        <div class="tl"><span class="tk" style="left:25%;"></span><span class="tk" style="left:41.67%;"></span><span class="tk" style="left:66.67%;"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'120ms · --ease-out · translateY(-4px)→0 + opacity';"></span></div>
+      </div>
+      <table class="spec">
+        <tr><th>触发</th><td>点溢出钮</td></tr>
+        <tr><th>频次</th><td>偶发</td></tr>
+        <tr><th>目的</th><td>与 ds/Popover 同规格(那边已有 fp-pop-in);今天开关均硬切</td></tr>
+        <tr><th>动什么</th><td><code>.fp-tablist-pop { animation: fp-pop-in var(--dur-fast) var(--ease-out) }</code>(TabStrip.vue:371);关闭 v-if 瞬时。<span class="ok">不给 .fp-tablist-row.on 加 transition</span> —— selectTab(:88-92)push 后同步关菜单,.on 变化没有一帧可画,是死规则</td></tr>
+        <tr><th>时长·曲线</th><td class="v">120ms(--dur-fast)· --ease-out · 退场瞬时</td></tr>
+        <tr><th>reduced-motion</th><td class="v">1ms(fp-pop-in 的 to 帧即元素默认态,无 forwards 也安全)</td></tr>
+        <tr><th>落点</th><td class="v">TabStrip.vue:171-175 · TabStrip.vue:371-385 · motion.css:34-37</td></tr>
+      </table>
+      <div class="notes">
+        <div class="nrow"><div class="pin">1</div><div class="note"><b>从触发器里长出来:-4px → 0。</b>起点略高于终点读作「从钮里冒出」;反过来会读成「从下面飘上来」(motion.css:30-33 的注释原话)。Popover.vue:107 / Select.vue:272 同款。</div></div>
+        <div class="nrow"><div class="pin">2</div><div class="note"><b>.on 行不做 transition。</b>点一行 = push + 同步关菜单,DOM 在同一 tick 卸掉,没有一帧能画过渡 —— 写了也是死代码。</div></div>
+        <div class="nrow"><div class="pin">3</div><div class="note"><b>关闭瞬时。</b>v-if 卸载;CSS 退场需要延迟卸载 = JS 计时器 = FPSideDrawer 那条 Transition 禁令的同一失败模式。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== bottom strip ===== -->
+  <div class="nope">
+    <div class="t">明确不做(本类)—— 每条注明被哪一问杀掉</div>
+    <div class="it">路由切换内容区 crossfade / 新屏根节点淡入 —— 频次门(页签与面板 100+/天);KeepAlive 单棵树做不了并存过渡,重插 DOM 重启根节点 animation;新实例首帧已是骨架。</div>
+    <div class="it">自绘导航条 .fp-nav-bar 改 translateX + 120 淡入 —— 重复实现:FPLoadBar 已是同规格 2px translateX 且自带 reduced 呼吸;淡入过了 200ms 门没必要,250ms 的导航会卸掉半淡的条。</div>
+    <div class="it">Segmented / .anx-seg / TabStrip 的滑动指示条(含 --ease-spring)—— 几十/天与 100+/天档;需 JS 量宽 + ResizeObserver,与 9ac7f37「hover 回归 CSS」相悖;120ms 药丸换底在使用中不可区分。</div>
+    <div class="it">TabStrip 溢出菜单 .on 行 transition —— 没有状态变化就没有东西可过渡:.on 行在同一 handler 里随菜单关闭,死规则。</div>
+    <div class="it">登录后外壳接力入场(轨 → 页签 → 内容错峰)—— 一次交互一个动的东西;接力 ≥500ms,用户登录后要立刻点东西。</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

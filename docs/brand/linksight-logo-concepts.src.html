@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --deep:#1F5FBF; --brand:#4C98FD; --pale:#E6F1FD; --pale2:#F3F8FE;
+    --ink:#1C1C1C; --muted:rgba(28,28,28,.52); --faint:rgba(28,28,28,.34);
+    --hair:rgba(28,28,28,.13); --bluefaint:rgba(31,95,191,.10);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:1600px;height:1000px;}
+  body{
+    font-family:'Noto Sans SC','Microsoft YaHei',sans-serif;
+    color:var(--ink); background:#fff; position:relative; overflow:hidden;
+    background-image:radial-gradient(rgba(31,95,191,.05) 1.1px, transparent 1.1px);
+    background-size:26px 26px; background-position:13px 13px;
+    font-feature-settings:'palt';
+  }
+  /* ---- frame ---- */
+  .frame{position:absolute; inset:30px; border:1px solid var(--hair); pointer-events:none;}
+  .tick{position:absolute; background:var(--ink); opacity:.55;}
+  .tick.h{width:14px;height:1px;} .tick.v{width:1px;height:14px;}
+
+  .board{position:absolute; inset:30px; display:flex;}
+
+  /* ---- left panel ---- */
+  .panel{width:352px; padding:44px 40px 38px 44px; display:flex; flex-direction:column; border-right:1px solid var(--hair); background:rgba(255,255,255,.55);}
+  .kicker{font-family:'Bahnschrift','Noto Sans SC',sans-serif; font-weight:300; font-size:11.5px; letter-spacing:.34em; color:var(--muted); text-transform:uppercase;}
+  .kicker b{color:var(--deep); font-weight:400;}
+  .kicker-cn{font-size:12px; letter-spacing:.55em; color:var(--muted); margin-top:9px; font-weight:400;}
+  .hanzi{margin-top:46px; line-height:.98; font-weight:240; font-size:148px; letter-spacing:0;}
+  .hanzi .r{color:var(--deep);}
+  .word{margin-top:30px; font-size:31px; font-weight:280; letter-spacing:.115em; color:var(--ink);}
+  .word span{color:var(--brand); font-weight:380;}
+  .rule{height:1px; background:var(--hair); margin:34px 0 26px;}
+  .story{font-size:15.5px; font-weight:400; letter-spacing:.30em; color:var(--ink);}
+  .story-en{font-family:'Bahnschrift',sans-serif; font-weight:300; font-size:11px; letter-spacing:.26em; color:var(--muted); margin-top:9px; text-transform:uppercase;}
+  .naming{margin-top:24px; font-size:12px; line-height:2.05; color:var(--muted); font-weight:350;}
+  .naming em{font-style:normal; color:var(--deep); font-weight:450;}
+  .spacer{flex:1;}
+  .chips{display:flex; gap:14px;}
+  .chip .sw{width:44px; height:26px; border-radius:4px; border:1px solid rgba(28,28,28,.08);}
+  .chip .hx{font-family:'Bahnschrift',sans-serif; font-weight:300; font-size:9.5px; letter-spacing:.06em; color:var(--muted); margin-top:6px;}
+  .foot{margin-top:26px; font-family:'Bahnschrift','Noto Sans SC',sans-serif; font-weight:300; font-size:10.5px; letter-spacing:.22em; color:var(--faint);}
+
+  /* ---- concept grid ---- */
+  .grid{flex:1; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;}
+  .cell{padding:34px 38px 26px 40px; position:relative; display:flex; flex-direction:column;}
+  .cell:nth-child(1){border-right:1px solid var(--hair); border-bottom:1px solid var(--hair);}
+  .cell:nth-child(2){border-bottom:1px solid var(--hair);}
+  .cell:nth-child(3){border-right:1px solid var(--hair);}
+
+  .chead{display:flex; align-items:baseline; gap:14px;}
+  .cnum{font-family:'Bahnschrift',sans-serif; font-weight:300; font-size:13px; color:var(--deep); border:1px solid rgba(31,95,191,.45); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; align-self:center;}
+  .cname{font-size:16.5px; font-weight:500; letter-spacing:.14em;}
+  .cen{font-family:'Bahnschrift',sans-serif; font-weight:300; font-size:11px; letter-spacing:.24em; color:var(--muted); text-transform:uppercase;}
+
+  .body{flex:1; display:flex; align-items:center; gap:36px; margin-top:6px;}
+  .stage{width:206px; height:206px; flex:none; position:relative; display:flex; align-items:center; justify-content:center;
+    background-image:radial-gradient(rgba(31,95,191,.12) 1px, transparent 1px); background-size:13px 13px; background-position:center;}
+  .stage .cm{position:absolute; width:10px; height:10px; border-color:rgba(28,28,28,.35); border-style:solid;}
+  .cm.tl{top:0;left:0;border-width:1px 0 0 1px;} .cm.tr{top:0;right:0;border-width:1px 1px 0 0;}
+  .cm.bl{bottom:0;left:0;border-width:0 0 1px 1px;} .cm.br{bottom:0;right:0;border-width:0 1px 1px 0;}
+
+  .right{flex:1; display:flex; flex-direction:column; justify-content:center; gap:22px;}
+  .lockup{display:flex; align-items:center; gap:13px;}
+  .lockup .cn{font-size:23px; font-weight:480; letter-spacing:.08em;}
+  .lockup .sep{width:1px; height:20px; background:var(--hair);}
+  .lockup .en{font-size:16.5px; font-weight:330; letter-spacing:.075em; color:var(--muted);}
+  .ladder{display:flex; align-items:flex-end; gap:22px;}
+  .ladder .st{display:flex; flex-direction:column; align-items:center; gap:7px;}
+  .ladder .px{font-family:'Bahnschrift',sans-serif; font-weight:300; font-size:9.5px; color:var(--faint); letter-spacing:.08em;}
+  .note{font-size:12px; line-height:1.8; color:var(--muted); font-weight:350; max-width:250px;}
+  .note em{font-style:normal; color:var(--deep); font-weight:450;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- 01 环链成眸 -->
+    <symbol id="m1" viewBox="0 0 96 96">
+      <path d="M 48 24.93 A 26 26 0 0 1 48 71.07 A 26 26 0 0 1 48 24.93 Z" fill="#DCEBFC"/>
+      <circle cx="36" cy="48" r="26" fill="none" stroke="#1F5FBF" stroke-width="7"/>
+      <circle cx="60" cy="48" r="26" fill="none" stroke="#4C98FD" stroke-width="7"/>
+      <path d="M 41.6 22.9 A 26 26 0 0 1 53.6 28.6" fill="none" stroke="#1F5FBF" stroke-width="7"/>
+      <circle cx="48" cy="48" r="6.2" fill="#1F5FBF"/>
+    </symbol>
+    <!-- 02 邻里升线 -->
+    <symbol id="m2" viewBox="0 0 96 96">
+      <line x1="20" y1="72" x2="78" y2="22" stroke="#BFD9F5" stroke-width="4.5"/>
+      <circle cx="20" cy="72" r="7"    fill="#81AEE8"/>
+      <circle cx="48" cy="47.9" r="9.5" fill="#4C98FD"/>
+      <circle cx="78" cy="22" r="12.5" fill="#1F5FBF"/>
+    </symbol>
+    <!-- 03 邑部 -->
+    <symbol id="m3" viewBox="0 0 96 96">
+      <path d="M 32 26.5 C 59 25, 57 48.5, 32 48.5" fill="none" stroke="#4C98FD" stroke-width="10.5" stroke-linecap="round"/>
+      <path d="M 32 48.5 C 59 48.5, 57 72, 32 70.5" fill="none" stroke="#4C98FD" stroke-width="10.5" stroke-linecap="round"/>
+      <line x1="32" y1="16" x2="32" y2="80" stroke="#1F5FBF" stroke-width="11" stroke-linecap="round"/>
+    </symbol>
+    <!-- 04 表脉 -->
+    <symbol id="m4" viewBox="0 0 96 96">
+      <rect x="15" y="15" width="66" height="66" rx="18" fill="none" stroke="#1F5FBF" stroke-width="9"/>
+      <polyline points="26,48 37,48 45,31 56,63 63,48 70,48" fill="none" stroke="#4C98FD" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="frame"></div>
+<!-- corner ticks -->
+<div class="tick h" style="top:29px;left:12px"></div><div class="tick v" style="top:12px;left:29px"></div>
+<div class="tick h" style="top:29px;right:12px"></div><div class="tick v" style="top:12px;right:29px"></div>
+<div class="tick h" style="bottom:29px;left:12px"></div><div class="tick v" style="bottom:12px;left:29px"></div>
+<div class="tick h" style="bottom:29px;right:12px"></div><div class="tick v" style="bottom:12px;right:29px"></div>
+
+<div class="board">
+  <div class="panel">
+    <div class="kicker">Brand Mark Study</div>
+    <div class="kicker-cn">标识方向研究 · 四式</div>
+    <div class="hanzi">邻<br><span class="r">睿</span></div>
+    <div class="word">Link<span>sight</span></div>
+    <div class="rule"></div>
+    <div class="story">连接即洞察</div>
+    <div class="story-en">Where links become sight</div>
+    <div class="naming">
+      <em>Lin&thinsp;·&thinsp;邻</em>&ensp;与邻为伴，园区互联<br>
+      <em>sight&thinsp;·&thinsp;睿</em>&ensp;承母牌之睿，洞察分明
+    </div>
+    <div class="spacer"></div>
+    <div class="chips">
+      <div class="chip"><div class="sw" style="background:#1F5FBF"></div><div class="hx">1F5FBF</div></div>
+      <div class="chip"><div class="sw" style="background:#4C98FD"></div><div class="hx">4C98FD</div></div>
+      <div class="chip"><div class="sw" style="background:#E6F1FD"></div><div class="hx">E6F1FD</div></div>
+      <div class="chip"><div class="sw" style="background:#1C1C1C"></div><div class="hx">1C1C1C</div></div>
+    </div>
+    <div class="foot">NO. LS-2026-09&ensp;·&ensp;内部评审</div>
+  </div>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="chead"><div class="cnum">01</div><div class="cname">环链成眸</div><div class="cen">Interlink</div></div>
+      <div class="body">
+        <div class="stage"><div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
+          <svg width="168" height="168"><use href="#m1"/></svg></div>
+        <div class="right">
+          <div class="lockup"><svg width="27" height="27"><use href="#m1"/></svg><div class="cn">邻睿</div><div class="sep"></div><div class="en">Linksight</div></div>
+          <div class="ladder">
+            <div class="st"><svg width="44" height="44"><use href="#m1"/></svg><div class="px">44</div></div>
+            <div class="st"><svg width="28" height="28"><use href="#m1"/></svg><div class="px">28</div></div>
+            <div class="st"><svg width="16" height="16"><use href="#m1"/></svg><div class="px">16</div></div>
+          </div>
+          <div class="note">两环相扣，交叠处生出一枚<em>眼</em>——连接产生洞察，即 Link·sight 本义。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="chead"><div class="cnum">02</div><div class="cname">邻里升线</div><div class="cen">Neighbor Line</div></div>
+      <div class="body">
+        <div class="stage"><div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
+          <svg width="168" height="168"><use href="#m2"/></svg></div>
+        <div class="right">
+          <div class="lockup"><svg width="27" height="27"><use href="#m2"/></svg><div class="cn">邻睿</div><div class="sep"></div><div class="en">Linksight</div></div>
+          <div class="ladder">
+            <div class="st"><svg width="44" height="44"><use href="#m2"/></svg><div class="px">44</div></div>
+            <div class="st"><svg width="28" height="28"><use href="#m2"/></svg><div class="px">28</div></div>
+            <div class="st"><svg width="16" height="16"><use href="#m2"/></svg><div class="px">16</div></div>
+          </div>
+          <div class="note">三点相邻，连成一条<em>上行线</em>——邻里网络，亦是一段向上的曲线。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="chead"><div class="cnum">03</div><div class="cname">邑部</div><div class="cen">Radical 邑</div></div>
+      <div class="body">
+        <div class="stage"><div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
+          <svg width="168" height="168"><use href="#m3"/></svg></div>
+        <div class="right">
+          <div class="lockup"><svg width="27" height="27"><use href="#m3"/></svg><div class="cn">邻睿</div><div class="sep"></div><div class="en">Linksight</div></div>
+          <div class="ladder">
+            <div class="st"><svg width="44" height="44"><use href="#m3"/></svg><div class="px">44</div></div>
+            <div class="st"><svg width="28" height="28"><use href="#m3"/></svg><div class="px">28</div></div>
+            <div class="st"><svg width="16" height="16"><use href="#m3"/></svg><div class="px">16</div></div>
+          </div>
+          <div class="note">取「邻」右耳旁——<em>邑</em>，城邦聚居之部首；两环相叠，亦是链环。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="chead"><div class="cnum">04</div><div class="cname">表脉</div><div class="cen">Meter Pulse</div></div>
+      <div class="body">
+        <div class="stage"><div class="cm tl"></div><div class="cm tr"></div><div class="cm bl"></div><div class="cm br"></div>
+          <svg width="168" height="168"><use href="#m4"/></svg></div>
+        <div class="right">
+          <div class="lockup"><svg width="27" height="27"><use href="#m4"/></svg><div class="cn">邻睿</div><div class="sep"></div><div class="en">Linksight</div></div>
+          <div class="ladder">
+            <div class="st"><svg width="44" height="44"><use href="#m4"/></svg><div class="px">44</div></div>
+            <div class="st"><svg width="28" height="28"><use href="#m4"/></svg><div class="px">28</div></div>
+            <div class="st"><svg width="16" height="16"><use href="#m4"/></svg><div class="px">16</div></div>
+          </div>
+          <div class="note">一方<em>表框</em>，一道读数脉冲——计量与账单的心跳，能源现场的证据。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

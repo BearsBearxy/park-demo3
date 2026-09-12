@@ -1,0 +1,1158 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) =====
+       Paste this whole block into <helmet><style> of every artboard. Do not change values. */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+      --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+      --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+      --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+      --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+      --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+      --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+      --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+      --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+      --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+      --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+      --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+      --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+      --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+      --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+      --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+      --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+      /* motion — existing */
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+      --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+      --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+    }
+
+    /* ECharts theme palette (components/ana/anaTheme.ts) — literal hex, charts cannot read CSS vars */
+    /* sequential blues: #378ADD #85B7EB #B5D4F4 #185FA5 ; categorical: #378ADD #EF9F27 #5DCAA5 #E24B4A #F0997B #185FA5 #85B7EB #B5D4F4 */
+    /* PV screen (views/analysis/pvAnaColors.ts): FOCUS #3675B2 · OUT #9D5D17 · YELLOW #DAB970 · FILL_SLATE #788CB0 · FILL_CYAN #A0CDE8 · FILL_SKY #C4E2F4 · INK300 rgba(28,28,28,.2) */
+
+    /* ECharts / zrender easing 的 bezier 近似(anaMotion.ts EASE 镜像):quarticOut ≈ --ease-out,cubicOut 给更新相与 stateAnimation。
+       引擎特有数字:DUR.enter 320 = --dur-slow · DUR.update 200 = --dur-base · DUR.state 120 = --dur-fast · STAGGER 12ms × ≤12 · dataZoom 拖动 payload 100(roams.js:126-135) */
+    :root {
+      --ease-quartic-out: cubic-bezier(0.165, 0.84, 0.44, 1);
+      --ease-cubic-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+      --stagger: 12ms;
+      --dur-zoom-payload: 100ms;
+    }
+
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* ---------- header ---------- */
+    .hdr { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+    .kicker { font-size:11px; font-weight:600; letter-spacing:.08em; color: var(--text-muted); }
+    h1 { margin:0; font-size:20px; font-weight:600; line-height:1.2; }
+    .intro { font-size:12px; color: var(--text-muted); line-height:1.55; max-width:860px; }
+    .hl { display:flex; flex-direction:column; gap:6px; }
+    .chips { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+    .chiprow { display:flex; gap:6px; align-items:center; }
+    .chiplab { font-size:11px; color: var(--text-muted); }
+    .chip { display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:11px; color: var(--text-secondary); font-family: var(--font-mono); }
+    .chip.k { background: var(--accent-blue); border-color: transparent; color: var(--brand-deep); }
+    .chip.w { background: var(--surface-sunken); border-color: transparent; }
+
+    /* ---------- cards ---------- */
+    .card { background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px; position:relative; }
+    .ch { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+    .ch .t { font-size:14px; font-weight:600; }
+    .ch .hint { font-size:11px; color: var(--text-muted); font-family: var(--font-mono); white-space:nowrap; }
+    .aim { font-size:11px; color: var(--text-secondary); line-height:1.45; }
+    .aim b, .rm b, .note b { font-weight:600; color: var(--brand-deep); }
+    .sec-t { font-size:16px; font-weight:600; display:flex; align-items:baseline; gap:10px; }
+    .sec-t .hint { font-size:11px; color: var(--text-muted); font-weight:400; font-family: var(--font-mono); }
+
+    /* ---------- controls ---------- */
+    .ctl { display:flex; align-items:center; gap:8px; height:28px; flex-wrap:nowrap; }
+    .ctl .lab { font-size:11px; color: var(--text-muted); white-space:nowrap; }
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; white-space:nowrap; transition: background 120ms var(--ease-standard); }
+    .rp-btn:hover { background: var(--surface-card); }
+    .rp-btn:active { filter: brightness(0.94); }
+    .rp-btn.dead { color: var(--text-disabled); cursor:default; border-style:dashed; }
+    .rp-btn.dead:hover { background:#fff; }
+    .rp-btn svg { width:14px; height:14px; }
+    /* .anx-seg.mini 同款:padding 2px gap 2px,按钮 11px 3px 10px,on = 白 + 600 + 0 1px 3px rgba(28,28,28,.10) */
+    .seg { display:inline-flex; gap:2px; padding:2px; background: var(--surface-sunken); border-radius:999px; }
+    .seg label { font-size:11px; font-weight:500; padding:3px 10px; border-radius:999px; color: var(--text-secondary); cursor:pointer; user-select:none; white-space:nowrap; transition: background 120ms var(--ease-standard), color 120ms var(--ease-standard), box-shadow 120ms var(--ease-standard); }
+    .seg label:hover { color: var(--text-primary); }
+    .ua:checked ~ .ctl .seg label.oa, .ub:checked ~ .ctl .seg label.ob, .uc:checked ~ .ctl .seg label.oc { background:#fff; color: var(--text-primary); font-weight:600; box-shadow:0 1px 3px rgba(28,28,28,.10); }
+
+    /* ---------- stage ---------- */
+    .stage { position:relative; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:6px 6px 2px; }
+    .stage svg { display:block; width:100%; height:auto; font-family: var(--font-sans); overflow:visible; }
+    .stage text { font-size:11px; fill: rgba(28,28,28,.62); font-family: var(--font-sans); }
+    .stage text.mono { font-family: var(--font-mono); }
+    .stage .grid { stroke: rgba(28,28,28,.1); stroke-width:1; }
+    .stage .axis { stroke: rgba(28,28,28,.15); stroke-width:1; }
+    .stage .lgd { font-size:11px; fill: rgba(28,28,28,.8); }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background: var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:2; }
+    .notes { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:3px; }
+    .notes li { font-size:12px; line-height:1.55; }
+    .notes li::marker { color: var(--hue-blue); font-weight:700; font-family: var(--font-mono); }
+    .rm { font-size:11px; color: var(--text-muted); line-height:1.45; padding-top:6px; border-top:1px dashed var(--divider); }
+
+    /* ---------- timeline ruler(0…480ms 满宽;120 / 200 / 320 刻度) ---------- */
+    .tl { position:relative; height:44px; margin-top:6px; border-top:1px solid var(--divider);
+          background: linear-gradient(var(--ink-300),var(--ink-300)) 25% 0 / 1px 6px no-repeat,
+                      linear-gradient(var(--ink-300),var(--ink-300)) 41.667% 0 / 1px 6px no-repeat,
+                      linear-gradient(var(--ink-300),var(--ink-300)) 66.667% 0 / 1px 6px no-repeat; }
+    .tl::before { content:'0'; position:absolute; left:0; top:26px; font:11px var(--font-mono); color: var(--text-muted); }
+    .tl::after { content:'120 · 200 · 320 ms'; position:absolute; right:0; top:26px; font:11px var(--font-mono); color: var(--text-muted); }
+    .tl-bar { position:absolute; top:-2px; height:3px; background: var(--hue-blue); left: calc(var(--from) / 480 * 100%); width: calc((var(--to) - var(--from)) / 480 * 100%); }
+    .tl-bar::after { content: var(--lbl); position:absolute; left: calc(100% + 6px); top:-5px; font:11px var(--font-mono); color: var(--text-muted); white-space:nowrap; }
+    .tl-bar.s { background: var(--fill-sky); }
+    .tl-bar.u { top:8px; background: var(--fill-slate); }
+    .tl-bar.f { top:8px; background: var(--hue-cyan); }
+    .tl-bar.z { background: var(--hue-orange); }
+    .tl-bar.nolbl::after { content:none; }
+
+    /* ---------- spec tables ---------- */
+    .spec { width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed; }
+    .spec th { text-align:left; font-weight:500; color: var(--text-muted); padding:3px 5px; border-bottom:1px solid var(--divider); white-space:nowrap; }
+    .spec td { padding:4px 5px; vertical-align:top; border-bottom:1px solid var(--ink-050); line-height:1.4; color: var(--text-secondary); word-break:break-word; }
+    .spec tr:last-child td { border-bottom:none; }
+    .spec td.m, .spec td.k { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size:11px; }
+    .spec td.k { color: var(--text-primary); font-weight:500; }
+    .spec td.f { font-family: var(--font-mono); color: var(--text-muted); font-size:11px; }
+    .spec td.z { color: var(--text-disabled); }
+
+    /* ---------- keys code ---------- */
+    .keys { font-family: var(--font-mono); font-size:11px; line-height:1.5; background: var(--surface-card); border:1px solid var(--border-subtle); border-radius:8px; padding:8px 10px; white-space:pre; color: var(--text-primary); overflow:hidden; }
+    .keys .c { color: var(--text-muted); }
+    .keys .v { color: var(--brand-deep); font-weight:600; }
+    .keys .bad { color: var(--hue-red); }
+    pre.code { margin:0; font-family: var(--font-mono); font-size:11px; line-height:1.45; background: var(--surface-card); border:1px solid var(--border-subtle); border-radius:8px; padding:12px 14px; white-space:pre-wrap; word-break:break-all; color: var(--text-primary); }
+    pre.code .c { color: var(--text-muted); }
+    pre.code .v { color: var(--brand-deep); font-weight:600; }
+
+    /* ---------- flow boxes(前置) ---------- */
+    .flow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .fb { font-family: var(--font-mono); font-size:11px; line-height:1.35; padding:4px 8px; border:1px solid var(--border-subtle); border-radius:6px; background:#fff; color: var(--text-primary); white-space:nowrap; }
+    .fb.bad { border-color: var(--hue-red); color: var(--hue-red); background:#fff; }
+    .fb.ok { border-color: var(--hue-blue); color: var(--brand-deep); background: var(--accent-blue); }
+    .fb.dim { color: var(--text-muted); border-style:dashed; }
+    .flow svg { width:14px; height:14px; flex:0 0 auto; color: var(--text-disabled); }
+    .flowlab { font-size:11px; color: var(--text-muted); width:44px; flex:0 0 auto; }
+    .prow { display:flex; align-items:center; gap:8px; }
+
+    /* ---------- grid ---------- */
+    .g3 { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:16px; align-items:stretch; }
+    .g2 { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:16px; align-items:stretch; }
+    .span2 { grid-column: span 2; }
+
+    /* =========================================================
+       motion — CSS-only emulation of the ECharts keys (a/b keyframe twins so a replay click restarts)
+       ========================================================= */
+    /* bar enter:自基线长出 320 quarticOut,逐 dataIndex 错峰 min(i,12)×12 */
+    @keyframes grow-a { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    @keyframes grow-b { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    .g-y { transform-box: fill-box; transform-origin: 50% 100%; animation: grow-a var(--dur-slow) var(--ease-quartic-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+    .rp:checked ~ .stage .g-y { animation-name: grow-b; }
+    /* 横条:从左轴长出 */
+    @keyframes growx-a { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes growx-b { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .g-x { transform-box: fill-box; transform-origin: 0% 50%; animation: growx-a var(--dur-slow) var(--ease-quartic-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+    .rp:checked ~ .stage .g-x { animation-name: growx-b; }
+    /* line / area / sankey / markLine:clipPath 宽 0→满 */
+    @keyframes wipe-a { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    @keyframes wipe-b { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    .g-w { animation: wipe-a var(--dur-slow) var(--ease-quartic-out) both; }
+    .rp:checked ~ .stage .g-w { animation-name: wipe-b; }
+    .g-w.lin { animation-timing-function: linear; }          /* markLine:MarkLineModel.js:84 自带 linear */
+    /* scatter / markPoint:scale 0→1 + opacity */
+    @keyframes pop-a { from { transform: scale(0); opacity:0; } to { transform: scale(1); opacity:1; } }
+    @keyframes pop-b { from { transform: scale(0); opacity:0; } to { transform: scale(1); opacity:1; } }
+    .g-p { transform-box: fill-box; transform-origin: 50% 50%; animation: pop-a var(--dur-slow) var(--ease-quartic-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+    .g-p.bottom { transform-origin: 50% 100%; }
+    .rp:checked ~ .stage .g-p { animation-name: pop-b; }
+    /* pie 'expansion':白色遮环 dashoffset 0→-100,顺时针从 startAngle 露出;gauge 同法只露到 --v */
+    @keyframes reveal-a { from { stroke-dashoffset: 0; } to { stroke-dashoffset: calc(var(--v, 100) * -1); } }
+    @keyframes reveal-b { from { stroke-dashoffset: 0; } to { stroke-dashoffset: calc(var(--v, 100) * -1); } }
+    .g-r { fill:none; stroke:#fff; stroke-dasharray: 100 100; animation: reveal-a var(--dur-slow) var(--ease-quartic-out) both; pointer-events:none; }
+    .rp:checked ~ .stage .g-r { animation-name: reveal-b; }
+    /* gauge 指针:自 startAngle 扫入 */
+    @keyframes needle-a { from { transform: rotate(calc(var(--v) * -2.7deg)); } to { transform: rotate(0deg); } }
+    @keyframes needle-b { from { transform: rotate(calc(var(--v) * -2.7deg)); } to { transform: rotate(0deg); } }
+    .g-n { transform-box: fill-box; transform-origin: var(--ox) var(--oy); animation: needle-a var(--dur-slow) var(--ease-quartic-out) both; }
+    .rp:checked ~ .stage .g-n { animation-name: needle-b; }
+    /* 对比虚线:更新相唯一入场 —— 开 = 擦入 200 quarticOut,关 = display:none 瞬时(视图 dispose) */
+    .g-cmp { display:none; }
+    .cmp:checked ~ .stage .g-cmp { display:block; animation: wipe-a var(--dur-base) var(--ease-quartic-out) both; }
+    .cmp:checked ~ .ctl .oncmp { background:#fff; color: var(--text-primary); font-weight:600; box-shadow:0 1px 3px rgba(28,28,28,.10); }
+    .cmp:not(:checked) ~ .ctl .offcmp { background:#fff; color: var(--text-primary); font-weight:600; box-shadow:0 1px 3px rgba(28,28,28,.10); }
+
+    /* ---------- update phase:同实体同键 200 cubicOut 形变(CSS 几何属性过渡;--du 可被 Breakeven 0 / dataZoom 100 覆盖) ---------- */
+    .u-bar { y: var(--ya); height: var(--ha); transition: y var(--du, var(--dur-base)) var(--ease-cubic-out), height var(--du, var(--dur-base)) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-bar { y: var(--yb); height: var(--hb); }
+    .uc:checked ~ .stage .u-bar { y: var(--yc); height: var(--hc); }
+    .u-w { width: var(--wa); transition: width var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-w { width: var(--wb); }
+    .u-d { d: var(--da); transition: d var(--du, var(--dur-base)) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-d { d: var(--db); }
+    .uc:checked ~ .stage .u-d { d: var(--dc); }
+    .u-pt { cy: var(--ya); transition: cy var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-pt { cy: var(--yb); }
+    .u-xy { cx: var(--xa); cy: var(--ya); transition: cx var(--dur-base) var(--ease-cubic-out), cy var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-xy { cx: var(--xb); cy: var(--yb); }
+    .u-lbl { transform: translate(var(--xa), var(--ya)); transition: transform var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-lbl { transform: translate(var(--xb), var(--yb)); }
+    .u-sec { fill:none; stroke-dasharray: var(--pa) 100; transform-box: fill-box; transform-origin: 50% 50%; transform: rotate(var(--ra)); transition: stroke-dasharray var(--dur-base) var(--ease-cubic-out), transform var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-sec { stroke-dasharray: var(--pb) 100; transform: rotate(var(--rb)); }
+    .u-arc { fill:none; stroke-dasharray: var(--va) 100; transition: stroke-dasharray var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-arc { stroke-dasharray: var(--vb) 100; }
+    .u-rot { transform-box: fill-box; transform-origin: var(--ox) var(--oy); transform: rotate(calc(var(--va) * 2.7deg - 135deg)); transition: transform var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-rot { transform: rotate(calc(var(--vb) * 2.7deg - 135deg)); }
+    .u-ty { transform: translateY(var(--ya)); transition: transform var(--du, var(--dur-base)) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-ty { transform: translateY(var(--yb)); }
+    .u-txy { transform: translate(var(--xa), var(--ya)); transition: transform var(--du, var(--dur-base)) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-txy { transform: translate(var(--xb), var(--yb)); }
+    .uc:checked ~ .stage .u-txy { transform: translate(var(--xc), var(--yc)); }
+    .u-rect { x: var(--xa); y: var(--ya); width: var(--wa); height: var(--ha); transition: x var(--dur-base) var(--ease-cubic-out), y var(--dur-base) var(--ease-cubic-out), width var(--dur-base) var(--ease-cubic-out), height var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .u-rect { x: var(--xb); y: var(--yb); width: var(--wb); height: var(--hb); }
+    /* 新键瞬现(update 相 animationDuration 0)/ 旧键引擎 200 淡出(basicTransition.js:71-73 硬编码) */
+    .nk { opacity:0; transition: opacity var(--dur-base) var(--ease-cubic-out); }
+    .ub:checked ~ .stage .nk { opacity:1; transition-duration: 0ms; }
+    /* 瞬到(markArea / sankey 重建 / gauge detail):display 切换,无过渡 */
+    .sa { display:block; } .sb { display:none; } .sc { display:none; }
+    .ub:checked ~ .stage .sa, .uc:checked ~ .stage .sa { display:none; }
+    .ub:checked ~ .stage .sb { display:block; }
+    .uc:checked ~ .stage .sc { display:block; }
+    .ub:checked ~ .stage text.sb { display:block; }
+    /* hover:stateAnimation 120 cubicOut(emphasis 放大),tooltip transitionDuration 0 */
+    .sec { transform-box: fill-box; transform-origin: 50% 50%; transform: rotate(var(--r)); transition: transform var(--dur-fast) var(--ease-cubic-out); cursor:pointer; }
+    .sec:hover { transform: rotate(var(--r)) scale(1.1); }
+    .tip { opacity:0; pointer-events:none; }
+    .sec:hover + .tip { opacity:1; }
+    .tip rect { fill: rgb(40,52,66); }
+    .tip text { fill:#fff; font-size:11px; }
+    .hovhint { position:absolute; right:10px; top:8px; font-size:11px; color: var(--text-muted); }
+    /* reduced-motion:全部瞬到 */
+    .rmstage .g-y, .rmstage .g-x, .rmstage .g-w, .rmstage .g-p, .rmstage .g-r, .rmstage .g-n { animation-duration: 0ms; animation-delay: 0ms; }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 900px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- ================= header ================= -->
+  <div class="hdr">
+    <div class="hl">
+      <div class="kicker">06 · 分析屏图表 · 图元语法(首绘 320 / 更新 200 / 悬停 120)</div>
+      <h1>图表图元语法</h1>
+      <div class="intro">65 张 AnaEChart 只有两条路径:首绘 <span class="mono">enter</span>(一屏一次,320 quarticOut,bar / scatter 短序列错峰)与更新 <span class="mono">update</span>(几十次/天,新元素 0、同键 200 cubicOut 形变)。每个图元的入场形态、更新形变、焦点态、退场都逐条对照 <span class="mono">node_modules/echarts 6.1.0</span> 的读处;两条前置不修(RO 守卫、屏级 entered),下面全部落空。</div>
+    </div>
+    <div class="chips">
+      <div class="chiprow"><span class="chiplab">频次档</span><span class="chip w">100+/天</span><span class="chip w">十几/天</span><span class="chip w">偶发</span><span class="chip w">一生一次</span></div>
+      <div class="chiprow"><span class="chiplab">令牌</span><span class="chip k">120 --dur-fast</span><span class="chip k">200 --dur-base</span><span class="chip k">320 --dur-slow</span><span class="chip">--ease-out ≈ quarticOut</span><span class="chip">cubicOut</span><span class="chip">--ease-standard</span></div>
+      <div class="chiprow"><span class="chiplab">ECharts</span><span class="chip">DUR {enter:320, update:200, state:120}</span><span class="chip">STAGGER {step:12, cap:12, maxN:24}</span><span class="chip">payload 100(dataZoom)</span></div>
+    </div>
+  </div>
+
+  <!-- ================= 前置 ================= -->
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><div class="t">前置 ①  AnaEChart.vue:132 ResizeObserver 守卫</div><div class="hint">C6-02 · 尺寸真变才 resize</div></div>
+      <div class="aim">今天挂 RO 的图 <b>50ms 时柱高已终值</b>:observe 后首帧空回调 → <span class="mono">chart.resize()</span> → 引擎以 <span class="mono">animation:{duration:0}</span> payload 走 update(echarts.js:998-1003),payload 最高优先(basicTransition.js:80-84)→ el.attr 直设终态(:138-144)。入场被截断为 0,C6-02~13 全部落空。</div>
+      <div class="prow"><div class="flowlab">今天</div><div class="flow">
+        <span class="fb">setOption(320 起)</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb bad">RO 首帧回调(尺寸未变)</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb bad">chart.resize()</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb bad">payload duration:0</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb bad">入场 = 0ms</span>
+      </div></div>
+      <div class="prow"><div class="flowlab">改后</div><div class="flow">
+        <span class="fb">setOption(320 起)</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb">RO 回调</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb ok">round(w,h) ≠ chart.getWidth/Height ?</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb dim">相同 → 跳过</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb ok">入场跑完 320 + 错峰</span>
+      </div></div>
+      <div class="rm">真窗口缩放仍会截断动画,接受,不补播。ChartInst 接口补 getWidth / getHeight。落点 <span class="mono">AnaEChart.vue:104-134</span> · <span class="mono">echarts.js:998-1003</span> · <span class="mono">basicTransition.js:64-92, 121-144</span></div>
+    </div>
+    <div class="card">
+      <div class="ch"><div class="t">前置 ②  屏级 entered 标志 → 相位 enter / update</div><div class="hint">AnaShell.vue:100 provide · AnaEChart inject</div></div>
+      <div class="aim">相位不由每张图自己猜:<b>AnaShell 一处 provide</b>,AnaEChart 在 <span class="mono">await import</span> 之前同步快照。段控 / 粒度 / 抽屉 / v-if 重挂全部自动走更新相,<b>永不重播入场</b>;挂载时 option 为空、数据随后到的图(b9 / b3 / Breakeven)靠 painted 标志仍走首绘。</div>
+      <div class="prow"><div class="flowlab">首进屏</div><div class="flow">
+        <span class="fb">AnaShell entered = ref(false)</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb ok">onMounted 第一句 enter = props.entrance ?? !entered.value</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb">nextTick → entered = true</span>
+      </div></div>
+      <div class="prow"><div class="flowlab">每次 setOption</div><div class="flow">
+        <span class="fb">phase = enter &amp;&amp; !painted ? 'enter' : 'update'</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb">if (series.length) painted = true</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb ok">motionize(opt, phase, {reduced, isS, visible})</span><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+        <span class="fb">setOption(…, {notMerge:true})</span>
+      </div></div>
+      <div class="rm">离屏 / document.hidden → 该次顶层 + 逐系列 <span class="mono">animation:false</span>,stateAnimation 不动(C6-06);reduced → 连 stateAnimation 0(C6-05)。不注册 UniversalTransition、不改 echartsBundle。落点 <span class="mono">AnaShell.vue:100</span> · <span class="mono">AnaEChart.vue:104-137</span> · <span class="mono">components/ana/anaMotion.ts</span></div>
+    </div>
+  </div>
+
+  <!-- ================= 两条路径 ================= -->
+  <div class="g2">
+
+    <!-- ---- enter ---- -->
+    <div class="card">
+      <div class="ch"><div class="t">路径 A · 首绘 enter</div><div class="hint">C6-02 · 65 张 · 一屏一次</div></div>
+      <div class="aim">F座 2026 逐月发电(MWh,数据截至 2026-08 → 8 根,<b>data.length ≤ 24</b> → 逐 dataIndex 错峰)。从 0 到有的编排是唯一允许的图表出场。</div>
+      <input type="checkbox" id="pAr" class="rp" hidden>
+      <div class="ctl"><label for="pAr" class="rp-btn"><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3.2h3.2"/></svg>重播首绘</label><span class="lab">animationDuration 320 · quarticOut · animationDelay (i) ⇒ min(i,12)×12</span></div>
+      <div class="stage">
+        <svg viewBox="0 0 640 140">
+          <line class="grid" x1="36" y1="25.4" x2="628" y2="25.4"/><line class="grid" x1="36" y1="56.3" x2="628" y2="56.3"/><line class="grid" x1="36" y1="87.1" x2="628" y2="87.1"/>
+          <line class="axis" x1="36" y1="118" x2="628" y2="118"/>
+          <text class="mono" x="30" y="122" text-anchor="end">0</text><text class="mono" x="30" y="91" text-anchor="end">20</text><text class="mono" x="30" y="60" text-anchor="end">40</text><text class="mono" x="30" y="29" text-anchor="end">60</text>
+          <g class="g-y" style="--i:0"><rect x="47.7" y="74.8" width="26" height="43.2" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:1"><rect x="97" y="70.2" width="26" height="47.8" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:2"><rect x="146.3" y="53.2" width="26" height="64.8" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:3"><rect x="195.6" y="39.3" width="26" height="78.7" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:4"><rect x="244.9" y="28.5" width="26" height="89.5" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:5"><rect x="294.2" y="22.3" width="26" height="95.7" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:6"><rect x="343.5" y="16.2" width="26" height="101.8" rx="2" fill="#378ADD"/></g>
+          <g class="g-y" style="--i:7"><rect x="392.8" y="19.2" width="26" height="98.8" rx="2" fill="#378ADD"/></g>
+          <text x="60.7" y="133" text-anchor="middle">1月</text><text x="110" y="133" text-anchor="middle">2月</text><text x="159.3" y="133" text-anchor="middle">3月</text><text x="208.6" y="133" text-anchor="middle">4月</text><text x="257.9" y="133" text-anchor="middle">5月</text><text x="307.2" y="133" text-anchor="middle">6月</text><text x="356.5" y="133" text-anchor="middle">7月</text><text x="405.8" y="133" text-anchor="middle">8月</text>
+          <text x="455.1" y="133" text-anchor="middle" fill="rgba(28,28,28,.2)">9月</text><text x="504.4" y="133" text-anchor="middle" fill="rgba(28,28,28,.2)">10月</text><text x="553.7" y="133" text-anchor="middle" fill="rgba(28,28,28,.2)">11月</text><text x="603" y="133" text-anchor="middle" fill="rgba(28,28,28,.2)">12月</text>
+          <text x="530" y="60" text-anchor="middle" fill="rgba(28,28,28,.4)">未到(9 月起)</text>
+        </svg>
+        <div class="pin" style="left:42px; top:64px;">1</div>
+        <div class="pin" style="left:398px; top:6px;">2</div>
+        <div class="pin" style="left:560px; top:96px;">3</div>
+      </div>
+      <div class="tl"><span class="tl-bar nolbl" style="--from:0; --to:320;"></span><span class="tl-bar s" style="--from:320; --to:404; --lbl:'320 · quarticOut · +错峰 84(第 8 根)';"></span><span class="tl-bar u" style="--from:0; --to:0; --lbl:'update 键同时注入:animationDurationUpdate 200 · cubicOut';"></span></div>
+      <div class="keys"><span class="c">// motionize(opt, 'enter', env) —— 顶层与每个系列都注入(原则 5:getShallow 只在系列缺键时回落)</span>
+animationDuration: <span class="v">320</span>,        <span class="c">// DUR.enter = --dur-slow;isS 档 200</span>
+animationEasing: <span class="v">'quarticOut'</span>, animationDelay: 0,
+animationDurationUpdate: <span class="v">200</span>, animationEasingUpdate: <span class="v">'cubicOut'</span>, animationDelayUpdate: 0,
+<span class="c">// bar / scatter 且 data.length ≤ 24 且未显式设置者:</span>
+animationDelay: (i) =&gt; Math.min(i, <span class="v">12</span>) * <span class="v">12</span>   <span class="c">// STAGGER cap 12 → ≤144ms</span></div>
+      <table class="spec">
+        <colgroup><col style="width:72px"><col style="width:66px"><col style="width:120px"><col><col style="width:110px"><col style="width:90px"><col style="width:132px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr></thead>
+        <tbody>
+          <tr><td>首次画出带 series 的 option,且 entered 为假且可见</td><td>一屏一次(图表一生一次)</td><td>从 0 到有的编排是唯一允许的图表出场;今天实际零入场</td><td>bar 自基线长出 · line 左→右擦出 · pie 顺时针展开 · scatter 缩放淡入 · gauge 自 startAngle 扫入 · sankey 整组擦出 · treemap 无</td><td class="k">320 quarticOut(≈ --ease-out)+ 错峰 12ms × ≤12,仅 ≤24 项</td><td>animation:false(顶层 + 逐系列)</td><td class="f">AnaEChart.vue:104-134 · anaMotion.ts · AnaShell.vue:100 · PieSeries.js:211-217 · LineSeries.js:142</td></tr>
+        </tbody>
+      </table>
+      <ol class="notes">
+        <li><b>自基线长出</b>:BarView.js:533-547 新建 rect height 0 → layout;quarticOut 前段快后段缓,与 --ease-out 同族,视觉上「先到位再落定」。</li>
+        <li><b>错峰只给短序列</b>:12ms × dataIndex,封顶 12 根(144ms);第 8 根 84ms 起、404ms 收。365 点整体起——不限长度错峰被门槛「一屏一次 ≤ 320+144」杀掉。</li>
+        <li><b>只画看得见的</b>:visible() 为假 → 该次 animation:false 瞬到;PvMeterAnaView L2 八张在首屏 463px 之下,基本永远走这条,不补播。</li>
+      </ol>
+    </div>
+
+    <!-- ---- update ---- -->
+    <div class="card">
+      <div class="ch"><div class="t">路径 B · 更新 update</div><div class="hint">C6-03 · 65 张 · 几十次/天</div></div>
+      <div class="aim">同实体(F座)同键('N月')换年 → <b>200 形变</b>;2025 多出的 9–12 月是新键 → <b>瞬现</b>;切回 2026 → 旧键引擎 <b>200 淡出</b>(硬编码)。从根上杀掉换期重播入场。</div>
+      <input type="radio" name="pBu" id="pBa" class="ua" checked hidden>
+      <input type="radio" name="pBu" id="pBb" class="ub" hidden>
+      <div class="ctl"><span class="lab">期间</span><span class="seg"><label for="pBa" class="oa">2026</label><label for="pBb" class="ob">2025</label></span><span class="lab">animationDuration 0 · animationDurationUpdate 200 · cubicOut(update 相 animationEasing 也注 cubicOut)</span></div>
+      <div class="stage">
+        <svg viewBox="0 0 640 140">
+          <line class="grid" x1="36" y1="25.4" x2="628" y2="25.4"/><line class="grid" x1="36" y1="56.3" x2="628" y2="56.3"/><line class="grid" x1="36" y1="87.1" x2="628" y2="87.1"/>
+          <line class="axis" x1="36" y1="118" x2="628" y2="118"/>
+          <text class="mono" x="30" y="122" text-anchor="end">0</text><text class="mono" x="30" y="91" text-anchor="end">20</text><text class="mono" x="30" y="60" text-anchor="end">40</text><text class="mono" x="30" y="29" text-anchor="end">60</text>
+          <rect class="u-bar" x="47.7" width="26" rx="2" fill="#378ADD" style="--ya:74.8px;--ha:43.2px;--yb:71.7px;--hb:46.3px"/>
+          <rect class="u-bar" x="97" width="26" rx="2" fill="#378ADD" style="--ya:70.2px;--ha:47.8px;--yb:67.1px;--hb:50.9px"/>
+          <rect class="u-bar" x="146.3" width="26" rx="2" fill="#378ADD" style="--ya:53.2px;--ha:64.8px;--yb:48.6px;--hb:69.4px"/>
+          <rect class="u-bar" x="195.6" width="26" rx="2" fill="#378ADD" style="--ya:39.3px;--ha:78.7px;--yb:40.8px;--hb:77.2px"/>
+          <rect class="u-bar" x="244.9" width="26" rx="2" fill="#378ADD" style="--ya:28.5px;--ha:89.5px;--yb:30px;--hb:88px"/>
+          <rect class="u-bar" x="294.2" width="26" rx="2" fill="#378ADD" style="--ya:22.3px;--ha:95.7px;--yb:25.4px;--hb:92.6px"/>
+          <rect class="u-bar" x="343.5" width="26" rx="2" fill="#378ADD" style="--ya:16.2px;--ha:101.8px;--yb:20.8px;--hb:97.2px"/>
+          <rect class="u-bar" x="392.8" width="26" rx="2" fill="#378ADD" style="--ya:19.2px;--ha:98.8px;--yb:23.9px;--hb:94.1px"/>
+          <rect class="nk" x="442.1" y="37.8" width="26" height="80.2" rx="2" fill="#378ADD"/>
+          <rect class="nk" x="491.4" y="54.7" width="26" height="63.3" rx="2" fill="#378ADD"/>
+          <rect class="nk" x="540.7" y="71.7" width="26" height="46.3" rx="2" fill="#378ADD"/>
+          <rect class="nk" x="590" y="79.4" width="26" height="38.6" rx="2" fill="#378ADD"/>
+          <text x="60.7" y="133" text-anchor="middle">1月</text><text x="110" y="133" text-anchor="middle">2月</text><text x="159.3" y="133" text-anchor="middle">3月</text><text x="208.6" y="133" text-anchor="middle">4月</text><text x="257.9" y="133" text-anchor="middle">5月</text><text x="307.2" y="133" text-anchor="middle">6月</text><text x="356.5" y="133" text-anchor="middle">7月</text><text x="405.8" y="133" text-anchor="middle">8月</text>
+          <text x="455.1" y="133" text-anchor="middle">9月</text><text x="504.4" y="133" text-anchor="middle">10月</text><text x="553.7" y="133" text-anchor="middle">11月</text><text x="603" y="133" text-anchor="middle">12月</text>
+        </svg>
+        <div class="pin" style="left:150px; top:14px;">1</div>
+        <div class="pin" style="left:520px; top:14px;">2</div>
+        <div class="pin" style="left:8px; top:8px;">3</div>
+      </div>
+      <div class="tl"><span class="tl-bar u" style="--from:0; --to:200; --lbl:'同键形变 200 · cubicOut';"></span><span class="tl-bar nolbl" style="--from:0; --to:0;"></span><span class="tl-bar f" style="--from:0; --to:200; --lbl:'';"></span><span class="tl-bar z nolbl" style="--from:0; --to:2;"></span></div>
+      <div class="keys"><span class="c">// motionize(opt, 'update', env) —— 顶层与每个系列</span>
+animationDuration: <span class="v">0</span>,          <span class="c">// 新增元素瞬现,永不重播入场</span>
+animationDurationUpdate: <span class="v">200</span>,   <span class="c">// DUR.update = --dur-base(原则 1 唯一明写的例外)</span>
+animationEasing: <span class="v">'cubicOut'</span>, animationEasingUpdate: <span class="v">'cubicOut'</span>,   <span class="c">// TreemapView.js:219 更新读的是 animationEasing</span>
+animationDelay: 0, animationDelayUpdate: 0
+<span class="c">// 删除元素淡出 = 引擎硬编码 200 cubicOut(basicTransition.js:71-73),只有 animation:false 能关</span>
+<span class="c">// 类目随期漂移('MM-DD' / 'YYYY-MM')→ 屏侧 series.id = `${'{'}key{'}'}:${'{'}periodKey{'}'}` → 视图重建瞬换,不承受 200 幽灵</span></div>
+      <table class="spec">
+        <colgroup><col style="width:72px"><col style="width:66px"><col style="width:120px"><col><col style="width:110px"><col style="width:90px"><col style="width:132px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(file:line)</th></tr></thead>
+        <tbody>
+          <tr><td>watch(props.option, deep) → setOption;或 entered 已真时的首挂</td><td>几十次/天(换期、对比、选中、段控、抽屉换栋)</td><td>杀掉换期重播;同实体同键 200 形变;漂移类目不承受幽灵淡出</td><td>diff key = 类目标签字符串(SeriesData.js:955-976 makeIdFromName):'N月' / '1..31' → 形变;新键瞬现;旧键 200 淡出;系列 id 变 → echarts.js:1196-1200 zr.remove + dispose 瞬时</td><td class="k">0 新增 / 200 cubicOut 形变 / 退场 200 淡出或 0</td><td>animation:false</td><td class="f">AnaEChart.vue:137 · echarts.js:1156-1200 · SeriesData.js:918-982 · basicTransition.js:71-73, 121 · TreemapView.js:217-222</td></tr>
+        </tbody>
+      </table>
+      <ol class="notes">
+        <li><b>同键 200 形变</b>:basicTransition.js:121 duration &gt; 0 才 animateTo;isValueSame 跳过未变值,主系列零抖动。120 短到读不出「哪根动了」,且与引擎删除淡出的 200 错拍——所以 200 是原则 1 唯一明写的例外。</li>
+        <li><b>新键瞬现 / 旧键淡出</b>:update 相 animationDuration 0 → 9–12 月柱 0ms 出现;切回 2026 它们走引擎硬编码 200 淡出。类目随期漂移的图不该承受这个幽灵——系列 id 带期键走瞬换。</li>
+        <li><b>notMerge:true 保持</b>:视图复用(echarts.js:1156-1180)与 diff 都在它之下正常工作;一位评审提议 morph prop 关 animation——用既有 id 机制更省,且不丢首绘。图例开关(C6-24)走同一条更新相。</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ================= 图元卡网格 ================= -->
+  <div class="sec-t">图元卡<span class="hint">每张 = ECharts 主题外观的活图 + 首绘 / 更新演示 + enter / update / focus / exit 四行 + 键与读处</span></div>
+  <div class="g3">
+
+    <!-- ===== 1 bar ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">bar · 各栋 8 月发电(MWh)</div><div class="hint">C6-07 · ~38 张</div></div>
+      <div class="aim">目的:柱从基线长出、短序列自左向右错峰;更新只改高度。</div>
+      <input type="checkbox" id="c1r" class="rp" hidden>
+      <input type="radio" name="c1u" id="c1a" class="ua" checked hidden>
+      <input type="radio" name="c1u" id="c1b" class="ub" hidden>
+      <div class="ctl"><label for="c1r" class="rp-btn">重播首绘</label><span class="seg"><label for="c1a" class="oa">2026-08</label><label for="c1b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="36" x2="412" y2="36"/><line class="grid" x1="30" y1="64" x2="412" y2="64"/>
+          <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+          <text class="mono" x="25" y="96" text-anchor="end">0</text><text class="mono" x="25" y="68" text-anchor="end">20</text><text class="mono" x="25" y="40" text-anchor="end">40</text><text class="mono" x="25" y="12" text-anchor="end">60</text>
+          <g class="g-y" style="--i:0"><rect class="u-bar" x="47.8" width="28" rx="2" fill="#378ADD" style="--ya:34.6px;--ha:57.4px;--yb:41.6px;--hb:50.4px"/></g>
+          <g class="g-y" style="--i:1"><rect class="u-bar" x="111.5" width="28" rx="2" fill="#378ADD" style="--ya:45.8px;--ha:46.2px;--yb:50px;--hb:42px"/></g>
+          <g class="g-y" style="--i:2"><rect class="u-bar" x="175.2" width="28" rx="2" fill="#378ADD" style="--ya:19.2px;--ha:72.8px;--yb:26.2px;--hb:65.8px"/></g>
+          <g class="g-y" style="--i:3"><rect class="u-bar" x="238.9" width="28" rx="2" fill="#378ADD" style="--ya:54.2px;--ha:37.8px;--yb:61.2px;--hb:30.8px"/></g>
+          <g class="g-y" style="--i:4"><rect class="u-bar" x="302.6" width="28" rx="2" fill="#378ADD" style="--ya:38.8px;--ha:53.2px;--yb:36px;--hb:56px"/></g>
+          <g class="g-y" style="--i:5"><rect class="u-bar" x="366.3" width="28" rx="2" fill="#378ADD" style="--ya:10.8px;--ha:81.2px;--yb:22px;--hb:70px"/></g>
+          <text x="61.8" y="106" text-anchor="middle">A座</text><text x="125.5" y="106" text-anchor="middle">B座</text><text x="189.2" y="106" text-anchor="middle">C座</text><text x="252.9" y="106" text-anchor="middle">D座</text><text x="316.6" y="106" text-anchor="middle">E座</text><text x="380.3" y="106" text-anchor="middle">F座</text>
+        </svg>
+        <div class="pin" style="left:40px; top:44px;">1</div>
+        <div class="pin" style="left:372px; top:4px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar nolbl" style="--from:0; --to:320;"></span><span class="tl-bar s" style="--from:320; --to:380; --lbl:'320 quarticOut +错峰 60(6 根)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'update 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>rect height 0 → layout,自基线长出;initProps 带 dataIndex → 逐 idx 错峰 min(i,12)×12,仅 ≤24</td><td class="m">320 quarticOut +≤144</td><td class="f">BarView.js:533-547 · :195-203</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>同键 height 形变(updateProps);isValueSame 跳过未变;新键瞬现</td><td class="m">200 cubicOut</td><td class="f">BarView.js:283-298</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>hover emphasis 样式,stateAnimation</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>removeElementWithFadeOut 引擎硬编码;系列 id 变 → 视图瞬时 dispose</td><td class="m">200 淡出 / 0</td><td class="f">BarView.js:294-296 · basicTransition.js:71-73</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false(顶层 + 逐系列,C6-05)。屏侧落点 <span class="mono">CockpitView.vue:308 · ExpenseView.vue:176 · TenantEnergyView.vue:388</span>。今天 1000 cubicInOut 无错峰(被 RO 截断)/ 500 更新。</div>
+      <ol class="notes">
+        <li>Bar 无系列级动画默认,为统一仍走逐系列注入;shape.height 在 canvas 内变,不触发 DOM 布局。</li>
+        <li>F座 58 → 50:同实体同键,只改高度;不做 count-up、不换色——数据不为风格而动。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 2 stacked ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">堆叠柱 · 各栋 8 月用电构成</div><div class="hint">C6-07 · stack</div></div>
+      <div class="aim">目的:堆叠按类目同 delay <b>整根一起堆</b>;更新两段同步 200,顶段跟着底段走。</div>
+      <input type="checkbox" id="c2r" class="rp" hidden>
+      <input type="radio" name="c2u" id="c2a" class="ua" checked hidden>
+      <input type="radio" name="c2u" id="c2b" class="ub" hidden>
+      <div class="ctl"><label for="c2r" class="rp-btn">重播首绘</label><span class="seg"><label for="c2a" class="oa">2026-08</label><label for="c2b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="36" x2="412" y2="36"/><line class="grid" x1="30" y1="64" x2="412" y2="64"/>
+          <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+          <text class="mono" x="25" y="96" text-anchor="end">0</text><text class="mono" x="25" y="68" text-anchor="end">23</text><text class="mono" x="25" y="40" text-anchor="end">47</text><text class="mono" x="25" y="12" text-anchor="end">70</text>
+          <g class="g-y" style="--i:0"><rect class="u-bar" x="47.8" width="28" fill="#378ADD" style="--ya:68px;--ha:24px;--yb:72.8px;--hb:19.2px"/><rect class="u-bar" x="47.8" width="28" rx="2" fill="#85B7EB" style="--ya:14px;--ha:54px;--yb:15.2px;--hb:57.6px"/></g>
+          <g class="g-y" style="--i:1"><rect class="u-bar" x="111.5" width="28" fill="#378ADD" style="--ya:72.8px;--ha:19.2px;--yb:75.2px;--hb:16.8px"/><rect class="u-bar" x="111.5" width="28" rx="2" fill="#85B7EB" style="--ya:27.2px;--ha:45.6px;--yb:27.2px;--hb:48px"/></g>
+          <g class="g-y" style="--i:2"><rect class="u-bar" x="175.2" width="28" fill="#378ADD" style="--ya:63.2px;--ha:28.8px;--yb:68px;--hb:24px"/><rect class="u-bar" x="175.2" width="28" rx="2" fill="#85B7EB" style="--ya:10.4px;--ha:52.8px;--yb:11.6px;--hb:56.4px"/></g>
+          <g class="g-y" style="--i:3"><rect class="u-bar" x="238.9" width="28" fill="#378ADD" style="--ya:77.6px;--ha:14.4px;--yb:80px;--hb:12px"/><rect class="u-bar" x="238.9" width="28" rx="2" fill="#85B7EB" style="--ya:34.4px;--ha:43.2px;--yb:34.4px;--hb:45.6px"/></g>
+          <g class="g-y" style="--i:4"><rect class="u-bar" x="302.6" width="28" fill="#378ADD" style="--ya:70.4px;--ha:21.6px;--yb:74px;--hb:18px"/><rect class="u-bar" x="302.6" width="28" rx="2" fill="#85B7EB" style="--ya:22.4px;--ha:48px;--yb:23.6px;--hb:50.4px"/></g>
+          <g class="g-y" style="--i:5"><rect class="u-bar" x="366.3" width="28" fill="#378ADD" style="--ya:58.4px;--ha:33.6px;--yb:63.2px;--hb:28.8px"/><rect class="u-bar" x="366.3" width="28" rx="2" fill="#85B7EB" style="--ya:17.6px;--ha:40.8px;--yb:17.6px;--hb:45.6px"/></g>
+          <text x="61.8" y="106" text-anchor="middle">A座</text><text x="125.5" y="106" text-anchor="middle">B座</text><text x="189.2" y="106" text-anchor="middle">C座</text><text x="252.9" y="106" text-anchor="middle">D座</text><text x="316.6" y="106" text-anchor="middle">E座</text><text x="380.3" y="106" text-anchor="middle">F座</text>
+          <rect x="330" y="2" width="11" height="11" fill="#378ADD"/><text class="lgd" x="345" y="11">光伏自用</text><rect x="386" y="2" width="11" height="11" fill="#85B7EB"/><text class="lgd" x="401" y="11">市电</text>
+        </svg>
+        <div class="pin" style="left:40px; top:30px;">1</div>
+        <div class="pin" style="left:180px; top:60px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar nolbl" style="--from:0; --to:320;"></span><span class="tl-bar s" style="--from:320; --to:380; --lbl:'320 quarticOut +错峰 60(按类目)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'update 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>两个 stack 系列各自注入同一 stagger 函数 → 同类目同 delay,整根一起从基线堆起</td><td class="m">320 quarticOut +≤144</td><td class="f">BarView.js:533-547 · anaMotion.ts stagger</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>底段 height、顶段 y + height 同步形变;stackedOnPoint 由 layout 重算</td><td class="m">200 cubicOut</td><td class="f">BarView.js:283-298</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>emphasis(legendHoverLink 同系列一起亮)</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942</td></tr>
+          <tr><td class="k">exit</td><td>图例开关</td><td>关掉一个 stack 系列 → 该系列 200 淡出,余下系列与 y 轴重排 200(C6-24)</td><td class="m">200 淡出 / 200</td><td class="f">basicTransition.js:71 · C6-24</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false 逐系列。堆叠图落点同 C6-07(Expense / TenantEnergy / PvRoi phaseOpt 两根堆叠)。</div>
+      <ol class="notes">
+        <li>错峰按 dataIndex 不按系列:两段拿到同一个 delay,否则顶段会「悬空」等底段——这是整根一起堆的唯一正确实现。</li>
+        <li>顶段 y 与 height 同时过渡,视觉上是底段推着顶段走;两段永远无缝。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 3 hbar ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">横条 · 8 月各栋收缴率(%)</div><div class="hint">C6-07 · 横条 / 龙卷风</div></div>
+      <div class="aim">目的:横条<b>从左轴长出</b>(shape.width 0 → layout),错峰自上而下;更新只改宽度。</div>
+      <input type="checkbox" id="c3r" class="rp" hidden>
+      <input type="radio" name="c3u" id="c3a" class="ua" checked hidden>
+      <input type="radio" name="c3u" id="c3b" class="ub" hidden>
+      <div class="ctl"><label for="c3r" class="rp-btn">重播首绘</label><span class="seg"><label for="c3a" class="oa">2026-08</label><label for="c3b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="139" y1="6" x2="139" y2="100"/><line class="grid" x1="230" y1="6" x2="230" y2="100"/><line class="grid" x1="321" y1="6" x2="321" y2="100"/><line class="grid" x1="412" y1="6" x2="412" y2="100"/>
+          <line class="axis" x1="48" y1="6" x2="48" y2="100"/>
+          <text x="44" y="19" text-anchor="end">A座</text><text x="44" y="34.3" text-anchor="end">B座</text><text x="44" y="49.6" text-anchor="end">C座</text><text x="44" y="64.9" text-anchor="end">D座</text><text x="44" y="80.2" text-anchor="end">E座</text><text x="44" y="95.5" text-anchor="end">F座</text>
+          <g class="g-x" style="--i:0"><rect class="u-w" x="48" y="10" height="10" rx="2" fill="#378ADD" style="--wa:349.4px;--wb:342.2px"/></g>
+          <g class="g-x" style="--i:1"><rect class="u-w" x="48" y="25.3" height="10" rx="2" fill="#378ADD" style="--wa:331.2px;--wb:324px"/></g>
+          <g class="g-x" style="--i:2"><rect class="u-w" x="48" y="40.6" height="10" rx="2" fill="#378ADD" style="--wa:320.3px;--wb:327.6px"/></g>
+          <g class="g-x" style="--i:3"><rect class="u-w" x="48" y="55.9" height="10" rx="2" fill="#378ADD" style="--wa:302.1px;--wb:291.2px"/></g>
+          <g class="g-x" style="--i:4"><rect class="u-w" x="48" y="71.2" height="10" rx="2" fill="#378ADD" style="--wa:287.6px;--wb:298.5px"/></g>
+          <g class="g-x" style="--i:5"><rect class="u-w" x="48" y="86.5" height="10" rx="2" fill="#378ADD" style="--wa:269.4px;--wb:258.4px"/></g>
+          <text class="mono" x="48" y="110" text-anchor="middle">0</text><text class="mono" x="139" y="110" text-anchor="middle">25</text><text class="mono" x="230" y="110" text-anchor="middle">50</text><text class="mono" x="321" y="110" text-anchor="middle">75</text><text class="mono" x="412" y="110" text-anchor="middle">100</text>
+        </svg>
+        <div class="pin" style="left:44px; top:4px;">1</div>
+        <div class="pin" style="left:300px; top:84px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar nolbl" style="--from:0; --to:320;"></span><span class="tl-bar s" style="--from:320; --to:380; --lbl:'320 quarticOut +错峰 60';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'update 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>横向:rect width 0 → layout,从左轴(基线)长出;错峰同竖柱</td><td class="m">320 quarticOut +≤144</td><td class="f">BarView.js:533-547</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>同键 width 形变;排序变 → 同 name 元素换 y(200)</td><td class="m">200 cubicOut</td><td class="f">BarView.js:283-298</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>emphasis</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>引擎 200 淡出 / 视图 dispose 瞬时</td><td class="m">200 / 0</td><td class="f">BarView.js:294-296</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。AnaBarRow ×3 / TenantPortfolio 的 CSS 条不在此列(C6-19:clip-path inset … round 4px,200 --ease-standard)。</div>
+      <ol class="notes">
+        <li>基线在左轴:横条与竖柱是同一条 BarView 代码路径,只是 layout 的 width / height 互换。</li>
+        <li>C座 88 → 90 超过 B座 89 但序不重排——排序由屏侧决定,ECharts 只按 name 形变。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 4 line ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">line · F座 8 月逐日比值</div><div class="hint">C6-08 · ~28 张</div></div>
+      <div class="aim">目的:线的擦出是「时间从左到右」的直觉;更新 polyline 200 形变,符号点随 clip 露出。</div>
+      <input type="checkbox" id="c4r" class="rp" hidden>
+      <input type="radio" name="c4u" id="c4a" class="ua" checked hidden>
+      <input type="radio" name="c4u" id="c4b" class="ub" hidden>
+      <div class="ctl"><label for="c4r" class="rp-btn">重播首绘</label><span class="seg"><label for="c4a" class="oa">2026-08</label><label for="c4b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="51" x2="412" y2="51"/>
+          <line class="axis" x1="30" y1="94" x2="412" y2="94"/>
+          <text class="mono" x="25" y="98" text-anchor="end">0</text><text class="mono" x="25" y="55" text-anchor="end">1</text><text class="mono" x="25" y="12" text-anchor="end">2</text>
+          <g class="g-w">
+            <path class="u-d" fill="none" stroke="#378ADD" stroke-width="2" stroke-linejoin="round" style="--da:path('M30 51 L42.1 54.4 L54.1 48 L66.2 56.6 L78.3 55.3 L90.3 61.3 L102.4 53.6 L114.5 60.5 L126.5 60.9 L138.6 58.7 L150.7 52.3 L162.7 53.1 L174.8 55.7 L186.9 50.1 L198.9 47.1 L211 53.1 L223.1 40.7 L235.1 40.7 L247.2 37.7 L259.3 45.4 L271.3 44.1 L283.4 42.8 L295.5 37.2 L307.5 41.1 L319.6 40.3 L331.7 47.6 L343.7 50.1 L355.8 47.6 L367.9 57 L379.9 51.9 L392 56.2');--db:path('M30 45.8 L42.1 42.8 L54.1 46.7 L66.2 44.1 L78.3 42 L90.3 42 L102.4 48.4 L114.5 40.7 L126.5 46.7 L138.6 51.4 L150.7 56.2 L162.7 53.1 L174.8 57.5 L186.9 66.9 L198.9 64.3 L211 69.1 L223.1 64.8 L235.1 71.2 L247.2 65.6 L259.3 65.2 L271.3 67.3 L283.4 66.5 L295.5 52.7 L307.5 49.7 L319.6 56.6 L331.7 49.7 L343.7 41.1 L355.8 48 L367.9 43.7 L379.9 40.7 L392 39')"></path>
+            <g fill="#fff" stroke="#378ADD" stroke-width="1.2">@@CIRCLES@@</g>
+          </g>
+          <text x="30" y="108" text-anchor="middle">1</text><text x="114.5" y="108" text-anchor="middle">8</text><text x="198.9" y="108" text-anchor="middle">15</text><text x="283.4" y="108" text-anchor="middle">22</text><text x="379.9" y="108" text-anchor="middle">30</text>
+        </svg>
+        <div class="pin" style="left:36px; top:8px;">1</div>
+        <div class="pin" style="left:250px; top:70px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'clip 320 quarticOut(逐系列覆盖 linear)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'polyline 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>lineGroup clipPath 宽 0 → 满;<b>逐系列写</b>才能覆盖 LineSeries.js:142 的 linear;符号点按其在 clip 内比例延迟出现(delay 以 null 调用 → 不给 line 错峰)</td><td class="m">320 quarticOut</td><td class="f">LineView.js:569 · :828-870 · LineSeries.js:142</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>点位变 → polyline 形变(按 data id 对齐);更新分支 :582-587 重建 clip 走 enter 键 0 即瞬到</td><td class="m">200 cubicOut</td><td class="f">LineView.js:604-607 → :1057</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>emphasis 线宽 / 符号,stateAnimation</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>引擎 200 淡出;系列 name / id 变 → 视图 dispose 瞬时(b3 选中线换栋)</td><td class="m">200 / 0</td><td class="f">basicTransition.js:71-73 · echarts.js:1196-1200</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。挂在期相关 v-if 上的折线(<span class="mono">PvMeterAnaView.vue:1031 · TenantEnergyView.vue:352 · AnomalyView.vue:224</span>)重挂由屏级 entered 走更新相。</div>
+      <ol class="notes">
+        <li>折线是单元素,不承诺逐点错峰(引擎边界);clip 的方向就是「时间」,所以擦出比淡入更对。</li>
+        <li>'1..31' 类目与期无关 → 换月是同键形变;换栋是实体变 → 不插值,视图瞬换(C6-16)。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 5 area ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">area 静默带 · 全园中位 ± 正常范围</div><div class="hint">C6-08 · opacity 0 + areaStyle</div></div>
+      <div class="aim">目的:静默带(lineStyle opacity 0 + areaStyle)与主线<b>同一 clip 一起擦出</b>;更新面积随 polyline 同步形变。</div>
+      <input type="checkbox" id="c5r" class="rp" hidden>
+      <input type="radio" name="c5u" id="c5a" class="ua" checked hidden>
+      <input type="radio" name="c5u" id="c5b" class="ub" hidden>
+      <div class="ctl"><label for="c5r" class="rp-btn">重播首绘</label><span class="seg"><label for="c5a" class="oa">2026-08</label><label for="c5b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="51" x2="412" y2="51"/>
+          <line class="axis" x1="30" y1="94" x2="412" y2="94"/>
+          <text class="mono" x="25" y="98" text-anchor="end">0</text><text class="mono" x="25" y="55" text-anchor="end">1</text><text class="mono" x="25" y="12" text-anchor="end">2</text>
+          <g class="g-w">
+            <path class="u-d" fill="rgba(28,28,28,.05)" stroke="none" style="--da:path('M30 32.5 L42.1 29.5 L54.1 36.4 L66.2 38.5 L78.3 36.4 L90.3 29.5 L102.4 35.5 L114.5 33.4 L126.5 27.3 L138.6 32.1 L150.7 28.2 L162.7 25.2 L174.8 23.9 L186.9 28.6 L198.9 31.6 L211 29.9 L223.1 30.4 L235.1 29.1 L247.2 33.4 L259.3 27.3 L271.3 36.4 L283.4 29.1 L295.5 38.5 L307.5 35.5 L319.6 34.7 L331.7 33.8 L343.7 32.9 L355.8 32.5 L367.9 31.2 L379.9 35.1 L392 29.1 L392 62.2 L379.9 66.5 L367.9 66.9 L355.8 70.8 L343.7 65.6 L331.7 65.2 L319.6 66 L307.5 64.8 L295.5 68.6 L283.4 63.9 L271.3 67.8 L259.3 70.3 L247.2 69.5 L235.1 68.6 L223.1 63 L211 63.9 L198.9 60.5 L186.9 64.3 L174.8 65.2 L162.7 61.3 L150.7 68.6 L138.6 67.3 L126.5 63.9 L114.5 69.1 L102.4 63 L90.3 62.2 L78.3 70.3 L66.2 69.1 L54.1 72.5 L42.1 65.2 L30 66 Z');--db:path('M30 30.8 L42.1 28.6 L54.1 29.1 L66.2 29.5 L78.3 24.8 L90.3 29.1 L102.4 28.6 L114.5 23.5 L126.5 25.2 L138.6 33.8 L150.7 30.4 L162.7 23.9 L174.8 27.3 L186.9 28.2 L198.9 31.6 L211 28.6 L223.1 23.5 L235.1 31.6 L247.2 20.9 L259.3 24.8 L271.3 20 L283.4 23.9 L295.5 27.8 L307.5 28.6 L319.6 21.8 L331.7 27.3 L343.7 28.6 L355.8 21.8 L367.9 31.6 L379.9 27.3 L392 29.9 L392 74.7 L379.9 69.9 L367.9 66.9 L355.8 71.6 L343.7 72.1 L331.7 69.1 L319.6 74.2 L307.5 65.6 L295.5 64.8 L283.4 64.8 L271.3 68.6 L259.3 71.6 L247.2 72.5 L235.1 74.7 L223.1 71.2 L211 65.6 L198.9 63.9 L186.9 67.8 L174.8 73.8 L162.7 77.2 L150.7 77.2 L138.6 76.4 L126.5 70.8 L114.5 68.6 L102.4 78.5 L90.3 72.9 L78.3 70.3 L66.2 72.1 L54.1 76.8 L42.1 75.5 L30 75.5 Z')"></path>
+            <line x1="30" y1="51" x2="392" y2="51" stroke="rgba(28,28,28,.2)" stroke-width="1" stroke-dasharray="2 3"/>
+            <path class="u-d" fill="none" stroke="#378ADD" stroke-width="2" stroke-linejoin="round" style="--da:path('M30 51 L42.1 54.4 L54.1 48 L66.2 56.6 L78.3 55.3 L90.3 61.3 L102.4 53.6 L114.5 60.5 L126.5 60.9 L138.6 58.7 L150.7 52.3 L162.7 53.1 L174.8 55.7 L186.9 50.1 L198.9 47.1 L211 53.1 L223.1 40.7 L235.1 40.7 L247.2 37.7 L259.3 45.4 L271.3 44.1 L283.4 42.8 L295.5 37.2 L307.5 41.1 L319.6 40.3 L331.7 47.6 L343.7 50.1 L355.8 47.6 L367.9 57 L379.9 51.9 L392 56.2');--db:path('M30 45.8 L42.1 42.8 L54.1 46.7 L66.2 44.1 L78.3 42 L90.3 42 L102.4 48.4 L114.5 40.7 L126.5 46.7 L138.6 51.4 L150.7 56.2 L162.7 53.1 L174.8 57.5 L186.9 66.9 L198.9 64.3 L211 69.1 L223.1 64.8 L235.1 71.2 L247.2 65.6 L259.3 65.2 L271.3 67.3 L283.4 66.5 L295.5 52.7 L307.5 49.7 L319.6 56.6 L331.7 49.7 L343.7 41.1 L355.8 48 L367.9 43.7 L379.9 40.7 L392 39')"></path>
+            <text x="300" y="24" fill="rgba(28,28,28,.2)" font-size="10">正常范围(2 倍波动)</text>
+          </g>
+          <text x="30" y="108" text-anchor="middle">1</text><text x="114.5" y="108" text-anchor="middle">8</text><text x="198.9" y="108" text-anchor="middle">15</text><text x="283.4" y="108" text-anchor="middle">22</text><text x="379.9" y="108" text-anchor="middle">30</text>
+        </svg>
+        <div class="pin" style="left:60px; top:22px;">1</div>
+        <div class="pin" style="left:150px; top:66px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'带 + 线同一 clip 320 quarticOut';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'面积同步 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>带是两条 line 系列(opacity 0)+ areaStyle,各自 lineGroup 都挂同一 createClipPathFromCoordSys → 与主线同步擦出</td><td class="m">320 quarticOut</td><td class="f">LineView.js:569 · createClipPathFromCoordSys.js:73-100</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>polygon 与 polyline 同一 diff,面积同步形变;不做 band 子淡入</td><td class="m">200 cubicOut</td><td class="f">LineView.js:604-607</td></tr>
+          <tr><td class="k">focus</td><td>—</td><td>silent 系列不响应 hover(带无 emphasis)</td><td class="m">—</td><td class="f">屏侧 silent:true</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>随宿主视图 dispose 瞬时</td><td class="m">0</td><td class="f">echarts.js:1196-1200</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。b3 分位带落点 <span class="mono">PvMeterAnaView.vue:307-334</span>;PvDayChart 的 SVG 同款带走 fp-wipe(C6-17),不在 ECharts 路径。</div>
+      <ol class="notes">
+        <li>带先于线画(系列顺序)但同一 clip → 观感是「背景与线一起从左推开」,没有第二个动的东西(原则 7)。</li>
+        <li>fp-draw「描线 + band 子淡入」已否:多段 polyline 并行描不是一笔,.once 会被子动画消费。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 6 cmp dashed ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">对比虚线 · Cockpit 主图 环比</div><div class="hint">C6-09 · 5 屏</div></div>
+      <div class="aim">目的:多出来的那条线是新信息,要<b>「画进来」</b>让人看见多了什么;主系列零抖动;关掉不淡出。</div>
+      <input type="checkbox" id="c6c" class="cmp" hidden>
+      <div class="ctl"><span class="lab">对比</span><span class="seg"><label for="c6c" class="offcmp">无</label><label for="c6c" class="oncmp">环比</label></span><span class="lab">点「环比」擦入 200 · 点「无」瞬时 dispose</span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="51" x2="412" y2="51"/>
+          <line class="axis" x1="30" y1="94" x2="412" y2="94"/>
+          <text class="mono" x="25" y="98" text-anchor="end">0</text><text class="mono" x="25" y="55" text-anchor="end">1</text><text class="mono" x="25" y="12" text-anchor="end">2</text>
+          <path fill="none" stroke="#378ADD" stroke-width="2" stroke-linejoin="round" d="M30 51 L42.1 54.4 L54.1 48 L66.2 56.6 L78.3 55.3 L90.3 61.3 L102.4 53.6 L114.5 60.5 L126.5 60.9 L138.6 58.7 L150.7 52.3 L162.7 53.1 L174.8 55.7 L186.9 50.1 L198.9 47.1 L211 53.1 L223.1 40.7 L235.1 40.7 L247.2 37.7 L259.3 45.4 L271.3 44.1 L283.4 42.8 L295.5 37.2 L307.5 41.1 L319.6 40.3 L331.7 47.6 L343.7 50.1 L355.8 47.6 L367.9 57 L379.9 51.9 L392 56.2"/>
+          <g class="g-cmp">
+            <path fill="none" stroke="rgba(28,28,28,.4)" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round" d="M30 48.9 L42.1 48.4 L54.1 42.8 L66.2 45.8 L78.3 50.1 L90.3 40.7 L102.4 48.9 L114.5 52.3 L126.5 49.7 L138.6 52.7 L150.7 49.3 L162.7 50.6 L174.8 62.6 L186.9 57.5 L198.9 60 L211 69.5 L223.1 67.8 L235.1 69.1 L247.2 65.6 L259.3 60.9 L271.3 70.8 L283.4 68.6 L295.5 67.3 L307.5 60 L319.6 62.6 L331.7 60 L343.7 47.6 L355.8 45.4 L367.9 49.7 L379.9 43.3 L392 40.7"/>
+            <line x1="330" y1="7" x2="341" y2="7" stroke="rgba(28,28,28,.4)" stroke-width="1.5" stroke-dasharray="3 2"/><text class="lgd" x="345" y="11">上月</text>
+          </g>
+          <line x1="386" y1="7" x2="397" y2="7" stroke="#378ADD" stroke-width="2"/><text class="lgd" x="401" y="11">本月</text>
+          <text x="30" y="108" text-anchor="middle">1</text><text x="114.5" y="108" text-anchor="middle">8</text><text x="198.9" y="108" text-anchor="middle">15</text><text x="283.4" y="108" text-anchor="middle">22</text><text x="379.9" y="108" text-anchor="middle">30</text>
+        </svg>
+        <div class="pin" style="left:120px; top:66px;">1</div>
+        <div class="pin" style="left:36px; top:30px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:200; --lbl:'擦入 200 · quarticOut(系列级键)';"></span><span class="tl-bar u nolbl" style="--from:0; --to:0;"></span><span class="tl-bar z" style="--from:0; --to:2; --lbl:'关 = 0(视图 dispose,不淡出)';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>—</td><td>无独立首绘相;随宿主首绘时与主线同 320</td><td class="m">(320)</td><td class="f">—</td></tr>
+          <tr><td class="k">update</td><td>几十次/天(cmp.mode 开)</td><td>更新相唯一保留的入场:对比系列<b>系列级</b>写 animationDuration:200, animationEasing:'quarticOut'(压过注入的 0);新 name → 新视图 → _data 空 → clip initProps 读系列自身 200 → 左→右擦入;主系列 isValueSame 零抖动;name 稳定以便期步进 diff 对齐</td><td class="m">200 quarticOut</td><td class="f">basicTransition.js:75-77 · LineView.js:569</td></tr>
+          <tr><td class="k">focus</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+          <tr><td class="k">exit</td><td>cmp.mode 关</td><td>该 name 视图 __alive=false → zr.remove + dispose <b>瞬时</b>,不是淡出</td><td class="m">0</td><td class="f">echarts.js:1196-1200</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false 全关。屏侧落点 <span class="mono">CockpitView.vue:104-123 · ExpenseView.vue:176 · PnlAnalysisView.vue:189 · ParkEnergyView.vue:303</span>。FinPnl 预算 markLine 不在此列(读 mlModel → 回落全局 0 → 瞬现,与 C6-14 一致)。</div>
+      <ol class="notes">
+        <li>更新相全部 ≤ 200 一条线;「画」感来自 clip 方向,不是时长。今天对比系列随 notMerge 整图重放(被 RO 截断)。</li>
+        <li>主线一个像素都不动:对比是加信息,不是换图。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 7 pie ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">pie / donut · 8 月费项构成</div><div class="hint">C6-10 · ×8</div></div>
+      <div class="aim">目的:环是构成,扇角形变直接可读;<b>绝不重播展开</b>(animationTypeUpdate 保持 'transition')。</div>
+      <input type="checkbox" id="c7r" class="rp" hidden>
+      <input type="radio" name="c7u" id="c7a" class="ua" checked hidden>
+      <input type="radio" name="c7u" id="c7b" class="ub" hidden>
+      <div class="ctl"><label for="c7r" class="rp-btn">重播首绘</label><span class="seg"><label for="c7a" class="oa">2026-08</label><label for="c7b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <g style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(-90deg);">
+            <circle class="u-sec" cx="120" cy="56" r="34" pathLength="100" stroke="#378ADD" stroke-width="10" style="--pa:42;--ra:0deg;--pb:38;--rb:0deg"/>
+            <circle class="u-sec" cx="120" cy="56" r="34" pathLength="100" stroke="#85B7EB" stroke-width="10" style="--pa:27;--ra:151.2deg;--pb:31;--rb:136.8deg"/>
+            <circle class="u-sec" cx="120" cy="56" r="34" pathLength="100" stroke="#B5D4F4" stroke-width="10" style="--pa:19;--ra:248.4deg;--pb:17;--rb:248.4deg"/>
+            <circle class="u-sec" cx="120" cy="56" r="34" pathLength="100" stroke="#185FA5" stroke-width="10" style="--pa:12;--ra:316.8deg;--pb:14;--rb:309.6deg"/>
+            <circle class="g-r" cx="120" cy="56" r="34" pathLength="100" stroke-width="12" style="--v:100"/>
+          </g>
+          <rect x="200" y="14" width="11" height="11" fill="#378ADD"/><text class="lgd" x="216" y="24">电费</text><text class="mono sa" x="300" y="24" text-anchor="end">42%</text><text class="mono sb" x="300" y="24" text-anchor="end">38%</text>
+          <rect x="200" y="36" width="11" height="11" fill="#85B7EB"/><text class="lgd" x="216" y="46">水费</text><text class="mono sa" x="300" y="46" text-anchor="end">27%</text><text class="mono sb" x="300" y="46" text-anchor="end">31%</text>
+          <rect x="200" y="58" width="11" height="11" fill="#B5D4F4"/><text class="lgd" x="216" y="68">物业费</text><text class="mono sa" x="300" y="68" text-anchor="end">19%</text><text class="mono sb" x="300" y="68" text-anchor="end">17%</text>
+          <rect x="200" y="80" width="11" height="11" fill="#185FA5"/><text class="lgd" x="216" y="90">停车</text><text class="mono sa" x="300" y="90" text-anchor="end">12%</text><text class="mono sb" x="300" y="90" text-anchor="end">14%</text>
+          <text x="330" y="60" fill="rgba(28,28,28,.4)">radius ['58%','78%']</text>
+        </svg>
+        <div class="pin" style="left:118px; top:4px;">1</div>
+        <div class="pin" style="left:60px; top:70px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'expansion 320 quarticOut,不错峰';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'扇角 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>animationType 'expansion' 自 startAngle 顺时针展开,不错峰;逐系列 animationDuration 320 覆盖 PieSeries.js:212 的 1000</td><td class="m">320 quarticOut</td><td class="f">PieView.js:84-127 · PieSeries.js:212</td></tr>
+          <tr><td class="k">update</td><td>几十次/天(换期 / 点扇区筛选)</td><td>animationTypeUpdate 保持默认 'transition'(<b>不要写 'expansion'</b>:PieView.js:266-268 不存 _data,每次当首建重播);按 name 对齐扇角 / 半径形变;逐系列 animationDurationUpdate 200 覆盖 :216 的 500</td><td class="m">200 cubicOut</td><td class="f">PieView.js:264-268 · PieSeries.js:214-216</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>emphasis 放大(引擎默认 scale:true / scaleSize 5;TenantPortfolio 显式 4)</td><td class="m">120 到位</td><td class="f">PieSeries.js:205-208</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>扇区删除 200 淡出</td><td class="m">200</td><td class="f">basicTransition.js:71-73</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。屏侧落点 <span class="mono">TenantPortfolioView.vue:111-116 · FinBalanceView.vue:234-244</span>。PieSeries 的系列级默认(1000 / 500)是逐系列注入的第一理由。</div>
+      <ol class="notes">
+        <li>展开是「整环从 12 点顺时针画到 12 点」,扇区没有各自的 delay——饼是一个构成,不是六根柱。</li>
+        <li>电费 42 → 38、水费 27 → 31:同 name 扇角形变,后面的扇区跟着转;点扇区触发的外部筛选令帕累托同步 200 形变。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 8 scatter ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">scatter · 各栋 面积 – 租金</div><div class="hint">C6-11 · ×8</div></div>
+      <div class="aim">目的:点逐个浮现;更新按 <b>item name</b> 位移。契约:<b>scatter 数据项必须带 name</b>(稳定实体键)。</div>
+      <input type="checkbox" id="c8r" class="rp" hidden>
+      <input type="radio" name="c8u" id="c8a" class="ua" checked hidden>
+      <input type="radio" name="c8u" id="c8b" class="ub" hidden>
+      <div class="ctl"><label for="c8r" class="rp-btn">重播首绘</label><span class="seg"><label for="c8a" class="oa">2026-08</label><label for="c8b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="36" x2="412" y2="36"/><line class="grid" x1="30" y1="64" x2="412" y2="64"/>
+          <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+          <text class="mono" x="25" y="96" text-anchor="end">30</text><text class="mono" x="25" y="68" text-anchor="end">45</text><text class="mono" x="25" y="40" text-anchor="end">60</text><text class="mono" x="25" y="12" text-anchor="end">75</text>
+          <g class="g-p" style="--i:0"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:80px;--ya:70px;--xb:86px;--yb:66px"/><text class="u-lbl" x="7" y="4" style="--xa:80px;--ya:70px;--xb:86px;--yb:66px">A座</text></g>
+          <g class="g-p" style="--i:1"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:130px;--ya:52px;--xb:126px;--yb:56px"/><text class="u-lbl" x="7" y="4" style="--xa:130px;--ya:52px;--xb:126px;--yb:56px">B座</text></g>
+          <g class="g-p" style="--i:2"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:180px;--ya:60px;--xb:190px;--yb:54px"/><text class="u-lbl" x="7" y="4" style="--xa:180px;--ya:60px;--xb:190px;--yb:54px">C座</text></g>
+          <g class="g-p" style="--i:3"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:230px;--ya:40px;--xb:236px;--yb:44px"/><text class="u-lbl" x="7" y="4" style="--xa:230px;--ya:40px;--xb:236px;--yb:44px">D座</text></g>
+          <g class="g-p" style="--i:4"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:280px;--ya:48px;--xb:272px;--yb:42px"/><text class="u-lbl" x="7" y="4" style="--xa:280px;--ya:48px;--xb:272px;--yb:42px">E座</text></g>
+          <g class="g-p" style="--i:5"><circle class="u-xy" r="5.5" fill="#3675B2" style="--xa:330px;--ya:30px;--xb:340px;--yb:26px"/><text class="u-lbl" x="8" y="4" fill="#3675B2" font-weight="600" style="--xa:330px;--ya:30px;--xb:340px;--yb:26px">F座</text></g>
+          <g class="g-p" style="--i:6"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:120px;--ya:86px;--xb:116px;--yb:84px"/><text class="u-lbl" x="7" y="4" style="--xa:120px;--ya:86px;--xb:116px;--yb:84px">公区</text></g>
+          <g class="g-p" style="--i:7"><circle class="u-xy" r="5" fill="rgba(28,28,28,.2)" style="--xa:200px;--ya:90px;--xb:210px;--yb:88px"/><text class="u-lbl" x="7" y="4" style="--xa:200px;--ya:90px;--xb:210px;--yb:88px">停车</text></g>
+          <text x="221" y="106" text-anchor="middle">面积(千㎡)</text><text x="12" y="6" fill="rgba(28,28,28,.4)">租金 元/㎡</text>
+        </svg>
+        <div class="pin" style="left:328px; top:4px;">1</div>
+        <div class="pin" style="left:60px; top:52px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar nolbl" style="--from:0; --to:320;"></span><span class="tl-bar s" style="--from:320; --to:404; --lbl:'320 quarticOut +错峰 84(8 点)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'按 name 位移 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>scaleX = scaleY = 0 + opacity 0 → 目标;≤24 点逐点错峰;b9 残差 365 点整体 320 起</td><td class="m">320 quarticOut +≤144</td><td class="f">Symbol.js:157-168</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>同 item name 位移 / 缩放;无 name → SeriesData.js:918-926 按 rawIndex diff,换期会把第 i 个点从实体 A 形变到实体 B</td><td class="m">200 cubicOut</td><td class="f">Symbol.js:148-151 · SymbolDraw.js:137-141</td></tr>
+          <tr><td class="k">focus</td><td>点队列行</td><td>选中系列换 FOCUS 色 #3675B2(瞬换);b6 换栋 = 焦点点 item 删 / 增(两个 200 幽灵重叠,可接受;若嫌,系列 id 带 selId 走视图重建)</td><td class="m">0 / 200</td><td class="f">PvMeterAnaView.vue:373-406</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>缩放 + 淡出(硬编码)</td><td class="m">200</td><td class="f">Symbol.js:314-323</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。屏侧落点 <span class="mono">ChurnView.vue:54-55 · TenantEnergyView.vue:402</span>;三处已核带 name。</div>
+      <ol class="notes">
+        <li>F座是焦点系列(FOCUS 蓝),其余灰点是另一条系列;两条 scatter 系列无 name → 自动 id 按索引稳定 → 同一 ChartView。</li>
+        <li>A座 → A座 的位移才是「变了多少」;没有 name 的点位移是假中间数据(原稿机制已改写)。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 9 gauge ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">gauge · 资产负债率</div><div class="hint">C6-12 · ×2 FinBalance</div></div>
+      <div class="aim">目的:指针从旧值扫到新值是唯一天然表达「变了多少」的形变;detail 数字瞬换。</div>
+      <input type="checkbox" id="c9r" class="rp" hidden>
+      <input type="radio" name="c9u" id="c9a" class="ua" checked hidden>
+      <input type="radio" name="c9u" id="c9b" class="ub" hidden>
+      <div class="ctl"><label for="c9r" class="rp-btn">重播首绘</label><span class="seg"><label for="c9a" class="oa">园区运营公司</label><label for="c9b" class="ob">物业公司</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <path d="M178.9 105.1 A44 44 0 1 1 241.1 105.1" fill="none" stroke="rgba(28,28,28,.1)" stroke-width="8" stroke-linecap="butt"/>
+          <path class="u-arc" d="M178.9 105.1 A44 44 0 1 1 241.1 105.1" pathLength="100" stroke="#378ADD" stroke-width="8" style="--va:62;--vb:48"/>
+          <path class="g-r" d="M178.9 105.1 A44 44 0 1 1 241.1 105.1" pathLength="100" stroke-width="10" style="--v:62"/>
+          <g class="g-n" style="--v:62; --ox:210px; --oy:74px;">
+            <g class="u-rot" style="--va:62;--vb:48; --ox:210px; --oy:74px;">
+              <path d="M210 40 L213 74 L207 74 Z" fill="rgb(28,28,28)"/>
+              <circle cx="210" cy="74" r="3" fill="rgb(28,28,28)"/>
+            </g>
+          </g>
+          <text class="mono sa" x="210" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="rgb(28,28,28)">62%</text>
+          <text class="mono sb" x="210" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="rgb(28,28,28)">48%</text>
+          <text class="mono" x="168" y="112" text-anchor="end">0</text><text class="mono" x="252" y="112">100</text>
+          <text x="300" y="52" fill="rgba(28,28,28,.4)">startAngle 225 · endAngle -45</text>
+          <text x="300" y="70" fill="rgba(28,28,28,.4)">valueAnimation: false(默认)</text>
+        </svg>
+        <div class="pin" style="left:150px; top:8px;">1</div>
+        <div class="pin" style="left:236px; top:84px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'弧 + 指针自 startAngle 扫入 320 quarticOut';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'旧角 → 新角 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>progress 弧 endAngle 与指针 rotation 自 startAngle 扫入</td><td class="m">320 quarticOut</td><td class="f">GaugeView.js:361-375</td></tr>
+          <tr><td class="k">update</td><td>偶发(换公司 / 换期)</td><td>自动取旧 rotation / 旧 endAngle 起到新角;detail 数字瞬换(valueAnimation 默认 false,不做 count-up)</td><td class="m">200 cubicOut</td><td class="f">GaugeView.js:385-404 · GaugeSeries.js:163/181</td></tr>
+          <tr><td class="k">focus</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。屏侧落点 <span class="mono">FinBalanceView.vue:257 · finBalance.logic.ts:44-55</span>。gauge 无系列级默认;今天 1000 / 500。</div>
+      <ol class="notes">
+        <li>扫入只到 62,不是先画满再回退:弧的 endAngle 与指针是同一个补间。</li>
+        <li>62% → 48% 指针逆时针走 200,数字直接换——同一时刻只有一个动的东西,数字不跳。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 10 sankey ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">sankey · 园区能耗流向</div><div class="hint">C6-13 · ×1 ParkEnergy</div></div>
+      <div class="aim">目的:承认引擎边界——<b>只有首绘擦出</b>(整组 clip),更新零动画,换期靠 .fp-stale 落位遮。</div>
+      <input type="checkbox" id="c10r" class="rp" hidden>
+      <input type="radio" name="c10u" id="c10a" class="ua" checked hidden>
+      <input type="radio" name="c10u" id="c10b" class="ub" hidden>
+      <div class="ctl"><label for="c10r" class="rp-btn">重播首绘</label><span class="seg"><label for="c10a" class="oa">2026-08</label><label for="c10b" class="ob">2026-07</label></span><span class="lab">换期 = removeAll 重建,瞬变</span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <g class="g-w">
+            <path d="M50 10 C210 10 210 10 370 10 L370 30 C210 30 210 30 50 30 Z" fill="#378ADD" opacity=".22"/>
+            <path d="M50 30 C210 30 210 44 370 44 L370 58 C210 58 210 44 50 44 Z" fill="#378ADD" opacity=".22"/>
+            <path d="M50 44 C210 44 210 72 370 72 L370 84 C210 84 210 56 50 56 Z" fill="#378ADD" opacity=".22"/>
+            <path d="M50 56 C210 56 210 96 370 96 L370 104 C210 104 210 64 50 64 Z" fill="#378ADD" opacity=".22"/>
+            <g class="sa">
+              <path d="M50 70 C210 70 210 30 370 30 L370 38 C210 38 210 78 50 78 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 78 C210 78 210 58 370 58 L370 66 C210 66 210 86 50 86 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 86 C210 86 210 84 370 84 L370 90 C210 90 210 92 50 92 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 92 C210 92 210 104 370 104 L370 108 C210 108 210 96 50 96 Z" fill="#EF9F27" opacity=".28"/>
+              <rect x="40" y="70" width="10" height="26" fill="#EF9F27"/>
+              <rect x="370" y="10" width="10" height="28" fill="#185FA5"/><rect x="370" y="44" width="10" height="22" fill="#185FA5"/><rect x="370" y="72" width="10" height="18" fill="#185FA5"/><rect x="370" y="96" width="10" height="12" fill="#185FA5"/>
+            </g>
+            <g class="sb">
+              <path d="M50 70 C210 70 210 30 370 30 L370 36 C210 36 210 76 50 76 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 76 C210 76 210 58 370 58 L370 64 C210 64 210 82 50 82 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 82 C210 82 210 84 370 84 L370 88 C210 88 210 86 50 86 Z" fill="#EF9F27" opacity=".28"/>
+              <path d="M50 86 C210 86 210 104 370 104 L370 106 C210 106 210 90 50 90 Z" fill="#EF9F27" opacity=".28"/>
+              <rect x="40" y="70" width="10" height="20" fill="#EF9F27"/>
+              <rect x="370" y="10" width="10" height="26" fill="#185FA5"/><rect x="370" y="44" width="10" height="20" fill="#185FA5"/><rect x="370" y="72" width="10" height="16" fill="#185FA5"/><rect x="370" y="96" width="10" height="10" fill="#185FA5"/>
+            </g>
+            <rect x="40" y="10" width="10" height="54" fill="#378ADD"/>
+            <text x="36" y="40" text-anchor="end">市电</text><text x="36" y="86" text-anchor="end">光伏发电</text>
+            <text x="384" y="27">A座</text><text x="384" y="58">C座</text><text x="384" y="84">F座</text><text x="384" y="105">公区</text>
+          </g>
+        </svg>
+        <div class="pin" style="left:6px; top:4px;">1</div>
+        <div class="pin" style="left:200px; top:78px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'整组 clip 左→右 320 quarticOut(仅首次)';"></span><span class="tl-bar z" style="--from:0; --to:2; --lbl:'更新 0(不承诺)';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>仅 !this._data 首次给 mainGroup 加 clip 左→右;逐系列 animationDuration 320 / animationEasing quarticOut 覆盖 SankeySeries.js:221-222 的 linear / 1000</td><td class="m">320 quarticOut</td><td class="f">SankeyView.js:277-281 · :332-350 · SankeySeries.js:221-222</td></tr>
+          <tr><td class="k">update</td><td>偶发(换期)</td><td>无::122 removeAll 重建瞬变;换期靠 .fp-stale 落位遮;点节点 → 邻图「板块月度趋势」bar 走 C6-07</td><td class="m">0</td><td class="f">SankeyView.js:118-126</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十</td><td>emphasis focus 'adjacency' 邻接高亮</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false 逐系列。屏侧落点 <span class="mono">ParkEnergyView.vue:281-297</span>。今天 1000 linear 擦出、更新瞬变。</div>
+      <ol class="notes">
+        <li>「左→右」在桑基上恰好是流向:市电 / 光伏 → 各栋,擦出即叙事。</li>
+        <li>不用 graphic / custom 伪造更新形变(未注册,且流带重算无同键可对齐)。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 11 treemap ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">treemap · 楼栋租金占比</div><div class="hint">C6-13 · ×1 ParkView</div></div>
+      <div class="aim">目的:<b>首绘无动画</b>(引擎 isInit → renderFinally,不伪造);更新 200 读的是 animationDurationUpdate + <b>animationEasing</b>(非 *Update)。</div>
+      <input type="checkbox" id="c11r" class="rp" hidden>
+      <input type="radio" name="c11u" id="c11a" class="ua" checked hidden>
+      <input type="radio" name="c11u" id="c11b" class="ub" hidden>
+      <div class="ctl"><label for="c11r" class="rp-btn dead">重播首绘(引擎无入场,无变化)</label><span class="seg"><label for="c11a" class="oa">2026-08</label><label for="c11b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <rect class="u-rect" fill="#185FA5" stroke="#fff" stroke-width="1" style="--xa:0px;--ya:0px;--wa:143px;--ha:112px;--xb:0px;--yb:0px;--wb:126px;--hb:112px"/>
+          <rect class="u-rect" fill="#378ADD" stroke="#fff" stroke-width="1" style="--xa:143px;--ya:0px;--wa:139px;--ha:61px;--xb:126px;--yb:0px;--wb:151px;--hb:62px"/>
+          <rect class="u-rect" fill="#85B7EB" stroke="#fff" stroke-width="1" style="--xa:143px;--ya:61px;--wa:139px;--ha:51px;--xb:126px;--yb:62px;--wb:151px;--hb:50px"/>
+          <rect class="u-rect" fill="#85B7EB" stroke="#fff" stroke-width="1" style="--xa:282px;--ya:0px;--wa:138px;--ha:41px;--xb:277px;--yb:0px;--wb:143px;--hb:43px"/>
+          <rect class="u-rect" fill="#B5D4F4" stroke="#fff" stroke-width="1" style="--xa:282px;--ya:41px;--wa:138px;--ha:37px;--xb:277px;--yb:43px;--wb:143px;--hb:35px"/>
+          <rect class="u-rect" fill="#B5D4F4" stroke="#fff" stroke-width="1" style="--xa:282px;--ya:78px;--wa:138px;--ha:34px;--xb:277px;--yb:78px;--wb:143px;--hb:34px"/>
+          <g class="sa" fill="#fff"><text x="8" y="16" fill="#fff" font-weight="600">A座 34%</text><text x="151" y="16" fill="#fff">B座 18%</text><text x="151" y="77" fill="rgb(28,28,28)">C座 15%</text><text x="290" y="16" fill="rgb(28,28,28)">D座 12%</text><text x="290" y="57" fill="rgb(28,28,28)">E座 11%</text><text x="290" y="94" fill="rgb(28,28,28)">F座 10%</text></g>
+          <g class="sb"><text x="8" y="16" fill="#fff" font-weight="600">A座 30%</text><text x="134" y="16" fill="#fff">B座 20%</text><text x="134" y="78" fill="rgb(28,28,28)">C座 16%</text><text x="285" y="16" fill="rgb(28,28,28)">D座 13%</text><text x="285" y="59" fill="rgb(28,28,28)">E座 11%</text><text x="285" y="94" fill="rgb(28,28,28)">F座 10%</text></g>
+        </svg>
+        <div class="pin" style="left:120px; top:44px;">1</div>
+        <div class="pin" style="left:380px; top:60px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar z" style="--from:0; --to:2; --lbl:'首绘 0(TreemapView.js:124-125)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'rect x/y/w/h 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>无:isInit → renderFinally 直接落位(不用 graphic 伪造)</td><td class="m">0</td><td class="f">TreemapView.js:110-128</td></tr>
+          <tr><td class="k">update</td><td>偶发(换期)</td><td>:217-222 读 animationDurationUpdate(注入 200)与 <b>animationEasing</b>(非 *Update → update 相注入 cubicOut);函数形态归零故不给 delay;内部补间 rect x / y / w / h</td><td class="m">200 cubicOut</td><td class="f">TreemapView.js:214-226</td></tr>
+          <tr><td class="k">focus</td><td>点栋</td><td>选中栋只换 itemStyle(200 随更新相)</td><td class="m">200</td><td class="f">ParkView.vue:203</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:<b>逐系列</b> animation:false —— TreemapSeries.js:220 系列默认 animation:true 会压过顶层(这是 reduced 分支必须逐系列的原因)。今天更新 900 quinticInOut。</div>
+      <ol class="notes">
+        <li>update 相把 animationEasing 也注成 cubicOut,就是为了这一个读处:TreemapView.js:219 不读 *Update。</li>
+        <li>A座 34 → 30:方块缩、邻块补——同 name 补间是引擎内部的,屏侧只给时长与缓动。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 12 markLine / markPoint / markArea ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">markLine / markPoint / markArea · 自消纳率</div><div class="hint">C6-14 · ≈22 张</div></div>
+      <div class="aim">目的:参照线随数据到位,不抢戏;markLine 首绘 <b>linear</b>(引擎自带,接受不改),markPoint 跟宿主,markArea 瞬到。</div>
+      <input type="checkbox" id="c12r" class="rp" hidden>
+      <input type="radio" name="c12u" id="c12a" class="ua" checked hidden>
+      <input type="radio" name="c12u" id="c12b" class="ub" hidden>
+      <div class="ctl"><label for="c12r" class="rp-btn">重播首绘</label><span class="seg"><label for="c12a" class="oa">2026-08</label><label for="c12b" class="ob">2026-07</label></span></div>
+      <div class="stage">
+        <svg viewBox="0 0 420 112">
+          <rect class="sa" x="30" y="8" width="382" height="16.8" fill="rgba(28,28,28,.05)"/><rect class="sb" x="30" y="8" width="382" height="12.6" fill="rgba(28,28,28,.05)"/>
+          <text class="sa" x="408" y="19" text-anchor="end" fill="rgba(28,28,28,.4)" font-size="10">目标区 80–100</text><text class="sb" x="408" y="17" text-anchor="end" fill="rgba(28,28,28,.4)" font-size="10">目标区 85–100</text>
+          <line class="grid" x1="30" y1="36" x2="412" y2="36"/><line class="grid" x1="30" y1="64" x2="412" y2="64"/>
+          <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+          <text class="mono" x="25" y="96" text-anchor="end">0</text><text class="mono" x="25" y="68" text-anchor="end">33</text><text class="mono" x="25" y="40" text-anchor="end">67</text><text class="mono" x="25" y="12" text-anchor="end">100</text>
+          <g class="g-y" style="--i:0"><rect class="u-bar" x="47.8" width="28" rx="2" fill="#378ADD" style="--ya:31.5px;--ha:60.5px;--yb:38.2px;--hb:53.8px"/></g>
+          <g class="g-y" style="--i:1"><rect class="u-bar" x="111.5" width="28" rx="2" fill="#378ADD" style="--ya:20.6px;--ha:71.4px;--yb:16.4px;--hb:75.6px"/></g>
+          <g class="g-y" style="--i:2"><rect class="u-bar" x="175.2" width="28" rx="2" fill="#378ADD" style="--ya:38.2px;--ha:53.8px;--yb:43.3px;--hb:48.7px"/></g>
+          <g class="g-y" style="--i:3"><rect class="u-bar" x="238.9" width="28" rx="2" fill="#378ADD" style="--ya:15.6px;--ha:76.4px;--yb:21.4px;--hb:70.6px"/></g>
+          <g class="g-y" style="--i:4"><rect class="u-bar" x="302.6" width="28" rx="2" fill="#378ADD" style="--ya:26.5px;--ha:65.5px;--yb:33.2px;--hb:58.8px"/></g>
+          <g class="g-y" style="--i:5"><rect class="u-bar" x="366.3" width="28" rx="2" fill="#378ADD" style="--ya:34px;--ha:58px;--yb:39.9px;--hb:52.1px"/></g>
+          <g class="g-w lin u-ty" style="--ya:0px;--yb:4.4px;">
+            <line x1="30" y1="27.7" x2="412" y2="27.7" stroke="rgba(28,28,28,.4)" stroke-width="1" stroke-dasharray="4 3"/>
+            <text class="mono" x="412" y="31" text-anchor="end" font-size="10" fill="rgba(28,28,28,.62)">均值 76.5</text>
+          </g>
+          <g class="g-p bottom u-txy" style="--i:0; --xa:0px;--ya:0px;--xb:-127.4px;--yb:-4.2px;">
+            <path d="M252.9 14 m-7 -9 a7 7 0 1 1 14 0 q0 4 -7 10 q-7 -6 -7 -10 z" fill="#9D5D17"/>
+            <text x="252.9" y="-1" text-anchor="middle" fill="#9D5D17" font-size="10">max</text>
+          </g>
+          <text x="61.8" y="106" text-anchor="middle">A座</text><text x="125.5" y="106" text-anchor="middle">B座</text><text x="189.2" y="106" text-anchor="middle">C座</text><text x="252.9" y="106" text-anchor="middle">D座</text><text x="316.6" y="106" text-anchor="middle">E座</text><text x="380.3" y="106" text-anchor="middle">F座</text>
+        </svg>
+        <div class="pin" style="left:6px; top:22px;">1</div>
+        <div class="pin" style="left:262px; top:4px;">2</div>
+        <div class="pin" style="left:300px; top:12px;">3</div>
+      </div>
+      <div class="tl"><span class="tl-bar" style="--from:0; --to:320; --lbl:'markLine 320 linear · markPoint 320 quarticOut · markArea 0';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'update 200 cubicOut';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>开关看宿主(getShallow('animation') &amp;&amp; hostSeries.isAnimationEnabled()),时长回落宿主 320;markLine 缓动 linear(MarkLineModel.js:84 自带,注入的 quarticOut 到不了它;Line.js:125-130 percent 0→1 端到端画);markPoint quarticOut;markArea 默认 animation:false</td><td class="m">320 linear / 320 quarticOut / 0</td><td class="f">MarkerModel.js:82-86 · :112-131 · MarkLineModel.js:60-86 · MarkAreaModel.js:65</td></tr>
+          <tr><td class="k">update</td><td>几十次/天</td><td>随宿主 200;markLine 更新缓动无自身默认 → cubicOut;markArea 瞬到;Breakeven 顶层 0 经吸收进系列后 marker 同为 0</td><td class="m">200 cubicOut / 0</td><td class="f">MarkLineView.js:342-345</td></tr>
+          <tr><td class="k">focus</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>随宿主</td><td class="m">—</td><td class="f">—</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false(经宿主 isAnimationEnabled 一并关)。屏侧落点 <span class="mono">PvMeterAnaView.vue:816 · :846 · breakeven.logic.ts:84</span>。零代码改动,措辞修正。</div>
+      <ol class="notes">
+        <li>1px 参照线 320 linear 与 quarticOut 读不出差别,不为它加注入分支。</li>
+        <li>markPoint 「max」跟宿主缩放淡入;更新时从 D座 移到 B座是同 name(max)位移 200。</li>
+        <li>markArea 目标区 80 → 85 直接跳:面积区域形变无阅读价值。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 13 tooltip / hover ===== -->
+    <div class="card">
+      <div class="ch"><div class="t">tooltip 0 + stateAnimation 120 · 租户组合</div><div class="hint">C6-04 · anaTheme.ts 顶层键</div></div>
+      <div class="aim">目的:指针跟随类反馈必须零延迟——tooltip <b>transitionDuration 0</b>;emphasis 放大 <b>120 到位</b>(默认 300)。</div>
+      <div class="ctl"><span class="lab">状态控制 = 悬停扇区(真 :hover)</span><span class="chip">stateAnimation {duration:120, easing:'cubicOut'}</span><span class="chip">tooltip.transitionDuration: 0</span></div>
+      <div class="stage">
+        <div class="hovhint">把鼠标移到扇区上 →</div>
+        <svg viewBox="0 0 420 112">
+          <g style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(-90deg);">
+            <circle class="sec" cx="120" cy="56" r="34" pathLength="100" fill="none" stroke="#378ADD" stroke-width="12" stroke-dasharray="38 100" style="--r:0deg"/>
+            <g class="tip" style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(90deg);"><rect x="128" y="-2" width="88" height="27" rx="9"/><text x="139" y="15">制造 · 38%</text></g>
+            <circle class="sec" cx="120" cy="56" r="34" pathLength="100" fill="none" stroke="#EF9F27" stroke-width="12" stroke-dasharray="24 100" style="--r:136.8deg"/>
+            <g class="tip" style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(90deg);"><rect x="128" y="-2" width="88" height="27" rx="9"/><text x="139" y="15">物流 · 24%</text></g>
+            <circle class="sec" cx="120" cy="56" r="34" pathLength="100" fill="none" stroke="#5DCAA5" stroke-width="12" stroke-dasharray="18 100" style="--r:223.2deg"/>
+            <g class="tip" style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(90deg);"><rect x="128" y="-2" width="88" height="27" rx="9"/><text x="139" y="15">电子 · 18%</text></g>
+            <circle class="sec" cx="120" cy="56" r="34" pathLength="100" fill="none" stroke="#E24B4A" stroke-width="12" stroke-dasharray="20 100" style="--r:288deg"/>
+            <g class="tip" style="transform-box:fill-box; transform-origin:50% 50%; transform:rotate(90deg);"><rect x="128" y="-2" width="88" height="27" rx="9"/><text x="139" y="15">其他 · 20%</text></g>
+          </g>
+          <rect x="250" y="34" width="11" height="11" fill="#378ADD"/><text class="lgd" x="266" y="44">制造</text><rect x="300" y="34" width="11" height="11" fill="#EF9F27"/><text class="lgd" x="316" y="44">物流</text><rect x="350" y="34" width="11" height="11" fill="#5DCAA5"/><text class="lgd" x="366" y="44">电子</text><rect x="250" y="56" width="11" height="11" fill="#E24B4A"/><text class="lgd" x="266" y="66">其他</text>
+          <text x="250" y="90" fill="rgba(28,28,28,.4)">emphasis.scaleSize 4(TenantPortfolioView.vue:115 显式)</text>
+        </svg>
+        <div class="pin" style="left:150px; top:36px;">1</div>
+        <div class="pin" style="left:210px; top:4px;">2</div>
+      </div>
+      <div class="tl"><span class="tl-bar f" style="--from:0; --to:120; --lbl:'emphasis 放大 120 cubicOut';"></span><span class="tl-bar z" style="--from:0; --to:2; --lbl:'tooltip 跟手 0';"></span></div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:78px"><col style="width:104px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>—</td><td>—(主题静态键,与相位无关)</td><td class="m">—</td><td class="f">—</td></tr>
+          <tr><td class="k">update</td><td>每分钟数十(移动)</td><td>tooltip DOM transform 跟随:transitionDuration 0(TooltipModel.js:76 默认 0.4;TooltipHTMLContent.js:154 ≤0 不加 CSS transition)</td><td class="m">0</td><td class="f">anaTheme.ts:43-51 · TooltipHTMLContent.js:143-154</td></tr>
+          <tr><td class="k">focus</td><td>每分钟数十(移入)</td><td>stateAnimation {duration:120, easing:'cubicOut'}(默认 300,globalDefault.js:113;读处 echarts.js:1935-1942;Global.js:701-708 非组件键 merge 只填空位);饼 emphasis 放大保持引擎默认 scale:true</td><td class="m">120 cubicOut</td><td class="f">echarts.js:1935-1942 · Global.js:691-711 · PieSeries.js:205-208</td></tr>
+          <tr><td class="k">exit</td><td>移出</td><td>同 stateAnimation 回落</td><td class="m">120</td><td class="f">echarts.js:1935-1942</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:motionize 覆盖 stateAnimation.duration:0(仅 reduced;离屏不覆盖,否则折叠区图表 hover 永远 0 直到下次换期)。今天 stateAnimation 300、tooltip 0.4s 拖尾滑行。</div>
+      <ol class="notes">
+        <li>静态默认进主题(anaTheme.ts 只放 stateAnimation 120 与 tooltip 0),动态相位进 motionize——两处不混。</li>
+        <li>tooltip 缓动已否:任何 &gt;0 的跟随都让浮层落后指针。</li>
+      </ol>
+    </div>
+
+    <!-- ===== 14 continuous input (span 2) ===== -->
+    <div class="card span2">
+      <div class="ch"><div class="t">连续输入 · Breakeven 顶层 0 与 Cockpit dataZoom 引擎 100</div><div class="hint">C6-15 · 每帧</div></div>
+      <div class="aim">目的:<b>跟手</b>——任何 &gt;0 的更新动画都让图落后手指。Breakeven 三图顶层写 animationDurationUpdate:0(motionize 吸收进每个系列与 marker);dataZoom 拖动由引擎 payload 100 决定,屏侧键管不到,<b>删掉 Cockpit 120 特例</b>。</div>
+      <div class="g2">
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <input type="radio" name="c14k" id="c14ka" class="ua" hidden>
+          <input type="radio" name="c14k" id="c14kb" class="ub" checked hidden>
+          <input type="radio" name="c14k" id="c14kc" class="uc" hidden>
+          <div class="ctl"><span class="lab">固定成本系数(滑杆三档)</span><span class="seg"><label for="c14ka" class="oa">0.8</label><label for="c14kb" class="ob">1.0</label><label for="c14kc" class="oc">1.2</label></span></div>
+          <div class="stage" style="--du:0ms;">
+            <svg viewBox="0 0 420 112">
+              <line class="grid" x1="30" y1="14" x2="412" y2="14"/><line class="grid" x1="30" y1="53" x2="412" y2="53"/>
+              <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+              <text class="mono" x="25" y="96" text-anchor="end">0</text><text class="mono" x="25" y="57" text-anchor="end">50</text><text class="mono" x="25" y="18" text-anchor="end">100</text>
+              <path d="M30 92 L400 14" fill="none" stroke="#378ADD" stroke-width="2"/>
+              <path class="u-d" fill="none" stroke="#EF9F27" stroke-width="2" style="--da:path('M30 70 L400 42');--db:path('M30 60 L400 32');--dc:path('M30 50 L400 22')"></path>
+              <g class="u-txy" style="--xa:192.8px;--ya:57.7px;--xb:266.9px;--yb:42.1px;--xc:340.9px;--yc:26.5px;">
+                <line x1="0" y1="0" x2="0" y2="92" stroke="rgba(28,28,28,.4)" stroke-width="1" stroke-dasharray="4 3"/>
+                <circle r="4" fill="#fff" stroke="rgb(28,28,28)" stroke-width="1.5"/>
+                <text x="6" y="-6" font-size="10" fill="rgb(28,28,28)">盈亏平衡</text>
+              </g>
+              <line x1="330" y1="6" x2="341" y2="6" stroke="#378ADD" stroke-width="2"/><text class="lgd" x="345" y="10">收入</text><line x1="380" y1="6" x2="391" y2="6" stroke="#EF9F27" stroke-width="2"/><text class="lgd" x="395" y="10">成本</text>
+              <text x="221" y="106" text-anchor="middle">出租率 %</text>
+            </svg>
+            <div class="pin" style="left:150px; top:30px;">1</div>
+          </div>
+          <div class="tl"><span class="tl-bar z" style="--from:0; --to:2; --lbl:'update 0(顶层键吸收进系列 + markPoint / markLine)';"></span><span class="tl-bar u nolbl" style="--from:0; --to:0;"></span></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <input type="radio" name="c14z" id="c14za" class="ua" checked hidden>
+          <input type="radio" name="c14z" id="c14zb" class="ub" hidden>
+          <input type="radio" name="c14z" id="c14zc" class="uc" hidden>
+          <div class="ctl"><span class="lab">dataZoom 窗口(拖动)</span><span class="seg"><label for="c14za" class="oa">8-01 … 8-12</label><label for="c14zb" class="ob">8-08 … 8-19</label><label for="c14zc" class="oc">8-20 … 8-31</label></span></div>
+          <div class="stage" style="--du: var(--dur-zoom-payload);">
+            <svg viewBox="0 0 420 112">
+              <line class="grid" x1="30" y1="8" x2="412" y2="8"/><line class="grid" x1="30" y1="36" x2="412" y2="36"/><line class="grid" x1="30" y1="64" x2="412" y2="64"/>
+              <line class="axis" x1="30" y1="92" x2="412" y2="92"/>
+              <text class="mono" x="25" y="96" text-anchor="end">0</text><text class="mono" x="25" y="68" text-anchor="end">20</text><text class="mono" x="25" y="40" text-anchor="end">40</text><text class="mono" x="25" y="12" text-anchor="end">60</text>
+              <rect class="u-bar" x="36.9" width="18" rx="2" fill="#378ADD" style="--ya:58px;--ha:34px;--yb:40px;--hb:52px;--yc:52px;--hc:40px"/>
+              <rect class="u-bar" x="68.7" width="18" rx="2" fill="#378ADD" style="--ya:48px;--ha:44px;--yb:55px;--hb:37px;--yc:47px;--hc:45px"/>
+              <rect class="u-bar" x="100.5" width="18" rx="2" fill="#378ADD" style="--ya:53px;--ha:39px;--yb:43px;--hb:49px;--yc:59px;--hc:33px"/>
+              <rect class="u-bar" x="132.3" width="18" rx="2" fill="#378ADD" style="--ya:42px;--ha:50px;--yb:50px;--hb:42px;--yc:41px;--hc:51px"/>
+              <rect class="u-bar" x="164.1" width="18" rx="2" fill="#378ADD" style="--ya:60px;--ha:32px;--yb:57px;--hb:35px;--yc:51px;--hc:41px"/>
+              <rect class="u-bar" x="195.9" width="18" rx="2" fill="#378ADD" style="--ya:46px;--ha:46px;--yb:45px;--hb:47px;--yc:44px;--hc:48px"/>
+              <rect class="u-bar" x="227.7" width="18" rx="2" fill="#378ADD" style="--ya:52px;--ha:40px;--yb:38px;--hb:54px;--yc:56px;--hc:36px"/>
+              <rect class="u-bar" x="259.5" width="18" rx="2" fill="#378ADD" style="--ya:40px;--ha:52px;--yb:52px;--hb:40px;--yc:37px;--hc:55px"/>
+              <rect class="u-bar" x="291.3" width="18" rx="2" fill="#378ADD" style="--ya:55px;--ha:37px;--yb:47px;--hb:45px;--yc:48px;--hc:44px"/>
+              <rect class="u-bar" x="323.1" width="18" rx="2" fill="#378ADD" style="--ya:43px;--ha:49px;--yb:59px;--hb:33px;--yc:54px;--hc:38px"/>
+              <rect class="u-bar" x="354.9" width="18" rx="2" fill="#378ADD" style="--ya:50px;--ha:42px;--yb:41px;--hb:51px;--yc:42px;--hc:50px"/>
+              <rect class="u-bar" x="386.7" width="18" rx="2" fill="#378ADD" style="--ya:57px;--ha:35px;--yb:51px;--hb:41px;--yc:58px;--hc:34px"/>
+              <g class="sa"><text x="45.9" y="106" text-anchor="middle">8-01</text><text x="141.3" y="106" text-anchor="middle">8-04</text><text x="236.7" y="106" text-anchor="middle">8-07</text><text x="332.1" y="106" text-anchor="middle">8-10</text><text x="395.7" y="106" text-anchor="middle">8-12</text></g>
+              <g class="sb"><text x="45.9" y="106" text-anchor="middle">8-08</text><text x="141.3" y="106" text-anchor="middle">8-11</text><text x="236.7" y="106" text-anchor="middle">8-14</text><text x="332.1" y="106" text-anchor="middle">8-17</text><text x="395.7" y="106" text-anchor="middle">8-19</text></g>
+              <g class="sc"><text x="45.9" y="106" text-anchor="middle">8-20</text><text x="141.3" y="106" text-anchor="middle">8-23</text><text x="236.7" y="106" text-anchor="middle">8-26</text><text x="332.1" y="106" text-anchor="middle">8-29</text><text x="395.7" y="106" text-anchor="middle">8-31</text></g>
+            </svg>
+            <div class="pin" style="left:200px; top:6px;">2</div>
+          </div>
+          <div class="tl"><span class="tl-bar z" style="--from:0; --to:100; --lbl:'拖动 = 引擎 payload 100 cubicOut(roams.js:126-135)';"></span><span class="tl-bar u" style="--from:0; --to:200; --lbl:'月步进走通用 200';"></span></div>
+        </div>
+      </div>
+      <table class="spec">
+        <colgroup><col style="width:44px"><col style="width:52px"><col><col style="width:132px"><col style="width:260px"></colgroup>
+        <thead><tr><th>触发</th><th>频次</th><th>动什么</th><th>时长·曲线</th><th>落点</th></tr></thead>
+        <tbody>
+          <tr><td class="k">enter</td><td>一屏一次</td><td>两屏首绘仍走 C6-02(Breakeven 挂载时 option 为空,painted 标志保证首次真数据走 enter)</td><td class="m">320 quarticOut</td><td class="f">AnaEChart.vue:104-134</td></tr>
+          <tr><td class="k">update</td><td>连续(每帧)</td><td>Breakeven:breakeven.logic.ts:84/130/164 三个 option <b>顶层</b> animationDurationUpdate:0 → motionize {...keys, ...pick(o, ANIM_KEYS), ...s} 吸收进每个系列,线与 markPoint / markLine(经宿主)同时 0——不吸收的话顶层 0 是死键。Cockpit:dataZoom 拖动 roams.js 每次 dispatch 自带 animation:{easing:'cubicOut',duration:100} payload(basicTransition.js:80-84 最高优先),滑杆 realtime 同为 100(SliderZoomView.js:69-72)</td><td class="m">0(Breakeven)/ 引擎 100 cubicOut(拖动)/ 200(月步进)</td><td class="f">breakeven.logic.ts:84-103 · :130 · :164 · BreakevenView.vue:138-162 · CockpitView.vue:104-135 · roams.js:126-135 · SliderZoomView.js:69-72 · basicTransition.js:80-84</td></tr>
+          <tr><td class="k">focus</td><td>—</td><td>stateAnimation 120 照常</td><td class="m">120</td><td class="f">anaTheme.ts</td></tr>
+          <tr><td class="k">exit</td><td>—</td><td>—</td><td class="m">—</td><td class="f">—</td></tr>
+        </tbody>
+      </table>
+      <div class="rm"><b>reduced-motion</b>:animation:false。今天 500 默认更新动画拖尾;src 内无任何 animation 键。三位评审同时指出顶层键会被逐系列注入压死——吸收规则一处改完,原则 5「屏侧显式键优先」对顶层也成立。</div>
+      <ol class="notes">
+        <li>拖滑杆的每一帧都是一次 setOption:0ms 才是「数据是手的延伸」;盈亏平衡点 markPoint 经宿主同为 0,不会拖尾。</li>
+        <li>dataZoom 100 是引擎 payload 数,不是令牌:屏侧写 120 是死键,写了也不生效——所以删。</li>
+      </ol>
+    </div>
+
+  </div>
+
+  <!-- ================= motionize 代码 ================= -->
+  <div class="card">
+    <div class="ch"><div class="t">anaMotion.ts · motionize(照抄规范 §8.3,纯函数可测)</div><div class="hint">components/ana/anaMotion.ts(新,分析共享块)</div></div>
+<pre class="code"><span class="c">// components/ana/anaMotion.ts(新,分析共享块;纯函数可测)</span>
+export const DUR = { enter: <span class="v">320</span>, update: <span class="v">200</span>, state: <span class="v">120</span> } as const   <span class="c">// 镜像 --dur-slow/--dur-base/--dur-fast</span>
+export const EASE = { enter: <span class="v">'quarticOut'</span>, update: <span class="v">'cubicOut'</span> } as const
+export const STAGGER = { step: <span class="v">12</span>, cap: <span class="v">12</span>, maxN: <span class="v">24</span> } as const       <span class="c">// ECharts 专用,无 CSS 对应</span>
+const ANIM_KEYS = ['animationDuration','animationEasing','animationDelay','animationDurationUpdate','animationEasingUpdate','animationDelayUpdate'] as const
+type Rec = Record&lt;string, unknown&gt;
+const isObj = (v: unknown): v is Rec =&gt; typeof v === 'object' &amp;&amp; v !== null &amp;&amp; !Array.isArray(v)
+const pick = (o: Rec) =&gt; Object.fromEntries(ANIM_KEYS.filter(k =&gt; o[k] !== undefined).map(k =&gt; [k, o[k]]))
+export function motionize(o: Rec, phase: 'enter' | 'update', env: { reduced: boolean; isS: boolean; visible: boolean }): Rec {
+  const list = Array.isArray(o.series) ? o.series : o.series ? [o.series] : []
+  const off = (s: unknown) =&gt; isObj(s) ? { ...s, animation: false } : s   <span class="c">// 逐系列:treemap 默认 animation:true</span>
+  if (env.reduced) return { ...o, animation: false, stateAnimation: { duration: 0 }, series: list.map(off) }
+  if (!env.visible) return { ...o, animation: false, series: list.map(off) }   <span class="c">// 离屏:不动 stateAnimation</span>
+  const enter = phase === 'enter'
+  const keys: Rec = {
+    animationDuration: enter ? (env.isS ? DUR.update : DUR.enter) : 0,
+    animationEasing: enter ? EASE.enter : EASE.update, animationDelay: 0,
+    animationDurationUpdate: env.isS ? 0 : DUR.update, animationEasingUpdate: EASE.update, animationDelayUpdate: 0,
+  }
+  const top = pick(o)
+  const stagger = (i: number) =&gt; Math.min(i, STAGGER.cap) * STAGGER.step
+  const series = list.map(s =&gt; {
+    if (!isObj(s)) return s
+    const n = Array.isArray(s.data) ? s.data.length : 0
+    const st = enter &amp;&amp; !env.isS &amp;&amp; (s.type === 'bar' || s.type === 'scatter') &amp;&amp; n &gt; 0 &amp;&amp; n &lt;= STAGGER.maxN &amp;&amp; s.animationDelay === undefined ? { animationDelay: stagger } : {}
+    return { ...keys, ...top, ...st, ...s }
+  })
+  return { ...keys, ...o, series }
+}</pre>
+    <div class="rm">notMerge:true 保持;不注册 UniversalTransition、不改 echartsBundle。anaTheme.ts 只放静态键(stateAnimation 120、tooltip.transitionDuration 0)。单测:<span class="mono">anaEChart.spec.ts:44/59</span> 改 expect.objectContaining,补 enter 320 / update 0 / 顶层 0 → 每系列 0 三条。体积 ≈0.8KB 进分析块。</div>
+  </div>
+
+  <!-- ================= 补遗 + 明确不做 ================= -->
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><div class="t">补遗(待拍板,均不新增令牌)</div><div class="hint">C6-23 · C6-24</div></div>
+      <table class="spec">
+        <colgroup><col style="width:64px"><col><col style="width:200px"></colgroup>
+        <thead><tr><th>编号</th><th>缺口 → 建议</th><th>待确认</th></tr></thead>
+        <tbody>
+          <tr><td class="k">C6-23<br>PvRoiView 选中</td><td>19 屏之一(rampOpt line + area + 投资额 markLine + pin markPoint;phaseOpt 两根堆叠柱)未被点名。选中模型独特:chart-click → selPhase → 逐项 <span class="mono">itemStyle.opacity</span> 1 / 0.45(PvRoiView.vue:98-112)+ <span class="mono">.roi2-sel</span> 明细卡 v-if 换(:187 / :206)。更新相下 BarView 经 updateStyle 设样式<b>无动画 → 压暗瞬时</b>,柱不动;明细卡瞬换;rampOpt markLine(投资额,首绘 linear 320)+ pin markPoint 缩放淡入 320 跟宿主,更新时随宿主 0。<b>建议</b>:加进 C6-16 ⑤ 名单,零代码。</td><td>非选中相位柱的 0.45 压暗要不要 120 opacity 过渡?ECharts 更新时不能给 bar 的 item style 加过渡(无自定义钩子),「瞬时」是唯一零代码答案——确认可接受。</td></tr>
+          <tr><td class="k">C6-24<br>图例开关</td><td>31 处 <span class="mono">legend:</span> 定义无一写 <span class="mono">selectedMode:false</span>(已 grep),全部可点。点图例 = 引擎内部 legendToggleSelect,走同一更新相:被隐藏系列引擎硬编码 200 淡出(basicTransition.js:71),存活系列重排 200 cubicOut(堆叠塌一层、y 轴重标)。<b>建议</b>:C6-03 加一行「图例开关 = 引擎内部更新,接受原样,不加逐系列键;legendHoverLink 强调走 stateAnimation 120(C6-04)」。reduced:motionize 逐系列 animation:false 已覆盖。</td><td>确认图例开关是可接受的 200 形变(同实体同键变化),不需要 selectedMode:false。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="ch"><div class="t">明确不做(图表类)</div><div class="hint">每条注明被哪一问杀掉</div></div>
+      <table class="spec">
+        <colgroup><col style="width:180px"><col></colgroup>
+        <thead><tr><th>不做</th><th>被哪一问杀掉</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Cockpit dataZoom 120 特例</td><td>能生效吗?——拖动是引擎 payload 100(roams.js:126-135),屏侧键管不到,写了是死键。</td></tr>
+          <tr><td class="k">morph prop / sectionSwitched / entrancePhase</td><td>有更省的吗?——屏级 entered 一处覆盖段控、粒度、抽屉、v-if 全部重挂。</td></tr>
+          <tr><td class="k">不限长度错峰</td><td>频次门槛——365 点 × 12ms = 4.4s;一屏一次上限 320 + 144。</td></tr>
+          <tr><td class="k">count-up 数字 / gauge valueAnimation</td><td>数据为风格而动?——是,杀;detail 瞬换。</td></tr>
+          <tr><td class="k">换栋线插值 / 跨实体稳定 id</td><td>不同实体之间形变是假中间数据——永不;实体变走视图瞬换(C6-16)。</td></tr>
+          <tr><td class="k">universalTransition</td><td>它做的正是跨实体形变;且要改 echartsBundle 加体积。</td></tr>
+          <tr><td class="k">换期重播入场</td><td>一屏一次的东西几十次/天出现——update 相 animationDuration 0 从根上杀。</td></tr>
+          <tr><td class="k">PvQualityGrid 365 格扫出</td><td>频次 + 错峰上限 12——随容器硬切(C6-20)。</td></tr>
+          <tr><td class="k">tooltip 缓动</td><td>指针跟随零延迟——transitionDuration 0。</td></tr>
+          <tr><td class="k">饼图 scale:false</td><td>引擎默认放大是既有反馈,只是 300 → 120 到位;「不缩放」原稿有误。</td></tr>
+          <tr><td class="k">fp-draw 描线 + band 子淡入</td><td>多段 polyline 并行描不是一笔;.once 被子动画消费——改 fp-wipe / clip。</td></tr>
+          <tr><td class="k">graphic / custom 伪造 treemap 入场、sankey 更新</td><td>不用未注册组件伪造引擎做不到的事;承认边界。</td></tr>
+          <tr><td class="k">pie animationTypeUpdate 'expansion'</td><td>PieView.js:266-268 不存 _data,每次更新当首建重播——绝不。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

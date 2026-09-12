@@ -1,0 +1,777 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* ===== demo3 design tokens — lifted verbatim from frontend/src/styles/tokens.css (2026-09-05) =====
+       Paste this whole block into <helmet><style> of every artboard. Do not change values. */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+      --fs-display: 28px; --fs-h1: 24px; --fs-h2: 20px; --fs-h3: 16px; --fs-h4: 15px; --fs-body: 14px; --fs-label: 12px; --fs-micro: 11px;
+      --lh-tight: 1.2; --lh-snug: 20px; --lh-normal: 1.5;
+      --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em;
+
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-500: rgba(28, 28, 28, 0.4);
+      --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05); --ink-040: rgba(0, 0, 0, 0.04);
+
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --surface-overlay: rgba(255, 255, 255, 0.9); --surface-white: rgb(255, 255, 255);
+      --accent-slate: rgb(229, 236, 246); --accent-sky: rgb(227, 245, 255); --accent-blue: rgb(230, 241, 253); --accent-cyan: rgb(222, 244, 250);
+
+      --hue-blue: oklch(0.55 0.115 250); --hue-cyan: oklch(0.66 0.082 228); --hue-orange: oklch(0.54 0.115 62);
+      --hue-red: oklch(0.56 0.150 27); --hue-yellow: oklch(0.80 0.100 86); --hue-green: oklch(0.58 0.130 150);
+      --fill-slate: rgb(120, 140, 176); --fill-blue: rgb(129, 174, 232); --fill-cyan: rgb(160, 205, 232); --fill-sky: rgb(196, 226, 244);
+      --brand-blue: rgb(76, 152, 253); --brand-deep: rgb(31, 95, 191); --brand-accent: rgb(112, 148, 244);
+
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62);
+      --text-disabled: var(--ink-300); --text-on-solid: rgb(255, 255, 255); --text-link: var(--hue-blue);
+      --bg-hover: var(--ink-050); --bg-sunken: var(--surface-sunken);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255); --control-solid-hover: rgb(58, 58, 58);
+      --status-danger: var(--hue-red); --status-info: var(--hue-blue); --status-warning: var(--hue-orange);
+
+      --radius-xs: 4px; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-2xl: 24px; --radius-full: 999px;
+      --shadow-xs: 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-sm: 0 1px 3px rgba(28, 28, 28, 0.06), 0 1px 2px rgba(28, 28, 28, 0.04);
+      --shadow-md: 0 4px 12px rgba(28, 28, 28, 0.06);
+      --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+      --shadow-pill: 0 1px 4px rgba(28, 28, 28, 0.08);
+
+      /* motion — existing */
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* the surviving definition (tokens.css:262) */
+      --ease-both: cubic-bezier(0.77, 0, 0.175, 1);
+      --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms; --dur-highlight: 2s;
+    }
+    /* one more existing token the shared block omits — tokens.css:198, danger hover (Button.vue:128) */
+    :root { --status-danger-hover: rgb(224, 49, 39); }
+
+    /* ===== artboard ===== */
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-sunken); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    button, label { font-family: var(--font-sans); }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    svg { display:block; }
+
+    /* header */
+    .hdr { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+    .hdr-l { display:flex; flex-direction:column; gap:6px; }
+    .kicker { font-size:11px; letter-spacing:.06em; color:var(--text-muted); font-weight:600; }
+    h1 { margin:0; font-size:20px; font-weight:600; line-height:1.2; }
+    .intro { font-size:12px; color:var(--text-muted); line-height:1.55; max-width:900px; }
+    .chips { display:flex; flex-direction:column; gap:6px; align-items:flex-end; flex:0 0 auto; }
+    .chiprow { display:flex; gap:6px; align-items:center; }
+    .chip-l { font-size:11px; color:var(--text-muted); margin-right:2px; }
+    .chip { height:22px; padding:0 9px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font:11px var(--font-mono); color:var(--text-muted); display:inline-flex; align-items:center; }
+    .chip.on { background:var(--ink-900); color:#fff; border-color:var(--ink-900); }
+
+    /* grammar strip */
+    .gram { display:grid; grid-template-columns: 1fr 560px 300px; gap:20px; background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:14px 18px; align-items:start; }
+    .gram h3 { margin:0 0 6px; font-size:14px; font-weight:600; }
+    .gram p { margin:0; font-size:12px; line-height:1.55; color:var(--text-secondary); }
+    .code { font:11px/1.6 var(--font-mono); background:var(--surface-card); border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; white-space:pre; overflow-x:auto; color:var(--text-secondary); margin:0; }
+    .code b { color:var(--text-primary); font-weight:600; }
+    .legend { display:flex; flex-direction:column; gap:6px; font-size:12px; line-height:1.5; color:var(--text-secondary); }
+    .legend .k { display:inline-flex; align-items:center; gap:6px; }
+    .sw { width:14px; height:14px; border-radius:4px; border:1px solid var(--border-subtle); flex:0 0 auto; }
+
+    /* blocks */
+    .blk { display:flex; flex-direction:column; gap:10px; }
+    .blk-h { display:flex; align-items:baseline; gap:10px; }
+    .blk-h .id { font:600 11px var(--font-mono); color:var(--hue-blue); }
+    .blk-h h2 { margin:0; font-size:16px; font-weight:600; }
+    .blk-h .tier { font-size:11px; color:var(--text-muted); margin-left:auto; font-family:var(--font-mono); }
+    .two { display:grid; grid-template-columns: 1fr 1fr; gap:24px; align-items:start; }
+    .three { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:24px; align-items:start; }
+    .demo { display:flex; flex-direction:column; gap:8px; position:relative; }
+    .ctl { display:flex; gap:8px; align-items:center; }
+    .ctl .hint { font-size:11px; color:var(--text-muted); margin-left:auto; font-family:var(--font-mono); }
+    .rp-btn { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--border-subtle); background:#fff; font-size:12px; cursor:pointer; user-select:none; color:var(--text-primary); }
+    .rp-btn:hover { background: var(--surface-card); }
+    .rp-btn:active { filter: brightness(0.94); }
+    .rp-btn.tg::before { content:''; width:8px; height:8px; border-radius:999px; border:1px solid var(--ink-300); background:#fff; }
+    .hd:checked ~ .ctl .rp-btn.tg::before { background:var(--ink-900); border-color:var(--ink-900); }
+    .stage { position:relative; background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:14px; }
+    .pin { position:absolute; width:22px; height:22px; border-radius:999px; background:var(--hue-blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); z-index:2; }
+    .notes { display:flex; flex-direction:column; gap:7px; }
+    .notes.g2 { display:grid; grid-template-columns: 1fr 1fr; gap:7px 16px; }
+    .note { display:flex; gap:8px; font-size:12px; line-height:1.55; color:var(--text-primary); }
+    .note .pin { position:relative; flex:0 0 auto; margin-top:1px; }
+    .note b { color:var(--brand-deep); font-weight:600; }
+    .note .m { font-family:var(--font-mono); font-size:11px; }
+
+    /* timeline ruler */
+    .tl { position:relative; height:26px; margin-top:8px; border-top:1px solid var(--divider); }
+    .tl::before { content:'0'; position:absolute; left:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl::after { content:'120 · 200 · 320 ms'; position:absolute; right:0; top:6px; font:11px var(--font-mono); color:var(--text-muted); }
+    .tl i { position:absolute; top:-3px; width:1px; height:7px; background:var(--ink-300); }
+    .tl i.t120 { left: calc(120 / 480 * 100%); } .tl i.t200 { left: calc(200 / 480 * 100%); } .tl i.t320 { left: calc(320 / 480 * 100%); }
+    .tl-bar { position:absolute; top:-1px; height:3px; background:var(--hue-blue); left: calc(var(--from) / 480 * 100%); width: calc((var(--to) - var(--from)) / 480 * 100%); }
+    .tl-bar::after { content: var(--lbl); position:absolute; left:0; top:8px; font:11px var(--font-mono); color:var(--hue-blue); white-space:nowrap; }
+    .tl-hit { position:absolute; left:0; top:-6px; width:3px; height:13px; background:var(--ink-900); border-radius:1px; }
+    .tl-hit::after { content:'按下 0ms 瞬到'; position:absolute; left:8px; top:-1px; font:11px var(--font-mono); color:var(--ink-900); white-space:nowrap; }
+    .tl.press .tl-bar::after { left: calc(120 / 480 * 100% + 8px); left: 8px; top: 8px; transform: translateX(96px); }
+
+    /* spec table */
+    .spec-w { border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; background:#fff; }
+    table.spec { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+    .spec th { font-size:11px; color:var(--text-muted); font-weight:500; text-align:left; padding:7px 10px; background:var(--surface-card); border-bottom:1px solid var(--divider); white-space:nowrap; }
+    .spec td { padding:7px 10px; vertical-align:top; border-bottom:1px solid var(--divider); line-height:1.5; }
+    .spec tr:last-child td { border-bottom:0; }
+    .spec td.v, .spec td.f { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); word-break:break-all; }
+    .spec td.f { color:var(--text-primary); }
+    .spec td.id { font:600 11px var(--font-mono); color:var(--hue-blue); white-space:nowrap; }
+
+    /* ===== generic press mechanics (CSS only) =====
+       every live control declares --r (rest bg) and --p (pressed bg);
+       :active = pressed at 0ms; release = 120ms --ease-standard (existing transition);
+       重播 = 按下 0ms → 持 200ms(--dur-base,animation-delay + backwards 填充)→ 松开 120ms --ease-standard */
+    .pr { animation: press-a var(--dur-fast) var(--ease-standard) var(--dur-base) backwards; }
+    .rp:checked ~ .stage .pr { animation-name: press-b; }
+    .hd:checked ~ .stage .pr { background-color: var(--p); }
+    @keyframes press-a { from { background-color: var(--p); } to { background-color: var(--r); } }
+    @keyframes press-b { from { background-color: var(--p); } to { background-color: var(--r); } }
+
+    /* ---- ds/Button md 36 pill (Button.vue) ---- */
+    .gal { display:grid; grid-template-columns: 190px repeat(4, 1fr); gap:0 8px; align-items:center; }
+    .gal .h { font-size:11px; color:var(--text-muted); padding-bottom:8px; border-bottom:1px solid var(--divider); margin-bottom:4px; }
+    .gal .h.m { font-family:var(--font-mono); }
+    .gal .cell { height:44px; display:flex; align-items:center; }
+    .gal .lab { display:flex; flex-direction:column; gap:2px; }
+    .gal .lab b { font-size:12px; font-weight:600; }
+    .gal .lab span { font:11px var(--font-mono); color:var(--text-muted); }
+    .ds-btn { display:inline-flex; align-items:center; justify-content:center; height:36px; padding:0 16px; border-radius:999px; font-size:14px; font-weight:400; line-height:1; white-space:nowrap; cursor:pointer; border:1px solid var(--bd, transparent); background-color:var(--r); color:var(--fg);
+      transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard); }
+    .v-filled     { --r: var(--control-solid);  --h: var(--control-solid-hover); --p: var(--control-solid-hover); --fg: var(--control-solid-text); }
+    .v-gray       { --r: var(--surface-card);   --h: var(--ink-100);            --p: var(--ink-300);            --fg: var(--text-primary); }
+    .v-outline    { --r: var(--surface-white);  --h: var(--surface-card);       --p: var(--ink-100);            --fg: var(--text-primary); --bd: var(--border-subtle); }
+    .v-borderless { --r: transparent;           --h: var(--surface-card);       --p: var(--ink-100);            --fg: var(--text-primary); }
+    .v-danger     { --r: var(--status-danger);  --h: var(--status-danger-hover);--p: var(--control-solid-hover); --fg: var(--text-on-solid); }
+    .ds-btn.st-h { background-color: var(--h); cursor:default; }
+    .ds-btn.st-p { background-color: var(--p); cursor:default; }
+    .ds-btn.live:hover { background-color: var(--h); }
+    .ds-btn.live:active { background-color: var(--p); transition-duration: 0ms; }
+
+    /* ---- C2-02 icon buttons ---- */
+    .icrow { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+    .icg { display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+    .icg .cap { font:11px var(--font-mono); color:var(--text-muted); }
+    .icg .grp { display:flex; gap:2px; }
+    .ds-iconbtn { width:34px; height:34px; border-radius:10px; border:1px solid var(--border-subtle); background-color:var(--r); color:var(--text-muted); display:grid; place-items:center; cursor:pointer; --r: var(--surface-white); --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    .ds-iconbtn:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+    .ds-iconbtn:active { background-color: var(--p); transition-duration: 0ms; }
+    .anx-nav button { width:28px; height:28px; border-radius:8px; border:1px solid var(--border-subtle); background-color:var(--r); color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; --r: var(--surface-white); --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    .anx-nav button:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+    .anx-nav button:active { background-color: var(--p); transition-duration: 0ms; }
+    .anx-icobtn { width:34px; height:34px; border-radius:10px; border:1px solid var(--border-subtle); background-color:var(--r); color:var(--text-secondary); cursor:pointer; display:grid; place-items:center; --r: var(--surface-white); --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    .anx-icobtn:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+    .anx-icobtn:active { background-color: var(--p); transition-duration: 0ms; }
+    .anx-icobtn.on, .anx-icobtn.on:active, .anx-icobtn.on:hover { background-color: var(--bg-hover); color: var(--text-primary); cursor:default; }
+    .fp-nav { width:32px; height:32px; border-radius:8px; border:1px solid var(--border-subtle); background-color:var(--r); color:var(--text-secondary); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; --r: var(--surface-white); --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard); }
+    .fp-nav:hover { background-color: var(--surface-card); }
+    .fp-nav:active { background-color: var(--p); transition-duration: 0ms; }
+
+    /* ---- C2-03 segmented ---- */
+    .segs { display:flex; flex-direction:column; gap:12px; }
+    .segrow { display:flex; align-items:center; gap:14px; }
+    .segrow .cap { width:150px; font-size:11px; color:var(--text-muted); line-height:1.4; flex:0 0 auto; }
+    .segrow .cap b { display:block; font-size:12px; font-weight:600; color:var(--text-primary); font-family:var(--font-mono); }
+    .ds-seg { display:inline-flex; gap:2px; padding:3px; height:32px; background:var(--surface-sunken); border-radius:999px; width:fit-content; }
+    .ds-seg-item { display:inline-flex; align-items:center; height:100%; padding:0 14px; border:none; border-radius:999px; background-color:var(--r); color:var(--text-muted); font-size:14px; font-weight:500; cursor:pointer; white-space:nowrap; --r: transparent; --p: var(--ink-100); box-shadow:none;
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+    .ds-seg-item:active { background-color: var(--p); transition-duration: 0ms; }
+    .anx-seg { display:inline-flex; background:var(--surface-sunken); border-radius:999px; padding:3px; gap:2px; width:fit-content; }
+    .anx-seg button, .anx-seg label { border:none; background-color:var(--r); cursor:pointer; font-size:12px; font-weight:500; color:var(--text-secondary); padding:5px 12px; border-radius:999px; white-space:nowrap; --r: transparent; --p: var(--ink-100); line-height:normal; display:inline-flex; align-items:center; }
+    .anx-seg.after label { transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+    .anx-seg.after label:hover { color: var(--text-primary); }
+    .anx-seg.after label:active { background-color: var(--p); transition-duration: 0ms; }
+    /* 现状复制品:ana.css:14-16 —— transition 无 ease、无 box-shadow;.on 字重 600;无 :active */
+    .anx-seg.today label { transition: background var(--dur-fast), color var(--dur-fast); }
+    .anx-seg.today label:hover { color: var(--text-primary); }
+    /* radio-driven selection (each group) */
+    #sg-a:checked ~ .stage .o-sga, #sg-b:checked ~ .stage .o-sgb { background-color:#fff; color:var(--text-primary); box-shadow:var(--shadow-pill); animation:none; cursor:default; }
+    #pd-m:checked ~ .stage .o-pdm, #pd-y:checked ~ .stage .o-pdy { background-color:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); animation:none; cursor:default; }
+    #cp-0:checked ~ .stage .o-cp0, #cp-1:checked ~ .stage .o-cp1, #cp-2:checked ~ .stage .o-cp2, #cp-3:checked ~ .stage .o-cp3 { background-color:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); animation:none; cursor:default; }
+    #cp-0:checked ~ .stage .today .o-cp0, #cp-1:checked ~ .stage .today .o-cp1, #cp-2:checked ~ .stage .today .o-cp2, #cp-3:checked ~ .stage .today .o-cp3 { font-weight:600; }
+    .anx-seg.today label:active { background-color: transparent; }
+    .wjump { font:11px var(--font-mono); color:var(--text-muted); border-left:1px solid var(--divider); padding-left:10px; margin-left:auto; width:118px; line-height:1.4; flex:0 0 auto; }
+
+    /* ---- C2-04 shell mock (AppShell / IconRail / SidebarPanel / TabStrip) ---- */
+    .fp-stage { display:flex; height:300px; padding:12px; gap:12px; background:var(--surface-sunken); border-radius:8px; }
+    .fp-nav-card { background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; display:flex; flex:0 0 auto; }
+    .fp-rail { width:66px; padding:14px 9px; gap:5px; background:var(--surface-sunken); display:flex; flex-direction:column; align-items:center; }
+    .fp-brand { width:40px; height:40px; border-radius:13px; background:#fff; border:1px solid var(--border-subtle); display:grid; place-items:center; color:var(--text-primary); flex:0 0 auto; }
+    .fp-sep { width:30px; height:1px; background:var(--divider); margin:9px 0 7px; flex:0 0 auto; }
+    .fp-rail-btn { width:48px; border-radius:15px; padding:9px 0 7px; gap:5px; display:flex; flex-direction:column; align-items:center; font-size:10.5px; font-weight:500; color:var(--text-muted); border:0; background-color:var(--r); cursor:pointer; flex:0 0 auto; --r: transparent; --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    .fp-rail-btn:hover { background-color: rgba(28,28,28,.05); color: var(--text-secondary); }
+    .fp-rail-btn:active { background-color: var(--p); transition-duration: 0ms; }
+    .fp-rail-btn.on, .fp-rail-btn.on:hover, .fp-rail-btn.on:active { background-color: var(--ink-900); color:#fff; box-shadow:0 6px 16px rgba(28,28,28,.2); cursor:default; }
+    .fp-divider { width:1px; background:var(--divider); }
+    .fp-panel { width:234px; padding:18px 14px 14px; display:flex; flex-direction:column; gap:14px; }
+    .fp-panel .nm { font-size:16px; font-weight:600; line-height:1.2; }
+    .sb-list { display:flex; flex-direction:column; gap:2px; }
+    .sb-group { font-size:12px; color:var(--text-muted); padding:6px 12px; }
+    .sb-row { position:relative; height:34px; padding:0 12px; border-radius:8px; font-size:14px; font-weight:500; color:var(--text-secondary); display:flex; align-items:center; border:0; width:100%; text-align:left; cursor:pointer; --r: transparent; --p: var(--ink-100); --fp-sbnav-bg: transparent; background-color: var(--fp-sbnav-bg);
+      transition: background-color var(--dur-fast) var(--ease-standard); }
+    .sb-row:hover { --fp-sbnav-bg: var(--bg-hover); }
+    .sb-row:active { --fp-sbnav-bg: var(--ink-100); transition-duration: 0ms; }
+    .sb-row.on, .sb-row.on:hover, .sb-row.on:active { --fp-sbnav-bg: var(--bg-hover); color: var(--text-primary); cursor:default; }
+    .sb-row.on::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:var(--text-primary); }
+    .fp-main-card { flex:1; min-width:0; background:#fff; border:1px solid var(--border-subtle); border-radius:24px; overflow:hidden; display:flex; flex-direction:column; }
+    .fp-tabstrip { height:44px; padding:0 8px; gap:6px; display:flex; align-items:center; border-bottom:1px solid var(--divider); background:var(--surface-card); flex:0 0 auto; }
+    .fp-tab { height:32px; padding:0 6px 0 11px; border-radius:8px; gap:8px; display:inline-flex; align-items:center; color:var(--text-muted); font-size:12.5px; line-height:20px; min-width:42px; max-width:196px; border:0; background-color:var(--r); cursor:pointer; white-space:nowrap; --r: transparent; --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+    .fp-tab .ic { opacity:.55; display:inline-flex; }
+    .fp-tab .x { width:20px; height:20px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; opacity:0; color:var(--text-muted); transition: opacity var(--dur-fast) var(--ease-standard); }
+    .fp-tab:hover { background-color: rgba(28,28,28,.05); color: var(--text-secondary); }
+    .fp-tab:hover .x, .fp-tab.on .x { opacity:1; }
+    .fp-tab:active { background-color: var(--p); transition-duration: 0ms; }
+    .fp-tab.on, .fp-tab.on:hover { min-width:124px; background-color: var(--surface-white); color: var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); font-weight:600; --r: var(--surface-white); --p: var(--surface-sunken); }
+    .fp-tab.on:active { background-color: var(--surface-sunken); transition-duration: 0ms; }
+    .fp-newtab { width:28px; height:28px; border-radius:8px; border:0; background-color:var(--r); color:var(--text-muted); display:grid; place-items:center; cursor:pointer; --r: transparent; --p: var(--ink-100); transition: background-color var(--dur-fast) var(--ease-standard); }
+    .fp-newtab:hover { background-color: var(--bg-hover); }
+    .fp-newtab:active { background-color: var(--p); transition-duration: 0ms; }
+    .fp-toolbar { height:48px; padding:0 16px; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); flex:0 0 auto; }
+    .fp-toolbar b { color:var(--text-primary); font-weight:600; }
+    .fp-content { flex:1; padding:24px; font-size:11px; color:var(--text-muted); font-family:var(--font-mono); line-height:1.5; }
+
+    /* ---- C2-05 PvQueue ---- */
+    .pqwrap { display:flex; gap:12px; align-items:flex-start; }
+    .pq { width:268px; display:flex; flex-direction:column; gap:2px; flex:0 0 auto; }
+    .pq-hd, .pq-row { display:grid; grid-template-columns: 12px minmax(0,1fr) 30px 56px; gap:0 6px; align-items:center; }
+    .pq-hd { height:20px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--divider); margin-bottom:2px; }
+    .pq-hd .n { font-family:var(--font-mono); font-variant-numeric:tabular-nums; text-align:right; }
+    .pq-gh { display:flex; align-items:center; gap:6px; width:100%; height:22px; padding:0 2px; margin-top:4px; background:none; border:0; text-align:left; font-size:11px; color:var(--text-muted); }
+    .pq-gh .ar { display:inline-flex; transition: transform var(--dur-fast); }
+    .pq-gh .ar.open { transform: rotate(90deg); }
+    .pq-gh .c { margin-left:auto; padding-right:4px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+    .pq-row { height:26px; width:100%; padding:0 4px 0 2px; background-color:var(--r); border:0; border-radius:4px; cursor:pointer; color:var(--text-primary); --r: transparent; --p: var(--ink-100); box-shadow: inset 0 0 0 transparent;
+      transition: background-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+    .pq-row:hover { background-color: var(--bg-hover); }
+    .pq-row:active { background-color: var(--p); transition-duration: 0ms; }
+    .pq-row .ar2 { font-size:9px; line-height:1; color:var(--text-muted); }
+    .pq-row .nm { font-size:12px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pq-row .n { font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--text-secondary); text-align:right; }
+    .pq-row.out .n, .pq-row.out .ar2 { color: var(--hue-orange); }
+    .pq-ft { font-size:11px; color:var(--text-muted); padding:4px 2px 0; }
+    #q-f:checked ~ .stage .q-f, #q-c:checked ~ .stage .q-c, #q-a:checked ~ .stage .q-a, #q-b:checked ~ .stage .q-b, #q-d:checked ~ .stage .q-d { background-color: var(--surface-sunken); box-shadow: inset 2px 0 0 var(--ink-300); animation:none; cursor:default; }
+    #q-f:checked ~ .stage .q-f .nm, #q-c:checked ~ .stage .q-c .nm, #q-a:checked ~ .stage .q-a .nm, #q-b:checked ~ .stage .q-b .nm, #q-d:checked ~ .stage .q-d .nm { font-weight:600; }
+    .pdc-h { display:none; flex-direction:column; gap:3px; }
+    .pdc-h b { font-size:14px; font-weight:600; }
+    .pdc-h span { font-size:11px; color:var(--text-muted); line-height:1.45; }
+    #q-f:checked ~ .stage .cap-f, #q-c:checked ~ .stage .cap-c, #q-a:checked ~ .stage .cap-a, #q-b:checked ~ .stage .cap-b, #q-d:checked ~ .stage .cap-d { display:flex; }
+
+    /* ---- C2-07 pagination / popover item / quality rank ---- */
+    .c7 { display:flex; flex-direction:column; gap:14px; }
+    .c7 .cap { font:11px var(--font-mono); color:var(--text-muted); margin-bottom:6px; }
+    .ds-pg { display:flex; gap:6px; align-items:center; }
+    .ds-pg-pill { min-width:32px; height:32px; padding:0 10px; border:1px solid var(--ds-pg-border); border-radius:999px; font-size:14px; display:inline-flex; align-items:center; justify-content:center; background-color:var(--r); color:var(--text-primary); cursor:pointer; --ds-pg-border: var(--border-subtle); --r: transparent; --p: var(--ink-100);
+      transition: border-color var(--dur-fast) var(--ease-standard), background-color var(--dur-fast) var(--ease-standard); }
+    .ds-pg-pill:hover { --ds-pg-border: var(--border-strong); }
+    .ds-pg-pill:active { --ds-pg-border: var(--border-strong); background-color: var(--p); transition-duration: 0ms; }
+    .ds-pg-pill.cur, .ds-pg-pill.cur:active { background-color: var(--bg-sunken); font-weight:600; --ds-pg-border: var(--border-subtle); cursor:default; }
+    .ds-pg .ell { min-width:20px; height:32px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-disabled); font-size:14px; }
+    .pop { background:#fff; border-radius:12px; box-shadow:var(--shadow-pop); padding:6px; width:168px; display:flex; flex-direction:column; border:1px solid var(--border-subtle); }
+    .ds-popitem { display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border:none; border-radius:8px; background-color:var(--r); color:var(--text-primary); font-size:14px; line-height:20px; cursor:pointer; text-align:left; --r: transparent; --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard); }
+    .ds-popitem.dg { color: var(--hue-red); }
+    .ds-popitem:hover { background-color: var(--bg-hover); }
+    .ds-popitem:active { background-color: var(--p); transition-duration: 0ms; }
+    .pqg-rank { width:260px; }
+    .pqg-rank .hd { font-size:11px; color:var(--text-muted); margin-bottom:4px; }
+    .pqg-rank .r { position:relative; display:flex; align-items:baseline; gap:8px; width:100%; height:18px; font-size:11px; color:var(--text-secondary); border:0; background-color:var(--r); cursor:pointer; padding:0; --r: transparent; --p: var(--ink-100);
+      transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+    .pqg-rank .r:hover { color: var(--text-primary); background-color: var(--bg-hover); }
+    .pqg-rank .r:active { background-color: var(--p); transition-duration: 0ms; }
+    .pqg-rank .nm { flex:0 0 96px; width:96px; text-align:right; padding-right:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .pqg-rank .v { font-family:var(--font-mono); white-space:nowrap; }
+    .pqg-rank .bar { position:absolute; left:96px; bottom:1px; height:2px; background:var(--ink-300); }
+    .c7row { display:flex; gap:24px; align-items:flex-start; }
+
+    /* ---- bottom strip ---- */
+    .nodo { background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:8px; }
+    .nodo h3 { margin:0; font-size:14px; font-weight:600; }
+    .nodo ul { margin:0; padding:0; list-style:none; display:grid; grid-template-columns: 1fr 1fr; gap:6px 24px; }
+    .nodo li { font-size:12px; line-height:1.55; color:var(--text-muted); display:flex; gap:8px; }
+    .nodo li::before { content:''; width:6px; height:6px; border-radius:999px; background:var(--hue-red); flex:0 0 auto; margin-top:7px; }
+    .nodo li b { color:var(--text-primary); font-weight:600; }
+    .nodo li .m { font-family:var(--font-mono); font-size:11px; }
+  </style>
+</helmet>
+<div class="board" style="width: 1440px; min-height: 1760px; padding: 32px 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- ===== header ===== -->
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="kicker">02 · 按钮点击(按下 0ms · 松开 120ms · 底色换一档)</div>
+      <h1>按钮点击</h1>
+      <div class="intro">一套语法覆盖全站所有可按的东西:按下瞬到(transition-duration: 0ms),松开随既有 background 120ms --ease-standard 回弹;反馈只有一件事 —— 底色(或底色变量)换一档更深。不缩放、不位移、不 filter。透明底控件也可见,触屏 / 键盘 Space 无 hover 同样成立。画廊里的控件都能真按:按住鼠标看 0ms 瞬到,松开看 120ms 回弹;「钉住按下态」把按下态钉住给不方便按的人看,「重播」演一次 按下 0 → 持 200 → 松开 120。</div>
+    </div>
+    <div class="chips">
+      <div class="chiprow"><span class="chip-l">频次档</span><span class="chip on">100+/天</span><span class="chip on">十几/天</span><span class="chip">偶发</span><span class="chip">一生一次</span></div>
+      <div class="chiprow"><span class="chip-l">令牌</span><span class="chip on">0</span><span class="chip on">120</span><span class="chip">200</span><span class="chip">320</span><span class="chip">ease-out</span><span class="chip on">ease-standard</span></div>
+    </div>
+  </div>
+
+  <!-- ===== grammar strip ===== -->
+  <div class="gram">
+    <div>
+      <h3>语法:一条规则,四行选择器</h3>
+      <p>复用 Button.vue:119-123 已有的 --ds-btn-bg 变量换值机制;按下 = 变量换档 + transition-duration: 0ms,松开走 :104-107 既有的 background 120ms。零新令牌、零层叠上下文、零位移。不加 hover 规则,故无需 @media (hover) 包裹。内联 transition(Segmented.vue:92-93、SidebarNav ROW_BASE/:253)必须迁到样式表,否则 :active 的 0ms 永远输。</p>
+    </div>
+<pre class="code"><b>/* ds/Button.vue */</b>
+.ds-btn:active:not(:disabled) { <b>transition-duration: 0ms;</b> }
+.ds-btn[data-variant="borderless"]:active:not(:disabled),
+.ds-btn[data-variant="outline"]:active:not(:disabled)    { --ds-btn-bg: <b>var(--ink-100)</b>; }
+.ds-btn[data-variant="gray"]:active:not(:disabled)       { --ds-btn-bg: <b>var(--ink-300)</b>; }
+.ds-btn[data-variant="filled"]:active:not(:disabled),
+.ds-btn[data-variant="danger"]:active:not(:disabled)     { --ds-btn-bg: <b>var(--control-solid-hover)</b>; }</pre>
+    <div class="legend">
+      <div class="k"><span class="sw" style="background:var(--ink-100);"></span>--ink-100 · 透明底 / 白底 / outline 的按下档</div>
+      <div class="k"><span class="sw" style="background:var(--ink-300);"></span>--ink-300 · gray(常态已是浅灰,再深一档)</div>
+      <div class="k"><span class="sw" style="background:var(--control-solid-hover);"></span>--control-solid-hover rgb(58,58,58) · filled / danger</div>
+      <div class="k"><span class="sw" style="background:var(--surface-sunken);"></span>--surface-sunken · 激活页签 .on:active 唯一例外</div>
+      <div class="k"><span style="width:14px;height:3px;background:var(--hue-blue);flex:0 0 auto;"></span>尺:按下 0ms 黑标 · 松开 120ms 蓝条 · --ease-standard</div>
+    </div>
+  </div>
+
+  <!-- ===== C2-01 ds/Button ===== -->
+  <section class="blk">
+    <div class="blk-h"><span class="id">C2-01</span><h2>ds/Button 五变体按压 —— md 36px 药丸</h2><span class="tier">:active(鼠标 / 触屏 / 键盘 Space) · 100+/天</span></div>
+    <div style="display:grid; grid-template-columns: 700px 1fr; gap:24px; align-items:start;">
+      <div class="demo">
+        <input type="checkbox" id="rp1" class="rp" hidden>
+        <input type="checkbox" id="hd1" class="hd" hidden>
+        <div class="ctl"><label for="rp1" class="rp-btn">重播按压</label><label for="hd1" class="rp-btn tg">钉住按下态</label><span class="hint">第 4 列可真按 · hover 自己试</span></div>
+        <div class="stage">
+          <div class="pin" style="left:-11px; top:60px;">1</div>
+          <div class="pin" style="left:-11px; top:104px;">2</div>
+          <div class="pin" style="left:-11px; top:148px;">3</div>
+          <div class="pin" style="left:-11px; top:192px;">4</div>
+          <div class="pin" style="left:-11px; top:236px;">5</div>
+          <div class="pin" style="right:-11px; top:2px;">6</div>
+          <div class="gal">
+            <div class="h">变体 · 三档底色</div><div class="h">常态</div><div class="h">悬停(存量)</div><div class="h">按下(新)</div><div class="h m">试按 →</div>
+
+            <div class="cell lab"><b>filled</b><span>常 --ink-900 · 悬 rgb(58,58,58) · 按 --control-solid-hover</span></div>
+            <div class="cell"><span class="ds-btn v-filled">保存并重算</span></div>
+            <div class="cell"><span class="ds-btn v-filled st-h">保存并重算</span></div>
+            <div class="cell"><span class="ds-btn v-filled st-p">保存并重算</span></div>
+            <div class="cell"><button class="ds-btn v-filled live pr" type="button">保存并重算</button></div>
+
+            <div class="cell lab"><b>gray</b><span>常 --surface-card · 悬 --ink-100 · 按 --ink-300</span></div>
+            <div class="cell"><span class="ds-btn v-gray">取消</span></div>
+            <div class="cell"><span class="ds-btn v-gray st-h">取消</span></div>
+            <div class="cell"><span class="ds-btn v-gray st-p">取消</span></div>
+            <div class="cell"><button class="ds-btn v-gray live pr" type="button">取消</button></div>
+
+            <div class="cell lab"><b>outline</b><span>常 #fff + --border-subtle · 悬 --surface-card · 按 --ink-100</span></div>
+            <div class="cell"><span class="ds-btn v-outline">导出台账</span></div>
+            <div class="cell"><span class="ds-btn v-outline st-h">导出台账</span></div>
+            <div class="cell"><span class="ds-btn v-outline st-p">导出台账</span></div>
+            <div class="cell"><button class="ds-btn v-outline live pr" type="button">导出台账</button></div>
+
+            <div class="cell lab"><b>borderless</b><span>常 transparent · 悬 --surface-card · 按 --ink-100</span></div>
+            <div class="cell"><span class="ds-btn v-borderless">查看明细</span></div>
+            <div class="cell"><span class="ds-btn v-borderless st-h">查看明细</span></div>
+            <div class="cell"><span class="ds-btn v-borderless st-p">查看明细</span></div>
+            <div class="cell"><button class="ds-btn v-borderless live pr" type="button">查看明细</button></div>
+
+            <div class="cell lab"><b>danger</b><span>常 --hue-red · 悬 --status-danger-hover · 按 --control-solid-hover</span></div>
+            <div class="cell"><span class="ds-btn v-danger">删除租户</span></div>
+            <div class="cell"><span class="ds-btn v-danger st-h">删除租户</span></div>
+            <div class="cell"><span class="ds-btn v-danger st-p">删除租户</span></div>
+            <div class="cell"><button class="ds-btn v-danger live pr" type="button">删除租户</button></div>
+          </div>
+        </div>
+        <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'松开 120ms · --ease-standard';"></span></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="spec-w"><table class="spec">
+          <colgroup><col style="width:88px"><col style="width:56px"><col style="width:120px"><col style="width:160px"><col style="width:92px"><col style="width:76px"><col></colgroup>
+          <thead><tr><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(frontend/src/…)</th></tr></thead>
+          <tbody><tr>
+            <td>:active(鼠标 / 触屏 / 键盘 Space)</td>
+            <td>100+/天</td>
+            <td>全 DS 按钮按下零反馈;按压是对手指的同步回应,不是等待</td>
+            <td class="v">复用 --ds-btn-bg 变量换档,不用 filter:borderless / outline → --ink-100;gray → --ink-300;filled / danger → --control-solid-hover;均 :not(:disabled)</td>
+            <td class="v">按下 0ms;释放 120ms(--dur-fast)/ --ease-standard(存量)</td>
+            <td class="v">释放也 1ms;纯色态不受影响</td>
+            <td class="f">components/ds/Button.vue:104-107 · :113-125 · styles/tokens.css:110-115 · :191</td>
+          </tr></tbody>
+        </table></div>
+        <div class="notes">
+          <div class="note"><div class="pin">1</div><div><b>filled 的悬停与按下同色 rgb(58,58,58)。</b>不再深一档:--ink-900 之下没有更深的令牌,而触屏没有 hover,按下直接从黑跳到 58 灰,反馈量一样。鼠标用户看到的是 hover 先到、按下不再变 —— 接受,按压语义已由 0ms 的瞬变承担。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>gray 常态已是 --surface-card,悬停 --ink-100,按下要再深一档才可见 → --ink-300。</b>这是五变体里唯一按到 20% 墨的;其余透明 / 白底按到 10% 就够。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>outline 与 borderless 共用 --ink-100。</b>filter: brightness(.94) 在透明底上只压暗文字 6%,五位评审同一结论「不可见」;底色换档在白底上是 10% 墨的实底,看得见。</div></div>
+          <div class="note"><div class="pin">4</div><div><b>borderless 的按下态是它第一次有实底。</b>常态 transparent → 按下 --ink-100 → 松开 120ms 回到透明;和 hover 的 --surface-card 是两种深度,不会混读。</div></div>
+          <div class="note"><div class="pin">5</div><div><b>danger 按下不是「更红」,是 --control-solid-hover 深灰。</b>规范把 filled 与 danger 归同一档:破坏性按钮按下发灰,比再红一档更像「已按到」,也不新增 --status-danger-active 令牌。</div></div>
+          <div class="note"><div class="pin">6</div><div><b>第 4 列真按:</b>按住看 0ms 瞬到(<span class="m">.ds-btn:active { transition-duration: 0ms }</span>),松开看 :104-107 既有的 background 120ms --ease-standard 回弹。演示里换的是 background-color,实现里换的是 --ds-btn-bg 变量(Button.vue:119-123),同一条 transition 生效。:disabled 不压(opacity .4 已说明不可按)。</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== C2-03 + C2-04 ===== -->
+  <section class="blk">
+    <div class="two">
+      <!-- C2-03 -->
+      <div class="blk">
+        <div class="blk-h"><span class="id">C2-03</span><h2>Segmented / .anx-seg 选中药丸</h2><span class="tier">点击换档 · 几十次/天</span></div>
+        <div class="demo">
+          <input type="checkbox" id="rp3" class="rp" hidden>
+          <input type="checkbox" id="hd3" class="hd" hidden>
+          <input type="radio" name="sg" id="sg-a" checked hidden>
+          <input type="radio" name="sg" id="sg-b" hidden>
+          <input type="radio" name="pd" id="pd-m" checked hidden>
+          <input type="radio" name="pd" id="pd-y" hidden>
+          <input type="radio" name="cp" id="cp-0" hidden>
+          <input type="radio" name="cp" id="cp-1" checked hidden>
+          <input type="radio" name="cp" id="cp-2" hidden>
+          <input type="radio" name="cp" id="cp-3" hidden>
+          <div class="ctl"><label for="rp3" class="rp-btn">重播按压</label><label for="hd3" class="rp-btn tg">钉住按下态</label><span class="hint">点任一项换档 · 选中项不压</span></div>
+          <div class="stage">
+            <div class="pin" style="left:-11px; top:14px;">1</div>
+            <div class="pin" style="left:-11px; top:64px;">2</div>
+            <div class="pin" style="left:-11px; top:114px;">3</div>
+            <div class="pin" style="left:-11px; top:166px;">4</div>
+            <div class="segs">
+              <div class="segrow">
+                <div class="cap"><b>ds/Segmented md 32</b>transition + box-shadow 迁出内联进 scoped</div>
+                <div class="ds-seg"><label for="sg-a" class="ds-seg-item o-sga pr">按楼栋</label><label for="sg-b" class="ds-seg-item o-sgb pr">按租户</label></div>
+              </div>
+              <div class="segrow">
+                <div class="cap"><b>.anx-seg 期间</b>ana.css:14 补 --ease-standard + box-shadow</div>
+                <div class="anx-seg after"><label for="pd-m" class="o-pdm pr">按月</label><label for="pd-y" class="o-pdy pr">按年</label></div>
+              </div>
+              <div class="segrow">
+                <div class="cap"><b>.anx-seg 对比 · 现状</b>ana.css:16 的 .on 字重 500→600;阴影瞬现</div>
+                <div class="anx-seg today"><label for="cp-0" class="o-cp0">无</label><label for="cp-1" class="o-cp1">环比</label><label for="cp-2" class="o-cp2">同比</label><label for="cp-3" class="o-cp3">Top 5</label></div>
+                <div class="wjump">切到「Top 5」看:拉丁 / 数字标签加粗即变宽,邻项被推</div>
+              </div>
+              <div class="segrow">
+                <div class="cap"><b>.anx-seg 对比 · 改后</b>字重不变;阴影 120 淡入;非选中项可压</div>
+                <div class="anx-seg after"><label for="cp-0" class="o-cp0 pr">无</label><label for="cp-1" class="o-cp1 pr">环比</label><label for="cp-2" class="o-cp2 pr">同比</label><label for="cp-3" class="o-cp3 pr">Top 5</label></div>
+                <div class="wjump">同一组 radio 驱动两行,对着看宽度与阴影</div>
+              </div>
+            </div>
+          </div>
+          <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'换档 / 松开 120ms · --ease-standard(bg · color · box-shadow)';"></span></div>
+        </div>
+        <div class="notes g2">
+          <div class="note"><div class="pin">1</div><div><b>DS Segmented 两态同 --fw-medium,</b>Segmented.spec.ts:20-26 有测试钉住;boxShadow 三元与 transition 今天写在内联(:91-93),内联 transition 会让任何样式表里的 transition-duration: 0 失效 —— 必须迁出。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>白药丸的阴影今天瞬现</b>(box-shadow 不在 transition 列表);补进列表后与底色、文字色同一条 120ms --ease-standard 走。不加滑动指示条:几十次/天 ≤ 120,指示条要跨实体位移。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>现状复制品:</b>.on 加粗一档,「Top 5」这种拉丁 / 数字标签 advance 随字重变,药丸变宽推动邻项;纯中文标签宽度不变(评审反证记录在案),但字重仍在换档瞬间跳一次。</div></div>
+          <div class="note"><div class="pin">4</div><div><b>改后:删 .on 字重,只换底色与文字色;</b>非选中项 :active:not(.on):not([data-on]) 底色 --ink-100、0ms;选中项与 FPStepStrip 的当前步(cursor: default)不压 —— 已是选中态,再压读成两种选中。</div></div>
+        </div>
+      </div>
+
+      <!-- C2-04 -->
+      <div class="blk">
+        <div class="blk-h"><span class="id">C2-04</span><h2>IconRail 钮 / SidebarNav 行 / TabStrip 签</h2><span class="tier">:active · 100+/天</span></div>
+        <div class="demo">
+          <input type="checkbox" id="rp4" class="rp" hidden>
+          <input type="checkbox" id="hd4" class="hd" hidden>
+          <div class="ctl"><label for="rp4" class="rp-btn">重播按压</label><label for="hd4" class="rp-btn tg">钉住按下态</label><span class="hint">.on 常亮态不压 · 页签 .on 压到 --surface-sunken</span></div>
+          <div class="stage" style="padding:0; overflow:hidden;">
+            <div class="pin" style="left:34px; top:118px;">1</div>
+            <div class="pin" style="left:196px; top:132px;">2</div>
+            <div class="pin" style="left:438px; top:16px;">3</div>
+            <div class="pin" style="left:548px; top:16px;">4</div>
+            <div class="fp-stage">
+              <div class="fp-nav-card">
+                <div class="fp-rail">
+                  <div class="fp-brand"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></div>
+                  <div class="fp-sep"></div>
+                  <button class="fp-rail-btn pr" type="button"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据</button>
+                  <button class="fp-rail-btn pr" type="button"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>报表</button>
+                  <button class="fp-rail-btn on" type="button"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>分析</button>
+                  <button class="fp-rail-btn pr" type="button"><svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>系统</button>
+                </div>
+                <div class="fp-divider"></div>
+                <div class="fp-panel">
+                  <div class="nm">分析</div>
+                  <div class="sb-list">
+                    <div class="sb-group">能耗与光伏</div>
+                    <button class="sb-row pr" type="button">园区能耗</button>
+                    <button class="sb-row on" type="button">光伏分栋分析</button>
+                    <button class="sb-row pr" type="button">租户用能</button>
+                    <div class="sb-group">经营</div>
+                    <button class="sb-row pr" type="button">收缴率驾驶舱</button>
+                  </div>
+                </div>
+              </div>
+              <div class="fp-main-card">
+                <div class="fp-tabstrip">
+                  <button class="fp-tab on pr" type="button"><span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span>光伏分栋分析<span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span></button>
+                  <button class="fp-tab pr" type="button"><span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>园区能耗<span class="x"><svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span></button>
+                  <button class="fp-newtab pr" type="button"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                </div>
+                <div class="fp-toolbar">分析 <span>·</span> <b>光伏分栋分析</b></div>
+                <div class="fp-content">2026-08 · 数据到 2026-08-31<br>已抄 29/31 · 覆盖 94%</div>
+              </div>
+            </div>
+          </div>
+          <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'松开 120ms · --ease-standard';"></span></div>
+        </div>
+        <div class="notes g2">
+          <div class="note"><div class="pin">1</div><div><b>IconRail 钮 :active:not(.on) → --ink-100、0ms。</b>常态透明、hover 5% 灰 —— filter 在这两种底上都不可见。C1-03 已把 background 加进 :142 的 transition,松开随它 120 回弹;「分析」.on 是 --ink-900 常亮,不压。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>SidebarNav 行走变量 --fp-sbnav-bg。</b>h() 建节点无 data-v,transition 今天写在内联 ROW_BASE(:176)与 :253 —— 内联 transition 让样式表的 0ms 永远输,删掉,改进无 scope 的 &lt;style&gt;(:349-354):<span class="m">.fp-sbnav-row:active { --fp-sbnav-bg: var(--ink-100); transition-duration: 0ms }</span>。提示 / 浮出层是行的兄弟(:270-293),不受影响。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>激活页签 .on:active → --surface-sunken。</b>白底之上 --ink-100 会与 hover 5% 灰混读,所以激活签按下换到 sunken 灰;非激活签 :active:not(.on) 仍是 --ink-100。宽度已固定 124(C1-02),按压不再推邻签。</div></div>
+          <div class="note"><div class="pin">4</div><div><b>关闭钮 @click.stop 不阻止 :active 冒泡:</b>按 X 时整签压一下 —— 接受,它就是「这张签要走了」的确认。频次 100+/天不受「零动效」约束:0ms 按下不让用户等任何东西。reduced-motion 无影响(本就是瞬变)。</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="spec-w"><table class="spec">
+      <colgroup><col style="width:64px"><col style="width:120px"><col style="width:100px"><col style="width:220px"><col><col style="width:130px"><col style="width:110px"><col style="width:300px"></colgroup>
+      <thead><tr><th>#</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(frontend/src/…)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="id">C2-03</td>
+          <td>点击换档</td>
+          <td>几十次/天</td>
+          <td>白药丸阴影瞬现(boxShadow 内联三元不在 transition 列表);color 无缓动;.on 字重 500→600 与 DS Segmented 两态同 --fw-medium 不一致</td>
+          <td class="v">① Segmented.vue:90-93 transition 与 boxShadow 移出内联进 scoped:.ds-seg-item { transition: background, color, box-shadow 各 --dur-fast --ease-standard; box-shadow: none } [data-on] { box-shadow: var(--shadow-pill) };② ana.css:14 / :95、FPStepStrip:148 补 --ease-standard + box-shadow;③ 删 ana.css:16 / :96、FPStepStrip:157 的 .on 字重;④ button:active:not(.on):not([data-on]):not(:disabled) { background: var(--ink-100); transition-duration: 0ms };当前步不压;不加滑动指示条</td>
+          <td class="v">120ms(--dur-fast)/ --ease-standard(background · color · box-shadow)</td>
+          <td class="v">1ms</td>
+          <td class="f">components/ds/Segmented.vue:89-93 · ds/__tests__/Segmented.spec.ts:20-26 · components/ana/ana.css:14-16 · :95-96 · components/fp/FPStepStrip.vue:126 · :148-160</td>
+        </tr>
+        <tr>
+          <td class="id">C2-04</td>
+          <td>:active</td>
+          <td>100+/天</td>
+          <td>按压即时确认;三处底色都是 transparent 或 5% 灰,filter 不可见</td>
+          <td class="v">SidebarNav:删 ROW_BASE(:176)与 :253 的内联 transition,无 scope &lt;style&gt; 加 .fp-sbnav-row { transition: background --dur-fast --ease-standard } :active { --fp-sbnav-bg: var(--ink-100); transition-duration: 0ms };IconRail .fp-rail-btn:active:not(.on) { background: var(--ink-100); 0ms }(C1-03 已把 background 加进 :142 transition);TabStrip .fp-tab:active:not(.on) --ink-100、.fp-tab.on:active --surface-sunken,均 0ms</td>
+          <td class="v">按下 0 / 释放 120ms / --ease-standard</td>
+          <td class="v">无影响(瞬变)</td>
+          <td class="f">components/ds/SidebarNav.vue:176-186 · :247-258 · :349-354 · components/shell/IconRail.vue:142-155 · components/shell/TabStrip.vue:246-261</td>
+        </tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ===== C2-02 + C2-05 + C2-07 ===== -->
+  <section class="blk">
+    <div class="three">
+      <!-- C2-02 -->
+      <div class="blk">
+        <div class="blk-h"><span class="id">C2-02</span><h2>IconButton / 步进钮 / 前后钮</h2><span class="tier">几十~100+/天</span></div>
+        <div class="demo">
+          <input type="checkbox" id="rp2" class="rp" hidden>
+          <input type="checkbox" id="hd2" class="hd" hidden>
+          <div class="ctl"><label for="rp2" class="rp-btn">重播按压</label><label for="hd2" class="rp-btn tg">钉住按下态</label></div>
+          <div class="stage">
+            <div class="pin" style="left:-11px; top:10px;">1</div>
+            <div class="pin" style="left:118px; top:-11px;">2</div>
+            <div class="pin" style="left:236px; top:-11px;">3</div>
+            <div class="pin" style="left:-11px; top:82px;">4</div>
+            <div class="icrow">
+              <div class="icg">
+                <button class="ds-iconbtn pr" type="button" aria-label="导出"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <div class="cap">ds/IconButton 34<br>--ds-ib-bg → --ink-100</div>
+              </div>
+              <div class="icg">
+                <div class="anx-nav" style="display:inline-flex; gap:2px;">
+                  <button class="pr" type="button" aria-label="上一月"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                  <button class="pr" type="button" aria-label="下一月"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+                <div class="cap">.anx-nav 步进钮 28<br>补 bg/color 120 + :active</div>
+              </div>
+              <div class="icg">
+                <div class="grp">
+                  <button class="anx-icobtn pr" type="button" aria-label="设置"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg></button>
+                  <button class="anx-icobtn on" type="button" aria-label="设置(已打开)"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg></button>
+                </div>
+                <div class="cap">.anx-icobtn 34 · 右为 .on<br>补 --ease-standard · .on 不压</div>
+              </div>
+              <div class="icg">
+                <div class="grp" style="gap:8px;">
+                  <button class="fp-nav pr" type="button" aria-label="上一页"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                  <button class="fp-nav pr" type="button" aria-label="下一页"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+                <div class="cap">FPPager .fp-nav 32<br>:130 已有 bg 120 · 补 :active</div>
+              </div>
+            </div>
+          </div>
+          <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'松开 120ms · --ease-standard';"></span></div>
+        </div>
+        <div class="notes">
+          <div class="note"><div class="pin">1</div><div><b>IconButton 走 --ds-ib-bg 变量</b>(:66-68 transition 已含 background):<span class="m">:active:not(:disabled):not([data-active]) { --ds-ib-bg: var(--ink-100); transition-duration: 0ms }</span>。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>步进钮今天连 hover 都硬切</b>(AnaShell.vue:229-231 无 transition):补 background / color 120 --ease-standard,再加 :active --ink-100。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>.anx-icobtn(:205)补 --ease-standard;.on 不压:</b>面板已打开是选中态,再压读成两种选中。.anx-pop 是它的兄弟(:156-160),不受影响。</div></div>
+          <div class="note"><div class="pin">4</div><div><b>白底三处同一档 --ink-100:</b>白底之上 10% 墨是最浅的可见实底;三处都是 1px --border-subtle 边框,边框不动。</div></div>
+        </div>
+      </div>
+
+      <!-- C2-05 -->
+      <div class="blk">
+        <div class="blk-h"><span class="id">C2-05</span><h2>PvQueue 楼栋行 选中 / 按压</h2><span class="tier">@pick · 几十次/天</span></div>
+        <div class="demo">
+          <input type="checkbox" id="rp5" class="rp" hidden>
+          <input type="checkbox" id="hd5" class="hd" hidden>
+          <input type="radio" name="q" id="q-f" checked hidden>
+          <input type="radio" name="q" id="q-c" hidden>
+          <input type="radio" name="q" id="q-a" hidden>
+          <input type="radio" name="q" id="q-b" hidden>
+          <input type="radio" name="q" id="q-d" hidden>
+          <div class="ctl"><label for="rp5" class="rp-btn">重播按压</label><label for="hd5" class="rp-btn tg">钉住按下态</label><span class="hint">点行换栋</span></div>
+          <div class="stage">
+            <div class="pin" style="left:-11px; top:62px;">1</div>
+            <div class="pin" style="left:-11px; top:114px;">2</div>
+            <div class="pin" style="left:262px; top:36px;">3</div>
+            <div class="pqwrap">
+              <div class="pq">
+                <div class="pq-hd"><span></span><span>楼栋</span><span class="n">出范围</span><span class="n">段</span></div>
+                <div class="pq-gh"><span class="ar open"><svg width="10" height="10" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>出范围<span class="c">3</span></div>
+                <label for="q-f" class="pq-row q-f out pr"><span class="ar2">▼</span><span class="nm">F座</span><span class="n">9</span><span class="n">0.61</span></label>
+                <label for="q-c" class="pq-row q-c out pr"><span class="ar2">▼</span><span class="nm">C座</span><span class="n">6</span><span class="n">0.74</span></label>
+                <label for="q-a" class="pq-row q-a out pr"><span class="ar2">▼</span><span class="nm">A座</span><span class="n">4</span><span class="n">0.79</span></label>
+                <div class="pq-gh"><span class="ar open"><svg width="10" height="10" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>未低于你设的线<span class="c">2</span></div>
+                <label for="q-b" class="pq-row q-b pr"><span class="ar2"></span><span class="nm">B座</span><span class="n">0</span><span class="n">0.97</span></label>
+                <label for="q-d" class="pq-row q-d pr"><span class="ar2"></span><span class="nm">D座</span><span class="n">0</span><span class="n">1.02</span></label>
+                <div class="pq-ft">1 栋本段未投产,不画(E座)</div>
+              </div>
+              <div style="flex:1; min-width:0; padding-top:24px;">
+                <div class="pdc-h cap-f"><b>F座</b><span>8 月 31 天 · 出范围 9 天<br>基线 0.61 · 放宽 2 档</span></div>
+                <div class="pdc-h cap-c"><b>C座</b><span>8 月 31 天 · 出范围 6 天<br>基线 0.74 · 放宽 2 档</span></div>
+                <div class="pdc-h cap-a"><b>A座</b><span>8 月 31 天 · 出范围 4 天<br>基线 0.79 · 放宽 2 档</span></div>
+                <div class="pdc-h cap-b"><b>B座</b><span>8 月 31 天 · 未低于线<br>基线 0.97 · 放宽 2 档</span></div>
+                <div class="pdc-h cap-d"><b>D座</b><span>8 月 31 天 · 未低于线<br>基线 1.02 · 放宽 2 档</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'选中 / 松开 120ms · --ease-standard(bg · inset 左条)';"></span></div>
+        </div>
+        <div class="notes">
+          <div class="note"><div class="pin">1</div><div><b>「点谁谁亮」的第一拍:</b>行 .on 底色 --surface-sunken 与 inset 2px 左条今天硬切(:247-249)。补 <span class="m">transition: background, box-shadow 各 --dur-fast --ease-standard</span> —— inset 左条自 none 可插值,与 C6-18 大图换色同 120ms 同拍。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>.nm 字重瞬变不进 transition:</b>grid 列 minmax(0,1fr) + ellipsis,加粗不推数字列;只有底色与左条在动。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>:active:not(.on) → --ink-100、0ms。</b>行是真 &lt;button&gt;、scoped 样式,样式表 :active 生效;选中行不压。右侧 PvDayChart 头随选中瞬换名字(本板只示意)。</div></div>
+        </div>
+      </div>
+
+      <!-- C2-07 -->
+      <div class="blk">
+        <div class="blk-h"><span class="id">C2-07</span><h2>补遗:Pagination / PopoverItem / 缺抄榜</h2><span class="tier">待拍板</span></div>
+        <div class="demo">
+          <input type="checkbox" id="rp7" class="rp" hidden>
+          <input type="checkbox" id="hd7" class="hd" hidden>
+          <div class="ctl"><label for="rp7" class="rp-btn">重播按压</label><label for="hd7" class="rp-btn tg">钉住按下态</label><span class="hint">当前页不压</span></div>
+          <div class="stage">
+            <div class="pin" style="left:-11px; top:14px;">1</div>
+            <div class="pin" style="left:-11px; top:96px;">2</div>
+            <div class="pin" style="left:206px; top:96px;">3</div>
+            <div class="c7">
+              <div>
+                <div class="cap">ds/Pagination .ds-pg-pill 32 · 台账第 4/12 页</div>
+                <div class="ds-pg">
+                  <button class="ds-pg-pill pr" type="button" aria-label="上一页"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                  <button class="ds-pg-pill pr mono" type="button">1</button>
+                  <button class="ds-pg-pill pr mono" type="button">3</button>
+                  <button class="ds-pg-pill cur mono" type="button" aria-current="page">4</button>
+                  <button class="ds-pg-pill pr mono" type="button">5</button>
+                  <span class="ell">…</span>
+                  <button class="ds-pg-pill pr mono" type="button">12</button>
+                  <button class="ds-pg-pill pr" type="button" aria-label="下一页"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+              </div>
+              <div class="c7row">
+                <div>
+                  <div class="cap">ds/PopoverItem .ds-popitem</div>
+                  <div class="pop">
+                    <button class="ds-popitem pr" type="button"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>复制链接</button>
+                    <button class="ds-popitem pr" type="button"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>导出 CSV</button>
+                    <button class="ds-popitem dg pr" type="button"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除租户</button>
+                  </div>
+                </div>
+                <div>
+                  <div class="cap">PvQualityGrid .pqg-rank .r 18</div>
+                  <div class="pqg-rank">
+                    <div class="hd">缺抄榜 · 2026-08</div>
+                    <button class="r pr" type="button"><span class="nm">F座</span><span class="v">3 天</span><span class="bar" style="width:96px;"></span></button>
+                    <button class="r pr" type="button"><span class="nm">C座</span><span class="v">2 天</span><span class="bar" style="width:64px;"></span></button>
+                    <button class="r pr" type="button"><span class="nm">A座</span><span class="v">1 天</span><span class="bar" style="width:32px;"></span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tl press"><i class="t120"></i><i class="t200"></i><i class="t320"></i><span class="tl-hit"></span><span class="tl-bar" style="--from:0; --to:120; --lbl:'松开 120ms · --ease-standard';"></span></div>
+        </div>
+        <div class="notes">
+          <div class="note"><div class="pin">1</div><div><b>页码胶囊 hover 只换边框(:178-185),无 :active。</b>补 <span class="m">:active:not(:disabled):not([aria-current='page']) { --ds-pg-border: var(--border-strong); background: var(--ink-100); 0ms }</span>,:182 transition 列表加 background;当前页不压。</div></div>
+          <div class="note"><div class="pin">2</div><div><b>PopoverItem 是每个 Select / FPMoreMenu / 设置浮层的行</b>(:40-45 hover 120 无 :active):<span class="m">.ds-popitem:active { background: var(--ink-100); 0ms }</span>。</div></div>
+          <div class="note"><div class="pin">3</div><div><b>榜按钮 all: unset、hover 硬切(:312-318):</b>补 background / color 120 --ease-standard + :active --ink-100;365 格 .c 的 hover outline 保持瞬变(C6-20)。待确认:Pagination / PopoverItem 在 index 块(+≈150B),第 6 步后复跑 size-check。</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="spec-w"><table class="spec">
+      <colgroup><col style="width:64px"><col style="width:120px"><col style="width:120px"><col style="width:220px"><col><col style="width:130px"><col style="width:120px"><col style="width:280px"></colgroup>
+      <thead><tr><th>#</th><th>触发</th><th>频次</th><th>目的</th><th>动什么</th><th>时长·曲线</th><th>reduced-motion</th><th>落点(frontend/src/…)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="id">C2-02</td>
+          <td>:active / hover</td>
+          <td>几十~100+/天</td>
+          <td>同 C2-01;步进钮连 hover 都无 transition(硬切)</td>
+          <td class="v">IconButton.vue:.ds-iconbtn:active:not(:disabled):not([data-active]) { --ds-ib-bg: var(--ink-100); transition-duration: 0ms }(:66-68 已含 background);AnaShell.vue:229 .anx-nav button { transition: background / color 各 --dur-fast --ease-standard } + :active:not(:disabled) { background: var(--ink-100); 0ms };.anx-icobtn(:205)补 --ease-standard,:active:not(.on) 同款;FPPager .fp-nav:active:not(:disabled) 同款(:130 已有 background 120)</td>
+          <td class="v">按下 0 / 释放 120ms / --ease-standard(background-color · color)</td>
+          <td class="v">1ms</td>
+          <td class="f">components/ds/IconButton.vue:60-79 · views/analysis/AnaShell.vue:205-206 · :229-231 · components/fp/FPPager.vue:125-133</td>
+        </tr>
+        <tr>
+          <td class="id">C2-05</td>
+          <td>@pick → selId 变(焦点故事第一拍)</td>
+          <td>几十次/天(本屏最频繁交互)</td>
+          <td>行 .on 底色 + inset 左条硬切;无 :active</td>
+          <td class="v">.pq-row { transition: background --dur-fast --ease-standard, box-shadow --dur-fast --ease-standard }(inset 2px 左条自 none 可插值);.pq-row:active:not(.on) { background: var(--ink-100); transition-duration: 0ms };.nm 字重瞬变(grid 列 minmax(0,1fr) + ellipsis,不推数字列)</td>
+          <td class="v">120ms(--dur-fast)/ --ease-standard(background-color · box-shadow)</td>
+          <td class="v">1ms</td>
+          <td class="f">views/analysis/PvQueue.vue:203-214 · :241-255</td>
+        </tr>
+        <tr>
+          <td class="id">C2-07</td>
+          <td>:active</td>
+          <td>补遗未标(同所在面;Pagination / PopoverItem 在 index 块)</td>
+          <td>Pagination 胶囊 hover 只换 --ds-pg-border、无 :active;PopoverItem hover 120 无 :active;PvQualityGrid 榜按钮 hover 硬切、无 transition</td>
+          <td class="v">.ds-pg-pill:active:not(:disabled):not([aria-current='page']) { --ds-pg-border: var(--border-strong); background: var(--ink-100); transition-duration: 0ms }(:182 列表加 background --dur-fast --ease-standard);.ds-popitem:active { background: var(--ink-100); 0ms };.pqg-rank .r { transition: background / color 各 --dur-fast --ease-standard } :active { background: var(--ink-100); 0ms };365 格 .c hover outline 保持瞬变</td>
+          <td class="v">按下 0 / 释放 120ms / --ease-standard</td>
+          <td class="v">1ms(同 C2-02 / C2-05 语法)</td>
+          <td class="f">components/ds/Pagination.vue:178-185 · components/ds/PopoverItem.vue:40-45 · views/analysis/PvQualityGrid.vue:312-318</td>
+        </tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ===== 明确不做 ===== -->
+  <div class="nodo">
+    <h3>明确不做(本类)</h3>
+    <ul>
+      <li><div><b>transform: scale(.97) / translateY(1px) 按钮缩放。</b>问 2 杀掉:原则 3 只动非布局属性,缩放让药丸边缘与文字抖一帧;100+/天的页签、侧栏行、录入按钮按「零动效或纯色瞬变」走,位移不在菜单上。</div></li>
+      <li><div><b>filter: brightness(.94) 与 --press-dim 令牌。</b>五位评审同一结论否决:透明底(borderless、IconButton、侧栏行、页签、步进钮)上 filter 只压暗文字 6%,触屏无 hover 时零反馈;filter 建层叠上下文,SidebarNav 提示 / .anx-pop 的 z-index 被劫持;还要 +1 令牌。改底色变量换档,零新令牌。</div></li>
+      <li><div><b>ds/Select 触发器、SearchField、Input 不加 :active。</b>(C2-06)输入类压暗读成误触;已有 border-color 120 与箭头 rotate 120(存量 --ease-standard),面板 pop-in 已是反馈。<span class="m">ds/Select.vue:158 · :177-178</span> 保持不动。</div></li>
+      <li><div><b>文字链 .anx-link / .pma-lk 不加 transition。</b>(C2-06)两处没有任何 hover / active 换色规则,transition 是死规则 —— 没有状态变化就没有东西可过渡;若日后要 hover,B 端惯例是 text-decoration: underline,不需要过渡。<span class="m">AnaShell.vue:204 · PvMeterAnaView.vue:1496-1499</span>。reduced-motion:1ms(存量)。</div></li>
+      <li><div><b>段控滑动指示条。</b>几十次/天 ≤ 120ms;指示条要跨实体位移 200+,且 DS Segmented 无此契约。白药丸换位 = 底色 + 阴影 120 淡入,足够。</div></li>
+      <li><div><b>保留内联 transition。</b>Segmented.vue:92-93、SidebarNav ROW_BASE(:176)/ :253 的内联 transition 让样式表 :active 的 transition-duration: 0ms 永远输(内联赢过任何选择器),必须迁到 scoped / 无 scope 样式表 —— 这是本类唯一的前置修正。</div></li>
+      <li><div><b>压选中态 / 当前步。</b>[data-active]、.on、[aria-current='page']、FPStepStrip 当前步(cursor: default)不压:已是选中态,再压读成两种选中。唯一例外是激活页签 .on:active → --surface-sunken(白底上 --ink-100 与 hover 混读)。</div></li>
+      <li><div><b>hover 规则 / @media (hover) 包裹 / 关闭钮拦截。</b>本类不新增 hover 规则,故无需 @media (hover);TabStrip 关闭钮 @click.stop 不阻止 :active 冒泡,按 X 整签压一下 —— 接受。</div></li>
+    </ul>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

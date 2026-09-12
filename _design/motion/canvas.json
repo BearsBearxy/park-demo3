@@ -1,0 +1,15 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",         "title": "总览 · 动效系统",           "x": 0,     "y": 0,    "w": 1440, "h": 3400 },
+    { "file": "Login.dc.html",        "title": "开屏出场",                   "x": 1600,  "y": 0,    "w": 1440, "h": 1700 },
+    { "file": "Enter.dc.html",        "title": "登录完进入页面",             "x": 3200,  "y": 0,    "w": 1440, "h": 2240 },
+    { "file": "Nav.dc.html",          "title": "页面切换",                   "x": 0,     "y": 3600, "w": 1440, "h": 2380 },
+    { "file": "Press.dc.html",        "title": "按钮点击",                   "x": 1600,  "y": 3600, "w": 1440, "h": 3660 },
+    { "file": "Switch.dc.html",       "title": "切换动效（期/年/档/对比）",  "x": 3200,  "y": 3600, "w": 1440, "h": 4210 },
+    { "file": "ChartGrammar.dc.html", "title": "图表图元语法",               "x": 0,     "y": 8000, "w": 1440, "h": 6740 },
+    { "file": "ChartScreen.dc.html",  "title": "首进分析屏编排",             "x": 1600,  "y": 8000, "w": 1440, "h": 2690 },
+    { "file": "ChartUpdate.dc.html",  "title": "数据更新与焦点故事",         "x": 3200,  "y": 8000, "w": 1440, "h": 2560 },
+    { "file": "ChartSvg.dc.html",     "title": "SVG 与 DOM 图",              "x": 4800,  "y": 8000, "w": 1440, "h": 3900 }
+  ],
+  "launch": { "view": "canvas" }
+}
