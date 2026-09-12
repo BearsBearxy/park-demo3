@@ -17,7 +17,9 @@ public class CorsConfig {
         // 403「Invalid CORS request」,curl/测试(无 Origin 头)却全绿 —— 2026-08-23 行级绑定联调时引爆
         c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         c.setAllowedHeaders(List.of("*"));
-        c.setExposedHeaders(List.of("X-Trace-Id"));
+        // X-Auth-Reason(2026-09-12):401 时告诉前端“为什么不认这张令牌”。
+        // 不写这里的话跨域时浏览器不让 JS 读到它 —— 服务端发了,前端看不见,登录页照旧没提示。
+        c.setExposedHeaders(List.of("X-Trace-Id", "X-Auth-Reason"));
         UrlBasedCorsConfigurationSource s = new UrlBasedCorsConfigurationSource();
         s.registerCorsConfiguration("/**", c);
         return s;

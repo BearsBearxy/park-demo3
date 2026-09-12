@@ -40,6 +40,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     var auth = new UsernamePasswordAuthenticationToken(ua.username(), null,
                             AuthorityUtils.createAuthorityList(ua.perms().toArray(new String[0])));
                     SecurityContextHolder.getContext().setAuthentication(auth);
+                } else {
+                    // 告诉前端这张为什么不认 —— 没有它,用户只会被默默踢回登录页,
+                    // 不知道是自己账号在别处登了、还是改了密码、还是被停用。
+                    // 只在「认得出是谁」时才给理由:账号不存在就什么都不说,不给枚举用户名的档口。
+                    String reason = ua == null ? null : ua.revokeReason();
+                    if (reason != null) res.setHeader("X-Auth-Reason", reason);
                 }
             } catch (Exception ignored) { /* 无效令牌 → 保持匿名,后续被 401 拦截 */ }
         }
