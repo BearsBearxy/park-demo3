@@ -74,10 +74,14 @@ describe('两档缩放:月段逐日、年段逐月', () => {
   it('2 月按当月实际天数,不是写死 31', () => {
     expect(snap({ months: [1, 2, 3], month: 2 }).ticks).toHaveLength(28)
   })
-  it('年段的刻度 = 出现过的月;标签带「月」', () => {
+  it('年段的刻度 = 当年固定 12 个月(只录了 1–3 月也画满,V4 §0「x 轴永远画满整段」);标签带「月」', () => {
     const s = snap({ gran: 'year', months: [1, 2, 3] })
-    expect(s.ticks).toEqual(['2026-01', '2026-02', '2026-03'])
-    expect(s.tickLabels).toEqual(['1月', '2月', '3月'])
+    expect(s.ticks).toEqual(Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`))
+    expect(s.tickLabels.slice(0, 3)).toEqual(['1月', '2月', '3月'])
+    expect(s.tickLabels[11]).toBe('12月')
+    // 今天 9/1:9 月起未到,4–8 月已过去却没抄 = 漏抄(不是从轴上消失)
+    expect(s.elapsedN).toBe(9)
+    expect(s.board[0].state.slice(2, 4)).toEqual(['seen', 'missing'])
   })
   it('**模型永远吃全年** —— 切段不改喂进去的数据', () => {
     const a = snap({ month: 7 })
@@ -88,7 +92,7 @@ describe('两档缩放:月段逐日、年段逐月', () => {
   })
   it('账面量与等效小时都跟着刻度走', () => {
     expect(snap({ month: 8 }).ledger.self).toHaveLength(31)
-    expect(snap({ gran: 'year' }).ledger.self).toHaveLength(8)
+    expect(snap({ gran: 'year' }).ledger.self).toHaveLength(12)
     expect(snap({ month: 8 }).ledger.yield).toHaveLength(31)
   })
 })

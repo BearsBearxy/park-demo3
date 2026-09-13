@@ -1,99 +1,86 @@
 <script setup lang="ts">
 /**
- * PvLabTable —— 「高级分析」档的 L7 完整检验表。
+ * PvLabTable —— 高级分析档 L7「逐栋核对表」(PV-ANALYSIS-SCREEN-V4 §3.16;计划 §1 #16)。
  *
- * **全屏唯一允许出现 p / q / z / σ 的地方。** spec §05 禁止屏上出现统计量,那条对
- * L0 / L1 / 绝对水平 / 账面量 四处继续成立;这一档存在的理由就是给专业的人看这些量,
- * 所以禁词在这里是**必须有**,不是「放宽」。
- *
- * 两条不许破的:
- * ① **不给结论列。** 没有「显著 / 不显著 / 异常」这种判词列 —— 摆数,不下判断。
- *    q 旁边只有一个中性记号 †,脚注写死它的意思是「q ≤ 0.05」,不写形容词。
- * ② **zₙ 那一列不能删。** 它是同一条数据按天数 n 算出来的同一个 z,和 z 并排放着才看得见
- *    「√N 到底错了多少」—— L2 的 ACF 图是这件事的图证,这一列是它的数字证。
- *    删掉 zₙ,ACF 那张图就没有落点了。
- *
- * 列头下面那行 10px 小字是**口径**,不是说明文案:审计问「这个数怎么来的」,答案得印在表头上,
- * 不能藏在别处的方法页里 —— 当年那页被删过一次,教训就是口径要跟着数字走。
+ * 7 列:楼栋 96 / 期别 64 / 常年水平 104 / 名次 64 / 区间 168 / 哪天起变了 120 / 有效月数 96,行高 32,表头 sticky。
+ * 原来的 10 列检验表(z / p / q / N_eff / σ 怎么估…)砍掉:屏上任何档都不写统计名词(V4 §0)。
+ * 表脚一句说清砍了哪些;不做导出(§1 #16)。
+ * 行投影(名次、区间、变点只在显著时给、左侧色条、有效月数)全在 pvAnaV4.logic.ts labTableRows。
+ * 行只有 hover 底,无气泡、无点击。
  */
-import type { TestRow } from './pvMeterAna.logic'
+import { sgn } from '@/components/ana/anaFmt'
+import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
+import { phaseName, type PvLabTableProps } from './pvAnaV4.logic'
 
-defineProps<{ rows: TestRow[] }>()
-const emit = defineEmits<{ (e: 'pick', id: number): void }>()
+defineProps<PvLabTableProps>()
 
-/** BH-FDR 的线。取 logic 里 bhFdr() 的默认 q —— 改那个默认值,这里要跟着改。 */
-const BH_LINE = 0.05
-
-/** p / q 小到 0.000 就不是数了,审计看不出是 4e-5 还是刚好压线。低于千分位改印 <0.001。 */
-const p3 = (v: number) => (v < 0.0005 ? '<0.001' : v.toFixed(3))
+const md = (d: string) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`
+const cpText = (from: string, to: string) => (from === to ? md(from) : `${md(from)}–${md(to)}`)
 </script>
 
 <template>
-  <div class="plt-wrap">
-    <table class="ak-tbl plt">
-      <thead>
-        <tr>
-          <th>楼栋</th>
-          <th>α%<span class="cap">相对全园中位</span></th>
-          <th>z<span class="cap">用 N_eff 折算</span></th>
-          <th>zₙ<span class="cap">同一数按天数 n</span></th>
-          <th>p<span class="cap">块自助零分布</span></th>
-          <th>q<span class="cap">BH-FDR 校正后</span></th>
-          <th>N_eff<span class="cap">按残差自相关折算</span></th>
-          <th>有效日<span class="cap">进入计算的天数</span></th>
-          <th>变点区间<span class="cap">95% 置信</span></th>
-          <th class="lft">σ 怎么估的</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="t in rows" :key="t.id" tabindex="0"
-          @click="emit('pick', t.id)"
-          @keydown.enter="emit('pick', t.id)"
-          @keydown.space.prevent="emit('pick', t.id)"
-        >
-          <td>{{ t.name }}</td>
-          <td class="mono">{{ t.alphaPct.toFixed(1) }}</td>
-          <td class="mono">{{ t.z == null ? '—' : t.z.toFixed(2) }}</td>
-          <td class="mono mut">{{ t.zNaive == null ? '—' : t.zNaive.toFixed(2) }}</td>
-          <td class="mono">{{ p3(t.p) }}</td>
-          <td class="mono">
-            {{ p3(t.q) }}<span v-if="t.q <= BH_LINE" class="bh">†</span>
-          </td>
-          <td class="mono">{{ Math.round(t.nEff) }}</td>
-          <td class="mono">{{ t.days }}</td>
-          <td class="mono mut">{{ t.cpRange }}</td>
-          <td class="mut lft">{{ t.sigmaHow }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="plt-fn">† q ≤ {{ BH_LINE.toFixed(2) }}（BH-FDR 线）</p>
-  </div>
+  <section class="av2-card plt">
+    <div class="av2-card-h">
+      <span class="t">逐栋核对表</span>
+      <span class="hint">上面那几张图的数，一栋一行摊开对</span>
+    </div>
+    <div class="plt-wrap">
+      <table class="plt-tbl">
+        <thead>
+          <tr>
+            <th style="width: 96px">楼栋</th>
+            <th class="lft" style="width: 64px">期别</th>
+            <th style="width: 104px">常年水平</th>
+            <th style="width: 64px">名次</th>
+            <th style="width: 168px">区间</th>
+            <th class="lft" style="width: 120px">哪天起变了</th>
+            <th style="width: 96px">有效月数</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in rows" :key="r.id" :data-id="r.id" :class="{ unborn: r.unborn }">
+            <td class="nm">
+              <span v-if="r.runDir" class="edge" :style="{ background: r.runDir < 0 ? PV_COLORS.BELOW : PV_COLORS.ABOVE }" />
+              <span class="nmi"><i class="dot" :style="{ background: PHASE_COLORS[r.phase] ?? 'var(--ink-500)' }" />{{ r.name }}</span>
+            </td>
+            <td class="lft sub">{{ phaseName(r.phase) }}</td>
+            <td v-if="r.unborn" colspan="5" class="lft sub">{{ r.shortDays != null ? `在网 ${r.shortDays} 天，不排` : '没有可算的行' }}</td>
+            <template v-else>
+              <td class="mono">{{ r.alphaPct == null ? '—' : sgn(r.alphaPct, 1, '%') }}</td>
+              <td class="mono">{{ r.rank ?? '—' }}</td>
+              <td class="mono sub">{{ r.ciLo == null || r.ciHi == null ? '—' : `${sgn(r.ciLo, 1, '%')} ~ ${sgn(r.ciHi, 1, '%')}` }}</td>
+              <td v-if="r.cpFrom && r.cpTo" class="lft cp" :style="{ color: PV_COLORS.BELOW }">{{ cpText(r.cpFrom, r.cpTo) }}</td>
+              <td v-else class="lft sub">—</td>
+              <td class="mono">{{ r.validMonths == null ? '—' : `${r.validMonths} / ${r.monthsSoFar}` }}</td>
+            </template>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="ana-ref">常年水平、名次、区间、哪天起变了、有效月数按 {{ year }} 年整年算 · 名次 1 = 常年水平最高 · 左侧色条 = 本段有连续出范围的栋（红 = 低于，琥珀 = 高于）· 砍掉了 6 列算法中间量（检验用的统计量、重算了多少遍、每次取多长、有效天数等）：那些是要复算这屏数字才用得上的</p>
+  </section>
 </template>
 
 <style scoped>
-/* 表自己横向滚,不许让页面横向滚 —— 10 列在 T2/1280 档一定放不下。
-   min-width:0 是必须的:本组件挂在 av2-grid 的网格项里,不写它 flex/grid 子项按内容
-   撑宽,overflow-x 永远不触发,横滚条会长在页面上。 */
+/* 表自己横向滚,不让页面横向滚;min-width:0 让网格项不被内容撑宽 */
 .plt-wrap { min-width: 0; overflow-x: auto; }
-.plt { min-width: 940px; }
-
-/* 表头两行:主标签 + 10px 口径。vertical-align:top 让所有主标签对齐在第一行,
-   否则没有口径的那两列(楼栋 / σ)会掉到底部,读起来像另一层表头。 */
-.plt th { vertical-align: top; }
-.plt .cap {
-  display: block; margin-top: 3px;
-  font-size: 10px; font-weight: var(--fw-regular);
-  color: var(--text-muted); letter-spacing: 0;
+.plt-tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
+.plt-tbl th {
+  text-align: right; font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--text-muted);
+  padding: 0 8px 8px; white-space: nowrap; border-bottom: 1px solid var(--divider);
+  background: var(--surface-white); position: sticky; top: 0;
 }
-/* 文本列左对齐(ak-tbl 默认右对齐是给数字的)。 */
-.plt .lft { text-align: left; }
-
-.plt tbody tr { cursor: pointer; }
-.plt tbody tr:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
-
-/* 记号走墨阶。强调色 #9D5D17 按 §06.0 只在 L0-L1,这一档不用。 */
-.bh { margin-left: 3px; color: var(--text-muted); }
-
-.plt-fn { margin: 8px 0 0; font-size: 10px; color: var(--text-muted); }
+.plt-tbl td {
+  padding: 0 8px; height: 32px; font-size: var(--fs-label); border-bottom: 1px solid var(--divider);
+  text-align: right; white-space: nowrap;
+}
+.plt-tbl tbody tr:hover td { background: var(--surface-card); }
+.plt-tbl .lft { text-align: left; }
+.plt-tbl .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.plt-tbl .sub { color: var(--text-muted); }
+.plt-tbl .nm { position: relative; padding-left: 12px; }
+.plt-tbl .edge { position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px; border-radius: 2px; }
+.plt-tbl .nmi { display: inline-flex; align-items: center; gap: 6px; }
+.plt-tbl .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.plt-tbl tr.unborn .nm, .plt-tbl tr.unborn .sub { color: var(--text-disabled); }
 </style>

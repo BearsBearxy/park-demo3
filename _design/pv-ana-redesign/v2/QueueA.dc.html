@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap">
+  <style>
+    /* tokens — 与 Main.dc.html 同源(frontend/src/styles/tokens.css) */
+    :root {
+      --font-sans: "Roboto Mono Digits", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+      --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --ink-900: rgb(28, 28, 28); --ink-700: rgba(28, 28, 28, 0.8); --ink-300: rgba(28, 28, 28, 0.2); --ink-100: rgba(28, 28, 28, 0.1); --ink-050: rgba(28, 28, 28, 0.05);
+      --surface-page: rgb(255, 255, 255); --surface-card: rgb(249, 249, 250); --surface-sunken: rgb(245, 245, 246);
+      --hue-blue: oklch(0.55 0.115 250); --hue-red: oklch(0.56 0.150 27); --brand-deep: rgb(31, 95, 191);
+      --text-primary: var(--ink-900); --text-secondary: var(--ink-700); --text-muted: rgba(28, 28, 28, 0.62); --text-disabled: var(--ink-300); --text-link: var(--hue-blue);
+      --border-subtle: var(--ink-100); --border-strong: var(--ink-300); --divider: var(--ink-100);
+      --control-solid: var(--ink-900); --control-solid-text: rgb(255, 255, 255);
+      --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); --dur-fast: 120ms;
+    }
+    body { margin:0; font-family: var(--font-sans); background: var(--surface-page); color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+    a { color: var(--text-link); text-decoration: none; } a:hover { color: var(--brand-deep); }
+    * { box-sizing: border-box; }
+    .card { background:#fff; border:1px solid var(--border-subtle); border-radius:8px; padding:10px 12px; min-width:0; }
+    .ch { display:flex; align-items:baseline; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .ch .t { font-size:14px; font-weight:600; flex:0 0 auto; }
+    .ch .hint { font-size:11px; color:var(--text-muted); min-width:0; }
+    .ch .lk { font-size:11px; margin-left:auto; flex:0 0 auto; }
+    .ax { font-size:11px; font-family:var(--font-mono); fill:rgba(28,28,28,.62); font-variant-numeric:tabular-nums; }
+    .axh { position:absolute; font-size:11px; line-height:14px; font-family:var(--font-mono); color:rgba(28,28,28,.62); font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
+    .gl { stroke:rgba(28,28,28,.1); stroke-width:1; }
+    .axl { stroke:rgba(28,28,28,.15); stroke-width:1; }
+    .tip { position:absolute; pointer-events:none; background:rgb(40,52,66); color:#fff; border-radius:9px; padding:8px 11px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:5; font-size:11px; display:flex; flex-direction:column; gap:3px; white-space:nowrap; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+    .leg { display:flex; align-items:center; gap:10px; font-size:11px; color:var(--text-secondary); white-space:nowrap; flex:0 0 auto; }
+    .leg span { display:inline-flex; align-items:center; gap:5px; }
+    .leg i { display:inline-block; width:12px; height:3px; border-radius:2px; }
+    .leg b { display:inline-block; width:11px; height:11px; border-radius:3px; }
+    .leg u { display:inline-block; width:8px; height:8px; border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px rgba(28,28,28,.15); text-decoration:none; }
+    .cell { height:96px; border-radius:8px; border:1px solid var(--border-subtle); padding:6px 8px 6px; display:flex; flex-direction:column; gap:3px; min-width:0; transition:box-shadow var(--dur-fast) var(--ease-standard); }
+    .cell:hover { background:var(--surface-card); }
+    .cell .hd { display:flex; align-items:center; gap:6px; height:18px; font-size:12px; white-space:nowrap; min-width:0; }
+    .cell .hd .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+    .cell .hd .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+    .cell .hd .n { font-size:11px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+    .cell svg { display:block; width:100%; height:60px; }
+    .foot { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 14px; font-family:var(--font-mono); font-size:11px; line-height:1.45; color:var(--text-muted); white-space:nowrap; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; min-height: 684px; background: #fff; display: flex; flex-direction: column; gap: 8px; font-family: var(--font-sans); color: var(--text-primary);">
+  <div style="height: 20px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); white-space: nowrap;"><span style="font-weight: 600; color: var(--text-primary);">方案 A · 网格总览</span><span>取舍：13 栋的形状一屏看全、不点也能扫；代价是大图矮一截，每格只看形状不看刻度</span></div>
+
+  <div class="card" style="width: 1120px;">
+    <div class="ch"><span class="t">哪栋落在自己的范围外</span><span class="hint">格 = 这栋 28 天比值 + 自己的范围 · 出范围的排最前 · 点任一格换下面的大图</span><a class="lk" href="#">看 {{ chart.name }} 的整年 →</a></div>
+
+    <!-- 13 栋迷你图网格:5 列 × 3 行,格 96 高,无轴无刻度 -->
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;">
+      <sc-for list="{{ cells }}" as="c" hint-placeholder-count="13">
+        <div class="cell" style="border-top: 2px solid {{ c.top }}; background: {{ c.bg }}; box-shadow: {{ c.ring }}; cursor: {{ c.cursor }};" onClick="{{ c.pick }}">
+          <div class="hd">
+            <span class="dot" style="background: {{ c.dot }};"></span>
+            <span class="nm" style="font-weight: {{ c.fw }}; color: {{ c.nmColor }};">{{ c.name }}</span>
+            <span class="n" style="color: {{ c.daysColor }};">{{ c.days }}</span>
+          </div>
+          <sc-if value="{{ c.built }}" hint-placeholder-val="{{ true }}">
+            <svg viewBox="0 0 194 60" preserveAspectRatio="none">
+              <rect x="0" y="{{ c.mini.bandY }}" width="194" height="{{ c.mini.bandH }}" fill="#B5D4F4" fill-opacity="0.4"></rect>
+              <path d="{{ c.mini.line }}" fill="none" stroke="#378ADD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              <sc-for list="{{ c.mini.pts }}" as="p" hint-placeholder-count="2">
+                <circle cx="{{ p.x }}" cy="{{ p.y }}" r="2.5" fill="{{ p.fill }}"></circle>
+              </sc-for>
+            </svg>
+          </sc-if>
+          <sc-if value="{{ c.unbuilt }}" hint-placeholder-val="{{ false }}">
+            <div style="height: 60px; display: grid; place-items: center; font-size: 11px; color: var(--text-muted);">尚未投产 · 无抄表</div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- 常驻大图区 1096×260:选中栋的逐日比值 -->
+    <div style="margin-top: 12px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: baseline; gap: 8px; height: 24px; min-width: 0;">
+        <span style="font-size: 14px; font-weight: 600; flex: 0 0 auto; white-space: nowrap;">{{ chart.name }}</span>
+        <span style="font-size: 11px; color: var(--text-muted); flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ chart.fact }}</span>
+        <div class="leg"><span><i style="background: #378ADD;"></i>逐日比值</span><span><b style="background: #B5D4F4;"></b>这栋的范围</span><span><u style="background: #E24B4A;"></u>低于下沿</span><span><u style="background: #EF9F27;"></u>高于上沿</span><span><i style="width: 3px; height: 8px; background: #EF9F27;"></i>缺抄</span></div>
+      </div>
+      <div style="position: relative; width: 1096px; height: 236px;">
+        <sc-for list="{{ chart.grid }}" as="g" hint-placeholder-count="4">
+          <span class="axh" style="left: 0; width: 38px; text-align: right; top: {{ g.top }}px;">{{ g.label }}</span>
+        </sc-for>
+        <span class="axh" style="right: 18px; top: {{ chart.hiTop }}px;">{{ chart.hiLabel }}</span>
+        <span class="axh" style="right: 18px; top: {{ chart.loTop }}px;">{{ chart.loLabel }}</span>
+        <svg width="1096" height="236" viewBox="0 0 1096 236" style="display: block;">
+          <sc-for list="{{ chart.grid }}" as="g" hint-placeholder-count="4">
+            <line class="gl" x1="44" x2="1082" y1="{{ g.y }}" y2="{{ g.y }}"></line>
+          </sc-for>
+          <rect x="{{ chart.futureX }}" y="12" width="{{ chart.futureW }}" height="200" fill="rgba(28,28,28,.03)"></rect>
+          <rect x="44" y="{{ chart.bandY }}" width="1038" height="{{ chart.bandH }}" fill="#B5D4F4" fill-opacity="0.4"></rect>
+          <line x1="44" x2="1082" y1="{{ chart.cY }}" y2="{{ chart.cY }}" stroke="#85B7EB" stroke-width="1" stroke-dasharray="3 3"></line>
+          <sc-for list="{{ chart.runs }}" as="ru" hint-placeholder-count="1">
+            <rect x="{{ ru.x }}" y="12" width="{{ ru.w }}" height="200" fill="{{ ru.fill }}" fill-opacity="0.1"></rect>
+          </sc-for>
+          <line class="axl" x1="44" x2="1082" y1="212" y2="212"></line>
+          <text class="ax" x="44" y="230" text-anchor="middle">1</text>
+          <text class="ax" x="182.4" y="230" text-anchor="middle">5</text>
+          <text class="ax" x="355.4" y="230" text-anchor="middle">10</text>
+          <text class="ax" x="528.4" y="230" text-anchor="middle">15</text>
+          <text class="ax" x="701.4" y="230" text-anchor="middle">20</text>
+          <text class="ax" x="874.4" y="230" text-anchor="middle">25</text>
+          <text class="ax" x="1082" y="230" text-anchor="middle">31</text>
+          <sc-for list="{{ chart.misses }}" as="ms" hint-placeholder-count="1">
+            <rect x="{{ ms.x }}" y="205" width="2" height="7" fill="#EF9F27"></rect>
+          </sc-for>
+          <path d="{{ chart.linePath }}" fill="none" stroke="#378ADD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <sc-for list="{{ chart.pts }}" as="p" hint-placeholder-count="4">
+            <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="{{ p.fill }}" stroke="#fff" stroke-width="1.5"></circle>
+          </sc-for>
+          <sc-if value="{{ chart.hasHair }}" hint-placeholder-val="{{ false }}">
+            <line x1="{{ chart.hair.x }}" x2="{{ chart.hair.x }}" y1="12" y2="212" stroke="rgba(55,138,221,.45)" stroke-width="1"></line>
+          </sc-if>
+          <sc-if value="{{ chart.hasDot }}" hint-placeholder-val="{{ false }}">
+            <circle cx="{{ chart.hdot.x }}" cy="{{ chart.hdot.y }}" r="5" fill="#378ADD" stroke="#fff" stroke-width="2"></circle>
+          </sc-if>
+          <rect x="0" y="0" width="1096" height="236" fill="transparent" onMouseMove="{{ chart.move }}" onMouseLeave="{{ chart.leave }}"></rect>
+        </svg>
+        <sc-if value="{{ chart.hasTip }}" hint-placeholder-val="{{ false }}">
+          <div class="tip" style="left: {{ chart.tip.left }}; top: {{ chart.tip.top }};">
+            <sc-for list="{{ chart.tip.lines }}" as="ln" hint-placeholder-count="4">
+              <span style="color: {{ ln.c }}; font-weight: {{ ln.b }};">{{ ln.t }}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid var(--divider); margin: 8px 0 6px;"></div>
+    <div class="foot"><span>范围 = 这栋自己的水平 ± 2 倍稳健波动</span><span>连续 ≥ 3 天出范围计一段</span><span>抄表覆盖 ≥ 60% 才判</span><span>台账差 ±3%</span><span>年等效 ≥ 807.5 h</span><a href="#">去改</a></div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+// 与 Main.dc.html 同一份数据与几何;只是画布宽 1096,格子换成网格
+const BOARD = [{"name":"B座","phase":1,"cap":500.0,"c":0.9126,"lo":0.8176,"hi":1.0075,"s":[0.9507,0.8518,0.8919,0.8232,0.8933,0.8535,0.9031,0.8787,0.8496,0.947,0.8434,0.8388,0.8649,0.854,0.909,0.8361,0.8555,0.9391,0.9818,0.8568,0.8535,0.9584,0.8882,0.9537,0.9164,0.8211,0.9528,0.8552,0.9444,0.8845,0.8702],"out":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":0,"dev":-10.0,"yh":1029},{"name":"C、D座","phase":1,"cap":780.1,"c":1.4872,"lo":1.3515,"hi":1.6229,"s":[1.4279,1.4106,1.6067,1.4734,1.4968,1.3898,1.3374,1.5574,1.4551,1.3977,1.5017,1.4539,1.481,1.3986,1.5227,1.3396,1.4774,1.4994,1.489,1.405,1.5314,1.5404,1.5896,1.5886,1.5338,1.5086,1.4999,1.5397,1.5972,1.5873,1.364],"out":[0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":2,"dev":-10.1,"yh":1102},{"name":"E座","phase":1,"cap":390.0,"c":0.78,"lo":0.7412,"hi":0.8188,"s":[0.7729,0.7492,0.8174,0.7144,0.7464,0.7601,0.7823,0.7256,0.7313,0.8129,0.7235,0.7135,0.7222,0.7978,0.7616,0.7657,0.831,0.8659,0.8619,0.7556,0.7476,0.8549,0.8156,0.7901,0.81,0.7736,0.7963,0.7754,0.775,0.7749,0.7146],"out":[0,0,0,-1,0,0,0,-1,-1,0,-1,-1,-1,0,0,0,1,1,1,0,0,1,0,0,0,0,0,0,0,0,-1],"runs":[[11,13,-1],[17,19,1]],"outN":11,"dev":11.0,"yh":1147},{"name":"F座","phase":1,"cap":390.0,"c":0.7115,"lo":0.6603,"hi":0.7627,"s":[0.4891,0.4943,0.5082,0.4759,0.4461,0.5262,0.5096,0.4931,0.5349,0.5277,0.4742,0.4413,0.5068,0.481,0.5055,0.4527,0.467,0.4933,0.5002,0.5285,0.4646,0.5138,0.4785,0.5341,0.5239,0.4708,0.5237,0.5182,0.4769,0.5072,0.4888],"out":[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],"runs":[[1,31,-1]],"outN":31,"dev":-38.0,"yh":877},{"name":"G座","phase":1,"cap":390.0,"c":0.716,"lo":0.6409,"hi":0.7911,"s":[0.7161,0.6764,0.707,0.7519,0.7272,0.6776,0.6336,0.7324,0.7008,0.686,0.7556,0.6861,0.6794,0.7344,0.6814,0.6446,0.694,0.7056,0.7507,0.6833,0.7443,0.7391,0.7914,0.7234,0.7511,0.708,0.7573,0.6821,0.7216,0.7714,0.7329],"out":[0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],"runs":[],"outN":2,"dev":-11.5,"yh":1056},{"name":"8栋","phase":2,"cap":340.2,"c":1.0616,"lo":0.9135,"hi":1.2096,"s":[1.143,1.0,0.9955,1.0563,1.0254,0.9873,1.0614,1.0144,1.0,1.0,1.1154,1.0447,1.0456,1.0293,1.0853,1.0141,1.0658,1.179,1.0195,1.0531,1.0279,1.0,1.1091,1.1225,1.1038,1.026,1.1914,1.0471,1.1259,1.0314,1.0],"out":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":0,"dev":12.2,"yh":1001},{"name":"9栋","phase":2,"cap":340.2,"c":1.0703,"lo":0.9103,"hi":1.2303,"s":[1.1447,1.0253,1.1388,1.0,1.1057,1.0353,1.1221,1.1217,1.0551,1.108,1.155,1.0031,1.0,1.079,1.121,1.0335,1.1414,1.1096,1.1743,1.0861,1.0,1.1155,1.1172,1.1268,1.1324,1.1366,1.1084,1.0993,1.0421,1.0718,1.0825],"out":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":0,"dev":9.7,"yh":1034},{"name":"10栋","phase":2,"cap":340.2,"c":1.0881,"lo":0.9876,"hi":1.1886,"s":[1.0887,1.1269,1.0659,1.0242,1.034,1.1506,1.0548,1.0607,1.1035,1.0093,1.0684,1.0425,1.061,1.0,1.1083,1.0242,1.0,1.0649,1.1033,1.0742,1.0021,1.1461,1.1389,1.0433,1.0946,1.0204,1.0753,1.0734,1.0,1.1975,1.109],"out":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],"runs":[],"outN":1,"dev":10.1,"yh":1014},{"name":"11栋","phase":2,"cap":340.2,"c":1.0688,"lo":0.9108,"hi":1.2267,"s":[1.1185,1.1067,1.1714,1.1092,1.0,1.1612,1.1148,1.0082,1.0305,1.1655,0.9914,1.0,1.1253,1.0279,1.0392,1.0437,1.1167,1.1319,1.0857,1.1063,1.028,1.0857,1.1853,1.0,1.0708,1.0138,1.1859,1.0424,1.0891,1.0796,1.0963],"out":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":0,"dev":11.0,"yh":1027},{"name":"12栋","phase":2,"cap":340.2,"c":0.9716,"lo":0.9008,"hi":1.0423,"s":[0.9775,0.9089,1.0,0.9068,0.9463,1.0353,0.9088,0.9454,0.9449,1.0004,1.0,0.9589,0.886,0.9941,0.909,0.9334,0.9566,0.9442,0.93,0.9742,0.9587,0.9801,0.9758,1.0357,0.9899,1.0,0.9709,1.0,0.8969,1.0,0.9905],"out":[0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0],"runs":[],"outN":2,"dev":-8.8,"yh":913},{"name":"13栋","phase":2,"cap":340.2,"c":1.0,"lo":0.9261,"hi":1.0739,"s":[1.0,1.0429,1.0096,1.0748,1.0054,1.0,1.0,1.0,1.0474,0.9811,1.0686,1.0193,1.0181,1.0313,1.0,1.0,1.0683,1.0,1.0,1.0,1.0173,1.0103,1.0,0.9973,1.0,0.9711,1.0,0.981,1.0567,0.9954,1.0512],"out":[0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"runs":[],"outN":1,"dev":7.5,"yh":962}];
+const UNBUILT = [{ name: '创业大厦', phase: 3 }, { name: '工业大厦', phase: 3 }];
+const MISS = { 'E座': [25, 26], 'G座': [14] };
+const LAST = 28;
+const PH = { 1: '#378ADD', 2: '#5DCAA5', 3: '#EF9F27' };
+const RED = '#E24B4A', AMB = '#EF9F27', AMB_TXT = '#854F0B', MUTED = 'var(--text-muted)';
+const f2 = v => v.toFixed(2), f3 = v => v.toFixed(3);
+const EMPTY_TIP = { left: '0px', top: '0px', lines: [] };
+const isMiss = (b, d) => (MISS[b.name] || []).includes(d);
+const outDays = b => { let n = 0; for (let d = 1; d <= LAST; d++) if (!isMiss(b, d) && b.out[d - 1] !== 0) n++; return n; };
+const outSign = b => { let s = 0; for (let d = 1; d <= LAST; d++) if (!isMiss(b, d)) s += b.out[d - 1]; return s; };
+const dayVals = b => { const v = []; for (let d = 1; d <= LAST; d++) if (!isMiss(b, d)) v.push(b.s[d - 1]); return v; };
+
+// 迷你图:W×H,带 + 1.5px 线 + 出范围点,无轴
+function mini(b, W, H) {
+  const vals = dayVals(b);
+  const mn = Math.min(b.lo, ...vals), mx = Math.max(b.hi, ...vals), rg = (mx - mn) || 1;
+  const x = d => +((d - 1) / 30 * (W - 6) + 3).toFixed(1), y = v => +((1 - (v - mn) / rg) * (H - 8) + 4).toFixed(1);
+  let line = '', pen = false; const pts = [];
+  for (let d = 1; d <= LAST; d++) {
+    if (isMiss(b, d)) { pen = false; continue; }
+    line += (pen ? ' L' : ' M') + x(d) + ',' + y(b.s[d - 1]); pen = true;
+    if (b.out[d - 1] !== 0) pts.push({ x: x(d), y: y(b.s[d - 1]), fill: b.out[d - 1] < 0 ? RED : AMB });
+  }
+  return { bandY: y(b.hi), bandH: +(y(b.lo) - y(b.hi)).toFixed(1), line, pts };
+}
+
+// 大图 W×236:padL 44 / padR 14 / padT 12 / padB 24(与 Main.dc.html 同一套几何与气泡)
+function bigChart(b, hover, W, setHover) {
+  const H = 236, padL = 44, padR = 14, padT = 12, padB = 24, iW = W - padL - padR, iH = H - padT - padB;
+  const vals = dayVals(b);
+  let mn = Math.min(b.lo, ...vals), mx = Math.max(b.hi, ...vals); const vpad = (mx - mn) * 0.12; mn -= vpad; mx += vpad;
+  const X = d => +(padL + (d - 1) / 30 * iW).toFixed(1), Y = v => +(padT + (mx - v) / (mx - mn) * iH).toFixed(1);
+  const grid = [0, 1, 2, 3].map(k => { const v = mn + k * (mx - mn) / 3; return { y: Y(v), top: Y(v) - 7, label: f2(v) }; });
+  let linePath = '', pen = false;
+  for (let d = 1; d <= LAST; d++) { if (isMiss(b, d)) { pen = false; continue; } linePath += (pen ? ' L' : ' M') + X(d) + ',' + Y(b.s[d - 1]); pen = true; }
+  const pts = []; for (let d = 1; d <= LAST; d++) if (!isMiss(b, d) && b.out[d - 1] !== 0) pts.push({ x: X(d), y: Y(b.s[d - 1]), fill: b.out[d - 1] < 0 ? RED : AMB });
+  const half = iW / 60;
+  const runs = b.runs.map(r => { const s = r[0], e = Math.min(r[1], LAST); const x = Math.max(padL, X(s) - half), x2 = Math.min(W - padR, X(e) + half); return { x: +x.toFixed(1), w: +(x2 - x).toFixed(1), fill: r[2] < 0 ? RED : AMB }; });
+  const misses = (MISS[b.name] || []).map(d => ({ x: +(X(d) - 1).toFixed(1) }));
+  const nBelow = pts.filter(p => p.fill === RED).length, nAbove = pts.length - nBelow;
+  const runTxt = b.runs.map(r => r[0] + '–' + Math.min(r[1], LAST) + ' 日' + (r[2] < 0 ? '低于' : '高于')).join('、');
+  const fact = (pts.length ? pts.length + ' 天出范围（低 ' + nBelow + ' 高 ' + nAbove + '）' : '28 天都在范围内')
+    + (runTxt ? ' · ' + runTxt : '') + (misses.length ? ' · 缺抄 ' + misses.length + ' 天' : '');
+  let tip = EMPTY_TIP, hair = { x: 0 }, hdot = { x: 0, y: 0 }, hasTip = false, hasDot = false;
+  if (hover) {
+    const d = hover, miss = isMiss(b, d), v = b.s[d - 1], o = b.out[d - 1];
+    const lines = [{ t: '8 月 ' + d + ' 日', c: '#fff', b: 600 }];
+    if (miss) lines.push({ t: '这天没抄表', c: '#F6C77A', b: 400 });
+    else {
+      lines.push({ t: '比值 ' + f3(v), c: '#fff', b: 400 });
+      lines.push({ t: '范围 ' + f3(b.lo) + ' – ' + f3(b.hi), c: 'rgba(255,255,255,.72)', b: 400 });
+      lines.push(o < 0 ? { t: '低于下沿', c: '#F58B8A', b: 400 } : o > 0 ? { t: '高于上沿', c: '#F6C77A', b: 400 } : { t: '在范围内', c: '#9EDCC6', b: 400 });
+    }
+    const tw = 150, x = X(d);
+    tip = { left: (x + 12 + tw <= W - padR ? x + 12 : x - 12 - tw) + 'px', top: '8px', lines };
+    hair = { x }; hasTip = true;
+    if (!miss) { hdot = { x, y: Y(v) }; hasDot = true; }
+  }
+  return {
+    name: b.name, fact, grid, linePath, pts, runs, misses,
+    bandY: Y(b.hi), bandH: +(Y(b.lo) - Y(b.hi)).toFixed(1), cY: Y(b.c),
+    hiTop: Y(b.hi) - 15, loTop: Y(b.lo) + 2, hiLabel: '上沿 ' + f3(b.hi), loLabel: '下沿 ' + f3(b.lo),
+    futureX: X(28.5), futureW: +(X(31) - X(28.5)).toFixed(1),
+    tip, hasTip, hair, hasHair: hasTip, hdot, hasDot,
+    move: e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      let d = Math.round((e.clientX - r.left - padL) / iW * 30) + 1; d = Math.max(1, Math.min(LAST, d));
+      if (d !== hover) setHover(d);
+    },
+    leave: () => setHover(null),
+  };
+}
+
+class Component extends DCLogic {
+  state = { sel: 'F座', hover: null };
+
+  renderVals() {
+    const { sel, hover } = this.state;
+    const noop = () => {};
+    // 出范围(有连续段)的排最前,其余按出范围天数降序、再按原序;未投产两栋垫底
+    const order = BOARD.slice().sort((a, b) => ((b.runs.length ? 1 : 0) - (a.runs.length ? 1 : 0)) || (outDays(b) - outDays(a)));
+    const cells = order.map(b => {
+      const on = b.name === sel, n = outDays(b), hit = b.runs.length > 0;
+      const tone = hit ? (outSign(b) < 0 ? RED : AMB) : null;
+      return {
+        name: b.name, dot: PH[b.phase], built: true, unbuilt: false,
+        days: n ? '出范围 ' + n + ' 天' : '—', daysColor: hit ? (outSign(b) < 0 ? 'var(--hue-red)' : AMB_TXT) : MUTED,
+        top: tone || 'var(--border-subtle)', bg: on ? 'var(--surface-card)' : '#fff',
+        ring: on ? 'inset 0 0 0 1.5px rgb(28,28,28)' : 'none', fw: on ? 600 : 400, nmColor: 'var(--text-primary)', cursor: 'pointer',
+        mini: mini(b, 194, 60), pick: () => this.setState({ sel: b.name, hover: null }),
+      };
+    });
+    UNBUILT.forEach(u => cells.push({
+      name: u.name, dot: PH[3], built: false, unbuilt: true, days: '—', daysColor: MUTED,
+      top: 'var(--border-subtle)', bg: 'var(--surface-sunken)', ring: 'none', fw: 400, nmColor: MUTED, cursor: 'default',
+      mini: { bandY: 0, bandH: 0, line: '', pts: [] }, pick: noop,
+    }));
+    const b = BOARD.find(x => x.name === sel) || BOARD[3];
+    const chart = bigChart(b, hover, 1096, h => this.setState({ hover: h }));
+    return { cells, chart };
+  }
+}
+</script>
+</body>
+</html>

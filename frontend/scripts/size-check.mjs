@@ -48,8 +48,9 @@ const BUDGET_KB = {
 // 2026-09-03 上调 3820 → 3900(+80KB)。**这是一次签字决定,理由写在这里**:
 //   新增「光伏分栋分析」一整块屏(PV-ANALYSIS-SPEC §01,原本挤在光伏投资回收里)。
 //   构成:PvMeterAnaView 块 93.6KB(视图 + pvMeterAna.logic 的中位抛光/块自助/变点检验/
-//   样条/ACF,加 PvQueue·PvDayChart·PvSeasonRows·PvQualityGrid·PvSlope·PvDots·PvLabTable
-//   七个组件)+ 它的 CSS 13.6KB,减去 PvRoiView 搬走那部分后净 +106KB。**整块走懒加载**。
+//   样条/ACF,加 PvChips·PvDayChart·PvYieldBand·PvAnchorBars·PvLedgerScatter·PvConsumption·PvRevenueBars·
+//   PvAlphaBars·PvResidualHeat·PvQualityGrid·PvAcfBars·PvNullHist·PvLabTable·PvDriftChart·PvControlChart·
+//   PvBetaChart·PvDetailTable 十七个组件 —— 组件表是 v4 现状,93.6KB 是换组件前实测)+ 它的 CSS 13.6KB,减去 PvRoiView 搬走那部分后净 +106KB。**整块走懒加载**。
 //   ⚠ 三个重块 exceljs 917.1 / echarts 698.3 / vue 110.4 **一字节没动** ——
 //     新屏没夹带任何重库进来(heatmap/visualMap/calendar 全部手写 CSS Grid 与内联 SVG,
 //     正是为了不往 echartsBundle 里加东西)。这是这次敢签字的前提:涨的是新功能本身,不是失控。
@@ -106,7 +107,15 @@ const BUDGET_KB = {
 // 2026-09-12 第2、3 步(续签率数轴 + 单位租金对标)也换成自绘,实测 3992.2KB。
 // ⚠ 三张图换完 echarts 仍是 698KB —— 驾驶舱的收入柱、构成环、分期堆叠、收缴率还在用它,
 //    这一步没有「换掉图表库」这回事,如实记下,别让下一个人以为已经可以摘掉依赖了。
-const TOTAL_KB = 3995
+// 2026-09-13 上调 3995 → 4048(+53KB)。**这是一次签字决定(用户拍板),理由写在这里**:
+//   光伏分栋分析屏 v4 重做(PV-ANALYSIS-SCREEN-V4.md):17 张图全部改自绘 SVG / CSS Grid,
+//   新增 PvChips·PvYieldBand·PvAnchorBars·PvLedgerScatter·PvConsumption·PvRevenueBars·PvAlphaBars·
+//   PvResidualHeat·PvAcfBars·PvNullHist·PvDriftChart·PvControlChart·PvBetaChart·PvDetailTable
+//   与 pvAnaV4.logic / chartTip,删掉 PvQueue·PvDots·PvSlope·PvSeasonRows。
+//   PvMeterAnaView 块 107.2KB → js 130.6 + css 23.3KB,**整块走懒加载**,只在打开光伏分栋屏时下载。
+//   四个具名块一字节没涨;⚠ echarts 仍是 698KB —— 本屏已不用它,但别的分析屏还在用。
+//   实测 4045.5KB。同一条规矩:实测 + 2KB。
+const TOTAL_KB = 4048
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。

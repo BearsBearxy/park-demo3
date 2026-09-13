@@ -1174,10 +1174,12 @@ export function buildSnapshot(input: SnapshotInput): AnaSnapshot {
     ? (input.month != null ? `${year}-${String(input.month).padStart(2, '0')}` : months[months.length - 1] ?? `${year}-01`)
     : null
 
-  // ② 当段的刻度。**月段只画当月那 30 来个点** —— 逐日铺满全年没人看得过来
+  // ② 当段的刻度。**月段只画当月那 30 来个点** —— 逐日铺满全年没人看得过来。
+  //    年段**固定 12 个月**(§3.8 x 轴永远画满整段):只取有抄表的月的话,年中打开轴画不满、
+  //    没有未到淡区,某个月全园没抄还会从轴上整个消失
   const ticks = gran === 'month' && ym
     ? Array.from({ length: daysInYm(ym) }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`)
-    : months
+    : Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
   const tickLabels = ticks.map(gran === 'month' ? dLabel : mLabel)
   const segEnd = ticks[ticks.length - 1] ?? ''
 
@@ -1768,7 +1770,7 @@ export function buildLab(snap: AnaSnapshot, input: SnapshotInput, focusId?: numb
       //   现在**按 amp 排序**,它会被顶到第一行,从「数字偏大」升级成「第一眼就是错的」。
       amp: got.length >= MIN_MONTHS ? Math.max(...got) - Math.min(...got) : null,
     }
-  }).sort((a, b) => (b.amp ?? -1) - (a.amp ?? -1))   // 排序在 logic,屏上不再排(同 PvDots 的规矩)
+  }).sort((a, b) => (b.amp ?? -1) - (a.amp ?? -1))   // 排序在 logic,屏上不再排
 
   const drawn = season.flatMap(d => (d.amp == null ? [] : d.months.filter((v): v is number => v != null)))
   const asc = [...drawn].sort((a, b) => a - b)
