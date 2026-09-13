@@ -1,156 +1,140 @@
 <script setup lang="ts">
-// 单栋逐日大图(PV-ANALYSIS-SPEC §06.3 右栏 / 三态 §03.8)。
+// B1 通栏逐刻度比值图(PV-ANALYSIS-SCREEN-V4 §3.2)。几何照画布 v2/Main.dc.html 的 renderVals 抄:
+// 画布 宽 = 实测 × 高 236,padL 44 / padR 14 / padT 12 / padB 24;坐标保留一位小数。
 //
-// **内联 SVG,不用 ECharts。** 要画的三态(未到淡底 + 竖界 / 漏抄断开 + 缺口记号)、
-// 连续段底色、上下沿标注,用 markArea/markLine 拼比手写更难保证;而且这是**一张**图不是
-// 十三张,没有共用轴的负担 —— 共用纵轴正是 v2.1 那版把 F座 那行压成平线的根因(§00 v3-1)。
-//
-// **量程是这栋自己的,不共用、不钳位。** 一次只画一栋,横向可比性由「带是它自己的历史」
-// 承担(§06.3),所以钳位没有任何理由存在。
-//
-// **x 轴永远画满整段**,不随录到哪天伸缩 —— 日期位置稳定,明天打开不会整体位移(§03.8)。
-// **范围带照常画满整宽** —— 带来自 §3.7 的段外窗口,与本段抄了几天无关。
-//
-// ⚠ 文案(§05):只说明可视化在做什么。图脚复述的是 x 轴口径、带是拿哪一段估的、
-//   已过去/已抄几个刻度 —— 全是数据里直接读得出来的事实,没有判词、成因与建议。
-import { computed } from 'vue'
+// 三态(§03.8)是两种视觉:漏抄 = 折线断开 + 底部 2×7 琥珀刻度;未到 = 右侧淡底。不写「未到 / 漏」字(V4 §0)。
+// 量程是这栋自己的(已抄点 ∪ 带上下沿 + 12% 余量),不共用、不钳位;x 轴画满整段,带画满整宽。
+// 这里只做像素几何,事实句 fact 由 pvAnaV4.logic.ts 的 dayFact 拼好传进来。
+// 读不出的栋(unreadable)照样画线和带,但不画连续段底色、不给点按出范围着色、气泡不写在不在范围内(§07 不出判据结论)。
+import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
-import { PV_COLORS } from './pvAnaColors'
-import type { BoardRow, Criteria } from './pvMeterAna.logic'
+import { tipWidth, tipX } from '@/components/ana/chartTip'
+import { FP_ANA_THEME } from '@/components/ana/anaTheme'
+import '@/components/ana/ana.css'
+import { PV_COLORS as C } from './pvAnaColors'
+import type { PvDayChartProps } from './pvAnaV4.logic'
 
-const props = defineProps<{ row: BoardRow; tickLabels: string[]; fact: string; crit: Criteria }>()
+const props = defineProps<PvDayChartProps>()
 
-// 结构灰与焦点蓝走 CSS 令牌变量(内联 SVG 在 DOM 里,拿得到自定义属性);
-// 只有告警橙从镜像取 —— 它同时要给同屏的 ECharts 块用,两处必须是同一个字面值。
-//
-// 这张图上三层语义各有各的色(§06.7 颜色上岗三条):
-//   焦点 = 主折线与正常点走 --hue-blue —— 它画的就是「你在队列里点中的那一栋」,
-//          是**选中这个状态**,不是给某一栋分配的颜色(换一栋,蓝的就是新的那栋);
-//   告警 = 出范围的点 / 连续段底色 / 漏抄记号走 --hue-orange(这里是 L1,告警色的正当领地);
-//   参照 = 范围带、中心线、上下沿、轴、网格全部**保持墨阶** —— 它们是尺子不是数据,
-//          上了色就等于宣称「带本身也是一种类别」。
-const OUT = PV_COLORS.OUT
+const H = 236, padL = 44, padR = 14, padT = 12, padB = 24
+const iH = H - padT - padB
+const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
-// §06.3 的画布:1006×206,ML=52 MR=10 MT=10 MB=24。
-// 高度**固定 206**,只有宽度跟容器走 —— viewBox 宽取实测像素宽,1 单位 = 1px,
-// 这样等比缩放不会把 11px 的轴标缩到 10px 以下(§06.7 字号铁律)。
-const VBH = 206, ML = 52, MR = 10, MT = 10, MB = 24
-const Y1 = VBH - MB          // 绘图区下沿 182
-const IH = Y1 - MT           // 绘图区高 172
+const { el, width: W } = useWidth(1025)
+const iW = computed(() => W.value - padL - padR)
+const n = computed(() => props.ticks.length)
+/** 第 i 个刻度(0 起,可带小数)的 x */
+const X = (i: number) => +(padL + (i / (n.value - 1)) * iW.value).toFixed(1)
 
-const { el, width } = useWidth(1006)
-const vw = computed(() => Math.max(420, Math.round(width.value)))
-const xR = computed(() => vw.value - MR)
-const iw = computed(() => xR.value - ML)
+const seen = (i: number) => props.row.state[i] === 'seen' && props.row.ratio[i] != null
+// 同 pvAnaV4.logic.ts 的 missingN:早于第一条抄表的刻度是还没投产,不是漏抄
+const preBorn = (i: number) => props.row.firstDate == null || props.row.firstDate.slice(0, props.ticks[i].length) > props.ticks[i]
 
-const n = computed(() => props.tickLabels.length)
-const step = computed(() => (n.value > 1 ? iw.value / (n.value - 1) : 0))
-const half = computed(() => (n.value > 1 ? step.value / 2 : iw.value / 2))
-const X = (i: number) => ML + i * step.value
-
-/** 刻度单位:年档的短标签是「6月」,月档是「6」。图脚与判据措辞跟着它变。 */
-const unit = computed(() => (props.tickLabels[0]?.endsWith('月') ? '个月' : '天'))
-
-/** 这栋自己的量程:已抄的点 + 带上下沿 + 中心,留 8% 余量。**不钳位。** */
+/** 量程:已抄的比值 ∪ 带上下沿,再各留 12%。一个值都没有 = null(空态只画框线) */
 const dom = computed(() => {
-  const vs: number[] = []
-  props.row.ratio.forEach((v, i) => { if (v != null && props.row.state[i] === 'seen') vs.push(v) })
-  for (const b of [props.row.lo, props.row.hi, props.row.center]) if (b != null) vs.push(b)
-  if (!vs.length) return { min: 0, max: 1 }
+  const vs = props.row.ratio.filter((v, i): v is number => v != null && seen(i))
+  for (const b of [props.row.lo, props.row.hi]) if (b != null) vs.push(b)
+  if (!vs.length) return null
   let mn = Math.min(...vs), mx = Math.max(...vs)
-  if (mx - mn < 1e-9) { mn -= 0.05; mx += 0.05 }
-  const pad = (mx - mn) * 0.08
-  return { min: mn - pad, max: mx + pad }
+  const vpad = (mx - mn || Math.abs(mx) || 1) * 0.12
+  mn -= vpad; mx += vpad
+  return { mn, mx }
 })
-const Y = (v: number) => Y1 - ((v - dom.value.min) / (dom.value.max - dom.value.min)) * IH
+const Y = (v: number) => {
+  const { mn, mx } = dom.value!
+  return +(padT + ((mx - v) / (mx - mn)) * iH).toFixed(1)
+}
 
 const grid = computed(() => [0, 1, 2, 3].map(k => {
-  const v = dom.value.min + (dom.value.max - dom.value.min) * (k / 3)
-  return { v, y: Y(v) }
+  const d = dom.value
+  if (!d) return { y: +(padT + (iH * (3 - k)) / 3).toFixed(1), label: '' }
+  const v = d.mn + (k * (d.mx - d.mn)) / 3
+  return { y: Y(v), label: v.toFixed(2) }
 }))
 
 const band = computed(() => {
   const { lo, hi } = props.row
-  if (lo == null || hi == null) return null
-  return { yHi: Y(hi), h: Math.max(1, Y(lo) - Y(hi)), lo, hi }
+  if (lo == null || hi == null || !dom.value) return null
+  return { y: Y(hi), h: +(Y(lo) - Y(hi)).toFixed(1), hiTop: Y(hi) - 15, loTop: Y(lo) + 2, hi: hi.toFixed(3), lo: lo.toFixed(3) }
 })
 
-/** 连续段底色。**夹进绘图区** —— 首末刻度的段不许外溢到轴标区(§06.3)。 */
-const runRects = computed(() => props.row.runs.map(r => {
-  const a = Math.max(ML, X(r.from) - half.value)
-  const b = Math.min(xR.value, X(r.to) + half.value)
-  return { x: a, w: Math.max(1, b - a) }
+const linePath = computed(() => {
+  let d = '', pen = false
+  for (let i = 0; i < n.value; i++) {
+    if (!seen(i)) { pen = false; continue }
+    d += (pen ? ' L' : ' M') + X(i) + ',' + Y(props.row.ratio[i]!)
+    pen = true
+  }
+  return d
+})
+
+const pts = computed(() => {
+  const out: { x: number; y: number; fill: string }[] = []
+  if (props.unreadable) return out
+  for (let i = 0; i < n.value; i++) {
+    const o = props.row.out[i]
+    if (seen(i) && o) out.push({ x: X(i), y: Y(props.row.ratio[i]!), fill: o < 0 ? C.BELOW : C.ABOVE })
+  }
+  return out
+})
+
+/** 连续段底色,夹进绘图区 */
+const runs = computed(() => {
+  const half = iW.value / (n.value - 1) / 2
+  return (props.unreadable ? [] : props.row.runs).map(r => {
+    const x = Math.max(padL, X(r.from) - half), x2 = Math.min(W.value - padR, X(r.to) + half)
+    return { x: +x.toFixed(1), w: +(x2 - x).toFixed(1), fill: r.dir < 0 ? C.BELOW : C.ABOVE }
+  })
+})
+
+const misses = computed(() => props.row.state.flatMap((s, i) => (s === 'missing' && !preBorn(i) ? [+(X(i) - 1).toFixed(1)] : [])))
+
+const future = computed(() => {
+  if (props.elapsedN >= n.value) return null
+  const x = X(props.elapsedN - 0.5)
+  return { x, w: +(X(n.value - 1) - x).toFixed(1) }
+})
+
+/** 月档标 1 / 5 / 10 … / 末日(末日前一格的 5 的倍数让给末日);年档 12 个月全标 */
+const xTicks = computed(() => props.tickLabels.flatMap((t, i) => {
+  const d = i + 1
+  const show = props.gran === 'year' || i === 0 || i === n.value - 1 || (d % 5 === 0 && d <= n.value - 2)
+  return show ? [{ x: X(i), t }] : []
 }))
 
-/** 折线:missing 与 future 处**断开,不插值**(§03.8)。单点不成线,靠圆点表示。 */
-const segs = computed(() => {
-  const out: string[] = []
-  let cur: string[] = []
-  for (let i = 0; i < n.value; i++) {
-    const v = props.row.ratio[i]
-    if (props.row.state[i] === 'seen' && v != null) cur.push(`${X(i)},${Y(v)}`)
-    else { if (cur.length > 1) out.push(cur.join(' ')); cur = [] }
+// ── 悬停:取 x 最近的已过去刻度,不要求对准点 ──
+const hover = ref<number | null>(null)
+function onMove(e: MouseEvent) {
+  if (props.elapsedN < 1) return
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const i = Math.round(((e.clientX - r.left - padL) / iW.value) * (n.value - 1))
+  hover.value = Math.max(0, Math.min(props.elapsedN - 1, i))
+}
+
+const tip = computed(() => {
+  const i = hover.value
+  if (i == null || preBorn(i)) return null
+  const row = props.row, t = props.ticks[i]
+  const miss = row.state[i] === 'missing'
+  const lines: { t: string; c?: string; b?: boolean; dim?: boolean }[] = [{
+    t: props.gran === 'month' ? `${Number(t.slice(5, 7))} 月 ${Number(t.slice(8, 10))} 日` : `${t.slice(0, 4)} 年 ${Number(t.slice(5, 7))} 月`,
+    b: true,
+  }]
+  if (miss) lines.push({ t: props.gran === 'month' ? '这天没抄表' : '这个月没抄表', c: C.TIP_ABOVE })
+  else if (seen(i)) {
+    lines.push({ t: `比值 ${row.ratio[i]!.toFixed(3)}` })
+    if (row.lo != null && row.hi != null) lines.push({ t: `范围 ${row.lo.toFixed(3)} – ${row.hi.toFixed(3)}`, dim: true })
+    const o = row.out[i]
+    if (o != null && !props.unreadable) lines.push(o < 0 ? { t: '低于下沿', c: C.TIP_BELOW } : o > 0 ? { t: '高于上沿', c: C.TIP_ABOVE } : { t: '在范围内', c: C.TIP_IN })
   }
-  if (cur.length > 1) out.push(cur.join(' '))
-  return out
-})
-
-const dots = computed(() => {
-  const out: { x: number; y: number; out: boolean }[] = []
-  for (let i = 0; i < n.value; i++) {
-    const v = props.row.ratio[i]
-    if (props.row.state[i] !== 'seen' || v == null) continue
-    out.push({ x: X(i), y: Y(v), out: !!props.row.out[i] })
+  const x = X(i)
+  const w = tipWidth(lines.map(l => l.t), 22)
+  return {
+    x, lines,
+    left: tipX(x, w, { width: W.value, padL, padR }),
+    dotY: seen(i) ? Y(row.ratio[i]!) : null,
   }
-  return out
 })
-
-/** 漏抄:底部缺口记号(两道竖杠夹一道空)+「漏」。与「未到」是**两种形状**。 */
-const gaps = computed(() => {
-  const out: number[] = []
-  for (let i = 0; i < n.value; i++) if (props.row.state[i] === 'missing') out.push(X(i))
-  return out
-})
-
-/** 未到:淡底 + 一条虚线竖界 + 标注。未到按定义是段尾,取第一个即可。 */
-const fut = computed(() => {
-  const i = props.row.state.findIndex(s => s === 'future')
-  if (i < 0 || i >= n.value) return null
-  const x = Math.min(xR.value, Math.max(ML, X(i) - half.value))
-  // ponytail: 短标签只有日号/月份,拿不到 M/D 的 M —— 月份写在卡头,这里补单位不补月
-  const at = unit.value === '个月' ? props.tickLabels[i] : `${props.tickLabels[i]} 日`
-  return { x, w: Math.max(0, xR.value - x), at }
-})
-
-/** 标首 / 中 / 末与 5 的倍数;未到那段的刻度淡化(§03.8)。 */
-const xTicks = computed(() => {
-  const last = n.value - 1, mid = Math.floor(last / 2)
-  const out: { x: number; t: string; dim: boolean }[] = []
-  props.tickLabels.forEach((t, i) => {
-    const num = Number(t.replace(/\D/g, ''))
-    if (i === 0 || i === last || i === mid || (Number.isFinite(num) && num > 0 && num % 5 === 0)) {
-      out.push({ x: X(i), t, dim: props.row.state[i] === 'future' })
-    }
-  })
-  return out
-})
-
-const aria = computed(() => `${props.row.name} 逐${unit.value === '个月' ? '月' : '日'}比值图。${props.fact}`)
-
-// 页脚**只留基线窗口** —— 它是这张图上唯一看不出来的东西,而且它决定了带画在哪。
-// 删掉的三条各自在屏上别处已经有了,重复一遍只是把 120 字的墙糊到图下面:
-//   「琥珀底 = 连续 ≥N 个已抄刻度同向」→ B2 判据脚
-//   「横轴 = 本段全部 N 天，画满不伸缩」→ x 轴自己就写着 1…31
-//   「已过去 N 天，已抄 n 天」        → B0 指标卡右侧的新鲜度格
-//   「淡带 = 这栋的正常范围」          → 改成画在带里的一个标签(见模板 .bandlab)
-// 剩下这条也不串成句子:标签 + 值 + 放宽档数,与 B0 指标卡同一个排法。
-const base = computed(() => props.row.base)
-const baseVal = computed(() => {
-  const b = base.value
-  return b ? `${b.from} ~ ${b.to} · ${b.n} ${b.unit}` : ''
-})
-/** 读屏与 tooltip 用整句版 —— 结构化排版对读屏是碎的 */
-const baseFull = computed(() => props.row.baseNote)
 </script>
 
 <template>
@@ -158,117 +142,60 @@ const baseFull = computed(() => props.row.baseNote)
     <div class="pdc-hd">
       <span class="nm">{{ row.name }}</span>
       <span class="fact">{{ fact }}</span>
+      <div class="leg">
+        <span><i :style="{ background: C.FOCUS }"></i>逐{{ gran === 'month' ? '日' : '月' }}比值</span>
+        <span><b :style="{ background: C.BAND }"></b>这栋的范围</span>
+        <span><u :style="{ background: C.BELOW }"></u>低于下沿</span>
+        <span><u :style="{ background: C.ABOVE }"></u>高于上沿</span>
+        <span><i class="tick" :style="{ background: C.ABOVE }"></i>缺抄</span>
+      </div>
     </div>
 
-    <svg class="pdc-svg" :viewBox="`0 0 ${vw} ${VBH}`" :width="vw" :height="VBH"
-      role="img" :aria-label="aria">
-      <title>{{ aria }}</title>
-
-      <!-- y 网格 4 档 + 左侧刻度值(这栋自己的量程) -->
-      <g>
-        <line v-for="(g, i) in grid" :key="'g' + i" class="gl" :x1="ML" :x2="xR" :y1="g.y" :y2="g.y" />
-        <text v-for="(g, i) in grid" :key="'gt' + i" class="gt" :x="ML - 6" :y="g.y + 3.5">{{ g.v.toFixed(2) }}</text>
-      </g>
-
-      <!-- 正常范围带:画满整宽,与本段抄了几天无关(§03.8)。
-           标签画在带里,替掉页脚原来那句「淡带 = 这栋的正常范围（N 倍波动）」——
-           图能自己说的事,不该再用一句话复述一遍 -->
-      <rect v-if="band" class="band" :x="ML" :y="band.yHi" :width="iw" :height="band.h" />
-      <text v-if="band && band.h >= 14" class="bandlab" :x="ML + 4" :y="band.yHi + 11">
-        正常范围（{{ crit.bandSigma }} 倍波动）
-      </text>
-
-      <!-- 连续段底色,夹进绘图区 -->
-      <rect v-for="(r, i) in runRects" :key="'r' + i" :x="r.x" :y="MT" :width="r.w" :height="IH"
-        :fill="OUT" fill-opacity="0.09" />
-
-      <!-- 未到:淡底 + 虚线竖界 + 标注 -->
-      <g v-if="fut">
-        <rect class="fut" :x="fut.x" :y="MT" :width="fut.w" :height="IH" />
-        <line class="futline" :x1="fut.x" :x2="fut.x" :y1="MT" :y2="Y1" />
-        <text class="futlab" :x="fut.x + 5" :y="MT + 11">未到（{{ fut.at }}起）</text>
-      </g>
-
-      <!-- 中心虚线 + 带上下沿虚线,右端标数值 -->
-      <template v-if="row.center != null">
-        <line class="ctr" :x1="ML" :x2="xR" :y1="Y(row.center)" :y2="Y(row.center)" />
-      </template>
+    <div class="pdc-plot" :style="{ width: W + 'px', height: H + 'px' }" @mousemove="onMove" @mouseleave="hover = null">
+      <span v-for="(g, k) in grid" v-show="g.label" :key="'gl' + k" class="axh" :style="{ left: '0px', width: '38px', textAlign: 'right', top: g.y - 7 + 'px' }">{{ g.label }}</span>
       <template v-if="band">
-        <line class="edge" :x1="ML" :x2="xR" :y1="Y(band.hi)" :y2="Y(band.hi)" />
-        <line class="edge" :x1="ML" :x2="xR" :y1="Y(band.lo)" :y2="Y(band.lo)" />
-        <text class="ev" :x="xR - 3" :y="Y(band.hi) - 3">{{ band.hi.toFixed(2) }}</text>
-        <text class="ev" :x="xR - 3" :y="Y(band.lo) + 10">{{ band.lo.toFixed(2) }}</text>
+        <span class="axh hi" :style="{ right: '18px', top: band.hiTop + 'px' }">上沿 {{ band.hi }}</span>
+        <span class="axh lo" :style="{ right: '18px', top: band.loTop + 'px' }">下沿 {{ band.lo }}</span>
       </template>
 
-      <line class="ax" :x1="ML" :x2="xR" :y1="Y1" :y2="Y1" />
-
-      <polyline v-for="(p, i) in segs" :key="'s' + i" class="ln" :points="p" />
-
-      <circle v-for="(d, i) in dots" :key="'d' + i" :cx="d.x" :cy="d.y" :r="d.out ? 3.4 : 1.9"
-        :fill="d.out ? OUT : 'var(--hue-blue)'" />
-
-      <!-- 漏抄:缺口记号 +「漏」。断开的折线已经说了「这天没数」,记号说「这天该有数」 -->
-      <g v-for="(gx, i) in gaps" :key="'m' + i">
-        <rect :x="gx - 4" :y="Y1 - 7" width="2" height="6" :fill="OUT" />
-        <rect :x="gx + 2" :y="Y1 - 7" width="2" height="6" :fill="OUT" />
-        <text class="gapl" :x="gx + 6" :y="Y1 - 1" :fill="OUT">漏</text>
-      </g>
-
-      <text v-for="(t, i) in xTicks" :key="'x' + i" class="xt" :class="{ dim: t.dim }"
-        :x="t.x" :y="Y1 + 14">{{ t.t }}</text>
-    </svg>
-
-    <div class="pdc-ft" :title="baseFull">
-      <template v-if="base">
-        <span class="lb">基线</span>
-        <span class="vl">{{ baseVal }}</span>
-        <template v-if="base.relaxed.length">
-          <span class="rx">放宽 {{ base.relaxed.length }} 档</span>
-          <span class="rxd">{{ base.relaxed.join(' / ') }}</span>
+      <svg :width="W" :height="H" :viewBox="`0 0 ${W} ${H}`" role="img" :aria-label="`${row.name}：${fact}`">
+        <line v-for="(g, k) in grid" :key="'g' + k" class="gl" :x1="padL" :x2="W - padR" :y1="g.y" :y2="g.y" :stroke="C.GRID" />
+        <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
+        <rect v-if="band" class="band" :x="padL" :y="band.y" :width="iW" :height="band.h" :fill="C.BAND" fill-opacity="0.4" />
+        <line v-if="dom && row.center != null" class="ctr" :x1="padL" :x2="W - padR" :y1="Y(row.center)" :y2="Y(row.center)" :stroke="C.MID" stroke-width="1" stroke-dasharray="3 3" />
+        <rect v-for="(r, k) in runs" :key="'r' + k" class="run" :x="r.x" :y="padT" :width="r.w" :height="iH" :fill="r.fill" fill-opacity="0.1" />
+        <line class="axl" :x1="padL" :x2="W - padR" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
+        <text v-for="t in xTicks" :key="'x' + t.t" class="ax" :x="t.x" :y="230" text-anchor="middle" :fill="C.AXIS_TEXT">{{ t.t }}</text>
+        <rect v-for="mx in misses" :key="'m' + mx" class="miss" :x="mx" :y="205" width="2" height="7" :fill="C.ABOVE" />
+        <path v-if="linePath" class="line" :d="linePath" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <circle v-for="(p, k) in pts" :key="'p' + k" class="pt" :cx="p.x" :cy="p.y" r="4" :fill="p.fill" stroke="var(--surface-white)" stroke-width="1.5" />
+        <template v-if="tip">
+          <line class="hair" :x1="tip.x" :x2="tip.x" :y1="padT" :y2="H - padB" :stroke="C.TIP_HAIR" stroke-width="1" />
+          <circle v-if="tip.dotY != null" class="hdot" :cx="tip.x" :cy="tip.dotY" r="5" :fill="C.FOCUS" stroke="var(--surface-white)" stroke-width="2" />
         </template>
-      </template>
-      <span v-else class="vl">{{ baseFull }}</span>
+      </svg>
+
+      <div v-if="tip" class="cz-tip pdc-tip" :style="{ left: tip.left + 'px', top: '8px' }">
+        <span v-for="(l, k) in tip.lines" :key="k" :style="{ color: l.c, fontWeight: l.b ? 600 : 400, opacity: l.dim ? 0.72 : undefined }">{{ l.t }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.pdc { width: 100%; }
-.pdc-hd { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
-.pdc-hd .nm { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
-.pdc-hd .fact { font-size: var(--fs-micro); color: var(--text-muted); }
-.pdc-svg { display: block; max-width: 100%; }
-
-.gl { stroke: var(--ink-100); stroke-width: 1; }
-.gt { font-size: 11px; font-family: var(--font-mono); fill: var(--text-muted); text-anchor: end; }
-.ax { stroke: var(--ink-300); stroke-width: 1; }
-
-.band { fill: var(--ink-050); }
-.edge { stroke: var(--ink-300); stroke-width: 1; stroke-dasharray: 4 3; }
-.ctr { stroke: var(--ink-300); stroke-width: 1; stroke-dasharray: 2 3; }
-.ev { font-size: 11px; font-family: var(--font-mono); fill: var(--text-muted); text-anchor: end; }
-
-.fut { fill: var(--ink-050); }
-.futline { stroke: var(--ink-300); stroke-width: 1; stroke-dasharray: 3 3; }
-.futlab { font-size: 11px; fill: var(--text-muted); }
-
-/* 焦点色:这条线画的是当前选中那一栋。出范围仍靠橙点 + 半径 3.4/1.9 两级,不只靠色 */
-.ln { fill: none; stroke: var(--hue-blue); stroke-width: 1.4; stroke-linejoin: round; }
-.gapl { font-size: 11px; }
-
-.xt { font-size: 11px; font-family: var(--font-mono); fill: var(--text-muted); text-anchor: middle; }
-.xt.dim { fill: var(--ink-300); }
-/* 页脚是**一行结构**不是一句话:标签 / 值 / 放宽档数 / 明细,四段各有各的重量 */
-.pdc-ft {
-  margin-top: 3px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px;
-  font-size: var(--fs-micro); color: var(--text-muted); line-height: 1.5;
-}
-.pdc-ft .lb { color: var(--ink-300); flex: 0 0 auto; }
-.pdc-ft .vl { font-family: var(--font-mono); color: var(--text-secondary); flex: 0 0 auto; }
-.pdc-ft .rx {
-  flex: 0 0 auto; font-family: var(--font-mono);
-  border: 1px solid var(--border-subtle); border-radius: 3px; padding: 0 5px;
-}
-.pdc-ft .rxd { min-width: 0; }
-.bandlab { font-size: 10px; fill: var(--ink-300); }
+.pdc { margin-top: 12px; display: flex; flex-direction: column; min-width: 0; }
+.pdc-hd { display: flex; align-items: baseline; gap: 8px; height: 24px; min-width: 0; }
+.pdc-hd .nm { font-size: 14px; font-weight: var(--fw-semibold); flex: 0 0 auto; white-space: nowrap; color: var(--text-primary); }
+.pdc-hd .fact { font-size: 11px; color: var(--text-muted); flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leg { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.leg span { display: inline-flex; align-items: center; gap: 5px; }
+.leg i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
+.leg i.tick { width: 3px; height: 8px; }
+.leg b { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+.leg u { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--surface-white); box-shadow: 0 0 0 1px v-bind(AXIS_LINE); }
+.pdc-plot { position: relative; }
+.pdc-plot svg { display: block; }
+.axh { position: absolute; font-size: 11px; line-height: 14px; font-family: var(--font-mono); color: v-bind('C.AXIS_TEXT'); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.ax { font-size: 11px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pdc-tip { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 </style>
