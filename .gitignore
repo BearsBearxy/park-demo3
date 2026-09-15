@@ -47,3 +47,9 @@ Roboto_Mono.zip
 
 # 设计稿不入库,存在仓外 ../运维文档/设计稿/(按已实现/未实现/被否分类)
 _design/
+
+# 数据修复脚本的人审清单(plan/audit 产物,重跑可再生,勿入库)
+backend/scripts/building-reclass/building-reclass-plan.tsv
+backend/scripts/kva-import/kva-import-plan.tsv
+backend/scripts/fixes/multi-premise-audit.tsv
+backend/scripts/escalation-split/escalation-split-plan.tsv

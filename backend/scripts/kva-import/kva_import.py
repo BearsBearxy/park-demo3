@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """基础容量(kVA)回填(用户拍板 2026-07-27):从一期/二期 2024-02 水电册统计表提取各租户报装容量,
 写入 contract.kva(整链盖章:同链所有段同值)。
-跑法: python kva_import.py plan|apply   (plan 落 demo3/kva-import-plan.tsv 人审;apply 执行 SQL)
+跑法: python kva_import.py plan|apply   (plan 落本脚本同目录 kva-import-plan.tsv 人审,不入库;apply 执行 SQL)
 源表:
   P1《一期2024年2月水电费.xlsx》sheet'2024年2月电费总表':商业col3/工业col13/居民col23 三段基础容量,租户名续行前向填充
   P2《二期2024年2月水电费.xlsx》sheet'本月用电数据统计':一至四车间col3/五、六车间col13
@@ -14,8 +14,7 @@ from collections import defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEMO3 = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
-PLAN_TSV = os.path.join(DEMO3, 'kva-import-plan.tsv')
+PLAN_TSV = os.path.join(HERE, 'kva-import-plan.tsv')
 BASE = r'C:/financial_dashboard/2025全年发生额、预算对比/2024年/2024年3月费用数据/2024年3月费用数据'
 
 ALIAS = {'锂鹏': '锂朋', '彭建宜': '彭健宜', '诺玲': '诺铃', '合源': '合源创盈',

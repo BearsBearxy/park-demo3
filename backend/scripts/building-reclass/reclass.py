@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """楼栋重分类(BUILDING-RECLASS):按标的段 location 文本解析 楼栋/楼层/单元,重挂全部合同。
 跑法(仓库根): python demo3/backend/scripts/building-reclass/reclass.py plan|apply|verify
-  plan   导出 DB→解析→写 demo3/building-reclass-plan.tsv + apply.generated.sql(不写库)
+  plan   导出 DB→解析→写 building-reclass-plan.tsv(与本脚本同目录,不入库) + apply.generated.sql(不写库)
   apply  备份提示后执行 apply.generated.sql(单事务)
   verify 锚点核对:零悬空/单元唯一/占用抽查
 规则(用户拍板 2026-07-26):
@@ -15,8 +15,7 @@ from collections import defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEMO3 = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
-PLAN_TSV = os.path.join(DEMO3, 'building-reclass-plan.tsv')
+PLAN_TSV = os.path.join(HERE, 'building-reclass-plan.tsv')
 APPLY_SQL = os.path.join(HERE, 'apply.generated.sql')
 
 def db(sql, flags='--batch'):

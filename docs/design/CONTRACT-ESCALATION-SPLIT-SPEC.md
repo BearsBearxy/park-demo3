@@ -63,7 +63,7 @@ S10-0059/0145(档全在租期外) · S10-0192/0198(相对期限无日期)。阶�
   已知边界：3 户各有另一份未拆合同（S10-0029/S10-0061/S10-0199），重导时会一并跳过（报告可见非静默），需人工处置。
   `billing-lines/import` 按 id 定点导入不拦（模板不会引用新造行 id），记为已知边界。
 - 脚本：`backend/scripts/escalation-split/{plan,apply,verify}.sql`（docker exec mysql 逐段跑）；
-  plan 产出 `demo3/escalation-split-plan.tsv` 人审留档（仿 restructure-plan.csv 先例）。
+  plan 产出 `backend/scripts/escalation-split/escalation-split-plan.tsv` 人审（2026-09-15 起不入库；原清单见提交 70d2f07）。
 - 回滚：apply 前 `mysqldump` 全量（`backup-before-esc-split-*.sql`）。
 
 ## 5. 云端 replay
