@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A2 · 年等效小时双向条(PV-ANALYSIS-SCREEN-V4 §3.6;画布 _design/pv-ana-redesign/v2/Abs.dc.html)。
+// A2 · 年等效小时双向条(PV-ANALYSIS-SCREEN-V4 §3.6;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
 // 画布 卡内宽 × (上 8 + 行数 × 26 + 下 34);栋名列 96(计划 §1 #19,名字右对齐于 86);右侧预留 176;
 // 0 线 = 锚点,落在绘图宽 22% 处;条长 = 比锚点多几小时,条高 14、圆角 3;每 50 h 一条竖网格。
 // 行点击只选中该栋(计划 §1 #12),不开抽屉。数据口径在 pvAnaV4.logic.ts 的 anchorBars()。

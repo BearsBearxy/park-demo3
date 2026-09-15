@@ -1,7 +1,7 @@
 # 光伏分栋分析屏 v4 版式与可视化规范（PV-ANALYSIS-SCREEN-V4）
 
 拍板：**2026-09-13**，用户看过 v2 画布第一页四块板（Main / Abs / Ledger / Drawer，含已并入的 A2 与 B8-a）后定稿。
-画布：artifact `https://claude.ai/code/artifact/8e9131e4-e060-45dc-a92d-90f84f1f2097`；源 `_design/pv-ana-redesign/v2/*.dc.html`（`Main` / `Abs` / `Ledger` / `Drawer` 四个文件；`Options*` / `Queue*` 是对照板，不是规格）。
+画布：artifact `https://claude.ai/code/artifact/8e9131e4-e060-45dc-a92d-90f84f1f2097`；源 `../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/*.dc.html`（`Main` / `Abs` / `Ledger` / `Drawer` 四个文件；`Options*` / `Queue*` 是对照板，不是规格）。
 **画布是规格，本文是它的索引与口径说明；两者不一致以画布为准。**
 
 上游：`PV-ANALYSIS-SPEC.md`（数据口径、公式、判据线、护栏仍以它为准，逐条对照见 §0）。
@@ -139,7 +139,7 @@
 | `frontend/src/components/ana/AnaRentBandChart.vue` | 09-12 自绘：带 + 线 + 直标线尾数、悬停竖线 + 深底气泡 |
 | `frontend/src/components/ana/AnaRenewalChart.vue` | 09-12 自绘：段内装不下字时放段外 |
 | `frontend/src/components/ana/AnaUnitRentHist.vue` | 09-12 自绘直方图 |
-| `_design/motion/ChartScreen.dc.html` | 分析屏外壳（IconRail / SidebarPanel / TabStrip / Toolbar / AnaShell 工具条） |
+| `../运维文档/设计稿/未实现/全站动效-2026-09-05/ChartScreen.dc.html` | 分析屏外壳（IconRail / SidebarPanel / TabStrip / Toolbar / AnaShell 工具条） |
 
 ### 1.2 色板
 
@@ -299,7 +299,7 @@
 | 几何 | 芯片行高 34（芯片高 26、999 圆角、11px、gap 6，一行 13 枚）；大图 = 图头 24 + 画布 236（padL 44 / padR 14 / padT 12 / padB 24），宽 = 卡内宽；x = 当月 1…31 日画满、标 1 / 5 / 10 / 15 / 20 / 25 / 31；y 按选中栋自适应 + 12% 余量、4 条横网格；主卡恒高 386 |
 | 颜色编码 | 线 `#378ADD` 2px；带 `#B5D4F4` 40%；中心虚线 `#85B7EB`；低于下沿点 `#E24B4A` / 高于上沿点 `#EF9F27`（r4、1.5px 白环）；连续段底色同色 10%；缺抄 `#EF9F27` 2×7 刻度；未到淡底。芯片：命中栋按主导方向（低于多 → 红，高于多 → 琥珀）10% 底 + 同色字 + 徽标「N 天」；未命中白底 1px 边；选中 `--control-solid` 实底白字 600；未投产灰字、点灰 |
 | 交互 | 点芯片 = 换大图（不开抽屉）；未投产芯片不可点；大图悬停：竖线 + 高亮点 + 气泡四行「8 月 D 日 / 比值 x.xxx / 范围 lo – hi / 在范围内｜低于下沿｜高于上沿」，缺抄日第二行「这天没抄表」；卡头链接开抽屉 |
-| 取数 | 芯片顺序 = 有连续段在前，再按出范围天数降序（排序键 = 徽标）；比值 `BoardRow.ratio`、三态 `state`、带 `lo / hi / center`、出范围 `out`、段 `runs`；图头事实句三段式由 `outN / runs / elapsedN − seenN` 拼。**画板示意值**：11 栋 × 31 天形状取自 `_design/pv-ana-redesign/context/v3-design-2026-09-02.html` 的 `BOARD`；缺抄日（E座 25 / 26、G座 14）、「数据到 28 日」、默认选中 F座 都是板上设定 |
+| 取数 | 芯片顺序 = 有连续段在前，再按出范围天数降序（排序键 = 徽标）；比值 `BoardRow.ratio`、三态 `state`、带 `lo / hi / center`、出范围 `out`、段 `runs`；图头事实句三段式由 `outN / runs / elapsedN − seenN` 拼。**画板示意值**：11 栋 × 31 天形状取自 `../运维文档/设计稿/被否/光伏分栋分析第一版-2026-09-13/context/v3-design-2026-09-02.html` 的 `BOARD`；缺抄日（E座 25 / 26、G座 14）、「数据到 28 日」、默认选中 F座 都是板上设定 |
 
 ### §3.3 B2 · 判据脚
 
@@ -529,11 +529,11 @@
 
 ## §5 废弃方案记录
 
-防止有人又把它们做回来。对照板源：`_design/pv-ana-redesign/v2/QueueA.dc.html`、`QueueB.dc.html`、`Options.dc.html`、`Options2.dc.html`。
+防止有人又把它们做回来。对照板源：`../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/QueueA.dc.html`、`QueueB.dc.html`、`Options.dc.html`、`Options2.dc.html`。
 
 | 方案 | 结论 | 原因 |
 |---|---|---|
-| 上一版画布（`_design/pv-ana-redesign/Main.dc.html` 等，沿用 §6.7 墨阶体系） | **被否** | 用户：「新设计和旧版没有任何区别，视觉上还是一样，一样的排版，一样的颜色，一样的可视化选择」 |
+| 上一版画布（`../运维文档/设计稿/被否/光伏分栋分析第一版-2026-09-13/Main.dc.html` 等，沿用 §6.7 墨阶体系） | **被否** | 用户：「新设计和旧版没有任何区别，视觉上还是一样，一样的排版，一样的颜色，一样的可视化选择」 |
 | 主卡左栏楼栋列表：点开「其余 N 栋」撑高主卡 | **被否** | 用户：「逐月比值的楼栋列表又长又挤」 |
 | 主卡左栏楼栋列表：钉高 + 栏内滚动 | **被否** | 用户：「更加无法接受…全部挤在一起的列表，要么重新推翻重做这个功能，要么找一个新的设计样式」（点开后撑高与栏内滚动两种都不接受） |
 | 主卡 A · 网格总览（13 栋迷你图 5×3 + 下方大图） | **未选**（选 B 芯片条） | 大图矮一截；每格只看形状不看刻度 |

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// B6 · 台账装机 vs 板数 × 标称(PV-ANALYSIS-SCREEN-V4 §3.7;画布 _design/pv-ana-redesign/v2/Abs.dc.html)。
+// B6 · 台账装机 vs 板数 × 标称(PV-ANALYSIS-SCREEN-V4 §3.7;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
 // 左 300×300 正方区(+34 轴字):绘图区 248×248(padL 40 / padR 12 / padT 12),两轴同一把刻度,
 // 所以虚线 y = x 是 45°;±容差是沿对角线的斜带。右栏说明 + 录入入口(emit record,由屏去跳楼栋档案)。
 // 一栋没录也照样画框线、对角线与带,只是没有点(计划 §1 #4)。画板无悬停,这里也不加。
