@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """多场地混装全量清查(2026-07-27):找出疑似"多份纸约被合并/一纸约多场地未理期"的租户,
-输出 demo3/multi-premise-audit.tsv 供逐户配纸约。信号沉淀自 仁恒/碳紫/可莱恩 三例修复。
+输出本脚本同目录 multi-premise-audit.tsv(不入库)供逐户配纸约。信号沉淀自 仁恒/碳紫/可莱恩 三例修复。
 跑法: python multi_premise_audit.py
 """
-import io, re, subprocess, sys
+import io, os, re, subprocess, sys
 from collections import defaultdict
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-OUT = r'C:\financial_dashboard\demo3\multi-premise-audit.tsv'
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multi-premise-audit.tsv')
 FIXED = {'仁恒', '碳紫', '可莱恩'}
 
 def db(sql):
