@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// B3 · 等效小时轨迹(PV-ANALYSIS-SCREEN-V4 §3.5;画布 _design/pv-ana-redesign/v2/Abs.dc.html)。
+// B3 · 等效小时轨迹(PV-ANALYSIS-SCREEN-V4 §3.5;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Abs.dc.html)。
 // 画布 卡内宽 × 250,padL 44 / padR 62 / padT 12 / padB 24;x = 刻度落点(首尾贴边),月档逐日、年档逐月;
 // y = 数据极值各外扩 18%,4 条横网格;线尾直标最小间距 13。
 // 数据口径(分母、在网 < 3 栋留空、漏抄置空)全在 pvAnaV4.logic.ts 的 yieldBand(),这里只画。

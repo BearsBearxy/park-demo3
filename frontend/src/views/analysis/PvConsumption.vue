@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// B7 · 消纳结构与损耗率(PV-ANALYSIS-SCREEN-V4 §3.8;画布 _design/pv-ana-redesign/v2/Ledger.dc.html)。
+// B7 · 消纳结构与损耗率(PV-ANALYSIS-SCREEN-V4 §3.8;画布 ../运维文档/设计稿/已实现/光伏分栋分析v4定稿-2026-09-13/Ledger.dc.html)。
 // 画布 卡内宽 × 272,padL 46 / padR 46 / padT 22 / padB 26;每刻度一个槽,柱宽 = 槽宽 × 0.6;
 // 左轴 万度 = 最高那根柱 × 1.12 四等分;右轴损耗率钉死 0–6%,超出的刻度折线断开 + 轴外三角 + 数值。
 // 堆叠自下而上 = 自己用了 / 卖上网 / 路上损掉,只有最顶一段圆角(≤ 3)。数据口径在 consumption()。

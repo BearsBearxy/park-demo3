@@ -45,6 +45,5 @@ backend/scripts/backups/
 Roboto_Mono/
 Roboto_Mono.zip
 
-# 设计画布的产物(2.5MB 编辑器载荷,非内容);源文件 _design/*.dc.html 照常入库
-_design/*.html
-!_design/*.dc.html
+# 设计稿不入库,存在仓外 ../运维文档/设计稿/(按已实现/未实现/被否分类)
+_design/

@@ -2,7 +2,7 @@
 
 - **状态**：设计稿，待用户审核。**未实施**，不含任何站点代码。
 - **日期**：2026-09-05
-- **原型**：`_design/showcase-site/prototype.html`（可滚动的动效原型；右下角「设计批注」开关逐章说明动效 / 转场 / 素材，并显示末尾的 UI 组件表）。Artifact：https://claude.ai/code/artifact/ee6e3b7f-c8c2-4f35-a2e8-7e640f6c191c
+- **原型**：`../运维文档/设计稿/未实现/产品展示站-2026-09-05/prototype.html`（可滚动的动效原型；右下角「设计批注」开关逐章说明动效 / 转场 / 素材，并显示末尾的 UI 组件表）。Artifact：https://claude.ai/code/artifact/ee6e3b7f-c8c2-4f35-a2e8-7e640f6c191c
 - **参照**：用户给的 https://www.apple.com/au/iphone-17-pro/ （章节式滚动叙事、钉住舞台、大字标题）。
 - **上游**：`frontend/src/styles/tokens.css`、`frontend/src/assets/factory-park-mark.svg`、`frontend/src/nav/fpNav.ts`（屏名与 19 屏口径）、`docs/design/BILL-FORWARD-SPEC.md` §0.3（Excel 时代工作量盘点）、`docs/design/S20-BILL-DELIVERY-SPEC.md`（催缴单交付链）、`docs/design/POOL-ENGINE-SPEC.md`、`docs/design/CONCURRENCY-SPEC.md`、`docs/design/RBAC-SPEC.md`、`stage-review-2026-08-30.md`（工程数字）。
 
@@ -381,6 +381,6 @@
 
 ## 11. 与原型的对应
 
-原型 `_design/showcase-site/prototype.html` 已实现 §4 全部动效与转场（GSAP 3.12.5 via cdnjs），用「素材位」占住 §6 全部位置并标注规格；右下角「设计批注」开关显示 / 隐藏逐章说明与末尾的「UI 组件表」（§3.1 的实物）。它是设计稿，不是站点代码：实施时按 §7 重建，不直接复用。**文案以本 spec §4 为准，原型只是其实物**；两者不一致时改原型。
+原型 `../运维文档/设计稿/未实现/产品展示站-2026-09-05/prototype.html` 已实现 §4 全部动效与转场（GSAP 3.12.5 via cdnjs），用「素材位」占住 §6 全部位置并标注规格；右下角「设计批注」开关显示 / 隐藏逐章说明与末尾的「UI 组件表」（§3.1 的实物）。它是设计稿，不是站点代码：实施时按 §7 重建，不直接复用。**文案以本 spec §4 为准，原型只是其实物**；两者不一致时改原型。
 
 实施要点（v1.2 对抗复查坐实，写进代码即可）：钉住的 ScrollTrigger 必须先于其余触发器创建（否则后者按无钉住的位置算，会提前几千像素触发）；减少动态效果与无脚本两档的协作双窗直接呈现播放终态；经营分析分段控件在静态档要能当普通 tab 切换四张画面；光伏 SVG 的 viewBox 跟随渲染尺寸。

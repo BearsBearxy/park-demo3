@@ -239,7 +239,7 @@ public TenantDetailDTO       detail(@PathVariable Integer id) { return svc.detai
 
 ### 池抽屉：设计稿逐条对现场
 
-`_design/{Main,States,Flow}.dc.html` 的要点在真实抽屉里**全部可见**：
+`../运维文档/设计稿/已实现/编辑池抽屉动线-2026-08-30/{Main,States,Flow}.dc.html` 的要点在真实抽屉里**全部可见**：
 
 | 设计稿要求 | 现场 |
 |---|---|
