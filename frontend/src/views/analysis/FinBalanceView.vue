@@ -54,6 +54,11 @@ const reportFallback = computed(() => {
   return period.ym.value ? rym !== period.ym.value : !rym.startsWith(period.sel.value.year + '-')
 })
 
+// 行高亮标志必须声明在下面那条 immediate watch 之前:watch 回调第一句就清它,
+// 声明在后 = 暂时性死区,async 回调里抛出的 ReferenceError 变成被吞掉的 rejection,
+// 取数一行都不跑,整屏永远空白(2026-09-16 实测)。
+const flashLabel = ref<string | null>(null)
+
 // ── 数据:bs 快照 + is 快照(杜邦净利率/周转率联动) ──
 const bsDto = ref<ReportPeriodDTO | null>(null)
 const isDto = ref<ReportPeriodDTO | null>(null)
@@ -180,7 +185,6 @@ const leOpt = computed(() =>
 const gaugeOpt = computed(() => gaugesOption(R.value?.debtRatio ?? 0, R.value?.current ?? null))
 
 // 点环扇区 → 快照全表滚动定位并高亮该科目行(复审:本屏补下钻;行匹配按 label 前缀)
-const flashLabel = ref<string | null>(null)
 async function locateRow(p: unknown) {
   const name = (p as { name?: string }).name
   if (!name) return
