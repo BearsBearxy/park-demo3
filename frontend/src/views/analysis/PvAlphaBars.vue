@@ -10,7 +10,9 @@
  */
 import { computed } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { sgn } from '@/components/ana/anaFmt'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { niceTicks } from './forecastChart.logic'
 import type { PvAlphaBarsProps } from './pvAnaV4.logic'
@@ -28,6 +30,10 @@ const NAME_R = 60
 const labelW = (s: string) => s.length * 6.6
 const X0 = 66
 const { el, width } = useWidth(496)
+// 切到「高级分析」挂上来时在视口内擦入 320;换期 200 形变:条 / 淡带 / 选中描边走 clip-path(--x / --w),
+// 数值标签与整行走 transform(宽度、left 不许过渡)。擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 
 const r1 = (v: number) => +v.toFixed(1)
 const phaseFill = (p: number) => PHASE_COLORS[p] ?? 'var(--ink-500)'
@@ -57,7 +63,7 @@ const geo = computed(() => {
   const AX = (v: number) => r1(X0 + (f(v) - f(dlo)) / (f(dhi) - f(dlo)) * (x1 - X0))
   const zero = AX(0)
   const ticks = tv.map(v => ({ x: AX(v), label: `${v > 0 ? '+' : ''}${v}%` }))
-  const bars = rows.map(r => {
+  const bars = rows.map((r, i) => {
     const ax = AX(r.alphaPct)
     const on = r.id === props.selId
     const label = sgn(r.alphaPct, 1, '%')
@@ -67,7 +73,7 @@ const geo = computed(() => {
     if (neg && lx - labelW(label) < NAME_R) { neg = false; lx = zero + 6 }
     else if (!neg && lx + labelW(label) > W) { neg = true; lx = zero - 6 }
     return {
-      id: r.id, name: r.name, fill: phaseFill(r.phase), on,
+      id: r.id, name: r.name, fill: phaseFill(r.phase), on, top: i * ROW_H,
       x: Math.min(zero, ax), w: r1(Math.max(Math.abs(ax - zero), 1)),
       bandX: AX(r.ciLo), bandW: r1(AX(r.ciHi) - AX(r.ciLo)),
       label, lx: r1(lx), neg,
@@ -77,6 +83,17 @@ const geo = computed(() => {
 })
 
 const sel = computed(() => props.data.rows.find(r => r.id === props.selId) ?? null)
+
+// ponytail: 行的 DOM 顺序只追加、不重排 —— Chromium 里被挪动的节点丢过渡(实测),换期名次一变挪动的行会瞬移。
+// 首挂按名次排;之后留着旧顺序、新栋追到尾巴。纵向位置全靠行的 translateY。
+// 代价:换期后按 Tab 走条的顺序是旧名次,不是新名次(读屏顺序同)。
+let order: number[] = []
+const drawn = computed(() => {
+  const by = new Map(geo.value.bars.map(b => [b.id, b]))
+  order = [...order.filter(id => by.has(id)), ...[...by.keys()].filter(id => !order.includes(id))]
+  return order.map(id => by.get(id)!)
+})
+const rowT = (k: number) => ({ transform: `translateY(${k * ROW_H}px)` })
 
 // ── L5:换一种扫描顺序重算的一句 + 88×20 迷你收敛线 + 悬停一行 ──
 const stab = computed(() => {
@@ -103,20 +120,23 @@ const stab = computed(() => {
         <span class="pab-ax pab-tick" :style="{ left: `${t.x}px`, top: `${geo.plotH + 2}px` }">{{ t.label }}</span>
       </template>
       <span class="pab-grid pab-zero" :style="{ left: `${geo.zero}px`, height: `${geo.plotH}px`, background: PV_COLORS.REF_DIAG }" />
-      <div class="pab-rows">
-        <div v-for="b in geo.bars" :key="b.id" class="pab-row" :data-id="b.id">
+      <div :class="['pab-rows', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+        <!-- 画面上的条 = 整行宽的块被 clip-path 裁出 [--x, --x + --w],能过渡;按钮是透明的点击 / 焦点框,left / width 瞬到 -->
+        <div v-for="b in drawn" :key="b.id" class="pab-row" :data-id="b.id" :style="{ transform: `translateY(${b.top}px)` }">
           <span class="pab-name" :class="{ on: b.on }">{{ b.name }}</span>
-          <span class="pab-band" :style="{ left: `${b.bandX}px`, width: `${b.bandW}px`, background: b.fill }" />
+          <span class="pab-band" :style="{ '--x': `${b.bandX}px`, '--w': `${b.bandW}px`, background: b.fill }" />
+          <span v-if="b.on" class="pab-ring" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px` }" />
+          <span class="pab-fill" :style="{ '--x': `${b.x}px`, '--w': `${b.w}px`, background: b.fill }" />
           <button type="button" class="pab-bar" :aria-label="`${b.name} α ${b.label}`"
-            :style="{ left: `${b.x}px`, width: `${b.w}px`, background: b.fill, boxShadow: b.on ? '0 0 0 1.5px var(--ink-900)' : 'none' }"
+            :style="{ left: `${b.x}px`, width: `${b.w}px` }"
             @click="emit('pick', b.id)" />
-          <span class="pab-ax pab-val" :class="{ neg: b.neg }" :style="{ left: `${b.lx}px` }">{{ b.label }}</span>
+          <span class="pab-ax pab-val" :class="{ neg: b.neg }" :style="{ '--x': `${b.lx}px` }">{{ b.label }}</span>
         </div>
-        <div v-for="u in data.short" :key="u.id" class="pab-row rest" :data-id="u.id">
+        <div v-for="(u, k) in data.short" :key="u.id" class="pab-row rest" :data-id="u.id" :style="rowT(geo.bars.length + k)">
           <span class="pab-name">{{ u.name }}</span>
           <span class="pab-ax pab-val" :style="{ left: `${X0 + 6}px` }">在网 {{ u.days }} 天，不排</span>
         </div>
-        <div v-for="u in data.rest" :key="u.id" class="pab-row rest" :data-id="u.id">
+        <div v-for="(u, k) in data.rest" :key="u.id" class="pab-row rest" :data-id="u.id" :style="rowT(geo.bars.length + data.short.length + k)">
           <span class="pab-name">{{ u.name }}</span>
           <span class="pab-ax pab-val" :style="{ left: `${X0 + 6}px` }">无 α</span>
         </div>
@@ -144,20 +164,33 @@ const stab = computed(() => {
   color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none;
 }
 .pab-tick { width: 40px; margin-left: -20px; text-align: center; }
-.pab-rows { position: absolute; left: 0; top: 0; width: 100%; display: flex; flex-direction: column; }
-.pab-row { position: relative; height: 22px; }
+/* inset:0 给擦入的 clip-path 一个有高度的框(行都是绝对定位,不撑高) */
+.pab-rows { position: absolute; inset: 0; }
+.pab-rows.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+.pab-row { position: absolute; left: 0; top: 0; width: 100%; height: 22px; transition: transform var(--dur-base) var(--ease-out); }
 .pab-name {
   position: absolute; left: 0; top: 0; width: 58px; line-height: 22px; text-align: right;
   font-size: var(--fs-label); white-space: nowrap;
 }
 .pab-name.on { font-weight: var(--fw-semibold); }
 .rest .pab-name { color: var(--ink-500); }
-.pab-band, .pab-bar { position: absolute; top: 4px; height: 14px; border-radius: 3px; }
+/* 条 / 淡带 / 选中描边:整行宽的块裁出 [--x, --x + --w],换期 200 过渡的是裁剪,不是宽度 */
+.pab-band, .pab-fill, .pab-ring {
+  position: absolute; left: 0; top: 4px; width: 100%; height: 14px; pointer-events: none;
+  --x: 0px; --w: 0px;   /* 缺省(行内 :style 覆盖);也让令牌门禁认得这两个组件内变量 */
+  clip-path: inset(0 calc(100% - var(--x) - var(--w)) 0 var(--x) round 3px);
+  transition: clip-path var(--dur-base) var(--ease-out);
+}
 .pab-band { opacity: .3; }
-.pab-bar { border: 0; padding: 0; margin: 0; cursor: pointer; }
-.pab-val { top: 4px; color: var(--ink-700); }
+/* 选中描边 = 条后面四周大 1.5px 的墨块(原 box-shadow 0 0 0 1.5px),与条同一对 --x / --w 一起形变 */
+.pab-ring { top: 2.5px; height: 17px; background: var(--ink-900); clip-path: inset(0 calc(100% - var(--x) - var(--w) - 1.5px) 0 calc(var(--x) - 1.5px) round 4.5px); }
+.pab-bar { position: absolute; top: 4px; height: 14px; border-radius: 3px; border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer; }
+.pab-val { --x: 0px; top: 4px; color: var(--ink-700); }
+.pab-row:not(.rest) .pab-val { left: 0; transform: translateX(var(--x)); transition: transform var(--dur-base) var(--ease-out); }
 .rest .pab-val { color: var(--text-muted); }
-.pab-val.neg { transform: translateX(-100%); }
+.pab-row:not(.rest) .pab-val.neg { transform: translateX(var(--x)) translateX(-100%); }
+/* hold:特异度要压过上面各条(:not(.rest) 那条是 0,3,0) */
+.pab-rows.hold .pab-row, .pab-rows.hold :is(.pab-band, .pab-fill, .pab-ring), .pab-rows.hold .pab-row .pab-val { transition: none; }
 
 .pab-leg { display: flex; align-items: center; gap: 14px; margin-top: 8px; font-size: var(--fs-micro); color: var(--text-secondary); white-space: nowrap; flex-wrap: wrap; }
 .pab-leg span { display: inline-flex; align-items: center; gap: 5px; }

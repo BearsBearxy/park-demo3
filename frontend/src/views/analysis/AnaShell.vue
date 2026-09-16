@@ -7,7 +7,7 @@
 // §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
 // 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
 // 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
-import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
@@ -38,10 +38,6 @@ const cmp = props.compare ? useCompare(props.compare) : null
 const period = usePeriod()
 const loaded = ref(false)
 
-// 屏级首绘标志(C6-02):图表挂载时读它决定走入场相还是更新相 —— 首批图在同一 tick 里全看到
-// false 走 320 首绘,随后 AnaEChart 在 nextTick 置真,此后段控 / 粒度 / 抽屉 / v-if 重挂的图
-// 一律走更新相,**永不重播入场**。一处 provide 覆盖全屏,比每张图手写 :entrance 少 54 处改动。
-provide('anaEntered', ref(false))
 const asof = computed(() => period.months.value[period.months.value.length - 1] ?? '—')
 
 onMounted(async () => {

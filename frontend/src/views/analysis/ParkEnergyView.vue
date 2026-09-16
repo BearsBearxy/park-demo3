@@ -20,7 +20,9 @@ import {
   HUB, type AmtMonth, type BoardKey,
 } from './parkEnergy.logic'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
-import { usePeriod, ymOf } from '@/analysis/usePeriod'
+import { usePeriod, ymOf, type PeriodSel } from '@/analysis/usePeriod'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import { iconFor } from '@/components/ds/icon'
 
@@ -31,7 +33,7 @@ const budgetRows = ref<BudgetRowDTO[]>([])
 // 当年购电预算(支出),取「其中:」子行 label 含 电费支出
 // T4 图表清晰化:售电预算·月均线已移除(售电稀疏与柱不同域),电费收入预算不再取
 const budgetElec = computed(() => {
-  const y = period.sel.value.year
+  const y = view.value.year
   const rows = budgetRows.value.filter(r => r.year === y && r.budget != null)
   return {
     cost: rows.find(r => r.label.includes('电费支出'))?.budget ?? null,
@@ -41,6 +43,13 @@ const budgetElec = computed(() => {
 const period = usePeriod()
 const loading = ref(true)
 const failed = ref(false)
+// 换年在途(C5-02):旧内容留在原地退让,不卸载;过 200ms 门才亮、到数立刻灭
+const staleShown = useDeferredFlag(loading)
+/** 已画在屏上的期间。sel 立刻变(控件回显),年要等数据一起换 —— 否则换年那一趟会拿新年月份去索引旧年数据
+ *  (C5-02 ①)。同一年里切月 / 切粒度不打接口,直接跟 sel(下方 watch)。null = 还没有任何数据。 */
+const shown = ref<PeriodSel | null>(null)
+watch(() => period.sel.value, (s) => { if (s.year === shown.value?.year) shown.value = s })
+const view = computed(() => shown.value ?? period.sel.value)
 const months = ref<EnergyMonth[]>([])       // kWh+金额混合行(v1 同款,KPI/单位成本/损益用)
 const amt = ref<AmtMonth[]>([])             // 金额侧逐月行(桑基/趋势/组合用)
 
@@ -58,6 +67,7 @@ async function load(year: number) {
     if (t !== token) return
     months.value = buildEnergyMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
     amt.value = buildAmtMonths(year, elec, pv, [chg7, chg8], [off13, off14], s10)
+    shown.value = { ...period.sel.value, year }
     const buds = await fetchBudgetAll().catch(() => [])   // 预算对比基准(无预算不阻塞)
     if (t === token) budgetRows.value = buds
   } catch {
@@ -68,8 +78,11 @@ async function load(year: number) {
 }
 watch(() => period.sel.value.year, (y) => { void load(y) }, { immediate: true })
 
-const isMonth = computed(() => period.sel.value.gran === 'month')
-const curYm = computed(() => ymOf(period.sel.value.year, period.sel.value.month))
+const isMonth = computed(() => view.value.gran === 'month')
+const curYm = computed(() => ymOf(view.value.year, view.value.month))
+// 页头期间跟已画的那一期走(拼法同 usePeriod().label)
+const viewLabel = computed(() =>
+  (period.months.value.length ? view.value.year + '年' + (isMonth.value ? view.value.month + '月' : '') : '—'))
 const idx = computed(() => months.value.findIndex((m) => m.ym === curYm.value))
 
 type NumKey = Exclude<keyof EnergyMonth, 'ym'>
@@ -123,7 +136,7 @@ function covAgg(key: NumKey): number | null {
 // ── KPI 条(值与 v1 statItems 完全一致) ──
 // 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
 const KPI_LABELS = ['园区购电', '购电成本', '光伏发电', '光伏消纳占供电', '单位购电成本', '售电(转供)收入'] as const
-const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
+const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
   { label: '园区购电', value: buyKwh.value != null ? fnum(buyKwh.value / 10000, 1) + '万kWh' : '—', delta: mom('buyKwh'), kind: '环比', invert: true, note: isMonth.value ? undefined : '全年' },
   { label: '购电成本', value: buyCost.value != null ? '¥' + fnum(buyCost.value / 10000, 1) + '万' : '—', note: isMonth.value ? '本月' : '全年' },
   { label: '光伏发电', value: pvGen.value != null ? fnum(pvGen.value / 10000, 1) + '万kWh' : '—', note: pvGen.value ? '消纳 ' + ((pvSelf.value ?? 0) / pvGen.value * 100).toFixed(0) + '%' : undefined },
@@ -251,48 +264,51 @@ const segsOption = computed(() => ({
 
 <template>
   <!-- §五:月敏感屏(full);桑基月锚回退以横幅显式 -->
-  <AnaShell :compare="CMP" period-mode="full">
+  <AnaShell :compare="CMP" period-mode="full" :busy="staleShown">
     <template #kpis>
       <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" />
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
-         页头 44(.ak-h-ic 40 / .ak-title 20 + .ak-sub margin 4 + 20);卡头 20 + .av2-card-h margin-bottom 8 = 28;
-         图块 = 各 AnaEChart 的 :height 字面值(300 / 170 / 250 / 250 / 170)。
-         KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
-    <div v-if="loading" class="ak-page ak-skel">
+         页头 44(ana.css .ak-h-ic 40 / .ak-title 行盒 20 + .ak-sub margin-top 4 + 行盒 20;行盒 = base.css body
+         line-height var(--lh-snug) = tokens.css 20px);卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28;
+         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 字面值同表降档(300 / 170 / 250 / 250 / 170,anaChartHeight.ts)。
+         KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。
+         只认首进(还没有任何一期画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
+    <div v-if="loading && !shown" class="ak-page ak-skel">
       <div class="fp-shim" style="height: 44px; width: 300px"></div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 170px"></div>
+          <AnaSkelChart :height="170" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-          <div class="fp-shim" style="height: 250px"></div>
+          <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-          <div class="fp-shim" style="height: 250px"></div>
+          <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-          <div class="fp-shim" style="height: 170px"></div>
+          <AnaSkelChart :height="170" />
         </div>
       </div>
     </div>
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
-    <div v-else class="ak-page">
+    <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
+    <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="ak-head">
         <div class="ak-h-l">
           <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
           <div>
             <h2 class="ak-title">园区能耗</h2>
-            <p class="ak-sub">能量流(金额)· 购电 vs 售电(转供)· 单位成本 · 板块损益 · 期间 {{ period.label.value }}</p>
+            <p class="ak-sub">能量流(金额)· 购电 vs 售电(转供)· 单位成本 · 板块损益 · 期间 {{ viewLabel }}</p>
           </div>
         </div>
       </div>

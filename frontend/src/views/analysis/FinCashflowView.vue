@@ -12,6 +12,7 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import AnaTrend from '@/components/ana/AnaTrend.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import DsSelect from '@/components/ds/Select.vue'
@@ -224,11 +225,11 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">收缴率 vs 目标</span>
               <span class="hint">目标 {{ anaSettings.collectTarget }}%(设置弹层可调)</span></div>
-            <div class="ak-bar-rows" style="margin-top: 6px">
+            <AnaBarRows style="margin-top: 6px">
               <AnaBarRow v-for="p in ledgerPeriods" :key="p.ym" :name="p.ym" :value="p.rate" :max="100"
                 :target="anaSettings.collectTarget"
                 :fill="p.rate >= anaSettings.collectTarget ? 'var(--fill-blue)' : 'var(--hue-orange)'" />
-            </div>
+            </AnaBarRows>
           </div>
 
           <!-- 应收 vs 实收 分组柱 s8(点柱→该期欠费租户清单) -->

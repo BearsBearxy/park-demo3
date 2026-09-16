@@ -4,9 +4,10 @@
 // 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万,localStorage)。
 // 分栋抄表分析已独立成屏(pv-meter-analysis,PV-ANALYSIS-SPEC §00):本屏只留附表6 口径的投资回收。
 // 数据变换纯函数抽于 pvRoi.logic.ts(单测)。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
@@ -15,6 +16,7 @@ import { finWan } from '@/utils/finFmt'
 import { fnum } from '@/components/ana/anaFmt'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, phaseMonthly, phaseSummaries } from './pvRoi.logic'
+import { inViewport, useEnterPhase } from '@/components/ana/anaMotion'
 
 const phases = ref<PvPhaseDTO[]>([])
 const records = ref<PvRecordDTO[]>([])
@@ -43,6 +45,13 @@ const tot = computed(() => {
   }
 })
 const rpct = (x: number): string => (x * 100).toFixed(1) + '%'
+
+// 回收进度条是 DOM 图(2026-09-16 行为矩阵):视口内首挂 / 切回页签 fp-wipe 320,投资额改动 --pct 形变 200。
+// 条挂在骨架之后的 v-else 里,屏的 onMounted 那一刻还不在 —— 首挂由下面这条 post watch 补判,
+// 切回页签由 useEnterPhase 管。
+const barEl = ref<HTMLElement | null>(null)
+const barFirst = useEnterPhase(barEl)
+watch(barEl, (e, old) => { if (e && !old) barFirst.value = inViewport(e) }, { flush: 'post' })
 const onlineLabel = (p: PvPhaseDTO): string => (p.online ? p.online.replace('-', '年') + '月并网' : '并网月未录')
 
 // ── 爬坡线 + 投资额 markLine + 预估回收点 markPoint ──
@@ -138,12 +147,13 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
     <!-- 首进:版式已知就不转圈(C6-01)。本屏无页头,块高逐块照它顶替的那块 ——
          卡头 20(.av2-card-h 下距 8 合 28)、两张图各 300(:height 字面值);
          同排的 s4 卡真内容比 300 矮,栅格行高由 s8 决定,骨架同排也留 300。
+         s8 两块顶替 AnaEChart → AnaSkelChart(与图同表降档);s4 两块顶替的是进度卡 / 明细表,照旧写死。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
     <div v-if="loading" class="roi2-page ana-skel">
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 150px"></div></div>
@@ -151,7 +161,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         </div>
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
@@ -184,7 +194,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
             <div class="roi2-big">{{ rpct(tot.recovery) }}</div>
-            <div class="roi2-bar"><div class="roi2-bar-fill" :style="{ '--pct': (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
+            <div ref="barEl" class="roi2-bar" :class="{ first: barFirst }" @animationend.self="barFirst = false" @animationcancel.self="barFirst = false"><div class="roi2-bar-fill" :style="{ '--pct': (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
             <div class="roi2-rows">
               <div class="r"><span class="k">累计电费收益</span><span class="v">{{ finWan(tot.cum) }}</span></div>
               <div class="r"><span class="k">其中 自消纳</span><span class="v">{{ finWan(tot.selfAmt) }}</span></div>
@@ -242,6 +252,8 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 /* 回收进度卡 */
 .roi2-big { font-size: var(--fs-display); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
 .roi2-bar { height: 8px; border-radius: var(--radius-full); background: var(--ink-100); overflow: hidden; margin: 10px 0 14px; }
+/* 擦入挂在轨道上,不挂在 fill 上:fill 的 clip-path 已被 --pct 占着,fp-wipe 的终帧 inset(0) 会把它盖成满条 */
+.roi2-bar.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .roi2-bar-fill { height: 100%; width: 100%; border-radius: var(--radius-full); background: var(--hue-blue); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0 round var(--radius-full)); transition: clip-path var(--dur-base) var(--ease-standard); }
 .roi2-rows { display: flex; flex-direction: column; gap: 8px; }
 .roi2-rows .r { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

@@ -19,6 +19,9 @@ const props = withDefaults(defineProps<{
 }>(), { unit: '%' })
 
 const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : ''))
+// 换期 200 同键形变(2026-09-16 矩阵,同 AnaSpark):键 = d 的命令结构(缺月断点会拆子路径)。
+// 结构一变 d 插值不了,整条换新元素瞬到,不是半截跳。
+const sparkKey = computed(() => spark.value.replace(/[^A-Za-z]/g, ''))
 </script>
 
 <template>
@@ -26,8 +29,8 @@ const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : '')
     <span class="l">{{ label }}</span>
     <span class="vr">
       <span class="v">{{ value }}</span>
-      <svg v-if="spark" class="spk" viewBox="0 0 56 20" aria-hidden="true">
-        <path :d="spark" fill="none" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round" />
+      <svg v-if="spark" class="spk ana-morph" viewBox="0 0 56 20" aria-hidden="true">
+        <path :key="sparkKey" :d="spark" fill="none" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round" />
       </svg>
     </span>
     <span v-if="delta != null" class="d" :style="{ color: deltaColor(delta, invert) }">{{ sgn(delta, 1, unit) }} {{ kind || '' }}</span>

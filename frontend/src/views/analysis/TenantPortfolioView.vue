@@ -12,8 +12,10 @@ import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import { PHASES } from '@/views/sales-income/layout'
 import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
@@ -255,24 +257,25 @@ const listRows = computed(() => {
       </template>
     </template>
 
-    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250),
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250;走 AnaSkelChart,与图同一张 S 档降档表),
          卡头 20(+ .av2-card-h 下距 8 = 28)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
-         (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×15 + gap 14(.ak-bar-rows)、
+         (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×20 + 4 × gap 14 = 156(行高 = .ak-bar-name / .ak-bar-val 的行盒 20:
+         base.css:19 line-height var(--lh-snug),ana.css:59/63 不覆写;轨道 8 比它矮;gap 见 ana.css:57)、
          租户清单 LIST_N=12 行 ×38 + 表头 30(.ak-tbl td height 38;表头 = 行盒 20 + padding-bottom 9 + 下边框 1)。数据到了原地硬切,不做淡入、不错峰。 -->
     <div v-if="!loaded" class="ak-page tp2-skel">
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
           <div class="fp-shim" style="height: 112px; margin-top: 4px"></div>
         </div>
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
-          <div class="fp-shim" style="height: 250px"></div>
+          <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 110px"></div></div>
@@ -280,7 +283,7 @@ const listRows = computed(() => {
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 130px"></div></div>
-          <div class="fp-shim" style="height: 131px"></div>
+          <div class="fp-shim" style="height: 156px"></div>
         </div>
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 150px"></div></div>
@@ -368,13 +371,13 @@ const listRows = computed(() => {
         <!-- 合同生命周期 -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">合同生命周期</span><span class="hint">全部合同分布</span></div>
-          <div class="ak-bar-rows">
+          <AnaBarRows>
             <div v-for="l in lifeCounts" :key="l.label" class="ak-bar-row">
               <span class="ak-bar-name">{{ l.label }}</span>
               <div class="ak-bar-track"><div class="ak-bar-fill" :style="{ '--pct': (l.value / lifeMax) * 100 + '%', background: l.tone }"></div></div>
               <span class="ak-bar-val">{{ l.value }} 份</span>
             </div>
-          </div>
+          </AnaBarRows>
         </div>
 
         <!-- 租户清单(环图联动过滤) -->

@@ -41,6 +41,9 @@ export interface RollingRow {
  */
 export function prevYearUsable(cur: PnlSummary | null, prev: PnlSummary | null): boolean {
   if (!cur || !prev) return false
+  // 换年在途时 pnl 与 prevPnl 分两次落地:新年的 pnl 可能配着旧年的 prev(比如 2026 配 2024 那份),
+  // 附表集合碰巧相同就会接上,预测带先形变到一份假数据上再改回来。年份不相邻一律不接。
+  if (prev.year !== cur.year - 1) return false
   const setOf = (p: PnlSummary) => Object.entries(p.bySchedule)
     .filter(([, b]) => b.rev.some((v) => v != null))
     .map(([k]) => k).sort().join(',')

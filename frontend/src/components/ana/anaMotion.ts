@@ -11,7 +11,7 @@
 //
 // 注入顺序 `{...keys, ...top, ...stagger, ...s}`:屏侧显式键(顶层 top 或系列 s)永远优先 ——
 // 注入的是「屏没写时的缺省」,不是覆盖。Breakeven 顶层 animationDurationUpdate:0 靠这条压过 200。
-import { inject, nextTick, onDeactivated, onMounted, ref, type Ref } from 'vue'
+import { computed, getCurrentInstance, onActivated, onDeactivated, onMounted, ref, watch, type Ref } from 'vue'
 
 export const DUR = { enter: 320, update: 200, state: 120 } as const   // 镜像 --dur-slow / --dur-base / --dur-fast
 export const EASE = { enter: 'quarticOut', update: 'cubicOut' } as const
@@ -52,25 +52,71 @@ export function motionize(o: Rec, phase: 'enter' | 'update', env: { reduced: boo
   return { ...keys, ...o, series }
 }
 
-/** 自绘 SVG / DOM 图的首绘相(C6-25):这次挂载要不要擦入。
- *
- * 与 AnaEChart 读**同一个**屏级标志(AnaShell `provide('anaEntered')`)—— 段控 / 粒度 / 抽屉 /
- * v-if 重挂时 entered 已真,自动瞬到,不用给每张图写 :entrance。
- * 默认 `ref(true)` 而不是 AnaEChart 的 `ref(false)`:AnaShell 之外(单测、独立用)当作「已进屏」= 不擦。
- * 置真放 onMounted 里自己做:纯自绘屏(光伏分栋)一张 AnaEChart 都没有,没人替它置。
- */
-export function useEnterPhase(el: Ref<Element | null>): Ref<boolean> {
-  const entered = inject<Ref<boolean>>('anaEntered', ref(true))
-  const first = ref(false)
-  onMounted(() => {
-    // 与 C6-06 同一条 visible() 判据:离屏 / 后台标签页那次不擦,滚到时已画好,不补播。
-    const r = el.value?.getBoundingClientRect()
-    first.value = !entered.value && !!r && !document.hidden && r.bottom > 0 && r.top < innerHeight
-    nextTick(() => { entered.value = true })
+/** 与 C6-06 同一条判据:在视口内且标签页在前台。AnaEChart 与自绘图共用。 */
+export function inViewport(el: Element | null | undefined): boolean {
+  const r = el?.getBoundingClientRect()
+  return !!r && !document.hidden && r.bottom > 0 && r.top < innerHeight
+}
+
+/** KeepAlive「切回页签」:只在**先停用过**之后的那次激活里调 fn。
+ *  KeepAlive 根组件挂载时 Vue 会顺带调一次 activated(挂载期注册的后代钩子也在根上一起调)——
+ *  那次不是「切回」,靠「之前停用过」这一条挡掉,不数次数(挂载之后才 v-if 出来的后代没有那一次)。
+ *  页签停用期间才挂上的后代(数据在后台到、v-if 挂在缓存容器里)从没收到过 deactivated,
+ *  但用户第一次看见它正是下一次切回 —— 挂载时根节点不在文档里,就当它已经「停用过」。 */
+export function onReactivated(fn: () => void): void {
+  let away = false
+  const inst = getCurrentInstance()
+  onMounted(() => { if (inst?.subTree.el?.isConnected === false) away = true })
+  onDeactivated(() => { away = true })
+  onActivated(() => {
+    if (!away) return
+    away = false
+    fn()
   })
-  // KeepAlive 停用会把整棵 DOM 挪进缓存容器 —— 运行中的动画被取消,只发 animationcancel 不发 animationend,
-  // 消费者挂在 animationend 上的摘类收不到,标志卡在 true,切回页签重插 DOM 就把「一生一次」的擦入重播一遍。
-  // 收在这里而不是七张图各写一遍(C6-17 / C6-25)。
+}
+
+/** 自绘 SVG / DOM 图的擦入相(2026-09-16 行为矩阵,压过 C6-25 的屏级 entered):
+ *
+ *  - 挂载时在视口内 → `first` 为真(消费者挂 fp-wipe 320);离屏 / 后台 → 假(瞬到,不补播)。
+ *    不再看屏级标志:换期不重挂之后,「一张图被挂上来」只剩首进 / 切子屏 / 空态↔图互换,三者都该擦。
+ *  - 切回页签(KeepAlive 重新激活)且在视口内 → 下一帧把 `first` 置真,wipe 重播。
+ *    停用时已置假(见下),DOM 上类名先摘、下一帧再挂,CSS 动画才会重启(true→true 不重启)。
+ *  - `{ entrance: false }`:永不擦(抽屉 / 弹窗里的图,只有卡片上浮,原则 7)。
+ *  - reduced-motion 不在这里判:全局 1ms 规则已把 wipe 压成瞬到。
+ *
+ *  `first` 可写:消费者在 animationend.self **和 animationcancel.self** 上置假。
+ */
+export function useEnterPhase(el: Ref<Element | null>, opts: { entrance?: boolean } = {}): Ref<boolean> {
+  const first = ref(false)
+  const on = opts.entrance !== false
+  onMounted(() => { first.value = on && inViewport(el.value) })
+  // KeepAlive 停用会把整棵 DOM 挪进缓存容器 —— 运行中的动画被取消,只发 animationcancel 不发 animationend;
+  // 这里当场摘掉(= 「先置假」),不指望消费者的监听(C6-17 / C6-25)。
   onDeactivated(() => { first.value = false })
+  onReactivated(() => {
+    if (!on || !inViewport(el.value)) return
+    // 下一帧再置真;帧内又被停用(连点页签,DOM 已回缓存容器)就不挂
+    requestAnimationFrame(() => { if (el.value?.isConnected) first.value = true })
+  })
   return first
+}
+
+/** 自绘图同键形变的压制开关:给数据组 `:class="['ana-morph', { hold }]"`(ana.css)。
+ *
+ *  两种时候不许形变 —— 为真时 `.ana-morph.hold` 把过渡关掉:
+ *  - `first` 为真(wipe 进行中);
+ *  - 宽度刚变(挂载时的真实宽度校正、ResizeObserver 改宽、切回页签重算宽)。
+ *    宽度变化与 hold 落在**同一次** patch 里(pre watcher 先于组件重渲),该帧的样式计算看到
+ *    「新几何 + 无过渡」;两帧后摘掉 —— 单帧不够:在 rAF 阶段之前的微任务里改宽时,
+ *    一帧后的回调仍赶在同一帧的样式计算之前,会把过渡放回来。
+ *
+ *  `width`:消费者已有的宽度 ref(useWidth 的 width,或自己 RO 写的 w)。
+ */
+export function useMorphHold(width: Ref<number>, first: Ref<boolean>): Ref<boolean> {
+  const resizing = ref(false)
+  watch(width, () => {
+    resizing.value = true
+    requestAnimationFrame(() => requestAnimationFrame(() => { resizing.value = false }))
+  })
+  return computed(() => first.value || resizing.value)
 }

@@ -6,6 +6,7 @@
 // 参照系小字只写估计窗口与对照关系,不写「是这次变化本身,不是新的异常」(实施计划 §1 #18)。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
@@ -21,6 +22,9 @@ const iH = H - padT - padB
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(646)
+// 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点按日作键,两道带与中线跟着滑,点的档位半径也过渡)。
+// 改宽那两帧 hold 关掉;直标字瞬到
+const hold = useMorphHold(W, ref(false))
 const days = computed(() => props.data.daysInYear)
 const X = (doy: number) => xOfDay(doy, W.value, days.value)
 
@@ -70,7 +74,7 @@ const LEVEL = [
   { r: 3, fill: C.BELOW, text: '超出外面那道', tip: C.TIP_BELOW },
 ] as const
 
-const pts = computed(() => props.data.points.map(p => ({ x: X(p.doy), y: Y(p.v), ...LEVEL[p.level] })))
+const pts = computed(() => props.data.points.map(p => ({ doy: p.doy, x: X(p.doy), y: Y(p.v), ...LEVEL[p.level] })))
 
 // ── 悬停:取最近的一天,竖线 + 三行气泡(B10 不画高亮点,照画布) ──
 const hover = ref<number | null>(null)
@@ -109,18 +113,22 @@ const tip = computed(() => {
           <line class="gl" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(v)" :y2="Y(v)" :stroke="C.GRID" />
           <text class="ax" :x="PAD_L - 6" :y="Y(v) + 4" text-anchor="end" :fill="C.AXIS_TEXT">{{ tickLabel(v) }}</text>
         </template>
-        <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
-        <rect class="outer" :x="PAD_L" :y="bands.outer.y" :width="W - PAD_L - PAD_R" :height="bands.outer.h" :fill="C.BAND" fill-opacity="0.25" />
-        <rect class="inner" :x="PAD_L" :y="bands.inner.y" :width="W - PAD_L - PAD_R" :height="bands.inner.h" :fill="C.BAND" fill-opacity="0.5" />
-        <line class="center" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(data.center)" :y2="Y(data.center)" :stroke="C.MID" stroke-width="1.5" />
-        <template v-if="win">
-          <rect class="win" :x="win.x" :y="H - padB - 10" :width="win.w" height="10" fill="var(--ink-100)" />
-          <text class="ax winlab" :x="win.x + 4" :y="H - padB - 14" text-anchor="start" :fill="C.AXIS_TEXT">
-            <template v-if="data.wholePeriod">这两道线是拿全期 {{ win.from }} – {{ win.to }} 估的</template>
-            <template v-else>这两道线是拿 {{ win.from }} – {{ win.to }} 这一段估的</template>
-          </text>
-        </template>
-        <circle v-for="(p, k) in pts" :key="'p' + k" class="pt" :cx="p.x" :cy="p.y" :r="p.r" :fill="p.fill" />
+        <!-- 数据组:只形变不擦入;悬停层(竖线 / 气泡)是 SVG 外的 HTML,0ms -->
+        <g :class="['b10-data', 'ana-morph', { hold }]">
+          <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
+          <rect class="outer" :x="PAD_L" :y="bands.outer.y" :width="W - PAD_L - PAD_R" :height="bands.outer.h" :fill="C.BAND" fill-opacity="0.25" />
+          <rect class="inner" :x="PAD_L" :y="bands.inner.y" :width="W - PAD_L - PAD_R" :height="bands.inner.h" :fill="C.BAND" fill-opacity="0.5" />
+          <!-- 中线用 path:<line> 的端点过渡不了 -->
+          <path class="center" :d="`M${PAD_L},${Y(data.center)} H${W - PAD_R}`" fill="none" :stroke="C.MID" stroke-width="1.5" />
+          <template v-if="win">
+            <rect class="win" :x="win.x" :y="H - padB - 10" :width="win.w" height="10" fill="var(--ink-100)" />
+            <text class="ax winlab" :x="win.x + 4" :y="H - padB - 14" text-anchor="start" :fill="C.AXIS_TEXT">
+              <template v-if="data.wholePeriod">这两道线是拿全期 {{ win.from }} – {{ win.to }} 估的</template>
+              <template v-else>这两道线是拿 {{ win.from }} – {{ win.to }} 这一段估的</template>
+            </text>
+          </template>
+          <circle v-for="p in pts" :key="'p' + p.doy" class="pt" :cx="p.x" :cy="p.y" :r="p.r" :fill="p.fill" />
+        </g>
         <line class="axl" :x1="PAD_L" :x2="W - PAD_R" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
         <text
           v-for="t in months" :key="'m' + t.m" class="ax mlab" :x="t.x" :y="H - padB + 18" text-anchor="middle"

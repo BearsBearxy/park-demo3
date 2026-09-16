@@ -18,8 +18,8 @@ function parts(file: string, nextSibling: string) {
   expect(j, `${file} 骨架后面没接上 ${nextSibling}`).toBeGreaterThan(i)
   const skel = tpl.slice(i, j)
   return {
-    /** 骨架里 .fp-shim 的 height,按出现顺序 */
-    shims: [...skel.matchAll(/class="fp-shim" style="height:\s*(\d+)px/g)].map((m) => Number(m[1])),
+    /** 骨架里 .fp-shim 的 height 与顶替 AnaEChart 的 <AnaSkelChart :height>(桌面档值,S 档由组件同表降档),按出现顺序 */
+    shims: [...skel.matchAll(/class="fp-shim" style="height:\s*(\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => Number(m[1] ?? m[2])),
     /** 真版式里各 AnaEChart 的 :height 字面值,按出现顺序 */
     charts: [...tpl.slice(j).matchAll(/:height="(\d+)"/g)].map((m) => Number(m[1])),
     /** 整区转圈没了 */
@@ -36,11 +36,11 @@ describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 170, 250, 250, 170])
   })
 
-  it('❗出租与楼栋:TreeMap 300 + 图例 20、明细表 296 + 合计 20、面积转换右栏 278', () => {
+  it('❗出租与楼栋:TreeMap 300 + 图例 20、明细表 296 + 合计 20、面积转换右栏 250 + 图例 20', () => {
     const p = parts('ParkView.vue', '<AnaEmpty v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([44, 20, 300, 20, 20, 296, 20, 20, 300, 20, 300, 20, 86, 20, 278])
-    // 末块 278 = 面积转换卡右栏(图 250 + .pk-legend margin 8 + 行高 20),比左栏两块指标 186 高
+    expect(p.shims).toEqual([44, 20, 300, 20, 20, 296, 20, 20, 300, 20, 300, 20, 86, 20, 250, 20])
+    // 末两块 = 面积转换卡右栏(图 250 + .pk-legend margin 8 + 行高 20 = 278),比左栏两块指标 186 高
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300, 250])
   })
 
@@ -51,10 +51,10 @@ describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300])
   })
 
-  it('❗租户异常监控:左列 34 + 560,右列 250 / 200,两张规则卡各一行 60', () => {
+  it('❗租户异常监控:左列 34 + 560,右列 250(+ 读数句 20 / 参照系 20)/ 200,两张规则卡各一行 60', () => {
     const p = parts('AnomalyView.vue', '<div v-else-if="!model')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([20, 34, 560, 20, 250, 20, 200, 20, 60, 20, 60])
+    expect(p.shims).toEqual([20, 34, 560, 20, 250, 20, 20, 20, 200, 20, 60, 20, 60])
     expect(p.charts, '图高变了,骨架没跟').toEqual([250, 200])
   })
 })

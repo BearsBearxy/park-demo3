@@ -18,6 +18,7 @@ import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
@@ -323,38 +324,39 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(趋势 300 · 应收实收 200 ·
-         Top20 440 · 散点 440),卡头 20(+ .av2-card-h 下距 8 = 28)。左列列表卡复用 .te2-left 的
+         Top20 440 · 散点 440;走 AnaSkelChart,与图同一张 S 档降档表),卡头 20(+ .av2-card-h 下距 8 = 28)。左列列表卡复用 .te2-left 的
          flex 列:搜索框 31(padding 7 + 12px 行 + 边框)+ 下距 8,列表条 flex:1 —— 行高由右列那一栏定,
-         与真版式同一条规则。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
+         与真版式同一条规则;≤1280 左卡独占一行、不被右栏拉伸,列表条钉 560(.te2-skel-list)。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
          KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
     <div v-if="!loaded" class="ak-page te2-skel">
       <div class="av2-grid">
         <div class="av2-card av2-s4 te2-left">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
           <div class="fp-shim" style="height: 31px; margin-bottom: 8px"></div>
-          <div class="fp-shim" style="flex: 1; min-height: 300px"></div>
+          <div class="fp-shim te2-skel-list"></div>
         </div>
         <div class="te2-right av2-s8">
           <div class="av2-card">
             <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 280px"></div></div>
-            <div class="fp-shim" style="height: 300px"></div>
+            <AnaSkelChart :height="300" />
             <div class="fp-shim" style="height: 20px; width: 55%; margin-top: 8px"></div>
             <div class="fp-shim" style="height: 20px; width: 38%; margin-top: 2px"></div>
           </div>
           <div class="av2-card">
             <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
-            <div class="fp-shim" style="height: 200px"></div>
+            <AnaSkelChart :height="200" />
             <div class="fp-shim" style="height: 20px; width: 45%; margin-top: 6px"></div>
           </div>
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-          <div class="fp-shim" style="height: 440px"></div>
+          <AnaSkelChart :height="440" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
-          <div class="fp-shim" style="height: 440px"></div>
-          <div class="fp-shim" style="height: 15px; width: 240px; margin: 6px auto 0"></div>
+          <AnaSkelChart :height="440" />
+          <!-- .cz-legend 一行 = .cz-leg 行盒 20(base.css:19 line-height var(--lh-snug);ana.css:36-37 不覆写),不按 11px 字号 -->
+          <div class="fp-shim" style="height: 20px; width: 240px; margin: 6px auto 0"></div>
         </div>
       </div>
     </div>
@@ -475,6 +477,11 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 .te2-item .fam { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
 .te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }
+/* 骨架列表条:>1280 左卡与右栏同一行被拉伸,条跟着 flex:1 撑满(至少 300);≤1280 左卡独占一行不被拉伸,
+   真列表高 = min(内容, 560) —— 园区在租户数上百(每行 34 + 间距 2,16 户起就顶到 560),按 560 钉,
+   否则首进数据到的那一帧左卡长高约 260,把下方整片推下去。 */
+.te2-skel-list { flex: 1; min-height: 300px; }
+@media (max-width: 1280px) { .te2-skel-list { flex: none; height: 560px; } }
 .te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .te2-item:hover { background: var(--bg-hover); }

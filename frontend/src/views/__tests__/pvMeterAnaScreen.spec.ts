@@ -176,6 +176,9 @@ async function openDrawer(w: VueWrapper) {
 }
 
 const chartName = (w: VueWrapper) => w.find('.pdc-hd .nm').text()
+/** 大图折线段:每段 `M x0,y0 L x1,y1`,按 DOM 顺序 → [x0, y0, x1, y1] */
+const lineSegs = (w: VueWrapper) => w.findAll('.pdc path.line').map(p =>
+  (p.attributes('d') ?? '').match(/-?[\d.]+/g)!.map(Number))
 const groups = (w: VueWrapper) => w.findComponent(PvChips).props('groups') as ChipGroups
 const kpi = (w: VueWrapper, label: string) => {
   const t = w.findAll('.av2-kpi').find(k => k.find('.l').text() === label)
@@ -593,7 +596,7 @@ describe('光伏分栋分析 · 主卡:刻度、事实句与判据脚', () => {
   it('大图:带与中心线在,S4 出范围的点是低于色,段底色夹进绘图区', async () => {
     const w = await mountScreen()
     expect(w.find('.pdc rect.band').exists()).toBe(true)
-    expect(w.find('.pdc line.ctr').exists()).toBe(true)
+    expect(w.find('.pdc path.ctr').exists()).toBe(true)
     const pts = w.findAll('.pdc circle.pt')
     expect(pts.length).toBeGreaterThan(20)
     expect(new Set(pts.map(p => p.attributes('fill')))).toEqual(new Set(['#E24B4A']))
@@ -644,7 +647,10 @@ describe('光伏分栋分析 · 月中未录全(§03.8)', () => {
 
   it('大图:漏抄那天折线断开 + 1 个底部刻度;未到只画淡底,不写「未到 / 漏」字', async () => {
     const w = await mountScreen(MID)
-    expect((w.find('.pdc path.line').attributes('d') ?? '').match(/M/g)).toHaveLength(2)
+    // 折线按相邻两刻度一段画(换栋形变要同结构);连续段数 = 起点接不上前一段终点的段数
+    const segs = lineSegs(w)
+    expect(segs.length).toBeGreaterThan(1)
+    expect(segs.filter((s, k) => k === 0 || s[0] !== segs[k - 1][2]).length).toBe(2)
     expect(w.findAll('.pdc rect.miss')).toHaveLength(1)
     expect(w.find('.pdc rect.future').exists()).toBe(true)
     expect(w.find('.pdc').text()).not.toMatch(/未到|漏/)
@@ -657,7 +663,7 @@ describe('光伏分栋分析 · 月中未录全(§03.8)', () => {
     const cx = w.findAll('.pdc circle.pt').map(c => Number(c.attributes('cx')))
     expect(cx.length).toBeGreaterThan(0)
     expect(cx.every(x => x < cut)).toBe(true)
-    const px = [...(w.find('.pdc path.line').attributes('d') ?? '').matchAll(/[ML](-?[\d.]+),/g)].map(m => Number(m[1]))
+    const px = [...new Set(lineSegs(w).flatMap(s => [s[0], s[2]]))]
     expect(px).toHaveLength(14)
     expect(px.every(x => x < cut)).toBe(true)
   })

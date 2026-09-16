@@ -6,9 +6,9 @@
 // 量程是这栋自己的(已抄点 ∪ 带上下沿 + 12% 余量),不共用、不钳位;x 轴画满整段,带画满整宽。
 // 这里只做像素几何,事实句 fact 由 pvAnaV4.logic.ts 的 dayFact 拼好传进来。
 // 读不出的栋(unreadable)照样画线和带,但不画连续段底色、不给点按出范围着色、气泡不写在不在范围内(§07 不出判据结论)。
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
-import { useEnterPhase } from '@/components/ana/anaMotion'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
@@ -22,12 +22,10 @@ const iH = H - padT - padB
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(1025)
-// C6-17:首挂 320 擦入(屏级 entered 为假且在视口内才给)/ 换栋 120 淡入;两个类在 animationend.self
-// **与 animationcancel.self** 摘掉 —— KeepAlive 停用会取消动画只发 cancel,不听的话类留着,回签重插 DOM 会重播。
-// 换期瞬变 —— 换期把选中栋换掉时由 row.id 走换栋那条。
+// 首挂在视口内 320 擦入;换栋 / 换期 200 同键形变(2026-09-16 行为矩阵):同一刻度上的点、线段从旧值滑到新值。
+// first 在 animationend.self **与 animationcancel.self** 摘掉。擦入期间与改宽那两帧 hold 关掉形变,两个效果不叠。
 const first = useEnterPhase(el)
-const swap = ref(false)
-watch(() => props.row.id, () => { swap.value = true })
+const hold = useMorphHold(W, first)
 const iW = computed(() => W.value - padL - padR)
 const n = computed(() => props.ticks.length)
 /** 第 i 个刻度(0 起,可带小数)的 x */
@@ -65,22 +63,22 @@ const band = computed(() => {
   return { y: Y(hi), h: +(Y(lo) - Y(hi)).toFixed(1), hiTop: Y(hi) - 15, loTop: Y(lo) + 2, hi: hi.toFixed(3), lo: lo.toFixed(3) }
 })
 
-const linePath = computed(() => {
-  let d = '', pen = false
-  for (let i = 0; i < n.value; i++) {
-    if (!seen(i)) { pen = false; continue }
-    d += (pen ? ' L' : ' M') + X(i) + ',' + Y(props.row.ratio[i]!)
-    pen = true
+/** 折线拆成相邻两刻度一段、按起点刻度作键:每段都是「M L」同一结构,换栋时 d 能过渡;漏抄处不出那一段 = 断开。
+ *  拆 M 子路径的单条 path 做不到 —— 断点位置一变,命令结构就变,d 直接跳。圆头线帽叠出来与圆角连接一样。 */
+const lineSegs = computed(() => {
+  const out: { i: number; d: string }[] = []
+  for (let i = 0; i + 1 < n.value; i++) {
+    if (seen(i) && seen(i + 1)) out.push({ i, d: `M${X(i)},${Y(props.row.ratio[i]!)} L${X(i + 1)},${Y(props.row.ratio[i + 1]!)}` })
   }
-  return d
+  return out
 })
 
 const pts = computed(() => {
-  const out: { x: number; y: number; fill: string }[] = []
+  const out: { i: number; x: number; y: number; fill: string }[] = []
   if (props.unreadable) return out
   for (let i = 0; i < n.value; i++) {
     const o = props.row.out[i]
-    if (seen(i) && o) out.push({ x: X(i), y: Y(props.row.ratio[i]!), fill: o < 0 ? C.BELOW : C.ABOVE })
+    if (seen(i) && o) out.push({ i, x: X(i), y: Y(props.row.ratio[i]!), fill: o < 0 ? C.BELOW : C.ABOVE })
   }
   return out
 })
@@ -90,11 +88,11 @@ const runs = computed(() => {
   const half = iW.value / (n.value - 1) / 2
   return (props.unreadable ? [] : props.row.runs).map(r => {
     const x = Math.max(padL, X(r.from) - half), x2 = Math.min(W.value - padR, X(r.to) + half)
-    return { x: +x.toFixed(1), w: +(x2 - x).toFixed(1), fill: r.dir < 0 ? C.BELOW : C.ABOVE }
+    return { from: r.from, x: +x.toFixed(1), w: +(x2 - x).toFixed(1), fill: r.dir < 0 ? C.BELOW : C.ABOVE }
   })
 })
 
-const misses = computed(() => props.row.state.flatMap((s, i) => (s === 'missing' && !preBorn(i) ? [+(X(i) - 1).toFixed(1)] : [])))
+const misses = computed(() => props.row.state.flatMap((s, i) => (s === 'missing' && !preBorn(i) ? [{ i, x: +(X(i) - 1).toFixed(1) }] : [])))
 
 const future = computed(() => {
   if (props.elapsedN >= n.value) return null
@@ -161,7 +159,7 @@ const tip = computed(() => {
     <div class="pdc-plot" :style="{ width: W + 'px', height: H + 'px' }" @mousemove="onMove" @mouseleave="hover = null">
       <span v-for="(g, k) in grid" v-show="g.label" :key="'gl' + k" class="axh" :style="{ left: '0px', width: '38px', textAlign: 'right', top: g.y - 7 + 'px' }">{{ g.label }}</span>
       <!-- 上下沿标签与 SVG 数据组同一条类规则,但不挂 animationend:监听只在 g 上一份(C6-17) -->
-      <div v-if="band" class="pdc-data pdc-bandlab" :class="{ first, swap }">
+      <div v-if="band" class="pdc-data pdc-bandlab" :class="{ first }">
         <span class="axh hi" :style="{ right: '18px', top: band.hiTop + 'px' }">上沿 {{ band.hi }}</span>
         <span class="axh lo" :style="{ right: '18px', top: band.loTop + 'px' }">下沿 {{ band.lo }}</span>
       </div>
@@ -171,15 +169,17 @@ const tip = computed(() => {
         <!-- 尺子先在,数据擦上去:轴线与 x 刻度挪到数据组之前(C6-17) -->
         <line class="axl" :x1="padL" :x2="W - padR" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
         <text v-for="t in xTicks" :key="'x' + t.t" class="ax" :x="t.x" :y="230" text-anchor="middle" :fill="C.AXIS_TEXT">{{ t.t }}</text>
-        <g class="pdc-data" :class="{ first, swap }" @animationend.self="first = false; swap = false"
-          @animationcancel.self="first = false; swap = false">
+        <!-- 键全按刻度(runs 按起点刻度):换栋 / 换期元素复用才形变;悬停层(竖线 / 高亮点)在组外,0ms。
+             刻度下标只在同一粒度里是同一类目 —— 组按粒度作键,按月 ↔ 按年整组换新元素瞬到,「5 日」不滑成「5 月」 -->
+        <g :key="gran" :class="['pdc-data', 'ana-morph', { first, hold }]" @animationend.self="first = false"
+          @animationcancel.self="first = false">
           <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
           <rect v-if="band" class="band" :x="padL" :y="band.y" :width="iW" :height="band.h" :fill="C.BAND" fill-opacity="0.4" />
-          <line v-if="dom && row.center != null" class="ctr" :x1="padL" :x2="W - padR" :y1="Y(row.center)" :y2="Y(row.center)" :stroke="C.MID" stroke-width="1" stroke-dasharray="3 3" />
-          <rect v-for="(r, k) in runs" :key="'r' + k" class="run" :x="r.x" :y="padT" :width="r.w" :height="iH" :fill="r.fill" fill-opacity="0.1" />
-          <rect v-for="mx in misses" :key="'m' + mx" class="miss" :x="mx" :y="205" width="2" height="7" :fill="C.ABOVE" />
-          <path v-if="linePath" class="line" :d="linePath" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <circle v-for="(p, k) in pts" :key="'p' + k" class="pt" :cx="p.x" :cy="p.y" r="4" :fill="p.fill" stroke="var(--surface-white)" stroke-width="1.5" />
+          <path v-if="dom && row.center != null" class="ctr" :d="`M${padL},${Y(row.center)} H${W - padR}`" fill="none" :stroke="C.MID" stroke-width="1" stroke-dasharray="3 3" />
+          <rect v-for="r in runs" :key="'r' + r.from" class="run" :x="r.x" :y="padT" :width="r.w" :height="iH" :fill="r.fill" fill-opacity="0.1" />
+          <rect v-for="m in misses" :key="'m' + m.i" class="miss" :x="m.x" :y="205" width="2" height="7" :fill="C.ABOVE" />
+          <path v-for="s in lineSegs" :key="'s' + s.i" class="line" :d="s.d" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linecap="round" />
+          <circle v-for="p in pts" :key="'p' + p.i" class="pt" :cx="p.x" :cy="p.y" r="4" :fill="p.fill" stroke="var(--surface-white)" stroke-width="1.5" />
         </g>
         <template v-if="tip">
           <line class="hair" :x1="tip.x" :x2="tip.x" :y1="padT" :y2="H - padB" :stroke="C.TIP_HAIR" stroke-width="1" />
@@ -207,12 +207,9 @@ const tip = computed(() => {
 .leg u { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--surface-white); box-shadow: 0 0 0 1px v-bind(AXIS_LINE); }
 .pdc-plot { position: relative; }
 .pdc-plot svg { display: block; }
-/* C6-17 首挂:数据组一个 g 一条 clip-path,从左到右一笔(fp-wipe 在 ana.css,基态由消费者自己写) */
+/* C6-17 首挂:数据组一个 g 一条 clip-path,从左到右一笔(fp-wipe 在 ana.css,基态由消费者自己写)。
+   换栋不再另挂淡入类:形变(ana-morph)只动几何属性,不碰 clip-path,擦入中途换栋也不会被裁成空图 */
 .pdc-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
-/* C6-17 换栋:fp-fade-in 只有 to 帧,基态 opacity:0 必须显式写(motion.css)。
-   clip-path: none 是必须的 —— 首绘 320 没跑完就换栋时两个类同时在身上,
-   .swap 只抢到 animation,.first 的 inset(0 100% 0 0) 会把整组数据钉在零宽(屏上只剩轴与网格) */
-.pdc-data.swap { opacity: 0; clip-path: none; animation: fp-fade-in var(--dur-fast) var(--ease-out) forwards; }
 .pdc-bandlab { position: absolute; inset: 0; pointer-events: none; }
 .axh { position: absolute; font-size: 11px; line-height: 14px; font-family: var(--font-mono); color: v-bind('C.AXIS_TEXT'); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
 .ax { font-size: 11px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

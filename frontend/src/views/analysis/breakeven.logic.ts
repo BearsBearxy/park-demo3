@@ -83,8 +83,12 @@ export function tornadoItems(be: BeModel, s10Used: S10Used | null): TornadoItem[
 const INK = '#185FA5', RED = '#E24B4A', WARN = '#EF9F27', BLUE = '#378ADD', SLATE = 'rgba(28,28,28,.4)'   // 复审:统一主题语义红/墨灰
 const wan0 = (v: number) => (v / 10000).toFixed(0) + '万'
 
+/** C6-15:只有拖滑杆那一次重算传 instant —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指;
+ *  换年 / 换月不传,走注入的 200 同键形变(2026-09-16 行为矩阵)。 */
+const slide = (instant: boolean) => (instant ? { animationDurationUpdate: 0 } : {})
+
 /** CVP 线:x=收入达成率 0~120%,收入/总成本两线;markPoint 保本点、markArea 盈利区、markLine 当前 100%。 */
-export function cvpOption(be: BeModel): object {
+export function cvpOption(be: BeModel, instant = false): object {
   const revPts: [number, number][] = [], costPts: [number, number][] = []
   for (let x = 0; x <= 120; x += 10) {
     revPts.push([x, be.rev * x / 100])
@@ -92,8 +96,7 @@ export function cvpOption(be: BeModel): object {
   }
   const showBe = be.bePct != null && be.bePct <= 120 && be.beRev != null
   return {
-    // C6-15:滑杆连续驱动 —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指
-    animationDurationUpdate: 0,
+    ...slide(instant),
     grid: { left: 58, right: 24, top: 36, bottom: 34 },
     tooltip: {
       trigger: 'axis',
@@ -132,10 +135,10 @@ export function cvpOption(be: BeModel): object {
 }
 
 /** 龙卷风横条:红=下行(取负)、蓝=上行,同类目对称;类目倒序(影响最大在顶)。 */
-export function tornadoOption(items: TornadoItem[]): object {
+export function tornadoOption(items: TornadoItem[], instant = false): object {
   const rev = [...items].reverse()
   return {
-    animationDurationUpdate: 0,   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
+    ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 96, right: 56, top: 30, bottom: 26 },
     tooltip: {
       formatter: (p: { name: string; value: number }) => `${p.name}<br/>±10% → 净利 ±¥${Math.abs(p.value).toFixed(1)}万`,
@@ -167,9 +170,9 @@ export function splitData(months: number[], cost: (number | null)[], fr: number)
 }
 
 /** 固定/变动逐月堆叠柱 option。 */
-export function splitOption(d: SplitData): object {
+export function splitOption(d: SplitData, instant = false): object {
   return {
-    animationDurationUpdate: 0,   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
+    ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 48, right: 16, top: 30, bottom: 26 },
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },

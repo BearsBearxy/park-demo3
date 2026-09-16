@@ -1,10 +1,10 @@
 // motionize 纯函数单测(动效设计稿 §8.2/§8.3,C6-02~C6-06)。
 // 这里钉的是**注入规则**,不是某张图好不好看:相位两套键、屏侧显式键的优先级、
 // reduced / 离屏两条短路、错峰门槛。规则一改,54 张 AnaEChart 同时改。
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, nextTick, ref, type Ref } from 'vue'
-import { DUR, EASE, STAGGER, motionize, useEnterPhase } from '../anaMotion'
+import { DUR, EASE, STAGGER, motionize, onReactivated, useEnterPhase, useMorphHold } from '../anaMotion'
 
 type Rec = Record<string, unknown>
 const ENV = { reduced: false, isS: false, visible: true }
@@ -98,8 +98,29 @@ describe('motionize', () => {
   })
 })
 
-// useEnterPhase:自绘图与 AnaEChart 共用的首绘判据(C6-25)。钉的是「这次挂载擦不擦」的三条否决
-// —— 屏级 entered 已真(段控 / 抽屉 / v-if 重挂)、图不在视口内、标签页在后台。
+// rAF 手动推帧:「下一帧置真」「两帧后摘」都要数帧
+let frames: FrameRequestCallback[] = []
+const nextFrame = () => { const q = frames; frames = []; q.forEach((cb) => cb(0)) }
+beforeEach(() => {
+  frames = []
+  vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => { frames.push(cb); return frames.length }))
+})
+afterEach(() => { vi.unstubAllGlobals() })
+
+// 切页签:KeepAlive 里的子树换成 <i> = 停用,换回 = 重新激活。attachTo 让 DOM 真在文档里(isConnected)。
+const keepAlive = (child: () => ReturnType<typeof h>) => {
+  const on = ref(true)
+  const Host = defineComponent({ setup: () => () => h(KeepAlive, null, { default: () => (on.value ? child() : h('i')) }) })
+  const w = mount(Host, { attachTo: document.body })
+  return {
+    w,
+    away: async () => { on.value = false; await nextTick() },
+    back: async () => { on.value = true; await nextTick() },
+  }
+}
+
+// useEnterPhase:自绘图的擦入相(2026-09-16 行为矩阵)。钉的是「这次擦不擦」:挂载时的视口 / 前台判据、
+// entrance:false、切回页签的重播与它的三条否决。
 // jsdom 的 getBoundingClientRect 全 0(bottom 0)本身就是「离屏」,所以每条用例自己桩 rect。
 describe('useEnterPhase', () => {
   const setRect = (top: number, bottom: number) => {
@@ -108,69 +129,150 @@ describe('useEnterPhase', () => {
   }
   const setHidden = (v: boolean) => Object.defineProperty(document, 'hidden', { configurable: true, get: () => v })
 
-  // first 直接从 setup 里捞出来断言,不看渲染出的文本:first 在 onMounted 里翻转,
-  // 那一帧的 DOM 还是挂载时的旧值(重渲染排在同一个 flush 里,浏览器里赶在绘制前,不闪)。
+  // first 直接从 setup 里捞出来断言,不看渲染出的文本
   let first: Ref<boolean> = ref(false)
+  let opts: { entrance?: boolean } = {}
   const Probe = defineComponent({
     setup() {
       const el = ref<Element | null>(null)
-      first = useEnterPhase(el)
+      first = useEnterPhase(el, opts)
       return () => h('div', { ref: el })
     },
   })
-  const probe = (enteredNow: boolean) => {
-    const entered = ref(enteredNow)
-    const w = mount(Probe, { global: { provide: { anaEntered: entered } } })
-    return { w, entered }
-  }
+  beforeEach(() => { opts = {}; setRect(0, 300); setHidden(false) })
 
-  it('首进屏 + 视口内 + 前台 → 擦;挂载后把屏级 entered 置真(纯自绘屏没有 AnaEChart 替它置)', async () => {
-    setRect(0, 300); setHidden(false)
-    const { w, entered } = probe(false)
+  it('视口内挂载 → 擦;不看屏级标志(宿主里没有 AnaShell / provide 也擦)', () => {
+    const w = mount(Probe)
     expect(first.value).toBe(true)
-    expect(entered.value).toBe(false)     // 同一渲染批里挂载的图都还能拿到 enter
-    await nextTick()
-    expect(entered.value).toBe(true)
-    w.unmount()
-  })
-
-  it('屏级 entered 已真(段控 / 抽屉 / v-if 重挂)→ 不擦,永不重播入场', () => {
-    setRect(0, 300); setHidden(false)
-    const { w } = probe(true)
-    expect(first.value).toBe(false)
     w.unmount()
   })
 
   it('离屏(图顶在视口下沿之外)→ 不擦,滚到时已画好不补播(同 C6-06)', () => {
-    setRect(innerHeight + 40, innerHeight + 340); setHidden(false)
-    const { w } = probe(false)
+    setRect(innerHeight + 40, innerHeight + 340)
+    const w = mount(Probe)
     expect(first.value).toBe(false)
     w.unmount()
   })
 
   it('后台标签页(document.hidden)→ 不擦', () => {
-    setRect(0, 300); setHidden(true)
-    const { w } = probe(false)
+    setHidden(true)
+    const w = mount(Probe)
     expect(first.value).toBe(false)
     setHidden(false)
     w.unmount()
   })
 
+  it('entrance:false(抽屉 / 弹窗里的图)→ 挂载不擦,切回页签也不擦', async () => {
+    opts = { entrance: false }
+    const k = keepAlive(() => h(Probe))
+    expect(first.value, '挂载').toBe(false)
+    await k.away(); await k.back(); nextFrame()
+    expect(first.value, '切回').toBe(false)
+    k.w.unmount()
+  })
+
   it('❗KeepAlive 停用当场摘标志 —— 动画被取消只发 animationcancel,消费者的 animationend 收不到', async () => {
-    // 擦入跑到一半点页签走人:KeepAlive 把整棵 DOM 挪进缓存容器,运行中的 CSS 动画被取消。
-    // 标志留在 true 的话,切回该页签重插 DOM 就把「一生一次」的 320 擦入 / 120 淡入再播一遍。
-    // 收在 useEnterPhase 里 = 七张自绘图(PvDayChart / PvConsumption / PvRevenueBars /
-    // AnaForecastChart / AnaRenewalChart / AnaRentBandChart / AnaUnitRentHist)一起覆盖。
-    setRect(0, 300); setHidden(false)
-    const on = ref(true)
-    const Host = defineComponent({
-      setup: () => () => h(KeepAlive, null, { default: () => (on.value ? h(Probe) : h('i')) }),
-    })
-    const w = mount(Host, { global: { provide: { anaEntered: ref(false) } } })
+    // 擦入跑到一半点页签走人:标志留在 true 的话,DOM 回来时类名没变过,CSS 动画不会按「重新挂类」重启,
+    // 重播就变成随缘。收在 useEnterPhase 里 = 七张自绘图一起覆盖。
+    const k = keepAlive(() => h(Probe))
     expect(first.value, '首挂该擦').toBe(true)
-    on.value = false
+    await k.away()
+    expect(first.value, '停用没摘掉标志').toBe(false)
+    k.w.unmount()
+  })
+
+  it('切回页签 + 视口内 → 下一帧才置真(先假后真,wipe 类重新挂上才重播)', async () => {
+    const k = keepAlive(() => h(Probe))
+    await k.away(); await k.back()
+    expect(first.value, '同一帧就置真 = 类名没摘过').toBe(false)
+    nextFrame()
+    expect(first.value, '切回没重播').toBe(true)
+    k.w.unmount()
+  })
+
+  it('切回页签但离屏 → 不擦', async () => {
+    const k = keepAlive(() => h(Probe))
+    await k.away()
+    setRect(innerHeight + 40, innerHeight + 340)
+    await k.back(); nextFrame()
+    expect(first.value).toBe(false)
+    k.w.unmount()
+  })
+
+  it('帧内又被停用(连点页签)→ 那一帧不再置真', async () => {
+    const k = keepAlive(() => h(Probe))
+    await k.away(); await k.back(); await k.away()
+    nextFrame()
+    expect(first.value).toBe(false)
+    k.w.unmount()
+  })
+})
+
+// onReactivated:AnaEChart 与 useEnterPhase 共用的「切回页签」判据
+describe('onReactivated', () => {
+  it('KeepAlive 根挂载时伴随的那次 activated 不算;停用后再激活才调,每次切回都调', async () => {
+    const fn = vi.fn()
+    const Probe = defineComponent({ setup() { onReactivated(fn); return () => h('b') } })
+    const k = keepAlive(() => h(Probe))
     await nextTick()
-    expect(first.value, '停用没摘掉标志 → 回签重播入场').toBe(false)
+    expect(fn, '挂载伴随的那次被当成切回').not.toHaveBeenCalled()
+    await k.away(); await k.back()
+    expect(fn).toHaveBeenCalledTimes(1)
+    await k.away(); await k.back()
+    expect(fn).toHaveBeenCalledTimes(2)
+    k.w.unmount()
+  })
+
+  it('❗页签停用期间才挂上的后代(数据在后台到)→ 第一次切回就调,不用再切一趟', async () => {
+    const fn = vi.fn()
+    const late = ref(false)
+    const Probe = defineComponent({ setup() { onReactivated(fn); return () => h('b') } })
+    const Screen = defineComponent({ setup: () => () => h('div', [late.value ? h(Probe) : null]) })
+    const k = keepAlive(() => h(Screen))
+    await k.away()
+    late.value = true
+    await nextTick()
+    expect(fn, '挂在缓存容器里就被调了').not.toHaveBeenCalled()
+    await k.back()
+    expect(fn, '用户第一次看见它,却没当成切回').toHaveBeenCalledTimes(1)
+    k.w.unmount()
+  })
+})
+
+// useMorphHold:形变压制开关。钉「改宽与 hold 落在同一次渲染」「两帧后才摘」「wipe 期间常开」。
+describe('useMorphHold', () => {
+  const width = ref(480)
+  const first = ref(false)
+  let hold: Ref<boolean> = ref(false)
+  let renders: [number, boolean][] = []
+  const Probe = defineComponent({
+    setup() {
+      hold = useMorphHold(width, first)
+      return () => { renders.push([width.value, hold.value]); return h('g') }
+    },
+  })
+  beforeEach(() => { width.value = 480; first.value = false; renders = [] })
+
+  it('宽度变了 → 新宽度第一次渲染时 hold 已为真(同一次 patch),两帧后才摘', async () => {
+    const w = mount(Probe)
+    expect(hold.value).toBe(false)
+    width.value = 900
+    await nextTick()
+    expect(renders.filter(([wd]) => wd === 900).every(([, hd]) => hd), '新几何先于 hold 落地 → 那一帧会形变').toBe(true)
+    expect(hold.value).toBe(true)
+    nextFrame()
+    expect(hold.value, '一帧就摘:rAF 阶段早于同帧样式计算,过渡会被放回来').toBe(true)
+    nextFrame()
+    expect(hold.value).toBe(false)
+    w.unmount()
+  })
+
+  it('wipe 进行中(first 为真)→ hold 常开,不看宽度', () => {
+    first.value = true
+    const w = mount(Probe)
+    expect(hold.value).toBe(true)
+    first.value = false
+    expect(hold.value).toBe(false)
     w.unmount()
   })
 })

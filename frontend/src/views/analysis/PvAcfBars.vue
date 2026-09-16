@@ -9,7 +9,9 @@
  */
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import { PV_COLORS } from './pvAnaColors'
 import type { PvAcfBarsProps } from './pvAnaV4.logic'
 
@@ -18,6 +20,10 @@ const props = defineProps<PvAcfBarsProps>()
 const H = 138, PAD_L = 30, PAD_R = 8, TOP = 10, BASE = 116
 const r1 = (v: number) => +v.toFixed(1)
 const { el, width } = useWidth(312)
+// 切到「高级分析」挂上来时在视口内柱组擦入 320;换栋 / 换期 200 同键形变(柱按隔几天作键;淡带与 0 线跟量程形变、不擦)。
+// 擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 
 const geo = computed(() => {
   const W = width.value
@@ -86,12 +92,20 @@ const read = computed(() => {
           <line class="gl" :x1="PAD_L" :x2="geo.W - PAD_R" :y1="g.y" :y2="g.y" :stroke="PV_COLORS.GRID" />
           <text class="ax" :x="PAD_L - 5" :y="g.y + 4" text-anchor="end">{{ g.label }}</text>
         </template>
-        <rect v-if="geo.band" class="pacf-band" :x="PAD_L" :y="geo.band.y" :width="geo.W - PAD_L - PAD_R" :height="geo.band.h"
-          :fill="PV_COLORS.BAND" fill-opacity=".20" />
+        <g :class="['pacf-ref', 'ana-morph', { hold }]">
+          <rect v-if="geo.band" class="pacf-band" :x="PAD_L" :y="geo.band.y" :width="geo.W - PAD_L - PAD_R" :height="geo.band.h"
+            :fill="PV_COLORS.BAND" fill-opacity=".20" />
+        </g>
         <rect v-if="hover != null && geo.cols[hover]" class="pacf-slot" :x="geo.cols[hover].slotX" :y="TOP"
           :width="geo.slot" :height="BASE - TOP" />
-        <path v-for="c in geo.cols" :key="c.lag" class="pacf-bar" :data-lag="c.lag" :d="c.d" :fill="c.fill" />
-        <line class="axl" :x1="PAD_L" :x2="geo.W - PAD_R" :y1="geo.y0" :y2="geo.y0" />
+        <!-- 悬停槽底在组外(0ms);柱组擦入 + 形变 -->
+        <g :class="['pacf-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <path v-for="c in geo.cols" :key="c.lag" class="pacf-bar" :data-lag="c.lag" :d="c.d" :fill="c.fill" />
+        </g>
+        <!-- 0 线是柱的底,跟量程一起形变(<line> 的端点过渡不了,改 path) -->
+        <g :class="['ana-morph', { hold }]">
+          <path class="axl" :d="`M${PAD_L},${geo.y0} H${geo.W - PAD_R}`" fill="none" />
+        </g>
         <template v-for="c in geo.cols" :key="`t${c.lag}`">
           <text v-if="c.tick" class="ax" :x="c.cx" :y="130" text-anchor="middle">{{ c.lag }}</text>
         </template>
@@ -110,6 +124,7 @@ const read = computed(() => {
 <style scoped>
 .pacf-plot { position: relative; width: 100%; height: 138px; }
 .pacf-svg { display: block; }
+.pacf-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .ax { font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; fill: var(--text-muted); }
 .axl { stroke: var(--ink-900); stroke-opacity: .15; stroke-width: 1; }
 .gl { stroke-width: 1; }

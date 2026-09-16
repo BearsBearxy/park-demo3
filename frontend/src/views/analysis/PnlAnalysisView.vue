@@ -9,12 +9,14 @@ import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaSpark from '@/components/ana/AnaSpark.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useCompare } from '@/analysis/useCompare'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { fetchPnlSummary, type PnlSummary } from '@/analysis/anaData'
 import { finMoney, finWan } from '@/utils/finFmt'
 import { fnum } from '@/components/ana/anaFmt'
@@ -29,6 +31,9 @@ const cmp = useCompare(['mom'])
 
 const summary = ref<PnlSummary | null>(null)
 const loading = ref(true)
+// 换年在途:旧年内容留在原地退让(C5-02),屏上的年份跟「已加载的那一年」走,不跟选择器先变
+const loadedYear = ref(year.value)
+const staleShown = useDeferredFlag(loading)
 let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(year, async (y) => {
   if (!y) return // 可用月份注入前 year=0,注入后自动触发
@@ -39,7 +44,7 @@ watch(year, async (y) => {
     if (t === token) summary.value = sum
   }
   catch { if (t === token) summary.value = null /* 拉失败清空→空态,禁止新年份标签配旧年数值(复审) */ }
-  finally { if (t === token) loading.value = false }
+  finally { if (t === token) { loading.value = false; loadedYear.value = y } }
 }, { immediate: true })
 
 // ── 各附表「全年汇总」+ 迷你趋势(原型 PA_SCHEDS;nav → P2 附表路由) ──
@@ -136,11 +141,12 @@ const structOpt = computed<object>(() => {
 
 <template>
   <!-- §五:年敏感屏(年度口径),只年控件;watch(year) 重取,所选年空 → 全屏 AnaEmpty -->
-  <AnaShell period-mode="year" :compare="['mom']">
+  <AnaShell period-mode="year" :compare="['mom']" :busy="staleShown">
     <template #kpis>
-      <!-- 年空/加载中不渲染 KPI(禁止沿用旧年数值或展示假 0) -->
-      <template v-if="!loading && recordedCount">
-        <AnaKpiTile label="分项收入合计" :value="finWan(sumIncome)" :note="year + ' 年全年口径'" />
+      <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 recordedCount 也是 0。换年在途旧年瓦片留在原地,
+           由外壳 .anx-kpis 随 busy 同拍退让(C5-02),年份印已加载的那一年 -->
+      <template v-if="recordedCount">
+        <AnaKpiTile label="分项收入合计" :value="finWan(sumIncome)" :note="loadedYear + ' 年全年口径'" />
         <AnaKpiTile label="分项成本合计" :value="finWan(sumCost)" :note="'附表1-4 成本'" />
         <AnaKpiTile label="分项损益合计" :value="finWan(sumPnl)" :note="'损益率 ' + pct(sumPnl, sumIncome)" />
         <AnaKpiTile label="费用支出合计" :value="expCost == null ? '—' : finWan(expCost)" note="附表5 · 不计入分项损益" />
@@ -149,9 +155,11 @@ const structOpt = computed<object>(() => {
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。迷你卡复用 .pa2-mini 的盒子,块高照真版式钉死
-         (图标 30 + 迷你线 26 + 脚 15);两张图各照自己的 :height 300;
-         KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。 -->
-    <div v-if="loading" class="pa2-page pa2-skel">
+         (图标 30 + 迷你线 26 + 脚 15);两张图各照自己的 :height 300,走 AnaSkelChart(≤600 与图同一张降档表);
+         卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
+         KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
+         **门只认首进**(还没有任何数据):换年在途旧年内容留在原地退让,不塌回骨架。 -->
+    <div v-if="loading && !summary" class="pa2-page pa2-skel">
       <div class="pa2-minis">
         <div v-for="i in 5" :key="i" class="pa2-mini">
           <div class="hd">
@@ -168,19 +176,20 @@ const structOpt = computed<object>(() => {
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
       </div>
     </div>
     <div v-else-if="!recordedCount" class="pa2-page">
-      <AnaEmpty :label="year + ' 年五张损益附表均无数据'" hint="录入附表1-5(租金/用电/用水/运管/费用)后,这里展示趋势与结构"
+      <AnaEmpty :label="loadedYear + ' 年五张损益附表均无数据'" hint="录入附表1-5(租金/用电/用水/运管/费用)后,这里展示趋势与结构"
         to="/rent-pnl" to-text="去录入损益附表" />
     </div>
-    <div v-else class="pa2-page">
+    <!-- 换年在途:旧年内容留在原地退让(C5-02)。data-stale-host 常挂,类摘掉后退场才是 200 -->
+    <div v-else class="pa2-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <!-- 五附表迷你趋势卡(SVG 保留,点卡选中;空附表 → 深链录入) -->
       <div class="pa2-minis">
         <template v-for="c in cards" :key="c.no">

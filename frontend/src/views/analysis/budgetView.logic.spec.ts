@@ -48,7 +48,8 @@ describe('预算达成首进骨架(C6-01)', () => {
 
   it('❗不转圈;骨架块高 = 卡头 20 + 五年对比 300(两卡同高,栅格同一行)', () => {
     expect(src).not.toContain('page-spin')
-    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
       .toEqual(['20', '300', '20', '300'])
     expect(src).toContain(':option="comboOpt" :height="300"')
   })

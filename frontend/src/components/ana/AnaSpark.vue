@@ -2,6 +2,7 @@
 // 迷你折线(移植 ana-charts.jsx Spark):单序列 + 末点圆点。
 import { computed } from 'vue'
 import { INK } from './anaFmt'
+import './ana.css'   // .ana-morph
 
 const props = withDefaults(defineProps<{
   series: number[]
@@ -19,7 +20,10 @@ const d = computed(() => props.series.map((v, i) => (i ? 'L' : 'M') + X(i).toFix
 
 <template>
   <svg :width="w" :height="h" style="display: block">
-    <path :d="d" fill="none" :stroke="color" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-    <circle :cx="X(series.length - 1)" :cy="Y(series[series.length - 1])" r="2.3" :fill="color" />
+    <!-- 换年同点数 200 形变(2026-09-16 矩阵);点数一变 d 插值不了,整组换新元素瞬到,末点不会脱线滑行 -->
+    <g :key="series.length" class="ana-morph">
+      <path :d="d" fill="none" :stroke="color" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+      <circle :cx="X(series.length - 1)" :cy="Y(series[series.length - 1])" r="2.3" :fill="color" />
+    </g>
   </svg>
 </template>

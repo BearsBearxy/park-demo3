@@ -111,6 +111,21 @@
    —— 基态必须由消费者自己写(关键帧只有 to 帧),both 停终态;animationend 用 .self 守卫、不比对 animationName
    (scoped 里的关键帧名会被 Vue 加 hash)。放这里不放 motion.css:ana.css 只被分析组件引用,不进 index 包。 */
 @keyframes fp-wipe { to { clip-path: inset(0 0 0 0); } }
+/* DOM 条形清单(AnaBarRows)的擦入基态 —— 容器不是 scoped 组件自己的类,基态写在这里 */
+.ak-bar-rows.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+
+/* 自绘图同键形变(2026-09-16 行为矩阵:换年 / 换月 / 换楼栋 200)。挂在**数据组**上:
+   `<g :class="['…-data', 'ana-morph', { first, hold }]">`,hold 取 anaMotion 的 useMorphHold。
+   悬停层(竖线 / 高亮点 / 气泡)不挂。只有 SVG 几何属性过渡 —— 前提是 v-for :key 稳定、元素复用;
+   <line> 的 x1/y1/x2/y2、<polyline>/<polygon> 的 points、d 的命令结构变了,都不过渡(直接跳)。
+   ⚠ 消费者 scoped 里给同一批元素写的 transition(如 hover 的 fill)会整条盖掉这里 —— 要合并写进同一条。
+   .hold:wipe 进行中 / 宽度刚变的那两帧,关掉过渡(改宽瞬算,不走形变)。 */
+.ana-morph :is(rect, path, circle) {
+  transition-property: x, y, width, height, cx, cy, r, d;
+  transition-duration: var(--dur-base);
+  transition-timing-function: var(--ease-out);
+}
+.ana-morph.hold :is(rect, path, circle) { transition: none; }
 
 /* ── v2 紧凑仪表盘布局(av2-*,2026-07-08 分析层 v2 阶段1 追加;排版基准=已确认示意图,屏组照抄) ── */
 .av2-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; }

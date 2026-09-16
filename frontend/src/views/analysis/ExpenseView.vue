@@ -7,14 +7,17 @@
 import { computed, ref, watch } from 'vue'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { CMP_BASELINE, fnum, sgn } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { useCompare } from '@/analysis/useCompare'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { fetchPnlSummary, fetchPnlYear, type PnlSummary } from '@/analysis/anaData'
 import { anchorMonth, atPeriod, momOf } from './cockpit.logic'
 import { addSeries, coveredMonths, extractGroups, momMovers, reimburse, topSubjects, wanSeries, REIMBURSE_KEYWORDS } from './expense.logic'
@@ -28,6 +31,9 @@ const cmp = useCompare(['mom'])
 const s5 = ref<PnlYearDTO | null>(null)
 const summary = ref<PnlSummary | null>(null)
 const loading = ref(true)
+// 换年在途:旧年内容留在原地退让(C5-02),卡头年份跟「已加载的那一年」走,不跟选择器先变
+const loadedYear = ref(year.value)
+const staleShown = useDeferredFlag(loading)
 let token = 0   // 年切竞态守卫(范式同 FinPnlView):过期响应弃写
 watch(year, async (y) => {
   if (!y) return
@@ -39,7 +45,7 @@ watch(year, async (y) => {
     s5.value = dto
     summary.value = sum
   } catch { if (t === token) { s5.value = null; summary.value = null } }
-  finally { if (t === token) loading.value = false }
+  finally { if (t === token) { loading.value = false; loadedYear.value = y } }
 }, { immediate: true })
 
 // ── 期间(§五策略2:所选月无附表5 → 锚定最近覆盖月 + 横幅显式) ──
@@ -48,9 +54,13 @@ const groups = computed(() => extractGroups(rows.value))
 const covered = computed(() => coveredMonths(groups.value))
 const empty = computed(() => !covered.value.length)
 const isMonth = computed(() => period.sel.value.gran === 'month')
-const mi = computed(() => period.sel.value.month - 1)
+// 已画那一期(C5-02,同 CockpitView):换年在途 covered 还是旧年的,拿新选的月去对 —— 横幅凭空插进来、
+// 文案还是假的,到数再拔掉,整片 grid 被推下又弹回。同年换月跟选择;跨年在途冻结,与数据同一拍换。
+const drawnSel = ref(period.sel.value)
+watch([loadedYear, period.sel], ([ly, s]) => { if (ly === s.year) drawnSel.value = s }, { immediate: true })
+const mi = computed(() => drawnSel.value.month - 1)
 const usedMi = computed(() => (isMonth.value ? anchorMonth(covered.value, mi.value + 1) - 1 : mi.value))
-const usedYm = computed(() => (isMonth.value && usedMi.value !== mi.value ? ymOf(year.value, usedMi.value + 1) : null))
+const usedYm = computed(() => (isMonth.value && usedMi.value !== mi.value ? ymOf(loadedYear.value, usedMi.value + 1) : null))
 
 // ── KPI 6 瓦(期间取值同 atPeriod 口径) ──
 const money = (v: number | null): string => (v == null ? '—' : (v < 0 ? '−¥' : '¥') + fnum(Math.abs(v) / 10000) + '万')
@@ -64,6 +74,17 @@ const revenue = computed(() => atPeriod(summary.value?.revenue, isMonth.value, u
 // 费用占收入比:revenue 为 0 或 null → null → '—'(人话原则:分母 0 就地留白)
 const expRatio = computed(() => (revenue.value && total.value != null ? (total.value / revenue.value) * 100 : null))
 const reimShare = computed(() => (total.value && reim.value.sum != null ? (reim.value.sum / total.value) * 100 : null))
+// ponytail: 报销 Top7 行的 DOM 顺序只追加、不重排(同 PvAnchorBars)—— 被挪动的节点丢过渡,换期名次一变,
+// 挪动的那几行条长会直接跳。名次靠 translateY(行盒 20 + 行距 14),挪位与条长同走 200。
+const REIM_GAP = 14
+const REIM_PITCH = 20 + REIM_GAP
+let reimOrder: string[] = []
+const reimRows = computed(() => {
+  const top = reim.value.items.slice(0, 7)
+  const rank = new Map(top.map((it, k) => [it.label, k]))
+  reimOrder = [...reimOrder.filter((l) => rank.has(l)), ...top.map((it) => it.label).filter((l) => !reimOrder.includes(l))]
+  return reimOrder.map((l) => ({ it: top[rank.get(l)!], y: rank.get(l)! * REIM_PITCH }))
+})
 
 // ── 主图:四组堆叠柱 + 总计线(四色同驾驶舱 COMPO 策略;环比开=总计上月灰虚线) ──
 const GROUP_DEFS = [
@@ -146,10 +167,11 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 
 <template>
   <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
-  <AnaShell period-mode="full" :compare="['mom']">
+  <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown">
     <template #kpis>
-      <!-- 年空/加载中不渲染 KPI(禁止旧年数值或假 0) -->
-      <template v-if="!loading && !empty">
+      <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 empty 也为真。换年在途旧年瓦片留在原地,
+           由外壳 .anx-kpis 随 busy 同拍退让(C5-02) -->
+      <template v-if="!empty">
         <AnaKpiTile label="运营费用总计" :value="money(total)"
           :delta="momOf(groups.total, isMonth, usedMi)" kind="环比" invert :trend="groups.total" />
         <AnaKpiTile label="管理费用" :value="money(admin)" :trend="groups.admin" />
@@ -164,31 +186,39 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 
     <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
          (主图 300 · 结构环 300 · 第二排三张 250);KPI 行由 .anx-kpis 的 min-height 94 兜位。
-         数据到了原地硬切,不做淡入、卡片不错峰。 -->
-    <div v-if="loading" class="av2-grid ex-skel">
+         顶替 AnaEChart 的三块走 AnaSkelChart(≤600 与图同一张降档表);异动榜 / 报销区是 DOM,照旧写死。
+         卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
+         数据到了原地硬切,不做淡入、卡片不错峰。
+         **门只认首进**(还没有任何数据):换年在途旧年内容留在原地退让,不塌回骨架。 -->
+    <div v-if="loading && !s5" class="av2-grid ex-skel">
       <div class="av2-card av2-s8">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
-        <div class="fp-shim" style="height: 300px"></div>
+        <AnaSkelChart :height="300" />
       </div>
       <div class="av2-card av2-s4">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
-        <div class="fp-shim" style="height: 300px"></div>
+        <AnaSkelChart :height="300" />
       </div>
-      <div v-for="i in 3" :key="i" class="av2-card av2-s4">
+      <div class="av2-card av2-s4">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+        <AnaSkelChart :height="250" />
+      </div>
+      <div v-for="i in 2" :key="i" class="av2-card av2-s4">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
         <div class="fp-shim" style="height: 250px"></div>
       </div>
     </div>
-    <AnaEmpty v-else-if="empty" :label="year + ' 年附表5 无数据'"
+    <AnaEmpty v-else-if="empty" :label="loadedYear + ' 年附表5 无数据'"
       hint="费用分析依赖附表5 费用支出(销售/管理/财务/修缮 组带)" to="/expense-pnl" to-text="去录入附表5" />
     <template v-else>
-      <AnaPeriodBanner v-if="usedYm && period.ym.value" :selected="period.ym.value" :used="usedYm"
+      <AnaPeriodBanner v-if="usedYm" :selected="ymOf(drawnSel.year, drawnSel.month)" :used="usedYm"
         source="附表5" style="margin-bottom: 12px" />
-      <div class="av2-grid">
+      <!-- 换年在途:旧年内容留在原地退让(C5-02)。data-stale-host 常挂,类摘掉后退场才是 200 -->
+      <div class="av2-grid" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
         <!-- 主图 s8:月度费用构成 -->
         <div class="av2-card av2-s8">
           <div class="av2-card-h">
-            <span class="t">月度费用构成 · {{ year }}年</span>
+            <span class="t">月度费用构成 · {{ loadedYear }}年</span>
             <span class="hint">覆盖 {{ covered.length }} 期(万元)· 环比=总计上月虚线</span>
           </div>
           <AnaEChart :option="mainOpt" :height="300" />
@@ -240,11 +270,11 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
               <span class="v">{{ money(reim.sum) }}</span>
               <span class="s">{{ reimShare != null ? '占运营费用 ' + reimShare.toFixed(1) + '%' : '' }}</span>
             </div>
-            <div class="ak-bar-rows">
-              <AnaBarRow v-for="it in reim.items.slice(0, 7)" :key="it.label" :name="it.label"
-                :value="+(it.value / 10000).toFixed(2)" :max="+(reim.items[0].value / 10000).toFixed(2)"
+            <AnaBarRows class="ex-reim-rows" :style="{ height: reimRows.length * REIM_PITCH - REIM_GAP + 'px' }">
+              <AnaBarRow v-for="r in reimRows" :key="r.it.label" :style="{ transform: `translateY(${r.y}px)` }" :name="r.it.label"
+                :value="+(r.it.value / 10000).toFixed(2)" :max="+(reim.items[0].value / 10000).toFixed(2)"
                 fill="#5DCAA5" suffix="万" />
-            </div>
+            </AnaBarRows>
             <!-- 条形仅列前7,合计含全部命中科目——余量必须披露,否则条形与合计对不上账(复审①) -->
             <p v-if="reim.items.length > 7" class="ex-reim-more">
               另 {{ reim.items.length - 7 }} 个科目合计 {{ money(reim.items.slice(7).reduce((s, x) => s + x.value, 0)) }}
@@ -269,6 +299,9 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 .ex-mv .pct { flex: 0 0 auto; width: 64px; text-align: right; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 /* 报销专区合计行 */
 .ex-reim-sum { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+/* 报销 Top7:行绝对定位,名次走 translateY 过渡(DOM 顺序不重排,见 reimRows);容器高由行数定 */
+.ex-reim-rows { position: relative; }
+.ex-reim-rows > :deep(.ak-bar-row) { position: absolute; top: 0; left: 0; right: 0; transition: transform var(--dur-base) var(--ease-out); }
 .ex-reim-more { margin: 8px 0 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
 .ex-reim-sum .v { font-size: var(--fs-h3); font-weight: var(--fw-semibold); font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .ex-reim-sum .s { font-size: 11px; color: var(--text-muted); }

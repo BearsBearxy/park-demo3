@@ -8,6 +8,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
@@ -71,25 +72,27 @@ function onScatterClick(p: unknown) {
       </template>
     </template>
 
-    <!-- 首进:版式已知就不转圈(C6-01)。块高照它顶替的那块钉死:页头 = .ak-h-ic 40 / 标题 28 + 4 + 副行 15;
-         卡头 20(+ .av2-card-h 下距 8 = 28);散点 300(:height)+ 图例行 6 + 15;两张表照 .churn-scroll
-         的 330 / .tall 420;s10 流向图 300(:height)。KPI 行由 .anx-kpis 的 min-height 94 兜位,
+    <!-- 首进:版式已知就不转圈(C6-01)。块高照它顶替的那块钉死:页头 = .ak-h-ic 40 / 标题 20 + 4 + 副行 20
+         (行盒 = base.css:19 body line-height var(--lh-snug) 20px,.ak-title / .ak-sub 不覆写,ana.css:44-45;
+         与字号无关);卡头 20(+ .av2-card-h 下距 8 = 28);散点 300(AnaSkelChart,与图同一张 S 档降档表)
+         + 图例行 6 + 20(.cz-leg 行盒同上,ana.css:36-37 不覆写);两张表照 .churn-scroll 的 330 / .tall 420;
+         s10 流向图 300(AnaSkelChart)。KPI 行由 .anx-kpis 的 min-height 94 兜位,
          首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
     <div v-if="loading" class="ak-page churn-skel">
       <div class="ak-head">
         <div class="ak-h-l">
           <span class="ak-h-ic"></span>
           <div>
-            <div class="fp-shim" style="height: 28px; width: 150px"></div>
-            <div class="fp-shim" style="height: 15px; width: 460px; margin-top: 4px"></div>
+            <div class="fp-shim" style="height: 20px; width: 150px"></div>
+            <div class="fp-shim" style="height: 20px; width: 460px; margin-top: 4px"></div>
           </div>
         </div>
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
-          <div class="fp-shim" style="height: 15px; width: 220px; margin: 6px auto 0"></div>
+          <AnaSkelChart :height="300" />
+          <div class="fp-shim" style="height: 20px; width: 220px; margin: 6px auto 0"></div>
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
@@ -101,7 +104,7 @@ function onScatterClick(p: unknown) {
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
       </div>
     </div>

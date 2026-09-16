@@ -106,11 +106,14 @@ describe('ExpiryView · C6-01 首进骨架(块高钉真版式)', () => {
     // 首进期瓦片不画,但 .anx-kpis 容器在 —— 空行由 min-height 94 兜住,数据到了不推下方
     expect(w.find('.anx-kpis').exists()).toBe(true)
     expect(w.findAll('.anx-kpis .av2-kpi')).toHaveLength(0)
-    const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
-    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px/g)].map((m) => +m[1])
+    // 到期墙那块是 AnaSkelChart(与图同表降档,S 档见 motionR2-g1.spec),按渲染出的 DOM 读,不按源码字面
+    const shim = w.findAll('.ana-skel .fp-shim').map((e) => parseInt((e.element as HTMLElement).style.height, 10))
     // 页头 20 + 20 · (卡头 20 + 到期墙 250) · (卡头 20 + 租金带 280 + 读数句 20 + 参照小字 20)
     expect(shim).toEqual([20, 20, 20, 250, 20, 280, 20, 20])
-    const charts = [...src.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
+    const tpl = src.slice(src.indexOf('<template>'))
+    const real = tpl.slice(tpl.indexOf('v-else-if="!stats"'))
+    const charts = [...real.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
     expect(charts.slice(0, 2)).toEqual([250, 280])
     expect(charts.slice(0, 2).every((h) => shim.includes(h)), '头两张图的高没在骨架里留位').toBe(true)
   })

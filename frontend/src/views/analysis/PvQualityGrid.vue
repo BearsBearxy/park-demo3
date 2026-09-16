@@ -16,7 +16,9 @@
  */
 import { computed, ref, useId } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import type { CalCell, PvQualityGridProps } from './pvAnaV4.logic'
 
@@ -27,7 +29,21 @@ const props = defineProps<PvQualityGridProps & { minStations?: number; tooFewSta
 const WD = ['一', '二', '三', '四', '五', '六', '日']
 const patId = `pvq-drop-${useId()}`
 const { el, width } = useWidth(655)
+// 切到「高级分析」挂上来时在视口内擦入 320;换期格子只过渡底色 200(格按周 × 周内日作键,换月同一格位复用);
+// 擦入中 / 改宽时 hold 关掉。缺抄榜的条与行序换期瞬到
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 const scroller = ref<HTMLElement | null>(null)
+
+/** PV_COLORS 的 hex 叠透明度(同 PvResidualHeat)。透明度并进 fill、不另写 fill-opacity:
+ *  两个属性一起过渡,中途的实际不透明度会冲过两头(蓝 16% → 墨 10% 中间闪到 30% 上下) */
+function tint(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`
+}
+const KIND_FILL: Record<CalCell['kind'], string> = {
+  full: tint(PV_COLORS.FOCUS, 0.16), miss: tint(PV_COLORS.ABOVE, 0.3), drop: PV_COLORS.DROP, todo: 'transparent',
+}
 
 /** 月档 = 自然月铺满,最多 6 列;超过就是年档 */
 const compact = computed(() => props.data.weeks > 6)
@@ -93,7 +109,8 @@ const tip = computed(() => {
       <span class="t">数据质量日历</span>
       <span class="hint">哪一天、哪几栋没抄表</span>
     </div>
-    <div ref="el" class="pqg-body" @mouseleave="hover = null">
+    <div ref="el" :class="['pqg-body', { first, hold }]" @mouseleave="hover = null"
+      @animationend.self="first = false" @animationcancel.self="first = false">
       <div ref="scroller" class="pqg-cal" :class="{ compact }" :style="compact ? undefined : { flex: `0 0 ${calW}px` }">
         <svg :width="calW" :height="calH" :viewBox="`0 0 ${calW} ${calH}`" class="pqg-svg" role="img"
           :aria-label="`数据质量日历 ${period}`">
@@ -104,18 +121,14 @@ const tip = computed(() => {
           </defs>
           <text v-for="h in colHeads" :key="h.t + h.x" class="pqg-colh" :x="h.x" y="12" :text-anchor="h.anchor">{{ h.t }}</text>
           <text v-for="h in rowHeads" :key="h.t" class="pqg-rowh" :class="{ compact }" x="20" :y="h.y" text-anchor="end">{{ h.t }}</text>
-          <g v-for="c in cells" :key="c.date" class="pqg-cell" :data-date="c.date" :data-kind="c.kind">
-            <rect v-if="c.kind === 'full'" class="pqg-bg" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx"
-              :fill="PV_COLORS.FOCUS" fill-opacity=".16" />
-            <rect v-else-if="c.kind === 'miss'" class="pqg-bg" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx"
-              :fill="PV_COLORS.ABOVE" fill-opacity=".30" />
-            <template v-else-if="c.kind === 'drop'">
-              <rect class="pqg-bg" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx" :fill="PV_COLORS.DROP" />
-              <rect class="pqg-hatchbox" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx" :fill="`url(#${patId})`" />
-            </template>
-            <line v-else-if="compact" class="pqg-todo-edge" :x1="c.x" :x2="c.x + G.cw" :y1="c.y + G.ch - 0.5" :y2="c.y + G.ch - 0.5" />
-            <rect v-else class="pqg-bg pqg-todo" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx"
-              fill="transparent" :stroke="PV_COLORS.DROP" stroke-dasharray="3 3" />
+          <!-- 格位键带档位:月历 ↔ 年历的同一格位不是同一天,换档整批换新元素,不做底色淡变 -->
+          <g v-for="c in cells" :key="(compact ? 'y' : 'm') + (c.col * 7 + c.row)" class="pqg-cell" :data-date="c.date" :data-kind="c.kind">
+            <!-- 底色一格一个 rect,四态只换 fill(还没到:透明 + 月档虚线框),换期同一格位复用才过渡得了 -->
+            <rect :class="['pqg-bg', { 'pqg-todo': c.kind === 'todo' && !compact }]" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx"
+              :fill="KIND_FILL[c.kind]" :stroke="c.kind === 'todo' && !compact ? PV_COLORS.DROP : undefined"
+              :stroke-dasharray="c.kind === 'todo' && !compact ? '3 3' : undefined" />
+            <rect v-if="c.kind === 'drop'" class="pqg-hatchbox" :x="c.x" :y="c.y" :width="G.cw" :height="G.ch" :rx="G.rx" :fill="`url(#${patId})`" />
+            <line v-else-if="c.kind === 'todo' && compact" class="pqg-todo-edge" :x1="c.x" :x2="c.x + G.cw" :y1="c.y + G.ch - 0.5" :y2="c.y + G.ch - 0.5" />
             <template v-if="!compact">
               <text class="pqg-day" :class="c.kind" :x="c.x + 8" :y="c.y + 18"
                 :style="c.kind === 'miss' ? { fill: PV_COLORS.AMBER_TEXT } : undefined">{{ c.day }}</text>
@@ -155,6 +168,10 @@ const tip = computed(() => {
 
 <style scoped>
 .pqg-body { position: relative; display: flex; gap: 16px; align-items: flex-start; }
+.pqg-body.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+/* 换期只过渡底色(fill / 虚线框);格的几何、划痕、悬停描边都瞬到 */
+.pqg-bg { transition: fill var(--dur-base) var(--ease-standard), stroke var(--dur-base) var(--ease-standard); }
+.pqg-body.hold .pqg-bg { transition: none; }
 .pqg-cal { position: relative; min-width: 0; }
 .pqg-cal.compact { flex: 1 1 auto; overflow-x: auto; overflow-y: hidden; }
 .pqg-svg { display: block; }

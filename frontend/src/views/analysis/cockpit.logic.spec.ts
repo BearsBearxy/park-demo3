@@ -796,8 +796,10 @@ describe('驾驶舱首进骨架(C6-01)', () => {
     expect(src).not.toContain('page-spin')
     // 主图卡 300 之后跟两条读数句(8+20 / 2+20),预测带卡 280 之后跟一条(2+20):
     // .ana-read/.ana-ref 的行盒是 base.css 的 --lh-snug 20px 长度,与 font-size 无关 —— 不钉就下沉 ≥70px
-    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
-      .toEqual(['20', '300', '20', '20', '20', '300', '20', '280', '20', '20', '250'])
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
+      // 第二排按模板字面:分期 / 收缴率(AnaSkelChart,v-for 2 只算一次)· 异常速览(DOM 列表)
+      .toEqual(['20', '300', '20', '20', '20', '300', '20', '280', '20', '20', '250', '20', '250'])
     // 真版式那一侧的四个字面值 —— 骨架照抄的就是它们
     expect(src).toContain(':option="mainOption" :height="300"')
     expect(src).toContain(':option="donutOption" :height="300"')

@@ -15,6 +15,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { fint, fnum } from '@/components/ana/anaFmt'
 import { fetchBuildings, fetchBuildingSummary, fetchContracts, fetchTenants } from '@/analysis/anaData'
 import { buildBuildingRows, buildPhaseRows, liveContracts, splitLogPoints } from './park.logic'
@@ -208,17 +209,20 @@ const areaBarOption = computed(() => ({
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
-         页头 44;卡头 20 + margin 8 = 28;图块 = 各 AnaEChart 的 :height(300 / 300 / 300 / 250)。
-         TreeMap 卡与面积转换卡下面各有一条 .pk-legend(margin-top 8 + 行高 20 = 28);
-         租户明细卡 = .pk-tbl-wrap max-height 296 + .pk-sum(margin-top 8 + 20);
-         面积转换卡右栏 250 + legend 28 = 278 高于左栏两块指标 186,取 278。
+         页头 44;卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28;
+         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300 / 250,anaChartHeight.ts)。
+         TreeMap 卡与面积转换卡下面各有一条 .pk-legend(本文件 scoped margin-top 8 + 行盒 20 = 28;
+         行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px,与 11px 字号无关);
+         租户明细卡 = .pk-tbl-wrap max-height 296 + .pk-sum(margin-top 8 + 行盒 20);
+         面积转换卡右栏 图 250 + legend 28 = 278 高于左栏两块指标 186(宽档左右并排,取高的那栏)。
+         ≤900 两栏改纵排、指标行在图上方,其高随「Σ建筑 … ÷ Σ租赁 …」折几行而变,骨架不兜。
          KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
     <div v-if="loading" class="ak-page ak-skel">
       <div class="fp-shim" style="height: 44px; width: 300px"></div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
           <div class="fp-shim" style="height: 20px; width: 60%; margin-top: 8px"></div>
         </div>
         <div class="av2-card av2-s4">
@@ -228,11 +232,11 @@ const areaBarOption = computed(() => ({
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s6">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card pk-s2">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 80px"></div></div>
@@ -240,7 +244,8 @@ const areaBarOption = computed(() => ({
         </div>
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 278px"></div>
+          <AnaSkelChart :height="250" />
+          <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
         </div>
       </div>
     </div>

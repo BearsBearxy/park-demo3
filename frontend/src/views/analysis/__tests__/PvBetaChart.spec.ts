@@ -1,7 +1,8 @@
 // B11 挂载测:钉渲染出来的 SVG 坐标(计划 §4)。月槽中心 x 用画布 v2/Drawer.dc.html 的几何
 // (宽 646、12 等分:70.4 / 119.3 / … / 607.6),y 按「极值贴上 34 / 下 48 像素」手算写死。
 // 夹具三种留空都有(1 月投产前、2 月与 5 月样本不足、9–12 月还没到),5 月在两段有值的月中间 —— 连线必须在那里断开。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvBetaChart from '../PvBetaChart.vue'
 import type { BetaSlot } from '../pvAnaV4.logic'
@@ -39,9 +40,10 @@ describe('PvBetaChart(B11)', () => {
     expect(dots.map(d => [num(d.attributes('cx')), num(d.attributes('cy'))]))
       .toEqual([[168.1, 122], [216.9, 78.8], [314.6, 50], [363.4, 69.2], [412.3, 93.2]])
     expect(dots.every(d => d.attributes('r') === '7' && d.attributes('fill') === C.FOCUS && d.attributes('stroke-width') === '2.5')).toBe(true)
-    const line = w.find('path.line')
-    expect(line.attributes('d')).toBe('M168.1,122 L216.9,78.8 M314.6,50 L363.4,69.2 L412.3,93.2')
-    expect([line.attributes('stroke'), line.attributes('stroke-width')]).toEqual([C.FOCUS, '2'])
+    // 连线一月一段(换栋能形变):3→4、6→7、7→8;4→5、5→6 空槽处不出段
+    const segs = w.findAll('path.line')
+    expect(segs.map(s => s.attributes('d'))).toEqual(['M168.1,122 L216.9,78.8', 'M314.6,50 L363.4,69.2', 'M363.4,69.2 L412.3,93.2'])
+    expect(segs.every(s => s.attributes('stroke') === C.FOCUS && s.attributes('stroke-width') === '2')).toBe(true)
   })
 
   it('网格 0.9 / 1.0 / 1.1;=1 参照墨阶虚线 y 98 + 右端直标「1 = 与全园同步」', () => {
@@ -127,3 +129,32 @@ function rgb(hex: string): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+// 2026-09-16 行为矩阵:抽屉里的图 —— 打开瞬现(不擦入,原则 7);上一栋 / 下一栋不重挂,同键 200 形变
+describe('PvBetaChart(B11)动效', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗抽屉里在视口内挂载也不擦:数据组只有形变类,没有 first / hold', async () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 646, width: 646, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const w = mountChart()
+    await nextTick()
+    expect(w.find('g.b11-data').classes()).toEqual(['b11-data', 'ana-morph'])
+  })
+
+  it('❗下一栋不重挂:同一个月的点与连线段还是同一个元素,坐标换成新栋的;5 月补上值后 4→5、5→6 两段新出现;悬停层不在形变组里', async () => {
+    const w = mountChart()
+    const dot4 = w.findAll('circle.dot')[1].element   // 4 月不是极值(极值钉在上下边,换栋也不动)
+    const seg67 = w.find('path.line[data-m="6"]').element
+    const before = [dot4.getAttribute('cy'), seg67.getAttribute('d')]
+    const next = slots().map(s => ({ ...s, beta: s.month === 5 ? 1.2 : s.beta == null ? null : s.beta + 0.05, why: s.month === 5 ? null : s.why }))
+    await w.setProps({ slots: next })
+    expect(w.findAll('circle.dot')[1].element).toBe(dot4)
+    expect(w.find('path.line[data-m="6"]').element).toBe(seg67)
+    expect([dot4.getAttribute('cy'), seg67.getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false])
+    expect(w.findAll('path.line').map(p => Number(p.attributes('data-m')))).toEqual([3, 4, 5, 6, 7])
+    await w.findAll('.hit')[2].trigger('mouseenter')
+    for (const sel of ['.hit', '.dtip', 'line.ref', 'line.axl']) expect(w.find(sel).element.closest('.ana-morph'), sel).toBe(null)
+  })
+})

@@ -1,7 +1,8 @@
 // PvConsumption(B7)挂载测:槽与柱的 x/width、三段堆叠的 y、圆角只在最顶段、副轴钉死 0–6%、
 // 超轴刻度断线 + 三角 + 数值、未到淡区、悬停槽底与气泡翻边。
 // 夹具非退化:三段逐日起伏、损耗率逐日变且有一天冲到 7.2%、有一天损耗为 0、29–31 日未到。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvConsumption from '../PvConsumption.vue'
 import { tipWidth } from '@/components/ana/chartTip'
@@ -102,12 +103,23 @@ describe('PvConsumption 损耗率', () => {
     expect(num(dots[0], 'cx')).toBeCloseTo(g.cx(0), 6)
     expect(num(dots[0], 'cy')).toBeCloseTo(g.yLoss(d.ticks[0].lossPct!), 6)
     expect(dots.some(c => Math.abs(num(c, 'cx') - g.cx(9)) < 1e-6)).toBe(false)
-    expect(attr(w.find('.pcs-lossline'), 'd').match(/M/g)).toHaveLength(2)
-    const tri = w.find('.pcs-over')
-    const pts = attr(tri, 'points').split(' ').map(p => p.split(',').map(Number))
-    expect(pts[2][0]).toBeCloseTo(g.cx(9), 6)
-    expect(Math.max(...pts.map(p => p[1]))).toBeLessThan(PT)
-    expect(w.find('.pcs-overt').text()).toBe('7.2%')
+    // 折线拆成相邻两刻度一段(换期能形变):1–9 日 8 段 + 11–28 日 17 段;10 日两侧不出段 = 断开
+    const segs = w.findAll('.pcs-lossline')
+    const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, k) => a + k)
+    expect(segs.map(s => Number(s.attributes('data-i')))).toEqual([...range(0, 7), ...range(10, 26)])
+    const p0 = attr(segs[0], 'd').split(/[ML, ]+/).filter(Boolean).map(Number)
+    expect(p0).toHaveLength(4)
+    ;[g.cx(0), g.yLoss(d.ticks[0].lossPct!), g.cx(1), g.yLoss(d.ticks[1].lossPct!)].forEach((v, k) => expect(p0[k]).toBeCloseTo(v, 6))
+    // 三角 + 数值整组平移到 10 日槽心(组 transform 能过渡;<polygon> points / <text> x 不能)
+    const og = w.find('.pcs-overg')
+    const tx = Number(/translate\(([-\d.]+)px/.exec(og.attributes('style') ?? '')?.[1])
+    expect(tx).toBeCloseTo(g.cx(9), 6)
+    const tri = og.find('path.pcs-over')
+    const pts = attr(tri, 'd').match(/-?[\d.]+/g)!.map(Number)
+    expect(pts).toEqual([-4, PT - 2, 4, PT - 2, 0, PT - 9])   // 顶点朝上,尖在组原点
+    expect(Math.max(pts[1], pts[3], pts[5])).toBeLessThan(PT)
+    expect(og.find('.pcs-overt').text()).toBe('7.2%')
+    expect(og.find('.pcs-overt').attributes('x')).toBe('6')
   })
 
   it('对照:没有超轴的刻度就没有三角,折线一笔到底', () => {
@@ -115,7 +127,7 @@ describe('PvConsumption 损耗率', () => {
     d.ticks[9] = tick('10', 11000, 5200, 0.05)
     const w = mount(PvConsumption, { props: { data: d } })
     expect(w.find('.pcs-over').exists()).toBe(false)
-    expect(attr(w.find('.pcs-lossline'), 'd').match(/M/g)).toHaveLength(1)
+    expect(w.findAll('.pcs-lossline').map(s => Number(s.attributes('data-i')))).toEqual(Array.from({ length: 27 }, (_, k) => k))
     expect(w.find('.ana-ref').text()).not.toContain('超过')
   })
 })
@@ -202,7 +214,64 @@ describe('PvConsumption 年档与图注', () => {
     expect(kids.findIndex(e => e.classList.contains('pcs-data'))).toBeGreaterThan(kids.findIndex(e => e.classList.contains('pcs-axl')))
     expect(w.find('.pcs-axl').element.closest('g.pcs-data')).toBe(null)
     expect(w.find('.pcs-xl').element.closest('g.pcs-data')).toBe(null)
-    // AnaShell 之外 entered 默认真 = 不擦
+    // jsdom 的 rect 全 0 = 离屏 → 不擦(视口内的对照在「动效」组)
     expect(g.classes()).not.toContain('first')
+  })
+})
+
+// 2026-09-16 行为矩阵:首挂视口内擦入 320;换期不重挂,同键 200 形变(ana-morph 的 CSS 在 ana.css,jsdom 不算样式 → 钉类与元素身份)
+describe('PvConsumption 动效', () => {
+  // jsdom 的 rect 全 0 = 离屏;要「视口内」就桩一个
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 999, width: 999, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗换期不重挂:同一刻度的柱段 / 损耗点 / 损耗段还是同一个 DOM 元素,坐标换成新的;悬停槽底不在形变组里', async () => {
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    expect(w.find('g.pcs-data').classes()).toContain('ana-morph')
+    const els = [seg(w, 4, 'self').element, w.findAll('.pcs-lossdot')[0].element, w.findAll('.pcs-lossline')[0].element]
+    const before = [els[0].getAttribute('y'), els[1].getAttribute('cy'), els[2].getAttribute('d')]
+    const next = monthData()
+    next.ticks = next.ticks.map(t => ({ ...t, self: t.self * 1.5, lossPct: t.lossPct == null ? null : t.lossPct * 0.8 }))
+    await w.setProps({ data: next })
+    // toBe 逐个比身份(toEqual 比 DOM 结构,重建出来的同属性节点也会过)
+    ;[seg(w, 4, 'self').element, w.findAll('.pcs-lossdot')[0].element, w.findAll('.pcs-lossline')[0].element].forEach((e, k) => expect(e).toBe(els[k]))
+    expect([els[0].getAttribute('y'), els[1].getAttribute('cy'), els[2].getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false, false])
+    await w.find('.pcs-hit').trigger('mousemove', { clientX: PL + 10 })
+    expect(w.find('.pcs-hair').element.closest('.ana-morph')).toBe(null)
+  })
+
+  it('❗换月天数不同(槽宽变):轴外三角 + 数值是同一个组节点,只换 transform;按月 ↔ 按年整组换新元素', async () => {
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    const og = w.find('.pcs-overg').element
+    const t0 = og.getAttribute('style')
+    const d30 = monthData()
+    d30.ticks = d30.ticks.slice(0, 30)
+    await w.setProps({ data: d30 })
+    expect(w.find('.pcs-overg').element, '换月重建了三角组 = 柱在滑、三角先跳').toBe(og)
+    expect(og.getAttribute('style')).not.toBe(t0)
+    expect(w.find('g.pcs-data').classes()).toContain('ana-morph')
+    expect(og.closest('.ana-morph'), '三角组不在形变组里,hold 管不到').not.toBe(null)
+    const data = w.find('g.pcs-data').element
+    const bar = seg(w, 4, 'self').element
+    await w.setProps({ data: { ...monthData(), gran: 'year' } })
+    expect(w.find('g.pcs-data').element, '跨粒度复用了数据组').not.toBe(data)
+    expect(seg(w, 4, 'self').element, '「5 日」的柱滑成了「5 月」').not.toBe(bar)
+  })
+
+  it('❗视口内首挂擦入:擦入期间 hold 压住形变;animationcancel 与 animationend 都摘', async () => {
+    inView()
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    await nextTick()
+    expect(w.find('g.pcs-data').classes()).toEqual(['pcs-data', 'ana-morph', 'first', 'hold'])
+    await w.find('g.pcs-data').trigger('animationcancel')
+    expect(w.find('g.pcs-data').classes()).toEqual(['pcs-data', 'ana-morph'])
+    const w2 = mount(PvConsumption, { props: { data: monthData() } })
+    await nextTick()
+    await w2.find('g.pcs-data').trigger('animationend')
+    expect(w2.find('g.pcs-data').classes()).toEqual(['pcs-data', 'ana-morph'])
   })
 })

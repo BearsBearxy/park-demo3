@@ -70,7 +70,8 @@ describe('损益分析首进骨架(C6-01)', () => {
 
   it('❗不转圈;骨架块高 = 迷你卡 30/11/12/26/15 + 两张图卡头 20 + 图 300', () => {
     expect(src).not.toContain('page-spin')
-    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
       .toEqual(['30', '11', '12', '26', '15', '20', '300', '20', '300'])
     // 真版式那一侧:迷你线 26(AnaSpark :h)、图标盒 30、两张图 300
     expect(src).toContain(':w="150" :h="26"')

@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaRentBandChart from '@/components/ana/AnaRentBandChart.vue'
 import AnaRenewalChart from '@/components/ana/AnaRenewalChart.vue'
 import { rentBandColsOf, rentBandGapsOf, rentBandSplitIdx } from './rentBandChart.logic'
@@ -144,7 +145,8 @@ function onParetoClick(p: unknown) {
     </template>
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44、
-         卡头 20(.av2-card-h 下距 8 合 28)、到期墙 250、合约租金带 280(各自 :height 字面值)
+         卡头 20(.av2-card-h 下距 8 合 28)、到期墙 250(AnaSkelChart,S 档随图降档)、
+         合约租金带 280(自绘图不降档,写死)(各自 :height 字面值)
          + 读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2)。
          再往下的卡全是条件卡(先谈哪几户 / 续签率 / Pareto / 清单),数目随数据变,骨架不猜。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位
@@ -162,7 +164,7 @@ function onParetoClick(p: unknown) {
       <div class="av2-grid">
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 250px"></div>
+          <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>

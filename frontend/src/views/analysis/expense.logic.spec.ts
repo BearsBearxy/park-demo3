@@ -112,8 +112,10 @@ describe('费用分析首进骨架(C6-01)', () => {
 
   it('❗不转圈;骨架块高 = 卡头 20 + 主图 300 / 结构环 300 / 第二排 250', () => {
     expect(src).not.toContain('page-spin')
-    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
-      .toEqual(['20', '300', '20', '300', '20', '250'])
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
+      // 模板字面顺序(v-for 只算一次):主图 · 结构环 · Top10(AnaSkelChart)· 异动榜 / 报销区(DOM,v-for 2)
+      .toEqual(['20', '300', '20', '300', '20', '250', '20', '250'])
     expect(src).toContain(':option="mainOpt" :height="300"')
     expect(src).toContain(':option="donutOpt" :height="300"')
     expect(src).toContain(':option="topOpt" :height="250"')

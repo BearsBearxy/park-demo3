@@ -13,6 +13,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
 import { bandSeries } from '@/components/ana/anaTheme'
@@ -209,7 +210,9 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 
     <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
          卡头 20 + .av2-card-h margin-bottom 8 = 28;左列 .mn-search 34(padding 6+6 + 边框 2 + 行高 20)
-         + margin-bottom 8,.mn-list max-height 560;右列两张图 = :height 250 / 200;
+         + margin-bottom 8,.mn-list max-height 560;右列两张图 = AnaSkelChart,高与 AnaEChart 的 :height 同表降档
+         (250 / 200,anaChartHeight.ts);电/水费卡图下常驻两行 = .ana-read(ana.css margin-top 8)+ .ana-ref
+         (margin-top 2),.hold 各 min-height 1lh = 行盒 20(base.css body line-height var(--lh-snug) = tokens.css 20px);
          规则卡与园区级异常卡各留一行 .mn-rule 60(padding 9+9 + .tt 20 + margin 2 + .dt 20)——
          条数随数据,骨架只兜「至少一行」。数据到了原地硬切,不做淡入。 -->
     <div v-if="!ready" class="av2-grid ak-skel">
@@ -221,11 +224,13 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
       <div class="av2-s8 mn-right">
         <div class="av2-card">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 250px"></div>
+          <AnaSkelChart :height="250" />
+          <div class="fp-shim" style="height: 20px; width: 55%; margin-top: 8px"></div>
+          <div class="fp-shim" style="height: 20px; width: 38%; margin-top: 2px"></div>
         </div>
         <div class="av2-card">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 200px"></div>
+          <AnaSkelChart :height="200" />
         </div>
         <div class="av2-card">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>

@@ -2,7 +2,8 @@
 // (宽 646:估计窗口 1/1–6/8 的底条 x 46 宽 256、未到从 430.8 起),y 按「极值贴上 50 / 下 25 像素」手算写死。
 // 夹具:中线 −0.02、半宽单位 0.04(内带 −0.10~0.06,外带 −0.14~0.10);点三档都有,档位按离中线几倍半宽
 // 现算(与 controlChart 同判据),6 月 9 日起整体抬 0.06,另放两个显式极值。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvControlChart from '../PvControlChart.vue'
 import type { ControlChart } from '../pvAnaV4.logic'
@@ -56,8 +57,8 @@ describe('PvControlChart(B10)', () => {
       .toEqual([46, 101.5, 586, 90, '0.25'])
     expect([num(i.attributes('y')), num(i.attributes('height')), i.attributes('fill'), i.attributes('fill-opacity')])
       .toEqual([116.5, 60, C.BAND, '0.5'])
-    const c = w.find('line.center')
-    expect([num(c.attributes('y1')), c.attributes('stroke'), c.attributes('stroke-width')]).toEqual([146.5, C.MID, '1.5'])
+    const c = w.find('path.center')
+    expect([c.attributes('d'), c.attributes('stroke'), c.attributes('stroke-width')]).toEqual(['M46,146.5 H632', C.MID, '1.5'])
     expect(w.findAll('text.bandlab').map(t => [t.text(), num(t.attributes('x')), num(t.attributes('y'))]))
       .toEqual([['平时的起伏', 628, 112.5], ['更宽的那道', 628, 97.5]])
   })
@@ -152,3 +153,35 @@ function rgb(hex: string): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+// 2026-09-16 行为矩阵:抽屉里的图 —— 打开瞬现(不擦入,原则 7);上一栋 / 下一栋不重挂,同键 200 形变
+describe('PvControlChart(B10)动效', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗抽屉里在视口内挂载也不擦:数据组只有形变类,没有 first / hold', async () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 646, width: 646, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const w = mountChart(monthFixture())
+    await nextTick()
+    expect(w.find('g.b10-data').classes()).toEqual(['b10-data', 'ana-morph'])
+  })
+
+  it('❗下一栋不重挂:同一天的点、两道带、中线还是同一个元素,坐标换成新栋的;悬停层与轴线不在形变组里', async () => {
+    const w = mountChart(monthFixture())
+    const pt = w.findAll('circle.pt')[0].element
+    const band = w.find('rect.inner').element
+    const ctr = w.find('path.center').element
+    const before = [pt.getAttribute('cy'), band.getAttribute('y'), ctr.getAttribute('d')]
+    // 另一栋:中线 0.03、半宽 0.05,点的走势也不同
+    await w.setProps({ data: build(0.03, 0.05, range(1, 240), d => 0.03 + 0.06 * Math.cos(d / 13), WIN, 241) })
+    expect(w.findAll('circle.pt')[0].element).toBe(pt)
+    expect(w.find('rect.inner').element).toBe(band)
+    expect(w.find('path.center').element).toBe(ctr)
+    expect([pt.getAttribute('cy'), band.getAttribute('y'), ctr.getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false, false])
+    const g = w.find('g.b10-data')
+    for (const sel of ['circle.pt', 'rect.outer', 'rect.inner', 'path.center', 'rect.win', 'rect.future']) expect(g.find(sel).exists(), sel).toBe(true)
+    await w.find('.plot').trigger('mousemove', { clientX: 302 })
+    for (const sel of ['.hair', '.dtip', 'line.axl']) expect(w.find(sel).element.closest('.ana-morph'), sel).toBe(null)
+  })
+})

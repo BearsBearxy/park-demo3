@@ -1,6 +1,7 @@
 // PvYieldBand(B3)挂载测:几何钉坐标(点、淡区、线尾标签、悬停竖线与气泡翻边),不钉配置对象。
 // 夹具非退化:三条序列逐日起伏、选中栋漏抄一天、在网不足 3 栋留空一天、29–31 日未到。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvYieldBand from '../PvYieldBand.vue'
 import { tipWidth } from '@/components/ana/chartTip'
@@ -79,9 +80,28 @@ describe('PvYieldBand 几何', () => {
 
   it('漏抄那天选中栋线断开,在网不足 3 栋那天带断开 —— 断成两段各自起笔', () => {
     const w = mount(PvYieldBand, { props: { data: monthData() } })
-    expect(attr(w.find('.pyb-sel'), 'd').match(/M/g)).toHaveLength(2)
-    expect(attr(w.find('.pyb-med'), 'd').match(/M/g)).toHaveLength(2)
+    // 线拆成相邻两刻度一段(按起点刻度):选中栋 6 日两侧(5→6、6→7)不出段,全园线 17 日两侧不出段
+    const starts = (sel: string) => w.findAll(sel).map(s => Number(s.attributes('data-i')))
+    const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, k) => a + k)
+    expect(starts('.pyb-sel')).toEqual([...range(0, 3), ...range(6, 26)])
+    expect(starts('.pyb-med')).toEqual([...range(0, 14), ...range(17, 26)])
     expect(w.findAll('.pyb-band')).toHaveLength(2)
+    const g = geo(monthData())
+    const d = monthData()
+    expect(attr(w.find('.pyb-sel[data-i="6"]'), 'd')).toBe(`M${g.x(6)},${g.y(d.sel[6]!)} L${g.x(7)},${g.y(d.sel[7]!)}`)
+  })
+
+  it('❗选中栋单独一个点(两边都没抄):同点连一次,圆头线帽画成点;全园线不出点(对照)', () => {
+    const d = monthData()
+    d.sel[3] = null; d.selState[3] = 'missing'
+    d.med[14] = null
+    const w = mount(PvYieldBand, { props: { data: d } })
+    const g = geo(d)
+    const p = `${g.x(4)},${g.y(d.sel[4]!)}`
+    const lone = w.find('.pyb-sel[data-i="4"]')
+    expect([attr(lone, 'd'), attr(lone, 'stroke-linecap')]).toEqual([`M${p} L${p}`, 'round'])
+    // 全园线 16 日两边(15、17 日)都空:不出点
+    expect(w.find('.pyb-med[data-i="15"]').exists()).toBe(false)
   })
 
   it('年档逐月:8 个月全标,最后一月贴右缘,整段已过去不画淡区', () => {
@@ -229,5 +249,61 @@ describe('PvYieldBand 图注', () => {
     expect(w.find('.ana-ref').text()).toBe(
       '纵轴 = 等效小时 kWh/kWp · 横轴 = 1…31 日 · 11 栋在网、2 栋未投产 · 数据到 28 日，右侧淡区还没到 · 分母 = 台账装机（13 栋未录板数）',
     )
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的图 —— 挂载时视口内擦入 320;换栋 / 换期不重挂,同键 200 形变
+describe('PvYieldBand 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 999, width: 999, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:数据组 first + hold;animationcancel / animationend 都摘;离屏挂载不擦', async () => {
+    inView()
+    const w = mount(PvYieldBand, { props: { data: monthData() } })
+    await nextTick()
+    expect(w.find('g.pyb-data').classes()).toEqual(['pyb-data', 'ana-morph', 'first', 'hold'])
+    await w.find('g.pyb-data').trigger('animationcancel')
+    expect(w.find('g.pyb-data').classes()).toEqual(['pyb-data', 'ana-morph'])
+    const w2 = mount(PvYieldBand, { props: { data: monthData() } })
+    await nextTick()
+    await w2.find('g.pyb-data').trigger('animationend')
+    expect(w2.find('g.pyb-data').classes()).toEqual(['pyb-data', 'ana-morph'])
+    vi.restoreAllMocks()
+    const off = mount(PvYieldBand, { props: { data: monthData() } })
+    await nextTick()
+    expect(off.find('g.pyb-data').classes()).toEqual(['pyb-data', 'ana-morph'])
+  })
+
+  it('❗按月 ↔ 按年:刻度下标不是同一类目 —— 数据组整组换新元素,「11 日」的线段不滑成「11 月」', async () => {
+    const w = mount(PvYieldBand, { props: { data: monthData() } })
+    const g0 = w.find('g.pyb-data').element
+    const seg = w.find('.pyb-sel[data-i="10"]').element
+    const m = monthData()
+    const pick = <T,>(a: T[]) => a.slice(0, 12)
+    await w.setProps({ data: { ...m, gran: 'year', labels: pick(m.labels).map(l => l + '月'), sel: pick(m.sel), selState: pick(m.selState), med: pick(m.med), lo: pick(m.lo), hi: pick(m.hi), futureFrom: 12, throughIdx: 11 } })
+    expect(w.find('g.pyb-data').element).not.toBe(g0)
+    expect(w.find('.pyb-sel[data-i="10"]').exists()).toBe(true)
+    expect(w.find('.pyb-sel[data-i="10"]').element, '跨粒度复用了同下标的线段').not.toBe(seg)
+  })
+
+  it('❗换栋不重挂:同一刻度的线段 / 带还是同一个元素,d 换成新栋的;带、两条线、线尾字在形变组里,轴线与悬停层不在', async () => {
+    const w = mount(PvYieldBand, { props: { data: monthData() } })
+    const seg = w.find('.pyb-sel[data-i="10"]').element
+    const band = w.findAll('.pyb-band')[0].element
+    const before = [seg.getAttribute('d'), band.getAttribute('d')]
+    const d = monthData()
+    // 另一栋:比原来整体低 0.4(量程下端跟着撑开 → 带的 y 也变)
+    await w.setProps({ data: { ...d, selName: 'E座', sel: d.sel.map(v => (v == null ? null : v - 0.4)) } })
+    expect(w.find('.pyb-sel[data-i="10"]').element).toBe(seg)
+    expect(w.findAll('.pyb-band')[0].element).toBe(band)
+    expect([seg.getAttribute('d'), band.getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false])
+    const g = w.find('g.pyb-data')
+    for (const sel of ['.pyb-band', '.pyb-med', '.pyb-sel', '.pyb-tail']) expect(g.find(sel).exists(), sel).toBe(true)
+    await w.find('.pyb-hit').trigger('mousemove', { clientX: 44 + 10 * (999 - 44 - 62) / 30 })
+    for (const sel of ['.pyb-hair', '.pyb-dot', '.pyb-axl']) expect(w.find(sel).element.closest('.ana-morph'), sel).toBe(null)
   })
 })

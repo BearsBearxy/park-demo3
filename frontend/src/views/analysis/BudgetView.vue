@@ -12,6 +12,7 @@ import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaBullet from '@/components/ana/AnaBullet.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -32,16 +33,19 @@ const rows = ref<BudgetRowDTO[]>([])
 const pnlKeys = ref<Map<number, Record<BudgetKey, number | null>>>(new Map())
 const ready = ref(false)
 
+// 换年不打接口(一次拉全年份);切回页签重读是静默原地换数(C1-06):不 stale、不亮进度线
 async function reload() {
   try {
-    rows.value = await fetchBudgetAll()
-    const pnlYears = [...new Set(rows.value.map(r => r.year))].filter(y => y >= PNL_SOT_FROM_YEAR)
+    const rs = await fetchBudgetAll()
+    const pnlYears = [...new Set(rs.map(r => r.year))].filter(y => y >= PNL_SOT_FROM_YEAR)
     const m = new Map<number, Record<BudgetKey, number | null>>()
     await Promise.all(pnlYears.map(y =>
       // s5 原始行另拉一次:管理/销售/财务/修缮组级小计(复审:整体 s5 口径会假超支)
       Promise.all([fetchPnlSummary(y), fetchPnlYear('s5', y).catch(() => null)])
         .then(([s, s5dto]) => { m.set(y, pnlKeyTotals(s, s5dto ? extractS5GroupTotals(s5dto) : undefined)) })
         .catch(() => { /* 无 pnl → 用文件值 */ })))
+    // 行与损益推算同一拍落地:分开写的话,重读时先拿新行配旧推算画一遍,图形变两次
+    rows.value = rs
     pnlKeys.value = m
   } catch { rows.value = [] } finally { ready.value = true }
 }
@@ -181,12 +185,15 @@ const kpiOutlook = computed(() => {
 
     <!-- 首进:版式已知就不转圈(C6-01)。第一行两卡照主图的 :height 300 留白;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
-         第二行(总表明细 / 前瞻)高度随行数走,钉不住;它在第一行之下,长出来不推上面的内容。 -->
+         第二行(总表明细 / 前瞻)高度随行数走,钉不住;它在第一行之下,长出来不推上面的内容。
+         主图块走 AnaSkelChart(≤600 与图同一张降档表);右卡是 AnaBullet(自绘)+ 明细行,照旧写死。
+         卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
+         门只认首进:ready 置真后不再复位,换年(不打接口)与切回页签重读都不会塌回骨架。 -->
     <div v-if="!ready" class="bv2-page bv2-skel">
       <div class="av2-grid">
         <div class="av2-card av2-s8">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>

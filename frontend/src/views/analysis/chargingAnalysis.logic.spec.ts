@@ -101,9 +101,10 @@ describe('ChargingAnalysisView · C6-01 首进骨架(块高钉真版式)', () =>
     const src = readFileSync(join(__dirname, 'ChargingAnalysisView.vue'), 'utf8')
     expect(src, '版式已知不许转圈').not.toContain('page-spin')
     expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="ak-page ana-skel"')
-    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px/g)].map((m) => +m[1])
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
     expect(shim).toEqual([20, 20, 20, 20, 300, 20, 250, 20, 250, 20, 250])
-    const charts = [...src.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
     // 页头 20 + 20 · 结论条 20 · (卡头 20 + 图 300) · (20 + 250) ×3
     expect(charts).toEqual([300, 250, 250, 250])
     expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)

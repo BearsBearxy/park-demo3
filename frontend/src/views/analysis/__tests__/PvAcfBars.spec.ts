@@ -1,6 +1,7 @@
 // PvAcfBars 挂载测:L2 竖柱 + 淡带。钉柱的 path(位置、高度、圆角朝向)、带的 y/高、带内柱浅一档、x 标签位置、
 // 悬停柱槽与气泡翻边、读数句是测量句。夹具 14 个间隔,有正有负、有带内有带外;宽 = jsdom 初值 312。
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvAcfBars from '../PvAcfBars.vue'
 import type { AcfBars } from '../pvAnaV4.logic'
@@ -107,5 +108,51 @@ describe('PvAcfBars · 文案', () => {
 
   it('参照系写出算的是哪一栋', () => {
     expect(mountIt().find('.ana-ref').text()).toBe('横轴 = 隔几天 · 淡带之内算没有规律，柱子画浅一档 · 拿 F座 整年的逐日偏差算')
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的图 —— 挂载时视口内柱组擦入 320;换栋 / 换期不重挂,柱按隔几天同键 200 形变
+describe('PvAcfBars 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 312, width: 312, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:柱组 first + hold,淡带 / 0 线只 hold 不擦;animationcancel / animationend 都摘;离屏不擦', async () => {
+    inView()
+    const w = mountIt()
+    await nextTick()
+    expect(w.find('g.pacf-data').classes()).toEqual(['pacf-data', 'ana-morph', 'first', 'hold'])
+    expect(w.find('rect.pacf-band').element.parentElement!.getAttribute('class')).toBe('pacf-ref ana-morph hold')
+    expect(w.find('path.axl').element.parentElement!.getAttribute('class')).toBe('ana-morph hold')
+    await w.find('g.pacf-data').trigger('animationcancel')
+    expect(w.find('g.pacf-data').classes()).toEqual(['pacf-data', 'ana-morph'])
+    const w2 = mountIt()
+    await nextTick()
+    await w2.find('g.pacf-data').trigger('animationend')
+    expect(w2.find('g.pacf-data').classes()).toEqual(['pacf-data', 'ana-morph'])
+    vi.restoreAllMocks()
+    const off = mountIt()
+    await nextTick()
+    expect(off.find('g.pacf-data').classes()).toEqual(['pacf-data', 'ana-morph'])
+  })
+
+  it('❗换栋不重挂:同一个「隔几天」的柱还是同一个元素,d 换成新栋的且命令结构不变;0 线跟着量程挪;悬停槽底不在形变组里', async () => {
+    const w = mountIt()
+    const b1 = bar(w, 1).element
+    const before = b1.getAttribute('d')!
+    const y0 = w.find('path.axl').attributes('d')
+    // 另一栋:第 1 根从正翻成负(圆角从顶换到底,命令字母不变)
+    await w.setProps({ data: { ...DATA, name: '别的栋', bars: DATA.bars.map(b => ({ ...b, rho: b.lag === 1 ? -0.3 : b.rho })) } })
+    expect(bar(w, 1).element).toBe(b1)
+    const after = b1.getAttribute('d')!
+    expect(after).not.toBe(before)
+    const cmds = (d: string) => d.replace(/[^A-Z]/g, '')
+    expect(cmds(after)).toBe(cmds(before))
+    expect(w.find('path.axl').attributes('d')).not.toBe(y0)
+    await w.find('rect.pacf-hit').trigger('mouseenter')
+    expect(w.find('rect.pacf-slot').element.closest('.ana-morph')).toBe(null)
   })
 })

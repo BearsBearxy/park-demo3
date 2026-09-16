@@ -133,14 +133,16 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
 <template>
   <AnaShell period-mode="none" scope-chip="合同快照">
     <!-- 首进:版式已知就不转圈(C6-01,规范点名本屏:页头 + 页签 + 直方图卡 280 + 其下几卡)。
-         页头照 .tp-head(标题 28 + 4 + 副行 15;选择器 FPTenantPicker 高 36,.tp-picker 宽 240);
+         页头照 .tp-head(标题 20 + 4 + 副行 20 —— 行盒 = base.css:19 line-height var(--lh-snug) 20px,
+         .ak-title / .ak-sub 不覆写(ana.css:44-45),与字号无关;选择器 FPTenantPicker 高 36,.tp-picker 宽 240);
          页签照 .anx-seg(padding 3 + 按钮 25 = 31);直方图块 = AnaUnitRentHist 的 :height 280;
-         三张表卡按 .ak-tbl 的表头 24 + 行高 38 × 行数留白。数据到了原地硬切,不做淡入、不错峰。 -->
+         三张表卡按 .ak-tbl 的表头 30(行盒 20 + padding-bottom 9 + 下边框 1,ana.css:81)+ 行高 38(ana.css:86)× 行数留白
+         (行数:期区表 2 是既有假设、随数据变;电费表 1;对照表 4)。数据到了原地硬切,不做淡入、不错峰。 -->
     <div v-if="!loaded" class="ak-page tp-skel">
       <div class="tp-head">
         <div class="tp-head-l">
-          <div class="fp-shim" style="height: 28px; width: 240px"></div>
-          <div class="fp-shim" style="height: 15px; width: 180px; margin-top: 4px"></div>
+          <div class="fp-shim" style="height: 20px; width: 240px"></div>
+          <div class="fp-shim" style="height: 20px; width: 180px; margin-top: 4px"></div>
         </div>
         <div class="fp-shim tp-picker" style="height: 36px"></div>
       </div>
@@ -153,19 +155,19 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
       </div>
       <div class="av2-card">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
-        <div class="fp-shim" style="height: 100px"></div>
+        <div class="fp-shim" style="height: 106px"></div>
         <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
         <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
       </div>
       <div class="av2-card">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
-        <div class="fp-shim" style="height: 62px"></div>
+        <div class="fp-shim" style="height: 68px"></div>
         <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
         <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
       </div>
       <div class="av2-card">
         <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-        <div class="fp-shim" style="height: 176px"></div>
+        <div class="fp-shim" style="height: 182px"></div>
         <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
         <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
       </div>
