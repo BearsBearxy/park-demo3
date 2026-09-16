@@ -136,7 +136,7 @@ function covAgg(key: NumKey): number | null {
 // ── KPI 条(值与 v1 statItems 完全一致) ──
 // 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
 const KPI_LABELS = ['园区购电', '购电成本', '光伏发电', '光伏消纳占供电', '单位购电成本', '售电(转供)收入'] as const
-const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
+const kpis = computed(() => (!shown.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ' })) : [
   { label: '园区购电', value: buyKwh.value != null ? fnum(buyKwh.value / 10000, 1) + '万kWh' : '—', delta: mom('buyKwh'), kind: '环比', invert: true, note: isMonth.value ? undefined : '全年' },
   { label: '购电成本', value: buyCost.value != null ? '¥' + fnum(buyCost.value / 10000, 1) + '万' : '—', note: isMonth.value ? '本月' : '全年' },
   { label: '光伏发电', value: pvGen.value != null ? fnum(pvGen.value / 10000, 1) + '万kWh' : '—', note: pvGen.value ? '消纳 ' + ((pvSelf.value ?? 0) / pvGen.value * 100).toFixed(0) + '%' : undefined },

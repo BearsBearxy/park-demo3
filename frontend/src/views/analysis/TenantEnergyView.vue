@@ -301,7 +301,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 
 <template>
   <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以横幅显式 -->
-  <AnaShell period-mode="full">
+  <AnaShell period-mode="full" :kpi-hold="6">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
          把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->

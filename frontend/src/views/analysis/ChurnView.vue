@@ -60,7 +60,7 @@ function onScatterClick(p: unknown) {
 
 <template>
   <!-- §五:期间无关屏(全窗口活跃度,窗口由台账/s10 数据 firstYm~lastYm 派生),隐期间控件显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="全窗口活跃度">
+  <AnaShell period-mode="none" scope-chip="全窗口活跃度" :kpi-hold="6">
     <template #kpis>
       <template v-if="!loading && model">
         <AnaKpiTile label="高风险" :value="model.counts.high + ' 户'" :note="'评分≥' + anaSettings.churnTh" />

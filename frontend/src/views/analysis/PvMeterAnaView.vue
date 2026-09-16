@@ -349,7 +349,7 @@ onDeactivated(() => { drawerOpen.value = false })
 </script>
 
 <template>
-  <AnaShell period-mode="full" :busy="busy">
+  <AnaShell period-mode="full" :busy="busy" :kpi-hold="6">
     <!-- 瓦片门只看 snap:换年时旧瓦留在原位(整排先消失再出现是 C5-02 要修的那个形状);
          首进(!snap)由 .anx-kpis 的 min-height 94 兜空行 -->
     <template #kpis>

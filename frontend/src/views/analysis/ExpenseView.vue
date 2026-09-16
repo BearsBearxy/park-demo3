@@ -167,7 +167,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 
 <template>
   <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
-  <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown">
+  <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown" :kpi-hold="6">
     <template #kpis>
       <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 empty 也为真。换年在途旧年瓦片留在原地,
            由外壳 .anx-kpis 随 busy 同拍退让(C5-02) -->

@@ -100,7 +100,7 @@ function onFr(e: Event) {
 </script>
 
 <template>
-  <AnaShell :busy="staleShown">
+  <AnaShell :busy="staleShown" :kpi-hold="6">
     <template #kpis>
       <!-- 瓦片门只看 be:换年时旧瓦留在原位,由外壳 .anx-kpis 同拍退让 -->
       <template v-if="be">

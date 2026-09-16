@@ -242,7 +242,7 @@ const listRows = computed(() => {
 
 <template>
   <!-- §五:期间无关屏(主数据快照)→ 隐期间控件,显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关">
+  <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关" :kpi-hold="6">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
          把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->

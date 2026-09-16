@@ -141,7 +141,7 @@ const structOpt = computed<object>(() => {
 
 <template>
   <!-- §五:年敏感屏(年度口径),只年控件;watch(year) 重取,所选年空 → 全屏 AnaEmpty -->
-  <AnaShell period-mode="year" :compare="['mom']" :busy="staleShown">
+  <AnaShell period-mode="year" :compare="['mom']" :busy="staleShown" :kpi-hold="5">
     <template #kpis>
       <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 recordedCount 也是 0。换年在途旧年瓦片留在原地,
            由外壳 .anx-kpis 随 busy 同拍退让(C5-02),年份印已加载的那一年 -->

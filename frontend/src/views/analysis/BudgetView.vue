@@ -170,7 +170,7 @@ const kpiOutlook = computed(() => {
 
 <template>
   <!-- §五:年敏感屏(预算为年度口径),只年控件;数据一次拉全年份,达成/明细/前瞻均随所选年响应式派生 -->
-  <AnaShell period-mode="year">
+  <AnaShell period-mode="year" :kpi-hold="5">
     <template #kpis>
       <template v-if="ready && rows.length">
         <AnaKpiTile :label="year + ' 收入达成'" :value="kpiAch('收入').value" :delta="kpiAch('收入').delta" kind="vs 预算" />

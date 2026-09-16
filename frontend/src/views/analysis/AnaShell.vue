@@ -7,13 +7,14 @@
 // §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
 // 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
 // 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { Comment, Fragment, computed, onMounted, onUnmounted, ref, useSlots, watch, type VNode } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
 import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
+import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import '@/components/ana/ana.css'
 import Select from '@/components/ds/Select.vue'
@@ -25,9 +26,20 @@ const props = defineProps<{
   // 屏在途(C5-02 / C5-12):亮 sticky 工具条上那条 2px 线。**传 useDeferredFlag 的结果**,
   // 不要直接传 loading —— 否则快响应时闪一下。旧内容自己退让(.fp-stale)由屏管,这里只管信号。
   busy?: boolean
+  // 首进占位瓦片数(= 本屏数据到了之后会出几张)。#kpis 槽还一张瓦都没渲染时,摆这么多张「—」瓦:
+  // 与真瓦同一栅格、同一组件,所以任何视口宽度下换行出来的行数都与真版式一致。
+  // 只靠 min-height 兜一行的量,手机两列时真版式是 3~5 行,数据一到整页下推 170~780px(2026-09-16 实测)。
+  kpiHold?: number
 }>()
 
 const pmode = computed(() => props.periodMode ?? 'full')
+
+// 槽渲染出来是不是空的(屏侧 <template v-if> 为假时,槽函数只返回注释节点 / 空 Fragment)。
+// 在 render 期间调用 → 槽依赖的响应式数据照常被追踪,数据一到自动切到真瓦。
+const slots = useSlots()
+const filled = (ns: VNode[]): boolean => ns.some((n) =>
+  n.type === Comment ? false : n.type === Fragment ? filled((n.children as VNode[]) ?? []) : true)
+const kpisEmpty = () => !filled(slots.kpis?.() ?? [])
 
 // 对比开关(支持集为屏静态声明,挂载时定死)
 const CMP_MODES: CompareMode[] = ['none', 'mom', 'yoy', 'budget']
@@ -198,7 +210,13 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
          不会出 NaN/undefined。高度稳定另由 .anx-kpis 的 min-height 兜(见下)。 -->
     <!-- C5-02 ⑥:KPI 条与正文同拍退让 —— 常挂 data-stale-host(摘类后仍有 transition-property,
          退场才是 200 而不是硬切),busy 时挂 .fp-stale。首进(还没有瓦片)仍由 min-height 94 兜空行。 -->
-    <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }"><slot name="kpis" /></div>
+    <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }">
+      <slot name="kpis" />
+      <!-- 占位瓦:标签与副行用不换行空格占住行盒(纯空格会被折叠成零高) -->
+      <template v-if="kpiHold && kpisEmpty()">
+        <AnaKpiTile v-for="i in kpiHold" :key="'hold' + i" class="anx-kpi-hold" label=" " value="—" note=" " />
+      </template>
+    </div>
 
     <div class="anx-body">
       <slot />

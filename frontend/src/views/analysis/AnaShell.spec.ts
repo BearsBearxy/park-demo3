@@ -79,3 +79,43 @@ describe('AnaShell 首次进屏', () => {
     expect(w.find('.page-loading').exists(), '壳又出转圈了').toBe(false)
   })
 })
+
+// 首进 KPI 占位(2026-09-16 实测):只靠 min-height 兜一行,手机两列时真版式 3~5 行,数据一到整页下推 170~780px。
+describe('AnaShell KPI 占位瓦', () => {
+  const Host = (shown: { value: boolean }) => ({
+    components: { AnaShell },
+    setup: () => ({ shown }),
+    template: `<AnaShell :kpi-hold="5"><template #kpis><template v-if="shown.value"><div class="real-tile" /><div class="real-tile" /></template></template></AnaShell>`,
+  })
+
+  it('❗槽还没渲染瓦片 → 摆 kpiHold 张占位瓦(与真瓦同一组件,换行行数一致);瓦一到占位全撤', async () => {
+    const { reactive } = await import('vue')
+    const shown = reactive({ value: false })
+    const w = mount(Host(shown))
+    await flushPromises()
+    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(5)
+    expect(w.find('.anx-kpi-hold .d').exists(), '占位瓦要带副行,真瓦都有副行').toBe(true)
+    shown.value = true
+    await flushPromises()
+    expect(w.findAll('.anx-kpi-hold')).toHaveLength(0)
+    expect(w.findAll('.real-tile')).toHaveLength(2)
+  })
+
+  it('❗v-for 空列表(渲染出一个没有孩子的 Fragment)也算没瓦 —— 光伏屏的瓦片就是 v-for 出来的', async () => {
+    const { ref } = await import('vue')
+    const list = ref<string[]>([])
+    const w = mount({ components: { AnaShell }, setup: () => ({ list }),
+      template: `<AnaShell :kpi-hold="3"><template #kpis><i v-for="k in list" :key="k" class="real-tile" /></template></AnaShell>` })
+    await flushPromises()
+    expect(w.findAll('.anx-kpi-hold')).toHaveLength(3)
+    list.value = ['a']
+    await flushPromises()
+    expect(w.findAll('.anx-kpi-hold')).toHaveLength(0)
+  })
+
+  it('不传 kpiHold 的屏不出占位(瓦片本来就常渲染的屏)', async () => {
+    const w = mount({ components: { AnaShell }, template: `<AnaShell><template #kpis><template v-if="false"><i /></template></template></AnaShell>` })
+    await flushPromises()
+    expect(w.findAll('.anx-kpi-hold')).toHaveLength(0)
+  })
+})

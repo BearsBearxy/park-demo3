@@ -70,7 +70,7 @@ const byUnit = computed(() => (bSummary.value ? occByUnit(bSummary.value) : null
 // ── KPI 条(spec §二.3:楼栋/在租/合同/月租总额;值与 v1 statItems 一致) ──
 // 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
 const KPI_LABELS = ['楼栋数', '在租租户', '有效合同', '合同月租合计'] as const
-const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
+const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—', note: ' ' })) : [
   { label: '楼栋数', value: rows.value.length + ' 栋' },
   { label: '在租租户', value: fint(activeTenants.value) + ' 户' },
   { label: '有效合同', value: fint(live.value.length) + ' 份' },

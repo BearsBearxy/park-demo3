@@ -118,7 +118,7 @@ function onParetoClick(p: unknown) {
 
 <template>
   <!-- §五:期间无关屏(合同快照),隐期间控件显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="合同快照">
+  <AnaShell period-mode="none" scope-chip="合同快照" :kpi-hold="9">
     <template #kpis>
       <template v-if="!loading && stats">
         <AnaKpiTile label="合同总数" :value="stats.total + ' 份'" />
