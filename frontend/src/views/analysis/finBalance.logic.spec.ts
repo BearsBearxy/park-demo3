@@ -42,3 +42,46 @@ describe('gaugesOption(spec ≤2 个仪表)', () => {
     expect(o.series[0].data[0].name).toBe('资产负债率')
   })
 })
+
+// 资不抵债时负债率 >100(实测备份 12 个公司×期间里 9 个超,最高 1387.5%,另有一个 -843.2%)。
+// 引擎 progress.clip 默认 true 会把环夹满 —— 环画满时必须读得出是超量程,不是正好 100%。
+describe('gaugesOption 超量程标记', () => {
+  interface GOptX {
+    series: {
+      max: number
+      splitNumber: number
+      axisLine: { lineStyle: { color: [number, string][] } }
+      axisLabel: { show: boolean }
+      data: [{ value: number }]
+    }[]
+  }
+  const track = (o: GOptX, i: number): string => o.series[i].axisLine.lineStyle.color[0][1]
+
+  it('量程内:轨道是中性灰,刻度不露出', () => {
+    const o = gaugesOption(62, 1.2) as GOptX
+    expect(track(o, 0)).toBe('rgba(28,28,28,.08)')
+    expect(o.series[0].axisLabel.show).toBe(false)
+    expect(track(o, 1)).toBe('rgba(28,28,28,.08)')
+  })
+  it('负债率 >100:轨道染成同档语义色浅底 + 露出 0 / 100 两个刻度,数字仍是真值', () => {
+    const o = gaugesOption(157.3, 0.64) as GOptX
+    expect(track(o, 0)).toBe('#E24B4A26')
+    expect(o.series[0].axisLabel.show).toBe(true)
+    expect(o.series[0].splitNumber).toBe(1)
+    expect(o.series[0].max).toBe(100)
+    expect(o.series[0].data[0].value).toBe(157.3)
+    expect(track(o, 1)).toBe('rgba(28,28,28,.08)')
+  })
+  it('负债率为负(总负债为负)同样算超量程,且不给「好」色', () => {
+    const o = gaugesOption(-843.2, null) as GOptX
+    expect(debtTone(-843.2)).toBe('risk')
+    expect(track(o, 0)).toBe('#E24B4A26')
+    expect(o.series[0].data[0].value).toBe(-843.2)
+  })
+  it('流动比率 >2 自己标,不牵连负债率那只', () => {
+    const o = gaugesOption(50, 2.5) as GOptX
+    expect(track(o, 1)).toBe('#378ADD26')
+    expect(o.series[1].axisLabel.show).toBe(true)
+    expect(track(o, 0)).toBe('rgba(28,28,28,.08)')
+  })
+})
