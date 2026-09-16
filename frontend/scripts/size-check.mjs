@@ -132,7 +132,12 @@ const BUDGET_KB = {
 //   其余是 15 个屏把骨架门改成只认首进 + 换期退让,各约 0.3~0.5KB;新增 AnaBarRows / AnaSkelChart。
 //   ⚠ **index 190.3 / 191,只剩 0.7KB** —— 首屏这条下次谁动 AppShell / 令牌都会撞,先想怎么瘦。
 //   三个重块一字节没涨。同一条规矩:实测 + 2KB。
-const TOTAL_KB = 4090
+// 2026-09-17 第三轮上调 4090 → 4115(+25KB)。**签字决定(用户拍板)**:
+//   用户要求窄屏首进不跳,并选了「骨架套真版式」。17 个分析屏的骨架照抄真版式的页头 / 卡头 /
+//   结论条 / 读数句,KPI 行按真瓦数摆占位瓦。实测 4088.3 → 4112.5KB,**净 +24.2KB**(超旧预算 22.5KB)。
+//   增量落在 17 个屏各自的懒加载块里,同一段字写了两遍;
+//   index 190.1 没涨,三个重块没涨。同一条规矩:实测 + 2KB。
+const TOTAL_KB = 4115
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。
