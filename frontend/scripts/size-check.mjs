@@ -125,7 +125,14 @@ const BUDGET_KB = {
 //   没做瘦身就上调的理由:骨架必须照每屏真版式逐块算高(否则硬切那帧就是位移),
 //   没有能抽成公共组件的共性 —— 每屏的块序与块高都不同。
 //   同一条规矩:实测 + 2KB。
-const TOTAL_KB = 4075
+// 2026-09-16 第二轮上调 4075 → 4090(+15KB)。**这是一次签字决定(用户拍板),理由写在这里**:
+//   用户看过真屏后要求换年月 / 换楼栋做形变、切回页签 / 切子屏重播入场(压过规范 §1 原则 2)。
+//   实测 4073.3 → 4088.3KB,**净 +15.0KB**。大头在光伏分栋屏自己的懒加载块:14 张自绘图接
+//   .ana-morph 形变与 fp-wipe 入场,PvMeterAnaView js +3.5 / css +2.4(相对第一轮);
+//   其余是 15 个屏把骨架门改成只认首进 + 换期退让,各约 0.3~0.5KB;新增 AnaBarRows / AnaSkelChart。
+//   ⚠ **index 190.3 / 191,只剩 0.7KB** —— 首屏这条下次谁动 AppShell / 令牌都会撞,先想怎么瘦。
+//   三个重块一字节没涨。同一条规矩:实测 + 2KB。
+const TOTAL_KB = 4090
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。
