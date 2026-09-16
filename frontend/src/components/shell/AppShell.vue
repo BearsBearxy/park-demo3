@@ -263,6 +263,10 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-pop);
   overflow: hidden;
+  /* C5-15 ②:入场只淡 —— fp-pop-in 是纵向 −4px,而这块从左侧轨上水平长出,方向不对;
+     不为它新加横向关键帧。关闭仍是 v-if 瞬时。 */
+  opacity: 0;
+  animation: fp-fade-in var(--dur-fast) var(--ease-out) forwards;
 }
 
 /* ── main card ── */

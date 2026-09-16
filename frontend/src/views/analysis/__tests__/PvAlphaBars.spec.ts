@@ -107,10 +107,13 @@ describe('PvAlphaBars · 色与选中', () => {
 })
 
 describe('PvAlphaBars · 读数句与脚注', () => {
-  it('读数句跟选中栋走;区间不跨 0 / 跨 0 两种写法;选中栋不在排序里就不出句', () => {
+  // C5-11:「不出句」现在是**句空而不是节点没了** —— 节点常驻占一行,卡高不再 ±1 行。
+  it('读数句跟选中栋走;区间不跨 0 / 跨 0 两种写法;选中栋不在排序里句子空但占位还在', () => {
     expect(mountIt().find('.ana-read').text()).toBe('F座 α −38.0%，5 栋里第 5 位（1 = 最高）；区间 −41.6% ~ −34.4%，不跨 0')
     expect(mountIt({ selId: 9 }).find('.ana-read').text()).toBe('9栋 α +3.1%，5 栋里第 3 位（1 = 最高）；区间 −2.0% ~ +8.4%，跨 0')
-    expect(mountIt({ selId: 20 }).find('.ana-read').exists()).toBe(false)
+    const gone = mountIt({ selId: 20 }).find('.ana-read')
+    expect(gone.text()).toBe('')
+    expect(gone.classes(), '空着也要占住那一行').toContain('hold')
   })
 
   it('❗L5 一句按名次挪动写:各挪 k 位 / 只一栋挪 / 挪的位数不一样 / 都没变', () => {

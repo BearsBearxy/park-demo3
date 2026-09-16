@@ -283,10 +283,10 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
           </div>
           <AnaEChart v-if="energyOption" :option="energyOption" :height="250" />
           <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
-          <template v-if="energyOption">
-            <p v-if="elecReadout" class="ana-read">{{ elecReadout }}</p>
-            <p class="ana-ref">{{ elecBandRef }}</p>
-          </template>
+          <!-- C5-11:两句都常驻占一行 —— 连同外层 energyOption 门一起解掉,
+               否则选到无计费记录的租户时整卡矮两行,推下方卡。 -->
+          <p class="ana-read hold"><template v-if="energyOption && elecReadout">{{ elecReadout }}</template></p>
+          <p class="ana-ref hold"><template v-if="energyOption">{{ elecBandRef }}</template></p>
         </div>
 
         <div class="av2-card">

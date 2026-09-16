@@ -326,9 +326,22 @@ function stepStation(d: 1 | -1) {
   const nx = q[(i + d + q.length) % q.length]
   if (nx != null) { selId.value = nx; openDrawer() }
 }
+// #st= 深链(C5-05 ④):挂载时只记下要开哪栋,**不立刻开** —— 数据还没到时抽屉标题是空的、
+// 正文显「这栋可用的逐日偏离不足 8 天」,那句在加载期不成立。加载期只出页面骨架(C6-01),
+// 等 snap 第一次非空、且这栋确实在本段已投产里,抽屉才 rise 上来。
+// 记的是**深链点名的那一栋**,不是 selId —— selId 会被上面那条 watch 在本段没有这栋时
+// 改写成芯片第一枚,拿它去判会把「99 不存在」读成「第一枚存在」,给用户开错栋的抽屉。
+const pendingId = ref<number | null>(null)
 onMounted(() => {
   const m = /#st=(\d+)/.exec(location.hash)
-  if (m) { selId.value = Number(m[1]); drawerOpen.value = true }
+  if (m) { selId.value = Number(m[1]); pendingId.value = Number(m[1]) }
+})
+watch(snap, (s) => {
+  if (pendingId.value == null || !s) return
+  const id = pendingId.value
+  pendingId.value = null
+  if (bornRows.value.some(r => r.id === id)) openDrawer()
+  else void router.replace({ hash: '' })   // 本段没有这栋:清掉地址栏,主图停在芯片第一枚
 })
 // KeepAlive 切走时抽屉 Teleport 在 body 上,不跟着根节点移走 —— 遮罩会盖到别的页签上。
 // 只关状态,不调 closeDrawer:此刻当前路由已经是别的屏,replace hash 会写到它身上

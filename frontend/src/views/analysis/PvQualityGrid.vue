@@ -149,7 +149,7 @@ const tip = computed(() => {
       <span><b class="todo" />还没到</span>
       <span class="per">{{ period }}</span>
     </div>
-    <p v-if="tooFewStations" class="ana-ref">全园在网不足 {{ minStations }} 栋，整日剔除这条规则本段没生效 —— 日历上没有划痕格，不等于没有该剔的天。</p>
+    <p class="ana-ref hold"><template v-if="tooFewStations">全园在网不足 {{ minStations }} 栋，整日剔除这条规则本段没生效 —— 日历上没有划痕格，不等于没有该剔的天。</template></p>
   </section>
 </template>
 

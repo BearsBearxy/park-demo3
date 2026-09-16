@@ -374,6 +374,34 @@ describe('光伏分栋分析 · 选中态与抽屉入口', () => {
     expect(chartName(w)).toBe('S4')
   })
 
+  // C5-05 ④:数据到之前抽屉**不许开** —— 开着的话标题是空的、正文显「这栋可用的逐日偏离不足 8 天」,
+  // 那句在加载期不成立。加载期只出页面骨架,抽屉等 snap 第一次非空才 rise 上来。
+  it('❗#st= 深链:抄表还没回来时不开抽屉(只出骨架),数据到了才开', async () => {
+    location.hash = '#st=6'
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 2, 12, 0, 0))
+    type Rds = Awaited<ReturnType<typeof pvMeterApi.readingsYear>>
+    let release!: (v: Rds) => void
+    vi.mocked(pvMeterApi.stations).mockResolvedValue(stationsFx)
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation((y: number) =>
+      y === 2026 ? new Promise<Rds>(r => { release = r }) : Promise.resolve([]))
+    vi.mocked(paramsApi.list).mockResolvedValue([])
+    const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
+    mounted.push(w)
+    await flushPromises()
+    providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
+    usePeriod().setYear(2026); usePeriod().setGran('month'); usePeriod().setMonth(8)
+    await flushPromises()
+
+    expect(w.find('.fp-dwr').exists(), '抄表在途时抽屉必须是关的').toBe(false)
+    expect(w.find('.pma-skel').exists(), '在途时屏上是骨架').toBe(true)
+
+    release(readingsOf(2026, {}))
+    await flushPromises()
+    expect(w.find('.fp-dwr').exists(), '数据到了抽屉才开').toBe(true)
+    expect(w.find('.fp-dwr-hd h3').text()).toBe('S6')
+  })
+
   it('#st= 深链:带着 #st=6 进屏,数据到了直接开 S6 的抽屉,主图也停在 S6', async () => {
     location.hash = '#st=6'
     const w = await mountScreen()

@@ -414,7 +414,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <span class="hint">窗口 {{ winMonths.length }} 期{{ byFamily ? ' · 主租户本户' : '' }}</span>
             </div>
             <AnaEChart :option="trendOption" :height="300" />
-            <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
+            <p class="ana-read hold"><template v-if="bandReadout">{{ bandReadout }}</template></p>
             <p class="ana-ref">{{ bandRefText }}</p>
           </div>
           <div class="av2-card">

@@ -128,7 +128,7 @@ const stab = computed(() => {
       <span><b :style="{ background: PV_COLORS.PHASE3 }" />三期</span>
       <span class="mut">横轴 = α，相对全园中位 %<template v-if="geo.log">（对数刻度）</template></span>
     </div>
-    <p v-if="sel" class="ana-read">{{ sel.name }} α {{ sgn(sel.alphaPct, 1, '%') }}，{{ data.rows.length }} 栋里第 {{ sel.rank }} 位（1 = 最高）；区间 {{ sgn(sel.ciLo, 1, '%') }} ~ {{ sgn(sel.ciHi, 1, '%') }}，{{ sel.crossesZero ? '跨 0' : '不跨 0' }}</p>
+    <p class="ana-read hold"><template v-if="sel">{{ sel.name }} α {{ sgn(sel.alphaPct, 1, '%') }}，{{ data.rows.length }} 栋里第 {{ sel.rank }} 位（1 = 最高）；区间 {{ sgn(sel.ciLo, 1, '%') }} ~ {{ sgn(sel.ciHi, 1, '%') }}，{{ sel.crossesZero ? '跨 0' : '不跨 0' }}</template></p>
     <div v-if="stability.n > 0" class="pab-stab">
       <span class="tx">{{ stab }}</span>
     </div>

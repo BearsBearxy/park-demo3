@@ -417,8 +417,8 @@ const conclusion = computed(() => buildConclusion(
         <AnaEChart v-if="mainOption" :option="mainOption" :height="300" @chart-click="onMainClick" />
         <AnaEmpty v-else :label="year + ' 年无损益附表数据'" hint="收入/利润来自损益附表 1~5 园区总计带" to="/rent-pnl" to-text="去录入损益附表" />
         <!-- T2(design-boards 2026-09-11):读数句+参照系小字,纯函数返回值见 outlierReadout/outlierRefText -->
-        <p v-if="outlierRead" class="ana-read">{{ outlierRead }}</p>
-        <p v-if="outlierRef" class="ana-ref">{{ outlierRef }}</p>
+        <p class="ana-read hold"><template v-if="outlierRead">{{ outlierRead }}</template></p>
+        <p class="ana-ref hold"><template v-if="outlierRef">{{ outlierRef }}</template></p>
         <!-- F1(修复轮1,design-boards):稿上 ⓘ 门后那句反过度承诺的判据说明,改前屏上没有、仓库里 grep 不到 ——
              这条带存在的理由(抓离群,不押未来)只写在稿里,没人看得到。
              F6(对抗复查):板上原句把月份(m12)/附表(s1)写死了,改成由 mc.outlierMonths 驱动,见 cockpit.logic.ts mainChartOutlierNote。 -->
@@ -572,8 +572,10 @@ const conclusion = computed(() => buildConclusion(
 .cv2-cs.lk:hover { text-decoration: underline; }
 /* 异常速览紧凑行 */
 .cv2-anoms { display: flex; flex-direction: column; gap: 6px; }
-.cv2-anom { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: var(--surface-card); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-family: var(--font-sans); text-align: left; }
+.cv2-anom { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: var(--surface-card); border-radius: 8px; padding: 9px 10px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .cv2-anom:hover { background: var(--bg-hover); }
+/* C2-08 按压:按下换深一档 0ms 瞬到,松开走上面那条 120 回弹。 */
+.cv2-anom:active { background: var(--ink-100); transition-duration: 0ms; }
 .cv2-anom .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 .cv2-anom .tt { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv2-anom .vv { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: var(--fw-semibold); font-family: var(--font-mono); }

@@ -102,7 +102,7 @@ const read = computed(() => {
         <span v-for="(l, k) in tip.lines" :key="k" :style="{ fontWeight: l.b ?? 400, opacity: l.dim, color: l.c }">{{ l.t }}</span>
       </div>
     </div>
-    <p v-if="read.r1" class="ana-read">隔 1 天 {{ read.r1 }}<template v-if="read.r3">，隔 3 天 {{ read.r3 }}</template> · 隔 1–{{ read.last }} 天里 {{ read.outN }} 根柱在淡带外。</p>
+    <p class="ana-read hold"><template v-if="read.r1">隔 1 天 {{ read.r1 }}<template v-if="read.r3">，隔 3 天 {{ read.r3 }}</template> · 隔 1–{{ read.last }} 天里 {{ read.outN }} 根柱在淡带外。</template></p>
     <p class="ana-ref">横轴 = 隔几天 · 淡带之内算没有规律，柱子画浅一档 · 拿 {{ data.name }} 整年的逐日偏差算</p>
   </section>
 </template>

@@ -143,8 +143,9 @@ const tip = computed(() => {
       <span><b :style="{ background: C.BAND, opacity: 0.5 }"></b>平时的起伏</span>
       <span><b :style="{ background: C.BAND, opacity: 0.25 }"></b>更宽的那道</span>
     </div>
-    <p v-if="win" class="ana-ref">
-      中线与两道范围<template v-if="!data.wholePeriod">都用 {{ win.to }} 及之前那一段估，之后的日子拿来对照</template><template v-else>用全期 {{ win.from }} – {{ win.to }} 估，没有留出对照的日子</template>
+    <!-- C5-11:估计窗口为空时整段图注常驻占一行(win.from / win.to 挪进内层 template) -->
+    <p class="ana-ref hold">
+      <template v-if="win">中线与两道范围<template v-if="!data.wholePeriod">都用 {{ win.to }} 及之前那一段估，之后的日子拿来对照</template><template v-else>用全期 {{ win.from }} – {{ win.to }} 估，没有留出对照的日子</template></template>
     </p>
   </div>
 </template>

@@ -196,7 +196,9 @@ describe('PvQualityGrid · 缺抄榜与图例', () => {
     expect(leg).toContain('整日剔除')
     expect(leg).toContain('还没到')
     expect(w.find('.pqg-leg .per').text()).toBe('2025 年 8 月')
-    expect(w.find('.ana-ref').exists()).toBe(false)
+    // C5-11:这句常驻占一行,不过线时空着 —— 换期翻转不再把下方 L7 表推上推下
+    expect(w.find('.ana-ref').text()).toBe('')
+    expect(w.find('.ana-ref').classes()).toContain('hold')
     expect(mountIt(MONTH, { minStations: 3, tooFewStations: true }).find('.ana-ref').text()).toContain('全园在网不足 3 栋')
   })
 })

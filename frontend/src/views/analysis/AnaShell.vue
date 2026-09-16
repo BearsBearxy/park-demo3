@@ -200,7 +200,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
          数据就绪无关(且该请求走 anaData cached,二次进屏几乎立即 true),所以各屏 #kpis 早就要在
          「本屏数据未到」时渲染一遍——瓦片绑定本来就是 null-safe(atPeriod/colPick 等返回 null → 显 '—'),
          不会出 NaN/undefined。高度稳定另由 .anx-kpis 的 min-height 兜(见下)。 -->
-    <div v-if="$slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
+    <!-- C5-02 ⑥:KPI 条与正文同拍退让 —— 常挂 data-stale-host(摘类后仍有 transition-property,
+         退场才是 200 而不是硬切),busy 时挂 .fp-stale。首进(还没有瓦片)仍由 min-height 94 兜空行。 -->
+    <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }"><slot name="kpis" /></div>
 
     <div class="anx-body">
       <slot />
@@ -241,7 +243,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .anx-nav button:disabled { opacity: .4; cursor: default; }
-.anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px; }
+/* C5-06:与 ds/Popover、FPMoreMenu 对齐补入场;关闭仍是 v-if 瞬时(§14 浮层退场不做)。 */
+.anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px;
+  animation: fp-pop-in var(--dur-fast) var(--ease-out); }
 .anx-pop h4 { margin: 0 0 12px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .anx-fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }

@@ -804,7 +804,8 @@ describe('驾驶舱首进骨架(C6-01)', () => {
     expect(src).toContain(':rows="rollRows" :height="280"')
     expect(src).toContain(':option="phaseOption" :height="250"')
     // 真版式那两句确实在主图卡里(骨架顶的就是它们)
-    expect(src).toContain('<p v-if="outlierRead" class="ana-read">')
+    // C5-11 起这句常驻占一行(算不出时空着),门在内层 template —— 骨架顶的那 20 不变
+    expect(src).toContain('<p class="ana-read hold"><template v-if="outlierRead">')
     expect(src).toContain('<p v-else class="ana-ref">本年 12 个月已录满')
   })
 

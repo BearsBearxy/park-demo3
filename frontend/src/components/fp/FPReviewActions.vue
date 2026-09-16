@@ -311,7 +311,10 @@ onBeforeUnmount(() => {
   border: 1px solid var(--hue-red); border-radius: var(--radius-full);
   background: var(--surface-white); color: var(--hue-red);
   font-family: inherit; font-size: var(--fs-label); line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
 }
+/* C2-08:只补 transition,**不加 :active** —— 点开的理由浮层(C5-15 pop-in)就是回应,
+   红底再深一档得造一个新色值。 */
 .rva-chip:hover, .rva-chip.on { background: rgb(253, 240, 240); }
 .rva-pop {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: var(--z-popover);
