@@ -115,7 +115,17 @@ const BUDGET_KB = {
 //   PvMeterAnaView 块 107.2KB → js 130.6 + css 23.3KB,**整块走懒加载**,只在打开光伏分栋屏时下载。
 //   四个具名块一字节没涨;⚠ echarts 仍是 698KB —— 本屏已不用它,但别的分析屏还在用。
 //   实测 4045.5KB。同一条规矩:实测 + 2KB。
-const TOTAL_KB = 4048
+// 2026-09-16 上调 4048 → 4075(+27KB)。**这是一次签字决定(用户拍板),理由写在这里**:
+//   全站动效(docs/superpowers/specs/2026-09-05-demo3-motion-design.md,63 条目)。
+//   实测 master 4045.8 → 本分支 4073.3KB,**净 +27.5KB**,摊在 57 个块上、没有一处过 2KB(最大 TenantPeerView +1.8):
+//   20 个分析屏各自的真版式骨架(顶替原来的整区转圈,每屏 ~1KB 模板)占大头,
+//   其余是 components/ana/anaMotion.ts(motionize + useEnterPhase)、各处按压规则与浮层入场。
+//   ⚠ **首屏只涨 1.4KB**(index js +0.4 / css +1.0,仍在 191 以内);三个重块 exceljs / echarts / vue
+//     一字节没涨 —— 没引动画库,入场全用 motion.css 已有的三条关键帧 + ana.css 一条 fp-wipe。
+//   没做瘦身就上调的理由:骨架必须照每屏真版式逐块算高(否则硬切那帧就是位移),
+//   没有能抽成公共组件的共性 —— 每屏的块序与块高都不同。
+//   同一条规矩:实测 + 2KB。
+const TOTAL_KB = 4075
 
 const ASSETS = fileURLToPath(new URL('../dist/assets', import.meta.url))
 // vite 产物名形如 index-DpSatsEZ.js,hash 每次构建都变,去掉 -<hash> 才是 chunk 名。
