@@ -14,6 +14,7 @@ import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { anaSettings } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
 import { fnum } from '@/components/ana/anaFmt'
+import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, phaseMonthly, phaseSummaries } from './pvRoi.logic'
 import { inViewport, useEnterPhase } from '@/components/ana/anaMotion'
@@ -64,17 +65,15 @@ const rampOpt = computed<object>(() => {
   const w = (a: (number | null)[]): (number | null)[] => a.map((v) => (v == null ? null : +(v / 1e4).toFixed(1)))
   const actualW = w(r.actual), projW = w(r.projected)
   const markPoint = r.hitIdx != null
-    ? {
-        symbol: 'pin', symbolSize: 42, itemStyle: { color: '#185FA5' },
-        label: { formatter: '回收', color: '#fff', fontSize: 11 },
-        data: [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }],
-      }
+    ? calloutMark(CALLOUT.blue, '回收', [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }])
     : undefined
   const yMax = Math.max(investW * 1.1, ...actualW.map((v) => v ?? 0), ...projW.map((v) => v ?? 0))
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
     legend: { top: 0 },
-    grid: { left: 56, right: 60, top: 32, bottom: 26 },
+    // top 44(原 32):回收点落在投资额线上,离绘图区顶只有 max 留的那 1/11,「回收」签往上伸 33px,
+    // 顶边 32 时 390 宽下签压住图例「外推(年化口径)」;44 时 390 / 1366 宽签与图例都隔开 ≥6px(40 只隔 2.9px)
+    grid: { left: 56, right: 60, top: 44, bottom: 26 },
     xAxis: { type: 'category', data: r.labels },
     yAxis: { type: 'value', max: Math.ceil(yMax), axisLabel: { formatter: '{value} 万' } },
     series: [
@@ -84,8 +83,9 @@ const rampOpt = computed<object>(() => {
         markLine: {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#E24B4A', width: 1.5 },
-          // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)
-          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
+          // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)。
+          // 放左端:回收点落在这条线上,右端要留给「回收」签(2026-09-17 放右端时两者叠了 1.4px)
+          label: { position: 'insideStartTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
           data: [{ yAxis: investW }],
         },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] != null ? markPoint : undefined,

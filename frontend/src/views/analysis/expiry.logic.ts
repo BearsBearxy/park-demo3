@@ -2,7 +2,7 @@
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
 import { quantile } from '@/components/ana/anaFmt'
-import { bandSeries } from '@/components/ana/anaTheme'
+import { bandSeries, CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 import { isInForce } from './TenantPeer.logic'
 
@@ -659,11 +659,9 @@ export function rentRollOption(r: RentRoll): object {
           data: [{ xAxis: 0 }],
         },
         // 缺口标注:最近一次到期扎堆造成的锁定线下跌,连同拉低它的合同名字(与「最近的缺口」瓦同一份 gap)。
-        markPoint: gap ? {
-          symbol: 'pin', symbolSize: 36, itemStyle: { color: '#E24B4A' },
-          label: { fontSize: 10, color: '#fff', formatter: `−${gapWan}万\n${gapNames}` },
-          data: [{ coord: [gap.monthsAway, lockedWan[gap.monthsAway]] }],
-        } : undefined,
+        markPoint: gap
+          ? calloutMark(CALLOUT.red, `−${gapWan}万\n${gapNames}`, [{ coord: [gap.monthsAway, lockedWan[gap.monthsAway]] }])
+          : undefined,
       },
       // scatter(不是 line):只有第 0 月一个值,没有第二个点可连,天然不画线,不必再手写隐藏线样式。
       { name: '已实现', type: 'scatter', symbolSize: 7, itemStyle: { color: '#1C1C1C' }, data: realizedWan },

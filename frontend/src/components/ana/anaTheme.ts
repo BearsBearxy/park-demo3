@@ -68,6 +68,31 @@ export function registerFpAnaTheme(ec: { registerTheme(name: string, theme: obje
   ec.registerTheme('fpAnaTheme', FP_ANA_THEME)
 }
 
+/** 点标注的底色:tokens.css --hue-red / --hue-orange 的字面值 + 主题深蓝,白字对比度 5.0 / 5.2 / 6.5。
+ *  主题语义红 #E24B4A、琥珀 #EF9F27 当底色时白字只有 3.9 / 2.2:1,11px 字发虚。 */
+export const CALLOUT = { red: '#BC4A41', amber: '#9D5D17', blue: '#185FA5' }
+
+/**
+ * 图上「钉住一个点并写几个字」的唯一写法:点上一颗实心圆点,旁边一枚实底白字小签。
+ *
+ * 取代 ECharts 的 pin 符号(2026-09-17 用户:「根本看不见字」)—— pin 的字画在 30~44px 的针头里,
+ * 两行字比针头宽,溢出针头的白字落在白底上就没了。小签按字撑开,与点的大小无关。
+ * 默认签在点的左上方(position top + align right = 签的右沿对齐点);方位由调用方按自己的图覆盖。
+ */
+export function calloutMark(color: string, formatter: unknown, data: object[], label: object = {}): object {
+  return {
+    symbol: 'circle', symbolSize: 9,
+    itemStyle: { color, borderColor: '#fff', borderWidth: 2 },
+    label: {
+      position: 'top', align: 'right', distance: 6, formatter,
+      color: '#fff', backgroundColor: color, borderColor: '#fff', borderWidth: 1, borderRadius: 4,
+      padding: [3, 6], fontSize: 11, lineHeight: 15,
+      ...label,
+    },
+    data,
+  }
+}
+
 /**
  * 全站唯一一份「带子」—— 两条堆叠线:下沿透明哨兵 + 上沿只留填充,不描边(描了会被读成两条数据线)。
  *

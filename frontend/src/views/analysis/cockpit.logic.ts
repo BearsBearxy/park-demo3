@@ -16,6 +16,7 @@ import type { BudgetRowDTO } from '@/api/budget'
 import type { CompareMode } from '@/analysis/useCompare'
 import { CMP_BASELINE, CMP_BUDGET, fint, fnum } from '@/components/ana/anaFmt'
 import { DUR, EASE } from '@/components/ana/anaMotion'
+import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 
 const wan = (v: number | null): number | null => (v == null ? null : +(v / 10000).toFixed(2))
 
@@ -472,19 +473,19 @@ export function mainChartOption(
   const series: object[] = [
     {
       name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
-      markPoint: d.outlierMonths.length ? {
-        symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
-        label: {
-          fontSize: 10, color: '#fff',
-          // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
-          // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
-          formatter: (p: { data: { month?: number } }) => {
-            const r = p.data.month != null ? outlierResByMonth.get(p.data.month) : undefined
-            return r != null ? `收入为负\n${Math.floor(r)}倍残差` : '收入为负'
-          },
+      // 点钉在负柱的柱头(改前钉在 yMin —— 轴 2026-09-12 起已罩住负柱,yMin 落在的是利润线的最低点)。
+      // 签挂在柱头下方:柱头上方是柱子本身。
+      markPoint: d.outlierMonths.length ? calloutMark(
+        CALLOUT.red,
+        // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
+        // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
+        (p: { data: { month?: number } }) => {
+          const r = p.data.month != null ? outlierResByMonth.get(p.data.month) : undefined
+          return r != null ? `收入为负\n${Math.floor(r)}倍残差` : '收入为负'
         },
-        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
-      } : undefined,
+        d.outlierMonths.map((m) => ({ coord: [m - 1, d.rev[m - 1] ?? 0], month: m })),
+        { position: 'bottom' },
+      ) : undefined,
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切

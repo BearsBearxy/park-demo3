@@ -185,7 +185,7 @@ const outlierYm = computed(() => {
   return m ? ymOf(drawnSel.value.year, m) : ''
 })
 // 未闭月护栏(FORECAST §2.7):y 轴量程(d.yMin)由 mainChart 用 usableMonths 算好,这里只消费;
-// 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在轴内边界,readable 为「带外」。
+// 离群月本身仍画(数据点/tooltip 值不变),bar 标红 + markPoint 钉在柱头,readable 为「带外」。
 // F1(对抗复查):option 本体(趋势线/拟合区间/离群标注三块交付物)抽成 cockpit.logic.ts 的纯函数
 // mainChartOption——原先整段写在这个 computed 里,没有挂载测/纯函数覆盖,删掉/清空照样全绿。
 const mainOption = computed<object | null>(() =>
