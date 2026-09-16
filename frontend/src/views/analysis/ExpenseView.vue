@@ -167,7 +167,7 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
 
 <template>
   <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
-  <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown" :kpi-hold="6">
+  <AnaShell period-mode="full" :compare="['mom']" :busy="staleShown" :kpi-hold="loading && !s5 ? 6 : 0">
     <template #kpis>
       <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 empty 也为真。换年在途旧年瓦片留在原地,
            由外壳 .anx-kpis 随 busy 同拍退让(C5-02) -->
@@ -190,24 +190,52 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
          卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
          数据到了原地硬切,不做淡入、卡片不错峰。
          **门只认首进**(还没有任何数据):换年在途旧年内容留在原地退让,不塌回骨架。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !s5" class="av2-grid ex-skel">
+      <!-- 2026-09-16 起卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           异动卡按 8 行留位(Top8,7px 间距);报销卡 = 合计行(照抄)+ 条块 7 × 34 − 14 = 190(REIM_PITCH)。 -->
       <div class="av2-card av2-s8">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+        <div class="av2-card-h">
+          <span class="t">月度费用构成 · <span class="ana-hole">0000</span>年</span>
+          <span class="hint">覆盖 <span class="ana-hole">00</span> 期(万元)· 环比=总计上月虚线</span>
+        </div>
         <AnaSkelChart :height="300" />
       </div>
       <div class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+        <div class="av2-card-h">
+          <span class="t">费用结构 · {{ period.sel.value.gran === 'month' ? '本月' : '本年' }}</span>
+          <span class="hint">合计 <span class="ana-hole">¥000.0万</span></span>
+        </div>
         <AnaSkelChart :height="300" />
       </div>
       <div class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+        <div class="av2-card-h">
+          <span class="t">科目 Top10</span>
+          <span class="hint">本期金额降序 · 条色随组 · 万元</span>
+        </div>
         <AnaSkelChart :height="250" />
       </div>
-      <div v-for="i in 2" :key="i" class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-        <div class="fp-shim" style="height: 250px"></div>
+      <div class="av2-card av2-s4">
+        <div class="av2-card-h">
+          <span class="t">环比异动 Top8</span>
+          <span class="hint"><span class="ana-hole">00</span>月 vs 上一有数月 · 费用降是好事</span>
+        </div>
+        <div class="ex-movers">
+          <div v-for="i in 8" :key="i" class="ex-mv ana-hole"><span class="lb">占位科目</span><span class="amt">¥0.0万</span><span class="pct">+00.0%</span></div>
+        </div>
       </div>
+      <div class="av2-card av2-s4">
+        <div class="av2-card-h">
+          <span class="t">员工报销与办公</span>
+          <span class="hint">关键词圈定 · 万元</span>
+        </div>
+        <div class="ex-reim-sum ana-hole"><span class="v">¥00.0万</span><span class="s">占运营费用 0.0%</span></div>
+        <div class="fp-shim" style="height: 190px"></div>
+      </div>
+      <!-- 真版式栅格末尾有一个空的 s12 行(多一道行距),骨架照留 -->
+      <div class="av2-s12"></div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="empty" :label="loadedYear + ' 年附表5 无数据'"
       hint="费用分析依赖附表5 费用支出(销售/管理/财务/修缮 组带)" to="/expense-pnl" to-text="去录入附表5" />
     <template v-else>

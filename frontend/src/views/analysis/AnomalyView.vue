@@ -13,6 +13,7 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import { chartHeightFor } from '@/components/ana/anaChartHeight'
 import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import { iconFor } from '@/components/ds/icon'
 import { STATUS, fint, fnum } from '@/components/ana/anaFmt'
@@ -215,33 +216,58 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
          (margin-top 2),.hold 各 min-height 1lh = 行盒 20(base.css body line-height var(--lh-snug) = tokens.css 20px);
          规则卡与园区级异常卡各留一行 .mn-rule 60(padding 9+9 + .tt 20 + margin 2 + .dt 20)——
          条数随数据,骨架只兜「至少一行」。数据到了原地硬切,不做淡入。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!ready" class="av2-grid ak-skel">
       <div class="av2-card av2-s4 mn-listcard">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-        <div class="fp-shim" style="height: 34px; margin-bottom: 8px"></div>
+        <div class="av2-card-h">
+          <span class="t">租户风险清单</span>
+          <span class="hint"><span class="ana-hole">000</span> 户 · 最差在前</span>
+        </div>
+        <div class="mn-search">
+          <component :is="iconFor('search')" :size="14" />
+          <input disabled placeholder="搜索租户 / 公司…" />
+        </div>
         <div class="fp-shim" style="height: 560px"></div>
       </div>
       <div class="av2-s8 mn-right">
         <div class="av2-card">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h">
+            <span class="t"><span class="ana-hole">某某某某</span> · 电/水费逐月</span>
+            <span class="hint">红点=突变 >±{{ anaSettings.spikeTh }}%</span>
+          </div>
           <AnaSkelChart :height="250" />
-          <div class="fp-shim" style="height: 20px; width: 55%; margin-top: 8px"></div>
-          <div class="fp-shim" style="height: 20px; width: 38%; margin-top: 2px"></div>
+          <p class="ana-read hold"></p>
+          <p class="ana-ref hold"></p>
         </div>
         <div class="av2-card">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">应收 vs 实收</span>
+            <span class="hint">台账覆盖 <span class="ana-hole">00</span> 期 · 跨公司求和</span>
+          </div>
           <AnaSkelChart :height="200" />
         </div>
         <div class="av2-card">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
-          <div class="fp-shim" style="height: 60px"></div>
+          <!-- 规则块按默认选中的风险最高那一户留位(库里现有数据命中两条,142) -->
+          <div class="av2-card-h">
+            <span class="t">命中规则与处置</span>
+            <span class="hint">状态本地保存 · 规则 id 稳定</span>
+          </div>
+          <div class="fp-shim" style="height: 142px"></div>
+          <div class="mn-links ana-hole">
+            <button type="button" class="mn-go" disabled tabindex="-1">查台账<component :is="iconFor('arrow-up-right')" :size="13" /></button>
+            <button type="button" class="mn-go" disabled tabindex="-1">查附表10<component :is="iconFor('arrow-up-right')" :size="13" /></button>
+          </div>
         </div>
       </div>
       <div class="av2-card av2-s12">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+        <div class="av2-card-h">
+          <span class="t">园区 / 公司级异常</span>
+          <span class="hint"><span class="ana-hole">00</span> 条 · 收缴率(公司×期)与能耗环比(园区口径,固定 ±40%)</span>
+        </div>
         <div class="fp-shim" style="height: 60px"></div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <div v-else-if="!model || !model.list.length" class="av2-grid">
       <div class="av2-card av2-s12">
@@ -287,7 +313,9 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
             <span class="hint">红点=突变 >±{{ anaSettings.spikeTh }}%</span>
           </div>
           <AnaEChart v-if="energyOption" :option="energyOption" :height="250" />
-          <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10" />
+          <!-- C5-10:空态钉成它顶替的那张图的高(同一张降档表),换租户时下方卡不跳 -->
+          <AnaEmpty v-else label="该租户无附表10 计费记录" hint="电/水费趋势来自附表10 租户×月" to="/sales-income" to-text="去录入附表10"
+            :style="{ minHeight: chartHeightFor(250) + 'px', boxSizing: 'border-box' }" />
           <!-- C5-11:两句都常驻占一行 —— 连同外层 energyOption 门一起解掉,
                否则选到无计费记录的租户时整卡矮两行,推下方卡。 -->
           <p class="ana-read hold"><template v-if="energyOption && elecReadout">{{ elecReadout }}</template></p>

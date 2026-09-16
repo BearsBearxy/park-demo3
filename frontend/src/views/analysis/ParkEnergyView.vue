@@ -275,31 +275,50 @@ const segsOption = computed(() => ({
          图块 = AnaSkelChart,高与各 AnaEChart 的 :height 字面值同表降档(300 / 170 / 250 / 250 / 170,anaChartHeight.ts)。
          KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。
          只认首进(还没有任何一期画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !shown" class="ak-page ak-skel">
-      <div class="fp-shim" style="height: 44px; width: 300px"></div>
+      <!-- 页头与卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           桑基卡下的人话句跟数据出没,库里现有数据有,骨架按「有」留位。 -->
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
+          <div>
+            <h2 class="ak-title">园区能耗</h2>
+            <p class="ak-sub">能量流(金额)· 购电 vs 售电(转供)· 单位成本 · 板块损益 · 期间 <span class="ana-hole">0000年00月</span></p>
+          </div>
+        </div>
+      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">能量流桑基 · <span class="ana-hole">{{ period.sel.value.gran === 'month' ? '本月' : 's10 覆盖月同口径(00 期)' }}</span></span>
+            <span class="hint">金额(元)<span class="hint-desk">· 点边/节点切换下方板块趋势</span></span>
+          </div>
           <AnaSkelChart :height="300" />
+          <p class="pe-reading"><span class="ana-hole">本期园区买电 ¥00.0万,光伏自用 ¥00.0万;向租户售电 ¥000.0万,办公/充电自用 ¥0.0万;差额 ¥00.0万 为转供加价收益</span></p>
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">板块月度趋势 · {{ BOARD_ZH[board] }}</span>
+            <span class="hint">万元<span class="hint-desk"> · 点上方桑基切换板块</span></span>
+          </div>
           <AnaSkelChart :height="170" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">购售电月度组合</span><span class="hint">万元 · 售电仅 s10 覆盖月有数 · 环比线仅购电(售电稀疏不适用)</span></div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">单位购电成本趋势</span><span class="hint">元/kWh · 当期较窗口均值 <span class="ana-hole">−0.0%</span></span></div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">能耗板块损益</span><span class="hint"><span class="ana-hole">本月</span> · 净额万元(红＝亏损)</span></div>
           <AnaSkelChart :height="170" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">

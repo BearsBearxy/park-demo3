@@ -798,8 +798,8 @@ describe('驾驶舱首进骨架(C6-01)', () => {
     // .ana-read/.ana-ref 的行盒是 base.css 的 --lh-snug 20px 长度,与 font-size 无关 —— 不钉就下沉 ≥70px
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
     expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
-      // 第二排按模板字面:分期 / 收缴率(AnaSkelChart,v-for 2 只算一次)· 异常速览(DOM 列表)
-      .toEqual(['20', '300', '20', '20', '20', '300', '20', '280', '20', '20', '250', '20', '250'])
+      // 2026-09-16 起卡头 / 读数句 / 异常清单照抄真版式:主图 · 构成环 · 预测带 280 · 分期 · 收缴率 · 回测表 258(表头 30 + 6 行 × 38)
+      .toEqual(['300', '300', '280', '250', '250', '258'])
     // 真版式那一侧的四个字面值 —— 骨架照抄的就是它们
     expect(src).toContain(':option="mainOption" :height="300"')
     expect(src).toContain(':option="donutOption" :height="300"')

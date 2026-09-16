@@ -113,6 +113,12 @@ describe('AnaShell KPI 占位瓦', () => {
     expect(w.findAll('.anx-kpi-hold')).toHaveLength(0)
   })
 
+  it('❗kpiHold 给副行字:每张占位瓦带上那段字(隐形),窄瓦里折几行与真瓦一致', async () => {
+    const w = mount({ components: { AnaShell }, template: `<AnaShell :kpi-hold="['保本 ¥000.0万', '扣除随收入变动的成本后剩余(边际贡献率)']"><template #kpis><template v-if="false"><i /></template></template></AnaShell>` })
+    await flushPromises()
+    expect(w.findAll('.anx-kpi-hold .d').map((d) => d.text())).toEqual(['保本 ¥000.0万', '扣除随收入变动的成本后剩余(边际贡献率)'])
+  })
+
   it('不传 kpiHold 的屏不出占位(瓦片本来就常渲染的屏)', async () => {
     const w = mount({ components: { AnaShell }, template: `<AnaShell><template #kpis><template v-if="false"><i /></template></template></AnaShell>` })
     await flushPromises()

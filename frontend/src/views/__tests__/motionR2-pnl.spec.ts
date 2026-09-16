@@ -432,33 +432,30 @@ describe('S 档骨架高:顶替 AnaEChart 的块与图同一张降档表', () =>
     return shims.map((e) => (e.element as HTMLElement).style.height)
   }
 
-  it('❗费用与报销:主图 / 结构环 300→260、Top10 250→220;异动榜 / 报销区是 DOM,照旧 250', async () => {
-    expect(await heights(ExpenseView, '.ex-skel .fp-shim', true)).toEqual([
-      '20px', '260px', '20px', '260px', '20px', '220px', '20px', '250px', '20px', '250px',
-    ])
+  // 2026-09-16 起卡头 / 异动行 / 报销合计照抄真版式,灰条只剩图块与报销条块(浏览器 390 / 1366 宽逐块对过)
+  it('❗费用与报销:主图 / 结构环 300→260、Top10 250→220;报销条块是 DOM,照旧 190', async () => {
+    expect(await heights(ExpenseView, '.ex-skel .fp-shim', true)).toEqual(['260px', '260px', '220px', '190px'])
   })
 
   it('❗费用与报销:>600 仍是 :height 字面值', async () => {
-    expect(await heights(ExpenseView, '.ex-skel .fp-shim', false)).toEqual([
-      '20px', '300px', '20px', '300px', '20px', '250px', '20px', '250px', '20px', '250px',
-    ])
+    expect(await heights(ExpenseView, '.ex-skel .fp-shim', false)).toEqual(['300px', '300px', '250px', '190px'])
   })
 
   it('❗损益附表分析:两张图 300→260', async () => {
-    expect(await heights(PnlAnalysisView, '.pa2-skel .av2-grid .fp-shim', true)).toEqual(['20px', '260px', '20px', '260px'])
+    expect(await heights(PnlAnalysisView, '.pa2-skel .av2-grid .fp-shim', true)).toEqual(['260px', '260px'])
   })
 
-  it('❗预算对比:主图 300→260;右卡是 AnaBullet(自绘),照旧 300', async () => {
-    expect(await heights(BudgetView, '.bv2-skel .fp-shim', true)).toEqual(['20px', '260px', '20px', '300px'])
+  it('❗预算对比:主图 300→260;明细表块照旧 420(达成卡是真 AnaBullet + 真行,隐形)', async () => {
+    expect(await heights(BudgetView, '.bv2-skel .fp-shim', true)).toEqual(['260px', '420px'])
   })
 
   it('❗驾驶舱:主图 / 构成环 260、分期 / 收缴率 220;预测带(自绘)280 与异常速览(DOM)250 不降档', async () => {
     expect(await heights(CockpitView, '.cv2-skel .fp-shim', true)).toEqual([
-      '20px', '260px', '20px', '20px',   // 主图 + 读数句 / 参照系行盒 20
-      '20px', '260px',                   // 构成环
-      '20px', '280px', '20px',           // 预测带 AnaForecastChart(自绘,不降档)
-      '20px', '220px', '20px', '220px',  // 分期收入堆叠 / 收缴率
-      '20px', '250px',                   // 异常速览(DOM 列表)
+      '260px',                           // 主图(读数句 / 参照系照抄真版式)
+      '260px',                           // 构成环
+      '280px',                           // 预测带 AnaForecastChart(自绘,不降档)
+      '220px', '220px',                  // 分期收入堆叠 / 收缴率
+      '258px',                           // 回测表块 = 表头 30 + 6 行 × 38(异常速览照抄真版式四条)
     ])
   })
 })

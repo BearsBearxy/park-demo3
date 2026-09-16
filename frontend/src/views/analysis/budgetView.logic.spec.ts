@@ -46,11 +46,11 @@ describe('预算达成首进骨架(C6-01)', () => {
   const src = readFileSync(join(__dirname, 'BudgetView.vue'), 'utf8')
   const skel = src.slice(src.indexOf('class="bv2-page bv2-skel"'), src.indexOf('<!-- 无预算数据'))
 
-  it('❗不转圈;骨架块高 = 卡头 20 + 五年对比 300(两卡同高,栅格同一行)', () => {
+  it('❗不转圈;骨架块高 = 五年对比 300 + 明细表 420(卡头、达成行、前瞻行照抄真版式)', () => {
     expect(src).not.toContain('page-spin')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
     expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
-      .toEqual(['20', '300', '20', '300'])
+      .toEqual(['300', '420'])   // 五年对比图 · 明细表块(.bv2-tbl-wrap max-height 420);卡头照抄真版式
     expect(src).toContain(':option="comboOpt" :height="300"')
   })
 })

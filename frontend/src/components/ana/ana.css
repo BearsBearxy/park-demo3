@@ -166,6 +166,11 @@
    给两条基础规则直接加 min-height,会让今天恒渲染、值可能为空的句子平白多占一行。
    1lh 跟着字号走,不发明字面值;lh 不支持的旧浏览器 min-height 失效,退回今天的插拔。 */
 .ana-read.hold, .ana-ref.hold { min-height: 1lh; }
+/* 骨架里顶替数据的字(2026-09-16):真版式的页头 / 卡头照抄进骨架,只把随数据变的那几个字换成
+   同样长的占位字并隐掉 —— 折行与真版式一致,硬切时不跳。 */
+.ana-hole { visibility: hidden; }
+/* AnaShell 首进占位瓦的副行:占住折行的位,字不露 */
+.anx-kpi-hold .d { visibility: hidden; }
 /* S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.2):KPI 定两列——auto-fit minmax(120px) 在 390px
    视口会挤成三列,主数值互相顶到截断;两列下瓦片约 170px,数值+delta 都放得下。
    栅格 gap 与卡内边距各微收一档,省下的宽度还给图表。

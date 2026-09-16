@@ -187,6 +187,8 @@ const snap = computed<AnaSnapshot | null>(() => (snapInput.value ? buildSnapshot
 // ── B0 KPI 行(§3.1)──────────────────────────────────────────────────
 // ponytail: 两条迷你线(§1 #11)不画。实测 13 栋 × 4321 条、逐月 12 次 buildSnapshot 合计 ≈ 400ms,
 // 远超 80ms 线;要画得先让 logic 给出不重跑整份快照的逐月计数。
+// 首进占位瓦的副行(隐形):「数据到」那张的副行在窄瓦里折三行,按它的格式留
+const KPI_HOLD = ['00栋', '00 栋覆盖都 ≥ 00%', '—', '00 栋未录', '—', '已过去 00/00 天 · 已抄 000/000 · 000%']
 const kpis = computed(() => (snap.value ? kpiTiles(snap.value) : []))
 
 // ── B1 芯片 + 单栋大图(§3.2)──────────────────────────────────────────
@@ -349,7 +351,7 @@ onDeactivated(() => { drawerOpen.value = false })
 </script>
 
 <template>
-  <AnaShell period-mode="full" :busy="busy" :kpi-hold="6">
+  <AnaShell period-mode="full" :busy="busy" :kpi-hold="!snap && loading ? KPI_HOLD : 0">
     <!-- 瓦片门只看 snap:换年时旧瓦留在原位(整排先消失再出现是 C5-02 要修的那个形状);
          首进(!snap)由 .anx-kpis 的 min-height 94 兜空行 -->
     <template #kpis>
@@ -362,17 +364,46 @@ onDeactivated(() => { drawerOpen.value = false })
          卡头 20 + 芯片行 34(PvChips.vue:117)+ 大图区 272(上距 12 + 图头 24 + 画布 236)
          + .pma-div + 判据脚两行 16 + 2 + 16;段控 32;.pma-sec 1200(档内首卡 B7 361)。
          KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!snap && loading" class="pma-skel">
+      <!-- 2026-09-16 起卡头、段控行、账面量两张卡照抄真版式(手机上卡头与段控说明都会折好几行,灰条顶不住);
+           栋名换成同长的隐形占位。段控说明跟「高级分析」可不可算出没,库里现有数据可算,按「有」留位;
+           B8 高 = 表头 + 栋数 × 行高(PvRevenueBars),按库里现有 13 栋留。 -->
       <div class="av2-card pma-main">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+        <div class="av2-card-h">
+          <span class="t">哪栋落在自己的范围外</span>
+          <span class="hint">芯片 = 一栋，徽标 = 出范围{{ gran === 'month' ? '天' : '月' }}数 · 点芯片换图 · 线 = 这栋当{{ gran === 'month' ? '日' : '月' }}发电 ÷ 全园同{{ gran === 'month' ? '日' : '月' }}中位，带 = 这栋自己的范围</span>
+          <button type="button" class="pma-lk ana-hole" disabled>看 00栋 的整年 →</button>
+        </div>
         <div class="pma-skel-chips"><div class="fp-shim" style="height: 26px; width: 260px"></div></div>
         <div class="fp-shim" style="height: 260px; margin-top: 12px"></div>
         <div class="pma-div"></div>
         <div class="fp-shim" style="height: 34px; width: 70%"></div>
       </div>
-      <div class="pma-seg"><div class="fp-shim" style="height: 32px; width: 320px"></div></div>
-      <div class="pma-sec"><div class="fp-shim" style="height: 361px"></div></div>
+      <div class="pma-seg">
+        <div class="fp-shim" style="border-radius: 999px"><Segmented class="ana-hole" :model-value="section" :options="[{ value: 'abs', label: '绝对水平' }, { value: 'ledger', label: '账面量' }, { value: 'lab', label: '高级分析' }]" /></div>
+        <span class="pma-seghint ana-hole">「高级分析」= 算法自检与口径核对，给要复算这屏数字的人看。</span>
+      </div>
+      <div class="pma-sec">
+        <div class="av2-grid">
+          <div class="av2-card av2-s12">
+            <div class="av2-card-h">
+              <span class="t">消纳结构与损耗率</span>
+              <span class="hint">{{ gran === 'month' ? '每天' : '每月' }}发的电，多少自己用了、多少卖上网、多少路上损掉了</span>
+            </div>
+            <div class="fp-shim" style="height: 374px"></div>
+          </div>
+          <div class="av2-card av2-s12">
+            <div class="av2-card-h">
+              <span class="t">各栋消纳收益与上网收益</span>
+              <span class="hint">{{ gran === 'month' ? '这个月' : '这一年' }}每栋一共挣了多少钱，自己用的和卖上网的各占多少</span>
+            </div>
+            <div class="fp-shim" style="height: 483px"></div>
+          </div>
+        </div>
+      </div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="failed" label="分栋抄表数据没加载成功" hint="刷新重试；仍不行就到分栋抄表屏看数据在不在" />
     <AnaEmpty
       v-else-if="!snap"

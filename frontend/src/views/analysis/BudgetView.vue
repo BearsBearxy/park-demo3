@@ -119,6 +119,10 @@ const bulletRows = computed(() => bulletItems.value.map(d => ({
   color: d.invert ? (d.rate <= 100 ? POS : NEG) : undefined,
 })))
 
+// 首进骨架的占位行:达成 / 前瞻都是这三项(与 bulletItems、outlook.items 的顺序一致)
+const HOLD_NAMES = ['收入', '成本费用', '利润']
+const HOLD_BULLETS = HOLD_NAMES.map(name => ({ name, value: 100, target: 100 }))
+
 // ── 卡3 总表明细(当年):项目|预算|实际|达成率|差异;关键行点击 → 深链对应损益附表 ──
 const detail = computed(() => {
   const y = year.value
@@ -170,7 +174,7 @@ const kpiOutlook = computed(() => {
 
 <template>
   <!-- §五:年敏感屏(预算为年度口径),只年控件;数据一次拉全年份,达成/明细/前瞻均随所选年响应式派生 -->
-  <AnaShell period-mode="year" :kpi-hold="5">
+  <AnaShell period-mode="year" :kpi-hold="!ready ? 5 : 0">
     <template #kpis>
       <template v-if="ready && rows.length">
         <AnaKpiTile :label="year + ' 收入达成'" :value="kpiAch('收入').value" :delta="kpiAch('收入').delta" kind="vs 预算" />
@@ -189,18 +193,56 @@ const kpiOutlook = computed(() => {
          主图块走 AnaSkelChart(≤600 与图同一张降档表);右卡是 AnaBullet(自绘)+ 明细行,照旧写死。
          卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
          门只认首进:ready 置真后不再复位,换年(不打接口)与切回页签重读都不会塌回骨架。 -->
+    <!-- 骨架照抄真版式的四张卡(卡头、达成行、前瞻行在手机上都会折行,灰条顶不住);
+         金额换成同长的隐形占位,三行达成 / 前瞻是固定的收入·成本费用·利润。明细表块 = .bv2-tbl-wrap 的 max-height 420。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!ready" class="bv2-page bv2-skel">
+      <div v-if="period.sel.value.gran === 'month'" class="bv2-gran-hint">
+        <component :is="iconFor('info')" :size="13" />预算为年度口径,本屏按 {{ year }} 全年展示
+      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">五年对比 · 实际 vs 预算目标</span>
+            <span class="hint">柱=实际 · 紫杠=预算目标<span class="hint-desk"> · 悬停看达成率</span></span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <div class="av2-card-h"><span class="t">{{ year }} 年达成率</span><span class="hint">实际 / 预算 · 超支标红</span></div>
+          <div class="ana-hole"><AnaBullet :rows="HOLD_BULLETS" :target="100" unit="%" /></div>
+          <div class="bv2-ach-rows">
+            <div v-for="n in HOLD_NAMES" :key="n" class="r ana-hole">
+              <span class="nm">{{ n }}</span>
+              <span class="v">实际 ¥00,000,000.00 / 预算 ¥00,000,000.00</span>
+              <span class="gap">缺口 ¥0,000,000.00</span>
+            </div>
+          </div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">{{ year }} 年总表明细</span>
+            <span class="hint">关键行实际=损益推算(系统标记)<span class="hint-desk"> · 点击关键行 → 对应损益附表</span></span>
+          </div>
+          <div class="fp-shim" style="height: 420px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t"><span class="ana-hole">0000</span> 前瞻</span>
+            <span class="hint"><span class="ana-hole">0000 预算 vs 0000 实际</span></span>
+          </div>
+          <div class="bv2-outlook">
+            <div v-for="n in HOLD_NAMES" :key="n" class="r ana-hole">
+              <span class="nm">{{ n }}</span>
+              <span class="v">¥000,000,000.00</span>
+              <span class="d">+00.0%</span>
+              <span class="base">上年实际 ¥00,000,000.00</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <!-- 无预算数据 → 全屏空态引导导入中心 -->
     <div v-else-if="!rows.length" class="bv2-page">

@@ -141,7 +141,7 @@ const structOpt = computed<object>(() => {
 
 <template>
   <!-- §五:年敏感屏(年度口径),只年控件;watch(year) 重取,所选年空 → 全屏 AnaEmpty -->
-  <AnaShell period-mode="year" :compare="['mom']" :busy="staleShown" :kpi-hold="5">
+  <AnaShell period-mode="year" :compare="['mom']" :busy="staleShown" :kpi-hold="loading && !summary ? 5 : 0">
     <template #kpis>
       <!-- 年空不渲染 KPI(禁止假 0);首进还没数据时 recordedCount 也是 0。换年在途旧年瓦片留在原地,
            由外壳 .anx-kpis 随 busy 同拍退让(C5-02),年份印已加载的那一年 -->
@@ -159,31 +159,40 @@ const structOpt = computed<object>(() => {
          卡头 20 = .av2-card-h .t 的行盒(base.css line-height: var(--lh-snug) 20px)。
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
          **门只认首进**(还没有任何数据):换年在途旧年内容留在原地退让,不塌回骨架。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !summary" class="pa2-page pa2-skel">
+      <!-- 2026-09-16 起五张迷你卡与卡头照抄真版式(真卡是 button,行盒与 div 不同;附表编号 / 名称是静态的);
+           金额、比率、迷你线换成隐形占位 / 灰条。 -->
       <div class="pa2-minis">
-        <div v-for="i in 5" :key="i" class="pa2-mini">
+        <button v-for="c in cards" :key="c.no" type="button" class="pa2-mini" disabled>
           <div class="hd">
-            <div class="fp-shim" style="width: 30px; height: 30px; flex: 0 0 auto"></div>
-            <div>
-              <div class="fp-shim" style="height: 11px; width: 30px"></div>
-              <div class="fp-shim" style="height: 12px; width: 84px; margin-top: 4px"></div>
-            </div>
+            <span class="ic"><component :is="iconFor(c.icon)" :size="16" /></span>
+            <div><div class="no">{{ c.no }}</div><div class="nm">{{ c.name }}</div></div>
+            <span v-if="!c.isExp" class="rate ana-hole">00.0%</span>
           </div>
           <div class="fp-shim" style="height: 26px"></div>
-          <div class="fp-shim" style="height: 15px; width: 70%"></div>
-        </div>
+          <div class="ft">
+            <span class="l">{{ c.isExp ? '全年支出' : '全年损益' }}</span>
+            <span class="v ana-hole">¥000.00万</span>
+            <span class="lnk ana-hole"><component :is="iconFor('arrow-right')" :size="13" /></span>
+          </div>
+        </button>
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">{{ selCard?.no }} {{ selCard?.name }} · 12 月组合</span>
+            <span class="hint"><span class="hint-desk">点上方卡片切换 · </span>环比=上月虚线 · 万元</span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="av2-card-h"><span class="t">收入结构堆叠</span><span class="hint">附表1-4 · 万元</span></div>
           <AnaSkelChart :height="300" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <div v-else-if="!recordedCount" class="pa2-page">
       <AnaEmpty :label="loadedYear + ' 年五张损益附表均无数据'" hint="录入附表1-5(租金/用电/用水/运管/费用)后,这里展示趋势与结构"
         to="/rent-pnl" to-text="去录入损益附表" />

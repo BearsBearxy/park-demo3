@@ -285,11 +285,10 @@ describe('首进骨架 · S 档(≤600)与图同表降档', () => {
     expect(w.findAllComponents(AnaSkelChart).map((c) => (c.element as HTMLElement).style.height))
       .toEqual(['220px', '180px'])
     const energyCard = w.find('.ak-skel .mn-right > .av2-card')
-    // 卡头 20 · 图 220 · 读数句 20(margin-top 8)· 参照系 20(margin-top 2)
-    expect(energyCard.findAll('.fp-shim').map((s) => {
-      const st = (s.element as HTMLElement).style
-      return [st.height, st.marginTop]
-    })).toEqual([['20px', ''], ['220px', ''], ['20px', '8px'], ['20px', '2px']])
+    // 2026-09-16 起卡头与两行照抄真版式:灰条只剩图块 220,读数句 / 参照系是真版式同类的 <p … hold>
+    expect(energyCard.findAll('.fp-shim').map((s) => (s.element as HTMLElement).style.height)).toEqual(['220px'])
+    expect(energyCard.find('p.ana-read.hold').exists()).toBe(true)
+    expect(energyCard.find('p.ana-ref.hold').exists()).toBe(true)
     // 真版式那一侧确实是这两行(ana.css .ana-read margin 8 0 0 / .ana-ref margin 2 0 0)
     const src = readFileSync(join(__dirname, '..', 'analysis', 'AnomalyView.vue'), 'utf8')
     expect(src).toContain('<p class="ana-read hold">')

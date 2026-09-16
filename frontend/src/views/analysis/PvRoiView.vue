@@ -149,26 +149,45 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
          同排的 s4 卡真内容比 300 矮,栅格行高由 s8 决定,骨架同排也留 300。
          s8 两块顶替 AnaEChart → AnaSkelChart(与图同表降档);s4 两块顶替的是进度卡 / 明细表,照旧写死。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading" class="roi2-page ana-skel">
+      <!-- 卡头与回收卡的行照抄真版式(手机上会折行,灰条顶不住);金额 / 期别换成同长的隐形占位。
+           明细表块 = .roi2-tblwrap 的 max-height 210。 -->
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">累计收益爬坡 vs 工程总投资</span>
+            <span class="hint">实线=已记账 · 虚线=按年化外推<span class="ana-hole"> · 预估回收点 0000-00</span> · 万元</span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 150px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
+          <div class="roi2-big"><span class="ana-hole">00.0%</span></div>
+          <div class="roi2-bar"></div>
+          <div class="roi2-rows">
+            <div v-for="k in ['累计电费收益', '其中 自消纳', '其中 上网', '预估回收周期']" :key="k" class="r">
+              <span class="k">{{ k }}</span><span class="v ana-hole">¥0,000.00万</span>
+            </div>
+          </div>
         </div>
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span></span></div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
-          <div class="fp-shim" style="height: 300px"></div>
+          <div class="av2-card-h">
+            <span class="t"><span class="ana-hole">一期 X-X 座</span> · 月度明细</span>
+            <span class="hint ana-hole">0000年00月并网 · 00 个月</span>
+          </div>
+          <div class="roi2-sel ana-hole">
+            <span>累计 <b>¥000.00万</b></span><span>年化 <b>¥000.00万</b></span><span>占全园 <b>00.0%</b></span>
+          </div>
+          <div class="fp-shim" style="height: 210px"></div>
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <div v-else class="roi2-page">
       <!-- 空态:附表6 无任何记账月 → 深链录入屏,不画假图 -->
       <AnaEmpty

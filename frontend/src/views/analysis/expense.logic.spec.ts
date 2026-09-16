@@ -110,12 +110,12 @@ describe('费用分析首进骨架(C6-01)', () => {
   const src = readFileSync(join(__dirname, 'ExpenseView.vue'), 'utf8')
   const skel = src.slice(src.indexOf('class="av2-grid ex-skel"'), src.indexOf('<AnaEmpty v-else-if="empty"'))
 
-  it('❗不转圈;骨架块高 = 卡头 20 + 主图 300 / 结构环 300 / 第二排 250', () => {
+  it('❗不转圈;骨架块高 = 主图 300 / 结构环 300 / Top10 250 / 报销条块 190', () => {
     expect(src).not.toContain('page-spin')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
     expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
-      // 模板字面顺序(v-for 只算一次):主图 · 结构环 · Top10(AnaSkelChart)· 异动榜 / 报销区(DOM,v-for 2)
-      .toEqual(['20', '300', '20', '300', '20', '250', '20', '250'])
+      // 2026-09-16 起卡头 / 异动行 / 报销合计照抄真版式:主图 · 结构环 · Top10 · 报销条块 190(7 × 34 − 14)
+      .toEqual(['300', '300', '250', '190'])
     expect(src).toContain(':option="mainOpt" :height="300"')
     expect(src).toContain(':option="donutOpt" :height="300"')
     expect(src).toContain(':option="topOpt" :height="250"')

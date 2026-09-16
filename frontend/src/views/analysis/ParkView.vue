@@ -217,38 +217,96 @@ const areaBarOption = computed(() => ({
          面积转换卡右栏 图 250 + legend 28 = 278 高于左栏两块指标 186(宽档左右并排,取高的那栏)。
          ≤900 两栏改纵排、指标行在图上方,其高随「Σ建筑 … ÷ Σ租赁 …」折几行而变,骨架不兜。
          KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading" class="ak-page ak-skel">
-      <div class="fp-shim" style="height: 44px; width: 300px"></div>
+      <!-- 2026-09-16 起页头、卡头、图例、出租率与面积转换两卡的文字行照抄真版式(手机上都会折行,灰条顶不住);
+           数字换成同长的隐形占位。图例按库里现有四个期区;出租率卡按「面积口径缺分母、按单元可算」的现状留行;
+           面积卡按「有面积数据、楼栋建筑面积不全」的现状留行。数据形状变了,首进会差出那几行。 -->
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"><component :is="iconFor('building-2')" :size="20" /></span>
+          <div>
+            <h2 class="ak-title">出租与楼栋</h2>
+            <p class="ak-sub">合同月租规模 · 楼栋×租户分布 · 共 <span class="ana-hole">00</span> 栋 · 主数据快照(不随期间切换)</p>
+          </div>
+        </div>
+      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="av2-card-h"><span class="t">楼栋月租 TreeMap</span><span class="hint">块面积＝月租(万)· 颜色＝分期<span class="hint-desk"> · 点击下钻右侧明细</span></span></div>
           <AnaSkelChart :height="300" />
-          <div class="fp-shim" style="height: 20px; width: 60%; margin-top: 8px"></div>
+          <div class="pk-legend ana-hole">
+            <span v-for="n in ['一期', '二期', '三期', '宿舍']" :key="n" class="pk-leg"><span class="sw"></span>{{ n }}</span>
+          </div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">租户明细 · 全园区</span>
+            <span class="hint"><span class="hint-desk">点左图楼栋块过滤</span></span>
+          </div>
           <div class="fp-shim" style="height: 296px"></div>
-          <div class="fp-shim" style="height: 20px; width: 70%; margin-top: 8px"></div>
+          <div class="pk-sum"><span class="ana-hole">000 份合同 · 月租合计 ¥000.0万</span></div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="av2-card-h"><span class="t">期区月租结构</span><span class="hint">有效合同月租占比</span></div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">楼栋×租户散点</span>
+            <span class="pk-lh">
+              <span class="hint">气泡＝合同数 · 颜色＝分期<template v-if="yLog"> · 对数刻度:小栋与大栋同图可读<span class="ana-hole"> · 月租0楼栋 00 栋未显示</span></template></span>
+              <span class="anx-seg mini" aria-hidden="true">
+                <button :class="{ on: yLog }" disabled tabindex="-1">对数</button>
+                <button :class="{ on: !yLog }" disabled tabindex="-1">线性</button>
+              </span>
+            </span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card pk-s2">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 80px"></div></div>
-          <div class="fp-shim" style="height: 86px"></div>
+          <div class="av2-card-h">
+            <span class="t">出租率</span>
+            <span class="hint"><b class="pk-cov ana-hole">0/00</b> 栋已录可租面积</span>
+          </div>
+          <div class="pk-am ana-hole">
+            <div class="v">—</div>
+            <div class="l">面积口径出租率</div>
+            <div class="s">缺可租面积数据</div>
+            <div class="s">按单元 000/000 · 00.0%</div>
+            <span class="pk-go">去补录可租面积 →</span>
+          </div>
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <AnaSkelChart :height="250" />
-          <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
+          <div class="av2-card-h">
+            <span class="t">面积转换</span>
+            <span class="hint"><b class="pk-cov ana-hole">000/000</b> 份在租合同有面积数据 · 在租=active/expiring</span>
+          </div>
+          <div class="pk-area-body">
+            <div class="pk-area-metrics ana-hole">
+              <div class="pk-am">
+                <div class="v">0.00</div>
+                <div class="l">全园实际换算系数</div>
+                <div class="s">Σ建筑 000,000㎡ ÷ Σ租赁 000,000㎡ · 基准 0.8</div>
+              </div>
+              <div class="pk-am">
+                <div class="v">—</div>
+                <div class="l">平均分摊率</div>
+                <div class="s">Σ在租建筑 000,000㎡ ÷ Σ楼栋建筑 000㎡ · 楼栋建筑面积仅 0/00 栋已录,分母不成立</div>
+              </div>
+            </div>
+            <div class="pk-area-chart">
+              <AnaSkelChart :height="250" />
+              <div class="pk-legend ana-hole">
+                <span class="pk-leg"><span class="sw"></span>建筑面积</span>
+                <span class="pk-leg"><span class="sw"></span>租赁面积</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <div v-else class="ak-page">
       <div class="ak-head">

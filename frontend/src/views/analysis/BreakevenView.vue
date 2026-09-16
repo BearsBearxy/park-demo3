@@ -81,6 +81,8 @@ const s10Used = computed(() => s10UsedOf(s10.value, ymUsed.value))
 // C6-15:拖滑杆那一次重算瞬到(图不落后手指),换年 / 换月仍走 200 形变。sliding 故意不做响应式:
 // 三个 option 本就因 be 变而重算,重算发生在 onFr 触发的这次 flush 里,flush 完摘掉。
 let sliding = false
+// 首进占位瓦的副行(隐形):第三张的静态说明在窄瓦里折三行,其余按真副行的长度留
+const KPI_HOLD = ['保本 ¥000.0万', '当月收入 ¥000.0万', '扣除随收入变动的成本后剩余(边际贡献率)', '系数 0.00(滑杆可调)', '口径月 0000-00', '口径月 0000-00']
 const cvpOpt = computed(() => (be.value ? cvpOption(be.value, sliding) : {}))
 const torOpt = computed(() => (be.value ? tornadoOption(tornadoItems(be.value, s10Used.value), sliding) : {}))
 const split = computed(() =>
@@ -100,7 +102,7 @@ function onFr(e: Event) {
 </script>
 
 <template>
-  <AnaShell :busy="staleShown" :kpi-hold="6">
+  <AnaShell :busy="staleShown" :kpi-hold="loading && !summary ? KPI_HOLD : 0">
     <template #kpis>
       <!-- 瓦片门只看 be:换年时旧瓦留在原位,由外壳 .anx-kpis 同拍退让 -->
       <template v-if="be">
@@ -120,33 +122,37 @@ function onFr(e: Event) {
          标题行 20 + 4 + 副标行 20)、结论条一行 20、卡头 20(.av2-card-h 下距 8 合 28)、
          三张图 300 / 300 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)、系数滑杆一行 20。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && !summary" class="ak-page ana-skel">
+      <!-- 页头、结论行、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位 -->
       <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"></span>
+        <div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('scale-3d')" :size="20" /></span>
           <div>
-            <div class="fp-shim" style="height: 20px; width: 200px"></div>
-            <div class="fp-shim" style="height: 20px; width: 340px; margin-top: 4px"></div>
+            <h2 class="ak-title">盈亏平衡与敏感性</h2>
+            <p class="ak-sub">本量利(CVP)、保本收入、驱动敏感性 · 月度口径 · 口径月 <span class="ana-hole">0000-00</span></p>
           </div>
         </div>
+        <AnaPill tone="warn" icon="flask-conical">拆分系数假设 · 估算值</AnaPill>
       </div>
-      <div class="av2-card bev-concl"><div class="fp-shim" style="height: 20px; width: 60%"></div></div>
+      <div class="av2-card bev-concl"><span class="ana-hole">按当前成本结构,月收入 ≥ ¥000.0万 即保本;口径月(0000-00)收入 ¥000.0万,达成 000%</span></div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="av2-card-h"><span class="t">保本点测算</span><span class="hint">本量利 CVP · 收入/总成本交点=保本</span></div>
           <AnaSkelChart :height="300" />
-          <div class="fp-shim" style="height: 20px; margin: 8px 2px 2px"></div>
+          <div class="bev-slider"><span class="k">固定成本系数</span><span class="fp-shim" style="flex: 1; height: 20px"></span><span class="k">(拖动即时重算保本点)</span></div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">哪个因素对利润影响最大</span><span class="hint">各驱动 ±10% · 龙卷风图</span></div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h"><span class="t">固定/变动成本拆分 · 逐月</span>
+            <span class="hint"><span class="ana-hole">0000</span>年覆盖 <span class="ana-hole">00</span> 期 · 万元(预算数据未录入,替代原型预算视图)</span></div>
           <AnaSkelChart :height="250" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <!-- 换年在途:两种内容都原地退让(C5-02),data-stale-host 常挂 —— 类摘掉后退场也是 200 -->
     <div v-else-if="!be" class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">

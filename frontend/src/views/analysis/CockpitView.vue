@@ -364,38 +364,92 @@ const conclusion = computed(() => buildConclusion(
     <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
          (主图 300 · 构成环 300 · 预测带 280 · 第二排三张 250),卡头 20 + .av2-card-h 的 8 下边距;
          KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
-         结论条与取期横幅随数据才出,首进期无处可钉,它们那一段位移照实留着。
+         结论条与取期横幅按库里现有数据留位(见下一段注释)。
          主图卡与预测带卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
          骨架照 8+20 / 2+20 钉上,不钉的话数据到了下面整片下沉。
          **门只认首进**(!pnl):换年那一路旧年内容留在原地退让(C5-02),不许整片塌回骨架 —— 那是
          「一次交互两个动的东西」(§1.7):正文整片消失 + 工具条进度线。
          顶替 AnaEChart 的四块(主图 / 构成环 / 分期堆叠 / 收缴率)走 AnaSkelChart(≤600 与图同一张降档表);
          预测带是自绘 SVG(不降档)、异常速览是 DOM 列表,两块照旧写死。 -->
-    <div v-if="!ready || (pnlLoading && !pnl)" class="av2-grid cv2-skel">
-      <div class="av2-card av2-s8">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
-        <AnaSkelChart :height="300" />
-        <div class="fp-shim" style="height: 20px; width: 60%; margin-top: 8px"></div>
-        <div class="fp-shim" style="height: 20px; width: 45%; margin-top: 2px"></div>
+    <!-- 2026-09-16 起骨架照抄真版式:顶部台账取期横幅、结论条、各卡卡头与读数句、异常清单、回测表都按
+         库里现有数据的样子留位(默认期 = 最近有损益的月,台账比它早一个月,所以横幅在;结论三句;
+         回测六行;异常速览四条)—— 手机上这些字都会折行,灰条顶不住。随数据变的字换成同长的隐形占位。
+         数据换了形状(台账补齐、回测变成七行)时,首进会差出那一段,届时照新数据改这里。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <template v-if="!ready || (pnlLoading && !pnl)">
+      <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" source="台账" style="margin-bottom: 12px" />
+      <div class="av2-card cv2-concl av2-lead cv2-skel">
+        <span class="cv2-cs ana-hole"><span class="dot"></span>0000年00月收入 ¥000万,园区利润 ¥000万(利润率 00.0%)</span>
+        <span class="cv2-cs ana-hole"><span class="dot"></span>收缴率 00.0% 低于目标 00%,期末欠费 ¥0,000万</span>
+        <button type="button" class="cv2-cs lk ana-hole" disabled><span class="dot"></span>000 条异常待处理</button>
       </div>
-      <div class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
-        <AnaSkelChart :height="300" />
+      <div class="av2-grid cv2-skel">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">月度收入 · 预测护栏</span>
+            <span class="hint">覆盖 <span class="ana-hole">00</span> 期(万元)<span class="hint-desk">· 点击月柱切换期间 · 拖选缩放</span> · 紫虚线=预算月均</span>
+          </div>
+          <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" style="margin-bottom: 8px">0000-00 收入为负,已计入年度营收/成本/利润与达成率</AnaPeriodBanner>
+          <AnaSkelChart :height="300" />
+          <p class="ana-read hold"><span class="ana-hole">00月收入 −00万，离0-00月的正常波动 0倍残差</span></p>
+          <p class="ana-ref hold"><span class="ana-hole">参照0-00月拟合 · 残差000万</span></p>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t">收入构成 · {{ isMonth ? '本月' : '本年' }}</span>
+            <span class="hint">合计 <span class="ana-hole">¥000.0万</span><span class="hint-desk"> · 点击扇区看趋势</span></span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h">
+            <span class="t">收入趋势 · 下月预测</span>
+            <span class="hint">逐月预测带 · 每月的带只用它之前的月算</span>
+          </div>
+          <!-- 预测带是自绘 SVG,不降档 -->
+          <div class="fp-shim" style="height: 280px"></div>
+          <p class="ana-ref"><span class="ana-hole">本年 12 个月已录满，没有下月可预测</span></p>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t">分期收入堆叠</span>
+            <span class="hint">附表10 覆盖 <span class="ana-hole">0</span> 期<span class="hint-desk"> · 点击深链附表10</span></span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t">收缴率 vs 目标</span>
+            <span class="hint">{{ year }}年近 6 期(台账共 <span class="ana-hole">00</span> 期,趋势见 KPI)<span class="hint-desk">· 点击看欠费清单</span></span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t">异常速览</span>
+            <span class="hint">规则引擎跑真数据<span class="hint-desk"> · 点击查看</span></span>
+          </div>
+          <div class="cv2-anoms">
+            <button v-for="i in 4" :key="i" type="button" class="cv2-anom ana-hole" disabled>
+              <span class="dot"></span><span class="tt">占位</span><span class="vv">00%</span>
+            </button>
+            <button type="button" class="cv2-all ana-hole" disabled>进入监控中心 · 全部 000 条 →</button>
+          </div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h">
+            <span class="t">这条带过去准不准</span>
+            <span class="hint">滚动起点回测：每次只用当时已有的月，预测下一个月</span>
+          </div>
+          <!-- 表块 258 = 表头 30 + 6 行 × 38 -->
+          <div class="fp-shim" style="height: 258px"></div>
+          <p class="ana-read"><span class="ana-hole">这条带按80%画的，0次里只中了0次，落空的0次全是有高有低</span></p>
+          <p class="ana-ref"><span class="ana-hole">参照0-00月末起点·样本0次</span></p>
+        </div>
+        <div class="av2-s12"></div>
       </div>
-      <div class="av2-card av2-s12">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
-        <div class="fp-shim" style="height: 280px"></div>
-        <div class="fp-shim" style="height: 20px; width: 50%; margin-top: 2px"></div>
-      </div>
-      <div v-for="i in 2" :key="i" class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-        <AnaSkelChart :height="250" />
-      </div>
-      <div class="av2-card av2-s4">
-        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-        <div class="fp-shim" style="height: 250px"></div>
-      </div>
-    </div>
+    </template>
+    <!-- skel:end -->
     <!-- §五策略3:所选年无损益附表 → 主区整体空态(主数据类 KPI 保留于上方,禁止沿用旧年图表) -->
     <AnaEmpty v-else-if="pnlEmpty" :label="year + ' 年损益附表未录入'"
       hint="驾驶舱主区依赖损益附表 1~5;切换年份或先录入该年数据(在租租户等主数据 KPI 不受影响)"

@@ -60,7 +60,7 @@ function onScatterClick(p: unknown) {
 
 <template>
   <!-- §五:期间无关屏(全窗口活跃度,窗口由台账/s10 数据 firstYm~lastYm 派生),隐期间控件显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="全窗口活跃度" :kpi-hold="6">
+  <AnaShell period-mode="none" scope-chip="全窗口活跃度" :kpi-hold="loading ? 6 : 0">
     <template #kpis>
       <template v-if="!loading && model">
         <AnaKpiTile label="高风险" :value="model.counts.high + ' 户'" :note="'评分≥' + anaSettings.churnTh" />
@@ -78,36 +78,43 @@ function onScatterClick(p: unknown) {
          + 图例行 6 + 20(.cz-leg 行盒同上,ana.css:36-37 不覆写);两张表照 .churn-scroll 的 330 / .tall 420;
          s10 流向图 300(AnaSkelChart)。KPI 行由 .anx-kpis 的 min-height 94 兜位,
          首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading" class="ak-page churn-skel">
+      <!-- 页头照抄真版式(手机上副行折三行,灰条顶不住),只有窗口两个月份是占位字 -->
       <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"></span>
+        <div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('siren')" :size="20" /></span>
           <div>
-            <div class="fp-shim" style="height: 20px; width: 150px"></div>
-            <div class="fp-shim" style="height: 20px; width: 460px; margin-top: 4px"></div>
+            <h2 class="ak-title">租户流失预警</h2>
+            <p class="ak-sub">活跃度风险分 = 缴费恶化(40%) + s10收入下行(30%) + 用能下行(30%),缺项按权重归一 · 窗口 <span class="ana-hole">0000-00 ~ 0000-00</span></p>
           </div>
         </div>
+        <AnaPill tone="warn" icon="flask-conical">启发式模型 · 活跃度口径</AnaPill>
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
+          <div class="av2-card-h"><span class="t">风险象限散点</span>
+          <span class="hint">环比 × 收款率 · 气泡=月应收 · 虚线=均值<span class="hint-desk"> · 点点→台账 · 超±范围的点钉在边缘(悬停看真值)</span></span></div>
           <AnaSkelChart :height="300" />
-          <div class="fp-shim" style="height: 20px; width: 220px; margin: 6px auto 0"></div>
+          <div class="cz-legend" style="margin-top: 6px">
+            <span v-for="t in (['high', 'mid', 'low'] as const)" :key="t" class="cz-leg">
+              <span class="sw" :style="{ background: TIER_ECOLOR[t] }"></span>{{ tierZh(t) }}风险</span>
+          </div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="av2-card-h"><span class="t">已流失清单</span><span class="hint"><span class="ana-hole">00月</span>在租 ∩ <span class="ana-hole">00月</span>缺席 · <span class="ana-hole">00</span> 户</span></div>
           <div class="fp-shim" style="height: 330px"></div>
         </div>
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">流失预警明细</span><span class="hint">在租 <span class="ana-hole">000</span> 户 · 风险分降序前 <span class="ana-hole">00</span><span class="hint-desk"> · 点租户→台账</span></span></div>
           <div class="fp-shim" style="height: 420px"></div>
         </div>
         <div class="av2-card av2-s4">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="av2-card-h"><span class="t">s10 逐月出现/消失</span><span class="hint">相邻有数月名单对比 · 上=新出现 下=消失(户)</span></div>
           <AnaSkelChart :height="300" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <div v-else-if="!model" class="ak-page">
       <div class="ak-head"><div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('siren')" :size="20" /></span>

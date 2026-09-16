@@ -301,7 +301,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 
 <template>
   <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以横幅显式 -->
-  <AnaShell period-mode="full" :kpi-hold="6">
+  <AnaShell period-mode="full" :kpi-hold="!loaded ? 6 : 0">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
          把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->
@@ -318,7 +318,8 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       </template>
     </template>
     <template #tools>
-      <div v-if="loaded && !err && s10Months.length" class="anx-seg te2-seg">
+      <!-- 取数途中占位不可见(手机上工具条会因它多折一行,数据到了才插进来整页下推 38px);取完确实没数据才拿掉 -->
+      <div v-if="!loaded || (!err && s10Months.length)" class="anx-seg te2-seg" :class="{ 'ana-hole': !loaded }">
         <button v-for="o in TOGGLES" :key="o.k" :class="{ on: metric === o.k }" @click="metric = o.k">{{ o.l }}</button>
       </div>
     </template>
@@ -328,38 +329,66 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
          flex 列:搜索框 31(padding 7 + 12px 行 + 边框)+ 下距 8,列表条 flex:1 —— 行高由右列那一栏定,
          与真版式同一条规则;≤1280 左卡独占一行、不被右栏拉伸,列表条钉 560(.te2-skel-list)。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
          KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="!loaded" class="ak-page te2-skel">
       <div class="av2-grid">
         <div class="av2-card av2-s4 te2-left">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
-          <div class="fp-shim" style="height: 31px; margin-bottom: 8px"></div>
+          <div class="av2-card-h">
+            <span class="t">租户列表</span>
+            <span class="te2-lh">
+              <span class="hint">按本期{{ metricLabel }}降序<span class="hint-desk"> · 点击选中</span></span>
+              <span class="anx-seg mini" aria-hidden="true"><button class="on" disabled tabindex="-1">按户</button><button disabled tabindex="-1">按家族</button></span>
+            </span>
+          </div>
+          <input class="te2-search" type="search" disabled placeholder="搜索租户" />
           <div class="fp-shim te2-skel-list"></div>
         </div>
         <div class="te2-right av2-s8">
           <div class="av2-card">
-            <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 280px"></div></div>
+            <div class="av2-card-h">
+              <span class="t"><span class="ana-hole">某某</span> · {{ metricLabel }}趋势 vs 园区均值带</span>
+              <span class="hint">窗口 <span class="ana-hole">00</span> 期</span>
+            </div>
             <AnaSkelChart :height="300" />
-            <div class="fp-shim" style="height: 20px; width: 55%; margin-top: 8px"></div>
-            <div class="fp-shim" style="height: 20px; width: 38%; margin-top: 2px"></div>
+            <p class="ana-read hold"></p>
+            <p class="ana-ref"><span class="ana-hole">占位</span></p>
           </div>
           <div class="av2-card">
-            <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+            <!-- 台账期回退横幅与收缴率一行跟数据出没,库里现有数据两样都有,骨架按「有」留位。
+                 卡头的租户名是默认选中的榜首(现为两字简称),占位按两字留;榜首换成长名字时卡头会多折一行。 -->
+            <div class="av2-card-h">
+              <span class="t"><span class="ana-hole">某某</span> · 应收 vs 实收</span>
+              <span class="te2-links">
+                <button class="te2-link" disabled tabindex="-1">查台账 →</button>
+                <button class="te2-link" disabled tabindex="-1">查附表10 →</button>
+              </span>
+            </div>
+            <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" source="台账" style="margin-bottom: 8px" />
             <AnaSkelChart :height="200" />
-            <div class="fp-shim" style="height: 20px; width: 45%; margin-top: 6px"></div>
+            <div class="te2-payline"><span class="ana-hole">0000-00 收缴率 <b>00%</b> · 期末结余 <b>¥0.0万</b></span></div>
           </div>
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint"><span class="hint-desk">点击条形选中租户</span></span></div>
           <AnaSkelChart :height="440" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">{{ metricLabel }} vs 月租金</span>
+            <span class="te2-lh">
+              <span class="hint"><span class="hint-desk">点点选中 · </span>气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template></span>
+              <span class="anx-seg mini" aria-hidden="true"><button :class="{ on: xLog }" disabled tabindex="-1">对数</button><button :class="{ on: !xLog }" disabled tabindex="-1">线性</button></span>
+            </span>
+          </div>
           <AnaSkelChart :height="440" />
-          <!-- .cz-legend 一行 = .cz-leg 行盒 20(base.css:19 line-height var(--lh-snug);ana.css:36-37 不覆写),不按 11px 字号 -->
-          <div class="fp-shim" style="height: 20px; width: 240px; margin: 6px auto 0"></div>
+          <!-- 图例按库里现有四个期区留一行 -->
+          <div class="cz-legend ana-hole" style="margin-top: 6px">
+            <span v-for="p in [1, 2, 3, 4]" :key="p" class="cz-leg"><span class="sw"></span>{{ phaseName(p) }}</span>
+          </div>
         </div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />

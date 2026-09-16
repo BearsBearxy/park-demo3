@@ -26,10 +26,12 @@ const props = defineProps<{
   // 屏在途(C5-02 / C5-12):亮 sticky 工具条上那条 2px 线。**传 useDeferredFlag 的结果**,
   // 不要直接传 loading —— 否则快响应时闪一下。旧内容自己退让(.fp-stale)由屏管,这里只管信号。
   busy?: boolean
-  // 首进占位瓦片数(= 本屏数据到了之后会出几张)。#kpis 槽还一张瓦都没渲染时,摆这么多张「—」瓦:
+  // 首进占位瓦片数(= 本屏数据到了之后会出几张;**只在首进取数途中传,取完传 0** —— 取完仍没数据的屏
+  // 是空态,不该摆一排「—」)。#kpis 槽还一张瓦都没渲染时,摆这么多张「—」瓦:
   // 与真瓦同一栅格、同一组件,所以任何视口宽度下换行出来的行数都与真版式一致。
   // 只靠 min-height 兜一行的量,手机两列时真版式是 3~5 行,数据一到整页下推 170~780px(2026-09-16 实测)。
-  kpiHold?: number
+  // 也可以直接给每张瓦的副行占位字(隐形):副行在窄瓦里会折两三行的屏(盈亏、光伏)用它,折行数与真瓦一致。
+  kpiHold?: number | string[]
 }>()
 
 const pmode = computed(() => props.periodMode ?? 'full')
@@ -40,6 +42,7 @@ const slots = useSlots()
 const filled = (ns: VNode[]): boolean => ns.some((n) =>
   n.type === Comment ? false : n.type === Fragment ? filled((n.children as VNode[]) ?? []) : true)
 const kpisEmpty = () => !filled(slots.kpis?.() ?? [])
+const holdNotes = computed(() => (Array.isArray(props.kpiHold) ? props.kpiHold : Array.from({ length: props.kpiHold ?? 0 }, () => ' ')))
 
 // 对比开关(支持集为屏静态声明,挂载时定死)
 const CMP_MODES: CompareMode[] = ['none', 'mom', 'yoy', 'budget']
@@ -213,8 +216,8 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
     <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }">
       <slot name="kpis" />
       <!-- 占位瓦:标签与副行用不换行空格占住行盒(纯空格会被折叠成零高) -->
-      <template v-if="kpiHold && kpisEmpty()">
-        <AnaKpiTile v-for="i in kpiHold" :key="'hold' + i" class="anx-kpi-hold" label=" " value="—" note=" " />
+      <template v-if="holdNotes.length && kpisEmpty()">
+        <AnaKpiTile v-for="(n, i) in holdNotes" :key="'hold' + i" class="anx-kpi-hold" label=" " value="—" :note="n" />
       </template>
     </div>
 
@@ -246,8 +249,10 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
    2026-08-20 同步过一次:边框 0.5→1px(0.5px 在非整数 DPR 下渲染不稳)、副行 10.5→11px
    (中文可读性下限),两项合计 +1.65px,故 93 → 94。
    S 档 .av2-kpis 定两列(ana.css §5.2 块)与 auto-fit 换行同理:行数是「视口档 × 瓦片数」的
-   静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。 */
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 94px; }
+   静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。
+   2026-09-16:副行改为固定留两行(.d min-height 2 × 14.85),瓦片 82.85 → 97.7,故 94 → 109。
+   多行的情况改由 kpiHold 占位瓦兜(见上),这里仍只兜不传 kpiHold 的屏的一行。 */
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 109px; }
 .anx-selw { flex: 0 0 auto; }
 /* 工具条三个分组(改前是内联 style——媒体查询盖不住内联,M/S 收纳只能先收编成类;数值照抄零变化) */
 .anx-period { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }

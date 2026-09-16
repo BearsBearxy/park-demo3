@@ -1,0 +1,162 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`首进骨架与真版式对齐 > AnomalyView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "560",
+  "chart250",
+  "chart200",
+  "142",
+  "60",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > BreakevenView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "20",
+  "chart300",
+  "chart250",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > BudgetView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "420",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ChargingAnalysisView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart250",
+  "chart250",
+  "chart250",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ChurnView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "330",
+  "420",
+  "chart300",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > CockpitView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart300",
+  "280",
+  "chart250",
+  "chart250",
+  "258",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ElecAnalysisView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart300",
+  "chart300",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ExpenseView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart300",
+  "chart250",
+  "190",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ExpiryView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart250",
+  "280",
+  "480",
+  "112",
+  "182",
+  "chart300",
+  "chart300",
+  "480",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ParkEnergyView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart170",
+  "chart250",
+  "chart250",
+  "chart170",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > ParkView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "296",
+  "chart300",
+  "chart300",
+  "chart250",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > PnlAnalysisView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "26",
+  "chart300",
+  "chart300",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > PvMeterAnaView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "26",
+  "260",
+  "34",
+  "374",
+  "483",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > PvRoiView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart300",
+  "210",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > TenantEnergyView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart200",
+  "chart440",
+  "chart440",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > TenantPeerView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "20",
+  "20",
+  "36",
+  "280",
+  "182",
+  "68",
+]
+`;
+
+exports[`首进骨架与真版式对齐 > TenantPortfolioView:骨架块高序列(浏览器实测过) 1`] = `
+[
+  "chart300",
+  "chart300",
+  "chart250",
+  "156",
+  "486",
+]
+`;

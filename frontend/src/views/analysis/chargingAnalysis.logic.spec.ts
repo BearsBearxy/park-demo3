@@ -103,9 +103,10 @@ describe('ChargingAnalysisView · C6-01 首进骨架(块高钉真版式)', () =>
     expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="ak-page ana-skel"')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
     const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
-    expect(shim).toEqual([20, 20, 20, 20, 300, 20, 250, 20, 250, 20, 250])
+    // 2026-09-16 起卡头 / 页头 / 读数句照抄真版式(不再是灰条),序列里只剩图块与少数写死高的块;逐块同高已在浏览器 390 / 1366 宽实测
+    expect(shim).toEqual([300, 250, 250, 250])
     const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
-    // 页头 20 + 20 · 结论条 20 · (卡头 20 + 图 300) · (20 + 250) ×3
+    // 四张图各留一块:300 · 250 ×3
     expect(charts).toEqual([300, 250, 250, 250])
     expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })

@@ -223,36 +223,57 @@ const lossOpt = computed<object>(() => ({
          卡头 20(.av2-card-h 下距 8 合 28)、四张图 300 / 250 / 250 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)。
          骨架只出在首进(loadedYear 还是 null);换年时旧内容留在原地,见下方 data-stale-host。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && loadedYear === null" class="ak-page ana-skel">
+      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位 -->
       <div class="ak-head">
         <div class="ak-h-l">
-          <span class="ak-h-ic"></span>
+          <span class="ak-h-ic"><component :is="iconFor('plug')" :size="20" /></span>
           <div>
-            <div class="fp-shim" style="height: 20px; width: 160px"></div>
-            <div class="fp-shim" style="height: 20px; width: 360px; margin-top: 4px"></div>
+            <h2 class="ak-title">充电桩分析</h2>
+            <p class="ak-sub">{{ TAB_ZH[tab] }}桩 · 桩月度量收 · 运营商结构 · 电表损耗率 · <span class="ana-hole">0000</span>年</p>
           </div>
         </div>
       </div>
-      <div class="av2-card ca-concl"><div class="fp-shim" style="height: 20px; width: 70%"></div></div>
+      <div class="av2-card ca-concl">
+        <span class="ca-cs ana-hole"><span class="dot"></span>0000年汽车桩充电 00,000 kWh</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>收益 ¥00,000</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>手续费 ¥0,000(费率 0.0%)</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>平均损耗率 0.0%(电表口径)</span>
+        <button type="button" class="ca-cs lk ana-hole">查看分桩明细 →</button>
+      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">桩月度量收 · <span class="ana-hole">0000</span>年</span>
+            <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">运营商收益占比</span>
+            <span class="hint">全年收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
+          </div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">运营商手续费率</span>
+            <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
+          </div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">电表损耗率趋势 · 每运营商</span>
+            <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
+          </div>
           <AnaSkelChart :height="250" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <!-- 换年在途:旧内容留在原地退让(C5-02),data-stale-host 常挂 —— 类摘掉后退场也是 200,不挂就是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">

@@ -905,28 +905,28 @@ describe('光伏分栋分析 · 首进与换年的形状(C6-01 / C5-02 / C5-12)'
     return w
   }
 
-  it('❗首进:不转圈,骨架逐块照真版式的高钉死;KPI 槽空着由 .anx-kpis 兜位', async () => {
+  it('❗首进:不转圈,骨架逐块照真版式的高钉死;KPI 槽摆 6 张占位瓦', async () => {
     const w = await mountPending()
     expect(w.find('.pma-skel').exists(), '首进没出骨架').toBe(true)
     expect(w.find('.page-spin').exists(), '版式已知还在转圈').toBe(false)
     // 骨架的三块与真版式一一对应(真版式那条在「四个状态」里钉着)
     expect([...w.find('.pma-skel').element.children].map(e => e.className.split(' ').pop()))
       .toEqual(['pma-main', 'pma-seg', 'pma-sec'])
-    // 块高 = 它顶替的那块的高(V4 §2.1 与代码里钉死的数):
-    // 卡头 20 · 芯片行内条 26(行高 34 由 .pma-skel-chips 给)· 大图区 260 + 上距 12 = 272
-    // · 判据脚 16 + 2 + 16 · 段控 32 · 档内首卡 361
+    // 块高 = 它顶替的那块的高(V4 §2.1 与代码里钉死的数;2026-09-16 起卡头、段控说明、账面量两张卡头照抄真版式):
+    // 芯片行内条 26(行高 34 由 .pma-skel-chips 给)· 大图区 260 + 上距 12 = 272 · 判据脚 16 + 2 + 16
+    // · 段控底条(宽高由里面隐形的真 Segmented 撑)· B7 374 · B8 483(按库里 13 栋)
     expect(w.findAll('.pma-skel .fp-shim').map(e => (e.element as HTMLElement).style.height))
-      .toEqual(['20px', '26px', '260px', '34px', '32px', '361px'])
-    expect((w.findAll('.pma-skel .fp-shim')[2].element as HTMLElement).style.marginTop).toBe('12px')
+      .toEqual(['26px', '260px', '34px', '', '374px', '483px'])
+    expect((w.findAll('.pma-skel .fp-shim')[1].element as HTMLElement).style.marginTop).toBe('12px')
     // 行高 34 与档内容器 1200 住在 scoped CSS 里,照本文件既有写法从源码读规则
     const t = readFileSync(join(__dirname, '../analysis/PvMeterAnaView.vue'), 'utf8')
     const css = t.slice(t.indexOf('<style'))
     const rule = (sel: string) => css.split(sel + ' {')[1]?.split('}')[0] ?? ''
     expect(rule('.pma-skel-chips')).toMatch(/height:\s*34px/)
     expect(rule('.pma-sec')).toMatch(/min-height:\s*1200px/)
-    // 首进期瓦片不画,但容器在 —— 空行由 min-height 94 兜住,数据到了不推下方
+    // 首进期摆 6 张「—」占位瓦(与真瓦同组件同栅格,换行行数一致)
     expect(w.find('.anx-kpis').exists()).toBe(true)
-    expect(w.findAll('.anx-kpis .av2-kpi')).toHaveLength(0)
+    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(6)
     // 骨架还在时不亮进度线:loading 初值就是 true,门槛只对「屏上已有内容」的换期有意义
     expect(w.find('.fp-lb').exists()).toBe(false)
   })

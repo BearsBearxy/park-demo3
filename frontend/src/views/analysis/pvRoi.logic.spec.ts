@@ -75,9 +75,10 @@ describe('PvRoiView · C6-01 首进骨架(块高钉真版式)', () => {
     expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="roi2-page ana-skel"')
     // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
     const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
-    expect(shim).toEqual([20, 300, 20, 300, 20, 300, 20, 300])
+    // 2026-09-16 起卡头 / 页头 / 读数句照抄真版式(不再是灰条),序列里只剩图块与少数写死高的块;逐块同高已在浏览器 390 / 1366 宽实测
+    expect(shim).toEqual([300, 300, 210])   // 爬坡图 · 分期图 · 明细表块(.roi2-tblwrap max-height 210)
     const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
-    // 四张卡各:卡头 20 + 300。s4 两卡真内容矮于 300,栅格行高由同排 s8 定,骨架同排也留 300
+    // 两张图各留一块;回收卡的行与明细卡的选中行照抄真版式
     expect(charts).toEqual([300, 300])
     expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })

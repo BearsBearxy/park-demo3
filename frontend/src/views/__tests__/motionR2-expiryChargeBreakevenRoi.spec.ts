@@ -90,8 +90,9 @@ describe('到期墙与续约', () => {
     vi.mocked(fetchContracts).mockImplementation(() => new Promise<never>(() => {}))
     asS()
     const w = mount(ExpiryView, STUBS)
-    // 页头 20 + 20 · (卡头 20 + 到期墙 AnaSkelChart) · (卡头 20 + 租金带 280 + 读数句 20 + 参照小字 20)
-    expect(shims(w, '.ana-skel')).toEqual(['20px', '20px', '20px', '220px', '20px', '280px', '20px', '20px'])
+    // 2026-09-16 起页头 / 结论条 / 卡头 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
+    // 到期墙(降)· 租金带 280 · 先谈哪几户表 480 · 续签计数 112 · 敏感性表 182 · Pareto(降)· 集中度环(降)· 合同清单 480
+    expect(shims(w, '.ana-skel')).toEqual(['220px', '280px', '480px', '112px', '182px', '260px', '260px', '480px'])
     w.unmount()
   })
 
@@ -134,8 +135,8 @@ describe('充电桩分析', () => {
     vi.mocked(cpMeterApi.years).mockImplementation(() => new Promise<never>(() => {}))
     asS()
     const w = mount(ChargingAnalysisView, STUBS)
-    // 页头 20 + 20 · 结论条 20 · (卡头 20 + 图) × 4
-    expect(shims(w, '.ana-skel')).toEqual(['20px', '20px', '20px', '20px', '260px', '20px', '220px', '20px', '220px', '20px', '220px'])
+    // 2026-09-16 起页头 / 结论条 / 卡头 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
+    expect(shims(w, '.ana-skel')).toEqual(['260px', '220px', '220px', '220px'])
     w.unmount()
   })
 
@@ -217,8 +218,9 @@ describe('盈亏平衡与敏感性', () => {
     vi.mocked(fetchPnlSummary).mockImplementation(() => new Promise<never>(() => {}))
     asS()
     const w = mount(BreakevenView, STUBS)
-    // 页头 20 + 20 · 结论条 20 · (卡头 20 + 图 + 滑杆 20) · (20 + 图) · (20 + 图)
-    expect(shims(w, '.ana-skel')).toEqual(['20px', '20px', '20px', '20px', '260px', '20px', '20px', '260px', '20px', '220px'])
+    // 2026-09-16 起页头 / 结论条 / 卡头 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
+    // 主图(降)· 滑杆行里的输入条 20 · 龙卷风(降)· 拆分(降)
+    expect(shims(w, '.ana-skel')).toEqual(['260px', '20px', '260px', '220px'])
     w.unmount()
   })
 
@@ -309,11 +311,11 @@ describe('光伏投资回收', () => {
   })
   afterEach(() => { Element.prototype.getBoundingClientRect = rectOrig })
 
-  it('❗S 档骨架:s8 两块顶替 AnaEChart 降 300→260;s4 两块顶替进度卡 / 明细表,300 不降', () => {
+  it('❗S 档骨架:s8 两块顶替 AnaEChart 降 300→260;明细表块 210 不降(回收卡的行照抄真版式)', () => {
     open()
     asS()
     const w = mount(PvRoiView, STUBS)
-    expect(shims(w, '.ana-skel')).toEqual(['20px', '260px', '20px', '300px', '20px', '260px', '20px', '300px'])
+    expect(shims(w, '.ana-skel')).toEqual(['260px', '260px', '210px'])
     w.unmount()
   })
 

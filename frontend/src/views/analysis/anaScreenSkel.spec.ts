@@ -31,30 +31,29 @@ describe('分析屏首进骨架 · 块高照真版式钉死(C6-01)', () => {
   it('❗园区能耗:页头 44 + 五张卡 = 300/170/250/250/170', () => {
     const p = parts('ParkEnergyView.vue', '<AnaEmpty v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    // 页头 44 · (卡头 20 + 图 300) · (20 + 170) · (20 + 250) · (20 + 250) · (20 + 170)
-    expect(p.shims).toEqual([44, 20, 300, 20, 170, 20, 250, 20, 250, 20, 170])
+    // 2026-09-16 起页头 / 卡头 / 人话句照抄真版式,序列里只剩五张图块(与图同表降档)
+    expect(p.shims).toEqual([300, 170, 250, 250, 170])
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 170, 250, 250, 170])
   })
 
-  it('❗出租与楼栋:TreeMap 300 + 图例 20、明细表 296 + 合计 20、面积转换右栏 250 + 图例 20', () => {
+  it('❗出租与楼栋:TreeMap 300、明细表 296、环 300、散点 300、面积转换右栏 250(图例 / 合计 / 指标行照抄真版式)', () => {
     const p = parts('ParkView.vue', '<AnaEmpty v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([44, 20, 300, 20, 20, 296, 20, 20, 300, 20, 300, 20, 86, 20, 250, 20])
-    // 末两块 = 面积转换卡右栏(图 250 + .pk-legend margin 8 + 行高 20 = 278),比左栏两块指标 186 高
+    expect(p.shims).toEqual([300, 296, 300, 300, 250])
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300, 250])
   })
 
-  it('❗电费成本分析:页头 44 + 结论条 20 + 三张 300', () => {
+  it('❗电费成本分析:三张 300(页头 / 模拟说明条 / 结论条照抄真版式)', () => {
     const p = parts('ElecAnalysisView.vue', '<AnaEmpty v-else-if="failed"')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([44, 20, 20, 300, 20, 300, 20, 300])
+    expect(p.shims).toEqual([300, 300, 300])
     expect(p.charts, '图高变了,骨架没跟').toEqual([300, 300, 300])
   })
 
-  it('❗租户异常监控:左列 34 + 560,右列 250(+ 读数句 20 / 参照系 20)/ 200,两张规则卡各一行 60', () => {
+  it('❗租户异常监控:左列清单 560,右列 250 / 200 / 规则块 142,园区规则卡 60(搜索框、读数句照抄真版式)', () => {
     const p = parts('AnomalyView.vue', '<div v-else-if="!model')
     expect(p.spins, '版式已知还在转圈').toBe(0)
-    expect(p.shims).toEqual([20, 34, 560, 20, 250, 20, 20, 20, 200, 20, 60, 20, 60])
+    expect(p.shims).toEqual([560, 250, 200, 142, 60])
     expect(p.charts, '图高变了,骨架没跟').toEqual([250, 200])
   })
 })
@@ -72,22 +71,27 @@ describe('分析屏首进骨架 · 文本行按行盒 20 钉,不按字号(C6-01)
     return [...tpl.slice(i).matchAll(/class="fp-shim" style="height:\s*(\d+)px[^"]*"/g)].map(m => Number(m[1]))
   }
 
-  it('❗同类对标:四张卡的读数句 / 参照系小字各 20,不是 15 / 14', () => {
-    const src = read('TenantPeerView.vue')
-    // 真版式那一侧:四张卡都是 <p class="ana-read …"> + <p class="ana-ref">
-    expect((src.match(/class="ana-read/g) ?? []).length).toBe(4)
-    expect((src.match(/class="ana-ref"/g) ?? []).length).toBe(4)
-    expect(src.match(/height: 1[45]px; width: [34]0%/g), '读数句骨架还按字号写(15 / 14)').toBeNull()
-    expect((src.match(/height: 20px; width: 40%; margin-top: 8px/g) ?? []).length).toBe(4)
-    expect((src.match(/height: 20px; width: 30%; margin-top: 2px/g) ?? []).length).toBe(4)
+  // 2026-09-16 起骨架里的读数句 / 参照系直接用真版式的 <p class="ana-read|ana-ref">(字换成隐形占位),
+  // 行盒与真版式同源,不再手写 20 —— 这里钉「两份一样多」。
+  const halves = (src: string) => {
+    const k = src.indexOf('<!-- skel:end -->')
+    return { skel: src.slice(src.indexOf('<!-- skel:start'), k), real: src.slice(k) }
+  }
+  it('❗同类对标:四张卡的读数句 / 参照系,骨架与真版式一样多,不再手写灰条高', () => {
+    const { skel, real } = halves(read('TenantPeerView.vue'))
+    expect((real.match(/class="ana-read/g) ?? []).length).toBe(4)
+    expect((real.match(/class="ana-ref"/g) ?? []).length).toBe(4)
+    expect((skel.match(/class="ana-read/g) ?? []).length).toBe(4)
+    expect((skel.match(/class="ana-ref"/g) ?? []).length).toBe(4)
+    expect(skel.match(/height: 1[45]px/g), '读数句骨架还按字号写(15 / 14)').toBeNull()
   })
 
-  it('❗租户用能:趋势卡读数句 20 / 参照系 20;收缴率那行 .te2-payline 也是 20', () => {
-    const src = read('TenantEnergyView.vue')
-    expect(src).toContain('height: 20px; width: 55%; margin-top: 8px')
-    expect(src).toContain('height: 20px; width: 38%; margin-top: 2px')
-    expect(src).toContain('height: 20px; width: 45%; margin-top: 6px')
-    expect(src.match(/height: 1[45]px; width: (55|38|45)%/g), '还按字号写').toBeNull()
+  it('❗租户用能:趋势卡读数句 / 参照系、收缴率那行,骨架用的是真版式同一批类', () => {
+    const { skel } = halves(read('TenantEnergyView.vue'))
+    expect(skel).toContain('<p class="ana-read hold">')
+    expect(skel).toContain('<p class="ana-ref">')
+    expect(skel).toContain('class="te2-payline"')
+    expect(skel.match(/height: 1[45]px/g), '还按字号写').toBeNull()
   })
 
   it('❗租户构成:清单表 = 表头 30 + 12 行 ×38 = 486,不是 480', () => {

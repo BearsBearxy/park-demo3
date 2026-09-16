@@ -118,7 +118,7 @@ function onParetoClick(p: unknown) {
 
 <template>
   <!-- §五:期间无关屏(合同快照),隐期间控件显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="合同快照" :kpi-hold="9">
+  <AnaShell period-mode="none" scope-chip="合同快照" :kpi-hold="loading ? 9 : 0">
     <template #kpis>
       <template v-if="!loading && stats">
         <AnaKpiTile label="合同总数" :value="stats.total + ' 份'" />
@@ -151,29 +151,78 @@ function onParetoClick(p: unknown) {
          再往下的卡全是条件卡(先谈哪几户 / 续签率 / Pareto / 清单),数目随数据变,骨架不猜。
          数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位
          (9 张瓦在容器宽 < 1192 时换两行,那一行的下推是 C6-01 写明接受的残余位移)。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading" class="ak-page ana-skel">
+      <!-- 2026-09-16 起骨架照抄真版式八张卡(手机上卡头 / 读数句都会折行,灰条顶不住);随数据变的字换成
+           同长的隐形占位。「先谈哪几户」「续签率」两对卡跟数据出没,库里现有数据都有,骨架按「有」留位;
+           两张清单表块 = .exp-scroll 的 max-height 480,敏感性表 = 表头 30 + 4 档 × 38。 -->
       <div class="ak-head">
-        <div class="ak-h-l">
-          <span class="ak-h-ic"></span>
+        <div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('calendar-clock')" :size="20" /></span>
           <div>
-            <div class="fp-shim" style="height: 20px; width: 180px"></div>
-            <div class="fp-shim" style="height: 20px; width: 260px; margin-top: 4px"></div>
+            <h2 class="ak-title">到期墙与续约</h2>
+            <p class="ak-sub">合同快照口径 · 按合同止日逐季聚合,未来 8 季到期时间轴</p>
           </div>
         </div>
+        <AnaPill tone="legal" icon="calendar-clock">合同快照口径 · <span class="ana-hole">000</span> 份带日期</AnaPill>
       </div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="av2-card-h"><span class="t">到期墙 · 未来 8 季</span>
+            <span class="hint ana-hole">未来8季到期 00 份 · ¥000.0万/月</span></div>
           <AnaSkelChart :height="250" />
         </div>
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="av2-card-h"><span class="t">合约租金带 · 未来 12 月</span>
+            <span class="hint">锁定实线 + 续签区间 · 不含新招租,是下界</span></div>
           <div class="fp-shim" style="height: 280px"></div>
-          <div class="fp-shim" style="height: 20px; margin-top: 8px"></div>
-          <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 2px"></div>
+          <p class="ana-read"><span class="ana-hole">末月租金预计 000~000</span></p>
+          <p class="ana-ref"><span class="ana-hole">月度口径 · 万元 · 过去000份到期中0份续签</span></p>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><span class="t">先谈哪几户</span><span class="hint">共 <span class="ana-hole">00</span> 份 · 按到期月租排序<span class="hint-desk"> · 点行去合同屏</span></span></div>
+          <div class="fp-shim" style="height: 480px"></div>
+          <p class="ana-read"><span class="ana-hole">前0份占未来12月到期租金的00%</span></p>
+          <p class="ana-ref"><span class="ana-hole">其余0份合计0.0万</span></p>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><span class="t">续签率从哪来</span><span class="hint">历史到期结果统计</span></div>
+          <div style="display: flex; flex-direction: column; gap: 9px">
+            <div class="exp-kv"><span class="k">历史到期</span><span class="v ana-hole">000 份</span></div>
+            <div class="exp-kv"><span class="k">续签</span><span class="v ana-hole">0 份</span></div>
+            <div class="exp-kv" style="padding-top: 8px; border-top: 1px solid var(--divider)"><span class="k">未续签</span><span class="v ana-hole">000 份</span></div>
+          </div>
+          <div class="fp-shim" style="height: 112px"></div>
+          <p class="ana-read"><span class="ana-hole">续签率本身80%落在0%~00%</span></p>
+          <p class="ana-ref"><span class="ana-hole">历史000份 · 口径同历史续签率瓦</span></p>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><span class="t">续签率变一档</span><span class="hint">年末差多少</span></div>
+          <div class="fp-shim" style="height: 182px"></div>
+          <p class="ana-read"><span class="ana-hole">0档都守不住今天的租金</span></p>
+          <p class="ana-read"><span class="ana-hole">历史0% · 缺口00万/月,约等于00户中型厂房</span></p>
+          <p class="ana-ref">与上方合约租金带同一份锁定线</p>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><span class="t">合同金额 Pareto</span><span class="hint">Top20 · 柱=月租金(万) 线=累计占比<span class="hint-desk"> · 点柱→清单展开</span></span></div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><span class="t">租金集中度</span><span class="hint">Top10 合同占比</span></div>
+          <AnaSkelChart :height="300" />
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 9px">
+            <div class="exp-kv"><span class="k">月租金合计</span><span class="v ana-hole">¥000.0万/月</span></div>
+            <div class="exp-kv"><span class="k">Top10 合计</span><span class="v ana-hole">¥00.0万/月</span></div>
+            <div class="exp-kv" style="padding-top: 8px; border-top: 1px solid var(--divider)">
+              <span class="k">其余 <span class="ana-hole">000</span> 份合计</span><span class="v ana-hole">¥00.0万/月</span></div>
+          </div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><span class="t">合同清单</span><span class="hint">共 <span class="ana-hole">000</span> 份 · 按月租金降序<span class="hint-desk"> · 点行展开该租户合同详情</span></span></div>
+          <div class="fp-shim" style="height: 480px"></div>
         </div>
       </div>
     </div>
+    <!-- skel:end -->
 
     <div v-else-if="!stats" class="ak-page">
       <div class="ak-head"><div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('calendar-clock')" :size="20" /></span>

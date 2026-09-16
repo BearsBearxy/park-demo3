@@ -256,24 +256,54 @@ const spreadOption = computed<object>(() => ({
          图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300,anaChartHeight.ts)。
          .ea-simbar 随 hasSim 出没,骨架不占它的位。数据到了原地硬切,不做淡入。
          只认首进(还没有任何一年画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
     <div v-if="loading && loadedYear == null" class="ak-page ak-skel">
-      <div class="fp-shim" style="height: 44px; width: 300px"></div>
-      <div class="av2-card ea-concl"><div class="fp-shim" style="height: 20px; width: 70%"></div></div>
+      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           模拟数据说明条跟 hasSim 走,库里现有电费数据全是模拟填充,骨架按「有」留位 ——
+           换成真实电费单后首进会上收这一条的高(约 41px),届时把这条删掉。 -->
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
+          <div>
+            <h2 class="ak-title">电费成本分析</h2>
+            <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · <span class="ana-hole">0000</span>年</p>
+          </div>
+        </div>
+      </div>
+      <div class="ea-simbar">
+        <component :is="iconFor('flask-conical')" :size="13" />
+        <span>本页含模拟数据(灰标口径),真实电费单导入后自动替换</span>
+      </div>
+      <div class="av2-card ea-concl">
+        <!-- 真版式是 button:按钮的行高不继承,用 span 会差出行盒;visibility:hidden 的按钮不进 tab 序 -->
+        <button v-for="t in ['0000 年园区电费收益累计 ¥000.0 万(00 个月)', '0000 年光伏投资收益累计 ¥000.0 万(00 个月)', '0000 年基本用电费收益累计 ¥000.0 万(00 个月)', '0000 年售电协议损益累计 ¥00.0 万(00 个月)']"
+          :key="t" type="button" class="ea-cs ana-hole"><span class="dot"></span>{{ t }}</button>
+      </div>
       <div class="av2-grid">
         <div class="av2-card av2-s12">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">收益四指标月度趋势 · <span class="ana-hole">0000</span>年</span>
+            <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">总表电费结构</span>
+            <span class="hint">万元 · 奖励/上网收益为负向抵减段</span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
         <div class="av2-card av2-s6">
-          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="av2-card-h">
+            <span class="t">购售价差</span>
+            <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
+          </div>
           <AnaSkelChart :height="300" />
         </div>
       </div>
     </div>
+    <!-- skel:end -->
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
     <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">

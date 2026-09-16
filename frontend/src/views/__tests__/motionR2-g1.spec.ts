@@ -158,54 +158,29 @@ describe('S 档首进 · 骨架里顶替 AnaEChart 的块按降档表(300/440→
       vi.mocked(f).mockImplementation(pending as never)
   })
 
-  it('❗流失预警:页头 20/20 · 散点 260 + 图例 20 · 两表不降 · 流向图 260', async () => {
+  // 2026-09-16 起页头 / 卡头 / 图例 / 读数句照抄真版式,灰条只剩图块与表块(浏览器 390 宽逐块对过)
+  it('❗流失预警:散点 260 · 两表不降 · 流向图 260', async () => {
     const w = mountView(ChurnView)
     await flushPromises()
-    expect(shimHeights(w, '.churn-skel')).toEqual([
-      '20px', '20px',
-      '20px', '260px', '20px',
-      '20px', '330px',
-      '20px', '420px',
-      '20px', '260px',
-    ])
+    expect(shimHeights(w, '.churn-skel')).toEqual(['260px', '330px', '420px', '260px'])
   })
 
-  it('❗租户用能:趋势 260 · 应收实收 180 · Top20 260 · 散点 260 + 图例 20', async () => {
+  it('❗租户用能:列表条 · 趋势 260 · 应收实收 180 · Top20 260 · 散点 260', async () => {
     const w = mountView(TenantEnergyView)
     await flushPromises()
-    expect(shimHeights(w, '.te2-skel')).toEqual([
-      '20px', '31px', '',
-      '20px', '260px', '20px', '20px',
-      '20px', '180px', '20px',
-      '20px', '260px',
-      '20px', '260px', '20px',
-    ])
+    expect(shimHeights(w, '.te2-skel')).toEqual(['', '260px', '180px', '260px', '260px'])
   })
 
-  it('❗结构与续约:帕累托 260 · 环 260 · 箱点 220;生命周期 5 行 = 156', async () => {
+  it('❗结构与续约:帕累托 260 · 环 260 · 箱点 220;生命周期 5 行 = 156;清单 486', async () => {
     const w = mountView(TenantPortfolioView)
     await flushPromises()
-    expect(shimHeights(w, '.tp2-skel')).toEqual([
-      '20px', '260px',
-      '20px', '260px', '112px',
-      '20px', '220px',
-      '20px', '220px',
-      '20px', '156px',
-      '20px', '486px',
-    ])
+    expect(shimHeights(w, '.tp2-skel')).toEqual(['260px', '260px', '220px', '156px', '486px'])
   })
 
   it('❗租户对标:没有 AnaEChart,自绘直方图 280 不降档;页头 20/20,表块 = 表头 30 + 38×n', async () => {
     const w = mountView(TenantPeerView)
     await flushPromises()
-    expect(shimHeights(w, '.tp-skel')).toEqual([
-      '20px', '20px', '36px',
-      '31px',
-      '20px', '280px', '20px', '20px',
-      '20px', '106px', '20px', '20px',
-      '20px', '68px', '20px', '20px',
-      '20px', '182px', '20px', '20px',
-    ])
+    expect(shimHeights(w, '.tp-skel')).toEqual(['20px', '20px', '36px', '280px', '182px', '68px'])
   })
 })
 
