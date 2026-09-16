@@ -4,6 +4,8 @@
 // 夹具不退化:比值按 sin 起伏;同一栋里有连续低于(1–3 日,贴左缘)、零散高于(10 日)、连续高于(20–22 日)、
 // 漏抄(14 / 25 / 26 日)、未到(29–31 日)。
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
 import PvDayChart from '../PvDayChart.vue'
 import type { BoardRow, TickState } from '../pvMeterAna.logic'
@@ -192,5 +194,43 @@ describe('PvDayChart', () => {
     expect(w.find('.pdc-hd .nm').text()).toBe('E座')
     expect(w.find('.pdc-hd .fact').text()).toBe('事实句')
     expect(w.findAll('.leg > span').map(s => s.text())).toEqual(['逐日比值', '这栋的范围', '低于下沿', '高于上沿', '缺抄'])
+  })
+
+  it('❗C6-17：数据元素全在 g.pdc-data 里，轴线与 x 刻度在组前；换栋挂 .swap，animationend 摘掉', async () => {
+    const w = mk()
+    const g = w.find('g.pdc-data')
+    for (const sel of ['rect.future', 'rect.band', 'line.ctr', 'rect.run', 'rect.miss', 'path.line', 'circle.pt']) {
+      expect(g.find(sel).exists(), sel).toBe(true)
+    }
+    // 网格 4 + 轴线 1 + x 刻度 7 留在组外，且轴线排在数据组之前
+    const kids = Array.from(w.find('svg').element.children)
+    expect(kids.filter(e => ['gl', 'axl', 'ax'].some(c => e.classList.contains(c)))).toHaveLength(12)
+    expect(kids.findIndex(e => e.classList.contains('pdc-data'))).toBeGreaterThan(kids.findIndex(e => e.classList.contains('axl')))
+    // AnaShell 之外 entered 默认真 = 不擦；换栋才挂 .swap
+    expect(g.classes()).not.toContain('first')
+    expect(g.classes()).not.toContain('swap')
+    await w.setProps({ row: { ...baseRow(), id: 9 } })
+    expect(w.find('g.pdc-data').classes()).toContain('swap')
+    expect(w.find('div.pdc-data.pdc-bandlab').classes()).toContain('swap')
+    await w.find('g.pdc-data').trigger('animationend')
+    expect(w.find('g.pdc-data').classes()).not.toContain('swap')
+  })
+
+  it('❗C6-17:.swap 必须自带 clip-path: none,且 animationcancel 与 animationend 同样摘类', async () => {
+    // 首绘 320 擦入没跑完就点了另一枚芯片 → first 与 swap 同挂。
+    // 两条规则特异度同为 (0,2,0)、.swap 在后:它只抢到 animation,
+    // .first 的 clip-path: inset(0 100% 0 0) 原样留着 = 整组数据被裁成零宽,屏上只剩轴与网格。
+    const src = readFileSync(join(__dirname, '../PvDayChart.vue'), 'utf8')
+    const css = src.slice(src.indexOf('<style'))
+    const rule = (sel: string) => css.split(sel + ' {')[1]?.split('}')[0] ?? ''
+    expect(rule('.pdc-data.first'), '首绘基态不是零宽裁剪了,下面这条前提不成立').toContain('clip-path: inset(0 100% 0 0)')
+    expect(rule('.pdc-data.swap'), '换栋淡入没解除首绘的裁剪 → 两个类同挂时空图').toContain('clip-path: none')
+    expect(css.indexOf('.pdc-data.swap {'), '.swap 必须排在 .first 之后才压得过').toBeGreaterThan(css.indexOf('.pdc-data.first {'))
+    // KeepAlive 停用取消动画只发 cancel:不听的话类留着,回签重插 DOM 重播
+    const w = mk()
+    await w.setProps({ row: { ...baseRow(), id: 9 } })
+    expect(w.find('g.pdc-data').classes()).toContain('swap')
+    await w.find('g.pdc-data').trigger('animationcancel')
+    expect(w.find('g.pdc-data').classes(), 'animationcancel 没摘掉 .swap').not.toContain('swap')
   })
 })

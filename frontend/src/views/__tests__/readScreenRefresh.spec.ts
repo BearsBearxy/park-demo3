@@ -96,6 +96,15 @@ describe('纯读屏切回重读(P3 §4.1 Step6b) · 源码门禁', () => {
     expect(body.slice(0, 400)).toContain(reset)
   })
 
+  // 回签那一趟不置 loading(动效稿 C1-06):读屏切回来是「恢复现场」,旧内容留屏、到数原地换,
+  // 整区转圈把它做成「重进一次」。首进与换年照旧转圈 —— 那两下屏上本来就没有可留的内容 / 是别的年。
+  it('ChargingAnalysisView 回签走静默分支,首进与换年照旧置 loading', () => {
+    const s = src('/analysis/ChargingAnalysisView.vue')
+    expect(s, '回签:silent=true').toContain('onReactivated(() => { void load(year.value, true) })')
+    expect(s, '首进 / 换年:照旧转圈').toContain('if (!silent) { loading.value = true; failed.value = false }')
+    expect(s, '静默那趟失败也不翻成错误卡').toContain('if (my === seq && !silent) failed.value = true')
+  })
+
   // KeepAlive 深度是「恢复现场」的实际收益所在:排在第 17 的屏切回就是空白重来。
   // 本期唯一没有门禁的改动点(评审把它改回 10,全量照样全绿)。
   it('App.vue 的 KeepAlive 深度是 16(D9;侧栏不再重建实例之后,这个数字决定切回去还在不在)', () => {

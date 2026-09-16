@@ -12,6 +12,7 @@ import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import { CMP_BASELINE, fnum, sgn } from '@/components/ana/anaFmt'
+import { DUR, EASE } from '@/components/ana/anaMotion'
 import { usePeriod, ymOf } from '@/analysis/usePeriod'
 import { useCompare } from '@/analysis/useCompare'
 import { fetchPnlSummary, fetchPnlYear, type PnlSummary } from '@/analysis/anaData'
@@ -85,6 +86,8 @@ const mainOpt = computed<object>(() => {
     series.push({
       name: '总计(上月)', type: 'line', data: totalWan.map((_, i) => (i > 0 ? totalWan[i - 1] : null)), symbol: 'none',
       lineStyle: { type: 'dashed', width: 1.5, color: CMP_BASELINE }, itemStyle: { color: CMP_BASELINE },
+      // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
+      animationDuration: DUR.update, animationEasing: EASE.enter,
     })
   }
   return {
@@ -159,7 +162,23 @@ const movers = computed(() => momMovers(rows.value, moverMi.value, 8))
       </template>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
+         (主图 300 · 结构环 300 · 第二排三张 250);KPI 行由 .anx-kpis 的 min-height 94 兜位。
+         数据到了原地硬切,不做淡入、卡片不错峰。 -->
+    <div v-if="loading" class="av2-grid ex-skel">
+      <div class="av2-card av2-s8">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+        <div class="fp-shim" style="height: 300px"></div>
+      </div>
+      <div class="av2-card av2-s4">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+        <div class="fp-shim" style="height: 300px"></div>
+      </div>
+      <div v-for="i in 3" :key="i" class="av2-card av2-s4">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+        <div class="fp-shim" style="height: 250px"></div>
+      </div>
+    </div>
     <AnaEmpty v-else-if="empty" :label="year + ' 年附表5 无数据'"
       hint="费用分析依赖附表5 费用支出(销售/管理/财务/修缮 组带)" to="/expense-pnl" to-text="去录入附表5" />
     <template v-else>

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import AnaBarRow from '../AnaBarRow.vue'
 import AnaBullet from '../AnaBullet.vue'
 import AnaTrend from '../AnaTrend.vue'
 import AnaEmpty from '../AnaEmpty.vue'
@@ -44,6 +45,14 @@ describe('图表原语冒烟', () => {
     expect(w.find('a').exists(), '股东进不去合同屏').toBe(false)
     expect(w.text(), '说明文字不该跟着链接一起消失').toContain('合同日期未录入')
     expect(w.text()).toContain('去补录')
+  })
+
+  // ❗C6-19:条长靠 --pct 驱动 ana.css 的 clip-path,fill 自己常驻 width:100%。
+  //   内联再写 width 就回到布局属性(原则 3),而漏写 --pct 会让 inset(0 100%) 把整条裁没。
+  it('❗AnaBarRow:条长写进 --pct(带单位),不内联 width', () => {
+    const fill = mount(AnaBarRow, { props: { name: 'A座', value: 37, max: 100 } }).find('.ak-bar-fill')
+    expect(fill.attributes('style')).toContain('--pct: 37%')
+    expect(fill.attributes('style'), 'width 是布局属性,不该再出现在内联里').not.toContain('width')
   })
 })
 

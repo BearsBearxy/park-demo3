@@ -1,5 +1,7 @@
 // pnlAnalysis.logic 单测:全年汇总/迷你序列/12月组合/环比右移/结构堆叠(口径=v1)。
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PnlBand } from '@/analysis/anaData'
 import { momShift, schedMonthly, schedSpark, schedTotals, structStack } from './pnlAnalysis.logic'
 
@@ -56,5 +58,24 @@ describe('structStack', () => {
     expect(out[0].values).toEqual([1])
     expect(out[1].values).toEqual([2])
     expect(out[2].values).toEqual([0])
+  })
+})
+
+// ───────── C6-01 首进骨架 ─────────
+// 源码形状门禁:迷你卡复用 .pa2-mini 的盒子,块高照真版式(图标 30 · 编号 11 · 名 12 · 迷你线 26 · 脚 15);
+// 两张图照各自的 :height 300。改任何一个数忘了同步骨架,这条就红。
+describe('损益分析首进骨架(C6-01)', () => {
+  const src = readFileSync(join(__dirname, 'PnlAnalysisView.vue'), 'utf8')
+  const skel = src.slice(src.indexOf('class="pa2-page pa2-skel"'), src.indexOf('<div v-else-if="!recordedCount"'))
+
+  it('❗不转圈;骨架块高 = 迷你卡 30/11/12/26/15 + 两张图卡头 20 + 图 300', () => {
+    expect(src).not.toContain('page-spin')
+    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
+      .toEqual(['30', '11', '12', '26', '15', '20', '300', '20', '300'])
+    // 真版式那一侧:迷你线 26(AnaSpark :h)、图标盒 30、两张图 300
+    expect(src).toContain(':w="150" :h="26"')
+    expect(src).toMatch(/\.pa2-mini \.ic \{ width: 30px; height: 30px;/)
+    expect(src).toContain(':option="mainOpt" :height="300"')
+    expect(src).toContain(':option="structOpt" :height="300"')
   })
 })

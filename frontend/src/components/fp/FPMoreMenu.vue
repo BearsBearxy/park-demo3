@@ -77,6 +77,7 @@ function pick(it: MoreItem) {
   background: var(--surface-white); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
   display: flex; flex-direction: column; gap: 1px;
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-more-item {
   display: flex; align-items: center; gap: 8px;

@@ -140,12 +140,22 @@ function goLayer(layer: NavLayer) {
   font-size: 10.5px;
   font-weight: var(--fw-medium);
   flex: 0 0 auto;
-  transition: color var(--dur-fast) var(--ease-standard);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
 }
 
 .fp-rail-btn:hover {
   background: rgba(28, 28, 28, 0.05);
   color: var(--text-secondary);
+}
+
+/* C2-04 按压:常态透明、hover 5% 灰 —— filter 在这两种底上都不可见,所以压底色。
+   0ms 按下(不让人等),松开随上面那条 120 回弹;.on 是黑底常亮,不压。 */
+.fp-rail-btn:active:not(.on) {
+  background: var(--ink-100);
+  transition-duration: 0ms;
 }
 
 .fp-rail-btn.on,

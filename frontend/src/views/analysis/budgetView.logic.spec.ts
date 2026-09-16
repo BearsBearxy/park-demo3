@@ -1,5 +1,7 @@
 // budgetView.logic 单测:实际柱/前瞻虚柱/预算标记线折万 + 关键行深链路由映射。
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { comboBarData, comboBudgetData, keyRoute } from './budgetView.logic'
 
 const cols = [
@@ -34,5 +36,20 @@ describe('keyRoute', () => {
     expect(keyRoute('cost')).toBe('rent-pnl')
     expect(keyRoute('profit')).toBe('rent-pnl')
     expect(keyRoute(null)).toBeNull()
+  })
+})
+
+// ───────── C6-01 首进骨架 ─────────
+// 源码形状门禁:第一行两卡照主图的 :height 300 留白 —— 改图高忘了改骨架,这条就红。
+// 第二行(总表明细 / 前瞻)高度随行数走,骨架不猜,也不断言。
+describe('预算达成首进骨架(C6-01)', () => {
+  const src = readFileSync(join(__dirname, 'BudgetView.vue'), 'utf8')
+  const skel = src.slice(src.indexOf('class="bv2-page bv2-skel"'), src.indexOf('<!-- 无预算数据'))
+
+  it('❗不转圈;骨架块高 = 卡头 20 + 五年对比 300(两卡同高,栅格同一行)', () => {
+    expect(src).not.toContain('page-spin')
+    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
+      .toEqual(['20', '300', '20', '300'])
+    expect(src).toContain(':option="comboOpt" :height="300"')
   })
 })

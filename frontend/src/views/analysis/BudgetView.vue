@@ -179,7 +179,21 @@ const kpiOutlook = computed(() => {
       </template>
     </template>
 
-    <div v-if="!ready" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。第一行两卡照主图的 :height 300 留白;
+         KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
+         第二行(总表明细 / 前瞻)高度随行数走,钉不住;它在第一行之下,长出来不推上面的内容。 -->
+    <div v-if="!ready" class="bv2-page bv2-skel">
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- 无预算数据 → 全屏空态引导导入中心 -->
     <div v-else-if="!rows.length" class="bv2-page">

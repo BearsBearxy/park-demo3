@@ -104,6 +104,20 @@ describe('comboSeries(T4 购售电组合:双柱分组/环比只叠购电/预算�
   const sell = [5, null, null, 15]   // 稀疏售电(仅 s10 覆盖月)
   const names = (s: object[]) => s.map((x) => (x as { name: string }).name)
 
+  // C6-09:环比/预算那条虚线是 cmp 开关新推进来的独立 line 系列 —— 系列级 200/quarticOut 压过
+  // motionize 注入的 update 0,从左擦入;两根柱不带键(值没变,不该抖)。
+  it('❗对比虚线带系列级 animationDuration 200 + quarticOut,两根柱一个动画键都不带', () => {
+    interface S { animationDuration?: number; animationEasing?: string }
+    const mom = comboSeries(buy, sell, 'mom', null) as S[]
+    expect(mom[2].animationDuration).toBe(200)
+    expect(mom[2].animationEasing).toBe('quarticOut')
+    expect(mom[0].animationDuration).toBeUndefined()
+    expect(mom[1].animationDuration).toBeUndefined()
+    const bud = comboSeries(buy, sell, 'budget', 1_200_000) as S[]
+    expect(bud[2].animationDuration).toBe(200)
+    expect(bud[2].animationEasing).toBe('quarticOut')
+  })
+
   it('基础:购电/售电均为柱(稀疏月自然缺柱),数据原样', () => {
     const s = comboSeries(buy, sell, 'none', null)
     expect(names(s)).toEqual(['购电成本', '售电收入'])

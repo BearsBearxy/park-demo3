@@ -116,4 +116,17 @@ describe('AnaForecastChart', () => {
     const w = mount(AnaForecastChart, { props: { rows: null } })
     expect(w.find('svg.afc').exists()).toBe(false)
   })
+
+  // C6-25:首绘擦入是「一张图一条 clip-path」,擦的只能是数据。尺子(网格、y 刻度、「今天」分界、
+  // x 月份、图注)必须留在 g.afc-data 之外 —— 落进组里就会跟着从左边露出来,被读成数据。
+  it('❗C6-25:带/线/点/预测数在数据组内,网格·今天分界·月份刻度·图注在组外', () => {
+    const g = mountChart().find('g.afc-data')
+    expect(g.exists(), '数据组本身要在,擦入没有它就无处可挂').toBe(true)
+    for (const c of ['.afc-band', '.afc-mid', '.afc-line', '.afc-dot', '.afc-fdot', '.afc-fnum']) {
+      expect(g.find(c).exists(), `${c} 是数据,该在组内`).toBe(true)
+    }
+    for (const c of ['.afc-grid', '.afc-ylab', '.afc-today', '.afc-todaylab', '.afc-xlab', '.afc-note']) {
+      expect(g.find(c).exists(), `${c} 是尺子/图注,不该跟着擦`).toBe(false)
+    }
+  })
 })

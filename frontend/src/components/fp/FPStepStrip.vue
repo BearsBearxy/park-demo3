@@ -154,7 +154,6 @@ function go(s: Step) {
 .fss-step.on {
   background: var(--surface-white);
   color: var(--text-primary);
-  font-weight: var(--fw-semibold);
   box-shadow: var(--shadow-pill, 0 1px 4px rgba(28, 28, 28, .12));
   cursor: default;
 }

@@ -95,6 +95,17 @@ describe('budgetMonthlyWan(budget_row 当年值/12)', () => {
 
 describe('subjectTrendOption(环比虚线/预算 markLine)', () => {
   interface TrendOpt { series: { name?: string; lineStyle?: { type: string; color?: string }; markLine?: { lineStyle: { color: string }; label: { position: string; formatter: string; color: string }; data: { yAxis: number }[] } }[] }
+  // C6-09:上期线是 cmp 开关新推进来的独立 line 系列 → 系列级 200/quarticOut 从左擦入;
+  // 主柱上那条预算 markLine **不在此列**(读 mlModel 自身、回落全局 0 → 瞬现,C6-14)。
+  it('❗上期线带系列级 animationDuration 200 + quarticOut;主柱(连同预算 markLine)不带', () => {
+    interface S { animationDuration?: number; animationEasing?: string; markLine?: unknown }
+    const o = subjectTrendOption(['1月', '3月'], [1, 3], '营业收入', { mom: [null, 1], budget: 772.5 }) as { series: S[] }
+    expect(o.series[1].animationDuration).toBe(200)
+    expect(o.series[1].animationEasing).toBe('quarticOut')
+    expect(o.series[0].animationDuration).toBeUndefined()
+    expect(o.series[0].markLine).toBeDefined()
+  })
+
   it('budget → 主系列 markLine yAxis=预算/月;mom → 追加虚线系列;对比线取语义色(§E)', () => {
     const o = subjectTrendOption(['1月', '3月'], [1, 3], '营业收入', { mom: [null, 1], budget: 772.5 }) as TrendOpt
     expect(o.series).toHaveLength(2)

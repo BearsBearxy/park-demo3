@@ -92,6 +92,8 @@ export function cvpOption(be: BeModel): object {
   }
   const showBe = be.bePct != null && be.bePct <= 120 && be.beRev != null
   return {
+    // C6-15:滑杆连续驱动 —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指
+    animationDurationUpdate: 0,
     grid: { left: 58, right: 24, top: 36, bottom: 34 },
     tooltip: {
       trigger: 'axis',
@@ -133,6 +135,7 @@ export function cvpOption(be: BeModel): object {
 export function tornadoOption(items: TornadoItem[]): object {
   const rev = [...items].reverse()
   return {
+    animationDurationUpdate: 0,   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 96, right: 56, top: 30, bottom: 26 },
     tooltip: {
       formatter: (p: { name: string; value: number }) => `${p.name}<br/>±10% → 净利 ±¥${Math.abs(p.value).toFixed(1)}万`,
@@ -166,6 +169,7 @@ export function splitData(months: number[], cost: (number | null)[], fr: number)
 /** 固定/变动逐月堆叠柱 option。 */
 export function splitOption(d: SplitData): object {
   return {
+    animationDurationUpdate: 0,   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 48, right: 16, top: 30, bottom: 26 },
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },

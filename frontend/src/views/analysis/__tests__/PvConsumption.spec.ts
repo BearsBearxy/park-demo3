@@ -192,4 +192,17 @@ describe('PvConsumption 年档与图注', () => {
       '左轴 = 万度，三段自下而上 = 自己用了 / 卖上网 / 路上损掉 · 右轴 = 损耗率，刻度钉死在 0–6% 不随数据缩放 · 1 天超过 6%，折线在那里断开，轴外三角标数值 · 数据到 28 日',
     )
   })
+
+  it('❗C6-25：柱段 / 损耗线与点 / 轴外三角与数在 g.pcs-data 里，轴线与 x 刻度在组前', () => {
+    const w = mount(PvConsumption, { props: { data: monthData() } })
+    const g = w.find('g.pcs-data')
+    expect(g.findAll('.pcs-bar')).toHaveLength(28)   // 未到的 29–31 日不出柱
+    for (const sel of ['.pcs-lossline', '.pcs-lossdot', '.pcs-over', '.pcs-overt']) expect(g.find(sel).exists(), sel).toBe(true)
+    const kids = Array.from(w.find('svg').element.children)
+    expect(kids.findIndex(e => e.classList.contains('pcs-data'))).toBeGreaterThan(kids.findIndex(e => e.classList.contains('pcs-axl')))
+    expect(w.find('.pcs-axl').element.closest('g.pcs-data')).toBe(null)
+    expect(w.find('.pcs-xl').element.closest('g.pcs-data')).toBe(null)
+    // AnaShell 之外 entered 默认真 = 不擦
+    expect(g.classes()).not.toContain('first')
+  })
 })

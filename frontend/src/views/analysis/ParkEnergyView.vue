@@ -121,7 +121,9 @@ function covAgg(key: NumKey): number | null {
 }
 
 // ── KPI 条(值与 v1 statItems 完全一致) ──
-const kpis = computed(() => (loading.value || failed.value ? [] : [
+// 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
+const KPI_LABELS = ['园区购电', '购电成本', '光伏发电', '光伏消纳占供电', '单位购电成本', '售电(转供)收入'] as const
+const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
   { label: '园区购电', value: buyKwh.value != null ? fnum(buyKwh.value / 10000, 1) + '万kWh' : '—', delta: mom('buyKwh'), kind: '环比', invert: true, note: isMonth.value ? undefined : '全年' },
   { label: '购电成本', value: buyCost.value != null ? '¥' + fnum(buyCost.value / 10000, 1) + '万' : '—', note: isMonth.value ? '本月' : '全年' },
   { label: '光伏发电', value: pvGen.value != null ? fnum(pvGen.value / 10000, 1) + '万kWh' : '—', note: pvGen.value ? '消纳 ' + ((pvSelf.value ?? 0) / pvGen.value * 100).toFixed(0) + '%' : undefined },
@@ -254,7 +256,35 @@ const segsOption = computed(() => ({
       <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" />
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
+         页头 44(.ak-h-ic 40 / .ak-title 20 + .ak-sub margin 4 + 20);卡头 20 + .av2-card-h margin-bottom 8 = 28;
+         图块 = 各 AnaEChart 的 :height 字面值(300 / 170 / 250 / 250 / 170)。
+         KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
+    <div v-if="loading" class="ak-page ak-skel">
+      <div class="fp-shim" style="height: 44px; width: 300px"></div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 170px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 170px"></div>
+        </div>
+      </div>
+    </div>
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <div v-else class="ak-page">
       <div class="ak-head">

@@ -202,4 +202,21 @@ describe('月度台账 · 期间深链', () => {
     expect(booksApi.templateAt, '同一拍连写,watch 只跑一次').toHaveBeenCalledTimes(1)
     expect(ledgerApi.month, '重读那趟按旧月先发,新月那趟最后发 —— seq 守卫以它为准').toHaveBeenLastCalledWith(12, 2025, 3)
   })
+
+  it('❗已经停在表上时换期:不清 monthDto —— 在途期间旧表留在原地,不出兜底转圈(动效稿 C5-02 ⑦)', async () => {
+    // 红线:applyDeep 里的 `if (!inTable) monthDto.value = null` 改回无条件清 → 新表到达前 v-else 兜底转圈接管,旧表消失
+    query.p = '2026-09'; query.co = '12'
+    const { w, alive } = await keptAlive()
+    let release!: (v: LedgerMonthDTO) => void
+    vi.mocked(ledgerApi.month).mockImplementation((c: number, y: number, m: number) =>
+      m === 3 ? new Promise<LedgerMonthDTO>((r) => { release = r })
+        : Promise.resolve(monthOf(c === 12 ? '乙公司' : '甲公司', y, m)))
+    alive.value = false; await flushPromises()
+    query.p = '2025-03'
+    alive.value = true; await flushPromises()
+    expect(w.findComponent(LedgerWideTable).exists(), '新表还没到,旧表留屏').toBe(true)
+    expect(w.find('.page-loading').exists(), '原地换期不出兜底转圈').toBe(false)
+    release(monthOf('乙公司', 2025, 3)); await flushPromises()
+    expect(w.findComponent(LedgerWideTable).props('month')).toMatchObject({ year: 2025, month: 3 })
+  })
 })

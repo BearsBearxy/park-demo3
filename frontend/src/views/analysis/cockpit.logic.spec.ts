@@ -9,6 +9,7 @@ import {
 } from './cockpit.logic'
 import type { PnlSummary, S10PhaseMonthly, CollectRate } from '@/analysis/anaData'
 import type { AnalysisLedgerRow } from '@/api/analysis'
+import type { CompareMode } from '@/analysis/useCompare'
 import type { BudgetRowDTO } from '@/api/budget'
 
 const N12 = (): (number | null)[] => new Array(12).fill(null)
@@ -585,6 +586,24 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     const bar = o2.series.find((s) => s.name === '收入')
     expect(bar!.markPoint).toBeUndefined()
   })
+
+  // C6-09 对比虚线:cmp 开关推进来的是独立 line 系列,系列级 200/quarticOut 压过 motionize 注入的 update 0,
+  // 新 name → 新视图 → clip 从左擦入;关掉是视图 dispose 瞬时,不淡出。主系列一个键都不带(它不是新信息)。
+  it('❗对比线(上月收入 / 预算月均)带系列级 animationDuration 200 + quarticOut,主系列与 none 档不带', () => {
+    const d: MainChartData = {
+      labels: Array.from({ length: 12 }, (_, i) => `${i + 1}月`), rev: new Array(12).fill(10), profit: new Array(12).fill(1),
+      prevRev: new Array(12).fill(9), budgetAvgWan: 8, covered: 12, outlierMonths: [], yMin: undefined,
+    }
+    interface S { name: string; animationDuration?: number; animationEasing?: string }
+    const pick = (mode: CompareMode, name: string): S | undefined =>
+      (mainChartOption(d, new Map(), mode) as { series: S[] }).series.find((s) => s.name === name)
+    for (const [mode, name] of [['mom', '上月收入'], ['budget', '预算月均']] as [CompareMode, string][]) {
+      expect(pick(mode, name)!.animationDuration).toBe(200)
+      expect(pick(mode, name)!.animationEasing).toBe('quarticOut')
+    }
+    expect(pick('mom', '收入')!.animationDuration).toBeUndefined()
+    expect(pick('none', '上月收入')).toBeUndefined()
+  })
 })
 
 describe('❗F6(对抗复查):mainChartOutlierNote——不再写死「12月」/「m12」/「s1」', () => {
@@ -765,3 +784,39 @@ describe('❗T3:backtestRows(滚动起点回测)+ nextMonthForecast(下月预测
   })
 })
 
+
+// ───────── C6-01 首进骨架 ─────────
+// 骨架不挂在纯函数上,mount 不起来就从源码读形状(写法同 views/__tests__/pvMeterAnaScreen.spec.ts
+// 读 scoped CSS 那一段)。断言钉的是**两边同一组数**:改了任何一张图的 :height 却忘了改骨架,这条就红。
+describe('驾驶舱首进骨架(C6-01)', () => {
+  const src = readFileSync(join(__dirname, 'CockpitView.vue'), 'utf8')
+  const skel = src.slice(src.indexOf('class="av2-grid cv2-skel"'), src.indexOf('<AnaEmpty v-else-if="pnlEmpty"'))
+
+  it('❗不转圈;骨架块高 = 卡头 20 + 主图 300 / 构成环 300 / 预测带 280 / 第二排 250,读数句 20', () => {
+    expect(src).not.toContain('page-spin')
+    // 主图卡 300 之后跟两条读数句(8+20 / 2+20),预测带卡 280 之后跟一条(2+20):
+    // .ana-read/.ana-ref 的行盒是 base.css 的 --lh-snug 20px 长度,与 font-size 无关 —— 不钉就下沉 ≥70px
+    expect([...skel.matchAll(/height: (\d+)px/g)].map(m => m[1]))
+      .toEqual(['20', '300', '20', '20', '20', '300', '20', '280', '20', '20', '250'])
+    // 真版式那一侧的四个字面值 —— 骨架照抄的就是它们
+    expect(src).toContain(':option="mainOption" :height="300"')
+    expect(src).toContain(':option="donutOption" :height="300"')
+    expect(src).toContain(':rows="rollRows" :height="280"')
+    expect(src).toContain(':option="phaseOption" :height="250"')
+    // 真版式那两句确实在主图卡里(骨架顶的就是它们)
+    expect(src).toContain('<p v-if="outlierRead" class="ana-read">')
+    expect(src).toContain('<p v-else class="ana-ref">本年 12 个月已录满')
+  })
+
+  it('❗骨架门只认首进 —— 换年不许整片塌回骨架,旧内容留在原地退让(C5-02 / §1.7)', () => {
+    // 换年时 pnlLoading 为真但 pnl 还是旧年那份:门若认 pnlLoading,结论条 / 两条横幅 / 六张卡 /
+    // 回测表整片被骨架顶掉(骨架只画了四种块,一条结论条、两条横幅、回测表都没画)→ 正文先消失再缩短,
+    // 200ms 后工具条又亮起进度线 = 一次交互两个动的东西。
+    expect(src, '换年会把正文整片塌成骨架').not.toContain('v-if="!ready || pnlLoading"')
+    expect(src).toContain('v-if="!ready || (pnlLoading && !pnl)"')
+    // 退让宿主:进度线在 sticky 工具条上(AnaShell :busy),是它的兄弟不是子节点
+    expect(src).toContain(`<div class="av2-grid" data-stale-host :class="{ 'fp-stale': staleShown }"`)
+    // prevLoading(取上一年补预测带)只点亮进度线,不退让(C5-12)
+    expect(src).toContain('const staleShown = useDeferredFlag(pnlLoading)')
+  })
+})

@@ -143,7 +143,35 @@ function onParetoClick(p: unknown) {
       </template>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44、
+         卡头 20(.av2-card-h 下距 8 合 28)、到期墙 250、合约租金带 280(各自 :height 字面值)
+         + 读数句 20(.ana-read 上距 8)+ 参照小字 20(.ana-ref 上距 2)。
+         再往下的卡全是条件卡(先谈哪几户 / 续签率 / Pareto / 清单),数目随数据变,骨架不猜。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位
+         (9 张瓦在容器宽 < 1192 时换两行,那一行的下推是 C6-01 写明接受的残余位移)。 -->
+    <div v-if="loading" class="ak-page ana-skel">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"></span>
+          <div>
+            <div class="fp-shim" style="height: 20px; width: 180px"></div>
+            <div class="fp-shim" style="height: 20px; width: 260px; margin-top: 4px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 280px"></div>
+          <div class="fp-shim" style="height: 20px; margin-top: 8px"></div>
+          <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 2px"></div>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="!stats" class="ak-page">
       <div class="ak-head"><div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('calendar-clock')" :size="20" /></span>
@@ -325,7 +353,9 @@ function onParetoClick(p: unknown) {
 .exp-scroll { max-height: 480px; overflow: auto; }
 .exp-scroll thead th { position: sticky; top: 0; background: var(--surface-white); z-index: 1; }
 .exp-row { cursor: pointer; }
+.exp-row td { transition: background var(--dur-fast) var(--ease-standard); }
 .exp-row:hover td, .exp-row.on td { background: var(--bg-hover); }
+.exp-row:active:not(.on) td { background: var(--ink-100); transition-duration: 0ms; }
 .exp-detail td { background: var(--surface-sunken); padding: 10px 12px; }
 .exp-det-h { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .exp-det-r { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-micro); color: var(--text-secondary); padding: 3px 0; }

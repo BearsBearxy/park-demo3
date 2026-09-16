@@ -60,6 +60,8 @@ const isDto = ref<ReportPeriodDTO | null>(null)
 let token = 0
 watch([cid, reportYm], async ([c, rym]) => {
   const t = ++token
+  // 换公司/换期会把整块 av2-grid 卸掉,那一行的 animationend/cancel 都不会再来 —— 在这里先清(C5-08)
+  flashLabel.value = null
   try {
     const [cos, months] = await Promise.all([fetchCompanies(), fetchAvailableMonths()])
     let bs: ReportPeriodDTO | null = null, is: ReportPeriodDTO | null = null
@@ -187,7 +189,8 @@ async function locateRow(p: unknown) {
   flashLabel.value = row.label
   await nextTick()
   document.querySelector('[data-bsrow="' + CSS.escape(row.label) + '"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  setTimeout(() => { if (flashLabel.value === row.label) flashLabel.value = null }, 2000)
+  // 摘类交给 animationend / animationcancel(C5-08):KeepAlive 把整棵树挪进缓存容器时动画被取消,
+  // 只发 cancel 不发 end —— 不听 cancel 的话 flashLabel 卡在真值,回签重插 DOM 会白白再亮 2s。
 }
 
 // ── 全表(单期:期末 + 占资产总计;「较年初」列因仅一期快照降级删除) ──
@@ -308,6 +311,8 @@ const bsTable = computed<BsTblRow[]>(() => {
             <tbody>
               <tr v-for="r in bsTable" :key="r.label" :data-bsrow="r.label"
                 :class="{ 'fb-flash': flashLabel === r.label }"
+                @animationend="flashLabel === r.label && (flashLabel = null)"
+                @animationcancel="flashLabel === r.label && (flashLabel = null)"
                 :style="r.kind === 'label' ? { background: 'var(--surface-card)' } : r.label.includes('总计') ? { background: 'var(--ink-050)' } : undefined">
                 <td :style="{
                   fontWeight: r.kind === 'label' || r.kind === 'subtotal' ? 600 : 400,

@@ -352,8 +352,9 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 
 /* 欠费清单弹层(屏私有,轻量遮罩卡) */
 /* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
-.fin-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28,28,28,.32); display: grid; place-items: center; padding: 24px; }
-.fin-modal { background: var(--surface-white); border-radius: 16px; box-shadow: 0 18px 48px rgba(28,28,28,.22); width: min(760px, 100%); max-height: 78vh; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; }
+/* 开:遮罩淡入 + 卡上浮,与 FPDrawer 同款 200(C5-06);关:v-if 瞬时 */
+.fin-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28,28,28,.32); display: grid; place-items: center; padding: 24px; opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
+.fin-modal { background: var(--surface-white); border-radius: 16px; box-shadow: 0 18px 48px rgba(28,28,28,.22); width: min(760px, 100%); max-height: 78vh; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .fin-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .fin-modal-h .t { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-modal-h .x { width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; }

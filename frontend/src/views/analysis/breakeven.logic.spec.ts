@@ -1,7 +1,9 @@
 // breakeven.logic 纯函数单测(v2 抽出;CVP/敏感性/拆分口径=v1,含 dev 库锚点回算)
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AnalysisS10Row } from '@/api/analysis'
-import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, tornadoItems, tornadoOption } from './breakeven.logic'
+import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, splitOption, tornadoItems, tornadoOption } from './breakeven.logic'
 
 describe('calcBe', () => {
   it('常规:fixed=cost×fr,beRev=fixed/cm,bePct/safety 一位小数', () => {
@@ -117,5 +119,43 @@ describe('option 构建', () => {
     expect(d.periods).toEqual(['1月', '3月'])
     expect(d.fixed).toEqual([6.2, 12.4])
     expect(d.vari).toEqual([3.8, 7.6])
+  })
+})
+
+// C6-15 连续输入:三张图由固定成本系数滑杆每帧驱动,>0 的更新动画都让图落后手指。
+// 顶层键靠 motionize 的 {...keys, ...pick(o, ANIM_KEYS), ...s} 吸收进每个系列(与 markPoint/markLine 的宿主),
+// 不写顶层就是系列自己带着注入的 200 —— getShallow 不回落,顶层写了也是死键。
+describe('C6-15 滑杆连续驱动:三个 option 顶层 animationDurationUpdate = 0', () => {
+  it('cvp / tornado / split 都写了顶层 0,且不夹带别的动画键(首绘仍由 motionize 给 320)', () => {
+    const be = calcBe(100, 80, 0.5)
+    const opts = [
+      cvpOption(be),
+      tornadoOption(tornadoItems(be, null)),
+      splitOption(splitData([1], [10_0000, ...new Array(11).fill(null)], 0.5)),
+    ]
+    for (const o of opts) {
+      const rec = o as Record<string, unknown>
+      expect(rec.animationDurationUpdate).toBe(0)
+      expect(rec.animationDuration).toBeUndefined()
+      expect(rec.animationEasingUpdate).toBeUndefined()
+    }
+  })
+})
+
+// ── C6-01 首进骨架:整区转圈换真版式骨架,块高逐块钉住它顶替的那块 ──
+// 骨架是模板里的静态几何,没有可跑的逻辑;能坏的只有「有人改了图的 :height / 加了张卡,
+// 骨架没跟着改」—— 那一刻骨架与真版式不再等高,硬切回来就是位移。所以断言钉两组坐标:
+// 骨架里每条 .fp-shim 的高(逐条、按出现顺序),以及它必须覆盖本屏图的 :height 字面值。
+describe('BreakevenView · C6-01 首进骨架(块高钉真版式)', () => {
+  it('❗不转圈;骨架块高逐条钉住,且盖住本屏图的 :height', () => {
+    const src = readFileSync(join(__dirname, 'BreakevenView.vue'), 'utf8')
+    expect(src, '版式已知不许转圈').not.toContain('page-spin')
+    expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="ak-page ana-skel"')
+    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px/g)].map((m) => +m[1])
+    expect(shim).toEqual([20, 20, 20, 20, 300, 20, 20, 300, 20, 250])
+    const charts = [...src.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    // 页头 20 + 20 · 结论条 20 · (卡头 20 + 图 300 + 滑杆 20) · (20 + 300) · (20 + 250)
+    expect(charts).toEqual([300, 300, 250])
+    expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })
 })

@@ -71,7 +71,40 @@ function onScatterClick(p: unknown) {
       </template>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高照它顶替的那块钉死:页头 = .ak-h-ic 40 / 标题 28 + 4 + 副行 15;
+         卡头 20(+ .av2-card-h 下距 8 = 28);散点 300(:height)+ 图例行 6 + 15;两张表照 .churn-scroll
+         的 330 / .tall 420;s10 流向图 300(:height)。KPI 行由 .anx-kpis 的 min-height 94 兜位,
+         首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <div v-if="loading" class="ak-page churn-skel">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"></span>
+          <div>
+            <div class="fp-shim" style="height: 28px; width: 150px"></div>
+            <div class="fp-shim" style="height: 15px; width: 460px; margin-top: 4px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+          <div class="fp-shim" style="height: 15px; width: 220px; margin: 6px auto 0"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="fp-shim" style="height: 330px"></div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 420px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="!model" class="ak-page">
       <div class="ak-head"><div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('siren')" :size="20" /></span>

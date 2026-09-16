@@ -210,7 +210,8 @@ const payOption = computed<object>(() => ({
   series: [
     { name: '应收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.recv.toFixed(2)), itemStyle: { color: '#B5D4F4' } },
     { name: '实收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.coll.toFixed(2)), itemStyle: { color: '#378ADD' } },
-  ],
+    // C6-16 ⑤:name 恒定、'YYYY-MM' 类目随租户漂移 → 换租户按 name 形变是假中间数据;id 带租户键(+序号防撞 idMap)瞬换
+  ].map((s, i) => ({ ...s, id: `pay-${i}-${selRow.value?.name ?? ''}` })),
 }))
 
 // ── Top20 榜(点击选中联动) ──
@@ -321,7 +322,42 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       </div>
     </template>
 
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(趋势 300 · 应收实收 200 ·
+         Top20 440 · 散点 440),卡头 20(+ .av2-card-h 下距 8 = 28)。左列列表卡复用 .te2-left 的
+         flex 列:搜索框 31(padding 7 + 12px 行 + 边框)+ 下距 8,列表条 flex:1 —— 行高由右列那一栏定,
+         与真版式同一条规则。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
+         KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <div v-if="!loaded" class="ak-page te2-skel">
+      <div class="av2-grid">
+        <div class="av2-card av2-s4 te2-left">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 31px; margin-bottom: 8px"></div>
+          <div class="fp-shim" style="flex: 1; min-height: 300px"></div>
+        </div>
+        <div class="te2-right av2-s8">
+          <div class="av2-card">
+            <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 280px"></div></div>
+            <div class="fp-shim" style="height: 300px"></div>
+            <div class="fp-shim" style="height: 20px; width: 55%; margin-top: 8px"></div>
+            <div class="fp-shim" style="height: 20px; width: 38%; margin-top: 2px"></div>
+          </div>
+          <div class="av2-card">
+            <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+            <div class="fp-shim" style="height: 200px"></div>
+            <div class="fp-shim" style="height: 20px; width: 45%; margin-top: 6px"></div>
+          </div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 440px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="fp-shim" style="height: 440px"></div>
+          <div class="fp-shim" style="height: 15px; width: 240px; margin: 6px auto 0"></div>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -440,8 +476,9 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 .te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }
 .te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; }
+.te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .te2-item:hover { background: var(--bg-hover); }
+.te2-item:active:not(.on) { background: var(--ink-100); transition-duration: 0ms; }
 .te2-item.on { background: var(--accent-blue); }
 .te2-item .rk { width: 20px; flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
 .te2-item .nm { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

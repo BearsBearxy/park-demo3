@@ -41,9 +41,11 @@ function look(c: ChipItem) {
   return {
     c,
     style: {
-      background: s.bg, color: s.fg, borderColor: s.bc,
+      // 颜色走自定义属性:样式表的 :active 才压得过来(C2-05)
+      '--chip-bg': s.bg, '--chip-fg': s.fg, '--chip-bc': s.bc,
       borderStyle: c.kind === 'unreadable' ? 'dashed' : 'solid',
-      fontWeight: c.selected ? 600 : c.kind === 'unborn' ? 400 : 500,
+      // 选中已是实底白字,字重是冗余通道且会让芯片变宽 —— 与未选同 500(C2-05)
+      fontWeight: c.kind === 'unborn' ? 400 : 500,
     },
     dot: c.kind === 'unborn' ? 'var(--text-disabled)' : PHASE_COLORS[c.phase] ?? 'var(--text-muted)',
     badge: badgeOf(c),
@@ -117,13 +119,19 @@ function pickFolded(id: number) {
 .pvc { display: flex; align-items: center; gap: 6px; height: 34px; padding: 4px 0; box-sizing: border-box; white-space: nowrap; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 8px; margin: 0;
-  border-radius: 999px; border-width: 1px; font: inherit; font-size: 11px; line-height: 1; white-space: nowrap;
+  border-radius: 999px; border: 1px solid var(--chip-bc); font: inherit; font-size: 11px; line-height: 1; white-space: nowrap;
+  background: var(--chip-bg); color: var(--chip-fg);
   cursor: pointer; user-select: none;
-  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 .chip:disabled { cursor: default; }
-.chip.more { background: var(--surface-white); color: var(--text-secondary); border: 1px solid var(--border-subtle); font-weight: 500; }
+/* 按下瞬到,松开随上面的 120 回弹;选中那枚不压(C2-05) */
+.chip:active:not([aria-pressed="true"]):not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
+.chip.more { --chip-bg: var(--surface-white); --chip-fg: var(--text-secondary); --chip-bc: var(--border-subtle); font-weight: 500; }
 .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-.bd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; line-height: 16px; height: 16px; padding: 0 5px; border-radius: 999px; }
+.bd {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; line-height: 16px; height: 16px; padding: 0 5px; border-radius: 999px;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
 .pvc-pop { display: flex; flex-wrap: wrap; gap: 6px; }
 </style>

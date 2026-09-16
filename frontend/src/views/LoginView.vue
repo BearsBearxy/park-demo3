@@ -56,18 +56,25 @@ async function submit() {
   }
   errorMsg.value = ''
   loading.value = true
+  // 登录与导航分两个错误域(动效稿 C4-02):把 push 塞进登录 try 里,落地懒块 404 会冒充密码错误。
+  // 两条 push 都 await —— 按钮停在「登录中…」直到 chunk 确认,那是登录后唯一的反馈。
+  let target: string | undefined
   try {
     await auth.login({ username: username.value.trim(), password: password.value }, remember.value)
     // 强制改密优先于一切落点(含 redirect):初始密码没改掉之前哪儿都不该进
-    if (auth.mustChangePassword) {
-      router.push('/change-password')
-      return
-    }
     // 落地页与 router 守卫共用 auth.landing(§6:零 :edit 落驾驶舱、审核员落本月出账)
-    const redirect = (route.query.redirect as string) || auth.landing
-    router.push(redirect)
+    target = auth.mustChangePassword ? '/change-password' : ((route.query.redirect as string) || auth.landing)
   } catch (e: any) {
     errorMsg.value = e?.msg || e?.message || '登录失败，请检查账号和密码'
+    return
+  } finally {
+    // 拿到落点就把 loading 留着给导航段;没拿到(登录失败)才复位
+    if (!target) loading.value = false
+  }
+  try {
+    await router.push(target)
+  } catch {
+    errorMsg.value = '页面加载失败，请刷新重试'
   } finally {
     loading.value = false
   }
@@ -406,8 +413,10 @@ onBeforeUnmount(() => {
           </label>
 
           <!-- 错误位常驻(LAYOUT-STABILITY-SPEC §4.2):红字长出来不许把「登录」按钮顶走 -->
-          <p v-if="kickedMsg && !errorMsg" class="lg-kicked"><AlertCircle :size="14" />{{ kickedMsg }}</p>
-          <p class="lg-err"><template v-if="errorMsg"><AlertCircle :size="14" />{{ errorMsg }}</template></p>
+          <p class="lg-err">
+            <template v-if="errorMsg"><AlertCircle :size="14" />{{ errorMsg }}</template>
+            <template v-else-if="kickedMsg"><span class="lg-kicked"><AlertCircle :size="14" />{{ kickedMsg }}</span></template>
+          </p>
 
           <div class="lg-row">
             <label class="lg-remember">
@@ -534,7 +543,9 @@ onBeforeUnmount(() => {
 
 /* min-height=line-height=恰好一行:空着也占位,出错不位移 */
 /* 被踢回来的原因:不是输错密码,用中性色不用错误红 */
-.lg-kicked { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; line-height: 18px; font-size: 13px; color: var(--hue-amber, #b76e00); }
+/* 被踢原因住在常驻错误位里(动效稿 C7-03 ⑤):行内着色类,没有自己的 margin/行高 ——
+   与报错两句共用 .lg-err 的一行高,插拔不再把「登录」按钮顶上顶下 */
+.lg-kicked { display: inline-flex; align-items: center; gap: 6px; color: var(--hue-amber, #b76e00); }
 .lg-err { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; min-height: 18px; line-height: 18px; font-size: 13px; color: var(--hue-red, #e5484d); }
 
 .lg-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 26px; }

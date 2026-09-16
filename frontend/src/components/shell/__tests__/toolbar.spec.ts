@@ -9,6 +9,12 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({ meta: { value: 'tenants', page: '租户管理', layerLabel: '数据中心' }, path: '/tenants' }),
   useRouter: () => ({ push: vi.fn() }),
 }))
+// C1-07 ③:数一下命令面板那个 chunk 被拉了几次。工厂只在模块首次被 import 时跑一次。
+const pal = vi.hoisted(() => ({ loaded: 0 }))
+vi.mock('@/components/shell/CommandPalette.vue', () => {
+  pal.loaded++
+  return { default: { name: 'CommandPaletteStub', render: () => null } }
+})
 vi.mock('@/api', () => ({
   default: {
     get: vi.fn(() => Promise.resolve([])),
@@ -58,6 +64,14 @@ describe('Toolbar · 死钮清理(§6)', () => {
     useTabsStore().setCtx('tenants', { p: '2025-06', coName: '一期公司' })
     await nextTick()
     expect(w.find('.fp-ctx-chip').text()).toBe('2025-06 · 一期公司')
+  })
+
+  it('搜索钮 pointerenter 预取命令面板 chunk(C1-07:首开不加指示器,把等挪到按下之前)', async () => {
+    const w = mountBar()
+    expect(pal.loaded).toBe(0)
+    await w.find('.fp-search-btn').trigger('pointerenter')
+    await new Promise(r => setTimeout(r, 0))
+    expect(pal.loaded).toBe(1)
   })
 
   it('收藏 ★ 带 aria-pressed(屏读要念出「已固定 / 未固定」,:active 只是视觉)', async () => {

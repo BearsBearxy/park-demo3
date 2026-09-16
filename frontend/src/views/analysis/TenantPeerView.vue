@@ -132,7 +132,44 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
 
 <template>
   <AnaShell period-mode="none" scope-chip="合同快照">
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01,规范点名本屏:页头 + 页签 + 直方图卡 280 + 其下几卡)。
+         页头照 .tp-head(标题 28 + 4 + 副行 15;选择器 FPTenantPicker 高 36,.tp-picker 宽 240);
+         页签照 .anx-seg(padding 3 + 按钮 25 = 31);直方图块 = AnaUnitRentHist 的 :height 280;
+         三张表卡按 .ak-tbl 的表头 24 + 行高 38 × 行数留白。数据到了原地硬切,不做淡入、不错峰。 -->
+    <div v-if="!loaded" class="ak-page tp-skel">
+      <div class="tp-head">
+        <div class="tp-head-l">
+          <div class="fp-shim" style="height: 28px; width: 240px"></div>
+          <div class="fp-shim" style="height: 15px; width: 180px; margin-top: 4px"></div>
+        </div>
+        <div class="fp-shim tp-picker" style="height: 36px"></div>
+      </div>
+      <div class="fp-shim tp-tabs" style="height: 31px; width: 232px"></div>
+      <div class="av2-card">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+        <div class="fp-shim" style="height: 280px"></div>
+        <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
+        <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
+      </div>
+      <div class="av2-card">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
+        <div class="fp-shim" style="height: 100px"></div>
+        <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
+        <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
+      </div>
+      <div class="av2-card">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+        <div class="fp-shim" style="height: 62px"></div>
+        <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
+        <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
+      </div>
+      <div class="av2-card">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+        <div class="fp-shim" style="height: 176px"></div>
+        <div class="fp-shim" style="height: 20px; width: 40%; margin-top: 8px"></div>
+        <div class="fp-shim" style="height: 20px; width: 30%; margin-top: 2px"></div>
+      </div>
+    </div>
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -167,10 +204,12 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
             :overflow-max="hist.overflowMax" :stats="stats" :self-value="primaryRow.unitRent"
             :self-name="primaryRow.tenantName" :height="280" />
           <p v-if="hist.overflowCount" class="tp-overflow">{{ hist.overflowCount }} 份 &gt; {{ hist.capHi }},最高 {{ hist.overflowMax.toFixed(1) }}</p>
-          <p v-if="readout" class="ana-read">{{ readout }}</p>
+          <!-- 读数句常驻占位(C5-11):算不出时空着那一行,卡高不随换租户 ±1 行 -->
+          <p class="ana-read hold"><template v-if="readout">{{ readout }}</template></p>
           <p class="ana-ref">{{ refText }}</p>
         </template>
-        <AnaEmpty v-else label="同类样本不足" :hint="`${phaseZone}在租且已录面积的合同仅 ${phaseValues.length} 份,不足 ${MIN_SAMPLE} 份,无法画分布区间`" />
+        <!-- 空态钉成它顶替的那张图的高(C5-10):AnaUnitRentHist :height 280,互换时下方卡不跳 -->
+        <AnaEmpty v-else label="同类样本不足" style="min-height: 280px; box-sizing: border-box" :hint="`${phaseZone}在租且已录面积的合同仅 ${phaseValues.length} 份,不足 ${MIN_SAMPLE} 份,无法画分布区间`" />
       </div>
 
       <!-- T10:「哪些期区能给区间」—— 板上四行表标签写「在租」,数字却是不过滤日期的总体(168/100/3/2),

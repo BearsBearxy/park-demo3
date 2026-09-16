@@ -92,3 +92,26 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
     expect(sentenceTag).toMatch(/v-if="rentRollText"/)
   })
 })
+
+// ── C6-01 首进骨架:整区转圈换真版式骨架,块高逐块钉住它顶替的那块 ──
+// 骨架是模板里的静态几何,没有可跑的逻辑;能坏的只有「有人改了图的 :height,骨架没跟着改」
+// —— 那一刻骨架与真版式不再等高,硬切回来就是位移。所以断言钉坐标:骨架里每条 .fp-shim 的高
+// (逐条、按出现顺序),以及头两张卡必须盖住它们那两张图的 :height 字面值。
+// 头两张之后全是条件卡(先谈哪几户 / 续签率 ×2 / Pareto / 集中度 / 清单),数目随数据变,骨架不猜。
+describe('ExpiryView · C6-01 首进骨架(块高钉真版式)', () => {
+  it('❗首帧就是骨架不是转圈;骨架块高逐条钉住,盖住到期墙 250 与合约租金带 280', () => {
+    const w = mount(ExpiryView)
+    expect(w.find('.ana-skel').exists(), '首帧没出骨架').toBe(true)
+    expect(w.find('.page-spin').exists(), '版式已知还在转圈').toBe(false)
+    // 首进期瓦片不画,但 .anx-kpis 容器在 —— 空行由 min-height 94 兜住,数据到了不推下方
+    expect(w.find('.anx-kpis').exists()).toBe(true)
+    expect(w.findAll('.anx-kpis .av2-kpi')).toHaveLength(0)
+    const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
+    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px/g)].map((m) => +m[1])
+    // 页头 20 + 20 · (卡头 20 + 到期墙 250) · (卡头 20 + 租金带 280 + 读数句 20 + 参照小字 20)
+    expect(shim).toEqual([20, 20, 20, 250, 20, 280, 20, 20])
+    const charts = [...src.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    expect(charts.slice(0, 2)).toEqual([250, 280])
+    expect(charts.slice(0, 2).every((h) => shim.includes(h)), '头两张图的高没在骨架里留位').toBe(true)
+  })
+})

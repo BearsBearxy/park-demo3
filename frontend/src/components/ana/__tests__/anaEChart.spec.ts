@@ -3,10 +3,11 @@
 // ⚠ 桩掉的是整个装配模块,所以「注册清单是否漏项」本测试**零覆盖** —— 只能在浏览器里看控制台。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 
 const h = vi.hoisted(() => {
-  const chart = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), on: vi.fn() }
+  // getWidth/getHeight 是 C6-02 的 RO 守卫要读的(尺寸真变才 resize),按 ChartInst 契约桩上
+  const chart = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), on: vi.fn(), getWidth: vi.fn(() => 600), getHeight: vi.fn(() => 300) }
   return { chart, init: vi.fn(() => chart), registerTheme: vi.fn() }
 })
 vi.mock('../echartsBundle', () => ({ init: h.init, registerTheme: h.registerTheme }))
@@ -20,6 +21,11 @@ class ROStub {
   constructor(public cb: ResizeObserverCallback) { lastRO = this }
 }
 ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = ROStub
+
+// jsdom 的 getBoundingClientRect 全 0 —— 在 AnaEChart 眼里那是「离屏」(C6-06 该次关动画)。
+// 桩成在视口内,让下面的用例走正常相位;离屏分支本身钉在 anaMotion.spec.ts。
+Element.prototype.getBoundingClientRect = () =>
+  ({ top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
 
 import AnaEChart, { mobilizeOption } from '../AnaEChart.vue'
 
@@ -41,7 +47,9 @@ describe('AnaEChart', () => {
     const dpr = (h.init.mock.calls[0] as unknown[])[2] as { devicePixelRatio: number }
     expect(dpr.devicePixelRatio).toBeGreaterThanOrEqual(2)
     expect(Number.isInteger(dpr.devicePixelRatio)).toBe(true)
-    expect(h.chart.setOption).toHaveBeenCalledWith({ series: [{ type: 'bar' }] }, { notMerge: true })
+    // 注入动效键后不再逐字相等(动效设计稿 §8.3 明写改 objectContaining);键值本身见下面三条与 anaMotion.spec.ts
+    expect(h.chart.setOption).toHaveBeenCalledWith(
+      expect.objectContaining({ series: [expect.objectContaining({ type: 'bar' })] }), { notMerge: true })
     expect(w.classes()).not.toContain('loading')
     const before = h.registerTheme.mock.calls.length   // 首个用例 1 次;跨用例幂等(anaTheme 模块级守卫)
     const w2 = mount(AnaEChart, { props: { option: {} } })
@@ -56,7 +64,7 @@ describe('AnaEChart', () => {
     h.chart.setOption.mockClear()
     await w.setProps({ option: { a: 2 } })
     await nextTick()
-    expect(h.chart.setOption).toHaveBeenCalledWith({ a: 2 }, { notMerge: true })
+    expect(h.chart.setOption).toHaveBeenCalledWith(expect.objectContaining({ a: 2 }), { notMerge: true })
     w.unmount()
   })
 
@@ -85,16 +93,71 @@ describe('AnaEChart', () => {
     }
   })
 
-  it('ResizeObserver 触发 resize;卸载 dispose + 断开观察', async () => {
+  it('ResizeObserver 只在尺寸**真变**时 resize;卸载 dispose + 断开观察', async () => {
     const w = mount(AnaEChart, { props: { option: {}, height: 180 } })
     await flushPromises()
     expect(w.attributes('style')).toContain('height: 180px')
     expect(lastRO!.observe).toHaveBeenCalledWith(w.element)
-    lastRO!.cb([], lastRO as unknown as ResizeObserver)
-    expect(h.chart.resize).toHaveBeenCalled()
+    const fire = (width: number, height: number) =>
+      lastRO!.cb([{ contentRect: { width, height } } as unknown as ResizeObserverEntry], lastRO as unknown as ResizeObserver)
+    // observe 之后引擎立刻空回调一次,尺寸与实例一致 —— 这一下 resize() 会以 animation:{duration:0}
+    // 的 payload 走 update,把每张图的首绘在首帧截断为零(C6-02,全站最大的一处硬伤)。
+    fire(600, 300)
+    expect(h.chart.resize).not.toHaveBeenCalled()
+    fire(600.4, 299.6)   // 亚像素抖动,四舍五入后同尺寸
+    expect(h.chart.resize).not.toHaveBeenCalled()
+    fire(800, 300)       // 真窗口缩放才 resize(动画被截断是引擎行为,接受,不补播)
+    expect(h.chart.resize).toHaveBeenCalledTimes(1)
+    // ❗空批次:原生 RO 规范上不派发,polyfill / 替身会 —— 解构 entries[0] 再读 contentRect 就抛
+    // TypeError,抛在观察者任务里,这一批别的图的 resize 一起被跳过且控制台只留一条未捕获错误
+    expect(() => lastRO!.cb([], lastRO as unknown as ResizeObserver)).not.toThrow()
+    expect(h.chart.resize).toHaveBeenCalledTimes(1)
     w.unmount()
     expect(h.chart.dispose).toHaveBeenCalled()
     expect(lastRO!.disconnect).toHaveBeenCalled()
+  })
+
+  // ── 动效注入通道(动效设计稿 §8.3,C6-02 / C6-03)。注入规则本身钉在 anaMotion.spec.ts,
+  //    这里只钉「首绘走 enter、watch 走 update、屏级 entered 决定相位」这条通道。
+  it('首绘走 enter 相:每系列 320 / quarticOut', async () => {
+    const w = mount(AnaEChart, { props: { option: { series: [{ type: 'line' }] } } })
+    await flushPromises()
+    const opt = h.chart.setOption.mock.calls[0][0] as { series: Record<string, unknown>[] }
+    expect(opt.series[0].animationDuration).toBe(320)
+    expect(opt.series[0].animationEasing).toBe('quarticOut')
+    w.unmount()
+  })
+
+  it('option 更新走 update 相:每系列 animationDuration 0 + animationDurationUpdate 200', async () => {
+    const w = mount(AnaEChart, { props: { option: { series: [{ type: 'line' }] } } })
+    await flushPromises()
+    h.chart.setOption.mockClear()
+    await w.setProps({ option: { series: [{ type: 'line', data: [1] }] } })
+    await nextTick()
+    const opt = h.chart.setOption.mock.calls[0][0] as { series: Record<string, unknown>[] }
+    expect(opt.series[0].animationDuration).toBe(0)
+    expect(opt.series[0].animationDurationUpdate).toBe(200)
+    w.unmount()
+  })
+
+  it('屏侧顶层 animationDurationUpdate:0 压过注入的 200,并吸收进每个系列', async () => {
+    const w = mount(AnaEChart, { props: { option: { animationDurationUpdate: 0, series: [{ type: 'bar' }, { type: 'line' }] } } })
+    await flushPromises()
+    const opt = h.chart.setOption.mock.calls[0][0] as { animationDurationUpdate: number; series: Record<string, unknown>[] }
+    expect(opt.animationDurationUpdate).toBe(0)
+    for (const s of opt.series) expect(s.animationDurationUpdate).toBe(0)
+    w.unmount()
+  })
+
+  it("屏级 provide('anaEntered') 已为真(段控 / 抽屉 / v-if 重挂)→ 首挂就走更新相,永不重播入场", async () => {
+    const w = mount(AnaEChart, {
+      props: { option: { series: [{ type: 'bar', data: [1] }] } },
+      global: { provide: { anaEntered: ref(true) } },
+    })
+    await flushPromises()
+    const opt = h.chart.setOption.mock.calls[0][0] as { series: Record<string, unknown>[] }
+    expect(opt.series[0].animationDuration).toBe(0)
+    w.unmount()
   })
 })
 

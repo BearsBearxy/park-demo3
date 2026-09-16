@@ -3,6 +3,8 @@
 // 新屏 pv-meter-analysis 的口径完全不同(不是搬过去,是重做),它有自己的 pvMeterAna.logic.spec.ts;
 // 其中「损耗为负 = 计量异常」这一条被接进了新屏的数据质量通道,没有随删丢掉。
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, nextYm, phaseMonthly, phaseSummaries } from './pvRoi.logic'
 
@@ -59,5 +61,23 @@ describe('phaseSummaries / phaseMonthly', () => {
     const [c] = phaseSummaries([phase('p3')], records)
     expect(c).toMatchObject({ months: 0, cum: 0, annual: 0, share: 0 })
     expect(phaseMonthly(records, 'p1').map((r) => r.ym)).toEqual(['2025-01', '2025-02'])
+  })
+})
+
+// ── C6-01 首进骨架:整区转圈换真版式骨架,块高逐块钉住它顶替的那块 ──
+// 骨架是模板里的静态几何,没有可跑的逻辑;能坏的只有「有人改了图的 :height / 加了张卡,
+// 骨架没跟着改」—— 那一刻骨架与真版式不再等高,硬切回来就是位移。所以断言钉两组坐标:
+// 骨架里每条 .fp-shim 的高(逐条、按出现顺序),以及它必须覆盖本屏图的 :height 字面值。
+describe('PvRoiView · C6-01 首进骨架(块高钉真版式)', () => {
+  it('❗不转圈;骨架块高逐条钉住,且盖住本屏图的 :height', () => {
+    const src = readFileSync(join(__dirname, 'PvRoiView.vue'), 'utf8')
+    expect(src, '版式已知不许转圈').not.toContain('page-spin')
+    expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="roi2-page ana-skel"')
+    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px/g)].map((m) => +m[1])
+    expect(shim).toEqual([20, 300, 20, 300, 20, 300, 20, 300])
+    const charts = [...src.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    // 四张卡各:卡头 20 + 300。s4 两卡真内容矮于 300,栅格行高由同排 s8 定,骨架同排也留 300
+    expect(charts).toEqual([300, 300])
+    expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })
 })

@@ -100,7 +100,37 @@ function onFr(e: Event) {
       </template>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44(.ak-h-ic 40 /
+         标题行 20 + 4 + 副标行 20)、结论条一行 20、卡头 20(.av2-card-h 下距 8 合 28)、
+         三张图 300 / 300 / 250(各自 :height 字面值)、系数滑杆一行 20。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <div v-if="loading" class="ak-page ana-skel">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"></span>
+          <div>
+            <div class="fp-shim" style="height: 20px; width: 200px"></div>
+            <div class="fp-shim" style="height: 20px; width: 340px; margin-top: 4px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="av2-card bev-concl"><div class="fp-shim" style="height: 20px; width: 60%"></div></div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+          <div class="fp-shim" style="height: 20px; margin: 8px 2px 2px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="!be" class="ak-page">
       <div class="ak-head"><div class="ak-h-l"><span class="ak-h-ic"><component :is="iconFor('scale-3d')" :size="20" /></span>

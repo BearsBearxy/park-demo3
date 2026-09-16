@@ -319,16 +319,19 @@ onBeforeUnmount(() => {
   background: var(--surface-white); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); box-shadow: var(--shadow-pop);
   text-align: left; white-space: normal;
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .rva-pop-h { font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 6px; }
 .rva-pop-b { margin: 0; font-size: var(--fs-label); color: var(--text-primary); line-height: 1.6; }
 
 /* 确认卡:与 FPReviewDialog 同一套尺寸/阴影,只是没有输入框(PAGE-BEHAVIOR-SPEC §2 居中弹卡)。 */
 .rva-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
-             display: grid; place-items: center; }
+             display: grid; place-items: center;
+             opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .rva-card { width: min(432px, 92vw); padding: 20px; box-sizing: border-box;
             background: var(--surface-white); border-radius: var(--radius-xl);
-            box-shadow: 0 18px 52px rgba(28, 28, 28, .24); font-family: var(--font-sans); }
+            box-shadow: 0 18px 52px rgba(28, 28, 28, .24); font-family: var(--font-sans);
+            animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .rva-title { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .rva-hint { margin: 8px 0 0; font-size: var(--fs-label); color: var(--text-secondary); line-height: 1.6; }
 .rva-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }

@@ -407,8 +407,10 @@ describe('分析层文案门禁', () => {
 
   it('❗F7:cases 清单完整性——全仓「插值槽」(.ana-read/.ana-ref 除插值外没有第二个字符)数量,'
     + '必须与 READ_SLOTS/REF_SLOTS 登记的槽位数逐一相等,漏登记一个新插值槽就当场红', () => {
-    const pureRead = pureInterpolationSlotCount(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)
-    const pureRef = pureInterpolationSlotCount(/class="ana-ref"[^>]*>([\s\S]*?)<\/p>/g)
+    // 类名用 [^"]* 收尾:C5-11 把「有↔无」的那几句改成常驻占位 `class="ana-read hold"`,
+    // 句子还在、还登记在 READ_SLOTS 里,只是类名多了一个词 —— 钉死 class="ana-read" 会把它漏数。
+    const pureRead = pureInterpolationSlotCount(/class="ana-read[^"]*"[^>]*>([\s\S]*?)<\/p>/g)
+    const pureRef = pureInterpolationSlotCount(/class="ana-ref[^"]*"[^>]*>([\s\S]*?)<\/p>/g)
     expect(pureRead, `全仓 ${pureRead} 处纯插值 .ana-read,READ_SLOTS 只登记了 ${READ_SLOTS.length} 个槽位`)
       .toBe(READ_SLOTS.length)
     expect(pureRef, `全仓 ${pureRef} 处纯插值 .ana-ref,REF_SLOTS 只登记了 ${REF_SLOTS.length} 个槽位`)

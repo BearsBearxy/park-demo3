@@ -7,13 +7,14 @@
 // §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
 // 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
 // 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
 import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import '@/components/ana/ana.css'
 import Select from '@/components/ds/Select.vue'
 
@@ -21,6 +22,9 @@ const props = defineProps<{
   compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
   periodMode?: 'full' | 'year' | 'none'   // 期间语义(不传 = 'full' 零变化)
   scopeChip?: string                      // periodMode='none' 时的口径徽章文案
+  // 屏在途(C5-02 / C5-12):亮 sticky 工具条上那条 2px 线。**传 useDeferredFlag 的结果**,
+  // 不要直接传 loading —— 否则快响应时闪一下。旧内容自己退让(.fp-stale)由屏管,这里只管信号。
+  busy?: boolean
 }>()
 
 const pmode = computed(() => props.periodMode ?? 'full')
@@ -33,6 +37,11 @@ const cmp = props.compare ? useCompare(props.compare) : null
 
 const period = usePeriod()
 const loaded = ref(false)
+
+// 屏级首绘标志(C6-02):图表挂载时读它决定走入场相还是更新相 —— 首批图在同一 tick 里全看到
+// false 走 320 首绘,随后 AnaEChart 在 nextTick 置真,此后段控 / 粒度 / 抽屉 / v-if 重挂的图
+// 一律走更新相,**永不重播入场**。一处 provide 覆盖全屏,比每张图手写 :entrance 少 54 处改动。
+provide('anaEntered', ref(false))
 const asof = computed(() => period.months.value[period.months.value.length - 1] ?? '—')
 
 onMounted(async () => {
@@ -98,6 +107,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
        在屏根摘掉 base.css 的 800px 屏级地板;18+1 屏全部以本壳为根,一处摘全层。 -->
   <div class="anx-shell fp-fluid">
     <div class="anx-tools">
+      <!-- 进度线挂在 sticky 工具条上:它是 .fp-stale 宿主的**兄弟**(放进宿主里会被 opacity .42
+           + blur 一起糊掉),且 sticky 本身就是定位祖先,滚到哪儿都看得见。20 屏共用这一条。 -->
+      <FPLoadBar :on="!!busy" />
       <!-- 期间控制('none' 整体隐藏,改显 scopeChip 口径徽章;'year' 隐藏粒度切换与月下拉) -->
       <div v-if="pmode !== 'none'" class="anx-period">
         <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />期间</span>
@@ -115,7 +127,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
                   :model-value="String(period.sel.value.year)"
                   @update:model-value="period.setYear(+$event)" />
         </div>
-        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-selw" style="width: 92px">
+        <!-- 按年时月下拉**占位不可见**而不是 v-if 插拔:拔掉它右边的步进钮会整组左移 92px,
+             换一次粒度抖一次(C5-01 ④)。visibility:hidden 同时把它移出 tab 序。 -->
+        <div v-if="pmode === 'full'" class="anx-selw" :class="{ 'anx-hid': period.sel.value.gran !== 'month' }" style="width: 92px">
           <Select size="sm" :disabled="!period.years.value.length"
                   :options="period.monthNumsOf(period.sel.value.year).map(m => ({ value: String(m), label: `${m}月` }))"
                   :model-value="String(period.sel.value.month)"
@@ -189,8 +203,7 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
     <div v-if="$slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
 
     <div class="anx-body">
-      <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
-      <slot v-else />
+      <slot />
     </div>
   </div>
 </template>

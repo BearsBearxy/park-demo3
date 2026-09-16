@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
 import { useTabsStore } from '@/stores/tabs'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { useViewport } from '@/composables/useViewport'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import IconRail from '@/components/shell/IconRail.vue'
 import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
@@ -27,6 +30,10 @@ const MobileNavDrawer = defineAsyncComponent(() => import('@/components/shell/mo
 const CommandPalette = defineAsyncComponent(() => import('@/components/shell/CommandPalette.vue'))
 
 const ui = useUiStore()
+// 导航进度条:过 200ms 门才亮(预热命中的绝大多数导航全程静默),退场立刻。
+// storeToRefs:useDeferredFlag 收的是 Ref,直接传 ui.navigating 会丢响应性。
+const { navigating } = storeToRefs(ui)
+const navShown = useDeferredFlag(navigating)
 const reloadPage = () => window.location.reload()
 
 // ── 档位(RESPONSIVE-LAYOUT-SPEC §3/§4)──
@@ -148,8 +155,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
-      <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(PAGE-BEHAVIOR-SPEC §1.5) -->
-      <div v-if="ui.navigating" class="fp-nav-bar" aria-hidden="true" />
       <template v-if="tier !== 's'">
         <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
         <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
@@ -162,6 +167,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
         <slot />
       </main>
       <div v-if="tier === 's'" class="fp-mbn-slot"><MobileBottomNav /></div>
+      <!-- 导航进度条:chunk 下载完才 confirm 导航,这条是那段空窗里唯一的反馈(PAGE-BEHAVIOR-SPEC §1.5)。
+           放 .fp-main-card 最后一个子节点:.fp-tabstrip 是 position:relative,DOM 靠后才画得到它上面 -->
+      <FPLoadBar :on="navShown" />
     </div>
   </div>
 
@@ -208,7 +216,10 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 /* ── 全局网络错误 toast ── */
 .fp-net-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:400;
   display:flex; align-items:center; gap:10px; max-width:min(560px,90vw); padding:10px 14px;
-  background:var(--ink-900); color:#fff; border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.32); font-size:13px; }
+  background:var(--ink-900); color:#fff; border-radius:var(--radius-md); box-shadow:0 12px 32px rgba(28,28,28,.32); font-size:13px;
+  /* 入场只淡不 rise:元素自身 translateX(-50%) 居中,rise 的 transform 帧会盖掉它,
+     forwards 停在 translateY(0) scale(1) 会把整条永久钉到右半边。关闭仍是 v-if 瞬时。 */
+  opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .fp-net-toast .msg { min-width:0; }
 .fp-net-toast .act { flex:0 0 auto; height:26px; padding:0 10px; border:1px solid rgba(255,255,255,.35); border-radius:var(--radius-sm);
   background:transparent; color:#fff; font-size:12px; cursor:pointer; }
@@ -266,26 +277,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   overflow: hidden;
   /* 给进度条做定位参照;已有 overflow:hidden,绝对定位子元素会被裁进圆角内 */
   position: relative;
-}
-
-/* ── 导航进度条 ── */
-/* 绝对定位而非 flex 子项:作为兄弟节点插进这个 column flex 会把 TabStrip 整体下推 2px,
-   出现/消失各抖一次 —— 正是 PAGE-BEHAVIOR-SPEC §1.4 禁止的布局位移。 */
-.fp-nav-bar {
-  position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  z-index: 20; /* P4 z-index 令牌化时改成 var(--z-sticky) */
-  overflow: hidden;
-  pointer-events: none;
-}
-/* 不定长进度:导航时长不可预估,用往返滑块表示「在动」而非表示进度百分比 */
-.fp-nav-bar::after {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 36%;
-  background: var(--hue-blue);
-  animation: fp-nav-slide 1.1s ease-in-out infinite;
-}
-@keyframes fp-nav-slide {
-  from { left: -36%; }
-  to   { left: 100%; }
 }
 
 /* content area */

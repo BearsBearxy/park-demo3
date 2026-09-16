@@ -78,5 +78,8 @@ function onClick(e: MouseEvent) {
 .ds-iconbtn[data-variant="soft"]:hover:not(:disabled):not([data-active])       { --ds-ib-bg: var(--ink-100); }
 .ds-iconbtn[data-variant="outline"]:hover:not(:disabled):not([data-active])    { --ds-ib-bg: var(--surface-card); }
 
+/* C2-02 按压:同 Button 的变量换档。[data-active] 是常亮选中态,再压读成两种选中,不压。 */
+.ds-iconbtn:active:not(:disabled):not([data-active]) { --ds-ib-bg: var(--ink-100); transition-duration: 0ms; }
+
 .ds-iconbtn:disabled { opacity: .4; cursor: not-allowed; }
 </style>

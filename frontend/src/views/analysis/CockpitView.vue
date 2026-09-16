@@ -8,6 +8,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { onReactivated } from '@/composables/onReactivated'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
@@ -45,6 +46,7 @@ const pnl = ref<PnlSummary | null>(null)
 // 上一年:只给逐月预测带用(把去年尾月接到横轴左边,今年 1 月才有三个在前的点)。
 // 取不到就是 null —— 老园区第一年没有上一年很正常,不能因此让整屏出错。
 const prevPnl = ref<PnlSummary | null>(null)
+const prevLoading = ref(false)   // 上一年那一趟单独的在途标志(动效稿 C5-12,只点亮进度线)
 const collects = ref<CollectRate[]>([])
 const s10Phase = ref<S10PhaseMonthly | null>(null)
 const ledgerRows = ref<AnalysisLedgerRow[]>([])
@@ -66,10 +68,18 @@ watch(year, (y) => {
     .catch(() => { if (t === token) pnl.value = null })
     .finally(() => { if (t === token) pnlLoading.value = false })
   // 上一年单独取,失败/为空都只让预测带退回本年口径,不进 pnlLoading,不拖住整屏。
+  // prevLoading 只喂工具条那条进度线(动效稿 C5-12):当前数据是真的、可读可点,只缺预测带的早几个月,
+  // 不给任何内容挂 .fp-stale;到数那一帧带与 gapNote 瞬现。
+  prevLoading.value = true
   fetchPnlSummary(y - 1)
     .then((v) => { if (t === token) prevPnl.value = v })
     .catch(() => { if (t === token) prevPnl.value = null })
+    .finally(() => { if (t === token) prevLoading.value = false })
 }, { immediate: true })
+// 追加拉取 + 换年重取共用一条线:过 200ms 门才亮、到数立刻灭(useDeferredFlag)。
+const busy = useDeferredFlag(computed(() => pnlLoading.value || prevLoading.value))
+// 退让只认换年那一路(C5-02 ③):prevLoading 是追加拉取,当前数据是真的,只点亮进度线不退让(C5-12)。
+const staleShown = useDeferredFlag(pnlLoading)
 
 async function reload() {
   try {
@@ -310,7 +320,7 @@ const conclusion = computed(() => buildConclusion(
 
 <template>
   <!-- §五:月敏感屏(full);月锚回退横幅 + 年空态见主区 -->
-  <AnaShell :compare="['mom', 'budget']" period-mode="full">
+  <AnaShell :compare="['mom', 'budget']" period-mode="full" :busy="busy">
     <template #tools>
       <span class="cv2-name"><component :is="iconFor('gauge')" :size="15" />经营驾驶舱</span>
     </template>
@@ -341,7 +351,35 @@ const conclusion = computed(() => buildConclusion(
       <!-- 前后对照瓦(故意留着):护栏修复前的口径,12 月冲回无条件计入年度收入 -->
     </template>
 
-    <div v-if="!ready || pnlLoading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。每块骨架的高 = 它顶替的那张图的 :height 字面值
+         (主图 300 · 构成环 300 · 预测带 280 · 第二排三张 250),卡头 20 + .av2-card-h 的 8 下边距;
+         KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。
+         结论条与取期横幅随数据才出,首进期无处可钉,它们那一段位移照实留着。
+         主图卡与预测带卡的读数句是常驻的(.ana-read/.ana-ref 行盒 20 由 --lh-snug 定,与字号无关),
+         骨架照 8+20 / 2+20 钉上,不钉的话数据到了下面整片下沉。
+         **门只认首进**(!pnl):换年那一路旧年内容留在原地退让(C5-02),不许整片塌回骨架 —— 那是
+         「一次交互两个动的东西」(§1.7):正文整片消失 + 工具条进度线。 -->
+    <div v-if="!ready || (pnlLoading && !pnl)" class="av2-grid cv2-skel">
+      <div class="av2-card av2-s8">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+        <div class="fp-shim" style="height: 300px"></div>
+        <div class="fp-shim" style="height: 20px; width: 60%; margin-top: 8px"></div>
+        <div class="fp-shim" style="height: 20px; width: 45%; margin-top: 2px"></div>
+      </div>
+      <div class="av2-card av2-s4">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+        <div class="fp-shim" style="height: 300px"></div>
+      </div>
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+        <div class="fp-shim" style="height: 280px"></div>
+        <div class="fp-shim" style="height: 20px; width: 50%; margin-top: 2px"></div>
+      </div>
+      <div v-for="i in 3" :key="i" class="av2-card av2-s4">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+        <div class="fp-shim" style="height: 250px"></div>
+      </div>
+    </div>
     <!-- §五策略3:所选年无损益附表 → 主区整体空态(主数据类 KPI 保留于上方,禁止沿用旧年图表) -->
     <AnaEmpty v-else-if="pnlEmpty" :label="year + ' 年损益附表未录入'"
       hint="驾驶舱主区依赖损益附表 1~5;切换年份或先录入该年数据(在租租户等主数据 KPI 不受影响)"
@@ -364,7 +402,9 @@ const conclusion = computed(() => buildConclusion(
           </span>
         </template>
       </div>
-      <div class="av2-grid">
+      <!-- 换年在途:旧年内容留在原地退让,进度线在 sticky 工具条上(C5-02 ③④)。
+           data-stale-host 常挂 —— 类摘掉后仍有 transition-property,退场才是 200,不挂就是硬切。 -->
+      <div class="av2-grid" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <!-- 主图 s8:收入柱+利润线 -->
       <div class="av2-card av2-s8">
         <div class="av2-card-h">
@@ -541,8 +581,9 @@ const conclusion = computed(() => buildConclusion(
 .cv2-all:hover { text-decoration: underline; }
 /* 弹层 */
 /* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
-.cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; }
-.cv2-modal { background: var(--surface-white); border-radius: 14px; box-shadow: 0 12px 40px rgba(28, 28, 28, 0.22); padding: 16px 18px; width: min(620px, 92vw); max-height: 80vh; overflow: auto; }
+/* 开:遮罩淡入 + 卡上浮,与 FPDrawer 同款 200(C5-06);关:v-if 瞬时 */
+.cv2-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28, 28, 28, 0.35); display: grid; place-items: center; opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
+.cv2-modal { background: var(--surface-white); border-radius: 14px; box-shadow: 0 12px 40px rgba(28, 28, 28, 0.22); padding: 16px 18px; width: min(620px, 92vw); max-height: 80vh; overflow: auto; animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .cv2-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .cv2-modal-h .t { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .cv2-modal-h .x { border: none; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; padding: 4px; border-radius: 6px; }

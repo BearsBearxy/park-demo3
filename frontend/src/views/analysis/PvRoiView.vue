@@ -135,7 +135,30 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         :note="hitYm ? '预估回收点 ' + hitYm : '按年化外推'" />
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。本屏无页头,块高逐块照它顶替的那块 ——
+         卡头 20(.av2-card-h 下距 8 合 28)、两张图各 300(:height 字面值);
+         同排的 s4 卡真内容比 300 矮,栅格行高由 s8 决定,骨架同排也留 300。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <div v-if="loading" class="roi2-page ana-skel">
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 150px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 170px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+      </div>
+    </div>
     <div v-else class="roi2-page">
       <!-- 空态:附表6 无任何记账月 → 深链录入屏,不画假图 -->
       <AnaEmpty
@@ -161,7 +184,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
             <div class="roi2-big">{{ rpct(tot.recovery) }}</div>
-            <div class="roi2-bar"><div class="roi2-bar-fill" :style="{ width: (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
+            <div class="roi2-bar"><div class="roi2-bar-fill" :style="{ '--pct': (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
             <div class="roi2-rows">
               <div class="r"><span class="k">累计电费收益</span><span class="v">{{ finWan(tot.cum) }}</span></div>
               <div class="r"><span class="k">其中 自消纳</span><span class="v">{{ finWan(tot.selfAmt) }}</span></div>
@@ -219,7 +242,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 /* 回收进度卡 */
 .roi2-big { font-size: var(--fs-display); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
 .roi2-bar { height: 8px; border-radius: var(--radius-full); background: var(--ink-100); overflow: hidden; margin: 10px 0 14px; }
-.roi2-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--hue-blue); }
+.roi2-bar-fill { height: 100%; width: 100%; border-radius: var(--radius-full); background: var(--hue-blue); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0 round var(--radius-full)); transition: clip-path var(--dur-base) var(--ease-standard); }
 .roi2-rows { display: flex; flex-direction: column; gap: 8px; }
 .roi2-rows .r { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .roi2-rows .k { font-size: var(--fs-micro); color: var(--text-muted); }

@@ -242,7 +242,28 @@ const spreadOption = computed<object>(() => ({
 <template>
   <!-- §五:年敏感屏(指标为年度月序),只年控件 -->
   <AnaShell period-mode="year">
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
+         页头 44;结论条 .ea-concl 一行 20(与真版式同一批类,padding / margin-bottom 由 CSS 给);
+         卡头 20 + margin 8 = 28;图块 = 各 AnaEChart 的 :height(300 / 300 / 300)。
+         .ea-simbar 随 hasSim 出没,骨架不占它的位。数据到了原地硬切,不做淡入。 -->
+    <div v-if="loading" class="ak-page ak-skel">
+      <div class="fp-shim" style="height: 44px; width: 300px"></div>
+      <div class="av2-card ea-concl"><div class="fp-shim" style="height: 20px; width: 70%"></div></div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+      </div>
+    </div>
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <div v-else class="ak-page">
       <div class="ak-head">

@@ -1,6 +1,8 @@
 // fin-balance v2 纯函数单测:双环 option 数据/配色同源、gauge ≤2 与语义色阈值。
 import { describe, expect, it } from 'vitest'
 import { DONUT_PAL, currentTone, debtTone, donutOption, gaugesOption, sliceColor } from './finBalance.logic'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 describe('donutOption / sliceColor', () => {
   it('切片 name/value 保序,配色循环主题色板(HTML 图例同源取色)', () => {
@@ -83,5 +85,25 @@ describe('gaugesOption 超量程标记', () => {
     expect(track(o, 1)).toBe('#378ADD26')
     expect(o.series[1].axisLabel.show).toBe(true)
     expect(track(o, 0)).toBe('rgba(28,28,28,.08)')
+  })
+})
+
+// 点环扇区高亮那 2s(C5-08)。屏要 mock 四个报表接口才挂得起来,而要钉的是「flashLabel 有几个出口」——
+// 写死在模板与 watch 里的常量,不经过运行时,照 anaScreenSkel.spec.ts / pvMeterAnaScreen.spec.ts 的写法读源码。
+describe('资产负债屏 · .fb-flash 的复位出口(C5-08)', () => {
+  const src = readFileSync(join(__dirname, 'FinBalanceView.vue'), 'utf8')
+
+  it('❗animationcancel 与 animationend 同绑 —— KeepAlive 停用只发 cancel,类留着回签就白亮 2s', () => {
+    const expr = 'flashLabel === r.label && (flashLabel = null)'
+    expect(src, '缺 animationend 出口').toContain('@animationend="' + expr + '"')
+    expect(src, '缺 animationcancel 出口:切页签走人时 flashLabel 卡在真值').toContain('@animationcancel="' + expr + '"')
+  })
+
+  it('❗换公司/换期先清 —— 那一行被 v-if 卸掉后两个事件都不会再来', () => {
+    // 2s 内换公司命中 catch 或新口径没有资产负债表 → hasBs 假 → 整块 av2-grid 卸载。
+    // 切回有数据的期时那一行重新插进文档,用户没点扇区却又蓝闪 2s。
+    const body = src.split('watch([cid, reportYm], async ([c, rym]) => {')[1]?.slice(0, 400) ?? ''
+    expect(body, '取数 watch 不在了').toBeTruthy()
+    expect(body, '取数 watch 里没清 flashLabel').toContain('flashLabel.value = null')
   })
 })

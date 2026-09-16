@@ -45,3 +45,37 @@ describe('AnaShell periodMode 三态', () => {
     expect(w.text()).toContain('口径')
   })
 })
+
+// C5-01 ④ / C5-02 ④:工具条上两处零位移的形状。
+describe('AnaShell 工具条:不插拔、不糊', () => {
+  it('❗按年:月下拉占位不可见,不是 v-if 插拔(拔掉它右边的步进钮会整组左移 92px)', async () => {
+    const w = mount(AnaShell)
+    await flushPromises()
+    usePeriod().setGran('year')
+    await flushPromises()
+    expect(w.findAll('.anx-selw').length, '月下拉的位子被拔掉了').toBe(2)
+    expect(w.findAll('.anx-selw')[1].classes()).toContain('anx-hid')
+    usePeriod().setGran('month')
+    await flushPromises()
+    expect(w.findAll('.anx-selw')[1].classes()).not.toContain('anx-hid')
+  })
+
+  it('❗busy:进度线挂在 sticky 工具条上 —— 是内容宿主的兄弟而不是子节点(原则 8)', async () => {
+    const w = mount(AnaShell, { props: { busy: true }, slots: { default: '<div class="probe" />' } })
+    await flushPromises()
+    expect(w.find('.anx-tools > .fp-lb').exists(), '工具条上没有进度线').toBe(true)
+    expect(w.find('.anx-body .fp-lb').exists(), '进度线跑进内容区了').toBe(false)
+    await w.setProps({ busy: false })
+    expect(w.find('.fp-lb').exists()).toBe(false)
+  })
+})
+
+// C6-01 ①:壳不再拦内容 —— loaded 只表示 fetchAvailableMonths 完成,与各屏数据无关,
+// 各屏 loading 初值 true 自己出骨架;壳转圈接力屏转圈是全站最大位移。
+describe('AnaShell 首次进屏', () => {
+  it('❗月份列表未到时 slot 已在 DOM 里,壳不出转圈(壳做不了屏专属骨架)', () => {
+    const w = mount(AnaShell, { slots: { default: '<div class="probe" />' } })
+    expect(w.find('.anx-body > .probe').exists(), 'slot 被 loaded 门挡住了').toBe(true)
+    expect(w.find('.page-loading').exists(), '壳又出转圈了').toBe(false)
+  })
+})

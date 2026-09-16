@@ -38,6 +38,7 @@ import PvControlChart from './PvControlChart.vue'
 import PvBetaChart from './PvBetaChart.vue'
 import PvDetailTable from './PvDetailTable.vue'
 import { usePeriod } from '@/analysis/usePeriod'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { fnum } from '@/components/ana/anaFmt'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
 import { paramsApi } from '@/api/params'
@@ -69,6 +70,16 @@ const prevReadings = ref<PvReadingDTO[] | undefined>(undefined)
 const crit = ref<Criteria>({ ...DEFAULT_CRITERIA })
 const loading = ref(true)
 const failed = ref(false)
+// 换年在途(C5-02):旧内容留在原地退让,不卸载。过 200ms 门槛才亮、退场立刻 —— 本地后端几十毫秒
+// 就回来的那种请求全程静默,闪一下比不显示更晃眼
+const staleShown = useDeferredFlag(loading)
+// 上一年那趟单独记(C5-12):它只补 A2 最右一列,主数据仍是当前的 —— 不给任何内容挂 .fp-stale,
+// 只点亮工具条上那条 2px 线
+const prevLoading = ref(false)
+const busy = useDeferredFlag(computed(() => loading.value || prevLoading.value))
+/** 已经画在屏上的那一年。year 立刻变(下拉是控件回显),这个等 readings 一起换 ——
+ *  不分开的话换年会先拿新年刻度配旧年读数画一遍空的再填满,等于把入场重播了一次(C5-02 ①) */
+const loadedYear = ref(year.value)
 let seq = 0
 
 // 默认停在**账面量** —— 板数录进来之前只有这一档是全真数。第三档「高级分析」要点才进得去。
@@ -79,8 +90,10 @@ const CRIT_KEYS = [
   'pv_crit_yield_ratio', 'pv_band_sigma', 'pv_band_run',
 ] as const
 
-/** 判据线来自计费参数 —— 屏上写的必须是**当前生效的那个数**,取不到就回落默认,线屏照常出 */
-async function loadCrit(y: number) {
+/** 判据线来自计费参数 —— 屏上写的必须是**当前生效的那个数**,取不到就回落默认,线屏照常出。
+ *  返回值由 load() 和读数同一句提交(C5-02 ①):自己写 crit.value 的话,参数接口比整年抄表先回来
+ *  就会出现「旧年的图配新年的判据」—— 带上下沿、出范围天数、芯片颜色全按新阈值重算 */
+async function loadCrit(y: number): Promise<Criteria> {
   try {
     const rows = await paramsApi.list(`${y}-12`, 'all', { key: CRIT_KEYS.join(',') })
     const at = new Map(rows.filter(r => r.scope === '').map(r => [r.key, r.value]))
@@ -88,7 +101,7 @@ async function loadCrit(y: number) {
       const v = at.get(k)
       return typeof v === 'number' && isFinite(v) ? v : d
     }
-    crit.value = {
+    return {
       anchorHours: n('pv_yield_anchor_h', DEFAULT_CRITERIA.anchorHours),
       coverMonth: n('pv_crit_cover_month', DEFAULT_CRITERIA.coverMonth),
       ledger: n('pv_crit_ledger', DEFAULT_CRITERIA.ledger),
@@ -97,7 +110,7 @@ async function loadCrit(y: number) {
       bandRun: n('pv_band_run', DEFAULT_CRITERIA.bandRun),
       minOnlineDays: DEFAULT_CRITERIA.minOnlineDays,
     }
-  } catch { /* 用默认值,屏照常出 */ }
+  } catch { return { ...DEFAULT_CRITERIA } /* 用默认值,屏照常出 */ }
 }
 
 /** 上一年的抄表只有「绝对水平」档 A2 最右那列「比去年」要。别处不打这个接口。 */
@@ -109,13 +122,16 @@ async function load(y: number) {
   loading.value = true
   failed.value = false
   try {
-    const [sts, rds] = await Promise.all([
+    const [sts, rds, cr] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : pvMeterApi.stations(),
       pvMeterApi.readingsYear(y),
+      loadCrit(y),
     ])
     if (my !== seq) return
     stations.value = sts
     readings.value = rds
+    crit.value = cr
+    loadedYear.value = y
     prevReadings.value = undefined
     if (needPrev()) await loadPrev(y, my)
   } catch {
@@ -125,16 +141,20 @@ async function load(y: number) {
   }
 }
 async function loadPrev(y: number, my: number) {
+  prevLoading.value = true
   try {
     const prev = await pvMeterApi.readingsYear(y - 1)
     if (my === seq) prevReadings.value = prev
   } catch {
     if (my === seq) prevReadings.value = undefined
+  } finally {
+    // ponytail: 不按 seq 守卫 —— 两趟叠在一起时早灭一条 2px 线没人看得出,卡在真值上却是一条永不熄的线
+    prevLoading.value = false
   }
 }
-onMounted(() => { void loadCrit(year.value); void load(year.value) })
+onMounted(() => { void load(year.value) })
 // 只有换**年**才重新取数;切月 / 切粒度都在同一份整年数据上重算,不打接口
-watch(year, (y) => { void loadCrit(y); void load(y) })
+watch(year, (y) => { void load(y) })
 watch(section, () => {
   if (needPrev() && prevReadings.value === undefined && !loading.value) void loadPrev(year.value, seq)
 })
@@ -143,7 +163,7 @@ watch(section, () => {
 const snapInput = computed<SnapshotInput | null>(() => {
   if (!readings.value.length) return null
   return {
-    year: year.value,
+    year: loadedYear.value,
     gran: gran.value,
     month: month.value || undefined,
     stations: stations.value.map(s => ({
@@ -316,14 +336,30 @@ onDeactivated(() => { drawerOpen.value = false })
 </script>
 
 <template>
-  <AnaShell period-mode="full">
+  <AnaShell period-mode="full" :busy="busy">
+    <!-- 瓦片门只看 snap:换年时旧瓦留在原位(整排先消失再出现是 C5-02 要修的那个形状);
+         首进(!snap)由 .anx-kpis 的 min-height 94 兜空行 -->
     <template #kpis>
-      <template v-if="!loading && snap">
+      <template v-if="snap">
         <AnaKpiTile v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" :note-tone="k.noteTone" />
       </template>
     </template>
 
-    <div v-if="loading" class="pma-hold"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高全照 V4 §2.1 与代码里钉死的数 ——
+         卡头 20 + 芯片行 34(PvChips.vue:117)+ 大图区 272(上距 12 + 图头 24 + 画布 236)
+         + .pma-div + 判据脚两行 16 + 2 + 16;段控 32;.pma-sec 1200(档内首卡 B7 361)。
+         KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入。 -->
+    <div v-if="!snap && loading" class="pma-skel">
+      <div class="av2-card pma-main">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+        <div class="pma-skel-chips"><div class="fp-shim" style="height: 26px; width: 260px"></div></div>
+        <div class="fp-shim" style="height: 260px; margin-top: 12px"></div>
+        <div class="pma-div"></div>
+        <div class="fp-shim" style="height: 34px; width: 70%"></div>
+      </div>
+      <div class="pma-seg"><div class="fp-shim" style="height: 32px; width: 320px"></div></div>
+      <div class="pma-sec"><div class="fp-shim" style="height: 361px"></div></div>
+    </div>
     <AnaEmpty v-else-if="failed" label="分栋抄表数据没加载成功" hint="刷新重试；仍不行就到分栋抄表屏看数据在不在" />
     <AnaEmpty
       v-else-if="!snap"
@@ -333,7 +369,10 @@ onDeactivated(() => { drawerOpen.value = false })
       to-text="去录入分栋抄表"
     />
 
-    <div v-else class="pma-body">
+    <!-- 换年在途:旧内容留在原地退让(C5-02)。data-stale-host 让类摘掉之后退场也是 200ms,
+         否则数据回来那一帧是硬切;pointer-events:none 是安全项 —— 旧行还挂着时在上面录一格,
+         保存走的是旧行 id。进度线不放这里面(会被 opacity .42 + blur 一起糊掉),挂在外壳工具条上。 -->
+    <div v-else class="pma-body" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <!-- ══ B1 主卡:芯片 + 单栋大图 + B2 判据脚 ══ -->
       <div class="av2-card pma-main">
         <div class="av2-card-h">
@@ -386,7 +425,7 @@ onDeactivated(() => { drawerOpen.value = false })
               <div class="av2-card-h">
                 <span class="t">年等效小时</span>
                 <span class="hint">每千瓦装机一年发了多少度，比标杆多多少</span>
-                <span class="pma-badge">整年口径 · 与 {{ year - 1 }} 比</span>
+                <span class="pma-badge">整年口径 · 与 {{ snap.year - 1 }} 比</span>
               </div>
               <PvAnchorBars :data="anchor" :sel-id="selId" @pick="pickStation" />
             </div>
@@ -470,10 +509,11 @@ onDeactivated(() => { drawerOpen.value = false })
 </template>
 
 <style scoped>
-.pma-hold { display: flex; align-items: center; justify-content: center; min-height: 240px; }
-
-/* 主卡 → 段控 → 档内卡片,间距 12(V4 §2.1) */
-.pma-body { display: flex; flex-direction: column; gap: 12px; }
+/* 主卡 → 段控 → 档内卡片,间距 12(V4 §2.1)。
+   骨架与真版式共用这一个盒子模型,块高各自照它顶替的那块钉死 —— 硬切回来零位移 */
+.pma-body, .pma-skel { display: flex; flex-direction: column; gap: 12px; }
+/* 芯片行照 PvChips.vue:117 的 .pvc 钉高,骨架条在行内居中 */
+.pma-skel-chips { height: 34px; padding: 4px 0; box-sizing: border-box; display: flex; align-items: center; }
 .pma-div { border-top: 1px solid var(--divider); margin: 8px 0 6px; }
 
 /* B2 判据脚:只读回显,mono 11px。固定两行、每行钉高 16 不折行 —— 主卡高度不随选中栋 / 档位变。
@@ -514,7 +554,9 @@ onDeactivated(() => { drawerOpen.value = false })
 .pma-ib {
   width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border-subtle);
   background: var(--surface-white); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
 }
+.pma-ib:active { background: var(--ink-100); transition-duration: 0ms; }
 
 .pma-lk {
   background: none; border: 0; padding: 0; cursor: pointer;

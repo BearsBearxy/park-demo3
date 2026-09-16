@@ -44,5 +44,7 @@ const emit = defineEmits<{ (e: "click"): void }>();
 
 .ds-popitem:hover { background: var(--bg-hover); }
 
+.ds-popitem:active { background: var(--ink-100); transition-duration: 0ms; }
+
 .ds-popitem-ic { display: inline-flex; }
 </style>

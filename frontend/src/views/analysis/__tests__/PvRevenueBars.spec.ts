@@ -139,4 +139,15 @@ describe('PvRevenueBars 悬停与图注', () => {
     const full = mount(PvRevenueBars, { props: { data: { ...data(), through: null }, selId: null } })
     expect(full.find('.ana-ref').text()).not.toContain('数据到')
   })
+
+  it('❗C6-25：两段条 / 条内值 / 合计在 g.prb-data 里，期别点与栋名留组外', () => {
+    const w = mount(PvRevenueBars, { props: { data: data(), selId: 2 } })
+    const g = w.find('g.prb-data')
+    expect([g.findAll('rect.prb-self').length, g.findAll('text.prb-tot').length]).toEqual([6, 6])
+    expect([g.find('.prb-name').exists(), g.find('.prb-dot').exists()]).toEqual([false, false])
+    expect([w.findAll('.prb-name').length, w.findAll('.prb-dot').length]).toEqual([6, 6])
+    // 选中栋名加粗不受拆组影响（C6-18 瞬变）；AnaShell 之外 entered 默认真 = 不擦
+    expect(w.findAll('.prb-name-sel')).toHaveLength(1)
+    expect(g.classes()).not.toContain('first')
+  })
 })

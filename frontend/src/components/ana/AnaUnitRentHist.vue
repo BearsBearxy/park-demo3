@@ -3,6 +3,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { unitRentHistGeo, type HistBinIn } from '@/views/analysis/unitRentHistChart.logic'
 import type { ChartBox } from '@/views/analysis/forecastChart.logic'
+import { useEnterPhase } from './anaMotion'
+import './ana.css'   // @keyframes fp-wipe
 
 const props = withDefaults(defineProps<{
   bins: HistBinIn[] | null
@@ -25,6 +27,9 @@ onMounted(() => {
   w.value = Math.round(host.value.clientWidth) || 700
 })
 onBeforeUnmount(() => ro?.disconnect())
+
+// 首绘擦入(C6-25):换租户是实体变,更新瞬换,不做交叉淡变。
+const first = useEnterPhase(host)
 
 const box = computed<ChartBox>(() => ({ width: w.value, height: props.height, padL: 40, padR: 20, padT: 30, padB: 46 }))
 const geo = computed(() => unitRentHistGeo(
@@ -77,8 +82,11 @@ const tipX = computed(() => {
       <rect v-if="geo.bandRect" :x="geo.bandRect.x" :y="box.padT" :width="geo.bandRect.w"
         :height="box.height - box.padT - box.padB" class="auh-bandrect" />
 
-      <rect v-for="(b, i) in geo.bars" :key="'b' + i" :x="b.x" :y="b.y" :width="b.w" :height="b.h"
-        :class="['auh-bar', b.overflow ? 'auh-bar-of' : b.inBand ? 'auh-bar-in' : 'auh-bar-out', hoverI === i ? 'auh-bar-hot' : '']" />
+      <!-- 数据组:首进屏擦入一次(C6-25),柱自左依次露出;轴 / 网格 / 底色块 / 分位线留在组外 -->
+      <g class="auh-data" :class="{ first }" @animationend.self="first = false">
+        <rect v-for="(b, i) in geo.bars" :key="'b' + i" :x="b.x" :y="b.y" :width="b.w" :height="b.h"
+          :class="['auh-bar', b.overflow ? 'auh-bar-of' : b.inBand ? 'auh-bar-in' : 'auh-bar-out', hoverI === i ? 'auh-bar-hot' : '']" />
+      </g>
 
       <!-- p10 / 中位 / p90 -->
       <template v-for="m in geo.marks" :key="m.kind">
@@ -110,6 +118,8 @@ const tipX = computed(() => {
 <style scoped>
 .auh-host { width: 100%; }
 .auh { display: block; }
+/* 首绘:数据组自左擦出一次(C6-25);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.auh-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .auh-grid { stroke: #EEF0F4; stroke-width: 1; }
 .auh-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
 .auh-bandrect { fill: #DCEAFB; fill-opacity: 0.55; }

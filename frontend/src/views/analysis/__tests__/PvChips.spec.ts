@@ -2,6 +2,8 @@
 // 分组与排序是 pvAnaV4.logic.ts chipGroups 的事(那边有单测),这里喂一份手写的分组,只看长相与交互。
 // 夹具四态俱全:连续低于 / 连续高于 / 读不出 ×2 / 选中(没有连续段)/ 收起的普通栋 / 未投产。
 import { describe, it, expect, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineComponent, h, nextTick } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import PvChips from '../PvChips.vue'
@@ -32,6 +34,8 @@ afterEach(() => { while (live.length) live.pop()!.unmount() })
 
 const mk = (groups = GROUPS) => mount(PvChips, { props: { groups } })
 const css = (w: { element: Element }) => (w.element as HTMLElement).style
+/** 芯片颜色走自定义属性(C2-05):样式表的 :active 才压得过内联 */
+const v = (w: { element: Element }, name: string) => (w.element as HTMLElement).style.getPropertyValue(name)
 
 describe('PvChips', () => {
   it('常显芯片按分组顺序出,徽标 = 出范围天数;读不出的徽标写「读不出」', () => {
@@ -39,20 +43,21 @@ describe('PvChips', () => {
     expect(btns.map(b => b.text())).toEqual(['F座25 天', 'G座5 天', 'B座1 天', '9栋读不出', '10栋读不出'])
   })
 
-  it('底色:连续低于 = 红 10% 底,连续高于 = 琥珀 10% 底 + 琥珀字,无边;选中 = --control-solid 实底 600', () => {
+  it('底色走 --chip-*:连续低于 = 红 10% 底,连续高于 = 琥珀 10% 底 + 琥珀字,无边;选中 = --control-solid 实底', () => {
     const [f, g, b] = mk().findAll('.pvc > button.chip')
-    expect([css(f).background, css(f).borderColor]).toEqual(['rgba(226, 75, 74, 0.1)', 'transparent'])
+    expect([v(f, '--chip-bg'), v(f, '--chip-bc')]).toEqual(['rgba(226,75,74,0.1)', 'transparent'])
     expect(css(f.find('.bd')).background).toBe('rgba(226, 75, 74, 0.16)')
-    expect([css(g).background, css(g).color]).toEqual(['rgba(239, 159, 39, 0.1)', 'rgb(133, 79, 11)'])
+    expect([v(g, '--chip-bg'), v(g, '--chip-fg')]).toEqual(['rgba(239,159,39,0.1)', '#854F0B'])
     expect(css(g.find('.bd')).background).toBe('rgba(239, 159, 39, 0.2)')
-    expect([css(b).background, css(b).fontWeight]).toEqual(['var(--control-solid)', '600'])
-    expect(css(f).fontWeight).toBe('500')
+    expect(v(b, '--chip-bg')).toBe('var(--control-solid)')
+    // ❗选中不再加粗:实底白字已够,600 会让芯片变宽推后面的芯片(C2-05 ③)
+    expect([css(b).fontWeight, css(f).fontWeight]).toEqual(['500', '500'])
   })
 
   it('读不出:灰虚线边;对照 —— 其余态都是实线边', () => {
     const btns = mk().findAll('.pvc > button.chip')
     expect(btns.map(b => css(b).borderStyle)).toEqual(['solid', 'solid', 'solid', 'dashed', 'dashed'])
-    expect(css(btns[3]).borderColor).toBe('var(--border-strong)')
+    expect(v(btns[3], '--chip-bc')).toBe('var(--border-strong)')
   })
 
   it('期别点按期别三色;点芯片发 pick(id),读不出的也能点', async () => {
@@ -98,6 +103,20 @@ describe('PvChips', () => {
     expect(style).not.toContain('right: 0')
   })
 
+  it('❗按压那一档底色写 background,不写 --chip-bg —— 自定义属性是逐芯片内联设的,样式表压不过(C2-05)', () => {
+    // 级联事实:内联 style 属性 origin 永远赢普通 author 规则。
+    // :active 若改 --chip-bg,内联那份 --chip-bg 照旧生效 → 一行十几枚芯片按下去零反馈,
+    // 只有没内联的「其余 N 栋 ▾」会变 —— 同一行一枚有反馈、其余没有。
+    const src = readFileSync(join(__dirname, '../PvChips.vue'), 'utf8')
+    const rule = src.split('.chip:active:not([aria-pressed="true"]):not(:disabled) {')[1]?.split('}')[0]
+    expect(rule, '按压规则不在了').toBeTruthy()
+    expect(rule).toMatch(/background:\s*var\(--ink-100\)/)
+    expect(rule, '按压改自定义属性 = 被内联压过,一帧都不生效').not.toContain('--chip-bg')
+    expect(rule, '按下要瞬到').toContain('transition-duration: 0ms')
+    // 前提:background 只在样式表里,内联不设 —— 内联一旦写 background 这条规则又输回去
+    expect(mk().findAll('.pvc > button.chip').map(b => css(b).background)).toEqual(['', '', '', '', ''])
+  })
+
   it('「其余 N 栋 ▾」数的是收起的栋;没有可收的就不出这个按钮', () => {
     expect(mk().find('button.more').text()).toBe('其余 4 栋 ▾')
     expect(mk({ ...GROUPS, folded: [] }).find('button.more').exists()).toBe(false)
@@ -111,7 +130,7 @@ describe('PvChips', () => {
     const panel = w.find('.ds-popover-panel')
     expect(panel.findAll('button.chip').map(b => b.text())).toEqual(['C、D座2 天', 'E座1 天', '8栋', '创业大厦'])
     const unborn = panel.findAll('button.chip')[3]
-    expect([unborn.attributes('disabled'), css(unborn).color, css(unborn).fontWeight]).toEqual(['', 'var(--text-disabled)', '400'])
+    expect([unborn.attributes('disabled'), v(unborn, '--chip-fg'), css(unborn).fontWeight]).toEqual(['', 'var(--text-disabled)', '400'])
     await unborn.trigger('click')
     expect(w.emitted('pick')).toBeUndefined()
     await panel.findAll('button.chip')[1].trigger('click')

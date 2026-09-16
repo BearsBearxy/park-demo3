@@ -184,14 +184,14 @@ const boxUnit = computed(() => (boxMode.value === 'rent' ? '万' : '㎡'))
 const boxOption = computed<object>(() => ({
   grid: { left: 56, right: 18, top: 16, bottom: 26 },
   tooltip: {
-    formatter: (p: { seriesIndex?: number; dataIndex?: number; data?: { tenant?: string; value?: [number, number] } }) => {
+    formatter: (p: { seriesIndex?: number; dataIndex?: number; data?: { name?: string; value?: [number, number] } }) => {
       const u = boxUnit.value
       if (p.seriesIndex === 1) {   // 中位横线 → 组统计
         const r = boxRows.value[p.dataIndex ?? -1]
         if (!r) return ''
         return `${r.name}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}`
       }
-      return p.data?.tenant ? `${p.data.tenant}<br/>${p.data.value?.[1]}${u}` : ''
+      return p.data?.name ? `${p.data.name}<br/>${p.data.value?.[1]}${u}` : ''
     },
   },
   // x 用数值轴承载抖动,整数刻度映射期区名
@@ -205,12 +205,13 @@ const boxOption = computed<object>(() => ({
     {
       type: 'scatter', symbolSize: 7,
       itemStyle: { color: 'rgba(133,183,235,.55)', borderColor: '#378ADD', borderWidth: 1 },
-      data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ value: [pt.x, pt.y], tenant: pt.tenant }))),
+      // C6-16 契约:scatter 数据项必须带 name(稳定实体键)—— 无 name 时按 rawIndex diff,换期/换筛选会把第 i 个点从租户 A 形变到租户 B
+      data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ name: pt.tenant, value: [pt.x, pt.y] }))),
     },
     {   // 中位横线(rect 扁标记)
       type: 'scatter', symbol: 'rect', symbolSize: [34, 3],
       itemStyle: { color: '#1C1C1C' },
-      data: boxRows.value.map((r, i) => [i, r.stats[2]]),
+      data: boxRows.value.map((r, i) => ({ name: r.name, value: [i, r.stats[2]] })),   // 同上:中位横线按期区名对齐
     },
   ],
 }))
@@ -254,7 +255,39 @@ const listRows = computed(() => {
       </template>
     </template>
 
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250),
+         卡头 20(+ .av2-card-h 下距 8 = 28)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
+         (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×15 + gap 14(.ak-bar-rows)、
+         租户清单 LIST_N=12 行 ×38 + 表头 30(.ak-tbl td height 38;表头 = 行盒 20 + padding-bottom 9 + 下边框 1)。数据到了原地硬切,不做淡入、不错峰。 -->
+    <div v-if="!loaded" class="ak-page tp2-skel">
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+          <div class="fp-shim" style="height: 112px; margin-top: 4px"></div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 110px"></div></div>
+          <div class="fp-shim" style="height: 220px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 130px"></div></div>
+          <div class="fp-shim" style="height: 131px"></div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 150px"></div></div>
+          <div class="fp-shim" style="height: 486px"></div>
+        </div>
+      </div>
+    </div>
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -338,7 +371,7 @@ const listRows = computed(() => {
           <div class="ak-bar-rows">
             <div v-for="l in lifeCounts" :key="l.label" class="ak-bar-row">
               <span class="ak-bar-name">{{ l.label }}</span>
-              <div class="ak-bar-track"><div class="ak-bar-fill" :style="{ width: (l.value / lifeMax) * 100 + '%', background: l.tone }"></div></div>
+              <div class="ak-bar-track"><div class="ak-bar-fill" :style="{ '--pct': (l.value / lifeMax) * 100 + '%', background: l.tone }"></div></div>
               <span class="ak-bar-val">{{ l.value }} 份</span>
             </div>
           </div>

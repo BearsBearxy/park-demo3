@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   box-sizing: border-box;
   opacity: 0;
-  animation: fp-fade-in var(--dur-base) var(--ease-standard, ease) forwards;
+  animation: fp-fade-in var(--dur-base) var(--ease-out) forwards;
 }
 
 .fp-dwr {
@@ -110,7 +110,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   transform: translateY(8px) scale(.985);
   opacity: 0;
-  animation: fp-rise-in var(--dur-base) var(--ease-standard, ease) forwards;
+  animation: fp-rise-in var(--dur-base) var(--ease-out) forwards;
 }
 /* 恒定高度档:高度钉在 max-height 上限,内容少不塌缩(fixedHeight prop) */
 .fp-dwr--fixed { height: min(85vh, 760px); }

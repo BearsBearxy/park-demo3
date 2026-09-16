@@ -88,9 +88,6 @@ function handleClick(val: string) {
         fontSize: 'var(--fs-body)',
         fontWeight: 'var(--fw-medium)',
         cursor: 'pointer',
-        boxShadow: it.value === active ? 'var(--shadow-pill)' : 'none',
-        transition:
-          'background var(--dur-fast) var(--ease-standard), color var(--dur-fast)',
         whiteSpace: 'nowrap',
       }"
       @click="handleClick(it.value)"
@@ -105,7 +102,19 @@ function handleClick(val: string) {
 /* 未选中项此前没有任何悬停反馈,鼠标移上去毫无变化。
    ⚠ 悬停只提文字色(--text-muted → --text-secondary),不加底色:
    加底色会和「选中态的白底」撞在一起,读成两个都被选中了。 */
-.ds-seg-item { --ds-seg-bg: transparent; --ds-seg-fg: var(--text-muted); }
-.ds-seg-item[data-on] { --ds-seg-bg: var(--surface-white); --ds-seg-fg: var(--text-primary); }
+/* C2-03:transition 与 box-shadow 从内联 :style 迁到这里 —— 内联 transition 让下面
+   :active 的 transition-duration: 0ms 永远输。白药丸阴影此前不在过渡列表里,瞬现。 */
+.ds-seg-item {
+  --ds-seg-bg: transparent;
+  --ds-seg-fg: var(--text-muted);
+  box-shadow: none;
+  transition: background var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ds-seg-item[data-on] { --ds-seg-bg: var(--surface-white); --ds-seg-fg: var(--text-primary); box-shadow: var(--shadow-pill); }
 .ds-seg-item:hover:not([data-on]) { --ds-seg-fg: var(--text-secondary); }
+/* 按压:底色换一档,0ms 瞬到;选中项不压(已是选中态)。背景写在内联 style 里读的是
+   --ds-seg-bg,所以换变量而不是写 background。 */
+.ds-seg-item:active:not([data-on]):not(:disabled) { --ds-seg-bg: var(--ink-100); transition-duration: 0ms; }
 </style>

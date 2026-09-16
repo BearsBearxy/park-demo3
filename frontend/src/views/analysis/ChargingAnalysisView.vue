@@ -42,10 +42,12 @@ const usage = ref<CpPowerUsageDTO[]>([])
 const loading = ref(true)
 const failed = ref(false)
 let seq = 0
-async function load(y: number) {
+/** silent = 回签那一趟(动效稿 C1-06):读屏切回来是「恢复现场」,旧内容留屏、到数原地瞬换 ——
+ *  不置 loading(整区转圈 = 把恢复现场做成重进一次),失败也不翻成错误卡(屏上那份数据还是真的)。
+ *  首进与换年照旧置 loading。 */
+async function load(y: number, silent = false) {
   const my = ++seq
-  loading.value = true
-  failed.value = false
+  if (!silent) { loading.value = true; failed.value = false }
   try {
     const [sts, rds, pus] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : cpMeterApi.stations(),
@@ -56,8 +58,9 @@ async function load(y: number) {
     stations.value = sts
     readings.value = rds
     usage.value = pus
+    failed.value = false   // 静默重取成功 → 清掉上一趟的失败卡
   } catch {
-    if (my === seq) failed.value = true
+    if (my === seq && !silent) failed.value = true
   } finally {
     if (my === seq) loading.value = false
   }
@@ -73,7 +76,7 @@ onMounted(async () => {
 watch(year, (y) => { void load(y) })
 // 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
 // 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
-onReactivated(() => { void load(year.value) })
+onReactivated(() => { void load(year.value, true) })
 
 // ── 当前 tab 视角(前端过滤;logic 纯函数不认识 tab) ──
 const myStations = computed(() => stations.value.filter((s) => s.vehicleType === tab.value))
@@ -207,7 +210,39 @@ const lossOpt = computed<object>(() => ({
       </div>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44、结论条一行 20、
+         卡头 20(.av2-card-h 下距 8 合 28)、四张图 300 / 250 / 250 / 250(各自 :height 字面值)。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <div v-if="loading" class="ak-page ana-skel">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"></span>
+          <div>
+            <div class="fp-shim" style="height: 20px; width: 160px"></div>
+            <div class="fp-shim" style="height: 20px; width: 360px; margin-top: 4px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="av2-card ca-concl"><div class="fp-shim" style="height: 20px; width: 70%"></div></div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 220px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+      </div>
+    </div>
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <div v-else class="ak-page">
       <div class="ak-head">

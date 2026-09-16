@@ -5,7 +5,9 @@
 // 行序照 revenueBars() 给的(按合计降序),这里不重排。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase } from '@/components/ana/anaMotion'
 import { tipWidth } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { phaseName, type PvRevenueBarsProps } from './pvAnaV4.logic'
 
@@ -14,6 +16,8 @@ const props = defineProps<PvRevenueBarsProps>()
 const PL = 104, RIGHT = 84, TOP = 6, ROW = 27, BOTTOM = 26
 const WAN = 10000
 const { el, width } = useWidth(999)
+// C6-25:默认档可能出现在首屏——挂载时屏级 entered 为假且在视口内才擦入 320,否则瞬到;换期重排瞬移
+const first = useEnterPhase(el)
 const n = computed(() => props.data.rows.length)
 const H = computed(() => TOP + n.value * ROW + BOTTOM)
 const bottom = computed(() => TOP + n.value * ROW)
@@ -90,15 +94,20 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
           <line class="prb-gl" :x1="g.x" :x2="g.x" :y1="TOP" :y2="bottom" />
           <text class="prb-ax" :x="g.x" :y="H - 10" text-anchor="middle">{{ g.v }}</text>
         </template>
-        <template v-for="b in bars" :key="b.r.id">
+        <!-- 期别点与栋名留在数据组外,v-for 拆两段(C6-25) -->
+        <template v-for="b in bars" :key="'n' + b.r.id">
           <circle class="prb-dot" cx="10" :cy="b.top + 13.5" r="3.5" :fill="b.dot" />
           <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" :y="b.top + 17.5">{{ b.r.name }}</text>
-          <rect class="prb-self" :data-id="b.r.id" :x="PL" :y="b.top + 5.5" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
-          <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" :y="b.top + 5.5" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
-          <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" :y="b.top + 17.5">{{ b.selfT }}</text>
-          <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" :y="b.top + 17.5">{{ b.gridT }}</text>
-          <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" :y="b.top + 17.5">{{ b.totT }}</text>
         </template>
+        <g class="prb-data" :class="{ first }" @animationend.self="first = false">
+          <template v-for="b in bars" :key="b.r.id">
+            <rect class="prb-self" :data-id="b.r.id" :x="PL" :y="b.top + 5.5" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
+            <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" :y="b.top + 5.5" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
+            <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" :y="b.top + 17.5">{{ b.selfT }}</text>
+            <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" :y="b.top + 17.5">{{ b.gridT }}</text>
+            <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" :y="b.top + 17.5">{{ b.totT }}</text>
+          </template>
+        </g>
         <line class="prb-axl" :x1="PL" :x2="width - RIGHT" :y1="bottom" :y2="bottom" />
       </svg>
       <div v-for="(b, i) in bars" :key="'r' + b.r.id" class="prb-row" :data-id="b.r.id"
@@ -124,6 +133,8 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
 <style scoped>
 .prb-plot { position: relative; width: 100%; }
 .prb-svg { display: block; }
+/* 首绘:数据组自左擦出一次(C6-25);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.prb-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .prb-row { position: absolute; left: 0; right: 0; border-radius: 4px; }
 .prb-gl { stroke: var(--ink-100); stroke-width: 1; }
 .prb-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }

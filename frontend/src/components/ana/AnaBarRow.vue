@@ -26,7 +26,7 @@ const valText = computed(() => props.value.toFixed(props.value % 1 ? 1 : 0))
     <!-- 定位壳:track 有 overflow:hidden 会裁掉出界文字,目标小字只能挂壳上 -->
     <div class="ak-bar-twrap">
       <div class="ak-bar-track">
-        <div class="ak-bar-fill" :style="{ width: wPct + '%', background: fill }"></div>
+        <div class="ak-bar-fill" :style="{ '--pct': wPct + '%', background: fill }"></div>
         <span v-if="tPct != null" class="ak-bar-target" :style="{ left: tPct + '%' }"></span>
       </div>
       <!-- 触屏无 hover 取不到 title → 改常驻小字贴目标线;绝对定位不占行高(LAYOUT-STABILITY:等高) -->

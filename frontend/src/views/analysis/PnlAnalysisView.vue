@@ -18,6 +18,7 @@ import { useCompare } from '@/analysis/useCompare'
 import { fetchPnlSummary, type PnlSummary } from '@/analysis/anaData'
 import { finMoney, finWan } from '@/utils/finFmt'
 import { fnum } from '@/components/ana/anaFmt'
+import { DUR, EASE } from '@/components/ana/anaMotion'
 import { momShift, schedMonthly, schedSpark, schedTotals, structStack } from './pnlAnalysis.logic'
 
 const router = useRouter()
@@ -100,6 +101,8 @@ const mainOpt = computed<object>(() => {
       data: momShift(c.isExp ? d.cost : d.pnl), symbol: 'none',
       lineStyle: { type: 'dashed', width: 1.5, color: 'rgba(28,28,28,.35)' },
       itemStyle: { color: 'rgba(28,28,28,.35)' },
+      // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
+      animationDuration: DUR.update, animationEasing: EASE.enter,
     })
   }
   return {
@@ -145,7 +148,34 @@ const structOpt = computed<object>(() => {
       </template>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。迷你卡复用 .pa2-mini 的盒子,块高照真版式钉死
+         (图标 30 + 迷你线 26 + 脚 15);两张图各照自己的 :height 300;
+         KPI 行由 .anx-kpis 的 min-height 94 兜位。数据到了原地硬切,不做淡入、卡片不错峰。 -->
+    <div v-if="loading" class="pa2-page pa2-skel">
+      <div class="pa2-minis">
+        <div v-for="i in 5" :key="i" class="pa2-mini">
+          <div class="hd">
+            <div class="fp-shim" style="width: 30px; height: 30px; flex: 0 0 auto"></div>
+            <div>
+              <div class="fp-shim" style="height: 11px; width: 30px"></div>
+              <div class="fp-shim" style="height: 12px; width: 84px; margin-top: 4px"></div>
+            </div>
+          </div>
+          <div class="fp-shim" style="height: 26px"></div>
+          <div class="fp-shim" style="height: 15px; width: 70%"></div>
+        </div>
+      </div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+      </div>
+    </div>
     <div v-else-if="!recordedCount" class="pa2-page">
       <AnaEmpty :label="year + ' 年五张损益附表均无数据'" hint="录入附表1-5(租金/用电/用水/运管/费用)后,这里展示趋势与结构"
         to="/rent-pnl" to-text="去录入损益附表" />
@@ -204,8 +234,10 @@ const structOpt = computed<object>(() => {
 
 /* 迷你趋势卡条(5 卡等分,窄屏折行) */
 .pa2-minis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-.pa2-mini { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; box-sizing: border-box; text-align: left; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; cursor: pointer; font-family: var(--font-sans); transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
+.pa2-mini { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; box-sizing: border-box; text-align: left; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 8px; cursor: pointer; font-family: var(--font-sans); transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); }
 .pa2-mini:hover { border-color: var(--border-strong); }
+/* 白卡压成浅灰卡,边框不动(C2-08) */
+.pa2-mini:active:not(.on):not(.empty) { background: var(--surface-card); transition-duration: 0ms; }
 .pa2-mini.on { border-color: var(--hue-blue); box-shadow: 0 0 0 1px var(--hue-blue) inset; }
 .pa2-mini.empty { cursor: default; background: transparent; border-style: dashed; }
 .pa2-mini .hd { display: flex; align-items: center; gap: 8px; }
@@ -224,4 +256,8 @@ const structOpt = computed<object>(() => {
 .pa2-mini .emp { display: flex; align-items: center; gap: 6px; color: var(--text-disabled); font-size: 12px; padding: 4px 0; }
 .pa2-mini .emp .go { margin-left: auto; border: none; background: transparent; font-size: var(--fs-micro); color: var(--text-link); cursor: pointer; font-family: var(--font-sans); padding: 0; }
 .pa2-mini .emp .go:hover { text-decoration: underline; }
+
+/* 首进骨架(C6-01)的迷你卡复用上面的盒子,但它不可点 —— 去掉手型与悬停描边 */
+.pa2-skel .pa2-mini { cursor: default; }
+.pa2-skel .pa2-mini:hover { border-color: var(--border-subtle); }
 </style>

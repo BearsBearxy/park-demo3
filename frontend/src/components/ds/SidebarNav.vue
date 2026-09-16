@@ -57,7 +57,6 @@ const ROW_BASE: Record<string, string> = {
   cursor: "pointer",
   textAlign: "left",
   width: "100%",
-  transition: "background var(--dur-fast) var(--ease-standard)",
   boxSizing: "border-box",
 };
 
@@ -279,8 +278,12 @@ export default defineComponent({
    绕过 Vue 响应式,任何触发重渲染的状态变化都会把它冲掉;而且为了不让 hover 盖掉选中行,
    还得在两个回调里各写一次 if (!on) 守卫。现在背景走 --fp-sbnav-bg,
    选中与悬停各一条 CSS 规则,守卫也不需要了。 */
-.fp-sbnav-row { --fp-sbnav-bg: transparent; }
+/* 背景过渡从 ROW_BASE 的内联 style 迁到这里(C2-04):内联 transition 优先级最高,
+   会让 :active 那条 transition-duration: 0ms 永远输。 */
+.fp-sbnav-row { --fp-sbnav-bg: transparent; transition: background var(--dur-fast) var(--ease-standard); }
 .fp-sbnav-row:hover { --fp-sbnav-bg: var(--bg-hover); }
+/* 按下 0ms 压深,松开随上面那条 120 回弹。排在 [data-on] 之前 = 选中行按下不压(与稿一致)。 */
+.fp-sbnav-row:active { --fp-sbnav-bg: var(--ink-100); transition-duration: 0ms; }
 .fp-sbnav-row[data-on] { --fp-sbnav-bg: var(--bg-hover); }
 
 /* 组标题按钮:颜色走变量,inline 的 color 才能被 :hover 盖到(与行的 --fp-sbnav-bg 同一招)。 */

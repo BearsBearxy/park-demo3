@@ -63,13 +63,16 @@ export function mobilizeOption(option: object, isS: boolean): object {
 // 把 themeRiver/sunburst/candlestick/registerMap 这些一个没用到的全拖进首屏。
 // ⚠ 新增图表类型要改的是 echartsBundle.ts,不是这里。
 // jsdom 无 canvas:组件测试 vi.mock('../echartsBundle')(见 __tests__/anaEChart.spec.ts 契约)。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { registerFpAnaTheme } from './anaTheme'
+import { motionize } from './anaMotion'
 
 // 最小实例形状(不顶层 import echarts 类型,保住懒加载;mock 也按此契约)
 interface ChartInst {
   setOption(option: object, opts?: { notMerge?: boolean }): void
   resize(): void
+  getWidth(): number
+  getHeight(): number
   dispose(): void
   on(event: string, handler: (params: unknown) => void): void
 }
@@ -87,7 +90,10 @@ interface ChartInst {
  *  ⚠ 真正的约束是**同一行**,不是同一栅格类 —— s8 与 s4 会并排在一行(8+4=12),
  *    这两张的高度必须相等。加新图时按「它和谁并排」选档,别按「它是几列宽」选。
  *  自查:scratchpad/row_check.py 模拟 12 列换行,逐行比高度,应输出 0。 */
-const props = withDefaults(defineProps<{ option: object; height?: number }>(), { height: 250 })
+// entrance:可选覆盖首绘相(不传 = 由屏级 entered 决定)。default: undefined 是必须写的 ——
+// Vue 对**声明为 Boolean 的缺省 prop**会强制转成 false(resolvePropValue 的 isAbsent && !hasDefault),
+// 那样 props.entrance ?? ... 永远短路成 false,54 张图全部退化成更新相、零入场。
+const props = withDefaults(defineProps<{ option: object; height?: number; entrance?: boolean }>(), { height: 250, entrance: undefined })
 const emit = defineEmits<{ 'chart-click': [params: unknown] }>()
 
 // S 档(视口 ≤600)图高降档:xl/lg→260、md→220、sm→180、xs→150(RESPONSIVE-LAYOUT-SPEC §5.2)。
@@ -99,12 +105,44 @@ const S_HEIGHT: Record<number, number> = { 440: 260, 300: 260, 250: 220, 200: 18
 const isS = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
 const chartHeight = computed(() => (isS ? S_HEIGHT[props.height] ?? props.height : props.height))
 
+// 减动效:与上面的 isS 同法,挂载时 matchMedia 判一次(canvas 绕过 motion.css 的全局 1ms 规则,
+// 是全站唯一不响应系统设置的动效源)。
+const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// 首绘相由**屏级**标志决定,不是每张图自己猜:AnaShell provide('anaEntered'),这里 inject。
+// 段控 / 粒度 / 抽屉 / v-if 重挂时 entered 已真 → 自动走更新相,**永不重播入场**。
+// 没有 AnaShell 的宿主(单测、独立用)拿默认 ref(false) → 当作首进屏。
+const entered = inject<Ref<boolean>>('anaEntered', ref(false))
+let enterPhase = false
+// 实例级:挂载时 option 为空 {}、数据随后才到的图(Breakeven 等)首次真数据仍走 enter。
+let painted = false
+
 const el = ref<HTMLDivElement | null>(null)
 const ready = ref(false)
 let chart: ChartInst | null = null
 let ro: ResizeObserver | null = null
 
+// 只画看得见的:离屏 / 后台标签页那次 setOption 关动画瞬到,滚到时已画好,不补播(不加 IntersectionObserver)。
+// KeepAlive 停用的页签 rect 全 0,也走这条。
+const visible = () => {
+  const r = el.value?.getBoundingClientRect()
+  return !!r && !document.hidden && r.bottom > 0 && r.top < innerHeight
+}
+
+// setOption 前过 mobilizeOption + motionize(onMounted 与 watch 同一通道,别只改一处)
+const apply = (o: object) => {
+  if (!chart) return
+  const opt = mobilizeOption(o, isS) as Record<string, unknown>
+  const list = Array.isArray(opt.series) ? opt.series : opt.series ? [opt.series] : []
+  const phase = enterPhase && !painted ? 'enter' : 'update'
+  if (list.length) painted = true
+  chart.setOption(motionize(opt, phase, { reduced, isS, visible: visible() }), { notMerge: true })
+}
+
 onMounted(async () => {
+  // 第一句,await 之前同步快照:同一 tick 里挂载的图全看到 entered 为假,nextTick 后置真。
+  enterPhase = props.entrance ?? !entered.value
+  nextTick(() => { entered.value = true })
   // 一次动态 import 拉整个装配好的包:单请求 + 摇树两头都要到(理由见 echartsBundle.ts 头注释)。
   // ⚠ 切忌把它提到文件顶层 import —— 那会把 echarts 拉回主包,连懒加载一起废掉。
   const ec = await import('./echartsBundle')
@@ -126,15 +164,24 @@ onMounted(async () => {
   //    canvas 路径(>600)零变化。选择收口在 echartsBundle,这里不用感知。
   const dpr = Math.max(2, Math.ceil(window.devicePixelRatio || 1))
   chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
-  // setOption 前过 mobilizeOption(onMounted 与 watch 同一通道,别只改一处)
-  chart.setOption(mobilizeOption(props.option, isS), { notMerge: true })
+  apply(props.option)
   chart.on('click', (params) => emit('chart-click', params))
-  ro = new ResizeObserver(() => chart?.resize())
+  // 尺寸**真变**才 resize:observe 之后引擎会立刻空回调一次,resize() 以 animation:{duration:0}
+  // 的 payload 走 update(echarts.js:998-1003),payload 优先级最高(basicTransition.js:80-84)→
+  // el.attr 直设终态,首绘在首帧被截断为零。真窗口缩放仍会截断动画,接受,不补播。
+  // 空批次守卫:原生 RO 规范上不派发空 entries,但 polyfill / 测试替身会 —— 解构 entries[0] 再读
+  // contentRect 会在观察者任务里抛 TypeError,那一批所有图的 resize 一起被跳过且无人察觉。
+  ro = new ResizeObserver((es) => {
+    const r = es[0]?.contentRect
+    if (!r || !chart) return
+    const w = Math.round(r.width), h = Math.round(r.height)
+    if (w !== chart.getWidth() || h !== chart.getHeight()) chart.resize()
+  })
   ro.observe(el.value)
   ready.value = true
 })
 
-watch(() => props.option, (o) => { chart?.setOption(mobilizeOption(o, isS), { notMerge: true }) }, { deep: true })
+watch(() => props.option, apply, { deep: true })
 
 onBeforeUnmount(() => {
   ro?.disconnect(); ro = null

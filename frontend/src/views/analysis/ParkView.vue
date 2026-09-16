@@ -67,7 +67,9 @@ const rentableN = computed(() => buildings.value.filter((b) => b.rentableArea > 
 const byUnit = computed(() => (bSummary.value ? occByUnit(bSummary.value) : null))
 
 // ── KPI 条(spec §二.3:楼栋/在租/合同/月租总额;值与 v1 statItems 一致) ──
-const kpis = computed(() => (loading.value || failed.value ? [] : [
+// 首进/失败期不清空整排瓦片(C6-01):瓦片消失 = 下方整片先上提再下推。标签常驻、值写 '—'。
+const KPI_LABELS = ['楼栋数', '在租租户', '有效合同', '合同月租合计'] as const
+const kpis = computed(() => (loading.value || failed.value ? KPI_LABELS.map((label) => ({ label, value: '—' })) : [
   { label: '楼栋数', value: rows.value.length + ' 栋' },
   { label: '在租租户', value: fint(activeTenants.value) + ' 户' },
   { label: '有效合同', value: fint(live.value.length) + ' 份' },
@@ -205,7 +207,43 @@ const areaBarOption = computed(() => ({
       <AnaKpiTile v-for="k in kpis" :key="k.label" v-bind="k" />
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
+         页头 44;卡头 20 + margin 8 = 28;图块 = 各 AnaEChart 的 :height(300 / 300 / 300 / 250)。
+         TreeMap 卡与面积转换卡下面各有一条 .pk-legend(margin-top 8 + 行高 20 = 28);
+         租户明细卡 = .pk-tbl-wrap max-height 296 + .pk-sum(margin-top 8 + 20);
+         面积转换卡右栏 250 + legend 28 = 278 高于左栏两块指标 186,取 278。
+         KPI 行由 .anx-kpis min-height 94 + 常驻 '—' 瓦片兜位。数据到了原地硬切,不做淡入。 -->
+    <div v-if="loading" class="ak-page ak-skel">
+      <div class="fp-shim" style="height: 44px; width: 300px"></div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 180px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+          <div class="fp-shim" style="height: 20px; width: 60%; margin-top: 8px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 296px"></div>
+          <div class="fp-shim" style="height: 20px; width: 70%; margin-top: 8px"></div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+          <div class="fp-shim" style="height: 300px"></div>
+        </div>
+        <div class="av2-card pk-s2">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 80px"></div></div>
+          <div class="fp-shim" style="height: 86px"></div>
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 278px"></div>
+        </div>
+      </div>
+    </div>
     <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
     <div v-else class="ak-page">
       <div class="ak-head">

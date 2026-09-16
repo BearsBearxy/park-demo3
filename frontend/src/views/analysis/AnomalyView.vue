@@ -93,7 +93,9 @@ const energyOption = computed<object | null>(() => {
         markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('elec', t.elec) } },
       { name: '水费', type: 'line', data: t.water, smooth: true, symbolSize: 5, itemStyle: { color: '#5DCAA5' },
         markPoint: { symbol: 'circle', symbolSize: 9, itemStyle: { color: '#E24B4A' }, label: { show: false }, data: mkPts('water', t.water) } },
-    ],
+      // C6-16 ④:系列 name 恒定('电费'/'水费'/灰带)、月类目跨租户共享 → 换租户会按 name 形变出假中间数据。
+      // id 带租户键 → 新视图瞬换;序号是必需的,同 id 会撞 echarts idMap(Duplicated id),灰带底条 name 还是空串。
+    ].map((s, i) => ({ ...s, id: `elec-${i}-${t.name}` })),
   }
 })
 
@@ -117,8 +119,8 @@ const elecBandRef = computed<string>(() => elecBandRefOf(elecBandN.value))
 // ── 右面板:应收 vs 实收(台账各期) ──
 const ledBars = computed(() => (sel.value && inputs.value ? tenantLedgerBars(inputs.value.ledger, sel.value.name) : null))
 const ledgerOption = computed<object | null>(() => {
-  const d = ledBars.value
-  if (!d || !d.yms.length) return null
+  const d = ledBars.value, t = sel.value
+  if (!d || !t || !d.yms.length) return null
   return {
     grid: { left: 58, right: 16, top: 30, bottom: 24 },
     legend: { top: 0 },
@@ -128,7 +130,7 @@ const ledgerOption = computed<object | null>(() => {
     series: [
       { name: '应收', type: 'bar', data: d.recv, barMaxWidth: 34, itemStyle: { color: '#85B7EB', borderRadius: [3, 3, 0, 0] } },
       { name: '实收', type: 'bar', data: d.coll, barMaxWidth: 34, itemStyle: { color: '#378ADD', borderRadius: [3, 3, 0, 0] } },
-    ],
+    ].map((s, i) => ({ ...s, id: `led-${i}-${t.name}` })),   // C6-16 ⑤ 同 energyOption:name 恒定,'YYYY-MM' 类目随租户漂移
   }
 })
 
@@ -205,7 +207,36 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
       <AnaKpiTile label="能耗突变租户" :value="(model?.cards.spikeTenants ?? 0) + ' 户'" :note="`电/水费环比 >±${anaSettings.spikeTh}%`" />
     </template>
 
-    <div v-if="!ready" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
+         卡头 20 + .av2-card-h margin-bottom 8 = 28;左列 .mn-search 34(padding 6+6 + 边框 2 + 行高 20)
+         + margin-bottom 8,.mn-list max-height 560;右列两张图 = :height 250 / 200;
+         规则卡与园区级异常卡各留一行 .mn-rule 60(padding 9+9 + .tt 20 + margin 2 + .dt 20)——
+         条数随数据,骨架只兜「至少一行」。数据到了原地硬切,不做淡入。 -->
+    <div v-if="!ready" class="av2-grid ak-skel">
+      <div class="av2-card av2-s4 mn-listcard">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+        <div class="fp-shim" style="height: 34px; margin-bottom: 8px"></div>
+        <div class="fp-shim" style="height: 560px"></div>
+      </div>
+      <div class="av2-s8 mn-right">
+        <div class="av2-card">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 200px"></div></div>
+          <div class="fp-shim" style="height: 250px"></div>
+        </div>
+        <div class="av2-card">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 120px"></div></div>
+          <div class="fp-shim" style="height: 200px"></div>
+        </div>
+        <div class="av2-card">
+          <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 140px"></div></div>
+          <div class="fp-shim" style="height: 60px"></div>
+        </div>
+      </div>
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h"><div class="fp-shim" style="height: 20px; width: 160px"></div></div>
+        <div class="fp-shim" style="height: 60px"></div>
+      </div>
+    </div>
 
     <div v-else-if="!model || !model.list.length" class="av2-grid">
       <div class="av2-card av2-s12">
@@ -352,8 +383,9 @@ const sevIcon = (s: 'risk' | 'watch' | 'info'): string => (s === 'risk' ? 'alert
 .mn-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border-subtle); border-radius: 9px; padding: 6px 10px; margin-bottom: 8px; color: var(--text-muted); }
 .mn-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: var(--font-sans); font-size: var(--fs-label); color: var(--text-primary); }
 .mn-list { flex: 1; min-height: 0; overflow-y: auto; max-height: 560px; display: flex; flex-direction: column; gap: 4px; }
-.mn-row { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; border-radius: 9px; padding: 8px 9px; cursor: pointer; font-family: var(--font-sans); text-align: left; }
+.mn-row { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; border-radius: 9px; padding: 8px 9px; cursor: pointer; font-family: var(--font-sans); text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .mn-row:hover { background: var(--bg-hover); }
+.mn-row:active:not(.on) { background: var(--ink-100); transition-duration: 0ms; }
 .mn-row.on { background: var(--accent-blue); }
 .mn-row .score { flex: 0 0 34px; font-size: 15px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
 .mn-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }

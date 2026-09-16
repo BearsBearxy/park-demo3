@@ -4,6 +4,8 @@
 // 这个组件只负责画与交互:所有坐标由 forecastChart.logic.ts 的纯函数算好,便于逐条断言。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { forecastChartGeo, type ChartBox, type RollingRow } from '@/views/analysis/forecastChart.logic'
+import { useEnterPhase } from './anaMotion'
+import './ana.css'   // @keyframes fp-wipe
 
 const props = withDefaults(defineProps<{
   rows: RollingRow[] | null
@@ -25,6 +27,9 @@ onMounted(() => {
   w.value = Math.round(host.value.clientWidth) || 900
 })
 onBeforeUnmount(() => ro?.disconnect())
+
+// 首绘擦入(C6-25):与本屏 AnaEChart 读同一个 anaEntered —— 换年 / v-if 重挂时已真,自动瞬到。
+const first = useEnterPhase(host)
 
 const box = computed<ChartBox>(() => ({
   width: w.value, height: props.height, padL: 52, padR: 62, padT: 18, padB: 26,
@@ -109,35 +114,38 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
       <line v-for="t in geo.yTicks" :key="'g' + t.v" :x1="box.padL" :x2="box.width - box.padR" :y1="t.y" :y2="t.y" class="afc-grid" />
       <text v-for="t in geo.yTicks" :key="'y' + t.v" :x="box.padL - 10" :y="t.y + 4" class="afc-ylab">{{ t.label }}</text>
 
-      <!-- 逐月预测带:每个月的上下沿来自它自己那一次拟合(见 rollingForecastRows 头注) -->
-      <path v-for="(d, i) in geo.bandPaths" :key="'b' + i" :d="d" class="afc-band" />
-      <path v-if="geo.midPath" :d="geo.midPath" class="afc-mid" />
-
       <!-- 前几个月没有带,是算不出来,不是漏画了 —— 在图上说清楚,别让人以为是 bug -->
       <text v-if="gapNote" :x="box.padL + 4" :y="box.height - box.padB - 6" class="afc-note">{{ gapNote }}</text>
 
-      <!-- 已录入:实线 + 点(2026-09-12 按用户要求去掉线下渐变) -->
-      <path v-if="geo.linePath" :d="geo.linePath" class="afc-line" />
-      <circle v-for="d in geo.dots" :key="'d' + d.month" :cx="d.x" :cy="d.y" r="3.5" class="afc-dot" />
-
-      <!-- 「今天」分界:左边是录入的,右边是预测的 -->
+      <!-- 「今天」分界:左边是录入的,右边是预测的。分界线是尺子不是数据,留在数据组外先在(C6-25) -->
       <template v-if="geo.todayX != null">
         <line :x1="geo.todayX" :x2="geo.todayX" :y1="box.padT" :y2="box.height - box.padB" class="afc-today" />
         <text :x="geo.todayX + 5" :y="box.padT + 10" class="afc-todaylab">今天</text>
       </template>
 
-      <!-- 预测月:上下沿短横 + 竖线 + 空心中位点 + 右侧三个数 -->
-      <template v-if="geo.forecast && fRow">
-        <line :x1="geo.forecast.x" :x2="geo.forecast.x" :y1="geo.forecast.yHi" :y2="geo.forecast.yLo" class="afc-fbar" />
-        <line :x1="geo.forecast.x - 5" :x2="geo.forecast.x + 5" :y1="geo.forecast.yHi" :y2="geo.forecast.yHi" class="afc-fcap" />
-        <line :x1="geo.forecast.x - 5" :x2="geo.forecast.x + 5" :y1="geo.forecast.yLo" :y2="geo.forecast.yLo" class="afc-fcap" />
-        <circle :cx="geo.forecast.x" :cy="geo.forecast.yMid" r="4.5" class="afc-fdot" />
-        <text :x="geo.forecast.x + 9" :y="geo.forecast.yHi + 4" class="afc-fnum">{{ fint(fRow.hi as number) }}</text>
-        <text :x="geo.forecast.x + 9" :y="geo.forecast.yMid + 4" class="afc-fnum afc-fnum-mid">{{ fint(fRow.mid as number) }}</text>
-        <text :x="geo.forecast.x + 9" :y="geo.forecast.yLo + 4" class="afc-fnum">{{ fint(fRow.lo as number) }}</text>
-      </template>
-
       <text v-for="t in xShown" :key="'x' + t.month" :x="t.x" :y="box.height - box.padB + 17" class="afc-xlab">{{ t.label }}</text>
+
+      <!-- 数据组:首进屏擦入一次(C6-25),一张图一条动画;轴 / 网格 / 刻度字 / 图注留在组外 -->
+      <g class="afc-data" :class="{ first }" @animationend.self="first = false">
+        <!-- 逐月预测带:每个月的上下沿来自它自己那一次拟合(见 rollingForecastRows 头注) -->
+        <path v-for="(d, i) in geo.bandPaths" :key="'b' + i" :d="d" class="afc-band" />
+        <path v-if="geo.midPath" :d="geo.midPath" class="afc-mid" />
+
+        <!-- 已录入:实线 + 点(2026-09-12 按用户要求去掉线下渐变) -->
+        <path v-if="geo.linePath" :d="geo.linePath" class="afc-line" />
+        <circle v-for="d in geo.dots" :key="'d' + d.month" :cx="d.x" :cy="d.y" r="3.5" class="afc-dot" />
+
+        <!-- 预测月:上下沿短横 + 竖线 + 空心中位点 + 右侧三个数 -->
+        <template v-if="geo.forecast && fRow">
+          <line :x1="geo.forecast.x" :x2="geo.forecast.x" :y1="geo.forecast.yHi" :y2="geo.forecast.yLo" class="afc-fbar" />
+          <line :x1="geo.forecast.x - 5" :x2="geo.forecast.x + 5" :y1="geo.forecast.yHi" :y2="geo.forecast.yHi" class="afc-fcap" />
+          <line :x1="geo.forecast.x - 5" :x2="geo.forecast.x + 5" :y1="geo.forecast.yLo" :y2="geo.forecast.yLo" class="afc-fcap" />
+          <circle :cx="geo.forecast.x" :cy="geo.forecast.yMid" r="4.5" class="afc-fdot" />
+          <text :x="geo.forecast.x + 9" :y="geo.forecast.yHi + 4" class="afc-fnum">{{ fint(fRow.hi as number) }}</text>
+          <text :x="geo.forecast.x + 9" :y="geo.forecast.yMid + 4" class="afc-fnum afc-fnum-mid">{{ fint(fRow.mid as number) }}</text>
+          <text :x="geo.forecast.x + 9" :y="geo.forecast.yLo + 4" class="afc-fnum">{{ fint(fRow.lo as number) }}</text>
+        </template>
+      </g>
 
       <!-- 悬停:竖发丝 + 深色气泡(照稿的 tooltip pill) -->
       <template v-if="hoverTick && tipLines.length">
@@ -158,6 +166,8 @@ const tipH = computed(() => 12 + tipLines.value.length * 16)
 /* 取色自 Figma 稿(节点 2310:2628):主线 #4F46E5 / 浅带 #C7D2FE / 网格 #E5EAF0 / 轴标签 #94A3B8 / 气泡 #1E293B */
 .afc-host { width: 100%; }
 .afc { display: block; }
+/* 首绘:数据组自左擦出一次(C6-25);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.afc-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .afc-grid { stroke: #E5EAF0; stroke-width: 1; }
 .afc-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
 .afc-xlab { fill: #94A3B8; font-size: 11px; text-anchor: middle; }

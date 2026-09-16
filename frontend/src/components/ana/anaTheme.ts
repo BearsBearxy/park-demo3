@@ -2,6 +2,8 @@
 // 色板:蓝族主色 + teal/coral/amber 辅助 + 语义红;白底、细网格(var(--divider) 观感)、
 // tooltip 深底白字沿 .cz-tip 观感(背景 rgb(40,52,66)、圆角 9、字号 11)。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值(--divider=ink-100、--text-muted)。
+// 时长 / 曲线同理:DUR、EASE 是 tokens.css 的镜像常量,别在这里写字面量(anaMotion.ts)。
+import { DUR, EASE } from './anaMotion'
 
 // ⚠ 必须与 tokens.css 的 --font-sans 逐字一致(ECharts 主题是纯 JSON,引不了 CSS 变量)。
 // 不同步的话图表轴标签/图例会和页面其余部分不是同一个字体,并排一看就出戏。
@@ -29,6 +31,9 @@ export const FP_ANA_THEME = {
   color: ['#378ADD', '#85B7EB', '#B5D4F4', '#185FA5', '#5DCAA5', '#F0997B', '#EF9F27', '#E24B4A'],
   backgroundColor: 'transparent',
   textStyle: { fontFamily: FONT_SANS },
+  // hover 强调态(C6-04):引擎默认 300ms,读处 echarts.js:1935-1942。静态默认进主题,
+  // 动态相位(enter / update / reduced / 离屏)进 anaMotion.motionize —— 两处不混。
+  stateAnimation: { duration: DUR.state, easing: EASE.update },
   categoryAxis: {
     axisLine: { lineStyle: { color: AXIS_LINE } },
     axisTick: { show: false },
@@ -43,6 +48,9 @@ export const FP_ANA_THEME = {
   },
   legend: { textStyle: { color: 'rgba(28,28,28,.8)', fontSize: 11 }, itemWidth: 11, itemHeight: 11 },
   tooltip: {
+    // 默认 0.4s(TooltipModel.js:76);≤0 时 TooltipHTMLContent.js:154 不加 CSS transition。
+    // 指针跟随类反馈必须零延迟:任何 >0 的跟随都让浮层落后指针(C6-04)。
+    transitionDuration: 0,
     backgroundColor: 'rgb(40,52,66)',
     borderWidth: 0,
     borderRadius: 9,

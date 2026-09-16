@@ -172,13 +172,18 @@ describe('chipGroups —— 常显 = 有连续段 ∪ 读不出 ∪ 选中', () 
     expect(g.unit).toBe('天')
     expect(chipGroups(SNAP_Y, null).unit).toBe('个月')
   })
-  it('选中一栋没有连续段的 → 挪进常显,排在连续段之后、读不出之前;对照:不选时它在收起里', () => {
+  it('❗只因选中才常显的栋钉常显组末位(读不出之后);对照:不选时它在收起里', () => {
     const id = idOf('11栋')
     const g2 = chipGroups(SNAP, id)
-    expect(g2.shown.map(c => c.name)).toEqual(['F座', 'G座', '11栋', '9栋', '10栋'])
-    expect(g2.shown[2]).toMatchObject({ selected: true, kind: 'plain' })
+    expect(g2.shown.map(c => c.name)).toEqual(['F座', 'G座', '9栋', '10栋', '11栋'])
+    expect(g2.shown[g2.shown.length - 1]).toMatchObject({ selected: true, kind: 'plain' })
     expect(g2.folded.some(c => c.id === id)).toBe(false)
     expect(g.folded.some(c => c.id === id)).toBe(true)
+  })
+
+  it('❗选中本来就常显的栋不挪位:选中读不出的 9栋,它仍排在读不出档、不被钉到末位', () => {
+    const g2 = chipGroups(SNAP, idOf('9栋'))
+    expect(g2.shown.map(c => c.name)).toEqual(['F座', 'G座', '9栋', '10栋'])
   })
 })
 

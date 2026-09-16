@@ -15,6 +15,7 @@ import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
 import type { CompareMode } from '@/analysis/useCompare'
 import { CMP_BASELINE, CMP_BUDGET, fint, fnum } from '@/components/ana/anaFmt'
+import { DUR, EASE } from '@/components/ana/anaMotion'
 
 const wan = (v: number | null): number | null => (v == null ? null : +(v / 10000).toFixed(2))
 
@@ -494,10 +495,11 @@ export function mainChartOption(
     { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
   ]
   if (cmpMode === 'mom') {
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
+    // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → 新 name 新视图,clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
+    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true, animationDuration: DUR.update, animationEasing: EASE.enter })
   }
   if (cmpMode === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
+    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none', animationDuration: DUR.update, animationEasing: EASE.enter })   // C6-09 同上(同一 cmp 开关下的独立 line 系列)
   }
   // 趋势线与拟合区间 2026-09-12 搬去 trendChartOption(用户:「现在完全看不见」)——
   // 这张图是 0 起的柱图,三条线只能挤在柱顶那一小段里。理由见那个函数的头注。
