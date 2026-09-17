@@ -184,6 +184,9 @@ export const useAuthStore = defineStore('auth', () => {
   const editors = ref(new Set<symbol>())
   function openEditor(id: symbol) { editors.value.add(id) }
   function closeEditor(id: symbol) { editors.value.delete(id) }
+  /** 此刻有没有屏在编辑模式。editors 是全站唯一的编辑态登记表,别处要判断「能不能打断他」都读这个
+   *  (版本更新弹窗:编辑态不弹,VERSION-UPDATE-SPEC §3)。 */
+  const editing = computed(() => editors.value.size > 0)
 
   /**
    * 关页面前的二次确认(用户拍板 2026-08-26:「和所有别的网页一样,开着编辑模式没保存
@@ -279,6 +282,6 @@ export const useAuthStore = defineStore('auth', () => {
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
            isAuthed, isReadonly, roleLabel, landing,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation,
-           openEditor, closeEditor,
+           openEditor, closeEditor, editing,
            login, logout, clearMustChangePassword, setToken }
 })

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut } from 'lucide-vue-next'
+import { LogOut, Sparkles } from 'lucide-vue-next'
+import { useUpdateStore } from '@/stores/update'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { useTabsStore } from '@/stores/tabs'
@@ -18,6 +19,8 @@ const router = useRouter()
 
 // 当前账号菜单:头像接登录态(原为写死「周明」),点开显示账号+角色,可退出登录
 const auth = useAuthStore()
+// 版本更新:想知道「现在是哪个版本」的人会先点头像,所以版本号写在这张菜单里(SPEC §1)
+const upd = useUpdateStore()
 
 function onLogout() {
   auth.logout()
@@ -80,6 +83,10 @@ function goLayer(layer: NavLayer) {
           <div class="fp-user-name">{{ auth.displayName ?? '未登录' }}</div>
           <div class="fp-user-role" :title="auth.roleLabel" :class="{ ro: auth.isReadonly }">{{ auth.roleLabel }}</div>
           <div class="fp-user-sep" />
+          <button class="fp-user-row" @click="upd.openHistory()">
+            <Sparkles :size="14" />版本更新
+            <span class="ver">v{{ upd.version }}<span v-if="upd.unread" class="dot" /></span>
+          </button>
           <button class="fp-user-logout" @click="onLogout">
             <LogOut :size="14" />退出登录
           </button>
@@ -203,6 +210,11 @@ function goLayer(layer: NavLayer) {
                 margin-top: 5px; font-size: 11px; color: var(--fill-blue); background: rgba(55, 138, 221, 0.1); border-radius: var(--radius-full); padding: 2px 9px; }
 .fp-user-role.ro { color: var(--hue-orange); background: rgba(239, 159, 39, 0.12); }
 .fp-user-sep { height: 1px; background: var(--border-subtle); margin: 9px 0; }
+/* 版本更新一行:和退出登录同一排版,右侧写当前版本号(等宽,未读时带蓝点) */
+.fp-user-row { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+.fp-user-row:hover { background: var(--bg-hover); color: var(--text-primary); }
+.fp-user-row .ver { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-muted); }
+.fp-user-row .dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); }
 .fp-user-logout { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12.5px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
 .fp-user-logout:hover { background: var(--bg-hover); color: var(--hue-red); }
 </style>

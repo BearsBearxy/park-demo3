@@ -24,6 +24,7 @@ import {
   Tags, // 价目管理
   Settings, ScrollText, // 系统管理层
   Sigma, Table, CreditCard, // 利润表合计 / 账单通知单
+  Sparkles, BadgeCheck, ListChecks, MessageSquare, LogIn, PanelsTopLeft, // 版本更新(入口 + changelog 条目)
   HelpCircle, // fallback
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -138,6 +139,12 @@ const MAP: Record<string, Component> = {
   'sigma': Sigma,
   'table': Table,
   'credit-card': CreditCard,
+  'sparkles': Sparkles,
+  'badge-check': BadgeCheck,
+  'list-checks': ListChecks,
+  'message-square': MessageSquare,
+  'log-in': LogIn,
+  'panels-top-left': PanelsTopLeft,
 }
 
 export function iconFor(name: string): Component {
