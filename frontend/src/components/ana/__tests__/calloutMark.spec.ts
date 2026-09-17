@@ -1,89 +1,123 @@
-// 图上点标注(calloutMark)的几何断言 —— 2026-09-17 用户:「根本看不见字」。
-// 改前是 symbol:'pin',两行字画在 30~44px 的针头里,溢出针头的白字落在白底上。
-// 这里用 ECharts SSR 真排一遍版,量三件事:字在签里、签在画布里、签不压住它标的那个点。
-// jsdom 没有 canvas,zrender 退回按字号估字宽(汉字 = 1 个字号宽)—— 与浏览器差几个像素,
-// 所以边界留了 2px 容差;真屏另在浏览器 390 / 1366 宽下量过(见提交说明)。
+// 图上点标注(calloutMark + placeCallout)的几何断言 —— 2026-09-17 用户选定设计稿方案 A「深色气泡」
+// (../运维文档/设计稿/已实现/图上点标注-2026-09-17/OptionA)。改前两版:pin 符号的字溢出针头看不见;
+// 实底小签靠边被裁、盖线。
+// 点的像素用 ECharts SSR 真排一遍版取(convertToPixel),气泡尺寸按字宽估(汉字 = 1 个字号宽,
+// 数字 0.6),摆放走 AnaEChart 用的同一个 placeCallout。量四件事:气泡在画布里、不压点、
+// 尖角对准点、放在稿上画的那一侧。浏览器里另用真组件 AnaEChart 挂同一份库里数据,在 390 / 1366 宽下量过。
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import * as echarts from 'echarts'
-import { CALLOUT, FP_ANA_THEME } from '../anaTheme'
+import { CALLOUT_GAP, CALLOUT_TOP_LIMIT, FP_ANA_THEME, calloutsOf, placeCallout } from '../anaTheme'
 import { calcBe, cvpOption } from '@/views/analysis/breakeven.logic'
 import { fitRevenueTrend, mainChart, mainChartOption, outlierResidualsByMonth } from '@/views/analysis/cockpit.logic'
 import type { PnlSummary } from '@/analysis/anaData'
 
 echarts.registerTheme('fpAnaTheme', FP_ANA_THEME)
 
-interface Box { x: number; y: number; w: number; h: number }
-interface Callout { chip: Box; lines: Box[]; dot: { x: number; y: number } }
+// AnaEChart 的气泡:padding 4/8、行高 15、字号 11
+const charW = (ch: string) => (/[0-9]/.test(ch) ? 6.6 : /[\x20-\x7e]/.test(ch) ? 6.4 : 11)
+const boxOf = (lines: string[]) => ({
+  w: Math.max(...lines.map((l) => [...l].reduce((a, ch) => a + charW(ch), 0))) + 16,
+  h: lines.length * 15 + 8,
+})
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const globalBox = (el: any): Box => {
-  const r = el.getBoundingRect().clone()
-  r.applyTransform(el.getComputedTransform())
-  return { x: r.x, y: r.y, w: r.width, h: r.height }
-}
-
-function layout(option: object, color: string, width: number, height: number): Callout[] {
+interface Placed { dot: { x: number; y: number }; box: { w: number; h: number }; side: string; left: number; top: number; tipX: number; inGrid: boolean }
+function layout(option: object, width: number, height: number): Placed[] {
   const chart = echarts.init(null, 'fpAnaTheme', { renderer: 'svg', ssr: true, width, height })
   chart.setOption({ ...option, animation: false })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const list: any[] = chart.getZr().storage.getDisplayList(true)
-  // 签 = 底色为 color 的 ZRText 背景矩形;字 = 同一个 ZRText 下的 TSpan;点 = 填 color 的圆
-  const out: Callout[] = []
-  for (const bg of list.filter((e) => e.type === 'rect' && e.style.fill === color && e.parent?.type === 'text')) {
-    const text = bg.parent
-    const lines = list.filter((e) => e.type === 'tspan' && e.parent === text).map(globalBox)
-    const host = text.__hostTarget
-    const dot = host.getBoundingRect().clone()
-    dot.applyTransform(host.getComputedTransform())
-    out.push({ chip: globalBox(bg), lines, dot: { x: dot.x + dot.width / 2, y: dot.y + dot.height / 2 } })
-  }
+  const out = calloutsOf(option).map((c) => {
+    const [x, y] = chart.convertToPixel({ seriesIndex: c.seriesIndex }, c.coord as number[])
+    const box = boxOf(c.spec.lines)
+    return { dot: { x, y }, box, inGrid: chart.containPixel('grid', [x, y]), ...placeCallout({ x, y }, box, { w: width, h: height }, c.spec.prefer) }
+  })
   chart.dispose()
   return out
 }
 
-const TOL = 2
-const inside = (a: Box, b: Box): boolean =>
-  a.x >= b.x - TOL && a.y >= b.y - TOL && a.x + a.w <= b.x + b.w + TOL && a.y + a.h <= b.y + b.h + TOL
-const contains = (b: Box, p: { x: number; y: number }): boolean =>
-  p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h
-
-function expectReadable(cs: Callout[], width: number, height: number, n = 1): void {
-  expect(cs).toHaveLength(n)
-  for (const c of cs) {
-    expect(c.lines.length, '签里得有字').toBeGreaterThan(0)
-    for (const l of c.lines) expect(inside(l, c.chip), `字 ${JSON.stringify(l)} 溢出签 ${JSON.stringify(c.chip)}`).toBe(true)
-    expect(inside(c.chip, { x: 0, y: 0, w: width, h: height }), `签 ${JSON.stringify(c.chip)} 出了 ${width}×${height} 画布`).toBe(true)
-    expect(contains(c.chip, c.dot), '签压住了它标的点').toBe(false)
+function expectReadable(ps: Placed[], width: number, height: number): void {
+  expect(ps.length, '至少一个气泡').toBeGreaterThan(0)
+  for (const p of ps) {
+    expect(p.inGrid, '点在绘图区里').toBe(true)
+    // 气泡在画布里(离边 4)
+    expect(p.left).toBeGreaterThanOrEqual(4)
+    expect(p.left + p.box.w).toBeLessThanOrEqual(width - 4 + 1e-9)
+    expect(p.top).toBeGreaterThanOrEqual(p.side === 'top' ? CALLOUT_TOP_LIMIT : 0)
+    expect(p.top + p.box.h).toBeLessThanOrEqual(height - 4 + 1e-9)
+    // 不压点:点心到气泡边正好一个 CALLOUT_GAP(尖角的长度在这段里)
+    if (p.side === 'top') expect(p.dot.y - (p.top + p.box.h)).toBeCloseTo(CALLOUT_GAP, 6)
+    else expect(p.top - p.dot.y).toBeCloseTo(CALLOUT_GAP, 6)
+    // 尖角对准点
+    expect(p.left + p.tipX).toBeCloseTo(p.dot.x, 6)
+    expect(p.tipX).toBeGreaterThanOrEqual(8)
+    expect(p.tipX).toBeLessThanOrEqual(p.box.w - 8)
   }
 }
 
-// 手机 S 档卡内宽 ~350 / 桌面 ~1000;高取 S 档 260 与桌面 300
-const SIZES: [number, number][] = [[350, 260], [1000, 300]]
+// 面板实测:手机 390 宽图 289×260,桌面 1366 宽图 572×300
+const SIZES: [number, number][] = [[289, 260], [572, 300]]
 
-describe('calloutMark:签里的字看得见', () => {
-  it.each(SIZES)('盈亏平衡 保本点 %i×%i:签在点的左上', (w, h) => {
-    const be = calcBe(1_180_000, 1_020_000, 0.62)   // 保本 ≈ 47%,与库里当前口径同一量级
-    const cs = layout(cvpOption(be, true), CALLOUT.amber, w, h)
-    expectReadable(cs, w, h)
-    const { chip, dot } = cs[0]
-    expect(chip.y + chip.h).toBeLessThanOrEqual(dot.y)
-    expect(chip.x + chip.w).toBeLessThanOrEqual(dot.x + TOL)
+describe('calloutMark:深色气泡摆在稿上的位置', () => {
+  it.each(SIZES)('盈亏平衡 保本点 %i×%i:气泡在点上方,一行「保本 52%」', (w, h) => {
+    const be = calcBe(9_407_800, 5_958_000, 0.62)   // 库里 2025-11:月收入 940.8 万、固定成本 369.4 万 → 保本 51.7%
+    expect(be.bePct).toBeCloseTo(51.7, 1)
+    const ps = layout(cvpOption(be, true), w, h)
+    expectReadable(ps, w, h)
+    expect(ps[0].side).toBe('top')
+    expect(ps[0].box.h, '一行').toBe(23)
+    // 居中在点上,不必夹边
+    expect(ps[0].left + ps[0].box.w / 2).toBeCloseTo(ps[0].dot.x, 6)
   })
 
-  it.each(SIZES)('驾驶舱 负收入月 %i×%i:点在柱头,签在柱头下方', (w, h) => {
+  // 库里 2025 年逐月(万元),12 月收入 −63.61、利润 −655.33
+  const cockpitOpt = (): object => {
     const N12 = (): (number | null)[] => new Array(12).fill(null)
-    const rev = [512, 498, 530, 541, 505, 522, 560, 548, 533, 551, 1180, -63.6].map((v) => v * 10000)
-    const profit = [88, 71, 95, 102, 80, 90, 118, 104, 99, 110, 402, -655.3].map((v) => v * 10000)
+    const rev = [714.66, 716.98, 699.66, 740.61, 753.71, 771.11, 824.97, 866.91, 876.26, 930.15, 940.78, -63.61].map((v) => v * 10000)
+    const profit = [179.37, 276.19, 243.35, 228.51, 253.63, 253.27, 304.6, 296.68, 249.06, 315.87, 344.9, -655.33].map((v) => v * 10000)
     const pnl: PnlSummary = { year: 2025, months: Array.from({ length: 12 }, (_, i) => i + 1), revenue: rev, cost: N12(), profit, bySchedule: {} }
     const d = mainChart(pnl, 9_270_0000)!
-    const fit = fitRevenueTrend(pnl)
-    const opt = mainChartOption(d, outlierResidualsByMonth(fit, d.rev, d.outlierMonths), 'none')!
-    const cs = layout(opt, CALLOUT.red, w, h)
-    expectReadable(cs, w, h)
-    expect(cs[0].chip.y).toBeGreaterThanOrEqual(cs[0].dot.y)
-    expect(cs[0].lines.length, '两行:收入为负 / N倍残差').toBe(2)
+    return mainChartOption(d, outlierResidualsByMonth(fitRevenueTrend(pnl), d.rev, d.outlierMonths), 'none')!
+  }
+
+  it.each(SIZES)('驾驶舱 负收入月 %i×%i:点在柱头,两行气泡挂在下方', (w, h) => {
+    const ps = layout(cockpitOpt(), w, h)
+    expectReadable(ps, w, h)
+    expect(ps[0].side).toBe('bottom')
+    expect(ps[0].box.h, '两行').toBe(38)
+  })
+
+  it('❗手机宽驾驶舱 12 月贴右边:气泡夹进图里,尖角仍对准柱头(不在气泡正中)', () => {
+    const [p] = layout(cockpitOpt(), 289, 260)
+    expect(p.left + p.box.w).toBeCloseTo(289 - 4, 6)
+    expect(p.tipX).toBeGreaterThan(p.box.w / 2 + 4)
+  })
+})
+
+describe('placeCallout', () => {
+  const BOX = { w: 86, h: 23 }
+  it('优先上方;上方越过图例带(上沿 < 22)→ 翻到下方(光伏回收点在手机宽的情形)', () => {
+    expect(placeCallout({ x: 200, y: 120 }, BOX, { w: 572, h: 300 }, 'top')).toMatchObject({ side: 'top', top: 120 - 13.5 - 23 })
+    const flip = placeCallout({ x: 226, y: 52.6 }, BOX, { w: 289, h: 260 }, 'top')
+    expect(flip.side).toBe('bottom')
+    expect(flip.top).toBeCloseTo(52.6 + 13.5, 6)
+  })
+  it('优先下方;下方出图底 → 翻到上方', () => {
+    expect(placeCallout({ x: 200, y: 100 }, BOX, { w: 572, h: 300 }, 'bottom').side).toBe('bottom')
+    expect(placeCallout({ x: 200, y: 270 }, BOX, { w: 572, h: 300 }, 'bottom')).toMatchObject({ side: 'top', top: 270 - 13.5 - 23 })
+  })
+  it('两侧都放不下 → 守优先侧', () => {
+    expect(placeCallout({ x: 100, y: 30 }, { w: 60, h: 200 }, { w: 300, h: 220 }, 'bottom').side).toBe('bottom')
+    expect(placeCallout({ x: 100, y: 30 }, { w: 60, h: 200 }, { w: 300, h: 220 }, 'top').side).toBe('top')
+  })
+  it('贴左边夹到 4,尖角离气泡左沿不少于 8', () => {
+    const p = placeCallout({ x: 7, y: 150 }, BOX, { w: 572, h: 300 }, 'top')
+    expect(p.left).toBe(4)
+    expect(p.tipX).toBe(8)
+  })
+  it('贴右边夹到 w−4,尖角跟着点', () => {
+    const p = placeCallout({ x: 540, y: 150 }, BOX, { w: 572, h: 300 }, 'top')
+    expect(p.left).toBe(572 - 4 - 86)
+    expect(p.left + p.tipX).toBe(540)
   })
 })
 

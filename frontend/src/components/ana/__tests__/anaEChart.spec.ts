@@ -34,6 +34,7 @@ import AnaEChart, { mobilizeOption } from '../AnaEChart.vue'
 import AnaSkelChart from '../AnaSkelChart.vue'
 import { chartHeightFor } from '../anaChartHeight'
 import { DUR } from '../anaMotion'
+import { CALLOUT, calloutMark } from '../anaTheme'
 
 // 入场窗口按 performance.now 算:桩成手动时钟,later(ms) 往前拨
 let clock = 1000
@@ -56,12 +57,13 @@ const withS = async (fn: () => Promise<void> | void) => {
 describe('AnaEChart', () => {
   it('懒加载后 init(el, fpAnaTheme) + setOption(notMerge);主题注册幂等(全局仅一次)', async () => {
     const w = mount(AnaEChart, { props: { option: { series: [{ type: 'bar' }] } } })
-    expect(w.classes()).toContain('loading')   // 加载中占位
+    const box = w.find('.ana-echart')
+    expect(box.classes()).toContain('loading')   // 加载中占位
     await flushPromises()
     // 第三参是 2026-08-20 修「每个图都很糊」的核心:非整数 DPR(Windows 125% 缩放 → 1.14)
     // 会让 canvas 背景缓冲落在小数像素上、整张被重采样。ceil 且下限 2 = 2 倍超采样。
     // 断言 ≥2 而不是断言等于某个数:CI 与本机 devicePixelRatio 不同,写死会随环境红。
-    expect(h.init).toHaveBeenCalledWith(w.element, 'fpAnaTheme',
+    expect(h.init).toHaveBeenCalledWith(box.element, 'fpAnaTheme',
       expect.objectContaining({ devicePixelRatio: expect.any(Number) }))
     const dpr = (h.init.mock.calls[0] as unknown[])[2] as { devicePixelRatio: number }
     expect(dpr.devicePixelRatio).toBeGreaterThanOrEqual(2)
@@ -69,7 +71,7 @@ describe('AnaEChart', () => {
     // 注入动效键后不再逐字相等(动效设计稿 §8.3 明写改 objectContaining);键值本身见下面三条与 anaMotion.spec.ts
     expect(h.chart.setOption).toHaveBeenCalledWith(
       expect.objectContaining({ series: [expect.objectContaining({ type: 'bar' })] }), { notMerge: true })
-    expect(w.classes()).not.toContain('loading')
+    expect(box.classes()).not.toContain('loading')
     const before = h.registerTheme.mock.calls.length   // 首个用例 1 次;跨用例幂等(anaTheme 模块级守卫)
     const w2 = mount(AnaEChart, { props: { option: {} } })
     await flushPromises()
@@ -97,10 +99,75 @@ describe('AnaEChart', () => {
     w.unmount()
   })
 
+  // 图上点标注(anaTheme.calloutMark,设计稿方案 A):气泡是 HTML 叠层,动画走完('finished')才按点的像素摆好显出来
+  describe('点标注气泡', () => {
+    const CALLOUT_OPT = {
+      series: [{ type: 'line', markPoint: calloutMark(CALLOUT.red, '#E24B4A', [{ coord: [11, -63.6], lines: ['收入为负', '2倍残差'] }], 'bottom') }],
+    }
+    const fire = (ev: string, arg?: unknown) => {
+      for (const c of h.chart.on.mock.calls.filter((x) => x[0] === ev)) (c[1] as (p: unknown) => void)(arg)
+    }
+    const withPixel = (px: number[] | null) => {
+      const c = h.chart as typeof h.chart & { convertToPixel?: unknown; containPixel?: unknown }
+      c.convertToPixel = vi.fn(() => px ?? [0, 0])
+      c.containPixel = vi.fn(() => px != null)
+    }
+
+    it('❗setOption 时藏着,finished 后按点的像素摆到点下方并显出;字逐行照 lines', async () => {
+      withPixel([262, 159])
+      const w = mount(AnaEChart, { props: { option: CALLOUT_OPT } })
+      await flushPromises()
+      const b = () => w.find('.ana-callout')
+      expect(b().exists()).toBe(true)
+      expect(b().classes()).not.toContain('on')
+      fire('finished')
+      await flushPromises()
+      expect(b().classes()).toEqual(expect.arrayContaining(['on', 'bottom']))
+      expect(b().findAll('.l').map((x) => x.text())).toEqual(['收入为负', '2倍残差'])
+      // jsdom 量出的气泡是 0×0:居中在点上 → left = 262,上沿 = 159 + 13.5
+      expect(b().attributes('style')).toContain('left: 262px')
+      expect(b().attributes('style')).toContain('top: 172.5px')
+      w.unmount()
+    })
+
+    it('❗拖选缩放一开始就藏;缩放完点落在绘图区外不再显', async () => {
+      withPixel([262, 159])
+      const w = mount(AnaEChart, { props: { option: CALLOUT_OPT } })
+      await flushPromises()
+      fire('finished'); await flushPromises()
+      expect(w.find('.ana-callout').classes()).toContain('on')
+      fire('datazoom'); await flushPromises()
+      expect(w.find('.ana-callout').classes()).not.toContain('on')
+      withPixel(null)
+      fire('finished'); await flushPromises()
+      expect(w.find('.ana-callout').classes()).not.toContain('on')
+      w.unmount()
+    })
+
+    it('option 换了 → 旧气泡立刻藏,等新一轮 finished', async () => {
+      withPixel([100, 120])
+      const w = mount(AnaEChart, { props: { option: CALLOUT_OPT } })
+      await flushPromises()
+      fire('finished'); await flushPromises()
+      await w.setProps({ option: { ...CALLOUT_OPT, grid: { top: 40 } } })
+      await nextTick()
+      expect(w.find('.ana-callout').classes()).not.toContain('on')
+      w.unmount()
+    })
+
+    it('option 里没有点标注 → 不出叠层', async () => {
+      const w = mount(AnaEChart, { props: { option: { series: [{ type: 'bar' }] } } })
+      await flushPromises()
+      fire('finished'); await flushPromises()
+      expect(w.find('.ana-callout').exists()).toBe(false)
+      w.unmount()
+    })
+  })
+
   it('S 档(matchMedia ≤600 命中)图高降档:lg300→260;挂载时一次初判,不挂 resize 监听', () => withS(async () => {
     const w = mount(AnaEChart, { props: { option: {}, height: 300 } })
     await flushPromises()
-    expect(w.attributes('style')).toContain('height: 260px')
+    expect(w.find('.ana-echart').attributes('style')).toContain('height: 260px')
     w.unmount()
   }))
 
@@ -120,8 +187,8 @@ describe('AnaEChart', () => {
   it('ResizeObserver 只在尺寸**真变**时 resize;卸载 dispose + 断开观察', async () => {
     const w = mount(AnaEChart, { props: { option: {}, height: 180 } })
     await flushPromises()
-    expect(w.attributes('style')).toContain('height: 180px')
-    expect(lastRO!.observe).toHaveBeenCalledWith(w.element)
+    expect(w.find('.ana-echart').attributes('style')).toContain('height: 180px')
+    expect(lastRO!.observe).toHaveBeenCalledWith(w.find('.ana-echart').element)
     const fire = (width: number, height: number) =>
       lastRO!.cb([{ contentRect: { width, height } } as unknown as ResizeObserverEntry], lastRO as unknown as ResizeObserver)
     // observe 之后引擎立刻空回调一次,尺寸与实例一致 —— 这一下 resize() 会以 animation:{duration:0}

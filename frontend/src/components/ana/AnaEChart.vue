@@ -84,8 +84,8 @@ export function keepView(opt: Rec, k: ViewKeep): Rec {
 // 把 themeRiver/sunburst/candlestick/registerMap 这些一个没用到的全拖进首屏。
 // ⚠ 新增图表类型要改的是 echartsBundle.ts,不是这里。
 // jsdom 无 canvas:组件测试 vi.mock('../echartsBundle')(见 __tests__/anaEChart.spec.ts 契约)。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { registerFpAnaTheme } from './anaTheme'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { calloutsOf, placeCallout, registerFpAnaTheme, type CalloutSide, type CalloutSpec } from './anaTheme'
 import { DUR, inViewport, motionize, onReactivated } from './anaMotion'
 import { chartHeightFor, isSViewport } from './anaChartHeight'
 
@@ -99,6 +99,8 @@ interface ChartInst {
   clear(): void
   dispose(): void
   on(event: string, handler: (params: unknown) => void): void
+  convertToPixel?(finder: { seriesIndex: number }, value: (number | string | null)[]): number[]
+  containPixel?(finder: string, value: number[]): boolean
 }
 
 /** height 只能取这 5 档(2026-08-20 立)。改前 59 张图用了 **24 种**高度(286/290/298/300/304
@@ -157,6 +159,33 @@ const apply = (o: object, keep?: ViewKeep) => {
   if (entering && !painted && list.length && shown) enterAt = performance.now()
   if (list.length) painted = true
   chart.setOption(motionize(opt, entering ? 'enter' : 'update', { reduced, isS, visible: shown }), { notMerge: true })
+  // 气泡先藏,等这一轮动画走完('finished')按点的终点位置摆好再显 —— 形变途中不跟着飘
+  callouts.value = calloutsOf(opt).map((c, i) => ({ ...c, key: i, left: 0, top: 0, tipX: 0, side: c.spec.prefer, show: false }))
+}
+
+// 图上点标注的气泡(anaTheme.calloutMark,设计稿方案 A):HTML 叠层,不进 zrender ——
+// zrender 初始化会清空挂载节点,所以叠层与图是兄弟节点,外面包一层 .ana-echart-box。
+interface CalloutView {
+  key: number; seriesIndex: number; coord: (number | string | null)[]; spec: CalloutSpec
+  left: number; top: number; tipX: number; side: CalloutSide; show: boolean
+}
+const callouts = ref<CalloutView[]>([])
+// v-for 里的数组 ref 不保证与列表同序,按 key 收
+const bubbleEls = new Map<number, HTMLElement>()
+const setBubble = (key: number, e: unknown) => { if (e instanceof HTMLElement) bubbleEls.set(key, e); else bubbleEls.delete(key) }
+const hideCallouts = () => { for (const c of callouts.value) c.show = false }
+async function layoutCallouts() {
+  if (!chart?.convertToPixel || !callouts.value.length) return
+  await nextTick()
+  const w = chart.getWidth(), h = chart.getHeight()
+  callouts.value.forEach((c) => {
+    const box = bubbleEls.get(c.key)
+    let px: number[] | undefined
+    try { px = chart!.convertToPixel!({ seriesIndex: c.seriesIndex }, c.coord) } catch { px = undefined }
+    // 拖选 / 捏合缩放把点移出绘图区时不显
+    if (!box || !px || !chart!.containPixel?.('grid', px)) { c.show = false; return }
+    Object.assign(c, placeCallout({ x: px[0], y: px[1] }, { w: box.offsetWidth, h: box.offsetHeight }, { w, h }, c.spec.prefer), { show: true })
+  })
 }
 
 onMounted(async () => {
@@ -183,6 +212,8 @@ onMounted(async () => {
   chart = ec.init(el.value, 'fpAnaTheme', { devicePixelRatio: dpr }) as unknown as ChartInst
   apply(props.option)
   chart.on('click', (params) => emit('chart-click', params))
+  chart.on('finished', () => { void layoutCallouts() })
+  chart.on('datazoom', hideCallouts)
   // 尺寸**真变**才 resize:observe 之后引擎会立刻空回调一次,resize() 以 animation:{duration:0}
   // 的 payload 走 update(echarts.js:998-1003),payload 优先级最高(basicTransition.js:80-84)→
   // el.attr 直设终态,首绘在首帧被截断为零。真窗口缩放仍会截断动画,接受,不补播。
@@ -224,10 +255,39 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: chartHeight + 'px' }" />
+  <div class="ana-echart-box">
+    <div ref="el" class="ana-echart" :class="{ loading: !ready }" :style="{ height: chartHeight + 'px' }" />
+    <div
+      v-for="c in callouts" :key="c.key" :ref="(e) => setBubble(c.key, e)" class="ana-callout" :class="[c.side, { on: c.show }]"
+      :style="{ left: c.left + 'px', top: c.top + 'px', '--tip-x': c.tipX + 'px' }"
+    >
+      <span v-for="(l, i) in c.spec.lines" :key="i" class="l">{{ l }}</span>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.ana-echart-box { position: relative; width: 100%; min-width: 0; }
 .ana-echart { width: 100%; min-width: 0; }
+/* 深色气泡:与图表悬停提示框同一个样子(anaTheme tooltip:rgb(40,52,66) 底、白字 11) */
+.ana-callout {
+  --tip-x: 50%;   /* 行内 style 按点的像素覆盖 */
+  position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none;
+  display: flex; flex-direction: column;
+  padding: 4px 8px; border-radius: 6px; background: rgb(40, 52, 66); color: #fff;
+  font-size: var(--fs-micro); line-height: 15px; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  visibility: hidden; opacity: 0;
+}
+.ana-callout.on { visibility: visible; opacity: 1; transition: opacity var(--dur-fast) var(--ease-out); }
+.ana-callout .l:first-child { font-weight: var(--fw-semibold); }
+.ana-callout .l + .l { color: rgba(255, 255, 255, 0.78); }
+/* 尖角:12×6,横向对准点(--tip-x 相对气泡左沿) */
+.ana-callout::after {
+  content: ''; position: absolute; left: calc(var(--tip-x) - 6px);
+  border-left: 6px solid transparent; border-right: 6px solid transparent;
+}
+.ana-callout.top::after { top: 100%; border-top: 6px solid rgb(40, 52, 66); }
+.ana-callout.bottom::after { bottom: 100%; border-bottom: 6px solid rgb(40, 52, 66); }
 .ana-echart.loading { background: var(--surface-1, var(--surface-sunken)); border-radius: 8px; }
 </style>

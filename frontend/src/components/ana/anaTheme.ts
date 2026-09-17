@@ -68,29 +68,74 @@ export function registerFpAnaTheme(ec: { registerTheme(name: string, theme: obje
   ec.registerTheme('fpAnaTheme', FP_ANA_THEME)
 }
 
-/** 点标注的底色:tokens.css --hue-red / --hue-orange 的字面值 + 主题深蓝,白字对比度 5.0 / 5.2 / 6.5。
- *  主题语义红 #E24B4A、琥珀 #EF9F27 当底色时白字只有 3.9 / 2.2:1,11px 字发虚。 */
+/** 点标注的环色:tokens.css --hue-red / --hue-orange 的字面值 + 主题深蓝(比数据色深一档,环在光晕上看得清)。
+ *  光晕用的是数据本身的颜色(柱 / 线的色),环色只管「这是被标注的那个点」。 */
 export const CALLOUT = { red: '#BC4A41', amber: '#9D5D17', blue: '#185FA5' }
 
+export type CalloutSide = 'top' | 'bottom'
+/** 挂在 markPoint 数据项上的气泡说明;AnaEChart 读它,在图上叠一层 HTML 气泡。 */
+export interface CalloutSpec { lines: string[]; prefer: CalloutSide }
+export interface CalloutItem { coord: (number | string | null)[]; lines: string[]; [extra: string]: unknown }
+
 /**
- * 图上「钉住一个点并写几个字」的唯一写法:点上一颗实心圆点,旁边一枚实底白字小签。
+ * 图上「钉住一个点并写几个字」的唯一写法(2026-09-17 用户选定设计稿方案 A「深色气泡」,
+ * 稿在 ../运维文档/设计稿/已实现/图上点标注-2026-09-17/OptionA):
+ * 点上一个空心环 + 数据色光晕;字写在深色气泡里(与悬停提示框同一个样子),带尖角指着点。
  *
- * 取代 ECharts 的 pin 符号(2026-09-17 用户:「根本看不见字」)—— pin 的字画在 30~44px 的针头里,
- * 两行字比针头宽,溢出针头的白字落在白底上就没了。小签按字撑开,与点的大小无关。
- * 默认签在点的左上方(position top + align right = 签的右沿对齐点);方位由调用方按自己的图覆盖。
+ * 为什么气泡不用 markPoint 的 label:ECharts 的标注不会夹在图边以内,也画不了「气泡挪进来、
+ * 尖角仍对准点」—— 改前两版(pin 符号、实底小签)都栽在这:字溢出针头看不见 / 靠边被裁。
+ * 这里只出环与光晕,气泡的字与方位放在数据项的 `callout` 上,由 AnaEChart 换算成像素后摆放(placeCallout)。
+ *
+ * prefer:气泡优先放点的哪一侧;放不下(碰到图例带或图底)时 placeCallout 翻到另一侧。
  */
-export function calloutMark(color: string, formatter: unknown, data: object[], label: object = {}): object {
+export function calloutMark(hue: string, dataColor: string, items: CalloutItem[], prefer: CalloutSide = 'top'): object {
   return {
-    symbol: 'circle', symbolSize: 9,
-    itemStyle: { color, borderColor: '#fff', borderWidth: 2 },
-    label: {
-      position: 'top', align: 'right', distance: 6, formatter,
-      color: '#fff', backgroundColor: color, borderColor: '#fff', borderWidth: 1, borderRadius: 4,
-      padding: [3, 6], fontSize: 11, lineHeight: 15,
-      ...label,
-    },
-    data,
+    silent: true,
+    symbol: 'circle',
+    label: { show: false },
+    // 光晕在前、环在后:同一个 markPoint 里后画的压在上面
+    data: items.flatMap(({ lines, ...rest }) => [
+      { ...rest, symbolSize: 18, itemStyle: { color: dataColor, opacity: 0.16 } },
+      { ...rest, symbolSize: 8, itemStyle: { color: '#fff', borderColor: hue, borderWidth: 2.2 }, callout: { lines, prefer } satisfies CalloutSpec },
+    ]),
   }
+}
+
+/** 从 option 里收出所有气泡(seriesIndex 与 option.series 的下标一致)。 */
+export function calloutsOf(option: object): { seriesIndex: number; coord: (number | string | null)[]; spec: CalloutSpec }[] {
+  const series = (option as { series?: unknown }).series
+  const list = Array.isArray(series) ? series : series ? [series] : []
+  return list.flatMap((s, seriesIndex) => {
+    const data = (s as { markPoint?: { data?: unknown[] } } | null)?.markPoint?.data ?? []
+    return data.flatMap((d) => {
+      const it = d as { coord?: (number | string | null)[]; callout?: CalloutSpec }
+      return it.callout && it.coord ? [{ seriesIndex, coord: it.coord, spec: it.callout }] : []
+    })
+  })
+}
+
+/** 点心到气泡边:环半径 4 + 空 3.5 + 尖角 6。 */
+export const CALLOUT_GAP = 13.5
+/** 气泡上沿不得高于此:主题图例 top 0 + 内距 5 + 图标 11,底在 20 附近。 */
+export const CALLOUT_TOP_LIMIT = 22
+const CALLOUT_EDGE = 4        // 气泡离图边
+const CALLOUT_TIP_INSET = 8   // 尖角离气泡左右沿(圆角 6 + 余量)
+
+/**
+ * 气泡摆放(像素,相对图容器左上):优先侧放得下就放,放不下翻到另一侧;
+ * 横向居中于点、夹在图边以内,尖角 tipX(相对气泡左沿)始终对准点。
+ */
+export function placeCallout(
+  dot: { x: number; y: number }, box: { w: number; h: number }, canvas: { w: number; h: number }, prefer: CalloutSide,
+): { side: CalloutSide; left: number; top: number; tipX: number } {
+  const above = dot.y - CALLOUT_GAP - box.h
+  const below = dot.y + CALLOUT_GAP
+  const fitsTop = above >= CALLOUT_TOP_LIMIT
+  const fitsBottom = below + box.h <= canvas.h - CALLOUT_EDGE
+  const side: CalloutSide = prefer === 'top' ? (fitsTop || !fitsBottom ? 'top' : 'bottom') : (fitsBottom || !fitsTop ? 'bottom' : 'top')
+  const left = Math.max(CALLOUT_EDGE, Math.min(canvas.w - CALLOUT_EDGE - box.w, dot.x - box.w / 2))
+  const tipX = Math.max(CALLOUT_TIP_INSET, Math.min(box.w - CALLOUT_TIP_INSET, dot.x - left))
+  return { side, left, top: side === 'top' ? above : below, tipX }
 }
 
 /**

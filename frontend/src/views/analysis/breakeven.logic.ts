@@ -81,7 +81,7 @@ export function tornadoItems(be: BeModel, s10Used: S10Used | null): TornadoItem[
   return items.sort((a, b) => b.delta - a.delta)
 }
 
-const INK = '#185FA5', RED = '#E24B4A', BLUE = '#378ADD', SLATE = 'rgba(28,28,28,.4)'   // 复审:统一主题语义红/墨灰
+const INK = '#185FA5', RED = '#E24B4A', WARN = '#EF9F27', BLUE = '#378ADD', SLATE = 'rgba(28,28,28,.4)'   // 复审:统一主题语义红/墨灰
 const wan0 = (v: number) => (v / 10000).toFixed(0) + '万'
 
 /** C6-15:只有拖滑杆那一次重算传 instant —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指;
@@ -118,8 +118,8 @@ export function cvpOption(be: BeModel, instant = false): object {
           data: [{ xAxis: 100 }],
         },
         ...(showBe ? {
-          // 签在保本点左上:保本点左边两条线都比它低、右边收入线往上走,左上是空的
-          markPoint: calloutMark(CALLOUT.amber, `保本 ${be.bePct!.toFixed(0)}%`, [{ coord: [be.bePct, be.beRev] }]),
+          // 气泡放保本点上方:保本点左边两条线都比它低,上方只有往右上走的收入线
+          markPoint: calloutMark(CALLOUT.amber, WARN, [{ coord: [be.bePct, be.beRev], lines: [`保本 ${be.bePct!.toFixed(0)}%`] }]),
           markArea: {
             silent: true, itemStyle: { color: 'rgba(93,202,165,.10)' },
             label: { show: true, position: 'insideTop', color: 'rgba(28,28,28,.45)', fontSize: 11, formatter: '盈利区' },

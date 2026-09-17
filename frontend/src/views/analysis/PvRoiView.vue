@@ -65,14 +65,14 @@ const rampOpt = computed<object>(() => {
   const w = (a: (number | null)[]): (number | null)[] => a.map((v) => (v == null ? null : +(v / 1e4).toFixed(1)))
   const actualW = w(r.actual), projW = w(r.projected)
   const markPoint = r.hitIdx != null
-    ? calloutMark(CALLOUT.blue, '回收', [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }])
+    ? calloutMark(CALLOUT.blue, '#378ADD', [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number], lines: ['回收 ' + r.labels[r.hitIdx]] }])
     : undefined
   const yMax = Math.max(investW * 1.1, ...actualW.map((v) => v ?? 0), ...projW.map((v) => v ?? 0))
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
     legend: { top: 0 },
-    // top 44(原 32):回收点落在投资额线上,离绘图区顶只有 max 留的那 1/11,「回收」签往上伸 33px,
-    // 顶边 32 时 390 宽下签压住图例「外推(年化口径)」;44 时 390 / 1366 宽签与图例都隔开 ≥6px(40 只隔 2.9px)
+    // top 44(原 32):回收点落在投资额线上,离绘图区顶只有 max 留的那 1/11。设计稿方案 A 按 44 画:
+    // 1366 宽气泡在点上方、图例之下;390 宽上方放不下,placeCallout 翻到点下方
     grid: { left: 56, right: 60, top: 44, bottom: 26 },
     xAxis: { type: 'category', data: r.labels },
     yAxis: { type: 'value', max: Math.ceil(yMax), axisLabel: { formatter: '{value} 万' } },

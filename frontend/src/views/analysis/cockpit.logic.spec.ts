@@ -554,7 +554,7 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
     expect(t80(0)).toBeNull()
   })
 
-  it('❗离群 markPoint 的 label.formatter 逐月取 outlierResByMonth(F4 的原话镜像到 option 层:'
+  it('❗离群点气泡的字逐月取 outlierResByMonth(F4 的原话镜像到 option 层:'
     + '两根 pin 不能顶同一个数字,不许退回固定取 outlierMonths[0] 那种写法)', () => {
     const fit: RevenueFit = { months: [1, 2, 3, 4, 5], slope: 10, intercept: 0, r2: 0.9, residualScale: 5, fitted: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] }
     const revWan = [10, 20, 30, 40, 50, 60, 200, 80, 90, 100, 110, -40]
@@ -565,11 +565,15 @@ describe('❗F1(对抗复查,adversarial-survived.md):主图与趋势图的 opti
       prevRev: new Array(12).fill(null), budgetAvgWan: null, covered: 12, outlierMonths, yMin: undefined,
     }
     const opt = mainChartOption(d, outlierRes, 'none') as
-      { series: { name: string; markPoint?: { label: { formatter: (p: { data: { month?: number } }) => string } } }[] }
+      { series: { name: string; markPoint?: { data: { month?: number; coord: number[]; callout?: { lines: string[]; prefer: string } }[] } }[] }
     const bar = opt.series.find((s) => s.name === '收入')
-    const formatter = bar!.markPoint!.label.formatter
-    const f7 = formatter({ data: { month: 7 } })
-    const f12 = formatter({ data: { month: 12 } })
+    // calloutMark 每个点出两项(光晕 + 带气泡的环),气泡只挂在环上
+    const ring = (m: number) => bar!.markPoint!.data.find((x) => x.month === m && x.callout)!
+    const f7 = ring(7).callout!.lines.join('\n')
+    const f12 = ring(12).callout!.lines.join('\n')
+    // 点钉在负柱柱头(改前钉在 yMin),气泡优先挂柱头下方
+    expect(ring(12).coord).toEqual([11, -40])
+    expect(ring(12).callout!.prefer).toBe('bottom')
     expect(f7).not.toBe(f12)   // 核心:两根 pin 不能顶同一个数字(改前的缺陷)
     // pin 上那两个字也是屏上文案:不得写「离群」(同上一条理由)
     for (const f of [f7, f12]) expect(f).not.toContain('离群')
