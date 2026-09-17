@@ -24,7 +24,7 @@ import {
   buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, paretoOption, priorityReadout, priorityRefText,
   renewalRateReadout, renewalRateBand, renewalRateLineOption, sensitivityRows, sensitivitySentence, sensitivityGapSentence,
-  rentRollOption, rentRollRefText, rentRollSentence, wallOption,
+  rentRollRefText, rentRollSentence, wallOption,
 } from './expiry.logic'
 
 const router = useRouter()

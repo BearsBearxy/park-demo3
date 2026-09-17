@@ -460,8 +460,7 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
  * F1(对抗复查,adversarial-survived.md):主图(趋势线/拟合区间 markArea/离群 markPoint)原先整段
  * 写在 CockpitView.vue 的 <script setup> computed 里——没有抽成纯函数,也没有挂载测摸得到 option
  * 对象,vitest/tsc/anaCopyLint 全绿情况下整段删掉、markArea 的 formatter 清空、markPoint 退回
- * 固定文案都不会被抓到。照姊妹图(expiry.logic.ts 的 rentRollOption、TenantPeer.logic.ts 的
- * unitRentHistOption)抽成纯函数,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
+ * 固定文案都不会被抓到。抽成纯函数后,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
  */
 const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 export function mainChartOption(
