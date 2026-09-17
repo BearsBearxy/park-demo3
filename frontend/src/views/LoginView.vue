@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 登录页(2026-08-16 重设计):左暗右亮双栏 —— 左侧品牌区带两层 canvas 动效,右侧白卡表单。
+// · 底层:暗色流动渐变(GradientWave,WebGL,2026-09-18 取代原来的静态径向渐变);颜色见 WAVE_COLORS。
 // · 背景网格:全屏 canvas 画小方格阵,鼠标移过把附近方格「撑开」(径向位移+放大+提亮),
 //   参考 deepseek.com/harness 的手法:桌面(pointer:fine)才挂鼠标,触屏只有微光呼吸。
 // · 粒子 logo:把 assets/brand/logo.svg 栅格化后按非透明像素采样成白色方点粒子,
 //   进场自中心向外逐颗显影成型;悬停时鼠标影响圈内的粒子缓慢游走,移开后自动归位。
 // · 整页入场由暗到亮(黑色遮罩淡出,见样式区 lg-dawn)。
 // · prefers-reduced-motion:两层都只静态画一帧,不跑 rAF、不挂鼠标、遮罩不显示。
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, defineAsyncComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { AUTH_REASON_KEY } from '@/api'
@@ -16,6 +17,11 @@ import { User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-vue-nex
 // 新图形在画布里偏大 / 偏小时调下面 TUNE.logoBox。产品名在 src/brand.ts。
 import logoUrl from '@/assets/brand/logo.svg'
 import { BRAND } from '@/brand'
+// 异步组件:登录页在首屏包里,WebGL 引擎 12KB 不该跟着进首屏
+const GradientWave = defineAsyncComponent(() => import('@/components/fp/GradientWave.vue'))
+// 流动背景的颜色:第一个是底色,其余三层随噪声叠上去。取品牌两色(#38b6ff / #5271ff)压暗到近黑,
+// 保证左侧白字与右侧白卡的对比。想更亮/更暗就改这里。
+const WAVE_COLORS = ['#060a13', '#0c2748', '#1a1f5e', '#081a33']
 
 const router = useRouter()
 const route = useRoute()
@@ -361,6 +367,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="lg-root">
+    <GradientWave class="lg-wave" :colors="WAVE_COLORS" />
     <canvas ref="bgEl" class="lg-bg" aria-hidden="true" />
     <div class="lg-frame">
       <aside class="lg-brand">
@@ -451,11 +458,10 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overflow-x: hidden;
   color: #fff;
-  background:
-    radial-gradient(1100px 700px at 18% 30%, rgba(31, 95, 191, 0.16), transparent 60%),
-    radial-gradient(900px 600px at 85% 90%, rgba(76, 152, 253, 0.07), transparent 55%),
-    #060a13;
+  /* 底色 = 流动背景的底色;WebGL 不可用 / 引擎还没加载到时露出的就是它 */
+  background: #060a13;
 }
+.lg-root .lg-wave { position: fixed; inset: 0; }
 .lg-bg { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
 
 /* 入场:整页由暗到亮 —— 顶层黑色遮罩淡出。
