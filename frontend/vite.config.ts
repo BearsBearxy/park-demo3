@@ -2,10 +2,28 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { BRAND_TITLE } from './src/brand'
+import pkg from './package.json'
 
 export default defineConfig({
-  // brand-title:把 index.html 里的 %BRAND_TITLE% 换成 src/brand.ts 的产品名(浏览器标签页标题)
-  plugins: [vue(), { name: 'brand-title', transformIndexHtml: (html) => html.replaceAll('%BRAND_TITLE%', BRAND_TITLE) }],
+  plugins: [
+    vue(),
+    // brand-title:把 index.html 里的 %BRAND_TITLE% 换成 src/brand.ts 的产品名(浏览器标签页标题)
+    { name: 'brand-title', transformIndexHtml: (html) => html.replaceAll('%BRAND_TITLE%', BRAND_TITLE) },
+    // app-version:把版本号写成 dist/version.json。页面每隔几分钟取它一次,和自己编译进去的
+    // __APP_VERSION__ 比 —— 不一样就是「服务器上已经是新版了」,底部提示条请人刷新
+    // (VERSION-UPDATE-SPEC §6)。**必须不缓存**,nginx.conf 里有对应的 location。
+    // 只在 build 时生成:dev 下版本号永远等于自己,提示条本来也不该出。
+    {
+      name: 'app-version',
+      apply: 'build' as const,
+      generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: pkg.version }) })
+      },
+    },
+  ],
+  // 版本号的单一来源是 package.json。组件不许自己 import 它:本文件在 Node 里跑,
+  // 而 src/ 在浏览器里跑,走 define 注入编译期常量最省(不进包体、无运行时读取)。
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

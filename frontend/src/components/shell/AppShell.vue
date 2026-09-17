@@ -5,6 +5,9 @@ import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
 import { useTabsStore } from '@/stores/tabs'
+import { useAuthStore } from '@/stores/auth'
+import { useUpdateStore } from '@/stores/update'
+import { BRAND } from '@/brand'
 import { fpBuildRoutes } from '@/nav/fpNav'
 import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { useViewport } from '@/composables/useViewport'
@@ -28,6 +31,9 @@ const MobileNavDrawer = defineAsyncComponent(() => import('@/components/shell/mo
 // 必须配下面的 v-if 才真省(defineAsyncComponent 是渲染时才拉块的);
 // 组件里那个 reset+autofocus 的 watch 因此加了 immediate —— 它现在是带着 open=true 挂载的。
 const CommandPalette = defineAsyncComponent(() => import('@/components/shell/CommandPalette.vue'))
+// 版本更新的两个弹窗同一条铁律:一个每版只出现一次、一个点了才开,都不该进首屏包。
+const WhatsNewDialog = defineAsyncComponent(() => import('@/components/shell/WhatsNewDialog.vue'))
+const ChangelogDialog = defineAsyncComponent(() => import('@/components/shell/ChangelogDialog.vue'))
 
 const ui = useUiStore()
 // 导航进度条:过 200ms 门才亮(预热命中的绝大多数导航全程静默),退场立刻。
@@ -128,6 +134,21 @@ function pinEvicted() {
 }
 onUnmounted(() => { if (evictTimer) clearTimeout(evictTimer) })
 
+// ── 版本更新(VERSION-UPDATE-SPEC §3/§6) ──
+// 外壳是全站唯一常驻的组件,轮询与「首次打开弹一次」都挂这里:
+// 挂在屏上就要挂 48 遍,而且换屏会重来一次。
+const auth = useAuthStore()
+const upd = useUpdateStore()
+onMounted(() => {
+  upd.loadSeen()
+  upd.startPolling()
+  upd.scheduleFirstPopup()
+})
+onUnmounted(() => upd.stopPolling())
+
+// 提示条不止一条时往上让位:更新这条排在最上面(网络出错 / 页签被顶那两条已有自己的规则)。
+const toastLift = computed(() => (ui.netError ? 1 : 0) + (evictMsg.value ? 1 : 0))
+
 // 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
 // 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
 watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
@@ -184,6 +205,10 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
     @close="paletteOpen = false"
   />
 
+  <!-- 版本更新:自动弹一次的「本次更新」与随时可开的「更新记录」(v-if 才真懒加载) -->
+  <WhatsNewDialog v-if="upd.popupOpen" />
+  <ChangelogDialog v-if="upd.historyOpen" @close="upd.historyOpen = false" />
+
   <!-- 全局网络错误 toast(读路径加载失败的兜底提示,8s 自动消失) -->
   <Teleport to="body">
     <div v-if="ui.netError" class="fp-net-toast" role="alert">
@@ -195,6 +220,17 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
       <span class="msg">{{ evictMsg }}</span>
       <button class="act" @click="pinEvicted">固定它</button>
       <button class="act ghost" @click="evictValue = ''">×</button>
+    </div>
+    <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。复用上面那套深色语言与位置;
+         不自动消失 —— 网络出错那条 8 秒自消,这条要等他处理。 -->
+    <!-- 「本次更新」开着时先不出:提示档(400)盖在模态档(300)之上,会压住弹窗底部的按钮。
+         关掉弹窗它立刻出现 —— 两件事一先一后说,不同时说。 -->
+    <div v-if="upd.barKind && !upd.popupOpen" class="fp-net-toast fp-upd-toast" :style="{ '--lift': toastLift }" role="alert">
+      <span v-if="upd.barKind === 'blocked'" class="msg">这一页属于新版本，刷新后才能打开</span>
+      <span v-else-if="auth.editing" class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}。<span class="sub">你正在编辑，保存后再刷新</span></span>
+      <span v-else class="msg">{{ BRAND.name }}已更新到 v{{ upd.serverVersion }}，刷新后生效</span>
+      <button class="act" @click="reloadPage">刷新</button>
+      <button class="act ghost" @click="upd.dismissBar()">×</button>
     </div>
   </Teleport>
 </template>
@@ -228,6 +264,10 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
 
 /* 被顶提示复用上面那套深色语言与位置;两条同时在场时它上移一格,不叠字。 */
 .fp-evict-toast.stacked { bottom: 84px; }
+
+/* 版本更新提示条:永远在最上面一格。--lift 是它下面还有几条(0/1/2),一条 56px。 */
+.fp-upd-toast { bottom: calc(28px + var(--lift, 0) * 56px); }
+.fp-upd-toast .sub { color: rgba(255, 255, 255, 0.62); }
 
 /* ── nav card ── */
 .fp-nav-card {
@@ -309,6 +349,9 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   /* @media 不加特异度:桌面那条 .fp-evict-toast.stacked{84px} 在 S 档照样赢,
      而底下这条已经抬到 76px+safe —— 两块各高约 46px,只差 8px 就压字。这里跟着抬。 */
   .fp-evict-toast.stacked { bottom: calc(56px + 76px + env(safe-area-inset-bottom)); }
+  /* 同理:桌面那条 .fp-upd-toast 的 calc 特异度与这条相同,靠 @media 写在后面取胜。
+     手机上文字长了要折行,所以不写 white-space,只把行高给够。 */
+  .fp-upd-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom) + var(--lift, 0) * 56px); }
 }
 /* 手机栏的定高占位壳:异步 chunk 到达前高度即终态,内容区不因铬边迟到重新量高
    (LAYOUT-STABILITY 容器尺寸挂载即终态)。高度公式与组件自身 height 逐字同步:

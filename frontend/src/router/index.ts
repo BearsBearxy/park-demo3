@@ -3,6 +3,7 @@ import { fpBuildRoutes } from '@/nav/fpNav'
 import { useAuthStore } from '@/stores/auth'
 import { useTabsStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
+import { useUpdateStore } from '@/stores/update'
 
 const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
@@ -144,7 +145,14 @@ router.afterEach((to) => {
 
 // chunk 加载失败(发版后旧 hash 404 是常见场景)走 onError 而不走 afterEach,
 // 这里不复位进度条就会永远卡在页顶。
-router.onError(() => { useUiStore().endNav() })
+// 而「加载失败」这件事本身已经能确定原因:这一页的文件随发版换掉了 —— 底部提示条
+// 请他刷新(VERSION-UPDATE-SPEC §6),不必等下一次轮询。只认这一类错误:
+// 守卫里 return 出去的重定向不会走到这里,但别的运行时异常会,那些不该说成「有新版」。
+const CHUNK_FAIL = /dynamically imported module|Importing a module script failed|Loading chunk|CSS chunk/i
+router.onError((err: unknown) => {
+  useUiStore().endNav()
+  if (CHUNK_FAIL.test(String((err as Error)?.message ?? err))) useUpdateStore().reportBlocked()
+})
 
 // ponytail: 纯预热 —— 空闲时把各屏 chunk 提前拉进浏览器缓存,第二次点击起零等待。
 // 失败一律静默:预取不成功只是没热到,不该影响任何可见行为(旧 chunk 404 尤其常见)。

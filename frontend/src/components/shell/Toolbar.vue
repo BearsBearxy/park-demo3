@@ -15,7 +15,8 @@ import { useUiStore } from '@/stores/ui'
 import { useTabsStore } from '@/stores/tabs'
 import IconButton from '@/components/ds/IconButton.vue'
 import FPPresenceBar from '@/components/fp/FPPresenceBar.vue'
-import { PanelLeft, Star, Search, History, Bell } from 'lucide-vue-next'
+import { PanelLeft, Star, Search, History, Bell, Sparkles } from 'lucide-vue-next'
+import { useUpdateStore } from '@/stores/update'
 
 const emit = defineEmits<{ 'open-command': [mode: string] }>()
 
@@ -43,6 +44,11 @@ const inbox = ref(false)
  */
 const pendingCount = computed(() =>
   presence.approvals.length + presence.pendingReviews + presence.myReturned)
+
+// ── 版本更新(VERSION-UPDATE-SPEC §1) ──
+// 蓝点 = 有没看过的更新,不写数字;红色数字留给「要我处理的事」(上面那颗)。
+// 贴法与铃铛红点同款:absolute 贴在定尺寸按钮上,出现与消失都不挪顶栏。
+const upd = useUpdateStore()
 
 const meta = computed(() => route.meta as Record<string, string>)
 const crumbGroup = computed(() => meta.value.layerLabel ?? '')
@@ -96,6 +102,15 @@ const ctxText = computed(() => {
       <IconButton v-if="auth.can('system:view')" aria-label="操作记录" @click="router.push('/sys-logs')">
         <History :size="16" />
       </IconButton>
+      <!-- 版本更新:蓝点只表示「有没看过的更新」,看过就没有(同上一条的贴法) -->
+      <span class="fp-upd">
+        <IconButton aria-label="版本更新" :title="`版本更新（v${upd.version}）`" @click="upd.openHistory()">
+          <Sparkles :size="16" />
+        </IconButton>
+        <span v-if="upd.unread" class="fp-upd-dot" />
+        <!-- 看完「本次更新」后在这儿提示一次入口在哪,4 秒后自己收起 -->
+        <span v-if="upd.coachOn" class="fp-upd-coach" role="status">更新记录随时在这里看</span>
+      </span>
       <!-- 通知 = 待批授权。红点**只在有待批时出现**,position:absolute 贴在图标上 ——
            不改图标尺寸、不挪工具条。这是全站唯一允许「凭空出现」的标记:
            它贴在一个尺寸恒定的按钮上,出现与消失都不影响布局。 -->
@@ -192,6 +207,31 @@ const ctxText = computed(() => {
   font-size: 13px;
   flex: 1;
   text-align: left;
+}
+
+.fp-upd { position: relative; display: inline-flex; }
+.fp-upd-dot {
+  position: absolute; top: 3px; right: 3px;
+  width: 8px; height: 8px; border-radius: var(--radius-full);
+  background: var(--hue-blue);
+  box-shadow: 0 0 0 1.5px var(--surface-white);
+  pointer-events: none;
+}
+/* 入口提示:贴附浮层,从按钮下方长出(motion.css 的 fp-pop-in,与下拉、账号菜单同规格)。
+   绝对定位 + pointer-events:none —— 它只说一句话,不接管点击,也不挪顶栏。 */
+.fp-upd-coach {
+  position: absolute; top: calc(100% + 10px); right: -8px; z-index: var(--z-popover);
+  padding: 7px 10px; border-radius: var(--radius-xs);
+  background: rgb(40, 52, 66); color: #fff;
+  font-size: var(--fs-label); line-height: 18px; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
+}
+.fp-upd-coach::after {
+  content: ""; position: absolute; top: -6px; right: 20px;
+  border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-bottom: 6px solid rgb(40, 52, 66);
 }
 
 .fp-bell { position: relative; display: inline-flex; }

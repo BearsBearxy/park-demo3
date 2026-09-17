@@ -5,7 +5,8 @@
 //   层/目录条目 = openFresh(全新状态);最近打开 = open(恢复 KeepAlive 现场)。
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut } from 'lucide-vue-next'
+import { LogOut, Sparkles } from 'lucide-vue-next'
+import { useUpdateStore } from '@/stores/update'
 import { fpFindLayer, type NavLayer } from '@/nav/fpNav'
 import { visibleLayers } from '@/nav/navAccess'
 import { buildAllPages } from '@/components/shell/paletteFilter'
@@ -75,6 +76,13 @@ function onLogout() {
   router.push('/login')
 }
 
+// 版本更新:开「更新记录」并收起抽屉(与点条目后关抽屉同义——看一眼到点中目标即结束)
+const upd = useUpdateStore()
+function openUpdates() {
+  upd.openHistory()
+  emit('close')
+}
+
 // Esc 关。不进 FPDrawer 的抽屉栈:本抽屉打开时遮罩盖住铃铛/搜索,
 // 与其他模态层不会同时存在,栈机制在这里是空转。
 function onKey(e: KeyboardEvent) {
@@ -133,7 +141,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               </button>
             </template>
           </div>
-          <!-- ④ 账号段(IconRail 头像菜单内容) -->
+          <!-- ④ 版本更新(手机顶栏放不下第四个按钮,入口在这里;SPEC §1) -->
+          <div class="mnav-ver">
+            <button class="mnav-row" :class="{ unread: upd.unread }" @click="openUpdates">
+              <span class="ic"><Sparkles :size="16" /></span>
+              <span class="nm">版本更新</span>
+              <span class="ver">v{{ upd.version }}<span v-if="upd.unread" class="dot" /></span>
+            </button>
+          </div>
+          <!-- ⑤ 账号段(IconRail 头像菜单内容) -->
           <div class="mnav-user">
             <Avatar :name="auth.displayName ?? '—'" :size="36" />
             <div class="mnav-user-txt">
@@ -260,6 +276,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   font-size: var(--fs-micro);
   color: var(--text-muted);
 }
+
+/* 版本更新一行:夹在目录与账号之间,自带上分隔线;未读时浅蓝底 + 蓝点 */
+.mnav-ver {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-top: 1px solid var(--divider);
+}
+.mnav-row.unread { background: var(--accent-slate); color: var(--text-primary); }
+.mnav-row .ver {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: var(--fs-label); font-weight: var(--fw-regular); color: var(--text-muted);
+}
+.mnav-row .ver .dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--hue-blue); }
 
 .mnav-user {
   flex: 0 0 auto;

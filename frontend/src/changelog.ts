@@ -1,0 +1,116 @@
+// 给用户看的更新记录 —— 全站只有这一处。
+//
+// 发版时要做的两件事:
+//   ① 改 package.json 的 version(版本号只有那一个来源,构建时注入 __APP_VERSION__);
+//   ② 在下面 CHANGELOG 数组**最前面**加一段,版本号与 ① 一致。
+// 之后正常构建部署:新版本第一次打开时会自动弹「本次更新」,顶栏 ✦ 里随时能翻(VERSION-UPDATE-SPEC)。
+//
+// 怎么写(设计稿「一条更新怎么写」那一段):
+//   · 用用户的话,不贴提交记录,不写「重构 / 门禁 / 口径」这类开发用语;
+//   · 标题就叫那一屏在侧栏里的名字;说明一句话,说他能做什么;
+//   · 分三组:added = 以前没有的屏或功能,improved = 原来就有、现在更好用,
+//     fixed = 原来算错或点不动 —— 写「原来哪里不对」,一行一条;
+//   · 能跳过去的条目给 `to`(侧栏里那一屏的 value,见 nav/fpNav.ts);跳不过去就别给。
+//   · 本版最重要的一条放 `feature`,它在弹窗顶上单独一张卡。
+// ⚠ 这里的每个字都会原样上屏,写完自己读一遍。
+import type { ReleaseNote } from '@/types/changelog'
+
+export const CHANGELOG: ReleaseNote[] = [
+  {
+    version: '0.13.0',
+    date: '2026-09-18',
+    headline: '月结审核上线，产品改名「灵睿」',
+    feature: {
+      icon: 'badge-check',
+      title: '月结审核',
+      desc: '三大报表、月度台账等 15 个屏可以「交审」。审核人在右上角铃铛里看到待审明细，点一下直达那张表；自己交的、还没人审，可以撤回。',
+      to: 'data-home',
+      toLabel: '去本月出账',
+    },
+    added: [
+      { icon: 'git-compare', title: '租户对标', desc: '新屏：看一户的单位租金在同类厂房里排在哪。', to: 'tenant-peer' },
+      { icon: 'calendar-clock', title: '到期墙与续约', desc: '加了合约租金带、续签率，和「先谈哪几户」清单。', to: 'expiry' },
+      // 不写行数:出账 7 行 / 记账 12 行,而行数会随附表增减而变,写死就会过期(2026-09-18 复查时
+      // 稿上那句「记账 8 行」已经对不上了)。
+      { icon: 'list-checks', title: '本月出账两栏清单', desc: '出账、记账分两栏列出来，本月还差哪张表一眼能看到。', to: 'data-home' },
+      { icon: 'sparkles', title: '更新记录', desc: '就是你正在看的这个：每次更新会告诉你改了什么，以后点右上角 ✦ 随时能翻。' },
+    ],
+    improved: [
+      { icon: 'tags', title: '产品改名「灵睿 LinkSight」', desc: '换了新标志；登录页换成暗色流动背景。' },
+      { icon: 'panels-top-left', title: '页签记住期间和公司', desc: '页签标题显示「屏名 · 期 · 公司」；从别的屏点过来，直接落到那一期。' },
+      { icon: 'message-square', title: '图上关键点改成深色气泡', desc: '保本点、回收点这类标注，字更清楚。' },
+      { icon: 'sun', title: '光伏分栋分析重做', desc: '20 块图按新版式重排。', to: 'pv-meter-analysis' },
+      { icon: 'zap', title: '打开和切换更顺', desc: '弹窗、页签切换有了过渡；分析屏首次打开，版面不再跳动。' },
+      { icon: 'log-in', title: '被顶下线时说明原因', desc: '同一账号在别处登录后，这边退出时会说明原因。' },
+    ],
+    fixed: [
+      '出租与楼栋：不管有没有数据都说「单元面积未录入」；平均分摊率显示成 139511%',
+      '光伏分栋抄表被别人接管后，按钮点了没反应、被退出编辑也没有提示',
+      '园区抄表、公共电核算、催缴单等六个录入屏，补上了编辑锁的提示弹窗',
+    ],
+  },
+  {
+    version: '0.12.0',
+    date: '2026-08-27',
+    headline: '远程授权与编辑锁',
+    added: [
+      { icon: 'shield-check', title: '远程授权', desc: '没有权限时可以向主管申请，批准后当场能改。' },
+      { icon: 'lock', title: '编辑锁', desc: '同一张表同一时间只能一个人改；顶栏头像能看到谁在看、谁在编辑。' },
+      { icon: 'book-open', title: '账册版本', desc: '可以切换台账模板版本，已录入的月份不受影响。' },
+    ],
+    improved: [
+      { icon: 'pen-line', title: '编辑模式全站统一', desc: '所有录入屏都是「先看，点编辑再改」。' },
+      { icon: 'book-open', title: '台账结余按月结转', desc: '上月结余自动带到下月。' },
+    ],
+    fixed: [],
+  },
+  {
+    version: '0.11.0',
+    date: '2026-08-15',
+    headline: '抄表与核算屏整轮打磨',
+    added: [
+      { icon: 'file-text', title: '催缴单导出', desc: '通知单和对账表，一户一个文件。' },
+      { icon: 'sliders-horizontal', title: '系数簿', desc: '在催缴单页批量改租户的管理费单价和层份。' },
+      { icon: 'gauge', title: '表计筛选', desc: '加了「已退场」「未启用」，设错的表能自己找回来。' },
+    ],
+    improved: [
+      { icon: 'layers', title: '浮层点外面就关', desc: '下拉、弹出菜单统一行为。' },
+      { icon: 'table-2', title: '数字等宽', desc: '金额和读数竖排能对齐。' },
+    ],
+    fixed: [],
+  },
+  {
+    version: '0.10.0-beta.1',
+    date: '2026-07-21',
+    headline: '能源分析',
+    added: [
+      { icon: 'zap', title: '电费、充电桩分析', desc: '两个新分析屏。' },
+      { icon: 'zap', title: '园区电费成本模型', desc: '4 类 8 张表。' },
+      { icon: 'sun', title: '光伏分栋抄表、充电桩分桩明细', desc: '按月记条、按栋汇总。' },
+      { icon: 'wallet', title: '账单管理页', desc: '附表10 工资条、打印。' },
+    ],
+    improved: [
+      { icon: 'list', title: '合同、租户列表', desc: '每页行数按屏幕高度自动调整。' },
+    ],
+    fixed: [],
+  },
+  {
+    version: '0.9.0',
+    date: '2026-07-13',
+    headline: '公测',
+    added: [
+      { icon: 'layout-dashboard', title: '41 个屏全部上线', desc: '数据中心、账簿与报表、经营分析三层。' },
+      { icon: 'file-text', title: '催缴导出、只读角色、到期墙', desc: '' },
+    ],
+    improved: [],
+    fixed: [],
+  },
+]
+
+/** 当前跑在浏览器里的这一版(构建时由 vite.config.ts 注入)。 */
+export const APP_VERSION = __APP_VERSION__
+
+/** 当前版本对应的那一段;版本号没写进 CHANGELOG 时(忘了加)返回 undefined,调用方按「没有可弹的」处理。 */
+export function noteOf(version: string): ReleaseNote | undefined {
+  return CHANGELOG.find((n) => n.version === version)
+}
