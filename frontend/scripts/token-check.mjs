@@ -10,7 +10,7 @@
 // 于是表现是「这个徽标的蓝色没生效」「这个按钮没有边框」,看起来像设计没做好,而不像 bug。
 // 只有「引用集合 − 定义集合」这种全量比对能抓,所以它必须是一道机器门禁而不是 code review 项。
 //
-// 零新依赖,只用 node 内置模块(与 size-check.mjs / precompress.mjs 同口径)。
+// 零新依赖,只用 node 内置模块(与 precompress.mjs 同口径)。
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
