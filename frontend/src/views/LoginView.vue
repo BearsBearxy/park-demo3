@@ -2,7 +2,7 @@
 // 登录页(2026-08-16 重设计):左暗右亮双栏 —— 左侧品牌区带两层 canvas 动效,右侧白卡表单。
 // · 背景网格:全屏 canvas 画小方格阵,鼠标移过把附近方格「撑开」(径向位移+放大+提亮),
 //   参考 deepseek.com/harness 的手法:桌面(pointer:fine)才挂鼠标,触屏只有微光呼吸。
-// · 粒子 logo:把 factory-park-mark.svg 栅格化后按非透明像素采样成白色方点粒子,
+// · 粒子 logo:把 assets/brand/logo.svg 栅格化后按非透明像素采样成白色方点粒子,
 //   进场自中心向外逐颗显影成型;悬停时鼠标影响圈内的粒子缓慢游走,移开后自动归位。
 // · 整页入场由暗到亮(黑色遮罩淡出,见样式区 lg-dawn)。
 // · prefers-reduced-motion:两层都只静态画一帧,不跑 rAF、不挂鼠标、遮罩不显示。
@@ -11,9 +11,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { AUTH_REASON_KEY } from '@/api'
 import { User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-vue-next'
-// 粒子 logo 素材:换 logo 直接替换这个 svg 文件(或改这里的 import 指向任意 png/svg)。
-// 引擎按「alpha>140 的像素」采样、颜色取自像素本身,任何形状/配色都能直接成粒子。
-import logoUrl from '@/assets/factory-park-mark.svg'
+// 粒子 logo 与左上角标志共用品牌标志文件:换 logo 直接同名覆盖 src/assets/brand/logo.svg
+// (或改这里的 import 指向任意 png/svg)。引擎按「alpha>140 的像素」采样,任何形状/配色都能直接成粒子;
+// 新图形在画布里偏大 / 偏小时调下面 TUNE.logoBox。产品名在 src/brand.ts。
+import logoUrl from '@/assets/brand/logo.svg'
+import { BRAND } from '@/brand'
 
 const router = useRouter()
 const route = useRoute()
@@ -97,7 +99,7 @@ const TUNE = {
   logoBobSpeed: 1,   // 水面漂浮的速度倍率
   logoBloomHold: 800, // 进场:显影开始前的暗场停留 ms(与整页由暗到亮衔接)
   logoBloomMs: 1000,  // 显影窗口 ms:粒子在原位逐颗淡入,出生波前从中心向外扩散(对照视频的成型方式)
-  logoBox: 500,      // logo 图案本身的大小(px):mark 自带留白,300 不会裁;要更大先放大 CSS .lg-plogo
+  logoBox: 260,      // logo 图案本身的大小(px,画布 340×280):标志 svg 已裁到图形四周只留一点边,260 刚好不裁;要更大先放大 CSS .lg-plogo
 }
 const bgEl = ref<HTMLCanvasElement | null>(null)
 const logoEl = ref<HTMLCanvasElement | null>(null)
@@ -364,7 +366,7 @@ onBeforeUnmount(() => {
       <aside class="lg-brand">
         <div class="lg-brandtop">
           <span class="lg-mark"><img :src="logoUrl" alt="" width="20" height="20"></span>
-          <span class="lg-brandname">园区管理系统</span>
+          <span class="lg-brandname">{{ BRAND.name }}<span class="lg-brandname-en">{{ BRAND.nameEn }}</span></span>
         </div>
         <div class="lg-hero">
           <canvas ref="logoEl" class="lg-plogo" aria-hidden="true" />
@@ -491,6 +493,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 18px rgba(76, 152, 253, 0.25);
 }
 .lg-brandname { font-size: 15px; font-weight: var(--fw-semibold); letter-spacing: 0.02em; }
+.lg-brandname-en { margin-left: 6px; font-weight: var(--fw-regular); color: rgba(255, 255, 255, 0.62); }
 /* hero 撑满品牌区宽,logo 才能落在暗区正中轴;文本自身限宽保持左对齐版式 */
 .lg-hero { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; }
 .lg-headline, .lg-sub { max-width: 620px; }

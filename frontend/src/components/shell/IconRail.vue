@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
 import Popover from '@/components/ds/Popover.vue'
+import { BRAND_TITLE } from '@/brand'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
@@ -44,7 +45,7 @@ function goLayer(layer: NavLayer) {
   <div class="fp-rail">
     <!-- brand mark: 40×40 radius 13 white bg hairline -->
     <div class="fp-rail-mark">
-      <img src="@/assets/factory-park-mark.svg" width="22" height="22" alt="Factory Park" />
+      <img src="@/assets/brand/logo.svg" width="22" height="22" :alt="BRAND_TITLE" />
     </div>
 
     <!-- separator: 30×1px margin 9/7 -->
