@@ -5,7 +5,9 @@
 // 堆叠自下而上 = 自己用了 / 卖上网 / 路上损掉,只有最顶一段圆角(≤ 3)。数据口径在 consumption()。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PV_COLORS } from './pvAnaColors'
 import { LOSS_AXIS_MAX, type PvConsumptionProps } from './pvAnaV4.logic'
 
@@ -17,6 +19,9 @@ const WAN = 10000
 /** V4 §3.8:损耗率到这条线,气泡里那一行转琥珀 */
 const LOSS_TIP_WARN = 3
 const { el, width } = useWidth(999)
+// 挂载时在视口内擦入 320,否则瞬到;换期 200 同键形变(柱按刻度、损耗线按段起点刻度),擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 const iw = computed(() => width.value - PL - PR)
 const n = computed(() => props.data.ticks.length)
 const slot = computed(() => iw.value / Math.max(1, n.value))
@@ -65,8 +70,11 @@ const lossRuns = computed(() => {
   if (cur.length) out.push(cur)
   return out
 })
-const lossPath = computed(() => lossRuns.value
-  .map(r => `M${r.map(i => `${cx(i)},${yLoss(props.data.ticks[i].lossPct!)}`).join(' L')}`).join(' '))
+/** 损耗线拆成相邻两刻度一段、按起点刻度作键:每段同一「M L」结构才能形变;超轴 / 空的刻度两侧不出段 = 断开 */
+const lossSegs = computed(() => lossRuns.value.flatMap(r => r.slice(1).map((j, k) => {
+  const i = r[k]
+  return { i, d: `M${cx(i)},${yLoss(props.data.ticks[i].lossPct!)} L${cx(j)},${yLoss(props.data.ticks[j].lossPct!)}` }
+})))
 const lossDots = computed(() => lossRuns.value.flat().map(i => ({ i, x: cx(i), y: yLoss(props.data.ticks[i].lossPct!) })))
 const overs = computed(() => props.data.ticks.flatMap((t, i) => (t.over && t.lossPct != null ? [{ i, x: cx(i), text: `${t.lossPct.toFixed(1)}%` }] : [])))
 
@@ -125,20 +133,26 @@ const tip = computed(() => {
         </template>
         <rect v-if="shade" class="pcs-future" :x="shade.x" :y="PT" :width="shade.w" :height="IH" :fill="PV_COLORS.FUTURE" />
         <rect v-if="tip" class="pcs-hair" :x="tip.x - bw / 2 - 3" :y="PT" :width="bw + 6" :height="IH" rx="3" />
-        <g v-for="b in bars" :key="'b' + b.i" class="pcs-bar" :data-i="b.i">
-          <template v-for="s in b.segs" :key="s.key">
-            <path v-if="s.round" :class="['pcs-seg', 'pcs-' + s.key]" :d="roundTop(b.x, s.y, bw, s.h)" :fill="SEG_FILL[s.key]" />
-            <rect v-else :class="['pcs-seg', 'pcs-' + s.key]" :x="b.x" :y="s.y" :width="bw" :height="s.h" :fill="SEG_FILL[s.key]" />
-          </template>
-        </g>
+        <!-- 轴线与 x 刻度挪到柱前,留在数据组外(C6-25) -->
         <line class="pcs-axl" :x1="PL" :x2="PL + iw" :y1="PT + IH" :y2="PT + IH" />
         <text v-for="t in xLabels" :key="'x' + t.x" class="pcs-ax pcs-mut pcs-xl" :x="t.x" :y="H - 8" text-anchor="middle">{{ t.text }}</text>
-        <path v-if="lossPath" class="pcs-lossline" :d="lossPath" fill="none" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" stroke-linejoin="round" />
-        <circle v-for="p in lossDots" :key="'d' + p.i" class="pcs-lossdot" :cx="p.x" :cy="p.y" r="2.5" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" />
-        <template v-for="o in overs" :key="'o' + o.i">
-          <polygon class="pcs-over" :points="`${o.x - 4},${PT - 2} ${o.x + 4},${PT - 2} ${o.x},${PT - 9}`" :fill="PV_COLORS.ABOVE" />
-          <text class="pcs-ax pcs-overt" :x="o.x + 6" :y="PT - 3" :fill="PV_COLORS.AMBER_TEXT">{{ o.text }}</text>
-        </template>
+        <!-- 组按粒度作键:刻度下标跨粒度不是同一类目,按月 ↔ 按年整组换新元素瞬到 -->
+        <g :key="data.gran" :class="['pcs-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <g v-for="b in bars" :key="'b' + b.i" class="pcs-bar" :data-i="b.i">
+            <template v-for="s in b.segs" :key="s.key">
+              <path v-if="s.round" :class="['pcs-seg', 'pcs-' + s.key]" :d="roundTop(b.x, s.y, bw, s.h)" :fill="SEG_FILL[s.key]" />
+              <rect v-else :class="['pcs-seg', 'pcs-' + s.key]" :x="b.x" :y="s.y" :width="bw" :height="s.h" :fill="SEG_FILL[s.key]" />
+            </template>
+          </g>
+          <path v-for="s in lossSegs" :key="'l' + s.i" class="pcs-lossline" :data-i="s.i" :d="s.d" fill="none" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" stroke-linecap="round" />
+          <circle v-for="p in lossDots" :key="'d' + p.i" class="pcs-lossdot" :cx="p.x" :cy="p.y" r="2.5" :stroke="PV_COLORS.ABOVE" stroke-width="1.5" />
+          <!-- 轴外三角 + 数值整组按槽心平移:<polygon> 的 points 与 <text> 的 x 都过渡不了,槽宽一变柱在滑、它们先跳。
+               组的 transform 走 .pcs-overg 的过渡(ana-morph 只管 rect / path / circle 的几何属性) -->
+          <g v-for="o in overs" :key="'o' + o.i" class="pcs-overg" :style="{ transform: `translate(${o.x}px, 0px)` }">
+            <path class="pcs-over" :d="`M-4,${PT - 2} L4,${PT - 2} L0,${PT - 9} Z`" :fill="PV_COLORS.ABOVE" />
+            <text class="pcs-ax pcs-overt" x="6" :y="PT - 3" :fill="PV_COLORS.AMBER_TEXT">{{ o.text }}</text>
+          </g>
+        </g>
         <text class="pcs-ax pcs-mut" :x="PL - 6" y="10" text-anchor="end">万度</text>
         <text class="pcs-ax" :x="PL + iw + 6" y="10" :fill="PV_COLORS.AMBER_TEXT">损耗率</text>
       </svg>
@@ -161,6 +175,10 @@ const tip = computed(() => {
 <style scoped>
 .pcs-plot { position: relative; width: 100%; }
 .pcs-svg { display: block; }
+/* 首绘:数据组自左擦出一次(C6-25);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.pcs-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+.pcs-overg { transition: transform var(--dur-base) var(--ease-out); }
+.hold > .pcs-overg { transition: none; }
 .pcs-hit { position: absolute; inset: 0; }
 .pcs-gl { stroke: var(--ink-100); stroke-width: 1; }
 .pcs-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }

@@ -1,6 +1,8 @@
 // fin-balance v2 纯函数单测:双环 option 数据/配色同源、gauge ≤2 与语义色阈值。
 import { describe, expect, it } from 'vitest'
 import { DONUT_PAL, currentTone, debtTone, donutOption, gaugesOption, sliceColor } from './finBalance.logic'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 describe('donutOption / sliceColor', () => {
   it('切片 name/value 保序,配色循环主题色板(HTML 图例同源取色)', () => {
@@ -40,5 +42,68 @@ describe('gaugesOption(spec ≤2 个仪表)', () => {
     const o = gaugesOption(50, null) as GOpt
     expect(o.series).toHaveLength(1)
     expect(o.series[0].data[0].name).toBe('资产负债率')
+  })
+})
+
+// 资不抵债时负债率 >100(实测备份 12 个公司×期间里 9 个超,最高 1387.5%,另有一个 -843.2%)。
+// 引擎 progress.clip 默认 true 会把环夹满 —— 环画满时必须读得出是超量程,不是正好 100%。
+describe('gaugesOption 超量程标记', () => {
+  interface GOptX {
+    series: {
+      max: number
+      splitNumber: number
+      axisLine: { lineStyle: { color: [number, string][] } }
+      axisLabel: { show: boolean }
+      data: [{ value: number }]
+    }[]
+  }
+  const track = (o: GOptX, i: number): string => o.series[i].axisLine.lineStyle.color[0][1]
+
+  it('量程内:轨道是中性灰,刻度不露出', () => {
+    const o = gaugesOption(62, 1.2) as GOptX
+    expect(track(o, 0)).toBe('rgba(28,28,28,.08)')
+    expect(o.series[0].axisLabel.show).toBe(false)
+    expect(track(o, 1)).toBe('rgba(28,28,28,.08)')
+  })
+  it('负债率 >100:轨道染成同档语义色浅底 + 露出 0 / 100 两个刻度,数字仍是真值', () => {
+    const o = gaugesOption(157.3, 0.64) as GOptX
+    expect(track(o, 0)).toBe('#E24B4A26')
+    expect(o.series[0].axisLabel.show).toBe(true)
+    expect(o.series[0].splitNumber).toBe(1)
+    expect(o.series[0].max).toBe(100)
+    expect(o.series[0].data[0].value).toBe(157.3)
+    expect(track(o, 1)).toBe('rgba(28,28,28,.08)')
+  })
+  it('负债率为负(总负债为负)同样算超量程,且不给「好」色', () => {
+    const o = gaugesOption(-843.2, null) as GOptX
+    expect(debtTone(-843.2)).toBe('risk')
+    expect(track(o, 0)).toBe('#E24B4A26')
+    expect(o.series[0].data[0].value).toBe(-843.2)
+  })
+  it('流动比率 >2 自己标,不牵连负债率那只', () => {
+    const o = gaugesOption(50, 2.5) as GOptX
+    expect(track(o, 1)).toBe('#378ADD26')
+    expect(o.series[1].axisLabel.show).toBe(true)
+    expect(track(o, 0)).toBe('rgba(28,28,28,.08)')
+  })
+})
+
+// 点环扇区高亮那 2s(C5-08)。屏要 mock 四个报表接口才挂得起来,而要钉的是「flashLabel 有几个出口」——
+// 写死在模板与 watch 里的常量,不经过运行时,照 anaScreenSkel.spec.ts / pvMeterAnaScreen.spec.ts 的写法读源码。
+describe('资产负债屏 · .fb-flash 的复位出口(C5-08)', () => {
+  const src = readFileSync(join(__dirname, 'FinBalanceView.vue'), 'utf8')
+
+  it('❗animationcancel 与 animationend 同绑 —— KeepAlive 停用只发 cancel,类留着回签就白亮 2s', () => {
+    const expr = 'flashLabel === r.label && (flashLabel = null)'
+    expect(src, '缺 animationend 出口').toContain('@animationend="' + expr + '"')
+    expect(src, '缺 animationcancel 出口:切页签走人时 flashLabel 卡在真值').toContain('@animationcancel="' + expr + '"')
+  })
+
+  it('❗换公司/换期先清 —— 那一行被 v-if 卸掉后两个事件都不会再来', () => {
+    // 2s 内换公司命中 catch 或新口径没有资产负债表 → hasBs 假 → 整块 av2-grid 卸载。
+    // 切回有数据的期时那一行重新插进文档,用户没点扇区却又蓝闪 2s。
+    const body = src.split('watch([cid, reportYm], async ([c, rym]) => {')[1]?.slice(0, 400) ?? ''
+    expect(body, '取数 watch 不在了').toBeTruthy()
+    expect(body, '取数 watch 里没清 flashLabel').toContain('flashLabel.value = null')
   })
 })

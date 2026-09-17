@@ -33,12 +33,23 @@ async function submit() {
   if (bad) { errorMsg.value = bad; return }
   errorMsg.value = ''
   loading.value = true
+  // 改密与导航分两个错误域(动效稿 C4-02):await router.replace,按钮停在「提交中…」直到落地确认;
+  // 落地懒块加载失败写自己的话,不冒充「修改失败」—— 密码其实已经改掉了。
+  let target: string | undefined
   try {
     await api.post('/auth/change-password', { currentPassword: current.value, newPassword: next.value })
     auth.clearMustChangePassword()
-    router.replace(auth.landing)
+    target = auth.landing
   } catch (e: any) {
     errorMsg.value = e?.message || e?.msg || '修改失败，请稍后重试'
+    return
+  } finally {
+    if (!target) loading.value = false
+  }
+  try {
+    await router.replace(target)
+  } catch {
+    errorMsg.value = '页面加载失败，请刷新重试'
   } finally {
     loading.value = false
   }

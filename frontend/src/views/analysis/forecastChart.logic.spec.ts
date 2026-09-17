@@ -150,6 +150,13 @@ describe('跨年:用上一年的尾月给今年前几个月算带(用户 2026-09
     expect(w(0)).not.toBeCloseTo(w(1), 2)
   })
 
+  // 换年在途:新年的 pnl 先到、prevPnl 还是上一次的那份(隔了一年),附表集合相同也不许接
+  it('❗年份不相邻就不接 —— 换年在途时 2025 配着 2023 那份,接上就是一条假带', () => {
+    const PREV_2Y = () => ({ ...PREV(), year: 2023 })
+    expect(prevYearUsable(CUR(), PREV()), '相邻年照接').toBe(true)
+    expect(prevYearUsable(CUR(), PREV_2Y()), '隔了一年,不许接').toBe(false)
+  })
+
   it('❗附表口径不同就不接 —— 去年只录了附表2,今年是附表1,接上去会造出假台阶', () => {
     const prevOnlyS2 = pnl([10, 11, 12],
       [...new Array(9).fill(null), 17.0 * 10000, 17.5 * 10000, 12.2 * 10000], ['s2'], 2024)

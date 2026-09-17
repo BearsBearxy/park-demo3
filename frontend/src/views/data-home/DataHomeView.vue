@@ -538,10 +538,11 @@ const bookingRows = computed(() => shown('booking'))
         <span class="dh-title">本月出账</span>
         <!-- 在途时三处一起压暗(.fp-stale:opacity+blur+pointer-events:none,不改高度):
              月名、计数、两栏板子都还是**上一个月**的数,而年份条的描边已经挪到新月上了 ——
-             不压暗就是同屏两处对同一件事说反话。年份条本身不压:它是你正在点的那个控件。 -->
-        <div v-if="ov.period" class="dh-mnow" :class="{ 'fp-stale': veil }" :aria-busy="veil">{{ ov.period.label }}</div>
+             不压暗就是同屏两处对同一件事说反话。年份条本身不压:它是你正在点的那个控件。
+             data-stale-host 常挂(动效稿 C5-02 ⑧):类摘掉后仍有 transition-property,退场才是 200 —— 不挂就是硬切。 -->
+        <div v-if="ov.period" class="dh-mnow" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">{{ ov.period.label }}</div>
       </div>
-      <span v-if="ov.period" class="dh-counts" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+      <span v-if="ov.period" class="dh-counts" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         出账 {{ checks.byCol.billing.done }}/{{ checks.byCol.billing.total }} ·
         附表 {{ checks.byCol.booking.done }}/{{ checks.byCol.booking.total }}
       </span>
@@ -573,7 +574,7 @@ const bookingRows = computed(() => shown('booking'))
 
       <!-- 两栏清单(P2 T3,monthClose.logic §5.2):出账列 7 行 / 记账列 8 行,行是常驻的 ——
            状态用 :data-state 属性驱动样式,na(源缺)的行照样渲染,状态位显「—」,不 v-if 掉整行。 -->
-      <div class="dh-cols" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+      <div class="dh-cols" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <!-- ① 出账列:链五步 + 收入核对 + 本月锁账,有先后依赖,一眼看出卡在哪一步 -->
         <section class="dh-sec">
           <h3 class="dh-h3">出账链</h3>
@@ -732,6 +733,7 @@ const bookingRows = computed(() => shown('booking'))
 .dh-row:last-child { border-bottom: none; }
 .dh-row-clickable { cursor: pointer; }
 .dh-row-clickable:hover { background: var(--surface-card); }
+.dh-row-clickable:active { background: var(--ink-100); transition-duration: 0ms; }
 .dh-row[data-state="done"] { color: var(--text-secondary); }
 .dh-row[data-state="done"] .dh-rdot { color: var(--hue-blue); }
 .dh-row[data-state="stale"] .dh-rdot { color: var(--hue-orange); }
@@ -745,8 +747,10 @@ const bookingRows = computed(() => shown('booking'))
 .dh-chip {
   font-size: var(--fs-micro); padding: 2px 8px; border-radius: var(--radius-full);
   border: 1px solid var(--border-subtle); background: var(--surface-card); color: var(--text-primary);
-  cursor: pointer;
+  cursor: pointer; transition: background var(--dur-fast) var(--ease-standard);
 }
+/* 按 chip 时外层行也压一下,接受(C2-08) */
+.dh-chip:active { background: var(--ink-100); transition-duration: 0ms; }
 .dh-chip[data-done="false"] { color: var(--text-disabled); }
 .dh-rlock { color: var(--hue-orange); flex: 0 0 auto; }
 .dh-rreview {
@@ -764,8 +768,10 @@ const bookingRows = computed(() => shown('booking'))
   font-size: var(--fs-micro); line-height: 1; padding: 3px 7px;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
   background: var(--surface-white); color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
 .dh-abtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.dh-abtn:active:not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
 .dh-abtn.ok { border-color: var(--hue-green); color: var(--hue-green); }
 .dh-abtn:disabled { opacity: .45; cursor: not-allowed; }
 

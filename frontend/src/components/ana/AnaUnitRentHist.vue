@@ -3,6 +3,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { unitRentHistGeo, type HistBinIn } from '@/views/analysis/unitRentHistChart.logic'
 import type { ChartBox } from '@/views/analysis/forecastChart.logic'
+import { useEnterPhase, useMorphHold } from './anaMotion'
+import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
   bins: HistBinIn[] | null
@@ -25,6 +27,12 @@ onMounted(() => {
   w.value = Math.round(host.value.clientWidth) || 700
 })
 onBeforeUnmount(() => ro?.disconnect())
+
+// 擦入:挂载 / 切回页签时在视口内就擦。换租户(2026-09-16 矩阵)走 200 形变:柱高按档位同键形变,
+// 本户线 / 分位线 / 带下那句整组平移 —— 线和它的字是一个 <g>,用 transform 一起走,字不会先跳到终点。
+const first = useEnterPhase(host)
+const hold = useMorphHold(w, first)
+const slide = (x: number) => ({ transform: `translate(${x}px, 0px)` })
 
 const box = computed<ChartBox>(() => ({ width: w.value, height: props.height, padL: 40, padR: 20, padT: 30, padB: 46 }))
 const geo = computed(() => unitRentHistGeo(
@@ -74,26 +82,31 @@ const tipX = computed(() => {
       <text v-for="t in geo.yTicks" :key="'y' + t.v" :x="box.padL - 8" :y="t.y + 4" class="auh-ylab">{{ t.label }}</text>
 
       <!-- p10~p90 底色块:稿上那一片浅蓝,柱子压在上面 -->
-      <rect v-if="geo.bandRect" :x="geo.bandRect.x" :y="box.padT" :width="geo.bandRect.w"
-        :height="box.height - box.padT - box.padB" class="auh-bandrect" />
+      <g class="ana-morph" :class="{ hold }">
+        <rect v-if="geo.bandRect" :x="geo.bandRect.x" :y="box.padT" :width="geo.bandRect.w"
+          :height="box.height - box.padT - box.padB" class="auh-bandrect" />
+      </g>
 
-      <rect v-for="(b, i) in geo.bars" :key="'b' + i" :x="b.x" :y="b.y" :width="b.w" :height="b.h"
-        :class="['auh-bar', b.overflow ? 'auh-bar-of' : b.inBand ? 'auh-bar-in' : 'auh-bar-out', hoverI === i ? 'auh-bar-hot' : '']" />
+      <!-- 数据组:擦入时柱自左依次露出,换租户时按档位同键形变;轴 / 网格 / 底色块 / 分位线留在组外 -->
+      <g class="auh-data ana-morph" :class="{ first, hold }" @animationend.self="first = false" @animationcancel.self="first = false">
+        <rect v-for="(b, i) in geo.bars" :key="'b' + i" :x="b.x" :y="b.y" :width="b.w" :height="b.h"
+          :class="['auh-bar', b.overflow ? 'auh-bar-of' : b.inBand ? 'auh-bar-in' : 'auh-bar-out', hoverI === i ? 'auh-bar-hot' : '']" />
+      </g>
 
-      <!-- p10 / 中位 / p90 -->
-      <template v-for="m in geo.marks" :key="m.kind">
-        <line :x1="m.x" :x2="m.x" :y1="box.padT" :y2="box.height - box.padB" class="auh-mark" />
-        <text :x="m.x" :y="box.height - box.padB + 16" :class="['auh-marklab', m.kind === 'median' ? 'auh-marklab-mid' : '']">{{ m.label }}</text>
-      </template>
+      <!-- p10 / 中位 / p90:线与标注同在一个平移组里 -->
+      <g v-for="m in geo.marks" :key="m.kind" :class="['auh-slide', { hold }]" :style="slide(m.x)">
+        <line x1="0" x2="0" :y1="box.padT" :y2="box.height - box.padB" class="auh-mark" />
+        <text x="0" :y="box.height - box.padB + 16" :class="['auh-marklab', m.kind === 'median' ? 'auh-marklab-mid' : '']">{{ m.label }}</text>
+      </g>
 
       <!-- 本户:一条竖线 + 顶上的点 + 名字 -->
-      <template v-if="geo.self">
-        <line :x1="geo.self.x" :x2="geo.self.x" :y1="box.padT" :y2="box.height - box.padB" class="auh-self" />
-        <circle :cx="geo.self.x" :cy="geo.self.dotY" r="4" class="auh-selfdot" />
-        <text :x="geo.self.x" :y="box.padT - 10" class="auh-selflab">{{ geo.self.label }}</text>
-      </template>
+      <g v-if="geo.self" :class="['auh-slide', { hold }]" :style="slide(geo.self.x)">
+        <line x1="0" x2="0" :y1="box.padT" :y2="box.height - box.padB" class="auh-self" />
+        <circle cx="0" :cy="geo.self.dotY" r="4" class="auh-selfdot" />
+        <text x="0" :y="box.padT - 10" class="auh-selflab">{{ geo.self.label }}</text>
+      </g>
 
-      <text v-if="geo.bandCaption" :x="geo.bandCaption.x" :y="geo.bandCaption.y" class="auh-cap">80% 的同类在这段</text>
+      <text v-if="geo.bandCaption" x="0" :y="geo.bandCaption.y" :class="['auh-cap', 'auh-slide', { hold }]" :style="slide(geo.bandCaption.x)">80% 的同类在这段</text>
       <text v-if="geo.overflowNote" :x="box.width - box.padR" :y="geo.bandCaption ? geo.bandCaption.y : box.height - 6" class="auh-of">{{ geo.overflowNote }}</text>
 
       <template v-if="tipLines.length && hoverBar">
@@ -110,10 +123,14 @@ const tipX = computed(() => {
 <style scoped>
 .auh-host { width: 100%; }
 .auh { display: block; }
+/* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.auh-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+/* 线 + 字整组平移(换租户 200);hold = 改宽 / 擦入中,瞬到 */
+.auh-slide { transition: transform var(--dur-base) var(--ease-out); }
+.auh-slide.hold { transition: none; }
 .auh-grid { stroke: #EEF0F4; stroke-width: 1; }
 .auh-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
 .auh-bandrect { fill: #DCEAFB; fill-opacity: 0.55; }
-.auh-bar { transition: none; }
 .auh-bar-in { fill: #6AA9E9; }
 .auh-bar-out { fill: #C8CDD6; }
 .auh-bar-of { fill: #C8CDD6; }

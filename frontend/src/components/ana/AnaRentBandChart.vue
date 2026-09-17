@@ -4,6 +4,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { rentBandGeo, type GapInput, type RentBandCol } from '@/views/analysis/rentBandChart.logic'
 import type { ChartBox } from '@/views/analysis/forecastChart.logic'
+import { useEnterPhase, useMorphHold } from './anaMotion'
+import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
   cols: RentBandCol[] | null
@@ -23,8 +25,18 @@ onMounted(() => {
 })
 onBeforeUnmount(() => ro?.disconnect())
 
+// 擦入:挂载 / 切回页签时在视口内就擦。合同快照无期,数据只在切回重拉时变 —— 变了走同键形变;RO 改宽瞬算。
+const first = useEnterPhase(host)
+const hold = useMorphHold(w, first)
+
 const box = computed<ChartBox>(() => ({ width: w.value, height: props.height, padL: 54, padR: 52, padT: 26, padB: 26 }))
 const geo = computed(() => rentBandGeo(props.cols, box.value, props.splitIdx, props.gaps))
+// 形变组的键:路径命令序列 + 列数(同 AnaForecastChart:序列一变 d 只能跳,整组换新元素一起瞬到)
+const shape = computed(() => {
+  const g = geo.value
+  if (!g) return ''
+  return [g.bandPath, g.lockedPath, g.midPath, g.realizedPath].join('|').replace(/[^A-Z|]/g, '') + '/' + g.cols.length
+})
 
 const hoverIdx = ref<number | null>(null)
 const hoverCol = computed(() => (hoverIdx.value == null ? null : props.cols?.[hoverIdx.value] ?? null))
@@ -87,20 +99,33 @@ const tipX = computed(() => {
       <text v-for="t in geo.yTicks" :key="'y' + t.v" :x="box.padL - 10" :y="t.y + 4" class="arb-ylab">{{ t.label }}</text>
       <text :x="box.padL - 10" :y="box.padT - 8" class="arb-unit">万元</text>
 
-      <path v-if="geo.bandPath" :d="geo.bandPath" class="arb-band" />
-      <path v-if="geo.lockedPath" :d="geo.lockedPath" class="arb-locked" />
-      <path v-if="geo.midPath" :d="geo.midPath" class="arb-mid" />
-      <path v-if="geo.realizedPath" :d="geo.realizedPath" class="arb-real" />
-
-      <!-- 预测起点:竖线 + 标题 + 那一点的值 -->
+      <!-- 预测起点:竖线 + 标题。竖线是尺子不是数据,留在数据组外先在(C6-25) -->
       <template v-if="geo.splitX != null">
         <line :x1="geo.splitX" :x2="geo.splitX" :y1="box.padT" :y2="box.height - box.padB" class="arb-split" />
         <text :x="geo.splitX + 6" :y="box.padT + 10" class="arb-splitlab">预测起点</text>
       </template>
-      <template v-if="geo.startDot">
-        <circle :cx="geo.startDot.x" :cy="geo.startDot.y" r="4" class="arb-dot" />
-        <text :x="geo.startDot.x - 8" :y="geo.startDot.y - 8" class="arb-startnum">{{ geo.startDot.text }}</text>
-      </template>
+
+      <text v-for="t in geo.xTicks" :key="'x' + t.i" :x="t.x" :y="box.height - box.padB + 16" class="arb-xlab">{{ t.label.slice(2) }}</text>
+
+      <!-- 数据组:外层擦入(带与线一起自左擦出),内层同键形变 -->
+      <g class="arb-data" :class="{ first }" @animationend.self="first = false" @animationcancel.self="first = false">
+        <g :key="shape" class="ana-morph" :class="{ hold }">
+          <path v-if="geo.bandPath" :d="geo.bandPath" class="arb-band" />
+          <path v-if="geo.lockedPath" :d="geo.lockedPath" class="arb-locked" />
+          <path v-if="geo.midPath" :d="geo.midPath" class="arb-mid" />
+          <path v-if="geo.realizedPath" :d="geo.realizedPath" class="arb-real" />
+
+          <!-- 预测起点那一点的值 -->
+          <template v-if="geo.startDot">
+            <circle :cx="geo.startDot.x" :cy="geo.startDot.y" r="4" class="arb-dot" />
+            <text :x="geo.startDot.x - 8" :y="geo.startDot.y - 8" class="arb-startnum">{{ geo.startDot.text }}</text>
+          </template>
+
+          <!-- 右端贴线尾的数(已在几何里按 y 拉开,不叠字) -->
+          <text v-for="e in geo.endLabels" :key="e.kind" :x="box.width - box.padR + 6" :y="e.y + 4"
+            :class="['arb-end', 'arb-end-' + e.kind]">{{ e.text }}</text>
+        </g>
+      </g>
 
       <!-- 缺口批注:常态下一点痕迹都不留(用户 2026-09-12:「常态下把那条红色线也去掉」),
            引线连同三行小字都只在悬停到这一列时出现 -->
@@ -110,12 +135,6 @@ const tipX = computed(() => {
           :x="gm.x - 6" :y="gm.y + 38 + i * 13"
           :class="['arb-gaptext', i === 0 ? 'arb-gapnum' : '']">{{ l }}</text>
       </template>
-
-      <!-- 右端贴线尾的数(已在几何里按 y 拉开,不叠字) -->
-      <text v-for="e in geo.endLabels" :key="e.kind" :x="box.width - box.padR + 6" :y="e.y + 4"
-        :class="['arb-end', 'arb-end-' + e.kind]">{{ e.text }}</text>
-
-      <text v-for="t in geo.xTicks" :key="'x' + t.i" :x="t.x" :y="box.height - box.padB + 16" class="arb-xlab">{{ t.label.slice(2) }}</text>
 
       <template v-if="hoverX != null && tipLines.length">
         <line :x1="hoverX" :x2="hoverX" :y1="box.padT" :y2="box.height - box.padB" class="arb-hair" />
@@ -132,6 +151,8 @@ const tipX = computed(() => {
 <style scoped>
 .arb-host { width: 100%; }
 .arb { display: block; }
+/* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.arb-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .arb-shade { fill: #F5F6F9; }
 .arb-grid { stroke: #E9EBEF; stroke-width: 1; }
 .arb-ylab { fill: #94A3B8; font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }

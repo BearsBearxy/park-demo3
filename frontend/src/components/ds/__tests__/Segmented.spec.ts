@@ -25,4 +25,15 @@ describe('Segmented 不变形护栏', () => {
     // 按钮自身不参与拉伸(无 flex-grow),整行宽只可能来自根被 stretch
     expect(w.findAll('button').every(b => !/flex(-grow)?:/.test(b.attributes('style') ?? ''))).toBe(true)
   })
+
+  // C2-03:transition / box-shadow 必须留在样式表里。内联 transition 赢过任何选择器,
+  // 会让 .ds-seg-item:active { transition-duration: 0ms } 永远不生效。
+  it('transition 与 box-shadow 不写内联', () => {
+    const w = mount(Segmented, { props: { options: OPTS, modelValue: 'rent', size: 'sm' } })
+    for (const b of w.findAll('button')) {
+      const style = b.attributes('style') ?? ''
+      expect(style).not.toMatch(/transition/)
+      expect(style).not.toMatch(/box-shadow/)
+    }
+  })
 })

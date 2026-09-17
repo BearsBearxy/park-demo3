@@ -12,8 +12,10 @@ import type { ContractDTO } from '@/types/contract'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import { PHASES } from '@/views/sales-income/layout'
 import { contractStatusOf, contractStatusColor } from '@/components/fp/contractStatus'
 import { buildBoxRows, buildPareto, buildStripPoints, type BoxRow } from './TenantPortfolio.logic'
@@ -184,14 +186,14 @@ const boxUnit = computed(() => (boxMode.value === 'rent' ? '万' : '㎡'))
 const boxOption = computed<object>(() => ({
   grid: { left: 56, right: 18, top: 16, bottom: 26 },
   tooltip: {
-    formatter: (p: { seriesIndex?: number; dataIndex?: number; data?: { tenant?: string; value?: [number, number] } }) => {
+    formatter: (p: { seriesIndex?: number; dataIndex?: number; data?: { name?: string; value?: [number, number] } }) => {
       const u = boxUnit.value
       if (p.seriesIndex === 1) {   // 中位横线 → 组统计
         const r = boxRows.value[p.dataIndex ?? -1]
         if (!r) return ''
         return `${r.name}(${r.n} 份)<br/>中位 ${r.stats[2]}${u} · 均值 ${r.mean}${u}<br/>IQR ${r.stats[1]}~${r.stats[3]}${u}`
       }
-      return p.data?.tenant ? `${p.data.tenant}<br/>${p.data.value?.[1]}${u}` : ''
+      return p.data?.name ? `${p.data.name}<br/>${p.data.value?.[1]}${u}` : ''
     },
   },
   // x 用数值轴承载抖动,整数刻度映射期区名
@@ -205,12 +207,13 @@ const boxOption = computed<object>(() => ({
     {
       type: 'scatter', symbolSize: 7,
       itemStyle: { color: 'rgba(133,183,235,.55)', borderColor: '#378ADD', borderWidth: 1 },
-      data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ value: [pt.x, pt.y], tenant: pt.tenant }))),
+      // C6-16 契约:scatter 数据项必须带 name(稳定实体键)—— 无 name 时按 rawIndex diff,换期/换筛选会把第 i 个点从租户 A 形变到租户 B
+      data: stripPts.value.flatMap((pts) => pts.map((pt) => ({ name: pt.tenant, value: [pt.x, pt.y] }))),
     },
     {   // 中位横线(rect 扁标记)
       type: 'scatter', symbol: 'rect', symbolSize: [34, 3],
       itemStyle: { color: '#1C1C1C' },
-      data: boxRows.value.map((r, i) => [i, r.stats[2]]),
+      data: boxRows.value.map((r, i) => ({ name: r.name, value: [i, r.stats[2]] })),   // 同上:中位横线按期区名对齐
     },
   ],
 }))
@@ -239,7 +242,7 @@ const listRows = computed(() => {
 
 <template>
   <!-- §五:期间无关屏(主数据快照)→ 隐期间控件,显口径徽章 -->
-  <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关">
+  <AnaShell period-mode="none" scope-chip="主数据快照 · 期间无关" :kpi-hold="!loaded ? 6 : 0">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
          把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->
@@ -254,7 +257,70 @@ const listRows = computed(() => {
       </template>
     </template>
 
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(帕累托 300 · 环 300 · 箱点 250;走 AnaSkelChart,与图同一张 S 档降档表),
+         卡头 20(+ .av2-card-h 下距 8 = 28)。非图块按它顶替的那块留白:环下期区清单 4 行 ×25 + gap
+         (.tp2-dl :341)、续约风险空态(.ana-empty 上下各 44)、生命周期 5 行 ×20 + 4 × gap 14 = 156(行高 = .ak-bar-name / .ak-bar-val 的行盒 20:
+         base.css:19 line-height var(--lh-snug),ana.css:59/63 不覆写;轨道 8 比它矮;gap 见 ana.css:57)、
+         租户清单 LIST_N=12 行 ×38 + 表头 30(.ak-tbl td height 38;表头 = 行盒 20 + padding-bottom 9 + 下边框 1)。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="!loaded" class="ak-page tp2-skel">
+      <!-- 卡头、期区图例、续约空态照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           图例按库里现有五个期区(含未标注 / 宿舍)留行;分布卡头「已略去 N 份」跟数据出没,现有数据有,按「有」留。 -->
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">租金贡献集中度(帕累托)</span>
+            <span class="hint">Top <span class="ana-hole">00</span> 户(共 <span class="ana-hole">000</span> 户) · 柱=占比 · 线=累计</span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><span class="t">期区结构</span><span class="hint">按月租金<span class="hint-desk"> · 点扇区过滤下方清单</span></span></div>
+          <AnaSkelChart :height="300" />
+          <div class="tp2-dl">
+            <button v-for="n in ['一期', '二期', '未标注', '三期', '宿舍']" :key="n" type="button" class="ak-dl tp2-dlbtn ana-hole" disabled>
+              <span class="dot"></span><span class="nm">{{ n }}</span><span class="pc">00.0%</span><span class="am">¥000.0万</span>
+            </button>
+          </div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">合同{{ boxMode === 'rent' ? '月租' : '面积' }}分布(按期区)</span>
+            <span class="hint">
+              <span class="ak-seg2" style="margin-right: 8px" aria-hidden="true">
+                <button :class="{ on: boxMode === 'rent' }" disabled tabindex="-1">月租金</button>
+                <button :class="{ on: boxMode === 'area' }" disabled tabindex="-1">租赁面积</button>
+              </span>
+              生效合同 · 点=每份合同<span class="hint-desk">(悬停看租户)</span> · 横线=中位 · 对数轴
+              <span class="ana-hole"> · 已略去 00/000 份(月租金为 0 或未录,对数轴取不到)</span>
+            </span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><span class="t">续约风险</span><span class="hint">剩余天数 × 月租金 · 依赖合同起止日期</span></div>
+          <!-- 整块隐形:空态句里的份数还不知道,不能先摆一个假数上屏 -->
+          <div class="ana-hole" aria-hidden="true">
+            <AnaEmpty
+              label="合同起止日期未录入,无法评估到期与续约风险"
+              hint="000 / 000 份合同缺起止/签订日期;补录后此处展示「剩余天数 × 月租金」续约风险散点与临期清单"
+              to="/contracts" toText="去合同管理补录" />
+          </div>
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><span class="t">合同生命周期</span><span class="hint">全部合同分布</span></div>
+          <div class="fp-shim" style="height: 156px"></div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">租户清单</span>
+            <span class="hint">按月租金降序 · 前 <span class="ana-hole">00</span> 户 · 累计=已展示项</span>
+          </div>
+          <div class="fp-shim" style="height: 486px"></div>
+        </div>
+      </div>
+    </div>
+    <!-- skel:end -->
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -335,13 +401,13 @@ const listRows = computed(() => {
         <!-- 合同生命周期 -->
         <div class="av2-card av2-s4">
           <div class="av2-card-h"><span class="t">合同生命周期</span><span class="hint">全部合同分布</span></div>
-          <div class="ak-bar-rows">
+          <AnaBarRows>
             <div v-for="l in lifeCounts" :key="l.label" class="ak-bar-row">
               <span class="ak-bar-name">{{ l.label }}</span>
-              <div class="ak-bar-track"><div class="ak-bar-fill" :style="{ width: (l.value / lifeMax) * 100 + '%', background: l.tone }"></div></div>
+              <div class="ak-bar-track"><div class="ak-bar-fill" :style="{ '--pct': (l.value / lifeMax) * 100 + '%', background: l.tone }"></div></div>
               <span class="ak-bar-val">{{ l.value }} 份</span>
             </div>
-          </div>
+          </AnaBarRows>
         </div>
 
         <!-- 租户清单(环图联动过滤) -->

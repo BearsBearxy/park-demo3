@@ -3,7 +3,8 @@
 // 原样喂同一份夹具、在 node 里跑出来的数(宽 1025),不是拿组件自己的公式再算一遍。
 // 夹具不退化:比值按 sin 起伏;同一栋里有连续低于(1–3 日,贴左缘)、零散高于(10 日)、连续高于(20–22 日)、
 // 漏抄(14 / 25 / 26 日)、未到(29–31 日)。
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvDayChart from '../PvDayChart.vue'
 import type { BoardRow, TickState } from '../pvMeterAna.logic'
@@ -57,15 +58,20 @@ describe('PvDayChart', () => {
   })
 
   it('折线在漏抄日断开、不画到未到的日子(三段)', () => {
-    const d = mk().find('path.line').attributes('d')
-    expect(d).toBe(' M44,183.4 L76.2,192.6 L108.5,174.2 L140.7,130.1 L172.9,104.7 L205.2,86.7 L237.4,102.3 L269.6,128.8 L301.9,127.3 L334.1,54.4 L366.3,87 L398.6,107.2 L430.8,131.1 M495.3,95.7 L527.5,88.3 L559.7,112.2 L592,132.4 L624.2,119.4 L656.4,40.6 L688.7,31.4 L720.9,49.8 L753.1,132.7 L785.4,114.6 M882.1,121.6 L914.3,131.9')
+    // 画布原码的整条 d;组件拆成相邻两刻度一段(换栋能形变),拼回来的点列与之逐点一致、断点处不出段
+    const golden = ' M44,183.4 L76.2,192.6 L108.5,174.2 L140.7,130.1 L172.9,104.7 L205.2,86.7 L237.4,102.3 L269.6,128.8 L301.9,127.3 L334.1,54.4 L366.3,87 L398.6,107.2 L430.8,131.1 M495.3,95.7 L527.5,88.3 L559.7,112.2 L592,132.4 L624.2,119.4 L656.4,40.6 L688.7,31.4 L720.9,49.8 L753.1,132.7 L785.4,114.6 M882.1,121.6 L914.3,131.9'
+    const pairs = golden.split(' M').filter(Boolean).flatMap(run => {
+      const p = run.split(' L')
+      return p.slice(1).map((b, k) => `M${p[k]} L${b}`)
+    })
+    expect(mk().findAll('path.line').map(s => s.attributes('d'))).toEqual(pairs)
   })
 
   it('带画满整宽 + 中心虚线 + 上下沿数值贴带边', () => {
     const w = mk()
     const band = w.find('rect.band')
     expect([band.attributes('x'), band.attributes('y'), band.attributes('width'), band.attributes('height')]).toEqual(['44', '72.8', '967', '73.8'])
-    expect(w.find('line.ctr').attributes('y1')).toBe('109.7')
+    expect(w.find('path.ctr').attributes('d')).toBe('M44,109.7 H1011')
     const hi = w.find('.axh.hi'), lo = w.find('.axh.lo')
     expect([hi.text(), px((hi.element as HTMLElement).style.top)]).toEqual(['上沿 0.860', 57.8])
     expect([lo.text(), px((lo.element as HTMLElement).style.top)]).toEqual(['下沿 0.700', 148.6])
@@ -138,7 +144,7 @@ describe('PvDayChart', () => {
     expect(num(w, 'line.gl', 'y1')).toEqual([212, 145.3, 78.7, 12])
     expect(w.find('line.axl').exists()).toBe(true)
     expect(w.findAll('text.ax')).toHaveLength(7)
-    for (const sel of ['circle.pt', 'path.line', 'rect.band', 'line.ctr', '.axh.hi']) expect(w.find(sel).exists(), sel).toBe(false)
+    for (const sel of ['circle.pt', 'path.line', 'rect.band', 'path.ctr', '.axh.hi']) expect(w.find(sel).exists(), sel).toBe(false)
     expect(w.findAll('.axh').every(e => (e.element as HTMLElement).style.display === 'none')).toBe(true)
     expect(w.html()).not.toContain('NaN')
   })
@@ -192,5 +198,99 @@ describe('PvDayChart', () => {
     expect(w.find('.pdc-hd .nm').text()).toBe('E座')
     expect(w.find('.pdc-hd .fact').text()).toBe('事实句')
     expect(w.findAll('.leg > span').map(s => s.text())).toEqual(['逐日比值', '这栋的范围', '低于下沿', '高于上沿', '缺抄'])
+  })
+
+  it('❗C6-17：数据元素全在 g.pdc-data 里，轴线与 x 刻度在组前', () => {
+    const w = mk()
+    const g = w.find('g.pdc-data')
+    for (const sel of ['rect.future', 'rect.band', 'path.ctr', 'rect.run', 'rect.miss', 'path.line', 'circle.pt']) {
+      expect(g.find(sel).exists(), sel).toBe(true)
+    }
+    // 网格 4 + 轴线 1 + x 刻度 7 留在组外，且轴线排在数据组之前
+    const kids = Array.from(w.find('svg').element.children)
+    expect(kids.filter(e => ['gl', 'axl', 'ax'].some(c => e.classList.contains(c)))).toHaveLength(12)
+    expect(kids.findIndex(e => e.classList.contains('pdc-data'))).toBeGreaterThan(kids.findIndex(e => e.classList.contains('axl')))
+  })
+})
+
+// 2026-09-16 行为矩阵:首挂视口内擦入 320;换栋 / 换期不重挂,同键 200 形变(ana-morph,CSS 在 ana.css,jsdom 不算样式 → 钉类与元素身份)。
+describe('PvDayChart 动效', () => {
+  // jsdom 的 rect 全 0 = 离屏;要「视口内」就桩一个
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 1025, width: 1025, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+  /** 另一栋:同样的出范围日子,下沿放宽到 0.4 → 量程下端被带撑开,每个 y 都变
+   *  (比值整体平移或缩放不行:量程跟着同样变换,y 一个都不动) */
+  const otherRow = (): BoardRow => ({ ...baseRow(), id: 9, name: 'F座', center: 0.6, lo: 0.4 })
+
+  it('❗数据组挂形变类;悬停层(竖线 / 高亮点)在组外,不挂', async () => {
+    const w = mk()
+    expect(w.find('g.pdc-data').classes()).toContain('ana-morph')
+    await w.find('.pdc-plot').trigger('mousemove', { clientX: 330 })
+    expect(w.find('line.hair').element.closest('.ana-morph')).toBe(null)
+    expect(w.find('circle.hdot').element.closest('.ana-morph')).toBe(null)
+  })
+
+  it('❗换栋不重挂:同一刻度的点 / 线段 / 缺抄刻度 / 带是同一个 DOM 元素,只是坐标变了;不挂淡入类', async () => {
+    const w = mk()
+    const pt = w.findAll('circle.pt')[0].element
+    const seg = w.findAll('path.line')[0].element
+    const miss = w.findAll('rect.miss')[0].element
+    const band = w.find('rect.band').element
+    const before = [pt.getAttribute('cy'), seg.getAttribute('d'), band.getAttribute('y')]
+    await w.setProps({ row: otherRow() })
+    expect(w.findAll('circle.pt')[0].element).toBe(pt)
+    expect(w.findAll('path.line')[0].element).toBe(seg)
+    expect(w.findAll('rect.miss')[0].element).toBe(miss)
+    expect(w.find('rect.band').element).toBe(band)
+    expect([pt.getAttribute('cy'), seg.getAttribute('d'), band.getAttribute('y')].map((v, k) => v === before[k])).toEqual([false, false, false])
+    expect(w.find('g.pdc-data').classes()).toEqual(['pdc-data', 'ana-morph'])
+  })
+
+  it('❗按月 ↔ 按年:刻度下标不是同一类目 —— 数据组整组换新元素,「5 日」的点不滑成「5 月」', async () => {
+    const w = mk()
+    const g0 = w.find('g.pdc-data').element
+    const seg = w.findAll('path.line')[0].element
+    const row = baseRow()
+    const m12 = <T,>(a: T[]) => a.slice(0, 12)
+    await w.setProps({
+      row: { ...row, ratio: m12(row.ratio), state: m12(row.state), out: m12(row.out), runs: [row.runs[0]] },
+      ticks: m12(TICKS).map((_, i) => `2025-${pad(i + 1)}`), tickLabels: m12(LABELS).map(l => l + '月'), gran: 'year', elapsedN: 12,
+    })
+    expect(w.find('g.pdc-data').element).not.toBe(g0)
+    expect(w.findAll('path.line')[0].element, '跨粒度复用了同下标的线段').not.toBe(seg)
+    // 同粒度换期仍复用(对照)
+    const seg2 = w.findAll('path.line')[0].element
+    await w.setProps({ row: { ...row, ratio: m12(row.ratio).map(v => (v == null ? null : v * 0.9)), state: m12(row.state), out: m12(row.out), runs: [row.runs[0]] } })
+    expect(w.findAll('path.line')[0].element).toBe(seg2)
+  })
+
+  it('❗视口内首挂擦入:擦入期间 hold 压住形变(中途换栋也不叠两个效果);animationcancel 摘掉 first 与 hold', async () => {
+    inView()
+    const w = mk()
+    await nextTick()
+    const g = () => w.find('g.pdc-data')
+    expect(g().classes()).toEqual(expect.arrayContaining(['first', 'hold', 'ana-morph']))
+    expect(w.find('div.pdc-bandlab').classes()).toContain('first')
+    await w.setProps({ row: otherRow() })
+    expect(g().classes()).toEqual(expect.arrayContaining(['first', 'hold']))
+    await g().trigger('animationcancel')
+    expect(g().classes()).toEqual(['pdc-data', 'ana-morph'])
+    expect(w.find('div.pdc-bandlab').classes()).not.toContain('first')
+  })
+
+  it('animationend 同样摘 first;离屏首挂不擦(对照)', async () => {
+    inView()
+    const w = mk()
+    await nextTick()
+    await w.find('g.pdc-data').trigger('animationend')
+    expect(w.find('g.pdc-data').classes()).not.toContain('first')
+    vi.restoreAllMocks()
+    const off = mk()
+    await nextTick()
+    expect(off.find('g.pdc-data').classes()).toEqual(['pdc-data', 'ana-morph'])
   })
 })

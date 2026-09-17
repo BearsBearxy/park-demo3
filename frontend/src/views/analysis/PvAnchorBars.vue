@@ -5,7 +5,9 @@
 // 行点击只选中该栋(计划 §1 #12),不开抽屉。数据口径在 pvAnaV4.logic.ts 的 anchorBars()。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { phaseName, type AnchorRow, type PvAnchorBarsProps } from './pvAnaV4.logic'
 
@@ -14,6 +16,9 @@ const emit = defineEmits<{ pick: [id: number] }>()
 
 const PL = 96, NAME_X = 86, RIGHT = 176, TOP = 8, ROW = 26, BOTTOM = 34
 const { el, width } = useWidth(999)
+// 切到「绝对水平」挂上来时在视口内擦入 320;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 const plotW = computed(() => width.value - PL - RIGHT)
 const zero = computed(() => PL + 0.22 * plotW.value)
 const nRows = computed(() => props.data.rows.length + props.data.unborn.length)
@@ -63,6 +68,15 @@ const bars = computed(() => props.data.rows.map((r, i) => {
     dTone: pd == null ? 'none' : pd < 0 ? 'down' : 'up',
   }
 }))
+// ponytail: SVG 行的 DOM 顺序只追加、不重排 —— Chromium 里被挪动的节点丢过渡(实测),换期名次一变挪动的行会瞬移。
+// 首挂按名次排;之后留着旧顺序、新栋追到尾巴。纵向位置全靠行 g 的 translateY,DOM 顺序不影响画面。
+let order: number[] = []
+const drawn = computed(() => {
+  const by = new Map(bars.value.map(b => [b.r.id, b]))
+  order = [...order.filter(id => by.has(id)), ...[...by.keys()].filter(id => !order.includes(id))]
+  return order.map(id => by.get(id)!)
+})
+const rowT = (top: number) => ({ transform: `translate(0px, ${top}px)` })
 const unbornRows = computed(() => props.data.unborn.map((u, k) => ({ ...u, top: TOP + (props.data.rows.length + k) * ROW })))
 
 // ── 悬停 ──
@@ -114,17 +128,24 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
           stroke-width="1.5" stroke-dasharray="5 4" />
         <text class="pan-ax pan-anchor-t" :x="zero" :y="bottom + 30" text-anchor="middle">0 = {{ anchorText }} 那条线</text>
 
-        <template v-for="b in bars" :key="b.r.id">
-          <text :class="['pan-name', { 'pan-name-sel': b.sel }]" :x="NAME_X" :y="b.top + 17" text-anchor="end">{{ b.r.name }}</text>
-          <rect :class="['pan-bar', { 'pan-bar-sel': b.sel }]" :data-id="b.r.id" :x="b.x" :y="b.top + 6" :width="b.w" height="14" rx="3"
-            :fill="b.fill" :fill-opacity="b.sel ? 1 : 0.85" />
-          <text class="pan-val pan-h" :x="b.labX" :y="b.top + 17" :font-weight="b.sel ? 600 : 400">{{ b.hText }}</text>
-          <text class="pan-val pan-pct" :x="b.pctX" :y="b.top + 17">{{ b.pctText }}</text>
-          <text v-if="b.arrow" :class="['pan-val', 'pan-arrow', 'pan-' + b.dTone]" :x="width - 60" :y="b.top + 17"
-            :fill="b.dTone === 'down' ? PV_COLORS.ABOVE : undefined">{{ b.arrow }}</text>
-          <text :class="['pan-val', 'pan-d', 'pan-d-' + b.dTone]" :x="width - 6" :y="b.top + 17" text-anchor="end"
-            :fill="b.dTone === 'down' ? PV_COLORS.AMBER_TEXT : undefined">{{ b.dText }}</text>
-        </template>
+        <!-- 栋名在数据组外(尺子先在,数据擦上去);两段各一组行 g,按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
+        <g :class="['pan-names', 'ana-morph', { hold }]">
+          <g v-for="b in drawn" :key="'n' + b.r.id" class="pan-rowg" :style="rowT(b.top)">
+            <text :class="['pan-name', { 'pan-name-sel': b.sel }]" :x="NAME_X" y="17" text-anchor="end">{{ b.r.name }}</text>
+          </g>
+        </g>
+        <g :class="['pan-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <g v-for="b in drawn" :key="b.r.id" class="pan-rowg" :style="rowT(b.top)">
+            <rect :class="['pan-bar', { 'pan-bar-sel': b.sel }]" :data-id="b.r.id" :x="b.x" y="6" :width="b.w" height="14" rx="3"
+              :fill="b.fill" :fill-opacity="b.sel ? 1 : 0.85" />
+            <text class="pan-val pan-h" :x="b.labX" y="17" :font-weight="b.sel ? 600 : 400">{{ b.hText }}</text>
+            <text class="pan-val pan-pct" :x="b.pctX" y="17">{{ b.pctText }}</text>
+            <text v-if="b.arrow" :class="['pan-val', 'pan-arrow', 'pan-' + b.dTone]" :x="width - 60" y="17"
+              :fill="b.dTone === 'down' ? PV_COLORS.ABOVE : undefined">{{ b.arrow }}</text>
+            <text :class="['pan-val', 'pan-d', 'pan-d-' + b.dTone]" :x="width - 6" y="17" text-anchor="end"
+              :fill="b.dTone === 'down' ? PV_COLORS.AMBER_TEXT : undefined">{{ b.dText }}</text>
+          </g>
+        </g>
         <template v-for="u in unbornRows" :key="'u' + u.id">
           <text class="pan-name pan-name-off" :x="NAME_X" :y="u.top + 17" text-anchor="end">{{ u.name }}</text>
           <text class="pan-val pan-off" :x="zero + 6" :y="u.top + 17">未投产 · 没有可算的年等效</text>
@@ -153,6 +174,11 @@ const anchorText = computed(() => `${props.data.anchor.toFixed(1)} h`)
 <style scoped>
 .pan-plot { position: relative; width: 100%; }
 .pan-svg { display: block; }
+/* 首挂:数据组自左擦出一次;fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.pan-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+/* 行 g 的纵向形变(ana-morph 只管 rect / path / circle 的几何属性,g 的 transform 在这里);hold 同样关掉。字的横向位置瞬到 */
+.pan-rowg { transition: transform var(--dur-base) var(--ease-out); }
+.hold > .pan-rowg { transition: none; }
 .pan-row { position: absolute; left: 0; right: 0; border-radius: 4px; cursor: pointer; }
 .pan-gl { stroke: var(--ink-100); stroke-width: 1; }
 .pan-ax { font-size: var(--fs-micro); font-family: var(--font-mono); fill: var(--text-muted); font-variant-numeric: tabular-nums; }

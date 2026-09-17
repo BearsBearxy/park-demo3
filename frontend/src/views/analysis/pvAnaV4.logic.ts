@@ -130,7 +130,9 @@ export function chipGroups(snap: AnaSnapshot, selId: number | null): ChipGroups 
     }
   })
   const byKey = (a: ChipItem, b: ChipItem) => Number(b.hasRun) - Number(a.hasRun) || b.outDays - a.outDays
-  const late = (c: ChipItem) => (c.kind === 'unreadable' ? 1 : 0)
+  // 常显组分三档:命中 → 读不出 → 只因选中才常显的栋(钉末位,C2-05)。
+  // 钉末位后位移只发生在行尾:点行内芯片时被点的那枚不动,旧选中从行尾移出。
+  const late = (c: ChipItem) => (c.kind === 'hit' ? 0 : c.kind === 'unreadable' ? 1 : 2)
   const shown = items
     .filter(c => c.kind === 'hit' || c.kind === 'unreadable' || c.selected)
     .sort((a, b) => late(a) - late(b) || byKey(a, b))

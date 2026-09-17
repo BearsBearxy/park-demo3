@@ -1,7 +1,10 @@
 // PvQualityGrid 挂载测:L6 数据质量日历 + 缺抄榜。钉四态各自的图元(底色 / 划痕 / 虚线框)与格坐标、格内两行字、
 // 悬停描边与气泡位置(含翻边)、缺抄榜的行序 / 零基条宽 / 行尾字、年档小格。
 // 夹具 2025 年 8 月(8/1 是周五):全齐(前两天 10 栋、之后 11 栋)、缺 1 栋、缺 2 栋、整日剔除、还没到 五种格都有。
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvQualityGrid from '../PvQualityGrid.vue'
 import type { CalCell, CalKind, QualityCalendar } from '../pvAnaV4.logic'
@@ -59,8 +62,9 @@ describe('PvQualityGrid · 日历四态', () => {
     const bg = c.find('rect.pqg-bg')
     expect([bg.attributes('x'), bg.attributes('y'), bg.attributes('width'), bg.attributes('height'), bg.attributes('rx')])
       .toEqual(['28', '290', '59', '64', '5'])
-    expect(bg.attributes('fill')).toBe('#378ADD')
-    expect(bg.attributes('fill-opacity')).toBe('.16')
+    // 透明度并进 fill(换期底色过渡不闪),不另写 fill-opacity
+    expect(bg.attributes('fill')).toBe('rgba(55,138,221,0.16)')
+    expect(bg.attributes('fill-opacity')).toBeUndefined()
     expect(c.find('text.pqg-day').text()).toBe('1')
     expect([c.find('text.pqg-day').attributes('x'), c.find('text.pqg-day').attributes('y')]).toEqual(['36', '308'])
     expect(c.find('text.pqg-sub').exists()).toBe(false)
@@ -72,8 +76,8 @@ describe('PvQualityGrid · 日历四态', () => {
     const c = g(mountIt(), '2025-08-19')           // 周二 = 第 3 列第 1 行
     const bg = c.find('rect.pqg-bg')
     expect([bg.attributes('x'), bg.attributes('y')]).toEqual(['217', '86'])
-    expect(bg.attributes('fill')).toBe('#EF9F27')
-    expect(bg.attributes('fill-opacity')).toBe('.30')
+    expect(bg.attributes('fill')).toBe('rgba(239,159,39,0.3)')
+    expect(bg.attributes('fill-opacity')).toBeUndefined()
     expect(c.find('text.pqg-sub').text()).toBe('缺 2 栋')
     expect(c.find('text.pqg-day').attributes('style')).toContain('fill: #854F0B')
     expect(c.find('text.pqg-day').classes()).toContain('miss')
@@ -196,7 +200,9 @@ describe('PvQualityGrid · 缺抄榜与图例', () => {
     expect(leg).toContain('整日剔除')
     expect(leg).toContain('还没到')
     expect(w.find('.pqg-leg .per').text()).toBe('2025 年 8 月')
-    expect(w.find('.ana-ref').exists()).toBe(false)
+    // C5-11:这句常驻占一行,不过线时空着 —— 换期翻转不再把下方 L7 表推上推下
+    expect(w.find('.ana-ref').text()).toBe('')
+    expect(w.find('.ana-ref').classes()).toContain('hold')
     expect(mountIt(MONTH, { minStations: 3, tooFewStations: true }).find('.ana-ref').text()).toContain('全园在网不足 3 栋')
   })
 })
@@ -217,9 +223,71 @@ describe('PvQualityGrid · 年档小格', () => {
     expect(ch.map(t => t.text())).toEqual(['1月', '2月', '3月'])
     expect(ch.map(t => t.attributes('x'))).toEqual(['28', '84', '140'])
     const mar31 = g(w, '2025-03-31')                     // 第 13 列第 0 行
-    expect(mar31.find('rect.pqg-bg').exists()).toBe(false)
+    // 底色 rect 照样在(换期复用),透明、无框
+    const mbg = mar31.find('rect.pqg-bg')
+    expect([mbg.attributes('fill'), mbg.attributes('stroke'), mbg.classes('pqg-todo')]).toEqual(['transparent', undefined, false])
     const edge = mar31.find('line.pqg-todo-edge')
     expect([edge.attributes('x1'), edge.attributes('x2'), edge.attributes('y1')]).toEqual(['210', '222', '29.5'])
     expect(w.find('.pqg-leg .per').text()).toBe('2025 年')
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的日历 —— 挂载时视口内擦入 320;换期不重挂,同一格位的格子只过渡底色 200
+describe('PvQualityGrid · 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 655, width: 655, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:数据区 first + hold;animationcancel / animationend 都摘;离屏不擦', async () => {
+    inView()
+    const w = mountIt()
+    await nextTick()
+    expect(w.find('.pqg-body').classes()).toEqual(['pqg-body', 'first', 'hold'])
+    await w.find('.pqg-body').trigger('animationcancel')
+    expect(w.find('.pqg-body').classes()).toEqual(['pqg-body'])
+    const w2 = mountIt()
+    await nextTick()
+    await w2.find('.pqg-body').trigger('animationend')
+    expect(w2.find('.pqg-body').classes()).toEqual(['pqg-body'])
+    vi.restoreAllMocks()
+    const off = mountIt()
+    await nextTick()
+    expect(off.find('.pqg-body').classes()).toEqual(['pqg-body'])
+  })
+
+  it('❗换月不重挂:同一格位(第 0 列第 4 行)的底色 rect 还是同一个元素,fill 换成新月那天的;四态共用这一个 rect', async () => {
+    const w = mountIt()
+    const bg = g(w, '2025-08-01').find('rect.pqg-bg').element
+    expect(bg.getAttribute('fill')).toBe('rgba(55,138,221,0.16)')
+    // 下一个月从周五开始、第一天整日剔除 —— 格位与 8/1 相同
+    const nov = calendar('2024-11-01', 30, date => (date === '2024-11-01' ? { kind: 'drop', readN: 2 } : { kind: 'full' }))
+    await w.setProps({ data: { ...MONTH, cells: nov } })
+    const c = g(w, '2024-11-01')
+    expect(c.find('rect.pqg-bg').element).toBe(bg)
+    expect(bg.getAttribute('fill')).toBe('rgba(28,28,28,.10)')
+    expect(c.find('rect.pqg-hatchbox').exists()).toBe(true)
+    expect(c.findAll('rect.pqg-bg')).toHaveLength(1)
+  })
+
+  it('❗月历 ↔ 年历:同一格位不是同一天 —— 整批换新元素,不做跨日期的底色淡变', async () => {
+    const w = mountIt()
+    const bg = g(w, '2025-08-01').find('rect.pqg-bg').element
+    // 年历里第 0 列第 4 行也是一个周五,格位与 8/1 相同
+    const jan = calendar('2025-01-03', 98, () => ({ kind: 'full' }))
+    await w.setProps({ data: { ...MONTH, cells: jan, weeks: 14 } })
+    expect(g(w, '2025-01-03').find('rect.pqg-bg').element, '年历复用了月历那一格').not.toBe(bg)
+  })
+
+  it('❗只有底色 rect 过渡:scoped 样式里的 transition 只写 fill / stroke(格的几何、悬停描边不过渡)', () => {
+    const src = readFileSync(join(__dirname, '../PvQualityGrid.vue'), 'utf8')
+    const css = src.slice(src.indexOf('<style'))
+    expect(css.match(/transition:[^;]*;/g)).toEqual([
+      'transition: fill var(--dur-base) var(--ease-standard), stroke var(--dur-base) var(--ease-standard);',
+      'transition: none;',
+    ])
+    expect(css).toContain('.pqg-bg { transition:')
   })
 })

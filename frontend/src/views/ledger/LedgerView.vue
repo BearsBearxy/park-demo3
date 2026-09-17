@@ -7,6 +7,7 @@
 import { ref, computed, watch, nextTick, onMounted, onDeactivated } from 'vue'
 import { onReactivated } from '@/composables/onReactivated'
 import { useDeepPeriod } from '@/composables/useDeepPeriod'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { periodOf, type DeepPeriod } from '@/nav/deepLink'
 import { S } from '@/utils/lockScopes'
 import { useRoute, useRouter } from 'vue-router'
@@ -73,6 +74,10 @@ const overviews = ref(new Map<string, LedgerOverviewDTO>()) // 分年概览缓�
 const extraYears = ref<number[]>([])                // 当前册手工年(localStorage,屏+册键见 utils/matrixYears)
 const monthDto = ref<LedgerMonthDTO | null>(null)   // 服务端月度快照(读态 / 取消还原源)
 const draft = ref<LedgerRowDTO[]>([])               // 编辑态工作副本
+// 已经停在表上时深链换期的退让(动效稿 C5-02 ⑦):旧表留在原地,过 200ms 门才压暗。
+// 只由 applyDeep 的「原地换期」那条路置位 —— 切回重读(onReactivated)是读屏静默换数(C1-06),不挂。
+const deepSwitching = ref(false)
+const deepStale = useDeferredFlag(deepSwitching)
 
 const company = computed(() => companies.value.find(c => c.id === companyId.value) ?? null)
 const companyName = computed(() => company.value?.name ?? book.value?.name ?? '')
@@ -158,11 +163,19 @@ async function applyDeep(t: DeepPeriod) {
   extraYears.value = b.companyId != null ? loadExtraYears('ledger', b.companyId) : []
   // 矩阵数据后台补齐:「换期」返回矩阵时已就绪
   void loadGateYears().then(loadOverviews).catch(() => { /* 拉失败保持旧值即可,不抛 unhandledrejection(同 backToMonths) */ })
+  // 已经停在表上(month 原非 null)= 原地换期:不清 monthDto,宽表在途期间继续读旧快照,
+  // 过 200ms 门给它挂 .fp-stale 退让(动效稿 C5-02 ⑦;退让里的 pointer-events:none 同时挡住往旧月行里写)。
+  // 从年份矩阵点月进表(month 原为 null)保留先清快照 + 兜底转圈(同 pickCell)。
+  const inTable = month.value != null
   month.value = t.month
   drawerRowKey.value = null
-  // 先清上月快照,兜底转圈接管(同 pickCell)
-  monthDto.value = null
-  await loadMonth()
+  if (!inTable) monthDto.value = null
+  deepSwitching.value = inTable
+  try {
+    await loadMonth()
+  } finally {
+    deepSwitching.value = false
+  }
   focusTenant.value = typeof route.query.tenant === 'string' ? route.query.tenant : ''
 }
 /** 未保存改动数:编辑态下 draft 与服务端快照逐行比(含批删)。子组件 LedgerWideTable.isDirty 是同口径的布尔,它没 expose,父层自算。 */
@@ -786,7 +799,11 @@ function gotoTenants() {
         <div class="lgw-s-hint">
           <span v-if="edit">编辑模式 · 小屏可录入,建议在桌面端操作</span>
         </div>
+        <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200(base.css;不挂就是硬切) -->
         <LedgerWideTable
+          data-stale-host
+          :class="{ 'fp-stale': deepStale }"
+          :aria-busy="deepStale"
           :month="monthDto"
           :draft="draft"
           :book="book"

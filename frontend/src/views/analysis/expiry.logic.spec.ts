@@ -4,8 +4,8 @@ import type { ContractDTO } from '@/types/contract'
 import {
   buildExpiryStats, buildExpiryWall, buildPareto, buildRentRoll,
   concentrationOption, lockedCountByMonth, lockedRentByMonth, nearestGap, paretoOption, renewalVariance,
-  rentRollOption, rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
-  priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateLineOption, renewalRateReadout, type RentRoll,
+  rentRollRefText, rentRollSentence, simulateRenewalDraws, wallOption,
+  priorityReadout, priorityRefText, simulateRenewalRate, renewalRateBand, renewalRateLineOption, renewalRateReadout,
   sensitivityFinalRent, sensitivityRows, neededRatePct, sensitivitySentence,
   sensitivityGapSentence, MEDIAN_FACTORY_RENT, MEDIAN_FACTORY_RENT_ASOF, medianFactoryRent,
   type RentPriorityRow,
@@ -573,86 +573,6 @@ describe('nearestGap(T4/T5,design-boards):最近一次到期造成的锁定线�
   })
 })
 
-// F3(修复轮1,design-boards 对抗复查):T5 真正的交付物(图例四项、预测起点竖线、缺口标注、
-// 新的散点与线系列)之前一层测试都没读过它的返回值——挂载测里 AnaEChart 是打桩的,没有一条
-// findComponent(...).props('option')。这里直接单测 rentRollOption() 的返回对象,不经挂载。
-describe('rentRollOption(T4/T5,design-boards):图上的家具(图例/预测起点线/缺口标注)钉断言', () => {
-  const a1 = ct({ unitId: 1, monthlyRent: 1000, startDate: '2024-01-01', endDate: '2026-01-31' })
-
-  it('❗F4:图例四项且顺序照稿——已实现/预计/80%区间/已锁定', () => {
-    const r = buildRentRoll([a1], '2025-12-01', 12)
-    const opt = rentRollOption(r) as { legend: { data: string[] } }
-    expect(opt.legend.data).toEqual(['已实现', '预计', '80%区间', '已锁定'])
-  })
-
-  it('❗已锁定是 step line,markLine 钉在第 0 月(xAxis:0),标签值=锁定线第 0 项', () => {
-    const r = buildRentRoll([a1], '2025-12-01', 12)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const opt = rentRollOption(r) as any
-    const locked = opt.series.find((s: { name: string }) => s.name === '已锁定')
-    expect(locked.type).toBe('line')
-    expect(locked.step).toBe('end')
-    expect(locked.markLine.data).toEqual([{ xAxis: 0 }])
-    expect(locked.markLine.label.formatter).toContain('预测起点')
-    expect(locked.markLine.label.formatter).toContain(String(locked.data[0]))
-  })
-
-  it('❗已实现是只有第 0 月一个值的 scatter(其余月份为 null),不是隐藏线的 line', () => {
-    const r = buildRentRoll([a1], '2025-12-01', 12)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const opt = rentRollOption(r) as any
-    const realized = opt.series.find((s: { name: string }) => s.name === '已实现')
-    expect(realized.type).toBe('scatter')
-    expect(realized.data[0]).not.toBeNull()
-    expect(realized.data.slice(1).every((v: unknown) => v === null)).toBe(true)
-  })
-
-  it('❗预计是虚线 line,值=(locked+renewalMid)折万,与第 0 月 KPI 瓦同一份计算', () => {
-    const r = buildRentRoll([a1], '2025-12-01', 12)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const opt = rentRollOption(r) as any
-    const mid = opt.series.find((s: { name: string }) => s.name === '预计')
-    expect(mid.type).toBe('line')
-    expect(mid.lineStyle.type).toBe('dashed')
-    expect(mid.data[0]).toBeCloseTo((r.months[0].locked + r.months[0].renewalMid) / 10000, 2)
-  })
-
-  it('❗80%区间是 bandSeries 出的两条 line(空名的下界 + 具名的宽度,带 areaStyle)', () => {
-    const r = buildRentRoll([a1], '2025-12-01', 12)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const opt = rentRollOption(r) as any
-    const names = opt.series.map((s: { name: string }) => s.name)
-    expect(names.filter((n: string) => n === '80%区间')).toHaveLength(1)   // 具名的那一条只有一条
-    expect(names.filter((n: string) => n === '')).toHaveLength(1)          // 无名的下界那一条
-    const band = opt.series.find((s: { name: string }) => s.name === '80%区间')
-    expect(band.type).toBe('line')
-    expect(band.areaStyle).toBeTruthy()
-  })
-
-  it('❗有缺口时 markPoint 落在 gap.monthsAway,坐标与「最近的缺口」瓦读同一份 gap;无缺口时不出现', () => {
-    const big = ct({ tenantName: '大户', monthlyRent: 1200, startDate: '2020-01-01', endDate: '2099-12-31' })
-    const small = ct({ tenantName: '小户', monthlyRent: 800, startDate: '2020-01-01', endDate: '2026-02-15' })
-    const withGap = buildRentRoll([big, small], '2026-01-01', 4)
-    expect(withGap.gap).not.toBeNull()   // 复用 nearestGap 那条已验证过的 fixture(1 月后,小户 800)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const optWithGap = rentRollOption(withGap) as any
-    const lockedWithGap = optWithGap.series.find((s: { name: string }) => s.name === '已锁定')
-    expect(lockedWithGap.markPoint).toBeTruthy()
-    expect(lockedWithGap.markPoint.data).toEqual([
-      { coord: [withGap.gap!.monthsAway, +((withGap.months[withGap.gap!.monthsAway].locked) / 10000).toFixed(2)] },
-    ])
-    expect(lockedWithGap.markPoint.label.formatter).toContain('小户')
-
-    const noGapContract = ct({ monthlyRent: 1000, startDate: '2020-01-01', endDate: '2099-12-31' })
-    const withoutGap = buildRentRoll([noGapContract], '2026-01-01', 6)
-    expect(withoutGap.gap).toBeNull()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const optNoGap = rentRollOption(withoutGap) as any
-    const lockedNoGap = optNoGap.series.find((s: { name: string }) => s.name === '已锁定')
-    expect(lockedNoGap.markPoint).toBeUndefined()
-  })
-})
-
 describe('rentRollSentence / rentRollRefText(F1 修复轮1:句子只说区间,n/hits 按真实身份搬进小字)', () => {
   it('句子只说区间,不再暗示任何历史战绩(小样本也照样出句,不再有 sFreq 那道<5 闭嘴口)', () => {
     const cs = [ct({ endDate: '2025-01-01', status: 'renewed' })]
@@ -932,7 +852,7 @@ describe('sensitivityGapSentence(F1,修复轮1):板上收尾行——历史续�
   })
 })
 
-describe('renewalRateLineOption(「续签率从哪来」那条数轴)+ 合约租金带的轴', () => {
+describe('renewalRateLineOption(「续签率从哪来」那条数轴)', () => {
   it('❗轴钉死 0~100%,观测值落在轴上,80% 区间画成 markArea', () => {
     const band = renewalRateBand(18, 90)
     const opt = renewalRateLineOption(18, 90, band) as {
@@ -959,19 +879,5 @@ describe('renewalRateLineOption(「续签率从哪来」那条数轴)+ 合约租
   it('❗n=0 时不崩、不编一个 0 之外的点(分母为零没有续签率可言)', () => {
     const opt = renewalRateLineOption(0, 0, { lo: 0, hi: 0 }) as { series: { data: number[][] }[] }
     expect(opt.series[0].data[0][0]).toBe(0)
-  })
-
-  it('❗合约租金带 y 轴 scale: true —— 不从 0 起,否则 165~232 万的落差只占七分之一屏高', () => {
-    // 轴的配置与数据无关,给一份最小 RentRoll 即可(量程那句话在断言说明里,不靠构造复现)
-    const r: RentRoll = {
-      history: [],
-      gaps: [],
-      months: [{ month: '2026-09', locked: 2320000, lockedCount: 12, masterLease: 0, renewalLo: 0, renewalMid: 0, renewalHi: 0 }],
-      locked: [2320000], lockedBand: undefined, renewalN: 90, renewalHits: 18, renewalP: 0.2,
-      expiringCount: 0, expiringRentSum: 0, expiringList: [], gap: null,
-    }
-    const opt = rentRollOption(r) as { yAxis: { scale?: boolean; min?: unknown } }
-    expect(opt.yAxis.scale, '轴退回 0 起,用户报的「完全看不见折线的波动」就回来了').toBe(true)
-    expect(opt.yAxis.min, 'scale 与写死 min 同时给会互相打架').toBeUndefined()
   })
 })

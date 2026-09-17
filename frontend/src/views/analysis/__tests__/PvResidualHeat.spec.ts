@@ -1,6 +1,9 @@
 // PvResidualHeat 挂载测:L3 13 × 12 残差格。钉格的底色 / 字色 / 字、列头当段月、虚线空格、悬停气泡位置与翻边。
 // 夹具两份:月档(截至 8 月、8 月没录满、一栋没进模型、一栋有个样本不足的空月)与年档(截至 12 月、无当段月)。
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvResidualHeat from '../PvResidualHeat.vue'
 import type { ResidualCell, ResidualGrid, ResidualRow } from '../pvAnaV4.logic'
@@ -158,7 +161,9 @@ describe('PvResidualHeat · 格宽跟卡片走,字不出格', () => {
       await wr.vm.$nextTick()
       return wr
     } finally {
+      // jsdom 的 clientWidth 挂在 Element.prototype 上,HTMLElement.prototype 本来没有 → d 为空时删掉桩,不然漏给后面的用例
       if (d) Object.defineProperty(HTMLElement.prototype, 'clientWidth', d)
+      else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
     }
   }
   it('❗宽卡片:格宽 = (1000 − 94) ÷ 12 钉到 56,「+506」照写', async () => {
@@ -173,5 +178,52 @@ describe('PvResidualHeat · 格宽跟卡片走,字不出格', () => {
     const cells = w.find('.prh-row').findAll('.prh-cell')
     expect(cells[0].attributes('style')).toContain('width: 28px')
     expect(cells.slice(0, 3).map(c => c.text())).toEqual(['506', '−25', '+3'])
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的 CSS 格 —— 挂载时视口内行区擦入 320;换期不重挂,格子只过渡底色 200
+describe('PvResidualHeat · 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 496, width: 496, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:行区 first + hold(月份表头不擦);animationcancel / animationend 都摘;离屏不擦', async () => {
+    inView()
+    const w = mountIt()
+    await nextTick()
+    expect(w.find('.prh-data').classes()).toEqual(['prh-data', 'first', 'hold'])
+    expect(w.find('.prh-head').element.closest('.prh-data')).toBe(null)
+    expect(w.find('.prh-data').findAll('.prh-row')).toHaveLength(4)
+    await w.find('.prh-data').trigger('animationcancel')
+    expect(w.find('.prh-data').classes()).toEqual(['prh-data'])
+    const w2 = mountIt()
+    await nextTick()
+    await w2.find('.prh-data').trigger('animationend')
+    expect(w2.find('.prh-data').classes()).toEqual(['prh-data'])
+    vi.restoreAllMocks()
+    const off = mountIt()
+    await nextTick()
+    expect(off.find('.prh-data').classes()).toEqual(['prh-data'])
+  })
+
+  it('❗换期不重挂:同一栋同一月的格还是同一个元素,底色换成新期的', async () => {
+    const w = mountIt()
+    const c = cell(w, 5, 9).element
+    expect(c.getAttribute('style')).toContain('background: transparent')                          // 月档:9 月还没到
+    await w.setProps({ data: YEAR })
+    expect(cell(w, 5, 9).element).toBe(c)
+    expect(c.getAttribute('style')).toContain('background: rgba(55, 138, 221, 0.14)')             // 年档:+2.9 → 1 档
+  })
+
+  it('❗格子只过渡底色:scoped 样式里唯一一条 transition 是 background-color(宽度随容器,不许过渡)', () => {
+    const src = readFileSync(join(__dirname, '../PvResidualHeat.vue'), 'utf8')
+    const css = src.slice(src.indexOf('<style'))
+    expect(css.match(/transition:[^;]*;/g)).toEqual([
+      'transition: background-color var(--dur-base) var(--ease-standard);',
+      'transition: none;',
+    ])
   })
 })

@@ -6,6 +6,7 @@
 // 这里只做像素几何,数据由 pvAnaV4.logic.ts 的 driftChart 整形好传进来。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
@@ -20,6 +21,9 @@ const iH = H - padT - padB
 const AXIS_LINE = FP_ANA_THEME.categoryAxis.axisLine.lineStyle.color
 
 const { el, width: W } = useWidth(646)
+// 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点按日作键,区间与变点竖线跟着滑)。
+// 趋势线与估计范围的点数随栋变,点数不同的那一下 d 结构变了,直接跳。改宽那两帧 hold 关掉
+const hold = useMorphHold(W, ref(false))
 const days = computed(() => props.data.daysInYear)
 const X = (doy: number) => xOfDay(doy, W.value, days.value)
 
@@ -62,7 +66,7 @@ const cp = computed(() => {
   }
 })
 
-const pts = computed(() => props.data.points.map(p => ({ x: X(p.doy), y: Y(p.v) })))
+const pts = computed(() => props.data.points.map(p => ({ doy: p.doy, x: X(p.doy), y: Y(p.v) })))
 
 const trendPath = computed(() => {
   const P = props.data.trend.map(t => [X(t.doy), Y(t.fit)] as const)
@@ -121,20 +125,24 @@ const tip = computed(() => {
           <line class="gl" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(v)" :y2="Y(v)" :stroke="C.GRID" />
           <text class="ax" :x="PAD_L - 6" :y="Y(v) + 4" text-anchor="end" :fill="C.AXIS_TEXT">{{ tickLabel(v) }}</text>
         </template>
-        <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
-        <template v-if="seg">
-          <rect class="seg" :x="seg.x" :y="padT" :width="seg.w" :height="iH" :fill="C.SEG_B9" />
-          <text class="ax seglab" :x="seg.cx" :y="padT + 12" text-anchor="middle" :fill="C.FOCUS" fill-opacity="0.85">当前期间 {{ seg.month }} 月</text>
-        </template>
-        <rect v-if="cp" class="cpspan" :x="cp.sx" :y="padT" :width="cp.sw" :height="iH" :fill="C.BELOW" fill-opacity="0.12" />
-        <path v-if="bandPath" class="band" :d="bandPath" :fill="C.BAND" fill-opacity="0.5" />
-        <circle v-for="(p, k) in pts" :key="'p' + k" class="pt" :cx="p.x" :cy="p.y" r="2" :fill="C.CROWD_B9" />
-        <path v-if="trendPath" class="trend" :d="trendPath" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-        <template v-if="cp">
-          <line class="cp" :x1="cp.x" :x2="cp.x" :y1="padT" :y2="H - padB" :stroke="C.BELOW" stroke-width="1.5" />
-          <text class="ax cplab" :x="cp.tx" :y="padT + 28" :text-anchor="cp.anchor" :fill="C.BELOW" font-weight="600">{{ cp.lines[0] }}</text>
-          <text class="ax cplab" :x="cp.tx" :y="padT + 42" :text-anchor="cp.anchor" :fill="C.BELOW">{{ cp.lines[1] }}</text>
-        </template>
+        <!-- 数据组:只形变不擦入;悬停层(竖线 / 高亮点 / 气泡)是 SVG 外的 HTML,0ms;直标字瞬到 -->
+        <g :class="['b9-data', 'ana-morph', { hold }]">
+          <rect v-if="future" class="future" :x="future.x" :y="padT" :width="future.w" :height="iH" :fill="C.FUTURE" />
+          <template v-if="seg">
+            <rect class="seg" :x="seg.x" :y="padT" :width="seg.w" :height="iH" :fill="C.SEG_B9" />
+            <text class="ax seglab" :x="seg.cx" :y="padT + 12" text-anchor="middle" :fill="C.FOCUS" fill-opacity="0.85">当前期间 {{ seg.month }} 月</text>
+          </template>
+          <rect v-if="cp" class="cpspan" :x="cp.sx" :y="padT" :width="cp.sw" :height="iH" :fill="C.BELOW" fill-opacity="0.12" />
+          <path v-if="bandPath" class="band" :d="bandPath" :fill="C.BAND" fill-opacity="0.5" />
+          <circle v-for="p in pts" :key="'p' + p.doy" class="pt" :cx="p.x" :cy="p.y" r="2" :fill="C.CROWD_B9" />
+          <path v-if="trendPath" class="trend" :d="trendPath" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+          <template v-if="cp">
+            <!-- 变点竖线用 path:<line> 的端点过渡不了 -->
+            <path class="cp" :d="`M${cp.x},${padT} V${H - padB}`" fill="none" :stroke="C.BELOW" stroke-width="1.5" />
+            <text class="ax cplab" :x="cp.tx" :y="padT + 28" :text-anchor="cp.anchor" :fill="C.BELOW" font-weight="600">{{ cp.lines[0] }}</text>
+            <text class="ax cplab" :x="cp.tx" :y="padT + 42" :text-anchor="cp.anchor" :fill="C.BELOW">{{ cp.lines[1] }}</text>
+          </template>
+        </g>
         <line class="axl" :x1="PAD_L" :x2="W - PAD_R" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
         <text
           v-for="t in months" :key="'m' + t.m" class="ax mlab" :x="t.x" :y="H - padB + 18" text-anchor="middle"

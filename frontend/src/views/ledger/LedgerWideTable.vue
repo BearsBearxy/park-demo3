@@ -148,7 +148,16 @@ async function flashFocusRow() {
     if ((cell?.textContent ?? '').trim() !== name) continue
     tr.scrollIntoView({ block: 'center' })
     tr.classList.add('row-flash')
-    tr.addEventListener('animationend', () => tr.classList.remove('row-flash'), { once: true })
+    // 摘类只认本行 td 的动画:不用 once —— 行内先结束的子动画会把它消费掉;
+    // animationcancel 覆盖 KeepAlive 把行挪进缓存容器的情形(类留着的话回屏重插会重播 2s)。
+    const unflash = (e: AnimationEvent) => {
+      if ((e.target as HTMLElement).parentElement !== tr) return
+      tr.removeEventListener('animationend', unflash)
+      tr.removeEventListener('animationcancel', unflash)
+      tr.classList.remove('row-flash')
+    }
+    tr.addEventListener('animationend', unflash)
+    tr.addEventListener('animationcancel', unflash)
     break
   }
   emit('focus-done')  // 找不到该租户行也视为完成:静默停在本层(spec 取静默)

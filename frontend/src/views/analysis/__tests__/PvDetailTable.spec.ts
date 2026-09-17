@@ -1,7 +1,8 @@
 // B12 挂载测:五列、出范围行左色条与同色字、缺抄行整行淡底「没抄表」、可见 8 行内滚与表脚。
 // 夹具 8 月 1–28 日:17 日漏抄、18–22 日连续高于(连续第 1–5 天)、10 日单独低于、3 日有读数但画不出范围,
 // 其余在范围内;发电量与比值逐行不同。另一份年档夹具摆「月份 / 当月 / 那个月」与少于 8 行不写滚动。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvDetailTable from '../PvDetailTable.vue'
 import type { DetailRow } from '../pvAnaV4.logic'
@@ -112,3 +113,22 @@ function rgb(hex: string): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+// 2026-09-16 行为矩阵:抽屉里的表 —— 打开瞬现(没有擦入类);上一栋 / 下一栋不重挂,行按日期复用、内容原地换
+describe('PvDetailTable(B12)动效', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗抽屉里在视口内挂载也没有擦入类;下一栋同一天的行还是同一个 tr,数原地换成新栋的', async () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 646, width: 646, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const w = mountTable()
+    await nextTick()
+    expect(w.find('.first').exists()).toBe(false)
+    const tr = w.findAll('tbody tr')[0].element
+    const before = cells(w.findAll('tbody tr')[0])
+    await w.setProps({ rows: monthRows().map(r => ({ ...r, gen: r.gen == null ? null : r.gen * 2 })) })
+    expect(w.findAll('tbody tr')[0].element).toBe(tr)
+    expect(cells(w.findAll('tbody tr')[0])).not.toEqual(before)
+  })
+})

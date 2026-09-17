@@ -213,6 +213,8 @@ async function decide(p: Pending, approve: boolean) {
   color: var(--text-primary); text-align: left;
 }
 .ap-rvitem:hover { background: var(--bg-hover); }
+/* C2-08 按压:按下换深一档 0ms 瞬到,松开走 .ap-rvitem 的 120 回弹。 */
+.ap-rvitem:active { background: var(--ink-100); transition-duration: 0ms; }
 .ap-rvitem .nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-rvitem .who { flex: 0 0 auto; font-size: 11.5px; color: var(--text-secondary); }
 .ap-rvitem .arw { flex: 0 0 auto; color: var(--text-disabled); }

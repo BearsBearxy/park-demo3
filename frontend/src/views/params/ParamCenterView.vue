@@ -610,7 +610,7 @@ const FIXED_RULES = [
           </Button>
         </div>
       </div>
-      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+      <div class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
@@ -665,7 +665,7 @@ const FIXED_RULES = [
           </button>
         </div>
       </div>
-      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+      <div class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:170px" /><col style="width:150px" /><col style="width:130px" /><col style="width:100px" /><col />
@@ -785,7 +785,7 @@ const FIXED_RULES = [
           </Button>
         </div>
       </div>
-      <div class="pm-tablewrap" :class="{ 'fp-stale': veil }" :aria-busy="veil">
+      <div class="pm-tablewrap" data-stale-host :class="{ 'fp-stale': veil }" :aria-busy="veil">
         <table class="pm-table">
           <colgroup>
             <col style="width:200px" /><col style="width:200px" /><col style="width:170px" /><col style="width:130px" /><col />

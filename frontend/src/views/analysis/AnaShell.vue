@@ -7,13 +7,15 @@
 // §五 期间语义(2026-07-09):periodMode 'full'(默认)|'year'(只年;**纯局部展示,不写穿粒度单例**——
 // 复审:强制 setGran 会静默改写 full 屏的月/年选择,年步进走本地 stepYear)|'none'(隐期间控件,
 // 改显 scopeChip 口径徽章)。均可选 → 未传屏零变化。
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { Comment, Fragment, computed, onMounted, onUnmounted, ref, useSlots, watch, type VNode } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import { fetchAvailableMonths } from '@/analysis/anaData'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
 import { anaSettings, resetAnaSettings, saveAnaSettings } from '@/analysis/anaSettings'
 import { useCompare, type CompareMode } from '@/analysis/useCompare'
 import AnaPill from '@/components/ana/AnaPill.vue'
+import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
+import FPLoadBar from '@/components/fp/FPLoadBar.vue'
 import '@/components/ana/ana.css'
 import Select from '@/components/ds/Select.vue'
 
@@ -21,9 +23,26 @@ const props = defineProps<{
   compare?: CompareMode[]                 // 屏声明的对比支持集(不传 = 不显示开关)
   periodMode?: 'full' | 'year' | 'none'   // 期间语义(不传 = 'full' 零变化)
   scopeChip?: string                      // periodMode='none' 时的口径徽章文案
+  // 屏在途(C5-02 / C5-12):亮 sticky 工具条上那条 2px 线。**传 useDeferredFlag 的结果**,
+  // 不要直接传 loading —— 否则快响应时闪一下。旧内容自己退让(.fp-stale)由屏管,这里只管信号。
+  busy?: boolean
+  // 首进占位瓦片数(= 本屏数据到了之后会出几张;**只在首进取数途中传,取完传 0** —— 取完仍没数据的屏
+  // 是空态,不该摆一排「—」)。#kpis 槽还一张瓦都没渲染时,摆这么多张「—」瓦:
+  // 与真瓦同一栅格、同一组件,所以任何视口宽度下换行出来的行数都与真版式一致。
+  // 只靠 min-height 兜一行的量,手机两列时真版式是 3~5 行,数据一到整页下推 170~780px(2026-09-16 实测)。
+  // 也可以直接给每张瓦的副行占位字(隐形):副行在窄瓦里会折两三行的屏(盈亏、光伏)用它,折行数与真瓦一致。
+  kpiHold?: number | string[]
 }>()
 
 const pmode = computed(() => props.periodMode ?? 'full')
+
+// 槽渲染出来是不是空的(屏侧 <template v-if> 为假时,槽函数只返回注释节点 / 空 Fragment)。
+// 在 render 期间调用 → 槽依赖的响应式数据照常被追踪,数据一到自动切到真瓦。
+const slots = useSlots()
+const filled = (ns: VNode[]): boolean => ns.some((n) =>
+  n.type === Comment ? false : n.type === Fragment ? filled((n.children as VNode[]) ?? []) : true)
+const kpisEmpty = () => !filled(slots.kpis?.() ?? [])
+const holdNotes = computed(() => (Array.isArray(props.kpiHold) ? props.kpiHold : Array.from({ length: props.kpiHold ?? 0 }, () => ' ')))
 
 // 对比开关(支持集为屏静态声明,挂载时定死)
 const CMP_MODES: CompareMode[] = ['none', 'mom', 'yoy', 'budget']
@@ -33,6 +52,7 @@ const cmp = props.compare ? useCompare(props.compare) : null
 
 const period = usePeriod()
 const loaded = ref(false)
+
 const asof = computed(() => period.months.value[period.months.value.length - 1] ?? '—')
 
 onMounted(async () => {
@@ -98,6 +118,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
        在屏根摘掉 base.css 的 800px 屏级地板;18+1 屏全部以本壳为根,一处摘全层。 -->
   <div class="anx-shell fp-fluid">
     <div class="anx-tools">
+      <!-- 进度线挂在 sticky 工具条上:它是 .fp-stale 宿主的**兄弟**(放进宿主里会被 opacity .42
+           + blur 一起糊掉),且 sticky 本身就是定位祖先,滚到哪儿都看得见。20 屏共用这一条。 -->
+      <FPLoadBar :on="!!busy" />
       <!-- 期间控制('none' 整体隐藏,改显 scopeChip 口径徽章;'year' 隐藏粒度切换与月下拉) -->
       <div v-if="pmode !== 'none'" class="anx-period">
         <span class="anx-lbl"><component :is="iconFor('calendar')" :size="14" />期间</span>
@@ -115,7 +138,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
                   :model-value="String(period.sel.value.year)"
                   @update:model-value="period.setYear(+$event)" />
         </div>
-        <div v-if="pmode === 'full' && period.sel.value.gran === 'month'" class="anx-selw" style="width: 92px">
+        <!-- 按年时月下拉**占位不可见**而不是 v-if 插拔:拔掉它右边的步进钮会整组左移 92px,
+             换一次粒度抖一次(C5-01 ④)。visibility:hidden 同时把它移出 tab 序。 -->
+        <div v-if="pmode === 'full'" class="anx-selw" :class="{ 'anx-hid': period.sel.value.gran !== 'month' }" style="width: 92px">
           <Select size="sm" :disabled="!period.years.value.length"
                   :options="period.monthNumsOf(period.sel.value.year).map(m => ({ value: String(m), label: `${m}月` }))"
                   :model-value="String(period.sel.value.month)"
@@ -186,11 +211,18 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
          数据就绪无关(且该请求走 anaData cached,二次进屏几乎立即 true),所以各屏 #kpis 早就要在
          「本屏数据未到」时渲染一遍——瓦片绑定本来就是 null-safe(atPeriod/colPick 等返回 null → 显 '—'),
          不会出 NaN/undefined。高度稳定另由 .anx-kpis 的 min-height 兜(见下)。 -->
-    <div v-if="$slots.kpis" class="anx-kpis av2-kpis"><slot name="kpis" /></div>
+    <!-- C5-02 ⑥:KPI 条与正文同拍退让 —— 常挂 data-stale-host(摘类后仍有 transition-property,
+         退场才是 200 而不是硬切),busy 时挂 .fp-stale。首进(还没有瓦片)仍由 min-height 94 兜空行。 -->
+    <div v-if="$slots.kpis" class="anx-kpis av2-kpis" data-stale-host :class="{ 'fp-stale': busy }">
+      <slot name="kpis" />
+      <!-- 占位瓦:标签与副行用不换行空格占住行盒(纯空格会被折叠成零高) -->
+      <template v-if="holdNotes.length && kpisEmpty()">
+        <AnaKpiTile v-for="(n, i) in holdNotes" :key="'hold' + i" class="anx-kpi-hold" label=" " value="—" :note="n" />
+      </template>
+    </div>
 
     <div class="anx-body">
-      <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
-      <slot v-else />
+      <slot />
     </div>
   </div>
 </template>
@@ -217,8 +249,10 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
    2026-08-20 同步过一次:边框 0.5→1px(0.5px 在非整数 DPR 下渲染不稳)、副行 10.5→11px
    (中文可读性下限),两项合计 +1.65px,故 93 → 94。
    S 档 .av2-kpis 定两列(ana.css §5.2 块)与 auto-fit 换行同理:行数是「视口档 × 瓦片数」的
-   静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。 */
-.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 94px; }
+   静态函数,挂载即终态,min-height 仍只须兜一行的量——多行自然超过下限,不必随档改值。
+   2026-09-16:副行改为固定留两行(.d min-height 2 × 14.85),瓦片 82.85 → 97.7,故 94 → 109。
+   多行的情况改由 kpiHold 占位瓦兜(见上),这里仍只兜不传 kpiHold 的屏的一行。 */
+.anx-kpis { flex: 0 0 auto; padding: 12px 24px 0; min-height: 109px; }
 .anx-selw { flex: 0 0 auto; }
 /* 工具条三个分组(改前是内联 style——媒体查询盖不住内联,M/S 收纳只能先收编成类;数值照抄零变化) */
 .anx-period { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -228,7 +262,9 @@ function onNum(key: 'occTarget' | 'collectTarget' | 'churnTh' | 'breakevenFixedR
 .anx-nav button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--surface-white); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; }
 .anx-nav button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .anx-nav button:disabled { opacity: .4; cursor: default; }
-.anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px; }
+/* C5-06:与 ds/Popover、FPMoreMenu 对齐补入场;关闭仍是 v-if 瞬时(§14 浮层退场不做)。 */
+.anx-pop { position: absolute; top: 42px; right: 0; z-index: 30; background: var(--surface-white); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: 0 8px 28px rgba(28,28,28,.16); padding: 16px; width: 268px;
+  animation: fp-pop-in var(--dur-fast) var(--ease-out); }
 .anx-pop h4 { margin: 0 0 12px; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .anx-fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .anx-fld label { font-size: 12px; color: var(--text-secondary); }

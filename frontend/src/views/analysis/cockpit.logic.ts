@@ -15,6 +15,8 @@ import type { AnalysisLedgerRow } from '@/api/analysis'
 import type { BudgetRowDTO } from '@/api/budget'
 import type { CompareMode } from '@/analysis/useCompare'
 import { CMP_BASELINE, CMP_BUDGET, fint, fnum } from '@/components/ana/anaFmt'
+import { DUR, EASE } from '@/components/ana/anaMotion'
+import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 
 const wan = (v: number | null): number | null => (v == null ? null : +(v / 10000).toFixed(2))
 
@@ -458,8 +460,7 @@ export function fitBandAt(fit: RevenueFit | null, month: number): FitBand | null
  * F1(对抗复查,adversarial-survived.md):主图(趋势线/拟合区间 markArea/离群 markPoint)原先整段
  * 写在 CockpitView.vue 的 <script setup> computed 里——没有抽成纯函数,也没有挂载测摸得到 option
  * 对象,vitest/tsc/anaCopyLint 全绿情况下整段删掉、markArea 的 formatter 清空、markPoint 退回
- * 固定文案都不会被抓到。照姊妹图(expiry.logic.ts 的 rentRollOption、TenantPeer.logic.ts 的
- * unitRentHistOption)抽成纯函数,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
+ * 固定文案都不会被抓到。抽成纯函数后,cockpit.logic.spec.ts 直接测 option 对象里的三块交付物。
  */
 const OUTLIER_RED = '#E24B4A'   // 同 breakeven.logic.ts RED(统一主题语义红)
 export function mainChartOption(
@@ -471,19 +472,18 @@ export function mainChartOption(
   const series: object[] = [
     {
       name: '收入', type: 'bar', data: revData, barMaxWidth: 26, itemStyle: { borderRadius: [3, 3, 0, 0] },
-      markPoint: d.outlierMonths.length ? {
-        symbol: 'pin', symbolSize: 30, itemStyle: { color: OUTLIER_RED },
-        label: {
-          fontSize: 10, color: '#fff',
-          // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
-          // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
-          formatter: (p: { data: { month?: number } }) => {
-            const r = p.data.month != null ? outlierResByMonth.get(p.data.month) : undefined
-            return r != null ? `收入为负\n${Math.floor(r)}倍残差` : '收入为负'
-          },
-        },
-        data: d.outlierMonths.map((m) => ({ coord: [m - 1, yMin ?? 0], month: m })),
-      } : undefined,
+      // 点钉在负柱的柱头(改前钉在 yMin —— 轴 2026-09-12 起已罩住负柱,yMin 落在的是利润线的最低点)。
+      // 气泡优先挂柱头下方:柱头上方是柱子本身。
+      // F4(修复轮1):逐点各取自己月份的残差倍数(outlierResByMonth)——改前是一句固定文案
+      // (取 outlierMonths[0]),真有两个离群月时,两根 pin 会显示同一个数字。
+      markPoint: d.outlierMonths.length ? calloutMark(
+        CALLOUT.red, OUTLIER_RED,
+        d.outlierMonths.map((m) => {
+          const r = outlierResByMonth.get(m)
+          return { coord: [m - 1, d.rev[m - 1] ?? 0], month: m, lines: r != null ? ['收入为负', `${Math.floor(r)}倍残差`] : ['收入为负'] }
+        }),
+        'bottom',
+      ) : undefined,
       markLine: d.budgetAvgWan != null ? {
         silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: CMP_BUDGET },
         // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切
@@ -494,10 +494,11 @@ export function mainChartOption(
     { name: '利润', type: 'line', data: d.profit, smooth: true, symbolSize: 5, connectNulls: true, itemStyle: { color: '#185FA5' } },
   ]
   if (cmpMode === 'mom') {
-    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true })
+    // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → 新 name 新视图,clip 从左擦入;关掉是视图 dispose 瞬时(不淡出)
+    series.push({ name: '上月收入', type: 'line', data: d.prevRev, lineStyle: { type: 'dashed', width: 1.5 }, itemStyle: { color: CMP_BASELINE }, symbol: 'none', connectNulls: true, animationDuration: DUR.update, animationEasing: EASE.enter })
   }
   if (cmpMode === 'budget' && d.budgetAvgWan != null) {
-    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none' })
+    series.push({ name: '预算月均', type: 'line', data: d.labels.map(() => d.budgetAvgWan), lineStyle: { type: 'dashed', width: 1.5, color: CMP_BUDGET }, itemStyle: { color: CMP_BUDGET }, symbol: 'none', animationDuration: DUR.update, animationEasing: EASE.enter })   // C6-09 同上(同一 cmp 开关下的独立 line 系列)
   }
   // 趋势线与拟合区间 2026-09-12 搬去 trendChartOption(用户:「现在完全看不见」)——
   // 这张图是 0 起的柱图,三条线只能挤在柱顶那一小段里。理由见那个函数的头注。

@@ -5,6 +5,7 @@
 // 悬停命中每槽中心 28px 宽的竖条,气泡在竖条右侧 12px(= 槽中心 + 26),放不下翻左(画布 renderVals)。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { FP_ANA_THEME } from '@/components/ana/anaTheme'
 import '@/components/ana/ana.css'
@@ -25,6 +26,9 @@ const WHY: Record<NonNullable<BetaSlot['why']>, { tick: string; tip: string }> =
 }
 
 const { el, width: W } = useWidth(646)
+// 抽屉里的图不擦入(只有卡片上浮,原则 7);上一栋 / 下一栋 200 同键形变(点与连线段都按月作键)。
+// 改宽那两帧 hold 关掉;参照线与网格跟纵轴瞬到
+const hold = useMorphHold(W, ref(false))
 
 const axis = computed(() => {
   const vals = [1]
@@ -41,15 +45,12 @@ const cur = computed(() => {
 })
 
 const dots = computed(() => cols.value.flatMap(c => (c.beta == null ? [] : [{ m: c.month, x: c.cx, y: Y(c.beta) }])))
-/** 相邻有值的月才连线,空槽处断开 */
-const linePath = computed(() => {
-  let d = '', prev = -1
-  for (const p of dots.value) {
-    d += (p.m === prev + 1 ? ' L' : ' M') + `${p.x},${p.y}`
-    prev = p.m
-  }
-  return d.trim()
-})
+/** 相邻有值的月才连线,空槽处断开。拆成一月一段、按起点月作键:每段同一「M L」结构,换栋时 d 能过渡
+ *  (拆 M 子路径的单条 path 做不到 —— 空槽位置一变命令结构就变,d 直接跳) */
+const lineSegs = computed(() => dots.value.slice(1).flatMap((p, k) => {
+  const a = dots.value[k]
+  return p.m === a.m + 1 ? [{ m: a.m, d: `M${a.x},${a.y} L${p.x},${p.y}` }] : []
+}))
 
 const why = computed(() => {
   const pick = (k: NonNullable<BetaSlot['why']>) => props.slots.filter(s => s.why === k).map(s => s.month)
@@ -105,8 +106,11 @@ const tip = computed(() => {
         </template>
         <line class="ref" :x1="PAD_L" :x2="W - PAD_R" :y1="Y(1)" :y2="Y(1)" stroke="var(--ink-500)" stroke-width="1" stroke-dasharray="4 3" />
         <text class="ax reflab" :x="W - PAD_R - 4" :y="Y(1) - 6" text-anchor="end" fill="var(--ink-900)" fill-opacity="0.55">1 = 与全园同步</text>
-        <path v-if="linePath" class="line" :d="linePath" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linejoin="round" />
-        <circle v-for="p in dots" :key="'d' + p.m" class="dot" :cx="p.x" :cy="p.y" r="7" :fill="C.FOCUS" stroke="var(--surface-white)" stroke-width="2.5" />
+        <!-- 数据组:只形变不擦入;悬停命中条与气泡是 SVG 外的 HTML,0ms -->
+        <g :class="['b11-data', 'ana-morph', { hold }]">
+          <path v-for="s in lineSegs" :key="'l' + s.m" class="line" :data-m="s.m" :d="s.d" fill="none" :stroke="C.FOCUS" stroke-width="2" stroke-linecap="round" />
+          <circle v-for="p in dots" :key="'d' + p.m" class="dot" :cx="p.x" :cy="p.y" r="7" :fill="C.FOCUS" stroke="var(--surface-white)" stroke-width="2.5" />
+        </g>
         <line class="axl" :x1="PAD_L" :x2="W - PAD_R" :y1="H - padB" :y2="H - padB" :stroke="AXIS_LINE" stroke-width="1" />
         <template v-for="c in cols" :key="'m' + c.month">
           <text

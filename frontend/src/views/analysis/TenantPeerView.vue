@@ -132,7 +132,75 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
 
 <template>
   <AnaShell period-mode="none" scope-chip="合同快照">
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01,规范点名本屏:页头 + 页签 + 直方图卡 280 + 其下几卡)。
+         页头照 .tp-head(标题 20 + 4 + 副行 20 —— 行盒 = base.css:19 line-height var(--lh-snug) 20px,
+         .ak-title / .ak-sub 不覆写(ana.css:44-45),与字号无关;选择器 FPTenantPicker 高 36,.tp-picker 宽 240);
+         页签照 .anx-seg(padding 3 + 按钮 25 = 31);直方图块 = AnaUnitRentHist 的 :height 280;
+         三张表卡按 .ak-tbl 的表头 30(行盒 20 + padding-bottom 9 + 下边框 1,ana.css:81)+ 行高 38(ana.css:86)× 行数留白
+         (行数:期区表按库里现有 4 个期区、随数据变;电费表 1;对照表 4 照抄真表)。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="!loaded" class="ak-page tp-skel">
+      <div class="tp-head">
+        <div class="tp-head-l">
+          <div class="fp-shim" style="height: 20px; width: 240px"></div>
+          <div class="fp-shim" style="height: 20px; width: 180px; margin-top: 4px"></div>
+        </div>
+        <div class="fp-shim tp-picker" style="height: 36px"></div>
+      </div>
+      <!-- 页签与卡头照抄真版式(卡头行盒 21、手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           第一张卡的「N 份 > 上限」一行跟数据出没,库里现有数据有,骨架按「有」留位。 -->
+      <div class="anx-seg tp-tabs" role="group" aria-hidden="true">
+        <button v-for="t in TABS" :key="t.k" :class="{ on: t.k === 'rent' }" disabled tabindex="-1">{{ t.l }}</button>
+      </div>
+      <div class="av2-card">
+        <div class="av2-card-h">
+          <span class="t">单位租金对标</span>
+          <span class="hint">元/㎡·月(含费)· <span class="ana-hole">期区一</span>在租合同</span>
+        </div>
+        <div class="fp-shim" style="height: 280px"></div>
+        <p class="tp-overflow"><span class="ana-hole">0 份 &gt; 000,最高 000.0</span></p>
+        <p class="ana-read hold"></p>
+        <p class="ana-ref"><span class="ana-hole">占位</span></p>
+      </div>
+      <div class="av2-card av2-s6">
+        <div class="av2-card-h">
+          <span class="t">哪些期区能给区间</span>
+          <span class="hint">样本 &lt; <span class="ana-hole">0</span> 不画带</span>
+        </div>
+        <!-- 表块 182 = 表头 30 + 4 行 × 38(行数 = 有合同的期区数,随数据变;库里现有 4 个) -->
+        <div class="fp-shim" style="height: 182px"></div>
+        <p class="ana-read"><span class="ana-hole">占位</span></p>
+        <p class="ana-ref"><span class="ana-hole">占位</span></p>
+      </div>
+      <div class="av2-card av2-s6">
+        <div class="av2-card-h">
+          <span class="t">同一招式，用在电费上会翻车</span>
+          <span class="hint"><span class="ana-hole">0000-00 · 000 户</span></span>
+        </div>
+        <div class="fp-shim" style="height: 68px"></div>
+        <p class="ana-read"><span class="ana-hole">占位</span></p>
+        <p class="ana-ref"><span class="ana-hole">占位</span></p>
+      </div>
+      <!-- 这张对照表是静态字,整张照抄 -->
+      <div class="av2-card av2-s12">
+        <div class="av2-card-h">
+          <span class="t">这张图为什么可信</span>
+          <span class="hint">和预测图的区别</span>
+        </div>
+        <table class="ak-tbl">
+          <thead><tr><th>维度</th><th>对标带(本屏)</th><th>预测带(驾驶舱月度收入)</th></tr></thead>
+          <tbody>
+            <tr><td>区间从哪来</td><td><span class="ana-hole">000</span> 个真实同类</td><td>历史数据外推(回归拟合)</td></tr>
+            <tr><td>需要多少历史</td><td>当期 1 次快照即可</td><td>至少数年月度数据才够校准</td></tr>
+            <tr><td>会不会过时</td><td>每次打开按最新数据重算</td><td>数据一多就要重新拟合,模型会漂</td></tr>
+            <tr><td>这个项目现在</td><td>能上</td><td>月度数据不够,不敢标百分比</td></tr>
+          </tbody>
+        </table>
+        <p class="ana-read">对标带今天能用，预测带月度数据不够</p>
+        <p class="ana-ref">对标=本屏同类·预测=驾驶舱月度回归</p>
+      </div>
+    </div>
+    <!-- skel:end -->
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -167,10 +235,12 @@ const TABS: { k: TabKey; l: string; on: boolean }[] = [
             :overflow-max="hist.overflowMax" :stats="stats" :self-value="primaryRow.unitRent"
             :self-name="primaryRow.tenantName" :height="280" />
           <p v-if="hist.overflowCount" class="tp-overflow">{{ hist.overflowCount }} 份 &gt; {{ hist.capHi }},最高 {{ hist.overflowMax.toFixed(1) }}</p>
-          <p v-if="readout" class="ana-read">{{ readout }}</p>
+          <!-- 读数句常驻占位(C5-11):算不出时空着那一行,卡高不随换租户 ±1 行 -->
+          <p class="ana-read hold"><template v-if="readout">{{ readout }}</template></p>
           <p class="ana-ref">{{ refText }}</p>
         </template>
-        <AnaEmpty v-else label="同类样本不足" :hint="`${phaseZone}在租且已录面积的合同仅 ${phaseValues.length} 份,不足 ${MIN_SAMPLE} 份,无法画分布区间`" />
+        <!-- 空态钉成它顶替的那张图的高(C5-10):AnaUnitRentHist :height 280,互换时下方卡不跳 -->
+        <AnaEmpty v-else label="同类样本不足" style="min-height: 280px; box-sizing: border-box" :hint="`${phaseZone}在租且已录面积的合同仅 ${phaseValues.length} 份,不足 ${MIN_SAMPLE} 份,无法画分布区间`" />
       </div>
 
       <!-- T10:「哪些期区能给区间」—— 板上四行表标签写「在租」,数字却是不过滤日期的总体(168/100/3/2),

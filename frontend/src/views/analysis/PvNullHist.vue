@@ -9,7 +9,9 @@
  */
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import { PV_COLORS } from './pvAnaColors'
 import type { PvNullHistProps } from './pvAnaV4.logic'
 
@@ -19,6 +21,10 @@ const props = defineProps<PvNullHistProps & { period?: string }>()
 const H = 138, PAD_L = 30, PAD_R = 8, TOP = 12, BASE = 116
 const r1 = (v: number) => +v.toFixed(1)
 const { el, width } = useWidth(312)
+// 切到「高级分析」挂上来时在视口内擦入 320;换栋 / 换期 200 同键形变(柱按格序、红线跟观测值;直标字瞬到)。
+// 擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 
 const fmtObs = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(3)}`
 
@@ -37,9 +43,8 @@ const geo = computed(() => {
     const y = r1(BASE - b.count / yMax * (BASE - TOP))
     const r = Math.min(2, r1(BASE - y))
     const xl = r1(x + 0.5), xr = r1(x + bw - 0.5)
-    const d = b.count > 0
-      ? `M${xl},${BASE} L${xl},${r1(y + r)} Q${xl},${y} ${r1(xl + r)},${y} L${r1(xr - r)},${y} Q${xr},${y} ${xr},${r1(y + r)} L${xr},${BASE} Z`
-      : ''
+    // 计数为 0 的格也出同一结构的 path(高 0、看不见):换栋时从 0 长出来 / 缩回 0,而不是凭空出现
+    const d = `M${xl},${BASE} L${xl},${r1(y + r)} Q${xl},${y} ${r1(xl + r)},${y} L${r1(xr - r)},${y} Q${xr},${y} ${xr},${r1(y + r)} L${xr},${BASE} Z`
     return { ...b, x, bw, y, d }
   })
   const ticks = [3, 7, 11, 15].filter(i => i < bins.length).map(i => ({ x: cols[i].x, label: bins[i].lo.toFixed(3) }))
@@ -77,13 +82,15 @@ const tip = computed(() => {
         <text v-for="t in geo.ticks" :key="t.label" class="ax" :x="t.x" :y="130" text-anchor="middle">{{ t.label }}</text>
         <rect v-if="hover != null && geo.cols[hover]" class="pnh-slot" :x="geo.cols[hover].x" :y="TOP"
           :width="geo.cols[hover].bw" :height="BASE - TOP" />
-        <template v-for="(c, i) in geo.cols" :key="i">
-          <path v-if="c.d" class="pnh-bar" :data-i="i" :d="c.d" :fill="PV_COLORS.BAND" fill-opacity=".85" />
-        </template>
+        <!-- 尺子先在,数据擦上去:轴线挪到数据组之前;悬停槽底在组外(0ms) -->
         <line class="axl" :x1="PAD_L" :x2="geo.W - PAD_R" :y1="BASE" :y2="BASE" />
-        <line class="pnh-obs" :x1="geo.obs.x" :x2="geo.obs.x" :y1="TOP - 4" :y2="BASE" :stroke="PV_COLORS.BELOW" stroke-width="2" />
-        <text class="ax pnh-l1" :x="geo.obs.tx" y="22" :text-anchor="geo.obs.anchor" :style="{ fill: PV_COLORS.BELOW }">{{ geo.obs.l1 }}</text>
-        <text class="ax pnh-l2" :x="geo.obs.tx" y="36" :text-anchor="geo.obs.anchor" :style="{ fill: PV_COLORS.AMBER_TEXT }">{{ geo.obs.l2 }}</text>
+        <g :class="['pnh-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <path v-for="(c, i) in geo.cols" :key="i" class="pnh-bar" :data-i="i" :d="c.d" :fill="PV_COLORS.BAND" fill-opacity=".85" />
+          <!-- 红线用 path:<line> 的端点过渡不了 -->
+          <path class="pnh-obs" :d="`M${geo.obs.x},${TOP - 4} V${BASE}`" fill="none" :stroke="PV_COLORS.BELOW" stroke-width="2" />
+          <text class="ax pnh-l1" :x="geo.obs.tx" y="22" :text-anchor="geo.obs.anchor" :style="{ fill: PV_COLORS.BELOW }">{{ geo.obs.l1 }}</text>
+          <text class="ax pnh-l2" :x="geo.obs.tx" y="36" :text-anchor="geo.obs.anchor" :style="{ fill: PV_COLORS.AMBER_TEXT }">{{ geo.obs.l2 }}</text>
+        </g>
         <rect v-for="(c, i) in geo.cols" :key="`h${i}`" class="pnh-hit" :x="c.x" :y="TOP" :width="c.bw" :height="BASE - TOP"
           fill="transparent" @mouseenter="hover = i" />
       </svg>
@@ -99,6 +106,7 @@ const tip = computed(() => {
 <style scoped>
 .pnh-plot { position: relative; width: 100%; height: 138px; }
 .pnh-svg { display: block; }
+.pnh-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .ax { font-size: var(--fs-micro); font-family: var(--font-mono); font-variant-numeric: tabular-nums; fill: var(--text-muted); }
 .pnh-l1 { font-weight: var(--fw-semibold); }
 .axl { stroke: var(--ink-900); stroke-opacity: .15; stroke-width: 1; }

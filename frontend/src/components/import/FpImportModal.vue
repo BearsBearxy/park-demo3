@@ -346,9 +346,8 @@ function onLabelConfirm(picks: { label: string; records: ImportRec[] }[]) {
 /* 1:1 from import-excel.jsx FPImportStyles */
 /* 居中弹窗(取代原型右抽屉;参考 CommandPalette 居中卡)。见 PAGE-BEHAVIOR-SPEC §2。 */
 /* -webkit- 前缀:iOS ≤17 无前缀不识别 backdrop-filter,真机上等于没有模糊 */
-.fpimp-scrim { position:fixed; inset:0; z-index:var(--z-modal-2); background:rgba(28,28,28,.32); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
-.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fpimpin var(--dur-base) var(--ease-standard); }
-@keyframes fpimpin { from { transform:translateY(8px) scale(.985); opacity:.4; } to { transform:none; opacity:1; } }
+.fpimp-scrim { position:fixed; inset:0; z-index:var(--z-modal-2); background:rgba(28,28,28,.32); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; opacity:0; animation:fp-fade-in var(--dur-base) var(--ease-out) forwards; }
+.fpimp { width:min(560px,96vw); max-height:88vh; border-radius:16px; border:1px solid var(--border-subtle); background:var(--surface-white); box-shadow:0 24px 64px rgba(28,28,28,.28); display:flex; flex-direction:column; overflow:hidden; animation:fp-rise-in var(--dur-base) var(--ease-out) both; }
 .fpimp-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 22px 16px; border-bottom:1px solid var(--divider); }
 .fpimp-h h3 { margin:0; font-size:17px; font-weight:var(--fw-semibold); color:var(--text-primary); }
 .fpimp-h p { margin:3px 0 0; font-size:12.5px; color:var(--text-muted); }

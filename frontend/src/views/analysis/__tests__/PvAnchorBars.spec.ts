@@ -1,6 +1,7 @@
 // PvAnchorBars(A2)挂载测:0 线位置、条的 x/width、条尾两枚标签、最右列 ▲▼Δ、未投产行、行点击与悬停气泡。
 // 夹具非退化:三期都在、一条负条、比去年有多有少有持平有 —、一栋未投产、一栋在网不足。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvAnchorBars from '../PvAnchorBars.vue'
 import { tipWidth } from '@/components/ana/chartTip'
@@ -34,6 +35,9 @@ const S = Math.min((W - 176 - ZERO) / (339.5 * 1.05), (ZERO - PL) / (47.5 * 1.05
 const bar = (w: ReturnType<typeof mount>, id: number) => w.find(`rect.pan-bar[data-id="${id}"]`)
 const num = (el: DOMWrapper<Element>, k: string) => Number(el.attributes(k))
 const attr = (el: DOMWrapper<Element>, k: string) => el.attributes(k) ?? ''
+/** 行 g 靠 translateY 定位:元素的绝对 y = 自己的 y + 所在行 g 的 translateY */
+const rowY = (el: Element) => Number(/translate\(0px, (-?[\d.]+)px\)/.exec(el.closest('g.pan-rowg')?.getAttribute('style') ?? '')?.[1])
+const absY = (el: DOMWrapper<Element>) => num(el, 'y') + rowY(el.element)
 
 describe('PvAnchorBars 几何', () => {
   it('0 线 = 锚点,落在绘图宽 22%;画布高 = 8 + 行数 × 26 + 34;名字右对齐于 86', () => {
@@ -54,12 +58,12 @@ describe('PvAnchorBars 几何', () => {
     expect(num(e, 'x')).toBeCloseTo(ZERO, 6)
     expect(num(e, 'width')).toBeCloseTo(339.5 * S, 6)
     expect(num(e, 'x') + num(e, 'width')).toBeCloseTo(W - 176 - 339.5 * S * 0.05, 6)
-    expect(num(e, 'y')).toBe(14)
+    expect(absY(e)).toBe(14)
     expect(e.attributes('fill')).toBe('#378ADD')
     const neg = bar(w, 13)
     expect(num(neg, 'x')).toBeCloseTo(ZERO - 47.5 * S, 6)
     expect(num(neg, 'width')).toBeCloseTo(47.5 * S, 6)
-    expect(num(neg, 'y')).toBe(8 + 5 * 26 + 6)
+    expect(absY(neg)).toBe(8 + 5 * 26 + 6)
     expect(neg.attributes('fill')).toBe('#EF9F27')
     expect(bar(w, 7).attributes('fill')).toBe('#5DCAA5')
   })
@@ -117,7 +121,7 @@ describe('PvAnchorBars 几何', () => {
     expect(arrows[0].classes()).toContain('pan-up')
     expect(arrows[1].attributes('fill')).toBe('#EF9F27')
     expect(num(arrows[0], 'x')).toBe(W - 60)
-    expect(num(arrows[1], 'y')).toBe(8 + 26 + 17)
+    expect(absY(arrows[1])).toBe(8 + 26 + 17)
   })
 
   it('未投产那栋占行写字、不画条、不能点', () => {
@@ -198,5 +202,56 @@ describe('PvAnchorBars 选中与交互', () => {
     expect(t.startsWith('横轴不从 0 h 起：0 就是 807.5 h 那条线')).toBe(true)
     expect(t).toContain('在网天数不足 1 栋，不画、不年化（10栋）')
     expect(t).not.toContain('没有装机分母')
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的图 —— 挂载时视口内擦入 320(切子屏 / 切回页签);换期不重挂,条长同键 200 形变,名次变了整行 g 滑到新行
+describe('PvAnchorBars 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 999, width: 999, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:数据组挂 first + hold(栋名组也 hold、不擦);animationcancel / animationend 都摘;离屏挂载不擦', async () => {
+    inView()
+    const w = mount(PvAnchorBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    expect(w.find('g.pan-data').classes()).toEqual(['pan-data', 'ana-morph', 'first', 'hold'])
+    expect(w.find('g.pan-names').classes()).toEqual(['pan-names', 'ana-morph', 'hold'])
+    await w.find('g.pan-data').trigger('animationcancel')
+    expect(w.find('g.pan-data').classes()).toEqual(['pan-data', 'ana-morph'])
+    expect(w.find('g.pan-names').classes()).toEqual(['pan-names', 'ana-morph'])
+    const w2 = mount(PvAnchorBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    await w2.find('g.pan-data').trigger('animationend')
+    expect(w2.find('g.pan-data').classes()).toEqual(['pan-data', 'ana-morph'])
+    vi.restoreAllMocks()
+    const off = mount(PvAnchorBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    expect(off.find('g.pan-data').classes()).toEqual(['pan-data', 'ana-morph'])
+  })
+
+  it('❗换年名次变了不挪 DOM:同一栋的条还是同一个元素、DOM 顺序不动,行 g 换到新名次;栋名与条尾字同行跟走', async () => {
+    const w = mount(PvAnchorBars, { props: { data: data(), selId: null } })
+    const f = bar(w, 4).element
+    const x0 = f.getAttribute('width')
+    const d = data()
+    d.rows = [row(4, 'F座', 1, 1300, -79), ...d.rows.filter(r => r.id !== 4)]
+    await w.setProps({ data: d })
+    expect(bar(w, 4).element).toBe(f)
+    expect(f.getAttribute('width')).not.toBe(x0)
+    expect(w.findAll('rect.pan-bar').map(r => Number(r.attributes('data-id')))).toEqual([3, 2, 7, 9, 4, 13])
+    expect([rowY(f), rowY(bar(w, 3).element)]).toEqual([8, 8 + 26])
+    expect(rowY(w.findAll('text.pan-name').find(t => t.text() === 'F座')!.element)).toBe(8)
+    expect(f.closest('g.pan-rowg')!.querySelector('text.pan-h')!.textContent).toBe('+492.5 h')
+  })
+
+  it('❗悬停行(HTML 层)不在形变组里', async () => {
+    const w = mount(PvAnchorBars, { props: { data: data(), selId: null } })
+    await w.find('.pan-row[data-id="3"]').trigger('mouseenter')
+    expect(w.find('.pan-row[data-id="3"]').element.closest('.ana-morph')).toBe(null)
+    expect(w.find('.pv-tip').element.closest('.ana-morph')).toBe(null)
   })
 })

@@ -18,6 +18,7 @@ import type { AnalysisLedgerRow, AnalysisS10Row } from '@/api/analysis'
 import type { TenantDTO } from '@/types/tenant'
 import { iconFor } from '@/components/ds/icon'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
@@ -210,7 +211,8 @@ const payOption = computed<object>(() => ({
   series: [
     { name: '应收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.recv.toFixed(2)), itemStyle: { color: '#B5D4F4' } },
     { name: '实收', type: 'bar', barWidth: 22, data: selPay.value.map((x) => +x.coll.toFixed(2)), itemStyle: { color: '#378ADD' } },
-  ],
+    // C6-16 ⑤:name 恒定、'YYYY-MM' 类目随租户漂移 → 换租户按 name 形变是假中间数据;id 带租户键(+序号防撞 idMap)瞬换
+  ].map((s, i) => ({ ...s, id: `pay-${i}-${selRow.value?.name ?? ''}` })),
 }))
 
 // ── Top20 榜(点击选中联动) ──
@@ -299,7 +301,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 
 <template>
   <!-- §五:月敏感屏(full);「本期=≤所选的最近 s10 月」回退以横幅显式 -->
-  <AnaShell period-mode="full">
+  <AnaShell period-mode="full" :kpi-hold="!loaded ? 6 : 0">
     <!-- v-if 必须在槽内层:挂在 <template #kpis> 上时条件为假 → $slots.kpis 不存在 →
          AnaShell 的容器判不到、连同 min-height 一起不渲染 → 数据到达时整条 KPI 带凭空插入,
          把下方图表整体下推 93px(PAGE-BEHAVIOR-SPEC §1.4)。写法对齐 ExpiryView。 -->
@@ -316,12 +318,77 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
       </template>
     </template>
     <template #tools>
-      <div v-if="loaded && !err && s10Months.length" class="anx-seg te2-seg">
+      <!-- 取数途中占位不可见(手机上工具条会因它多折一行,数据到了才插进来整页下推 38px);取完确实没数据才拿掉 -->
+      <div v-if="!loaded || (!err && s10Months.length)" class="anx-seg te2-seg" :class="{ 'ana-hole': !loaded }">
         <button v-for="o in TOGGLES" :key="o.k" :class="{ on: metric === o.k }" @click="metric = o.k">{{ o.l }}</button>
       </div>
     </template>
 
-    <div v-if="!loaded" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。图块高 = 该图 :height 字面值(趋势 300 · 应收实收 200 ·
+         Top20 440 · 散点 440;走 AnaSkelChart,与图同一张 S 档降档表),卡头 20(+ .av2-card-h 下距 8 = 28)。左列列表卡复用 .te2-left 的
+         flex 列:搜索框 31(padding 7 + 12px 行 + 边框)+ 下距 8,列表条 flex:1 —— 行高由右列那一栏定,
+         与真版式同一条规则;≤1280 左卡独占一行、不被右栏拉伸,列表条钉 560(.te2-skel-list)。读数句 .ana-read(margin-top 8)/ 参照系 .ana-ref(margin-top 2)照留。
+         KPI 行由 .anx-kpis 的 min-height 94 兜位,首进期瓦片不画。数据到了原地硬切,不做淡入、不错峰。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="!loaded" class="ak-page te2-skel">
+      <div class="av2-grid">
+        <div class="av2-card av2-s4 te2-left">
+          <div class="av2-card-h">
+            <span class="t">租户列表</span>
+            <span class="te2-lh">
+              <span class="hint">按本期{{ metricLabel }}降序<span class="hint-desk"> · 点击选中</span></span>
+              <span class="anx-seg mini" aria-hidden="true"><button class="on" disabled tabindex="-1">按户</button><button disabled tabindex="-1">按家族</button></span>
+            </span>
+          </div>
+          <input class="te2-search" type="search" disabled placeholder="搜索租户" />
+          <div class="fp-shim te2-skel-list"></div>
+        </div>
+        <div class="te2-right av2-s8">
+          <div class="av2-card">
+            <div class="av2-card-h">
+              <span class="t"><span class="ana-hole">某某</span> · {{ metricLabel }}趋势 vs 园区均值带</span>
+              <span class="hint">窗口 <span class="ana-hole">00</span> 期</span>
+            </div>
+            <AnaSkelChart :height="300" />
+            <p class="ana-read hold"></p>
+            <p class="ana-ref"><span class="ana-hole">占位</span></p>
+          </div>
+          <div class="av2-card">
+            <!-- 台账期回退横幅与收缴率一行跟数据出没,库里现有数据两样都有,骨架按「有」留位。
+                 卡头的租户名是默认选中的榜首(现为两字简称),占位按两字留;榜首换成长名字时卡头会多折一行。 -->
+            <div class="av2-card-h">
+              <span class="t"><span class="ana-hole">某某</span> · 应收 vs 实收</span>
+              <span class="te2-links">
+                <button class="te2-link" disabled tabindex="-1">查台账 →</button>
+                <button class="te2-link" disabled tabindex="-1">查附表10 →</button>
+              </span>
+            </div>
+            <AnaPeriodBanner class="ana-hole" selected="0000-00" used="0000-00" source="台账" style="margin-bottom: 8px" />
+            <AnaSkelChart :height="200" />
+            <div class="te2-payline"><span class="ana-hole">0000-00 收缴率 <b>00%</b> · 期末结余 <b>¥0.0万</b></span></div>
+          </div>
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h"><span class="t">本期{{ metricLabel }} Top 20</span><span class="hint"><span class="hint-desk">点击条形选中租户</span></span></div>
+          <AnaSkelChart :height="440" />
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h">
+            <span class="t">{{ metricLabel }} vs 月租金</span>
+            <span class="te2-lh">
+              <span class="hint"><span class="hint-desk">点点选中 · </span>气泡=窗口累计 · 虚线=户均<template v-if="xLog"> · 对数刻度:小户与大户同图可读</template></span>
+              <span class="anx-seg mini" aria-hidden="true"><button :class="{ on: xLog }" disabled tabindex="-1">对数</button><button :class="{ on: !xLog }" disabled tabindex="-1">线性</button></span>
+            </span>
+          </div>
+          <AnaSkelChart :height="440" />
+          <!-- 图例按库里现有四个期区留一行 -->
+          <div class="cz-legend ana-hole" style="margin-top: 6px">
+            <span v-for="p in [1, 2, 3, 4]" :key="p" class="cz-leg"><span class="sw"></span>{{ phaseName(p) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- skel:end -->
 
     <div v-else-if="err" class="ak-page">
       <AnaEmpty label="分析数据加载失败" :hint="err" />
@@ -378,7 +445,7 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
               <span class="hint">窗口 {{ winMonths.length }} 期{{ byFamily ? ' · 主租户本户' : '' }}</span>
             </div>
             <AnaEChart :option="trendOption" :height="300" />
-            <p v-if="bandReadout" class="ana-read">{{ bandReadout }}</p>
+            <p class="ana-read hold"><template v-if="bandReadout">{{ bandReadout }}</template></p>
             <p class="ana-ref">{{ bandRefText }}</p>
           </div>
           <div class="av2-card">
@@ -439,9 +506,15 @@ const selPayRow = computed(() => (selRow.value ? payByName.value.get(selRow.valu
 .te2-item .fam { margin-left: 6px; font-size: var(--fs-micro); color: var(--text-muted); background: var(--surface-sunken); border-radius: var(--radius-full); padding: 1px 6px; }
 .te2-search { width: 100%; box-sizing: border-box; font-family: var(--font-sans); font-size: var(--fs-label); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; outline: none; margin-bottom: 8px; }
 .te2-search:focus { border-color: var(--border-strong); }
+/* 骨架列表条:>1280 左卡与右栏同一行被拉伸,条跟着 flex:1 撑满(至少 300);≤1280 左卡独占一行不被拉伸,
+   真列表高 = min(内容, 560) —— 园区在租户数上百(每行 34 + 间距 2,16 户起就顶到 560),按 560 钉,
+   否则首进数据到的那一帧左卡长高约 260,把下方整片推下去。 */
+.te2-skel-list { flex: 1; min-height: 300px; }
+@media (max-width: 1280px) { .te2-skel-list { flex: none; height: 560px; } }
 .te2-list { flex: 1; min-height: 0; max-height: 560px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; }
+.te2-item { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); padding: 7px 8px; border-radius: 8px; text-align: left; transition: background var(--dur-fast) var(--ease-standard); }
 .te2-item:hover { background: var(--bg-hover); }
+.te2-item:active:not(.on) { background: var(--ink-100); transition-duration: 0ms; }
 .te2-item.on { background: var(--accent-blue); }
 .te2-item .rk { width: 20px; flex: 0 0 auto; font-size: var(--fs-micro); font-family: var(--font-mono); color: var(--text-muted); }
 .te2-item .nm { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -19,6 +19,13 @@ import { PanelLeft, Star, Search, History, Bell } from 'lucide-vue-next'
 
 const emit = defineEmits<{ 'open-command': [mode: string] }>()
 
+// C1-07 ③:命令面板是懒加载块(AppShell 的 defineAsyncComponent),首开要等 chunk 到。
+// 不加指示器 —— 把「等」挪到用户按下之前:鼠标划到搜索钮 / Tab 聚到它时就开始拉。
+// import() 有模块缓存,重复调用无成本;chunk 本身不进 index。
+function prefetchPalette() {
+  void import('@/components/shell/CommandPalette.vue')
+}
+
 const route = useRoute()
 const ui = useUiStore()
 
@@ -78,6 +85,8 @@ const ctxText = computed(() => {
       <FPPresenceBar />
       <!-- title 常挂:M 档收纳后文字与 kbd 藏进 CSS,提示只剩这里(§3.3) -->
       <button class="fp-search-btn" title="搜索页面 / 分组（Ctrl K）"
+              @pointerenter="prefetchPalette"
+              @focus="prefetchPalette"
               @click="emit('open-command', 'jump')">
         <Search :size="15" />
         <span>搜索页面 / 分组…</span>

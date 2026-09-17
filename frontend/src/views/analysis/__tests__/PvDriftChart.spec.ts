@@ -3,7 +3,8 @@
 // y 的期望值按「极值贴在上 59 / 下 37 像素处」手算写死。
 // 夹具不退化:正弦 + 余弦叠加、6 月 9 日起抬升、中间漏 4 天、两个显式极值;另一份整年到 12 月底的
 // 夹具用来摆「没有变点 / 没有当段 / 没有未到」与气泡右缘翻边。jsdom 里 getBoundingClientRect 全 0,clientX 即组件内 x。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PvDriftChart from '../PvDriftChart.vue'
 import type { DriftChart } from '../pvAnaV4.logic'
@@ -90,9 +91,9 @@ describe('PvDriftChart(B9)', () => {
 
   it('变点三件:红竖线 x 302、区间淡红 12% 底 290.7 → 311.6、竖线右侧两行直标(第二行是区间,不是结论)', () => {
     const w = mountChart(monthFixture())
-    const cp = w.find('line.cp')
-    expect([num(cp.attributes('x1')), num(cp.attributes('y1')), num(cp.attributes('y2')), cp.attributes('stroke'), cp.attributes('stroke-width')])
-      .toEqual([302, 14, 274, C.BELOW, '1.5'])
+    const cp = w.find('path.cp')
+    expect([cp.attributes('d'), cp.attributes('stroke'), cp.attributes('stroke-width')])
+      .toEqual(['M302,14 V274', C.BELOW, '1.5'])
     const span = w.find('rect.cpspan')
     expect([num(span.attributes('x')), num(span.attributes('width')), span.attributes('fill'), span.attributes('fill-opacity')])
       .toEqual([290.7, 20.9, C.BELOW, '0.12'])
@@ -105,7 +106,7 @@ describe('PvDriftChart(B9)', () => {
 
   it('变点直标右边放不下挪到左侧右对齐:11 月 26 日 x 575.7,第二行估宽 132,575.7 + 5 + 132 > 632 → x 570.7 右对齐', () => {
     const w = mountChart({ ...yearFixture(), cp: { date: '2025-11-26', doy: 330, from: '2025-11-19', fromDoy: 323, to: '2025-12-03', toDoy: 337 } })
-    expect(num(w.find('line.cp').attributes('x1'))).toBe(575.7)
+    expect(w.find('path.cp').attributes('d')).toBe('M575.7,14 V274')
     expect(w.findAll('text.cplab').map(t => [t.text(), num(t.attributes('x')), t.attributes('text-anchor')]))
       .toEqual([['11月26日起', 570.7, 'end'], ['区间 11月19日–12月3日', 570.7, 'end']])
   })
@@ -130,7 +131,7 @@ describe('PvDriftChart(B9)', () => {
   it('没有变点 / 没有当段 / 数据到年底:三样图元都不出现,图例与参照系跟着不写', () => {
     const w = mountChart(yearFixture())
     expect(w.findAll('circle.pt')).toHaveLength(365)          // 对照:点照画
-    expect(w.find('line.cp').exists()).toBe(false)
+    expect(w.find('path.cp').exists()).toBe(false)
     expect(w.find('rect.cpspan').exists()).toBe(false)
     expect(w.findAll('text.cplab')).toHaveLength(0)
     expect(w.find('rect.seg').exists()).toBe(false)
@@ -207,3 +208,40 @@ function rgb(hex: string): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`
 }
+
+// 2026-09-16 行为矩阵:抽屉里的图 —— 打开瞬现(不擦入,原则 7);上一栋 / 下一栋不重挂,同键 200 形变
+describe('PvDriftChart(B9)动效', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗抽屉里在视口内挂载也不擦:数据组只有形变类,没有 first / hold', async () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 646, width: 646, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const w = mountChart(monthFixture())
+    await nextTick()
+    expect(w.find('g.b9-data').classes()).toEqual(['b9-data', 'ana-morph'])
+  })
+
+  it('❗下一栋不重挂:同一天的点、变点竖线、区间底还是同一个元素,坐标换成新栋的;悬停层与轴线不在形变组里', async () => {
+    const w = mountChart(monthFixture())
+    const pt = w.findAll('circle.pt')[0].element
+    const cp = w.find('path.cp').element
+    const span = w.find('rect.cpspan').element
+    const before = [pt.getAttribute('cy'), cp.getAttribute('d'), span.getAttribute('x')]
+    const d = monthFixture()
+    const next: DriftChart = {
+      ...d,
+      points: d.points.map(p => ({ ...p, v: p.v * 0.5 - 0.1 })),
+      cp: { date: '2025-07-01', doy: 182, from: '2025-06-24', fromDoy: 175, to: '2025-07-08', toDoy: 189 },
+    }
+    await w.setProps({ data: next })
+    expect(w.findAll('circle.pt')[0].element).toBe(pt)
+    expect(w.find('path.cp').element).toBe(cp)
+    expect(w.find('rect.cpspan').element).toBe(span)
+    expect([pt.getAttribute('cy'), cp.getAttribute('d'), span.getAttribute('x')].map((v, k) => v === before[k])).toEqual([false, false, false])
+    const g = w.find('g.b9-data')
+    for (const sel of ['circle.pt', 'path.trend', 'path.band', 'path.cp', 'rect.cpspan', 'rect.seg', 'rect.future']) expect(g.find(sel).exists(), sel).toBe(true)
+    await w.find('.plot').trigger('mousemove', { clientX: 302 })
+    for (const sel of ['.hair', '.hdot', '.dtip', 'line.axl']) expect(w.find(sel).element.closest('.ana-morph'), sel).toBe(null)
+  })
+})

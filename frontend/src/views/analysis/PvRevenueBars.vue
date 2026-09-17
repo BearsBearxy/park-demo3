@@ -5,7 +5,9 @@
 // 行序照 revenueBars() 给的(按合计降序),这里不重排。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import { phaseName, type PvRevenueBarsProps } from './pvAnaV4.logic'
 
@@ -14,6 +16,9 @@ const props = defineProps<PvRevenueBarsProps>()
 const PL = 104, RIGHT = 84, TOP = 6, ROW = 27, BOTTOM = 26
 const WAN = 10000
 const { el, width } = useWidth(999)
+// 挂载时在视口内擦入 320,否则瞬到;换期 200 形变:条长走 rect 几何,名次变了整行走行 g 的 translateY
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 const n = computed(() => props.data.rows.length)
 const H = computed(() => TOP + n.value * ROW + BOTTOM)
 const bottom = computed(() => TOP + n.value * ROW)
@@ -53,6 +58,16 @@ const bars = computed(() => props.data.rows.map((r, i) => {
   }
 }))
 
+// ponytail: SVG 行的 DOM 顺序只追加、不重排 —— Chromium 里被挪动的节点丢过渡(实测),换期名次一变挪动的行会瞬移。
+// 首挂按名次排;之后留着旧顺序、新栋追到尾巴。纵向位置全靠行 g 的 translateY,DOM 顺序不影响画面。
+let order: number[] = []
+const drawn = computed(() => {
+  const by = new Map(bars.value.map(b => [b.r.id, b]))
+  order = [...order.filter(id => by.has(id)), ...[...by.keys()].filter(id => !order.includes(id))]
+  return order.map(id => by.get(id)!)
+})
+const rowT = (top: number) => ({ transform: `translate(0px, ${top}px)` })
+
 // ── 悬停 ──
 const hover = ref<number | null>(null)
 interface TipLine { t: string; c: string; o?: number; b?: number }
@@ -90,15 +105,22 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
           <line class="prb-gl" :x1="g.x" :x2="g.x" :y1="TOP" :y2="bottom" />
           <text class="prb-ax" :x="g.x" :y="H - 10" text-anchor="middle">{{ g.v }}</text>
         </template>
-        <template v-for="b in bars" :key="b.r.id">
-          <circle class="prb-dot" cx="10" :cy="b.top + 13.5" r="3.5" :fill="b.dot" />
-          <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" :y="b.top + 17.5">{{ b.r.name }}</text>
-          <rect class="prb-self" :data-id="b.r.id" :x="PL" :y="b.top + 5.5" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
-          <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" :y="b.top + 5.5" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
-          <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" :y="b.top + 17.5">{{ b.selfT }}</text>
-          <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" :y="b.top + 17.5">{{ b.gridT }}</text>
-          <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" :y="b.top + 17.5">{{ b.totT }}</text>
-        </template>
+        <!-- 期别点与栋名留在数据组外,两段各一组行 g(C6-25)。行 g 按栋作键、纵向只靠 translateY:换期名次变了整行滑到新行 -->
+        <g :class="['prb-names', 'ana-morph', { hold }]">
+          <g v-for="b in drawn" :key="'n' + b.r.id" class="prb-rowg" :style="rowT(b.top)">
+            <circle class="prb-dot" cx="10" cy="13.5" r="3.5" :fill="b.dot" />
+            <text :class="['prb-name', { 'prb-name-sel': b.sel }]" x="22" y="17.5">{{ b.r.name }}</text>
+          </g>
+        </g>
+        <g :class="['prb-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <g v-for="b in drawn" :key="b.r.id" class="prb-rowg" :style="rowT(b.top)">
+            <rect class="prb-self" :data-id="b.r.id" :x="PL" y="5.5" :width="b.selfDrawW" height="16" rx="3" :fill="PV_COLORS.FOCUS" />
+            <rect v-if="b.gridW > 0" class="prb-grid" :data-id="b.r.id" :x="b.selfEnd" y="5.5" :width="b.gridW" height="16" rx="3" :fill="PV_COLORS.MID" />
+            <text v-if="b.selfT" class="prb-val prb-in-self" :x="PL + 7" y="17.5">{{ b.selfT }}</text>
+            <text v-if="b.gridT" class="prb-val prb-in-grid" :x="b.selfEnd + 7" y="17.5">{{ b.gridT }}</text>
+            <text class="prb-val prb-tot" :data-id="b.r.id" :x="b.totEnd + 8" y="17.5">{{ b.totT }}</text>
+          </g>
+        </g>
         <line class="prb-axl" :x1="PL" :x2="width - RIGHT" :y1="bottom" :y2="bottom" />
       </svg>
       <div v-for="(b, i) in bars" :key="'r' + b.r.id" class="prb-row" :data-id="b.r.id"
@@ -124,6 +146,11 @@ const price = computed(() => `¥${props.data.gridPrice.toFixed(2)}/度`)
 <style scoped>
 .prb-plot { position: relative; width: 100%; }
 .prb-svg { display: block; }
+/* 首绘:数据组自左擦出一次(C6-25);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.prb-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+/* 行 g 的纵向形变(ana-morph 只管 rect / path / circle 的几何属性,g 的 transform 在这里);hold 同样关掉。字的横向位置瞬到 */
+.prb-rowg { transition: transform var(--dur-base) var(--ease-out); }
+.hold > .prb-rowg { transition: none; }
 .prb-row { position: absolute; left: 0; right: 0; border-radius: 4px; }
 .prb-gl { stroke: var(--ink-100); stroke-width: 1; }
 .prb-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }

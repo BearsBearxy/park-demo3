@@ -68,9 +68,11 @@ function onConfirm() {
 
 <style scoped>
 .rvd-scrim { position: fixed; inset: 0; z-index: var(--z-confirm); background: rgba(28, 28, 28, .34);
-             display: grid; place-items: center; }
+             display: grid; place-items: center;
+             opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
 .rvd-card { width: min(432px, 92vw); background: var(--surface-white); border-radius: var(--radius-xl);
-            box-shadow: 0 18px 52px rgba(28, 28, 28, .24); overflow: hidden; font-family: var(--font-sans); }
+            box-shadow: 0 18px 52px rgba(28, 28, 28, .24); overflow: hidden; font-family: var(--font-sans);
+            animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .rvd-head { padding: 20px 20px 0; }
 .rvd-title { margin: 0; font-size: var(--fs-h3); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .rvd-hint { margin: 6px 0 0; font-size: var(--fs-label); color: var(--text-secondary); line-height: 1.5; }

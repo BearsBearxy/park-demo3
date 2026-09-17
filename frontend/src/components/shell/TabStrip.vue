@@ -268,6 +268,16 @@ function onNewTab() {
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(28, 28, 28, 0.10);
 }
+/* C2-04 按压:0ms 压深,松开随上面那条 120 回弹。激活签在白底上压到 sunken ——
+   --ink-100 会与 hover 的 5% 灰混读。关闭钮 @click.stop 不挡 :active 冒泡,按 X 时整签压一下。 */
+.fp-tab:active:not(.on) {
+  background: var(--ink-100);
+  transition-duration: 0ms;
+}
+.fp-tab.on:active {
+  background: var(--surface-sunken);
+  transition-duration: 0ms;
+}
 
 .fp-tab-ic {
   flex: 0 0 auto;
@@ -391,6 +401,10 @@ function onNewTab() {
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   box-shadow: 0 8px 28px rgba(28, 28, 28, 0.12);
+  /* 贴附浮层入场,与 ds/Popover 同规格(motion.css fp-pop-in):-4px → 0 读作「从钮里长出来」。
+     关闭走 v-if 瞬时 —— CSS 退场要延迟卸载。.fp-tablist-row.on 不给 transition:
+     selectTab 里 push 后同步关菜单,没有一帧可画。 */
+  animation: fp-pop-in var(--dur-fast) var(--ease-out);
 }
 .fp-tablist-hd {
   padding: 6px 10px 4px;

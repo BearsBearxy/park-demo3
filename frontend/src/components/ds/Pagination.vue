@@ -183,4 +183,6 @@ const ellipsisStyle = {
               background var(--dur-fast) var(--ease-standard);
 }
 .ds-pg-pill:hover:not(:disabled) { --ds-pg-border: var(--border-strong); }
+/* 按下瞬到,松开随上面的 120 回弹;当前页不压(C2-07) */
+.ds-pg-pill:active:not(:disabled):not([aria-current='page']) { --ds-pg-border: var(--border-strong); background: var(--ink-100); transition-duration: 0ms; }
 </style>

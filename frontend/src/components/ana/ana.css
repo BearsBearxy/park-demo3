@@ -11,10 +11,16 @@
    AnaShell 的 scoped 样式选不中 → 一旦放 scoped 里,插槽里那份会退化成浏览器默认按钮
    (2026-08-21 租户用能页「电费/水费」正是这么变成灰边原生按钮的)。 */
 .anx-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-full); padding: 3px; gap: 2px; }
-.anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); white-space: nowrap; transition: background var(--dur-fast), color var(--dur-fast); }
+.anx-seg button { border: none; background: transparent; cursor: pointer; font-family: var(--font-sans); font-size: var(--fs-label); font-weight: var(--fw-medium); color: var(--text-secondary); padding: 5px 12px; border-radius: var(--radius-full); white-space: nowrap; transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); }
 .anx-seg button:hover:not(.on):not(:disabled) { color: var(--text-primary); }
-.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); font-weight: var(--fw-semibold); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
+/* C2-03 ④ 按压:底色换一档,0ms 瞬到;当前档不压(它已经是选中态)。 */
+.anx-seg button:active:not(.on):not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
+.anx-seg button.on { background: var(--surface-white); color: var(--text-primary); box-shadow: 0 1px 3px rgba(28,28,28,.10); }
 .anx-seg button:disabled { opacity: .4; cursor: default; }
+/* 占位不可见(C5-01 ④):工具条上按粒度插拔的控件改挂这个类 —— 宽度照留,后面的控件零位移。
+   visibility(不是 opacity)才会把它一起移出 tab 序与命中区。 */
+.anx-hid { visibility: hidden; pointer-events: none; }
+
 /* mini:卡头里的分段开关(比外壳那条小一档)。原先 4 个屏各抄一份,
    抄着抄着 padding 就漂成了 3px 10px / 3px 9px / 2px 9px 三种 —— 收成这一份。 */
 .anx-seg.mini { padding: 2px; flex: 0 0 auto; }
@@ -52,7 +58,7 @@
 .ak-bar-row { display:flex; align-items:center; gap:12px; }
 .ak-bar-name { width:84px; flex:0 0 auto; font-size:var(--fs-label); color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ak-bar-track { flex:1; height:8px; border-radius:4px; background:var(--ink-050); overflow:hidden; position:relative; }
-.ak-bar-fill { height:100%; border-radius:4px; transition:width .7s var(--ease-standard); }
+.ak-bar-fill { height:100%; width:100%; border-radius:4px; clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0 round 4px); transition: clip-path var(--dur-base) var(--ease-standard); }
 .ak-bar-target { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text-muted); }
 .ak-bar-val { width:58px; flex:0 0 auto; text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:var(--fs-label); font-weight:var(--fw-semibold); color:var(--text-primary); }
 .ak-bar-delta { width:62px; flex:0 0 auto; text-align:right; font-size:var(--fs-micro); font-family:var(--font-mono); }
@@ -92,12 +98,34 @@
 
 /* ── 切换胶囊(同比/环比/构成) ── */
 .ak-seg2 { display:inline-flex; background:var(--surface-sunken); border-radius:var(--radius-full); padding:3px; gap:2px; }
-.ak-seg2 button { border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:5px 13px; border-radius:var(--radius-full); transition:background var(--dur-fast), color var(--dur-fast); white-space:nowrap; }
-.ak-seg2 button.on { background:var(--surface-white); color:var(--text-primary); font-weight:var(--fw-semibold); box-shadow:0 1px 3px rgba(28,28,28,.10); }
+.ak-seg2 button { border:none; background:transparent; cursor:pointer; font-family:var(--font-sans); font-size:12px; font-weight:var(--fw-medium); color:var(--text-secondary); padding:5px 13px; border-radius:var(--radius-full); transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard); white-space:nowrap; }
+.ak-seg2 button:active:not(.on):not(:disabled) { background:var(--ink-100); transition-duration:0ms; }
+.ak-seg2 button.on { background:var(--surface-white); color:var(--text-primary); box-shadow:0 1px 3px rgba(28,28,28,.10); }
 
 /* analyst-only 区块淡入 */
 .ak-analyst { animation:akFade var(--dur-slow) var(--ease-standard); }
 @keyframes akFade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+/* 自绘图首绘擦入(动效设计稿 §2 新增 · C6-17 / C6-25):数据组一个 <g> 一条动画,从左到右一笔。
+   用法在各组件 scoped:`.…-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both }`
+   —— 基态必须由消费者自己写(关键帧只有 to 帧),both 停终态;animationend 用 .self 守卫、不比对 animationName
+   (scoped 里的关键帧名会被 Vue 加 hash)。放这里不放 motion.css:ana.css 只被分析组件引用,不进 index 包。 */
+@keyframes fp-wipe { to { clip-path: inset(0 0 0 0); } }
+/* DOM 条形清单(AnaBarRows)的擦入基态 —— 容器不是 scoped 组件自己的类,基态写在这里 */
+.ak-bar-rows.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+
+/* 自绘图同键形变(2026-09-16 行为矩阵:换年 / 换月 / 换楼栋 200)。挂在**数据组**上:
+   `<g :class="['…-data', 'ana-morph', { first, hold }]">`,hold 取 anaMotion 的 useMorphHold。
+   悬停层(竖线 / 高亮点 / 气泡)不挂。只有 SVG 几何属性过渡 —— 前提是 v-for :key 稳定、元素复用;
+   <line> 的 x1/y1/x2/y2、<polyline>/<polygon> 的 points、d 的命令结构变了,都不过渡(直接跳)。
+   ⚠ 消费者 scoped 里给同一批元素写的 transition(如 hover 的 fill)会整条盖掉这里 —— 要合并写进同一条。
+   .hold:wipe 进行中 / 宽度刚变的那两帧,关掉过渡(改宽瞬算,不走形变)。 */
+.ana-morph :is(rect, path, circle) {
+  transition-property: x, y, width, height, cx, cy, r, d;
+  transition-duration: var(--dur-base);
+  transition-timing-function: var(--ease-out);
+}
+.ana-morph.hold :is(rect, path, circle) { transition: none; }
 
 /* ── v2 紧凑仪表盘布局(av2-*,2026-07-08 分析层 v2 阶段1 追加;排版基准=已确认示意图,屏组照抄) ── */
 .av2-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; }
@@ -134,6 +162,15 @@
 /* 参照系小字:≤28 字,必带三件 —— 样本量 n · 口径列 · 单位。
    砍了就是把「样本 5」包装成一个 71.3% 的小数点。 */
 .ana-ref { margin: 2px 0 0; font-size: var(--fs-micro); color: var(--text-muted); }
+/* 有↔无时的一行占位(C5-11):只挂在由 v-if 改成常驻 <p class="… hold"> 的那几句上。
+   给两条基础规则直接加 min-height,会让今天恒渲染、值可能为空的句子平白多占一行。
+   1lh 跟着字号走,不发明字面值;lh 不支持的旧浏览器 min-height 失效,退回今天的插拔。 */
+.ana-read.hold, .ana-ref.hold { min-height: 1lh; }
+/* 骨架里顶替数据的字(2026-09-16):真版式的页头 / 卡头照抄进骨架,只把随数据变的那几个字换成
+   同样长的占位字并隐掉 —— 折行与真版式一致,硬切时不跳。 */
+.ana-hole { visibility: hidden; }
+/* AnaShell 首进占位瓦的副行:占住折行的位,字不露 */
+.anx-kpi-hold .d { visibility: hidden; }
 /* S 档(≤600,RESPONSIVE-LAYOUT-SPEC §5.2):KPI 定两列——auto-fit minmax(120px) 在 390px
    视口会挤成三列,主数值互相顶到截断;两列下瓦片约 170px,数值+delta 都放得下。
    栅格 gap 与卡内边距各微收一档,省下的宽度还给图表。

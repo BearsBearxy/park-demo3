@@ -189,6 +189,9 @@ function pick(p: number) {
   max-height: 240px;
   overflow-y: auto;
   box-sizing: border-box;
+  /* 面板长在触发器上方(bottom: calc(100% + 6px)),fp-pop-in 的 -4px→0 方向反了 → 只淡不位移 */
+  opacity: 0;
+  animation: fp-fade-in var(--dur-fast) var(--ease-out) forwards;
 }
 
 .fp-jump-item {

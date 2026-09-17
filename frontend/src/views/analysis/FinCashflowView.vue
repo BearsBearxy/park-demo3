@@ -12,6 +12,7 @@ import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import AnaTrend from '@/components/ana/AnaTrend.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import DsSelect from '@/components/ds/Select.vue'
@@ -224,11 +225,11 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">收缴率 vs 目标</span>
               <span class="hint">目标 {{ anaSettings.collectTarget }}%(设置弹层可调)</span></div>
-            <div class="ak-bar-rows" style="margin-top: 6px">
+            <AnaBarRows style="margin-top: 6px">
               <AnaBarRow v-for="p in ledgerPeriods" :key="p.ym" :name="p.ym" :value="p.rate" :max="100"
                 :target="anaSettings.collectTarget"
                 :fill="p.rate >= anaSettings.collectTarget ? 'var(--fill-blue)' : 'var(--hue-orange)'" />
-            </div>
+            </AnaBarRows>
           </div>
 
           <!-- 应收 vs 实收 分组柱 s8(点柱→该期欠费租户清单) -->
@@ -352,8 +353,9 @@ const fmtWanTip = (v: number): string => '¥' + fnum(v, 1) + '万'
 
 /* 欠费清单弹层(屏私有,轻量遮罩卡) */
 /* 全屏模态遮罩 → --z-modal(300)。原写 60 落在 popover 档(那档是给贴附浮层的),会被任何抽屉盖住 */
-.fin-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28,28,28,.32); display: grid; place-items: center; padding: 24px; }
-.fin-modal { background: var(--surface-white); border-radius: 16px; box-shadow: 0 18px 48px rgba(28,28,28,.22); width: min(760px, 100%); max-height: 78vh; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; }
+/* 开:遮罩淡入 + 卡上浮,与 FPDrawer 同款 200(C5-06);关:v-if 瞬时 */
+.fin-mask { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(28,28,28,.32); display: grid; place-items: center; padding: 24px; opacity: 0; animation: fp-fade-in var(--dur-base) var(--ease-out) forwards; }
+.fin-modal { background: var(--surface-white); border-radius: 16px; box-shadow: 0 18px 48px rgba(28,28,28,.22); width: min(760px, 100%); max-height: 78vh; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; animation: fp-rise-in var(--dur-base) var(--ease-out) both; }
 .fin-modal-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .fin-modal-h .t { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .fin-modal-h .x { width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; }

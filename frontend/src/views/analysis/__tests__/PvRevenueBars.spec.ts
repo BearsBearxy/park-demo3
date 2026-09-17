@@ -1,7 +1,8 @@
 // PvRevenueBars(B8)挂载测:条从 104 起、两段接缝、条尾合计 x、段内写得下才写数(按字宽)、
 // 期别点色、选中栋加粗、行悬停气泡上下半行分放。
 // 夹具非退化:三期都在、合计从 3.96 万到 0.20 万、一栋没有上网、一栋上网段只有几像素、一对段宽卡在写数门槛两侧。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvRevenueBars from '../PvRevenueBars.vue'
 import { tipWidth } from '@/components/ana/chartTip'
@@ -27,6 +28,9 @@ function data(): RevenueBars {
 }
 const S = (W - 84 - PL) / (3.96 * 1.04)
 const rect = (w: ReturnType<typeof mount>, k: string, id: number) => w.find(`rect.prb-${k}[data-id="${id}"]`)
+/** 行 g 靠 translateY 定位:元素的绝对 y = 自己的 y + 所在行 g 的 translateY */
+const rowY = (el: Element) => Number(/translate\(0px, (-?[\d.]+)px\)/.exec(el.closest('g.prb-rowg')?.getAttribute('style') ?? '')?.[1])
+const absY = (el: DOMWrapper<Element>) => num(el, 'y') + rowY(el.element)
 
 describe('PvRevenueBars 几何', () => {
   it('条从 104 起:自用段宽 = 值 × 比例,上网段接在自用尾,合计字在条尾 + 8;最长那条留 4%', () => {
@@ -41,8 +45,8 @@ describe('PvRevenueBars 几何', () => {
     const tot = w.find('text.prb-tot[data-id="2"]')
     expect(tot.text()).toBe('3.96')
     expect(num(tot, 'x')).toBeCloseTo(PL + 3.96 * S + 8, 6)
-    expect(num(self, 'y')).toBe(11.5)
-    expect(num(rect(w, 'self', 1), 'y')).toBe(6 + 27 + 5.5)
+    expect(absY(self)).toBe(11.5)
+    expect(absY(rect(w, 'self', 1))).toBe(6 + 27 + 5.5)
     expect(num(w.find('svg'), 'height')).toBe(6 + 6 * 27 + 26)
   })
 
@@ -97,7 +101,7 @@ describe('PvRevenueBars 几何', () => {
     const w = mount(PvRevenueBars, { props: { data: data(), selId: 9 } })
     const dots = w.findAll('circle.prb-dot')
     expect(dots.map(d => d.attributes('fill'))).toEqual(['#378ADD', '#378ADD', '#5DCAA5', '#5DCAA5', '#5DCAA5', '#EF9F27'])
-    expect(num(dots[2], 'cy')).toBe(6 + 2 * 27 + 13.5)
+    expect(num(dots[2], 'cy') + rowY(dots[2].element)).toBe(6 + 2 * 27 + 13.5)
     expect(w.findAll('text.prb-name-sel').map(t => t.text())).toEqual(['11栋'])
   })
 })
@@ -138,5 +142,68 @@ describe('PvRevenueBars 悬停与图注', () => {
     )
     const full = mount(PvRevenueBars, { props: { data: { ...data(), through: null }, selId: null } })
     expect(full.find('.ana-ref').text()).not.toContain('数据到')
+  })
+
+  it('❗C6-25：两段条 / 条内值 / 合计在 g.prb-data 里，期别点与栋名留组外', () => {
+    const w = mount(PvRevenueBars, { props: { data: data(), selId: 2 } })
+    const g = w.find('g.prb-data')
+    expect([g.findAll('rect.prb-self').length, g.findAll('text.prb-tot').length]).toEqual([6, 6])
+    expect([g.find('.prb-name').exists(), g.find('.prb-dot').exists()]).toEqual([false, false])
+    expect([w.findAll('.prb-name').length, w.findAll('.prb-dot').length]).toEqual([6, 6])
+    // 选中栋名加粗不受拆组影响（C6-18 瞬变）；jsdom 的 rect 全 0 = 离屏 → 不擦(视口内的对照在「动效」组)
+    expect(w.findAll('.prb-name-sel')).toHaveLength(1)
+    expect(g.classes()).not.toContain('first')
+  })
+})
+
+// 2026-09-16 行为矩阵:首挂视口内擦入 320;换期不重挂,条长同键 200 形变,名次变了整行 g 滑到新行
+describe('PvRevenueBars 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 999, width: 999, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+  const ids = (w: ReturnType<typeof mount>, sel: string) => w.findAll(sel).map(e => Number(e.attributes('data-id')))
+
+  it('❗换期名次变了不挪 DOM:同一栋的条还是同一个元素、DOM 顺序不动,行 g 的 translateY 换到新名次;栋名同行跟走', async () => {
+    const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })
+    const b1 = rect(w, 'self', 1).element
+    const w0 = b1.getAttribute('width')
+    // 换一年:B座 冲到第一、C、D座 落到第二,新来一栋排最后
+    const d = data()
+    d.rows = [row(1, 'B座', 1, 99000, 40000, 5000), row(2, 'C、D座', 1, 86000, 26000, 13600), ...d.rows.slice(2), row(20, '新楼', 3, 100, 50, 0)]
+    await w.setProps({ data: d })
+    expect(rect(w, 'self', 1).element).toBe(b1)
+    expect(b1.getAttribute('width')).not.toBe(w0)
+    expect(ids(w, 'rect.prb-self')).toEqual([2, 1, 9, 6, 7, 13, 20])
+    expect([rowY(b1), rowY(rect(w, 'self', 2).element), rowY(rect(w, 'self', 20).element)]).toEqual([6, 33, 6 + 6 * 27])
+    const nameB = w.findAll('text.prb-name').find(t => t.text() === 'B座')!
+    expect(rowY(nameB.element)).toBe(6)
+    // 名次掉了的栋:DOM 里还在原位,画面位置跟着 translateY 走
+    expect(w.findAll('text.prb-name').map(t => t.text()).slice(0, 2)).toEqual(['C、D座', 'B座'])
+  })
+
+  it('❗数据组与栋名组挂形变类(行 g 在里面);悬停行是 HTML 层,不在里面', async () => {
+    const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })
+    expect(w.find('g.prb-data').classes()).toContain('ana-morph')
+    expect(w.find('g.prb-names').classes()).toContain('ana-morph')
+    expect(w.find('g.prb-data').findAll('g.prb-rowg')).toHaveLength(6)
+    expect(w.find('.prb-row').element.closest('.ana-morph')).toBe(null)
+  })
+
+  it('❗视口内首挂擦入:first + hold(栋名组也 hold);animationcancel / animationend 都摘', async () => {
+    inView()
+    const w = mount(PvRevenueBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    expect(w.find('g.prb-data').classes()).toEqual(['prb-data', 'ana-morph', 'first', 'hold'])
+    expect(w.find('g.prb-names').classes()).toContain('hold')
+    await w.find('g.prb-data').trigger('animationcancel')
+    expect(w.find('g.prb-data').classes()).toEqual(['prb-data', 'ana-morph'])
+    expect(w.find('g.prb-names').classes()).not.toContain('hold')
+    const w2 = mount(PvRevenueBars, { props: { data: data(), selId: null } })
+    await nextTick()
+    await w2.find('g.prb-data').trigger('animationend')
+    expect(w2.find('g.prb-data').classes()).toEqual(['prb-data', 'ana-morph'])
   })
 })

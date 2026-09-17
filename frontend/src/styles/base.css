@@ -104,6 +104,11 @@ img, svg {
   transition-duration: 200ms;
   transition-timing-function: var(--ease-out);
 }
+/* S 档去 blur(动效稿 C5-02 ⑤):手机上这层模糊由 GPU 逐帧重画整块正文,
+   小屏机型上比它挡住的那点误读更贵;opacity + pointer-events 两条仍在,退让的意思不丢。 */
+@media (max-width: 600px) { /* S */
+  .fp-stale { filter: none; }
+}
 
 /* ── 迁移期屏级地板(RESPONSIVE-LAYOUT-SPEC §8)──
    旧 T3 全局地板(.fp-stage min-width:960px)拆掉后由这里接手:存量屏在窄档保 800px
@@ -135,7 +140,7 @@ img, svg {
    本块不碰任何 .anx-* 选择器。 */
 @media print {
   /* ① 外壳铬边:桌面四件 + 手机三件套(顶栏 .mtb/底栏 .mbn/导航抽屉遮罩 .mnav-backdrop) */
-  .fp-nav-card, .fp-sb-float, .fp-tabstrip, .fp-toolbar, .fp-nav-bar,
+  .fp-nav-card, .fp-sb-float, .fp-tabstrip, .fp-toolbar, .fp-lb,
   .mtb, .mbn, .mnav-backdrop { display: none !important; }
   /* ② 定高/溢出链放开:html→#app→stage→main-card→content 全是 100% + hidden/auto。
      stage/main-card 顺带去 padding 边框圆角(纸上不需要「画布上的浮卡」隐喻) */

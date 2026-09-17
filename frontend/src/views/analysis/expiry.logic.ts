@@ -2,7 +2,6 @@
 // 合同快照统计 / 金额 Pareto(TopN 柱 + 累计占比线)/ Top10 集中度环 — ECharts option 纯函数。
 // 锚点(2026-07-08 dev 库):合同 282 份、月租合计 4,671,702.21、有租金 235、日期缺失 282、Top10 55.8%。
 import { quantile } from '@/components/ana/anaFmt'
-import { bandSeries } from '@/components/ana/anaTheme'
 import type { ContractDTO } from '@/types/contract'
 import { isInForce } from './TenantPeer.logic'
 
@@ -315,7 +314,7 @@ export interface RenewalVariance { byWhichTenants: number; byRateUncertainty: nu
  * byRateUncertainty = Var(p̂)(Σr)²(p 本身的估计误差,整体共享同一个 p,不随户数分摊)。
  * 只用 Wilson(p 的置信区间)只给出后一项 —— 这正是「不能只用 Wilson」的算术含义。
  *
- * F3(修复轮1):这两项此前从未被 buildRentRoll/rentRollOption 调用过 —— 屏上的带完全由
+ * F3(修复轮1):这两项此前从未被 buildRentRoll 调用过 —— 屏上的带完全由
  * simulateRenewalDraws 的蒙特卡洛直接产出,这个闭式解只是单独测算得对,和交付物脱节。
  * 现在 expiry.logic.spec.ts 拿 simulateRenewalDraws 的经验方差和这里的闭式解直接比,
  * 断言已破坏验证过(去掉共享 p、每户各抽一个,会抹掉 byRateUncertainty,经验方差显著偏低)。
@@ -613,63 +612,6 @@ export function buildRentRoll(cs: ContractDTO[], asOf: string, n: number): RentR
     expiringCount, expiringRentSum, expiringList,
     gap: gapsAll[0] ?? null,
     gaps: gapsAll,
-  }
-}
-
-/**
- * 合约租金带 option:锁定线(实线)+ 续签区间带(locked+renewalLo ~ locked+renewalHi)。
- *
- * N4(修复轮2):这条带**不受宽度门管**(C2 已把那道门整个删掉,理由见 anaTheme.ts 墓志铭)。
- * 那道门原本判「半宽/中位 > 0.20 → 太宽只出点」,是给 P25~P75 这类"画宽了大概率是画法或
- * 样本问题"的带用的。这条带的宽是内容本身 —— 85 份到期在金额上等效约 15 份等额赌注,
- * 续签是非黑即白的个体事件,宽本来就对,套上这种门会把这张卡存在的理由
- * (诚实地告诉你续签不确定性有多大)本身给隐藏掉。
- */
-export function rentRollOption(r: RentRoll): object {
-  const months = r.months.map((m) => m.month)
-  const lockedWan = r.months.map((m) => +(m.locked / 10000).toFixed(2))
-  const loWan = r.months.map((m) => +((m.locked + m.renewalLo) / 10000).toFixed(2))
-  const midWan = r.months.map((m) => +((m.locked + m.renewalMid) / 10000).toFixed(2))
-  const hiWan = r.months.map((m) => +((m.locked + m.renewalHi) / 10000).toFixed(2))
-  // T5(design-boards):「已实现」= 预测起点(第 0 月,今天)这一个点,已经是事实不是模拟;
-  // 「已锁定」= 同一条锁定线往后延伸的部分。两段本是同一个数组,只按第 0 月拆成两个图例,
-  // 不另算一次口径——这样才不会出现两条线在起点对不上的缺陷。
-  const realizedWan = lockedWan.map((v, i) => (i === 0 ? v : null))
-  const gap = r.gap
-  const gapNames = gap ? gap.names.join('+') + (gap.count > gap.names.length ? ` 等${gap.count}份` : '') : ''
-  const gapWan = gap ? +(gap.totalRentSum / 10000).toFixed(1) : 0
-  return {
-    grid: { left: 48, right: 16, top: 30, bottom: 30 },
-    tooltip: { trigger: 'axis' },
-    // F4(修复轮1):图例顺序照稿——已实现/预计/80%区间/已锁定,原实现把已锁定错排在第二位。
-    legend: { top: 0, data: ['已实现', '预计', '80%区间', '已锁定'] },
-    xAxis: { type: 'category', data: months, axisLabel: { fontSize: 11 } },
-    // scale: true —— 不从 0 起(用户 2026-09-12:「完全看不见折线的波动」)。
-    // 量程 165~232 万,0 起的轴把 67 万的落差压成七分之一个屏高,缺口那一跌看不出来。
-    // ⚠ 只给这张图:它是折线+带,截断轴改的是线的位置,而位置本来就得照刻度读。
-    //    同文件的 wallOption 是柱图,截断轴会放大柱子之间的面积差,那边保持 0 起。
-    yAxis: { type: 'value', name: '万/月', scale: true, axisLabel: { formatter: (v: number) => String(v) } },
-    series: [
-      {
-        name: '已锁定', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: '#378ADD' }, data: lockedWan,
-        // 预测起点竖线:钉在第 0 月,标当天的锁定值——不用系统时钟,值就是数组第一项。
-        markLine: {
-          silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: '#9CA3AF' },
-          label: { formatter: `预测起点\n${lockedWan[0] ?? 0}`, fontSize: 10, color: '#6B7280' },
-          data: [{ xAxis: 0 }],
-        },
-        // 缺口标注:最近一次到期扎堆造成的锁定线下跌,连同拉低它的合同名字(与「最近的缺口」瓦同一份 gap)。
-        markPoint: gap ? {
-          symbol: 'pin', symbolSize: 36, itemStyle: { color: '#E24B4A' },
-          label: { fontSize: 10, color: '#fff', formatter: `−${gapWan}万\n${gapNames}` },
-          data: [{ coord: [gap.monthsAway, lockedWan[gap.monthsAway]] }],
-        } : undefined,
-      },
-      // scatter(不是 line):只有第 0 月一个值,没有第二个点可连,天然不画线,不必再手写隐藏线样式。
-      { name: '已实现', type: 'scatter', symbolSize: 7, itemStyle: { color: '#1C1C1C' }, data: realizedWan },
-      { name: '预计', type: 'line', symbol: 'none', lineStyle: { width: 1.5, type: 'dashed', color: '#185FA5' }, data: midWan },
-      ...bandSeries(loWan, hiWan, { name: '80%区间', color: 'rgba(55,138,221,.14)' }),
-    ],
   }
 }
 

@@ -19,6 +19,9 @@ const props = withDefaults(defineProps<{
 }>(), { unit: '%' })
 
 const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : ''))
+// 换期 200 同键形变(2026-09-16 矩阵,同 AnaSpark):键 = d 的命令结构(缺月断点会拆子路径)。
+// 结构一变 d 插值不了,整条换新元素瞬到,不是半截跳。
+const sparkKey = computed(() => spark.value.replace(/[^A-Za-z]/g, ''))
 </script>
 
 <template>
@@ -26,12 +29,14 @@ const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : '')
     <span class="l">{{ label }}</span>
     <span class="vr">
       <span class="v">{{ value }}</span>
-      <svg v-if="spark" class="spk" viewBox="0 0 56 20" aria-hidden="true">
-        <path :d="spark" fill="none" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round" />
+      <svg v-if="spark" class="spk ana-morph" viewBox="0 0 56 20" aria-hidden="true">
+        <path :key="sparkKey" :d="spark" fill="none" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round" />
       </svg>
     </span>
     <span v-if="delta != null" class="d" :style="{ color: deltaColor(delta, invert) }">{{ sgn(delta, 1, unit) }} {{ kind || '' }}</span>
     <span v-else-if="note" class="d" :style="{ color: noteTone === 'warn' ? '#854F0B' : 'var(--text-muted)' }">{{ note }}</span>
+    <!-- 没有副行的瓦也留副行的两行高:同一排瓦等高,首进占位瓦(一律带副行)才对得上 -->
+    <span v-else class="d" aria-hidden="true"></span>
   </div>
 </template>
 
@@ -44,5 +49,7 @@ const spark = computed(() => (props.trend ? trendPath(props.trend, 56, 20) : '')
 /* sparkline 可压缩(0 1 56px):形状展示,窄屏让位给数值比保持 56px 宽更重要 */
 .av2-kpi .spk { width: 56px; height: 20px; flex: 0 1 56px; opacity: 0.75; }
 /* 副行允许换行:nowrap 会把「−14.7pt vs 目标96% · 取 2025-10」在瓦片边界切成「取 202…」 */
-.av2-kpi .d { font-size: var(--fs-micro); font-family: var(--font-mono); line-height: 1.35; overflow-wrap: anywhere; }
+/* 副行固定留两行高(2026-09-16 用户拍板):长短不一的副行有的折两行,数据一到 KPI 行就长高 15px,
+   首进骨架对不上。两行以内的副行不再改变瓦高;只有一行的瓦底部多出一行空白,接受。 */
+.av2-kpi .d { font-size: var(--fs-micro); font-family: var(--font-mono); line-height: 1.35; overflow-wrap: anywhere; min-height: calc(2em * 1.35); }
 </style>

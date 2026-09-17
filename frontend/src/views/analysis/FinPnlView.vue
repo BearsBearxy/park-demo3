@@ -8,11 +8,13 @@ import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
 import AnaPill from '@/components/ana/AnaPill.vue'
 import AnaBarRow from '@/components/ana/AnaBarRow.vue'
+import AnaBarRows from '@/components/ana/AnaBarRows.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
 import { useCompare } from '@/analysis/useCompare'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import {
   fetchAvailableMonths, fetchBudgetAll, fetchCompanies, fetchPnlSummary, fetchReportAll, fetchReportPeriod,
   type PnlSummary,
@@ -38,8 +40,13 @@ const companyOpts = computed(() => [
   { value: '0', label: '全部公司(汇总)' },
   ...companies.value.map((c) => ({ value: String(c.id), label: c.name })),
 ])
+// 已画在屏上的那一组(年 / 报表月 / 公司)。选择器立刻变(控件回显),这三个等数据一起换 ——
+// 换期在途旧内容留在原地退让(C5-02),卡头与口径徽章不许先印新期配旧数
+const loadedYear = ref(period.sel.value.year)
+const loadedYm = ref<string | null>(null)
+const loadedCid = ref(cid.value)
 const companyLabel = computed(() =>
-  cid.value === '0' ? '全部公司(汇总)' : companies.value.find((c) => String(c.id) === cid.value)?.name ?? '—')
+  loadedCid.value === '0' ? '全部公司(汇总)' : companies.value.find((c) => String(c.id) === loadedCid.value)?.name ?? '—')
 
 // ── 期间派生:pnl 用所选年;is 快照月 = 所选年内最近报表月(§五策略3:年切真响应,
 // 不再跨年沿用旧快照;所选年无报表 → null → 空态) ──
@@ -54,9 +61,13 @@ const reportYm = computed(() => {
 const pnlSum = ref<PnlSummary | null>(null)
 const isDto = ref<ReportPeriodDTO | null>(null)
 const budgetRows = ref<BudgetRowDTO[]>([])
+// 在途(C5-02):初值 true —— 首进那趟不点亮(useDeferredFlag 只认变化);换年 / 换公司 / 报表月补取才退让
+const loading = ref(true)
+const staleShown = useDeferredFlag(loading)
 let token = 0
 watch([year, cid, reportYm], async ([y, c, rym]) => {
   const t = ++token
+  loading.value = true
   try {
     const [cos, months, buds] = await Promise.all([
       fetchCompanies(), fetchAvailableMonths(),
@@ -79,12 +90,21 @@ watch([year, cid, reportYm], async ([y, c, rym]) => {
   } catch {
     if (t === token) { pnlSum.value = null; isDto.value = null }
   } finally {
-    if (t === token) ready.value = true
+    // 只有取的就是当前该取的那一期才算落地(同 FinBalanceView)。首进第一趟 rym 还是 null(月份列表没到),
+    // 它一写 reportMonths,reportYm 就变、紧跟着第二趟 —— 这里先亮 ready 会在两趟之间闪一张
+    // 「该公司该期无利润表数据」空卡(或整屏年空态),第二趟到数再换掉,整页跳一下。
+    if (t === token && rym === reportYm.value) {
+      ready.value = true
+      loading.value = false
+      loadedYear.value = y
+      loadedYm.value = rym
+      loadedCid.value = c
+    }
   }
 }, { immediate: true })
 
 // §五策略3:所选年园区损益与法人报表均无数据 → 全屏空态(禁止沿用旧年图表)
-const yearEmpty = computed(() => !pnlSum.value?.months.length && !reportYm.value)
+const yearEmpty = computed(() => !pnlSum.value?.months.length && !loadedYm.value)
 
 // ── is 快照取数(复用 reports/incomeStatement 已测小计公式;自定义子类行求和) ──
 function isValOf(dto: ReportPeriodDTO): (no: number, field: 'cur' | 'ytd') => number {
@@ -155,7 +175,7 @@ function onWfClick(params: unknown) {
 // ── 12 月趋势(选中科目;对比开关:环比=上期虚线/预算=budget_row 当年值/12 虚线) ──
 const mLabels = computed(() => (pnlSum.value?.months ?? []).map((m) => m + '月'))
 const subjectVals = computed(() => (pnlSum.value ? subjectMonthly(pnlSum.value, subject.value) : []))
-const budgetWan = computed(() => budgetMonthlyWan(budgetRows.value, year.value, subject.value))
+const budgetWan = computed(() => budgetMonthlyWan(budgetRows.value, loadedYear.value, subject.value))
 const trendOpt = computed(() => subjectTrendOption(mLabels.value, subjectVals.value, subject.value, {
   mom: cmp.mode.value === 'mom' ? momOverlay(subjectVals.value) : null,
   budget: cmp.mode.value === 'budget' ? budgetWan.value : null,
@@ -202,7 +222,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 
 <template>
   <!-- §五:年敏感屏 → 只年控件(进屏强制年粒度) -->
-  <AnaShell :compare="['mom', 'budget']" period-mode="year">
+  <AnaShell :compare="['mom', 'budget']" period-mode="year" :busy="staleShown">
     <template #tools>
       <span class="fin-name"><component :is="iconFor('bar-chart-3')" :size="14" />利润表分析</span>
       <span class="fin-lbl"><component :is="iconFor('scale')" :size="12" />公司</span>
@@ -225,15 +245,17 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
       </div>
     </template>
 
-    <div class="fin-page">
+    <!-- 换期在途:旧内容留在原地退让(C5-02),不上骨架(用户 2026-09-16 拍板)。
+         data-stale-host 常挂,类摘掉后退场才是 200 -->
+    <div class="fin-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="fin-head">
-        <span class="sub">上=损益附表1-5 全年走势(园区口径 · {{ year || '—' }}年) · 下=利润表快照(法人口径 · {{ reportYm ?? '—' }}) · 单位 万元</span>
+        <span class="sub">上=损益附表1-5 全年走势(园区口径 · {{ loadedYear || '—' }}年) · 下=利润表快照(法人口径 · {{ loadedYm ?? '—' }}) · 单位 万元</span>
         <AnaPill tone="legal" icon="scale">法人口径 · {{ companyLabel }}</AnaPill>
       </div>
 
       <!-- §五策略3:所选年空 → 全屏空态,禁止沿用旧年图表 -->
       <div v-if="ready && yearEmpty" class="av2-card">
-        <AnaEmpty :label="year + ' 年损益数据未录入'"
+        <AnaEmpty :label="loadedYear + ' 年损益数据未录入'"
           hint="该年无损益附表(1~5)与利润表快照;切换年份或先录入数据"
           to="/rent-pnl" toText="去录入损益附表" />
       </div>
@@ -246,7 +268,7 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 
         <!-- 主图 s8:利润形成瀑布(园区口径,点级→右侧科目趋势) -->
         <div class="av2-card av2-s8">
-          <div class="av2-card-h"><span class="t">利润形成瀑布 · {{ year || '—' }} 全年累计</span>
+          <div class="av2-card-h"><span class="t">利润形成瀑布 · {{ loadedYear || '—' }} 全年累计</span>
             <span class="hint">园区口径 · 蓝＝加项 / 红＝减项<span class="hint-desk"> · 点击柱→右侧科目 12 月趋势</span></span></div>
           <AnaEChart v-if="wf.length" :option="wfOpt" :height="300" @chart-click="onWfClick" />
           <AnaEmpty v-else-if="ready" label="该年度无损益附表数据" hint="录入附表1-5(租金/用电/用水/运管/费用)后呈现利润拆解"
@@ -272,10 +294,10 @@ const fmtW = (v: number): string => fnum(v / 1e4, 1)   // 表格单元(元→万
 
         <!-- 科目占比 s4(法人口径,SVG 条形原语保留) -->
         <div v-if="hasIs" class="av2-card av2-s4">
-          <div class="av2-card-h"><span class="t">科目占比</span><span class="hint">{{ reportYm }} 本年累计 · 占营业收入</span></div>
-          <div class="ak-bar-rows">
+          <div class="av2-card-h"><span class="t">科目占比</span><span class="hint">{{ loadedYm }} 本年累计 · 占营业收入</span></div>
+          <AnaBarRows>
             <AnaBarRow v-for="r in shareRows" :key="r.name" :name="r.name" :value="r.value" :max="100" :fill="r.fill" />
-          </div>
+          </AnaBarRows>
         </div>
 
         <!-- is 快照全表 s12(保留) -->

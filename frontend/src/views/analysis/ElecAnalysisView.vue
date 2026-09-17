@@ -21,6 +21,8 @@ import {
   type ElecCostEntryDTO, type ElecMeterDTO, type ElecMetricsMonthDTO, type ElecPriceCfgDTO,
 } from '@/api/elecCost'
 import '@/components/ana/ana.css'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 
 const router = useRouter()
 const tabs = useTabsStore()
@@ -30,6 +32,11 @@ const year = computed(() => period.sel.value.year)
 // ── 取数(年切重取;seq 守卫防快切乱序落表,同 ElecView loadYear) ──
 const loading = ref(true)
 const failed = ref(false)
+// 换年在途(C5-02):旧内容留在原地退让,不卸载;过 200ms 门才亮、到数立刻灭
+const staleShown = useDeferredFlag(loading)
+/** 已画在屏上的那一年:year 立刻变(控件回显),这个等数据一起换 —— 页头 / 卡头 / 结论句跟它走,
+ *  换年在途不出现「新年标题配旧年图」(C5-02 ①)。null = 还没有任何数据。 */
+const loadedYear = ref<number | null>(null)
 const meters = ref<ElecMeterDTO[]>([])
 const metricMonths = ref<ElecMetricsMonthDTO[]>([])
 const entryMonths = ref<ElecCostEntryDTO[][]>([])   // 下标 = 月-1
@@ -55,6 +62,7 @@ async function load(y: number) {
     metricMonths.value = my
     entryMonths.value = es
     priceMonths.value = ps
+    loadedYear.value = y
   } catch {
     if (s === seq) failed.value = true
   } finally {
@@ -100,8 +108,8 @@ const conclusion = computed(() =>
     return {
       key,
       text: total == null
-        ? `${year.value} 年${label}暂无可算月份`
-        : `${year.value} 年${label}累计 ${finWan(total)}(${n} 个月)`,
+        ? `${loadedYear.value} 年${label}暂无可算月份`
+        : `${loadedYear.value} 年${label}累计 ${finWan(total)}(${n} 个月)`,
       tone: (total == null ? 'neutral' : total >= 0 ? 'good' : 'risk') as 'neutral' | 'good' | 'risk',
     }
   }))
@@ -110,7 +118,7 @@ const conclusion = computed(() =>
 // 改前发的是 view=cost —— 键名对不上,永远落在报送台账(假下钻)。openFresh 页签语义不变(spec §4.1)。
 function goCost(month?: number): void {
   tabs.openDeep('elec-cost')
-  void router.push(periodLink('elec-cost', { p: periodOf(year.value, month ?? null), extra: { mode: 'cost' } }))
+  void router.push(periodLink('elec-cost', { p: periodOf(loadedYear.value ?? year.value, month ?? null), extra: { mode: 'cost' } }))
 }
 interface EcClick { componentType?: string; dataIndex?: number }
 function onChartClick(p: unknown): void {
@@ -241,16 +249,70 @@ const spreadOption = computed<object>(() => ({
 
 <template>
   <!-- §五:年敏感屏(指标为年度月序),只年控件 -->
-  <AnaShell period-mode="year">
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
-    <div v-else class="ak-page">
+  <AnaShell period-mode="year" :busy="staleShown">
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照真版式钉死 ——
+         页头 44;结论条 .ea-concl 一行 20(与真版式同一批类,padding / margin-bottom 由 CSS 给);
+         卡头 20 + ana.css .av2-card-h margin-bottom 8 = 28(行盒 20 = base.css body line-height var(--lh-snug) = tokens.css 20px);
+         图块 = AnaSkelChart,高与各 AnaEChart 的 :height 同表降档(300 / 300 / 300,anaChartHeight.ts)。
+         .ea-simbar 随 hasSim 出没,骨架不占它的位。数据到了原地硬切,不做淡入。
+         只认首进(还没有任何一年画过):换年时旧内容留在原地退让(C5-02),不退回骨架、不卸载图。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="loading && loadedYear == null" class="ak-page ak-skel">
+      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位。
+           模拟数据说明条跟 hasSim 走,库里现有电费数据全是模拟填充,骨架按「有」留位 ——
+           换成真实电费单后首进会上收这一条的高(约 41px),届时把这条删掉。 -->
       <div class="ak-head">
         <div class="ak-h-l">
           <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
           <div>
             <h2 class="ak-title">电费成本分析</h2>
-            <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · {{ year }}年</p>
+            <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · <span class="ana-hole">0000</span>年</p>
+          </div>
+        </div>
+      </div>
+      <div class="ea-simbar">
+        <component :is="iconFor('flask-conical')" :size="13" />
+        <span>本页含模拟数据(灰标口径),真实电费单导入后自动替换</span>
+      </div>
+      <div class="av2-card ea-concl">
+        <!-- 真版式是 button:按钮的行高不继承,用 span 会差出行盒;visibility:hidden 的按钮不进 tab 序 -->
+        <button v-for="t in ['0000 年园区电费收益累计 ¥000.0 万(00 个月)', '0000 年光伏投资收益累计 ¥000.0 万(00 个月)', '0000 年基本用电费收益累计 ¥000.0 万(00 个月)', '0000 年售电协议损益累计 ¥00.0 万(00 个月)']"
+          :key="t" type="button" class="ea-cs ana-hole"><span class="dot"></span>{{ t }}</button>
+      </div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h">
+            <span class="t">收益四指标月度趋势 · <span class="ana-hole">0000</span>年</span>
+            <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h">
+            <span class="t">总表电费结构</span>
+            <span class="hint">万元 · 奖励/上网收益为负向抵减段</span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h">
+            <span class="t">购售价差</span>
+            <span class="hint">线=双价(元/kWh,右轴) · 柱=月损益(万,左轴)</span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+      </div>
+    </div>
+    <!-- skel:end -->
+    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- data-stale-host 常挂:类摘掉后仍有 transition-property,退场才是 200 而不是硬切 -->
+    <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"><component :is="iconFor('zap')" :size="20" /></span>
+          <div>
+            <h2 class="ak-title">电费成本分析</h2>
+            <p class="ak-sub">收益四指标趋势 · 总表电费结构 · 购售价差 · {{ loadedYear }}年</p>
           </div>
         </div>
       </div>
@@ -264,7 +326,7 @@ const spreadOption = computed<object>(() => ({
       <!-- 护栏:该年费项数据全空 → 空态引导成本总览,不画假图 -->
       <AnaEmpty
         v-if="!hasEntries"
-        :label="year + ' 年电费成本模型无费项数据'"
+        :label="loadedYear + ' 年电费成本模型无费项数据'"
         hint="本屏依赖电费成本总览的总表/宿舍/运营费项月度值;先录入或用模拟填充"
         to="/elec-cost"
         to-text="去电费成本总览"
@@ -282,11 +344,11 @@ const spreadOption = computed<object>(() => ({
           <!-- 图1 s12:收益四指标月度趋势;本屏无 s8 屏,av2-core 人工点名——结论条总结的正是这四指标,首图即主叙事 -->
           <div class="av2-card av2-s12 av2-core">
             <div class="av2-card-h">
-              <span class="t">收益四指标月度趋势 · {{ year }}年</span>
+              <span class="t">收益四指标月度趋势 · {{ loadedYear }}年</span>
               <span class="hint">万元 · 缺源月断点不补 0<span class="hint-desk"> · 点击深链成本总览对应月</span></span>
             </div>
             <AnaEChart v-if="trendHasData" :option="trendOption" :height="300" @chart-click="onChartClick" />
-            <AnaEmpty v-else :label="year + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />
+            <AnaEmpty v-else :label="loadedYear + ' 年四指标全月不可算'" hint="各指标缺失数据源见成本总览派生指标表" to="/elec-cost" to-text="去电费成本总览" />
           </div>
 
           <!-- 图2 s6:总表电费结构堆叠柱 -->

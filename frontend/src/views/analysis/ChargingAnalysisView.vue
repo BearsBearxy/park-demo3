@@ -11,6 +11,7 @@ import { useTabsStore } from '@/stores/tabs'
 import { periodLink, periodOf } from '@/nav/deepLink'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import Select from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
@@ -18,6 +19,7 @@ import { fnum, STATUS, type AnaStatusLevel } from '@/components/ana/anaFmt'
 import { CAT_COLORS } from '@/components/ana/anaTheme'
 import { cpMeterApi, type CpPowerUsageDTO, type CpReadingDTO, type CpStationDTO } from '@/api/cpMeter'
 import { buildYearOptions } from '@/utils/yearGate'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { feeRate, lossSeries, operatorTotals, stationMonthly, yearSummary } from './chargingAnalysis.logic'
 
 const router = useRouter()
@@ -41,11 +43,19 @@ const readings = ref<CpReadingDTO[]>([])
 const usage = ref<CpPowerUsageDTO[]>([])
 const loading = ref(true)
 const failed = ref(false)
+/** 屏上画着的那一年。year 是下拉回显、立刻变;这个等数据一起换 —— 标题 / 结论句 / 下钻链接跟它走,
+ *  换年在途时不拿新年的字配旧年的图(C5-02 ①)。null = 还没有任何数据,骨架门只认这一种 */
+const loadedYear = ref<number | null>(null)
+const shownYear = computed(() => loadedYear.value ?? year.value)
+// 换年在途(C5-02):旧内容留在原地退让,图不卸载;过 200ms 才亮、退场立刻。回签那趟不置 loading,不亮
+const staleShown = useDeferredFlag(loading)
 let seq = 0
-async function load(y: number) {
+/** silent = 回签那一趟(动效稿 C1-06):读屏切回来是「恢复现场」,旧内容留屏、到数原地瞬换 ——
+ *  不置 loading(整区转圈 = 把恢复现场做成重进一次),失败也不翻成错误卡(屏上那份数据还是真的)。
+ *  首进与换年照旧置 loading。 */
+async function load(y: number, silent = false) {
   const my = ++seq
-  loading.value = true
-  failed.value = false
+  if (!silent) { loading.value = true; failed.value = false }
   try {
     const [sts, rds, pus] = await Promise.all([
       stations.value.length ? Promise.resolve(stations.value) : cpMeterApi.stations(),
@@ -56,8 +66,10 @@ async function load(y: number) {
     stations.value = sts
     readings.value = rds
     usage.value = pus
+    loadedYear.value = y
+    failed.value = false   // 静默重取成功 → 清掉上一趟的失败卡
   } catch {
-    if (my === seq) failed.value = true
+    if (my === seq && !silent) failed.value = true
   } finally {
     if (my === seq) loading.value = false
   }
@@ -73,7 +85,7 @@ onMounted(async () => {
 watch(year, (y) => { void load(y) })
 // 侧栏点击自 P3 起是「恢复现场」,不再重建实例 —— 纯读屏没有草稿要保,
 // 切回来该看最新的(导入中心导完租户,回这屏必须是新名单)。
-onReactivated(() => { void load(year.value) })
+onReactivated(() => { void load(year.value, true) })
 
 // ── 当前 tab 视角(前端过滤;logic 纯函数不认识 tab) ──
 const myStations = computed(() => stations.value.filter((s) => s.vehicleType === tab.value))
@@ -92,7 +104,7 @@ function goDetail(p?: unknown): void {
   const st = myStations.value.find((s) => s.name === e?.seriesName)
   const month = st && e?.dataIndex != null ? e.dataIndex + 1 : null
   tabs.openDeep(navValue.value)
-  void router.push(periodLink(navValue.value, { p: periodOf(year.value, month), extra: { mode: 'meter', station: st?.id } }))
+  void router.push(periodLink(navValue.value, { p: periodOf(shownYear.value, month), extra: { mode: 'meter', station: st?.id } }))
 }
 
 // ── 结论条(数据模板分句,同 CockpitView §A 观感;损耗率缺电表→诚实说不可算) ──
@@ -108,7 +120,7 @@ const conclusion = computed<{ text: string; tone: AnaStatusLevel }[]>(() => {
       ? { text: `平均损耗率 ${pct(s.avgLossRate)}(电表小于充电量,计量异常)`, tone: 'risk' as const }
       : { text: `平均损耗率 ${pct(s.avgLossRate)}(电表口径)`, tone: 'good' as const }
   return [
-    { text: `${year.value}年${TAB_ZH[tab.value]}桩充电 ${fnum(s.chargeKwh, 0)} kWh`, tone: 'good' },
+    { text: `${shownYear.value}年${TAB_ZH[tab.value]}桩充电 ${fnum(s.chargeKwh, 0)} kWh`, tone: 'good' },
     { text: `收益 ¥${fnum(s.revenue, 0)}`, tone: 'good' },
     { text: `手续费 ¥${fnum(s.fee, 0)}${fr != null ? '(费率 ' + pct(fr) + ')' : ''}`, tone: 'neutral' },
     lossSeg,
@@ -196,7 +208,7 @@ const lossOpt = computed<object>(() => ({
 
 <template>
   <!-- §五语义:固定按年 → 期间控件隐藏(periodMode none),口径徽章 + tools 槽放 tab/年份 -->
-  <AnaShell period-mode="none" :scope-chip="year + '年 · 全年口径'">
+  <AnaShell period-mode="none" :scope-chip="shownYear + '年 · 全年口径'" :busy="staleShown">
     <template #tools>
       <span class="ak-seg2" role="group" aria-label="桩类型">
         <button :class="{ on: tab === 'car' }" @click="tab = 'car'">汽车</button>
@@ -207,15 +219,70 @@ const lossOpt = computed<object>(() => ({
       </div>
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
-    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
-    <div v-else class="ak-page">
+    <!-- 首进:版式已知就不转圈(C6-01)。块高逐块照它顶替的那块 —— 页头 44、结论条一行 20、
+         卡头 20(.av2-card-h 下距 8 合 28)、四张图 300 / 250 / 250 / 250(各自 :height 字面值,AnaSkelChart 与图同表降档)。
+         骨架只出在首进(loadedYear 还是 null);换年时旧内容留在原地,见下方 data-stale-host。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="loading && loadedYear === null" class="ak-page ana-skel">
+      <!-- 页头、结论条、卡头照抄真版式(手机上会折行,灰条顶不住);随数据变的字换成同长的隐形占位 -->
       <div class="ak-head">
         <div class="ak-h-l">
           <span class="ak-h-ic"><component :is="iconFor('plug')" :size="20" /></span>
           <div>
             <h2 class="ak-title">充电桩分析</h2>
-            <p class="ak-sub">{{ TAB_ZH[tab] }}桩 · 桩月度量收 · 运营商结构 · 电表损耗率 · {{ year }}年</p>
+            <p class="ak-sub">{{ TAB_ZH[tab] }}桩 · 桩月度量收 · 运营商结构 · 电表损耗率 · <span class="ana-hole">0000</span>年</p>
+          </div>
+        </div>
+      </div>
+      <div class="av2-card ca-concl">
+        <span class="ca-cs ana-hole"><span class="dot"></span>0000年汽车桩充电 00,000 kWh</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>收益 ¥00,000</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>手续费 ¥0,000(费率 0.0%)</span>
+        <span class="ca-cs ana-hole"><span class="dot"></span>平均损耗率 0.0%(电表口径)</span>
+        <button type="button" class="ca-cs lk ana-hole">查看分桩明细 →</button>
+      </div>
+      <div class="av2-grid">
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h">
+            <span class="t">桩月度量收 · <span class="ana-hole">0000</span>年</span>
+            <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h">
+            <span class="t">运营商收益占比</span>
+            <span class="hint">全年收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+        <div class="av2-card av2-s6">
+          <div class="av2-card-h">
+            <span class="t">运营商手续费率</span>
+            <span class="hint">手续费 ÷(收益+手续费)· 全年口径</span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+        <div class="av2-card av2-s12">
+          <div class="av2-card-h">
+            <span class="t">电表损耗率趋势 · 每运营商</span>
+            <span class="hint">(电表量−Σ充电量)÷电表量 · 红点=负值计量异常 · 无电表月断点不连线</span>
+          </div>
+          <AnaSkelChart :height="250" />
+        </div>
+      </div>
+    </div>
+    <!-- skel:end -->
+    <AnaEmpty v-else-if="failed" label="数据加载失败" hint="请刷新重试" />
+    <!-- 换年在途:旧内容留在原地退让(C5-02),data-stale-host 常挂 —— 类摘掉后退场也是 200,不挂就是硬切 -->
+    <div v-else class="ak-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
+      <div class="ak-head">
+        <div class="ak-h-l">
+          <span class="ak-h-ic"><component :is="iconFor('plug')" :size="20" /></span>
+          <div>
+            <h2 class="ak-title">充电桩分析</h2>
+            <p class="ak-sub">{{ TAB_ZH[tab] }}桩 · 桩月度量收 · 运营商结构 · 电表损耗率 · {{ shownYear }}年</p>
           </div>
         </div>
       </div>
@@ -223,7 +290,7 @@ const lossOpt = computed<object>(() => ({
       <!-- 护栏:该类型该年无 cp_reading → 空态引导去分桩明细录入,不画假图(硬要求) -->
       <AnaEmpty
         v-if="empty"
-        :label="year + ' 年' + TAB_ZH[tab] + '桩暂无分桩充电明细'"
+        :label="shownYear + ' 年' + TAB_ZH[tab] + '桩暂无分桩充电明细'"
         :hint="'分桩明细(cp_reading)未录入,无法计算量收与损耗 — 进入附表' + (tab === 'ebike' ? '8' : '7') + ' 屏后选「分桩充电明细」录入或导入'"
         :to="'/' + navValue"
         to-text="去录入分桩明细"
@@ -238,11 +305,13 @@ const lossOpt = computed<object>(() => ({
           <button class="ca-cs lk" @click="goDetail">查看分桩明细 →</button>
         </div>
 
-        <div class="av2-grid">
+        <!-- 汽车 / 电动车是段控换档(2026-09-16 矩阵「切子屏」):两套不相干的桩,不做跨桩形变 ——
+             正文按 tab 作键整组重挂,视口内的图 320 入场;同一 tab 换年仍是同一组节点 200 形变 -->
+        <div :key="tab" class="av2-grid">
           <!-- 图1 s12:桩月度量收(充电量堆叠柱 + 收益线,双轴);本屏无 s8 屏,av2-core 人工点名——量收双轴承载结论条的量/收主指标,首图即主叙事 -->
           <div class="av2-card av2-s12 av2-core">
             <div class="av2-card-h">
-              <span class="t">桩月度量收 · {{ year }}年</span>
+              <span class="t">桩月度量收 · {{ shownYear }}年</span>
               <span class="hint">左轴充电量 kWh(按桩堆叠)· 右轴收益 元<span class="hint-desk"> · 点图深链分桩明细</span></span>
             </div>
             <AnaEChart :option="chart1Opt" :height="300" @chart-click="goDetail" />

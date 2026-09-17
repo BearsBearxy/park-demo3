@@ -1,7 +1,9 @@
 // breakeven.logic 纯函数单测(v2 抽出;CVP/敏感性/拆分口径=v1,含 dev 库锚点回算)
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AnalysisS10Row } from '@/api/analysis'
-import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, tornadoItems, tornadoOption } from './breakeven.logic'
+import { anchorMonth, calcBe, conclusionText, cvpOption, s10UsedOf, splitData, splitOption, tornadoItems, tornadoOption } from './breakeven.logic'
 
 describe('calcBe', () => {
   it('常规:fixed=cost×fr,beRev=fixed/cm,bePct/safety 一位小数', () => {
@@ -117,5 +119,50 @@ describe('option 构建', () => {
     expect(d.periods).toEqual(['1月', '3月'])
     expect(d.fixed).toEqual([6.2, 12.4])
     expect(d.vari).toEqual([3.8, 7.6])
+  })
+})
+
+// C6-15 连续输入:三张图由固定成本系数滑杆每帧驱动,>0 的更新动画都让图落后手指。
+// 顶层键靠 motionize 的 {...keys, ...pick(o, ANIM_KEYS), ...s} 吸收进每个系列(与 markPoint/markLine 的宿主),
+// 不写顶层就是系列自己带着注入的 200 —— getShallow 不回落,顶层写了也是死键。
+// 2026-09-16 行为矩阵:换年 / 换月要 200 形变 —— 0 只在拖滑杆那一次(instant)下发,不写死在 option 里。
+describe('C6-15 滑杆连续驱动:instant 时三个 option 顶层 animationDurationUpdate = 0,否则不写', () => {
+  const be = calcBe(100, 80, 0.5)
+  const all = (instant?: boolean) => [
+    cvpOption(be, instant),
+    tornadoOption(tornadoItems(be, null), instant),
+    splitOption(splitData([1], [10_0000, ...new Array(11).fill(null)], 0.5), instant),
+  ] as Record<string, unknown>[]
+
+  it('instant:cvp / tornado / split 都写了顶层 0,且不夹带别的动画键(首绘仍由 motionize 给 320)', () => {
+    for (const rec of all(true)) {
+      expect(rec.animationDurationUpdate).toBe(0)
+      expect(rec.animationDuration).toBeUndefined()
+      expect(rec.animationEasingUpdate).toBeUndefined()
+    }
+  })
+
+  it('❗缺省(换年 / 换月):一个动画键都不写,由 motionize 注入 200', () => {
+    for (const rec of all()) expect(Object.keys(rec).filter((k) => k.startsWith('animation'))).toEqual([])
+  })
+})
+
+// ── C6-01 首进骨架:整区转圈换真版式骨架,块高逐块钉住它顶替的那块 ──
+// 骨架是模板里的静态几何,没有可跑的逻辑;能坏的只有「有人改了图的 :height / 加了张卡,
+// 骨架没跟着改」—— 那一刻骨架与真版式不再等高,硬切回来就是位移。所以断言钉两组坐标:
+// 骨架里每条 .fp-shim 的高(逐条、按出现顺序),以及它必须覆盖本屏图的 :height 字面值。
+describe('BreakevenView · C6-01 首进骨架(块高钉真版式)', () => {
+  it('❗不转圈;骨架块高逐条钉住,且盖住本屏图的 :height', () => {
+    const src = readFileSync(join(__dirname, 'BreakevenView.vue'), 'utf8')
+    expect(src, '版式已知不许转圈').not.toContain('page-spin')
+    expect(src, '骨架根节点缺 ana-skel 钩子').toContain('class="ak-page ana-skel"')
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    const shim = [...src.matchAll(/class="fp-shim" style="height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map((m) => +(m[1] ?? m[2]))
+    // 2026-09-16 起卡头 / 页头 / 读数句照抄真版式(不再是灰条),序列里只剩图块与少数写死高的块;逐块同高已在浏览器 390 / 1366 宽实测
+    expect(shim).toEqual([300, 300, 250])
+    const charts = [...src.matchAll(/<AnaEChart [^>]*:height="(\d+)"/g)].map((m) => +m[1])
+    // 主图 300 · 龙卷风 300 · 拆分 250(滑杆行照抄真版式,输入条的灰条不写死高度)
+    expect(charts).toEqual([300, 300, 250])
+    expect(charts.every((h) => shim.includes(h)), '有图的高没在骨架里留位').toBe(true)
   })
 })

@@ -17,6 +17,11 @@ import {
 } from '../analysis/TenantPeer.logic'
 import type { PnlSummary } from '../../analysis/anaData'
 
+// 首进骨架是真版式卡头 / 文字行的照抄(2026-09-16 起,见各屏 skel:start 注释),文案门禁只审真版式那一份,
+// 不然同一句被数两遍。骨架与真版式是否逐字对得上,由 anaSkeletonParity.spec 管。
+const readTpl = (p: string, enc: 'utf8' = 'utf8'): string =>
+  readFileSync(p, enc).replace(/<!-- skel:start[\s\S]*?<!-- skel:end -->/g, '')
+
 /**
  * 分析层文案门禁(FORECAST-BAND-AND-PLAIN-SENTENCE §3.4)。
  *
@@ -221,7 +226,7 @@ function vueFiles(): { dir: string; file: string }[] {
 function pureInterpolationSlotCount(re: RegExp): number {
   let n = 0
   for (const { dir, file } of vueFiles()) {
-    const src = readFileSync(join(dir, file), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    const src = readTpl(join(dir, file), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const m of src.matchAll(re)) if (!strip(m[1] ?? '')) n++
   }
   return n
@@ -230,7 +235,7 @@ function pureInterpolationSlotCount(re: RegExp): number {
 function scan(re: RegExp): { file: string; text: string; len: number }[] {
   const out: { file: string; text: string; len: number }[] = []
   for (const { dir, file: f } of vueFiles()) {
-    const src = readFileSync(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    const src = readTpl(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const m of src.matchAll(re)) {
       const t = strip(m[1] ?? '')
       if (t) out.push({ file: f, text: t, len: [...t].length })
@@ -257,7 +262,7 @@ function scan(re: RegExp): { file: string; text: string; len: number }[] {
 function hintTexts(): { file: string; text: string; len: number }[] {
   const out: { file: string; text: string; len: number }[] = []
   for (const { dir, file: f } of vueFiles()) {
-    const src = readFileSync(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    const src = readTpl(join(dir, f), 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     for (const open of src.matchAll(/<span[^>]*class="hint"[^>]*>/g)) {
       const bodyStart = open.index! + open[0].length
       const tagRe = /<span\b|<\/span>/g
@@ -330,7 +335,7 @@ describe('分析层文案门禁', () => {
   it('❗带 % 的读数句,同一张卡里必须找得到样本量 —— 否则就是把「样本 5」包装成一个小数点', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
-      const src = readFileSync(join(dir, f), 'utf8')
+      const src = readTpl(join(dir, f), 'utf8')
       for (const { start, text } of splitCards(src)) {
         const reads = [...text.matchAll(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)].map((m) => m[1])
         const pctRead = reads.find((r) => r.includes('%'))
@@ -357,7 +362,7 @@ describe('分析层文案门禁', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
       if (f === 'BreakevenView.vue') continue
-      if (/盈亏平衡/.test(readFileSync(join(dir, f), 'utf8'))) bad.push(f)
+      if (/盈亏平衡/.test(readTpl(join(dir, f), 'utf8'))) bad.push(f)
     }
     expect(bad, `这些文件借用了「盈亏平衡」: ${bad.join(' | ')}`).toEqual([])
     // 判词本身也钉住 —— 它住在 expiry.logic.ts 里,上面那圈扫 .vue 扫不到。
@@ -407,8 +412,10 @@ describe('分析层文案门禁', () => {
 
   it('❗F7:cases 清单完整性——全仓「插值槽」(.ana-read/.ana-ref 除插值外没有第二个字符)数量,'
     + '必须与 READ_SLOTS/REF_SLOTS 登记的槽位数逐一相等,漏登记一个新插值槽就当场红', () => {
-    const pureRead = pureInterpolationSlotCount(/class="ana-read"[^>]*>([\s\S]*?)<\/p>/g)
-    const pureRef = pureInterpolationSlotCount(/class="ana-ref"[^>]*>([\s\S]*?)<\/p>/g)
+    // 类名用 [^"]* 收尾:C5-11 把「有↔无」的那几句改成常驻占位 `class="ana-read hold"`,
+    // 句子还在、还登记在 READ_SLOTS 里,只是类名多了一个词 —— 钉死 class="ana-read" 会把它漏数。
+    const pureRead = pureInterpolationSlotCount(/class="ana-read[^"]*"[^>]*>([\s\S]*?)<\/p>/g)
+    const pureRef = pureInterpolationSlotCount(/class="ana-ref[^"]*"[^>]*>([\s\S]*?)<\/p>/g)
     expect(pureRead, `全仓 ${pureRead} 处纯插值 .ana-read,READ_SLOTS 只登记了 ${READ_SLOTS.length} 个槽位`)
       .toBe(READ_SLOTS.length)
     expect(pureRef, `全仓 ${pureRef} 处纯插值 .ana-ref,REF_SLOTS 只登记了 ${REF_SLOTS.length} 个槽位`)
@@ -439,7 +446,7 @@ describe('分析层文案门禁', () => {
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
       if (JARGON_EXEMPT.has(f)) continue
-      const tpl = readFileSync(join(dir, f), 'utf8')
+      const tpl = readTpl(join(dir, f), 'utf8')
         .replace(/<script[\s\S]*?<\/script>/g, '')
         .replace(/<!--[\s\S]*?-->/g, '')
       for (const m of tpl.matchAll(JARGON)) {
@@ -464,7 +471,7 @@ describe('分析层文案门禁', () => {
     const BOARD_REF = /设计稿|视觉稿|稿上|board-\w+\.txt/g
     const bad: string[] = []
     for (const { dir, file: f } of vueFiles()) {
-      const tpl = readFileSync(join(dir, f), 'utf8')
+      const tpl = readTpl(join(dir, f), 'utf8')
         .replace(/<script[\s\S]*?<\/script>/g, '')
         .replace(/<!--[\s\S]*?-->/g, '')
       for (const m of tpl.matchAll(BOARD_REF)) {

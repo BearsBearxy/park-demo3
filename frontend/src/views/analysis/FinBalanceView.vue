@@ -13,6 +13,7 @@ import AnaPeriodBanner from '@/components/ana/AnaPeriodBanner.vue'
 import DsSelect from '@/components/ds/Select.vue'
 import { iconFor } from '@/components/ds/icon'
 import { usePeriod } from '@/analysis/usePeriod'
+import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import { fetchAvailableMonths, fetchCompanies, fetchReportAll, fetchReportPeriod } from '@/analysis/anaData'
 import { computeBsRow, BS_ROWS } from '@/reports/balanceSheet'
 import { computeRow } from '@/reports/incomeStatement'
@@ -32,8 +33,11 @@ const companyOpts = computed(() => [
   { value: '0', label: '全部公司(汇总)' },
   ...companies.value.map((c) => ({ value: String(c.id), label: c.name })),
 ])
+// 屏上印着的公司 / 快照月跟**已画出来的那份数据**走,不跟选择器(C5-02 ①):cid / reportYm 立刻变,
+// 数据要等接口 —— 不分开的话在途期间卡头写新公司 / 新月,底下还是旧的那份。声明在下面 immediate watch 之前。
+const shown = ref<{ c: string; ym: string | null }>({ c: '0', ym: null })
 const companyLabel = computed(() =>
-  cid.value === '0' ? '全部公司(汇总)' : companies.value.find((c) => String(c.id) === cid.value)?.name ?? '—')
+  shown.value.c === '0' ? '全部公司(汇总)' : companies.value.find((c) => String(c.id) === shown.value.c)?.name ?? '—')
 
 // ── 快照月 = 所选月若有报表否则最近报表月(数据派生,不硬编码) ──
 const reportMonths = ref<string[]>([])
@@ -47,12 +51,29 @@ const reportYm = computed(() => {
 })
 
 // §五策略2「快照月回退」显式:所选期 ≠ 报表月 → 横幅(月粒度比月;年粒度比年;相等不渲染)
-const selPeriodLabel = computed(() => period.ym.value ?? period.sel.value.year + '年')
+// 横幅的所选期与快照月都跟已画那份走(同卡头):在途(已画的快照月还不是该取的那一期)冻结在上次的选择,
+// 数据落地同一拍再换 —— 否则点击那一刻横幅先插进来,把正在退让的旧内容往下推,到数再换一次,还与卡头自相矛盾。
+// 不在途(换的月不改快照月,不打接口)直接跟选择。
+const drawnPick = ref({ ym: period.ym.value, year: period.sel.value.year })
+watch([() => shown.value.ym, reportYm, period.ym, () => period.sel.value.year], () => {
+  if (shown.value.ym === reportYm.value) drawnPick.value = { ym: period.ym.value, year: period.sel.value.year }
+}, { immediate: true })
+const selPeriodLabel = computed(() => drawnPick.value.ym ?? drawnPick.value.year + '年')
 const reportFallback = computed(() => {
-  const rym = reportYm.value
+  const rym = shown.value.ym
+  const p = drawnPick.value
   if (!rym) return false
-  return period.ym.value ? rym !== period.ym.value : !rym.startsWith(period.sel.value.year + '-')
+  return p.ym ? rym !== p.ym : !rym.startsWith(p.year + '-')
 })
+
+// 行高亮标志必须声明在下面那条 immediate watch 之前:watch 回调第一句就清它,
+// 声明在后 = 暂时性死区,async 回调里抛出的 ReferenceError 变成被吞掉的 rejection,
+// 取数一行都不跑,整屏永远空白(2026-09-16 实测)。
+const flashLabel = ref<string | null>(null)
+// 换期 / 换公司在途(C5-02):旧内容留在原地退让,过 200ms 门槛才亮、到数立刻灭。
+// 初值 true = 首进那一趟不算「换」:屏上还没有可退让的内容,不亮进度线(同 PvMeterAnaView)。
+const loading = ref(true)
+const staleShown = useDeferredFlag(loading)
 
 // ── 数据:bs 快照 + is 快照(杜邦净利率/周转率联动) ──
 const bsDto = ref<ReportPeriodDTO | null>(null)
@@ -60,6 +81,10 @@ const isDto = ref<ReportPeriodDTO | null>(null)
 let token = 0
 watch([cid, reportYm], async ([c, rym]) => {
   const t = ++token
+  loading.value = true
+  // 换公司/换期:新数据落到空态会把整块 av2-grid 卸掉,那一行的 animationend/cancel 都不会再来;
+  // 不落空态时旧高亮也不该跨期留着 —— 在这里先清(C5-08)
+  flashLabel.value = null
   try {
     const [cos, months] = await Promise.all([fetchCompanies(), fetchAvailableMonths()])
     let bs: ReportPeriodDTO | null = null, is: ReportPeriodDTO | null = null
@@ -78,7 +103,13 @@ watch([cid, reportYm], async ([c, rym]) => {
   } catch {
     if (t === token) { bsDto.value = null; isDto.value = null }
   } finally {
-    if (t === token) ready.value = true
+    if (t === token) {
+      shown.value = { c, ym: rym }
+      // 只有取的就是当前该取的那一期才算落地。首进第一趟 rym 还是 null(月份列表没到),它一写
+      // reportMonths,reportYm 就变、紧跟着第二趟 —— 这里先亮 ready 会在两趟之间闪一张「无数据」空卡,
+      // 数据一到再换成整块 av2-grid,整页跳一下。
+      if (rym === reportYm.value) { ready.value = true; loading.value = false }
+    }
   }
 }, { immediate: true })
 
@@ -178,7 +209,6 @@ const leOpt = computed(() =>
 const gaugeOpt = computed(() => gaugesOption(R.value?.debtRatio ?? 0, R.value?.current ?? null))
 
 // 点环扇区 → 快照全表滚动定位并高亮该科目行(复审:本屏补下钻;行匹配按 label 前缀)
-const flashLabel = ref<string | null>(null)
 async function locateRow(p: unknown) {
   const name = (p as { name?: string }).name
   if (!name) return
@@ -187,7 +217,8 @@ async function locateRow(p: unknown) {
   flashLabel.value = row.label
   await nextTick()
   document.querySelector('[data-bsrow="' + CSS.escape(row.label) + '"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  setTimeout(() => { if (flashLabel.value === row.label) flashLabel.value = null }, 2000)
+  // 摘类交给 animationend / animationcancel(C5-08):KeepAlive 把整棵树挪进缓存容器时动画被取消,
+  // 只发 cancel 不发 end —— 不听 cancel 的话 flashLabel 卡在真值,回签重插 DOM 会白白再亮 2s。
 }
 
 // ── 全表(单期:期末 + 占资产总计;「较年初」列因仅一期快照降级删除) ──
@@ -204,7 +235,7 @@ const bsTable = computed<BsTblRow[]>(() => {
 
 <template>
   <!-- §五:月敏感屏(full);快照月回退以横幅显式 -->
-  <AnaShell period-mode="full">
+  <AnaShell period-mode="full" :busy="staleShown">
     <template #tools>
       <span class="fin-name"><component :is="iconFor('scale')" :size="14" />资产负债分析</span>
       <span class="fin-lbl"><component :is="iconFor('scale')" :size="12" />公司</span>
@@ -216,14 +247,16 @@ const bsTable = computed<BsTblRow[]>(() => {
       <AnaKpiTile v-for="k in kpis" :key="k.label" :label="k.label" :value="k.value" :note="k.note" />
     </template>
 
-    <div class="fin-page">
+    <!-- 换期 / 换公司在途:旧内容留在原地退让(C5-02),不卸载。data-stale-host 常挂 —— 类摘掉后仍有
+         transition-property,退场才是 200。进度线在外壳 sticky 工具条上(:busy),不放进这里。 -->
+    <div class="fin-page" data-stale-host :class="{ 'fp-stale': staleShown }" :aria-busy="staleShown">
       <div class="fin-head">
-        <span class="sub">法人口径 · 结构占比、偿债与营运比率、杜邦 ROE 拆解 · 单位 万元 · {{ reportYm ?? '—' }} 期末快照(单期口径)</span>
+        <span class="sub">法人口径 · 结构占比、偿债与营运比率、杜邦 ROE 拆解 · 单位 万元 · {{ shown.ym ?? '—' }} 期末快照(单期口径)</span>
         <AnaPill tone="legal" icon="scale">法人口径 · {{ companyLabel }}</AnaPill>
       </div>
 
       <!-- §五策略2:所选期无报表 → 快照月回退横幅(禁静默) -->
-      <AnaPeriodBanner v-if="reportFallback && reportYm" :selected="selPeriodLabel" :used="reportYm" source="报表" />
+      <AnaPeriodBanner v-if="reportFallback && shown.ym" :selected="selPeriodLabel" :used="shown.ym" source="报表" />
 
       <div v-if="hasBs && T && R" class="av2-grid">
         <!-- 双环 s4×2 -->
@@ -296,7 +329,7 @@ const bsTable = computed<BsTblRow[]>(() => {
         <div class="av2-card av2-s12">
           <div class="av2-card-h"><span class="t">资产负债趋势</span><span class="hint">期末 vs 年初 · ROE 走势</span></div>
           <AnaEmpty label="趋势数据待录入"
-            :hint="'资产负债表当前仅 ' + (reportYm ?? '—') + ' 一期快照,无法呈现较年初变动与 ROE 走势;录入更多期间后自动点亮'"
+            :hint="'资产负债表当前仅 ' + (shown.ym ?? '—') + ' 一期快照,无法呈现较年初变动与 ROE 走势;录入更多期间后自动点亮'"
             to="/balance-sheet" toText="去录入资产负债表" />
         </div>
 
@@ -308,6 +341,8 @@ const bsTable = computed<BsTblRow[]>(() => {
             <tbody>
               <tr v-for="r in bsTable" :key="r.label" :data-bsrow="r.label"
                 :class="{ 'fb-flash': flashLabel === r.label }"
+                @animationend="flashLabel === r.label && (flashLabel = null)"
+                @animationcancel="flashLabel === r.label && (flashLabel = null)"
                 :style="r.kind === 'label' ? { background: 'var(--surface-card)' } : r.label.includes('总计') ? { background: 'var(--ink-050)' } : undefined">
                 <td :style="{
                   fontWeight: r.kind === 'label' || r.kind === 'subtotal' ? 600 : 400,

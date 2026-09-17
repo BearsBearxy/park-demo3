@@ -2,6 +2,8 @@
 // 标签锚定 2025 库内实际(SQL 已核对):销售费用合计(group=销售费用 无冒号)/管理费用总计：/
 // 财务费用合计：/修缮、改造费用/运营费用总计;组内小计「办公室水电费合计」等不得混入组带。
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { PnlRowDTO } from '@/types/pnl'
 import { addSeries, coveredMonths, extractGroups, momMovers, reimburse, topSubjects, wanSeries } from './expense.logic'
 
@@ -99,5 +101,23 @@ describe('reimburse 员工报销与办公类圈定', () => {
   it('年=Σ;无任何命中有数科目 → sum=null(KPI 显 —)', () => {
     expect(reimburse(rows, false, 0).sum).toBe(200)
     expect(reimburse([row('管理费用', '员工工资', 'detail', { 1: 1 })], true, 0).sum).toBeNull()
+  })
+})
+
+// ───────── C6-01 首进骨架 ─────────
+// 源码形状门禁:骨架块高逐块照它顶替的那张图的 :height —— 改图高忘了改骨架,这条就红。
+describe('费用分析首进骨架(C6-01)', () => {
+  const src = readFileSync(join(__dirname, 'ExpenseView.vue'), 'utf8')
+  const skel = src.slice(src.indexOf('class="av2-grid ex-skel"'), src.indexOf('<AnaEmpty v-else-if="empty"'))
+
+  it('❗不转圈;骨架块高 = 主图 300 / 结构环 300 / Top10 250 / 报销条块 190', () => {
+    expect(src).not.toContain('page-spin')
+    // 顶替 AnaEChart 的块是 <AnaSkelChart :height>(与图同表降档,C6-01 ≤600),其余是写死高的 .fp-shim
+    expect([...skel.matchAll(/height: (\d+)px|<AnaSkelChart :height="(\d+)"/g)].map(m => m[1] ?? m[2]))
+      // 2026-09-16 起卡头 / 异动行 / 报销合计照抄真版式:主图 · 结构环 · Top10 · 报销条块 190(7 × 34 − 14)
+      .toEqual(['300', '300', '250', '190'])
+    expect(src).toContain(':option="mainOpt" :height="300"')
+    expect(src).toContain(':option="donutOpt" :height="300"')
+    expect(src).toContain(':option="topOpt" :height="250"')
   })
 })

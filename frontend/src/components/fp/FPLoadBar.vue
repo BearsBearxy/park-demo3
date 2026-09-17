@@ -50,6 +50,10 @@ defineProps<{
 @media (prefers-reduced-motion: reduce) {
   .fp-lb i {
     animation: fp-lb-pulse 1.6s ease-in-out infinite;
+    /* motion.css:49 全局 `*` 把无 !important 的呼吸压成 1ms/1 次 = 静止蓝条；
+       scoped 选择器 (0,2,1) > `*`，同为 !important 时赢。 */
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
     transform: none;
   }
   @keyframes fp-lb-pulse {

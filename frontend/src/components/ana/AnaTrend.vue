@@ -3,6 +3,7 @@
 import { computed, ref } from 'vue'
 import { useWidth } from './useWidth'
 import { smoothPath, type Pt } from './anaFmt'
+import { useEnterPhase, useMorphHold } from './anaMotion'
 import './ana.css'
 
 const props = withDefaults(defineProps<{
@@ -17,6 +18,10 @@ const props = withDefaults(defineProps<{
 
 const { el, width: w } = useWidth(520)
 const hi = ref<number | null>(null)
+/// 视口内首挂 / 切回页签数据组擦入 320(网格线先在);换期同点数 200 形变(2026-09-16 矩阵;点数变了 d 插值不了,
+// 直接跳);改宽瞬算;十字线不在形变组里,0ms。first 在 animationend.self **与 animationcancel.self** 摘掉。
+const first = useEnterPhase(el)
+const hold = useMorphHold(w, first)
 
 const padT = 16, padB = 22
 const n = computed(() => props.cur.length)
@@ -60,9 +65,11 @@ function onMove(e: PointerEvent) {
         </defs>
         <line v-for="g in [0, 0.5, 1]" :key="g" x1="0" :x2="w"
           :y1="padT + g * (height - padT - padB)" :y2="padT + g * (height - padT - padB)" stroke="var(--divider)" stroke-width="1" />
-        <path v-if="prevPath" :d="prevPath" fill="none" stroke="rgb(160,162,170)" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round" />
-        <path :d="areaPath" fill="url(#akTrendGrad)" />
-        <path :d="curPath" fill="none" stroke="rgb(28,28,28)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        <g :class="['trend-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <path v-if="prevPath" :d="prevPath" fill="none" stroke="rgb(160,162,170)" stroke-width="2" stroke-dasharray="6 5" stroke-linecap="round" />
+          <path :d="areaPath" fill="url(#akTrendGrad)" />
+          <path :d="curPath" fill="none" stroke="rgb(28,28,28)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        </g>
         <template v-for="(l, i) in labels" :key="i">
           <text v-if="i % 2 === 0 || i === n - 1" :x="X(i)" :y="height - 6" font-size="10" fill="var(--text-muted)"
             :text-anchor="i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'" font-family="var(--font-sans)">{{ l }}</text>
@@ -89,6 +96,8 @@ function onMove(e: PointerEvent) {
 </template>
 
 <style scoped>
+/* 首挂擦入:数据组一条 clip-path 从左到右(fp-wipe 在 ana.css,基态写在这里) */
+.trend-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .ana-trend-tip { position: absolute; top: 2px; min-width: 134px; pointer-events: none; background: rgb(40,52,66); color: #fff; border-radius: 10px; padding: 9px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .ana-trend-tip .lb { font-size: 11px; opacity: 0.65; margin-bottom: 6px; }
 .ana-trend-tip .row { display: flex; align-items: center; gap: 8px; }

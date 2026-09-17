@@ -5,7 +5,9 @@
 // 数据口径(分母、在网 < 3 栋留空、漏抄置空)全在 pvAnaV4.logic.ts 的 yieldBand(),这里只画。
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { tipWidth, tipX } from '@/components/ana/chartTip'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import { PV_COLORS } from './pvAnaColors'
 import type { PvYieldBandProps } from './pvAnaV4.logic'
 
@@ -14,6 +16,9 @@ const props = defineProps<PvYieldBandProps>()
 const H = 250, PL = 44, PR = 62, PT = 12, PB = 24, GAP = 13
 const IH = H - PT - PB
 const { el, width } = useWidth(999)
+// 切到「绝对水平」挂上来时在视口内擦入 320;换栋 / 换期 200 同键形变(线段与带按刻度作键),擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 const iw = computed(() => width.value - PL - PR)
 const n = computed(() => props.data.labels.length)
 const xOf = (i: number) => PL + (n.value > 1 ? (i / (n.value - 1)) * iw.value : iw.value / 2)
@@ -66,25 +71,32 @@ function runsOf(ok: (i: number) => boolean): number[][] {
   if (cur.length) out.push(cur)
   return out
 }
-function linePath(vals: (number | null)[]): string {
-  if (!dom.value) return ''
-  return runsOf(i => vals[i] != null).map(r => {
-    const pts = r.map(i => `${xOf(i)},${yOf(vals[i]!)}`)
-    // 单独一个点也要看得见(漏抄夹着的那一天):同点再连一次,圆头线帽画成点
-    return `M${pts.join(' L')}${r.length === 1 ? ` L${pts[0]}` : ''}`
-  }).join(' ')
+/** 线拆成相邻两刻度一段、按起点刻度作键:每段同一「M L」结构,换栋 / 换期时 d 能过渡;空刻度两侧不出段 = 断开。
+ *  拆 M 子路径的单条 path 做不到 —— 断点位置一变命令结构就变,d 直接跳。圆头线帽叠出来与圆角连接一样。
+ *  dot:单独一个点也要看得见(漏抄夹着的那一天)—— 同点再连一次,圆头线帽画成点(只给选中栋;全园线原来就不出点) */
+function lineSegs(vals: (number | null)[], dot: boolean): { i: number; d: string }[] {
+  if (!dom.value) return []
+  const p = (i: number) => `${xOf(i)},${yOf(vals[i]!)}`
+  const out: { i: number; d: string }[] = []
+  for (let i = 0; i < n.value; i++) {
+    if (vals[i] == null) continue
+    if (i + 1 < n.value && vals[i + 1] != null) out.push({ i, d: `M${p(i)} L${p(i + 1)}` })
+    else if (dot && (i === 0 || vals[i - 1] == null)) out.push({ i, d: `M${p(i)} L${p(i)}` })
+  }
+  return out
 }
+/** 带按连续段各一块、按段起点刻度作键:段的起止不变时 d 结构不变、能过渡;段数 / 段长变了就跳 */
 const bandPaths = computed(() => {
   const { lo, hi } = props.data
   if (!dom.value) return []
   return runsOf(i => lo[i] != null && hi[i] != null).map(r => {
     const up = r.map(i => `${xOf(i)},${yOf(hi[i]!)}`)
     const dn = [...r].reverse().map(i => `${xOf(i)},${yOf(lo[i]!)}`)
-    return `M${[...up, ...dn].join(' L')} Z`
+    return { i: r[0], d: `M${[...up, ...dn].join(' L')} Z` }
   })
 })
-const medPath = computed(() => linePath(props.data.med))
-const selPath = computed(() => linePath(props.data.sel))
+const medSegs = computed(() => lineSegs(props.data.med, false))
+const selSegs = computed(() => lineSegs(props.data.sel, true))
 
 // 线尾直标:按期望 y 排序后自上而下推开,间距不足 13 就往下挤。
 // 期望 y:带取上沿 + 2,两条线取线尾 + 4(文字基线)—— 与画布三枚标签的位置逐一对得上。
@@ -158,14 +170,20 @@ const dayUnit = computed(() => (props.data.gran === 'month' ? ' 日' : ''))
           <text class="pyb-ax" :x="PL - 6" :y="g.y + 4" text-anchor="end">{{ g.label }}</text>
         </template>
         <rect v-if="shade" class="pyb-future" :x="shade.x" :y="PT" :width="shade.w" :height="IH" :fill="PV_COLORS.FUTURE" />
-        <path v-for="(p, k) in bandPaths" :key="'b' + k" class="pyb-band" :d="p" :fill="PV_COLORS.BAND" fill-opacity=".45" />
+        <!-- 尺子先在,数据擦上去:轴线与 x 刻度挪到数据组之前 -->
         <line class="pyb-axl" :x1="PL" :x2="PL + iw" :y1="PT + IH" :y2="PT + IH" />
         <text v-for="t in xLabels" :key="'x' + t.x" class="pyb-ax" :x="t.x" :y="H - 6" text-anchor="middle">{{ t.text }}</text>
-        <path v-if="medPath" class="pyb-med" :d="medPath" fill="none" :stroke="PV_COLORS.MID" stroke-width="2" stroke-linejoin="round" />
-        <path v-if="selPath" class="pyb-sel" :d="selPath" fill="none" :stroke="PV_COLORS.FOCUS" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round" />
-        <text v-for="t in tails" :key="t.key" :class="['pyb-tail', 'pyb-tail-' + t.key]" :x="t.x" :y="t.y"
-          :fill="t.fill" :font-weight="t.bold ? 600 : 400">{{ t.text }}</text>
+        <!-- 悬停层(竖线 / 高亮点)在组外,0ms;线尾字瞬到 -->
+        <!-- 组按粒度作键:刻度下标跨粒度不是同一类目,按月 ↔ 按年整组换新元素瞬到 -->
+        <g :key="data.gran" :class="['pyb-data', 'ana-morph', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <path v-for="b in bandPaths" :key="'b' + b.i" class="pyb-band" :d="b.d" :fill="PV_COLORS.BAND" fill-opacity=".45" />
+          <path v-for="s in medSegs" :key="'m' + s.i" class="pyb-med" :data-i="s.i" :d="s.d" fill="none" :stroke="PV_COLORS.MID" stroke-width="2"
+            stroke-linecap="round" />
+          <path v-for="s in selSegs" :key="'s' + s.i" class="pyb-sel" :data-i="s.i" :d="s.d" fill="none" :stroke="PV_COLORS.FOCUS" stroke-width="2.5"
+            stroke-linecap="round" />
+          <text v-for="t in tails" :key="t.key" :class="['pyb-tail', 'pyb-tail-' + t.key]" :x="t.x" :y="t.y"
+            :fill="t.fill" :font-weight="t.bold ? 600 : 400">{{ t.text }}</text>
+        </g>
         <template v-if="tip">
           <line class="pyb-hair" :x1="tip.x" :x2="tip.x" :y1="PT" :y2="PT + IH" :stroke="PV_COLORS.TIP_HAIR" stroke-width="1" />
           <circle v-if="tip.dotY != null" class="pyb-dot" :cx="tip.x" :cy="tip.dotY" r="3.5" :fill="PV_COLORS.FOCUS" />
@@ -184,6 +202,8 @@ const dayUnit = computed(() => (props.data.gran === 'month' ? ' 日' : ''))
 <style scoped>
 .pyb-plot { position: relative; width: 100%; }
 .pyb-svg { display: block; }
+/* 首挂:数据组自左擦出一次;fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.pyb-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .pyb-hit { position: absolute; inset: 0; }
 .pyb-gl { stroke: var(--ink-100); stroke-width: 1; }
 .pyb-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }

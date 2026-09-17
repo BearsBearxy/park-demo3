@@ -5,6 +5,7 @@ import type { PnlSummary } from '@/analysis/anaData'
 import { matchBudgetKey, type BudgetKey } from '@/analysis/budget'
 import type { BudgetRowDTO } from '@/api/budget'
 import { CMP_BASELINE, CMP_BUDGET, fnum } from '@/components/ana/anaFmt'
+import { DUR, EASE } from '@/components/ana/anaMotion'
 
 export interface WfItem { name: string; value: number; type: 'start' | 'end' | 'inc' | 'dec' }
 
@@ -141,6 +142,9 @@ export function subjectTrendOption(
       name: '上期', type: 'line', data: cmp.mom,
       lineStyle: { type: 'dashed', color: CMP_BASELINE, width: 1.5 },
       itemStyle: { color: CMP_BASELINE }, symbol: 'circle', symbolSize: 4,
+      // C6-09 对比虚线:系列级 200/quarticOut 压过注入的 update 0 → clip 从左擦入;关掉是视图 dispose 瞬时。
+      // 上面那条预算 markLine 不在此列 —— 它读 mlModel 自身、回落全局 0,瞬现(C6-14)。
+      animationDuration: DUR.update, animationEasing: EASE.enter,
     })
   }
   return {

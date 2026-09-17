@@ -1,6 +1,7 @@
 // PvLedgerScatter(B6)挂载测:正方绘图区、45° 虚线、沿对角线的 ±容差斜带、点的 cx/cy;
 // 空态(一栋没录)照样画框线与带、不画点(计划 §1 #4);录入入口 emit record。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount, type DOMWrapper } from '@vue/test-utils'
 import PvLedgerScatter from '../PvLedgerScatter.vue'
 import type { LedgerScatter } from '../pvAnaV4.logic'
@@ -103,5 +104,51 @@ describe('PvLedgerScatter 空态', () => {
     d.unrecorded = 0
     const w = mount(PvLedgerScatter, { props: { data: d } })
     expect(w.find('.pls-note').exists()).toBe(false)
+  })
+})
+
+// 2026-09-16 行为矩阵:只经段控进来的图 —— 挂载时视口内点组擦入 320;换期不重挂,点按栋 200 形变,带跟量程形变
+describe('PvLedgerScatter 动效', () => {
+  const inView = () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      { top: 0, bottom: 300, left: 0, right: 300, width: 300, height: 300, x: 0, y: 0, toJSON: () => ({}) } as DOMRect)
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('❗切子屏挂上来、在视口内:点组 first + hold,带组只 hold 不擦;animationcancel / animationend 都摘;离屏不擦', async () => {
+    inView()
+    const w = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    await nextTick()
+    expect(w.find('g.pls-data').classes()).toEqual(['pls-data', 'ana-morph', 'first', 'hold'])
+    expect(w.find('g.pls-bandg').classes()).toEqual(['pls-bandg', 'ana-morph', 'hold'])
+    await w.find('g.pls-data').trigger('animationcancel')
+    expect(w.find('g.pls-data').classes()).toEqual(['pls-data', 'ana-morph'])
+    expect(w.find('g.pls-bandg').classes()).toEqual(['pls-bandg', 'ana-morph'])
+    const w2 = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    await nextTick()
+    await w2.find('g.pls-data').trigger('animationend')
+    expect(w2.find('g.pls-data').classes()).toEqual(['pls-data', 'ana-morph'])
+    vi.restoreAllMocks()
+    const off = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    await nextTick()
+    expect(off.find('g.pls-data').classes()).toEqual(['pls-data', 'ana-morph'])
+  })
+
+  it('❗换期不重挂:同一栋的点还是同一个元素,cx/cy 换成新量程上的;带同一个元素、d 变了;点都在形变组里', async () => {
+    const w = mount(PvLedgerScatter, { props: { data: withPoints() } })
+    const [e, cd] = [0, 3].map(k => w.findAll('circle.pls-pt')[k].element)
+    const band = w.find('path.pls-band').element
+    const before = [e.getAttribute('cx'), cd.getAttribute('cx'), band.getAttribute('d')]
+    // 换一年:C、D座 的两个值都变了(量程跟着变,别的栋的点也挪)
+    const d = withPoints()
+    d.points = [...d.points.slice(0, 3), { id: 2, name: 'C、D座', phase: 1, x: 1200, y: 1100, diff: -0.083 }]
+    await w.setProps({ data: d })
+    expect(w.findAll('circle.pls-pt')[0].element).toBe(e)
+    expect(w.findAll('circle.pls-pt')[3].element).toBe(cd)
+    expect(w.find('path.pls-band').element).toBe(band)
+    expect([e.getAttribute('cx'), cd.getAttribute('cx'), band.getAttribute('d')].map((v, k) => v === before[k])).toEqual([false, false, false])
+    expect(w.find('g.pls-data').findAll('circle.pls-pt')).toHaveLength(4)
+    expect(w.find('.pls-diag').element.closest('.ana-morph')).toBe(null)
   })
 })

@@ -3,6 +3,7 @@
 // 敏感性龙卷风横条、固定/变动逐月堆叠)。锚点(2026-07-08 dev 库,2025-10):rev 9,301,530.81 / cost 6,142,810.17。
 import type { AnalysisS10Row } from '@/api/analysis'
 import { fnum } from '@/components/ana/anaFmt'
+import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import { isOutlierMonth } from '@/analysis/anaData'
 
 export interface BeModel {
@@ -83,8 +84,12 @@ export function tornadoItems(be: BeModel, s10Used: S10Used | null): TornadoItem[
 const INK = '#185FA5', RED = '#E24B4A', WARN = '#EF9F27', BLUE = '#378ADD', SLATE = 'rgba(28,28,28,.4)'   // 复审:统一主题语义红/墨灰
 const wan0 = (v: number) => (v / 10000).toFixed(0) + '万'
 
+/** C6-15:只有拖滑杆那一次重算传 instant —— 顶层 0 经 motionize 吸收进每个系列与 marker(经宿主),图不落后手指;
+ *  换年 / 换月不传,走注入的 200 同键形变(2026-09-16 行为矩阵)。 */
+const slide = (instant: boolean) => (instant ? { animationDurationUpdate: 0 } : {})
+
 /** CVP 线:x=收入达成率 0~120%,收入/总成本两线;markPoint 保本点、markArea 盈利区、markLine 当前 100%。 */
-export function cvpOption(be: BeModel): object {
+export function cvpOption(be: BeModel, instant = false): object {
   const revPts: [number, number][] = [], costPts: [number, number][] = []
   for (let x = 0; x <= 120; x += 10) {
     revPts.push([x, be.rev * x / 100])
@@ -92,6 +97,7 @@ export function cvpOption(be: BeModel): object {
   }
   const showBe = be.bePct != null && be.bePct <= 120 && be.beRev != null
   return {
+    ...slide(instant),
     grid: { left: 58, right: 24, top: 36, bottom: 34 },
     tooltip: {
       trigger: 'axis',
@@ -112,11 +118,8 @@ export function cvpOption(be: BeModel): object {
           data: [{ xAxis: 100 }],
         },
         ...(showBe ? {
-          markPoint: {
-            symbol: 'pin', symbolSize: 44, itemStyle: { color: WARN },
-            label: { fontSize: 11, color: '#fff', formatter: `保本\n${be.bePct!.toFixed(0)}%` },
-            data: [{ coord: [be.bePct, be.beRev] }],
-          },
+          // 气泡放保本点上方:保本点左边两条线都比它低,上方只有往右上走的收入线
+          markPoint: calloutMark(CALLOUT.amber, WARN, [{ coord: [be.bePct, be.beRev], lines: [`保本 ${be.bePct!.toFixed(0)}%`] }]),
           markArea: {
             silent: true, itemStyle: { color: 'rgba(93,202,165,.10)' },
             label: { show: true, position: 'insideTop', color: 'rgba(28,28,28,.45)', fontSize: 11, formatter: '盈利区' },
@@ -130,9 +133,10 @@ export function cvpOption(be: BeModel): object {
 }
 
 /** 龙卷风横条:红=下行(取负)、蓝=上行,同类目对称;类目倒序(影响最大在顶)。 */
-export function tornadoOption(items: TornadoItem[]): object {
+export function tornadoOption(items: TornadoItem[], instant = false): object {
   const rev = [...items].reverse()
   return {
+    ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 96, right: 56, top: 30, bottom: 26 },
     tooltip: {
       formatter: (p: { name: string; value: number }) => `${p.name}<br/>±10% → 净利 ±¥${Math.abs(p.value).toFixed(1)}万`,
@@ -164,8 +168,9 @@ export function splitData(months: number[], cost: (number | null)[], fr: number)
 }
 
 /** 固定/变动逐月堆叠柱 option。 */
-export function splitOption(d: SplitData): object {
+export function splitOption(d: SplitData, instant = false): object {
   return {
+    ...slide(instant),   // C6-15 同 cvpOption:一拖滑杆三张图同时重算
     grid: { left: 48, right: 16, top: 30, bottom: 26 },
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },

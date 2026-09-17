@@ -2,6 +2,8 @@
 // 色板:蓝族主色 + teal/coral/amber 辅助 + 语义红;白底、细网格(var(--divider) 观感)、
 // tooltip 深底白字沿 .cz-tip 观感(背景 rgb(40,52,66)、圆角 9、字号 11)。
 // 主题为纯 JSON,无法引用 CSS 变量 → 取 tokens.css 字面值(--divider=ink-100、--text-muted)。
+// 时长 / 曲线同理:DUR、EASE 是 tokens.css 的镜像常量,别在这里写字面量(anaMotion.ts)。
+import { DUR, EASE } from './anaMotion'
 
 // ⚠ 必须与 tokens.css 的 --font-sans 逐字一致(ECharts 主题是纯 JSON,引不了 CSS 变量)。
 // 不同步的话图表轴标签/图例会和页面其余部分不是同一个字体,并排一看就出戏。
@@ -29,6 +31,9 @@ export const FP_ANA_THEME = {
   color: ['#378ADD', '#85B7EB', '#B5D4F4', '#185FA5', '#5DCAA5', '#F0997B', '#EF9F27', '#E24B4A'],
   backgroundColor: 'transparent',
   textStyle: { fontFamily: FONT_SANS },
+  // hover 强调态(C6-04):引擎默认 300ms,读处 echarts.js:1935-1942。静态默认进主题,
+  // 动态相位(enter / update / reduced / 离屏)进 anaMotion.motionize —— 两处不混。
+  stateAnimation: { duration: DUR.state, easing: EASE.update },
   categoryAxis: {
     axisLine: { lineStyle: { color: AXIS_LINE } },
     axisTick: { show: false },
@@ -43,6 +48,9 @@ export const FP_ANA_THEME = {
   },
   legend: { textStyle: { color: 'rgba(28,28,28,.8)', fontSize: 11 }, itemWidth: 11, itemHeight: 11 },
   tooltip: {
+    // 默认 0.4s(TooltipModel.js:76);≤0 时 TooltipHTMLContent.js:154 不加 CSS transition。
+    // 指针跟随类反馈必须零延迟:任何 >0 的跟随都让浮层落后指针(C6-04)。
+    transitionDuration: 0,
     backgroundColor: 'rgb(40,52,66)',
     borderWidth: 0,
     borderRadius: 9,
@@ -58,6 +66,76 @@ export function registerFpAnaTheme(ec: { registerTheme(name: string, theme: obje
   if (registered) return
   registered = true
   ec.registerTheme('fpAnaTheme', FP_ANA_THEME)
+}
+
+/** 点标注的环色:tokens.css --hue-red / --hue-orange 的字面值 + 主题深蓝(比数据色深一档,环在光晕上看得清)。
+ *  光晕用的是数据本身的颜色(柱 / 线的色),环色只管「这是被标注的那个点」。 */
+export const CALLOUT = { red: '#BC4A41', amber: '#9D5D17', blue: '#185FA5' }
+
+export type CalloutSide = 'top' | 'bottom'
+/** 挂在 markPoint 数据项上的气泡说明;AnaEChart 读它,在图上叠一层 HTML 气泡。 */
+export interface CalloutSpec { lines: string[]; prefer: CalloutSide }
+export interface CalloutItem { coord: (number | string | null)[]; lines: string[]; [extra: string]: unknown }
+
+/**
+ * 图上「钉住一个点并写几个字」的唯一写法(2026-09-17 用户选定设计稿方案 A「深色气泡」,
+ * 稿在 ../运维文档/设计稿/已实现/图上点标注-2026-09-17/OptionA):
+ * 点上一个空心环 + 数据色光晕;字写在深色气泡里(与悬停提示框同一个样子),带尖角指着点。
+ *
+ * 为什么气泡不用 markPoint 的 label:ECharts 的标注不会夹在图边以内,也画不了「气泡挪进来、
+ * 尖角仍对准点」—— 改前两版(pin 符号、实底小签)都栽在这:字溢出针头看不见 / 靠边被裁。
+ * 这里只出环与光晕,气泡的字与方位放在数据项的 `callout` 上,由 AnaEChart 换算成像素后摆放(placeCallout)。
+ *
+ * prefer:气泡优先放点的哪一侧;放不下(碰到图例带或图底)时 placeCallout 翻到另一侧。
+ */
+export function calloutMark(hue: string, dataColor: string, items: CalloutItem[], prefer: CalloutSide = 'top'): object {
+  return {
+    silent: true,
+    symbol: 'circle',
+    label: { show: false },
+    // 光晕在前、环在后:同一个 markPoint 里后画的压在上面
+    data: items.flatMap(({ lines, ...rest }) => [
+      { ...rest, symbolSize: 18, itemStyle: { color: dataColor, opacity: 0.16 } },
+      { ...rest, symbolSize: 8, itemStyle: { color: '#fff', borderColor: hue, borderWidth: 2.2 }, callout: { lines, prefer } satisfies CalloutSpec },
+    ]),
+  }
+}
+
+/** 从 option 里收出所有气泡(seriesIndex 与 option.series 的下标一致)。 */
+export function calloutsOf(option: object): { seriesIndex: number; coord: (number | string | null)[]; spec: CalloutSpec }[] {
+  const series = (option as { series?: unknown }).series
+  const list = Array.isArray(series) ? series : series ? [series] : []
+  return list.flatMap((s, seriesIndex) => {
+    const data = (s as { markPoint?: { data?: unknown[] } } | null)?.markPoint?.data ?? []
+    return data.flatMap((d) => {
+      const it = d as { coord?: (number | string | null)[]; callout?: CalloutSpec }
+      return it.callout && it.coord ? [{ seriesIndex, coord: it.coord, spec: it.callout }] : []
+    })
+  })
+}
+
+/** 点心到气泡边:环半径 4 + 空 3.5 + 尖角 6。 */
+export const CALLOUT_GAP = 13.5
+/** 气泡上沿不得高于此:主题图例 top 0 + 内距 5 + 图标 11,底在 20 附近。 */
+export const CALLOUT_TOP_LIMIT = 22
+const CALLOUT_EDGE = 4        // 气泡离图边
+const CALLOUT_TIP_INSET = 8   // 尖角离气泡左右沿(圆角 6 + 余量)
+
+/**
+ * 气泡摆放(像素,相对图容器左上):优先侧放得下就放,放不下翻到另一侧;
+ * 横向居中于点、夹在图边以内,尖角 tipX(相对气泡左沿)始终对准点。
+ */
+export function placeCallout(
+  dot: { x: number; y: number }, box: { w: number; h: number }, canvas: { w: number; h: number }, prefer: CalloutSide,
+): { side: CalloutSide; left: number; top: number; tipX: number } {
+  const above = dot.y - CALLOUT_GAP - box.h
+  const below = dot.y + CALLOUT_GAP
+  const fitsTop = above >= CALLOUT_TOP_LIMIT
+  const fitsBottom = below + box.h <= canvas.h - CALLOUT_EDGE
+  const side: CalloutSide = prefer === 'top' ? (fitsTop || !fitsBottom ? 'top' : 'bottom') : (fitsBottom || !fitsTop ? 'bottom' : 'top')
+  const left = Math.max(CALLOUT_EDGE, Math.min(canvas.w - CALLOUT_EDGE - box.w, dot.x - box.w / 2))
+  const tipX = Math.max(CALLOUT_TIP_INSET, Math.min(box.w - CALLOUT_TIP_INSET, dot.x - left))
+  return { side, left, top: side === 'top' ? above : below, tipX }
 }
 
 /**
@@ -110,12 +188,13 @@ export function bandSeries(
  * 全局约束③早就写下了正确的判断:同类对标带「既不是 CI 也不是 PI……不含任何推断,
  * 没有抽样分布也没有模型」。一条不含推断的观测分位区间,宽只说明同类之间差距大 ——
  * 那正是读者来看这张图要知道的事,把它藏起来等于把这张卡存在的理由删掉。
- * expiry.logic.ts:rentRollOption 的注释已经按同一条理由给合约租金带写过豁免,C2 只是把
- * 这条理由补用到它真正管着的那两条上。
+ * 合约租金带(当时也走 bandSeries)的注释早按同一条理由写过豁免 —— 续签是非黑即白的个体事件,
+ * 带宽本身就是内容;C2 只是把这条理由补用到它真正管着的那两条上。
+ * (那张 ECharts 图 2026-09-12 起换成自绘 AnaRentBandChart,不再经过 bandSeries。)
  *
  * 删掉而不是留着不调用:计划 §5 禁做清单把这道门本来要管的时序外推带**全部**禁掉了
  * (月度收缴 / 办公楼电量 / 财务报表趋势 / 台账应收 / 保本点 / 退租 / 预算 / 到期墙 / 光伏三表),
- * 加上合约租金带自带豁免,今天与可预见的将来都没有一条带该受它管。留着一个零调用方的门,
+ * 合约租金带又已改为自绘,今天与可预见的将来都没有一条带该受它管。留着一个零调用方的门,
  * 只会让下一个人把它套到下一条横截面带上 —— C2 就是这么来的。
  * 真要给某条**外推**带重新配一道宽度门,把上面这段论证重读一遍再写,不要直接复活旧实现。
  *

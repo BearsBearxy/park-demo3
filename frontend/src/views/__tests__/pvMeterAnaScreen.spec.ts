@@ -26,7 +26,7 @@ import PvDetailTable from '@/views/analysis/PvDetailTable.vue'
 import { buildLab } from '@/views/analysis/pvMeterAna.logic'
 import type { ChipGroups } from '@/views/analysis/pvAnaV4.logic'
 import { pvMeterApi, type PvReadingDTO, type PvStationDTO } from '@/api/pvMeter'
-import { paramsApi } from '@/api/params'
+import { paramsApi, type ParamRowDTO } from '@/api/params'
 import { providePeriodMonths, usePeriod } from '@/analysis/usePeriod'
 import { __resetCompareForTest } from '@/analysis/useCompare'
 
@@ -176,6 +176,9 @@ async function openDrawer(w: VueWrapper) {
 }
 
 const chartName = (w: VueWrapper) => w.find('.pdc-hd .nm').text()
+/** 大图折线段:每段 `M x0,y0 L x1,y1`,按 DOM 顺序 → [x0, y0, x1, y1] */
+const lineSegs = (w: VueWrapper) => w.findAll('.pdc path.line').map(p =>
+  (p.attributes('d') ?? '').match(/-?[\d.]+/g)!.map(Number))
 const groups = (w: VueWrapper) => w.findComponent(PvChips).props('groups') as ChipGroups
 const kpi = (w: VueWrapper, label: string) => {
   const t = w.findAll('.av2-kpi').find(k => k.find('.l').text() === label)
@@ -374,6 +377,34 @@ describe('光伏分栋分析 · 选中态与抽屉入口', () => {
     expect(chartName(w)).toBe('S4')
   })
 
+  // C5-05 ④:数据到之前抽屉**不许开** —— 开着的话标题是空的、正文显「这栋可用的逐日偏离不足 8 天」,
+  // 那句在加载期不成立。加载期只出页面骨架,抽屉等 snap 第一次非空才 rise 上来。
+  it('❗#st= 深链:抄表还没回来时不开抽屉(只出骨架),数据到了才开', async () => {
+    location.hash = '#st=6'
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 2, 12, 0, 0))
+    type Rds = Awaited<ReturnType<typeof pvMeterApi.readingsYear>>
+    let release!: (v: Rds) => void
+    vi.mocked(pvMeterApi.stations).mockResolvedValue(stationsFx)
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation((y: number) =>
+      y === 2026 ? new Promise<Rds>(r => { release = r }) : Promise.resolve([]))
+    vi.mocked(paramsApi.list).mockResolvedValue([])
+    const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
+    mounted.push(w)
+    await flushPromises()
+    providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
+    usePeriod().setYear(2026); usePeriod().setGran('month'); usePeriod().setMonth(8)
+    await flushPromises()
+
+    expect(w.find('.fp-dwr').exists(), '抄表在途时抽屉必须是关的').toBe(false)
+    expect(w.find('.pma-skel').exists(), '在途时屏上是骨架').toBe(true)
+
+    release(readingsOf(2026, {}))
+    await flushPromises()
+    expect(w.find('.fp-dwr').exists(), '数据到了抽屉才开').toBe(true)
+    expect(w.find('.fp-dwr-hd h3').text()).toBe('S6')
+  })
+
   it('#st= 深链:带着 #st=6 进屏,数据到了直接开 S6 的抽屉,主图也停在 S6', async () => {
     location.hash = '#st=6'
     const w = await mountScreen()
@@ -565,7 +596,7 @@ describe('光伏分栋分析 · 主卡:刻度、事实句与判据脚', () => {
   it('大图:带与中心线在,S4 出范围的点是低于色,段底色夹进绘图区', async () => {
     const w = await mountScreen()
     expect(w.find('.pdc rect.band').exists()).toBe(true)
-    expect(w.find('.pdc line.ctr').exists()).toBe(true)
+    expect(w.find('.pdc path.ctr').exists()).toBe(true)
     const pts = w.findAll('.pdc circle.pt')
     expect(pts.length).toBeGreaterThan(20)
     expect(new Set(pts.map(p => p.attributes('fill')))).toEqual(new Set(['#E24B4A']))
@@ -616,7 +647,10 @@ describe('光伏分栋分析 · 月中未录全(§03.8)', () => {
 
   it('大图:漏抄那天折线断开 + 1 个底部刻度;未到只画淡底,不写「未到 / 漏」字', async () => {
     const w = await mountScreen(MID)
-    expect((w.find('.pdc path.line').attributes('d') ?? '').match(/M/g)).toHaveLength(2)
+    // 折线按相邻两刻度一段画(换栋形变要同结构);连续段数 = 起点接不上前一段终点的段数
+    const segs = lineSegs(w)
+    expect(segs.length).toBeGreaterThan(1)
+    expect(segs.filter((s, k) => k === 0 || s[0] !== segs[k - 1][2]).length).toBe(2)
     expect(w.findAll('.pdc rect.miss')).toHaveLength(1)
     expect(w.find('.pdc rect.future').exists()).toBe(true)
     expect(w.find('.pdc').text()).not.toMatch(/未到|漏/)
@@ -629,7 +663,7 @@ describe('光伏分栋分析 · 月中未录全(§03.8)', () => {
     const cx = w.findAll('.pdc circle.pt').map(c => Number(c.attributes('cx')))
     expect(cx.length).toBeGreaterThan(0)
     expect(cx.every(x => x < cut)).toBe(true)
-    const px = [...(w.find('.pdc path.line').attributes('d') ?? '').matchAll(/[ML](-?[\d.]+),/g)].map(m => Number(m[1]))
+    const px = [...new Set(lineSegs(w).flatMap(s => [s[0], s[2]]))]
     expect(px).toHaveLength(14)
     expect(px.every(x => x < cut)).toBe(true)
   })
@@ -845,5 +879,131 @@ describe('光伏分栋分析 · 数据质量日历接线(L6)', () => {
     await toSection(w, '高级分析')
     expect(cellsOf(w).filter(c => c.attributes('data-kind') === 'drop')).toHaveLength(0)
     expect(w.find('.pqg').text()).toContain('这条规则本段没生效')
+  })
+})
+
+describe('光伏分栋分析 · 首进与换年的形状(C6-01 / C5-02 / C5-12)', () => {
+  beforeEach(boot)
+
+  const tick = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+  /** 整年抄表一直不回来 —— 停在首进那一帧 */
+  async function mountPending() {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 2, 12, 0, 0))
+    vi.mocked(pvMeterApi.stations).mockResolvedValue(stationsFx)
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation(() => new Promise<PvReadingDTO[]>(() => {}))
+    vi.mocked(paramsApi.list).mockResolvedValue([])
+    const w = mount(PvMeterAnaView, { global: { stubs: { RouterLink: true, teleport: true } } })
+    mounted.push(w)
+    await flushPromises()
+    providePeriodMonths(['2026-07', '2026-08'], ['2026-08'])
+    usePeriod().setYear(2026)
+    usePeriod().setGran('month')
+    usePeriod().setMonth(8)
+    await flushPromises()
+    return w
+  }
+
+  it('❗首进:不转圈,骨架逐块照真版式的高钉死;KPI 槽摆 6 张占位瓦', async () => {
+    const w = await mountPending()
+    expect(w.find('.pma-skel').exists(), '首进没出骨架').toBe(true)
+    expect(w.find('.page-spin').exists(), '版式已知还在转圈').toBe(false)
+    // 骨架的三块与真版式一一对应(真版式那条在「四个状态」里钉着)
+    expect([...w.find('.pma-skel').element.children].map(e => e.className.split(' ').pop()))
+      .toEqual(['pma-main', 'pma-seg', 'pma-sec'])
+    // 块高 = 它顶替的那块的高(V4 §2.1 与代码里钉死的数;2026-09-16 起卡头、段控说明、账面量两张卡头照抄真版式):
+    // 芯片行内条 26(行高 34 由 .pma-skel-chips 给)· 大图区 260 + 上距 12 = 272 · 判据脚 16 + 2 + 16
+    // · 段控底条(宽高由里面隐形的真 Segmented 撑)· B7 374 · B8 483(按库里 13 栋)
+    expect(w.findAll('.pma-skel .fp-shim').map(e => (e.element as HTMLElement).style.height))
+      .toEqual(['26px', '260px', '34px', '', '374px', '483px'])
+    expect((w.findAll('.pma-skel .fp-shim')[1].element as HTMLElement).style.marginTop).toBe('12px')
+    // 行高 34 与档内容器 1200 住在 scoped CSS 里,照本文件既有写法从源码读规则
+    const t = readFileSync(join(__dirname, '../analysis/PvMeterAnaView.vue'), 'utf8')
+    const css = t.slice(t.indexOf('<style'))
+    const rule = (sel: string) => css.split(sel + ' {')[1]?.split('}')[0] ?? ''
+    expect(rule('.pma-skel-chips')).toMatch(/height:\s*34px/)
+    expect(rule('.pma-sec')).toMatch(/min-height:\s*1200px/)
+    // 首进期摆 6 张「—」占位瓦(与真瓦同组件同栅格,换行行数一致)
+    expect(w.find('.anx-kpis').exists()).toBe(true)
+    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(6)
+    // 骨架还在时不亮进度线:loading 初值就是 true,门槛只对「屏上已有内容」的换期有意义
+    expect(w.find('.fp-lb').exists()).toBe(false)
+  })
+
+  it('❗换年:.pma-body 不卸载、旧年内容留在原地,过 200ms 门槛才退让;数据到了原地换新', async () => {
+    const w = await mountScreen()
+    providePeriodMonths(['2025-08', '2026-07', '2026-08'], ['2026-08'])
+    const body = w.find('.pma-body').element
+    const before = bodyText(w)
+
+    let release: () => void = () => {}
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation((y: number) =>
+      new Promise<PvReadingDTO[]>(res => { release = () => res(readingsOf(y, { crash: false })) }))
+    usePeriod().setYear(2025)
+    await flushPromises()
+
+    // ① 不卸载:同一个 DOM 节点、同样三块 —— 高度不变,CLS 0(今天是整棵卸载 → 240 转圈 → 撑回)
+    expect(w.find('.pma-body').exists(), '.pma-body 在途期间被整棵卸载了').toBe(true)
+    expect(w.find('.pma-body').element, '.pma-body 被卸载重挂了').toBe(body)
+    expect([...body.children].map(e => e.className.split(' ').pop())).toEqual(['pma-main', 'pma-seg', 'pma-sec'])
+    expect(w.find('.pma-skel').exists(), '换年不该退回骨架').toBe(false)
+    expect(w.find('.page-spin').exists()).toBe(false)
+    expect(w.findAll('.anx-kpis .av2-kpi').map(k => k.find('.l').text()), 'KPI 瓦被清空了').toEqual(KPI_LABELS)
+    // ② 旧图停在旧年:year 先变、readings 后到,中间一帧不许出现「新年刻度配旧年读数」
+    expect(bodyText(w), '在途期间内容变了(snapInput 跟着 year 先换了)').toBe(before)
+    // ③ 200ms 门槛:没到就不退让
+    expect(w.find('.pma-body').classes()).not.toContain('fp-stale')
+    await tick(260)
+    await flushPromises()
+    expect(w.find('.pma-body').classes()).toContain('fp-stale')
+    expect(w.find('.pma-body').attributes('data-stale-host'), '没有 data-stale-host,退场会是硬切').toBeDefined()
+    expect(w.find('.pma-body').attributes('aria-busy')).toBe('true')
+    // ④ 进度线在 sticky 工具条上,是退让宿主的兄弟(放进去会被 opacity .42 + blur 一起糊掉)
+    expect(w.find('.anx-tools > .fp-lb').exists(), '工具条上没有进度线').toBe(true)
+    expect(w.find('.pma-body .fp-lb').exists(), '进度线跑进退让宿主里了').toBe(false)
+
+    // ⑤ 数据到:原地换新,退让摘掉,还是同一个节点
+    release()
+    await flushPromises()
+    expect(w.find('.pma-body').element).toBe(body)
+    expect(w.find('.pma-body').classes()).not.toContain('fp-stale')
+    expect(w.find('.fp-lb').exists()).toBe(false)
+    expect(bodyText(w), '新数据到了内容没换').not.toBe(before)
+  })
+
+  it('❗换年:判据与读数同一句落地 —— 参数接口先回来不许把新年阈值配给旧年的图(C5-02 ①)', async () => {
+    const w = await mountScreen()
+    providePeriodMonths(['2025-08', '2026-07', '2026-08'], ['2026-08'])
+    expect(w.find('.pma-b2').text(), '基线:默认 pv_band_sigma = 2').toContain('± 2 倍稳健波动')
+
+    let release: () => void = () => {}
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation((y: number) =>
+      new Promise<PvReadingDTO[]>(res => { release = () => res(readingsOf(y, { crash: false })) }))
+    // 参数接口(几条行)永远比整年抄表(几千条)先回来,且新年的范围倍数是 3
+    vi.mocked(paramsApi.list).mockResolvedValue([{ key: 'pv_band_sigma', scope: '', value: 3 }] as unknown as ParamRowDTO[])
+    usePeriod().setYear(2025)
+    await flushPromises()
+    // 判据脚、带上下沿、出范围天数、芯片颜色全由 crit 算 —— 读数还没到就不许换
+    expect(w.find('.pma-b2').text(), '参数先到就把新年判据配给了旧年的图').toContain('± 2 倍稳健波动')
+    release()
+    await flushPromises()
+    expect(w.find('.pma-b2').text(), '读数落地了判据没跟着换').toContain('± 3 倍稳健波动')
+  })
+
+  it('❗追加拉取(切到绝对水平取上一年):只点亮进度线,不给内容挂退让(C5-12)', async () => {
+    const w = await mountScreen()
+    let release: () => void = () => {}
+    vi.mocked(pvMeterApi.readingsYear).mockImplementation((y: number) =>
+      new Promise<PvReadingDTO[]>(res => { release = () => res(readingsOf(y, { crash: false })) }))
+    await toSection(w, '绝对水平')
+    await tick(260)
+    await flushPromises()
+    expect(w.find('.anx-tools > .fp-lb').exists(), '追加拉取没点亮进度线').toBe(true)
+    expect(w.find('.pma-body').classes(), '主数据还是当前的,不该退让').not.toContain('fp-stale')
+    expect(w.find('.pma-body').element.textContent).toContain('年等效小时')
+    release()
+    await flushPromises()
+    expect(w.find('.fp-lb').exists()).toBe(false)
   })
 })

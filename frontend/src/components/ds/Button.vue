@@ -122,5 +122,15 @@ const resolvedVariantKey = computed(() => VARIANT_ALIAS[props.variant] ?? props.
 .ds-btn[data-variant="filled"]:hover:not(:disabled)     { --ds-btn-bg: var(--control-solid-hover); }
 .ds-btn[data-variant="danger"]:hover:not(:disabled)     { --ds-btn-bg: var(--status-danger-hover); }
 
+/* C2-01 按压:换一档底色,不缩放、不 filter。按下 0ms 瞬到,松开随上面的 background 120ms 回弹。
+   与 :hover 同为 (0,4,0),靠源码顺序赢。filled / danger 按下与 hover 同色 —— --ink-900 之下
+   没有更深的令牌,触屏无 hover 时反馈量一样。 */
+.ds-btn:active:not(:disabled) { transition-duration: 0ms; }
+.ds-btn[data-variant="borderless"]:active:not(:disabled),
+.ds-btn[data-variant="outline"]:active:not(:disabled)    { --ds-btn-bg: var(--ink-100); }
+.ds-btn[data-variant="gray"]:active:not(:disabled)       { --ds-btn-bg: var(--ink-300); }
+.ds-btn[data-variant="filled"]:active:not(:disabled),
+.ds-btn[data-variant="danger"]:active:not(:disabled)     { --ds-btn-bg: var(--control-solid-hover); }
+
 .ds-btn:disabled { opacity: .4; cursor: not-allowed; }
 </style>

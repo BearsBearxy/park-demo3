@@ -3,7 +3,9 @@
 // 左 300×300 正方区(+34 轴字):绘图区 248×248(padL 40 / padR 12 / padT 12),两轴同一把刻度,
 // 所以虚线 y = x 是 45°;±容差是沿对角线的斜带。右栏说明 + 录入入口(emit record,由屏去跳楼栋档案)。
 // 一栋没录也照样画框线、对角线与带,只是没有点(计划 §1 #4)。画板无悬停,这里也不加。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useEnterPhase } from '@/components/ana/anaMotion'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe + ana-morph
 import { PV_COLORS } from './pvAnaColors'
 import type { PvLedgerScatterProps } from './pvAnaV4.logic'
 
@@ -12,6 +14,10 @@ const emit = defineEmits<{ record: [] }>()
 
 const SQ = 300, PL = 40, PT = 12, P = 248
 const B = PT + P
+// 切到「绝对水平」挂上来时在视口内点组擦入 320;换期 200 同键形变(点按栋、带跟量程)。
+// 画布定宽不随容器变,hold 只看擦入
+const el = ref<HTMLElement | null>(null)
+const first = useEnterPhase(el)
 // 没有点时没有值域可言:取一段只为画出带的形状,不出刻度字。
 // 下沿 : 上沿 = 3 : 8 时带的上沿在右端正好不冲出画布顶(y ≈ 0)
 const EMPTY_DOMAIN = { min: 3, max: 8 }
@@ -57,7 +63,7 @@ const note = computed(() => {
 
 <template>
   <div class="pls">
-    <div class="pls-fig">
+    <div ref="el" class="pls-fig">
       <svg :width="SQ" :height="SQ + 34" :viewBox="`0 0 ${SQ} ${SQ + 34}`" class="pls-svg" role="img" aria-label="台账装机 vs 板数 × 标称">
         <template v-for="v in ticks" :key="v">
           <line class="pls-gl" :x1="px(v)" :x2="px(v)" :y1="PT" :y2="B" />
@@ -65,11 +71,14 @@ const note = computed(() => {
           <text class="pls-ax pls-tx" :x="px(v)" :y="B + 16" text-anchor="middle">{{ v }}</text>
           <text class="pls-ax pls-ty" :x="PL - 6" :y="py(v) + 4" text-anchor="end">{{ v }}</text>
         </template>
-        <path class="pls-band" :d="band" />
+        <!-- 带是框的一部分(没有点也画),不擦,只跟量程形变 -->
+        <g :class="['pls-bandg', 'ana-morph', { hold: first }]"><path class="pls-band" :d="band" /></g>
         <line class="pls-diag" :x1="PL" :y1="B" :x2="PL + P" :y2="PT" :stroke="PV_COLORS.REF_DIAG" stroke-width="1" stroke-dasharray="4 3" />
         <text class="pls-ax" x="186.3" y="140">虚线 = 两者相等</text>
-        <circle v-for="p in data.points" :key="p.id" class="pls-pt" :cx="px(p.x)" :cy="py(p.y)" r="5"
-          :fill="PV_COLORS.FOCUS" fill-opacity=".22" :stroke="PV_COLORS.FOCUS" stroke-opacity=".35" />
+        <g :class="['pls-data', 'ana-morph', { first, hold: first }]" @animationend.self="first = false" @animationcancel.self="first = false">
+          <circle v-for="p in data.points" :key="p.id" class="pls-pt" :cx="px(p.x)" :cy="py(p.y)" r="5"
+            :fill="PV_COLORS.FOCUS" fill-opacity=".22" :stroke="PV_COLORS.FOCUS" stroke-opacity=".35" />
+        </g>
         <line class="pls-axl pls-axl-x" :x1="PL" :x2="PL + P" :y1="B" :y2="B" />
         <line class="pls-axl pls-axl-y" :x1="PL" :x2="PL" :y1="PT" :y2="B" />
         <text class="pls-ax" :x="PL + P" :y="B + 30" text-anchor="end">板数 × 单块标称 ÷ 1000（kWp）</text>
@@ -99,6 +108,8 @@ const note = computed(() => {
 .pls { display: flex; gap: 32px; align-items: flex-start; }
 .pls-fig { flex: 0 0 300px; }
 .pls-svg { display: block; }
+/* 首挂:点组自左擦出一次;fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.pls-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .pls-side { flex: 1 1 auto; max-width: 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
 .pls-gl { stroke: var(--ink-100); stroke-width: 1; }
 .pls-axl { stroke: var(--ink-300); stroke-opacity: .75; stroke-width: 1; }

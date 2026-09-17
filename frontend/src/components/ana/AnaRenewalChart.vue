@@ -2,6 +2,8 @@
 // 「续签率从哪来」自绘 SVG:堆叠条 + 0~100% 数轴,照 board-expiry 实现,含悬停。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { renewalGeo, type RenewalBox } from '@/views/analysis/renewalChart.logic'
+import { useEnterPhase, useMorphHold } from './anaMotion'
+import './ana.css'   // @keyframes fp-wipe · .ana-morph
 
 const props = withDefaults(defineProps<{
   hits: number
@@ -20,6 +22,10 @@ onMounted(() => {
   w.value = Math.round(host.value.clientWidth) || 560
 })
 onBeforeUnmount(() => ro?.disconnect())
+
+// 擦入:挂载 / 切回页签时在视口内就擦。合同快照无期,数据只在切回重拉时变 —— 变了走同键形变;RO 改宽瞬算。
+const first = useEnterPhase(host)
+const hold = useMorphHold(w, first)
 
 const box = computed<RenewalBox>(() => ({ width: w.value, height: props.height, padL: 6, padR: 6 }))
 const geo = computed(() => renewalGeo(props.hits, props.n, props.band, box.value))
@@ -66,21 +72,26 @@ const tipX = computed(() => {
 <template>
   <div ref="host" class="arn-host" @mousemove="onMove" @mouseleave="hover = null">
     <svg v-if="geo" class="arn" :width="box.width" :height="box.height" :viewBox="`0 0 ${box.width} ${box.height}`" role="img">
-      <!-- 堆叠条:蓝=续签,灰=未续签 -->
-      <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.totalW" :height="geo.bar.h" rx="4" class="arn-track" />
-      <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.hitW" :height="geo.bar.h" rx="4" class="arn-hit" />
-      <text :x="geo.barLabels.hit.x" :y="geo.barLabels.hit.y"
-        :class="geo.barLabels.hit.inside ? 'arn-hitlab' : 'arn-hitlab-out'">{{ geo.barLabels.hit.text }}</text>
-      <text v-if="geo.barLabels.miss" :x="geo.barLabels.miss.x" :y="geo.barLabels.miss.y" class="arn-misslab">{{ geo.barLabels.miss.text }}</text>
-
-      <!-- 数轴:区间色块 + 轴线 + 刻度 + 观测值竖线 -->
-      <rect v-if="geo.band" :x="geo.band.x" :y="geo.axis.y - 13" :width="geo.band.w" height="26" class="arn-band" />
+      <!-- 数轴的尺子部分:区间色块 + 轴线 + 刻度。留在擦入组外先在(C6-25);色块随数变,单包一层形变 -->
+      <g class="ana-morph" :class="{ hold }">
+        <rect v-if="geo.band" :x="geo.band.x" :y="geo.axis.y - 13" :width="geo.band.w" height="26" class="arn-band" />
+      </g>
       <line :x1="geo.axis.x0" :x2="geo.axis.x1" :y1="geo.axis.y" :y2="geo.axis.y" class="arn-axis" />
-      <template v-if="geo.marker">
-        <line :x1="geo.marker.x" :x2="geo.marker.x" :y1="geo.axis.y - 13" :y2="geo.axis.y + 13" class="arn-marker" />
-      </template>
       <text v-for="t in geo.ticks" :key="t.v" :x="t.x" :y="geo.axis.y + 26"
         :class="['arn-tick', t.strong ? 'arn-tick-strong' : '']">{{ t.label }}</text>
+
+      <!-- 数据组:擦入时条与观测竖线一起自左露出;数变时同键形变 -->
+      <g class="arn-data ana-morph" :class="{ first, hold }" @animationend.self="first = false" @animationcancel.self="first = false">
+        <!-- 堆叠条:蓝=续签,灰=未续签 -->
+        <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.totalW" :height="geo.bar.h" rx="4" class="arn-track" />
+        <rect :x="geo.bar.x" :y="geo.bar.y" :width="geo.bar.hitW" :height="geo.bar.h" rx="4" class="arn-hit" />
+        <text :x="geo.barLabels.hit.x" :y="geo.barLabels.hit.y"
+          :class="geo.barLabels.hit.inside ? 'arn-hitlab' : 'arn-hitlab-out'">{{ geo.barLabels.hit.text }}</text>
+        <text v-if="geo.barLabels.miss" :x="geo.barLabels.miss.x" :y="geo.barLabels.miss.y" class="arn-misslab">{{ geo.barLabels.miss.text }}</text>
+
+        <!-- 观测值竖线:path 不用 line —— <line> 的端点过渡不了,条在滑、线会先跳到终点 -->
+        <path v-if="geo.marker" :d="`M${geo.marker.x},${geo.axis.y - 13} V${geo.axis.y + 13}`" class="arn-marker" />
+      </g>
 
       <template v-if="tipLines.length">
         <g :transform="`translate(${tipX}, 0)`">
@@ -96,6 +107,8 @@ const tipX = computed(() => {
 <style scoped>
 .arn-host { width: 100%; }
 .arn { display: block; }
+/* 擦入:数据组自左擦出(首进 / 切回页签);fp-wipe 在 ana.css,不能写进 scoped(名字会被加 hash) */
+.arn-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .arn-track { fill: #E9EBEF; }
 .arn-hit { fill: #2E7CD6; }
 .arn-hitlab { fill: #fff; font-size: 12px; font-weight: 600; }

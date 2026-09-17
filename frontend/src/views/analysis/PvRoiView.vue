@@ -4,17 +4,20 @@
 // 数据 = pv_record 全月份(fetchPvAll,口径与 v1 一致);投资额=「目标与阈值」pvInvestment(万,localStorage)。
 // 分栋抄表分析已独立成屏(pv-meter-analysis,PV-ANALYSIS-SPEC §00):本屏只留附表6 口径的投资回收。
 // 数据变换纯函数抽于 pvRoi.logic.ts(单测)。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
+import AnaSkelChart from '@/components/ana/AnaSkelChart.vue'
 import AnaEmpty from '@/components/ana/AnaEmpty.vue'
 import AnaKpiTile from '@/components/ana/AnaKpiTile.vue'
 import { fetchPvAll, fetchPvPhases } from '@/analysis/anaData'
 import { anaSettings } from '@/analysis/anaSettings'
 import { finWan } from '@/utils/finFmt'
 import { fnum } from '@/components/ana/anaFmt'
+import { CALLOUT, calloutMark } from '@/components/ana/anaTheme'
 import type { PvPhaseDTO, PvRecordDTO } from '@/types/pv'
 import { buildRamp, cumSeries, phaseMonthly, phaseSummaries } from './pvRoi.logic'
+import { inViewport, useEnterPhase } from '@/components/ana/anaMotion'
 
 const phases = ref<PvPhaseDTO[]>([])
 const records = ref<PvRecordDTO[]>([])
@@ -43,6 +46,13 @@ const tot = computed(() => {
   }
 })
 const rpct = (x: number): string => (x * 100).toFixed(1) + '%'
+
+// 回收进度条是 DOM 图(2026-09-16 行为矩阵):视口内首挂 / 切回页签 fp-wipe 320,投资额改动 --pct 形变 200。
+// 条挂在骨架之后的 v-else 里,屏的 onMounted 那一刻还不在 —— 首挂由下面这条 post watch 补判,
+// 切回页签由 useEnterPhase 管。
+const barEl = ref<HTMLElement | null>(null)
+const barFirst = useEnterPhase(barEl)
+watch(barEl, (e, old) => { if (e && !old) barFirst.value = inViewport(e) }, { flush: 'post' })
 const onlineLabel = (p: PvPhaseDTO): string => (p.online ? p.online.replace('-', '年') + '月并网' : '并网月未录')
 
 // ── 爬坡线 + 投资额 markLine + 预估回收点 markPoint ──
@@ -55,17 +65,15 @@ const rampOpt = computed<object>(() => {
   const w = (a: (number | null)[]): (number | null)[] => a.map((v) => (v == null ? null : +(v / 1e4).toFixed(1)))
   const actualW = w(r.actual), projW = w(r.projected)
   const markPoint = r.hitIdx != null
-    ? {
-        symbol: 'pin', symbolSize: 42, itemStyle: { color: '#185FA5' },
-        label: { formatter: '回收', color: '#fff', fontSize: 11 },
-        data: [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number] }],
-      }
+    ? calloutMark(CALLOUT.blue, '#378ADD', [{ coord: [r.hitIdx, (actualW[r.hitIdx] ?? projW[r.hitIdx]) as number], lines: ['回收 ' + r.labels[r.hitIdx]] }])
     : undefined
   const yMax = Math.max(investW * 1.1, ...actualW.map((v) => v ?? 0), ...projW.map((v) => v ?? 0))
   return {
     tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => (typeof v === 'number' ? '¥' + fnum(v, 1) + '万' : '—') },
     legend: { top: 0 },
-    grid: { left: 56, right: 60, top: 32, bottom: 26 },
+    // top 44(原 32):回收点落在投资额线上,离绘图区顶只有 max 留的那 1/11。设计稿方案 A 按 44 画:
+    // 1366 宽气泡在点上方、图例之下;390 宽上方放不下,placeCallout 翻到点下方
+    grid: { left: 56, right: 60, top: 44, bottom: 26 },
     xAxis: { type: 'category', data: r.labels },
     yAxis: { type: 'value', max: Math.ceil(yMax), axisLabel: { formatter: '{value} 万' } },
     series: [
@@ -75,8 +83,9 @@ const rampOpt = computed<object>(() => {
         markLine: {
           silent: true, symbol: 'none',
           lineStyle: { type: 'dashed', color: '#E24B4A', width: 1.5 },
-          // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)
-          label: { position: 'insideEndTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
+          // 图表清晰化 §1:标签画在绘图区内,不许被图边裁切(默认 end 落图外右缘被裁,同 CockpitView 预算线)。
+          // 放左端:回收点落在这条线上,右端要留给「回收」签(2026-09-17 放右端时两者叠了 1.4px)
+          label: { position: 'insideStartTop', formatter: '投资额 ' + fnum(investW, 0) + ' 万', fontSize: 11, color: '#E24B4A' },
           data: [{ yAxis: investW }],
         },
         markPoint: r.hitIdx != null && actualW[r.hitIdx] != null ? markPoint : undefined,
@@ -135,7 +144,50 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
         :note="hitYm ? '预估回收点 ' + hitYm : '按年化外推'" />
     </template>
 
-    <div v-if="loading" class="page-loading"><span class="page-spin" /></div>
+    <!-- 首进:版式已知就不转圈(C6-01)。本屏无页头,块高逐块照它顶替的那块 ——
+         卡头 20(.av2-card-h 下距 8 合 28)、两张图各 300(:height 字面值);
+         同排的 s4 卡真内容比 300 矮,栅格行高由 s8 决定,骨架同排也留 300。
+         s8 两块顶替 AnaEChart → AnaSkelChart(与图同表降档);s4 两块顶替的是进度卡 / 明细表,照旧写死。
+         数据到了原地硬切,不做淡入;KPI 行由 .anx-kpis 的 min-height 94 兜位。 -->
+    <!-- skel:start —— 首进骨架(与下方真版式逐块同高,改真版式的卡头 / 文字行时同步改这里;anaSkeletonParity.spec 盯着) -->
+    <div v-if="loading" class="roi2-page ana-skel">
+      <!-- 卡头与回收卡的行照抄真版式(手机上会折行,灰条顶不住);金额 / 期别换成同长的隐形占位。
+           明细表块 = .roi2-tblwrap 的 max-height 210。 -->
+      <div class="av2-grid">
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h">
+            <span class="t">累计收益爬坡 vs 工程总投资</span>
+            <span class="hint">实线=已记账 · 虚线=按年化外推<span class="ana-hole"> · 预估回收点 0000-00</span> · 万元</span>
+          </div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
+          <div class="roi2-big"><span class="ana-hole">00.0%</span></div>
+          <div class="roi2-bar"></div>
+          <div class="roi2-rows">
+            <div v-for="k in ['累计电费收益', '其中 自消纳', '其中 上网', '预估回收周期']" :key="k" class="r">
+              <span class="k">{{ k }}</span><span class="v ana-hole">¥0,000.00万</span>
+            </div>
+          </div>
+        </div>
+        <div class="av2-card av2-s8">
+          <div class="av2-card-h"><span class="t">分期收益(自消纳 + 上网)</span><span class="hint"><span class="hint-desk">点击柱子查看该期月度明细</span></span></div>
+          <AnaSkelChart :height="300" />
+        </div>
+        <div class="av2-card av2-s4">
+          <div class="av2-card-h">
+            <span class="t"><span class="ana-hole">一期 X-X 座</span> · 月度明细</span>
+            <span class="hint ana-hole">0000年00月并网 · 00 个月</span>
+          </div>
+          <div class="roi2-sel ana-hole">
+            <span>累计 <b>¥000.00万</b></span><span>年化 <b>¥000.00万</b></span><span>占全园 <b>00.0%</b></span>
+          </div>
+          <div class="fp-shim" style="height: 210px"></div>
+        </div>
+      </div>
+    </div>
+    <!-- skel:end -->
     <div v-else class="roi2-page">
       <!-- 空态:附表6 无任何记账月 → 深链录入屏,不画假图 -->
       <AnaEmpty
@@ -161,7 +213,7 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
           <div class="av2-card av2-s4">
             <div class="av2-card-h"><span class="t">成本回收进度</span><span class="hint">全园合计口径</span></div>
             <div class="roi2-big">{{ rpct(tot.recovery) }}</div>
-            <div class="roi2-bar"><div class="roi2-bar-fill" :style="{ width: (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
+            <div ref="barEl" class="roi2-bar" :class="{ first: barFirst }" @animationend.self="barFirst = false" @animationcancel.self="barFirst = false"><div class="roi2-bar-fill" :style="{ '--pct': (Math.min(1, tot.recovery) * 100).toFixed(1) + '%' }"></div></div>
             <div class="roi2-rows">
               <div class="r"><span class="k">累计电费收益</span><span class="v">{{ finWan(tot.cum) }}</span></div>
               <div class="r"><span class="k">其中 自消纳</span><span class="v">{{ finWan(tot.selfAmt) }}</span></div>
@@ -219,7 +271,9 @@ const wan2 = (v: number): string => fnum(v / 1e4, 2)
 /* 回收进度卡 */
 .roi2-big { font-size: var(--fs-display); font-weight: var(--fw-semibold); font-family: var(--font-mono); color: var(--hue-blue); letter-spacing: -0.02em; }
 .roi2-bar { height: 8px; border-radius: var(--radius-full); background: var(--ink-100); overflow: hidden; margin: 10px 0 14px; }
-.roi2-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--hue-blue); }
+/* 擦入挂在轨道上,不挂在 fill 上:fill 的 clip-path 已被 --pct 占着,fp-wipe 的终帧 inset(0) 会把它盖成满条 */
+.roi2-bar.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
+.roi2-bar-fill { height: 100%; width: 100%; border-radius: var(--radius-full); background: var(--hue-blue); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0 round var(--radius-full)); transition: clip-path var(--dur-base) var(--ease-standard); }
 .roi2-rows { display: flex; flex-direction: column; gap: 8px; }
 .roi2-rows .r { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .roi2-rows .k { font-size: var(--fs-micro); color: var(--text-muted); }

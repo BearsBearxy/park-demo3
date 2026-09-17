@@ -145,8 +145,12 @@ function go(s: Step) {
   font-size: var(--fs-label);
   color: var(--text-muted);
   white-space: nowrap;
-  transition: background var(--dur-fast), color var(--dur-fast);
+  transition: background var(--dur-fast) var(--ease-standard),
+              color var(--dur-fast) var(--ease-standard),
+              box-shadow var(--dur-fast) var(--ease-standard);
 }
+/* C2-03 ④ 按压:.on 是 cursor:default 的当前步,不压。 */
+.fss-step:active:not(.on):not(:disabled) { background: var(--ink-100); transition-duration: 0ms; }
 .fss-step.done { color: var(--text-secondary); }
 .fss-step:hover:not(.on) { color: var(--text-primary); background: var(--ink-050); }
 
@@ -154,7 +158,6 @@ function go(s: Step) {
 .fss-step.on {
   background: var(--surface-white);
   color: var(--text-primary);
-  font-weight: var(--fw-semibold);
   box-shadow: var(--shadow-pill, 0 1px 4px rgba(28, 28, 28, .12));
   cursor: default;
 }

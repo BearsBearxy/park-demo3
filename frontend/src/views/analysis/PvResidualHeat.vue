@@ -10,7 +10,9 @@
  */
 import { computed, ref } from 'vue'
 import { useWidth } from '@/components/ana/useWidth'
+import { useEnterPhase, useMorphHold } from '@/components/ana/anaMotion'
 import { sgn } from '@/components/ana/anaFmt'
+import '@/components/ana/ana.css'   // @keyframes fp-wipe
 import { tipWidth, tipX } from '@/components/ana/chartTip'
 import { PHASE_COLORS, PV_COLORS } from './pvAnaColors'
 import type { PvResidualHeatProps, ResidualCell } from './pvAnaV4.logic'
@@ -32,6 +34,10 @@ function tint(hex: string, a: number): string {
 }
 
 const { el, width } = useWidth(496)
+// 切到「高级分析」挂上来时在视口内行区擦入 320;换期格子只过渡底色 200(行序固定、格按月作键,元素复用)。
+// 格宽跟容器变,宽度不过渡;擦入中 / 改宽时 hold 关掉
+const first = useEnterPhase(el)
+const hold = useMorphHold(width, first)
 /** 格宽 = (容器 − 栋名列 70 − 12 道间距) ÷ 12,钉在 28…56:宽卡片不留半边空白,窄卡片不低于 28 */
 const cw = computed(() => Math.max(28, Math.min(56, Math.floor((width.value - 70 - 24) / 12))))
 /** mono 11px 每字 6.6、两侧各留 2:放不下时正数去掉「+」—— 蓝色与悬停气泡仍说方向,负数的「−」不省 */
@@ -100,12 +106,14 @@ const legendNote = computed(() => {
         <span v-for="mo in months" :key="mo.m" class="prh-mo" :class="{ cur: mo.cur }"
           :style="{ width: `${cw}px`, flexBasis: `${cw}px`, ...(mo.cur ? { background: PV_COLORS.FOCUS } : {}) }">{{ mo.m }}月</span>
       </div>
-      <div v-for="(r, i) in rows" :key="r.id" class="prh-row" :data-id="r.id">
-        <span class="prh-name" :class="{ on: r.on, out: !r.inModel }"><i class="dot" :style="{ background: r.dot }" />{{ r.name }}</span>
-        <span v-for="c in r.cells" :key="c.month" class="prh-cell"
-          :class="{ ring: hm && hm.i === i && hm.m === c.month }"
-          :style="{ width: `${cw}px`, flexBasis: `${cw}px`, background: c.bg, color: c.fg, border: c.border }"
-          @mouseenter="hm = c.hover ? { i, m: c.month } : null">{{ c.t }}</span>
+      <div :class="['prh-data', { first, hold }]" @animationend.self="first = false" @animationcancel.self="first = false">
+        <div v-for="(r, i) in rows" :key="r.id" class="prh-row" :data-id="r.id">
+          <span class="prh-name" :class="{ on: r.on, out: !r.inModel }"><i class="dot" :style="{ background: r.dot }" />{{ r.name }}</span>
+          <span v-for="c in r.cells" :key="c.month" class="prh-cell"
+            :class="{ ring: hm && hm.i === i && hm.m === c.month }"
+            :style="{ width: `${cw}px`, flexBasis: `${cw}px`, background: c.bg, color: c.fg, border: c.border }"
+            @mouseenter="hm = c.hover ? { i, m: c.month } : null">{{ c.t }}</span>
+        </div>
       </div>
       <div v-if="tip" class="cz-tip pv-tip" :style="{ left: `${tip.left}px`, top: `${tip.top}px` }">
         <span v-for="(l, k) in tip.lines" :key="k" :style="{ fontWeight: l.b ?? 400, opacity: l.dim }">{{ l.t }}</span>
@@ -122,6 +130,9 @@ const legendNote = computed(() => {
 
 <style scoped>
 .prh-grid { position: relative; display: flex; flex-direction: column; gap: 2px; }
+/* 行区单独一层:擦入只擦格子,月份表头(尺子)先在;间距与外层同 2px */
+.prh-data { display: flex; flex-direction: column; gap: 2px; }
+.prh-data.first { clip-path: inset(0 100% 0 0); animation: fp-wipe var(--dur-slow) var(--ease-out) both; }
 .prh-head, .prh-row { display: flex; align-items: center; gap: 2px; }
 .prh-head { height: 20px; }
 .prh-row { height: 28px; }
@@ -132,7 +143,9 @@ const legendNote = computed(() => {
 }
 .prh-mo { height: 20px; color: var(--text-muted); }
 .prh-mo.cur { color: var(--text-on-solid); }
-.prh-cell { height: 28px; cursor: default; }
+/* 换期只过渡底色;宽度(随容器)、描边、悬停环都瞬到 */
+.prh-cell { height: 28px; cursor: default; transition: background-color var(--dur-base) var(--ease-standard); }
+.prh-data.hold .prh-cell { transition: none; }
 .prh-cell.ring { box-shadow: inset 0 0 0 2px var(--ink-900); }
 .prh-name {
   width: 70px; flex: 0 0 70px; display: flex; align-items: center; gap: 6px; font-size: var(--fs-label);

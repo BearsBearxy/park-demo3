@@ -92,3 +92,30 @@ describe('ExpiryView · 合约租金带挂载测(D1 可执行形式)', () => {
     expect(sentenceTag).toMatch(/v-if="rentRollText"/)
   })
 })
+
+// ── C6-01 首进骨架:整区转圈换真版式骨架,块高逐块钉住它顶替的那块 ──
+// 骨架是模板里的静态几何,没有可跑的逻辑;能坏的只有「有人改了图的 :height,骨架没跟着改」
+// —— 那一刻骨架与真版式不再等高,硬切回来就是位移。所以断言钉坐标:骨架里每条 .fp-shim 的高
+// (逐条、按出现顺序),以及头两张卡必须盖住它们那两张图的 :height 字面值。
+// 头两张之后全是条件卡(先谈哪几户 / 续签率 ×2 / Pareto / 集中度 / 清单),数目随数据变,骨架不猜。
+describe('ExpiryView · C6-01 首进骨架(块高钉真版式)', () => {
+  it('❗首帧就是骨架不是转圈;骨架块高逐条钉住,盖住到期墙 250 与合约租金带 280', () => {
+    const w = mount(ExpiryView)
+    expect(w.find('.ana-skel').exists(), '首帧没出骨架').toBe(true)
+    expect(w.find('.page-spin').exists(), '版式已知还在转圈').toBe(false)
+    // 首进期摆 9 张「—」占位瓦(与真瓦同组件同栅格,换行行数一致;2026-09-16 起取代 min-height 兜一行)
+    expect(w.find('.anx-kpis').exists()).toBe(true)
+    expect(w.findAll('.anx-kpis .anx-kpi-hold')).toHaveLength(9)
+    // 到期墙那块是 AnaSkelChart(与图同表降档,S 档见 motionR2-g1.spec),按渲染出的 DOM 读,不按源码字面
+    const shim = w.findAll('.ana-skel .fp-shim').map((e) => parseInt((e.element as HTMLElement).style.height, 10))
+    // 2026-09-16 起八张卡照抄真版式(卡头 / 读数句 / 计数行),灰条只剩图块与表块:
+    // 到期墙 250 · 租金带 280 · 先谈哪几户 480 · 续签数轴 112 · 敏感性表 182 · Pareto 300 · 集中度环 300 · 合同清单 480
+    expect(shim).toEqual([250, 280, 480, 112, 182, 300, 300, 480])
+    const src = readFileSync(join(__dirname, '../analysis/ExpiryView.vue'), 'utf8')
+    const tpl = src.slice(src.indexOf('<template>'))
+    const real = tpl.slice(tpl.indexOf('v-else-if="!stats"'))
+    const charts = [...real.matchAll(/:height="(\d+)"/g)].map((m) => +m[1])
+    expect(charts.slice(0, 2)).toEqual([250, 280])
+    expect(charts.slice(0, 2).every((h) => shim.includes(h)), '头两张图的高没在骨架里留位').toBe(true)
+  })
+})

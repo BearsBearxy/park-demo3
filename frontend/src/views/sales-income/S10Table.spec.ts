@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { describe, it, expect } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, vi } from 'vitest'
 import S10Table from './S10Table.vue'
 import { LAYOUTS, leavesOf, type Group } from './layout'
 import type { S10RecordDTO, S10ColId } from '@/types/s10'
@@ -101,5 +101,26 @@ describe('S10Table 合计口径', () => {
       props: { groups: LAYOUTS.factory, phaseName: '二期厂房', year: 2026, month: 6, rows: [row], edit: true, sumIds },
     })
     expect(w.find('td.s10-c-total').text()).toBe('107.00')
+  })
+
+  // C5-08 行定位高亮:摘类只认本行 td 的 animationend —— 不用 { once: true },
+  // 否则行内先结束的子动画会把这唯一一次监听消费掉,2s 底色渐隐提前摘干净。
+  it('深链高亮行:td 里子元素冒泡上来的 animationend 不摘 .row-flash,td 自己的才摘', async () => {
+    Element.prototype.scrollIntoView = vi.fn()   // jsdom 没有这个方法
+    const w = mount(S10Table, {
+      props: {
+        groups: LAYOUTS.factory, phaseName: '二期厂房', year: 2026, month: 6,
+        rows: [makeRow('factory', {})], edit: false, focusTenant: 'T',
+      },
+    })
+    await flushPromises()
+    const tr = w.find('tbody tr.s10-row').element
+    expect(tr.classList.contains('row-flash'), '定位到的行加了高亮类').toBe(true)
+    tr.querySelector('.s10-tname')!.dispatchEvent(new Event('animationend', { bubbles: true }))
+    expect(tr.classList.contains('row-flash'), '子元素的动画结束不摘类').toBe(true)
+    tr.querySelector('td')!.dispatchEvent(new Event('animationend', { bubbles: true }))
+    expect(tr.classList.contains('row-flash'), '本行 td 的动画结束才摘').toBe(false)
+    // @ts-expect-error 恢复成 jsdom 原本没有的样子
+    delete Element.prototype.scrollIntoView
   })
 })
