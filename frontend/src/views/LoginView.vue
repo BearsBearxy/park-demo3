@@ -20,8 +20,11 @@ import { BRAND } from '@/brand'
 // 异步组件:登录页在首屏包里,WebGL 引擎 12KB 不该跟着进首屏
 const GradientWave = defineAsyncComponent(() => import('@/components/fp/GradientWave.vue'))
 // 流动背景的颜色:第一个是底色,其余三层随噪声叠上去。取品牌两色(#38b6ff / #5271ff)压暗到近黑,
-// 保证左侧白字与右侧白卡的对比。想更亮/更暗就改这里。
-const WAVE_COLORS = ['#060a13', '#0c2748', '#1a1f5e', '#081a33']
+// 保证左侧白字与右侧白卡的对比。想更亮/更暗就改这里(改了第一个,下面样式里 .lg-root 的底色一起改)。
+// 2026-09-18 用户:再暗一点 —— 三层叠色各压到原来的约六成。
+const WAVE_COLORS = ['#04070d', '#08192e', '#10133a', '#05101f']
+// 流动速度:越小越慢。组件默认 0.00001;2026-09-18 用户要求放慢,取一半。
+const WAVE_SPEED = 0.000005
 
 const router = useRouter()
 const route = useRoute()
@@ -367,7 +370,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="lg-root">
-    <GradientWave class="lg-wave" :colors="WAVE_COLORS" />
+    <GradientWave class="lg-wave" :colors="WAVE_COLORS" :noise-speed="WAVE_SPEED" />
     <canvas ref="bgEl" class="lg-bg" aria-hidden="true" />
     <div class="lg-frame">
       <aside class="lg-brand">
@@ -459,7 +462,7 @@ onBeforeUnmount(() => {
   overflow-x: hidden;
   color: #fff;
   /* 底色 = 流动背景的底色;WebGL 不可用 / 引擎还没加载到时露出的就是它 */
-  background: #060a13;
+  background: #04070d;
 }
 .lg-root .lg-wave { position: fixed; inset: 0; }
 .lg-bg { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }

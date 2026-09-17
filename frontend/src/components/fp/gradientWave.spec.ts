@@ -36,10 +36,10 @@ beforeEach(() => {
 
 describe('GradientWave', () => {
   it('挂载:用组件自己的 canvas 和传入的颜色建引擎并开播;isPlaying 切换停/播;卸载释放', async () => {
-    const w = mount(GradientWave, { props: { colors: ['#060a13', '#0c2748'] } })
+    const w = mount(GradientWave, { props: { colors: ['#060a13', '#0c2748'], noiseSpeed: 0.000005 } })
     await flushPromises()
     expect(h.state.canvas).toBe(w.find('canvas').element)
-    expect((h.state.opts as { colors: string[] }).colors).toEqual(['#060a13', '#0c2748'])
+    expect(h.state.opts).toMatchObject({ colors: ['#060a13', '#0c2748'], noiseSpeed: 0.000005 })   // 登录页调色、调速都走这两个参数
     expect(h.calls).toEqual(['new', 'start'])
     await w.setProps({ isPlaying: false })
     await w.setProps({ isPlaying: true })
