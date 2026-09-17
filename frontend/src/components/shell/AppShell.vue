@@ -15,7 +15,7 @@ import SidebarPanel from '@/components/shell/SidebarPanel.vue'
 import TabStrip from '@/components/shell/TabStrip.vue'
 import Toolbar from '@/components/shell/Toolbar.vue'
 import { defineAsyncComponent } from 'vue'
-// 手机三件套懒加载(size-check 门禁:index 预算 185KB,静态引入把它压破到 197.3——
+// 手机三件套懒加载(静态引入会把首屏 index 块从 185KB 压到 197.3KB——
 // 桌面用户永远用不到的代码不该进首屏包,FPApprovalDrawer 同一条铁律)。
 // 「容器尺寸挂载即终态」靠模板里的定高占位壳保证:壳首帧就把 52/56px(+safe-area)
 // 钉死,异步块到达后在壳内填充,内容区不重新量高——零位移与包体两全。

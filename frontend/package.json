@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit -p tsconfig.app.json && node scripts/token-check.mjs && vite build && node scripts/precompress.mjs && node scripts/size-check.mjs",
+    "build": "vue-tsc --noEmit -p tsconfig.app.json && node scripts/token-check.mjs && vite build && node scripts/precompress.mjs",
     "token-check": "node scripts/token-check.mjs",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",

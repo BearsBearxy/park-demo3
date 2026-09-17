@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { BRAND_TITLE } from './src/brand'
 
 export default defineConfig({
-  plugins: [vue()],
+  // brand-title:把 index.html 里的 %BRAND_TITLE% 换成 src/brand.ts 的产品名(浏览器标签页标题)
+  plugins: [vue(), { name: 'brand-title', transformIndexHtml: (html) => html.replaceAll('%BRAND_TITLE%', BRAND_TITLE) }],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
