@@ -238,6 +238,47 @@ describe('关页面前的二次确认', () => {
   })
 })
 
+describe('编辑态按屏登记 / 登录清页签(TAB-BAR-SPEC §1 §2)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks() })
+
+  it('❗editingOn 只认登记在这一屏的;退出后不算', () => {
+    const auth = useAuthStore()
+    const a = Symbol('a')
+    const b = Symbol('b')
+    auth.openEditor(a, 'params')
+    auth.openEditor(b, 'ledger')
+    expect(auth.editingOn('params')).toBe(true)
+    expect(auth.editingOn('alloc')).toBe(false)
+    auth.closeEditor(a)
+    expect(auth.editingOn('params')).toBe(false)
+    expect(auth.editing).toBe(true)
+    auth.closeEditor(b)
+  })
+
+  it('❗每次登录:loginSeq +1,并清掉这个人存的页签(同一个人过期重登也清)', async () => {
+    localStorage.setItem('fp-app-tabs:zs', '["ledger"]')
+    localStorage.setItem('fp-app-pinned:zs', '[]')
+    localStorage.setItem('fp-app-recent:zs', '["ledger"]')
+    localStorage.setItem('fp-app-tabs:ls', '["tenants"]')
+    localStorage.setItem('fp-app-tabs', '["meters"]')   // 改版前不分人的旧键:可能是上一个过期没登出的人的
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValueOnce({ token: 't', username: 'zs', displayName: '张三' })
+    await auth.login({ username: 'zs', password: 'x' })
+    expect(auth.loginSeq).toBe(1)
+    for (const k of ['fp-app-tabs:zs', 'fp-app-pinned:zs', 'fp-app-recent:zs', 'fp-app-tabs']) expect(localStorage.getItem(k), k).toBeNull()
+    expect(localStorage.getItem('fp-app-tabs:ls'), '别人的不动').toBe('["tenants"]')
+  })
+
+  it('登出清掉这个人存的页签', async () => {
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValue({ token: 't', username: 'zs', displayName: '张三' })
+    await auth.login({ username: 'zs', password: 'x' })
+    localStorage.setItem('fp-app-tabs:zs', '["ledger"]')
+    auth.logout()
+    expect(localStorage.getItem('fp-app-tabs:zs')).toBeNull()
+  })
+})
+
 // ══════════ 角色行(§6 角色行,P5) ══════════
 //
 // 侧栏头像下那一行字。改前它是个二值常量:「只读账号」/「管理员(可写)」——
@@ -287,14 +328,16 @@ describe('角色行 roleLabel(P5)', () => {
     expect(auth.roleLabel).not.toContain('（派生）')
   })
 
-  // 破坏验证:把 landing 里的 readonly / reviewer 任一参数去掉 → 对应那条红
-  it('❗auth.landing 把四个判据一处读齐 —— 六个调用点各传一遍必然漏', () => {
+  // 破坏验证:把 roleHome 里的 readonly / reviewer 任一参数去掉 → 对应那条红
+  // 2026-09-18(TAB-BAR-SPEC §2 §5.3):登录一律落首页;按角色那一屏改给收藏预置用
+  it('❗auth.roleHome 把四个判据一处读齐;auth.landing 一律首页', () => {
     const auth = useAuthStore()
     auth.permissions = []                       // 零 :edit
-    expect(auth.landing).toBe('/cockpit')
+    expect(auth.roleHome).toBe('/cockpit')
     auth.permissions = ['review:approve']       // 审核员:仍零 :edit,但要落审核队列那一屏
-    expect(auth.landing).toBe('/data-home')
+    expect(auth.roleHome).toBe('/data-home')
     auth.permissions = ['ledger:edit']
-    expect(auth.landing).toBe('/data-home')
+    expect(auth.roleHome).toBe('/data-home')
+    expect(auth.landing).toBe('/home')
   })
 })

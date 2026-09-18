@@ -4,12 +4,10 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
 import { usePresenceStore } from '@/stores/presence'
-import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
+import { useTabsStore } from '@/stores/tabs'
 import { useUpdateStore } from '@/stores/update'
 import { BRAND } from '@/brand'
-import { fpBuildRoutes } from '@/nav/fpNav'
-import { NAV_SCOPE_PREFIX } from '@/utils/lockScopes'
 import { useViewport } from '@/composables/useViewport'
 import { useDeferredFlag } from '@/composables/useDeferredFlag'
 import FPLoadBar from '@/components/fp/FPLoadBar.vue'
@@ -36,6 +34,7 @@ const WhatsNewDialog = defineAsyncComponent(() => import('@/components/shell/Wha
 const ChangelogDialog = defineAsyncComponent(() => import('@/components/shell/ChangelogDialog.vue'))
 
 const ui = useUiStore()
+const tabs = useTabsStore()
 // 导航进度条:过 200ms 门才亮(预热命中的绝大多数导航全程静默),退场立刻。
 // storeToRefs:useDeferredFlag 收的是 Ref,直接传 ui.navigating 会丢响应性。
 const { navigating } = storeToRefs(ui)
@@ -76,12 +75,11 @@ watch(mnavOpen, (v) => { if (v) mnavEverOpened.value = true })
 const paletteOpen = ref(false)
 const paletteEverOpened = ref(false)
 watch(paletteOpen, (v) => { if (v) paletteEverOpened.value = true })
-const paletteMode = ref<'jump' | 'new'>('jump')
-
-function openPalette(mode: 'jump' | 'new' = 'jump') {
-  paletteMode.value = mode
+function openPalette() {
   paletteOpen.value = true
 }
+// 首页的搜索框(页面够不着这里的 ref,递计数过来)
+watch(() => ui.paletteReq, () => openPalette())
 
 function onGlobalKey(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -89,7 +87,7 @@ function onGlobalKey(e: KeyboardEvent) {
     if (paletteOpen.value) {
       paletteOpen.value = false
     } else {
-      openPalette('jump')
+      openPalette()
     }
   }
   // 浮层侧栏 Esc 关(spec §3.2,同样不落盘);命令面板开着时 Esc 归它,别一键双关
@@ -111,29 +109,6 @@ watch(() => route.path, () => {
 }, { immediate: true })
 onUnmounted(() => presence.stop())
 
-// 预览槽被顶掉的提示(§4.3)。**只在被顶的那屏本人正在编辑时出** —— 其余情况静默:
-// 预览槽本来就是「随手看一眼」的槽,每换一次屏都吭一声等于把提示训练成噪音。
-// 载体不用 FPToast(它没有动作按钮),复用本文件 .fp-net-toast 的位置与深色语言。
-const tabs = useTabsStore()
-const ROUTES = fpBuildRoutes()
-const evictValue = ref('')
-const evictMsg = computed(() => (evictValue.value ? `「${ROUTES[evictValue.value]?.page ?? evictValue.value}」预览页签已被替换` : ''))
-let evictTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => tabs.evicted, (v) => {
-  if (!v) return
-  tabs.clearEvicted()
-  if (!presence.holdsEditUnder(NAV_SCOPE_PREFIX[v])) return
-  evictValue.value = v
-  if (evictTimer) clearTimeout(evictTimer)
-  evictTimer = setTimeout(() => { evictValue.value = '' }, 4000)
-})
-function pinEvicted() {
-  if (evictTimer) clearTimeout(evictTimer)
-  tabs.pin(evictValue.value)
-  evictValue.value = ''
-}
-onUnmounted(() => { if (evictTimer) clearTimeout(evictTimer) })
-
 // ── 版本更新(VERSION-UPDATE-SPEC §3/§6) ──
 // 外壳是全站唯一常驻的组件,轮询与「首次打开弹一次」都挂这里:
 // 挂在屏上就要挂 48 遍,而且换屏会重来一次。
@@ -146,8 +121,8 @@ onMounted(() => {
 })
 onUnmounted(() => upd.stopPolling())
 
-// 提示条不止一条时往上让位:更新这条排在最上面(网络出错 / 页签被顶那两条已有自己的规则)。
-const toastLift = computed(() => (ui.netError ? 1 : 0) + (evictMsg.value ? 1 : 0))
+// 提示条不止一条时往上让位:更新这条排在网络出错那条上面。
+const toastLift = computed(() => (ui.netError ? 1 : 0))
 
 // 浮层里点条目导航成功后收起(与 MobileNavDrawer「点条目后关抽屉」同义——
 // 「看一眼」到点中目标即结束;SidebarPanel 不在本组件手里,以路由变化为信号)
@@ -160,7 +135,7 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
     <!-- nav card: IconRail + optional vertical divider + optional SidebarPanel。
          S 档整卡不渲染(铬边不是内容,可卸载);L/M 档面板改浮层,只有 XL 内联 -->
     <div v-if="tier !== 's'" class="fp-nav-card">
-      <IconRail @open-command="openPalette('jump')" />
+      <IconRail @open-command="openPalette()" />
       <template v-if="ui.sbOpen && tier === 'xl'">
         <!-- vertical divider: only shown when sidebar is open -->
         <div class="fp-vdiv" />
@@ -177,14 +152,16 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
     <!-- main card: TabStrip → Toolbar → content -->
     <div class="fp-main-card">
       <template v-if="tier !== 's'">
-        <TabStrip @open-command="openPalette($event as 'jump' | 'new')" />
-        <Toolbar @open-command="openPalette($event as 'jump' | 'new')" />
+        <TabStrip />
+        <Toolbar @open-command="openPalette()" />
       </template>
       <!-- S 档换手机顶栏(§4.1);tabs store 照常运转,只是不渲染 TabStrip。
            定高占位壳:异步组件到达前高度已终态,内容区首帧即不再变(见 script 注释) -->
-      <div v-else class="fp-mtb-slot"><MobileTopBar @open-drawer="mnavOpen = true" @open-command="openPalette('jump')" /></div>
+      <div v-else class="fp-mtb-slot"><MobileTopBar @open-drawer="mnavOpen = true" @open-command="openPalette()" /></div>
       <!-- content area:永不进 v-if——档位切换只换四周铬边(LAYOUT-STABILITY §7.3) -->
-      <main class="fp-content">
+      <!-- 内容区里的点击登记一下:随后若有导航且没人说开在哪,就按「页面里的链接」开在右边
+           (TAB-BAR-SPEC §2;驾驶舱「去看看」、空态「去录入」这类裸 push / RouterLink 都靠它) -->
+      <main class="fp-content" @click.capture="tabs.markInPage()">
         <slot />
       </main>
       <div v-if="tier === 's'" class="fp-mbn-slot"><MobileBottomNav /></div>
@@ -201,7 +178,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   <CommandPalette
     v-if="paletteEverOpened"
     :open="paletteOpen"
-    :mode="paletteMode"
     @close="paletteOpen = false"
   />
 
@@ -215,11 +191,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
       <span class="msg">{{ ui.netError }}</span>
       <button class="act" @click="reloadPage">刷新</button>
       <button class="act ghost" @click="ui.dismissNetError()">×</button>
-    </div>
-    <div v-if="evictMsg" class="fp-net-toast fp-evict-toast" :class="{ stacked: !!ui.netError }" role="alert">
-      <span class="msg">{{ evictMsg }}</span>
-      <button class="act" @click="pinEvicted">固定它</button>
-      <button class="act ghost" @click="evictValue = ''">×</button>
     </div>
     <!-- 发新版了请刷新(VERSION-UPDATE-SPEC §6)。复用上面那套深色语言与位置;
          不自动消失 —— 网络出错那条 8 秒自消,这条要等他处理。 -->
@@ -261,9 +232,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   background:transparent; color:#fff; font-size:12px; cursor:pointer; }
 .fp-net-toast .act:hover { background:rgba(255,255,255,.14); }
 .fp-net-toast .act.ghost { border-color:transparent; padding:0 6px; }
-
-/* 被顶提示复用上面那套深色语言与位置;两条同时在场时它上移一格,不叠字。 */
-.fp-evict-toast.stacked { bottom: 84px; }
 
 /* 版本更新提示条:永远在最上面一格。--lift 是它下面还有几条(0/1/2),一条 56px。 */
 .fp-upd-toast { bottom: calc(28px + var(--lift, 0) * 56px); }
@@ -346,9 +314,6 @@ watch(() => route.path, () => { if (floatActive.value) ui.closeTransient() })
   .fp-main-card { border: none; border-radius: 0; }
   /* toast 抬到底栏之上(§4.5):56px 底栏 + 20px 呼吸 + safe-area,不被底栏遮住 */
   .fp-net-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
-  /* @media 不加特异度:桌面那条 .fp-evict-toast.stacked{84px} 在 S 档照样赢,
-     而底下这条已经抬到 76px+safe —— 两块各高约 46px,只差 8px 就压字。这里跟着抬。 */
-  .fp-evict-toast.stacked { bottom: calc(56px + 76px + env(safe-area-inset-bottom)); }
   /* 同理:桌面那条 .fp-upd-toast 的 calc 特异度与这条相同,靠 @media 写在后面取胜。
      手机上文字长了要折行,所以不写 white-space,只把行高给够。 */
   .fp-upd-toast { bottom: calc(56px + 20px + env(safe-area-inset-bottom) + var(--lift, 0) * 56px); }

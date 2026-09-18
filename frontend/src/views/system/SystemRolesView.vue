@@ -4,10 +4,11 @@
 // 分组标题按 key 前缀推(system:* / lock:* 各自成组,其余归业务写权限),13 行才不至于平铺成一片。
 // 预置角色(builtin=true)不可删但权限与导航层照改 —— 「交付后客户自己调」是本屏存在的理由;删除只对自定义角色出现。
 // 读全开(§0):无 system:edit 时矩阵照常显示当前配置,只是复选框 disabled、没有保存/新增/删除入口。
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { systemApi } from '@/api/system'
 import type { NavLayerDTO, PermDTO, RoleDTO } from '@/types/system'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import FPToast from '@/components/fp/FPToast.vue'
 import Button from '@/components/ds/Button.vue'
@@ -84,6 +85,14 @@ const dirty = computed(() => {
   return f.name !== r.name || f.remark !== (r.remark ?? '')
     || !sameSet(f.perms, r.perms) || !sameSet(f.navLayers, r.navLayers)
 })
+
+// 有没保存的改动 = 在编辑:登记进 auth.editors —— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
+const meId = Symbol('roles')
+const screen = useScreen()
+// 撤登记时顺带结束授权:这是最后一个编辑态的话,授权不该留到 30 分钟到期(还有别的在编辑时它自己不作为)
+function unregister() { auth.closeEditor(meId); void auth.endElevation() }
+watch(dirty, (on) => { if (on) auth.openEditor(meId, screen); else unregister() })
+onUnmounted(unregister)
 
 function guardDirty(): boolean {
   return !dirty.value || confirm('有未保存的改动,继续将放弃。确认?')

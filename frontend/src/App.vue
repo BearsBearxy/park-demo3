@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { shellOf, staleShellNames } from '@/composables/useTabShells'
 import { useRoute } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
 import { useAuthStore } from '@/stores/auth'
@@ -14,6 +15,8 @@ const auth = useAuthStore()
 const isBare = computed(() => route.path === '/login' || route.path === '/change-password')
 // 路由 value = tab value:path 恒为 '/'+value(router/index.ts)
 const routeValue = computed(() => route.path.slice(1))
+// KeepAlive 按页签卸载:关掉 / 重新加载的页签当场卸掉旧实例(composables/useTabShells.ts)
+const staleShells = computed(() => staleShellNames(tabs.epoch))
 // 模板里拿不到全局 location,显式暴露
 const reload = () => window.location.reload()
 // 哪一种漂移:别人登了,还是别处登出了。两句话、两个按钮。
@@ -65,12 +68,15 @@ const elevWhat = computed(() => auth.grants.map((g) => g.permLabel).join('、'))
   <!-- KeepAlive per tab:key = value:epoch。TabStrip 点击=命中缓存,恢复浏览状态;
        openFresh(核对跳转/关闭重开/换层)递增 epoch → key 变 → 全新实例走 onMounted。
        共用同一组件的兄弟路由(充电桩汽车/电动车)value 不同 → key 天然不同,切换必重建,原「陈旧数据」防线不回归
-       max 16 = 专员一个月要开的屏数(D9;spec §4.1 末行)。侧边栏点击不再重置实例之后,
-       这个数字决定「切回去还在不在」——10 时排在第 11 个的屏一切回就是空白重来。 -->
+       不设 max:缓存里只有开着的页签(关掉 / 换掉的屏按纪元 exclude 当场卸载,useTabShells),
+       同一屏只开一份,上限就是全站屏数。设 max 的话它会按最久没看挤掉页签 —— 连正在编辑的也挤(TAB-BAR-SPEC §1)。 -->
   <AppShell v-else>
     <router-view v-slot="{ Component }">
-      <keep-alive :max="16">
-        <component :is="Component" :key="routeValue + ':' + tabs.epochOf(routeValue)" />
+      <keep-alive :exclude="staleShells">
+        <component
+          :is="Component && shellOf(routeValue + ':' + tabs.epochOf(routeValue), Component)"
+          :key="routeValue + ':' + tabs.epochOf(routeValue)"
+        />
       </keep-alive>
     </router-view>
   </AppShell>

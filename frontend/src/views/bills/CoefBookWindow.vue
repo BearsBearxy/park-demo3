@@ -20,6 +20,7 @@ import {
   floorStashAfter, poolsOfFeeKey, resolveCoefPrice, type CoefStash, type CoefTenantRow,
 } from '@/utils/coefBookLogic'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -87,7 +88,8 @@ async function onTaken() {
 //   不登记的话守卫两头都失效:别的页面退出编辑时会把本窗口正用着的授权一起结束掉,
 //   而本窗口退出时又会被别的页面挡住结束不了。
 const meId = Symbol('coef-book')
-watch(editMode, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+const screen = useScreen()
+watch(editMode, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 const stash = ref<CoefStash>(new Map())
 

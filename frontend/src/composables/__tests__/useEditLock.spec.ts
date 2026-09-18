@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useEditMode } from '@/composables/useEditMode'
 import { useEditLock } from '@/composables/useEditLock'
 import { usePresenceStore } from '@/stores/presence'
+import { shellOf } from '@/composables/useTabShells'
 import api from '@/api'
 
 vi.mock('@/api', () => ({
@@ -363,5 +364,66 @@ describe('编辑模式 × 编辑锁', () => {
 
     expect(editMode.value).toBe(true)
     expect(api.post).not.toHaveBeenCalled()
+  })
+})
+
+// 握着锁 = 这一屏在编辑(TAB-BAR-SPEC §2):台账宽表、三大报表、账册模板只握锁、编辑态是裸 ref,
+// 登记放在锁这一层才兜得住它们。屏名来自 KeepAlive 外壳(useTabShells)。
+describe('握着锁 = 这一屏在编辑(auth.editors)', () => {
+  let n = 0
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+    sessionStorage.clear()
+    vi.clearAllMocks()
+  })
+  /** 挂在页签外壳里的宿主(壳按 key 全局缓存,每条用例换一个屏名)。 */
+  function host() {
+    const screen = `lock-screen-${++n}`
+    let lock!: ReturnType<typeof useEditLock>
+    const Host = defineComponent({ setup() { lock = useEditLock(); return () => null } })
+    const w = mount(defineComponent({ render: () => h(shellOf(`${screen}:0`, Host)) }))
+    return { w, screen, lock: () => lock }
+  }
+
+  it('❗拿到锁就登记在这一屏;还锁就撤', async () => {
+    const { screen, lock } = host()
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await lock().acquire(SCOPE)
+    expect(auth.editingOn(screen)).toBe(true)
+    lock().release()
+    expect(auth.editingOn(screen)).toBe(false)
+    expect(auth.editing).toBe(false)
+  })
+
+  it('没拿到锁不登记', async () => {
+    const { screen, lock } = host()
+    vi.mocked(api.post).mockResolvedValueOnce(HELD_BY_ZHANG as never)
+    await lock().acquire(SCOPE)
+    expect(useAuthStore().editingOn(screen)).toBe(false)
+  })
+
+  it('❗宿主卸载也撤', async () => {
+    const { w, screen, lock } = host()
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await lock().acquire(SCOPE)
+    w.unmount()
+    expect(useAuthStore().editingOn(screen)).toBe(false)
+  })
+
+  it('❗最后一个编辑态撤登记时结束授权;从没握过锁的 release 不碰授权', async () => {
+    const { lock } = host()
+    const auth = useAuthStore()
+    vi.mocked(api.post).mockResolvedValueOnce([
+      { perm: 'entry:edit', permLabel: '月度录入', authorizer: 'boss', authorizerName: '主管', expiresAt: Date.now() + 600_000 },
+    ] as never)
+    await auth.requestElevation(['entry:edit'], 'boss', 'x')
+    lock().release()                      // 没握过锁:不许顺手把刚拿到的授权结束掉
+    expect(api.delete).not.toHaveBeenCalledWith('/auth/elevate')
+    vi.mocked(api.post).mockResolvedValueOnce(GRANTED as never)
+    await lock().acquire(SCOPE)
+    lock().release()
+    expect(api.delete).toHaveBeenCalledWith('/auth/elevate')
   })
 })

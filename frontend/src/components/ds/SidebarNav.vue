@@ -109,9 +109,11 @@ export default defineComponent({
     active:     { type: String,  default: undefined },
     modelValue: { type: String,  default: undefined },
     openTitles: { type: Array as () => string[], default: undefined },
+    /** 开了才发 context 事件并拦下浏览器自己的右键菜单(外壳侧栏用;TAB-BAR-SPEC §2) */
+    contextMenu: { type: Boolean, default: false },
   },
 
-  emits: ["select", "update:modelValue", "toggle"],
+  emits: ["select", "update:modelValue", "toggle", "context"],
 
   setup(props, { emit }) {
     // controlled / uncontrolled duality
@@ -157,6 +159,14 @@ export default defineComponent({
           "data-on": on ? "" : undefined,
           style: rowStyle,
           onClick: (e: MouseEvent) => isDir ? toggle(it.value) : select(it.value, e),
+          // 中键点 = 在新页签打开(同 Ctrl + 点);mousedown 拦住浏览器的中键自动滚动
+          onMousedown: (e: MouseEvent) => { if (e.button === 1) e.preventDefault() },
+          onAuxclick: (e: MouseEvent) => { if (!isDir && e.button === 1) select(it.value, e) },
+          onContextmenu: (e: MouseEvent) => {
+            if (isDir || !props.contextMenu) return
+            e.preventDefault()
+            emit("context", it.value, e)
+          },
         }, [
           // active accent bar
           on ? h("span", { style: { position: "absolute", left: "0", top: "8px", bottom: "8px", width: "3px", borderRadius: "3px", background: "var(--text-primary)" } }) : null,

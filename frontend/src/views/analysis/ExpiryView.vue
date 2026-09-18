@@ -5,6 +5,7 @@
 // 无日期时保留降级空态(判据 wall.totalCount > 0,本机数据日期全 NULL 仍走空态,口径数值不变)。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { onReactivated } from '@/composables/onReactivated'
 import AnaShell from './AnaShell.vue'
 import AnaEChart from '@/components/ana/AnaEChart.vue'
@@ -28,6 +29,11 @@ import {
 } from './expiry.logic'
 
 const router = useRouter()
+// 到期清单点一行 → 合同管理定位这一份。页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2)
+function goContract(contractNo: string) {
+  useTabsStore().open('contracts', { pin: true })
+  router.push({ path: '/contracts', query: { contractNo } })
+}
 const loading = ref(true)
 const contracts = ref<ContractDTO[]>([])
 
@@ -281,7 +287,7 @@ function onParetoClick(p: unknown) {
             <table class="ak-tbl">
               <thead><tr><th>到期</th><th>租户</th><th>月租(万)</th><th>剩余</th></tr></thead>
               <tbody>
-                <tr v-for="r in rentRoll.expiringList" :key="r.id" class="exp-row" @click="router.push({ path: '/contracts', query: { contractNo: r.contractNo } })">
+                <tr v-for="r in rentRoll.expiringList" :key="r.id" class="exp-row" @click="goContract(r.contractNo)">
                   <td class="mono mut" style="text-align: left">{{ r.endDate.slice(2, 7) }}</td>
                   <td style="text-align: right">{{ r.tenantName }}</td>
                   <td class="mono">{{ wan(r.monthlyRent) }}</td>

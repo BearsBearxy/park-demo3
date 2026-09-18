@@ -525,7 +525,8 @@ async function onBindIssue(name: string, tenantId: number) {
 
 function gotoTenants() {
   issuesOpen.value = false
-  tabs.open('tenants')
+  // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2):附表10 不被换掉,回来还在这个月
+  tabs.open('tenants', { pin: true })
   router.push('/tenants')
 }
 

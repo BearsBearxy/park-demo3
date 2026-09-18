@@ -11,6 +11,8 @@ import { iconFor } from '@/components/ds/icon'
 import Avatar from '@/components/ds/Avatar.vue'
 import Popover from '@/components/ds/Popover.vue'
 import { BRAND_TITLE } from '@/brand'
+import { personNick } from '@/utils/personNick'
+import ShellTip from '@/components/shell/ShellTip.vue'
 
 const emit = defineEmits<{ 'open-command': [] }>()
 
@@ -69,14 +71,16 @@ function goLayer(layer: NavLayer) {
     <!-- footer: margin-top auto -->
     <div class="fp-rail-foot">
       <!-- command button: emits open-command for Task 6 to wire -->
-      <button class="fp-rail-cmd" aria-label="搜索 / 跳转" @click="emit('open-command')">
-        <component :is="iconFor('command')" :size="16" />
-      </button>
+      <ShellTip title="搜索页面" kbd="Ctrl K" sub="和顶栏的搜索框是同一个" align="start" up>
+        <button class="fp-rail-cmd" aria-label="搜索 / 跳转" @click="emit('open-command')">
+          <component :is="iconFor('command')" :size="16" />
+        </button>
+      </ShellTip>
       <!-- 账号菜单:向上弹(头像在屏幕左下角,默认向下会出屏) -->
       <Popover :width="200" :style="{ top: 'auto', bottom: 'calc(100% + 8px)', left: '0' }">
         <template #trigger>
           <button class="fp-rail-user" :title="auth.displayName ?? '未登录'" aria-label="当前账号">
-            <Avatar :name="auth.displayName ?? '—'" :size="32" />
+            <Avatar :name="auth.displayName ?? '—'" :text="personNick(auth.displayName)" :size="32" />
           </button>
         </template>
         <div class="fp-user-menu">

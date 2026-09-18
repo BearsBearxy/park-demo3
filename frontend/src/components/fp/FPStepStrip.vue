@@ -16,6 +16,7 @@
  *   状态点在没有 state 时整个不渲染（报表层那组），有 state 时 todo 也占位。
  */
 import { useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { iconFor } from '@/components/ds/icon'
 
 export interface Step {
@@ -58,6 +59,9 @@ const router = useRouter()
 function go(s: Step) {
   // 点当前屏什么都不做：再 push 一次自己只会把浏览状态（筛选、滚动位置）冲掉
   if (s.value === props.current) return
+  // 同一条工序链上一步一步走,在当前页签里换(TAB-BAR-SPEC §2 例外)—— 显式登记,
+  // 盖过「内容区里点出来的 = 开在右边」的默认,否则五步铺满五个页签
+  useTabsStore().open(s.value)
   router.push(props.query ? { path: '/' + s.value, query: props.query } : '/' + s.value)
 }
 </script>

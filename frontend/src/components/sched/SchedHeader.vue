@@ -5,6 +5,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { useEditLock } from '@/composables/useEditLock'
 import { useReviewStore } from '@/stores/review'
 import { periodOfKey } from '@/types/review'
@@ -72,7 +73,8 @@ const canAsk = computed(() => auth.can(props.perm) || auth.can('elevate:request'
 //   不登记的话守卫两头都失效:别的页面退出编辑时会以为"没人在编辑了",
 //   把本屏正用着的授权一起结束掉;而本屏退出时又会被别的页面挡住结束不了。
 const meId = Symbol('sched-header')
-watch(() => props.edit, (on) => { if (on) auth.openEditor(meId); else auth.closeEditor(meId) })
+const screen = useScreen()
+watch(() => props.edit, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
 onUnmounted(() => auth.closeEditor(meId))
 
 // ── 编辑锁(CONCURRENCY-SPEC §4) ──

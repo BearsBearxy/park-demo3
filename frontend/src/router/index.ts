@@ -9,6 +9,8 @@ const PlaceholderView = () => import('@/views/PlaceholderView.vue')
 const Gallery = () => import('@/views/Gallery.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const ChangePasswordView = () => import('@/views/ChangePasswordView.vue')
+// 首页与新标签页:同一个组件,按 route.meta.value 分两种点击规则(TAB-BAR-SPEC §5.5)
+const HomeView = () => import('@/views/home/HomeView.vue')
 // 充电桩两屏(汽车/电动车)共用同一参数化 View
 const ChargingView = () => import('@/views/charging/ChargingView.vue')
 // 损益附表 1–5:5 条路由共用同一参数化 View(P2-D spec D4)
@@ -82,12 +84,21 @@ if (import.meta.env.DEV) {
   if (missing.length || orphan.length) console.warn('[router] 路由表与导航不同步', { 导航有但没配组件: missing, 配了组件但导航里没有: orphan })
 }
 
+// 浏览器后退 / 前进:后退到一个已经关掉的屏时开在右边的新页签,不把正看着的那一格换掉(TAB-BAR-SPEC §2)。
+// ⚠ 必须在 createRouter(createWebHistory)**之前**注册:浏览器派发 popstate 时每个监听跑完就清一次微任务,
+//   router 的监听若在前,它的导航守卫(beforeEach)会在这里置位之前就跑完(2026-09-18 浏览器实测)。
+let popNav = false
+if (typeof window !== 'undefined') window.addEventListener('popstate', () => { popNav = true })
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // 落地页按「这个人来干什么」定(§6:总经理落驾驶舱、审核员落本月出账);判据全在 auth.landing 一处。
+    // 登录后一律落首页(TAB-BAR-SPEC §2);判据全在 auth.landing 一处。
     // pinia 先于 router 安装,守卫期取 store 安全。
     { path: '/', redirect: () => useAuthStore().landing },
+    // 首页与新标签页:不在导航里,但都是页签(stores/tabs.ts 的 HOME / NEWTAB)
+    { path: '/home', component: HomeView, meta: { value: 'home', page: '首页' } },
+    { path: '/newtab', component: HomeView, meta: { value: 'newtab', page: '新标签页' } },
     // S21:价目管理退役,旧地址(书签 / 最近访问)落到计费参数页
     { path: '/price-cfg', redirect: '/params' },
     // 2026-09-03(SIDEBAR-UX-REDESIGN D4):银行流水条目删除,旧地址(书签 / 最近访问)落首页。
@@ -115,6 +126,10 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   // 置位要在鉴权分支之前:返回重定向对象时本次导航仍会被最终导航的 afterEach 复位,不会漏关
   useUiStore().startNav()
+  // 这一跳想开在哪:没人登记过就按「页面里点出来的 / 后退前进」补默认(TAB-BAR-SPEC §2)
+  const tv = (to.meta as Record<string, unknown>).value
+  if (typeof tv === 'string') useTabsStore().beforeNav(tv, popNav)
+  popNav = false
   if (!auth.isAuthed && to.path !== '/login') {
     return { path: '/login', query: { redirect: to.path } }
   }
@@ -134,12 +149,19 @@ router.beforeEach((to) => {
   }
 })
 
-router.afterEach((to) => {
+router.afterEach((to, _from, failure) => {
   useUiStore().endNav()
   const v = (to.meta as Record<string, unknown>).value as string | undefined
-  if (v) {
+  // 被取消 / 重复的导航也会走到这里,那时路由根本没动 —— 不能把 active 记成没到达的目标
+  if (v && !failure) {
     // ponytail: useTabsStore() called lazily — pinia is active by afterEach time
-    useTabsStore().open(v)
+    // 先 commit 再 setActive:commit 按「导航之前那一格」决定换哪一格。导航落定这一刻才动页签条,
+    // 取消 / 失败 / 被守卫踢走的导航不留痕(stores/tabs.ts 顶部注释)。
+    const tabs = useTabsStore()
+    tabs.commit(v)
+    tabs.setActive(v)
+  } else if (failure) {
+    useTabsStore().clearIntent()
   }
 })
 
@@ -151,6 +173,7 @@ router.afterEach((to) => {
 const CHUNK_FAIL = /dynamically imported module|Importing a module script failed|Loading chunk|CSS chunk/i
 router.onError((err: unknown) => {
   useUiStore().endNav()
+  useTabsStore().clearIntent()
   if (CHUNK_FAIL.test(String((err as Error)?.message ?? err))) useUpdateStore().reportBlocked()
 })
 

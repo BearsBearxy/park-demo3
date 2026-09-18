@@ -128,11 +128,17 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   /**
-   * 登录后该落哪一屏(§6 落地页)。四个参数都在这里读齐 —— 六个调用点各传一遍的话,
-   * 漏传一个不报错、只是那条路径悄悄回到旧的三档。
+   * 这个人「进系统是来干什么的」那一屏(原 §6 落地页)。四个参数都在这里读齐 —— 各调用点
+   * 各传一遍的话,漏传一个不报错、只是悄悄回到旧的三档。
+   * 2026-09-18 起登录不再落到这里(见 landing),它只用来给第一次登录的收藏预置一格(TAB-BAR-SPEC §5.3)。
    */
-  const landing = computed(() => landingPath(navLayers.value, can('system:view'),
+  const roleHome = computed(() => landingPath(navLayers.value, can('system:view'),
     { readonly: isReadonly.value, reviewer: can('review:approve') }))
+  /** 登录后落哪:一律首页(TAB-BAR-SPEC §2)。router 守卫、登录页、改密页都读这一处。 */
+  const landing = computed(() => '/home')
+
+  /** 每登录一次 +1。页签据此清空 —— 同一个人过期重登 me 不变,只看 me 会漏(TAB-BAR-SPEC §1)。 */
+  const loginSeq = ref(0)
 
   async function login({ username, password }: { username: string; password: string }, remember = true) {
     const { token: t, username: un, displayName: dn, role: r, permissions: ps, navLayers: nl, roleNames: rn, mustChangePassword: mcp } = await api.post<{ token: string; username?: string; displayName: string; role?: string; permissions?: string[]; navLayers?: string[]; roleNames?: string[]; mustChangePassword?: boolean }>('/auth/login', { username, password })
@@ -159,6 +165,9 @@ export const useAuthStore = defineStore('auth', () => {
     // 不置真时必须显式清:同机上一个账号留下的 '1' 会把这个账号也拦进改密页
     // 绑的是用户名不是令牌串(2026-09-12):同一个人重新登录换一张令牌不算漂移。
     bindSession(me.value)   // 本标签页主动登录 → 重新绑定，别被漂移守卫误伤
+    // 登录后页签只有首页(TAB-BAR-SPEC §1):页签 store 若还没建,它建起来时读的就是这里清空后的存储
+    if (me.value) clearTabStorage(me.value)
+    loginSeq.value++
     drifted.value = false
     grants.value = []   // 上一个账号的授权残留不能带进新会话
     retick()
@@ -181,20 +190,29 @@ export const useAuthStore = defineStore('auth', () => {
   //
   // 放在 store 而不是 composable 的模块作用域:附表页头与系数簿/收款簿两个窗口是直接调
   // endElevation() 的(它们各有自己的退出语义,没套 composable),守卫放在调用方就漏了它们。
-  const editors = ref(new Set<symbol>())
-  function openEditor(id: symbol) { editors.value.add(id) }
+  //
+  // 登记时带上「在哪一屏」(页签 value,useScreen() 取):页签条判「这一屏我是不是正在编辑」查的就是这里
+  // (TAB-BAR-SPEC §2)。改前页签条看的是编辑锁,锁和屏不一一对应 —— 收款簿不握锁漏判,
+  // 出账链三屏共用一把锁互相误判(2026-09-18 对抗复查)。
+  const editors = ref(new Map<symbol, string>())
+  function openEditor(id: symbol, screen = '') { editors.value.set(id, screen) }
   function closeEditor(id: symbol) { editors.value.delete(id) }
   /** 此刻有没有屏在编辑模式。editors 是全站唯一的编辑态登记表,别处要判断「能不能打断他」都读这个
    *  (版本更新弹窗:编辑态不弹,VERSION-UPDATE-SPEC §3)。 */
   const editing = computed(() => editors.value.size > 0)
+  /** 这一屏(页签 value)有没有东西在编辑态。 */
+  function editingOn(screen: string): boolean {
+    for (const s of editors.value.values()) if (s === screen) return true
+    return false
+  }
 
   /**
    * 关页面前的二次确认(用户拍板 2026-08-26:「和所有别的网页一样,开着编辑模式没保存
    * 要关浏览器先阻止,弹窗二次确认才能关」)。
    *
-   * 挂在这里而不是挂在屏上:editors 是**全站唯一**的编辑态登记表,六个编辑器
-   * (useEditMode 那 19 屏 / 系数簿 / 收款簿 / 附表页头 / 账册模板 / 三大报表)
-   * 都已经往里登记。挂在屏上就要挂六遍,而且漏一处不报错、没人发现。
+   * 挂在这里而不是挂在屏上:editors 是**全站唯一**的编辑态登记表。登记点:useEditLock(握着锁的全算,
+   * 台账 / 三大报表 / 账册模板靠这一层 —— 2026-09-19 之前它们其实没登记)、useEditMode、
+   * 系数簿 / 收款簿 / 公司账簿窗口、附表页头、角色管理(有未保存改动)、合同弹窗(填过东西)。挂在屏上就要挂六遍,而且漏一处不报错、没人发现。
    *
    * ⚠ 文案不由我们决定 —— 浏览器只认「有没有 preventDefault」,一律显示它自己那句
    *   「系统可能不会保存您所做的更改」。自定义文案在 2016 年后被各家统一移除了
@@ -250,6 +268,8 @@ export const useAuthStore = defineStore('auth', () => {
     // V125:告诉服务端这张令牌作废。改前只清本地,服务端不知情 —— 那张令牌在剩下的
     // 有效期里仍然能用(最多 120 分钟)。同样不 await,理由同上;失败了也只是等它自己过期。
     if (token.value) api.post('/auth/logout').catch(() => { /* 过期兜底 */ })
+    // 一并清页签 / 最近访问持久化,避免共享机器上残留上一用户的页面清单
+    if (me.value) clearTabStorage(me.value)
     token.value = null
     displayName.value = null
     me.value = null
@@ -262,14 +282,21 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem(k)
       sessionStorage.removeItem(k)
     }
-    // 一并清标签页/预览/最近访问持久化,避免共享机器上残留上一用户的页面清单
-    localStorage.removeItem('fp-app-tabs')
-    localStorage.removeItem('fp-app-preview')
-    localStorage.removeItem('fp-app-recent')
     bindSession(null)
     drifted.value = false
     grants.value = []
     retick()
+  }
+
+  /**
+   * 页签的持久化按人分开存(stores/tabs.ts 同名键):别的浏览器标签页里被顶下线的旧身份写不到这个人的页签上。
+   * 改版前不分人的旧键一并删:上一个人过期没登出时它还是上一个人的,页签 store 会把它当成这个人的读进来。
+   */
+  function clearTabStorage(user: string) {
+    for (const k of ['fp-app-tabs', 'fp-app-pinned', 'fp-app-recent']) {
+      localStorage.removeItem(`${k}:${user}`)
+      localStorage.removeItem(k)
+    }
   }
 
   // ponytail: kept for backwards-compat with P0-B code that calls setToken
@@ -280,8 +307,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return { token, me, drifted, displayName, role, permissions, navLayers, roleNames, mustChangePassword,
-           isAuthed, isReadonly, roleLabel, landing,
+           isAuthed, isReadonly, roleLabel, landing, roleHome,
            can, hasOwn, authorizerOf, grants: liveGrants, elevationLeftMs, requestElevation, endElevation, refreshElevation,
-           openEditor, closeEditor, editing,
+           openEditor, closeEditor, editing, editingOn, loginSeq,
            login, logout, clearMustChangePassword, setToken }
 })

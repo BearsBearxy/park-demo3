@@ -88,7 +88,8 @@ const editors = computed(() => {
 // 转一道只会给非数字期区制造 NaN。
 function goEditor(t: ReturnType<typeof scopeTarget>) {
   if (!t || !confirmRebuild(t.v)) return
-  tabsStore.openFresh(t.v)
+  // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),本月出账不被换掉
+  tabsStore.openDeep(t.v)
   router.push(t.p ? periodLink(t.v, { p: t.p, co: t.co, extra: t.tab ? { tab: t.tab } : undefined }) : '/' + t.v)
 }
 
@@ -174,7 +175,7 @@ function go(v: string, tag = '', co?: number | 'all') {
     // loadChain 幂等:已载入直接返回,在途去重。失败不阻断跳转(矩阵那边同样只标「加载失败」)。
     void period.loadChain().catch(() => {})
   }
-  tabsStore.openFresh(v)
+  tabsStore.openDeep(v)   // 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),本月出账不被换掉
   // 链屏与收入核对带 ?p(SIDEBAR-UX-REDESIGN §4.1「显式选月 + periodLink」):目标屏 useDeepPeriod 认得,
   // 链屏还会与上面预 pick 的期比对(相同 → 不动);附表行按 scheduleLink 的形状带参(P0b)。
   if (p && (CHAIN_VALUES.has(v) || v === 'reconciliation')) {

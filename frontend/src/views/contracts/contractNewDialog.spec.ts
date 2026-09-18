@@ -1,6 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
 import type { ContractDTO, ContractCreateReq, ContractDetailDTO } from '@/types/contract'
 
 // CONTRACT-CARD-V2-SPEC §6:期限原文三件套(termText/termType/tierPriceNote)在编辑弹窗可录可存。
@@ -16,6 +18,9 @@ vi.mock('@/api/building', () => ({
 
 import ContractNewDialog from './ContractNewDialog.vue'
 import { contractApi } from '@/api/contract'
+
+// 弹窗填过东西会登记进 auth.editors(TAB-BAR-SPEC §2),要有 Pinia
+beforeEach(() => setActivePinia(createPinia()))
 
 const initial = {
   id: 7, contractNo: 'S10-0074',
@@ -43,6 +48,19 @@ describe('合同弹窗 · 期限原文三件套(V2-SPEC §6)', () => {
       extraUnitIds: [],
     })
     vi.mocked(contractApi.update).mockResolvedValue(initial)
+  })
+
+  it('❗填过东西 = 在编辑:登记进 auth.editors(页签条不换掉这一格、关浏览器先问);关弹窗就撤', async () => {
+    const w = mountEdit()
+    await flushPromises()
+    const auth = useAuthStore()
+    const end = vi.spyOn(auth, 'endElevation').mockResolvedValue()
+    expect(auth.editing).toBe(false)
+    await w.find('textarea.ct-in').setValue('改一下期限原文')
+    expect(auth.editing).toBe(true)
+    w.unmount()
+    expect(auth.editing).toBe(false)
+    expect(end, '撤登记顺带结束授权(最后一个编辑态时)').toHaveBeenCalled()
   })
 
   it('编辑态回填期限原文/类型/阶梯价原文', async () => {

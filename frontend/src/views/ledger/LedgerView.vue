@@ -722,8 +722,8 @@ async function onRenameRow(rowId: number, tenantName: string) {
 const bindOptions = computed(() => toBindOptions(allTenants.value))
 
 function gotoTenants() {
-  // pin 打开 = 真开一个新页签。不带 pin 会进**预览槽**,而预览槽全局只有一个 ——
-  // 去加个别名就把台账那页顶没了,回来还得重新翻到这个月(2026-08-28 用户拍板)。
+  // pin 打开 = 新页签紧挨台账右边(TAB-BAR-SPEC §2 页面里的链接)。不带 pin 会在**当前页签**打开 ——
+  // 去加个别名就把台账那格换掉了,回来还得重新翻到这个月(2026-08-28 用户拍板)。
   // 也不能用 openFresh:那会 bump epoch 让 KeepAlive 丢掉台账实例,抽屉与月份一起没。
   // 这里不再关抽屉 —— onDeactivated 会关,并且记下来等回来复原。
   tabs.open('tenants', { pin: true })

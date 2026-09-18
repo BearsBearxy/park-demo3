@@ -7,6 +7,8 @@
 // 勾选落行(电梯/变压器填月额,infra 为 per_sqm 填面积×单价);宿舍门禁/网络只填间数;空地为附加段。
 // 月租金/租赁面积由计费行汇总(不双录入,无独立月租金输入)。
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
 import Select from '@/components/ds/Select.vue'
@@ -105,6 +107,11 @@ const detailLoaded = ref(props.initial == null)
 const DETAIL_FAIL = '计费明细加载失败,请关闭重开——此时保存会清空该合同的计费行'
 // 遮罩误点会丢整份录入(标的段/费用行/免租期);dirty 由弹窗内任一输入/勾选冒上来置位,不做深比较
 const dirty = ref(false)
+// 填过东西 = 在编辑:登记进 auth.editors —— 页签条不把这一格换掉、关浏览器先确认(TAB-BAR-SPEC §2)
+const auth = useAuthStore()
+const meId = Symbol('contract-dialog')
+const screen = useScreen()
+watch(dirty, (on) => { if (on) auth.openEditor(meId, screen); else auth.closeEditor(meId) })
 
 // ─── 标的段(CONTRACT-CARD-SPEC §1/§6.2):段=物业类型+位置;段内费用行由类型钉死组决定 ──────
 type SegRow = { id: number | null; feeKey: FeeKey; area: number | null; areaShared: number | null; unitPrice: number | null; coeff: number | null; roomCount: number | null; amountOverride: number | null; autoArea?: boolean }
@@ -376,6 +383,9 @@ const numOrNull = (v: number | null) => (isNum(v) ? v : null)
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') emit('close') }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => {
+  // 撤登记时顺带结束授权:这是最后一个编辑态的话,授权不该留到 30 分钟到期(还有别的在编辑时它自己不作为)
+  auth.closeEditor(meId)
+  void auth.endElevation()
   window.removeEventListener('keydown', onKey)
   // 菜单开着时卸载:capture 标志必须与注册时一致,否则移不掉(UI-OVERLAY-SPEC §3)
   document.removeEventListener('mousedown', onTypeMenuDoc, true)

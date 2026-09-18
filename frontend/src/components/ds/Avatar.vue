@@ -8,6 +8,8 @@ export interface AvatarProps {
   uid?: string;
   size?: number;
   ring?: boolean;
+  /** 圆里写的字,给了就不再按名字取首字(人名头像写两个字,见 personNick)。 */
+  text?: string;
 }
 
 const props = withDefaults(defineProps<AvatarProps>(), {
@@ -87,6 +89,6 @@ const spanStyle = computed(() => ({
       :alt="name"
       style="width: 100%; height: 100%; object-fit: cover"
     />
-    <template v-else>{{ initials(name) }}</template>
+    <template v-else>{{ text ?? initials(name) }}</template>
   </span>
 </template>

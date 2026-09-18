@@ -1,6 +1,8 @@
 import { ref, computed, watch, onUnmounted, getCurrentInstance } from 'vue'
 import { locksApi, type LockHolder, type Eviction } from '@/api/locks'
 import { usePresenceStore } from '@/stores/presence'
+import { useAuthStore } from '@/stores/auth'
+import { useScreen } from '@/composables/useTabShells'
 
 /**
  * 编辑锁的客户端一半（CONCURRENCY-SPEC §4）：占 / 续 / 还 / 被接管。
@@ -29,6 +31,21 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
   // 节流到约 1 分钟一拍，仍在 3 分钟之内 —— 切页签、去开会都不掉锁（那一格由服务端的
   // 「空闲 20 分钟」独立计时器管，见 CONCURRENCY-SPEC §4.3）。
   const presence = usePresenceStore()
+
+  // 握着锁 = 这一屏在编辑:登记进 auth.editors(TAB-BAR-SPEC §2)。页签条判「这一屏我是不是正在编辑」、
+  // 关浏览器前的确认、「最后一个编辑态关掉才结束授权」都读它。登记在锁这一层 —— 台账宽表、三大报表、
+  // 账册模板只握锁、编辑态是裸 ref,改前一个都没登记(2026-09-19 对抗复查)。
+  const auth = useAuthStore()
+  const editorId = Symbol('edit-lock')
+  const screen = getCurrentInstance() ? useScreen() : ''
+  let editorOpen = false
+  /** 撤登记;这是最后一个编辑态就顺带结束授权(还有别的在编辑时 endElevation 自己不作为)。 */
+  function unregister() {
+    if (!editorOpen) return
+    editorOpen = false
+    auth.closeEditor(editorId)
+    void auth.endElevation()
+  }
 
   /**
    * 这一期**此刻**正被谁编辑 —— 从在场那条 ping 直接推出来，不必先点一下撞门。
@@ -92,6 +109,8 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
     held.value = scope
     heldToken = r.acquiredAt ?? null
     start()
+    auth.openEditor(editorId, screen)
+    editorOpen = true
     return true
   }
 
@@ -99,6 +118,7 @@ export function useEditLock(onExit?: () => void, canEdit?: () => boolean) {
   function release() {
     const remaining = stop()
     lockedBy.value = null
+    unregister()
     if (!held.value) return
     // ⚠ 出账链四屏共一把锁(S.paramCenter/poolLedger/billNotices/coefBook 全是 billing-chain):
     //   催缴单编辑态里开系数簿再进编辑,关窗还锁时若无这一判,DELETE 把**宿主屏还在用的**

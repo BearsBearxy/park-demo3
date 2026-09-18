@@ -25,7 +25,7 @@ BOOK-WORKBENCH-SPEC §7 · RBAC-SPEC v2 · EDIT-MODE-SPEC v5 · CONCURRENCY-SPEC
 | D6 | 角色徽记与落地：后端 `LoginResp` 加 `roleNames`，派生作老 token 兜底；顺手修 `PresenceService` 同一遗留列 | 加字段 |
 | D7 | 合同管理移入「档案」组 | 移 |
 | D8 | P2 后端 `DataHomeOverviewDTO.Item` 增 `companies` / `phases` | 批 |
-| D9 | KeepAlive `max` 10 → 16 | 提 |
+| D9 | KeepAlive `max` 10 → 16（2026-09-19 被 TAB-BAR-SPEC §1 取代：不设 max） | 提 |
 | D10 | 页签定宽 148px（Chrome 式）换零位移 | 是 |
 | D11 | 单独的锁账落库（period_close 表 + 锁账按钮） | 不做，被 D20 取代 |
 | D12 | 屏名「本月出账」 | 定 |

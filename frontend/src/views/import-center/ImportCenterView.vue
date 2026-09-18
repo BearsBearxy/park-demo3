@@ -3,6 +3,7 @@
 // 卡片「上传」就地开该类型导入抽屉(复用 importRegistry);ledger 先选公司+年月;charging 先取 cats。
 import { ref, onMounted, computed, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useTabsStore } from '@/stores/tabs'
 import { parsePeriod, periodLink, periodOf } from '@/nav/deepLink'
 import { iconFor } from '@/components/ds/icon'
 import Button from '@/components/ds/Button.vue'
@@ -46,6 +47,7 @@ const companies = ref<CompanyDTO[]>([])
 // 默认会计期 = 深链的期,没有就当前年月(不硬编码,跨年自适应);公司 = 深链的 co(必须在名单里),没有就首家。
 const route = useRoute()
 const router = useRouter()
+const tabs = useTabsStore()
 const parsed = parsePeriod(route.query as Record<string, unknown>)
 const deep = parsed?.month != null ? parsed : null
 const now = new Date()
@@ -176,11 +178,14 @@ function viewLink(key: string, c: ImportCtx, payload: unknown[]): typeof viewTo.
     return periodLink('salary', { p: periodOf(first.year, first.month) })
   return null
 }
-// 裸 push:router.afterEach 会 tabs.open;目标页签活着就走它 onReactivated 那条深链,不活就新实例 setup 那条
+// 不 bump epoch:目标页签活着就走它 onReactivated 那条深链,不活就新实例 setup 那条。
+// 页面里的链接 = 新页签紧挨本页右边(TAB-BAR-SPEC §2),导入中心不被换掉。
 function goView() {
   const to = viewTo.value
   importResult.value = null
-  if (to) router.push(to)
+  if (!to) return
+  tabs.open(to.path.slice(1), { pin: true })   // viewTo 的 path 恒为 '/' + 屏 value(periodLink)
+  router.push(to)
 }
 async function doRun(payload: Parameters<typeof runImport>[1], fileName: string) {
   if (!activeKey.value) return
